@@ -889,12 +889,10 @@ mod boundary_glue_tests {
 
   #[test]
   fn punctuation_boundary_carries_nibu_natural_and_shrink_no_stretch() {
-    // Arrange / Act
     let front = glue_fields(boundary_glue(Normal, Open, EM, true));
     // 後アキ（終わり括弧・句読点 → 通常文字）
     let back = glue_fields(boundary_glue(Close, Normal, EM, true));
 
-    // Assert
     assert_eq!(
       front,
       Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
@@ -909,13 +907,11 @@ mod boundary_glue_tests {
 
   #[test]
   fn consecutive_punctuation_has_no_glue() {
-    // Arrange / Act
     assert_eq!(glue_fields(boundary_glue(Comma, Close, EM, true)), None);
   }
 
   #[test]
   fn breakable_flag_propagates_to_punctuation_glue() {
-    // Arrange / Act
     assert_eq!(
       glue_fields(boundary_glue(Normal, Open, EM, false)),
       Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), false))
@@ -924,11 +920,9 @@ mod boundary_glue_tests {
 
   #[test]
   fn normal_pair_gets_cjk_stretch_only_at_break_points() {
-    // Arrange / Act
     let at_break = glue_fields(boundary_glue(Normal, Normal, EM, true));
     let no_break = glue_fields(boundary_glue(Normal, Normal, EM, false));
 
-    // Assert
     assert_eq!(at_break, Some((Length::ZERO, EM * CJK_STRETCH_RATIO, Length::ZERO, true)));
     assert_eq!(no_break, None);
   }
@@ -945,7 +939,6 @@ mod ja_latin_aki_tests {
 
   #[test]
   fn aki_is_quarter_em_stretch_only_and_non_breakable() {
-    // Arrange / Act
     let HItem::Glue {
       natural,
       stretch,
@@ -956,7 +949,6 @@ mod ja_latin_aki_tests {
       panic!("Glue を期待");
     };
 
-    // Assert
     assert_eq!(natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
     assert_eq!(stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
     assert_eq!(shrink, Length::ZERO, "収縮なし");
@@ -965,7 +957,6 @@ mod ja_latin_aki_tests {
 
   #[test]
   fn boundary_true_between_letters_and_digits_both_directions() {
-    // Arrange / Act
     assert!(is_ja_latin_letter_boundary(Japanese, '文', Latin, 'a'), "文→a");
     assert!(is_ja_latin_letter_boundary(Latin, 'c', Japanese, '和'), "c→和");
     assert!(is_ja_latin_letter_boundary(Japanese, '語', Latin, '1'), "語→1（数字）");
@@ -977,7 +968,6 @@ mod ja_latin_aki_tests {
 
   #[test]
   fn boundary_false_for_punctuation_space_and_same_category() {
-    // Arrange / Act
     assert!(!is_ja_latin_letter_boundary(Japanese, '」', Latin, 'a'), "」→a は約物側で除外");
     assert!(!is_ja_latin_letter_boundary(Latin, 'c', Japanese, '「'), "c→「 は約物側で除外");
     assert!(!is_ja_latin_letter_boundary(Japanese, '。', Latin, '1'), "。→1 は約物側で除外");

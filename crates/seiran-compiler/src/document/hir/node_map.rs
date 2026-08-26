@@ -82,12 +82,11 @@ mod tests {
 
   #[test]
   fn node_map_gets_value_by_id() {
-    // Arrange
     let mut map: NodeMap<u32> = NodeMap::default();
     map.insert(id(0, 1), 10);
     map.insert(id(1, 1), 20);
 
-    // Act / Assert — ソースが違えば別キー
+    // ソースが違えば別キー
     assert_eq!(map.get(id(0, 1)), Some(&10));
     assert_eq!(map.get(id(1, 1)), Some(&20));
     assert_eq!(map.get(id(2, 1)), None, "未登録は None");
@@ -95,10 +94,8 @@ mod tests {
 
   #[test]
   fn node_map_is_empty_by_default() {
-    // Arrange / Act
     let map: NodeMap<u32> = NodeMap::default();
 
-    // Assert
     assert!(map.is_empty());
   }
 }

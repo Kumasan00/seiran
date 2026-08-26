@@ -726,10 +726,8 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_invalid_toml_syntax() {
-    // Arrange / Act
     let result = parse_config("name = \nthis is not valid toml", dummy_source());
 
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadConfigError::ParseToml { .. })
@@ -934,7 +932,6 @@ mod tests {
 
   #[test]
   fn validate_values_accepts_valid_bcp47_languages() {
-    // Arrange / Act / Assert
     for lang in ["ja", "en-US", "zh-Hant", "zh-Hans-CN", "und"] {
       let extra = format!("language = \"{lang}\"");
       assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected '{lang}' to be accepted");
@@ -943,10 +940,8 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_invalid_bcp47_language() {
-    // Arrange / Act
     let errors = run_validate_with_serif_extra("language = \"!!\"").unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
@@ -955,7 +950,6 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_reserved_private_use_in_language() {
-    // Arrange / Act
     for forbidden in ["en-x-hbsclatn", "ja-x-hbotJAN"] {
       let extra = format!("language = \"{forbidden}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -972,7 +966,6 @@ mod tests {
 
   #[test]
   fn validate_values_accepts_structurally_valid_ot_script_tags() {
-    // Arrange / Act / Assert
     for script in [
       "latn", "kana", "hani", "DFLT", "Hani", "Latn", "LATN", "dflt", "Dflt",
     ] {
@@ -986,7 +979,6 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_structurally_invalid_ot_script_tag() {
-    // Arrange / Act / Assert
     for script in ["kan", "kanaa", "kan1", "ka一"] {
       let extra = format!("script = \"{script}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -1002,7 +994,6 @@ mod tests {
 
   #[test]
   fn validate_values_accepts_valid_ot_language_with_script() {
-    // Arrange / Act / Assert
     for ot_lang in ["JAN", "ENG", "DEU", "ZHS"] {
       let extra = format!("script = \"latn\"\not_language = \"{ot_lang}\"");
       assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected ot_language='{ot_lang}' to be accepted");
@@ -1011,7 +1002,6 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_invalid_ot_language_tag() {
-    // Arrange / Act / Assert
     for ot_lang in ["JA", "JAPAN", "J!N"] {
       let extra = format!("script = \"latn\"\not_language = \"{ot_lang}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -1043,7 +1033,6 @@ mod tests {
 
   #[test]
   fn build_language_string_handles_all_combinations() {
-    // Arrange / Act / Assert
     assert_eq!(build_language_string(None, None), None);
     assert_eq!(build_language_string(Some("ja"), None), Some("ja".to_string()));
     assert_eq!(build_language_string(None, Some("JAN")), Some("und-x-hbotJAN".to_string()));
@@ -1052,7 +1041,6 @@ mod tests {
 
   #[test]
   fn validate_values_accepts_all_valid_directions() {
-    // Arrange / Act / Assert
     for direction in [
       "left-to-right",
       "right-to-left",
@@ -1066,7 +1054,6 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_invalid_direction() {
-    // Arrange / Act / Assert
     for direction in [
       "ltr",
       "LTR",
@@ -1089,7 +1076,6 @@ mod tests {
 
   #[test]
   fn validate_values_accepts_valid_document_language() {
-    // Arrange / Act / Assert
     for lang in ["ja", "en-US", "zh-Hant", "und"] {
       let toml = format!(
         "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"{lang}\"\n\n{}{}{}",

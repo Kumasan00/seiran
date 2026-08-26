@@ -99,13 +99,11 @@ mod tests {
 
   #[test]
   fn cite_rejects_missing_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\cite";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act / Assert
     assert!(
       matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
     );
@@ -113,13 +111,11 @@ mod tests {
 
   #[test]
   fn cite_rejects_extra_arguments() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\cite{a}{b}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act / Assert
     assert!(
       matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
     );
@@ -127,13 +123,11 @@ mod tests {
 
   #[test]
   fn cite_rejects_empty_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\cite{a,}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act / Assert
     assert!(
       matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
     );
@@ -141,13 +135,11 @@ mod tests {
 
   #[test]
   fn cite_rejects_opt_args() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\cite[k=v]{rika}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act / Assert
     assert!(
       matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
     );

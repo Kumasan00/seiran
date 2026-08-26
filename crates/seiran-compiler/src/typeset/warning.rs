@@ -73,7 +73,6 @@ mod tests {
 
   #[test]
   fn warnings_declare_warning_severity_and_typeset_codes() {
-    // Arrange
     let warnings = [
       TypesetWarning::FootnoteOverflow {
         page: "1".to_owned(),
@@ -85,7 +84,6 @@ mod tests {
       },
     ];
 
-    // Act & Assert
     for warning in &warnings {
       assert_eq!(warning.severity(), Some(Severity::Warning), "警告 severity を宣言しているはず");
       let code = warning.code().expect("診断 code を持つはず").to_string();

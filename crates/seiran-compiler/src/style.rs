@@ -612,10 +612,8 @@ mod parse_tests {
 
   #[test]
   fn parse_columns_defaults_to_single_column() {
-    // Arrange / Act
     let style = parse("", dummy_source()).unwrap();
 
-    // Assert
     assert_eq!(style.columns.count, 1);
     assert!((style.columns.gap.to_pt() - 18.0).abs() < f32::EPSILON);
   }
@@ -634,19 +632,15 @@ mod parse_tests {
 
   #[test]
   fn parse_flush_bottom_defaults_to_disabled() {
-    // Arrange / Act
     let style = parse("", dummy_source()).unwrap();
 
-    // Assert
     assert!(!style.page.flush_bottom);
   }
 
   #[test]
   fn parse_page_margins_default_to_documented_values() {
-    // Arrange / Act
     let style = parse("", dummy_source()).unwrap();
 
-    // Assert
     assert!((style.page.margin_top.to_pt() - 99.0).abs() < f32::EPSILON);
     assert!((style.page.margin_bottom.to_pt() - 99.0).abs() < f32::EPSILON);
     assert!((style.page.margin_left.to_pt() - 85.0).abs() < f32::EPSILON);

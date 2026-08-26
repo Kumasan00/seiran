@@ -390,14 +390,12 @@ resets = [\"example\"]
 
   #[test]
   fn from_str_roundtrips_as_str_for_all() {
-    // Arrange / Act / Assert
     for counter in CounterName::ALL {
       let name_str = counter.as_str();
       let recovered = name_str.parse::<CounterName>().ok();
       assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");
     }
 
-    // Assert
     assert!("foo".parse::<CounterName>().is_err());
   }
 }

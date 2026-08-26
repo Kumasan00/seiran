@@ -252,7 +252,6 @@ mod tests {
 
   #[test]
   fn with_back_matter_is_no_op_when_no_index() {
-    // Arrange
     let front_pages = vec![page_with_anchors(vec![])];
     let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let labels_with_empty_back = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default())
@@ -263,7 +262,6 @@ mod tests {
       .finalize(&front_pages)
       .into_vec();
 
-    // Act / Assert
     assert_eq!(labels_with_empty_back, labels_without_call);
   }
 

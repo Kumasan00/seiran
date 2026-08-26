@@ -69,7 +69,6 @@ mod tests {
 
   #[test]
   fn parse_script_tag_preserves_case_for_four_ascii_letters() {
-    // Arrange / Act / Assert
     for tag in ["latn", "Latn", "LATN", "kana", "DFLT"] {
       assert_eq!(parse_script_tag(tag).unwrap(), to_bytes(tag), "{tag}");
     }
@@ -77,7 +76,6 @@ mod tests {
 
   #[test]
   fn parse_script_tag_rejects_wrong_length_or_non_alpha() {
-    // Arrange / Act / Assert
     for tag in ["kan", "kanaa", "kan1", "ka一"] {
       assert!(parse_script_tag(tag).is_err(), "{tag}");
     }
@@ -85,7 +83,6 @@ mod tests {
 
   #[test]
   fn parse_ot_language_tag_uppercases_and_pads_to_four_bytes() {
-    // Arrange / Act / Assert
     assert_eq!(parse_ot_language_tag("JAN").unwrap(), *b"JAN ");
     assert_eq!(parse_ot_language_tag("eng").unwrap(), *b"ENG ");
     assert_eq!(parse_ot_language_tag("DEUT").unwrap(), *b"DEUT");
@@ -93,7 +90,6 @@ mod tests {
 
   #[test]
   fn parse_ot_language_tag_rejects_invalid_length_or_non_alphanumeric() {
-    // Arrange / Act / Assert
     for tag in ["JA", "JAPAN", "J!N"] {
       assert!(parse_ot_language_tag(tag).is_err(), "{tag}");
     }
@@ -101,7 +97,6 @@ mod tests {
 
   #[test]
   fn parse_opentype_tag_accepts_four_ascii_including_digits() {
-    // Arrange / Act / Assert
     for tag in ["liga", "ss01", "wght", "smcp"] {
       assert_eq!(parse_opentype_tag(tag).unwrap(), to_bytes(tag), "{tag}");
     }
@@ -109,7 +104,6 @@ mod tests {
 
   #[test]
   fn parse_opentype_tag_rejects_wrong_length_or_non_ascii() {
-    // Arrange / Act / Assert
     for tag in ["lig", "ligaa", "li一"] {
       assert!(parse_opentype_tag(tag).is_err(), "{tag}");
     }

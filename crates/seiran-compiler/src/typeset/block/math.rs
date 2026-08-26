@@ -240,7 +240,6 @@ mod tests {
 
   #[test]
   fn cell_align_align_and_split_alternate_right_left_by_column() {
-    // Arrange & Act
     for kind in [MathEnvKind::Align, MathEnvKind::Split] {
       assert_eq!(cell_align(kind, 0, 1, 0), CellAlign::Right, "列 0 は右: {kind:?}");
       assert_eq!(cell_align(kind, 0, 1, 1), CellAlign::Left, "列 1 は左: {kind:?}");
@@ -250,7 +249,6 @@ mod tests {
 
   #[test]
   fn cell_align_gather_is_always_center() {
-    // Arrange & Act
     assert_eq!(cell_align(MathEnvKind::Gather, 0, 3, 0), CellAlign::Center);
     assert_eq!(cell_align(MathEnvKind::Gather, 1, 3, 0), CellAlign::Center);
     assert_eq!(cell_align(MathEnvKind::Gather, 2, 3, 0), CellAlign::Center);
@@ -258,7 +256,6 @@ mod tests {
 
   #[test]
   fn cell_align_multiline_is_staircase() {
-    // Arrange & Act
     let kind = MathEnvKind::Multiline;
     assert_eq!(cell_align(kind, 0, 3, 0), CellAlign::Left, "先頭行は左");
     assert_eq!(cell_align(kind, 1, 3, 0), CellAlign::Center, "中間行は中央");
@@ -267,13 +264,11 @@ mod tests {
 
   #[test]
   fn cell_align_multiline_single_row_is_center() {
-    // Arrange & Act
     assert_eq!(cell_align(MathEnvKind::Multiline, 0, 1, 0), CellAlign::Center);
   }
 
   #[test]
   fn cell_align_matrix_center_equation_and_cases_left() {
-    // Arrange & Act
     assert_eq!(
       cell_align(
         MathEnvKind::Matrix {
@@ -291,7 +286,6 @@ mod tests {
 
   #[test]
   fn delimiter_glyphs_maps_cases_and_matrix() {
-    // Arrange & Act
     assert_eq!(delimiter_glyphs(MathEnvKind::Cases), (Some("{"), None));
     assert_eq!(
       delimiter_glyphs(MathEnvKind::Matrix {
@@ -327,7 +321,6 @@ mod tests {
 
   #[test]
   fn delimiter_glyphs_absent_for_none_and_other_envs() {
-    // Arrange & Act
     assert_eq!(
       delimiter_glyphs(MathEnvKind::Matrix {
         delimiter: MathDelimiter::None
@@ -343,8 +336,6 @@ mod tests {
 
   #[test]
   fn column_offset_places_cell_within_column_width() {
-    // Arrange
-    // Act & Assert
     assert_eq!(column_offset(CellAlign::Left, Length::pt(10.0), Length::pt(4.0)), Length::ZERO);
     assert_eq!(column_offset(CellAlign::Center, Length::pt(10.0), Length::pt(4.0)), Length::pt(3.0));
     assert_eq!(column_offset(CellAlign::Right, Length::pt(10.0), Length::pt(4.0)), Length::pt(6.0));

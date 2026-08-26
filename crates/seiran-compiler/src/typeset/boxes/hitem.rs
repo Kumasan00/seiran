@@ -264,10 +264,8 @@ mod tests {
 
   #[test]
   fn natural_width_per_variant() {
-    // Arrange
     let box_item = HItem::Box(text_free_box(12.0, 8.0, 2.0));
 
-    // Act / Assert
     assert_eq!(box_item.natural_width(), pt(12.0));
     let glue = HItem::Glue {
       natural: pt(5.0),

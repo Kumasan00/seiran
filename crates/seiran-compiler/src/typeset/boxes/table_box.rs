@@ -392,7 +392,6 @@ mod tests {
 
   #[test]
   fn measure_items_width_is_additive() {
-    // Arrange
     let items = vec![
       text_free_box(10.0),
       HItem::Glue {
@@ -404,33 +403,28 @@ mod tests {
       HItem::Kern(pt(3.0)),
     ];
 
-    // Act / Assert
     assert!(close(measure_items_width(&items), 18.0));
     assert!(close(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), 0.0));
   }
 
   #[test]
   fn max_font_size_in_items_returns_largest_text_size() {
-    // Arrange
     let items = vec![
       glyph_box(20.0, 10.0),
       text_free_box(5.0),
       glyph_box(20.0, 14.0),
     ];
 
-    // Act / Assert
     assert_eq!(max_font_size_in_items(&items), Some(pt(14.0)));
   }
 
   #[test]
   fn max_font_size_in_items_none_without_text() {
-    // Arrange / Act / Assert
     assert_eq!(max_font_size_in_items(&[text_free_box(5.0)]), None);
   }
 
   #[test]
   fn max_font_size_in_items_recurses_into_atom() {
-    // Arrange
     let inner = HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: pt(20.0),
@@ -449,28 +443,23 @@ mod tests {
       dx: Length::ZERO,
     }]);
 
-    // Act / Assert
     assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(pt(20.0)));
   }
 
   #[test]
   fn table_row_height_is_max_font_times_factor() {
-    // Arrange
     let row = row(vec![
       cell(vec![glyph_box(10.0, 10.0)]),
       cell(vec![glyph_box(10.0, 12.0)]),
     ]);
 
-    // Act / Assert
     assert!(close(table_row_height(&row, pt(9.0), 1.5), 18.0));
   }
 
   #[test]
   fn table_row_height_falls_back_to_default_font() {
-    // Arrange
     let row = row(vec![cell(vec![text_free_box(5.0)])]);
 
-    // Act / Assert
     assert!(close(table_row_height(&row, pt(9.0), 2.0), 18.0));
   }
 

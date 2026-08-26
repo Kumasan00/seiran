@@ -135,10 +135,8 @@ mod tests {
 
   #[test]
   fn per_page_numbers_are_empty_without_footnotes() {
-    // Arrange / Act
     let numbers = per_page_footnote_numbers(&[page_with_footnotes(&[])]);
 
-    // Assert
     assert!(numbers.is_empty());
   }
 }

@@ -38,7 +38,6 @@ mod tests {
 
   #[test]
   fn from_path_classifies_supported_extensions_case_insensitively() {
-    // Arrange / Act / Assert
     assert_eq!(ImageFormat::from_path("a.png"), Some(ImageFormat::Png));
     assert_eq!(ImageFormat::from_path("a.JPG"), Some(ImageFormat::Jpeg));
     assert_eq!(ImageFormat::from_path("dir/a.jpeg"), Some(ImageFormat::Jpeg));
@@ -47,7 +46,6 @@ mod tests {
 
   #[test]
   fn from_path_rejects_unsupported_and_missing_extension() {
-    // Arrange / Act / Assert
     assert_eq!(ImageFormat::from_path("a.gif"), None);
     assert_eq!(ImageFormat::from_path("a"), None);
   }

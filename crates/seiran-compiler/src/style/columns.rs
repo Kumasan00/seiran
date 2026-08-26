@@ -38,71 +38,59 @@ mod tests {
 
   #[test]
   fn default_matches_documented_values() {
-    // Arrange / Act
     let style = ColumnsStyle::default();
 
-    // Assert
     assert_eq!(style.count, 1);
     assert!((style.gap.to_pt() - 18.0).abs() < f32::EPSILON);
   }
 
   #[test]
   fn validate_accepts_two_columns() {
-    // Arrange
     let style = ColumnsStyle {
       count: 2,
       ..ColumnsStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_zero_count() {
-    // Arrange
     let style = ColumnsStyle {
       count: 0,
       ..ColumnsStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_three_columns() {
-    // Arrange
     let style = ColumnsStyle {
       count: 3,
       ..ColumnsStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_accepts_zero_gap() {
-    // Arrange
     let style = ColumnsStyle {
       gap: Length::pt(0.0),
       ..ColumnsStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_negative_gap() {
-    // Arrange
     let style = ColumnsStyle {
       gap: Length::pt(-1.0),
       ..ColumnsStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

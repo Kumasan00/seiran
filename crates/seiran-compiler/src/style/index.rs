@@ -62,10 +62,8 @@ mod tests {
 
   #[test]
   fn partial_toml_keeps_other_defaults() {
-    // Arrange / Act
     let style: IndexStyle = toml::from_str("title = \"索引\"\n").unwrap();
 
-    // Assert
     assert_eq!(style.title, "索引");
     assert_eq!(style.column_count, 2);
     assert!(style.validate().is_ok());

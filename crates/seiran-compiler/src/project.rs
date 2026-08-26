@@ -136,11 +136,9 @@ mod tests {
 
   #[test]
   fn new_collapses_redundant_current_dir_components() {
-    // Arrange / Act
     let a = ProjectPath::new("/a/./b.ttf");
     let b = ProjectPath::new("/a/b.ttf");
 
-    // Assert
     assert_eq!(a, b, "`.` を含むパスは畳んだ形と等しいはず");
   }
 
@@ -173,10 +171,8 @@ mod tests {
 
   #[test]
   fn display_shows_the_underlying_path() {
-    // Arrange / Act
     let path = ProjectPath::new("/a/b.ttf");
 
-    // Assert
     assert_eq!(path.to_string(), "/a/b.ttf");
   }
 

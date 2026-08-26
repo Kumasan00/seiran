@@ -78,10 +78,8 @@ mod tests {
 
   #[test]
   fn partial_toml_keeps_other_defaults() {
-    // Arrange / Act
     let style: TocStyle = toml::from_str("enabled = true\n").unwrap();
 
-    // Assert
     assert!(style.enabled);
     assert_eq!(style.title, "Contents");
     assert_eq!(style.max_depth, 3);

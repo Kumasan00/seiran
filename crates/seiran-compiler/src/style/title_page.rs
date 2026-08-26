@@ -70,10 +70,8 @@ mod tests {
 
   #[test]
   fn default_is_disabled() {
-    // Arrange / Act
     let style = TitlePageStyle::default();
 
-    // Assert
     assert!(!style.enabled);
     assert_eq!(style.title_font_kind, FontKind::SerifBold);
     assert!((style.title_font_size.to_pt() - 36.0).abs() < f32::EPSILON);
@@ -94,38 +92,32 @@ mod tests {
 
   #[test]
   fn validate_rejects_zero_title_font_size() {
-    // Arrange
     let style = TitlePageStyle {
       title_font_size: Length::pt(0.0),
       ..TitlePageStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_top_margin() {
-    // Arrange
     let style = TitlePageStyle {
       top_margin: Length::pt(-1.0),
       ..TitlePageStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_accepts_zero_bottom_margin() {
-    // Arrange
     let style = TitlePageStyle {
       title_bottom_margin: Length::pt(0.0),
       author_bottom_margin: Length::pt(0.0),
       ..TitlePageStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 }

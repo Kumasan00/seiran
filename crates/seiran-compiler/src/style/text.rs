@@ -74,7 +74,6 @@ mod tests {
 
   #[test]
   fn text_alignment_default_is_justify() {
-    // Arrange / Act / Assert
     assert_eq!(TextAlignment::default(), TextAlignment::Justify);
   }
 
@@ -97,10 +96,8 @@ mod tests {
 
   #[test]
   fn default_matches_documented_values() {
-    // Arrange / Act
     let style = TextBlockStyle::default();
 
-    // Assert
     assert!((style.font_size.to_pt() - 12.0).abs() < f32::EPSILON);
     assert!((style.line_height_factor - 1.2).abs() < f32::EPSILON);
     assert!((style.paragraph_spacing.to_pt() - 12.0).abs() < f32::EPSILON);
@@ -112,79 +109,65 @@ mod tests {
 
   #[test]
   fn deserializes_ragged_right_alignment() {
-    // Arrange / Act
     let style: TextBlockStyle = toml::from_str("alignment = \"ragged_right\"").unwrap();
 
-    // Assert
     assert_eq!(style.alignment, TextAlignment::RaggedRight);
   }
 
   #[test]
   fn deserializes_punctuation_spacing_toggle() {
-    // Arrange / Act
     let style: TextBlockStyle = toml::from_str("punctuation_spacing = false").unwrap();
 
-    // Assert
     assert!(!style.punctuation_spacing);
   }
 
   #[test]
   fn validate_rejects_zero_font_size() {
-    // Arrange
     let style = TextBlockStyle {
       font_size: Length::pt(0.0),
       ..TextBlockStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_zero_line_height_factor() {
-    // Arrange
     let style = TextBlockStyle {
       line_height_factor: 0.0,
       ..TextBlockStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_first_line_indent() {
-    // Arrange
     let style = TextBlockStyle {
       first_line_indent: Length::pt(-1.0),
       ..TextBlockStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_accepts_zero_paragraph_spacing() {
-    // Arrange
     let style = TextBlockStyle {
       paragraph_spacing: Length::pt(0.0),
       ..TextBlockStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_negative_paragraph_spacing() {
-    // Arrange
     let style = TextBlockStyle {
       paragraph_spacing: Length::pt(-1.0),
       ..TextBlockStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

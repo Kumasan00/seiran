@@ -100,10 +100,8 @@ mod tests {
 
   #[test]
   fn default_matches_documented_values() {
-    // Arrange / Act
     let style = ListStyle::default();
 
-    // Assert
     assert!((style.indent.to_pt() - 20.0).abs() < f32::EPSILON);
     assert!((style.item_margin_bottom.to_pt() - 4.0).abs() < f32::EPSILON);
     assert_eq!(style.unordered_marker, "•");
@@ -124,25 +122,21 @@ mod tests {
 
   #[test]
   fn validate_rejects_negative_indent() {
-    // Arrange
     let style = ListStyle {
       indent: Length::pt(-1.0),
       ..ListStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_empty_unordered_marker() {
-    // Arrange
     let style = ListStyle {
       unordered_marker: String::new(),
       ..ListStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
@@ -166,43 +160,36 @@ marker_font_kind = \"serif\"
 
   #[test]
   fn validate_rejects_empty_nested_unordered_markers() {
-    // Arrange
     let style = ListStyle {
       nested_unordered_markers: Vec::new(),
       ..ListStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_empty_string_in_nested_unordered_markers() {
-    // Arrange
     let style = ListStyle {
       nested_unordered_markers: vec!["–".to_string(), String::new()],
       ..ListStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_empty_nested_ordered_formats() {
-    // Arrange
     let style = ListStyle {
       nested_ordered_formats: Vec::new(),
       ..ListStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_nested_ordered_format_with_unknown_placeholder() {
-    // Arrange
     let style = ListStyle {
       nested_ordered_formats: vec![NestedOrderedFormat {
         number_style: NumberStyle::AlphaLower,
@@ -211,7 +198,6 @@ marker_font_kind = \"serif\"
       ..ListStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

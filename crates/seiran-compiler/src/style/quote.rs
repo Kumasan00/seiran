@@ -50,10 +50,8 @@ mod tests {
 
   #[test]
   fn default_matches_documented_values() {
-    // Arrange / Act
     let style = QuoteStyle::default();
 
-    // Assert
     assert!((style.indent.to_pt() - 20.0).abs() < f32::EPSILON);
     assert!((style.top_margin.to_pt() - 6.0).abs() < f32::EPSILON);
     assert!((style.bottom_margin.to_pt() - 6.0).abs() < f32::EPSILON);
@@ -63,25 +61,21 @@ mod tests {
 
   #[test]
   fn validate_rejects_negative_indent() {
-    // Arrange
     let style = QuoteStyle {
       indent: Length::pt(-1.0),
       ..QuoteStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_first_line_indent() {
-    // Arrange
     let style = QuoteStyle {
       first_line_indent: Length::pt(-1.0),
       ..QuoteStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

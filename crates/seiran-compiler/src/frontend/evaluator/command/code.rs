@@ -67,37 +67,30 @@ mod tests {
 
   #[test]
   fn inline_code_includes_balanced_braces() {
-    // Arrange & Act
     let text = code_text(r"\code{if x { y }}");
 
-    // Assert
     assert_eq!(text, "if x { y }");
   }
 
   #[test]
   fn inline_code_keeps_special_characters_inert() {
-    // Arrange & Act
     let text = code_text(r"\code{a // b $c$ \d}");
 
-    // Assert
     assert_eq!(text, r"a // b $c$ \d");
   }
 
   #[test]
   fn inline_code_keeps_surrounding_spaces() {
-    // Arrange & Act
     let text = code_text(r"\code{  x  }");
 
-    // Assert — `\url` と違って trim しない（空白も内容）
+    // `\url` と違って trim しない（空白も内容）
     assert_eq!(text, "  x  ");
   }
 
   #[test]
   fn inline_code_can_be_empty() {
-    // Arrange & Act
     let text = code_text(r"\code{}");
 
-    // Assert
     assert_eq!(text, "");
   }
 

@@ -71,38 +71,35 @@ fn codes(failure: &CompileFailure) -> Vec<String> {
 
 #[test]
 fn diagnostic_unknown_command() {
-  // Arrange / Act — P6（未知は拒否）の未知コマンドエラー
+  // P6（未知は拒否）の未知コマンドエラー
   let failure = build_pages_err(&["tests/text/diagnostics/unknown_command.sei"]);
 
-  // Assert
   assert_matches_golden("unknown_command", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_bare_braces() {
-  // Arrange / Act — P4（裸の `{...}` は構文エラー）
+  // P4（裸の `{...}` は構文エラー）
   let failure = build_pages_err(&["tests/text/diagnostics/bare_braces.sei"]);
 
-  // Assert
   assert_matches_golden("bare_braces", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_multiple_source_errors() {
-  // Arrange / Act — 2 ソースがそれぞれ別種のエラーを持つ場合の集約
+  // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）
   let failure = build_pages_err(&[
     "tests/text/diagnostics/unknown_command.sei",
     "tests/text/diagnostics/bare_braces.sei",
   ]);
 
-  // Assert
   assert_matches_golden("multiple_source_errors", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_multi_source_resolve_error_attributes_second_source() {
-  // Arrange / Act — 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（resolve 段）。
+  // 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（resolve 段）。
   // `semantics::analyze` はラベル名前空間を全ソースで共有するため
   // （単一の `CounterRegistry` に対して逐次解決し、`\ref` の存在検証を全体へ 1 回だけ実行する）、
   // parse 段の集約（`diagnostic_multiple_source_errors`）とは別に、resolve 段の複数 source でも
@@ -112,44 +109,41 @@ fn diagnostic_multi_source_resolve_error_attributes_second_source() {
     "tests/text/diagnostics/multi_source_b.sei",
   ]);
 
-  // Assert
   assert_matches_golden("multi_source_resolve_error", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_undefined_ref() {
-  // Arrange / Act — `\ref` の未定義ラベル（source 帰属つき `Resolve` エラー）
+  // `\ref` の未定義ラベル（source 帰属つき `Resolve` エラー）
   let failure = build_pages_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
-  // Assert
   assert_matches_golden("undefined_ref", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_unknown_cite_key() {
-  // Arrange / Act — `\cite` の未知キー
+  // `\cite` の未知キー
   let failure = build_pages_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
 
-  // Assert
   assert_matches_golden("unknown_cite_key", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_duplicate_label() {
-  // Arrange / Act — 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
+  // 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
   let failure = build_pages_err(&["tests/text/diagnostics/duplicate_label.sei"]);
 
-  // Assert — 束ねず 2 件並ぶ
+  // 束ねず 2 件並ぶ
   assert_eq!(codes(&failure), vec!["semantics::duplicate_label".to_string(); 2]);
   assert_matches_golden("duplicate_label", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_mixed_semantics_errors_follow_document_order() {
-  // Arrange / Act — 重複ラベル・未知引用キー・未解決参照が混在する入力
+  // 重複ラベル・未知引用キー・未解決参照が混在する入力
   let failure = build_pages_err(&["tests/text/diagnostics/mixed_semantics.sei"]);
 
-  // Assert — カテゴリ順ではなく文書順に全件並ぶ
+  // カテゴリ順ではなく文書順に全件並ぶ
   assert_eq!(
     codes(&failure),
     vec![
@@ -163,31 +157,29 @@ fn diagnostic_mixed_semantics_errors_follow_document_order() {
 
 #[test]
 fn diagnostic_multiple_missing_sources_follow_declaration_order() {
-  // Arrange / Act — 存在しないソースを 2 つ、パス名の辞書順とは逆に宣言する
+  // 存在しないソースを 2 つ、パス名の辞書順とは逆に宣言する
   let failure = build_pages_err(&[
     "tests/text/diagnostics/z-does-not-exist.sei",
     "tests/text/diagnostics/a-does-not-exist.sei",
   ]);
 
-  // Assert — 宣言順に全件（1 件目で打ち切らない）
+  // 宣言順に全件（1 件目で打ち切らない）
   assert_eq!(codes(&failure), vec!["compiler::read_text_file".to_string(); 2]);
 }
 
 #[test]
 fn diagnostic_missing_image() {
-  // Arrange / Act — 画像アセット欠落（`image_resources::load_image_resources` の `ProjectSource::read_bytes` が検出）
+  // 画像アセット欠落（`image_resources::load_image_resources` の `ProjectSource::read_bytes` が検出）
   let failure = build_pages_err(&["tests/text/diagnostics/missing_image.sei"]);
 
-  // Assert
   assert_matches_golden("missing_image", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_unsupported_image_format() {
-  // Arrange / Act — 実在する未対応 GIF で形式エラーを起こす
+  // 実在する未対応 GIF で形式エラーを起こす
   let failure = build_pages_err(&["tests/text/diagnostics/unsupported_image_format.sei"]);
 
-  // Assert
   assert_matches_golden("unsupported_image_format", &render_failure(failure));
 }
 
@@ -261,40 +253,35 @@ fn diagnostic_missing_csl_path() {
 
 #[test]
 fn primary_diagnostic_is_the_leaf_for_unknown_command() {
-  // Arrange / Act
   let failure = build_pages_err(&["tests/text/diagnostics/unknown_command.sei"]);
 
-  // Assert — ユーザーが最初に読むのは段名の wrapper ではなく修正可能な leaf
+  // ユーザーが最初に読むのは段名の wrapper ではなく修正可能な leaf
   assert_eq!(codes(&failure), vec!["frontend::eval::unknown_command".to_string()]);
 }
 
 #[test]
 fn primary_diagnostic_is_the_leaf_for_unresolved_reference() {
-  // Arrange / Act
   let failure = build_pages_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
-  // Assert
   assert_eq!(codes(&failure), vec!["semantics::unresolved_reference".to_string()]);
 }
 
 #[test]
 fn primary_diagnostic_is_the_leaf_for_unknown_citation_key() {
-  // Arrange / Act
   let failure = build_pages_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
 
-  // Assert — 同じソース内の 2 箇所は 1 診断のラベルにまとまる
+  // 同じソース内の 2 箇所は 1 診断のラベルにまとまる
   assert_eq!(codes(&failure), vec!["semantics::unknown_citation_key".to_string()]);
 }
 
 #[test]
 fn multiple_source_errors_keep_declaration_order() {
-  // Arrange / Act — config.sources の宣言順で並ぶ
+  // config.sources の宣言順で並ぶ
   let failure = build_pages_err(&[
     "tests/text/diagnostics/unknown_command.sei",
     "tests/text/diagnostics/bare_braces.sei",
   ]);
 
-  // Assert
   assert_eq!(
     codes(&failure),
     vec![
@@ -306,7 +293,7 @@ fn multiple_source_errors_keep_declaration_order() {
 
 #[test]
 fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
-  // Arrange — 「複数」「phase に失敗」だけを表す診断が表示へ現れないことを golden 全件で固定する。
+  // 「複数」「phase に失敗」だけを表す診断が表示へ現れないことを golden 全件で固定する。
   // 診断 code 全体の規約を機械検査するものではなく、#375 / #376 で削除した wrapper が
   // 復活していないことだけを見る狭いガード。
   let forbidden_codes = [
@@ -337,7 +324,6 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "フォントの検証に失敗しました",
   ];
 
-  // Act / Assert
   let entries = fs::read_dir(diagnostic_golden_dir()).expect("golden ディレクトリを読めるはず");
   let mut checked = 0usize;
   for entry in entries {

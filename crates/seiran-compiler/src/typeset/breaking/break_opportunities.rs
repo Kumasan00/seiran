@@ -64,10 +64,8 @@ mod tests {
 
   #[test]
   fn latin_spaces_become_glue_breaks() {
-    // Arrange & Act
     let breaks = break_opportunities("hello world", None);
 
-    // Assert
     assert_eq!(
       breaks,
       vec![BreakPoint {
@@ -79,10 +77,8 @@ mod tests {
 
   #[test]
   fn cjk_characters_become_penalty_breaks() {
-    // Arrange & Act
     let breaks = break_opportunities("日本語の文章", None);
 
-    // Assert
     assert_eq!(breaks.len(), 5, "{breaks:?}");
     for (i, break_point) in breaks.iter().enumerate() {
       assert_eq!(break_point.byte, (i + 1) * 3);
@@ -92,10 +88,8 @@ mod tests {
 
   #[test]
   fn mixed_text_classifies_both_kinds() {
-    // Arrange & Act
     let breaks = break_opportunities("ab 漢字", None);
 
-    // Assert
     assert!(breaks.contains(&BreakPoint {
       byte: 3,
       kind: BreakKind::Glue

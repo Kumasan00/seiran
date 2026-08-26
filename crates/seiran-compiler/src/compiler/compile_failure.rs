@@ -190,10 +190,9 @@ mod tests {
 
   #[test]
   fn from_diagnostics_rejects_an_empty_iterator() {
-    // Arrange / Act
     let failure = CompileFailure::from_diagnostics(Vec::new());
 
-    // Assert — 空の失敗は構築できないはず
+    // 空の失敗は構築できないはず
     assert!(failure.is_none());
   }
 
@@ -211,11 +210,9 @@ mod tests {
 
   #[test]
   fn code_and_help_come_from_the_primary_diagnostic() {
-    // Arrange
     let mut failure = CompileFailure::single(LeafError);
     failure.push(OtherError);
 
-    // Act / Assert
     assert_eq!(failure.code().expect("主診断の code を持つはず").to_string(), "test::leaf");
     assert_eq!(failure.help().expect("主診断の help を持つはず").to_string(), "テスト用のヘルプ");
   }

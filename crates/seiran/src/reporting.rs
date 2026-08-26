@@ -118,7 +118,6 @@ mod tests {
 
   #[test]
   fn verbose_only_increases_seiran_targets() {
-    // Arrange / Act / Assert
     assert_eq!(flag_directive(0), "warn");
     assert_eq!(flag_directive(1), "warn,seiran=info,seiran_compiler=info,seiran_pdf=info");
     assert_eq!(flag_directive(2), "warn,seiran=debug,seiran_compiler=debug,seiran_pdf=debug");
@@ -127,30 +126,24 @@ mod tests {
 
   #[test]
   fn quiet_takes_priority_over_rust_log() {
-    // Arrange / Act
     let (filter, warning) = build_env_filter(Some("trace"), 3, true);
 
-    // Assert
     assert_eq!(filter.to_string(), "off");
     assert!(warning.is_none());
   }
 
   #[test]
   fn valid_rust_log_takes_priority_over_verbose() {
-    // Arrange / Act
     let (filter, warning) = build_env_filter(Some("seiran_compiler=trace"), 0, false);
 
-    // Assert
     assert_eq!(filter.to_string(), "seiran_compiler=trace");
     assert!(warning.is_none());
   }
 
   #[test]
   fn invalid_rust_log_falls_back_to_verbose() {
-    // Arrange / Act
     let (filter, warning) = build_env_filter(Some("seiran=not-a-level"), 1, false);
 
-    // Assert
     assert_eq!(filter.to_string(), flag_filter(1).to_string());
     assert!(warning.is_some_and(|message| return message.contains("RUST_LOG")));
   }

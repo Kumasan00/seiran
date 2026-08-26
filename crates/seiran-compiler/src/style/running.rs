@@ -86,10 +86,8 @@ mod tests {
 
   #[test]
   fn default_is_empty() {
-    // Arrange / Act
     let style = RunningContentStyle::default();
 
-    // Assert
     assert!(style.is_empty());
     assert_eq!(style.font_kind, FontKind::Serif);
     assert!((style.font_size.to_pt() - 10.0).abs() < f32::EPSILON);
@@ -97,55 +95,46 @@ mod tests {
 
   #[test]
   fn is_empty_false_when_any_slot_filled() {
-    // Arrange
     let style = RunningContentStyle {
       right: RunningTemplate::parse("{page}"),
       ..RunningContentStyle::default()
     };
 
-    // Act / Assert
     assert!(!style.is_empty());
   }
 
   #[test]
   fn validate_rejects_zero_font_size() {
-    // Arrange
     let style = RunningContentStyle {
       font_size: Length::pt(0.0),
       ..RunningContentStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_baseline_offset() {
-    // Arrange
     let style = RunningContentStyle {
       baseline_offset: Length::pt(-1.0),
       ..RunningContentStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_unknown_slot_token() {
-    // Arrange
     let style = RunningContentStyle {
       center: RunningTemplate::parse("{pagee}"),
       ..RunningContentStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_accepts_valid_slot_tokens() {
-    // Arrange
     let style = RunningContentStyle {
       left: RunningTemplate::parse("{title}"),
       center: RunningTemplate::parse("{author}"),
@@ -153,19 +142,16 @@ mod tests {
       ..RunningContentStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_negative_rule_thickness() {
-    // Arrange
     let style = RunningContentStyle {
       rule_thickness: Length::pt(-0.5),
       ..RunningContentStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

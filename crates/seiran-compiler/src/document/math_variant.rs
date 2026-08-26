@@ -81,7 +81,7 @@ mod tests {
 
   #[test]
   fn math_variant_from_command_name_resolves_all_styles() {
-    // Arrange & Act & Assert — 15 個のスタイルコマンドが正しく解決される
+    // 15 個のスタイルコマンドが正しく解決される
     assert_eq!(MathVariant::from_command_name("mathserif"), Some(MathVariant::Serif));
     assert_eq!(MathVariant::from_command_name("mathitalic"), Some(MathVariant::Italic));
     assert_eq!(MathVariant::from_command_name("mathbold"), Some(MathVariant::Bold));
@@ -101,7 +101,7 @@ mod tests {
 
   #[test]
   fn math_variant_from_command_name_rejects_unknown() {
-    // Arrange & Act & Assert — 未知名は None
+    // 未知名は None
     assert_eq!(MathVariant::from_command_name("mathrm"), None);
     assert_eq!(MathVariant::from_command_name("mathbf"), None);
     assert_eq!(MathVariant::from_command_name("foo"), None);

@@ -129,7 +129,7 @@ fn error_path_is_deterministic_across_repeated_runs() {
 /// `config.sources` の複数ファイルが欠落しているとき、宣言順で全件が決定的に報告される。
 #[test]
 fn missing_sources_are_reported_in_declaration_order_on_every_run() {
-  // Arrange — パス名の辞書順とは逆に宣言する
+  // パス名の辞書順とは逆に宣言する
   let font_bytes = read_test_font();
   let config = format!(
     "sources = [\"/project/z.sei\", \"/project/a.sei\"]\n\n{}{}{}",
@@ -142,7 +142,6 @@ fn missing_sources_are_reported_in_declaration_order_on_every_run() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act / Assert
   for _ in 0..32 {
     let failure = seiran_compiler::compile(&source, &root, project_base_dir())
       .expect_err("2 ソースとも欠落しているので失敗するはず");

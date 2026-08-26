@@ -3474,7 +3474,6 @@ mod tests {
 
   #[test]
   fn is_content_block_classifies_variants() {
-    // Arrange / Act
     assert!(is_content_block(&paragraph_of_lines(1)));
     assert!(is_content_block(&fixed_block(1.0)));
     assert!(!is_content_block(&Block::fixed_space(pt(5.0))));
@@ -3484,7 +3483,6 @@ mod tests {
 
   #[test]
   fn keep_group_end_links_heading_to_following_block() {
-    // Arrange
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
@@ -3492,26 +3490,22 @@ mod tests {
       paragraph_of_lines(2),
     ];
 
-    // Act / Assert
     assert_eq!(keep_group_end(&blocks, 0), Some(3));
   }
 
   #[test]
   fn keep_group_end_none_without_forbid() {
-    // Arrange
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
       paragraph_of_lines(2),
     ];
 
-    // Act / Assert
     assert_eq!(keep_group_end(&blocks, 0), None);
   }
 
   #[test]
   fn keep_group_end_chains_consecutive_headings() {
-    // Arrange
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
@@ -3522,13 +3516,11 @@ mod tests {
       paragraph_of_lines(2),
     ];
 
-    // Act / Assert
     assert_eq!(keep_group_end(&blocks, 0), Some(6));
   }
 
   #[test]
   fn keep_group_end_severed_by_forced_break() {
-    // Arrange
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
@@ -3536,7 +3528,6 @@ mod tests {
       paragraph_of_lines(2),
     ];
 
-    // Act / Assert
     assert_eq!(keep_group_end(&blocks, 0), None);
   }
 

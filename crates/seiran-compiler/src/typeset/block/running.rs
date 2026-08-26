@@ -230,13 +230,11 @@ mod tests {
 
   #[test]
   fn slot_width_sums_box_widths() {
-    // Arrange / Act
     let width = slot_width(&[
       box_of_width(Length::pt(10.0)),
       box_of_width(Length::pt(15.0)),
     ]);
 
-    // Assert
     assert_eq!(width, Length::pt(25.0));
   }
 
@@ -276,28 +274,22 @@ mod tests {
 
   #[test]
   fn substitute_replaces_page_and_pages_independently() {
-    // Arrange / Act
     let result = substitute(&RunningTemplate::parse("{page} / {pages}"), "3", "12", &metadata());
 
-    // Assert
     assert_eq!(result, "3 / 12");
   }
 
   #[test]
   fn substitute_supports_roman_front_matter_labels() {
-    // Arrange / Act
     let result = substitute(&RunningTemplate::parse("{page} / {pages}"), "ii", "iv", &metadata());
 
-    // Assert
     assert_eq!(result, "ii / iv");
   }
 
   #[test]
   fn substitute_replaces_metadata_tokens() {
-    // Arrange / Act
     let result = substitute(&RunningTemplate::parse("{title} — {author} ({date})"), "1", "1", &metadata());
 
-    // Assert
     assert_eq!(result, "My Title — Me (2026-06-14)");
   }
 
@@ -312,10 +304,8 @@ mod tests {
 
   #[test]
   fn substitute_leaves_static_text_untouched() {
-    // Arrange / Act
     let result = substitute(&RunningTemplate::parse("Confidential"), "5", "9", &metadata());
 
-    // Assert
     assert_eq!(result, "Confidential");
   }
 }

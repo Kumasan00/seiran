@@ -44,31 +44,26 @@ mod tests {
 
   #[test]
   fn default_is_left() {
-    // Arrange / Act / Assert
     assert_eq!(Align::default(), Align::Left);
   }
 
   #[test]
   fn offset_left_is_always_zero() {
-    // Arrange / Act / Assert
     assert_eq!(Align::Left.offset(Length::pt(100.0), Length::pt(30.0)), Length::ZERO);
   }
 
   #[test]
   fn offset_center_is_half_remaining() {
-    // Arrange / Act / Assert
     assert_eq!(Align::Center.offset(Length::pt(100.0), Length::pt(30.0)), Length::pt(35.0));
   }
 
   #[test]
   fn offset_right_is_full_remaining() {
-    // Arrange / Act / Assert
     assert_eq!(Align::Right.offset(Length::pt(100.0), Length::pt(30.0)), Length::pt(70.0));
   }
 
   #[test]
   fn offset_clamps_to_zero_when_content_overflows() {
-    // Arrange / Act / Assert
     assert_eq!(Align::Center.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
     assert_eq!(Align::Right.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
   }

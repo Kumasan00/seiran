@@ -313,10 +313,8 @@ mod tests {
 
   #[test]
   fn new_initializes_cursor_at_zero() {
-    // Arrange & Act
     let lexer = Lexer::new("hello");
 
-    // Assert
     assert_eq!(lexer.cursor, 0);
     assert_eq!(lexer.input, "hello");
     assert_eq!(lexer.bytes, b"hello");
@@ -325,20 +323,16 @@ mod tests {
 
   #[test]
   fn peek_char_returns_current_char() {
-    // Arrange
     let lexer = Lexer::new("abc");
 
-    // Act & Assert
     assert_eq!(lexer.peek_char(), Some('a'));
     return;
   }
 
   #[test]
   fn peek_char_returns_none_at_end() {
-    // Arrange
     let mut lexer = Lexer::new("");
 
-    // Act & Assert
     assert_eq!(lexer.peek_char(), None);
 
     lexer = Lexer::new("x");
@@ -349,20 +343,16 @@ mod tests {
 
   #[test]
   fn peek_char_handles_multibyte_utf8() {
-    // Arrange
     let lexer = Lexer::new("あいう");
 
-    // Act & Assert
     assert_eq!(lexer.peek_char(), Some('あ'));
     return;
   }
 
   #[test]
   fn peek_byte_at_returns_byte_at_offset() {
-    // Arrange
     let lexer = Lexer::new("abc");
 
-    // Act & Assert
     assert_eq!(lexer.peek_byte_at(0), Some(b'a'));
     assert_eq!(lexer.peek_byte_at(1), Some(b'b'));
     assert_eq!(lexer.peek_byte_at(2), Some(b'c'));
@@ -386,10 +376,8 @@ mod tests {
 
   #[test]
   fn advance_char_moves_cursor_by_char_width() {
-    // Arrange
     let mut lexer = Lexer::new("aあb");
 
-    // Act & Assert
     let c1 = lexer.advance_char();
     assert_eq!(c1, Some('a'));
     assert_eq!(lexer.cursor, 1);
@@ -409,31 +397,25 @@ mod tests {
 
   #[test]
   fn is_at_end_returns_true_for_empty_input() {
-    // Arrange
     let lexer = Lexer::new("");
 
-    // Act & Assert
     assert!(lexer.is_at_end());
     return;
   }
 
   #[test]
   fn is_at_end_returns_false_when_content_remains() {
-    // Arrange
     let lexer = Lexer::new("a");
 
-    // Act & Assert
     assert!(!lexer.is_at_end());
     return;
   }
 
   #[test]
   fn remaining_bytes_returns_slice_from_cursor() {
-    // Arrange
     let mut lexer = Lexer::new("hello");
     lexer.cursor = 2;
 
-    // Act & Assert
     assert_eq!(lexer.remaining_bytes(), b"llo");
     return;
   }
@@ -461,43 +443,35 @@ mod tests {
 
   #[test]
   fn is_empty_line_next_true_for_newline_after_whitespace() {
-    // Arrange
     let mut lexer = Lexer::new("x\n  \nY");
     lexer.cursor = 2; // "  \nY" を指す
 
-    // Act & Assert
     assert!(lexer.is_empty_line_next());
     return;
   }
 
   #[test]
   fn is_empty_line_next_false_for_content_on_next_line() {
-    // Arrange
     let mut lexer = Lexer::new("x\nhello");
     lexer.cursor = 2; // "hello" を指す
 
-    // Act & Assert
     assert!(!lexer.is_empty_line_next());
     return;
   }
 
   #[test]
   fn is_empty_line_next_true_for_trailing_whitespace_only() {
-    // Arrange
     let mut lexer = Lexer::new("x\n   ");
     lexer.cursor = 2; // "   " を指す
 
-    // Act & Assert
     assert!(lexer.is_empty_line_next());
     return;
   }
 
   #[test]
   fn empty_input_returns_no_tokens() {
-    // Arrange & Act
     let tokens = tokenize("");
 
-    // Assert
     assert!(tokens.is_empty());
     return;
   }
@@ -553,10 +527,8 @@ mod tests {
 
   #[test]
   fn comma_token() {
-    // Arrange & Act
     let tokens = tokenize_with_spans(",");
 
-    // Assert
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].kind, TokenKind::Comma);
     assert_eq!(tokens[0].span, Span::new(0, 1));
@@ -565,10 +537,8 @@ mod tests {
 
   #[test]
   fn equals_token() {
-    // Arrange & Act
     let tokens = tokenize_with_spans("=");
 
-    // Assert
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].kind, TokenKind::Equals);
     assert_eq!(tokens[0].span, Span::new(0, 1));
@@ -591,10 +561,8 @@ mod tests {
 
   #[test]
   fn key_value_optarg_text_splits_into_tokens() {
-    // Arrange & Act
     let tokens = tokenize("key=value, key2=value2");
 
-    // Assert
     assert_eq!(
       tokens,
       vec![
@@ -1070,10 +1038,8 @@ mod tests {
 
   #[test]
   fn span_tracks_single_char_tokens() {
-    // Arrange & Act
     let tokens = tokenize_with_spans("{");
 
-    // Assert
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].kind, TokenKind::LBrace);
     assert_eq!(tokens[0].span, Span::new(0, 1));
@@ -1082,10 +1048,8 @@ mod tests {
 
   #[test]
   fn span_tracks_command() {
-    // Arrange & Act
     let tokens = tokenize_with_spans("\\bold");
 
-    // Assert
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].kind, TokenKind::Command);
     assert_eq!(tokens[0].span, Span::new(0, 5));
@@ -1096,11 +1060,9 @@ mod tests {
 
   #[test]
   fn span_tracks_text() {
-    // Arrange & Act
     let source = "   hello";
     let tokens = tokenize_with_spans(source);
 
-    // Assert
     assert_eq!(tokens.len(), 2);
     assert_eq!(tokens[0].kind, TokenKind::Whitespace);
     assert_eq!(tokens[0].span, Span::new(0, 3));
@@ -1112,10 +1074,8 @@ mod tests {
 
   #[test]
   fn span_tracks_multiple_tokens() {
-    // Arrange & Act
     let tokens = tokenize_with_spans("\\cmd{arg}");
 
-    // Assert
     assert_eq!(tokens.len(), 4);
     assert_eq!(tokens[0].span, Span::new(0, 4)); // \cmd
     assert_eq!(tokens[1].span, Span::new(4, 5)); // {

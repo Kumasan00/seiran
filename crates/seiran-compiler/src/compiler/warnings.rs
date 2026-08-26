@@ -59,10 +59,8 @@ mod tests {
 
   #[test]
   fn default_has_no_reports() {
-    // Arrange / Act
     let warnings = Warnings::default();
 
-    // Assert
     assert!(warnings.is_empty());
     assert_eq!(warnings.iter().count(), 0);
   }

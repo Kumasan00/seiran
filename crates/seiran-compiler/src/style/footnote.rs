@@ -92,44 +92,36 @@ mod tests {
 
   #[test]
   fn default_numbering_is_continuous() {
-    // Act / Assert
     assert_eq!(FootnoteStyle::default().numbering, FootnoteNumbering::Continuous);
   }
 
   #[test]
   fn default_number_style_is_arabic() {
-    // Act / Assert
     assert_eq!(FootnoteStyle::default().number_style, NumberStyle::Arabic);
   }
 
   #[test]
   fn deserialize_accepts_roman_number_style() {
-    // Arrange / Act
     let style: FootnoteStyle =
       toml::from_str("number_style = \"roman_upper\"\n").expect("roman_upper は受理されるはず");
 
-    // Assert
     assert_eq!(style.number_style, NumberStyle::RomanUpper);
   }
 
   #[test]
   fn deserialize_rejects_unknown_number_style() {
-    // Act / Assert
     assert!(toml::from_str::<FootnoteStyle>("number_style = \"circled\"\n").is_err());
   }
 
   #[test]
   fn deserialize_accepts_per_page_numbering() {
-    // Arrange / Act
     let style: FootnoteStyle = toml::from_str("numbering = \"per_page\"\n").expect("per_page は受理されるはず");
 
-    // Assert
     assert_eq!(style.numbering, FootnoteNumbering::PerPage);
   }
 
   #[test]
   fn deserialize_rejects_unknown_numbering() {
-    // Act / Assert
     assert!(toml::from_str::<FootnoteStyle>("numbering = \"per_chapter\"\n").is_err());
   }
 

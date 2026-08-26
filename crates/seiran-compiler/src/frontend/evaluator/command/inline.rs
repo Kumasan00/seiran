@@ -143,13 +143,11 @@ mod tests {
 
   #[test]
   fn rejects_missing_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\bold";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act & Assert
     assert!(matches!(
       run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
       Err(EvalError::MissingCommandArgument { .. })
@@ -158,13 +156,11 @@ mod tests {
 
   #[test]
   fn rejects_extra_arguments() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\bold{a}{b}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act & Assert
     assert!(matches!(
       run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
       Err(EvalError::ExtraCommandArgument { .. })
@@ -209,13 +205,11 @@ mod tests {
 
   #[test]
   fn color_rejects_missing_color() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\color{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act & Assert
     assert!(matches!(
       run_inline_handler(|builder| return colored_text(&view, builder)),
       Err(EvalError::MissingCommandArgument { .. })
@@ -224,13 +218,11 @@ mod tests {
 
   #[test]
   fn color_rejects_invalid_hex() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#zzzzzz]{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act & Assert
     assert!(
       matches!(run_inline_handler(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
     );
@@ -238,13 +230,11 @@ mod tests {
 
   #[test]
   fn color_rejects_extra_arguments() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#00ff00]{a}{b}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act & Assert
     assert!(matches!(
       run_inline_handler(|builder| return colored_text(&view, builder)),
       Err(EvalError::ExtraCommandArgument { .. })
