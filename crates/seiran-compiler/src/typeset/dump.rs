@@ -326,10 +326,9 @@ mod tests {
 
   #[test]
   fn dump_includes_page_header_and_glyph_text() {
-    // Arrange / Act
     let dump = dump_pages(&[page_with_text_line(734.0, "Test")]);
 
-    // Assert — ページ見出し・セクション・グリフのテキストと寸法が含まれる
+    // ページ見出し・セクション・グリフのテキストと寸法が含まれる
     assert!(dump.contains("=== page 0 ==="));
     assert!(dump.contains("body:"));
     assert!(dump.contains("text=\"Test\""));
@@ -355,10 +354,8 @@ mod tests {
 
   #[test]
   fn dump_pages_omits_index_lines_when_empty() {
-    // Arrange / Act
     let dump = dump_pages(&[page_with_text_line(734.0, "Test")]);
 
-    // Assert
     assert!(!dump.contains("index word="));
   }
 }

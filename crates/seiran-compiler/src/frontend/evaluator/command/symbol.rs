@@ -368,7 +368,6 @@ mod tests {
 
   #[test]
   fn representative_symbols_have_expected_class() {
-    // Arrange & Act & Assert
     use super::MathClass;
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.class), Some(MathClass::Ord));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.class), Some(MathClass::Rel));
@@ -381,7 +380,6 @@ mod tests {
 
   #[test]
   fn representative_symbols_map_to_expected_char() {
-    // Arrange & Act & Assert
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.ch), Some('\u{03B1}'));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.ch), Some('\u{2264}'));
     assert_eq!(SYMBOL_MAP.get("geq").map(|s| return s.ch), Some('\u{2265}'));
@@ -391,7 +389,6 @@ mod tests {
 
   #[test]
   fn no_key_collision_between_command_and_symbol_maps() {
-    // Arrange & Act & Assert
     for key in SYMBOL_MAP.keys() {
       assert!(!COMMAND_MAP.contains_key(key), "COMMAND_MAP と SYMBOL_MAP にキーが重複しています: {key}");
     }

@@ -112,7 +112,6 @@ mod tests {
 
   #[test]
   fn all_contains_ten_classes_in_order() {
-    // Arrange / Act / Assert
     assert_eq!(TheoremClass::ALL.len(), TheoremClass::COUNT);
     assert_eq!(TheoremClass::ALL[0], TheoremClass::Theorem);
     assert_eq!(TheoremClass::ALL[9], TheoremClass::Proof);
@@ -120,7 +119,6 @@ mod tests {
 
   #[test]
   fn as_str_and_from_str_roundtrip() {
-    // Arrange / Act / Assert
     for class in TheoremClass::ALL {
       assert_eq!(class.as_str().parse::<TheoremClass>().ok(), Some(class));
     }
@@ -128,19 +126,17 @@ mod tests {
 
   #[test]
   fn from_str_rejects_unknown() {
-    // Arrange / Act / Assert
     assert!("conjecture".parse::<TheoremClass>().is_err());
   }
 
   #[test]
   fn display_matches_as_str() {
-    // Arrange / Act / Assert
     assert_eq!(format!("{}", TheoremClass::Proof), "proof");
   }
 
   #[test]
   fn display_and_from_str_round_trip() {
-    // Arrange / Act / Assert: Display の正準形を FromStr で往復
+    // Display の正準形を FromStr で往復
     for class in TheoremClass::ALL {
       assert_eq!(class.to_string().parse::<TheoremClass>().ok(), Some(class));
     }

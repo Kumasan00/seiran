@@ -75,10 +75,8 @@ mod tests {
 
   #[test]
   fn font_kind_defaults_to_serif() {
-    // Arrange & Act
     let style = CaptionStyle::default();
 
-    // Assert
     assert_eq!(style.font_kind, FontKind::Serif);
   }
 

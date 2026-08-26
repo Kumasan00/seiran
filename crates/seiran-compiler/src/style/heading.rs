@@ -249,13 +249,11 @@ mod tests {
 
   #[test]
   fn validate_rejects_unknown_placeholder_in_format() {
-    // Arrange
     let style = HeadingStyle {
       format: NumberTitleTemplate::parse("{nubmer} {title}"),
       ..HeadingStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
@@ -268,86 +266,71 @@ mod tests {
 
   #[test]
   fn validate_accepts_default() {
-    // Arrange / Act / Assert
     assert!(HeadingStyle::default().validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_empty_format() {
-    // Arrange
     let heading = HeadingStyle {
       format: NumberTitleTemplate::parse(""),
       ..HeadingStyle::default()
     };
 
-    // Act / Assert
     assert!(heading.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_zero_font_size() {
-    // Arrange
     let heading = HeadingStyle {
       font_size: Length::pt(0.0),
       ..HeadingStyle::default()
     };
 
-    // Act / Assert
     assert!(heading.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_bottom_margin() {
-    // Arrange
     let heading = HeadingStyle {
       bottom_margin: Length::pt(-0.1),
       ..HeadingStyle::default()
     };
 
-    // Act / Assert
     assert!(heading.validate().is_err());
   }
 
   #[test]
   fn validate_accepts_alternative_font_kind() {
-    // Arrange
     let heading = HeadingStyle {
       font_kind: FontKind::SansSerifBold,
       ..HeadingStyle::default()
     };
 
-    // Act / Assert
     assert!(heading.validate().is_ok());
   }
 
   #[test]
   fn default_for_level_uses_distinct_font_sizes() {
-    // Arrange / Act
     let part = default_for_level(HeadingLevel::Part);
     let section = default_for_level(HeadingLevel::Section);
     let subparagraph = default_for_level(HeadingLevel::Subparagraph);
 
-    // Assert
     assert!(part.font_size > section.font_size);
     assert!(section.font_size > subparagraph.font_size);
   }
 
   #[test]
   fn default_styles_has_part_page_break_after() {
-    // Arrange / Act
     let styles = HeadingStyles::default();
 
-    // Assert
     assert!(styles[HeadingLevel::Part].page_break_after);
     assert!(!styles[HeadingLevel::Section].page_break_after);
   }
 
   #[test]
   fn default_styles_default_template_for_section() {
-    // Arrange / Act
     let styles = HeadingStyles::default();
 
-    // Assert
     assert_eq!(styles[HeadingLevel::Section].format.as_str(), "{number} {title}");
     assert!(styles[HeadingLevel::Chapter].format.as_str().starts_with("Chapter"));
   }

@@ -288,7 +288,6 @@ mod tests {
 
   #[test]
   fn translate_default_italicizes_ascii_letters_only() {
-    // Arrange & Act
     assert_eq!(translate_math_char('a', None), '\u{1D44E}'); // mathematical italic a
     assert_eq!(translate_math_char('z', None), '\u{1D467}'); // mathematical italic z
     assert_eq!(translate_math_char('A', None), '\u{1D434}'); // mathematical italic A
@@ -301,7 +300,6 @@ mod tests {
 
   #[test]
   fn translate_bold_covers_letters_digits_greek() {
-    // Arrange & Act
     let variant = Some(MathVariant::Bold);
     assert_eq!(translate_math_char('x', variant), '\u{1D431}'); // mathematical bold x
     assert_eq!(translate_math_char('A', variant), '\u{1D400}'); // mathematical bold A
@@ -314,7 +312,6 @@ mod tests {
 
   #[test]
   fn translate_italic_h_uses_planck_constant_exception() {
-    // Arrange & Act
     assert_eq!(translate_math_char('h', Some(MathVariant::Italic)), '\u{210E}');
     assert_eq!(
       translate_math_char('h', Some(MathVariant::BoldItalic)),
@@ -325,7 +322,6 @@ mod tests {
 
   #[test]
   fn translate_mono_keeps_greek_passthrough() {
-    // Arrange & Act
     assert_eq!(translate_math_char('α', Some(MathVariant::Mono)), 'α');
     assert_eq!(translate_math_char('a', Some(MathVariant::Mono)), '\u{1D68A}'); // mono a
     assert_eq!(translate_math_char('5', Some(MathVariant::Mono)), '\u{1D7FB}'); // mono digit 5
@@ -333,7 +329,6 @@ mod tests {
 
   #[test]
   fn translate_serif_is_passthrough() {
-    // Arrange & Act
     let variant = Some(MathVariant::Serif);
     assert_eq!(translate_math_char('x', variant), 'x');
     assert_eq!(translate_math_char('1', variant), '1');
@@ -342,7 +337,6 @@ mod tests {
 
   #[test]
   fn translate_sans_skips_greek() {
-    // Arrange & Act
     let variant = Some(MathVariant::Sans);
     assert_eq!(translate_math_char('a', variant), '\u{1D5BA}'); // sans a
     assert_eq!(translate_math_char('1', variant), '\u{1D7E3}'); // sans digit 1
@@ -351,7 +345,6 @@ mod tests {
 
   #[test]
   fn translate_double_struck_handles_letterlike_holes() {
-    // Arrange & Act
     let variant = Some(MathVariant::DoubleStruck);
     assert_eq!(translate_math_char('A', variant), '\u{1D538}'); // 連続 (穴なし)
     assert_eq!(translate_math_char('D', variant), '\u{1D53B}'); // 連続
@@ -369,7 +362,6 @@ mod tests {
 
   #[test]
   fn translate_fraktur_handles_letterlike_holes() {
-    // Arrange & Act
     let variant = Some(MathVariant::Fraktur);
     assert_eq!(translate_math_char('A', variant), '\u{1D504}'); // 連続
     assert_eq!(translate_math_char('C', variant), '\u{212D}'); // ℭ (穴)
@@ -384,7 +376,6 @@ mod tests {
 
   #[test]
   fn translate_script_handles_letterlike_holes() {
-    // Arrange & Act
     let variant = Some(MathVariant::Script);
     assert_eq!(translate_math_char('A', variant), '\u{1D49C}'); // 連続
     assert_eq!(translate_math_char('B', variant), '\u{212C}'); // ℬ (穴)
@@ -400,7 +391,6 @@ mod tests {
 
   #[test]
   fn translate_script_bold_maps_contiguous_block() {
-    // Arrange & Act
     let variant = Some(MathVariant::ScriptBold);
     assert_eq!(translate_math_char('A', variant), '\u{1D4D0}'); // 大文字 base 先頭
     assert_eq!(translate_math_char('Z', variant), '\u{1D4E9}'); // 大文字 base 末尾
@@ -412,7 +402,6 @@ mod tests {
 
   #[test]
   fn translate_calligraphic_reuses_script_codepoints() {
-    // Arrange & Act
     let cal = Some(MathVariant::Calligraphic);
     let script = Some(MathVariant::Script);
     assert_eq!(translate_math_char('A', cal), translate_math_char('A', script));
@@ -426,10 +415,8 @@ mod tests {
 
   #[test]
   fn push_math_char_appends_vs1_only_for_calligraphic_letters() {
-    // Arrange
     let cal = Some(MathVariant::Calligraphic);
 
-    // Act & Assert
     let mut a = String::new();
     push_math_char(&mut a, 'A', cal);
     assert_eq!(a, "\u{1D49C}\u{FE00}", "カリグラフィー英字は基底 + VS1");
@@ -445,7 +432,6 @@ mod tests {
 
   #[test]
   fn push_math_char_keeps_other_styles_unchanged() {
-    // Arrange & Act
     let mut script = String::new();
     push_math_char(&mut script, 'A', Some(MathVariant::Script));
     assert_eq!(script, "\u{1D49C}", "スクリプトは VS1 無し（既存挙動不変）");
@@ -457,7 +443,6 @@ mod tests {
 
   #[test]
   fn translate_fraktur_bold_maps_contiguous_block() {
-    // Arrange & Act
     let variant = Some(MathVariant::FrakturBold);
     assert_eq!(translate_math_char('A', variant), '\u{1D56C}'); // 大文字 base 先頭
     assert_eq!(translate_math_char('Z', variant), '\u{1D585}'); // 大文字 base 末尾

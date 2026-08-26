@@ -129,10 +129,9 @@ mod tests {
 
   #[test]
   fn from_vec_rejects_an_empty_vec() {
-    // Arrange / Act
     let failures = Failures::from_vec(Vec::<TestError>::new());
 
-    // Assert — 空の集合は構築できないはず
+    // 空の集合は構築できないはず
     assert!(failures.is_none());
   }
 
@@ -152,10 +151,8 @@ mod tests {
 
   #[test]
   fn single_keeps_the_only_failure_as_the_primary() {
-    // Arrange / Act
     let failures = Failures::single(TestError(1));
 
-    // Assert
     assert_eq!(failures.first(), &TestError(1));
     assert_eq!(failures.into_iter().collect::<Vec<_>>(), vec![TestError(1)]);
   }
@@ -193,10 +190,9 @@ mod tests {
 
   #[test]
   fn display_and_source_delegate_to_the_first_failure() {
-    // Arrange
     let failures = Failures::from_vec(vec![TestError(1), TestError(2)]).expect("2 件あるので構築できるはず");
 
-    // Act / Assert — 表示は主の失敗そのもので、集約を表す文言を足さない
+    // 表示は主の失敗そのもので、集約を表す文言を足さない
     assert_eq!(failures.to_string(), "失敗 1");
     assert!(std::error::Error::source(&failures).is_none());
   }

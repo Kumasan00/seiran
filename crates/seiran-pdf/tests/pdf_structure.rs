@@ -168,13 +168,12 @@ fn dump_pdf_structure(bytes: &[u8]) -> String {
 
 #[test]
 fn pdf_structure_matches_golden() {
-  // Arrange
   let update = std::env::var_os("UPDATE_GOLDEN").is_some();
   if update {
     fs::create_dir_all(pdf_structure_golden_dir()).expect("golden ディレクトリの作成");
   }
 
-  // Act / Assert — 各入力の構造ダンプを golden と比較（UPDATE_GOLDEN=1 で再生成）
+  // 各入力の構造ダンプを golden と比較（UPDATE_GOLDEN=1 で再生成）
   let mut mismatches = Vec::new();
   for name in PDF_STRUCTURE_INPUTS {
     let dump = dump_pdf_structure(&build_pdf_bytes(name));

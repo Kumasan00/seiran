@@ -104,40 +104,37 @@ mod tests {
 
   #[test]
   fn url_uses_uri_as_display_text() {
-    // Arrange & Act — 必須引数は verbatim なので `//` をエスケープせず書ける
+    // 必須引数は verbatim なので `//` をエスケープせず書ける
     let (url, display) = url_link(r"\url{https://example.com}");
 
-    // Assert
     assert_eq!(url, "https://example.com");
     assert_eq!(display, "https://example.com");
   }
 
   #[test]
   fn url_keeps_special_characters_inert() {
-    // Arrange & Act — `_` `&` `=` はいずれも通常はエスケープが要る文字
+    // `_` `&` `=` はいずれも通常はエスケープが要る文字
     let (url, display) = url_link(r"\url{https://example.com/a_b?x=1&y=2}");
 
-    // Assert
     assert_eq!(url, "https://example.com/a_b?x=1&y=2");
     assert_eq!(display, "https://example.com/a_b?x=1&y=2");
   }
 
   #[test]
   fn url_trims_surrounding_whitespace() {
-    // Arrange & Act
     let (url, display) = url_link(r"\url{  https://example.com  }");
 
-    // Assert — 前後の空白だけは落とす（verbatim 化前からの挙動）
+    // 前後の空白だけは落とす（verbatim 化前からの挙動）
     assert_eq!(url, "https://example.com");
     assert_eq!(display, "https://example.com");
   }
 
   #[test]
   fn url_keeps_backslash_inert() {
-    // Arrange & Act — 旧記法。verbatim 内では `\` も不活性
+    // 旧記法。verbatim 内では `\` も不活性
     let (url, display) = url_link(r"\url{https:\/\/example.com}");
 
-    // Assert — `\/` はエスケープ解釈されず literal のまま残る（#449 の破壊的変更）
+    // `\/` はエスケープ解釈されず literal のまま残る（#449 の破壊的変更）
     assert_eq!(url, r"https:\/\/example.com");
     assert_eq!(display, r"https:\/\/example.com");
   }
@@ -193,10 +190,9 @@ mod tests {
 
   #[test]
   fn href_takes_url_and_display_text_as_two_mandatory_args() {
-    // Arrange & Act — 第 1 引数は verbatim なので `//` をエスケープせず書ける
+    // 第 1 引数は verbatim なので `//` をエスケープせず書ける
     let result = href_link(r"\href{https://example.com}{ここ}");
 
-    // Assert
     let HirInlineKind::Link { url, children } = &result[0].kind else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -206,29 +202,28 @@ mod tests {
 
   #[test]
   fn href_keeps_special_characters_inert_in_the_url_arg() {
-    // Arrange & Act & Assert — `_` `&` `=` はいずれも通常はエスケープが要る文字
+    // `_` `&` `=` はいずれも通常はエスケープが要る文字
     assert_eq!(href_url(r"\href{https://example.com/a_b?x=1&y=2}{ここ}"), "https://example.com/a_b?x=1&y=2");
   }
 
   #[test]
   fn href_trims_surrounding_whitespace_in_the_url_arg() {
-    // Arrange & Act & Assert — 前後の空白だけは落とす（`\url` と同じ規則）
+    // 前後の空白だけは落とす（`\url` と同じ規則）
     assert_eq!(href_url(r"\href{  https://example.com  }{ここ}"), "https://example.com");
   }
 
   #[test]
   fn href_keeps_backslash_inert_in_the_url_arg() {
-    // Arrange & Act & Assert — 旧記法の名残。verbatim 内では `\` も不活性なので、`\/` は
+    // 旧記法の名残。verbatim 内では `\` も不活性なので、`\/` は
     // エスケープ解釈されず literal のまま残る（#453 の破壊的変更）
     assert_eq!(href_url(r"\href{https:\/\/example.com}{ここ}"), r"https:\/\/example.com");
   }
 
   #[test]
   fn href_evaluates_display_text_as_inline() {
-    // Arrange & Act — 第 2 引数は verbatim ではないのでネストしたコマンドが効く
+    // 第 2 引数は verbatim ではないのでネストしたコマンドが効く
     let result = href_link(r"\href{https://example.com}{\bold{強調}}");
 
-    // Assert
     let HirInlineKind::Link { children, .. } = &result[0].kind else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -243,28 +238,24 @@ mod tests {
 
   #[test]
   fn href_rejects_the_old_opt_url_syntax() {
-    // Arrange & Act — 旧記法 `\href[url=...]{表示}`。`url` は任意引数キーではなくなった
+    // 旧記法 `\href[url=...]{表示}`。`url` は任意引数キーではなくなった
     let error = href_error(r"\href[url=https:\/\/example.com]{ここ}");
 
-    // Assert — 静かに壊れず P6 の診断で落ちる（#453 の破壊的変更）
+    // 静かに壊れず P6 の診断で落ちる（#453 の破壊的変更）
     assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "url"), "{error:?}");
   }
 
   #[test]
   fn href_rejects_a_single_argument() {
-    // Arrange & Act
     let error = href_error(r"\href{表示だけ}");
 
-    // Assert
     assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "href"), "{error:?}");
   }
 
   #[test]
   fn href_rejects_three_arguments() {
-    // Arrange & Act
     let error = href_error(r"\href{https://example.com}{ここ}{余分}");
 
-    // Assert
     assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "href"), "{error:?}");
   }
 

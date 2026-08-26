@@ -137,10 +137,8 @@ mod tests {
 
   #[test]
   fn block_default_uses_right_number_and_center_body() {
-    // Arrange / Act
     let block = MathBlockStyle::default();
 
-    // Assert
     assert_eq!(block.number_side, NumberSide::Right);
     assert_eq!(block.alignment, Alignment::Center);
     assert_eq!(block.tag_format.as_str(), "({number})");
@@ -148,47 +146,39 @@ mod tests {
 
   #[test]
   fn validate_rejects_empty_tag_format() {
-    // Arrange
     let mut style = MathStyle::default();
     style.block.tag_format = NumberTemplate::parse("");
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_zero_script_size_factor() {
-    // Arrange
     let style = MathScriptStyle {
       script_size_factor: 0.0,
       ..MathScriptStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_raise_factor() {
-    // Arrange
     let style = MathScriptStyle {
       superscript_raise_factor: -0.1,
       ..MathScriptStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_accepts_zero_raise_factor() {
-    // Arrange
     let style = MathScriptStyle {
       superscript_raise_factor: 0.0,
       ..MathScriptStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 

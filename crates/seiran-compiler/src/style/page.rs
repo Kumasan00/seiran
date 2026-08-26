@@ -52,19 +52,15 @@ mod tests {
 
   #[test]
   fn default_disables_flush_bottom() {
-    // Arrange / Act
     let style = PageStyle::default();
 
-    // Assert
     assert!(!style.flush_bottom);
   }
 
   #[test]
   fn default_matches_documented_margins() {
-    // Arrange / Act
     let style = PageStyle::default();
 
-    // Assert
     assert!((style.margin_top.to_pt() - 99.0).abs() < f32::EPSILON);
     assert!((style.margin_bottom.to_pt() - 99.0).abs() < f32::EPSILON);
     assert!((style.margin_left.to_pt() - 85.0).abs() < f32::EPSILON);
@@ -73,19 +69,16 @@ mod tests {
 
   #[test]
   fn validate_accepts_enabled_flush_bottom() {
-    // Arrange
     let style = PageStyle {
       flush_bottom: true,
       ..PageStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 
   #[test]
   fn validate_accepts_zero_margins() {
-    // Arrange
     let style = PageStyle {
       margin_top: Length::ZERO,
       margin_bottom: Length::ZERO,
@@ -94,19 +87,16 @@ mod tests {
       ..PageStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_negative_margin() {
-    // Arrange
     let style = PageStyle {
       margin_left: Length::pt(-1.0),
       ..PageStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

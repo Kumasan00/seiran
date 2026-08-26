@@ -70,19 +70,16 @@ mod tests {
 
   #[test]
   fn column_align_default_is_left() {
-    // Arrange / Act / Assert
     assert_eq!(ColumnAlign::default(), ColumnAlign::Left);
   }
 
   #[test]
   fn column_width_default_is_auto() {
-    // Arrange / Act / Assert
     assert_eq!(ColumnWidth::default(), ColumnWidth::Auto);
   }
 
   #[test]
   fn column_width_equality_by_variant_and_value() {
-    // Arrange / Act / Assert
     assert_eq!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(5.0)));
     assert_ne!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(6.0)));
     assert_ne!(ColumnWidth::Ratio(0.3), ColumnWidth::Ratio(0.5));
@@ -91,7 +88,6 @@ mod tests {
 
   #[test]
   fn from_str_resolves_full_spellings() {
-    // Arrange / Act / Assert
     assert_eq!("left".parse::<ColumnAlign>().ok(), Some(ColumnAlign::Left));
     assert_eq!("center".parse::<ColumnAlign>().ok(), Some(ColumnAlign::Center));
     assert_eq!("right".parse::<ColumnAlign>().ok(), Some(ColumnAlign::Right));
@@ -99,7 +95,6 @@ mod tests {
 
   #[test]
   fn from_str_rejects_abbreviations_and_unknown() {
-    // Arrange / Act / Assert
     assert!("l".parse::<ColumnAlign>().is_err());
     assert!("c".parse::<ColumnAlign>().is_err());
     assert!("r".parse::<ColumnAlign>().is_err());

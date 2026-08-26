@@ -327,10 +327,8 @@ mod tests {
 
   #[test]
   fn build_outline_from_entries_returns_none_for_empty_slice() {
-    // Arrange / Act
     let outline = super::build_outline_from_entries(&[]);
 
-    // Assert
     assert!(outline.is_none());
   }
 

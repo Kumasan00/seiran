@@ -400,7 +400,6 @@ mod tests {
 
   #[test]
   fn all_default_classes_pass_validation() {
-    // Arrange / Act / Assert
     for class in TheoremClass::ALL {
       assert!(default_for_class(class).validate().is_ok(), "{} should validate", class.as_str());
     }
@@ -408,78 +407,64 @@ mod tests {
 
   #[test]
   fn validate_rejects_empty_display_name() {
-    // Arrange
     let style = TheoremStyle {
       display_name: String::new(),
       ..TheoremStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_empty_number_format() {
-    // Arrange
     let style = TheoremStyle {
       number_format: CounterTemplate::parse(""),
       ..TheoremStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_empty_qed_mark() {
-    // Arrange
     let style = TheoremStyle {
       qed_mark: Some(String::new()),
       ..TheoremStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_unknown_heading_placeholder() {
-    // Arrange
     let mut style = TheoremStyle::default();
     style.style.heading_format = TheoremHeadingTemplate::parse("{page}");
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_unknown_counter_reference_in_number_format() {
-    // Arrange
     let style = TheoremStyle {
       number_format: CounterTemplate::parse("{chaptr}.{n}"),
       ..TheoremStyle::default()
     };
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_negative_top_margin() {
-    // Arrange
     let mut style = TheoremStyle::default();
     style.style.top_margin = Length::pt(-0.1);
 
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn default_proof_is_unnumbered_with_qed_mark() {
-    // Arrange / Act
     let proof = default_for_class(TheoremClass::Proof);
 
-    // Assert
     assert!(proof.unnumbered);
     assert_eq!(proof.qed_mark.as_deref(), Some("□"));
     assert_eq!(proof.style.font_kind, FontKind::Serif);
@@ -488,7 +473,6 @@ mod tests {
 
   #[test]
   fn default_theorem_like_classes_share_counter_and_italic_body() {
-    // Arrange / Act / Assert
     for class in [
       TheoremClass::Theorem,
       TheoremClass::Lemma,
@@ -505,10 +489,8 @@ mod tests {
 
   #[test]
   fn default_remark_style_uses_roman_body_and_own_counter() {
-    // Arrange / Act
     let remark = default_for_class(TheoremClass::Remark);
 
-    // Assert
     assert_eq!(remark.counter, "remark");
     assert_eq!(remark.style.font_kind, FontKind::Serif);
   }
@@ -527,10 +509,8 @@ mod tests {
 
   #[test]
   fn indexing_returns_matching_field() {
-    // Arrange
     let theorems = Theorems::default();
 
-    // Act / Assert
     assert!(std::ptr::eq(&raw const theorems[TheoremClass::Lemma], &raw const theorems.lemma));
     assert!(std::ptr::eq(&raw const theorems[TheoremClass::Proof], &raw const theorems.proof));
   }
@@ -575,10 +555,8 @@ font_kind = \"sans_serif_bold\"
 
   #[test]
   fn default_proof_of_templates_render_proof_of_target() {
-    // Arrange / Act
     let proof = default_for_class(TheoremClass::Proof);
 
-    // Assert
     assert_eq!(proof.style.heading_with_of.as_str(), "{display_name} of {of}");
     assert_eq!(proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
   }

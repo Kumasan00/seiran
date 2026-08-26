@@ -129,7 +129,6 @@ mod tests {
 
   #[test]
   fn validate_accepts_well_formed_locale() {
-    // Arrange / Act / Assert
     for code in ["en", "ja-JP", "zh-Hant", "es-419"] {
       let style = ReferenceStyle {
         locale: Some(code.to_string()),
@@ -150,7 +149,6 @@ mod tests {
 
   #[test]
   fn validate_rejects_malformed_locale() {
-    // Arrange / Act / Assert
     for bad in ["", "j", "ja-", "ja JP"] {
       let style = ReferenceStyle {
         locale: Some(bad.to_string()),
@@ -207,7 +205,6 @@ mod tests {
 
   #[test]
   fn normalize_keeps_none_locale() {
-    // Arrange / Act / Assert
     let mut style = ReferenceStyle::default();
     style.normalize();
     assert!(style.locale.is_none());

@@ -75,10 +75,8 @@ mod tests {
 
   #[test]
   fn head_font_kind_defaults_to_serif_bold() {
-    // Arrange & Act
     let style = TableStyle::default();
 
-    // Assert
     assert_eq!(style.head_font_kind, FontKind::SerifBold);
   }
 

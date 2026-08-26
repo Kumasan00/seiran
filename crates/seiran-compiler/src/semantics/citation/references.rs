@@ -138,10 +138,8 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_invalid_toml_syntax() {
-    // Arrange / Act
     let result = parse_references("= \nthis is not valid toml", dummy_source());
 
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
   }
 
@@ -374,19 +372,15 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_invalid_json_syntax() {
-    // Arrange / Act
     let result = parse_references("{ this is not valid json", dummy_json_source());
 
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
   }
 
   #[test]
   fn parse_references_fails_on_unsupported_extension() {
-    // Arrange / Act
     let result = parse_references("anything", Path::new("test.yaml"));
 
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));
   }
 

@@ -465,12 +465,10 @@ mod tests {
 
   #[test]
   fn rect_new_rejects_negative_size() {
-    // Arrange / Act
     let negative_width = Rect::new(0.0, 0.0, -1.0, 10.0);
     let negative_height = Rect::new(0.0, 0.0, 10.0, -1.0);
     let zero = Rect::new(0.0, 0.0, 0.0, 0.0);
 
-    // Assert
     assert!(negative_width.is_none(), "負の幅は構築できないはず");
     assert!(negative_height.is_none(), "負の高さは構築できないはず");
     assert!(zero.is_some(), "0 は krilla の Rect::from_xywh が受け付けるので構築できるはず");
@@ -478,7 +476,6 @@ mod tests {
 
   #[test]
   fn rect_new_rejects_non_finite_values() {
-    // Arrange / Act / Assert
     assert!(Rect::new(f32::NAN, 0.0, 1.0, 1.0).is_none(), "NaN 座標は構築できないはず");
     assert!(Rect::new(0.0, 0.0, f32::INFINITY, 1.0).is_none(), "無限大の幅は構築できないはず");
   }

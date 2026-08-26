@@ -286,11 +286,9 @@ mod tests {
 
   #[test]
   fn spec_and_entry_constructors_are_consistent() {
-    // Arrange / Act
     let s = spec();
     let e = entry(HeadingLevel::Section, "1.1", "Basics", "3", 1);
 
-    // Assert
     assert!(s.show_page_numbers);
     assert_eq!(s.leader.as_deref(), Some("."));
     assert_eq!(e.link_key, HeadingKey::new(1));

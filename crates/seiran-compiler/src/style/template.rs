@@ -573,10 +573,8 @@ mod tests {
 
   #[test]
   fn expands_literals_and_placeholders() {
-    // Arrange
     let template = NumberTemplate::parse("({number})");
 
-    // Act / Assert
     assert_eq!(template.expand("1.1"), "(1.1)");
     assert_eq!(template.as_str(), "({number})");
   }
@@ -619,43 +617,36 @@ mod tests {
 
   #[test]
   fn rejects_unclosed_brace() {
-    // Arrange / Act / Assert
     assert_eq!(violation(&NumberTemplate::parse("{number")).unwrap(), "閉じられていない '{' があります");
   }
 
   #[test]
   fn rejects_stray_closing_brace() {
-    // Arrange / Act / Assert
     assert_eq!(violation(&NumberTemplate::parse("x}y")).unwrap(), "対応する '{' のない '}' があります");
   }
 
   #[test]
   fn rejects_empty_placeholder() {
-    // Arrange / Act / Assert
     assert_eq!(violation(&NumberTemplate::parse("{}")).unwrap(), "空のプレースホルダ '{}' があります");
   }
 
   #[test]
   fn rejects_nested_braces() {
-    // Arrange / Act
     let message = violation(&NumberTemplate::parse("{a{b}}")).unwrap();
 
-    // Assert
     assert!(message.starts_with("プレースホルダがネストしています"), "{message}");
   }
 
   #[test]
   fn rejects_unknown_placeholder_by_name() {
-    // Arrange / Act / Assert
     assert_eq!(violation(&NumberTemplate::parse("{nubmer}")).unwrap(), "未知のプレースホルダ '{nubmer}' があります");
   }
 
   #[test]
   fn reports_multiple_problems_in_one_violation_in_source_order() {
-    // Arrange / Act
     let message = violation(&NumberTemplate::parse("{a} } {b}")).unwrap();
 
-    // Assert — 1 テンプレート ＝ 違反 1 件（フィールド単位の集約は style::validate_values の担当）
+    // 1 テンプレート ＝ 違反 1 件（フィールド単位の集約は style::validate_values の担当）
     assert_eq!(
       message,
       "未知のプレースホルダ '{a}' があります; 対応する '{' のない '}' があります; \
@@ -665,7 +656,6 @@ mod tests {
 
   #[test]
   fn each_template_type_allows_only_its_own_placeholders() {
-    // Arrange / Act / Assert
     assert!(violation(&NumberTitleTemplate::parse("{number} {title}")).is_none());
     assert!(violation(&NumberTitleTemplate::parse("{display_name}")).is_some());
     assert!(violation(&NumberTemplate::parse("{title}")).is_some());
@@ -679,19 +669,16 @@ mod tests {
 
   #[test]
   fn counter_template_accepts_self_and_all_nine_counters() {
-    // Arrange
     let source: String = std::iter::once("{n}".to_string())
       .chain(CounterName::ALL.iter().map(|counter| return format!("{{{}}}", counter.as_str())))
       .collect();
 
-    // Act / Assert
     assert!(violation(&CounterTemplate::parse(&source)).is_none());
     assert!(violation(&CounterTemplate::parse("{foo}")).is_some());
   }
 
   #[test]
   fn only_the_running_template_accepts_an_empty_source() {
-    // Arrange / Act / Assert
     assert!(violation(&RunningTemplate::parse("")).is_none());
     assert_eq!(violation(&NumberTemplate::parse("")).unwrap(), "テンプレートが空です");
     assert!(violation(&NumberTitleTemplate::parse("")).is_some());
@@ -829,10 +816,9 @@ mod tests {
   #[test]
   #[should_panic(expected = "検証を通ったテンプレートだけが展開へ届く")]
   fn expanding_an_unvalidated_template_panics() {
-    // Arrange — style::parse を通っていれば到達しない状態
+    // style::parse を通っていれば到達しない状態
     let template = NumberTemplate::parse("{nope}");
 
-    // Act / Assert
     let _ = template.expand("1");
   }
 }

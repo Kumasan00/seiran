@@ -248,7 +248,7 @@ mod tests {
 
   #[test]
   fn arg_mode_declarations_are_all_registered_commands() {
-    // Arrange & Act & Assert — 引数モードの宣言だけがあって本体が未登録のコマンドを作らない
+    // 引数モードの宣言だけがあって本体が未登録のコマンドを作らない
     for name in COMMAND_ARG_MODES.keys() {
       assert!(COMMAND_MAP.contains_key(name), "引数モードを宣言した '{name}' が COMMAND_MAP に無い");
     }
@@ -256,21 +256,21 @@ mod tests {
 
   #[test]
   fn lookup_arg_mode_defaults_to_inherit() {
-    // Arrange & Act & Assert — 宣言のないコマンドは外側文脈を継承する
+    // 宣言のないコマンドは外側文脈を継承する
     assert_eq!(lookup_arg_mode("bold", 0), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("unknown", 0), ArgMode::Inherit);
   }
 
   #[test]
   fn lookup_arg_mode_resolves_per_position() {
-    // Arrange & Act & Assert — `\href` は第 1 引数だけが verbatim
+    // `\href` は第 1 引数だけが verbatim
     assert_eq!(lookup_arg_mode("href", 0), ArgMode::Verbatim);
     assert_eq!(lookup_arg_mode("href", 1), ArgMode::Inherit);
   }
 
   #[test]
   fn lookup_arg_mode_beyond_declaration_is_inherit() {
-    // Arrange & Act & Assert — 宣言の範囲を超えた位置も継承（個数はハンドラが検査する）
+    // 宣言の範囲を超えた位置も継承（個数はハンドラが検査する）
     assert_eq!(lookup_arg_mode("url", 1), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("href", 2), ArgMode::Inherit);
   }

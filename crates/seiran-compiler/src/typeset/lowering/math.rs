@@ -275,10 +275,8 @@ mod tests {
 
   #[test]
   fn lower_inline_math_italicizes_ascii_letters_by_default() {
-    // Arrange & Act
     let nodes = lower_math_source("$x+1$\n");
 
-    // Assert
     assert_eq!(concat_texts(&nodes), "\u{1D465}+1"); // U+1D44E + 23 (x - a)
     assert_eq!(
       math_text_styles(&nodes).count(),
@@ -293,10 +291,8 @@ mod tests {
 
   #[test]
   fn lower_inline_math_keeps_japanese_in_math_kind() {
-    // Arrange & Act
     let nodes = lower_math_source("$x速度2$\n");
 
-    // Assert
     assert_eq!(concat_texts(&nodes), "\u{1D465}速度2"); // U+1D44E + 23 (x - a)
     assert!(
       math_text_styles(&nodes).all(|style| return style.font_kind == FontKind::Math),
@@ -306,19 +302,16 @@ mod tests {
 
   #[test]
   fn lower_math_text_empty_returns_no_nodes() {
-    // Arrange & Act — 空のテキストに対応するソース形はないので、直接ヘルパを呼ぶ
+    // 空のテキストに対応するソース形はないので、直接ヘルパを呼ぶ
     let nodes = lower_math_text("", Length::pt(12.0), None);
 
-    // Assert
     assert!(nodes.is_empty(), "空文字列は空のノード列を返すはず: {nodes:?}");
   }
 
   #[test]
   fn lower_math_superscript_wraps_in_raise() {
-    // Arrange & Act
     let nodes = lower_math_source("$x^2$\n");
 
-    // Assert
     let (offset, children) = first_raise(&nodes);
     assert!(offset.is_positive(), "上付きは正の offset（上方向）になるべき: offset={}", offset.to_pt());
     assert_eq!(concat_atom_texts(children), "2");
@@ -334,10 +327,8 @@ mod tests {
 
   #[test]
   fn lower_math_subscript_uses_negative_raise() {
-    // Arrange & Act
     let nodes = lower_math_source("$x_i$\n");
 
-    // Assert
     let (offset, children) = first_raise(&nodes);
     assert!(!offset.is_non_negative(), "下付きは負の offset（下方向）になるべき: offset={}", offset.to_pt());
     assert_eq!(concat_atom_texts(children), "\u{1D456}"); // U+1D44E + 8 (i - a)
@@ -345,10 +336,8 @@ mod tests {
 
   #[test]
   fn lower_math_symbol_uses_math_font() {
-    // Arrange & Act
     let nodes = lower_math_source("$\\alpha$\n");
 
-    // Assert
     assert_eq!(concat_texts(&nodes), "α");
     let LayoutNode::Text(_, style) = &nodes[0] else {
       panic!("Math Text を期待: {nodes:?}");
@@ -358,39 +347,31 @@ mod tests {
 
   #[test]
   fn lower_math_frac_inlines_as_slash() {
-    // Arrange & Act
     let nodes = lower_math_source("$\\frac{a}{b}$\n");
 
-    // Assert
     let has_slash = nodes.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "/"));
     assert!(has_slash, "分数は / 付きで描画されるはず: {nodes:?}");
   }
 
   #[test]
   fn lower_math_sqrt_emits_radical_sign() {
-    // Arrange & Act
     let nodes = lower_math_source("$\\sqrt{x}$\n");
 
-    // Assert
     let has_radical = nodes.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "√"));
     assert!(has_radical, "√ 記号が含まれるはず: {nodes:?}");
   }
 
   #[test]
   fn lower_math_node_bold_styled_propagates_to_text_and_symbol() {
-    // Arrange & Act
     let nodes = lower_math_source("$\\mathbold{x12\\alpha}$\n");
 
-    // Assert
     assert_eq!(concat_texts(&nodes), "\u{1D431}\u{1D7CF}\u{1D7D0}\u{1D6C2}");
   }
 
   #[test]
   fn lower_math_node_calligraphic_appends_variation_selector() {
-    // Arrange & Act
     let nodes = lower_math_source("$\\mathcalligraphic{Ab1}$\n");
 
-    // Assert
     assert_eq!(concat_texts(&nodes), "\u{1D49C}\u{FE00}\u{1D4B7}\u{FE00}1");
   }
 
@@ -474,10 +455,8 @@ mod tests {
 
   #[test]
   fn lower_math_node_styled_propagates_into_frac_body() {
-    // Arrange & Act
     let nodes = lower_math_source("$\\mathbold{\\frac{a}{b}}$\n");
 
-    // Assert
     assert_eq!(concat_texts(&nodes), "\u{1D41A}/\u{1D41B}");
   }
 }

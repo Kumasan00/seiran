@@ -247,11 +247,9 @@ mod tests {
 
   #[test]
   fn exists_reflects_real_filesystem() {
-    // Arrange
     let file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     let source = FilesystemProjectSource::new();
 
-    // Act / Assert
     assert!(source.exists(&ProjectPath::new(file.path())));
     assert!(!source.exists(&ProjectPath::new("/nonexistent/does-not-exist.toml")));
   }

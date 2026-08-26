@@ -190,11 +190,11 @@ fn visit_source(hir: &HirSource) -> Vec<Visited> {
 #[test]
 fn same_source_parsed_twice_yields_identical_hir() {
   for (name, content) in fixture_sources() {
-    // Arrange / Act — 同じソースを 2 回パースする
+    // 同じソースを 2 回パースする
     let first = parse_fixture(&name, &content, SourceId::new(0));
     let second = parse_fixture(&name, &content, SourceId::new(0));
 
-    // Assert — ノード列も位置表も完全に一致する
+    // ノード列も位置表も完全に一致する
     assert!(first == second, "{name}: 同じソースからは同じ HIR が得られるはず");
   }
 }
@@ -241,7 +241,6 @@ fn source_order_does_not_affect_ids_or_spans() {
 #[test]
 fn every_hir_node_has_location_inside_source() {
   for (name, content) in fixture_sources() {
-    // Arrange
     let source_id = SourceId::new(0);
     let hir = parse_fixture(&name, &content, source_id);
     let document = HirDocument::assemble(vec![hir]);
@@ -249,7 +248,7 @@ fn every_hir_node_has_location_inside_source() {
     let mut visited = Vec::new();
     walk_nodes(&group.nodes, None, &mut visited);
 
-    // Act / Assert — 全ノードがソース範囲内の位置を持つ
+    // 全ノードがソース範囲内の位置を持つ
     for entry in &visited {
       let location = document.locations().get(entry.id).unwrap_or_else(|| {
         panic!("{name}: すべての HIR ノードは SourceMap から位置を引けるはず");
@@ -346,10 +345,9 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
 #[test]
 fn hir_carries_no_resolved_facts() {
   for (name, content) in fixture_sources() {
-    // Arrange
     let hir = parse_fixture(&name, &content, SourceId::new(0));
 
-    // Act / Assert — 網羅 match そのものが検証を兼ねる（assert_unresolved 参照）
+    // 網羅 match そのものが検証を兼ねる（assert_unresolved 参照）
     assert_unresolved(&hir.group.nodes);
   }
 }

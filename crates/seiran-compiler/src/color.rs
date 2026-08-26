@@ -121,37 +121,29 @@ mod tests {
 
   #[test]
   fn rejects_rgb_array() {
-    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("color = [204, 179, 153]");
 
-    // Assert
     assert!(result.is_err());
   }
 
   #[test]
   fn parses_hex_lowercase() {
-    // Arrange / Act
     let w: Wrapper = toml::from_str("color = \"#cc9966\"").unwrap();
 
-    // Assert
     assert_eq!(w.color, Color::new(0xcc, 0x99, 0x66));
   }
 
   #[test]
   fn parses_hex_uppercase() {
-    // Arrange / Act
     let w: Wrapper = toml::from_str("color = \"#CC9966\"").unwrap();
 
-    // Assert
     assert_eq!(w.color, Color::new(0xcc, 0x99, 0x66));
   }
 
   #[test]
   fn rejects_invalid_hex_length() {
-    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("color = \"#abcde\"");
 
-    // Assert
     assert!(result.is_err());
   }
 
@@ -166,25 +158,20 @@ mod tests {
 
   #[test]
   fn rejects_non_hex_chars_in_body() {
-    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("color = \"#gghhii\"");
 
-    // Assert
     assert!(result.is_err());
   }
 
   #[test]
   fn from_str_parses_valid_string() {
-    // Arrange / Act
     let color = "#FF0000".parse::<Color>();
 
-    // Assert
     assert_eq!(color, Ok(Color::new(0xff, 0x00, 0x00)));
   }
 
   #[test]
   fn from_str_rejects_invalid_string() {
-    // Arrange / Act / Assert
     assert!("ff0000".parse::<Color>().is_err());
     assert!("#fff".parse::<Color>().is_err());
     assert!("#gg0000".parse::<Color>().is_err());
@@ -192,7 +179,7 @@ mod tests {
 
   #[test]
   fn from_str_rejects_surrounding_whitespace() {
-    // Arrange / Act / Assert: 前後空白は呼び出し側の責務（受理範囲を `#rrggbb` ちょうどに保つ）
+    // 前後空白は呼び出し側の責務（受理範囲を `#rrggbb` ちょうどに保つ）
     assert!(" #cc9966".parse::<Color>().is_err());
     assert!("#cc9966 ".parse::<Color>().is_err());
   }

@@ -39,12 +39,10 @@ mod tests {
 
   #[test]
   fn default_round_trips_through_toml() {
-    // Arrange / Act
     let pn = PageNumbering::default();
     let toml = toml::to_string(&pn).unwrap();
     let restored: PageNumbering = toml::from_str(&toml).unwrap();
 
-    // Assert
     assert_eq!(restored.front_matter, pn.front_matter);
     assert_eq!(restored.body, pn.body);
   }

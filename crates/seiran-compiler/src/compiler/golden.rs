@@ -356,14 +356,13 @@ fn dump_input(base_config: &ProjectConfig, style: &Style, references: &Arc<Refer
 
 #[test]
 fn layout_dumps_match_golden() {
-  // Arrange
   enter_workspace_root();
   let update = std::env::var_os("UPDATE_GOLDEN").is_some();
   if update {
     fs::create_dir_all(golden_dir()).expect("golden ディレクトリの作成");
   }
 
-  // Act / Assert — 各入力を compile() 経由で組版し、Publication のダンプを golden と比較
+  // 各入力を compile() 経由で組版し、Publication のダンプを golden と比較
   let mut mismatches = Vec::new();
   for name in GOLDEN_INPUTS {
     let dump = dump_input_via_compile(name);

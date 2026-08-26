@@ -497,7 +497,6 @@ mod tests {
 
   #[test]
   fn format_expected_lists_keys_with_types_when_non_empty() {
-    // Arrange / Act / Assert
     assert_eq!(
       format_expected(&[("label", OptType::String), ("width", OptType::Length)]),
       "label: string, width: length (mm/cm)"
@@ -506,7 +505,6 @@ mod tests {
 
   #[test]
   fn format_expected_indicates_no_keys_when_empty() {
-    // Arrange / Act / Assert
     assert_eq!(format_expected(&[]), "（このコマンド/環境は任意引数を受け付けません）");
   }
 }

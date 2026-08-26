@@ -202,7 +202,7 @@ mod tests {
 
   #[test]
   fn column_width_helper_divides_text_width() {
-    // Arrange / Act / Assert — 本文幅 100pt を 2 段（段間 10pt）と 1 段に割ったときの 1 段幅
+    // 本文幅 100pt を 2 段（段間 10pt）と 1 段に割ったときの 1 段幅
     assert!(close(column_width(pt(100.0), 2, pt(10.0)), 45.0));
     assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
   }
@@ -222,11 +222,9 @@ mod tests {
 
   #[test]
   fn validate_layout_accepts_default_config_and_style() {
-    // Arrange
     let (_tempdir, config) = read_test_config();
     let style = test_style(50.0, 50.0, 50.0, 50.0);
 
-    // Act / Assert
     assert!(validate_layout(&config, &style).is_ok());
   }
 

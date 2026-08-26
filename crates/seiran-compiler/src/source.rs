@@ -60,20 +60,16 @@ mod tests {
 
   #[test]
   fn new_creates_span_with_given_offsets() {
-    // Arrange / Act
     let span = Span::new(10, 20);
 
-    // Assert
     assert_eq!(span.start, 10);
     assert_eq!(span.end, 20);
   }
 
   #[test]
   fn len_returns_byte_length() {
-    // Arrange
     let span = Span::new(5, 15);
 
-    // Act / Assert
     assert_eq!(span.len(), 10);
   }
 
@@ -105,10 +101,8 @@ mod tests {
 
   #[test]
   fn default_is_zero_span() {
-    // Arrange / Act
     let span = Span::default();
 
-    // Assert
     assert_eq!(span, Span::new(0, 0));
   }
 }

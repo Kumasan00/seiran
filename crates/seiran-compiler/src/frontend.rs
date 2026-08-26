@@ -181,10 +181,8 @@ mod tests {
 
   #[test]
   fn evaluate_body_text_preserves_comma_and_equals() {
-    // Arrange & Act
     let result = evaluate_source("Hello, world = ok");
 
-    // Assert
     assert_eq!(result.len(), 1);
     match &result[0].kind {
       HirNodeKind::Paragraph(inlines) => {
@@ -205,10 +203,8 @@ mod tests {
 
   #[test]
   fn evaluate_inline_math_preserves_comma_and_equals() {
-    // Arrange & Act
     let result = evaluate_source("$f(x, y) = 0$");
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
@@ -302,11 +298,10 @@ mod tests {
 
   #[test]
   fn evaluate_cite_produces_cite_stub() {
-    // Arrange / Act — キー存在検証は semantics::analyze の責務なので、frontend は
+    // キー存在検証は semantics::analyze の責務なので、frontend は
     // 未知キーでもスタブノードを生成する（#323 Task 4）
     let result = evaluate_source(r"See \cite{rika}.");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
@@ -322,10 +317,8 @@ mod tests {
 
   #[test]
   fn evaluate_cite_with_multiple_keys_splits_on_comma() {
-    // Arrange / Act
     let result = evaluate_source(r"\cite{a, b}");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
@@ -362,10 +355,8 @@ mod tests {
 
   #[test]
   fn evaluate_amssymb_symbol_in_body_resolves_to_symbol() {
-    // Arrange & Act
     let result = evaluate_source(r"a \geq b");
 
-    // Assert
     assert_eq!(result.len(), 1);
     match &result[0].kind {
       HirNodeKind::Paragraph(inlines) => {
@@ -380,10 +371,8 @@ mod tests {
 
   #[test]
   fn evaluate_amssymb_symbol_in_math_resolves_to_symbol() {
-    // Arrange & Act
     let result = evaluate_source(r"$a \leq b$");
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
@@ -568,19 +557,15 @@ mod tests {
 
   #[test]
   fn evaluate_inline_math_styled_rejects_missing_argument() {
-    // Arrange & Act
     let error = evaluate_error(r"$\mathbold$");
 
-    // Assert
     assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "mathbold"));
   }
 
   #[test]
   fn evaluate_inline_math_styled_rejects_extra_argument() {
-    // Arrange & Act
     let error = evaluate_error(r"$\mathbold{x}{y}$");
 
-    // Assert
     assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "mathbold"));
   }
 

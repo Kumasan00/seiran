@@ -141,10 +141,8 @@ mod tests {
 
   #[test]
   fn exists_reflects_registered_files_only() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("config.toml", "x");
 
-    // Act / Assert
     assert!(source.exists(&ProjectPath::new("config.toml")));
     assert!(!source.exists(&ProjectPath::new("missing.toml")));
   }

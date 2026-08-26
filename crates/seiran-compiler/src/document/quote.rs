@@ -62,7 +62,6 @@ mod tests {
 
   #[test]
   fn as_str_and_from_str_roundtrip() {
-    // Arrange / Act / Assert
     for kind in [QuoteKind::Quote, QuoteKind::Quotation] {
       assert_eq!(kind.as_str().parse::<QuoteKind>().ok(), Some(kind));
     }
@@ -70,26 +69,23 @@ mod tests {
 
   #[test]
   fn from_str_rejects_unknown() {
-    // Arrange / Act / Assert
     assert!("blockquote".parse::<QuoteKind>().is_err());
   }
 
   #[test]
   fn only_quotation_indents_first_line() {
-    // Arrange / Act / Assert
     assert!(!QuoteKind::Quote.indents_first_line());
     assert!(QuoteKind::Quotation.indents_first_line());
   }
 
   #[test]
   fn display_matches_as_str() {
-    // Arrange / Act / Assert
     assert_eq!(format!("{}", QuoteKind::Quotation), "quotation");
   }
 
   #[test]
   fn display_and_from_str_round_trip() {
-    // Arrange / Act / Assert: Display の正準形を FromStr で往復
+    // Display の正準形を FromStr で往復
     for kind in [QuoteKind::Quote, QuoteKind::Quotation] {
       assert_eq!(kind.to_string().parse::<QuoteKind>().ok(), Some(kind));
     }

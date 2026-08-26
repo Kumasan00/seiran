@@ -66,8 +66,5 @@ mod tests {
   use super::Cli;
 
   #[test]
-  fn cli_definition_is_valid() {
-    // Arrange / Act / Assert
-    Cli::command().debug_assert();
-  }
+  fn cli_definition_is_valid() { Cli::command().debug_assert(); }
 }

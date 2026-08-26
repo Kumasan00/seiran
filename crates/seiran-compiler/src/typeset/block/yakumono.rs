@@ -112,7 +112,6 @@ mod tests {
 
   #[test]
   fn classify_sorts_each_class() {
-    // Arrange / Act
     assert_eq!(classify('（'), YakumonoClass::Open);
     assert_eq!(classify('「'), YakumonoClass::Open);
     assert_eq!(classify('）'), YakumonoClass::Close);
@@ -126,7 +125,6 @@ mod tests {
 
   #[test]
   fn gap_inserts_nibu_before_open_and_after_close_comma() {
-    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::Open), Some(aki(NIBU)), "kanji「");
     assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Open), Some(aki(NIBU)), "」「");
     assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Open), Some(aki(NIBU)), "。「");
@@ -136,7 +134,6 @@ mod tests {
 
   #[test]
   fn gap_collapses_consecutive_and_inside_brackets() {
-    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Close), None, "。」");
     assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Comma), None, "」。");
     assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Close), None, "」」");
@@ -147,7 +144,6 @@ mod tests {
 
   #[test]
   fn gap_uses_shibu_around_middle_dot() {
-    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::MiddleDot), Some(aki(SHIBU)), "kanji・");
     assert_eq!(gap(YakumonoClass::MiddleDot, YakumonoClass::Normal), Some(aki(SHIBU)), "・kanji");
     assert_eq!(gap(YakumonoClass::Open, YakumonoClass::MiddleDot), None, "「・");
@@ -156,13 +152,11 @@ mod tests {
 
   #[test]
   fn gap_returns_none_for_normal_pair() {
-    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::Normal), None);
   }
 
   #[test]
   fn normalize_trims_and_shifts_per_class() {
-    // Arrange / Act
     assert_eq!(
       normalize(YakumonoClass::Close),
       Some(Normalize {

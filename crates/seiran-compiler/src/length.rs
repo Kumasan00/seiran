@@ -320,10 +320,8 @@ mod tests {
 
   #[test]
   fn parses_pt_suffix() {
-    // Arrange / Act
     let w: Wrapper = toml::from_str("length = \"12pt\"").unwrap();
 
-    // Assert
     assert!((w.length.to_pt() - 12.0).abs() < f32::EPSILON);
   }
 
@@ -347,26 +345,22 @@ mod tests {
 
   #[test]
   fn cm_and_mm_are_consistent() {
-    // Arrange / Act: 1 cm == 10 mm（sp 整数として厳密一致）
+    // 1 cm == 10 mm（sp 整数として厳密一致）
     let a: Wrapper = toml::from_str("length = \"1cm\"").unwrap();
     let b: Wrapper = toml::from_str("length = \"10mm\"").unwrap();
 
-    // Assert
     assert_eq!(a.length, b.length);
   }
 
   #[test]
   fn parses_decimal_value() {
-    // Arrange / Act
     let w: Wrapper = toml::from_str("length = \"0.5pt\"").unwrap();
 
-    // Assert
     assert!((w.length.to_pt() - 0.5).abs() < f32::EPSILON);
   }
 
   #[test]
   fn from_str_parses_all_units() {
-    // Arrange / Act / Assert
     assert_eq!("12pt".parse::<Length>().unwrap(), Length::pt(12.0));
     assert_eq!("  25.4mm ".parse::<Length>().unwrap(), Length::mm(25.4));
     assert_eq!("2.54cm".parse::<Length>().unwrap(), Length::cm(2.54));
@@ -374,10 +368,8 @@ mod tests {
 
   #[test]
   fn from_str_rejects_unknown_unit() {
-    // Arrange / Act
     let result = "12px".parse::<Length>();
 
-    // Assert
     assert!(result.is_err());
   }
 
@@ -413,10 +405,8 @@ mod tests {
 
   #[test]
   fn rejects_bare_number() {
-    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("length = 12.0");
 
-    // Assert
     assert!(result.is_err());
   }
 
@@ -520,7 +510,6 @@ mod tests {
 
   #[test]
   fn mul_by_integer_is_exact() {
-    // Arrange / Act / Assert
     assert_eq!(Length::from_sp(3) * 2, Length::from_sp(6));
     assert_eq!(Length::pt(3.0) * 2, Length::pt(6.0));
   }

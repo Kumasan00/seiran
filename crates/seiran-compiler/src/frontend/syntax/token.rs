@@ -150,7 +150,6 @@ mod tests {
 
   #[test]
   fn display_returns_symbol_for_single_char_tokens() {
-    // Arrange & Act & Assert
     assert_eq!(format!("{}", TokenKind::LBrace), "{");
     assert_eq!(format!("{}", TokenKind::RBrace), "}");
     assert_eq!(format!("{}", TokenKind::LBracket), "[");
@@ -166,14 +165,12 @@ mod tests {
 
   #[test]
   fn display_returns_double_backslash_for_line_break() {
-    // Arrange & Act & Assert
     assert_eq!(format!("{}", TokenKind::LineBreak), "\\\\");
     return;
   }
 
   #[test]
   fn display_does_not_leak_debug_identifiers() {
-    // Arrange & Act & Assert
     let kinds = [
       TokenKind::Command,
       TokenKind::Escaped,

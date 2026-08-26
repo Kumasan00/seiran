@@ -320,7 +320,6 @@ mod tests {
 
   #[test]
   fn theorem_reset_level_maps_every_counter_name() {
-    // Arrange
     let expected: [(CounterName, Option<TheoremReset>); 9] = [
       (CounterName::Part, Some(TheoremReset::Part)),
       (CounterName::Chapter, Some(TheoremReset::Chapter)),
@@ -333,7 +332,6 @@ mod tests {
       (CounterName::Equation, None),
     ];
 
-    // Act & Assert
     for (name, want) in expected {
       assert_eq!(theorem_reset_level(name), want, "{name:?} のリセット先");
     }
@@ -484,10 +482,8 @@ mod tests {
 
   #[test]
   fn evaluate_unknown_label_returns_none() {
-    // Arrange
     let r = CounterRegistry::default_for_seiran();
 
-    // Act / Assert
     assert!(r.resolve_label("nonexistent").is_none());
   }
 
