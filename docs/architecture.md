@@ -450,6 +450,12 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `counters.equation.ref_format` とは別物）
 - **見出し（2 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading.<level>]`（レベル別差分）の順に
   重畳。`[heading]` 直下にスカラーは書けない（テーブル形式のみ）
+- **表（`TableStyle`）**: `[table]` は表ブロックの余白（`top_margin` / `bottom_margin` /
+  `inner_margin`）・罫線（`rule_thickness` / `rule_color`。`None` は黒）・`cell_padding` に加え、
+  ヘッダ行（`\head{}`）セルの書体 `head_font_kind`（既定 `serif_bold`）を持つ。`head_font_kind` は
+  指定された `FontKind` をそのまま使う（本文書体からの導出も太字化もしない）。本文セルの書体は
+  `[text].font_kind` に従い、表側では指定しない。キャプションは上の「キャプション」項の
+  `[table.caption]` が持つ
 - **カウンタ（`CounterStyle`）**: `[counters.<name>]` の `<name>` は固定 9 種（`part` / `chapter` /
   `section` / `subsection` / `paragraph` / `subparagraph` / `table` / `figure` / `equation`）のみ。各
   エントリは `display_name` / `number_format` / `number_style` / `ref_format` / `resets` を持ち、未知の

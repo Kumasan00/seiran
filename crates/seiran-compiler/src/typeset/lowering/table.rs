@@ -1,7 +1,9 @@
 //! 表環境（`document::HirNodeKind::Table`）の lowering
 
+#[cfg(test)]
+use crate::document::FontKind;
 use crate::{
-  document::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow},
+  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
   typeset::{
     boxes::TableColumn,
     lowering::{
@@ -12,26 +14,6 @@ use crate::{
     },
   },
 };
-
-/// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
-fn bold_kind(kind: FontKind) -> FontKind {
-  return match kind {
-    FontKind::Serif => FontKind::SerifBold,
-    FontKind::SerifItalic => FontKind::SerifBoldItalic,
-    FontKind::SansSerif => FontKind::SansSerifBold,
-    FontKind::SansSerifItalic => FontKind::SansSerifBoldItalic,
-    FontKind::Monospace => FontKind::MonospaceBold,
-    FontKind::MonospaceItalic => FontKind::MonospaceBoldItalic,
-    // 既に太字のものと数式用フォントは変換先を持たないのでそのまま返す。
-    FontKind::SerifBold
-    | FontKind::SerifBoldItalic
-    | FontKind::SansSerifBold
-    | FontKind::SansSerifBoldItalic
-    | FontKind::MonospaceBold
-    | FontKind::MonospaceBoldItalic
-    | FontKind::Math => kind,
-  };
-}
 
 /// `HirTableRow` の列を [`TableRowLayout`] の列に変換する
 fn lower_rows(
@@ -82,7 +64,7 @@ pub(super) fn lower_table(
   };
   let head_style = TextStyle {
     font_size: body_style.font_size,
-    font_kind: bold_kind(body_style.font_kind),
+    font_kind: style.head_font_kind,
     color: None,
   };
 
@@ -172,7 +154,7 @@ mod tests {
   }
 
   #[test]
-  fn lower_table_head_cells_use_bold_font() {
+  fn lower_table_head_cells_use_default_head_font_kind() {
     // Arrange
     let style = ReadStyle::default();
 
@@ -189,6 +171,27 @@ mod tests {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.font_kind, FontKind::Serif);
+  }
+
+  #[test]
+  fn lower_table_head_cells_follow_style_head_font_kind() {
+    // Arrange — 太字でない書体を指定しても、そのまま使われる（太字化しない）
+    let mut style = ReadStyle::default();
+    style.table.head_font_kind = FontKind::SansSerif;
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
+
+    // Assert
+    let table = find_table(&nodes);
+    let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+      panic!("ヘッダセルは Text であるべき");
+    };
+    assert_eq!(head_style.font_kind, FontKind::SansSerif);
+    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+      panic!("本体セルは Text であるべき");
+    };
+    assert_eq!(body_style.font_kind, FontKind::Serif, "本体セルは [text] の書体のまま");
   }
 
   #[test]
@@ -243,33 +246,6 @@ mod tests {
       matches!(inner_kern, Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.table.inner_margin.to_pt()).abs() < f32::EPSILON),
       "本体の直後に inner_margin の Vkern が入る: {children:?}"
     );
-  }
-
-  #[test]
-  fn bold_kind_maps_every_font_kind() {
-    // Arrange
-    let expected = [
-      (FontKind::Serif, FontKind::SerifBold),
-      (FontKind::SerifItalic, FontKind::SerifBoldItalic),
-      (FontKind::SansSerif, FontKind::SansSerifBold),
-      (FontKind::SansSerifItalic, FontKind::SansSerifBoldItalic),
-      (FontKind::Monospace, FontKind::MonospaceBold),
-      (FontKind::MonospaceItalic, FontKind::MonospaceBoldItalic),
-      // 既に太字のものと数式用フォントは変換されない
-      (FontKind::SerifBold, FontKind::SerifBold),
-      (FontKind::SerifBoldItalic, FontKind::SerifBoldItalic),
-      (FontKind::SansSerifBold, FontKind::SansSerifBold),
-      (FontKind::SansSerifBoldItalic, FontKind::SansSerifBoldItalic),
-      (FontKind::MonospaceBold, FontKind::MonospaceBold),
-      (FontKind::MonospaceBoldItalic, FontKind::MonospaceBoldItalic),
-      (FontKind::Math, FontKind::Math),
-    ];
-
-    // Act & Assert
-    assert_eq!(expected.len(), 13, "`FontKind` の全 variant を覆う");
-    for (kind, want) in expected {
-      assert_eq!(bold_kind(kind), want, "{kind:?} の太字化");
-    }
   }
 
   #[test]
