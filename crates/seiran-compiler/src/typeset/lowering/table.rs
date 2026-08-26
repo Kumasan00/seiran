@@ -286,6 +286,27 @@ mod tests {
   }
 
   #[test]
+  fn lower_table_caption_follows_style_caption_font_kind() {
+    // Arrange — 図とは別の書体を立て、表キャプションが `[table.caption]` の側だけを見ることを確かめる
+    let mut style = ReadStyle::default();
+    style.table.caption.font_kind = FontKind::Monospace;
+    style.figure.caption.font_kind = FontKind::SansSerif;
+
+    // Act
+    let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
+
+    // Assert
+    let caption = table_children(&nodes)
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Text(text, text_style) if text.starts_with("Table 1.1") => return Some(*text_style),
+        _ => return None,
+      })
+      .expect("キャプション Text あり");
+    assert_eq!(caption.font_kind, FontKind::Monospace);
+  }
+
+  #[test]
   fn lower_table_inserts_inner_margin_between_table_and_caption() {
     // Arrange
     let style = ReadStyle::default();

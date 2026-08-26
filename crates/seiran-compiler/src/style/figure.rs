@@ -32,7 +32,7 @@ impl Default for FigureStyle {
     return Self {
       caption: CaptionStyle {
         format: NumberTitleTemplate::parse("Figure {number}: {title}"),
-        font_size: Length::pt(11.0),
+        ..CaptionStyle::default()
       },
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
