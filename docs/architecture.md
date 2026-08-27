@@ -1365,7 +1365,8 @@ error variant（invalid page size / rule rect / link rect / image not in manifes
 #### 不変条件・注意点
 
 - **純データであること** — krilla / `seiran-pdf` の型は 1 つも含まない。座標は pt 単位の `f32`、
-  フォントは生バイト列（`Arc<Vec<u8>>`）+ `typeset::FontFaceConfig` + `typeset::FontMetric`、
+  フォントは生バイト列（`Arc<[u8]>` — seam `ProjectSource::read_bytes` が返す形のまま共有し、複製しない）
+  + `typeset::FontFaceConfig` + `typeset::FontMetric`、
   画像は `Vec<PublicationImage>`（パス・判定済みの `typeset::ImageFormat`・生バイト列）。
   krilla フォントの構築は render の責務で、`compile` の戻り値に
   backend の内部資源が漏れない。
@@ -1557,8 +1558,10 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 
 - `font`: krilla フォントの構築（`build_krilla_fonts` → 非公開 `KrillaFonts`。`fvar` の有無判定と
   バリアブル軸の適用を含む）と、`seiran_compiler::Glyph` → krilla グリフの変換
-  （`convert_to_krilla_glyphs`）。フォントバイト列は `Arc` を clone して `krilla::Data` へ渡すので
-  実バイト列は複製されない。構築は `FontType::ALL` の宣言順で行う — `HashMap` の反復順に任せると、
+  （`convert_to_krilla_glyphs`）。フォントバイト列は `Publication` の `Arc<[u8]>` を `AsRef<[u8]>` の
+  newtype（非公開 `FontBytes`）で包み、`krilla_data` が `Arc<dyn AsRef<[u8]> + Send + Sync>` として
+  `krilla::Data` へ渡すので実バイト列は複製されない（krilla の `Data` は `Arc<[u8]>` を直接受け取らない）。
+  構築は `FontType::ALL` の宣言順で行う — `HashMap` の反復順に任せると、
   複数フォントが同時に不正なときに返る `PdfRenderError` が実行のたびに変わってしまう
 - `render`: `render_pages` が `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の
   `font_size`（`Length`）→ pt と `color`（`Color`）→ RGB の変換もここで行う（compiler 側の写像は

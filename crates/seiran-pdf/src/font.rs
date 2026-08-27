@@ -5,7 +5,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use krilla::text::{Font, GlyphId, KrillaGlyph, Tag};
+use krilla::{
+  Data,
+  text::{Font, GlyphId, KrillaGlyph, Tag},
+};
 use read_fonts::{FontRef, ReadError, TableProvider};
 use seiran_compiler::{FontType, Glyph, PublicationFont, PublicationResources};
 
@@ -51,9 +54,28 @@ pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<Kri
   return Ok(KrillaFonts { fonts });
 }
 
+/// krilla へフォントバイト列を渡すための `AsRef<[u8]>` 包み。
+///
+/// krilla の [`Data`] を**バイト列を複製せず**作れる経路は `Arc<Vec<u8>>` と
+/// `Arc<dyn AsRef<[u8]> + Send + Sync>` の 2 つだけで、`Publication` が持つ `Arc<[u8]>` は
+/// どちらにも直接は当たらない（スライスは `Sized` でないので `Arc<[u8]>` は
+/// `Arc<dyn AsRef<[u8]>>` へ unsize できない）。包むのは共有ハンドルだけで、バイト列は複製しない。
+struct FontBytes(Arc<[u8]>);
+
+impl AsRef<[u8]> for FontBytes {
+  /// 包んだ共有ハンドルの中身を借用する。
+  fn as_ref(&self) -> &[u8] { return &self.0; }
+}
+
+/// 共有ハンドルを複製して krilla の [`Data`] を作る（実バイト列は複製しない）。
+fn krilla_data(bytes: &Arc<[u8]>) -> Data {
+  let shared: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(FontBytes(Arc::clone(bytes)));
+  return Data::from(shared);
+}
+
 /// 指定フォントに `fvar`（バリアブルフォント軸）テーブルがあるかを判定する。
 fn font_has_fvar(font: &PublicationFont, font_type: FontType) -> Result<bool, PdfRenderError> {
-  let font_ref = FontRef::from_index(font.bytes.as_slice(), font.face.font_index)
+  let font_ref = FontRef::from_index(&font.bytes, font.face.font_index)
     .map_err(|source| return PdfRenderError::FontParse { font_type, source })?;
   return match font_ref.fvar() {
     Ok(_) => Ok(true),
@@ -64,7 +86,7 @@ fn font_has_fvar(font: &PublicationFont, font_type: FontType) -> Result<bool, Pd
 
 /// 判定済みの `fvar` 有無に基づき krilla フォントを構築する。
 ///
-/// バイト列は `Arc` を clone して krilla へ渡す（実バイト列は複製しない）。
+/// バイト列は [`krilla_data`] で共有ハンドルのまま渡す（実バイト列は複製しない）。
 ///
 /// # Panics
 ///
@@ -72,7 +94,6 @@ fn font_has_fvar(font: &PublicationFont, font_type: FontType) -> Result<bool, Pd
 /// `typeset::font::validation` が診断 code `typeset::font::validation::missing_variation_axes` で
 /// 拒否しているため、ここまで届かない（届いたら不変条件の破れなので落とす）。
 fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool) -> Result<Font, PdfRenderError> {
-  let data = Arc::clone(&font.bytes);
   if has_fvar {
     let Some(axes_config) = font.face.variation_axes.as_ref() else {
       unreachable!("fvar を持つフォントの variation_axes 欠落は typeset::font::validation が拒否する: {font_type:?}");
@@ -90,10 +111,10 @@ fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool
         return axis;
       })
       .collect::<Vec<_>>();
-    return Font::new_variable(data.into(), font.face.font_index, &axes)
+    return Font::new_variable(krilla_data(&font.bytes), font.face.font_index, &axes)
       .ok_or(PdfRenderError::FontCreation { font_type });
   }
-  return Font::new(data.into(), font.face.font_index).ok_or(PdfRenderError::FontCreation { font_type });
+  return Font::new(krilla_data(&font.bytes), font.face.font_index).ok_or(PdfRenderError::FontCreation { font_type });
 }
 
 /// レイアウト済みグリフ列を UPEM で正規化して Krilla のグリフ列へ変換する。
