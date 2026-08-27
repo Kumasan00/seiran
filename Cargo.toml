@@ -305,6 +305,25 @@ unused_lifetimes = "warn"
 # 使われないマクロ規則＝死んだ分岐（`define_template!` の規則追加で効く）。
 unused_macro_rules = "warn"
 
+# 節見出しと置き場の規則は上の 2 テーブルと同じ。rustdoc lint は `cargo doc` を回して初めて効くので、
+# CI が `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features` を回す（#474）。
+# warn 既定の 7 種（`broken_intra_doc_links` 等）は採用判断ではないので table に書かず、その `-D warnings` で効かせる。
+[workspace.lints.rustdoc]
+
+# ---------------------------------------------------------------------------
+# 規約の機械化 — 名指しの規約（必須ルール / use 規約 / モジュール構成 / テスト）を機械に守らせる
+# ---------------------------------------------------------------------------
+
+# 必須ルール 4「doc コメントは全項目」の crate レベル（`//!`）側（`missing_docs*` は crate root を見ない）。
+missing_crate_level_docs = "warn"
+# 非公開項目の doctest は `cargo test --doc` が走らせないので、検証されない例を残さない。
+private_doc_tests = "warn"
+# doc 内の対にならない `` ` `` は描画が壊れる。
+unescaped_backticks = "warn"
+# doc build の正典が `--document-private-items` なので、公開項目の doc から非公開項目
+# （`FontMap` / `round_sp` / `PublicationResources::new` など facade の裏）を指すリンクは正当。
+private_intra_doc_links = "allow"
+
 [profile.release]
 opt-level = 3
 debug = false

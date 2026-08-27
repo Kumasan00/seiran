@@ -554,7 +554,8 @@ fn field_error(font_type: FontType, field: &str, error: impl std::fmt::Display) 
   };
 }
 
-/// BCP 47 言語タグと OT 言語タグから、harfrust の [`Language::from_str`] に渡す最終 BCP 47 文字列を構築します。
+/// BCP 47 言語タグと OT 言語タグから、harfrust の [`Language`](harfrust::Language) の
+/// [`from_str`](std::str::FromStr::from_str) に渡す最終 BCP 47 文字列を構築します。
 ///
 /// `ot_language` が指定されている場合は、ベースの BCP 47（未指定なら `"und"`）の末尾に
 /// `-x-hbot<TAG>` 予約サブタグを連結します。

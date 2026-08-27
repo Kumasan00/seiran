@@ -14,7 +14,7 @@ use crate::{
 
 /// HIR・意味解析の事実・CSL 生成物を束ねた、意味解析の唯一の成果物
 ///
-/// 構築経路は [`crate::semantics::analyze`] だけ（フィールドは非公開で、構築子も
+/// 構築経路は [`fn@crate::semantics::analyze`] だけ（フィールドは非公開で、構築子も
 /// `crate::semantics` の内側からしか呼べない）。生成物には `NodeId` を振らない
 /// （「すべての `NodeId` は同梱の `HirDocument` が発行したもの」という不変条件を保つため）。
 #[derive(Debug)]
