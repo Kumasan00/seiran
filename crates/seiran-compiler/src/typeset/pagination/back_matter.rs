@@ -10,8 +10,8 @@ use tracing::{debug, debug_span};
 use crate::{
   length::Length,
   typeset::{
-    block::{IndexEntryInput, IndexPageRef, build_index_blocks, build_index_spec, sort_index_entries},
     boxes::{AnchorMark, Page, PlacedAnchor},
+    boxing::{IndexEntryInput, IndexPageRef, build_index_blocks, build_index_spec, sort_index_entries},
     breaking::{FootnoteOverflow, break_pages},
     pagination::{
       context::{BodyPageFacts, TypesetContext},

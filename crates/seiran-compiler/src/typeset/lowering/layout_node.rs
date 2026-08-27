@@ -8,7 +8,7 @@ use crate::{
   typeset::boxes::{Align, AnchorMark, LinkTarget, TableColumn},
 };
 
-/// レイアウトエンジン（`crate::typeset::block::build_blocks`）が処理する最小単位
+/// レイアウトエンジン（`crate::typeset::boxing::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub(crate) enum LayoutNode {
   /// スタイル付きテキスト
@@ -63,7 +63,7 @@ pub(crate) enum LayoutNode {
     /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
     rows: Vec<MathBlockRow>,
     /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
-    /// `block` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
+    /// `boxing` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
     env_number: Option<Vec<AtomNode>>,
     /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
     align: Align,
@@ -118,10 +118,10 @@ pub(crate) enum LayoutNode {
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
 /// `LayoutNode::Raise` / `LayoutNode::FlushRight` / ディスプレイ数式のセルと番号は、
-/// `crate::typeset::block` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
+/// `crate::typeset::boxing` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
 /// 畳めるのはテキストと入れ子の `Raise` だけなので、それ以外を表現できない型として
 /// `LayoutNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
-/// 消費側 `block::LayoutBuilder::place_atom_children` の網羅 match を分岐なしで成立させる）。
+/// 消費側 `boxing::LayoutBuilder::place_atom_children` の網羅 match を分岐なしで成立させる）。
 #[derive(Debug, Clone)]
 pub(crate) enum AtomNode {
   /// スタイル付きテキスト

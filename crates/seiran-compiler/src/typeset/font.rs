@@ -20,7 +20,7 @@ mod validate_font;
 
 pub use face_config::{FontFaceConfig, VariationAxisConfig};
 pub use glyph_run::{Glyph, GlyphRun};
-// `shaper` module のパス自体は `typeset::font` に閉じ、`typeset::block` が shape 呼び出しに要る
+// `shaper` module のパス自体は `typeset::font` に閉じ、`typeset::boxing` が shape 呼び出しに要る
 // `UnicodeBuffer` だけを `typeset` 内へ出す。
 pub(super) use shaper::UnicodeBuffer;
 pub(super) use system::FontSystemError;

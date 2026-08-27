@@ -1,4 +1,4 @@
-//! 書体指定コマンド群
+//! 書体・文字色を指定するコマンド群
 
 use crate::{
   document::{FontKind, HirBuilder, HirInline, HirInlineKind},

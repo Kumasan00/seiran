@@ -11,8 +11,8 @@ use crate::{
   document::HirDocument,
   project::ProjectSource,
   semantics::{
-    GeneratedCitations, References, SemanticDocument, SemanticPolicy, error::AnalyzeError, facts::SemanticFacts,
-    generate_citations, load_citation_style, walk,
+    GeneratedCitations, References, SemanticDocument, SemanticPolicy, error::AnalyzeError, fact_collection,
+    facts::SemanticFacts, generate_citations, load_citation_style,
   },
   style::Style,
 };
@@ -36,7 +36,7 @@ pub(crate) fn analyze(
   // （以降 `\cite` のキーは必ず参照定義に存在する）。走査には表示設定を渡さない
   // （`SemanticPolicy` は値に影響する設定だけの投影）。
   let policy = SemanticPolicy::from_style(style);
-  let facts = walk::collect_facts(&document, &policy, references)?;
+  let facts = fact_collection::collect_facts(&document, &policy, references)?;
   let citations = generate(source, &facts, references, style)?;
 
   return Ok(SemanticDocument::new(document, facts, citations));
@@ -56,7 +56,7 @@ pub(crate) fn analyze_for_test(
   policy: &SemanticPolicy,
   references: &References,
 ) -> Result<SemanticDocument, SemanticFailures> {
-  let facts = walk::collect_facts(&document, policy, references)?;
+  let facts = fact_collection::collect_facts(&document, policy, references)?;
   return Ok(SemanticDocument::new(document, facts, GeneratedCitations::default()));
 }
 
@@ -93,7 +93,7 @@ mod tests {
   };
 
   #[test]
-  fn analyze_composes_walk_then_citation() {
+  fn analyze_composes_fact_collection_then_citation() {
     // Arrange — 実 CSL（tests/data/ieee.csl）と参照定義で、走査 → CSL 整形の連携を確認する
     let source = FilesystemProjectSource::new();
     let references = sample_references();

@@ -10,8 +10,8 @@ use crate::{
   project::config::DocumentConfig,
   style::{RunningContentStyle, Style},
   typeset::{
-    block::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content},
     boxes::Page,
+    boxing::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content},
     pagination::{context::TypesetContext, elapsed_ms, page_values::PageLabels},
   },
 };

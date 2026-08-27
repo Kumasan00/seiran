@@ -26,7 +26,7 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 
 | 変更した層 | 手段 |
 | --- | --- |
-| レイアウト（座標・寸法）に効く変更 — breaking / block / lowering / frontend / config の style 等 | layout dump golden（下記） |
+| レイアウト（座標・寸法）に効く変更 — breaking / boxing / lowering / frontend / config の style 等 | layout dump golden（下記） |
 | `Publication` に載る値に効く変更 — 文書メタデータ・リンク矩形・しおり項目（`dump_publication` がダンプする範囲） | layout dump golden（下記） |
 | ダンプに映らない層 — krilla の描画そのもの（PDF オブジェクト構造・フォント埋め込み・XMP・trailer `/ID`） | PDF バイト比較（下記、日時固定が必須） |
 

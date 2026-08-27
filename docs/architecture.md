@@ -548,8 +548,8 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
 子より先に確保する（`syntax` 層は HIR を知らない）。
 
-- `command/`: `control` / `footnote` / `heading` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
-  `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol`
+- `command/`: `control` / `footnote` / `heading` / `index`（`\index{語}`）/ `link` / `ref_` /
+  `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol` / `text_style`（書体・文字色の指定）
 - `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `code`（verbatim 本体）/ `table`（+ `table::body` /
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
@@ -616,9 +616,9 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
 
 いずれも非公開で、公開 API は module root（`semantics.rs`）の `pub(crate) use` に揃える。
 
-- `analyze`: 入口 `analyze` と、CSL 遅延読込の分岐を持つ非公開 `generate`。走査（`walk`）と CSL 整形
+- `analyze`: 入口 `analyze` と、CSL 遅延読込の分岐を持つ非公開 `generate`。走査（`fact_collection`）と CSL 整形
   （`citation`）を 1 回の呼び出しの背後に隠す唯一の場所
-- `walk`: 走査 `collect_facts` 本体と `Walker`、参照の存在検証 `unresolved_references`（解決できない
+- `fact_collection`: 走査 `collect_facts` 本体と `Walker`、参照の存在検証 `unresolved_references`（解決できない
   参照を全件集める）と解決済み参照の記録 `record_references`、fact の完全性検証
   `assert_facts_complete`。`&HirDocument` を借用して `SemanticFacts` だけを返し、HIR の所有権は
   `analyze` が持ったまま `SemanticDocument` へ移す
@@ -711,13 +711,13 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
 参照定義ファイルの読込・CSL スタイル / ロケールの読込から `\cite` の CSL 整形・書誌生成までを
 1 module に閉じ、引用まわりの型（`CitationId` / `CitationSiteFacts` / `GeneratedBlock` /
 `GeneratedInline`）を所有する。引用箇所の意味解析（どの `\cite` がどのキーを指すか、未定義キーの検証）は
-`walk::collect_facts` が他の fact と同じ 1 走査で行うのでここには無い。citation は走査を知らない —
+`fact_collection::collect_facts` が他の fact と同じ 1 走査で行うのでここには無い。citation は走査を知らない —
 `CitationSiteFacts` は「後段が要求する入力契約は後段が所有し、前段が構築する」の適用で citation 側に
-あり、依存は `walk` → `citation` の一方向だけ。
+あり、依存は `fact_collection` → `citation` の一方向だけ。
 
 - `site`（非公開）: 引用キー `CitationId` と、`generate_citations` の入力契約
   `CitationSiteFacts`（`targets: Vec<CitationId>`。`\cite{a,b}` はソース上の順序で 2 件）。
-  構築するのは `walk::collect_facts`、消費するのは `generate_citations`。
+  構築するのは `fact_collection::collect_facts`、消費するのは `generate_citations`。
 - `generated`（非公開）: CSL 整形の生成物専用の語彙。`GeneratedBlock`（`Heading` / `Paragraph` /
   `Anchor` の 3 variant。書誌が使う）と `GeneratedInline`（`Text` / `Styled` / `InternalLink` の
   3 variant + プレーンテキスト化ヘルパ `generated_inlines_to_plain_text`）。著者が書いた内容は HIR
@@ -793,7 +793,7 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の確定レイアウト `LaidOutDocument` へ
 変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
-（`lowering` 節を参照）。`boxes` / `block` / `breaking` / `error` / `font` / `geometry` / `image` /
+（`lowering` 節を参照）。`boxes` / `boxing` / `breaking` / `error` / `font` / `geometry` / `image` /
 `lowering` / `pagination` / `warning` の 10 module はすべて非公開で、外から見える入口は
 **module root の `layout` 1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`
 （`geometry` 節を参照）だけである（#350、#351、#352）。
@@ -835,7 +835,7 @@ render 側に残る（同じバイト列を 2 度読むが、krilla を compiler
 pin することで担保する（`usvg` を上げるときは `krilla-svg` が要求する版と揃える）。
 
 `boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
-配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
+配置ヘルパ）を持つ非公開 module で、`boxing` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。root facade へ出すのは
 **本体コードに消費者がある型だけ** — `publication::build` が `Publication` へ写すために走査する
 `Page` / `PlacedBlock` / `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` で、
@@ -889,7 +889,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   構築は `system` からしか呼ばれないので拡張トレイト（旧 `FontRefsExt` / `FontMetricsExt`）は持たない。
 - `glyph_run`（非公開、`GlyphRun` / `Glyph` は `typeset` root facade 経由で crate root の facade まで
   再エクスポートされる）: シェーピング結果 1 個のグリフ列とその配置情報。値は `color::Color` /
-  `project::FontType` / `length::Length` という leaf 値型にしか依存しない leaf 型で、`typeset::block` が
+  `project::FontType` / `length::Length` という leaf 値型にしか依存しない leaf 型で、`typeset::boxing` が
   生成し `publication::build` が `PaintOp::DrawGlyphRun` へそのまま載せる（#372 で `seiran-pdf` 側の
   同型の複製と変換関数を削除した。`font_size: Length` → pt と `color: Color` → `[u8; 3]` の変換は
   render が行う）。
@@ -899,7 +899,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `VariationAxisConfig` を組み立てる（`build_face_configs`）。組版そのものは使わず、
   `FontResources::face_configs()` → `Publication` の描画資源 → render という 1 経路のためだけに
   存在する（`FontFaceConfigs` は facade へ出さない — 描画資源の非公開フィールドの型でしかない）。
-- `shaper`（非公開。`typeset::block` が要求する `UnicodeBuffer` だけを module root が `pub(super)` で
+- `shaper`（非公開。`typeset::boxing` が要求する `UnicodeBuffer` だけを module root が `pub(super)` で
   `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
   `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
   文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
@@ -1049,7 +1049,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `back_matter`: 段 4。本文全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ
   `AnchorMark::IndexPage(usize)` を事後追加（`body_pages` の破壊的更新）してから巻末索引を組む
 - `running`: 段 6。`PageLabels` を引数に要求して呼び出し順を型で制約し、`RunningContentSpec` を
-  組み立てて `block::layout_running_content` を呼ぶ
+  組み立てて `boxing::layout_running_content` を呼ぶ
 - `outline`: 段 7。見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
@@ -1082,7 +1082,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 
 #### `boxes`
 
-組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
+組版中間型の定義そのもの。`boxing` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
 所有物にもせず本 module に集約する。組版時に初めて成立する配置・アンカーの型と、lowering が構築する
 表レイアウトの入力契約もここに置く。
 
@@ -1117,7 +1117,7 @@ baseline・罫線をページ座標へ畳む。畳み込みは `Length`（sp 整
 表現とは別課題とする。
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
-相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `block` / `breaking` /
+相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `boxing` / `breaking` /
 `lowering` 側から使う。`compiler` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
 `HBoxContent` / `PlacedTableRow` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に
 消費者がいない `Align` / `FootnoteId` / `TableColumn` は出さない。
@@ -1139,7 +1139,7 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
 - `layout_node`: `LayoutNode` / `AtomNode` / `TextStyle` / `TableLayout` 等の型定義。
   `AtomNode`（`Text` と入れ子の `Raise` だけ）は `LayoutNode` の部分集合で、`Atom` に畳める要素だけを
   表現する型。`LayoutNode::Raise` の子・`FlushRight` の中身・ディスプレイ数式のセルと番号がこれを持ち、
-  `block` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
+  `boxing` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
   （インライン数式を段落の水平リストへ流すときに使う）
 - 要素別: `code` / `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` /
@@ -1199,7 +1199,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 `SourceId` は `project::SourceSet::register` が唯一の発行元であり、`semantics`
 はここで発行された ID を受け取って運ぶだけで自ら発行しない。
 
-#### `block`
+#### `boxing`
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
@@ -1413,7 +1413,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 ```
 
 `tracing` の INFO イベントもこの facade が上記の安定した phase 境界で出す。各 module が知る内部手順
-（設定・style・文献の個別読込、lowering、block 構築、前付け・本文・後付けの改ページ等）は DEBUG とし、
+（設定・style・文献の個別読込、lowering、boxing、前付け・本文・後付けの改ページ等）は DEBUG とし、
 内部構成を変えても `-v` の工程一覧が不用意に変わらないようにする。描画と保存の INFO は、それぞれの
 外向き入口を持つ `seiran-pdf::render` と CLI の atomic write が所有する。
 

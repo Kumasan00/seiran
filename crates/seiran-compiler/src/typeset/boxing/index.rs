@@ -10,8 +10,8 @@ use crate::{
   length::Length,
   style::Style,
   typeset::{
-    block::Measurer,
     boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
+    boxing::Measurer,
     font::FontSystem,
     lowering::TextStyle,
   },

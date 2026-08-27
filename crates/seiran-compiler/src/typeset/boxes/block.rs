@@ -1,6 +1,6 @@
 //! 文書の縦リスト要素 [`Block`]。
 //!
-//! `typeset::block::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
+//! `typeset::boxing::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
 use crate::{
@@ -97,7 +97,7 @@ pub(crate) enum Block {
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
   ///
   /// 全セルを絶対配置した 1 つの閉じた Atom（`body`）として保持する（行分割をまたがない）。
-  /// 列整列・行積み・区切り括弧は `block` 段で `body` の局所座標へ解決済み。`break_pages` は
+  /// 列整列・行積み・区切り括弧は `boxing` 段で `body` の局所座標へ解決済み。`break_pages` は
   /// `align` で本体を本文幅の中に中央寄せし、各行番号（`numbers`）を本文端へ寄せるだけ。
   Math {
     /// 数式本体（全セル + 区切り括弧を絶対配置した閉じた Atom）

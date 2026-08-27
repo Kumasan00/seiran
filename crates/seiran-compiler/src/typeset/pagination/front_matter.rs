@@ -8,8 +8,8 @@ use crate::{
   semantics::HeadingKey,
   style::TocStyle,
   typeset::{
-    block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
     boxes::{Block, Page},
+    boxing::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
     breaking::{FootnoteOverflow, break_pages},
     lowering::{HeadingRecord, TitlePageMetadata, lower_title_page},
     pagination::{

@@ -6,7 +6,7 @@ use thiserror::Error;
 
 /// ディスプレイ数式環境の種別
 ///
-/// `frontend` が `\begin{...}` の環境名から決定する。`block` 段がこの種別に応じて
+/// `frontend` が `\begin{...}` の環境名から決定する。`boxing` 段がこの種別に応じて
 /// 列の揃え（`align` は `&` 位置で交互、`matrix` は中央）・区切り括弧・行採番を決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathEnvKind {

@@ -148,10 +148,10 @@ mod tests {
     project::FilesystemProjectSource,
     semantics::{
       References, SemanticPolicy,
+      fact_collection::collect_facts,
       facts::SemanticFacts,
       load_citation_style, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
-      walk::collect_facts,
     },
     source::SourceId,
     style::Style,
