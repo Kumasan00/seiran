@@ -1,7 +1,7 @@
 //! 意味解析（[`analyze`]）— 著者が書いた HIR から「判明した事実」と引用の生成物を確定する段。
 //!
 //! [`analyze`] が HIR を 1 回走査してラベル宣言・カウンタ構造値・見出し・`\ref` の解決・引用箇所を
-//! `SemanticFacts` として確定し（`walk` 子 module）、引用箇所があるときだけ CSL スタイルを読んで
+//! `SemanticFacts` として確定し（`fact_collection` 子 module）、引用箇所があるときだけ CSL スタイルを読んで
 //! 表示と書誌を生成する（`citation` 子 module）。走査 → CSL 整形という順序は module の外からは
 //! 見えない。文書木は読み取り専用で書き戻さない。表示文字列の生成（`number_format` 等 style 依存）は
 //! typeset 側の責務で、ここでは一切行わない。
@@ -17,10 +17,10 @@ mod citation;
 mod counter;
 mod document;
 mod error;
+mod fact_collection;
 mod facts;
 mod ids;
 mod policy;
-mod walk;
 
 pub(crate) use analyze::analyze;
 #[cfg(test)]

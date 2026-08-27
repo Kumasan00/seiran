@@ -616,9 +616,9 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
 
 いずれも非公開で、公開 API は module root（`semantics.rs`）の `pub(crate) use` に揃える。
 
-- `analyze`: 入口 `analyze` と、CSL 遅延読込の分岐を持つ非公開 `generate`。走査（`walk`）と CSL 整形
+- `analyze`: 入口 `analyze` と、CSL 遅延読込の分岐を持つ非公開 `generate`。走査（`fact_collection`）と CSL 整形
   （`citation`）を 1 回の呼び出しの背後に隠す唯一の場所
-- `walk`: 走査 `collect_facts` 本体と `Walker`、参照の存在検証 `unresolved_references`（解決できない
+- `fact_collection`: 走査 `collect_facts` 本体と `Walker`、参照の存在検証 `unresolved_references`（解決できない
   参照を全件集める）と解決済み参照の記録 `record_references`、fact の完全性検証
   `assert_facts_complete`。`&HirDocument` を借用して `SemanticFacts` だけを返し、HIR の所有権は
   `analyze` が持ったまま `SemanticDocument` へ移す
@@ -711,13 +711,13 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
 参照定義ファイルの読込・CSL スタイル / ロケールの読込から `\cite` の CSL 整形・書誌生成までを
 1 module に閉じ、引用まわりの型（`CitationId` / `CitationSiteFacts` / `GeneratedBlock` /
 `GeneratedInline`）を所有する。引用箇所の意味解析（どの `\cite` がどのキーを指すか、未定義キーの検証）は
-`walk::collect_facts` が他の fact と同じ 1 走査で行うのでここには無い。citation は走査を知らない —
+`fact_collection::collect_facts` が他の fact と同じ 1 走査で行うのでここには無い。citation は走査を知らない —
 `CitationSiteFacts` は「後段が要求する入力契約は後段が所有し、前段が構築する」の適用で citation 側に
-あり、依存は `walk` → `citation` の一方向だけ。
+あり、依存は `fact_collection` → `citation` の一方向だけ。
 
 - `site`（非公開）: 引用キー `CitationId` と、`generate_citations` の入力契約
   `CitationSiteFacts`（`targets: Vec<CitationId>`。`\cite{a,b}` はソース上の順序で 2 件）。
-  構築するのは `walk::collect_facts`、消費するのは `generate_citations`。
+  構築するのは `fact_collection::collect_facts`、消費するのは `generate_citations`。
 - `generated`（非公開）: CSL 整形の生成物専用の語彙。`GeneratedBlock`（`Heading` / `Paragraph` /
   `Anchor` の 3 variant。書誌が使う）と `GeneratedInline`（`Text` / `Styled` / `InternalLink` の
   3 variant + プレーンテキスト化ヘルパ `generated_inlines_to_plain_text`）。著者が書いた内容は HIR
