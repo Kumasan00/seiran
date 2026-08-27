@@ -49,7 +49,8 @@ unic-langid = "0.9.6"
 usvg = "0.47.0"
 
 # lint の採用根拠の正典はここ（1 lint = 1 行の根拠コメント）。節見出しは選定の 6 軸で、
-# CLAUDE.md「Clippy」節は原理と運用だけを持ちポインタでここを指す。
+# 各 lint が要求する書き方は docs/coding-conventions.md が持ち、CLAUDE.md「Clippy 運用」節は
+# 運用だけを持ってポインタでここを指す。
 # group は priority -1、個別 lint は priority 既定（0）で group を上書きする。
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

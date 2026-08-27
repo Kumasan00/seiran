@@ -13,12 +13,13 @@ description: >-
 被依存側が漏れる・アルゴリズム説明が実装と乖離する、といったドリフトが繰り返し
 後追いコミットで修正されてきた。PR 仕上げ時に diff からこの表を引けば防げる。
 
-## ドキュメント面は 4 つ
+## ドキュメント面は 5 つ
 
 | ファイル | 持つもの |
 | --- | --- |
-| `CLAUDE.md` | 言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・設定ファイル役割分担表と値の基本書式・コーディング規約（エラーハンドリングは要約のみ、詳細は `error-handling` skill） |
+| `CLAUDE.md` | 言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・設定ファイル役割分担表と値の基本書式・コーディング規約の要約（正典は `docs/coding-conventions.md`、エラーハンドリングは `error-handling` skill） |
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
+| `docs/coding-conventions.md` | コーディング規約の全文・根拠・lint との対応。CLAUDE.md の規約節の詳細版 |
 | `docs/architecture.md` | クレート別の詳細（サブモジュール構成・内部設計・データ構造）と style.toml 詳細スキーマ（config の style 節）。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
 
@@ -36,6 +37,7 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 | CLI サブコマンド・フラグの変更 | CLAUDE.md「コマンド」節、README |
 | モジュール分割・再配置リファクタ | architecture.md の該当クレート節（サブモジュール構成） |
 | エラー型・バリデーションのパターン変更（診断属性・集約方式等） | `error-handling` skill、CLAUDE.md の要約箇条書き |
+| コーディング規約・lint の採用変更 | `docs/coding-conventions.md`（規約全文）+ CLAUDE.md の規約要約 + root `Cargo.toml` の lint コメント（採用根拠） |
 | 公開 API・主要型の改名 | architecture.md + CLAUDE.md 責務表に型名が載っていれば更新 |
 | 新コマンド・新環境・新オプションの設計判断（原則の適用・境界事例・原則自体の改訂） | docs/language-design.md の判断事例集に追記。原則を改訂した場合は原則本文 + CLAUDE.md の要約表も更新 |
 
