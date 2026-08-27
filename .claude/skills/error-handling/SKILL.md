@@ -122,7 +122,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   を実装しないので `related` へ載せられない）。1 件のときは `into_report` が
   `miette::Report::new_boxed` で leaf をそのまま返し、包む前後で表示が完全に一致する
 - leaf に「どの資源の違反か」を添える必要があるときは、集約 wrapper ではなく
-  **帰属 adapter** を作る（`typeset::font::validate_font::FontValidationFailure` が
+  **帰属 adapter** を作る（`typeset::font::validation::FontValidationFailure` が
   `code` / `help` / `labels` を内側の kind へ委譲し、メッセージにだけ config.toml のキーを前置する形。
   `SourceDiagnostic<E>` と同じ形で、描画は leaf 1 件ぶん・入れ子の診断ブロックを作らない）
 

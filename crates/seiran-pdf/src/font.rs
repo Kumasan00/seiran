@@ -69,15 +69,13 @@ fn font_has_fvar(font: &PublicationFont, font_type: FontType) -> Result<bool, Pd
 /// # Panics
 ///
 /// `fvar` を持つフォントに `variation_axes` が無い設定は、フォント資源の構築時に
-/// `typeset::font::validate_font` が `typeset::font::validation::missing_variation_axes` として
+/// `typeset::font::validation` が診断 code `typeset::font::validation::missing_variation_axes` で
 /// 拒否しているため、ここまで届かない（届いたら不変条件の破れなので落とす）。
 fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool) -> Result<Font, PdfRenderError> {
   let data = Arc::clone(&font.bytes);
   if has_fvar {
     let Some(axes_config) = font.face.variation_axes.as_ref() else {
-      unreachable!(
-        "fvar を持つフォントの variation_axes 欠落は typeset::font::validate_font が拒否する: {font_type:?}"
-      );
+      unreachable!("fvar を持つフォントの variation_axes 欠落は typeset::font::validation が拒否する: {font_type:?}");
     };
     let axes = axes_config
       .iter()

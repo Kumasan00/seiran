@@ -1,4 +1,4 @@
-//! TOML ファイルからのデシリアライズ用設定構造体
+//! TOML の形をそのまま保持する未検証の設定構造体
 
 use std::{ops::Index, path::PathBuf};
 
@@ -12,24 +12,24 @@ use crate::{
 
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]
-pub(crate) struct PreConfig {
+pub(crate) struct RawConfig {
   /// ドキュメントメタデータ（title / author / date / subject）
   #[serde(default)]
   #[garde(dive)]
-  pub document: PreDocumentConfig,
+  pub document: RawDocumentConfig,
   /// 出力ファイル名・ディレクトリ
   #[garde(dive)]
-  pub output: PreOutputConfig,
+  pub output: RawOutputConfig,
   /// PDF ページ設定
   #[garde(dive)]
-  pub pdf: PrePdfConfig,
+  pub pdf: RawPdfConfig,
   /// ラスタ画像のダウンサンプリング設定（省略可、既定 `max_dpi=300` / `downsample=true`）
   #[serde(default)]
   #[garde(dive)]
-  pub image: PreImageConfig,
+  pub image: RawImageConfig,
   /// 19 フォント種別の設定群
   #[garde(dive)]
-  pub font_configs: PreFontConfigs,
+  pub font_configs: RawFontConfigs,
   /// ソースファイル一覧（順次パースして 1 ドキュメントに結合）
   #[serde(default)]
   #[garde(custom(validate_non_empty_sources))]
@@ -45,7 +45,7 @@ pub(crate) struct PreConfig {
 /// `[document]` セクション: PDF メタデータ
 #[derive(Deserialize, Debug, Default, Validate)]
 #[serde(default)]
-pub(crate) struct PreDocumentConfig {
+pub(crate) struct RawDocumentConfig {
   /// ドキュメントタイトル（PDF メタデータ）
   #[garde(skip)]
   pub title: Option<String>,
@@ -101,7 +101,7 @@ fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
 
 /// `[output]` セクション: 出力ファイル名・ディレクトリ
 #[derive(Deserialize, Debug, Validate)]
-pub(crate) struct PreOutputConfig {
+pub(crate) struct RawOutputConfig {
   /// 出力ファイル名の基盤（拡張子なし。PDF ファイル名は `{name}.pdf`）
   #[garde(custom(validate_document_name))]
   pub name: String,
@@ -159,70 +159,70 @@ fn validate_document_name(value: &str, _: &()) -> garde::Result {
 
 /// 19 フォント種別すべてのプリプロセス設定
 #[derive(Deserialize, Debug, Validate)]
-pub(crate) struct PreFontConfigs {
+pub(crate) struct RawFontConfigs {
   /// Serif 標準フォント
   #[garde(dive)]
-  pub serif: PreFontConfig,
+  pub serif: RawFontConfig,
   /// Serif 太字フォント
   #[garde(dive)]
-  pub serif_bold: PreFontConfig,
+  pub serif_bold: RawFontConfig,
   /// Serif イタリックフォント
   #[garde(dive)]
-  pub serif_italic: PreFontConfig,
+  pub serif_italic: RawFontConfig,
   /// Serif 太字イタリックフォント
   #[garde(dive)]
-  pub serif_bold_italic: PreFontConfig,
+  pub serif_bold_italic: RawFontConfig,
   /// Sans Serif 標準フォント
   #[garde(dive)]
-  pub sans_serif: PreFontConfig,
+  pub sans_serif: RawFontConfig,
   /// Sans Serif 太字フォント
   #[garde(dive)]
-  pub sans_serif_bold: PreFontConfig,
+  pub sans_serif_bold: RawFontConfig,
   /// Sans Serif イタリックフォント
   #[garde(dive)]
-  pub sans_serif_italic: PreFontConfig,
+  pub sans_serif_italic: RawFontConfig,
   /// Sans Serif 太字イタリックフォント
   #[garde(dive)]
-  pub sans_serif_bold_italic: PreFontConfig,
+  pub sans_serif_bold_italic: RawFontConfig,
   /// Monospace 標準フォント
   #[garde(dive)]
-  pub monospace: PreFontConfig,
+  pub monospace: RawFontConfig,
   /// Monospace 太字フォント
   #[garde(dive)]
-  pub monospace_bold: PreFontConfig,
+  pub monospace_bold: RawFontConfig,
   /// Monospace イタリックフォント
   #[garde(dive)]
-  pub monospace_italic: PreFontConfig,
+  pub monospace_italic: RawFontConfig,
   /// Monospace 太字イタリックフォント
   #[garde(dive)]
-  pub monospace_bold_italic: PreFontConfig,
+  pub monospace_bold_italic: RawFontConfig,
   /// 数式用フォント
   #[garde(dive)]
-  pub math: PreFontConfig,
+  pub math: RawFontConfig,
   /// 日本語 Serif 標準フォント
   #[garde(dive)]
-  pub japanese_serif: PreFontConfig,
+  pub japanese_serif: RawFontConfig,
   /// 日本語 Serif 太字フォント
   #[garde(dive)]
-  pub japanese_serif_bold: PreFontConfig,
+  pub japanese_serif_bold: RawFontConfig,
   /// 日本語 Sans Serif 標準フォント
   #[garde(dive)]
-  pub japanese_sans_serif: PreFontConfig,
+  pub japanese_sans_serif: RawFontConfig,
   /// 日本語 Sans Serif 太字フォント
   #[garde(dive)]
-  pub japanese_sans_serif_bold: PreFontConfig,
+  pub japanese_sans_serif_bold: RawFontConfig,
   /// 日本語 Monospace 標準フォント
   #[garde(dive)]
-  pub japanese_monospace: PreFontConfig,
+  pub japanese_monospace: RawFontConfig,
   /// 日本語 Monospace 太字フォント
   #[garde(dive)]
-  pub japanese_monospace_bold: PreFontConfig,
+  pub japanese_monospace_bold: RawFontConfig,
 }
 
-impl Index<FontType> for PreFontConfigs {
-  type Output = PreFontConfig;
+impl Index<FontType> for RawFontConfigs {
+  type Output = RawFontConfig;
 
-  fn index(&self, font_type: FontType) -> &PreFontConfig {
+  fn index(&self, font_type: FontType) -> &RawFontConfig {
     return match font_type {
       FontType::Serif => &self.serif,
       FontType::SerifBold => &self.serif_bold,
@@ -250,7 +250,7 @@ impl Index<FontType> for PreFontConfigs {
 /// 単一フォント種別のプリセット設定情報
 #[derive(Deserialize, Debug, Validate)]
 #[garde(allow_unvalidated)]
-pub(crate) struct PreFontConfig {
+pub(crate) struct RawFontConfig {
   /// `PDF FontDescriptor` での基本フォント名（各フォント種別で一意）
   #[garde(length(min = 1))]
   pub font_name: String,
@@ -260,7 +260,7 @@ pub(crate) struct PreFontConfig {
   #[serde(default)]
   pub font_index: u32,
   /// バリアブルフォント軸の設定値配列
-  pub variation_axes: Option<Vec<PreVariationAxis>>,
+  pub variation_axes: Option<Vec<RawVariationAxis>>,
   /// BCP 47 言語タグ（例: `"ja"`, `"en-US"`, `"zh-Hant"`）
   ///
   /// `-x-hbsc` / `-x-hbot` 予約サブタグの直接記述は禁止。
@@ -275,7 +275,7 @@ pub(crate) struct PreFontConfig {
   /// 書字方向（ハイフン区切りの長形のみ受理）
   pub direction: Option<String>,
   /// OpenType フィーチャー設定配列
-  pub features: Option<Vec<PreFontFeature>>,
+  pub features: Option<Vec<RawFontFeature>>,
 }
 
 /// BCP 47 言語タグを検証します（`unic-langid` による構造的パース）。
@@ -301,7 +301,7 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
 
 /// バリアブルフォント軸の単一設定値
 #[derive(Deserialize, Debug)]
-pub(crate) struct PreVariationAxis {
+pub(crate) struct RawVariationAxis {
   /// 軸名（4 バイト ASCII の OpenType 軸タグ、例："wght"、"wdth"）
   pub name: String,
   /// 軸の目標値（実数）
@@ -310,7 +310,7 @@ pub(crate) struct PreVariationAxis {
 
 /// OpenType フィーチャータグと値のペア
 #[derive(Deserialize, Debug)]
-pub(crate) struct PreFontFeature {
+pub(crate) struct RawFontFeature {
   /// フィーチャータグ（4 バイト ASCII、例："liga"、"smcp"、"dlig"）
   pub tag: String,
   /// フィーチャーの値（通常は 0=無効、1=有効）
@@ -324,7 +324,7 @@ pub(crate) struct PreFontFeature {
 /// 未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PrePdfConfig {
+pub(crate) struct RawPdfConfig {
   /// ページの高さ（単位付き文字列、> 0）
   #[garde(custom(positive))]
   pub height: Length,
@@ -343,7 +343,7 @@ fn default_show_bookmarks() -> bool { return true; }
 /// `[image]` セクション: ラスタ画像のダウンサンプリング設定
 #[derive(Deserialize, Debug, Validate)]
 #[serde(default)]
-pub(crate) struct PreImageConfig {
+pub(crate) struct RawImageConfig {
   /// ラスタ画像埋め込み時の最大 DPI（1〜2400）。表示物理サイズと本値から必要ピクセル数を計算し、
   /// 元画像がそれを超える場合に限り縮小する。
   #[garde(range(min = 1, max = 2400))]
@@ -353,7 +353,7 @@ pub(crate) struct PreImageConfig {
   pub downsample: bool,
 }
 
-impl Default for PreImageConfig {
+impl Default for RawImageConfig {
   fn default() -> Self {
     return Self {
       max_dpi: 300,
@@ -363,7 +363,7 @@ impl Default for PreImageConfig {
 }
 
 /// 19 フォント種別の `font_name` がすべて一意であることを検証し、違反を `errors` に追加します。
-pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
+pub(crate) fn validate_unique_font_names(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   let mut seen = std::collections::HashSet::new();
   for font_type in FontType::ALL {
     let name = value[font_type].font_name.as_str();
@@ -377,7 +377,7 @@ pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Ve
 }
 
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
-pub(crate) fn validate_font_language_constraints(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
+pub(crate) fn validate_font_language_constraints(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   for font_type in FontType::ALL {
     let cfg = &value[font_type];
     if cfg.ot_language.is_some() && cfg.script.is_none() {

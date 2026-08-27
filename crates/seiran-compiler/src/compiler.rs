@@ -1,4 +1,7 @@
-//! 設定ファイルの `sources` から PDF を生成するパイプライン
+//! 設定ファイルの `sources` から描画直前の `Publication` を構築するコンパイル facade。
+//!
+//! PDF バイト列の生成は `seiran-pdf`、ファイルへの保存は CLI の責務で、この module は
+//! どちらも行わない。
 
 #[cfg(test)]
 use crate::project::FilesystemProjectSource;
@@ -98,7 +101,7 @@ pub fn compile<S: ProjectSource>(
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
   let build_start = Instant::now();
-  info!(phase = "compile", config_path = %root, "PDF のコンパイルを開始します");
+  info!(phase = "compile", config_path = %root, "コンパイルを開始します");
 
   let stage_start = Instant::now();
   let inputs = input::load(source, root.as_ref(), base_dir)?;
@@ -159,7 +162,7 @@ pub fn compile<S: ProjectSource>(
     page_count = statistics.page_count,
     warning_count = warnings.iter().count(),
     elapsed_ms = total_elapsed_ms,
-    "PDF のコンパイルが完了しました"
+    "コンパイルが完了しました"
   );
 
   return Ok(Compilation {

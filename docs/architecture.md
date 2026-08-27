@@ -65,7 +65,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   （変換漏れを型検査で検出するため）。
 - garde のカスタムバリデータは `#[garde(custom(positive))]` のように**属性内の文字列的なパス**で
   参照されるため、module を動かしても型検査では検出されない。`style/*` と
-  `project/config/pre_config.rs` の計 18 ファイルが `crate::length::{positive, non_negative}` を
+  `project/config/raw.rs` の計 18 ファイルが `crate::length::{positive, non_negative}` を
   import している。
 - crate root 直下の非公開 module は crate 全体から到達できるため、`pub(crate)` 指定は不要。
 - leaf の値概念は 1 module 1 概念で持つ。**包括的な `model` / `common` 置き場を再導入しない**。
@@ -198,11 +198,11 @@ pub trait ProjectSource: Send + Sync {
 その代わり `ProjectConfig` 等の型を `project` の facade へ再エクスポートしない（同じ型に 2 つの
 公開パスを作らない）。
 
-**生 → 検証 → 処理済みの 2 型構成**を取る。
+**生（`raw`）→ 検証 → 解決済み（`resolved`）の 2 型構成**を取る。
 
-- `pre_config`: TOML からそのままデシリアライズする `PreConfig` / `PreFontConfig`（非公開）。garde の
+- `raw`: TOML からそのままデシリアライズする `RawConfig` / `RawFontConfig`（非公開）。garde の
   `#[derive(Validate)]` をここに付ける。
-- 検証: `load` が `ProjectSource` 経由で読み込んだ `PreConfig` を検証し、違反は
+- 検証: `load` が `ProjectSource` 経由で読み込んだ `RawConfig` を検証し、違反は
   `Failures<ReadConfigError>`（各違反は `ReadConfigError::Validation` で `ConfigValidationError` を
   透過）で 1 度にまとめて報告する。集約自身の診断（旧 `MultipleValidationErrors`）は #376 で削除した —
   ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきで「複数のバリデーションエラーが
@@ -214,14 +214,14 @@ pub trait ProjectSource: Send + Sync {
   error ではなく `ConfigWarning`（`severity(Warning)`、`code(project::config::source_extension)`）で
   返す。`load` の Ok 側が `(ProjectConfig, Vec<ConfigWarning>)` になっており、順序は `sources` の
   宣言順（#377）。
-- `processed_config`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
+- `resolved`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
   `PdfConfig` / `ImageConfig`。後段はこちらだけを見る。`PdfConfig` が持つのは用紙寸法（width /
   height）と `show_bookmarks` だけで、**本文領域の 4 方向の余白は `style` の `PageStyle` が所有する**
   （#389。用紙という実体の物理量ではなく「用紙をどう使うか」＝見た目なので P10 が style 側に置く）。**処理済みフォント設定**
   （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は兄弟 module
   `project::font` の `settings` が所有し、`project::config` はそれを構築する側になる
-  （`ProjectConfig.font_configs: FontConfigs`）。TOML に対応する未検証型 `PreFontConfig` /
-  `PreVariationAxis` / `PreFontFeature` と、そこから検証済み値を組み立てる `parse_font_values` /
+  （`ProjectConfig.font_configs: FontConfigs`）。TOML に対応する未検証型 `RawFontConfig` /
+  `RawVariationAxis` / `RawFontFeature` と、そこから検証済み値を組み立てる `parse_font_values` /
   `validate_and_convert` / `resolve` は `project::config` が持つ。
 - `tag`: OpenType タグ文字列（script / language / feature）の検証・構築の単一情報源（`TagError`）。
 - `test_support`: テスト用の設定生成ヘルパ（`#[doc(hidden)]` で `lib.rs` から再エクスポートされ、
@@ -739,7 +739,7 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
   `compiler::input::load` から呼ばれる）。
 - `generate`（非公開）: `generate_citations`（引用箇所の side table + `CompiledCitationStyle` から
   表示・書誌を生成。詳細は後項）。I/O は行わない。
-- `bridge`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
+- `csl_json`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
 - `render`: `BibliographyDriver` の駆動と `ElemChildren` → `GeneratedInline` 変換
 - `test_fixtures`（`#[cfg(test)]`）: 文献引用テスト用フィクスチャ。`semantics.rs` が
   `#[cfg(test)] pub(crate) use` で再エクスポートし、`typeset` 側のテストも
@@ -903,7 +903,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
   `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
   文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
-- `validate_font`（非公開。`FontWarning` だけ `typeset` root facade へ出す）: バリエーション軸設定の
+- `validation`（非公開。`FontWarning` だけ `typeset` root facade へ出す）: バリエーション軸設定の
   存在・範囲・完全性を検証する。検証エラーは `FontSystemError::Validation` の `transparent` 委譲を介して
   miette::Report 化されるだけで、型名を名指しする消費者がいない。GSUB / GPOS のスクリプト・言語
   サポート不足は組版を止めないので、error ではなく **severity(Warning) の `FontWarning`**（フォント種別・

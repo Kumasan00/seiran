@@ -8,7 +8,7 @@
 //! この module が所有する（#333）。生成物の collection と「全引用箇所の表示が生成済み」という
 //! 完全性は [`GeneratedCitations`] が隠し、利用側は `NodeId` で表示を引く query だけを見る。
 
-mod bridge;
+mod csl_json;
 mod generate;
 mod generated;
 mod references;
