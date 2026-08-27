@@ -20,10 +20,10 @@ mod control;
 pub(crate) mod footnote;
 mod heading;
 pub(crate) mod index;
-pub(crate) mod inline;
 pub(crate) mod link;
 pub(crate) mod ref_;
 pub(crate) mod symbol;
+pub(crate) mod text_style;
 
 /// コマンドの実行結果
 pub(crate) enum CommandResult {
@@ -79,9 +79,9 @@ impl CommandKind {
 
       Self::Heading(level) => return heading::heading(view, builder, level).map(CommandResult::Block),
 
-      Self::StyledText(kind) => return inline::styled_text(view, builder, kind).map(CommandResult::Inline),
+      Self::StyledText(kind) => return text_style::styled_text(view, builder, kind).map(CommandResult::Inline),
 
-      Self::ColoredText => return inline::colored_text(view, builder).map(CommandResult::Inline),
+      Self::ColoredText => return text_style::colored_text(view, builder).map(CommandResult::Inline),
 
       Self::Ref => return ref_::ref_command(view, builder).map(CommandResult::Inline),
 

@@ -548,8 +548,8 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
 子より先に確保する（`syntax` 層は HIR を知らない）。
 
-- `command/`: `control` / `footnote` / `heading` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
-  `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol`
+- `command/`: `control` / `footnote` / `heading` / `index`（`\index{語}`）/ `link` / `ref_` /
+  `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol` / `text_style`（書体・文字色の指定）
 - `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `code`（verbatim 本体）/ `table`（+ `table::body` /
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
