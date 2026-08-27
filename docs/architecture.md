@@ -903,7 +903,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
   `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
   文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
-- `validate_font`（非公開。`FontWarning` だけ `typeset` root facade へ出す）: バリエーション軸設定の
+- `validation`（非公開。`FontWarning` だけ `typeset` root facade へ出す）: バリエーション軸設定の
   存在・範囲・完全性を検証する。検証エラーは `FontSystemError::Validation` の `transparent` 委譲を介して
   miette::Report 化されるだけで、型名を名指しする消費者がいない。GSUB / GPOS のスクリプト・言語
   サポート不足は組版を止めないので、error ではなく **severity(Warning) の `FontWarning`**（フォント種別・

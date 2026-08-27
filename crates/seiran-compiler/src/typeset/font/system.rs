@@ -20,7 +20,7 @@ use crate::{
       HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
       ShaperInstancesExt, UnicodeBuffer,
     },
-    validate_font::{self, FontValidationFailure, FontWarning},
+    validation::{self, FontValidationFailure, FontWarning},
   },
 };
 
@@ -37,7 +37,7 @@ pub(crate) enum FontSystemError {
   #[error(transparent)]
   #[diagnostic(transparent)]
   Load(#[from] FontLoadError),
-  /// フォント設定検証の失敗（[`validate_font::validate_fonts`] に由来）
+  /// フォント設定検証の失敗（[`validation::validate_fonts`] に由来）
   #[error(transparent)]
   #[diagnostic(transparent)]
   Validation(#[from] FontValidationFailure),
@@ -93,7 +93,7 @@ impl<'a> FontResources<'a> {
 
     let stage_start = Instant::now();
     let warnings =
-      validate_font::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
+      validation::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
     debug!(elapsed_ms = elapsed_ms(stage_start), warning_count = warnings.len(), "フォントの検証が完了しました");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
