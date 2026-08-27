@@ -20,15 +20,15 @@ use crate::{
   },
 };
 
-mod pre_config;
-use pre_config::{PreConfig, PreFontConfig};
-mod processed_config;
+mod raw;
+use raw::{RawConfig, RawFontConfig};
+mod resolved;
 mod tag;
 
 #[doc(hidden)]
 pub mod test_support;
 
-pub(crate) use processed_config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
+pub(crate) use resolved::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -201,8 +201,8 @@ pub(crate) fn load(
       source,
     };
   })?;
-  let pre_config = parse_config(&config_content, config_path)?;
-  let (config, warnings) = resolve(pre_config, source, base_dir)?;
+  let raw_config = parse_config(&config_content, config_path)?;
+  let (config, warnings) = resolve(raw_config, source, base_dir)?;
 
   debug!(
     config_path = %config_path.display(),
@@ -214,11 +214,11 @@ pub(crate) fn load(
   return Ok((config, warnings));
 }
 
-/// TOML 文字列を [`PreConfig`] にパースします（I/O なし）。
+/// TOML 文字列を [`RawConfig`] にパースします（I/O なし）。
 ///
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
 /// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
-fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, Failures<ReadConfigError>> {
+fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures<ReadConfigError>> {
   return toml::from_str(content).map_err(|mut source| {
     let span = source.span().map_or_else(
       || return SourceSpan::new(0.into(), 0),
@@ -235,17 +235,17 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, Failures
   });
 }
 
-/// [`PreConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
+/// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
 /// 組み立てるだけです（作成は driver 側の責務、#300）。
 fn resolve(
-  pre: PreConfig,
+  raw: RawConfig,
   source: &dyn ProjectSource,
   base_dir: &Path,
 ) -> Result<(ProjectConfig, Vec<ConfigWarning>), Failures<ReadConfigError>> {
-  let validation = validate_and_convert(&pre);
-  let (resolved, path_errors, warnings) = resolve_paths(&pre, source, base_dir);
+  let validation = validate_and_convert(&raw);
+  let (resolved, path_errors, warnings) = resolve_paths(&raw, source, base_dir);
 
   let font_values = match validation {
     Ok(font_values) if path_errors.is_empty() => font_values,
@@ -262,15 +262,15 @@ fn resolve(
     },
   };
 
-  let output_dir = resolve_output_dir_path(base_dir, pre.output.output_dir.as_deref());
+  let output_dir = resolve_output_dir_path(base_dir, raw.output.output_dir.as_deref());
 
-  let PreConfig {
-    document: pre_document,
-    output: pre_output,
-    pdf: pre_pdf_config,
-    image: pre_image_config,
+  let RawConfig {
+    document: raw_document,
+    output: raw_output,
+    pdf: raw_pdf_config,
+    image: raw_image_config,
     ..
-  } = pre;
+  } = raw;
 
   let font_configs =
     FontConfigs::from_all(font_values.into_iter().zip(resolved.font_paths).map(|(values, font_path)| {
@@ -288,25 +288,25 @@ fn resolve(
 
   let config = ProjectConfig {
     document: DocumentConfig {
-      title: pre_document.title,
-      author: pre_document.author,
-      date: pre_document.date,
-      subject: pre_document.subject,
-      language: pre_document.language,
-      keywords: pre_document.keywords,
+      title: raw_document.title,
+      author: raw_document.author,
+      date: raw_document.date,
+      subject: raw_document.subject,
+      language: raw_document.language,
+      keywords: raw_document.keywords,
     },
     output: OutputConfig {
-      name: pre_output.name,
+      name: raw_output.name,
       output_dir,
     },
     pdf: PdfConfig {
-      height: pre_pdf_config.height,
-      width: pre_pdf_config.width,
-      show_bookmarks: pre_pdf_config.show_bookmarks,
+      height: raw_pdf_config.height,
+      width: raw_pdf_config.width,
+      show_bookmarks: raw_pdf_config.show_bookmarks,
     },
     image: ImageConfig {
-      max_dpi: pre_image_config.max_dpi,
-      downsample: pre_image_config.downsample,
+      max_dpi: raw_image_config.max_dpi,
+      downsample: raw_image_config.downsample,
     },
     font_configs,
     sources: resolved.sources,
@@ -316,10 +316,10 @@ fn resolve(
   return Ok((config, warnings));
 }
 
-/// [`PreConfig`] の純粋な値検証とタグ・書字方向の変換を一括で実行します（I/O なし）。
-fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigValidationError>> {
+/// [`RawConfig`] の純粋な値検証とタグ・書字方向の変換を一括で実行します（I/O なし）。
+fn validate_and_convert(raw: &RawConfig) -> Result<Vec<FontValues>, Vec<ConfigValidationError>> {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
-  if let Err(report) = pre.validate() {
+  if let Err(report) = raw.validate() {
     errors.extend(report.iter().map(|(path, error)| {
       return ConfigValidationError::Field {
         path: path.to_string(),
@@ -327,12 +327,12 @@ fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigVa
       };
     }));
   }
-  pre_config::validate_unique_font_names(&pre.font_configs, &mut errors);
-  pre_config::validate_font_language_constraints(&pre.font_configs, &mut errors);
+  raw::validate_unique_font_names(&raw.font_configs, &mut errors);
+  raw::validate_font_language_constraints(&raw.font_configs, &mut errors);
 
   let mut font_values: Vec<FontValues> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    match parse_font_values(font_type, &pre.font_configs[font_type]) {
+    match parse_font_values(font_type, &raw.font_configs[font_type]) {
       Ok(values) => font_values.push(values),
       Err(value_errors) => errors.extend(value_errors),
     }
@@ -346,8 +346,8 @@ fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigVa
 
 /// 純粋な値検証のみを行うテスト向けラッパ（変換結果は破棄）。
 #[cfg(test)]
-fn validate_values(pre: &PreConfig) -> Result<(), Vec<ConfigValidationError>> {
-  return validate_and_convert(pre).map(|_| ());
+fn validate_values(raw: &RawConfig) -> Result<(), Vec<ConfigValidationError>> {
+  return validate_and_convert(raw).map(|_| ());
 }
 
 /// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを `source.exists` で確認します。
@@ -356,24 +356,24 @@ fn validate_values(pre: &PreConfig) -> Result<(), Vec<ConfigValidationError>> {
 /// パスの存在有無だけを見る。`MemoryProjectSource` のような実ファイルシステムに触れないテスト
 /// adapter と両立させるための変更（issue #300）。
 fn resolve_paths(
-  pre: &PreConfig,
+  raw: &RawConfig,
   source: &dyn ProjectSource,
   base_dir: &Path,
 ) -> (ResolvedPaths, Vec<ConfigValidationError>, Vec<ConfigWarning>) {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
   let mut warnings: Vec<ConfigWarning> = Vec::new();
 
-  let style_path = resolve_optional_path(pre.style_path.as_deref(), base_dir, source, &mut errors, |path| {
+  let style_path = resolve_optional_path(raw.style_path.as_deref(), base_dir, source, &mut errors, |path| {
     return ConfigValidationError::StylePathResolution { path };
   });
-  let references_path = resolve_optional_path(pre.references_path.as_deref(), base_dir, source, &mut errors, |path| {
+  let references_path = resolve_optional_path(raw.references_path.as_deref(), base_dir, source, &mut errors, |path| {
     return ConfigValidationError::ReferencesPathResolution { path };
   });
 
   let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    let pre_font_config = &pre.font_configs[font_type];
-    let joined = join_with_base(&pre_font_config.font_path, base_dir);
+    let raw_font_config = &raw.font_configs[font_type];
+    let joined = join_with_base(&raw_font_config.font_path, base_dir);
     if source.exists(&ProjectPath::new(&joined)) {
       font_paths.push(joined);
     } else {
@@ -384,7 +384,7 @@ fn resolve_paths(
     }
   }
 
-  let sources = resolve_sources(&pre.sources, base_dir, source, &mut errors, &mut warnings);
+  let sources = resolve_sources(&raw.sources, base_dir, source, &mut errors, &mut warnings);
 
   return (
     ResolvedPaths {
@@ -453,14 +453,14 @@ fn resolve_sources(
   return resolved;
 }
 
-/// `PreFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
+/// `RawFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
 fn parse_font_values(
   font_type: FontType,
-  pre_font_config: &PreFontConfig,
+  raw_font_config: &RawFontConfig,
 ) -> Result<FontValues, Vec<ConfigValidationError>> {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
 
-  let script = match pre_font_config.script.as_deref() {
+  let script = match raw_font_config.script.as_deref() {
     None => None,
     Some(value) => match tag::parse_script_tag(value) {
       Ok(bytes) => Some(bytes),
@@ -471,7 +471,7 @@ fn parse_font_values(
     },
   };
 
-  let ot_language_tag = match pre_font_config.ot_language.as_deref() {
+  let ot_language_tag = match raw_font_config.ot_language.as_deref() {
     None => None,
     Some(value) => match tag::parse_ot_language_tag(value) {
       Ok(bytes) => Some(bytes),
@@ -482,7 +482,7 @@ fn parse_font_values(
     },
   };
 
-  let direction = match pre_font_config.direction.as_deref() {
+  let direction = match raw_font_config.direction.as_deref() {
     None => None,
     Some(value) => match value.parse::<TextDirection>() {
       Ok(direction) => Some(direction),
@@ -493,7 +493,7 @@ fn parse_font_values(
     },
   };
 
-  let variation_axes = pre_font_config.variation_axes.as_deref().map(|axes| {
+  let variation_axes = raw_font_config.variation_axes.as_deref().map(|axes| {
     return axes
       .iter()
       .filter_map(|axis| match tag::parse_opentype_tag(&axis.name) {
@@ -511,7 +511,7 @@ fn parse_font_values(
       .collect::<Vec<_>>();
   });
 
-  let features = pre_font_config.features.as_deref().and_then(|feats| {
+  let features = raw_font_config.features.as_deref().and_then(|feats| {
     let converted: Vec<Feature> = feats
       .iter()
       .filter_map(|feature| match tag::parse_opentype_tag(&feature.tag) {
@@ -530,13 +530,13 @@ fn parse_font_values(
     return (!converted.is_empty()).then_some(converted);
   });
 
-  let language = build_language_string(pre_font_config.language.as_deref(), pre_font_config.ot_language.as_deref());
+  let language = build_language_string(raw_font_config.language.as_deref(), raw_font_config.ot_language.as_deref());
 
   if !errors.is_empty() {
     return Err(errors);
   }
   return Ok(FontValues {
-    font_index: pre_font_config.font_index,
+    font_index: raw_font_config.font_index,
     variation_axes,
     script,
     language,
@@ -622,11 +622,11 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("fonts/dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
     let source = MemoryProjectSource::new();
 
     // Act
-    let (_, errors, _) = resolve_paths(&pre, &source, Path::new("/project"));
+    let (_, errors, _) = resolve_paths(&raw, &source, Path::new("/project"));
 
     // Assert — スタイル・文献・ソース・フォント全種のパス不存在が集約されるはず
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
@@ -644,13 +644,13 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("fonts/dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
     let source = MemoryProjectSource::new()
       .with_text("/project/style.toml", "")
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
     // Act
-    let (resolved, errors, _) = resolve_paths(&pre, &source, Path::new("/project"));
+    let (resolved, errors, _) = resolve_paths(&raw, &source, Path::new("/project"));
 
     // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
@@ -766,12 +766,12 @@ mod tests {
       format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
 
     // Act
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Assert
-    assert!((pre.pdf.height.to_pt() - 842.0).abs() < f32::EPSILON);
-    assert!((pre.pdf.width.to_pt() - 595.0).abs() < f32::EPSILON);
-    assert!(pre.pdf.show_bookmarks);
+    assert!((raw.pdf.height.to_pt() - 842.0).abs() < f32::EPSILON);
+    assert!((raw.pdf.width.to_pt() - 595.0).abs() < f32::EPSILON);
+    assert!(raw.pdf.show_bookmarks);
   }
 
   #[test]
@@ -803,10 +803,10 @@ mod tests {
       "[font_configs.serif_bold]\nfont_name = \"font_serif\"",
     );
     let toml = format!("{}{}{sections}", valid_output_section("test", "out"), valid_pdf_section());
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     let dup_path = errors
@@ -846,10 +846,10 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     assert!(errors.iter().any(|error| matches!(
@@ -863,10 +863,10 @@ mod tests {
     // Arrange
     let toml =
       format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     assert!(errors.iter().any(|error| matches!(
@@ -880,10 +880,10 @@ mod tests {
     // Arrange
     let toml =
       format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), make_font_sections("dummy.ttf"));
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     assert!(errors.iter().any(|error| matches!(
@@ -901,10 +901,10 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     assert!(errors.iter().any(|error| matches!(
@@ -926,8 +926,8 @@ mod tests {
       valid_pdf_section(),
       font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
-    return validate_values(&pre);
+    let raw = parse_config(&toml, dummy_source()).unwrap();
+    return validate_values(&raw);
   }
 
   #[test]
@@ -1083,8 +1083,8 @@ mod tests {
         valid_pdf_section(),
         make_font_sections("dummy.ttf"),
       );
-      let pre = parse_config(&toml, dummy_source()).unwrap();
-      assert!(validate_values(&pre).is_ok(), "expected document.language='{lang}' to be accepted");
+      let raw = parse_config(&toml, dummy_source()).unwrap();
+      assert!(validate_values(&raw).is_ok(), "expected document.language='{lang}' to be accepted");
     }
   }
 
@@ -1097,10 +1097,10 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     assert!(errors.iter().any(|error| matches!(
@@ -1118,10 +1118,10 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let errors = validate_values(&raw).unwrap_err();
 
     // Assert
     assert!(errors.iter().any(|error| matches!(
