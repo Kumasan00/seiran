@@ -56,10 +56,10 @@ fn main() -> miette::Result<()> {
       font_path,
       font_index,
     } => {
-      subcommand::get_variation_axes(&font_path, font_index)?;
+      subcommand::variation_axes(&font_path, font_index)?;
     },
     cli::Command::TtcNames { ttc_file_path } => {
-      subcommand::get_ttc_names(&ttc_file_path)?;
+      subcommand::ttc_names(&ttc_file_path)?;
     },
     cli::Command::ScriptLangs {
       font_path,

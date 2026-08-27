@@ -27,7 +27,7 @@ enum TtcNamesError {
 /// # Errors
 ///
 /// ファイルの読み込み、フォントまたは name テーブルの解析に失敗した場合にエラーを返す。
-pub(crate) fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
+pub(crate) fn ttc_names(file_path: &Path) -> miette::Result<()> {
   info!(ttc_path = %file_path.display(), "TTC ファイルを読み込みます");
 
   let data = fs::read(file_path).map_err(|source| {
