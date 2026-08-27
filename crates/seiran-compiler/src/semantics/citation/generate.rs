@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::{
   document::{NodeId, NodeMap},
   semantics::citation::{
-    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, bridge, render, style::CompiledCitationStyle,
+    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json, render, style::CompiledCitationStyle,
   },
 };
 
@@ -109,7 +109,7 @@ pub(crate) fn generate_citations(
     let Some(reference) = references.get(key) else {
       unreachable!("キーの存在は semantics::analyze の走査が保証している: {key}")
     };
-    let item = bridge::to_item(key, reference).map_err(|source| {
+    let item = csl_json::to_item(key, reference).map_err(|source| {
       return CitationFormatError::BuildEntry {
         id: key.clone(),
         source,

@@ -739,7 +739,7 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
   `compiler::input::load` から呼ばれる）。
 - `generate`（非公開）: `generate_citations`（引用箇所の side table + `CompiledCitationStyle` から
   表示・書誌を生成。詳細は後項）。I/O は行わない。
-- `bridge`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
+- `csl_json`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
 - `render`: `BibliographyDriver` の駆動と `ElemChildren` → `GeneratedInline` 変換
 - `test_fixtures`（`#[cfg(test)]`）: 文献引用テスト用フィクスチャ。`semantics.rs` が
   `#[cfg(test)] pub(crate) use` で再エクスポートし、`typeset` 側のテストも

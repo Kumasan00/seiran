@@ -146,7 +146,7 @@ mod tests {
   }
 
   #[test]
-  fn to_item_preserves_fields_dropped_by_old_bridge() {
+  fn to_item_preserves_fields_dropped_by_old_conversion() {
     // Arrange
     let references = references_from_toml(
       "[r1]\n\
