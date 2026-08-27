@@ -12,7 +12,7 @@
 //! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
 //! 区別がそのまま module 境界になっている。
 //!
-//! フォントの解析・検証・シェーピングという**処理**は [`crate::typeset::font`] の側にあり、
+//! フォントの解析・検証・シェーピングという**処理**は `typeset::font` の側にあり、
 //! この module はその入力（どのファイルをどう使うか）までを持つ。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory`）は crate 内の他 module に

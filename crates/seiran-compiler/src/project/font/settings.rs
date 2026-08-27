@@ -26,7 +26,8 @@ pub(crate) struct FontConfig {
   ///
   /// `b"DFLT"` は harfrust で `dflt` に変換されるため、DFLT fallback を使う場合は指定を省略する。
   pub script: Option<[u8; 4]>,
-  /// BCP 47 言語タグ（harfrust の [`Language::from_str`] に渡す最終文字列）
+  /// BCP 47 言語タグ（harfrust の [`Language`](harfrust::Language) の
+  /// [`from_str`](std::str::FromStr::from_str) に渡す最終文字列）
   ///
   /// `ot_language` 指定時は末尾に `-x-hbot<XXXX>` 予約サブタグを連結する
   /// （`language` 未指定で `ot_language` のみ指定された場合は `"und-x-hbot<XXXX>"`）。

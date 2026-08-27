@@ -8,7 +8,7 @@ use crate::semantics::{CitationId, HeadingKey, LabelId};
 
 /// 脚注の出現 index（0 起点）
 ///
-/// [`crate::typeset::LineFootnote::index`] と同じ値。表示番号（採番方式で変わりうる）ではなく
+/// [`crate::typeset::boxes::line::LineFootnote::index`] と同じ値。表示番号（採番方式で変わりうる）ではなく
 /// 出現順の同一性を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct FootnoteId(u32);

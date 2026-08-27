@@ -291,6 +291,13 @@ lint が**発火＝提案に従う**とは限らない — `suboptimal_flops` / 
 
 - CI と pre-commit フックは `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの
   指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する。
+- テストは CI・pre-commit とも `cargo test --all-features` で走る。`--all-targets` を付けると cargo の仕様で
+  **doctest が外れる**（benches / examples は存在しないので、外した差分は doctest が加わることだけ）。
+- **rustdoc lint（`[workspace.lints.rustdoc]`）は `cargo doc` を回して初めて効く**。CI は
+  `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features` で走る（#474）。
+  `--document-private-items` が doc build の正典で、非公開項目にも doc を書かせる規約（`missing_docs_in_private_items`）の
+  帰結。この形を外すと、公開項目の doc から非公開項目を指すリンク（`private_intra_doc_links` = allow）が warn になる。
+  pre-commit には入れていない（毎コミットの doc ビルドは重い）。
 - **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes` / `allow_attributes_without_reason`）。
   `allow` は抑制対象が消えても黙って残るが、`expect` なら rustc の `unfulfilled_lint_expectations` が
   「効いていない抑制」を落とすので、**有効化されていない lint を抑制しない**・**抑制対象が消えたら属性も

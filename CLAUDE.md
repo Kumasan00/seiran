@@ -46,8 +46,9 @@ cargo run -- ttc-names <ttc_file>                          # TTC ファイル内
 cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示
 cargo +nightly fmt                                         # フォーマット（nightly 必須）
 cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pre-commit と同じ形）
-cargo test                                                 # テスト実行
+cargo test --all-features                                  # テスト実行（doctest 込み。CI / pre-commit と同じ形）
 cargo test -p <crate_name>                                 # 特定クレートのテスト実行
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features   # doc ビルド（CI と同じ形）
 ```
 
 `cargo fmt` は **nightly toolchain が必須**です。`rustfmt.toml` で `unstable_features = true`（`group_imports = "StdExternalCrate"` / `imports_granularity = "Crate"` / `format_macro_bodies` 等）を有効化しているためです。`build` サブコマンドの `-c` / `--config-path` を省略した場合は `./config/config.toml` が使用されます。
@@ -188,6 +189,8 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 lint の採用根拠は root `Cargo.toml` の 1 行コメント、節見出しは有効化の目的（規約の機械化 / 字面に意味 / 表記の固定 / 決定性 / crate の責務境界 / 誤りの検出 / 残骸を残さない / nursery）で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
 
 - 確認は CI / pre-commit と同じ `cargo clippy --all-targets --all-features -- -D warnings`（warn もビルド失敗になる）
+- rustdoc lint（`[workspace.lints.rustdoc]`）は `cargo doc` を回して初めて効く。CI と同じ形は
+  `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features`
 - **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes*`）。`reason` は「なぜ許してよいか」＝上流のどの保証・設計判断が根拠かで、lint 名の言い換えは不可。根拠が言えないなら直す（`dead_code` は削除）
 - 本体ビルドでだけ発火する lint は `#[cfg_attr(not(test), expect(...))]`（素の `#[expect]` はテストビルドで `unfulfilled_lint_expectations` に落ちる）
 - 新 lint の 0 件は `--message-format=json -- -W clippy::<name>` で診断コード単位に実測する（短縮フォーマットの grep は lint 名を含まず偽陰性）

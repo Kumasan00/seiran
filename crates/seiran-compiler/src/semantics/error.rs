@@ -1,6 +1,6 @@
 //! 意味解析で発生し得るエラー
 //!
-//! 入口 [`analyze`](crate::semantics::analyze) が返す [`AnalyzeError`] と、HIR 走査が返す
+//! 入口 [`analyze`](fn@crate::semantics::analyze) が返す [`AnalyzeError`] と、HIR 走査が返す
 //! [`SemanticFailures`] / [`SemanticError`] の 2 層に分かれる。後者は必ずソース位置に帰属する
 //! （`source_id` を持つ）ため、呼び出し元は本文を添えた診断へ組み替えられる。CSL の読込・整形
 //! エラーはソース位置を持たないので、この不変条件を壊さないよう [`SemanticError`] には混ぜず
@@ -18,7 +18,7 @@ use crate::{
   source::{SourceId, Span},
 };
 
-/// [`analyze`](crate::semantics::analyze) のエラー
+/// [`analyze`](fn@crate::semantics::analyze) のエラー
 ///
 /// 内側の意味解析 / CSL スタイル読込 / CSL 整形のいずれかを `?` で運ぶための制御フロー型で、
 /// **表示単位ではない**（`miette::Diagnostic` を実装しない）。呼び出し元（`compiler`）が
