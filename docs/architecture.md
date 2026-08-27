@@ -793,7 +793,7 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の確定レイアウト `LaidOutDocument` へ
 変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
-（`lowering` 節を参照）。`boxes` / `block` / `breaking` / `error` / `font` / `geometry` / `image` /
+（`lowering` 節を参照）。`boxes` / `boxing` / `breaking` / `error` / `font` / `geometry` / `image` /
 `lowering` / `pagination` / `warning` の 10 module はすべて非公開で、外から見える入口は
 **module root の `layout` 1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`
 （`geometry` 節を参照）だけである（#350、#351、#352）。
@@ -835,7 +835,7 @@ render 側に残る（同じバイト列を 2 度読むが、krilla を compiler
 pin することで担保する（`usvg` を上げるときは `krilla-svg` が要求する版と揃える）。
 
 `boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
-配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
+配置ヘルパ）を持つ非公開 module で、`boxing` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。root facade へ出すのは
 **本体コードに消費者がある型だけ** — `publication::build` が `Publication` へ写すために走査する
 `Page` / `PlacedBlock` / `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` で、
@@ -889,7 +889,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   構築は `system` からしか呼ばれないので拡張トレイト（旧 `FontRefsExt` / `FontMetricsExt`）は持たない。
 - `glyph_run`（非公開、`GlyphRun` / `Glyph` は `typeset` root facade 経由で crate root の facade まで
   再エクスポートされる）: シェーピング結果 1 個のグリフ列とその配置情報。値は `color::Color` /
-  `project::FontType` / `length::Length` という leaf 値型にしか依存しない leaf 型で、`typeset::block` が
+  `project::FontType` / `length::Length` という leaf 値型にしか依存しない leaf 型で、`typeset::boxing` が
   生成し `publication::build` が `PaintOp::DrawGlyphRun` へそのまま載せる（#372 で `seiran-pdf` 側の
   同型の複製と変換関数を削除した。`font_size: Length` → pt と `color: Color` → `[u8; 3]` の変換は
   render が行う）。
@@ -899,7 +899,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `VariationAxisConfig` を組み立てる（`build_face_configs`）。組版そのものは使わず、
   `FontResources::face_configs()` → `Publication` の描画資源 → render という 1 経路のためだけに
   存在する（`FontFaceConfigs` は facade へ出さない — 描画資源の非公開フィールドの型でしかない）。
-- `shaper`（非公開。`typeset::block` が要求する `UnicodeBuffer` だけを module root が `pub(super)` で
+- `shaper`（非公開。`typeset::boxing` が要求する `UnicodeBuffer` だけを module root が `pub(super)` で
   `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
   `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
   文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
@@ -1049,7 +1049,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `back_matter`: 段 4。本文全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ
   `AnchorMark::IndexPage(usize)` を事後追加（`body_pages` の破壊的更新）してから巻末索引を組む
 - `running`: 段 6。`PageLabels` を引数に要求して呼び出し順を型で制約し、`RunningContentSpec` を
-  組み立てて `block::layout_running_content` を呼ぶ
+  組み立てて `boxing::layout_running_content` を呼ぶ
 - `outline`: 段 7。見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
@@ -1082,7 +1082,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 
 #### `boxes`
 
-組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
+組版中間型の定義そのもの。`boxing` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
 所有物にもせず本 module に集約する。組版時に初めて成立する配置・アンカーの型と、lowering が構築する
 表レイアウトの入力契約もここに置く。
 
@@ -1117,7 +1117,7 @@ baseline・罫線をページ座標へ畳む。畳み込みは `Length`（sp 整
 表現とは別課題とする。
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
-相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `block` / `breaking` /
+相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `boxing` / `breaking` /
 `lowering` 側から使う。`compiler` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
 `HBoxContent` / `PlacedTableRow` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に
 消費者がいない `Align` / `FootnoteId` / `TableColumn` は出さない。
@@ -1139,7 +1139,7 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
 - `layout_node`: `LayoutNode` / `AtomNode` / `TextStyle` / `TableLayout` 等の型定義。
   `AtomNode`（`Text` と入れ子の `Raise` だけ）は `LayoutNode` の部分集合で、`Atom` に畳める要素だけを
   表現する型。`LayoutNode::Raise` の子・`FlushRight` の中身・ディスプレイ数式のセルと番号がこれを持ち、
-  `block` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
+  `boxing` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
   （インライン数式を段落の水平リストへ流すときに使う）
 - 要素別: `code` / `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` /
@@ -1199,7 +1199,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 `SourceId` は `project::SourceSet::register` が唯一の発行元であり、`semantics`
 はここで発行された ID を受け取って運ぶだけで自ら発行しない。
 
-#### `block`
+#### `boxing`
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
@@ -1413,7 +1413,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 ```
 
 `tracing` の INFO イベントもこの facade が上記の安定した phase 境界で出す。各 module が知る内部手順
-（設定・style・文献の個別読込、lowering、block 構築、前付け・本文・後付けの改ページ等）は DEBUG とし、
+（設定・style・文献の個別読込、lowering、boxing、前付け・本文・後付けの改ページ等）は DEBUG とし、
 内部構成を変えても `-v` の工程一覧が不用意に変わらないようにする。描画と保存の INFO は、それぞれの
 外向き入口を持つ `seiran-pdf::render` と CLI の atomic write が所有する。
 

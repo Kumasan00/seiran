@@ -7,8 +7,8 @@ use crate::{
   length::Length,
   style::{RunningTemplate, RunningValues},
   typeset::{
-    block::Measurer,
     boxes::{HBox, Line, Page, PlacedBlock, PositionedBox},
+    boxing::Measurer,
     font::FontSystem,
     lowering::TextStyle,
   },

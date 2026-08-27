@@ -68,7 +68,7 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
                        → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
   → typeset::layout    組版: SemanticDocument + 設定 + FontResources → LaidOutDocument
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
-                       シェーパー）と内部順序（画像読込・寸法確定 → lowering → (a) block
+                       シェーパー）と内部順序（画像読込・寸法確定 → lowering → (a) boxing
                        → (c+d) breaking → 前付け・後付け → ページラベル → 走り文 → outline）
                        は typeset に閉じる
   → seiran-pdf         (e) render: compiler が確定させた Publication（純データ）を描画するのみ

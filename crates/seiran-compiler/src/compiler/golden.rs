@@ -673,7 +673,7 @@ fn layout_dump_changes_with_punctuation_spacing() {
 ///
 /// 空行は内容が空の Atom 1 つになるので、素朴に組むと行の高さ・深さが 0 になり、行送りが
 /// `leading.max(前の行の深さ + この行の高さ)` の leading まで縮む（他の行より詰まる）。
-/// `typeset::block` の strut がこれを防いでいる。
+/// `typeset::boxing` の strut がこれを防いでいる。
 #[test]
 fn blank_code_line_keeps_a_full_line_height() {
   // Arrange

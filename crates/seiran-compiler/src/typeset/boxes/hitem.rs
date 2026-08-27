@@ -1,6 +1,6 @@
 //! 水平リストの最小単位 [`HItem`] と計測済みボックス [`HBox`]。
 //!
-//! box の width / height / depth は生成時（`typeset::block::build_blocks`）に 1 回だけ計測して
+//! box の width / height / depth は生成時（`typeset::boxing::build_blocks`）に 1 回だけ計測して
 //! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
 
 use crate::{
@@ -52,7 +52,7 @@ pub(crate) enum HItem {
   /// 欧文語中のハイフネーション分割点（discretionary）
   ///
   /// ここで折り返した場合**のみ**行末に `hyphen` 箱を出す。折り返さなければ幅 0
-  /// （前後の単語断片 `Box` が語の幅を持つ）。`hyphen` は生成時（`typeset::block`）に計測済みで、
+  /// （前後の単語断片 `Box` が語の幅を持つ）。`hyphen` は生成時（`typeset::boxing`）に計測済みで、
   /// 行分割はその `width` を収まり判定・両端揃えに使う。空白での分割より優先度が低い候補。
   Discretionary {
     /// 折り返した場合のみ行末に出すハイフン箱（計測済み）

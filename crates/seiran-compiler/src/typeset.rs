@@ -15,8 +15,8 @@
 
 use crate::project::ProjectSource;
 
-mod block;
 mod boxes;
+mod boxing;
 mod breaking;
 mod error;
 mod font;

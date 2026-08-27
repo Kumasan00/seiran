@@ -47,7 +47,7 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<Lay
 /// インラインコード（`\code{...}`）をレイアウトノードに変換する
 ///
 /// 書体は等幅に差し替え、サイズと色は周囲から継承する（`\color{... \code{x} ...}` は効く）。
-/// 内容に改行があっても行を割らず、シェーピング段（`typeset::block`）が空白へ畳む。
+/// 内容に改行があっても行を割らず、シェーピング段（`typeset::boxing`）が空白へ畳む。
 pub(super) fn lower_inline_code(text: &str, parent_style: TextStyle) -> Vec<LayoutNode> {
   return vec![LayoutNode::TextAtom(
     text.to_string(),

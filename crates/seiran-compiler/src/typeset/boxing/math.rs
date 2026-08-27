@@ -5,8 +5,8 @@ use crate::{
   length::Length,
   project::FontType,
   typeset::{
-    block::Measurer,
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
+    boxing::Measurer,
     lowering::{AtomNode, MathBlockRow},
   },
 };

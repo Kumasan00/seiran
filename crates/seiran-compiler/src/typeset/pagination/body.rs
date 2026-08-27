@@ -8,8 +8,8 @@ use crate::{
   semantics::SemanticDocument,
   style::FootnoteNumbering,
   typeset::{
-    block::build_blocks,
     boxes::Page,
+    boxing::build_blocks,
     breaking::{FootnoteOverflow, break_pages},
     error::TypesetError,
     image::{ImageResources, resolve_images},
