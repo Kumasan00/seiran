@@ -11,7 +11,7 @@ root `Cargo.toml` の `[workspace.lints.*]` に付けたコメント（1 lint = 
 | --------------------------------- | ------------------------------------------------------------------------ |
 | `CLAUDE.md`                       | 規約本文の要約と、編集中に効く落とし穴（ナビゲーション用）               |
 | **`docs/coding-conventions.md`**  | **規約の全文・根拠・lint との対応・境界事例（本書）**                    |
-| root `Cargo.toml`                 | lint の採用根拠（1 lint = 1 行）と選定 6 軸の節見出し                    |
+| root `Cargo.toml`                 | lint の採用根拠（1 lint = 1 行）と目的別の節見出し                       |
 | `clippy.toml` / `rustfmt.toml`    | lint の設定値 / フォーマットの正典                                       |
 | `error-handling` skill            | エラー型・診断（code / help / label / related）・集約・garde の設計規約  |
 | `verify-typesetting` skill        | golden テスト・PDF バイト比較の使い分けと再生成手順                      |
@@ -243,24 +243,39 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 
 **lint の採用根拠の正典は root `Cargo.toml`** — `[workspace.lints.clippy]` / `[workspace.lints.rust]`（各
 クレートは `lints.workspace = true` で両テーブルを継承）に 1 lint = 1 行の根拠コメントが付いていて、
-節見出しが下の 6 軸に対応する。lint 側の設定値は root `clippy.toml`（`absolute-paths-max-segments = 3` /
+節見出しが下の目的に対応する。lint 側の設定値は root `clippy.toml`（`absolute-paths-max-segments = 3` /
 `allow-unwrap-in-tests = true` / `allow-panic-in-tests = true`）。lint の増減と根拠の更新が同じ diff に
 閉じるように、個々の lint の理由は `Cargo.toml` のコメントに書き、個々の lint が要求する**書き方**は
 本書の規約各節に置く。`CLAUDE.md` の Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
 
-### 選定の 6 軸
+### 有効化の目的（節見出し）
 
-| 軸                     | 何を採るか                                            | 例                                                                  |
-| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
-| A 規約の機械化         | prose の規約に対応する lint（最優先）                 | `implicit_return` / `missing_docs*` / `mod_module_files` / SAFETY 族 |
-| B 字面に意味           | G1「字面だけで構造が一意」のコードへの適用            | `clone_on_ref_ptr` / `map_err_ignore` / `elided_lifetimes_in_paths` |
-| C 決定性               | 成果物のバイト再現性を壊すものを拒む                  | `iter_over_hash_type` / `float_cmp_const`                           |
-| D 0 件予防             | 発火 0 件かつ規約整合＝無料の再発防止                 | `dbg_macro` / `exit` / `rc_mutex`                                   |
-| E 対立 pair の lock-in | 2 通り書ける形は現行スタイル側（0 件の側）を固定する  | `separated_literal_suffix` / `pub_without_shorthand`                |
-| F nursery 個別主義     | Known problems を理解した lint だけを 1 件ずつ採用する | `redundant_clone` / `fallible_impl_from`                            |
+`Cargo.toml` の節見出しは **lint を有効化する目的**で、目的に載らない lint は採らない。
 
-A〜C は「目的」、D〜F は「採用条件」の軸で、1 つの lint が両方の性質を持つことはある（`float_cmp_const` は
-C かつ発火 0 件）— `Cargo.toml` の節見出しには採用の決め手になった軸を置く。軸に載らない lint は採らない。
+| 目的                      | 何を守るか                                                                  | 例                                                                  |
+| ------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 規約の機械化              | 名指しの規約（必須ルール / use 規約 / モジュール構成 / テスト）を機械に守らせる | `implicit_return` / `missing_docs*` / `mod_module_files` / SAFETY 族 |
+| 字面に意味（G1 の読み側） | 字面から意味が一意に取れる                                                  | `clone_on_ref_ptr` / `map_err_ignore` / `elided_lifetimes_in_paths` |
+| 表記の固定（G1 の書き側） | 同じ意味を 2 通りに書かない                                                 | `separated_literal_suffix` / `pub_without_shorthand`                |
+| 決定性                    | 成果物のバイト再現性を壊すものを拒む                                        | `iter_over_hash_type` / `float_cmp_const`                           |
+| crate の責務境界          | ライブラリ 2 crate はプロセス境界の効果（終了・表示）を持たない             | `exit` / `print_stdout`                                             |
+| 誤りの検出                | 取り違え・バグ源になる形を拒む                                              | `rc_mutex` / `unit_bindings`                                        |
+| 残骸を残さない            | 死んだコード・デバッグ残りを残さない                                        | `dbg_macro` / `unused_macro_rules`                                  |
+| nursery                   | group が未安定なので目的別に散らさず 1 節に集める（目的は各行の根拠コメント） | `redundant_clone` / `fallible_impl_from`                            |
+
+1 つの lint が 2 つの目的に載ることはある（`non_ascii_idents` は「値と型の書き方」の規約表にもある）。置き場の
+規則は 1 つ — **根拠コメントが名指しの規約を引くなら「規約の機械化」、それ以外はコメント自身の目的の節**。
+「本書に書き方の記述があるか」は規則にできない（採用 lint はすべて本書に書き方を持つので、全節が規約へ流れ込む）。
+
+### 採用条件
+
+目的は「なぜ有効化するか」で、これとは別に「どう選んだか」の条件がある。選定の履歴であって lint を守る理由
+ではないので、`Cargo.toml` の見出しには出さない。
+
+- 発火 0 件で規約と整合する lint は無料の再発防止として採る。0 件は lint 単位で実測する（手順は「運用」節）
+- 2 通り書ける形は現行スタイル側（0 件の側）に固定する
+- nursery は Known problems を理解した lint だけを 1 件ずつ、根拠コメント付きで採る
+
 `clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は
 既定の 0）。
 
@@ -268,7 +283,7 @@ lint が**発火＝提案に従う**とは限らない — `suboptimal_flops` / 
 ここで書いた」ことの通知として有効化してあり、採否は箇所ごとに決める（項を累積して精度が効くなら
 `mul_add` / `ln_1p` を採る・値が一度動くので golden 再生成込み／1 項で定数畳み込みや可読性が勝つなら積へ
 名前を付けて式から乗算を外す／どちらでもないなら `#[expect]` + 根拠）。`mul_add` は IEEE の単一丸めで
-`a * b + c` と同じく決定的なので、C 軸の懸念は移行時の値の変化に限られる。
+`a * b + c` と同じく決定的なので、決定性の懸念は移行時の値の変化に限られる。
 
 採らないと決めた lint の理由は #402 に記録がある（恒久不採用と、条件が変われば再検討するものを分けてある）。
 

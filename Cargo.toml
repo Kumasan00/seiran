@@ -48,9 +48,13 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "local-time
 unic-langid = "0.9.6"
 usvg = "0.47.0"
 
-# lint の採用根拠の正典はここ（1 lint = 1 行の根拠コメント）。節見出しは選定の 6 軸で、
-# 各 lint が要求する書き方は docs/coding-conventions.md が持ち、CLAUDE.md「Clippy 運用」節は
-# 運用だけを持ってポインタでここを指す。
+# lint の採用根拠の正典はここ（1 lint = 1 行の根拠コメント）。節見出しは lint を有効化する**目的**で、
+# 目的に載らない lint は採らない。1 つの lint が 2 つの目的に載るときの置き場は 1 規則 — 根拠コメントが
+# 名指しの規約（必須ルール N / use 規約 / モジュール構成 / テスト）を引くなら「規約の機械化」、それ以外は
+# コメント自身の目的の節。採用条件（0 件は lint 単位で実測 / 対立 pair は現行側に固定 / nursery は
+# Known problems 確認）は選定の履歴であって守る理由ではないので見出しに出さず、docs/coding-conventions.md の
+# Clippy 節が持つ。各 lint が要求する書き方も同書、CLAUDE.md「Clippy 運用」節は運用だけを持って
+# ポインタでここを指す。
 # group は priority -1、個別 lint は priority 既定（0）で group を上書きする。
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
@@ -70,7 +74,7 @@ similar_names = "allow"
 too_many_lines = "allow"
 
 # ---------------------------------------------------------------------------
-# A 規約の機械化 — prose の規約に対応する lint（最優先）
+# 規約の機械化 — 名指しの規約（必須ルール / use 規約 / モジュール構成 / テスト）を機械に守らせる
 # ---------------------------------------------------------------------------
 
 # use 規約の最終防衛線。`clippy.toml` の absolute-paths-max-segments = 3 で運用する。
@@ -103,9 +107,8 @@ panic_in_result_fn = "warn"
 # `-> Option` の中の `Option::unwrap`）だけで、食い違う組とクロージャの本体は見ない。網羅ではなく
 # 「広告した失敗そのものを握り潰した」形を押さえる部分的な機械化（`missing_docs*` と同じ性格）。
 unwrap_in_result = "warn"
-# 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `#![expect]` で開ける。
-print_stderr = "warn"
-print_stdout = "warn"
+# テスト名に `test_` 接頭辞を付けない（何を検証するかだけを書く）。
+redundant_test_prefix = "warn"
 # SAFETY 族 — `unsafe {}` の直上に `// SAFETY:` を書かせる。
 undocumented_unsafe_blocks = "warn"
 # SAFETY 族 — unsafe を含まない箇所の SAFETY コメントは誤読を招く死んだ注釈。
@@ -116,7 +119,7 @@ unnecessary_safety_doc = "warn"
 unwrap_used = "warn"
 
 # ---------------------------------------------------------------------------
-# B 字面に意味 — G1「字面だけで構造が一意」のコードへの適用
+# 字面に意味 — G1「字面だけで構造が一意」の読み側。字面から意味が一意に取れる
 # ---------------------------------------------------------------------------
 
 # `Rc::clone(&x)` 形で「参照カウントを増やしただけ」を呼び出し箇所に出す。
@@ -125,11 +128,32 @@ clone_on_ref_ptr = "warn"
 get_unwrap = "warn"
 # `map_err(|_| ...)` で元のエラーを黙って捨てない（cause は `#[source]` へ包む）。
 map_err_ignore = "warn"
+# 継承元と同名の inherent method は呼び先が字面で決まらない。
+same_name_method = "warn"
+# `Err(x)?` ではなく `return Err(x)` と書く（早期 return を字面に出す）。
+try_err = "warn"
 # `Result` を `.ok()` で握り潰さない（捨てるなら `let _ = f();` と字面に出す）。
 unused_result_ok = "warn"
 
 # ---------------------------------------------------------------------------
-# C 決定性 — 成果物のバイト再現性を壊すものを拒む
+# 表記の固定 — G1 の書き側。同じ意味を 2 通りに書かない
+# ---------------------------------------------------------------------------
+
+# `pub(self)` ではなく `pub(crate)` 等の短縮形に統一する。
+pub_without_shorthand = "warn"
+# ブロックのセミコロンは `{ ...; }` と内側に置く。
+semicolon_inside_block = "warn"
+# 数値リテラルの型サフィックスは `1u32` 形（`1_u32` 形と混在させない）。
+separated_literal_suffix = "warn"
+# `String + &str` ではなく `push_str` / `format!` で書く。
+string_add = "warn"
+# メタ文字を持たないパターンは素の文字列操作で書く（正規表現エンジンを引き込まない）。
+trivial_regex = "warn"
+# `use foo::{self}` は `use foo` と書く。
+unnecessary_self_imports = "warn"
+
+# ---------------------------------------------------------------------------
+# 決定性 — 成果物のバイト再現性を壊すものを拒む
 # ---------------------------------------------------------------------------
 
 # 関数ポインタを数値へ落とすと ASLR 等で値が変わる。
@@ -142,50 +166,41 @@ iter_over_hash_type = "warn"
 lossy_float_literal = "warn"
 
 # ---------------------------------------------------------------------------
-# D 0 件予防 — 発火 0 件かつ規約整合。無料の再発防止
+# crate の責務境界 — ライブラリ 2 crate はプロセス境界の効果（終了・表示）を持たない
+# ---------------------------------------------------------------------------
+
+# ライブラリ 2 crate がプロセスを殺さない（終了コードの決定は CLI の責務）。
+exit = "warn"
+# 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `#![expect]` で開ける。
+print_stderr = "warn"
+print_stdout = "warn"
+
+# ---------------------------------------------------------------------------
+# 誤りの検出 — 取り違え・バグ源になる形を拒む
 # ---------------------------------------------------------------------------
 
 # `#[cfg(not(test))]` で本体だけの分岐を作らない（テストと本体で別のコードを走らせない）。
 cfg_not_test = "warn"
-# デバッグ残骸を残さない。
-dbg_macro = "warn"
-# ライブラリ 2 crate がプロセスを殺さない（終了コードの決定は CLI の責務）。
-exit = "warn"
 # 終わらないループは `loop {}` ではなく終了条件のある形で書く。
 infinite_loop = "warn"
 # `mem::forget` による資源リーク。
 mem_forget = "warn"
 # `Rc<Mutex<T>>` は単一スレッドでの排他という取り違え（`RefCell` を使う）。
 rc_mutex = "warn"
-# テスト名に `test_` 接頭辞を付けない（何を検証するかだけを書く）。
-redundant_test_prefix = "warn"
-# 継承元と同名の inherent method は呼び先が字面で決まらない。
-same_name_method = "warn"
-# `String + &str` ではなく `push_str` / `format!` で書く。
-string_add = "warn"
-# メタ文字を持たないパターンは素の文字列操作で書く（正規表現エンジンを引き込まない）。
-trivial_regex = "warn"
-# `Err(x)?` ではなく `return Err(x)` と書く（早期 return を字面に出す）。
-try_err = "warn"
-# `use foo::{self}` は `use foo` と書く。
-unnecessary_self_imports = "warn"
+
+# ---------------------------------------------------------------------------
+# 残骸を残さない — 死んだコード・デバッグ残りを残さない
+# ---------------------------------------------------------------------------
+
+# デバッグ残骸を残さない。
+dbg_macro = "warn"
 # `todo!` / `unimplemented!` を残さない。
 todo = "warn"
 unimplemented = "warn"
 
 # ---------------------------------------------------------------------------
-# E 対立 pair の lock-in — 2 通り書ける形は現行スタイル側（0 件の側）を固定する
-# ---------------------------------------------------------------------------
-
-# `pub(self)` ではなく `pub(crate)` 等の短縮形に統一する。
-pub_without_shorthand = "warn"
-# ブロックのセミコロンは `{ ...; }` と内側に置く。
-semicolon_inside_block = "warn"
-# 数値リテラルの型サフィックスは `1u32` 形（`1_u32` 形と混在させない）。
-separated_literal_suffix = "warn"
-
-# ---------------------------------------------------------------------------
-# F nursery 個別主義 — Known problems を確認した lint だけを 1 件ずつ採用する
+# nursery — group が未安定なので目的別に散らさず、Known problems を確認した lint だけを 1 件ずつ採用する
+# （目的は各行の根拠コメントが持つ）
 # ---------------------------------------------------------------------------
 
 # 一度も読まないコレクション＝書き忘れか死んだコード。
@@ -215,14 +230,16 @@ suboptimal_flops = "warn"
 # `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
 unused_peekable = "warn"
 
-# 節見出しは上の clippy テーブルと同じ 6 軸。カタログ（`rustc -W help` の allow-by-default 61 lint）
-# 全数の処分記録は #421（採用 23 / 恒久不採用 / 見送り）。
+# 節見出しと置き場の規則は上の clippy テーブルと同じ（目的が空の節は置かない）。カタログ（`rustc -W help` の
+# allow-by-default 61 lint）全数の処分記録は #421（採用 23 / 恒久不採用 / 見送り）。
 [workspace.lints.rust]
 
 # ---------------------------------------------------------------------------
-# A 規約の機械化 — prose の規約に対応する lint（最優先）
+# 規約の機械化 — 名指しの規約（必須ルール / use 規約 / モジュール構成 / テスト）を機械に守らせる
 # ---------------------------------------------------------------------------
 
+# `#[macro_use] extern crate` はマクロを use 経由でない第 2 の経路で持ち込む（use 規約の裏面）。
+macro_use_extern_crate = "warn"
 # 公開型は `Debug` を持つ（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。
 missing_debug_implementations = "warn"
 # 必須ルール 4「doc コメントは全項目」の公開側。
@@ -231,49 +248,30 @@ missing_docs = "warn"
 unnameable_types = "warn"
 # 「モジュールは既定で非公開 + root ファサード」の機械化。
 unreachable_pub = "warn"
-# use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。
-unused_qualifications = "warn"
 # Edition 2024 の既定水準の固定。`unsafe fn` の本体でも `unsafe {}` を書かせる。
 unsafe_op_in_unsafe_fn = "warn"
+# Edition 2018 以降 `extern crate` は不要（依存は `use` だけで引く）。
+unused_extern_crates = "warn"
+# use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。
+unused_qualifications = "warn"
 
 # ---------------------------------------------------------------------------
-# B 字面に意味 — G1「字面だけで構造が一意」のコードへの適用
+# 字面に意味 — G1「字面だけで構造が一意」の読み側。字面から意味が一意に取れる
 # ---------------------------------------------------------------------------
 
 # `-1i32.pow(2)` は `-(1.pow(2))` と読む。優先順位を括弧で字面に出させる。
 ambiguous_negative_literals = "warn"
 # 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す。
 elided_lifetimes_in_paths = "warn"
-# 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
-trivial_casts = "warn"
-
-# ---------------------------------------------------------------------------
-# D 0 件予防 — 発火 0 件かつ規約整合。無料の再発防止
-# ---------------------------------------------------------------------------
-
-# 将来 deprecated になる項目を使った時点で知る（`deprecated` の前倒し）。
-deprecated_in_future = "warn"
-# `#[macro_use] extern crate` はマクロを use 経由でない第 2 の経路で持ち込む（use 規約の裏面）。
-macro_use_extern_crate = "warn"
-# `macro_rules!` のメタ変数の取り違え。解析は不完全（取りこぼしあり）だが FP は実測 0 件。
-meta_variable_misuse = "warn"
-# 使っていないライフタイム引数の残骸。
-redundant_lifetimes = "warn"
 # 1 回しか使わないライフタイム引数（`'_` で足りる）。
 single_use_lifetimes = "warn"
+# 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
+trivial_casts = "warn"
 # 型が変わらない数値キャスト。
 trivial_numeric_casts = "warn"
-# `let x = ();` は式の書き間違いの合図（返り値のない関数を束縛している）。
-unit_bindings = "warn"
-# Edition 2018 以降 `extern crate` は不要（依存は `use` だけで引く）。
-unused_extern_crates = "warn"
-# 使っていないライフタイム宣言。
-unused_lifetimes = "warn"
-# 使われないマクロ規則＝死んだ分岐（`define_template!` の規則追加で効く）。
-unused_macro_rules = "warn"
 
 # ---------------------------------------------------------------------------
-# E 対立 pair の lock-in — 2 通り書ける形は現行スタイル側（0 件の側）を固定する
+# 表記の固定 — G1 の書き側。同じ意味を 2 通りに書かない
 # ---------------------------------------------------------------------------
 
 # 推論できる `T: 'a` 境界は書かない側に固定する。
@@ -284,6 +282,28 @@ impl_trait_redundant_captures = "warn"
 non_ascii_idents = "warn"
 # `use a::{b}` ではなく `use a::b` と書く（`unnecessary_self_imports` と同族）。
 unused_import_braces = "warn"
+
+# ---------------------------------------------------------------------------
+# 誤りの検出 — 取り違え・バグ源になる形を拒む
+# ---------------------------------------------------------------------------
+
+# `macro_rules!` のメタ変数の取り違え。解析は不完全（取りこぼしあり）だが FP は実測 0 件。
+meta_variable_misuse = "warn"
+# `let x = ();` は式の書き間違いの合図（返り値のない関数を束縛している）。
+unit_bindings = "warn"
+
+# ---------------------------------------------------------------------------
+# 残骸を残さない — 死んだコード・デバッグ残りを残さない
+# ---------------------------------------------------------------------------
+
+# 将来 deprecated になる項目を使った時点で知る（`deprecated` の前倒し）。
+deprecated_in_future = "warn"
+# 使っていないライフタイム引数の残骸。
+redundant_lifetimes = "warn"
+# 使っていないライフタイム宣言。
+unused_lifetimes = "warn"
+# 使われないマクロ規則＝死んだ分岐（`define_template!` の規則追加で効く）。
+unused_macro_rules = "warn"
 
 [profile.release]
 opt-level = 3

@@ -185,7 +185,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### Clippy 運用
 
-lint の採用根拠と選定 6 軸（A 規約の機械化 / B 字面に意味 / C 決定性 / D 0 件予防 / E 対立 pair の lock-in / F nursery 個別主義）は root `Cargo.toml` の節見出しとコメントが正典。`clippy::all` が deny、`pedantic` が warn。
+lint の採用根拠は root `Cargo.toml` の 1 行コメント、節見出しは有効化の目的（規約の機械化 / 字面に意味 / 表記の固定 / 決定性 / crate の責務境界 / 誤りの検出 / 残骸を残さない / nursery）で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
 
 - 確認は CI / pre-commit と同じ `cargo clippy --all-targets --all-features -- -D warnings`（warn もビルド失敗になる）
 - **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes*`）。`reason` は「なぜ許してよいか」＝上流のどの保証・設計判断が根拠かで、lint 名の言い換えは不可。根拠が言えないなら直す（`dead_code` は削除）
