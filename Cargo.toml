@@ -320,8 +320,7 @@ missing_crate_level_docs = "warn"
 private_doc_tests = "warn"
 # doc 内の対にならない `` ` `` は描画が壊れる。
 unescaped_backticks = "warn"
-# doc build の正典が `--document-private-items` なので、公開項目の doc から非公開項目
-# （`FontMap` / `round_sp` / `PublicationResources::new` など facade の裏）を指すリンクは正当。
+# doc build の正典が `--document-private-items` なので、公開項目の doc から facade の裏を指すリンクは正当。
 private_intra_doc_links = "allow"
 
 [profile.release]
