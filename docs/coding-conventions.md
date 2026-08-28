@@ -148,6 +148,11 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した
   塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を
   緩めてまで無理に分割しない。
+- **同一ファイル内で inherent impl を分けない**（`multiple_inherent_impl`）: 1 つの型の `impl` ブロックを
+  同じファイルで 2 つに割ると、メソッドの探し先が字面から決まらない。ライフタイム引数の有無で分かれて
+  いるだけなら名前付きの側（`impl<'a> Measurer<'a>`）へ寄せて 1 つにする。子モジュール（別ファイル）へ
+  切り出した impl はこの lint の対象外なので、上の分割基準とは衝突しない（`typeset::boxing` と
+  `typeset::boxing::math` は分かれたままでよい）。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで
   `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを
   既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開した
@@ -185,7 +190,20 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
 - 型推論で足りる `as` は書かない（`trivial_casts`）。trait object から auto trait（`Send` / `Sync`）を落とす
   変換のように**外すとコンパイルが通らない**キャストで発火することがあり、そこだけ `#[expect]` + 理由で
   残す（`compiler::compile_failure`）。
+- 個数の決まった繰り返しを `(0..n).map(|_| v)` と書かない（`map_with_unused_argument_over_ranges`）。range
+  を使うと「添字を捨てている」ことが読み手の推論になるので、同じ値を並べるなら
+  `std::iter::repeat_n(v, n)`、毎回作り直すなら `std::iter::repeat_with(|| …).take(n)` と書いて「n 個」を
+  字面に出す。**クロージャに副作用があるときは `repeat_n` を使わない** — 値を 1 回だけ作って clone する形に
+  変わるので、繰り返しそのものが目的のテスト（`tests/determinism.rs` の 32 回コンパイル）では意味が壊れる。
+- `PathBuf` は `clone()` してから `push()` せず `join()` で組み立てる（`pathbuf_init_then_push`）。2 文に
+  割ると「間で分岐するのか」と読めるうえ、絶対パスを push したときの上書き（`path_buf_push_overwrite`）と
+  同じ形になる。拡張子だけは `set_extension` が確保し直さないので、
+  `let mut path = dir.join(name); path.set_extension("pdf");` の形を使う（`project::config::resolved`）。
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない。
+- エスケープの要らない文字列を `r"…"` で書かない（`needless_raw_strings`）。raw string は「`\` や `"` を
+  そのまま置いている」という合図なので、どちらも含まない文字列に付けると読み手へ嘘の合図を送る
+  （`\section{…}` のようなコマンド列は raw のまま残す）。ハッシュの要否は `needless_raw_string_hashes` が
+  見るので、2 つで「raw にするか」「`#` を付けるか」の両方が固定される。
 - 識別子は ASCII で書く（`non_ascii_idents`）。テスト名も同じで、日本語は doc コメント・診断メッセージ・
   assert の文言に置き、名前には持ち込まない。
 

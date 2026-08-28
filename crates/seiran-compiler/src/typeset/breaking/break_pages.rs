@@ -3351,7 +3351,7 @@ mod tests {
   fn composed_lines_break_across_pages() {
     // Arrange
     let geom = test_geometry();
-    let blocks: Vec<Block> = (0..5).map(|_| return composed_line(20.0, 8.0, 2.0, None)).collect();
+    let blocks: Vec<Block> = std::iter::repeat_n(composed_line(20.0, 8.0, 2.0, None), 5).collect();
 
     // Act
     let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);

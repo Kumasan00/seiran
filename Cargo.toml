@@ -123,12 +123,20 @@ unwrap_used = "warn"
 # 字面に意味 — G1「字面だけで構造が一意」の読み側。字面から意味が一意に取れる
 # ---------------------------------------------------------------------------
 
+# `ptr as *const _` はキャスト先の型を字面から消す（`as_underscore` のポインタ版）。
+as_pointer_underscore = "warn"
+# `x as _` はキャスト先の型を字面から消す（`trivial_casts` の裏面）。
+as_underscore = "warn"
 # `Rc::clone(&x)` 形で「参照カウントを増やしただけ」を呼び出し箇所に出す。
 clone_on_ref_ptr = "warn"
 # `.get(i).unwrap()` ではなく添字か `?` で書き、失敗の扱いを字面に出す。
 get_unwrap = "warn"
 # `map_err(|_| ...)` で元のエラーを黙って捨てない（cause は `#[source]` へ包む）。
 map_err_ignore = "warn"
+# `(0..n).map(|_| v)` は個数が消える。`repeat_n(v, n)` / `repeat_with(..).take(n)` なら「n 個」が字面に出る。
+map_with_unused_argument_over_ranges = "warn"
+# `clone()` してから `push()` は `join()` の綴り違い（1 つの式で組み立てる形に固定する）。
+pathbuf_init_then_push = "warn"
 # `Arc<Vec<u8>>` は二重間接で「可変にする気がある」と読める（共有する読み取り専用バイト列は `Arc<[u8]>`）。
 rc_buffer = "warn"
 # 継承元と同名の inherent method は呼び先が字面で決まらない。
@@ -142,8 +150,20 @@ unused_result_ok = "warn"
 # 表記の固定 — G1 の書き側。同じ意味を 2 通りに書かない
 # ---------------------------------------------------------------------------
 
+# `&x[..]` ではなく `&*x` と書く。
+deref_by_slicing = "warn"
+# `Variant {}` / `Variant()` ではなく `Variant` と書く。
+empty_enum_variants_with_brackets = "warn"
+# `struct Foo {}` ではなく `struct Foo;` と書く。
+empty_structs_with_brackets = "warn"
+# 同一ファイル内で 1 つの型の inherent impl を分けない（別ファイルの impl は対象外なのでモジュール分割と衝突しない）。
+multiple_inherent_impl = "warn"
+# エスケープの要らない `r"…"` は素の `"…"` に固定する（`needless_raw_string_hashes` の対）。
+needless_raw_strings = "warn"
 # `pub(self)` ではなく `pub(crate)` 等の短縮形に統一する。
 pub_without_shorthand = "warn"
+# 右辺の型と同じ注釈を書かない（`let x: Foo = Foo::new()`）。
+redundant_type_annotations = "warn"
 # ブロックのセミコロンは `{ ...; }` と内側に置く。
 semicolon_inside_block = "warn"
 # 数値リテラルの型サフィックスは `1u32` 形（`1_u32` 形と混在させない）。
@@ -163,10 +183,14 @@ unnecessary_self_imports = "warn"
 fn_to_numeric_cast_any = "warn"
 # 定数との float 比較は丸め方式に依存する（等価判定を書かない）。
 float_cmp_const = "warn"
+# `to_ne_bytes` / `from_ne_bytes` は実行環境のエンディアン依存（明示エンディアンの 2 種は対象外）。
+host_endian_bytes = "warn"
 # `HashMap` / `HashSet` の `for` 反復順はプロセスごとに変わる（`BTreeMap` か sort 済み `Vec` を使う）。
 iter_over_hash_type = "warn"
 # 型に収まらない float リテラルは黙って丸められる。
 lossy_float_literal = "warn"
+# `{:p}` が出す値は実行ごとに変わる。
+pointer_format = "warn"
 
 # ---------------------------------------------------------------------------
 # crate の責務境界 — ライブラリ 2 crate はプロセス境界の効果（終了・表示）を持たない
@@ -188,8 +212,18 @@ cfg_not_test = "warn"
 infinite_loop = "warn"
 # `mem::forget` による資源リーク。
 mem_forget = "warn"
+# 1 つの式の中での read と write は評価順に依存する。
+mixed_read_write_in_expression = "warn"
+# 符号付きの `%` は負値で結果の符号が変わる（`Length` は符号付きの sp）。
+modulo_arithmetic = "warn"
+# shift と mask の混在は括弧で優先順位を字面に出す（`ambiguous_negative_literals` と同族）。
+precedence_bits = "warn"
 # `Rc<Mutex<T>>` は単一スレッドでの排他という取り違え（`RefCell` を使う）。
 rc_mutex = "warn"
+# 全フィールドを束縛した上の `..` は「将来のフィールドを黙って吸う」残骸（`unneeded_field_pattern` の裏面）。
+rest_pat_in_fully_bound_structs = "warn"
+# `2 ^ 8` は累乗ではない。
+suspicious_xor_used_as_pow = "warn"
 
 # ---------------------------------------------------------------------------
 # 残骸を残さない — 死んだコード・デバッグ残りを残さない
@@ -197,6 +231,8 @@ rc_mutex = "warn"
 
 # デバッグ残骸を残さない。
 dbg_macro = "warn"
+# 空の `Drop` 実装は資源解放の意図が消えた残骸。
+empty_drop = "warn"
 # `todo!` / `unimplemented!` を残さない。
 todo = "warn"
 unimplemented = "warn"
@@ -219,6 +255,8 @@ fallible_impl_from = "warn"
 imprecise_flops = "warn"
 # 読むだけの `&mut` 引数を落とす（呼び出し側に不要な可変借用を要求しない）。
 needless_pass_by_ref_mut = "warn"
+# `vec!{}` / `format!()` の括弧を標準形へ固定する（表記の固定）。
+nonstandard_macro_braces = "warn"
 # 絶対パスの `push` は元のパスを丸ごと捨てる（`ProjectPath` の組み立てで効く）。
 path_buf_push_overwrite = "warn"
 # 長さ 0 の `Vec` へ `read` して 0 バイトだけ読む取り違え。
@@ -232,6 +270,10 @@ redundant_clone = "warn"
 suboptimal_flops = "warn"
 # `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
 unused_peekable = "warn"
+# 整数リテラルの `round()` は効果のない残骸。
+unused_rounding = "warn"
+# float をループ変数に累積すると反復回数が丸めに依存する（決定性）。
+while_float = "warn"
 
 # 節見出しと置き場の規則は上の clippy テーブルと同じ（目的が空の節は置かない）。カタログ（`rustc -W help` の
 # allow-by-default 61 lint）全数の処分記録は #421（採用 23 / 恒久不採用 / 見送り）。
