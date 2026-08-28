@@ -105,17 +105,17 @@ fn error_path_is_deterministic_across_repeated_runs() {
     let root = ProjectPath::new("/project/config.toml");
 
     // Act — 同じ入力を繰り返しコンパイルし、診断の code 列を集める
-    let runs: Vec<Vec<String>> = (0..32)
-      .map(|_| {
-        let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("この入力は失敗するはず");
-        return failure
-          .diagnostics()
-          .map(|diagnostic| {
-            return diagnostic.code().expect("leaf 診断は code を持つはず").to_string();
-          })
-          .collect();
-      })
-      .collect();
+    let runs: Vec<Vec<String>> = std::iter::repeat_with(|| {
+      let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("この入力は失敗するはず");
+      return failure
+        .diagnostics()
+        .map(|diagnostic| {
+          return diagnostic.code().expect("leaf 診断は code を持つはず").to_string();
+        })
+        .collect();
+    })
+    .take(32)
+    .collect();
 
     // Assert — 全実行で code 列（件数と順序）が一致する
     let first = runs.first().expect("32 回実行しているはず");

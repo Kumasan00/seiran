@@ -79,7 +79,7 @@ pub(crate) fn evaluate_grid(
         TokenKind::Ampersand => {
           if !spec.allow_column_breaks {
             return Err(EvalError::UnsupportedInMath {
-              what: r"&（列区切り）".to_string(),
+              what: "&（列区切り）".to_string(),
               span: token.span.to_source_span(),
             });
           }

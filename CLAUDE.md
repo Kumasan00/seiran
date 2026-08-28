@@ -150,6 +150,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 - **`mod.rs` を使わない**: 親は `foo.rs`、子は `foo/<child>.rs`（`mod_module_files`）。例外は `tests/common/mod.rs` だけ
 - **既定で非公開 + root ファサード**: 子は `mod`、公開 API は root（または親）の `pub use` で 1 本に揃える。`pub mod` / `pub(crate) mod` は module 名が名前空間として意味を持つときだけ（`project::config::load` vs `style::load`）。同名型を 2 つ作って module 公開で回避せず名前側を変える（`ConfigValidationError` / `StyleValidationError`）。facade へ載せるのは実際に名指しされる名前だけ（`unreachable_pub` / `unnameable_types`）。利用側は最浅の公開パスから import し、enum variant は import せず `Enum::Variant` と書く
+- **同一ファイル内で 1 型の inherent impl を分けない**（`multiple_inherent_impl`）: ライフタイム引数の有無で分かれているだけなら名前付きの側へ寄せる。別ファイルへ切り出した impl は lint の対象外なので分割の慣行と衝突しない
 - **分割の判断基準**: 行数ではなく**自己完結した本体コードの塊**の大きさ。大半がインラインテストなら分割しない。切り出すのはエラー型 enum のようにロジックを持たず private 内部に依存しない塊で、`Parser` 等の private フィールドに密結合したメソッド群は可視性を緩めてまで分割しない
 - 切り出した型は親で `pub use <child>::<Type>;` して公開パスを維持するのが既定。新パスのほうが明確なら変更可
 
@@ -166,7 +167,10 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | 公開型に `Debug`。生バイト列が載る型（読込キャッシュ・フォント・画像）は手書きで件数・長さだけ出す | `missing_debug_implementations` |
 | 借用を持つ型は `Foo<'_>` | `elided_lifetimes_in_paths` |
 | 型推論で足りる `as` は書かない。auto trait を落とす必須キャストだけ `#[expect]` + 理由 | `trivial_casts` |
+| 個数の決まった繰り返しは `(0..n).map(\|_\| v)` ではなく `repeat_n(v, n)` / `repeat_with(..).take(n)`（副作用があるなら後者） | `map_with_unused_argument_over_ranges` |
+| `PathBuf` は `clone()` + `push()` ではなく `join()` で組み立てる（拡張子だけ `set_extension`） | `pathbuf_init_then_push` |
 | 数値リテラルの型サフィックスは `1u32` 形 | `separated_literal_suffix` |
+| エスケープの要らない文字列に `r"…"` を付けない | `needless_raw_strings` |
 | 識別子は ASCII（テスト名も）。日本語は doc・診断・assert 文言へ | `non_ascii_idents` |
 
 - **enum match の wildcard（人が守る）**: 「入力 enum に variant を追加したら、この処理の判断を必ず見直すべきか」で決める。**Yes なら全 variant を明示**（意味的な対応表・parser / evaluator の dispatch・状態遷移・段間語彙の完全走査・新 variant がアルゴリズムへ参加するか判断すべき分類。同じ結果は `|` でまとめる）。**No なら wildcard を維持**（抽出・検索、部分集合の述語、許可リスト外を同じ診断にする既定エラー、pass-through、enum 自身の共通操作への委譲 — 「新 variant も既定へ入る」が処理の意味）。ガード付き arm は網羅性判定に参加しないので、同じ variant を wildcard 側の列挙にも書く。`wildcard_enum_match_arm` は Yes / No を区別できないので有効化しない

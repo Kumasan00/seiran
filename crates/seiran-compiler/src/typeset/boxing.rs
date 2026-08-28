@@ -124,9 +124,7 @@ impl<'a> Measurer<'a> {
       punctuation_spacing,
     };
   }
-}
 
-impl Measurer<'_> {
   /// 縦リストを走査してブロック列を構築する（`VBox` に再帰適用）
   fn walk_vertical(
     &mut self,

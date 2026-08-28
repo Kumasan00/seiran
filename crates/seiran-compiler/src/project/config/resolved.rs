@@ -55,8 +55,7 @@ impl OutputConfig {
   /// `{output_dir}/{name}.pdf` の絶対パスを返す
   #[must_use]
   pub(crate) fn pdf_path(&self) -> PathBuf {
-    let mut path = self.output_dir.clone();
-    path.push(&self.name);
+    let mut path = self.output_dir.join(&self.name);
     path.set_extension("pdf");
     return path;
   }

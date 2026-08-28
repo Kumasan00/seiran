@@ -64,7 +64,7 @@ pub(crate) fn evaluate_math_elements(
         },
         TokenKind::Ampersand => {
           return Err(EvalError::UnsupportedInMath {
-            what: r"&（列区切り）".to_string(),
+            what: "&（列区切り）".to_string(),
             span: token.span.to_source_span(),
           });
         },

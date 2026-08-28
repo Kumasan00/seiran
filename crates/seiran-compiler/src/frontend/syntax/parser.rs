@@ -1161,14 +1161,14 @@ mod tests {
   #[test]
   fn math_group_unclosed_by_dollar_is_error() {
     let arena = Bump::new();
-    let result = parse(r"${x$", &arena);
+    let result = parse("${x$", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
   }
 
   #[test]
   fn math_group_unclosed_by_eof_is_error() {
     let arena = Bump::new();
-    let result = parse(r"${x", &arena);
+    let result = parse("${x", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
   }
 
@@ -1202,14 +1202,14 @@ mod tests {
   #[test]
   fn unclosed_inline_math_is_error() {
     let arena = Bump::new();
-    let result = parse(r"$x", &arena);
+    let result = parse("$x", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
   }
 
   #[test]
   fn currency_dollar_without_escape_is_error() {
     let arena = Bump::new();
-    let result = parse(r"price is 100$", &arena);
+    let result = parse("price is 100$", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
   }
 
@@ -1231,14 +1231,14 @@ mod tests {
   #[test]
   fn bare_lbracket_in_inline_math_is_error() {
     let arena = Bump::new();
-    let result = parse(r"$[0,1]$", &arena);
+    let result = parse("$[0,1]$", &arena);
     assert!(matches!(result, Err(ParserError::BareBracket { .. })));
   }
 
   #[test]
   fn stray_rbrace_in_inline_math_is_error() {
     let arena = Bump::new();
-    let result = parse(r"$x}$", &arena);
+    let result = parse("$x}$", &arena);
     assert!(matches!(
       result,
       Err(ParserError::UnexpectedToken {
@@ -1258,7 +1258,7 @@ mod tests {
   #[test]
   fn math_script_without_content_before_dollar_is_error() {
     let arena = Bump::new();
-    let result = parse(r"$x^$", &arena);
+    let result = parse("$x^$", &arena);
     assert!(matches!(
       result,
       Err(ParserError::UnexpectedToken {
@@ -1271,7 +1271,7 @@ mod tests {
   #[test]
   fn math_script_skips_whitespace_before_content() {
     let arena = Bump::new();
-    let cst = parse_source(r"$x^ 2$", &arena);
+    let cst = parse_source("$x^ 2$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };

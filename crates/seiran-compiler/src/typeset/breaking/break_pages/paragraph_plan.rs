@@ -220,7 +220,9 @@ mod tests {
   }
 
   /// 脚注を持たない `count` 行ぶんの需要（[`super::place_lines`] / [`plan_paragraph_lines`] のテスト用）
-  fn no_footnotes(count: usize) -> Vec<Vec<FootnoteDemand>> { return (0..count).map(|_| return Vec::new()).collect(); }
+  fn no_footnotes(count: usize) -> Vec<Vec<FootnoteDemand>> {
+    return std::iter::repeat_with(Vec::new).take(count).collect();
+  }
 
   /// 課金ゼロの脚注パラメータ（脚注を使わない計画テスト用）
   fn no_charges() -> FootnoteCharges {
