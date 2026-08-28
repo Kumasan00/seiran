@@ -430,7 +430,7 @@ mod tests {
   #[test]
   fn table_cell_preserves_inline_styles() {
     // Arrange
-    let source = r"\begin{table}\row{\bold{強調} & $x^2$}\end{table}";
+    let source = r"\begin{table}\row{\bold{強調} & $x^{2}$}\end{table}";
 
     // Act
     let result = eval_table(source).unwrap();

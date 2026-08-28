@@ -2,9 +2,9 @@
 //!
 //! インライン数式と数式環境のセルを [`HirMath`] 列に変換する。
 //!
-//! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。単一ノードへ畳まれる
-//! グループのように、確保した ID が使われない場合は `NodeId` に穴が空くが、同じ入力なら
-//! 常に同じ穴になるので決定性は保たれる。
+//! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。コマンドの数式引数
+//! （[`math_arg_to_node`]）のように単一ノードへ畳まれてグループ用の ID が使われない場合は
+//! `NodeId` に穴が空くが、同じ入力なら常に同じ穴になるので決定性は保たれる。
 
 use crate::{
   document::{HirBuilder, HirMath, HirMathKind, MathVariant, NodeId},
@@ -132,76 +132,28 @@ pub(crate) fn evaluate_math_elements(
 
 /// 上付き・下付きスクリプトノードの中身を単一の [`HirMath`] に変換する
 ///
-/// 中身が 1 ノードならそのまま、複数ならグループにまとめる。グループ用の ID は中身の
-/// 評価より前に確保する必要があるため、1 ノードに畳まれた場合は使われないまま穴になる。
+/// `parse_math_script`（`syntax::parser`）が内容を `{...}` グループ 1 個に限定しているので（#486）、
+/// 子は `^` / `_` 自身・先行トリビアのトークンと、内容の `MathGroup` ノード 1 個だけになる。
 fn evaluate_math_script_content(
   source: &str,
   builder: &HirBuilder,
   script_node: &GreenNode<'_>,
 ) -> Result<HirMath, EvalError> {
-  let group_id = builder.alloc(script_node.span);
-  let mut nodes = Vec::new();
-  for child in script_node.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-        // （実際の消費者は verbatim コマンド、#449）。
-        TokenKind::Text | TokenKind::VerbatimText | TokenKind::Comma | TokenKind::Equals => {
-          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
-        },
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(text.to_string())));
-        },
-        TokenKind::LineBreak => {
-          return Err(EvalError::UnsupportedInMath {
-            what: r"\\（強制改行）".to_string(),
-            span: token.span.to_source_span(),
-          });
-        },
-        // `_` / `^` 自身と先行トリビア、`parse_math_script` が単一トークンとして積んだ記号類は、
-        // スクリプトの中身としては無視する。
-        TokenKind::Command
-        | TokenKind::LBrace
-        | TokenKind::RBrace
-        | TokenKind::LBracket
-        | TokenKind::RBracket
-        | TokenKind::Dollar
-        | TokenKind::Underscore
-        | TokenKind::Caret
-        | TokenKind::Ampersand
-        | TokenKind::Whitespace
-        | TokenKind::Newline
-        | TokenKind::ParagraphBreak
-        | TokenKind::Comment
-        | TokenKind::Unknown => {},
-      },
-      GreenElement::Node(child_node) => match child_node.kind {
-        SyntaxKind::MathGroup => {
-          let id = builder.alloc(child_node.span);
-          let inner = evaluate_math_children(source, builder, child_node)?;
-          nodes.push(HirMath::new(id, HirMathKind::Group(inner)));
-        },
-        SyntaxKind::CommandCall => {
-          let math_node = evaluate_math_command(source, builder, child_node)?;
-          nodes.push(math_node);
-        },
-        // 上下付きの中身として組み立てるのは `MathGroup` と `CommandCall` だけで
-        // （`parse_math_script`）、それ以外のノードはスクリプトの中身として扱わない。
-        SyntaxKind::Root
-        | SyntaxKind::Environment
-        | SyntaxKind::EnvironmentBegin
-        | SyntaxKind::EnvironmentEnd
-        | SyntaxKind::EnvironmentBody
-        | SyntaxKind::OptArg
-        | SyntaxKind::MandatoryArg
-        | SyntaxKind::InlineMath
-        | SyntaxKind::MathSubscript
-        | SyntaxKind::MathSuperscript => {},
-      },
-    }
-  }
-  return Ok(collapse_single(group_id, nodes));
+  let group_node = script_node.children.iter().find_map(|child| {
+    return match child {
+      GreenElement::Node(node) if node.kind == SyntaxKind::MathGroup => Some(node),
+      GreenElement::Node(_) | GreenElement::Token(_) => None,
+    };
+  });
+  let Some(group_node) = group_node else {
+    unreachable!(
+      "`parse_math_script` は内容が `{{...}}` グループでなければ構文エラーにするので、スクリプトノードには必ず MathGroup の子がある"
+    )
+  };
+
+  let id = builder.alloc(group_node.span);
+  let inner = evaluate_math_children(source, builder, group_node)?;
+  return Ok(HirMath::new(id, HirMathKind::Group(inner)));
 }
 
 /// ノード列を単一ノードへ畳む（1 個ならそのまま、それ以外は予約済み ID のグループにする）

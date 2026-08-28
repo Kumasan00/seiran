@@ -409,15 +409,18 @@ mod tests {
 
   #[test]
   fn evaluate_inline_math_subscript() {
-    let result = evaluate_source("$x_i$");
+    let result = evaluate_source("$x_{i}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 2);
         assert!(matches!(&math[0].kind, HirMathKind::Text(t) if t == "x"));
         assert!(matches!(&math[1].kind, HirMathKind::Subscript(_)));
+        // 内容は必ず `{...}` グループなので、スクリプトの子は 1 要素の `Group` になる（#486）
         if let HirMathKind::Subscript(inner) = &math[1].kind {
-          assert!(matches!(&inner.kind, HirMathKind::Text(t) if t == "i"));
+          assert!(
+            matches!(&inner.kind, HirMathKind::Group(children) if matches!(&children[0].kind, HirMathKind::Text(t) if t == "i"))
+          );
         }
       } else {
         panic!("InlineMath が期待されます");
@@ -429,14 +432,16 @@ mod tests {
 
   #[test]
   fn evaluate_inline_math_superscript() {
-    let result = evaluate_source("$x^2$");
+    let result = evaluate_source("$x^{2}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 2);
         assert!(matches!(&math[1].kind, HirMathKind::Superscript(_)));
         if let HirMathKind::Superscript(inner) = &math[1].kind {
-          assert!(matches!(&inner.kind, HirMathKind::Text(t) if t == "2"));
+          assert!(
+            matches!(&inner.kind, HirMathKind::Group(children) if matches!(&children[0].kind, HirMathKind::Text(t) if t == "2"))
+          );
         }
       } else {
         panic!("InlineMath が期待されます");
@@ -447,7 +452,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_subscript_with_group() {
+  fn evaluate_inline_math_subscript_with_multiple_characters() {
     let result = evaluate_source("$x_{ij}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
@@ -463,7 +468,7 @@ mod tests {
 
   #[test]
   fn evaluate_inline_math_subscript_and_superscript_combined() {
-    let result = evaluate_source("$a_i^2$");
+    let result = evaluate_source("$a_{i}^{2}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
@@ -791,7 +796,7 @@ mod tests {
 
   #[test]
   fn evaluate_equation_env_body_produces_superscript() {
-    let result = evaluate_source(r"\begin{equation}x^2\end{equation}");
+    let result = evaluate_source(r"\begin{equation}x^{2}\end{equation}");
 
     assert_eq!(result.len(), 1);
     let HirNodeKind::MathBlock { rows, .. } = &result[0].kind else {
@@ -989,7 +994,7 @@ mod tests {
 
   #[test]
   fn evaluate_math_frac_arg_structures_superscript() {
-    let result = evaluate_source(r"$\frac{x^2}{y}$");
+    let result = evaluate_source(r"$\frac{x^{2}}{y}$");
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };

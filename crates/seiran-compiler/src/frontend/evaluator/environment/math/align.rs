@@ -123,7 +123,7 @@ mod tests {
   fn align_cell_content_is_evaluated() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\begin{align}x^2 &= y\end{align}";
+    let source = r"\begin{align}x^{2} &= y\end{align}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act

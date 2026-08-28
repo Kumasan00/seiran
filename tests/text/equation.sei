@@ -1,9 +1,9 @@
 \section{数式のサンプル}
 
-インライン数式 $x^2 + y^2 = z^2$ と、ディスプレイ数式（equation 環境）の動作確認用フィクスチャ。
+インライン数式 $x^{2} + y^{2} = z^{2}$ と、ディスプレイ数式（equation 環境）の動作確認用フィクスチャ。
 
 \begin{equation}
-a^2 + b^2 = c^2
+a^{2} + b^{2} = c^{2}
 \end{equation}
 
 \begin{equation}[label=eq:euler]

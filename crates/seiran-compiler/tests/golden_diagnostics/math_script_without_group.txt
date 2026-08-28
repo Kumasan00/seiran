@@ -1,0 +1,11 @@
+frontend::parse::script_requires_group
+
+  × 上付き・下付きの内容は {...} で囲む必要があります
+   ╭─[tests/text/diagnostics/math_script_without_group.sei:3:25]
+ 2 │ 
+ 3 │ インライン数式 $x^2+y$ の上付きが波括弧で囲まれていません。
+   ·                  ┬
+   ·                  ╰── このスクリプトの内容が {...} で囲まれていません
+   ╰────
+  help: $x^2$ ではなく $x^{2}$ と書きます。1 文字でもコマンド 1 個でも囲みが必要です（$x_{i}$ /
+        $x^{\alpha}$）

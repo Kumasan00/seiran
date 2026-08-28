@@ -612,7 +612,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let out = lower_source(&style, "$x^2$\n");
+    let out = lower_source(&style, "$x^{2}$\n");
 
     // Assert
     let placeholder = out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "[Math]"));
