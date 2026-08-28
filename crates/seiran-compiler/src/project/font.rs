@@ -48,9 +48,11 @@ pub(crate) enum FontReadError {
 /// 構築経路は [`FontData::load`] だけで、`ProjectSource` seam を必ず経由する。
 ///
 /// バイト列は `Arc` で共有する — 同じフォントファイルを指す種別は同一の `Arc` を持ち、
-/// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。
+/// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。seam
+/// （[`ProjectSource::read_bytes`]）が返す `Arc<[u8]>` をそのまま持つのはこのためで、
+/// `Vec` へ移し替えると seam のキャッシュと二重に常駐する。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct FontData(FontMap<Arc<Vec<u8>>>);
+pub(crate) struct FontData(FontMap<Arc<[u8]>>);
 
 impl FontData {
   /// 設定された全フォントファイルを読み込む。同じパスを指す種別は 1 回だけ読む。
@@ -83,10 +85,10 @@ impl FontData {
             source,
           };
         })?;
-        return Ok((path.clone(), Arc::new(bytes.to_vec())));
+        return Ok((path.clone(), bytes));
       })
-      .collect::<Vec<Result<(PathBuf, Arc<Vec<u8>>), FontReadError>>>();
-    let loaded: HashMap<PathBuf, Arc<Vec<u8>>> = failures::collect_in_input_order(results)?.into_iter().collect();
+      .collect::<Vec<Result<(PathBuf, Arc<[u8]>), FontReadError>>>();
+    let loaded: HashMap<PathBuf, Arc<[u8]>> = failures::collect_in_input_order(results)?.into_iter().collect();
 
     let font_datas = FontType::ALL
       .iter()
@@ -94,19 +96,19 @@ impl FontData {
         let path = &font_configs[font_type].font_path;
         return Arc::clone(loaded.get(path).expect("上のループで全パスを読み込み済みのはず"));
       })
-      .collect::<Vec<Arc<Vec<u8>>>>();
+      .collect::<Vec<Arc<[u8]>>>();
     return Ok(FontData(FontMap::from_all(font_datas)));
   }
 
   /// 指定されたフォント種別のバイト列を返す。
   #[must_use]
-  pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return self.0[font_type].as_slice(); }
+  pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return &self.0[font_type]; }
 
   /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
   ///
   /// `Publication` の描画資源へ渡すために使う（バイト列は複製されない）。
   #[must_use]
-  pub(crate) fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(&self.0[font_type]); }
+  pub(crate) fn shared_bytes(&self, font_type: FontType) -> Arc<[u8]> { return Arc::clone(&self.0[font_type]); }
 }
 
 #[cfg(test)]

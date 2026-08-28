@@ -113,7 +113,8 @@ redundant_test_prefix = "warn"
 undocumented_unsafe_blocks = "warn"
 # SAFETY 族 — unsafe を含まない箇所の SAFETY コメントは誤読を招く死んだ注釈。
 unnecessary_safety_comment = "warn"
-# SAFETY 族 — unsafe を含まない項目に `# Safety` doc を書かせない。
+# SAFETY 族 — unsafe を含まない項目に `# Safety` doc を書かせない。`clippy.toml` の
+# check-private-items = false（維持）を見るので、公開項目しか検査しない部分的な機械化（`unwrap_in_result` と同じ性格）。
 unnecessary_safety_doc = "warn"
 # 本体の `.unwrap()` を禁じ、panic しない根拠を `.expect()` のメッセージへ書かせる。
 unwrap_used = "warn"
@@ -128,6 +129,8 @@ clone_on_ref_ptr = "warn"
 get_unwrap = "warn"
 # `map_err(|_| ...)` で元のエラーを黙って捨てない（cause は `#[source]` へ包む）。
 map_err_ignore = "warn"
+# `Arc<Vec<u8>>` は二重間接で「可変にする気がある」と読める（共有する読み取り専用バイト列は `Arc<[u8]>`）。
+rc_buffer = "warn"
 # 継承元と同名の inherent method は呼び先が字面で決まらない。
 same_name_method = "warn"
 # `Err(x)?` ではなく `return Err(x)` と書く（早期 return を字面に出す）。

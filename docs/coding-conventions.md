@@ -161,6 +161,12 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。
   `x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、
   型宣言まで遡らないと読めない。`rc::Weak` / `sync::Weak` も対象。
+- 共有する読み取り専用のバイト列は `Arc<[u8]>` で持ち、`Arc<Vec<u8>>` を作らない（`rc_buffer`。文字列なら
+  `Arc<String>` ではなく `Arc<str>`）。`Arc<Vec<u8>>` は二重間接で、字面が「これから長さを変える」と読める。
+  さらに実害があり、`Arc<[u8]>` から `Vec` へ移し替える時点でバイト列を丸ごと複製してしまう — 外部資源の
+  seam（`ProjectSource::read_bytes`）が返す `Arc<[u8]>` は、最終消費点までその形のまま運ぶ。外部 crate の
+  API が `Arc<[u8]>` を受け取らないときも型を戻さず、`AsRef<[u8]>` を実装する newtype で包んで渡す
+  （`seiran-pdf::font` の `FontBytes` → krilla の `Data`）。
 - そのまま move すれば済む値を `clone()` しない（`redundant_clone`）。複製先も元もその後読まれないなら、
   複製は無駄なだけでなく「ここは所有権を分ける必要がある」という誤った合図を残す。nursery lint だが
   Known problems は **false-negative**（解析が保守的）なので、発火したら真陽性として直す。裏返すと
@@ -243,10 +249,27 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 
 **lint の採用根拠の正典は root `Cargo.toml`** — `[workspace.lints.clippy]` / `[workspace.lints.rust]`（各
 クレートは `lints.workspace = true` で両テーブルを継承）に 1 lint = 1 行の根拠コメントが付いていて、
-節見出しが下の目的に対応する。lint 側の設定値は root `clippy.toml`（`absolute-paths-max-segments = 3` /
-`allow-unwrap-in-tests = true` / `allow-panic-in-tests = true`）。lint の増減と根拠の更新が同じ diff に
-閉じるように、個々の lint の理由は `Cargo.toml` のコメントに書き、個々の lint が要求する**書き方**は
-本書の規約各節に置く。`CLAUDE.md` の Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
+節見出しが下の目的に対応する。lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の理由は
+`Cargo.toml` のコメントに書き、個々の lint が要求する**書き方**は本書の規約各節に置く。`CLAUDE.md` の
+Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
+
+**lint 側の設定値は root `clippy.toml`** — 置くのは**既定と違う値だけ**で、既定どおり維持するノブは書かない
+（差分＝意図として読める形を保ち、既定値の複製で upstream の既定変更に追随する二重帳簿を作らないため。
+ノブ 113 個の全数棚卸しと維持判断の記録は #473 が持つ）。
+
+| ノブ                                | 値      | 根拠                                                                                 |
+| ----------------------------------- | ------- | ------------------------------------------------------------------------------------ |
+| `absolute-paths-max-segments`       | `3`     | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                      |
+| `allow-mixed-uninlined-format-args` | `false` | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる       |
+| `allow-panic-in-tests`              | `true`  | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                        |
+| `allow-unwrap-in-tests`             | `true`  | テストの `unwrap` は許容                                                              |
+| `avoid-breaking-exported-api`       | `false` | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる   |
+| `upper-case-acronyms-aggressive`    | `true`  | `HTTPResponse` 形も `HttpResponse` に固定する                                        |
+
+`avoid-breaking-exported-api = false` の帰結として `rc_mutex` / `needless_pass_by_ref_mut` / `ref_option` /
+`unused_self` / `wrong_self_convention` 等が公開項目にも効く。逆に `check-private-items` は既定の false を
+維持しているので、`unnecessary_safety_doc` / `missing_safety_doc` は公開項目しか検査しない（非公開関数へ
+`# Panics` を強いると `.expect("なぜ落ちないか")` の根拠と二重帳簿になるため）。
 
 ### 有効化の目的（節見出し）
 

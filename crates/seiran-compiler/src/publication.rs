@@ -199,7 +199,7 @@ pub struct ImageRef(usize);
 #[derive(Clone, PartialEq)]
 pub struct PublicationFont {
   /// フォントファイルのバイト列（同じファイルを指す種別は同一の `Arc` を共有する）
-  pub bytes: Arc<Vec<u8>>,
+  pub bytes: Arc<[u8]>,
   /// krilla フォント構築に必要な設定（TTC インデックス・バリアブルフォント軸）
   pub face: FontFaceConfig,
   /// 基本メトリクス（フォントユニット系）
@@ -437,7 +437,7 @@ pub(crate) mod test_fixtures {
   /// 座標・寸法に影響しない資源が必要なだけのテスト（ダンプ・`Publication` の組み立て）向け。
   pub(crate) fn resources(images: Vec<PublicationImage>) -> PublicationResources {
     let font = PublicationFont {
-      bytes: Arc::new(Vec::new()),
+      bytes: Arc::from(Vec::new()),
       face: FontFaceConfig {
         font_index: 0,
         variation_axes: None,
