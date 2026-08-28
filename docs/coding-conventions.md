@@ -66,8 +66,10 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
 ### 4. ドキュメントコメント
 
 すべてのモジュール・型（struct / enum / trait）・関数に**日本語**で記述する。`missing_docs_in_private_items`
-と rustc の `missing_docs` の 2 枚で全項目の**有無だけ**が検査される。日本語で書かれているかは検査されない
-ので人が見る。
+と rustc の `missing_docs` の 2 枚で全項目の**有無だけ**が検査される。担当範囲は前者が非公開項目と
+`pub(crate)`、後者が公開項目と **crate root**（`//!`）で、2 枚に穴はない（rustdoc の
+`missing_crate_level_docs` は後者と完全に重複するので採らない。#482）。日本語で書かれているかは検査され
+ないので人が見る。
 
 ### 5. `unreachable!` は積極的に使う
 
@@ -117,8 +119,9 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
 根拠か」を 1 対 1 で対応させるためで、逆に unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc を
 書かない（`unnecessary_safety_comment` / `unnecessary_safety_doc`。「ここに検証済みの unsafe がある」という
 誤読を招く死んだ注釈になる）。周辺コードの前提を説明したいときは `// NOTE:` 等の別の語で書く。
-`unsafe fn` の本体でも `unsafe {}` を書く（`unsafe_op_in_unsafe_fn`。この lint は edition 2024 の既定と同じ
-値を `Cargo.toml` に明文化したもので、採用判断ではなく、本ルールの門番を 1 箇所に並べるために置いてある）。
+`unsafe fn` の本体でも `unsafe {}` を書く — これは edition 2024 既定の `unsafe_op_in_unsafe_fn` が担う。既定と
+同じ値は `Cargo.toml` に書かない（`clippy.toml` と同じ「既定と違う値だけ書く」原則。門番が lint 行として
+並ばない代わりに、`undocumented_unsafe_blocks` の根拠コメントがこの lint を名指しする）。
 
 ## モジュール構成
 
@@ -333,9 +336,10 @@ lint が**発火＝提案に従う**とは限らない — `suboptimal_flops`（
 の提案は桁落ちを避ける側なので採るのが既定。`mul_add` は IEEE の単一丸めで `a * b + c` と同じく決定的な
 ので、採用の代償は移行時に値が一度動くことと、非 FMA ターゲットでの libm fallback だけ。
 
-採らないと決めた lint の理由は 3 つの issue に分かれて記録がある（いずれも恒久不採用と、条件が変われば
+採らないと決めた lint の理由は 4 つの issue に分かれて記録がある（いずれも恒久不採用と、条件が変われば
 再検討するものを分けてある）— clippy の初回処分（restriction / nursery のカタログ）は #402、rustc 側は #421、
-clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473。
+clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473、rustdoc lint 2 種の撤回と採用基準に
+矛盾する処分 4 件の是正（第 3 次の全数 sweep で未処分 0 を確認）は #482。
 
 ### 運用
 

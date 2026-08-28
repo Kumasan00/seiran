@@ -199,7 +199,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 - **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes*`）。`reason` は「なぜ許してよいか」＝上流のどの保証・設計判断が根拠かで、lint 名の言い換えは不可。根拠が言えないなら直す（`dead_code` は削除）
 - 本体ビルドでだけ発火する lint は `#[cfg_attr(not(test), expect(...))]`（素の `#[expect]` はテストビルドで `unfulfilled_lint_expectations` に落ちる）
 - 新 lint の 0 件は `--message-format=json -- -W clippy::<name>` で診断コード単位に実測する（短縮フォーマットの grep は lint 名を含まず偽陰性）
-- `suboptimal_flops` / `imprecise_flops` は通知として有効化してあり、発火＝提案に従うとは限らない（採否は箇所ごと）。不採用 lint の理由は #402（clippy 初回）/ #421（rustc）/ #473（clippy 未処分 84・`clippy.toml` ノブ・rustdoc）
+- `suboptimal_flops` / `imprecise_flops` は通知として有効化してあり、発火＝提案に従うとは限らない（採否は箇所ごと）。不採用 lint の理由は #402（clippy 初回）/ #421（rustc）/ #473（clippy 未処分 84・`clippy.toml` ノブ・rustdoc）/ #482（第 3 次 sweep — rustdoc lint 2 種の撤回・基準に矛盾する処分 4 件の是正）
 
 ### テスト
 
