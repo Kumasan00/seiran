@@ -95,17 +95,11 @@ missing_docs_in_private_items = "warn"
 mod_module_files = "warn"
 # SAFETY 族 — unsafe 操作 1 つに 1 ブロック 1 コメントの 1 対 1 対応を保つ。
 multiple_unsafe_ops_per_block = "warn"
-# 必須ルール 5 / 6 の帰結 — 本体コードの裸の `panic!` に居場所はない（到達しない分岐は `unreachable!`、
-# 入力由来の状態は miette 診断）。`unreachable!` / `assert!` 系は別 lint なので規約と衝突しない。
-# テストは `clippy.toml` の allow-panic-in-tests = true で対象外（`unwrap_used` と同じ扱い）。
+# 必須ルール 5 / 6 の帰結 — 本体コードの裸の `panic!` に居場所はない（検出範囲とテストの扱いは必須ルール 6）。
 panic = "warn"
 # 返り値の型で失敗を広告した関数の中で落ちない（診断エラーにして Err で返す）。
 panic_in_result_fn = "warn"
-# 同じ関数の `unwrap` / `expect` 側。`.expect()` の逃げ道は残すが、失敗を型で広告した関数の中では
-# `#[expect]` + 根拠への格上げを求める（`allow-unwrap-in-tests` を見ないのでテストにも効く）。
-# 発火するのは受け手と返り値の型ファミリが一致する組（`-> Result` の中の `Result::unwrap` /
-# `-> Option` の中の `Option::unwrap`）だけで、食い違う組とクロージャの本体は見ない。網羅ではなく
-# 「広告した失敗そのものを握り潰した」形を押さえる部分的な機械化（`missing_docs*` と同じ性格）。
+# 必須ルール 6 — `panic_in_result_fn` の `unwrap` / `expect` 側の部分的な機械化（発火条件と書き方は同ルール）。
 unwrap_in_result = "warn"
 # テスト名に `test_` 接頭辞を付けない（何を検証するかだけを書く）。
 redundant_test_prefix = "warn"
@@ -113,8 +107,7 @@ redundant_test_prefix = "warn"
 undocumented_unsafe_blocks = "warn"
 # SAFETY 族 — unsafe を含まない箇所の SAFETY コメントは誤読を招く死んだ注釈。
 unnecessary_safety_comment = "warn"
-# SAFETY 族 — unsafe を含まない項目に `# Safety` doc を書かせない。`clippy.toml` の
-# check-private-items = false（維持）を見るので、公開項目しか検査しない部分的な機械化（`unwrap_in_result` と同じ性格）。
+# SAFETY 族 — unsafe を含まない項目に `# Safety` doc を書かせない（公開項目しか見ない部分的な機械化。Clippy 節）。
 unnecessary_safety_doc = "warn"
 # 本体の `.unwrap()` を禁じ、panic しない根拠を `.expect()` のメッセージへ書かせる。
 unwrap_used = "warn"
@@ -170,8 +163,6 @@ semicolon_inside_block = "warn"
 separated_literal_suffix = "warn"
 # `String + &str` ではなく `push_str` / `format!` で書く。
 string_add = "warn"
-# メタ文字を持たないパターンは素の文字列操作で書く（正規表現エンジンを引き込まない）。
-trivial_regex = "warn"
 # `use foo::{self}` は `use foo` と書く。
 unnecessary_self_imports = "warn"
 
@@ -250,8 +241,7 @@ debug_assert_with_mut_call = "warn"
 derive_partial_eq_without_eq = "warn"
 # `From` 実装の中で panic しない（失敗しうる変換は `TryFrom` で型に出す）。
 fallible_impl_from = "warn"
-# `(1 + x).ln()` / `x.exp() - 1` / `x.powf(1.0 / 3.0)` を書いたことの通知。提案（`ln_1p` / `exp_m1` /
-# `cbrt`）は桁落ちを避ける側なので採るのが既定だが、採否は下の suboptimal_flops と同じ規則で箇所ごとに決める。
+# `(1 + x).ln()` / `x.exp() - 1` / `x.powf(1.0 / 3.0)` を書いたことの通知（採否は箇所ごと。Clippy 節）。
 imprecise_flops = "warn"
 # 読むだけの `&mut` 引数を落とす（呼び出し側に不要な可変借用を要求しない）。
 needless_pass_by_ref_mut = "warn"
@@ -263,11 +253,10 @@ path_buf_push_overwrite = "warn"
 read_zero_byte_vec = "warn"
 # move すれば済む値の `clone()`。Known problems は false-negative 側なので発火は真陽性。
 redundant_clone = "warn"
-# float の `a * b + c` を書いたことの通知。`mul_add` は IEEE の単一丸めで `a * b + c` と同じく決定的なので、
-# 採用の代償は移行時に値が一度動く（golden 再生成）ことと、非 FMA ターゲットでの libm fallback だけ。
-# 発火したら箇所ごとに決める — 項を累積して精度が効くなら提案を採り、1 項で定数畳み込みや可読性が勝つなら
-# 積へ名前を付けて式から乗算を外し（`HYPHEN_DEMERIT`）、どちらでもないなら `#[expect]` + 根拠を書く。
+# float の `a * b + c` を書いたことの通知（採否は箇所ごと。Clippy 節）。
 suboptimal_flops = "warn"
+# メタ文字を持たないパターンは素の文字列操作で書く。`regex` 依存が無いので今は構造的に発火しない予防 lint（#412）。
+trivial_regex = "warn"
 # `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
 unused_peekable = "warn"
 # 整数リテラルの `round()` は効果のない残骸。
@@ -293,7 +282,8 @@ missing_docs = "warn"
 unnameable_types = "warn"
 # 「モジュールは既定で非公開 + root ファサード」の機械化。
 unreachable_pub = "warn"
-# Edition 2024 の既定水準の固定。`unsafe fn` の本体でも `unsafe {}` を書かせる。
+# 必須ルール 7 の門番の 1 つ（`unsafe fn` の本体でも `unsafe {}` を書かせる）。edition 2024 の既定と同じ値
+# なので採用判断ではなく、規約の門番を 1 箇所に並べるための明文化。
 unsafe_op_in_unsafe_fn = "warn"
 # Edition 2018 以降 `extern crate` は不要（依存は `use` だけで引く）。
 unused_extern_crates = "warn"
