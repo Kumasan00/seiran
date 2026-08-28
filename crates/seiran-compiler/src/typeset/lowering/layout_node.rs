@@ -119,13 +119,18 @@ pub(crate) enum LayoutNode {
 ///
 /// `LayoutNode::Raise` / `LayoutNode::FlushRight` / ディスプレイ数式のセルと番号は、
 /// `crate::typeset::boxing` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
-/// 畳めるのはテキストと入れ子の `Raise` だけなので、それ以外を表現できない型として
+/// 畳めるのはテキスト・カーン・入れ子の `Raise` だけなので、それ以外を表現できない型として
 /// `LayoutNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
 /// 消費側 `boxing::LayoutBuilder::place_atom_children` の網羅 match を分岐なしで成立させる）。
 #[derive(Debug, Clone)]
 pub(crate) enum AtomNode {
   /// スタイル付きテキスト
   Text(String, TextStyle),
+  /// 水平カーン（固定幅のアキ。数式のアトム間スペーシングが出す）
+  Kern {
+    /// カーンの幅
+    length: Length,
+  },
   /// ベースラインから子要素を垂直方向にずらすコンテナ（上付き / 下付き / 根号指数）
   Raise {
     /// ベースラインからの垂直オフセット（正で上方向）
@@ -141,6 +146,7 @@ impl From<AtomNode> for LayoutNode {
   fn from(node: AtomNode) -> Self {
     return match node {
       AtomNode::Text(text, style) => LayoutNode::Text(text, style),
+      AtomNode::Kern { length } => LayoutNode::Kern { length },
       AtomNode::Raise { offset, children } => LayoutNode::Raise { offset, children },
     };
   }
@@ -204,6 +210,23 @@ pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
   for node in nodes {
     match (out.last_mut(), node) {
       (Some(LayoutNode::Text(prev, prev_style)), LayoutNode::Text(cur, cur_style)) if *prev_style == cur_style => {
+        prev.push_str(&cur);
+      },
+      (_, node) => out.push(node),
+    }
+  }
+  return out;
+}
+
+/// 隣接する同一スタイルの `Text` ノードを 1 つに結合する（[`merge_adjacent_text`] の [`AtomNode`] 版）
+///
+/// 数式のアトム間に挟んだ [`AtomNode::Kern`] が結合を切るので、アキの入らない記号どうし
+/// （`$ab$`）は 1 本のグリフランに戻り、アキの入る並び（`$a+b$`）だけが分かれる。
+pub(super) fn merge_adjacent_atom_text(nodes: Vec<AtomNode>) -> Vec<AtomNode> {
+  let mut out: Vec<AtomNode> = Vec::with_capacity(nodes.len());
+  for node in nodes {
+    match (out.last_mut(), node) {
+      (Some(AtomNode::Text(prev, prev_style)), AtomNode::Text(cur, cur_style)) if *prev_style == cur_style => {
         prev.push_str(&cur);
       },
       (_, node) => out.push(node),

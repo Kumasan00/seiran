@@ -70,6 +70,7 @@ impl HirBuilder {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::document::MathClass;
 
   #[test]
   fn alloc_before_children_yields_preorder_locals() {
@@ -93,7 +94,13 @@ mod tests {
 
     // Act
     let outer = builder.alloc(Span::new(0, 9));
-    let inner = builder.leaf_math(Span::new(1, 2), HirMathKind::Symbol('x'));
+    let inner = builder.leaf_math(
+      Span::new(1, 2),
+      HirMathKind::Symbol {
+        ch: 'x',
+        class: MathClass::Ord,
+      },
+    );
     builder.set_span(outer, Span::new(0, 12));
 
     // Assert

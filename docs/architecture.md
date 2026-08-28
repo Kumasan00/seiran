@@ -320,10 +320,10 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有）/ `theorem`
   （`TheoremClass`）/ `math_environment`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
-  `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）/ `font_kind`（`FontKind`）。小さな `Copy` 値型・enum と、その正準変換
+  `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）/ `math_class`（`MathClass`）/ `font_kind`（`FontKind`）。小さな `Copy` 値型・enum と、その正準変換
   （`as_str` / `FromStr` / serde / `Display`）のみを持つ。
   **置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由にならない
-  （語彙置き場を型の無制限な受け皿にしない）。全 10 型が HIR の enum に現れる — 8 型は
+  （語彙置き場を型の無制限な受け皿にしない）。全 11 型が HIR の enum に現れる — 9 型は
   `HirNodeKind` / `HirMathKind` の、`FontKind` は `HirInlineKind::Styled` の直接のフィールドで、
   `MathDelimiter` だけは `MathEnvKind::Matrix`（`HirNodeKind::MathBlock` の 1 段内側）が持つ。
   値概念そのものである `Length` / `Color` は `length` / `color`、config.toml が宣言するフォント枠の
@@ -347,9 +347,11 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   数学英数字（U+1D400–U+1D7FF）の字形 variant で、`HirMathKind::Styled { variant, body }` が持ち、
   `typeset::lowering::math` の数式経路が消費する。style.toml の `[math]` 設定
   `style::math::MathStyle` とは別概念 — 同名（`MathStyle`）へ戻すと衝突が再発する。
-- **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
-  将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
-  `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。決定的テキストダンプも同様に
+- **`MathClass` は段間語彙**。記号の数式クラス（`\mathord` / `\mathbin` 等）は `frontend` の記号テーブル
+  `SYMBOL_MAP` が記録し、`HirMathKind::Symbol { ch, class }` に載って `typeset::lowering::math::spacing`
+  がアトム間のアキ決定に消費する（#86）。#26 で導入した時点では消費者が `frontend` だけだったので
+  `frontend::evaluator::command::symbol` に置いていたが、consumer が段をまたいだのでここへ移した。
+- **単一 consumer の型はここに置かない**。決定的テキストダンプは
   唯一の消費者が golden テストなので共有 module へは置かず、**走査対象の型を所有する側**に分けて置く
   —— `dump_pages`（`typeset::Page` 用）は `typeset::dump`、`dump_publication`
   （`publication::Publication` 用、golden 主入口 `layout_dumps_match_golden` が使う）は
@@ -1123,13 +1125,20 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
 `HirDocument` が発行したもの」という不変条件を保つため）。
 
 - `layout_node`: `LayoutNode` / `AtomNode` / `TextStyle` / `TableLayout` 等の型定義。
-  `AtomNode`（`Text` と入れ子の `Raise` だけ）は `LayoutNode` の部分集合で、`Atom` に畳める要素だけを
+  `AtomNode`（`Text` ・ `Kern` ・入れ子の `Raise` だけ）は `LayoutNode` の部分集合で、`Atom` に畳める要素だけを
   表現する型。`LayoutNode::Raise` の子・`FlushRight` の中身・ディスプレイ数式のセルと番号がこれを持ち、
   `boxing` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
   （インライン数式を段落の水平リストへ流すときに使う）
 - 要素別: `code` / `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
-  Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` /
-  `theorem` / `title_page`
+  Mathematical Alphanumeric Symbols へのコードポイント変換、+ `math::spacing` ＝数式クラスに基づく
+  アトム間アキ）/ `paragraph` / `quote` / `table` / `theorem` / `title_page`
+  - `math::spacing` は `HirMath` の兄弟 1 個（テキストは 1 文字）をアイテムとし、記号コマンドは
+    `MathClass`、直接入力の文字は plain TeX の mathcode 相当の分類でクラスを決める。ソースの空白は
+    アイテムにしない（`$a+b$` と `$a + b$` は同じ出力）。TeXbook の Bin→Ord 変換を前方 1 パスで
+    適用してから 7×7 のアキ表を引き、1mu = font_size/18 の `AtomNode::Kern` を挟む（glue では
+    ないので行分割機会は増えない）。上付き・下付きは核のアトムに吸収され、その中身では
+    「括弧付きセル」のアキが抑制される。`Group` / `Frac` / `Sqrt` は 1 個の Ord なので
+    `$a{+}b$` でアキを殺せる
 - `generated`: CSL 整形の生成物（`semantics::GeneratedBlock` / `semantics::GeneratedInline`）専用の
   lowering 経路。生成物は `NodeId` を持たないため `LoweringState` の query を経由できず、著者の本文
   （HIR）と別の関数群になる。書誌の箱組み（見出し・段落）自体は本文と同じ `heading::lower_heading` /
@@ -1187,7 +1196,9 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
 `font::FontSystem`（シェイプ・メトリクス取得の窓口。`typeset::font` 節参照）を利用する。`Atom` の中身は
-`AtomNode` に限られる（`lowering` 側の型が保証する）ため、畳めない要素の場合分けは持たない。
+`AtomNode` に限られる（`lowering` 側の型が保証する）ため、畳めない要素の場合分けは持たない。数式の
+アトム間アキ（`AtomNode::Kern`）は `out` へ積まず水平カーソル `dx` を進めるだけで、`Atom` の extent は
+残りの子から決まる。
 
 **break 注入**は、シェーピング後の `GlyphRun` を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、
 和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は

@@ -94,6 +94,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "index",
   "itemize",
   "justify",
+  "math_spacing",
   "matrix",
   "multiline",
   "pagebreak",

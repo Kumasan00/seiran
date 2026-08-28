@@ -87,7 +87,8 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
   文書木への書き戻しはどの段も行わない
 - box は (a) で寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない
 - 行分割・縦組版とも glue / penalty モデル（行分割は Knuth–Plass が既定）
-- 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない
+- 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない。記号間のアキは数式クラスの表から
+  固定 kern（1mu = font_size/18）で出し、ソースに書かれた空白は組版に出さない
 - 脚注は本文の実効下限を縮めて配置し、行単位でページ間繰越。ページ単位採番のときだけ本文パスを
   不動点まで反復する（`typeset::pagination::footnote_numbering`）
 - `compile` は PDF バイト列の生成・保存を行わない。`seiran_pdf::render` と atomic write は CLI（`seiran`）の責務

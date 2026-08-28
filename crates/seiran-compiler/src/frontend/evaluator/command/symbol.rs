@@ -1,45 +1,17 @@
 //! 数式記号テーブル
 //!
-//! 単一の Unicode 文字と、将来のスペーシング処理で使う数式クラスを保持する。
+//! 単一の Unicode 文字と、`typeset` がアトム間のアキを決めるのに使う数式クラスを保持する。
 
 use phf::phf_map;
 
-/// 数式記号のクラス
-///
-/// `unicode-math-table.tex` 由来のキュレーション済み分類を [`SYMBOL_MAP`] に記録しておくためだけの型。
-// 詳細は `docs/architecture.md` の `document` 節（記号テーブルの `MathClass` 記録）。
-#[expect(
-  dead_code,
-  reason = "記号間スペーシング（epic #83）を実装したときにそのまま消費する分類データで、旧構成の名残ではない"
-)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MathClass {
-  /// 順序子（`\mathord`）— 変数・名前付き記号など（`\alpha` `\infty` `\hbar`）
-  Ord,
-  /// 大型演算子（`\mathop`）— 総和・積分など（`\sum` `\int` `\prod`）
-  Op,
-  /// 二項演算子（`\mathbin`）— 中アキを伴う演算子（`\times` `\oplus` `\cup`）
-  Bin,
-  /// 関係子（`\mathrel`）— 太アキを伴う関係・矢印（`\leq` `\subseteq` `\rightarrow`）
-  Rel,
-  /// 開き括弧（`\mathopen`）— 開き区切り（`\langle` `\lceil`）
-  Open,
-  /// 閉じ括弧（`\mathclose`）— 閉じ区切り（`\rangle` `\rceil`）
-  Close,
-  /// 区切り（`\mathpunct`）— 句読点的記号（`\colon` 等）
-  Punct,
-}
+use crate::document::MathClass;
 
 /// 記号コマンドが出力する単一文字とその数式クラス
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MathSymbol {
   /// 出力する Unicode 文字
   pub(crate) ch: char,
-  /// 数式クラス（記号間スペーシング実装時に消費する。[`MathClass`] の説明を参照）
-  #[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "記号間スペーシング（epic #83）の実装時に消費する（[`MathClass`] の説明を参照）")
-  )]
+  /// 数式クラス（`typeset::lowering::math::spacing` がアトム間のアキ決定に消費する）
   pub(crate) class: MathClass,
 }
 
@@ -364,11 +336,10 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
 #[cfg(test)]
 mod tests {
   use super::SYMBOL_MAP;
-  use crate::frontend::evaluator::command::COMMAND_MAP;
+  use crate::{document::MathClass, frontend::evaluator::command::COMMAND_MAP};
 
   #[test]
   fn representative_symbols_have_expected_class() {
-    use super::MathClass;
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.class), Some(MathClass::Ord));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.class), Some(MathClass::Rel));
     assert_eq!(SYMBOL_MAP.get("times").map(|s| return s.class), Some(MathClass::Bin));
