@@ -303,4 +303,52 @@ mod tests {
     // Assert
     assert_eq!(merged.len(), 3, "{merged:?}");
   }
+
+  #[test]
+  fn merge_adjacent_atom_text_joins_same_style_runs() {
+    // Arrange
+    let nodes = vec![
+      AtomNode::Text("a".to_string(), style(FontKind::Math)),
+      AtomNode::Text("b".to_string(), style(FontKind::Math)),
+    ];
+
+    // Act
+    let merged = merge_adjacent_atom_text(nodes);
+
+    // Assert
+    assert_eq!(merged.len(), 1);
+    assert!(matches!(&merged[0], AtomNode::Text(text, _) if text == "ab"));
+  }
+
+  #[test]
+  fn merge_adjacent_atom_text_keeps_runs_separated_by_kern() {
+    // Arrange
+    let nodes = vec![
+      AtomNode::Text("a".to_string(), style(FontKind::Math)),
+      AtomNode::Kern {
+        length: Length::pt(2.0),
+      },
+      AtomNode::Text("b".to_string(), style(FontKind::Math)),
+    ];
+
+    // Act
+    let merged = merge_adjacent_atom_text(nodes);
+
+    // Assert
+    assert_eq!(merged.len(), 3, "カーンを挟んだラン同士は結合しない: {merged:?}");
+  }
+
+  #[test]
+  fn atom_kern_lifts_to_layout_kern() {
+    // Arrange
+    let kern = AtomNode::Kern {
+      length: Length::pt(2.0),
+    };
+
+    // Act
+    let lifted = LayoutNode::from(kern);
+
+    // Assert
+    assert!(matches!(lifted, LayoutNode::Kern { length } if length == Length::pt(2.0)));
+  }
 }
