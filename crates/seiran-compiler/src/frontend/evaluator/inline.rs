@@ -13,7 +13,7 @@ use crate::{
         link::{href_command, url_command},
         ref_::ref_command,
         single_char,
-        symbol::SYMBOL_MAP,
+        symbol::{MathSymbol, SYMBOL_MAP},
         text_style::{colored_text, styled_text},
       },
       math,
@@ -182,11 +182,12 @@ pub(crate) fn extract_inline_nodes_from_elements(
   return Ok(inlines);
 }
 
-/// コマンド名からシンボル文字を解決する
+/// 記号コマンド名から数式記号（文字 + 数式クラス）を解決する
+///
+/// 本文モードは文字だけを見て [`SYMBOL_MAP`] を直接引くが、数式モードはアトム間のアキ決定に
+/// クラスが要るのでエントリごと返す。
 #[must_use]
-pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {
-  return SYMBOL_MAP.get(name).map(|symbol| return symbol.ch);
-}
+pub(crate) fn resolve_math_symbol_command(name: &str) -> Option<MathSymbol> { return SYMBOL_MAP.get(name).copied(); }
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::document::{MathVariant, hir::NodeId};
+use crate::document::{MathClass, MathVariant, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 ///
@@ -25,8 +25,13 @@ impl HirMath {
 pub(crate) enum HirMathKind {
   /// テキスト / 記号（変数名、数字、演算子等）
   Text(String),
-  /// 数式記号（`\alpha`, `+`, `=` 等）
-  Symbol(char),
+  /// 数式記号コマンド（`\alpha`, `\leq` 等）が出力する 1 文字
+  Symbol {
+    /// 出力する Unicode 文字
+    ch: char,
+    /// 記号テーブルが記録した数式クラス（アトム間のアキ決定に使う）
+    class: MathClass,
+  },
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^2`）

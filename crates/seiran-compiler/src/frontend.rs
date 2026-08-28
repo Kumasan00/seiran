@@ -381,7 +381,7 @@ mod tests {
       panic!("InlineMath が期待されます");
     };
     assert!(
-      math.iter().any(|n| matches!(&n.kind, HirMathKind::Symbol('≤'))),
+      math.iter().any(|n| matches!(&n.kind, HirMathKind::Symbol { ch: '≤', .. })),
       "≤ の HirMathKind::Symbol が含まれるはず: {math:?}"
     );
   }
@@ -521,7 +521,7 @@ mod tests {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
     assert_eq!(*variant, MathVariant::SansBoldItalic);
-    assert!(matches!(&body[0].kind, HirMathKind::Symbol('α')));
+    assert!(matches!(&body[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
   }
 
   #[test]
@@ -780,7 +780,7 @@ mod tests {
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
-        assert!(matches!(&math[0].kind, HirMathKind::Symbol('α')));
+        assert!(matches!(&math[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
       } else {
         panic!("InlineMath が期待されます");
       }

@@ -174,7 +174,7 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
         }
         walk_math(std::slice::from_ref(radicand.as_ref()), here, out);
       },
-      HirMathKind::Text(_) | HirMathKind::Symbol(_) => {},
+      HirMathKind::Text(_) | HirMathKind::Symbol { .. } => {},
     }
   }
   return;

@@ -9,7 +9,7 @@
 use crate::{
   document::{HirBuilder, HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
-    evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},
+    evaluator::{EvalError, inline::resolve_math_symbol_command, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
@@ -296,7 +296,7 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
       return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
     },
     _ => {
-      if let Some(ch) = resolve_symbol_command(name) {
+      if let Some(symbol) = resolve_math_symbol_command(name) {
         let _opt_args = collect_command_opt_args(&view, &[])?;
         if !view.args_is_empty() {
           return Err(EvalError::ExtraCommandArgument {
@@ -304,7 +304,13 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
             span: view.span().to_source_span(),
           });
         }
-        return Ok(builder.leaf_math(view.span(), HirMathKind::Symbol(ch)));
+        return Ok(builder.leaf_math(
+          view.span(),
+          HirMathKind::Symbol {
+            ch: symbol.ch,
+            class: symbol.class,
+          },
+        ));
       }
 
       return Err(EvalError::UnknownCommand {

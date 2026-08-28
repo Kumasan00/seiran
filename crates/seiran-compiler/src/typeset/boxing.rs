@@ -358,7 +358,7 @@ impl<'a> Measurer<'a> {
 
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
   ///
-  /// 受け取るのは `AtomNode`（テキストと入れ子の `Raise` だけ）なので、畳めない要素が
+  /// 受け取るのは `AtomNode`（テキスト・カーン・入れ子の `Raise` だけ）なので、畳めない要素が
   /// 紛れ込む場合分けは型の側で消えている。
   fn place_atom_children(&mut self, nodes: Vec<AtomNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
     for node in nodes {
@@ -373,6 +373,11 @@ impl<'a> Measurer<'a> {
             });
             *dx += width;
           }
+        },
+        // カーンは幅だけを持つので、水平カーソルを進めるだけで `out` には積まない
+        // （`LayoutNode::Kern` を水平リストで扱うのと同じ）。
+        AtomNode::Kern { length } => {
+          *dx += length;
         },
         AtomNode::Raise {
           offset,
