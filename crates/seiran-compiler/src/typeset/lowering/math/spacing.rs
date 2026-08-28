@@ -233,8 +233,8 @@ pub(super) fn char_class(ch: char) -> MathClass {
 /// 上付き・下付きを直前のアイテムへ付ける
 ///
 /// スクリプトは核となるアトムの一部なので、間にアキを入れず、クラスも核のものを保つ
-/// （`$x^2+y$` の `+` は `x` ではなく「`x^2` というアトム」との間でアキが決まる）。
-/// 直前のアイテムが無ければ（`$^2$` のような並び）Ord の独立したアイテムにする。
+/// （`$x^{2}+y$` の `+` は `x` ではなく「`x^{2}` というアトム」との間でアキが決まる）。
+/// 直前のアイテムが無ければ（`$^{2}$` のような並び）Ord の独立したアイテムにする。
 pub(super) fn push_attachment(items: &mut Vec<MathItem>, nodes: Vec<AtomNode>) {
   match items.last_mut() {
     Some(last) => last.nodes.extend(nodes),

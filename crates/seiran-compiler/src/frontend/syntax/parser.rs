@@ -670,7 +670,12 @@ impl<'a> Parser<'a> {
     return Ok(());
   }
 
-  /// 数式内の上付き・下付きスクリプトをパースする: `_x`, `_{}`, `^x`, `^{}`
+  /// 数式内の上付き・下付きスクリプトをパースする: `_{...}`, `^{...}`
+  ///
+  /// 内容は `{...}` グループのみを受け付ける。`$x^2$` のような裸の 1 トークンも
+  /// `$x^\alpha$` のような裸のコマンドも [`ParserError::ScriptRequiresGroup`] にする（#486）—
+  /// 裸の内容を許すと範囲が字句のトークン境界で決まり、`$x^2+y$` と `$x^2=y$` で
+  /// スコープが変わってしまう。
   fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
     let script_token = self.take_peeked();
     let start_span = script_token.span;
@@ -685,27 +690,19 @@ impl<'a> Parser<'a> {
         let group = self.parse_math_group()?;
         children.push(GreenElement::Node(group));
       },
-      Some(TokenKind::Command) => {
-        let cmd_token = self.take_peeked();
-        let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
-        children.push(GreenElement::Node(cmd_node));
-      },
+      // 字句として不正な `\`（`\<空白>` や入力末尾の `\`）は「囲みが足りない」ではないので、
+      // 数式内の他の位置と同じ診断にする（`$x^{\ }$` と書いても直らないため）。
       Some(TokenKind::Unknown) => {
         let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
-      Some(token_kind @ (TokenKind::Dollar | TokenKind::RBrace | TokenKind::RBracket | TokenKind::ParagraphBreak)) => {
-        let span = self.peeked().span;
-        return Err(ParserError::UnexpectedToken {
-          kind: token_kind,
-          span: span.to_source_span(),
-        });
-      },
+      // 許可するのは `{` だけで、残りはすべて同じ診断にする（既定エラーなので wildcard を維持する）
       Some(_) => {
-        let token = self.take_peeked();
-        children.push(GreenElement::Token(token));
+        return Err(ParserError::ScriptRequiresGroup {
+          span: start_span.to_source_span(),
+        });
       },
       None => {
         return Err(ParserError::UnexpectedEof {
@@ -1259,27 +1256,37 @@ mod tests {
   fn math_script_without_content_before_dollar_is_error() {
     let arena = Bump::new();
     let result = parse("$x^$", &arena);
-    assert!(matches!(
-      result,
-      Err(ParserError::UnexpectedToken {
-        kind: TokenKind::Dollar,
-        ..
-      })
-    ));
+    assert!(matches!(result, Err(ParserError::ScriptRequiresGroup { .. })));
+  }
+
+  #[test]
+  fn math_script_with_bare_token_content_is_error() {
+    let arena = Bump::new();
+    let result = parse("$x^2$", &arena);
+    assert!(matches!(result, Err(ParserError::ScriptRequiresGroup { .. })), "裸の 1 トークンは内容にできない");
+  }
+
+  #[test]
+  fn math_script_with_bare_command_content_is_error() {
+    let arena = Bump::new();
+    let result = parse(r"$x^\alpha$", &arena);
+    assert!(matches!(result, Err(ParserError::ScriptRequiresGroup { .. })), "裸のコマンドも内容にできない");
   }
 
   #[test]
   fn math_script_skips_whitespace_before_content() {
     let arena = Bump::new();
-    let cst = parse_source("$x^ 2$", &arena);
+    let cst = parse_source("$x^ {2}$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let sups: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
     assert_eq!(sups.len(), 1);
-    let content_text =
-      sups[0].children.iter().any(|c| matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Text));
-    assert!(content_text, "スクリプト内容は Text トークンであるべき");
+    let has_group = sups[0]
+      .children
+      .iter()
+      .any(|c| matches!(c, GreenElement::Node(n) if n.kind == SyntaxKind::MathGroup));
+    assert!(has_group, "スクリプト内容は MathGroup ノードであるべき");
   }
 
   #[test]
@@ -1347,7 +1354,7 @@ mod tests {
   #[test]
   fn superscript_in_math_creates_node() {
     let arena = Bump::new();
-    let cst = parse_source("$x^2$", &arena);
+    let cst = parse_source("$x^{2}$", &arena);
     if let GreenElement::Node(math) = &cst.children[0] {
       let sup: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
       assert_eq!(sup.len(), 1);
@@ -1359,7 +1366,7 @@ mod tests {
   #[test]
   fn subscript_in_math_creates_node() {
     let arena = Bump::new();
-    let cst = parse_source("$x_i$", &arena);
+    let cst = parse_source("$x_{i}$", &arena);
     if let GreenElement::Node(math) = &cst.children[0] {
       let sub: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
       assert_eq!(sub.len(), 1);
@@ -1369,7 +1376,7 @@ mod tests {
   }
 
   #[test]
-  fn subscript_with_group_in_math() {
+  fn subscript_with_multiple_characters_in_math() {
     let arena = Bump::new();
     let cst = parse_source("$x_{ij}$", &arena);
     if let GreenElement::Node(math) = &cst.children[0] {
@@ -1385,7 +1392,7 @@ mod tests {
   #[test]
   fn subscript_and_superscript_combined() {
     let arena = Bump::new();
-    let cst = parse_source("$a_i^2$", &arena);
+    let cst = parse_source("$a_{i}^{2}$", &arena);
     if let GreenElement::Node(math) = &cst.children[0] {
       let subs: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
       let sups: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
@@ -1682,7 +1689,7 @@ mod tests {
     let arena = Bump::new();
 
     // Act
-    let cst = parse_source("$\\frac{x^2}{y}$", &arena);
+    let cst = parse_source("$\\frac{x^{2}}{y}$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };

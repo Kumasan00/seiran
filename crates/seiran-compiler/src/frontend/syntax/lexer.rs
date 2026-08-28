@@ -597,16 +597,20 @@ mod tests {
 
   #[test]
   fn math_with_subscript_superscript_tokens() {
-    let tokens = tokenize("$x^2_i$");
+    let tokens = tokenize("$x^{2}_{i}$");
     assert_eq!(
       tokens,
       vec![
         TokenKind::Dollar,
         TokenKind::Text,
         TokenKind::Caret,
+        TokenKind::LBrace,
         TokenKind::Text,
+        TokenKind::RBrace,
         TokenKind::Underscore,
+        TokenKind::LBrace,
         TokenKind::Text,
+        TokenKind::RBrace,
         TokenKind::Dollar,
       ]
     );

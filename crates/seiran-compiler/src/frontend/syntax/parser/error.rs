@@ -162,6 +162,20 @@ pub(crate) enum ParserError {
     span: SourceSpan,
   },
 
+  /// 上付き `^` / 下付き `_` の内容が `{...}` グループでない場合
+  #[error("上付き・下付きの内容は {{...}} で囲む必要があります")]
+  #[diagnostic(
+    code(frontend::parse::script_requires_group),
+    help(
+      "$x^2$ ではなく $x^{{2}}$ と書きます。1 文字でもコマンド 1 個でも囲みが必要です（$x_{{i}}$ / $x^{{\\alpha}}$）"
+    )
+  )]
+  ScriptRequiresGroup {
+    /// `^` / `_` のソース位置
+    #[label("このスクリプトの内容が {{...}} で囲まれていません")]
+    span: SourceSpan,
+  },
+
   /// 数式モードの内側（数式環境の本体や数式コマンドの引数）に `$` が出現した場合
   #[error("数式の中で $ は使用できません")]
   #[diagnostic(

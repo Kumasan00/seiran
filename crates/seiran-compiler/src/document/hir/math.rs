@@ -34,9 +34,9 @@ pub(crate) enum HirMathKind {
   },
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
-  /// 上付き（`x^2`）
+  /// 上付き（`x^{2}`）
   Superscript(Box<HirMath>),
-  /// 下付き（`x_i`）
+  /// 下付き（`x_{i}`）
   Subscript(Box<HirMath>),
   /// 分数（`\frac{numer}{denom}`）
   Frac {

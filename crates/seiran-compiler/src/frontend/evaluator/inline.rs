@@ -303,7 +303,7 @@ mod tests {
   #[test]
   fn extract_inline_nodes_with_inline_math() {
     let arena = Bump::new();
-    let source = "\\section{数式 $x^2$ です}";
+    let source = "\\section{数式 $x^{2}$ です}";
     let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);

@@ -86,6 +86,14 @@ fn diagnostic_bare_braces() {
 }
 
 #[test]
+fn diagnostic_math_script_without_group() {
+  // #486（上付き・下付きの内容は `{...}` のみ）
+  let failure = build_pages_err(&["tests/text/diagnostics/math_script_without_group.sei"]);
+
+  assert_matches_golden("math_script_without_group", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

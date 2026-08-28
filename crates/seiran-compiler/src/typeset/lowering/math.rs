@@ -363,7 +363,7 @@ mod tests {
 
   #[test]
   fn lower_math_superscript_wraps_in_raise() {
-    let nodes = lower_math_source("$x^2$\n");
+    let nodes = lower_math_source("$x^{2}$\n");
 
     let (offset, children) = first_raise(&nodes);
     assert!(offset.is_positive(), "上付きは正の offset（上方向）になるべき: offset={}", offset.to_pt());
@@ -380,7 +380,7 @@ mod tests {
 
   #[test]
   fn lower_math_subscript_uses_negative_raise() {
-    let nodes = lower_math_source("$x_i$\n");
+    let nodes = lower_math_source("$x_{i}$\n");
 
     let (offset, children) = first_raise(&nodes);
     assert!(!offset.is_non_negative(), "下付きは負の offset（下方向）になるべき: offset={}", offset.to_pt());
@@ -475,8 +475,7 @@ mod tests {
 
   #[test]
   fn lower_inline_math_omits_space_before_script() {
-    // `x^2+y` は上付きが `2+y` まで飲み込む（数式スクリプトの既存のトークン規則）ので、
-    // 上付きの範囲を明示して「核 + スクリプト」が 1 個のアトムとして振る舞うことだけを見る。
+    // 「核 + スクリプト」が 1 個のアトムとして振る舞い、`+` のアキは核ではなくそのアトムとの間に入る。
     let nodes = lower_math_source("$x^{2}+y$\n");
 
     assert_eq!(kerns(&nodes), vec![mu(4); 2], "アキが入るのは + の前後だけ（上付きの前には入らない）: {nodes:?}");

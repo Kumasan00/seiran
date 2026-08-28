@@ -99,7 +99,7 @@ mod tests {
   fn equation_produces_math_block() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\begin{equation}x^2 = y\end{equation}";
+    let source = r"\begin{equation}x^{2} = y\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
@@ -122,7 +122,7 @@ mod tests {
   fn equation_with_label_captures_label() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\begin{equation}[label=eq:pythag]a^2+b^2=c^2\end{equation}";
+    let source = r"\begin{equation}[label=eq:pythag]a^{2}+b^{2}=c^{2}\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act

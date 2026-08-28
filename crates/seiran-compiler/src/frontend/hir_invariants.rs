@@ -203,7 +203,7 @@ fn same_source_parsed_twice_yields_identical_hir() {
 fn source_order_does_not_affect_ids_or_spans() {
   // Arrange — 2 つのソースを用意し、B を 3 通りの文脈でパースする
   let source_a = "\\section{最初}\n\n本文 A です。";
-  let source_b = "\\section{次}\n\n本文 B の $x^2$ です。";
+  let source_b = "\\section{次}\n\n本文 B の $x^{2}$ です。";
 
   // Act
   let alone = parse_source(source_b, SourceId::new(1)).unwrap();

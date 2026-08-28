@@ -21,8 +21,8 @@ f &= m a
 各セル内で上付き・下付き・記号が評価される。
 
 \begin{align}
-E &= m c^2 \\
-a_i &= b_i + c_i
+E &= m c^{2} \\
+a_{i} &= b_{i} + c_{i}
 \end{align}
 
 \section{行単位の無採番}
