@@ -103,7 +103,8 @@ panic_in_result_fn = "warn"
 unwrap_in_result = "warn"
 # テスト名に `test_` 接頭辞を付けない（何を検証するかだけを書く）。
 redundant_test_prefix = "warn"
-# SAFETY 族 — `unsafe {}` の直上に `// SAFETY:` を書かせる。
+# SAFETY 族 — `unsafe {}` の直上に `// SAFETY:` を書かせる。`unsafe fn` 本体の `unsafe {}` は edition 2024
+# 既定の `unsafe_op_in_unsafe_fn` が担う（既定と同じ値は書かない）。
 undocumented_unsafe_blocks = "warn"
 # SAFETY 族 — unsafe を含まない箇所の SAFETY コメントは誤読を招く死んだ注釈。
 unnecessary_safety_comment = "warn"
@@ -255,8 +256,6 @@ read_zero_byte_vec = "warn"
 redundant_clone = "warn"
 # float の `a * b + c` を書いたことの通知（採否は箇所ごと。Clippy 節）。
 suboptimal_flops = "warn"
-# メタ文字を持たないパターンは素の文字列操作で書く。`regex` 依存が無いので今は構造的に発火しない予防 lint（#412）。
-trivial_regex = "warn"
 # `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
 unused_peekable = "warn"
 # 整数リテラルの `round()` は効果のない残骸。
@@ -282,9 +281,6 @@ missing_docs = "warn"
 unnameable_types = "warn"
 # 「モジュールは既定で非公開 + root ファサード」の機械化。
 unreachable_pub = "warn"
-# 必須ルール 7 の門番の 1 つ（`unsafe fn` の本体でも `unsafe {}` を書かせる）。edition 2024 の既定と同じ値
-# なので採用判断ではなく、規約の門番を 1 箇所に並べるための明文化。
-unsafe_op_in_unsafe_fn = "warn"
 # Edition 2018 以降 `extern crate` は不要（依存は `use` だけで引く）。
 unused_extern_crates = "warn"
 # use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。
@@ -346,17 +342,18 @@ unused_macro_rules = "warn"
 [workspace.lints.rustdoc]
 
 # ---------------------------------------------------------------------------
-# 規約の機械化 — 名指しの規約（必須ルール / use 規約 / モジュール構成 / テスト）を機械に守らせる
+# 有効化しないもの（既定 warn を個別に落とす）
 # ---------------------------------------------------------------------------
 
-# 必須ルール 4「doc コメントは全項目」の crate レベル（`//!`）側（`missing_docs*` は crate root を見ない）。
-missing_crate_level_docs = "warn"
-# 非公開項目の doctest は `cargo test --doc` が走らせないので、検証されない例を残さない。
-private_doc_tests = "warn"
-# doc 内の対にならない `` ` `` は描画が壊れる。
-unescaped_backticks = "warn"
 # doc build の正典が `--document-private-items` なので、公開項目の doc から facade の裏を指すリンクは正当。
 private_intra_doc_links = "allow"
+
+# ---------------------------------------------------------------------------
+# 誤りの検出 — 取り違え・バグ源になる形を拒む
+# ---------------------------------------------------------------------------
+
+# doc 内の対にならない `` ` `` は描画が壊れる。
+unescaped_backticks = "warn"
 
 [profile.release]
 opt-level = 3
