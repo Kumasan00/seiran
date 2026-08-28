@@ -90,7 +90,10 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
   エラーにして `Err` で返す。この lint が見るのは `panic!` / `todo!` / `unimplemented!` と `assert!` 系で、
   **`unreachable!` と `debug_assert!` は発火しない**ので必須ルール 5 と衝突しない。
 - **裸の `panic!` を書かない**（`panic`）: `-> Result` の外でも本体コードに裸の `panic!` は書かない — 到達
-  しないなら `unreachable!`、入力由来なら miette 診断で、どちらでもない `panic!` は残らないため。テストは
+  しないなら `unreachable!`、入力由来なら miette 診断で、どちらでもない `panic!` は残らないため。この lint が
+  見るのは裸の `panic!` だけで、`todo!` / `unimplemented!` は同名の別 lint が、`assert!` 系は
+  `missing_assert_message` が見る。**`unreachable!` には発火しない**ので必須ルール 5 と衝突しない
+  （`-> Result` の中の `assert!` を捕まえるのは上の `panic_in_result_fn` の側）。テストは
   `allow-panic-in-tests` で対象外だが、`tests/` から使うヘルパは `#[cfg(test)]` の外なので発火する
   （`unwrap_used` と同じ）。`#[cfg(test)]` の中でも発火するため、`?` のために `-> Result` を返すテスト関数
   では `assert!` ではなく `unwrap` / `expect` で落とす。
@@ -114,7 +117,8 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
 根拠か」を 1 対 1 で対応させるためで、逆に unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc を
 書かない（`unnecessary_safety_comment` / `unnecessary_safety_doc`。「ここに検証済みの unsafe がある」という
 誤読を招く死んだ注釈になる）。周辺コードの前提を説明したいときは `// NOTE:` 等の別の語で書く。
-`unsafe fn` の本体でも `unsafe {}` を書く（`unsafe_op_in_unsafe_fn`）。
+`unsafe fn` の本体でも `unsafe {}` を書く（`unsafe_op_in_unsafe_fn`。この lint は edition 2024 の既定と同じ
+値を `Cargo.toml` に明文化したもので、採用判断ではなく、本ルールの門番を 1 箇所に並べるために置いてある）。
 
 ## モジュール構成
 
@@ -265,11 +269,12 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 
 ### 役割分担
 
-**lint の採用根拠の正典は root `Cargo.toml`** — `[workspace.lints.clippy]` / `[workspace.lints.rust]`（各
-クレートは `lints.workspace = true` で両テーブルを継承）に 1 lint = 1 行の根拠コメントが付いていて、
-節見出しが下の目的に対応する。lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の理由は
-`Cargo.toml` のコメントに書き、個々の lint が要求する**書き方**は本書の規約各節に置く。`CLAUDE.md` の
-Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
+**lint の採用根拠の正典は root `Cargo.toml`** — `[workspace.lints.clippy]` / `[workspace.lints.rust]` /
+`[workspace.lints.rustdoc]`（各クレートは `lints.workspace = true` で 3 テーブルとも継承）に 1 lint = 1 行の
+根拠コメントが付いていて、節見出しが下の目的に対応する。rustdoc テーブルだけは `cargo doc` を回して初めて
+効くので、CI がその形を持つ（「運用」節）。lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の
+理由は `Cargo.toml` のコメントに書き、個々の lint が要求する**書き方**は本書の規約各節に置く。`CLAUDE.md`
+の Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
 
 **lint 側の設定値は root `clippy.toml`** — 置くのは**既定と違う値だけ**で、既定どおり維持するノブは書かない
 （差分＝意図として読める形を保ち、既定値の複製で upstream の既定変更に追随する二重帳簿を作らないため。
@@ -320,13 +325,17 @@ Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
 `clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は
 既定の 0）。
 
-lint が**発火＝提案に従う**とは限らない — `suboptimal_flops` / `imprecise_flops` は「float の合成演算を
-ここで書いた」ことの通知として有効化してあり、採否は箇所ごとに決める（項を累積して精度が効くなら
-`mul_add` / `ln_1p` を採る・値が一度動くので golden 再生成込み／1 項で定数畳み込みや可読性が勝つなら積へ
-名前を付けて式から乗算を外す／どちらでもないなら `#[expect]` + 根拠）。`mul_add` は IEEE の単一丸めで
-`a * b + c` と同じく決定的なので、決定性の懸念は移行時の値の変化に限られる。
+lint が**発火＝提案に従う**とは限らない — `suboptimal_flops`（float の `a * b + c`）/ `imprecise_flops`
+（`(1 + x).ln()` / `x.exp() - 1` / `x.powf(1.0 / 3.0)`）は「float の合成演算をここで書いた」ことの通知として
+有効化してあり、採否は箇所ごとに決める（項を累積して精度が効くなら提案の `mul_add` / `ln_1p` / `exp_m1` /
+`cbrt` を採る・値が一度動くので golden 再生成込み／1 項で定数畳み込みや可読性が勝つなら積へ名前を付けて式
+から乗算を外す（`typeset` の `HYPHEN_DEMERIT`）／どちらでもないなら `#[expect]` + 根拠）。`imprecise_flops`
+の提案は桁落ちを避ける側なので採るのが既定。`mul_add` は IEEE の単一丸めで `a * b + c` と同じく決定的な
+ので、採用の代償は移行時に値が一度動くことと、非 FMA ターゲットでの libm fallback だけ。
 
-採らないと決めた lint の理由は #402 に記録がある（恒久不採用と、条件が変われば再検討するものを分けてある）。
+採らないと決めた lint の理由は 3 つの issue に分かれて記録がある（いずれも恒久不採用と、条件が変われば
+再検討するものを分けてある）— clippy の初回処分（restriction / nursery のカタログ）は #402、rustc 側は #421、
+clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473。
 
 ### 運用
 
