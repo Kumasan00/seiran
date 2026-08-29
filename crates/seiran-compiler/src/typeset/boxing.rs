@@ -14,7 +14,7 @@ pub(crate) use index::{build_index_blocks, build_index_spec};
 pub(super) use running::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content};
 pub(super) use toc::TocEntryInput;
 pub(crate) use toc::{build_toc_blocks, build_toc_spec};
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::{
   color::Color,
@@ -29,6 +29,7 @@ use crate::{
     breaking::{self, BreakKind, BreakPoint, Lang},
     font::{FontSystem, Glyph, GlyphRun, UnicodeBuffer},
     lowering::{AtomNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
+    observe,
   },
 };
 
@@ -413,7 +414,19 @@ impl<'a> Measurer<'a> {
         && let (Some((prev_category, prev_char)), Some(next_char)) = (prev_boundary, segment.text.chars().next())
         && is_ja_latin_letter_boundary(prev_category, prev_char, segment.category, next_char)
       {
-        out.push(ja_latin_aki(style.font_size));
+        let item = ja_latin_aki(style.font_size);
+        let (natural_pt, stretch_pt, shrink_pt) = glue_pt(&item);
+        trace!(
+          left_char = %prev_char,
+          right_char = %next_char,
+          left_category = ?prev_category,
+          right_category = ?segment.category,
+          natural_pt,
+          stretch_pt,
+          shrink_pt,
+          "和欧文間アキを挿入しました"
+        );
+        out.push(item);
       }
       prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
@@ -612,6 +625,18 @@ impl<'a> Measurer<'a> {
         let breakable = break_bytes.contains(&byte_at(i));
         if let Some(item) = boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
           self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
+          let (natural_pt, stretch_pt, shrink_pt) = glue_pt(&item);
+          trace!(
+            left_char = %char_of(i - 1),
+            right_char = %char_of(i),
+            left_class = ?eff_class(i - 1),
+            right_class = ?eff_class(i),
+            natural_pt,
+            stretch_pt,
+            shrink_pt,
+            breakable,
+            "約物境界のアキを挿入しました"
+          );
           out.push(item);
           normal_start = i;
         }
@@ -652,6 +677,14 @@ impl<'a> Measurer<'a> {
     };
     let advance = units_to_length(i64::from(src.x_advance), run.font_size, metric.upem);
     let width = advance - run.font_size * normalize.trim_em;
+    trace!(
+      char = %&text[src.range.clone()],
+      trim_em = normalize.trim_em,
+      shift_em = normalize.shift_em,
+      advance_pt = advance.to_pt(),
+      width_pt = width.to_pt(),
+      "約物の内蔵アキを詰めました"
+    );
     #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
@@ -737,6 +770,19 @@ impl<'a> Measurer<'a> {
     for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
       let start = glyph_info.cluster as usize;
       let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| return next_glyph_info.cluster as usize);
+      // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
+      // 単独の量として取り出す経路は無いので、確定値をそのまま出す
+      trace!(
+        glyph_index = i,
+        gid = glyph_info.glyph_id,
+        range_start = start,
+        range_end = end,
+        x_advance = glyph_position.x_advance,
+        y_advance = glyph_position.y_advance,
+        x_offset = glyph_position.x_offset,
+        y_offset = glyph_position.y_offset,
+        "グリフをシェーピングしました"
+      );
       glyphs.push(Glyph {
         gid: glyph_info.glyph_id,
         range: start..end,
@@ -763,6 +809,14 @@ impl<'a> Measurer<'a> {
     let descender_units = metric.descender.abs() as i64;
     let height = units_to_length(ascender_units, font_size, metric.upem);
     let depth = units_to_length(descender_units, font_size, metric.upem);
+    trace!(
+      font_type = ?font_type,
+      font_size_pt = font_size.to_pt(),
+      glyph_count = glyphs.len(),
+      width_pt = width.to_pt(),
+      text = %observe::summarize_text(text),
+      "テキスト run をシェーピングしました"
+    );
     return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size,
@@ -814,6 +868,20 @@ impl<'a> Measurer<'a> {
 /// `byte` 位置から始まるグリフのインデックスを返す（クラスタ境界の判定）
 fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
   return glyphs.iter().position(|glyph| return glyph.range.start == byte);
+}
+
+/// glue の自然幅・伸長・収縮を pt で返す（TRACE 観測用）
+fn glue_pt(item: &HItem) -> (f32, f32, f32) {
+  return match item {
+    HItem::Glue {
+      natural,
+      stretch,
+      shrink,
+      ..
+    } => (natural.to_pt(), stretch.to_pt(), shrink.to_pt()),
+    // 呼び出し元は `boundary_glue` / `ja_latin_aki` が作った glue しか渡さない
+    _ => unreachable!("glue 以外のアイテムはアキとして積まれない"),
+  };
 }
 
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）

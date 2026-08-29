@@ -1,5 +1,7 @@
 //! Knuth–Plass 方式の段落全体最適な行分割
 
+use tracing::trace;
+
 use crate::{
   length::Length,
   style::TextAlignment,
@@ -8,6 +10,7 @@ use crate::{
     breaking::break_lines::{
       GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue,
     },
+    observe,
   },
 };
 
@@ -81,9 +84,19 @@ struct Breakpoint {
 }
 
 /// 1 本の候補行（開始位置 → 破断点）のコスト評価結果
+///
+/// `Feasible` が demerits だけでなく badness と調整比も持つのは、DP の選択には demerits しか要らない
+/// 一方で、TRACE 観測では「なぜその demerits になったか」を見るのに元の疎密が要るため。
 enum Edge {
-  /// 実現可能。値は demerits
-  Feasible(f64),
+  /// 実現可能
+  Feasible {
+    /// この行に課される demerits（DP が最小化する量）
+    demerits: f64,
+    /// 疎密の罰点。`INFINITE_BADNESS` で頭打ち
+    badness: f64,
+    /// 調整比（正 = 伸長 / 負 = 収縮）。クランプしない生の比で、最終行は常に 0.0
+    ratio: f64,
+  },
   /// このエッジ単体では組めない（伸縮点が無いのに余る＝孤立した長語など）。行頭を前へずらすと
   /// 空白を得て組めることがあるため早期打ち切りはしない
   Infeasible,
@@ -137,9 +150,11 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
 
   // DP: best[j] = 破断点 breaks[j] で行を終える最小総 demerits。
   // prev[j] = Some(i) で直前破断が breaks[i]、None で行頭（item 0）から始まる（best[j] 有限時のみ有効）。
+  // best_badness[j] = 採用したエッジ単体の badness（TRACE 観測用。DP の選択には使わない）。
   let node_count = breaks.len();
   let mut best = vec![f64::INFINITY; node_count];
   let mut prev: Vec<Option<usize>> = vec![None; node_count];
+  let mut best_badness = vec![0.0f64; node_count];
 
   for j in 0..node_count {
     // 行頭候補を近い側（短い行）から見て、溢れたら以降（より長い行）は不要なので打ち切る
@@ -152,12 +167,15 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
           break;
         },
         Edge::Infeasible => {},
-        Edge::Feasible(demerits) => {
+        Edge::Feasible {
+          demerits, badness, ..
+        } => {
           if best[i].is_finite() {
             let total = best[i] + demerits;
             if total < best[j] {
               best[j] = total;
               prev[j] = Some(i);
+              best_badness[j] = badness;
             }
           }
         },
@@ -165,11 +183,14 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
     }
     // START エッジ（行頭 = item 0 から breaks[j] まで）。より長い行なので溢れ済みなら不要
     if !overflowed
-      && let Edge::Feasible(demerits) = edge_cost(items, 0, &breaks[j], false, text_width)
+      && let Edge::Feasible {
+        demerits, badness, ..
+      } = edge_cost(items, 0, &breaks[j], false, text_width)
       && demerits < best[j]
     {
       best[j] = demerits;
       prev[j] = None;
+      best_badness[j] = badness;
     }
   }
 
@@ -193,7 +214,7 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
   // 破断点列から各行を build_line で確定する（open_links を行順に引き継ぐ）
   let mut lines: Vec<Line> = Vec::new();
   let mut line_start = 0usize;
-  for &node in &chain {
+  for (line_index, &node) in chain.iter().enumerate() {
     let brk = &breaks[node];
     let refs: Vec<&HItem> = items[line_start..brk.at].iter().collect();
     let refs = strip_leading_glue(&refs);
@@ -201,14 +222,55 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       Some(HItem::Discretionary { hyphen }) => Some(hyphen),
       _ => None,
     };
-    lines.push(build_line(refs, brk.is_end, text_width, TextAlignment::Justify, open_links, trailing_hyphen));
+    let line = build_line(refs, brk.is_end, text_width, TextAlignment::Justify, open_links, trailing_hyphen);
+    // `line_index` はサブ段落内の連番（強制改行ごとに 0 へ戻る）。段落通し番号ではない
+    trace!(
+      line_index,
+      break_at = brk.at,
+      is_last = brk.is_end,
+      hyphen = brk.hyphen,
+      badness = best_badness[node],
+      width_pt = line.width().to_pt(),
+      text = %observe::summarize_line(&line),
+      "行を確定しました"
+    );
+    lines.push(line);
     line_start = brk.at + 1;
   }
   return lines;
 }
 
-/// 候補行（`items[line_start..brk.at]`）の demerits を評価する
+/// 候補行のコストを評価し、結果を TRACE へ出す
+///
+/// 評価そのものは [`evaluate_edge`] が行う。return 点が多いので、観測はこのラッパ 1 箇所に集約する。
 fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: bool, text_width: Length) -> Edge {
+  let edge = evaluate_edge(items, line_start, brk, prev_hyphen, text_width);
+  let (outcome, demerits, badness, ratio) = match &edge {
+    Edge::Feasible {
+      demerits,
+      badness,
+      ratio,
+    } => ("feasible", Some(*demerits), Some(*badness), Some(*ratio)),
+    Edge::Infeasible => ("infeasible", None, None, None),
+    Edge::Overflow => ("overflow", None, None, None),
+  };
+  trace!(
+    line_start,
+    break_at = brk.at,
+    is_end = brk.is_end,
+    hyphen = brk.hyphen,
+    prev_hyphen,
+    outcome,
+    demerits = ?demerits,
+    badness = ?badness,
+    ratio = ?ratio,
+    "行分割の候補を評価しました"
+  );
+  return edge;
+}
+
+/// 候補行（`items[line_start..brk.at]`）の demerits を評価する
+fn evaluate_edge(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: bool, text_width: Length) -> Edge {
   let refs: Vec<&HItem> = items[line_start..brk.at].iter().collect();
   let refs = strip_leading_glue(&refs);
   let refs = trim_trailing_glue(refs);
@@ -236,7 +298,11 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
     if leftover < Length::ZERO {
       return Edge::Overflow;
     }
-    return Edge::Feasible(demerits(0.0, brk.hyphen, prev_hyphen));
+    return Edge::Feasible {
+      demerits: demerits(0.0, brk.hyphen, prev_hyphen),
+      badness: 0.0,
+      ratio: 0.0,
+    };
   }
 
   // 非最終行は収縮を使える。収縮能力を超えて溢れる行は実現不能（行頭を前へずらすと更に長いので打ち切り対象）
@@ -259,7 +325,11 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
   };
 
   let badness = (100.0 * ratio.abs().powi(3)).min(INFINITE_BADNESS);
-  return Edge::Feasible(demerits(badness, brk.hyphen, prev_hyphen));
+  return Edge::Feasible {
+    demerits: demerits(badness, brk.hyphen, prev_hyphen),
+    badness,
+    ratio,
+  };
 }
 
 /// badness と破断種別から 1 行ぶんの demerits を求める

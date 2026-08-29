@@ -794,7 +794,7 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
 （`lowering` 節を参照）。`boxes` / `boxing` / `breaking` / `error` / `font` / `geometry` / `image` /
-`lowering` / `pagination` / `warning` の各 module はすべて非公開で、外から見える入口は
+`lowering` / `observe` / `pagination` / `warning` の各 module はすべて非公開で、外から見える入口は
 **module root の `layout` 1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`
 （`geometry` 節を参照）だけである。
 
@@ -1315,6 +1315,16 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 採番（`per_page_footnote_numbers`）は `continued` の断片を数えない — 数えると繰越先ページで番号を振り直して
 しまう。
 
+#### `observe`
+
+TRACE ログ用の要約ヘルパ（`summarize_text` / `summarize_line`）だけを持つ純粋関数の module（#490）。
+文書に比例して出る TRACE は内容そのものを載せないと「どの行・どのグリフか」が読み取れず、一方で
+行 1 本ぶんの全文を出すとログが読めなくなるので、要約と切り詰めをここ 1 箇所に寄せる。消費者は
+`breaking::break_lines`（確定行の内容）と `boxing`（シェーピング run のテキスト）。
+
+`#[cfg(test)]` の `dump` が持つ `content_summary` とは目的が違う — あちらは golden 比較のための
+決定的な全量ダンプで、こちらは人が読む短い要約。共有せず、`dump` の `#[cfg(test)]` gate も外さない。
+
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
 組版中間型を production の facade へ出さずにテストを成立させるための 2 つ。どちらも `#[cfg(test)]` で、
@@ -1642,8 +1652,9 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - `cli`: clap derive による CLI 引数定義（サブコマンド `Build` / `VariationAxes` / `TtcNames` /
   `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config-path` を省略すると `./config/config.toml`
 - `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の
-  初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、端末装飾をこの module に
-  閉じ、`main` は `Reporter::init` / `warnings` / `build` だけを呼ぶ
+  初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、実効フィルタから導く
+  target 表示の有無、端末装飾をこの module に閉じ、`main` は `Reporter::init` / `warnings` / `build`
+  だけを呼ぶ
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
   組版を伴わないため）
@@ -1663,6 +1674,27 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は target 単位指定の
   escape hatch として `--verbose` より優先するが、`--quiet` はさらに優先し、tracing・warning 診断・
   成功サマリをすべて抑止する。
+- **レベルの判定テストは「イベント数が文書の中身に比例するか」**（#490）。新しいログを足すときはこの表で
+  決め、既存イベントのレベルは動かさない。
+
+  | 発行の条件 | レベル |
+  | --- | --- |
+  | phase 境界（件数が文書に依らず固定） | INFO |
+  | 段の内部完了・集計値（件数は段の数に比例） | DEBUG |
+  | 文書の要素数に比例 | TRACE |
+
+  `debug!(block_count = blocks.len(), …)` のような集計 1 行は DEBUG のままで、**そのループの中の 1 件**が
+  TRACE。TRACE を出しているのは行分割（`typeset::breaking::break_lines` — 破断候補ごと・確定行ごと）と
+  シェーピング・字送り（`typeset::boxing` — run ごと・グリフごと・Seiran 自身が適用するアキごと）で、
+  発行順は決定的（この 2 経路は rayon を使わない）。物量の絞り込みは `RUST_LOG` の target 単位指定が
+  担い、量を理由に粒度を粗くしたり DEBUG へ薄めて混ぜたりしない。
+  同じ段落・同じグリフの TRACE が複数回出る経路が 2 つある — 脚注のページ単位採番
+  （`pagination::footnote_numbering`）は本文パスを不動点まで反復し、`break_pages` の
+  `keep_group_orphaned` は widow / orphan 判定のために段落を投機的に再分割する。どちらも回数は入力に
+  対して決定的なので発行順の同一性は保たれるが、ログを読む側は最初にこれを踏む。
+- **target はフィルタが TRACE を出しうるときだけ表示する**。TRACE は文書に比例して出るため、どの module
+  由来かが分からないと読めない。判定は `--verbose` の段数ではなく実効フィルタの上限（`max_level_hint`）で
+  行うので、`RUST_LOG` で TRACE を要求したときも表示される。`-vv` 以下・`--quiet` では表示しない。
 - **成功サマリの所要時間は build 全体**。`Compilation.statistics.total_elapsed_ms` は compiler facade の
   所要時間だが、CLI が表示する値は compile → render → atomic write の全体を計測する。
 - **保存は CLI 側の責務**。`compile` は `Compilation.pdf_path` を返すだけで

@@ -46,6 +46,17 @@ pub(crate) struct Line {
   pub index_marks: Vec<LineIndexEntry>,
 }
 
+impl Line {
+  /// 行の実効幅（最も右へ伸びるボックスの右端）
+  ///
+  /// `boxes` は左から順に積まれるが、両端揃えの伸縮や約物の負アキで最後の箱が最右とは限らないため、
+  /// 右端の最大値を取る。
+  #[must_use]
+  pub(crate) fn width(&self) -> Length {
+    return self.boxes.iter().map(|placed| return placed.x + placed.width).fold(Length::ZERO, Length::max);
+  }
+}
+
 /// 行内の脚注（`\footnote{...}`）本体
 #[derive(Debug, Clone)]
 pub(crate) struct LineFootnote {

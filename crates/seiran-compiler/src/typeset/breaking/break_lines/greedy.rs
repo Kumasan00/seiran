@@ -1,11 +1,14 @@
 //! 貪欲法（first-fit）による行分割
 
+use tracing::trace;
+
 use crate::{
   length::Length,
   style::TextAlignment,
   typeset::{
     boxes::{HItem, Line},
     breaking::break_lines::{LineBreaker, OpenLink, build_line},
+    observe,
   },
 };
 
@@ -25,7 +28,8 @@ impl LineBreaker for GreedyBreaker {
     for item in items {
       match item {
         HItem::ForcedBreak => {
-          lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links, None));
+          let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None);
+          push_line(&mut lines, line, true, false);
           buffer.clear();
           width_so_far = Length::ZERO;
           last_break = None;
@@ -72,14 +76,9 @@ impl LineBreaker for GreedyBreaker {
               HItem::Discretionary { hyphen } => Some(hyphen),
               _ => None,
             };
-            lines.push(build_line(
-              &buffer[..break_index],
-              false,
-              text_width,
-              alignment,
-              &mut open_links,
-              trailing_hyphen,
-            ));
+            let line =
+              build_line(&buffer[..break_index], false, text_width, alignment, &mut open_links, trailing_hyphen);
+            push_line(&mut lines, line, false, trailing_hyphen.is_some());
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
             // 持ち越し先頭の breakable glue は破棄する
@@ -102,10 +101,27 @@ impl LineBreaker for GreedyBreaker {
     }
 
     if !buffer.is_empty() || lines.is_empty() {
-      lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links, None));
+      let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None);
+      push_line(&mut lines, line, true, false);
     }
     return lines;
   }
+}
+
+/// 確定した行を積み、TRACE へ出す
+///
+/// `line_index` は段落内の連番（0 起点。強制改行でもリセットしない — 貪欲法は強制改行を段落の途中として
+/// 扱うため）。badness は載せない（貪欲法は疎密のコストを評価しないので存在しない値）。
+fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
+  trace!(
+    line_index = lines.len(),
+    is_last,
+    hyphen,
+    width_pt = line.width().to_pt(),
+    text = %observe::summarize_line(&line),
+    "行を確定しました"
+  );
+  lines.push(line);
 }
 
 #[cfg(test)]
