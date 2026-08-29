@@ -302,7 +302,7 @@ mod tests {
     let nodes = lower_source(
       &style,
       "\\begin{theorem}[label=thm:p]\np\n\\end{theorem}\n\n\
-       \\begin{proof}[of=thm:p][title=\"sketch\"]\nx\n\\end{proof}\n",
+       \\begin{proof}[of=thm:p, title=\"sketch\"]\nx\n\\end{proof}\n",
     );
 
     // Assert

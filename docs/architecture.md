@@ -527,9 +527,15 @@ fn(&str) -> BodyMode` / `command_arg: fn(&str, usize) -> ArgMode` の 2 本）�
 `ParseMode` に `Verbatim` を足すと `parse_element` 側に到達不能な分岐が生える。引数モードは
 外側文脈からの継承に優先するので、数式内でも verbatim 宣言が効く（#236）。
 
+任意引数 `[...]` はコマンド・Text / Math 環境とも**高々 1 組**（P3）。1 組目の後にトリビアを跨いで
+`[` が続けば 2 組目を読み切って `ParserError::MultipleOptArgs` にする（#488。ラベルは 2 組目の `[...]`
+全体）。型付きビュー（`CommandView::opt_arg` / `EnvironmentView::opt_arg`）はこの不変条件を
+`Option` で表し、下流は複数組を再検査しない。
+
 verbatim 環境の `\begin` 直後は**トリビアを跨がない** — `\begin{<環境名>}` に隣接する `[...]` 1 組
 だけを任意引数として読み、それ以外はすべて本体のバイトになる（通常環境は空白・改行・コメントを
-跨いで引数を探すので、ここだけ規則が違う）。必須引数 `{...}` は読まない。
+跨いで引数を探すので、ここだけ規則が違う。2 組目相当の `[...]` も本体であって構文エラーではない）。
+必須引数 `{...}` は読まない。
 
 現在 verbatim を宣言しているのは `code` 環境の本体と `\code` の必須引数（#448）、`\url` の必須引数（#449）、
 `\href` の第 1 引数（リンク先。#453）。`\href` の第 2 引数（表示テキスト）は宣言が無いので外側文脈を
@@ -547,7 +553,9 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
-- `inline` / `math` / `opt_args` / `error`
+- `inline` / `math` / `opt_args` / `error`。任意引数の検査（未知キー・同一組内のキー重複
+  `DuplicateOptArgKey`・値の型）は `opt_args::collect_opt_args` 1 箇所が担い、ハンドラは許可キーと型の
+  スキーマを渡すだけ（#488）
 - `test_support`（`#[cfg(test)]`）: 配下の test module が共有する CST 組み立てヘルパ。本番の
   レジストリ（`mode_resolver`＝環境本体の `lookup_body_mode` とコマンド引数の `lookup_arg_mode`）を
   注入した `parse` と、そこから最初の `CommandCall` を取り出す `command_call_node` を持つ

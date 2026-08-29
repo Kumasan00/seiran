@@ -122,6 +122,19 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// 同じ任意引数 `[...]` の中で同じキーが 2 回以上指定された場合（P3: キー重複はエラー）
+  #[error("{name} の任意引数でキー `{key}` が重複しています")]
+  #[diagnostic(code(frontend::eval::duplicate_opt_arg_key), help("キー `{key}` は 1 回だけ指定してください"))]
+  DuplicateOptArgKey {
+    /// コマンド名または環境名（先頭の `\` は含めない）
+    name: String,
+    /// 重複したキー
+    key: String,
+    /// 任意引数ノードのソース位置
+    #[label("この任意引数の中で `{key}` が重複しています")]
+    span: SourceSpan,
+  },
+
   /// 任意引数の値が期待型に変換できない場合
   #[error("{name} の任意引数 `{key}` の値が不正です: 期待型は {expected}")]
   #[diagnostic(

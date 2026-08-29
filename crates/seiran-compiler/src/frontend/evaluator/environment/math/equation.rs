@@ -213,7 +213,7 @@ mod tests {
   fn equation_numbered_false_with_label_errors() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\begin{equation}[numbered=false][label=eq:x]a\end{equation}";
+    let source = r"\begin{equation}[numbered=false, label=eq:x]a\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act

@@ -102,7 +102,7 @@ pub(crate) fn collect_command_opt_args(
   view: &CommandView<'_>,
   schema: &[(&str, OptType)],
 ) -> Result<Vec<(String, OptValue)>, EvalError> {
-  return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
+  return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
 }
 
 /// `EnvironmentView` 用の薄いラッパ
@@ -115,39 +115,49 @@ pub(crate) fn collect_environment_opt_args(
   view: &EnvironmentView<'_>,
   schema: &[(&str, OptType)],
 ) -> Result<Vec<(String, OptValue)>, EvalError> {
-  return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
+  return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
 }
 
-/// 任意引数群を集約・型変換してスキーマで検証する低レベル関数
+/// 任意引数 `[...]` を型変換してスキーマで検証する低レベル関数
+///
+/// 任意引数はコマンド名／環境名の直後の高々 1 組（P3。2 組目は parser が構文エラーにする）なので、
+/// `opt_arg` は `Option`。`None` なら空の列を返す。
 ///
 /// # Errors
 ///
-/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
-/// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn collect_opt_args<'a, I>(
+/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、同じキーの重複時に
+/// [`EvalError::DuplicateOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
+pub(crate) fn collect_opt_args(
   source: &str,
   name: &str,
-  opt_arg_nodes: I,
+  opt_arg: Option<&GreenNode<'_>>,
   schema: &[(&str, OptType)],
-) -> Result<Vec<(String, OptValue)>, EvalError>
-where
-  I: IntoIterator<Item = &'a GreenNode<'a>>,
-{
+) -> Result<Vec<(String, OptValue)>, EvalError> {
+  let Some(opt) = opt_arg else {
+    return Ok(Vec::new());
+  };
   let mut pairs: Vec<(String, OptValue)> = Vec::new();
-  for opt in opt_arg_nodes {
-    for (key, value) in parse_key_value_options(source, opt) {
-      let Some(expected) = schema.iter().find(|(k, _)| return *k == key).map(|(_, t)| return *t) else {
-        return Err(EvalError::UnknownOptArgKey {
-          name: name.to_string(),
-          key,
-          expected_keys: format_expected(schema),
-          span: opt.span.to_source_span(),
-        });
-      };
-
-      let opt_value = parse_value(&key, &value, expected, name, opt.span.to_source_span())?;
-      pairs.push((key, opt_value));
+  for (key, value) in parse_key_value_options(source, opt) {
+    let Some(expected) = schema.iter().find(|(k, _)| return *k == key).map(|(_, t)| return *t) else {
+      return Err(EvalError::UnknownOptArgKey {
+        name: name.to_string(),
+        key,
+        expected_keys: format_expected(schema),
+        span: opt.span.to_source_span(),
+      });
+    };
+    // P3「キー重複はエラー」。先勝ち・後勝ちのどちらにも倒さず、`find_*` 系と手書きの代入ループが
+    // 同じ入力で違う値を取り出す余地をここで断つ。
+    if pairs.iter().any(|(k, _)| return *k == key) {
+      return Err(EvalError::DuplicateOptArgKey {
+        name: name.to_string(),
+        key,
+        span: opt.span.to_source_span(),
+      });
     }
+
+    let opt_value = parse_value(&key, &value, expected, name, opt.span.to_source_span())?;
+    pairs.push((key, opt_value));
   }
   return Ok(pairs);
 }
@@ -324,24 +334,33 @@ mod tests {
   }
 
   #[test]
-  fn collect_aggregates_multiple_opt_args() {
-    // Arrange
+  fn collect_returns_error_for_duplicate_key() {
+    // Arrange — P3: 同一 `[...]` 内のキー重複はエラー（先勝ち・後勝ちに倒さない）
     let arena = Bump::new();
-    let source = r"\section[a=1][b=2]{Title}";
+    let source = r"\section[label=x, label=y]{Title}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
-    let result = collect_command_opt_args(&view, &[("a", OptType::Number), ("b", OptType::Number)]).unwrap();
+    let result = collect_command_opt_args(&view, &[("label", OptType::String)]);
 
     // Assert
-    assert_eq!(
-      result,
-      vec![
-        ("a".to_string(), OptValue::Number(1.0)),
-        ("b".to_string(), OptValue::Number(2.0)),
-      ]
-    );
+    assert!(matches!(result, Err(EvalError::DuplicateOptArgKey { ref key, .. }) if key == "label"));
+  }
+
+  #[test]
+  fn collect_returns_error_for_duplicate_bare_key() {
+    // Arrange — bare key `draft` は `draft=true` の略記なので `draft=false` と重複する
+    let arena = Bump::new();
+    let source = r"\section[draft, draft=false]{Title}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let view = CommandView::new(first_command_node(cst), source);
+
+    // Act
+    let result = collect_command_opt_args(&view, &[("draft", OptType::Bool)]);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::DuplicateOptArgKey { ref key, .. }) if key == "draft"));
   }
 
   #[test]

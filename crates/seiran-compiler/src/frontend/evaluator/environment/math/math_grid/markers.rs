@@ -80,7 +80,7 @@ fn take_notag_marker(
   if !row_markers_allowed {
     return Err(EvalError::NotagNotSupported { span });
   }
-  if !view.args_is_empty() || view.opt_args_count() > 0 {
+  if !view.args_is_empty() || view.opt_arg().is_some() {
     return Err(EvalError::NotagNotAtRowEnd { span });
   }
   if current_notag.is_some() {
@@ -102,7 +102,7 @@ fn take_label_marker(
   if !row_markers_allowed {
     return Err(EvalError::RowLabelNotSupported { span });
   }
-  if view.args_count() != 1 || view.opt_args_count() > 0 {
+  if view.args_count() != 1 || view.opt_arg().is_some() {
     return Err(EvalError::RowLabelNotAtRowEnd { span });
   }
   if current_label.is_some() {

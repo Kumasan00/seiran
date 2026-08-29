@@ -118,7 +118,7 @@ mod tests {
   fn split_numbered_false_with_label_errors() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\begin{split}[numbered=false][label=eq:s]a &= b\end{split}";
+    let source = r"\begin{split}[numbered=false, label=eq:s]a &= b\end{split}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act

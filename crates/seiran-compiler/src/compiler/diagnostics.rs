@@ -94,6 +94,22 @@ fn diagnostic_math_script_without_group() {
 }
 
 #[test]
+fn diagnostic_multiple_opt_args() {
+  // P3（任意引数はコマンド名／環境名の直後に 1 組だけ。#488）
+  let failure = build_pages_err(&["tests/text/diagnostics/multiple_opt_args.sei"]);
+
+  assert_matches_golden("multiple_opt_args", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_duplicate_opt_arg_key() {
+  // P3（同一 `[...]` 内のキー重複はエラー。#488）
+  let failure = build_pages_err(&["tests/text/diagnostics/duplicate_opt_arg_key.sei"]);
+
+  assert_matches_golden("duplicate_opt_arg_key", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）
