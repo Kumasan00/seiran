@@ -53,7 +53,7 @@ usvg = "0.47.0"
 # 名指しの規約（必須ルール N / use 規約 / モジュール構成 / テスト）を引くなら「規約の機械化」、それ以外は
 # コメント自身の目的の節。採用条件（0 件は lint 単位で実測 / 対立 pair は現行側に固定 / nursery は
 # Known problems 確認）は選定の履歴であって守る理由ではないので見出しに出さず、docs/coding-conventions.md の
-# Clippy 節が持つ。各 lint が要求する書き方も同書、CLAUDE.md「Clippy 運用」節は運用だけを持って
+# Clippy 節が持つ。1 行で言い切れない lint の書き方も同書、CLAUDE.md「Clippy 運用」節は運用だけを持って
 # ポインタでここを指す。
 # group は priority -1、個別 lint は priority 既定（0）で group を上書きする。
 [workspace.lints.clippy]

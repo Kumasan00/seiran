@@ -3,14 +3,7 @@
 ## この文書の役割
 
 **いま実装されている構造**を記録する。特定の crate / module を触る作業に入る前に、該当する節を読む。
-
-| 文書                                      | 持つもの                                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------------------- |
-| `CLAUDE.md`                               | コマンド・コーディング規約の要約・データフローと依存の骨格（ナビゲーション用）  |
-| `docs/language-design.md`                 | 言語設計の目的 G1〜G3 と原則 P1〜P10 の全文・判断事例集                         |
-| `docs/coding-conventions.md`              | コーディング規約の全文・根拠・lint との対応                                     |
-| **`docs/architecture.md`**                | **crate / module 別の実装構造（本書）と style.toml 詳細スキーマ**               |
-| `README.md`                               | ユーザ向け（インストール・コマンド・設定例）                                    |
+他の文書との役割分担は `CLAUDE.md`「文書地図」が持つ。
 
 各クレート節・module 節は **責務 / モジュール構成 / 不変条件・注意点** の順で揃える。過去の統合・分割の
 経緯は、知らないと今日の判断を誤るもの（型の形を戻してしまう、削除済みの規約を復活させる等）だけを
@@ -28,7 +21,7 @@ anchor に限って添える。
 段の呼び出し順序と中間型は非公開 module の内側に閉じる。crate はデプロイ・外部依存・独立再利用の単位に
 限り、**コンパイル段階を crate 境界にしない**（段ごとの crate 分割へ戻さない）。
 
-以下の 11 個の子節が扱う 12 個の module はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+以下の子節が扱う module はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
@@ -141,8 +134,8 @@ seam を `config` の子に置かないのは変わらない — 全外部資源
 `config` / `source_set` / `font` は加えて leaf module `failures` に依存する（検証違反・読込失敗を
 `Failures<E>` で全件返すため）。
 `font` が依存するのは同 module の seam だけで、crate 内の他 module を知らない。seam 側を依存ゼロに
-保つことで `project::config` → `project::font` → seam が一方向に閉じる
-（#351、#352。「`project` 全体が crate 内依存を持たない」という旧不変条件はこの形へ改訂した）。
+保つことで `project::config` → `project::font` → seam が一方向に閉じる。「`project` 全体が crate 内依存を
+持たない」という形へは戻さない（`config` が `font` / `length` を値として持つ以上、成り立たない）。
 
 見た目を決める `style.toml` は crate root の `style` module の所有で、言語設計原則 P10 が区別する
 2 概念（物理・実体・メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは
@@ -349,8 +342,8 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `style::math::MathStyle` とは別概念 — 同名（`MathStyle`）へ戻すと衝突が再発する。
 - **`MathClass` は段間語彙**。記号の数式クラス（`\mathord` / `\mathbin` 等）は `frontend` の記号テーブル
   `SYMBOL_MAP` が記録し、`HirMathKind::Symbol { ch, class }` に載って `typeset::lowering::math::spacing`
-  がアトム間のアキ決定に消費する（#86）。#26 で導入した時点では消費者が `frontend` だけだったので
-  `frontend::evaluator::command::symbol` に置いていたが、consumer が段をまたいだのでここへ移した。
+  がアトム間のアキ決定に消費する（#86）。consumer が段をまたぐので、`frontend` の記号テーブル側の所有へ
+  戻さない。
 - **単一 consumer の型はここに置かない**。決定的テキストダンプは
   唯一の消費者が golden テストなので共有 module へは置かず、**走査対象の型を所有する側**に分けて置く
   —— `dump_pages`（`typeset::Page` 用）は `typeset::dump`、`dump_publication`
@@ -392,7 +385,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 `config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の不変条件として
 `typeset::geometry` が所有する。
 
-23 個の子モジュール（サブスタイル 21 + `template` + `error`）はすべて非公開で、module root が
+子モジュール（サブスタイル群 + `template` + `error`）はすべて非公開で、module root が
 再エクスポートするのは**`style` の外から実際に名指しされる名前だけ**（`Style` / `CounterName` /
 `CounterStyle` / `Counters` / `CaptionStyle` / `FootnoteNumbering` / `FootnoteStyle` /
 `NestedOrderedFormat` / `Alignment` / `MathScriptStyle` / `NumberSide` / `NumberStyle` /
@@ -793,7 +786,7 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
 （`lowering` 節を参照）。`boxes` / `boxing` / `breaking` / `error` / `font` / `geometry` / `image` /
-`lowering` / `pagination` / `warning` の 10 module はすべて非公開で、外から見える入口は
+`lowering` / `pagination` / `warning` の各 module はすべて非公開で、外から見える入口は
 **module root の `layout` 1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`
 （`geometry` 節を参照）だけである。
 
@@ -919,16 +912,17 @@ root facade へ出すのは**本体コードに消費者がある型だけ**（`
   `HarfRustShapers` / `validate_fonts` を直接構築する呼び出し側は存在しない。
 - フォント解析・メトリクス取得・設定検証・シェーパー構築は、**段の中では 19 種すべてを検査して違反を
   `FontType::ALL` 順に全件返す**（`Failures<FontSystemError>`）。段の間（parse → metrics → validate）は
-  後段の入力を構築できないので早期 return する（#376）。rayon を使う 3 箇所（`build_font_refs` /
-  `HarfRustShapers::new` / `project::FontData::load`）は `collect::<Vec<Result<_, _>>>()` +
-  `failures::collect_in_input_order` を通し、完了順が報告順へ漏れないようにする。
+  後段の入力を構築できないので早期 return する（#376）。rayon で失敗しうる構築を並列化する 3 箇所
+  （`build_font_refs` / `HarfRustShapers::new` / `project::FontData::load`）は
+  `collect::<Vec<Result<_, _>>>()` + `failures::collect_in_input_order` を通し、完了順が報告順へ漏れない
+  ようにする（4 箇所目の `ShaperInstances` の構築は失敗しないので `FontType::ALL` 順の `collect` だけでよい）。
 - 検証違反の leaf は `FontValidationFailure { font_type, kind }` で、`code` / `help` / `labels` は
   内側の `FontValidationErrorKind` へ委譲し、メッセージにだけ config.toml のキー（`serif`）を前置する
   **帰属 adapter**（`compiler::source_diagnostic::SourceDiagnostic` と同じ形）。全体・種別ごとの集約
   wrapper は作らない — 描画は leaf 1 件ぶんで、入れ子の診断ブロックを作らない（#376）。`kind` は cause
   ではないので `#[source]` にも載せない（載せると miette が同じ文言を `╰─▶` で再描画する）。
-- `layout` は `.system()` を**画像読込より前**に呼ぶ。両方が失敗する入力で報告されるエラーを、
-  フォント資源の構築を `compiler` が担っていた頃と同じ側（フォント）に保つため。
+- `layout` は `.system()` を**画像読込より前**に呼ぶ。フォントと画像の両方が失敗する入力では
+  フォント側のエラーを報告する（順序を入れ替えると診断が変わる）。
 
 #### `error`
 
@@ -1101,7 +1095,7 @@ baseline・罫線をページ座標へ畳む。畳み込みは `Length`（sp 整
 配置しない現行制限は維持し、`position_table_row_boxes` で明示的に読み飛ばす。完全対応は表の配置済み
 表現とは別課題とする。
 
-いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
+いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。子 module 間の
 相互参照も `boxing` / `breaking` / `lowering` からの利用も `crate::typeset::boxes::{...}` のパスで行う
 （use 規約どおり `super::` は使わない）。`typeset` root facade へ再エクスポートするのは**本体コードに
 消費者がある型だけ** — `publication::build` が `Publication` へ写すために走査する `Page` / `PlacedBlock` /
@@ -1207,7 +1201,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 **コード**（`code` 環境の 1 行・`\code{...}`）は `LayoutNode::TextAtom` で来て、break 注入を通さず
 `Atom` 1 つに畳む — 空白を伸縮 `Glue` へ変換しないので、字下げと空白の個数が行分割・行揃えで動かない
-（行内に分割機会が無いので折り返しもしない。行折り返しは #446 の Tier 2 スコープ）。空文字列（コードの
+（行内に分割機会が無いので折り返しもしない。行折り返しは #446 の将来スコープ（issue ラベル `tier-2`））。空文字列（コードの
 空行）のときだけ、同じ書体・サイズの空セグメントを測って高さ・深さを移す — Atom の extent は子から
 決まるため、そのままだと 0 になってその行の行送りだけが `leading` まで縮む。
 
@@ -1320,7 +1314,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 | module | 役割 | 外への出し方 |
 | --- | --- | --- |
-| `test_fixtures` | 確定レイアウトの fixture builder。`PageBuilder` と `glyph_line` / `rule_line` / `atom_line` / `rule_block` / `image_block` / `math_block` / `table_block` / `laid_out` ほか | `pub(crate) mod`（`publication::build` / `typeset::dump` のテストが使う） |
+| `test_fixtures` | 確定レイアウトの fixture builder。`PageBuilder` と `glyph_line` / `atom_line` / `rule_block` / `image_block` / `math_block` / `table_block` / `laid_out` ほか | `pub(crate) mod`（`publication::build` / `typeset::dump` のテストが使う） |
 | `dump` | 確定ページ列（`Vec<Page>`）の決定的テキストダンプ `dump_pages` | root facade から `pub(crate) use dump::dump_pages`（関数 1 つだけ） |
 
 `test_fixtures` の**不変条件**: 関数・メソッドの引数型にも返り値型にも `HBox` / `Line` /

@@ -4,17 +4,8 @@
 
 Seiran の Rust コードの書き方の**正典**。`CLAUDE.md`「コーディング規約」節は各規約の本文と編集中に効く
 落とし穴だけを持つ要約で、根拠・lint の検出範囲・境界事例・経緯はここに置く。lint の**採用根拠**は
-root `Cargo.toml` の `[workspace.lints.*]` に付けたコメント（1 lint = 1 行）が正典で、本書は lint が
-要求する**書き方**を持つ（役割分担は「Clippy」節）。
-
-| 文書                              | 持つもの                                                                 |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `CLAUDE.md`                       | 規約本文の要約と、編集中に効く落とし穴（ナビゲーション用）               |
-| **`docs/coding-conventions.md`**  | **規約の全文・根拠・lint との対応・境界事例（本書）**                    |
-| root `Cargo.toml`                 | lint の採用根拠（1 lint = 1 行）と目的別の節見出し                       |
-| `clippy.toml` / `rustfmt.toml`    | lint の設定値 / フォーマットの正典                                       |
-| `error-handling` skill            | エラー型・診断（code / help / label / related）・集約・garde の設計規約  |
-| `verify-typesetting` skill        | golden テスト・PDF バイト比較の使い分けと再生成手順                      |
+root `Cargo.toml` の `[workspace.lints.*]` に付けたコメント（1 lint = 1 行）が正典で、本書は 1 行で言い切れない
+lint の**書き方**を持つ（役割分担は「Clippy」節）。他の文書との分担は `CLAUDE.md`「文書地図」が持つ。
 
 貫く原理は 1 つ — 言語設計の G1「字面だけで構造が一意」をコードへ適用する。use 規約・値と型の書き方・
 `unreachable!` / `expect` の根拠明記はすべてこの適用例で、機械化できるものは lint に落とし、lint が
@@ -276,8 +267,8 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 `[workspace.lints.rustdoc]`（各クレートは `lints.workspace = true` で 3 テーブルとも継承）に 1 lint = 1 行の
 根拠コメントが付いていて、節見出しが下の目的に対応する。rustdoc テーブルだけは `cargo doc` を回して初めて
 効くので、CI がその形を持つ（「運用」節）。lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の
-理由は `Cargo.toml` のコメントに書き、個々の lint が要求する**書き方**は本書の規約各節に置く。`CLAUDE.md`
-の Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
+理由は `Cargo.toml` のコメントに書き、1 行で言い切れない lint の**書き方**は本書の規約各節に置く（1 行で
+足りる lint は根拠コメントが書き方を兼ねる）。`CLAUDE.md` の Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
 
 **lint 側の設定値は root `clippy.toml`** — 置くのは**既定と違う値だけ**で、既定どおり維持するノブは書かない
 （差分＝意図として読める形を保ち、既定値の複製で upstream の既定変更に追随する二重帳簿を作らないため。
@@ -314,7 +305,9 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 
 1 つの lint が 2 つの目的に載ることはある（`non_ascii_idents` は「値と型の書き方」の規約表にもある）。置き場の
 規則は 1 つ — **根拠コメントが名指しの規約を引くなら「規約の機械化」、それ以外はコメント自身の目的の節**。
-「本書に書き方の記述があるか」は規則にできない（採用 lint はすべて本書に書き方を持つので、全節が規約へ流れ込む）。
+コメントの参照先は字面で決まるので判定に迷わない。「本書に書き方の記述があるか」を規則にしないのは、本書が
+書き方を持つのは 1 行で言い切れない lint だけで（残りは `Cargo.toml` の根拠コメントが書き方を兼ねる）、
+その線引きが lint の目的とは無関係だから。
 
 ### 採用条件
 
@@ -343,7 +336,8 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
 
 ### 運用
 
-- CI と pre-commit フックは `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの
+- CI と pre-commit フック（tracked の `.git-hooks/pre-commit`。`git config core.hooksPath .git-hooks` で有効化）は
+  `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの
   指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する。
 - テストは CI・pre-commit とも `cargo test --all-features` で走る。`--all-targets` を付けると cargo の仕様で
   **doctest が外れる**（benches / examples は存在しないので、外した差分は doctest が加わることだけ）。

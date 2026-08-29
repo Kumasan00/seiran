@@ -6,6 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Seiran** は、TeX スタイルのテキストファイルから高品質な PDF を生成する Rust ベースの CLI ツールです。Rust Edition 2024、Cargo workspace 構成（resolver = "3"）。
 
+## 文書地図
+
+正典は話題ごとに 1 箇所。この文書には要約とポインタだけを置き、詳細はそれぞれの正典を読む。
+
+| 話題 | 正典 | 読むとき |
+| --- | --- | --- |
+| 言語設計の目的・原則・判断事例 | `docs/language-design.md` | 新コマンド・環境・オプション・style フィールドを設計するとき |
+| crate / module 別の構造・不変条件・style.toml 詳細スキーマ | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
+| コーディング規約の全文・根拠・lint との対応 | `docs/coding-conventions.md` | 規約の境界事例に迷ったとき |
+| lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint が発火したとき |
+| 言語機能の実装手順 | `add-language-feature` skill | 設計合意済みの機能を実装するとき |
+| エラー型・診断・集約・garde | `error-handling` skill | エラー型を足す・診断を設計するとき |
+| 組版変更の検証・golden | `verify-typesetting` skill | 組版・数式・seiran-pdf・パーサ以降を変えた後 |
+| issue / PR / branch / commit / ラベル | `issue-pr-ops` skill | GitHub で何かを作る・編集する前 |
+| ドキュメント更新漏れのチェックリスト | `docs-sync` skill | PR を仕上げるとき |
+| ユーザ向け（インストール・コマンド・設定例） | `README.md` | — |
+
 ## 言語設計原則
 
 LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除する汎用組版言語（マクロ・パッケージ機構・LaTeX 互換層なし）。
@@ -40,7 +57,7 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 ```sh
 cargo build                                                # デバッグビルド
 cargo build --release                                      # リリースビルド（LTO 有効）
-cargo run -- build [-c <config_path>] [-v|-vv|-q]        # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -q 抑止）
+cargo run -- build [-c <config_path>] [-v|-vv|-vvv|-q]   # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -vvv 最大 / -q 抑止）
 cargo run -- variation-axes <font> [-f <font_index>]       # バリアブルフォント軸情報を表示
 cargo run -- ttc-names <ttc_file>                          # TTC ファイル内のフォント名一覧を表示
 cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示
@@ -49,6 +66,7 @@ cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pr
 cargo test --all-features                                  # テスト実行（doctest 込み。CI / pre-commit と同じ形）
 cargo test -p <crate_name>                                 # 特定クレートのテスト実行
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features   # doc ビルド（CI と同じ形）
+git config core.hooksPath .git-hooks                      # pre-commit（fmt / clippy / test）を有効化。clone 後に 1 回
 ```
 
 `cargo fmt` は **nightly toolchain が必須**です。`rustfmt.toml` で `unstable_features = true`（`group_imports = "StdExternalCrate"` / `imports_granularity = "Crate"` / `format_macro_bodies` 等）を有効化しているためです。`build` サブコマンドの `-c` / `--config-path` を省略した場合は `./config/config.toml` が使用されます。
@@ -69,10 +87,10 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
                        → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
   → typeset::layout    組版: SemanticDocument + 設定 + FontResources → LaidOutDocument
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
-                       シェーパー）と内部順序（画像読込・寸法確定 → lowering → (a) boxing
-                       → (c+d) breaking → 前付け・後付け → ページラベル → 走り文 → outline）
+                       シェーパー）と内部順序（画像読込・寸法確定 → lowering → boxing（計測）
+                       → breaking（行分割・改ページ）→ 前付け・後付け → ページラベル → 走り文 → outline）
                        は typeset に閉じる
-  → seiran-pdf         (e) render: compiler が確定させた Publication（純データ）を描画するのみ
+  → seiran-pdf         render: compiler が確定させた Publication（純データ）を描画するのみ
                        （krilla フォントの構築・画像デコード・フォントサブセット化はここに閉じる）
   → seiran (CLI)       atomic write でファイル出力
 ```
@@ -85,7 +103,7 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
   成果物 `CompilationInputs` は検証を通った値しか持たない
 - 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は表示文字列化だけ。
   文書木への書き戻しはどの段も行わない
-- box は (a) で寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない
+- box は boxing で寸法を 1 回だけ計測して保持し、breaking 以降のパスはフォントに触れない
 - 行分割・縦組版とも glue / penalty モデル（行分割は Knuth–Plass が既定）
 - 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない。記号間のアキは数式クラスの表から
   固定 kern（1mu = font_size/18）で出し、ソースに書かれた空白は組版に出さない
@@ -103,7 +121,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
                    （Publication / DependencyManifest / Warnings / BuildStatistics / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource / ProjectPath）
-  ↑ seiran-pdf     (e) 描画。compiler facade の Publication を消費して PDF バイト列を作る backend
+  ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
 ```
@@ -134,17 +152,23 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 ## コーディング規約
 
 正典は **`docs/coding-conventions.md`**（各規約の根拠・lint の検出範囲・境界事例）。ここには規約の本文と、
-編集中に効く落とし穴だけを置く。lint の採用根拠は root `Cargo.toml` のコメント（1 lint = 1 行）、設定値は
-`clippy.toml`、エラー型・診断の設計は `error-handling` skill、組版の検証は `verify-typesetting` skill。
+編集中に効く落とし穴だけを置く。
 
 ### 必須ルール（番号は Cargo.toml のコメントが参照する — 固定）
 
 1. **`return` キーワード必須**: 末尾式による暗黙の返却は使わない（`implicit_return`）
 2. **フォーマット**: 正典は `rustfmt.toml`（2 スペース・120 桁）。適用は `cargo +nightly fmt`（nightly 必須）
-3. **use 文**: 持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う。起点は `crate::` に統一し `super::` / `self::` は使わない — 例外は (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）の 2 つだけ。`crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外）。`*` を避け明示 import、型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）。`#[cfg(test)]` だけが使う import は `#[cfg(test)] use ...;`
+3. **use 文**: 持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う
+   - 起点は `crate::` に統一し `super::` / `self::` は使わない。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）
+   - `crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`）。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外
+   - `*` を避け明示 import。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
+   - `#[cfg(test)]` だけが使う import は `#[cfg(test)] use ...;`
 4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かは人が見る）
 5. **`unreachable!` は積極的に使う**: 型で表現不能にできない「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` でごまかさず `unreachable!`。入力（ソース・設定）由来で到達しうる状態は miette 診断エラー。メッセージには「なぜ到達しないか」＝上流のどの検証が保証するかを書く
-6. **panic は根拠を書いてから落とす**: 本体で `.unwrap()` は使わず `.expect("なぜ落ちないか")`（条件の言い換えは不可。同じ根拠が並ぶならヘルパへ畳む）。`assert!` 系にもメッセージ必須（テストでは発火しないので素の `assert_eq!` でよい）。`-> Result` の中では panic しない（`panic_in_result_fn`。`unreachable!` / `debug_assert!` は対象外）。裸の `panic!` は書かない（`panic`。`tests/` から使うヘルパは cfg(test) 外なので効く）。`-> Result` / `-> Option` の関数で返り値と同じ型ファミリを `unwrap` / `expect` したら `#[expect(clippy::unwrap_in_result, reason = ...)]` — テストの中でも発火する。`reason` に書けるのは「panic が必要」か「panic し得ない」だけで、どちらも書けないなら診断エラー化かリファクタ。lint は網羅ではないので属性が無い ≠ 根拠検討済み
+6. **panic は根拠を書いてから落とす**
+   - 本体で `.unwrap()` は使わず `.expect("なぜ落ちないか")`（条件の言い換えは不可。同じ根拠が並ぶならヘルパへ畳む）。`assert!` 系にもメッセージ必須（テストでは発火しないので素の `assert_eq!` でよい）
+   - `-> Result` の中では panic しない（`panic_in_result_fn`。`unreachable!` / `debug_assert!` は対象外）。裸の `panic!` は書かない（`panic`。`tests/` から使うヘルパは cfg(test) 外なので効く）
+   - `-> Result` / `-> Option` の関数で返り値と同じ型ファミリを `unwrap` / `expect` したら `#[expect(clippy::unwrap_in_result, reason = ...)]` — テストの中でも発火する。`reason` に書けるのは「panic が必要」か「panic し得ない」だけで、どちらも書けないなら診断エラー化かリファクタ。lint は網羅ではないので属性が無い ≠ 根拠検討済み
 7. **unsafe は 1 操作 1 ブロック 1 SAFETY**: `unsafe {}` 1 つに操作 1 つ、直上に `// SAFETY:`（間に文を挟まない）。unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc は書かない（`// NOTE:` 等を使う）。`unsafe fn` の本体でも `unsafe {}`
 
 ### モジュール構成
@@ -174,7 +198,10 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | エスケープの要らない文字列に `r"…"` を付けない | `needless_raw_strings` |
 | 識別子は ASCII（テスト名も）。日本語は doc・診断・assert 文言へ | `non_ascii_idents` |
 
-- **enum match の wildcard（人が守る）**: 「入力 enum に variant を追加したら、この処理の判断を必ず見直すべきか」で決める。**Yes なら全 variant を明示**（意味的な対応表・parser / evaluator の dispatch・状態遷移・段間語彙の完全走査・新 variant がアルゴリズムへ参加するか判断すべき分類。同じ結果は `|` でまとめる）。**No なら wildcard を維持**（抽出・検索、部分集合の述語、許可リスト外を同じ診断にする既定エラー、pass-through、enum 自身の共通操作への委譲 — 「新 variant も既定へ入る」が処理の意味）。ガード付き arm は網羅性判定に参加しないので、同じ variant を wildcard 側の列挙にも書く。`wildcard_enum_match_arm` は Yes / No を区別できないので有効化しない
+- **enum match の wildcard（人が守る）**: 「入力 enum に variant を追加したら、この処理の判断を必ず見直すべきか」で決める
+  - **Yes なら全 variant を明示**（意味的な対応表・parser / evaluator の dispatch・状態遷移・段間語彙の完全走査・新 variant がアルゴリズムへ参加するか判断すべき分類。同じ結果は `|` でまとめる）
+  - **No なら wildcard を維持**（抽出・検索、部分集合の述語、許可リスト外を同じ診断にする既定エラー、pass-through、enum 自身の共通操作への委譲 — 「新 variant も既定へ入る」が処理の意味）
+  - ガード付き arm は網羅性判定に参加しないので、同じ variant を wildcard 側の列挙にも書く。`wildcard_enum_match_arm` は Yes / No を区別できないので有効化しない
 
 ### エラーハンドリング・バリデーション
 
