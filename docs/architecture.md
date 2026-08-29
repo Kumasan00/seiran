@@ -1643,19 +1643,29 @@ image not in manifest / 未対応の画像拡張子）は持たない — 同じ
 CLI エントリーポイント（package 名・binary 名とも `seiran`）。`seiran-compiler` と `seiran-pdf` の
 両方に依存し、`compile` → `seiran_pdf::render` → atomic write（`tempfile` 経由の一時ファイル + rename）→
 結果表示（`Compilation.warnings` の診断とビルドサマリ）の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
-filesystem・ログ初期化（`tracing-subscriber`）・端末出力といった実行環境の関心事はすべてこの crate に
+filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・端末出力といった実行環境の関心事はすべてこの crate に
 閉じており、`seiran-compiler` は `ProjectSource` seam 越しにしか外部資源へ触らない。
 カレントディレクトリも `build` 実行時にこの crate が取得し、相対パスの解決基準として `compile` へ明示する。
 
 ### モジュール構成
 
 - `cli`: clap derive による CLI 引数定義（サブコマンド `Build` / `VariationAxes` / `TtcNames` /
-  `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config-path` を省略すると `./config/config.toml`
+  `ScriptLangs`、`--verbose` / `--quiet` / `--log-file`）。`build` の `-c` / `--config-path` を省略すると
+  `./config/config.toml`
 - `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の
   初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、実効フィルタから導く
   target 表示の有無、端末装飾をこの module に閉じ、`main` は `Reporter::init` / `warnings` / `build`
   だけを呼ぶ。装飾するのは `NO_COLOR` 未設定かつ stderr が端末のときだけで、その判定を
-  `Reporter::init` で 1 回だけ行い、ログ（`with_ansi`）と成功サマリで同じ値を共有する（#493）
+  `Reporter::init` で 1 回だけ行い、ログ（`with_ansi`）と成功サマリで同じ値を共有する（#493）。
+  subscriber は `Registry` に stderr layer と（`--log-file` 指定時だけ）ファイル layer を重ねた形で、
+  出力先ごとに `Layer::with_filter` の `EnvFilter` を持つ。`EnvFilter` は `Clone` できないので共通の
+  directive 文字列を 1 度決めて出力先ごとに parse し直す（`EnvFilter::new` は不正 directive を黙って
+  捨て既定 directive を足すので使わず、`EnvFilter::builder().parse_lossy` に寄せる）。`Reporter::init` は
+  ログファイルを開けないと `LogFileError` を返し、subscriber を 1 つも設置しないまま `main` が止まる（#495）
+- `reporting::log_file`: `--log-file` の出力先（`LogSink`）とその失敗型 `LogFileError`。ファイルは実行ごとに
+  truncate し、親ディレクトリが無ければ作る。書き込みは `tracing-appender` の `non_blocking` 越しで、
+  `lossy(false)` によりキューが埋まってもイベントを捨てず、`WorkerGuard` を `Reporter` が持つことで
+  `main` のローカルが drop される時点（`Err` を返す経路を含む）に書き残しを流し切る（#495）
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
   組版を伴わないため）
@@ -1667,19 +1677,31 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - **段順序の知識を持たない**。`main` が呼ぶのは `seiran_compiler::compile` と `seiran_pdf::render` の 2 つだけで、
   parse / 意味解析 / typeset の各段を個別に呼ぶ経路は復活させない。
 - **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を `miette` の handler
-  （`Report` の `Debug` 表示）で stderr へ 1 件ずつ出す。`--quiet` では出さない。ログ（tracing）へは
-  出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。
-- **出力先は stderr に一本化する**。ユーザー向け報告（warning 診断・成功サマリ）も tracing のログも
+  （`Report` の `Debug` 表示）で stderr へ 1 件ずつ出す。`--quiet` では**端末に**出さないが、
+  `--log-file` の記録からは省かない（warning の抜けた記録は事後解析に使えない）。ログ（tracing）へは
+  出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。端末とファイルは別の出力先なので、
+  同じ warning がそれぞれへ 1 回ずつ出るのはこの方針と衝突しない。ファイルへ書くぶんは
+  `GraphicalReportHandler`（`unicode_nocolor` かつ `with_links(false)`）で装飾も OSC 8 ハイパーリンクも
+  持たない文字列にする。
+- **端末側の出力先は stderr だけ**。ユーザー向け報告（warning 診断・成功サマリ）も tracing のログも
   stderr へ出し、stdout はパイプできる成果物のための経路として空けておく（stdout を使うのは
   `variation-axes` / `ttc-names` / `script-langs` の一覧表示だけ）。`build > /dev/null` でログは
   消えず、`build 2> /dev/null` で消える。subscriber は `fmt` の既定（stdout）に任せず
   `with_writer(std::io::stderr)` で明示する（#492）。
+- **`--log-file` は stderr を置き換えず、出力先を足す**。指定しても端末の見え方は 1 バイトも変わらない。
+  ファイルへ書くのは tracing イベント・warning 診断・成功サマリの 3 つで、tracing イベントには時刻を付け
+  （stderr 側は時刻なしのまま）、ANSI 装飾は出力先が tty でないので常に無効にする。warning 診断と成功サマリは
+  端末と同じ体裁のまま時刻を付けずに書く — 複数行の診断ブロックの先頭行にだけ時刻が付く不揃いを避けるため。
+  時刻はローカル時刻（`OffsetTime::local_rfc_3339`）で、オフセットを取得できない環境では UTC へ落とす（#495）。
 - **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを出し、
   tracing は WARN 以上。`-v` は compile / render / write の安定した工程（INFO）、`-vv` は内部詳細
   （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /
   `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は target 単位指定の
-  escape hatch として `--verbose` より優先するが、`--quiet` はさらに優先し、tracing・warning 診断・
-  成功サマリをすべて抑止する。
+  escape hatch として `--verbose` より優先する。`--quiet` は**端末側だけ**を抑止する — stderr 側の
+  実効フィルタを `off` にし warning 診断・成功サマリを端末へ出さないが、`--log-file` の内容は
+  `RUST_LOG` / `--verbose` どおりのまま減らさない（静かに回して後で読むのがファイル出力の目的）。
+  `--verbose` と `--quiet` は排他のままなので、端末を黙らせたままファイルだけ詳細化するときは
+  `RUST_LOG` を使う。
 - **レベルの判定テストは「イベント数が文書の中身に比例するか」**（#490）。新しいログを足すときはこの表で
   決め、既存イベントのレベルは動かさない。
 
@@ -1700,7 +1722,8 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   対して決定的なので発行順の同一性は保たれるが、ログを読む側は最初にこれを踏む。
 - **target はフィルタが TRACE を出しうるときだけ表示する**。TRACE は文書に比例して出るため、どの module
   由来かが分からないと読めない。判定は `--verbose` の段数ではなく実効フィルタの上限（`max_level_hint`）で
-  行うので、`RUST_LOG` で TRACE を要求したときも表示される。`-vv` 以下・`--quiet` では表示しない。
+  行うので、`RUST_LOG` で TRACE を要求したときも表示される。`-vv` 以下・`--quiet` では表示しない。判定は
+  出力先ごとに独立で、`-q --log-file` かつ `RUST_LOG` が TRACE を要求していればファイル側だけ target が付く。
 - **成功サマリの所要時間は build 全体**。`Compilation.statistics.total_elapsed_ms` は compiler facade の
   所要時間だが、CLI が表示する値は compile → render → atomic write の全体を計測する。
 - **保存は CLI 側の責務**。`compile` は `Compilation.pdf_path` を返すだけで

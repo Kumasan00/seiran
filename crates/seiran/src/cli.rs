@@ -12,9 +12,13 @@ pub(super) struct Cli {
   #[arg(short, long, global = true, action = clap::ArgAction::Count, conflicts_with = "quiet")]
   pub(super) verbose: u8,
 
-  /// warning・ログ・成功サマリを抑止する（エラー以外は無言、`RUST_LOG` より優先）
+  /// 端末への warning・ログ・成功サマリを抑止する（エラー以外は無言、`RUST_LOG` より優先）。`--log-file` の内容は減らさない
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
+
+  /// ログ・warning・成功サマリをこのファイルへも書く（端末の出力は変わらない。実行ごとに truncate）
+  #[arg(long, global = true, value_name = "PATH")]
+  pub(super) log_file: Option<PathBuf>,
 
   /// 実行するサブコマンド
   #[command(subcommand)]
