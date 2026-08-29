@@ -23,6 +23,7 @@ mod font;
 mod geometry;
 mod image;
 mod lowering;
+mod observe;
 mod pagination;
 mod warning;
 

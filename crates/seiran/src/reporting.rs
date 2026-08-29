@@ -6,7 +6,7 @@
 
 use std::{io::IsTerminal, time::Duration};
 
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{EnvFilter, Registry, filter::LevelFilter, fmt, layer::Layer};
 
 /// CLI のユーザー向け報告器。
 ///
@@ -24,16 +24,16 @@ impl Reporter {
   /// 詳細化するのは Seiran 自身の 3 target だけで、依存 crate は WARN のままにする。
   pub(super) fn init(verbose: u8, quiet: bool) -> Self {
     let raw_filter = std::env::var("RUST_LOG").ok();
-    let (filter, warning) = build_env_filter(raw_filter.as_deref(), verbose, quiet);
+    let plan = build_env_filter(raw_filter.as_deref(), verbose, quiet);
     fmt::Subscriber::builder()
       .compact()
-      .with_env_filter(filter)
-      .with_target(false)
+      .with_env_filter(plan.filter)
+      .with_target(plan.show_target)
       .with_file(false)
       .with_line_number(false)
       .without_time()
       .init();
-    if let Some(message) = warning {
+    if let Some(message) = plan.warning {
       tracing::warn!("{message}");
     }
     return Reporter { quiet };
@@ -78,25 +78,55 @@ impl Reporter {
 #[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
 fn elapsed_ms(elapsed: Duration) -> u64 { return elapsed.as_millis() as u64; }
 
+/// 構築したフィルタと、それに合わせる subscriber の設定。
+struct FilterPlan {
+  /// 実効フィルタ。
+  filter: EnvFilter,
+  /// イベントの target（module パス）を表示するか。
+  show_target: bool,
+  /// subscriber 初期化後に出す警告文。
+  warning: Option<String>,
+}
+
+impl FilterPlan {
+  /// フィルタから表示設定を導いた計画を作る。
+  fn new(filter: EnvFilter, warning: Option<String>) -> Self {
+    let show_target = shows_target(&filter);
+    return FilterPlan {
+      filter,
+      show_target,
+      warning,
+    };
+  }
+}
+
 /// 優先順位に従って tracing フィルタを構築する。
 ///
 /// `RUST_LOG` が不正なら CLI の verbose 設定へ戻し、subscriber 初期化後に出す警告文も返す。
-fn build_env_filter(raw_filter: Option<&str>, verbose: u8, quiet: bool) -> (EnvFilter, Option<String>) {
+fn build_env_filter(raw_filter: Option<&str>, verbose: u8, quiet: bool) -> FilterPlan {
   if quiet {
-    return (EnvFilter::new("off"), None);
+    return FilterPlan::new(EnvFilter::new("off"), None);
   }
   if let Some(raw) = raw_filter
     && !raw.trim().is_empty()
   {
     match EnvFilter::builder().parse(raw) {
-      Ok(filter) => return (filter, None),
+      Ok(filter) => return FilterPlan::new(filter, None),
       Err(error) => {
         let message = format!("環境変数 RUST_LOG を解釈できないため、--verbose の設定を使用します: {error}");
-        return (flag_filter(verbose), Some(message));
+        return FilterPlan::new(flag_filter(verbose), Some(message));
       },
     }
   }
-  return (flag_filter(verbose), None);
+  return FilterPlan::new(flag_filter(verbose), None);
+}
+
+/// フィルタが TRACE を出しうるか。
+///
+/// TRACE は文書の中身に比例して出るため、どの module 由来かが分からないと読めない。そこで target 表示は
+/// `--verbose` の段数ではなく実効フィルタの上限で決める — `RUST_LOG` で TRACE を要求したときも表示される。
+fn shows_target(filter: &EnvFilter) -> bool {
+  return <EnvFilter as Layer<Registry>>::max_level_hint(filter).is_none_or(|hint| return hint >= LevelFilter::TRACE);
 }
 
 /// `--verbose` から Seiran の target だけを詳細化するフィルタを作る。
@@ -126,25 +156,41 @@ mod tests {
 
   #[test]
   fn quiet_takes_priority_over_rust_log() {
-    let (filter, warning) = build_env_filter(Some("trace"), 3, true);
+    let plan = build_env_filter(Some("trace"), 3, true);
 
-    assert_eq!(filter.to_string(), "off");
-    assert!(warning.is_none());
+    assert_eq!(plan.filter.to_string(), "off");
+    assert!(plan.warning.is_none());
+    assert!(!plan.show_target, "抑止時は target を表示しない");
   }
 
   #[test]
   fn valid_rust_log_takes_priority_over_verbose() {
-    let (filter, warning) = build_env_filter(Some("seiran_compiler=trace"), 0, false);
+    let plan = build_env_filter(Some("seiran_compiler=trace"), 0, false);
 
-    assert_eq!(filter.to_string(), "seiran_compiler=trace");
-    assert!(warning.is_none());
+    assert_eq!(plan.filter.to_string(), "seiran_compiler=trace");
+    assert!(plan.warning.is_none());
   }
 
   #[test]
   fn invalid_rust_log_falls_back_to_verbose() {
-    let (filter, warning) = build_env_filter(Some("seiran=not-a-level"), 1, false);
+    let plan = build_env_filter(Some("seiran=not-a-level"), 1, false);
 
-    assert_eq!(filter.to_string(), flag_filter(1).to_string());
-    assert!(warning.is_some_and(|message| return message.contains("RUST_LOG")));
+    assert_eq!(plan.filter.to_string(), flag_filter(1).to_string());
+    assert!(plan.warning.is_some_and(|message| return message.contains("RUST_LOG")));
+  }
+
+  #[test]
+  fn target_is_shown_only_from_trace() {
+    for verbose in 0..=2 {
+      assert!(!build_env_filter(None, verbose, false).show_target, "-v{verbose} 相当では target を表示しない");
+    }
+
+    assert!(build_env_filter(None, 3, false).show_target, "-vvv では target を表示する");
+  }
+
+  #[test]
+  fn rust_log_trace_shows_target() {
+    assert!(build_env_filter(Some("seiran_compiler=trace"), 0, false).show_target);
+    assert!(!build_env_filter(Some("info"), 0, false).show_target);
   }
 }

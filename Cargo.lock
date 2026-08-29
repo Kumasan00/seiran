@@ -2164,6 +2164,7 @@ dependencies = [
  "thiserror",
  "toml",
  "tracing",
+ "tracing-subscriber",
  "unic-langid",
  "usvg",
 ]

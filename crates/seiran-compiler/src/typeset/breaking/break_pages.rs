@@ -883,7 +883,7 @@ fn place_paragraph(
   // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
   // 行ごとに変わるため、この事前ループには含めず、配置ループ内で着地段ごとに足す。
   for line in &mut lines {
-    let line_width = line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
+    let line_width = line.width();
     let shift = indent + align.offset(available, line_width);
     if shift != Length::ZERO {
       for positioned in &mut line.boxes {
