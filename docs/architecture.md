@@ -1654,7 +1654,8 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の
   初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、実効フィルタから導く
   target 表示の有無、端末装飾をこの module に閉じ、`main` は `Reporter::init` / `warnings` / `build`
-  だけを呼ぶ
+  だけを呼ぶ。装飾するのは `NO_COLOR` 未設定かつ stderr が端末のときだけで、その判定を
+  `Reporter::init` で 1 回だけ行い、ログ（`with_ansi`）と成功サマリで同じ値を共有する（#493）
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
   組版を伴わないため）
