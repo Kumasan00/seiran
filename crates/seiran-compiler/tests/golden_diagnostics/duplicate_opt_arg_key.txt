@@ -1,0 +1,10 @@
+frontend::eval::duplicate_opt_arg_key
+
+  × section の任意引数でキー `label` が重複しています
+   ╭─[tests/text/diagnostics/duplicate_opt_arg_key.sei:1:9]
+ 1 │ \section[label=sec:a, label=sec:b]{キー重複}
+   ·         ─────────────┬────────────
+   ·                      ╰── この任意引数の中で `label` が重複しています
+ 2 │ 
+   ╰────
+  help: キー `label` は 1 回だけ指定してください

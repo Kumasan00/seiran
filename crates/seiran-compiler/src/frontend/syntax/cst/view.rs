@@ -66,18 +66,18 @@ impl<'a> CommandView<'a> {
     return self.node.children_of_kind(SyntaxKind::MandatoryArg);
   }
 
-  /// 任意引数 `[...]` ノードをイテレートする
-  pub(crate) fn opt_args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
-    return self.node.children_of_kind(SyntaxKind::OptArg);
+  /// 任意引数 `[...]` ノードを返す
+  ///
+  /// 任意引数はコマンド名の直後に高々 1 組（P3）。parser が 2 組目を構文エラーにするので、
+  /// 「1 組目」ではなく「その 1 組」を返す。
+  #[must_use]
+  pub(crate) fn opt_arg(&self) -> Option<&'a GreenNode<'a>> {
+    return self.node.first_child_of_kind(SyntaxKind::OptArg);
   }
 
   /// 必須引数の数を返す
   #[must_use]
   pub(crate) fn args_count(&self) -> usize { return self.args().count(); }
-
-  /// 任意引数の数を返す
-  #[must_use]
-  pub(crate) fn opt_args_count(&self) -> usize { return self.opt_args().count(); }
 
   /// 最初の必須引数ノードを返す
   #[must_use]
@@ -88,11 +88,6 @@ impl<'a> CommandView<'a> {
   /// 必須引数が空かどうかを返す
   #[must_use]
   pub(crate) fn args_is_empty(&self) -> bool { return self.args_count() == 0; }
-
-  /// 任意引数が空かどうかを返す
-  #[cfg(test)]
-  #[must_use]
-  pub(super) fn opt_args_is_empty(&self) -> bool { return self.opt_args_count() == 0; }
 }
 
 /// 環境の型付きビュー
@@ -111,7 +106,7 @@ impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
   ///
   /// `\begin{...}` 側のノードと環境名は構築時に取り出して保持するので、[`EnvironmentView::name`] /
-  /// [`EnvironmentView::args`] / [`EnvironmentView::opt_args`] は無謬になる。
+  /// [`EnvironmentView::args`] / [`EnvironmentView::opt_arg`] は無謬になる。
   ///
   /// # Panics
   ///
@@ -167,10 +162,13 @@ impl<'a> EnvironmentView<'a> {
     return self.begin.children_of_kind(SyntaxKind::MandatoryArg).skip(1).collect();
   }
 
-  /// 環境の任意引数ノードを返す
+  /// 環境の任意引数 `[...]` ノードを返す
+  ///
+  /// 任意引数は環境名の直後に高々 1 組（P3）。parser が 2 組目を構文エラーにするので、
+  /// 「1 組目」ではなく「その 1 組」を返す。
   #[must_use]
-  pub(crate) fn opt_args(&self) -> Vec<&'a GreenNode<'a>> {
-    return self.begin.children_of_kind(SyntaxKind::OptArg).collect();
+  pub(crate) fn opt_arg(&self) -> Option<&'a GreenNode<'a>> {
+    return self.begin.first_child_of_kind(SyntaxKind::OptArg);
   }
 }
 
@@ -290,9 +288,8 @@ mod tests {
     let view = CommandView::new(cmd_node, source);
     assert_eq!(view.name(), "bold");
     assert_eq!(view.args_count(), 1);
-    assert_eq!(view.opt_args_count(), 0);
+    assert!(view.opt_arg().is_none());
     assert!(!view.args_is_empty());
-    assert!(view.opt_args_is_empty());
   }
 
   #[test]
@@ -311,7 +308,7 @@ mod tests {
     let view = CommandView::new(cmd_node, source);
     assert_eq!(view.name(), "alpha");
     assert!(view.args_is_empty());
-    assert!(view.opt_args_is_empty());
+    assert!(view.opt_arg().is_none());
   }
 
   #[test]
@@ -376,7 +373,7 @@ mod tests {
     assert_eq!(view.name(), "center");
     assert!(view.body().is_some());
     assert!(view.args().is_empty());
-    assert!(view.opt_args().is_empty());
+    assert!(view.opt_arg().is_none());
   }
 
   #[test]

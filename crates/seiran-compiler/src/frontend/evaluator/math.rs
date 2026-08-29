@@ -220,12 +220,6 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
       return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
     },
     "sqrt" => {
-      if view.opt_args_count() > 1 {
-        return Err(EvalError::ExtraCommandArgument {
-          name: name.to_string(),
-          span: view.span().to_source_span(),
-        });
-      }
       if view.args_count() > 1 {
         return Err(EvalError::ExtraCommandArgument {
           name: name.to_string(),
@@ -233,7 +227,7 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
         });
       }
       let id = builder.alloc(view.span());
-      let index = match view.opt_args().next() {
+      let index = match view.opt_arg() {
         Some(opt) => Some(Box::new(math_arg_to_node(source, builder, opt)?)),
         None => None,
       };

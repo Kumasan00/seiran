@@ -162,6 +162,20 @@ pub(crate) enum ParserError {
     span: SourceSpan,
   },
 
+  /// コマンド・環境の任意引数 `[...]` が 2 組以上書かれた場合（P3: コマンド名／環境名の直後に 1 組だけ）
+  #[error("任意引数 [...] は 1 組だけ書けます")]
+  #[diagnostic(
+    code(frontend::parse::multiple_opt_args),
+    help(
+      "複数のキーは `[label=a, numbered=false]` のように 1 組の中に `,` 区切りで並べてください。文字として `[` を書く場合は \\[ とエスケープしてください"
+    )
+  )]
+  MultipleOptArgs {
+    /// 2 組目の任意引数 `[...]` 全体のソース位置
+    #[label("この 2 組目の任意引数は書けません")]
+    span: SourceSpan,
+  },
+
   /// 上付き `^` / 下付き `_` の内容が `{...}` グループでない場合
   #[error("上付き・下付きの内容は {{...}} で囲む必要があります")]
   #[diagnostic(

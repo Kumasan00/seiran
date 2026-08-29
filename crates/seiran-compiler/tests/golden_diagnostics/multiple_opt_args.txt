@@ -1,0 +1,11 @@
+frontend::parse::multiple_opt_args
+
+  × 任意引数 [...] は 1 組だけ書けます
+   ╭─[tests/text/diagnostics/multiple_opt_args.sei:1:25]
+ 1 │ \begin{theorem}[title=A][label=thm:a]
+   ·                         ──────┬──────
+   ·                               ╰── この 2 組目の任意引数は書けません
+ 2 │ 本文。
+   ╰────
+  help: 複数のキーは `[label=a, numbered=false]` のように 1 組の中に `,` 区切りで並べてください。
+        文字として `[` を書く場合は \[ とエスケープしてください

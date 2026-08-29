@@ -333,12 +333,7 @@ impl<'a> Parser<'a> {
       },
       BodyMode::Text | BodyMode::Math => {
         self.skip_trivia(&mut begin_children);
-
-        while let Some(TokenKind::LBracket) = self.peek_kind() {
-          let opt = self.parse_opt_arg()?;
-          begin_children.push(GreenElement::Node(opt));
-          self.skip_trivia(&mut begin_children);
-        }
+        self.parse_single_opt_arg(&mut begin_children)?;
 
         while let Some(TokenKind::LBrace) = self.peek_kind() {
           let arg = self.parse_mandatory_arg(ParseMode::Text)?;
@@ -465,12 +460,7 @@ impl<'a> Parser<'a> {
     children.push(GreenElement::Token(cmd_token));
 
     self.skip_trivia(&mut children);
-
-    while let Some(TokenKind::LBracket) = self.peek_kind() {
-      let opt_node = self.parse_opt_arg()?;
-      children.push(GreenElement::Node(opt_node));
-      self.skip_trivia(&mut children);
-    }
+    self.parse_single_opt_arg(&mut children)?;
 
     let mut arg_index = 0usize;
     while let Some(TokenKind::LBrace) = self.peek_kind() {
@@ -526,6 +516,34 @@ impl<'a> Parser<'a> {
   /// key=value / インデックス指定のため常にテキストモードでパースする。
   fn parse_opt_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
     return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg, ParseMode::Text);
+  }
+
+  /// 任意引数を高々 1 組読んで `children` へ積む（P3: コマンド名／環境名の直後に 1 組だけ）
+  ///
+  /// 読んだ後のトリビアも `children` へ積み、続きが `[` なら 2 組目を読み切ってから
+  /// [`ParserError::MultipleOptArgs`] にする（ラベルが 2 組目の `[...]` 全体を指すようにするため。
+  /// 2 組目が閉じていなければ読み切りの途中で [`ParserError::UnclosedDelimiter`] が先に出る）。
+  /// 通常のコマンド・環境はトリビアを跨いで引数を探すので、空白・改行を挟んだ `[` も 2 組目として
+  /// 扱う（`[` は本文に書けず、裸なら [`ParserError::BareBracket`] になる文字なので、意味の衝突はない）。
+  /// verbatim 環境は隣接する 1 組しか読まないので、この関数を通らない。
+  fn parse_single_opt_arg(
+    &mut self,
+    children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
+  ) -> Result<(), ParserError> {
+    if self.peek_kind() != Some(TokenKind::LBracket) {
+      return Ok(());
+    }
+    let opt_node = self.parse_opt_arg()?;
+    children.push(GreenElement::Node(opt_node));
+    self.skip_trivia(children);
+
+    if self.peek_kind() == Some(TokenKind::LBracket) {
+      let second = self.parse_opt_arg()?;
+      return Err(ParserError::MultipleOptArgs {
+        span: second.span.to_source_span(),
+      });
+    }
+    return Ok(());
   }
 
   /// 必須引数をパース: `{...}`
@@ -1230,6 +1248,48 @@ mod tests {
     let arena = Bump::new();
     let result = parse("$[0,1]$", &arena);
     assert!(matches!(result, Err(ParserError::BareBracket { .. })));
+  }
+
+  #[test]
+  fn command_rejects_second_opt_arg() {
+    // P3: 任意引数はコマンド名の直後に 1 組だけ
+    let arena = Bump::new();
+    let result = parse(r"\cmd[a=1][b=2]{x}", &arena);
+    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+  }
+
+  #[test]
+  fn command_rejects_second_opt_arg_across_trivia() {
+    // 通常のコマンド・環境はトリビアを跨いで引数を探すので、空白を挟んだ 2 組目も同じ扱い
+    let arena = Bump::new();
+    let result = parse(r"\cmd[a=1] [b=2]{x}", &arena);
+    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+  }
+
+  #[test]
+  fn text_environment_rejects_second_opt_arg() {
+    let arena = Bump::new();
+    let result = parse("\\begin{theorem}[title=A][label=b]\nx\n\\end{theorem}", &arena);
+    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+  }
+
+  #[test]
+  fn math_environment_rejects_second_opt_arg() {
+    let arena = Bump::new();
+    let result = parse("\\begin{equation}[numbered=false][label=e]\nx\n\\end{equation}", &arena);
+    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+  }
+
+  #[test]
+  fn second_opt_arg_span_covers_whole_group() {
+    // ラベルは 2 組目の `[...]` 全体を指す（裸の `[` ではなく「まとめる」修正を促す）
+    let arena = Bump::new();
+    let source = r"\cmd[a=1][b=2]{x}";
+    let Err(ParserError::MultipleOptArgs { span }) = parse(source, &arena) else {
+      panic!("MultipleOptArgs が期待されます");
+    };
+    assert_eq!(span.offset(), source.find("[b=2]").unwrap());
+    assert_eq!(span.len(), "[b=2]".len());
   }
 
   #[test]
