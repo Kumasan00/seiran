@@ -64,8 +64,7 @@ impl FromStr for Color {
     if body.len() != 6 || !body.chars().all(|c| return c.is_ascii_hexdigit()) {
       return Err(invalid());
     }
-    // 上の検査で本体は ASCII 16 進数字ちょうど 6 桁と確定しているので、2 桁ずつの
-    // `from_str_radix` は失敗しない（境界も ASCII なので char 境界を割らない）。
+    // 本体は ASCII 6 桁と確定しているので、2 桁ずつのバイト添字は char 境界を割らない。
     let component = |digits: &str| {
       let Ok(value) = u8::from_str_radix(digits, 16) else {
         unreachable!("ASCII 16 進数字 2 桁は u8 に収まる（直前の桁数・字種検査が保証している）");

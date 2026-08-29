@@ -92,7 +92,6 @@ fn run_body_pass(
     "本文ブロックの構築が完了しました"
   );
 
-  // 本文画像は段幅に合わせて解決する
   let stage_start = Instant::now();
   let body_blocks = resolve_images(body_blocks, ctx.body_col_width.to_pt(), images)?;
   debug!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");

@@ -112,7 +112,6 @@ pub(super) fn build_line(
   open_links: &mut Vec<OpenLink>,
   trailing_hyphen: Option<&HBox>,
 ) -> Line {
-  // 行末の breakable glue を切り落とす
   let items = trim_trailing_glue(items);
 
   // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない。
