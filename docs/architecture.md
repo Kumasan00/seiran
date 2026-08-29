@@ -1668,7 +1668,12 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を `miette` の handler
   （`Report` の `Debug` 表示）で stderr へ 1 件ずつ出す。`--quiet` では出さない。ログ（tracing）へは
   出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。
-- **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを stderr に出し、
+- **出力先は stderr に一本化する**。ユーザー向け報告（warning 診断・成功サマリ）も tracing のログも
+  stderr へ出し、stdout はパイプできる成果物のための経路として空けておく（stdout を使うのは
+  `variation-axes` / `ttc-names` / `script-langs` の一覧表示だけ）。`build > /dev/null` でログは
+  消えず、`build 2> /dev/null` で消える。subscriber は `fmt` の既定（stdout）に任せず
+  `with_writer(std::io::stderr)` で明示する（#492）。
+- **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを出し、
   tracing は WARN 以上。`-v` は compile / render / write の安定した工程（INFO）、`-vv` は内部詳細
   （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /
   `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は target 単位指定の
