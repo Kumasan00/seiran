@@ -35,7 +35,7 @@ enum CurrentDirError {
 /// 設定読み込みから PDF 生成までのエラーを `miette` 診断として返す。
 fn main() -> miette::Result<()> {
   let cli_args = cli::parse_arg();
-  let reporter = reporting::Reporter::init(cli_args.verbose, cli_args.quiet);
+  let reporter = reporting::Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref())?;
 
   match cli_args.command {
     cli::Command::Build { config_path } => {
