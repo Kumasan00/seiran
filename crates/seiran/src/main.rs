@@ -1,7 +1,5 @@
 //! Seiran の CLI エントリーポイント
 
-// 標準出力・標準エラーへの表示は CLI のプロダクトそのもの（ライブラリ 2 crate では
-// 診断・tracing の役割分担を壊すので workspace で warn にしてある）。
 #![expect(
   clippy::print_stdout,
   clippy::print_stderr,
