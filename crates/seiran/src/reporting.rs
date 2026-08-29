@@ -4,33 +4,40 @@
 //! 呼び出し側は [`Reporter`] の初期化と報告操作だけを知り、フィルタ優先順位・表示形式・端末装飾は
 //! 本 module に閉じる。どちらの出力先も stderr で、stdout はパイプできる成果物のための経路として空けておく。
 
-use std::{io::IsTerminal, time::Duration};
+use std::{ffi::OsStr, io::IsTerminal, time::Duration};
 
 use tracing_subscriber::{EnvFilter, Registry, filter::LevelFilter, fmt, layer::Layer};
 
 /// CLI のユーザー向け報告器。
 ///
-/// `quiet` の解釈を保持し、warning と成功サマリへ一貫して適用する。tracing subscriber は
+/// `quiet` の解釈と ANSI 装飾の可否を保持し、warning と成功サマリへ一貫して適用する。tracing subscriber は
 /// [`Reporter::init`] でプロセス全体に 1 回だけ初期化する。
 pub(super) struct Reporter {
   /// ユーザー向けの非エラー出力を抑止するか。
   quiet: bool,
+  /// stderr へ ANSI 装飾を出してよいか。
+  ansi: bool,
 }
 
 impl Reporter {
-  /// tracing を初期化し、同じ quiet 方針を持つ報告器を返す。
+  /// tracing を初期化し、同じ quiet 方針と装飾方針を持つ報告器を返す。
   ///
   /// フィルタの優先順位は `--quiet`、`RUST_LOG`、`--verbose`、既定値の順。`--verbose` が
   /// 詳細化するのは Seiran 自身の 3 target だけで、依存 crate は WARN のままにする。出力先は
   /// stderr を明示する — `fmt` の既定は stdout で、そのままではログが成果物の経路へ流れるため。
+  ///
+  /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の
+  /// 既定は `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある（#493）。
   pub(super) fn init(verbose: u8, quiet: bool) -> Self {
     let raw_filter = std::env::var("RUST_LOG").ok();
     let plan = build_env_filter(raw_filter.as_deref(), verbose, quiet);
+    let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), std::io::stderr().is_terminal());
     fmt::Subscriber::builder()
       .compact()
       .with_env_filter(plan.filter)
       .with_target(plan.show_target)
       .with_writer(std::io::stderr)
+      .with_ansi(ansi)
       .with_file(false)
       .with_line_number(false)
       .without_time()
@@ -38,7 +45,7 @@ impl Reporter {
     if let Some(message) = plan.warning {
       tracing::warn!("{message}");
     }
-    return Reporter { quiet };
+    return Reporter { quiet, ansi };
   }
 
   /// コンパイルが返した warning 診断を stderr に表示する。
@@ -56,13 +63,13 @@ impl Reporter {
 
   /// ビルド成功時のサマリを stderr に表示する。
   ///
-  /// 時間は compiler だけでなく render と保存を含む CLI の build 全体。端末へ直接出す場合だけ
-  /// 完了記号を着色する。
+  /// 時間は compiler だけでなく render と保存を含む CLI の build 全体。完了記号を着色するかは
+  /// [`Reporter::init`] が決めた 1 つの判定に従うため、ログの装飾と食い違わない。
   pub(super) fn build(&self, compilation: &seiran_compiler::Compilation, elapsed: Duration) {
     if self.quiet {
       return;
     }
-    let mark = if std::io::stderr().is_terminal() {
+    let mark = if self.ansi {
       "\u{1b}[32m\u{2713}\u{1b}[0m"
     } else {
       "\u{2713}"
@@ -74,6 +81,15 @@ impl Reporter {
       elapsed_ms(elapsed)
     );
   }
+}
+
+/// stderr へ ANSI 装飾を出してよいか。
+///
+/// 装飾するのは `NO_COLOR` が未設定で、かつ出力先が端末のときだけ。`NO_COLOR` は「非空の値が
+/// 設定されていれば装飾を止める」仕様に従い、値の中身は問わない。非 UTF-8 の値も設定とみなす点は
+/// `tracing-subscriber` 既定の判定より厳しいが、仕様どおりなので合わせない。
+fn ansi_enabled(no_color: Option<&OsStr>, stderr_is_terminal: bool) -> bool {
+  return no_color.is_none_or(|value| return value.is_empty()) && stderr_is_terminal;
 }
 
 /// `Duration` をログ・サマリ用のミリ秒へ変換する。
@@ -146,7 +162,9 @@ fn flag_directive(verbose: u8) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-  use super::{build_env_filter, flag_directive, flag_filter};
+  use std::ffi::OsStr;
+
+  use super::{ansi_enabled, build_env_filter, flag_directive, flag_filter};
 
   #[test]
   fn verbose_only_increases_seiran_targets() {
@@ -188,6 +206,14 @@ mod tests {
     }
 
     assert!(build_env_filter(None, 3, false).show_target, "-vvv では target を表示する");
+  }
+
+  #[test]
+  fn ansi_needs_both_terminal_and_unset_no_color() {
+    assert!(ansi_enabled(None, true), "NO_COLOR 未設定かつ端末なら装飾する");
+    assert!(!ansi_enabled(None, false), "端末でなければ装飾しない");
+    assert!(!ansi_enabled(Some(OsStr::new("1")), true), "NO_COLOR が非空なら端末でも装飾しない");
+    assert!(ansi_enabled(Some(OsStr::new("")), true), "NO_COLOR が空文字なら未設定として扱う");
   }
 
   #[test]
