@@ -2,7 +2,7 @@
 //!
 //! 出力を、warning 診断と成功サマリからなるユーザー向け報告と、処理観測用の tracing に分ける。
 //! 呼び出し側は [`Reporter`] の初期化と報告操作だけを知り、フィルタ優先順位・表示形式・端末装飾は
-//! 本 module に閉じる。
+//! 本 module に閉じる。どちらの出力先も stderr で、stdout はパイプできる成果物のための経路として空けておく。
 
 use std::{io::IsTerminal, time::Duration};
 
@@ -21,7 +21,8 @@ impl Reporter {
   /// tracing を初期化し、同じ quiet 方針を持つ報告器を返す。
   ///
   /// フィルタの優先順位は `--quiet`、`RUST_LOG`、`--verbose`、既定値の順。`--verbose` が
-  /// 詳細化するのは Seiran 自身の 3 target だけで、依存 crate は WARN のままにする。
+  /// 詳細化するのは Seiran 自身の 3 target だけで、依存 crate は WARN のままにする。出力先は
+  /// stderr を明示する — `fmt` の既定は stdout で、そのままではログが成果物の経路へ流れるため。
   pub(super) fn init(verbose: u8, quiet: bool) -> Self {
     let raw_filter = std::env::var("RUST_LOG").ok();
     let plan = build_env_filter(raw_filter.as_deref(), verbose, quiet);
@@ -29,6 +30,7 @@ impl Reporter {
       .compact()
       .with_env_filter(plan.filter)
       .with_target(plan.show_target)
+      .with_writer(std::io::stderr)
       .with_file(false)
       .with_line_number(false)
       .without_time()
