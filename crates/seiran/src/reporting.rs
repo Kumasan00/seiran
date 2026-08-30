@@ -50,8 +50,10 @@ impl Reporter {
   /// tracing を初期化し、同じ quiet 方針と装飾方針を持つ報告器を返す。
   ///
   /// フィルタの優先順位は `RUST_LOG`、`--verbose`、既定値の順で、`--verbose` が詳細化するのは Seiran 自身の
-  /// 3 target だけ（依存 crate は WARN のまま）。`--quiet` は端末側のフィルタを `off` にするだけで、
-  /// ログファイルの内容は減らさない — 「静かに回して後で読む」がファイル出力の目的だから。
+  /// 3 target だけ（依存 crate は WARN のまま）。有効な `RUST_LOG` が `--verbose` を覆うときは警告を 1 行出す。
+  /// `--quiet` は端末側のフィルタを `off` にするだけで、ログファイルの内容は減らさない — 「静かに回して
+  /// 後で読む」がファイル出力の目的だから。`--verbose` とは独立で、`-q -vv --log-file` は端末を黙らせたまま
+  /// ファイルだけ詳しくする。
   ///
   /// 端末側の出力先は stderr を明示する（`fmt` の既定は stdout で、そのままではログが成果物の経路へ流れる）。
   /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の既定は
@@ -229,7 +231,9 @@ struct LogPlan {
 ///
 /// `--quiet` は「端末をうるさくするな」の意味に限定し、フィルタの決定ではなく端末側への適用だけに効かせる。
 /// ログファイル側は `--quiet` を見ないので、`-q --log-file x.log` は端末に何も出さずファイルへは通常どおり書く。
-/// `EnvFilter` は `Clone` できないため、共通の directive を 1 度決めて出力先ごとに parse し直す。
+/// `--verbose` とは直交で、`-q -vv --log-file x.log` は端末無言のままファイルへ DEBUG まで書く。`--log-file` の
+/// 無い `-q -vv` は矛盾ではなく効果が無いだけなので、警告もエラーも出さない（`-v` を常に付ける運用に `-q` を
+/// 足せる）。`EnvFilter` は `Clone` できないため、共通の directive を 1 度決めて出力先ごとに parse し直す。
 fn build_log_plan(raw_filter: Option<&str>, verbose: u8, quiet: bool, has_log_file: bool) -> LogPlan {
   let choice = resolve_filter(raw_filter, verbose);
   let stderr_directive = if quiet {
@@ -254,17 +258,27 @@ fn parse_directive(directive: &str) -> EnvFilter { return EnvFilter::builder().p
 
 /// 両方の出力先が使う directive を決める。
 ///
-/// `RUST_LOG` が不正なら CLI の verbose 設定へ戻し、subscriber 初期化後に出す警告文も返す。`--quiet` を
-/// 見ないので、警告文は端末が黙っていてもログファイルには残る。
+/// `RUST_LOG` が有効ならそれが全権で、`--verbose` は無視する — 合成（フラグの directive へ `RUST_LOG` を
+/// 上書きで足す等）はしない。同一 target への複数 directive の優先規則に依存して、実効フィルタが字面から
+/// 読めなくなるため。代わりに `--verbose` が 1 段以上あれば「無視した」と警告する（`--verbose` 未指定なら
+/// 警告しない — `RUST_LOG` だけで制御する開発者運用を汚さない）。`RUST_LOG` が不正なら CLI の verbose 設定へ
+/// 戻し、こちらも警告する。
+///
+/// 警告文はどちらも subscriber 初期化後に tracing の WARN で出すので、実効フィルタを通る。`--quiet` を見ないので
+/// 端末が黙っていてもログファイルには残る一方、`RUST_LOG` が WARN を通さない指定（`error` / target 限定）なら
+/// 無視の警告は出ない — `RUST_LOG` が全権という優先順位の帰結で、迂回しない。
 fn resolve_filter(raw_filter: Option<&str>, verbose: u8) -> FilterChoice {
   if let Some(raw) = raw_filter
     && !raw.trim().is_empty()
   {
     match EnvFilter::builder().parse(raw) {
       Ok(_) => {
+        let warning = (verbose > 0).then(|| {
+          return format!("環境変数 RUST_LOG が設定されているため、--verbose の指定を無視します: RUST_LOG={raw}");
+        });
         return FilterChoice {
           directive: raw.to_owned(),
-          warning: None,
+          warning,
         };
       },
       Err(error) => {
@@ -383,6 +397,62 @@ mod tests {
 
     assert_eq!(file.filter.to_string(), flag_filter_text(1));
     assert!(plan.warning.is_some(), "端末が黙っていても警告文はログファイルへ残す");
+  }
+
+  #[test]
+  fn valid_rust_log_with_verbose_warns_override() {
+    let plan = build_log_plan(Some("info"), 3, false, false);
+
+    assert_eq!(plan.stderr.filter.to_string(), "info", "実効フィルタは RUST_LOG のまま");
+    assert!(plan.warning.is_some_and(|message| return message.contains("無視")));
+  }
+
+  #[test]
+  fn blank_rust_log_with_verbose_does_not_warn() {
+    for raw in [None, Some(""), Some("  ")] {
+      let plan = build_log_plan(raw, 2, false, false);
+
+      assert_eq!(plan.stderr.filter.to_string(), flag_filter_text(2), "{raw:?} は未設定として --verbose が効く");
+      assert!(plan.warning.is_none(), "{raw:?} では警告しない");
+    }
+  }
+
+  #[test]
+  fn invalid_rust_log_with_verbose_warns_only_about_parse() {
+    let plan = build_log_plan(Some("seiran=not-a-level"), 2, false, false);
+    let message = plan.warning.expect("不正な RUST_LOG は警告する");
+
+    assert!(message.contains("解釈できない"), "既存の不正値の警告だけを出す");
+    assert!(!message.contains("無視"), "無視の警告は重ねない");
+  }
+
+  #[test]
+  fn quiet_and_verbose_write_debug_only_to_the_file() {
+    let plan = build_log_plan(None, 2, true, true);
+    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
+
+    assert_eq!(plan.stderr.filter.to_string(), "off", "端末は黙る");
+    assert_eq!(file.filter.to_string(), flag_filter_text(2), "ファイルは -vv どおり DEBUG まで");
+    assert!(plan.warning.is_none());
+  }
+
+  #[test]
+  fn quiet_and_verbose_without_log_file_is_harmless() {
+    let plan = build_log_plan(None, 2, true, false);
+
+    assert_eq!(plan.stderr.filter.to_string(), "off");
+    assert!(plan.file.is_none());
+    assert!(plan.warning.is_none(), "効果が無いだけで警告しない");
+  }
+
+  #[test]
+  fn override_warning_survives_quiet() {
+    let plan = build_log_plan(Some("info"), 1, true, true);
+    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
+
+    assert_eq!(plan.stderr.filter.to_string(), "off");
+    assert_eq!(file.filter.to_string(), "info");
+    assert!(plan.warning.is_some(), "端末が黙っていても無視の警告はログファイルへ残す");
   }
 
   #[test]

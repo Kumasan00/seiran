@@ -38,9 +38,9 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 
 設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.sei", "chapter2.sei"]` のように複数ファイルを指定できます。
 
-ログは標準エラー出力へ出ます。`-v` / `-vv` / `-vvv` で詳しくなり（工程 / 内部詳細 / 最大）、`-q` は端末への警告・ログ・サマリを止めます。各行には所属する工程が `compile:typeset:` のような prefix で付きます。target 単位で絞りたいときは環境変数 `RUST_LOG`（例: `RUST_LOG=seiran_compiler::typeset=trace`）を使います。
+ログは標準エラー出力へ出ます。`-v` / `-vv` / `-vvv` で詳しくなり（工程 / 内部詳細 / 最大）、`-q` は端末への警告・ログ・サマリを止めます。各行には所属する工程が `compile:typeset:` のような prefix で付きます。target 単位で絞りたいときは環境変数 `RUST_LOG`（例: `RUST_LOG=seiran_compiler::typeset=trace`）を使います。`RUST_LOG` が有効なときは `-v` より優先され、両方を指定すると `-v` を無視した旨の警告が 1 行出ます。
 
-`--log-file <path>` を付けると、端末の表示はそのままに同じログをファイルへも残します。ファイルには時刻が付き、ANSI 装飾は入りません。実行ごとに truncate され、親ディレクトリが無ければ作られます。`-q --log-file run.log` は端末を黙らせたままファイルには通常どおり記録するので、静かに回して後から読み返せます。
+`--log-file <path>` を付けると、端末の表示はそのままに同じログをファイルへも残します。ファイルには時刻が付き、ANSI 装飾は入りません。実行ごとに truncate され、親ディレクトリが無ければ作られます。`-q` と `-v` は独立で、`-q -vv --log-file run.log` は端末を黙らせたままファイルへ内部詳細まで記録するので、静かに回して後から読み返せます。
 
 ## 設定
 

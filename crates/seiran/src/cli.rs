@@ -8,8 +8,8 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(version, about = "PDFテキスト生成ツール")]
 pub(super) struct Cli {
-  /// Seiran のログを詳しくする（`-v` = 工程、`-vv` = 内部詳細、`-vvv` = 最大）。`RUST_LOG` が未設定・不正なときに有効
-  #[arg(short, long, global = true, action = clap::ArgAction::Count, conflicts_with = "quiet")]
+  /// Seiran のログを詳しくする（`-v` = 工程、`-vv` = 内部詳細、`-vvv` = 最大）。`-q` と併用でき、そのときは `--log-file` だけが詳しくなる。有効な `RUST_LOG` があるときは無視される（警告を出す）
+  #[arg(short, long, global = true, action = clap::ArgAction::Count)]
   pub(super) verbose: u8,
 
   /// 端末への warning・ログ・成功サマリを抑止する（エラー以外は無言、`RUST_LOG` より優先）。`--log-file` の内容は減らさない
@@ -65,10 +65,31 @@ pub(super) fn parse_arg() -> Cli { return Cli::parse() }
 
 #[cfg(test)]
 mod tests {
-  use clap::CommandFactory;
+  use std::path::Path;
+
+  use clap::{CommandFactory, Parser};
 
   use super::Cli;
 
   #[test]
   fn cli_definition_is_valid() { Cli::command().debug_assert(); }
+
+  #[test]
+  fn quiet_and_verbose_are_accepted_together() {
+    let cli =
+      Cli::try_parse_from(["seiran", "-q", "-vv", "--log-file", "x.log", "build"]).expect("-q と -vv は排他ではない");
+
+    assert!(cli.quiet);
+    assert_eq!(cli.verbose, 2);
+    assert_eq!(cli.log_file.as_deref(), Some(Path::new("x.log")));
+  }
+
+  #[test]
+  fn quiet_and_verbose_are_accepted_without_log_file() {
+    let cli = Cli::try_parse_from(["seiran", "-q", "-vv", "build"]).expect("--log-file が無くても -q -vv は受理する");
+
+    assert!(cli.quiet);
+    assert_eq!(cli.verbose, 2);
+    assert!(cli.log_file.is_none());
+  }
 }
