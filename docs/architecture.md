@@ -1703,11 +1703,17 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   tracing は WARN 以上。`-v` は compile / render / write の安定した工程（INFO）、`-vv` は内部詳細
   （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /
   `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は target 単位指定の
-  escape hatch として `--verbose` より優先する。`--quiet` は**端末側だけ**を抑止する — stderr 側の
+  escape hatch として `--verbose` より優先する — 有効な `RUST_LOG` があれば `--verbose` は無視し、
+  1 段以上指定されていれば WARN で 1 行警告する（`--verbose` 未指定なら警告しない。#501）。フラグと
+  `RUST_LOG` の合成はしない — 同一 target への複数 directive の優先規則に依存し、実効フィルタが字面から
+  読めなくなる（G1）。警告は不正な `RUST_LOG` の警告と同じく subscriber 初期化後の tracing WARN なので
+  実効フィルタを通り、`RUST_LOG` が WARN を通さない指定（`error` / target 限定）では出ない — `RUST_LOG`
+  が全権という優先順位の帰結。`--quiet` は**端末側だけ**を抑止する — stderr 側の
   実効フィルタを `off` にし warning 診断・成功サマリを端末へ出さないが、`--log-file` の内容は
   `RUST_LOG` / `--verbose` どおりのまま減らさない（静かに回して後で読むのがファイル出力の目的）。
-  `--verbose` と `--quiet` は排他のままなので、端末を黙らせたままファイルだけ詳細化するときは
-  `RUST_LOG` を使う。
+  `--quiet` と `--verbose` は直交する（#501）— `-q` は「端末を黙らせる」、`-v` は「実効フィルタの詳細度」で、
+  `-q -vv --log-file x.log` は端末無言のまま x.log へ DEBUG まで書く。`--log-file` の無い `-q -vv` は
+  矛盾ではなく効果が無いだけで、警告もエラーも出さない（`-v` を常に付けた運用へ `-q` を足せる）。
 - **構造は span、事実は event、1 事象 1 オーナー**（#500）。工程の入れ子は span が表し、event は件数・所要時間
   などの事実だけを運ぶ。phase は INFO の span — `compile` とその子 `input` / `frontend` / `semantics` /
   `font` / `typeset` は compiler facade が、`render` / `write` は `main` が開く。段の内部で同じ処理を
