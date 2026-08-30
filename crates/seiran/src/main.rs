@@ -45,8 +45,8 @@ fn main() -> miette::Result<()> {
       let root = seiran_compiler::ProjectPath::new(&config_path);
       let compilation =
         seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
-      let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
-      write_pdf_atomically(&compilation.pdf_path, &pdf_bytes)?;
+      let pdf_bytes = tracing::info_span!("render").in_scope(|| return seiran_pdf::render(&compilation.publication))?;
+      tracing::info_span!("write").in_scope(|| return write_pdf_atomically(&compilation.pdf_path, &pdf_bytes))?;
       reporter.warnings(&compilation.warnings);
       reporter.build(&compilation, build_start.elapsed());
     },
@@ -103,15 +103,10 @@ fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
     };
   })?;
   tracing::info!(
-    phase = "write",
     output_path = %pdf_path.display(),
     byte_count = bytes.len(),
-    elapsed_ms = elapsed_ms(stage_start),
+    elapsed = ?stage_start.elapsed(),
     "PDF の保存が完了しました"
   );
   return Ok(());
 }
-
-/// ステージ開始時刻からの経過ミリ秒を返す。
-#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
-fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

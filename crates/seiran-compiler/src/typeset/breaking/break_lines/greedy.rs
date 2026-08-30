@@ -119,7 +119,7 @@ fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
     hyphen,
     width_pt = line.width().to_pt(),
     text = %observe::summarize_line(&line),
-    "行を確定しました"
+    "貪欲法で行を確定しました"
   );
   lines.push(line);
 }

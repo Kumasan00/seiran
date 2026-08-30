@@ -194,7 +194,6 @@ pub(crate) fn load(
   config_path: &Path,
   base_dir: &Path,
 ) -> Result<(ProjectConfig, Vec<ConfigWarning>), Failures<ReadConfigError>> {
-  debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
     return ReadConfigError::ReadFile {
       path: config_path.display().to_string(),

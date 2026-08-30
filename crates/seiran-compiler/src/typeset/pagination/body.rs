@@ -1,8 +1,6 @@
 //! 本文パス（lowering → 計測 → 画像サイズ確定 → 改行・改ページ）と、その反復制御
 
-use std::time::Instant;
-
-use tracing::{debug, debug_span};
+use tracing::debug_span;
 
 use crate::{
   semantics::SemanticDocument,
@@ -14,7 +12,7 @@ use crate::{
     error::TypesetError,
     image::{ImageResources, resolve_images},
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
-    pagination::{context::TypesetContext, elapsed_ms, footnote_numbering},
+    pagination::{context::TypesetContext, footnote_numbering},
   },
 };
 
@@ -65,16 +63,13 @@ fn run_body_pass(
   images: &ImageResources,
   footnote_numbers: Option<&[u32]>,
 ) -> Result<BodyLayout, TypesetError> {
-  let stage_start = Instant::now();
   let mut lowering_ctx =
     LoweringContext::new(ctx.style).with_image_defaults(ctx.config.image.max_dpi, ctx.config.image.downsample);
   if let Some(numbers) = footnote_numbers {
     lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
   }
   let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document);
-  debug!(elapsed_ms = elapsed_ms(stage_start), "意味解析の成果物 → LayoutNode への変換が完了しました");
 
-  let stage_start = Instant::now();
   let body_blocks = {
     let _span = debug_span!("build_blocks", region = "body").entered();
     build_blocks(
@@ -86,26 +81,13 @@ fn run_body_pass(
       ctx.style.text.punctuation_spacing,
     )
   };
-  debug!(
-    block_count = body_blocks.len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "本文ブロックの構築が完了しました"
-  );
 
-  let stage_start = Instant::now();
   let body_blocks = resolve_images(body_blocks, ctx.body_col_width.to_pt(), images)?;
-  debug!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
-  let stage_start = Instant::now();
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "body").entered();
     break_pages(body_blocks, ctx.text_width, &ctx.body_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  debug!(
-    body_page_count = pages.len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "本文のページ分割が完了しました"
-  );
   return Ok(BodyLayout {
     pages,
     headings,

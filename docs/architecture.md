@@ -1420,10 +1420,16 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   → typeset::layout → DependencyManifest::collect → publication::build
 ```
 
-`tracing` の INFO イベントもこの facade が上記の安定した phase 境界で出す。各 module が知る内部手順
-（設定・style・文献の個別読込、lowering、boxing、前付け・本文・後付けの改ページ等）は DEBUG とし、
-内部構成を変えても `-v` の工程一覧が不用意に変わらないようにする。描画と保存の INFO は、それぞれの
-外向き入口を持つ `seiran-pdf::render` と CLI の atomic write が所有する。
+`tracing` の phase 構造もこの facade が持つ（#500）。`compile` を INFO の span として開き、その中で上記の
+`input` / `frontend` / `semantics` / `font` / `typeset` の 5 段をそれぞれ INFO の span として順に開く
+（各段は `let _phase = info_span!(…).entered();` を持つブロック 1 つで、span の名前が phase 名）。段の
+完了 event（件数・所要時間）はその span の中で facade が出し、各 module が知る内部手順（設定・style・文献の
+個別読込、lowering、boxing、前付け・本文・後付けの改ページ等）は DEBUG として callee 側が出す — 内部構成を
+変えても `-v` の工程一覧が不用意に変わらないようにする。開始 event は持たない（開始は span の enter が表す）。
+所要時間は `Duration` を `?` で載せる 1 形式（`elapsed=9.1ms`）で、u64 のミリ秒が要るのは公開 API の
+`BuildStatistics.total_elapsed_ms` だけ（`as_millis` の u128 を `u64::try_from(..).unwrap_or(u64::MAX)` で
+飽和させる）。描画と保存の INFO は、それぞれの外向き入口を持つ `seiran-pdf::render` と CLI の atomic write が
+所有し、その span（`render` / `write`）は CLI が開く。
 
 組版の内部順序（本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置）と組版中間型は
 `typeset::layout` の内側にある。`compiler.rs` が `typeset` から名指しするのは facade に載る資源・
@@ -1702,6 +1708,21 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   `RUST_LOG` / `--verbose` どおりのまま減らさない（静かに回して後で読むのがファイル出力の目的）。
   `--verbose` と `--quiet` は排他のままなので、端末を黙らせたままファイルだけ詳細化するときは
   `RUST_LOG` を使う。
+- **構造は span、事実は event、1 事象 1 オーナー**（#500）。工程の入れ子は span が表し、event は件数・所要時間
+  などの事実だけを運ぶ。phase は INFO の span — `compile` とその子 `input` / `frontend` / `semantics` /
+  `font` / `typeset` は compiler facade が、`render` / `write` は `main` が開く。段の内部で同じ処理を
+  複数回呼ぶ箇所は DEBUG の span で区別する（`typeset::pagination` の `build_blocks` / `break_pages` ×
+  `region`）。span のレベルはその中の event の最上位レベルと同じにし、既定（`warn`）では span も無効になる。
+  subscriber は `FmtSpan` を有効にしないので、span は各行の prefix（`compile:typeset:break_pages:`）と行末の
+  フィールド（`region="body"`）としてだけ現れ、enter / close の行は出ない。`-v` は工程ごとの完了 event
+  1 行（compiler 6 行 + `render` + `write`）で、`phase=` のようなフィールドは持たない。件数を持つ event は
+  callee が出し、orchestrator は同じ工程の完了 event を重ねない（`-vv` で 1 事象 1 行）。開始 event は
+  持たない。所要時間は `Duration` を `?` で載せる 1 形式で、phase の INFO 完了 event と、残る DEBUG の
+  集計 event（フォントファイル読込・フォント検証）が持つ。**`typeset::breaking` / `typeset::boxing` の event
+  には所要時間を載せない** — `tests/trace_events.rs` が同じ入力のログ全文を実行間で `assert_eq!` する
+  （発行順の決定性）ためで、段内部の所要時間は orchestrator の span が持つ（表示は `FmtSpan::CLOSE` を
+  別スイッチで足したときに得る。#500 のスコープ外）。全 event のメッセージは site 間で一意にする
+  （`-vv` 以下では target が出ないため、同文だと発行元を区別できない）。
 - **レベルの判定テストは「イベント数が文書の中身に比例するか」**（#490）。新しいログを足すときはこの表で
   決め、既存イベントのレベルは動かさない。
 
@@ -1724,6 +1745,13 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   由来かが分からないと読めない。判定は `--verbose` の段数ではなく実効フィルタの上限（`max_level_hint`）で
   行うので、`RUST_LOG` で TRACE を要求したときも表示される。`-vv` 以下・`--quiet` では表示しない。判定は
   出力先ごとに独立で、`-q --log-file` かつ `RUST_LOG` が TRACE を要求していればファイル側だけ target が付く。
+  span の prefix はこの target 表示の代わりにならない（#500 で再判定）— (a) TRACE は module
+  （`break_lines::knuth_plass` / `boxing`）の識別に target が要り、span は phase までしか表さない、
+  (b) span も event と同じ `EnvFilter` を通る（span の target は開いた module）ので、`RUST_LOG` で
+  `seiran_compiler::typeset::breaking=debug` のように target を絞ると phase span が無効になり prefix が消える。
+  絞り込みつつ phase prefix を保ちたいときは `seiran_compiler::compiler=info` を directive に足す
+  （`region` を持つ DEBUG span は `typeset::pagination` の target なので、さらに
+  `seiran_compiler::typeset::pagination=debug` が要る）。
 - **成功サマリの所要時間は build 全体**。`Compilation.statistics.total_elapsed_ms` は compiler facade の
   所要時間だが、CLI が表示する値は compile → render → atomic write の全体を計測する。
 - **保存は CLI 側の責務**。`compile` は `Compilation.pdf_path` を返すだけで

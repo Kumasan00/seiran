@@ -217,7 +217,6 @@ pub(crate) fn load(
     return Ok(Style::default());
   };
   let path_str = path.display().to_string();
-  debug!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
 
   let joined = if path.is_absolute() {
     path.to_path_buf()
@@ -238,6 +237,7 @@ pub(crate) fn load(
   }
 
   debug!(
+    style_path = %path_str,
     font_size_pt = style.text.font_size.to_pt(),
     line_height_factor = style.text.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"

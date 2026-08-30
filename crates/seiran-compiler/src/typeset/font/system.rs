@@ -94,7 +94,7 @@ impl<'a> FontResources<'a> {
     let stage_start = Instant::now();
     let warnings =
       validation::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
-    debug!(elapsed_ms = elapsed_ms(stage_start), warning_count = warnings.len(), "フォントの検証が完了しました");
+    debug!(elapsed = ?stage_start.elapsed(), warning_count = warnings.len(), "フォントの検証が完了しました");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
     let shaper_instances = ShaperInstances::new(configs, &font_refs);
@@ -171,7 +171,3 @@ impl FontSystem<'_> {
   #[must_use]
   pub(crate) fn metric(&self, font_type: FontType) -> FontMetric { return self.metrics[font_type]; }
 }
-
-/// ステージ開始時刻からの経過ミリ秒を返す（DEBUG ログの `elapsed_ms` 用）。
-#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
-fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

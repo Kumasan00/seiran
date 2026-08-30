@@ -21,7 +21,6 @@ mod error;
 use error::CompileError;
 
 use crate::{
-  compiler::elapsed_ms,
   failures::Failures,
   project,
   project::{
@@ -129,7 +128,7 @@ pub(super) fn load(
   let stage_start = Instant::now();
   let font_data =
     FontData::load(source, &config.font_configs).map_err(|failures| return failures.map(CompileError::from))?;
-  debug!(elapsed_ms = elapsed_ms(stage_start), "フォントファイルの読み込みが完了しました");
+  debug!(elapsed = ?stage_start.elapsed(), "フォントファイルの読み込みが完了しました");
 
   let sources = read_sources(source, &config.sources)?;
 

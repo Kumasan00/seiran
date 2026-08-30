@@ -121,7 +121,8 @@ impl Reporter {
   /// 装飾なしで書き、`--quiet` でも省かない。
   pub(super) fn build(&self, compilation: &seiran_compiler::Compilation, elapsed: Duration) {
     let page_count = compilation.statistics.page_count;
-    let elapsed_ms = elapsed_ms(elapsed);
+    // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
+    let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     if !self.quiet {
       eprintln!("{}", summary_line(&compilation.pdf_path, page_count, elapsed_ms, self.ansi));
     }
@@ -165,10 +166,6 @@ fn render_warning_plain(report: &miette::Report) -> String {
 fn ansi_enabled(no_color: Option<&OsStr>, stderr_is_terminal: bool) -> bool {
   return no_color.is_none_or(|value| return value.is_empty()) && stderr_is_terminal;
 }
-
-/// `Duration` をログ・サマリ用のミリ秒へ変換する。
-#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
-fn elapsed_ms(elapsed: Duration) -> u64 { return elapsed.as_millis() as u64; }
 
 /// ログファイルへ書くイベントの時刻表現。
 ///

@@ -1,9 +1,5 @@
 //! ヘッダー・フッターの配置仕様組み立て
 
-use std::time::Instant;
-
-use tracing::debug;
-
 use crate::{
   color::Color,
   length::Length,
@@ -12,7 +8,7 @@ use crate::{
   typeset::{
     boxes::Page,
     boxing::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content},
-    pagination::{context::TypesetContext, elapsed_ms, page_values::PageLabels},
+    pagination::{context::TypesetContext, page_values::PageLabels},
   },
 };
 
@@ -20,10 +16,8 @@ use crate::{
 ///
 /// [`PageLabels`] を引数に要求して呼び出し順を制約する。
 pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page], page_labels: PageLabels) {
-  let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
   layout_running_content(pages, ctx.resources, &spec);
-  debug!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様を組み立てる。
