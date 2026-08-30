@@ -1,7 +1,5 @@
 //! 前付け（タイトルページ・目次）パス（目次エントリの組み立て → 計測 → 改行・改ページ）
 
-use std::time::Instant;
-
 use tracing::{debug, debug_span};
 
 use crate::{
@@ -14,7 +12,6 @@ use crate::{
     lowering::{HeadingRecord, TitlePageMetadata, lower_title_page},
     pagination::{
       context::{BodyPageFacts, TypesetContext},
-      elapsed_ms,
       page_values::BodyPageValues,
     },
   },
@@ -33,7 +30,6 @@ pub(super) fn typeset_front_matter(
   ctx: &TypesetContext<'_>,
   facts: &BodyPageFacts,
 ) -> (Vec<Page>, Vec<FootnoteOverflow>) {
-  let stage_start = Instant::now();
   let mut front_blocks: Vec<Block> = Vec::new();
 
   if ctx.style.title_page.enabled {
@@ -80,11 +76,6 @@ pub(super) fn typeset_front_matter(
     let _span = debug_span!("break_pages", region = "front").entered();
     break_pages(front_blocks, ctx.text_width, &ctx.front_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  debug!(
-    front_page_count = pages.len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "前付けのページ分割が完了しました"
-  );
   return (pages, overflows);
 }
 

@@ -12,7 +12,7 @@ mod outline;
 mod page_values;
 mod running;
 
-use std::{collections::HashMap, time::Instant};
+use std::collections::HashMap;
 
 pub(super) use context::TypesetContext;
 pub(crate) use outline::OutlineEntry;
@@ -150,11 +150,7 @@ fn concat_pages(front_pages: Vec<Page>, body_pages: Vec<Page>, back_pages: Vec<P
   pages.extend(back_pages);
   debug!(
     page_count = pages.len(),
-    front_matter_count, body_page_count, back_matter_count, "ページ分割が完了しました"
+    front_matter_count, body_page_count, back_matter_count, "前付け・本文・後付けのページを連結しました"
   );
   return pages;
 }
-
-/// ステージ開始時刻からの経過ミリ秒を返す（DEBUG ログの `elapsed_ms` 用）。
-#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
-fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

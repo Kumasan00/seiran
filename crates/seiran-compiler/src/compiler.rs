@@ -38,7 +38,7 @@ pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
 use input::CompilationInputs;
 use source_diagnostic::SourceDiagnostic;
-use tracing::info;
+use tracing::{info, info_span};
 pub use warnings::Warnings;
 
 use crate::{
@@ -100,68 +100,85 @@ pub fn compile<S: ProjectSource>(
   root: &ProjectPath,
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
+  let _compile_span = info_span!("compile").entered();
   let build_start = Instant::now();
-  info!(phase = "compile", config_path = %root, "コンパイルを開始します");
 
-  let stage_start = Instant::now();
-  let inputs = input::load(source, root.as_ref(), base_dir)?;
-  info!(phase = "input", elapsed_ms = elapsed_ms(stage_start), "入力の読み込みが完了しました");
+  let inputs = {
+    let _phase = info_span!("input").entered();
+    let stage_start = Instant::now();
+    let inputs = input::load(source, root.as_ref(), base_dir)?;
+    info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力の読み込みが完了しました");
+    inputs
+  };
 
-  let stage_start = Instant::now();
-  let document = parse_project(&inputs)?;
-  info!(
-    phase = "frontend",
-    source_count = document.groups().len(),
-    node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "構文解析が完了しました"
-  );
+  let document = {
+    let _phase = info_span!("frontend").entered();
+    let stage_start = Instant::now();
+    let document = parse_project(&inputs)?;
+    info!(
+      source_count = document.groups().len(),
+      node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
+      elapsed = ?stage_start.elapsed(),
+      "構文解析が完了しました"
+    );
+    document
+  };
 
-  let stage_start = Instant::now();
-  let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
-    .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-  info!(
-    phase = "semantics",
-    heading_count = semantic_document.headings().len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "意味解析が完了しました"
-  );
+  let semantic_document = {
+    let _phase = info_span!("semantics").entered();
+    let stage_start = Instant::now();
+    let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
+      .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
+    info!(
+      heading_count = semantic_document.headings().len(),
+      elapsed = ?stage_start.elapsed(),
+      "意味解析が完了しました"
+    );
+    semantic_document
+  };
 
-  let stage_start = Instant::now();
-  let (font_resources, font_warnings) =
-    FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
-  info!(
-    phase = "font",
-    warning_count = font_warnings.len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "フォント資源の構築が完了しました"
-  );
+  let (font_resources, font_warnings) = {
+    let _phase = info_span!("font").entered();
+    let stage_start = Instant::now();
+    let (font_resources, font_warnings) =
+      FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
+    info!(
+      warning_count = font_warnings.len(),
+      elapsed = ?stage_start.elapsed(),
+      "フォント資源の構築が完了しました"
+    );
+    (font_resources, font_warnings)
+  };
 
-  let stage_start = Instant::now();
-  let (laid_out, typeset_warnings) =
-    typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
-      .map_err(CompileFailure::from)?;
-  info!(
-    phase = "typeset",
-    page_count = laid_out.pages.len(),
-    warning_count = typeset_warnings.len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "組版が完了しました"
-  );
+  let (laid_out, typeset_warnings) = {
+    let _phase = info_span!("typeset").entered();
+    let stage_start = Instant::now();
+    let (laid_out, typeset_warnings) =
+      typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
+        .map_err(CompileFailure::from)?;
+    info!(
+      page_count = laid_out.pages.len(),
+      warning_count = typeset_warnings.len(),
+      elapsed = ?stage_start.elapsed(),
+      "組版が完了しました"
+    );
+    (laid_out, typeset_warnings)
+  };
+
   let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
   let page_count = laid_out.pages.len();
   let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
   let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
-  let total_elapsed_ms = elapsed_ms(build_start);
+  let total_elapsed = build_start.elapsed();
   let statistics = BuildStatistics {
     page_count,
-    total_elapsed_ms,
+    // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
+    total_elapsed_ms: u64::try_from(total_elapsed.as_millis()).unwrap_or(u64::MAX),
   };
   info!(
-    phase = "compile",
     page_count = statistics.page_count,
     warning_count = warnings.iter().count(),
-    elapsed_ms = total_elapsed_ms,
+    elapsed = ?total_elapsed,
     "コンパイルが完了しました"
   );
 
@@ -244,10 +261,6 @@ fn build_pages_with_source(
     .map(|(laid_out, _)| return laid_out)
     .map_err(CompileFailure::from);
 }
-
-/// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
-#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
-fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
 /// 全ソースをパースし、パース・評価エラーを集約する。
 ///

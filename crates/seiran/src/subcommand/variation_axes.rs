@@ -46,7 +46,7 @@ enum VariationAxesError {
 ///
 /// ファイルの読み込み、フォントまたは OpenType テーブルの解析に失敗した場合にエラーを返す。
 pub(crate) fn variation_axes(font_path: &Path, font_index: u32) -> miette::Result<()> {
-  info!(font_path = %font_path.display(), font_index, "フォントファイルを読み込みます");
+  info!(font_path = %font_path.display(), font_index, "バリエーション軸を調べるフォントファイルを読み込みます");
 
   let font_bytes = fs::read(font_path).map_err(|source| {
     return VariationAxesError::ReadFile {

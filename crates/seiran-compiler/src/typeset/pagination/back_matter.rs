@@ -1,11 +1,8 @@
 //! 後付け（巻末索引）パス（索引語の集約 → 計測 → 改行・改ページ）
 
-use std::{
-  collections::{BTreeMap, BTreeSet},
-  time::Instant,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
-use tracing::{debug, debug_span};
+use tracing::debug_span;
 
 use crate::{
   length::Length,
@@ -15,7 +12,6 @@ use crate::{
     breaking::{FootnoteOverflow, break_pages},
     pagination::{
       context::{BodyPageFacts, TypesetContext},
-      elapsed_ms,
       page_values::{BodyPageValues, PageIndex},
     },
   },
@@ -33,7 +29,6 @@ pub(super) fn typeset_back_matter(
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
 ) -> (Vec<Page>, Vec<FootnoteOverflow>) {
-  let stage_start = Instant::now();
   let entries = collect_index_entries(body_pages, &facts.page_values);
   if entries.is_empty() {
     return (Vec::new(), Vec::new());
@@ -44,11 +39,6 @@ pub(super) fn typeset_back_matter(
     let _span = debug_span!("break_pages", region = "back").entered();
     break_pages(back_blocks, ctx.text_width, &ctx.back_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  debug!(
-    back_page_count = pages.len(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "後付けのページ分割が完了しました"
-  );
   return (pages, overflows);
 }
 

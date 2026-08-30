@@ -36,15 +36,10 @@ pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfRenderError> {
   render_pages(&mut document, publication, &fonts)?;
   let pdf_bytes = document.finish().map_err(|source| return PdfRenderError::FinalizeDocument { source })?;
   info!(
-    phase = "render",
     page_count = publication.pages().len(),
     byte_count = pdf_bytes.len(),
-    elapsed_ms = elapsed_ms(stage_start),
+    elapsed = ?stage_start.elapsed(),
     "PDF の描画が完了しました"
   );
   return Ok(pdf_bytes);
 }
-
-/// 描画開始時刻からの経過ミリ秒を返す。
-#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
-fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

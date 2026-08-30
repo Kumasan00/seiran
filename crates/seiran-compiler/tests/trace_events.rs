@@ -1,7 +1,8 @@
-//! TRACE イベントの統合テスト（#490）。
+//! tracing イベントの統合テスト（#490 / #500）。
 //!
 //! `-vvv` が有効化する TRACE が実際に出ること、`RUST_LOG` 相当の target 単位指定で領域を絞れること、
-//! 同じ入力に対する発行順が実行ごとに同一であること、DEBUG では 1 件も出ないことを検証する。
+//! 同じ入力に対する発行順が実行ごとに同一であること、DEBUG では 1 件も出ないことを検証する（#490）。
+//! 併せて、phase が span の prefix として全行に付くこと、同じ工程が 2 回報告されないことを検証する（#500）。
 
 use std::{
   io,
@@ -17,6 +18,12 @@ const TRACE_FILTER: &str = "seiran_compiler::typeset::breaking=trace,seiran_comp
 
 /// 同じ target を DEBUG までに留めるフィルタ（TRACE が出ないことの対照）。
 const DEBUG_FILTER: &str = "seiran_compiler::typeset::breaking=debug,seiran_compiler::typeset::boxing=debug";
+
+/// compiler crate 全体の INFO を通すフィルタ（CLI の `-v` が compiler に対して張るものと同じ形）。
+const INFO_FILTER: &str = "seiran_compiler=info";
+
+/// compiler crate 全体の DEBUG を通すフィルタ（CLI の `-vv` が compiler に対して張るものと同じ形）。
+const DEBUG_ALL_FILTER: &str = "seiran_compiler=debug";
 
 /// 行分割・シェーピング・字送り調整の各経路を通す入力。
 const SOURCE: &str =
@@ -173,4 +180,66 @@ fn trace_reports_spacing_adjustments_seiran_applies() {
   assert!(log.contains("約物の内蔵アキを詰めました"), "約物の正規化が TRACE に出るはず");
   assert!(log.contains("約物境界のアキを挿入しました"), "約物境界のアキが TRACE に出るはず");
   assert!(log.contains("和欧文間アキを挿入しました"), "和欧文間アキが TRACE に出るはず");
+}
+
+#[test]
+fn info_events_are_one_completion_line_per_phase_with_span_prefix() {
+  let log = compile_and_capture_log(INFO_FILTER);
+  let lines: Vec<&str> = log.lines().collect();
+
+  let expected = [
+    ("compile:input:", "入力の読み込みが完了しました"),
+    ("compile:frontend:", "構文解析が完了しました"),
+    ("compile:semantics:", "意味解析が完了しました"),
+    ("compile:font:", "フォント資源の構築が完了しました"),
+    ("compile:typeset:", "組版が完了しました"),
+    ("compile:", "コンパイルが完了しました"),
+  ];
+  assert_eq!(lines.len(), expected.len(), "INFO は 5 段 + 全体の完了 event 1 行ずつのはず:\n{log}");
+  for (line, (prefix, message)) in lines.iter().zip(expected) {
+    assert!(line.contains(prefix), "{line:?} は phase span の prefix {prefix:?} を持つはず");
+    assert!(line.contains(message), "{line:?} は {message:?} のはず");
+    assert!(line.contains("elapsed="), "{line:?} は所要時間を持つはず");
+  }
+  let last = lines.last().expect("6 行あることは上で確認済み");
+  assert!(!last.contains("compile:typeset"), "全体の完了 event は子 span を閉じてから出るはず: {last:?}");
+  assert!(!log.contains("phase="), "phase はフィールドではなく span の prefix で表すはず:\n{log}");
+  assert!(!log.contains("開始します"), "開始は span の enter が表すので開始 event は出ないはず:\n{log}");
+}
+
+#[test]
+fn debug_reports_each_step_once_under_its_region_span() {
+  let log = compile_and_capture_log(DEBUG_ALL_FILTER);
+
+  for line in log.lines() {
+    assert!(line.contains("compile:"), "全行が所属する phase を span の prefix で示すはず: {line:?}");
+  }
+  let page_break_lines: Vec<&str> =
+    log.lines().filter(|line| return line.contains("ページ分割が完了しました")).collect();
+  assert!(!page_break_lines.is_empty(), "本文の `break_pages` が 1 回は報告されるはず:\n{log}");
+  for line in &page_break_lines {
+    assert!(
+      line.contains("compile:typeset:break_pages:"),
+      "callee の event が orchestrator の span の中で出るはず: {line:?}"
+    );
+    assert!(line.contains("region=\""), "span のフィールドで前付け / 本文 / 後付けを区別できるはず: {line:?}");
+  }
+  assert!(page_break_lines.iter().any(|line| return line.contains("region=\"body\"")));
+  assert_eq!(
+    log.matches("前付け・本文・後付けのページを連結しました").count(),
+    1,
+    "連結は 1 回の別事象のはず:\n{log}"
+  );
+  for message in [
+    "意味解析の成果物 → LayoutNode への変換が完了しました",
+    "本文ブロックの構築が完了しました",
+    "画像サイズの確定が完了しました",
+    "本文のページ分割が完了しました",
+    "前付けのページ分割が完了しました",
+    "後付けのページ分割が完了しました",
+    "走り文の配置が完了しました",
+    "開始します",
+  ] {
+    assert!(!log.contains(message), "orchestrator 側の重複報告 {message:?} は出ないはず:\n{log}");
+  }
 }

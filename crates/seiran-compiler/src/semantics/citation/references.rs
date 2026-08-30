@@ -58,7 +58,6 @@ pub(crate) fn read_references<P: AsRef<Path>>(
     return Ok(References(HashMap::new()));
   };
   let path_ref = path.as_ref();
-  debug!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
   let content = source.read_text(&ProjectPath::new(path_ref)).map_err(|source| {
     return ReadReferencesError::ReadFile {
       path: path_ref.display().to_string(),
@@ -67,7 +66,7 @@ pub(crate) fn read_references<P: AsRef<Path>>(
   })?;
   let references = parse_references(&content, path_ref)?;
   let reference_count = references.len();
-  debug!(reference_count, "参照定義ファイルの読み込みが完了しました");
+  debug!(references_path = %path_ref.display(), reference_count, "参照定義ファイルの読み込みが完了しました");
   return Ok(references);
 }
 
