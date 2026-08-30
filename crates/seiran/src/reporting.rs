@@ -5,7 +5,7 @@
 //! 本 module に閉じる。端末側の出力先は stderr で、stdout はパイプできる成果物のための経路として空けておく。
 //!
 //! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。ファイルには
-//! tracing イベント・warning 診断・成功サマリの 3 つを、装飾なし・イベントには時刻付きで残す。
+//! tracing イベント・warning 診断・成功サマリ・致命的エラー診断の 4 つを、装飾なし・イベントには時刻付きで残す。
 
 mod log_file;
 
@@ -36,7 +36,7 @@ const QUIET_DIRECTIVE: &str = "off";
 ///
 /// `--log-file` 指定時はログファイルの書き出し口も保持する。書き出しはワーカースレッド越しなので、
 /// この値が drop されるまでに書いた内容は guard の drop で流し切られる — `main` のローカルとして持つ限り、
-/// ビルドが失敗して `main` が `Err` を返す経路でも記録が欠けない。
+/// ビルドが失敗して `main` が `Err` を返す経路でも記録（[`Reporter::failure`] の診断を含む）が欠けない。
 pub(super) struct Reporter {
   /// 端末への非エラー出力を抑止するか。
   quiet: bool,
@@ -111,7 +111,7 @@ impl Reporter {
         eprintln!("{report:?}");
       }
       if let Some(log) = &self.log {
-        log.write_block(&render_warning_plain(report));
+        log.write_block(&render_report_plain(report));
       }
     }
   }
@@ -132,6 +132,20 @@ impl Reporter {
       log.write_block(&summary_line(&compilation.pdf_path, page_count, elapsed_ms, false));
     }
   }
+
+  /// ビルドを止めた致命的エラーの診断をログファイルへ記録する。
+  ///
+  /// 端末側は `main` が `Err` を返した後に miette のグローバル handler が描く（`Result` の `Termination`）ので
+  /// ここでは触らない — 端末とファイルで同じ診断が 1 回ずつ。`--quiet` は端末だけを黙らせるものなので、ファイルへは
+  /// 常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くすのがこの操作の目的）。体裁は warning と
+  /// 同じ装飾なし・ハイパーリンクなし・時刻なしで、`CompileFailure` の関連診断（`related`）も同じ handler が
+  /// 続けて描くため、`Failures` 集約の全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは
+  /// miette で報告し ERROR レベルは使わないという線引き（#103）を、ファイルでも保つ。
+  pub(super) fn failure(&self, report: &miette::Report) {
+    if let Some(log) = &self.log {
+      log.write_block(&render_report_plain(report));
+    }
+  }
 }
 
 /// ビルド成功サマリの 1 行を組み立てる。
@@ -147,11 +161,12 @@ fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool)
   return format!("{mark} {path} · {page_count} ページ · {elapsed_ms} ms");
 }
 
-/// warning 診断をログファイル向けに装飾なしで文字列化する。
+/// ユーザー向け診断（warning・致命的エラー）をログファイル向けに装飾なしで文字列化する。
 ///
 /// 端末側はグローバルの miette handler（`Debug` 表示）に任せたままにする — ここで体裁を作るのは
 /// 「出力先が tty でないファイル」のためだけで、端末の見え方は `--log-file` の有無で変わらない。
-fn render_warning_plain(report: &miette::Report) -> String {
+/// `related` を持つ診断は、端末と同じく関連診断まで続けて描く。
+fn render_report_plain(report: &miette::Report) -> String {
   let mut rendered = String::new();
   // `new_themed` の既定はハイパーリンク有効で、url を持つ診断に OSC 8 のエスケープを出す。
   let handler = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor()).with_links(false);
@@ -321,7 +336,7 @@ mod tests {
   use miette::Diagnostic;
   use thiserror::Error;
 
-  use super::{ansi_enabled, build_log_plan, flag_directive, parse_directive, render_warning_plain, summary_line};
+  use super::{ansi_enabled, build_log_plan, flag_directive, parse_directive, render_report_plain, summary_line};
 
   /// 体裁の確認に使う warning 診断。
   #[derive(Debug, Error, Diagnostic)]
@@ -333,6 +348,22 @@ mod tests {
     url("https://example.com/warning")
   )]
   struct TestWarning;
+
+  /// `Failures` 集約の leaf を模した error 診断。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("関連診断を持つテストエラーです")]
+  #[diagnostic(code(cli::test_primary), help("主診断のヘルプ"))]
+  struct TestPrimary {
+    /// 主診断に続けて描かれる残りの leaf
+    #[related]
+    rest: Vec<TestRelated>,
+  }
+
+  /// 主診断の後ろに並ぶ関連診断。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("関連するテストエラーです")]
+  #[diagnostic(code(cli::test_related), help("関連診断のヘルプ"))]
+  struct TestRelated;
 
   /// `--verbose` の段数に対応する directive をフィルタ表記へ揃える。
   fn flag_filter_text(verbose: u8) -> String { return parse_directive(flag_directive(verbose)).to_string(); }
@@ -499,9 +530,27 @@ mod tests {
 
   #[test]
   fn rendered_warning_has_no_ansi() {
-    let rendered = render_warning_plain(&miette::Report::new(TestWarning));
+    let rendered = render_report_plain(&miette::Report::new(TestWarning));
 
     assert!(!rendered.contains('\u{1b}'), "url を持つ診断でもハイパーリンクの ESC を入れない");
     assert!(rendered.contains("テスト用の警告です"), "本文はそのまま残す");
+  }
+
+  #[test]
+  fn rendered_report_includes_related_leaves() {
+    // Arrange — `CompileFailure` は 2 件目以降を `related` に載せるので、同じ形の診断で全 leaf が残ることを見る
+    let report = miette::Report::new(TestPrimary {
+      rest: vec![TestRelated, TestRelated],
+    });
+
+    // Act
+    let rendered = render_report_plain(&report);
+
+    // Assert
+    assert!(!rendered.contains('\u{1b}'), "致命的エラーも装飾なし");
+    assert!(rendered.contains("cli::test_primary"), "主診断の code が残る");
+    assert!(rendered.contains("主診断のヘルプ"), "主診断の help が残る");
+    assert_eq!(rendered.matches("cli::test_related").count(), 2, "関連診断は件数ぶん全部残る");
+    assert_eq!(rendered.matches("関連診断のヘルプ").count(), 2, "関連診断の help も残る");
   }
 }

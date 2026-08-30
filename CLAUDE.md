@@ -57,7 +57,7 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 ```sh
 cargo build                                                # デバッグビルド
 cargo build --release                                      # リリースビルド（LTO 有効）
-cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]  # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -vvv 最大 / -q 端末抑止（-v と併用可） / --log-file はログ・warning・サマリをファイルへも出す）
+cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]  # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -vvv 最大 / -q 端末抑止（-v と併用可） / --log-file はログ・warning・サマリ・致命的エラー診断をファイルへも出す）
 cargo run -- variation-axes <font> [-f <font_index>]       # バリアブルフォント軸情報を表示
 cargo run -- ttc-names <ttc_file>                          # TTC ファイル内のフォント名一覧を表示
 cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示

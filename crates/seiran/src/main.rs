@@ -13,6 +13,7 @@ mod write_error;
 
 use std::{fs, io::Write, path::Path, time::Instant};
 
+use reporting::Reporter;
 use write_error::WriteError;
 
 /// カレントディレクトリ取得時のエラー。
@@ -30,14 +31,32 @@ enum CurrentDirError {
 
 /// CLI を初期化し、指定されたサブコマンドを実行する。
 ///
+/// 致命的エラーは `Err` として返し、端末への描画は `Result` の `Termination` 経由で miette のグローバル handler に
+/// 任せる。`--log-file` 指定時はその同じ診断を、`Err` を返す直前に [`Reporter::failure`] でファイルへも残す。
+/// `reporter` はこの関数のローカルなので、`Err` を返す経路でも関数本体の末尾で drop され、ログファイルへの
+/// 書き残しは端末に診断が描かれるより前に流し切られる。
+///
 /// # Errors
 ///
-/// 設定読み込みから PDF 生成までのエラーを `miette` 診断として返す。
+/// 設定読み込みから PDF 生成までのエラーを `miette` 診断として返す。ログファイルを開けなかったエラーは
+/// ファイルへ記録しようがないので端末へだけ出る。
 fn main() -> miette::Result<()> {
   let cli_args = cli::parse_arg();
-  let reporter = reporting::Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref())?;
+  let reporter = Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref())?;
+  return run(cli_args.command, &reporter).inspect_err(|report| return reporter.failure(report));
+}
 
-  match cli_args.command {
+/// サブコマンドを実行する。
+///
+/// 失敗は `miette::Report` として呼び出し側へ返すだけで、表示も記録もしない — 端末とファイルのどちらへ
+/// 何回出すかを決めるのは [`main`] の責務。
+///
+/// # Errors
+///
+/// `build` は設定読み込み・コンパイル・描画・保存のエラーを、フォント調査系のサブコマンドはフォント解析の
+/// エラーを `miette` 診断として返す。
+fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
+  match command {
     cli::Command::Build { config_path } => {
       let build_start = Instant::now();
       let base_dir = std::env::current_dir().map_err(|source| return CurrentDirError::Get { source })?;

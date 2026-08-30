@@ -1648,7 +1648,8 @@ image not in manifest / 未対応の画像拡張子）は持たない — 同じ
 
 CLI エントリーポイント（package 名・binary 名とも `seiran`）。`seiran-compiler` と `seiran-pdf` の
 両方に依存し、`compile` → `seiran_pdf::render` → atomic write（`tempfile` 経由の一時ファイル + rename）→
-結果表示（`Compilation.warnings` の診断とビルドサマリ）の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
+結果表示（`Compilation.warnings` の診断とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の
+4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
 filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・端末出力といった実行環境の関心事はすべてこの crate に
 閉じており、`seiran-compiler` は `ProjectSource` seam 越しにしか外部資源へ触らない。
 カレントディレクトリも `build` 実行時にこの crate が取得し、相対パスの解決基準として `compile` へ明示する。
@@ -1660,8 +1661,8 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   `./config/config.toml`
 - `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の
   初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、実効フィルタから導く
-  target 表示の有無、端末装飾をこの module に閉じ、`main` は `Reporter::init` / `warnings` / `build`
-  だけを呼ぶ。装飾するのは `NO_COLOR` 未設定かつ stderr が端末のときだけで、その判定を
+  target 表示の有無、端末装飾をこの module に閉じ、`main` は `Reporter::init` / `warnings` / `build` /
+  `failure` だけを呼ぶ。装飾するのは `NO_COLOR` 未設定かつ stderr が端末のときだけで、その判定を
   `Reporter::init` で 1 回だけ行い、ログ（`with_ansi`）と成功サマリで同じ値を共有する（#493）。
   subscriber は `Registry` に stderr layer と（`--log-file` 指定時だけ）ファイル layer を重ねた形で、
   出力先ごとに `Layer::with_filter` の `EnvFilter` を持つ。`EnvFilter` は `Clone` できないので共通の
@@ -1677,6 +1678,10 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   組版を伴わないため）
 - `write_error`: PDF 保存（出力ディレクトリ作成・書き込み）のエラー型 `WriteError`。`compile` の失敗とは
   型を分ける — `compile` は保存を行わないため
+- `tests/cli_log_file.rs`: binary を起動する CLI 統合テスト（`CARGO_BIN_EXE_seiran`、依存追加なし）。`--log-file` への
+  致命的エラー診断の記録・`-q` との組み合わせ・`--log-file` の有無で stderr と終了コードが変わらないこと・
+  `Failures` 集約の全 leaf・ログファイルを開けないときの振る舞いを、`main` の構造（`Err` を返す直前の記録と
+  `Termination` の描画順）ごと確かめる。純粋関数（フィルタ計画・診断の描画）は in-src テストが覆う（#502）
 
 ### 不変条件・注意点
 
@@ -1688,17 +1693,27 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。端末とファイルは別の出力先なので、
   同じ warning がそれぞれへ 1 回ずつ出るのはこの方針と衝突しない。ファイルへ書くぶんは
   `GraphicalReportHandler`（`unicode_nocolor` かつ `with_links(false)`）で装飾も OSC 8 ハイパーリンクも
-  持たない文字列にする。
+  持たない文字列にする（`render_report_plain`。致命的エラー診断もこれを共有する）。
 - **端末側の出力先は stderr だけ**。ユーザー向け報告（warning 診断・成功サマリ）も tracing のログも
   stderr へ出し、stdout はパイプできる成果物のための経路として空けておく（stdout を使うのは
   `variation-axes` / `ttc-names` / `script-langs` の一覧表示だけ）。`build > /dev/null` でログは
   消えず、`build 2> /dev/null` で消える。subscriber は `fmt` の既定（stdout）に任せず
   `with_writer(std::io::stderr)` で明示する（#492）。
 - **`--log-file` は stderr を置き換えず、出力先を足す**。指定しても端末の見え方は 1 バイトも変わらない。
-  ファイルへ書くのは tracing イベント・warning 診断・成功サマリの 3 つで、tracing イベントには時刻を付け
-  （stderr 側は時刻なしのまま）、ANSI 装飾は出力先が tty でないので常に無効にする。warning 診断と成功サマリは
+  ファイルへ書くのは tracing イベント・warning 診断・成功サマリ・致命的エラー診断の 4 つで、tracing イベントには
+  時刻を付け（stderr 側は時刻なしのまま）、ANSI 装飾は出力先が tty でないので常に無効にする。診断と成功サマリは
   端末と同じ体裁のまま時刻を付けずに書く — 複数行の診断ブロックの先頭行にだけ時刻が付く不揃いを避けるため。
   時刻はローカル時刻（`OffsetTime::local_rfc_3339`）で、オフセットを取得できない環境では UTC へ落とす（#495）。
+- **致命的エラー診断もファイルへ残す**（#502）。ビルドを止めた診断（`CompileFailure` の全 leaf・render / 保存・
+  カレントディレクトリ取得等の CLI 側エラー）は、`main` が `run` の `Err` を返す直前に `Reporter::failure` が
+  warning と同じ体裁でファイルへ書く。端末側は触らない — `main` が返した `Err` を `Result` の `Termination` が
+  miette のグローバル handler で描く 1 回だけで、stderr のバイト列も終了コードも `--log-file` の有無で変わらない。
+  `--quiet` でも書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くすのが目的）。`Reporter::init` 自身の
+  失敗（`LogFileError`）は記録先が無いので対象外。tracing の ERROR event としては流さない（致命的エラーは miette、
+  ERROR レベルは使わないという #103 の線引き）。書き切りは `main` ローカルの drop 順で保証する —
+  `Reporter`（→ `LogSink` → `WorkerGuard`）は `main` 本体の末尾で drop されて flush が走り、その後に
+  `Termination` が stderr へ描く。compile 成功後に render / 保存が失敗した実行の `Compilation.warnings` は
+  端末にもファイルにも出ない（成功経路の表示順を保つため。#502 のスコープ外）。
 - **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを出し、
   tracing は WARN 以上。`-v` は compile / render / write の安定した工程（INFO）、`-vv` は内部詳細
   （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /

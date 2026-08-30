@@ -1,7 +1,7 @@
 //! `--log-file` の書き出し先（ログファイルを開く処理と、そこへ書くための sink）
 //!
 //! ログファイルは「1 回の実行の記録」なので、実行のたびに truncate して開き直す。tracing の layer と
-//! ユーザー向け報告（warning 診断・成功サマリ）は同じ [`LogSink`] を共有し、1 本のチャネル越しに書く。
+//! ユーザー向け報告（warning 診断・成功サマリ・致命的エラー診断）は同じ [`LogSink`] を共有し、1 本のチャネル越しに書く。
 
 use std::{
   fs::{self, File},
@@ -16,7 +16,8 @@ use tracing_subscriber::fmt::MakeWriter;
 
 /// ログファイルへの書き出し口。
 ///
-/// tracing の layer へ渡す writer と、warning 診断・成功サマリを直接書く経路の両方が同じチャネルを使う。
+/// tracing の layer へ渡す writer と、warning 診断・成功サマリ・致命的エラー診断を直接書く経路の両方が同じ
+/// チャネルを使う。
 /// 経路を 1 本に保つのは、イベントと報告の前後関係を崩さないためと、書き切りの保証を
 /// [`WorkerGuard`] 1 つに集約するため。
 pub(super) struct LogSink {
@@ -47,8 +48,8 @@ impl LogSink {
 
   /// ユーザー向け報告 1 件ぶんをファイルへ書く（末尾に改行を足す）。
   ///
-  /// 書き込みの失敗は捨てる。ログを残せなかったことを理由に、既に成功した PDF 生成の報告を
-  /// 中断させないため。
+  /// 書き込みの失敗は捨てる。ログを残せなかったことを理由に、既に成功した PDF 生成の報告を中断させず、
+  /// 失敗した実行では元の診断を別のエラーで覆い隠さないため。
   pub(super) fn write_block(&self, text: &str) {
     let mut writer = MakeWriter::make_writer(&self.writer);
     let _ = writer.write_all(text.as_bytes());
