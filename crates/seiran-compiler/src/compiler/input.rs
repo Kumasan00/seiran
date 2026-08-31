@@ -128,7 +128,7 @@ pub(super) fn load(
   let stage_start = Instant::now();
   let font_data =
     FontData::load(source, &config.font_configs).map_err(|failures| return failures.map(CompileError::from))?;
-  debug!(elapsed = ?stage_start.elapsed(), "フォントファイルの読み込みが完了しました");
+  debug!(elapsed = ?stage_start.elapsed(), "フォントファイルを読込");
 
   let sources = read_sources(source, &config.sources)?;
 

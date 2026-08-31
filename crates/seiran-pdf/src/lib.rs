@@ -39,7 +39,7 @@ pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfRenderError> {
     page_count = publication.pages().len(),
     byte_count = pdf_bytes.len(),
     elapsed = ?stage_start.elapsed(),
-    "PDF の描画が完了しました"
+    "PDF を描画"
   );
   return Ok(pdf_bytes);
 }

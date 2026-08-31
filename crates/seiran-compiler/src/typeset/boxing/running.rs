@@ -92,7 +92,7 @@ pub(crate) fn layout_running_content(pages: &mut [Page], resources: &FontSystem<
       page.footer = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
   }
-  debug!(page_count = pages.len(), "ヘッダー・フッターを配置しました");
+  debug!(page_count = pages.len(), "ヘッダー・フッターを配置");
 }
 
 /// 1 リージョン分の配置済みブロック（行＋任意の区切り線）を組み立てる

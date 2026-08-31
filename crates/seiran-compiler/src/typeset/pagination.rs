@@ -143,14 +143,9 @@ fn footnote_overflow_warnings(
 
 /// 前付け、本文、後付けの順にページ列を連結する。
 fn concat_pages(front_pages: Vec<Page>, body_pages: Vec<Page>, back_pages: Vec<Page>) -> Vec<Page> {
-  let (front_matter_count, body_page_count, back_matter_count) =
-    (front_pages.len(), body_pages.len(), back_pages.len());
   let mut pages = front_pages;
   pages.extend(body_pages);
   pages.extend(back_pages);
-  debug!(
-    page_count = pages.len(),
-    front_matter_count, body_page_count, back_matter_count, "前付け・本文・後付けのページを連結しました"
-  );
+  debug!(page_count = pages.len(), "前付け・本文・後付けのページを連結");
   return pages;
 }

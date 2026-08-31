@@ -268,7 +268,7 @@ pub(super) fn validate_fonts(
         .into_iter()
         .map(|kind| return FontValidationFailure { font_type, kind }),
     );
-    debug!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントを検証しました");
+    debug!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントを検証");
   }
   return match Failures::from_vec(all_errors) {
     Some(failures) => Err(failures),

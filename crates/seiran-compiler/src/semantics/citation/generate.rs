@@ -128,8 +128,8 @@ pub(crate) fn generate_citations(
 
   debug!(
     citation_count = cite_sites.len(),
-    bibliography_count = rendered.bibliography.len(),
-    "文献引用の整形が完了しました"
+    bibliography_entry_count = rendered.bibliography.len(),
+    "文献引用を整形"
   );
   return Ok(GeneratedCitations {
     displays,

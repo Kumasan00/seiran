@@ -125,7 +125,7 @@ fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
     output_path = %pdf_path.display(),
     byte_count = bytes.len(),
     elapsed = ?stage_start.elapsed(),
-    "PDF の保存が完了しました"
+    "PDF を保存"
   );
   return Ok(());
 }

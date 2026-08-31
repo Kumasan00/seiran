@@ -213,7 +213,7 @@ pub(crate) fn load(
   base_dir: &Path,
 ) -> Result<Style, Failures<ReadStyleError>> {
   let Some(path) = path else {
-    debug!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
+    debug!("スタイル設定ファイル未指定のため既定のスタイルを使用");
     return Ok(Style::default());
   };
   let path_str = path.display().to_string();
@@ -238,9 +238,9 @@ pub(crate) fn load(
 
   debug!(
     style_path = %path_str,
-    font_size_pt = style.text.font_size.to_pt(),
-    line_height_factor = style.text.line_height_factor,
-    "スタイル設定ファイルの読み込みが完了しました"
+    font_size_pt = %style.text.font_size.to_pt(),
+    line_height_factor = %style.text.line_height_factor,
+    "スタイル設定ファイルを読込"
   );
   return Ok(style);
 }

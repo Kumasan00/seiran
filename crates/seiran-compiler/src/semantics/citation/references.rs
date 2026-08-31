@@ -54,7 +54,7 @@ pub(crate) fn read_references<P: AsRef<Path>>(
   path: Option<P>,
 ) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
-    debug!("参照定義ファイルが指定されていないため、空の参照定義を返します");
+    debug!("参照定義ファイル未指定のため空の参照定義を使用");
     return Ok(References(HashMap::new()));
   };
   let path_ref = path.as_ref();
@@ -66,7 +66,7 @@ pub(crate) fn read_references<P: AsRef<Path>>(
   })?;
   let references = parse_references(&content, path_ref)?;
   let reference_count = references.len();
-  debug!(references_path = %path_ref.display(), reference_count, "参照定義ファイルの読み込みが完了しました");
+  debug!(references_path = %path_ref.display(), reference_count, "参照定義ファイルを読込");
   return Ok(references);
 }
 

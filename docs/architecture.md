@@ -1738,12 +1738,11 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   フィールド（`region="body"`）としてだけ現れ、enter / close の行は出ない。`-v` は工程ごとの完了 event
   1 行（compiler 6 行 + `render` + `write`）で、`phase=` のようなフィールドは持たない。件数を持つ event は
   callee が出し、orchestrator は同じ工程の完了 event を重ねない（`-vv` で 1 事象 1 行）。開始 event は
-  持たない。所要時間は `Duration` を `?` で載せる 1 形式で、phase の INFO 完了 event と、残る DEBUG の
-  集計 event（フォントファイル読込・フォント検証）が持つ。**`typeset::breaking` / `typeset::boxing` の event
-  には所要時間を載せない** — `tests/trace_events.rs` が同じ入力のログ全文を実行間で `assert_eq!` する
-  （発行順の決定性）ためで、段内部の所要時間は orchestrator の span が持つ（表示は `FmtSpan::CLOSE` を
-  別スイッチで足したときに得る。#500 のスコープ外）。全 event のメッセージは site 間で一意にする
-  （`-vv` 以下では target が出ないため、同文だと発行元を区別できない）。
+  持たない。所要時間を持つのは phase の INFO 完了 event と、残る DEBUG の集計 event
+  （フォントファイル読込・フォント検証）だけで、書式は下の規約表に従う。**`typeset::breaking` /
+  `typeset::boxing` の event には所要時間を載せない** — `tests/trace_events.rs` が同じ入力のログ全文を
+  実行間で `assert_eq!` する（発行順の決定性）ためで、段内部の所要時間は orchestrator の span が持つ
+  （表示は `FmtSpan::CLOSE` を別スイッチで足したときに得る。#500 のスコープ外）。
 - **レベルの判定テストは「イベント数が文書の中身に比例するか」**（#490）。新しいログを足すときはこの表で
   決め、既存イベントのレベルは動かさない。
 
@@ -1756,12 +1755,35 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   `debug!(block_count = blocks.len(), …)` のような集計 1 行は DEBUG のままで、**そのループの中の 1 件**が
   TRACE。TRACE を出しているのは行分割（`typeset::breaking::break_lines` — 破断候補ごと・確定行ごと）と
   シェーピング・字送り（`typeset::boxing` — run ごと・グリフごと・Seiran 自身が適用するアキごと）で、
-  発行順は決定的（この 2 経路は rayon を使わない）。物量の絞り込みは `RUST_LOG` の target 単位指定が
+  発行順は決定的（event / span を rayon の並列 closure に置かない — 次の規約 bullet）。物量の絞り込みは `RUST_LOG` の target 単位指定が
   担い、量を理由に粒度を粗くしたり DEBUG へ薄めて混ぜたりしない。
   同じ段落・同じグリフの TRACE が複数回出る経路が 2 つある — 脚注のページ単位採番
   （`pagination::footnote_numbering`）は本文パスを不動点まで反復し、`break_pages` の
   `keep_group_orphaned` は widow / orphan 判定のために段落を投機的に再分割する。どちらも回数は入力に
   対して決定的なので発行順の同一性は保たれるが、ログを読む側は最初にこれを踏む。
+- **フィールドとメッセージの規約**（#503）。対象は INFO / DEBUG / TRACE の event と span のフィールド
+  （WARN はユーザー向けの文で構造化フィールドを持たないため対象外）。新しい event はこの表に合わせ、
+  表に無い形が要るなら表を改訂してから使う。
+
+  | 項目 | 規約 |
+  | --- | --- |
+  | 件数 | `<名詞>_count`。同じ概念に 1 名 — ページ数は区画によらず `page_count` で、区画は span の `region` が示す |
+  | 添字・識別子 | `<名詞>_index`（0 始まり）/ `<名詞>_id`。略語にしない（`gid` ではなく `glyph_id`） |
+  | 単位 | suffix で字面に出す — `_pt` / `_em`、font design unit は `_units`。無次元（`badness` / `ratio` / `line_height_factor` 等）は suffix なし |
+  | 所要時間 | `elapsed = ?Duration` の 1 形式（`elapsed=9.1ms`）。整数 `_ms` フィールドは使わない |
+  | 真偽 | `is_` / `has_` で始める（`is_last` / `is_hyphenated` / `is_breakable`） |
+  | パス | `<名詞>_path` に `%path.display()`（Display・引用符なし） |
+  | 文字列 | パス以外は引用符付きで出す — `&str` / `String` は sigil なしでそのまま載せる（`record_str` が Debug 体裁で `"…"` を付ける）。`char` は `?`（`'「'`） |
+  | 浮動小数 | f32 は `%`（Display）。sigil なしだと `Value` が f64 へ昇格させ `line_height_factor=1.0499999523162842` のような表示になる。f64 は sigil なし |
+  | enum / `Option` / `Duration` | `?`（Debug） |
+  | フィールド順 | 識別（パス・種別・添字）→ 事実（件数・寸法・真偽）→ 末尾に `elapsed` |
+  | メッセージ | 事象名の名詞止め（「行を確定」「ブロックを構築」）で site 間一意 — `-vv` 以下では target が出ないため、同文だと発行元を区別できない |
+
+  **event / span を rayon の並列 closure の中に置かない**（不変条件）。発行順が完了順に依存して
+  非決定になり（`tests/trace_events.rs` は同じ入力のログ全文を実行間で `assert_eq!` する）、thread-local
+  subscriber（`set_default`）では worker thread の発行が捕捉されない。並列区間の観測は closure の外側で
+  集計値（件数・`elapsed`）として出す。現在 rayon を使う 4 箇所（`project::FontData::load` /
+  `typeset::font` の `build_font_refs` / `ShaperInstances` / `HarfRustShapers`）の closure は event を持たない。
 - **target はフィルタが TRACE を出しうるときだけ表示する**。TRACE は文書に比例して出るため、どの module
   由来かが分からないと読めない。判定は `--verbose` の段数ではなく実効フィルタの上限（`max_level_hint`）で
   行うので、`RUST_LOG` で TRACE を要求したときも表示される。`-vv` 以下・`--quiet` では表示しない。判定は

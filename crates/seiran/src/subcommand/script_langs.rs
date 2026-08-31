@@ -124,11 +124,10 @@ enum ScriptLangsError {
 ///
 /// ファイル、フォント、GSUB/GPOS 内の各テーブルの解析に失敗した場合にエラーを返す。
 pub(crate) fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
-  info!(font_path = %file_path.display(), font_index, "スクリプト・言語を調べるフォントファイルを読み込みます");
-
   let mut referenced_features = BTreeSet::new();
 
   let font_data = fs::read(file_path).map_err(ScriptLangsError::from)?;
+  info!(font_path = %file_path.display(), font_index, "スクリプト・言語を調べるフォントファイルを読込");
   let font_ref = FontRef::from_index(&font_data, font_index)
     .map_err(|source| return ScriptLangsError::FontParse { font_index, source })?;
 

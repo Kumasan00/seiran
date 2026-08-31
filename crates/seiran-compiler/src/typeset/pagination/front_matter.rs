@@ -51,7 +51,7 @@ pub(super) fn typeset_front_matter(
         ctx.style.text.punctuation_spacing,
       ));
     }
-    debug!("タイトルページを生成しました");
+    debug!("タイトルページを生成");
   }
 
   if ctx.style.toc.enabled {
@@ -61,7 +61,7 @@ pub(super) fn typeset_front_matter(
     if !toc_blocks.is_empty() {
       front_blocks.extend(toc_blocks);
       front_blocks.push(Block::force_break());
-      debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
+      debug!(toc_entry_count = toc_entries.len(), "目次を生成");
     }
   }
 

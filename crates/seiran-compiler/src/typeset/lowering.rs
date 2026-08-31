@@ -304,7 +304,7 @@ pub(super) fn lower_sources_with_headings(
 
   let input_node_count: usize =
     document.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>() + document.bibliography().len();
-  debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
+  debug!(input_node_count, layout_node_count = result.len(), "LayoutNode へ lowering");
   return (result, headings);
 }
 

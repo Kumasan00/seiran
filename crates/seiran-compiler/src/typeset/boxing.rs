@@ -87,7 +87,7 @@ pub(super) fn build_blocks(
   let mut paragraph: Vec<HItem> = Vec::new();
   measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
   measurer.flush_paragraph(&mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
-  debug!(block_count = blocks.len(), "ブロックの構築が完了しました");
+  debug!(block_count = blocks.len(), "ブロックを構築");
   return blocks;
 }
 
@@ -417,14 +417,14 @@ impl<'a> Measurer<'a> {
         let item = ja_latin_aki(style.font_size);
         let (natural_pt, stretch_pt, shrink_pt) = glue_pt(&item);
         trace!(
-          left_char = %prev_char,
-          right_char = %next_char,
+          left_char = ?prev_char,
+          right_char = ?next_char,
           left_category = ?prev_category,
           right_category = ?segment.category,
-          natural_pt,
-          stretch_pt,
-          shrink_pt,
-          "和欧文間アキを挿入しました"
+          natural_pt = %natural_pt,
+          stretch_pt = %stretch_pt,
+          shrink_pt = %shrink_pt,
+          "和欧文間アキを挿入"
         );
         out.push(item);
       }
@@ -627,15 +627,15 @@ impl<'a> Measurer<'a> {
           self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
           let (natural_pt, stretch_pt, shrink_pt) = glue_pt(&item);
           trace!(
-            left_char = %char_of(i - 1),
-            right_char = %char_of(i),
+            left_char = ?char_of(i - 1),
+            right_char = ?char_of(i),
             left_class = ?eff_class(i - 1),
             right_class = ?eff_class(i),
-            natural_pt,
-            stretch_pt,
-            shrink_pt,
-            breakable,
-            "約物境界のアキを挿入しました"
+            natural_pt = %natural_pt,
+            stretch_pt = %stretch_pt,
+            shrink_pt = %shrink_pt,
+            is_breakable = breakable,
+            "約物境界のアキを挿入"
           );
           out.push(item);
           normal_start = i;
@@ -678,12 +678,12 @@ impl<'a> Measurer<'a> {
     let advance = units_to_length(i64::from(src.x_advance), run.font_size, metric.upem);
     let width = advance - run.font_size * normalize.trim_em;
     trace!(
-      char = %&text[src.range.clone()],
-      trim_em = normalize.trim_em,
-      shift_em = normalize.shift_em,
-      advance_pt = advance.to_pt(),
-      width_pt = width.to_pt(),
-      "約物の内蔵アキを詰めました"
+      char = &text[src.range.clone()],
+      trim_em = %normalize.trim_em,
+      shift_em = %normalize.shift_em,
+      advance_pt = %advance.to_pt(),
+      width_pt = %width.to_pt(),
+      "約物の内蔵アキを切り詰め"
     );
     #[expect(
       clippy::cast_possible_truncation,
@@ -774,14 +774,14 @@ impl<'a> Measurer<'a> {
       // 単独の量として取り出す経路は無いので、確定値をそのまま出す
       trace!(
         glyph_index = i,
-        gid = glyph_info.glyph_id,
+        glyph_id = glyph_info.glyph_id,
         range_start = start,
         range_end = end,
-        x_advance = glyph_position.x_advance,
-        y_advance = glyph_position.y_advance,
-        x_offset = glyph_position.x_offset,
-        y_offset = glyph_position.y_offset,
-        "グリフをシェーピングしました"
+        x_advance_units = glyph_position.x_advance,
+        y_advance_units = glyph_position.y_advance,
+        x_offset_units = glyph_position.x_offset,
+        y_offset_units = glyph_position.y_offset,
+        "グリフをシェーピング"
       );
       glyphs.push(Glyph {
         gid: glyph_info.glyph_id,
@@ -811,11 +811,11 @@ impl<'a> Measurer<'a> {
     let depth = units_to_length(descender_units, font_size, metric.upem);
     trace!(
       font_type = ?font_type,
-      font_size_pt = font_size.to_pt(),
+      font_size_pt = %font_size.to_pt(),
       glyph_count = glyphs.len(),
-      width_pt = width.to_pt(),
-      text = %observe::summarize_text(text),
-      "テキスト run をシェーピングしました"
+      width_pt = %width.to_pt(),
+      text = observe::summarize_text(text),
+      "テキスト run をシェーピング"
     );
     return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
