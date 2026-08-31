@@ -116,10 +116,10 @@ fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
   trace!(
     line_index = lines.len(),
     is_last,
-    hyphen,
-    width_pt = line.width().to_pt(),
-    text = %observe::summarize_line(&line),
-    "貪欲法で行を確定しました"
+    is_hyphenated = hyphen,
+    width_pt = %line.width().to_pt(),
+    text = observe::summarize_line(&line),
+    "貪欲法で行を確定"
   );
   lines.push(line);
 }

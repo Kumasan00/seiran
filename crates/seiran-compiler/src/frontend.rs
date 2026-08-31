@@ -61,7 +61,7 @@ pub(crate) fn parse_source(source: &str, source_id: SourceId) -> Result<HirSourc
   let nodes = evaluator::evaluate_children(source, &builder, cst)?;
   let spans = builder.finish();
 
-  debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースのパース・評価が完了しました");
+  debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースを HIR へ評価");
   return Ok(HirSource {
     group: HirGroup { source_id, nodes },
     spans,

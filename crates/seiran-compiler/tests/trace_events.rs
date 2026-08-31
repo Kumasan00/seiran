@@ -100,8 +100,9 @@ impl<'a> MakeWriter<'a> for CapturedLog {
 
 /// 指定フィルタの subscriber を張って [`SOURCE`] を 1 回コンパイルし、出力されたログを返す。
 ///
-/// subscriber は `set_default`（thread-local）で入れる。global default を汚さず、フォント読込の
-/// rayon ワーカースレッドのイベントも混ざらない。時刻・ANSI は再現比較のため無効にする。
+/// subscriber は `set_default`（thread-local）で入れ、global default を汚さない。event / span を rayon の
+/// 並列 closure に置かない不変条件（`docs/architecture.md` seiran 節）により worker thread で発行される
+/// event は無く、thread-local の捕捉から漏れる行も無い。時刻・ANSI は再現比較のため無効にする。
 fn compile_and_capture_log(filter: &str) -> String {
   let captured = CapturedLog::default();
   let subscriber = tracing_subscriber::fmt()
@@ -129,12 +130,12 @@ fn compile_and_capture_log(filter: &str) -> String {
 fn trace_reports_each_line_and_each_glyph() {
   let log = compile_and_capture_log(TRACE_FILTER);
 
-  assert!(log.contains("行分割の候補を評価しました"), "breakpoint 候補ごとの TRACE が出るはず");
-  assert!(log.contains("行を確定しました"), "確定した行ごとの TRACE が出るはず");
-  assert!(log.contains("テキスト run をシェーピングしました"), "シェーピング run ごとの TRACE が出るはず");
-  assert!(log.contains("グリフをシェーピングしました"), "グリフ 1 個ごとの TRACE が出るはず");
+  assert!(log.contains("行分割の候補を評価"), "breakpoint 候補ごとの TRACE が出るはず");
+  assert!(log.contains("行を確定"), "確定した行ごとの TRACE が出るはず");
+  assert!(log.contains("テキスト run をシェーピング"), "シェーピング run ごとの TRACE が出るはず");
+  assert!(log.contains("グリフをシェーピング"), "グリフ 1 個ごとの TRACE が出るはず");
   assert!(log.contains("badness="), "確定した行に badness が載るはず");
-  assert!(log.contains("x_advance="), "グリフに advance が載るはず");
+  assert!(log.contains("x_advance_units="), "グリフに advance が載るはず");
 }
 
 #[test]
@@ -142,10 +143,10 @@ fn trace_target_filter_selects_a_single_area() {
   let breaking_only = compile_and_capture_log("seiran_compiler::typeset::breaking=trace");
   let boxing_only = compile_and_capture_log("seiran_compiler::typeset::boxing=trace");
 
-  assert!(breaking_only.contains("行を確定しました"));
-  assert!(!breaking_only.contains("グリフをシェーピングしました"), "行分割だけに絞れるはず");
-  assert!(boxing_only.contains("グリフをシェーピングしました"));
-  assert!(!boxing_only.contains("行を確定しました"), "シェーピングだけに絞れるはず");
+  assert!(breaking_only.contains("行を確定"));
+  assert!(!breaking_only.contains("グリフをシェーピング"), "行分割だけに絞れるはず");
+  assert!(boxing_only.contains("グリフをシェーピング"));
+  assert!(!boxing_only.contains("行を確定"), "シェーピングだけに絞れるはず");
 }
 
 #[test]
@@ -161,13 +162,13 @@ fn debug_level_emits_no_trace_event() {
   let log = compile_and_capture_log(DEBUG_FILTER);
 
   for message in [
-    "行分割の候補を評価しました",
-    "行を確定しました",
-    "テキスト run をシェーピングしました",
-    "グリフをシェーピングしました",
-    "約物の内蔵アキを詰めました",
-    "約物境界のアキを挿入しました",
-    "和欧文間アキを挿入しました",
+    "行分割の候補を評価",
+    "行を確定",
+    "テキスト run をシェーピング",
+    "グリフをシェーピング",
+    "約物の内蔵アキを切り詰め",
+    "約物境界のアキを挿入",
+    "和欧文間アキを挿入",
   ] {
     assert!(!log.contains(message), "DEBUG では TRACE イベント {message:?} を出さないはず");
   }
@@ -177,9 +178,9 @@ fn debug_level_emits_no_trace_event() {
 fn trace_reports_spacing_adjustments_seiran_applies() {
   let log = compile_and_capture_log(TRACE_FILTER);
 
-  assert!(log.contains("約物の内蔵アキを詰めました"), "約物の正規化が TRACE に出るはず");
-  assert!(log.contains("約物境界のアキを挿入しました"), "約物境界のアキが TRACE に出るはず");
-  assert!(log.contains("和欧文間アキを挿入しました"), "和欧文間アキが TRACE に出るはず");
+  assert!(log.contains("約物の内蔵アキを切り詰め"), "約物の正規化が TRACE に出るはず");
+  assert!(log.contains("約物境界のアキを挿入"), "約物境界のアキが TRACE に出るはず");
+  assert!(log.contains("和欧文間アキを挿入"), "和欧文間アキが TRACE に出るはず");
 }
 
 #[test]
@@ -188,12 +189,12 @@ fn info_events_are_one_completion_line_per_phase_with_span_prefix() {
   let lines: Vec<&str> = log.lines().collect();
 
   let expected = [
-    ("compile:input:", "入力の読み込みが完了しました"),
-    ("compile:frontend:", "構文解析が完了しました"),
-    ("compile:semantics:", "意味解析が完了しました"),
-    ("compile:font:", "フォント資源の構築が完了しました"),
-    ("compile:typeset:", "組版が完了しました"),
-    ("compile:", "コンパイルが完了しました"),
+    ("compile:input:", "入力を読込"),
+    ("compile:frontend:", "ソースを構文解析"),
+    ("compile:semantics:", "文書を意味解析"),
+    ("compile:font:", "フォント資源を構築"),
+    ("compile:typeset:", "文書を組版"),
+    ("compile:", "文書をコンパイル"),
   ];
   assert_eq!(lines.len(), expected.len(), "INFO は 5 段 + 全体の完了 event 1 行ずつのはず:\n{log}");
   for (line, (prefix, message)) in lines.iter().zip(expected) {
@@ -204,7 +205,7 @@ fn info_events_are_one_completion_line_per_phase_with_span_prefix() {
   let last = lines.last().expect("6 行あることは上で確認済み");
   assert!(!last.contains("compile:typeset"), "全体の完了 event は子 span を閉じてから出るはず: {last:?}");
   assert!(!log.contains("phase="), "phase はフィールドではなく span の prefix で表すはず:\n{log}");
-  assert!(!log.contains("開始します"), "開始は span の enter が表すので開始 event は出ないはず:\n{log}");
+  assert!(!log.contains("開始"), "開始は span の enter が表すので開始 event は出ないはず:\n{log}");
 }
 
 #[test]
@@ -214,8 +215,7 @@ fn debug_reports_each_step_once_under_its_region_span() {
   for line in log.lines() {
     assert!(line.contains("compile:"), "全行が所属する phase を span の prefix で示すはず: {line:?}");
   }
-  let page_break_lines: Vec<&str> =
-    log.lines().filter(|line| return line.contains("ページ分割が完了しました")).collect();
+  let page_break_lines: Vec<&str> = log.lines().filter(|line| return line.contains("ページを分割")).collect();
   assert!(!page_break_lines.is_empty(), "本文の `break_pages` が 1 回は報告されるはず:\n{log}");
   for line in &page_break_lines {
     assert!(
@@ -225,20 +225,16 @@ fn debug_reports_each_step_once_under_its_region_span() {
     assert!(line.contains("region=\""), "span のフィールドで前付け / 本文 / 後付けを区別できるはず: {line:?}");
   }
   assert!(page_break_lines.iter().any(|line| return line.contains("region=\"body\"")));
-  assert_eq!(
-    log.matches("前付け・本文・後付けのページを連結しました").count(),
-    1,
-    "連結は 1 回の別事象のはず:\n{log}"
-  );
+  assert_eq!(log.matches("前付け・本文・後付けのページを連結").count(), 1, "連結は 1 回の別事象のはず:\n{log}");
   for message in [
-    "意味解析の成果物 → LayoutNode への変換が完了しました",
-    "本文ブロックの構築が完了しました",
-    "画像サイズの確定が完了しました",
-    "本文のページ分割が完了しました",
-    "前付けのページ分割が完了しました",
-    "後付けのページ分割が完了しました",
-    "走り文の配置が完了しました",
-    "開始します",
+    "意味解析の成果物",
+    "本文ブロックを構築",
+    "画像サイズの確定",
+    "本文のページを分割",
+    "前付けのページを分割",
+    "後付けのページを分割",
+    "走り文を配置",
+    "開始",
   ] {
     assert!(!log.contains(message), "orchestrator 側の重複報告 {message:?} は出ないはず:\n{log}");
   }

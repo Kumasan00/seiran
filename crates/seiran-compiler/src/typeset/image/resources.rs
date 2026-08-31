@@ -78,7 +78,7 @@ pub(crate) fn load_image_resources(
   if let Some(failures) = Failures::from_vec(errors) {
     return Err(failures);
   }
-  debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");
+  debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定");
   return Ok(ImageResources {
     natural_sizes,
     assets,
@@ -158,7 +158,7 @@ pub(crate) fn resolve_images(
     })
     .collect::<Result<Vec<Block>, TypesetError>>()?;
   let image_count = resolved.iter().filter(|block| matches!(block, Block::Image { .. })).count();
-  debug!(image_count, "画像サイズを確定しました");
+  debug!(image_count, "画像サイズを確定");
   return Ok(resolved);
 }
 

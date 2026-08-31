@@ -31,7 +31,7 @@ pub(super) fn solve_per_page_numbering(
     let layout = body_pass(Some(&numbers))?;
     let next = per_page_footnote_numbers(&layout.pages);
     if next == numbers {
-      debug!(pass, "脚注のページ単位採番が収束しました");
+      debug!(pass_count = pass, "脚注のページ単位採番が収束");
       return Ok(layout);
     }
     if pass == MAX_FOOTNOTE_NUMBERING_PASSES {

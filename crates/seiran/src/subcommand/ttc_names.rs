@@ -28,14 +28,13 @@ enum TtcNamesError {
 ///
 /// ファイルの読み込み、フォントまたは name テーブルの解析に失敗した場合にエラーを返す。
 pub(crate) fn ttc_names(file_path: &Path) -> miette::Result<()> {
-  info!(ttc_path = %file_path.display(), "TTC ファイルを読み込みます");
-
   let data = fs::read(file_path).map_err(|source| {
     return TtcNamesError::ReadFile {
       path: file_path.display().to_string(),
       source,
     };
   })?;
+  info!(ttc_path = %file_path.display(), "TTC ファイルを読込");
 
   let fonts = FontRef::fonts(&data);
   for (index, font) in fonts.enumerate() {

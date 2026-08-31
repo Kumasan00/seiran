@@ -228,11 +228,11 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       line_index,
       break_at = brk.at,
       is_last = brk.is_end,
-      hyphen = brk.hyphen,
+      is_hyphenated = brk.hyphen,
       badness = best_badness[node],
-      width_pt = line.width().to_pt(),
-      text = %observe::summarize_line(&line),
-      "行を確定しました"
+      width_pt = %line.width().to_pt(),
+      text = observe::summarize_line(&line),
+      "行を確定"
     );
     lines.push(line);
     line_start = brk.at + 1;
@@ -257,14 +257,14 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
   trace!(
     line_start,
     break_at = brk.at,
-    is_end = brk.is_end,
-    hyphen = brk.hyphen,
-    prev_hyphen,
+    is_last = brk.is_end,
+    is_hyphenated = brk.hyphen,
+    is_prev_hyphenated = prev_hyphen,
     outcome,
     demerits = ?demerits,
     badness = ?badness,
     ratio = ?ratio,
-    "行分割の候補を評価しました"
+    "行分割の候補を評価"
   );
   return edge;
 }

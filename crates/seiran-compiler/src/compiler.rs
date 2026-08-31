@@ -107,7 +107,7 @@ pub fn compile<S: ProjectSource>(
     let _phase = info_span!("input").entered();
     let stage_start = Instant::now();
     let inputs = input::load(source, root.as_ref(), base_dir)?;
-    info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力の読み込みが完了しました");
+    info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
     inputs
   };
 
@@ -119,7 +119,7 @@ pub fn compile<S: ProjectSource>(
       source_count = document.groups().len(),
       node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
       elapsed = ?stage_start.elapsed(),
-      "構文解析が完了しました"
+      "ソースを構文解析"
     );
     document
   };
@@ -132,7 +132,7 @@ pub fn compile<S: ProjectSource>(
     info!(
       heading_count = semantic_document.headings().len(),
       elapsed = ?stage_start.elapsed(),
-      "意味解析が完了しました"
+      "文書を意味解析"
     );
     semantic_document
   };
@@ -145,7 +145,7 @@ pub fn compile<S: ProjectSource>(
     info!(
       warning_count = font_warnings.len(),
       elapsed = ?stage_start.elapsed(),
-      "フォント資源の構築が完了しました"
+      "フォント資源を構築"
     );
     (font_resources, font_warnings)
   };
@@ -160,7 +160,7 @@ pub fn compile<S: ProjectSource>(
       page_count = laid_out.pages.len(),
       warning_count = typeset_warnings.len(),
       elapsed = ?stage_start.elapsed(),
-      "組版が完了しました"
+      "文書を組版"
     );
     (laid_out, typeset_warnings)
   };
@@ -179,7 +179,7 @@ pub fn compile<S: ProjectSource>(
     page_count = statistics.page_count,
     warning_count = warnings.iter().count(),
     elapsed = ?total_elapsed,
-    "コンパイルが完了しました"
+    "文書をコンパイル"
   );
 
   return Ok(Compilation {

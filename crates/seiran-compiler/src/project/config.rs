@@ -205,10 +205,10 @@ pub(crate) fn load(
 
   debug!(
     config_path = %config_path.display(),
-    output_name = %config.output.name,
+    output_name = config.output.name,
     output_path = %config.output.pdf_path().display(),
     warning_count = warnings.len(),
-    "設定ファイルの読み込みが完了しました"
+    "設定ファイルを読込"
   );
   return Ok((config, warnings));
 }

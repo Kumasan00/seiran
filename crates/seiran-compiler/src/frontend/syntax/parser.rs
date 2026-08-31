@@ -797,7 +797,7 @@ pub(crate) fn parse<'a>(
   let lexer = Lexer::new(source);
   let mut parser = Parser::new(source, lexer, arena, modes);
   let root = parser.parse_root()?;
-  debug!(source_bytes = source.len(), "CST の構築が完了しました");
+  debug!(source_byte_count = source.len(), "CST を構築");
   return Ok(root);
 }
 

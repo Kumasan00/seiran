@@ -695,7 +695,7 @@ pub(crate) fn break_pages(
   }
 
   let (pages, overflows) = composer.finish(geom);
-  debug!(block_count, page_count = pages.len(), "ページ分割が完了しました");
+  debug!(block_count, page_count = pages.len(), "ページを分割");
   return (pages, overflows);
 }
 

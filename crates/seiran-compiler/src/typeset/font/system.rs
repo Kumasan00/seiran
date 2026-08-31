@@ -94,7 +94,7 @@ impl<'a> FontResources<'a> {
     let stage_start = Instant::now();
     let warnings =
       validation::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
-    debug!(elapsed = ?stage_start.elapsed(), warning_count = warnings.len(), "フォントの検証が完了しました");
+    debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
     let shaper_instances = ShaperInstances::new(configs, &font_refs);
@@ -133,7 +133,7 @@ impl<'a> FontResources<'a> {
   pub(crate) fn system(&self) -> Result<FontSystem<'_>, Failures<FontSystemError>> {
     let shapers = HarfRustShapers::new(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)
       .map_err(|failures| return failures.map(Into::into))?;
-    debug!("シェーパーの初期化が完了しました");
+    debug!("シェーパーを初期化");
     return Ok(FontSystem {
       shapers,
       metrics: &self.metrics,
