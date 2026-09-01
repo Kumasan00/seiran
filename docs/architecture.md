@@ -471,10 +471,16 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - **巻末索引（`IndexStyle`）**: `style.index` は `enabled` を持たない（`\index` マーカーが 1 個以上あるときだけ
   自動出力）。`title`（既定 `"Index"`）・`title_font_size` / `title_bottom_margin`・エントリの `font_size`・
   `column_count`（1〜3、本文用 `[columns]` とは独立、段間は `[columns].gap` を流用）・`entry_gap`（語とページ
-  番号列の間の水平アキ）・`bottom_margin`・`collapse_page_ranges` を持つ。ページ番号の文字色は独自
-  フィールドを持たず `style.hyperref.link_color` を継承する。`collapse_page_ranges`（既定 `false`、#508）は
+  番号列の間の水平アキ）・`bottom_margin`・`collapse_page_ranges`・区分見出しの 5 フィールドを持つ。
+  ページ番号の文字色は独自フィールドを持たず `style.hyperref.link_color` を継承する。
+  `collapse_page_ranges`（既定 `false`、#508）は
   連続 3 ページ以上の走りを `3–5`（en dash）へ畳むオプトインで、区切り記号と閾値 3 は慣習定数として
-  `typeset::boxing::index` が持ち style へは出さない（ページ集合は内容・範囲表記は見た目という P10 の適用）
+  `typeset::boxing::index` が持ち style へは出さない（ページ集合は内容・範囲表記は見た目という P10 の適用）。
+  `group_headings`（既定 `false`、#509）は五十音行・A–Z の区分見出しを挟むオプトインで、
+  `group_font_size` / `group_top_margin` / `group_bottom_margin` が見出しの体裁、`group_other_label`
+  （既定 `"Others"`）がどの区分にも入らないエントリの受け皿の見出し文字列。行ラベルと A–Z の
+  36 個は言語慣習の固定表（CLDR の `ja` index characters）として `typeset::boxing::index` が持ち
+  style へは出さない
 - **脚注（`FootnoteStyle`）**: `[footnote]` に本体のフォントサイズ・マーカー体裁（`marker_format` の
   `{number}` 置換・`marker_size_factor` / `marker_raise_factor`）・区切り罫線（`top_margin` →
   `rule_length` × `rule_thickness`（色は `rule_color`、既定は黒）→ `rule_gap` の順に積む）を持つ。`numbering`（`continuous` ＝文書通しの
@@ -1245,7 +1251,15 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
   （`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で、`reading` があればそれ、
   なければ `word` をキーにする。呼び出し元（`typeset::pagination::back_matter`）が全ページの
   `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後
-  追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる
+  追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる。
+  区分見出し（`style.index.group_headings`、#509）は `assign_index_groups` が ICU `AlphabeticIndex` と同じ
+  照合区間割り当てで決める — ソートと同じ照合キーを一次強度（濁点・半濁点・カナ種・小書き・大文字小文字を
+  同一視）で固定表 `GROUP_LABELS` と比べ、ラベル L 以上・次ラベル未満なら L の区分。かな正規化表や
+  「ん」の特例は持たず、区分とソートが同じ照合順序から出るので不整合が構造的に起きない。先頭ラベルより前
+  （数字・記号）と最終ラベルの区間を超えるもの（reading の無い漢字語等）は末尾 1 つの受け皿へ統合する
+  （overflow 判定だけはキー全体でなく先頭文字を `KANA_RANGE_END` と比べる — キー全体だと接頭辞規則で
+  「ん」始まりが受け皿へ落ちるため）。入力が照合順なので再ソートは不要で、見出し行の直後に置く
+  `PENALTY_FORBID_BREAK` が `break_pages` の keep-with-next 機構に乗って段末・ページ末の孤立を防ぐ
 - `yakumono`: 和文約物の分類と JIS X 4051 の前後アキ規則
 
 #### `breaking`
