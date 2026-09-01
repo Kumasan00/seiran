@@ -92,6 +92,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "hyperref",
   "hyphenation",
   "index",
+  "index_ranges",
   "itemize",
   "justify",
   "math_script",
@@ -157,6 +158,8 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
       style.footer.center = RunningTemplate::parse("{page}");
     },
     "toc" => style.toc.enabled = true,
+    // 索引のページ番号列を範囲表記へ畳む（既定は無効なので golden ではここで有効化する）
+    "index_ranges" => style.index.collapse_page_ranges = true,
     "hyphenation" => {
       style.page.margin_left = Length::mm(275.0);
       style.page.margin_right = Length::mm(275.0);

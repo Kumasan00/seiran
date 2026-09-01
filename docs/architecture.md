@@ -471,8 +471,10 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - **巻末索引（`IndexStyle`）**: `style.index` は `enabled` を持たない（`\index` マーカーが 1 個以上あるときだけ
   自動出力）。`title`（既定 `"Index"`）・`title_font_size` / `title_bottom_margin`・エントリの `font_size`・
   `column_count`（1〜3、本文用 `[columns]` とは独立、段間は `[columns].gap` を流用）・`entry_gap`（語とページ
-  番号列の間の水平アキ）・`bottom_margin` を持つ。ページ番号の文字色は独自フィールドを持たず
-  `style.hyperref.link_color` を継承する
+  番号列の間の水平アキ）・`bottom_margin`・`collapse_page_ranges` を持つ。ページ番号の文字色は独自
+  フィールドを持たず `style.hyperref.link_color` を継承する。`collapse_page_ranges`（既定 `false`、#508）は
+  連続 3 ページ以上の走りを `3–5`（en dash）へ畳むオプトインで、区切り記号と閾値 3 は慣習定数として
+  `typeset::boxing::index` が持ち style へは出さない（ページ集合は内容・範囲表記は見た目という P10 の適用）
 - **脚注（`FootnoteStyle`）**: `[footnote]` に本体のフォントサイズ・マーカー体裁（`marker_format` の
   `{number}` 置換・`marker_size_factor` / `marker_raise_factor`）・区切り罫線（`top_margin` →
   `rule_length` × `rule_thickness`（色は `rule_color`、既定は黒）→ `rule_gap` の順に積む）を持つ。`numbering`（`continuous` ＝文書通しの
@@ -1235,7 +1237,11 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
   トークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する
 - `toc`: 目次ブロック生成（ページ分割で見出しのページ番号が確定した後に走る）
 - `index`: 巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・
-  リーダーを使わず「語 … ページ番号列（カンマ区切り、番号ごとに個別リンク）」の単一行を組む。ソート
+  リーダーを使わず「語 … ページ番号列（カンマ区切り）」の単一行を組む。番号列は `group_page_items` が
+  表示単位へ分け、既定では 1 ページ 1 リンク、`style.index.collapse_page_ranges` が有効なら連続 3 ページ
+  以上を `3–5` へ畳んで範囲全体に先頭ページへのリンクを 1 本張る（中間・末尾ページへの個別リンクは持たない）。
+  連番判定はラベル文字列ではなく `IndexPageRef.link_key`（本文内ページ index）の差分で行う — ラベルは
+  `link_key + 1` を番号スタイルで整形したものなので、ローマ数字等でも判定が成立する。ソート
   （`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で、`reading` があればそれ、
   なければ `word` をキーにする。呼び出し元（`typeset::pagination::back_matter`）が全ページの
   `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後

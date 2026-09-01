@@ -1,0 +1,30 @@
+\section{Index Page Ranges}
+
+このフィクスチャは索引のページ番号列を範囲表記へ畳む挙動（`collapse_page_ranges`）を確認する。
+語ごとに出現ページを変え、3 ページ以上の走り・ちょうど 2 ページ連続・単独ページ・走りと単独の
+混在を 1 つの入力で網羅する。
+
+1 ページ目には alpha \index{alpha}・beta \index{beta}・delta \index{delta} が出現する。
+
+\pagebreak
+
+2 ページ目にも alpha \index{alpha}・beta \index{beta}・delta \index{delta} が出現する。
+beta の出現はここまでで、以降のページには現れない。
+
+\pagebreak
+
+3 ページ目には alpha \index{alpha}・delta \index{delta} に加えて、このページだけに出現する
+gamma \index{gamma} が現れる。
+
+\pagebreak
+
+4 ページ目には alpha \index{alpha} だけが出現する。alpha の走りはここで終わる。
+
+\pagebreak
+
+5 ページ目には delta \index{delta} が再び出現する。delta は 4 ページ目を飛ばしているため、
+走りが 2 つに分かれる。
+
+\pagebreak
+
+6 ページ目にも delta \index{delta} が出現し、末尾の走りは 2 ページ連続で終わる。

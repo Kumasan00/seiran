@@ -30,6 +30,11 @@ pub(crate) struct IndexStyle {
   /// 索引ブロック全体の下余白
   #[garde(custom(non_negative))]
   pub bottom_margin: Length,
+  /// 連続する 3 ページ以上のページ番号を範囲表記（`3–5`）へ畳むか
+  ///
+  /// 既定 `false`（既存の出力を変えないオプトイン）。
+  #[garde(skip)]
+  pub collapse_page_ranges: bool,
 }
 
 impl Default for IndexStyle {
@@ -42,6 +47,7 @@ impl Default for IndexStyle {
       column_count: 2,
       entry_gap: Length::pt(6.0),
       bottom_margin: Length::pt(10.0),
+      collapse_page_ranges: false,
     };
   }
 }
@@ -58,6 +64,20 @@ mod tests {
     let style = IndexStyle::default();
     assert_eq!(style.title, "Index");
     assert_eq!(style.column_count, 2);
+  }
+
+  #[test]
+  fn default_keeps_page_range_collapsing_off() {
+    assert!(!IndexStyle::default().collapse_page_ranges, "範囲表記は既定で無効（既存の出力を変えない）");
+  }
+
+  #[test]
+  fn partial_toml_enables_page_range_collapsing() {
+    let style: IndexStyle = toml::from_str("collapse_page_ranges = true\n").unwrap();
+
+    assert!(style.collapse_page_ranges);
+    assert_eq!(style.column_count, 2, "他のフィールドは既定のまま残るはず");
+    assert!(style.validate().is_ok());
   }
 
   #[test]
