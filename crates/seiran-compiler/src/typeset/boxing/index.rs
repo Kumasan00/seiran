@@ -1,5 +1,7 @@
 //! 巻末索引ブロックの生成パス
 
+use std::borrow::Cow;
+
 use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
@@ -16,6 +18,16 @@ use crate::{
     lowering::TextStyle,
   },
 };
+
+/// 範囲表記の区切り記号（en dash）
+///
+/// 慣習として固定の定数なので style へは出さない（#508）。
+const PAGE_RANGE_SEPARATOR: &str = "–";
+
+/// 範囲表記へ畳む最小の連続ページ数
+///
+/// 2 ページ連続は「3, 4」のまま残す慣習に合わせた固定値で、style へは出さない（#508）。
+const MIN_COLLAPSED_RUN: usize = 3;
 
 /// 索引生成に必要なプリミティブ設定。
 #[derive(Debug, Clone)]
@@ -36,6 +48,8 @@ pub(crate) struct IndexSpec {
   pub line_height_factor: f32,
   /// 索引ブロック全体の下余白（pt）
   pub bottom_margin: Length,
+  /// 連続する 3 ページ以上を範囲表記へ畳むか
+  pub collapse_page_ranges: bool,
 }
 
 /// 索引エントリが指す 1 出現ページ
@@ -98,6 +112,7 @@ pub(crate) fn build_index_spec(style: &Style) -> IndexSpec {
     entry_gap: index.entry_gap,
     line_height_factor: style.text.line_height_factor,
     bottom_margin: index.bottom_margin,
+    collapse_page_ranges: index.collapse_page_ranges,
   };
 }
 
@@ -186,6 +201,57 @@ fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) 
   return acc.into_line(Vec::new());
 }
 
+/// ページ番号列の 1 表示単位
+#[derive(Debug)]
+enum IndexPageItem<'a> {
+  /// 単独ページ
+  Single(&'a IndexPageRef),
+  /// 畳んだ連続ページ範囲（表示は `first`–`last`、リンク先は `first`）
+  Range {
+    /// 走りの先頭ページ
+    first: &'a IndexPageRef,
+    /// 走りの末尾ページ
+    last: &'a IndexPageRef,
+  },
+}
+
+/// ページ参照列を表示単位（単独ページ / 畳んだ連続範囲）へ分ける
+///
+/// `collapse` が `false` なら全ページが [`IndexPageItem::Single`] になり、従来の表記と一致する。
+/// `true` のときは連続が [`MIN_COLLAPSED_RUN`] ページ以上の走りだけを範囲へ畳み、2 ページ連続は
+/// 単独ページ 2 つのまま残す。
+///
+/// `pages` は昇順・重複なしであることを前提にする（`typeset::pagination::back_matter` の
+/// `collect_index_entries` が `BTreeSet<usize>` で保証する）。表示ラベルは `link_key + 1` を
+/// ページ番号スタイルで整形したものなので、`link_key` が連続することとページ番号が連続することは
+/// 同値であり、ローマ数字などの非算用数字ラベルでもラベル文字列を解析せずに判定できる。
+fn group_page_items(pages: &[IndexPageRef], collapse: bool) -> Vec<IndexPageItem<'_>> {
+  debug_assert!(
+    pages.windows(2).all(|pair| return pair[0].link_key < pair[1].link_key),
+    "索引エントリのページは昇順・重複なしで渡されるはず"
+  );
+  let mut items = Vec::new();
+  let mut start = 0;
+  while let Some(first) = pages.get(start) {
+    let mut end = start;
+    if collapse {
+      while pages.get(end + 1).is_some_and(|next| return next.link_key == pages[end].link_key + 1) {
+        end += 1;
+      }
+    }
+    if end - start + 1 >= MIN_COLLAPSED_RUN {
+      items.push(IndexPageItem::Range {
+        first,
+        last: &pages[end],
+      });
+    } else {
+      items.extend(pages[start..=end].iter().map(IndexPageItem::Single));
+    }
+    start = end + 1;
+  }
+  return items;
+}
+
 /// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組む
 fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &IndexEntryInput) -> Line {
   let mut acc = LineAccum::default();
@@ -196,14 +262,20 @@ fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &Ind
     x += spec.entry_gap;
   }
 
-  for (i, page) in entry.pages.iter().enumerate() {
+  for (i, item) in group_page_items(&entry.pages, spec.collapse_page_ranges).into_iter().enumerate() {
     if i > 0 {
       x = acc.place(measurer.shape_text(", ", spec.entry_style), x);
     }
+    let (text, link_key) = match item {
+      IndexPageItem::Single(page) => (Cow::Borrowed(page.label.as_str()), page.link_key),
+      IndexPageItem::Range { first, last } => {
+        (Cow::Owned(format!("{}{PAGE_RANGE_SEPARATOR}{}", first.label, last.label)), first.link_key)
+      },
+    };
     let start_x = x;
-    x = acc.place(measurer.shape_text(&page.label, spec.page_number_style), x);
+    x = acc.place(measurer.shape_text(&text, spec.page_number_style), x);
     links.push(LineLink {
-      target: LinkTarget::Internal(AnchorId::IndexPage(page.link_key)),
+      target: LinkTarget::Internal(AnchorId::IndexPage(link_key)),
       x0: start_x,
       x1: x,
     });
@@ -214,8 +286,34 @@ fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &Ind
 
 #[cfg(test)]
 mod tests {
-  use super::{IndexEntryInput, IndexPageRef, sort_index_entries};
+  use super::{IndexEntryInput, IndexPageItem, IndexPageRef, group_page_items, sort_index_entries};
   use crate::typeset::boxes::{AnchorId, LinkTarget};
+
+  /// 本文内ページ index 列から `IndexPageRef` 列を作る（ラベルは算用数字＝ `index + 1`）
+  fn page_refs(link_keys: &[usize]) -> Vec<IndexPageRef> {
+    return link_keys
+      .iter()
+      .map(|&link_key| {
+        return IndexPageRef {
+          label: (link_key + 1).to_string(),
+          link_key,
+        };
+      })
+      .collect();
+  }
+
+  /// 表示単位列を `"1"` / `"1-3"`（範囲は先頭-末尾のラベル）の列へ畳んで比較しやすくする
+  fn item_descs(items: &[IndexPageItem<'_>]) -> Vec<String> {
+    return items
+      .iter()
+      .map(|item| {
+        return match item {
+          IndexPageItem::Single(page) => page.label.clone(),
+          IndexPageItem::Range { first, last } => format!("{}-{}", first.label, last.label),
+        };
+      })
+      .collect();
+  }
 
   fn entry(word: &str, reading: Option<&str>) -> IndexEntryInput {
     return IndexEntryInput {
@@ -282,6 +380,76 @@ mod tests {
     // Assert
     assert_eq!(entries[0].pages[0].label, "1");
     assert_eq!(entries[1].pages[0].label, "2");
+  }
+
+  #[test]
+  fn group_page_items_keeps_every_page_single_when_disabled() {
+    let pages = page_refs(&[0, 1, 2, 3]);
+
+    let items = group_page_items(&pages, false);
+
+    assert_eq!(item_descs(&items), vec!["1", "2", "3", "4"]);
+  }
+
+  #[test]
+  fn group_page_items_keeps_two_page_run_uncollapsed() {
+    let pages = page_refs(&[0, 1]);
+
+    let items = group_page_items(&pages, true);
+
+    assert_eq!(item_descs(&items), vec!["1", "2"], "2 ページ連続は範囲へ畳まない");
+  }
+
+  #[test]
+  fn group_page_items_collapses_exactly_three_pages() {
+    let pages = page_refs(&[0, 1, 2]);
+
+    let items = group_page_items(&pages, true);
+
+    assert_eq!(item_descs(&items), vec!["1-3"]);
+  }
+
+  #[test]
+  fn group_page_items_mixes_runs_and_single_pages() {
+    // Arrange — 3 連続 → 単独 → 2 連続（末尾の 2 連続は畳まない）
+    let pages = page_refs(&[0, 1, 2, 4, 6, 7]);
+
+    // Act
+    let items = group_page_items(&pages, true);
+
+    // Assert
+    assert_eq!(item_descs(&items), vec!["1-3", "5", "7", "8"]);
+  }
+
+  #[test]
+  fn group_page_items_collapses_whole_range() {
+    let pages = page_refs(&[0, 1, 2, 3, 4]);
+
+    let items = group_page_items(&pages, true);
+
+    assert_eq!(item_descs(&items), vec!["1-5"]);
+  }
+
+  #[test]
+  fn group_page_items_handles_single_page_entry() {
+    let pages = page_refs(&[2]);
+
+    let items = group_page_items(&pages, true);
+
+    assert_eq!(item_descs(&items), vec!["3"]);
+  }
+
+  #[test]
+  fn group_page_items_links_range_to_its_first_page() {
+    let pages = page_refs(&[3, 4, 5]);
+
+    let items = group_page_items(&pages, true);
+
+    let IndexPageItem::Range { first, last } = &items[0] else {
+      panic!("3 連続は範囲へ畳まれるはず");
+    };
+    assert_eq!(first.link_key, 3, "リンク先は範囲先頭ページ");
+    assert_eq!(last.link_key, 5);
   }
 
   #[test]
