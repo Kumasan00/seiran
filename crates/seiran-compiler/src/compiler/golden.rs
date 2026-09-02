@@ -22,6 +22,7 @@
 //!   [`layout_dump_changes_with_line_height`] / [`layout_dump_changes_with_punctuation_spacing`]
 //! - **`build_pages` を直接呼び、返り値の `Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は
 //!   一切通らない）: [`keep_with_next_prevents_heading_orphan_end_to_end`]・
+//!   [`index_group_heading_never_ends_a_column`]・
 //!   脚注ページ単位採番 2 種 [`per_page_footnote_numbering_restarts_on_each_page`] /
 //!   [`continuous_footnote_numbering_runs_through_pages`]（共通ヘルパ [`footnote_numbers_per_page`]
 //!   経由）・[`long_footnote_splits_across_pages_without_overlapping_body`]
@@ -74,7 +75,7 @@ use crate::{
   project::{self, FilesystemProjectSource, FontData, MemoryProjectSource, ProjectPath, config::ProjectConfig},
   semantics::{References, read_references},
   style::{self, FootnoteNumbering, RunningTemplate, Style},
-  typeset::{AnchorMark, Page, PlacedBlock, dump_pages},
+  typeset::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
 
 /// golden 比較対象の入力名。
@@ -92,6 +93,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "hyperref",
   "hyphenation",
   "index",
+  "index_groups",
   "index_ranges",
   "itemize",
   "justify",
@@ -160,6 +162,8 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
     "toc" => style.toc.enabled = true,
     // 索引のページ番号列を範囲表記へ畳む（既定は無効なので golden ではここで有効化する）
     "index_ranges" => style.index.collapse_page_ranges = true,
+    // 索引へ区分見出し（五十音行・A–Z）を挟む（既定は無効なので golden ではここで有効化する）
+    "index_groups" => style.index.group_headings = true,
     "hyphenation" => {
       style.page.margin_left = Length::mm(275.0);
       style.page.margin_right = Length::mm(275.0);
@@ -525,6 +529,84 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   for (index, page) in laid_out.pages.iter().enumerate() {
     assert!(!page_ends_with_heading(page), "page {index} が見出しで終わっている（孤立）: {:#?}", page.blocks);
   }
+}
+
+/// 索引ページ（エントリのページ番号が内部リンクを張っているページ）かを返す。
+///
+/// 本文ページと区別するための判定。区分見出しの検査を索引ページに限ることで、たまたま同じ文字列の
+/// 本文行を見出しと取り違えない。
+fn is_index_page(page: &Page) -> bool {
+  return page
+    .links
+    .iter()
+    .any(|link| return matches!(link.target, LinkTarget::Internal(AnchorId::IndexPage(_))));
+}
+
+/// 行が索引の区分見出し（単独のラベル文字列だけの行）ならそのラベルを返す。
+///
+/// 区分ラベルの固定表は `typeset::boxing::index` が持つ。ここでは `index_groups.sei` が実際に
+/// 生む見出しだけを見れば足りるので、判定は「1 グリフ列だけの行で、その文字列がラベルと一致する」形にする。
+fn index_group_heading_label(block: &PlacedBlock) -> Option<String> {
+  const LABELS: &[&str] = &[
+    "A", "B", "C", "Z", "あ", "か", "さ", "た", "な", "は", "ま", "や", "ら", "わ", "Others",
+  ];
+  let PlacedBlock::Line { line, .. } = block else {
+    return None;
+  };
+  let [single] = line.boxes.as_slice() else {
+    return None;
+  };
+  let HBoxContent::Glyphs(run) = &single.content else {
+    return None;
+  };
+  return LABELS.contains(&run.text.as_str()).then(|| return run.text.clone());
+}
+
+#[test]
+fn index_group_heading_never_ends_a_column() {
+  // Arrange — 索引が複数の段・ページへ分かれる小さな版面にする（段組みは style.index.column_count = 2）。
+  // 用紙高さだけを縮め、幅は既定のまま（幅を詰めると本文が 1 行 1 文字になり、見出しと同じ文字列の
+  // 本文行が生まれてしまう）。
+  enter_workspace_root();
+  let (mut config, mut style, references) = load_base();
+  config.pdf.height = Length::mm(60.0);
+  style.page.margin_top = Length::mm(10.0);
+  style.page.margin_bottom = Length::mm(10.0);
+  style.index.group_headings = true;
+  config.sources = vec![PathBuf::from("tests/text/index_groups.sei")];
+  let source = FilesystemProjectSource::new();
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+
+  // Act
+  let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+
+  // Assert — 見出し行の直後には必ず同じ段の中に次の行が来る（段が変わると baseline_y が上へ戻る）
+  let mut heading_count = 0usize;
+  for (page_index, page) in laid_out.pages.iter().enumerate().filter(|(_, page)| return is_index_page(page)) {
+    for (block_index, block) in page.blocks.iter().enumerate() {
+      let Some(label) = index_group_heading_label(block) else {
+        continue;
+      };
+      let PlacedBlock::Line { baseline_y, .. } = block else {
+        unreachable!("index_group_heading_label が Some を返すのは PlacedBlock::Line のときだけ");
+      };
+      heading_count += 1;
+      let next = page.blocks.get(block_index + 1);
+      let follows_in_same_column = matches!(
+        next,
+        Some(PlacedBlock::Line {
+          baseline_y: next_baseline,
+          ..
+        }) if *next_baseline > *baseline_y
+      );
+      assert!(
+        follows_in_same_column,
+        "page {page_index} の区分見出し {label} が段末・ページ末に孤立している: {next:#?}"
+      );
+    }
+  }
+  assert!(heading_count >= 5, "区分見出しが十分に出ているはず: {heading_count} 個");
+  assert!(laid_out.pages.len() >= 2, "索引が複数ページへ分かれるはず: {} ページ", laid_out.pages.len());
 }
 
 /// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ

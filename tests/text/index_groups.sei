@@ -1,0 +1,25 @@
+\section{Index Group Headings}
+
+このフィクスチャは索引の区分見出し（`group_headings`）を確認する。区分は照合順序からの区間割り当てで
+決まるため、濁音・半濁音・小書き・カタカナ・「ん」始まりが正しい行へ入ること、Latin の大文字小文字が
+同じ区分になること、数字・記号始まりと reading の無い漢字語が受け皿の区分へ落ちることを 1 つの入力で
+網羅する。
+
+かなの区分: あさひ \index[reading=あさひ]{朝日}・いろは \index{いろは}・がぎ \index{がぎ}・
+きせつ \index[reading=きせつ]{季節}・さくら \index{さくら}・たいよう \index[reading=たいよう]{太陽}・
+なつ \index{なつ}・はる \index{はる}・ピアノ \index{ピアノ}・まつ \index{まつ}・やま \index{やま}・
+らいう \index{らいう}・わたし \index{わたし}・んご \index{んご}。
+
+\pagebreak
+
+Latin の区分: apple \index{apple}・Apricot \index{Apricot}・Banana \index{Banana}・
+cherry \index{cherry}・Zebra \index{Zebra}。
+
+受け皿へ入るもの: 3 月 \index{3月}・記号始まり \index{!important}・
+reading の無い漢字語 \index{漢字}。
+
+\pagebreak
+
+2 ページ目にも あさひ \index[reading=あさひ]{朝日} と apple \index{apple} が出現する。
+小書き・カタカナの読み ぁー \index[reading=ぁあ]{小書き}・ヴァイオリン \index{ヴァイオリン} も
+ここで出現する。
