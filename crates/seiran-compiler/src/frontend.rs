@@ -1237,6 +1237,13 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_index_in_table_head_cell_command_errors() {
+    // `\head` 行の `\cell` 形式も同じ拒否経路を通る
+    let error = evaluate_error("\\begin{table}\\head{\\row{\\cell{見出し\\index{語}}}}\\row{A}\\end{table}");
+    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_index_in_bold_inside_heading_title_errors() {
     // 装飾は外側の方針を継承するので、拒否文脈の内側では何段ネストしても拒否される
     let error = evaluate_error("\\section{\\bold{x\\index{x}}}");
