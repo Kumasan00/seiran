@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError,
-      inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
+      inline::{IndexPolicy, extract_inline_nodes, extract_inline_nodes_from_elements},
       opt_args::{OptType, OptValue, collect_command_opt_args},
     },
     span_ext::ToSourceSpan,
@@ -15,11 +15,14 @@ use crate::{
 };
 
 /// `&` 分割後の 1 区画を [`HirTableCell`] に変換する
+///
+/// `index_policy` は呼び出し元（本体行かヘッダ行か）が決める。
 pub(super) fn build_cell(
   source: &str,
   builder: &HirBuilder,
   elements: &[GreenElement<'_>],
   empty_span: Span,
+  index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
   let mut cell_view: Option<CommandView<'_>> = None;
   let mut has_other_content = false;
@@ -56,11 +59,11 @@ pub(super) fn build_cell(
         span: cell_cmd.span().to_source_span(),
       });
     }
-    return extract_cell_command(&cell_cmd, builder);
+    return extract_cell_command(&cell_cmd, builder, index_policy);
   }
 
   let id = builder.alloc(segment_span(elements, empty_span));
-  let content = extract_inline_nodes_from_elements(source, builder, elements)?;
+  let content = extract_inline_nodes_from_elements(source, builder, elements, index_policy)?;
   return Ok(HirTableCell {
     id,
     content: trim_cell_content(content),
@@ -69,7 +72,11 @@ pub(super) fn build_cell(
 }
 
 /// `\cell[span=N]{...}` を属性付きセルに変換する
-fn extract_cell_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<HirTableCell, EvalError> {
+fn extract_cell_command(
+  view: &CommandView<'_>,
+  builder: &HirBuilder,
+  index_policy: IndexPolicy,
+) -> Result<HirTableCell, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("span", OptType::Number)])?;
   let mut span: u32 = 1;
   for (key, value) in opt_args {
@@ -108,7 +115,7 @@ fn extract_cell_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<
   }
 
   let id = builder.alloc(view.span());
-  let content = trim_cell_content(extract_inline_nodes(view.source(), builder, arg)?);
+  let content = trim_cell_content(extract_inline_nodes(view.source(), builder, arg, index_policy)?);
   return Ok(HirTableCell { id, content, span });
 }
 

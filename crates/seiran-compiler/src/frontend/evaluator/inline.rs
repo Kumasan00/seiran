@@ -10,6 +10,7 @@ use crate::{
         cite::cite_command,
         code::code_command,
         footnote::footnote_command,
+        index::index_command,
         link::{href_command, url_command},
         ref_::ref_command,
         single_char,
@@ -28,6 +29,22 @@ use crate::{
   },
 };
 
+/// 引数の再帰評価で `\index` を許すかどうかの文脈方針
+///
+/// `\index` の出現ページは「マーカーを含む内容が実際に置かれたページ」なので、内容が 1 箇所にしか
+/// 置かれない文脈でのみ許せる。呼び出し側は自分の文脈が複製されうるかで [`Self::Allow`] /
+/// [`Self::Reject`] を決め、書体 / 色指定・脚注本体のように「外側の文脈をそのまま引き継ぐ」引数は
+/// 受け取った方針を子へ渡す（`\section{\bold{x\index{x}}}` に穴を開けないため）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IndexPolicy {
+  /// `\index` を許可する（脚注本体・キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈）
+  Allow,
+  /// `\index` を [`EvalError::IndexNotAllowedHere`] で拒否する
+  ///
+  /// 見出しタイトル・`\href` の表示テキスト・表の `\head` セル・`\index` 自身の語。
+  Reject,
+}
+
 /// `GreenNode` の子要素から [`HirInline`] のリストを構築する
 ///
 /// # Errors
@@ -37,8 +54,9 @@ pub(crate) fn extract_inline_nodes(
   source: &str,
   builder: &HirBuilder,
   node: &GreenNode<'_>,
+  index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  return extract_inline_nodes_from_elements(source, builder, node.children);
+  return extract_inline_nodes_from_elements(source, builder, node.children, index_policy);
 }
 
 /// CST 要素のスライスから [`HirInline`] のリストを構築する
@@ -52,6 +70,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
   source: &str,
   builder: &HirBuilder,
   children: &[GreenElement<'_>],
+  index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   let mut inlines = Vec::new();
   for child in children {
@@ -104,10 +123,10 @@ pub(crate) fn extract_inline_nodes_from_elements(
           let view = CommandView::new(child_node, source);
           match COMMAND_MAP.get(view.name()).copied() {
             Some(CommandKind::StyledText(kind)) => {
-              inlines.extend(styled_text(&view, builder, kind)?);
+              inlines.extend(styled_text(&view, builder, kind, index_policy)?);
             },
             Some(CommandKind::ColoredText) => {
-              inlines.extend(colored_text(&view, builder)?);
+              inlines.extend(colored_text(&view, builder, index_policy)?);
             },
             Some(CommandKind::Ref) => {
               inlines.extend(ref_command(&view, builder)?);
@@ -116,7 +135,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
               inlines.extend(cite_command(&view, builder)?);
             },
             Some(CommandKind::Footnote) => {
-              inlines.extend(footnote_command(&view, builder)?);
+              inlines.extend(footnote_command(&view, builder, index_policy)?);
             },
             Some(CommandKind::Url) => {
               inlines.extend(url_command(&view, builder)?);
@@ -133,13 +152,17 @@ pub(crate) fn extract_inline_nodes_from_elements(
                 span: view.span().to_source_span(),
               });
             },
-            // \index は本文段落・箇条書き・定理環境などの直接の本文文脈（evaluate_children 経由）
-            // のみ許可する。見出しタイトル・キャプション・書体指定コマンドの中身・脚注本体・表セル・
-            // リンク表示テキストはすべてこの関数（引数の再帰評価）を経由するため一律拒否する
-            Some(CommandKind::Index) => {
-              return Err(EvalError::IndexNotAllowedHere {
-                span: view.span().to_source_span(),
-              });
+            // \index の可否は呼び出し元の文脈が決める（[`IndexPolicy`]）。内容が 1 箇所にしか
+            // 置かれない文脈（脚注本体・キャプション・表の本体セル）は許可、複製される文脈
+            // （表の \head セル）と本文の流れに置かれない文脈（見出しタイトル・\href の表示
+            // テキスト・\index 自身の語）は拒否する
+            Some(CommandKind::Index) => match index_policy {
+              IndexPolicy::Allow => inlines.extend(index_command(&view, builder)?),
+              IndexPolicy::Reject => {
+                return Err(EvalError::IndexNotAllowedHere {
+                  span: view.span().to_source_span(),
+                });
+              },
             },
             None => {
               if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
@@ -207,7 +230,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(
       &inlines[0].kind,
@@ -226,7 +249,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol('α')));
   }
@@ -242,7 +265,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     // Assert
     assert_eq!(inlines.len(), 1);
@@ -260,7 +283,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes_to_hir(source, arg);
+    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
@@ -277,14 +300,14 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes_to_hir(source, arg);
+    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow);
 
     // Assert
     assert!(matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if what == r"\pagebreak"));
   }
 
   #[test]
-  fn extract_inline_nodes_rejects_index() {
+  fn extract_inline_nodes_rejects_index_under_reject_policy() {
     // Arrange
     let arena = Bump::new();
     let source = r"\section{\index{語}}";
@@ -294,7 +317,45 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes_to_hir(source, arg);
+    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Reject);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
+  }
+
+  #[test]
+  fn extract_inline_nodes_accepts_index_under_allow_policy() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\section{\index{語}}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert
+    assert!(
+      matches!(&inlines[0].kind, HirInlineKind::Index { word, reading } if word == "語" && reading.is_none()),
+      "{:?}",
+      inlines[0].kind
+    );
+  }
+
+  #[test]
+  fn extract_inline_nodes_propagates_reject_policy_into_styled_text() {
+    // Arrange — 装飾は自分では方針を決めず、外側の Reject をそのまま子へ渡す
+    let arena = Bump::new();
+    let source = r"\section{\bold{重要\index{重要}}}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Reject);
 
     // Assert
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
@@ -308,7 +369,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::InlineMath(_)));
     assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
   }
@@ -321,7 +382,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 3);
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "Hello"));
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "));

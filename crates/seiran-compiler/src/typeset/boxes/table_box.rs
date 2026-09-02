@@ -228,8 +228,10 @@ fn layout_row_cells<'a>(
 ///
 /// 列揃え・padding・`Kern` / `Glue` のカーソル前進はこの時点ですべて解決する。
 /// リンク marker は [`collect_row_links`] が別に確定矩形へ変換するため描画箱には含めない。
-/// セル内脚注・索引 marker は入力から到達可能だが、表セル内では本体を配置しないという
-/// 現行制限を維持して描画箱を生成しない。
+/// 索引 marker は幅 0 で描画箱を持たず、どのページへ帰属するかは行の着地段を決める
+/// `crate::typeset::breaking` の表配置が収集する。セル内脚注は入力から到達可能だが、
+/// 表セル内では本体を配置しない現行制限を維持して描画箱を生成しない
+/// （その脚注本体に置かれた `\index` も脚注ごと落ちる）。
 #[must_use]
 pub(crate) fn position_table_row_boxes(
   row: &TableRowBox,
@@ -282,8 +284,9 @@ pub(crate) struct RowLink {
 ///
 /// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
 /// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。カーソル前進は
-/// [`HItem::natural_width`] を使う。セル内脚注・索引 marker は幅 0 で、現行制限どおり
-/// ページ上の脚注・索引としては配置しない。
+/// [`HItem::natural_width`] を使う。セル内脚注・索引 marker はいずれも幅 0 で、ここでは
+/// カーソルを進めるだけ（索引語の収集は `crate::typeset::breaking` の表配置、脚注本体は
+/// 現行制限どおり未配置）。
 #[must_use]
 pub(crate) fn collect_row_links(
   row: &TableRowBox,
