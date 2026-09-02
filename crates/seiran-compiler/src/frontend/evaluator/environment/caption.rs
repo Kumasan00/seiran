@@ -3,13 +3,19 @@
 use crate::{
   document::{HirBuilder, HirInline},
   frontend::{
-    evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+    evaluator::{
+      EvalError,
+      inline::{IndexPolicy, extract_inline_nodes},
+      opt_args::collect_command_opt_args,
+    },
     span_ext::ToSourceSpan,
     syntax::view::CommandView,
   },
 };
 
 /// `\caption{...}` の引数をインライン要素列に変換する
+///
+/// キャプションは図表 1 個につき 1 箇所にしか置かれないので `\index` を許可する。
 ///
 /// # Errors
 ///
@@ -29,5 +35,5 @@ pub(super) fn extract_caption(view: &CommandView<'_>, builder: &HirBuilder) -> R
       span: view.span().to_source_span(),
     });
   }
-  return extract_inline_nodes(view.source(), builder, first_arg);
+  return extract_inline_nodes(view.source(), builder, first_arg, IndexPolicy::Allow);
 }

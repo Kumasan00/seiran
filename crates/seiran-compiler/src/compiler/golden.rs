@@ -95,6 +95,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "index",
   "index_groups",
   "index_ranges",
+  "index_split",
   "itemize",
   "justify",
   "math_script",
@@ -176,8 +177,9 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
       style.page.margin_top = Length::mm(15.0);
       style.page.margin_bottom = Length::mm(15.0);
     },
-    // 1 個の脚注が収まらず、繰越が連鎖する版面にする
-    "footnote_split" => {
+    // 1 個の脚注が収まらず繰越が連鎖する版面（`footnote_split`）と、そこへ長い表を足して
+    // ページ跨ぎも起こす版面（`index_split`、索引語の出現ページ帰属の検証用）
+    "footnote_split" | "index_split" => {
       style.page.margin_left = Length::mm(15.0);
       style.page.margin_right = Length::mm(15.0);
       style.page.margin_top = Length::mm(12.0);
@@ -204,8 +206,8 @@ fn apply_input_config_overrides(name: &str, config: &mut ProjectConfig) {
     config.pdf.width = Length::mm(150.0);
     config.pdf.height = Length::mm(130.0);
   }
-  // 1 個の脚注が収まらず、繰越が連鎖する版面にする
-  if name == "footnote_split" {
+  // 脚注の繰越（`footnote_split`）と、それに加えて表のページ跨ぎ（`index_split`）が起きる版面にする
+  if name == "footnote_split" || name == "index_split" {
     config.pdf.width = Length::mm(120.0);
     config.pdf.height = Length::mm(85.0);
   }
@@ -270,7 +272,7 @@ fn apply_input_config_overrides_toml(name: &str, table: &mut toml::value::Table)
     set_pdf_field(table, "width", "150mm");
     set_pdf_field(table, "height", "130mm");
   }
-  if name == "footnote_split" {
+  if name == "footnote_split" || name == "index_split" {
     set_pdf_field(table, "width", "120mm");
     set_pdf_field(table, "height", "85mm");
   }
@@ -642,6 +644,56 @@ fn per_page_footnote_numbering_restarts_on_each_page() {
     let expected: Vec<u32> = (1..=u32::try_from(numbers.len()).expect("脚注数は u32 に収まる")).collect();
     assert_eq!(*numbers, expected, "各ページの脚注番号は 1 からの連番のはず: {per_page:?}");
   }
+}
+
+/// `\index` の出現ページが「マーカーを含む内容が実際に置かれたページ」になることを、
+/// 脚注のページ繰越と表のページ跨ぎの両方で end-to-end に確かめる。
+///
+/// 帰属を決める `crate::typeset::breaking` 側の単体テストと違い、こちらはソース（`.sei`）から
+/// `build_pages` までを通すので、frontend の許可・lowering・collector の配線が繋がっていないと落ちる。
+#[test]
+fn index_entries_follow_the_page_the_content_lands_on() {
+  // Arrange
+  enter_workspace_root();
+  let (mut config, mut style, references) = load_base();
+  config.sources = vec![PathBuf::from("tests/text/index_split.sei")];
+  apply_input_config_overrides("index_split", &mut config);
+  apply_input_style_overrides("index_split", &mut style);
+  let source = FilesystemProjectSource::new();
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+
+  // Act
+  let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+
+  // Assert — 索引語ごとに、載っているページ index の集合を作る
+  let pages_of = |word: &str| -> Vec<usize> {
+    return laid_out
+      .pages
+      .iter()
+      .enumerate()
+      .filter(|(_, page)| return page.index_entries.iter().any(|entry| return entry.word == word))
+      .map(|(index, _)| return index)
+      .collect();
+  };
+  // 脚注が繰越されている（空振り検知）
+  let carried = laid_out
+    .pages
+    .iter()
+    .position(|page| return page.footnotes.iter().any(|f| return f.continued))
+    .unwrap_or_else(|| panic!("脚注が分割されて繰越が生じるはず: {:?}", laid_out.pages.len()));
+  assert!(carried > 0, "繰越は 2 ページ目以降に現れるはず");
+  assert_eq!(pages_of("脚注冒頭"), vec![carried - 1], "脚注本体の先頭行はマーカーのあるページに残る");
+  assert_eq!(pages_of("脚注繰越"), vec![carried], "繰越された行の索引語は繰越先ページへ帰属する");
+
+  // 表は 2 ページ以上に跨り、各行の索引語は自分の行が落ちたページにだけ現れる
+  let row_pages: Vec<Vec<usize>> = (1..=16).map(|i| return pages_of(&format!("表{i}"))).collect();
+  for (i, pages) in row_pages.iter().enumerate() {
+    assert_eq!(pages.len(), 1, "表 {} 行目の索引語はちょうど 1 ページに載るはず: {row_pages:?}", i + 1);
+  }
+  let first = row_pages[0][0];
+  let last = row_pages[15][0];
+  assert!(last > first, "表がページを跨いでいるはず（空振り検知）: {row_pages:?}");
+  assert!(row_pages.windows(2).all(|w| return w[0][0] <= w[1][0]), "行の順序どおりに並ぶはず: {row_pages:?}");
 }
 
 #[test]

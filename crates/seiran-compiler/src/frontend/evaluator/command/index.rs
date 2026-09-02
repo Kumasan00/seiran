@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError,
-      inline::extract_inline_nodes,
+      inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
     span_ext::ToSourceSpan,
@@ -37,7 +37,7 @@ pub(crate) fn index_command(view: &CommandView<'_>, builder: &HirBuilder) -> Res
     });
   }
 
-  let nodes = extract_inline_nodes(view.source(), builder, first_arg)?;
+  let nodes = extract_inline_nodes(view.source(), builder, first_arg, IndexPolicy::Reject)?;
   let mut word = String::new();
   for node in &nodes {
     let HirInlineKind::Text(text) = &node.kind else {

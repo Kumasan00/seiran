@@ -10,6 +10,7 @@ use crate::{
         caption::extract_caption,
         table::cell::{build_cell, contains_line_break},
       },
+      inline::IndexPolicy,
       opt_args::{OptType, OptValue, collect_command_opt_args},
     },
     span_ext::ToSourceSpan,
@@ -65,7 +66,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) 
         },
         "row" => {
           let span = cmd_view.span().to_source_span();
-          rows.push((extract_row(&cmd_view, builder)?, span));
+          rows.push((extract_row(&cmd_view, builder, IndexPolicy::Allow)?, span));
         },
         "caption" => {
           if caption.is_some() {
@@ -94,6 +95,9 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) 
 }
 
 /// `\head{\row{...} ...}` からヘッダ行を抽出する
+///
+/// ヘッダ行は表が改ページするたび全ページへ再描画される複製文脈なので、出現ページが一意に
+/// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
 fn extract_head(
   view: &CommandView<'_>,
   builder: &HirBuilder,
@@ -137,7 +141,7 @@ fn extract_head(
           let row_view = CommandView::new(node, source);
           if row_view.name() == "row" {
             let span = row_view.span().to_source_span();
-            rows.push((extract_row(&row_view, builder)?, span));
+            rows.push((extract_row(&row_view, builder, IndexPolicy::Reject)?, span));
           } else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: "table".to_string(),
@@ -167,7 +171,14 @@ fn extract_head(
 }
 
 /// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
-fn extract_row(view: &CommandView<'_>, builder: &HirBuilder) -> Result<HirTableRow, EvalError> {
+///
+/// `index_policy` は本体行（[`IndexPolicy::Allow`]）と `\head` 行（[`IndexPolicy::Reject`]）を
+/// 呼び分けるために呼び出し元が決める。
+fn extract_row(
+  view: &CommandView<'_>,
+  builder: &HirBuilder,
+  index_policy: IndexPolicy,
+) -> Result<HirTableRow, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
   let rule_above = opt_args
     .iter()
@@ -197,14 +208,14 @@ fn extract_row(view: &CommandView<'_>, builder: &HirBuilder) -> Result<HirTableR
     if let GreenElement::Token(token) = child
       && token.kind == TokenKind::Ampersand
     {
-      cells.push(build_cell(source, builder, &segment, empty_cell_span)?);
+      cells.push(build_cell(source, builder, &segment, empty_cell_span, index_policy)?);
       segment.clear();
       empty_cell_span = Span::new(token.span.end, token.span.end);
     } else {
       segment.push(*child);
     }
   }
-  cells.push(build_cell(source, builder, &segment, empty_cell_span)?);
+  cells.push(build_cell(source, builder, &segment, empty_cell_span, index_policy)?);
 
   for cell in &cells {
     if contains_line_break(&cell.content) {

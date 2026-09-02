@@ -359,15 +359,37 @@ impl PageComposer {
     }
   }
 
+  /// 索引語 1 件を現在ページの索引語集合へ加える
+  ///
+  /// 同一ページ内の同じ `(語, reading)` は 1 出現に畳む（#246 の規則）。本文行・脚注行・表の
+  /// 本体行のどこから来たマーカーも同じページの同じ集合へ入るので、畳みは経路をまたいで効く。
+  fn push_index_entry(&mut self, word: &str, reading: Option<&str>) {
+    let exists = self.current_index_entries.iter().any(|e| return e.word == word && e.reading.as_deref() == reading);
+    if !exists {
+      self.current_index_entries.push(PlacedIndexEntry {
+        word: word.to_string(),
+        reading: reading.map(str::to_string),
+      });
+    }
+  }
+
   /// 行の索引語を現在ページの索引語集合へマージする
   fn collect_line_index_entries(&mut self, line: &Line) {
     for entry in &line.index_marks {
-      let exists = self.current_index_entries.iter().any(|e| return e.word == entry.word && e.reading == entry.reading);
-      if !exists {
-        self.current_index_entries.push(PlacedIndexEntry {
-          word: entry.word.clone(),
-          reading: entry.reading.clone(),
-        });
+      self.push_index_entry(&entry.word, entry.reading.as_deref());
+    }
+  }
+
+  /// 表の 1 行のセルに含まれる索引語を現在ページの索引語集合へマージする
+  ///
+  /// セルの内容は行分割を通らない（`TableCellBox::items` はフラットな `HItem` 列）ので
+  /// [`Line::index_marks`] の経路に乗らない。行が着地する段が決まった時点で呼ぶ。
+  fn collect_row_index_entries(&mut self, row: &TableRowBox) {
+    for cell in &row.cells {
+      for item in &cell.items {
+        if let HItem::IndexMark { word, reading } = item {
+          self.push_index_entry(word, reading.as_deref());
+        }
       }
     }
   }
@@ -494,6 +516,10 @@ impl PageComposer {
             baseline += pending.leading.max(prev_depth + line.height);
           }
           prev_depth = line.depth;
+          // 脚注の行がこのリージョン（＝このページ）へ置かれることが確定するのはここだけなので、
+          // 索引語の帰属もここで決める。行単位のページ繰越（#227）で次ページへ送られた行は、
+          // 送り先のリージョンでこのループを通るため、繰越先ページへ帰属する。
+          self.collect_line_index_entries(&line);
           blocks.push(PlacedBlock::Line {
             line,
             baseline_y: baseline,
@@ -1093,6 +1119,8 @@ struct PendingTableRow {
   top_y: Length,
   /// 行帯の高さ
   height: Length,
+  /// `\head` 行か（改ページのたびに再描画される複製なので索引語を収集しない）
+  is_head: bool,
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
@@ -1125,13 +1153,15 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   let mut pending_rows: Vec<PendingTableRow> = Vec::new();
   // head 行・本体行・改ページ後のヘッダ再描画を同じ経路へ積む。セルの絶対 x は
   // 着地段が決まる flush 時に確定する。
-  let push_row = |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, height: Length| {
-    pending_rows.push(PendingTableRow {
-      row: row.clone(),
-      top_y,
-      height,
-    });
-  };
+  let push_row =
+    |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, height: Length, is_head: bool| {
+      pending_rows.push(PendingTableRow {
+        row: row.clone(),
+        top_y,
+        height,
+        is_head,
+      });
+    };
   // 現在の pending_rows を、セル内容・リンク・罫線の絶対座標まで確定した表断片へ変換する。
   // 断片の x は着地段のオフセット + 段内揃えオフセット（flush は advance_region の前に
   // 呼ばれるので column は正しい）。
@@ -1141,7 +1171,15 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     }
     let table_x = composer.column_offset() + table_align_offset;
     let table_width: Length = col_widths.iter().copied().sum();
-    let rows = std::mem::take(pending_rows).into_iter().map(|pending| {
+    let taken = std::mem::take(pending_rows);
+    // 索引語は行の着地段が決まったこの時点で収集する。`\head` 行は改ページのたびに再描画される
+    // 複製なので除く（frontend が `\head` セル内の `\index` を拒否するので実際には空だが、
+    // 再描画のたびに同じ語を積まないことをここでも保証する）。座標を作る下の map より前に回すのは、
+    // map のクロージャが `composer` の別フィールドだけを掴むようにするため。
+    for pending in taken.iter().filter(|pending| return !pending.is_head) {
+      composer.collect_row_index_entries(&pending.row);
+    }
+    let rows = taken.into_iter().map(|pending| {
       let mut boxes = position_table_row_boxes(&pending.row, &table.columns, &col_widths, geom.table_cell_padding);
       for positioned in &mut boxes {
         positioned.x += table_x;
@@ -1190,7 +1228,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
     }
-    push_row(&mut pending_rows, row, composer.y, *height);
+    push_row(&mut pending_rows, row, composer.y, *height, true);
     composer.y += *height;
   }
   for (row, height) in table.rows.iter().zip(&row_heights) {
@@ -1198,11 +1236,11 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
       for (head_row, head_height) in table.head.iter().zip(&head_heights) {
-        push_row(&mut pending_rows, head_row, composer.y, *head_height);
+        push_row(&mut pending_rows, head_row, composer.y, *head_height, true);
         composer.y += *head_height;
       }
     }
-    push_row(&mut pending_rows, row, composer.y, *height);
+    push_row(&mut pending_rows, row, composer.y, *height, false);
     composer.y += *height;
   }
   flush(composer, &mut pending_rows);
@@ -1410,6 +1448,139 @@ mod tests {
     // Assert
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].index_entries.len(), 2);
+  }
+
+  /// `lines` 行の脚注本体を作り、`at` 行目（0 起点）の行頭に索引マーカーを置く
+  fn footnote_of_lines_with_index_at(number: u32, lines: usize, at: usize, word: &str) -> HItem {
+    let mut items = Vec::new();
+    for i in 0..lines {
+      if i > 0 {
+        items.push(HItem::ForcedBreak);
+      }
+      if i == at {
+        items.push(index_mark_item(word, None));
+      }
+      items.push(test_box());
+    }
+    return footnote_item(number, items, pt(12.0));
+  }
+
+  #[test]
+  fn index_entries_in_footnote_body_land_on_the_footnote_page() {
+    // Arrange
+    let geom = test_geometry();
+    let blocks = vec![single_line_paragraph(vec![
+      footnote_of_lines_with_index_at(1, 1, 0, "脚注語"),
+    ])];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].index_entries.len(), 1, "{:?}", pages[0].index_entries);
+    assert_eq!(pages[0].index_entries[0].word, "脚注語");
+  }
+
+  #[test]
+  fn index_entries_in_carried_footnote_lines_land_on_the_carry_page() {
+    // Arrange — 4 行の脚注は 3 行目までが 1 ページ目、4 行目が繰越
+    // （`long_footnote_splits_and_carries_remainder_to_next_page` と同じ分割）
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines_with_index_at(1, 4, 3, "繰越語")]),
+      single_line_paragraph(vec![]),
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2);
+    assert!(
+      pages[0].index_entries.is_empty(),
+      "マーカーの行は繰越されたので 1 ページ目には無い: {:?}",
+      pages[0].index_entries
+    );
+    assert_eq!(pages[1].index_entries.len(), 1, "{:?}", pages[1].index_entries);
+    assert_eq!(pages[1].index_entries[0].word, "繰越語");
+  }
+
+  /// 1 列 1 行、セルが `text` の箱と索引マーカーだけの表の行を作る
+  fn table_row_with_index(text: &str, word: &str) -> TableRowBox {
+    let mut row = table_row(text);
+    row.cells[0].items.push(index_mark_item(word, None));
+    return row;
+  }
+
+  #[test]
+  fn index_entries_in_table_body_cells_land_on_the_row_page() {
+    // Arrange — 5 行の表は 2 ページに分かれる
+    // （`breakable_table_splits_across_pages_and_redraws_header` と同じ構成）
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: vec![table_row("HEAD")],
+      rows: (0..5).map(|i| return table_row_with_index(&format!("R{i}"), &format!("W{i}"))).collect(),
+      breakable: true,
+    };
+
+    // Act
+    let (pages, _) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+      TextAlignment::RaggedRight,
+    );
+
+    // Assert — 各語は自分の行が落ちたページにだけ現れ、2 ページ合わせて 5 語すべてが揃う
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    let words: Vec<Vec<&str>> = pages
+      .iter()
+      .map(|page| return page.index_entries.iter().map(|e| return e.word.as_str()).collect())
+      .collect();
+    assert!(!words[0].is_empty() && !words[1].is_empty(), "両ページに行があるはず: {words:?}");
+    let all: Vec<&str> = words.concat();
+    assert_eq!(all, vec!["W0", "W1", "W2", "W3", "W4"], "行の順序どおりに 1 回ずつ: {words:?}");
+  }
+
+  #[test]
+  fn index_entries_in_table_head_are_not_collected_on_any_page() {
+    // Arrange — frontend は `\head` セル内の `\index` を拒否するが、ヘッダ再描画で同じ語が
+    // ページごとに積まれないことを配置側でも保証する
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: vec![table_row_with_index("HEAD", "ヘッダ語")],
+      rows: (0..5).map(|i| return table_row(&format!("R{i}"))).collect(),
+      breakable: true,
+    };
+
+    // Act
+    let (pages, _) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+      TextAlignment::RaggedRight,
+    );
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert!(pages.iter().all(|page| return page.index_entries.is_empty()), "{pages:?}");
   }
 
   #[test]

@@ -1149,21 +1149,79 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_index_in_table_cell_errors() {
-    let error = evaluate_error("\\begin{table}\\row{\\index{語} & B}\\end{table}");
-    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  fn evaluate_index_in_table_body_cell() {
+    let result = evaluate_source("\\begin{table}\\row{語\\index{語} & B}\\end{table}");
+    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+      panic!("Table が期待されます: {result:?}");
+    };
+    assert!(has_index_word(&rows[0].cells[0].content, "語"), "{:?}", rows[0].cells[0].content);
   }
 
   #[test]
-  fn evaluate_index_in_footnote_body_errors() {
-    let error = evaluate_error("本文\\footnote{\\index{語}}");
-    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  fn evaluate_index_in_cell_command() {
+    let result = evaluate_source("\\begin{table}\\row{\\cell[span=2]{語\\index{語}}}\\end{table}");
+    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+      panic!("Table が期待されます: {result:?}");
+    };
+    assert!(has_index_word(&rows[0].cells[0].content, "語"), "{:?}", rows[0].cells[0].content);
   }
 
   #[test]
-  fn evaluate_index_in_caption_errors() {
-    let error = evaluate_error("\\begin{table}\\caption{\\index{語}}\\row{A}\\end{table}");
-    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  fn evaluate_index_in_footnote_body() {
+    let result = evaluate_source("本文\\footnote{脚注\\index{語}}");
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    let body = inlines
+      .iter()
+      .find_map(|n| match &n.kind {
+        HirInlineKind::Footnote { body } => return Some(body),
+        _ => return None,
+      })
+      .expect("脚注があるはず");
+    assert!(has_index_word(body, "語"), "{body:?}");
+  }
+
+  #[test]
+  fn evaluate_index_in_caption() {
+    let result = evaluate_source("\\begin{table}\\caption{表\\index{語}}\\row{A}\\end{table}");
+    let HirNodeKind::Table { caption, .. } = &result[0].kind else {
+      panic!("Table が期待されます: {result:?}");
+    };
+    let caption = caption.as_ref().expect("キャプションがあるはず");
+    assert!(has_index_word(caption, "語"), "{caption:?}");
+  }
+
+  #[test]
+  fn evaluate_index_in_bold() {
+    let result = evaluate_source("\\bold{重要\\index{重要}}");
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    let children = inlines
+      .iter()
+      .find_map(|n| match &n.kind {
+        HirInlineKind::Styled { children, .. } => return Some(children),
+        _ => return None,
+      })
+      .expect("装飾があるはず");
+    assert!(has_index_word(children, "重要"), "{children:?}");
+  }
+
+  #[test]
+  fn evaluate_index_in_color() {
+    let result = evaluate_source("\\color[color=#ff0000]{語\\index{語}}");
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    let children = inlines
+      .iter()
+      .find_map(|n| match &n.kind {
+        HirInlineKind::Colored { children, .. } => return Some(children),
+        _ => return None,
+      })
+      .expect("色指定があるはず");
+    assert!(has_index_word(children, "語"), "{children:?}");
   }
 
   #[test]
@@ -1173,8 +1231,33 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_index_in_bold_errors() {
-    let error = evaluate_error("\\bold{\\index{語}}");
+  fn evaluate_index_in_table_head_cell_errors() {
+    let error = evaluate_error("\\begin{table}\\head{\\row{\\index{語}}}\\row{A}\\end{table}");
     assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_index_in_bold_inside_heading_title_errors() {
+    // 装飾は外側の方針を継承するので、拒否文脈の内側では何段ネストしても拒否される
+    let error = evaluate_error("\\section{\\bold{x\\index{x}}}");
+    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_index_in_bold_inside_table_head_cell_errors() {
+    let error = evaluate_error("\\begin{table}\\head{\\row{\\bold{x\\index{x}}}}\\row{A}\\end{table}");
+    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_index_in_footnote_inside_heading_title_errors() {
+    // 脚注本体も方針を継承する（見出しタイトルの中の脚注は拒否のまま）
+    let error = evaluate_error("\\section{見出し\\footnote{脚注\\index{語}}}");
+    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+  }
+
+  /// インライン列に指定した語の `\index` があるか
+  fn has_index_word(inlines: &[HirInline], expected: &str) -> bool {
+    return inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Index { word, .. } if word == expected));
   }
 }

@@ -563,7 +563,11 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
 - `inline` / `math` / `opt_args` / `error`。任意引数の検査（未知キー・同一組内のキー重複
   `DuplicateOptArgKey`・値の型）は `opt_args::collect_opt_args` 1 箇所が担い、ハンドラは許可キーと型の
-  スキーマを渡すだけ（#488）
+  スキーマを渡すだけ（#488）。引数の再帰評価 `inline::extract_inline_nodes` は `IndexPolicy`
+  （`\index` を許すか）を引数で受け取り、拒否は `IndexNotAllowedHere` の 1 箇所に閉じる（#510）—
+  文脈を決めるのは呼び出し元で、見出しタイトル・`\href` 表示テキスト・表の `\head` 行・`\index` 自身の語が
+  `Reject`、脚注本体・キャプション・表の本体行が `Allow`、書体 / 色指定と脚注本体は**外側の方針を継承**する
+  （固定 `Allow` にすると `\section{\bold{x\index{x}}}` が拒否をすり抜ける）
 - `test_support`（`#[cfg(test)]`）: 配下の test module が共有する CST 組み立てヘルパ。本番の
   レジストリ（`mode_resolver`＝環境本体の `lookup_body_mode` とコマンド引数の `lookup_arg_mode`）を
   注入した `parse` と、そこから最初の `CommandCall` を取り出す `command_call_node` を持つ
@@ -1107,9 +1111,10 @@ root facade へ出すのは**本体コードに消費者がある型だけ**（`
 表は `breaking::place_table` が改段・改ページとヘッダ再描画を決めた時点で、段オフセット・揃え・セル余白・
 baseline・罫線をページ座標へ畳む。畳み込みは `Length`（sp 整数）のまま行い、pt の `f32` へ変換するのは
 描画命令を作る 1 回だけである。以降の `publication::build` は表固有の配置判断・幅計算を持たず、
-他の `PlacedBlock` と同じく左マージンの加算と pt 変換だけを行う。表セル内脚注・索引 marker をページ列へ
-配置しない現行制限は維持し、`position_table_row_boxes` で明示的に読み飛ばす。完全対応は表の配置済み
-表現とは別課題とする。
+他の `PlacedBlock` と同じく左マージンの加算と pt 変換だけを行う。表セル内の索引 marker は幅 0 で描画箱を
+持たないので `position_table_row_boxes` は読み飛ばし、どのページへ帰属するかは行の着地段を決める
+`breaking::place_table` が集める（#510）。表セル内脚注を配置しない現行制限は維持し、こちらも同じ場所で
+読み飛ばす（その脚注本体に置かれた `\index` も脚注ごと落ちる）。完全対応は表の配置済み表現とは別課題とする。
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。子 module 間の
 相互参照も `boxing` / `breaking` / `lowering` からの利用も `crate::typeset::boxes::{...}` のパスで行う
@@ -1228,7 +1233,12 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 （`LinkStart` / `LinkEnd` と同じ運搬パターン）にし、本文中には何も残さない。索引語（`LayoutNode::IndexMark`）
 も同じく `HItem::IndexMark`（幅 0・分割不可）にする。脚注と異なり索引語は本体の再配置が不要で、
 `breaking::break_lines` が `Line::index_marks` へ素通しし、`break_pages` がその行の所属ページへ
-(word, reading) を重複除去つきで集約する（`Page::index_entries`）。
+(word, reading) を重複除去つきで集約する（`Page::index_entries`）。集約の入口は
+`PageComposer::push_index_entry` 1 つで、そこへ流し込む収集点が 3 箇所ある（#510）— 本文行
+（`place_paragraph` / `place_single_line`）・脚注本体の行（`end_region` が脚注をページ下部へ確定させる
+ループ。行単位のページ繰越はそのまま繰越先ページへの帰属になる）・表の本体行（`place_table` の flush。
+行分割を通らない `TableCellBox::items` を直接舐める。`\head` 行は改ページのたび再描画される複製なので
+除く）。3 経路とも同じページの同じ集合へ入るので、ページ内の重複畳みは経路をまたいで効く。
 
 > **要点**: `AnchorMark`（見出し・ラベル付きブロックの到達先）と違い `IndexMark` は段落を分割しない。
 > `\pagebreak` / `\ref` の `AnchorMark` はブロック境界でしか発行されないが、`\index` は段落内の任意の位置に

@@ -237,9 +237,13 @@ pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Re
 
 /// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
 #[cfg(test)]
-pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn extract_inline_nodes_to_hir(
+  source: &str,
+  node: &GreenNode<'_>,
+  index_policy: inline::IndexPolicy,
+) -> Result<Vec<HirInline>, EvalError> {
   let builder = HirBuilder::new(SourceId::new(0));
-  return inline::extract_inline_nodes(source, &builder, node);
+  return inline::extract_inline_nodes(source, &builder, node, index_policy);
 }
 
 /// ハンドラを直接呼ぶテスト向けに、HIR インラインをそのまま返す

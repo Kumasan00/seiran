@@ -13,7 +13,11 @@
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
-    evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+    evaluator::{
+      EvalError,
+      inline::{IndexPolicy, extract_inline_nodes},
+      opt_args::collect_command_opt_args,
+    },
     span_ext::ToSourceSpan,
     syntax::view::{CommandView, extract_text_content},
   },
@@ -76,7 +80,7 @@ pub(crate) fn href_command(view: &CommandView<'_>, builder: &HirBuilder) -> Resu
 
   let url = extract_text_content(view.source(), url_arg).trim().to_string();
   let id = builder.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), builder, display_arg)?;
+  let children = extract_inline_nodes(view.source(), builder, display_arg, IndexPolicy::Reject)?;
   return Ok(vec![HirInline::new(id, HirInlineKind::Link { url, children })]);
 }
 

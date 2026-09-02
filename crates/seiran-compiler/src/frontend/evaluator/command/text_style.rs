@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError,
-      inline::extract_inline_nodes,
+      inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_color},
     },
     span_ext::ToSourceSpan,
@@ -22,6 +22,7 @@ pub(crate) fn styled_text(
   view: &CommandView<'_>,
   builder: &HirBuilder,
   kind: FontKind,
+  index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   let name = view.name();
   let _opt_args = collect_command_opt_args(view, &[])?;
@@ -40,7 +41,7 @@ pub(crate) fn styled_text(
   }
 
   let id = builder.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), builder, first_arg)?;
+  let children = extract_inline_nodes(view.source(), builder, first_arg, index_policy)?;
   return Ok(vec![HirInline::new(id, HirInlineKind::Styled { kind, children })]);
 }
 
@@ -51,7 +52,11 @@ pub(crate) fn styled_text(
 /// 色の欠落・必須引数の不足で [`EvalError::MissingCommandArgument`]、引数過剰で
 /// [`EvalError::ExtraCommandArgument`]、色の 16 進表記が不正な場合に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn colored_text(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn colored_text(
+  view: &CommandView<'_>,
+  builder: &HirBuilder,
+  index_policy: IndexPolicy,
+) -> Result<Vec<HirInline>, EvalError> {
   let name = view.name();
   let opt_args = collect_command_opt_args(view, &[("color", OptType::Color)])?;
   let Some(color) = find_color(&opt_args, "color") else {
@@ -76,7 +81,7 @@ pub(crate) fn colored_text(view: &CommandView<'_>, builder: &HirBuilder) -> Resu
   }
 
   let id = builder.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), builder, first_arg)?;
+  let children = extract_inline_nodes(view.source(), builder, first_arg, index_policy)?;
   return Ok(vec![HirInline::new(
     id,
     HirInlineKind::Colored { color, children },
@@ -102,7 +107,9 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
+    let result =
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold, IndexPolicy::Allow))
+        .unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -125,7 +132,9 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
+    let result =
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold, IndexPolicy::Allow))
+        .unwrap();
 
     // Assert
     let HirInlineKind::Styled { kind, children } = &result[0].kind else {
@@ -149,7 +158,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold, IndexPolicy::Allow)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -162,7 +171,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold, IndexPolicy::Allow)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -176,7 +185,8 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold));
+    let result =
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold, IndexPolicy::Allow));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
@@ -191,7 +201,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return colored_text(&view, builder, IndexPolicy::Allow)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -211,7 +221,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|builder| return colored_text(&view, builder)),
+      run_inline_handler(|builder| return colored_text(&view, builder, IndexPolicy::Allow)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -224,7 +234,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_inline_handler(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
+      matches!(run_inline_handler(|builder| return colored_text(&view, builder, IndexPolicy::Allow)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
     );
   }
 
@@ -236,7 +246,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|builder| return colored_text(&view, builder)),
+      run_inline_handler(|builder| return colored_text(&view, builder, IndexPolicy::Allow)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -250,7 +260,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return colored_text(&view, builder, IndexPolicy::Allow)).unwrap();
 
     // Assert
     let HirInlineKind::Colored { color, children } = &result[0].kind else {

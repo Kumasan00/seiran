@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError,
-      inline::extract_inline_nodes,
+      inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
     span_ext::ToSourceSpan,
@@ -45,7 +45,8 @@ pub(super) fn heading(
   }
 
   let id = builder.alloc(view.span());
-  let title = extract_inline_nodes(view.source(), builder, first_arg)?;
+  // 見出しタイトルは目次・走り文へも展開されうる複製文脈なので `\index` を拒否する
+  let title = extract_inline_nodes(view.source(), builder, first_arg, IndexPolicy::Reject)?;
 
   return Ok(vec![HirNode::new(
     id,

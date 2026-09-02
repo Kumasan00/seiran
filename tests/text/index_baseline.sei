@@ -3,3 +3,14 @@
 Seiran typesets plain text into PDF. The word typesetting appears again here to test deduplication within a single page.
 
 A separately indexed term with an explicit reading option sits at the end of this sentence.
+
+装飾の引数内と脚注本体に置いたマーカーです。\bold{重要}を強調し、脚注にも\footnote{脚注本体に置いた索引語です。}マーカーを置きます。
+
+\begin{table}
+\head{
+  \row{項目 & 値}
+}
+\row{本体セル & 表の中}
+\row{\cell[span=2]{セル結合}}
+\caption{キャプションの索引語}
+\end{table}

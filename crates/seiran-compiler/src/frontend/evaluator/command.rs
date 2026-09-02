@@ -8,7 +8,7 @@ use phf::phf_map;
 use crate::{
   document::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
   frontend::{
-    evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
+    evaluator::{EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::{ArgMode, view::CommandView},
   },
@@ -71,6 +71,11 @@ pub(crate) enum CommandKind {
 
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
+  ///
+  /// この経路は `crate::frontend::evaluator::evaluate_children`（本文段落・箇条書き・定理環境などの
+  /// 直接の本文文脈）からしか来ないので、引数を再帰評価するコマンドへは
+  /// [`IndexPolicy::Allow`] を渡す。引数の中からの再帰は
+  /// `crate::frontend::evaluator::inline::extract_inline_nodes` 側が方針を持つ。
   fn execute(self, view: &CommandView<'_>, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
     match self {
       Self::Space => return control::space(view, builder).map(CommandResult::Block),
@@ -79,15 +84,21 @@ impl CommandKind {
 
       Self::Heading(level) => return heading::heading(view, builder, level).map(CommandResult::Block),
 
-      Self::StyledText(kind) => return text_style::styled_text(view, builder, kind).map(CommandResult::Inline),
+      Self::StyledText(kind) => {
+        return text_style::styled_text(view, builder, kind, IndexPolicy::Allow).map(CommandResult::Inline);
+      },
 
-      Self::ColoredText => return text_style::colored_text(view, builder).map(CommandResult::Inline),
+      Self::ColoredText => {
+        return text_style::colored_text(view, builder, IndexPolicy::Allow).map(CommandResult::Inline);
+      },
 
       Self::Ref => return ref_::ref_command(view, builder).map(CommandResult::Inline),
 
       Self::Cite => return cite::cite_command(view, builder).map(CommandResult::Inline),
 
-      Self::Footnote => return footnote::footnote_command(view, builder).map(CommandResult::Inline),
+      Self::Footnote => {
+        return footnote::footnote_command(view, builder, IndexPolicy::Allow).map(CommandResult::Inline);
+      },
 
       Self::Index => return index::index_command(view, builder).map(CommandResult::Inline),
 
