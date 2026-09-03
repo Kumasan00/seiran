@@ -276,13 +276,13 @@ keywords=["test", "seiran"]
   glyphs x=285.70 y=913.12 font=JapaneseSerif size=12.00 text="式" glyph_count=1
   glyphs x=297.70 y=913.12 font=JapaneseSerif size=12.00 text="は" glyph_count=1
   glyphs x=312.52 y=913.12 font=Serif size=12.00 text="(.10)" glyph_count=5
-  glyphs x=335.58 y=913.12 font=JapaneseSerif size=12.00 text="で" glyph_count=1
-  glyphs x=347.58 y=913.12 font=JapaneseSerif size=12.00 text="参" glyph_count=1
-  glyphs x=359.58 y=913.12 font=JapaneseSerif size=12.00 text="照" glyph_count=1
-  glyphs x=371.58 y=913.12 font=JapaneseSerif size=12.00 text="で" glyph_count=1
-  glyphs x=383.58 y=913.12 font=JapaneseSerif size=12.00 text="き" glyph_count=1
-  glyphs x=395.58 y=913.12 font=JapaneseSerif size=12.00 text="る" glyph_count=1
-  glyphs x=407.58 y=913.12 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=338.40 y=913.12 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=350.40 y=913.12 font=JapaneseSerif size=12.00 text="参" glyph_count=1
+  glyphs x=362.40 y=913.12 font=JapaneseSerif size=12.00 text="照" glyph_count=1
+  glyphs x=374.40 y=913.12 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=386.40 y=913.12 font=JapaneseSerif size=12.00 text="き" glyph_count=1
+  glyphs x=398.40 y=913.12 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=410.40 y=913.12 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   link target=Internal(page=0, x=240.94, y=849.31) x=312.52 y=899.31 w=23.05 h=17.24
 outline:
   depth=2 text=".1 整列数式のサンプル" page=0 x=240.94 y=257.61

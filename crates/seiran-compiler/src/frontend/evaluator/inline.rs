@@ -61,10 +61,9 @@ pub(crate) enum IndexPolicy {
 /// エスケープ・`,` / `=` / `_` / `^` / `&`・マーカーの**前**の空白・改行に由来するテキストノードは、
 /// マーカーが無くても別トークンなので畳まない。
 ///
-/// マーカーの**直後**の空白・改行だけは例外で、現状パーサがそれをコマンド呼び出しノードの span へ
-/// 取り込むため（#516）、`A\index{k} V` も `Text("AV")` へ畳まれる。その空白は畳みの有無に関わらず
-/// 既に評価結果から失われているので見た目は変わらない。#516 が直れば空白がトークンとして
-/// [`Self::push`] を通り、畳みは自然に切れる。
+/// マーカーの**直後**の空白・改行も畳まない — パーサは引数の後で見つからなかったトリビアを
+/// コマンド呼び出しの外へ返すので（#516）、`A\index{k} V` の空白はトークンとして
+/// [`Self::push`] を通り、畳みが切れる。
 #[derive(Debug, Default)]
 pub(crate) struct InlineSink {
   /// 積み上げたインライン要素
@@ -509,6 +508,108 @@ mod tests {
     assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
     assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == ","), "{inlines:?}");
     assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "b"), "{inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_keeps_the_space_after_a_command_call() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{ab \\bold{cd} ef}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert — `}` の直後の空白は語間のアキとして残る（#516）
+    assert_eq!(inlines.len(), 5, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "ab"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Styled { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[4].kind, HirInlineKind::Text(t) if t == "ef"), "{inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_keeps_the_space_after_a_command_with_an_opt_arg() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{\\color[color=#ff8800]{orange words} inline.}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert
+    assert_eq!(inlines.len(), 3, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Colored { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == "inline."), "{inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_keeps_the_space_after_a_command_with_two_args() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{\\href{https://example.com}{link} after}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert
+    assert_eq!(inlines.len(), 3, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Link { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == "after"), "{inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_keeps_the_space_after_a_command_call_in_japanese() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{文中に \\bold{強調} を置く}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert
+    assert_eq!(inlines.len(), 5, "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_keeps_text_split_when_a_space_follows_the_marker() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{A\\index{k} V}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert — マーカーの直後の空白はテキストを分断するので畳まない（#516 / #514）
+    assert_eq!(inlines.len(), 4, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "A"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "V"), "{inlines:?}");
   }
 
   #[test]

@@ -258,41 +258,41 @@ keywords=["test", "seiran"]
   glyphs x=324.28 y=280.63 font=JapaneseSerif size=12.00 text="あ" glyph_count=1
   glyphs x=336.28 y=280.63 font=JapaneseSerif size=12.00 text="さ" glyph_count=1
   glyphs x=348.28 y=280.63 font=JapaneseSerif size=12.00 text="ひ" glyph_count=1
-  glyphs x=363.10 y=280.63 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=377.92 y=280.63 font=Serif size=12.00 text="apple" glyph_count=5
-  glyphs x=408.36 y=280.63 font=JapaneseSerif size=12.00 text="が" glyph_count=1
-  glyphs x=420.36 y=280.63 font=JapaneseSerif size=12.00 text="出" glyph_count=1
-  glyphs x=432.36 y=280.63 font=JapaneseSerif size=12.00 text="現" glyph_count=1
-  glyphs x=444.36 y=280.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
-  glyphs x=456.36 y=280.63 font=JapaneseSerif size=12.00 text="る" glyph_count=1
-  glyphs x=468.36 y=280.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=477.18 y=280.63 font=JapaneseSerif size=12.00 text="小" glyph_count=1
-  glyphs x=489.18 y=280.63 font=JapaneseSerif size=12.00 text="書" glyph_count=1
-  glyphs x=501.18 y=280.63 font=JapaneseSerif size=12.00 text="き" glyph_count=1
-  glyphs x=516.18 y=280.63 font=JapaneseSerif size=12.00 text="・" glyph_count=1
-  glyphs x=525.18 y=280.63 font=JapaneseSerif size=12.00 text="カ" glyph_count=1
-  glyphs x=537.18 y=280.63 font=JapaneseSerif size=12.00 text="タ" glyph_count=1
-  glyphs x=549.18 y=280.63 font=JapaneseSerif size=12.00 text="カ" glyph_count=1
-  glyphs x=561.18 y=280.63 font=JapaneseSerif size=12.00 text="ナ" glyph_count=1
-  glyphs x=573.18 y=280.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
-  glyphs x=585.18 y=280.63 font=JapaneseSerif size=12.00 text="読" glyph_count=1
-  glyphs x=597.18 y=280.63 font=JapaneseSerif size=12.00 text="み" glyph_count=1
-  glyphs x=612.00 y=280.63 font=JapaneseSerif size=12.00 text="ぁー" glyph_count=2
-  glyphs x=638.82 y=280.63 font=JapaneseSerif size=12.00 text="・" glyph_count=1
-  glyphs x=647.82 y=280.63 font=JapaneseSerif size=12.00 text="ヴァ" glyph_count=2
-  glyphs x=671.70 y=280.63 font=JapaneseSerif size=12.00 text="イ" glyph_count=1
-  glyphs x=683.34 y=280.63 font=JapaneseSerif size=12.00 text="オ" glyph_count=1
-  glyphs x=695.34 y=280.63 font=JapaneseSerif size=12.00 text="リ" glyph_count=1
-  glyphs x=707.34 y=280.63 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
-  glyphs x=722.16 y=280.63 font=JapaneseSerif size=12.00 text="も" glyph_count=1
-  glyphs x=736.98 y=280.63 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
-  glyphs x=748.98 y=280.63 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
-  glyphs x=760.98 y=280.63 font=JapaneseSerif size=12.00 text="で" glyph_count=1
-  glyphs x=772.98 y=280.63 font=JapaneseSerif size=12.00 text="出" glyph_count=1
-  glyphs x=784.98 y=280.63 font=JapaneseSerif size=12.00 text="現" glyph_count=1
-  glyphs x=796.98 y=280.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
-  glyphs x=808.98 y=280.63 font=JapaneseSerif size=12.00 text="る" glyph_count=1
-  glyphs x=820.98 y=280.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=365.92 y=280.63 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=380.74 y=280.63 font=Serif size=12.00 text="apple" glyph_count=5
+  glyphs x=414.00 y=280.63 font=JapaneseSerif size=12.00 text="が" glyph_count=1
+  glyphs x=426.00 y=280.63 font=JapaneseSerif size=12.00 text="出" glyph_count=1
+  glyphs x=438.00 y=280.63 font=JapaneseSerif size=12.00 text="現" glyph_count=1
+  glyphs x=450.00 y=280.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=462.00 y=280.63 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=474.00 y=280.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=482.82 y=280.63 font=JapaneseSerif size=12.00 text="小" glyph_count=1
+  glyphs x=494.82 y=280.63 font=JapaneseSerif size=12.00 text="書" glyph_count=1
+  glyphs x=506.82 y=280.63 font=JapaneseSerif size=12.00 text="き" glyph_count=1
+  glyphs x=521.82 y=280.63 font=JapaneseSerif size=12.00 text="・" glyph_count=1
+  glyphs x=530.82 y=280.63 font=JapaneseSerif size=12.00 text="カ" glyph_count=1
+  glyphs x=542.82 y=280.63 font=JapaneseSerif size=12.00 text="タ" glyph_count=1
+  glyphs x=554.82 y=280.63 font=JapaneseSerif size=12.00 text="カ" glyph_count=1
+  glyphs x=566.82 y=280.63 font=JapaneseSerif size=12.00 text="ナ" glyph_count=1
+  glyphs x=578.82 y=280.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=590.82 y=280.63 font=JapaneseSerif size=12.00 text="読" glyph_count=1
+  glyphs x=602.82 y=280.63 font=JapaneseSerif size=12.00 text="み" glyph_count=1
+  glyphs x=617.64 y=280.63 font=JapaneseSerif size=12.00 text="ぁー" glyph_count=2
+  glyphs x=644.46 y=280.63 font=JapaneseSerif size=12.00 text="・" glyph_count=1
+  glyphs x=653.46 y=280.63 font=JapaneseSerif size=12.00 text="ヴァ" glyph_count=2
+  glyphs x=677.34 y=280.63 font=JapaneseSerif size=12.00 text="イ" glyph_count=1
+  glyphs x=688.98 y=280.63 font=JapaneseSerif size=12.00 text="オ" glyph_count=1
+  glyphs x=700.98 y=280.63 font=JapaneseSerif size=12.00 text="リ" glyph_count=1
+  glyphs x=712.98 y=280.63 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
+  glyphs x=730.62 y=280.63 font=JapaneseSerif size=12.00 text="も" glyph_count=1
+  glyphs x=745.44 y=280.63 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=757.44 y=280.63 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=769.44 y=280.63 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=781.44 y=280.63 font=JapaneseSerif size=12.00 text="出" glyph_count=1
+  glyphs x=793.44 y=280.63 font=JapaneseSerif size=12.00 text="現" glyph_count=1
+  glyphs x=805.44 y=280.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=817.44 y=280.63 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=829.44 y=280.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 === page 3 === box x=0.00 y=0.00 w=1686.61 h=2386.77
   glyphs x=240.94 y=280.63 font=Serif size=18.00 text="Index" glyph_count=5
   glyphs x=240.94 y=319.53 font=Serif size=12.00 text="A" glyph_count=1

@@ -8,6 +8,10 @@ A separately indexed term with an explicit reading option sits at the end of thi
 
 装飾の引数内と脚注本体に置いたマーカーです。\bold{重要}を強調し、脚注にも\footnote{脚注本体に置いた索引語です。}マーカーを置きます。
 
+マーカー直後の空白と改行: AV の字対、words inline. の語間、和文 の境界、
+行末のマーカー
+の直後で改行しても同じです。
+
 \begin{table}
 \head{
   \row{項目 & 値}
