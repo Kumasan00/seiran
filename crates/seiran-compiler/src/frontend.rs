@@ -1148,6 +1148,37 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_index_after_whitespace_does_not_merge_text() {
+    // Arrange / Act — マーカーの前の空白は畳みを切る
+    let result = evaluate_source("A \\index{k}V");
+
+    // Assert
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert_eq!(inlines.len(), 4, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "A"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "V"), "{inlines:?}");
+  }
+
+  #[test]
+  fn evaluate_index_next_to_a_styled_command_does_not_merge_text() {
+    // Arrange / Act — マーカー以外のコマンドはテキストを分断するので畳みを切る
+    let result = evaluate_source("A\\index{k}\\bold{V}");
+
+    // Assert
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert_eq!(inlines.len(), 3, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "A"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Styled { .. }), "{inlines:?}");
+  }
+
+  #[test]
   fn evaluate_index_next_to_a_comma_does_not_merge_text() {
     // Arrange / Act — `,` は別トークンなので、マーカーを取り除いても 1 トークンにはならない
     let result = evaluate_source("a\\index{k},b");
