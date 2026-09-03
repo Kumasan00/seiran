@@ -3,14 +3,12 @@
 //! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。段落は蓄積した
 //! インラインを後からまとめる構造なので、子を評価する前に ID を予約しておく。
 
-use std::mem;
-
 #[cfg(test)]
 use crate::source::SourceId;
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
-    evaluator::command::CommandResult,
+    evaluator::{command::CommandResult, inline::InlineSink},
     syntax::{
       SyntaxKind,
       green::{GreenElement, GreenNode},
@@ -60,14 +58,14 @@ pub(crate) fn evaluate_children(
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
+        // 索引マーカーをまたぐ結合はここだけが担う（`inline::InlineSink` の doc 参照、#514）。
+        TokenKind::Text => {
+          paragraph.reserve(builder, token.span);
+          paragraph.push_text_token(builder, token.span, token.text(source));
+        },
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
         // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
-        TokenKind::Text
-        | TokenKind::VerbatimText
-        | TokenKind::Whitespace
-        | TokenKind::Newline
-        | TokenKind::Comma
-        | TokenKind::Equals => {
+        TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
           paragraph.reserve(builder, token.span);
           paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
@@ -119,7 +117,7 @@ pub(crate) fn evaluate_children(
               hir_nodes.extend(block_nodes);
             },
             CommandResult::Inline(inline_nodes) => {
-              paragraph.extend(inline_nodes);
+              paragraph.extend_inline_result(child_node.span, inline_nodes);
             },
             CommandResult::NoIndent { span } => {
               // 先行トリビアは許すが、実体のある要素や同じマーカーがあれば段落途中として扱う。
@@ -168,12 +166,12 @@ pub(crate) fn evaluate_children(
 /// 段落ノードの ID は、最初の子を評価する前に予約する（`NodeId` を preorder に保つため）。
 /// 予約後に段落が空のまま閉じられた場合、その ID は使われず `NodeId` に穴が空くが、
 /// 同じ入力なら常に同じ穴になるので決定性は保たれる。
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ParagraphBuffer {
   /// 予約済みの段落 ID（未予約なら `None`）
   id: Option<NodeId>,
-  /// 蓄積中のインライン要素
-  inlines: Vec<HirInline>,
+  /// 蓄積中のインライン要素（`\index` をまたぐテキストの結合込み）
+  sink: InlineSink,
 }
 
 impl ParagraphBuffer {
@@ -187,39 +185,46 @@ impl ParagraphBuffer {
 
   /// インライン要素を 1 個積む
   fn push(&mut self, inline: HirInline) {
-    self.inlines.push(inline);
+    self.sink.push(inline);
     return;
   }
 
-  /// インライン要素をまとめて積む
-  fn extend(&mut self, inlines: Vec<HirInline>) {
-    self.inlines.extend(inlines);
+  /// テキストトークンを 1 個積む（索引マーカーをまたぐ結合は [`InlineSink`] が判断する）
+  fn push_text_token(&mut self, builder: &HirBuilder, span: Span, text: &str) {
+    self.sink.push_text_token(builder, span, text);
+    return;
+  }
+
+  /// インラインコマンドの評価結果をまとめて積む
+  fn extend_inline_result(&mut self, span: Span, inlines: Vec<HirInline>) {
+    self.sink.extend_inline_result(span, inlines);
     return;
   }
 
   /// 実体のある内容（空白以外）を含むかどうかを返す
-  fn has_content(&self) -> bool { return self.inlines.iter().any(is_non_blank_inline); }
+  fn has_content(&self) -> bool { return self.sink.inlines().iter().any(is_non_blank_inline); }
 
   /// 蓄積中のインラインを `HirNodeKind::Paragraph` としてフラッシュする
   ///
   /// 先頭と末尾の空白は捨てるが、段落内の空白は保持する。
   fn flush(&mut self, builder: &HirBuilder, hir_nodes: &mut Vec<HirNode>) {
-    let leading_blank = self.inlines.iter().take_while(|inline| return !is_non_blank_inline(inline)).count();
-    self.inlines.drain(..leading_blank);
-    let trailing_blank = self.inlines.iter().rev().take_while(|inline| return !is_non_blank_inline(inline)).count();
-    self.inlines.truncate(self.inlines.len() - trailing_blank);
+    let mut inlines = self.sink.take();
+    let leading_blank = inlines.iter().take_while(|inline| return !is_non_blank_inline(inline)).count();
+    inlines.drain(..leading_blank);
+    let trailing_blank = inlines.iter().rev().take_while(|inline| return !is_non_blank_inline(inline)).count();
+    inlines.truncate(inlines.len() - trailing_blank);
 
-    if self.inlines.is_empty() {
+    if inlines.is_empty() {
       self.id = None;
       return;
     }
     let Some(id) = self.id else {
       unreachable!("インラインを積む前に必ず reserve を呼んでいる")
     };
-    let start = builder.span_of(self.inlines[0].id).start;
-    let end = builder.span_of(self.inlines[self.inlines.len() - 1].id).end;
+    let start = builder.span_of(inlines[0].id).start;
+    let end = builder.span_of(inlines[inlines.len() - 1].id).end;
     builder.set_span(id, Span::new(start, end));
-    hir_nodes.push(HirNode::new(id, HirNodeKind::Paragraph(mem::take(&mut self.inlines))));
+    hir_nodes.push(HirNode::new(id, HirNodeKind::Paragraph(inlines)));
     self.id = None;
     return;
   }

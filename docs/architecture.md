@@ -593,6 +593,22 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
   検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結せず、
   `semantics::analyze` が担う。
+- **`\index` をまたぐテキストトークンは 1 つの `Text` ノードへ畳む**（`inline::InlineSink`、#514）。
+  lexer は空白と構造文字で `TokenKind::Text` を切るので、素朴に評価すると `A\index{k}V` は
+  `Text("A")` / `Index` / `Text("V")` の 3 ノードになり、テキストノードごとに 1 シェーピング run を
+  作る `typeset::boxing` で run 境界のカーニング・合字・和欧文間アキ・分割機会が失われる。畳むのは
+  **マーカーを取り除くと 1 つの `TokenKind::Text` になる場合だけ** — 両隣が `TokenKind::Text` 由来で、
+  ソース上でマーカーの span を挟んで連続しているときに限る（エスケープ・`,` / `=` / `_` / `^` / `&`・
+  マーカーの**前**の空白・改行に由来するテキストは baseline でも別トークンなので畳まない）。
+  マーカーの**直後**の空白・改行だけは例外で、現状パーサがそれを `CommandCall` の span へ取り込むため
+  （#516）`A\index{k} V` も畳まれる — その空白は畳みの有無に関わらず既に失われているので見た目は
+  変わらず、#516 が直れば畳みも自然に切れる。畳みは既に積んだノードの
+  文字列への追記と `HirBuilder::set_span` による span 延長で行うので、`NodeId` の採番順は変わらない。
+  その結果、畳んだ `Text` ノードの span は**兄弟の `Index` ノードの span を内包する**（兄弟 span の
+  排他は不変条件ではない）。マーカーは畳んだ語の直後に並ぶため、語がハイフネーションで行をまたぐ場合の
+  出現ページは語頭側の行に従う（マーカーは幅 0 で座標を持たず、元より語単位の帰属しかできない）。
+  同じ不変条件を lowering 側で守るのは `typeset::lowering::layout_node::merge_adjacent_text`
+  （`IndexMark` を透過にして結合を切らない）。
 - 診断は `source::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
 ### `semantics`
@@ -1243,7 +1259,10 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 > **要点**: `AnchorMark`（見出し・ラベル付きブロックの到達先）と違い `IndexMark` は段落を分割しない。
 > `\pagebreak` / `\ref` の `AnchorMark` はブロック境界でしか発行されないが、`\index` は段落内の任意の位置に
 > 置けるため、分割すると Knuth–Plass の行分割結果が変わってしまう（受け入れ条件は「`\index` を取り除いた
-> レイアウトと一致する」）。
+> レイアウトと一致する」）。段落を分割しないだけでは足りず、**シェーピング run も割ってはならない** —
+> テキストノードごとに 1 run を作るため、マーカーが語中に入るとその位置のカーニング・合字・
+> 和欧文間アキ・分割機会が失われる。テキストを畳み直して run 境界を作らせないのは上流の責務で、
+> 評価器の `frontend` の `InlineSink` と `lowering::layout_node::merge_adjacent_text` が担う（#514）。
 
 サブモジュール:
 
