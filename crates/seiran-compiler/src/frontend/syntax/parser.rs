@@ -212,8 +212,7 @@ impl<'a> Parser<'a> {
             span: token.span.to_source_span(),
           });
         } else {
-          let cmd_node = self.parse_command_call(token, mode)?;
-          children.push(GreenElement::Node(cmd_node));
+          self.parse_command_call(token, mode, children)?;
         }
       },
       TokenKind::Dollar if mode == ParseMode::Text => {
@@ -448,12 +447,27 @@ impl<'a> Parser<'a> {
     return Ok(self.alloc_node(SyntaxKind::EnvironmentBody, body_span, body_children));
   }
 
-  /// コマンド呼び出しをパース: `\cmd[opt]{arg}`
+  /// コマンド呼び出しをパースして `out` へ積む: `\cmd[opt]{arg}`
   ///
   /// 必須引数の読み取り方はレジストリの宣言（[`ArgMode`]）が外側文脈からの継承に優先する。
   /// 宣言は引数の位置ごとに引くので、同じコマンドでも位置によってモードが違いうる（`\href` は
   /// 第 1 引数だけ verbatim）。任意引数はテキストモードでパースする。
-  fn parse_command_call(&mut self, cmd_token: Token, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
+  ///
+  /// 必須引数を 1 つ以上読んだ後に**次の引数を探して跨いだトリビア**は、引数が見つかったときだけ
+  /// コマンド呼び出しの子になる。見つからなければ `out` へそのまま積み直してコマンドの外側へ返す
+  /// （`\bold{x} y` の `}` の直後の空白は語間のアキであってコマンドの一部ではない、#516）。
+  /// ノードの span も最後の引数で閉じる。
+  ///
+  /// 必須引数を 1 つも読まなかった場合、コマンド名の直後のトリビアはコマンド呼び出しに残す
+  /// （`\noindent 本文` / `\pagebreak` / 数式記号 `\alpha b` のように、トリビアがコマンド名の
+  /// 終端を示しているだけの位置。返すと段落先頭に空白が入る）。コマンド名と引数の間・
+  /// 引数どうしの間のトリビアも引数探索が成功した側なのでコマンド呼び出しに残る。
+  fn parse_command_call(
+    &mut self,
+    cmd_token: Token,
+    mode: ParseMode,
+    out: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
+  ) -> Result<(), ParserError> {
     let start_span = cmd_token.span;
     let command_name = cmd_token.command_name(self.source);
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -462,19 +476,27 @@ impl<'a> Parser<'a> {
     self.skip_trivia(&mut children);
     self.parse_single_opt_arg(&mut children)?;
 
+    // 引数を 1 つも読まないまま確定する場合は、ここまでのトリビアを含めた位置で閉じる。
+    let mut end = self.last_span;
+    // 次の引数を探して跨いだトリビア。引数が見つかれば `children` へ、見つからなければ `out` へ移す。
+    let mut pending = bumpalo::collections::Vec::new_in(self.arena);
+
     let mut arg_index = 0usize;
     while let Some(TokenKind::LBrace) = self.peek_kind() {
+      children.append(&mut pending);
       let arg_node = match (self.modes.command_arg)(command_name, arg_index) {
         ArgMode::Verbatim => self.parse_verbatim_arg()?,
         ArgMode::Inherit => self.parse_mandatory_arg(mode)?,
       };
       arg_index += 1;
+      end = arg_node.span;
       children.push(GreenElement::Node(arg_node));
-      self.skip_trivia(&mut children);
+      self.skip_trivia(&mut pending);
     }
 
-    let end = self.last_span;
-    return Ok(self.alloc_node(SyntaxKind::CommandCall, start_span.merge(end), children));
+    out.push(GreenElement::Node(self.alloc_node(SyntaxKind::CommandCall, start_span.merge(end), children)));
+    out.append(&mut pending);
+    return Ok(());
   }
 
   /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
@@ -650,8 +672,7 @@ impl<'a> Parser<'a> {
       },
       Some(TokenKind::Command) => {
         let cmd_token = self.take_peeked();
-        let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
-        children.push(GreenElement::Node(cmd_node));
+        self.parse_command_call(cmd_token, ParseMode::Math, children)?;
       },
       Some(TokenKind::Underscore) => {
         let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
@@ -1248,6 +1269,84 @@ mod tests {
     let arena = Bump::new();
     let result = parse("$[0,1]$", &arena);
     assert!(matches!(result, Err(ParserError::BareBracket { .. })));
+  }
+
+  #[test]
+  fn command_call_ends_at_its_last_argument() {
+    // 引数の後で見つからなかったトリビアはコマンド呼び出しに含めず、親の子として返す（#516）
+    let arena = Bump::new();
+    let cst = parse_source(r"\bold{x} y", &arena);
+
+    assert_eq!(cst.children.len(), 3);
+    let GreenElement::Node(command) = &cst.children[0] else {
+      panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
+    };
+    assert_eq!(command.kind, SyntaxKind::CommandCall);
+    assert_eq!(&r"\bold{x} y"[command.span.start as usize..command.span.end as usize], r"\bold{x}");
+    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Whitespace));
+    assert!(matches!(&cst.children[2], GreenElement::Token(t) if t.kind == TokenKind::Text));
+  }
+
+  #[test]
+  fn command_call_ends_at_its_last_argument_before_a_newline() {
+    // 改行・コメントも同じ扱い（トリビアの種類で分岐しない）
+    let arena = Bump::new();
+    let cst = parse_source("\\bold{x}\n// 註\ny", &arena);
+
+    let GreenElement::Node(command) = &cst.children[0] else {
+      panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
+    };
+    assert_eq!(command.span.end as usize, r"\bold{x}".len());
+    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Newline));
+    assert!(matches!(&cst.children[2], GreenElement::Token(t) if t.kind == TokenKind::Comment));
+  }
+
+  #[test]
+  fn command_call_keeps_the_trivia_it_crossed_to_find_an_argument() {
+    // 引数が見つかった側のトリビアはコマンド呼び出しに残る（`\cmd {x}` / `\vhref{u} {t}`）
+    let arena = Bump::new();
+    let source = r"\vhref{u} {t}";
+    let cst = parse_source(source, &arena);
+
+    assert_eq!(cst.children.len(), 1);
+    let GreenElement::Node(command) = &cst.children[0] else {
+      panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
+    };
+    assert_eq!(&source[command.span.start as usize..command.span.end as usize], source);
+  }
+
+  #[test]
+  fn command_call_without_arguments_keeps_the_following_trivia() {
+    // 必須引数を 1 つも読まないなら、直後のトリビアはコマンド名の終端を示しているだけなので残す
+    let arena = Bump::new();
+    let source = r"\cmd x";
+    let cst = parse_source(source, &arena);
+
+    assert_eq!(cst.children.len(), 2);
+    let GreenElement::Node(command) = &cst.children[0] else {
+      panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
+    };
+    assert_eq!(&source[command.span.start as usize..command.span.end as usize], r"\cmd ");
+    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Text));
+  }
+
+  #[test]
+  fn command_call_in_math_returns_the_following_trivia() {
+    let arena = Bump::new();
+    let cst = parse_source(r"$\alpha{x} y$", &arena);
+
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("先頭はインライン数式ノードである: {:?}", cst.children[0])
+    };
+    assert_eq!(math.kind, SyntaxKind::InlineMath);
+    let trivia_after_command = math.children.iter().skip_while(|child| return !matches!(child, GreenElement::Node(_)));
+    assert!(
+      trivia_after_command
+        .skip(1)
+        .any(|child| matches!(child, GreenElement::Token(t) if t.kind == TokenKind::Whitespace)),
+      "コマンド呼び出しの後の空白が数式ノードの子として残る: {:?}",
+      math.children
+    );
   }
 
   #[test]

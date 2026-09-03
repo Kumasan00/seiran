@@ -28,7 +28,7 @@ Error: semantics::unresolved_reference
    ╭─[tests/text/diagnostics/mixed_semantics.sei:7:38]
  6 │ 
  7 │ 定義されていないラベルを \ref{undefined-label} で参照します。
-   ·                          ───────────┬──────────
-   ·                                     ╰── この参照が未解決です
+   ·                          ──────────┬──────────
+   ·                                    ╰── この参照が未解決です
    ╰────
   help: 対応する label が定義されているか確認してください。

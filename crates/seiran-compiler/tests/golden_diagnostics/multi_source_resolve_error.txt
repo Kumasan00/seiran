@@ -4,7 +4,7 @@ semantics::unresolved_reference
    ╭─[tests/text/diagnostics/multi_source_b.sei:3:18]
  2 │ 
  3 │ ソースBから \ref{undefined-in-b} を参照しますが、このラベルはどこにも定義されていません。
-   ·             ──────────┬──────────
+   ·             ──────────┬─────────
    ·                       ╰── この参照が未解決です
    ╰────
   help: 対応する label が定義されているか確認してください。

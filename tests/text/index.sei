@@ -2,11 +2,15 @@
 
 \index{typesetting}Seiran typesets plain text into PDF. The word typesetting appears again here \index{typesetting}to test deduplication within a single page.
 
-A separately indexed term with an explicit reading option \index[reading=example-reading]{example} sits at the end of this sentence.
+A separately indexed term with an explicit reading option\index[reading=example-reading]{example} sits at the end of this sentence.
 
 語中のマーカー: A\index{カーニング}V T\index{カーニング}o W\index{カーニング}a Y\index{カーニング}e の字対と f\index{合字}i の合字、日本\index{日本語}語の語中でもレイアウトは変わりません。
 
 装飾の引数内と脚注本体に置いたマーカーです。\bold{重要\index{重要}}を強調し、脚注にも\footnote{脚注本体に置いた索引語\index{脚注}です。}マーカーを置きます。
+
+マーカー直後の空白と改行: A\index{直後の空白}V の字対、words\index{語の直後} inline. の語間、和文\index{和文の直後} の境界、
+行末のマーカー\index{行末}
+の直後で改行しても同じです。
 
 \begin{table}
 \head{
