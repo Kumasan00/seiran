@@ -522,17 +522,19 @@ impl PageComposer {
         blocks.reserve(pending.lines.len());
         let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| return line.height);
         let mut prev_depth = Length::ZERO;
-        for (i, line) in pending.lines.into_iter().enumerate() {
+        for (i, mut line) in pending.lines.into_iter().enumerate() {
           if i > 0 {
             baseline += pending.leading.max(prev_depth + line.height);
           }
           prev_depth = line.depth;
+          // 脚注本体は段幅で行分割されているが x は行頭基準のままなので、着地する段が確定した
+          // ここで段オフセットを足す（#518）。罫線・アンカーが同じ `column_x` を使うのと対称。
+          line.shift_x(column_x);
           // 脚注の行がこのリージョン（＝このページ）へ置かれることが確定するのはここだけなので、
           // リンク矩形・索引語の帰属もここで決める。行単位のページ繰越（#227）で次ページへ
           // 送られた行は、送り先のリージョンでこのループを通るため、繰越先ページへ帰属する。
           //
-          // リンクの x に段オフセットを足さないのは、同じループが `line.boxes` にも足していない
-          // ためで、矩形は脚注テキストの実描画位置と一致する。
+          // 段オフセットを足した**後**に収集するので、クリック矩形は脚注テキストの実描画位置と一致する。
           self.collect_line_marks(&line, baseline);
           blocks.push(PlacedBlock::Line {
             line,
@@ -924,16 +926,7 @@ fn place_paragraph(
   // 行ごとに変わるため、この事前ループには含めず、配置ループ内で着地段ごとに足す。
   for line in &mut lines {
     let line_width = line.width();
-    let shift = indent + align.offset(available, line_width);
-    if shift != Length::ZERO {
-      for positioned in &mut line.boxes {
-        positioned.x += shift;
-      }
-      for link in &mut line.links {
-        link.x0 += shift;
-        link.x1 += shift;
-      }
-    }
+    line.shift_x(indent + align.offset(available, line_width));
   }
   // 各行に付いた脚注（`line.footnotes`）を行分割し、分割可能な需要（行ごとの積み上げ高さ）を作る。
   // ここで 1 回だけ計算し、widow/orphan の再フロー（`plan_paragraph_lines` 内のリトライ）や
@@ -1007,15 +1000,7 @@ fn place_paragraph(
       let baseline = placement.baseline;
       last_baseline = baseline;
       let col_off = composer.column_offset();
-      if col_off != Length::ZERO {
-        for positioned in &mut line.boxes {
-          positioned.x += col_off;
-        }
-        for link in &mut line.links {
-          link.x0 += col_off;
-          link.x1 += col_off;
-        }
-      }
+      line.shift_x(col_off);
       if is_paragraph_start && i == 0 {
         composer.resolve_pending_anchors(col_off, baseline - line.height);
       }
@@ -1058,15 +1043,7 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
     baseline = geom.margin_top;
   }
   let col_off = composer.column_offset();
-  if col_off != Length::ZERO {
-    for positioned in &mut line.boxes {
-      positioned.x += col_off;
-    }
-    for link in &mut line.links {
-      link.x0 += col_off;
-      link.x1 += col_off;
-    }
-  }
+  line.shift_x(col_off);
   composer.resolve_pending_anchors(col_off, baseline - line.height);
   composer.collect_line_marks(&line, baseline);
   composer.current.push(PlacedBlock::Line {
@@ -3736,6 +3713,129 @@ mod tests {
     assert_eq!(xs.len(), 2, "左段断片 + 右段断片の 2 つ: {xs:?}");
     assert!(close(xs[0], 2.0), "1 つ目（左段）のセル x={}", xs[0].to_pt());
     assert!(close(xs[1], 57.0), "2 つ目（右段）のセル x={}", xs[1].to_pt());
+  }
+
+  /// 2 段組みで区切り罫線も出すテスト用ジオメトリ（段幅 45・右段オフセット 55）
+  fn two_column_geometry_with_footnote_rule() -> PageGeometry {
+    return PageGeometry {
+      num_columns: 2,
+      column_gap: Length::pt(10.0),
+      ..geometry_with_footnote_rule()
+    };
+  }
+
+  /// 左段と右段の両方に脚注が付く 8 行段落を作る（`two_column_geometry_with_footnote_rule` 前提）
+  ///
+  /// 脚注の予約でリージョンが縮むため、この版面では 0 行目が左段・2 行目が右段に着地する。
+  fn paragraph_with_footnotes_in_both_columns(left: HItem, right: HItem) -> Block {
+    let mut left = Some(left);
+    let mut right = Some(right);
+    let mut items = Vec::new();
+    for i in 0..8 {
+      if i > 0 {
+        items.push(HItem::ForcedBreak);
+      }
+      items.push(test_box());
+      if i == 0 {
+        items.push(left.take().expect("左段の脚注はここだけ"));
+      }
+      if i == 2 {
+        items.push(right.take().expect("右段の脚注はここだけ"));
+      }
+    }
+    return Block::Paragraph {
+      items,
+      leading: Length::pt(12.0),
+      indent: Length::pt(0.0),
+      right_indent: Length::pt(0.0),
+      align: Align::Left,
+    };
+  }
+
+  /// ページの脚注のうち、指定番号の区切り罫線の x（罫線が無ければ `None`）
+  fn footnote_rule_x(page: &Page, number: u32) -> Option<Length> {
+    return page.footnotes.iter().find(|f| return f.number == number)?.blocks.iter().find_map(|b| match b {
+      PlacedBlock::Rule { x, .. } => return Some(*x),
+      _ => return None,
+    });
+  }
+
+  /// ページの脚注のうち、指定番号の本体行の先頭ボックスの x 列
+  fn footnote_line_xs(page: &Page, number: u32) -> Vec<Length> {
+    return page
+      .footnotes
+      .iter()
+      .find(|f| return f.number == number)
+      .expect("指定番号の脚注があるはず")
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { line, .. } => return line.boxes.first().map(|positioned| return positioned.x),
+        _ => return None,
+      })
+      .collect();
+  }
+
+  #[test]
+  fn two_column_footnote_body_uses_column_offset() {
+    // Arrange
+    let geom = two_column_geometry_with_footnote_rule();
+    let blocks = vec![paragraph_with_footnotes_in_both_columns(
+      footnote_of_lines(1, 1),
+      footnote_of_lines(2, 1),
+    )];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 空振り検知。罫線の x は修正前から段オフセットを持つので、
+    // 「左段と右段の両方に脚注が着地した」ことの前提条件として使える
+    let left_rule = footnote_rule_x(&pages[0], 1).expect("左段の脚注 1 に区切り罫線があるはず");
+    let right_rule = footnote_rule_x(&pages[0], 2).expect("右段の脚注 2 に区切り罫線があるはず");
+    assert!(close(left_rule, 0.0), "脚注 1 が左段に着地していない（罫線 x={}）", left_rule.to_pt());
+    assert!(close(right_rule, 55.0), "脚注 2 が右段に着地していない（罫線 x={}）", right_rule.to_pt());
+
+    // Assert — 本体行も自分の段の左端から組まれる（罫線と x が揃う）
+    for (number, expected) in [(1u32, 0.0), (2u32, 55.0)] {
+      let xs = footnote_line_xs(&pages[0], number);
+      assert!(!xs.is_empty(), "脚注 {number} の本体行があるはず");
+      for x in &xs {
+        assert!(close(*x, expected), "脚注 {number} の本体行 x={} は段オフセット {expected} のはず", x.to_pt());
+      }
+    }
+  }
+
+  #[test]
+  fn two_column_footnote_link_rect_uses_column_offset() {
+    // Arrange
+    let geom = two_column_geometry_with_footnote_rule();
+    let blocks = vec![paragraph_with_footnotes_in_both_columns(
+      footnote_of_lines_with_link_at(1, 1, 0, "https://left.example"),
+      footnote_of_lines_with_link_at(2, 1, 0, "https://right.example"),
+    )];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 空振り検知（本体テストと同じ前提条件）
+    let right_rule = footnote_rule_x(&pages[0], 2).expect("右段の脚注 2 に区切り罫線があるはず");
+    assert!(close(right_rule, 55.0), "脚注 2 が右段に着地していない（罫線 x={}）", right_rule.to_pt());
+
+    // Assert — クリック矩形が本体行のテキスト位置と一致する
+    for (number, uri, expected) in [
+      (1u32, "https://left.example", 0.0),
+      (2u32, "https://right.example", 55.0),
+    ] {
+      let links = external_links(&pages[0], uri);
+      assert_eq!(links.len(), 1, "{uri} のクリック矩形は 1 つのはず: {links:?}");
+      assert!(
+        close(links[0].x, expected),
+        "{uri} の矩形 x={} は段オフセット {expected} のはず",
+        links[0].x.to_pt()
+      );
+      let xs = footnote_line_xs(&pages[0], number);
+      assert_eq!(xs.first().copied(), Some(links[0].x), "矩形 x が脚注本体のテキスト位置と一致するはず");
+    }
   }
 
   #[test]

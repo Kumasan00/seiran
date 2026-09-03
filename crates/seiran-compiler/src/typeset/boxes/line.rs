@@ -55,6 +55,24 @@ impl Line {
   pub(crate) fn width(&self) -> Length {
     return self.boxes.iter().map(|placed| return placed.x + placed.width).fold(Length::ZERO, Length::max);
   }
+
+  /// 行内の水平位置（ボックスとクリック矩形）をまとめて `dx` だけ右へずらす
+  ///
+  /// `Line` の x はすべて行頭（段左端）からの相対値なので、インデント・揃えオフセット・
+  /// 段オフセットのように「行の着地位置が決まってから足す量」はこのメソッドで一括して加える。
+  /// x を持つのは `boxes` と `links` の 2 つだけで、`index_marks` / `footnotes` は座標を持たない。
+  pub(crate) fn shift_x(&mut self, dx: Length) {
+    if dx == Length::ZERO {
+      return;
+    }
+    for positioned in &mut self.boxes {
+      positioned.x += dx;
+    }
+    for link in &mut self.links {
+      link.x0 += dx;
+      link.x1 += dx;
+    }
+  }
 }
 
 /// 行内の脚注（`\footnote{...}`）本体
@@ -81,7 +99,7 @@ pub(crate) struct LineIndexEntry {
 
 /// 行内のリンク領域（クリック矩形の水平範囲）
 ///
-/// `x0` / `x1` は行頭（本文左端）からの水平オフセット（pt）。縦範囲は所属する
+/// `x0` / `x1` は行頭（着地する段の左端）からの水平オフセット（pt）。縦範囲は所属する
 /// [`Line`] の `height` / `depth` から `break_pages` が確定する。
 #[derive(Debug, Clone)]
 pub(crate) struct LineLink {
@@ -95,7 +113,7 @@ pub(crate) struct LineLink {
 
 /// 行内に配置されたボックス
 ///
-/// `x` は行頭（本文左端）からの水平オフセット、`dy` はベースラインからの
+/// `x` は行頭（着地する段の左端）からの水平オフセット、`dy` はベースラインからの
 /// 縦オフセット（正で上方向）。
 #[derive(Debug, Clone)]
 pub(crate) struct PositionedBox {
