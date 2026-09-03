@@ -1119,6 +1119,67 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_index_inside_a_word_keeps_one_text_node() {
+    // Arrange / Act — マーカーを取り除けば 1 つの Text トークンになる位置（#514）
+    let result = evaluate_source("A\\index{k}V");
+
+    // Assert — シェーピング run が割れないよう、テキストは 1 ノードへ畳まれる
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert_eq!(inlines.len(), 2, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "AV"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+  }
+
+  #[test]
+  fn evaluate_consecutive_index_markers_inside_a_word_keep_one_text_node() {
+    // Arrange / Act — 連続したマーカーも透過して畳みが連鎖する
+    let result = evaluate_source("A\\index{a}\\index{b}V");
+
+    // Assert
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert_eq!(inlines.len(), 3, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "AV"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { word, .. } if word == "a"), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Index { word, .. } if word == "b"), "{inlines:?}");
+  }
+
+  #[test]
+  fn evaluate_index_next_to_a_comma_does_not_merge_text() {
+    // Arrange / Act — `,` は別トークンなので、マーカーを取り除いても 1 トークンにはならない
+    let result = evaluate_source("a\\index{k},b");
+
+    // Assert
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert_eq!(inlines.len(), 4, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == ","), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "b"), "{inlines:?}");
+  }
+
+  #[test]
+  fn evaluate_index_next_to_an_escape_does_not_merge_text() {
+    // Arrange / Act — エスケープ由来のテキストも baseline では別トークンなので畳まない
+    let result = evaluate_source("a\\index{k}\\{b");
+
+    // Assert
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert_eq!(inlines.len(), 4, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == "{"), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "b"), "{inlines:?}");
+  }
+
+  #[test]
   fn evaluate_index_with_reading_in_paragraph() {
     let result = evaluate_source("本文\\index[reading=よみ]{語}続き");
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {

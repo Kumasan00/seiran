@@ -1,5 +1,7 @@
 //! インライン要素抽出のヘルパー
 
+use std::mem;
+
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
@@ -27,6 +29,7 @@ use crate::{
       view::{CommandView, EnvironmentView},
     },
   },
+  source::Span,
 };
 
 /// 引数の再帰評価で `\index` を許すかどうかの文脈方針
@@ -43,6 +46,96 @@ pub(crate) enum IndexPolicy {
   ///
   /// 見出しタイトル・`\href` の表示テキスト・表の `\head` セル・`\index` 自身の語。
   Reject,
+}
+
+/// インライン要素の積み場所（`\index` をまたぐテキストトークンを 1 ノードへ畳む）
+///
+/// lexer は空白と構造文字で [`TokenKind::Text`] を切るので、`A\index{k}V` は素朴に評価すると
+/// `Text("A")` / `Index` / `Text("V")` の 3 ノードになる。`crate::typeset::boxing` はテキストノード
+/// ごとに 1 つのシェーピング run を作るため、run 境界でカーニング・合字・和欧文間アキ・分割機会が
+/// 失われてしまう（#514）。マーカーを取り除いたソースと同じテキスト構造へ畳み直すことで、
+/// 「`\index` の有無でレイアウトが変わらない」という #246 の不変条件を構造として保つ。
+///
+/// 畳むのは**マーカーを取り除くと 1 つの [`TokenKind::Text`] になる**場合だけ — 両隣が
+/// [`TokenKind::Text`] 由来で、ソース上でマーカーの span を挟んで連続しているときに限る。
+/// エスケープ・`,` / `=` / `_` / `^` / `&`・空白・改行に由来するテキストノードは、マーカーが
+/// 無くても別トークンなので畳まない。
+#[derive(Debug, Default)]
+pub(crate) struct InlineSink {
+  /// 積み上げたインライン要素
+  inlines: Vec<HirInline>,
+  /// 直近に積んだ [`TokenKind::Text`] 由来ノードの位置と span 終端
+  last_text: Option<(usize, u32)>,
+  /// 索引マーカーを跨いだ直後の再開位置（次のテキストトークンがここから始まれば畳む）
+  armed_gap: Option<u32>,
+}
+
+impl InlineSink {
+  /// テキストトークン（[`TokenKind::Text`]）を 1 つ積む
+  ///
+  /// 索引マーカーを跨いで直前のノードと連続していれば、新しいノードを作らずそのノードへ
+  /// 追記して span を伸ばす。新規 `NodeId` を発行しないので採番順は変わらない。
+  pub(crate) fn push_text_token(&mut self, builder: &HirBuilder, span: Span, text: &str) {
+    if let Some((at, _)) = self.last_text
+      && self.armed_gap == Some(span.start)
+    {
+      let HirInlineKind::Text(merged) = &mut self.inlines[at].kind else {
+        unreachable!("last_text が指すのは push_text_token が積んだ Text ノードだけである")
+      };
+      merged.push_str(text);
+      let start = builder.span_of(self.inlines[at].id).start;
+      builder.set_span(self.inlines[at].id, Span::new(start, span.end));
+      self.last_text = Some((at, span.end));
+      self.armed_gap = None;
+      return;
+    }
+    self.inlines.push(builder.leaf_inline(span, HirInlineKind::Text(text.to_string())));
+    self.last_text = Some((self.inlines.len() - 1, span.end));
+    self.armed_gap = None;
+    return;
+  }
+
+  /// インラインコマンドの評価結果を積む
+  ///
+  /// 結果が索引マーカーだけなら幅 0 でテキストを分断しないので、畳みを継続できる位置として
+  /// 記録する（`A\index{a}\index{b}V` のような連続マーカーもここで連鎖する）。
+  /// コマンド名では判定しない — 幅 0 マーカーが増えても分岐が増えないため。
+  pub(crate) fn extend_inline_result(&mut self, span: Span, inlines: Vec<HirInline>) {
+    let is_marker_only =
+      !inlines.is_empty() && inlines.iter().all(|inline| return matches!(inline.kind, HirInlineKind::Index { .. }));
+    if is_marker_only {
+      let continues = self.armed_gap.map_or_else(
+        || return self.last_text.is_some_and(|(_, end)| return end == span.start),
+        |gap| return gap == span.start,
+      );
+      self.armed_gap = continues.then_some(span.end);
+    } else {
+      self.last_text = None;
+      self.armed_gap = None;
+    }
+    self.inlines.extend(inlines);
+    return;
+  }
+
+  /// テキストトークンでもマーカーでもない要素を 1 つ積む（畳みは打ち切られる）
+  pub(crate) fn push(&mut self, inline: HirInline) {
+    self.last_text = None;
+    self.armed_gap = None;
+    self.inlines.push(inline);
+    return;
+  }
+
+  /// 積み上げた要素を読む
+  #[must_use]
+  pub(crate) fn inlines(&self) -> &[HirInline] { return &self.inlines; }
+
+  /// 積み上げた要素を取り出して空に戻す
+  #[must_use]
+  pub(crate) fn take(&mut self) -> Vec<HirInline> {
+    self.last_text = None;
+    self.armed_gap = None;
+    return mem::take(&mut self.inlines);
+  }
 }
 
 /// `GreenNode` の子要素から [`HirInline`] のリストを構築する
@@ -72,35 +165,34 @@ pub(crate) fn extract_inline_nodes_from_elements(
   children: &[GreenElement<'_>],
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let mut inlines = Vec::new();
+  let mut sink = InlineSink::default();
   for child in children {
     match child {
       GreenElement::Token(token) => match token.kind {
+        // 索引マーカーをまたぐ結合はここだけが担う（[`InlineSink`] の doc 参照、#514）。
+        TokenKind::Text => {
+          sink.push_text_token(builder, token.span, token.text(source));
+        },
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
         // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
-        TokenKind::Text
-        | TokenKind::VerbatimText
-        | TokenKind::Whitespace
-        | TokenKind::Newline
-        | TokenKind::Comma
-        | TokenKind::Equals => {
-          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
+        TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
+          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
         },
         TokenKind::LineBreak => {
-          inlines.push(builder.leaf_inline(token.span, HirInlineKind::LineBreak));
+          sink.push(builder.leaf_inline(token.span, HirInlineKind::LineBreak));
         },
         TokenKind::Underscore => {
-          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
+          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
         },
         TokenKind::Caret => {
-          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
+          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
         },
         TokenKind::Ampersand => {
-          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
+          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
         },
         TokenKind::ParagraphBreak => {
           return Err(EvalError::ParagraphBreakInArgument {
@@ -123,28 +215,28 @@ pub(crate) fn extract_inline_nodes_from_elements(
           let view = CommandView::new(child_node, source);
           match COMMAND_MAP.get(view.name()).copied() {
             Some(CommandKind::StyledText(kind)) => {
-              inlines.extend(styled_text(&view, builder, kind, index_policy)?);
+              sink.extend_inline_result(child_node.span, styled_text(&view, builder, kind, index_policy)?);
             },
             Some(CommandKind::ColoredText) => {
-              inlines.extend(colored_text(&view, builder, index_policy)?);
+              sink.extend_inline_result(child_node.span, colored_text(&view, builder, index_policy)?);
             },
             Some(CommandKind::Ref) => {
-              inlines.extend(ref_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, ref_command(&view, builder)?);
             },
             Some(CommandKind::Cite) => {
-              inlines.extend(cite_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, cite_command(&view, builder)?);
             },
             Some(CommandKind::Footnote) => {
-              inlines.extend(footnote_command(&view, builder, index_policy)?);
+              sink.extend_inline_result(child_node.span, footnote_command(&view, builder, index_policy)?);
             },
             Some(CommandKind::Url) => {
-              inlines.extend(url_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, url_command(&view, builder)?);
             },
             Some(CommandKind::Href) => {
-              inlines.extend(href_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, href_command(&view, builder)?);
             },
             Some(CommandKind::Code) => {
-              inlines.extend(code_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, code_command(&view, builder)?);
             },
             Some(CommandKind::Heading(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {
@@ -157,7 +249,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             // （表の \head セル）と本文の流れに置かれない文脈（見出しタイトル・\href の表示
             // テキスト・\index 自身の語）は拒否する
             Some(CommandKind::Index) => match index_policy {
-              IndexPolicy::Allow => inlines.extend(index_command(&view, builder)?),
+              IndexPolicy::Allow => sink.extend_inline_result(child_node.span, index_command(&view, builder)?),
               IndexPolicy::Reject => {
                 return Err(EvalError::IndexNotAllowedHere {
                   span: view.span().to_source_span(),
@@ -166,7 +258,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             },
             None => {
               if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-                inlines.extend(single_char(&view, builder, symbol.ch)?);
+                sink.extend_inline_result(child_node.span, single_char(&view, builder, symbol.ch)?);
               } else {
                 return Err(EvalError::UnknownCommand {
                   name: view.name().to_string(),
@@ -179,7 +271,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
         SyntaxKind::InlineMath => {
           let id = builder.alloc(child_node.span);
           let math_nodes = math::evaluate_inline_math(source, builder, child_node)?;
-          inlines.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
+          sink.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         SyntaxKind::Environment => {
           let view = EnvironmentView::new(child_node, source);
@@ -202,7 +294,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
       },
     }
   }
-  return Ok(inlines);
+  return Ok(sink.take());
 }
 
 /// 記号コマンド名から数式記号（文字 + 数式クラス）を解決する
@@ -372,6 +464,46 @@ mod tests {
     let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::InlineMath(_)));
     assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_merges_text_across_an_index_marker() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{A\\index{k}V}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert — 引数内でも語中マーカーはテキストを分断しない（#514）
+    assert_eq!(inlines.len(), 2, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "AV"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_keeps_text_split_when_the_marker_sits_next_to_a_comma() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\section{a\\index{k},b}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+
+    // Assert — `,` はマーカーが無くても別トークンなので畳まない
+    assert_eq!(inlines.len(), 4, "{inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == ","), "{inlines:?}");
+    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "b"), "{inlines:?}");
   }
 
   #[test]

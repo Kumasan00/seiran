@@ -205,16 +205,29 @@ pub(crate) struct TextStyle {
 }
 
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
+///
+/// 幅 0 の索引マーカー（[`LayoutNode::IndexMark`]）は結合を切らず、畳んだテキストの後ろへ回す。
+/// マーカーを取り除いたソースと同じテキスト構造にならないと、`crate::typeset::boxing` が作る
+/// シェーピング run が割れて和欧文間アキやカーニングが変わってしまうため（#514。同じ不変条件を
+/// 評価器側で守るのは `crate::frontend` の `InlineSink`）。
 pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
   let mut out: Vec<LayoutNode> = Vec::with_capacity(nodes.len());
+  let mut deferred_marks: Vec<LayoutNode> = Vec::new();
   for node in nodes {
     match (out.last_mut(), node) {
       (Some(LayoutNode::Text(prev, prev_style)), LayoutNode::Text(cur, cur_style)) if *prev_style == cur_style => {
         prev.push_str(&cur);
       },
-      (_, node) => out.push(node),
+      (Some(LayoutNode::Text(..)), node @ LayoutNode::IndexMark { .. }) => {
+        deferred_marks.push(node);
+      },
+      (_, node) => {
+        out.append(&mut deferred_marks);
+        out.push(node);
+      },
     }
   }
+  out.append(&mut deferred_marks);
   return out;
 }
 
@@ -302,6 +315,51 @@ mod tests {
 
     // Assert
     assert_eq!(merged.len(), 3, "{merged:?}");
+  }
+
+  #[test]
+  fn index_mark_does_not_break_merging() {
+    // Arrange — 幅 0 の索引マーカーはテキストの結合を切らない（#514）
+    let s1 = style(FontKind::Serif);
+    let nodes = vec![
+      LayoutNode::Text("foo".to_string(), s1),
+      LayoutNode::IndexMark {
+        word: "foo".to_string(),
+        reading: None,
+      },
+      LayoutNode::Text(" bar".to_string(), s1),
+    ];
+
+    // Act
+    let merged = merge_adjacent_text(nodes);
+
+    // Assert — 畳んだテキストの後ろへマーカーを回す
+    assert_eq!(merged.len(), 2, "{merged:?}");
+    assert!(matches!(&merged[0], LayoutNode::Text(t, _) if t == "foo bar"), "{merged:?}");
+    assert!(matches!(&merged[1], LayoutNode::IndexMark { .. }), "{merged:?}");
+  }
+
+  #[test]
+  fn index_mark_keeps_its_place_when_styles_differ() {
+    // Arrange — 書体が違えば結合しないので、マーカーは元の位置に残る
+    let s1 = style(FontKind::Serif);
+    let s2 = style(FontKind::SerifBold);
+    let nodes = vec![
+      LayoutNode::Text("foo".to_string(), s1),
+      LayoutNode::IndexMark {
+        word: "foo".to_string(),
+        reading: None,
+      },
+      LayoutNode::Text("bar".to_string(), s2),
+    ];
+
+    // Act
+    let merged = merge_adjacent_text(nodes);
+
+    // Assert
+    assert_eq!(merged.len(), 3, "{merged:?}");
+    assert!(matches!(&merged[1], LayoutNode::IndexMark { .. }), "{merged:?}");
+    assert!(matches!(&merged[2], LayoutNode::Text(t, _) if t == "bar"), "{merged:?}");
   }
 
   #[test]
