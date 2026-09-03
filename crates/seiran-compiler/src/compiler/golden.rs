@@ -696,6 +696,52 @@ fn index_entries_follow_the_page_the_content_lands_on() {
   assert!(row_pages.windows(2).all(|w| return w[0][0] <= w[1][0]), "行の順序どおりに並ぶはず: {row_pages:?}");
 }
 
+/// 脚注本体のリンクが、その行が落ちたページのクリック矩形になることを end-to-end で確かめる（#515）
+///
+/// `footnote_split.sei` の長い脚注は前半に `\href`、繰越される後半に `\ref` を持つ。帰属を決める
+/// `crate::typeset::breaking` 側の単体テストと違い、こちらはソース（`.sei`）から `build_pages` までを
+/// 通すので、frontend・lowering・collector の配線が繋がっていないと落ちる。ページ index は
+/// 版面の都合で動きうるので、繰越が起きたページを基準に相対で見る。
+#[test]
+fn footnote_links_follow_the_page_the_line_lands_on() {
+  // Arrange
+  enter_workspace_root();
+  let (mut config, mut style, references) = load_base();
+  config.sources = vec![PathBuf::from("tests/text/footnote_split.sei")];
+  apply_input_config_overrides("footnote_split", &mut config);
+  apply_input_style_overrides("footnote_split", &mut style);
+  let source = FilesystemProjectSource::new();
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+
+  // Act
+  let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+
+  // Assert — 脚注が繰越されている（空振り検知）
+  let carried = laid_out
+    .pages
+    .iter()
+    .position(|page| return page.footnotes.iter().any(|f| return f.continued))
+    .unwrap_or_else(|| panic!("脚注が分割されて繰越が生じるはず: {} ページ", laid_out.pages.len()));
+  assert!(carried > 0, "繰越は 2 ページ目以降に現れるはず");
+
+  // 折り返しで矩形が 2 つに割れることがあるので、個数ではなく「あるか」で見る。
+  // 本文中の脚注マーカーも内部リンクを作るので、`\ref` の到達先 namespace（`Label`）で絞る。
+  let pages_with = |predicate: &dyn Fn(&LinkTarget) -> bool| -> Vec<usize> {
+    return laid_out
+      .pages
+      .iter()
+      .enumerate()
+      .filter(|(_, page)| return page.links.iter().any(|link| return predicate(&link.target)))
+      .map(|(index, _)| return index)
+      .collect();
+  };
+  let external =
+    pages_with(&|target| return matches!(target, LinkTarget::External(uri) if uri == "https://example.com"));
+  let reference = pages_with(&|target| return matches!(target, LinkTarget::Internal(AnchorId::Label(_))));
+  assert_eq!(external, vec![carried - 1], "脚注本体の前半のリンクはマーカーのあるページに残る");
+  assert_eq!(reference, vec![carried], "繰越された行のリンクは繰越先ページのクリック矩形になる");
+}
+
 #[test]
 fn long_footnote_splits_across_pages_without_overlapping_body() {
   // Arrange
