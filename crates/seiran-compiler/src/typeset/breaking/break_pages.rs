@@ -341,6 +341,17 @@ impl PageComposer {
     }
   }
 
+  /// 行に付いた帰属データ（リンク矩形・索引語）をまとめて現在ページへ集める
+  ///
+  /// 行がどのページへ置かれるかが確定した点から**この 1 関数だけ**を呼ぶ。リンクと索引語は
+  /// 帰属の規則が同じ（行が着地したページのもの）なのに収集関数が分かれていたため、脚注本体の
+  /// 行を落とす経路で索引語だけが集められリンクが漏れていた（#515）。呼び出しを 1 本にして
+  /// 片方だけ足し忘れる形を無くす。
+  fn collect_line_marks(&mut self, line: &Line, baseline_y: Length) {
+    self.collect_line_links(line, baseline_y);
+    self.collect_line_index_entries(line);
+  }
+
   /// 行のリンク領域を確定座標へ展開し、現在ページに追加する
   fn collect_line_links(&mut self, line: &Line, baseline_y: Length) {
     let top = baseline_y - line.height;
@@ -517,9 +528,12 @@ impl PageComposer {
           }
           prev_depth = line.depth;
           // 脚注の行がこのリージョン（＝このページ）へ置かれることが確定するのはここだけなので、
-          // 索引語の帰属もここで決める。行単位のページ繰越（#227）で次ページへ送られた行は、
-          // 送り先のリージョンでこのループを通るため、繰越先ページへ帰属する。
-          self.collect_line_index_entries(&line);
+          // リンク矩形・索引語の帰属もここで決める。行単位のページ繰越（#227）で次ページへ
+          // 送られた行は、送り先のリージョンでこのループを通るため、繰越先ページへ帰属する。
+          //
+          // リンクの x に段オフセットを足さないのは、同じループが `line.boxes` にも足していない
+          // ためで、矩形は脚注テキストの実描画位置と一致する。
+          self.collect_line_marks(&line, baseline);
           blocks.push(PlacedBlock::Line {
             line,
             baseline_y: baseline,
@@ -1005,8 +1019,7 @@ fn place_paragraph(
       if is_paragraph_start && i == 0 {
         composer.resolve_pending_anchors(col_off, baseline - line.height);
       }
-      composer.collect_line_links(&line, baseline);
-      composer.collect_line_index_entries(&line);
+      composer.collect_line_marks(&line, baseline);
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
         let (head, tail) = split_pending(footnote, placed);
         if let Some(head) = head {
@@ -1055,8 +1068,7 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
     }
   }
   composer.resolve_pending_anchors(col_off, baseline - line.height);
-  composer.collect_line_links(&line, baseline);
-  composer.collect_line_index_entries(&line);
+  composer.collect_line_marks(&line, baseline);
   composer.current.push(PlacedBlock::Line {
     line,
     baseline_y: baseline,
@@ -1261,7 +1273,7 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK,
-        Page, PlacedBlock, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+        Page, PlacedBlock, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
       font::GlyphRun,
@@ -1504,6 +1516,89 @@ mod tests {
     );
     assert_eq!(pages[1].index_entries.len(), 1, "{:?}", pages[1].index_entries);
     assert_eq!(pages[1].index_entries[0].word, "繰越語");
+  }
+
+  /// `lines` 行の脚注本体を作り、`at` 行目（0 起点）の箱を外部リンクで挟む
+  fn footnote_of_lines_with_link_at(number: u32, lines: usize, at: usize, uri: &str) -> HItem {
+    let mut items = Vec::new();
+    for i in 0..lines {
+      if i > 0 {
+        items.push(HItem::ForcedBreak);
+      }
+      if i == at {
+        items.push(HItem::LinkStart(LinkTarget::External(uri.to_string())));
+        items.push(test_box());
+        items.push(HItem::LinkEnd);
+      } else {
+        items.push(test_box());
+      }
+    }
+    return footnote_item(number, items, pt(12.0));
+  }
+
+  /// ページのリンクのうち、指定 URI の外部リンクだけを返す
+  fn external_links<'a>(page: &'a Page, uri: &str) -> Vec<&'a PlacedLink> {
+    return page
+      .links
+      .iter()
+      .filter(|link| return matches!(&link.target, LinkTarget::External(u) if u == uri))
+      .collect();
+  }
+
+  #[test]
+  fn links_in_footnote_body_land_on_the_footnote_page() {
+    // Arrange
+    let geom = test_geometry();
+    let blocks = vec![single_line_paragraph(vec![footnote_of_lines_with_link_at(
+      1,
+      1,
+      0,
+      "https://example.com",
+    )])];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 本文中の脚注マーカーも内部リンクを作るので、外部リンクだけを取り出して見る
+    assert_eq!(pages.len(), 1);
+    let links = external_links(&pages[0], "https://example.com");
+    assert_eq!(links.len(), 1, "{:?}", pages[0].links);
+    let baseline = footnote_baselines(&pages[0], 1)[0];
+    assert!(close(links[0].x, 0.0));
+    assert!(close(links[0].y, baseline.to_pt() - 8.0), "行 box の上端に一致するはず: {:?}", links[0]);
+    assert!(close(links[0].width, 10.0));
+    assert!(close(links[0].height, 10.0));
+  }
+
+  #[test]
+  fn links_in_carried_footnote_lines_land_on_the_carry_page() {
+    // Arrange — 4 行の脚注は 3 行目までが 1 ページ目、4 行目が繰越
+    // （`long_footnote_splits_and_carries_remainder_to_next_page` と同じ分割）
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines_with_link_at(
+        1,
+        4,
+        3,
+        "https://example.com",
+      )]),
+      single_line_paragraph(vec![]),
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2);
+    assert!(
+      external_links(&pages[0], "https://example.com").is_empty(),
+      "リンクの行は繰越されたので 1 ページ目には無い: {:?}",
+      pages[0].links
+    );
+    let links = external_links(&pages[1], "https://example.com");
+    assert_eq!(links.len(), 1, "{:?}", pages[1].links);
+    let baseline = *footnote_baselines(&pages[1], 1).last().expect("繰越断片に行があるはず");
+    assert!(close(links[0].y, baseline.to_pt() - 8.0), "繰越先の行 box の上端に一致するはず: {:?}", links[0]);
   }
 
   /// 1 列 1 行、セルが `text` の箱と索引マーカーだけの表の行を作る

@@ -1256,6 +1256,13 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 行分割を通らない `TableCellBox::items` を直接舐める。`\head` 行は改ページのたび再描画される複製なので
 除く）。3 経路とも同じページの同じ集合へ入るので、ページ内の重複畳みは経路をまたいで効く。
 
+`Line` を通る 2 経路（本文行・脚注本体の行）では、リンク矩形（`Line::links` → `Page::links`）も
+索引語とまったく同じ規則で帰属が決まる — 行が着地したページのもの。両者を別々に呼んでいたために
+脚注本体の行でリンクだけが集められていなかった（#515）ので、収集の呼び出しは
+`PageComposer::collect_line_marks` 1 つに束ね、行が置かれると確定した点からはこの関数だけを呼ぶ。
+表の本体行は `Line` を通らないため、リンクは `collect_row_links`・索引語は `collect_row_index_entries`
+と個別のままである。
+
 > **要点**: `AnchorMark`（見出し・ラベル付きブロックの到達先）と違い `IndexMark` は段落を分割しない。
 > `\pagebreak` / `\ref` の `AnchorMark` はブロック境界でしか発行されないが、`\index` は段落内の任意の位置に
 > 置けるため、分割すると Knuth–Plass の行分割結果が変わってしまう（受け入れ条件は「`\index` を取り除いた
