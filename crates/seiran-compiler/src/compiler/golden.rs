@@ -36,7 +36,7 @@
 //! # カバレッジの注意
 //!
 //! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定 config では
-//! 無効で、入力名ごとのオーバーライドヘルパが有効化する（例: `toc` / `title_page`）。
+//! 無効で、入力名ごとのオーバーライドヘルパが有効化する（例: `toc` / `title_page` / `footnote_columns`）。
 //!
 //! - [`apply_input_style_overrides`]（型付き `Style`）: `dump_input` / `dump_input_via_compile` の両方が共有
 //! - [`apply_input_config_overrides`]（型付き `ProjectConfig`）: `dump_input` に加え、`build_pages` を
@@ -87,6 +87,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "color",
   "equation",
   "footnote",
+  "footnote_columns",
   "footnote_per_page",
   "footnote_split",
   "gather",
@@ -169,6 +170,14 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
       style.page.margin_left = Length::mm(275.0);
       style.page.margin_right = Length::mm(275.0);
     },
+    // 本文 2 段組みで左段・右段の両方に脚注が着地する版面（用紙寸法の縮小は config 側が持つ）
+    "footnote_columns" => {
+      style.columns.count = 2;
+      style.page.margin_left = Length::mm(10.0);
+      style.page.margin_right = Length::mm(10.0);
+      style.page.margin_top = Length::mm(10.0);
+      style.page.margin_bottom = Length::mm(10.0);
+    },
     // ページ単位採番が複数ページにまたがる版面にする（用紙寸法の縮小は config 側が持つ）
     "footnote_per_page" => {
       style.footnote.numbering = FootnoteNumbering::PerPage;
@@ -200,6 +209,11 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
 fn apply_input_config_overrides(name: &str, config: &mut ProjectConfig) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
+  }
+  // 本文 2 段組みで段の折返しが起きる版面にする（余白・段数は style の上書きが担う）
+  if name == "footnote_columns" {
+    config.pdf.width = Length::mm(120.0);
+    config.pdf.height = Length::mm(60.0);
   }
   // ページ単位採番が複数ページにまたがる版面にする（余白側は style の上書きが担う）
   if name == "footnote_per_page" {
@@ -267,6 +281,10 @@ fn apply_input_config_overrides_toml(name: &str, table: &mut toml::value::Table)
       .as_table_mut()
       .expect("[document] はテーブルのはず")
       .insert("language".to_string(), toml::Value::String("en".to_string()));
+  }
+  if name == "footnote_columns" {
+    set_pdf_field(table, "width", "120mm");
+    set_pdf_field(table, "height", "60mm");
   }
   if name == "footnote_per_page" {
     set_pdf_field(table, "width", "150mm");
@@ -416,7 +434,12 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
   let (base_config, _, _) = load_base();
   let workspace_root = workspace_root();
 
-  for name in ["hyphenation", "footnote_per_page", "footnote_split"] {
+  for name in [
+    "hyphenation",
+    "footnote_columns",
+    "footnote_per_page",
+    "footnote_split",
+  ] {
     // Act — 型付き版（`dump_input` と同じ適用順）
     let mut typed_config = base_config.clone();
     apply_input_config_overrides(name, &mut typed_config);
