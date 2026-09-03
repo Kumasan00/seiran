@@ -99,7 +99,7 @@ pub(crate) struct LineIndexEntry {
 
 /// 行内のリンク領域（クリック矩形の水平範囲）
 ///
-/// `x0` / `x1` は行頭（本文左端）からの水平オフセット（pt）。縦範囲は所属する
+/// `x0` / `x1` は行頭（着地する段の左端）からの水平オフセット（pt）。縦範囲は所属する
 /// [`Line`] の `height` / `depth` から `break_pages` が確定する。
 #[derive(Debug, Clone)]
 pub(crate) struct LineLink {
@@ -113,7 +113,7 @@ pub(crate) struct LineLink {
 
 /// 行内に配置されたボックス
 ///
-/// `x` は行頭（本文左端）からの水平オフセット、`dy` はベースラインからの
+/// `x` は行頭（着地する段の左端）からの水平オフセット、`dy` はベースラインからの
 /// 縦オフセット（正で上方向）。
 #[derive(Debug, Clone)]
 pub(crate) struct PositionedBox {
