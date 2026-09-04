@@ -207,7 +207,7 @@ mod tests {
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
-  /// `crates/seiran-compiler` から見て 2 階層上がワークスペースルート（`golden.rs::workspace_root` と同じ関係）。
+  /// `crates/seiran-compiler` から見て 2 階層上がワークスペースルート（`compiler::test_support::workspace_root` と同じ関係）。
   fn read_image_fixture(name: &str) -> Vec<u8> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image").join(name);
     return std::fs::read(&path).unwrap_or_else(|error| panic!("画像 fixture を読めるはず: {path:?}: {error}"));

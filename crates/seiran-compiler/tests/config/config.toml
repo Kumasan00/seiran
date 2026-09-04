@@ -3,12 +3,13 @@
 # ユーザローカルの `config/config.toml`（gitignore 対象）から独立させた、テスト専用の設定。
 # フォント・CSL 等のサードパーティ資産は `tools/fetch-test-assets.sh` が `vendor/` へ
 # ピン留めハッシュ付きで取得したものを参照する（golden の座標はフォントのバイト列に依存するため）。
-# パスはワークスペースルート基準（golden テストがカレントディレクトリをルートへ固定する）。
+# パスはワークスペースルート基準（テストは `base_dir` を明示し、カレントディレクトリに依存しない）。
 #
-# `sources` はプレースホルダで、golden テストが入力ごとに差し替える。
+# `sources` は golden テストが入力ごとに差し替える。差し替えない既定値は adapter 同値テスト
+# （`compiler::project_source_equivalence`）がそのまま使うので、CSL 読込経路を通る `cite.sei` にしてある。
 
 references_path = "crates/seiran-compiler/tests/config/references.toml"
-sources = ["tests/text/text.sei"]
+sources = ["tests/text/cite.sei"]
 style_path = "crates/seiran-compiler/tests/config/style.toml"
 
 [document]

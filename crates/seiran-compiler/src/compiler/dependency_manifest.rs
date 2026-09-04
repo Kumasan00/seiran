@@ -57,33 +57,41 @@ impl DependencyManifest {
 
 #[cfg(test)]
 mod tests {
-  use std::path::{Path, PathBuf};
+  use std::path::PathBuf;
 
-  use super::DependencyManifest;
-  use crate::{
-    compiler::{golden, golden::load_base, input::CompilationInputs},
-    project::{FilesystemProjectSource, FontData, ProjectPath},
-  };
+  use crate::compiler::test_support::TestProject;
+
+  /// `figure.sei` が参照する画像 fixture（`\image{...}` の字面と同じ）。
+  const IMAGE_ASSETS: &[&str] = &[
+    "./tests/image/testimage1.jpg",
+    "./tests/image/testimage2.jpg",
+    "./tests/image/testimage3.jpg",
+    "./tests/image/testimage4.png",
+    "./tests/image/testimage5.png",
+    "./tests/image/testimage6.svg",
+  ];
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
-    // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する
-    golden::enter_workspace_root();
-    let (config, style, references) = load_base();
-    let source = FilesystemProjectSource::new();
-    let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
-    let inputs = CompilationInputs::from_parts(&source, config.clone(), style, references, font_data)
-      .expect("検証済み入力を組み立てられるはず");
-    let image_paths = vec![ProjectPath::new("tests/image/testimage5.png")];
+    // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する。
+    // 画像を持つ入力を選び、`\image{...}` から集めたパスが manifest に載ることも合わせて見る
+    let mut builder = TestProject::builder().sources(&["tests/text/figure.sei"]);
+    for asset in IMAGE_ASSETS {
+      builder = builder.asset(asset);
+    }
+    let project = builder.build();
 
     // Act
-    let manifest =
-      DependencyManifest::collect(Path::new("crates/seiran-compiler/tests/config/config.toml"), &inputs, &image_paths);
+    let manifest = project.compile().expect("fixture のコンパイル").dependencies;
 
     // Assert
     assert_eq!(manifest.config_path, PathBuf::from("crates/seiran-compiler/tests/config/config.toml"));
-    assert_eq!(manifest.source_paths, config.sources);
-    assert_eq!(manifest.image_paths, vec![PathBuf::from("tests/image/testimage5.png")]);
+    assert_eq!(manifest.source_paths, vec![PathBuf::from("tests/text/figure.sei")]);
+    assert_eq!(
+      manifest.image_paths,
+      IMAGE_ASSETS.iter().map(PathBuf::from).collect::<Vec<PathBuf>>(),
+      "画像パスは昇順で重複なく載るはず"
+    );
     let unique_font_paths: std::collections::BTreeSet<_> = manifest.font_paths.iter().collect();
     assert_eq!(manifest.font_paths.len(), unique_font_paths.len(), "共有フォントファイルは重複除去されるはず");
   }

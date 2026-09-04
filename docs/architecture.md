@@ -1501,20 +1501,36 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 組版の内部順序（本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置）と組版中間型は
 `typeset::layout` の内側にある。`compiler.rs` が `typeset` から名指しするのは facade に載る資源・
-警告型（`FontResources` / `FontWarning` / `TypesetWarning`）と `layout` / `FontResources::load` の
-呼び出しだけで、組版中間型・内部 module には触れない。`Publication` への写像は成果物を所有する
-`publication::build` に閉じ、`typeset` は描画表現を知らない依存方向を保つ。
+警告型（`FontResources` / `FontWarning` / `TypesetWarning`）、`layout` / `FontResources::load` の
+呼び出し、そして `layout` の戻り値 `LaidOutDocument`（`PipelineArtifacts` のフィールドと
+`run_pipeline` / `layout_project_for_test` の戻り値の型）だけで、`typeset` の内部 module には触れない。
+`LaidOutDocument` から読むのもページ数と画像パス一覧という 2 つの要約フィールドに限られ、ページの中身は
+走査しない。`Publication` への写像は成果物を所有する `publication::build` に閉じ、`typeset` は描画表現を
+知らない依存方向を保つ。
 
 #### compile facade（`compiler.rs` 直下）
 
-`compiler.rs` 本体には facade 関数（`compile` / `parse_project` /
+`compiler.rs` 本体には facade 関数（`compile` / `load_inputs` / `run_pipeline` / `parse_project` /
 `parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は除く）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート）を置く。
 `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
 （1 フィールドの計画型は隠す規則を持たないため。出力形式か保存先が複数になった時点で改めて設計する、#463）。
 入力読込は `compiler.rs` 直下には無く、
-`input::load` の 1 呼び出しになっている。`compile<S: ProjectSource>(source: &S, root: &ProjectPath,
+`input::load` の 1 呼び出しになっている。
+
+phase の実行は `compile` が直接持たず、**production とテストが同じ 2 関数を通る**（#522）。
+`load_inputs`（input phase の span・完了 event と `input::load` の 1 呼び出し）と
+`run_pipeline`（frontend / semantics / font / typeset の 4 phase と、その span・完了 event・
+診断への変換）で、後者の成果物が `PipelineArtifacts`（`FontResources` / `LaidOutDocument` /
+フォント・組版の警告）。`compile` はこの 2 つを呼んだうえで `DependencyManifest::collect` /
+`publication::build` / `collect_warnings` / `BuildStatistics` / `pdf_path` と compile 全体の完了 event
+だけを仕上げる。`Publication` へ変換すると失われる組版中間情報（anchor・索引語のページ帰属・脚注
+fragment・`PlacedBlock` の幾何）を検査するテストのためには、この 2 関数を呼んで `LaidOutDocument` を
+取り出すだけの `#[cfg(test)] layout_project_for_test` を併設する — phase の処理を再実装しないので、
+テストが `input::load` の読込順序・横断検証を迂回する経路は存在しない。
+
+`compile<S: ProjectSource>(source: &S, root: &ProjectPath,
 base_dir: &Path) -> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は
 設定ファイルパスそのもの（`--config-path` が指す値と同じ）。`base_dir` は相対パス解決の基準ディレクトリで、
 呼び出し元が実行環境に応じて明示する。compiler は `std::env::current_dir()` を呼ばないため、
@@ -1524,14 +1540,15 @@ base_dir: &Path) -> Result<Compilation, CompileFailure>` が唯一の公開エ�
 **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
 error の `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う
 （warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の列として持つ）。
-`compile` / `parse_project` / `parse_all_sources` は
+`compile` / `load_inputs` / `run_pipeline` / `parse_project` / `parse_all_sources` は
 `Result<_, CompileFailure>`、`input::load` は `Result<_, Failures<CompileError>>` を返す。
 
-`compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
-`publication::build`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
-（描画段での再構築はしない）。シェーパーの構築順序・寿命関係は `typeset::font` に閉じ、facade は知らない
-（`typeset` 節の `font` 項）。フォント資源の構築を `typeset` の内側へ畳まないのは、組版後にも描画資源用の
-`metrics()` を要求され、「`LaidOutDocument` は `layout` が決めた値だけを持つ」という設計意図と衝突するため。
+`run_pipeline` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と、
+`PipelineArtifacts` で受け取った `compile` の `publication::build`（描画資源用の `metrics()` /
+`face_configs()`）の両方へ貸す（描画段での再構築はしない）。シェーパーの構築順序・寿命関係は
+`typeset::font` に閉じ、facade は知らない（`typeset` 節の `font` 項）。フォント資源の構築を `typeset` の
+内側へ畳まないのは、組版後にも描画資源用の `metrics()` を要求され、「`LaidOutDocument` は `layout` が
+決めた値だけを持つ」という設計意図と衝突するため。
 `publication::build` の内部（krilla に触れないこと・画像をパス昇順に並べること）は `publication` 節のとおり。
 子 module:
 
@@ -1541,9 +1558,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   （`typeset::validate_layout`）→ references → フォント → sources** という順序とエラー集約を知るのは
   この module だけで、`compile` は `load` を 1 回呼ぶ。CSL スタイル・ロケールはここでは読まない
   （引用箇所があるときだけ読む遅延は `semantics::analyze` の内側）。
-  `CompilationInputs` のフィールドは非公開 + アクセサで、production の構築経路は `load` だけ
-  （「読込・個別検証・横断検証をすべて通った値しか後段へ流れない」を型で保証する）。型付き `Style` を
-  メモリ上で書き換えて組み直す golden テストのためだけに `#[cfg(test)] from_parts` を併設する。
+  `CompilationInputs` のフィールドは非公開 + アクセサで、構築経路は `load` だけ（テスト専用の
+  コンストラクタも持たない。「読込・個別検証・横断検証をすべて通った値しか後段へ流れない」を
+  型で保証する、#522）。
   **画像は含めない** — `\image{...}` でしかパスが分からないため、`typeset::layout` が文書木から集めて
   内部で読み込む。ソース本文の保持と `SourceId` の発行は `project::SourceSet` の責務で、
   `SourceSetReadError` から `CompileError::ReadTextFile` への写像（`SourceReadError` はそのまま
@@ -1598,21 +1615,36 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   パスへ戻して出力するので、画像参照が不透明ハンドルであることは golden に現れない）。確定ページ列
   （`typeset::Page`）のダンプ `dump_pages` は走査対象の型を所有する `typeset::dump` 側にあり、
   ここからは `crate::typeset::dump_pages` として借りる
+- `test_support`: compiler 配下のテストが共有する fixture builder `TestProject`（#522）。
+  `MemoryProjectSource` の構築・config / style / references / source / font / CSL の登録・config path と
+  `base_dir` の保持・fixture 名ごとの差分適用・共有フォントの重複登録回避を担い、組み立てた入力を
+  `compile` / `layout_project_for_test` へ渡す。**config の上書きは生の TOML テーブルへの 1 系統だけ**
+  （`ProjectConfig` は `Serialize` を持たず、production が実際に読む表現もこの TOML なので、型付きの
+  並行実装は作らない）。`Style` は型付きで書き換えてよいが、必ず `style.toml` として登録し `input::load`
+  に読み直させる。登録キーは既定で **`base_dir` が空パス＝ワークスペース相対**で、診断に出るソース名が
+  実行環境に依存しない（`set_current_dir` は使わない）。実 adapter と同じ入力を要求する
+  adapter 同値テストだけ `absolute_base_dir` で絶対パスにする
 - `golden`: レイアウトダンプ golden の比較テスト。golden ファイル
   （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
-  （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、`dump_input_via_compile` を介して `super::compile()`
-  → `dump_publication` を通る（issue #306）。残りのテストは golden ファイルを介さない — `dump_input` →
-  `build_pages` → `dump_pages` のダンプをテスト内で比較・検査するもの（索引語の不可視性・style 差分・
-  コード空行の高さ）、`build_pages` の返り値 `Page` / `PlacedBlock` へ直接アサートするもの（keep-with-next・
-  脚注のページ単位採番と繰越）、設定オーバーライドの 2 実装（型付き版と TOML 版）が同じ値へ収束する
-  ことだけを見るもの。`Publication` / `dump_publication` は `typeset::Page` レベルの anchor・索引語の
-  表現を持たないため、`dump_pages` を使うテストは `Publication` 側のダンプへ移行していない
+  （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、公開 facade `compile()` → `dump_publication` を通る
+  （issue #306）。残りのテストは golden ファイルを介さず、`Publication` へ変換すると失われる情報を見るため
+  `TestProject::layout`（= `layout_project_for_test`）を通る — `typeset::Page` のダンプをテスト内で比較・
+  検査するもの（索引語の不可視性・style 差分・コード空行の高さ）と、`Page` / `PlacedBlock` へ直接
+  アサートするもの（keep-with-next・脚注のページ単位採番と繰越・索引語のページ帰属・脚注本体のリンク）。
+  テストヘルパが入力読込を迂回していないことは、横断検証（`typeset::validate_layout`）の診断が
+  `layout_project_for_test` 経由で出ることを見る `layout_helper_reports_cross_input_layout_validation` が
+  機械的に押さえる
 - `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。
-  `build_pages_err` が返す `CompileFailure` を `into_report` してレンダリングするので、golden は
-  ユーザーが実際に見る表示そのもの。集約・段 wrapper の `code` とメッセージが golden 全件に現れない
-  ことを検査する `golden_diagnostics_show_no_aggregate_or_phase_wrapper` を併設する（#375 / #376）
+  `TestProject` を `compile` した `CompileFailure` を `into_report` してレンダリングするので、golden は
+  ユーザーが実際に見る表示そのもの。ただし外部資源の read error を `#[source]` に載せる診断だけは、
+  その cause 行が adapter の所有物になる（`MemoryProjectSource` は「プロジェクトに登録されていない
+  パスです」、`FilesystemProjectSource` は OS の io error）— 実 adapter 側の挙動は
+  `project::filesystem` の単体テストが押さえる（#522）。集約・段 wrapper の `code` とメッセージが
+  golden 全件に現れないことを検査する `golden_diagnostics_show_no_aggregate_or_phase_wrapper` を
+  併設する（#375 / #376）
 - `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
-  同じ確定レイアウト（`dump_pages` の文字列）を返すこと、同じフォントを複数回読まないことの検証（#300）
+  同じ `Publication` を返すこと、同じフォントを複数回読まないことの検証（#300）。両 adapter が同じ
+  絶対パスを引くよう `absolute_base_dir` の fixture を使う
 
 検証手段の使い分け（レイアウトダンプ golden か PDF バイト比較か）・golden の再生成手順は
 `verify-typesetting` skill を参照する。

@@ -38,10 +38,11 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 **PDF バイト比較ではない**（krilla の描画は含まない。ただしメタデータ・リンク・しおりまで
 ダンプするため `dump_pages` よりカバー範囲が広い）。
 
-テストの内部分類（golden ファイルを読まないダンプ直接比較・`build_pages` 直接アサート・
-設定オーバーライド同期検査）と、オーバーライドヘルパ 3 種の使い分け・同期規則は
-**golden.rs の module doc が正典** — この skill には再掲しない。前付け・running content・段組みは
-既定 config で無効で、ヘルパが入力名ごとに有効化している（該当経路を触ったら fixture が機能を
+テストの内部分類（golden ファイルを読まないダンプ直接比較・`Page` / `PlacedBlock` への直接アサート）は
+**golden.rs の module doc が正典** — この skill には再掲しない。入力はすべて
+`compiler::test_support::TestProject` が組み立て、production と同じ `input::load` から始まる経路を通る
+（`compile` か、組版中間表現が要るときだけ `TestProject::layout`）。前付け・running content・段組みは
+既定 config で無効で、fixture 名ごとの差分が有効化している（該当経路を触ったら fixture が機能を
 実際に通しているか確認する）。
 
 - **確認**: `cargo test -p seiran-compiler`
@@ -52,10 +53,10 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 
 ### 新機能にテストを足す
 
-`tests/text/<name>.sei` を追加 → `GOLDEN_INPUTS` へ登録（既定で無効な機能はオーバーライドヘルパへ
-追記）→ `UPDATE_GOLDEN=1` で生成・内容確認・コミット。登録手順の詳細（型付き版と TOML 版の
-両方へ追記が必要になる条件を含む）は golden.rs module doc の「新機能に golden テストを足す」節に
-従う。外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存）。
+`tests/text/<name>.sei` を追加 → `GOLDEN_INPUTS` へ登録（既定で無効な機能は `test_support` の
+fixture 差分へ追記。config 差分は生 TOML の 1 系統だけ）→ `UPDATE_GOLDEN=1` で生成・内容確認・
+コミット。登録手順の詳細は golden.rs module doc の「新機能に golden テストを足す」節に従う。
+外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存）。
 
 ## PDF 構造 golden（render 層の構造だけ）
 
