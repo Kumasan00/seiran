@@ -41,7 +41,7 @@ use crate::document::{FontKind, HeadingLevel};
 
 /// Lowering のコンテキスト
 pub(super) struct LoweringContext<'a> {
-  /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
+  /// スタイル設定への参照（`config/style.toml` 由来。未指定キーは `serde(default)` の既定値）
   pub style: &'a ReadStyle,
   /// 本文段落の既定フォント種別
   pub body_font_kind: FontKind,
