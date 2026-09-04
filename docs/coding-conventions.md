@@ -371,11 +371,13 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   テストに区切りは不要という合図。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）— 何を
   検証するかだけを書く。
 - **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]`
-  で閉じた `test_support` module に切り出して 1 箇所に集める（`frontend::evaluator::test_support` /
-  `typeset::lowering::test_support`）。切り出し先は「そのヘルパが注入する本番の仕組みを持つ module」で、
-  呼び出し側は `test_support::parse(...)` のように module 経由で呼ぶ。crate 外の統合テスト（`tests/`）も
-  使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので `#[doc(hidden)] pub mod` として root facade
-  に載せる（`project::config::test_support` → `seiran_compiler::test_support`）。
+  で閉じた `test_support` module に切り出して 1 箇所に集める（現在は `frontend::evaluator` /
+  `typeset::lowering` / `typeset::breaking::break_lines` / `compiler` の 4 つ）。切り出し先は
+  「そのヘルパが注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)` のように
+  module 経由で呼ぶ。
+  crate 外の統合テスト（`tests/`）も使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので
+  `#[doc(hidden)] pub mod` として root facade に載せる（`project::config::test_support` →
+  `seiran_compiler::test_support`）。
 - test module も本体と同じ use 規約に従う（必須ルール 3）。親の被テスト項目を `use super::*` /
   `use super::Item` で取り込むのは許容だが、それ以外は `crate::` 起点で import する。
 - テストコードでは `unwrap` / `expect` / `panic!` を許容する（`unwrap_used` / `panic` は `clippy.toml` の

@@ -35,16 +35,16 @@ use crate::{
 
 /// 読込・個別検証・横断検証をすべて通った入力。
 ///
-/// フィールドは非公開で、production の構築経路は [`load`] だけ。「検証を通っていない値が
-/// 後段へ流れない」ことを型で保証するため、外から組み立てられるコンストラクタを持たない
-/// （受け入れ条件、#351）。画像はパース後にパスが分かるため含めない。
+/// フィールドは非公開で、構築経路は [`load`] だけ（テスト専用のコンストラクタも持たない）。
+/// 「検証を通っていない値が後段へ流れない」ことを型で保証するため、外から組み立てられる
+/// コンストラクタを持たない（受け入れ条件、#351 / #522）。画像はパース後にパスが分かるため含めない。
 pub(super) struct CompilationInputs {
   /// 検証済みの設定（用紙・余白・`sources`・`font_configs` 等）
   config: ProjectConfig,
   /// 検証済みのスタイル
   style: Style,
-  /// `\cite` の CSL 整形に使う文献データ。複数の入力（golden テスト等）で使い回せるよう
-  /// `Arc` で共有する
+  /// `\cite` の CSL 整形に使う文献データ。`semantics::analyze` へ共有参照として渡すので
+  /// `Arc` で持つ
   references: Arc<References>,
   /// 読込済みの全フォントバイナリ
   font_data: FontData,
@@ -72,35 +72,6 @@ impl CompilationInputs {
 
   /// 設定の読込で見つかった警告を宣言順に返す。
   pub(super) fn config_warnings(&self) -> &[ConfigWarning] { return &self.config_warnings; }
-
-  /// 型付きの設定・スタイルから入力を組み立てるテスト専用のコンストラクタ。
-  ///
-  /// golden の style 差分テスト（`layout_dump_changes_with_line_height` ほか）と
-  /// `build_pages_with_source` は、TOML を経ずにメモリ上で `Style` を書き換えて組み直す。
-  /// そのため [`load`] とは別に入口が要る。production からは呼べないよう `#[cfg(test)]` に
-  /// 閉じてあり、受け入れ条件「検証済みの値だけが入る」は production 経路で保たれる。
-  ///
-  /// # Errors
-  ///
-  /// いずれかのソースファイルの読込に失敗した場合にエラーを返す。
-  #[cfg(test)]
-  pub(super) fn from_parts(
-    source: &dyn ProjectSource,
-    config: ProjectConfig,
-    style: Style,
-    references: Arc<References>,
-    font_data: FontData,
-  ) -> Result<Self, Failures<CompileError>> {
-    let sources = read_sources(source, &config.sources)?;
-    return Ok(CompilationInputs {
-      config,
-      style,
-      references,
-      font_data,
-      sources,
-      config_warnings: Vec::new(),
-    });
-  }
 }
 
 /// 設定・スタイル・文献・フォント・ソースを読み込み、検証済みの入力を組み立てる。

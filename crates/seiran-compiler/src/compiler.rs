@@ -3,8 +3,6 @@
 //! PDF バイト列の生成は `seiran-pdf`、ファイルへの保存は CLI の責務で、この module は
 //! どちらも行わない。
 
-#[cfg(test)]
-use crate::project::FilesystemProjectSource;
 use crate::{
   document::{HirDocument, HirSource},
   frontend,
@@ -26,9 +24,9 @@ mod dump;
 mod golden;
 #[cfg(test)]
 mod project_source_equivalence;
-
 #[cfg(test)]
-use std::sync::Arc;
+mod test_support;
+
 use std::{
   path::{Path, PathBuf},
   time::Instant,
@@ -45,14 +43,7 @@ use crate::{
   project::SourceSet,
   publication::{self, Publication},
   semantics::AnalyzeError,
-  typeset::{FontResources, FontWarning, TypesetWarning},
-};
-#[cfg(test)]
-use crate::{
-  project::{FontData, config::ProjectConfig},
-  semantics::References,
-  style::Style,
-  typeset::LaidOutDocument,
+  typeset::{FontResources, FontWarning, LaidOutDocument, TypesetWarning},
 };
 
 /// コンパイル結果の統計情報。
@@ -103,18 +94,91 @@ pub fn compile<S: ProjectSource>(
   let _compile_span = info_span!("compile").entered();
   let build_start = Instant::now();
 
-  let inputs = {
-    let _phase = info_span!("input").entered();
-    let stage_start = Instant::now();
-    let inputs = input::load(source, root.as_ref(), base_dir)?;
-    info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
-    inputs
-  };
+  let inputs = load_inputs(source, root, base_dir)?;
+  let PipelineArtifacts {
+    font_resources,
+    laid_out,
+    font_warnings,
+    typeset_warnings,
+  } = run_pipeline(source, &inputs)?;
 
+  let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
+  let page_count = laid_out.pages.len();
+  let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
+  let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
+  let total_elapsed = build_start.elapsed();
+  let statistics = BuildStatistics {
+    page_count,
+    // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
+    total_elapsed_ms: u64::try_from(total_elapsed.as_millis()).unwrap_or(u64::MAX),
+  };
+  info!(
+    page_count = statistics.page_count,
+    warning_count = warnings.iter().count(),
+    elapsed = ?total_elapsed,
+    "文書をコンパイル"
+  );
+
+  return Ok(Compilation {
+    publication,
+    dependencies,
+    warnings,
+    statistics,
+    pdf_path: inputs.config().output.pdf_path(),
+  });
+}
+
+/// 入力読込 phase を実行する（production / test 共通）。
+///
+/// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは phase span と完了 event だけ。
+///
+/// # Errors
+///
+/// 設定・スタイル・文献・フォント・ソースの読込または検証に失敗した場合にエラーを返す。
+fn load_inputs(
+  source: &dyn ProjectSource,
+  root: &ProjectPath,
+  base_dir: &Path,
+) -> Result<CompilationInputs, CompileFailure> {
+  let _phase = info_span!("input").entered();
+  let stage_start = Instant::now();
+  let inputs = input::load(source, root.as_ref(), base_dir)?;
+  info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
+  return Ok(inputs);
+}
+
+/// [`run_pipeline`] が確定させた組版までの成果物。
+///
+/// `Publication` への変換・依存パスの収集・統計の算出は行わず、`compile` がこの値を受け取って
+/// 仕上げる。フォント資源は組版と描画資源の構築の両方が使うため、`LaidOutDocument` と一緒に運ぶ。
+struct PipelineArtifacts<'a> {
+  /// 組版と描画資源の構築が共有するフォント資源（`inputs` のフォントバイト列を借りる）
+  font_resources: FontResources<'a>,
+  /// 確定した組版結果
+  laid_out: LaidOutDocument,
+  /// フォント資源の構築で見つかった警告
+  font_warnings: Vec<FontWarning>,
+  /// 組版で見つかった警告
+  typeset_warnings: Vec<TypesetWarning>,
+}
+
+/// 検証済み入力から組版までの 4 phase（frontend / semantics / font / typeset）を実行する
+/// （production / test 共通）。
+///
+/// 各 phase の span・完了 event・診断への変換をここが所有し、`compile` と
+/// `layout_project_for_test`（テスト専用）は同じ実装を通る。
+///
+/// # Errors
+///
+/// パース・意味解析・フォント資源の構築・組版のいずれかに失敗した場合にエラーを返す。
+fn run_pipeline<'a>(
+  source: &dyn ProjectSource,
+  inputs: &'a CompilationInputs,
+) -> Result<PipelineArtifacts<'a>, CompileFailure> {
   let document = {
     let _phase = info_span!("frontend").entered();
     let stage_start = Instant::now();
-    let document = parse_project(&inputs)?;
+    let document = parse_project(inputs)?;
     info!(
       source_count = document.groups().len(),
       node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
@@ -165,30 +229,32 @@ pub fn compile<S: ProjectSource>(
     (laid_out, typeset_warnings)
   };
 
-  let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
-  let page_count = laid_out.pages.len();
-  let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
-  let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
-  let total_elapsed = build_start.elapsed();
-  let statistics = BuildStatistics {
-    page_count,
-    // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
-    total_elapsed_ms: u64::try_from(total_elapsed.as_millis()).unwrap_or(u64::MAX),
-  };
-  info!(
-    page_count = statistics.page_count,
-    warning_count = warnings.iter().count(),
-    elapsed = ?total_elapsed,
-    "文書をコンパイル"
-  );
-
-  return Ok(Compilation {
-    publication,
-    dependencies,
-    warnings,
-    statistics,
-    pdf_path: inputs.config().output.pdf_path(),
+  return Ok(PipelineArtifacts {
+    font_resources,
+    laid_out,
+    font_warnings,
+    typeset_warnings,
   });
+}
+
+/// 入力読込から組版までを production と同じ実装で通し、組版中間表現を取り出すテストヘルパ。
+///
+/// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
+/// `PlacedBlock` の幾何）を検査するテストだけが使う。phase の処理は再実装せず
+/// [`load_inputs`] と [`run_pipeline`] を呼ぶだけなので、`input::load` の横断検証を迂回できない。
+///
+/// # Errors
+///
+/// 入力読込または組版までのいずれかの phase が失敗した場合にエラーを返す。
+#[cfg(test)]
+fn layout_project_for_test(
+  source: &dyn ProjectSource,
+  root: &ProjectPath,
+  base_dir: &Path,
+) -> Result<LaidOutDocument, CompileFailure> {
+  let inputs = load_inputs(source, root, base_dir)?;
+  let artifacts = run_pipeline(source, &inputs)?;
+  return Ok(artifacts.laid_out);
 }
 
 /// 成功した `Compilation` と一緒に返す warning を、**入力の論理順**で 1 つに束ねる。
@@ -225,41 +291,6 @@ fn collect_warnings(
 fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailure> {
   let document = HirDocument::assemble(parse_all_sources(inputs.sources())?);
   return Ok(document);
-}
-
-/// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
-#[cfg(test)]
-fn build_pages(
-  config: &ProjectConfig,
-  style: &Style,
-  references: &Arc<References>,
-  font_data: &FontData,
-) -> Result<LaidOutDocument, CompileFailure> {
-  let source = FilesystemProjectSource::new();
-  return build_pages_with_source(&source, config, style, references, font_data);
-}
-
-/// パースからページ確定までを、指定した [`crate::project::ProjectSource`] 経由で実行するテストヘルパ。
-///
-/// `MemoryProjectSource` を渡すと実ファイルシステムに触れずに組版できる
-/// （2 実装が同じ結果を返すことの検証用。issue #300）。
-#[cfg(test)]
-fn build_pages_with_source(
-  source: &dyn ProjectSource,
-  config: &ProjectConfig,
-  style: &Style,
-  references: &Arc<References>,
-  font_data: &FontData,
-) -> Result<LaidOutDocument, CompileFailure> {
-  let inputs =
-    CompilationInputs::from_parts(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let document = parse_project(&inputs)?;
-  let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
-    .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-  let (font_resources, _) = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::from)?;
-  return typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
-    .map(|(laid_out, _)| return laid_out)
-    .map_err(CompileFailure::from);
 }
 
 /// 全ソースをパースし、パース・評価エラーを集約する。
