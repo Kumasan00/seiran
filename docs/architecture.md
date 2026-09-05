@@ -1259,19 +1259,20 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 （`LinkStart` / `LinkEnd` と同じ運搬パターン）にし、本文中には何も残さない。索引語（`LayoutNode::IndexMark`）
 も同じく `HItem::IndexMark`（幅 0・分割不可）にする。脚注と異なり索引語は本体の再配置が不要で、
 `breaking::break_lines` が `Line::index_marks` へ素通しし、`break_pages` がその行の所属ページへ
-(word, reading) を重複除去つきで集約する（`Page::index_entries`）。集約の入口は
-`PageComposer::push_index_entry` 1 つで、そこへ流し込む収集点が 3 箇所ある（#510）— 本文行
-（`place_paragraph` / `place_single_line`）・脚注本体の行（`end_region` が脚注をページ下部へ確定させる
-ループ。行単位のページ繰越はそのまま繰越先ページへの帰属になる）・表の本体行（`place_table` の flush。
-行分割を通らない `TableCellBox::items` を直接舐める。`\head` 行は改ページのたび再描画される複製なので
-除く）。3 経路とも同じページの同じ集合へ入るので、ページ内の重複畳みは経路をまたいで効く。
+(word, reading) を重複除去つきで集約する（`Page::index_entries`）。集約と重複除去は `break_pages` の
+非公開子 module `page_draft` の `PageDraft` が所有し、着地点ごとの高水準操作の内側で行う（#524）— 本文行
+（`place_paragraph` / `place_single_line` → `PageDraft::place_line`）・脚注本体の行（`PageDraft::close_region`
+が脚注をページ下部へ確定させるループ。行単位のページ繰越はそのまま繰越先ページへの帰属になる）・表の
+本体行（`place_table` の断片 flush → `PageDraft::place_table_fragment`。行分割を通らない
+`TableCellBox::items` を直接舐める。`\head` 行は改ページのたび再描画される複製なので除く）。3 経路とも
+同じページの同じ集合へ入るので、ページ内の重複畳みは経路をまたいで効く（#510）。
 
 `Line` を通る 2 経路（本文行・脚注本体の行）では、リンク矩形（`Line::links` → `Page::links`）も
-索引語とまったく同じ規則で帰属が決まる — 行が着地したページのもの。両者を別々に呼んでいたために
-脚注本体の行でリンクだけが集められていなかった（#515）ので、収集の呼び出しは
-`PageComposer::collect_line_marks` 1 つに束ね、行が置かれると確定した点からはこの関数だけを呼ぶ。
-表の本体行は `Line` を通らないため、リンクは `collect_row_links`・索引語は `collect_row_index_entries`
-と個別のままである。
+索引語とまったく同じ規則で帰属が決まる — 行が着地したページのもの。かつては配置経路ごとに収集関数を
+呼ぶ約束だったため、脚注本体の行でリンクだけが集められていなかった（#515）。いまは `Line` から帰属
+データを導出する知識が `PageDraft` の内側にあり、配置経路は「行を置いた」と伝えるだけで、片方だけ
+足し忘れる形が構造的に無い。表の本体行は `Line` を通らないため、`place_table_fragment` が
+`collect_row_links` とセル走査で同じ台帳 entry へ導出する（head 行はリンクを持ち、索引語は集めない）。
 
 > **要点**: `AnchorMark`（見出し・ラベル付きブロックの到達先）と違い `IndexMark` は段落を分割しない。
 > `\pagebreak` / `\ref` の `AnchorMark` はブロック境界でしか発行されないが、`\index` は段落内の任意の位置に
@@ -1324,33 +1325,44 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
   index）のタプル。**純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
   `bool` で返すだけ**で、ページ番号・脚注番号を添えて記録するのは `PageComposer` の責務 —
   計画は widow / orphan 補正で何度も立て直されるので、確定した配置ループからしか記録しないことで
-  重複を構造的に防ぐ（#382）。可変状態を持たない純粋な計算は 2 つの非公開 child module に閉じる
+  重複を構造的に防ぐ（#382）。非公開 child module は 3 つ — 純粋な計算 2 つと、現在ページの台帳 1 つ
   - `paragraph_plan`（非公開。親へ出すのは `plan_paragraph_lines` と `LinePlacement` だけ）:
     段落の行列に対する配置計画（ベースライン送り・脚注予約・widow / orphan 補正）。`PageComposer` を
     引数に取らず、カーソル位置・予約高さは呼び出し側が値に落として渡す。消費者は `place_paragraph` のみ
   - `footnote_packing`（非公開。`pub(super)`）: 脚注エリアへの詰め込み計算（`pack_footnotes` /
     `fit_line_footnotes`）と、その入出力の値型（`FootnoteCharges` / `FootnoteDemand`）。
     値を作るのは `place_paragraph`、消費するのは `paragraph_plan` と `PageComposer` の両方
+  - `page_draft`（非公開。`pub(super)`）: 現在ページの配置台帳 `PageDraft`（#524）。本文 block と、その
+    配置で確定したアンカー・リンク矩形を同じ entry に持ち、索引語のページ内重複除去・未解決アンカーの
+    保持とページ間持越し・脚注の確定座標化・下端揃え・`Page` への排出を所有する。台帳は 1 本
+    （本文 / 内容を伴わないアンカー着地 / 確定脚注の 3 種の entry）で、`Page::anchors` / `Page::links` の
+    「リージョンごとに本文 → 脚注」の順序をそのまま再現する。`PageComposer` は「行を置いた」「ブロックを
+    置いた」「表断片を置いた」「アンカーを着地させた」「リージョンを閉じた」「ページを確定した」を伝える
+    だけで、帰属データを自前で組み立てない。改ページ可否・widow / orphan・脚注の詰め込みは知らない
 
 **改ページ制御は glue（伸縮アキ）/ penalty（分割コスト）モデル**で、widow / orphan・keep-with-next・下端
-揃え（`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に不足
-高さ `page_limit − 下端` を段内の伸縮アキへ配置順ベースで比例配分する（末尾ページ・強制改ページ直前・伸縮
+揃え（`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region` →
+`PageDraft::close_region`）に不足高さ `region_limit − 下端` を、台帳の各 entry が持つ「先行 stretch 累積量」
+に比例して配分する。分母は最後の本文 block の先行累積量（それより後のアキは分母に入らない）。同じ entry
+の block / アンカー / リンクは同じ量だけ動き、脚注 entry は動かない（末尾ページ・強制改ページ直前・伸縮
 アキ 0 のリージョンは対象外）。
 
 **強制改ページは冪等**: `PENALTY_FORCE_BREAK`（見出しの `page_break_before` / `page_break_after` と
 `\pagebreak` の双方が発行する）は、内容（本文ブロックまたは確定脚注）を挟まない限りページ境界が 1 つに
 畳まれ、文書先頭・連続・末尾のいずれでも白紙ページを作らない（`PageComposer::start_new_page` と `finish`
-が同じ述語で判定する）。
+が `PageDraft::has_content` を同じ述語として使う。帰属データだけではページを作らず、未解決アンカーは
+`PageDraft` が次ページへ持ち越す）。
 
 **脚注のページ配置**（`Line::footnotes` → `Page::footnotes`）も `break_pages` が担う。行を確定するたびに
 その行に付いた脚注を行分割して高さを求め、リージョン（段）の実効下限
 （`PageComposer::region_limit` = `page_limit − region_footnote_height`）へ**即座に**織り込む — 遅延加算だと
-脚注込みで溢れる行が実効下限をすり抜けて本文と重なる。リージョンが閉じるとき（`end_region`）に確定座標へ
-変換して `Page::footnotes`（`PlacedFootnote` の列）へ積む。段組みでは脚注は段（リージョン）単位で独立する
+脚注込みで溢れる行が実効下限をすり抜けて本文と重なる。リージョンが閉じるとき（`end_region` →
+`PageDraft::close_region`）に確定座標へ変換して台帳へ積み、ページ確定時に `Page::footnotes`
+（`PlacedFootnote` の列）へ出す。段組みでは脚注は段（リージョン）単位で独立する
 （ページ全幅で共有しない）が、`Page::footnotes` はページ単位でまとまるため、ページ単位採番の基準は段では
 なくページになる。本体は段幅で行分割され、行の x は行頭（段左端）基準のまま運ばれるので、着地する段が
-確定する `end_region` で区切り罫線・到達先アンカーと同じ段オフセットを `Line::shift_x` で加える（#518）。
-リンク矩形の収集はこの加算の後に行うため、クリック領域は常にテキストの実描画位置と一致する。`PlacedFootnote` は表示番号（`number`）と出現 index（`index`）の両方を運ぶ — 前者は既に
+確定する `PageDraft::close_region` で区切り罫線・到達先アンカーと同じ段オフセットを `Line::shift_x` で加える
+（#518）。リンク矩形の導出はこの加算の後に行うため、クリック領域は常にテキストの実描画位置と一致する。`PlacedFootnote` は表示番号（`number`）と出現 index（`index`）の両方を運ぶ — 前者は既に
 マーカーのグリフとして焼き込み済みの値、後者は採番方式に依らない同一性。
 
 #### 長い脚注のページ間分割（繰越）
@@ -1364,7 +1376,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
   inert（既存 golden がバイト不変）。
 - **詰め込みの算術は `pack_footnotes` 1 箇所**: 「予算に何行入るか」を決めるのはこの純粋関数だけで、行の
   自前脚注の分割判定（`place_lines`）と繰越の詰め込み（`PageComposer::seed_carry`）が共用する。高さの漸化式
-  （`FootnoteDemand::new`）は `end_region` の確定配置と一致していなければならない（1 行でもずれると本文と
+  （`FootnoteDemand::new`）は `PageDraft::close_region` の確定配置と一致していなければならない（1 行でもずれると本文と
   脚注が重なる）。マーカーのある行と脚注の先頭は同じページに置く規則のため、全脚注に最低 1 行を割り当て
   られないときだけ `None` を返し、呼び出し側が従来どおり行ごと次リージョンへ送る。
 - **繰越はリージョン入口で 1 リージョンぶんずつ詰め、本文は追い出さない**: `seed_carry` が
