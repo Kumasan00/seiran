@@ -7,10 +7,8 @@ use crate::{
   style::TextAlignment,
   typeset::{
     boxes::{
-      Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK,
-      PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
-      PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableBox, TableRowBox, collect_row_links,
-      max_font_size_in_items, position_table_row_boxes, resolve_column_widths, table_row_height,
+      Align, Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedBlock,
+      PlacedMathNumber, TableBox, TableRowBox, resolve_column_widths, table_row_height,
     },
     breaking::break_lines::LineBreaker,
     geometry::column_width,
@@ -18,9 +16,11 @@ use crate::{
 };
 
 mod footnote_packing;
+mod page_draft;
 mod paragraph_plan;
 
 use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
+use page_draft::{PageDraft, PendingTableRow, TableFrame};
 use paragraph_plan::plan_paragraph_lines;
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
@@ -96,20 +96,16 @@ pub(crate) enum FootnoteOverflowKind {
   },
 }
 
-/// 縦組版の内部状態（現在ページ・カーソル）
+/// 縦組版の内部状態（確定ページ列・カーソル・脚注の予約と繰越）
+///
+/// ページ帰属データ（アンカー・リンク・索引語）の収集、下端揃えの座標補正、`Page` の排出は
+/// `draft`（[`PageDraft`]）が所有する。ここは改段・改ページの判断と脚注の予約・繰越だけを持ち、
+/// 「この内容の着地が確定した」時点で `draft` の操作を呼ぶ。
 struct PageComposer {
   /// 確定済みページ
   pages: Vec<Page>,
-  /// 現在ページに配置済みのブロック
-  current: Vec<PlacedBlock>,
-  /// 現在ページに解決済みのリンク到達先アンカー（機構 A）
-  current_anchors: Vec<PlacedAnchor>,
-  /// 現在ページに確定済みのクリック可能リンク領域（機構 B）
-  current_links: Vec<PlacedLink>,
-  /// 現在ページに確定済みの索引語（重複除去済み、出現順）
-  current_index_entries: Vec<PlacedIndexEntry>,
-  /// 未解決のアンカー。次に配置される実ブロックの確定座標で解決する
-  pending_anchors: Vec<AnchorMark>,
+  /// 現在ページの配置台帳
+  draft: PageDraft,
   /// カーソル位置（ページ上端からの距離、pt）。基本は「次のベースライン位置」
   y: Length,
   /// 直前のブロックが底辺基準（画像・表）で終わったか
@@ -124,25 +120,12 @@ struct PageComposer {
   col: usize,
   /// 直前の [`Block::Penalty`] から引き継いだ分割コスト（次の内容ブロックの改ページ判定で参照）
   pending_penalty: i32,
-  /// 現在リージョン（段）の先頭 index（`current` 内）。下端揃え（#169）がここから末尾までを揃える。
-  region_start: usize,
-  /// 現在リージョンの先頭 index（`current_links` 内）。下端揃えでリンク矩形を本体と同量シフトする。
-  region_link_start: usize,
-  /// 現在リージョンの先頭 index（`current_anchors` 内）。下端揃えでアンカーを本体と同量シフトする。
-  region_anchor_start: usize,
-  /// 現在リージョンの伸縮アキ（下端揃え用）。各アキ通過時点の `current` / `current_links` /
-  /// `current_anchors` の要素数（＝そのアキより後に来る要素の開始 index）と stretch を記録し、
-  /// [`PageComposer::end_region`] が不足高さを配置順ベースで比例配分する。
-  region_glues: Vec<GlueMark>,
   /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）。[`PageComposer::end_region`] が
-  /// ページ下部の確定座標へ変換して `page_footnotes` へ移す。
+  /// `draft` へ渡し、`draft` がページ下部の確定座標へ変換する。
   region_footnotes: Vec<PendingFootnote>,
   /// 現在リージョンの脚注が占有する高さ（pt、脚注間・本文とのアキ込み）。0 は脚注なし。
   /// [`PageComposer::region_limit`] が本文の実効下限からこの分を差し引く。
   region_footnote_height: Length,
-  /// 現在ページに確定済みの脚注（複数リージョンにまたがり得る）。
-  /// ページ確定時（[`PageComposer::start_new_page`] / [`PageComposer::finish`]）に `Page::footnotes` へ渡す。
-  page_footnotes: Vec<PlacedFootnote>,
   /// 次リージョンへ繰り越す脚注の残り（#227、出現順）。
   carry: Vec<PendingFootnote>,
   /// 収まらないまま配置した脚注の記録（#382、検出順＝ページ順）。
@@ -165,28 +148,12 @@ struct PendingFootnote {
   leading: Length,
 }
 
-/// 下端揃え（#169）用の伸縮アキ記録
-struct GlueMark {
-  /// 伸長能力（pt）。配分の重み
-  stretch: Length,
-  /// このアキ記録時点の `current` の要素数（このアキより後のブロックはこの index 以降）
-  block_at: usize,
-  /// このアキ記録時点の `current_links` の要素数
-  link_at: usize,
-  /// このアキ記録時点の `current_anchors` の要素数
-  anchor_at: usize,
-}
-
 impl PageComposer {
   /// 先頭ページの初期状態で `PageComposer` を生成する
   fn new(geom: &PageGeometry, column_width: Length) -> Self {
     return PageComposer {
       pages: Vec::new(),
-      current: Vec::new(),
-      current_anchors: Vec::new(),
-      current_links: Vec::new(),
-      current_index_entries: Vec::new(),
-      pending_anchors: Vec::new(),
+      draft: PageDraft::new(),
       y: geom.margin_top,
       cursor_at_edge: false,
       num_columns: geom.num_columns.max(1),
@@ -194,13 +161,8 @@ impl PageComposer {
       column_gap: geom.column_gap,
       col: 0,
       pending_penalty: 0,
-      region_start: 0,
-      region_link_start: 0,
-      region_anchor_start: 0,
-      region_glues: Vec::new(),
       region_footnotes: Vec::new(),
       region_footnote_height: Length::ZERO,
-      page_footnotes: Vec::new(),
       carry: Vec::new(),
       overflows: Vec::new(),
     };
@@ -309,108 +271,21 @@ impl PageComposer {
     // （flush-bottom 対象ではないので `flush=false`。`advance_region` 経由の場合は既に確定済みで、
     // この呼び出しは無害な二重呼び出しになる）。
     self.end_region(geom, false);
-    if self.current.is_empty() && self.page_footnotes.is_empty() {
+    // 本文 block も確定脚注も無ければ白紙ページを作らない。未解決アンカーは `draft` が持ち越す
+    if !self.draft.has_content() {
       return;
     }
-    self.pages.push(Page {
-      blocks: std::mem::take(&mut self.current),
-      header: Vec::new(),
-      footer: Vec::new(),
-      footnotes: std::mem::take(&mut self.page_footnotes),
-      anchors: std::mem::take(&mut self.current_anchors),
-      links: std::mem::take(&mut self.current_links),
-      index_entries: std::mem::take(&mut self.current_index_entries),
-      background_color: geom.background_color,
-      content_origin_x: geom.content_origin_x,
-    });
+    self.pages.push(self.draft.take_page(geom));
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
     self.col = 0;
-    // ページ確定で `current` / `current_links` / `current_anchors` を空にしたので、次ページ先頭段の
-    // リージョン追跡を 0 から開始する。伸縮アキも新ページに持ち越さない。
-    self.region_start = 0;
-    self.region_link_start = 0;
-    self.region_anchor_start = 0;
-    self.region_glues.clear();
-  }
-
-  /// 未解決アンカーを確定座標 `(x, y)` で現在ページに解決する
-  fn resolve_pending_anchors(&mut self, x: Length, y: Length) {
-    for mark in self.pending_anchors.drain(..) {
-      self.current_anchors.push(PlacedAnchor { mark, x, y });
-    }
-  }
-
-  /// 行に付いた帰属データ（リンク矩形・索引語）をまとめて現在ページへ集める
-  ///
-  /// 行がどのページへ置かれるかが確定した点から**この 1 関数だけ**を呼ぶ。リンクと索引語は
-  /// 帰属の規則が同じ（行が着地したページのもの）なのに収集関数が分かれていたため、脚注本体の
-  /// 行を落とす経路で索引語だけが集められリンクが漏れていた（#515）。呼び出しを 1 本にして
-  /// 片方だけ足し忘れる形を無くす。
-  fn collect_line_marks(&mut self, line: &Line, baseline_y: Length) {
-    self.collect_line_links(line, baseline_y);
-    self.collect_line_index_entries(line);
-  }
-
-  /// 行のリンク領域を確定座標へ展開し、現在ページに追加する
-  fn collect_line_links(&mut self, line: &Line, baseline_y: Length) {
-    let top = baseline_y - line.height;
-    let height = line.height + line.depth;
-    for link in &line.links {
-      if link.x1 <= link.x0 {
-        continue;
-      }
-      self.current_links.push(PlacedLink {
-        target: link.target.clone(),
-        x: link.x0,
-        y: top,
-        width: link.x1 - link.x0,
-        height,
-      });
-    }
-  }
-
-  /// 索引語 1 件を現在ページの索引語集合へ加える
-  ///
-  /// 同一ページ内の同じ `(語, reading)` は 1 出現に畳む（#246 の規則）。本文行・脚注行・表の
-  /// 本体行のどこから来たマーカーも同じページの同じ集合へ入るので、畳みは経路をまたいで効く。
-  fn push_index_entry(&mut self, word: &str, reading: Option<&str>) {
-    let exists = self.current_index_entries.iter().any(|e| return e.word == word && e.reading.as_deref() == reading);
-    if !exists {
-      self.current_index_entries.push(PlacedIndexEntry {
-        word: word.to_string(),
-        reading: reading.map(str::to_string),
-      });
-    }
-  }
-
-  /// 行の索引語を現在ページの索引語集合へマージする
-  fn collect_line_index_entries(&mut self, line: &Line) {
-    for entry in &line.index_marks {
-      self.push_index_entry(&entry.word, entry.reading.as_deref());
-    }
-  }
-
-  /// 表の 1 行のセルに含まれる索引語を現在ページの索引語集合へマージする
-  ///
-  /// セルの内容は行分割を通らない（`TableCellBox::items` はフラットな `HItem` 列）ので
-  /// [`Line::index_marks`] の経路に乗らない。行が着地する段が決まった時点で呼ぶ。
-  fn collect_row_index_entries(&mut self, row: &TableRowBox) {
-    for cell in &row.cells {
-      for item in &cell.items {
-        if let HItem::IndexMark { word, reading } = item {
-          self.push_index_entry(word, reading.as_deref());
-        }
-      }
-    }
   }
 
   /// 全ブロックの配置後に最終ページを確定し、ページ列と脚注のはみ出し記録を返す
   fn finish(mut self, geom: &PageGeometry) -> (Vec<Page>, Vec<FootnoteOverflow>) {
     // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
-    let y = self.y;
     let x = self.column_offset();
-    self.resolve_pending_anchors(x, y);
+    self.draft.land_anchors(x, self.y);
     // 最終リージョンに残っている脚注を確定させる（flush-bottom 対象ではないので `flush=false`）
     self.end_region(geom, false);
     // 文書末尾の行で分割された脚注の繰越を出し切る。本文がもう無いので、繰越だけのリージョンを
@@ -423,182 +298,27 @@ impl PageComposer {
     }
     // 本文も確定脚注も無い末尾ページは push しない（`start_new_page` と同じ述語）。ただし 1 ページも
     // 確定していなければ push する（空文書でも最低 1 ページを返す `break_pages` の事後条件のため）。
-    if !self.pages.is_empty() && self.current.is_empty() && self.page_footnotes.is_empty() {
-      return (self.pages, self.overflows);
+    if self.pages.is_empty() || self.draft.has_content() {
+      self.pages.push(self.draft.take_page(geom));
     }
-    self.pages.push(Page {
-      blocks: self.current,
-      header: Vec::new(),
-      footer: Vec::new(),
-      footnotes: self.page_footnotes,
-      anchors: self.current_anchors,
-      links: self.current_links,
-      index_entries: self.current_index_entries,
-      background_color: geom.background_color,
-      content_origin_x: geom.content_origin_x,
-    });
     return (self.pages, self.overflows);
   }
 
-  /// 現在リージョン（段）を確定し、下端揃え（#169）が有効なら不足高さを段内の伸縮アキへ配分する。
+  /// 現在リージョン（段）を確定する。下端揃え（#169）の配分と脚注の確定座標化は `draft` が行う
+  ///
+  /// 脚注はリージョンが閉じるたびに常に確定する（flush-bottom の対象ではないため `flush` を問わない。
+  /// 強制改ページ・最終ページでも脚注を落とさない）。`region_footnotes` は分割済み（[`place_paragraph`] /
+  /// [`PageComposer::seed_carry`] が [`pack_footnotes`] の決めた行数へ切り詰め済み）なので、あるものを
+  /// そのまま渡すだけでよい。
   fn end_region(&mut self, geom: &PageGeometry, flush: bool) {
-    let glues = std::mem::take(&mut self.region_glues);
-    let region_start = self.region_start;
-    let link_start = self.region_link_start;
-    let anchor_start = self.region_anchor_start;
-    let has_blocks = region_start < self.current.len();
-    if flush && geom.flush_bottom && has_blocks && !glues.is_empty() {
-      let last_index = self.current.len() - 1;
-      // リージョン下端 = 段内ブロックの底辺の最大値（末尾ブロックが最下）。
-      let region_bottom = self.current[region_start..]
-        .iter()
-        .map(placed_block_bottom)
-        .fold(Length::from_sp(i64::MIN), Length::max);
-      // 脚注がこのリージョンにあれば、下端揃えの目標も版面下限ではなく脚注エリア手前
-      // （`region_limit`）にする（そうしないと本文が脚注エリアへ伸びて重なる）。
-      let deficit = self.region_limit(geom) - region_bottom;
-      // 分母 = 末尾ブロックより前に記録されたアキの stretch 合計（末尾アキは除く）。
-      let effective: Length = glues.iter().filter(|g| return g.block_at <= last_index).map(|g| return g.stretch).sum();
-      // 不足高さ・分母が正のときだけ配分する（負・ゼロは揃えても意味がないので自然高のまま）。
-      if deficit > FLUSH_EPSILON && effective.is_positive() {
-        let ratio = deficit.ratio(effective);
-        for (offset, block) in self.current[region_start..].iter_mut().enumerate() {
-          let idx = region_start + offset;
-          let stretch: Length = glues.iter().filter(|g| return g.block_at <= idx).map(|g| return g.stretch).sum();
-          shift_placed_block(block, stretch.scale(ratio));
-        }
-        for (offset, link) in self.current_links[link_start..].iter_mut().enumerate() {
-          let idx = link_start + offset;
-          let stretch: Length = glues.iter().filter(|g| return g.link_at <= idx).map(|g| return g.stretch).sum();
-          link.y += stretch.scale(ratio);
-        }
-        for (offset, anchor) in self.current_anchors[anchor_start..].iter_mut().enumerate() {
-          let idx = anchor_start + offset;
-          let stretch: Length = glues.iter().filter(|g| return g.anchor_at <= idx).map(|g| return g.stretch).sum();
-          anchor.y += stretch.scale(ratio);
-        }
-      }
-    }
-    // 脚注はリージョンが閉じるたびに常に確定する（flush-bottom の対象ではないため `flush` を問わない。
-    // 強制改ページ・最終ページでも脚注を落とさないようにする）。開始 Y は `region_limit`
-    // （脚注ぶんを差し引く前段、= 脚注エリアの上端）。区切り罫線は「このリージョンで最初の脚注」の
-    // 直前にのみ 1 本出す（`top_margin` + 罫線 + `rule_gap`）。2 個目以降は `rule_gap` のみを挟む
-    // （[`FootnoteCharges::entry_overhead`] の課金と対称になるよう揃える）。
-    //
-    // `region_footnotes` は分割済み（[`place_paragraph`] / [`PageComposer::seed_carry`] が
-    // [`pack_footnotes`] の決めた行数へ切り詰め済み）なので、ここは「あるものをそのまま積む」だけでよい。
-    // 高さの漸化式は見積り側（[`FootnoteDemand::new`]）と一致していなければならない
-    // （1 行でもずれると本文と脚注が重なる）。
-    if !self.region_footnotes.is_empty() {
-      let mut top = self.region_limit(geom);
-      let column_x = self.column_offset();
-      for (index, pending) in std::mem::take(&mut self.region_footnotes).into_iter().enumerate() {
-        let mut blocks = Vec::new();
-        if index == 0 {
-          top += geom.footnote_top_margin;
-          if geom.footnote_rule_thickness.is_positive() {
-            blocks.push(PlacedBlock::Rule {
-              x: column_x,
-              y: top,
-              width: geom.footnote_rule_length,
-              height: geom.footnote_rule_thickness,
-              color: geom.footnote_rule_color,
-            });
-            top += geom.footnote_rule_thickness;
-          }
-        }
-        top += geom.footnote_rule_gap;
-        // 繰越でない（＝本体先頭の、マーカーを持つ行を含む）断片だけに到達先アンカーを打つ。
-        // 長い脚注のページ間分割（#227）が入っても、本文中マーカーからは常に本体の先頭位置へ
-        // 飛べるようにするため。座標 `top` はこの箱の上端で、`collect_line_links` が定義する
-        // 「行 box の上端」（`baseline_y - line.height`）と同じ意味。
-        if !pending.continued {
-          self.current_anchors.push(PlacedAnchor {
-            mark: AnchorMark::Footnote(FootnoteId::new(pending.index)),
-            x: column_x,
-            y: top,
-          });
-        }
-        blocks.reserve(pending.lines.len());
-        let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| return line.height);
-        let mut prev_depth = Length::ZERO;
-        for (i, mut line) in pending.lines.into_iter().enumerate() {
-          if i > 0 {
-            baseline += pending.leading.max(prev_depth + line.height);
-          }
-          prev_depth = line.depth;
-          // 脚注本体は段幅で行分割されているが x は行頭基準のままなので、着地する段が確定した
-          // ここで段オフセットを足す（#518）。罫線・アンカーが同じ `column_x` を使うのと対称。
-          line.shift_x(column_x);
-          // 脚注の行がこのリージョン（＝このページ）へ置かれることが確定するのはここだけなので、
-          // リンク矩形・索引語の帰属もここで決める。行単位のページ繰越（#227）で次ページへ
-          // 送られた行は、送り先のリージョンでこのループを通るため、繰越先ページへ帰属する。
-          //
-          // 段オフセットを足した**後**に収集するので、クリック矩形は脚注テキストの実描画位置と一致する。
-          self.collect_line_marks(&line, baseline);
-          blocks.push(PlacedBlock::Line {
-            line,
-            baseline_y: baseline,
-          });
-        }
-        top = baseline + prev_depth;
-        self.page_footnotes.push(PlacedFootnote {
-          number: pending.number,
-          index: pending.index,
-          continued: pending.continued,
-          blocks,
-        });
-      }
+    let footnotes = std::mem::take(&mut self.region_footnotes);
+    let had_footnotes = !footnotes.is_empty();
+    let column_x = self.column_offset();
+    let region_limit = self.region_limit(geom);
+    self.draft.close_region(geom, column_x, region_limit, flush, footnotes);
+    if had_footnotes {
       self.region_footnote_height = Length::ZERO;
     }
-    self.region_start = self.current.len();
-    self.region_link_start = self.current_links.len();
-    self.region_anchor_start = self.current_anchors.len();
-  }
-}
-
-/// 下端揃え（#169）で配分を行う不足高さの下限（pt）。これ未満は浮動小数の誤差とみなし揃えない。
-const FLUSH_EPSILON: Length = Length::from_sp(66);
-
-/// [`PlacedBlock`] の底辺（ページ上端からの距離、pt）を返す。下端揃えのリージョン下端算出に使う。
-fn placed_block_bottom(block: &PlacedBlock) -> Length {
-  return match block {
-    PlacedBlock::Line { line, baseline_y } => *baseline_y + line.depth,
-    PlacedBlock::MathBlock {
-      body, baseline_y, ..
-    } => *baseline_y + body.depth,
-    PlacedBlock::Image { y, height, .. } | PlacedBlock::Rule { y, height, .. } => *y + *height,
-    PlacedBlock::Table { rows, .. } => rows.last().map_or(Length::from_sp(i64::MIN), |r| return r.top_y + r.height),
-  };
-}
-
-/// [`PlacedBlock`] とその内部の確定座標を下方へ `dy` だけずらす（下端揃えの配分で使う）。
-fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
-  if dy == Length::ZERO {
-    return;
-  }
-  match block {
-    PlacedBlock::Line { baseline_y, .. } => *baseline_y += dy,
-    PlacedBlock::MathBlock {
-      baseline_y,
-      numbers,
-      ..
-    } => {
-      *baseline_y += dy;
-      for number in numbers {
-        number.baseline_y += dy;
-      }
-    },
-    PlacedBlock::Image { y, .. } | PlacedBlock::Rule { y, .. } => *y += dy,
-    PlacedBlock::Table { rows } => {
-      for row in rows {
-        row.top_y += dy;
-        row.baseline_y += dy;
-        if let Some(rule) = &mut row.rule {
-          rule.y += dy;
-        }
-      }
-    },
   }
 }
 
@@ -666,18 +386,11 @@ pub(crate) fn break_pages(
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
       },
-      // 伸縮アキ。カーソルへは自然値のみ加算する（下端揃え無効時は VSpace と同一挙動）。stretch を持つ
-      // アキは下端揃え（#169）用に配置順（各配置ベクタの現在長）と stretch を記録しておき、リージョン確定時に
-      // 不足高さを配分する。cursor_at_edge は触らない（アキはフラグを変えない）。
+      // 伸縮アキ。カーソルへは自然値のみ加算する（下端揃え無効時は VSpace と同一挙動）。stretch は
+      // 下端揃え（#169）の配分重みとして台帳に累積させ、リージョン確定時に不足高さを配分する。
+      // cursor_at_edge は触らない（アキはフラグを変えない）。
       Block::Glue { natural, stretch } => {
-        if stretch != Length::ZERO {
-          composer.region_glues.push(GlueMark {
-            stretch,
-            block_at: composer.current.len(),
-            link_at: composer.current_links.len(),
-            anchor_at: composer.current_anchors.len(),
-          });
-        }
+        composer.draft.pass_stretch(stretch);
         composer.y += natural;
       },
       // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限は次の内容ブロックへ持ち越す。
@@ -703,15 +416,19 @@ pub(crate) fn break_pages(
         let penalty = composer.take_pending_penalty();
         composer.consider_break(height, penalty, geom);
         let col_off = composer.column_offset();
-        composer.resolve_pending_anchors(col_off, composer.y);
-        composer.current.push(PlacedBlock::Image {
-          path,
-          x: col_off + align.offset(col_width, width),
-          y: composer.y,
-          width,
-          height,
-          target_dpi,
-        });
+        let y = composer.y;
+        composer.draft.place_block(
+          PlacedBlock::Image {
+            path,
+            x: col_off + align.offset(col_width, width),
+            y,
+            width,
+            height,
+            target_dpi,
+          },
+          col_off,
+          y,
+        );
         composer.y += height;
         composer.cursor_at_edge = true;
       },
@@ -728,9 +445,9 @@ pub(crate) fn break_pages(
         place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width);
         composer.cursor_at_edge = true;
       },
-      // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため pending に積む
+      // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため台帳に未解決として積む
       Block::Anchor(mark) => {
-        composer.pending_anchors.push(mark);
+        composer.draft.defer_anchor(mark);
       },
     }
     i += 1;
@@ -983,7 +700,7 @@ fn place_paragraph(
     let chunk_lines: Vec<Line> = lines.drain(..chunk_len).collect();
     let chunk_bodies: Vec<Vec<PendingFootnote>> = bodies.drain(..chunk_len).collect();
     demands.drain(..chunk_len);
-    for (i, ((mut line, footnotes), placement)) in chunk_lines.into_iter().zip(chunk_bodies).zip(plan).enumerate() {
+    for ((mut line, footnotes), placement) in chunk_lines.into_iter().zip(chunk_bodies).zip(plan) {
       if placement.starts_region {
         composer.advance_region(geom);
       }
@@ -1001,10 +718,6 @@ fn place_paragraph(
       last_baseline = baseline;
       let col_off = composer.column_offset();
       line.shift_x(col_off);
-      if is_paragraph_start && i == 0 {
-        composer.resolve_pending_anchors(col_off, baseline - line.height);
-      }
-      composer.collect_line_marks(&line, baseline);
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
         let (head, tail) = split_pending(footnote, placed);
         if let Some(head) = head {
@@ -1015,10 +728,8 @@ fn place_paragraph(
         }
       }
       composer.region_footnote_height = placement.reserved_after;
-      composer.current.push(PlacedBlock::Line {
-        line,
-        baseline_y: baseline,
-      });
+      // 行の着地が確定した。未解決アンカー（段落先頭でだけ非空）はこの行の上端で解決される
+      composer.draft.place_line(line, baseline, col_off);
     }
     is_paragraph_start = false;
     // 打ち切った chunk の続きがあるなら、改リージョンして繰越を詰めてから次の chunk を計画する。
@@ -1044,12 +755,7 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
   }
   let col_off = composer.column_offset();
   line.shift_x(col_off);
-  composer.resolve_pending_anchors(col_off, baseline - line.height);
-  composer.collect_line_marks(&line, baseline);
-  composer.current.push(PlacedBlock::Line {
-    line,
-    baseline_y: baseline,
-  });
+  composer.draft.place_line(line, baseline, col_off);
   composer.y = baseline + leading;
   composer.cursor_at_edge = false;
 }
@@ -1070,10 +776,10 @@ fn place_math_block(
     composer.advance_region(geom);
   }
   let col_off = composer.column_offset();
-  composer.resolve_pending_anchors(col_off, composer.y);
+  let top = composer.y;
 
   let x = col_off + align.offset(column_width, body.width);
-  let baseline_y = composer.y + body.height;
+  let baseline_y = top + body.height;
   let placed_numbers: Vec<PlacedMathNumber> = numbers
     .into_iter()
     .map(|n| {
@@ -1091,25 +797,18 @@ fn place_math_block(
     })
     .collect();
 
-  composer.current.push(PlacedBlock::MathBlock {
-    body,
-    x,
-    baseline_y,
-    numbers: placed_numbers,
-  });
+  // 未解決アンカーは数式の上端（`top`）で解決する（block の baseline ではない）
+  composer.draft.place_block(
+    PlacedBlock::MathBlock {
+      body,
+      x,
+      baseline_y,
+      numbers: placed_numbers,
+    },
+    col_off,
+    top,
+  );
   composer.y += total_height;
-}
-
-/// ページ内の着地段が確定するまで保持する表の 1 行
-struct PendingTableRow {
-  /// シェーピング済みの行内容
-  row: TableRowBox,
-  /// 行帯のページ上端からの距離
-  top_y: Length,
-  /// 行帯の高さ
-  height: Length,
-  /// `\head` 行か（改ページのたびに再描画される複製なので索引語を収集しない）
-  is_head: bool,
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
@@ -1136,9 +835,18 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     composer.advance_region(geom);
   }
 
-  // 表先頭の確定位置（改段・改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する
-  composer.resolve_pending_anchors(composer.column_offset(), composer.y);
+  // 表先頭の確定位置（改段・改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する。
+  // 最初の行の fit 判定より前なので、最初の行が次リージョンへ送られる場合はここ（前リージョン）に残る（#525）
+  let col_off = composer.column_offset();
+  composer.draft.land_anchors(col_off, composer.y);
 
+  let frame = TableFrame {
+    columns: &table.columns,
+    col_widths: &col_widths,
+    cell_padding: geom.table_cell_padding,
+    rule_thickness: geom.table_rule_thickness,
+    rule_color: geom.table_rule_color,
+  };
   let mut pending_rows: Vec<PendingTableRow> = Vec::new();
   // head 行・本体行・改ページ後のヘッダ再描画を同じ経路へ積む。セルの絶対 x は
   // 着地段が決まる flush 時に確定する。
@@ -1151,65 +859,11 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
         is_head,
       });
     };
-  // 現在の pending_rows を、セル内容・リンク・罫線の絶対座標まで確定した表断片へ変換する。
-  // 断片の x は着地段のオフセット + 段内揃えオフセット（flush は advance_region の前に
-  // 呼ばれるので column は正しい）。
+  // 現在の pending_rows を表断片として台帳へ着地させる。断片の x は着地段のオフセット + 段内揃え
+  // オフセット（flush は advance_region の前に呼ばれるので column は正しい）。
   let flush = |composer: &mut PageComposer, pending_rows: &mut Vec<PendingTableRow>| {
-    if pending_rows.is_empty() {
-      return;
-    }
-    let table_x = composer.column_offset() + table_align_offset;
-    let table_width: Length = col_widths.iter().copied().sum();
-    let taken = std::mem::take(pending_rows);
-    // 索引語は行の着地段が決まったこの時点で収集する。`\head` 行は改ページのたびに再描画される
-    // 複製なので除く（frontend が `\head` セル内の `\index` を拒否するので実際には空だが、
-    // 再描画のたびに同じ語を積まないことをここでも保証する）。座標を作る下の map より前に回すのは、
-    // map のクロージャが `composer` の別フィールドだけを掴むようにするため。
-    for pending in taken.iter().filter(|pending| return !pending.is_head) {
-      composer.collect_row_index_entries(&pending.row);
-    }
-    let rows = taken.into_iter().map(|pending| {
-      let mut boxes = position_table_row_boxes(&pending.row, &table.columns, &col_widths, geom.table_cell_padding);
-      for positioned in &mut boxes {
-        positioned.x += table_x;
-      }
-      for link in collect_row_links(&pending.row, &table.columns, &col_widths, geom.table_cell_padding) {
-        if link.x1 <= link.x0 {
-          continue; // 退化矩形はスキップ（collect_line_links と同じ規則）
-        }
-        composer.current_links.push(PlacedLink {
-          target: link.target,
-          x: table_x + link.x0,
-          y: pending.top_y,
-          width: link.x1 - link.x0,
-          height: pending.height,
-        });
-      }
-      let baseline_offset = pending
-        .row
-        .cells
-        .iter()
-        .filter_map(|cell| return max_font_size_in_items(&cell.items))
-        .reduce(Length::max)
-        .unwrap_or(pending.height);
-      let rule = pending.row.rule_above.then_some(PlacedTableRule {
-        x: table_x,
-        y: pending.top_y,
-        width: table_width,
-        height: geom.table_rule_thickness,
-        color: geom.table_rule_color,
-      });
-      return PlacedTableRow {
-        top_y: pending.top_y,
-        height: pending.height,
-        baseline_y: pending.top_y + baseline_offset,
-        boxes,
-        rule,
-      };
-    });
-    composer.current.push(PlacedBlock::Table {
-      rows: rows.collect(),
-    });
+    let x = composer.column_offset() + table_align_offset;
+    composer.draft.place_table_fragment(std::mem::take(pending_rows), &frame, x);
   };
 
   for (row, height) in table.head.iter().zip(&head_heights) {
@@ -1239,7 +893,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 mod tests {
   use super::{
     FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind, PageGeometry, break_pages,
-    is_content_block, keep_group_end, pack_footnotes, placed_block_bottom,
+    is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
