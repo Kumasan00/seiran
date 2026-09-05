@@ -46,7 +46,7 @@ tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "local-time"] }
 unic-langid = "0.9.6"
-usvg = "0.47.0"
+usvg = "0.48.1"
 
 # lint の採用根拠の正典はここ（1 lint = 1 行の根拠コメント）。節見出しは lint を有効化する**目的**で、
 # 目的に載らない lint は採らない。1 つの lint が 2 つの目的に載るときの置き場は 1 規則 — 根拠コメントが
