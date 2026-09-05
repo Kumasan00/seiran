@@ -4183,4 +4183,191 @@ mod tests {
     // Assert
     assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
   }
+
+  #[test]
+  fn flush_bottom_shifts_each_element_by_its_own_preceding_stretch() {
+    // Arrange — 伸縮アキ 2 個の前・間・後に行（リンク付き）とアンカーを置く。
+    // 不足 = 50 − 44 = 6、分母 = 末尾行より前の stretch 8 → ratio 0.75。
+    // 先行 stretch が 0 / 4 / 8 の要素はそれぞれ +0 / +3 / +6 動く
+    use crate::typeset::boxes::AnchorMark;
+    let geom = flush_geometry();
+    let link = || return Some(LinkTarget::External("https://example.com".to_string()));
+    let blocks = vec![
+      Block::Anchor(AnchorMark::Label(LabelId::new("a0"))),
+      composed_line(20.0, 8.0, 2.0, link()), // baseline 10（先行 stretch 0）
+      Block::stretchable_space(pt(4.0), pt(4.0)),
+      Block::Anchor(AnchorMark::Label(LabelId::new("a1"))),
+      composed_line(20.0, 8.0, 2.0, link()), // baseline 26（先行 stretch 4）
+      Block::stretchable_space(pt(4.0), pt(4.0)),
+      composed_line(20.0, 8.0, 2.0, link()), // baseline 42・下端 44（先行 stretch 8）
+      fixed_block(30.0),                     // 溢れて改ページ（1 ページ目を確定＝下端揃え発火）
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 29.0, 48.0]));
+    let anchor_ys: Vec<Length> = pages[0].anchors.iter().map(|a| return a.y).collect();
+    assert_eq!(anchor_ys, pts(&[2.0, 21.0]), "アンカーは同じ着地の行と同量だけ動く: {:?}", pages[0].anchors);
+    let link_ys: Vec<Length> = pages[0].links.iter().map(|l| return l.y).collect();
+    assert_eq!(link_ys, pts(&[2.0, 21.0, 40.0]), "リンク矩形は自分の行と同量だけ動く: {:?}", pages[0].links);
+  }
+
+  #[test]
+  fn flush_bottom_leaves_footnote_links_and_anchors_unshifted() {
+    // Arrange — 2 行目は本文リンクと 1 行脚注（リンク付き）を持つ。脚注エリア 14（gap 4 + 行 10）で
+    // region_limit = 36、不足 = 36 − 28 = 8、分母 = 先行 stretch 4 → ratio 2、2 行目は +8。
+    // 脚注は region_limit 36 + gap 4 = 40 から組まれ、揃えでは動かない
+    use crate::typeset::boxes::AnchorMark;
+    let geom = flush_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1), // baseline 10
+      Block::stretchable_space(pt(4.0), pt(4.0)),
+      single_line_paragraph(vec![
+        HItem::LinkStart(LinkTarget::Internal(AnchorId::Label(LabelId::new("body")))),
+        test_box(),
+        HItem::LinkEnd,
+        footnote_of_lines_with_link_at(1, 1, 0, "https://example.com"),
+      ]), // baseline 26 → 揃え後 34
+      fixed_block(30.0), // 溢れて改ページ
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 34.0]));
+    let body_link = pages[0]
+      .links
+      .iter()
+      .find(|l| return matches!(l.target, LinkTarget::Internal(_)))
+      .expect("本文リンクがあるはず");
+    assert!(close(body_link.y, 26.0), "本文リンクは行と一緒に +8 動く: {body_link:?}");
+    assert_eq!(footnote_baselines(&pages[0], 1), pts(&[48.0]), "脚注本体は揃えで動かない");
+    let footnote_links = external_links(&pages[0], "https://example.com");
+    assert_eq!(footnote_links.len(), 1, "{:?}", pages[0].links);
+    assert!(close(footnote_links[0].y, 40.0), "脚注のリンクは脚注行の上端のまま: {:?}", footnote_links[0]);
+    let footnote_anchor = pages[0]
+      .anchors
+      .iter()
+      .find(|a| return matches!(a.mark, AnchorMark::Footnote(_)))
+      .expect("脚注先頭のアンカーがあるはず");
+    assert!(close(footnote_anchor.y, 40.0), "脚注のアンカーは脚注の上端のまま: {footnote_anchor:?}");
+  }
+
+  /// 1 列 1 行、セルが「リンクで包んだ `text` の箱 + 索引マーカー」の表の行を作る
+  fn table_row_with_link_and_index(text: &str, uri: &str, word: &str) -> TableRowBox {
+    let mut row = table_row(text);
+    let items = &mut row.cells[0].items;
+    items.insert(0, HItem::LinkStart(LinkTarget::External(uri.to_string())));
+    items.push(HItem::LinkEnd);
+    items.push(index_mark_item(word, None));
+    return row;
+  }
+
+  #[test]
+  fn table_head_keeps_links_on_each_fragment_but_never_collects_index() {
+    // Arrange — head 1 行 + 本体 5 行（行高 10）は 2 ページに割れ、2 ページ目の先頭に head が再描画される
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: vec![table_row_with_link_and_index(
+        "HEAD",
+        "https://example.com",
+        "ヘッダ語",
+      )],
+      rows: (0..5).map(|i| return table_row(&format!("R{i}"))).collect(),
+      breakable: true,
+    };
+
+    // Act
+    let (pages, _) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+      TextAlignment::RaggedRight,
+    );
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    for (index, page) in pages.iter().enumerate() {
+      let links = external_links(page, "https://example.com");
+      assert_eq!(links.len(), 1, "page {index}: head のリンクは断片ごとに 1 つ: {:?}", page.links);
+      assert!(close(links[0].y, 10.0), "page {index}: head は各断片の先頭行: {:?}", links[0]);
+      assert!(close(links[0].height, 10.0), "page {index}: {:?}", links[0]);
+      assert!(page.index_entries.is_empty(), "page {index}: head の索引語は集めない: {:?}", page.index_entries);
+    }
+  }
+
+  #[test]
+  fn pending_anchor_before_breakable_table_stays_at_table_start_when_first_row_moves() {
+    // Arrange — 3 行段落の後（y=46）で表を開始するが、最初の行（高さ 10）は収まらず次ページへ送られる。
+    // 現行 `place_table` は行の fit 判定より前にアンカーを解決するので、アンカーは表の実配置ページ
+    // （2 ページ目）ではなく 1 ページ目の y=46 に残る。これは現行挙動の固定（characterization）であって
+    // 意図した位置ではない — 修正は #525 で扱う
+    use crate::typeset::boxes::AnchorMark;
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![table_row("R0"), table_row("R1")],
+      breakable: true,
+    };
+    let blocks = vec![
+      paragraph_of_lines(3),
+      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(first_table_row_text(&pages[0]), None, "表は 1 ページ目に無い");
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R0"));
+    assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
+    assert!(close(pages[0].anchors[0].y, 46.0), "{:?}", pages[0].anchors[0]);
+    assert!(pages[1].anchors.is_empty(), "{:?}", pages[1].anchors);
+  }
+
+  #[test]
+  fn pending_anchor_survives_suppressed_blank_page() {
+    // Arrange — アンカーの後ろに強制改ページが 2 連続。1 つ目で 1 ページ目が確定し、2 つ目は内容が無いので
+    // 白紙ページを作らない。その間アンカーは未解決のまま保持され、次の段落の先頭で 2 ページ目に解決する
+    use crate::typeset::boxes::AnchorMark;
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::Anchor(AnchorMark::Label(LabelId::new("x"))),
+      Block::force_break(),
+      Block::force_break(),
+      paragraph_of_lines(1),
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert!(pages[0].anchors.is_empty(), "{:?}", pages[0].anchors);
+    assert_eq!(pages[1].anchors.len(), 1, "{:?}", pages[1].anchors);
+    assert!(close(pages[1].anchors[0].y, 2.0), "{:?}", pages[1].anchors[0]);
+  }
 }
