@@ -1,21 +1,20 @@
 //! 文献引用テスト用のフィクスチャ。
 
-use std::{
-  io::Write,
-  path::{Path, PathBuf},
-};
+use std::{io::Write, path::Path};
 
 use crate::{
-  project::FilesystemProjectSource,
+  project::{FilesystemProjectSource, ProjectPath},
   semantics::{References, read_references},
 };
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
-pub(crate) fn ieee_csl_path() -> PathBuf {
-  return Path::new(env!("CARGO_MANIFEST_DIR"))
-    .join("tests/data/ieee.csl")
-    .canonicalize()
-    .expect("tests/data/ieee.csl が存在するはず");
+pub(crate) fn ieee_csl_path() -> ProjectPath {
+  return ProjectPath::new(
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+      .join("tests/data/ieee.csl")
+      .canonicalize()
+      .expect("tests/data/ieee.csl が存在するはず"),
+  );
 }
 
 /// 書籍 1 件（`kwan2014`）・論文 1 件（`doe2020`）を含む `References` を一時ファイル経由で読み込む。

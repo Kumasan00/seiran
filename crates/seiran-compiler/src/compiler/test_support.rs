@@ -258,14 +258,13 @@ impl TestProjectBuilder {
     source = source_with_fonts;
 
     for path in [
-      style.reference.csl_path.as_deref(),
-      style.reference.locale_path.as_deref(),
+      style.reference.csl_path.as_ref(),
+      style.reference.locale_path.as_ref(),
     ]
     .into_iter()
     .flatten()
     {
-      let bytes =
-        fs::read(root.join(path)).unwrap_or_else(|error| panic!("CSL 資産を読めるはず: {}: {error}", path.display()));
+      let bytes = fs::read(root.join(path)).unwrap_or_else(|error| panic!("CSL 資産を読めるはず: {path}: {error}"));
       // `style.toml` が持つ CSL パスも他の資源と同じくワークスペース相対なので、同じ規則で前置する
       source = source.with_bytes(self.key(path), bytes);
     }

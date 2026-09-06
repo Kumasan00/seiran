@@ -24,7 +24,7 @@ use crate::{
   failures::Failures,
   project,
   project::{
-    FontData, ProjectSource, SourceSet,
+    FontData, PathResolver, ProjectSource, SourceSet,
     config::{ConfigWarning, ProjectConfig},
   },
   semantics::{References, read_references},
@@ -92,7 +92,7 @@ pub(super) fn load(
   base_dir: &Path,
 ) -> Result<CompilationInputs, Failures<CompileError>> {
   let (config, config_warnings) = project::config::load(source, config_path, base_dir).map_err(lift)?;
-  let style = style::load(source, config.style_path.as_deref(), base_dir).map_err(lift)?;
+  let style = style::load(source, config.style_path.as_deref(), &PathResolver::new(base_dir)).map_err(lift)?;
   typeset::validate_layout(&config, &style).map_err(lift)?;
   let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
 

@@ -12,7 +12,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  project::{ProjectPath, ProjectSource, SourceReadError},
+  project::{ProjectSource, SourceReadError},
   style::Style,
 };
 
@@ -117,8 +117,8 @@ pub(crate) fn load_citation_style(
   style: &Style,
 ) -> Result<CompiledCitationStyle, CitationStyleError> {
   let csl_path = style.reference.csl_path.as_ref().ok_or(CitationStyleError::MissingCslPath)?;
-  let csl_path_str = csl_path.display().to_string();
-  let style_xml = source.read_text(&ProjectPath::new(csl_path)).map_err(|source| {
+  let csl_path_str = csl_path.to_string();
+  let style_xml = source.read_text(csl_path).map_err(|source| {
     return CitationStyleError::ReadStyleFile {
       path: csl_path_str.clone(),
       source,
@@ -153,8 +153,8 @@ fn load_locales(
   source: &dyn ProjectSource,
 ) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationStyleError> {
   let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
-    let path_str = path.display().to_string();
-    let xml = source.read_text(&ProjectPath::new(path)).map_err(|source| {
+    let path_str = path.to_string();
+    let xml = source.read_text(path).map_err(|source| {
       return CitationStyleError::ReadLocaleFile {
         path: path_str.clone(),
         source,
@@ -236,27 +236,24 @@ fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
 
 #[cfg(test)]
 mod tests {
-  use std::{
-    io::Write,
-    path::{Path, PathBuf},
-  };
+  use std::{io::Write, path::Path};
 
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
 
   use super::{CitationStyleError, load_citation_style, load_locales};
   use crate::{
-    project::{FilesystemProjectSource, MemoryProjectSource},
+    project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::test_fixtures::ieee_csl_path,
     style::Style,
   };
 
   /// テスト用カスタムロケールへの絶対パスを返す。
-  fn custom_locale_path() -> PathBuf {
-    return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/custom-en-US.xml");
+  fn custom_locale_path() -> ProjectPath {
+    return ProjectPath::new(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/custom-en-US.xml"));
   }
 
   /// CSL スタイルとカスタムロケールを設定した `Style` を作る。
-  fn style_with_locale_path(path: PathBuf) -> Style {
+  fn style_with_locale_path(path: ProjectPath) -> Style {
     let mut style = Style::default();
     style.reference.csl_path = Some(ieee_csl_path());
     style.reference.locale_path = Some(path);
@@ -354,7 +351,7 @@ mod tests {
   #[test]
   fn load_locales_reports_missing_file() {
     // Arrange
-    let style = style_with_locale_path(PathBuf::from("/nonexistent/locales-en-US.xml"));
+    let style = style_with_locale_path(ProjectPath::new("/nonexistent/locales-en-US.xml"));
     let source = FilesystemProjectSource::new();
 
     // Act
@@ -369,7 +366,7 @@ mod tests {
     // Arrange
     let mut file = tempfile::Builder::new().suffix(".xml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(b"this is not a CSL locale").expect("一時ファイルへ書き込めるはず");
-    let style = style_with_locale_path(file.path().to_path_buf());
+    let style = style_with_locale_path(ProjectPath::new(file.path()));
     let source = FilesystemProjectSource::new();
 
     // Act
@@ -385,7 +382,7 @@ mod tests {
     let csl_xml = std::fs::read_to_string(ieee_csl_path()).expect("fixture CSL を読めるはず");
     let source = MemoryProjectSource::new().with_text("/project/ieee.csl", csl_xml);
     let mut style = Style::default();
-    style.reference.csl_path = Some(PathBuf::from("/project/ieee.csl"));
+    style.reference.csl_path = Some(ProjectPath::new("/project/ieee.csl"));
 
     // Act
     let compiled = load_citation_style(&source, &style);

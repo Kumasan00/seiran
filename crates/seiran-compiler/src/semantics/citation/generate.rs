@@ -139,13 +139,13 @@ pub(crate) fn generate_citations(
 
 #[cfg(test)]
 mod tests {
-  use std::{io::Write, path::PathBuf};
+  use std::io::Write;
 
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     document::{FontKind, HirDocument},
     frontend,
-    project::FilesystemProjectSource,
+    project::{FilesystemProjectSource, ProjectPath},
     semantics::{
       References, SemanticPolicy,
       fact_collection::collect_facts,
@@ -170,7 +170,7 @@ mod tests {
   }
 
   /// 指定した CSL を設定した `Style` を作る
-  fn style_with_csl_path(path: PathBuf) -> Style {
+  fn style_with_csl_path(path: ProjectPath) -> Style {
     let mut style = Style::default();
     style.reference.csl_path = Some(path);
     return style;
@@ -180,11 +180,13 @@ mod tests {
   fn style_with_csl() -> Style { return style_with_csl_path(ieee_csl_path()); }
 
   /// 書誌の体裁だけを変えた variant CSL への絶対パスを返す
-  fn variant_csl_path() -> PathBuf {
-    return std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-      .join("tests/data/ieee-variant.csl")
-      .canonicalize()
-      .expect("tests/data/ieee-variant.csl が存在するはず");
+  fn variant_csl_path() -> ProjectPath {
+    return ProjectPath::new(
+      std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data/ieee-variant.csl")
+        .canonicalize()
+        .expect("tests/data/ieee-variant.csl が存在するはず"),
+    );
   }
 
   #[test]

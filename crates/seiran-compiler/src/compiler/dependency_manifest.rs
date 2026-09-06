@@ -49,8 +49,8 @@ impl DependencyManifest {
       source_paths: inputs.config().sources.clone(),
       image_paths: image_paths.iter().map(|path| return path.as_ref().to_path_buf()).collect(),
       font_paths: font_paths.into_iter().collect(),
-      csl_path: inputs.style().reference.csl_path.clone(),
-      locale_path: inputs.style().reference.locale_path.clone(),
+      csl_path: inputs.style().reference.csl_path.clone().map(PathBuf::from),
+      locale_path: inputs.style().reference.locale_path.clone().map(PathBuf::from),
     };
   }
 }
