@@ -79,6 +79,8 @@ pub struct Compilation {
 ///
 /// 言語処理・意味解決・組版を内部で順に実行する。呼び出し元は各段の中間型を知らない。
 /// `base_dir` は呼び出し元が実行環境に応じて明示し、本関数はカレントディレクトリを取得しない。
+/// 相対 `root` は読み込みの前に `base_dir` を基準に解決するため、`Compilation.dependencies.config_path`
+/// と診断が示す設定ファイルパスは解決後の値になる。
 /// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
 /// 呼び出し元の責務とする。
 ///
@@ -134,7 +136,9 @@ pub fn compile<S: ProjectSource>(
 /// `compile` の公開シグネチャ `(source, root, base_dir)` は維持し、`base_dir` を compiler 側で暗黙に
 /// 取得しない（`std::env::current_dir()` を呼ばない）判断も維持する。相対 `root` はここで `base_dir`
 /// 基準の絶対パスになり、`DependencyManifest::config_path` と config 読込診断には解決後の値が現れる
-/// （#530 で受け入れた唯一の観測可能な差分。CLI は `base_dir` に `current_dir` を渡すので指す実体は同じ）。
+/// （#530 で受け入れた唯一の意味的な差分。CLI は `base_dir` に `current_dir` を渡すので指す実体は同じ）。
+/// これとは別に、`PathResolver` の解決契約（字句的正規化）により、診断・manifest・ソース名に出る
+/// パスは一様に正規化済みの表示になる（中間の `.` が消える）— こちらは差分ではなく契約の帰結。
 fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPath) {
   let resolver = PathResolver::new(base_dir);
   let root = resolver.resolve(root);

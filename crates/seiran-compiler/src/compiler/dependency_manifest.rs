@@ -13,7 +13,8 @@ use crate::{
 /// この型の構築自体は新しい I/O を発生させない。
 #[derive(Debug, Clone)]
 pub struct DependencyManifest {
-  /// 設定ファイル自体のパス
+  /// 設定ファイル自体のパス（`base_dir` 適用済み・正規化済みの解決後の値。`compile` へ渡した引数を
+  /// そのまま運ぶわけではない）
   pub config_path: PathBuf,
   /// スタイルファイルのパス（既定値使用時は `None`）
   pub style_path: Option<PathBuf>,

@@ -79,7 +79,8 @@ git config core.hooksPath .git-hooks                      # pre-commit（fmt / c
 ### データフロー
 
 ```text
-CLI 引数パース → compiler::input::load 入力読込: config.toml → style.toml → 横断検証
+CLI 引数パース → compile facade      base_dir から PathResolver を 1 回構築し root を解決
+  → compiler::input::load 入力読込: config.toml → style.toml → 横断検証
                        → references → フォントバイト列（project::FontData）→ sources
                        （順序とエラー集約は input に閉じる）
   → frontend           字句・構文解析・評価: Lexer → Parser → CST → HIR（document::HirDocument）
@@ -98,7 +99,8 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
 段横断の要点（骨格のみ。詳細・根拠は `docs/architecture.md` の該当節）:
 
 - 外部資源は例外なく `project::ProjectSource` 経由（compiler 側は `std::fs` を直接呼ばない）。
-  資源を指すパスは `ProjectPath` 1 種類
+  資源を指すパスは `ProjectPath` 1 種類、**解決規則は `project::PathResolver` 1 箇所**
+  （config / style / frontend の画像が共用。出力パスだけ `PathBuf`）
 - 入力読込の外向き入口は `compiler::input::load` 1 つ。読込順序とエラー集約を知るのは `input` だけで、
   成果物 `CompilationInputs` は検証を通った値しか持たない
 - 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は表示文字列化だけ。
@@ -233,7 +235,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 - 入力は `tests/text/`（機能別 `.sei`）、フォントは `fonts/`
 - AAA。`// Arrange` / `// Act` / `// Assert` は 3 段が実際に複数行へ分かれるテストだけ。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
-- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（`frontend::evaluator` / `typeset::lowering` / `typeset::breaking::break_lines` / `compiler` の 4 つ。置き場は「そのヘルパが注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
+- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（`frontend` / `frontend::evaluator` / `typeset::lowering` / `typeset::breaking::break_lines` / `compiler` の 5 つ。置き場は「そのヘルパが注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
 - golden テスト・組版変更の検証・資産取得（初回 `tools/fetch-test-assets.sh`）・golden 再生成は `verify-typesetting` skill
