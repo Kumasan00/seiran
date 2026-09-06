@@ -846,6 +846,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     cell_padding: geom.table_cell_padding,
     rule_thickness: geom.table_rule_thickness,
     rule_color: geom.table_rule_color,
+    align_offset: table_align_offset,
   };
   let mut pending_rows: Vec<PendingTableRow> = Vec::new();
   // head 行・本体行・改ページ後のヘッダ再描画を同じ経路へ積む。セルの絶対 x は
@@ -859,11 +860,11 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
         is_head,
       });
     };
-  // 現在の pending_rows を表断片として台帳へ着地させる。断片の x は着地段のオフセット + 段内揃え
-  // オフセット（flush は advance_region の前に呼ばれるので column は正しい）。
+  // 現在の pending_rows を表断片として台帳へ着地させる。断片の段オフセットは着地段のもの
+  // （flush は advance_region の前に呼ばれるので column は正しい）。揃えオフセットは frame が持つ。
   let flush = |composer: &mut PageComposer, pending_rows: &mut Vec<PendingTableRow>| {
-    let x = composer.column_offset() + table_align_offset;
-    composer.draft.place_table_fragment(std::mem::take(pending_rows), &frame, x);
+    let column_x = composer.column_offset();
+    composer.draft.place_table_fragment(std::mem::take(pending_rows), &frame, column_x);
   };
 
   for (row, height) in table.head.iter().zip(&head_heights) {

@@ -99,9 +99,10 @@ impl Entry {
   }
 }
 
-/// 表断片の確定に要る、表 1 個で固定の幾何（列定義・列幅・セル余白・罫線）
+/// 表断片の確定に要る、表 1 個で固定の幾何（列定義・列幅・セル余白・罫線・段内揃えオフセット）
 ///
-/// 断片ごとに変わる左端 x（段オフセット + 揃えオフセット）は [`PageDraft::place_table_fragment`] の引数。
+/// 断片ごとに変わる段オフセットは [`PageDraft::place_table_fragment`] の引数。断片の左端 x は
+/// `段オフセット + align_offset`、アンカーは揃えオフセット抜きの段オフセットで解決する（行・数式と同じ規則）。
 pub(super) struct TableFrame<'a> {
   /// 列定義（揃え）
   pub(super) columns: &'a [TableColumn],
@@ -113,6 +114,8 @@ pub(super) struct TableFrame<'a> {
   pub(super) rule_thickness: Length,
   /// 横罫線の色（RGB）。`None` は黒
   pub(super) rule_color: Option<[u8; 3]>,
+  /// 段幅の中で表を揃えるための段内オフセット（全幅の表では 0）
+  pub(super) align_offset: Length,
 }
 
 /// ページ内の着地段が確定するまで保持する表の 1 行
@@ -167,7 +170,7 @@ impl PageDraft {
     return self.pending_anchors.drain(..).map(|mark| return PlacedAnchor { mark, x, y }).collect();
   }
 
-  /// 内容を伴わない着地点 `(x, y)`（表の先頭・文書末尾）で未解決アンカーを解決する。未解決が無ければ何もしない
+  /// 内容を伴わない着地点 `(x, y)`（文書末尾）で未解決アンカーを解決する。未解決が無ければ何もしない
   pub(super) fn land_anchors(&mut self, x: Length, y: Length) {
     if self.pending_anchors.is_empty() {
       return;
@@ -207,16 +210,23 @@ impl PageDraft {
     self.push_block(block, anchors, Vec::new());
   }
 
-  /// 表の断片（このリージョンに描く行の並び）を左端 `x` に置いた。行ごとにセル内容・リンク・罫線の
-  /// 絶対座標を確定し、1 つの `PlacedBlock::Table` として積む。空の断片は何も積まない
+  /// 表の断片（このリージョンに描く行の並び）を段オフセット `column_x` に置いた。行ごとにセル内容・
+  /// リンク・罫線の絶対座標を確定し、1 つの `PlacedBlock::Table` として積む。空の断片は何も積まず、
+  /// 未解決アンカーも消費しない
+  ///
+  /// 未解決アンカー（`\ref{tab:...}` の到達先）は先頭行の上端 `(column_x, rows[0].top_y)` で解決する。
+  /// 先頭行が現在リージョンに収まらず空断片のあと次リージョンへ送られる場合、アンカーはその
+  /// 次リージョンで着地する最初の断片で解決される（#525）。表は空でない（frontend が空の表を拒否する）
+  /// ので、どの表も少なくとも 1 つの空でない断片を着地させる。
   ///
   /// 索引語は `\head` 行を除いて集める（改ページのたびに再描画される複製なので、同じ語をページごとに
   /// 積まない）。リンクは head 行も含めて全行から集める（再描画のたびにクリック矩形が要る）。
-  /// 未解決アンカーはここでは解決しない（表先頭で [`PageDraft::land_anchors`] 済み）。
-  pub(super) fn place_table_fragment(&mut self, rows: Vec<PendingTableRow>, frame: &TableFrame<'_>, x: Length) {
-    if rows.is_empty() {
+  pub(super) fn place_table_fragment(&mut self, rows: Vec<PendingTableRow>, frame: &TableFrame<'_>, column_x: Length) {
+    let Some(first_top_y) = rows.first().map(|pending| return pending.top_y) else {
       return;
-    }
+    };
+    let anchors = self.take_pending_anchors(column_x, first_top_y);
+    let x = column_x + frame.align_offset;
     let table_width: Length = frame.col_widths.iter().copied().sum();
     for pending in rows.iter().filter(|pending| return !pending.is_head) {
       for cell in &pending.row.cells {
@@ -268,7 +278,7 @@ impl PageDraft {
         rule,
       });
     }
-    self.push_block(PlacedBlock::Table { rows: placed_rows }, Vec::new(), links);
+    self.push_block(PlacedBlock::Table { rows: placed_rows }, anchors, links);
   }
 
   /// block entry を台帳へ積む（先行 stretch 累積量を写す）
@@ -880,6 +890,7 @@ mod tests {
       cell_padding: pt(2.0),
       rule_thickness: Length::ZERO,
       rule_color: None,
+      align_offset: Length::ZERO,
     };
     draft.place_table_fragment(
       vec![
@@ -933,6 +944,7 @@ mod tests {
       cell_padding: Length::ZERO,
       rule_thickness: Length::ZERO,
       rule_color: None,
+      align_offset: Length::ZERO,
     };
 
     // Act
@@ -972,5 +984,84 @@ mod tests {
     // Assert
     assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(3.0), pt(10.0)));
     assert!(matches!(page.anchors[0].mark, AnchorMark::Label(_)));
+  }
+
+  #[test]
+  fn place_table_fragment_resolves_pending_anchor_at_column_x_and_first_row_top() {
+    // Arrange — 段オフセット 55・揃えオフセット 5 の表断片。アンカーは揃えオフセット抜きの段左端 × 先頭行上端
+    let geom = geometry();
+    let mut draft = PageDraft::new();
+    draft.defer_anchor(AnchorMark::Label(LabelId::new("tab")));
+    let columns = vec![TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Auto,
+    }];
+    let col_widths = vec![pt(30.0)];
+    let frame = TableFrame {
+      columns: &columns,
+      col_widths: &col_widths,
+      cell_padding: pt(2.0),
+      rule_thickness: Length::ZERO,
+      rule_color: None,
+      align_offset: pt(5.0),
+    };
+
+    // Act
+    draft.place_table_fragment(
+      vec![
+        PendingTableRow {
+          row: row_with_index("R0"),
+          top_y: pt(22.0),
+          height: pt(10.0),
+          is_head: false,
+        },
+        PendingTableRow {
+          row: row_with_index("R1"),
+          top_y: pt(32.0),
+          height: pt(10.0),
+          is_head: false,
+        },
+      ],
+      &frame,
+      pt(55.0),
+    );
+    let page = draft.take_page(&geom);
+
+    // Assert
+    assert_eq!(page.anchors.len(), 1, "{:?}", page.anchors);
+    assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(55.0), pt(22.0)), "段左端 × 先頭行の上端");
+    assert!(matches!(page.anchors[0].mark, AnchorMark::Label(_)));
+    let PlacedBlock::Table { rows } = &page.blocks[0] else {
+      unreachable!("place_table_fragment は Table block を積む");
+    };
+    assert_eq!(rows[0].boxes[0].x, pt(62.0), "セル x は段オフセット + 揃えオフセット + padding");
+  }
+
+  #[test]
+  fn empty_table_fragment_keeps_pending_anchors_for_the_next_landing() {
+    // Arrange — 先頭行が収まらないときの `flush(空)` 相当。空断片はアンカーを消費せず、次の着地点で解決する
+    let geom = geometry();
+    let mut draft = PageDraft::new();
+    draft.defer_anchor(AnchorMark::Label(LabelId::new("tab")));
+    let columns: Vec<TableColumn> = Vec::new();
+    let col_widths: Vec<Length> = Vec::new();
+    let frame = TableFrame {
+      columns: &columns,
+      col_widths: &col_widths,
+      cell_padding: Length::ZERO,
+      rule_thickness: Length::ZERO,
+      rule_color: None,
+      align_offset: Length::ZERO,
+    };
+
+    // Act
+    draft.place_table_fragment(Vec::new(), &frame, Length::ZERO);
+    assert!(!draft.has_content(), "空断片は内容にならない");
+    draft.place_block(image(30.0, 10.0), pt(7.0), pt(30.0));
+    let page = draft.take_page(&geom);
+
+    // Assert
+    assert_eq!(page.anchors.len(), 1, "{:?}", page.anchors);
+    assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(7.0), pt(30.0)), "次の着地点で解決する");
   }
 }
