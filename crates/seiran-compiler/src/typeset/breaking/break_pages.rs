@@ -812,6 +812,10 @@ fn place_math_block(
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
+///
+/// 未解決アンカー（`\ref{tab:...}` の到達先）はここでは解決せず、空でない最初の断片の着地
+/// （[`PageDraft::place_table_fragment`]）に任せる。先頭行の fit 判定より前に解決すると、先頭行が
+/// 次リージョンへ送られたときアンカーが前リージョンに残るため（#525）。
 fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBox, column_width: Length, align: Align) {
   let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
   // 表全体の自然幅は確定済み列幅の総和。段幅の中で揃えオフセット（段内）を 1 回だけ算出する
@@ -834,11 +838,6 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   if !table.breakable && composer.y + total_height > limit && geom.margin_top + total_height <= limit {
     composer.advance_region(geom);
   }
-
-  // 表先頭の確定位置（改段・改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する。
-  // 最初の行の fit 判定より前なので、最初の行が次リージョンへ送られる場合はここ（前リージョン）に残る（#525）
-  let col_off = composer.column_offset();
-  composer.draft.land_anchors(col_off, composer.y);
 
   let frame = TableFrame {
     columns: &table.columns,
@@ -3965,11 +3964,9 @@ mod tests {
   }
 
   #[test]
-  fn pending_anchor_before_breakable_table_stays_at_table_start_when_first_row_moves() {
+  fn pending_anchor_before_breakable_table_lands_with_the_first_row_on_the_next_page() {
     // Arrange — 3 行段落の後（y=46）で表を開始するが、最初の行（高さ 10）は収まらず次ページへ送られる。
-    // 現行 `place_table` は行の fit 判定より前にアンカーを解決するので、アンカーは表の実配置ページ
-    // （2 ページ目）ではなく 1 ページ目の y=46 に残る。これは現行挙動の固定（characterization）であって
-    // 意図した位置ではない — 修正は #525 で扱う
+    // アンカーは表の実配置（2 ページ目の先頭行上端 = margin_top）で解決し、1 ページ目には残らない（#525）
     use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let table = TableBox {
@@ -3997,9 +3994,120 @@ mod tests {
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[0]), None, "表は 1 ページ目に無い");
     assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R0"));
+    assert!(pages[0].anchors.is_empty(), "前ページにアンカーは残らない: {:?}", pages[0].anchors);
+    assert_eq!(pages[1].anchors.len(), 1, "{:?}", pages[1].anchors);
+    assert!(close(pages[1].anchors[0].x, 0.0), "{:?}", pages[1].anchors[0]);
+    assert!(close(pages[1].anchors[0].y, 10.0), "先頭行の上端 = margin_top: {:?}", pages[1].anchors[0]);
+  }
+
+  #[test]
+  fn pending_anchor_before_breakable_table_lands_in_the_column_of_the_first_row() {
+    // Arrange — 2 段。左段 3 行（y=46）の後の表の先頭行（高さ 10）が収まらず右段へ送られる。
+    // アンカーの x は着地段（右段）のオフセット 55、y は右段先頭 = margin_top
+    use crate::typeset::boxes::AnchorMark;
+    let geom = two_column_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![table_row("R0"), table_row("R1")],
+      breakable: true,
+    };
+    let blocks = vec![
+      paragraph_of_lines(3),
+      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(first_table_row_text(&pages[0]).as_deref(), Some("R0"));
+    let PlacedBlock::Table { rows } =
+      pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
+    else {
+      unreachable!("直前の matches! で確認済み");
+    };
+    assert!(close(rows[0].boxes[0].x, 57.0), "先頭行は右段（55 + padding 2）: {:?}", rows[0].boxes[0]);
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
-    assert!(close(pages[0].anchors[0].y, 46.0), "{:?}", pages[0].anchors[0]);
-    assert!(pages[1].anchors.is_empty(), "{:?}", pages[1].anchors);
+    assert!(close(pages[0].anchors[0].x, 55.0), "右段のオフセット: {:?}", pages[0].anchors[0]);
+    assert!(close(pages[0].anchors[0].y, 10.0), "右段の先頭: {:?}", pages[0].anchors[0]);
+  }
+
+  #[test]
+  fn pending_anchor_before_unbreakable_table_moves_with_the_whole_table() {
+    // Arrange — 分割禁止の表（高さ 20）は y=46 に収まらず、先読みで表ごと次ページへ送られる。
+    // アンカーは従来どおり 2 ページ目の表先頭で解決する（修正前後で不変）
+    use crate::typeset::boxes::AnchorMark;
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![table_row("R0"), table_row("R1")],
+      breakable: false,
+    };
+    let blocks = vec![
+      paragraph_of_lines(3),
+      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R0"));
+    assert!(pages[0].anchors.is_empty(), "{:?}", pages[0].anchors);
+    assert_eq!(pages[1].anchors.len(), 1, "{:?}", pages[1].anchors);
+    assert!(close(pages[1].anchors[0].x, 0.0), "{:?}", pages[1].anchors[0]);
+    assert!(close(pages[1].anchors[0].y, 10.0), "{:?}", pages[1].anchors[0]);
+  }
+
+  #[test]
+  fn pending_anchor_before_fitting_table_resolves_at_the_table_top() {
+    // Arrange — 1 行段落の後（y=22）に収まる表。アンカーは表先頭 = 先頭行の上端 y=22（修正前後で不変）
+    use crate::typeset::boxes::AnchorMark;
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![table_row("R0")],
+      breakable: true,
+    };
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
+    assert!(close(pages[0].anchors[0].x, 0.0), "{:?}", pages[0].anchors[0]);
+    assert!(close(pages[0].anchors[0].y, 22.0), "{:?}", pages[0].anchors[0]);
   }
 
   #[test]

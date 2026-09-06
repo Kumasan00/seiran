@@ -689,6 +689,6 @@ keywords=["test", "seiran"]
   glyphs x=309.79 y=360.64 font=JapaneseSerif size=12.00 text="参" glyph_count=1
   glyphs x=321.79 y=360.64 font=JapaneseSerif size=12.00 text="照" glyph_count=1
   glyphs x=333.79 y=360.64 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  link target=Internal(page=0, x=240.94, y=2119.43) x=255.76 y=346.83 w=39.20 h=17.24
+  link target=Internal(page=1, x=240.94, y=280.63) x=255.76 y=346.83 w=39.20 h=17.24
 outline:
   depth=2 text=".1 改ページをまたぐ表" page=0 x=240.94 y=257.61
