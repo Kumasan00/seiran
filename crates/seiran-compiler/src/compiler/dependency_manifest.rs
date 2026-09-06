@@ -60,27 +60,13 @@ fn to_path_buf(path: &ProjectPath) -> PathBuf { return path.as_ref().to_path_buf
 mod tests {
   use std::path::PathBuf;
 
-  use crate::compiler::test_support::TestProject;
-
-  /// `figure.sei` が参照する画像 fixture（`\image{...}` の字面と同じ）。
-  const IMAGE_ASSETS: &[&str] = &[
-    "./tests/image/testimage1.jpg",
-    "./tests/image/testimage2.jpg",
-    "./tests/image/testimage3.jpg",
-    "./tests/image/testimage4.png",
-    "./tests/image/testimage5.png",
-    "./tests/image/testimage6.svg",
-  ];
+  use crate::compiler::test_support::{FIGURE_IMAGE_ASSETS, TestProject};
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する。
     // 画像を持つ入力を選び、`\image{...}` から集めたパスが manifest に載ることも合わせて見る
-    let mut builder = TestProject::builder().sources(&["tests/text/figure.sei"]);
-    for asset in IMAGE_ASSETS {
-      builder = builder.asset(asset);
-    }
-    let project = builder.build();
+    let project = TestProject::builder().sources(&["tests/text/figure.sei"]).assets(FIGURE_IMAGE_ASSETS).build();
 
     // Act
     let manifest = project.compile().expect("fixture のコンパイル").dependencies;
@@ -90,7 +76,7 @@ mod tests {
     assert_eq!(manifest.source_paths, vec![PathBuf::from("tests/text/figure.sei")]);
     assert_eq!(
       manifest.image_paths,
-      IMAGE_ASSETS.iter().map(PathBuf::from).collect::<Vec<PathBuf>>(),
+      FIGURE_IMAGE_ASSETS.iter().map(PathBuf::from).collect::<Vec<PathBuf>>(),
       "画像パスは昇順で重複なく載るはず"
     );
     let unique_font_paths: std::collections::BTreeSet<_> = manifest.font_paths.iter().collect();

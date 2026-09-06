@@ -3,8 +3,11 @@
 //! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。段落は蓄積した
 //! インラインを後からまとめる構造なので、子を評価する前に ID を予約しておく。
 
+// この module 自身が下で `mod test_support`（CST 組み立て用）を宣言しているため、frontend 直下の
+// `test_support` は同名衝突を避けて関数を直接 import する（型・モジュールではなく関数の直接 import
+// は「出自が自明な慣用」の例外に当たる）。
 #[cfg(test)]
-use crate::source::SourceId;
+use crate::frontend::test_support::hir_builder_for_test;
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
@@ -236,7 +239,7 @@ impl ParagraphBuffer {
 /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
 #[cfg(test)]
 pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let builder = HirBuilder::new(SourceId::new(0));
+  let builder = hir_builder_for_test();
   return evaluate_children(source, &builder, node);
 }
 
@@ -247,7 +250,7 @@ pub(crate) fn extract_inline_nodes_to_hir(
   node: &GreenNode<'_>,
   index_policy: inline::IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let builder = HirBuilder::new(SourceId::new(0));
+  let builder = hir_builder_for_test();
   return inline::extract_inline_nodes(source, &builder, node, index_policy);
 }
 
@@ -258,7 +261,7 @@ pub(crate) fn extract_inline_nodes_to_hir(
 pub(crate) fn run_inline_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirInline>, EvalError>,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let builder = HirBuilder::new(SourceId::new(0));
+  let builder = hir_builder_for_test();
   return handler(&builder);
 }
 
@@ -267,7 +270,7 @@ pub(crate) fn run_inline_handler(
 pub(crate) fn run_block_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirNode>, EvalError>,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let builder = HirBuilder::new(SourceId::new(0));
+  let builder = hir_builder_for_test();
   return handler(&builder);
 }
 

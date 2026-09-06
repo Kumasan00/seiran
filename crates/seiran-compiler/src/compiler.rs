@@ -101,7 +101,7 @@ pub fn compile<S: ProjectSource>(
     laid_out,
     font_warnings,
     typeset_warnings,
-  } = run_pipeline(source, &inputs)?;
+  } = run_pipeline(source, &inputs, &resolver)?;
 
   let dependencies = DependencyManifest::collect(&root, &inputs, &laid_out.image_paths);
   let page_count = laid_out.pages.len();
@@ -187,11 +187,12 @@ struct PipelineArtifacts<'a> {
 fn run_pipeline<'a>(
   source: &dyn ProjectSource,
   inputs: &'a CompilationInputs,
+  resolver: &PathResolver,
 ) -> Result<PipelineArtifacts<'a>, CompileFailure> {
   let document = {
     let _phase = info_span!("frontend").entered();
     let stage_start = Instant::now();
-    let document = parse_project(inputs)?;
+    let document = parse_project(inputs, resolver)?;
     info!(
       source_count = document.groups().len(),
       node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
@@ -267,7 +268,7 @@ fn layout_project_for_test(
 ) -> Result<LaidOutDocument, CompileFailure> {
   let (resolver, root) = resolve_root(root, base_dir);
   let inputs = load_inputs(source, &root, &resolver)?;
-  let artifacts = run_pipeline(source, &inputs)?;
+  let artifacts = run_pipeline(source, &inputs, &resolver)?;
   return Ok(artifacts.laid_out);
 }
 
@@ -296,14 +297,14 @@ fn collect_warnings(
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
 ///
-/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::analyze` が、
-/// 画像パスの収集は `typeset::layout` が担う。
+/// 画像パスは frontend が `resolver` で解決して HIR へ格納する。意味解析（ラベル・`\ref`・カウンタ・
+/// 引用キー）と CSL 整形は `semantics::analyze` が、画像パスの収集は `typeset::layout` が担う。
 ///
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailure> {
-  let document = HirDocument::assemble(parse_all_sources(inputs.sources())?);
+fn parse_project(inputs: &CompilationInputs, resolver: &PathResolver) -> Result<HirDocument, CompileFailure> {
+  let document = HirDocument::assemble(parse_all_sources(inputs.sources(), resolver)?);
   return Ok(document);
 }
 
@@ -311,12 +312,12 @@ fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailu
 ///
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 /// エラーは宣言順に並べ、先頭（最初に失敗したソースの leaf 診断）を主診断にする。
-fn parse_all_sources(sources: &SourceSet) -> Result<Vec<HirSource>, CompileFailure> {
+fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec<HirSource>, CompileFailure> {
   let mut parsed: Vec<HirSource> = Vec::new();
   let mut parse_errors: Vec<Box<dyn miette::Diagnostic + Send + Sync + 'static>> = Vec::new();
 
   for (source_id, entry) in sources.iter() {
-    match frontend::parse_source(&entry.content, source_id) {
+    match frontend::parse_source(&entry.content, source_id, resolver) {
       Ok(hir) => parsed.push(hir),
       Err(error) => parse_errors.push(Box::new(SourceDiagnostic::attach(sources, source_id, error))),
     }

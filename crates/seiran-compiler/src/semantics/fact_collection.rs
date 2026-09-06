@@ -567,7 +567,7 @@ mod tests {
   use super::collect_facts;
   use crate::{
     document::{HirDocument, NodeId},
-    frontend,
+    frontend::test_support::parse_source_for_test,
     semantics::{
       CitationId, GeneratedCitations, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
       SemanticPolicy, test_fixtures::sample_references,
@@ -594,7 +594,7 @@ mod tests {
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir = frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 
@@ -675,8 +675,8 @@ mod tests {
   fn analyze_resolves_ref_across_source_groups() {
     // Arrange — 別ソースで宣言されたラベルを参照する
     let a =
-      frontend::parse_source("\\chapter[label=ch:intro]{Intro}\n", SourceId::new(0)).expect("パースに成功するはず");
-    let b = frontend::parse_source(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
+      parse_source_for_test("\\chapter[label=ch:intro]{Intro}\n", SourceId::new(0)).expect("パースに成功するはず");
+    let b = parse_source_for_test(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -931,7 +931,7 @@ mod completeness_tests {
   use super::collect_facts;
   use crate::{
     document::HirDocument,
-    frontend,
+    frontend::test_support::parse_source_for_test,
     semantics::{GeneratedCitations, LabelId, SemanticDocument, SemanticPolicy, test_fixtures::sample_references},
     source::SourceId,
     style::Style,
@@ -976,7 +976,7 @@ mod completeness_tests {
         source.push_str(&element.replace("%I%", &index.to_string()));
         source.push('\n');
       }
-      let hir = frontend::parse_source(&source, SourceId::new(0)).expect("パースに成功するはず");
+      let hir = parse_source_for_test(&source, SourceId::new(0)).expect("パースに成功するはず");
       let document = HirDocument::assemble(vec![hir]);
       let policy = SemanticPolicy::from_style(&Style::default());
 

@@ -153,7 +153,7 @@ pub(super) mod test_support {
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
     document::HirDocument,
-    frontend::parse_source,
+    frontend::test_support::parse_source_for_test,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
     style::Style,
@@ -166,7 +166,8 @@ pub(super) mod test_support {
   /// （`kwan2014` / `doe2020`）を渡しておく。引用の表示・書誌を要るテストは
   /// `SemanticDocument::with_citations_for_test` で差し込む。
   pub(crate) fn analyzed(source: &str) -> SemanticDocument {
-    let hir = HirDocument::assemble(vec![parse_source(source, SourceId::new(0)).expect("パースに成功するはず")]);
+    let hir =
+      HirDocument::assemble(vec![parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず")]);
     return analyze_for_test(hir, &SemanticPolicy::from_style(&Style::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
@@ -520,7 +521,7 @@ mod tests {
   use super::{test_support::analyzed, *};
   use crate::{
     document::HirDocument,
-    frontend::parse_source,
+    frontend::test_support::parse_source_for_test,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
     style::CounterTemplate,
@@ -536,7 +537,7 @@ mod tests {
         .iter()
         .enumerate()
         .map(|(index, source)| {
-          return parse_source(source, SourceId::new(index)).expect("パースに成功するはず");
+          return parse_source_for_test(source, SourceId::new(index)).expect("パースに成功するはず");
         })
         .collect(),
     );

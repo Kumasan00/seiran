@@ -1,16 +1,23 @@
-//! HIR ノードの ID 発行と位置記録を行う [`HirBuilder`]。
+//! HIR ノードの ID 発行・位置記録・外部資源パスの解決を行う、1 ソースぶんの構築 context [`HirBuilder`]。
 
-use std::cell::RefCell;
+use std::{cell::RefCell, path::Path};
 
 use crate::{
   document::hir::{HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, SourceSpans},
+  project::{PathResolver, ProjectPath},
   source::{SourceId, Span},
 };
 
-/// HIR ノードの ID を発行し、同時にソース位置を記録する builder
+/// HIR ノードの ID を発行し、同時にソース位置を記録し、ソースに書かれた外部資源パスを解決する builder
 ///
 /// `NodeId` を発行できる唯一の型。ID 発行と位置記録が同じ呼び出しで起きるため、
 /// 「位置を持たない `NodeId`」は構築できない。
+///
+/// 外部資源パス（`\image{...}`）の解決もここが受け持つ — 環境ハンドラは全部 `fn(view, &HirBuilder)`
+/// の phf テーブルで dispatch されるので、resolver を別の context 型に束ねると fn ポインタ型と
+/// 画像を扱わないハンドラの interface まで変わる。builder は「1 ソースぶんの HIR 構築 context」として
+/// 全ハンドラが既に受け取っており、ここに載せるのが最小で凝集する（#530）。解決規則の実装は
+/// [`PathResolver`]（`project`）の 1 箇所だけで、frontend は `base_dir.join` を書かない。
 ///
 /// 子を持つノードは、子を評価する**前**に [`HirBuilder::alloc`] で自分の ID を確保すること。
 /// `NodeId::local` がソース出現順（preorder）になるのはこの規約だけで成り立つ。
@@ -22,15 +29,23 @@ use crate::{
 pub(crate) struct HirBuilder {
   /// 発行済み ID と位置。借用は各メソッド内で閉じ、再帰評価をまたいで保持しない
   spans: RefCell<SourceSpans>,
+  /// ソースに書かれた外部資源パスを `ProjectPath` へ解決する規則（`compile` facade が 1 回構築した値の複製）
+  resolver: PathResolver,
 }
 
 impl HirBuilder {
   /// 指定ソース向けの builder を作る
-  pub(crate) fn new(source_id: SourceId) -> Self {
+  pub(crate) fn new(source_id: SourceId, resolver: PathResolver) -> Self {
     return HirBuilder {
       spans: RefCell::new(SourceSpans::new(source_id)),
+      resolver,
     };
   }
+
+  /// ソースに書かれた外部資源のパスを、`base_dir` 基準の正規化済み [`ProjectPath`] へ解決する
+  ///
+  /// HIR へ格納する時点で解決するので、後段が文書木を走査して書き戻す解決 pass は要らない。
+  pub(crate) fn resolve_path(&self, path: impl AsRef<Path>) -> ProjectPath { return self.resolver.resolve(path); }
 
   /// 新しい ID を発行し、`span` を記録する
   ///
@@ -72,10 +87,13 @@ mod tests {
   use super::*;
   use crate::document::MathClass;
 
+  /// 空の `base_dir` の builder（このテストはパス解決を見ない）
+  fn builder() -> HirBuilder { return HirBuilder::new(SourceId::new(0), PathResolver::new(Path::new(""))); }
+
   #[test]
   fn alloc_before_children_yields_preorder_locals() {
     // Arrange
-    let builder = HirBuilder::new(SourceId::new(0));
+    let builder = builder();
 
     // Act — 親を先に確保してから子を作る
     let parent = builder.alloc(Span::new(0, 10));
@@ -90,7 +108,7 @@ mod tests {
   #[test]
   fn alloc_during_nested_use_does_not_panic() {
     // Arrange — 再帰評価中に借用が重ならないことの回帰テスト
-    let builder = HirBuilder::new(SourceId::new(0));
+    let builder = builder();
 
     // Act
     let outer = builder.alloc(Span::new(0, 9));
@@ -111,7 +129,7 @@ mod tests {
   #[test]
   fn finish_returns_all_allocated_spans() {
     // Arrange
-    let builder = HirBuilder::new(SourceId::new(0));
+    let builder = builder();
     let first = builder.alloc(Span::new(0, 1));
     let second = builder.alloc(Span::new(1, 2));
 
@@ -123,5 +141,12 @@ mod tests {
     assert_eq!(spans.span_of(first), Span::new(0, 1));
     assert_eq!(spans.span_of(second), Span::new(1, 2));
     assert_eq!(spans.source_id(), SourceId::new(0));
+  }
+
+  #[test]
+  fn resolve_path_applies_the_resolver_base_dir() {
+    let builder = HirBuilder::new(SourceId::new(0), PathResolver::new(Path::new("/project")));
+
+    assert_eq!(builder.resolve_path("fig/a.png"), ProjectPath::new("/project/fig/a.png"));
   }
 }

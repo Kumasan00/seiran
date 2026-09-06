@@ -82,7 +82,7 @@ mod tests {
   use super::analyze;
   use crate::{
     document::HirDocument,
-    frontend::parse_source,
+    frontend::test_support::parse_source_for_test,
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
       AnalyzeError, CitationStyleError, SemanticError, read_references,
@@ -100,7 +100,8 @@ mod tests {
     let mut style = Style::default();
     style.reference.csl_path = Some(ieee_csl_path());
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
+    let hir =
+      parse_source_for_test(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -122,7 +123,7 @@ mod tests {
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source("本文だけの段落。\n", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test("本文だけの段落。\n", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -150,7 +151,7 @@ mod tests {
     let references =
       read_references(&source, Some(&ProjectPath::new("/project/references.toml"))).expect("参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"\cite{ref1}", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test(r"\cite{ref1}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -167,7 +168,7 @@ mod tests {
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"\ref{missing}", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test(r"\ref{missing}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -184,7 +185,7 @@ mod tests {
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act

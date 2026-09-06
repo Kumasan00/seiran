@@ -6,10 +6,11 @@
 # パスはワークスペースルート基準（テストは `base_dir` を明示し、カレントディレクトリに依存しない）。
 #
 # `sources` は golden テストが入力ごとに差し替える。差し替えない既定値は adapter 同値テスト
-# （`compiler::project_source_equivalence`）がそのまま使うので、CSL 読込経路を通る `cite.sei` にしてある。
+# （`compiler::project_source_equivalence`）がそのまま使うので、CSL 読込経路を通る `cite.sei` と、
+# 相対画像パス（`\image{./tests/image/...}`）を持つ `figure.sei` の両方を含めてある（#530）。
 
 references_path = "crates/seiran-compiler/tests/config/references.toml"
-sources = ["tests/text/cite.sei"]
+sources = ["tests/text/cite.sei", "tests/text/figure.sei"]
 style_path = "crates/seiran-compiler/tests/config/style.toml"
 
 [document]
