@@ -9,21 +9,20 @@
 //! fixture の既定 `sources` は `cite.sei` と `figure.sei` の両方を含む（#530）。`figure.sei` が
 //! 持つ相対画像パス（`\image{./tests/image/...}`）は、画像だけ `base_dir` を通らない例外を
 //! なくしたことで他の資源と同じ規則で解決されるようになったので、`sources` を上書きしない
-//! この module のテストがそのまま画像も含めた同値を検証する。
+//! この module のテストがそのまま画像も含めた同値を検証する。`sources` を差し替えないので
+//! builder が `FIGURE_IMAGE_ASSETS` を自動登録し（`compiler::test_support` を参照）、
+//! この module 側で明示登録する必要はない。
 
 use crate::{
-  compiler::{
-    self,
-    test_support::{self, TestProject},
-  },
+  compiler::{self, test_support::TestProject},
   project::{FilesystemProjectSource, FontType},
 };
 
 #[test]
 fn memory_and_filesystem_sources_produce_identical_layout() {
-  // Arrange — fixture の既定 sources は `figure.sei` を含むため、相対画像
-  // （`\image{./tests/image/...}`）も同値検証の対象になる
-  let project = TestProject::builder().absolute_base_dir().assets(test_support::FIGURE_IMAGE_ASSETS).build();
+  // Arrange — fixture の既定 sources（`cite.sei` + `figure.sei`）をそのまま使う。`figure.sei` の
+  // 相対画像（`\image{./tests/image/...}`）は builder が自動登録するので、そのまま同値検証の対象になる
+  let project = TestProject::builder().absolute_base_dir().build();
   let filesystem = FilesystemProjectSource::new();
 
   // Act
@@ -37,8 +36,9 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
 
 #[test]
 fn shared_font_path_is_read_only_once() {
-  // Arrange — fixture の 19 種別は同じフォントファイルを共有するものを含む
-  let project = TestProject::builder().absolute_base_dir().assets(test_support::FIGURE_IMAGE_ASSETS).build();
+  // Arrange — fixture の 19 種別は同じフォントファイルを共有するものを含む（既定 sources のまま。
+  // `figure.sei` の画像は builder が自動登録する）
+  let project = TestProject::builder().absolute_base_dir().build();
   assert!(
     project.font_keys().len() < FontType::ALL.len(),
     "fixture には同じフォントファイルを共有する種別があるはず: {:?}",

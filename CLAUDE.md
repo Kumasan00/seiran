@@ -142,7 +142,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 |
 | `failures` | 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能・`Diagnostic` 非実装） |
 | `source` | ソースの同一性 `SourceId` と位置 `Span` |
-| `project` | プロジェクトの物理的な入力 — 外部資源取得 seam（`ProjectPath` / `ProjectSource`）+ config.toml の読込・検証 + `SourceSet` + フォント資源（子 module `font`） |
+| `project` | プロジェクトの物理的な入力 — 外部資源取得 seam（`ProjectPath` / `ProjectSource`）+ 入力パスの解決規則（`PathResolver`）+ config.toml の読込・検証 + `SourceSet` + フォント資源（子 module `font`） |
 | `document` | authored HIR（`HirDocument` / `HirBuilder` / `SourceMap`）と HIR が値として持つ語彙型の所有者 |
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・検証。CSL 本体は読まない |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |

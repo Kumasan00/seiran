@@ -17,7 +17,7 @@ use crate::{
 /// 相対パスをそのまま残す resolver（`base_dir` が空パス）。
 ///
 /// `\image{a.png}` は `ProjectPath::new("a.png")` として HIR に載る。
-pub(crate) fn unbased_resolver() -> PathResolver { return PathResolver::new(Path::new("")); }
+fn unbased_resolver() -> PathResolver { return PathResolver::new(Path::new("")); }
 
 /// [`frontend::parse_source`] を空の `base_dir` で呼ぶ。
 ///

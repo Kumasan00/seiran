@@ -271,7 +271,7 @@ fn compile_resolves_relative_root_source_and_image_against_base_dir() {
   let compilation =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect("相対 root でも base_dir 基準で読めるはず");
 
-  // Assert — manifest はすべて解決済み。config_path が絶対になるのが受け入れた唯一の差分
+  // Assert — manifest はすべて解決済み。config_path が絶対になるのが唯一の意味的な差分
   assert_eq!(compilation.dependencies.config_path, PathBuf::from("/project/config.toml"));
   assert_eq!(compilation.dependencies.source_paths, vec![PathBuf::from("/project/text.sei")]);
   assert_eq!(compilation.dependencies.image_paths, vec![PathBuf::from("/project/fig/a.png")]);

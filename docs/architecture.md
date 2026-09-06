@@ -115,7 +115,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 #### 責務
 
-プロジェクトの**物理的な入力**を所有する crate root 直下の module。4 つを持つ。
+プロジェクトの**物理的な入力**を所有する crate root 直下の module。5 つを持つ。
 
 1. 外部資源取得の seam（module 直下 + `filesystem` / `memory`）。compiler が `std::fs` を直接呼ばず、
    設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを 1 つの seam 経由で取得する
@@ -123,12 +123,16 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 3. 読込済みソース集合 `SourceSet`（子 module `source_set`。`SourceId` の唯一の発行元）
 4. config.toml が宣言する**フォント資源**（子 module `font`。19 種別の分類・検証済み設定・
    読込済みバイト列）
+5. 入力パスの解決規則（子 module `path_resolver`。`PathResolver` 1 型 — 絶対はそのまま・相対は
+   `base_dir` 前置・字句的正規化・I/O なし。詳細は下の bullet を参照）
 
 seam を `config` の子に置かないのは変わらない — 全外部資源の窓口であり、`config` の子に置くと
 `font` → `project::config` という役割に合わない依存が生まれる（依存方向は `project::config` → `font` の
 一方向を保つ）。
 
-**依存の不変条件**: seam 部は crate 内の他 module に依存しない。crate 内依存を持つのは子 module だけで、
+**依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）は crate 内の
+他 module に依存しない — `path_resolver` が知るのは `ProjectPath` だけで、`base_dir` の前置と字句的
+正規化に I/O も他 module も要らないため。crate 内依存を持つのは seam 以外の子 module だけで、
 `config` が `font` / `length` を（`ProjectConfig.font_configs` が `font::FontConfigs` を値として
 持つため）、`source_set` が `source` を参照する（`SourceSet` が `source::SourceId` を発行するため）。
 `config` / `source_set` / `font` は加えて leaf module `failures` に依存する（検証違反・読込失敗を
@@ -1701,7 +1705,10 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   に読み直させる。登録キーは既定で **`base_dir` が空パス＝ワークスペース相対**で、診断に出るソース名が
   実行環境に依存しない（`set_current_dir` は使わない）。実 adapter と同じ入力を要求する
   adapter 同値テストだけ `absolute_base_dir` で絶対パスにする。画像も他の資源と同じ規則で `base_dir` を
-  前置したキーで登録する（#530 で字面のまま登録する例外を削除）
+  前置したキーで登録する（#530 で字面のまま登録する例外を削除）。既定の `sources`（fixture config.toml の
+  `cite.sei` + `figure.sei`）をそのまま使う場合は、`figure.sei` が参照する画像を builder が
+  `FIGURE_IMAGE_ASSETS` として自動登録する（`sources` を差し替えていないことが条件）。`sources` を
+  差し替えたテストはこの自動登録が働かないので、画像が要るなら `asset` / `assets` で明示登録する
 - `golden`: レイアウトダンプ golden の比較テスト。golden ファイル
   （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
   （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、公開 facade `compile()` → `dump_publication` を通る
@@ -1724,7 +1731,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   同じ `Publication` を返すこと、同じフォントを複数回読まないことの検証（#300）。両 adapter が同じ
   絶対パスを引くよう `absolute_base_dir` の fixture を使う。fixture の既定 `sources` は `cite.sei` と
   `figure.sei` の両方を含むため、相対画像を含む `figure.sei` でも一致することを同じテストが検証する
-  （#530。画像だけ `base_dir` を通らない例外を無くしたことで、他の資源と同じ規則で解決されるようになった）
+  （#530。画像だけ `base_dir` を通らない例外を無くしたことで、他の資源と同じ規則で解決されるようになった）。
+  `sources` を差し替えないので `test_support::TestProjectBuilder::build` が `FIGURE_IMAGE_ASSETS` を
+  自動登録し、この module 側で画像を明示登録する必要はない
 
 検証手段の使い分け（レイアウトダンプ golden か PDF バイト比較か）・golden の再生成手順は
 `verify-typesetting` skill を参照する。

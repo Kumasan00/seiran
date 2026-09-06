@@ -15,7 +15,11 @@
 //! 両 adapter が同じ絶対パスを引くようにする。
 //!
 //! 画像（`\image{...}` の字面）もソース・フォントと同じ規則で `base_dir` を前置したキーで登録する
-//! （frontend が同じ規則で解決するため）。
+//! （frontend が同じ規則で解決するため）。既定の `sources`（fixture config.toml の `cite.sei` +
+//! `figure.sei`）を使う場合は `figure.sei` が参照する画像を builder が [`FIGURE_IMAGE_ASSETS`] として
+//! 自動登録するので、呼び出し側の明示登録は不要。`sources` を [`TestProjectBuilder::sources`] で
+//! 差し替えた場合はこの自動登録が働かないので、画像は [`TestProjectBuilder::asset`] /
+//! [`TestProjectBuilder::assets`] で明示登録する。
 //!
 //! # 設定の上書き
 //!
@@ -287,7 +291,7 @@ impl TestProjectBuilder {
       source = source.with_bytes(self.key(path), bytes);
     }
 
-    for asset in &self.assets {
+    for asset in &self.assets_to_register() {
       let bytes =
         fs::read(root.join(asset)).unwrap_or_else(|error| panic!("資産を読めるはず: {}: {error}", asset.display()));
       source = source.with_bytes(self.key(asset), bytes);
@@ -331,6 +335,21 @@ impl TestProjectBuilder {
       }
     }
     return (source, keys);
+  }
+
+  /// 登録する資産の一覧（明示登録 `self.assets` に加え、`sources` が既定（fixture の
+  /// `cite.sei` + `figure.sei`）のままなら `FIGURE_IMAGE_ASSETS` も足す。重複除去済み。
+  ///
+  /// `sources` を差し替えたテストは `figure.sei` を読まないことが多いので自動登録しない —
+  /// 必要なら呼び出し側が [`Self::asset`] / [`Self::assets`] で明示する。
+  fn assets_to_register(&self) -> Vec<PathBuf> {
+    let mut assets = self.assets.clone();
+    if self.sources.is_none() {
+      assets.extend(FIGURE_IMAGE_ASSETS.iter().map(PathBuf::from));
+    }
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    assets.retain(|path| return seen.insert(path.clone()));
+    return assets;
   }
 
   /// ワークスペース相対パスから `MemoryProjectSource` の登録キーを作る。
