@@ -15,8 +15,8 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{
-    Feature, FontConfig, FontConfigs, FontType, ProjectPath, ProjectSource, SourceReadError, TextDirection,
-    VariationAxis,
+    Feature, FontConfig, FontConfigs, FontType, PathResolver, ProjectPath, ProjectSource, SourceReadError,
+    TextDirection, VariationAxis,
   },
 };
 
@@ -147,17 +147,17 @@ pub(crate) enum ConfigWarning {
 
 /// 読み取り I/O フェーズで集約する解決済みパス群。
 ///
-/// `font_paths` は [`FontType::ALL`] の順序に対応する正規化済みフォントパスで、エラーが
+/// `font_paths` は [`FontType::ALL`] の順序に対応する解決済みフォントパスで、エラーが
 /// ない場合のみ 19 要素が揃います。
 struct ResolvedPaths {
-  /// `FontType::ALL` の順序に対応する正規化済みフォントパス
-  font_paths: Vec<PathBuf>,
-  /// 正規化済みソースファイルパス
-  sources: Vec<PathBuf>,
-  /// 正規化済みスタイルファイルパス（未指定なら `None`）
-  style_path: Option<PathBuf>,
-  /// 正規化済み参照定義ファイルパス（未指定なら `None`）
-  references_path: Option<PathBuf>,
+  /// `FontType::ALL` の順序に対応する解決済みフォントパス
+  font_paths: Vec<ProjectPath>,
+  /// 解決済みソースファイルパス
+  sources: Vec<ProjectPath>,
+  /// 解決済みスタイルファイルパス（未指定なら `None`）
+  style_path: Option<ProjectPath>,
+  /// 解決済み参照定義ファイルパス（未指定なら `None`）
+  references_path: Option<ProjectPath>,
 }
 
 /// フォント 1 種別ぶんの、パス解決を除いた検証済み・変換済みの値群。
@@ -180,8 +180,9 @@ struct FontValues {
 
 /// 指定パスから設定ファイルを読み込みます。
 ///
-/// `base_dir` は相対パス（`sources` / `style_path` / フォントパス等）の解決基準ディレクトリです。
-/// 呼び出し元がカレントディレクトリ等を決めて渡します（本関数は `std::env::current_dir` を呼びません）。
+/// `config_path` は呼び出し元（`compile` facade）が `resolver` で解決済みの値で、ここでは再解決しません。
+/// `resolver` は config 内の相対パス（`sources` / `style_path` / フォントパス等）の解決に使います
+/// （本関数は `std::env::current_dir` を呼びません）。
 ///
 /// 成功時は検証済みの [`ProjectConfig`] と、読み込みを止めない警告 [`ConfigWarning`] の列を
 /// `sources` の宣言順で返します。
@@ -191,20 +192,20 @@ struct FontValues {
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
 pub(crate) fn load(
   source: &dyn ProjectSource,
-  config_path: &Path,
-  base_dir: &Path,
+  config_path: &ProjectPath,
+  resolver: &PathResolver,
 ) -> Result<(ProjectConfig, Vec<ConfigWarning>), Failures<ReadConfigError>> {
-  let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
+  let config_content = source.read_text(config_path).map_err(|source| {
     return ReadConfigError::ReadFile {
-      path: config_path.display().to_string(),
+      path: config_path.to_string(),
       source,
     };
   })?;
-  let raw_config = parse_config(&config_content, config_path)?;
-  let (config, warnings) = resolve(raw_config, source, base_dir)?;
+  let raw_config = parse_config(&config_content, config_path.as_ref())?;
+  let (config, warnings) = resolve(raw_config, source, resolver)?;
 
   debug!(
-    config_path = %config_path.display(),
+    config_path = %config_path,
     output_name = config.output.name,
     output_path = %config.output.pdf_path().display(),
     warning_count = warnings.len(),
@@ -241,10 +242,10 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
 fn resolve(
   raw: RawConfig,
   source: &dyn ProjectSource,
-  base_dir: &Path,
+  resolver: &PathResolver,
 ) -> Result<(ProjectConfig, Vec<ConfigWarning>), Failures<ReadConfigError>> {
   let validation = validate_and_convert(&raw);
-  let (resolved, path_errors, warnings) = resolve_paths(&raw, source, base_dir);
+  let (resolved, path_errors, warnings) = resolve_paths(&raw, source, resolver);
 
   let font_values = match validation {
     Ok(font_values) if path_errors.is_empty() => font_values,
@@ -261,7 +262,7 @@ fn resolve(
     },
   };
 
-  let output_dir = resolve_output_dir_path(base_dir, raw.output.output_dir.as_deref());
+  let output_dir = resolve_output_dir_path(resolver.base_dir(), raw.output.output_dir.as_deref());
 
   let RawConfig {
     document: raw_document,
@@ -349,41 +350,40 @@ fn validate_values(raw: &RawConfig) -> Result<(), Vec<ConfigValidationError>> {
   return validate_and_convert(raw).map(|_| ());
 }
 
-/// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを `source.exists` で確認します。
+/// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを `resolver` で解決し、
+/// `source.exists` で確認します。
 ///
-/// `canonicalize`（実ディスクの symlink 解決込みの存在確認）は使わず、`ProjectPath` へ正規化した
-/// パスの存在有無だけを見る。`MemoryProjectSource` のような実ファイルシステムに触れないテスト
-/// adapter と両立させるための変更（issue #300）。
+/// 解決規則（絶対 / 相対 / 正規化）は `PathResolver` に閉じ、ここは存在確認と集約だけを持つ。
+/// `canonicalize` は使わない（理由は `project::path_resolver` の module doc）。
 fn resolve_paths(
   raw: &RawConfig,
   source: &dyn ProjectSource,
-  base_dir: &Path,
+  resolver: &PathResolver,
 ) -> (ResolvedPaths, Vec<ConfigValidationError>, Vec<ConfigWarning>) {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
   let mut warnings: Vec<ConfigWarning> = Vec::new();
 
-  let style_path = resolve_optional_path(raw.style_path.as_deref(), base_dir, source, &mut errors, |path| {
+  let style_path = resolve_optional_path(raw.style_path.as_deref(), resolver, source, &mut errors, |path| {
     return ConfigValidationError::StylePathResolution { path };
   });
-  let references_path = resolve_optional_path(raw.references_path.as_deref(), base_dir, source, &mut errors, |path| {
+  let references_path = resolve_optional_path(raw.references_path.as_deref(), resolver, source, &mut errors, |path| {
     return ConfigValidationError::ReferencesPathResolution { path };
   });
 
-  let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
+  let mut font_paths: Vec<ProjectPath> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    let raw_font_config = &raw.font_configs[font_type];
-    let joined = join_with_base(&raw_font_config.font_path, base_dir);
-    if source.exists(&ProjectPath::new(&joined)) {
-      font_paths.push(joined);
+    let resolved = resolver.resolve(&raw.font_configs[font_type].font_path);
+    if source.exists(&resolved) {
+      font_paths.push(resolved);
     } else {
       errors.push(ConfigValidationError::FontPathResolution {
         font_type,
-        path: joined.display().to_string(),
+        path: resolved.to_string(),
       });
     }
   }
 
-  let sources = resolve_sources(&raw.sources, base_dir, source, &mut errors, &mut warnings);
+  let sources = resolve_sources(&raw.sources, resolver, source, &mut errors, &mut warnings);
 
   return (
     ResolvedPaths {
@@ -397,59 +397,50 @@ fn resolve_paths(
   );
 }
 
-/// 相対パスを `base_dir` へ結合します（絶対パスはそのまま）。
-fn join_with_base(path: &Path, base_dir: &Path) -> PathBuf {
-  if path.is_absolute() {
-    return path.to_path_buf();
-  }
-  return base_dir.join(path);
-}
-
-/// オプションのパスを `base_dir` へ結合し、`source.exists` で存在確認します。
+/// オプションのパスを `resolver` で解決し、`source.exists` で存在確認します。
 fn resolve_optional_path(
   path: Option<&Path>,
-  base_dir: &Path,
+  resolver: &PathResolver,
   source: &dyn ProjectSource,
   errors: &mut Vec<ConfigValidationError>,
   make_err: impl FnOnce(String) -> ConfigValidationError,
-) -> Option<PathBuf> {
-  let p = path?;
-  let joined = join_with_base(p, base_dir);
-  if source.exists(&ProjectPath::new(&joined)) {
-    return Some(joined);
+) -> Option<ProjectPath> {
+  let resolved = resolver.resolve(path?);
+  if source.exists(&resolved) {
+    return Some(resolved);
   }
-  errors.push(make_err(joined.display().to_string()));
+  errors.push(make_err(resolved.to_string()));
   return None;
 }
 
-/// 各 source パスを `base_dir` へ結合し、`source.exists` で存在確認します。
+/// 各 source パスを `resolver` で解決し、`source.exists` で存在確認します。
 ///
 /// 拡張子が `.sei` でないものは読み込みを止めないので、`errors` ではなく `warnings` へ
-/// 宣言順に積みます。
+/// 宣言順に積みます。警告に載せるのは **config.toml に書かれたままのパス**（解決前）。
 fn resolve_sources(
   sources: &[PathBuf],
-  base_dir: &Path,
+  resolver: &PathResolver,
   project_source: &dyn ProjectSource,
   errors: &mut Vec<ConfigValidationError>,
   warnings: &mut Vec<ConfigWarning>,
-) -> Vec<PathBuf> {
-  let mut resolved = Vec::with_capacity(sources.len());
+) -> Vec<ProjectPath> {
+  let mut resolved_sources = Vec::with_capacity(sources.len());
   for source_path in sources {
     if source_path.extension().and_then(|ext| return ext.to_str()) != Some("sei") {
       warnings.push(ConfigWarning::SourceExtension {
         path: source_path.display().to_string(),
       });
     }
-    let joined = join_with_base(source_path, base_dir);
-    if project_source.exists(&ProjectPath::new(&joined)) {
-      resolved.push(joined);
+    let resolved = resolver.resolve(source_path);
+    if project_source.exists(&resolved) {
+      resolved_sources.push(resolved);
     } else {
       errors.push(ConfigValidationError::SourcePathResolution {
-        path: joined.display().to_string(),
+        path: resolved.to_string(),
       });
     }
   }
-  return resolved;
+  return resolved_sources;
 }
 
 /// `RawFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
@@ -569,7 +560,8 @@ fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> O
 
 /// 出力ディレクトリの絶対パスを決定します（I/O なし・純粋）。
 ///
-/// `output_dir` が相対パスまたは未指定の場合は `base_dir` を基準に解決します。
+/// `output_dir` が相対パスまたは未指定の場合は `base_dir` を基準に解決します。出力パスは外部資源の
+/// 取得 seam ではなく書き込み側の関心事なので `ProjectPath` にせず、`PathBuf` のまま組み立てる。
 fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBuf {
   match output_dir {
     Some(path) if path.is_absolute() => return path.to_path_buf(),
@@ -587,7 +579,7 @@ mod tests {
     parse_config, resolve_output_dir_path, resolve_paths, validate_values,
   };
   use crate::project::{
-    FilesystemProjectSource, FontType, MemoryProjectSource, SourceReadError,
+    FilesystemProjectSource, FontType, MemoryProjectSource, PathResolver, ProjectPath, SourceReadError,
     config::test_support::{
       font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
     },
@@ -626,7 +618,7 @@ mod tests {
     let source = MemoryProjectSource::new();
 
     // Act
-    let (_, errors, _) = resolve_paths(&raw, &source, Path::new("/project"));
+    let (_, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
     // Assert — スタイル・文献・ソース・フォント全種のパス不存在が集約されるはず
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
@@ -650,12 +642,40 @@ mod tests {
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
     // Act
-    let (resolved, errors, _) = resolve_paths(&raw, &source, Path::new("/project"));
+    let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
     // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
-    assert_eq!(resolved.style_path, Some(PathBuf::from("/project/style.toml")));
+    assert_eq!(resolved.style_path, Some(ProjectPath::new("/project/style.toml")));
     assert!(resolved.references_path.is_none());
+  }
+
+  #[test]
+  fn resolve_paths_normalizes_font_paths_so_that_spelling_variants_collapse() {
+    // Arrange — serif だけ `fonts/./dummy.ttf`、他は `fonts/dummy.ttf` を指す
+    let toml = format!(
+      "sources = []\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("fonts/dummy.ttf").replacen(
+        "font_path = \"fonts/dummy.ttf\"",
+        "font_path = \"fonts/./dummy.ttf\"",
+        1
+      ),
+    );
+    let raw = parse_config(&toml, dummy_source()).unwrap();
+    let source = MemoryProjectSource::new().with_bytes("/project/fonts/dummy.ttf", Vec::new());
+
+    // Act
+    let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
+
+    // Assert — 19 件すべてが同じ正規化済みパスになる
+    assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
+    assert!(
+      resolved.font_paths.iter().all(|path| return *path == ProjectPath::new("/project/fonts/dummy.ttf")),
+      "表記が違っても正規化後は同じ ProjectPath のはず: {:?}",
+      resolved.font_paths
+    );
   }
 
   #[test]
@@ -679,7 +699,7 @@ mod tests {
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
     // Act
-    let result = load(&source, Path::new("/project/config.toml"), Path::new("/project"));
+    let result = load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
     // Assert — 出力ディレクトリの作成は driver 側の責務になり、config は作らない
     result.expect("fixture は妥当な最小 config のはず");
@@ -1150,7 +1170,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     assert_eq!(config.output.name, "test_doc");
@@ -1177,7 +1198,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     assert_eq!(config.image.max_dpi, 150);
@@ -1199,7 +1221,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     assert!(!config.pdf.show_bookmarks);
@@ -1220,7 +1243,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let result = load(&source, &config_path, &base_dir);
+    let result = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
     // Assert
     let Err(failures) = result else {
@@ -1250,7 +1273,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let result = load(&source, &config_path, &base_dir);
+    let result = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
     // Assert
     let Err(failures) = result else {
@@ -1277,7 +1300,7 @@ mod tests {
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
 
     // Act
-    let (config, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert — output_dir 省略時は base_dir がそのまま使われる（呼び出し元がその意味付けを担う）
     assert_eq!(config.output.output_dir, base_dir);
@@ -1299,7 +1322,8 @@ mod tests {
 
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.script, Some(*b"Latn"));
@@ -1321,7 +1345,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     let serif = &config.font_configs[FontType::Serif];
@@ -1346,7 +1371,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     let serif = &config.font_configs[FontType::Serif];
@@ -1370,7 +1396,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     let serif = &config.font_configs[FontType::Serif];
@@ -1392,7 +1419,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     assert_eq!(config.document.language.as_deref(), Some("ja"));
@@ -1414,7 +1442,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     assert_eq!(config.document.language, None);
@@ -1436,7 +1465,8 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) =
+      load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert
     for font_type in FontType::ALL {
@@ -1452,7 +1482,8 @@ mod tests {
     let source = FilesystemProjectSource::new();
 
     // Act
-    let failures = load(&source, &config_path, tempdir.path()).expect_err("読み込みは失敗するはず");
+    let failures = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(tempdir.path()))
+      .expect_err("読み込みは失敗するはず");
 
     // Assert — 役割つきの leaf 診断の下に、元の I/O エラー kind が cause として残る
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
@@ -1470,8 +1501,8 @@ mod tests {
     let source = MemoryProjectSource::new().with_bytes("/project/config.toml", vec![0xff, 0xfe]);
 
     // Act
-    let failures =
-      load(&source, Path::new("/project/config.toml"), Path::new("/project")).expect_err("読み込みは失敗するはず");
+    let failures = load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")))
+      .expect_err("読み込みは失敗するはず");
 
     // Assert
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
@@ -1502,7 +1533,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (_, warnings) = load(&source, &config_path, &base_dir).unwrap();
+    let (_, warnings) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
 
     // Assert — 宣言順に 2 件（`.sei` の 1 件は警告にならない）
     let paths: Vec<&str> = warnings

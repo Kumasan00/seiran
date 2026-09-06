@@ -139,13 +139,13 @@ pub(crate) fn generate_citations(
 
 #[cfg(test)]
 mod tests {
-  use std::{io::Write, path::PathBuf};
+  use std::io::Write;
 
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     document::{FontKind, HirDocument},
-    frontend,
-    project::FilesystemProjectSource,
+    frontend::test_support::parse_source_for_test,
+    project::{FilesystemProjectSource, ProjectPath},
     semantics::{
       References, SemanticPolicy,
       fact_collection::collect_facts,
@@ -159,7 +159,7 @@ mod tests {
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir = frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 
@@ -170,7 +170,7 @@ mod tests {
   }
 
   /// 指定した CSL を設定した `Style` を作る
-  fn style_with_csl_path(path: PathBuf) -> Style {
+  fn style_with_csl_path(path: ProjectPath) -> Style {
     let mut style = Style::default();
     style.reference.csl_path = Some(path);
     return style;
@@ -180,11 +180,13 @@ mod tests {
   fn style_with_csl() -> Style { return style_with_csl_path(ieee_csl_path()); }
 
   /// 書誌の体裁だけを変えた variant CSL への絶対パスを返す
-  fn variant_csl_path() -> PathBuf {
-    return std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-      .join("tests/data/ieee-variant.csl")
-      .canonicalize()
-      .expect("tests/data/ieee-variant.csl が存在するはず");
+  fn variant_csl_path() -> ProjectPath {
+    return ProjectPath::new(
+      std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data/ieee-variant.csl")
+        .canonicalize()
+        .expect("tests/data/ieee-variant.csl が存在するはず"),
+    );
   }
 
   #[test]
@@ -263,7 +265,8 @@ mod tests {
     );
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    let references = read_references(&source, Some(file.path())).expect("references を読み込めるはず");
+    let references =
+      read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
     let analyzed = analyzed(r"\cite{kwan2014}", &references);
     let compiled = load_citation_style(&source, &style_with_csl()).expect("CSL を読めるはず");
 

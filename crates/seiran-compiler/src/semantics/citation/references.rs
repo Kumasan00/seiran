@@ -41,32 +41,31 @@ impl Format {
 
 /// 参照定義ファイルを読み込む。
 ///
-/// `path` が `None` の場合は空の参照定義を返す。`path` は呼び出し元（`crate::project::config::load`）が
-/// 既に絶対化済みのものを渡す想定で、このクレート自身は相対パスの解決を行わない。
+/// `path` が `None` の場合は空の参照定義を返す。`path` は `project::config::load` が `PathResolver` で
+/// 解決済みの `ProjectPath` を渡す想定で、このクレート自身は相対パスの解決を行わない。
 ///
 /// # Errors
 ///
 /// - ファイルの読み込みに失敗した場合
 /// - 拡張子がサポートされていない場合
 /// - TOML / JSON のパースに失敗した場合（著者名の排他性違反・空 / 重複 ID・未知フィールドを含む）
-pub(crate) fn read_references<P: AsRef<Path>>(
+pub(crate) fn read_references(
   source: &dyn ProjectSource,
-  path: Option<P>,
+  path: Option<&ProjectPath>,
 ) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
     debug!("参照定義ファイル未指定のため空の参照定義を使用");
     return Ok(References(HashMap::new()));
   };
-  let path_ref = path.as_ref();
-  let content = source.read_text(&ProjectPath::new(path_ref)).map_err(|source| {
+  let content = source.read_text(path).map_err(|source| {
     return ReadReferencesError::ReadFile {
-      path: path_ref.display().to_string(),
+      path: path.to_string(),
       source,
     };
   })?;
-  let references = parse_references(&content, path_ref)?;
+  let references = parse_references(&content, path.as_ref())?;
   let reference_count = references.len();
-  debug!(references_path = %path_ref.display(), reference_count, "参照定義ファイルを読込");
+  debug!(references_path = %path, reference_count, "参照定義ファイルを読込");
   return Ok(references);
 }
 
@@ -103,7 +102,7 @@ fn parse_references(text: &str, source_path: &Path) -> Result<References, ReadRe
 
 #[cfg(test)]
 mod tests {
-  use std::path::{Path, PathBuf};
+  use std::path::Path;
 
   use super::{
     ReadReferencesError,
@@ -112,7 +111,7 @@ mod tests {
     parse_references, read_references,
     reference::NumberOrString,
   };
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource, SourceReadError};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, SourceReadError};
 
   /// `parse_references` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
@@ -129,7 +128,7 @@ mod tests {
     let source = FilesystemProjectSource::new();
 
     // Act
-    let result: super::References = read_references::<&Path>(&source, None).unwrap();
+    let result: super::References = read_references(&source, None).unwrap();
 
     // Assert
     assert!(result.is_empty());
@@ -297,7 +296,7 @@ mod tests {
   fn read_references_fails_on_read_file_error() {
     // Arrange
     let source = FilesystemProjectSource::new();
-    let path = PathBuf::from("/nonexistent/path/to/references.toml");
+    let path = ProjectPath::new("/nonexistent/path/to/references.toml");
 
     // Act
     let result = read_references(&source, Some(&path));
@@ -317,7 +316,7 @@ mod tests {
        [[ref1.author]]\n\
        family = \"Doe\"\n",
     );
-    let path = PathBuf::from("/project/references.toml");
+    let path = ProjectPath::new("/project/references.toml");
 
     // Act
     let references = read_references(&source, Some(&path)).expect("有効な TOML は読み込めるはず");
@@ -332,7 +331,7 @@ mod tests {
   fn read_references_reports_missing_file_via_source_read_error() {
     // Arrange
     let source = MemoryProjectSource::new();
-    let path = PathBuf::from("/project/missing.toml");
+    let path = ProjectPath::new("/project/missing.toml");
 
     // Act
     let result = read_references(&source, Some(&path));
@@ -362,7 +361,7 @@ mod tests {
     .unwrap();
 
     // Act
-    let result = read_references(&source, Some(&references_path)).unwrap();
+    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -415,7 +414,7 @@ mod tests {
     std::fs::write(&references_path, json).unwrap();
 
     // Act
-    let result = read_references(&source, Some(&references_path)).unwrap();
+    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -453,7 +452,7 @@ mod tests {
     .unwrap();
 
     // Act
-    let result = read_references(&source, Some(&references_path)).unwrap();
+    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
     // Assert
     let reference = result.get("ref1").unwrap();
@@ -537,7 +536,7 @@ mod tests {
     std::fs::write(&references_path, json).unwrap();
 
     // Act
-    let result = read_references(&source, Some(&references_path)).unwrap();
+    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
     // Assert
     let reference = result.get("ref1").unwrap();
@@ -566,7 +565,7 @@ mod tests {
     std::fs::write(&references_path, b"anything: true").unwrap();
 
     // Act
-    let result = read_references(&source, Some(&references_path));
+    let result = read_references(&source, Some(&ProjectPath::new(&references_path)));
 
     // Assert
     assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));

@@ -103,7 +103,16 @@ fn source_position_is_recorded_in_the_log_file() {
   assert!(!output.status.success());
   let log = fs::read_to_string(&log_path).expect("ログファイルができているはず");
   assert!(log.contains("project::config::parse_toml"), "診断の code が残る: {log}");
-  assert!(log.contains("╭─[bad.toml:"), "ソース位置（ファイル名と行・桁）のブロックが残る: {log}");
+  // `-c` の相対パスは base_dir（起動時のカレントディレクトリ）を基準に解決してから読むので（#530）、
+  // ソース位置ブロックにはファイル名の前に絶対パスが付く。ここではプレフィックスを固定せず、
+  // ブロック自体とファイル名部分が残っていることだけを見る。
+  let position_line = log.lines().find(|line| return line.contains("╭─[")).unwrap_or_else(|| {
+    panic!("ソース位置（ファイル名と行・桁）のブロックが残る: {log}");
+  });
+  assert!(
+    position_line.contains("bad.toml:"),
+    "ソース位置ブロックの行に config のファイル名が載る: {position_line}"
+  );
 }
 
 #[test]

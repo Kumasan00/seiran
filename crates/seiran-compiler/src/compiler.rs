@@ -6,7 +6,7 @@
 use crate::{
   document::{HirDocument, HirSource},
   frontend,
-  project::{ProjectPath, ProjectSource},
+  project::{PathResolver, ProjectPath, ProjectSource},
   semantics, typeset,
 };
 
@@ -79,6 +79,8 @@ pub struct Compilation {
 ///
 /// 言語処理・意味解決・組版を内部で順に実行する。呼び出し元は各段の中間型を知らない。
 /// `base_dir` は呼び出し元が実行環境に応じて明示し、本関数はカレントディレクトリを取得しない。
+/// 相対 `root` は読み込みの前に `base_dir` を基準に解決するため、`Compilation.dependencies.config_path`
+/// と診断が示す設定ファイルパスは解決後の値になる。
 /// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
 /// 呼び出し元の責務とする。
 ///
@@ -94,15 +96,16 @@ pub fn compile<S: ProjectSource>(
   let _compile_span = info_span!("compile").entered();
   let build_start = Instant::now();
 
-  let inputs = load_inputs(source, root, base_dir)?;
+  let (resolver, root) = resolve_root(root, base_dir);
+  let inputs = load_inputs(source, &root, &resolver)?;
   let PipelineArtifacts {
     font_resources,
     laid_out,
     font_warnings,
     typeset_warnings,
-  } = run_pipeline(source, &inputs)?;
+  } = run_pipeline(source, &inputs, &resolver)?;
 
-  let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
+  let dependencies = DependencyManifest::collect(&root, &inputs, &laid_out.image_paths);
   let page_count = laid_out.pages.len();
   let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
   let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
@@ -128,6 +131,20 @@ pub fn compile<S: ProjectSource>(
   });
 }
 
+/// `base_dir` から入力パスの resolver を 1 回だけ構築し、`root`（設定ファイルパス）を同じ規則で解決する。
+///
+/// `compile` の公開シグネチャ `(source, root, base_dir)` は維持し、`base_dir` を compiler 側で暗黙に
+/// 取得しない（`std::env::current_dir()` を呼ばない）判断も維持する。相対 `root` はここで `base_dir`
+/// 基準の絶対パスになり、`DependencyManifest::config_path` と config 読込診断には解決後の値が現れる
+/// （#530 で受け入れた唯一の意味的な差分。CLI は `base_dir` に `current_dir` を渡すので指す実体は同じ）。
+/// これとは別に、`PathResolver` の解決契約（字句的正規化）により、診断・manifest・ソース名に出る
+/// パスは一様に正規化済みの表示になる（中間の `.` が消える）— こちらは差分ではなく契約の帰結。
+fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPath) {
+  let resolver = PathResolver::new(base_dir);
+  let root = resolver.resolve(root);
+  return (resolver, root);
+}
+
 /// 入力読込 phase を実行する（production / test 共通）。
 ///
 /// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは phase span と完了 event だけ。
@@ -138,11 +155,11 @@ pub fn compile<S: ProjectSource>(
 fn load_inputs(
   source: &dyn ProjectSource,
   root: &ProjectPath,
-  base_dir: &Path,
+  resolver: &PathResolver,
 ) -> Result<CompilationInputs, CompileFailure> {
   let _phase = info_span!("input").entered();
   let stage_start = Instant::now();
-  let inputs = input::load(source, root.as_ref(), base_dir)?;
+  let inputs = input::load(source, root, resolver)?;
   info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
   return Ok(inputs);
 }
@@ -174,11 +191,12 @@ struct PipelineArtifacts<'a> {
 fn run_pipeline<'a>(
   source: &dyn ProjectSource,
   inputs: &'a CompilationInputs,
+  resolver: &PathResolver,
 ) -> Result<PipelineArtifacts<'a>, CompileFailure> {
   let document = {
     let _phase = info_span!("frontend").entered();
     let stage_start = Instant::now();
-    let document = parse_project(inputs)?;
+    let document = parse_project(inputs, resolver)?;
     info!(
       source_count = document.groups().len(),
       node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
@@ -252,8 +270,9 @@ fn layout_project_for_test(
   root: &ProjectPath,
   base_dir: &Path,
 ) -> Result<LaidOutDocument, CompileFailure> {
-  let inputs = load_inputs(source, root, base_dir)?;
-  let artifacts = run_pipeline(source, &inputs)?;
+  let (resolver, root) = resolve_root(root, base_dir);
+  let inputs = load_inputs(source, &root, &resolver)?;
+  let artifacts = run_pipeline(source, &inputs, &resolver)?;
   return Ok(artifacts.laid_out);
 }
 
@@ -282,14 +301,14 @@ fn collect_warnings(
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
 ///
-/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::analyze` が、
-/// 画像パスの収集は `typeset::layout` が担う。
+/// 画像パスは frontend が `resolver` で解決して HIR へ格納する。意味解析（ラベル・`\ref`・カウンタ・
+/// 引用キー）と CSL 整形は `semantics::analyze` が、画像パスの収集は `typeset::layout` が担う。
 ///
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailure> {
-  let document = HirDocument::assemble(parse_all_sources(inputs.sources())?);
+fn parse_project(inputs: &CompilationInputs, resolver: &PathResolver) -> Result<HirDocument, CompileFailure> {
+  let document = HirDocument::assemble(parse_all_sources(inputs.sources(), resolver)?);
   return Ok(document);
 }
 
@@ -297,12 +316,12 @@ fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailu
 ///
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 /// エラーは宣言順に並べ、先頭（最初に失敗したソースの leaf 診断）を主診断にする。
-fn parse_all_sources(sources: &SourceSet) -> Result<Vec<HirSource>, CompileFailure> {
+fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec<HirSource>, CompileFailure> {
   let mut parsed: Vec<HirSource> = Vec::new();
   let mut parse_errors: Vec<Box<dyn miette::Diagnostic + Send + Sync + 'static>> = Vec::new();
 
   for (source_id, entry) in sources.iter() {
-    match frontend::parse_source(&entry.content, source_id) {
+    match frontend::parse_source(&entry.content, source_id, resolver) {
       Ok(hir) => parsed.push(hir),
       Err(error) => parse_errors.push(Box::new(SourceDiagnostic::attach(sources, source_id, error))),
     }

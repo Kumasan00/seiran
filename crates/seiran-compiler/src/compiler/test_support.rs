@@ -14,8 +14,12 @@
 //! [`TestProjectBuilder::absolute_base_dir`] で `base_dir` をワークスペースルートにし、
 //! 両 adapter が同じ絶対パスを引くようにする。
 //!
-//! 画像だけは例外で、`\image{...}` の字面がそのままキーになる（`base_dir` を前置しない）ため
-//! [`TestProjectBuilder::asset`] は与えられた文字列をそのまま登録キーにする。
+//! 画像（`\image{...}` の字面）もソース・フォントと同じ規則で `base_dir` を前置したキーで登録する
+//! （frontend が同じ規則で解決するため）。既定の `sources`（fixture config.toml の `cite.sei` +
+//! `figure.sei`）を使う場合は `figure.sei` が参照する画像を builder が [`FIGURE_IMAGE_ASSETS`] として
+//! 自動登録するので、呼び出し側の明示登録は不要。`sources` を [`TestProjectBuilder::sources`] で
+//! 差し替えた場合はこの自動登録が働かないので、画像は [`TestProjectBuilder::asset`] /
+//! [`TestProjectBuilder::assets`] で明示登録する。
 //!
 //! # 設定の上書き
 //!
@@ -41,6 +45,16 @@ use crate::{
 
 /// fixture の設定ファイル（ワークスペースルート相対）。
 const CONFIG_REL: &str = "crates/seiran-compiler/tests/config/config.toml";
+
+/// `figure.sei` が参照する画像 fixture（`\image{...}` の字面と同じ、ワークスペース相対）。
+pub(super) const FIGURE_IMAGE_ASSETS: &[&str] = &[
+  "./tests/image/testimage1.jpg",
+  "./tests/image/testimage2.jpg",
+  "./tests/image/testimage3.jpg",
+  "./tests/image/testimage4.png",
+  "./tests/image/testimage5.png",
+  "./tests/image/testimage6.svg",
+];
 
 /// config.toml の生テーブルへの上書き。
 type ConfigOverride = Box<dyn Fn(&mut toml::value::Table)>;
@@ -138,7 +152,7 @@ pub(super) struct TestProjectBuilder {
   config_overrides: Vec<ConfigOverride>,
   /// 型付き `Style` への上書き
   style_overrides: Vec<StyleOverride>,
-  /// 字面のまま登録する資源（画像）
+  /// ワークスペース相対で書く資源（画像）。登録キーは他と同じく `base_dir` を前置する
   assets: Vec<PathBuf>,
 }
 
@@ -181,9 +195,17 @@ impl TestProjectBuilder {
     return self;
   }
 
-  /// 画像等を `\image{...}` の字面のままのキーで登録する。
+  /// 画像等をワークスペース相対パスで登録する（`\image{...}` の字面と同じ文字列を渡す）。
   pub(super) fn asset(mut self, path: &str) -> Self {
     self.assets.push(PathBuf::from(path));
+    return self;
+  }
+
+  /// 複数の資源をまとめて登録する（[`Self::asset`] の繰り返し）。
+  pub(super) fn assets(mut self, paths: &[&str]) -> Self {
+    for path in paths {
+      self = self.asset(path);
+    }
     return self;
   }
 
@@ -258,22 +280,21 @@ impl TestProjectBuilder {
     source = source_with_fonts;
 
     for path in [
-      style.reference.csl_path.as_deref(),
-      style.reference.locale_path.as_deref(),
+      style.reference.csl_path.as_ref(),
+      style.reference.locale_path.as_ref(),
     ]
     .into_iter()
     .flatten()
     {
-      let bytes =
-        fs::read(root.join(path)).unwrap_or_else(|error| panic!("CSL 資産を読めるはず: {}: {error}", path.display()));
+      let bytes = fs::read(root.join(path)).unwrap_or_else(|error| panic!("CSL 資産を読めるはず: {path}: {error}"));
       // `style.toml` が持つ CSL パスも他の資源と同じくワークスペース相対なので、同じ規則で前置する
       source = source.with_bytes(self.key(path), bytes);
     }
 
-    for asset in &self.assets {
+    for asset in &self.assets_to_register() {
       let bytes =
         fs::read(root.join(asset)).unwrap_or_else(|error| panic!("資産を読めるはず: {}: {error}", asset.display()));
-      source = source.with_bytes(asset, bytes);
+      source = source.with_bytes(self.key(asset), bytes);
     }
 
     return TestProject {
@@ -314,6 +335,21 @@ impl TestProjectBuilder {
       }
     }
     return (source, keys);
+  }
+
+  /// 登録する資産の一覧（明示登録 `self.assets` に加え、`sources` が既定（fixture の
+  /// `cite.sei` + `figure.sei`）のままなら `FIGURE_IMAGE_ASSETS` も足す。重複除去済み。
+  ///
+  /// `sources` を差し替えたテストは `figure.sei` を読まないことが多いので自動登録しない —
+  /// 必要なら呼び出し側が [`Self::asset`] / [`Self::assets`] で明示する。
+  fn assets_to_register(&self) -> Vec<PathBuf> {
+    let mut assets = self.assets.clone();
+    if self.sources.is_none() {
+      assets.extend(FIGURE_IMAGE_ASSETS.iter().map(PathBuf::from));
+    }
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    assets.retain(|path| return seen.insert(path.clone()));
+    return assets;
   }
 
   /// ワークスペース相対パスから `MemoryProjectSource` の登録キーを作る。

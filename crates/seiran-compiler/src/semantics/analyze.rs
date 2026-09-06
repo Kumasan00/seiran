@@ -82,8 +82,8 @@ mod tests {
   use super::analyze;
   use crate::{
     document::HirDocument,
-    frontend::parse_source,
-    project::{FilesystemProjectSource, MemoryProjectSource},
+    frontend::test_support::parse_source_for_test,
+    project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
       AnalyzeError, CitationStyleError, SemanticError, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
@@ -100,7 +100,8 @@ mod tests {
     let mut style = Style::default();
     style.reference.csl_path = Some(ieee_csl_path());
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
+    let hir =
+      parse_source_for_test(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -120,9 +121,9 @@ mod tests {
     // Arrange — 引用を含まない本文を、csl_path 未設定の style で解析する（CSL 遅延読込）
     let source = MemoryProjectSource::new();
     let style = Style::default();
-    let references = read_references(&source, None::<std::path::PathBuf>).expect("空の参照定義を読めるはず");
+    let references = read_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source("本文だけの段落。\n", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test("本文だけの段落。\n", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -147,9 +148,10 @@ mod tests {
        family = \"Doe\"\n",
     );
     let style = Style::default();
-    let references = read_references(&source, Some("/project/references.toml")).expect("参照定義を読めるはず");
+    let references =
+      read_references(&source, Some(&ProjectPath::new("/project/references.toml"))).expect("参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"\cite{ref1}", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test(r"\cite{ref1}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -164,9 +166,9 @@ mod tests {
     // Arrange — 未解決の \ref を含むソース（引用なし）を渡し、Resolve エラーへ写像されることを確認する
     let source = MemoryProjectSource::new();
     let style = Style::default();
-    let references = read_references(&source, None::<std::path::PathBuf>).expect("空の参照定義を読めるはず");
+    let references = read_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"\ref{missing}", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test(r"\ref{missing}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
@@ -181,9 +183,9 @@ mod tests {
     // Arrange — 参照定義が空のまま `\cite` を含むソースを渡す
     let source = MemoryProjectSource::new();
     let style = Style::default();
-    let references = read_references(&source, None::<std::path::PathBuf>).expect("空の参照定義を読めるはず");
+    let references = read_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
+    let hir = parse_source_for_test(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     // Act

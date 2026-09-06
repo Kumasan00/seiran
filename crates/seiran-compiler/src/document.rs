@@ -34,7 +34,8 @@
 //! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
 //!
 //! 依存方向は `source` / `project` / `length` / `color` の 4 つだけで、
-//! `semantics` / `typeset` / `compiler` は知らない。
+//! `semantics` / `typeset` / `compiler` は知らない。[`HirBuilder`] は `project::PathResolver` を
+//! 値として持つ（I/O なし）。
 
 mod caption;
 mod font_kind;

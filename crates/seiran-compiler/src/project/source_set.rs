@@ -1,7 +1,5 @@
 //! 読込済みソース集合 [`SourceSet`]（[`crate::source::SourceId`] の唯一の発行元）
 
-use std::path::PathBuf;
-
 use crate::{
   failures::{self, Failures},
   project::{ProjectPath, ProjectSource, SourceReadError},
@@ -79,18 +77,18 @@ impl SourceSet {
   /// いずれかのファイルの読込に失敗した場合、失敗した全件を宣言順に返す。
   pub(crate) fn read(
     source: &dyn ProjectSource,
-    sources: &[PathBuf],
+    sources: &[ProjectPath],
   ) -> Result<SourceSet, Failures<SourceSetReadError>> {
     let results: Vec<Result<(String, String), SourceSetReadError>> = sources
       .iter()
       .map(|source_path| {
-        let content = source.read_text(&ProjectPath::new(source_path)).map_err(|error| {
+        let content = source.read_text(source_path).map_err(|error| {
           return SourceSetReadError {
-            path: source_path.display().to_string(),
+            path: source_path.to_string(),
             source: error,
           };
         })?;
-        return Ok((source_path.display().to_string(), content.to_string()));
+        return Ok((source_path.to_string(), content.to_string()));
       })
       .collect();
 
@@ -104,19 +102,17 @@ impl SourceSet {
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
   use super::SourceSet;
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource, SourceReadError};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, SourceReadError};
 
-  /// 一時ディレクトリに 1 つソースファイルを書き出し、そのパスを返す。
+  /// 一時ディレクトリに 1 つソースファイルを書き出し、その `ProjectPath` を返す。
   ///
   /// 実ファイルシステム adapter を通す 2 テストがカレントディレクトリに依存しないようにする
   /// （`SourceSet` は `project` の型なので、テストも repo のディレクトリ構成を前提にしない）。
-  fn write_source(dir: &tempfile::TempDir, name: &str, content: &str) -> PathBuf {
+  fn write_source(dir: &tempfile::TempDir, name: &str, content: &str) -> ProjectPath {
     let path = dir.path().join(name);
     std::fs::write(&path, content).expect("一時ディレクトリへ書き込めるはず");
-    return path;
+    return ProjectPath::new(path);
   }
 
   #[test]
@@ -133,7 +129,7 @@ mod tests {
     // Assert
     let entries: Vec<_> = source_set.iter().collect();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].1.name, path.display().to_string());
+    assert_eq!(entries[0].1.name, path.to_string());
     assert_eq!(entries[0].1.content, "本文");
   }
 
@@ -142,7 +138,7 @@ mod tests {
     // Arrange — 存在しないパスを混ぜる。I/O 失敗はパースエラーと違い集約しない
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let existing = write_source(&dir, "text.sei", "本文");
-    let missing = dir.path().join("__does_not_exist__.sei");
+    let missing = ProjectPath::new(dir.path().join("__does_not_exist__.sei"));
     let source = FilesystemProjectSource::new();
 
     // Act
@@ -153,7 +149,7 @@ mod tests {
       panic!("読込エラーを期待");
     };
     let error = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
-    assert_eq!(error.path, missing.display().to_string(), "失敗したパスを持つはず");
+    assert_eq!(error.path, missing.to_string(), "失敗したパスを持つはず");
     let SourceReadError::Io(io_error) = &error.source else {
       panic!("filesystem adapter は Io を返すはず: {:?}", error.source);
     };
@@ -167,8 +163,8 @@ mod tests {
       .with_text("/project/a.sei", "content-a")
       .with_text("/project/b.sei", "content-b");
     let sources = vec![
-      PathBuf::from("/project/a.sei"),
-      PathBuf::from("/project/b.sei"),
+      ProjectPath::new("/project/a.sei"),
+      ProjectPath::new("/project/b.sei"),
     ];
 
     // Act
@@ -178,10 +174,10 @@ mod tests {
     let entries: Vec<_> = source_set.iter().collect();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].0.index(), 0);
-    assert_eq!(entries[0].1.name, PathBuf::from("/project/a.sei").display().to_string());
+    assert_eq!(entries[0].1.name, ProjectPath::new("/project/a.sei").to_string());
     assert_eq!(entries[0].1.content, "content-a");
     assert_eq!(entries[1].0.index(), 1);
-    assert_eq!(entries[1].1.name, PathBuf::from("/project/b.sei").display().to_string());
+    assert_eq!(entries[1].1.name, ProjectPath::new("/project/b.sei").to_string());
     assert_eq!(entries[1].1.content, "content-b");
   }
 

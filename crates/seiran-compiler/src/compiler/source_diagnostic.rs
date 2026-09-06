@@ -64,13 +64,11 @@ impl<E: Diagnostic + 'static> Diagnostic for SourceDiagnostic<E> {
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
   use miette::Diagnostic;
   use thiserror::Error;
 
   use super::SourceDiagnostic;
-  use crate::project::{MemoryProjectSource, SourceSet};
+  use crate::project::{MemoryProjectSource, ProjectPath, SourceSet};
 
   /// ソース位置付き leaf 診断を模したテスト用エラー
   #[derive(Debug, Error, miette::Diagnostic)]
@@ -86,7 +84,7 @@ mod tests {
   fn supplies_only_source_code_and_delegates_the_rest() {
     // Arrange
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
-    let sources = SourceSet::read(&source, &[PathBuf::from("/project/chapter.sei")]).expect("読み込めるはず");
+    let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, _entry) = sources.iter().next().expect("1 件登録されているはず");
     let inner = LeafError {
       span: miette::SourceSpan::from((0usize, 3usize)),

@@ -225,13 +225,13 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{HirBuilder, HirMathKind},
+    document::HirMathKind,
     frontend::{
       evaluator::mode_resolver,
       syntax,
       syntax::{SyntaxKind, green::GreenElement, view::EnvironmentView},
+      test_support,
     },
-    source::SourceId,
   };
 
   /// 緑ツリーを再帰的に走査して最初の `Environment` ノードを返す
@@ -281,7 +281,7 @@ mod tests {
     };
 
     // Act
-    let builder = HirBuilder::new(SourceId::new(0));
+    let builder = test_support::hir_builder_for_test();
     let grid = evaluate_grid(source, &builder, body, &spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
 
     // Assert
@@ -306,7 +306,7 @@ mod tests {
     };
 
     // Act
-    let builder = HirBuilder::new(SourceId::new(0));
+    let builder = test_support::hir_builder_for_test();
     let grid = evaluate_grid(source, &builder, body, &spec, false).unwrap();
 
     // Assert
@@ -326,7 +326,7 @@ mod tests {
     };
 
     // Act
-    let builder = HirBuilder::new(SourceId::new(0));
+    let builder = test_support::hir_builder_for_test();
     let result = evaluate_grid(source, &builder, body, &spec, false);
 
     // Assert

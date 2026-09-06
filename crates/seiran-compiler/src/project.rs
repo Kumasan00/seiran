@@ -15,6 +15,9 @@
 //! フォントの解析・検証・シェーピングという**処理**は `typeset::font` の側にあり、
 //! この module はその入力（どのファイルをどう使うか）までを持つ。
 //!
+//! 入力パスの解決規則（相対への `base_dir` 前置・絶対の維持・字句的正規化）は子 module `path_resolver` の
+//! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う（#530）。
+//!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory`）は crate 内の他 module に
 //! 依存しない。crate 内依存を持つのは子 module だけで、`config` が `font` / `length` / `color` を、
 //! `source_set` が `source` を参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を、
@@ -28,6 +31,7 @@ pub(crate) mod config;
 mod filesystem;
 mod font;
 mod memory;
+mod path_resolver;
 mod source_set;
 
 use std::{
@@ -49,21 +53,40 @@ pub(crate) use font::{
   Feature, FontConfig, FontConfigs, FontData, FontMap, FontReadError, TextDirection, VariationAxis,
 };
 pub use memory::MemoryProjectSource;
+pub(crate) use path_resolver::PathResolver;
+use serde::{Deserialize, Serialize};
 pub(crate) use source_set::SourceSet;
 use thiserror::Error;
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ
 /// （シンボリックリンク解決はしない。存在確認は [`ProjectSource::exists`] が担う）。
 ///
+/// 相対パスへの `base_dir` 前置は [`PathResolver`] の責務で、この型は正規化だけを保証する。
+///
+/// serde は `PathBuf` と同じ TOML 表現（文字列）を透過する — `style.toml` の `csl_path` /
+/// `locale_path` が `Style` の一部として deserialize / serialize されるため。deserialize 時に行うのは
+/// 字句的正規化だけで、`base_dir` の前置は `style::load` が [`PathResolver`] で行う。
+///
 /// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
 /// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(from = "PathBuf", into = "PathBuf")]
 pub struct ProjectPath(PathBuf);
 
 impl ProjectPath {
   /// 冗長な `.` / 区切りを畳んだ `ProjectPath` を作る。
   #[must_use]
   pub fn new(path: impl AsRef<Path>) -> Self { return ProjectPath(path.as_ref().components().collect()); }
+}
+
+impl From<PathBuf> for ProjectPath {
+  /// serde の `from` 経路。[`ProjectPath::new`] と同じ正規化を通す。
+  fn from(path: PathBuf) -> Self { return ProjectPath::new(path); }
+}
+
+impl From<ProjectPath> for PathBuf {
+  /// serde の `into` 経路と、公開 interface（`DependencyManifest`）への変換に使う。
+  fn from(path: ProjectPath) -> Self { return path.0; }
 }
 
 impl AsRef<Path> for ProjectPath {
@@ -132,6 +155,8 @@ pub trait ProjectSource: Send + Sync {
 mod tests {
   use std::{collections::BTreeSet, path::Path};
 
+  use serde::{Deserialize, Serialize};
+
   use super::{ProjectPath, SourceReadError};
 
   #[test]
@@ -174,6 +199,41 @@ mod tests {
     let path = ProjectPath::new("/a/b.ttf");
 
     assert_eq!(path.to_string(), "/a/b.ttf");
+  }
+
+  #[test]
+  fn deserialize_normalizes_the_written_path() {
+    // Arrange — `Style` の一部として TOML から読まれる形を最小で再現する
+    #[derive(Deserialize)]
+    struct Holder {
+      path: ProjectPath,
+    }
+
+    // Act
+    let holder: Holder = toml::from_str("path = \"fig/./a.png\"").expect("文字列は ProjectPath として読めるはず");
+
+    // Assert — deserialize は字句的正規化だけを行う（base_dir の前置は resolver の仕事）
+    assert_eq!(holder.path, ProjectPath::new("fig/a.png"));
+  }
+
+  #[test]
+  fn serialize_round_trips_as_a_plain_string() {
+    // Arrange — `TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    struct Holder {
+      path: ProjectPath,
+    }
+    let holder = Holder {
+      path: ProjectPath::new("/project/fig/a.png"),
+    };
+
+    // Act
+    let text = toml::to_string(&holder).expect("ProjectPath は文字列として直列化できるはず");
+    let back: Holder = toml::from_str(&text).expect("書き戻した TOML を読み直せるはず");
+
+    // Assert
+    assert_eq!(text.trim(), "path = \"/project/fig/a.png\"");
+    assert_eq!(back, holder);
   }
 
   #[test]

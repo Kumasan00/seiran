@@ -13,7 +13,8 @@ use crate::{
 /// この型の構築自体は新しい I/O を発生させない。
 #[derive(Debug, Clone)]
 pub struct DependencyManifest {
-  /// 設定ファイル自体のパス
+  /// 設定ファイル自体のパス（`base_dir` 適用済み・正規化済みの解決後の値。`compile` へ渡した引数を
+  /// そのまま運ぶわけではない）
   pub config_path: PathBuf,
   /// スタイルファイルのパス（既定値使用時は `None`）
   pub style_path: Option<PathBuf>,
@@ -32,54 +33,41 @@ pub struct DependencyManifest {
 }
 
 impl DependencyManifest {
-  /// 設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
-  pub(super) fn collect(
-    config_path: &std::path::Path,
-    inputs: &CompilationInputs,
-    image_paths: &[ProjectPath],
-  ) -> Self {
+  /// 解決済み設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
+  ///
+  /// 内部は解決済みの `ProjectPath` で運び、公開 interface の `PathBuf` へはここで 1 回だけ変換する。
+  pub(super) fn collect(config_path: &ProjectPath, inputs: &CompilationInputs, image_paths: &[ProjectPath]) -> Self {
     let font_paths: BTreeSet<PathBuf> = FontType::ALL
       .iter()
-      .map(|font_type| return inputs.config().font_configs[*font_type].font_path.clone())
+      .map(|font_type| return to_path_buf(&inputs.config().font_configs[*font_type].font_path))
       .collect();
     return DependencyManifest {
-      config_path: config_path.to_path_buf(),
-      style_path: inputs.config().style_path.clone(),
-      references_path: inputs.config().references_path.clone(),
-      source_paths: inputs.config().sources.clone(),
-      image_paths: image_paths.iter().map(|path| return path.as_ref().to_path_buf()).collect(),
+      config_path: to_path_buf(config_path),
+      style_path: inputs.config().style_path.as_ref().map(to_path_buf),
+      references_path: inputs.config().references_path.as_ref().map(to_path_buf),
+      source_paths: inputs.config().sources.iter().map(to_path_buf).collect(),
+      image_paths: image_paths.iter().map(to_path_buf).collect(),
       font_paths: font_paths.into_iter().collect(),
-      csl_path: inputs.style().reference.csl_path.clone(),
-      locale_path: inputs.style().reference.locale_path.clone(),
+      csl_path: inputs.style().reference.csl_path.as_ref().map(to_path_buf),
+      locale_path: inputs.style().reference.locale_path.as_ref().map(to_path_buf),
     };
   }
 }
+
+/// 公開フィールド用に `ProjectPath` を `PathBuf` へ写す（値は同じ。型だけ公開 interface に合わせる）。
+fn to_path_buf(path: &ProjectPath) -> PathBuf { return path.as_ref().to_path_buf(); }
 
 #[cfg(test)]
 mod tests {
   use std::path::PathBuf;
 
-  use crate::compiler::test_support::TestProject;
-
-  /// `figure.sei` が参照する画像 fixture（`\image{...}` の字面と同じ）。
-  const IMAGE_ASSETS: &[&str] = &[
-    "./tests/image/testimage1.jpg",
-    "./tests/image/testimage2.jpg",
-    "./tests/image/testimage3.jpg",
-    "./tests/image/testimage4.png",
-    "./tests/image/testimage5.png",
-    "./tests/image/testimage6.svg",
-  ];
+  use crate::compiler::test_support::{FIGURE_IMAGE_ASSETS, TestProject};
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する。
     // 画像を持つ入力を選び、`\image{...}` から集めたパスが manifest に載ることも合わせて見る
-    let mut builder = TestProject::builder().sources(&["tests/text/figure.sei"]);
-    for asset in IMAGE_ASSETS {
-      builder = builder.asset(asset);
-    }
-    let project = builder.build();
+    let project = TestProject::builder().sources(&["tests/text/figure.sei"]).assets(FIGURE_IMAGE_ASSETS).build();
 
     // Act
     let manifest = project.compile().expect("fixture のコンパイル").dependencies;
@@ -89,7 +77,7 @@ mod tests {
     assert_eq!(manifest.source_paths, vec![PathBuf::from("tests/text/figure.sei")]);
     assert_eq!(
       manifest.image_paths,
-      IMAGE_ASSETS.iter().map(PathBuf::from).collect::<Vec<PathBuf>>(),
+      FIGURE_IMAGE_ASSETS.iter().map(PathBuf::from).collect::<Vec<PathBuf>>(),
       "画像パスは昇順で重複なく載るはず"
     );
     let unique_font_paths: std::collections::BTreeSet<_> = manifest.font_paths.iter().collect();

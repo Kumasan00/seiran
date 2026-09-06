@@ -115,7 +115,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 #### 責務
 
-プロジェクトの**物理的な入力**を所有する crate root 直下の module。4 つを持つ。
+プロジェクトの**物理的な入力**を所有する crate root 直下の module。5 つを持つ。
 
 1. 外部資源取得の seam（module 直下 + `filesystem` / `memory`）。compiler が `std::fs` を直接呼ばず、
    設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを 1 つの seam 経由で取得する
@@ -123,12 +123,16 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 3. 読込済みソース集合 `SourceSet`（子 module `source_set`。`SourceId` の唯一の発行元）
 4. config.toml が宣言する**フォント資源**（子 module `font`。19 種別の分類・検証済み設定・
    読込済みバイト列）
+5. 入力パスの解決規則（子 module `path_resolver`。`PathResolver` 1 型 — 絶対はそのまま・相対は
+   `base_dir` 前置・字句的正規化・I/O なし。詳細は下の bullet を参照）
 
 seam を `config` の子に置かないのは変わらない — 全外部資源の窓口であり、`config` の子に置くと
 `font` → `project::config` という役割に合わない依存が生まれる（依存方向は `project::config` → `font` の
 一方向を保つ）。
 
-**依存の不変条件**: seam 部は crate 内の他 module に依存しない。crate 内依存を持つのは子 module だけで、
+**依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）は crate 内の
+他 module に依存しない — `path_resolver` が知るのは `ProjectPath` だけで、`base_dir` の前置と字句的
+正規化に I/O も他 module も要らないため。crate 内依存を持つのは seam 以外の子 module だけで、
 `config` が `font` / `length` を（`ProjectConfig.font_configs` が `font::FontConfigs` を値として
 持つため）、`source_set` が `source` を参照する（`SourceSet` が `source::SourceId` を発行するため）。
 `config` / `source_set` / `font` は加えて leaf module `failures` に依存する（検証違反・読込失敗を
@@ -171,6 +175,20 @@ pub trait ProjectSource: Send + Sync {
   残るため。`Ord` を実装しており、`typeset::image::manifest` の `BTreeSet<ProjectPath>` による
   決定的な重複除去・昇順ソートがこれを使う。正規化は重複除去より前に効くので、`fig/./a.png` と
   `fig/a.png` は manifest 上 1 件に畳まれる（同じファイルを 2 度読まない）。
+- **入力パスの解決規則は `PathResolver` 1 型に閉じる**（子 module `path_resolver`、crate-private、#530）。
+  契約は (1) 絶対パスはそのまま (2) 相対パスは `base_dir` を前置 (3) `.` と冗長な区切りは
+  `Path::components()` で畳む (4) `..` は保持 (5) 存在確認・symlink 解決・I/O をしない。
+  `compile` facade が `base_dir` から 1 回だけ構築し、config（style / references / sources / fonts）・
+  style（CSL / locale）・frontend（画像）の 3 箇所がこれを使う — 差し替え点ではないので trait にしない
+  （adapter 間で規則は変わらない）。`base_dir()` accessor は出力パス（`output_dir` / `pdf_path`、
+  書き込み側の関心事で `PathBuf` のまま）を組む `project::config::resolve_output_dir_path` だけが使う。
+  `canonicalize` を採用しないのは、存在するファイルにしか適用できず構築が fallible になる・I/O と
+  symlink 解決を依存ゼロの seam 部へ持ち込む・`MemoryProjectSource` が同じ意味を再現できない・ユーザーが
+  書いた論理パスが診断と manifest から消える・`exists` の全件検査と責務が重複する・Windows で保存値が
+  OS 依存になるため。symlink 経由の root 外アクセス禁止や alias の同一 identity は別の設計課題として扱う。
+- `ProjectPath` は `PathBuf` と同じ TOML 表現を透過する serde を持つ（`from = "PathBuf"` で deserialize 時に
+  字句的正規化、`into = "PathBuf"` で serialize）。`style.toml` の `csl_path` / `locale_path` が `Style` の
+  一部として読み書きされるため。`base_dir` の前置は deserialize では行わず `style::load` が resolver で行う。
 - `SourceReadError` は **`miette::Diagnostic` を実装しない低水準 cause**（#377）。この型は「どの資源を
   読もうとしたか」を知らないので単独では描画せず、役割（設定 / スタイル / 文献 / フォント / ソース /
   画像）とパスを含む leaf diagnostic は所有段が作り、seam のエラーはその `#[source]` に入って
@@ -191,6 +209,10 @@ pub trait ProjectSource: Send + Sync {
 その代わり `ProjectConfig` 等の型を `project` の facade へ再エクスポートしない（同じ型に 2 つの
 公開パスを作らない）。
 
+入口 `load(source, config_path: &ProjectPath, resolver: &PathResolver)` の `config_path` は
+`compile` facade（`resolve_root`）が解決済みの値で、`load` はここを再解決しない。`resolver` は
+config 内の相対パス（`sources` / `style_path` / `references_path` / フォントパス）の解決に使う。
+
 **生（`raw`）→ 検証 → 解決済み（`resolved`）の 2 型構成**を取る。
 
 - `raw`: TOML からそのままデシリアライズする `RawConfig` / `RawFontConfig`（非公開）。garde の
@@ -201,14 +223,16 @@ pub trait ProjectSource: Send + Sync {
   作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
   style.toml 側（`ReadStyleError::Validation`）も同じ形。TOML
   構文エラーは `NamedSource` + `#[label]` 付き（`NamedSource` は `load` 自身が組み立てる）。
-  `style_path` / `references_path` は**存在確認と正規化までで、内容は解析しない** — style.toml は
-  `style::load`、references は `semantics::read_references` がそれぞれ読む。
+  `style_path` / `references_path` は**resolver で解決し `source.exists` で存在確認するまでで、内容は
+  解析しない** — style.toml は `style::load`、references は `semantics::read_references` がそれぞれ読む。
 - 警告: 読み込みは成功するがユーザーが直したほうがよい問題（`sources` の拡張子が `.sei` でない）は
   error ではなく `ConfigWarning`（`severity(Warning)`、`code(project::config::source_extension)`）で
   返す。`load` の Ok 側が `(ProjectConfig, Vec<ConfigWarning>)` になっており、順序は `sources` の
   宣言順（#377）。
 - `resolved`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
-  `PdfConfig` / `ImageConfig`。後段はこちらだけを見る。`PdfConfig` が持つのは用紙寸法（width /
+  `PdfConfig` / `ImageConfig`。後段はこちらだけを見る。`sources` / `style_path` / `references_path` は
+  解決済みの `ProjectPath`（`PathBuf` ではない）。`output_dir` だけ、出力側の関心事なので `PathBuf`
+  のまま。`PdfConfig` が持つのは用紙寸法（width /
   height）と `show_bookmarks` だけで、**本文領域の 4 方向の余白は `style` の `PageStyle` が所有する**
   （#389。用紙という実体の物理量ではなく「用紙をどう使うか」＝見た目なので P10 が style 側に置く）。**処理済みフォント設定**
   （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は兄弟 module
@@ -240,7 +264,9 @@ pub trait ProjectSource: Send + Sync {
   型の側で保証する。イテレーションは常に `FontType::ALL` の順序。`typeset::font` が `FontRefs` /
   `FontMetrics` の実体に使うので facade へ出す。
 - `settings`（非公開、facade で `FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` /
-  `TextDirection` を再エクスポート）: フォント処理の入力契約となる検証済み・処理済み設定。TOML に
+  `TextDirection` を再エクスポート）: フォント処理の入力契約となる検証済み・処理済み設定。
+  `FontConfig.font_path` は解決済み `ProjectPath`。`FontData::load` は正規化済み値で dedup するので
+  表記違いの同じファイルを 2 回読まない。TOML に
   対応する未検証型とそこから検証済み値を構築する処理は兄弟 module `config` が持つので、
   **`project::config` がこれらを構築し `typeset::font` は設定ファイルの形を知らない**。
   `TextDirection::from_str` の `Err` 型 `TextDirectionParseError` は名指しする消費者がいないため
@@ -256,7 +282,9 @@ pub trait ProjectSource: Send + Sync {
 
 `SourceSet` は `config.sources` を順に読み込んで保持し、`SourceId` を発行する唯一の場所
 （`register` は非公開で、`read` からのみ呼ばれる）。呼び出し元は発行された ID をそのまま運ぶだけで、
-別の場所で ID を作り直したり配列の並び順から推測したりしない。
+別の場所で ID を作り直したり配列の並び順から推測したりしない。入口は
+`read(source, sources: &[ProjectPath])` — 解決済みパスを受け取るだけで、`project::config` が
+解決した後の値をそのまま読む。
 
 読込失敗は `miette::Diagnostic` を実装しない素の `SourceSetReadError { path, source }` で返す。
 診断（`code(compiler::read_text_file)` とメッセージ）を組み立てるのは入力読込側の `compiler::input` で、
@@ -274,13 +302,14 @@ pub trait ProjectSource: Send + Sync {
 の実装より広いため、producer ではなくここが所有する。外部依存は serde / garde のみで、`document` が
 定義する型自体は診断ライブラリ（miette）にも I/O にも依存しない。crate 内では `length` / `color` /
 `source` / `project` に依存する（HIR や `table_column` が値として `Length` / `Color` /
-`SourceId` / `Span` / `ProjectPath` を持つため）。`FontKind`（言語判定前のフォントスタイル分類）は
+`SourceId` / `Span` / `ProjectPath` を持つため。`HirBuilder` が `project::PathResolver` を値として
+持つのも同じ依存で、resolver は I/O を持たない）。`FontKind`（言語判定前のフォントスタイル分類）は
 HIR の `Styled` variant が値として持つ語彙なのでこの module の所有。`semantics` / `typeset` /
 `compiler` は知らない — 後段 module への依存は持たない。
 
 提供する interface は次の 4 つに限る。
 
-- frontend が HIR を構築するための `HirBuilder` と HIR ノード型
+- frontend が HIR を構築するための `HirBuilder`（ID 発行・位置記録・`\image` パスの解決）と HIR ノード型
 - 複数ソースを決定順序で束ねる組み立て（`HirSource` → `HirGroup` → `HirDocument`）
 - `semantics` / `typeset` が authored 文書を網羅的に走査するための HIR enum。網羅的 match は意図した
   interface で、新しい言語要素を足したときに意味解析と lowering の更新漏れをコンパイラに検出させる
@@ -378,9 +407,13 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 物理・実体・メタデータ（`config.toml`）は `project::config` の所有で、言語設計原則 P10 の区別が
 そのまま module 境界になっている。外部資源取得の seam は `project` の所有で、`style` はその利用者。
 
-入口は 2 つ。`load(source, path, base_dir) -> Result<Style, Failures<ReadStyleError>>`（パス未指定なら
-`Style::default()` を返し、指定されていれば読込 → `parse` → `csl_path` / `locale_path` の正規化・
-存在確認）と、I/O を伴わない `parse(content, source_path) -> Result<Style, Failures<ReadStyleError>>`。**CSL ファイル自体は読まない** — 引用箇所の
+入口は 2 つ。`load(source, path: Option<&ProjectPath>, resolver: &PathResolver) ->
+Result<Style, Failures<ReadStyleError>>`（`path` は `project::config::load` が解決済みの値で
+`load` は再解決しない。パス未指定なら `Style::default()` を返し、指定されていれば読込 → `parse` →
+`resolver` による `csl_path` / `locale_path` の解決・存在確認）と、I/O を伴わない
+`parse(content, source_path) -> Result<Style, Failures<ReadStyleError>>`（`csl_path` /
+`locale_path` は deserialize 時点では字句的正規化のみで、`base_dir` 基準への解決は `load` が
+`resolver` で行う）。**CSL ファイル自体は読まない** — 引用箇所の
 存在が確定するまで遅延させるため、`.csl` / ロケール XML の読込は `semantics::analyze` の内側にある。
 `config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の不変条件として
 `typeset::geometry` が所有する。
@@ -465,7 +498,9 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の
   出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズムは `typeset` の `breaking` 節を参照
 - **文献（`ReferenceStyle`）**: `style.reference` は `semantics::citation` が参照（`title` は書誌見出し文字列、`font_size` /
-  `bottom_margin` は書誌セクションの体裁、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで
+  `bottom_margin` は書誌セクションの体裁、`csl_path` は CSL スタイル `.csl` のパス（`ProjectPath`。相対は
+  config と同じ `base_dir` 基準で `style::load` が解決）＝採番方式・書誌体裁、`locale_path` は CSL
+  ロケール XML のパス（同じく `ProjectPath`、同じ解決規則）で
   内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝ active locale を選ぶ
   ロケールコード）
 - **巻末索引（`IndexStyle`）**: `style.index` は `enabled` を持たない（`\index` マーカーが 1 個以上あるときだけ
@@ -502,7 +537,10 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 生成物は HIR のみで、他の文書木表現へ落とす adapter は持たない。frontend / evaluator 配下のテストは
 いずれも HIR を直接検査する。
 
-`parse_source` は 1 ソース分の `document::HirSource`（`HirGroup` + そのソースの `SourceSpans`）を返す。
+`parse_source(source, source_id, resolver: &PathResolver)` は 1 ソース分の `document::HirSource`
+（`HirGroup` + そのソースの `SourceSpans`）を返す。`resolver` は `\image{...}` の字面を `ProjectPath`
+へ解決するために `HirBuilder` へ渡すだけで、`compile` facade が `base_dir` から 1 回だけ構築した値を
+そのまま運ぶ（#530）。
 `NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
 atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落は
 インラインを蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が
@@ -570,7 +608,11 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 - `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `code`（verbatim 本体）/ `table`（+ `table::body` /
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
-  `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
+  `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する。
+  `figure` は `\image{...}` の字面を `HirBuilder::resolve_path` で解決して HIR へ格納する（文書木への
+  書き戻し pass は無い）。`HirBuilder` に載せた理由は環境ハンドラの dispatch が `fn(view, &HirBuilder)`
+  の phf テーブルで、別 context 型を導入すると画像を扱わないハンドラも含めた全ハンドラの interface が
+  変わってしまうため（#530）
 - `inline` / `math` / `opt_args` / `error`。任意引数の検査（未知キー・同一組内のキー重複
   `DuplicateOptArgKey`・値の型）は `opt_args::collect_opt_args` 1 箇所が担い、ハンドラは許可キーと型の
   スキーマを渡すだけ（#488）。引数の再帰評価 `inline::extract_inline_nodes` は `IndexPolicy`
@@ -584,6 +626,18 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 
 コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
 ディスパッチする。
+
+#### テスト用子 module `test_support`（`frontend` 直下、`#[cfg(test)]` 限定）
+
+`frontend` 配下と後段（`semantics` / `typeset`）の test module が共有する、resolver 注入済みの入口。
+`unbased_resolver`（`base_dir` が空パスの `PathResolver`。相対パスがそのまま残る）・
+`parse_source_for_test`（`frontend::parse_source` を `unbased_resolver` で呼ぶ）・
+`hir_builder_for_test`（同じ resolver を持つ `HirBuilder`）の 3 つを持つ。パス解決そのものを検証する
+テストは `PathResolver::new(Path::new("/project"))` を明示して `frontend::parse_source` を直接呼ぶ。
+CST 組み立て用の `evaluator::test_support`（`pub(super) mod`、直近の親だけが使う）とは別物で、
+名前が衝突するため `evaluator.rs` は関数を直接 import する。`semantics` / `typeset` の test module からも
+`frontend::test_support::parse_source_for_test` と名指しするので `pub(crate) mod`（既存の `evaluator` /
+`lowering` / `break_lines` の `test_support` は利用範囲が直近の親だけなので `pub(super) mod`）。
 
 #### 不変条件・注意点
 
@@ -599,6 +653,8 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   8 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
   ことを意味し、許可リストへ足さず不具合として扱う。
 - **`style` / `project::config` に依存しない**。設定の値を見ずに評価できる形を保つ。
+  `project::PathResolver` を経由してパス解決の規則は借りるが、`base_dir.join` を直接書かない
+  （解決規則の実装は `PathResolver` 1 箇所に閉じる、#530）。
 - **引用キーの存在検証は行わない**。`\cite{...}` は未知のキーでもそのまま `HirInlineKind::Cite`
   スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
   検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結せず、
@@ -1496,13 +1552,15 @@ PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — 
 `compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順と成果物への写像は知らない:
 
 ```text
-input::load → parse_project → semantics::analyze → typeset::FontResources::load
+resolve_root（PathResolver を 1 回構築・root を解決）
+  → input::load → parse_project → semantics::analyze → typeset::FontResources::load
   → typeset::layout → DependencyManifest::collect → publication::build
 ```
 
 `tracing` の phase 構造もこの facade が持つ（#500）。`compile` を INFO の span として開き、その中で上記の
 `input` / `frontend` / `semantics` / `font` / `typeset` の 5 段をそれぞれ INFO の span として順に開く
-（各段は `let _phase = info_span!(…).entered();` を持つブロック 1 つで、span の名前が phase 名）。段の
+（各段は `let _phase = info_span!(…).entered();` を持つブロック 1 つで、span の名前が phase 名。
+`resolve_root` は span を持たない前処理で、phase 構造には現れない）。段の
 完了 event（件数・所要時間）はその span の中で facade が出し、各 module が知る内部手順（設定・style・文献の
 個別読込、lowering、boxing、前付け・本文・後付けの改ページ等）は DEBUG として callee 側が出す — 内部構成を
 変えても `-v` の工程一覧が不用意に変わらないようにする。開始 event は持たない（開始は span の enter が表す）。
@@ -1522,8 +1580,9 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 #### compile facade（`compiler.rs` 直下）
 
-`compiler.rs` 本体には facade 関数（`compile` / `load_inputs` / `run_pipeline` / `parse_project` /
-`parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は除く）と、
+`compiler.rs` 本体には facade 関数（`compile` / `resolve_root` / `load_inputs` / `run_pipeline` /
+`parse_project` / `parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は
+除く）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート）を置く。
 `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
@@ -1546,8 +1605,15 @@ fragment・`PlacedBlock` の幾何）を検査するテストのためには、�
 base_dir: &Path) -> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は
 設定ファイルパスそのもの（`--config-path` が指す値と同じ）。`base_dir` は相対パス解決の基準ディレクトリで、
 呼び出し元が実行環境に応じて明示する。compiler は `std::env::current_dir()` を呼ばないため、
-`MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。`compile` は保存（`fs::write`）を
-一切行わない。
+`MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。`compile` の内部先頭が
+`resolve_root(root, base_dir)`（`PathResolver::new(base_dir)` を 1 回構築し、`root` を同じ規則で解決する
+private 関数）で、相対 `root` はここで `base_dir` 基準の絶対パスになる。相対 `root` は `base_dir` を
+基準に解決してから読み込むため、`Compilation.dependencies.config_path` と config 読込診断が示す
+設定ファイルパスは常にこの解決後の値になる（相対 `root` + 絶対 `base_dir` のとき、`config_path` と
+診断の root が解決後の絶対パスになるのが #530 で受け入れた唯一の意味的な差分 — CLI は `base_dir` に
+`current_dir` を渡すので指す実体は同じ）。これとは別に、`PathResolver` の契約（字句的正規化）により、
+診断・manifest・ソース名に出るすべてのパスは正規化済みの表示になる（中間の `.` が消える。これは
+差分ではなく契約の帰結）。`compile` は保存（`fs::write`）を一切行わない。
 
 **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
 error の `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う
@@ -1580,7 +1646,10 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   拡張子が `.sei` でない等）も `CompilationInputs` が宣言順に保持し、`compile` が `Warnings` へ移す
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
-  `CompilationInputs` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない
+  `CompilationInputs` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない。
+  内部は解決済みの `ProjectPath` で運び、`collect` は公開フィールドを `PathBuf` にするためだけに
+  `ProjectPath` → `PathBuf` へ変換する（値は変わらず型だけ揃える）。`ProjectPath` の正規化契約により、
+  ここに載るパスはすべて字句的に正規化された表示になる（中間の `.` が消える）
 - `compile_failure`: `compile` の失敗型 `CompileFailure`（1 件以上の error diagnostic。先頭が主診断、
   残りは検出順の関連診断）。中身は型消去済みの `Box<dyn Diagnostic + Send + Sync>` で、`miette::Report`
   の列にはしない — `Report` は `Diagnostic` を実装しないので 2 件目以降を `related` へ載せられないため。
@@ -1635,7 +1704,11 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   並行実装は作らない）。`Style` は型付きで書き換えてよいが、必ず `style.toml` として登録し `input::load`
   に読み直させる。登録キーは既定で **`base_dir` が空パス＝ワークスペース相対**で、診断に出るソース名が
   実行環境に依存しない（`set_current_dir` は使わない）。実 adapter と同じ入力を要求する
-  adapter 同値テストだけ `absolute_base_dir` で絶対パスにする
+  adapter 同値テストだけ `absolute_base_dir` で絶対パスにする。画像も他の資源と同じ規則で `base_dir` を
+  前置したキーで登録する（#530 で字面のまま登録する例外を削除）。既定の `sources`（fixture config.toml の
+  `cite.sei` + `figure.sei`）をそのまま使う場合は、`figure.sei` が参照する画像を builder が
+  `FIGURE_IMAGE_ASSETS` として自動登録する（`sources` を差し替えていないことが条件）。`sources` を
+  差し替えたテストはこの自動登録が働かないので、画像が要るなら `asset` / `assets` で明示登録する
 - `golden`: レイアウトダンプ golden の比較テスト。golden ファイル
   （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
   （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、公開 facade `compile()` → `dump_publication` を通る
@@ -1656,7 +1729,11 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   併設する（#375 / #376）
 - `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
   同じ `Publication` を返すこと、同じフォントを複数回読まないことの検証（#300）。両 adapter が同じ
-  絶対パスを引くよう `absolute_base_dir` の fixture を使う
+  絶対パスを引くよう `absolute_base_dir` の fixture を使う。fixture の既定 `sources` は `cite.sei` と
+  `figure.sei` の両方を含むため、相対画像を含む `figure.sei` でも一致することを同じテストが検証する
+  （#530。画像だけ `base_dir` を通らない例外を無くしたことで、他の資源と同じ規則で解決されるようになった）。
+  `sources` を差し替えないので `test_support::TestProjectBuilder::build` が `FIGURE_IMAGE_ASSETS` を
+  自動登録し、この module 側で画像を明示登録する必要はない
 
 検証手段の使い分け（レイアウトダンプ golden か PDF バイト比較か）・golden の再生成手順は
 `verify-typesetting` skill を参照する。
@@ -1666,7 +1743,11 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 `compile` が `pub(crate)` のままでも crate 内部テストは通ってしまうため、この受け入れ条件は crate 境界を
 またぐ独立テストでしか機械的に検証できない。`MemoryProjectSource` へ `/project/...` の資源を登録し、
 `base_dir = /project` を明示して `std::env::current_dir` に依存しない。相対 source パスがこの基準で
-解決されることも同じテストで固定する。
+解決されることも同じテストで固定する。加えて（#530）: 相対 `root` + 相対 source + 相対画像がすべて
+`base_dir` 基準で解決されること、相対 `root` が未登録のときの診断が解決後の絶対 `config_path` を示す
+こと（相対 root → 絶対 `config_path` になる差分の固定）、画像・フォントを表記違いの 2 通り
+（`fig/./a.png` と `fig/a.png`）で参照しても manifest には 1 件しか載らず読込も 1 回だけであることを
+固定する。
 
 `tests/common/mod.rs`（Rust の慣例で `tests/common.rs` ではなく `tests/common/mod.rs` に置くことで
 独立テストバイナリとして扱われないようにした共有ヘルパ。`read_test_font` / `minimal_config_toml` を

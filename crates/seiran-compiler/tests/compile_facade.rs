@@ -240,3 +240,97 @@ fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
     .collect();
   assert_eq!(codes, vec!["project::config::source_extension".to_string()]);
 }
+
+/// 画像 fixture（`tests/image/testimage5.png`）の実バイト列。テストコード自身の I/O で、本体は
+/// `ProjectSource` 経由のみ。
+fn read_test_image() -> Vec<u8> {
+  let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+    .ancestors()
+    .nth(2)
+    .expect("crates/seiran-compiler の 2 階層上がワークスペースルート");
+  return std::fs::read(workspace_root.join("tests/image/testimage5.png"))
+    .expect("tests/image/testimage5.png を読めるはず");
+}
+
+/// 1 枚の画像を参照する figure 環境の本文を組む。
+fn figure_source(image_path: &str) -> String {
+  return format!("\\begin{{figure}}\n\\image[width=80mm]{{{image_path}}}\n\\caption{{図}}\n\\end{{figure}}\n");
+}
+
+#[test]
+fn compile_resolves_relative_root_source_and_image_against_base_dir() {
+  // Arrange — root・source・画像のすべてを相対で書き、base_dir=/project だけを絶対にする（#530）
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("text.sei"))
+    .with_text("/project/text.sei", figure_source("fig/a.png"))
+    .with_bytes("/project/fig/a.png", read_test_image())
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("config.toml");
+
+  // Act
+  let compilation =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect("相対 root でも base_dir 基準で読めるはず");
+
+  // Assert — manifest はすべて解決済み。config_path が絶対になるのが唯一の意味的な差分
+  assert_eq!(compilation.dependencies.config_path, PathBuf::from("/project/config.toml"));
+  assert_eq!(compilation.dependencies.source_paths, vec![PathBuf::from("/project/text.sei")]);
+  assert_eq!(compilation.dependencies.image_paths, vec![PathBuf::from("/project/fig/a.png")]);
+  assert_eq!(source.read_count("/project/fig/a.png"), 1, "画像は解決済みキーで 1 回だけ読むはず");
+}
+
+#[test]
+fn compile_reports_the_resolved_root_when_a_relative_config_is_missing() {
+  // Arrange — 相対 root を未登録にする
+  let source = MemoryProjectSource::new();
+  let root = ProjectPath::new("config.toml");
+
+  // Act
+  let failure =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未登録の設定ファイルは失敗するはず");
+
+  // Assert — 診断に現れる root は base_dir で解決した後の値（振る舞いの差分の明示的な固定）
+  let message = failure.diagnostics().next().expect("主診断があるはず").to_string();
+  assert!(message.contains("/project/config.toml"), "解決後の root が診断に出るはず: {message}");
+}
+
+#[test]
+fn compile_reads_an_image_once_when_it_is_spelled_two_ways() {
+  // Arrange — 同じ画像を `fig/./a.png` と `fig/a.png` の 2 表記で参照する
+  let body = format!("{}{}", figure_source("fig/./a.png"), figure_source("fig/a.png"));
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("text.sei"))
+    .with_text("/project/text.sei", body)
+    .with_bytes("/project/fig/a.png", read_test_image())
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("compile は成功するはず");
+
+  // Assert — 正規化後に 1 件へ畳まれ、manifest も 1 件・読込も 1 回
+  assert_eq!(compilation.dependencies.image_paths, vec![PathBuf::from("/project/fig/a.png")]);
+  assert_eq!(source.read_count("/project/fig/a.png"), 1);
+}
+
+#[test]
+fn compile_reads_a_font_once_when_it_is_spelled_two_ways() {
+  // Arrange — 1 種別だけ `fonts/./font.ttf`、残り 18 種別は `fonts/font.ttf` を指す
+  let font_sections = test_support::make_font_sections("fonts/font.ttf").replacen(
+    "font_path = \"fonts/font.ttf\"",
+    "font_path = \"fonts/./font.ttf\"",
+    1,
+  );
+  let config = common::config_toml_with_font_sections("text.sei", "", &font_sections);
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/text.sei", "Hello, Seiran!")
+    .with_bytes("/project/fonts/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("compile は成功するはず");
+
+  // Assert — 旧実装は PathBuf の字面で dedup していたので 2 回読んでいた
+  assert_eq!(compilation.dependencies.font_paths, vec![PathBuf::from("/project/fonts/font.ttf")]);
+  assert_eq!(source.read_count("/project/fonts/font.ttf"), 1, "表記が違っても同じフォントは 1 回だけ読むはず");
+}

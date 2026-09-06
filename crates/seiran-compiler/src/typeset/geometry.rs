@@ -156,7 +156,7 @@ mod tests {
 
   use super::{LayoutValidationError, Length, ProjectConfig, Style, column_width, validate_layout};
   use crate::project::{
-    FilesystemProjectSource,
+    FilesystemProjectSource, PathResolver, ProjectPath,
     config::{
       self,
       test_support::{make_font_sections, valid_output_section, valid_pdf_section},
@@ -192,7 +192,7 @@ mod tests {
     });
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _) = config::load(&source, &config_path, &base_dir).unwrap();
+    let (config, _) = config::load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
     return (tempdir, config);
   }
 

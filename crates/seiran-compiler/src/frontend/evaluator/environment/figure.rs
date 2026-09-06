@@ -14,7 +14,6 @@ use crate::{
     syntax::view::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,
-  project::ProjectPath,
 };
 
 /// `figure` 環境を評価する
@@ -93,7 +92,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result
   return Ok(vec![HirNode::new(
     id,
     HirNodeKind::Figure {
-      image_path: ProjectPath::new(image_path),
+      image_path: builder.resolve_path(&image_path),
       width,
       height,
       dpi,

@@ -54,14 +54,12 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
   use super::*;
-  use crate::project::{FontConfig, FontType, VariationAxis};
+  use crate::project::{FontConfig, FontType, ProjectPath, VariationAxis};
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {
-      font_path: PathBuf::from("dummy.ttf"),
+      font_path: ProjectPath::new("dummy.ttf"),
       font_index,
       variation_axes,
       script: None,

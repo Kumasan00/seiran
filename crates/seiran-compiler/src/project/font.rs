@@ -7,7 +7,7 @@
 //! TOML に対応する未検証型（`RawFontConfig` 等）とそこから検証済み値を構築する処理は
 //! 兄弟 module `project::config` が持つ。
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -60,12 +60,13 @@ impl FontData {
   /// パスは互いに独立に読めるので、1 件目で打ち切らず全パスを読んで失敗を全件返す。報告順は
   /// パスの昇順（`unique_paths` は `sort` 済み）で、`par_iter` は `IndexedParallelIterator` なので
   /// `collect::<Vec<_>>()` が入力順を保証する — どのファイルの読込が先に完了したかは報告順に漏れない。
+  /// パスは `PathResolver` で正規化済みなので、表記違いは 1 件に畳まれ、同じファイルを 2 回読まない。
   ///
   /// # Errors
   ///
   /// いずれかのファイルを読み込めない場合に [`FontReadError::ReadFont`] をパス昇順で返す。
   pub(crate) fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<FontReadError>> {
-    let mut unique_paths: Vec<PathBuf> =
+    let mut unique_paths: Vec<ProjectPath> =
       FontType::ALL.iter().map(|&ft| return font_configs[ft].font_path.clone()).collect();
     unique_paths.sort();
     unique_paths.dedup();
@@ -73,7 +74,7 @@ impl FontData {
     let results = unique_paths
       .par_iter()
       .map(|path| {
-        let bytes = source.read_bytes(&ProjectPath::new(path)).map_err(|source| {
+        let bytes = source.read_bytes(path).map_err(|source| {
           let font_type = FontType::ALL
             .iter()
             .find(|&&ft| return &font_configs[ft].font_path == path)
@@ -81,14 +82,14 @@ impl FontData {
             .expect("unique_paths は font_configs から集めた値のはず");
           return FontReadError::ReadFont {
             font_type,
-            path: path.display().to_string(),
+            path: path.to_string(),
             source,
           };
         })?;
         return Ok((path.clone(), bytes));
       })
-      .collect::<Vec<Result<(PathBuf, Arc<[u8]>), FontReadError>>>();
-    let loaded: HashMap<PathBuf, Arc<[u8]>> = failures::collect_in_input_order(results)?.into_iter().collect();
+      .collect::<Vec<Result<(ProjectPath, Arc<[u8]>), FontReadError>>>();
+    let loaded: HashMap<ProjectPath, Arc<[u8]>> = failures::collect_in_input_order(results)?.into_iter().collect();
 
     let font_datas = FontType::ALL
       .iter()
@@ -114,13 +115,13 @@ impl FontData {
 #[cfg(test)]
 mod tests {
   use super::{FontConfig, FontConfigs, FontData, FontReadError, FontType};
-  use crate::project::MemoryProjectSource;
+  use crate::project::{MemoryProjectSource, ProjectPath};
 
   /// 全 19 種別が同じ `shared_path` を指す `FontConfigs` fixture を作る。
   fn make_font_configs(shared_path: &str) -> FontConfigs {
     return FontConfigs::from_all(FontType::ALL.iter().map(|_| {
       return FontConfig {
-        font_path: shared_path.into(),
+        font_path: ProjectPath::new(shared_path),
         font_index: 0,
         variation_axes: None,
         script: None,

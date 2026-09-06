@@ -11,6 +11,7 @@ use tracing::debug;
 use crate::{
   document::{HirBuilder, HirGroup, HirSource},
   frontend::syntax::ParserError,
+  project::PathResolver,
   source::SourceId,
 };
 
@@ -19,6 +20,12 @@ mod evaluator;
 mod hir_invariants;
 mod span_ext;
 mod syntax;
+// `semantics` / `typeset` の test module からも `frontend::test_support::parse_source_for_test` と
+// 名指しするので `pub(crate) mod`。既存の `evaluator` / `lowering` / `break_lines` の `test_support` は
+// 直近の親だけが使うため `pub(super) mod` のインライン module になっている — 利用範囲が違うだけで、
+// 「`test_support` という module 名が置き場を表す」規則は同じ。
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub(crate) use evaluator::EvalError;
 
@@ -45,19 +52,26 @@ pub(crate) enum ParseSourceError {
   Eval(#[from] EvalError),
 }
 
-/// ソーステキストをパースして 1 ソース分の HIR（[`HirSource`]）を生成する
+/// 1 ソースを字句・構文解析し HIR へ評価する。
 ///
 /// ノードの `NodeId` はこのソース内で閉じた連番なので、複数ソースをどの順序で
 /// パースしても結果は変わらない。
 ///
+/// `resolver` は `\image{...}` の字面を `ProjectPath` へ解決するために `HirBuilder` へ渡す
+/// （`compile` facade が `base_dir` から 1 回だけ構築した値）。
+///
 /// # Errors
 ///
-/// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
-pub(crate) fn parse_source(source: &str, source_id: SourceId) -> Result<HirSource, ParseSourceError> {
+/// 構文エラーまたは評価エラーを返す。
+pub(crate) fn parse_source(
+  source: &str,
+  source_id: SourceId,
+  resolver: &PathResolver,
+) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
   let cst = syntax::parse(source, &arena, evaluator::mode_resolver())?;
 
-  let builder = HirBuilder::new(source_id);
+  let builder = HirBuilder::new(source_id, resolver.clone());
   let nodes = evaluator::evaluate_children(source, &builder, cst)?;
   let spans = builder.finish();
 
@@ -72,9 +86,13 @@ pub(crate) fn parse_source(source: &str, source_id: SourceId) -> Result<HirSourc
 /// inline テストへ移設）
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
   use super::{EvalError, ParseSourceError, parse_source};
   use crate::{
     document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathVariant},
+    frontend::test_support,
+    project::{PathResolver, ProjectPath},
     source::SourceId,
   };
 
@@ -82,7 +100,7 @@ mod tests {
   ///
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
   fn evaluate_source(source: &str) -> Vec<HirNode> {
-    let hir = parse_source(source, SourceId::new(0)).unwrap();
+    let hir = test_support::parse_source_for_test(source, SourceId::new(0)).unwrap();
     return hir.group.nodes;
   }
 
@@ -92,7 +110,7 @@ mod tests {
   /// `Eval` バリアントから内側のエラーを取り出して返す。
   /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
   fn evaluate_error(source: &str) -> EvalError {
-    match parse_source(source, SourceId::new(0)) {
+    match test_support::parse_source_for_test(source, SourceId::new(0)) {
       Err(ParseSourceError::Eval(error)) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }
@@ -1358,5 +1376,37 @@ mod tests {
   /// インライン列に指定した語の `\index` があるか
   fn has_index_word(inlines: &[HirInline], expected: &str) -> bool {
     return inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Index { word, .. } if word == expected));
+  }
+
+  #[test]
+  fn evaluate_figure_resolves_relative_image_path_against_base_dir() {
+    // Arrange — `\image{...}` の字面は相対、resolver の base_dir は絶対
+    let source = "\\begin{figure}\n\\image{fig/./a.png}\n\\caption{c}\n\\end{figure}\n";
+    let resolver = PathResolver::new(Path::new("/project"));
+
+    // Act
+    let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
+
+    // Assert — HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
+    let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
+      panic!("Figure ノードのはず: {:?}", hir.group.nodes[0].kind);
+    };
+    assert_eq!(*image_path, ProjectPath::new("/project/fig/a.png"));
+  }
+
+  #[test]
+  fn evaluate_figure_keeps_absolute_image_path_as_is() {
+    // Arrange — `\image{...}` の字面が絶対パス
+    let source = "\\begin{figure}\n\\image{/elsewhere/a.png}\n\\caption{c}\n\\end{figure}\n";
+    let resolver = PathResolver::new(Path::new("/project"));
+
+    // Act
+    let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
+
+    // Assert — base_dir を無視して絶対パスのまま保持する
+    let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
+      panic!("Figure ノードのはず");
+    };
+    assert_eq!(*image_path, ProjectPath::new("/elsewhere/a.png"));
   }
 }

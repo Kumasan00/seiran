@@ -1,11 +1,12 @@
 //! 参考文献セクションのスタイル設定型。
 
-use std::path::PathBuf;
-
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::length::{Length, non_negative, positive};
+use crate::{
+  length::{Length, non_negative, positive},
+  project::ProjectPath,
+};
 
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -23,14 +24,16 @@ pub(crate) struct ReferenceStyle {
   /// 引用整形に用いる CSL スタイルファイル（`.csl`）のパス。
   ///
   /// `None`（既定）で引用（`\cite`）が存在する場合は `semantics::citation` がエラーを報告する。
-  /// [`load`](crate::style::load) が絶対パスへ正規化する。
+  /// deserialize では字句的に正規化されるだけで、[`load`](crate::style::load) が `PathResolver` で
+  /// `base_dir` 基準の解決済み値へ置き換える（#530）。
   #[garde(skip)]
-  pub csl_path: Option<PathBuf>,
+  pub csl_path: Option<ProjectPath>,
   /// 引用整形に用いる CSL ロケールファイル（`.xml`）のパス。
   ///
   /// 同一言語コードでは内蔵ロケールより優先される。`None` の場合は内蔵ロケールのみを使う。
+  /// 解決の規則は `csl_path` と同じ。
   #[garde(skip)]
-  pub locale_path: Option<PathBuf>,
+  pub locale_path: Option<ProjectPath>,
   /// 書誌の出力言語（CSL の active locale）を選ぶロケールコード（例 `"ja-JP"`）。
   ///
   /// active locale は次の優先順位で決まる: 本フィールド → [`locale_path`](Self::locale_path) の
@@ -82,12 +85,10 @@ fn validate_locale(value: &Option<String>, _: &()) -> garde::Result {
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
   use garde::Validate;
 
   use super::ReferenceStyle;
-  use crate::style::parse;
+  use crate::{project::ProjectPath, style::parse};
 
   #[test]
   fn validate_rejects_empty_format() {
@@ -122,8 +123,8 @@ mod tests {
 
     // Assert
     assert_eq!(style.reference.title, "参考文献");
-    assert_eq!(style.reference.csl_path, Some(PathBuf::from("styles/ieee.csl")));
-    assert_eq!(style.reference.locale_path, Some(PathBuf::from("locales/locales-ja-JP.xml")));
+    assert_eq!(style.reference.csl_path, Some(ProjectPath::new("styles/ieee.csl")));
+    assert_eq!(style.reference.locale_path, Some(ProjectPath::new("locales/locales-ja-JP.xml")));
     assert_eq!(style.reference.locale.as_deref(), Some("ja-JP"));
   }
 
