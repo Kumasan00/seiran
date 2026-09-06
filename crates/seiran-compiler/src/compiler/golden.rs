@@ -96,6 +96,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "ref",
   "split",
   "table",
+  "table_break",
   "text",
   "theorem",
   "title_page",
