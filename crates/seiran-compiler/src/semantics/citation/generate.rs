@@ -265,7 +265,8 @@ mod tests {
     );
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    let references = read_references(&source, Some(file.path())).expect("references を読み込めるはず");
+    let references =
+      read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
     let analyzed = analyzed(r"\cite{kwan2014}", &references);
     let compiled = load_citation_style(&source, &style_with_csl()).expect("CSL を読めるはず");
 

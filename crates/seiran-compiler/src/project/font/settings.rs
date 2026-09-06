@@ -4,11 +4,11 @@
 //! 兄弟 module `project::config` が持つ（#336、#352）。`crate::typeset::font` はこの module の
 //! 型だけを入力として受け取り、設定ファイルの形を知らない。
 
-use std::{path::PathBuf, str::FromStr};
+use std::str::FromStr;
 
 use thiserror::Error;
 
-use crate::project::font::map::FontMap;
+use crate::project::{ProjectPath, font::map::FontMap};
 
 /// 19 フォント種別すべての検証済み設定
 pub(crate) type FontConfigs = FontMap<FontConfig>;
@@ -16,8 +16,8 @@ pub(crate) type FontConfigs = FontMap<FontConfig>;
 /// 単一フォント種別の検証済み・処理済み設定
 #[derive(Debug, Clone)]
 pub(crate) struct FontConfig {
-  /// フォントファイルへの絶対パス（正規化済み）
-  pub font_path: PathBuf,
+  /// フォントファイルへのパス（`PathResolver` で解決済み・正規化済み）
+  pub font_path: ProjectPath,
   /// TTC（TrueType Collection）ファイル内のインデックス
   pub font_index: u32,
   /// バリアブルフォント軸の設定値

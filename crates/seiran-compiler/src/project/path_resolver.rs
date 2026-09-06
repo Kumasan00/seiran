@@ -10,7 +10,8 @@
 //!
 //! 1. 絶対パスはそのまま使う
 //! 2. 相対パスは `base_dir` を前置する
-//! 3. `.` と冗長な区切りを `Path::components()` の畳み込みで正規化する（[`ProjectPath::new`] と同じ）
+//! 3. `.` と冗長な区切りを `Path::components()` の畳み込みで正規化する（[`ProjectPath::new`] と同じ。
+//!    先頭の `./` は `components()` の仕様どおり残る）
 //! 4. `..` は `Path::components()` の意味どおり保持する
 //! 5. 存在確認・symlink 解決・filesystem I/O を行わない。存在確認は従来どおり
 //!    [`crate::project::ProjectSource::exists`] が担い、複数の欠落を入力の論理順で全件報告する
@@ -57,10 +58,12 @@ impl PathResolver {
     return ProjectPath::new(self.base_dir.join(path));
   }
 
-  // `base_dir` accessor（出力パス処理専用。`project::config::resolve_output_dir_path` だけが使う）は
-  // Task 2 でその唯一の呼び出し元と一緒に追加する（#530）。Task 1 の時点で追加すると本体ビルド
-  // （cfg(test) を含まない）で呼び出し元が無く dead_code になり、根拠が「後で使う」だけの
-  // #[expect] を要求してしまうため。
+  /// 基準ディレクトリを返す。
+  ///
+  /// **出力パス（`output_dir` / `pdf_path`）の組み立て専用**。出力先は外部資源の取得 seam ではなく
+  /// 書き込み側の関心事なので `ProjectPath` にせず、`project::config::resolve_output_dir_path` が
+  /// この値から `PathBuf` を組む。入力パスの解決にこの accessor を使って `join` を書かないこと。
+  pub(crate) fn base_dir(&self) -> &Path { return &self.base_dir; }
 }
 
 #[cfg(test)]
@@ -105,6 +108,13 @@ mod tests {
     let once = resolver.resolve("fig/a.png");
 
     assert_eq!(resolver.resolve(&once), once, "解決済みの絶対パスを再解決しても変わらないはず");
+  }
+
+  #[test]
+  fn base_dir_returns_the_given_directory() {
+    let resolver = PathResolver::new(Path::new("/project"));
+
+    assert_eq!(resolver.base_dir(), Path::new("/project"));
   }
 
   #[test]

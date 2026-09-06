@@ -45,5 +45,5 @@ pub(crate) fn sample_references() -> References {
   let source = FilesystemProjectSource::new();
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-  return read_references(&source, Some(file.path())).expect("references を読み込めるはず");
+  return read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
 }

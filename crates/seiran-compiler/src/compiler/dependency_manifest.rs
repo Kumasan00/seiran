@@ -32,28 +32,29 @@ pub struct DependencyManifest {
 }
 
 impl DependencyManifest {
-  /// 設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
-  pub(super) fn collect(
-    config_path: &std::path::Path,
-    inputs: &CompilationInputs,
-    image_paths: &[ProjectPath],
-  ) -> Self {
+  /// 解決済み設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
+  ///
+  /// 内部は解決済みの `ProjectPath` で運び、公開 interface の `PathBuf` へはここで 1 回だけ変換する。
+  pub(super) fn collect(config_path: &ProjectPath, inputs: &CompilationInputs, image_paths: &[ProjectPath]) -> Self {
     let font_paths: BTreeSet<PathBuf> = FontType::ALL
       .iter()
-      .map(|font_type| return inputs.config().font_configs[*font_type].font_path.clone())
+      .map(|font_type| return to_path_buf(&inputs.config().font_configs[*font_type].font_path))
       .collect();
     return DependencyManifest {
-      config_path: config_path.to_path_buf(),
-      style_path: inputs.config().style_path.clone(),
-      references_path: inputs.config().references_path.clone(),
-      source_paths: inputs.config().sources.clone(),
-      image_paths: image_paths.iter().map(|path| return path.as_ref().to_path_buf()).collect(),
+      config_path: to_path_buf(config_path),
+      style_path: inputs.config().style_path.as_ref().map(to_path_buf),
+      references_path: inputs.config().references_path.as_ref().map(to_path_buf),
+      source_paths: inputs.config().sources.iter().map(to_path_buf).collect(),
+      image_paths: image_paths.iter().map(to_path_buf).collect(),
       font_paths: font_paths.into_iter().collect(),
-      csl_path: inputs.style().reference.csl_path.clone().map(PathBuf::from),
-      locale_path: inputs.style().reference.locale_path.clone().map(PathBuf::from),
+      csl_path: inputs.style().reference.csl_path.as_ref().map(to_path_buf),
+      locale_path: inputs.style().reference.locale_path.as_ref().map(to_path_buf),
     };
   }
 }
+
+/// 公開フィールド用に `ProjectPath` を `PathBuf` へ写す（値は同じ。型だけ公開 interface に合わせる）。
+fn to_path_buf(path: &ProjectPath) -> PathBuf { return path.as_ref().to_path_buf(); }
 
 #[cfg(test)]
 mod tests {

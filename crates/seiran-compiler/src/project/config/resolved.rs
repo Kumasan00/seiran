@@ -2,7 +2,10 @@
 
 use std::path::PathBuf;
 
-use crate::{length::Length, project::FontConfigs};
+use crate::{
+  length::Length,
+  project::{FontConfigs, ProjectPath},
+};
 
 /// PDF 生成に必要な完全な設定情報
 #[derive(Debug, Clone)]
@@ -17,12 +20,12 @@ pub(crate) struct ProjectConfig {
   pub image: ImageConfig,
   /// 19 フォント種別すべての設定（検証済み）
   pub font_configs: FontConfigs,
-  /// ソースファイル一覧（順次パースして 1 ドキュメントに結合、絶対パス正規化済み）
-  pub sources: Vec<PathBuf>,
-  /// スタイル設定ファイルへのパス（オプション、正規化済み）
-  pub style_path: Option<PathBuf>,
-  /// 参照設定ファイルへのパス（オプション、正規化済み）
-  pub references_path: Option<PathBuf>,
+  /// ソースファイル一覧（順次パースして 1 ドキュメントに結合。`PathResolver` で解決済み）
+  pub sources: Vec<ProjectPath>,
+  /// スタイル設定ファイルへのパス（オプション、解決済み）
+  pub style_path: Option<ProjectPath>,
+  /// 参照設定ファイルへのパス（オプション、解決済み）
+  pub references_path: Option<ProjectPath>,
 }
 
 /// PDF メタデータ

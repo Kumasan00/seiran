@@ -3,16 +3,13 @@
 //! config.toml → style.toml → 横断検証 → 文献 → フォント → ソース という順序は、
 //! 前段の結果が次段の入力になる（style / references のパスは config.toml が持ち、
 //! 横断検証は config × style の両方を要求する）。この順序とエラー集約を知るのはこの module だけで、
-//! 呼び出し元（`compile`）は [`load`] を 1 回呼ぶだけになる（#351）。
+//! 呼び出し元（`compile`）は [`load`] を 1 回呼ぶだけになる（#351）。`config_path` は facade が
+//! 解決済み。`resolver` も facade が 1 回構築したものを受け取る。
 //!
 //! CSL スタイル・ロケールはここでは読まない — 引用箇所が 1 つも無ければ `.csl` を読まない
 //! という遅延は `semantics::analyze` の内側に閉じている。
 
-use std::{
-  path::{Path, PathBuf},
-  sync::Arc,
-  time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
 use tracing::debug;
 
@@ -24,7 +21,7 @@ use crate::{
   failures::Failures,
   project,
   project::{
-    FontData, PathResolver, ProjectSource, SourceSet,
+    FontData, PathResolver, ProjectPath, ProjectSource, SourceSet,
     config::{ConfigWarning, ProjectConfig},
   },
   semantics::{References, read_references},
@@ -88,13 +85,13 @@ impl CompilationInputs {
 /// 独立に検査できるもの（複数フォントパス・複数ソース）は全件を集約する。
 pub(super) fn load(
   source: &dyn ProjectSource,
-  config_path: &Path,
-  base_dir: &Path,
+  config_path: &ProjectPath,
+  resolver: &PathResolver,
 ) -> Result<CompilationInputs, Failures<CompileError>> {
-  let (config, config_warnings) = project::config::load(source, config_path, base_dir).map_err(lift)?;
-  let style = style::load(source, config.style_path.as_deref(), &PathResolver::new(base_dir)).map_err(lift)?;
+  let (config, config_warnings) = project::config::load(source, config_path, resolver).map_err(lift)?;
+  let style = style::load(source, config.style_path.as_ref(), resolver).map_err(lift)?;
   typeset::validate_layout(&config, &style).map_err(lift)?;
-  let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
+  let references = Arc::new(read_references(source, config.references_path.as_ref()).map_err(single)?);
 
   let stage_start = Instant::now();
   let font_data =
@@ -125,7 +122,7 @@ fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> 
 /// パスを含む leaf diagnostic を組み立てるのはここ。seam の `SourceReadError` は
 /// `Diagnostic` を実装しない低水準 cause なので、そのまま `#[source]` に載せても
 /// 入れ子の診断ブロックにはならない（#377）。
-fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<SourceSet, Failures<CompileError>> {
+fn read_sources(source: &dyn ProjectSource, sources: &[ProjectPath]) -> Result<SourceSet, Failures<CompileError>> {
   return SourceSet::read(source, sources).map_err(|failures| {
     return failures.map(|error| {
       return CompileError::ReadTextFile {
@@ -138,10 +135,8 @@ fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<Sourc
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
   use super::{CompileError, read_sources};
-  use crate::project::{MemoryProjectSource, SourceReadError};
+  use crate::project::{MemoryProjectSource, ProjectPath, SourceReadError};
 
   /// `project::SourceSet` の素のエラーを、移設前と同じ位置付き診断へ組み替えることを固定する。
   ///
@@ -152,8 +147,8 @@ mod tests {
     // Arrange — 存在するソースと存在しないソースを混ぜる
     let source = MemoryProjectSource::new().with_text("/project/a.sei", "content-a");
     let sources = vec![
-      PathBuf::from("/project/a.sei"),
-      PathBuf::from("/project/missing.sei"),
+      ProjectPath::new("/project/a.sei"),
+      ProjectPath::new("/project/missing.sei"),
     ];
 
     // Act
@@ -182,8 +177,8 @@ mod tests {
     // Arrange — 2 つの欠落を宣言順とは逆のパス名で並べる（宣言順で報告されることを見る）
     let source = MemoryProjectSource::new();
     let sources = vec![
-      PathBuf::from("/project/z-missing.sei"),
-      PathBuf::from("/project/a-missing.sei"),
+      ProjectPath::new("/project/z-missing.sei"),
+      ProjectPath::new("/project/a-missing.sei"),
     ];
 
     // Act

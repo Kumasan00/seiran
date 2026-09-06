@@ -5,8 +5,6 @@
 //! severity(Warning) の [`FontWarning`] として集め、成功した `Compilation` と一緒に返す
 //! （`tracing::warn!` だけで通知していた形は #377 で廃止した）。
 
-use std::path::{Path, PathBuf};
-
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
@@ -15,7 +13,7 @@ use tracing::debug;
 
 use crate::{
   failures::Failures,
-  project::{FontConfig, FontConfigs, FontType, VariationAxis},
+  project::{FontConfig, FontConfigs, FontType, ProjectPath, VariationAxis},
   typeset::font::FontRefs,
 };
 
@@ -144,7 +142,7 @@ pub(super) enum FontValidationErrorKind {
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
-  #[error("{}: フォントに {table} テーブルがありません: {}", .font_type.as_toml_key(), .path.display())]
+  #[error("{}: フォントに {table} テーブルがありません: {}", .font_type.as_toml_key(), .path)]
   #[diagnostic(
     code(typeset::font::script::missing_layout_table),
     severity(Warning),
@@ -156,12 +154,12 @@ pub(crate) enum FontWarning {
     /// 対象のフォント種別
     font_type: FontType,
     /// フォントファイルのパス
-    path: PathBuf,
+    path: ProjectPath,
     /// 見つからなかったテーブル名（`GSUB` / `GPOS`）
     table: &'static str,
   },
   /// GSUB / GPOS テーブル自体、またはその `ScriptList` を読めない。
-  #[error("{}: {table} テーブルを読み込めません: {}", .font_type.as_toml_key(), .path.display())]
+  #[error("{}: {table} テーブルを読み込めません: {}", .font_type.as_toml_key(), .path)]
   #[diagnostic(
     code(typeset::font::script::unreadable_layout_table),
     severity(Warning),
@@ -171,7 +169,7 @@ pub(crate) enum FontWarning {
     /// 対象のフォント種別
     font_type: FontType,
     /// フォントファイルのパス
-    path: PathBuf,
+    path: ProjectPath,
     /// 読み込めなかったテーブル名（`GSUB` / `GPOS`）
     table: &'static str,
     /// 元の読み込みエラー
@@ -179,7 +177,7 @@ pub(crate) enum FontWarning {
     source: ReadError,
   },
   /// 指定した script がテーブルでサポートされていない。
-  #[error("{}: {table} テーブルがスクリプト '{script}' をサポートしていません: {}", .font_type.as_toml_key(), .path.display())]
+  #[error("{}: {table} テーブルがスクリプト '{script}' をサポートしていません: {}", .font_type.as_toml_key(), .path)]
   #[diagnostic(
     code(typeset::font::script::unsupported_script),
     severity(Warning),
@@ -189,7 +187,7 @@ pub(crate) enum FontWarning {
     /// 対象のフォント種別
     font_type: FontType,
     /// フォントファイルのパス
-    path: PathBuf,
+    path: ProjectPath,
     /// 対象テーブル名（`GSUB` / `GPOS`）
     table: &'static str,
     /// config.toml が指定した script タグ
@@ -199,7 +197,7 @@ pub(crate) enum FontWarning {
   #[error(
     "{}: {table} テーブルのスクリプト '{script}' を読み込めないため、言語対応を確認できません: {}",
     .font_type.as_toml_key(),
-    .path.display()
+    .path
   )]
   #[diagnostic(
     code(typeset::font::script::unreadable_script),
@@ -210,7 +208,7 @@ pub(crate) enum FontWarning {
     /// 対象のフォント種別
     font_type: FontType,
     /// フォントファイルのパス
-    path: PathBuf,
+    path: ProjectPath,
     /// 対象テーブル名（`GSUB` / `GPOS`）
     table: &'static str,
     /// config.toml が指定した script タグ
@@ -223,7 +221,7 @@ pub(crate) enum FontWarning {
   #[error(
     "{}: {table} テーブルのスクリプト '{script}' が言語 '{language}' をサポートしていません: {}",
     .font_type.as_toml_key(),
-    .path.display()
+    .path
   )]
   #[diagnostic(
     code(typeset::font::script::unsupported_language),
@@ -234,7 +232,7 @@ pub(crate) enum FontWarning {
     /// 対象のフォント種別
     font_type: FontType,
     /// フォントファイルのパス
-    path: PathBuf,
+    path: ProjectPath,
     /// 対象テーブル名（`GSUB` / `GPOS`）
     table: &'static str,
     /// config.toml が指定した script タグ
@@ -268,7 +266,7 @@ pub(super) fn validate_fonts(
         .into_iter()
         .map(|kind| return FontValidationFailure { font_type, kind }),
     );
-    debug!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントを検証");
+    debug!(font_type = ?font_type, font_path = %config.font_path, "フォントを検証");
   }
   return match Failures::from_vec(all_errors) {
     Some(failures) => Err(failures),
@@ -396,7 +394,7 @@ fn check_script_in_table(
   lang_tag: Option<Tag>,
   table: &'static str,
   font_type: FontType,
-  path: &Path,
+  path: &ProjectPath,
   warnings: &mut Vec<FontWarning>,
 ) {
   let script_list = match script_list_result {
@@ -404,7 +402,7 @@ fn check_script_in_table(
     Err(source) => {
       warnings.push(FontWarning::UnreadableLayoutTable {
         font_type,
-        path: path.to_path_buf(),
+        path: path.clone(),
         table,
         source,
       });
@@ -415,7 +413,7 @@ fn check_script_in_table(
   let Some(index) = script_list.index_for_tag(script_tag) else {
     warnings.push(FontWarning::UnsupportedScript {
       font_type,
-      path: path.to_path_buf(),
+      path: path.clone(),
       table,
       script: script_tag,
     });
@@ -438,7 +436,7 @@ fn check_script_in_table(
     Err(source) => {
       warnings.push(FontWarning::UnreadableScript {
         font_type,
-        path: path.to_path_buf(),
+        path: path.clone(),
         table,
         script: script_tag,
         source,
@@ -450,7 +448,7 @@ fn check_script_in_table(
   if script.lang_sys_index_for_tag(lang_tag).is_none() {
     warnings.push(FontWarning::UnsupportedLanguage {
       font_type,
-      path: path.to_path_buf(),
+      path: path.clone(),
       table,
       script: script_tag,
       language: lang_tag,
@@ -497,7 +495,7 @@ mod tests {
       Some(Tag::new(b"JAN ")),
       "GSUB",
       FontType::Serif,
-      Path::new(FONT_PATH),
+      &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
 
@@ -515,7 +513,7 @@ mod tests {
       panic!("UnreadableScript が 1 件だけ出るはず: {warnings:?}");
     };
     assert_eq!(*font_type, FontType::Serif);
-    assert_eq!(path, Path::new(FONT_PATH));
+    assert_eq!(path, &ProjectPath::new(FONT_PATH));
     assert_eq!(*table, "GSUB");
     assert_eq!(*script, Tag::new(b"kana"));
   }
@@ -534,7 +532,7 @@ mod tests {
       None,
       "GSUB",
       FontType::Serif,
-      Path::new(FONT_PATH),
+      &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
 
@@ -556,7 +554,7 @@ mod tests {
       Some(Tag::new(b"JAN ")),
       "GSUB",
       FontType::Serif,
-      Path::new(FONT_PATH),
+      &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
 

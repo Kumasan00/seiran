@@ -380,7 +380,7 @@ mod tests {
   /// テスト用の最小フォント設定を返す（`ProjectConfig` の組み立てにだけ使い、実ファイルは読まない）。
   fn test_font_config() -> FontConfig {
     return FontConfig {
-      font_path: PathBuf::from("vendor/fonts/STIXTwoMath-Regular.ttf"),
+      font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
       font_index: 0,
       variation_axes: None,
       script: None,

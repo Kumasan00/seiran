@@ -30,8 +30,6 @@ mod theorem;
 mod title_page;
 mod toc;
 
-use std::path::Path;
-
 use garde::Validate;
 use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
@@ -210,16 +208,16 @@ impl Style {
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
 pub(crate) fn load(
   source: &dyn ProjectSource,
-  path: Option<&Path>,
+  path: Option<&ProjectPath>,
   resolver: &PathResolver,
 ) -> Result<Style, Failures<ReadStyleError>> {
   let Some(path) = path else {
     debug!("スタイル設定ファイル未指定のため既定のスタイルを使用");
     return Ok(Style::default());
   };
-  let path_str = path.display().to_string();
+  let path_str = path.to_string();
 
-  let content = source.read_text(&ProjectPath::new(path)).map_err(|source| {
+  let content = source.read_text(path).map_err(|source| {
     return Failures::single(ReadStyleError::ReadFile {
       path: path_str.clone(),
       source,
@@ -348,7 +346,7 @@ fn resolve_reference_paths(
 
 #[cfg(test)]
 mod tests {
-  use std::path::{Path, PathBuf};
+  use std::path::Path;
 
   use garde::Validate;
 
@@ -375,6 +373,24 @@ mod tests {
     // Assert — 登録済みパスはエラーにならず、解決済みの値へ置き換わる
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     assert_eq!(reference.csl_path, Some(ProjectPath::new("/project/styles/ieee.csl")));
+  }
+
+  #[test]
+  fn resolve_reference_paths_keeps_absolute_csl_path_as_is() {
+    // Arrange — 絶対パスは base_dir に関係なくそのまま使う
+    let source = MemoryProjectSource::new().with_text("/elsewhere/ieee.csl", "");
+    let resolver = PathResolver::new(Path::new("/project"));
+    let mut reference = ReferenceStyle {
+      csl_path: Some(ProjectPath::new("/elsewhere/ieee.csl")),
+      ..ReferenceStyle::default()
+    };
+
+    // Act
+    let errors = resolve_reference_paths(&mut reference, &source, &resolver);
+
+    // Assert
+    assert!(errors.is_empty(), "登録済みの絶対パスはエラーにならないはず: {errors:?}");
+    assert_eq!(reference.csl_path, Some(ProjectPath::new("/elsewhere/ieee.csl")));
   }
 
   #[test]
@@ -415,7 +431,7 @@ mod tests {
   fn load_reads_through_project_source() {
     // Arrange
     let source = MemoryProjectSource::new().with_text("/project/style.toml", "");
-    let path = PathBuf::from("/project/style.toml");
+    let path = ProjectPath::new("/project/style.toml");
 
     // Act
     let style =
@@ -430,7 +446,7 @@ mod tests {
     // Arrange
     let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
     let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
-    let path = PathBuf::from("/project/style.toml");
+    let path = ProjectPath::new("/project/style.toml");
 
     // Act
     let result = load(&source, Some(&path), &PathResolver::new(Path::new("/project")));
@@ -448,7 +464,7 @@ mod tests {
     // fail-fast せず、両方が同じ Vec に集約されることを検証する
     let toml = "[reference]\ncsl_path = \"missing.csl\"\nlocale_path = \"missing.xml\"\n";
     let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
-    let path = PathBuf::from("/project/style.toml");
+    let path = ProjectPath::new("/project/style.toml");
 
     // Act
     let result = load(&source, Some(&path), &PathResolver::new(Path::new("/project")));
@@ -540,7 +556,7 @@ mod parse_tests {
     color::Color,
     document::{FontKind, HeadingLevel},
     length::Length,
-    project::{FilesystemProjectSource, PathResolver},
+    project::{FilesystemProjectSource, PathResolver, ProjectPath},
   };
 
   fn dummy_source() -> &'static str { return "test.toml"; }
@@ -821,7 +837,7 @@ mod parse_tests {
     let base_dir = path.parent().expect("フィクスチャパスは親ディレクトリを持つはず");
 
     // Act
-    let result = load(&source, Some(path.as_path()), &PathResolver::new(base_dir));
+    let result = load(&source, Some(&ProjectPath::new(&path)), &PathResolver::new(base_dir));
 
     // Assert
     assert!(matches!(

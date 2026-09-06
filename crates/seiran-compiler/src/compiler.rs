@@ -6,7 +6,7 @@
 use crate::{
   document::{HirDocument, HirSource},
   frontend,
-  project::{ProjectPath, ProjectSource},
+  project::{PathResolver, ProjectPath, ProjectSource},
   semantics, typeset,
 };
 
@@ -94,7 +94,8 @@ pub fn compile<S: ProjectSource>(
   let _compile_span = info_span!("compile").entered();
   let build_start = Instant::now();
 
-  let inputs = load_inputs(source, root, base_dir)?;
+  let (resolver, root) = resolve_root(root, base_dir);
+  let inputs = load_inputs(source, &root, &resolver)?;
   let PipelineArtifacts {
     font_resources,
     laid_out,
@@ -102,7 +103,7 @@ pub fn compile<S: ProjectSource>(
     typeset_warnings,
   } = run_pipeline(source, &inputs)?;
 
-  let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
+  let dependencies = DependencyManifest::collect(&root, &inputs, &laid_out.image_paths);
   let page_count = laid_out.pages.len();
   let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
   let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
@@ -128,6 +129,18 @@ pub fn compile<S: ProjectSource>(
   });
 }
 
+/// `base_dir` から入力パスの resolver を 1 回だけ構築し、`root`（設定ファイルパス）を同じ規則で解決する。
+///
+/// `compile` の公開シグネチャ `(source, root, base_dir)` は維持し、`base_dir` を compiler 側で暗黙に
+/// 取得しない（`std::env::current_dir()` を呼ばない）判断も維持する。相対 `root` はここで `base_dir`
+/// 基準の絶対パスになり、`DependencyManifest::config_path` と config 読込診断には解決後の値が現れる
+/// （#530 で受け入れた唯一の観測可能な差分。CLI は `base_dir` に `current_dir` を渡すので指す実体は同じ）。
+fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPath) {
+  let resolver = PathResolver::new(base_dir);
+  let root = resolver.resolve(root);
+  return (resolver, root);
+}
+
 /// 入力読込 phase を実行する（production / test 共通）。
 ///
 /// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは phase span と完了 event だけ。
@@ -138,11 +151,11 @@ pub fn compile<S: ProjectSource>(
 fn load_inputs(
   source: &dyn ProjectSource,
   root: &ProjectPath,
-  base_dir: &Path,
+  resolver: &PathResolver,
 ) -> Result<CompilationInputs, CompileFailure> {
   let _phase = info_span!("input").entered();
   let stage_start = Instant::now();
-  let inputs = input::load(source, root.as_ref(), base_dir)?;
+  let inputs = input::load(source, root, resolver)?;
   info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
   return Ok(inputs);
 }
@@ -252,7 +265,8 @@ fn layout_project_for_test(
   root: &ProjectPath,
   base_dir: &Path,
 ) -> Result<LaidOutDocument, CompileFailure> {
-  let inputs = load_inputs(source, root, base_dir)?;
+  let (resolver, root) = resolve_root(root, base_dir);
+  let inputs = load_inputs(source, &root, &resolver)?;
   let artifacts = run_pipeline(source, &inputs)?;
   return Ok(artifacts.laid_out);
 }
