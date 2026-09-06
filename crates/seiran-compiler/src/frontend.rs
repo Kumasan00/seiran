@@ -1396,11 +1396,14 @@ mod tests {
 
   #[test]
   fn evaluate_figure_keeps_absolute_image_path_as_is() {
+    // Arrange — `\image{...}` の字面が絶対パス
     let source = "\\begin{figure}\n\\image{/elsewhere/a.png}\n\\caption{c}\n\\end{figure}\n";
     let resolver = PathResolver::new(Path::new("/project"));
 
+    // Act
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
+    // Assert — base_dir を無視して絶対パスのまま保持する
     let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず");
     };
