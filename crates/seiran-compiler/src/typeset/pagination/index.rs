@@ -41,22 +41,22 @@ const MIN_COLLAPSED_RUN: usize = 3;
 
 /// 索引エントリが指す 1 出現ページ
 #[derive(Debug, Clone)]
-pub(crate) struct IndexPageRef {
+struct IndexPageRef {
   /// 表示するページ番号ラベル
-  pub label: String,
+  label: String,
   /// 出現ページの内部リンク到達先（本文内ページ index、0 起点）
-  pub link_key: usize,
+  link_key: usize,
 }
 
 /// 1 索引エントリ
 #[derive(Debug, Clone)]
-pub(crate) struct IndexEntry {
+struct IndexEntry {
   /// 索引語（表示テキスト）
-  pub word: String,
+  word: String,
   /// 読みソートキー（`[reading=...]`）。ソートにのみ使い、表示はしない
-  pub reading: Option<String>,
+  reading: Option<String>,
   /// 出現ページ（昇順・重複なし）
-  pub pages: Vec<IndexPageRef>,
+  pages: Vec<IndexPageRef>,
 }
 
 /// 索引語の同一性キー。`PlacedIndexEntry` のページ内重複除去キーと一致させる

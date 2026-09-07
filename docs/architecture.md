@@ -1182,7 +1182,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `index`: 巻末索引の機能 module。入口は `build_index_blocks(ctx, body_pages, facts)` 1 つで、本文全ページの
   `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後追加
   （`body_pages` の破壊的更新）してから、並び順・区分・ページ番号列の畳み込み・style の投影・行組み立てまでを
-  行う。並び順と区分の割り当ては子 module `grouping` に閉じる（詳細は下記）
+  行う。並び順と区分の割り当ては子 module `grouping` に閉じる
   索引の行組み立ては右寄せ・リーダーを使わず「語 … ページ番号列（カンマ区切り）」の単一行。番号列は
   `group_page_items` が表示単位へ分け、既定では 1 ページ 1 リンク、`style.index.collapse_page_ranges` が
   有効なら連続 3 ページ以上を `3–5` へ畳んで範囲全体に先頭ページへのリンクを 1 本張る（中間・末尾ページへの
