@@ -137,8 +137,8 @@ impl Reporter {
 
   /// ビルドを止めた致命的エラーの診断をログファイルへ記録する。
   ///
-  /// 端末側は `main` が `Err` を返した後に miette のグローバル handler が描く（`Result` の `Termination`）ので
-  /// ここでは触らない — 端末とファイルで同じ診断が 1 回ずつ。`--quiet` は端末だけを黙らせるものなので、ファイルへは
+  /// 端末側は `termination::Outcome::report` が miette のグローバル handler（`Report` の `Debug` 表示）で
+  /// 1 回だけ描くのでここでは触らない — 端末とファイルで同じ診断が 1 回ずつ。`--quiet` は端末だけを黙らせるものなので、ファイルへは
   /// 常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くすのがこの操作の目的）。体裁は warning と
   /// 同じ装飾なし・ハイパーリンクなし・時刻なしで、`CompileFailure` の関連診断（`related`）も同じ handler が
   /// 続けて描くため、`Failures` 集約の全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは

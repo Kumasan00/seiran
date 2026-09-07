@@ -5,6 +5,10 @@
 //! 共有し、1 本の同期 writer 越しに書く。書き込み・flush の失敗は捨てず最初の 1 件を保持して
 //! [`LogSink::finish`] で取り出す — tracing の writer が返したエラーは呼び出し元の `Result` へ伝わらないので、
 //! sink 自身が保持しないと「記録できていない実行」を成功として終えてしまう。
+//!
+//! `finish` を呼ばずに落ちた実行（`run` 内の panic 等）でも [`LogSink`] の `Drop` が書き残しを流し切る。
+//! ただしその経路では保持した失敗を報告する主体がいない（`finish` を経由しないので `LogFailure` を
+//! 受け取る側が存在しない）。
 
 use std::{
   fs::{self, File},
@@ -163,13 +167,30 @@ impl LogSink {
     let mut guard = lock(&self.state);
     let flushed = guard.writer.flush();
     let _ = guard.check(flushed);
-    return match guard.first_error.take() {
+    let first_error = guard.first_error.take();
+    // `self` の `Drop`（同じ Mutex を取り直して flush する）より前に手放す — 暗黙の drop 順に頼らない。
+    drop(guard);
+    return match first_error {
       Some(source) => Err(LogFailure {
         path: self.path.display().to_string(),
         source,
       }),
       None => Ok(()),
     };
+  }
+}
+
+impl Drop for LogSink {
+  /// `finish` を呼ばずに落ちた実行でも書き残しを流し切る。
+  ///
+  /// tracing の layer（[`LogWriter`]）が同じ状態をもう 1 つ `Arc` で保持しているため、この drop で
+  /// `SinkState` そのものは解放されない。それでも `flush` は OS への書き込みを進めるので、`finish` を
+  /// 経由しない panic 中の unwind でも `BufWriter` に溜まった内容は失われない。ここで捕まえた失敗は
+  /// 読む主体がいない（`finish` を経ない経路なので `LogFailure` を受け取る側が存在しない）ため捨てる。
+  fn drop(&mut self) {
+    let mut guard = lock(&self.state);
+    let flushed = guard.writer.flush();
+    let _ = guard.check(flushed);
   }
 }
 
@@ -315,6 +336,25 @@ mod tests {
     // Assert
     let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     assert_eq!(String::from_utf8(written).expect("UTF-8 のはず"), "記録する 1 行\n", "末尾に改行を足して書く");
+  }
+
+  #[test]
+  fn dropping_without_finish_still_flushes_buffered_content() {
+    // Arrange
+    let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
+
+    // Act — `finish` を呼ばず panic 中の unwind を模す
+    sink.write_block("記録する 1 行");
+    drop(sink);
+
+    // Assert
+    let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
+    assert_eq!(
+      String::from_utf8(written).expect("UTF-8 のはず"),
+      "記録する 1 行\n",
+      "finish を経由しなくても Drop が書き残しを流す"
+    );
   }
 
   #[test]
