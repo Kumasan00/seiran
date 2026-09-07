@@ -390,8 +390,8 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   走査するので、そもそも生成物を見ない。`typeset::lowering` も本文（`SemanticDocument` の HIR）と
   生成物（書誌・引用表示）を別経路で lower し、両者を 1 つの木へ混ぜ直すことはしない。
 - 段組みの 1 段あたりの幅を求める純粋計算 `column_width` は `typeset::geometry` の所有。
-  横断バリデーション `validate_layout`・`typeset::pagination::context` の段幅算出・
-  `typeset::breaking::break_pages` の実配置が同じ式を参照する。
+  版面の構築 `PreparedGeometry::prepare` と `typeset::breaking::break_pages` の実配置が
+  同じ式を参照する（#533 で `typeset::pagination::context` の再計算はなくなった）。
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
   `TableBox` 系は `typeset::boxes` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
   `Glyph` は `typeset::font` の型（`typeset` 節の `font` 項参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
@@ -889,14 +889,15 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
 （`lowering` 節を参照）。`boxes` / `boxing` / `breaking` / `error` / `font` / `geometry` / `image` /
 `lowering` / `observe` / `pagination` / `warning` の各 module はすべて非公開で、外から見える入口は
-**module root の `layout` 1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`
-（`geometry` 節を参照）だけである。
+**module root の `layout` 1 操作**と、入力読込から呼ばれる版面の構築
+`PreparedGeometry::prepare`（`geometry` 節を参照）だけである。
 
 ```rust,ignore
 pub(crate) fn layout(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
   style: &Style,
+  geometry: &PreparedGeometry,
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
 ) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>>;
@@ -1048,9 +1049,10 @@ root facade へ出すのは**本体コードに消費者がある型だけ**（`
 
 版面の幾何を持つ子 module。`config.toml`（用紙寸法）と `style.toml`（`[page]` の余白・`[columns]`）の
 どちらか片方だけでは判定できない制約を
-`validate_layout(&ProjectConfig, &Style) -> Result<(), Failures<LayoutValidationError>>` に集約し、段幅の算出式
-（`(text_width - (num_columns - 1) * column_gap) / num_columns`）も同じ module の `column_width` が持つ。
-検査は 3 件で、独立に検査できるので**入力の論理順（縦 → 横 → 段幅）** で全件を集約する:
+`PreparedGeometry::prepare(&ProjectConfig, &Style) -> Result<PreparedGeometry, Failures<LayoutValidationError>>`
+に集約する。段幅の算出式（`(text_width - (num_columns - 1) * column_gap) / num_columns`）も同じ module の
+`column_width` が持つ。検査は 3 件で、独立に検査できるので**入力の論理順（縦 → 横 → 段幅）** で全件を
+集約する:
 
 1. 上下余白の合計 < 用紙高（`typeset::geometry::vertical_margins`）
 2. 左右余白の合計 < 用紙幅（`typeset::geometry::horizontal_margins`）
@@ -1060,12 +1062,19 @@ root facade へ出すのは**本体コードに消費者がある型だけ**（`
 だけの段幅エラーを重ねてもユーザーの修正先は増えないため。各 help は余白の修正先を `style.toml` の
 `[page]`、用紙寸法の修正先を `config.toml` の `[pdf]` と書き分ける。
 
+**検証は同時に版面の構築でもある**（#533）。3 件すべてが通ったときだけ `PreparedGeometry` を返し、
+そこに本文幅・本文の 1 段あたりの幅・本文 / 前付け / 後付けの `PageGeometry`（`build_page_geometries`
+が組み立てる。段数・段間以外は本文の値を共有し、前付けは常に 1 段・段間 0・下端揃えなし、後付けは
+`style.index.column_count` 段・下端揃えなし）を載せる。フィールドは module 非公開で構築経路は
+`prepare` だけなので、「検証を通っていない版面が組版へ流れない」ことが型で保証される
+（`Failures` と同じ方針）。
+
 どちらの設定 module にも属さないので、この制約を不変条件として使う組版側が所有する。ただし
-**`validate_layout` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な組み合わせを
-弾く（診断が出るタイミングを移設前と変えないため）。`typeset` の外向き interface を `layout` 1 操作に
-保つ原則の意図した例外はこの 2 名前（`validate_layout` / `LayoutValidationError`）だけで、
-`column_width` は `pub(super)` に留め `typeset::pagination::context` と
-`typeset::breaking::break_pages` だけが参照する。
+**`PreparedGeometry::prepare` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な
+組み合わせを弾く（診断が出るタイミングを移設前と変えないため）。確定した版面は `CompilationInputs` が
+保持し、`typeset::layout` の引数として組版へ戻る。`typeset` の外向き interface を `layout` 1 操作に
+保つ原則の意図した例外はこの 2 名前（`PreparedGeometry` / `LayoutValidationError`）だけで、
+`column_width` は `pub(super)` に留め `typeset::breaking::break_pages` だけが参照する。
 
 診断 code は所有 module に合わせた `typeset::geometry::*`。ユーザが直すのは style.toml / config.toml だが、
 その案内は `help` が名指ししている。
@@ -1112,10 +1121,12 @@ root facade へ出すのは**本体コードに消費者がある型だけ**（`
 まとめて行う。前付け・後付けは生成ブロックだけで組むので実際には常に空だが、「空のはずだ」という
 非局所な不変条件を assert で主張せず素通しする。表示順は物理ページの昇順で決定的。
 
-- `context`: 全段が共有する資源・寸法・行分割アルゴリズムを持つ `TypesetContext`（フォント資源への
-  参照・版面幅・本文 / 前付け / 後付けの `PageGeometry`・`KnuthPlassBreaker`）と、本文ページ分割
-  確定後の事実 `BodyPageFacts`（`BodyPageValues` + 見出し記録）、`build_page_geometries`。
-  `paginate` ↔ 各段 module の相互依存を解消するためにここへ切り出してある
+- `context`: 全段が共有する資源と行分割アルゴリズムを持つ `TypesetContext`（設定・フォント資源への
+  参照・検証済み版面 `&PreparedGeometry`・`KnuthPlassBreaker`）と、本文ページ分割確定後の事実
+  `BodyPageFacts`（`BodyPageValues` + 見出し記録）。`paginate` ↔ 各段 module の相互依存を解消する
+  ためにここへ切り出してある。**寸法は再計算しない** — 版面幅・段幅・本文 / 前付け / 後付けの
+  `PageGeometry` はすべて入力読込が確定させた `PreparedGeometry` の読み取りで、組み立ては
+  `typeset::geometry` が持つ（#533）
 - `page_values`（内部専用の newtype）: 物理ページ index `PageIndex`（0 始まり）と表示用の論理ページ値
   `PageValue`（1 始まり）を型で分離する（両方とも `usize`/`u32` のままだと引数の取り違えが型検査を
   素通りしてしまうため）。本文ページ列からしか構築できない `BodyPageValues`（stage 1）と、前付け
@@ -1630,11 +1641,12 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 `publication::build` の内部（krilla に触れないこと・画像をパス昇順に並べること）は `publication` 節のとおり。
 子 module:
 
-- `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・文献・
-  font・読込済みソース）。**読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**
-  （#463）。**config.toml → style.toml → 横断検証
-  （`typeset::validate_layout`）→ references → フォント → sources** という順序とエラー集約を知るのは
-  この module だけで、`compile` は `load` を 1 回呼ぶ。CSL スタイル・ロケールはここでは読まない
+- `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・
+  検証済み版面 `PreparedGeometry`・文献・font・読込済みソース）。
+  **読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**
+  （#463）。**config.toml → style.toml → 横断検証・版面の構築
+  （`typeset::PreparedGeometry::prepare`）→ references → フォント → sources** という順序とエラー集約を
+  知るのはこの module だけで、`compile` は `load` を 1 回呼ぶ。CSL スタイル・ロケールはここでは読まない
   （引用箇所があるときだけ読む遅延は `semantics::analyze` の内側）。
   `CompilationInputs` のフィールドは非公開 + アクセサで、構築経路は `load` だけ（テスト専用の
   コンストラクタも持たない。「読込・個別検証・横断検証をすべて通った値しか後段へ流れない」を
@@ -1716,9 +1728,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   `TestProject::layout`（= `layout_project_for_test`）を通る — `typeset::Page` のダンプをテスト内で比較・
   検査するもの（索引語の不可視性・style 差分・コード空行の高さ）と、`Page` / `PlacedBlock` へ直接
   アサートするもの（keep-with-next・脚注のページ単位採番と繰越・索引語のページ帰属・脚注本体のリンク）。
-  テストヘルパが入力読込を迂回していないことは、横断検証（`typeset::validate_layout`）の診断が
-  `layout_project_for_test` 経由で出ることを見る `layout_helper_reports_cross_input_layout_validation` が
-  機械的に押さえる
+  テストヘルパが入力読込を迂回していないことは、横断検証（`typeset::PreparedGeometry::prepare`）の
+  診断が `layout_project_for_test` 経由で出ることを見る
+  `layout_helper_reports_cross_input_layout_validation` が機械的に押さえる
 - `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。
   `TestProject` を `compile` した `CompileFailure` を `into_report` してレンダリングするので、golden は
   ユーザーが実際に見る表示そのもの。ただし外部資源の read error を `#[source]` に載せる診断だけは、
