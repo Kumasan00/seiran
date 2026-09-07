@@ -236,7 +236,7 @@ fn run_pipeline<'a>(
     let _phase = info_span!("typeset").entered();
     let stage_start = Instant::now();
     let (laid_out, typeset_warnings) =
-      typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
+      typeset::layout(source, inputs.config(), inputs.style(), inputs.geometry(), &font_resources, &semantic_document)
         .map_err(CompileFailure::from)?;
     info!(
       page_count = laid_out.pages.len(),

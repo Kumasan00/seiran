@@ -191,12 +191,12 @@ fn build_page(
 ///
 /// [`Rect::new`] が `None` を返すのは幅・高さが負か座標が非有限のときだけで、`Publication` へ載る
 /// 値ではどちらも起こらない — `Length` は sp の `i64` なので非有限を表現できず、幅・高さは
-/// style.toml 側の garde（`non_negative`）・`typeset::geometry::validate_layout`（段幅は正）・
+/// style.toml 側の garde（`non_negative`）・`typeset::geometry::PreparedGeometry::prepare`（段幅は正）・
 /// 罫線生成時の `is_positive()` ゲート・リンク収集時の `x1 <= x0` スキップが非負を保証している。
 fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
   let Some(rect) = Rect::new(x, y, width, height) else {
     unreachable!(
-      "描画矩形の幅・高さは style の garde（non_negative）・validate_layout・罫線の is_positive ゲート・\
+      "描画矩形の幅・高さは style の garde（non_negative）・PreparedGeometry::prepare・罫線の is_positive ゲート・\
        リンクの x1 <= x0 スキップが非負を保証する: x={x} y={y} width={width} height={height}"
     );
   };

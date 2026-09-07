@@ -56,7 +56,7 @@ pub(super) fn typeset_front_matter(
 
   if ctx.style.toc.enabled {
     let toc_entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
-    let spec = build_toc_spec(ctx.style, ctx.text_width);
+    let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
     let toc_blocks = build_toc_blocks(&spec, &toc_entries, ctx.resources);
     if !toc_blocks.is_empty() {
       front_blocks.extend(toc_blocks);
@@ -74,7 +74,13 @@ pub(super) fn typeset_front_matter(
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "front").entered();
-    break_pages(front_blocks, ctx.text_width, &ctx.front_geometry, &ctx.breaker, ctx.style.text.alignment)
+    break_pages(
+      front_blocks,
+      ctx.geometry.text_width(),
+      ctx.geometry.front_geometry(),
+      &ctx.breaker,
+      ctx.style.text.alignment,
+    )
   };
   return (pages, overflows);
 }

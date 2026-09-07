@@ -82,11 +82,17 @@ fn run_body_pass(
     )
   };
 
-  let body_blocks = resolve_images(body_blocks, ctx.body_col_width.to_pt(), images)?;
+  let body_blocks = resolve_images(body_blocks, ctx.geometry.body_column_width().to_pt(), images)?;
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "body").entered();
-    break_pages(body_blocks, ctx.text_width, &ctx.body_geometry, &ctx.breaker, ctx.style.text.alignment)
+    break_pages(
+      body_blocks,
+      ctx.geometry.text_width(),
+      ctx.geometry.body_geometry(),
+      &ctx.breaker,
+      ctx.style.text.alignment,
+    )
   };
   return Ok(BodyLayout {
     pages,

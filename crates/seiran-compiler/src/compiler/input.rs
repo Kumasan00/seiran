@@ -2,9 +2,11 @@
 //!
 //! config.toml → style.toml → 横断検証 → 文献 → フォント → ソース という順序は、
 //! 前段の結果が次段の入力になる（style / references のパスは config.toml が持ち、
-//! 横断検証は config × style の両方を要求する）。この順序とエラー集約を知るのはこの module だけで、
-//! 呼び出し元（`compile`）は [`load`] を 1 回呼ぶだけになる（#351）。`config_path` は facade が
-//! 解決済み。`resolver` も facade が 1 回構築したものを受け取る。
+//! 横断検証は config × style の両方を要求する）。横断検証は検証済み版面 `PreparedGeometry` の
+//! 構築でもあり、その値は `CompilationInputs` が保持して組版へ渡す（#533）。この順序と
+//! エラー集約を知るのはこの module だけで、呼び出し元（`compile`）は [`load`] を 1 回呼ぶだけに
+//! なる（#351）。`config_path` は facade が解決済み。`resolver` も facade が 1 回構築したものを
+//! 受け取る。
 //!
 //! CSL スタイル・ロケールはここでは読まない — 引用箇所が 1 つも無ければ `.csl` を読まない
 //! という遅延は `semantics::analyze` の内側に閉じている。
@@ -27,7 +29,7 @@ use crate::{
   semantics::{References, read_references},
   style,
   style::Style,
-  typeset,
+  typeset::PreparedGeometry,
 };
 
 /// 読込・個別検証・横断検証をすべて通った入力。
@@ -40,6 +42,9 @@ pub(super) struct CompilationInputs {
   config: ProjectConfig,
   /// 検証済みのスタイル
   style: Style,
+  /// config × style の横断検証を通った版面（本文・前付け・後付けの寸法）。
+  /// 組版はこの確定値を受け取り、幅・ページ幾何を再計算しない（#533）
+  geometry: PreparedGeometry,
   /// `\cite` の CSL 整形に使う文献データ。`semantics::analyze` へ共有参照として渡すので
   /// `Arc` で持つ
   references: Arc<References>,
@@ -57,6 +62,9 @@ impl CompilationInputs {
 
   /// 検証済みのスタイルを返す。
   pub(super) fn style(&self) -> &Style { return &self.style; }
+
+  /// 検証済みの版面を返す。
+  pub(super) fn geometry(&self) -> &PreparedGeometry { return &self.geometry; }
 
   /// 文献データを返す。
   pub(super) fn references(&self) -> &Arc<References> { return &self.references; }
@@ -90,7 +98,7 @@ pub(super) fn load(
 ) -> Result<CompilationInputs, Failures<CompileError>> {
   let (config, config_warnings) = project::config::load(source, config_path, resolver).map_err(lift)?;
   let style = style::load(source, config.style_path.as_ref(), resolver).map_err(lift)?;
-  typeset::validate_layout(&config, &style).map_err(lift)?;
+  let geometry = PreparedGeometry::prepare(&config, &style).map_err(lift)?;
   let references = Arc::new(read_references(source, config.references_path.as_ref()).map_err(single)?);
 
   let stage_start = Instant::now();
@@ -103,6 +111,7 @@ pub(super) fn load(
   return Ok(CompilationInputs {
     config,
     style,
+    geometry,
     references,
     font_data,
     sources,

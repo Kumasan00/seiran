@@ -154,7 +154,7 @@ fn layout_dumps_match_golden() {
 
 /// 組版中間表現を取り出すテストヘルパが `input::load` の横断検証を迂回していないことの検査。
 ///
-/// 余白の合計が用紙幅を超える config × style は `typeset::validate_layout`（config と style の
+/// 余白の合計が用紙幅を超える config × style は `typeset::PreparedGeometry::prepare`（config と style の
 /// 両方を要求する横断検証）でしか検出できない。`layout_project_for_test` が将来
 /// `CompilationInputs` を直接組み立てる経路へ戻ると、この診断が出なくなって失敗する。
 #[test]
