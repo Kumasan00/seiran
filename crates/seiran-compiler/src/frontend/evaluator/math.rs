@@ -7,9 +7,9 @@
 //! `NodeId` に穴が空くが、同じ入力なら常に同じ穴になるので決定性は保たれる。
 
 use crate::{
-  document::{HirBuilder, HirMath, HirMathKind, MathVariant, NodeId},
+  document::{HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
-    evaluator::{EvalError, inline::resolve_math_symbol_command, opt_args::collect_command_opt_args},
+    evaluator::{EvalContext, EvalError, inline::resolve_math_symbol_command, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
@@ -27,21 +27,25 @@ use crate::{
 /// 数式内のスタイルコマンドが不正な引数数を持つ場合などにエラーを返します。
 pub(crate) fn evaluate_inline_math(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   math_node: &GreenNode<'_>,
 ) -> Result<Vec<HirMath>, EvalError> {
-  return evaluate_math_children(source, builder, math_node);
+  return evaluate_math_children(source, ctx, math_node);
 }
 
 /// 数式モードで構造化された CST ノードの子要素を [`HirMath`] 列に変換する共通ヘルパ
-fn evaluate_math_children(source: &str, builder: &HirBuilder, node: &GreenNode<'_>) -> Result<Vec<HirMath>, EvalError> {
-  return evaluate_math_elements(source, builder, node.children);
+fn evaluate_math_children(
+  source: &str,
+  ctx: &EvalContext<'_>,
+  node: &GreenNode<'_>,
+) -> Result<Vec<HirMath>, EvalError> {
+  return evaluate_math_elements(source, ctx, node.children);
 }
 
 /// 数式モードで構造化された要素列を [`HirMath`] 列に変換する共通ヘルパ
 pub(crate) fn evaluate_math_elements(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   elements: &[GreenElement<'_>],
 ) -> Result<Vec<HirMath>, EvalError> {
   let mut nodes = Vec::new();
@@ -56,11 +60,11 @@ pub(crate) fn evaluate_math_elements(
         | TokenKind::Equals
         | TokenKind::Whitespace
         | TokenKind::Newline => {
-          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
+          nodes.push(ctx.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(text.to_string())));
+          nodes.push(ctx.leaf_math(token.span, HirMathKind::Text(text.to_string())));
         },
         TokenKind::Ampersand => {
           return Err(EvalError::UnsupportedInMath {
@@ -90,22 +94,22 @@ pub(crate) fn evaluate_math_elements(
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
-          let math_node = evaluate_math_command(source, builder, child_node)?;
+          let math_node = evaluate_math_command(source, ctx, child_node)?;
           nodes.push(math_node);
         },
         SyntaxKind::MathGroup => {
-          let id = builder.alloc(child_node.span);
-          let inner = evaluate_math_children(source, builder, child_node)?;
+          let id = ctx.alloc(child_node.span);
+          let inner = evaluate_math_children(source, ctx, child_node)?;
           nodes.push(HirMath::new(id, HirMathKind::Group(inner)));
         },
         SyntaxKind::MathSubscript => {
-          let id = builder.alloc(child_node.span);
-          let content = evaluate_math_script_content(source, builder, child_node)?;
+          let id = ctx.alloc(child_node.span);
+          let content = evaluate_math_script_content(source, ctx, child_node)?;
           nodes.push(HirMath::new(id, HirMathKind::Subscript(Box::new(content))));
         },
         SyntaxKind::MathSuperscript => {
-          let id = builder.alloc(child_node.span);
-          let content = evaluate_math_script_content(source, builder, child_node)?;
+          let id = ctx.alloc(child_node.span);
+          let content = evaluate_math_script_content(source, ctx, child_node)?;
           nodes.push(HirMath::new(id, HirMathKind::Superscript(Box::new(content))));
         },
         SyntaxKind::Environment => {
@@ -136,7 +140,7 @@ pub(crate) fn evaluate_math_elements(
 /// 子は `^` / `_` 自身・先行トリビアのトークンと、内容の `MathGroup` ノード 1 個だけになる。
 fn evaluate_math_script_content(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   script_node: &GreenNode<'_>,
 ) -> Result<HirMath, EvalError> {
   let group_node = script_node.children.iter().find_map(|child| {
@@ -151,8 +155,8 @@ fn evaluate_math_script_content(
     )
   };
 
-  let id = builder.alloc(group_node.span);
-  let inner = evaluate_math_children(source, builder, group_node)?;
+  let id = ctx.alloc(group_node.span);
+  let inner = evaluate_math_children(source, ctx, group_node)?;
   return Ok(HirMath::new(id, HirMathKind::Group(inner)));
 }
 
@@ -168,7 +172,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 }
 
 /// 数式内コマンドを [`HirMath`] に変換する
-fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
+fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
   let view = CommandView::new(cmd_node, source);
   let name = view.name();
 
@@ -192,8 +196,8 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
     let Some(first_arg) = view.first_arg() else {
       unreachable!("引数が 1 個であることを直前に確認している")
     };
-    let id = builder.alloc(view.span());
-    let body = evaluate_inline_math(source, builder, first_arg)?;
+    let id = ctx.alloc(view.span());
+    let body = evaluate_inline_math(source, ctx, first_arg)?;
     return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
   }
 
@@ -214,9 +218,9 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
           span: view.span().to_source_span(),
         });
       };
-      let id = builder.alloc(view.span());
-      let numer = Box::new(math_arg_to_node(source, builder, numer_arg)?);
-      let denom = Box::new(math_arg_to_node(source, builder, denom_arg)?);
+      let id = ctx.alloc(view.span());
+      let numer = Box::new(math_arg_to_node(source, ctx, numer_arg)?);
+      let denom = Box::new(math_arg_to_node(source, ctx, denom_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
     },
     "sqrt" => {
@@ -226,9 +230,9 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
           span: view.span().to_source_span(),
         });
       }
-      let id = builder.alloc(view.span());
+      let id = ctx.alloc(view.span());
       let index = match view.opt_arg() {
-        Some(opt) => Some(Box::new(math_arg_to_node(source, builder, opt)?)),
+        Some(opt) => Some(Box::new(math_arg_to_node(source, ctx, opt)?)),
         None => None,
       };
       let Some(radicand_arg) = view.first_arg() else {
@@ -238,7 +242,7 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
           span: view.span().to_source_span(),
         });
       };
-      let radicand = Box::new(math_arg_to_node(source, builder, radicand_arg)?);
+      let radicand = Box::new(math_arg_to_node(source, ctx, radicand_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
     },
     _ => {
@@ -250,7 +254,7 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
             span: view.span().to_source_span(),
           });
         }
-        return Ok(builder.leaf_math(
+        return Ok(ctx.leaf_math(
           view.span(),
           HirMathKind::Symbol {
             ch: symbol.ch,
@@ -268,8 +272,8 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
 }
 
 /// 数式引数ノードを単一の [`HirMath`] に変換するヘルパー
-fn math_arg_to_node(source: &str, builder: &HirBuilder, arg_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
-  let group_id = builder.alloc(arg_node.span);
-  let nodes = evaluate_inline_math(source, builder, arg_node)?;
+fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
+  let group_id = ctx.alloc(arg_node.span);
+  let nodes = evaluate_inline_math(source, ctx, arg_node)?;
   return Ok(collapse_single(group_id, nodes));
 }

@@ -6,9 +6,11 @@ use miette::SourceSpan;
 use phf::phf_map;
 
 use crate::{
-  document::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
+  document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
   frontend::{
-    evaluator::{EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args},
+    evaluator::{
+      EvalContext, EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args,
+    },
     span_ext::ToSourceSpan,
     syntax::{ArgMode, view::CommandView},
   },
@@ -76,37 +78,37 @@ impl CommandKind {
   /// 直接の本文文脈）からしか来ないので、引数を再帰評価するコマンドへは
   /// [`IndexPolicy::Allow`] を渡す。引数の中からの再帰は
   /// `crate::frontend::evaluator::inline::extract_inline_nodes` 側が方針を持つ。
-  fn execute(self, view: &CommandView<'_>, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
+  fn execute(self, view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<CommandResult, EvalError> {
     match self {
-      Self::Space => return control::space(view, builder).map(CommandResult::Block),
+      Self::Space => return control::space(view, ctx).map(CommandResult::Block),
 
-      Self::PageBreak => return control::pagebreak(view, builder).map(CommandResult::Block),
+      Self::PageBreak => return control::pagebreak(view, ctx).map(CommandResult::Block),
 
-      Self::Heading(level) => return heading::heading(view, builder, level).map(CommandResult::Block),
+      Self::Heading(level) => return heading::heading(view, ctx, level).map(CommandResult::Block),
 
       Self::StyledText(kind) => {
-        return text_style::styled_text(view, builder, kind, IndexPolicy::Allow).map(CommandResult::Inline);
+        return text_style::styled_text(view, ctx, kind, IndexPolicy::Allow).map(CommandResult::Inline);
       },
 
       Self::ColoredText => {
-        return text_style::colored_text(view, builder, IndexPolicy::Allow).map(CommandResult::Inline);
+        return text_style::colored_text(view, ctx, IndexPolicy::Allow).map(CommandResult::Inline);
       },
 
-      Self::Ref => return ref_::ref_command(view, builder).map(CommandResult::Inline),
+      Self::Ref => return ref_::ref_command(view, ctx).map(CommandResult::Inline),
 
-      Self::Cite => return cite::cite_command(view, builder).map(CommandResult::Inline),
+      Self::Cite => return cite::cite_command(view, ctx).map(CommandResult::Inline),
 
       Self::Footnote => {
-        return footnote::footnote_command(view, builder, IndexPolicy::Allow).map(CommandResult::Inline);
+        return footnote::footnote_command(view, ctx, IndexPolicy::Allow).map(CommandResult::Inline);
       },
 
-      Self::Index => return index::index_command(view, builder).map(CommandResult::Inline),
+      Self::Index => return index::index_command(view, ctx).map(CommandResult::Inline),
 
-      Self::Code => return code::code_command(view, builder).map(CommandResult::Inline),
+      Self::Code => return code::code_command(view, ctx).map(CommandResult::Inline),
 
-      Self::Url => return link::url_command(view, builder).map(CommandResult::Inline),
+      Self::Url => return link::url_command(view, ctx).map(CommandResult::Inline),
 
-      Self::Href => return link::href_command(view, builder).map(CommandResult::Inline),
+      Self::Href => return link::href_command(view, ctx).map(CommandResult::Inline),
 
       Self::NoIndent => {
         return control::noindent(view).map(|()| {
@@ -124,7 +126,11 @@ impl CommandKind {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(crate) fn single_char(view: &CommandView<'_>, builder: &HirBuilder, ch: char) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn single_char(
+  view: &CommandView<'_>,
+  ctx: &EvalContext<'_>,
+  ch: char,
+) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -132,7 +138,7 @@ pub(crate) fn single_char(view: &CommandView<'_>, builder: &HirBuilder, ch: char
       span: view.span().to_source_span(),
     });
   }
-  return Ok(vec![builder.leaf_inline(view.span(), HirInlineKind::Symbol(ch))]);
+  return Ok(vec![ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch))]);
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
@@ -222,12 +228,12 @@ pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
 /// # Errors
 ///
 /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-pub(crate) fn evaluate_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
+pub(crate) fn evaluate_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<CommandResult, EvalError> {
   if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
-    return command_kind.execute(view, builder);
+    return command_kind.execute(view, ctx);
   }
   if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-    return single_char(view, builder, symbol.ch).map(CommandResult::Inline);
+    return single_char(view, ctx, symbol.ch).map(CommandResult::Inline);
   }
   return Err(EvalError::UnknownCommand {
     name: view.name().to_string(),

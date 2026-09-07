@@ -5,9 +5,9 @@
 use miette::SourceSpan;
 
 use crate::{
-  document::{HirBuilder, HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
-    evaluator::{EvalError, math::evaluate_math_elements},
+    evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
     span_ext::ToSourceSpan,
     syntax::{
       green::{GreenElement, GreenNode},
@@ -60,7 +60,7 @@ pub(crate) struct GridRow {
 /// エラーを返す。
 pub(crate) fn evaluate_grid(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   body: &GreenNode<'_>,
   spec: &GridSpec,
   row_markers_allowed: bool,
@@ -71,7 +71,7 @@ pub(crate) fn evaluate_grid(
   let mut current_notag: Option<SourceSpan> = None;
   let mut current_label: Option<RowLabel> = None;
   // 行 ID はセルより先に確保する（行の位置は本体全体を覆う span から始め、行区切りで更新する）
-  let mut current_row_id = builder.alloc(body.span);
+  let mut current_row_id = ctx.alloc(body.span);
 
   for child in body.children {
     if let GreenElement::Token(token) = child {
@@ -85,7 +85,7 @@ pub(crate) fn evaluate_grid(
           }
           // 行末マーカーの後ろに列が続くなら、マーカーは行末になく不正
           ensure_markers_at_row_end(current_notag.as_ref(), current_label.as_ref())?;
-          current_row.push(evaluate_math_elements(source, builder, &current_cell)?);
+          current_row.push(evaluate_math_elements(source, ctx, &current_cell)?);
           current_cell.clear();
           continue;
         },
@@ -96,7 +96,7 @@ pub(crate) fn evaluate_grid(
               span: token.span.to_source_span(),
             });
           }
-          current_row.push(evaluate_math_elements(source, builder, &current_cell)?);
+          current_row.push(evaluate_math_elements(source, ctx, &current_cell)?);
           current_cell.clear();
           rows.push(GridRow {
             id: current_row_id,
@@ -104,7 +104,7 @@ pub(crate) fn evaluate_grid(
             notag_span: current_notag.take(),
             label: current_label.take(),
           });
-          current_row_id = builder.alloc(token.span);
+          current_row_id = ctx.alloc(token.span);
           continue;
         },
         _ => {},
@@ -112,7 +112,7 @@ pub(crate) fn evaluate_grid(
     }
 
     // 行末マーカー `\notag` / `\label{...}` を検出したら走査ローカル状態へ取り込む
-    if try_take_row_marker(child, source, builder, row_markers_allowed, &mut current_notag, &mut current_label)? {
+    if try_take_row_marker(child, source, ctx, row_markers_allowed, &mut current_notag, &mut current_label)? {
       continue;
     }
 
@@ -125,7 +125,7 @@ pub(crate) fn evaluate_grid(
   }
 
   // 末尾のセル・行を確定する（行区切りで終わっていなければ最後の行を 1 つ積む）
-  current_row.push(evaluate_math_elements(source, builder, &current_cell)?);
+  current_row.push(evaluate_math_elements(source, ctx, &current_cell)?);
   rows.push(GridRow {
     id: current_row_id,
     cells: current_row,
@@ -145,7 +145,7 @@ pub(crate) fn evaluate_grid(
 /// ラベル付与・重複ラベル時にエラーを返す。
 pub(crate) fn evaluate_math_env(
   view: &EnvironmentView<'_>,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   kind: MathEnvKind,
   spec: &GridSpec,
   mode: &NumberingMode,
@@ -154,9 +154,9 @@ pub(crate) fn evaluate_math_env(
 
   // 行末マーカー `\notag` / `\label` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
   let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let mut grid = match view.body() {
-    Some(body_node) => evaluate_grid(view.source(), builder, body_node, spec, row_markers_allowed)?,
+    Some(body_node) => evaluate_grid(view.source(), ctx, body_node, spec, row_markers_allowed)?,
     None => Vec::new(),
   };
   trim_trailing_blank_marker_rows(&mut grid)?;
@@ -281,8 +281,8 @@ mod tests {
     };
 
     // Act
-    let builder = test_support::hir_builder_for_test();
-    let grid = evaluate_grid(source, &builder, body, &spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
+    let ctx = test_support::eval_context_for_test();
+    let grid = evaluate_grid(source, &ctx, body, &spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
 
     // Assert
     assert_eq!(grid.len(), 2, "2 行に分割される: {grid:?}");
@@ -306,8 +306,8 @@ mod tests {
     };
 
     // Act
-    let builder = test_support::hir_builder_for_test();
-    let grid = evaluate_grid(source, &builder, body, &spec, false).unwrap();
+    let ctx = test_support::eval_context_for_test();
+    let grid = evaluate_grid(source, &ctx, body, &spec, false).unwrap();
 
     // Assert
     assert_eq!(grid.len(), 1);
@@ -326,8 +326,8 @@ mod tests {
     };
 
     // Act
-    let builder = test_support::hir_builder_for_test();
-    let result = evaluate_grid(source, &builder, body, &spec, false);
+    let ctx = test_support::eval_context_for_test();
+    let result = evaluate_grid(source, &ctx, body, &spec, false);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));

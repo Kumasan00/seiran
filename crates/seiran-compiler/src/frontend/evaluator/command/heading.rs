@@ -1,10 +1,10 @@
 //! 見出しコマンド群
 
 use crate::{
-  document::{HeadingLevel, HirBuilder, HirNode, HirNodeKind},
+  document::{HeadingLevel, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
@@ -22,7 +22,7 @@ use crate::{
 /// 引数不足・過剰、または `[label=...]` の値型不一致でエラーを返します。
 pub(super) fn heading(
   view: &CommandView<'_>,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   level: HeadingLevel,
 ) -> Result<Vec<HirNode>, EvalError> {
   let name = level.command_name();
@@ -44,9 +44,9 @@ pub(super) fn heading(
     });
   }
 
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   // 見出しタイトルは目次・走り文へも展開されうる複製文脈なので `\index` を拒否する
-  let title = extract_inline_nodes(view.source(), builder, first_arg, IndexPolicy::Reject)?;
+  let title = extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
 
   return Ok(vec![HirNode::new(
     id,
@@ -86,7 +86,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return heading(&view, builder, HeadingLevel::Section)).unwrap();
+    let result = run_block_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -108,7 +108,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return heading(&view, builder, HeadingLevel::Section));
+    let result = run_block_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));

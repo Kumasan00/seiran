@@ -7,9 +7,9 @@
 // `test_support` は同名衝突を避けて関数を直接 import する（型・モジュールではなく関数の直接 import
 // は「出自が自明な慣用」の例外に当たる）。
 #[cfg(test)]
-use crate::frontend::test_support::hir_builder_for_test;
+use crate::frontend::test_support::eval_context_for_test;
 use crate::{
-  document::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
+  document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
     evaluator::{command::CommandResult, inline::InlineSink},
     syntax::{
@@ -23,12 +23,14 @@ use crate::{
 };
 
 mod command;
+mod context;
 mod environment;
 mod error;
 mod inline;
 mod math;
 mod opt_args;
 
+pub(crate) use context::EvalContext;
 pub(crate) use error::EvalError;
 
 use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
@@ -52,7 +54,7 @@ pub(crate) fn mode_resolver() -> ModeResolver {
 /// 不明なコマンドや環境、引数の不足・過剰がある場合にエラーを返します
 pub(crate) fn evaluate_children(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   node: &GreenNode<'_>,
 ) -> Result<Vec<HirNode>, EvalError> {
   let mut hir_nodes: Vec<HirNode> = Vec::new();
@@ -63,38 +65,38 @@ pub(crate) fn evaluate_children(
       GreenElement::Token(token) => match token.kind {
         // 索引マーカーをまたぐ結合はここだけが担う（`inline::InlineSink` の doc 参照、#514）。
         TokenKind::Text => {
-          paragraph.reserve(builder, token.span);
-          paragraph.push_text_token(builder, token.span, token.text(source));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push_text_token(ctx, token.span, token.text(source));
         },
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
         // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
         TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
-          paragraph.reserve(builder, token.span);
-          paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          paragraph.reserve(builder, token.span);
-          paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
         },
         TokenKind::LineBreak => {
-          paragraph.reserve(builder, token.span);
-          paragraph.push(builder.leaf_inline(token.span, HirInlineKind::LineBreak));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::LineBreak));
         },
         TokenKind::ParagraphBreak => {
-          paragraph.flush(builder, &mut hir_nodes);
+          paragraph.flush(ctx, &mut hir_nodes);
         },
         TokenKind::Underscore => {
-          paragraph.reserve(builder, token.span);
-          paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
         },
         TokenKind::Caret => {
-          paragraph.reserve(builder, token.span);
-          paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
         },
         TokenKind::Ampersand => {
-          paragraph.reserve(builder, token.span);
-          paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
+          paragraph.reserve(ctx, token.span);
+          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
         },
         // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
         // 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
@@ -111,12 +113,12 @@ pub(crate) fn evaluate_children(
         SyntaxKind::CommandCall => {
           // コマンドがインラインを返すかブロックを返すかは実行するまで確定しないので、
           // 先に段落 ID を予約しておく。ブロックだった場合、予約した ID は使われず穴になる。
-          paragraph.reserve(builder, child_node.span);
+          paragraph.reserve(ctx, child_node.span);
           let view = CommandView::new(child_node, source);
-          let result = command::evaluate_command(&view, builder)?;
+          let result = command::evaluate_command(&view, ctx)?;
           match result {
             CommandResult::Block(block_nodes) => {
-              paragraph.flush(builder, &mut hir_nodes);
+              paragraph.flush(ctx, &mut hir_nodes);
               hir_nodes.extend(block_nodes);
             },
             CommandResult::Inline(inline_nodes) => {
@@ -127,20 +129,20 @@ pub(crate) fn evaluate_children(
               if paragraph.has_content() {
                 return Err(EvalError::NoindentNotAtParagraphStart { span });
               }
-              paragraph.push(builder.leaf_inline(child_node.span, HirInlineKind::NoIndent));
+              paragraph.push(ctx.leaf_inline(child_node.span, HirInlineKind::NoIndent));
             },
           }
         },
         SyntaxKind::Environment => {
-          paragraph.flush(builder, &mut hir_nodes);
+          paragraph.flush(ctx, &mut hir_nodes);
           let view = EnvironmentView::new(child_node, source);
-          let nodes = environment::evaluate_environment(&view, builder)?;
+          let nodes = environment::evaluate_environment(&view, ctx)?;
           hir_nodes.extend(nodes);
         },
         SyntaxKind::InlineMath => {
-          paragraph.reserve(builder, child_node.span);
-          let id = builder.alloc(child_node.span);
-          let math_nodes = math::evaluate_inline_math(source, builder, child_node)?;
+          paragraph.reserve(ctx, child_node.span);
+          let id = ctx.alloc(child_node.span);
+          let math_nodes = math::evaluate_inline_math(source, ctx, child_node)?;
           paragraph.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         // これらはルート直下に現れない内部ノードである。
@@ -159,7 +161,7 @@ pub(crate) fn evaluate_children(
     }
   }
 
-  paragraph.flush(builder, &mut hir_nodes);
+  paragraph.flush(ctx, &mut hir_nodes);
 
   return Ok(hir_nodes);
 }
@@ -179,9 +181,9 @@ struct ParagraphBuffer {
 
 impl ParagraphBuffer {
   /// まだ予約していなければ、`span` の開始位置に段落 ID を予約する
-  fn reserve(&mut self, builder: &HirBuilder, span: Span) {
+  fn reserve(&mut self, ctx: &EvalContext<'_>, span: Span) {
     if self.id.is_none() {
-      self.id = Some(builder.alloc(Span::new(span.start, span.start)));
+      self.id = Some(ctx.alloc(Span::new(span.start, span.start)));
     }
     return;
   }
@@ -193,8 +195,8 @@ impl ParagraphBuffer {
   }
 
   /// テキストトークンを 1 個積む（索引マーカーをまたぐ結合は [`InlineSink`] が判断する）
-  fn push_text_token(&mut self, builder: &HirBuilder, span: Span, text: &str) {
-    self.sink.push_text_token(builder, span, text);
+  fn push_text_token(&mut self, ctx: &EvalContext<'_>, span: Span, text: &str) {
+    self.sink.push_text_token(ctx, span, text);
     return;
   }
 
@@ -210,7 +212,7 @@ impl ParagraphBuffer {
   /// 蓄積中のインラインを `HirNodeKind::Paragraph` としてフラッシュする
   ///
   /// 先頭と末尾の空白は捨てるが、段落内の空白は保持する。
-  fn flush(&mut self, builder: &HirBuilder, hir_nodes: &mut Vec<HirNode>) {
+  fn flush(&mut self, ctx: &EvalContext<'_>, hir_nodes: &mut Vec<HirNode>) {
     let mut inlines = self.sink.take();
     let leading_blank = inlines.iter().take_while(|inline| return !is_non_blank_inline(inline)).count();
     inlines.drain(..leading_blank);
@@ -224,9 +226,9 @@ impl ParagraphBuffer {
     let Some(id) = self.id else {
       unreachable!("インラインを積む前に必ず reserve を呼んでいる")
     };
-    let start = builder.span_of(inlines[0].id).start;
-    let end = builder.span_of(inlines[inlines.len() - 1].id).end;
-    builder.set_span(id, Span::new(start, end));
+    let start = ctx.span_of(inlines[0].id).start;
+    let end = ctx.span_of(inlines[inlines.len() - 1].id).end;
+    ctx.set_span(id, Span::new(start, end));
     hir_nodes.push(HirNode::new(id, HirNodeKind::Paragraph(inlines)));
     self.id = None;
     return;
@@ -239,8 +241,8 @@ impl ParagraphBuffer {
 /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
 #[cfg(test)]
 pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let builder = hir_builder_for_test();
-  return evaluate_children(source, &builder, node);
+  let ctx = eval_context_for_test();
+  return evaluate_children(source, &ctx, node);
 }
 
 /// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
@@ -250,28 +252,28 @@ pub(crate) fn extract_inline_nodes_to_hir(
   node: &GreenNode<'_>,
   index_policy: inline::IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let builder = hir_builder_for_test();
-  return inline::extract_inline_nodes(source, &builder, node, index_policy);
+  let ctx = eval_context_for_test();
+  return inline::extract_inline_nodes(source, &ctx, node, index_policy);
 }
 
 /// ハンドラを直接呼ぶテスト向けに、HIR インラインをそのまま返す
 ///
-/// 使い方: `run_inline_handler(|builder| return styled_text(&view, builder, kind))`
+/// 使い方: `run_inline_handler(|ctx| return styled_text(&view, ctx, kind))`
 #[cfg(test)]
 pub(crate) fn run_inline_handler(
-  handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirInline>, EvalError>,
+  handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirInline>, EvalError>,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let builder = hir_builder_for_test();
-  return handler(&builder);
+  let ctx = eval_context_for_test();
+  return handler(&ctx);
 }
 
 /// ハンドラを直接呼ぶテスト向けに、HIR ブロックをそのまま返す
 #[cfg(test)]
 pub(crate) fn run_block_handler(
-  handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirNode>, EvalError>,
+  handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let builder = hir_builder_for_test();
-  return handler(&builder);
+  let ctx = eval_context_for_test();
+  return handler(&ctx);
 }
 
 /// 段落の先頭判定用に、インライン要素が「実体のある内容」かどうかを返す

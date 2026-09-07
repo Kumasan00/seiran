@@ -4,9 +4,9 @@
 //! をそのまま文字列にするだけでよい。コメント・エスケープ・数式・括弧はいっさい解釈されない。
 
 use crate::{
-  document::{HirBuilder, HirNode, HirNodeKind},
+  document::{HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalError, opt_args::collect_environment_opt_args},
+    evaluator::{EvalContext, EvalError, opt_args::collect_environment_opt_args},
     syntax::view::{EnvironmentView, extract_text_content},
   },
 };
@@ -20,14 +20,14 @@ use crate::{
 ///
 /// 任意引数が指定された場合にエラーを返します（言語指定 `[language=...]` は
 /// ハイライト段の issue でキー名と受理を決めるまで未知キーとして拒否する。P6）。
-pub(super) fn code(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_environment_opt_args(view, &[])?;
   let text = match view.body() {
     Some(body) => trim_edge_newlines(&extract_text_content(view.source(), body)).to_string(),
     None => String::new(),
   };
 
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   return Ok(vec![HirNode::new(id, HirNodeKind::CodeBlock { text })]);
 }
 

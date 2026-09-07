@@ -1,10 +1,10 @@
 //! `\caption` コマンドの共通抽出処理
 
 use crate::{
-  document::{HirBuilder, HirInline},
+  document::HirInline,
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::collect_command_opt_args,
     },
@@ -20,7 +20,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰、未許可の任意引数がある場合にエラーを返します。
-pub(super) fn extract_caption(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(super) fn extract_caption(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -35,5 +35,5 @@ pub(super) fn extract_caption(view: &CommandView<'_>, builder: &HirBuilder) -> R
       span: view.span().to_source_span(),
     });
   }
-  return extract_inline_nodes(view.source(), builder, first_arg, IndexPolicy::Allow);
+  return extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Allow);
 }

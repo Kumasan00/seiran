@@ -11,10 +11,10 @@
 //! verbatim 内では `\` も不活性なので、旧記法の `\/` は URL に literal `\/` として残る。
 
 use crate::{
-  document::{HirBuilder, HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::collect_command_opt_args,
     },
@@ -28,7 +28,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(crate) fn url_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn url_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -45,8 +45,8 @@ pub(crate) fn url_command(view: &CommandView<'_>, builder: &HirBuilder) -> Resul
   }
 
   let url = extract_text_content(view.source(), first_arg).trim().to_string();
-  let id = builder.alloc(view.span());
-  let text = builder.leaf_inline(first_arg.span, HirInlineKind::Text(url.clone()));
+  let id = ctx.alloc(view.span());
+  let text = ctx.leaf_inline(first_arg.span, HirInlineKind::Text(url.clone()));
   return Ok(vec![HirInline::new(
     id,
     HirInlineKind::Link {
@@ -61,7 +61,7 @@ pub(crate) fn url_command(view: &CommandView<'_>, builder: &HirBuilder) -> Resul
 /// # Errors
 ///
 /// 必須引数が 2 個でない場合、または任意引数が指定された場合にエラーを返します。
-pub(crate) fn href_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn href_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if view.args_count() > 2 {
     return Err(EvalError::ExtraCommandArgument {
@@ -79,8 +79,8 @@ pub(crate) fn href_command(view: &CommandView<'_>, builder: &HirBuilder) -> Resu
   };
 
   let url = extract_text_content(view.source(), url_arg).trim().to_string();
-  let id = builder.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), builder, display_arg, IndexPolicy::Reject)?;
+  let id = ctx.alloc(view.span());
+  let children = extract_inline_nodes(view.source(), ctx, display_arg, IndexPolicy::Reject)?;
   return Ok(vec![HirInline::new(id, HirInlineKind::Link { url, children })]);
 }
 
@@ -95,7 +95,7 @@ mod tests {
   fn url_link(source: &str) -> (String, String) {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    let result = run_inline_handler(|builder| return url_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|ctx| return url_command(&view, ctx)).unwrap();
     let HirInlineKind::Link { url, children } = &result[0].kind else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -165,7 +165,7 @@ mod tests {
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
 
     assert!(
-      matches!(run_inline_handler(|builder| return url_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
+      matches!(run_inline_handler(|ctx| return url_command(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
     );
   }
 
@@ -173,7 +173,7 @@ mod tests {
   fn href_link(source: &str) -> Vec<HirInline> {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    return run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
+    return run_inline_handler(|ctx| return href_command(&view, ctx)).unwrap();
   }
 
   /// `\href{...}{...}` を評価してリンク先だけを取り出す
@@ -189,7 +189,7 @@ mod tests {
   fn href_error(source: &str) -> EvalError {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    return run_inline_handler(|builder| return href_command(&view, builder)).unwrap_err();
+    return run_inline_handler(|ctx| return href_command(&view, ctx)).unwrap_err();
   }
 
   #[test]

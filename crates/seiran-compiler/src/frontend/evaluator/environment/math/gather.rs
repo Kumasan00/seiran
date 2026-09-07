@@ -3,10 +3,10 @@
 //! 単一セルの行に分割し、行単位で採番する。
 
 use crate::{
-  document::{HirBuilder, HirNode, MathEnvKind},
+  document::{HirNode, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       environment::math::math_grid::{GridSpec, NumberingMode, evaluate_math_env},
     },
     syntax::view::EnvironmentView,
@@ -18,10 +18,10 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体への `&`（列区切り）混入、セル評価失敗時にエラーを返します
-pub(crate) fn gather(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn gather(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   return evaluate_math_env(
     view,
-    builder,
+    ctx,
     MathEnvKind::Gather,
     &GridSpec {
       allow_row_breaks: true,

@@ -10,8 +10,12 @@ use body::{resolve_column_count, scan_table_body};
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
 use crate::{
-  document::{ColumnAlign, ColumnWidth, HirBuilder, HirNode, HirNodeKind},
-  frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::view::EnvironmentView},
+  document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind},
+  frontend::{
+    evaluator::{EvalContext, EvalError},
+    span_ext::ToSourceSpan,
+    syntax::view::EnvironmentView,
+  },
 };
 
 /// `table` 環境を評価する
@@ -22,7 +26,7 @@ use crate::{
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let opts = collect_table_opts(view)?;
 
   if !view.args().is_empty() {
@@ -35,8 +39,8 @@ pub(super) fn table(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<
   let columns_tokens = opts.columns_spec.as_deref().map(|s| return parse_columns_spec(s, view)).transpose()?;
   let widths_tokens = opts.widths_spec.as_deref().map(|s| return parse_widths_spec(s, view)).transpose()?;
 
-  let id = builder.alloc(view.span());
-  let body = scan_table_body(view, builder)?;
+  let id = ctx.alloc(view.span());
+  let body = scan_table_body(view, ctx)?;
 
   if body.head.is_empty() && body.rows.is_empty() {
     return Err(EvalError::MissingEnvironmentArgument {

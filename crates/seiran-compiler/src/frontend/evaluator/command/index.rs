@@ -1,10 +1,10 @@
 //! `\index{語}` コマンド
 
 use crate::{
-  document::{HirBuilder, HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
@@ -19,7 +19,7 @@ use crate::{
 ///
 /// 必須引数の欠落・過剰、未知の任意引数キー、語が非プレーンテキスト（インライン装飾・数式・
 /// コマンドを含む）または空文字列の場合にエラーを返します。
-pub(crate) fn index_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("reading", OptType::String)])?;
   let reading = find_string(&opt_args, "reading");
 
@@ -37,7 +37,7 @@ pub(crate) fn index_command(view: &CommandView<'_>, builder: &HirBuilder) -> Res
     });
   }
 
-  let nodes = extract_inline_nodes(view.source(), builder, first_arg, IndexPolicy::Reject)?;
+  let nodes = extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
   let mut word = String::new();
   for node in &nodes {
     let HirInlineKind::Text(text) = &node.kind else {
@@ -58,7 +58,7 @@ pub(crate) fn index_command(view: &CommandView<'_>, builder: &HirBuilder) -> Res
     });
   }
 
-  return Ok(vec![builder.leaf_inline(
+  return Ok(vec![ctx.leaf_inline(
     view.span(),
     HirInlineKind::Index {
       word,
@@ -83,7 +83,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -103,7 +103,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx)).unwrap();
 
     // Assert
     let HirInlineKind::Index { reading, .. } = &result[0].kind else {
@@ -121,7 +121,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -136,7 +136,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "index"));
@@ -151,7 +151,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "index"));
@@ -166,7 +166,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -181,7 +181,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -196,7 +196,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -211,7 +211,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -226,7 +226,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -241,7 +241,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|ctx| return index_command(&view, ctx)).unwrap();
 
     // Assert
     let HirInlineKind::Index { word, reading } = &result[0].kind else {

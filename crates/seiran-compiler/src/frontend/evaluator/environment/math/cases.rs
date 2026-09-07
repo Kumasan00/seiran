@@ -3,10 +3,10 @@
 //! 各行を最大 2 セルに分割する非採番の数式環境。
 
 use crate::{
-  document::{HirBuilder, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
       opt_args::collect_environment_opt_args,
     },
@@ -20,7 +20,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
-pub(crate) fn cases(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -30,11 +30,11 @@ pub(crate) fn cases(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<
   }
 
   let source = view.source();
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let grid = match view.body() {
     Some(body_node) => evaluate_grid(
       source,
-      builder,
+      ctx,
       body_node,
       &GridSpec {
         allow_row_breaks: true,
