@@ -558,6 +558,7 @@ mod tests {
     document::{ColumnAlign, ColumnWidth},
     length::Length,
     project::{FontType, ProjectPath},
+    publication::GlyphRun,
     semantics::LabelId,
     typeset::{
       boxes::{
@@ -565,7 +566,6 @@ mod tests {
         TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_pages::{PageGeometry, PendingFootnote},
-      font::GlyphRun,
     },
   };
 

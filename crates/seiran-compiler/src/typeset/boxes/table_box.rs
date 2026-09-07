@@ -327,13 +327,11 @@ mod tests {
     document::{ColumnAlign, ColumnWidth},
     length::Length,
     project::FontType,
+    publication::GlyphRun,
     semantics::LabelId,
-    typeset::{
-      GlyphRun,
-      boxes::{
-        hitem::{HBox, HBoxContent, HItem, PlacedHItem},
-        link::{AnchorId, LinkTarget},
-      },
+    typeset::boxes::{
+      hitem::{HBox, HBoxContent, HItem, PlacedHItem},
+      link::{AnchorId, LinkTarget},
     },
   };
 

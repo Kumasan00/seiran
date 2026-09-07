@@ -12,7 +12,8 @@ use crate::project::{ProjectPath, SourceReadError};
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TypesetError {
-  /// シェーパー構築の失敗（`font::FontResources::system` に由来）。
+  /// フォント資源の構築（`font::FontResources::load`）とシェーパー構築
+  /// （`font::FontResources::system`）の失敗。
   ///
   /// `FontSystemError` は移設前も `?` でそのまま `miette::Report` になっていたので、
   /// `transparent` でメッセージ・code・help・label・related をすべて内側へ委譲し、

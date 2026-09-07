@@ -1,8 +1,9 @@
-//! 画像形式の判定 — 拡張子から [`ImageFormat`] を決める唯一の場所。
+//! 画像形式 [`ImageFormat`] と、拡張子からの判定。
 //!
-//! 判定結果は自然寸法の取得（`super::natural_size`）と `Publication` の描画資源の双方が使う。
-//! 描画側（`seiran-pdf`）が拡張子を読み直さないのは、同じ判定を 2 回書くと両者が食い違いうる
-//! ため（#378 で `pdf::unsupported_image_format` を削除した根拠）。
+//! `PublicationImage` に載って描画バックエンドまで届く描画契約の値型。判定をここ 1 箇所に
+//! 置くのは、描画側（`seiran-pdf`）が拡張子を読み直すと同じ判定が 2 つになり食い違いうる
+//! ため（#378 で `pdf::unsupported_image_format` を削除した根拠）。呼ぶのは組版の画像資源
+//! 解決（`crate::typeset::image`）で、判定済みの値だけが `Publication` に載る。
 
 use std::path::Path;
 

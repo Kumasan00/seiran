@@ -156,10 +156,9 @@ mod tests {
     length::Length,
     project::FontType,
     publication::{
-      Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect,
+      Destination, GlyphRun, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect,
       test_fixtures::resources,
     },
-    typeset::GlyphRun,
   };
 
   /// 最小のメタデータ（`title` のみ）を返す。

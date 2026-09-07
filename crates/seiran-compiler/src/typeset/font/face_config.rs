@@ -1,28 +1,13 @@
-//! `Publication` の描画資源に載る、フォント種別ごとのフォント構築設定。
+//! `crate::project::FontConfig` から renderer 用の [`FontFaceConfig`] への変換。
 //!
-//! `crate::project::FontConfig` から renderer が必要とする値（TTC インデックス・バリアブル
-//! フォント軸）だけを取り出した最小表現。この変換を `font` module 内のここ 1 箇所だけに閉じ、
-//! renderer 側に同型の複製型を作らせない（issue #305 / #372）。
+//! 値型は `crate::publication` が所有し、ここは `crate::project::FontConfig` からの変換
+//! （`build_face_configs`）だけを持つ。この変換をここ 1 箇所だけに閉じ、renderer 側に同型の
+//! 複製型を作らせない（issue #305 / #372）。
 
-use crate::project::{FontConfigs, FontMap, FontType};
-
-/// Krilla フォント構築に必要な設定（`FontConfig` から renderer が要る値だけを取り出した最小表現）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct FontFaceConfig {
-  /// TTC（TrueType Collection）ファイル内のインデックス
-  pub font_index: u32,
-  /// バリアブルフォント軸の設定値
-  pub variation_axes: Option<Vec<VariationAxisConfig>>,
-}
-
-/// バリアブルフォント軸の設定値（`crate::project::VariationAxis` の複製）。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct VariationAxisConfig {
-  /// 軸名（4 バイトの OpenType 軸タグ）
-  pub name: [u8; 4],
-  /// 目標値（実数）
-  pub value: f64,
-}
+use crate::{
+  project::{FontConfigs, FontMap, FontType},
+  publication::{FontFaceConfig, VariationAxisConfig},
+};
 
 /// 19 フォント種別すべての [`FontFaceConfig`]。
 pub(super) type FontFaceConfigs = FontMap<FontFaceConfig>;

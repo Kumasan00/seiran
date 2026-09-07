@@ -39,11 +39,13 @@ use source_diagnostic::SourceDiagnostic;
 use tracing::{info, info_span};
 pub use warnings::Warnings;
 
+#[cfg(test)]
+use crate::typeset::LaidOutDocument;
 use crate::{
   project::SourceSet,
-  publication::{self, Publication},
-  semantics::AnalyzeError,
-  typeset::{FontResources, FontWarning, LaidOutDocument, TypesetWarning},
+  publication::Publication,
+  semantics::{AnalyzeError, SemanticDocument},
+  typeset::{TypesetOutput, TypesetWarning},
 };
 
 /// コンパイル結果の統計情報。
@@ -98,20 +100,26 @@ pub fn compile<S: ProjectSource>(
 
   let (resolver, root) = resolve_root(root, base_dir);
   let inputs = load_inputs(source, &root, &resolver)?;
-  let PipelineArtifacts {
-    font_resources,
-    laid_out,
-    font_warnings,
-    typeset_warnings,
-  } = run_pipeline(source, &inputs, &resolver)?;
+  let semantic_document = analyze_document(source, &inputs, &resolver)?;
+  let TypesetOutput {
+    publication,
+    image_paths,
+    warnings: typeset_warnings,
+  } = typeset::compose(
+    source,
+    inputs.config(),
+    inputs.style(),
+    inputs.geometry(),
+    inputs.font_data(),
+    &semantic_document,
+  )
+  .map_err(CompileFailure::from)?;
 
-  let dependencies = DependencyManifest::collect(&root, &inputs, &laid_out.image_paths);
-  let page_count = laid_out.pages.len();
-  let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
-  let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
+  let dependencies = DependencyManifest::collect(&root, &inputs, &image_paths);
+  let warnings = collect_warnings(&inputs, typeset_warnings);
   let total_elapsed = build_start.elapsed();
   let statistics = BuildStatistics {
-    page_count,
+    page_count: publication.pages().len(),
     // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
     total_elapsed_ms: u64::try_from(total_elapsed.as_millis()).unwrap_or(u64::MAX),
   };
@@ -164,35 +172,21 @@ fn load_inputs(
   return Ok(inputs);
 }
 
-/// [`run_pipeline`] が確定させた組版までの成果物。
-///
-/// `Publication` への変換・依存パスの収集・統計の算出は行わず、`compile` がこの値を受け取って
-/// 仕上げる。フォント資源は組版と描画資源の構築の両方が使うため、`LaidOutDocument` と一緒に運ぶ。
-struct PipelineArtifacts<'a> {
-  /// 組版と描画資源の構築が共有するフォント資源（`inputs` のフォントバイト列を借りる）
-  font_resources: FontResources<'a>,
-  /// 確定した組版結果
-  laid_out: LaidOutDocument,
-  /// フォント資源の構築で見つかった警告
-  font_warnings: Vec<FontWarning>,
-  /// 組版で見つかった警告
-  typeset_warnings: Vec<TypesetWarning>,
-}
-
-/// 検証済み入力から組版までの 4 phase（frontend / semantics / font / typeset）を実行する
+/// 検証済み入力から意味解析済み文書までの 2 phase（frontend / semantics）を実行する
 /// （production / test 共通）。
 ///
 /// 各 phase の span・完了 event・診断への変換をここが所有し、`compile` と
-/// `layout_project_for_test`（テスト専用）は同じ実装を通る。
+/// `layout_project_for_test`（テスト専用）は同じ実装を通る。組版（フォント資源の構築・
+/// 配置・`Publication` への変換）は `typeset::compose` の内側にあり、この関数は関与しない。
 ///
 /// # Errors
 ///
-/// パース・意味解析・フォント資源の構築・組版のいずれかに失敗した場合にエラーを返す。
-fn run_pipeline<'a>(
+/// パース・意味解析のいずれかに失敗した場合にエラーを返す。
+fn analyze_document(
   source: &dyn ProjectSource,
-  inputs: &'a CompilationInputs,
+  inputs: &CompilationInputs,
   resolver: &PathResolver,
-) -> Result<PipelineArtifacts<'a>, CompileFailure> {
+) -> Result<SemanticDocument, CompileFailure> {
   let document = {
     let _phase = info_span!("frontend").entered();
     let stage_start = Instant::now();
@@ -218,48 +212,15 @@ fn run_pipeline<'a>(
     );
     semantic_document
   };
-
-  let (font_resources, font_warnings) = {
-    let _phase = info_span!("font").entered();
-    let stage_start = Instant::now();
-    let (font_resources, font_warnings) =
-      FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
-    info!(
-      warning_count = font_warnings.len(),
-      elapsed = ?stage_start.elapsed(),
-      "フォント資源を構築"
-    );
-    (font_resources, font_warnings)
-  };
-
-  let (laid_out, typeset_warnings) = {
-    let _phase = info_span!("typeset").entered();
-    let stage_start = Instant::now();
-    let (laid_out, typeset_warnings) =
-      typeset::layout(source, inputs.config(), inputs.style(), inputs.geometry(), &font_resources, &semantic_document)
-        .map_err(CompileFailure::from)?;
-    info!(
-      page_count = laid_out.pages.len(),
-      warning_count = typeset_warnings.len(),
-      elapsed = ?stage_start.elapsed(),
-      "文書を組版"
-    );
-    (laid_out, typeset_warnings)
-  };
-
-  return Ok(PipelineArtifacts {
-    font_resources,
-    laid_out,
-    font_warnings,
-    typeset_warnings,
-  });
+  return Ok(semantic_document);
 }
 
 /// 入力読込から組版までを production と同じ実装で通し、組版中間表現を取り出すテストヘルパ。
 ///
 /// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
 /// `PlacedBlock` の幾何）を検査するテストだけが使う。phase の処理は再実装せず
-/// [`load_inputs`] と [`run_pipeline`] を呼ぶだけなので、`input::load` の横断検証を迂回できない。
+/// [`load_inputs`] / [`analyze_document`] / [`typeset::layout_for_test`] を呼ぶだけなので、
+/// `input::load` の横断検証も組版の段順序も迂回できない。
 ///
 /// # Errors
 ///
@@ -272,26 +233,27 @@ fn layout_project_for_test(
 ) -> Result<LaidOutDocument, CompileFailure> {
   let (resolver, root) = resolve_root(root, base_dir);
   let inputs = load_inputs(source, &root, &resolver)?;
-  let artifacts = run_pipeline(source, &inputs, &resolver)?;
-  return Ok(artifacts.laid_out);
+  let semantic_document = analyze_document(source, &inputs, &resolver)?;
+  return typeset::layout_for_test(
+    source,
+    inputs.config(),
+    inputs.style(),
+    inputs.geometry(),
+    inputs.font_data(),
+    &semantic_document,
+  )
+  .map_err(CompileFailure::from);
 }
 
 /// 成功した `Compilation` と一緒に返す warning を、**入力の論理順**で 1 つに束ねる。
 ///
-/// 段の実行順（設定 → フォント → 組版）をそのまま表示順にする。段の中は各段が既に決定的な順序で
-/// 集めている（設定は `sources` の宣言順、フォントは `FontType::ALL` 順、組版は物理ページの昇順）ので、
-/// ここでの並べ替えは行わない。
-fn collect_warnings(
-  inputs: &CompilationInputs,
-  font_warnings: Vec<FontWarning>,
-  typeset_warnings: Vec<TypesetWarning>,
-) -> Warnings {
+/// 段の実行順（設定 → 組版）をそのまま表示順にする。段の中は各段が既に決定的な順序で
+/// 集めている（設定は `sources` の宣言順、組版はフォント種別 `FontType::ALL` 順のフォント警告 →
+/// 物理ページ昇順の本体警告）ので、ここでの並べ替えは行わない。
+fn collect_warnings(inputs: &CompilationInputs, typeset_warnings: Vec<TypesetWarning>) -> Warnings {
   let mut warnings = Warnings::default();
   for warning in inputs.config_warnings() {
     warnings.push(warning.clone());
-  }
-  for warning in font_warnings {
-    warnings.push(warning);
   }
   for warning in typeset_warnings {
     warnings.push(warning);
@@ -302,7 +264,7 @@ fn collect_warnings(
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
 ///
 /// 画像パスは frontend が `resolver` で解決して HIR へ格納する。意味解析（ラベル・`\ref`・カウンタ・
-/// 引用キー）と CSL 整形は `semantics::analyze` が、画像パスの収集は `typeset::layout` が担う。
+/// 引用キー）と CSL 整形は `semantics::analyze` が、画像パスの収集は `typeset::compose` が担う。
 ///
 /// # Errors
 ///

@@ -86,11 +86,12 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
   → frontend           字句・構文解析・評価: Lexer → Parser → CST → HIR（document::HirDocument）
   → semantics::analyze 意味解析: HIR 1 走査で SemanticFacts を確定し、引用があれば CSL 読込
                        → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
-  → typeset::layout    組版: SemanticDocument + 設定 + FontResources → LaidOutDocument
+  → typeset::compose   組版: SemanticDocument + 設定 + フォントバイト列 → Publication + 警告 + 画像依存パス
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
-                       シェーパー）と内部順序（画像読込・寸法確定 → lowering → boxing（計測）
-                       → breaking（行分割・改ページ）→ 前付け・後付け → ページラベル → 走り文 → outline）
-                       は typeset に閉じる
+                       シェーパー）から出口（typeset::emit: 確定座標 → PaintOp・描画資源の構築）まで
+                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像読込・寸法確定 →
+                       lowering → boxing（計測）→ breaking（行分割・改ページ）→ 前付け・後付け →
+                       ページラベル → 走り文 → outline → emit）は typeset に閉じる
   → seiran-pdf         render: compiler が確定させた Publication（純データ）を描画するのみ
                        （krilla フォントの構築・画像デコード・フォントサブセット化はここに閉じる）
   → seiran (CLI)       atomic write でファイル出力
@@ -111,6 +112,9 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
   固定 kern（1mu = font_size/18）で出し、ソースに書かれた空白は組版に出さない
 - 脚注は本文の実効下限を縮めて配置し、行単位でページ間繰越。ページ単位採番のときだけ本文パスを
   不動点まで反復する（`typeset::pagination::footnote_numbering`）
+- 組版中間型（`Page` / `PlacedBlock` / `LaidOutDocument`）は `typeset` の外に本体コードの消費者を持たない。
+  `typeset` は backend 非依存の確定表現 `publication` に依存してよく（#535 で #461 の原則を改訂）、
+  krilla の隔離は `seiran-pdf` の crate 境界と `Publication` の純データ性が担う
 - `compile` は PDF バイト列の生成・保存を行わない。`seiran_pdf::render` と atomic write は CLI（`seiran`）の責務
 
 ### クレート構成
@@ -147,9 +151,9 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・検証。CSL 本体は読まない |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |
 | `semantics` | 意味解析 `analyze`（採番・`\ref`・引用キー検証）+ CSL 読込・書誌生成 → `SemanticDocument` |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`） |
-| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）と、その唯一の構築経路。krilla を知らない純データ |
-| `compiler` | compile facade。全体の phase 順序だけを持ち、組版中間型の走査・描画資源の構築を名指ししない |
+| `typeset` | 組版。入口は `compose` 1 操作（`SemanticDocument` + 設定 + フォントバイト列 → `Publication` + 警告 + 画像依存パス）。出口 `emit` まで内側に閉じる |
+| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画契約の値型 `GlyphRun` / `FontMetric` / `ImageFormat` 等）と検証付きコンストラクタ。krilla も `typeset` も知らない純データ |
+| `compiler` | compile facade。全体の phase 順序だけを持ち、組版中間型・フォント資源を保持しない |
 
 ## コーディング規約
 

@@ -21,13 +21,14 @@ use crate::{
   document::FontKind,
   length::Length,
   project::FontType,
+  publication::{Glyph, GlyphRun},
   typeset::{
     boxes::{
       Align, Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
       max_font_size_in_items,
     },
     breaking::{self, BreakKind, BreakPoint, Lang},
-    font::{FontSystem, Glyph, GlyphRun, UnicodeBuffer},
+    font::{FontSystem, UnicodeBuffer},
     lowering::{AtomNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
     observe,
   },

@@ -7,12 +7,26 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::typeset::font::FontWarning;
+
 /// 組版段の警告。
+///
+/// フォント資源の構築で見つかった警告（[`FontWarning`]）も、組版 phase の中で起きるので
+/// この型が包む（#535）。`compiler` は警告型を 1 つだけ名指しし、`typeset` の内部が
+/// フォント → 本体の 2 段に分かれていることを知らない。
 ///
 /// ページの指し方は**印字ページラベル**（前付けはローマ数字など `style.page_numbering` に従う）で、
 /// 物理 index からの変換は [`super::pagination`] が行う。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TypesetWarning {
+  /// フォント資源の構築（解析・検証）で見つかった警告。
+  ///
+  /// `transparent` でメッセージ・code・help・severity をすべて内側へ委譲し、診断の出方を
+  /// 変えない（`TypesetError::Font` と同じ形）。
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Font(#[from] FontWarning),
+
   /// 行に付いた脚注群が、空のページでも版面に収まらなかった
   #[error("{page} ページの脚注 {} がページの高さを超えるため、はみ出したまま配置しました", join_numbers(.numbers))]
   #[diagnostic(
@@ -54,6 +68,34 @@ mod tests {
   use miette::{Diagnostic, Severity};
 
   use super::TypesetWarning;
+  use crate::{
+    project::{FontType, ProjectPath},
+    typeset::font::FontWarning,
+  };
+
+  #[test]
+  fn font_variant_forwards_severity_message_and_code() {
+    // Arrange — フォント検証の警告をそのまま包む
+    let inner = FontWarning::MissingLayoutTable {
+      font_type: FontType::Serif,
+      path: ProjectPath::new("/project/font.ttf"),
+      table: "GSUB",
+    };
+    let expected_message = inner.to_string();
+    let expected_code = inner.code().expect("フォント警告は診断 code を持つはず").to_string();
+
+    // Act
+    let warning = TypesetWarning::Font(inner);
+
+    // Assert — transparent なので severity / メッセージ / code は内側そのまま
+    assert_eq!(warning.severity(), Some(Severity::Warning), "警告 severity を転送するはず");
+    assert_eq!(warning.to_string(), expected_message, "メッセージを転送するはず");
+    assert_eq!(
+      warning.code().expect("code を転送するはず").to_string(),
+      expected_code,
+      "診断 code を転送するはず（typeset::font::script::missing_layout_table）"
+    );
+  }
 
   #[test]
   fn footnote_overflow_lists_all_numbers_on_the_line() {
