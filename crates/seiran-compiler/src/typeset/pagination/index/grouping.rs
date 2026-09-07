@@ -34,7 +34,7 @@ const KANA_RANGE_END: &str = "ん";
 
 /// 区分見出しのラベル
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IndexGroupLabel {
+pub(super) enum IndexGroupLabel {
   /// [`GROUP_LABELS`] の固定ラベル（A–Z・五十音行）
   Fixed(&'static str),
   /// どのラベル区間にも入らないエントリの受け皿（見出し文字列は style から取る）
@@ -43,11 +43,11 @@ pub(crate) enum IndexGroupLabel {
 
 /// 1 区分（見出しラベルと、そこへ入るエントリ列）
 #[derive(Debug)]
-pub(crate) struct IndexGroup<'a> {
+pub(super) struct IndexGroup<'a> {
   /// 区分見出しのラベル
-  pub label: IndexGroupLabel,
+  pub(super) label: IndexGroupLabel,
   /// この区分に入るエントリ（照合順のまま）
-  pub entries: Vec<&'a IndexEntry>,
+  pub(super) entries: Vec<&'a IndexEntry>,
 }
 
 /// エントリ列を ICU `Collator`（ロケール固定 `ja`）でソートする
@@ -56,7 +56,7 @@ pub(crate) struct IndexGroup<'a> {
 ///
 /// `ja` ロケールの照合データはワークスペースの `icu`（`compiled_data`）に常に同梱されているため、
 /// 実運用では発生しない。
-pub(crate) fn sort_index_entries(entries: &mut [IndexEntry]) {
+pub(super) fn sort_index_entries(entries: &mut [IndexEntry]) {
   let collator = Collator::try_new(locale!("ja").into(), CollatorOptions::default())
     .expect("ja ロケールの照合データは compiled_data で常に利用可能なはず");
   entries.sort_by(|a, b| return collator.compare(sort_key(a), sort_key(b)));
@@ -104,7 +104,7 @@ fn group_index_of(collator: &CollatorBorrowed<'_>, key: &str) -> Option<usize> {
 /// 返る順序は A–Z → 五十音行 → 受け皿（末尾）。区分内はエントリ列の順（＝照合順）のまま並べ替えない。
 /// 受け皿は underflow と overflow を 1 つに統合したもので、入力が照合順である限り
 /// 「underflow < ラベル区間 < overflow」なので連結しただけで照合順を保つ。
-pub(crate) fn assign_index_groups<'a>(entries: &'a [IndexEntry]) -> Vec<IndexGroup<'a>> {
+pub(super) fn assign_index_groups<'a>(entries: &'a [IndexEntry]) -> Vec<IndexGroup<'a>> {
   let collator = primary_collator();
   let mut labeled: Vec<Vec<&'a IndexEntry>> = vec![Vec::new(); GROUP_LABELS.len()];
   let mut other: Vec<&'a IndexEntry> = Vec::new();

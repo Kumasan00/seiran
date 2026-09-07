@@ -1,4 +1,10 @@
-//! レイアウトエンジン module — (a) `build_blocks`
+//! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
+//!
+//! 本文の入口は (a) [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
+//! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Measurer`] と [`LineAccum`] を
+//! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
+//!
+//! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
 
 mod composed_line;
 mod math;
@@ -87,7 +93,7 @@ pub(super) fn build_blocks(
 }
 
 /// シェーピング・計測の状態を束ねた内部ワーカー
-pub(crate) struct Measurer<'a> {
+pub(super) struct Measurer<'a> {
   /// シェイプ・メトリクス取得の窓口
   resources: &'a FontSystem<'a>,
   /// シェイピングに再利用する `harfrust` バッファ
@@ -104,7 +110,7 @@ pub(crate) struct Measurer<'a> {
 
 impl<'a> Measurer<'a> {
   /// シェーパーとメトリクスから新しい `Measurer` を生成する
-  pub(crate) fn new(
+  pub(super) fn new(
     resources: &'a FontSystem<'a>,
     default_font_size: Length,
     line_height_factor: f32,
@@ -386,7 +392,7 @@ impl<'a> Measurer<'a> {
   }
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
-  pub(crate) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+  pub(super) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
     let text = fold_newlines(text);
     let segments = script::split_text_by_script(style.font_kind, &text);
     return segments
