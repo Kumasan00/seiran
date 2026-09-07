@@ -13,13 +13,10 @@ use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 
 mod face_config;
-mod glyph_run;
 mod shaper;
 mod system;
 mod validation;
 
-pub use face_config::{FontFaceConfig, VariationAxisConfig};
-pub use glyph_run::{Glyph, GlyphRun};
 // `shaper` module のパス自体は `typeset::font` に閉じ、`typeset::boxing` が shape 呼び出しに要る
 // `UnicodeBuffer` だけを `typeset` 内へ出す。
 pub(super) use shaper::UnicodeBuffer;
@@ -31,6 +28,7 @@ pub(crate) use validation::FontWarning;
 use crate::{
   failures::{self, Failures},
   project::{FontConfigs, FontData, FontMap, FontType},
+  publication::FontMetric,
 };
 
 /// フォントの解析エラー。
@@ -107,19 +105,6 @@ fn build_font_refs<'a>(
     })
     .collect::<Vec<Result<FontRef<'a>, FontLoadError>>>();
   return Ok(FontMap::from_all(failures::collect_in_input_order(results)?));
-}
-
-/// 1 フォントの基本メトリクス。
-///
-/// 値はフォントユニット系で、`descender` は OpenType の慣例どおり通常は負値。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FontMetric {
-  /// units-per-em（`head` テーブル由来）
-  pub upem: f32,
-  /// アセンダ（`hhea` テーブル由来、フォントユニット）
-  pub ascender: f32,
-  /// ディセンダ（`hhea` テーブル由来、フォントユニット、通常は負値）
-  pub descender: f32,
 }
 
 /// 全フォント種別の基本メトリクス。

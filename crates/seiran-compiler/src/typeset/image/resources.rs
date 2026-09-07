@@ -10,11 +10,8 @@ use crate::{
   failures::Failures,
   length::Length,
   project::{ProjectPath, ProjectSource},
-  typeset::{
-    boxes::Block,
-    error::TypesetError,
-    image::{ImageFormat, natural_size},
-  },
+  publication::ImageFormat,
+  typeset::{boxes::Block, error::TypesetError, image::natural_size},
 };
 
 /// 描画へ渡す画像 1 件（判定済みの形式 + 生バイト列）。

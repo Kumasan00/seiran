@@ -13,8 +13,9 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{FontConfigs, FontData, FontType},
+  publication::FontMetric,
   typeset::font::{
-    FontLoadError, FontMetric, FontMetrics, FontRefs, build_font_metrics, build_font_refs,
+    FontLoadError, FontMetrics, FontRefs, build_font_metrics, build_font_refs,
     face_config::{FontFaceConfigs, build_face_configs},
     shaper::{
       HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,

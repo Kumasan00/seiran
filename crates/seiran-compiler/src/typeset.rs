@@ -47,10 +47,6 @@ pub(crate) use boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, Plac
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 pub(crate) use error::TypesetError;
-// `Publication` に載って crate 外（描画バックエンド）まで届く leaf 値型 — シェイピング結果
-// （`GlyphRun` / `Glyph`）・フォント計測値（`FontMetric`）・krilla フォント構築設定
-// （`FontFaceConfig` / `VariationAxisConfig`）。crate root の facade が再エクスポートする（#372）。
-pub use font::{FontFaceConfig, FontMetric, Glyph, GlyphRun, VariationAxisConfig};
 // フォント資源のハンドル `FontResources`。フォントの解析・検証・シェーパー構築は `font` に
 // 閉じており、`FontSystem` / `FontRefs` / `FontMetrics` / 拡張 trait は `typeset` の外から
 // 見えない（#352）。
@@ -60,11 +56,8 @@ pub(crate) use font::{FontResources, FontWarning};
 // 行い、確定した版面 `PreparedGeometry` を `layout` の引数として受け取り直す — 不正な組み合わせを
 // 組版より前に弾き、診断の出るタイミングを変えないため（#533）。
 pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
-// 画像資源 — 判定済みの形式 `ImageFormat` は `Publication` に載って描画バックエンドまで届く
-// leaf 値型（crate root の facade が再エクスポートする）。`ImageAsset` は `publication::build` が
-// 描画資源へ写すためだけに読む中間表現（#378）。
+// `ImageAsset` は `publication::build` が描画資源へ写すためだけに読む中間表現（#378）。
 pub(crate) use image::ImageAsset;
-pub use image::ImageFormat;
 pub(crate) use pagination::LaidOutDocument;
 // 組版が見つけた、ユーザーが直せる非致命的問題（#382）。`compiler` が `Warnings` へ積む。
 pub(crate) use warning::TypesetWarning;

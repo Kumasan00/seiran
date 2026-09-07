@@ -41,14 +41,15 @@ pub use project::{
   FilesystemProjectSource, FontType, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError,
 };
 // `Publication` から到達できる leaf 値型はすべてここに載せる — 描画バックエンド（`seiran-pdf`）が
-// 描画命令を読むために名指しする必要があるため（#372 で型の所有をこちらへ移した）。`Length` /
-// `Color` / `FontType` / `GlyphRun` / `Glyph` / `FontMetric` / `FontFaceConfig` はいずれも
-// `PaintOp` または描画資源のフィールド型として現れる。逆に `FontMap` / `FontConfigs` /
-// `ProjectConfig` / `Style` / `typeset::Page` のような内部データモデル・組版中間型は、
-// `Publication` の非公開フィールドの型としてしか現れないので載せない
-// （renderer が「確定座標の描画のみ」でいられる防火壁は、この公開範囲の狭さが担っている）。
+// 描画命令を読むために名指しする必要があるため（#372 で型の所有をこちらへ移した。#535 で
+// 描画契約の値型を `publication` へ寄せた）。`Length` / `Color` / `FontType` / `GlyphRun` /
+// `Glyph` / `FontMetric` / `FontFaceConfig` はいずれも `PaintOp` または描画資源のフィールド型
+// として現れる。逆に `FontMap` / `FontConfigs` / `ProjectConfig` / `Style` / `typeset::Page` の
+// ような内部データモデル・組版中間型は、`Publication` の非公開フィールドの型としてしか
+// 現れないので載せない（renderer が「確定座標の描画のみ」でいられる防火壁は、この公開範囲の
+// 狭さが担っている）。
 pub use publication::{
-  Destination, ImageRef, PaintOp, Point, Publication, PublicationFont, PublicationImage, PublicationLink,
-  PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
+  Destination, FontFaceConfig, FontMetric, Glyph, GlyphRun, ImageFormat, ImageRef, PaintOp, Point, Publication,
+  PublicationFont, PublicationImage, PublicationLink, PublicationLinkTarget, PublicationMetadata,
+  PublicationOutlineEntry, PublicationPage, PublicationResources, Rect, VariationAxisConfig,
 };
-pub use typeset::{FontFaceConfig, FontMetric, Glyph, GlyphRun, ImageFormat, VariationAxisConfig};

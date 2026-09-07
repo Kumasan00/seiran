@@ -6,8 +6,8 @@
 //!
 //! **不変条件**: ここの関数・メソッドは引数型にも返り値型にも上記の中間型を現さない。受け取るのは
 //! 意味的な値（テキスト・座標・構造）だけで、返すのは [`Page`] / [`PlacedBlock`] /
-//! [`LaidOutDocument`] / [`GlyphRun`] に限る。この規約が破れると `typeset` の内部 struct の
-//! フィールド構成に外側のテストが再び結合し、再編の妨げになる。
+//! [`LaidOutDocument`] / [`crate::publication::GlyphRun`] に限る。この規約が破れると `typeset` の
+//! 内部 struct のフィールド構成に外側のテストが再び結合し、再編の妨げになる。
 
 use std::collections::HashMap;
 
@@ -15,6 +15,7 @@ use crate::{
   document::{ColumnAlign, ColumnWidth, HeadingLevel},
   length::Length,
   project::{FontType, ProjectPath},
+  publication::GlyphRun,
   semantics::{HeadingKey, LabelId},
   typeset::{
     boxes::{
@@ -22,7 +23,6 @@ use crate::{
       PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
       PositionedBox, TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
     },
-    font::GlyphRun,
     pagination::{LaidOutDocument, OutlineEntry},
   },
 };

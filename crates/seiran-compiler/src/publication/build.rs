@@ -7,7 +7,7 @@
 //! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
 //! `crate::publication` の座標は pt 単位の `f32` なので、ここでの `crate::length::Length::to_pt()` 呼び出しは
-//! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列（`crate::typeset::GlyphRun`）は
+//! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列（`crate::publication::GlyphRun`）は
 //! シェイピング結果をそのまま載せ、フォントサイズ・色の単位変換は render が行う（#372）。
 
 use std::{collections::HashMap, mem};
@@ -364,12 +364,12 @@ mod tests {
       config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
-      PaintOp, Point, Publication, PublicationImage, PublicationLinkTarget, PublicationResources, Rect,
+      ImageFormat, PaintOp, Point, Publication, PublicationImage, PublicationLinkTarget, PublicationResources, Rect,
       test_fixtures::resources,
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, ImageFormat, Page,
+      AnchorId, Page,
       test_fixtures::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, table_block,

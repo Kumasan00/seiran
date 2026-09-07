@@ -8,13 +8,13 @@ use std::io::Cursor;
 
 use image::ImageReader;
 
-use crate::typeset::{error::TypesetError, image::ImageFormat};
+use crate::{publication::ImageFormat, typeset::error::TypesetError};
 
 /// 判定済みの画像形式に従ってバイト列をデコードし、自然寸法を返す。
 ///
 /// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない
 /// （読み込み済みの `bytes` をそのままデコードする）。形式の判定は
-/// [`ImageFormat::from_path`](crate::typeset::ImageFormat) が済ませている。
+/// [`ImageFormat::from_path`](crate::publication::ImageFormat) が済ませている。
 ///
 /// # Errors
 ///
@@ -57,7 +57,7 @@ fn svg_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
 #[cfg(test)]
 mod tests {
   use super::natural_image_size;
-  use crate::typeset::{error::TypesetError, image::ImageFormat};
+  use crate::{publication::ImageFormat, typeset::error::TypesetError};
 
   #[test]
   fn natural_image_size_returns_svg_dimensions_from_bytes() {

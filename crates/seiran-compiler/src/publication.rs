@@ -4,10 +4,11 @@
 //! 描画バックエンド（`seiran-pdf` / krilla）のハンドルは 1 つも含まない（#372）。
 //! フォント・画像は生バイト列と構築設定のまま持ち、krilla フォントの構築は render が行う。
 //!
-//! データ型は組版の中間型（`crate::typeset::Page` 等）をフィールドに持たない。例外は
-//! `crate::typeset::GlyphRun` / [`crate::typeset::FontMetric`] / [`crate::typeset::FontFaceConfig`] /
-//! [`crate::typeset::ImageFormat`] で、これらは「シェーピング結果」「フォント計測値」「フォント構築設定」
-//! 「判定済みの画像形式」をそのまま描画へ渡す leaf 値なので同型の複製を作らず直接載せる。
+//! データ型は組版の中間型（`crate::typeset::Page` 等）をフィールドに持たない。描画契約の
+//! 値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetric`]、フォント
+//! 構築設定 [`FontFaceConfig`] / [`VariationAxisConfig`]、判定済みの画像形式 [`ImageFormat`] —
+//! はこの module 自身が子 module（`glyph` / `font` / `image_format`）に持ち、組版はそれを
+//! 生成する側になる（#535）。同型の複製は作らない。
 //!
 //! 唯一の構築経路である子 module `build` はこの制約の外側にある — `crate::typeset::LaidOutDocument` /
 //! `Page` / `PlacedBlock` / `PlacedTableRow` / `HBoxContent` / `FontResources` / `ImageAsset` を走査して
@@ -27,6 +28,9 @@
 //! - [`PaintOp::DrawImage`] が持つ [`ImageRef`] は必ず [`PublicationResources`] の画像を指す
 
 mod build;
+mod font;
+mod glyph;
+mod image_format;
 
 use std::{
   fmt::{self, Debug, Formatter},
@@ -34,11 +38,11 @@ use std::{
 };
 
 pub(crate) use build::build;
+pub use font::{FontFaceConfig, FontMetric, VariationAxisConfig};
+pub use glyph::{Glyph, GlyphRun};
+pub use image_format::ImageFormat;
 
-use crate::{
-  project::{FontMap, FontType},
-  typeset::{FontFaceConfig, FontMetric, GlyphRun, ImageFormat},
-};
+use crate::project::{FontMap, FontType};
 
 /// 座標と描画順が確定した文書。
 #[derive(Debug, Clone, PartialEq)]
@@ -426,11 +430,8 @@ pub struct PublicationOutlineEntry {
 pub(crate) mod test_fixtures {
   use std::sync::Arc;
 
-  use super::{PublicationFont, PublicationImage, PublicationResources};
-  use crate::{
-    project::{FontMap, FontType},
-    typeset::{FontFaceConfig, FontMetric},
-  };
+  use super::{FontFaceConfig, FontMetric, PublicationFont, PublicationImage, PublicationResources};
+  use crate::project::{FontMap, FontType};
 
   /// 指定した画像だけを持つ描画資源を返す（フォントは全種別ダミーのバイト列 0 個）。
   ///
@@ -456,10 +457,10 @@ pub(crate) mod test_fixtures {
 #[cfg(test)]
 mod tests {
   use super::{
-    Destination, ImageRef, PaintOp, Point, Publication, PublicationImage, PublicationLink, PublicationLinkTarget,
-    PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, test_fixtures::resources,
+    Destination, ImageFormat, ImageRef, PaintOp, Point, Publication, PublicationImage, PublicationLink,
+    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect,
+    test_fixtures::resources,
   };
-  use crate::typeset::ImageFormat;
 
   /// 検証用の最小メタデータを返す。
   fn metadata() -> PublicationMetadata {

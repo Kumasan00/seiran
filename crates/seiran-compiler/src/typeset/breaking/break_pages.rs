@@ -899,6 +899,7 @@ mod tests {
     document::{ColumnAlign, ColumnWidth},
     length::Length,
     project::{FontType, ProjectPath},
+    publication::GlyphRun,
     semantics::{HeadingKey, LabelId},
     style::TextAlignment,
     typeset::{
@@ -907,7 +908,6 @@ mod tests {
         Page, PlacedBlock, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
-      font::GlyphRun,
     },
   };
 

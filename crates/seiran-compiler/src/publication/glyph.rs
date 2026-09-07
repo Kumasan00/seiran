@@ -1,4 +1,8 @@
 //! シェーピング済みグリフ列 [`GlyphRun`] と [`Glyph`]。
+//!
+//! `PaintOp::DrawGlyphRun` がそのまま載せる描画契約の値型で、シェイピング処理そのものは
+//! `crate::typeset::font` が持つ（#535 で値型だけをこちらへ移設）。フォントサイズ・色の
+//! 単位変換は render（`seiran-pdf`）が行う。
 
 use std::ops::Range;
 
