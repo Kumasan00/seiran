@@ -1202,7 +1202,8 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   乗って段末・ページ末の孤立を防ぐ
 - `running`: 段 6。走り文の機能 module。`PageLabels` を引数に要求して呼び出し順を型で制約し、
   style の投影（テンプレート・書体・区切り線）・`{page}` 等のトークン置換・左 / 中央 / 右スロットの配置を
-  ここに閉じる。入口は `place_running_content` 1 つ
+  ここに閉じる。入口は `place_running_content` 1 つで、各 `Page::header` / `footer` へ `PlacedBlock` 列
+  （行 + 任意の区切り罫）として配置する
 - `outline`: 段 7。見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
