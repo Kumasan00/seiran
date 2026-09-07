@@ -49,14 +49,15 @@ mod dump;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 
-// 組版中間型は `typeset` の外に本体コードの消費者を持たない（#535）。`compiler::golden` /
-// `compiler::project_source_equivalence` が確定レイアウトへ直接アサートするためだけに、
-// テストビルドでのみ facade へ出す。テストが確定レイアウトを**組み立てる**手段は
-// `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。
+// 組版中間型は `typeset` の外に本体コードの消費者を持たない（#535）。`compiler::golden` が
+// 確定レイアウトへ直接アサートするためだけに、テストビルドでのみ facade へ出す
+// （`compiler::project_source_equivalence` はこれらの型を使わず `Publication` にしかアサートしない）。
+// テストが確定レイアウトを**組み立てる**手段は `#[cfg(test)]` の子 module `test_fixtures` が持つ
+// （#353）。
 #[cfg(test)]
 pub(crate) use boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, PlacedBlock};
-// テスト専用の例外 — `compiler::golden` / `compiler::project_source_equivalence` が確定ページ列を
-// ダンプ比較するための関数 1 つだけを出す（中間型そのものは出さない）。
+// テスト専用の例外 — `compiler::golden` が確定ページ列をダンプ比較するための関数 1 つだけを出す
+// （中間型そのものは出さない。`compiler::project_source_equivalence` はここも消費しない）。
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 // `compose` / `layout_for_test` の失敗型。`compiler` は `CompileFailure::from` の総称 impl 越しに
@@ -112,8 +113,9 @@ pub(crate) struct TypesetOutput {
 /// `style` と同じ組から `PreparedGeometry::prepare` した値でなければなりません — 引数はいずれも
 /// 同じ `CompilationInputs` から読むもので、型としてはこの一致を強制していません。
 ///
-/// `tracing` の phase span（`font` / `typeset`）と各段の完了 event はこの関数が持つ（#500 の
-/// 工程表示を変えないため、span 名と event のメッセージ・フィールドは #535 の前後で同一）。
+/// `tracing` の phase span（`font` / `typeset`）と各段の完了 event はこの操作の内側
+/// （[`load_fonts`] / [`compose`]）が持つ（#500 の工程表示を変えないため、span 名と
+/// event のメッセージ・フィールドは #535 の前後で同一）。
 ///
 /// # Errors
 ///
@@ -194,8 +196,8 @@ fn lay_out(
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
 ) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>> {
-  // シェーパー構築は画像読込より前に置く — 両方が失敗する入力で報告されるエラーを、
-  // フォント資源を呼び出し元が組んでいた頃と同じ側（フォント）に保つため。
+  // シェーパー構築は画像読込より前に置く — 両方が失敗する入力では、常にフォント側の
+  // エラーを報告するため。
   let font_system = font_resources.system().map_err(|failures| return failures.map(TypesetError::from))?;
   let image_paths = image::collect_image_paths(document.hir());
   let images = image::load_image_resources(source, &image_paths)?;
@@ -208,6 +210,10 @@ fn lay_out(
 /// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
 /// `PlacedBlock` の幾何）を検査するテストだけが使う。[`compose`] と同じ [`load_fonts`] /
 /// [`lay_out`] を通るので、フォント資源の構築順序や組版の段順序を迂回できない（#522 / #535）。
+///
+/// [`compose`] と異なり `info_span!("typeset")` には入らない（`font` span は [`load_fonts`] が
+/// 開くのでそのまま残る）。テスト専用の出口なので tracing の出方を production と揃える必要は
+/// なく、意図的にこのままにしてある。
 ///
 /// # Errors
 ///

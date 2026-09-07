@@ -376,7 +376,7 @@ mod tests {
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, Page,
+      boxes::{AnchorId, Page},
       test_fixtures::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, table_block,

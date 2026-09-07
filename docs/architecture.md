@@ -947,8 +947,10 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 **`typeset` の外に本体コードの消費者はいない**（#535）。`Publication` への写像を行う `emit` は
 `typeset` の子 module なので、facade へ出す必要がない。テストが確定レイアウトへ直接アサートする
 ためだけに `#[cfg(test)]` の再エクスポート（`AnchorId` / `AnchorMark` / `HBoxContent` /
-`LinkTarget` / `Page` / `PlacedBlock` / `LaidOutDocument` / `dump_pages`）と、確定レイアウトを
-組み立てる `#[cfg(test)]` の子 module（`test_fixtures` / `dump`）を置く。
+`LinkTarget` / `Page` / `PlacedBlock` / `dump_pages`）を置く。`LaidOutDocument` だけは `typeset`
+自身の本体コード（`compose` / `lay_out`）が使うので無条件の `pub(crate)` 再エクスポートで、
+`compiler` 側の import が `#[cfg(test)]` になる。これらに加え、確定レイアウトを組み立てる
+`#[cfg(test)]` の子 module（`test_fixtures` / `dump`）を置く。
 
 シェーピング結果 `GlyphRun` / `Glyph` は `publication`（子 module `glyph`）が所有する値型で、
 `typeset::boxing` が生成し `typeset::emit` がそのまま `PaintOp::DrawGlyphRun` へ渡す（#535 で
@@ -1000,10 +1002,11 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 **処理だけ**を持つ（`project` 節の子 module `font` 項を参照）。フォントのサブセット化は行わない（`krilla` が PDF 生成時に
 内部で実施する）。
 
-- module root（`typeset/font.rs`）: 型エイリアス `FontRefs`（= `FontMap<FontRef>`）/ `FontMetrics` と、
-  その構築を与える非公開の自由関数 `build_font_refs` / `build_font_metrics`、1 フォントぶんの
-  メトリクス `FontMetric`（upem / ascender / descender の一元化）、解析エラー `FontLoadError`。
-  構築は `system` からしか呼ばれないので拡張トレイトは持たない。
+- module root（`typeset/font.rs`）: 型エイリアス `FontRefs`（= `FontMap<FontRef>`）/ `FontMetrics`
+  （= `FontMap<FontMetric>`。1 フォントぶんのメトリクス（upem / ascender / descender の一元化）を持つ
+  値型 `FontMetric` 自体は `publication` が所有、#535）と、その構築を与える非公開の自由関数
+  `build_font_refs` / `build_font_metrics`、解析エラー `FontLoadError`。構築は `system` からしか
+  呼ばれないので拡張トレイトは持たない。
 - シェーピング結果 `GlyphRun` / `Glyph` は `typeset::font` の子 module ではなく `publication`
   （子 module `glyph`）が所有する値型（#535）。`typeset::boxing` が `font::shaper` の出力から直接
   構築し `typeset::emit` が `PaintOp::DrawGlyphRun` へそのまま渡すので、`typeset::font` にはこの型の
