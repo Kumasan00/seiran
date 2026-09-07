@@ -3,7 +3,10 @@
 //! 収まらなかった事実は `FootnotePacking::overflowed` としてデータで返すだけで、ここでは診断を
 //! 作らない（警告を組み立てるのは、どのページのどの脚注かを知っている `PageComposer` 側。#382）。
 
-use crate::{length::Length, typeset::boxes::Line};
+use crate::{
+  length::Length,
+  typeset::{boxes::Line, geometry::PageGeometry},
+};
 
 /// `demands` を全行そのまま積んだときの脚注エリアの高さ（pt、固定費込み）を返す（純粋関数）
 pub(super) fn footnote_area_full(demands: &[FootnoteDemand], reserved: Length, charges: FootnoteCharges) -> Length {
@@ -61,7 +64,7 @@ pub(super) struct FootnoteCharges {
 
 impl FootnoteCharges {
   /// ページジオメトリから課金パラメータを取り出す
-  pub(super) fn of(geom: &super::PageGeometry) -> Self {
+  pub(super) fn of(geom: &PageGeometry) -> Self {
     return FootnoteCharges {
       top_margin: geom.footnote_top_margin,
       rule_thickness: geom.footnote_rule_thickness,

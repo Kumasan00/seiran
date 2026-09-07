@@ -1103,14 +1103,18 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 が組み立てる。段数・段間以外は本文の値を共有し、前付けは常に 1 段・段間 0・下端揃えなし、後付けは
 `style.index.column_count` 段・下端揃えなし）を載せる。フィールドは module 非公開で構築経路は
 `prepare` だけなので、「検証を通っていない版面が組版へ流れない」ことが型で保証される
-（`Failures` と同じ方針）。
+（`Failures` と同じ方針）。**ページの物理ジオメトリを表す値型 `PageGeometry` 自体もこの module が
+定義する**（#538）— 構築する module と型を定義する module を一致させ、依存の辺を
+`breaking → geometry` の 1 方向に保つため。
 
 どちらの設定 module にも属さないので、この制約を不変条件として使う組版側が所有する。ただし
 **`PreparedGeometry::prepare` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な
 組み合わせを弾く（診断が出るタイミングを移設前と変えないため）。確定した版面は `CompilationInputs` が
 保持し、`typeset::compose` の引数として組版へ戻る。`typeset` の外向き interface を `compose` 1 操作に
 保つ原則の意図した例外はこの 2 名前（`PreparedGeometry` / `LayoutValidationError`）だけで、
-`column_width` は `pub(super)` に留め `typeset::breaking::break_pages` だけが参照する。
+`column_width`（参照するのは `typeset::breaking::break_pages` だけ）と `PageGeometry`（`geometry` が
+組み立て、`pagination` が `PreparedGeometry` のアクセサ越しに読み、`breaking` が受け取って分割する）は
+`pub(super)`（= `pub(in crate::typeset)`）に留め、`typeset` の外へ出さない。
 
 診断 code は所有 module に合わせた `typeset::geometry::*`。ユーザが直すのは style.toml / config.toml だが、
 その案内は `help` が名指ししている。
@@ -1161,8 +1165,8 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   フォント資源への参照・検証済み版面 `&PreparedGeometry`・`KnuthPlassBreaker`）と、本文ページ分割
   確定後の事実 `BodyPageFacts`（`BodyPageValues` + 見出し記録）。`paginate` ↔ 各段 module の相互依存を解消する
   ためにここへ切り出してある。**寸法は再計算しない** — 版面幅・段幅・本文 / 前付け / 後付けの
-  `PageGeometry` はすべて入力読込が確定させた `PreparedGeometry` の読み取りで、組み立ては
-  `typeset::geometry` が持つ（#533）
+  `PageGeometry` はすべて入力読込が確定させた `PreparedGeometry` の読み取りで、型の定義も組み立ても
+  `typeset::geometry` が持つ（#533 / #538）
 - `page_values`（内部専用の newtype）: 物理ページ index `PageIndex`（0 始まり）と表示用の論理ページ値
   `PageValue`（1 始まり）を型で分離する（両方とも `usize`/`u32` のままだと引数の取り違えが型検査を
   素通りしてしまうため）。本文ページ列からしか構築できない `BodyPageValues`（stage 1）と、前付け
@@ -1433,9 +1437,11 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 - (c) `break_lines`: `LineBreaker` トレイトの 2 実装 `KnuthPlassBreaker`（段落全体最適、既定）と
   `GreedyBreaker`（first-fit）。語中折り返しは `HItem::Discretionary` で表し、折り返した行末だけ
   ハイフンを出す
-- (d) `break_pages`: ベースライン送り・改ページ・表分割・`PageGeometry`。戻り値は確定ページ列と、
-  脚注のはみ出し記録 `FootnoteOverflow`（純データ。`page_index` はこの呼び出しが返すページ列の中での
-  index）のタプル。**純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
+- (d) `break_pages`: ベースライン送り・改ページ・表分割。版面の幾何 `PageGeometry` は
+  `typeset::geometry` が定義・構築し、この module は `&PageGeometry` を受け取って分割する側（#538）。
+  戻り値は確定ページ列と、脚注のはみ出し記録 `FootnoteOverflow`（純データ。`page_index` はこの
+  呼び出しが返すページ列の中での index）のタプル。
+  **純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
   `bool` で返すだけ**で、ページ番号・脚注番号を添えて記録するのは `PageComposer` の責務 —
   計画は widow / orphan 補正で何度も立て直されるので、確定した配置ループからしか記録しないことで
   重複を構造的に防ぐ（#382）。非公開 child module は 3 つ — 純粋な計算 2 つと、現在ページの台帳 1 つ

@@ -1,5 +1,6 @@
 //! 版面の幾何 — `config.toml`（用紙寸法）× `style.toml`（`[page]` の余白・`[columns]`）の
-//! 横断バリデーションと、そこから確定する版面 [`PreparedGeometry`] の構築。
+//! 横断バリデーションと、そこから確定する版面 [`PreparedGeometry`] の構築、および
+//! ページの物理ジオメトリを表す値型 [`PageGeometry`] の定義。
 //!
 //! どちらの設定 module にも属さない（片方だけでは判定できない）ので、この制約を不変条件として
 //! 使う組版側が所有する（#351）。余白単体の不正（負値）は style の値検証が持ち、ここが持つのは
@@ -11,10 +12,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{
-  color::Color, failures::Failures, length::Length, project::config::ProjectConfig, style::Style,
-  typeset::breaking::PageGeometry,
-};
+use crate::{color::Color, failures::Failures, length::Length, project::config::ProjectConfig, style::Style};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
@@ -98,6 +96,51 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
   )]
   let gaps = (count - 1) as i32;
   return (text_width - column_gap * gaps) / n;
+}
+
+/// ページの物理ジオメトリと既定の行送りパラメータ
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PageGeometry {
+  /// 本文の水平原点（pt）= 用紙左端から本文左端まで（`style.page.margin_left`）。
+  ///
+  /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
+  /// [`crate::typeset::boxes::Page::content_origin_x`] へそのまま載せて描画側の加算に使わせる。
+  pub content_origin_x: Length,
+  /// 上マージン（pt）。ページ先頭のベースライン位置
+  pub margin_top: Length,
+  /// 本文下限（pt）= ページ高さ − 下マージン。超えると改ページ（または改段）
+  pub page_limit: Length,
+  /// 既定フォントサイズ（pt）。表の行高のフォールバックに使用
+  pub default_font_size: Length,
+  /// 行高係数。表の行高の算出に使用
+  pub line_height_factor: f32,
+  /// 表セルの内側余白（pt、左右各）。列幅の解決に使用
+  pub table_cell_padding: Length,
+  /// 段組み数（1 = 単段）。本文を左段 → 右段 → 次ページの順に流す段の本数
+  pub num_columns: usize,
+  /// 段間（gutter、pt）。隣り合う段の間隔
+  pub column_gap: Length,
+  /// 下端揃え（flush bottom）を有効にするか（`style.toml` の `[page] flush_bottom`）。
+  pub flush_bottom: bool,
+  /// 脚注: 本文と区切り罫線の間隔（`style.footnote.top_margin`）
+  pub footnote_top_margin: Length,
+  /// 脚注: 区切り罫線の長さ（`style.footnote.rule_length`）
+  pub footnote_rule_length: Length,
+  /// 脚注: 区切り罫線の太さ（0 のとき描画しない、`style.footnote.rule_thickness`）
+  pub footnote_rule_thickness: Length,
+  /// 脚注: 区切り罫線の色（RGB）。`None` は黒。呼び出し側が `crate::color::Color::rgb()` で
+  /// 変換済みの値を渡す（`RunningSlots.rule_color` と同じ規約）
+  pub footnote_rule_color: Option<[u8; 3]>,
+  /// 脚注: 区切り罫線〜最初の脚注、および脚注どうしの間隔（`style.footnote.rule_gap`）
+  pub footnote_rule_gap: Length,
+  /// 表: 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
+  pub table_rule_thickness: Length,
+  /// 表: 罫線の色（RGB）。`None` は黒。呼び出し側が `crate::color::Color::rgb()` で
+  /// 変換済みの値を渡す（`footnote_rule_color` と同じ規約）
+  pub table_rule_color: Option<[u8; 3]>,
+  /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）。
+  /// 呼び出し側が `crate::color::Color::rgb()` で変換済みの値を渡す
+  pub background_color: Option<[u8; 3]>,
 }
 
 /// 横断検証を通った版面。
