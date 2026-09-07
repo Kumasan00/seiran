@@ -35,7 +35,11 @@ enum CurrentDirError {
 ///
 /// 端末への描画を `Result` の `Termination` へ委ねず、報告を終えてから `ExitCode` を返す — ログ出力先の
 /// 終了処理（flush と失敗の取り出し）を、終了コードを決める前に必ず通すため。`--log-file` 指定時は
-/// 致命的エラーの診断を、`Err` を受けた直後に [`Reporter::failure`] でファイルへも残す。
+/// 致命的エラーの診断を、`Err` を受けた直後に [`Reporter::failure`] でファイルへも残す。ログの記録に
+/// 失敗した実行は、本処理が成功していても終了コード 1 で終わる。
+///
+/// `reporter.finish()` の後は tracing へ何も出さない — layer は同じ writer を保持したままなので、
+/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は `eprintln!` だけで行う。
 fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
   let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref()) {
@@ -44,6 +48,7 @@ fn main() -> ExitCode {
     Err(error) => {
       return Outcome::Failure {
         report: miette::Report::new(error),
+        log: None,
       }
       .report();
     },
@@ -53,14 +58,10 @@ fn main() -> ExitCode {
   if let Err(report) = &outcome {
     reporter.failure(report);
   }
-  // ログの書き残しを流し切ってから報告する（Task 3 で `Reporter::finish` に置き換わる）。
-  drop(reporter);
+  // 報告を書き終えてから flush する。ここで初めてログの記録が成功したかが確定する。
+  let log_outcome = reporter.finish();
 
-  return match outcome {
-    Ok(()) => Outcome::Success,
-    Err(report) => Outcome::Failure { report },
-  }
-  .report();
+  return termination::decide(outcome, log_outcome).report();
 }
 
 /// サブコマンドを実行する。

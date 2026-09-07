@@ -1,30 +1,114 @@
 //! `--log-file` の書き出し先（ログファイルを開く処理と、そこへ書くための sink）
 //!
-//! ログファイルは「1 回の実行の記録」なので、実行のたびに新規作成する。既存パスはエラーにして入力を保護する。
-//! tracing の layer とユーザー向け報告（warning 診断・成功サマリ・致命的エラー診断）は同じ [`LogSink`] を共有し、1 本のチャネル越しに書く。
+//! ログファイルは「1 回の実行の記録」なので、実行のたびに新規作成する（既存パスは拒否して入力を守る）。
+//! tracing の layer とユーザー向け報告（warning 診断・成功サマリ・致命的エラー診断）は同じ [`LogSink`] を
+//! 共有し、1 本の同期 writer 越しに書く。書き込み・flush の失敗は捨てず最初の 1 件を保持して
+//! [`LogSink::finish`] で取り出す — tracing の writer が返したエラーは呼び出し元の `Result` へ伝わらないので、
+//! sink 自身が保持しないと「記録できていない実行」を成功として終えてしまう。
 
 use std::{
   fs::{self, File},
-  io::Write,
-  path::Path,
+  io::{self, BufWriter, Write},
+  path::{Path, PathBuf},
+  sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use miette::Diagnostic;
 use thiserror::Error;
-use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard};
 use tracing_subscriber::fmt::MakeWriter;
 
 /// ログファイルへの書き出し口。
 ///
-/// tracing の layer へ渡す writer と、warning 診断・成功サマリ・致命的エラー診断を直接書く経路の両方が同じ
-/// チャネルを使う。
-/// 経路を 1 本に保つのは、イベントと報告の前後関係を崩さないためと、書き切りの保証を
-/// [`WorkerGuard`] 1 つに集約するため。
+/// tracing の layer へ渡す writer と、warning 診断・成功サマリ・致命的エラー診断を直接書く経路の両方が
+/// 同じ状態を共有する。経路を 1 本に保つのは、イベントと報告の前後関係を崩さないためと、失敗の保持と
+/// flush の完了を 1 箇所（[`LogSink::finish`]）へ集約するため。
 pub(super) struct LogSink {
-  /// ワーカースレッドへ送る writer（layer へ渡すぶんは複製する）
-  writer: NonBlocking,
-  /// 保持している間だけワーカーが生き、drop 時に書き残しを流し切る guard
-  _guard: WorkerGuard,
+  /// 書き出し先と保持した失敗（layer 側と共有する）
+  state: Arc<Mutex<SinkState>>,
+  /// 失敗の報告に使うログファイルのパス
+  path: PathBuf,
+}
+
+/// 書き出し先と、その実行で最初に起きた I/O 失敗。
+struct SinkState {
+  /// ログファイルへの同期 writer
+  writer: BufWriter<Box<dyn Write + Send>>,
+  /// 最初の書き込み・flush 失敗（後続の失敗で上書きしない）
+  first_error: Option<io::Error>,
+}
+
+impl SinkState {
+  /// I/O の結果を検査し、最初の失敗だけを保持したうえで結果をそのまま返す。
+  ///
+  /// 呼び出し側（tracing の layer）はエラーを握り潰すが、保持したぶんが `finish` で報告される。
+  fn check<T>(&mut self, result: io::Result<T>) -> io::Result<T> {
+    return match result {
+      Ok(value) => Ok(value),
+      Err(error) => {
+        let kind = error.kind();
+        let message = error.to_string();
+        if self.first_error.is_none() {
+          self.first_error = Some(error);
+        }
+        Err(io::Error::new(kind, message))
+      },
+    };
+  }
+}
+
+/// 毒された `Mutex` でも記録を続けるためのロック。
+///
+/// ログの writer は「壊れたら以後書けない」種類の状態ではなく、panic 中の実行でも失敗の保持だけは
+/// 続けたいので、毒は無視して中身を取り出す。
+fn lock(state: &Mutex<SinkState>) -> MutexGuard<'_, SinkState> {
+  return state.lock().unwrap_or_else(PoisonError::into_inner);
+}
+
+/// tracing の layer へ渡す writer 生成器。
+///
+/// [`LogSink`] と同じ状態を共有するので、layer 側の書き込み失敗も `finish` から取り出せる。
+#[derive(Clone)]
+pub(super) struct LogWriter {
+  /// [`LogSink`] と共有する書き出し先
+  state: Arc<Mutex<SinkState>>,
+}
+
+impl<'writer> MakeWriter<'writer> for LogWriter {
+  type Writer = SinkGuard<'writer>;
+
+  fn make_writer(&'writer self) -> Self::Writer { return SinkGuard(lock(&self.state)); }
+}
+
+/// イベント 1 件を書いている間だけ writer を占有するガード。
+///
+/// event の複数回の `write` が診断ブロックの行と混ざらないよう、1 件のあいだロックを保持する。
+pub(super) struct SinkGuard<'sink>(MutexGuard<'sink, SinkState>);
+
+impl Write for SinkGuard<'_> {
+  fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    let result = self.0.writer.write(buf);
+    return self.0.check(result);
+  }
+
+  fn flush(&mut self) -> io::Result<()> {
+    let result = self.0.writer.flush();
+    return self.0.check(result);
+  }
+}
+
+/// ログの記録に失敗したという事実（診断の体裁は報告側が決める）。
+///
+/// 同じ失敗でも「本処理は完了した実行」と「本処理も失敗した実行」で書くべき説明が違うので、
+/// sink は生の事実だけを返し、文言は `termination` が付ける。
+///
+/// 可視性が `pub(crate)` なのは、文言を付ける `termination` module が `reporting` の外にあるため
+/// （`LogFileError` と同じ扱い）。
+#[derive(Debug)]
+pub(crate) struct LogFailure {
+  /// ログファイルのパス
+  pub(crate) path: String,
+  /// 最初に起きた I/O 失敗
+  pub(crate) source: io::Error,
 }
 
 impl LogSink {
@@ -32,28 +116,60 @@ impl LogSink {
   ///
   /// # Errors
   ///
-  /// 既存パスが指定されたとき、親ディレクトリを作れないとき、またはファイルを開けないときに [`LogFileError`] を返す。
+  /// 親ディレクトリを作れない、パスが既に存在する、またはファイルを開けないときに [`LogFileError`] を返す。
   pub(super) fn open(path: &Path) -> Result<Self, LogFileError> {
     let file = open_log_file(path)?;
-    // 溢れたイベントを捨てない（`lossy(false)`）。捨ててしまうと「1 件も欠けない記録」にならない。
-    let (writer, guard) = NonBlockingBuilder::default().lossy(false).finish(file);
-    return Ok(LogSink {
-      writer,
-      _guard: guard,
-    });
+    return Ok(LogSink::from_writer(path.to_path_buf(), Box::new(file)));
   }
 
-  /// tracing の layer へ渡す writer を複製する。
-  pub(super) fn writer(&self) -> NonBlocking { return self.writer.clone(); }
+  /// 任意の書き出し先から作る。
+  ///
+  /// ファイル以外を渡せる入口を持つのは、書き込み失敗の注入をテストから行うため（実ファイルの
+  /// 書き込み失敗は移植可能な形で起こせない）。
+  fn from_writer(path: PathBuf, writer: Box<dyn Write + Send>) -> Self {
+    return LogSink {
+      state: Arc::new(Mutex::new(SinkState {
+        writer: BufWriter::new(writer),
+        first_error: None,
+      })),
+      path,
+    };
+  }
+
+  /// tracing の layer へ渡す writer 生成器を作る。
+  pub(super) fn writer(&self) -> LogWriter {
+    return LogWriter {
+      state: Arc::clone(&self.state),
+    };
+  }
 
   /// ユーザー向け報告 1 件ぶんをファイルへ書く（末尾に改行を足す）。
   ///
-  /// 書き込みの失敗は捨てる。ログを残せなかったことを理由に、既に成功した PDF 生成の報告を中断させず、
-  /// 失敗した実行では元の診断を別のエラーで覆い隠さないため。
+  /// 失敗はその場では報告しない — 報告の途中で処理を分岐させず、[`LogSink::finish`] が 1 度だけ返す。
   pub(super) fn write_block(&self, text: &str) {
-    let mut writer = MakeWriter::make_writer(&self.writer);
-    let _ = writer.write_all(text.as_bytes());
-    let _ = writer.write_all(b"\n");
+    let mut guard = lock(&self.state);
+    let written = writeln!(guard.writer, "{text}");
+    let _ = guard.check(written);
+  }
+
+  /// 書き残しを流し切り、保持していた最初の失敗を返す。
+  ///
+  /// 保証するのは OS への書き込みと flush の完了までで、電源断まで含めた永続化は保証しない。
+  ///
+  /// # Errors
+  ///
+  /// 書き込みまたは flush が失敗していたとき [`LogFailure`] を返す。
+  pub(super) fn finish(self) -> Result<(), LogFailure> {
+    let mut guard = lock(&self.state);
+    let flushed = guard.writer.flush();
+    let _ = guard.check(flushed);
+    return match guard.first_error.take() {
+      Some(source) => Err(LogFailure {
+        path: self.path.display().to_string(),
+        source,
+      }),
+      None => Ok(()),
+    };
   }
 }
 
@@ -73,7 +189,7 @@ fn open_log_file(path: &Path) -> Result<File, LogFileError> {
   return File::create_new(path).map_err(|source| {
     // 既存パスは truncate せず拒否する — ログの指定で入力（設定・本文・フォント・画像・CSL）を壊さないため。
     // `O_CREAT|O_EXCL` なので、判定と作成の間に割り込まれる余地が無い。
-    if source.kind() == std::io::ErrorKind::AlreadyExists {
+    if source.kind() == io::ErrorKind::AlreadyExists {
       return LogFileError::AlreadyExists {
         path: path.display().to_string(),
       };
@@ -109,7 +225,7 @@ pub(crate) enum LogFileError {
     path: String,
     /// 元の I/O エラー
     #[source]
-    source: std::io::Error,
+    source: io::Error,
   },
 
   /// 既に存在するパスへのログ出力の拒否
@@ -134,15 +250,97 @@ pub(crate) enum LogFileError {
     path: String,
     /// 元の I/O エラー
     #[source]
-    source: std::io::Error,
+    source: io::Error,
   },
 }
 
 #[cfg(test)]
 mod tests {
-  use std::{fs, io::Write, path::Path};
+  use std::{
+    fs,
+    io::{self, Write},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+  };
 
-  use super::{LogFileError, open_log_file, parent_to_create};
+  use super::{LogFileError, LogSink, open_log_file, parent_to_create};
+
+  /// 書き込みも flush も必ず失敗する書き出し先。
+  ///
+  /// 呼ばれるたびに違うメッセージを返し、「保持されるのは最初の 1 件」を見分けられるようにする。
+  struct FailingWriter {
+    /// 何回目の呼び出しか
+    calls: usize,
+  }
+
+  impl Write for FailingWriter {
+    fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+      self.calls += 1;
+      return Err(io::Error::other(format!("{} 回目の書き込み失敗", self.calls)));
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+      self.calls += 1;
+      return Err(io::Error::other(format!("{} 回目の flush 失敗", self.calls)));
+    }
+  }
+
+  /// 書かれた内容を後から検査できる書き出し先。
+  #[derive(Clone)]
+  struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
+
+  impl Write for SharedBuffer {
+    #[expect(
+      clippy::unwrap_in_result,
+      reason = "テスト専用の Mutex で他スレッドから触られることはなく毒されないため、panic し得ない"
+    )]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+      self.0.lock().expect("テスト内でロックが毒されることはない").extend_from_slice(buf);
+      return Ok(buf.len());
+    }
+
+    fn flush(&mut self) -> io::Result<()> { return Ok(()) }
+  }
+
+  #[test]
+  fn successful_writes_reach_the_writer_and_finish_cleanly() {
+    // Arrange
+    let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
+
+    // Act
+    sink.write_block("記録する 1 行");
+    sink.finish().expect("書き込みが成功した実行は失敗を持たない");
+
+    // Assert
+    let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
+    assert_eq!(String::from_utf8(written).expect("UTF-8 のはず"), "記録する 1 行\n", "末尾に改行を足して書く");
+  }
+
+  #[test]
+  fn finish_reports_the_write_failure() {
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(FailingWriter { calls: 0 }));
+
+    sink.write_block("記録できない 1 行");
+    let failure = sink.finish().expect_err("書き込みに失敗した実行は失敗を報告する");
+
+    assert_eq!(failure.path, "run.log", "失敗はログのパスとともに報告する");
+  }
+
+  #[test]
+  fn only_the_first_failure_is_kept() {
+    // Arrange — BufWriter の容量（8 KiB）を超える書き込みは素通しになるので、write_block ごとに失敗が起きる
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(FailingWriter { calls: 0 }));
+    let long_line = "あ".repeat(8 * 1024);
+
+    // Act
+    sink.write_block(&long_line);
+    sink.write_block(&long_line);
+    let failure = sink.finish().expect_err("失敗を報告する");
+
+    // Assert
+    assert!(failure.source.to_string().contains("1 回目"), "後続の失敗で上書きしない: {}", failure.source);
+  }
 
   #[test]
   fn creates_missing_parent_directories() {
