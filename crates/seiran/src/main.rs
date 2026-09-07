@@ -9,11 +9,13 @@
 mod cli;
 mod reporting;
 mod subcommand;
+mod termination;
 mod write_error;
 
-use std::{fs, io::Write, path::Path, time::Instant};
+use std::{fs, io::Write, path::Path, process::ExitCode, time::Instant};
 
 use reporting::Reporter;
+use termination::Outcome;
 use write_error::WriteError;
 
 /// カレントディレクトリ取得時のエラー。
@@ -31,19 +33,34 @@ enum CurrentDirError {
 
 /// CLI を初期化し、指定されたサブコマンドを実行する。
 ///
-/// 致命的エラーは `Err` として返し、端末への描画は `Result` の `Termination` 経由で miette のグローバル handler に
-/// 任せる。`--log-file` 指定時はその同じ診断を、`Err` を返す直前に [`Reporter::failure`] でファイルへも残す。
-/// `reporter` はこの関数のローカルなので、`Err` を返す経路でも関数本体の末尾で drop され、ログファイルへの
-/// 書き残しは端末に診断が描かれるより前に流し切られる。
-///
-/// # Errors
-///
-/// 設定読み込みから PDF 生成までのエラーを `miette` 診断として返す。ログファイルを開けなかったエラーは
-/// ファイルへ記録しようがないので端末へだけ出る。
-fn main() -> miette::Result<()> {
+/// 端末への描画を `Result` の `Termination` へ委ねず、報告を終えてから `ExitCode` を返す — ログ出力先の
+/// 終了処理（flush と失敗の取り出し）を、終了コードを決める前に必ず通すため。`--log-file` 指定時は
+/// 致命的エラーの診断を、`Err` を受けた直後に [`Reporter::failure`] でファイルへも残す。
+fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
-  let reporter = Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref())?;
-  return run(cli_args.command, &reporter).inspect_err(|report| return reporter.failure(report));
+  let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref()) {
+    Ok(reporter) => reporter,
+    // ログファイルを用意できない失敗は記録先が無いので、端末へ出して終わる。
+    Err(error) => {
+      return Outcome::Failure {
+        report: miette::Report::new(error),
+      }
+      .report();
+    },
+  };
+
+  let outcome = run(cli_args.command, &reporter);
+  if let Err(report) = &outcome {
+    reporter.failure(report);
+  }
+  // ログの書き残しを流し切ってから報告する（Task 3 で `Reporter::finish` に置き換わる）。
+  drop(reporter);
+
+  return match outcome {
+    Ok(()) => Outcome::Success,
+    Err(report) => Outcome::Failure { report },
+  }
+  .report();
 }
 
 /// サブコマンドを実行する。

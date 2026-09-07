@@ -144,6 +144,7 @@ fn log_file_does_not_change_stderr_or_exit_code() {
   // Assert
   assert!(!without.status.success());
   assert_eq!(with.status.code(), without.status.code(), "終了コードは --log-file の有無で変わらない");
+  assert_eq!(without.status.code(), Some(1), "失敗した実行の終了コードは 1");
   assert_eq!(with.stderr, without.stderr, "stderr のバイト列は --log-file の有無で変わらない");
   assert!(dir.path().join("x.log").exists(), "--log-file 指定時はファイルができる");
 }
