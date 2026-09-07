@@ -121,7 +121,7 @@ pub(crate) enum LayoutNode {
 /// `crate::typeset::boxing` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
 /// 畳めるのはテキスト・カーン・入れ子の `Raise` だけなので、それ以外を表現できない型として
 /// `LayoutNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
-/// 消費側 `boxing::LayoutBuilder::place_atom_children` の網羅 match を分岐なしで成立させる）。
+/// 消費側 `boxing::Measurer::place_atom_children` の網羅 match を分岐なしで成立させる）。
 #[derive(Debug, Clone)]
 pub(crate) enum AtomNode {
   /// スタイル付きテキスト
