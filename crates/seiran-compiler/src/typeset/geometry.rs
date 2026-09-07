@@ -105,7 +105,7 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
 /// 本文幅・本文の 1 段あたりの幅・本文 / 前付け / 後付けのページ幾何を確定値として持つ。
 /// フィールドは module 非公開で、構築経路は [`PreparedGeometry::prepare`] だけ — 「検証を通って
 /// いない版面が組版へ流れない」ことを型で保証する（`Failures` と同じ方針、#533）。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(crate) struct PreparedGeometry {
   /// 版面幅（段組み前）= `pdf.width - page.margin_left - page.margin_right`
   text_width: Length,
@@ -133,8 +133,9 @@ impl PreparedGeometry {
   /// 3 は 2 が通っているときだけ検査します（左右余白だけで本文幅が尽きているときに、そこから
   /// 派生するだけの段幅エラーを重ねてもユーザーの修正先が増えないため）。
   ///
-  /// ページ幾何を組み立てるのは 3 件すべてが通った後だけで、不正な組み合わせから版面が生まれる
-  /// 経路は存在しません。
+  /// ページ幾何を組み立てるのは 3 件すべてが通った後だけです。本文幅・段幅は検査の前に求めますが、
+  /// 集約した違反が 1 件でもあれば早期 return するので、検証を通らなかった値が [`PreparedGeometry`]
+  /// として外へ出る経路はありません。
   ///
   /// # Errors
   ///

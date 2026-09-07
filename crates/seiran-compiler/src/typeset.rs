@@ -82,7 +82,9 @@ use crate::{failures::Failures, project::config::ProjectConfig, semantics::Seman
 /// `FontResources::load` と同じくタプルの第 2 要素にする。
 ///
 /// 版面（`geometry`）は入力読込が検証済みの値として渡すもので、この中で config / style から
-/// 幅・ページ幾何を組み立て直すことはしない（#533）。
+/// 幅・ページ幾何を組み立て直すことはしない（#533）。`geometry` は必ず、ここで渡す `config` /
+/// `style` と同じ組から `PreparedGeometry::prepare` した値でなければなりません — 3 引数はいずれも
+/// 同じ `CompilationInputs` から読むもので、型としてはこの一致を強制していません。
 ///
 /// # Errors
 ///
