@@ -45,11 +45,13 @@ pub(super) enum WriteError {
     path: String,
   },
 
-  /// 出力先パスの解決エラー
-  #[error("出力先のパスを解決できませんでした: {path}")]
+  /// 出力先パスの解決エラー（PDF の保存先・ログの出力先のどちらでも起きうる）
+  #[error("パスを解決できませんでした: {path}")]
   #[diagnostic(
     code(cli::resolve_output_path),
-    help("出力先ディレクトリが存在し、読み取り権限があることを確認してください。")
+    help(
+      "--log-file の出力先と PDF の出力先ディレクトリの両方について、存在し読み取り権限があることを確認してください。"
+    )
   )]
   ResolveOutputPath {
     /// 解決できなかったパス

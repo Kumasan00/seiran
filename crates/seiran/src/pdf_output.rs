@@ -82,7 +82,11 @@ fn ensure_distinct_from_log(pdf_path: &Path, log_path: Option<&Path>) -> Result<
 /// 比較用にパスを解決する。
 ///
 /// 存在するパスは symlink まで辿って解決し、まだ無いパス（初回のビルドの PDF）は親ディレクトリだけを
-/// 解決してファイル名を繋ぐ。
+/// 解決してファイル名を繋ぐ。ここで拾いきれない取りこぼしが残っていても無害 — `persist` は `rename` で
+/// ディレクトリエントリを差し替えるだけの操作なので、`pdf_path` がログへの hard link や symlink であっても
+/// 差し替わるのはそのエントリだけで、ログの inode は他のリンクや開いたままの fd を通じて生き残る。実際に
+/// ログの内容を失うのは `pdf_path` がログ自身のエントリを指す場合だけで、それはここでの canonicalize 比較が
+/// 確実に捕まえる。
 fn resolve_for_compare(path: &Path) -> Result<PathBuf, WriteError> {
   let exists = path.try_exists().map_err(|source| {
     return WriteError::ResolveOutputPath {
@@ -121,7 +125,7 @@ mod tests {
   #[cfg(unix)]
   use std::os::unix::fs::symlink;
 
-  use super::ensure_distinct_from_log;
+  use super::{ensure_distinct_from_log, write_pdf_atomically};
   use crate::write_error::WriteError;
 
   #[test]
@@ -168,6 +172,22 @@ mod tests {
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
 
     ensure_distinct_from_log(&dir.path().join("main.pdf"), None).expect("--log-file が無ければ検査は空振り");
+  }
+
+  #[test]
+  fn the_save_is_refused_before_any_file_is_created() {
+    // Arrange — ログファイルは既に存在し、PDF の保存先として同じパスを指定する
+    let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+    let path = dir.path().join("main.pdf");
+    fs::write(&path, b"log").expect("ログファイルを作れるはず");
+
+    // Act
+    let error = write_pdf_atomically(&path, b"%PDF", Some(&path)).expect_err("衝突する保存は拒否するはず");
+
+    // Assert — 衝突の診断で止まり、保存先にも一時ファイルにも触れていない
+    assert!(format!("{error:?}").contains("cli::log_path_collision"), "衝突の診断で止まる: {error:?}");
+    assert_eq!(fs::read(&path).expect("読めるはず"), b"log", "拒否した実行は保存先へ触らない");
+    assert_eq!(fs::read_dir(dir.path()).expect("読めるはず").count(), 1, "一時ファイルも作らない");
   }
 
   #[cfg(unix)]

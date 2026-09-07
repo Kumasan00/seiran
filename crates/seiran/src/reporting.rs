@@ -91,6 +91,9 @@ impl Reporter {
         .with_timer(timer)
         // 書き込み失敗は sink が保持して `finish` が報告するので、layer 側から stderr へ出させない
         // （出すと同じ失敗が 2 回出るうえ、`--log-file` の有無で stderr のバイト列が変わる）。
+        // このフラグは書き込み失敗だけでなく event の整形失敗の報告も同じく抑止する。整形失敗は
+        // `compact()` と seiran が出すフィールドの単純さからいって理論上のものでしかなく、しかも
+        // 何も書かれないので sink 側も保持しようがない（保持できるのは writer へ渡った後の失敗だけ）。
         .log_internal_errors(false)
         .with_filter(sink_plan.filter);
     });
