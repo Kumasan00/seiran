@@ -78,9 +78,6 @@ pub(super) fn build_index_blocks(
   facts: &BodyPageFacts,
 ) -> Vec<Block> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
-  if entries.is_empty() {
-    return Vec::new();
-  }
   let spec = build_index_spec(ctx.style);
   return compose_blocks(&spec, &entries, ctx.resources);
 }
