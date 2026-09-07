@@ -34,8 +34,9 @@
 //! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
 //!
 //! 依存方向は `source` / `project` / `length` / `color` の 4 つだけで、
-//! `semantics` / `typeset` / `compiler` は知らない。[`HirBuilder`] は `project::PathResolver` を
-//! 値として持つ（I/O なし）。
+//! `semantics` / `typeset` / `compiler` は知らない。`project` へ依存するのは HIR が値として
+//! `ProjectPath` を持つためだけで、パスの解決規則（`PathResolver`）は持たない — 解決は frontend の
+//! 評価 context が `project` の規則を借りて行う（#534）。
 
 mod caption;
 mod font_kind;
