@@ -33,7 +33,7 @@ use crate::project::ProjectPath;
 ///
 /// `compile` facade が `base_dir` から 1 回だけ構築し、config / style / frontend へ渡す。
 /// compiler はカレントディレクトリを取得しない（`base_dir` は呼び出し元が明示する）。
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct PathResolver {
   /// 相対パスに前置する基準ディレクトリ（呼び出し元が渡した値そのまま。空パスなら相対のまま残る）
   base_dir: PathBuf,

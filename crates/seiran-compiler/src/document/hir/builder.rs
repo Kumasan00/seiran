@@ -13,7 +13,7 @@ use crate::{
 /// 「位置を持たない `NodeId`」は構築できない。
 ///
 /// 外部資源パス（`\image{...}`）の解決はここには無い。解決規則を持つのは `project::PathResolver` で、
-/// 評価中に builder と resolver を束ねて持ち回るのは frontend の評価 context（`EvalContext`）である。
+/// 評価中に builder と resolver を束ねて持ち回るのは frontend の評価 context である。
 /// この型は文書構築の不変条件（ID・位置・leaf ノード）だけを持つ（#534）。
 ///
 /// 子を持つノードは、子を評価する**前**に [`HirBuilder::alloc`] で自分の ID を確保すること。
