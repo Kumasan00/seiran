@@ -1,7 +1,7 @@
 //! `--log-file` の書き出し先（ログファイルを開く処理と、そこへ書くための sink）
 //!
-//! ログファイルは「1 回の実行の記録」なので、実行のたびに truncate して開き直す。tracing の layer と
-//! ユーザー向け報告（warning 診断・成功サマリ・致命的エラー診断）は同じ [`LogSink`] を共有し、1 本のチャネル越しに書く。
+//! ログファイルは「1 回の実行の記録」なので、実行のたびに新規作成する。既存パスはエラーにして入力を保護する。
+//! tracing の layer とユーザー向け報告（warning 診断・成功サマリ・致命的エラー診断）は同じ [`LogSink`] を共有し、1 本のチャネル越しに書く。
 
 use std::{
   fs::{self, File},
@@ -28,11 +28,11 @@ pub(super) struct LogSink {
 }
 
 impl LogSink {
-  /// `path` を truncate して開き、書き出し口を作る。
+  /// `path` を新規作成して開き、書き出し口を作る。
   ///
   /// # Errors
   ///
-  /// 親ディレクトリを作れない、またはファイルを開けないときに [`LogFileError`] を返す。
+  /// 既存パスが指定されたとき、親ディレクトリを作れないとき、またはファイルを開けないときに [`LogFileError`] を返す。
   pub(super) fn open(path: &Path) -> Result<Self, LogFileError> {
     let file = open_log_file(path)?;
     // 溢れたイベントを捨てない（`lossy(false)`）。捨ててしまうと「1 件も欠けない記録」にならない。
@@ -57,10 +57,10 @@ impl LogSink {
   }
 }
 
-/// ログファイルを truncate して開く。
+/// ログファイルを新規作成して開く。
 ///
-/// 親ディレクトリが無ければ作る — 出力先を掘ってから実行し直す手間を、ログの指定ごときで
-/// 掛けさせないため。
+/// 既存パスは truncate せずエラーにする — `--log-file` に入力ファイルを渡した実行でその入力を壊さないため。
+/// 親ディレクトリが無ければ作る — 出力先を掘ってから実行し直す手間を、ログの指定ごときで掛けさせないため。
 fn open_log_file(path: &Path) -> Result<File, LogFileError> {
   if let Some(parent) = parent_to_create(path) {
     fs::create_dir_all(parent).map_err(|source| {
@@ -70,7 +70,14 @@ fn open_log_file(path: &Path) -> Result<File, LogFileError> {
       };
     })?;
   }
-  return File::create(path).map_err(|source| {
+  return File::create_new(path).map_err(|source| {
+    // 既存パスは truncate せず拒否する — ログの指定で入力（設定・本文・フォント・画像・CSL）を壊さないため。
+    // `O_CREAT|O_EXCL` なので、判定と作成の間に割り込まれる余地が無い。
+    if source.kind() == std::io::ErrorKind::AlreadyExists {
+      return LogFileError::AlreadyExists {
+        path: path.display().to_string(),
+      };
+    }
     return LogFileError::Open {
       path: path.display().to_string(),
       source,
@@ -103,6 +110,17 @@ pub(crate) enum LogFileError {
     /// 元の I/O エラー
     #[source]
     source: std::io::Error,
+  },
+
+  /// 既に存在するパスへのログ出力の拒否
+  #[error("ログファイルの出力先が既に存在します: {path}")]
+  #[diagnostic(
+    code(cli::log_file_exists),
+    help("--log-file には毎回新しいパスを指定してください（既存のファイルは上書きしません）。")
+  )]
+  AlreadyExists {
+    /// 指定されたログファイルのパス
+    path: String,
   },
 
   /// ログファイルのオープンエラー
@@ -138,14 +156,22 @@ mod tests {
   }
 
   #[test]
-  fn truncates_existing_file() {
+  fn refuses_existing_file_without_touching_it() {
+    // Arrange
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let path = dir.path().join("build.log");
     fs::write(&path, "前回の実行の記録").expect("事前の内容を書けるはず");
 
-    drop(open_log_file(&path).expect("既存ファイルを開けるはず"));
+    // Act
+    let error = open_log_file(&path).expect_err("既存ファイルは拒否するはず");
 
-    assert_eq!(fs::read_to_string(&path).expect("読めるはず"), "", "実行ごとに truncate する");
+    // Assert
+    assert!(matches!(error, LogFileError::AlreadyExists { .. }), "既存パスとして報告する");
+    assert_eq!(
+      fs::read_to_string(&path).expect("読めるはず"),
+      "前回の実行の記録",
+      "拒否した実行はファイルへ触らない"
+    );
   }
 
   #[test]
@@ -155,11 +181,11 @@ mod tests {
   }
 
   #[test]
-  fn reports_unopenable_path() {
+  fn refuses_an_existing_directory() {
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
 
-    let error = open_log_file(dir.path()).expect_err("ディレクトリは開けないはず");
+    let error = open_log_file(dir.path()).expect_err("既存のディレクトリは拒否するはず");
 
-    assert!(matches!(error, LogFileError::Open { .. }), "オープン失敗として報告する");
+    assert!(matches!(error, LogFileError::AlreadyExists { .. }), "存在するパスとして報告する");
   }
 }

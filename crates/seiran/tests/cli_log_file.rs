@@ -176,8 +176,8 @@ fn all_leaves_of_an_aggregated_failure_are_recorded() {
 }
 
 #[test]
-fn unopenable_log_file_reports_to_the_terminal_only() {
-  // Arrange — ディレクトリはファイルとして開けない
+fn existing_log_path_is_refused_before_the_build() {
+  // Arrange — 既存のディレクトリは「既にあるパス」として拒否する
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let log_dir = dir.path().join("logs");
   fs::create_dir(&log_dir).expect("ディレクトリを作れるはず");
@@ -185,10 +185,27 @@ fn unopenable_log_file_reports_to_the_terminal_only() {
   // Act
   let output = seiran(dir.path(), &["build", "-c", "missing.toml", "--log-file", "logs"]);
 
-  // Assert — ログファイルが無いので記録しようがなく、端末だけに診断が出て終了コードは非 0
+  // Assert — 記録先を用意できないので端末だけに診断が出て、ビルドへは進まない
   assert!(!output.status.success());
   let stderr = stderr_text(&output);
-  assert!(stderr.contains("cli::open_log_file"), "端末にはログファイルを開けなかった診断が出る: {stderr}");
-  assert!(!stderr.contains(MISSING_CONFIG_CODE), "ログファイルを開けなければビルドへ進まない: {stderr}");
+  assert!(stderr.contains("cli::log_file_exists"), "端末には既存パスの診断が出る: {stderr}");
+  assert!(!stderr.contains(MISSING_CONFIG_CODE), "ログファイルを用意できなければビルドへ進まない: {stderr}");
   assert!(log_dir.is_dir(), "指定したパスはディレクトリのまま");
+}
+
+#[test]
+fn log_file_never_overwrites_the_config_it_is_pointed_at() {
+  // Arrange — `-c` と `--log-file` に同じパスを渡す（#548 の再現手順）
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let config_path = write_config_with_two_violations(dir.path());
+  let original = fs::read(&config_path).expect("設定ファイルを読めるはず");
+
+  // Act
+  let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "config.toml"]);
+
+  // Assert
+  assert!(!output.status.success(), "既存パスへのログ指定は診断エラーで止まる");
+  let stderr = stderr_text(&output);
+  assert!(stderr.contains("cli::log_file_exists"), "既存パスの診断が出る: {stderr}");
+  assert_eq!(fs::read(&config_path).expect("設定ファイルを読めるはず"), original, "入力のバイト列は不変");
 }
