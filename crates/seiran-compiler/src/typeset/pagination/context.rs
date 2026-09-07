@@ -1,16 +1,10 @@
 //! 組版の各段が共有する資源・寸法・行分割アルゴリズム
 
 use crate::{
-  color::Color,
-  length::Length,
   project::config::ProjectConfig,
   style::{PageNumbering, Style},
   typeset::{
-    boxes::Page,
-    breaking::{KnuthPlassBreaker, PageGeometry},
-    font::FontSystem,
-    geometry,
-    lowering::HeadingRecord,
+    boxes::Page, breaking::KnuthPlassBreaker, font::FontSystem, geometry::PreparedGeometry, lowering::HeadingRecord,
     pagination::page_values::BodyPageValues,
   },
 };
@@ -23,37 +17,26 @@ pub(crate) struct TypesetContext<'a> {
   pub(super) style: &'a Style,
   /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
   pub(super) resources: &'a FontSystem<'a>,
-  /// 版面幅（段組み前）
-  pub(super) text_width: Length,
-  /// 本文の 1 段あたりの幅（画像サイズ解決に使う）
-  pub(super) body_col_width: Length,
-  /// 本文のページジオメトリ（N 段）
-  pub(super) body_geometry: PageGeometry,
-  /// 前付けのページジオメトリ（常に 1 段・下端揃えなし）
-  pub(super) front_geometry: PageGeometry,
-  /// 後付け（索引）のページジオメトリ（`style.index.column_count` 段・下端揃えなし）
-  pub(super) back_geometry: PageGeometry,
+  /// 入力読込で検証済みの版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）。
+  /// ここでは幾何を組み立て直さず、この値を読むだけ（#533）
+  pub(super) geometry: &'a PreparedGeometry,
   /// 全段が使う行分割アルゴリズム（段落全体最適の Knuth–Plass）
   pub(super) breaker: KnuthPlassBreaker,
 }
 
 impl<'a> TypesetContext<'a> {
-  /// 設定とフォント資源から幅・ジオメトリを解決する。
-  pub(crate) fn new(config: &'a ProjectConfig, style: &'a Style, resources: &'a FontSystem<'a>) -> Self {
-    let text_width = config.pdf.width - style.page.margin_left - style.page.margin_right;
-    let body_columns = style.columns.count as usize;
-    let column_gap = style.columns.gap;
-    let body_col_width = geometry::column_width(text_width, body_columns, column_gap);
-    let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, body_columns, column_gap);
+  /// 設定・検証済み版面・フォント資源を束ねる。
+  pub(crate) fn new(
+    config: &'a ProjectConfig,
+    style: &'a Style,
+    geometry: &'a PreparedGeometry,
+    resources: &'a FontSystem<'a>,
+  ) -> Self {
     return Self {
       config,
       style,
       resources,
-      text_width,
-      body_col_width,
-      body_geometry,
-      front_geometry,
-      back_geometry,
+      geometry,
       breaker: KnuthPlassBreaker,
     };
   }
@@ -77,46 +60,4 @@ impl BodyPageFacts {
       headings,
     };
   }
-}
-
-/// 本文・前付け・後付けのページジオメトリを組み立てる。
-///
-/// 段数・段間以外は本文の値を共有する。
-fn build_page_geometries(
-  config: &ProjectConfig,
-  style: &Style,
-  body_columns: usize,
-  column_gap: Length,
-) -> (PageGeometry, PageGeometry, PageGeometry) {
-  let body_geometry = PageGeometry {
-    content_origin_x: style.page.margin_left,
-    margin_top: style.page.margin_top,
-    page_limit: config.pdf.height - style.page.margin_bottom,
-    default_font_size: style.text.font_size,
-    line_height_factor: style.text.line_height_factor,
-    table_cell_padding: style.table.cell_padding,
-    num_columns: body_columns,
-    column_gap,
-    flush_bottom: style.page.flush_bottom,
-    footnote_top_margin: style.footnote.top_margin,
-    footnote_rule_length: style.footnote.rule_length,
-    footnote_rule_thickness: style.footnote.rule_thickness,
-    footnote_rule_color: style.footnote.rule_color.map(Color::rgb),
-    footnote_rule_gap: style.footnote.rule_gap,
-    table_rule_thickness: style.table.rule_thickness,
-    table_rule_color: style.table.rule_color.map(Color::rgb),
-    background_color: style.background_color.map(Color::rgb),
-  };
-  let front_geometry = PageGeometry {
-    num_columns: 1,
-    column_gap: Length::ZERO,
-    flush_bottom: false,
-    ..body_geometry
-  };
-  let back_geometry = PageGeometry {
-    num_columns: usize::from(style.index.column_count),
-    flush_bottom: false,
-    ..body_geometry
-  };
-  return (body_geometry, front_geometry, back_geometry);
 }

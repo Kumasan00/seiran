@@ -37,7 +37,13 @@ pub(super) fn typeset_back_matter(
   let back_blocks = build_index_blocks(&spec, &entries, ctx.resources);
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "back").entered();
-    break_pages(back_blocks, ctx.text_width, &ctx.back_geometry, &ctx.breaker, ctx.style.text.alignment)
+    break_pages(
+      back_blocks,
+      ctx.geometry.text_width(),
+      ctx.geometry.back_geometry(),
+      &ctx.breaker,
+      ctx.style.text.alignment,
+    )
   };
   return (pages, overflows);
 }

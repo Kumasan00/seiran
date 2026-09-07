@@ -57,8 +57,9 @@ pub use font::{FontFaceConfig, FontMetric, Glyph, GlyphRun, VariationAxisConfig}
 pub(crate) use font::{FontResources, FontWarning};
 // 入口は `layout` 1 操作という原則の意図した例外（#351）。用紙・余白 × 段組みの横断制約は
 // 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
-// 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。
-pub(crate) use geometry::{LayoutValidationError, validate_layout};
+// 行い、確定した版面 `PreparedGeometry` を `layout` の引数として受け取り直す — 不正な組み合わせを
+// 組版より前に弾き、診断の出るタイミングを変えないため（#533）。
+pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
 // 画像資源 — 判定済みの形式 `ImageFormat` は `Publication` に載って描画バックエンドまで届く
 // leaf 値型（crate root の facade が再エクスポートする）。`ImageAsset` は `publication::build` が
 // 描画資源へ写すためだけに読む中間表現（#378）。
@@ -80,6 +81,9 @@ use crate::{failures::Failures, project::config::ProjectConfig, semantics::Seman
 /// 一緒に返す（#382）。警告は資源でも確定レイアウトの一部でもないので `LaidOutDocument` には持たせず、
 /// `FontResources::load` と同じくタプルの第 2 要素にする。
 ///
+/// 版面（`geometry`）は入力読込が検証済みの値として渡すもので、この中で config / style から
+/// 幅・ページ幾何を組み立て直すことはしない（#533）。
+///
 /// # Errors
 ///
 /// シェーパーの構築、画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に
@@ -89,6 +93,7 @@ pub(crate) fn layout(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
   style: &Style,
+  geometry: &PreparedGeometry,
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
 ) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>> {
@@ -97,6 +102,6 @@ pub(crate) fn layout(
   let font_system = font_resources.system().map_err(|failures| return failures.map(TypesetError::from))?;
   let image_paths = image::collect_image_paths(document.hir());
   let images = image::load_image_resources(source, &image_paths)?;
-  let ctx = pagination::TypesetContext::new(config, style, &font_system);
+  let ctx = pagination::TypesetContext::new(config, style, geometry, &font_system);
   return pagination::paginate(&ctx, document, images, image_paths).map_err(Failures::single);
 }

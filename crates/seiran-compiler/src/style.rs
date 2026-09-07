@@ -2,7 +2,7 @@
 //!
 //! 言語設計原則 P10 が区別する 2 概念のうち「種類ごとの見た目」を所有する crate root の module。
 //! 物理・実体・メタデータ（`config.toml`）は [`crate::project::config`] の所有で、両者は互いを知らない
-//! （どちらか一方だけでは判定できない横断制約は [`crate::typeset::validate_layout`] が持つ）。
+//! （どちらか一方だけでは判定できない横断制約は [`crate::typeset::PreparedGeometry::prepare`] が持つ）。
 //! CSL ファイル自体の読込は行わない — 引用箇所の存在が確定するまで遅延させるため、ここは
 //! `csl_path` / `locale_path` の正規化と存在確認までで止める。
 
