@@ -15,8 +15,8 @@ use crate::{
   length::Length,
   style::Style,
   typeset::{
-    boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, PositionedBox},
-    boxing::Measurer,
+    boxes::{AnchorId, Block, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK},
+    boxing::{LineAccum, Measurer},
     font::FontSystem,
     lowering::TextStyle,
   },
@@ -312,49 +312,6 @@ fn push_group_heading(blocks: &mut Vec<Block>, measurer: &mut Measurer<'_>, spec
   });
   if spec.group_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.group_bottom_margin));
-  }
-}
-
-/// 単一行を組み立てる際の累積状態（配置済みボックス・行の高さ）
-#[derive(Default)]
-struct LineAccum {
-  /// 配置済みボックス列
-  boxes: Vec<PositionedBox>,
-  /// 行の高さ（ベースラインより上）
-  height: Length,
-  /// 行の深さ（ベースラインより下）
-  depth: Length,
-}
-
-impl LineAccum {
-  /// `HBox` 列を `x_start` から水平に並べて追加し、行の高さ・深さを更新する。末尾の x を返す
-  fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
-    let mut x = x_start;
-    for hbox in hboxes {
-      self.height = self.height.max(hbox.height);
-      self.depth = self.depth.max(hbox.depth);
-      self.boxes.push(PositionedBox {
-        content: hbox.content,
-        x,
-        dy: Length::ZERO,
-        width: hbox.width,
-      });
-      x += hbox.width;
-    }
-    return x;
-  }
-
-  /// 累積した内容を `Line`（段落最終行扱い）に確定する
-  fn into_line(self, links: Vec<LineLink>) -> Line {
-    return Line {
-      boxes: self.boxes,
-      height: self.height,
-      depth: self.depth,
-      is_last: true,
-      links,
-      footnotes: Vec::new(),
-      index_marks: Vec::new(),
-    };
   }
 }
 

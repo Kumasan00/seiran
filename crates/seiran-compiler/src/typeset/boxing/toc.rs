@@ -6,8 +6,8 @@ use crate::{
   semantics::HeadingKey,
   style::Style,
   typeset::{
-    boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
-    boxing::Measurer,
+    boxes::{AnchorId, Block, Line, LineLink, LinkTarget},
+    boxing::{LineAccum, Measurer, row_width},
     font::FontSystem,
     lowering::TextStyle,
   },
@@ -112,49 +112,6 @@ pub(crate) fn build_toc_blocks(spec: &TocSpec, entries: &[TocEntryInput], resour
   return blocks;
 }
 
-/// 単一行を組み立てる際の累積状態（配置済みボックス・行の高さ・深さ）
-#[derive(Default)]
-struct LineAccum {
-  /// 配置済みボックス列
-  boxes: Vec<PositionedBox>,
-  /// 行の高さ（ベースラインより上）
-  height: Length,
-  /// 行の深さ（ベースラインより下）
-  depth: Length,
-}
-
-impl LineAccum {
-  /// `HBox` 列を `x_start` から水平に並べて追加し、行の高さ・深さを更新する。末尾の x を返す
-  fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
-    let mut x = x_start;
-    for hbox in hboxes {
-      self.height = self.height.max(hbox.height);
-      self.depth = self.depth.max(hbox.depth);
-      self.boxes.push(PositionedBox {
-        content: hbox.content,
-        x,
-        dy: Length::ZERO,
-        width: hbox.width,
-      });
-      x += hbox.width;
-    }
-    return x;
-  }
-
-  /// 累積した内容を `Line`（段落最終行扱い）に確定する
-  fn into_line(self, links: Vec<LineLink>) -> Line {
-    return Line {
-      boxes: self.boxes,
-      height: self.height,
-      depth: self.depth,
-      is_last: true,
-      links,
-      footnotes: Vec::new(),
-      index_marks: Vec::new(),
-    };
-  }
-}
-
 /// テキストを左端（x=0）からシェーピングして単一行に組む（見出し行用）
 fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
@@ -173,7 +130,7 @@ fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &TocSpec, entry: &TocEn
   let mut right_edge = left_end;
   if spec.show_page_numbers {
     let page_boxes = measurer.shape_text(&entry.page_label, spec.entry_style);
-    let page_width: Length = page_boxes.iter().map(|b| return b.width).sum();
+    let page_width = row_width(&page_boxes);
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
     // リーダーをページ番号側に寄せて充填する
@@ -216,7 +173,7 @@ fn fill_leader(
   if !available.is_positive() {
     return;
   }
-  let unit_width: Length = measurer.shape_text(unit, style).iter().map(|b| return b.width).sum();
+  let unit_width = row_width(&measurer.shape_text(unit, style));
   if !unit_width.is_positive() {
     return;
   }
@@ -230,7 +187,7 @@ fn fill_leader(
     return;
   }
   let leader_boxes = measurer.shape_text(&unit.repeat(count), style);
-  let leader_width: Length = leader_boxes.iter().map(|b| return b.width).sum();
+  let leader_width = row_width(&leader_boxes);
   acc.place(leader_boxes, to_x - leader_width);
 }
 

@@ -7,8 +7,8 @@ use crate::{
   length::Length,
   style::{RunningTemplate, RunningValues},
   typeset::{
-    boxes::{HBox, Line, Page, PlacedBlock, PositionedBox},
-    boxing::Measurer,
+    boxes::{HBox, Page, PlacedBlock},
+    boxing::{LineAccum, Measurer, row_width},
     font::FontSystem,
     lowering::TextStyle,
   },
@@ -113,31 +113,24 @@ fn build_region(
   let center = shape_slot(measurer, &slots.center, page_label, pages_label, metadata, style);
   let right = shape_slot(measurer, &slots.right, page_label, pages_label, metadata, style);
 
-  let center_x = (text_width - slot_width(&center)) / 2.0f32;
-  let right_x = text_width - slot_width(&right);
+  let center_x = (text_width - row_width(&center)) / 2.0f32;
+  let right_x = text_width - row_width(&right);
 
-  let mut boxes: Vec<PositionedBox> = Vec::new();
-  let mut height = Length::ZERO;
-  let mut depth = Length::ZERO;
-  append_slot(left, Length::ZERO, &mut boxes, &mut height, &mut depth);
-  append_slot(center, center_x, &mut boxes, &mut height, &mut depth);
-  append_slot(right, right_x, &mut boxes, &mut height, &mut depth);
+  let mut acc = LineAccum::default();
+  acc.place(left, Length::ZERO);
+  acc.place(center, center_x);
+  acc.place(right, right_x);
+  let line = acc.into_line(Vec::new());
 
-  if boxes.is_empty() {
+  if line.boxes.is_empty() {
     return Vec::new();
   }
 
+  // 区切り線の y は行の高さ・深さから決まるので、`line` を move する前に控える
+  let (height, depth) = (line.height, line.depth);
   let mut result = Vec::with_capacity(2);
   result.push(PlacedBlock::Line {
-    line: Line {
-      boxes,
-      height,
-      depth,
-      is_last: true,
-      links: Vec::new(),
-      footnotes: Vec::new(),
-      index_marks: Vec::new(),
-    },
+    line,
     baseline_y: slots.baseline_y,
   });
   if slots.rule_thickness.is_positive() {
@@ -184,85 +177,10 @@ fn substitute(template: &RunningTemplate, page_label: &str, pages_label: &str, m
   });
 }
 
-/// `HBox` 列の合計幅（pt）を返す
-fn slot_width(hboxes: &[HBox]) -> Length { return hboxes.iter().map(|hbox| return hbox.width).sum(); }
-
-/// `HBox` 列を `x_start` から水平に並べて `boxes` へ追加し、行の高さ・深さを更新する
-fn append_slot(
-  hboxes: Vec<HBox>,
-  x_start: Length,
-  boxes: &mut Vec<PositionedBox>,
-  height: &mut Length,
-  depth: &mut Length,
-) {
-  let mut x = x_start;
-  for hbox in hboxes {
-    *height = (*height).max(hbox.height);
-    *depth = (*depth).max(hbox.depth);
-    boxes.push(PositionedBox {
-      content: hbox.content,
-      x,
-      dy: Length::ZERO,
-      width: hbox.width,
-    });
-    x += hbox.width;
-  }
-}
-
 #[cfg(test)]
 mod tests {
-  use super::{RunningMetadata, append_slot, slot_width, substitute};
-  use crate::{
-    length::Length,
-    style::RunningTemplate,
-    typeset::boxes::{HBox, HBoxContent, PositionedBox},
-  };
-
-  /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ
-  fn box_of_width(w: Length) -> HBox {
-    return HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: w,
-      height: Length::pt(8.0),
-      depth: Length::pt(2.0),
-    };
-  }
-
-  #[test]
-  fn slot_width_sums_box_widths() {
-    let width = slot_width(&[
-      box_of_width(Length::pt(10.0)),
-      box_of_width(Length::pt(15.0)),
-    ]);
-
-    assert_eq!(width, Length::pt(25.0));
-  }
-
-  #[test]
-  fn append_slot_positions_boxes_left_to_right() {
-    // Arrange
-    let mut boxes: Vec<PositionedBox> = Vec::new();
-    let mut height = Length::ZERO;
-    let mut depth = Length::ZERO;
-
-    // Act
-    append_slot(
-      vec![
-        box_of_width(Length::pt(10.0)),
-        box_of_width(Length::pt(15.0)),
-      ],
-      Length::pt(100.0),
-      &mut boxes,
-      &mut height,
-      &mut depth,
-    );
-
-    // Assert
-    let xs: Vec<Length> = boxes.iter().map(|b| return b.x).collect();
-    assert_eq!(xs, vec![Length::pt(100.0), Length::pt(110.0)]);
-    assert_eq!(height, Length::pt(8.0));
-    assert_eq!(depth, Length::pt(2.0));
-  }
+  use super::{RunningMetadata, substitute};
+  use crate::style::RunningTemplate;
 
   fn metadata() -> RunningMetadata {
     return RunningMetadata {
