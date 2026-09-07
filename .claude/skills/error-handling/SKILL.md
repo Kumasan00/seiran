@@ -188,7 +188,10 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   載せられなくなる。warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の
   列として持つ（#377）
 - 外部クレートの `Result<T, E>` を `miette::Result<T>` に持ち上げる際は `miette::IntoDiagnostic` の `.into_diagnostic()?` を使用する
-- `main` は `miette::Result<()>` を返す（`Box<dyn std::error::Error>` は使わない）。`miette` の `fancy` feature により色付き診断が出力される
+- `main` は `std::process::ExitCode` を返す（`miette::Result<()>` も `Box<dyn std::error::Error>` も使わない）。
+  端末への描画は `Result` の `Termination` ではなく `termination::Outcome::report` が行い、報告を終えてから
+  終了コードを返す — ログ出力先の終了処理（flush と保持した失敗の取り出し）を、終了コードの決定より前に
+  必ず通すため（#548 が #495 / #502 の構造を改訂）。診断の体裁は `Report` の `Debug`（miette の `fancy`）のまま
 
 ## パターン例
 

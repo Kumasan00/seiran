@@ -1906,7 +1906,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 両方に依存し、`compile` → `seiran_pdf::render` → atomic write（`tempfile` 経由の一時ファイル + rename）→
 結果表示（`Compilation.warnings` の診断とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の
 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
-filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・端末出力といった実行環境の関心事はすべてこの crate に
+filesystem・ログ初期化（`tracing-subscriber`）・端末出力といった実行環境の関心事はすべてこの crate に
 閉じており、`seiran-compiler` は `ProjectSource` seam 越しにしか外部資源へ触らない。
 カレントディレクトリも `build` 実行時にこの crate が取得し、相対パスの解決基準として `compile` へ明示する。
 
@@ -1918,17 +1918,26 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
 - `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の
   初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、実効フィルタから導く
   target 表示の有無、端末装飾をこの module に閉じ、`main` は `Reporter::init` / `warnings` / `build` /
-  `failure` だけを呼ぶ。装飾するのは `NO_COLOR` 未設定かつ stderr が端末のときだけで、その判定を
+  `failure` / `log_path` / `finish` だけを呼ぶ。装飾するのは `NO_COLOR` 未設定かつ stderr が端末のときだけで、その判定を
   `Reporter::init` で 1 回だけ行い、ログ（`with_ansi`）と成功サマリで同じ値を共有する（#493）。
   subscriber は `Registry` に stderr layer と（`--log-file` 指定時だけ）ファイル layer を重ねた形で、
   出力先ごとに `Layer::with_filter` の `EnvFilter` を持つ。`EnvFilter` は `Clone` できないので共通の
   directive 文字列を 1 度決めて出力先ごとに parse し直す（`EnvFilter::new` は不正 directive を黙って
   捨て既定 directive を足すので使わず、`EnvFilter::builder().parse_lossy` に寄せる）。`Reporter::init` は
   ログファイルを開けないと `LogFileError` を返し、subscriber を 1 つも設置しないまま `main` が止まる（#495）
-- `reporting::log_file`: `--log-file` の出力先（`LogSink`）とその失敗型 `LogFileError`。ファイルは実行ごとに
-  truncate し、親ディレクトリが無ければ作る。書き込みは `tracing-appender` の `non_blocking` 越しで、
-  `lossy(false)` によりキューが埋まってもイベントを捨てず、`WorkerGuard` を `Reporter` が持つことで
-  `main` のローカルが drop される時点（`Err` を返す経路を含む）に書き残しを流し切る（#495）
+- `reporting::log_file`: `--log-file` の出力先（`LogSink`）とその失敗型 `LogFileError` / `LogFailure`。ファイルは
+  実行ごとに **`File::create_new` で新規作成**し（既存パスは `cli::log_file_exists` で拒否 — ログの指定で
+  入力を壊さないため。#548 が #495 の truncate を改訂）、親ディレクトリが無ければ作る。書き込みは
+  `Arc<Mutex<..>>` 越しの同期 `BufWriter` で、tracing の layer と直接の報告が同じ状態を共有する。
+  書き込み・flush の**最初の失敗を保持**し、`Reporter::finish` が明示的な flush の後に取り出す
+  （`tracing-appender` の `non_blocking` は「キューへの送信成功」しか保証せず、書き込み失敗を
+  呼び出し元へ返さないので使わない。非同期化は TRACE 有効時の性能計測で必要性が確認できてから再検討）
+- `termination`: 本処理の結果とログの記録結果から、端末へ出す主診断・副次診断と `ExitCode` を決める
+  （`decide` は純粋関数で in-src テストが 4 通りを覆う）。`main` は `miette::Result` ではなく `ExitCode` を
+  返し、報告を終えてから終了する
+- `pdf_output`: PDF の atomic write と、ログの出力先との衝突検査。保存先とログの出力先を canonicalize して
+  比較し、同じ実体なら保存前に拒否する（`NamedTempFile` は `O_EXCL` で乱数名を取るので、一時ファイルが
+  既存のログファイルを掴むことはない）
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
   組版を伴わないため）
@@ -1936,8 +1945,12 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   型を分ける — `compile` は保存を行わないため
 - `tests/cli_log_file.rs`: binary を起動する CLI 統合テスト（`CARGO_BIN_EXE_seiran`、依存追加なし）。`--log-file` への
   致命的エラー診断の記録・`-q` との組み合わせ・`--log-file` の有無で stderr と終了コードが変わらないこと・
-  `Failures` 集約の全 leaf・ログファイルを開けないときの振る舞いを、`main` の構造（`Err` を返す直前の記録と
-  `Termination` の描画順）ごと確かめる。純粋関数（フィルタ計画・診断の描画）は in-src テストが覆う（#502）
+  `Failures` 集約の全 leaf・既存パスを渡した実行が診断で止まり入力へ触れないことを、`main` の構造
+  （`run` の結果を受けた直後の記録と `termination::Outcome::report` の描画順）ごと確かめる。書き込み・flush の
+  失敗はプロセス起動では移植可能な形で注入できない（`/dev/full` は Linux のみ、FIFO や既存の特殊ファイルは
+  `create_new` が弾き、`RLIMIT_FSIZE` 超過は `SIGXFSZ` でプロセスが死ぬ）ので、失敗の保持と報告は in-src テスト
+  （`LogSink::from_writer` に失敗する writer を注入、`termination::decide` の 4 通り）が覆う。純粋関数
+  （フィルタ計画・診断の描画）も in-src テスト（#502 / #548）
 
 ### 不変条件・注意点
 
@@ -1961,15 +1974,21 @@ filesystem・ログ初期化（`tracing-subscriber` / `tracing-appender`）・�
   端末と同じ体裁のまま時刻を付けずに書く — 複数行の診断ブロックの先頭行にだけ時刻が付く不揃いを避けるため。
   時刻はローカル時刻（`OffsetTime::local_rfc_3339`）で、オフセットを取得できない環境では UTC へ落とす（#495）。
 - **致命的エラー診断もファイルへ残す**（#502）。ビルドを止めた診断（`CompileFailure` の全 leaf・render / 保存・
-  カレントディレクトリ取得等の CLI 側エラー）は、`main` が `run` の `Err` を返す直前に `Reporter::failure` が
-  warning と同じ体裁でファイルへ書く。端末側は触らない — `main` が返した `Err` を `Result` の `Termination` が
-  miette のグローバル handler で描く 1 回だけで、stderr のバイト列も終了コードも `--log-file` の有無で変わらない。
-  `--quiet` でも書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くすのが目的）。`Reporter::init` 自身の
-  失敗（`LogFileError`）は記録先が無いので対象外。tracing の ERROR event としては流さない（致命的エラーは miette、
-  ERROR レベルは使わないという #103 の線引き）。書き切りは `main` ローカルの drop 順で保証する —
-  `Reporter`（→ `LogSink` → `WorkerGuard`）は `main` 本体の末尾で drop されて flush が走り、その後に
-  `Termination` が stderr へ描く。compile 成功後に render / 保存が失敗した実行の `Compilation.warnings` は
-  端末にもファイルにも出ない（成功経路の表示順を保つため。#502 のスコープ外）。
+  カレントディレクトリ取得等の CLI 側エラー）は、`main` が `run` の結果を受けた直後に `Reporter::failure` が
+  warning と同じ体裁でファイルへ書く。端末側は触らない — `termination::Outcome::report` が miette のグローバル
+  handler で 1 回だけ描き、stderr のバイト列も終了コードも `--log-file` の有無で変わらない。`--quiet` でも書く
+  （`-q --log-file` で失敗理由がどこにも残らない経路を無くすのが目的）。`Reporter::init` 自身の失敗
+  （`LogFileError`）は記録先が無いので対象外。tracing の ERROR event としては流さない（致命的エラーは miette、
+  ERROR レベルは使わないという #103 の線引き）。書き切りは drop 順ではなく `Reporter::finish` の明示的な flush で
+  確定させる（#548）— 報告をすべて書いてから flush し、保持していた最初の I/O 失敗をそこで取り出す。
+  以後 tracing へは何も出さない（layer は同じ writer を持ったままで、流し切る主体がいない）。compile 成功後に
+  render / 保存が失敗した実行の `Compilation.warnings` は端末にもファイルにも出ない（成功経路の表示順を保つ
+  ため。#502 のスコープ外。この扱いは #550 が変える予定）。
+- **ログの記録に失敗した実行は終了コード 1**（#548）。本処理が成功していてもログを記録できていなければ
+  `ExitCode::FAILURE` で終える — 記録が要ると明示した実行で、記録の欠落を成功として返さないため。生成済みの
+  PDF は消さない（成果物は正しく、失っているのは記録だけ）。本処理も失敗していたときは元の診断が主で、ログの
+  失敗はその後ろへ副次的に添える（`termination::decide` の 4 通り）。ログの失敗をログへ書きに行くことはしない。
+  保証するのは OS への書き込みと flush の完了までで、電源断まで含めた永続化は保証しない。
 - **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを出し、
   tracing は WARN 以上。`-v` は compile / render / write の安定した工程（INFO）、`-vv` は内部詳細
   （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /

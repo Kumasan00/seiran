@@ -7,14 +7,16 @@
 )]
 
 mod cli;
+mod pdf_output;
 mod reporting;
 mod subcommand;
+mod termination;
 mod write_error;
 
-use std::{fs, io::Write, path::Path, time::Instant};
+use std::{process::ExitCode, time::Instant};
 
 use reporting::Reporter;
-use write_error::WriteError;
+use termination::Outcome;
 
 /// カレントディレクトリ取得時のエラー。
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
@@ -31,19 +33,35 @@ enum CurrentDirError {
 
 /// CLI を初期化し、指定されたサブコマンドを実行する。
 ///
-/// 致命的エラーは `Err` として返し、端末への描画は `Result` の `Termination` 経由で miette のグローバル handler に
-/// 任せる。`--log-file` 指定時はその同じ診断を、`Err` を返す直前に [`Reporter::failure`] でファイルへも残す。
-/// `reporter` はこの関数のローカルなので、`Err` を返す経路でも関数本体の末尾で drop され、ログファイルへの
-/// 書き残しは端末に診断が描かれるより前に流し切られる。
+/// 端末への描画を `Result` の `Termination` へ委ねず、報告を終えてから `ExitCode` を返す — ログ出力先の
+/// 終了処理（flush と失敗の取り出し）を、終了コードを決める前に必ず通すため。`--log-file` 指定時は
+/// 致命的エラーの診断を、`Err` を受けた直後に [`Reporter::failure`] でファイルへも残す。ログの記録に
+/// 失敗した実行は、本処理が成功していても終了コード 1 で終わる。
 ///
-/// # Errors
-///
-/// 設定読み込みから PDF 生成までのエラーを `miette` 診断として返す。ログファイルを開けなかったエラーは
-/// ファイルへ記録しようがないので端末へだけ出る。
-fn main() -> miette::Result<()> {
+/// `reporter.finish()` の後は tracing へ何も出さない — layer は同じ writer を保持したままなので、
+/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は `eprintln!` だけで行う。
+fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
-  let reporter = Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref())?;
-  return run(cli_args.command, &reporter).inspect_err(|report| return reporter.failure(report));
+  let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref()) {
+    Ok(reporter) => reporter,
+    // ログファイルを用意できない失敗は記録先が無いので、端末へ出して終わる。
+    Err(error) => {
+      return Outcome::Failure {
+        report: miette::Report::new(error),
+        log: None,
+      }
+      .report();
+    },
+  };
+
+  let outcome = run(cli_args.command, &reporter);
+  if let Err(report) = &outcome {
+    reporter.failure(report);
+  }
+  // 報告を書き終えてから flush する。ここで初めてログの記録が成功したかが確定する。
+  let log_outcome = reporter.finish();
+
+  return termination::decide(outcome, log_outcome).report();
 }
 
 /// サブコマンドを実行する。
@@ -65,7 +83,8 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
       let compilation =
         seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
       let pdf_bytes = tracing::info_span!("render").in_scope(|| return seiran_pdf::render(&compilation.publication))?;
-      tracing::info_span!("write").in_scope(|| return write_pdf_atomically(&compilation.pdf_path, &pdf_bytes))?;
+      tracing::info_span!("write")
+        .in_scope(|| return pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path()))?;
       reporter.warnings(&compilation.warnings);
       reporter.build(&compilation, build_start.elapsed());
     },
@@ -86,46 +105,5 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
     },
   }
 
-  return Ok(());
-}
-
-/// PDF バイト列を `pdf_path` へ atomic に書き出す。
-///
-/// 保存先と同じディレクトリに一時ファイルを作ってから rename する（cross-filesystem の
-/// rename は atomic にならないため、保存先ディレクトリ内に一時ファイルを作ることが必須）。
-fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
-  let stage_start = Instant::now();
-  let output_dir = pdf_path.parent().unwrap_or_else(|| return Path::new("."));
-  fs::create_dir_all(output_dir).map_err(|source| {
-    return WriteError::CreateOutputDir {
-      path: output_dir.display().to_string(),
-      source,
-    };
-  })?;
-
-  let mut tmp_file = tempfile::NamedTempFile::new_in(output_dir).map_err(|source| {
-    return WriteError::WritePdf {
-      path: pdf_path.display().to_string(),
-      source,
-    };
-  })?;
-  tmp_file.write_all(bytes).map_err(|source| {
-    return WriteError::WritePdf {
-      path: pdf_path.display().to_string(),
-      source,
-    };
-  })?;
-  tmp_file.persist(pdf_path).map_err(|error| {
-    return WriteError::WritePdf {
-      path: pdf_path.display().to_string(),
-      source: error.error,
-    };
-  })?;
-  tracing::info!(
-    output_path = %pdf_path.display(),
-    byte_count = bytes.len(),
-    elapsed = ?stage_start.elapsed(),
-    "PDF を保存"
-  );
   return Ok(());
 }

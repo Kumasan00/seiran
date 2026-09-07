@@ -11,8 +11,8 @@ mod log_file;
 
 use std::{ffi::OsStr, io::IsTerminal, path::Path, time::Duration};
 
-pub(super) use log_file::LogFileError;
 use log_file::LogSink;
+pub(super) use log_file::{LogFailure, LogFileError};
 use miette::{GraphicalReportHandler, GraphicalTheme};
 use tracing_subscriber::{
   EnvFilter, Registry,
@@ -34,9 +34,9 @@ const QUIET_DIRECTIVE: &str = "off";
 /// `quiet` の解釈と ANSI 装飾の可否を保持し、warning と成功サマリへ一貫して適用する。tracing subscriber は
 /// [`Reporter::init`] でプロセス全体に 1 回だけ初期化する。
 ///
-/// `--log-file` 指定時はログファイルの書き出し口も保持する。書き出しはワーカースレッド越しなので、
-/// この値が drop されるまでに書いた内容は guard の drop で流し切られる — `main` のローカルとして持つ限り、
-/// ビルドが失敗して `main` が `Err` を返す経路でも記録（[`Reporter::failure`] の診断を含む）が欠けない。
+/// `--log-file` 指定時はログファイルの書き出し口も保持する。書き出しは同期で、書き込み・flush の失敗は
+/// sink が保持し、[`Reporter::finish`] が 1 度だけ取り出す — `main` は本処理の結果とログの結果の両方を
+/// 受けてから終了コードを決める。
 pub(super) struct Reporter {
   /// 端末への非エラー出力を抑止するか。
   quiet: bool,
@@ -64,7 +64,7 @@ impl Reporter {
   /// `--log-file` のパスを開けないとき [`LogFileError`] を返す。ログが残らないまま処理が進むより、
   /// 指定が効いていないことを即座に知らせる。
   pub(super) fn init(verbose: u8, quiet: bool, log_file: Option<&Path>) -> Result<Self, LogFileError> {
-    // ローカル時刻の解決を先に済ませる — ログファイルのワーカースレッドが起きるとオフセットを取得できなくなる。
+    // ローカル時刻の解決を先に済ませる（`OffsetTime::local_rfc_3339` はプロセスが単一スレッドのうちに解決する）。
     let timer = log_timer();
     let raw_filter = std::env::var("RUST_LOG").ok();
     let plan = build_log_plan(raw_filter.as_deref(), verbose, quiet, log_file.is_some());
@@ -89,7 +89,12 @@ impl Reporter {
         .with_file(false)
         .with_line_number(false)
         .with_timer(timer)
-        .log_internal_errors(true)
+        // 書き込み失敗は sink が保持して `finish` が報告するので、layer 側から stderr へ出させない
+        // （出すと同じ失敗が 2 回出るうえ、`--log-file` の有無で stderr のバイト列が変わる）。
+        // このフラグは書き込み失敗だけでなく event の整形失敗の報告も同じく抑止する。整形失敗は
+        // `compact()` と seiran が出すフィールドの単純さからいって理論上のものでしかなく、しかも
+        // 何も書かれないので sink 側も保持しようがない（保持できるのは writer へ渡った後の失敗だけ）。
+        .log_internal_errors(false)
         .with_filter(sink_plan.filter);
     });
     Registry::default().with(stderr_layer).with(file_layer).init();
@@ -135,8 +140,8 @@ impl Reporter {
 
   /// ビルドを止めた致命的エラーの診断をログファイルへ記録する。
   ///
-  /// 端末側は `main` が `Err` を返した後に miette のグローバル handler が描く（`Result` の `Termination`）ので
-  /// ここでは触らない — 端末とファイルで同じ診断が 1 回ずつ。`--quiet` は端末だけを黙らせるものなので、ファイルへは
+  /// 端末側は `termination::Outcome::report` が miette のグローバル handler（`Report` の `Debug` 表示）で
+  /// 1 回だけ描くのでここでは触らない — 端末とファイルで同じ診断が 1 回ずつ。`--quiet` は端末だけを黙らせるものなので、ファイルへは
   /// 常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くすのがこの操作の目的）。体裁は warning と
   /// 同じ装飾なし・ハイパーリンクなし・時刻なしで、`CompileFailure` の関連診断（`related`）も同じ handler が
   /// 続けて描くため、`Failures` 集約の全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは
@@ -145,6 +150,23 @@ impl Reporter {
     if let Some(log) = &self.log {
       log.write_block(&render_report_plain(report));
     }
+  }
+
+  /// `--log-file` の出力先（指定が無ければ `None`）。
+  ///
+  /// PDF の保存先と同じ実体を指していないかを保存前に確かめるために公開する。
+  pub(super) fn log_path(&self) -> Option<&Path> { return self.log.as_ref().map(LogSink::path) }
+
+  /// ログの書き残しを流し切り、記録に失敗していればそれを返す。
+  ///
+  /// # Errors
+  ///
+  /// ログの書き込みまたは flush が失敗していたとき [`LogFailure`] を返す。
+  pub(super) fn finish(self) -> Result<(), LogFailure> {
+    return match self.log {
+      Some(log) => log.finish(),
+      None => Ok(()),
+    };
   }
 }
 
