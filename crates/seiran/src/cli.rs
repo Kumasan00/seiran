@@ -16,7 +16,7 @@ pub(super) struct Cli {
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
 
-  /// ログ・warning・成功サマリをこのファイルへも書く（端末の出力は変わらない。実行ごとに truncate）
+  /// ログ・warning・サマリ・致命的エラー診断をこのファイルへも書く（端末の出力は変わらない）。実行ごとに新規作成し、既存パスはエラー。記録に失敗した実行は終了コード 1
   #[arg(long, global = true, value_name = "PATH")]
   pub(super) log_file: Option<PathBuf>,
 

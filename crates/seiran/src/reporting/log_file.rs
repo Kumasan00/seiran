@@ -256,7 +256,7 @@ pub(crate) enum LogFileError {
   #[error("ログファイルの出力先が既に存在します: {path}")]
   #[diagnostic(
     code(cli::log_file_exists),
-    help("--log-file には毎回新しいパスを指定してください（既存のファイルは上書きしません）。")
+    help("--log-file には毎回新しいパスを指定してください（既存のパスは上書きしません）。")
   )]
   AlreadyExists {
     /// 指定されたログファイルのパス
@@ -267,7 +267,7 @@ pub(crate) enum LogFileError {
   #[error("ログファイルを開けませんでした: {path}")]
   #[diagnostic(
     code(cli::open_log_file),
-    help("--log-file にはディレクトリではなく書き込み可能なファイルパスを指定してください。")
+    help("--log-file の書き込み権限と、出力先の状態（ディスク容量・ファイルシステムの制約等）を確認してください。")
   )]
   Open {
     /// ログファイルのパス
