@@ -1,19 +1,18 @@
-//! 前付け（タイトルページ・目次）パス（目次エントリの組み立て → 計測 → 改行・改ページ）
+//! 段 3 — 前付けパス（タイトルページ → 目次の順にブロックを積んでページ分割する）
+//!
+//! どの機能をどの順に置くかだけを持ち、目次の中身（エントリの絞り込み・style の投影・行組み立て）は
+//! [`crate::typeset::pagination::toc`] が所有する。
 
 use tracing::{debug, debug_span};
 
-use crate::{
-  semantics::HeadingKey,
-  style::TocStyle,
-  typeset::{
-    boxes::{Block, Page},
-    boxing::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
-    breaking::{FootnoteOverflow, break_pages},
-    lowering::{HeadingRecord, TitlePageMetadata, lower_title_page},
-    pagination::{
-      context::{BodyPageFacts, TypesetContext},
-      page_values::BodyPageValues,
-    },
+use crate::typeset::{
+  boxes::{Block, Page},
+  boxing::build_blocks,
+  breaking::{FootnoteOverflow, break_pages},
+  lowering::{TitlePageMetadata, lower_title_page},
+  pagination::{
+    context::{BodyPageFacts, TypesetContext},
+    toc,
   },
 };
 
@@ -55,13 +54,10 @@ pub(super) fn typeset_front_matter(
   }
 
   if ctx.style.toc.enabled {
-    let toc_entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
-    let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
-    let toc_blocks = build_toc_blocks(&spec, &toc_entries, ctx.resources);
+    let toc_blocks = toc::build_toc_blocks(ctx, facts);
     if !toc_blocks.is_empty() {
       front_blocks.extend(toc_blocks);
       front_blocks.push(Block::force_break());
-      debug!(toc_entry_count = toc_entries.len(), "目次を生成");
     }
   }
 
@@ -83,108 +79,4 @@ pub(super) fn typeset_front_matter(
     )
   };
   return (pages, overflows);
-}
-
-/// 見出しと本文内ページ index から目次エントリを組み立てる。
-///
-/// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
-fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
-  let heading_pages = page_values.heading_pages();
-  if headings.len() != heading_pages.len() {
-    unreachable!(
-      "lowering は見出し記録 1 件につき Heading アンカーを 1 個だけ出し、break_pages は全アンカーを \
-       いずれかの本文ページへ載せるので数が一致する: headings={} pages={}",
-      headings.len(),
-      heading_pages.len()
-    )
-  }
-  return headings
-    .iter()
-    .zip(heading_pages.iter().copied())
-    .filter(|(info, _)| return u32::from(info.level.depth()) < toc.max_depth)
-    .map(|(info, page_index)| {
-      return TocEntryInput {
-        level: info.level,
-        number: info.number.clone(),
-        title_plain: info.title_plain.clone(),
-        page_label: page_values.body_page_label(page_index),
-        link_key: HeadingKey::new(info.index),
-      };
-    })
-    .collect();
-}
-
-#[cfg(test)]
-mod tests {
-  use super::{BodyPageValues, HeadingRecord, Page, collect_toc_entries};
-  use crate::{
-    document::HeadingLevel,
-    length::Length,
-    semantics::HeadingKey,
-    style::{PageNumbering, TocStyle},
-    typeset::boxes::{AnchorMark, PlacedAnchor},
-  };
-
-  fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
-    return HeadingRecord {
-      index,
-      level,
-      number: number.to_string(),
-      title_plain: title_plain.to_string(),
-    };
-  }
-
-  /// 各ページに 1 つずつ見出しアンカーを持つ本文ページ列から [`BodyPageValues`] を作るヘルパ
-  fn body_page_values_with_headings(heading_count: usize) -> BodyPageValues {
-    let pages: Vec<Page> = (0..heading_count)
-      .map(|index| {
-        return Page {
-          blocks: Vec::new(),
-          header: Vec::new(),
-          footer: Vec::new(),
-          footnotes: Vec::new(),
-          anchors: vec![PlacedAnchor {
-            mark: AnchorMark::Heading {
-              key: HeadingKey::new(index),
-              label: None,
-            },
-            x: Length::ZERO,
-            y: Length::ZERO,
-          }],
-          links: Vec::new(),
-          index_entries: Vec::new(),
-          background_color: None,
-          content_origin_x: Length::ZERO,
-        };
-      })
-      .collect();
-    return BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
-  }
-
-  #[test]
-  fn collect_toc_entries_filters_by_max_depth_and_renders_page_label() {
-    // Arrange — Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
-    let headings = vec![
-      heading_record(0, HeadingLevel::Chapter, "1", "Ch"),
-      heading_record(1, HeadingLevel::Section, "1.1", "Sec"),
-      heading_record(2, HeadingLevel::Subsection, "1.1.1", "Sub"),
-    ];
-    let page_values = body_page_values_with_headings(3);
-    let toc = TocStyle {
-      max_depth: 3,
-      ..TocStyle::default()
-    };
-
-    // Act
-    let entries = collect_toc_entries(&headings, &page_values, &toc);
-
-    // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].number, "1");
-    assert_eq!(entries[0].page_label, "1");
-    assert_eq!(entries[0].link_key, HeadingKey::new(0));
-    assert_eq!(entries[1].title_plain, "Sec");
-    assert_eq!(entries[1].page_label, "2");
-    assert_eq!(entries[1].link_key, HeadingKey::new(1));
-  }
 }
