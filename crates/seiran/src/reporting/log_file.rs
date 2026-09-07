@@ -140,6 +140,9 @@ impl LogSink {
     };
   }
 
+  /// ログファイルのパス。
+  pub(super) fn path(&self) -> &Path { return &self.path }
+
   /// tracing の layer へ渡す writer 生成器を作る。
   pub(super) fn writer(&self) -> LogWriter {
     return LogWriter {

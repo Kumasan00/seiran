@@ -7,16 +7,16 @@
 )]
 
 mod cli;
+mod pdf_output;
 mod reporting;
 mod subcommand;
 mod termination;
 mod write_error;
 
-use std::{fs, io::Write, path::Path, process::ExitCode, time::Instant};
+use std::{process::ExitCode, time::Instant};
 
 use reporting::Reporter;
 use termination::Outcome;
-use write_error::WriteError;
 
 /// カレントディレクトリ取得時のエラー。
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
@@ -83,7 +83,8 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
       let compilation =
         seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
       let pdf_bytes = tracing::info_span!("render").in_scope(|| return seiran_pdf::render(&compilation.publication))?;
-      tracing::info_span!("write").in_scope(|| return write_pdf_atomically(&compilation.pdf_path, &pdf_bytes))?;
+      tracing::info_span!("write")
+        .in_scope(|| return pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path()))?;
       reporter.warnings(&compilation.warnings);
       reporter.build(&compilation, build_start.elapsed());
     },
@@ -104,46 +105,5 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
     },
   }
 
-  return Ok(());
-}
-
-/// PDF バイト列を `pdf_path` へ atomic に書き出す。
-///
-/// 保存先と同じディレクトリに一時ファイルを作ってから rename する（cross-filesystem の
-/// rename は atomic にならないため、保存先ディレクトリ内に一時ファイルを作ることが必須）。
-fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
-  let stage_start = Instant::now();
-  let output_dir = pdf_path.parent().unwrap_or_else(|| return Path::new("."));
-  fs::create_dir_all(output_dir).map_err(|source| {
-    return WriteError::CreateOutputDir {
-      path: output_dir.display().to_string(),
-      source,
-    };
-  })?;
-
-  let mut tmp_file = tempfile::NamedTempFile::new_in(output_dir).map_err(|source| {
-    return WriteError::WritePdf {
-      path: pdf_path.display().to_string(),
-      source,
-    };
-  })?;
-  tmp_file.write_all(bytes).map_err(|source| {
-    return WriteError::WritePdf {
-      path: pdf_path.display().to_string(),
-      source,
-    };
-  })?;
-  tmp_file.persist(pdf_path).map_err(|error| {
-    return WriteError::WritePdf {
-      path: pdf_path.display().to_string(),
-      source: error.error,
-    };
-  })?;
-  tracing::info!(
-    output_path = %pdf_path.display(),
-    byte_count = bytes.len(),
-    elapsed = ?stage_start.elapsed(),
-    "PDF を保存"
-  );
   return Ok(());
 }

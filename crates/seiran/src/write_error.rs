@@ -33,4 +33,29 @@ pub(super) enum WriteError {
     #[source]
     source: std::io::Error,
   },
+
+  /// ログの出力先と PDF の保存先の衝突
+  #[error("PDF の保存先がログファイルの出力先と同じです: {path}")]
+  #[diagnostic(
+    code(cli::log_path_collision),
+    help("--log-file には成果物と別のパスを指定してください（保存すればログが失われ、記録すれば PDF が壊れます）。")
+  )]
+  LogPathCollision {
+    /// 衝突した保存先のパス
+    path: String,
+  },
+
+  /// 出力先パスの解決エラー
+  #[error("出力先のパスを解決できませんでした: {path}")]
+  #[diagnostic(
+    code(cli::resolve_output_path),
+    help("出力先ディレクトリが存在し、読み取り権限があることを確認してください。")
+  )]
+  ResolveOutputPath {
+    /// 解決できなかったパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
 }

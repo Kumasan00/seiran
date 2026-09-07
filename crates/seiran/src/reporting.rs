@@ -149,6 +149,11 @@ impl Reporter {
     }
   }
 
+  /// `--log-file` の出力先（指定が無ければ `None`）。
+  ///
+  /// PDF の保存先と同じ実体を指していないかを保存前に確かめるために公開する。
+  pub(super) fn log_path(&self) -> Option<&Path> { return self.log.as_ref().map(LogSink::path) }
+
   /// ログの書き残しを流し切り、記録に失敗していればそれを返す。
   ///
   /// # Errors
