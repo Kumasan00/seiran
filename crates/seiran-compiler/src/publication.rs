@@ -10,10 +10,9 @@
 //! はこの module 自身が子 module（`glyph` / `font` / `image_format`）に持ち、組版はそれを
 //! 生成する側になる（#535）。同型の複製は作らない。
 //!
-//! 唯一の構築経路である子 module `build` はこの制約の外側にある — `crate::typeset::LaidOutDocument` /
-//! `Page` / `PlacedBlock` / `PlacedTableRow` / `HBoxContent` / `FontResources` / `ImageAsset` を走査して
-//! 上のデータ型へ写すのがその責務だから。組版中間型への依存はこの写像 1 箇所に閉じ、データ型側へは
-//! 漏らさない（データ型へ新しいフィールドを足すときは上の例外規則が効く）。
+//! 組版中間型からこれらのデータ型への写像は、それを唯一読む `crate::typeset::emit` が持つ
+//! （#535）。この module が公開するのは確定表現と、不正状態を作れない検証付きコンストラクタ
+//! （下記）だけで、`crate::typeset` を import しない。
 //!
 //! # 外部から不正状態を作れないこと（#378）
 //!
@@ -27,7 +26,6 @@
 //! - [`PublicationLinkTarget::Internal`] と [`PublicationOutlineEntry`] の到達先ページは必ず存在する
 //! - [`PaintOp::DrawImage`] が持つ [`ImageRef`] は必ず [`PublicationResources`] の画像を指す
 
-mod build;
 mod font;
 mod glyph;
 mod image_format;
@@ -37,7 +35,6 @@ use std::{
   sync::Arc,
 };
 
-pub(crate) use build::build;
 pub use font::{FontFaceConfig, FontMetric, VariationAxisConfig};
 pub use glyph::{Glyph, GlyphRun};
 pub use image_format::ImageFormat;

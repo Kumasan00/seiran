@@ -41,7 +41,7 @@ pub use warnings::Warnings;
 
 use crate::{
   project::SourceSet,
-  publication::{self, Publication},
+  publication::Publication,
   semantics::AnalyzeError,
   typeset::{FontResources, FontWarning, LaidOutDocument, TypesetWarning},
 };
@@ -107,7 +107,7 @@ pub fn compile<S: ProjectSource>(
 
   let dependencies = DependencyManifest::collect(&root, &inputs, &laid_out.image_paths);
   let page_count = laid_out.pages.len();
-  let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
+  let publication = typeset::emit(inputs.config(), inputs.font_data(), &font_resources, laid_out);
   let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
   let total_elapsed = build_start.elapsed();
   let statistics = BuildStatistics {

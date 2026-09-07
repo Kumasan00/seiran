@@ -1,14 +1,19 @@
-//! 確定ページ列と描画資源から [`Publication`] を構築する実装。
+//! 組版の出口 — 確定ページ列と資源から [`Publication`] を構築する。
 //!
 //! この写像が renderer ではなく compiler 側にあるのは、epic #276 で `pdf_gen`（現 `seiran-pdf`）から
 //! 移設した「compiler 側の最終変換」だから — renderer は確定座標の描画だけを行い、レイアウト判断を
-//! 持たない。ここで `Style` に依存する判断は
-//! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`crate::typeset::breaking`）が解決済みの値を
-//! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
+//! 持たない。`typeset` の中にあるのは、この写像が組版中間型（`crate::typeset::Page` /
+//! `PlacedBlock` / `HBoxContent`）とフォント資源の借用を要求する唯一の読み手だから（#535）。
+//! 依存の向きは `typeset → publication` の一方向で、`publication` はここを知らない。
+//!
+//! ここで `Style` に依存する判断は一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は
+//! 前段（`crate::typeset::breaking`）が解決済みの値を `crate::typeset::Page` /
+//! `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
 //! `crate::publication` の座標は pt 単位の `f32` なので、ここでの `crate::length::Length::to_pt()` 呼び出しは
-//! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列（`crate::publication::GlyphRun`）は
-//! シェイピング結果をそのまま載せ、フォントサイズ・色の単位変換は render が行う（#372）。
+//! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列
+//! （`crate::publication::GlyphRun`）はシェイピング結果をそのまま載せ、フォントサイズ・色の
+//! 単位変換は render が行う（#372）。
 
 use std::{collections::HashMap, mem};
 
@@ -29,7 +34,7 @@ use crate::{
 ///
 /// フォント資源は組版で使った解析結果を再利用し、画像はパス昇順に並べて不透明な `ImageRef` の
 /// 発行順を決定的にする。`compiler` はこの内部順序と組版中間型の走査を知らない。
-pub(crate) fn build(
+pub(crate) fn emit(
   config: &ProjectConfig,
   font_data: &FontData,
   font_resources: &FontResources<'_>,

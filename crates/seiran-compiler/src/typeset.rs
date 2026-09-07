@@ -6,7 +6,7 @@
 //! （box 計測は 1 回だけ・`breaking` はフォントに触れない）はすべて実装側に閉じる（#350）。
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
-//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。`publication::build` が
+//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。`emit` が
 //! `Publication` へ写すために読むぶんだけを facade へ出す。
 //!
 //! フォント処理（OpenType 解析・検証・メトリクス・シェイピング）は子 module `font` が持つ
@@ -18,6 +18,7 @@ use crate::project::ProjectSource;
 mod boxes;
 mod boxing;
 mod breaking;
+mod emit;
 mod error;
 mod font;
 mod geometry;
@@ -35,17 +36,19 @@ mod dump;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 
-// 確定レイアウトを `Publication` へ写す `publication::build` が、ページの中身（配置済みブロック・
-// 表の行・箱の内容）を走査するために名指しする型。この `boxes` からの
-// 再エクスポートに載るのは **本体コードに消費者がある名前だけ**で、テストが確定レイアウトを
-// 組み立てる手段は `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。組版の段を呼ぶための型
-// （`PageGeometry` / `KnuthPlassBreaker` / 各段の入力）は入口が `layout` 1 操作になったので
-// facade から外した（#350）。同様に `Align` / `FootnoteId` も `typeset` の外に消費者がいない（#326）。
+// 組版の出口 `emit` が、ページの中身（配置済みブロック・表の行・箱の内容）を走査するために
+// 必要な型。この `boxes` からの再エクスポートに載るのは **本体コードに消費者がある名前だけ**で、
+// テストが確定レイアウトを組み立てる手段は `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。
+// 組版の段を呼ぶための型（`PageGeometry` / `KnuthPlassBreaker` / 各段の入力）は入口が `layout` 1 操作
+// になったので facade から外した（#350）。同様に `Align` / `FootnoteId` も `typeset` の外に消費者がいない（#326）。
 pub(crate) use boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow};
 // テスト専用の例外 — `compiler::golden` / `compiler::project_source_equivalence` が確定ページ列を
 // ダンプ比較するための関数 1 つだけを出す（中間型そのものは出さない）。
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
+// 組版の出口 — 確定レイアウトと資源から `Publication` を構築する（#535）。Task 3 で入口が
+// `compose` 1 操作になった時点で、この再エクスポートは不要になる。
+pub(crate) use emit::emit;
 pub(crate) use error::TypesetError;
 // フォント資源のハンドル `FontResources`。フォントの解析・検証・シェーパー構築は `font` に
 // 閉じており、`FontSystem` / `FontRefs` / `FontMetrics` / 拡張 trait は `typeset` の外から
@@ -56,7 +59,7 @@ pub(crate) use font::{FontResources, FontWarning};
 // 行い、確定した版面 `PreparedGeometry` を `layout` の引数として受け取り直す — 不正な組み合わせを
 // 組版より前に弾き、診断の出るタイミングを変えないため（#533）。
 pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
-// `ImageAsset` は `publication::build` が描画資源へ写すためだけに読む中間表現（#378）。
+// `ImageAsset` は `emit` が描画資源へ写すためだけに読む中間表現（#378）。
 pub(crate) use image::ImageAsset;
 pub(crate) use pagination::LaidOutDocument;
 // 組版が見つけた、ユーザーが直せる非致命的問題（#382）。`compiler` が `Warnings` へ積む。
