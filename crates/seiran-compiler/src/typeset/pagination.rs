@@ -8,9 +8,11 @@ mod body;
 mod context;
 mod footnote_numbering;
 mod front_matter;
+mod index;
 mod outline;
 mod page_values;
 mod running;
+mod toc;
 
 use std::collections::HashMap;
 

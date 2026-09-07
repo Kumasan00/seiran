@@ -1,62 +1,116 @@
-//! 目次（table of contents）ブロックの生成パス
+//! 目次（table of contents）の生成 — 見出しの絞り込み・ページラベル解決・style 投影・行組み立て
+//!
+//! 段 3（前付け）から呼ばれる。ページ分割で見出しのページ番号が確定した後に走るので、
+//! 入力は [`BodyPageFacts`]（本文の見出し記録 + ページ値）で足りる。
+//! 前付けの構成（タイトルページとの順序・改ページ）は呼び出し元 `front_matter` が持つ。
+
+use tracing::debug;
 
 use crate::{
   document::{FontKind, HeadingLevel},
   length::Length,
   semantics::HeadingKey,
-  style::Style,
+  style::{Style, TocStyle},
   typeset::{
-    boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
-    boxing::Measurer,
+    boxes::{AnchorId, Block, Line, LineLink, LinkTarget},
+    boxing::{LineAccum, Measurer, row_width},
     font::FontSystem,
-    lowering::TextStyle,
+    lowering::{HeadingRecord, TextStyle},
+    pagination::{
+      context::{BodyPageFacts, TypesetContext},
+      page_values::BodyPageValues,
+    },
   },
 };
 
 /// 目次生成に必要なプリミティブ設定。
 #[derive(Debug, Clone)]
-pub(crate) struct TocSpec {
+struct TocSpec {
   /// 目次の見出し文字列（例: `"Contents"`）
-  pub title: String,
+  title: String,
   /// 見出し文字列の書体
-  pub title_style: TextStyle,
+  title_style: TextStyle,
   /// 見出しとエントリ群の間の縦アキ（pt）
-  pub title_bottom_margin: Length,
+  title_bottom_margin: Length,
   /// エントリ本文・ページ番号・リーダーの書体
-  pub entry_style: TextStyle,
+  entry_style: TextStyle,
   /// 見出しレベルの深さ 1 段ごとに加える左インデント（pt）
-  pub indent_per_level: Length,
+  indent_per_level: Length,
   /// リーダー単位文字列（`None` でリーダー無し）。残り幅いっぱいに反復する
-  pub leader: Option<String>,
+  leader: Option<String>,
   /// ページ番号を表示するか
-  pub show_page_numbers: bool,
+  show_page_numbers: bool,
   /// 本文幅（pt）。ページ番号の右端揃えの基準
-  pub text_width: Length,
+  text_width: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
-  pub line_height_factor: f32,
+  line_height_factor: f32,
   /// 目次ブロック全体の下余白（pt）
-  pub bottom_margin: Length,
+  bottom_margin: Length,
 }
 
-/// 1 目次エントリの入力
+/// 1 目次エントリ
 #[derive(Debug, Clone)]
-pub(crate) struct TocEntryInput {
+struct TocEntry {
   /// 見出しレベル（インデントの深さに使う）
-  pub level: HeadingLevel,
+  level: HeadingLevel,
   /// 書式化済みの見出し番号（空なら番号なし）
-  pub number: String,
+  number: String,
   /// 見出しタイトル（プレーンテキスト）
-  pub title_plain: String,
+  title_plain: String,
   /// 表示するページ番号ラベル
-  pub page_label: String,
+  page_label: String,
   /// 対応見出しの暗黙 destination キー（内部リンクの行き先）
-  pub link_key: HeadingKey,
+  link_key: HeadingKey,
+}
+
+/// 目次の計測済みブロック列を組み立てる。
+///
+/// 見出しの絞り込み（`style.toc.max_depth`）・ページラベルの解決・style の投影・行組み立てまでを
+/// この 1 操作に閉じる。目次に載る見出しが 1 つも無ければ空の `Vec` を返す。
+#[must_use]
+pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Block> {
+  let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
+  let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
+  let blocks = compose_blocks(&spec, &entries, ctx.resources);
+  if !blocks.is_empty() {
+    debug!(toc_entry_count = entries.len(), "目次を生成");
+  }
+  return blocks;
+}
+
+/// 見出しと本文内ページ index から目次エントリを組み立てる。
+///
+/// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
+fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntry> {
+  let heading_pages = page_values.heading_pages();
+  if headings.len() != heading_pages.len() {
+    unreachable!(
+      "lowering は見出し記録 1 件につき Heading アンカーを 1 個だけ出し、break_pages は全アンカーを \
+       いずれかの本文ページへ載せるので数が一致する: headings={} pages={}",
+      headings.len(),
+      heading_pages.len()
+    )
+  }
+  return headings
+    .iter()
+    .zip(heading_pages.iter().copied())
+    .filter(|(info, _)| return u32::from(info.level.depth()) < toc.max_depth)
+    .map(|(info, page_index)| {
+      return TocEntry {
+        level: info.level,
+        number: info.number.clone(),
+        title_plain: info.title_plain.clone(),
+        page_label: page_values.body_page_label(page_index),
+        link_key: HeadingKey::new(info.index),
+      };
+    })
+    .collect();
 }
 
 /// スタイルから目次生成用の [`TocSpec`] を組み立てる。
 ///
 /// 目次見出しの書体は文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
-pub(crate) fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
+fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = style.heading(HeadingLevel::Section);
   return TocSpec {
@@ -83,7 +137,7 @@ pub(crate) fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
 
 /// 目次エントリ列を計測済みのブロック列に変換する
 #[must_use]
-pub(crate) fn build_toc_blocks(spec: &TocSpec, entries: &[TocEntryInput], resources: &FontSystem<'_>) -> Vec<Block> {
+fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
@@ -112,49 +166,6 @@ pub(crate) fn build_toc_blocks(spec: &TocSpec, entries: &[TocEntryInput], resour
   return blocks;
 }
 
-/// 単一行を組み立てる際の累積状態（配置済みボックス・行の高さ・深さ）
-#[derive(Default)]
-struct LineAccum {
-  /// 配置済みボックス列
-  boxes: Vec<PositionedBox>,
-  /// 行の高さ（ベースラインより上）
-  height: Length,
-  /// 行の深さ（ベースラインより下）
-  depth: Length,
-}
-
-impl LineAccum {
-  /// `HBox` 列を `x_start` から水平に並べて追加し、行の高さ・深さを更新する。末尾の x を返す
-  fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
-    let mut x = x_start;
-    for hbox in hboxes {
-      self.height = self.height.max(hbox.height);
-      self.depth = self.depth.max(hbox.depth);
-      self.boxes.push(PositionedBox {
-        content: hbox.content,
-        x,
-        dy: Length::ZERO,
-        width: hbox.width,
-      });
-      x += hbox.width;
-    }
-    return x;
-  }
-
-  /// 累積した内容を `Line`（段落最終行扱い）に確定する
-  fn into_line(self, links: Vec<LineLink>) -> Line {
-    return Line {
-      boxes: self.boxes,
-      height: self.height,
-      depth: self.depth,
-      is_last: true,
-      links,
-      footnotes: Vec::new(),
-      index_marks: Vec::new(),
-    };
-  }
-}
-
 /// テキストを左端（x=0）からシェーピングして単一行に組む（見出し行用）
 fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
@@ -163,7 +174,7 @@ fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) 
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む
-fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &TocSpec, entry: &TocEntryInput) -> Line {
+fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &TocSpec, entry: &TocEntry) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
   let label = entry_label(&entry.number, &entry.title_plain);
 
@@ -173,7 +184,7 @@ fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &TocSpec, entry: &TocEn
   let mut right_edge = left_end;
   if spec.show_page_numbers {
     let page_boxes = measurer.shape_text(&entry.page_label, spec.entry_style);
-    let page_width: Length = page_boxes.iter().map(|b| return b.width).sum();
+    let page_width = row_width(&page_boxes);
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
     // リーダーをページ番号側に寄せて充填する
@@ -216,7 +227,7 @@ fn fill_leader(
   if !available.is_positive() {
     return;
   }
-  let unit_width: Length = measurer.shape_text(unit, style).iter().map(|b| return b.width).sum();
+  let unit_width = row_width(&measurer.shape_text(unit, style));
   if !unit_width.is_positive() {
     return;
   }
@@ -230,18 +241,19 @@ fn fill_leader(
     return;
   }
   let leader_boxes = measurer.shape_text(&unit.repeat(count), style);
-  let leader_width: Length = leader_boxes.iter().map(|b| return b.width).sum();
+  let leader_width = row_width(&leader_boxes);
   acc.place(leader_boxes, to_x - leader_width);
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{TextStyle, TocEntryInput, TocSpec, entry_label};
+  use super::{BodyPageValues, HeadingRecord, TextStyle, TocEntry, TocSpec, collect_toc_entries, entry_label};
   use crate::{
     document::{FontKind, HeadingLevel},
     length::Length,
     semantics::HeadingKey,
-    typeset::boxes::{AnchorId, LinkTarget},
+    style::{PageNumbering, TocStyle},
+    typeset::boxes::{AnchorId, AnchorMark, LinkTarget, Page, PlacedAnchor},
   };
 
   fn spec() -> TocSpec {
@@ -267,14 +279,50 @@ mod tests {
     };
   }
 
-  fn entry(level: HeadingLevel, number: &str, title: &str, page: &str, key: usize) -> TocEntryInput {
-    return TocEntryInput {
+  fn entry(level: HeadingLevel, number: &str, title: &str, page: &str, key: usize) -> TocEntry {
+    return TocEntry {
       level,
       number: number.to_string(),
       title_plain: title.to_string(),
       page_label: page.to_string(),
       link_key: HeadingKey::new(key),
     };
+  }
+
+  fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
+    return HeadingRecord {
+      index,
+      level,
+      number: number.to_string(),
+      title_plain: title_plain.to_string(),
+    };
+  }
+
+  /// 各ページに 1 つずつ見出しアンカーを持つ本文ページ列から [`BodyPageValues`] を作るヘルパ
+  fn body_page_values_with_headings(heading_count: usize) -> BodyPageValues {
+    let pages: Vec<Page> = (0..heading_count)
+      .map(|index| {
+        return Page {
+          blocks: Vec::new(),
+          header: Vec::new(),
+          footer: Vec::new(),
+          footnotes: Vec::new(),
+          anchors: vec![PlacedAnchor {
+            mark: AnchorMark::Heading {
+              key: HeadingKey::new(index),
+              label: None,
+            },
+            x: Length::ZERO,
+            y: Length::ZERO,
+          }],
+          links: Vec::new(),
+          index_entries: Vec::new(),
+          background_color: None,
+          content_origin_x: Length::ZERO,
+        };
+      })
+      .collect();
+    return BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
   }
 
   #[test]
@@ -295,5 +343,32 @@ mod tests {
     assert!(
       matches!(LinkTarget::Internal(AnchorId::Heading(e.link_key)), LinkTarget::Internal(k) if k == AnchorId::Heading(HeadingKey::new(1)))
     );
+  }
+
+  #[test]
+  fn collect_toc_entries_filters_by_max_depth_and_renders_page_label() {
+    // Arrange — Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
+    let headings = vec![
+      heading_record(0, HeadingLevel::Chapter, "1", "Ch"),
+      heading_record(1, HeadingLevel::Section, "1.1", "Sec"),
+      heading_record(2, HeadingLevel::Subsection, "1.1.1", "Sub"),
+    ];
+    let page_values = body_page_values_with_headings(3);
+    let toc = TocStyle {
+      max_depth: 3,
+      ..TocStyle::default()
+    };
+
+    // Act
+    let entries = collect_toc_entries(&headings, &page_values, &toc);
+
+    // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].number, "1");
+    assert_eq!(entries[0].page_label, "1");
+    assert_eq!(entries[0].link_key, HeadingKey::new(0));
+    assert_eq!(entries[1].title_plain, "Sec");
+    assert_eq!(entries[1].page_label, "2");
+    assert_eq!(entries[1].link_key, HeadingKey::new(1));
   }
 }

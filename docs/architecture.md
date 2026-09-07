@@ -511,11 +511,11 @@ Result<Style, Failures<ReadStyleError>>`（`path` は `project::config::load` �
   ページ番号の文字色は独自フィールドを持たず `style.hyperref.link_color` を継承する。
   `collapse_page_ranges`（既定 `false`、#508）は
   連続 3 ページ以上の走りを `3–5`（en dash）へ畳むオプトインで、区切り記号と閾値 3 は慣習定数として
-  `typeset::boxing::index` が持ち style へは出さない（ページ集合は内容・範囲表記は見た目という P10 の適用）。
+  `typeset::pagination::index` が持ち style へは出さない（ページ集合は内容・範囲表記は見た目という P10 の適用）。
   `group_headings`（既定 `false`、#509）は五十音行・A–Z の区分見出しを挟むオプトインで、
   `group_font_size` / `group_top_margin` / `group_bottom_margin` が見出しの体裁、`group_other_label`
   （既定 `"Others"`）がどの区分にも入らないエントリの受け皿の見出し文字列。行ラベルと A–Z の
-  36 個は言語慣習の固定表（CLDR の `ja` index characters）として `typeset::boxing::index` が持ち
+  36 個は言語慣習の固定表（CLDR の `ja` index characters）として `typeset::pagination::index::grouping` が持ち
   style へは出さない
 - **脚注（`FootnoteStyle`）**: `[footnote]` に本体のフォントサイズ・マーカー体裁（`marker_format` の
   `{number}` 置換・`marker_size_factor` / `marker_raise_factor`）・区切り罫線（`top_margin` →
@@ -920,8 +920,8 @@ pub(crate) fn compose(
 段順序（画像パス収集 → 画像読込・自然寸法取得 → lowering → `build_blocks` → 画像サイズ確定 →
 `break_pages` → 前付け・後付け → ページラベル → 走り文 → outline）と、その間に成立する不変条件
 （box 計測は 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）は
-すべて実装側に閉じる。`build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` /
-`resolve_hyphenation` / `break_opportunities` / `layout_running_content` / 各段の入力型は
+すべて実装側に閉じる。`build_blocks` / `break_pages` / `resolve_hyphenation` / `break_opportunities` /
+`pagination` の各機能 module（`toc` / `index` / `running`）の入口と入力型は
 `lay_out`（`compose` が内部で呼ぶ組版の前半）からのみ到達する非公開実装で、個別には公開しない。
 `LineBreaker` トレイトと
 `KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam だが `typeset::breaking` 止まりで、
@@ -1172,12 +1172,38 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   脚注がページ単位採番のときだけ `footnote_numbering` の solver から複数回呼ばれる（パスの中身自体は
   変わらない）。`break_pages` が返したはみ出しは `BodyLayout` のフィールドとして運ばれるので、
   solver が収束したパスの `BodyLayout` だけを返すことがそのまま重複警告の抑止になる（#382）
-- `front_matter`: 段 3。`BodyPageValues` から目次エントリ（`TocEntryInput`）を組み立て、タイトル
-  ページ → 目次の順にブロックを積んでページ分割する。常に 1 段組み
-- `back_matter`: 段 4。本文全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ
-  `AnchorMark::IndexPage(usize)` を事後追加（`body_pages` の破壊的更新）してから巻末索引を組む
-- `running`: 段 6。`PageLabels` を引数に要求して呼び出し順を型で制約し、`RunningContentSpec` を
-  組み立てて `boxing::layout_running_content` を呼ぶ
+- `front_matter`: 段 3。タイトルページ → 目次の順にブロックを積んでページ分割する。常に 1 段組み。
+  どの機能をどの順に置くかだけを持ち、目次の中身は `toc` が所有する（#536）
+- `back_matter`: 段 4。`index` が組んだ巻末索引ブロックをページ分割する。索引の中身は `index` が
+  所有する（#536）
+- `toc`: 目次の機能 module。入口は `build_toc_blocks(ctx, facts)` 1 つで、見出しの深さ絞り
+  （`style.toc.max_depth`）・ページラベルの解決・style の投影（`TocSpec`）・リーダーと右寄せページ番号の
+  行組み立てをここに閉じる。ページ分割で見出しのページ番号が確定した後に走る
+- `index`: 巻末索引の機能 module。入口は `build_index_blocks(ctx, body_pages, facts)` 1 つで、本文全ページの
+  `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後追加
+  （`body_pages` の破壊的更新）してから、並び順・区分・ページ番号列の畳み込み・style の投影・行組み立てまでを
+  行う。並び順と区分の割り当ては子 module `grouping` に閉じる
+  索引の行組み立ては右寄せ・リーダーを使わず「語 … ページ番号列（カンマ区切り）」の単一行。番号列は
+  `group_page_items` が表示単位へ分け、既定では 1 ページ 1 リンク、`style.index.collapse_page_ranges` が
+  有効なら連続 3 ページ以上を `3–5` へ畳んで範囲全体に先頭ページへのリンクを 1 本張る（中間・末尾ページへの
+  個別リンクは持たない）。連番判定はラベル文字列ではなく `IndexPageRef.link_key`（本文内ページ index）の
+  差分で行う — ラベルは `link_key + 1` を番号スタイルで整形したものなので、ローマ数字等でも判定が成立する。
+  索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる。
+  子 module `grouping` はソート（`sort_index_entries`。`icu::collator::Collator`、ロケール固定 `ja`。
+  `reading` があればそれ、なければ `word` をキーにする）と区分割り当て（`assign_index_groups`）の両方を
+  持ち、**同じ照合キー・同じ照合順序**から出ることを 1 module で保証する。区分見出し
+  （`style.index.group_headings`、#509）は ICU `AlphabeticIndex` と同じ照合区間割り当てで決める — 照合キーを
+  一次強度（濁点・半濁点・カナ種・小書き・大文字小文字を同一視）で固定表 `GROUP_LABELS` と比べ、
+  ラベル L 以上・次ラベル未満なら L の区分。かな正規化表や「ん」の特例は持たず、区分とソートが同じ照合順序から
+  出るので不整合が構造的に起きない。先頭ラベルより前（数字・記号）と最終ラベルの区間を超えるもの
+  （reading の無い漢字語等）は末尾 1 つの受け皿へ統合する（overflow 判定だけはキー全体でなく先頭文字を
+  `KANA_RANGE_END` と比べる — キー全体だと接頭辞規則で「ん」始まりが受け皿へ落ちるため）。入力が照合順なので
+  再ソートは不要で、見出し行の直後に置く `PENALTY_FORBID_BREAK` が `break_pages` の keep-with-next 機構に
+  乗って段末・ページ末の孤立を防ぐ
+- `running`: 段 6。走り文の機能 module。`PageLabels` を引数に要求して呼び出し順を型で制約し、
+  style の投影（テンプレート・書体・区切り線）・`{page}` 等のトークン置換・左 / 中央 / 右スロットの配置を
+  ここに閉じる。入口は `place_running_content` 1 つで、各 `Page::header` / `footer` へ `PlacedBlock` 列
+  （行 + 任意の区切り罫）として配置する
 - `outline`: 段 7。見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
@@ -1389,29 +1415,11 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 サブモジュール:
 
+- `composed_line`: `Measurer` がシェーピングした `HBox` 列を x 座標付きで 1 行へ積む累積器 `LineAccum` と
+  合計幅 `row_width`。生成コンテンツ 3 機能（`pagination` の `toc` / `index` / `running`）が共有する
+  行組み立ての仕組みで、何を組むかは消費側が持つ（#536）
 - `math`: ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
 - `script`: スクリプト判定・分割
-- `running`: `layout_running_content` が `break_pages` 後（ページ数確定後）にヘッダー・フッターを
-  トークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する
-- `toc`: 目次ブロック生成（ページ分割で見出しのページ番号が確定した後に走る）
-- `index`: 巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・
-  リーダーを使わず「語 … ページ番号列（カンマ区切り）」の単一行を組む。番号列は `group_page_items` が
-  表示単位へ分け、既定では 1 ページ 1 リンク、`style.index.collapse_page_ranges` が有効なら連続 3 ページ
-  以上を `3–5` へ畳んで範囲全体に先頭ページへのリンクを 1 本張る（中間・末尾ページへの個別リンクは持たない）。
-  連番判定はラベル文字列ではなく `IndexPageRef.link_key`（本文内ページ index）の差分で行う — ラベルは
-  `link_key + 1` を番号スタイルで整形したものなので、ローマ数字等でも判定が成立する。ソート
-  （`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で、`reading` があればそれ、
-  なければ `word` をキーにする。呼び出し元（`typeset::pagination::back_matter`）が全ページの
-  `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後
-  追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる。
-  区分見出し（`style.index.group_headings`、#509）は `assign_index_groups` が ICU `AlphabeticIndex` と同じ
-  照合区間割り当てで決める — ソートと同じ照合キーを一次強度（濁点・半濁点・カナ種・小書き・大文字小文字を
-  同一視）で固定表 `GROUP_LABELS` と比べ、ラベル L 以上・次ラベル未満なら L の区分。かな正規化表や
-  「ん」の特例は持たず、区分とソートが同じ照合順序から出るので不整合が構造的に起きない。先頭ラベルより前
-  （数字・記号）と最終ラベルの区間を超えるもの（reading の無い漢字語等）は末尾 1 つの受け皿へ統合する
-  （overflow 判定だけはキー全体でなく先頭文字を `KANA_RANGE_END` と比べる — キー全体だと接頭辞規則で
-  「ん」始まりが受け皿へ落ちるため）。入力が照合順なので再ソートは不要で、見出し行の直後に置く
-  `PENALTY_FORBID_BREAK` が `break_pages` の keep-with-next 機構に乗って段末・ページ末の孤立を防ぐ
 - `yakumono`: 和文約物の分類と JIS X 4051 の前後アキ規則
 
 #### `breaking`
