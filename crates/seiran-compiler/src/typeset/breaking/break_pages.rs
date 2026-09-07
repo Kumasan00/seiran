@@ -29,7 +29,7 @@ pub(crate) struct PageGeometry {
   /// 本文の水平原点（pt）= 用紙左端から本文左端まで（`style.page.margin_left`）。
   ///
   /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
-  /// [`crate::typeset::Page::content_origin_x`] へそのまま載せて描画側の加算に使わせる。
+  /// [`crate::typeset::boxes::Page::content_origin_x`] へそのまま載せて描画側の加算に使わせる。
   pub content_origin_x: Length,
   /// 上マージン（pt）。ページ先頭のベースライン位置
   pub margin_top: Length,

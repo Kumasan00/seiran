@@ -25,8 +25,10 @@ use crate::{
     PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
   },
   typeset::{
-    AnchorId, AnchorMark, FontResources, HBoxContent, ImageAsset, LaidOutDocument, LinkTarget as TypesetLinkTarget,
-    Page, PlacedBlock, PlacedTableRow,
+    LaidOutDocument,
+    boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget as TypesetLinkTarget, Page, PlacedBlock, PlacedTableRow},
+    font::FontResources,
+    image::ImageAsset,
   },
 };
 
