@@ -1440,7 +1440,8 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 - (d) `break_pages`: ベースライン送り・改ページ・表分割。版面の幾何 `PageGeometry` は
   `typeset::geometry` が定義・構築し、この module は `&PageGeometry` を受け取って分割する側（#538）。
   戻り値は確定ページ列と、脚注のはみ出し記録 `FootnoteOverflow`（純データ。`page_index` はこの
-  呼び出しが返すページ列の中での index）のタプル。**純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
+  呼び出しが返すページ列の中での index）のタプル。
+  **純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
   `bool` で返すだけ**で、ページ番号・脚注番号を添えて記録するのは `PageComposer` の責務 —
   計画は widow / orphan 補正で何度も立て直されるので、確定した配置ループからしか記録しないことで
   重複を構造的に防ぐ（#382）。非公開 child module は 3 つ — 純粋な計算 2 つと、現在ページの台帳 1 つ
