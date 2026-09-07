@@ -100,7 +100,7 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PageGeometry {
+pub(super) struct PageGeometry {
   /// 本文の水平原点（pt）= 用紙左端から本文左端まで（`style.page.margin_left`）。
   ///
   /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
