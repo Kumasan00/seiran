@@ -1,10 +1,10 @@
 //! 定理環境 — `theorem` / `lemma` / … / `proof`（10 種）
 
 use crate::{
-  document::{HirBuilder, HirNode, HirNodeKind, HirProofTarget, TheoremClass},
+  document::{HirNode, HirNodeKind, HirProofTarget, TheoremClass},
   frontend::{
     evaluator::{
-      self, EvalError,
+      self, EvalContext, EvalError,
       opt_args::{OptType, OptValue, collect_environment_opt_args},
     },
     span_ext::ToSourceSpan,
@@ -17,7 +17,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー、余分な必須引数、ラベル重複などが発生した場合にエラーを返します。
-pub(super) fn theorem(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn theorem(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let Ok(class) = view.name().parse::<TheoremClass>() else {
     unreachable!("ENVIRONMENTS は 10 種の定理クラスのみを本ハンドラに登録する");
   };
@@ -51,16 +51,16 @@ pub(super) fn theorem(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Resul
     });
   }
 
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   // `[of=...]` は環境ヘッダにあるので、本体より先に ID を確保する
   let of = of_label.map(|label| {
     return HirProofTarget {
-      id: builder.alloc(view.span()),
+      id: ctx.alloc(view.span()),
       label,
     };
   });
   let body = match view.body() {
-    Some(body) => evaluator::evaluate_children(view.source(), builder, body)?,
+    Some(body) => evaluator::evaluate_children(view.source(), ctx, body)?,
     None => Vec::new(),
   };
 

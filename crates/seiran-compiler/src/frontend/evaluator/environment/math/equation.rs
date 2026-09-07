@@ -3,10 +3,10 @@
 //! 1 行 1 セルとして評価し、行単位で採番する。
 
 use crate::{
-  document::{HirBuilder, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       environment::math::math_grid::{GridSpec, evaluate_grid},
       opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
     },
@@ -21,7 +21,7 @@ use crate::{
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
   let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
   let label = find_string(&opt_args, "label");
@@ -39,20 +39,20 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Resu
   }
 
   let source = view.source();
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let (row_id, cells) = match view.body() {
     Some(body_node) => {
       let spec = GridSpec {
         allow_row_breaks: false,
         allow_column_breaks: false,
       };
-      let grid = evaluate_grid(source, builder, body_node, &spec, false)?;
+      let grid = evaluate_grid(source, ctx, body_node, &spec, false)?;
       match grid.into_iter().next() {
         Some(row) => (row.id, row.cells),
-        None => (builder.alloc(view.span()), vec![Vec::new()]),
+        None => (ctx.alloc(view.span()), vec![Vec::new()]),
       }
     },
-    None => (builder.alloc(view.span()), vec![Vec::new()]),
+    None => (ctx.alloc(view.span()), vec![Vec::new()]),
   };
 
   let row = HirMathRow {

@@ -3,10 +3,10 @@
 use std::mem;
 
 use crate::{
-  document::{HirBuilder, HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       command::{
         COMMAND_MAP, CommandKind,
         cite::cite_command,
@@ -79,7 +79,7 @@ impl InlineSink {
   ///
   /// 索引マーカーを跨いで直前のノードと連続していれば、新しいノードを作らずそのノードへ
   /// 追記して span を伸ばす。新規 `NodeId` を発行しないので採番順は変わらない。
-  pub(crate) fn push_text_token(&mut self, builder: &HirBuilder, span: Span, text: &str) {
+  pub(crate) fn push_text_token(&mut self, ctx: &EvalContext<'_>, span: Span, text: &str) {
     if let Some((at, _)) = self.last_text
       && self.armed_gap == Some(span.start)
     {
@@ -87,13 +87,13 @@ impl InlineSink {
         unreachable!("last_text が指すのは push_text_token が積んだ Text ノードだけである")
       };
       merged.push_str(text);
-      let start = builder.span_of(self.inlines[at].id).start;
-      builder.set_span(self.inlines[at].id, Span::new(start, span.end));
+      let start = ctx.span_of(self.inlines[at].id).start;
+      ctx.set_span(self.inlines[at].id, Span::new(start, span.end));
       self.last_text = Some((at, span.end));
       self.armed_gap = None;
       return;
     }
-    self.inlines.push(builder.leaf_inline(span, HirInlineKind::Text(text.to_string())));
+    self.inlines.push(ctx.leaf_inline(span, HirInlineKind::Text(text.to_string())));
     self.last_text = Some((self.inlines.len() - 1, span.end));
     self.armed_gap = None;
     return;
@@ -149,11 +149,11 @@ impl InlineSink {
 /// 上記のほか、インラインコマンドの引数不足・過剰などでエラーを返します。
 pub(crate) fn extract_inline_nodes(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   node: &GreenNode<'_>,
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  return extract_inline_nodes_from_elements(source, builder, node.children, index_policy);
+  return extract_inline_nodes_from_elements(source, ctx, node.children, index_policy);
 }
 
 /// CST 要素のスライスから [`HirInline`] のリストを構築する
@@ -165,7 +165,7 @@ pub(crate) fn extract_inline_nodes(
 /// [`extract_inline_nodes`] と同じ条件でエラーを返します。
 pub(crate) fn extract_inline_nodes_from_elements(
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   children: &[GreenElement<'_>],
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
@@ -175,28 +175,28 @@ pub(crate) fn extract_inline_nodes_from_elements(
       GreenElement::Token(token) => match token.kind {
         // 索引マーカーをまたぐ結合はここだけが担う（[`InlineSink`] の doc 参照、#514）。
         TokenKind::Text => {
-          sink.push_text_token(builder, token.span, token.text(source));
+          sink.push_text_token(ctx, token.span, token.text(source));
         },
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
         // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
         TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
-          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
+          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
+          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
         },
         TokenKind::LineBreak => {
-          sink.push(builder.leaf_inline(token.span, HirInlineKind::LineBreak));
+          sink.push(ctx.leaf_inline(token.span, HirInlineKind::LineBreak));
         },
         TokenKind::Underscore => {
-          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
+          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
         },
         TokenKind::Caret => {
-          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
+          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
         },
         TokenKind::Ampersand => {
-          sink.push(builder.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
+          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
         },
         TokenKind::ParagraphBreak => {
           return Err(EvalError::ParagraphBreakInArgument {
@@ -219,28 +219,28 @@ pub(crate) fn extract_inline_nodes_from_elements(
           let view = CommandView::new(child_node, source);
           match COMMAND_MAP.get(view.name()).copied() {
             Some(CommandKind::StyledText(kind)) => {
-              sink.extend_inline_result(child_node.span, styled_text(&view, builder, kind, index_policy)?);
+              sink.extend_inline_result(child_node.span, styled_text(&view, ctx, kind, index_policy)?);
             },
             Some(CommandKind::ColoredText) => {
-              sink.extend_inline_result(child_node.span, colored_text(&view, builder, index_policy)?);
+              sink.extend_inline_result(child_node.span, colored_text(&view, ctx, index_policy)?);
             },
             Some(CommandKind::Ref) => {
-              sink.extend_inline_result(child_node.span, ref_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, ref_command(&view, ctx)?);
             },
             Some(CommandKind::Cite) => {
-              sink.extend_inline_result(child_node.span, cite_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, cite_command(&view, ctx)?);
             },
             Some(CommandKind::Footnote) => {
-              sink.extend_inline_result(child_node.span, footnote_command(&view, builder, index_policy)?);
+              sink.extend_inline_result(child_node.span, footnote_command(&view, ctx, index_policy)?);
             },
             Some(CommandKind::Url) => {
-              sink.extend_inline_result(child_node.span, url_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, url_command(&view, ctx)?);
             },
             Some(CommandKind::Href) => {
-              sink.extend_inline_result(child_node.span, href_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, href_command(&view, ctx)?);
             },
             Some(CommandKind::Code) => {
-              sink.extend_inline_result(child_node.span, code_command(&view, builder)?);
+              sink.extend_inline_result(child_node.span, code_command(&view, ctx)?);
             },
             Some(CommandKind::Heading(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {
@@ -253,7 +253,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             // （表の \head セル）と本文の流れに置かれない文脈（見出しタイトル・\href の表示
             // テキスト・\index 自身の語）は拒否する
             Some(CommandKind::Index) => match index_policy {
-              IndexPolicy::Allow => sink.extend_inline_result(child_node.span, index_command(&view, builder)?),
+              IndexPolicy::Allow => sink.extend_inline_result(child_node.span, index_command(&view, ctx)?),
               IndexPolicy::Reject => {
                 return Err(EvalError::IndexNotAllowedHere {
                   span: view.span().to_source_span(),
@@ -262,7 +262,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             },
             None => {
               if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-                sink.extend_inline_result(child_node.span, single_char(&view, builder, symbol.ch)?);
+                sink.extend_inline_result(child_node.span, single_char(&view, ctx, symbol.ch)?);
               } else {
                 return Err(EvalError::UnknownCommand {
                   name: view.name().to_string(),
@@ -273,8 +273,8 @@ pub(crate) fn extract_inline_nodes_from_elements(
           }
         },
         SyntaxKind::InlineMath => {
-          let id = builder.alloc(child_node.span);
-          let math_nodes = math::evaluate_inline_math(source, builder, child_node)?;
+          let id = ctx.alloc(child_node.span);
+          let math_nodes = math::evaluate_inline_math(source, ctx, child_node)?;
           sink.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         SyntaxKind::Environment => {

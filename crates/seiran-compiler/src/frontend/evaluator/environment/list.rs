@@ -1,10 +1,10 @@
 //! リスト環境 — 箇条書き・番号付きリスト
 
 use crate::{
-  document::{HirBuilder, HirListItem, HirNode, HirNodeKind},
+  document::{HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      self, EvalError,
+      self, EvalContext, EvalError,
       environment::body_scan,
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
     },
@@ -18,8 +18,8 @@ use crate::{
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn itemize(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
-  return list_common(view, builder, false);
+pub(super) fn itemize(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+  return list_common(view, ctx, false);
 }
 
 /// `enumerate` 環境を評価する（順序付きリスト）
@@ -27,8 +27,8 @@ pub(super) fn itemize(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Resul
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn enumerate(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
-  return list_common(view, builder, true);
+pub(super) fn enumerate(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+  return list_common(view, ctx, true);
 }
 
 /// リスト環境の共通処理
@@ -36,7 +36,7 @@ pub(super) fn enumerate(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Res
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-fn list_common(view: &EnvironmentView<'_>, builder: &HirBuilder, ordered: bool) -> Result<Vec<HirNode>, EvalError> {
+fn list_common(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool) -> Result<Vec<HirNode>, EvalError> {
   let schema: &[(&str, OptType)] = if ordered {
     &[("start", OptType::Number), ("item_gap", OptType::Length)]
   } else {
@@ -72,7 +72,7 @@ fn list_common(view: &EnvironmentView<'_>, builder: &HirBuilder, ordered: bool) 
     });
   }
 
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let mut items = Vec::new();
   let source = view.source();
 
@@ -95,8 +95,8 @@ fn list_common(view: &EnvironmentView<'_>, builder: &HirBuilder, ordered: bool) 
           span: cmd_view.span().to_source_span(),
         });
       }
-      let item_id = builder.alloc(cmd_view.span());
-      let content = evaluator::evaluate_children(source, builder, first_arg)?;
+      let item_id = ctx.alloc(cmd_view.span());
+      let content = evaluator::evaluate_children(source, ctx, first_arg)?;
       items.push(HirListItem {
         id: item_id,
         content,

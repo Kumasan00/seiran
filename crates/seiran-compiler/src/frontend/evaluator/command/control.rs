@@ -1,9 +1,9 @@
 //! スペースや改ページなどの制御コマンド群
 
 use crate::{
-  document::{HirBuilder, HirNode, HirNodeKind},
+  document::{HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalError, opt_args::collect_command_opt_args},
+    evaluator::{EvalContext, EvalError, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::view::{CommandView, extract_text_content},
   },
@@ -15,7 +15,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰・数値でない場合にエラーを返します
-pub(super) fn space(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -53,7 +53,7 @@ pub(super) fn space(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<
     },
   };
 
-  return Ok(vec![builder.leaf_node(view.span(), HirNodeKind::Space(Length::pt(space_value)))]);
+  return Ok(vec![ctx.leaf_node(view.span(), HirNodeKind::Space(Length::pt(space_value)))]);
 }
 
 /// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
@@ -79,7 +79,7 @@ pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn pagebreak(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -87,7 +87,7 @@ pub(super) fn pagebreak(view: &CommandView<'_>, builder: &HirBuilder) -> Result<
       span: view.span().to_source_span(),
     });
   }
-  return Ok(vec![builder.leaf_node(view.span(), HirNodeKind::PageBreak)]);
+  return Ok(vec![ctx.leaf_node(view.span(), HirNodeKind::PageBreak)]);
 }
 
 #[cfg(test)]
@@ -106,7 +106,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return space(&view, builder));
+    let result = run_block_handler(|ctx| return space(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
@@ -166,7 +166,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler(|ctx| return pagebreak(&view, ctx));
 
     // Assert
     assert!(matches!(result.as_deref(), Ok([node]) if matches!(node.kind, HirNodeKind::PageBreak)));
@@ -181,7 +181,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler(|ctx| return pagebreak(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
@@ -196,7 +196,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler(|ctx| return pagebreak(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));

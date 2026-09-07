@@ -1,10 +1,10 @@
 //! `table` 本体の走査（`\head` / `\row` / `\caption`）と列数の解決・検証
 
 use crate::{
-  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow},
+  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableCell, HirTableRow},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       environment::{
         body_scan,
         caption::extract_caption,
@@ -37,7 +37,7 @@ pub(super) struct TableBody {
 }
 
 /// 本体から `\head` / `\row` / `\caption` を走査して [`TableBody`] に収集する
-pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<TableBody, EvalError> {
+pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<TableBody, EvalError> {
   let source = view.source();
   let mut head: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
   let mut rows: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
@@ -62,11 +62,11 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) 
               span: cmd_view.span().to_source_span(),
             });
           }
-          head = extract_head(&cmd_view, builder)?;
+          head = extract_head(&cmd_view, ctx)?;
         },
         "row" => {
           let span = cmd_view.span().to_source_span();
-          rows.push((extract_row(&cmd_view, builder, IndexPolicy::Allow)?, span));
+          rows.push((extract_row(&cmd_view, ctx, IndexPolicy::Allow)?, span));
         },
         "caption" => {
           if caption.is_some() {
@@ -79,7 +79,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) 
           if head.is_empty() && rows.is_empty() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(extract_caption(&cmd_view, builder)?);
+          caption = Some(extract_caption(&cmd_view, ctx)?);
         },
         _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
@@ -100,7 +100,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) 
 /// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
 fn extract_head(
   view: &CommandView<'_>,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
 ) -> Result<Vec<(HirTableRow, miette::SourceSpan)>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(arg) = view.first_arg() else {
@@ -141,7 +141,7 @@ fn extract_head(
           let row_view = CommandView::new(node, source);
           if row_view.name() == "row" {
             let span = row_view.span().to_source_span();
-            rows.push((extract_row(&row_view, builder, IndexPolicy::Reject)?, span));
+            rows.push((extract_row(&row_view, ctx, IndexPolicy::Reject)?, span));
           } else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: "table".to_string(),
@@ -176,7 +176,7 @@ fn extract_head(
 /// 呼び分けるために呼び出し元が決める。
 fn extract_row(
   view: &CommandView<'_>,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableRow, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
@@ -199,7 +199,7 @@ fn extract_row(
   }
 
   let source = view.source();
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let mut cells: Vec<HirTableCell> = Vec::new();
   let mut segment: Vec<GreenElement<'_>> = Vec::new();
   // 空セルには覆う要素がないので、直前の区切り位置を 0 幅の位置として使う
@@ -208,14 +208,14 @@ fn extract_row(
     if let GreenElement::Token(token) = child
       && token.kind == TokenKind::Ampersand
     {
-      cells.push(build_cell(source, builder, &segment, empty_cell_span, index_policy)?);
+      cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy)?);
       segment.clear();
       empty_cell_span = Span::new(token.span.end, token.span.end);
     } else {
       segment.push(*child);
     }
   }
-  cells.push(build_cell(source, builder, &segment, empty_cell_span, index_policy)?);
+  cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy)?);
 
   for cell in &cells {
     if contains_line_break(&cell.content) {

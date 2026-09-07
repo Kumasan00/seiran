@@ -302,14 +302,15 @@ config 内の相対パス（`sources` / `style_path` / `references_path` / フ�
 の実装より広いため、producer ではなくここが所有する。外部依存は serde / garde のみで、`document` が
 定義する型自体は診断ライブラリ（miette）にも I/O にも依存しない。crate 内では `length` / `color` /
 `source` / `project` に依存する（HIR や `table_column` が値として `Length` / `Color` /
-`SourceId` / `Span` / `ProjectPath` を持つため。`HirBuilder` が `project::PathResolver` を値として
-持つのも同じ依存で、resolver は I/O を持たない）。`FontKind`（言語判定前のフォントスタイル分類）は
+`SourceId` / `Span` / `ProjectPath` を持つため。パスの**解決規則**（`PathResolver`）は持たない —
+解決は frontend の評価 context が `project` の規則を借りて行い、`document` は解決済みの値だけを
+受け取る（#534）。`FontKind`（言語判定前のフォントスタイル分類）は
 HIR の `Styled` variant が値として持つ語彙なのでこの module の所有。`semantics` / `typeset` /
 `compiler` は知らない — 後段 module への依存は持たない。
 
 提供する interface は次の 4 つに限る。
 
-- frontend が HIR を構築するための `HirBuilder`（ID 発行・位置記録・`\image` パスの解決）と HIR ノード型
+- frontend が HIR を構築するための `HirBuilder`（ID 発行・位置記録・leaf ノード構築）と HIR ノード型
 - 複数ソースを決定順序で束ねる組み立て（`HirSource` → `HirGroup` → `HirDocument`）
 - `semantics` / `typeset` が authored 文書を網羅的に走査するための HIR enum。網羅的 match は意図した
   interface で、新しい言語要素を足したときに意味解析と lowering の更新漏れをコンパイラに検出させる
@@ -539,8 +540,10 @@ Result<Style, Failures<ReadStyleError>>`（`path` は `project::config::load` �
 
 `parse_source(source, source_id, resolver: &PathResolver)` は 1 ソース分の `document::HirSource`
 （`HirGroup` + そのソースの `SourceSpans`）を返す。`resolver` は `\image{...}` の字面を `ProjectPath`
-へ解決するために `HirBuilder` へ渡すだけで、`compile` facade が `base_dir` から 1 回だけ構築した値を
-そのまま運ぶ（#530）。
+へ解決するために評価 context（`evaluator::EvalContext`）へ渡すだけで、`compile` facade が `base_dir`
+から 1 回だけ構築した値をそのまま運ぶ（#530 / #534）。
+`parse_source` は context を組み立てて `evaluate_children` に渡し、`EvalContext::finish(nodes)` が
+`HirSource`（`HirGroup` + そのソースの `SourceSpans`）を組み立てて返す。
 `NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
 atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落は
 インラインを蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が
@@ -600,19 +603,24 @@ verbatim 環境の `\begin` 直後は**トリビアを跨がない** — `\begin
 #### `evaluator`
 
 CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
-型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
+型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&EvalContext<'_>` を受け取り、自分の ID を
 子より先に確保する（`syntax` 層は HIR を知らない）。
 
+- `context`: 評価ハンドラが受け取る唯一の context `EvalContext`（`HirBuilder` を所有 + `&PathResolver`
+  を借用）。`alloc` / `set_span` / `span_of` / `leaf_node` / `leaf_inline` / `leaf_math` は `HirBuilder`
+  への転送、`resolve_path` は `PathResolver` への委譲で、`Deref` は使わずハンドラから呼び出し先が
+  字面で読めるようにする。`finish(nodes)` が `document::HirSource` を組み立てて返す
 - `command/`: `control` / `footnote` / `heading` / `index`（`\index{語}`）/ `link` / `ref_` /
   `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol` / `text_style`（書体・文字色の指定）
 - `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `code`（verbatim 本体）/ `table`（+ `table::body` /
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する。
-  `figure` は `\image{...}` の字面を `HirBuilder::resolve_path` で解決して HIR へ格納する（文書木への
-  書き戻し pass は無い）。`HirBuilder` に載せた理由は環境ハンドラの dispatch が `fn(view, &HirBuilder)`
-  の phf テーブルで、別 context 型を導入すると画像を扱わないハンドラも含めた全ハンドラの interface が
-  変わってしまうため（#530）
+  `figure` は `\image{...}` の字面を `EvalContext::resolve_path` で解決して HIR へ格納する（文書木への
+  書き戻し pass は無い）。解決規則を持ち回る context を frontend 側に置くのは、「評価中に持ち回る値」が
+  frontend の関心であり、`document` は authored HIR と語彙型の所有者だから（#534。#530 では
+  「ハンドラ dispatch が fn ポインタなので `HirBuilder` へ載せるのが最小」と判断したが、signature の
+  置換は全ハンドラで一様であり、interface の凝集度で判断すると context 側が正しい）
 - `inline` / `math` / `opt_args` / `error`。任意引数の検査（未知キー・同一組内のキー重複
   `DuplicateOptArgKey`・値の型）は `opt_args::collect_opt_args` 1 箇所が担い、ハンドラは許可キーと型の
   スキーマを渡すだけ（#488）。引数の再帰評価 `inline::extract_inline_nodes` は `IndexPolicy`
@@ -630,9 +638,10 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 #### テスト用子 module `test_support`（`frontend` 直下、`#[cfg(test)]` 限定）
 
 `frontend` 配下と後段（`semantics` / `typeset`）の test module が共有する、resolver 注入済みの入口。
-`unbased_resolver`（`base_dir` が空パスの `PathResolver`。相対パスがそのまま残る）・
-`parse_source_for_test`（`frontend::parse_source` を `unbased_resolver` で呼ぶ）・
-`hir_builder_for_test`（同じ resolver を持つ `HirBuilder`）の 3 つを持つ。パス解決そのものを検証する
+`UNBASED_RESOLVER`（`base_dir` が空パスの `PathResolver`。相対パスがそのまま残る。`EvalContext` が
+借用するので `LazyLock` の静的値）・`parse_source_for_test`（`frontend::parse_source` を
+`UNBASED_RESOLVER` で呼ぶ）・`eval_context_for_test`（その resolver を借用する `EvalContext<'static>`）
+の 3 つを持つ。パス解決そのものを検証する
 テストは `PathResolver::new(Path::new("/project"))` を明示して `frontend::parse_source` を直接呼ぶ。
 CST 組み立て用の `evaluator::test_support`（`pub(super) mod`、直近の親だけが使う）とは別物で、
 名前が衝突するため `evaluator.rs` は関数を直接 import する。`semantics` / `typeset` の test module からも
@@ -653,8 +662,8 @@ CST 組み立て用の `evaluator::test_support`（`pub(super) mod`、直近の�
   8 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
   ことを意味し、許可リストへ足さず不具合として扱う。
 - **`style` / `project::config` に依存しない**。設定の値を見ずに評価できる形を保つ。
-  `project::PathResolver` を経由してパス解決の規則は借りるが、`base_dir.join` を直接書かない
-  （解決規則の実装は `PathResolver` 1 箇所に閉じる、#530）。
+  評価 context（`EvalContext`）が `project::PathResolver` を借用してパス解決の規則を借りるが、
+  `base_dir.join` を直接書かない（解決規則の実装は `PathResolver` 1 箇所に閉じる、#530 / #534）。
 - **引用キーの存在検証は行わない**。`\cite{...}` は未知のキーでもそのまま `HirInlineKind::Cite`
   スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
   検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結せず、

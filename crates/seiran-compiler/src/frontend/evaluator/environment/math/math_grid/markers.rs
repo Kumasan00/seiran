@@ -3,9 +3,9 @@
 use miette::SourceSpan;
 
 use crate::{
-  document::{HirBuilder, NodeId},
+  document::NodeId,
   frontend::{
-    evaluator::EvalError,
+    evaluator::{EvalContext, EvalError},
     span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
@@ -44,7 +44,7 @@ pub(super) fn ensure_markers_at_row_end(
 pub(super) fn try_take_row_marker(
   child: &GreenElement<'_>,
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   row_markers_allowed: bool,
   current_notag: &mut Option<SourceSpan>,
   current_label: &mut Option<RowLabel>,
@@ -63,7 +63,7 @@ pub(super) fn try_take_row_marker(
       return Ok(true);
     },
     "label" => {
-      take_label_marker(&view, source, builder, span, row_markers_allowed, current_label)?;
+      take_label_marker(&view, source, ctx, span, row_markers_allowed, current_label)?;
       return Ok(true);
     },
     _ => return Ok(false),
@@ -94,7 +94,7 @@ fn take_notag_marker(
 fn take_label_marker(
   view: &CommandView<'_>,
   source: &str,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
   span: SourceSpan,
   row_markers_allowed: bool,
   current_label: &mut Option<RowLabel>,
@@ -113,7 +113,7 @@ fn take_label_marker(
   *current_label = Some(RowLabel {
     name,
     span,
-    site: builder.alloc(view.span()),
+    site: ctx.alloc(view.span()),
   });
   return Ok(());
 }

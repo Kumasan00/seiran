@@ -3,10 +3,10 @@
 //! 行と列に分割する非採番の数式環境。
 
 use crate::{
-  document::{HirBuilder, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
+  document::{HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
       opt_args::{OptType, collect_environment_opt_args, find_string},
     },
@@ -20,7 +20,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn matrix(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
   let delimiter = match find_string(&opt_args, "delimiter") {
     Some(value) => {
@@ -44,11 +44,11 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result
   }
 
   let source = view.source();
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let grid = match view.body() {
     Some(body_node) => evaluate_grid(
       source,
-      builder,
+      ctx,
       body_node,
       &GridSpec {
         allow_row_breaks: true,

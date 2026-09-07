@@ -5,9 +5,9 @@
 use phf::phf_map;
 
 use crate::{
-  document::{HirBuilder, HirNode},
+  document::HirNode,
   frontend::{
-    evaluator::EvalError,
+    evaluator::{EvalContext, EvalError},
     span_ext::ToSourceSpan,
     syntax::{BodyMode, view::EnvironmentView},
   },
@@ -24,7 +24,7 @@ mod table;
 mod theorem;
 
 /// 環境ハンドラの関数ポインタ型
-type EnvHandler = fn(&EnvironmentView<'_>, &HirBuilder) -> Result<Vec<HirNode>, EvalError>;
+type EnvHandler = fn(&EnvironmentView<'_>, &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>;
 
 /// 環境の定義
 pub(crate) struct EnvDef {
@@ -84,10 +84,10 @@ pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
 /// 未知の環境やハンドラ実行中のエラーが発生した場合
 pub(crate) fn evaluate_environment(
   view: &EnvironmentView<'_>,
-  builder: &HirBuilder,
+  ctx: &EvalContext<'_>,
 ) -> Result<Vec<HirNode>, EvalError> {
   return match ENVIRONMENTS.get(view.name()).and_then(|def| return def.handler) {
-    Some(handler) => handler(view, builder),
+    Some(handler) => handler(view, ctx),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),
       span: view.span().to_source_span(),

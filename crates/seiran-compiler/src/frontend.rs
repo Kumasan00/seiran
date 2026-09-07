@@ -9,8 +9,8 @@ use thiserror::Error;
 use tracing::debug;
 
 use crate::{
-  document::{HirBuilder, HirGroup, HirSource},
-  frontend::syntax::ParserError,
+  document::HirSource,
+  frontend::{evaluator::EvalContext, syntax::ParserError},
   project::PathResolver,
   source::SourceId,
 };
@@ -57,8 +57,8 @@ pub(crate) enum ParseSourceError {
 /// ノードの `NodeId` はこのソース内で閉じた連番なので、複数ソースをどの順序で
 /// パースしても結果は変わらない。
 ///
-/// `resolver` は `\image{...}` の字面を `ProjectPath` へ解決するために `HirBuilder` へ渡す
-/// （`compile` facade が `base_dir` から 1 回だけ構築した値）。
+/// `resolver` は `\image{...}` の字面を `ProjectPath` へ解決するために評価 context
+/// （`evaluator::EvalContext`）へ渡す（`compile` facade が `base_dir` から 1 回だけ構築した値）。
 ///
 /// # Errors
 ///
@@ -71,15 +71,11 @@ pub(crate) fn parse_source(
   let arena = Bump::new();
   let cst = syntax::parse(source, &arena, evaluator::mode_resolver())?;
 
-  let builder = HirBuilder::new(source_id, resolver.clone());
-  let nodes = evaluator::evaluate_children(source, &builder, cst)?;
-  let spans = builder.finish();
+  let ctx = EvalContext::new(source_id, resolver);
+  let nodes = evaluator::evaluate_children(source, &ctx, cst)?;
 
   debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースを HIR へ評価");
-  return Ok(HirSource {
-    group: HirGroup { source_id, nodes },
-    spans,
-  });
+  return Ok(ctx.finish(nodes));
 }
 
 /// 評価器の統合テスト（旧 `frontend` crate の `tests/evaluate.rs`、#307 で本 module 直下の

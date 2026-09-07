@@ -3,10 +3,10 @@
 //! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
 
 use crate::{
-  document::{CaptionPosition, HirBuilder, HirInline, HirNode, HirNodeKind},
+  document::{CaptionPosition, HirInline, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalError,
+      EvalContext, EvalError,
       environment::{body_scan, caption::extract_caption},
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
     },
@@ -21,7 +21,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(&opt_args, "label");
 
@@ -32,7 +32,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result
     });
   }
 
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let source = view.source();
   let mut image_path: Option<String> = None;
   let mut width: Option<Length> = None;
@@ -74,7 +74,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result
           if image_path.is_none() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(extract_caption(&cmd_view, builder)?);
+          caption = Some(extract_caption(&cmd_view, ctx)?);
         },
         _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
@@ -92,7 +92,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result
   return Ok(vec![HirNode::new(
     id,
     HirNodeKind::Figure {
-      image_path: builder.resolve_path(&image_path),
+      image_path: ctx.resolve_path(&image_path),
       width,
       height,
       dpi,

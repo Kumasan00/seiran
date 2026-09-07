@@ -1,9 +1,9 @@
 //! 引用環境 — `quote` / `quotation`
 
 use crate::{
-  document::{HirBuilder, HirNode, HirNodeKind, QuoteKind},
+  document::{HirNode, HirNodeKind, QuoteKind},
   frontend::{
-    evaluator::{self, EvalError, opt_args::collect_environment_opt_args},
+    evaluator::{self, EvalContext, EvalError, opt_args::collect_environment_opt_args},
     span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let Ok(kind) = view.name().parse::<QuoteKind>() else {
     unreachable!("ENVIRONMENTS は quote / quotation のみを本ハンドラに登録する");
   };
@@ -27,9 +27,9 @@ pub(super) fn quote(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<
     });
   }
 
-  let id = builder.alloc(view.span());
+  let id = ctx.alloc(view.span());
   let body = match view.body() {
-    Some(body) => evaluator::evaluate_children(view.source(), builder, body)?,
+    Some(body) => evaluator::evaluate_children(view.source(), ctx, body)?,
     None => Vec::new(),
   };
 
