@@ -1121,9 +1121,9 @@ root facade へ出すのは**本体コードに消費者がある型だけ**（`
 まとめて行う。前付け・後付けは生成ブロックだけで組むので実際には常に空だが、「空のはずだ」という
 非局所な不変条件を assert で主張せず素通しする。表示順は物理ページの昇順で決定的。
 
-- `context`: 全段が共有する資源と行分割アルゴリズムを持つ `TypesetContext`（設定・フォント資源への
-  参照・検証済み版面 `&PreparedGeometry`・`KnuthPlassBreaker`）と、本文ページ分割確定後の事実
-  `BodyPageFacts`（`BodyPageValues` + 見出し記録）。`paginate` ↔ 各段 module の相互依存を解消する
+- `context`: 全段が共有する資源と行分割アルゴリズムを持つ `TypesetContext`（config・style・
+  フォント資源への参照・検証済み版面 `&PreparedGeometry`・`KnuthPlassBreaker`）と、本文ページ分割
+  確定後の事実 `BodyPageFacts`（`BodyPageValues` + 見出し記録）。`paginate` ↔ 各段 module の相互依存を解消する
   ためにここへ切り出してある。**寸法は再計算しない** — 版面幅・段幅・本文 / 前付け / 後付けの
   `PageGeometry` はすべて入力読込が確定させた `PreparedGeometry` の読み取りで、組み立ては
   `typeset::geometry` が持つ（#533）
