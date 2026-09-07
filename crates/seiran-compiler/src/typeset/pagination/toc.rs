@@ -247,47 +247,14 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, HeadingRecord, TextStyle, TocEntry, TocSpec, collect_toc_entries, entry_label};
+  use super::{BodyPageValues, HeadingRecord, build_toc_spec, collect_toc_entries, entry_label};
   use crate::{
     document::{FontKind, HeadingLevel},
     length::Length,
     semantics::HeadingKey,
-    style::{PageNumbering, TocStyle},
-    typeset::boxes::{AnchorId, AnchorMark, LinkTarget, Page, PlacedAnchor},
+    style::{PageNumbering, Style, TocStyle},
+    typeset::boxes::{AnchorMark, Page, PlacedAnchor},
   };
-
-  fn spec() -> TocSpec {
-    return TocSpec {
-      title: "Contents".to_string(),
-      title_style: TextStyle {
-        font_size: Length::pt(16.0),
-        font_kind: FontKind::SerifBold,
-        color: None,
-      },
-      title_bottom_margin: Length::pt(10.0),
-      entry_style: TextStyle {
-        font_size: Length::pt(12.0),
-        font_kind: FontKind::Serif,
-        color: None,
-      },
-      indent_per_level: Length::pt(12.0),
-      leader: Some(".".to_string()),
-      show_page_numbers: true,
-      text_width: Length::pt(400.0),
-      line_height_factor: 1.2,
-      bottom_margin: Length::pt(8.0),
-    };
-  }
-
-  fn entry(level: HeadingLevel, number: &str, title: &str, page: &str, key: usize) -> TocEntry {
-    return TocEntry {
-      level,
-      number: number.to_string(),
-      title_plain: title.to_string(),
-      page_label: page.to_string(),
-      link_key: HeadingKey::new(key),
-    };
-  }
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
     return HeadingRecord {
@@ -333,16 +300,38 @@ mod tests {
   }
 
   #[test]
-  fn spec_and_entry_constructors_are_consistent() {
-    let s = spec();
-    let e = entry(HeadingLevel::Section, "1.1", "Basics", "3", 1);
+  fn build_toc_spec_projects_style_fields() {
+    // Arrange — すべて既定でない値を入れる（style.toml の差し替えだけで反映されること）
+    let mut style = Style::default();
+    style.toc.title = "もくじ".to_string();
+    style.toc.font_size = Length::pt(11.0);
+    style.toc.indent_per_level = Length::pt(7.0);
+    style.toc.bottom_margin = Length::pt(3.0);
+    style.toc.show_page_numbers = false;
+    style.toc.leader = None;
+    style.text.line_height_factor = 1.5;
+    style.heading.section.font_size = Length::pt(17.0);
+    style.heading.section.bottom_margin = Length::pt(4.0);
+    style.heading.section.font_kind = FontKind::SansSerif;
 
-    assert!(s.show_page_numbers);
-    assert_eq!(s.leader.as_deref(), Some("."));
-    assert_eq!(e.link_key, HeadingKey::new(1));
-    assert!(
-      matches!(LinkTarget::Internal(AnchorId::Heading(e.link_key)), LinkTarget::Internal(k) if k == AnchorId::Heading(HeadingKey::new(1)))
-    );
+    // Act
+    let spec = build_toc_spec(&style, Length::pt(333.0));
+
+    // Assert — 目次見出しは節見出しスタイル由来、エントリは [toc] 由来、本文幅は引数由来
+    assert_eq!(spec.title, "もくじ");
+    assert_eq!(spec.title_style.font_size, Length::pt(17.0));
+    assert_eq!(spec.title_style.font_kind, FontKind::SansSerif);
+    assert!(spec.title_style.color.is_none());
+    assert_eq!(spec.title_bottom_margin, Length::pt(4.0));
+    assert_eq!(spec.entry_style.font_size, Length::pt(11.0));
+    assert_eq!(spec.entry_style.font_kind, FontKind::Serif);
+    assert!(spec.entry_style.color.is_none());
+    assert_eq!(spec.indent_per_level, Length::pt(7.0));
+    assert_eq!(spec.bottom_margin, Length::pt(3.0));
+    assert!(!spec.show_page_numbers);
+    assert!(spec.leader.is_none());
+    assert_eq!(spec.text_width, Length::pt(333.0));
+    assert!((spec.line_height_factor - 1.5).abs() < f32::EPSILON);
   }
 
   #[test]
