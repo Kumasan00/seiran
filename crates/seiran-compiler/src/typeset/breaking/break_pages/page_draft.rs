@@ -17,7 +17,8 @@ use crate::{
       PlacedLink, PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,
       position_table_row_boxes,
     },
-    breaking::break_pages::{PageGeometry, PendingFootnote},
+    breaking::break_pages::PendingFootnote,
+    geometry::PageGeometry,
   },
 };
 
@@ -565,7 +566,8 @@ mod tests {
         AnchorMark, HBox, HBoxContent, HItem, Line, LineIndexEntry, LineLink, LinkTarget, Page, PlacedBlock,
         TableCellBox, TableColumn, TableRowBox,
       },
-      breaking::break_pages::{PageGeometry, PendingFootnote},
+      breaking::break_pages::PendingFootnote,
+      geometry::PageGeometry,
     },
   };
 
