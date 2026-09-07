@@ -1,7 +1,6 @@
 //! レイアウトエンジン module — (a) `build_blocks`
 
 mod composed_line;
-mod index;
 mod math;
 mod script;
 mod yakumono;
@@ -9,8 +8,6 @@ mod yakumono;
 use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, row_width};
-pub(super) use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
-pub(crate) use index::{build_index_blocks, build_index_spec};
 use tracing::{debug, trace};
 
 use crate::{
