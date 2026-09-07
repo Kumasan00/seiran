@@ -340,11 +340,15 @@ mod tests {
 
   #[test]
   fn dropping_without_finish_still_flushes_buffered_content() {
-    // Arrange
+    // Arrange — tracing の layer が `writer()` で `SinkState` をもう 1 つの `Arc` として握り続ける状況を再現する。
+    // `sink` だけが所有者なら drop で参照カウントが 0 になり `BufWriter` 自身の drop-flush で届いてしまい、
+    // `LogSink` の `Drop` を消しても通ってしまう（判別力が無い）。`writer` を生かしたまま `sink` を drop することで、
+    // `SinkState` は生き残ったまま（参照カウント 1）flush が必要になる、実際の panic 経路と同じ状況を作る。
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
+    let writer = sink.writer();
 
-    // Act — `finish` を呼ばず panic 中の unwind を模す
+    // Act — `finish` を呼ばず panic 中の unwind を模す。`writer` はまだ生きているので `SinkState` は解放されない。
     sink.write_block("記録する 1 行");
     drop(sink);
 
@@ -353,8 +357,10 @@ mod tests {
     assert_eq!(
       String::from_utf8(written).expect("UTF-8 のはず"),
       "記録する 1 行\n",
-      "finish を経由しなくても Drop が書き残しを流す"
+      "finish を経由せず、他の Arc が生きたまま drop されても書き残しを流す"
     );
+    // `writer` をここまで生かして「共有所有で SinkState が解放されない」状況を保証する。
+    drop(writer);
   }
 
   #[test]
