@@ -257,7 +257,7 @@ fn is_index_page(page: &Page) -> bool {
 
 /// 行が索引の区分見出し（単独のラベル文字列だけの行）ならそのラベルを返す。
 ///
-/// 区分ラベルの固定表は `typeset::boxing::index` が持つ。ここでは `index_groups.sei` が実際に
+/// 区分ラベルの固定表は `typeset::pagination::index::grouping` が持つ。ここでは `index_groups.sei` が実際に
 /// 生む見出しだけを見れば足りるので、判定は「1 グリフ列だけの行で、その文字列がラベルと一致する」形にする。
 fn index_group_heading_label(block: &PlacedBlock) -> Option<String> {
   const LABELS: &[&str] = &[
