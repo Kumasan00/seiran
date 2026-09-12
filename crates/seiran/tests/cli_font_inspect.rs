@@ -258,3 +258,45 @@ fn variation_axes_reports_a_missing_file_with_its_path() {
   assert!(stderr.contains("missing.ttf"), "対象パスが出る: {stderr}");
   assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
 }
+
+#[test]
+fn script_langs_reports_a_missing_file_with_its_path() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+
+  let output = seiran(dir.path(), &["script-langs", "missing.ttf"]);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "{stderr}");
+  assert!(stderr.contains("cli::script_langs::read_file"), "読み込み失敗の診断: {stderr}");
+  assert!(stderr.contains("missing.ttf"), "対象パスが出る: {stderr}");
+  assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
+}
+
+#[test]
+fn script_langs_survives_a_closed_reader() {
+  let font = vendor_font("NotoSans[wdth,wght].ttf");
+
+  let output = seiran_with_closed_stdout(&["script-langs", path_arg(&font)]);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "受け手の終了は正常終了: {stderr}");
+  assert!(!stderr.contains("panicked"), "panic しない: {stderr}");
+}
+
+#[test]
+fn script_langs_ends_with_feature_statistics() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let font = vendor_font("STIXTwoMath-Regular.ttf");
+
+  let output = seiran(dir.path(), &["script-langs", path_arg(&font)]);
+
+  assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+  let stdout = stdout_text(&output);
+  assert!(stdout.starts_with("GSUB Table:\n"), "GSUB から始まる: {stdout}");
+  assert!(
+    stdout.ends_with(
+      "\nFeature Statistics:\n  Total Features in GSUB/GPOS: 29\n  Referenced in Script/Language Systems: 29\n  Unreferenced Features: []\n"
+    ),
+    "空行を挟んで統計で終わる（現行と同じ書式）: {stdout}"
+  );
+}

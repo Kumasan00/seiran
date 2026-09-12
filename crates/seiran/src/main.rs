@@ -1,10 +1,6 @@
 //! Seiran の CLI エントリーポイント
 
-#![expect(
-  clippy::print_stdout,
-  clippy::print_stderr,
-  reason = "CLI の表示はユーザーへ届ける成果物で、tracing の代用ではない"
-)]
+#![expect(clippy::print_stderr, reason = "CLI の表示はユーザーへ届ける成果物で、tracing の代用ではない")]
 
 mod cli;
 mod pdf_output;
@@ -101,7 +97,7 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
       font_path,
       font_index,
     } => {
-      subcommand::script_langs(&font_path, font_index)?;
+      subcommand::script_langs(&font_path, font_index, &mut io::stdout().lock())?;
     },
   }
 
