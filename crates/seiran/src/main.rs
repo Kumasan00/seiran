@@ -13,7 +13,7 @@ mod subcommand;
 mod termination;
 mod write_error;
 
-use std::{process::ExitCode, time::Instant};
+use std::{io, process::ExitCode, time::Instant};
 
 use reporting::Reporter;
 use termination::Outcome;
@@ -27,7 +27,7 @@ enum CurrentDirError {
   Get {
     /// 元の I/O エラー
     #[source]
-    source: std::io::Error,
+    source: io::Error,
   },
 }
 
@@ -71,8 +71,8 @@ fn main() -> ExitCode {
 ///
 /// # Errors
 ///
-/// `build` は設定読み込み・コンパイル・描画・保存のエラーを、フォント調査系のサブコマンドはフォント解析の
-/// エラーを `miette` 診断として返す。
+/// `build` は設定読み込み・コンパイル・描画・保存のエラーを、フォント調査系のサブコマンドはフォントの
+/// 読み込み・解析と一覧の書き込み（受け手の終了を除く）のエラーを `miette` 診断として返す。
 fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
   match command {
     cli::Command::Build { config_path } => {
@@ -95,7 +95,7 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
       subcommand::variation_axes(&font_path, font_index)?;
     },
     cli::Command::TtcNames { ttc_file_path } => {
-      subcommand::ttc_names(&ttc_file_path)?;
+      subcommand::ttc_names(&ttc_file_path, &mut io::stdout().lock())?;
     },
     cli::Command::ScriptLangs {
       font_path,
