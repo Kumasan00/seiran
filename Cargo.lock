@@ -2045,6 +2045,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5a0cf4bb6cbce4c29756270d189a5e400ac05e91192161d83a0bcb6e68492e8"
+dependencies = [
+ "bytemuck",
+ "font-types 0.12.5",
+ "once_cell",
+]
+
+[[package]]
 name = "regex-automata"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2187,7 +2198,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "miette",
- "read-fonts 0.43.3",
+ "read-fonts 0.44.0",
  "seiran-compiler",
  "seiran-pdf",
  "tempfile",
@@ -2214,7 +2225,7 @@ dependencies = [
  "phf",
  "proptest",
  "rayon",
- "read-fonts 0.43.3",
+ "read-fonts 0.44.0",
  "serde",
  "serde_json",
  "tempfile",
@@ -2236,7 +2247,7 @@ dependencies = [
  "krilla-svg",
  "lopdf",
  "miette",
- "read-fonts 0.43.3",
+ "read-fonts 0.44.0",
  "seiran-compiler",
  "tempfile",
  "thiserror",
