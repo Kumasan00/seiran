@@ -68,8 +68,19 @@ enum VariationAxesError {
     source: ReadError,
   },
 
+  /// テーブルディレクトリの fvar レコードがファイルの範囲外を指している場合
+  #[error("テーブルディレクトリの fvar レコードがファイルの範囲外を指しています: {path}")]
+  #[diagnostic(
+    code(cli::variation_axes::fvar_range),
+    help("fvar レコードのオフセットまたは長さが破損しています。フォントファイルを検証してください。")
+  )]
+  FvarRange {
+    /// ファイルパス
+    path: String,
+  },
+
   /// 宣言された件数のレコードが fvar に収まっていない場合
-  #[error("fvar の{records}レコードは {declared} 件と宣言されていますが、{readable} 件しか読めません: {path}")]
+  #[error("宣言された {declared} 件の fvar {records}レコードがテーブルに収まりません: {path}")]
   #[diagnostic(
     code(cli::variation_axes::truncated_records),
     help(
@@ -83,8 +94,6 @@ enum VariationAxesError {
     records: &'static str,
     /// ヘッダが宣言する件数
     declared: u16,
-    /// 実際に読めた件数
-    readable: usize,
   },
 
   /// `InstanceRecord` を読めない場合
@@ -160,16 +169,20 @@ fn listing_lines(font_bytes: &[u8], font_index: u32, font_path: &Path) -> Result
   })?;
 
   // 「fvar が無い」はテーブルディレクトリにレコードが無いことで判定する。`fvar()` の `TableIsMissing` は、
-  // レコードはあるがオフセット + 長さがファイルからはみ出す破損フォントでも返るので、エラーの種類では
-  // 「無い」と「壊れている」を区別できない
+  // レコードはあるがオフセット + 長さがファイルからはみ出す破損フォントでも返るので、エラーの種類だけでは
+  // 「無い」と「壊れている」を区別できない。レコードがある前提で `TableIsMissing` を受け取ったときは
+  // 範囲外専用の `FvarRange` にする（他の `Err` は `Fvar` のまま）
   let has_fvar = font_ref.table_directory.table_records().iter().any(|record| return record.tag() == Fvar::TAG);
   if !has_fvar {
     return Ok(vec![NOT_VARIABLE.to_owned()]);
   }
   let fvar = font_ref.fvar().map_err(|source| {
-    return VariationAxesError::Fvar {
-      path: path(),
-      source,
+    return match source {
+      ReadError::TableIsMissing(_) => VariationAxesError::FvarRange { path: path() },
+      _ => VariationAxesError::Fvar {
+        path: path(),
+        source,
+      },
     };
   })?;
   let records = fvar_records(&fvar, font_path)?;
@@ -256,7 +269,6 @@ fn ensure_record_count(
     path: font_path.display().to_string(),
     records,
     declared,
-    readable,
   });
 }
 
@@ -392,7 +404,6 @@ mod tests {
         VariationAxesError::TruncatedRecords {
           records: "軸",
           declared: 2,
-          readable: 0,
           ..
         }
       ),
@@ -412,7 +423,6 @@ mod tests {
         VariationAxesError::TruncatedRecords {
           records: "インスタンス",
           declared: 3,
-          readable: 0,
           ..
         }
       ),

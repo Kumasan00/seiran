@@ -1995,11 +1995,16 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   前者は `fvar` の軸・インスタンス配列（`variation-axes`）と `FeatureList` の索引（`script-langs`）、後者は
   Script / LangSys サブテーブル（`script-langs` のマーカー行。#432）、name 文字列（`ttc-names` の
   `Err(..)` 表示、`variation-axes` のインスタンス名の `NameID(n) (name 文字列の読み取りに失敗しました: …)`）。
+  name テーブルそのものが読めない場合（`variation-axes` / `ttc-names` とも）は前者側 — 診断で打ち切る。
+  マーカーで続けるのは個々の name 文字列の解決だけで、テーブル全体の読み込み失敗をマーカーに畳まない。
   `variation-axes` の `fvar` の有無はテーブルディレクトリのレコードで判定する — `fvar()` の
   `TableIsMissing` はレコードの範囲がファイルからはみ出す破損フォントでも返るので、エラーの種類では
-  「無い」と「壊れている」を区別できない。read-fonts は軸・インスタンス配列の切り詰めを空配列に畳むので、
-  宣言件数（`axisCount` / `instanceCount`）と読めた件数を突き合わせる。`ttc-names` は `FontRef::fonts`
-  （解析できないファイルを「フォント 0 件」に畳む）ではなく `FileRef::new` を直接呼ぶ。
+  「無い」と「壊れている」を区別できない。レコードがあるのに範囲がファイル外を指す場合は専用の
+  `cli::variation_axes::fvar_range` として報告する（`fvar()` の `TableIsMissing` の cause 文言
+  「missing」と矛盾させないため、他の解析失敗の `cli::variation_axes::fvar` とは分けている）。read-fonts は
+  軸・インスタンス配列の切り詰めを空配列に畳むので、宣言件数（`axisCount` / `instanceCount`）と読めた件数を
+  突き合わせる。`ttc-names` は `FontRef::fonts`（解析できないファイルを「フォント 0 件」に畳む）ではなく
+  `FileRef::new` を直接呼ぶ。
 - **`--log-file` は stderr を置き換えず、出力先を足す**。指定しても端末の見え方は 1 バイトも変わらない。
   ファイルへ書くのは tracing イベント・warning 診断・成功サマリ・致命的エラー診断の 4 つで、tracing イベントには
   時刻を付け（stderr 側は時刻なしのまま）、ANSI 装飾は出力先が tty でないので常に無効にする。診断と成功サマリは

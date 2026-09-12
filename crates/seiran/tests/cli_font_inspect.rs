@@ -217,6 +217,48 @@ fn variation_axes_rejects_a_broken_fvar() {
 }
 
 #[test]
+fn variation_axes_rejects_an_fvar_record_whose_length_runs_past_the_file() {
+  // Arrange — fvar のレコードの length をファイルの範囲外まで伸ばす
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "range.ttf", |font| {
+    let record = table_record_position(font, *b"fvar");
+    font[record + 12..record + 16].copy_from_slice(&0xffff_fff0u32.to_be_bytes());
+  });
+
+  // Act
+  let output = seiran(dir.path(), &["variation-axes", "range.ttf"]);
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "範囲外を指す fvar は「可変フォントではない」にしない: {stderr}");
+  assert!(stderr.contains("cli::variation_axes::fvar_range"), "範囲外の診断: {stderr}");
+  assert!(stderr.contains("range.ttf"), "対象パスが出る: {stderr}");
+  assert!(!stderr.contains("table is missing"), "read-fonts の cause 文言を出さない: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
+fn variation_axes_rejects_an_fvar_record_whose_offset_is_zero() {
+  // Arrange — fvar のレコードの offset を 0 にする（レコード先頭 + 8..12）
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "zero_offset.ttf", |font| {
+    let record = table_record_position(font, *b"fvar");
+    font[record + 8..record + 12].copy_from_slice(&0u32.to_be_bytes());
+  });
+
+  // Act
+  let output = seiran(dir.path(), &["variation-axes", "zero_offset.ttf"]);
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "オフセット 0 の fvar は「可変フォントではない」にしない: {stderr}");
+  assert!(stderr.contains("cli::variation_axes::fvar_range"), "範囲外の診断: {stderr}");
+  assert!(stderr.contains("zero_offset.ttf"), "対象パスが出る: {stderr}");
+  assert!(!stderr.contains("table is missing"), "read-fonts の cause 文言を出さない: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
 fn variation_axes_rejects_truncated_instances() {
   // Arrange — fvar ヘッダの instanceCount（テーブル先頭から 12 バイト目）を実際より大きくする
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
