@@ -35,7 +35,8 @@ enum CurrentDirError {
 /// 失敗した実行は、本処理が成功していても終了コード 1 で終わる。
 ///
 /// `reporter.finish()` の後は tracing へ何も出さない — layer は同じ writer を保持したままなので、
-/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は `eprintln!` だけで行う。
+/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は stderr への直接書き込みだけで行う
+/// （書き込みに失敗しても panic せず、終了コードはそのまま保つ）。
 fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
   let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref()) {
@@ -46,7 +47,7 @@ fn main() -> ExitCode {
         report: miette::Report::new(error),
         log: None,
       }
-      .report();
+      .report(&mut io::stderr());
     },
   };
 
@@ -57,7 +58,7 @@ fn main() -> ExitCode {
   // 報告を書き終えてから flush する。ここで初めてログの記録が成功したかが確定する。
   let log_outcome = reporter.finish();
 
-  return termination::decide(outcome, log_outcome).report();
+  return termination::decide(outcome, log_outcome).report(&mut io::stderr());
 }
 
 /// サブコマンドを実行する。

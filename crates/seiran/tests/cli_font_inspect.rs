@@ -300,3 +300,24 @@ fn script_langs_ends_with_feature_statistics() {
     "空行を挟んで統計で終わる（現行と同じ書式）: {stdout}"
   );
 }
+
+/// `/dev/full` は Linux にしかない（CI は ubuntu で走る）。
+#[cfg(target_os = "linux")]
+#[test]
+fn unwritable_stderr_does_not_turn_a_failure_into_a_panic() {
+  // Arrange
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let dev_full = fs::OpenOptions::new().write(true).open("/dev/full").expect("/dev/full を開けるはず");
+
+  // Act — 失敗する実行の診断を、書けない stderr へ出させる
+  let output = Command::new(env!("CARGO_BIN_EXE_seiran"))
+    .args(["ttc-names", "missing.ttc"])
+    .current_dir(dir.path())
+    .env_remove("RUST_LOG")
+    .stderr(dev_full)
+    .output()
+    .expect("seiran を起動できるはず");
+
+  // Assert
+  assert_eq!(output.status.code(), Some(1), "報告を書けなくても処理失敗の終了コード 1（panic の 101 ではない）");
+}
