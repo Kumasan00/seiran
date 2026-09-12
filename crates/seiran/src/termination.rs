@@ -3,7 +3,7 @@
 //! `main` は本処理の結果をここへ渡し、報告が終わってから `ExitCode` を返す。「何を端末へ出すか」の判断を
 //! 出力から分けてあるので、判断そのものは in-src テストで確かめられる。
 
-use std::process::ExitCode;
+use std::{io::Write, process::ExitCode};
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -91,17 +91,21 @@ impl Outcome {
   /// 主診断の体裁は miette のグローバル handler（`Report` の `Debug` 表示）に任せ、`Termination` に
   /// 任せていたときと同じ `Error: ` 前置きのまま出す。ログの失敗はログへは書かない — 記録できない
   /// 出力先へ、記録できなかったことを書きに行っても同じ失敗を繰り返すだけ。
-  pub(super) fn report(self) -> ExitCode {
+  ///
+  /// `stderr` への書き込み失敗は捨てる — 報告の失敗を同じ `stderr` へ報告し直しても同じ失敗を繰り返す
+  /// だけで、終わりが無い。終了コードは報告を書けたかに依らず本来のものを返す（失敗した実行は、報告を
+  /// 出せなくても終了 1 で終わる）。`eprintln!` を使わないのは、書き込み失敗で panic（終了 101）するため。
+  pub(super) fn report(self, stderr: &mut impl Write) -> ExitCode {
     return match self {
       Outcome::Success => ExitCode::SUCCESS,
       Outcome::LogOnlyFailure(error) => {
-        eprintln!("Error: {:?}", miette::Report::new(error));
+        let _ = writeln!(stderr, "Error: {:?}", miette::Report::new(error));
         ExitCode::FAILURE
       },
       Outcome::Failure { report, log } => {
-        eprintln!("Error: {report:?}");
+        let _ = writeln!(stderr, "Error: {report:?}");
         if let Some(error) = log {
-          eprintln!("{:?}", miette::Report::new(error));
+          let _ = writeln!(stderr, "{:?}", miette::Report::new(error));
         }
         ExitCode::FAILURE
       },
@@ -111,6 +115,11 @@ impl Outcome {
 
 #[cfg(test)]
 mod tests {
+  use std::{
+    io::{self, Write},
+    process::ExitCode,
+  };
+
   use miette::Diagnostic;
   use thiserror::Error;
 
@@ -127,7 +136,7 @@ mod tests {
   fn log_failure() -> LogFailure {
     return LogFailure {
       path: String::from("run.log"),
-      source: std::io::Error::other("記録できない"),
+      source: io::Error::other("記録できない"),
     };
   }
 
@@ -170,5 +179,58 @@ mod tests {
       },
       _ => panic!("本処理の失敗として報告するはず"),
     }
+  }
+
+  /// 書き込みが必ず失敗する stderr の代役（読み手が閉じたパイプ）。
+  struct ClosedPipe;
+
+  impl Write for ClosedPipe {
+    fn write(&mut self, _buf: &[u8]) -> io::Result<usize> { return Err(io::Error::from(io::ErrorKind::BrokenPipe)); }
+
+    fn flush(&mut self) -> io::Result<()> { return Err(io::Error::from(io::ErrorKind::BrokenPipe)); }
+  }
+
+  #[test]
+  fn success_writes_nothing() {
+    let mut stderr = Vec::new();
+
+    let code = Outcome::Success.report(&mut stderr);
+
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert!(stderr.is_empty(), "成功した実行は stderr へ何も書かない");
+  }
+
+  #[test]
+  fn failure_is_reported_to_the_given_writer() {
+    let mut stderr = Vec::new();
+
+    let code = Outcome::Failure {
+      report: miette::Report::new(TestPrimary),
+      log: None,
+    }
+    .report(&mut stderr);
+
+    assert_eq!(code, ExitCode::FAILURE);
+    let text = String::from_utf8(stderr).expect("UTF-8 のはず");
+    assert!(text.starts_with("Error: "), "Termination と同じ前置き: {text}");
+    assert!(text.contains("cli::test_primary"), "主診断を描く: {text}");
+  }
+
+  #[test]
+  fn unwritable_stderr_keeps_the_failure_exit_code() {
+    let outcome = decide(Err(miette::Report::new(TestPrimary)), Err(log_failure()));
+
+    let code = outcome.report(&mut ClosedPipe);
+
+    assert_eq!(code, ExitCode::FAILURE, "報告を書けなくても失敗した実行は終了 1（panic しない）");
+  }
+
+  #[test]
+  fn unwritable_stderr_after_log_only_failure_keeps_the_failure_exit_code() {
+    let outcome = decide(Ok(()), Err(log_failure()));
+
+    let code = outcome.report(&mut ClosedPipe);
+
+    assert_eq!(code, ExitCode::FAILURE, "報告を書けなくてもログの失敗は終了 1（panic しない）");
   }
 }

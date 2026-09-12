@@ -1934,13 +1934,17 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   呼び出し元へ返さないので使わない。非同期化は TRACE 有効時の性能計測で必要性が確認できてから再検討）
 - `termination`: 本処理の結果とログの記録結果から、端末へ出す主診断・副次診断と `ExitCode` を決める
   （`decide` は純粋関数で in-src テストが 4 通りを覆う）。`main` は `miette::Result` ではなく `ExitCode` を
-  返し、報告を終えてから終了する
+  返し、報告を終えてから終了する。報告の書き出し先は `Outcome::report` の引数で受け（`main` は
+  `io::stderr()` を渡す）、書き込みに失敗しても同じ stderr へ報告し直さず、終了コードは本来のものを返す
+  （`eprintln!` は書き込み失敗で panic して終了 101 になるので使わない。#549）
 - `pdf_output`: PDF の atomic write と、ログの出力先との衝突検査。保存先とログの出力先を canonicalize して
   比較し、同じ実体なら保存前に拒否する（`NamedTempFile` は `O_EXCL` で乱数名を取るので、一時ファイルが
   既存のログファイルを掴むことはない）
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
-  組版を伴わないため）
+  組版を伴わないため）。3 つとも「フォントを調べ終えて一覧の行を作る」段と「一覧を書き出す」段に分かれ、
+  書き出しは子 module `listing` の `emit` 1 箇所を通る（`BrokenPipe` とそれ以外の書き込み失敗の分類を
+  1 つの関数に閉じ、失敗する writer を注入する in-src テストで覆うため。#549）
 - `write_error`: PDF 保存（出力ディレクトリ作成・書き込み）のエラー型 `WriteError`。`compile` の失敗とは
   型を分ける — `compile` は保存を行わないため
 - `tests/cli_log_file.rs`: binary を起動する CLI 統合テスト（`CARGO_BIN_EXE_seiran`、依存追加なし）。`--log-file` への
@@ -1951,6 +1955,11 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   `create_new` が弾き、`RLIMIT_FSIZE` 超過は `SIGXFSZ` でプロセスが死ぬ）ので、失敗の保持と報告は in-src テスト
   （`LogSink::from_writer` に失敗する writer を注入、`termination::decide` の 4 通り）が覆う。純粋関数
   （フィルタ計画・診断の描画）も in-src テスト（#502 / #548）
+- `tests/cli_font_inspect.rs`: フォント調査サブコマンドの終了コード・stderr の診断（対象パスと、OS エラー文が
+  cause に 1 回だけ出ること）・読み手を閉じた stdout で panic しないこと・`fvar` の欠落と破損の区別を、
+  `vendor/fonts/` のフォントと、テーブルディレクトリや `fvar` ヘッダを書き換えたその複製で確かめる。
+  読み手を閉じるテストは子が先に書き切る順序では空振りする（分類そのものは `listing` の in-src テストが
+  決定的に覆う）。`/dev/full` を使う書き込み失敗のテストは Linux（CI）だけで走る（#549）
 
 ### 不変条件・注意点
 
@@ -1968,6 +1977,34 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   `variation-axes` / `ttc-names` / `script-langs` の一覧表示だけ）。`build > /dev/null` でログは
   消えず、`build 2> /dev/null` で消える。subscriber は `fmt` の既定（stdout）に任せず
   `with_writer(std::io::stderr)` で明示する（#492）。
+- **フォント調査の終了コードと部分結果**（#549）。`variation-axes` / `ttc-names` / `script-langs` は
+  次の 3 通りで終わる。
+
+  | 終わり方 | 終了コード |
+  | --- | --- |
+  | 一覧を書き切った、または一覧の受け手が先に終了した（`BrokenPipe`。`\| head -n1` 等） | 0 |
+  | フォントの読み込み・解析の失敗、`BrokenPipe` 以外の stdout 書き込み失敗（`cli::write_stdout`） | 1 |
+  | 引数エラー（clap） | 2 |
+
+  一覧は**フォントを調べ終えてから 1 度に書き出す** — 調査に失敗したら一覧を 1 行も出さずに診断エラーに
+  する（書き出しの I/O を 1 箇所に閉じるための帰結）。I/O・解析の診断はすべて対象パスを主メッセージに持ち、
+  OS エラー文・`ReadError` の文は cause（`#[source]`）に 1 回だけ載せる。stderr への報告に失敗しても
+  報告し直さない（`termination`）。
+  **部分結果の規則**: 一覧の対象そのものの構造の破損は診断で打ち切り、表示のために別のレコードを引く解決の
+  失敗はその行にマーカーを出して続ける（レコード同士は独立で、1 件の破損で残りのダンプまで失わせないため）。
+  前者は `fvar` の軸・インスタンス配列（`variation-axes`）と `FeatureList` の索引（`script-langs`）、後者は
+  Script / LangSys サブテーブル（`script-langs` のマーカー行。#432）、name 文字列（`ttc-names` の
+  `Err(..)` 表示、`variation-axes` のインスタンス名の `NameID(n) (name 文字列の読み取りに失敗しました: …)`）。
+  name テーブルそのものが読めない場合（`variation-axes` / `ttc-names` とも）は前者側 — 診断で打ち切る。
+  マーカーで続けるのは個々の name 文字列の解決だけで、テーブル全体の読み込み失敗をマーカーに畳まない。
+  `variation-axes` の `fvar` の有無はテーブルディレクトリのレコードで判定する — `fvar()` の
+  `TableIsMissing` はレコードの範囲がファイルからはみ出す破損フォントでも返るので、エラーの種類では
+  「無い」と「壊れている」を区別できない。レコードがあるのに範囲がファイル外を指す場合は専用の
+  `cli::variation_axes::fvar_range` として報告する（`fvar()` の `TableIsMissing` の cause 文言
+  「missing」と矛盾させないため、他の解析失敗の `cli::variation_axes::fvar` とは分けている）。read-fonts は
+  軸・インスタンス配列の切り詰めを空配列に畳むので、宣言件数（`axisCount` / `instanceCount`）と読めた件数を
+  突き合わせる。`ttc-names` は `FontRef::fonts`（解析できないファイルを「フォント 0 件」に畳む）ではなく
+  `FileRef::new` を直接呼ぶ。
 - **`--log-file` は stderr を置き換えず、出力先を足す**。指定しても端末の見え方は 1 バイトも変わらない。
   ファイルへ書くのは tracing イベント・warning 診断・成功サマリ・致命的エラー診断の 4 つで、tracing イベントには
   時刻を付け（stderr 側は時刻なしのまま）、ANSI 装飾は出力先が tty でないので常に無効にする。診断と成功サマリは

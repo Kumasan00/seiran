@@ -191,7 +191,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 - `main` は `std::process::ExitCode` を返す（`miette::Result<()>` も `Box<dyn std::error::Error>` も使わない）。
   端末への描画は `Result` の `Termination` ではなく `termination::Outcome::report` が行い、報告を終えてから
   終了コードを返す — ログ出力先の終了処理（flush と保持した失敗の取り出し）を、終了コードの決定より前に
-  必ず通すため（#548 が #495 / #502 の構造を改訂）。診断の体裁は `Report` の `Debug`（miette の `fancy`）のまま
+  必ず通すため（#548 が #495 / #502 の構造を改訂）。診断の体裁は `Report` の `Debug`（miette の `fancy`）のまま。
+  報告の書き出し先は引数で受け、stderr へ書けなくても panic せず終了コードを保つ（#549）
 
 ## パターン例
 

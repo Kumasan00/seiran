@@ -1,6 +1,6 @@
 //! OpenType の Script/Language System と Feature の対応を表示するサブコマンド
 
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{collections::BTreeSet, fs, io::Write, path::Path};
 
 use miette::Diagnostic;
 use read_fonts::{
@@ -10,19 +10,24 @@ use read_fonts::{
 use thiserror::Error;
 use tracing::info;
 
+use crate::subcommand::listing;
+
 /// フォントの Script/Language System 解析エラー。
 #[derive(Error, Debug, Diagnostic)]
 enum ScriptLangsError {
   /// フォントファイルの読み込みエラー
-  #[error("フォントファイルの読み込みに失敗しました: {0}")]
-  #[diagnostic(
-    code(cli::script_langs::io_error),
-    help("ファイルが存在し、読み取り権限があることを確認してください。")
-  )]
-  Io(#[from] std::io::Error),
+  #[error("フォントファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(code(cli::script_langs::read_file), help("フォントファイルのパスと読み取り権限を確認してください。"))]
+  ReadFile {
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
 
   /// 指定インデックスのフォント解析エラー
-  #[error("インデックス {font_index} のフォント解析に失敗しました")]
+  #[error("インデックス {font_index} のフォント解析に失敗しました: {path}")]
   #[diagnostic(
     code(cli::script_langs::font_parse_error),
     help(
@@ -30,6 +35,8 @@ enum ScriptLangsError {
     )
   )]
   FontParse {
+    /// ファイルパス
+    path: String,
     /// フォント インデックス（TTC の場合）
     font_index: u32,
     /// 元の読み込みエラー
@@ -38,36 +45,42 @@ enum ScriptLangsError {
   },
 
   /// GSUB テーブルの取得エラー
-  #[error("GSUB テーブルが見つからないか、無効です")]
+  #[error("GSUB テーブルが見つからないか、無効です: {path}")]
   #[diagnostic(
     code(cli::script_langs::gsub_error),
     help("このフォントには GSUB（グリフ置換）テーブルが含まれていない可能性があります。")
   )]
   Gsub {
+    /// ファイルパス
+    path: String,
     /// 元の読み込みエラー
     #[source]
     source: ReadError,
   },
 
   /// GPOS テーブルの取得エラー
-  #[error("GPOS テーブルが見つからないか、無効です")]
+  #[error("GPOS テーブルが見つからないか、無効です: {path}")]
   #[diagnostic(
     code(cli::script_langs::gpos_error),
     help("このフォントには GPOS（グリフ位置調整）テーブルが含まれていない可能性があります。")
   )]
   Gpos {
+    /// ファイルパス
+    path: String,
     /// 元の読み込みエラー
     #[source]
     source: ReadError,
   },
 
   /// Feature リストの取得エラー
-  #[error("{table_name} テーブルから Feature リストの取得に失敗しました")]
+  #[error("{table_name} テーブルから Feature リストの取得に失敗しました: {path}")]
   #[diagnostic(
     code(cli::script_langs::feature_list_error),
     help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
   FeatureList {
+    /// ファイルパス
+    path: String,
     /// テーブル名（"GSUB" または "GPOS"）
     table_name: &'static str,
     /// 元の読み込みエラー
@@ -76,12 +89,14 @@ enum ScriptLangsError {
   },
 
   /// Script リストの取得エラー
-  #[error("{table_name} テーブルから Script リストの取得に失敗しました")]
+  #[error("{table_name} テーブルから Script リストの取得に失敗しました: {path}")]
   #[diagnostic(
     code(cli::script_langs::script_list_error),
     help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
   ScriptList {
+    /// ファイルパス
+    path: String,
     /// テーブル名（"GSUB" または "GPOS"）
     table_name: &'static str,
     /// 元の読み込みエラー
@@ -90,12 +105,14 @@ enum ScriptLangsError {
   },
 
   /// Feature の取得エラー
-  #[error("インデックス {index} の Feature の取得に失敗しました")]
+  #[error("インデックス {index} の Feature の取得に失敗しました: {path}")]
   #[diagnostic(
     code(cli::script_langs::feature_error),
     help("Feature テーブルエントリが無効である可能性があります。Feature リストのインデックスが範囲外かもしれません。")
   )]
   Feature {
+    /// ファイルパス
+    path: String,
     /// Feature インデックス
     index: u16,
     /// 元の読み込みエラー
@@ -104,12 +121,14 @@ enum ScriptLangsError {
   },
 
   /// Feature Parameters の取得エラー
-  #[error("Feature '{feature_tag}' のパラメータの取得に失敗しました")]
+  #[error("Feature '{feature_tag}' のパラメータの取得に失敗しました: {path}")]
   #[diagnostic(
     code(cli::script_langs::feature_params_error),
     help("Feature パラメータ構造が破損している可能性があります。")
   )]
   FeatureParams {
+    /// ファイルパス
+    path: String,
     /// Feature タグ
     feature_tag: String,
     /// 元の読み込みエラー
@@ -118,68 +137,113 @@ enum ScriptLangsError {
   },
 }
 
-/// 指定フォントの Script/Language System と Feature の対応を標準出力へ表示する。
+/// 指定フォントの Script/Language System と Feature の対応の一覧を `out` へ書く。
 ///
 /// # Errors
 ///
-/// ファイル、フォント、GSUB/GPOS 内の各テーブルの解析に失敗した場合にエラーを返す。
-pub(crate) fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
-  let mut referenced_features = BTreeSet::new();
-
-  let font_data = fs::read(file_path).map_err(ScriptLangsError::from)?;
+/// ファイルの読み込み、フォントや GSUB/GPOS 内の各テーブルの解析、一覧の書き込み（受け手の終了を除く）に
+/// 失敗した場合にエラーを返す。
+pub(crate) fn script_langs(file_path: &Path, font_index: u32, out: &mut impl Write) -> miette::Result<()> {
+  let font_data = fs::read(file_path).map_err(|source| {
+    return ScriptLangsError::ReadFile {
+      path: file_path.display().to_string(),
+      source,
+    };
+  })?;
   info!(font_path = %file_path.display(), font_index, "スクリプト・言語を調べるフォントファイルを読込");
-  let font_ref = FontRef::from_index(&font_data, font_index)
-    .map_err(|source| return ScriptLangsError::FontParse { font_index, source })?;
 
-  let gsub = font_ref.gsub().map_err(|source| return ScriptLangsError::Gsub { source })?;
-  let gsub_features = process_layout_table("GSUB", gsub.feature_list(), gsub.script_list(), &mut referenced_features)?;
-
-  let gpos = font_ref.gpos().map_err(|source| return ScriptLangsError::Gpos { source })?;
-  let gpos_features = process_layout_table("GPOS", gpos.feature_list(), gpos.script_list(), &mut referenced_features)?;
-
-  let all_features = collect_all_features(&gsub_features, &gpos_features);
-  print_feature_statistics(&all_features, &referenced_features);
-
+  let lines = listing_lines(&font_data, font_index, file_path)?;
+  listing::emit(&lines, out)?;
   return Ok(());
 }
 
-/// Layout テーブルを走査して表示し、統計用の `FeatureList` を返す。
+/// GSUB・GPOS の順に Script/Language System の一覧を組み立て、末尾に Feature の統計を足す。
+///
+/// # Errors
+///
+/// フォント、GSUB/GPOS 内の各テーブルの解析に失敗した場合にエラーを返す。
+fn listing_lines(font_data: &[u8], font_index: u32, file_path: &Path) -> Result<Vec<String>, ScriptLangsError> {
+  let path = || return file_path.display().to_string();
+  let font_ref = FontRef::from_index(font_data, font_index).map_err(|source| {
+    return ScriptLangsError::FontParse {
+      path: path(),
+      font_index,
+      source,
+    };
+  })?;
+  let mut lines = Vec::new();
+  let mut referenced_features = BTreeSet::new();
+
+  let gsub = font_ref.gsub().map_err(|source| {
+    return ScriptLangsError::Gsub {
+      path: path(),
+      source,
+    };
+  })?;
+  let gsub_features = layout_table_lines(
+    "GSUB",
+    gsub.feature_list(),
+    gsub.script_list(),
+    file_path,
+    &mut referenced_features,
+    &mut lines,
+  )?;
+
+  let gpos = font_ref.gpos().map_err(|source| {
+    return ScriptLangsError::Gpos {
+      path: path(),
+      source,
+    };
+  })?;
+  let gpos_features = layout_table_lines(
+    "GPOS",
+    gpos.feature_list(),
+    gpos.script_list(),
+    file_path,
+    &mut referenced_features,
+    &mut lines,
+  )?;
+
+  let all_features = collect_all_features(&gsub_features, &gpos_features);
+  lines.extend(feature_statistics_lines(&all_features, &referenced_features));
+  return Ok(lines);
+}
+
+/// Layout テーブル 1 つぶんの行を `lines` へ足し、統計用の `FeatureList` を返す。
 ///
 /// # Errors
 ///
 /// Feature リスト、Script リスト、Feature の取得に失敗した場合にエラーを返す。
-fn process_layout_table<'a>(
+fn layout_table_lines<'a>(
   table_name: &'static str,
   feature_list: Result<FeatureList<'a>, ReadError>,
   script_list: Result<ScriptList<'a>, ReadError>,
+  file_path: &Path,
   referenced_features: &mut BTreeSet<String>,
+  lines: &mut Vec<String>,
 ) -> Result<FeatureList<'a>, ScriptLangsError> {
-  println!("{table_name} Table:");
+  let path = || return file_path.display().to_string();
+  lines.push(format!("{table_name} Table:"));
 
-  let feature_list = feature_list.map_err(|source| return ScriptLangsError::FeatureList { table_name, source })?;
-  let script_list = script_list.map_err(|source| return ScriptLangsError::ScriptList { table_name, source })?;
+  let feature_list = feature_list.map_err(|source| {
+    return ScriptLangsError::FeatureList {
+      path: path(),
+      table_name,
+      source,
+    };
+  })?;
+  let script_list = script_list.map_err(|source| {
+    return ScriptLangsError::ScriptList {
+      path: path(),
+      table_name,
+      source,
+    };
+  })?;
 
-  print_scripts(&script_list, &feature_list, referenced_features)?;
-
-  return Ok(feature_list);
-}
-
-/// Script ごとの Language System と Feature を表示する。
-///
-/// # Errors
-///
-/// Feature の取得に失敗した場合にエラーを返す。
-fn print_scripts(
-  scripts: &ScriptList<'_>,
-  features: &FeatureList<'_>,
-  referenced_features: &mut BTreeSet<String>,
-) -> Result<(), ScriptLangsError> {
-  for script_record in scripts.script_records() {
-    for line in script_lines(*script_record, scripts, features, referenced_features)? {
-      println!("{line}");
-    }
+  for script_record in script_list.script_records() {
+    lines.extend(script_lines(*script_record, &script_list, &feature_list, file_path, referenced_features)?);
   }
-  return Ok(());
+  return Ok(feature_list);
 }
 
 /// 1 つの `ScriptRecord` について表示する行を組み立てる。
@@ -197,6 +261,7 @@ fn script_lines(
   script_record: ScriptRecord,
   scripts: &ScriptList<'_>,
   features: &FeatureList<'_>,
+  file_path: &Path,
   referenced_features: &mut BTreeSet<String>,
 ) -> Result<Vec<String>, ScriptLangsError> {
   let script_tag = script_record.script_tag().to_string();
@@ -219,7 +284,7 @@ fn script_lines(
   if let Some(default_lang_sys) = subtable.default_lang_sys() {
     match default_lang_sys {
       Ok(lang_sys) => {
-        let feature_tags = get_language_features(&lang_sys, features, referenced_features)?;
+        let feature_tags = get_language_features(&lang_sys, features, file_path, referenced_features)?;
         lines.push(format!("    Default Language System: {feature_tags:?}"));
       },
       Err(source) => {
@@ -234,7 +299,7 @@ fn script_lines(
     // 破損フォントで失敗しうる。タグはレコード本体にあるので、読めなくてもどの言語かは出せる
     match lang_record.lang_sys(subtable.offset_data()) {
       Ok(lang_sys) => {
-        let feature_tags = get_language_features(&lang_sys, features, referenced_features)?;
+        let feature_tags = get_language_features(&lang_sys, features, file_path, referenced_features)?;
         lines.push(format!("    {lang_tag}: {feature_tags:?}"));
       },
       Err(source) => {
@@ -261,17 +326,19 @@ fn insert_feature_tags(feature_list: &FeatureList<'_>, all_features: &mut BTreeS
   }
 }
 
-/// Feature の総数・参照数・未参照一覧を表示する。
-fn print_feature_statistics(all_features: &BTreeSet<String>, referenced_features: &BTreeSet<String>) {
+/// Feature の総数・参照数・未参照一覧の行（先頭に区切りの空行）を返す。
+fn feature_statistics_lines(all_features: &BTreeSet<String>, referenced_features: &BTreeSet<String>) -> Vec<String> {
   let total_count = all_features.len();
   let referenced_count = referenced_features.len();
   let unreferenced_features: Vec<_> = all_features.difference(referenced_features).cloned().collect();
 
-  println!();
-  println!("Feature Statistics:");
-  println!("  Total Features in GSUB/GPOS: {total_count}");
-  println!("  Referenced in Script/Language Systems: {referenced_count}");
-  println!("  Unreferenced Features: {unreferenced_features:?}");
+  return vec![
+    String::new(),
+    "Feature Statistics:".to_owned(),
+    format!("  Total Features in GSUB/GPOS: {total_count}"),
+    format!("  Referenced in Script/Language Systems: {referenced_count}"),
+    format!("  Unreferenced Features: {unreferenced_features:?}"),
+  ];
 }
 
 /// Language System が参照する Feature タグを返し、参照済み集合へ記録する。
@@ -284,6 +351,7 @@ fn print_feature_statistics(all_features: &BTreeSet<String>, referenced_features
 fn get_language_features(
   lang_sys: &LangSys<'_>,
   features: &FeatureList<'_>,
+  file_path: &Path,
   referenced_features: &mut BTreeSet<String>,
 ) -> Result<Vec<String>, ScriptLangsError> {
   let mut feature_tags = Vec::new();
@@ -291,6 +359,7 @@ fn get_language_features(
   for feature_index in lang_sys.feature_indices() {
     let feature = features.get(feature_index.get()).map_err(|source| {
       return ScriptLangsError::Feature {
+        path: file_path.display().to_string(),
         index: feature_index.get(),
         source,
       };
@@ -302,6 +371,7 @@ fn get_language_features(
     if let Some(params) = feature.feature_params() {
       let feature_params = params.map_err(|source| {
         return ScriptLangsError::FeatureParams {
+          path: file_path.display().to_string(),
           feature_tag: feature_tag.clone(),
           source,
         };
@@ -402,7 +472,8 @@ mod tests {
     let features = FeatureList::read(FontData::new(&feature_bytes)).expect("FeatureList は読めるはず");
     let mut referenced_features = BTreeSet::new();
     let record = scripts.script_records().first().expect("script レコードを 1 件置いている");
-    let lines = script_lines(*record, &scripts, &features, &mut referenced_features).expect("Feature の取得は成功する");
+    let lines = script_lines(*record, &scripts, &features, Path::new("test.otf"), &mut referenced_features)
+      .expect("Feature の取得は成功する");
     return (lines, referenced_features);
   }
 

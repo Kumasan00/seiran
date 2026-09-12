@@ -1,10 +1,6 @@
 //! Seiran の CLI エントリーポイント
 
-#![expect(
-  clippy::print_stdout,
-  clippy::print_stderr,
-  reason = "CLI の表示はユーザーへ届ける成果物で、tracing の代用ではない"
-)]
+#![expect(clippy::print_stderr, reason = "CLI の表示はユーザーへ届ける成果物で、tracing の代用ではない")]
 
 mod cli;
 mod pdf_output;
@@ -13,7 +9,7 @@ mod subcommand;
 mod termination;
 mod write_error;
 
-use std::{process::ExitCode, time::Instant};
+use std::{io, process::ExitCode, time::Instant};
 
 use reporting::Reporter;
 use termination::Outcome;
@@ -27,7 +23,7 @@ enum CurrentDirError {
   Get {
     /// 元の I/O エラー
     #[source]
-    source: std::io::Error,
+    source: io::Error,
   },
 }
 
@@ -39,7 +35,8 @@ enum CurrentDirError {
 /// 失敗した実行は、本処理が成功していても終了コード 1 で終わる。
 ///
 /// `reporter.finish()` の後は tracing へ何も出さない — layer は同じ writer を保持したままなので、
-/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は `eprintln!` だけで行う。
+/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は stderr への直接書き込みだけで行う
+/// （書き込みに失敗しても panic せず、終了コードはそのまま保つ）。
 fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
   let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref()) {
@@ -50,7 +47,7 @@ fn main() -> ExitCode {
         report: miette::Report::new(error),
         log: None,
       }
-      .report();
+      .report(&mut io::stderr());
     },
   };
 
@@ -61,7 +58,7 @@ fn main() -> ExitCode {
   // 報告を書き終えてから flush する。ここで初めてログの記録が成功したかが確定する。
   let log_outcome = reporter.finish();
 
-  return termination::decide(outcome, log_outcome).report();
+  return termination::decide(outcome, log_outcome).report(&mut io::stderr());
 }
 
 /// サブコマンドを実行する。
@@ -71,8 +68,8 @@ fn main() -> ExitCode {
 ///
 /// # Errors
 ///
-/// `build` は設定読み込み・コンパイル・描画・保存のエラーを、フォント調査系のサブコマンドはフォント解析の
-/// エラーを `miette` 診断として返す。
+/// `build` は設定読み込み・コンパイル・描画・保存のエラーを、フォント調査系のサブコマンドはフォントの
+/// 読み込み・解析と一覧の書き込み（受け手の終了を除く）のエラーを `miette` 診断として返す。
 fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
   match command {
     cli::Command::Build { config_path } => {
@@ -92,16 +89,16 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
       font_path,
       font_index,
     } => {
-      subcommand::variation_axes(&font_path, font_index)?;
+      subcommand::variation_axes(&font_path, font_index, &mut io::stdout().lock())?;
     },
     cli::Command::TtcNames { ttc_file_path } => {
-      subcommand::ttc_names(&ttc_file_path)?;
+      subcommand::ttc_names(&ttc_file_path, &mut io::stdout().lock())?;
     },
     cli::Command::ScriptLangs {
       font_path,
       font_index,
     } => {
-      subcommand::script_langs(&font_path, font_index)?;
+      subcommand::script_langs(&font_path, font_index, &mut io::stdout().lock())?;
     },
   }
 
