@@ -92,7 +92,7 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
       font_path,
       font_index,
     } => {
-      subcommand::variation_axes(&font_path, font_index)?;
+      subcommand::variation_axes(&font_path, font_index, &mut io::stdout().lock())?;
     },
     cli::Command::TtcNames { ttc_file_path } => {
       subcommand::ttc_names(&ttc_file_path, &mut io::stdout().lock())?;

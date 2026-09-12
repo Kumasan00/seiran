@@ -63,6 +63,37 @@ fn stderr_text(output: &Output) -> String { return String::from_utf8_lossy(&outp
 /// `Output` の stdout を文字列にする。
 fn stdout_text(output: &Output) -> String { return String::from_utf8_lossy(&output.stdout).into_owned(); }
 
+/// フォントのテーブルディレクトリから `tag` のレコードの位置（ファイル先頭からのバイト位置）を探す。
+///
+/// sfnt のヘッダは 12 バイトで、numTables が 4〜5 バイト目、以後 16 バイトのレコード（tag / checksum /
+/// offset / length）が並ぶ。
+fn table_record_position(font: &[u8], tag: [u8; 4]) -> usize {
+  let table_count = usize::from(u16::from_be_bytes([font[4], font[5]]));
+  return (0..table_count)
+    .map(|index| return 12 + 16 * index)
+    .find(|&position| return font[position..position + 4] == tag)
+    .expect("テストに使うフォントには対象テーブルのレコードがあるはず");
+}
+
+/// `tag` のテーブルの先頭位置（ファイル先頭からのバイト位置）を返す。
+fn table_offset(font: &[u8], tag: [u8; 4]) -> usize {
+  let record = table_record_position(font, tag);
+  let offset = u32::from_be_bytes([
+    font[record + 8],
+    font[record + 9],
+    font[record + 10],
+    font[record + 11],
+  ]);
+  return usize::try_from(offset).expect("テーブルの位置は usize に収まる");
+}
+
+/// `source` を `dir/name` へコピーし、`patch` でバイト列を書き換える。
+fn write_patched_copy(source: &Path, dir: &Path, name: &str, patch: impl FnOnce(&mut [u8])) {
+  let mut bytes = fs::read(source).expect("フォントを読めるはず");
+  patch(&mut bytes);
+  fs::write(dir.join(name), bytes).expect("書き換えたフォントを書けるはず");
+}
+
 #[test]
 fn ttc_names_survives_a_closed_reader() {
   let font = vendor_font("SourceHanCodeJP.ttc");
@@ -133,4 +164,97 @@ fn full_stdout_is_a_failure() {
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "受け手の終了以外の書き込み失敗は処理失敗: {stderr}");
   assert!(stderr.contains("cli::write_stdout"), "書き込み失敗の診断: {stderr}");
+}
+
+#[test]
+fn variation_axes_reports_a_font_without_fvar_as_not_variable() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let font = vendor_font("STIXTwoMath-Regular.ttf");
+
+  let output = seiran(dir.path(), &["variation-axes", path_arg(&font)]);
+
+  assert_eq!(output.status.code(), Some(0), "fvar が無いのは正常: {}", stderr_text(&output));
+  assert_eq!(stdout_text(&output), "The font is not a variable font.\n");
+}
+
+#[test]
+fn variation_axes_lists_axes_and_instances_of_a_variable_font() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let font = vendor_font("NotoSans[wdth,wght].ttf");
+
+  let output = seiran(dir.path(), &["variation-axes", path_arg(&font)]);
+
+  assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+  let stdout = stdout_text(&output);
+  assert!(
+    stdout.starts_with(
+      "Axis: wght, Min: 100, Default: 400, Max: 900\nAxis: wdth, Min: 62.5, Default: 100, Max: 100\nThin: [100.0, 100.0]\n"
+    ),
+    "軸 → インスタンスの順で現行と同じ書式: {stdout}"
+  );
+  assert_eq!(stdout.lines().count(), 11, "軸 2 本とインスタンス 9 件: {stdout}");
+}
+
+#[test]
+fn variation_axes_rejects_a_broken_fvar() {
+  // Arrange — fvar のレコードの length だけを 1 にする（#549 の再現手順 1。他のテーブルは無傷）
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "broken.ttf", |font| {
+    let record = table_record_position(font, *b"fvar");
+    font[record + 12..record + 16].copy_from_slice(&1u32.to_be_bytes());
+  });
+
+  // Act
+  let output = seiran(dir.path(), &["variation-axes", "broken.ttf"]);
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "壊れた fvar は「可変フォントではない」にしない: {stderr}");
+  assert!(stderr.contains("cli::variation_axes::fvar"), "fvar 破損の診断: {stderr}");
+  assert!(stderr.contains("broken.ttf"), "対象パスが出る: {stderr}");
+  assert_eq!(stderr.matches("out of bounds").count(), 1, "解析エラーの文は cause に 1 回だけ: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
+fn variation_axes_rejects_truncated_instances() {
+  // Arrange — fvar ヘッダの instanceCount（テーブル先頭から 12 バイト目）を実際より大きくする
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "truncated.ttf", |font| {
+    let fvar = table_offset(font, *b"fvar");
+    font[fvar + 12..fvar + 14].copy_from_slice(&0xffffu16.to_be_bytes());
+  });
+
+  // Act
+  let output = seiran(dir.path(), &["variation-axes", "truncated.ttf"]);
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "インスタンスを黙って落とさない: {stderr}");
+  assert!(stderr.contains("cli::variation_axes::truncated_records"), "切り詰めの診断: {stderr}");
+  assert!(stderr.contains("truncated.ttf"), "対象パスが出る: {stderr}");
+}
+
+#[test]
+fn variation_axes_survives_a_closed_reader() {
+  let font = vendor_font("NotoSans[wdth,wght].ttf");
+
+  let output = seiran_with_closed_stdout(&["variation-axes", path_arg(&font)]);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "受け手の終了は正常終了: {stderr}");
+  assert!(!stderr.contains("panicked"), "panic しない: {stderr}");
+}
+
+#[test]
+fn variation_axes_reports_a_missing_file_with_its_path() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+
+  let output = seiran(dir.path(), &["variation-axes", "missing.ttf"]);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "{stderr}");
+  assert!(stderr.contains("cli::variation_axes::read_file"), "読み込み失敗の診断: {stderr}");
+  assert!(stderr.contains("missing.ttf"), "対象パスが出る: {stderr}");
+  assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
 }
