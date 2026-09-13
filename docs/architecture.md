@@ -509,7 +509,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   する方式へ戻さない** — 別枠で渡すことで citation がグループ構造に依存しない
 - 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は斜体系の書体指定を持つ生成物として運ぶ
 - 文献ファイルの読込は集約せず deserialize 時に fail-fast（著者名の排他・空 / 重複 ID）。#376 の集約基準に
-  対する意図的例外として維持し、集約方式に戻さない（理由は `error-handling` skill）
+  対する意図的例外として維持し、集約方式に戻さない（理由は `docs/error-handling.md`）
 - テスト用フィクスチャ `test_fixtures`（`#[cfg(test)]`）は `typeset` 側のテストからも使う
 
 ### `typeset`

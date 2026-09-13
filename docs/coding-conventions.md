@@ -67,7 +67,7 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
 まず型設計で到達不能な状態自体を表現不能にできないか検討し、それでも残る「絶対に到達しない」分岐は
 `_ => {}` / `Default::default()` / 黙って `Ok` を返す等でごまかさず `unreachable!` で落とす（不変条件の
 破れを最寄りで顕在化させる）。ただし入力（ソース・設定ファイル）由来で到達しうる状態は panic ではなく
-miette 診断エラーにする（`error-handling` skill）。本体コードでは「なぜ到達しないか」＝上流のどの検証が
+miette 診断エラーにする（`docs/error-handling.md`）。本体コードでは「なぜ到達しないか」＝上流のどの検証が
 保証しているかをメッセージに書く（例: `unreachable!("許可リスト外は strict_command_calls がエラーにする")`。
 テストの let-else 分解など自明な箇所は省略可）。
 
@@ -226,7 +226,7 @@ arm は網羅性判定に参加しないので、同じ variant を wildcard 側
 
 ## エラーハンドリング・バリデーション
 
-正典は `error-handling` skill — エラー型の定義・バリアント追加・診断（code / help / label / related）の
+正典は `docs/error-handling.md` — エラー型の定義・バリアント追加・診断（code / help / label / related）の
 設計・ソース位置付与・集約・warning・garde バリデーションはすべてそちらに従う（要約は `CLAUDE.md`）。
 本書が持つのは lint が機械化している書き方だけ。
 

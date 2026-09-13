@@ -12,7 +12,7 @@ tools: Bash, Read, Grep, Glob
 1. 規約の正典を読む:
    - `docs/coding-conventions.md`（規約の全文・根拠・lint との対応）と `CLAUDE.md` の
      「コーディング規約」節（要約と落とし穴）
-   - エラー型・バリデーションに触れる diff の場合は `.claude/skills/error-handling/SKILL.md` も読む
+   - エラー型・バリデーションに触れる diff の場合は `docs/error-handling.md` も読む
 2. 対象 diff を取得する（指示があればその範囲、なければ `git diff main...HEAD` と
    未コミット変更の両方）。
 3. 変更行を中心に、正典（手順 1 で読んだ規約）の各項目を適用してチェックする。

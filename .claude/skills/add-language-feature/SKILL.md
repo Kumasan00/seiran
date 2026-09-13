@@ -30,9 +30,9 @@ description: >-
    `SemanticFacts` へ確定を足す（文書木への書き戻しはどの段もしない）
 4. **style / config**: 種類の既定を持つなら style.toml フィールド（`serde(default)` の既定値 +
    garde 検証）、物理・実体なら config.toml（`project::config`）。検証・集約は
-   `error-handling` skill の規約に従う
+   `docs/error-handling.md` の規約に従う
 5. **typeset**: lowering → boxes。構造値の文字列化は style の表示側フィールドを引くだけにする
-6. **診断**: 新しいエラー・警告は `error-handling` skill どおり（leaf に code・第 1 階層は段名・
+6. **診断**: 新しいエラー・警告は `docs/error-handling.md` どおり（leaf に code・第 1 階層は段名・
    集約は `Failures<E>`）
 7. **テスト**: `tests/text/<name>.sei` fixture を追加し golden へ登録
    （`verify-typesetting` skill → golden.rs module doc の手順）

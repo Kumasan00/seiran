@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | コーディング規約の全文・根拠・lint との対応 | `docs/coding-conventions.md` | 規約の境界事例に迷ったとき |
 | lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint が発火したとき |
 | 言語機能の実装手順 | `add-language-feature` skill | 設計合意済みの機能を実装するとき |
-| エラー型・診断・集約・garde | `error-handling` skill | エラー型を足す・診断を設計するとき |
+| エラー型・診断・集約・warning・garde | `docs/error-handling.md`（`error-handling` skill は読むタイミングと節の案内だけ） | エラー型を足す・診断を設計するとき |
 | 組版変更の検証・golden | `verify-typesetting` skill | 組版・数式・seiran-pdf・パーサ以降を変えた後 |
 | issue / PR / branch / commit / ラベル | `issue-pr-ops` skill | GitHub で何かを作る・編集する前 |
 | ドキュメント更新漏れのチェックリスト | `docs-sync` skill | PR を仕上げるとき |
@@ -215,7 +215,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### エラーハンドリング・バリデーション
 
-正典は `error-handling` skill。常時効く原則:
+正典は `docs/error-handling.md`。常時効く原則:
 
 - エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は CLI 入口だけ
 - `compile` の失敗型は不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic
