@@ -4,9 +4,9 @@
 //! [`crate::project::FontData`]）で、そこから解析済みフォント参照・メトリクス・シェーパーを
 //! 組み立てる。フォントのサブセット化は `krilla` に委ねる。
 //!
-//! 外向きの interface は [`FontResources`] 1 型だけで、`FontRefs` / `FontMetrics` /
-//! `FontSystem` / シェーパー / 検証は `typeset` の外から見えない。構築順序（解析 → メトリクス →
-//! 検証 → シェーパー）は子 module `system` に閉じる（#352）。
+//! 構築の入口は [`FontResources`] 1 型だけで（[`FontSystem`] はその `system()` が返す借用ビュー）、
+//! `FontRefs` / `FontMetrics` / シェーパー / 検証を含めこの module の名前は `typeset` の外から見えない。
+//! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる（#352）。
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_fonts::{FontRef, TableProvider};
@@ -20,8 +20,7 @@ mod validation;
 // `shaper` module のパス自体は `typeset::font` に閉じ、`typeset::boxing` が shape 呼び出しに要る
 // `UnicodeBuffer` だけを `typeset` 内へ出す。
 pub(super) use shaper::UnicodeBuffer;
-pub(super) use system::FontSystemError;
-pub(crate) use system::{FontResources, FontSystem};
+pub(super) use system::{FontResources, FontSystem, FontSystemError};
 // フォント検証が集める warning。`compose` が `TypesetWarning::Font`（`typeset::warning`）に包むので
 // `typeset` 内で名指しされる。
 pub(super) use validation::FontWarning;
