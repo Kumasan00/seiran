@@ -87,7 +87,7 @@ use crate::{
   color::Color,
   document::HeadingLevel,
   failures::Failures,
-  project::{PathResolver, ProjectPath, ProjectSource},
+  project::{InFile, PathResolver, ProjectPath, ProjectSource},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -226,7 +226,9 @@ pub(crate) fn load(
 
   let mut style = parse(&content, &path_str)?;
 
-  if let Some(failures) = validation_failures(resolve_reference_paths(&mut style.reference, source, resolver)) {
+  if let Some(failures) =
+    validation_failures(&path_str, resolve_reference_paths(&mut style.reference, source, resolver))
+  {
     return Err(failures);
   }
 
@@ -254,7 +256,7 @@ pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<
     return Failures::single(ReadStyleError::ParseToml { src, span, source });
   })?;
   if let Err(errors) = validate_values(&style)
-    && let Some(failures) = validation_failures(errors)
+    && let Some(failures) = validation_failures(source_path, errors)
   {
     return Err(failures);
   }
@@ -263,8 +265,12 @@ pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<
 }
 
 /// 値検証の違反列を、1 件ずつ独立した leaf 診断として運ぶ非空集合へ変換する（空なら `None`）。
-fn validation_failures(errors: Vec<StyleValidationError>) -> Option<Failures<ReadStyleError>> {
-  return Failures::from_vec(errors.into_iter().map(ReadStyleError::from).collect());
+///
+/// 各違反には、それを見つけたスタイルファイルのパス `path` を添える（#552）。
+fn validation_failures(path: &str, errors: Vec<StyleValidationError>) -> Option<Failures<ReadStyleError>> {
+  return Failures::from_vec(
+    errors.into_iter().map(|error| return ReadStyleError::from(InFile::new(path, error))).collect(),
+  );
 }
 
 /// [`Style`] の値検証を実行します（I/O なし）。
@@ -454,8 +460,29 @@ mod tests {
     // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::Validation(StyleValidationError::CslPathResolution { .. }))
+      Err(ReadStyleError::Validation(failure))
+        if matches!(failure.error(), StyleValidationError::CslPathResolution { .. })
     ));
+  }
+
+  #[test]
+  fn load_attributes_a_missing_csl_path_to_the_style_file_it_read() {
+    // Arrange
+    let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
+    let source = MemoryProjectSource::new().with_text("/project/themes/custom.toml", toml);
+    let path = ProjectPath::new("/project/themes/custom.toml");
+
+    // Act
+    let Err(failures) = load(&source, Some(&path), &PathResolver::new(Path::new("/project"))) else {
+      panic!("CSL パスの違反を期待");
+    };
+
+    // Assert
+    let message = failures.first().to_string();
+    assert!(
+      message.starts_with("/project/themes/custom.toml: CSL スタイルファイルが見つかりません"),
+      "{message}"
+    );
   }
 
   #[test]
@@ -474,16 +501,15 @@ mod tests {
       panic!("2 件の検証エラーを期待");
     };
     let errors: Vec<&ReadStyleError> = failures.iter().collect();
-    assert!(
-      errors
-        .iter()
-        .any(|e| matches!(e, ReadStyleError::Validation(StyleValidationError::CslPathResolution { .. })))
-    );
-    assert!(
-      errors
-        .iter()
-        .any(|e| matches!(e, ReadStyleError::Validation(StyleValidationError::LocalePathResolution { .. })))
-    );
+    assert!(errors.iter().any(|e| matches!(
+      e,
+      ReadStyleError::Validation(failure) if matches!(failure.error(), StyleValidationError::CslPathResolution { .. })
+    )));
+    assert!(errors.iter().any(|e| matches!(
+      e,
+      ReadStyleError::Validation(failure)
+        if matches!(failure.error(), StyleValidationError::LocalePathResolution { .. })
+    )));
   }
 
   #[test]
@@ -681,9 +707,11 @@ mod parse_tests {
     // Assert — 余白単体の不正は style の値検証（`style::validation::field`）が報告する
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
-    assert!(
-      matches!(first, ReadStyleError::Validation(StyleValidationError::Field { ref path, .. }) if path == "page.margin_top")
-    );
+    assert!(matches!(
+      first,
+      ReadStyleError::Validation(ref failure)
+        if matches!(failure.error(), StyleValidationError::Field { path, .. } if path == "page.margin_top")
+    ));
   }
 
   #[test]
@@ -927,7 +955,7 @@ mod validate_tests {
         let ReadStyleError::Validation(validation) = error else {
           panic!("Validation を期待: {error:?}");
         };
-        return validation;
+        return validation.into_error();
       })
       .collect();
   }
@@ -1121,5 +1149,17 @@ resets = [\"nonexistent\"]
       matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
       "unknown reset target should be rejected at TOML parse time, got {result:?}"
     );
+  }
+
+  #[test]
+  fn parse_attributes_validation_errors_to_the_style_file_it_read() {
+    // Act — `style.toml` 以外の名前で置いたスタイルファイル
+    let Err(failures) = parse("[text]\nfont_size = \"0pt\"\n", "themes/custom-style.toml") else {
+      panic!("値検証の違反を期待");
+    };
+
+    // Assert — 実際に読んだファイルのパスが前置される（#552）
+    let message = failures.first().to_string();
+    assert!(message.starts_with("themes/custom-style.toml: 'text.font_size': "), "{message}");
   }
 }

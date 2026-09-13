@@ -32,6 +32,10 @@ impl<E> InFile<E> {
   /// 違反の内容を借用で返す。
   #[cfg(test)]
   pub(crate) fn error(&self) -> &E { return &self.error; }
+
+  /// 違反の内容を取り出す。
+  #[cfg(test)]
+  pub(crate) fn into_error(self) -> E { return self.error; }
 }
 
 impl<E: std::fmt::Display> std::fmt::Display for InFile<E> {

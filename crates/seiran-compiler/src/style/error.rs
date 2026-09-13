@@ -3,7 +3,7 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-use crate::project::SourceReadError;
+use crate::project::{InFile, SourceReadError};
 
 /// スタイル設定ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -32,14 +32,15 @@ pub(crate) enum ReadStyleError {
     #[source]
     source: toml::de::Error,
   },
-  /// 値検証の違反 1 件
+  /// 値検証の違反 1 件（実際に読んだ style ファイルのパスを添える）
   ///
   /// 複数の違反は `Failures<ReadStyleError>` の別要素として並ぶ。段名だけを表す集約
   /// バリアント（旧 `MultipleValidationErrors`）は持たない — ユーザーが最初に読むのは
   /// 「どのフィールドをどう直すか」であるべきで、「バリデーションに失敗しました」ではない（#376）。
+  /// パスは `style_path` で任意の名前を付けたファイルでも分かるように添える（#552）。
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Validation(#[from] StyleValidationError),
+  Validation(#[from] InFile<StyleValidationError>),
 }
 
 /// スタイル設定値バリデーションのエラー詳細。
