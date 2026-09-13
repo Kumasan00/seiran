@@ -48,6 +48,14 @@ use crate::{
   typeset::{TypesetOutput, TypesetWarning},
 };
 
+/// 型消去済みの診断 1 件（error・warning 共通の保持形）。
+///
+/// [`miette::Report`] ではなく `Box<dyn Diagnostic>` にするのは、`Report` が `Diagnostic` を
+/// 実装しない（miette 側の trait coherence の制約）ため。`Report` の列では 2 件目以降を
+/// [`miette::Diagnostic::related`] へ載せられず、呼び出し側も error と warning で違う反復 API を
+/// 使うことになる（#550）。
+type BoxedDiagnostic = Box<dyn miette::Diagnostic + Send + Sync + 'static>;
+
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]
 pub struct BuildStatistics {
@@ -280,7 +288,7 @@ fn parse_project(inputs: &CompilationInputs, resolver: &PathResolver) -> Result<
 /// エラーは宣言順に並べ、先頭（最初に失敗したソースの leaf 診断）を主診断にする。
 fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec<HirSource>, CompileFailure> {
   let mut parsed: Vec<HirSource> = Vec::new();
-  let mut parse_errors: Vec<Box<dyn miette::Diagnostic + Send + Sync + 'static>> = Vec::new();
+  let mut parse_errors: Vec<BoxedDiagnostic> = Vec::new();
 
   for (source_id, entry) in sources.iter() {
     match frontend::parse_source(&entry.content, source_id, resolver) {

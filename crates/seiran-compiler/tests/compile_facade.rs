@@ -177,7 +177,7 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
   // Assert — 組版の警告が成功成果物と一緒に返り、severity は Warning
-  let reports: Vec<&miette::Report> = compilation.warnings.iter().collect();
+  let reports: Vec<&(dyn Diagnostic + 'static)> = compilation.warnings.iter().collect();
   let codes: Vec<String> = reports
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())

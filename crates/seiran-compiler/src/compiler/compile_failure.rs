@@ -2,14 +2,7 @@
 
 use miette::Diagnostic;
 
-use crate::failures::Failures;
-
-/// 型消去済みの error diagnostic 1 件。
-///
-/// [`miette::Report`] ではなく `Box<dyn Diagnostic>` にするのは、`Report` が `Diagnostic` を
-/// 実装しない（miette 側の trait coherence の制約）ため。`Report` の列では 2 件目以降を
-/// [`Diagnostic::related`] へ載せられず、「先頭が主診断・残りが関連診断」という表示を作れない。
-type BoxedDiagnostic = Box<dyn Diagnostic + Send + Sync + 'static>;
+use crate::{compiler::BoxedDiagnostic, failures::Failures};
 
 /// `compile` が失敗したときに返る、1 件以上の error diagnostic。
 ///

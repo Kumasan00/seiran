@@ -13,7 +13,7 @@ use std::{ffi::OsStr, io::IsTerminal, path::Path, time::Duration};
 
 use log_file::LogSink;
 pub(super) use log_file::{LogFailure, LogFileError};
-use miette::{GraphicalReportHandler, GraphicalTheme};
+use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, MietteHandler, ReportHandler};
 use tracing_subscriber::{
   EnvFilter, Registry,
   filter::LevelFilter,
@@ -44,6 +44,9 @@ pub(super) struct Reporter {
   ansi: bool,
   /// ログファイルへの書き出し口（`--log-file` 指定時のみ）。
   log: Option<LogSink>,
+  /// 端末へ warning 診断を描く miette の既定 handler。`Report` の `Debug` 表示が使うのと同じもので、
+  /// 端末幅・色・unicode の判定を [`Reporter::init`] で 1 回だけ行うためにここへ持つ。
+  terminal: MietteHandler,
 }
 
 impl Reporter {
@@ -102,21 +105,26 @@ impl Reporter {
     if let Some(message) = plan.warning {
       tracing::warn!("{message}");
     }
-    return Ok(Reporter { quiet, ansi, log });
+    return Ok(Reporter {
+      quiet,
+      ansi,
+      log,
+      terminal: MietteHandler::new(),
+    });
   }
 
   /// コンパイルが返した warning 診断を報告する。
   ///
-  /// 端末へは `Report` の `Debug` 表示を使い、致命的エラーと同じ miette の体裁にする。tracing へは
-  /// 複製しないため、同じ問題が 1 つの出力先へ 2 回出ることはない。ログファイルへは装飾なしで書き、
-  /// `--quiet` でも省かない — warning の抜けた記録は事後解析に使えないため。
+  /// 端末へは miette の既定 handler で描き、致命的エラー（`Report` の `Debug` 表示）と同じ体裁にする
+  /// （[`TerminalDiagnostic`]）。tracing へは複製しないため、同じ問題が 1 つの出力先へ 2 回出ることはない。
+  /// ログファイルへは装飾なしで書き、`--quiet` でも省かない — warning の抜けた記録は事後解析に使えないため。
   pub(super) fn warnings(&self, warnings: &seiran_compiler::Warnings) {
-    for report in warnings {
+    for warning in warnings {
       if !self.quiet {
-        eprintln!("{report:?}");
+        eprintln!("{:?}", TerminalDiagnostic(&self.terminal, warning));
       }
       if let Some(log) = &self.log {
-        log.write_block(&render_report_plain(report));
+        log.write_block(&render_diagnostic_plain(warning));
       }
     }
   }
@@ -148,7 +156,7 @@ impl Reporter {
   /// miette で報告し ERROR レベルは使わないという線引き（#103）を、ファイルでも保つ。
   pub(super) fn failure(&self, report: &miette::Report) {
     if let Some(log) = &self.log {
-      log.write_block(&render_report_plain(report));
+      log.write_block(&render_diagnostic_plain(report.as_ref()));
     }
   }
 
@@ -183,17 +191,29 @@ fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool)
   return format!("{mark} {path} · {page_count} ページ · {elapsed_ms} ms");
 }
 
+/// 借用した診断を、miette の既定 handler で端末向けに描く表示用ラッパ。
+///
+/// `Report` は所有した診断からしか作れないので、`Warnings` が貸す `&dyn Diagnostic` を端末へ出すにはこの
+/// 形が要る。`Report` の `Debug` は構築時に既定 handler（`set_hook` していなければ `MietteHandler::new()`。
+/// seiran は `set_hook` を呼ばない）を捕まえて `handler.debug(診断, f)` を呼ぶだけなので、同じ handler で
+/// 同じ関数を呼べば、端末へ出るバイト列は `Report` 経由のときと一致する（#550）。
+struct TerminalDiagnostic<'a>(&'a MietteHandler, &'a dyn Diagnostic);
+
+impl std::fmt::Debug for TerminalDiagnostic<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.0.debug(self.1, f); }
+}
+
 /// ユーザー向け診断（warning・致命的エラー）をログファイル向けに装飾なしで文字列化する。
 ///
-/// 端末側はグローバルの miette handler（`Debug` 表示）に任せたままにする — ここで体裁を作るのは
-/// 「出力先が tty でないファイル」のためだけで、端末の見え方は `--log-file` の有無で変わらない。
-/// `related` を持つ診断は、端末と同じく関連診断まで続けて描く。
-fn render_report_plain(report: &miette::Report) -> String {
+/// 端末側は既定の miette handler に任せたままにする — ここで体裁を作るのは「出力先が tty でないファイル」の
+/// ためだけで、端末の見え方は `--log-file` の有無で変わらない。`related` を持つ診断は、端末と同じく
+/// 関連診断まで続けて描く。
+fn render_diagnostic_plain(diagnostic: &dyn Diagnostic) -> String {
   let mut rendered = String::new();
   // `new_themed` の既定はハイパーリンク有効で、url を持つ診断に OSC 8 のエスケープを出す。
   let handler = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor()).with_links(false);
   // 書き込み先が `String` なので失敗しない。
-  let _ = handler.render_report(&mut rendered, report.as_ref());
+  let _ = handler.render_report(&mut rendered, diagnostic);
   return rendered;
 }
 
@@ -355,10 +375,13 @@ fn flag_directive(verbose: u8) -> &'static str {
 mod tests {
   use std::{ffi::OsStr, path::Path};
 
-  use miette::Diagnostic;
+  use miette::{Diagnostic, MietteHandler};
   use thiserror::Error;
 
-  use super::{ansi_enabled, build_log_plan, flag_directive, parse_directive, render_report_plain, summary_line};
+  use super::{
+    TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive, render_diagnostic_plain,
+    summary_line,
+  };
 
   /// 体裁の確認に使う warning 診断。
   #[derive(Debug, Error, Diagnostic)]
@@ -552,7 +575,7 @@ mod tests {
 
   #[test]
   fn rendered_warning_has_no_ansi() {
-    let rendered = render_report_plain(&miette::Report::new(TestWarning));
+    let rendered = render_diagnostic_plain(&TestWarning);
 
     assert!(!rendered.contains('\u{1b}'), "url を持つ診断でもハイパーリンクの ESC を入れない");
     assert!(rendered.contains("テスト用の警告です"), "本文はそのまま残す");
@@ -561,12 +584,12 @@ mod tests {
   #[test]
   fn rendered_report_includes_related_leaves() {
     // Arrange — `CompileFailure` は 2 件目以降を `related` に載せるので、同じ形の診断で全 leaf が残ることを見る
-    let report = miette::Report::new(TestPrimary {
+    let diagnostic = TestPrimary {
       rest: vec![TestRelated, TestRelated],
-    });
+    };
 
     // Act
-    let rendered = render_report_plain(&report);
+    let rendered = render_diagnostic_plain(&diagnostic);
 
     // Assert
     assert!(!rendered.contains('\u{1b}'), "致命的エラーも装飾なし");
@@ -574,5 +597,17 @@ mod tests {
     assert!(rendered.contains("主診断のヘルプ"), "主診断の help が残る");
     assert_eq!(rendered.matches("cli::test_related").count(), 2, "関連診断は件数ぶん全部残る");
     assert_eq!(rendered.matches("関連診断のヘルプ").count(), 2, "関連診断の help も残る");
+  }
+
+  #[test]
+  fn terminal_rendering_of_a_borrowed_diagnostic_matches_the_report() {
+    // Arrange — 変更前の端末描画は `Report` の `Debug` だった
+    let expected = format!("{:?}", miette::Report::new(TestWarning));
+
+    // Act
+    let rendered = format!("{:?}", TerminalDiagnostic(&MietteHandler::new(), &TestWarning));
+
+    // Assert — 借用から描いても端末へ出るバイト列は変わらない
+    assert_eq!(rendered, expected);
   }
 }
