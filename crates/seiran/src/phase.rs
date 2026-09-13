@@ -35,7 +35,10 @@ pub(super) struct Phase {
 impl Phase {
   /// `span` に入り、工程の開始を記録する。
   ///
-  /// span は呼び出し側の `info_span!("render")` 等で作る（名前と target は callsite で決まる）。
+  /// span は呼び出し側の `info_span!("render")` 等で作る（名前と target は callsite で決まる）。一方
+  /// 「工程を開始」「工程を終了」の event 自身の target はこの module（`seiran::phase`）になる。
+  /// 工程を開いた module 単位で `RUST_LOG` を絞ると、この開始・終了 event は通らない — 見るには
+  /// `seiran::phase=info` を directive へ足す。
   pub(super) fn enter(span: Span) -> Self {
     let span = span.entered();
     info!("工程を開始");

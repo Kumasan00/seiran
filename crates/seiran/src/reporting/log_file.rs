@@ -6,6 +6,13 @@
 //! [`LogSink::finish`] で取り出す — tracing の writer が返したエラーは呼び出し元の `Result` へ伝わらないので、
 //! sink 自身が保持しないと「記録できていない実行」を成功として終えてしまう。
 //!
+//! **flush 方針**（#551）: INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と、
+//! 直接の報告（[`LogSink::write_block`]）は書くたびに flush する。DEBUG / TRACE は `BufWriter` に
+//! 溜めたままにする（TRACE は文書の要素数に比例して出るため、event ごとの flush はハングした実行の
+//! 診断に見合わない I/O コストになる）。この方針により、ハングや `SIGINT` / `SIGKILL` で止まった実行でも
+//! ファイルからそこまでの工程の開始・完了・終了を読める。最初の失敗の保持と `finish` の報告は不変 —
+//! flush 失敗も他の I/O 失敗と同じく [`SinkState::check`] を通る。
+//!
 //! `finish` を呼ばずに落ちた実行（`run` 内の panic 等）でも [`LogSink`] の `Drop` が書き残しを流し切る。
 //! ただしその経路では保持した失敗を報告する主体がいない（`finish` を経由しないので `LogFailure` を
 //! 受け取る側が存在しない）。
@@ -19,6 +26,7 @@ use std::{
 
 use miette::Diagnostic;
 use thiserror::Error;
+use tracing::{Level, Metadata};
 use tracing_subscriber::fmt::MakeWriter;
 
 /// ログファイルへの書き出し口。
@@ -80,23 +88,58 @@ pub(super) struct LogWriter {
 impl<'writer> MakeWriter<'writer> for LogWriter {
   type Writer = SinkGuard<'writer>;
 
-  fn make_writer(&'writer self) -> Self::Writer { return SinkGuard(lock(&self.state)); }
+  /// メタデータを持たない呼び出し元向け。DEBUG / TRACE と同じく `BufWriter` に溜める（flush しない）。
+  fn make_writer(&'writer self) -> Self::Writer {
+    return SinkGuard {
+      guard: lock(&self.state),
+      flush_on_drop: false,
+    };
+  }
+
+  /// `meta` の event を書く writer を作る。
+  ///
+  /// INFO 以上（`Phase` の「工程を開始」「工程を終了」を含む）は drop 時に flush し、DEBUG / TRACE は
+  /// 従来どおり `BufWriter` に溜める（flush 方針の根拠はモジュール doc を参照）。
+  fn make_writer_for(&'writer self, meta: &Metadata<'_>) -> Self::Writer {
+    return SinkGuard {
+      guard: lock(&self.state),
+      flush_on_drop: *meta.level() <= Level::INFO,
+    };
+  }
 }
 
 /// イベント 1 件を書いている間だけ writer を占有するガード。
 ///
 /// event の複数回の `write` が診断ブロックの行と混ざらないよう、1 件のあいだロックを保持する。
-pub(super) struct SinkGuard<'sink>(MutexGuard<'sink, SinkState>);
+pub(super) struct SinkGuard<'sink> {
+  /// 占有している書き出し先
+  guard: MutexGuard<'sink, SinkState>,
+  /// drop 時に flush するか（INFO 以上の event だけ真）
+  flush_on_drop: bool,
+}
 
 impl Write for SinkGuard<'_> {
   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-    let result = self.0.writer.write(buf);
-    return self.0.check(result);
+    let result = self.guard.writer.write(buf);
+    return self.guard.check(result);
   }
 
   fn flush(&mut self) -> io::Result<()> {
-    let result = self.0.writer.flush();
-    return self.0.check(result);
+    let result = self.guard.writer.flush();
+    return self.guard.check(result);
+  }
+}
+
+impl Drop for SinkGuard<'_> {
+  /// INFO 以上の event を書き終えたガードだけ flush する。
+  ///
+  /// flush 失敗は他の I/O 失敗と同じく [`SinkState::check`] を通して最初の失敗として保持する — ここで
+  /// 検査した `Result` を読む主体はいないが、保持自体は `check` の呼び出しだけで完結する。
+  fn drop(&mut self) {
+    if self.flush_on_drop {
+      let result = self.guard.writer.flush();
+      let _ = self.guard.check(result);
+    }
   }
 }
 
@@ -150,13 +193,16 @@ impl LogSink {
     };
   }
 
-  /// ユーザー向け報告 1 件ぶんをファイルへ書く（末尾に改行を足す）。
+  /// ユーザー向け報告 1 件ぶんをファイルへ書き、flush する（末尾に改行を足す）。
   ///
   /// 失敗はその場では報告しない — 報告の途中で処理を分岐させず、[`LogSink::finish`] が 1 度だけ返す。
+  /// flush するのは INFO 以上の event と同じ理由（ハングした実行でもファイルから読めるようにするため）。
   pub(super) fn write_block(&self, text: &str) {
     let mut guard = lock(&self.state);
     let written = writeln!(guard.writer, "{text}");
     let _ = guard.check(written);
+    let flushed = guard.writer.flush();
+    let _ = guard.check(flushed);
   }
 
   /// 書き残しを流し切り、保持していた最初の失敗を返す。
@@ -287,6 +333,8 @@ mod tests {
     sync::{Arc, Mutex},
   };
 
+  use tracing::{debug, info};
+
   use super::{LogFileError, LogSink, open_log_file, parent_to_create};
 
   /// 書き込みも flush も必ず失敗する書き出し先。
@@ -339,6 +387,98 @@ mod tests {
     // Assert
     let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     assert_eq!(String::from_utf8(written).expect("UTF-8 のはず"), "記録する 1 行\n", "末尾に改行を足して書く");
+  }
+
+  /// `buffer` へ書く `sink.writer()` を唯一の writer にした `fmt` subscriber を張る。
+  ///
+  /// `set_default`（thread-local）で入れるので global default を汚さない。`with_max_level` は既定の
+  /// `INFO` のままだと DEBUG event が subscriber に届く前に捨てられてしまうので TRACE まで開く
+  /// （フィルタは `LogSink` の外側の話で、ここではフィルタなしで届いた event が flush 方針でどう
+  /// 振り分けられるかだけを見る）。
+  fn set_fmt_subscriber(sink: &LogSink) -> tracing::subscriber::DefaultGuard {
+    let subscriber = tracing_subscriber::fmt()
+      .with_max_level(tracing::Level::TRACE)
+      .with_writer(sink.writer())
+      .with_ansi(false)
+      .without_time()
+      .finish();
+    return tracing::subscriber::set_default(subscriber);
+  }
+
+  #[test]
+  fn info_event_reaches_the_writer_before_finish() {
+    // Arrange
+    let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
+    let guard = set_fmt_subscriber(&sink);
+
+    // Act
+    info!("工程を開始");
+    let written_before_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
+    drop(guard);
+
+    // Assert
+    assert!(
+      String::from_utf8(written_before_finish).expect("UTF-8 のはず").contains("工程を開始"),
+      "INFO の event は書くたびに flush するので finish 前に届く"
+    );
+    sink.finish().expect("書き込みが成功した実行は失敗を持たない");
+  }
+
+  #[test]
+  fn debug_event_stays_buffered_until_finish() {
+    // Arrange
+    let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
+    let guard = set_fmt_subscriber(&sink);
+
+    // Act
+    debug!("内部詳細");
+    let written_before_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
+    drop(guard);
+
+    // Assert
+    assert!(written_before_finish.is_empty(), "DEBUG は BufWriter に溜まり finish 前には届かない");
+    sink.finish().expect("書き込みが成功した実行は失敗を持たない");
+    let written_after_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
+    assert!(
+      String::from_utf8(written_after_finish).expect("UTF-8 のはず").contains("内部詳細"),
+      "finish の flush で届く"
+    );
+  }
+
+  #[test]
+  fn write_block_reaches_the_writer_before_finish() {
+    // Arrange
+    let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
+
+    // Act
+    sink.write_block("実行記録の 1 行");
+    let written_before_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
+
+    // Assert
+    assert_eq!(
+      String::from_utf8(written_before_finish).expect("UTF-8 のはず"),
+      "実行記録の 1 行\n",
+      "write_block は書くたびに flush するので finish 前に届く"
+    );
+    sink.finish().expect("書き込みが成功した実行は失敗を持たない");
+  }
+
+  #[test]
+  fn info_event_flush_failure_is_retained_and_reported_by_finish() {
+    // Arrange
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(FailingWriter { calls: 0 }));
+    let guard = set_fmt_subscriber(&sink);
+
+    // Act
+    info!("工程を開始");
+    drop(guard);
+    let failure = sink.finish().expect_err("書き込み・flush に失敗した実行は失敗を報告する");
+
+    // Assert
+    assert_eq!(failure.path, "run.log", "失敗はログのパスとともに報告する");
   }
 
   #[test]

@@ -107,6 +107,10 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   （`EnteredSpan`）の drop より先に走るので、終了 event は工程の span の中で出る
 - 所要時間を持つのは終了 event だけで、各工程の完了 event（「入力を読込」等）は件数だけを持つ
 - CLI の `render` / `write` は `seiran` crate の同名 module が同じメッセージ・フィールドで記録する。
+- 開始・終了 event の target は工程が属する module ではなく、記録している `phase` module 自身
+  （`seiran_compiler::phase` / `seiran::phase`）。module 単位で絞った `RUST_LOG`（例:
+  `seiran_compiler::typeset=info`）はこの event を通さないので、開始・終了・`elapsed` も見たいときは
+  `seiran_compiler::phase=info`（CLI の工程なら `seiran::phase=info`）を directive へ足す必要がある。
   型を facade へ載せないのは event の target を各 crate に保つため
 
 ### `source`
@@ -1965,9 +1969,13 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   実行ごとに **`File::create_new` で新規作成**し（既存パスは `cli::log_file_exists` で拒否 — ログの指定で
   入力を壊さないため。#548 が #495 の truncate を改訂）、親ディレクトリが無ければ作る。書き込みは
   `Arc<Mutex<..>>` 越しの同期 `BufWriter` で、tracing の layer と直接の報告が同じ状態を共有する。
-  書き込み・flush の**最初の失敗を保持**し、`Reporter::finish` が明示的な flush の後に取り出す
-  （`tracing-appender` の `non_blocking` は「キューへの送信成功」しか保証せず、書き込み失敗を
-  呼び出し元へ返さないので使わない。非同期化は TRACE 有効時の性能計測で必要性が確認できてから再検討）
+  **flush 方針**（#551）: INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と直接の報告
+  （`LogSink::write_block`）は書くたびに flush し、DEBUG / TRACE は `BufWriter` に溜めたままにする（TRACE は
+  文書に比例して出るため、event ごとの flush はコストに見合わない）。この方針により、ハングやシグナルで
+  止まった実行でも、ファイルからそこまでの工程の開始・完了・終了を読める。書き込み・flush の
+  **最初の失敗を保持**し、`Reporter::finish` が明示的な flush の後に取り出す（`tracing-appender` の
+  `non_blocking` は「キューへの送信成功」しか保証せず、書き込み失敗を呼び出し元へ返さないので使わない。
+  非同期化は TRACE 有効時の性能計測で必要性が確認できてから再検討）
 - `phase`: `render` / `write` 工程の開始・結果付き終了を記録する RAII ガード `Phase`（#551）。
   `seiran-compiler` の同名 leaf module とメッセージ・フィールドを揃えるが、型は共有しない
   （event の target を各 crate に保つため。`main` がこの 2 工程の span を開く）
