@@ -13,10 +13,11 @@
 4. **ガード** — 過去の統合・分割の経緯のうち、知らないと今日の判断を誤るもの（型の形を戻してしまう、
    削除済みの規約を復活させる等）を「〜しない」の形で。issue 番号はガードとテストの anchor に限って添える
 
-記録しないのは **module の目録**である — 子 module の一覧、関数名・シグネチャ、struct のフィールド、テスト名、
-「X が Y を呼ぶ」という呼び出しの連鎖。これらの正典は `//!`（module doc）と各項目の doc コメントで、
-`missing_docs*` が有無を強制する。本書が名指しする名前は、境界を成す入口・型・不変条件の主語だけに留める
-（名前を並べた目録は、リファクタのたびに実装と乖離する二重帳簿になる）。
+記録しないのは **module の目録**である — 子 module の一覧、関数名・シグネチャ、struct のフィールド、テスト名
+（不変条件を固定する anchor として名指すものを除く）、「X が Y を呼ぶ」という呼び出しの連鎖。これらの正典は
+`//!`（module doc）と各項目の doc コメントで、`missing_docs*` が有無を強制する。本書が名指しする名前は、
+境界を成す入口・型・不変条件の主語だけに留める（名前を並べた目録は、リファクタのたびに実装と乖離する
+二重帳簿になる）。
 
 各 crate 節・module 節は **責務 / 境界 / 不変条件・注意点** の順で揃える。
 
@@ -55,10 +56,10 @@
 不変条件:
 
 - **内部表現・丸め規則・正準表現を consumer に複製しない**。f64 / f32 への変換は入出力境界（TOML パース・
-  PDF 座標出力・ダンプ整形）だけに閉じる。`Deref` / `From<f32>` は意図的に実装しない（変換漏れを型検査で
-  検出するため）
-- garde のカスタムバリデータは属性内の**文字列的なパス**で参照されるため、module を動かしても型検査では
-  検出されない。動かすときは grep で追う
+  シェーパー API 呼び出し・PDF 座標出力・診断 / ログ / ダンプの整形）だけに閉じる。`Deref` / `From<f32>` は
+  意図的に実装しない（変換漏れを型検査で検出するため）
+- garde のカスタムバリデータ（`positive` / `non_negative`）は `use` で持ち込み、属性には裸の識別子を書く
+  （derive が通常の関数呼び出しへ展開するので、module を動かしても `use` 側の名前解決で捕まる）
 - leaf の値概念は 1 module 1 概念で持つ。**包括的な `model` / `common` 置き場を再導入しない**
 
 ### `failures`
@@ -132,10 +133,10 @@
 メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは判定できない横断制約は
 `typeset::geometry` が持つ。
 
-依存の不変条件: **seam 部（module 直下 + `filesystem` / `memory` / `path_resolver`）は crate 内の他 module に
-依存しない**。crate 内依存を持つのは子 module だけで、`config` が `font` / `length` / `failures` を、`font` が
-seam と `failures` を、`source_set` が `source` / `failures` を参照し、`project::config → project::font → seam`
-の一方向に閉じる。seam を `config` の子に置かない（`font → config` という役割に合わない依存が生まれる）。
+依存の不変条件: **seam 部（module 直下 + `filesystem` / `memory` / `path_resolver`）と帰属 adapter `in_file` は
+crate 内の他 module に依存しない**。crate 内依存を持つのは残る 3 子 module だけで、`config` が `font` /
+`length` / `failures` を、`font` が seam と `failures` を、`source_set` が `source` / `failures` を参照し、
+`project::config → project::font → seam` の一方向に閉じる。seam を `config` の子に置かない（`font → config` という役割に合わない依存が生まれる）。
 「`project` 全体が crate 内依存を持たない」形へは戻さない。
 
 不変条件・注意点:
@@ -276,15 +277,16 @@ interface に出さないのは、`NodeId` の発行・位置表の内部 collec
 `project::InFile<StyleValidationError>` として読んだファイルのパスを前置する。
 
 境界: 子 module（サブスタイル群 + `template` + `error`）はすべて非公開で、module root が再エクスポートする
-のは**`style` の外から実際に名指しされる名前だけ**。`Style` の内部フィールド型としてしか現れない
-サブスタイル型は非公開 `use` に留め、`crate::style::FigureStyle` という到達経路を作らない。
-`ReadStyleError` だけは `compiler::input` が `#[from]` で運ぶために crate 内へ公開する。
+のは**`style` の外から実際に名指しされる名前と、公開フィールドの型として名指し可能でなければならない名前
+（`unnameable_types`）だけ**。`Style` の内部フィールド型としてしか現れないサブスタイル型は非公開 `use` に
+留め、`crate::style::FigureStyle` という到達経路を作らない。`error` からは `ReadStyleError` だけを
+（`compiler::input` が `#[from]` で運ぶために）crate 内へ公開する。
 
 #### スキーマ
 
 `serde(default)` でデフォルト値をマージし（部分指定された TOML キーだけが上書きされる。例外は
-`[counters.<name>]` で、`CounterStyle` は `serde(default)` を持たず、書くなら 5 キーすべてが必須 — #561）、
-garde でバリデーションする。`Style` は `#[serde(deny_unknown_fields)]` で、未知のトップレベルキーは
+`[counters.<name>]` で、`CounterStyle` は `serde(default)` を持たず、書くなら 5 キーすべてが必須 — 設計では
+なく現行の制限）、garde でバリデーションする。`Style` は `#[serde(deny_unknown_fields)]` で、未知のトップレベルキーは
 TOML パース時に弾く。**キーの一覧と既定値はここへ複製せず、各サブスタイル struct の doc コメントが正典**
 （`missing_docs_in_private_items` が有無を検査する）。以下は非自明な意味・設計だけ。
 
@@ -307,7 +309,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 - **表**: ヘッダ行の書体 `head_font_kind` は指定された `FontKind` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ**: `[counters.<name>]` の `<name>` は固定 9 種のみで、未知のカウンタ名は
-  `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、`semantics` だけが読む
+  `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番）と
+  `typeset::lowering`（確定した `parts` を祖先カウンタ名へ対応付ける祖先チェーン）の 2 箇所。祖先の決め方は
+  両者で同じ規則（`semantics` 節）
 - **数式**: `[math.script]`（上付き / 下付きの倍率・シフト。インライン数式にも効く。本来は OpenType MATH
   テーブル由来の値で、MATH 対応後は非対応フォント用フォールバックに退く）と `[math.block]`（全表示数式
   環境が共有するブロックのレイアウト）
@@ -323,6 +327,7 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   オプションではなく style が持つ。数字表記スタイルはページ番号・カウンタと同じ `NumberStyle` を流用する
 - **ヘッダ / フッタ**: 共通の `RunningContentStyle`（左中右スロット + トークン）。`enabled` は無く、
   スロットにテンプレートを置くと有効になる
+
 ### `frontend`
 
 テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
@@ -379,7 +384,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源としてディスパッチする。数式系環境は
   複数行分割の共通基盤を共有する
 - 任意引数の検査（未知キー・同一組内のキー重複・値の型）は 1 箇所が担い、ハンドラは許可キーと型の
-  スキーマを渡すだけ
+  スキーマを渡す。値域（正の長さ・1 以上の整数）だけはハンドラが検査し、同じ `EvalError` の変種で返す
 - 引数の再帰評価は `IndexPolicy`（`\index` を許すか）を引数で受け取り、拒否は 1 箇所に閉じる — 文脈を
   決めるのは呼び出し元で、見出しタイトル・`\href` 表示テキスト・表の `\head` 行・`\index` 自身の語が
   `Reject`、キャプション・表の本体行が `Allow`、書体 / 色指定と脚注本体は**外側の方針を継承**する
@@ -392,8 +397,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - `frontend::test_support`（`pub(crate)`）: `frontend` 配下と後段（`semantics` / `typeset`）の test module が
   共有する、resolver 注入済みの入口（`base_dir` が空パスの resolver で `parse_source` を呼ぶ）。パス解決
   そのものを検証するテストは resolver を明示して `frontend::parse_source` を直接呼ぶ
-- `evaluator::test_support`（`pub(super)`）: 本番のレジストリを注入した CST 組み立てヘルパ。直近の親だけが
-  使う
+- `evaluator::test_support`（`pub(super)`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
+  配下の test module だけが使う（`frontend` 以上には見えない）
 
 #### 不変条件・注意点
 
@@ -426,10 +431,12 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 **文書木は読み取り専用で、書き戻しは一切行わない**。
 
 境界: `semantics` の外から呼ばれる操作は `analyze`、文献の読込 `read_references`（入力読込段が呼ぶ）、
-生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ。module root の他の `pub(crate) use` は
-兄弟 module が root facade 経由で引くための経路で、外部の消費者はいない。走査後に初めて成立する意味上の
-識別子 `LabelId` / `HeadingKey` も本 module が所有する（組版側は到達先の名前空間として使うだけで、発行は
-しない）。
+生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ（`#[cfg(test)]` の `analyze_for_test` を
+除く）。module root が再エクスポートする他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
+引くための経路で外部の消費者はいない。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は
+`typeset` / `compiler` が名指しする。走査後に初めて成立する意味上の識別子 `LabelId` / `HeadingKey` も本 module
+が所有する（組版側は到達先の名前空間として使うだけで、発行はしない — 目次が事実に載った index から鍵を
+組み直すのは復元であって発行ではない）。
 
 - **`SemanticDocument` 自身が「lowering の入力」**で、利用側は collection 構造も内訳も知らず、目的別 query
   経由でのみ参照する。組版入力を組み立てる橋渡しの中間木・ビュー型（`DocumentContent` のような）へ
@@ -514,9 +521,11 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 
 ### `typeset`
 
-意味解析の成果物（`SemanticDocument`）を描画直前の `Publication` へ変換する。外から見える入口は
-**module root の `compose` 1 操作**と、入力読込から呼ばれる版面の構築 `PreparedGeometry::prepare`
-（`geometry` 項）だけで、子 module はすべて非公開。`compose` は組版の成否と `TypesetWarning` の列の組を返し、
+意味解析の成果物（`SemanticDocument`）を描画直前の `Publication` へ変換する。外から見える操作は
+**module root の `compose` 1 つ**と、入力読込から呼ばれる版面の構築 `PreparedGeometry::prepare`
+（`geometry` 項）だけ（`#[cfg(test)]` の出口 `layout_for_test` を除く）で、本体ビルドでは子 module は
+すべて非公開（`test_fixtures` だけ `#[cfg(test)] pub(crate)`）。`compose` は組版の成否（成功側は
+`TypesetOutput`）と `TypesetWarning` の列の組を返し、
 警告は成否と独立に**フォント → 本体の順**で載せる（配置が失敗した実行ではフォントの警告だけ — 配置由来の
 警告は配置が成功したときにしか存在しない）。`compiler` が名指しする警告型は 1 つだけで、`typeset` の内部が
 フォント資源の構築と配置の 2 段に分かれていることは知らない。
@@ -553,7 +562,7 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 #### `emit`
 
 組版の出口。`ProjectConfig`（用紙寸法・`show_bookmarks`・文書メタデータの出どころ）・`LaidOutDocument`・
-フォント資源を受け取り、描画資源の構築・確定座標の `PaintOp` への写像・リンク到達先の検証を 1 操作に
+フォント資源（生バイト列 `FontData` と解析済み `FontResources` の 2 つ）を受け取り、描画資源の構築・確定座標の `PaintOp` への写像・リンク到達先の検証を 1 操作に
 閉じる。`Style` に依存する判断は一切しない — 表のセル余白・罫線・ページ背景色は `breaking` が解決済みの値
 として `Page` / `PlacedBlock` に載せており、`emit` はそれを読むだけ。確定レイアウトは**消費する**（最後の
 読み手なので複製せず move する）。`ImageRef` は配列添字なので、画像は**パス昇順**に並べてから配列を組む。
@@ -629,8 +638,10 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
 保つため。段幅の算出式もここが持ち、`pagination` の context で再計算しない。
 
 **`prepare` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な組み合わせを弾く。
-確定した版面は `CompilationInputs` が保持し、`compose` の引数として組版へ戻る。`typeset` の外向き interface
-を `compose` 1 操作に保つ原則の意図した例外はこの 2 名前（`PreparedGeometry` / エラー型）だけ。
+確定した版面は `CompilationInputs` が保持し、`compose` の引数として組版へ戻る。`typeset` の外向きの操作を
+`compose` 1 つに保つ原則の意図した例外は `prepare` だけで、facade に載る型は 2 操作のシグネチャに現れるもの
+（`TypesetOutput` / `TypesetWarning` / `TypesetError` / `PreparedGeometry` とそのエラー型）と `#[cfg(test)]`
+出口の `LaidOutDocument` に限る。
 
 #### `image`
 
@@ -647,7 +658,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
 
 #### `pagination`
 
-確定ページ列の組み立て。`paginate` が段順序を所有する、`typeset` 内部から見える唯一の操作。
+確定ページ列の組み立て。`typeset` root から見える操作は全段共有 context の構築と `paginate` の 2 つで、
+段順序を所有するのは `paginate`。
 
 | 段 | 内容 |
 | --- | --- |
@@ -676,9 +688,11 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
 - **索引**: 本文全ページの索引エントリを `(word, reading)` で集約し、出現ページへアンカーを事後追加してから
   並び順・区分・ページ番号列の畳み込み・行組み立てを行う。並び順と区分の割り当ては 1 つの子 module が持ち、
   **同じ照合キー・同じ照合順序**（ICU collator、ロケール `ja`。`reading` があればそれ、なければ `word`）
-  から出ることを保証する。区分見出しは ICU `AlphabeticIndex` と同じ照合区間割り当てで決め、かな正規化表や
-  「ん」の特例を持たない（区分とソートが同じ照合順序から出るので不整合が構造的に起きない）。先頭ラベルより
-  前（数字・記号）と最終ラベルの区間を超えるもの（reading の無い漢字語等）は末尾 1 つの受け皿へ統合する。
+  から出ることを保証する。区分見出しは ICU `AlphabeticIndex` と同じ照合区間割り当てで決め、かな正規化表を
+  持たない（区分とソートが同じ照合順序から出るので不整合が構造的に起きない）。先頭ラベルより前（数字・記号）
+  と最終ラベルの区間を超えるもの（reading の無い漢字語等）は末尾 1 つの受け皿へ統合する。後者の判定だけは
+  ICU の script 境界の代わりに慣習定数「ん」との先頭 1 文字比較で代替する（キー全体で比べると接頭辞規則で
+  「ん」始まりが受け皿へ落ちる）。
   ページ番号列は既定で 1 ページ 1 リンク、範囲畳み有効時は連続 3 ページ以上を en dash で畳んで範囲全体に
   先頭ページへのリンクを 1 本張る（連番判定はラベル文字列ではなく本文内ページ index の差分で行う —
   ローマ数字等でも成立する）。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭。
@@ -729,8 +743,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 済んでいるため、「確定した構造値を style の表示側フィールドで文字列にして箱に積む」だけを行い、意味解析を
 行わないため失敗しない（`Result` を返す公開関数が無い）。
 
-- 入口は前段の深い型 `SemanticDocument` 1 つだけを借用する。lowering 側にビュー型を置かず（#349）、side
-  table の raw な collection を直接受け取る形にも戻さない（collection 構造と完全性検証が消費側へ漏れる）。
+- 本文の入口は前段の深い型 `SemanticDocument` 1 つだけを借用する（タイトルページだけは config 由来の
+  メタデータを受ける別入口）。lowering 側にビュー型を置かず（#349）、side table の raw な collection を直接
+  受け取る形にも戻さない（collection 構造と完全性検証が消費側へ漏れる）。
   生成物（書誌）には `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」を保つ）
 - **`\ref` / `\cite` は 2 段階プレースホルダを使わない**: 参照先も引用表示も `SemanticDocument` の query で
   その場で解決してノードへ変換する（プレースホルダを発行して 2 パス目で書き換える走査へ戻さない）。走査中の
@@ -752,7 +767,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
 - **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
-  段落内 `\\` 由来のみ）
+  段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - `Atom` に畳める要素（テキスト・kern・入れ子の raise）は `LayoutNode` の部分集合 `AtomNode` として型で
   絞り、`boxing` の `Atom` 化が場合分けなしで閉じる
 
@@ -763,7 +778,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 
 - **break 注入**: シェーピング後の run を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、和文字間は
   幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済み
-  ハイフン箱を持つ `Discretionary` にする。和文と数式は分割しない
+  ハイフン箱を持つ `Discretionary` にする。和文はハイフネーションしない（字間 `Glue` が分割機会）、数式は
+  分割しない
 - **コード**（`code` 環境の 1 行・`\code{...}`）は break 注入を通さず `Atom` 1 つに畳む — 空白を伸縮 `Glue`
   へ変換しないので、字下げと空白の個数が行分割・行揃えで動かない（行内に分割機会が無いので折り返しも
   しない。コードの行折り返しは未対応）。空文字列（コードの空行）のときだけ同じ書体・サイズの空セグメントを
@@ -811,8 +827,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 配分する。分母は最後の本文 block の先行累積量。同じ entry の block / アンカー / リンクは同じ量だけ動き、
 脚注 entry は動かない（末尾ページ・強制改ページ直前・伸縮アキ 0 のリージョンは対象外）。
 
-**強制改ページは冪等**: `PENALTY_FORCE_BREAK`（見出しの `page_break_before` / `page_break_after` と
-`\pagebreak` の双方が発行する）は、内容（本文ブロックまたは確定脚注）を挟まない限りページ境界が 1 つに
+**強制改ページは冪等**: `PENALTY_FORCE_BREAK`（見出しの `page_break_before` / `page_break_after`・
+`\pagebreak`・タイトルページ末尾・前付けの区画境界のどれが発行しても同じ 1 定数）は、内容（本文ブロック
+または確定脚注）を挟まない限りページ境界が 1 つに
 畳まれ、文書先頭・連続・末尾のいずれでも白紙ページを作らない（帰属データだけではページを作らず、未解決
 アンカーは次ページへ持ち越す）。
 
@@ -850,10 +867,10 @@ TRACE ログ用の要約ヘルパだけを持つ純粋関数の module。文書�
 | module | 役割 | 外への出し方 |
 | --- | --- | --- |
 | `test_fixtures` | 確定レイアウトの fixture builder | `pub(crate) mod`（`typeset` の内側のテストが使う） |
-| `dump` | 確定ページ列の決定的テキストダンプ `dump_pages` | root facade から関数 1 つだけ |
+| `dump` | 確定ページ列の決定的テキストダンプ `dump_pages` | `typeset` root facade から関数 1 つだけ |
 
-`test_fixtures` の**不変条件**: `pub(crate)` の関数・メソッドの引数型にも返り値型にも、`boxes` の中間型
-（`Page` / `PlacedBlock` 以外）を現さない。受け取るのは意味的な値（テキスト・座標・寸法・構造）だけで、
+`test_fixtures` の**不変条件**: `pub(crate)` の関数・メソッドの引数型にも返り値型にも、`typeset` root が
+`#[cfg(test)]` で再エクスポートしていない `boxes` の中間型（`HBox` / `Line` 等）を現さない。受け取るのは意味的な値（テキスト・座標・寸法・構造）だけで、
 箱と行の寸法は専用の引数まとめ型で渡す。この規約が破れると外側のテストが再び中間型のフィールド構成へ
 結合する。
 
@@ -861,6 +878,7 @@ TRACE ログ用の要約ヘルパだけを持つ純粋関数の module。文書�
 ダンプ（`compiler::dump`）とは別の型の別の表現で、共有するのは丸め桁数（0.01pt）と負のゼロ正規化の規約だけ。
 golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消費者はダンプ同士の自己比較なので golden
 ファイルを読まない。
+
 ### `publication`
 
 組版成果物の確定表現 `Publication` と、不正状態を作れない検証付きコンストラクタの所有者。組版中間型からの
@@ -884,7 +902,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 | `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` の構築時保証） |
 
 これが「renderer は確定座標の描画のみ」を**型で**担保している部分で、`seiran-pdf` 側の防衛的な error
-variant（invalid page size / rule rect / link rect / image not in manifest）を削除できた根拠（#378）。
+variant（invalid page size / rule rect / link rect / image not in manifest）を削除できた根拠。
 `PublicationResources` のフィールドを隠すのは、`FontMap` を facade へ出さずに済ませるためでもある。
 `Point` は不変条件を持たないのでフィールド公開のまま。
 
@@ -942,7 +960,8 @@ resolve_root（PathResolver を 1 回構築・root を解決）
 - `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
   （出力形式か保存先が複数になった時点で改めて設計する）
 - フォント資源の構築を `compiler` 側へ引き上げる形へ戻さない — `FontResources` は `typeset::compose` の外へ
-  一切出ず、`compiler.rs` が `typeset` から名指しするのは入口 `compose` と成果物の型だけ
+  一切出ず、本体ビルドで `compiler.rs` が `typeset` から名指しするのは入口 `compose` と成果物の型だけ
+  （`LaidOutDocument` と `layout_for_test` は `#[cfg(test)]` の出口）
 
 #### tracing の phase 構造
 
@@ -1000,7 +1019,8 @@ phase 名（`resolve_root` は span を持たない前処理）。段の完了 e
   `NamedSource` を組み立てる
 - `warnings`: `compile` が成果物または失敗と一緒に返す warning severity の診断集合 `Warnings`
   （`Compilation.warnings` と `CompileFailure::warnings()`）。中身は `Box<dyn Diagnostic + Send + Sync>` の
-  列で、公開操作は診断の借用 `&dyn Diagnostic` — `CompileFailure::diagnostics()` と同じ要素型なので、呼び出し
+  列で、公開操作は診断の借用 `&dyn Diagnostic` の反復と空判定 — `CompileFailure::diagnostics()` と同じ要素型
+  なので、呼び出し
   側は error と warning を同じインターフェースで反復できる（`miette::Report` の列には戻さない）。致命的
   エラーとは公開型を共用せず、`CompileFailure` と違って空で構築できる。中身は**入力の論理順**（config →
   フォント → 組版）で、段の中の順序は各段が保証する
@@ -1028,7 +1048,7 @@ phase 名（`resolve_root` は span を持たない前処理）。段の完了 e
   失われる情報を見るため組版中間表現の出口を通る。テストヘルパが入力読込を迂回していないことは、横断検証の
   診断がそのヘルパ経由で出ることを見るテストが機械的に押さえる。検証手段の使い分け・golden の再生成手順は
   `verify-typesetting` skill
-- `diagnostics`: miette 診断メッセージの golden テスト（`tests/golden_diagnostics/`）。`CompileFailure` を
+- `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。`CompileFailure` を
   `into_report` してレンダリングするので、golden はユーザーが実際に見る表示そのもの。外部資源の read error を
   `#[source]` に載せる診断だけは cause 行が adapter の所有物になる（`MemoryProjectSource` と実 adapter で
   違う）— 実 adapter 側の挙動は `project::filesystem` の単体テストが押さえる。集約・段 wrapper の `code` と
@@ -1048,8 +1068,8 @@ crate 内部の `#[cfg(test)]` ではなく独立テストバイナリ。`compil
 - `tests/determinism.rs`: 同じ入力で `compile()` を 2 回呼んでも `Publication` が完全に一致すること
   （網羅目的の fixture 追加はしない）と、エラー経路の報告順（画像欠落はパス昇順・ソース欠落は宣言順・
   診断 `code` 列が実行間で一致）を固定する（#306）
-- `tests/trace_events.rs`: 同じ入力のログ全文が実行間で一致すること（event の発行順の決定性）と、`-v` 相当の
-  INFO が 6 工程 × 開始・完了・終了であることを固定する
+- `tests/trace_events.rs`: 同じ入力で `typeset::breaking` / `typeset::boxing` の TRACE ログが実行間で一致する
+  こと（event の発行順の決定性）と、`-v` 相当の INFO が 6 工程 × 開始・完了・終了であることを固定する
 
 ## `seiran-pdf`
 
@@ -1111,8 +1131,8 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 依存し、`compile` → `render` → atomic write（一時ファイル + rename）→ 結果表示（確定済みの warning 診断を
 主エラーより先に、とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の 4 手順に限定される。
 段の呼び出し順序・組版の中間型は一切知らない。filesystem・ログ初期化（`tracing-subscriber`）・端末出力と
-いった実行環境の関心事はすべてこの crate に閉じ、カレントディレクトリも `build` 実行時にこの crate が取得して
-相対パスの解決基準として `compile` へ明示する。
+いった実行環境の関心事はすべてこの crate に閉じ、カレントディレクトリも起動時に `main` が 1 回取得して
+（全サブコマンド共通。実行記録の基準ディレクトリと `build` の相対パス解決に同じ値を使う）`compile` へ明示する。
 
 ### 境界
 
@@ -1214,7 +1234,8 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   `FmtSpan::CLOSE` を採らないのは、成功と失敗を区別できず、DEBUG の span にも enter / close 行を足して
   しまうため。件数を持つ event は callee が出し、orchestrator は同じ工程の完了 event を重ねない（1 事象
   1 行）。所要時間を持つのは工程の終了 event と、残る DEBUG の集計 event だけ。**`typeset::breaking` /
-  `typeset::boxing` の event には所要時間を載せない** — 同じ入力のログ全文を実行間で比較するテストのため。
+  `typeset::boxing` の event には所要時間を載せない** — 同じ入力の TRACE ログを実行間で比較するテスト
+  （`tests/trace_events.rs`）のため。
   tracing に載る失敗情報は工程の状態と所要時間だけで、診断本文は複製しない。ERROR レベルは使わない
 - **レベルの判定テストは「イベント数が文書の中身に比例するか」**。新しいログを足すときはこの表で決め、
   既存イベントのレベルは動かさない。
@@ -1230,8 +1251,9 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   絞り込みは `RUST_LOG` の target 単位指定が担い、量を理由に粒度を粗くしたり DEBUG へ薄めて混ぜたりしない。
   同じ段落・同じグリフの TRACE が複数回出る経路が 2 つある — ページ単位脚注採番の反復と、widow / orphan
   判定のための段落の投機的な再分割。どちらも回数は入力に対して決定的
-- **フィールドとメッセージの規約**。対象は INFO / DEBUG / TRACE の event と span のフィールド（WARN は
-  ユーザー向けの文で構造化フィールドを持たない）。表に無い形が要るなら表を改訂してから使う。
+- **フィールドとメッセージの規約**。対象は INFO / DEBUG / TRACE の event と span のフィールド（tracing の
+  WARN event は現状 0 件。足すなら実行環境上の異常を伝える人向けの文で、構造化フィールドは持たせない）。
+  表に無い形が要るなら表を改訂してから使う。
 
   | 項目 | 規約 |
   | --- | --- |

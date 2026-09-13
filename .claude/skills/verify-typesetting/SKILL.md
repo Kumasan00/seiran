@@ -70,8 +70,8 @@ render 層を触ったら **`cargo test -p seiran-pdf`** も確認する（レ�
 ## PDF バイト比較（render 層のみ）
 
 PDF には `crates/seiran-pdf/src/metadata.rs` の `Utc::now()` 由来の `CreationDate` /
-`ModDate` が埋め込まれ、krilla はその日時を含むハッシュから trailer の `/ID` と XMP の
-DocumentID を導出する。**同じコードでもビルド時刻が違えば PDF バイトは変わる**ため、
+`ModDate` が埋め込まれ、krilla はその日時を含むハッシュから trailer の `/ID`（第 2 要素）と XMP の
+InstanceID を導出する。**同じコードでもビルド時刻が違えば PDF バイトは変わる**ため、
 生の `cmp` はそのままでは使えない。
 
 手順（振る舞い不変の確認）:

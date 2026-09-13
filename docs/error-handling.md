@@ -40,7 +40,8 @@ warning と tracing の分担・内部不変条件違反の扱い・garde バリ
 
 **第 2 階層以降は規定しない** — 著者が選ぶ意味的カテゴリで、module パスと一致していなくてよい
 （`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation`、
-`frontend::parse::unexpected_token` の `parse` はいずれも module 名ではない）。
+`frontend::parse::unexpected_token` の `parse` はいずれも module 名ではない）。`#[cfg(test)]` の
+フィクスチャ診断だけは第 1 階層に `test` を名乗り、本体コードには現れない。
 
 crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code の約 9 割に付いて情報量がゼロ
 （ユーザから見ればバイナリは 1 つ）であり、かつ第 2 階層以降が野放しになるので
@@ -58,7 +59,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 `#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError`）は
 `Diagnostic` を実装しない、が既定形。
 
-`code` の変更はユーザから見える診断出力の変更なので、`tests/golden_diagnostics/` の再生成
+`code` の変更はユーザから見える診断出力の変更なので、`crates/seiran-compiler/tests/golden_diagnostics/` の再生成
 （`UPDATE_GOLDEN=1 cargo test -p seiran-compiler`）と差分確認をセットで行う。
 
 ## ソース位置付きエラー
@@ -169,12 +170,12 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   user-actionable な `tracing::warn!` を新しく増やさない。組版の内側で見つかる警告も
   （検出は `typeset::breaking` の純粋関数、ページ番号・脚注番号を添えるのは `PageComposer`、
   印字ページラベルの解決は `typeset::pagination` の段 5、という配管で）診断として返す（#382）。
-  CLI の `RUST_LOG` の通知も warning 診断（`cli::rust_log::*`）で、実効フィルタに消されない（#551）。
+  CLI の `RUST_LOG` の通知も warning 診断（`cli::rust_log::*`）で、実効フィルタに消されない。
 
-## 内部不変条件違反（#378）
+## 内部不変条件違反
 
 ユーザーが直せない問題をユーザー向け診断にしない。**内部バグ用の Diagnostic 型・`internal_bug` 系の
-`code` は作らない**（`typeset::error::TypesetBug` / `typeset::internal_bug` は削除済みで、再導入しない）。
+`code` は作らない**（`typeset::error::TypesetBug` / `typeset::internal_bug` は削除済みで、再導入しない。#378）。
 順に次を試す。
 
 1. **型で不正状態を表現不能にする**（第一手）。公開する型はフィールドを非公開にし、構築経路を
@@ -197,7 +198,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 ## シグネチャの原則
 
-- 関数のシグネチャは **常に具体的なエラー型を返す**（例: `Result<Config, ReadConfigError>`,
+- 関数のシグネチャは **常に具体的なエラー型を返す**（例: `Result<Style, Failures<ReadStyleError>>`,
   `Result<HirSource, ParseSourceError>`, `Result<Compilation, CompileFailure>`）。**production の内部
   pipeline で `miette::Result<T>` を使わない**（#375）— error の `miette::Report` への型消去は
   CLI 入口（`main` / サブコマンド）でだけ行い、そこまでは段の error 型を保つ。`Report` は
@@ -248,4 +249,4 @@ pub enum MyError {
 
 設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` が `project::InFile<*ValidationError>` として読んだファイルのパスを添えて透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
 
-例外: references 読込（`semantics::citation::references`、旧 `read_references`）は集約せず deserialize 時に fail-fast（著者名の family/literal 排他・空 / 空白 / 重複 ID）。理由: (1) 名前・ID 不正は稀な編集ミスで集約の価値が薄く、旧実装の集約は全構造体ジェネリック + 2 相変換（約 100 行）を要していた、(2) この module の他のエラー（`deny_unknown_fields`・未知日付キー・拡張子）は元々すべて fail-fast で一貫する、(3) fail-fast なら TOML / JSON パーサの行・列位置が診断に付き、手編集する references ファイルにはむしろ良い。検証は確定型側の手書き `Deserialize`（`name.rs` / `date.rs` の方式）に置き、`RawName` 相当の生表現・全構造体ジェネリックは作らない。将来クロスフィールド検証（season 範囲・date-parts arity 等）を足す場合も後段 `resolve` 集約で足りる。#376 の基準に対する意図的例外として維持し、集約方式に戻さない。
+例外: references 読込（`semantics::citation::references` の `read_references`）は集約せず deserialize 時に fail-fast（著者名の family/literal 排他・空 / 空白 / 重複 ID）。理由: (1) 名前・ID 不正は稀な編集ミスで集約の価値が薄く、旧実装の集約は全構造体ジェネリック + 2 相変換（約 100 行）を要していた、(2) この module の他のエラー（`deny_unknown_fields`・未知日付キー・拡張子）は元々すべて fail-fast で一貫する、(3) fail-fast なら TOML / JSON パーサの行・列位置が診断に付き、手編集する references ファイルにはむしろ良い。検証は確定型側の手書き `Deserialize`（`name.rs` / `date.rs` の方式）に置き、`RawName` 相当の生表現・全構造体ジェネリックは作らない。将来クロスフィールド検証（season 範囲・date-parts arity 等）を足す場合も後段 `resolve` 集約で足りる。#376 の基準に対する意図的例外として維持し、集約方式に戻さない。

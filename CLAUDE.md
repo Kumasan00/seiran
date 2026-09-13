@@ -129,7 +129,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
                    （Publication / DependencyManifest / Warnings / BuildStatistics / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource とその 2 実装 / ProjectPath /
-                   SourceReadError）+ leaf 値型（Length / Color / FontType と Publication 系）
+                   SourceReadError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType と Publication 系）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
@@ -183,7 +183,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### モジュール構成
 
-- **`mod.rs` を使わない**: 親は `foo.rs`、子は `foo/<child>.rs`（`mod_module_files`）。例外は `tests/common/mod.rs` だけ
+- **`mod.rs` を使わない**: 親は `foo.rs`、子は `foo/<child>.rs`（`mod_module_files`）。例外は各 crate の `tests/common/mod.rs` だけ
 - **既定で非公開 + root ファサード**: 子は `mod`、公開 API は root（または親）の `pub use` で 1 本に揃える。`pub mod` / `pub(crate) mod` は module 名が名前空間として意味を持つときだけ（`project::config::load` vs `style::load`）。同名型を 2 つ作って module 公開で回避せず名前側を変える（`ConfigValidationError` / `StyleValidationError`）。facade へ載せるのは実際に名指しされる名前だけ（`unreachable_pub` / `unnameable_types`）。利用側は最浅の公開パスから import し、enum variant は import せず `Enum::Variant` と書く
 - **同一ファイル内で 1 型の inherent impl を分けない**（`multiple_inherent_impl`）: ライフタイム引数の有無で分かれているだけなら名前付きの側へ寄せる。別ファイルへ切り出した impl は lint の対象外なので分割の慣行と衝突しない
 - **分割の判断基準**: 行数ではなく**自己完結した本体コードの塊**の大きさ。大半がインラインテストなら分割しない。切り出すのはエラー型 enum のようにロジックを持たず private 内部に依存しない塊で、`Parser` 等の private フィールドに密結合したメソッド群は可視性を緩めてまで分割しない
@@ -229,7 +229,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### Clippy 運用
 
-lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.lints]` の clippy / rust / rustdoc 3 テーブルとも同じ規則）、節見出しは有効化の目的（規約の機械化 / 字面に意味 / 表記の固定 / 決定性 / crate の責務境界 / 誤りの検出 / 残骸を残さない / nursery）で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
+lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.lints]` の clippy / rust / rustdoc 3 テーブルとも同じ規則）、節見出しは有効化の目的（規約の機械化 / 字面に意味 / 表記の固定 / 決定性 / crate の責務境界 / 誤りの検出 / 残骸を残さない / nursery。先頭の「有効化しないもの」だけは allow の置き場）で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
 
 - 確認は CI / pre-commit と同じ `cargo clippy --all-targets --all-features -- -D warnings`（warn もビルド失敗になる）
 - rustdoc lint（`[workspace.lints.rustdoc]`）は `cargo doc` を回して初めて効く。CI と同じ形は
@@ -241,7 +241,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 ### テスト
 
-- 入力は `tests/text/`（機能別 `.sei`）、フォントは `fonts/`
+- 入力は `tests/text/`（機能別 `.sei`）、フォントは `vendor/fonts/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
 - AAA。`// Arrange` / `// Act` / `// Assert` は 3 段が実際に複数行へ分かれるテストだけ。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
 - 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（`frontend` / `frontend::evaluator` / `typeset::lowering` / `typeset::breaking::break_lines` / `compiler` の 5 つ。置き場は「そのヘルパが注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）

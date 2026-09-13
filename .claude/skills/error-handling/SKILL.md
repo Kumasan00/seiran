@@ -25,4 +25,4 @@ description: >-
 | 関数の戻り型、`main` の形 | シグネチャの原則 |
 | config.toml / style.toml の値検証 | バリデーション（garde） |
 
-`code` を変えたら `tests/golden_diagnostics/` を再生成して差分を確認する（手順は正典の同節）。
+`code` を変えたら `crates/seiran-compiler/tests/golden_diagnostics/` を再生成して差分を確認する（手順は正典の同節）。

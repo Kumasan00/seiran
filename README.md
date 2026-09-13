@@ -84,7 +84,7 @@ language = "ja"                # 文書全体の言語（BCP 47。ハイフネ�
 
 [output]
 name = "document_name"         # 出力 PDF ファイル名
-output_dir = "target/"         # 出力ディレクトリ
+output_dir = "target/"         # 出力ディレクトリ（オプション。省略時は build を実行したカレントディレクトリ）
 
 [pdf]
 height = "842pt"               # ページ高さ（A4 = 842pt）
