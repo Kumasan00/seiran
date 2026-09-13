@@ -934,10 +934,11 @@ resolve_root（PathResolver を 1 回構築・root を解決）
   検査するテストは、同じ 2 関数を通ってから `#[cfg(test)]` の出口で `LaidOutDocument` を取り出す
 - **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、error の
   `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う。warning も型消去
-  せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ。`Failures<E>` が `CompileFailure` へ平坦化される
-  のは入力段の出口 1 箇所 — `input::load` は `(Result<_, Failures<CompileError>>, Vec<ConfigWarning>)` を返し
-  （警告は `Result` と別枠で、失敗時も落ちない）、facade がそれを `CompileFailure` へ変換してから後段へ渡す。
-  frontend 以降の段関数は `Result<_, CompileFailure>`
+  せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ。各段は自分の失敗型（`Failures<E>` か leaf 診断）
+  を返し、facade がその段の出口で汎用 `From` により `CompileFailure` へ平坦化する — 段の内側に
+  `CompileFailure` は現れない。警告を生成し得る段（入力読込・組版）は `(Result<_, Failures<E>>, Vec<W>)` の組を
+  返し、警告は `Result` と別枠なので失敗時も落ちない。facade 自身の段呼び出し関数だけが
+  `Result<_, CompileFailure>` を返す
 - `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
   （出力形式か保存先が複数になった時点で改めて設計する）
 - フォント資源の構築を `compiler` 側へ引き上げる形へ戻さない — `FontResources` は `typeset::compose` の外へ
