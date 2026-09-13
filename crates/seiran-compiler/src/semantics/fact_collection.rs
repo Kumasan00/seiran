@@ -4,9 +4,8 @@
 //! 文書木は読み取り専用で、書き戻しは一切行わない。表示文字列（`number_format` 等の適用結果）は
 //! 作らない — 表示は typeset 側の責務（issue #324）。
 //!
-//! 走査順は文書順（preorder）で、カウンタの採番順序は `resolver` の旧実装と一致させる。
-//! 特に数式ブロックは「行 → 環境」の順に採番する（`\split` / `\multiline` の環境単位採番が
-//! 行採番の後に来る）。
+//! 走査順は文書順（preorder）。数式ブロックは「行 → 環境」の順に採番する（`\split` / `\multiline` の
+//! 環境単位採番が行採番の後に来る）。
 
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
@@ -389,7 +388,7 @@ impl Walker<'_> {
         label,
         ..
       } => {
-        // 行 → 環境の順に採番する（旧 `resolver::resolve_node` と同じ順序）。
+        // 行 → 環境の順に採番する（環境単位の採番は行採番の後に来る）。
         for row in rows {
           self.math_row(row, node.id);
         }
@@ -480,7 +479,7 @@ impl Walker<'_> {
 
   /// インラインノード列を走査し、参照箇所（`\ref`）を集める
   ///
-  /// インラインに採番対象は無いので失敗しない（存在検証は走査後の `resolve_references`）。
+  /// インラインに採番対象は無いので失敗しない（存在検証は走査後の [`unresolved_references`]）。
   fn inlines(&mut self, inlines: &[HirInline]) {
     for inline in inlines {
       match &inline.kind {
