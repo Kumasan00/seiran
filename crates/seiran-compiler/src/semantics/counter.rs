@@ -15,8 +15,8 @@ use std::collections::HashMap;
 #[cfg(test)]
 use crate::style::{Counters, Style};
 use crate::{
-  document::{NodeId, SourceMap, TheoremClass},
-  semantics::{LabelId, SemanticError, SemanticPolicy, error::span_to_source_span},
+  document::{NodeId, SourceLocation, SourceMap, TheoremClass},
+  semantics::{LabelId, SemanticError, SemanticPolicy},
   source::{SourceId, Span},
   style::{CounterName, TheoremReset},
 };
@@ -46,6 +46,8 @@ pub(crate) struct CounterValue {
 struct ResolvedLabel {
   /// 登録時点のカウンタ構造値のスナップショット
   value: CounterValue,
+  /// このラベルを定義した位置（重複時に「最初の定義」として示す）
+  definition: SourceLocation,
 }
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
@@ -120,17 +122,14 @@ impl CounterRegistry {
     *self.theorem_values.entry(counter).or_insert(0) += 1;
     let counter_value = self.theorem_counter_value(class);
 
-    if let Some(l) = label
-      && !self.register_label(l.to_string(), counter_value.clone())
-    {
-      let duplicate = SemanticError::DuplicateLabel {
-        label: l.to_string(),
-        span: span_to_source_span(span),
-        source_id,
-      };
-      return (Some(counter_value), Some(duplicate));
-    }
-    return (Some(counter_value), None);
+    let Some(label) = label else {
+      return (Some(counter_value), None);
+    };
+    let definition = SourceLocation { source_id, span };
+    return match self.register_label(label.to_string(), counter_value.clone(), definition) {
+      Ok(()) => (Some(counter_value), None),
+      Err(first) => (Some(counter_value), Some(SemanticError::duplicate_label(label, definition, first))),
+    };
   }
 
   /// カウンタの現在値を返す（未登場のカウンタは 0）
@@ -191,14 +190,24 @@ impl CounterRegistry {
   }
 
   /// pass1 で `\section[label=sec:intro]{...}` などからラベルを登録する
-  #[must_use]
-  pub(crate) fn register_label(&mut self, label: impl Into<LabelId>, value: CounterValue) -> bool {
+  ///
+  /// 登録は先勝ち。同名のラベルが既にあれば登録せず、最初の定義位置を `Err` で返す。
+  ///
+  /// # Errors
+  ///
+  /// `label` が登録済みの場合に、最初に登録された定義位置を返す。
+  pub(crate) fn register_label(
+    &mut self,
+    label: impl Into<LabelId>,
+    value: CounterValue,
+    definition: SourceLocation,
+  ) -> Result<(), SourceLocation> {
     let label = label.into();
-    if self.labels.contains_key(&label) {
-      return false;
+    if let Some(first) = self.labels.get(&label) {
+      return Err(first.definition);
     }
-    self.labels.insert(label, ResolvedLabel { value });
-    return true;
+    self.labels.insert(label, ResolvedLabel { value, definition });
+    return Ok(());
   }
 
   /// 採番とラベル登録を一括で行う共通処理
@@ -214,17 +223,14 @@ impl CounterRegistry {
     source_id: SourceId,
   ) -> (CounterValue, Option<SemanticError>) {
     let value = self.increment(counter);
-    if let Some(l) = label
-      && !self.register_label(l.to_string(), value.clone())
-    {
-      let duplicate = SemanticError::DuplicateLabel {
-        label: l.to_string(),
-        span: span_to_source_span(span),
-        source_id,
-      };
-      return (value, Some(duplicate));
-    }
-    return (value, None);
+    let Some(label) = label else {
+      return (value, None);
+    };
+    let definition = SourceLocation { source_id, span };
+    return match self.register_label(label.to_string(), value.clone(), definition) {
+      Ok(()) => (value, None),
+      Err(first) => (value, Some(SemanticError::duplicate_label(label, definition, first))),
+    };
   }
 
   /// 採番とラベル登録を一括で行う（HIR ノード版）
@@ -312,11 +318,20 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 mod tests {
   use super::*;
   use crate::{
+    document::SourceLocation,
     source::SourceId,
     style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset},
   };
 
   fn theorem_span() -> Span { return Span::DUMMY; }
+
+  /// ソース `source` の `start` から 1 バイトのラベル定義位置を作る。
+  fn location(source: usize, start: u32) -> SourceLocation {
+    return SourceLocation {
+      source_id: SourceId::new(source),
+      span: Span::new(start, start + 1),
+    };
+  }
 
   #[test]
   fn theorem_reset_level_maps_every_counter_name() {
@@ -385,6 +400,10 @@ mod tests {
     // Assert — 重複は致命ではない（採番は済み、最初の定義が有効なまま残る）
     assert!(value.is_some(), "重複ラベルでも採番は行われるはず");
     assert!(matches!(duplicate, Some(SemanticError::DuplicateLabel { ref label, .. }) if label == "dup"));
+    let Some(SemanticError::DuplicateLabel { labels, .. }) = duplicate else {
+      panic!("DuplicateLabel を期待");
+    };
+    assert_eq!(labels.len(), 2, "同じソースの最初の定義も 2 本目のラベルとして示すはず: {labels:?}");
   }
 
   #[test]
@@ -493,7 +512,7 @@ mod tests {
     let mut r = CounterRegistry::default_for_seiran();
     r.increment(CounterName::Chapter); // chapter = 1
     let value = r.increment(CounterName::Section); // section = 1
-    assert!(r.register_label("sec:x", value));
+    r.register_label("sec:x", value, location(0, 0)).expect("初回の登録は成功するはず");
 
     // Act
     let resolved = r.resolve_label("sec:x").unwrap();
@@ -517,17 +536,18 @@ mod tests {
   }
 
   #[test]
-  fn register_label_rejects_duplicate() {
+  fn register_label_rejects_duplicate_and_returns_the_first_definition() {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
     let value = r.increment(CounterName::Chapter);
+    let first_site = location(0, 0);
 
     // Act
-    let first = r.register_label("ch:intro", value.clone());
-    let second = r.register_label("ch:intro", value);
+    let first = r.register_label("ch:intro", value.clone(), first_site);
+    let second = r.register_label("ch:intro", value, location(1, 10));
 
-    // Assert
-    assert!(first);
-    assert!(!second);
+    // Assert — 先勝ち。2 回目は登録されず、最初の定義位置が返る
+    assert_eq!(first, Ok(()));
+    assert_eq!(second, Err(first_site));
   }
 }

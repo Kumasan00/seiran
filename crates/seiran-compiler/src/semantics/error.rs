@@ -12,7 +12,7 @@ use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
 use crate::{
-  document::NodeId,
+  document::{NodeId, SourceLocation},
   failures::Failures,
   semantics::{CitationFormatError, CitationStyleError},
   source::{SourceId, Span},
@@ -125,15 +125,18 @@ pub(crate) enum SemanticError {
   },
 
   /// `label=...` で同名ラベルが重複登録された場合
+  ///
+  /// 構築は [`SemanticError::duplicate_label`] だけ。2 回目の定義を主ラベルに、最初の定義が同じソースに
+  /// あればそれを 2 本目のラベルに並べる（#552）。
   #[error("ラベルが重複しています: {label}")]
   #[diagnostic(code(semantics::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
   DuplicateLabel {
     /// 重複したラベル名
     label: String,
-    /// 2 回目に定義したコマンド / 環境のソース位置
-    #[label("このラベルは既に定義されています")]
-    span: miette::SourceSpan,
-    /// この重複定義が属するソース
+    /// 2 回目の定義（主ラベル）と、同じソースにあれば最初の定義の位置
+    #[label(collection)]
+    labels: Vec<LabeledSpan>,
+    /// この重複定義（2 回目）が属するソース
     source_id: SourceId,
   },
 }
@@ -149,6 +152,28 @@ impl SemanticError {
       SemanticError::UnknownCitationKeys { source_id, .. }
       | SemanticError::UnresolvedReference { source_id, .. }
       | SemanticError::DuplicateLabel { source_id, .. } => *source_id,
+    };
+  }
+
+  /// ラベル `label` の重複定義 `duplicate` を、最初の定義 `first` とともに報告する診断を作る。
+  ///
+  /// 最初の定義が同じソースにあれば同じスニペットの 2 本目のラベルとして示す。1 診断が持てる
+  /// `source_code` は 1 つなので、別ソースの最初の定義は同じスニペットに載せない。
+  pub(crate) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
+    let mut labels = vec![LabeledSpan::new_primary_with_span(
+      Some("このラベルは既に定義されています".to_string()),
+      span_to_source_span(duplicate.span),
+    )];
+    if first.source_id == duplicate.source_id {
+      labels.push(LabeledSpan::new_with_span(
+        Some("最初の定義はここです".to_string()),
+        span_to_source_span(first.span),
+      ));
+    }
+    return SemanticError::DuplicateLabel {
+      label: label.to_string(),
+      labels,
+      source_id: duplicate.source_id,
     };
   }
 }

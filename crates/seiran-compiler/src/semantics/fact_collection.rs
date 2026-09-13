@@ -842,6 +842,26 @@ mod tests {
     );
   }
 
+  #[test]
+  fn duplicate_label_in_the_same_source_labels_both_definitions() {
+    // Arrange
+    let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+
+    // Assert — 2 回目を主ラベル、最初の定義（1 行目、offset 0）を 2 本目のラベルとして同じスニペットに示す（#552）
+    let SemanticError::DuplicateLabel { labels, .. } = failures.first() else {
+      panic!("DuplicateLabel を期待: {failures:?}");
+    };
+    assert_eq!(labels.len(), 2, "{labels:?}");
+    assert!(labels[0].primary(), "1 本目は 2 回目の定義を指す主ラベルのはず: {labels:?}");
+    assert!(!labels[1].primary(), "2 本目は最初の定義を指す副ラベルのはず: {labels:?}");
+    assert_eq!(labels[1].offset(), 0, "最初の定義は 1 行目の \\chapter のはず: {labels:?}");
+    assert!(labels[0].offset() > labels[1].offset(), "{labels:?}");
+  }
+
   /// 診断列を `code` の列として読む（順序の検証用）
   fn codes(failures: &SemanticFailures) -> Vec<String> {
     return failures

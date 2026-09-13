@@ -2,6 +2,9 @@ semantics::duplicate_label
 
   × ラベルが重複しています: dup
    ╭─[tests/text/diagnostics/duplicate_label.sei:3:1]
+ 1 │ \section[label=dup]{最初の見出し}
+   · ────────────────┬────────────────
+   ·                 ╰── 最初の定義はここです
  2 │ 
  3 │ \section[label=dup]{2 つ目の重複}
    · ────────────────┬────────────────
@@ -13,6 +16,12 @@ semantics::duplicate_label
 Error: semantics::duplicate_label
 
   × ラベルが重複しています: dup
+   ╭─[tests/text/diagnostics/duplicate_label.sei:1:1]
+ 1 │ \section[label=dup]{最初の見出し}
+   · ────────────────┬────────────────
+   ·                 ╰── 最初の定義はここです
+ 2 │ 
+   ╰────
    ╭─[tests/text/diagnostics/duplicate_label.sei:5:1]
  4 │ 
  5 │ \section[label=dup]{3 つ目の重複}
