@@ -135,22 +135,6 @@ impl Index<CounterName> for Counters {
   }
 }
 
-impl From<CountersTable> for Counters {
-  fn from(table: CountersTable) -> Self {
-    let mut counters = Self::default();
-    table.part.apply(&mut counters.part);
-    table.chapter.apply(&mut counters.chapter);
-    table.section.apply(&mut counters.section);
-    table.subsection.apply(&mut counters.subsection);
-    table.paragraph.apply(&mut counters.paragraph);
-    table.subparagraph.apply(&mut counters.subparagraph);
-    table.table.apply(&mut counters.table);
-    table.figure.apply(&mut counters.figure);
-    table.equation.apply(&mut counters.equation);
-    return counters;
-  }
-}
-
 /// 1 つのカウンタ定義（カウンタ別既定 + `[counters.<name>]` の差分上書きで解決済み）。
 ///
 /// TOML のスキーマは [`CounterStyleOverride`]。
@@ -219,6 +203,22 @@ struct CountersTable {
   figure: CounterStyleOverride,
   /// `equation` カウンタの上書き
   equation: CounterStyleOverride,
+}
+
+impl From<CountersTable> for Counters {
+  fn from(table: CountersTable) -> Self {
+    let mut counters = Self::default();
+    table.part.apply(&mut counters.part);
+    table.chapter.apply(&mut counters.chapter);
+    table.section.apply(&mut counters.section);
+    table.subsection.apply(&mut counters.subsection);
+    table.paragraph.apply(&mut counters.paragraph);
+    table.subparagraph.apply(&mut counters.subparagraph);
+    table.table.apply(&mut counters.table);
+    table.figure.apply(&mut counters.figure);
+    table.equation.apply(&mut counters.equation);
+    return counters;
+  }
 }
 
 /// [`CounterStyle`] の各フィールドを `Option<_>` で覆った差分指定型（`[counters.<name>]` の TOML スキーマ）。
@@ -403,6 +403,28 @@ display_name = \"図\"
     assert!(counters.figure.resets.is_empty());
     assert_eq!(counters.table.display_name, "Table");
     assert_eq!(counters.chapter.resets.len(), 7);
+  }
+
+  #[test]
+  fn every_entry_maps_to_its_own_counter() {
+    // Arrange — 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
+    let toml = CounterName::ALL
+      .into_iter()
+      .map(|name| return format!("[{}]\ndisplay_name = \"{}!\"\n", name.as_str(), name.as_str()))
+      .collect::<String>();
+
+    // Act
+    let counters: Counters = toml::from_str(&toml).unwrap();
+
+    // Assert
+    for name in CounterName::ALL {
+      assert_eq!(
+        counters[name].display_name,
+        format!("{}!", name.as_str()),
+        "{} の上書きが別のカウンタへ流れている",
+        name.as_str()
+      );
+    }
   }
 
   #[test]
