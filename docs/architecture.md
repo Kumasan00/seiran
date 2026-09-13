@@ -1923,8 +1923,9 @@ image not in manifest / 未対応の画像拡張子）は持たない — 同じ
 
 CLI エントリーポイント（package 名・binary 名とも `seiran`）。`seiran-compiler` と `seiran-pdf` の
 両方に依存し、`compile` → `seiran_pdf::render` → atomic write（`tempfile` 経由の一時ファイル + rename）→
-結果表示（`Compilation.warnings` の診断とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の
-4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
+結果表示（確定済みの warning 診断 — 成功時は `Compilation.warnings`、失敗時は `CompileFailure::warnings()` /
+描画・保存に失敗したときの `Compilation.warnings` を主エラーより先に — とビルドサマリ。失敗時は致命的エラー
+診断の `--log-file` への記録）の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
 filesystem・ログ初期化（`tracing-subscriber`）・端末出力といった実行環境の関心事はすべてこの crate に
 閉じており、`seiran-compiler` は `ProjectSource` seam 越しにしか外部資源へ触らない。
 カレントディレクトリも `build` 実行時にこの crate が取得し、相対パスの解決基準として `compile` へ明示する。
