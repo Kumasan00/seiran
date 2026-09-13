@@ -1980,9 +1980,9 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   `vendor/fonts/` のフォントと、テーブルディレクトリや `fvar` ヘッダを書き換えたその複製で確かめる。
   読み手を閉じるテストは子が先に書き切る順序では空振りする（分類そのものは `listing` の in-src テストが
   決定的に覆う）。`/dev/full` を使う書き込み失敗のテストは Linux（CI）だけで走る（#549）
-- `tests/cli_build_warnings.rs` は失敗した `build`（compile の失敗・保存の失敗）でも確定済みの警告が
-  主エラーより先に端末と `--log-file` へ出ること、`-q` では端末からだけ消えることを binary の起動で確かめる
-  （render の失敗は注入できないので保存の失敗で代表させる。#550）
+- `tests/cli_build_warnings.rs`: 失敗した `build`（compile の失敗・保存の失敗）でも確定済みの警告が
+  主エラーより先に端末と `--log-file` へ出ること、`-q` では端末からだけ消えることを、binary の起動で
+  確かめる（render の失敗は注入できないので保存の失敗で代表させる。#550）
 
 ### 不変条件・注意点
 
