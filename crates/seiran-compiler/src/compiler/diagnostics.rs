@@ -166,6 +166,23 @@ fn diagnostic_duplicate_label() {
 }
 
 #[test]
+fn diagnostic_duplicate_label_across_sources() {
+  // 最初の定義（a）と重複（b）が別ソース。主診断は b の位置を示し、a の位置は a の本文付きの
+  // 関連診断で示す（#552。1 診断が持てる source_code は 1 つなので同じスニペットには載せられない）
+  let failure = compile_err(&[
+    "tests/text/diagnostics/duplicate_label_a.sei",
+    "tests/text/diagnostics/duplicate_label_b.sei",
+  ]);
+
+  // 関連診断は code を持たず、独立した診断として数えない
+  assert_eq!(codes(&failure), vec!["semantics::duplicate_label".to_string()]);
+  let rendered = render_failure(failure);
+  assert!(rendered.contains("duplicate_label_b.sei"), "主診断は重複側のソースを示すはず: {rendered}");
+  assert!(rendered.contains("duplicate_label_a.sei"), "最初の定義のソースも示すはず: {rendered}");
+  assert_matches_golden("duplicate_label_across_sources", &rendered);
+}
+
+#[test]
 fn diagnostic_mixed_semantics_errors_follow_document_order() {
   // 重複ラベル・未知引用キー・未解決参照が混在する入力
   let failure = compile_err(&["tests/text/diagnostics/mixed_semantics.sei"]);

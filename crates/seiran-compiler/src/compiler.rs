@@ -45,7 +45,7 @@ use crate::typeset::LaidOutDocument;
 use crate::{
   project::{SourceSet, config::ConfigWarning},
   publication::Publication,
-  semantics::{AnalyzeError, SemanticDocument},
+  semantics::{AnalyzeError, SemanticDocument, SemanticError},
   typeset::TypesetOutput,
 };
 
@@ -330,18 +330,32 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 /// CSL 由来（`CitationStyle` / `CitationFormat`）はそれ自身が leaf 診断なのでそのまま運ぶ。
 /// 意味解析由来はソースごとに分割済みなので、`SourceSet` から本文を引いて添えるだけでよい
 /// （`SourceId` は `SourceSet::register` が発行した値をそのまま運んでいるため、ここでの参照は
-/// 確定 ID による引き当てであり帰属元の推定ではない）。
+/// 確定 ID による引き当てであり帰属元の推定ではない）。別ソースにある関連位置（重複ラベルの
+/// 最初の定義）も、そのソースの本文を添えて主診断の関連診断にする（#552）。
 fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileFailure {
   return match error {
     AnalyzeError::CitationStyle(error) => CompileFailure::single(error),
     AnalyzeError::CitationFormat(error) => CompileFailure::single(error),
     AnalyzeError::Analyze(failures) => {
       let (first, rest) = failures.into_parts();
-      let mut failure = CompileFailure::single(SourceDiagnostic::attach(sources, first.source_id(), first));
+      let mut failure = CompileFailure::single(attach_semantic_error(sources, first));
       for error in rest {
-        failure.push(SourceDiagnostic::attach(sources, error.source_id(), error));
+        failure.push(attach_semantic_error(sources, error));
       }
       failure
     },
+  };
+}
+
+/// 意味解析の診断 1 件へ、帰属するソースの本文と、別ソースにある関連位置（そのソースの本文付き）を添える。
+///
+/// 関連位置を持つかどうか・その文言は semantics が決め（`SemanticError::first_definition_elsewhere`）、
+/// ここは確定 ID で本文を引いて添えるだけ。
+fn attach_semantic_error(sources: &SourceSet, error: SemanticError) -> SourceDiagnostic<SemanticError> {
+  let elsewhere = error.first_definition_elsewhere();
+  let diagnostic = SourceDiagnostic::attach(sources, error.source_id(), error);
+  return match elsewhere {
+    Some(note) => diagnostic.with_related_in(sources, note.source_id(), note),
+    None => diagnostic,
   };
 }

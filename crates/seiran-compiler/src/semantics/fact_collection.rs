@@ -860,6 +860,33 @@ mod tests {
     assert!(!labels[1].primary(), "2 本目は最初の定義を指す副ラベルのはず: {labels:?}");
     assert_eq!(labels[1].offset(), 0, "最初の定義は 1 行目の \\chapter のはず: {labels:?}");
     assert!(labels[0].offset() > labels[1].offset(), "{labels:?}");
+    assert!(
+      failures.first().first_definition_elsewhere().is_none(),
+      "同じソースなら別ソースの関連診断は作らないはず"
+    );
+  }
+
+  #[test]
+  fn duplicate_label_across_sources_points_to_the_first_definition_in_the_other_source() {
+    // Arrange — 最初の定義はソース 0、重複はソース 1
+    let first = parse_source_for_test("\\chapter[label=dup]{A}\n", SourceId::new(0)).expect("パースに成功するはず");
+    let second =
+      parse_source_for_test("本文。\n\n\\chapter[label=dup]{B}\n", SourceId::new(1)).expect("パースに成功するはず");
+    let hir = HirDocument::assemble(vec![first, second]);
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+
+    // Assert — 主診断は重複側のソースに帰属してラベルは 2 回目の 1 本だけ。最初の定義は別ソースの関連位置になる
+    let error = failures.first();
+    assert_eq!(error.source_id(), SourceId::new(1));
+    let SemanticError::DuplicateLabel { labels, .. } = error else {
+      panic!("DuplicateLabel を期待: {failures:?}");
+    };
+    assert_eq!(labels.len(), 1, "{labels:?}");
+    let note = error.first_definition_elsewhere().expect("最初の定義は別ソースにあるはず");
+    assert_eq!(note.source_id(), SourceId::new(0));
   }
 
   /// 診断列を `code` の列として読む（順序の検証用）

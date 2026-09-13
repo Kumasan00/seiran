@@ -15,12 +15,18 @@ use crate::{project::SourceSet, source::SourceId};
 /// 委譲してしまうため使えず、手書きする）。
 ///
 /// これが compiler seam の唯一の source attribution 手段で、段ごとの専用 wrapper は持たない。
+///
+/// 別ソースの位置を示す関連診断（重複ラベルの最初の定義など）も、[`SourceDiagnostic::with_related_in`]
+/// でそのソースの本文を添えてから持つ — miette は本文を持たない関連診断を主診断の本文で描くので、
+/// 添えずに渡すと別ファイルの位置を誤った本文の上に描いてしまう（#552）。
 #[derive(Debug)]
 pub(super) struct SourceDiagnostic<E> {
   /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）。本文は `SourceSet` の割り当てを共有する
   named_source: NamedSource<Arc<str>>,
   /// 内側の leaf 診断（`SourceId` と span を持ち、本文は持たない）
   inner: E,
+  /// 同じ 1 つの問題を別ソースで示す関連診断（それぞれそのソースの本文を添えたもの）。内側の `related` の後ろに並ぶ
+  elsewhere: Vec<Box<dyn Diagnostic + Send + Sync>>,
 }
 
 impl<E> SourceDiagnostic<E> {
@@ -34,7 +40,21 @@ impl<E> SourceDiagnostic<E> {
     return SourceDiagnostic {
       named_source: NamedSource::new(&entry.name, Arc::clone(&entry.content)),
       inner,
+      elsewhere: Vec::new(),
     };
+  }
+
+  /// 同じ 1 つの問題を別ソースで示す関連診断 `note` へ、`source_id` のソース本文を添えて持たせる。
+  ///
+  /// 添えた関連診断は、内側の診断自身の `related` の後ろに追加した順で並ぶ。
+  pub(super) fn with_related_in<N: Diagnostic + Send + Sync + 'static>(
+    mut self,
+    sources: &SourceSet,
+    source_id: SourceId,
+    note: N,
+  ) -> Self {
+    self.elsewhere.push(Box::new(SourceDiagnostic::attach(sources, source_id, note)));
+    return self;
   }
 }
 
@@ -60,7 +80,19 @@ impl<E: Diagnostic + 'static> Diagnostic for SourceDiagnostic<E> {
 
   fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { return self.inner.labels(); }
 
-  fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> { return self.inner.related(); }
+  fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+    let inherited = self.inner.related();
+    if self.elsewhere.is_empty() {
+      return inherited;
+    }
+    let elsewhere = self.elsewhere.iter().map(|diagnostic| -> &dyn Diagnostic {
+      return diagnostic.as_ref();
+    });
+    return Some(match inherited {
+      Some(inherited) => Box::new(inherited.chain(elsewhere)),
+      None => Box::new(elsewhere),
+    });
+  }
 
   fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.inner.diagnostic_source(); }
 }
@@ -126,5 +158,40 @@ mod tests {
     assert!(Arc::ptr_eq(first.named_source.inner(), &entry.content), "1 件目は SourceSet の本文を共有する");
     assert!(Arc::ptr_eq(second.named_source.inner(), &entry.content), "2 件目も同じ本文を共有する");
     assert_eq!(Arc::strong_count(&entry.content), 3, "所有者は SourceSet と診断 2 件だけ");
+  }
+
+  #[test]
+  fn related_notes_carry_their_own_source_text() {
+    // Arrange — 主診断は a.sei、関連位置は b.sei
+    let source = MemoryProjectSource::new()
+      .with_text("/project/a.sei", "本文 A")
+      .with_text("/project/b.sei", "本文 B");
+    let sources = SourceSet::read(
+      &source,
+      &[
+        ProjectPath::new("/project/a.sei"),
+        ProjectPath::new("/project/b.sei"),
+      ],
+    )
+    .expect("読み込めるはず");
+    let ids: Vec<_> = sources.iter().map(|(id, _)| return id).collect();
+    let leaf = || {
+      return LeafError {
+        span: miette::SourceSpan::from((0usize, 3usize)),
+      };
+    };
+
+    // Act
+    let attributed = SourceDiagnostic::attach(&sources, ids[0], leaf()).with_related_in(&sources, ids[1], leaf());
+
+    // Assert — 関連診断は b.sei の本文を自分で持つ（主診断の a.sei の本文で描かれない）
+    let related: Vec<&dyn Diagnostic> = attributed.related().expect("関連診断を持つはず").collect();
+    assert_eq!(related.len(), 1);
+    let contents = related[0]
+      .source_code()
+      .expect("関連診断も本文を持つはず")
+      .read_span(&miette::SourceSpan::from((0usize, 3usize)), 0, 0)
+      .expect("span を読めるはず");
+    assert_eq!(contents.name(), Some("/project/b.sei"));
   }
 }
