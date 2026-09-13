@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 話題 | 正典 | 読むとき |
 | --- | --- | --- |
 | 言語設計の目的・原則・判断事例 | `docs/language-design.md` | 新コマンド・環境・オプション・style フィールドを設計するとき |
-| crate / module 別の構造・不変条件・style.toml の設計（キー一覧・既定値は style struct の doc） | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
+| crate / module の境界・依存の向き・段間プロトコル・不変条件と style.toml の設計（module の目録＝子 module・関数・フィールドは `//!` と doc コメント、style のキー一覧は style struct の doc） | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
 | コーディング規約の全文・根拠・lint との対応 | `docs/coding-conventions.md` | 規約の境界事例に迷ったとき |
 | lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint が発火したとき |
 | 言語機能の実装手順 | `add-language-feature` skill | 設計合意済みの機能を実装するとき |
@@ -74,8 +74,9 @@ git config core.hooksPath .git-hooks                      # pre-commit（fmt / c
 
 ## アーキテクチャ
 
-ここにはデータフローと依存の**骨格**だけを置く。**crate / module 別の実装構造・不変条件の正典は
-`docs/architecture.md`** — 特定の crate / module を触る前に必ず該当節を読む。
+ここにはデータフローと依存の**骨格**だけを置く。**crate / module の境界・依存の向き・段間プロトコル・不変条件の
+正典は `docs/architecture.md`** — 特定の crate / module を触る前に必ず該当節を読む。module の中身の目録
+（子 module・関数・フィールド）は各 module の `//!` と doc コメントが正典で、ドキュメントへは複製しない。
 
 ### データフロー
 
@@ -141,7 +142,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 ### `seiran-compiler` の module（すべて非公開、公開 API は `lib.rs` の `pub use` に一本化）
 
 並び順は `docs/architecture.md` の節順と同一（leaf 値型 → 入力 → 文書と設定 → パイプライン段 →
-成果物 → facade）。依存関係・子 module 構成・不変条件は `docs/architecture.md` の各節が正典。
+成果物 → facade）。依存関係・不変条件は `docs/architecture.md` の各節、子 module 構成は各 module の `//!` が正典。
 
 | module | 責務 1 行 |
 | --- | --- |

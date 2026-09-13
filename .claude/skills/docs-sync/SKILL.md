@@ -22,7 +22,7 @@ description: >-
 | `CLAUDE.md` | 文書地図（正典へのポインタ表）・言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・設定ファイル役割分担表と値の基本書式・コーディング規約の要約（正典は `docs/coding-conventions.md`、エラーハンドリングは `error-handling` skill） |
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
 | `docs/coding-conventions.md` | コーディング規約の全文・根拠・lint との対応。CLAUDE.md の規約節の詳細版 |
-| `docs/architecture.md` | クレート別の詳細（サブモジュール構成・内部設計・データ構造）と style.toml の設計（config の style 節。キー一覧・既定値は style struct の doc コメントが正典で、ここへは複製しない）。CLAUDE.md の表の詳細版 |
+| `docs/architecture.md` | クレート / module の境界・依存の向き・段間プロトコル・不変条件と「〜しない」ガード、style.toml の設計（config の style 節）。module の目録（子 module・関数・フィールド）と style のキー一覧・既定値は `//!` / doc コメントが正典で、ここへは複製しない。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
 | skill（`error-handling` / `verify-typesetting` / `add-language-feature` / `issue-pr-ops`） | エラーハンドリング規約 / 組版検証手順 / 言語機能の実装経路 / GitHub 運用規約 |
 | root `Cargo.toml` / `clippy.toml` | lint の採用根拠（1 lint = 1 行のコメント）と設定値 |
@@ -39,7 +39,7 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 | 組版アルゴリズムの変更（行分割・改ページ・アキ等） | CLAUDE.md データフロー直下の説明段落（Knuth–Plass / glue・penalty 等の記述が実装と一致するか） |
 | config.toml / style.toml のスキーマ変更 | struct の doc コメント（キー一覧・既定値の正典）、architecture.md の config / style 節（非自明な意味・設計）、CLAUDE.md「設定ファイル」節（役割分担表・値の基本書式に影響する場合）、README の設定例 |
 | CLI サブコマンド・フラグの変更 | CLAUDE.md「コマンド」節、README |
-| モジュール分割・再配置リファクタ | architecture.md の該当クレート節（サブモジュール構成） |
+| モジュール分割・再配置リファクタ | 親 module の `//!`（子 module 一覧・責務）。境界・依存の向き・不変条件が動く場合だけ architecture.md の該当節 |
 | エラー型・バリデーションのパターン変更（診断属性・集約方式等） | `error-handling` skill、CLAUDE.md の要約箇条書き |
 | コーディング規約・lint の採用変更 | `docs/coding-conventions.md`（規約全文）+ CLAUDE.md の規約要約 + root `Cargo.toml` の lint コメント（採用根拠） |
 | 公開 API・主要型の改名 | architecture.md + CLAUDE.md 責務表に型名が載っていれば更新 |
