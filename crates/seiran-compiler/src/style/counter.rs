@@ -1,4 +1,7 @@
 //! カウンタ（chapter / section / figure 等）のスタイル設定型。
+//!
+//! `[counters.<name>]` の指定を [`Counters::default`] のカウンタ別既定に重ねて解釈する
+//! （見出し・定理と同じ 2 レイヤーマージ）。
 
 use std::{ops::Index, str::FromStr};
 
@@ -8,9 +11,12 @@ use thiserror::Error;
 
 use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
 
-/// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）
+/// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。
+///
+/// TOML からは [`CountersTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
+/// [`Counters::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields, default)]
+#[serde(from = "CountersTable")]
 pub(crate) struct Counters {
   /// 部
   #[garde(dive)]
@@ -129,10 +135,27 @@ impl Index<CounterName> for Counters {
   }
 }
 
-/// 1 つのカウンタ定義（TOML スキーマ）
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+impl From<CountersTable> for Counters {
+  fn from(table: CountersTable) -> Self {
+    let mut counters = Self::default();
+    table.part.apply(&mut counters.part);
+    table.chapter.apply(&mut counters.chapter);
+    table.section.apply(&mut counters.section);
+    table.subsection.apply(&mut counters.subsection);
+    table.paragraph.apply(&mut counters.paragraph);
+    table.subparagraph.apply(&mut counters.subparagraph);
+    table.table.apply(&mut counters.table);
+    table.figure.apply(&mut counters.figure);
+    table.equation.apply(&mut counters.equation);
+    return counters;
+  }
+}
+
+/// 1 つのカウンタ定義（カウンタ別既定 + `[counters.<name>]` の差分上書きで解決済み）。
+///
+/// TOML のスキーマは [`CounterStyleOverride`]。
+#[derive(Debug, Clone, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields)]
 pub(crate) struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
   #[garde(length(chars, min = 1))]
@@ -171,6 +194,70 @@ impl CounterStyle {
       ref_format: ReferenceTemplate::parse(ref_format),
       resets: resets.to_vec(),
     };
+  }
+}
+
+/// `[counters]` テーブル全体の TOML スキーマ。
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct CountersTable {
+  /// `part` カウンタの上書き
+  part: CounterStyleOverride,
+  /// `chapter` カウンタの上書き
+  chapter: CounterStyleOverride,
+  /// `section` カウンタの上書き
+  section: CounterStyleOverride,
+  /// `subsection` カウンタの上書き
+  subsection: CounterStyleOverride,
+  /// `paragraph` カウンタの上書き
+  paragraph: CounterStyleOverride,
+  /// `subparagraph` カウンタの上書き
+  subparagraph: CounterStyleOverride,
+  /// `table` カウンタの上書き
+  table: CounterStyleOverride,
+  /// `figure` カウンタの上書き
+  figure: CounterStyleOverride,
+  /// `equation` カウンタの上書き
+  equation: CounterStyleOverride,
+}
+
+/// [`CounterStyle`] の各フィールドを `Option<_>` で覆った差分指定型（`[counters.<name>]` の TOML スキーマ）。
+///
+/// `None` のフィールドはカウンタ別既定のまま残す。`resets` は `Some` なら既定のリセット列を
+/// 丸ごと置き換える（`resets = []` で既定のリセットを解除できる）。
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct CounterStyleOverride {
+  /// 表示名
+  display_name: Option<String>,
+  /// 番号構築テンプレート
+  number_format: Option<CounterTemplate>,
+  /// 数字表記スタイル
+  number_style: Option<NumberStyle>,
+  /// `\ref{label}` の表示テンプレート
+  ref_format: Option<ReferenceTemplate>,
+  /// リセットする下位カウンタ群（既定の列を置き換える）
+  resets: Option<Vec<CounterName>>,
+}
+
+impl CounterStyleOverride {
+  /// 自身の `Some` 値で `target` のフィールドを上書きする。
+  fn apply(self, target: &mut CounterStyle) {
+    if let Some(display_name) = self.display_name {
+      target.display_name = display_name;
+    }
+    if let Some(number_format) = self.number_format {
+      target.number_format = number_format;
+    }
+    if let Some(number_style) = self.number_style {
+      target.number_style = number_style;
+    }
+    if let Some(ref_format) = self.ref_format {
+      target.ref_format = ref_format;
+    }
+    if let Some(resets) = self.resets {
+      target.resets = resets;
+    }
   }
 }
 
@@ -298,39 +385,100 @@ mod tests {
   }
 
   #[test]
-  fn deserializes_counter_entry() {
-    // Arrange
+  fn partial_entry_keeps_other_defaults() {
+    // Arrange — 表示名だけ日本語化する典型例（#561 の再現手順）
     let toml = "
-display_name = \"Figure\"
-number_format = \"{chapter}.{n}\"
-number_style = \"arabic\"
-ref_format = \"{display_name} {number}\"
+[figure]
+display_name = \"図\"
+";
+
+    // Act
+    let counters: Counters = toml::from_str(toml).unwrap();
+
+    // Assert — 書いたキーだけが変わり、残り 4 キーは figure の既定、他カウンタは無傷
+    assert_eq!(counters.figure.display_name, "図");
+    assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
+    assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
+    assert_eq!(counters.figure.ref_format.as_str(), "{display_name} {number}");
+    assert!(counters.figure.resets.is_empty());
+    assert_eq!(counters.table.display_name, "Table");
+    assert_eq!(counters.chapter.resets.len(), 7);
+  }
+
+  #[test]
+  fn full_entry_overrides_every_key() {
+    // Arrange — 従来どおり 5 キー全部を書いた形
+    let toml = "
+[figure]
+display_name = \"Fig.\"
+number_format = \"{section}.{n}\"
+number_style = \"roman_lower\"
+ref_format = \"{display_name}{number}\"
+resets = [\"equation\"]
+";
+
+    // Act
+    let counters: Counters = toml::from_str(toml).unwrap();
+
+    // Assert
+    assert_eq!(counters.figure.display_name, "Fig.");
+    assert_eq!(counters.figure.number_format.as_str(), "{section}.{n}");
+    assert_eq!(counters.figure.number_style, NumberStyle::RomanLower);
+    assert_eq!(counters.figure.ref_format.as_str(), "{display_name}{number}");
+    assert_eq!(counters.figure.resets, vec![CounterName::Equation]);
+  }
+
+  #[test]
+  fn resets_override_replaces_default_list() {
+    // Arrange — `resets = []` は既定のリセット列の解除
+    let toml = "
+[chapter]
 resets = []
 ";
 
     // Act
-    let entry: CounterStyle = toml::from_str(toml).unwrap();
+    let counters: Counters = toml::from_str(toml).unwrap();
 
     // Assert
-    assert_eq!(entry.display_name, "Figure");
-    assert_eq!(entry.number_format.as_str(), "{chapter}.{n}");
-    assert_eq!(entry.number_style, NumberStyle::Arabic);
-    assert_eq!(entry.ref_format.as_str(), "{display_name} {number}");
+    assert!(counters.chapter.resets.is_empty());
+    assert_eq!(counters.chapter.display_name, "Chapter");
+  }
+
+  #[test]
+  fn empty_table_equals_default() {
+    // Arrange
+    let parsed: Counters = toml::from_str("").unwrap();
+
+    // Act — `CounterStyle` は `PartialEq` を持たないので直列化した文字列で比べる
+    let parsed_text = toml::to_string(&parsed).unwrap();
+    let default_text = toml::to_string(&Counters::default()).unwrap();
+
+    // Assert
+    assert_eq!(parsed_text, default_text);
+  }
+
+  #[test]
+  fn serialized_default_roundtrips_through_table() {
+    // Arrange — `compiler::test_support::TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
+    let text = toml::to_string(&Counters::default()).unwrap();
+
+    // Act
+    let reparsed: Counters = toml::from_str(&text).unwrap();
+
+    // Assert
+    assert_eq!(toml::to_string(&reparsed).unwrap(), text);
   }
 
   #[test]
   fn rejects_renamed_format_key() {
-    // Arrange
+    // Arrange — 部分指定でも未知キーは拒否される（P6）
     let toml = "
-display_name = \"Figure\"
+[figure]
 format = \"{chapter}.{n}\"
-number_style = \"arabic\"
-ref_format = \"{display_name} {number}\"
-resets = []
 ";
 
     // Act
-    let result: Result<CounterStyle, _> = toml::from_str(toml);
+    let result: Result<Counters, _> = toml::from_str(toml);
 
     // Assert
     assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される");
