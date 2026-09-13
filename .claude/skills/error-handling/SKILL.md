@@ -94,11 +94,15 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 - **集約する**: config.toml / style.toml の独立フィールド違反、設定に列挙された複数パスの読込失敗、
   source ごとの parse / eval error、文書全体の重複ラベル・未解決参照・未知引用キー、
-  `FontType::ALL` の各フォント検証、各画像の読込・デコード失敗
+  `FontType::ALL` の各フォント検証、各画像の読込・デコード失敗、検証済み config・style の後の
+  文献・フォント・ソースの読込（ファイル間の独立な失敗。`compiler::input::load` が文献 → フォント →
+  ソースの順に連結する、#552）
 - **早期 return する**: config.toml 自体を読めない、TOML を parse できない、style path を確定できない、
   HIR を作れない、`SemanticDocument` を作れない、backend が継続不能な失敗を返した。
-  **段の間**（config → style → 横断検証、parse → metrics → validate）は後段の入力を構築できないので
-  跨いで集約しない — 集約するのは段の中だけ
+  **後段の入力を構築できない境界**（config → style → 横断検証、parse → metrics → validate）は跨いで
+  集約しない。境界の判定は段の名前ではなく入力の依存で行う — 横断検証まで通った後の文献・フォント・
+  ソースの読込は検証済み config だけを入力にして互いに独立なので、`input::load` がひとまとめに集約する
+  （#552 が「段の中だけ集約」を改訂）
 
 段の内部で集めた複数の違反は **`crate::failures::Failures<E>`**（crate root の非公開 leaf module）で運ぶ。
 
@@ -109,7 +113,10 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 - **`#[related] errors: Vec<...>` を持つ集約バリアントを新しく作らない。** `MultipleValidationErrors` /
   `MultipleFontValidationErrors` のような「複数のエラーがあります」「◯◯の検証に失敗しました」は
   #376 ですべて削除した。`#[related]` を使ってよいのは、**同じ 1 つの問題を複数箇所で示す**場合
-  （`SemanticError::UnknownCitationKeys` が 1 ソース内の複数 `\cite` を `#[label(collection)]` で並べる形）
+  （`SemanticError::UnknownCitationKeys` が 1 ソース内の複数 `\cite` を `#[label(collection)]` で並べる形）、
+  および重複ラベルの最初の定義が別ソースにある場合（`SemanticError::first_definition_elsewhere` が返す
+  code なし・severity `Advice` の関連診断を、`SourceDiagnostic::with_related_in` がそのソースの本文を
+  添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする — #552）
   に限る。異なる修正を要求する違反は集合の別要素にする
 - **表示順は入力の論理順**であり、`HashMap` の反復順や並列処理の完了順に依存させない
   （source は `config.sources` の宣言順、フォントは `FontType::ALL` 順、画像は正規化済み `ProjectPath` の
@@ -124,7 +131,10 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 - leaf に「どの資源の違反か」を添える必要があるときは、集約 wrapper ではなく
   **帰属 adapter** を作る（`typeset::font::validation::FontValidationFailure` が
   `code` / `help` / `labels` を内側の kind へ委譲し、メッセージにだけ config.toml のキーを前置する形。
-  `SourceDiagnostic<E>` と同じ形で、描画は leaf 1 件ぶん・入れ子の診断ブロックを作らない）
+  `SourceDiagnostic<E>` と同じ形で、描画は leaf 1 件ぶん・入れ子の診断ブロックを作らない）。
+  設定ファイル（config.toml / style.toml）の値検証の違反には、`project::InFile<E>` が実際に読んだ
+  ファイルのパスを同じ形で前置する（`Read*Error::Validation` の中身。`-c` / `style_path` で任意の名前を
+  付けたファイルでも分かるように、#552）。
 
 ## warning と tracing
 
@@ -243,6 +253,6 @@ pub enum MyError {
 
 ## バリデーション（garde）
 
-設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` で透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
+設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` が `project::InFile<*ValidationError>` として読んだファイルのパスを添えて透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
 
 例外: references 読込（`semantics::citation::references`、旧 `read_references`）は集約せず deserialize 時に fail-fast（著者名の family/literal 排他・空 / 空白 / 重複 ID）。理由: (1) 名前・ID 不正は稀な編集ミスで集約の価値が薄く、旧実装の集約は全構造体ジェネリック + 2 相変換（約 100 行）を要していた、(2) この module の他のエラー（`deny_unknown_fields`・未知日付キー・拡張子）は元々すべて fail-fast で一貫する、(3) fail-fast なら TOML / JSON パーサの行・列位置が診断に付き、手編集する references ファイルにはむしろ良い。検証は確定型側の手書き `Deserialize`（`name.rs` / `date.rs` の方式）に置き、`RawName` 相当の生表現・全構造体ジェネリックは作らない。将来クロスフィールド検証（season 範囲・date-parts arity 等）を足す場合も後段 `resolve` 集約で足りる。#376 の基準に対する意図的例外として維持し、集約方式に戻さない。
