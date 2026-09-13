@@ -64,18 +64,12 @@ fn seiran(dir: &Path, args: &[&str]) -> Output {
 /// `Output` の stderr を文字列にする。
 fn stderr_text(output: &Output) -> String { return String::from_utf8_lossy(&output.stderr).into_owned(); }
 
-/// `text` の中で `before` が `after` より前に現れることを確かめる。
-///
-/// `clippy::panic`（`tests/` は cfg(test) 外なので本体と同じ扱い）を避けて `unreachable!` で失敗させる
-/// （`assert!(false, ...)` は `clippy::assertions_on_constants` に引っかかり、その lint 自身が
-/// `unreachable!` への置き換えを勧める）。
+/// `text` の中に `before` と `after` が両方含まれ、`before` が `after` より前に現れることを確かめる。
 fn assert_appears_before(text: &str, before: &str, after: &str) {
-  let Some(before_at) = text.find(before) else {
-    unreachable!("{before} が出るはず: {text}");
-  };
-  let Some(after_at) = text.find(after) else {
-    unreachable!("{after} が出るはず: {text}");
-  };
+  assert!(text.contains(before), "{before} が出るはず: {text}");
+  assert!(text.contains(after), "{after} が出るはず: {text}");
+  let before_at = text.find(before).expect("直前の assert で含まれることを確かめた");
+  let after_at = text.find(after).expect("直前の assert で含まれることを確かめた");
   assert!(before_at < after_at, "{before} は {after} より前に出るはず: {text}");
 }
 
