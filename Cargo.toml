@@ -189,7 +189,7 @@ pointer_format = "warn"
 
 # ライブラリ 2 crate がプロセスを殺さない（終了コードの決定は CLI の責務）。
 exit = "warn"
-# 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `#![expect]` で開ける。
+# 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `print_stderr` を `#![expect]` で開ける（stdout は `io::stdout` への書き出しを 1 箇所に閉じ、`println!` は使わない）。
 print_stderr = "warn"
 print_stdout = "warn"
 

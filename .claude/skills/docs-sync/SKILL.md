@@ -13,15 +13,19 @@ description: >-
 被依存側が漏れる・アルゴリズム説明が実装と乖離する、といったドリフトが繰り返し
 後追いコミットで修正されてきた。PR 仕上げ時に diff からこの表を引けば防げる。
 
-## ドキュメント面は 5 つ
+## ドキュメント面
 
-| ファイル | 持つもの |
+正典の一覧は `CLAUDE.md`「文書地図」。同期の対象になる面と、それぞれが持つものは次のとおり。
+
+| 面 | 持つもの |
 | --- | --- |
 | `CLAUDE.md` | 文書地図（正典へのポインタ表）・言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・設定ファイル役割分担表と値の基本書式・コーディング規約の要約（正典は `docs/coding-conventions.md`、エラーハンドリングは `error-handling` skill） |
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
 | `docs/coding-conventions.md` | コーディング規約の全文・根拠・lint との対応。CLAUDE.md の規約節の詳細版 |
-| `docs/architecture.md` | クレート別の詳細（サブモジュール構成・内部設計・データ構造）と style.toml 詳細スキーマ（config の style 節）。CLAUDE.md の表の詳細版 |
+| `docs/architecture.md` | クレート別の詳細（サブモジュール構成・内部設計・データ構造）と style.toml の設計（config の style 節。キー一覧・既定値は style struct の doc コメントが正典で、ここへは複製しない）。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
+| skill（`error-handling` / `verify-typesetting` / `add-language-feature` / `issue-pr-ops`） | エラーハンドリング規約 / 組版検証手順 / 言語機能の実装経路 / GitHub 運用規約 |
+| root `Cargo.toml` / `clippy.toml` | lint の採用根拠（1 lint = 1 行のコメント）と設定値 |
 
 ## 変更種別 → 更新箇所
 
@@ -33,7 +37,7 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 | クレート間依存の追加・削除 | CLAUDE.md 依存グラフ — **依存する側の行と、依存される側の「↑」被依存リストの両方**（片方向だけ直すと漏れる） |
 | パイプライン段の追加・変更・順序替え | CLAUDE.md データフロー図とその直下の説明段落、architecture.md の該当節 |
 | 組版アルゴリズムの変更（行分割・改ページ・アキ等） | CLAUDE.md データフロー直下の説明段落（Knuth–Plass / glue・penalty 等の記述が実装と一致するか） |
-| config.toml / style.toml のスキーマ変更 | architecture.md の config / style 節（詳細スキーマ）、CLAUDE.md「設定ファイル」節（役割分担表・値の基本書式に影響する場合）、README の設定例 |
+| config.toml / style.toml のスキーマ変更 | struct の doc コメント（キー一覧・既定値の正典）、architecture.md の config / style 節（非自明な意味・設計）、CLAUDE.md「設定ファイル」節（役割分担表・値の基本書式に影響する場合）、README の設定例 |
 | CLI サブコマンド・フラグの変更 | CLAUDE.md「コマンド」節、README |
 | モジュール分割・再配置リファクタ | architecture.md の該当クレート節（サブモジュール構成） |
 | エラー型・バリデーションのパターン変更（診断属性・集約方式等） | `error-handling` skill、CLAUDE.md の要約箇条書き |
@@ -45,6 +49,6 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 
 1. PR を仕上げる前に `git diff main --stat` で触ったクレートを確認し、上の表から
    更新箇所を洗い出す
-2. 改名・削除を含む変更は、旧名称で 3 ファイルを grep して残存参照を潰す
+2. 改名・削除を含む変更は、旧名称で上の面すべて（`CLAUDE.md` / `docs/` / `README.md` / `.claude/skills/` / `.claude/agents/`）を grep して残存参照を潰す
 3. ドキュメント更新はコード変更と**同じ PR** に含める（ドキュメントだけの些末な
    修正は issue-pr-ops の規約どおり main 直コミット可）

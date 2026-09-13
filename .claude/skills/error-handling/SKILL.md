@@ -18,8 +18,8 @@ description: >-
   `#[diagnostic_source]` に載せると、miette がその変種ぶんの診断ブロックを入れ子で追加描画し、
   利用者から見える出力が 1 段深くなる。`#[diagnostic_source]` を使うのは、内側のエラー自身が独立した
   診断として読ませる価値がある場合（`#[label]` / `#[source_code]` を持つパース系エラー等）に限る
-- **低水準 cause は `Diagnostic` を実装せず、そのまま `#[source]` で連鎖させる**（#377。旧 #300 の
-  `into_io()` 平坦化ルールはこれに置き換わった）。資源取得の `project::SourceReadError` は
+- **低水準 cause は `Diagnostic` を実装せず、そのまま `#[source]` で連鎖させる**（#377。`io::Error` へ
+  平坦化する変換は持たない）。資源取得の `project::SourceReadError` は
   `thiserror::Error` だけを実装し、「どの資源を読もうとしたか」を知らない。役割（設定 / スタイル /
   文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic は所有段が作り、seam のエラーは
   その `#[source]` に入って「何が起きたか」（not found / permission denied / 不正な UTF-8）だけを
@@ -44,11 +44,11 @@ description: >-
 
 **第 2 階層以降は規定しない** — 著者が選ぶ意味的カテゴリで、module パスと一致していなくてよい
 （`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation`、
-`frontend::parse_source::syntax` の `parse_source` はいずれも module 名ではない）。
+`frontend::parse::unexpected_token` の `parse` はいずれも module 名ではない）。
 
 crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code の約 9 割に付いて情報量がゼロ
 （ユーザから見ればバイナリは 1 つ）であり、かつ第 2 階層以降が野放しになるので
-「存在しない module 名を名乗る code」（#349 の `resolve::` / #356）を構造的には防げないため。
+「存在しない module 名を名乗る code」を構造的には防げないため。
 逆に第 1 階層を段に閉じれば、module を移設しても code が嘘をつくのは段を跨いだときだけになる。
 
 段を跨ぐ wrapper 型は、自分の所有 module ではなく**エラーの出自の段**を名乗る
@@ -96,13 +96,12 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   source ごとの parse / eval error、文書全体の重複ラベル・未解決参照・未知引用キー、
   `FontType::ALL` の各フォント検証、各画像の読込・デコード失敗、検証済み config・style の後の
   文献・フォント・ソースの読込（ファイル間の独立な失敗。`compiler::input::load` が文献 → フォント →
-  ソースの順に連結する、#552）
+  ソースの順に連結する）
 - **早期 return する**: config.toml 自体を読めない、TOML を parse できない、style path を確定できない、
   HIR を作れない、`SemanticDocument` を作れない、backend が継続不能な失敗を返した。
   **後段の入力を構築できない境界**（config → style → 横断検証、parse → metrics → validate）は跨いで
   集約しない。境界の判定は段の名前ではなく入力の依存で行う — 横断検証まで通った後の文献・フォント・
   ソースの読込は検証済み config だけを入力にして互いに独立なので、`input::load` がひとまとめに集約する
-  （#552 が「段の中だけ集約」を改訂）
 
 段の内部で集めた複数の違反は **`crate::failures::Failures<E>`**（crate root の非公開 leaf module）で運ぶ。
 
@@ -116,7 +115,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   （`SemanticError::UnknownCitationKeys` が 1 ソース内の複数 `\cite` を `#[label(collection)]` で並べる形）、
   および重複ラベルの最初の定義が別ソースにある場合（`SemanticError::first_definition_elsewhere` が返す
   code なし・severity `Advice` の関連診断を、`SourceDiagnostic::with_related_in` がそのソースの本文を
-  添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする — #552）
+  添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする）
   に限る。異なる修正を要求する違反は集合の別要素にする
 - **表示順は入力の論理順**であり、`HashMap` の反復順や並列処理の完了順に依存させない
   （source は `config.sources` の宣言順、フォントは `FontType::ALL` 順、画像は正規化済み `ProjectPath` の
@@ -134,14 +133,14 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `SourceDiagnostic<E>` と同じ形で、描画は leaf 1 件ぶん・入れ子の診断ブロックを作らない）。
   設定ファイル（config.toml / style.toml）の値検証の違反には、`project::InFile<E>` が実際に読んだ
   ファイルのパスを同じ形で前置する（`Read*Error::Validation` の中身。`-c` / `style_path` で任意の名前を
-  付けたファイルでも分かるように、#552）。
+  付けたファイルでも分かるように）。
 
 ## warning と tracing
 
 **warning は error と公開型を共用しない**（#377）。`compile` が失敗したときの error の集合が
 `CompileFailure` であるのに対し、warning severity の集合は `compiler::Warnings`
 （`Box<dyn Diagnostic + Send + Sync>` の列。公開操作は診断の借用 `&dyn Diagnostic` で、
-`CompileFailure::diagnostics()` と同じ要素型 — #550）。`Warnings` は成功した `Compilation.warnings` と、
+`CompileFailure::diagnostics()` と同じ要素型）。`Warnings` は成功した `Compilation.warnings` と、
 失敗した `CompileFailure::warnings()` の両方に現れる。`CompileFailure` と違って空は正当な状態なので
 空で構築できる。
 
@@ -150,7 +149,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   （フォント検証の警告は `typeset::font::script::*`、config.toml の警告は `project::config::*`）
 - 表示順は入力の論理順。段の実行順（設定 → フォント → 組版）で束ね、段の中は各段が既に決定的な順序で
   集めている（config は `sources` の宣言順、フォントは `FontType::ALL` 順、組版は物理ページの昇順）
-- **失敗しても確定した warning は返す**（#550 が epic #374 の非目標を改訂）。「成功／失敗」と
+- **失敗しても確定した warning は返す**。「成功／失敗」と
   「エラー／警告」は別の軸で、警告を生成し得る段の境界は `(Result<T, Failures<E>>, Vec<W>)` の組を返す。
   `compile` facade は 1 回の呼び出しに閉じたローカルの `Warnings` へ段の戻り値だけを積み、失敗したら
   `CompileFailure::with_warnings` で添える（グローバルな収集器・tracing 経由の収集にはしない）。
@@ -179,8 +178,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 ## 内部不変条件違反（#378）
 
 ユーザーが直せない問題をユーザー向け診断にしない。**内部バグ用の Diagnostic 型・`internal_bug` 系の
-`code` は作らない**（旧規約が例に挙げていた `typeset::error::TypesetBug` と `typeset::internal_bug` は
-#378 で削除した）。順に次を試す。
+`code` は作らない**（`typeset::error::TypesetBug` / `typeset::internal_bug` は削除済みで、再導入しない）。
+順に次を試す。
 
 1. **型で不正状態を表現不能にする**（第一手）。公開する型はフィールドを非公開にし、構築経路を
    不変条件を検証する `pub(crate) fn new`（違反時は `None`）だけに限る。他所への参照は生の文字列や
@@ -209,12 +208,10 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `Diagnostic` を実装しないので、早期に型消去すると `#[related]` にも `CompileFailure` にも
   載せられなくなる。warning も `Report` へ型消去せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ —
   表示の方式をライブラリ側で早く決めず、error と同じ診断インターフェースで反復させるため
-  （#550 が #377 を改訂）
-- 外部クレートの `Result<T, E>` を `miette::Result<T>` に持ち上げる際は `miette::IntoDiagnostic` の `.into_diagnostic()?` を使用する
 - `main` は `std::process::ExitCode` を返す（`miette::Result<()>` も `Box<dyn std::error::Error>` も使わない）。
   端末への描画は `Result` の `Termination` ではなく `termination::Outcome::report` が行い、報告を終えてから
   終了コードを返す — ログ出力先の終了処理（flush と保持した失敗の取り出し）を、終了コードの決定より前に
-  必ず通すため（#548 が #495 / #502 の構造を改訂）。診断の体裁は `Report` の `Debug`（miette の `fancy`）のまま。
+  必ず通すため。診断の体裁は `Report` の `Debug`（miette の `fancy`）のまま。
   報告の書き出し先は引数で受け、stderr へ書けなくても panic せず終了コードを保つ（#549）
 
 ## パターン例

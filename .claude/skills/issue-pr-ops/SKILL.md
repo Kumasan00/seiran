@@ -20,7 +20,7 @@ Seiran リポジトリの issue・PR・branch・commit・ラベルの運用規�
 ### テンプレート
 
 - **issue は作業種別で 3 つ**（`.github/ISSUE_TEMPLATE/`）。捉える仕様の形が型ごとに違うので New issue のチューザーから選び分ける — `feature.md`（機能追加・設計＝仕様 / 受け入れ条件、label `enhancement`）/ `bug.md`（再現手順 / 期待・実際の差分、label `bug`）/ `refactor.md`（現状の問題 / 目標構造 / 振る舞い不変、label `refactor`）
-- **PR は 1 つだけ**（`.github/PULL_REQUEST_TEMPLATE.md`）。種別では分けない。PR の役目は「どう実装したか＝メカニクスの記録」で、`変更内容 / 設計上の判断 / テスト / スコープ外 / 関連` の形は feature / bug / refactor のどれでも同じだから（型による差分は紐づく issue 側が持つ）。GitHub に PR テンプレートの選択 UI が無い（複数置いても `?template=` を手書きしない限りデフォルトしか効かない）ことも 1 本に保つ理由。refactor の「振る舞い不変」確認など型固有の一文は既存テンプレ内に書けば足り、分割はしない
+- **PR は 1 つだけ**（`.github/PULL_REQUEST_TEMPLATE.md`）。種別では分けない。PR の役目は「どう実装したか＝メカニクスの記録」で、`概要 / 変更内容 / 設計上の判断 / テスト / スコープ外 / 関連` の形は feature / bug / refactor のどれでも同じだから（型による差分は紐づく issue 側が持つ）。GitHub に PR テンプレートの選択 UI が無い（複数置いても `?template=` を手書きしない限りデフォルトしか効かない）ことも 1 本に保つ理由。refactor の「振る舞い不変」確認など型固有の一文は既存テンプレ内に書けば足り、分割はしない
 
 ## branch・commit・merge
 

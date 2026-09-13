@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 話題 | 正典 | 読むとき |
 | --- | --- | --- |
 | 言語設計の目的・原則・判断事例 | `docs/language-design.md` | 新コマンド・環境・オプション・style フィールドを設計するとき |
-| crate / module 別の構造・不変条件・style.toml 詳細スキーマ | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
+| crate / module 別の構造・不変条件・style.toml の設計（キー一覧・既定値は style struct の doc） | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
 | コーディング規約の全文・根拠・lint との対応 | `docs/coding-conventions.md` | 規約の境界事例に迷ったとき |
 | lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint が発火したとき |
 | 言語機能の実装手順 | `add-language-feature` skill | 設計合意済みの機能を実装するとき |
@@ -57,7 +57,8 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 ```sh
 cargo build                                                # デバッグビルド
 cargo build --release                                      # リリースビルド（LTO 有効）
-cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]  # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -vvv 最大 / -q 端末抑止（-v と併用可） / --log-file は実行記録・ログ・warning・サマリ・致命的エラー診断をファイルへも出す（実行ごとに新規作成・既存パスはエラー・記録失敗は終了 1））
+cargo run -- build [-c <config_path>]                      # 設定ファイルの sources から PDF を生成
+#   -v|-vv|-vvv（工程 / 内部詳細 / 最大）・-q（端末抑止。-v と直交）・--log-file <path> は全サブコマンド共通。意味は README「使い方」
 cargo run -- variation-axes <font> [-f <font_index>]       # バリアブルフォント軸情報を表示
 cargo run -- ttc-names <ttc_file>                          # TTC ファイル内のフォント名一覧を表示
 cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示
@@ -89,11 +90,11 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
   → typeset::compose   組版: SemanticDocument + 設定 + フォントバイト列 → Publication + 警告 + 画像依存パス
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
                        シェーパー）から出口（typeset::emit: 確定座標 → PaintOp・描画資源の構築）まで
-                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像読込・寸法確定 →
-                       lowering → boxing（計測）→ breaking（行分割・改ページ）→ 前付け・後付け →
+                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像読込 → lowering →
+                       boxing（計測）→ 画像寸法確定 → breaking（行分割・改ページ）→ 前付け・後付け →
                        ページラベル → 走り文 → outline → emit）は typeset に閉じる
   → seiran-pdf         render: compiler が確定させた Publication（純データ）を描画するのみ
-                       （krilla フォントの構築・画像デコード・フォントサブセット化はここに閉じる）
+                       （krilla フォントの構築・画像本体のデコード・フォントサブセット化はここに閉じる）
   → seiran (CLI)       atomic write でファイル出力
 ```
 
@@ -107,13 +108,13 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
 - 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は表示文字列化だけ。
   文書木への書き戻しはどの段も行わない
 - box は boxing で寸法を 1 回だけ計測して保持し、breaking 以降のパスはフォントに触れない
-- 行分割・縦組版とも glue / penalty モデル（行分割は Knuth–Plass が既定）
+- 行分割・縦組版とも glue / penalty モデル（行分割は Knuth–Plass。greedy は内部フォールバックのみ）
 - 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない。記号間のアキは数式クラスの表から
   固定 kern（1mu = font_size/18）で出し、ソースに書かれた空白は組版に出さない
 - 脚注は本文の実効下限を縮めて配置し、行単位でページ間繰越。ページ単位採番のときだけ本文パスを
   不動点まで反復する（`typeset::pagination::footnote_numbering`）
 - 組版中間型（`Page` / `PlacedBlock` / `LaidOutDocument`）は `typeset` の外に本体コードの消費者を持たない。
-  `typeset` は backend 非依存の確定表現 `publication` に依存してよく（#535 で #461 の原則を改訂）、
+  `typeset` は backend 非依存の確定表現 `publication` に依存してよく（旧原則 #461 へ戻さない）、
   krilla の隔離は `seiran-pdf` の crate 境界と `Publication` の純データ性が担う
 - `compile` は PDF バイト列の生成・保存を行わない。`seiran_pdf::render` と atomic write は CLI（`seiran`）の責務
 
@@ -126,7 +127,8 @@ crate はデプロイ・外部依存・独立再利用の単位に限る（コ�
 seiran-compiler    言語処理・意味解決・組版のライブラリ（lib target のみ）。組版成果物
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
                    （Publication / DependencyManifest / Warnings / BuildStatistics / pdf_path）
-                   + 失敗型 CompileFailure + 入力 seam（ProjectSource / ProjectPath）
+                   + 失敗型 CompileFailure + 入力 seam（ProjectSource とその 2 実装 / ProjectPath /
+                   SourceReadError）+ leaf 値型（Length / Color / FontType と Publication 系）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
@@ -220,7 +222,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 - 設定値検証は `garde`、違反は `Failures<E>` に集めて 1 度に報告。集約するかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決め、表示順は入力の論理順。集約自身に `code` を付けない（`Failures<E>` は `Diagnostic` 非実装で型保証）
 - 外部資源の read error は低水準 cause として leaf diagnostic の `#[source]` へ。warning は error と公開型を共用せず（`Warnings`）、同じ問題を診断と tracing の両方で出さない
 - `map_err(|_| ...)` で元のエラーを捨てない（`map_err_ignore`）。`Result` を `.ok()` で捨てず `let _ = f();` と書く（`unused_result_ok`）
-- ライブラリ 2 crate で `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`。CLI の crate root だけ `#![expect]`）
+- ライブラリ 2 crate で `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`。CLI の crate root だけ `print_stderr` を `#![expect]`。stdout の一覧出力も `println!` ではなく `subcommand::listing` の書き出し 1 箇所）
 - 決定性が要る場所で `HashMap` / `HashSet` を `for` 反復しない（`iter_over_hash_type`）。`BTreeMap` かキーで `sort` した `Vec` へ。順序非依存の集計だけ例外
 - `result_large_err` は workspace の allow（種類の判断 1 個の帰結）。`cast_*` / `too_many_arguments` / `ref_option` は箇所ごとに根拠が違うので per-site の `#[expect]`
 
@@ -234,7 +236,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 - **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes*`）。`reason` は「なぜ許してよいか」＝上流のどの保証・設計判断が根拠かで、lint 名の言い換えは不可。根拠が言えないなら直す（`dead_code` は削除）
 - 本体ビルドでだけ発火する lint は `#[cfg_attr(not(test), expect(...))]`（素の `#[expect]` はテストビルドで `unfulfilled_lint_expectations` に落ちる）
 - 新 lint の 0 件は `--message-format=json -- -W clippy::<name>` で診断コード単位に実測する（短縮フォーマットの grep は lint 名を含まず偽陰性）
-- `suboptimal_flops` / `imprecise_flops` は通知として有効化してあり、発火＝提案に従うとは限らない（採否は箇所ごと）。不採用 lint の理由は #402（clippy 初回）/ #421（rustc）/ #473（clippy 未処分 84・`clippy.toml` ノブ・rustdoc）/ #482（第 3 次 sweep — rustdoc lint 2 種の撤回・基準に矛盾する処分 4 件の是正）
+- `suboptimal_flops` / `imprecise_flops` は通知として有効化してあり、発火＝提案に従うとは限らない（採否は箇所ごと）。不採用 lint の記録は `docs/coding-conventions.md`「採用条件」節
 
 ### テスト
 
@@ -247,7 +249,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 ## コード検索
 
-rust-analyzer の LSP が設定済み。シンボルを辿る用途では grep ではなく `LSP` ツールを使う（deferred tool なので `ToolSearch("select:LSP")` でスキーマを読み込んでから呼ぶ）。
+rust-analyzer の LSP は Claude Code の plugin（`rust-analyzer-lsp`）で使う — 有効化はユーザ設定側で、リポジトリ内に設定は無い。シンボルを辿る用途では grep ではなく `LSP` ツールを使う（deferred tool なので `ToolSearch("select:LSP")` でスキーマを読み込んでから呼ぶ）。
 
 | 用途                                                                              | 操作                             |
 | --------------------------------------------------------------------------------- | -------------------------------- |
@@ -270,14 +272,14 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 
 | ファイル                            | 役割                       | 主な内容                                                                                                                                                                                                           |
 | ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `config.toml`                       | **実体・物理・メタデータ** | title/author/date、用紙サイズ（`[pdf]` の width / height）、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語 |
+| `config.toml`                       | **実体・物理・メタデータ** | `[document]`（title / author / date / subject / keywords / language ＝ハイフネーション言語）、`[output]`（name / output_dir）、用紙サイズ（`[pdf]` の width / height）、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path` |
 | `style.toml`                        | **見た目**                 | 本文領域のページ内側余白（`[page]` の margin_top / bottom / left / right）、見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、脚注の体裁と採番方式、段組み数、参照リンク色                                         |
 | `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                                                                                 |
 
-- `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
+- `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる。例外は `[counters.<name>]` — `CounterStyle` に `default` が無く、書くなら 5 キーすべて必須）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
 - **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"`（素の数値は不可）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
-- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の余白と `flush_bottom` 等）は `docs/architecture.md` の `style` 節を参照
+- **style.toml の設計**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の余白と `flush_bottom` 等、非自明な意味を持つもの）は `docs/architecture.md` の `style` 節。キー一覧と既定値の正典は `crates/seiran-compiler/src/style/*.rs` の struct と doc コメント（`missing_docs_in_private_items` が有無を検査する）で、ドキュメントへは複製しない
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
 

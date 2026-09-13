@@ -18,7 +18,7 @@
 ## 必要環境
 
 - Rust（Edition 2024 対応ツールチェーン）
-- macOS
+- macOS / Linux（CI は Linux で実行）
 
 ## インストール
 
@@ -38,6 +38,8 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 
 設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.sei", "chapter2.sei"]` のように複数ファイルを指定できます。
 
+`-v` / `-q` / `--log-file` は下記のフォント調査サブコマンドにも共通です。
+
 ログは標準エラー出力へ出ます。`-v` / `-vv` / `-vvv` で詳しくなり（工程 / 内部詳細 / 最大）、`-q` は端末への警告・ログ・サマリを止めます。`-v` では工程（compile とその子の input / frontend / semantics / font / typeset、render、write）ごとに「工程を開始」と「工程を終了」（`status=Succeeded` または `Failed` と所要時間 `elapsed`）が出るので、失敗・中断した実行でもどの工程で止まったかが分かります。各行には所属する工程が `compile:typeset:` のような prefix で付きます。target 単位で絞りたいときは環境変数 `RUST_LOG`（例: `RUST_LOG=seiran_compiler::typeset=trace`）を使います。`RUST_LOG` が有効なときは `-v` より優先され、両方を指定すると `-v` を無視した旨の警告が出ます（`RUST_LOG` を解釈できないときも警告し、`-v` の設定で続けます）。この警告は `RUST_LOG` の値に関わらず、`-q` でなければ端末に、`--log-file` 指定時はファイルに必ず出ます。
 
 `--log-file <path>` を付けると、端末の表示はそのままに同じログをファイルへも残します。ファイルには時刻が付き、ANSI 装飾は入りません。実行ごとに新規作成され（既存のパスを指定するとエラーで止まり、そのファイルには触れません）、親ディレクトリが無ければ作られます。PDF の保存先と同じパスは保存前に拒否します。`-v` の工程行（「工程を開始」「工程を終了」等の INFO 以上）は書くたびにファイルへ flush されるので、ハングしたり `Ctrl-C` 等で中断したりした実行でも、そこまでの工程の開始・終了をファイルから読めます（`-vv` / `-vvv` が増やす内部詳細行はまとめて書かれ、実行が終わるかログの書き込みが確定した時点でファイルへ反映されます）。ログの書き込みに失敗した実行は、本処理が成功していても終了コード 1 で終わります（生成済みの PDF は残ります）。`-q` と `-v` は独立で、`-q -vv --log-file run.log` は端末を黙らせたままファイルへ内部詳細まで記録するので、静かに回して後から読み返せます。ビルドが失敗したときは、その診断も（`-q` でも）終了記録の直前に残ります。
@@ -48,6 +50,16 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 - ログ: `-v` / `RUST_LOG` に従う tracing の行（`-v` で工程の開始・終了と件数、`-vv` で内部詳細、`-vvv` で行分割・シェーピングの候補と本文の抜粋）。各行に時刻が付きます
 - warning 診断（`RUST_LOG` の警告を含む）・成功サマリ・ビルドを止めた診断（`-q` でも書かれます）
 - 末尾の終了記録: 終了時刻と終了状態（成功 / 失敗）
+
+### フォントの調査
+
+```sh
+cargo run -- variation-axes <font> [-f <font_index>]   # バリアブルフォントの軸とインスタンス
+cargo run -- ttc-names <ttc_file>                      # TTC に含まれるフォント名
+cargo run -- script-langs <font> [-f <font_index>]     # 対応するスクリプト / 言語
+```
+
+一覧は標準出力へ出ます。フォントの読み込み・解析に失敗すると一覧を出さずに終了コード 1 で止まります。
 
 ## 設定
 
@@ -67,6 +79,8 @@ title = "ドキュメントタイトル"
 author = "著者名"
 date = "2026-01-01"
 language = "ja"                # 文書全体の言語（BCP 47。ハイフネーション等が参照）
+# subject = "主題"             # PDF メタデータの /Subject
+# keywords = ["a", "b"]        # PDF メタデータの /Keywords
 
 [output]
 name = "document_name"         # 出力 PDF ファイル名
@@ -84,8 +98,9 @@ width = "595pt"                # ページ幅（A4 = 595pt）
 [font_configs.serif]           # 19種別それぞれに設定
 font_name = "MyFont"           # PDF 内フォント名（一意必須）
 font_path = "fonts/MyFont.ttf" # フォントファイルパス
-script = "latn"                # OpenType スクリプトタグ
-language = "JAN"               # 言語タグ（オプション）
+script = "latn"                # OpenType スクリプトタグ（オプション）
+language = "en"                # BCP 47 言語タグ（オプション）
+# ot_language = "ENG"          # OpenType 言語システムタグ（オプション。指定時は script 必須）
 font_index = 0                 # TTC 内インデックス（オプション）
 variation_axes = [             # バリアブル軸（オプション）
   { name = "wght", value = 400.0 }
@@ -97,7 +112,7 @@ features = [                   # OpenType フィーチャー（オプション�
 
 ### スタイル設定（`config/style.toml`）
 
-本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。
+本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます（`[counters.<name>]` だけは例外で、書く場合は 5 キーすべてを指定します）。キーの一覧と既定値は `crates/seiran-compiler/src/style/` の各構造体の doc コメントを参照してください。
 
 ```toml
 # background_color = "#ccb599"  # 背景色（"#rrggbb" 16 進文字列、オプション）

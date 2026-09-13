@@ -134,7 +134,8 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
   名前空間として意味を持つ場合のみ（例: `project::config` は入口を `project::config::load` と読ませて
   `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタム
   バリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない —
-  名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ
+  名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`。`Error` という
+  素の名前を禁じる `error_impl_error` がこの片側を機械化する）。root facade へ
   載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない
   （この 2 方向は rustc の `unreachable_pub` と `unnameable_types` が機械化している — 外から到達しない
   `pub` は狭め、公開シグネチャに現れるのに facade から名指しできない型は facade へ出すか宣言を狭める）。
@@ -153,7 +154,7 @@ miette 診断エラーにする（`error-handling` skill）。本体コードで
   `typeset::boxing::math` は分かれたままでよい）。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで
   `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを
-  既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開した
+  既定とする（例: `parser.rs` で `pub(crate) use error::ParserError;`）。ただし新しいモジュールパスを公開した
   ほうが利用側にとって分かりやすい場合は、API を変更してよい。
 
 ## 値と型の書き方
@@ -225,21 +226,10 @@ arm は網羅性判定に参加しないので、同じ variant を wildcard 側
 
 ## エラーハンドリング・バリデーション
 
-正典は `error-handling` skill — 新しいエラー型の定義・バリアント追加・診断（code / help / label /
-related）の設計・ソース位置付与・garde バリデーション追加の際は必ず参照する。常時効く原則は以下。
+正典は `error-handling` skill — エラー型の定義・バリアント追加・診断（code / help / label / related）の
+設計・ソース位置付与・集約・warning・garde バリデーションはすべてそちらに従う（要約は `CLAUDE.md`）。
+本書が持つのは lint が機械化している書き方だけ。
 
-- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。
-  `miette::Result<T>` は CLI 入口だけで使い、内部パイプラインは具体的なエラー型を保つ。
-- `compile` の失敗型は不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読む
-  メッセージは常に修正可能な leaf diagnostic にする。
-- 診断 `code` の第 1 階層は「段」の固定列挙（`project` / `style` / `frontend` / `semantics` / `typeset` /
-  `compiler` / `pdf` / `cli` の 8 つ）、第 2 階層以降は著者が選ぶ意味的カテゴリ（module パスではない）。
-- 設定値検証は `garde` で宣言的に書き、違反は `Failures<E>` に集めて 1 度に報告する。
-- 集約するかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決め（#376）、表示順は入力の論理順
-  （`HashMap` の反復順や rayon の完了順に依存させない）。
-- 集約自身に診断 `code` を付けない（`Failures<E>` は `Diagnostic` を実装しないことで型保証）。
-- 外部資源の read error は低水準 cause として、所有段が作る leaf diagnostic の `#[source]` に入れる（#377）。
-- warning は error と公開型を共用せず（`Warnings`）、同じ問題を診断と tracing の両方で出さない（#377）。
 - `map_err(|_| ...)` で元のエラーを黙って捨てない（`map_err_ignore`）。低水準の cause は leaf diagnostic の
   `#[source]` に入れて包み、`ParseFloatError` のように値を持たず本当に捨ててよい場合は `let ... else` /
   `ok_or_else` で書く（捨てていることが字面に出る形にする）。
@@ -252,7 +242,8 @@ related）の設計・ソース位置付与・garde バリデーション追加�
   根拠が違うので per-site の `#[expect]` のまま。
 - ライブラリ 2 crate では `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`）。人へ
   伝えたいことは診断（miette）か tracing に載せる。表示はユーザーへ届ける成果物なので、CLI（`seiran`）の
-  crate root だけ `#![expect]` で開けてある。
+  crate root だけ `print_stderr` を `#![expect]` で開けてある。stdout はフォント調査サブコマンドの一覧だけが
+  使い、`println!` ではなく `subcommand::listing` の書き出し 1 箇所（`io::stdout`）を通す。
 - 決定性が要る場所で `HashMap` / `HashSet` を `for` 反復しない（`iter_over_hash_type`）。`RandomState` の
   反復順はプロセスごとに変わるので、出力順・採番順・配列添字にすると成果物が非決定になる。`BTreeMap` を
   使うか、キーで `sort` した `Vec` に落としてから反復する。この lint が見るのは `for` だけなので
@@ -378,6 +369,10 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   crate 外の統合テスト（`tests/`）も使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので
   `#[doc(hidden)] pub mod` として root facade に載せる（`project::config::test_support` →
   `seiran_compiler::test_support`）。
+- **`test_support` と `test_fixtures` の使い分け**: 本番の入口（レジストリ・resolver・`input::load` / `compile`）を
+  注入して通す入口・ヘルパは `test_support`、値（fixture データ・確定レイアウト・描画資源）をコンストラクタで
+  組み立てるだけで本番の入口を通らないものは `test_fixtures`（`typeset` / `publication` / `semantics::citation` の
+  3 つ。いずれも `#[cfg(test)] pub(crate) mod`）。
 - test module も本体と同じ use 規約に従う（必須ルール 3）。親の被テスト項目を `use super::*` /
   `use super::Item` で取り込むのは許容だが、それ以外は `crate::` 起点で import する。
 - テストコードでは `unwrap` / `expect` / `panic!` を許容する（`unwrap_used` / `panic` は `clippy.toml` の

@@ -13,3 +13,6 @@ fonts/
 
 # fetched third-party test assets (tools/fetch-test-assets.sh)
 /vendor
+
+# superpowers plugin の実装計画（作業ファイル。完了分は残さない）
+/docs/superpowers

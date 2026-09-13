@@ -85,6 +85,6 @@ DocumentID を導出する。**同じコードでもビルド時刻が違えば 
 5. `git stash pop` で変更を戻し、`git checkout -- crates/seiran-pdf/src/metadata.rs`
    で日時固定を戻す
 
-検証対象の機能が既定で無効な場合は、`[title_page]` / `[toc]` / `[header]` / `[footer]`
-の enabled や `[columns] count = 2` を有効化した style と `tests/text/toc.sei` 等で
-経路を実際に通すこと。
+検証対象の機能が既定で無効な場合は、`[title_page]` / `[toc]` の `enabled`、`[header]` / `[footer]` の
+スロット（`left` 等にテンプレートを置くと有効になる。`enabled` は無い）、`[columns] count = 2` を
+有効化した style と `tests/text/toc.sei` 等で経路を実際に通すこと。
