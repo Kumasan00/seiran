@@ -4,6 +4,7 @@
 
 mod cli;
 mod pdf_output;
+mod phase;
 mod reporting;
 mod subcommand;
 mod termination;
@@ -11,6 +12,7 @@ mod write_error;
 
 use std::{io, path::Path, process::ExitCode, time::Instant};
 
+use phase::Phase;
 use reporting::Reporter;
 use termination::Outcome;
 
@@ -130,7 +132,14 @@ fn build(config_path: &Path, reporter: &Reporter) -> miette::Result<()> {
 ///
 /// 描画または保存のエラーを `miette` 診断として返す。
 fn render_and_write(compilation: &seiran_compiler::Compilation, reporter: &Reporter) -> miette::Result<()> {
-  let pdf_bytes = tracing::info_span!("render").in_scope(|| return seiran_pdf::render(&compilation.publication))?;
-  return tracing::info_span!("write")
-    .in_scope(|| return pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path()));
+  let pdf_bytes = {
+    let phase = Phase::enter(tracing::info_span!("render"));
+    let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
+    phase.succeed();
+    pdf_bytes
+  };
+  let phase = Phase::enter(tracing::info_span!("write"));
+  pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path())?;
+  phase.succeed();
+  return Ok(());
 }

@@ -6,7 +6,6 @@ use std::{
   fs,
   io::{self, Write},
   path::{Path, PathBuf},
-  time::Instant,
 };
 
 use crate::write_error::WriteError;
@@ -23,7 +22,6 @@ use crate::write_error::WriteError;
 /// 出力ディレクトリを作れない、保存先がログの出力先と同じ、書き込みまたは rename に失敗したとき
 /// [`WriteError`] を返す。
 pub(super) fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8], log_path: Option<&Path>) -> miette::Result<()> {
-  let stage_start = Instant::now();
   let output_dir = pdf_path.parent().unwrap_or_else(|| return Path::new("."));
   fs::create_dir_all(output_dir).map_err(|source| {
     return WriteError::CreateOutputDir {
@@ -52,12 +50,7 @@ pub(super) fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8], log_path: Opti
       source: error.error,
     };
   })?;
-  tracing::info!(
-    output_path = %pdf_path.display(),
-    byte_count = bytes.len(),
-    elapsed = ?stage_start.elapsed(),
-    "PDF を保存"
-  );
+  tracing::info!(output_path = %pdf_path.display(), byte_count = bytes.len(), "PDF を保存");
   return Ok(());
 }
 
