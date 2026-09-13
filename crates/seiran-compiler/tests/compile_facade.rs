@@ -241,6 +241,68 @@ fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
   assert_eq!(codes, vec!["project::config::source_extension".to_string()]);
 }
 
+/// 警告の列から `code` を集める。
+fn warning_codes(warnings: &seiran_compiler::Warnings) -> Vec<String> {
+  return warnings
+    .iter()
+    .map(|warning| return warning.code().expect("警告も leaf の診断コードを持つはず").to_string())
+    .collect();
+}
+
+#[test]
+fn compile_failure_keeps_config_warnings_when_config_validation_fails() {
+  // Arrange — `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("存在しないソースは失敗するはず");
+
+  // Assert
+  assert!(failure.diagnostics().count() >= 1, "error の集合は非空のまま");
+  assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
+}
+
+#[test]
+fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
+  // Arrange — config は通るが style.toml が TOML として壊れている
+  let config = config_toml_with_style("/project/text.txt", "/project/style.toml", "");
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/style.toml", "x = \n")
+    .with_text("/project/text.txt", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("壊れた style は失敗するはず");
+
+  // Assert — 入力読込の後段が失敗しても、先に確定した config の警告は残る
+  assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "style::parse_toml");
+  assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
+}
+
+#[test]
+fn compile_failure_keeps_config_warnings_when_parsing_fails() {
+  // Arrange — issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
+    .with_text("/project/text.txt", "\\unknowncommand{x}")
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未知コマンドは失敗するはず");
+
+  // Assert
+  let primary = failure.code().expect("leaf の診断コードを持つはず").to_string();
+  assert!(primary.starts_with("frontend::"), "主診断は frontend の leaf: {primary}");
+  assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
+}
+
 /// 画像 fixture（`tests/image/testimage5.png`）の実バイト列。テストコード自身の I/O で、本体は
 /// `ProjectSource` 経由のみ。
 fn read_test_image() -> Vec<u8> {

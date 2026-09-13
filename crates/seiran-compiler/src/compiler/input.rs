@@ -52,8 +52,6 @@ pub(super) struct CompilationInputs {
   font_data: FontData,
   /// ソースファイルごとの読込済みテキスト（`SourceId` で引ける）
   sources: SourceSet,
-  /// 設定の読込で見つかった警告（`sources` の宣言順）
-  config_warnings: Vec<ConfigWarning>,
 }
 
 impl CompilationInputs {
@@ -74,19 +72,19 @@ impl CompilationInputs {
 
   /// 読込済みソース集合を返す。
   pub(super) fn sources(&self) -> &SourceSet { return &self.sources; }
-
-  /// 設定の読込で見つかった警告を宣言順に返す。
-  pub(super) fn config_warnings(&self) -> &[ConfigWarning] { return &self.config_warnings; }
 }
 
 /// 設定・スタイル・文献・フォント・ソースを読み込み、検証済みの入力を組み立てる。
 ///
 /// `source` は呼び出し元が 1 回だけ構築したものを受け取り、ここでは構築しない。
 ///
+/// 戻り値は読込の成否と、config.toml の読込で確定した警告（`sources` の宣言順）の組。警告は後段
+/// （style・横断検証・文献・フォント・ソース）が失敗しても、config 自身の検証が失敗しても返す（#550）。
+///
 /// # Errors
 ///
 /// 設定・スタイルの読込または検証、両者の横断検証、文献・フォント・ソースの読込のいずれかに
-/// 失敗した場合にエラーを返す。
+/// 失敗した場合に、組の第 1 要素がエラーになる。
 ///
 /// **段の間は早期 return する** — config が読めなければ style path が決まらず、style が無ければ
 /// 横断検証ができない、というように後段の入力を構築できないため（#376 の集約規則）。段の中で
@@ -95,8 +93,22 @@ pub(super) fn load(
   source: &dyn ProjectSource,
   config_path: &ProjectPath,
   resolver: &PathResolver,
+) -> (Result<CompilationInputs, Failures<CompileError>>, Vec<ConfigWarning>) {
+  let (config, config_warnings) = project::config::load(source, config_path, resolver);
+  let inputs = config.map_err(lift).and_then(|config| return load_after_config(source, config, resolver));
+  return (inputs, config_warnings);
+}
+
+/// 検証済みの設定から、残りの入力（スタイル・版面・文献・フォント・ソース）を読み込む。
+///
+/// # Errors
+///
+/// スタイルの読込・検証、横断検証、文献・フォント・ソースの読込のいずれかに失敗した場合にエラーを返す。
+fn load_after_config(
+  source: &dyn ProjectSource,
+  config: ProjectConfig,
+  resolver: &PathResolver,
 ) -> Result<CompilationInputs, Failures<CompileError>> {
-  let (config, config_warnings) = project::config::load(source, config_path, resolver).map_err(lift)?;
   let style = style::load(source, config.style_path.as_ref(), resolver).map_err(lift)?;
   let geometry = PreparedGeometry::prepare(&config, &style).map_err(lift)?;
   let references = Arc::new(read_references(source, config.references_path.as_ref()).map_err(single)?);
@@ -115,7 +127,6 @@ pub(super) fn load(
     references,
     font_data,
     sources,
-    config_warnings,
   });
 }
 

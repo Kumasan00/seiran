@@ -42,10 +42,10 @@ pub use warnings::Warnings;
 #[cfg(test)]
 use crate::typeset::LaidOutDocument;
 use crate::{
-  project::SourceSet,
+  project::{SourceSet, config::ConfigWarning},
   publication::Publication,
   semantics::{AnalyzeError, SemanticDocument},
-  typeset::{TypesetOutput, TypesetWarning},
+  typeset::TypesetOutput,
 };
 
 /// 型消去済みの診断 1 件（error・warning 共通の保持形）。
@@ -97,7 +97,8 @@ pub struct Compilation {
 /// # Errors
 ///
 /// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
-/// 1 件以上の error diagnostic を持つ [`CompileFailure`] を返す。
+/// 1 件以上の error diagnostic を持つ [`CompileFailure`] を返す。失敗するまでに確定した警告は
+/// [`CompileFailure::warnings`] に入力の論理順で入っている。
 pub fn compile<S: ProjectSource>(
   source: &S,
   root: &ProjectPath,
@@ -106,25 +107,16 @@ pub fn compile<S: ProjectSource>(
   let _compile_span = info_span!("compile").entered();
   let build_start = Instant::now();
 
-  let (resolver, root) = resolve_root(root, base_dir);
-  let inputs = load_inputs(source, &root, &resolver)?;
-  let semantic_document = analyze_document(source, &inputs, &resolver)?;
-  let TypesetOutput {
+  let mut warnings = Warnings::default();
+  let Compiled {
     publication,
-    image_paths,
-    warnings: typeset_warnings,
-  } = typeset::compose(
-    source,
-    inputs.config(),
-    inputs.style(),
-    inputs.geometry(),
-    inputs.font_data(),
-    &semantic_document,
-  )
-  .map_err(CompileFailure::from)?;
+    dependencies,
+    pdf_path,
+  } = match run_phases(source, root, base_dir, &mut warnings) {
+    Ok(compiled) => compiled,
+    Err(failure) => return Err(failure.with_warnings(warnings)),
+  };
 
-  let dependencies = DependencyManifest::collect(&root, &inputs, &image_paths);
-  let warnings = collect_warnings(&inputs, typeset_warnings);
   let total_elapsed = build_start.elapsed();
   let statistics = BuildStatistics {
     page_count: publication.pages().len(),
@@ -143,6 +135,62 @@ pub fn compile<S: ProjectSource>(
     dependencies,
     warnings,
     statistics,
+    pdf_path,
+  });
+}
+
+/// [`run_phases`] の成果のうち、警告と統計を除いた部分。
+struct Compiled {
+  /// 描画直前の確定済み出版物
+  publication: Publication,
+  /// 読み取った外部資源のパス一覧
+  dependencies: DependencyManifest,
+  /// 出力 PDF の保存先
+  pdf_path: PathBuf,
+}
+
+/// 入力読込から組版までの phase を順に実行し、各段が返した警告を段の実行順で `warnings` へ積む。
+///
+/// 警告は段が失敗しても捨てない — 段が返した警告は、その段や後段が失敗してもその時点で確定しているため
+/// （#550）。`warnings` へ積むのは各段の戻り値だけで、段の内側から直接積む経路は作らない。失敗した実行では
+/// 呼び出し元（[`compile`]）が積み終えた `warnings` を [`CompileFailure::with_warnings`] で添える。
+///
+/// # Errors
+///
+/// いずれかの phase が失敗した場合に、その phase の失敗を返す。
+fn run_phases(
+  source: &dyn ProjectSource,
+  root: &ProjectPath,
+  base_dir: &Path,
+  warnings: &mut Warnings,
+) -> Result<Compiled, CompileFailure> {
+  let (resolver, root) = resolve_root(root, base_dir);
+  let (inputs, config_warnings) = load_inputs(source, &root, &resolver);
+  for warning in config_warnings {
+    warnings.push(warning);
+  }
+  let inputs = inputs?;
+  let semantic_document = analyze_document(source, &inputs, &resolver)?;
+  let TypesetOutput {
+    publication,
+    image_paths,
+    warnings: typeset_warnings,
+  } = typeset::compose(
+    source,
+    inputs.config(),
+    inputs.style(),
+    inputs.geometry(),
+    inputs.font_data(),
+    &semantic_document,
+  )
+  .map_err(CompileFailure::from)?;
+  for warning in typeset_warnings {
+    warnings.push(warning);
+  }
+
+  return Ok(Compiled {
+    publication,
+    dependencies: DependencyManifest::collect(&root, &inputs, &image_paths),
     pdf_path: inputs.config().output.pdf_path(),
   });
 }
@@ -164,20 +212,23 @@ fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPa
 /// 入力読込 phase を実行する（production / test 共通）。
 ///
 /// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは phase span と完了 event だけ。
+/// 戻り値は読込の成否と config の警告の組（警告は失敗しても返る）。
 ///
 /// # Errors
 ///
-/// 設定・スタイル・文献・フォント・ソースの読込または検証に失敗した場合にエラーを返す。
+/// 設定・スタイル・文献・フォント・ソースの読込または検証に失敗した場合に、組の第 1 要素がエラーになる。
 fn load_inputs(
   source: &dyn ProjectSource,
   root: &ProjectPath,
   resolver: &PathResolver,
-) -> Result<CompilationInputs, CompileFailure> {
+) -> (Result<CompilationInputs, CompileFailure>, Vec<ConfigWarning>) {
   let _phase = info_span!("input").entered();
   let stage_start = Instant::now();
-  let inputs = input::load(source, root, resolver)?;
-  info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
-  return Ok(inputs);
+  let (inputs, config_warnings) = input::load(source, root, resolver);
+  if inputs.is_ok() {
+    info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
+  }
+  return (inputs.map_err(CompileFailure::from), config_warnings);
 }
 
 /// 検証済み入力から意味解析済み文書までの 2 phase（frontend / semantics）を実行する
@@ -240,7 +291,8 @@ fn layout_project_for_test(
   base_dir: &Path,
 ) -> Result<LaidOutDocument, CompileFailure> {
   let (resolver, root) = resolve_root(root, base_dir);
-  let inputs = load_inputs(source, &root, &resolver)?;
+  let (inputs, _config_warnings) = load_inputs(source, &root, &resolver);
+  let inputs = inputs?;
   let semantic_document = analyze_document(source, &inputs, &resolver)?;
   return typeset::layout_for_test(
     source,
@@ -251,22 +303,6 @@ fn layout_project_for_test(
     &semantic_document,
   )
   .map_err(CompileFailure::from);
-}
-
-/// 成功した `Compilation` と一緒に返す warning を、**入力の論理順**で 1 つに束ねる。
-///
-/// 段の実行順（設定 → 組版）をそのまま表示順にする。段の中は各段が既に決定的な順序で
-/// 集めている（設定は `sources` の宣言順、組版はフォント種別 `FontType::ALL` 順のフォント警告 →
-/// 物理ページ昇順の本体警告）ので、ここでの並べ替えは行わない。
-fn collect_warnings(inputs: &CompilationInputs, typeset_warnings: Vec<TypesetWarning>) -> Warnings {
-  let mut warnings = Warnings::default();
-  for warning in inputs.config_warnings() {
-    warnings.push(warning.clone());
-  }
-  for warning in typeset_warnings {
-    warnings.push(warning);
-  }
-  return warnings;
 }
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。

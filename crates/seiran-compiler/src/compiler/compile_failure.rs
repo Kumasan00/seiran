@@ -2,7 +2,10 @@
 
 use miette::Diagnostic;
 
-use crate::{compiler::BoxedDiagnostic, failures::Failures};
+use crate::{
+  compiler::{BoxedDiagnostic, Warnings},
+  failures::Failures,
+};
 
 /// `compile` が失敗したときに返る、1 件以上の error diagnostic。
 ///
@@ -15,14 +18,17 @@ use crate::{compiler::BoxedDiagnostic, failures::Failures};
 /// 診断 `code` だけなので、内部 phase の追加・統合が公開 interface の破壊変更にならない
 /// （呼び出し側の分類手段は Rust の enum variant ではなく安定した診断 `code`）。
 ///
-/// 保持するのは error severity の診断だけで、warning は混ぜない
-/// （非致命的な診断は `Compilation.warnings`）。
+/// error の列とは別に、**失敗するまでに確定した警告**（0 件以上）を [`CompileFailure::warnings`] で返す。
+/// 警告は `Diagnostic` としての姿（`related` / [`CompileFailure::into_report`] の描画）には載せない —
+/// error と warning は別の集合で、表示する呼び出し側が「確定済み警告 → 主エラー」の順に描く（#550）。
 #[derive(Debug)]
 pub struct CompileFailure {
   /// 主診断（ユーザーが最初に読むべき leaf diagnostic）
   primary: BoxedDiagnostic,
   /// 主診断と同時に報告する残りの診断（検出順）
   rest: Vec<BoxedDiagnostic>,
+  /// 失敗するまでに確定した警告（入力の論理順）。`compile` facade の出口で 1 回だけ添える
+  warnings: Warnings,
 }
 
 impl CompileFailure {
@@ -31,6 +37,7 @@ impl CompileFailure {
     return CompileFailure {
       primary: Box::new(diagnostic),
       rest: Vec::new(),
+      warnings: Warnings::default(),
     };
   }
 
@@ -38,6 +45,22 @@ impl CompileFailure {
   pub(crate) fn push<E: Diagnostic + Send + Sync + 'static>(&mut self, diagnostic: E) {
     self.rest.push(Box::new(diagnostic));
   }
+
+  /// 失敗するまでに確定した警告を添える。
+  ///
+  /// 呼ぶのは `compile` facade の出口 1 回だけ（段の途中で添えると、後段の `?` で失敗が作り直されたときに
+  /// 失われる）。
+  pub(crate) fn with_warnings(self, warnings: Warnings) -> Self {
+    debug_assert!(self.warnings.is_empty(), "警告を添えるのは compile facade の出口 1 回だけのはず");
+    return CompileFailure { warnings, ..self };
+  }
+
+  /// 失敗するまでに確定した warning 診断を、入力の論理順に返す（0 件もありうる）。
+  ///
+  /// error の集合（[`CompileFailure::diagnostics`]）とは別で、[`CompileFailure::into_report`] の描画にも
+  /// 含まれない。表示する呼び出し側は `into_report` で消費する前にこちらを借用して描く。
+  #[must_use]
+  pub fn warnings(&self) -> &Warnings { return &self.warnings; }
 
   /// 診断の列から失敗を作る。**1 件も無ければ `None`** を返す。
   ///
@@ -49,6 +72,7 @@ impl CompileFailure {
     return Some(CompileFailure {
       primary,
       rest: diagnostics.collect(),
+      warnings: Warnings::default(),
     });
   }
 
@@ -67,6 +91,7 @@ impl CompileFailure {
   /// 1 件だけの場合は主診断をそのまま `Report` にする（[`miette::Report::new_boxed`]）ため、
   /// 表示は leaf diagnostic 単体と完全に一致する（`CompileFailure` に包んだことによる
   /// 追加の描画が無い）。複数件の場合はこの型自身を診断として包む。
+  /// 警告（[`CompileFailure::warnings`]）は含まない。
   #[must_use]
   pub fn into_report(self) -> miette::Report {
     if self.rest.is_empty() {
@@ -138,6 +163,7 @@ mod tests {
   use thiserror::Error;
 
   use super::CompileFailure;
+  use crate::compiler::Warnings;
 
   /// 単体の leaf 診断を模したテスト用エラー
   #[derive(Debug, Error, miette::Diagnostic)]
@@ -160,6 +186,12 @@ mod tests {
     #[related]
     related: Vec<OtherError>,
   }
+
+  /// 失敗に添えるテスト用の警告
+  #[derive(Debug, Error, miette::Diagnostic)]
+  #[error("テスト用の警告")]
+  #[diagnostic(severity(Warning), code(test::warning))]
+  struct TestWarning;
 
   /// 診断列の `code` を文字列として集める
   fn codes(failure: &CompileFailure) -> Vec<String> {
@@ -244,5 +276,36 @@ mod tests {
 
     // Assert
     assert_eq!(related, vec!["test::other".to_string(), "test::leaf".to_string()]);
+  }
+
+  #[test]
+  fn failures_start_without_warnings() {
+    let failure = CompileFailure::single(LeafError);
+
+    assert!(failure.warnings().is_empty(), "警告を添えるまでは空のはず");
+  }
+
+  #[test]
+  fn attached_warnings_are_kept_apart_from_the_errors() {
+    // Arrange
+    let mut warnings = Warnings::default();
+    warnings.push(TestWarning);
+    let mut failure = CompileFailure::single(LeafError);
+    failure.push(OtherError);
+
+    // Act
+    let failure = failure.with_warnings(warnings);
+
+    // Assert — 警告は warnings() からだけ見え、error の列・関連診断・描画には混ざらない
+    assert_eq!(failure.warnings().iter().count(), 1);
+    assert_eq!(codes(&failure), vec!["test::leaf".to_string(), "test::other".to_string()]);
+    let related: Vec<String> = failure
+      .related()
+      .expect("関連診断を持つはず")
+      .map(|diagnostic| return diagnostic.code().expect("code を持つはず").to_string())
+      .collect();
+    assert_eq!(related, vec!["test::other".to_string()]);
+    let rendered = format!("{:?}", failure.into_report());
+    assert!(!rendered.contains("test::warning"), "警告は主エラーの描画に含めない: {rendered}");
   }
 }
