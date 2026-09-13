@@ -40,6 +40,13 @@ impl Warnings {
     self.diagnostics.push(Box::new(warning));
   }
 
+  /// warning severity の診断を、渡された順にまとめて追加する（段が返した警告の列を積むため）。
+  pub(crate) fn extend<D: Diagnostic + Send + Sync + 'static, I: IntoIterator<Item = D>>(&mut self, warnings: I) {
+    for warning in warnings {
+      self.push(warning);
+    }
+  }
+
   /// 警告が 1 件もないかを返す。
   #[must_use]
   pub fn is_empty(&self) -> bool { return self.diagnostics.is_empty(); }
@@ -78,6 +85,12 @@ mod tests {
   #[error("テスト用のエラー")]
   #[diagnostic(code(test::leaf))]
   struct TestError;
+
+  /// `TestWarning` とは異なる `code` を持つ、severity(Warning) のテスト用診断（順序確認用）。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("テスト用の警告その 2")]
+  #[diagnostic(severity(Warning), code(typeset::font::script::unsupported_language))]
+  struct TestWarningTwo;
 
   /// 診断の借用の列から `code` を集める。`Warnings` と `CompileFailure` の両方に同じ関数を使えることが、
   /// 両者が同じインターフェースで反復できることの確認になる。
@@ -142,5 +155,24 @@ mod tests {
     // Assert
     assert_eq!(warning_codes, vec!["typeset::font::script::unsupported_script".to_string()]);
     assert_eq!(error_codes, vec!["test::leaf".to_string()]);
+  }
+
+  #[test]
+  fn extend_keeps_the_given_order() {
+    // Arrange
+    let mut warnings = Warnings::default();
+
+    // Act — 異なる `code` を持つ警告を、段をまたぐ 2 回の `extend` 呼び出しで渡された順に積む
+    warnings.extend(vec![TestWarning]);
+    warnings.extend(vec![TestWarningTwo]);
+
+    // Assert
+    assert_eq!(
+      codes(warnings.iter()),
+      vec![
+        "typeset::font::script::unsupported_script".to_string(),
+        "typeset::font::script::unsupported_language".to_string(),
+      ]
+    );
   }
 }

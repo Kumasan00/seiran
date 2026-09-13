@@ -96,8 +96,8 @@ impl<'a> FontResources<'a> {
     };
 
     let stage_start = Instant::now();
-    let (validation, warnings) = validation::validate_fonts(configs, &font_refs);
-    if let Err(failures) = validation {
+    let (validated, warnings) = validation::validate_fonts(configs, &font_refs);
+    if let Err(failures) = validated {
       return (Err(failures.map(Into::into)), warnings);
     }
     debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");

@@ -166,9 +166,7 @@ fn run_phases(
 ) -> Result<Compiled, CompileFailure> {
   let (resolver, root) = resolve_root(root, base_dir);
   let (inputs, config_warnings) = load_inputs(source, &root, &resolver);
-  for warning in config_warnings {
-    warnings.push(warning);
-  }
+  warnings.extend(config_warnings);
   let inputs = inputs?;
   let semantic_document = analyze_document(source, &inputs, &resolver)?;
   let (typeset_output, typeset_warnings) = typeset::compose(
@@ -179,9 +177,7 @@ fn run_phases(
     inputs.font_data(),
     &semantic_document,
   );
-  for warning in typeset_warnings {
-    warnings.push(warning);
-  }
+  warnings.extend(typeset_warnings);
   let TypesetOutput {
     publication,
     image_paths,
