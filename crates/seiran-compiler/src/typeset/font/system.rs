@@ -79,36 +79,41 @@ impl<'a> FontResources<'a> {
   /// フォントは検証できないという依存があるため（#376 の「後続の入力を構築できないなら集約しない」）。
   ///
   /// 検証で見つかった警告（[`FontWarning`]）は資源ではなくコンパイルの副産物なので、
-  /// この構造体には持たせず戻り値の第 2 要素として外へ出す。
+  /// この構造体には持たせず組の第 2 要素として外へ出す。検証の違反で構築が失敗しても警告は返す（#550）。
+  /// 解析・メトリクス取得で失敗したときは検証に進んでいないので、警告は空。
   ///
   /// # Errors
   ///
-  /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、その段で見つかった
-  /// 違反を [`FontSystemError`] の非空集合として返す。
+  /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、組の第 1 要素が、その段で
+  /// 見つかった違反を [`FontSystemError`] の非空集合として持つ。
   pub(crate) fn load(
     configs: &'a FontConfigs,
     font_data: &'a FontData,
-  ) -> Result<(Self, Vec<FontWarning>), Failures<FontSystemError>> {
-    let font_refs = build_font_refs(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
-    let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
+  ) -> (Result<Self, Failures<FontSystemError>>, Vec<FontWarning>) {
+    let (font_refs, metrics) = match build_refs_and_metrics(configs, font_data) {
+      Ok(built) => built,
+      Err(failures) => return (Err(failures), Vec::new()),
+    };
 
     let stage_start = Instant::now();
-    let warnings =
-      validation::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
+    let (validated, warnings) = validation::validate_fonts(configs, &font_refs);
+    if let Err(failures) = validated {
+      return (Err(failures.map(Into::into)), warnings);
+    }
     debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
     let shaper_instances = ShaperInstances::new(configs, &font_refs);
-    return Ok((
-      Self {
+    return (
+      Ok(Self {
         configs,
         font_refs,
         shaper_datas,
         shaper_instances,
         metrics,
-      },
+      }),
       warnings,
-    ));
+    );
   }
 
   /// `Publication` の描画資源を組み立てるための `FontMetrics` アクセサ。
@@ -140,6 +145,20 @@ impl<'a> FontResources<'a> {
       metrics: &self.metrics,
     });
   }
+}
+
+/// フォント参照の解析とメトリクスの取得を行う（検証の前の 2 段）。
+///
+/// # Errors
+///
+/// いずれかのフォントを解析できない、またはメトリクスを取得できない場合に、その段の違反を全件返す。
+fn build_refs_and_metrics<'a>(
+  configs: &'a FontConfigs,
+  font_data: &'a FontData,
+) -> Result<(FontRefs<'a>, FontMetrics), Failures<FontSystemError>> {
+  let font_refs = build_font_refs(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
+  let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
+  return Ok((font_refs, metrics));
 }
 
 /// シェイプ・メトリクス取得だけを公開するビュー。

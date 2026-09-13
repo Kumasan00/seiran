@@ -9,7 +9,7 @@ mod subcommand;
 mod termination;
 mod write_error;
 
-use std::{io, process::ExitCode, time::Instant};
+use std::{io, path::Path, process::ExitCode, time::Instant};
 
 use reporting::Reporter;
 use termination::Outcome;
@@ -73,17 +73,7 @@ fn main() -> ExitCode {
 fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
   match command {
     cli::Command::Build { config_path } => {
-      let build_start = Instant::now();
-      let base_dir = std::env::current_dir().map_err(|source| return CurrentDirError::Get { source })?;
-      let source = seiran_compiler::FilesystemProjectSource::new();
-      let root = seiran_compiler::ProjectPath::new(&config_path);
-      let compilation =
-        seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
-      let pdf_bytes = tracing::info_span!("render").in_scope(|| return seiran_pdf::render(&compilation.publication))?;
-      tracing::info_span!("write")
-        .in_scope(|| return pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path()))?;
-      reporter.warnings(&compilation.warnings);
-      reporter.build(&compilation, build_start.elapsed());
+      build(&config_path, reporter)?;
     },
     cli::Command::VariationAxes {
       font_path,
@@ -103,4 +93,44 @@ fn run(command: cli::Command, reporter: &Reporter) -> miette::Result<()> {
   }
 
   return Ok(());
+}
+
+/// `build` サブコマンドを実行する。
+///
+/// 確定済みの警告は、コンパイル・描画・保存のどこで失敗しても主エラーより先に報告する（#550）。主エラーは
+/// この関数が `Err` を返した後で [`main`] が端末とログファイルへ出すので、どちらの出力先でも
+/// 「確定済み警告 → 主エラー」の順になる。成功した実行では警告を描画・保存の後に出す（`-v` の工程表示 →
+/// 警告 → 成功サマリという順序は #550 の前と同じ）。
+///
+/// # Errors
+///
+/// カレントディレクトリの取得・コンパイル・描画・保存のエラーを `miette` 診断として返す。
+fn build(config_path: &Path, reporter: &Reporter) -> miette::Result<()> {
+  let build_start = Instant::now();
+  let base_dir = std::env::current_dir().map_err(|source| return CurrentDirError::Get { source })?;
+  let source = seiran_compiler::FilesystemProjectSource::new();
+  let root = seiran_compiler::ProjectPath::new(config_path);
+  let compilation = match seiran_compiler::compile(&source, &root, &base_dir) {
+    Ok(compilation) => compilation,
+    Err(failure) => {
+      reporter.warnings(failure.warnings());
+      return Err(failure.into_report());
+    },
+  };
+  let saved = render_and_write(&compilation, reporter);
+  reporter.warnings(&compilation.warnings);
+  saved?;
+  reporter.build(&compilation, build_start.elapsed());
+  return Ok(());
+}
+
+/// 確定した出版物を PDF に描画し、保存先へ atomic に書き出す。
+///
+/// # Errors
+///
+/// 描画または保存のエラーを `miette` 診断として返す。
+fn render_and_write(compilation: &seiran_compiler::Compilation, reporter: &Reporter) -> miette::Result<()> {
+  let pdf_bytes = tracing::info_span!("render").in_scope(|| return seiran_pdf::render(&compilation.publication))?;
+  return tracing::info_span!("write")
+    .in_scope(|| return pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path()));
 }

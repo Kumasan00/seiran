@@ -177,7 +177,7 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
   // Assert — 組版の警告が成功成果物と一緒に返り、severity は Warning
-  let reports: Vec<&miette::Report> = compilation.warnings.iter().collect();
+  let reports: Vec<&(dyn Diagnostic + 'static)> = compilation.warnings.iter().collect();
   let codes: Vec<String> = reports
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
@@ -241,6 +241,68 @@ fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
   assert_eq!(codes, vec!["project::config::source_extension".to_string()]);
 }
 
+/// 警告の列から `code` を集める。
+fn warning_codes(warnings: &seiran_compiler::Warnings) -> Vec<String> {
+  return warnings
+    .iter()
+    .map(|warning| return warning.code().expect("警告も leaf の診断コードを持つはず").to_string())
+    .collect();
+}
+
+#[test]
+fn compile_failure_keeps_config_warnings_when_config_validation_fails() {
+  // Arrange — `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("存在しないソースは失敗するはず");
+
+  // Assert
+  assert!(failure.diagnostics().count() >= 1, "error の集合は非空のまま");
+  assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
+}
+
+#[test]
+fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
+  // Arrange — config は通るが style.toml が TOML として壊れている
+  let config = config_toml_with_style("/project/text.txt", "/project/style.toml", "");
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/style.toml", "x = \n")
+    .with_text("/project/text.txt", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("壊れた style は失敗するはず");
+
+  // Assert — 入力読込の後段が失敗しても、先に確定した config の警告は残る
+  assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "style::parse_toml");
+  assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
+}
+
+#[test]
+fn compile_failure_keeps_config_warnings_when_parsing_fails() {
+  // Arrange — issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
+    .with_text("/project/text.txt", "\\unknowncommand{x}")
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未知コマンドは失敗するはず");
+
+  // Assert
+  let primary = failure.code().expect("leaf の診断コードを持つはず").to_string();
+  assert!(primary.starts_with("frontend::"), "主診断は frontend の leaf: {primary}");
+  assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
+}
+
 /// 画像 fixture（`tests/image/testimage5.png`）の実バイト列。テストコード自身の I/O で、本体は
 /// `ProjectSource` 経由のみ。
 fn read_test_image() -> Vec<u8> {
@@ -255,6 +317,74 @@ fn read_test_image() -> Vec<u8> {
 /// 1 枚の画像を参照する figure 環境の本文を組む。
 fn figure_source(image_path: &str) -> String {
   return format!("\\begin{{figure}}\n\\image[width=80mm]{{{image_path}}}\n\\caption{{図}}\n\\end{{figure}}\n");
+}
+
+#[test]
+fn compile_failure_keeps_font_warnings_when_font_validation_fails() {
+  // Arrange — serif に script 不一致（警告）と、可変でないフォントへの軸指定（違反）を同時に書く
+  let config = minimal_config_toml_with_serif_extra(
+    "/project/text.sei",
+    "script = \"kana\"\nvariation_axes = [{ name = \"wght\", value = 400.0 }]",
+  );
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/text.sei", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("軸の違反は失敗するはず");
+
+  // Assert — 同じ検証段の違反があっても、独立に確定した script の警告は残る
+  let primary = failure.code().expect("leaf の診断コードを持つはず").to_string();
+  assert!(primary.starts_with("typeset::font::validation::"), "主診断はフォント検証の leaf: {primary}");
+  let codes = warning_codes(failure.warnings());
+  assert!(!codes.is_empty(), "script 不一致の警告が残るはず");
+  assert!(codes.iter().all(|code| return code.starts_with("typeset::font::script::")), "{codes:?}");
+}
+
+#[test]
+fn compile_failure_keeps_confirmed_warnings_when_an_image_is_missing() {
+  // Arrange — config の警告（拡張子）とフォントの警告（script 不一致）が確定した後、画像の読込で失敗する
+  let config = minimal_config_toml_with_serif_extra("/project/text.txt", "script = \"kana\"");
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/text.txt", figure_source("missing.png"))
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("読めない画像は失敗するはず");
+
+  // Assert — 表示順は段の実行順（設定 → フォント）
+  assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "typeset::image::read_image");
+  let codes = warning_codes(failure.warnings());
+  assert_eq!(codes.first().map(String::as_str), Some("project::config::source_extension"), "{codes:?}");
+  assert!(codes.len() >= 2, "フォントの警告も残るはず: {codes:?}");
+  assert!(codes[1..].iter().all(|code| return code.starts_with("typeset::font::script::")), "{codes:?}");
+}
+
+#[test]
+fn compile_failure_does_not_keep_layout_warnings() {
+  // Arrange — 脚注がはみ出す style（成功すれば組版の警告が出る）で、画像の読込に失敗させる
+  let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
+  let body = format!("本文\\footnote{{はみ出す脚注}}。\n{}", figure_source("missing.png"));
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/style.toml", overflowing_footnote_style_toml("per_page"))
+    .with_text("/project/text.sei", body)
+    .with_bytes("/project/font.ttf", read_test_font());
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("読めない画像は失敗するはず");
+
+  // Assert — 配置由来の警告は組版が成功したときにしか確定しないので、失敗には現れない
+  let codes = warning_codes(failure.warnings());
+  assert!(
+    !codes.iter().any(|code| return code.starts_with("typeset::footnote::")),
+    "配置由来の警告は失敗に添えない: {codes:?}"
+  );
 }
 
 #[test]

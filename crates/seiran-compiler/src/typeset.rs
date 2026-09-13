@@ -83,16 +83,15 @@ pub(crate) use warning::TypesetWarning;
 /// [`compose`] の成果物 — 描画直前の出版物と、それに付随する情報。
 ///
 /// 組版中間型（`Page` / `LaidOutDocument`）は含まない。呼び出し元が要るのは
-/// 「描画できる文書」「読んだ画像のパス」「ユーザーに見せる警告」の 3 つだけで、
-/// フォント資源と配置済みページの組を引き回す知識は `typeset` の内側に閉じる（#535）。
+/// 「描画できる文書」「読んだ画像のパス」の 2 つで、ユーザーに見せる警告は成否と独立に
+/// [`compose`] の組の第 2 要素で返す。フォント資源と配置済みページの組を引き回す知識は
+/// `typeset` の内側に閉じる（#535 / #550）。
 #[derive(Debug)]
 pub(crate) struct TypesetOutput {
   /// 座標と描画順が確定した文書
   pub(crate) publication: Publication,
   /// 文書が参照した画像ファイルのパス一覧（重複なし・昇順。`DependencyManifest` 用）
   pub(crate) image_paths: Vec<ProjectPath>,
-  /// 組版 phase が見つけた警告（フォント → 本体の順）
-  pub(crate) warnings: Vec<TypesetWarning>,
 }
 
 /// 意味解析の成果物を、描画直前の [`Publication`] へ組版する。
@@ -105,8 +104,11 @@ pub(crate) struct TypesetOutput {
 /// 確定して描画資源へ載せる（読込は 1 回だけ）。
 ///
 /// 組版を止めないがユーザーが直せる問題（フォント設定の警告・脚注のはみ出し）は
-/// [`TypesetWarning`] として [`TypesetOutput`] に同梱する。順序はフォント → 本体で、
-/// これが `compiler::Warnings` に現れる順序になる（#382 / #535）。
+/// [`TypesetWarning`] として組の第 2 要素で返す。順序はフォント → 本体で、これが `compiler::Warnings` に
+/// 現れる順序になる（#382 / #535）。**失敗しても確定した警告は返す** — フォント資源の構築で確定した警告は
+/// 後の配置が失敗しても残す。配置由来の警告（脚注のはみ出し）は配置が成功したときにしか確定しない
+/// （脚注のページ単位採番の反復で採用されなかった配置の警告を残さない）ので、配置が失敗した実行では
+/// 返さない（#550）。
 ///
 /// 版面（`geometry`）は入力読込が検証済みの値として渡すもので、この中で config / style から
 /// 幅・ページ幾何を組み立て直すことはしない（#533）。`geometry` は必ず、ここで渡す `config` /
@@ -120,8 +122,8 @@ pub(crate) struct TypesetOutput {
 /// # Errors
 ///
 /// フォントの解析・メトリクス取得・設定検証・シェーパー構築、画像の読込・デコード・寸法確定、
-/// または脚注のページ単位採番の収束に失敗した場合に、その段で見つかった失敗を非空集合で返す
-/// （フォント・画像はそれぞれ独立に検査できるので段の中では全件、段の間は早期 return する）。
+/// または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、その段で見つかった失敗を
+/// 非空集合で持つ（フォント・画像はそれぞれ独立に検査できるので段の中では全件、段の間は早期 return する）。
 pub(crate) fn compose(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
@@ -129,54 +131,65 @@ pub(crate) fn compose(
   geometry: &PreparedGeometry,
   font_data: &FontData,
   document: &SemanticDocument,
-) -> Result<TypesetOutput, Failures<TypesetError>> {
-  let (font_resources, font_warnings) = load_fonts(config, font_data)?;
+) -> (Result<TypesetOutput, Failures<TypesetError>>, Vec<TypesetWarning>) {
+  let (font_resources, font_warnings) = load_fonts(config, font_data);
+  let mut warnings: Vec<TypesetWarning> = font_warnings.into_iter().map(TypesetWarning::Font).collect();
+  let font_resources = match font_resources {
+    Ok(font_resources) => font_resources,
+    Err(failures) => return (Err(failures), warnings),
+  };
 
   let _phase = info_span!("typeset").entered();
   let stage_start = Instant::now();
-  let (mut laid_out, typeset_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
+  let (mut laid_out, layout_warnings) = match lay_out(source, config, style, geometry, &font_resources, document) {
+    Ok(laid_out) => laid_out,
+    Err(failures) => return (Err(failures), warnings),
+  };
   let image_paths = mem::take(&mut laid_out.image_paths);
   let publication = emit::emit(config, font_data, &font_resources, laid_out);
   info!(
     page_count = publication.pages().len(),
-    warning_count = typeset_warnings.len(),
+    warning_count = layout_warnings.len(),
     elapsed = ?stage_start.elapsed(),
     "文書を組版"
   );
 
-  let mut warnings: Vec<TypesetWarning> = font_warnings.into_iter().map(TypesetWarning::Font).collect();
-  warnings.extend(typeset_warnings);
-  return Ok(TypesetOutput {
-    publication,
-    image_paths,
+  warnings.extend(layout_warnings);
+  return (
+    Ok(TypesetOutput {
+      publication,
+      image_paths,
+    }),
     warnings,
-  });
+  );
 }
 
 /// フォント資源を構築する（`font` phase）。
 ///
 /// span と完了 event をここが持ち、構築順序（解析 → メトリクス → 検証 → シェーパー）は
-/// `font` module に閉じる（#352）。
+/// `font` module に閉じる（#352）。検証で確定した警告は、構築が失敗しても組の第 2 要素で返す。
 ///
 /// # Errors
 ///
-/// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、その段で見つかった
-/// 違反を [`TypesetError::Font`] の非空集合として返す（`FontSystemError` を transparent に
-/// 包むだけなので診断の出方は変わらない）。
+/// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、組の第 1 要素が、その段で見つかった
+/// 違反を [`TypesetError::Font`] の非空集合として持つ（`FontSystemError` を transparent に包むだけなので
+/// 診断の出方は変わらない）。
 fn load_fonts<'a>(
   config: &'a ProjectConfig,
   font_data: &'a FontData,
-) -> Result<(FontResources<'a>, Vec<FontWarning>), Failures<TypesetError>> {
+) -> (Result<FontResources<'a>, Failures<TypesetError>>, Vec<FontWarning>) {
   let _phase = info_span!("font").entered();
   let stage_start = Instant::now();
-  let (font_resources, font_warnings) =
-    FontResources::load(&config.font_configs, font_data).map_err(|failures| return failures.map(TypesetError::from))?;
-  info!(
-    warning_count = font_warnings.len(),
-    elapsed = ?stage_start.elapsed(),
-    "フォント資源を構築"
-  );
-  return Ok((font_resources, font_warnings));
+  let (font_resources, font_warnings) = FontResources::load(&config.font_configs, font_data);
+  let font_resources = font_resources.map_err(|failures| return failures.map(TypesetError::from));
+  if font_resources.is_ok() {
+    info!(
+      warning_count = font_warnings.len(),
+      elapsed = ?stage_start.elapsed(),
+      "フォント資源を構築"
+    );
+  }
+  return (font_resources, font_warnings);
 }
 
 /// 意味解析の成果物を確定レイアウトへ組版する（`typeset` phase の前半）。
@@ -227,7 +240,8 @@ pub(crate) fn layout_for_test(
   font_data: &FontData,
   document: &SemanticDocument,
 ) -> Result<LaidOutDocument, Failures<TypesetError>> {
-  let (font_resources, _font_warnings) = load_fonts(config, font_data)?;
-  let (laid_out, _typeset_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
+  let (font_resources, _font_warnings) = load_fonts(config, font_data);
+  let font_resources = font_resources?;
+  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
   return Ok(laid_out);
 }

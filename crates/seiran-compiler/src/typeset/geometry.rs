@@ -335,7 +335,8 @@ mod tests {
     });
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _) = config::load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir)).unwrap();
+    let (config, _) = config::load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
+    let config = config.unwrap();
     return (tempdir, config);
   }
 

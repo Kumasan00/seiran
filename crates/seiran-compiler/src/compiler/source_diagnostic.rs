@@ -1,5 +1,7 @@
 //! ソース位置付き leaf 診断へ本文を添える汎用 adapter [`SourceDiagnostic`]
 
+use std::sync::Arc;
+
 use miette::{Diagnostic, NamedSource};
 
 use crate::{project::SourceSet, source::SourceId};
@@ -15,8 +17,8 @@ use crate::{project::SourceSet, source::SourceId};
 /// これが compiler seam の唯一の source attribution 手段で、段ごとの専用 wrapper は持たない。
 #[derive(Debug)]
 pub(super) struct SourceDiagnostic<E> {
-  /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）
-  named_source: NamedSource<String>,
+  /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）。本文は `SourceSet` の割り当てを共有する
+  named_source: NamedSource<Arc<str>>,
   /// 内側の leaf 診断（`SourceId` と span を持ち、本文は持たない）
   inner: E,
 }
@@ -25,11 +27,12 @@ impl<E> SourceDiagnostic<E> {
   /// `source_id` のソース本文を [`SourceSet`] から引いて `inner` に添える。
   ///
   /// `source_id` は `SourceSet::register` が発行した値をそのまま運んできたものなので、
-  /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
+  /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。本文は複製せず
+  /// `SourceSet` の割り当てを共有する — 同じソースに E 件の診断が付いても本文の追加割り当ては無い（#550）。
   pub(super) fn attach(sources: &SourceSet, source_id: SourceId, inner: E) -> Self {
     let entry = sources.get(source_id);
     return SourceDiagnostic {
-      named_source: NamedSource::new(&entry.name, entry.content.clone()),
+      named_source: NamedSource::new(&entry.name, Arc::clone(&entry.content)),
       inner,
     };
   }
@@ -64,6 +67,8 @@ impl<E: Diagnostic + 'static> Diagnostic for SourceDiagnostic<E> {
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
   use miette::Diagnostic;
   use thiserror::Error;
 
@@ -99,5 +104,27 @@ mod tests {
     assert_eq!(attributed.help().expect("help を委譲するはず").to_string(), "テスト用のヘルプ");
     assert_eq!(attributed.to_string(), "テストエラー");
     assert_eq!(attributed.labels().expect("ラベルを委譲するはず").count(), 1);
+  }
+
+  #[test]
+  fn diagnostics_on_the_same_source_share_one_copy_of_the_text() {
+    // Arrange
+    let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
+    let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
+    let (source_id, entry) = sources.iter().next().expect("1 件登録されているはず");
+    let leaf = || {
+      return LeafError {
+        span: miette::SourceSpan::from((0usize, 3usize)),
+      };
+    };
+
+    // Act — 同じソースに 2 件の診断を添える
+    let first = SourceDiagnostic::attach(&sources, source_id, leaf());
+    let second = SourceDiagnostic::attach(&sources, source_id, leaf());
+
+    // Assert — 本文を複製せず、SourceSet が持つ 1 つの割り当てを全員が指す
+    assert!(Arc::ptr_eq(first.named_source.inner(), &entry.content), "1 件目は SourceSet の本文を共有する");
+    assert!(Arc::ptr_eq(second.named_source.inner(), &entry.content), "2 件目も同じ本文を共有する");
+    assert_eq!(Arc::strong_count(&entry.content), 3, "所有者は SourceSet と診断 2 件だけ");
   }
 }

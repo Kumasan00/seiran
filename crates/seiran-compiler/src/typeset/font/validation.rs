@@ -2,7 +2,8 @@
 //!
 //! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。
 //! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
-//! severity(Warning) の [`FontWarning`] として集め、成功した `Compilation` と一緒に返す
+//! severity(Warning) の [`FontWarning`] として集める。成功した `Compilation` と一緒に返すほか、
+//! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す（#550）
 //! （`tracing::warn!` だけで通知していた形は #377 で廃止した）。
 
 use font_types::{Fixed, Tag};
@@ -138,7 +139,9 @@ pub(super) enum FontValidationErrorKind {
 ///
 /// 全バリアントが「どのフォント種別の、どのファイルの、どのタグか」を持つ — これが無いと
 /// 19 種別のどれを直せばよいか分からない。エラー（[`FontValidationErrorKind`]）とは別の型に
-/// しているのは、warning が成功した `Compilation` と一緒に返り `CompileFailure` には混ざらないため。
+/// しているのは、error と warning が別の集合だから — error は `CompileFailure` の診断列、
+/// warning は `Warnings` で、コンパイルが成功すれば `Compilation` と一緒に、失敗しても
+/// `CompileFailure::warnings()` で返る（#550）。互いに混ざることはない。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
@@ -246,16 +249,16 @@ pub(crate) enum FontWarning {
 ///
 /// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。順序は
 /// `FontType::ALL` の宣言順で固定であり、`FontMap` の内部 `HashMap` の反復順には依存しない。
-/// 警告も同じ順序で返す。
+/// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
+/// 違反と独立に確定するため（#550）。
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反がある場合に、その全件を [`FontValidationFailure`] の非空集合として返す
-/// （このとき警告は捨てる — 失敗したコンパイルでは warning を返さない）。
+/// 1 つ以上の違反がある場合に、組の第 1 要素がその全件を [`FontValidationFailure`] の非空集合として持つ。
 pub(super) fn validate_fonts(
   font_configs: &FontConfigs,
   font_refs: &FontRefs<'_>,
-) -> Result<Vec<FontWarning>, Failures<FontValidationFailure>> {
+) -> (Result<(), Failures<FontValidationFailure>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
   for font_type in FontType::ALL {
@@ -268,10 +271,11 @@ pub(super) fn validate_fonts(
     );
     debug!(font_type = ?font_type, font_path = %config.font_path, "フォントを検証");
   }
-  return match Failures::from_vec(all_errors) {
+  let result = match Failures::from_vec(all_errors) {
     Some(failures) => Err(failures),
-    None => Ok(all_warnings),
+    None => Ok(()),
   };
+  return (result, all_warnings);
 }
 
 /// 1 フォント分を検証し、検出した違反をすべて返す（警告は `warnings` へ追記する）。
