@@ -112,7 +112,7 @@ features = [                   # OpenType フィーチャー（オプション�
 
 ### スタイル設定（`config/style.toml`）
 
-本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます（`[counters.<name>]` だけは例外で、書く場合は 5 キーすべてを指定します）。キーの一覧と既定値は `crates/seiran-compiler/src/style/` の各構造体の doc コメントを参照してください。
+本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。キーの一覧と既定値は `crates/seiran-compiler/src/style/` の各構造体の doc コメントを参照してください。
 
 ```toml
 # background_color = "#ccb599"  # 背景色（"#rrggbb" 16 進文字列、オプション）

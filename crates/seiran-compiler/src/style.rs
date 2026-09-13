@@ -1152,6 +1152,37 @@ resets = [\"nonexistent\"]
   }
 
   #[test]
+  fn counters_partial_entry_keeps_other_defaults() {
+    // Arrange — #561 の再現手順そのもの
+    let toml = "[counters.figure]\ndisplay_name = \"図\"\n";
+
+    // Act
+    let style = parse(toml, dummy_source()).expect("部分指定の [counters.figure] は受理されるべき");
+
+    // Assert
+    assert_eq!(style.counters.figure.display_name, "図");
+    assert_eq!(style.counters.figure.number_format.as_str(), "{chapter}.{n}");
+    assert_eq!(style.counters.figure.ref_format.as_str(), "{display_name} {number}");
+    assert_eq!(style.counters.table.display_name, "Table");
+  }
+
+  #[test]
+  fn reports_partial_counter_placeholder_error_with_path() {
+    // Arrange — 部分指定でも garde の dive が効き、パスは従来と同じ形
+    let toml = "[counters.section]\nnumber_format = \"{chaptr}.{n}\"\n";
+
+    // Act
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+
+    // Assert
+    let paths = paths(&errors);
+    assert!(
+      paths.contains(&"counters.section.number_format"),
+      "expected counters.section.number_format in {paths:?}"
+    );
+  }
+
+  #[test]
   fn parse_attributes_validation_errors_to_the_style_file_it_read() {
     // Act — `style.toml` 以外の名前で置いたスタイルファイル
     let Err(failures) = parse("[text]\nfont_size = \"0pt\"\n", "themes/custom-style.toml") else {
