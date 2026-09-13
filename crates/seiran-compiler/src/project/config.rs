@@ -15,7 +15,7 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{
-    Feature, FontConfig, FontConfigs, FontType, PathResolver, ProjectPath, ProjectSource, SourceReadError,
+    Feature, FontConfig, FontConfigs, FontType, InFile, PathResolver, ProjectPath, ProjectSource, SourceReadError,
     TextDirection, VariationAxis,
   },
 };
@@ -57,14 +57,15 @@ pub(crate) enum ReadConfigError {
     /// 元の TOML パースエラー
     source: toml::de::Error,
   },
-  /// 値検証の違反 1 件
+  /// 値検証の違反 1 件（実際に読んだ config ファイルのパスを添える）
   ///
   /// 複数の違反は `Failures<ReadConfigError>` の別要素として並ぶ。段名だけを表す集約
   /// バリアント（旧 `MultipleValidationErrors`）は持たない — ユーザーが最初に読むのは
   /// 「どのフィールドをどう直すか」であるべきで、「複数のバリデーションエラー」ではない（#376）。
+  /// パスは `-c` で任意の名前を付けた設定ファイルでも分かるように添える（#552）。
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Validation(#[from] ConfigValidationError),
+  Validation(#[from] InFile<ConfigValidationError>),
 }
 
 /// 設定値バリデーションのエラー詳細。
@@ -201,6 +202,9 @@ pub(crate) fn load(
     Err(failures) => return (Err(failures), Vec::new()),
   };
   let (config, warnings) = resolve(raw_config, source, resolver);
+  let config = config.map_err(|failures| {
+    return failures.map(|error| return ReadConfigError::from(InFile::new(config_path.to_string(), error)));
+  });
 
   if let Ok(config) = &config {
     debug!(
@@ -257,12 +261,13 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
 /// 組み立てるだけです（作成は driver 側の責務、#300）。警告はパス解決の時点で確定するので、
-/// 構築の成否と独立に返します。
+/// 構築の成否と独立に返します。違反にはファイルのパスを添えない（添えるのは `config_path` を持つ
+/// [`load`]）。
 fn resolve(
   raw: RawConfig,
   source: &dyn ProjectSource,
   resolver: &PathResolver,
-) -> (Result<ProjectConfig, Failures<ReadConfigError>>, Vec<ConfigWarning>) {
+) -> (Result<ProjectConfig, Failures<ConfigValidationError>>, Vec<ConfigWarning>) {
   let validation = validate_and_convert(&raw);
   let (resolved, path_errors, warnings) = resolve_paths(&raw, source, resolver);
   return (build_config(raw, resolver, validation, resolved, path_errors), warnings);
@@ -279,7 +284,7 @@ fn build_config(
   validation: Result<Vec<FontValues>, Vec<ConfigValidationError>>,
   resolved: ResolvedPaths,
   path_errors: Vec<ConfigValidationError>,
-) -> Result<ProjectConfig, Failures<ReadConfigError>> {
+) -> Result<ProjectConfig, Failures<ConfigValidationError>> {
   let font_values = match validation {
     Ok(font_values) if path_errors.is_empty() => font_values,
     result => {
@@ -288,7 +293,7 @@ fn build_config(
         Err(value_errors) => value_errors,
       };
       errors.extend(path_errors);
-      let Some(failures) = Failures::from_vec(errors.into_iter().map(ReadConfigError::from).collect()) else {
+      let Some(failures) = Failures::from_vec(errors) else {
         unreachable!("この分岐は検証エラーかパスエラーが 1 件以上あるときにだけ入る")
       };
       return Err(failures);
@@ -605,6 +610,8 @@ fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBu
 #[cfg(test)]
 mod tests {
   use std::path::{Path, PathBuf};
+
+  use miette::Diagnostic;
 
   use super::{
     ConfigValidationError, ConfigWarning, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load,
@@ -1293,11 +1300,11 @@ mod tests {
       panic!("19 件のフォントパスエラーを期待");
     };
     let errors: Vec<&ReadConfigError> = failures.iter().collect();
-    assert!(
-      errors
-        .iter()
-        .all(|error| matches!(error, ReadConfigError::Validation(ConfigValidationError::FontPathResolution { .. })))
-    );
+    assert!(errors.iter().all(|error| matches!(
+      error,
+      ReadConfigError::Validation(failure)
+        if matches!(failure.error(), ConfigValidationError::FontPathResolution { .. })
+    )));
     assert_eq!(errors.len(), 19);
   }
 
@@ -1322,10 +1329,47 @@ mod tests {
     let Err(failures) = result else {
       panic!("ソースパスエラーを期待");
     };
+    assert!(failures.iter().any(|error| matches!(
+      error,
+      ReadConfigError::Validation(failure)
+        if matches!(failure.error(), ConfigValidationError::SourcePathResolution { .. })
+    )));
+  }
+
+  #[test]
+  fn load_attributes_validation_errors_to_the_config_file_it_read() {
+    // Arrange — `config.toml` 以外の名前で置いた設定ファイルに、値の違反とパスの違反を 1 件ずつ入れる
+    let toml = format!(
+      "sources = [\"missing.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("fonts/dummy.ttf"),
+    );
+    let source = MemoryProjectSource::new()
+      .with_text("/project/settings/custom.toml", &toml)
+      .with_bytes("/project/fonts/dummy.ttf", Vec::new());
+
+    // Act
+    let (result, _) = load(
+      &source,
+      &ProjectPath::new("/project/settings/custom.toml"),
+      &PathResolver::new(Path::new("/project")),
+    );
+
+    // Assert — どの違反にも実際に読んだファイルのパスが前置され、診断 code は内側のまま
+    let Err(failures) = result else {
+      panic!("値の違反とパスの違反を期待");
+    };
+    let reported: Vec<(String, String)> = failures
+      .iter()
+      .map(|error| return (error.code().expect("leaf の code を持つはず").to_string(), error.to_string()))
+      .collect();
+    assert_eq!(reported.len(), 2, "{reported:?}");
+    assert_eq!(reported[0].0, "project::config::validation::field");
+    assert_eq!(reported[1].0, "project::config::validation::source_path");
     assert!(
-      failures
-        .iter()
-        .any(|error| matches!(error, ReadConfigError::Validation(ConfigValidationError::SourcePathResolution { .. })))
+      reported.iter().all(|(_, message)| return message.starts_with("/project/settings/custom.toml: ")),
+      "{reported:?}"
     );
   }
 

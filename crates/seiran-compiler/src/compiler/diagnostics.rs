@@ -358,6 +358,31 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
 }
 
 #[test]
+fn diagnostic_config_validation_field() {
+  // Arrange — 値域外の `image.max_dpi`（config.toml の値検証の違反 1 件）
+  let project = TestProject::builder()
+    .config_toml(|table| {
+      let image = table
+        .entry("image")
+        .or_insert(toml::Value::Table(toml::value::Table::new()))
+        .as_table_mut()
+        .expect("[image] はテーブルのはず");
+      image.insert("max_dpi".to_string(), toml::Value::Integer(9999));
+    })
+    .build();
+  let config_path = project.config_path().to_string();
+
+  // Act
+  let failure = project.compile_err();
+
+  // Assert — 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま（#552）
+  assert_eq!(codes(&failure), vec!["project::config::validation::field".to_string()]);
+  let rendered = render_failure(failure);
+  assert!(rendered.contains(&format!("{config_path}: 'image.max_dpi'")), "{rendered}");
+  assert_matches_golden("config_validation_field", &rendered);
+}
+
+#[test]
 fn diagnostic_style_validation_aggregate() {
   // Arrange — 2 つの font_size を同時に不正にする
   let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
