@@ -233,7 +233,7 @@ impl FirstLabelDefinition {
 /// `crate::source::Span` を診断用の `miette::SourceSpan` へ変換する
 ///
 /// `SemanticError` のバリアントはいずれも `#[label]` に `miette::SourceSpan` を要求するため、
-/// この module の診断組み立てと走査（`fact_collection`）の双方から共有する
+/// この module の診断組み立てと、`fact_collection` の走査後の参照の存在検証の双方から共有する
 pub(crate) fn span_to_source_span(span: Span) -> miette::SourceSpan {
   return miette::SourceSpan::from((span.start as usize, span.len() as usize));
 }

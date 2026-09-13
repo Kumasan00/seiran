@@ -445,7 +445,7 @@ impl Walker<'_> {
         label,
         ..
       } => {
-        // 無採番クラス（`proof`）は採番もラベル登録もしない（旧実装と同じ）。
+        // 無採番クラス（`proof`）は採番もラベル登録もしない。
         let (value, duplicate) =
           self.registry.increment_theorem_with_label_at(*class, label.as_deref(), node.id, self.locations);
         let duplicated = self.record_duplicate(node.id, duplicate);

@@ -3,7 +3,7 @@
 //! [`CounterValue`] は `resets` / `reset_by`（値に影響する style フィールド）だけから
 //! 組み立てる。`number_format` 等の表示側フィールドはこのクレートが一切読まないことで、
 //! G3（内容は見た目から独立）を型の設計として保証する。表示文字列の生成は typeset 側の
-//! 責務（`typeset::lowering::counter` の `format_counter_value` / `format_ref_display`）。
+//! 責務（`typeset::lowering::counter`）。
 //!
 //! [`CounterRegistry`] は `typeset::lowering::counter::CounterRegistry`（issue #282 以前）から
 //! 移設したもの。移設にあたり `increment` 系メソッドの戻り値を書式化済み `String` から
