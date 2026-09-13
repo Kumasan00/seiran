@@ -93,6 +93,26 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   段の中で独立に検査できるものは全件集め、後段の入力を構築できない段の間は早期 return する
   （config → style → 横断検証、フォントの parse → metrics → validate がその境界）
 
+### `phase`
+
+工程（phase）の開始と結果付きの終了を記録する RAII ガード `Phase`（#551）。crate root の非公開 leaf module で、
+`compiler` facade（`compile` / `input` / `frontend` / `semantics`）と `typeset::compose`（`font` / `typeset`）が
+共用する — `typeset` は `compiler` に依存できないので facade 側には置かない。
+
+- `Phase::enter(info_span!("input"))` が span に入って INFO「工程を開始」を出し、drop で INFO「工程を終了」
+  （`status = ?PhaseStatus` — `Succeeded` / `Failed`、`elapsed = ?Duration`）を出す。span は呼び出し側の
+  callsite で作る（span の名前と target は callsite で決まる）
+- 状態は「`succeed()` が呼ばれたか」の 1 ビット。`?` の早期 return・`return (Err(..), warnings)`・panic の
+  unwind はすべて `Failed` になるので、失敗した工程も必ず終了 event を持つ。`Drop::drop` の本体はフィールド
+  （`EnteredSpan`）の drop より先に走るので、終了 event は工程の span の中で出る
+- 所要時間を持つのは終了 event だけで、各工程の完了 event（「入力を読込」等）は件数だけを持つ
+- CLI の `render` / `write` は `seiran` crate の同名 module が同じメッセージ・フィールドで記録する。
+- 開始・終了 event の target は工程が属する module ではなく、記録している `phase` module 自身
+  （`seiran_compiler::phase` / `seiran::phase`）。module 単位で絞った `RUST_LOG`（例:
+  `seiran_compiler::typeset=info`）はこの event を通さないので、開始・終了・`elapsed` も見たいときは
+  `seiran_compiler::phase=info`（CLI の工程なら `seiran::phase=info`）を directive へ足す必要がある。
+  型を facade へ載せないのは event の target を各 crate に保つため
+
 ### `source`
 
 #### 責務
@@ -1628,19 +1648,19 @@ resolve_root（PathResolver を 1 回構築・root を解決）
 ```
 
 `tracing` の phase 構造は `compile` span と `input` / `frontend` / `semantics` の 3 段をこの facade が持ち、
-`font` / `typeset` の 2 段は `typeset::compose` が持つ（#535。span の所有 module は変わったが、
-工程名・順序・完了 event のメッセージとフィールドは #500 のまま不変）。各段は
-`let _phase = info_span!(…).entered();` を持つブロック 1 つで、span の名前が phase 名
-（`resolve_root` は span を持たない前処理で、phase 構造には現れない）。段の完了 event（件数・
-所要時間）はその span を開いた側（`compiler` facade の 3 段は facade 自身、`font` / `typeset` の
-2 段は `typeset::compose` とその内部の private `load_fonts`）が出し、各 module が知る内部手順
-（設定・style・文献の個別読込、lowering、boxing、前付け・本文・後付けの改ページ等）は DEBUG として
-callee 側が出す — 内部構成を変えても `-v` の工程一覧が不用意に変わらないようにする。開始 event は
-持たない（開始は span の enter が表す）。所要時間は `Duration` を `?` で載せる 1 形式
-（`elapsed=9.1ms`）で、u64 のミリ秒が要るのは公開 API の `BuildStatistics.total_elapsed_ms` だけ
-（`as_millis` の u128 を `u64::try_from(..).unwrap_or(u64::MAX)` で飽和させる）。描画と保存の INFO は、
-それぞれの外向き入口を持つ `seiran-pdf::render` と CLI の atomic write が所有し、その span
-（`render` / `write`）は CLI が開く。`-v` に出る INFO は 5 段 + 全体の完了 event の 6 行で変わらない。
+`font` / `typeset` の 2 段は `typeset::compose` が持つ（#535）。各段は `Phase::enter(info_span!(…))`
+（`phase` 節）を持つブロック 1 つで、span の名前が phase 名（`resolve_root` は span を持たない前処理で、
+phase 構造には現れない）。`Phase` が工程の開始（「工程を開始」）と結果付きの終了（「工程を終了」
+`status` / `elapsed`）を出し、失敗した工程も `status=Failed` と所要時間を持つ（#551 が #500 の
+「開始 event は持たない」を改訂）。段の完了 event（件数）は成功したときだけ、その span を開いた側
+（`compiler` facade の 3 段は facade 自身、`font` / `typeset` の 2 段は `typeset::compose` とその内部の
+private `load_fonts`）が出し、各 module が知る内部手順（設定・style・文献の個別読込、lowering、boxing、
+前付け・本文・後付けの改ページ等）は DEBUG として callee 側が出す — 内部構成を変えても `-v` の工程一覧が
+不用意に変わらないようにする。所要時間は終了 event の `elapsed = ?Duration` の 1 形式（`elapsed=9.1ms`）で、
+u64 のミリ秒が要るのは公開 API の `BuildStatistics.total_elapsed_ms` だけ（`as_millis` の u128 を
+`u64::try_from(..).unwrap_or(u64::MAX)` で飽和させる）。描画と保存の完了 event は、それぞれの外向き入口を
+持つ `seiran-pdf::render` と CLI の atomic write が所有し、その工程（`render` / `write`）の span と
+開始・終了は CLI が開く。成功した実行の `-v` に出る compiler の INFO は、6 工程 × 開始・完了・終了の 18 行。
 
 組版の内部順序（フォント資源の構築・本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置・
 `Publication` への変換）と組版中間型は `typeset::compose` の内側にある。`compiler.rs` が `typeset` から
@@ -1949,9 +1969,16 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   実行ごとに **`File::create_new` で新規作成**し（既存パスは `cli::log_file_exists` で拒否 — ログの指定で
   入力を壊さないため。#548 が #495 の truncate を改訂）、親ディレクトリが無ければ作る。書き込みは
   `Arc<Mutex<..>>` 越しの同期 `BufWriter` で、tracing の layer と直接の報告が同じ状態を共有する。
-  書き込み・flush の**最初の失敗を保持**し、`Reporter::finish` が明示的な flush の後に取り出す
-  （`tracing-appender` の `non_blocking` は「キューへの送信成功」しか保証せず、書き込み失敗を
-  呼び出し元へ返さないので使わない。非同期化は TRACE 有効時の性能計測で必要性が確認できてから再検討）
+  **flush 方針**（#551）: INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と直接の報告
+  （`LogSink::write_block`）は書くたびに flush し、DEBUG / TRACE は `BufWriter` に溜めたままにする（TRACE は
+  文書に比例して出るため、event ごとの flush はコストに見合わない）。この方針により、ハングやシグナルで
+  止まった実行でも、ファイルからそこまでの工程の開始・完了・終了を読める。書き込み・flush の
+  **最初の失敗を保持**し、`Reporter::finish` が明示的な flush の後に取り出す（`tracing-appender` の
+  `non_blocking` は「キューへの送信成功」しか保証せず、書き込み失敗を呼び出し元へ返さないので使わない。
+  非同期化は TRACE 有効時の性能計測で必要性が確認できてから再検討）
+- `phase`: `render` / `write` 工程の開始・結果付き終了を記録する RAII ガード `Phase`（#551）。
+  `seiran-compiler` の同名 leaf module とメッセージ・フィールドを揃えるが、型は共有しない
+  （event の target を各 crate に保つため。`main` がこの 2 工程の span を開く）
 - `termination`: 本処理の結果とログの記録結果から、端末へ出す主診断・副次診断と `ExitCode` を決める
   （`decide` は純粋関数で in-src テストが 4 通りを覆う）。`main` は `miette::Result` ではなく `ExitCode` を
   返し、報告を終えてから終了する。報告の書き出し先は `Outcome::report` の引数で受け（`main` は
@@ -1983,6 +2010,9 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - `tests/cli_build_warnings.rs`: 失敗した `build`（compile の失敗・保存の失敗）でも確定済みの警告が
   主エラーより先に端末と `--log-file` へ出ること、`-q` では端末からだけ消えることを、binary の起動で
   確かめる（render の失敗は注入できないので保存の失敗で代表させる。#550）
+- `tests/cli_log_observation.rs`: 工程の開始・終了（`render` / `write` と、失敗した `frontend` / `write`）・実行記録・
+  `RUST_LOG` の通知が、`-q` / `-v` / `RUST_LOG` の組み合わせごとに端末とログファイルへどう出るかを binary の
+  起動で確かめる（#551）。プロジェクトの組み立てと binary の起動は `tests/common`（`cli_build_warnings.rs` と共有）
 
 ### 不変条件・注意点
 
@@ -2032,10 +2062,20 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   突き合わせる。`ttc-names` は `FontRef::fonts`（解析できないファイルを「フォント 0 件」に畳む）ではなく
   `FileRef::new` を直接呼ぶ。
 - **`--log-file` は stderr を置き換えず、出力先を足す**。指定しても端末の見え方は 1 バイトも変わらない。
-  ファイルへ書くのは tracing イベント・warning 診断・成功サマリ・致命的エラー診断の 4 つで、tracing イベントには
-  時刻を付け（stderr 側は時刻なしのまま）、ANSI 装飾は出力先が tty でないので常に無効にする。診断と成功サマリは
+  ファイルへ書くのは先頭の実行記録・tracing イベント・warning 診断（`RUST_LOG` の通知を含む）・成功サマリ・
+  致命的エラー診断・末尾の終了記録で、tracing イベントには時刻を付け（stderr 側は時刻なしのまま）、
+  ANSI 装飾は出力先が tty でないので常に無効にする。診断と成功サマリは
   端末と同じ体裁のまま時刻を付けずに書く — 複数行の診断ブロックの先頭行にだけ時刻が付く不揃いを避けるため。
   時刻はローカル時刻（`OffsetTime::local_rfc_3339`）で、オフセットを取得できない環境では UTC へ落とす（#495）。
+- **ログファイルは実行記録で始まり、終了記録で終わる**（#551）。先頭ブロック（`# seiran 実行記録` /
+  開始時刻・バージョン・サブコマンド・基準ディレクトリ・実効フィルタ）は `Reporter::init` が subscriber を
+  設置する**前**に、末尾ブロック（`# seiran 実行終了` / 終了時刻・終了状態）は `Reporter::finish` が flush の
+  直前に、どちらも tracing を通さず `LogSink::write_block` で書く — フィルタに依らず、`--log-file` だけの
+  実行でも「何の記録か」が分かる。基準ディレクトリは `main` が起動時に 1 回だけ取得した `current_dir()` で、
+  `build` の相対パス解決も同じ値を使う。実効フィルタは両出力先に共通の directive（`-q` の端末側 `off` は
+  含まない）。終了状態は本処理の成否で、ログ記録そのものの失敗（終了コード 1）は記録できない出力先へ書けない
+  ので含まない。時刻表現はイベントと同じ `LogTimer`。サブコマンド名は `cli::Command::name`（全 variant を
+  明示する対応表）が与える
 - **致命的エラー診断もファイルへ残す**（#502）。ビルドを止めた診断（`CompileFailure` の全 leaf・render / 保存・
   カレントディレクトリ取得等の CLI 側エラー）は、`main` が `run` の結果を受けた直後に `Reporter::failure` が
   warning と同じ体裁でファイルへ書く。端末側は触らない — `termination::Outcome::report` が miette のグローバル
@@ -2058,30 +2098,38 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /
   `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は target 単位指定の
   escape hatch として `--verbose` より優先する — 有効な `RUST_LOG` があれば `--verbose` は無視し、
-  1 段以上指定されていれば WARN で 1 行警告する（`--verbose` 未指定なら警告しない。#501）。フラグと
+  1 段以上指定されていれば warning 診断（`cli::rust_log::overrides_verbose`）を 1 件出す
+  （`--verbose` 未指定なら出さない。#501）。フラグと
   `RUST_LOG` の合成はしない — 同一 target への複数 directive の優先規則に依存し、実効フィルタが字面から
-  読めなくなる（G1）。警告は不正な `RUST_LOG` の警告と同じく subscriber 初期化後の tracing WARN なので
-  実効フィルタを通り、`RUST_LOG` が WARN を通さない指定（`error` / target 限定）では出ない — `RUST_LOG`
-  が全権という優先順位の帰結。`--quiet` は**端末側だけ**を抑止する — stderr 側の
+  読めなくなる（G1）。
+  この通知と不正な `RUST_LOG` の通知（`cli::rust_log::invalid`）は tracing ではなく warning 診断で、
+  compile の警告と同じ `Reporter::warning` が端末（`--quiet` 以外）とログファイルへ出す — 実効フィルタを
+  通らないので、`RUST_LOG` が WARN を通さない指定（`error` / target 限定）でも消えない（#551。ユーザーが
+  直せる通知を、通知対象のフィルタ自身に消させない）。優先順位そのものは変えない。
+  `--quiet` は**端末側だけ**を抑止する — stderr 側の
   実効フィルタを `off` にし warning 診断・成功サマリを端末へ出さないが、`--log-file` の内容は
   `RUST_LOG` / `--verbose` どおりのまま減らさない（静かに回して後で読むのがファイル出力の目的）。
   `--quiet` と `--verbose` は直交する（#501）— `-q` は「端末を黙らせる」、`-v` は「実効フィルタの詳細度」で、
   `-q -vv --log-file x.log` は端末無言のまま x.log へ DEBUG まで書く。`--log-file` の無い `-q -vv` は
   矛盾ではなく効果が無いだけで、警告もエラーも出さない（`-v` を常に付けた運用へ `-q` を足せる）。
-- **構造は span、事実は event、1 事象 1 オーナー**（#500）。工程の入れ子は span が表し、event は件数・所要時間
-  などの事実だけを運ぶ。phase は INFO の span — `compile` とその子 `input` / `frontend` / `semantics` /
-  `font` / `typeset` は compiler facade が、`render` / `write` は `main` が開く。段の内部で同じ処理を
-  複数回呼ぶ箇所は DEBUG の span で区別する（`typeset::pagination` の `build_blocks` / `break_pages` ×
-  `region`）。span のレベルはその中の event の最上位レベルと同じにし、既定（`warn`）では span も無効になる。
-  subscriber は `FmtSpan` を有効にしないので、span は各行の prefix（`compile:typeset:break_pages:`）と行末の
-  フィールド（`region="body"`）としてだけ現れ、enter / close の行は出ない。`-v` は工程ごとの完了 event
-  1 行（compiler 6 行 + `render` + `write`）で、`phase=` のようなフィールドは持たない。件数を持つ event は
-  callee が出し、orchestrator は同じ工程の完了 event を重ねない（`-vv` で 1 事象 1 行）。開始 event は
-  持たない。所要時間を持つのは phase の INFO 完了 event と、残る DEBUG の集計 event
-  （フォントファイル読込・フォント検証）だけで、書式は下の規約表に従う。**`typeset::breaking` /
-  `typeset::boxing` の event には所要時間を載せない** — `tests/trace_events.rs` が同じ入力のログ全文を
-  実行間で `assert_eq!` する（発行順の決定性）ためで、段内部の所要時間は orchestrator の span が持つ
-  （表示は `FmtSpan::CLOSE` を別スイッチで足したときに得る。#500 のスコープ外）。
+- **構造は span、事実は event、工程の lifecycle は `Phase`、1 事象 1 オーナー**（#500 / #551）。工程の入れ子は
+  span が表し、event は件数などの事実だけを運ぶ。phase は INFO の span — `compile` とその子 `input` /
+  `frontend` / `semantics` / `font` / `typeset` は compiler facade と `typeset::compose` が、`render` / `write` は
+  `main` が開く。段の内部で同じ処理を複数回呼ぶ箇所は DEBUG の span で区別する（`typeset::pagination` の
+  `build_blocks` / `break_pages` × `region`）。span のレベルはその中の event の最上位レベルと同じにし、既定
+  （`warn`）では span も無効になる。subscriber は `FmtSpan` を有効にしないので、span は各行の prefix
+  （`compile:typeset:break_pages:`）と行末のフィールド（`region="body"`）としてだけ現れる。工程の開始と
+  結果付きの終了は `Phase`（compiler crate の `phase` と CLI の `phase`。メッセージ・フィールドは同一）が
+  「工程を開始」「工程を終了（`status=Succeeded|Failed` / `elapsed`）」の INFO event として出す —
+  `FmtSpan::CLOSE` を採らないのは、成功と失敗を区別できず（`time.busy` / `time.idle` を出すだけ）、DEBUG の
+  span にも enter / close 行を足してしまうため（#551）。`-v` は工程ごとに開始・完了（件数）・終了の 3 行
+  （失敗した工程は開始・終了の 2 行で、後段は始まらない）で、`phase=` のようなフィールドは持たない。
+  件数を持つ event は callee が出し、orchestrator は同じ工程の完了 event を重ねない（`-vv` で 1 事象 1 行）。
+  所要時間を持つのは工程の終了 event と、残る DEBUG の集計 event（フォントファイル読込・フォント検証）
+  だけで、書式は下の規約表に従う。**`typeset::breaking` / `typeset::boxing` の event には所要時間を
+  載せない** — `tests/trace_events.rs` が同じ入力のログ全文を実行間で `assert_eq!` する（発行順の決定性）
+  ためで、段内部の所要時間は工程の終了 event が包括して持つ。tracing に載る失敗情報は工程の状態と所要時間
+  だけで、診断本文は複製しない（#377 / #382）。ERROR レベルは使わない（#103）
 - **レベルの判定テストは「イベント数が文書の中身に比例するか」**（#490）。新しいログを足すときはこの表で
   決め、既存イベントのレベルは動かさない。
 
@@ -2110,13 +2158,14 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   | 添字・識別子 | `<名詞>_index`（0 始まり）/ `<名詞>_id`。略語にしない（`gid` ではなく `glyph_id`） |
   | 単位 | suffix で字面に出す — `_pt` / `_em`、font design unit は `_units`。無次元（`badness` / `ratio` / `line_height_factor` 等）は suffix なし |
   | 所要時間 | `elapsed = ?Duration` の 1 形式（`elapsed=9.1ms`）。整数 `_ms` フィールドは使わない |
+  | 工程の状態 | `status = ?PhaseStatus`（`Succeeded` / `Failed`）。工程の終了 event だけが持つ |
   | 真偽 | `is_` / `has_` で始める（`is_last` / `is_hyphenated` / `is_breakable`） |
   | パス | `<名詞>_path` に `%path.display()`（Display・引用符なし） |
   | 文字列 | パス以外は引用符付きで出す — `&str` / `String` は sigil なしでそのまま載せる（`record_str` が Debug 体裁で `"…"` を付ける）。`char` は `?`（`'「'`） |
   | 浮動小数 | f32 は `%`（Display）。sigil なしだと `Value` が f64 へ昇格させ `line_height_factor=1.0499999523162842` のような表示になる。f64 は sigil なし |
   | enum / `Option` / `Duration` | `?`（Debug） |
   | フィールド順 | 識別（パス・種別・添字）→ 事実（件数・寸法・真偽）→ 末尾に `elapsed` |
-  | メッセージ | 事象名の名詞止め（「行を確定」「ブロックを構築」）で site 間一意 — `-vv` 以下では target が出ないため、同文だと発行元を区別できない |
+  | メッセージ | 事象名の名詞止め（「行を確定」「ブロックを構築」）で site 間一意 — `-vv` 以下では target が出ないため、同文だと発行元を区別できない。例外は `Phase` の「工程を開始」「工程を終了」で、どの工程かは span の prefix が示す（site は各 crate の `phase` module 1 つずつ） |
 
   **event / span を rayon の並列 closure の中に置かない**（不変条件）。発行順が完了順に依存して
   非決定になり（`tests/trace_events.rs` は同じ入力のログ全文を実行間で `assert_eq!` する）、thread-local

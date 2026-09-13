@@ -57,7 +57,7 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 ```sh
 cargo build                                                # デバッグビルド
 cargo build --release                                      # リリースビルド（LTO 有効）
-cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]  # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -vvv 最大 / -q 端末抑止（-v と併用可） / --log-file はログ・warning・サマリ・致命的エラー診断をファイルへも出す（実行ごとに新規作成・既存パスはエラー・記録失敗は終了 1））
+cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]  # 設定ファイルの sources から PDF を生成（-v 工程 / -vv 内部詳細 / -vvv 最大 / -q 端末抑止（-v と併用可） / --log-file は実行記録・ログ・warning・サマリ・致命的エラー診断をファイルへも出す（実行ごとに新規作成・既存パスはエラー・記録失敗は終了 1））
 cargo run -- variation-axes <font> [-f <font_index>]       # バリアブルフォント軸情報を表示
 cargo run -- ttc-names <ttc_file>                          # TTC ファイル内のフォント名一覧を表示
 cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示
@@ -145,6 +145,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 |
 | `failures` | 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能・`Diagnostic` 非実装） |
+| `phase` | 工程の開始・結果付き終了（`status` / `elapsed`）を INFO で記録する RAII ガード `Phase`（`compiler` facade と `typeset` が共用） |
 | `source` | ソースの同一性 `SourceId` と位置 `Span` |
 | `project` | プロジェクトの物理的な入力 — 外部資源取得 seam（`ProjectPath` / `ProjectSource`）+ 入力パスの解決規則（`PathResolver`）+ config.toml の読込・検証 + `SourceSet` + フォント資源（子 module `font`） |
 | `document` | authored HIR（`HirDocument` / `HirBuilder` / `SourceMap`）と HIR が値として持つ語彙型の所有者 |

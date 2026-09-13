@@ -3,6 +3,8 @@
 //! `-vvv` が有効化する TRACE が実際に出ること、`RUST_LOG` 相当の target 単位指定で領域を絞れること、
 //! 同じ入力に対する発行順が実行ごとに同一であること、DEBUG では 1 件も出ないことを検証する（#490）。
 //! 併せて、phase が span の prefix として全行に付くこと、同じ工程が 2 回報告されないことを検証する（#500）。
+//! 工程ごとに開始と `status` / `elapsed` 付きの終了が出ること、失敗した工程も両方を持ち診断本文を
+//! 複製しないことを検証する（#551）。
 
 use std::{
   io,
@@ -10,7 +12,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use seiran_compiler::{MemoryProjectSource, ProjectPath, test_support};
+use seiran_compiler::{Compilation, CompileFailure, MemoryProjectSource, ProjectPath, test_support};
 use tracing_subscriber::{EnvFilter, fmt::MakeWriter};
 
 /// 行分割とシェーピングの TRACE だけを通すフィルタ（`RUST_LOG` の target 単位指定と同じ形）。
@@ -98,12 +100,12 @@ impl<'a> MakeWriter<'a> for CapturedLog {
   fn make_writer(&'a self) -> Self::Writer { return self.clone(); }
 }
 
-/// 指定フィルタの subscriber を張って [`SOURCE`] を 1 回コンパイルし、出力されたログを返す。
+/// 指定フィルタの subscriber を張って `text` を本文に 1 回コンパイルし、出力されたログと結果を返す。
 ///
 /// subscriber は `set_default`（thread-local）で入れ、global default を汚さない。event / span を rayon の
 /// 並列 closure に置かない不変条件（`docs/architecture.md` seiran 節）により worker thread で発行される
 /// event は無く、thread-local の捕捉から漏れる行も無い。時刻・ANSI は再現比較のため無効にする。
-fn compile_and_capture_log(filter: &str) -> String {
+fn capture_compile_log(filter: &str, text: &str) -> (String, Result<Compilation, CompileFailure>) {
   let captured = CapturedLog::default();
   let subscriber = tracing_subscriber::fmt()
     .compact()
@@ -118,12 +120,19 @@ fn compile_and_capture_log(filter: &str) -> String {
 
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", japanese_config_toml())
-    .with_text("/project/text.sei", SOURCE)
+    .with_text("/project/text.sei", text)
     .with_bytes("/project/font.ttf", read_japanese_test_font());
   let root = ProjectPath::new("/project/config.toml");
-  seiran_compiler::compile(&source, &root, Path::new("/project")).expect("compile は成功するはず");
+  let result = seiran_compiler::compile(&source, &root, Path::new("/project"));
 
-  return captured.contents();
+  return (captured.contents(), result);
+}
+
+/// 指定フィルタの subscriber を張って [`SOURCE`] を 1 回コンパイルし、出力されたログを返す。
+fn compile_and_capture_log(filter: &str) -> String {
+  let (log, result) = capture_compile_log(filter, SOURCE);
+  result.expect("compile は成功するはず");
+  return log;
 }
 
 #[test]
@@ -183,29 +192,98 @@ fn trace_reports_spacing_adjustments_seiran_applies() {
   assert!(log.contains("和欧文間アキを挿入"), "和欧文間アキが TRACE に出るはず");
 }
 
-#[test]
-fn info_events_are_one_completion_line_per_phase_with_span_prefix() {
-  let log = compile_and_capture_log(INFO_FILTER);
-  let lines: Vec<&str> = log.lines().collect();
+/// 行 `line` が span の prefix `prefix`（`compile:input:` 等）を持つか。
+///
+/// compact 形式は prefix の直後に空白を置くので、`compile:` と `compile:input:` を取り違えない
+/// （`seiran_compiler::compiler:` のような target は `compile:` の直後が空白にならない）。
+fn has_span_prefix(line: &str, prefix: &str) -> bool { return line.contains(&format!("{prefix} ")); }
 
-  let expected = [
-    ("compile:input:", "入力を読込"),
-    ("compile:frontend:", "ソースを構文解析"),
-    ("compile:semantics:", "文書を意味解析"),
-    ("compile:font:", "フォント資源を構築"),
-    ("compile:typeset:", "文書を組版"),
-    ("compile:", "文書をコンパイル"),
-  ];
-  assert_eq!(lines.len(), expected.len(), "INFO は 5 段 + 全体の完了 event 1 行ずつのはず:\n{log}");
-  for (line, (prefix, message)) in lines.iter().zip(expected) {
-    assert!(line.contains(prefix), "{line:?} は phase span の prefix {prefix:?} を持つはず");
-    assert!(line.contains(message), "{line:?} は {message:?} のはず");
-    assert!(line.contains("elapsed="), "{line:?} は所要時間を持つはず");
+/// INFO の 1 行の期待値（span の prefix・メッセージ・行の種類）。
+#[derive(Debug, Clone, Copy)]
+enum Expected {
+  /// 工程の開始
+  Start(&'static str),
+  /// 工程の完了 event（件数だけを持つ）
+  Fact(&'static str, &'static str),
+  /// 工程の終了（`status` と `elapsed` を持つ）
+  End(&'static str, &'static str),
+}
+
+/// INFO の各行を期待値の列と 1 行ずつ突き合わせる。
+fn assert_info_lines(log: &str, expected: &[Expected]) {
+  let lines: Vec<&str> = log.lines().collect();
+  assert_eq!(lines.len(), expected.len(), "INFO の行数が契約と違う:\n{log}");
+  for (line, expected) in lines.iter().zip(expected) {
+    match *expected {
+      Expected::Start(prefix) => {
+        assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
+        assert!(line.contains("工程を開始"), "{line:?} は開始 event のはず");
+        assert!(!line.contains("elapsed="), "開始 event は所要時間を持たない: {line:?}");
+      },
+      Expected::Fact(prefix, message) => {
+        assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
+        assert!(line.contains(message), "{line:?} は {message:?} のはず");
+        assert!(!line.contains("elapsed="), "所要時間は終了 event だけが持つ: {line:?}");
+      },
+      Expected::End(prefix, status) => {
+        assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
+        assert!(line.contains("工程を終了"), "{line:?} は終了 event のはず");
+        assert!(line.contains(&format!("status={status}")), "{line:?} は status={status} のはず");
+        assert!(line.contains("elapsed="), "終了 event は所要時間を持つ: {line:?}");
+      },
+    }
   }
-  let last = lines.last().expect("6 行あることは上で確認済み");
-  assert!(!last.contains("compile:typeset"), "全体の完了 event は子 span を閉じてから出るはず: {last:?}");
   assert!(!log.contains("phase="), "phase はフィールドではなく span の prefix で表すはず:\n{log}");
-  assert!(!log.contains("開始"), "開始は span の enter が表すので開始 event は出ないはず:\n{log}");
+}
+
+#[test]
+fn info_events_record_start_and_end_of_each_phase() {
+  let log = compile_and_capture_log(INFO_FILTER);
+
+  assert_info_lines(
+    &log,
+    &[
+      Expected::Start("compile:"),
+      Expected::Start("compile:input:"),
+      Expected::Fact("compile:input:", "入力を読込"),
+      Expected::End("compile:input:", "Succeeded"),
+      Expected::Start("compile:frontend:"),
+      Expected::Fact("compile:frontend:", "ソースを構文解析"),
+      Expected::End("compile:frontend:", "Succeeded"),
+      Expected::Start("compile:semantics:"),
+      Expected::Fact("compile:semantics:", "文書を意味解析"),
+      Expected::End("compile:semantics:", "Succeeded"),
+      Expected::Start("compile:font:"),
+      Expected::Fact("compile:font:", "フォント資源を構築"),
+      Expected::End("compile:font:", "Succeeded"),
+      Expected::Start("compile:typeset:"),
+      Expected::Fact("compile:typeset:", "文書を組版"),
+      Expected::End("compile:typeset:", "Succeeded"),
+      Expected::Fact("compile:", "文書をコンパイル"),
+      Expected::End("compile:", "Succeeded"),
+    ],
+  );
+}
+
+#[test]
+fn failed_phase_records_start_and_failed_end_without_the_diagnostic() {
+  let (log, result) = capture_compile_log(INFO_FILTER, "\\unknowncommand{x}\n");
+
+  assert!(result.is_err(), "未知コマンドは frontend で失敗するはず");
+  assert_info_lines(
+    &log,
+    &[
+      Expected::Start("compile:"),
+      Expected::Start("compile:input:"),
+      Expected::Fact("compile:input:", "入力を読込"),
+      Expected::End("compile:input:", "Succeeded"),
+      Expected::Start("compile:frontend:"),
+      Expected::End("compile:frontend:", "Failed"),
+      Expected::End("compile:", "Failed"),
+    ],
+  );
+  assert!(!log.contains("unknowncommand"), "診断本文は tracing へ複製しない:\n{log}");
+  assert!(!log.contains("frontend::eval::unknown_command"), "診断 code も tracing へ出さない:\n{log}");
 }
 
 #[test]
@@ -234,7 +312,6 @@ fn debug_reports_each_step_once_under_its_region_span() {
     "前付けのページを分割",
     "後付けのページを分割",
     "走り文を配置",
-    "開始",
   ] {
     assert!(!log.contains(message), "orchestrator 側の重複報告 {message:?} は出ないはず:\n{log}");
   }

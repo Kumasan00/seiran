@@ -10,8 +10,6 @@ mod image;
 mod metadata;
 mod render;
 
-use std::time::Instant;
-
 use krilla::Document;
 use seiran_compiler::Publication;
 use tracing::info;
@@ -29,17 +27,11 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_p
 ///
 /// krilla フォントの構築、画像のデコード、PDF の最終化に失敗した場合は [`PdfRenderError`] を返す。
 pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfRenderError> {
-  let stage_start = Instant::now();
   let fonts = build_krilla_fonts(publication.resources())?;
   let mut document = Document::new();
   document.set_metadata(build_metadata(publication.metadata()));
   render_pages(&mut document, publication, &fonts)?;
   let pdf_bytes = document.finish().map_err(|source| return PdfRenderError::FinalizeDocument { source })?;
-  info!(
-    page_count = publication.pages().len(),
-    byte_count = pdf_bytes.len(),
-    elapsed = ?stage_start.elapsed(),
-    "PDF を描画"
-  );
+  info!(page_count = publication.pages().len(), byte_count = pdf_bytes.len(), "PDF を描画");
   return Ok(pdf_bytes);
 }

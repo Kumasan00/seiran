@@ -156,7 +156,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   tracing の役割は開発者・運用者向けの観測に限る:
 
   ```text
-  INFO  phase 完了、件数、処理時間
+  INFO  phase の開始・結果付き終了（status / elapsed）、件数
   DEBUG 資源ごとの処理、内部選択
   WARN  実行環境上の異常で、ユーザー診断として返せないもの
   ```
@@ -164,6 +164,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   user-actionable な `tracing::warn!` を新しく増やさない。組版の内側で見つかる警告も
   （検出は `typeset::breaking` の純粋関数、ページ番号・脚注番号を添えるのは `PageComposer`、
   印字ページラベルの解決は `typeset::pagination` の段 5、という配管で）診断として返す（#382）。
+  CLI の `RUST_LOG` の通知も warning 診断（`cli::rust_log::*`）で、実効フィルタに消されない（#551）。
 
 ## 内部不変条件違反（#378）
 

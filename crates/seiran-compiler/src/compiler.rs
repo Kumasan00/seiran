@@ -6,6 +6,7 @@
 use crate::{
   document::{HirDocument, HirSource},
   frontend,
+  phase::Phase,
   project::{PathResolver, ProjectPath, ProjectSource},
   semantics, typeset,
 };
@@ -104,7 +105,7 @@ pub fn compile<S: ProjectSource>(
   root: &ProjectPath,
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
-  let _compile_span = info_span!("compile").entered();
+  let phase = Phase::enter(info_span!("compile"));
   let build_start = Instant::now();
 
   let mut warnings = Warnings::default();
@@ -117,18 +118,13 @@ pub fn compile<S: ProjectSource>(
     Err(failure) => return Err(failure.with_warnings(warnings)),
   };
 
-  let total_elapsed = build_start.elapsed();
   let statistics = BuildStatistics {
     page_count: publication.pages().len(),
     // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
-    total_elapsed_ms: u64::try_from(total_elapsed.as_millis()).unwrap_or(u64::MAX),
+    total_elapsed_ms: u64::try_from(build_start.elapsed().as_millis()).unwrap_or(u64::MAX),
   };
-  info!(
-    page_count = statistics.page_count,
-    warning_count = warnings.iter().count(),
-    elapsed = ?total_elapsed,
-    "文書をコンパイル"
-  );
+  info!(page_count = statistics.page_count, warning_count = warnings.iter().count(), "文書をコンパイル");
+  phase.succeed();
 
   return Ok(Compilation {
     publication,
@@ -206,7 +202,7 @@ fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPa
 
 /// 入力読込 phase を実行する（production / test 共通）。
 ///
-/// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは phase span と完了 event だけ。
+/// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは工程の記録（[`Phase`]）と完了 event だけ。
 /// 戻り値は読込の成否と config の警告の組（警告は失敗しても返る）。
 ///
 /// # Errors
@@ -217,11 +213,11 @@ fn load_inputs(
   root: &ProjectPath,
   resolver: &PathResolver,
 ) -> (Result<CompilationInputs, CompileFailure>, Vec<ConfigWarning>) {
-  let _phase = info_span!("input").entered();
-  let stage_start = Instant::now();
+  let phase = Phase::enter(info_span!("input"));
   let (inputs, config_warnings) = input::load(source, root, resolver);
   if inputs.is_ok() {
-    info!(config_path = %root, elapsed = ?stage_start.elapsed(), "入力を読込");
+    info!(config_path = %root, "入力を読込");
+    phase.succeed();
   }
   return (inputs.map_err(CompileFailure::from), config_warnings);
 }
@@ -229,7 +225,7 @@ fn load_inputs(
 /// 検証済み入力から意味解析済み文書までの 2 phase（frontend / semantics）を実行する
 /// （production / test 共通）。
 ///
-/// 各 phase の span・完了 event・診断への変換をここが所有し、`compile` と
+/// 各 phase の記録（[`Phase`]）・完了 event・診断への変換をここが所有し、`compile` と
 /// `layout_project_for_test`（テスト専用）は同じ実装を通る。組版（フォント資源の構築・
 /// 配置・`Publication` への変換）は `typeset::compose` の内側にあり、この関数は関与しない。
 ///
@@ -242,28 +238,23 @@ fn analyze_document(
   resolver: &PathResolver,
 ) -> Result<SemanticDocument, CompileFailure> {
   let document = {
-    let _phase = info_span!("frontend").entered();
-    let stage_start = Instant::now();
+    let phase = Phase::enter(info_span!("frontend"));
     let document = parse_project(inputs, resolver)?;
     info!(
       source_count = document.groups().len(),
       node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
-      elapsed = ?stage_start.elapsed(),
       "ソースを構文解析"
     );
+    phase.succeed();
     document
   };
 
   let semantic_document = {
-    let _phase = info_span!("semantics").entered();
-    let stage_start = Instant::now();
+    let phase = Phase::enter(info_span!("semantics"));
     let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
       .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-    info!(
-      heading_count = semantic_document.headings().len(),
-      elapsed = ?stage_start.elapsed(),
-      "文書を意味解析"
-    );
+    info!(heading_count = semantic_document.headings().len(), "文書を意味解析");
+    phase.succeed();
     semantic_document
   };
   return Ok(semantic_document);

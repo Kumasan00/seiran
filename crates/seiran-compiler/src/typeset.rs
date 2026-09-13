@@ -15,13 +15,14 @@
 //! （#352）。入力の 19 種別・設定・バイト列は `project::font` の所有で、この module はそこから
 //! フォント資源を組み立てて使う側になる。
 
-use std::{mem, time::Instant};
+use std::mem;
 
 use font::{FontResources, FontWarning};
 use tracing::{info, info_span};
 
 use crate::{
   failures::Failures,
+  phase::Phase,
   project::{FontData, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::Publication,
   semantics::SemanticDocument,
@@ -115,7 +116,7 @@ pub(crate) struct TypesetOutput {
 /// `style` と同じ組から `PreparedGeometry::prepare` した値でなければなりません — 引数はいずれも
 /// 同じ `CompilationInputs` から読むもので、型としてはこの一致を強制していません。
 ///
-/// `tracing` の phase span（`font` / `typeset`）と各段の完了 event はこの操作の内側
+/// 工程の記録（[`Phase`]）と各段の完了 event はこの操作の内側
 /// （[`load_fonts`] / [`compose`]）が持つ（#500 の工程表示を変えないため、span 名と
 /// event のメッセージ・フィールドは #535 の前後で同一）。
 ///
@@ -139,20 +140,15 @@ pub(crate) fn compose(
     Err(failures) => return (Err(failures), warnings),
   };
 
-  let _phase = info_span!("typeset").entered();
-  let stage_start = Instant::now();
+  let phase = Phase::enter(info_span!("typeset"));
   let (mut laid_out, layout_warnings) = match lay_out(source, config, style, geometry, &font_resources, document) {
     Ok(laid_out) => laid_out,
     Err(failures) => return (Err(failures), warnings),
   };
   let image_paths = mem::take(&mut laid_out.image_paths);
   let publication = emit::emit(config, font_data, &font_resources, laid_out);
-  info!(
-    page_count = publication.pages().len(),
-    warning_count = layout_warnings.len(),
-    elapsed = ?stage_start.elapsed(),
-    "文書を組版"
-  );
+  info!(page_count = publication.pages().len(), warning_count = layout_warnings.len(), "文書を組版");
+  phase.succeed();
 
   warnings.extend(layout_warnings);
   return (
@@ -166,7 +162,7 @@ pub(crate) fn compose(
 
 /// フォント資源を構築する（`font` phase）。
 ///
-/// span と完了 event をここが持ち、構築順序（解析 → メトリクス → 検証 → シェーパー）は
+/// 工程の記録（[`Phase`]）と完了 event をここが持ち、構築順序（解析 → メトリクス → 検証 → シェーパー）は
 /// `font` module に閉じる（#352）。検証で確定した警告は、構築が失敗しても組の第 2 要素で返す。
 ///
 /// # Errors
@@ -178,16 +174,12 @@ fn load_fonts<'a>(
   config: &'a ProjectConfig,
   font_data: &'a FontData,
 ) -> (Result<FontResources<'a>, Failures<TypesetError>>, Vec<FontWarning>) {
-  let _phase = info_span!("font").entered();
-  let stage_start = Instant::now();
+  let phase = Phase::enter(info_span!("font"));
   let (font_resources, font_warnings) = FontResources::load(&config.font_configs, font_data);
   let font_resources = font_resources.map_err(|failures| return failures.map(TypesetError::from));
   if font_resources.is_ok() {
-    info!(
-      warning_count = font_warnings.len(),
-      elapsed = ?stage_start.elapsed(),
-      "フォント資源を構築"
-    );
+    info!(warning_count = font_warnings.len(), "フォント資源を構築");
+    phase.succeed();
   }
   return (font_resources, font_warnings);
 }
