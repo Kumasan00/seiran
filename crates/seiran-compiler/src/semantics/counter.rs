@@ -3,7 +3,7 @@
 //! [`CounterValue`] は `resets` / `reset_by`（値に影響する style フィールド）だけから
 //! 組み立てる。`number_format` 等の表示側フィールドはこのクレートが一切読まないことで、
 //! G3（内容は見た目から独立）を型の設計として保証する。表示文字列の生成は typeset 側の
-//! 責務（`format_counter_value_for_style`、Task 7 で追加予定）。
+//! 責務（`typeset::lowering::counter`）。
 //!
 //! [`CounterRegistry`] は `typeset::lowering::counter::CounterRegistry`（issue #282 以前）から
 //! 移設したもの。移設にあたり `increment` 系メソッドの戻り値を書式化済み `String` から
@@ -41,7 +41,7 @@ pub(crate) struct CounterValue {
   pub parts: Vec<u32>,
 }
 
-/// pass1 で登録される、ラベル名から確定済みカウンタ構造値への対応
+/// 走査中に登録される、ラベル名から確定済みカウンタ構造値への対応
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolvedLabel {
   /// 登録時点のカウンタ構造値のスナップショット
@@ -59,7 +59,7 @@ pub(crate) struct CounterRegistry {
   values: HashMap<CounterName, u32>,
   /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremPolicy.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
-  /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
+  /// `\ref` 解決用テーブル。走査中に登録し、走査後の参照の存在検証が引く
   labels: HashMap<LabelId, ResolvedLabel>,
 }
 
@@ -189,7 +189,7 @@ impl CounterRegistry {
     };
   }
 
-  /// pass1 で `\section[label=sec:intro]{...}` などからラベルを登録する
+  /// 走査中に `\section[label=sec:intro]{...}` などからラベルを登録する
   ///
   /// 登録は先勝ち。同名のラベルが既にあれば登録せず、最初の定義位置を `Err` で返す。
   ///
@@ -260,7 +260,7 @@ impl CounterRegistry {
     return self.increment_theorem_with_label(class, label, location.span, location.source_id);
   }
 
-  /// pass2 で `\ref{label}` を解決してカウンタの構造値（[`CounterValue`]）を返す
+  /// 走査後の参照の存在検証で `\ref{label}` を解決し、カウンタの構造値（[`CounterValue`]）を返す
   #[must_use]
   pub(crate) fn resolve_label(&self, label: &str) -> Option<&CounterValue> {
     return self.labels.get(label).map(|r| return &r.value);

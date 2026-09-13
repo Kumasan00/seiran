@@ -93,7 +93,7 @@ mod tests {
   }
 
   /// HIR インラインをプレーンテキストへ変換するテスト専用ヘルパ
-  /// （生成物側の `document::generated_inlines_to_plain_text` の HIR 版）
+  /// （生成物側の `semantics::generated_inlines_to_plain_text` の HIR 版）
   ///
   /// スタイル情報を無視して文字列を連結する。`\ref` は本テストでは解決しないため空文字列扱い。
   fn hir_inlines_to_plain_text(inlines: &[HirInline]) -> String {

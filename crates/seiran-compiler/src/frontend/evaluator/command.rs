@@ -51,9 +51,9 @@ pub(crate) enum CommandKind {
   StyledText(FontKind),
   /// 引数 1 つを取りテキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
   ColoredText,
-  /// `\ref{label}` — 相互参照のスタブを生成し、pass2 で解決する
+  /// `\ref{label}` — 相互参照のスタブを生成する（解決は `semantics::analyze` の責務）
   Ref,
-  /// `\cite{key}` — 文献引用のスタブを生成し、pass2 でキー存在を検証する
+  /// `\cite{key}` — 文献引用のスタブを生成する（キー存在の検証は `semantics::analyze` の責務）
   Cite,
   /// `\footnote{...}` — 脚注本体を再帰評価してスタブを生成する（採番は `typeset::lowering` の責務）
   Footnote,

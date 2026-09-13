@@ -22,8 +22,9 @@ mod validation;
 pub(super) use shaper::UnicodeBuffer;
 pub(super) use system::FontSystemError;
 pub(crate) use system::{FontResources, FontSystem};
-// フォント検証が集める warning。`compile` が `Warnings` へ載せるので `typeset` の外まで出す。
-pub(crate) use validation::FontWarning;
+// フォント検証が集める warning。`compose` が `TypesetWarning::Font`（`typeset::warning`）に包むので
+// `typeset` 内で名指しされる。
+pub(super) use validation::FontWarning;
 
 use crate::{
   failures::{self, Failures},
