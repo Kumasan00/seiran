@@ -2,7 +2,8 @@
 //!
 //! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。
 //! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
-//! severity(Warning) の [`FontWarning`] として集め、成功した `Compilation` と一緒に返す
+//! severity(Warning) の [`FontWarning`] として集める。成功した `Compilation` と一緒に返すほか、
+//! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す（#550）
 //! （`tracing::warn!` だけで通知していた形は #377 で廃止した）。
 
 use font_types::{Fixed, Tag};
@@ -138,7 +139,9 @@ pub(super) enum FontValidationErrorKind {
 ///
 /// 全バリアントが「どのフォント種別の、どのファイルの、どのタグか」を持つ — これが無いと
 /// 19 種別のどれを直せばよいか分からない。エラー（[`FontValidationErrorKind`]）とは別の型に
-/// しているのは、warning が成功した `Compilation` と一緒に返り `CompileFailure` には混ざらないため。
+/// しているのは、error と warning が別の集合だから — error は `CompileFailure` の診断列、
+/// warning は `Warnings` で、コンパイルが成功すれば `Compilation` と一緒に、失敗しても
+/// `CompileFailure::warnings()` で返る（#550）。互いに混ざることはない。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
