@@ -135,7 +135,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 #### 責務
 
-プロジェクトの**物理的な入力**を所有する crate root 直下の module。5 つを持つ。
+プロジェクトの**物理的な入力**を所有する crate root 直下の module。6 つを持つ。
 
 1. 外部資源取得の seam（module 直下 + `filesystem` / `memory`）。compiler が `std::fs` を直接呼ばず、
    設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを 1 つの seam 経由で取得する

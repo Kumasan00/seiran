@@ -318,7 +318,6 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 mod tests {
   use super::*;
   use crate::{
-    document::SourceLocation,
     source::SourceId,
     style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset},
   };
