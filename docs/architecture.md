@@ -284,9 +284,7 @@ interface に出さないのは、`NodeId` の発行・位置表の内部 collec
 
 #### スキーマ
 
-`serde(default)` でデフォルト値をマージし（部分指定された TOML キーだけが上書きされる。例外は
-`[counters.<name>]` で、`CounterStyle` は `serde(default)` を持たず、書くなら 5 キーすべてが必須 — 設計では
-なく現行の制限）、garde でバリデーションする。`Style` は `#[serde(deny_unknown_fields)]` で、未知のトップレベルキーは
+`serde(default)` でデフォルト値をマージし（部分指定された TOML キーだけが上書きされる）、garde でバリデーションする。`Style` は `#[serde(deny_unknown_fields)]` で、未知のトップレベルキーは
 TOML パース時に弾く。**キーの一覧と既定値はここへ複製せず、各サブスタイル struct の doc コメントが正典**
 （`missing_docs_in_private_items` が有無を検査する）。以下は非自明な意味・設計だけ。
 
@@ -308,7 +306,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   スカラーは書けない
 - **表**: ヘッダ行の書体 `head_font_kind` は指定された `FontKind` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
-- **カウンタ**: `[counters.<name>]` の `<name>` は固定 9 種のみで、未知のカウンタ名は
+- **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と
+  同じ形。`resets` を書くと既定のリセット列を丸ごと置き換える）。`<name>` は固定 9 種のみで、未知のカウンタ名は
   `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番）と
   `typeset::lowering`（確定した `parts` を祖先カウンタ名へ対応付ける祖先チェーン）の 2 箇所。祖先の決め方は
   両者で同じ規則（`semantics` 節）
