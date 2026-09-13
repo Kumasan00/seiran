@@ -28,7 +28,7 @@ icu = { version = "2.2.0", features = ["compiled_data"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 krilla = "0.8.2"
 krilla-svg = "0.8.1"
-lopdf = { version = "0.44.0", default-features = false }
+lopdf = { version = "0.45.0", default-features = false }
 memchr = "2.8.2"
 miette = { version = "7.6.0", features = ["fancy"] }
 phf = { version = "0.14.0", features = ["macros"] }
