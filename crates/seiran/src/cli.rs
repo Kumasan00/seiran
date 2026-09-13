@@ -16,7 +16,7 @@ pub(super) struct Cli {
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
 
-  /// ログ・warning・サマリ・致命的エラー診断をこのファイルへも書く（端末の出力は変わらない）。実行ごとに新規作成し、既存パスはエラー。記録に失敗した実行は終了コード 1
+  /// ログをこのファイルへも書く（端末の出力は変わらない）。内容は先頭の実行記録（開始時刻・バージョン・サブコマンド・基準ディレクトリ・実効フィルタ）、-v / `RUST_LOG` に従うログ（-v で工程の開始・終了と件数、-vv で内部詳細、-vvv で行分割・シェーピングの本文抜粋）、warning・成功サマリ・致命的エラー診断、末尾の終了記録（終了時刻・終了状態）。実行ごとに新規作成し、既存パスはエラー。記録に失敗した実行は終了コード 1
   #[arg(long, global = true, value_name = "PATH")]
   pub(super) log_file: Option<PathBuf>,
 
@@ -60,6 +60,20 @@ pub(super) enum Command {
   },
 }
 
+impl Command {
+  /// 実行記録に書くサブコマンド名（コマンドラインで打つ綴り）。
+  ///
+  /// サブコマンドを足したらここへ必ず綴りを足す — 実行記録が何の実行かを示せなくなるため、wildcard にしない。
+  pub(super) fn name(&self) -> &'static str {
+    return match self {
+      Command::Build { .. } => "build",
+      Command::VariationAxes { .. } => "variation-axes",
+      Command::TtcNames { .. } => "ttc-names",
+      Command::ScriptLangs { .. } => "script-langs",
+    };
+  }
+}
+
 /// コマンドライン引数を解析する。
 pub(super) fn parse_arg() -> Cli { return Cli::parse() }
 
@@ -91,5 +105,20 @@ mod tests {
     assert!(cli.quiet);
     assert_eq!(cli.verbose, 2);
     assert!(cli.log_file.is_none());
+  }
+
+  #[test]
+  fn command_names_match_the_clap_spelling() {
+    let cases: [&[&str]; 4] = [
+      &["seiran", "build"],
+      &["seiran", "variation-axes", "f.ttf"],
+      &["seiran", "ttc-names", "f.ttc"],
+      &["seiran", "script-langs", "f.ttf"],
+    ];
+    for args in cases {
+      let cli = Cli::try_parse_from(args).expect("有効な引数");
+
+      assert_eq!(cli.command.name(), args[1], "実行記録の綴りはコマンドラインの綴り");
+    }
   }
 }

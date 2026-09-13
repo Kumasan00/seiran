@@ -4,12 +4,13 @@
 //! 呼び出し側は [`Reporter`] の初期化と報告操作だけを知り、フィルタ優先順位・表示形式・端末装飾は
 //! 本 module に閉じる。端末側の出力先は stderr で、stdout はパイプできる成果物のための経路として空けておく。
 //!
-//! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。ファイルには
-//! tracing イベント・warning 診断・成功サマリ・致命的エラー診断の 4 つを、装飾なし・イベントには時刻付きで残す。
+//! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。ファイルには先頭の実行記録・
+//! tracing イベント・warning 診断・成功サマリ・致命的エラー診断・末尾の終了記録を、装飾なし・イベントには
+//! 時刻付きで残す。実行記録と終了記録は tracing を通さないので、フィルタに依らず残る。
 
 mod log_file;
 
-use std::{ffi::OsStr, io::IsTerminal, path::Path, time::Duration};
+use std::{ffi::OsStr, io::IsTerminal, path::Path, sync::Arc, time::Duration};
 
 use log_file::LogSink;
 pub(super) use log_file::{LogFailure, LogFileError};
@@ -83,6 +84,8 @@ pub(super) struct Reporter {
   /// 端末へ warning 診断を描く miette の既定 handler。`Report` の `Debug` 表示が使うのと同じもので、
   /// 端末幅・色・unicode の判定を [`Reporter::init`] で 1 回だけ行うためにここへ持つ。
   terminal: MietteHandler,
+  /// ログファイルの時刻表現（実行記録の開始・終了時刻に使う。イベントの時刻と同じ）
+  timer: LogTimer,
 }
 
 impl Reporter {
@@ -99,17 +102,30 @@ impl Reporter {
   /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の既定は
   /// `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある（#493）。
   ///
+  /// `--log-file` 指定時は、subscriber を設置する前にファイルの先頭へ実行記録（開始時刻・バージョン・
+  /// サブコマンド・基準ディレクトリ・実効フィルタ）を書く。tracing を通さないのでフィルタに依らず残る。
+  ///
   /// # Errors
   ///
   /// `--log-file` のパスを開けないとき [`LogFileError`] を返す。ログが残らないまま処理が進むより、
   /// 指定が効いていないことを即座に知らせる。
-  pub(super) fn init(verbose: u8, quiet: bool, log_file: Option<&Path>) -> Result<Self, LogFileError> {
+  pub(super) fn init(
+    verbose: u8,
+    quiet: bool,
+    log_file: Option<&Path>,
+    header: &RunHeader<'_>,
+  ) -> Result<Self, LogFileError> {
     // ローカル時刻の解決を先に済ませる（`OffsetTime::local_rfc_3339` はプロセスが単一スレッドのうちに解決する）。
     let timer = log_timer();
     let raw_filter = std::env::var("RUST_LOG").ok();
     let plan = build_log_plan(raw_filter.as_deref(), verbose, quiet, log_file.is_some());
     let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), std::io::stderr().is_terminal());
     let log = log_file.map(LogSink::open).transpose()?;
+    // 実行記録の先頭は subscriber を設置する前に書く — 以後のどの event・通知よりも前に来ることを、
+    // 書く順序そのもので保証する。
+    if let Some(log) = &log {
+      log.write_block(&run_header_text(&now_text(&timer), header, &plan.directive));
+    }
 
     let stderr_layer = fmt::layer()
       .compact()
@@ -128,7 +144,7 @@ impl Reporter {
         .with_ansi(false)
         .with_file(false)
         .with_line_number(false)
-        .with_timer(timer)
+        .with_timer(timer.clone())
         // 書き込み失敗は sink が保持して `finish` が報告するので、layer 側から stderr へ出させない
         // （出すと同じ失敗が 2 回出るうえ、`--log-file` の有無で stderr のバイト列が変わる）。
         // このフラグは書き込み失敗だけでなく event の整形失敗の報告も同じく抑止する。整形失敗は
@@ -144,6 +160,7 @@ impl Reporter {
       ansi,
       log,
       terminal: MietteHandler::new(),
+      timer,
     };
     if let Some(warning) = &plan.warning {
       reporter.warning(warning);
@@ -211,16 +228,21 @@ impl Reporter {
   /// PDF の保存先と同じ実体を指していないかを保存前に確かめるために公開する。
   pub(super) fn log_path(&self) -> Option<&Path> { return self.log.as_ref().map(LogSink::path) }
 
-  /// ログの書き残しを流し切り、記録に失敗していればそれを返す。
+  /// 実行記録の末尾（終了時刻・終了状態）を書いてからログの書き残しを流し切り、記録に失敗していれば
+  /// それを返す。
+  ///
+  /// `succeeded` は本処理の成否。終了記録はほかのどの報告よりも後に書く（`main` は致命的エラーの記録を
+  /// 済ませてからこれを呼ぶ）。
   ///
   /// # Errors
   ///
   /// ログの書き込みまたは flush が失敗していたとき [`LogFailure`] を返す。
-  pub(super) fn finish(self) -> Result<(), LogFailure> {
-    return match self.log {
-      Some(log) => log.finish(),
-      None => Ok(()),
+  pub(super) fn finish(self, succeeded: bool) -> Result<(), LogFailure> {
+    let Some(log) = self.log else {
+      return Ok(());
     };
+    log.write_block(&run_footer_text(&now_text(&self.timer), succeeded));
+    return log.finish();
   }
 }
 
@@ -272,10 +294,12 @@ fn ansi_enabled(no_color: Option<&OsStr>, stderr_is_terminal: bool) -> bool {
   return no_color.is_none_or(|value| return value.is_empty()) && stderr_is_terminal;
 }
 
-/// ログファイルへ書くイベントの時刻表現。
+/// ログファイルへ書く時刻の表現。
 ///
-/// ローカル時刻とその UTC フォールバックで型が違うので、`with_timer` へ渡せる 1 つの型へ畳む。
-struct LogTimer(Box<dyn FormatTime + Send + Sync>);
+/// ローカル時刻とその UTC フォールバックで型が違うので 1 つの型へ畳む。tracing の layer（イベントの時刻）と
+/// 実行記録（開始・終了時刻）が同じ表現を使うよう、`Arc` で共有する。
+#[derive(Clone)]
+struct LogTimer(Arc<dyn FormatTime + Send + Sync>);
 
 impl FormatTime for LogTimer {
   fn format_time(&self, writer: &mut Writer<'_>) -> std::fmt::Result { return self.0.format_time(writer); }
@@ -287,10 +311,52 @@ impl FormatTime for LogTimer {
 /// 環境では UTC へ落とす — 時刻が無いログよりは、ずれの分かる時刻があるほうが使える。
 fn log_timer() -> LogTimer {
   return match OffsetTime::local_rfc_3339() {
-    Ok(timer) => LogTimer(Box::new(timer)),
+    Ok(timer) => LogTimer(Arc::new(timer)),
     // オフセットの取得失敗そのものは報告しない（ログの体裁の話で、ビルドの成否には関わらない）。
-    Err(_) => LogTimer(Box::new(UtcTime::rfc_3339())),
+    Err(_) => LogTimer(Arc::new(UtcTime::rfc_3339())),
   };
+}
+
+/// 現在時刻を `timer` の表現で文字列にする。
+fn now_text(timer: &LogTimer) -> String {
+  let mut text = String::new();
+  // 書き込み先が `String` なので書き込みは失敗しない。整形の失敗は表現できない日付（`time` の範囲外）だけで、
+  // 現在時刻では起きない — 起きても時刻が空になるだけで記録そのものは続けられる。
+  let _ = timer.format_time(&mut Writer::new(&mut text));
+  return text;
+}
+
+/// ログファイルの先頭に書く実行記録のうち、呼び出し側が決める部分。
+pub(super) struct RunHeader<'a> {
+  /// 実行したサブコマンド（コマンドラインの綴り）
+  pub(super) subcommand: &'static str,
+  /// 相対パスの解決基準（起動時のカレントディレクトリ。取得できなかったときは `None`）
+  pub(super) base_dir: Option<&'a Path>,
+}
+
+/// 実行記録の先頭ブロックを組み立てる。
+///
+/// tracing を通さずファイルへ直接書くので、`-v` も `RUST_LOG` も無い実行でも「何の記録か」が分かる。
+fn run_header_text(started_at: &str, header: &RunHeader<'_>, directive: &str) -> String {
+  let base_dir = match header.base_dir {
+    Some(dir) => dir.display().to_string(),
+    None => String::from("（取得できませんでした）"),
+  };
+  return format!(
+    "# seiran 実行記録\n開始時刻: {started_at}\nバージョン: {}\nサブコマンド: {}\n基準ディレクトリ: \
+     {base_dir}\n実効フィルタ: {directive}",
+    env!("CARGO_PKG_VERSION"),
+    header.subcommand,
+  );
+}
+
+/// 実行記録の末尾ブロックを組み立てる。
+///
+/// 終了状態は本処理の成否。ログの記録そのものの失敗（終了コード 1 になる）は、記録できない出力先へ
+/// 書けないので含まない。
+fn run_footer_text(ended_at: &str, succeeded: bool) -> String {
+  let status = if succeeded { "成功" } else { "失敗" };
+  return format!("# seiran 実行終了\n終了時刻: {ended_at}\n終了状態: {status}");
 }
 
 /// 両方の出力先に共通する実効フィルタの directive と、その決定に伴う通知。
@@ -326,6 +392,8 @@ struct LogPlan {
   stderr: SinkPlan,
   /// ログファイル側の計画（`--log-file` 指定時のみ）。
   file: Option<SinkPlan>,
+  /// 両方の出力先に共通する実効フィルタの directive（実行記録に書く。`--quiet` の端末側 `off` は含まない）
+  directive: String,
   /// subscriber 初期化後に報告する通知。
   warning: Option<FilterWarning>,
 }
@@ -344,10 +412,12 @@ fn build_log_plan(raw_filter: Option<&str>, verbose: u8, quiet: bool, has_log_fi
   } else {
     choice.directive.as_str()
   };
+  let stderr = SinkPlan::new(parse_directive(stderr_directive));
   let file = has_log_file.then(|| return SinkPlan::new(parse_directive(&choice.directive)));
   return LogPlan {
-    stderr: SinkPlan::new(parse_directive(stderr_directive)),
+    stderr,
     file,
+    directive: choice.directive,
     warning: choice.warning,
   };
 }
@@ -425,8 +495,8 @@ mod tests {
   use thiserror::Error;
 
   use super::{
-    FilterWarning, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive,
-    render_diagnostic_plain, summary_line,
+    FilterWarning, RunHeader, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive,
+    render_diagnostic_plain, run_footer_text, run_header_text, summary_line,
   };
 
   /// 体裁の確認に使う warning 診断。
@@ -563,6 +633,13 @@ mod tests {
   }
 
   #[test]
+  fn plan_keeps_the_shared_directive_even_when_quiet() {
+    let plan = build_log_plan(None, 1, true, true);
+
+    assert_eq!(plan.directive, flag_directive(1), "実行記録には端末の off ではなく共通の directive を書く");
+  }
+
+  #[test]
   fn quiet_and_verbose_without_log_file_is_harmless() {
     let plan = build_log_plan(None, 2, true, false);
 
@@ -670,5 +747,42 @@ mod tests {
 
     // Assert — 借用から描いても端末へ出るバイト列は変わらない
     assert_eq!(rendered, expected);
+  }
+
+  #[test]
+  fn run_header_lists_what_the_log_is_a_record_of() {
+    let header = RunHeader {
+      subcommand: "build",
+      base_dir: Some(Path::new("/work/book")),
+    };
+
+    let text = run_header_text("2026-09-13T10:00:00+09:00", &header, "warn");
+
+    assert_eq!(
+      text,
+      format!(
+        "# seiran 実行記録\n開始時刻: 2026-09-13T10:00:00+09:00\nバージョン: {}\nサブコマンド: build\n基準ディレクトリ: \
+         /work/book\n実効フィルタ: warn",
+        env!("CARGO_PKG_VERSION")
+      )
+    );
+  }
+
+  #[test]
+  fn run_header_marks_an_unknown_base_dir() {
+    let header = RunHeader {
+      subcommand: "build",
+      base_dir: None,
+    };
+
+    let text = run_header_text("t", &header, "warn");
+
+    assert!(text.contains("基準ディレクトリ: （取得できませんでした）"), "{text}");
+  }
+
+  #[test]
+  fn run_footer_states_the_outcome() {
+    assert_eq!(run_footer_text("t", true), "# seiran 実行終了\n終了時刻: t\n終了状態: 成功");
+    assert_eq!(run_footer_text("t", false), "# seiran 実行終了\n終了時刻: t\n終了状態: 失敗");
   }
 }
