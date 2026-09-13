@@ -12,6 +12,7 @@ mod document;
 // `Diagnostic` も実装しない（集約は表示単位ではない）ため `pub use` にも載せない。
 mod failures;
 mod frontend;
+mod phase;
 // `length` / `color` は crate root 直下の leaf module（#336）。crate root の非公開 module は
 // crate 全体から `crate::length::...` で到達できるため、かつて `model` の子だったときに garde の
 // カスタムバリデータ参照のために要った `pub(crate)` は不要になった。
