@@ -1,5 +1,7 @@
 //! 読込済みソース集合 [`SourceSet`]（[`crate::source::SourceId`] の唯一の発行元）
 
+use std::sync::Arc;
+
 use crate::{
   failures::{self, Failures},
   project::{ProjectPath, ProjectSource, SourceReadError},
@@ -21,8 +23,9 @@ pub(crate) struct SourceSet {
 pub(crate) struct SourceEntry {
   /// 表示用のソースパス文字列（診断の `NamedSource` 名になる）
   pub(crate) name: String,
-  /// ソースファイルの元テキスト全体
-  pub(crate) content: String,
+  /// ソースファイルの元テキスト全体。同じソースに付く診断はこの割り当てを `Arc::clone` で共有し、
+  /// 診断の件数ぶん本文を複製しない（#550）
+  pub(crate) content: Arc<str>,
 }
 
 /// ソースファイルの読込に失敗したことを、パスと元エラーだけで伝える。
@@ -49,7 +52,10 @@ impl SourceSet {
   /// ソースを登録し、新しい `SourceId` を発行する。
   fn register(&mut self, name: String, content: String) -> SourceId {
     let id = SourceId::new(self.entries.len());
-    self.entries.push(SourceEntry { name, content });
+    self.entries.push(SourceEntry {
+      name,
+      content: Arc::from(content),
+    });
     return id;
   }
 
@@ -130,7 +136,7 @@ mod tests {
     let entries: Vec<_> = source_set.iter().collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].1.name, path.to_string());
-    assert_eq!(entries[0].1.content, "本文");
+    assert_eq!(&*entries[0].1.content, "本文");
   }
 
   #[test]
@@ -175,10 +181,10 @@ mod tests {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].0.index(), 0);
     assert_eq!(entries[0].1.name, ProjectPath::new("/project/a.sei").to_string());
-    assert_eq!(entries[0].1.content, "content-a");
+    assert_eq!(&*entries[0].1.content, "content-a");
     assert_eq!(entries[1].0.index(), 1);
     assert_eq!(entries[1].1.name, ProjectPath::new("/project/b.sei").to_string());
-    assert_eq!(entries[1].1.content, "content-b");
+    assert_eq!(&*entries[1].1.content, "content-b");
   }
 
   #[test]
