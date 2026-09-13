@@ -14,9 +14,10 @@ use std::{ffi::OsStr, io::IsTerminal, path::Path, time::Duration};
 use log_file::LogSink;
 pub(super) use log_file::{LogFailure, LogFileError};
 use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, MietteHandler, ReportHandler};
+use thiserror::Error;
 use tracing_subscriber::{
   EnvFilter, Registry,
-  filter::LevelFilter,
+  filter::{LevelFilter, ParseError},
   fmt::{
     self,
     format::Writer,
@@ -28,6 +29,41 @@ use tracing_subscriber::{
 
 /// 端末への出力を止めるフィルタ directive。
 const QUIET_DIRECTIVE: &str = "off";
+
+/// 実効フィルタの決定に伴う、ユーザーが直せる通知。
+///
+/// tracing の WARN では出さない — 通知の対象である `RUST_LOG` 自身が WARN を通さない指定（`error` / target
+/// 限定）だと、通知が消えてしまうため。warning 診断として [`Reporter::warning`] が端末（`-q` 以外）と
+/// ログファイルへ出す（#551）。
+#[derive(Debug, Error, Diagnostic)]
+enum FilterWarning {
+  /// `RUST_LOG` を解釈できず、`--verbose` の設定へ戻した
+  #[error("環境変数 RUST_LOG を解釈できないため、--verbose の設定を使用します")]
+  #[diagnostic(
+    code(cli::rust_log::invalid),
+    severity(Warning),
+    help(
+      "RUST_LOG の書式（例: seiran_compiler::typeset=trace）を確認するか、RUST_LOG を外して -v / -vv / -vvv を使ってください。"
+    )
+  )]
+  Invalid {
+    /// 解釈の失敗
+    #[source]
+    source: ParseError,
+  },
+
+  /// 有効な `RUST_LOG` が `--verbose` を覆った
+  #[error("環境変数 RUST_LOG が設定されているため、--verbose の指定を無視します: RUST_LOG={value}")]
+  #[diagnostic(
+    code(cli::rust_log::overrides_verbose),
+    severity(Warning),
+    help("-v を効かせるには RUST_LOG を外してください。RUST_LOG で詳細度を決めるなら -v は不要です。")
+  )]
+  OverridesVerbose {
+    /// 設定されていた `RUST_LOG` の値
+    value: String,
+  },
+}
 
 /// CLI のユーザー向け報告器。
 ///
@@ -53,7 +89,8 @@ impl Reporter {
   /// tracing を初期化し、同じ quiet 方針と装飾方針を持つ報告器を返す。
   ///
   /// フィルタの優先順位は `RUST_LOG`、`--verbose`、既定値の順で、`--verbose` が詳細化するのは Seiran 自身の
-  /// 3 target だけ（依存 crate は WARN のまま）。有効な `RUST_LOG` が `--verbose` を覆うときは警告を 1 行出す。
+  /// 3 target だけ（依存 crate は WARN のまま）。有効な `RUST_LOG` が `--verbose` を覆うとき・`RUST_LOG` を
+  /// 解釈できないときは warning 診断を 1 件出す（実効フィルタを通らない）。
   /// `--quiet` は端末側のフィルタを `off` にするだけで、ログファイルの内容は減らさない — 「静かに回して
   /// 後で読む」がファイル出力の目的だから。`--verbose` とは独立で、`-q -vv --log-file` は端末を黙らせたまま
   /// ファイルだけ詳しくする。
@@ -102,15 +139,16 @@ impl Reporter {
     });
     Registry::default().with(stderr_layer).with(file_layer).init();
 
-    if let Some(message) = plan.warning {
-      tracing::warn!("{message}");
-    }
-    return Ok(Reporter {
+    let reporter = Reporter {
       quiet,
       ansi,
       log,
       terminal: MietteHandler::new(),
-    });
+    };
+    if let Some(warning) = &plan.warning {
+      reporter.warning(warning);
+    }
+    return Ok(reporter);
   }
 
   /// コンパイルが返した warning 診断を報告する。
@@ -120,12 +158,20 @@ impl Reporter {
   /// ログファイルへは装飾なしで書き、`--quiet` でも省かない — warning の抜けた記録は事後解析に使えないため。
   pub(super) fn warnings(&self, warnings: &seiran_compiler::Warnings) {
     for warning in warnings {
-      if !self.quiet {
-        eprintln!("{:?}", TerminalDiagnostic(&self.terminal, warning));
-      }
-      if let Some(log) = &self.log {
-        log.write_block(&render_diagnostic_plain(warning));
-      }
+      self.warning(warning);
+    }
+  }
+
+  /// warning 診断 1 件を報告する。
+  ///
+  /// 端末へは `--quiet` でなければ miette の既定 handler で描き、ログファイルへは装飾なしで常に書く。
+  /// compile の警告と CLI 自身の通知（[`FilterWarning`]）が同じ体裁・同じ振り分けで出る。
+  fn warning(&self, diagnostic: &dyn Diagnostic) {
+    if !self.quiet {
+      eprintln!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic));
+    }
+    if let Some(log) = &self.log {
+      log.write_block(&render_diagnostic_plain(diagnostic));
     }
   }
 
@@ -247,12 +293,12 @@ fn log_timer() -> LogTimer {
   };
 }
 
-/// 両方の出力先に共通する実効フィルタの directive と、その決定に伴う警告文。
+/// 両方の出力先に共通する実効フィルタの directive と、その決定に伴う通知。
 struct FilterChoice {
   /// 実効フィルタの directive。
   directive: String,
-  /// subscriber 初期化後に出す警告文。
-  warning: Option<String>,
+  /// subscriber 初期化後に報告する通知。
+  warning: Option<FilterWarning>,
 }
 
 /// 出力先 1 つぶんのフィルタと表示設定。
@@ -280,8 +326,8 @@ struct LogPlan {
   stderr: SinkPlan,
   /// ログファイル側の計画（`--log-file` 指定時のみ）。
   file: Option<SinkPlan>,
-  /// subscriber 初期化後に出す警告文。
-  warning: Option<String>,
+  /// subscriber 初期化後に報告する通知。
+  warning: Option<FilterWarning>,
 }
 
 /// 優先順位に従って出力先ごとのフィルタを構築する。
@@ -321,9 +367,8 @@ fn parse_directive(directive: &str) -> EnvFilter { return EnvFilter::builder().p
 /// 警告しない — `RUST_LOG` だけで制御する開発者運用を汚さない）。`RUST_LOG` が不正なら CLI の verbose 設定へ
 /// 戻し、こちらも警告する。
 ///
-/// 警告文はどちらも subscriber 初期化後に tracing の WARN で出すので、実効フィルタを通る。`--quiet` を見ないので
-/// 端末が黙っていてもログファイルには残る一方、`RUST_LOG` が WARN を通さない指定（`error` / target 限定）なら
-/// 無視の警告は出ない — `RUST_LOG` が全権という優先順位の帰結で、迂回しない。
+/// 通知はどちらも [`FilterWarning`] の warning 診断で、実効フィルタを通らない — `RUST_LOG` が WARN を
+/// 通さない指定でも、端末（`-q` 以外）とログファイルに出る。優先順位そのものは変えない（#551）。
 fn resolve_filter(raw_filter: Option<&str>, verbose: u8) -> FilterChoice {
   if let Some(raw) = raw_filter
     && !raw.trim().is_empty()
@@ -331,18 +376,19 @@ fn resolve_filter(raw_filter: Option<&str>, verbose: u8) -> FilterChoice {
     match EnvFilter::builder().parse(raw) {
       Ok(_) => {
         let warning = (verbose > 0).then(|| {
-          return format!("環境変数 RUST_LOG が設定されているため、--verbose の指定を無視します: RUST_LOG={raw}");
+          return FilterWarning::OverridesVerbose {
+            value: raw.to_owned(),
+          };
         });
         return FilterChoice {
           directive: raw.to_owned(),
           warning,
         };
       },
-      Err(error) => {
-        let message = format!("環境変数 RUST_LOG を解釈できないため、--verbose の設定を使用します: {error}");
+      Err(source) => {
         return FilterChoice {
           directive: flag_directive(verbose).to_owned(),
-          warning: Some(message),
+          warning: Some(FilterWarning::Invalid { source }),
         };
       },
     }
@@ -379,8 +425,8 @@ mod tests {
   use thiserror::Error;
 
   use super::{
-    TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive, render_diagnostic_plain,
-    summary_line,
+    FilterWarning, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive,
+    render_diagnostic_plain, summary_line,
   };
 
   /// 体裁の確認に使う warning 診断。
@@ -463,7 +509,7 @@ mod tests {
     let plan = build_log_plan(Some("seiran=not-a-level"), 1, false, false);
 
     assert_eq!(plan.stderr.filter.to_string(), flag_filter_text(1));
-    assert!(plan.warning.is_some_and(|message| return message.contains("RUST_LOG")));
+    assert!(matches!(plan.warning, Some(FilterWarning::Invalid { .. })));
   }
 
   #[test]
@@ -480,7 +526,10 @@ mod tests {
     let plan = build_log_plan(Some("info"), 3, false, false);
 
     assert_eq!(plan.stderr.filter.to_string(), "info", "実効フィルタは RUST_LOG のまま");
-    assert!(plan.warning.is_some_and(|message| return message.contains("無視")));
+    assert!(
+      matches!(&plan.warning, Some(FilterWarning::OverridesVerbose { value }) if value == "info"),
+      "覆った RUST_LOG の値を持つ"
+    );
   }
 
   #[test]
@@ -496,10 +545,11 @@ mod tests {
   #[test]
   fn invalid_rust_log_with_verbose_warns_only_about_parse() {
     let plan = build_log_plan(Some("seiran=not-a-level"), 2, false, false);
-    let message = plan.warning.expect("不正な RUST_LOG は警告する");
 
-    assert!(message.contains("解釈できない"), "既存の不正値の警告だけを出す");
-    assert!(!message.contains("無視"), "無視の警告は重ねない");
+    assert!(
+      matches!(plan.warning, Some(FilterWarning::Invalid { .. })),
+      "不正値の通知だけを出し、無視の通知は重ねない"
+    );
   }
 
   #[test]
@@ -597,6 +647,17 @@ mod tests {
     assert!(rendered.contains("主診断のヘルプ"), "主診断の help が残る");
     assert_eq!(rendered.matches("cli::test_related").count(), 2, "関連診断は件数ぶん全部残る");
     assert_eq!(rendered.matches("関連診断のヘルプ").count(), 2, "関連診断の help も残る");
+  }
+
+  #[test]
+  fn filter_warning_renders_as_a_warning_with_its_code() {
+    let rendered = render_diagnostic_plain(&FilterWarning::OverridesVerbose {
+      value: String::from("error"),
+    });
+
+    assert!(rendered.contains("cli::rust_log::overrides_verbose"), "code が出る: {rendered}");
+    assert!(rendered.contains("RUST_LOG=error"), "覆った値が出る: {rendered}");
+    assert!(rendered.contains('⚠'), "warning として描かれる: {rendered}");
   }
 
   #[test]

@@ -113,3 +113,80 @@ fn failed_frontend_is_recorded_without_duplicating_the_diagnostic() {
     "診断は致命的エラーの記録 1 回だけで、tracing へは複製しない: {log}"
   );
 }
+
+/// 不正な `RUST_LOG` の通知に付く診断 code。
+const INVALID_CODE: &str = "cli::rust_log::invalid";
+
+/// `RUST_LOG` が `-v` を覆う通知に付く診断 code。
+const OVERRIDE_CODE: &str = "cli::rust_log::overrides_verbose";
+
+#[test]
+fn override_notice_survives_a_rust_log_that_hides_warn() {
+  // Arrange — `error` は WARN を通さないので、tracing の WARN だった通知は以前は消えていた
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_ok_project(dir.path());
+
+  // Act
+  let output = seiran(dir.path(), &["build", "-c", "config.toml", "-v", "--log-file", "x.log"], Some("error"));
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
+  assert!(stderr.contains(OVERRIDE_CODE), "端末に通知が出る: {stderr}");
+  assert!(!stderr.contains("工程を開始"), "実効フィルタは RUST_LOG=error のまま: {stderr}");
+  let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
+  assert!(log.contains(OVERRIDE_CODE), "ファイルにも通知が残る: {log}");
+}
+
+#[test]
+fn override_notice_survives_a_target_limited_rust_log() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_ok_project(dir.path());
+
+  let output = seiran(dir.path(), &["build", "-c", "config.toml", "-v"], Some("seiran_compiler=info"));
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
+  assert!(stderr.contains(OVERRIDE_CODE), "target 限定の RUST_LOG でも通知が出る: {stderr}");
+  assert!(stderr.contains("compile:input: "), "RUST_LOG が通す compiler の工程は出る: {stderr}");
+  assert!(!stderr.contains("render: "), "RUST_LOG が通さない seiran target の工程は出ない: {stderr}");
+}
+
+#[test]
+fn quiet_hides_the_notice_only_from_the_terminal() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_ok_project(dir.path());
+
+  let output = seiran(
+    dir.path(),
+    &[
+      "build",
+      "-c",
+      "config.toml",
+      "-q",
+      "-v",
+      "--log-file",
+      "x.log",
+    ],
+    Some("error"),
+  );
+
+  assert_eq!(output.status.code(), Some(0));
+  assert!(output.stderr.is_empty(), "-q の端末は無言: {}", stderr_text(&output));
+  let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
+  assert!(log.contains(OVERRIDE_CODE), "-q でもファイルには通知が残る: {log}");
+}
+
+#[test]
+fn invalid_rust_log_is_a_warning_diagnostic_on_both_sinks() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_ok_project(dir.path());
+
+  let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "x.log"], Some("seiran=not-a-level"));
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "通知だけで処理は成功する: {stderr}");
+  assert!(stderr.contains(INVALID_CODE), "端末に通知が出る: {stderr}");
+  let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
+  assert!(log.contains(INVALID_CODE), "ファイルにも通知が残る: {log}");
+}
