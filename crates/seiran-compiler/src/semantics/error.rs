@@ -12,7 +12,7 @@ use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
 use crate::{
-  document::NodeId,
+  document::{NodeId, SourceLocation},
   failures::Failures,
   semantics::{CitationFormatError, CitationStyleError},
   source::{SourceId, Span},
@@ -125,16 +125,22 @@ pub(crate) enum SemanticError {
   },
 
   /// `label=...` で同名ラベルが重複登録された場合
+  ///
+  /// 構築は [`SemanticError::duplicate_label`] だけ。2 回目の定義を主ラベルに、最初の定義が同じソースに
+  /// あればそれを 2 本目のラベルに並べる。別ソースにあるときは 1 診断が `source_code` を 1 つしか
+  /// 持てないので、[`SemanticError::first_definition_elsewhere`] が返す関連診断で示す（#552）。
   #[error("ラベルが重複しています: {label}")]
   #[diagnostic(code(semantics::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
   DuplicateLabel {
     /// 重複したラベル名
     label: String,
-    /// 2 回目に定義したコマンド / 環境のソース位置
-    #[label("このラベルは既に定義されています")]
-    span: miette::SourceSpan,
-    /// この重複定義が属するソース
+    /// 2 回目の定義（主ラベル）と、同じソースにあれば最初の定義の位置
+    #[label(collection)]
+    labels: Vec<LabeledSpan>,
+    /// この重複定義（2 回目）が属するソース
     source_id: SourceId,
+    /// 最初の定義の位置（先勝ちで有効なまま残っている定義）
+    first_definition: SourceLocation,
   },
 }
 
@@ -151,6 +157,77 @@ impl SemanticError {
       | SemanticError::DuplicateLabel { source_id, .. } => *source_id,
     };
   }
+
+  /// ラベル `label` の重複定義 `duplicate` を、最初の定義 `first` とともに報告する診断を作る。
+  ///
+  /// 最初の定義が同じソースにあれば同じスニペットの 2 本目のラベルとして示す。別ソースにあれば
+  /// ラベルは 2 回目の 1 本だけで、最初の定義は [`SemanticError::first_definition_elsewhere`] が
+  /// 返す関連診断になる（本文を添えるのは compiler）。
+  pub(crate) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
+    let mut labels = vec![LabeledSpan::new_primary_with_span(
+      Some("このラベルは既に定義されています".to_string()),
+      span_to_source_span(duplicate.span),
+    )];
+    if first.source_id == duplicate.source_id {
+      labels.push(LabeledSpan::new_with_span(
+        Some("最初の定義はここです".to_string()),
+        span_to_source_span(first.span),
+      ));
+    }
+    return SemanticError::DuplicateLabel {
+      label: label.to_string(),
+      labels,
+      source_id: duplicate.source_id,
+      first_definition: first,
+    };
+  }
+
+  /// この診断と同じ 1 つの問題を、主診断とは別のソースで示す関連診断を返す（無ければ `None`）。
+  ///
+  /// 関連診断は `SourceId` と span だけを持ち本文を持たない。本文を添えて主診断の `related` へ連結するのは
+  /// compiler の `SourceDiagnostic`（1 診断が持てる `source_code` は 1 つなので、主診断の本文では描けない）。
+  #[must_use]
+  pub(crate) fn first_definition_elsewhere(&self) -> Option<FirstLabelDefinition> {
+    return match self {
+      SemanticError::DuplicateLabel {
+        label,
+        source_id,
+        first_definition,
+        ..
+      } if first_definition.source_id != *source_id => Some(FirstLabelDefinition {
+        label: label.clone(),
+        span: span_to_source_span(first_definition.span),
+        source_id: first_definition.source_id,
+      }),
+      SemanticError::DuplicateLabel { .. }
+      | SemanticError::UnknownCitationKeys { .. }
+      | SemanticError::UnresolvedReference { .. } => None,
+    };
+  }
+}
+
+/// 重複ラベルの最初の定義が主診断と別のソースにあるときの、その位置を示す関連診断
+///
+/// 独立した修正箇所ではなく主診断と同じ 1 つの問題の別の位置なので、`code` は持たず severity は
+/// `Advice`（#376 の `related` の用途）。本文は持たず、compiler の `SourceDiagnostic` が
+/// `source_id` のソース本文を添える。
+#[derive(Debug, Error, Diagnostic)]
+#[error("ラベル `{label}` の最初の定義")]
+#[diagnostic(severity(Advice))]
+pub(crate) struct FirstLabelDefinition {
+  /// 重複したラベル名
+  label: String,
+  /// 最初に定義したコマンド / 環境のソース位置
+  #[label("最初の定義はここです")]
+  span: miette::SourceSpan,
+  /// 最初の定義が属するソース
+  source_id: SourceId,
+}
+
+impl FirstLabelDefinition {
+  /// 最初の定義が属するソースを返す。
+  #[must_use]
+  pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
 }
 
 /// `crate::source::Span` を診断用の `miette::SourceSpan` へ変換する

@@ -166,6 +166,23 @@ fn diagnostic_duplicate_label() {
 }
 
 #[test]
+fn diagnostic_duplicate_label_across_sources() {
+  // 最初の定義（a）と重複（b）が別ソース。主診断は b の位置を示し、a の位置は a の本文付きの
+  // 関連診断で示す（#552。1 診断が持てる source_code は 1 つなので同じスニペットには載せられない）
+  let failure = compile_err(&[
+    "tests/text/diagnostics/duplicate_label_a.sei",
+    "tests/text/diagnostics/duplicate_label_b.sei",
+  ]);
+
+  // 関連診断は code を持たず、独立した診断として数えない
+  assert_eq!(codes(&failure), vec!["semantics::duplicate_label".to_string()]);
+  let rendered = render_failure(failure);
+  assert!(rendered.contains("duplicate_label_b.sei"), "主診断は重複側のソースを示すはず: {rendered}");
+  assert!(rendered.contains("duplicate_label_a.sei"), "最初の定義のソースも示すはず: {rendered}");
+  assert_matches_golden("duplicate_label_across_sources", &rendered);
+}
+
+#[test]
 fn diagnostic_mixed_semantics_errors_follow_document_order() {
   // 重複ラベル・未知引用キー・未解決参照が混在する入力
   let failure = compile_err(&["tests/text/diagnostics/mixed_semantics.sei"]);
@@ -355,6 +372,31 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     checked += 1;
   }
   assert!(checked > 0, "golden が 1 件も無いのは検査になっていない");
+}
+
+#[test]
+fn diagnostic_config_validation_field() {
+  // Arrange — 値域外の `image.max_dpi`（config.toml の値検証の違反 1 件）
+  let project = TestProject::builder()
+    .config_toml(|table| {
+      let image = table
+        .entry("image")
+        .or_insert(toml::Value::Table(toml::value::Table::new()))
+        .as_table_mut()
+        .expect("[image] はテーブルのはず");
+      image.insert("max_dpi".to_string(), toml::Value::Integer(9999));
+    })
+    .build();
+  let config_path = project.config_path().to_string();
+
+  // Act
+  let failure = project.compile_err();
+
+  // Assert — 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま（#552）
+  assert_eq!(codes(&failure), vec!["project::config::validation::field".to_string()]);
+  let rendered = render_failure(failure);
+  assert!(rendered.contains(&format!("{config_path}: 'image.max_dpi'")), "{rendered}");
+  assert_matches_golden("config_validation_field", &rendered);
 }
 
 #[test]

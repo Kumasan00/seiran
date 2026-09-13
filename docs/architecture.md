@@ -135,7 +135,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 #### 責務
 
-プロジェクトの**物理的な入力**を所有する crate root 直下の module。5 つを持つ。
+プロジェクトの**物理的な入力**を所有する crate root 直下の module。6 つを持つ。
 
 1. 外部資源取得の seam（module 直下 + `filesystem` / `memory`）。compiler が `std::fs` を直接呼ばず、
    設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを 1 つの seam 経由で取得する
@@ -145,6 +145,9 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
    読込済みバイト列）
 5. 入力パスの解決規則（子 module `path_resolver`。`PathResolver` 1 型 — 絶対はそのまま・相対は
    `base_dir` 前置・字句的正規化・I/O なし。詳細は下の bullet を参照）
+6. 設定ファイルの値検証の違反に、実際に読んだファイルのパスを前置する帰属 adapter `InFile<E>`
+   （子 module `in_file`）。`code` / `help` / labels 等は内側へ委譲し、config と style が共用する
+   （#552）
 
 seam を `config` の子に置かないのは変わらない — 全外部資源の窓口であり、`config` の子に置くと
 `font` → `project::config` という役割に合わない依存が生まれる（依存方向は `project::config` → `font` の
@@ -238,8 +241,10 @@ config 内の相対パス（`sources` / `style_path` / `references_path` / フ�
 - `raw`: TOML からそのままデシリアライズする `RawConfig` / `RawFontConfig`（非公開）。garde の
   `#[derive(Validate)]` をここに付ける。
 - 検証: `load` が `ProjectSource` 経由で読み込んだ `RawConfig` を検証し、違反は
-  `Failures<ReadConfigError>`（各違反は `ReadConfigError::Validation` で `ConfigValidationError` を
-  透過）で 1 度にまとめて報告する。集約自身の診断（「複数のバリデーションエラーが発生しました」）は
+  `Failures<ReadConfigError>`（各違反は `ReadConfigError::Validation` が `project::InFile<ConfigValidationError>`
+  として読んだ config ファイルのパスを前置して透過。パスを添えるのは `config_path` を持つ `load` で、
+  `resolve` / `build_config` はパスを知らない `Failures<ConfigValidationError>` を返す — #552）で
+  1 度にまとめて報告する。集約自身の診断（「複数のバリデーションエラーが発生しました」）は
   作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
   style.toml 側（`ReadStyleError::Validation`）も同じ形。TOML
   構文エラーは `NamedSource` + `#[label]` 付き（`NamedSource` は `load` 自身が組み立てる）。
@@ -438,7 +443,9 @@ Result<Style, Failures<ReadStyleError>>`（`path` は `project::config::load` �
 `resolver` で行う）。**CSL ファイル自体は読まない** — 引用箇所の
 存在が確定するまで遅延させるため、`.csl` / ロケール XML の読込は `semantics::analyze` の内側にある。
 `config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の不変条件として
-`typeset::geometry` が所有する。
+`typeset::geometry` が所有する。値検証・`csl_path` / `locale_path` の解決の違反は
+`ReadStyleError::Validation` が `project::InFile<StyleValidationError>` として読んだファイルのパス
+（`load` の `path` / `parse` の `source_path`）を前置する（#552）。
 
 子モジュール（サブスタイル群 + `template` + `error`）はすべて非公開で、module root が
 再エクスポートするのは**`style` の外から実際に名指しされる名前だけ**（`Style` / `CounterName` /
@@ -760,13 +767,18 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
   `#[cfg(test)]` 限定（`NodeMap` を段間 interface に出さないため、走査は `NodeId` の Iterator で返す）
 - `counter`: `CounterValue` / `CounterKind` と、それを組み立てる `CounterRegistry`。`increment` 系
   メソッドの戻り値は構造値 `CounterValue` のみで、`ref_format` / `number_format` 展開などの表示生成
-  コードは一切持たない
+  コードは一切持たない。ラベル登録（`register_label`）は先勝ちで、各ラベルの最初の定義位置
+  （`document::SourceLocation`）を覚え、重複時にそれを返す（#552）
 - `error`: 入口のエラー `AnalyzeError`（`CitationStyle` / `CitationFormat` / `Analyze` の 3 つを
   transparent に運ぶ。**`Diagnostic` は実装しない** — `?` で処理順を書くための制御フロー型であって
   表示単位ではなく、compiler seam が必ず全バリアントを分解する。#375）と、走査のエラー
   `SemanticError`（`UnknownCitationKeys` / `DuplicateLabel` / `UnresolvedReference`）+ その非空集合
   `SemanticFailures`（= `crate::failures::Failures<SemanticError>` の型エイリアス）+ 走査中の中間表現
-  `UnknownCitationSite`（module 内部限定）。
+  `UnknownCitationSite`（module 内部限定）。`DuplicateLabel` は `SemanticError::duplicate_label` だけが
+  組み立て、2 回目の定義を主ラベル、同じソースにある最初の定義を 2 本目のラベルに並べる。最初の定義が
+  別ソースにあるときは `first_definition_elsewhere` が関連診断 `FirstLabelDefinition`（code なし・
+  severity `Advice`・本文なし）を返し、compiler がそのソースの本文を添えて主診断の `related` へ
+  連結する — `SemanticError` が 1 つのソース位置に帰属する不変条件は崩さない（#552）
   **2 層を 1 本に統合しない** — `SemanticError` は必ず 1 つのソース位置に帰属する
   （`source_id()` が `Option` ではなく `SourceId` を返す）ことを不変条件とし、`compiler` はそれに乗って
   `SourceDiagnostic<SemanticError>` へ本文付き診断を組み立てる。ソース位置を持たない CSL 由来のエラーを
@@ -806,7 +818,8 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
    連番で、`HirDocument::assemble` がグループを `SourceId::index()` 昇順へ正規化するので、この鍵は
    パースの実行順に依存しない。3 種はそれぞれ文書順に積まれるため安定ソートで種別を跨いだ文書順になる。
    **重複ラベルで走査を打ち切らない** — 採番はラベル登録の前に済んでいるので走査を続けてもカウンタ値は
-   ずれず、最初の定義が有効なまま残る（`CounterRegistry::register_label` は先勝ち）。重複を検出した
+   ずれず、最初の定義が有効なまま残る（`CounterRegistry::register_label` は先勝ちで、重複時は最初の
+   定義位置を返し、診断はそれを示す）。重複を検出した
    ノードでは `Walker::record_label` を**呼ばない** — `record_label` は後勝ちで `label_definitions` を
    差し替えるため、呼ぶと「参照は最初の定義へ解決されるのに fact は 2 つ目を指す」状態になる
 3. **完全性検証（`assert_facts_complete`）**: HIR をもう一度走査し、variant ごとに必要な fact
@@ -1725,9 +1738,15 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 - `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・
   検証済み版面 `PreparedGeometry`・文献・font・読込済みソース）。
   **読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**
-  （#463）。**config.toml → style.toml → 横断検証・版面の構築
-  （`typeset::PreparedGeometry::prepare`）→ references → フォント → sources** という順序とエラー集約を
-  知るのはこの module だけで、`compile` は `load` を 1 回呼ぶ。CSL スタイル・ロケールはここでは読まない
+  （#463）。
+  **config.toml → style.toml → 横断検証・版面の構築（`typeset::PreparedGeometry::prepare`）→
+  {references・フォント・sources}** という順序とエラー集約を知るのはこの module だけで、
+  config → style → 横断検証の間は後段の入力を構築できないので早期 return し、横断検証まで通った後の
+  references・フォント・sources は検証済み config だけを入力にして互いに独立なので、実行順
+  （references → フォント → sources）のまま全部試して失敗をこの順に 1 つの `Failures<CompileError>` へ
+  連結する（private の `read_independent_inputs`。種類の中の順序は各読込が決める — フォントはパスの昇順、
+  sources は宣言順。#552）。
+  `compile` は `load` を 1 回呼ぶ。CSL スタイル・ロケールはここでは読まない
   （引用箇所があるときだけ読む遅延は `semantics::analyze` の内側）。
   `CompilationInputs` のフィールドは非公開 + アクセサで、構築経路は `load` だけ（テスト専用の
   コンストラクタも持たない。「読込・個別検証・横断検証をすべて通った値しか後段へ流れない」を
@@ -1760,7 +1779,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。
   本文は `SourceSet` の `Arc<str>` を `Arc::clone` で共有し（`NamedSource<Arc<str>>`）、同じソースに
-  何件の診断が付いても本文を複製しない（#550）
+  何件の診断が付いても本文を複製しない（#550）。同じ 1 つの問題を別ソースで示す関連診断
+  （重複ラベルの最初の定義）は `with_related_in` でそのソースの本文を添えてから持ち、内側の `related`
+  の後ろに連結する（miette は本文を持たない関連診断を主診断の本文で描くため。#552）
 - `warnings`: `compile` が成果物または失敗と一緒に返す warning severity の診断集合 `Warnings`
   （`Compilation.warnings` と `CompileFailure::warnings()`）。中身は `Box<dyn Diagnostic + Send + Sync>` の
   列で、公開操作（`iter()` / `IntoIterator for &Warnings`）は診断の借用 `&dyn Diagnostic` —
@@ -1778,7 +1799,8 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   CLI の責務になり、`CurrentDir` は `seiran` 側の `cli::current_dir` 診断へ移った）。`semantics::analyze` が返す `AnalyzeError` は `attribute_analyze_error` が CSL 由来
   （`CitationStyle` / `CitationFormat` — それ自身が leaf 診断）と意味解析由来（ソースごとに分割済みの
   `SemanticFailures`）に振り分け、後者だけ `project::SourceSet` から引いた `NamedSource` を
-  `SourceDiagnostic` で添える。
+  `SourceDiagnostic` で添える（`attach_semantic_error` が、別ソースにある関連位置もそのソースの本文付きで
+  添える）。
   意味解析は実ソースしか走査しないので、帰属先不明の診断は型として存在しない。
   `frontend::ParseSourceError` も `NamedSource` を自前で持たず、`parse_all_sources` が宣言順に
   `SourceDiagnostic<ParseSourceError>` を並べて `CompileFailure` にする（集約診断を先頭へ足さない）。

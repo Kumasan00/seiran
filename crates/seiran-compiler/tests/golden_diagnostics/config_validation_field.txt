@@ -1,0 +1,4 @@
+project::config::validation::field
+
+  × crates/seiran-compiler/tests/config/config.toml: 'image.max_dpi': greater than 2400
+  help: config.toml の該当フィールドの値を確認してください。

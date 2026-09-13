@@ -1,0 +1,18 @@
+semantics::duplicate_label
+
+  × ラベルが重複しています: shared
+   ╭─[tests/text/diagnostics/duplicate_label_b.sei:3:1]
+ 2 │ 
+ 3 │ \section[label=shared]{ソース B で同じラベルを付けた見出し}
+   · ─────────────────────────────┬─────────────────────────────
+   ·                              ╰── このラベルは既に定義されています
+   ╰────
+  help: label=... の値はドキュメント全体で一意にしてください
+
+Advice: 
+  ☞ ラベル `shared` の最初の定義
+   ╭─[tests/text/diagnostics/duplicate_label_a.sei:1:1]
+ 1 │ \section[label=shared]{ソース A の見出し}
+   · ────────────────────┬────────────────────
+   ·                     ╰── 最初の定義はここです
+   ╰────

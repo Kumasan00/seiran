@@ -30,6 +30,7 @@
 pub(crate) mod config;
 mod filesystem;
 mod font;
+mod in_file;
 mod memory;
 mod path_resolver;
 mod source_set;
@@ -52,6 +53,7 @@ pub use font::FontType;
 pub(crate) use font::{
   Feature, FontConfig, FontConfigs, FontData, FontMap, FontReadError, TextDirection, VariationAxis,
 };
+pub(crate) use in_file::InFile;
 pub use memory::MemoryProjectSource;
 pub(crate) use path_resolver::PathResolver;
 use serde::{Deserialize, Serialize};
