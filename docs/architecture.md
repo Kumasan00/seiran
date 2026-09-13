@@ -227,8 +227,9 @@ config 内の相対パス（`sources` / `style_path` / `references_path` / フ�
   解析しない** — style.toml は `style::load`、references は `semantics::read_references` がそれぞれ読む。
 - 警告: 読み込みは成功するがユーザーが直したほうがよい問題（`sources` の拡張子が `.sei` でない）は
   error ではなく `ConfigWarning`（`severity(Warning)`、`code(project::config::source_extension)`）で
-  返す。`load` の Ok 側が `(ProjectConfig, Vec<ConfigWarning>)` になっており、順序は `sources` の
-  宣言順（#377）。
+  返す。`load` は検証の成否と `Vec<ConfigWarning>` の組 `(Result<ProjectConfig, _>, Vec<ConfigWarning>)` を返し、
+  警告は検証が失敗しても返す（拡張子の検査は他の違反と独立に確定するため。読めない・TOML として解析できない
+  config.toml では空）。順序は `sources` の宣言順（#377 / #550）。
 - `resolved`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
   `PdfConfig` / `ImageConfig`。後段はこちらだけを見る。`sources` / `style_path` / `references_path` は
   解決済みの `ProjectPath`（`PathBuf` ではない）。`output_dir` だけ、出力側の関心事なので `PathBuf`
@@ -909,13 +910,15 @@ pub(crate) fn compose(
   geometry: &PreparedGeometry,
   font_data: &FontData,
   document: &SemanticDocument,
-) -> Result<TypesetOutput, Failures<TypesetError>>;
+) -> (Result<TypesetOutput, Failures<TypesetError>>, Vec<TypesetWarning>);
 ```
 
 フォント資源の構築で見つかった警告と、組版を止めないがユーザーが直せる問題（脚注のはみ出し）は
-どちらも `TypesetWarning`（フォント警告は `TypesetWarning::Font` が transparent に包む）として
-`TypesetOutput.warnings` に**フォント → 本体の順**で載せる（#382 / #535）。`compiler` が名指しする
-警告型は 1 つだけで、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
+どちらも `TypesetWarning`（フォント警告は `TypesetWarning::Font` が transparent に包む）として、
+成否と独立に組の第 2 要素へ**フォント → 本体の順**で載せる（#382 / #535 / #550）。配置が失敗した実行では
+フォントの警告だけを返す — 配置由来の警告は `paginate` が成功したときにしか存在しない（脚注採番の反復で
+採用されなかった配置の警告を残さない）。`compiler` が名指しする警告型は 1 つだけで、`typeset` の内部が
+フォント資源の構築と配置の 2 段に分かれていることは知らない。
 
 段順序（画像パス収集 → 画像読込・自然寸法取得 → lowering → `build_blocks` → 画像サイズ確定 →
 `break_pages` → 前付け・後付け → ページラベル → 走り文 → outline）と、その間に成立する不変条件
@@ -1026,7 +1029,8 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   miette::Report 化されるだけで、型名を名指しする消費者がいない。GSUB / GPOS のスクリプト・言語
   サポート不足は組版を止めないので、error ではなく **severity(Warning) の `FontWarning`**（フォント種別・
   パス・不足タグを持つ leaf 診断。`code(typeset::font::script::*)`）として集め、`compile` が
-  `Compilation.warnings` へ載せる（`tracing::warn!` だけの通知には戻さない。#377）。
+  `Warnings` へ載せる（`tracing::warn!` だけの通知には戻さない。#377）。`validate_fonts` は
+  違反の有無と独立に警告を返す（`(Result<(), _>, Vec<FontWarning>)`。#550）。
 - `system`（非公開。`FontResources` / `FontSystem` / `FontSystemError` はいずれも `typeset` 内に
   留める — `typeset` root facade は `FontResources` を再エクスポートしない。フォント資源を保持する
   のは `typeset::compose` の内部（私有関数 `load_fonts`）だけで、`compiler` はこの型を名指ししない
@@ -1034,7 +1038,8 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances → HarfRustShapers` という構築順序と
   寿命関係をここに閉じ込める窓口。`FontResources::load(configs, &font_data)` が検証済みの
   所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）と検証で見つかった
-  `Vec<FontWarning>` を返し（警告は資源ではないので構造体に持たせない）、
+  `Vec<FontWarning>` を組 `(Result<Self, _>, Vec<FontWarning>)` で返し（警告は資源ではないので構造体に
+  持たせない。検証の違反で失敗しても警告は返し、解析・メトリクス取得の失敗では空。#550）、
   `FontResources::system()` がそれを借用してシェーパー一式を構築し、`shape` / `metric` の
   2 操作だけを公開する `FontSystem` を返す。`HarfRustShapers` が `FontRefs` と
   `ShaperDatas` / `ShaperInstances`（本来は兄弟フィールド）を両方借用し続けるため、1 つの構造体に
@@ -1639,15 +1644,16 @@ callee 側が出す — 内部構成を変えても `-v` の工程一覧が不�
 
 組版の内部順序（フォント資源の構築・本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置・
 `Publication` への変換）と組版中間型は `typeset::compose` の内側にある。`compiler.rs` が `typeset` から
-名指しするのは入口 `compose` と、その成果物の型 `TypesetOutput`（`Publication` / 画像依存パス /
-警告）・警告型 `TypesetWarning` だけで、`FontResources` も `LaidOutDocument` も保持しない（#535）。
+名指しするのは入口 `compose` と、その成果物の型 `TypesetOutput`（`Publication` / 画像依存パス。警告は
+`compose` の組の第 2 要素）・警告型 `TypesetWarning` だけで、`FontResources` も `LaidOutDocument` も
+保持しない（#535）。
 `Publication` への写像は組版中間型を唯一読む `typeset::emit` に閉じ、`typeset` は backend 非依存の
 確定表現に依存してよい（#461 の原則を #535 で改訂）。
 
 #### compile facade（`compiler.rs` 直下）
 
 `compiler.rs` 本体には facade 関数（`compile` / `resolve_root` / `load_inputs` / `analyze_document` /
-`parse_project` / `parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は
+`parse_project` / `parse_all_sources` / `attribute_analyze_error` / `run_phases`。自明な補助関数は
 除く）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート）を置く。
@@ -1658,9 +1664,12 @@ callee 側が出す — 内部構成を変えても `-v` の工程一覧が不�
 
 phase の実行は `compile` が直接持たず、**production とテストが同じ 2 関数を通る**（#522）。
 `load_inputs`（input phase）と `analyze_document`（frontend / semantics の 2 phase。成果物は
-`SemanticDocument`）で、組版は `typeset::compose` の 1 呼び出しになる。`compile` はこの 3 つを
-呼んだうえで `DependencyManifest::collect` / `collect_warnings` / `BuildStatistics` / `pdf_path` と
-compile 全体の完了 event だけを仕上げる。`Publication` へ変換すると失われる組版中間情報を検査する
+`SemanticDocument`）で、組版は `typeset::compose` の 1 呼び出しになる。`compile` は 1 回の呼び出しに閉じた
+ローカルの `Warnings` を持ち、private の `run_phases` がこの 3 つを呼んで各段が返した警告を段の実行順
+（config → フォント → 組版）で積み、`DependencyManifest::collect` と `pdf_path` を仕上げる。`run_phases`
+が失敗したら `compile` が積み終えた警告を `CompileFailure::with_warnings` で添えて返し、成功したら
+`BuildStatistics` と compile 全体の完了 event を仕上げる（#550）。`Publication` へ変換すると失われる
+組版中間情報を検査する
 テストは、同じ `load_inputs` / `analyze_document` を通ってから `typeset::layout_for_test`
 （`#[cfg(test)]` の出口）で `LaidOutDocument` を取り出す。
 
@@ -1680,9 +1689,10 @@ private 関数）で、相対 `root` はここで `base_dir` 基準の絶対パ�
 
 **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
 error の `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う
-（warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の列として持つ）。
-`compile` / `load_inputs` / `analyze_document` / `parse_project` / `parse_all_sources` は
-`Result<_, CompileFailure>`、`input::load` は `Result<_, Failures<CompileError>>` を返す。
+（warning も型消去せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ。#550）。
+`compile` / `run_phases` / `analyze_document` / `parse_project` / `parse_all_sources` は
+`Result<_, CompileFailure>`、`load_inputs` は `(Result<_, CompileFailure>, Vec<ConfigWarning>)`、
+`input::load` は `(Result<_, Failures<CompileError>>, Vec<ConfigWarning>)` を返す。
 
 `typeset::compose` が内部の private `load_fonts` で `typeset::font::FontResources::load` を 1 回だけ
 呼び、それを組版（`lay_out`）と出口 `emit`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
@@ -1706,7 +1716,8 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   内部で読み込む。ソース本文の保持と `SourceId` の発行は `project::SourceSet` の責務で、
   `SourceSetReadError` から `CompileError::ReadTextFile` への写像（`SourceReadError` はそのまま
   `#[source]` へ載せる）を `input` が行う。`project::config::load` が返す `ConfigWarning`（`sources` の
-  拡張子が `.sei` でない等）も `CompilationInputs` が宣言順に保持し、`compile` が `Warnings` へ移す
+  拡張子が `.sei` でない等）は `CompilationInputs` には持たせず、`load` が成否と独立に組の第 2 要素で返す
+  — 後段（style・横断検証・文献・フォント・ソース）が失敗しても確定済みの警告を失わないため（#550）
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
   `CompilationInputs` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない。
@@ -1719,18 +1730,26 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   **空では構築できない**（構築経路は `single` / `push` / `from_diagnostics`（空なら `None`）だけで、
   すべて `pub(crate)`。`Default` も実装しない）。1 件のときは `into_report` が
   `Report::new_boxed(primary)` を返すので、`CompileFailure` に包む前後で表示が完全に一致する。
-  段別の内部エラー型は公開せず、呼び出し側の分類手段は安定した診断 `code`
+  段別の内部エラー型は公開せず、呼び出し側の分類手段は安定した診断 `code`。
+  失敗するまでに確定した警告を `warnings: Warnings` として別に持ち、`CompileFailure::warnings()` で返す。
+  `Diagnostic` 実装（`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で
+  変わらないのはこのため。#550）
 - `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
   持つ leaf 診断（`frontend::ParseSourceError` / `semantics::SemanticError`）へ `SourceSet` から引いた
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
-  `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）
-- `warnings`: `compile` が成功成果物と一緒に返す warning severity の診断集合 `Warnings`
-  （`Compilation.warnings` 専用。中身は型消去済みの `miette::Report` の列）。致命的エラーとは公開型を
-  共用しない（error は `CompileFailure`）。`CompileFailure` と違って空は正当な状態なので空で構築できる。
+  `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。
+  本文は `SourceSet` の `Arc<str>` を `Arc::clone` で共有し（`NamedSource<Arc<str>>`）、同じソースに
+  何件の診断が付いても本文を複製しない（#550）
+- `warnings`: `compile` が成果物または失敗と一緒に返す warning severity の診断集合 `Warnings`
+  （`Compilation.warnings` と `CompileFailure::warnings()`）。中身は `Box<dyn Diagnostic + Send + Sync>` の
+  列で、公開操作（`iter()` / `IntoIterator for &Warnings`）は診断の借用 `&dyn Diagnostic` —
+  `CompileFailure::diagnostics()` と同じ要素型なので、呼び出し側は error と warning を同じインターフェースで
+  反復できる（#550。旧 `miette::Report` の列から変更）。致命的エラーとは公開型を共用しない（error は
+  `CompileFailure`）。`CompileFailure` と違って空は正当な状態なので空で構築できる。
   中身は `compile` が**入力の論理順**（config の警告 → フォントの警告 → 組版の警告）で組み立て、
   段の中の順序は各段が保証する（`sources` の宣言順 / `FontType::ALL` 順 / 物理ページの昇順）。
-  コンパイルが失敗したときは warning を返さない（#377、#382）
+  コンパイルが失敗しても、失敗するまでに確定した警告は返す（#550 が #377 / #382 を改訂）
 - `input::error`: `CompileError`（入力読込のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
   行うため、`typeset::lowering` 由来の診断エラーは無い）。**段名だけを足す wrapper にはしない** —
   内側が独立した診断を持つもの（`ReadConfigError` / `ReadStyleError` / `LayoutValidationError` /
@@ -1960,18 +1979,24 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   `vendor/fonts/` のフォントと、テーブルディレクトリや `fvar` ヘッダを書き換えたその複製で確かめる。
   読み手を閉じるテストは子が先に書き切る順序では空振りする（分類そのものは `listing` の in-src テストが
   決定的に覆う）。`/dev/full` を使う書き込み失敗のテストは Linux（CI）だけで走る（#549）
+- `tests/cli_build_warnings.rs` は失敗した `build`（compile の失敗・保存の失敗）でも確定済みの警告が
+  主エラーより先に端末と `--log-file` へ出ること、`-q` では端末からだけ消えることを binary の起動で確かめる
+  （render の失敗は注入できないので保存の失敗で代表させる。#550）
 
 ### 不変条件・注意点
 
 - **段順序の知識を持たない**。`main` が呼ぶのは `seiran_compiler::compile` と `seiran_pdf::render` の 2 つだけで、
   parse / 意味解析 / typeset の各段を個別に呼ぶ経路は復活させない。
-- **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を `miette` の handler
-  （`Report` の `Debug` 表示）で stderr へ 1 件ずつ出す。`--quiet` では**端末に**出さないが、
+- **warning の表示は CLI 側の責務**。`compile` が返した `Warnings`（成功時は `Compilation.warnings`、
+  失敗時は `CompileFailure::warnings()`）の診断の借用を、`Report` の `Debug` と同じ既定 handler
+  （`Reporter::init` が 1 回だけ作る `MietteHandler`。`reporting::TerminalDiagnostic`）で stderr へ
+  1 件ずつ出す。確定済みの警告は compile・render・保存のどこで失敗しても主エラーより先に出す
+  （成功時は render・保存の後、成功サマリの前で、#550 の前と同じ順序）。`--quiet` では**端末に**出さないが、
   `--log-file` の記録からは省かない（warning の抜けた記録は事後解析に使えない）。ログ（tracing）へは
   出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。端末とファイルは別の出力先なので、
   同じ warning がそれぞれへ 1 回ずつ出るのはこの方針と衝突しない。ファイルへ書くぶんは
   `GraphicalReportHandler`（`unicode_nocolor` かつ `with_links(false)`）で装飾も OSC 8 ハイパーリンクも
-  持たない文字列にする（`render_report_plain`。致命的エラー診断もこれを共有する）。
+  持たない文字列にする（`render_diagnostic_plain`。致命的エラー診断もこれを共有する）。
 - **端末側の出力先は stderr だけ**。ユーザー向け報告（warning 診断・成功サマリ）も tracing のログも
   stderr へ出し、stdout はパイプできる成果物のための経路として空けておく（stdout を使うのは
   `variation-axes` / `ttc-names` / `script-langs` の一覧表示だけ）。`build > /dev/null` でログは
@@ -2018,9 +2043,10 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   （`LogFileError`）は記録先が無いので対象外。tracing の ERROR event としては流さない（致命的エラーは miette、
   ERROR レベルは使わないという #103 の線引き）。書き切りは drop 順ではなく `Reporter::finish` の明示的な flush で
   確定させる（#548）— 報告をすべて書いてから flush し、保持していた最初の I/O 失敗をそこで取り出す。
-  以後 tracing へは何も出さない（layer は同じ writer を持ったままで、流し切る主体がいない）。compile 成功後に
-  render / 保存が失敗した実行の `Compilation.warnings` は端末にもファイルにも出ない（成功経路の表示順を保つ
-  ため。#502 のスコープ外。この扱いは #550 が変える予定）。
+  以後 tracing へは何も出さない（layer は同じ writer を持ったままで、流し切る主体がいない）。
+  失敗した実行でも確定済みの警告は主エラーより先に端末とファイルの両方へ出る（compile の失敗では
+  `CompileFailure::warnings()`、compile 成功後の render / 保存の失敗では `Compilation.warnings`。#550 が
+  #502 のスコープ外を解消）。
 - **ログの記録に失敗した実行は終了コード 1**（#548）。本処理が成功していてもログを記録できていなければ
   `ExitCode::FAILURE` で終える — 記録が要ると明示した実行で、記録の欠落を成功として返さないため。生成済みの
   PDF は消さない（成果物は正しく、失っているのは記録だけ）。本処理も失敗していたときは元の診断が主で、ログの

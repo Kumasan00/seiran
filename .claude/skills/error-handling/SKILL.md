@@ -128,9 +128,11 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 ## warning と tracing
 
-**warning は error と公開型を共用しない**（#377）。`compile` が失敗したときの集合が
-`CompileFailure` であるのに対し、成功した `Compilation` と一緒に返る warning severity の集合は
-`compiler::Warnings`（`Vec<miette::Report>`）。`CompileFailure` と違って空は正当な状態なので
+**warning は error と公開型を共用しない**（#377）。`compile` が失敗したときの error の集合が
+`CompileFailure` であるのに対し、warning severity の集合は `compiler::Warnings`
+（`Box<dyn Diagnostic + Send + Sync>` の列。公開操作は診断の借用 `&dyn Diagnostic` で、
+`CompileFailure::diagnostics()` と同じ要素型 — #550）。`Warnings` は成功した `Compilation.warnings` と、
+失敗した `CompileFailure::warnings()` の両方に現れる。`CompileFailure` と違って空は正当な状態なので
 空で構築できる。
 
 - warning diagnostic は他の leaf と同じ形（`thiserror::Error` + `miette::Diagnostic` +
@@ -138,8 +140,17 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   （フォント検証の警告は `typeset::font::script::*`、config.toml の警告は `project::config::*`）
 - 表示順は入力の論理順。段の実行順（設定 → フォント）で束ね、段の中は各段が既に決定的な順序で
   集めている（config は `sources` の宣言順、フォントは `FontType::ALL` 順）
-- コンパイルが失敗したときに warning は返さない（epic #374 の非目標）。段が error を返す経路では
-  その段で集めた warning を捨てる
+- **失敗しても確定した warning は返す**（#550 が epic #374 の非目標を改訂）。「成功／失敗」と
+  「エラー／警告」は別の軸で、警告を生成し得る段の境界は `(Result<T, Failures<E>>, Vec<W>)` の組を返す。
+  `compile` facade は 1 回の呼び出しに閉じたローカルの `Warnings` へ段の戻り値だけを積み、失敗したら
+  `CompileFailure::with_warnings` で添える（グローバルな収集器・tracing 経由の収集にはしない）。
+  残すのは**確定した検査**の警告だけ — 段の中で独立に続けた検査（config の `sources` の拡張子、フォントごとの
+  script / language）の警告は同じ段の別の違反があっても残し、配置由来の警告（脚注のはみ出し）は配置が
+  成功したときにしか返さない（脚注採番の反復で採用されなかった配置の警告を残さない）。検査に進めなかった段
+  （読めない config.toml、解析できないフォント）は警告 0 件。警告を返すために不正な HIR や `Publication` を
+  組み立てない
+- `CompileFailure` の `Diagnostic` 実装（`related` / `into_report` の描画）は警告を含まない。表示する
+  呼び出し側（CLI）が「確定済み警告 → 主エラー」の順に描く
 - **同じ問題を診断と tracing の両方で出さない**。ユーザーが直せる非致命的問題は warning diagnostic に
   し、`tracing::warn!` は残さない（`-q` で握り潰される経路にユーザー向け情報を置かない）。
   tracing の役割は開発者・運用者向けの観測に限る:
@@ -185,8 +196,9 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   pipeline で `miette::Result<T>` を使わない**（#375）— error の `miette::Report` への型消去は
   CLI 入口（`main` / サブコマンド）でだけ行い、そこまでは段の error 型を保つ。`Report` は
   `Diagnostic` を実装しないので、早期に型消去すると `#[related]` にも `CompileFailure` にも
-  載せられなくなる。warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の
-  列として持つ（#377）
+  載せられなくなる。warning も `Report` へ型消去せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ —
+  表示の方式をライブラリ側で早く決めず、error と同じ診断インターフェースで反復させるため
+  （#550 が #377 を改訂）
 - 外部クレートの `Result<T, E>` を `miette::Result<T>` に持ち上げる際は `miette::IntoDiagnostic` の `.into_diagnostic()?` を使用する
 - `main` は `std::process::ExitCode` を返す（`miette::Result<()>` も `Box<dyn std::error::Error>` も使わない）。
   端末への描画は `Result` の `Termination` ではなく `termination::Outcome::report` が行い、報告を終えてから
