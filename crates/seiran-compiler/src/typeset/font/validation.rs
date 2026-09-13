@@ -246,16 +246,16 @@ pub(crate) enum FontWarning {
 ///
 /// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。順序は
 /// `FontType::ALL` の宣言順で固定であり、`FontMap` の内部 `HashMap` の反復順には依存しない。
-/// 警告も同じ順序で返す。
+/// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
+/// 違反と独立に確定するため（#550）。
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反がある場合に、その全件を [`FontValidationFailure`] の非空集合として返す
-/// （このとき警告は捨てる — 失敗したコンパイルでは warning を返さない）。
+/// 1 つ以上の違反がある場合に、組の第 1 要素がその全件を [`FontValidationFailure`] の非空集合として持つ。
 pub(super) fn validate_fonts(
   font_configs: &FontConfigs,
   font_refs: &FontRefs<'_>,
-) -> Result<Vec<FontWarning>, Failures<FontValidationFailure>> {
+) -> (Result<(), Failures<FontValidationFailure>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
   for font_type in FontType::ALL {
@@ -268,10 +268,11 @@ pub(super) fn validate_fonts(
     );
     debug!(font_type = ?font_type, font_path = %config.font_path, "フォントを検証");
   }
-  return match Failures::from_vec(all_errors) {
+  let result = match Failures::from_vec(all_errors) {
     Some(failures) => Err(failures),
-    None => Ok(all_warnings),
+    None => Ok(()),
   };
+  return (result, all_warnings);
 }
 
 /// 1 フォント分を検証し、検出した違反をすべて返す（警告は `warnings` へ追記する）。

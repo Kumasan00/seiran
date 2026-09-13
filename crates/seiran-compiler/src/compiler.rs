@@ -171,22 +171,21 @@ fn run_phases(
   }
   let inputs = inputs?;
   let semantic_document = analyze_document(source, &inputs, &resolver)?;
-  let TypesetOutput {
-    publication,
-    image_paths,
-    warnings: typeset_warnings,
-  } = typeset::compose(
+  let (typeset_output, typeset_warnings) = typeset::compose(
     source,
     inputs.config(),
     inputs.style(),
     inputs.geometry(),
     inputs.font_data(),
     &semantic_document,
-  )
-  .map_err(CompileFailure::from)?;
+  );
   for warning in typeset_warnings {
     warnings.push(warning);
   }
+  let TypesetOutput {
+    publication,
+    image_paths,
+  } = typeset_output.map_err(CompileFailure::from)?;
 
   return Ok(Compiled {
     publication,
