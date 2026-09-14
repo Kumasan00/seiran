@@ -192,10 +192,14 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
     HirMathKind::Symbol { ch, class } => {
       let mut translated = String::new();
       push_math_char(&mut translated, *ch, ctx.variant);
-      items.push(spacing::MathItem::new(*class, vec![AtomNode::Text(translated, ctx.text_style())]));
+      items.push(spacing::MathItem::new(
+        *class,
+        spacing::symbol_fence(*class),
+        vec![AtomNode::Text(translated, ctx.text_style())],
+      ));
     },
     HirMathKind::Group(children) => {
-      items.push(spacing::MathItem::new(MathClass::Ord, lower_math_list(children, ctx)));
+      items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
     },
     HirMathKind::Superscript(inner) => {
       let children = lower_math_list(slice::from_ref(inner.as_ref()), &ctx.script());
@@ -222,7 +226,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
       let mut nodes = lower_math_list(slice::from_ref(numer.as_ref()), ctx);
       nodes.push(AtomNode::Text("/".to_string(), ctx.text_style()));
       nodes.extend(lower_math_list(slice::from_ref(denom.as_ref()), ctx));
-      items.push(spacing::MathItem::new(MathClass::Ord, nodes));
+      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
     },
     HirMathKind::Sqrt { index, radicand } => {
       let mut nodes = Vec::new();
@@ -235,7 +239,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
       }
       nodes.push(AtomNode::Text("√".to_string(), ctx.text_style()));
       nodes.extend(lower_math_list(slice::from_ref(radicand.as_ref()), ctx));
-      items.push(spacing::MathItem::new(MathClass::Ord, nodes));
+      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
     },
     // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
@@ -262,7 +266,11 @@ fn push_text_items(text: &str, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::
     }
     let mut translated = String::new();
     push_math_char(&mut translated, ch, ctx.variant);
-    items.push(spacing::MathItem::new(spacing::char_class(ch), vec![AtomNode::Text(translated, ctx.text_style())]));
+    items.push(spacing::MathItem::new(
+      spacing::char_class(ch),
+      spacing::char_fence(ch),
+      vec![AtomNode::Text(translated, ctx.text_style())],
+    ));
   }
 }
 
@@ -650,5 +658,12 @@ mod tests {
     let nodes = lower_math_source("$\\mathbold{a+b}$\n");
 
     assert_eq!(math_break_count(&nodes), 1, "字形 variant はグループではないので透過する: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_inline_math_does_not_break_inside_parentheses_containing_exclamation_marks() {
+    let nodes = lower_math_source("$(a!+b)$\n");
+
+    assert_eq!(math_break_count(&nodes), 0, "! は区切りクラスだが本物の括弧ではないので深さを崩さない: {nodes:?}");
   }
 }

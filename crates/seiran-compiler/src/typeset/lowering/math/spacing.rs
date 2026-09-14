@@ -13,18 +13,39 @@ use crate::{
   typeset::lowering::layout_node::{AtomNode, LayoutNode, merge_adjacent_atom_text},
 };
 
+/// アイテムが開き・閉じ区切りとして働くかどうか
+///
+/// 対応する開き括弧を持つ「本物の区切り」だけを表す。数式クラスの `Open` / `Close`（アキ表の分類）
+/// とは独立 — `!` `?` は `plain TeX` の mathcode で `Close` クラスに入るが区切りではないので `None`
+/// になる。[`assemble_breakable`] の括弧の深さはこちらで数える。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Fence {
+  /// 開き区切り（`(` `[` や `\langle` 等）
+  Open,
+  /// 閉じ区切り（`)` `]` や `\rangle` 等）
+  Close,
+}
+
 /// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは 1 文字ぶん）
 #[derive(Debug)]
 pub(super) struct MathItem {
   /// このアイテムの数式クラス
   class: MathClass,
+  /// このアイテムが開き・閉じ区切りとして働くか（括弧の深さの計算に使う。区切りでなければ `None`）
+  fence: Option<Fence>,
   /// このアイテムが生む Atom ノード列
   nodes: Vec<AtomNode>,
 }
 
 impl MathItem {
-  /// クラスとノード列からアイテムを作る
-  pub(super) fn new(class: MathClass, nodes: Vec<AtomNode>) -> Self { return MathItem { class, nodes }; }
+  /// クラス・区切り種別・ノード列からアイテムを作る
+  pub(super) fn new(class: MathClass, fence: Option<Fence>, nodes: Vec<AtomNode>) -> Self {
+    return MathItem {
+      class,
+      fence,
+      nodes,
+    };
+  }
 }
 
 /// アトム間に入れるアキの量（`TeXbook` の 3 段階 + アキ無し）
@@ -240,6 +261,32 @@ pub(super) fn char_class(ch: char) -> MathClass {
   };
 }
 
+/// 直接入力された 1 文字が開き・閉じ区切りとして働くかどうかを返す
+///
+/// [`char_class`] の `Close` クラスには `!` `?` も含むが、これらは対応する開き括弧を持たない
+/// （アキの決定にだけ使う分類で、括弧の深さには数えない）ので `None` になる。
+pub(super) fn char_fence(ch: char) -> Option<Fence> {
+  return match ch {
+    '(' | '[' => Some(Fence::Open),
+    ')' | ']' => Some(Fence::Close),
+    _ => None,
+  };
+}
+
+/// 記号コマンド（`\langle` 等）の数式クラスから開き・閉じ区切りを導く
+///
+/// frontend の記号テーブル（`SYMBOL_MAP`）で `Open` / `Close` クラスを持つ記号は `\langle` /
+/// `\rangle`・`\lceil` / `\rceil`・`\lfloor` / `\rfloor` の 3 対のみで、いずれも対応する開き括弧を
+/// 持つ本物の区切りである（direct な文字の `!` `?` のような「クラスだけ `Close`」の例外は記号テーブルには
+/// 無い）。そのためクラスから直接 [`Fence`] を導いてよい。
+pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
+  return match class {
+    MathClass::Open => Some(Fence::Open),
+    MathClass::Close => Some(Fence::Close),
+    MathClass::Ord | MathClass::Op | MathClass::Bin | MathClass::Rel | MathClass::Punct => None,
+  };
+}
+
 /// 上付き・下付きを直前のアイテムへ付ける
 ///
 /// スクリプトは核となるアトムの一部なので、間にアキを入れず、クラスも核のものを保つ
@@ -248,7 +295,7 @@ pub(super) fn char_class(ch: char) -> MathClass {
 pub(super) fn push_attachment(items: &mut Vec<MathItem>, nodes: Vec<AtomNode>) {
   match items.last_mut() {
     Some(last) => last.nodes.extend(nodes),
-    None => items.push(MathItem::new(MathClass::Ord, nodes)),
+    None => items.push(MathItem::new(MathClass::Ord, None, nodes)),
   }
 }
 
@@ -263,13 +310,13 @@ struct Gap {
   space: Length,
 }
 
-/// Bin→Ord 変換後のクラスと直前のアキを確定したアイテム
+/// 直前のアキ（Bin→Ord 変換後のクラスの境界で決まる）と区切り種別を確定したアイテム
 #[derive(Debug)]
 struct Spaced {
   /// 直前のアイテムとの境界（先頭のアイテムは `None`）
   gap: Option<Gap>,
-  /// Bin→Ord 変換後のクラス
-  class: MathClass,
+  /// このアイテムが開き・閉じ区切りとして働くか（[`MathItem`] の同名フィールドをそのまま運ぶ）
+  fence: Option<Fence>,
   /// このアイテムが生む Atom ノード列
   nodes: Vec<AtomNode>,
 }
@@ -291,7 +338,7 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<
     });
     out.push(Spaced {
       gap,
-      class,
+      fence: item.fence,
       nodes: item.nodes,
     });
     prev = Some(class);
@@ -322,31 +369,33 @@ pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool)
 ///
 /// 分割点は [`break_penalty`] が認めた境界だけで、そこでは演算子直後のアキを Kern ではなく
 /// [`LayoutNode::MathBreak`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
-/// 分割点の間の並びは [`assemble`] と同じく同一スタイルのテキストを 1 本のグリフランへ畳んでから
-/// 段落の語彙へ持ち上げる。上付き・下付き・グループ・分数・根号は 1 個のアイテムの中に閉じているので、
-/// その内部に分割点は生じない。
+/// ただし右のアイテムが空（`Group([])` 由来の中身の無い Ord 等）なら、割っても行頭に何も残らないので
+/// 分割点を置かず Kern のままにする。分割点の間の並びは [`assemble`] と同じく同一スタイルのテキストを
+/// 1 本のグリフランへ畳んでから段落の語彙へ持ち上げる。上付き・下付き・グループ・分数・根号は 1 個の
+/// アイテムの中に閉じているので、その内部に分割点は生じない。
 pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<LayoutNode> {
   let mut out: Vec<LayoutNode> = Vec::new();
   let mut run: Vec<AtomNode> = Vec::new();
-  // 開き括弧の入れ子の深さ（対応の無い閉じ括弧で負にはしない）
+  // 開き括弧の入れ子の深さ。[`Fence`] だけで数える（数式クラスの Open/Close ではない — `!` `?` は
+  // Close クラスだが区切りではないので深さに数えない）。対応の無い閉じ括弧で負にはしない。
   let mut depth = 0usize;
   for spaced in space_items(items, font_size, false) {
     if let Some(gap) = spaced.gap {
       match break_penalty(gap, depth) {
-        Some(penalty) => {
+        Some(penalty) if !spaced.nodes.is_empty() => {
           flush_run(&mut run, &mut out);
           out.push(LayoutNode::MathBreak {
             spacing: gap.space,
             penalty,
           });
         },
-        None => push_space(&mut run, gap.space),
+        Some(_) | None => push_space(&mut run, gap.space),
       }
     }
-    depth = match spaced.class {
-      MathClass::Open => depth + 1,
-      MathClass::Close => depth.saturating_sub(1),
-      MathClass::Ord | MathClass::Op | MathClass::Bin | MathClass::Rel | MathClass::Punct => depth,
+    depth = match spaced.fence {
+      Some(Fence::Open) => depth + 1,
+      Some(Fence::Close) => depth.saturating_sub(1),
+      None => depth,
     };
     run.extend(spaced.nodes);
   }
@@ -362,16 +411,22 @@ fn flush_run(run: &mut Vec<AtomNode>, out: &mut Vec<LayoutNode>) {
 /// 境界 `gap` が行分割点になるなら、そのペナルティを返す
 ///
 /// 分割できるのは括弧の外（`depth == 0`）で、左が二項演算子か関係子の境界だけ。左が Bin なのは
-/// Bin→Ord 変換を生き残った本物の二項演算子に限る（`$-x$` の `-` の後では割らない）。関係子が続く
-/// 境界（`:=` の `:` と `=` の間）は TeX と同じく割らない。
+/// Bin→Ord 変換を生き残った本物の二項演算子に限る（`$-x$` の `-` の後では割らない）。左が Rel のときは
+/// 右が Ord / Op / Open のときだけ割る — [`SPACING`] の Rel 行で実際にアキが入るのがこの 3 クラスだけで、
+/// 残り（Bin / Rel / Close / Punct）はアキ 0 のセルなので、割ってしまうと組んだときと違う見た目になる
+/// うえ、次行の先頭が `,` や `)` から始まってしまう（`:=` の `:` と `=` の間や `a=,b` の `=` の後で
+/// 割らない理由）。Rel の右に Bin が来る組み合わせは Bin→Ord 変換で消えるので実際には現れない。
 fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
   if depth > 0 {
     return None;
   }
   return match gap.left {
     MathClass::Bin => Some(BIN_BREAK_PENALTY),
-    MathClass::Rel if gap.right != MathClass::Rel => Some(REL_BREAK_PENALTY),
-    MathClass::Rel | MathClass::Ord | MathClass::Op | MathClass::Open | MathClass::Close | MathClass::Punct => None,
+    MathClass::Rel => match gap.right {
+      MathClass::Ord | MathClass::Op | MathClass::Open => Some(REL_BREAK_PENALTY),
+      MathClass::Bin | MathClass::Rel | MathClass::Close | MathClass::Punct => None,
+    },
+    MathClass::Ord | MathClass::Op | MathClass::Open | MathClass::Close | MathClass::Punct => None,
   };
 }
 
@@ -393,7 +448,9 @@ mod tests {
   }
 
   /// 1 文字のテキストアイテムを作る
-  fn item(ch: char) -> MathItem { return MathItem::new(char_class(ch), vec![AtomNode::Text(ch.to_string(), style())]); }
+  fn item(ch: char) -> MathItem {
+    return MathItem::new(char_class(ch), char_fence(ch), vec![AtomNode::Text(ch.to_string(), style())]);
+  }
 
   /// ノード列に含まれるカーン幅を出現順に返す
   fn kerns(nodes: &[AtomNode]) -> Vec<Length> {
@@ -647,5 +704,56 @@ mod tests {
     let nodes = assemble_breakable(items("a="), Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "右隣の無い末尾では割らない: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_break_inside_parentheses_with_exclamation_mark() {
+    let nodes = assemble_breakable(items("(a!+b)"), Length::pt(12.0));
+
+    assert!(breaks(&nodes).is_empty(), "! は区切りではないので深さを崩さない: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_break_inside_parentheses_with_question_mark() {
+    let nodes = assemble_breakable(items("(a?+b)"), Length::pt(12.0));
+
+    assert!(breaks(&nodes).is_empty(), "? は区切りではないので深さを崩さない: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_breaks_after_exclamation_mark_at_top_level() {
+    let nodes = assemble_breakable(items("a!+b"), Length::pt(12.0));
+
+    assert_eq!(breaks(&nodes).len(), 1, "括弧の外なので + の後で 1 箇所割れる: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_break_between_relation_and_punctuation() {
+    let nodes = assemble_breakable(items("a=,b"), Length::pt(12.0));
+
+    assert!(breaks(&nodes).is_empty(), "関係子の直後が区切りなら割らない（アキ 0 のセルのため）: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_breaks_between_relation_and_open_parenthesis() {
+    let nodes = assemble_breakable(items("a=(b)"), Length::pt(12.0));
+
+    assert_eq!(breaks(&nodes).len(), 1, "関係子の直後が開き括弧ならアキがあるので割れる: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_break_before_empty_group() {
+    // Arrange — `$a+{}$` の `{}` は Group([]) → 中身の無い Ord アイテムになる
+    let items = vec![
+      item('a'),
+      item('+'),
+      MathItem::new(MathClass::Ord, None, Vec::new()),
+    ];
+
+    // Act
+    let nodes = assemble_breakable(items, Length::pt(12.0));
+
+    // Assert
+    assert!(breaks(&nodes).is_empty(), "右が空アイテムなら分割点を置かず Kern のまま: {nodes:?}");
   }
 }
