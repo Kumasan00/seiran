@@ -78,6 +78,7 @@ pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
       // `Footnote` の本体はセルの支配的サイズには数えない（行送りは本文側で決まる）。
       HItem::Glue { .. }
       | HItem::Kern(_)
+      | HItem::MathBreak { .. }
       | HItem::Penalty { .. }
       | HItem::Discretionary { .. }
       | HItem::ForcedBreak
@@ -254,6 +255,7 @@ pub(crate) fn position_table_row_boxes(
           cursor += hbox.width;
         },
         HItem::Kern(value) => cursor += *value,
+        HItem::MathBreak { spacing, .. } => cursor += *spacing,
         HItem::Glue { natural, .. } => cursor += *natural,
         HItem::Penalty { .. }
         | HItem::Discretionary { .. }

@@ -55,6 +55,24 @@ pub(crate) enum HItem {
     /// 折り返した場合のみ行末に出すハイフン箱（計測済み）
     hyphen: HBox,
   },
+  /// インライン数式のトップレベルの二項演算子・関係子の直後に置く分割点
+  ///
+  /// 折り返さなければ幅 `spacing` の固定アキ（演算子と右隣のアトムの間のアキ）として行に残り、
+  /// 折り返せば行末にも次行の行頭にも何も出さない（演算子は前行の行末に残る）。行分割は他の分割点
+  /// （`Glue` / `Penalty` / `Discretionary`）で組めないときにだけこの点を使う — Knuth–Plass は経路上の
+  /// 使用回数を demerits より優先して最小化し、greedy は行内に通常の分割点が無いときの退避先にする。
+  /// 数式内の分割点どうしは `penalty` の 2 乗を demerits に足して比べる（関係子の直後を二項演算子の
+  /// 直後より好む。TeX の `\relpenalty` / `\binoppenalty` 相当）。
+  #[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "boxing が LayoutNode::MathBreak から構築するまでの一時措置（同じ PR 内で外す）")
+  )]
+  MathBreak {
+    /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
+    spacing: Length,
+    /// 数式内の分割点どうしを比べるペナルティ（Knuth–Plass の demerits に 2 乗で加える）
+    penalty: i32,
+  },
   /// 強制改行（`\\` 由来）
   ForcedBreak,
   /// リンク領域（機構 B）の開始マーカー（幅 0・分割不可）
@@ -102,13 +120,15 @@ impl HItem {
   /// アイテムの自然幅（pt）を返す
   ///
   /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` / `IndexMark` は 0。`Discretionary` も自然幅 0
-  /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。
+  /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。`MathBreak` は折り返さない
+  /// ときに残るアキの幅。
   #[must_use]
   pub(crate) fn natural_width(&self) -> Length {
     return match self {
       HItem::Box(hbox) | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
       HItem::Kern(value) => *value,
+      HItem::MathBreak { spacing, .. } => *spacing,
       HItem::Penalty { .. }
       | HItem::Discretionary { .. }
       | HItem::ForcedBreak
@@ -283,5 +303,14 @@ mod tests {
       reading: None,
     };
     assert_eq!(mark.natural_width(), Length::ZERO);
+  }
+
+  #[test]
+  fn math_break_natural_width_is_its_spacing() {
+    let item = HItem::MathBreak {
+      spacing: pt(2.5),
+      penalty: 700,
+    };
+    assert_eq!(item.natural_width(), pt(2.5));
   }
 }

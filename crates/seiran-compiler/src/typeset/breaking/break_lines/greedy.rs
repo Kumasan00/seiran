@@ -21,7 +21,10 @@ impl LineBreaker for GreedyBreaker {
     let mut lines: Vec<Line> = Vec::new();
     let mut buffer: Vec<&HItem> = Vec::new();
     let mut width_so_far = Length::ZERO;
+    // 通常の分割点（Glue / Penalty / Discretionary）の最新位置
     let mut last_break: Option<usize> = None;
+    // 数式内分割点（`HItem::MathBreak`）の最新位置。通常の分割点が無いときだけ使う退避先
+    let mut last_math_break: Option<usize> = None;
     // 折り返しをまたいで開いているリンク領域（行間で引き継ぐ）
     let mut open_links: Vec<OpenLink> = Vec::new();
 
@@ -33,6 +36,7 @@ impl LineBreaker for GreedyBreaker {
           buffer.clear();
           width_so_far = Length::ZERO;
           last_break = None;
+          last_math_break = None;
         },
         HItem::Glue {
           natural, breakable, ..
@@ -61,6 +65,12 @@ impl LineBreaker for GreedyBreaker {
             last_break = Some(buffer.len() - 1);
           }
         },
+        HItem::MathBreak { spacing, .. } => {
+          buffer.push(item);
+          last_math_break = Some(buffer.len() - 1);
+          // 折り返さなければアキとして幅を持つ
+          width_so_far += *spacing;
+        },
         // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可。行に積むだけで build_line が収集する
         HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote { .. } | HItem::IndexMark { .. } => {
           buffer.push(item);
@@ -68,7 +78,7 @@ impl LineBreaker for GreedyBreaker {
         HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
           let item_width = item.natural_width();
           if width_so_far + item_width > text_width
-            && let Some(break_index) = last_break
+            && let Some(break_index) = last_break.or(last_math_break)
           {
             // 分割可能点までで行を確定し、残りを次行へ持ち越す。
             // 語中（Discretionary）で折り返すときは行末にハイフンを付す
@@ -93,6 +103,9 @@ impl LineBreaker for GreedyBreaker {
             }
             width_so_far = buffer.iter().map(|i| return i.natural_width()).sum();
             last_break = None;
+            // 通常の分割点で折ったとき、それより後ろにあった数式内分割点は持ち越し側に残る
+            // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す
+            last_math_break = buffer.iter().rposition(|carried| return matches!(carried, HItem::MathBreak { .. }));
           }
           buffer.push(item);
           width_so_far += item_width;
@@ -133,8 +146,8 @@ mod tests {
     typeset::{
       boxes::{HBox, HBoxContent, HItem},
       breaking::break_lines::test_support::{
-        cjk_glue, discretionary, flush_right_box, index_mark, link_target, non_breakable_stretch_glue, space_glue,
-        stretch_glue, test_box,
+        box_width, cjk_glue, discretionary, flush_right_box, index_mark, link_target, math_break,
+        non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
       },
     },
   };
@@ -703,5 +716,61 @@ mod tests {
         assert!(close_l(penalty_box.x, glue_box.x), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
       }
     }
+  }
+
+  #[test]
+  fn breaks_at_math_break_when_no_other_breakpoint() {
+    // Arrange — [b20][MB 3][b20] を幅 30 に。通常の分割点が無いので数式内分割点で折る
+    let items = vec![box_width(20.0), math_break(3.0, 500), box_width(20.0)];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 1, "{lines:?}");
+    assert_eq!(lines[1].boxes.len(), 1, "{lines:?}");
+    assert_eq!(lines[1].boxes[0].x, Length::ZERO, "演算子後のアキは次行の行頭に残らない: {lines:?}");
+  }
+
+  #[test]
+  fn prefers_ordinary_break_over_math_break() {
+    // Arrange — [b10][glue][b10][MB 3][b10] を幅 30 に。溢れた時点で両方の分割点があり、通常の方を使う
+    let items = vec![
+      box_width(10.0),
+      space_glue(),
+      box_width(10.0),
+      math_break(3.0, 500),
+      box_width(10.0),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 1, "空白で折る: {lines:?}");
+    assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
+    assert_eq!(lines[1].boxes[1].x, Length::pt(13.0), "折らなかった分割点はアキとして残る: {lines:?}");
+  }
+
+  #[test]
+  fn math_break_carried_past_ordinary_break_stays_usable() {
+    // Arrange — 空白で折った後、持ち越した側の数式内分割点が次の溢れで使われる
+    let items = vec![
+      box_width(5.0),
+      space_glue(),
+      box_width(5.0),
+      math_break(3.0, 500),
+      box_width(10.0),
+      box_width(10.0),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::RaggedRight);
+
+    // Assert
+    let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
+    assert_eq!(box_counts, vec![1, 1, 2], "{lines:?}");
   }
 }
