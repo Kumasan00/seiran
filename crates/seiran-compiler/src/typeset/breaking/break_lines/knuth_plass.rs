@@ -118,12 +118,15 @@ impl PathCost {
 
 /// 1 本の候補行（開始位置 → 破断点）のコスト評価結果
 ///
-/// `Feasible` が demerits だけでなく badness と調整比も持つのは、DP の選択には demerits しか要らない
-/// 一方で、TRACE 観測では「なぜその demerits になったか」を見るのに元の疎密が要るため。
+/// `Feasible` が demerits だけでなく badness と調整比も持つのは、DP が最小化する [`PathCost`] へは
+/// この行の demerits だけ渡せば足りる（数式内分割の回数は breakpoint 自身の `math_penalty` から
+/// [`PathCost::then`] が決めるので、Edge 側は関与しない）一方で、TRACE 観測では「なぜその demerits に
+/// なったか」を見るのに元の疎密が要るため。
 enum Edge {
   /// 実現可能
   Feasible {
-    /// この行に課される demerits（DP が最小化する量）
+    /// この行に課される demerits（[`PathCost::then`] が積み上げ、DP はその合計を [`PathCost`] として
+    /// 最小化する）
     demerits: f64,
     /// 疎密の罰点。`INFINITE_BADNESS` で頭打ち
     badness: f64,
@@ -400,7 +403,7 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool, math_penalty: Option<
 
 #[cfg(test)]
 mod tests {
-  use super::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, PathCost, break_subparagraph};
+  use super::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, PathCost, break_subparagraph, demerits};
   use crate::{
     length::Length,
     style::TextAlignment,
@@ -722,6 +725,22 @@ mod tests {
       demerits: 1.0e12,
     };
     assert!(loose_without_math_break < one_math_break, "数式内分割の回数を demerits より優先して比べる");
+  }
+
+  #[test]
+  fn demerits_prefers_relation_break_over_binary_operator_break() {
+    assert!(
+      demerits(0.0, false, false, Some(500)) < demerits(0.0, false, false, Some(700)),
+      "penalty の 2 乗が効くので、関係子の分割点（500）が二項演算子の分割点（700）より優先される"
+    );
+  }
+
+  #[test]
+  fn demerits_prefers_no_math_break_over_a_math_break() {
+    assert!(
+      demerits(0.0, false, false, None) < demerits(0.0, false, false, Some(500)),
+      "数式内分割点を使わない行の方が demerits が低い"
+    );
   }
 
   #[test]
