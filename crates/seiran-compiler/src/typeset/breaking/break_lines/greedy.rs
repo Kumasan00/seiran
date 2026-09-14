@@ -77,7 +77,10 @@ impl LineBreaker for GreedyBreaker {
         },
         HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
           let item_width = item.natural_width();
-          if width_so_far + item_width > text_width
+          // 1 回の持ち越しで収まるとは限らない（持ち越し後も現在の item を含めて溢れることがある）ので
+          // while で再判定する。持ち越すたびに buffer は真に縮む（少なくとも破断アイテム自身が抜ける）ので
+          // いずれ last_break / last_math_break が尽きて（あるいは収まって）終わる
+          while width_so_far + item_width > text_width
             && let Some(break_index) = last_break.or(last_math_break)
           {
             // 分割可能点までで行を確定し、残りを次行へ持ち越す。
@@ -104,7 +107,9 @@ impl LineBreaker for GreedyBreaker {
             width_so_far = buffer.iter().map(|i| return i.natural_width()).sum();
             last_break = None;
             // 通常の分割点で折ったとき、それより後ろにあった数式内分割点は持ち越し側に残る
-            // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す
+            // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す。
+            // これが Some のままなら、次のループ判定で「持ち越し + 現在の item」がまだ溢れるとき
+            // その数式内分割点で再び折れる
             last_math_break = buffer.iter().rposition(|carried| return matches!(carried, HItem::MathBreak { .. }));
           }
           buffer.push(item);
@@ -772,5 +777,26 @@ mod tests {
     // Assert
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 2], "{lines:?}");
+  }
+
+  #[test]
+  fn carried_math_break_is_used_for_the_item_that_overflowed() {
+    // Arrange — [b5][glue][b10][MB 3][b10] を幅 20 に。glue で折った後の持ち越し [b10, MB] は
+    // それ単体では 20 に収まるが、次の b10 を足すと再び溢れる。持ち越し後の item でも溢れを
+    // 再判定し、持ち越した数式内分割点で折れることを確かめる
+    let items = vec![
+      box_width(5.0),
+      space_glue(),
+      box_width(10.0),
+      math_break(3.0, 500),
+      box_width(10.0),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::RaggedRight);
+
+    // Assert
+    let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
+    assert_eq!(box_counts, vec![1, 1, 1], "{lines:?}");
   }
 }
