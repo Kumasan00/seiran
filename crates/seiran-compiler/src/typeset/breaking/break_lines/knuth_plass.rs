@@ -769,4 +769,33 @@ mod tests {
     assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
     assert_eq!(lines[1].boxes[1].x, Length::pt(15.0), "折らなかった分割点はアキとして残る: {lines:?}");
   }
+
+  #[test]
+  fn unbroken_math_break_counts_toward_justify_ratio_on_non_final_line() {
+    // Arrange — [b10][glue][b5][MB 5][b5][Penalty0][b10] を幅 32 に。
+    // 分割点は glue（index1）と penalty（index5）の 2 つだけ。全体は自然幅 40 で単独行には収まらない
+    // ので、必ず penalty で 2 行に折る。1 行目 [b10, glue, b5, MB, b5] は非最終行で MB を折らずに含む。
+    // MB のアキ（5）を自然幅に数えなければ両端揃えの配分比がずれて右端が 32 に一致しなくなる。
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(5.0),
+      math_break(5.0, 1),
+      box_width(5.0),
+      HItem::Penalty { value: 0 },
+      box_width(10.0),
+    ];
+
+    // Act
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(32.0), TextAlignment::Justify);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(!lines[0].is_last);
+    assert_eq!(lines[0].boxes.len(), 3, "本文 box 3 つ（MB はボックスを生成しない）: {lines:?}");
+    assert!(
+      close(right_edge(&lines[0]), 32.0),
+      "MB のアキを自然幅に数えて配分比を計算するので右端は版面幅に一致: {lines:?}"
+    );
+  }
 }
