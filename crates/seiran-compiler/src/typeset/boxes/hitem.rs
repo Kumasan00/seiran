@@ -63,10 +63,6 @@ pub(crate) enum HItem {
   /// 使用回数を demerits より優先して最小化し、greedy は行内に通常の分割点が無いときの退避先にする。
   /// 数式内の分割点どうしは `penalty` の 2 乗を demerits に足して比べる（関係子の直後を二項演算子の
   /// 直後より好む。TeX の `\relpenalty` / `\binoppenalty` 相当）。
-  #[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "boxing が LayoutNode::MathBreak から構築するまでの一時措置（同じ PR 内で外す）")
-  )]
   MathBreak {
     /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
     spacing: Length,

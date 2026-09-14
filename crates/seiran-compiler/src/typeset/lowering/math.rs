@@ -48,7 +48,7 @@ pub(super) fn lower_math_block(
     let cells = row
       .cells
       .iter()
-      .map(|cell| return lower_inline_math(cell, font_size, &ctx.style.math.script))
+      .map(|cell| return lower_math_cell(cell, font_size, &ctx.style.math.script))
       .collect();
     let number = state.counter_value(row.id).map(|value| {
       return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size);
@@ -92,19 +92,22 @@ fn alignment_to_align(alignment: Alignment) -> Align {
   };
 }
 
-/// インライン数式（`$...$`）を `AtomNode` 列に変換する
+/// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
+///
+/// トップレベルの二項演算子・関係子の直後に行分割点（`LayoutNode::MathBreak`）を置く。
+/// ディスプレイ数式のセルは行分割しないので [`lower_math_cell`] を使う。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   math_style: &MathScriptStyle,
-) -> Vec<AtomNode> {
-  let ctx = MathLowerCtx {
-    font_size: base_font_size,
-    variant: None,
-    math_style,
-    in_script: false,
-  };
-  return lower_math_list(math_nodes, &ctx);
+) -> Vec<LayoutNode> {
+  let ctx = MathLowerCtx::new(base_font_size, math_style);
+  return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size);
+}
+
+/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（閉じた箱に畳むので行分割点を置かない）
+fn lower_math_cell(math_nodes: &[HirMath], base_font_size: Length, math_style: &MathScriptStyle) -> Vec<AtomNode> {
+  return lower_math_list(math_nodes, &MathLowerCtx::new(base_font_size, math_style));
 }
 
 /// 数式 1 レベルぶんの lowering 文脈
@@ -122,7 +125,17 @@ struct MathLowerCtx<'a> {
   in_script: bool,
 }
 
-impl MathLowerCtx<'_> {
+impl<'a> MathLowerCtx<'a> {
+  /// 数式のトップレベル（text style・字形 variant なし）の文脈を作る
+  fn new(font_size: Length, math_style: &'a MathScriptStyle) -> Self {
+    return MathLowerCtx {
+      font_size,
+      variant: None,
+      math_style,
+      in_script: false,
+    };
+  }
+
   /// 上付き / 下付きの中身用に縮小した文脈を作る
   fn script(&self) -> Self {
     return MathLowerCtx {
@@ -153,13 +166,18 @@ impl MathLowerCtx<'_> {
   }
 }
 
-/// 数式ノード列を、アトム間のアキを入れた `AtomNode` 列に変換する
-fn lower_math_list(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<AtomNode> {
+/// 数式ノード列をスペーシングのアイテム列へ展開する
+fn collect_items(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<spacing::MathItem> {
   let mut items = Vec::new();
   for node in nodes {
     push_math_items(node, ctx, &mut items);
   }
-  return spacing::assemble(items, ctx.font_size, ctx.in_script);
+  return items;
+}
+
+/// 数式ノード列を、アトム間のアキを入れた `AtomNode` 列に変換する
+fn lower_math_list(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<AtomNode> {
+  return spacing::assemble(collect_items(nodes, ctx), ctx.font_size, ctx.in_script);
 }
 
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
@@ -306,17 +324,26 @@ mod tests {
     });
   }
 
-  /// レイアウトノード列に含まれるカーン幅を出現順に返すヘルパ
+  /// レイアウトノード列に含まれるアトム間アキの幅を出現順に返すヘルパ
   ///
-  /// インライン数式のアトム間アキは、段落の水平リストへ持ち上がると `LayoutNode::Kern` になる。
-  fn kerns(nodes: &[LayoutNode]) -> Vec<Length> {
+  /// インライン数式のアキは、段落の水平リストでは `LayoutNode::Kern` か、行分割点
+  /// `LayoutNode::MathBreak`（折り返さないときに残るアキ）になる。
+  fn spacings(nodes: &[LayoutNode]) -> Vec<Length> {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        LayoutNode::Kern { length } => return Some(*length),
+        LayoutNode::Kern { length }
+        | LayoutNode::MathBreak {
+          spacing: length, ..
+        } => return Some(*length),
         _ => return None,
       })
       .collect();
+  }
+
+  /// レイアウトノード列に含まれる行分割点の数を返すヘルパ
+  fn math_break_count(nodes: &[LayoutNode]) -> usize {
+    return nodes.iter().filter(|node| return matches!(node, LayoutNode::MathBreak { .. })).count();
   }
 
   /// 既定の本文フォントサイズにおける mu 単位のアキ幅を返すヘルパ
@@ -430,21 +457,21 @@ mod tests {
   fn lower_inline_math_inserts_medium_space_around_binary_operator() {
     let nodes = lower_math_source("$a+b$\n");
 
-    assert_eq!(kerns(&nodes), vec![mu(4); 2], "二項演算子の前後は中アキ: {nodes:?}");
+    assert_eq!(spacings(&nodes), vec![mu(4); 2], "二項演算子の前後は中アキ: {nodes:?}");
   }
 
   #[test]
   fn lower_inline_math_inserts_thick_space_around_relation() {
     let nodes = lower_math_source("$a=b$\n");
 
-    assert_eq!(kerns(&nodes), vec![mu(5); 2], "関係子の前後は太アキ: {nodes:?}");
+    assert_eq!(spacings(&nodes), vec![mu(5); 2], "関係子の前後は太アキ: {nodes:?}");
   }
 
   #[test]
   fn lower_inline_math_keeps_ordinaries_tight_in_one_run() {
     let nodes = lower_math_source("$ab$\n");
 
-    assert!(kerns(&nodes).is_empty(), "通常記号どうしは詰まる: {nodes:?}");
+    assert!(spacings(&nodes).is_empty(), "通常記号どうしは詰まる: {nodes:?}");
     assert_eq!(math_text_styles(&nodes).count(), 1, "アキの無い並びは 1 本のグリフランにまとまる: {nodes:?}");
   }
 
@@ -452,14 +479,14 @@ mod tests {
   fn lower_inline_math_treats_leading_binary_operator_as_ordinary() {
     let nodes = lower_math_source("$-x$\n");
 
-    assert!(kerns(&nodes).is_empty(), "先頭の二項演算子は順序子として扱う: {nodes:?}");
+    assert!(spacings(&nodes).is_empty(), "先頭の二項演算子は順序子として扱う: {nodes:?}");
   }
 
   #[test]
   fn lower_inline_math_group_suppresses_binary_spacing() {
     let nodes = lower_math_source("$a{+}b$\n");
 
-    assert!(kerns(&nodes).is_empty(), "グループは順序子 1 個なのでアキが消える: {nodes:?}");
+    assert!(spacings(&nodes).is_empty(), "グループは順序子 1 個なのでアキが消える: {nodes:?}");
   }
 
   #[test]
@@ -470,7 +497,7 @@ mod tests {
 
     // Assert
     assert_eq!(concat_texts(&spaced), concat_texts(&tight), "ソースの空白は組版に出さない");
-    assert_eq!(kerns(&spaced), kerns(&tight));
+    assert_eq!(spacings(&spaced), spacings(&tight));
   }
 
   #[test]
@@ -478,7 +505,7 @@ mod tests {
     // 「核 + スクリプト」が 1 個のアトムとして振る舞い、`+` のアキは核ではなくそのアトムとの間に入る。
     let nodes = lower_math_source("$x^{2}+y$\n");
 
-    assert_eq!(kerns(&nodes), vec![mu(4); 2], "アキが入るのは + の前後だけ（上付きの前には入らない）: {nodes:?}");
+    assert_eq!(spacings(&nodes), vec![mu(4); 2], "アキが入るのは + の前後だけ（上付きの前には入らない）: {nodes:?}");
     assert!(
       matches!(nodes.first(), Some(LayoutNode::Text(..))) && matches!(nodes.get(1), Some(LayoutNode::Raise { .. })),
       "核の直後にアキ無しでスクリプトが続く: {nodes:?}"
@@ -501,22 +528,22 @@ mod tests {
     let binary = lower_math_source("$a\\times b$\n");
     let relation = lower_math_source("$a\\leq b$\n");
 
-    assert_eq!(kerns(&binary), vec![mu(4); 2], "\\times は二項演算子: {binary:?}");
-    assert_eq!(kerns(&relation), vec![mu(5); 2], "\\leq は関係子: {relation:?}");
+    assert_eq!(spacings(&binary), vec![mu(4); 2], "\\times は二項演算子: {binary:?}");
+    assert_eq!(spacings(&relation), vec![mu(5); 2], "\\leq は関係子: {relation:?}");
   }
 
   #[test]
   fn lower_inline_math_inserts_thin_space_after_punctuation_only() {
     let nodes = lower_math_source("$f(x,y)$\n");
 
-    assert_eq!(kerns(&nodes), vec![mu(3)], "区切りの後だけ細アキが入り、括弧の内外は詰まる: {nodes:?}");
+    assert_eq!(spacings(&nodes), vec![mu(3)], "区切りの後だけ細アキが入り、括弧の内外は詰まる: {nodes:?}");
   }
 
   #[test]
   fn lower_inline_math_spaces_large_operator_on_both_sides() {
     let nodes = lower_math_source("$a\\sum b$\n");
 
-    assert_eq!(kerns(&nodes), vec![mu(3); 2], "大型演算子の前後は細アキ: {nodes:?}");
+    assert_eq!(spacings(&nodes), vec![mu(3); 2], "大型演算子の前後は細アキ: {nodes:?}");
   }
 
   /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
@@ -602,5 +629,26 @@ mod tests {
     let nodes = lower_math_source("$\\mathbold{\\frac{a}{b}}$\n");
 
     assert_eq!(concat_texts(&nodes), "\u{1D41A}/\u{1D41B}");
+  }
+
+  #[test]
+  fn lower_inline_math_breaks_after_top_level_operators() {
+    let nodes = lower_math_source("$a+b=c$\n");
+
+    assert_eq!(math_break_count(&nodes), 2, "+ と = の直後に分割点: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_inline_math_does_not_break_inside_nested_constructs() {
+    let nodes = lower_math_source("$x^{a+b}{c+d}\\frac{e+f}{g}\\sqrt{h+i}(j+k)$\n");
+
+    assert_eq!(math_break_count(&nodes), 0, "スクリプト・グループ・分数・根号・括弧の内側では割らない: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_inline_math_breaks_through_styled_variant() {
+    let nodes = lower_math_source("$\\mathbold{a+b}$\n");
+
+    assert_eq!(math_break_count(&nodes), 1, "字形 variant はグループではないので透過する: {nodes:?}");
   }
 }

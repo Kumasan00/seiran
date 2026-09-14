@@ -144,6 +144,7 @@ impl<'a> Measurer<'a> {
         | LayoutNode::Kern { .. }
         | LayoutNode::LineBreak
         | LayoutNode::Raise { .. }
+        | LayoutNode::MathBreak { .. }
         | LayoutNode::Link { .. }
         | LayoutNode::FlushRight(..)
         | LayoutNode::Footnote { .. }
@@ -273,6 +274,10 @@ impl<'a> Measurer<'a> {
       },
       LayoutNode::Raise { offset, children } => {
         out.push(HItem::Box(self.build_atom(offset, children)));
+      },
+      // インライン数式の演算子直後の分割点。折り返さなければアキ、折り返せば消える
+      LayoutNode::MathBreak { spacing, penalty } => {
+        out.push(HItem::MathBreak { spacing, penalty });
       },
       // QED マーク: 子テキストを 1 つの閉じた箱に畳み、直前に分割機会（Penalty）を挿んで
       // 右寄せ末尾ボックスにする。折り返し時はこの Penalty で QED だけが次行へ運ばれる
@@ -433,7 +438,7 @@ impl<'a> Measurer<'a> {
 
       let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
       if style.font_kind == FontKind::Math {
-        // 数式は行分割の対象にしない（閉じた box のまま行に載せる）
+        // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
         out.push(HItem::Box(hbox));
         continue;
       }
