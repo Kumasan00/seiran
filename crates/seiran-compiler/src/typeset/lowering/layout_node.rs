@@ -54,6 +54,17 @@ pub(crate) enum LayoutNode {
     /// ずらす対象の子ノード列
     children: Vec<AtomNode>,
   },
+  /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
+  ///
+  /// `crate::typeset::boxing` が `HItem::MathBreak` にする。折り返さなければ `spacing` 幅のアキ、
+  /// 折り返せば何も出さない。ディスプレイ数式のセルと、数式内のグループ・分数・根号・スクリプトは
+  /// [`AtomNode`] で組むので、この分割点は構造上そこへ入らない。
+  MathBreak {
+    /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
+    spacing: Length,
+    /// 数式内の分割点どうしを比べるペナルティ
+    penalty: i32,
+  },
   /// 表（`table` 環境）
   Table(TableLayout),
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）

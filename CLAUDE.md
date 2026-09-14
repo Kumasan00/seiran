@@ -110,8 +110,10 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
   文書木への書き戻しはどの段も行わない
 - box は boxing で寸法を 1 回だけ計測して保持し、breaking 以降のパスはフォントに触れない
 - 行分割・縦組版とも glue / penalty モデル（行分割は Knuth–Plass。greedy は内部フォールバックのみ）
-- 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない。記号間のアキは数式クラスの表から
-  固定 kern（1mu = font_size/18）で出し、ソースに書かれた空白は組版に出さない
+- インライン数式はトップレベル（括弧の外）の二項演算子・関係子の直後だけで行分割でき、その分割点は
+  他の分割点で組めないときだけ使う。上付き下付き・分数・根号・グループとディスプレイ数式は閉じた箱
+  （`HBoxContent::Atom`）のまま。記号間のアキは数式クラスの表から固定 kern（1mu = font_size/18）で出し、
+  ソースに書かれた空白は組版に出さない
 - 脚注は本文の実効下限を縮めて配置し、行単位でページ間繰越。ページ単位採番のときだけ本文パスを
   不動点まで反復する（`typeset::pagination::footnote_numbering`）
 - 組版中間型（`Page` / `PlacedBlock` / `LaidOutDocument`）は `typeset` の外に本体コードの消費者を持たない。

@@ -60,11 +60,7 @@ pub(super) fn lower_inline(
       return code::lower_inline_code(text, parent_style);
     },
     HirInlineKind::InlineMath(math_nodes) => {
-      // 数式は Atom の語彙（`AtomNode`）で組まれるので、段落の水平リストへ流すには持ち上げる
-      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script)
-        .into_iter()
-        .map(LayoutNode::from)
-        .collect();
+      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script);
     },
     HirInlineKind::Symbol(ch) => {
       return vec![LayoutNode::Text(ch.to_string(), parent_style)];

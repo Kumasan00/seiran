@@ -79,18 +79,54 @@ struct Breakpoint {
   at: usize,
   /// 語中ハイフネーション（[`HItem::Discretionary`]）での破断か
   hyphen: bool,
+  /// 数式内分割点（[`HItem::MathBreak`]）での破断なら、そのペナルティ
+  math_penalty: Option<i32>,
   /// サブ段落末尾の仮想破断点（強制・最終行）か
   is_end: bool,
 }
 
+/// 破断経路の累積コスト（DP が最小化する量）
+///
+/// 数式内分割点（[`HItem::MathBreak`]）は「他の分割点で組めないときだけ使う」ので、その使用回数を
+/// demerits より優先して比べる（derive した `PartialOrd` はフィールドの宣言順に辞書式比較する）。
+/// demerits への定数加算では表せない — どれほど大きな定数でも、疎な行が十分に続けば数式内分割の方が
+/// 安くなってしまう。数式内分割点を含まない段落では `math_breaks` が常に 0 なので、比較は従来の
+/// demerits 比較と一致する。
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+struct PathCost {
+  /// 経路上の数式内分割の回数
+  math_breaks: u32,
+  /// 経路上の demerits の総和
+  demerits: f64,
+}
+
+impl PathCost {
+  /// 経路の起点（行頭 = item 0）のコスト
+  const START: PathCost = PathCost {
+    math_breaks: 0,
+    demerits: 0.0,
+  };
+
+  /// 破断点 `brk` で終わる 1 行（demerits `demerits`）を継ぎ足した経路のコストを返す
+  fn then(self, brk: &Breakpoint, demerits: f64) -> Self {
+    return PathCost {
+      math_breaks: self.math_breaks + u32::from(brk.math_penalty.is_some()),
+      demerits: self.demerits + demerits,
+    };
+  }
+}
+
 /// 1 本の候補行（開始位置 → 破断点）のコスト評価結果
 ///
-/// `Feasible` が demerits だけでなく badness と調整比も持つのは、DP の選択には demerits しか要らない
-/// 一方で、TRACE 観測では「なぜその demerits になったか」を見るのに元の疎密が要るため。
+/// `Feasible` が demerits だけでなく badness と調整比も持つのは、DP が最小化する [`PathCost`] へは
+/// この行の demerits だけ渡せば足りる（数式内分割の回数は breakpoint 自身の `math_penalty` から
+/// [`PathCost::then`] が決めるので、Edge 側は関与しない）一方で、TRACE 観測では「なぜその demerits に
+/// なったか」を見るのに元の疎密が要るため。
 enum Edge {
   /// 実現可能
   Feasible {
-    /// この行に課される demerits（DP が最小化する量）
+    /// この行に課される demerits（[`PathCost::then`] が積み上げ、DP はその合計を [`PathCost`] として
+    /// 最小化する）
     demerits: f64,
     /// 疎密の罰点。`INFINITE_BADNESS` で頭打ち
     badness: f64,
@@ -115,16 +151,25 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       } => breaks.push(Breakpoint {
         at: i,
         hyphen: false,
+        math_penalty: None,
         is_end: false,
       }),
       HItem::Penalty { value } if *value <= 0 => breaks.push(Breakpoint {
         at: i,
         hyphen: false,
+        math_penalty: None,
         is_end: false,
       }),
       HItem::Discretionary { .. } => breaks.push(Breakpoint {
         at: i,
         hyphen: true,
+        math_penalty: None,
+        is_end: false,
+      }),
+      HItem::MathBreak { penalty, .. } => breaks.push(Breakpoint {
+        at: i,
+        hyphen: false,
+        math_penalty: Some(*penalty),
         is_end: false,
       }),
       // 破断候補にならないアイテム。`Glue` / `Penalty` が上の arm にも出るのは、
@@ -145,14 +190,15 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
   breaks.push(Breakpoint {
     at: items.len(),
     hyphen: false,
+    math_penalty: None,
     is_end: true,
   });
 
-  // DP: best[j] = 破断点 breaks[j] で行を終える最小総 demerits。
-  // prev[j] = Some(i) で直前破断が breaks[i]、None で行頭（item 0）から始まる（best[j] 有限時のみ有効）。
+  // DP: best[j] = 破断点 breaks[j] で行を終える最小経路コスト（到達不能なら None）。
+  // prev[j] = Some(i) で直前破断が breaks[i]、None で行頭（item 0）から始まる（best[j] が Some の時のみ有効）。
   // best_badness[j] = 採用したエッジ単体の badness（TRACE 観測用。DP の選択には使わない）。
   let node_count = breaks.len();
-  let mut best = vec![f64::INFINITY; node_count];
+  let mut best: Vec<Option<PathCost>> = vec![None; node_count];
   let mut prev: Vec<Option<usize>> = vec![None; node_count];
   let mut best_badness = vec![0.0f64; node_count];
 
@@ -170,10 +216,10 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
         Edge::Feasible {
           demerits, badness, ..
         } => {
-          if best[i].is_finite() {
-            let total = best[i] + demerits;
-            if total < best[j] {
-              best[j] = total;
+          if let Some(from) = best[i] {
+            let total = from.then(&breaks[j], demerits);
+            if best[j].is_none_or(|current| return total < current) {
+              best[j] = Some(total);
               prev[j] = Some(i);
               best_badness[j] = badness;
             }
@@ -186,16 +232,18 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       && let Edge::Feasible {
         demerits, badness, ..
       } = edge_cost(items, 0, &breaks[j], false, text_width)
-      && demerits < best[j]
     {
-      best[j] = demerits;
-      prev[j] = None;
-      best_badness[j] = badness;
+      let total = PathCost::START.then(&breaks[j], demerits);
+      if best[j].is_none_or(|current| return total < current) {
+        best[j] = Some(total);
+        prev[j] = None;
+        best_badness[j] = badness;
+      }
     }
   }
 
   // 末尾の仮想破断点へ到達できない（実現可能な分割が無い）ならフォールバック
-  if !best[node_count - 1].is_finite() {
+  if best[node_count - 1].is_none() {
     return GreedyBreaker.break_lines(items, text_width, TextAlignment::Justify);
   }
 
@@ -229,6 +277,7 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       break_at = brk.at,
       is_last = brk.is_end,
       is_hyphenated = brk.hyphen,
+      is_math_break = brk.math_penalty.is_some(),
       badness = best_badness[node],
       width_pt = %line.width().to_pt(),
       text = observe::summarize_line(&line),
@@ -259,6 +308,7 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
     break_at = brk.at,
     is_last = brk.is_end,
     is_hyphenated = brk.hyphen,
+    is_math_break = brk.math_penalty.is_some(),
     is_prev_hyphenated = prev_hyphen,
     outcome,
     demerits = ?demerits,
@@ -299,7 +349,7 @@ fn evaluate_edge(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyph
       return Edge::Overflow;
     }
     return Edge::Feasible {
-      demerits: demerits(0.0, brk.hyphen, prev_hyphen),
+      demerits: demerits(0.0, brk.hyphen, prev_hyphen, brk.math_penalty),
       badness: 0.0,
       ratio: 0.0,
     };
@@ -326,15 +376,22 @@ fn evaluate_edge(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyph
 
   let badness = (100.0 * ratio.abs().powi(3)).min(INFINITE_BADNESS);
   return Edge::Feasible {
-    demerits: demerits(badness, brk.hyphen, prev_hyphen),
+    demerits: demerits(badness, brk.hyphen, prev_hyphen, brk.math_penalty),
     badness,
     ratio,
   };
 }
 
 /// badness と破断種別から 1 行ぶんの demerits を求める
-fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
+///
+/// 数式内分割点で折った行には penalty の 2 乗を足す（TeX の `\binoppenalty` / `\relpenalty` と同じ形）。
+/// 数式内分割点を使うかどうか自体は [`PathCost`] の回数比較で決まるので、この項は数式内分割点どうしの
+/// 比較にだけ効く。
+fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool, math_penalty: Option<i32>) -> f64 {
   let mut total = (LINE_PENALTY + badness).powi(2);
+  if let Some(penalty) = math_penalty {
+    total += f64::from(penalty).powi(2);
+  }
   if hyphen {
     total += HYPHEN_DEMERIT;
     if prev_hyphen {
@@ -346,14 +403,14 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use super::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, break_subparagraph};
+  use super::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, PathCost, break_subparagraph, demerits};
   use crate::{
     length::Length,
     style::TextAlignment,
     typeset::{
       boxes::{HItem, Line},
       breaking::break_lines::test_support::{
-        box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box,
+        box_width, discretionary, flush_right_box, link_target, math_break, stretch_glue, test_box,
       },
     },
   };
@@ -655,5 +712,109 @@ mod tests {
     assert!(!lines[0].is_last);
     assert!(!lines[1].is_last);
     assert!(lines[2].is_last);
+  }
+
+  #[test]
+  fn path_cost_prefers_fewer_math_breaks_over_lower_demerits() {
+    let one_math_break = PathCost {
+      math_breaks: 1,
+      demerits: 0.0,
+    };
+    let loose_without_math_break = PathCost {
+      math_breaks: 0,
+      demerits: 1.0e12,
+    };
+    assert!(loose_without_math_break < one_math_break, "数式内分割の回数を demerits より優先して比べる");
+  }
+
+  #[test]
+  fn demerits_prefers_relation_break_over_binary_operator_break() {
+    assert!(
+      demerits(0.0, false, false, Some(500)) < demerits(0.0, false, false, Some(700)),
+      "penalty の 2 乗が効くので、関係子の分割点（500）が二項演算子の分割点（700）より優先される"
+    );
+  }
+
+  #[test]
+  fn demerits_prefers_no_math_break_over_a_math_break() {
+    assert!(
+      demerits(0.0, false, false, None) < demerits(0.0, false, false, Some(500)),
+      "数式内分割点を使わない行の方が demerits が低い"
+    );
+  }
+
+  #[test]
+  fn uses_math_break_when_no_other_fit_exists() {
+    // Arrange — [b20][glue][b10][MB 3][b20] を幅 36 に。空白で折ると 1 行目が伸縮点の無い b20 だけ
+    // （実現不能）、折らないと 58 で溢れる。数式内分割点で折る道だけが残る
+    let items = vec![
+      box_width(20.0),
+      stretch_glue(),
+      box_width(10.0),
+      math_break(3.0, 500),
+      box_width(20.0),
+    ];
+
+    // Act
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(36.0), TextAlignment::Justify);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 2, "{lines:?}");
+    assert_eq!(lines[1].boxes.len(), 1, "{lines:?}");
+    assert_eq!(lines[1].boxes[0].x, Length::ZERO, "演算子後のアキは次行の行頭に残らない: {lines:?}");
+  }
+
+  #[test]
+  fn prefers_loose_line_over_math_break() {
+    // Arrange — 幅 40。数式内分割点で折れば 1 行目がぴったり（badness 0）だが、空白で折る疎な行
+    // （badness 上限）が実現可能なので、そちらを選ぶ
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
+      math_break(5.0, 1),
+      box_width(10.0),
+    ];
+
+    // Act
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(40.0), TextAlignment::Justify);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 2, "2 つ目の空白で折る: {lines:?}");
+    assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
+    assert_eq!(lines[1].boxes[1].x, Length::pt(15.0), "折らなかった分割点はアキとして残る: {lines:?}");
+  }
+
+  #[test]
+  fn unbroken_math_break_counts_toward_justify_ratio_on_non_final_line() {
+    // Arrange — [b10][glue][b5][MB 5][b5][Penalty0][b10] を幅 32 に。
+    // 分割点は glue（index1）と penalty（index5）の 2 つだけ。全体は自然幅 40 で単独行には収まらない
+    // ので、必ず penalty で 2 行に折る。1 行目 [b10, glue, b5, MB, b5] は非最終行で MB を折らずに含む。
+    // MB のアキ（5）を自然幅に数えなければ両端揃えの配分比がずれて右端が 32 に一致しなくなる。
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(5.0),
+      math_break(5.0, 1),
+      box_width(5.0),
+      HItem::Penalty { value: 0 },
+      box_width(10.0),
+    ];
+
+    // Act
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(32.0), TextAlignment::Justify);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(!lines[0].is_last);
+    assert_eq!(lines[0].boxes.len(), 3, "本文 box 3 つ（MB はボックスを生成しない）: {lines:?}");
+    assert!(
+      close(right_edge(&lines[0]), 32.0),
+      "MB のアキを自然幅に数えて配分比を計算するので右端は版面幅に一致: {lines:?}"
+    );
   }
 }

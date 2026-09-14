@@ -162,6 +162,9 @@ pub(super) fn build_line(
           };
       },
       HItem::Kern(value) => x += *value,
+      // 行内に残った数式内分割点は、折り返さなかったのでアキとして幅を持つ
+      // （折り返した点のアイテムは破断アイテムとして行から除かれ、ここへは来ない）
+      HItem::MathBreak { spacing, .. } => x += *spacing,
       // 右寄せ末尾ボックス: 行内累積 x を無視し、本文幅の右端へ寄せる
       HItem::FlushRight(hbox) => {
         let flush_x = (available - hbox.width).max(Length::ZERO);
@@ -332,6 +335,14 @@ pub(super) mod test_support {
         height: pt(6.0),
         depth: Length::ZERO,
       },
+    };
+  }
+
+  /// テスト用の数式内分割点（折り返さないときのアキ・ペナルティを指定）
+  pub(super) fn math_break(spacing: f32, penalty: i32) -> HItem {
+    return HItem::MathBreak {
+      spacing: pt(spacing),
+      penalty,
     };
   }
 
