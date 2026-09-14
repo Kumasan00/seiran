@@ -330,7 +330,7 @@ pub struct Point {
 
 /// ページ左上原点の矩形（左上角 + 幅 + 高さ、単位: pt）。
 ///
-/// 幅・高さは非負の有限値であることが構築時に保証される（krilla の `Rect::from_xywh` の
+/// 座標が有限で、幅・高さが非負の有限値であることが構築時に保証される（krilla の `Rect::from_xywh` の
 /// 受け入れ条件と同じ）。画像・ページのように「0 も許されない」箇所は
 /// [`PublicationPage::new`] が追加で検査する。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -421,7 +421,7 @@ pub struct PublicationOutlineEntry {
 
 /// テストが描画資源を組み立てるための fixture（本体コードは `build` の構築経路だけを使う）。
 ///
-/// `pub(crate)` なのは `publication` の外の `compiler::dump` のテストも使うため
+/// `pub(crate)` なのは `publication` の外（`compiler::dump` / `typeset::emit`）のテストも使うため
 /// （`Publication` のダンプは描画資源の中身を読まないので、同じダミー資源で足りる）。
 #[cfg(test)]
 pub(crate) mod test_fixtures {

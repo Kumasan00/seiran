@@ -17,12 +17,10 @@ description: >-
 | 作業 | 節 |
 | --- | --- |
 | エラー enum の新設・variant 追加、`#[source]` / `#[diagnostic_source]` の選択 | エラー型の定義 |
-| 診断 `code` の命名 | 診断 `code` の規約 |
+| 診断 `code` の命名・変更（golden の再生成を含む） | 診断 `code` の規約 |
 | span・`SourceId`・`NamedSource` の付与 | ソース位置付きエラー |
 | 複数の違反をまとめて返す（`Failures<E>` / `CompileFailure`） | 複数エラーの集約 |
 | warning の追加、`tracing::warn!` との使い分け | warning と tracing |
 | 「到達しないはず」の分岐、`unreachable!` | 内部不変条件違反 |
 | 関数の戻り型、`main` の形 | シグネチャの原則 |
 | config.toml / style.toml の値検証 | バリデーション（garde） |
-
-`code` を変えたら `crates/seiran-compiler/tests/golden_diagnostics/` を再生成して差分を確認する（手順は正典の同節）。

@@ -1,8 +1,9 @@
 //! 確定レイアウトのテスト用 fixture builder（`#[cfg(test)]` 限定）
 //!
-//! `compiler` など `typeset` の外側の module が確定レイアウトを組み立ててテストする際の唯一の
-//! 入口。組版中間型（`HBox` / `Line` / `PositionedBox` / `Placed*` / `TableRowBox` /
-//! `TableCellBox` / `OutlineEntry`）を production の facade へ出さずに済ませるために置く（#353）。
+//! `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てる際の唯一の入口。
+//! `typeset` root が `#[cfg(test)]` でも再エクスポートしない組版中間型（`HBox` / `Line` /
+//! `PositionedBox` / `PlacedBlock` 以外の `Placed*` / `TableRowBox` / `TableCellBox` / `OutlineEntry`）を
+//! facade へ出さずに済ませるために置く（#353）。
 //!
 //! **不変条件**: ここの関数・メソッドは引数型にも返り値型にも上記の中間型を現さない。受け取るのは
 //! 意味的な値（テキスト・座標・構造）だけで、返すのは [`Page`] / [`PlacedBlock`] /

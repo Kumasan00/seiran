@@ -263,7 +263,7 @@ unused_rounding = "warn"
 while_float = "warn"
 
 # 節見出しと置き場の規則は上の clippy テーブルと同じ（目的が空の節は置かない）。カタログ（`rustc -W help` の
-# allow-by-default 61 lint）全数の処分記録は #421（採用 23 / 恒久不採用 / 見送り）。
+# allow-by-default 61 lint）全数の処分記録は #421（採用 / 恒久不採用 / 見送り）。
 [workspace.lints.rust]
 
 # ---------------------------------------------------------------------------

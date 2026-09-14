@@ -1,5 +1,5 @@
 //! 組版 module — 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の [`Publication`]
-//! へ変換する（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
+//! へ変換する（旧 `typeset` crate、#307 でライブラリ crate（現 `seiran-compiler`）の非公開 module として吸収）
 //!
 //! 外向きの操作は [`compose`]（と入力読込が呼ぶ版面の構築 `PreparedGeometry::prepare`）だけで、フォント
 //! 資源の構築（解析 → メトリクス → 検証 → シェーパー）から段順序（画像パス収集 → 画像読込 → lowering →
@@ -47,7 +47,7 @@ mod warning;
 // こちら側で、`compiler::golden` は `dump_pages` の 1 関数だけを借りる（#353）。
 #[cfg(test)]
 mod dump;
-// 外側の module のテストが確定レイアウトを組み立てるための fixture builder（#353）。
+// `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てるための fixture builder（#353）。
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 
@@ -187,8 +187,8 @@ fn load_fonts<'a>(
 
 /// 意味解析の成果物を確定レイアウトへ組版する（`typeset` phase の前半）。
 ///
-/// 段順序（シェーパー構築 → 画像パス収集 → 画像読込 → lowering → 計測 → 行分割・改ページ →
-/// 前付け・後付け → ページラベル → 走り文 → outline）はここから先の実装に閉じる。
+/// 段順序（シェーパー構築 → 画像パス収集 → 画像読込 → lowering → 計測 → 画像寸法確定 →
+/// 行分割・改ページ → 前付け・後付け → ページラベル → 走り文 → outline）はここから先の実装に閉じる。
 ///
 /// # Errors
 ///

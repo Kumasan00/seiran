@@ -46,7 +46,7 @@ pub(crate) enum ParseSourceError {
   #[diagnostic(transparent)]
   Syntax(#[from] ParserError),
 
-  /// 評価（CST → Document IR 変換）で発生したエラー
+  /// 評価（CST → HIR 変換）で発生したエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
   Eval(#[from] EvalError),
@@ -1080,7 +1080,7 @@ mod tests {
   #[test]
   fn evaluate_item_indented_nested_list_matches_packed_equivalent() {
     // issue #160 — \item{...} の内容を改行・インデントして書いても、詰めて 1 行で書いた場合と
-    // 完全に同じ Document IR になるべき（余分な空白・空段落が出ない）。ID 予約の穴の位置は
+    // 完全に同じ HIR になるべき（余分な空白・空段落が出ない）。ID 予約の穴の位置は
     // 空白トークンの量に応じて変わるため、比較は NodeId を無視した構造比較（same_shape）で行う。
     let indented = evaluate_source(
       "\\begin{itemize}\n  \\item{1 段目の項目。マーカーは黒丸。\n    \\begin{itemize}\n      \

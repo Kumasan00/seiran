@@ -19,7 +19,7 @@
 //! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う（#530）。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` は
-//! crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が `font` /
+//! crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が seam / `in_file` / `font` /
 //! `length` / `failures` を、`font` が seam（[`ProjectSource`] / [`ProjectPath`]）と `failures` を、
 //! `source_set` が `source` / `failures` を参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を、
 //! `SourceSet` が `source::SourceId` を値として持つため）。`config` → `font` → seam は一方向に閉じる。

@@ -16,7 +16,7 @@ description: >-
 
 ## 前提（初回のみ）
 
-golden テストの入力はコミット済み fixture（`crates/seiran-compiler/tests/config/`）と、
+golden テストの入力はコミット済み fixture（本文 `tests/text/*.sei`・設定 `crates/seiran-compiler/tests/config/`）と、
 `tools/fetch-test-assets.sh` が SHA-256 検証付きで `vendor/` へ取得するピン留め資産
 （フォント・CSL。gitignore 対象・コミットしない）。`vendor/fonts` が無い状態で
 テストを走らせると assert で案内が出る。ユーザローカルの `config/` / `fonts/` は
@@ -28,7 +28,8 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 | --- | --- |
 | レイアウト（座標・寸法）に効く変更 — breaking / boxing / lowering / frontend / config の style 等 | layout dump golden（下記） |
 | `Publication` に載る値に効く変更 — 文書メタデータ・リンク矩形・しおり項目（`dump_publication` がダンプする範囲） | layout dump golden（下記） |
-| ダンプに映らない層 — krilla の描画そのもの（PDF オブジェクト構造・フォント埋め込み・XMP・trailer `/ID`） | PDF バイト比較（下記、日時固定が必須） |
+| render 層の構造 — ページ数・埋め込みフォント数・リンク注釈数・しおり・画像 XObject 数 | PDF 構造 golden（下記） |
+| どのダンプにも映らない層 — krilla の描画そのもの（オブジェクトの中身・XMP・trailer `/ID`） | PDF バイト比較（下記、日時固定が必須） |
 
 ## layout dump golden
 
@@ -41,9 +42,8 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 テストの内部分類（golden ファイルを読まないダンプ直接比較・`Page` / `PlacedBlock` への直接アサート）は
 **golden.rs の module doc が正典** — この skill には再掲しない。入力はすべて
 `compiler::test_support::TestProject` が組み立て、production と同じ `input::load` から始まる経路を通る
-（`compile` か、組版中間表現が要るときだけ `TestProject::layout`）。前付け・running content・段組みは
-既定 config で無効で、fixture 名ごとの差分が有効化している（該当経路を触ったら fixture が機能を
-実際に通しているか確認する）。
+（`compile` か、組版中間表現が要るときだけ `TestProject::layout`）。既定 config で無効な経路を触ったら、
+有効化する fixture が実際に通しているか確認する（対応表は golden.rs module doc「カバレッジの注意」）。
 
 - **確認**: `cargo test -p seiran-compiler`
 - **意図した変更**: `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で再生成し、`git diff` で
@@ -53,10 +53,9 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 
 ### 新機能にテストを足す
 
-`tests/text/<name>.sei` を追加 → `GOLDEN_INPUTS` へ登録（既定で無効な機能は `test_support` の
-fixture 差分へ追記。config 差分は生 TOML の 1 系統だけ）→ `UPDATE_GOLDEN=1` で生成・内容確認・
-コミット。登録手順の詳細は golden.rs module doc の「新機能に golden テストを足す」節に従う。
-外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存）。
+手順（入力の追加 → `GOLDEN_INPUTS` への登録 → `UPDATE_GOLDEN=1` で生成）は golden.rs module doc の
+「新機能に golden テストを足す」節が正典。外部ファイルに依存する入力は対象外（前例: `figure.sei` は
+画像実体にレイアウトが依存）。
 
 ## PDF 構造 golden（render 層の構造だけ）
 
@@ -70,8 +69,8 @@ render 層を触ったら **`cargo test -p seiran-pdf`** も確認する（レ�
 ## PDF バイト比較（render 層のみ）
 
 PDF には `crates/seiran-pdf/src/metadata.rs` の `Utc::now()` 由来の `CreationDate` /
-`ModDate` が埋め込まれ、krilla はその日時を含むハッシュから trailer の `/ID`（第 2 要素）と XMP の
-InstanceID を導出する。**同じコードでもビルド時刻が違えば PDF バイトは変わる**ため、
+`ModDate` が埋め込まれ、krilla はその日時を含む PDF 本体のハッシュから trailer の `/ID`（第 2 要素。
+`[document].author` 未設定なら第 1 要素も同じ値）と XMP の InstanceID を導出する。**同じコードでもビルド時刻が違えば PDF バイトは変わる**ため、
 生の `cmp` はそのままでは使えない。
 
 手順（振る舞い不変の確認）:

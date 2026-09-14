@@ -1,4 +1,4 @@
-//! 意味解析が確定した事実 — `NodeId` をキーにした fact の side table [`SemanticFacts`]。
+//! 意味解析が確定した事実 — `NodeId` を主キーにした fact の side table [`SemanticFacts`]。
 //!
 //! ここに入るのは「意味と識別」だけ。`number_format` / `ref_format` 適用後の表示文字列、
 //! CSL による引用ラベルと書誌、font・色・長さ・座標、脚注のページ単位表示番号はいずれも

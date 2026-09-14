@@ -1,7 +1,7 @@
 //! 確定ページ列の組み立て — 本文・前付け・後付け・ページラベル・走り文・outline の段順序
 //!
-//! 各段の呼び出し順序はこの module に閉じており、[`paginate`] の 1 操作だけが `typeset` root から
-//! 見える（#350 で `compiler` から移設）。
+//! 各段の呼び出し順序はこの module に閉じており、`typeset` root から見えるのは [`paginate`] と
+//! [`TypesetContext::new`] の 2 つだけ（#350 で `compiler` から移設）。
 
 mod back_matter;
 mod body;

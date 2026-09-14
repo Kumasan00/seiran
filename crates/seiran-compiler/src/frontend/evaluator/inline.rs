@@ -40,7 +40,8 @@ use crate::{
 /// 受け取った方針を子へ渡す（`\section{\bold{x\index{x}}}` に穴を開けないため）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IndexPolicy {
-  /// `\index` を許可する（脚注本体・キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈）
+  /// `\index` を許可する（キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈。書体 / 色指定と
+  /// 脚注本体は呼び出し元の方針を引き継ぐ）
   Allow,
   /// `\index` を [`EvalError::IndexNotAllowedHere`] で拒否する
   ///

@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 話題 | 正典 | 読むとき |
 | --- | --- | --- |
 | 言語設計の目的・原則・判断事例 | `docs/language-design.md` | 新コマンド・環境・オプション・style フィールドを設計するとき |
-| crate / module の境界・依存の向き・段間プロトコル・不変条件と style.toml の設計（module の目録＝子 module・関数・フィールドは `//!` と doc コメント、style のキー一覧は style struct の doc） | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
+| crate / module の境界・依存の向き・段間プロトコル・不変条件と style.toml の設計（module の責務の全文と目録＝子 module・関数・フィールドは `//!` と doc コメント、style のキー一覧は style struct の doc） | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
 | コーディング規約の全文・根拠・lint との対応 | `docs/coding-conventions.md` | 規約の境界事例に迷ったとき |
 | lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint が発火したとき |
 | 言語機能の実装手順 | `add-language-feature` skill | 設計合意済みの機能を実装するとき |
@@ -70,12 +70,12 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-fe
 git config core.hooksPath .git-hooks                      # pre-commit（fmt / clippy / test）を有効化。clone 後に 1 回
 ```
 
-`cargo fmt` は **nightly toolchain が必須**です。`rustfmt.toml` で `unstable_features = true`（`group_imports = "StdExternalCrate"` / `imports_granularity = "Crate"` / `format_macro_bodies` 等）を有効化しているためです。`build` サブコマンドの `-c` / `--config-path` を省略した場合は `./config/config.toml` が使用されます。
+`cargo fmt` は **nightly toolchain が必須**です（`rustfmt.toml` の `unstable_features`。根拠は `docs/coding-conventions.md` 必須ルール 2）。`build` サブコマンドの `-c` / `--config-path` を省略した場合は `./config/config.toml` が使用されます。
 
 ## アーキテクチャ
 
 ここにはデータフローと依存の**骨格**だけを置く。**crate / module の境界・依存の向き・段間プロトコル・不変条件の
-正典は `docs/architecture.md`** — 特定の crate / module を触る前に必ず該当節を読む。module の中身の目録
+正典は `docs/architecture.md`** — 特定の crate / module を触る前に必ず該当節を読む。module の責務の全文と中身の目録
 （子 module・関数・フィールド）は各 module の `//!` と doc コメントが正典で、ドキュメントへは複製しない。
 
 ### データフロー
@@ -91,7 +91,7 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
   → typeset::compose   組版: SemanticDocument + 設定 + フォントバイト列 → Publication + 警告 + 画像依存パス
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
                        シェーパー）から出口（typeset::emit: 確定座標 → PaintOp・描画資源の構築）まで
-                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像読込 → lowering →
+                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像パス収集 → 画像読込 → lowering →
                        boxing（計測）→ 画像寸法確定 → breaking（行分割・改ページ）→ 前付け・後付け →
                        ページラベル → 走り文 → outline → emit）は typeset に閉じる
   → seiran-pdf         render: compiler が確定させた Publication（純データ）を描画するのみ
@@ -155,7 +155,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・検証。CSL 本体は読まない |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |
 | `semantics` | 意味解析 `analyze`（採番・`\ref`・引用キー検証）+ CSL 読込・書誌生成 → `SemanticDocument` |
-| `typeset` | 組版。入口は `compose` 1 操作（`SemanticDocument` + 設定 + フォントバイト列 → `Publication` + 警告 + 画像依存パス）。出口 `emit` まで内側に閉じる |
+| `typeset` | 組版。入口は `compose` 1 操作（`SemanticDocument` + 設定 + フォントバイト列 → `Publication` + 警告 + 画像依存パス。意図した例外は入力読込が呼ぶ版面の構築 `PreparedGeometry::prepare`）。出口 `emit` まで内側に閉じる |
 | `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画契約の値型 `GlyphRun` / `FontMetric` / `ImageFormat` 等）と検証付きコンストラクタ。krilla も `typeset` も知らない純データ |
 | `compiler` | compile facade。全体の phase 順序だけを持ち、組版中間型・フォント資源を保持しない |
 
@@ -229,7 +229,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### Clippy 運用
 
-lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.lints]` の clippy / rust / rustdoc 3 テーブルとも同じ規則）、節見出しは有効化の目的（規約の機械化 / 字面に意味 / 表記の固定 / 決定性 / crate の責務境界 / 誤りの検出 / 残骸を残さない / nursery。先頭の「有効化しないもの」だけは allow の置き場）で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
+lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.lints]` の clippy / rust / rustdoc 3 テーブルとも同じ規則）、節見出しは有効化の目的で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
 
 - 確認は CI / pre-commit と同じ `cargo clippy --all-targets --all-features -- -D warnings`（warn もビルド失敗になる）
 - rustdoc lint（`[workspace.lints.rustdoc]`）は `cargo doc` を回して初めて効く。CI と同じ形は
@@ -241,7 +241,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 ### テスト
 
-- 入力は `tests/text/`（機能別 `.sei`）、フォントは `vendor/fonts/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
+- 入力は `tests/text/`（機能別 `.sei`）、フォントと CSL は `vendor/fonts/` / `vendor/csl/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
 - AAA。`// Arrange` / `// Act` / `// Assert` は 3 段が実際に複数行へ分かれるテストだけ。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
 - 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（`frontend` / `frontend::evaluator` / `typeset::lowering` / `typeset::breaking::break_lines` / `compiler` の 5 つ。置き場は「そのヘルパが注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
@@ -256,7 +256,7 @@ rust-analyzer の LSP は Claude Code の plugin（`rust-analyzer-lsp`）で使�
 | --------------------------------------------------------------------------------- | -------------------------------- |
 | 定義へ移動（特に root facade の `pub use` re-export 越し。grep は facade で止まる） | `goToDefinition`                 |
 | 参照の網羅（リファクタの影響範囲確認。grep の文字列一致は同名衝突・漏れが出る）    | `findReferences`                 |
-| trait 実装の列挙（`LineBreaker` 等の seam の実装は複数クレートに散る）             | `goToImplementation`             |
+| trait 実装の列挙（`LineBreaker` 等の seam の実装は複数ファイルに散る）             | `goToImplementation`             |
 | 型・シグネチャ・doc コメントの確認（宣言まで飛ばずに済む）                         | `hover`                          |
 | ファイル内の型・関数一覧                                                          | `documentSymbol`                 |
 | 呼び出し関係（パイプラインのどの段から呼ばれるか）                                | `incomingCalls` / `outgoingCalls` |
@@ -273,16 +273,16 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 
 | ファイル                            | 役割                       | 主な内容                                                                                                                                                                                                           |
 | ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `config.toml`                       | **実体・物理・メタデータ** | `[document]`（title / author / date / subject / keywords / language ＝ハイフネーション言語）、`[output]`（name / output_dir）、用紙サイズ（`[pdf]` の width / height）、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path` |
+| `config.toml`                       | **実体・物理・メタデータ** | `[document]`（title / author / date / subject / keywords / language ＝文書言語。ハイフネーションと PDF メタデータ）、`[output]`（name / output_dir）、用紙サイズ（`[pdf]` の width / height）、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path` |
 | `style.toml`                        | **見た目**                 | 本文領域のページ内側余白（`[page]` の margin_top / bottom / left / right）、見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、脚注の体裁と採番方式、段組み数、参照リンク色                                         |
 | `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                                                                                 |
 
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる。`[heading.<level>]` / `[theorems.<class>]` / `[counters.<name>]` は種類別既定に差分を重ねる 2 レイヤーマージ）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
 - **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"`（素の数値は不可）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
-- **style.toml の設計**（キャプションと番号 3 系統・見出し・定理・カウンタの 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の余白と `flush_bottom` 等、非自明な意味を持つもの）は `docs/architecture.md` の `style` 節。キー一覧と既定値の正典は `crates/seiran-compiler/src/style/*.rs` の struct と doc コメント（`missing_docs_in_private_items` が有無を検査する）で、ドキュメントへは複製しない
+- **style.toml の設計**（キャプションと番号 3 系統・見出し・定理・カウンタの 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の余白と `flush_bottom` 等、非自明な意味を持つもの）は `docs/architecture.md` の `style` 節。キー一覧と既定値の正典は `crates/seiran-compiler/src/style.rs` / `style/*.rs` の struct と doc コメント（`missing_docs_in_private_items` が有無を検査する）で、ドキュメントへは複製しない
 
-19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
+19 フォント種別のキー名は `project::font::FontType`（`FontType::ALL`）と config の struct doc が正典で、ここにも `README.md` にも列挙しない
 
 ## issue / PR 運用
 

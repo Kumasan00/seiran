@@ -13,7 +13,7 @@ use crate::{
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]
 pub(crate) struct RawConfig {
-  /// ドキュメントメタデータ（title / author / date / subject）
+  /// 文書のメタデータ（`[document]`）
   #[serde(default)]
   #[garde(dive)]
   pub document: RawDocumentConfig,
@@ -42,7 +42,7 @@ pub(crate) struct RawConfig {
   pub references_path: Option<PathBuf>,
 }
 
-/// `[document]` セクション: PDF メタデータ
+/// `[document]` セクション: 文書のメタデータ（`date` 以外は PDF メタデータにも入る）
 #[derive(Deserialize, Debug, Default, Validate)]
 #[serde(default)]
 pub(crate) struct RawDocumentConfig {
@@ -52,7 +52,7 @@ pub(crate) struct RawDocumentConfig {
   /// 著者名
   #[garde(skip)]
   pub author: Option<String>,
-  /// 日付（ISO 8601 形式想定。PDF メタデータの D:YYYYMMDD 形式は出力時に変換）
+  /// 日付（表紙・走り文に表示する文字列。PDF メタデータには入らない）
   #[garde(skip)]
   pub date: Option<String>,
   /// 主題

@@ -71,7 +71,7 @@ impl<'a> FontResources<'a> {
   /// 読み込み済み `FontData` から、検証済みのフォント資源一式を構築する。
   ///
   /// 構築順序は `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances`
-  /// （現行の `compiler.rs` / `compile.rs` の実行順序と同一。診断の出方を変えないため厳守する。
+  /// （かつて `compiler` が持っていた実行順序をそのまま移した。診断の出方を変えないため厳守する。
   /// issue #278 タイトルの表記順序とは異なる点に注意）。
   ///
   /// 各段の中ではフォントを独立に検査して違反を `FontType::ALL` 順に全件集めるが、**段の間**は

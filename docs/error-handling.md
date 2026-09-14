@@ -66,13 +66,13 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 - ソーステキストに紐づくエラー（パース・評価系）は `#[label("...")] span: miette::SourceSpan` を持たせる。
 - **ソース本文を持つかどうかで扱いが分かれる。** ソース本文（ファイル名・全文）を直接読める場所で
-  エラーを構築する場合（例: TOML パーサ呼び出し直後）は、その場で `miette::NamedSource` を保持するラッパー
-  enum を返し、変種に `#[source_code] src: NamedSource<String>` と内側のエラーへの
-  `#[source] #[diagnostic_source] error: InnerError` を持たせて Diagnostic を伝播してよい。
+  エラーを構築する場合（例: TOML パーサ呼び出し直後）は、その場で `#[source_code] src: NamedSource<String>` と
+  `#[label] span` を持つ leaf 変種を返してよい（例: `ParseToml`。元の `toml::de::Error` は `#[source]` で
+  cause に残す）。
   一方、ソース本文を持たない下位 module（本文は `project::SourceSet` が一元管理する。例:
   `frontend::ParseSourceError` の内側の `ParserError` / `EvalError`、`semantics::SemanticError`）は、
-  `#[source_code]` を持たず span と `SourceId`（発行元が単一の識別子。生の `usize` や array index を
-  独自に採番しない）だけを運ぶ。本文の添付は **compiler seam の汎用 adapter
+  `#[source_code]` を持たず span だけ（複数ソースにまたがる `semantics` は `SourceId` も。発行元が単一の
+  識別子で、生の `usize` や array index を独自に採番しない）を運ぶ。本文の添付は **compiler seam の汎用 adapter
   `compiler::source_diagnostic::SourceDiagnostic<E>` 1 つ**が行う（段ごとの attribution wrapper を
   新しく作らない。#299 / #375）。この adapter は `#[diagnostic(transparent)]` を使わず
   （`source_code` も内側へ委譲されてしまうため）、`code` / `severity` / `help` / `url` / `labels` /
@@ -87,7 +87,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 ## 複数エラーの集約
 
-**集約するかどうかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める**（#376）。
+**集約するかどうかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める**。
 
 - **集約する**: config.toml / style.toml の独立フィールド違反、設定に列挙された複数パスの読込失敗、
   source ごとの parse / eval error、文書全体の重複ラベル・未解決参照・未知引用キー、
@@ -115,8 +115,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする）
   に限る。異なる修正を要求する違反は集合の別要素にする
 - **表示順は入力の論理順**であり、`HashMap` の反復順や並列処理の完了順に依存させない
-  （source は `config.sources` の宣言順、フォントは `FontType::ALL` 順、画像は正規化済み `ProjectPath` の
-  昇順、意味解析は `NodeId` 由来の文書順）。rayon を使う箇所は `collect::<Result<Vec<_>, E>>()`
+  （source は `config.sources` の宣言順、フォントは読込がパスの昇順・解析 / 検証が `FontType::ALL` 順、画像は
+  正規化済み `ProjectPath` の昇順、意味解析は `NodeId` 由来の文書順）。rayon を使う箇所は `collect::<Result<Vec<_>, E>>()`
   （複数エラー時にどれが返るか非決定）ではなく `collect::<Vec<Result<_, E>>>()` +
   `failures::collect_in_input_order` を通し、入力順の slot に戻してから集約する
 - **段を跨いで `compile` の外へ出す集合は `compiler::CompileFailure`**（#375）。先頭が主診断・残りが
@@ -169,7 +169,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
   user-actionable な `tracing::warn!` を新しく増やさない。組版の内側で見つかる警告も
   （検出は `typeset::breaking` の純粋関数、ページ番号・脚注番号を添えるのは `PageComposer`、
-  印字ページラベルの解決は `typeset::pagination` の段 5、という配管で）診断として返す（#382）。
+  印字ページラベルの解決は `typeset::pagination` の段 5、という配管で）診断として返す。
   CLI の `RUST_LOG` の通知も warning 診断（`cli::rust_log::*`）で、実効フィルタに消されない。
 
 ## 内部不変条件違反
@@ -247,6 +247,6 @@ pub enum MyError {
 
 ## バリデーション（garde）
 
-設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` が `project::InFile<*ValidationError>` として読んだファイルのパスを添えて透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
+設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `dive` / `custom` 等）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` が `project::InFile<*ValidationError>` として読んだファイルのパスを添えて透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
 
 例外: references 読込（`semantics::citation::references` の `read_references`）は集約せず deserialize 時に fail-fast（著者名の family/literal 排他・空 / 空白 / 重複 ID）。理由: (1) 名前・ID 不正は稀な編集ミスで集約の価値が薄く、旧実装の集約は全構造体ジェネリック + 2 相変換（約 100 行）を要していた、(2) この module の他のエラー（`deny_unknown_fields`・未知日付キー・拡張子）は元々すべて fail-fast で一貫する、(3) fail-fast なら TOML / JSON パーサの行・列位置が診断に付き、手編集する references ファイルにはむしろ良い。検証は確定型側の手書き `Deserialize`（`name.rs` / `date.rs` の方式）に置き、`RawName` 相当の生表現・全構造体ジェネリックは作らない。将来クロスフィールド検証（season 範囲・date-parts arity 等）を足す場合も後段 `resolve` 集約で足りる。#376 の基準に対する意図的例外として維持し、集約方式に戻さない。

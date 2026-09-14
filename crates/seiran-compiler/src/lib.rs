@@ -1,9 +1,12 @@
 //! Seiran コンパイラのライブラリ facade。
 //!
 //! 言語処理・意味解決・組版を 1 回の呼び出しに畳んだ [`compile`] が唯一の外部入口。
-//! 内部の段（parse / 意味解析 / typeset / publication 化）は `compiler` module に閉じ、
-//! 外へ公開しない。公開するのは [`compile`] の成果物 [`Publication`] と、そこから
-//! 到達できる leaf 値型（描画バックエンドが名指しする必要のある型）だけ。
+//! 段の呼び出し順序は `compiler` module に閉じ、各段（`frontend` / `semantics` / `typeset` /
+//! `publication`）は非公開の兄弟 module で外へ公開しない。公開するのは [`compile`] とその成果
+//! [`Compilation`]（[`Publication`] とそこから到達できる leaf 値型を含む）・失敗型 [`CompileFailure`]・
+//! 入力 seam（[`ProjectSource`] とその実装 / [`ProjectPath`] / [`SourceReadError`]）・
+//! leaf 値型（[`Length`] / [`Color`] とその `FromStr` エラー型 / [`FontType`]）だけ（`#[doc(hidden)]` の
+//! `test_support` は統合テスト向けの fixture 経路で、API ではない）。
 
 mod color;
 mod compiler;

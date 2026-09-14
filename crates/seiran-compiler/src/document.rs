@@ -9,7 +9,7 @@
 //! - frontend が HIR を構築するための [`HirBuilder`] と HIR ノード型
 //! - 複数ソースを決定順序で束ねる組み立て（[`HirSource`] → [`HirGroup`] → [`HirDocument`]）
 //! - `semantics` / `typeset` が authored 文書を網羅的に走査するための HIR enum。
-//!   網羅的 match は意図した interface で、新しい言語要素を足したときに resolve と lowering の
+//!   網羅的 match は意図した interface で、新しい言語要素を足したときに意味解析と lowering の
 //!   更新漏れをコンパイラに検出させる
 //! - 診断側が [`NodeId`] からソース位置を引く query（[`SourceMap`]）
 //!

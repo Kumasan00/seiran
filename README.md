@@ -74,11 +74,11 @@ sources = ["chapter1.sei", "chapter2.sei"]  # 入力テキストファイル
 style_path = "config/style.toml"            # スタイル設定ファイルパス（オプション）
 references_path = "config/references.toml"  # 参照定義ファイルパス（オプション）
 
-[document]                     # PDF メタデータ（すべてオプション）
+[document]                     # 文書のメタデータ（すべてオプション。date 以外は PDF メタデータにも入る）
 title = "ドキュメントタイトル"
 author = "著者名"
-date = "2026-01-01"
-language = "ja"                # 文書全体の言語（BCP 47。ハイフネーション等が参照）
+date = "2026-01-01"            # 表紙・走り文に表示する日付（PDF メタデータには入らない）
+language = "ja"                # 文書全体の言語（BCP 47。ハイフネーションと PDF メタデータ）
 # subject = "主題"             # PDF メタデータの /Subject
 # keywords = ["a", "b"]        # PDF メタデータの /Keywords
 
@@ -112,7 +112,7 @@ features = [                   # OpenType フィーチャー（オプション�
 
 ### スタイル設定（`config/style.toml`）
 
-本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。キーの一覧と既定値は `crates/seiran-compiler/src/style/` の各構造体の doc コメントを参照してください。
+本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。キーの一覧と既定値は `crates/seiran-compiler/src/style.rs` と `style/` 配下の各構造体の doc コメントを参照してください。
 
 ```toml
 # background_color = "#ccb599"  # 背景色（"#rrggbb" 16 進文字列、オプション）
@@ -144,10 +144,11 @@ font_size = "20pt"
 bottom_margin = "10pt"
 ```
 
-### 参照定義（`config/references.toml`）
+### 参照定義（`config/references.toml` または `.json`）
 
-CSL ベースの文献情報を定義します。トップレベルのテーブルキーがそのまま参照 ID になります
-（`references.` 接頭辞は不要）。引用スタイル（`.csl`）の選択は見た目設定として `style.toml` の
+CSL ベースの文献情報を定義します。TOML ではトップレベルのテーブルキーがそのまま参照 ID になります
+（`references.` 接頭辞は不要）。拡張子が `.json` のファイルは CSL-JSON として読みます。
+引用スタイル（`.csl`）の選択は見た目設定として `style.toml` の
 `[reference].csl_path` に置きます。
 
 ```toml

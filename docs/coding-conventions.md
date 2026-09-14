@@ -159,8 +159,8 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
 
 ## 値と型の書き方
 
-字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項を除き lint が機械化して
-いる。
+字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項と `clone` の要否を除き lint が
+機械化している。
 
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。
   `x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、
@@ -282,7 +282,7 @@ arm は網羅性判定に参加しないので、同じ variant を wildcard 側
 ### 有効化の目的（節見出し）
 
 `Cargo.toml` の節見出しは **lint を有効化する目的**で、目的に載らない lint は採らない。先頭の
-「有効化しないもの」だけは目的ではなく、group が付ける warn を個別に落とす allow の置き場。
+「有効化しないもの」だけは目的ではなく、group や既定が付ける warn を個別に落とす allow の置き場。
 
 | 目的                      | 何を守るか                                                                  | 例                                                                  |
 | ------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -356,7 +356,7 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
 ## テスト
 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei`
-  ファイル群）、フォント: `tools/fetch-test-assets.sh` が `vendor/fonts/` へ取得するピン留め資産
+  ファイル群）、フォント・CSL: `tools/fetch-test-assets.sh` が `vendor/fonts/` / `vendor/csl/` へ取得するピン留め資産
   （ユーザローカルの `fonts/` / `config/` はテストから参照されない）。
 - AAA パターンで記述し、Arrange / Act / Assert が実際に複数行へ分かれるテストだけ `// Arrange` /
   `// Act` / `// Assert` で区切る（fixture 組み立て → `layout` → ページ検証のような組版テストがこれに

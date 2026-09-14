@@ -22,10 +22,10 @@ reorder_imports = true
 # mod 宣言を並べ替える
 reorder_modules = true
 
-# std, external crate, 自作モジュールごとにグループ分け
+# std, external crate, 自作モジュールごとにグループ分け（グループ間は空行）
 group_imports = "StdExternalCrate"
 
-# グループ間を空行で分ける
+# 同じ crate からの import を 1 つの use に統合する
 imports_granularity = "Crate"
 
 # 関数を1行にまとめるかの閾値
@@ -44,7 +44,7 @@ format_strings = false
 # 16進数リテラルの大文字小文字のスタイル
 hex_literal_case = "Lower"
 
-# match 式のフォrーマット設定
+# match 式のフォーマット設定
 match_arm_blocks = true
 match_arm_leading_pipes = "Never"
 match_block_trailing_comma = true

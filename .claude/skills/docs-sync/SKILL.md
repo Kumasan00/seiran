@@ -23,10 +23,10 @@ description: >-
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
 | `docs/coding-conventions.md` | コーディング規約の全文・根拠・lint との対応。CLAUDE.md の規約節の詳細版 |
 | `docs/error-handling.md` | エラー型・診断 `code`・ソース位置・集約・warning と tracing・内部不変条件違反・garde の規約。CLAUDE.md のエラーハンドリング節の詳細版 |
-| `docs/architecture.md` | クレート / module の境界・依存の向き・段間プロトコル・不変条件と「〜しない」ガード、style.toml の設計（config の style 節）。module の目録（子 module・関数・フィールド）と style のキー一覧・既定値は `//!` / doc コメントが正典で、ここへは複製しない。CLAUDE.md の表の詳細版 |
+| `docs/architecture.md` | クレート / module の境界・依存の向き・段間プロトコル・不変条件と「〜しない」ガード、style.toml の設計（config の style 節）。module の責務の全文と目録（子 module・関数・フィールド）、style のキー一覧・既定値は `//!` / doc コメントが正典で、ここへは複製しない。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
 | skill（`verify-typesetting` / `add-language-feature` / `issue-pr-ops`。`error-handling` は正典へのポインタのみ） | 組版検証手順 / 言語機能の実装経路 / GitHub 運用規約 |
-| root `Cargo.toml` / `clippy.toml` | lint の採用根拠（1 lint = 1 行のコメント）と設定値 |
+| root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint の採用根拠（1 lint = 1 行のコメント）・設定値・フォーマット |
 
 ## 変更種別 → 更新箇所
 

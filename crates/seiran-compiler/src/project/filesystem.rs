@@ -10,7 +10,7 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 
 /// `HashMap` を守る mutex の lock を取る。
 ///
-/// `FilesystemProjectSource` が持つ 3 つの mutex はどれも臨界区間が `HashMap` の参照・挿入・削除だけで、
+/// `FilesystemProjectSource` が持つ mutex はどれも臨界区間が `HashMap` の参照・挿入・削除だけで、
 /// 途中で巻き戻す状態を持たないので poison しない。その根拠をここ 1 箇所に畳んであるので、
 /// 呼び出し側は生の `lock()` と `expect` を書かない。
 fn lock_map<K, V>(map: &Mutex<HashMap<K, V>>) -> MutexGuard<'_, HashMap<K, V>> {
