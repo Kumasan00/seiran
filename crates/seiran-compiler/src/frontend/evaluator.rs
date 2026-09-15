@@ -302,7 +302,7 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
 /// 本番のレジストリ（`mode_resolver`）を注入した `parse` ラッパは、以前は evaluator 配下の
 /// 各 test module へ同じ形で複製されていた（#400）。テストが本番と同じ経路を通ることを 1 箇所で保証する。
 #[cfg(test)]
-pub(super) mod test_support {
+mod test_support {
   use bumpalo::Bump;
 
   use super::mode_resolver;
