@@ -142,8 +142,9 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
   利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と
   書く。テストモジュールの `use super::*` はイディオムどおり許容。crate 内の幅（`pub(crate)` / `pub(super)` /
   無印）は実際の利用範囲に揃える — `unreachable_pub` は crate 外から到達しない `pub` しか見ないので人が揃える。
-  子孫だけが使うなら無印で足り（子孫は親の非公開項目に到達できる）、親が `pub(super) use` で再輸出する子は
-  再輸出と同じ幅を `pub(in <再輸出先>)` で書く（例: `frontend::syntax::cst` の `green` / `kind` / `view`）。
+  子孫だけが使うなら無印で足り（子孫は親の非公開項目に到達できる）。祖先が再輸出する孫以下の module は
+  `pub(super)` では再輸出先まで届かないので、再輸出と同じ幅を `pub(in <再輸出先>)` で書く（例:
+  `frontend::syntax::cst` の `green` / `kind` / `view`。親が再輸出する直接の子は `pub(super)` で足りる）。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を
   確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割
   しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。

@@ -20,9 +20,10 @@ mod evaluator;
 mod hir_invariants;
 mod syntax;
 // `semantics` / `typeset` の test module からも `frontend::test_support::parse_source_for_test` と
-// 名指しするので `pub(crate) mod`。既存の `evaluator` / `lowering` / `break_lines` の `test_support` は
-// 直近の親だけが使うため `pub(super) mod` のインライン module になっている — 利用範囲が違うだけで、
-// 「`test_support` という module 名が置き場を表す」規則は同じ。
+// 名指しするので `pub(crate) mod`。既存の `lowering` / `break_lines` / `evaluator` の `test_support` は
+// インライン module で、前 2 つは直近の親だけが使うため `pub(super) mod`、`evaluator` のものは子孫だけが
+// 使うため無印 `mod` になっている — 利用範囲が違うだけで、「`test_support` という module 名が置き場を
+// 表す」規則は同じ。
 #[cfg(test)]
 pub(crate) mod test_support;
 
