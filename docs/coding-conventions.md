@@ -147,11 +147,12 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した
   塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を
   緩めてまで無理に分割しない。
-- **同一ファイル内で inherent impl を分けない**（`multiple_inherent_impl`）: 1 つの型の `impl` ブロックを
-  同じファイルで 2 つに割ると、メソッドの探し先が字面から決まらない。ライフタイム引数の有無で分かれて
-  いるだけなら名前付きの側（`impl<'a> Measurer<'a>`）へ寄せて 1 つにする。子モジュール（別ファイル）へ
-  切り出した impl はこの lint の対象外なので、上の分割基準とは衝突しない（`typeset::boxing` と
-  `typeset::boxing::math` は分かれたままでよい）。
+- **同一 module 内で inherent impl を分けない**（`multiple_inherent_impl`）: 1 つの型の `impl` ブロックを
+  同じ module で 2 つに割ると、メソッドの探し先が字面から決まらない。ライフタイム引数の有無で分かれて
+  いるだけなら名前付きの側（`impl<'a> Measurer<'a>`）へ寄せて 1 つにする。子モジュールへ切り出した impl は
+  この lint の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`。分けてよい境界は責務の境界で
+  ある module で、ファイルはその物理的な代理にすぎない）なので、上の分割基準とは衝突しない
+  （`typeset::boxing` と子 `math` / `text_run` は分かれたままでよい）。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで
   `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを
   既定とする（例: `parser.rs` で `pub(crate) use error::ParserError;`）。ただし新しいモジュールパスを公開した
@@ -265,14 +266,15 @@ arm は網羅性判定に参加しないので、同じ variant を wildcard 側
 （差分＝意図として読める形を保ち、既定値の複製で upstream の既定変更に追随する二重帳簿を作らないため。
 ノブ 113 個の全数棚卸しと維持判断の記録は #473 が持つ）。
 
-| ノブ                                | 値      | 根拠                                                                                 |
-| ----------------------------------- | ------- | ------------------------------------------------------------------------------------ |
-| `absolute-paths-max-segments`       | `3`     | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                      |
-| `allow-mixed-uninlined-format-args` | `false` | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる       |
-| `allow-panic-in-tests`              | `true`  | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                        |
-| `allow-unwrap-in-tests`             | `true`  | テストの `unwrap` は許容                                                              |
-| `avoid-breaking-exported-api`       | `false` | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる   |
-| `upper-case-acronyms-aggressive`    | `true`  | `HTTPResponse` 形も `HttpResponse` に固定する                                        |
+| ノブ                                | 値         | 根拠                                                                                                             |
+| ----------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `absolute-paths-max-segments`       | `3`        | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                                                 |
+| `allow-mixed-uninlined-format-args` | `false`    | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる                                  |
+| `allow-panic-in-tests`              | `true`     | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                                                   |
+| `allow-unwrap-in-tests`             | `true`     | テストの `unwrap` は許容                                                                                         |
+| `avoid-breaking-exported-api`       | `false`    | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる                              |
+| `inherent-impl-lint-scope`          | `"module"` | `multiple_inherent_impl` を同一 module 内に限る（既定 `crate` は子 module へ切り出した impl どうしも衝突させる） |
+| `upper-case-acronyms-aggressive`    | `true`     | `HTTPResponse` 形も `HttpResponse` に固定する                                                                    |
 
 `avoid-breaking-exported-api = false` の帰結として `rc_mutex` / `needless_pass_by_ref_mut` / `ref_option` /
 `unused_self` / `wrong_self_convention` 等が公開項目にも効く。逆に `check-private-items` は既定の false を

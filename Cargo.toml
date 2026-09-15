@@ -149,7 +149,7 @@ deref_by_slicing = "warn"
 empty_enum_variants_with_brackets = "warn"
 # `struct Foo {}` ではなく `struct Foo;` と書く。
 empty_structs_with_brackets = "warn"
-# 同一ファイル内で 1 つの型の inherent impl を分けない（別ファイルの impl は対象外なのでモジュール分割と衝突しない）。
+# 同一 module 内で 1 つの型の inherent impl を分けない。`clippy.toml` の inherent-impl-lint-scope = "module" で別 module の impl を対象外にし、モジュール分割と衝突させない。
 multiple_inherent_impl = "warn"
 # エスケープの要らない `r"…"` は素の `"…"` に固定する（`needless_raw_string_hashes` の対）。
 needless_raw_strings = "warn"
