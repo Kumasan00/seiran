@@ -298,7 +298,7 @@ mod tests {
   use super::{Page, dump_pages};
   use crate::{
     length::Length,
-    typeset::test_fixtures::{LineMetrics, PageBuilder, glyph_line_with_metrics, glyph_run},
+    typeset::test_support::{LineMetrics, PageBuilder, glyph_line_with_metrics, glyph_run},
   };
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。

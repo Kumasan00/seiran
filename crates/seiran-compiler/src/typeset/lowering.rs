@@ -154,7 +154,7 @@ pub(super) mod test_support {
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_source_for_test,
-    semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
+    semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
     style::Style,
   };
@@ -523,7 +523,7 @@ mod tests {
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_source_for_test,
-    semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
+    semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
     style::CounterTemplate,
     typeset::boxes::{AnchorId, AnchorMark, LinkTarget},

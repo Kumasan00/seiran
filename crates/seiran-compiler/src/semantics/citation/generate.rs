@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::{
   document::{NodeId, NodeMap},
   semantics::citation::{
-    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json, render, style::CompiledCitationStyle,
+    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json, csl_style::CompiledCitationStyle, render,
   },
 };
 
@@ -151,7 +151,7 @@ mod tests {
       fact_collection::collect_facts,
       facts::SemanticFacts,
       load_citation_style, read_references,
-      test_fixtures::{ieee_csl_path, sample_references},
+      test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
     style::Style,

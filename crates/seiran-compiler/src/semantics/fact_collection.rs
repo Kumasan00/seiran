@@ -569,7 +569,7 @@ mod tests {
     frontend::test_support::parse_source_for_test,
     semantics::{
       CitationId, GeneratedCitations, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
-      SemanticPolicy, test_fixtures::sample_references,
+      SemanticPolicy, test_support::sample_references,
     },
     source::SourceId,
     style::Style,
@@ -978,7 +978,7 @@ mod completeness_tests {
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_source_for_test,
-    semantics::{GeneratedCitations, LabelId, SemanticDocument, SemanticPolicy, test_fixtures::sample_references},
+    semantics::{GeneratedCitations, LabelId, SemanticDocument, SemanticPolicy, test_support::sample_references},
     source::SourceId,
     style::Style,
   };

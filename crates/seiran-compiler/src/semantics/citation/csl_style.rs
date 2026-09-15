@@ -2,7 +2,7 @@
 //!
 //! `.csl` ファイルと CSL ロケール（`xml:lang` 付き locale XML）を [`crate::project::ProjectSource`]
 //! 経由で読み、解析済みの [`CompiledCitationStyle`] にまとめる。表示の生成（`BibliographyDriver` の
-//! 駆動）は行わない（`crate::semantics::render` の責務）。
+//! 駆動）は行わない（`citation::render` の責務）。
 
 use hayagriva::{
   archive,
@@ -243,7 +243,7 @@ mod tests {
   use super::{CitationStyleError, load_citation_style, load_locales};
   use crate::{
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
-    semantics::test_fixtures::ieee_csl_path,
+    semantics::test_support::ieee_csl_path,
     style::Style,
   };
 

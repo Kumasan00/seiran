@@ -49,12 +49,12 @@ mod warning;
 mod dump;
 // `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てるための fixture builder（#353）。
 #[cfg(test)]
-pub(crate) mod test_fixtures;
+mod test_support;
 
 // 組版中間型は `typeset` の外に本体コードの消費者を持たない（#535）。`compiler::golden` が
 // 確定レイアウトへ直接アサートするためだけに、テストビルドでのみ facade へ出す
 // （`compiler::project_source_equivalence` はこれらの型を使わず `Publication` にしかアサートしない）。
-// テストが確定レイアウトを**組み立てる**手段は `#[cfg(test)]` の子 module `test_fixtures` が持つ
+// テストが確定レイアウトを**組み立てる**手段は `#[cfg(test)]` の子 module `test_support` が持つ
 // （#353）。
 #[cfg(test)]
 pub(crate) use boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, PlacedBlock};

@@ -424,7 +424,7 @@ pub struct PublicationOutlineEntry {
 /// `pub(crate)` なのは `publication` の外（`compiler::dump` / `typeset::emit`）のテストも使うため
 /// （`Publication` のダンプは描画資源の中身を読まないので、同じダミー資源で足りる）。
 #[cfg(test)]
-pub(crate) mod test_fixtures {
+pub(crate) mod test_support {
   use std::sync::Arc;
 
   use super::{FontFaceConfig, FontMetric, PublicationFont, PublicationImage, PublicationResources};
@@ -456,7 +456,7 @@ mod tests {
   use super::{
     Destination, ImageFormat, ImageRef, PaintOp, Point, Publication, PublicationImage, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect,
-    test_fixtures::resources,
+    test_support::resources,
   };
 
   /// 検証用の最小メタデータを返す。
