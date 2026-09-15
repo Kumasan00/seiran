@@ -15,12 +15,12 @@
 mod analyze;
 mod citation;
 mod counter;
-mod document;
 mod error;
 mod fact_collection;
 mod facts;
 mod ids;
 mod policy;
+mod semantic_document;
 
 pub(crate) use analyze::analyze;
 #[cfg(test)]
@@ -33,7 +33,7 @@ pub(crate) use citation::{
   load_citation_style, read_references,
 };
 pub(crate) use counter::{CounterKind, CounterValue};
-pub(crate) use document::SemanticDocument;
 pub(crate) use error::{AnalyzeError, SemanticError, SemanticFailures};
 pub(crate) use ids::{HeadingKey, LabelId};
 pub(crate) use policy::SemanticPolicy;
+pub(crate) use semantic_document::SemanticDocument;
