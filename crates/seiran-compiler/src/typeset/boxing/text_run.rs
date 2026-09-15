@@ -1,7 +1,7 @@
 //! テキストラン分割・シェーピング — テキストを計測済みの箱と break 注入済みの水平リストへ変換する
 //!
-//! `Measurer` の `impl` をここで続ける（`boxing::math` と同じ形。別ファイルの impl は
-//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "file"`）。入口は本文テキストを
+//! `Measurer` の `impl` をここで続ける（`boxing::math` と同じ形。別 module の impl は
+//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は本文テキストを
 //! 水平リストへ積む `push_text_items` と、1 セグメントをシェーピングして計測する `shape_segment`
 //! （`boxing` 本体の `shape_text` / `text_atom` と兄弟 `math` が呼ぶ）の 2 つ。
 //!
