@@ -18,7 +18,6 @@ use crate::{
 mod evaluator;
 #[cfg(test)]
 mod hir_invariants;
-mod span_ext;
 mod syntax;
 // `semantics` / `typeset` の test module からも `frontend::test_support::parse_source_for_test` と
 // 名指しするので `pub(crate) mod`。既存の `evaluator` / `lowering` / `break_lines` の `test_support` は

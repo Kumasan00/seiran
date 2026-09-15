@@ -107,7 +107,10 @@
 
 - どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。「複数段が共有するから」は
   共有置き場へ移す理由にならない（共有は所有の理由にならない）
-- miette には依存しない。`miette::SourceSpan` への変換は診断を構築する側が行う（orphan rule）
+- 診断型は持たない。miette への依存は `miette::SourceSpan` への変換 `impl From<Span> for SourceSpan` 1 つだけで、
+  `frontend` / `semantics` の診断構築点はこれを呼ぶ。変換を `Span` の所有者に置くのは、共有コードは操作対象の
+  型の所有者に置く規約による（各段が自前で持つと重複し、`semantics` が `frontend` の変換を借りると
+  `semantics` → `frontend` の本体依存が生じる）
 
 ### `project`
 
@@ -232,8 +235,8 @@ style 由来の表示文字列は `semantics` が別枠で持つ。
 不変条件・注意点:
 
 - **`document` の型は miette に依存しない**。ソース位置は `source::Span` で持ち、`miette::SourceSpan` への
-  変換は診断を構築する側が行う。`frontend` の lexer / parser / CST も独自の Span 型を持たず `source::Span` を
-  直接使う
+  変換は診断を構築する側が `impl From<Span> for SourceSpan` で行う。`frontend` の lexer / parser / CST も独自の Span 型を
+  持たず `source::Span` を直接使う
 - **HIR と同形の中間 IR を作らない**。数式も `typeset::lowering` が `HirMath` を直接読む（同じ構造を段ごとに
   複製せず、数式の言語要素追加で更新する enum を 1 つに保つ）
 - **`MathVariant` は「スタイル設定」ではない**。`\mathbold` 等が指定する Unicode 数学英数字の字形 variant
@@ -405,7 +408,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   ので `NodeId` の採番順は変わらず、畳んだ `Text` ノードの span は**兄弟の `Index` ノードの span を
   内包する**（兄弟 span の排他は不変条件ではない）。同じ不変条件を lowering 側で守るのは
   `typeset::lowering` のテキスト結合（`IndexMark` を透過にして結合を切らない）
-- 診断は `source::Span` を `miette::SourceSpan` へ変換して構築する
+- 診断は `source::Span` を `From` で `miette::SourceSpan` へ変換して構築する
 
 ### `semantics`
 

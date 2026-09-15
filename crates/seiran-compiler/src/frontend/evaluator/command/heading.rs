@@ -8,7 +8,6 @@ use crate::{
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::CommandView,
   },
 };
@@ -34,13 +33,13 @@ pub(super) fn heading(
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: expected_name(level).to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: name.to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

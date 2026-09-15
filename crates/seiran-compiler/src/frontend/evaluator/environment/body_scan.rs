@@ -4,7 +4,6 @@
 
 use crate::frontend::{
   evaluator::EvalError,
-  span_ext::ToSourceSpan,
   syntax::{
     SyntaxKind,
     green::{GreenElement, GreenNode},
@@ -36,7 +35,7 @@ pub(crate) fn strict_command_calls<'a>(
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),
             expected: expected.to_string(),
-            span: token.span.to_source_span(),
+            span: token.span.into(),
           });
         },
       },
@@ -50,14 +49,14 @@ pub(crate) fn strict_command_calls<'a>(
               env: env_name.to_string(),
               name: view.name().to_string(),
               expected: expected.to_string(),
-              span: node.span.to_source_span(),
+              span: node.span.into(),
             });
           }
         } else {
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),
             expected: expected.to_string(),
-            span: node.span.to_source_span(),
+            span: node.span.into(),
           });
         }
       },

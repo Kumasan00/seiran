@@ -10,7 +10,6 @@ use crate::{
       environment::{body_scan, caption::extract_caption},
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,
@@ -28,7 +27,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "figure".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -53,7 +52,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
               name: "image".to_string(),
-              span: cmd_view.span().to_source_span(),
+              span: cmd_view.span().into(),
             });
           }
           let extracted = extract_image(&cmd_view)?;
@@ -68,7 +67,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
               name: "caption".to_string(),
-              span: cmd_view.span().to_source_span(),
+              span: cmd_view.span().into(),
             });
           }
           if image_path.is_none() {
@@ -85,7 +84,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     return Err(EvalError::MissingEnvironmentArgument {
       name: "figure".to_string(),
       expected: "\\image コマンド".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
 
@@ -144,7 +143,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
             name: "image".to_string(),
             key: "width".to_string(),
             expected: "positive length".to_string(),
-            span: view.span().to_source_span(),
+            span: view.span().into(),
           });
         }
         width = Some(l);
@@ -155,7 +154,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
             name: "image".to_string(),
             key: "height".to_string(),
             expected: "positive length".to_string(),
-            span: view.span().to_source_span(),
+            span: view.span().into(),
           });
         }
         height = Some(l);
@@ -166,7 +165,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
             name: "image".to_string(),
             key: "dpi".to_string(),
             expected: "positive integer".to_string(),
-            span: view.span().to_source_span(),
+            span: view.span().into(),
           });
         }
         #[expect(
@@ -180,7 +179,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
             name: "image".to_string(),
             key: "dpi".to_string(),
             expected: "positive integer".to_string(),
-            span: view.span().to_source_span(),
+            span: view.span().into(),
           });
         }
         dpi = Some(rounded);
@@ -194,13 +193,13 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
     return Err(EvalError::MissingCommandArgument {
       name: "image".to_string(),
       expected: "画像ファイルのパス".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "image".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -209,7 +208,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
     return Err(EvalError::InvalidCommandArgument {
       name: "image".to_string(),
       reason: "画像ファイルのパスが空です".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

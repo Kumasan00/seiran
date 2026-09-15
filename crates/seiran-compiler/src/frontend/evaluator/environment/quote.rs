@@ -4,7 +4,6 @@ use crate::{
   document::{HirNode, HirNodeKind, QuoteKind},
   frontend::{
     evaluator::{self, EvalContext, EvalError, opt_args::collect_environment_opt_args},
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };
@@ -23,7 +22,7 @@ pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

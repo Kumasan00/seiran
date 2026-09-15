@@ -18,7 +18,6 @@ use crate::{
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::collect_command_opt_args,
     },
-    span_ext::ToSourceSpan,
     syntax::view::{CommandView, extract_text_content},
   },
 };
@@ -34,13 +33,13 @@ pub(crate) fn url_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Resu
     return Err(EvalError::MissingCommandArgument {
       name: "url".to_string(),
       expected: "URI".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "url".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -66,7 +65,7 @@ pub(crate) fn href_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Res
   if view.args_count() > 2 {
     return Err(EvalError::ExtraCommandArgument {
       name: "href".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   let mut args = view.args();
@@ -74,7 +73,7 @@ pub(crate) fn href_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Res
     return Err(EvalError::MissingCommandArgument {
       name: "href".to_string(),
       expected: "2 個（リンク先 URI と表示テキスト）".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
 

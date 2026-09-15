@@ -12,7 +12,7 @@ use crate::{
   semantics::{
     CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
-    error::{self, UnknownCitationSite, span_to_source_span},
+    error::{self, UnknownCitationSite},
     facts::{HeadingFacts, SemanticFacts},
   },
   style::CounterName,
@@ -283,7 +283,7 @@ fn unresolved_references(
       let location = locations.location(reference.site);
       let error = SemanticError::UnresolvedReference {
         label: reference.label.clone(),
-        span: span_to_source_span(location.span),
+        span: location.span.into(),
         source_id: location.source_id,
       };
       return (order_key(reference.site), error);

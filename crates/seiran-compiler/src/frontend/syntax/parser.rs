@@ -6,16 +6,13 @@ use bumpalo::Bump;
 use tracing::debug;
 
 use crate::{
-  frontend::{
-    span_ext::ToSourceSpan,
-    syntax::{
-      cst::{
-        green::{GreenElement, GreenNode},
-        kind::SyntaxKind,
-      },
-      lexer::Lexer,
-      token::{Token, TokenKind},
+  frontend::syntax::{
+    cst::{
+      green::{GreenElement, GreenNode},
+      kind::SyntaxKind,
     },
+    lexer::Lexer,
+    token::{Token, TokenKind},
   },
   source::Span,
 };
@@ -209,7 +206,7 @@ impl<'a> Parser<'a> {
           children.push(GreenElement::Node(env_node));
         } else if name == "end" {
           return Err(ParserError::StrayEnd {
-            span: token.span.to_source_span(),
+            span: token.span.into(),
           });
         } else {
           self.parse_command_call(token, mode, children)?;
@@ -222,7 +219,7 @@ impl<'a> Parser<'a> {
           // 最初の 2 つの `$` をまとめてエラー範囲にする。
           let second_dollar = self.take_peeked();
           return Err(ParserError::DollarDollarNotSupported {
-            span: first_dollar.span.merge(second_dollar.span).to_source_span(),
+            span: first_dollar.span.merge(second_dollar.span).into(),
           });
         }
 
@@ -232,7 +229,7 @@ impl<'a> Parser<'a> {
       TokenKind::Dollar => {
         let token = self.take_peeked();
         return Err(ParserError::DollarInMathMode {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       TokenKind::LBrace if mode == ParseMode::Math => {
@@ -250,13 +247,13 @@ impl<'a> Parser<'a> {
       TokenKind::LBrace => {
         let token = self.take_peeked();
         return Err(ParserError::BareGroup {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       TokenKind::LBracket => {
         let token = self.take_peeked();
         return Err(ParserError::BareBracket {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       TokenKind::RBrace | TokenKind::RBracket if Some(kind) == expected_closer => {
@@ -267,13 +264,13 @@ impl<'a> Parser<'a> {
         let token = self.take_peeked();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       TokenKind::Unknown => {
         let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       // 構造を作らず、そのまま CST のリーフとして保持するトークン。`Underscore` / `Caret` は
@@ -356,7 +353,7 @@ impl<'a> Parser<'a> {
     if self.peek_kind() != Some(TokenKind::Command) {
       return Err(ParserError::UnclosedEnvironment {
         name: env_name,
-        span: start_span.to_source_span(),
+        span: start_span.into(),
       });
     }
 
@@ -379,7 +376,7 @@ impl<'a> Parser<'a> {
       return Err(ParserError::MismatchedEnvironment {
         expected: env_name,
         found: end_env_name,
-        span: end_token.span.merge(self.last_span).to_source_span(),
+        span: end_token.span.merge(self.last_span).into(),
       });
     }
 
@@ -437,7 +434,7 @@ impl<'a> Parser<'a> {
     let Some(body_span) = self.lexer.scan_verbatim_until(&marker) else {
       return Err(ParserError::UnclosedEnvironment {
         name: env_name.to_string(),
-        span: begin_span.to_source_span(),
+        span: begin_span.into(),
       });
     };
     self.last_span = body_span;
@@ -519,7 +516,7 @@ impl<'a> Parser<'a> {
         None => {
           return Err(ParserError::UnclosedDelimiter {
             open_kind,
-            span: start_span.to_source_span(),
+            span: start_span.into(),
           });
         },
         _ => {},
@@ -562,7 +559,7 @@ impl<'a> Parser<'a> {
     if self.peek_kind() == Some(TokenKind::LBracket) {
       let second = self.parse_opt_arg()?;
       return Err(ParserError::MultipleOptArgs {
-        span: second.span.to_source_span(),
+        span: second.span.into(),
       });
     }
     return Ok(());
@@ -591,7 +588,7 @@ impl<'a> Parser<'a> {
     let Some(body_span) = self.lexer.scan_verbatim_balanced() else {
       return Err(ParserError::UnclosedDelimiter {
         open_kind: TokenKind::LBrace,
-        span: open.span.to_source_span(),
+        span: open.span.into(),
       });
     };
     self.last_span = body_span;
@@ -613,7 +610,7 @@ impl<'a> Parser<'a> {
     loop {
       if self.peek_token().is_none() {
         return Err(ParserError::UnclosedInlineMath {
-          span: start_span.to_source_span(),
+          span: start_span.into(),
         });
       }
 
@@ -649,7 +646,7 @@ impl<'a> Parser<'a> {
         },
         Some(TokenKind::Dollar) | None => {
           return Err(ParserError::UnclosedMathGroup {
-            span: start_span.to_source_span(),
+            span: start_span.into(),
           });
         },
         _ => self.parse_math_atom(&mut children)?,
@@ -685,20 +682,20 @@ impl<'a> Parser<'a> {
       Some(TokenKind::Unknown) => {
         let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       Some(TokenKind::LBracket) => {
         let token = self.take_peeked();
         return Err(ParserError::BareBracket {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       Some(TokenKind::RBracket | TokenKind::RBrace) => {
         let token = self.take_peeked();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       _ => {
@@ -734,18 +731,18 @@ impl<'a> Parser<'a> {
       Some(TokenKind::Unknown) => {
         let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
-          span: token.span.to_source_span(),
+          span: token.span.into(),
         });
       },
       // 許可するのは `{` だけで、残りはすべて同じ診断にする（既定エラーなので wildcard を維持する）
       Some(_) => {
         return Err(ParserError::ScriptRequiresGroup {
-          span: start_span.to_source_span(),
+          span: start_span.into(),
         });
       },
       None => {
         return Err(ParserError::UnexpectedEof {
-          span: self.last_span.to_source_span(),
+          span: self.last_span.into(),
         });
       },
     }
@@ -765,12 +762,12 @@ impl<'a> Parser<'a> {
         let span = self.peeked().span;
         return Err(ParserError::UnexpectedToken {
           kind,
-          span: span.to_source_span(),
+          span: span.into(),
         });
       },
       None => {
         return Err(ParserError::UnexpectedEof {
-          span: self.last_span.to_source_span(),
+          span: self.last_span.into(),
         });
       },
     }

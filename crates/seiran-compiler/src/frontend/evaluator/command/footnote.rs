@@ -8,7 +8,6 @@ use crate::{
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::collect_command_opt_args,
     },
-    span_ext::ToSourceSpan,
     syntax::view::CommandView,
   },
 };
@@ -33,13 +32,13 @@ pub(crate) fn footnote_command(
     return Err(EvalError::MissingCommandArgument {
       name: "footnote".to_string(),
       expected: "脚注本体".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "footnote".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

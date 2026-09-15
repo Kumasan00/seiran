@@ -8,7 +8,6 @@ use crate::{
   document::{HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
-    span_ext::ToSourceSpan,
     syntax::{
       green::{GreenElement, GreenNode},
       token::TokenKind,
@@ -80,7 +79,7 @@ pub(crate) fn evaluate_grid(
           if !spec.allow_column_breaks {
             return Err(EvalError::UnsupportedInMath {
               what: "&（列区切り）".to_string(),
-              span: token.span.to_source_span(),
+              span: token.span.into(),
             });
           }
           // 行末マーカーの後ろに列が続くなら、マーカーは行末になく不正
@@ -93,7 +92,7 @@ pub(crate) fn evaluate_grid(
           if !spec.allow_row_breaks {
             return Err(EvalError::UnsupportedInMath {
               what: r"\\（行区切り）".to_string(),
-              span: token.span.to_source_span(),
+              span: token.span.into(),
             });
           }
           current_row.push(evaluate_math_elements(source, ctx, &current_cell)?);

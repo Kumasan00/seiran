@@ -21,7 +21,6 @@ use crate::{
       },
       math,
     },
-    span_ext::ToSourceSpan,
     syntax::{
       green::{GreenElement, GreenNode},
       kind::SyntaxKind,
@@ -201,7 +200,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
         },
         TokenKind::ParagraphBreak => {
           return Err(EvalError::ParagraphBreakInArgument {
-            span: token.span.to_source_span(),
+            span: token.span.into(),
           });
         },
         // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
@@ -246,7 +245,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             Some(CommandKind::Heading(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {
                 what: format!("\\{}", view.name()),
-                span: view.span().to_source_span(),
+                span: view.span().into(),
               });
             },
             // \index の可否は呼び出し元の文脈が決める（[`IndexPolicy`]）。内容が 1 箇所にしか
@@ -257,7 +256,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
               IndexPolicy::Allow => sink.extend_inline_result(child_node.span, index_command(&view, ctx)?),
               IndexPolicy::Reject => {
                 return Err(EvalError::IndexNotAllowedHere {
-                  span: view.span().to_source_span(),
+                  span: view.span().into(),
                 });
               },
             },
@@ -267,7 +266,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
               } else {
                 return Err(EvalError::UnknownCommand {
                   name: view.name().to_string(),
-                  span: view.span().to_source_span(),
+                  span: view.span().into(),
                 });
               }
             },
@@ -282,7 +281,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
           let view = EnvironmentView::new(child_node, source);
           return Err(EvalError::BlockInInline {
             what: format!("環境 {}", view.name()),
-            span: child_node.span.to_source_span(),
+            span: child_node.span.into(),
           });
         },
         // 引数・環境タグ・数式内ノードは、それぞれの評価経路が中身を取り出して再帰する。

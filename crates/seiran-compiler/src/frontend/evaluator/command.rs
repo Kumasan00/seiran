@@ -11,7 +11,6 @@ use crate::{
     evaluator::{
       EvalContext, EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args,
     },
-    span_ext::ToSourceSpan,
     syntax::{ArgMode, view::CommandView},
   },
 };
@@ -113,7 +112,7 @@ impl CommandKind {
       Self::NoIndent => {
         return control::noindent(view).map(|()| {
           return CommandResult::NoIndent {
-            span: view.span().to_source_span(),
+            span: view.span().into(),
           };
         });
       },
@@ -135,7 +134,7 @@ pub(crate) fn single_char(
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   return Ok(vec![ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch))]);
@@ -237,7 +236,7 @@ pub(crate) fn evaluate_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) ->
   }
   return Err(EvalError::UnknownCommand {
     name: view.name().to_string(),
-    span: view.span().to_source_span(),
+    span: view.span().into(),
   });
 }
 

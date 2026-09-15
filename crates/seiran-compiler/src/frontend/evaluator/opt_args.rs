@@ -8,7 +8,6 @@ use crate::{
   color::Color,
   frontend::{
     evaluator::EvalError,
-    span_ext::ToSourceSpan,
     syntax::{
       green::GreenNode,
       view::{CommandView, EnvironmentView, parse_key_value_options},
@@ -143,7 +142,7 @@ pub(crate) fn collect_opt_args(
         name: name.to_string(),
         key,
         expected_keys: format_expected(schema),
-        span: opt.span.to_source_span(),
+        span: opt.span.into(),
       });
     };
     // P3「キー重複はエラー」。先勝ち・後勝ちのどちらにも倒さず、`find_*` 系と手書きの代入ループが
@@ -152,11 +151,11 @@ pub(crate) fn collect_opt_args(
       return Err(EvalError::DuplicateOptArgKey {
         name: name.to_string(),
         key,
-        span: opt.span.to_source_span(),
+        span: opt.span.into(),
       });
     }
 
-    let opt_value = parse_value(&key, &value, expected, name, opt.span.to_source_span())?;
+    let opt_value = parse_value(&key, &value, expected, name, opt.span.into())?;
     pairs.push((key, opt_value));
   }
   return Ok(pairs);

@@ -8,7 +8,6 @@ use crate::{
       environment::body_scan,
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };
@@ -52,7 +51,7 @@ fn list_common(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool)
           name: view.name().to_string(),
           key: "start".to_string(),
           expected: "1 以上の整数".to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       }
       #[expect(
@@ -68,7 +67,7 @@ fn list_common(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool)
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -86,13 +85,13 @@ fn list_common(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool)
         return Err(EvalError::MissingCommandArgument {
           name: "item".to_string(),
           expected: "項目の内容".to_string(),
-          span: cmd_view.span().to_source_span(),
+          span: cmd_view.span().into(),
         });
       };
       if cmd_view.args_count() > 1 {
         return Err(EvalError::ExtraCommandArgument {
           name: "item".to_string(),
-          span: cmd_view.span().to_source_span(),
+          span: cmd_view.span().into(),
         });
       }
       let item_id = ctx.alloc(cmd_view.span());

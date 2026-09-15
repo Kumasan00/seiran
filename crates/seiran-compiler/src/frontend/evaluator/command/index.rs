@@ -8,7 +8,6 @@ use crate::{
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::CommandView,
   },
 };
@@ -27,13 +26,13 @@ pub(crate) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Re
     return Err(EvalError::MissingCommandArgument {
       name: "index".to_string(),
       expected: "索引語".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "index".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -44,7 +43,7 @@ pub(crate) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Re
       return Err(EvalError::InvalidCommandArgument {
         name: "index".to_string(),
         reason: "索引語はプレーンテキストのみ使用できます（インライン装飾・数式・コマンドは不可）".to_string(),
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     };
     word.push_str(text);
@@ -54,7 +53,7 @@ pub(crate) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Re
     return Err(EvalError::InvalidCommandArgument {
       name: "index".to_string(),
       reason: "索引語を空にはできません".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

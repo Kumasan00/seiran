@@ -10,7 +10,6 @@ use crate::{
       environment::math::math_grid::{GridSpec, evaluate_grid},
       opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };
@@ -28,13 +27,13 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "equation".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   if !numbered && label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: "equation".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

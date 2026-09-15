@@ -8,7 +8,6 @@ use crate::{
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::collect_command_opt_args,
     },
-    span_ext::ToSourceSpan,
     syntax::view::CommandView,
   },
 };
@@ -26,13 +25,13 @@ pub(super) fn extract_caption(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> 
     return Err(EvalError::MissingCommandArgument {
       name: "caption".to_string(),
       expected: "キャプション本文".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "caption".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   return extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Allow);

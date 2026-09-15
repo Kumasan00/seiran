@@ -1,8 +1,10 @@
 //! ソースの同一性 [`SourceId`] と位置 [`Span`]。
 //!
 //! どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。
-//! trait も診断も持たない leaf module として、`crate::source` から crate 全体が参照する
-//! （#337 で `model` から移設）。
+//! 診断型は持たず、`miette::SourceSpan` への変換（`impl From<Span> for SourceSpan`）だけを持つ leaf module として、
+//! `crate::source` から crate 全体が参照する（#337 で `model` から移設）。
+
+use miette::{SourceOffset, SourceSpan};
 
 /// 複数ソースファイルをまとめて処理する際の、実ソース 1 つ分の位置識別子
 ///
@@ -54,8 +56,19 @@ impl Span {
   }
 }
 
+/// 診断ラベルの位置 `miette::SourceSpan` への変換
+///
+/// パーサ・評価器（`frontend`）と意味解析（`semantics`）の診断構築点が共有する唯一の変換。共有コードは
+/// 操作対象の型の所有者に置く規約に従い、`Span` の所有者であるこの module に置く。`project` の TOML 構文
+/// エラーは toml の byte range から `SourceSpan` を作る別経路で、`Span` を経由しない。
+impl From<Span> for SourceSpan {
+  fn from(span: Span) -> Self { return SourceSpan::new(SourceOffset::from(span.start as usize), span.len() as usize); }
+}
+
 #[cfg(test)]
 mod tests {
+  use miette::SourceSpan;
+
   use super::Span;
 
   #[test]
@@ -104,5 +117,21 @@ mod tests {
     let span = Span::default();
 
     assert_eq!(span, Span::new(0, 0));
+  }
+
+  #[test]
+  fn from_span_keeps_offset_and_length() {
+    let source_span = SourceSpan::from(Span::new(10, 25));
+
+    assert_eq!(source_span.offset(), 10);
+    assert_eq!(source_span.len(), 15);
+  }
+
+  #[test]
+  fn from_dummy_span_is_empty_at_start() {
+    let source_span = SourceSpan::from(Span::DUMMY);
+
+    assert_eq!(source_span.offset(), 0);
+    assert_eq!(source_span.len(), 0);
   }
 }
