@@ -758,10 +758,10 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 #### `boxing`
 
 (a) `build_blocks`: `LayoutNode` → `Vec<Block>`。縦リストの再帰的平坦化、テキストのスクリプト分割・
-シェーピング・計測、break 注入、`Atom` 化を行う。`boxing` 本体は縦リストの走査と、和欧文間アキ・約物境界の
-アキの規則を持ち、テキストのスクリプト分割・シェーピング・break 注入（分割点ごとの glue・`Penalty`・
-`Discretionary` の生成）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer` の `impl` を続ける
-形で持つ（子 module の目録は `boxing` の `//!`）。
+シェーピング・計測、break 注入、`Atom` 化を行う。`boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間
+アキ・約物境界のアキの規則を持ち、本文テキストのスクリプト分割・シェーピング・break 注入（分割点ごとの
+glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
+の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。
 
 - **break 注入**: シェーピング後の run を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、和文字間は
   幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済み
