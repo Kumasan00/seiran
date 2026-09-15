@@ -189,9 +189,9 @@ crate 内の他 module に依存しない**。crate 内依存を持つのは残�
   所有する**（用紙をどう使うかは見た目なので P10 が style 側に置く）
 - 処理済みフォント設定（`FontConfig` / `FontConfigs` 等）の型は兄弟 module `font` が所有し、`config` は
   未検証型から検証済み値を構築する側。**`typeset::font` は設定ファイルの形を知らない**
-- エラー型は `ReadConfigError` / `ConfigValidationError`。`style` 側の `ReadStyleError` /
-  `StyleValidationError` と接頭辞で区別する — **同名エラー型を再導入しない**（module を公開して名前空間で
-  区別する羽目になる）
+- エラー型 `ReadConfigError` / `ConfigValidationError` と警告型 `ConfigWarning` は子 module `error` が持ち、
+  `config` が再エクスポートする。`style` 側の `ReadStyleError` / `StyleValidationError` と接頭辞で区別する
+  — **同名エラー型を再導入しない**（module を公開して名前空間で区別する羽目になる）
 - テスト用の設定生成ヘルパ `test_support` は `#[doc(hidden)]` で `lib.rs` から再エクスポートされる
   （crate 外のパスは `seiran_compiler::test_support`）
 
