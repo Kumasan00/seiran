@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::{
   document::{NodeId, NodeMap},
   semantics::citation::{
-    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json, render, style::CompiledCitationStyle,
+    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json, csl_style::CompiledCitationStyle, render,
   },
 };
 

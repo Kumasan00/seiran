@@ -440,8 +440,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   カウンタのうち最も近いもの」を 1 段ずつ遡って決める（既定の `Counters` は祖先の `resets` に子孫を平坦に
   列挙するため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。定理クラスは
   `reset_by` が指す見出しカウンタを唯一の祖先とする
-- 成果物のファイルは `semantic_document.rs` — `document.rs` だと crate root の `document`（HIR）と同名になり、
-  `semantics` 配下で `document::` が 2 義になるため、この名前へ戻さない
+- 子 module に crate root の module と同名を付けない — 成果物は `semantic_document.rs`、CSL スタイルの読込は
+  `citation/csl_style.rs`。`document.rs` / `style.rs` だと `semantics` 配下で `document::` / `style::` が
+  crate root（HIR / style.toml）と自 module の 2 義になるため、この名前へ戻さない
 
 #### 走査と検証の順序
 
@@ -490,7 +491,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   ものだけに絞る** — これが消費側の match を網羅的に保つ根拠で、CSL 整形が新しい表現を出すようになったら
   そのとき variant を足す
 - **CSL の遅延読込**: スタイル・ロケールの読込は `analyze` の内側で、**引用箇所が 1 つも無ければ呼ばない**
-  （`csl_path` 未設定の文書でも引用が無ければエラーにならない）。出力言語の決定順は `citation::style` の
+  （`csl_path` 未設定の文書でも引用が無ければエラーにならない）。出力言語の決定順は `citation::csl_style` の
   doc が持つ。文献ファイル
   （`references.toml` / `.json`、拡張子で形式判別）の読込 I/O は入力読込段から呼ばれ、`analyze` の
   内側で I/O を行うのは CSL 読込だけ
