@@ -12,7 +12,7 @@ use crate::{
   },
 };
 
-pub(crate) mod body_scan;
+mod body_scan;
 mod caption;
 mod code;
 mod figure;
