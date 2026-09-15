@@ -28,7 +28,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           name: "matrix".to_string(),
           key: "delimiter".to_string(),
           expected: "none / paren / bracket / brace / bar / dbar".to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       };
       delimiter
@@ -38,7 +38,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "matrix".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

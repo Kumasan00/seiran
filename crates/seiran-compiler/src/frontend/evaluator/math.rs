@@ -68,13 +68,13 @@ pub(crate) fn evaluate_math_elements(
         TokenKind::Ampersand => {
           return Err(EvalError::UnsupportedInMath {
             what: "&（列区切り）".to_string(),
-            span: token.span.to_source_span(),
+            span: token.span.into(),
           });
         },
         TokenKind::LineBreak => {
           return Err(EvalError::UnsupportedInMath {
             what: r"\\（行区切り）".to_string(),
-            span: token.span.to_source_span(),
+            span: token.span.into(),
           });
         },
         // 構造トークン（コマンド・括弧類・`$`・上下付きマーカー）と段落区切り・コメント・
@@ -115,7 +115,7 @@ pub(crate) fn evaluate_math_elements(
           let view = EnvironmentView::new(child_node, source);
           return Err(EvalError::UnsupportedInMath {
             what: format!("環境 {}", view.name()),
-            span: child_node.span.to_source_span(),
+            span: child_node.span.into(),
           });
         },
         // 引数・環境タグはそれぞれの評価経路が中身を取り出す。`InlineMath` は数式の入れ子で、
@@ -183,13 +183,13 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
       return Err(EvalError::MissingCommandArgument {
         name: name.to_string(),
         expected: "1 個（数式本体）".to_string(),
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     }
     if arg_count > 1 {
       return Err(EvalError::ExtraCommandArgument {
         name: name.to_string(),
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     }
     let Some(first_arg) = view.first_arg() else {
@@ -206,7 +206,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
       if view.args_count() > 2 {
         return Err(EvalError::ExtraCommandArgument {
           name: name.to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       }
       let mut args = view.args();
@@ -214,7 +214,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
         return Err(EvalError::MissingCommandArgument {
           name: name.to_string(),
           expected: "2 個（分子と分母）".to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       };
       let id = ctx.alloc(view.span());
@@ -226,7 +226,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
       if view.args_count() > 1 {
         return Err(EvalError::ExtraCommandArgument {
           name: name.to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       }
       let id = ctx.alloc(view.span());
@@ -238,7 +238,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
         return Err(EvalError::MissingCommandArgument {
           name: name.to_string(),
           expected: "1 個（被開平数）".to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       };
       let radicand = Box::new(math_arg_to_node(source, ctx, radicand_arg)?);
@@ -250,7 +250,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
         if !view.args_is_empty() {
           return Err(EvalError::ExtraCommandArgument {
             name: name.to_string(),
-            span: view.span().to_source_span(),
+            span: view.span().into(),
           });
         }
         return Ok(ctx.leaf_math(
@@ -264,7 +264,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
 
       return Err(EvalError::UnknownCommand {
         name: name.to_string(),
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     },
   }

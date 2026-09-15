@@ -31,7 +31,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "table".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -45,7 +45,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
     return Err(EvalError::MissingEnvironmentArgument {
       name: "table".to_string(),
       expected: "\\row コマンド".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

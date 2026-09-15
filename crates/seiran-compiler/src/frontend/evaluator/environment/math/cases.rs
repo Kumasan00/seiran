@@ -24,7 +24,7 @@ pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "cases".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -47,7 +47,7 @@ pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   if let Some(row) = rows.iter().find(|row| return row.cells.len() > 2) {
     return Err(EvalError::CasesColumnOverflow {
       found: row.cells.len(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

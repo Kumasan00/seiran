@@ -26,13 +26,13 @@ pub(crate) fn code_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Res
     return Err(EvalError::MissingCommandArgument {
       name: "code".to_string(),
       expected: "コード断片".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "code".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

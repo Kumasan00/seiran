@@ -58,13 +58,13 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
               name: "head".to_string(),
-              span: cmd_view.span().to_source_span(),
+              span: cmd_view.span().into(),
             });
           }
           head = extract_head(&cmd_view, ctx)?;
         },
         "row" => {
-          let span = cmd_view.span().to_source_span();
+          let span: miette::SourceSpan = cmd_view.span().into();
           rows.push((extract_row(&cmd_view, ctx, IndexPolicy::Allow)?, span));
         },
         "caption" => {
@@ -72,7 +72,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
               name: "caption".to_string(),
-              span: cmd_view.span().to_source_span(),
+              span: cmd_view.span().into(),
             });
           }
           if head.is_empty() && rows.is_empty() {
@@ -106,13 +106,13 @@ fn extract_head(
     return Err(EvalError::MissingCommandArgument {
       name: "head".to_string(),
       expected: "\\row コマンド".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "head".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -131,7 +131,7 @@ fn extract_head(
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: "table".to_string(),
             expected: "\\head の中の \\row".to_string(),
-            span: token.span.to_source_span(),
+            span: token.span.into(),
           });
         },
       },
@@ -139,21 +139,21 @@ fn extract_head(
         if node.kind == SyntaxKind::CommandCall {
           let row_view = CommandView::new(node, source);
           if row_view.name() == "row" {
-            let span = row_view.span().to_source_span();
+            let span: miette::SourceSpan = row_view.span().into();
             rows.push((extract_row(&row_view, ctx, IndexPolicy::Reject)?, span));
           } else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: "table".to_string(),
               name: row_view.name().to_string(),
               expected: "\\head の中の \\row".to_string(),
-              span: node.span.to_source_span(),
+              span: node.span.into(),
             });
           }
         } else {
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: "table".to_string(),
             expected: "\\head の中の \\row".to_string(),
-            span: node.span.to_source_span(),
+            span: node.span.into(),
           });
         }
       },
@@ -163,7 +163,7 @@ fn extract_head(
     return Err(EvalError::MissingCommandArgument {
       name: "head".to_string(),
       expected: "\\row コマンド".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   return Ok(rows);
@@ -187,13 +187,13 @@ fn extract_row(
     return Err(EvalError::MissingCommandArgument {
       name: "row".to_string(),
       expected: "セル内容".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "row".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -219,7 +219,7 @@ fn extract_row(
   for cell in &cells {
     if contains_line_break(&cell.content) {
       return Err(EvalError::LineBreakInTableCell {
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     }
   }
@@ -245,7 +245,7 @@ pub(super) fn resolve_column_count(
         return Err(EvalError::TableColumnsWidthsMismatch {
           columns: c.len(),
           widths: w.len(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       }
       c.len()

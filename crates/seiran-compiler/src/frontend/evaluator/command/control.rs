@@ -20,13 +20,13 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec
     return Err(EvalError::MissingCommandArgument {
       name: "space".to_string(),
       expected: "スペース量（数値）".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "space".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -37,7 +37,7 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec
     return Err(EvalError::InvalidCommandArgument {
       name: "space".to_string(),
       reason: "数値のみ".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -47,7 +47,7 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec
       return Err(EvalError::InvalidCommandArgument {
         name: "space".to_string(),
         reason: "数値".to_string(),
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     },
   };
@@ -67,7 +67,7 @@ pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   return Ok(());
@@ -83,7 +83,7 @@ pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   return Ok(vec![ctx.leaf_node(view.span(), HirNodeKind::PageBreak)]);

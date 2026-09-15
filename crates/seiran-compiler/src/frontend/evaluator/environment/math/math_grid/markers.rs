@@ -55,7 +55,7 @@ pub(super) fn try_take_row_marker(
     return Ok(false);
   }
   let view = CommandView::new(node, source);
-  let span = node.span.to_source_span();
+  let span: SourceSpan = node.span.into();
   match view.name() {
     "notag" => {
       take_notag_marker(&view, span, row_markers_allowed, current_notag)?;

@@ -38,7 +38,7 @@ pub(super) fn build_cell(
             if cell_view.is_some() {
               // 同一区画に \cell が 2 つ — `&` の書き忘れ
               return Err(EvalError::TableCellMixedContent {
-                span: node.span.to_source_span(),
+                span: node.span.into(),
               });
             }
             cell_view = Some(candidate);
@@ -55,7 +55,7 @@ pub(super) fn build_cell(
   if let Some(cell_cmd) = cell_view {
     if has_other_content {
       return Err(EvalError::TableCellMixedContent {
-        span: cell_cmd.span().to_source_span(),
+        span: cell_cmd.span().into(),
       });
     }
     return extract_cell_command(&cell_cmd, ctx, index_policy);
@@ -85,7 +85,7 @@ fn extract_cell_command(
           name: "cell".to_string(),
           key: "span".to_string(),
           expected: "1 以上の整数".to_string(),
-          span: view.span().to_source_span(),
+          span: view.span().into(),
         });
       }
       #[expect(
@@ -103,13 +103,13 @@ fn extract_cell_command(
     return Err(EvalError::MissingCommandArgument {
       name: "cell".to_string(),
       expected: "セル内容".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "cell".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

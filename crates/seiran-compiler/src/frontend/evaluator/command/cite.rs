@@ -25,13 +25,13 @@ pub(crate) fn cite_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Res
     return Err(EvalError::MissingCommandArgument {
       name: "cite".to_string(),
       expected: "引用キー".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "cite".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 
@@ -44,7 +44,7 @@ pub(crate) fn cite_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Res
       return Err(EvalError::InvalidCommandArgument {
         name: "cite".to_string(),
         reason: "空の引用キーが含まれています".to_string(),
-        span: view.span().to_source_span(),
+        span: view.span().into(),
       });
     }
     keys.push(key.to_string());

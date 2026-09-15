@@ -67,7 +67,7 @@ pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Resu
       name: "table".to_string(),
       key: "columns".to_string(),
       expected: "left / center / right の空白区切り".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     };
   };
   let tokens: Vec<&str> = spec.split_whitespace().collect();
@@ -84,7 +84,7 @@ pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Resul
       name: "table".to_string(),
       key: "widths".to_string(),
       expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     };
   };
   let tokens: Vec<&str> = spec.split_whitespace().collect();

@@ -19,13 +19,13 @@ pub(crate) fn ref_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Resu
     return Err(EvalError::MissingCommandArgument {
       name: "ref".to_string(),
       expected: "ラベル名".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "ref".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

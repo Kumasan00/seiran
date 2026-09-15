@@ -89,7 +89,7 @@ pub(crate) fn evaluate_environment(
     Some(handler) => handler(view, ctx),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     }),
   };
 }

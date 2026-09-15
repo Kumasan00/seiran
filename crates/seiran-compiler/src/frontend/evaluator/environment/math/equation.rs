@@ -27,13 +27,13 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "equation".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
   if !numbered && label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: "equation".to_string(),
-      span: view.span().to_source_span(),
+      span: view.span().into(),
     });
   }
 

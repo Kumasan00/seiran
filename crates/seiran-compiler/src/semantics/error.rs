@@ -60,10 +60,7 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
       order.push((site.source_id, site.site));
       return Vec::new();
     });
-    labels.push(LabeledSpan::new_with_span(
-      Some(format!("未定義の引用キー: {}", site.keys.join(", "))),
-      site.span.to_source_span(),
-    ));
+    labels.push(LabeledSpan::new_with_span(Some(format!("未定義の引用キー: {}", site.keys.join(", "))), site.span));
   }
   return order
     .into_iter()
@@ -166,10 +163,10 @@ impl SemanticError {
   pub(crate) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
     let mut labels = vec![LabeledSpan::new_primary_with_span(
       Some("このラベルは既に定義されています".to_string()),
-      duplicate.span.to_source_span(),
+      duplicate.span,
     )];
     if first.source_id == duplicate.source_id {
-      labels.push(LabeledSpan::new_with_span(Some("最初の定義はここです".to_string()), first.span.to_source_span()));
+      labels.push(LabeledSpan::new_with_span(Some("最初の定義はここです".to_string()), first.span));
     }
     return SemanticError::DuplicateLabel {
       label: label.to_string(),
@@ -193,7 +190,7 @@ impl SemanticError {
         ..
       } if first_definition.source_id != *source_id => Some(FirstLabelDefinition {
         label: label.clone(),
-        span: first_definition.span.to_source_span(),
+        span: first_definition.span.into(),
         source_id: first_definition.source_id,
       }),
       SemanticError::DuplicateLabel { .. }

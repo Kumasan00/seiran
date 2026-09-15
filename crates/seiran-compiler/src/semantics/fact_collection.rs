@@ -283,7 +283,7 @@ fn unresolved_references(
       let location = locations.location(reference.site);
       let error = SemanticError::UnresolvedReference {
         label: reference.label.clone(),
-        span: location.span.to_source_span(),
+        span: location.span.into(),
         source_id: location.source_id,
       };
       return (order_key(reference.site), error);
