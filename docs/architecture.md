@@ -111,9 +111,10 @@
 
 ### `project`
 
-プロジェクトの**物理的な入力**を所有する module。所有物は 6 つ — 外部資源取得の seam（`ProjectSource` trait +
+プロジェクトの**物理的な入力**を所有する module。所有物は 7 つ — 外部資源取得の seam（`ProjectSource` trait +
 `ProjectPath`）・`config.toml`（子 module `config`）・読込済みソース集合 `SourceSet`・config.toml が宣言する
-フォント資源（子 module `font`）・入力パスの解決規則 `PathResolver`・帰属 adapter `InFile<E>`。各所有物の
+フォント資源（子 module `font`）・入力パスの解決規則 `PathResolver`・帰属 adapter `InFile<E>`・TOML 解析
+エラーの診断部品 `TomlErrorParts`。各所有物の
 中身は `//!` が持ち、ここには境界だけを置く。
 
 - seam: compiler は `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
@@ -129,6 +130,11 @@
 - `PathResolver` は `compile` facade が `base_dir` から 1 回だけ構築し、config・style・frontend（画像）の
   3 箇所が共用する。差し替え点ではないので trait にしない
 - `InFile<E>` は config と style が共用する
+- `TomlErrorParts` も config と style が共用する。TOML 解析エラーの位置は miette のラベルだけが示し、
+  toml の自前スニペットを重ねない規則をここ 1 箇所に閉じる（#647）。診断 code / help は役割ごとに違うので
+  variant（`ParseToml`）は各所有者が持ち、ここは部品（`NamedSource` / `SourceSpan` / input を消した
+  `toml::de::Error`）だけを返す。references の `ParseToml` は toml の自前スニペットで位置を示す別方式で
+  （`docs/error-handling.md` の references 例外）、これを使わない
 
 見た目を決める `style.toml` は `style` module の所有で、言語設計原則 P10 が区別する 2 概念（物理・実体・
 メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは判定できない横断制約は

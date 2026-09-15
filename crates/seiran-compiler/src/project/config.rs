@@ -16,7 +16,7 @@ use crate::{
   failures::Failures,
   project::{
     Feature, FontConfig, FontConfigs, FontType, InFile, PathResolver, ProjectPath, ProjectSource, SourceReadError,
-    TextDirection, VariationAxis,
+    TextDirection, TomlErrorParts, VariationAxis,
   },
 };
 
@@ -241,19 +241,9 @@ fn read_raw_config(
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
 /// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
 fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures<ReadConfigError>> {
-  return toml::from_str(content).map_err(|mut source| {
-    let span = source.span().map_or_else(
-      || return SourceSpan::new(0.into(), 0),
-      |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
-    );
-    // toml::de::Error::Display は input が設定されていると line/column の自前スニペットを描画する。
-    // miette の #[label] と二重に位置情報が出るため、ここで input をクリアして抑止する。
-    source.set_input(None);
-    return Failures::single(ReadConfigError::ParseToml {
-      src: NamedSource::new(source_path.display().to_string(), content.to_string()),
-      span,
-      source,
-    });
+  return toml::from_str(content).map_err(|error| {
+    let TomlErrorParts { src, span, source } = TomlErrorParts::new(source_path.display().to_string(), content, error);
+    return Failures::single(ReadConfigError::ParseToml { src, span, source });
   });
 }
 
@@ -802,31 +792,6 @@ mod tests {
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadConfigError::ParseToml { .. })
     ));
-  }
-
-  #[test]
-  fn parse_toml_error_records_span_and_suppresses_inner_display_input() {
-    // Arrange
-    let invalid_toml = "name = bad\n";
-
-    // Act
-    let failures = parse_config(invalid_toml, dummy_source()).unwrap_err();
-
-    // Assert
-    let ReadConfigError::ParseToml {
-      src: _,
-      span,
-      source,
-    } = failures.into_iter().next().expect("非空集合なので 1 件目があるはず")
-    else {
-      panic!("expected ParseToml variant");
-    };
-    assert!(span.offset() > 0 || !span.is_empty(), "span must point at the syntax issue, got {span:?}");
-    let rendered = source.to_string();
-    assert!(
-      !rendered.contains("TOML parse error at line"),
-      "set_input(None) should suppress toml's built-in snippet, but got: {rendered}"
-    );
   }
 
   #[test]
