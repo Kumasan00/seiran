@@ -114,7 +114,7 @@
 プロジェクトの**物理的な入力**を所有する module。所有物は 7 つ — 外部資源取得の seam（`ProjectSource` trait +
 `ProjectPath`）・`config.toml`（子 module `config`）・読込済みソース集合 `SourceSet`・config.toml が宣言する
 フォント資源（子 module `font`）・入力パスの解決規則 `PathResolver`・帰属 adapter `InFile<E>`・TOML 解析
-エラーの診断部品 `TomlErrorParts`。各所有物の
+そのものと解析エラーの診断部品 `TomlErrorParts`（`parse_toml` が入口）。各所有物の
 中身は `//!` が持ち、ここには境界だけを置く。
 
 - seam: compiler は `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
@@ -130,11 +130,12 @@
 - `PathResolver` は `compile` facade が `base_dir` から 1 回だけ構築し、config・style・frontend（画像）の
   3 箇所が共用する。差し替え点ではないので trait にしない
 - `InFile<E>` は config と style が共用する
-- `TomlErrorParts` も config と style が共用する。TOML 解析エラーの位置は miette のラベルだけが示し、
-  toml の自前スニペットを重ねない規則をここ 1 箇所に閉じる（#647）。診断 code / help は役割ごとに違うので
-  variant（`ParseToml`）は各所有者が持ち、ここは部品（`NamedSource` / `SourceSpan` / input を消した
-  `toml::de::Error`）だけを返す。references の `ParseToml` は toml の自前スニペットで位置を示す別方式で
-  （`docs/error-handling.md` の references 例外）、これを使わない
+- `TomlErrorParts` も config と style が共用する。TOML 解析そのものも `parse_toml` を通し、config / style は
+  `toml::from_str` を直接呼ばない — 位置付けが 1 か所であることを構造で保証する（#647）。TOML 解析エラーの
+  位置は miette のラベルだけが示し、toml の自前スニペットを重ねない規則もここ 1 箇所に閉じる。診断
+  code / help は役割ごとに違うので variant（`ParseToml`）は各所有者が持ち、`parse_toml` は部品（`NamedSource` /
+  `SourceSpan` / input を消した `toml::de::Error`）だけを返す。references の `ParseToml` は toml の自前
+  スニペットで位置を示す別方式で（`docs/error-handling.md` の references 例外）、これを使わない
 
 見た目を決める `style.toml` は `style` module の所有で、言語設計原則 P10 が区別する 2 概念（物理・実体・
 メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは判定できない横断制約は
@@ -264,8 +265,9 @@ style 由来の表示文字列は `semantics` が別枠で持つ。
 — 引用箇所の存在が確定するまで遅延させるため、`.csl` / ロケール XML の読込は `semantics::analyze` の
 内側にある。`config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の
 不変条件として `typeset::geometry` が所有する。値検証の違反は `ReadStyleError::Validation` が
-`project::InFile<StyleValidationError>` として読んだファイルのパスを前置し、TOML 解析エラーは
-`project::TomlErrorParts` の部品から `ReadStyleError::ParseToml` を組む（位置の出し方は config と共通）。
+`project::InFile<StyleValidationError>` として読んだファイルのパスを前置し、TOML 解析は
+`project::parse_toml` を通し、失敗の部品 `TomlErrorParts` から `ReadStyleError::ParseToml` を組む
+（位置の出し方は config と共通）。
 
 境界: 子 module（サブスタイル群 + `template` + `error`）はすべて非公開で、module root が再エクスポートする
 のは**`style` の外から実際に名指しされる名前と、公開フィールドの型として名指し可能でなければならない名前

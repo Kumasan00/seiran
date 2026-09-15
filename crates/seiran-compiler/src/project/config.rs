@@ -15,8 +15,8 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{
-    Feature, FontConfig, FontConfigs, FontType, InFile, PathResolver, ProjectPath, ProjectSource, SourceReadError,
-    TextDirection, TomlErrorParts, VariationAxis,
+    self, Feature, FontConfig, FontConfigs, FontType, InFile, PathResolver, ProjectPath, ProjectSource,
+    SourceReadError, TextDirection, TomlErrorParts, VariationAxis,
   },
 };
 
@@ -241,10 +241,11 @@ fn read_raw_config(
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
 /// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
 fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures<ReadConfigError>> {
-  return toml::from_str(content).map_err(|error| {
-    let TomlErrorParts { src, span, source } = TomlErrorParts::new(source_path.display().to_string(), content, error);
-    return Failures::single(ReadConfigError::ParseToml { src, span, source });
-  });
+  return project::parse_toml(source_path.display().to_string(), content).map_err(
+    |TomlErrorParts { src, span, source }| {
+      return Failures::single(ReadConfigError::ParseToml { src, span, source });
+    },
+  );
 }
 
 /// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。

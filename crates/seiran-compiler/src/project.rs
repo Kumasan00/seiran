@@ -18,9 +18,10 @@
 //! 入力パスの解決規則（相対への `base_dir` 前置・絶対の維持・字句的正規化）は子 module `path_resolver` の
 //! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う（#530）。
 //!
-//! TOML 設定ファイル（config.toml / style.toml）の解析エラーを leaf diagnostic の部品へ分解する規則
-//! （位置は miette のラベルだけが示し、toml の自前スニペットを重ねない）は子 module `toml_error_parts` の
-//! [`TomlErrorParts`] 1 型に閉じ、config / style はこれを使う（#647）。
+//! TOML 設定ファイル（config.toml / style.toml）の解析そのものと、解析エラーを leaf diagnostic の部品へ
+//! 分解する規則（位置は miette のラベルだけが示し、toml の自前スニペットを重ねない）は子 module
+//! `toml_error_parts` の [`parse_toml`] + [`TomlErrorParts`] に閉じ、config / style は `toml::from_str` を
+//! 直接呼ばずこれを使う（#647）。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` /
 //! `toml_error_parts` は crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が
@@ -65,7 +66,7 @@ pub(crate) use path_resolver::PathResolver;
 use serde::{Deserialize, Serialize};
 pub(crate) use source_set::SourceSet;
 use thiserror::Error;
-pub(crate) use toml_error_parts::TomlErrorParts;
+pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ
 /// （シンボリックリンク解決はしない。存在確認は [`ProjectSource::exists`] が担う）。
