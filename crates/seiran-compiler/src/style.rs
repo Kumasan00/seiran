@@ -31,7 +31,6 @@ mod title_page;
 mod toc;
 
 use garde::Validate;
-use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -87,7 +86,7 @@ use crate::{
   color::Color,
   document::HeadingLevel,
   failures::Failures,
-  project::{InFile, PathResolver, ProjectPath, ProjectSource},
+  project::{InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -247,12 +246,8 @@ pub(crate) fn load(
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
 pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<ReadStyleError>> {
-  let mut style: Style = toml::from_str(content).map_err(|source| {
-    let src = NamedSource::new(source_path, content.to_string());
-    let span = source.span().map_or_else(
-      || return SourceSpan::new(0.into(), 0),
-      |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
-    );
+  let mut style: Style = toml::from_str(content).map_err(|error| {
+    let TomlErrorParts { src, span, source } = TomlErrorParts::new(source_path, content, error);
     return Failures::single(ReadStyleError::ParseToml { src, span, source });
   })?;
   if let Err(errors) = validate_values(&style)
@@ -855,6 +850,24 @@ mod parse_tests {
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
     ));
+  }
+
+  #[test]
+  fn parse_toml_error_suppresses_inner_display_input() {
+    // Arrange — 閉じ引用符の無い文字列（#647 の再現入力）
+    let toml = "[page]\nmargin_top = \"10mm\n";
+
+    // Act
+    let failures = parse(toml, dummy_source()).unwrap_err();
+
+    // Assert — 位置は miette のラベルだけが示すので、cause の toml エラーは自前スニペットを持たない
+    let ReadStyleError::ParseToml { source, .. } =
+      failures.into_iter().next().expect("非空集合なので 1 件目があるはず")
+    else {
+      panic!("TOML 構文エラーは ParseToml になるはず");
+    };
+    let rendered = source.to_string();
+    assert!(!rendered.contains("TOML parse error at line"), "toml の自前スニペットを抑止するはず: {rendered}");
   }
 
   #[test]

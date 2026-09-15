@@ -264,7 +264,8 @@ style 由来の表示文字列は `semantics` が別枠で持つ。
 — 引用箇所の存在が確定するまで遅延させるため、`.csl` / ロケール XML の読込は `semantics::analyze` の
 内側にある。`config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の
 不変条件として `typeset::geometry` が所有する。値検証の違反は `ReadStyleError::Validation` が
-`project::InFile<StyleValidationError>` として読んだファイルのパスを前置する。
+`project::InFile<StyleValidationError>` として読んだファイルのパスを前置し、TOML 解析エラーは
+`project::TomlErrorParts` の部品から `ReadStyleError::ParseToml` を組む（位置の出し方は config と共通）。
 
 境界: 子 module（サブスタイル群 + `template` + `error`）はすべて非公開で、module root が再エクスポートする
 のは**`style` の外から実際に名指しされる名前と、公開フィールドの型として名指し可能でなければならない名前

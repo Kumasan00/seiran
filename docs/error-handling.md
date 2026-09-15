@@ -68,7 +68,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 - **ソース本文を持つかどうかで扱いが分かれる。** ソース本文（ファイル名・全文）を直接読める場所で
   エラーを構築する場合（例: TOML パーサ呼び出し直後）は、その場で `#[source_code] src: NamedSource<String>` と
   `#[label] span` を持つ leaf 変種を返してよい（例: `ParseToml`。元の `toml::de::Error` は `#[source]` で
-  cause に残す）。
+  cause に残す）。config.toml / style.toml の `ParseToml` は部品を `project::TomlErrorParts` から取り、
+  toml の自前スニペット（`TOML parse error at line …`）を抑止して位置をラベル 1 回に揃える（#647）。
   一方、ソース本文を持たない下位 module（本文は `project::SourceSet` が一元管理する。例:
   `frontend::ParseSourceError` の内側の `ParserError` / `EvalError`、`semantics::SemanticError`）は、
   `#[source_code]` を持たず span だけ（複数ソースにまたがる `semantics` は `SourceId` も。発行元が単一の
