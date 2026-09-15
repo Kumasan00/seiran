@@ -10,7 +10,6 @@ use crate::{
   document::{HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
     evaluator::{EvalContext, EvalError, inline::resolve_math_symbol_command, opt_args::collect_command_opt_args},
-    span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
       green::{GreenElement, GreenNode},

@@ -8,7 +8,6 @@ use crate::{
   document::HirNode,
   frontend::{
     evaluator::{EvalContext, EvalError},
-    span_ext::ToSourceSpan,
     syntax::{BodyMode, view::EnvironmentView},
   },
 };

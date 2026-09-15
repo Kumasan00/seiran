@@ -4,7 +4,6 @@ use crate::{
   document::{HirNode, HirNodeKind},
   frontend::{
     evaluator::{EvalContext, EvalError, opt_args::collect_command_opt_args},
-    span_ext::ToSourceSpan,
     syntax::view::{CommandView, extract_text_content},
   },
   length::Length,

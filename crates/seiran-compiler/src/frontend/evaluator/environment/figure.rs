@@ -10,7 +10,6 @@ use crate::{
       environment::{body_scan, caption::extract_caption},
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,

@@ -8,7 +8,6 @@ use crate::{
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::collect_command_opt_args,
     },
-    span_ext::ToSourceSpan,
     syntax::view::CommandView,
   },
 };

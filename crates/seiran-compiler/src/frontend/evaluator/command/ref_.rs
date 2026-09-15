@@ -4,7 +4,6 @@ use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{EvalContext, EvalError, opt_args::collect_command_opt_args},
-    span_ext::ToSourceSpan,
     syntax::view::{CommandView, extract_text_content},
   },
 };

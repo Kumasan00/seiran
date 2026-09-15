@@ -8,7 +8,6 @@ use crate::{
   document::{HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
-    span_ext::ToSourceSpan,
     syntax::{
       green::{GreenElement, GreenNode},
       token::TokenKind,

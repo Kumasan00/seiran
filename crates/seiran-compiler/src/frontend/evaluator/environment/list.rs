@@ -8,7 +8,6 @@ use crate::{
       environment::body_scan,
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };

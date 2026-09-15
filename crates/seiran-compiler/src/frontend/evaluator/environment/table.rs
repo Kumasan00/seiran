@@ -13,7 +13,6 @@ use crate::{
   document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind},
   frontend::{
     evaluator::{EvalContext, EvalError},
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };

@@ -4,7 +4,6 @@ use crate::{
   document::{HirNode, HirNodeKind, QuoteKind},
   frontend::{
     evaluator::{self, EvalContext, EvalError, opt_args::collect_environment_opt_args},
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };

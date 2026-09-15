@@ -6,16 +6,13 @@ use bumpalo::Bump;
 use tracing::debug;
 
 use crate::{
-  frontend::{
-    span_ext::ToSourceSpan,
-    syntax::{
-      cst::{
-        green::{GreenElement, GreenNode},
-        kind::SyntaxKind,
-      },
-      lexer::Lexer,
-      token::{Token, TokenKind},
+  frontend::syntax::{
+    cst::{
+      green::{GreenElement, GreenNode},
+      kind::SyntaxKind,
     },
+    lexer::Lexer,
+    token::{Token, TokenKind},
   },
   source::Span,
 };

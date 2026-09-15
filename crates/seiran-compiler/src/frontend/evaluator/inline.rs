@@ -21,7 +21,6 @@ use crate::{
       },
       math,
     },
-    span_ext::ToSourceSpan,
     syntax::{
       green::{GreenElement, GreenNode},
       kind::SyntaxKind,

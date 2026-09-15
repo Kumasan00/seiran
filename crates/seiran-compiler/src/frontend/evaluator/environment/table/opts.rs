@@ -7,7 +7,6 @@ use crate::{
       EvalError,
       opt_args::{OptType, OptValue, collect_environment_opt_args},
     },
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
   length::Length,

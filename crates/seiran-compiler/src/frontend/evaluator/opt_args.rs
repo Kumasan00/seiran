@@ -8,7 +8,6 @@ use crate::{
   color::Color,
   frontend::{
     evaluator::EvalError,
-    span_ext::ToSourceSpan,
     syntax::{
       green::GreenNode,
       view::{CommandView, EnvironmentView, parse_key_value_options},

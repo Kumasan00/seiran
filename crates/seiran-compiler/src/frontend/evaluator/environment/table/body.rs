@@ -13,7 +13,6 @@ use crate::{
       inline::IndexPolicy,
       opt_args::{OptType, OptValue, collect_command_opt_args},
     },
-    span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
       green::GreenElement,

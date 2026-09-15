@@ -4,7 +4,6 @@
 
 use crate::frontend::{
   evaluator::EvalError,
-  span_ext::ToSourceSpan,
   syntax::{
     SyntaxKind,
     green::{GreenElement, GreenNode},

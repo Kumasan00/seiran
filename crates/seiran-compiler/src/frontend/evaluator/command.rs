@@ -11,7 +11,6 @@ use crate::{
     evaluator::{
       EvalContext, EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args,
     },
-    span_ext::ToSourceSpan,
     syntax::{ArgMode, view::CommandView},
   },
 };

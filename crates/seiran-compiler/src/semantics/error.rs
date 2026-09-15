@@ -62,7 +62,7 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
     });
     labels.push(LabeledSpan::new_with_span(
       Some(format!("未定義の引用キー: {}", site.keys.join(", "))),
-      span_to_source_span(site.span),
+      site.span.to_source_span(),
     ));
   }
   return order
@@ -166,13 +166,10 @@ impl SemanticError {
   pub(crate) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
     let mut labels = vec![LabeledSpan::new_primary_with_span(
       Some("このラベルは既に定義されています".to_string()),
-      span_to_source_span(duplicate.span),
+      duplicate.span.to_source_span(),
     )];
     if first.source_id == duplicate.source_id {
-      labels.push(LabeledSpan::new_with_span(
-        Some("最初の定義はここです".to_string()),
-        span_to_source_span(first.span),
-      ));
+      labels.push(LabeledSpan::new_with_span(Some("最初の定義はここです".to_string()), first.span.to_source_span()));
     }
     return SemanticError::DuplicateLabel {
       label: label.to_string(),
@@ -196,7 +193,7 @@ impl SemanticError {
         ..
       } if first_definition.source_id != *source_id => Some(FirstLabelDefinition {
         label: label.clone(),
-        span: span_to_source_span(first_definition.span),
+        span: first_definition.span.to_source_span(),
         source_id: first_definition.source_id,
       }),
       SemanticError::DuplicateLabel { .. }
@@ -228,12 +225,4 @@ impl FirstLabelDefinition {
   /// 最初の定義が属するソースを返す。
   #[must_use]
   pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
-}
-
-/// `crate::source::Span` を診断用の `miette::SourceSpan` へ変換する
-///
-/// `SemanticError` のバリアントはいずれも `#[label]` に `miette::SourceSpan` を要求するため、
-/// この module の診断組み立てと、`fact_collection` の走査後の参照の存在検証の双方から共有する
-pub(crate) fn span_to_source_span(span: Span) -> miette::SourceSpan {
-  return miette::SourceSpan::from((span.start as usize, span.len() as usize));
 }

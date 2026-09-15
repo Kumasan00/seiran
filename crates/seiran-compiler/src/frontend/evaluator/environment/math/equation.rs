@@ -10,7 +10,6 @@ use crate::{
       environment::math::math_grid::{GridSpec, evaluate_grid},
       opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
     },
-    span_ext::ToSourceSpan,
     syntax::view::EnvironmentView,
   },
 };
