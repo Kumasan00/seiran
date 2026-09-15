@@ -440,6 +440,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   カウンタのうち最も近いもの」を 1 段ずつ遡って決める（既定の `Counters` は祖先の `resets` に子孫を平坦に
   列挙するため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。定理クラスは
   `reset_by` が指す見出しカウンタを唯一の祖先とする
+- 成果物のファイルは `semantic_document.rs` — `document.rs` だと crate root の `document`（HIR）と同名になり、
+  `semantics` 配下で `document::` が 2 義になるため、この名前へ戻さない
 
 #### 走査と検証の順序
 
