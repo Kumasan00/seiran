@@ -57,14 +57,14 @@ mod tests {
     length::Length,
     typeset::{
       boxes::{HBox, HBoxContent, Line, PlacedHItem, PositionedBox},
-      test_fixtures,
+      test_support,
     },
   };
 
   /// グリフ列を内容に持つ配置済みボックスを作る
   fn glyph_box(text: &str) -> PositionedBox {
     return PositionedBox {
-      content: HBoxContent::Glyphs(test_fixtures::glyph_run(text)),
+      content: HBoxContent::Glyphs(test_support::glyph_run(text)),
       x: Length::ZERO,
       dy: Length::ZERO,
       width: Length::ZERO,
@@ -75,7 +75,7 @@ mod tests {
   fn atom_box(text: &str) -> PositionedBox {
     let child = PlacedHItem {
       item: HBox {
-        content: HBoxContent::Glyphs(test_fixtures::glyph_run(text)),
+        content: HBoxContent::Glyphs(test_support::glyph_run(text)),
         width: Length::ZERO,
         height: Length::ZERO,
         depth: Length::ZERO,

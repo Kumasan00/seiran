@@ -372,12 +372,12 @@ mod tests {
     },
     publication::{
       ImageFormat, PaintOp, Point, Publication, PublicationImage, PublicationLinkTarget, PublicationResources, Rect,
-      test_fixtures::resources,
+      test_support::resources,
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
       boxes::{AnchorId, Page},
-      test_fixtures::{
+      test_support::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, table_block,
       },

@@ -16,7 +16,7 @@ mod render;
 mod site;
 mod style;
 #[cfg(test)]
-pub(crate) mod test_fixtures;
+pub(crate) mod test_support;
 
 pub(crate) use generate::{CitationFormatError, GeneratedCitations, generate_citations};
 pub(crate) use generated::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text};
