@@ -5,15 +5,22 @@
 //! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
 //!
 //! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
+//!
+//! 分割機会 (b) の探索は子 module `break_opportunities`（欧文語中の分割点は子 `hyphenation`）が持ち、
+//! break 注入だけがそれを使う。計測側に閉じているので、この module は `typeset::breaking` に依存しない。
 
+mod break_opportunities;
 mod composed_line;
+mod hyphenation;
 mod math;
 mod script;
 mod yakumono;
 
 use std::borrow::Cow;
 
+use break_opportunities::{BreakKind, BreakPoint};
 pub(super) use composed_line::{LineAccum, row_width};
+use hyphenation::Lang;
 use tracing::{debug, trace};
 
 use crate::{
@@ -27,7 +34,6 @@ use crate::{
       Align, Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
       max_font_size_in_items,
     },
-    breaking::{self, BreakKind, BreakPoint, Lang},
     font::{FontSystem, UnicodeBuffer},
     lowering::{AtomNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
     observe,
@@ -82,7 +88,7 @@ pub(super) fn build_blocks(
   language: Option<&str>,
   punctuation_spacing: bool,
 ) -> Vec<Block> {
-  let hyphenation = breaking::resolve_hyphenation(language);
+  let hyphenation = hyphenation::resolve(language);
   let mut measurer = Measurer::new(resources, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
@@ -476,7 +482,7 @@ impl<'a> Measurer<'a> {
 
     // 和文セグメントはハイフネーションしない（`Lang` を渡さない＝Hyphen 分割点を生じさせない）
     let hyphenation_lang = if is_japanese { None } else { self.hyphenation };
-    let mut breaks = breaking::break_opportunities(text, hyphenation_lang);
+    let mut breaks = break_opportunities::break_opportunities(text, hyphenation_lang);
     // セグメント末尾のスペースは（次の Text ノードとの境界として）glue に変換する
     if text.ends_with(' ') {
       breaks.push(BreakPoint {
@@ -588,8 +594,10 @@ impl<'a> Measurer<'a> {
     let em = run.font_size;
 
     // ICU 分割可能位置（バイト集合）。約物アキ glue の breakable 判定にも使う（禁則は ICU が除く）
-    let break_bytes: std::collections::HashSet<usize> =
-      breaking::break_opportunities(text, None).into_iter().map(|point| return point.byte).collect();
+    let break_bytes: std::collections::HashSet<usize> = break_opportunities::break_opportunities(text, None)
+      .into_iter()
+      .map(|point| return point.byte)
+      .collect();
 
     // グリフ g の先頭文字を返す（クラスタは先頭文字で代表させる）
     let char_of = |g: usize| -> char { return text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };

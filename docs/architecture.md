@@ -780,13 +780,17 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   評価器と `lowering` のテキスト結合）の責務
 - 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
 
+(b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。
+分割点は子 module `hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する。消費者は break 注入だけなので
+`boxing` の子に置き、**`boxing` は `breaking` に依存しない**（段順序どおり `breaking` が純粋に下流）。置き場は
+`document` 節の判断基準（consumer が同一依存関係内にとどまるなら共有置き場ではなくその内部へ置く）を module に
+当てはめたもの。
+
 #### `breaking`
 
 フォント非依存の純粋組版パス。`break_pages` の interface はフォント・シェーパーを引数に取らず、フォント
 非依存を型境界で固定する。
 
-- (b) 分割機会: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。分割点は兄弟 module
-  `hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する
 - (c) 行分割: `LineBreaker` の 2 実装（Knuth–Plass ＝段落全体最適、greedy ＝ first-fit）。語中折り返しは
   `Discretionary` で表し、折り返した行末だけハイフンを出す。数式内分割点 `MathBreak` は他の分割点で組めない
   ときだけ使う — Knuth–Plass は経路上の使用回数を demerits より優先して辞書式に最小化し、greedy は行内に
