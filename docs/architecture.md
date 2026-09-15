@@ -760,11 +760,6 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 (a) `build_blocks`: `LayoutNode` → `Vec<Block>`。縦リストの再帰的平坦化、テキストのスクリプト分割・
 シェーピング・計測、break 注入、`Atom` 化を行う。
 
-(b) 分割機会: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。分割点は兄弟 module
-`hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する。消費者は break 注入だけなので `boxing` の
-子に置き、**`boxing` は `breaking` に依存しない**（段順序どおり `breaking` が純粋に下流。置き場の判断は
-`document` 節の「consumer が同一依存関係内にとどまるなら共有置き場ではなくその内部へ置く」）。
-
 - **break 注入**: シェーピング後の run を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、和文字間は
   幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済み
   ハイフン箱を持つ `Discretionary` にする。和文はハイフネーションしない（字間 `Glue` が分割機会）。数式の
@@ -784,6 +779,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
 - 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
+
+(b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。
+分割点は子 module `hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する。消費者は break 注入だけなので
+`boxing` の子に置き、**`boxing` は `breaking` に依存しない**（段順序どおり `breaking` が純粋に下流）。置き場は
+`document` 節の判断基準（consumer が同一依存関係内にとどまるなら共有置き場ではなくその内部へ置く）を module に
+当てはめたもの。
 
 #### `breaking`
 
