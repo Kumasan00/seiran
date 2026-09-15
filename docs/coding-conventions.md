@@ -265,15 +265,15 @@ arm は網羅性判定に参加しないので、同じ variant を wildcard 側
 （差分＝意図として読める形を保ち、既定値の複製で upstream の既定変更に追随する二重帳簿を作らないため。
 ノブ 113 個の全数棚卸しと維持判断の記録は #473 が持つ）。
 
-| ノブ                                | 値       | 根拠                                                                                                                                 |
-|-------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `absolute-paths-max-segments`       | `3`      | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                                                                     |
-| `allow-mixed-uninlined-format-args` | `false`  | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる                                                      |
-| `allow-panic-in-tests`              | `true`   | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                                                                       |
-| `allow-unwrap-in-tests`             | `true`   | テストの `unwrap` は許容                                                                                                             |
-| `avoid-breaking-exported-api`       | `false`  | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる                                                  |
-| `inherent-impl-lint-scope`          | `"file"` | `multiple_inherent_impl` を同一ファイル内に限る（既定 `crate` は子 module へ切り出した impl どうしも衝突させ、分割の慣行と矛盾する） |
-| `upper-case-acronyms-aggressive`    | `true`   | `HTTPResponse` 形も `HttpResponse` に固定する                                                                                        |
+| ノブ                                | 値       | 根拠                                                                                                             |
+| ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `absolute-paths-max-segments`       | `3`      | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                                                 |
+| `allow-mixed-uninlined-format-args` | `false`  | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる                                  |
+| `allow-panic-in-tests`              | `true`   | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                                                   |
+| `allow-unwrap-in-tests`             | `true`   | テストの `unwrap` は許容                                                                                         |
+| `avoid-breaking-exported-api`       | `false`  | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる                              |
+| `inherent-impl-lint-scope`          | `"file"` | `multiple_inherent_impl` を同一ファイル内に限る（既定 `crate` は子 module へ切り出した impl どうしも衝突させる） |
+| `upper-case-acronyms-aggressive`    | `true`   | `HTTPResponse` 形も `HttpResponse` に固定する                                                                    |
 
 `avoid-breaking-exported-api = false` の帰結として `rc_mutex` / `needless_pass_by_ref_mut` / `ref_option` /
 `unused_self` / `wrong_self_convention` 等が公開項目にも効く。逆に `check-private-items` は既定の false を

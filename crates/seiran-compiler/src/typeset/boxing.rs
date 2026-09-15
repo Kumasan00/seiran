@@ -14,8 +14,7 @@
 //!
 //! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
 //!
-//! 分割機会 (b) の探索は子 module `break_opportunities`（欧文語中の分割点は子 `hyphenation`）が持ち、
-//! break 注入だけがそれを使う。計測側に閉じているので、この module は `typeset::breaking` に依存しない。
+//! 分割機会 (b) は計測側に閉じているので、この module は `typeset::breaking` に依存しない。
 
 mod break_opportunities;
 mod composed_line;
