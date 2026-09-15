@@ -31,7 +31,6 @@ mod title_page;
 mod toc;
 
 use garde::Validate;
-use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -87,7 +86,7 @@ use crate::{
   color::Color,
   document::HeadingLevel,
   failures::Failures,
-  project::{InFile, PathResolver, ProjectPath, ProjectSource},
+  project::{self, InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -247,14 +246,10 @@ pub(crate) fn load(
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
 pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<ReadStyleError>> {
-  let mut style: Style = toml::from_str(content).map_err(|source| {
-    let src = NamedSource::new(source_path, content.to_string());
-    let span = source.span().map_or_else(
-      || return SourceSpan::new(0.into(), 0),
-      |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
-    );
-    return Failures::single(ReadStyleError::ParseToml { src, span, source });
-  })?;
+  let mut style: Style =
+    project::parse_toml(source_path, content).map_err(|TomlErrorParts { src, span, source }| {
+      return Failures::single(ReadStyleError::ParseToml { src, span, source });
+    })?;
   if let Err(errors) = validate_values(&style)
     && let Some(failures) = validation_failures(source_path, errors)
   {

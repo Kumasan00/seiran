@@ -1,0 +1,11 @@
+project::config::parse_toml
+
+  × 設定ファイルの TOML 解析に失敗しました
+  ╰─▶ unclosed array, expected `]`
+      
+   ╭─[diagnostics/config.toml:1:19]
+ 1 │ sources = ["a.sei"
+   ·                   ▲
+   ·                   ╰── ここ
+   ╰────
+  help: TOML の構文を確認してください。

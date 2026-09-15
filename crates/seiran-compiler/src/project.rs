@@ -18,11 +18,17 @@
 //! 入力パスの解決規則（相対への `base_dir` 前置・絶対の維持・字句的正規化）は子 module `path_resolver` の
 //! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う（#530）。
 //!
-//! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` は
-//! crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が seam / `in_file` / `font` /
-//! `length` / `failures` を、`font` が seam（[`ProjectSource`] / [`ProjectPath`]）と `failures` を、
-//! `source_set` が `source` / `failures` を参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を、
-//! `SourceSet` が `source::SourceId` を値として持つため）。`config` → `font` → seam は一方向に閉じる。
+//! TOML 設定ファイル（config.toml / style.toml）の解析そのものと、解析エラーを leaf diagnostic の部品へ
+//! 分解する規則（位置は miette のラベルだけが示し、toml の自前スニペットを重ねない）は子 module
+//! `toml_error_parts` の [`parse_toml`] + [`TomlErrorParts`] に閉じ、config / style は `toml::from_str` を
+//! 直接呼ばずこれを使う（#647）。
+//!
+//! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` /
+//! `toml_error_parts` は crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が
+//! seam / `in_file` / `toml_error_parts` / `font` / `length` / `failures` を、`font` が seam（[`ProjectSource`] /
+//! [`ProjectPath`]）と `failures` を、`source_set` が `source` / `failures` を参照する（`ProjectConfig.font_configs`
+//! が `font::FontConfigs` を、`SourceSet` が `source::SourceId` を値として持つため）。`config` → `font` → seam は
+//! 一方向に閉じる。
 
 // `config` だけは module 名が名前空間として意味を持つので `pub(crate)` で公開する。
 // 入口が `project::config::load` と読めることで、`style::load`（style.toml）と取り違えようがなくなる。
@@ -34,6 +40,7 @@ mod in_file;
 mod memory;
 mod path_resolver;
 mod source_set;
+mod toml_error_parts;
 
 use std::{
   path::{Path, PathBuf},
@@ -59,6 +66,7 @@ pub(crate) use path_resolver::PathResolver;
 use serde::{Deserialize, Serialize};
 pub(crate) use source_set::SourceSet;
 use thiserror::Error;
+pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ
 /// （シンボリックリンク解決はしない。存在確認は [`ProjectSource::exists`] が担う）。

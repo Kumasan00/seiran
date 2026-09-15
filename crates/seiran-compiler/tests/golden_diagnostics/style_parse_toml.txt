@@ -1,0 +1,12 @@
+style::parse_toml
+
+  × スタイル設定の TOML 解析に失敗しました
+  ╰─▶ invalid basic string, expected `"`
+      
+   ╭─[diagnostics/style.toml:2:19]
+ 1 │ [page]
+ 2 │ margin_top = "10mm
+   ·                   ▲
+   ·                   ╰── ここ
+   ╰────
+  help: TOML の構文とフィールドの型を確認してください。

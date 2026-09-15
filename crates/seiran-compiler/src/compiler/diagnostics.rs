@@ -11,6 +11,7 @@ use miette::{GraphicalReportHandler, GraphicalTheme};
 
 use crate::{
   compiler::{CompileFailure, test_support::TestProject},
+  project::{self, MemoryProjectSource, PathResolver, ProjectPath},
   style,
 };
 
@@ -411,4 +412,38 @@ fn diagnostic_style_validation_aggregate() {
 
   // Assert — compile 経路と同じく CompileFailure へ平坦化して描画する
   assert_matches_golden("style_validation_aggregate", &render_failure(CompileFailure::from(failures)));
+}
+
+#[test]
+fn diagnostic_style_parse_toml() {
+  // Arrange — 閉じ引用符の無い文字列（style.toml の TOML 構文エラー。#647）
+  let toml = "[page]\nmargin_top = \"10mm\n";
+
+  // Act
+  let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
+
+  // Assert — config.toml と同形: cause 行は toml のメッセージだけ、位置は miette のラベル 1 回
+  let rendered = render_failure(CompileFailure::from(failures));
+  assert!(!rendered.contains("TOML parse error at line"), "{rendered}");
+  assert_matches_golden("style_parse_toml", &rendered);
+}
+
+#[test]
+fn diagnostic_config_parse_toml() {
+  // Arrange — 閉じ括弧の無い配列（config.toml の TOML 構文エラー）
+  let source = MemoryProjectSource::new().with_text("diagnostics/config.toml", "sources = [\"a.sei\"\n");
+  let config_path = ProjectPath::new("diagnostics/config.toml");
+
+  // Act
+  let (result, _warnings) = project::config::load(&source, &config_path, &PathResolver::new(Path::new("diagnostics")));
+  let Err(failures) = result else {
+    panic!("このケースは失敗するはず");
+  };
+
+  // Assert — 位置は miette のラベルだけが示し、toml の自前スニペットを重ねない
+  let rendered = render_failure(CompileFailure::from(failures));
+  assert!(!rendered.contains("TOML parse error at line"), "{rendered}");
+  assert_matches_golden("config_parse_toml", &rendered);
 }
