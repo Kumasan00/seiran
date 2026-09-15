@@ -243,7 +243,7 @@ mod tests {
   use super::{CitationStyleError, load_citation_style, load_locales};
   use crate::{
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
-    semantics::test_fixtures::ieee_csl_path,
+    semantics::test_support::ieee_csl_path,
     style::Style,
   };
 

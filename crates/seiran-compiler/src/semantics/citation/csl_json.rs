@@ -69,7 +69,7 @@ mod tests {
   use super::{sanitize_value, to_item};
   use crate::{
     project::{FilesystemProjectSource, ProjectPath},
-    semantics::{References, read_references, test_fixtures::sample_references},
+    semantics::{References, read_references, test_support::sample_references},
   };
 
   #[test]

@@ -26,7 +26,7 @@ pub(crate) use analyze::analyze;
 #[cfg(test)]
 pub(crate) use analyze::analyze_for_test;
 #[cfg(test)]
-pub(crate) use citation::test_fixtures;
+pub(crate) use citation::test_support;
 pub(crate) use citation::{
   CitationFormatError, CitationId, CitationSiteFacts, CitationStyleError, GeneratedBlock, GeneratedCitations,
   GeneratedInline, ReadReferencesError, References, generate_citations, generated_inlines_to_plain_text,

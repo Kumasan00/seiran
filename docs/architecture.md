@@ -502,14 +502,14 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は斜体系の書体指定を持つ生成物として運ぶ
 - 文献ファイルの読込は集約せず deserialize 時に fail-fast（著者名の排他・空 / 重複 ID）。#376 の集約基準に
   対する意図的例外として維持し、集約方式に戻さない（理由は `docs/error-handling.md`）
-- テスト用フィクスチャ `test_fixtures`（`#[cfg(test)]`）は `typeset` 側のテストからも使う
+- テスト用フィクスチャ `test_support`（`#[cfg(test)]`）は `typeset` 側のテストからも使う
 
 ### `typeset`
 
 意味解析の成果物（`SemanticDocument`）を描画直前の `Publication` へ変換する。外から見える操作は
 **module root の `compose` 1 つ**と、入力読込から呼ばれる版面の構築 `PreparedGeometry::prepare`
 （`geometry` 項）だけ（`#[cfg(test)]` の出口 `layout_for_test` / `dump_pages` を除く）で、本体ビルドでは子 module は
-すべて非公開（`test_fixtures` だけ `#[cfg(test)] pub(crate)`）。`compose` は組版の成否（成功側は
+すべて非公開。`compose` は組版の成否（成功側は
 `TypesetOutput`）と `TypesetWarning` の列の組を返し、
 警告は成否と独立に**フォント → 本体の順**で載せる（配置が失敗した実行ではフォントの警告だけ — 配置由来の
 警告は配置が成功したときにしか存在しない）。`compiler` が名指しする警告型は 1 つだけで、`typeset` の内部が
@@ -716,7 +716,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 - `typeset` root facade へ出すのはテストが確定レイアウトへ直接アサートするための `#[cfg(test)]`
   再エクスポートだけで、`typeset` の外に消費者がいないものは出さない（#326）。テストのために中間型を facade
   へ出す形へ戻さない — テストが中間型のフィールド構成へ結合して再編を妨げるため、代わりに `#[cfg(test)]` の
-  子 module `test_fixtures` / `dump` を置く（#353）
+  子 module `test_support` / `dump` を置く（#353）
 
 #### `lowering`
 
@@ -855,10 +855,10 @@ TRACE ログ用の要約ヘルパだけを持つ純粋関数の module。文書�
 
 | module | 役割 | 外への出し方 |
 | --- | --- | --- |
-| `test_fixtures` | 確定レイアウトの fixture builder | `pub(crate) mod`（`typeset` の内側のテストが使う） |
+| `test_support` | 確定レイアウトの fixture builder | 出さない（非公開 `mod`。`typeset` 配下のテストだけが使う） |
 | `dump` | 確定ページ列の決定的テキストダンプ `dump_pages` | `typeset` root facade から関数 1 つだけ |
 
-`test_fixtures` の**不変条件**: `pub(crate)` の関数・メソッドの引数型にも返り値型にも、`typeset` root が
+`test_support` の**不変条件**: `pub(crate)` の関数・メソッドの引数型にも返り値型にも、`typeset` root が
 `#[cfg(test)]` で再エクスポートしていない `boxes` の中間型（`HBox` / `Line` 等）を現さない。受け取るのは意味的な値（テキスト・座標・寸法・構造）だけで、
 箱と行の寸法は専用の引数まとめ型で渡す。この規約が破れると外側のテストが再び中間型のフィールド構成へ
 結合する。
@@ -905,7 +905,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
   資源の並びは決定的でなければならないので `emit` は**パス昇順**に並べてから配列を組む
 - 生バイト列を持つ型の `Debug` は手書きで、中身ではなく長さを出す（`assert_eq!` が失敗したときに数百 MB を
   吐かないため）
-- テスト用に `#[cfg(test)] pub(crate) mod test_fixtures`（描画資源 `PublicationResources` のダミー組み立て。
+- テスト用に `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て。
   `Publication` 値は作らない）を持つ
 
 ### `compiler`

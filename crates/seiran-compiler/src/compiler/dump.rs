@@ -157,7 +157,7 @@ mod tests {
     project::FontType,
     publication::{
       Destination, GlyphRun, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect,
-      test_fixtures::resources,
+      test_support::resources,
     },
   };
 
