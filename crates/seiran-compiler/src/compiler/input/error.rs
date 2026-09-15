@@ -20,7 +20,7 @@ use crate::{
 /// PDF の保存は `compile` の責務ではないため、ここには含まない
 /// （呼び出し元である CLI 側が保存専用のエラー型を別途持つ）。
 ///
-/// 可視性が crate 内で唯一の `pub(in ...)` 形なのは、この型が `input::load` の `pub(super)` な
+/// 可視性が `pub(in ...)` 形なのは、この型が `input::load` の `pub(super)` な
 /// シグネチャに現れるため — `compiler` module 全体から名指しできないと rustc の
 /// `private_interfaces` が落ちる。`compiler` の外に消費者はいないので `pub(crate)` へは広げない。
 #[derive(Debug, Error, Diagnostic)]
