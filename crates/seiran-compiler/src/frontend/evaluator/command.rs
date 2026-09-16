@@ -15,16 +15,16 @@ use crate::{
   },
 };
 
-pub(crate) mod cite;
-pub(crate) mod code;
+pub(super) mod cite;
+pub(super) mod code;
 mod control;
-pub(crate) mod footnote;
+pub(super) mod footnote;
 mod heading;
-pub(crate) mod index;
-pub(crate) mod link;
-pub(crate) mod ref_;
-pub(crate) mod symbol;
-pub(crate) mod text_style;
+pub(super) mod index;
+pub(super) mod link;
+pub(super) mod ref_;
+pub(super) mod symbol;
+pub(super) mod text_style;
 
 /// コマンドの実行結果
 pub(crate) enum CommandResult {

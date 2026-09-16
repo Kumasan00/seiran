@@ -384,8 +384,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - `frontend::test_support`（`pub(crate)`）: `frontend` 配下と後段（`semantics` / `typeset`）の test module が
   共有する、resolver 注入済みの入口（`base_dir` が空パスの resolver で `parse_source` を呼ぶ）。パス解決
   そのものを検証するテストは resolver を明示して `frontend::parse_source` を直接呼ぶ
-- `evaluator::test_support`（`pub(super)`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
-  配下の test module だけが使う（`frontend` の外には出ない）
+- `evaluator::test_support`（非公開 `mod`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
+  配下の test module だけが使う（子孫は親の非公開項目に到達できるので、`evaluator` の外へ幅を広げない）
 
 #### 不変条件・注意点
 
