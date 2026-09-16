@@ -10,7 +10,7 @@ use crate::{document::FontKind, project::FontType};
 
 /// テキストをスクリプトに基づいて分割したセグメント
 #[derive(Debug)]
-pub(crate) struct TextSegment {
+pub(super) struct TextSegment {
   /// セグメントの文字列本体
   pub(crate) text: String,
   /// このセグメントに割り当てるフォント種別
@@ -21,7 +21,7 @@ pub(crate) struct TextSegment {
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ScriptCategory {
+pub(super) enum ScriptCategory {
   /// ラテン系スクリプト（Latin, Cyrillic, Greek など）
   Latin,
   /// 日本語スクリプト（Han, Hiragana, Katakana）

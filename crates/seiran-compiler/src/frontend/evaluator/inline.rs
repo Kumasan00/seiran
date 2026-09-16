@@ -38,7 +38,7 @@ use crate::{
 /// [`Self::Reject`] を決め、書体 / 色指定・脚注本体のように「外側の文脈をそのまま引き継ぐ」引数は
 /// 受け取った方針を子へ渡す（`\section{\bold{x\index{x}}}` に穴を開けないため）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IndexPolicy {
+pub(in crate::frontend) enum IndexPolicy {
   /// `\index` を許可する（キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈。書体 / 色指定と
   /// 脚注本体は呼び出し元の方針を引き継ぐ）
   Allow,
@@ -65,7 +65,7 @@ pub(crate) enum IndexPolicy {
 /// コマンド呼び出しの外へ返すので（#516）、`A\index{k} V` の空白はトークンとして
 /// [`Self::push`] を通り、畳みが切れる。
 #[derive(Debug, Default)]
-pub(crate) struct InlineSink {
+pub(super) struct InlineSink {
   /// 積み上げたインライン要素
   inlines: Vec<HirInline>,
   /// 直近に積んだ [`TokenKind::Text`] 由来ノードの位置と span 終端

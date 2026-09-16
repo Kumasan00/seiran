@@ -12,7 +12,7 @@ use crate::{
 
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]
-pub(crate) struct RawConfig {
+pub(super) struct RawConfig {
   /// 文書のメタデータ（`[document]`）
   #[serde(default)]
   #[garde(dive)]
@@ -45,7 +45,7 @@ pub(crate) struct RawConfig {
 /// `[document]` セクション: 文書のメタデータ（`date` 以外は PDF メタデータにも入る）
 #[derive(Deserialize, Debug, Default, Validate)]
 #[serde(default)]
-pub(crate) struct RawDocumentConfig {
+pub(super) struct RawDocumentConfig {
   /// ドキュメントタイトル（PDF メタデータ）
   #[garde(skip)]
   pub title: Option<String>,
@@ -101,7 +101,7 @@ fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
 
 /// `[output]` セクション: 出力ファイル名・ディレクトリ
 #[derive(Deserialize, Debug, Validate)]
-pub(crate) struct RawOutputConfig {
+pub(super) struct RawOutputConfig {
   /// 出力ファイル名の基盤（拡張子なし。PDF ファイル名は `{name}.pdf`）
   #[garde(custom(validate_document_name))]
   pub name: String,
@@ -159,7 +159,7 @@ fn validate_document_name(value: &str, _: &()) -> garde::Result {
 
 /// 19 フォント種別すべてのプリプロセス設定
 #[derive(Deserialize, Debug, Validate)]
-pub(crate) struct RawFontConfigs {
+pub(super) struct RawFontConfigs {
   /// Serif 標準フォント
   #[garde(dive)]
   pub serif: RawFontConfig,
@@ -250,7 +250,7 @@ impl Index<FontType> for RawFontConfigs {
 /// 単一フォント種別のプリセット設定情報
 #[derive(Deserialize, Debug, Validate)]
 #[garde(allow_unvalidated)]
-pub(crate) struct RawFontConfig {
+pub(super) struct RawFontConfig {
   /// `PDF FontDescriptor` での基本フォント名（各フォント種別で一意）
   #[garde(length(min = 1))]
   pub font_name: String,
@@ -301,7 +301,7 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
 
 /// バリアブルフォント軸の単一設定値
 #[derive(Deserialize, Debug)]
-pub(crate) struct RawVariationAxis {
+pub(super) struct RawVariationAxis {
   /// 軸名（4 バイト ASCII の OpenType 軸タグ、例："wght"、"wdth"）
   pub name: String,
   /// 軸の目標値（実数）
@@ -310,7 +310,7 @@ pub(crate) struct RawVariationAxis {
 
 /// OpenType フィーチャータグと値のペア
 #[derive(Deserialize, Debug)]
-pub(crate) struct RawFontFeature {
+pub(super) struct RawFontFeature {
   /// フィーチャータグ（4 バイト ASCII、例："liga"、"smcp"、"dlig"）
   pub tag: String,
   /// フィーチャーの値（通常は 0=無効、1=有効）
@@ -324,7 +324,7 @@ pub(crate) struct RawFontFeature {
 /// 未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct RawPdfConfig {
+pub(super) struct RawPdfConfig {
   /// ページの高さ（単位付き文字列、> 0）
   #[garde(custom(positive))]
   pub height: Length,
@@ -343,7 +343,7 @@ fn default_show_bookmarks() -> bool { return true; }
 /// `[image]` セクション: ラスタ画像のダウンサンプリング設定
 #[derive(Deserialize, Debug, Validate)]
 #[serde(default)]
-pub(crate) struct RawImageConfig {
+pub(super) struct RawImageConfig {
   /// ラスタ画像埋め込み時の最大 DPI（1〜2400）。表示物理サイズと本値から必要ピクセル数を計算し、
   /// 元画像がそれを超える場合に限り縮小する。
   #[garde(range(min = 1, max = 2400))]

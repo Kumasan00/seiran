@@ -8,7 +8,7 @@ pub(crate) const SHIBU: f32 = 0.25;
 
 /// 和文約物のクラス（JIS X 4051 の約物処理単位）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum YakumonoClass {
+pub(super) enum YakumonoClass {
   /// 始め括弧類（前アキを内蔵。例: `（「『【〔`）
   Open,
   /// 終わり括弧類（後アキを内蔵。例: `）」』】〕`）
@@ -23,7 +23,7 @@ pub(crate) enum YakumonoClass {
 
 /// 約物グリフをアキ抜きの実寸ボックスへ正規化する量（1em に対する倍率）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Normalize {
+pub(super) struct Normalize {
   /// 送り幅から差し引くアキの合計（em）
   pub(crate) trim_em: f32,
   /// 墨を左へ寄せる量（em）。左側にアキを持つ約物（始め括弧・中点）で正となる
@@ -32,7 +32,7 @@ pub(crate) struct Normalize {
 
 /// 約物境界に挿入するアキ（1em に対する倍率）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Aki {
+pub(super) struct Aki {
   /// 標準アキ（em）。`ragged_right` でもこの幅で並ぶ
   pub(crate) natural_em: f32,
   /// 詰め可能量（em）。両端揃えの収縮点として字間より先に吸収される

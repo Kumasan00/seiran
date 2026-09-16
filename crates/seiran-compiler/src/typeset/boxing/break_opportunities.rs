@@ -6,7 +6,7 @@ use crate::typeset::boxing::hyphenation::{self, Lang};
 
 /// 分割可能点の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BreakKind {
+pub(super) enum BreakKind {
   /// 欧文空白由来（破棄可・幅あり）。直前のスペースを `HItem::Glue` に変換する
   Glue,
   /// CJK 文字間など空白を伴わない分割可能点（ゼロ幅）。`HItem::Penalty { value: 0 }` を挿入する
@@ -18,7 +18,7 @@ pub(crate) enum BreakKind {
 
 /// テキスト内の 1 つの分割可能点
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BreakPoint {
+pub(super) struct BreakPoint {
   /// 分割位置（バイトオフセット）。この位置の直前で行を折り返せる
   pub byte: usize,
   /// 分割可能点の種類

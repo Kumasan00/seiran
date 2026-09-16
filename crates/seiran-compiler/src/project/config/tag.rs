@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// OpenType タグ文字列の検証に失敗した理由。
 #[derive(Debug, Error)]
-pub(crate) enum TagError {
+pub(super) enum TagError {
   /// `script` タグが 4 文字 ASCII アルファベットでない
   #[error("OpenType script タグは 4 文字の ASCII アルファベットである必要があります")]
   Script,

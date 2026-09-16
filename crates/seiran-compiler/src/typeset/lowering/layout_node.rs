@@ -10,7 +10,7 @@ use crate::{
 
 /// レイアウトエンジン（`crate::typeset::boxing::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
-pub(crate) enum LayoutNode {
+pub(in crate::typeset) enum LayoutNode {
   /// スタイル付きテキスト
   Text(String, TextStyle),
   /// 垂直方向のコンテナ (段落、セクションなど)
@@ -134,7 +134,7 @@ pub(crate) enum LayoutNode {
 /// `LayoutNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
 /// 消費側 `boxing::Measurer::place_atom_children` の網羅 match を分岐なしで成立させる）。
 #[derive(Debug, Clone)]
-pub(crate) enum AtomNode {
+pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
   Text(String, TextStyle),
   /// 水平カーン（固定幅のアキ。数式のアトム間スペーシングが出す）
@@ -165,7 +165,7 @@ impl From<AtomNode> for LayoutNode {
 
 /// 表全体の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub(crate) struct TableLayout {
+pub(in crate::typeset) struct TableLayout {
   /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
   pub columns: Vec<TableColumn>,
   /// ヘッダ行。改ページ時にページ先頭へ再描画される
@@ -178,7 +178,7 @@ pub(crate) struct TableLayout {
 
 /// 表の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub(crate) struct TableRowLayout {
+pub(in crate::typeset) struct TableRowLayout {
   /// 行内のセル
   pub cells: Vec<TableCellLayout>,
   /// この行の上に横罫線を引くか
@@ -187,7 +187,7 @@ pub(crate) struct TableRowLayout {
 
 /// 表の 1 セルの物理レイアウト表現
 #[derive(Debug, Clone)]
-pub(crate) struct TableCellLayout {
+pub(in crate::typeset) struct TableCellLayout {
   /// セル内容（スタイル付与済みのレイアウトノード列）
   pub content: Vec<LayoutNode>,
   /// 列方向の結合数（colspan、1 以上）
@@ -196,7 +196,7 @@ pub(crate) struct TableCellLayout {
 
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub(crate) struct MathBlockRow {
+pub(in crate::typeset) struct MathBlockRow {
   /// 列（lower 済みインライン数式）
   pub cells: Vec<Vec<AtomNode>>,
   /// 行番号ボックス（lower 済み、`None` は非採番）
@@ -205,7 +205,7 @@ pub(crate) struct MathBlockRow {
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TextStyle {
+pub(in crate::typeset) struct TextStyle {
   /// フォントサイズ
   pub font_size: Length,
   /// フォント種別（書体 + 太字 / イタリック等の組み合わせ）

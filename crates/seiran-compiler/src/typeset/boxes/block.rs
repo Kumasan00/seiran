@@ -28,7 +28,7 @@ pub(crate) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
-pub(crate) enum Block {
+pub(in crate::typeset) enum Block {
   /// 段落（連続するインライン要素の極大列）
   Paragraph {
     /// 段落内の水平リスト
@@ -185,7 +185,7 @@ impl Block {
 /// `break_pages` が `dy`（本体ベースラインからのオフセット）と本文幅から本文端に寄せて
 /// 確定座標を与え、[`super::page::PlacedMathNumber`] にする。
 #[derive(Debug, Clone)]
-pub(crate) struct MathRowNumber {
+pub(in crate::typeset) struct MathRowNumber {
   /// 番号ボックス（`"(1)"` 等、シェーピング済み）
   pub content: HBox,
   /// 本体 Atom のベースラインからの縦オフセット（正で上方向）＝その行のベースライン

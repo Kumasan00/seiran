@@ -13,7 +13,7 @@ pub(super) use greedy::GreedyBreaker;
 pub(crate) use knuth_plass::KnuthPlassBreaker;
 
 /// 行分割アルゴリズムの抽象
-pub(crate) trait LineBreaker {
+pub(in crate::typeset) trait LineBreaker {
   /// 水平リストを本文幅で行に分割する
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line>;
 }

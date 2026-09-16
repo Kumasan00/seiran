@@ -108,7 +108,7 @@ fn build_font_refs<'a>(
 }
 
 /// 全フォント種別の基本メトリクス。
-pub(crate) type FontMetrics = FontMap<FontMetric>;
+type FontMetrics = FontMap<FontMetric>;
 
 /// 全フォントの `head` / `hhea` テーブルからメトリクスを取得する。
 ///

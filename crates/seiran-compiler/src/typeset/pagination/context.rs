@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// 全段が共有する組版資源と寸法。
-pub(crate) struct TypesetContext<'a> {
+pub(in crate::typeset) struct TypesetContext<'a> {
   /// 実体・物理・メタデータ設定
   pub(super) config: &'a ProjectConfig,
   /// 見た目の設定

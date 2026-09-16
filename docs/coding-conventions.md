@@ -140,11 +140,17 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
   （この 2 方向は rustc の `unreachable_pub` と `unnameable_types` が機械化している — 外から到達しない
   `pub` は狭め、公開シグネチャに現れるのに facade から名指しできない型は facade へ出すか宣言を狭める）。
   利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と
-  書く。テストモジュールの `use super::*` はイディオムどおり許容。crate 内の幅（`pub(crate)` / `pub(super)` /
-  無印）は実際の利用範囲に揃える — `unreachable_pub` は crate 外から到達しない `pub` しか見ないので人が揃える。
-  子孫だけが使うなら無印で足り（子孫は親の非公開項目に到達できる）。祖先が再輸出する孫以下の module は
-  `pub(super)` では再輸出先まで届かないので、再輸出と同じ幅を `pub(in <再輸出先>)` で書く（例:
-  `frontend::syntax::cst` の `green` / `kind` / `view`。親が再輸出する直接の子は `pub(super)` で足りる）。
+  書く。テストモジュールの `use super::*` はイディオムどおり許容。crate 内の幅（無印 / `pub(super)` /
+  `pub(in crate::<共通祖先>)` / `pub(crate)`）は実際の利用範囲に揃える — `unreachable_pub` は crate 外から
+  到達しない `pub` しか見ないので人が揃える。利用者（再輸出先を含む）が宣言した module とその子孫だけなら
+  無印（子孫は親の非公開項目に到達できる）、親の配下に閉じるなら `pub(super)`、共通祖先が親でも crate root
+  でもないなら `pub(in crate::<共通祖先>)`、crate root まで広がるときだけ `pub(crate)` と書く（例:
+  `typeset::lowering::layout_node::AtomNode` は `typeset::boxing` と `typeset::lowering` が使うので
+  `pub(in crate::typeset)`）。再輸出も利用に数える — 祖先が再輸出する孫以下の module・型は `pub(super)` では
+  再輸出先まで届かない（E0364 / E0365）ので、再輸出先を含めた共通祖先で書く（例: `frontend::syntax::cst` の
+  `green` / `kind` / `view` は `pub(in crate::frontend)`。親が再輸出する直接の子は `pub(super)` で足りる）。
+  signature に現れる型は、その signature の幅が下限になる（`private_interfaces`）。最小幅は名前の grep
+  （同名衝突で利用者を過大に数える）ではなく、無印にしてコンパイルエラーと lint が指す分だけ祖先側へ広げて求める。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を
   確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割
   しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。

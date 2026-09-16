@@ -8,7 +8,7 @@ use crate::document::MathClass;
 
 /// 記号コマンドが出力する単一文字とその数式クラス
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct MathSymbol {
+pub(in crate::frontend::evaluator) struct MathSymbol {
   /// 出力する Unicode 文字
   pub(crate) ch: char,
   /// 数式クラス（`typeset::lowering::math::spacing` がアトム間のアキ決定に消費する）

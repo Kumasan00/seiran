@@ -35,7 +35,7 @@ pub(crate) struct HeadingFacts {
 /// 種類ごとに型付きの side table へ分けており、「どの fact が入っているか」の無効な
 /// 組み合わせ（`NodeFacts { a: Option<_>, b: Option<_>, .. }` のような形）を表現できない。
 #[derive(Debug, Default)]
-pub(crate) struct SemanticFacts {
+pub(super) struct SemanticFacts {
   /// ラベル名 → 宣言したノード
   pub(super) label_definitions: HashMap<LabelId, NodeId>,
   /// ラベルを宣言したノード → そのラベル

@@ -144,10 +144,10 @@
 メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは判定できない横断制約は
 `typeset::geometry` が持つ。
 
-依存の不変条件: **seam 部（module 直下 + `filesystem` / `memory` / `path_resolver`）と帰属 adapter `in_file` は
-crate 内の他 module に依存しない**。crate 内依存を持つのは残る 3 子 module だけで、`config` が seam /
-`in_file` / `font` / `length` / `failures` を、`font` が seam と `failures` を、`source_set` が `source` /
-`failures` を参照し、
+依存の不変条件: **seam 部（module 直下 + `filesystem` / `memory` / `path_resolver`）と帰属 adapter `in_file`・
+TOML 解析部品 `toml_error_parts` は crate 内の他 module に依存しない**。crate 内依存を持つのは残る子 module だけで、
+`config` が seam / `in_file` / `toml_error_parts` / `font` / `length` / `failures` を、`font` が seam と `failures` を、
+`source_set` が `source` / `failures` を参照し、
 `project::config → project::font → seam` の一方向に閉じる。seam を `config` の子に置かない（`font → config` という役割に合わない依存が生まれる）。
 「`project` 全体が crate 内依存を持たない」形へは戻さない。
 
@@ -423,7 +423,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 引くための経路で外部の消費者はいない。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は
 `typeset` / `compiler` が名指しする。走査後に初めて成立する意味上の識別子 `LabelId` / `HeadingKey` も本 module
 が所有する（組版側は到達先の名前空間として使うだけで、発行はしない — 目次が事実に載った index から鍵を
-組み直すのは復元であって発行ではない）。
+組み直すのは復元であって発行ではない。唯一の例外は書誌で、走査は HIR に無い書誌を見ないため、その見出しへ
+本文の続きとなる `HeadingKey` を 1 つ振るのは `typeset::lowering` 側。「走査と検証の順序」の末尾を参照）。
 
 - **`SemanticDocument` 自身が「lowering の入力」**で、利用側は collection 構造も内訳も知らず、目的別 query
   経由でのみ参照する。組版入力を組み立てる橋渡しの中間木・ビュー型（`DocumentContent` のような）へ

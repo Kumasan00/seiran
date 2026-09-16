@@ -38,7 +38,7 @@ enum ParseMode {
 /// レジストリ（`crate::frontend::evaluator`）が環境名ごとに宣言し、[`ModeResolver`] 経由で
 /// パーサーへ渡る。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BodyMode {
+pub(in crate::frontend) enum BodyMode {
   /// トークン化してテキストモードで読む
   Text,
   /// トークン化して数式モードで読む
@@ -52,7 +52,7 @@ pub(crate) enum BodyMode {
 /// レジストリ（`crate::frontend::evaluator`）がコマンド名と引数位置ごとに宣言し、[`ModeResolver`]
 /// 経由でパーサーへ渡る。宣言は外側文脈からの継承に優先する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ArgMode {
+pub(in crate::frontend) enum ArgMode {
   /// 外側文脈の [`ParseMode`] を継承してトークン化する（既定）
   Inherit,
   /// ブレースバランスで生読みする
@@ -64,7 +64,7 @@ pub(crate) enum ArgMode {
 /// どの環境・コマンドが verbatim かという語彙は `syntax` 層が持たず、evaluator の phf レジストリが
 /// 単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。
 #[derive(Clone, Copy)]
-pub(crate) struct ModeResolver {
+pub(in crate::frontend) struct ModeResolver {
   /// 環境名 → 本体の読み取り方
   pub env_body: fn(&str) -> BodyMode,
   /// コマンド名と必須引数の位置（0 始まり）→ その位置の読み取り方
