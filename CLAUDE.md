@@ -186,7 +186,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 ### モジュール構成
 
 - **`mod.rs` を使わない**: 親は `foo.rs`、子は `foo/<child>.rs`（`mod_module_files`）。例外は各 crate の `tests/common/mod.rs` だけ
-- **既定で非公開 + root ファサード**: 子は `mod`、公開 API は root（または親）の `pub use` で 1 本に揃える。`pub mod` / `pub(crate) mod` は module 名が名前空間として意味を持つときだけ（`project::config::load` vs `style::load`）。同名型を 2 つ作って module 公開で回避せず名前側を変える（`ConfigValidationError` / `StyleValidationError`）。facade へ載せるのは実際に名指しされる名前だけ（`unreachable_pub` / `unnameable_types`）。利用側は最浅の公開パスから import し、enum variant は import せず `Enum::Variant` と書く。crate 内の幅（`pub(crate)` / `pub(super)` / 無印 / 祖先が再輸出する孫以下の `pub(in <再輸出先>)`）は実際の利用範囲に揃える（lint は見ない）
+- **既定で非公開 + root ファサード**: 子は `mod`、公開 API は root（または親）の `pub use` で 1 本に揃える。`pub mod` / `pub(crate) mod` は module 名が名前空間として意味を持つときだけ（`project::config::load` vs `style::load`）。同名型を 2 つ作って module 公開で回避せず名前側を変える（`ConfigValidationError` / `StyleValidationError`）。facade へ載せるのは実際に名指しされる名前だけ（`unreachable_pub` / `unnameable_types`）。利用側は最浅の公開パスから import し、enum variant は import せず `Enum::Variant` と書く。crate 内の幅（無印 / `pub(super)` / 共通祖先が親でも crate root でもないときの `pub(in crate::<共通祖先>)` / `pub(crate)`。再輸出先も利用者に数える）は実際の利用範囲に揃える（lint は見ない）
 - **同一 module 内で 1 型の inherent impl を分けない**（`multiple_inherent_impl`）: ライフタイム引数の有無で分かれているだけなら名前付きの側へ寄せる。子 module へ切り出した impl は lint の対象外なので分割の慣行と衝突しない
 - **分割の判断基準**: 行数ではなく**自己完結した本体コードの塊**の大きさ。大半がインラインテストなら分割しない。切り出すのはエラー型 enum のようにロジックを持たず private 内部に依存しない塊で、`Parser` 等の private フィールドに密結合したメソッド群は可視性を緩めてまで分割しない
 - 切り出した型は親で `pub use <child>::<Type>;` して公開パスを維持するのが既定。新パスのほうが明確なら変更可

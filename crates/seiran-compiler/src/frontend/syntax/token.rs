@@ -6,7 +6,7 @@ use crate::source::Span;
 
 /// トークン
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Token {
+pub(in crate::frontend) struct Token {
   /// トークンの種類
   pub kind: TokenKind,
   /// ソース上のバイト範囲

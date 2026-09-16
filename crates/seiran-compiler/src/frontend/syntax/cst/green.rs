@@ -12,7 +12,7 @@ use crate::{
 
 /// アリーナ確保された CST ノード
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct GreenNode<'a> {
+pub(in crate::frontend) struct GreenNode<'a> {
   /// ノードの種別
   pub kind: SyntaxKind,
   /// ソース上のバイト範囲
@@ -58,7 +58,7 @@ impl<'a> GreenNode<'a> {
 
 /// CST の要素（ノードまたはトークン）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GreenElement<'a> {
+pub(in crate::frontend) enum GreenElement<'a> {
   /// 内部ノード
   Node(&'a GreenNode<'a>),
   /// リーフノード（トークン）

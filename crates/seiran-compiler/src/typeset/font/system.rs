@@ -54,7 +54,7 @@ pub(crate) enum FontSystemError {
 /// `HarfRustShapers` は `FontRefs` と `ShaperDatas`/`ShaperInstances`（本来なら兄弟フィールド）を
 /// 両方借用し続ける実装のため、1 つの構造体が両方を所有すると自己参照構造体になってしまう。
 /// これを避けるため、シェーパー本体は [`FontSystem`] という別の薄いビューへ分離している。
-pub(crate) struct FontResources<'a> {
+pub(in crate::typeset) struct FontResources<'a> {
   /// `load` に渡された設定（`system` が同じ設定でシェーパーを構築するために保持する）
   configs: &'a FontConfigs,
   /// 解析済み OpenType フォント参照（`FontData` を借用）
@@ -165,7 +165,7 @@ fn build_refs_and_metrics<'a>(
 ///
 /// 呼び出し側は `FontRefs`/`ShaperDatas`/`ShaperInstances`/`HarfRustShapers` の構築順序・寿命関係を
 /// 一切知らない。
-pub(crate) struct FontSystem<'a> {
+pub(in crate::typeset) struct FontSystem<'a> {
   /// 19 種別ぶんのシェーパー
   shapers: HarfRustShapers<'a>,
   /// フォントメトリクス（[`FontResources`] を借用）

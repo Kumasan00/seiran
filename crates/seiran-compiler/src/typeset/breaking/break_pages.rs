@@ -29,7 +29,7 @@ use paragraph_plan::plan_paragraph_lines;
 /// 中での index**。前付け・本文・後付けを連結した物理ページ番号や印字ラベルは
 /// `typeset::pagination` が確定させる（この段は自分が組んだページ列しか知らないため）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FootnoteOverflow {
+pub(in crate::typeset) struct FootnoteOverflow {
   /// はみ出しが起きたページの 0 起点 index（返されるページ列の中での位置）
   pub page_index: usize,
   /// はみ出し方
@@ -38,7 +38,7 @@ pub(crate) struct FootnoteOverflow {
 
 /// [`FootnoteOverflow`] のはみ出し方
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum FootnoteOverflowKind {
+pub(in crate::typeset) enum FootnoteOverflowKind {
   /// 1 行に付いた脚注群が、空のリージョンでもページ全高に収まらなかった（表示番号は出現順）
   Line {
     /// はみ出した脚注群の表示番号

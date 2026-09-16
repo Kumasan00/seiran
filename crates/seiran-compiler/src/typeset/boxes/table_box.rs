@@ -20,7 +20,7 @@ use crate::{
 /// `typeset::lowering` が列ごとに 1 つへ束ねたものが本型。表レイアウトの入力契約なので後段の
 /// layout が所有する（#334）。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TableColumn {
+pub(in crate::typeset) struct TableColumn {
   /// セル内容の揃え方向
   pub align: ColumnAlign,
   /// 列幅の指定方法
@@ -29,7 +29,7 @@ pub(crate) struct TableColumn {
 
 /// 表ボックス（シェーピング済みの表全体）
 #[derive(Debug, Clone)]
-pub(crate) struct TableBox {
+pub(in crate::typeset) struct TableBox {
   /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
   pub columns: Vec<TableColumn>,
   /// ヘッダ行。改ページ時にページ先頭へ再描画される
@@ -42,7 +42,7 @@ pub(crate) struct TableBox {
 
 /// 表の 1 行（シェーピング済み）
 #[derive(Debug, Clone)]
-pub(crate) struct TableRowBox {
+pub(in crate::typeset) struct TableRowBox {
   /// 行内のセル
   pub cells: Vec<TableCellBox>,
   /// この行の上に横罫線を引くか
@@ -51,7 +51,7 @@ pub(crate) struct TableRowBox {
 
 /// 表の 1 セル（シェーピング済み）
 #[derive(Debug, Clone)]
-pub(crate) struct TableCellBox {
+pub(in crate::typeset) struct TableCellBox {
   /// セル内容のアイテム列（`Box` / `Kern` / `Glue` が主だが、`\ref`/`\url`/`\href` を
   /// 含む場合は `LinkStart`/`LinkEnd` も現れる。行分割・ページ分割はセル内では無効）
   pub items: Vec<HItem>,
@@ -273,7 +273,7 @@ pub(crate) fn position_table_row_boxes(
 
 /// 表セル内のリンク領域（表左端からの相対座標）
 #[derive(Debug)]
-pub(crate) struct RowLink {
+pub(in crate::typeset) struct RowLink {
   /// リンクの行き先
   pub target: LinkTarget,
   /// 表左端からの相対な左端オフセット

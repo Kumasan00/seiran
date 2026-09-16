@@ -14,7 +14,7 @@ use crate::{
 
 /// 貪欲法（first-fit）による行分割
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct GreedyBreaker;
+pub(in crate::typeset::breaking) struct GreedyBreaker;
 
 impl LineBreaker for GreedyBreaker {
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line> {

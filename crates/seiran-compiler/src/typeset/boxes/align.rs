@@ -11,7 +11,7 @@ use crate::length::Length;
 /// 利用可能幅の中で水平にシフトするだけ。行が利用可能幅を超える場合のシフト量は
 /// 0 にクランプされる（行頭が本文左端より左へはみ出さない）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum Align {
+pub(in crate::typeset) enum Align {
   /// 左揃え（ragged-right、既定）
   #[default]
   Left,

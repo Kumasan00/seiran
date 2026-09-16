@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// コマンド呼び出しの型付きビュー
-pub(crate) struct CommandView<'a> {
+pub(in crate::frontend) struct CommandView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
@@ -91,7 +91,7 @@ impl<'a> CommandView<'a> {
 }
 
 /// 環境の型付きビュー
-pub(crate) struct EnvironmentView<'a> {
+pub(in crate::frontend) struct EnvironmentView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
