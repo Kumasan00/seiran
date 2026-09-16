@@ -38,7 +38,7 @@ pub(crate) enum Name {
 
 /// name オブジェクトの検証失敗を表すメッセージ。
 #[derive(Debug, Error)]
-pub(super) enum NameError {
+enum NameError {
   /// `family` と `literal` が同時に指定された
   #[error(
     "`family` と `literal` の両方を指定することはできません。個人著者には `family` を、組織著者には `literal` を使用してください"

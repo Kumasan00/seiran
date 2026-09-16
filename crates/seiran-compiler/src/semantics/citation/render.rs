@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// hayagriva による整形結果。
-pub(crate) struct Rendered {
+pub(super) struct Rendered {
   /// 各 cite サイトの整形済み引用ラベル（収集と同じドキュメント順）。
   pub labels: Vec<Vec<GeneratedInline>>,
   /// 文末に追加する書誌ブロック（References 見出し + 段落群）。引用が書誌を生まない場合は空。

@@ -286,7 +286,7 @@ impl From<TheoremsTable> for Theorems {
 /// [`TheoremStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub(super) struct TheoremStyleOverride {
+struct TheoremStyleOverride {
   /// 表示名
   pub display_name: Option<String>,
   /// 共有カウンタ名
@@ -331,7 +331,7 @@ impl TheoremStyleOverride {
 /// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub(super) struct TheoremPresentationOverride {
+struct TheoremPresentationOverride {
   /// サブタイトルなしの見出し書式
   pub heading_format: Option<TheoremHeadingTemplate>,
   /// サブタイトルありの見出し書式

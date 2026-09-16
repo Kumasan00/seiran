@@ -65,7 +65,7 @@ pub(crate) enum IndexPolicy {
 /// コマンド呼び出しの外へ返すので（#516）、`A\index{k} V` の空白はトークンとして
 /// [`Self::push`] を通り、畳みが切れる。
 #[derive(Debug, Default)]
-pub(crate) struct InlineSink {
+pub(super) struct InlineSink {
   /// 積み上げたインライン要素
   inlines: Vec<HirInline>,
   /// 直近に積んだ [`TokenKind::Text`] 由来ノードの位置と span 終端

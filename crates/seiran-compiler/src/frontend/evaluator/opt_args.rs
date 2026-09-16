@@ -18,7 +18,7 @@ use crate::{
 
 /// 任意引数キーが期待する値の型タグ
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum OptType {
+pub(super) enum OptType {
   /// `true` / `false` または bare key（`[draft]` → `true`）
   Bool,
   /// 単位なし `f64`（カウント等）
@@ -46,7 +46,7 @@ impl fmt::Display for OptType {
 
 /// 型変換済みの任意引数値
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum OptValue {
+pub(super) enum OptValue {
   /// 真偽値
   Bool(bool),
   /// 数値

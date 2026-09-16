@@ -26,7 +26,7 @@ mod theorem;
 type EnvHandler = fn(&EnvironmentView<'_>, &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>;
 
 /// 環境の定義
-pub(crate) struct EnvDef {
+pub(super) struct EnvDef {
   /// 本体の読み取り方（トークン化して Text / Math、または生読み）
   pub body_mode: BodyMode,
   /// 評価ハンドラ。`None` の場合は「本体の読み取り方のみ登録、評価は未実装」を意味し、

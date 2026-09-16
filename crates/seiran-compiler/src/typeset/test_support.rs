@@ -30,7 +30,7 @@ use crate::{
 
 /// 計測済みボックスの寸法（`HBox` を露出させずに箱の大きさを渡すための引数まとめ）
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BoxSize {
+pub(super) struct BoxSize {
   /// 幅
   pub(crate) width: Length,
   /// ベースラインから上の高さ
@@ -51,7 +51,7 @@ impl BoxSize {
 }
 
 /// 表の 1 行の指定（`TableRowBox` / `TableCellBox` を露出させないための記述）
-pub(crate) struct TableRowSpec {
+pub(super) struct TableRowSpec {
   /// 行帯上端のページ上端からの距離
   pub(crate) top_y: Length,
   /// 行帯の高さ
@@ -64,7 +64,7 @@ pub(crate) struct TableRowSpec {
 
 /// 行の寸法（`Line` / `PositionedBox` を露出させずに行の大きさを渡すための引数まとめ）
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LineMetrics {
+pub(super) struct LineMetrics {
   /// 行内ボックスの幅
   pub(crate) box_width: Length,
   /// ベースラインから上の高さ
@@ -294,7 +294,7 @@ pub(crate) fn table_block(
 }
 
 /// 確定ページ 1 枚を組み立てるビルダ
-pub(crate) struct PageBuilder {
+pub(super) struct PageBuilder {
   /// 組み立て中のページ
   page: Page,
 }

@@ -8,7 +8,7 @@ use crate::{
 /// テキスト入力をトークン列に分割するレキサー
 ///
 /// 空白・改行・コメントを含む全入力をトークンとして保持する。
-pub(crate) struct Lexer<'a> {
+pub(super) struct Lexer<'a> {
   /// 入力文字列
   input: &'a str,
   /// 入力のバイト列

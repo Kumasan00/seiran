@@ -161,7 +161,7 @@ impl From<HeadingStylesTable> for HeadingStyles {
 /// [`HeadingStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub(super) struct HeadingStyleOverride {
+struct HeadingStyleOverride {
   /// 見出しの書式テンプレート
   pub format: Option<NumberTitleTemplate>,
   /// 見出しテキストのフォントサイズ

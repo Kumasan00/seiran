@@ -52,7 +52,7 @@ struct ResolvedLabel {
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
-pub(crate) struct CounterRegistry {
+pub(super) struct CounterRegistry {
   /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）
   policy: SemanticPolicy,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす

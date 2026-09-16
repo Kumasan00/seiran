@@ -13,7 +13,7 @@ use crate::{
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ImageOverrides {
+pub(super) struct ImageOverrides {
   /// `\image[dpi=N]` の per-image 上書き。`None` なら config `[image].max_dpi`（既定）が使われる
   pub dpi: Option<u32>,
   /// `\image[downsample=true|false]` の per-image 上書き。`None` なら config `[image].downsample`（既定）が使われる

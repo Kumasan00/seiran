@@ -27,7 +27,7 @@ pub(super) mod symbol;
 pub(super) mod text_style;
 
 /// コマンドの実行結果
-pub(crate) enum CommandResult {
+pub(super) enum CommandResult {
   /// ブロックレベルの HIR ノード（見出し、スペース等）
   Block(Vec<HirNode>),
   /// インラインレベルの HIR ノード（記号文字等）
@@ -41,7 +41,7 @@ pub(crate) enum CommandResult {
 
 /// コマンドの種類
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum CommandKind {
+pub(super) enum CommandKind {
   /// `\space{N}` — 固定幅スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）

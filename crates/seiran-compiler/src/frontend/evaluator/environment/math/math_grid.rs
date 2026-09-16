@@ -27,7 +27,7 @@ use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marke
 use crate::document::NodeId;
 
 /// グリッド分割の許可設定（環境種別ごと）
-pub(crate) struct GridSpec {
+pub(super) struct GridSpec {
   /// 行区切り `\\` を許可するか
   pub allow_row_breaks: bool,
   /// 列区切り `&` を許可するか
@@ -36,7 +36,7 @@ pub(crate) struct GridSpec {
 
 /// グリッド 1 行の評価結果
 #[derive(Debug)]
-pub(crate) struct GridRow {
+pub(super) struct GridRow {
   /// この行の HIR ノード ID（セルより先に確保する）
   pub id: NodeId,
   /// 列（`&` 区切り）。各列は数式ノード列
