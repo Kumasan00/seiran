@@ -86,7 +86,7 @@ mod tests {
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
       AnalyzeError, CitationStyleError, SemanticError, read_references,
-      test_fixtures::{ieee_csl_path, sample_references},
+      test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
     style::Style,

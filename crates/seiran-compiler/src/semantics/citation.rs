@@ -9,17 +9,17 @@
 //! 完全性は [`GeneratedCitations`] が隠し、利用側は `NodeId` で表示を引く query だけを見る。
 
 mod csl_json;
+mod csl_style;
 mod generate;
 mod generated;
 mod references;
 mod render;
 mod site;
-mod style;
 #[cfg(test)]
-pub(crate) mod test_fixtures;
+pub(crate) mod test_support;
 
+pub(crate) use csl_style::{CitationStyleError, load_citation_style};
 pub(crate) use generate::{CitationFormatError, GeneratedCitations, generate_citations};
 pub(crate) use generated::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text};
 pub(crate) use references::{ReadReferencesError, Reference, References, read_references};
 pub(crate) use site::{CitationId, CitationSiteFacts};
-pub(crate) use style::{CitationStyleError, load_citation_style};
