@@ -170,8 +170,8 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
 
 ## 値と型の書き方
 
-字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項と `clone` の要否を除き lint が
-機械化している。
+字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項・`clone` の要否・`itertools` と std の使い分けを除き
+lint が機械化している。
 
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。
   `x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、
@@ -209,6 +209,13 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
   割ると「間で分岐するのか」と読めるうえ、絶対パスを push したときの上書き（`path_buf_push_overwrite`）と
   同じ形になる。拡張子だけは `set_extension` が確保し直さないので、
   `let mut path = dir.join(name); path.set_extension("pdf");` の形を使う（`project::config::resolved`）。
+- イテレータ操作は **std で足りるなら std** で書く。std に同じ操作のメソッドがあるならそれを使い、`itertools` は
+  std だと複数の操作の組み合わせ（中間コレクション・入れ子タプル・手書きの状態）で書くことになる操作に使う —
+  `Itertools::join`（`collect::<Vec<_>>().join(..)`）や `izip!`（`((a, b), c)` の入れ子 `zip`）は、名前が操作の
+  意味をそのまま表すのでこちらが読みやすい。lint では禁止しない（`itertools` の項目は意味を持った名前の操作で、
+  std と重なるかは箇所ごとに判断する。`itertools` 自身が deprecated にした std 重複の項目だけは rustc の
+  `deprecated` が拒む）。std 側が未安定の操作（`intersperse` 等）は `itertools` を使ってよく、安定化したら std へ
+  移す（rustc の `unstable_name_collisions` 警告が合図）。
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない。
 - エスケープの要らない文字列を `r"…"` で書かない（`needless_raw_strings`）。raw string は「`\` や `"` を
   そのまま置いている」という合図なので、どちらも含まない文字列に付けると読み手へ嘘の合図を送る

@@ -547,6 +547,7 @@ impl RunningTemplate {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use itertools::Itertools;
   use serde::{Deserialize, Serialize};
 
   use super::{
@@ -558,7 +559,7 @@ mod tests {
   /// 検証違反のメッセージを取り出す（違反が無ければ `None`）
   fn violation<T: Validate<Context = ()>>(template: &T) -> Option<String> {
     return template.validate().err().map(|report| {
-      return report.iter().map(|(_, error)| return error.to_string()).collect::<Vec<_>>().join(" / ");
+      return report.iter().map(|(_, error)| return error).join(" / ");
     });
   }
 
