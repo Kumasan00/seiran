@@ -1,5 +1,6 @@
 //! 設定ファイル（config.toml / style.toml）の値検証の違反に、実際に読んだファイルのパスを添える帰属 adapter [`InFile`]
 
+use derive_more::Display;
 use miette::Diagnostic;
 
 /// 設定ファイルの値検証の違反 1 件に、実際に読んだファイルのパスを添える leaf diagnostic。
@@ -12,7 +13,8 @@ use miette::Diagnostic;
 ///
 /// help の定型文は役割名（「config.toml の該当フィールド」）しか書けないので、`-c` や `style_path` で
 /// 任意の名前を付けた実際のファイルはこの前置でしか分からない。
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display("{path}: {error}")]
 pub(crate) struct InFile<E> {
   /// 違反が見つかった設定ファイルのパス（読込に使ったパスの表示）
   path: String,
@@ -36,12 +38,6 @@ impl<E> InFile<E> {
   /// 違反の内容を取り出す。
   #[cfg(test)]
   pub(crate) fn into_error(self) -> E { return self.error; }
-}
-
-impl<E: std::fmt::Display> std::fmt::Display for InFile<E> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    return write!(f, "{}: {}", self.path, self.error);
-  }
 }
 
 /// `error` は cause ではなくこの診断自身の内容なので `source` には載せない（載せると miette が `╰─▶` で

@@ -180,8 +180,8 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
 
 ## 値と型の書き方
 
-字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項・`clone` の要否・`itertools` と std の使い分けを除き
-lint が機械化している。
+字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項・`clone` の要否・`itertools` と std の
+使い分け・`derive_more` と手書き impl の使い分けを除き lint が機械化している。
 
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。
   `x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、
@@ -226,6 +226,17 @@ lint が機械化している。
   std と重なるかは箇所ごとに判断する。`itertools` 自身が deprecated にした std 重複の項目だけは rustc の
   `deprecated` が拒む）。std 側が未安定の操作（`intersperse` 等）は `itertools` を使ってよく、安定化したら std へ
   移す（rustc の `unstable_name_collisions` 警告が合図）。
+- trait 実装は **機械的な forwarding なら `derive_more`、網羅性が意味を持つ対応表なら手書きの match** に分ける。
+  `Length` の `Add` / `Sub` / `Neg` / `AddAssign` / `SubAssign` のように内側の型へそのまま委譲するだけの演算や、
+  `InFile<E>` の `Display` のように 1 つの書式文字列で決まる実装は、手で書いても定型（必須ルール 1 の `return`
+  を含む）が増えるだけで判断が何も入らないので derive に寄せる（derive が展開したコードは external macro
+  として clippy の対象外なので、必須ルールとも衝突しない）。一方 enum から表示名への対応表に
+  `#[derive(Display)]` + variant ごとの `#[display("…")]` は**使わない** — derive_more の `Display` は
+  `#[display]` の無い unit variant を variant 名そのまま出力する仕様なので、variant を追加して属性を書き忘れても
+  コンパイルが通り、`JapaneseMonospaceExtraBold` のような識別子がそのままユーザ向けの文言に出る。手書きの
+  match なら網羅性検査が variant 追加を弾く（enum match の wildcard 判定で Yes になる「意味的な対応表」と
+  同じ理由で、対応表は match に残す）。`rename_all` は表示名が case 変換で機械的に導ける場合にしか使えない
+  （空白で区切る Title Case は無い）。使う derive は Cargo.toml の features で必要なものだけに絞る。
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない。
 - エスケープの要らない文字列を `r"…"` で書かない（`needless_raw_strings`）。raw string は「`\` や `"` を
   そのまま置いている」という合図なので、どちらも含まない文字列に付けると読み手へ嘘の合図を送る

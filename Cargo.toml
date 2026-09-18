@@ -19,6 +19,7 @@ bumpalo = { version = "3.20.3", features = ["collections"] }
 chrono = "0.4.45"
 ciborium = "0.2.2"
 clap = { version = "4.6.1", features = ["derive"] }
+derive_more = { version = "2.1.1", features = ["add", "add_assign", "display", "not"] }
 font-types = "0.12.1"
 garde = { version = "0.23.0", features = ["derive"] }
 harfrust = "0.13.0"
