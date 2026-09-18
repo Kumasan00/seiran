@@ -10,9 +10,9 @@ use hayagriva::{
 };
 
 use crate::{
-  document::{FontKind, HeadingLevel},
+  document::FontKind,
   semantics::citation::{
-    CitationId, CitationSiteFacts, GeneratedBlock, GeneratedInline, csl_style::CompiledCitationStyle,
+    BibliographyEntry, CitationId, CitationSiteFacts, GeneratedInline, csl_style::CompiledCitationStyle,
   },
 };
 
@@ -20,16 +20,15 @@ use crate::{
 pub(super) struct Rendered {
   /// 各 cite サイトの整形済み引用ラベル（収集と同じドキュメント順）。
   pub labels: Vec<Vec<GeneratedInline>>,
-  /// 文末に追加する書誌ブロック（References 見出し + 段落群）。引用が書誌を生まない場合は空。
-  pub bibliography: Vec<GeneratedBlock>,
+  /// 文末に追加する書誌のエントリ列。CSL が書誌を定義していない場合は `None`。
+  pub bibliography: Option<Vec<BibliographyEntry>>,
 }
 
-/// cite サイト群を CSL 整形し、引用ラベルと書誌ブロックを返す。
+/// cite サイト群を CSL 整形し、引用ラベルと書誌エントリ列を返す。
 pub(super) fn render<'a>(
   entries: &'a HashMap<CitationId, Item>,
   sites: &[&CitationSiteFacts],
   style: &'a CompiledCitationStyle,
-  bib_title: &str,
 ) -> Rendered {
   let mut driver: BibliographyDriver<'_, Item> = BibliographyDriver::new();
   for site in sites {
@@ -54,7 +53,7 @@ pub(super) fn render<'a>(
     .zip(sites)
     .map(|(citation, site)| return citation_children_to_inlines(&citation.citation, &site.targets))
     .collect();
-  let bibliography = build_bibliography(result.bibliography.as_ref(), bib_title);
+  let bibliography = result.bibliography.as_ref().map(build_bibliography);
 
   return Rendered {
     labels,
@@ -103,35 +102,29 @@ fn collect_citation_inlines(children: &ElemChildren, targets: &[CitationId], out
   }
 }
 
-/// 整形済み書誌（`RenderedBibliography`）から書誌 `GeneratedBlock` 群を組み立てる。
+/// 整形済み書誌（`RenderedBibliography`）から書誌エントリ列を組み立てる。
 ///
-/// 番号なしの見出しに続けて、各文献のアンカーと段落を追加する。
-fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &str) -> Vec<GeneratedBlock> {
-  let Some(bibliography) = bibliography else {
-    return Vec::new();
-  };
-
-  let mut nodes = Vec::with_capacity(bibliography.items.len() * 2 + 1);
-  nodes.push(GeneratedBlock::Heading {
-    level: HeadingLevel::Section,
-    title: vec![GeneratedInline::Text(bib_title.to_string())],
-  });
-
-  for item in &bibliography.items {
-    let mut inlines: Vec<GeneratedInline> = Vec::new();
-    if let Some(first_field) = &item.first_field {
-      let before = inlines.len();
-      push_elem_child(first_field, &mut inlines);
-      if inlines.len() > before {
-        inlines.push(GeneratedInline::Text(" ".to_string()));
+/// 見出しはここでは作らない — 見出しの文字列とレベルは style の値なので、`typeset::lowering` が
+/// `style.reference` から作る（semantics の成果物に style の値を埋め込まない、#667）。
+fn build_bibliography(bibliography: &RenderedBibliography) -> Vec<BibliographyEntry> {
+  return bibliography
+    .items
+    .iter()
+    .map(|item| {
+      let mut body: Vec<GeneratedInline> = Vec::new();
+      if let Some(first_field) = &item.first_field {
+        push_elem_child(first_field, &mut body);
+        if !body.is_empty() {
+          body.push(GeneratedInline::Text(" ".to_string()));
+        }
       }
-    }
-    inlines.extend(elem_children_to_inlines(&item.content));
-    nodes.push(GeneratedBlock::Anchor(CitationId::new(&item.key)));
-    nodes.push(GeneratedBlock::Paragraph(inlines));
-  }
-
-  return nodes;
+      body.extend(elem_children_to_inlines(&item.content));
+      return BibliographyEntry {
+        key: CitationId::new(&item.key),
+        body,
+      };
+    })
+    .collect();
 }
 
 /// hayagriva の整形ツリー `ElemChildren` を `Vec<GeneratedInline>` に変換する。

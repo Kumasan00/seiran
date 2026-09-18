@@ -7,7 +7,7 @@
 use crate::{
   document::{HirDocument, NodeId},
   semantics::{
-    CounterValue, GeneratedBlock, GeneratedCitations, GeneratedInline, HeadingKey, LabelId,
+    BibliographyEntry, CounterValue, GeneratedCitations, GeneratedInline, HeadingKey, LabelId,
     facts::{HeadingFacts, SemanticFacts},
   },
 };
@@ -133,9 +133,9 @@ impl SemanticDocument {
   #[must_use]
   pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] { return self.citations.display_at(site); }
 
-  /// 参考文献リスト（書誌）を返す（引用が無ければ空）
+  /// 参考文献リスト（書誌）のエントリ列を返す（引用が無い・CSL が書誌を定義していない場合は `None`）
   #[must_use]
-  pub(crate) fn bibliography(&self) -> &[GeneratedBlock] { return self.citations.bibliography(); }
+  pub(crate) fn bibliography(&self) -> Option<&[BibliographyEntry]> { return self.citations.bibliography(); }
 
   /// CSL 生成物だけを差し替えたコピーを作る（テスト専用）
   ///
@@ -148,7 +148,7 @@ impl SemanticDocument {
   pub(crate) fn with_citations_for_test(
     self,
     displays: Vec<(NodeId, Vec<GeneratedInline>)>,
-    bibliography: Vec<GeneratedBlock>,
+    bibliography: Option<Vec<BibliographyEntry>>,
   ) -> Self {
     return SemanticDocument {
       citations: GeneratedCitations::for_test(displays, bibliography),
