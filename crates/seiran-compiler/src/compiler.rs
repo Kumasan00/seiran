@@ -40,8 +40,6 @@ use source_diagnostic::SourceDiagnostic;
 use tracing::{info, info_span};
 pub use warnings::Warnings;
 
-#[cfg(test)]
-use crate::typeset::LaidOutDocument;
 use crate::{
   project::{SourceSet, config::ConfigWarning},
   publication::Publication,
@@ -226,7 +224,7 @@ fn load_inputs(
 /// （production / test 共通）。
 ///
 /// 各 phase の記録（[`Phase`]）・完了 event・診断への変換をここが所有し、`compile` と
-/// `layout_project_for_test`（テスト専用）は同じ実装を通る。組版（フォント資源の構築・
+/// `test_support::TestProject::layout`（テスト専用）は同じ実装を通る。組版（フォント資源の構築・
 /// 配置・`Publication` への変換）は `typeset::compose` の内側にあり、この関数は関与しない。
 ///
 /// # Errors
@@ -258,37 +256,6 @@ fn analyze_document(
     semantic_document
   };
   return Ok(semantic_document);
-}
-
-/// 入力読込から組版までを production と同じ実装で通し、組版中間表現を取り出すテストヘルパ。
-///
-/// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
-/// `PlacedBlock` の幾何）を検査するテストだけが使う。phase の処理は再実装せず
-/// [`load_inputs`] / [`analyze_document`] / [`typeset::layout_for_test`] を呼ぶだけなので、
-/// `input::load` の横断検証も組版の段順序も迂回できない。
-///
-/// # Errors
-///
-/// 入力読込または組版までのいずれかの phase が失敗した場合にエラーを返す。
-#[cfg(test)]
-fn layout_project_for_test(
-  source: &dyn ProjectSource,
-  root: &ProjectPath,
-  base_dir: &Path,
-) -> Result<LaidOutDocument, CompileFailure> {
-  let (resolver, root) = resolve_root(root, base_dir);
-  let (inputs, _config_warnings) = load_inputs(source, &root, &resolver);
-  let inputs = inputs?;
-  let semantic_document = analyze_document(source, &inputs, &resolver)?;
-  return typeset::layout_for_test(
-    source,
-    inputs.config(),
-    inputs.style(),
-    inputs.geometry(),
-    inputs.font_data(),
-    &semantic_document,
-  )
-  .map_err(CompileFailure::from);
 }
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。

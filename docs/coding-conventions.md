@@ -51,8 +51,18 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
 - 型・トレイト・モジュールは直接 import する。関数は既定でモジュール経由で呼ぶ（`mem::swap` 方式）が、
   呼び出し元で `fn_name(...)` だけ見ても出自・曖昧さがない場合（private な単一関数サブモジュールからの
   re-export、`tracing::debug!` 等の広く知られた慣用）は直接 import してよい。
-- `#[cfg(test)]` の項目だけが使う import は `#[cfg(test)] use ...;` と書いて本体ビルドから外す（本体の
-  use ツリーへ混ぜると非テストビルドで unused になる）。
+- **`#[cfg(test)]` は module 境界に付ける**: テスト専用の import と、テストだけが呼ぶヘルパ関数は
+  `mod tests` / `test_support` の内側へ置き、先頭の `use` 行を個別にゲートしない（`#[cfg(test)] use ...;` と
+  書くと「テストのときだけ存在する」が module 宣言と個別行の 2 通りに割れる。#695）。本体の型に生やす
+  テスト専用の inherent メソッドも、`mod tests` の中に `impl` を書けば属性なしで済む
+  （`multiple_inherent_impl` は子 module の impl を見ない）。例外は 2 つ —
+  module facade の `#[cfg(test)] pub(crate) use ...;`（本番 API を広げずにテストへ型・ヘルパを出す唯一の
+  手段で、外すと本体ビルドで `unused_imports` が `-D warnings` に当たる）と、**本番の型が持つテスト専用の
+  フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `TheoremClass::ALL` / `NodeId::for_test`
+  のような、型そのものに属していて module へ切り離せないもの）。後者は 22 箇所あり、`mod tests` の中の
+  `impl` へ寄せると「crate 全体から見える `pub(crate)` が `tests` という名前の module に住む」別の
+  ねじれが生じるため、いまは項目に付けたまま残している（#696）。**再検討のトリガー**は
+  「同じ型のテスト専用アクセサが 3 つ以上に増えたとき」— そのときは型ごとの置き場を設計し直す。
 
 ### 4. ドキュメントコメント
 
@@ -384,8 +394,8 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   検証するかだけを書く。
 - **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]`
   で閉じた `test_support` module に切り出して 1 箇所に集める（現在は `frontend` / `frontend::evaluator` /
-  `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` /
-  `compiler` の 8 つ）。本番の入口を注入して通すヘルパも、値をコンストラクタで組み立てるだけの fixture も
+  `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` /
+  `typeset::breaking::break_lines` / `publication` / `compiler` の 9 つ）。本番の入口を注入して通すヘルパも、値をコンストラクタで組み立てるだけの fixture も
   同じ名前にする — 1 つの module に両方が載りうるので、module 名で役割を分けない。切り出し先は
   「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)`
   のように module 経由で呼ぶ。

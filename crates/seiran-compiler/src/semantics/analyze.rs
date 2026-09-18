@@ -6,7 +6,8 @@
 //! フィールドに置いたまま組版へ渡る。
 
 #[cfg(test)]
-use crate::semantics::SemanticFailures;
+pub(super) mod test_support;
+
 use crate::{
   document::HirDocument,
   project::ProjectSource,
@@ -40,24 +41,6 @@ pub(crate) fn analyze(
   let citations = generate(source, &facts, references, style)?;
 
   return Ok(SemanticDocument::new(document, facts, citations));
-}
-
-/// CSL を読まずに走査だけを行うテスト専用の入口
-///
-/// 本体経路の [`analyze`] は `ProjectSource` と CSL スタイルを要求するが、走査結果だけを見る
-/// テスト（lowering・引用整形の単体テスト）はそこを通らない。
-///
-/// # Errors
-///
-/// 重複ラベル・未解決参照・未定義引用キーがある場合にエラーを返す。
-#[cfg(test)]
-pub(crate) fn analyze_for_test(
-  document: HirDocument,
-  policy: &SemanticPolicy,
-  references: &References,
-) -> Result<SemanticDocument, SemanticFailures> {
-  let facts = fact_collection::collect_facts(&document, policy, references)?;
-  return Ok(SemanticDocument::new(document, facts, GeneratedCitations::default()));
 }
 
 /// 引用箇所の事実から CSL 整形の生成物を作る。

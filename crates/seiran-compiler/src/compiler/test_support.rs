@@ -1,7 +1,7 @@
 //! compiler 配下のテストが共有する fixture プロジェクトの組み立て
 //!
-//! ここで組んだ `MemoryProjectSource` を production と同じ入口（`compile` /
-//! `layout_project_for_test`）へ渡すので、テストも `input::load` の読込順序と横断検証を必ず通る。
+//! ここで組んだ `MemoryProjectSource` を production と同じ入口（`compile` / [`TestProject::layout`]）へ
+//! 渡すので、テストも `input::load` の読込順序と横断検証を必ず通る。
 //!
 //! # パスの扱い
 //!
@@ -40,7 +40,7 @@ use crate::{
   length::Length,
   project::{MemoryProjectSource, ProjectPath},
   style::{self, FootnoteNumbering, RunningTemplate, Style},
-  typeset::LaidOutDocument,
+  typeset::{self, LaidOutDocument},
 };
 
 /// fixture の設定ファイル（ワークスペースルート相対）。
@@ -80,7 +80,7 @@ pub(super) fn set_str(table: &mut toml::value::Table, section: &str, key: &str, 
     .insert(key.to_string(), toml::Value::String(value.to_string()));
 }
 
-/// テストが `compile` / `layout_project_for_test` へ渡す fixture プロジェクト。
+/// テストが [`Self::compile`] / [`Self::layout`] へ渡す fixture プロジェクト。
 pub(super) struct TestProject {
   /// 登録済みの資源だけを持つ入力 seam
   source: MemoryProjectSource,
@@ -113,13 +113,30 @@ impl TestProject {
     };
   }
 
-  /// 組版中間表現（`Publication` では失われる情報）を取り出す。
+  /// 入力読込から組版までを production と同じ実装で通し、組版中間表現を取り出す。
+  ///
+  /// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
+  /// `PlacedBlock` の幾何）を検査するテストだけが使う。phase の処理は再実装せず
+  /// `compiler::load_inputs` / `compiler::analyze_document` / `typeset::layout_for_test` を
+  /// 呼ぶだけなので、`input::load` の横断検証も組版の段順序も迂回できない。
   ///
   /// # Errors
   ///
   /// 入力読込または組版までのいずれかの phase が失敗した場合にエラーを返す。
   pub(super) fn layout(&self) -> Result<LaidOutDocument, CompileFailure> {
-    return compiler::layout_project_for_test(&self.source, &self.config_path, &self.base_dir);
+    let (resolver, root) = compiler::resolve_root(&self.config_path, &self.base_dir);
+    let (inputs, _config_warnings) = compiler::load_inputs(&self.source, &root, &resolver);
+    let inputs = inputs?;
+    let semantic_document = compiler::analyze_document(&self.source, &inputs, &resolver)?;
+    return typeset::layout_for_test(
+      &self.source,
+      inputs.config(),
+      inputs.style(),
+      inputs.geometry(),
+      inputs.font_data(),
+      &semantic_document,
+    )
+    .map_err(CompileFailure::from);
   }
 
   /// 組版に成功することを期待して `layout` を呼ぶ。

@@ -17,8 +17,6 @@
 
 use std::collections::HashMap;
 
-#[cfg(test)]
-use crate::style::{Counters, Style};
 use crate::{
   document::{NodeId, SourceLocation, SourceMap, TheoremClass},
   semantics::{LabelId, SemanticError, SemanticPolicy},
@@ -308,31 +306,28 @@ impl CounterRegistry {
 }
 
 #[cfg(test)]
-impl CounterRegistry {
-  /// seiran 既定のカウンタセットでレジストリを構築する
-  #[must_use]
-  pub(crate) fn default_for_seiran() -> Self {
-    return Self::from_policy(&SemanticPolicy::from_style(&Style::default()));
-  }
-
-  /// `crate::style::Counters` から直接レジストリを構築する（テスト・カスタム用）
-  #[must_use]
-  pub(crate) fn from_counters(counters: &Counters) -> Self {
-    let style = Style {
-      counters: counters.clone(),
-      ..Style::default()
-    };
-    return Self::from_policy(&SemanticPolicy::from_style(&style));
-  }
-}
-
-#[cfg(test)]
 mod tests {
   use super::*;
   use crate::{
     source::SourceId,
     style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset},
   };
+
+  impl CounterRegistry {
+    /// seiran 既定のカウンタセットでレジストリを構築する
+    #[must_use]
+    fn default_for_seiran() -> Self { return Self::from_policy(&SemanticPolicy::from_style(&Style::default())); }
+
+    /// `crate::style::Counters` から直接レジストリを構築する（テスト・カスタム用）
+    #[must_use]
+    fn from_counters(counters: &Counters) -> Self {
+      let style = Style {
+        counters: counters.clone(),
+        ..Style::default()
+      };
+      return Self::from_policy(&SemanticPolicy::from_style(&style));
+    }
+  }
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 

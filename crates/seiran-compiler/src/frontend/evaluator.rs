@@ -3,11 +3,6 @@
 //! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。段落は蓄積した
 //! インラインを後からまとめる構造なので、子を評価する前に ID を予約しておく。
 
-// この module 自身が下で `mod test_support`（CST 組み立て用）を宣言しているため、frontend 直下の
-// `test_support` は同名衝突を避けて関数を直接 import する（型・モジュールではなく関数の直接 import
-// は「出自が自明な慣用」の例外に当たる）。
-#[cfg(test)]
-use crate::frontend::test_support::eval_context_for_test;
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
@@ -32,6 +27,10 @@ mod opt_args;
 
 pub(crate) use context::EvalContext;
 pub(crate) use error::EvalError;
+#[cfg(test)]
+pub(crate) use test_support::{
+  evaluate_children_to_hir, extract_inline_nodes_to_hir, run_block_handler, run_inline_handler,
+};
 
 use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
 
@@ -235,47 +234,6 @@ impl ParagraphBuffer {
   }
 }
 
-/// CST ノードの子要素を評価して `Vec<HirNode>` をそのまま返すテスト専用ヘルパ
-///
-/// 評価器が既に組み立てている HIR を変換なしで返す。テストは `&node.kind` を match して検証する
-/// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
-#[cfg(test)]
-pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let ctx = eval_context_for_test();
-  return evaluate_children(source, &ctx, node);
-}
-
-/// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
-#[cfg(test)]
-pub(crate) fn extract_inline_nodes_to_hir(
-  source: &str,
-  node: &GreenNode<'_>,
-  index_policy: inline::IndexPolicy,
-) -> Result<Vec<HirInline>, EvalError> {
-  let ctx = eval_context_for_test();
-  return inline::extract_inline_nodes(source, &ctx, node, index_policy);
-}
-
-/// ハンドラを直接呼ぶテスト向けに、HIR インラインをそのまま返す
-///
-/// 使い方: `run_inline_handler(|ctx| return styled_text(&view, ctx, kind))`
-#[cfg(test)]
-pub(crate) fn run_inline_handler(
-  handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirInline>, EvalError>,
-) -> Result<Vec<HirInline>, EvalError> {
-  let ctx = eval_context_for_test();
-  return handler(&ctx);
-}
-
-/// ハンドラを直接呼ぶテスト向けに、HIR ブロックをそのまま返す
-#[cfg(test)]
-pub(crate) fn run_block_handler(
-  handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>,
-) -> Result<Vec<HirNode>, EvalError> {
-  let ctx = eval_context_for_test();
-  return handler(&ctx);
-}
-
 /// 段落の先頭判定用に、インライン要素が「実体のある内容」かどうかを返す
 fn is_non_blank_inline(inline: &HirInline) -> bool {
   return match &inline.kind {
@@ -297,19 +255,65 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
   };
 }
 
-/// 子 module のテストが CST を組み立てるための共有ヘルパ
+/// 子 module のテストが CST を組み立て、評価器を本番と同じ経路で呼ぶための共有ヘルパ
 ///
 /// 本番のレジストリ（`mode_resolver`）を注入した `parse` ラッパは、以前は evaluator 配下の
 /// 各 test module へ同じ形で複製されていた（#400）。テストが本番と同じ経路を通ることを 1 箇所で保証する。
+/// 評価結果を変換なしで受け取る入口（[`evaluate_children_to_hir`] 等）も、同じ理由でここが持つ。
 #[cfg(test)]
 mod test_support {
   use bumpalo::Bump;
 
-  use super::mode_resolver;
-  use crate::frontend::syntax::{
-    self, ParserError, SyntaxKind,
-    green::{GreenElement, GreenNode},
+  use super::{EvalContext, EvalError, evaluate_children, inline, mode_resolver};
+  use crate::{
+    document::{HirInline, HirNode},
+    frontend::{
+      syntax::{
+        self, ParserError, SyntaxKind,
+        green::{GreenElement, GreenNode},
+      },
+      // この module 自身の名前と衝突するため、frontend 直下の `test_support` は関数を直接 import する
+      // （型・モジュールではなく関数の直接 import は「出自が自明な慣用」の例外に当たる）。
+      test_support::eval_context_for_test,
+    },
   };
+
+  /// CST ノードの子要素を評価して `Vec<HirNode>` をそのまま返す
+  ///
+  /// 評価器が既に組み立てている HIR を変換なしで返す。テストは `&node.kind` を match して検証する
+  /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
+  pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
+    let ctx = eval_context_for_test();
+    return evaluate_children(source, &ctx, node);
+  }
+
+  /// インライン抽出結果を変換なしで `Vec<HirInline>` として返す
+  pub(crate) fn extract_inline_nodes_to_hir(
+    source: &str,
+    node: &GreenNode<'_>,
+    index_policy: inline::IndexPolicy,
+  ) -> Result<Vec<HirInline>, EvalError> {
+    let ctx = eval_context_for_test();
+    return inline::extract_inline_nodes(source, &ctx, node, index_policy);
+  }
+
+  /// ハンドラを直接呼ぶテスト向けに、HIR インラインをそのまま返す
+  ///
+  /// 使い方: `run_inline_handler(|ctx| return styled_text(&view, ctx, kind))`
+  pub(crate) fn run_inline_handler(
+    handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirInline>, EvalError>,
+  ) -> Result<Vec<HirInline>, EvalError> {
+    let ctx = eval_context_for_test();
+    return handler(&ctx);
+  }
+
+  /// ハンドラを直接呼ぶテスト向けに、HIR ブロックをそのまま返す
+  pub(crate) fn run_block_handler(
+    handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>,
+  ) -> Result<Vec<HirNode>, EvalError> {
+    let ctx = eval_context_for_test();
+    return handler(&ctx);
+  }
 
   /// `.sei` スニペットを本番のレジストリ付きで parse する
   ///

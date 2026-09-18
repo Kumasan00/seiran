@@ -1,7 +1,5 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
-#[cfg(test)]
-use crate::document::FontKind;
 use crate::{
   document::{CaptionPosition, HirInline},
   length::Length,
@@ -100,6 +98,7 @@ pub(super) fn wrap_float(
 mod tests {
   use super::*;
   use crate::{
+    document::FontKind,
     semantics::LabelId,
     style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
     typeset::{
