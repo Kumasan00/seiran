@@ -81,7 +81,7 @@ impl CounterRegistry {
     for r in self.policy.counter(name).resets.clone() {
       self.values.insert(r, 0);
     }
-    if let Some(level) = theorem_reset_level(name) {
+    if let Some(level) = TheoremReset::for_counter(name) {
       self.reset_theorems_for_level(level);
     }
 
@@ -178,7 +178,7 @@ impl CounterRegistry {
   pub(crate) fn theorem_counter_value(&self, class: TheoremClass) -> CounterValue {
     let def = self.policy.theorem(class);
     let own = *self.theorem_values.get(&def.counter).unwrap_or(&0);
-    let mut parts = match theorem_reset_counter_name(def.reset_by) {
+    let mut parts = match def.reset_by.counter_name() {
       Some(heading_counter) => vec![self.value(heading_counter)],
       None => Vec::new(),
     };
@@ -286,34 +286,6 @@ impl CounterRegistry {
   }
 }
 
-/// 見出しカウンタ [`CounterName`] を、定理カウンタの `reset_by` に対応する [`TheoremReset`] に写す
-fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
-  return match name {
-    CounterName::Part => Some(TheoremReset::Part),
-    CounterName::Chapter => Some(TheoremReset::Chapter),
-    CounterName::Section => Some(TheoremReset::Section),
-    CounterName::Subsection => Some(TheoremReset::Subsection),
-    // 定理カウンタのリセット先になれるのは部・章・節・小節の 4 レベルだけ（`TheoremReset`）。
-    // 段落以下の見出しと図表・数式のカウンタはリセット先に選べない。
-    CounterName::Paragraph
-    | CounterName::Subparagraph
-    | CounterName::Table
-    | CounterName::Figure
-    | CounterName::Equation => None,
-  };
-}
-
-/// 定理の `reset_by`（見出しレベル）を、対応する見出しカウンタ [`CounterName`] に写す
-fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
-  return match reset_by {
-    TheoremReset::None => None,
-    TheoremReset::Part => Some(CounterName::Part),
-    TheoremReset::Chapter => Some(CounterName::Chapter),
-    TheoremReset::Section => Some(CounterName::Section),
-    TheoremReset::Subsection => Some(CounterName::Subsection),
-  };
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -330,26 +302,6 @@ mod tests {
       source_id: SourceId::new(source),
       span: Span::new(start, start + 1),
     };
-  }
-
-  #[test]
-  fn theorem_reset_level_maps_every_counter_name() {
-    let expected: [(CounterName, Option<TheoremReset>); 9] = [
-      (CounterName::Part, Some(TheoremReset::Part)),
-      (CounterName::Chapter, Some(TheoremReset::Chapter)),
-      (CounterName::Section, Some(TheoremReset::Section)),
-      (CounterName::Subsection, Some(TheoremReset::Subsection)),
-      (CounterName::Paragraph, None),
-      (CounterName::Subparagraph, None),
-      (CounterName::Table, None),
-      (CounterName::Figure, None),
-      (CounterName::Equation, None),
-    ];
-
-    for (name, want) in expected {
-      assert_eq!(theorem_reset_level(name), want, "{name:?} のリセット先");
-    }
-    assert_eq!(expected.map(|(name, _)| return name), CounterName::ALL, "固定 9 種のカウンタ名を宣言順ですべて覆う");
   }
 
   #[test]
