@@ -51,13 +51,13 @@ impl SemanticDocument {
   /// 別の表として二重に持たない）。
   #[must_use]
   pub(crate) fn counter_value_of_label(&self, label: &LabelId) -> Option<&CounterValue> {
-    let node = self.facts.label_definitions.get(label)?;
-    return self.facts.counters.get(*node);
+    let definition = self.facts.label_definition(label.as_str())?;
+    return self.facts.counters.get(definition.node);
   }
 
   /// ノードが宣言したラベルを引く（ラベルを持たないノードは `None`）
   #[must_use]
-  pub(crate) fn declared_label(&self, node: NodeId) -> Option<&LabelId> { return self.facts.declared_labels.get(node); }
+  pub(crate) fn declared_label(&self, node: NodeId) -> Option<&LabelId> { return self.facts.declared_label(node); }
 
   /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
   ///

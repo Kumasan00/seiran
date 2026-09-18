@@ -14,7 +14,6 @@ impl LabelId {
   pub(crate) fn new(label: impl Into<String>) -> Self { return LabelId(label.into()); }
 
   /// 内部の文字列を返す
-  #[cfg(test)]
   #[must_use]
   pub(crate) fn as_str(&self) -> &str { return &self.0; }
 }
