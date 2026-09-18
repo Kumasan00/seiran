@@ -303,7 +303,7 @@ struct Walker<'a> {
   locations: &'a SourceMap,
   /// 引用キーの既知性を判定する参照定義
   references: &'a References,
-  /// カウンタとラベルの登録状態
+  /// カウンタの採番状態
   registry: &'a mut CounterRegistry,
   /// 走査中に確定した事実の書き込み先
   facts: &'a mut SemanticFacts,
