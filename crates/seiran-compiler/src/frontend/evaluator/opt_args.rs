@@ -4,6 +4,8 @@
 
 use std::fmt;
 
+use itertools::Itertools;
+
 use crate::{
   color::Color,
   frontend::{
@@ -247,7 +249,7 @@ fn format_expected(schema: &[(&str, OptType)]) -> String {
   if schema.is_empty() {
     return "（このコマンド/環境は任意引数を受け付けません）".to_string();
   }
-  return schema.iter().map(|(k, t)| format!("{k}: {t}")).collect::<Vec<_>>().join(", ");
+  return schema.iter().map(|(k, t)| format!("{k}: {t}")).join(", ");
 }
 
 #[cfg(test)]

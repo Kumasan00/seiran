@@ -4,6 +4,7 @@
 //! `Compilation` と一緒に返す（`compiler::Warnings`）。`tracing::warn!` は開発者向け観測に限り、
 //! 同じ問題を診断と tracing の両方では出さない。
 
+use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -61,7 +62,7 @@ pub(crate) enum TypesetWarning {
 }
 
 /// 脚注番号の列を `1, 2` の形へ整形する（[`TypesetWarning::FootnoteOverflow`] のメッセージ用）
-fn join_numbers(numbers: &[u32]) -> String { return numbers.iter().map(u32::to_string).collect::<Vec<_>>().join(", "); }
+fn join_numbers(numbers: &[u32]) -> String { return numbers.iter().join(", "); }
 
 #[cfg(test)]
 mod tests {

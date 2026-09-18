@@ -26,6 +26,7 @@ hayagriva = { version = "0.10.1", default-features = false, features = ["archive
 hypher = { version = "0.1.7", default-features = false, features = ["alloc", "dutch", "english", "french", "german", "italian", "portuguese", "spanish"] }
 icu = { version = "2.2.0", features = ["compiled_data"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+itertools = "0.15.0"
 krilla = "0.8.2"
 krilla-svg = "0.8.1"
 lopdf = { version = "0.45.0", default-features = false }

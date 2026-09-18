@@ -1,5 +1,6 @@
 //! (d) 縦組版 — ブロック列をページへ配置する
 
+use itertools::izip;
 use tracing::debug;
 
 use crate::{
@@ -655,7 +656,7 @@ fn place_paragraph(
     let chunk_lines: Vec<Line> = lines.drain(..chunk_len).collect();
     let chunk_bodies: Vec<Vec<PendingFootnote>> = bodies.drain(..chunk_len).collect();
     demands.drain(..chunk_len);
-    for ((mut line, footnotes), placement) in chunk_lines.into_iter().zip(chunk_bodies).zip(plan) {
+    for (mut line, footnotes, placement) in izip!(chunk_lines, chunk_bodies, plan) {
       if placement.starts_region {
         composer.advance_region(geom);
       }
