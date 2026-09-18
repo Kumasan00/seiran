@@ -25,7 +25,7 @@ use crate::{
 /// ノード（数式行だけ `node` と異なり、引数が無ければ環境ノード）。ソース位置そのものは持たない —
 /// fact に入るのは「意味と識別」だけで、位置は診断を組むときに `SourceMap` から引く。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LabelDefinition {
+pub(super) struct LabelDefinition {
   /// ラベルを宣言したノード
   pub node: NodeId,
   /// 診断位置に使うノード
