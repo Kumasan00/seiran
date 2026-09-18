@@ -6,9 +6,9 @@
 //! 責務（`typeset::lowering::counter`）。
 //!
 //! 値の各要素は [`CounterPart`] として「どのカウンタの何番か」を名前付きで運ぶ。名前は
-//! 構造であって表示ではないので、値と表示の分離（#282）と矛盾しない。**祖先チェーンを
-//! 決めるコードは crate 内でこの module の [`CounterRegistry::ancestor_values`] 1 つだけ**で、
-//! 表示側は受け取った値を名前で引くだけになる（#665）。
+//! 構造であって表示ではないので、値と表示の分離（#282）と矛盾しない。**祖先の決め方を
+//! 持つのは crate 内でこの module だけ**で、表示側は受け取った値を名前で引くだけになる
+//! （#665）。
 //!
 //! [`CounterRegistry`] は `typeset::lowering::counter::CounterRegistry`（issue #282 以前）から
 //! 移設したもの。移設にあたり `increment` 系メソッドの戻り値を書式化済み `String` から
@@ -368,6 +368,7 @@ mod tests {
     assert_eq!(thm.own, 1);
     assert!(thm.ancestors.is_empty(), "既定の theorem は reset_by = none なので祖先なし");
     assert_eq!(lemma.own, 2, "既定では lemma が theorem とカウンタを共有する");
+    assert!(lemma.ancestors.is_empty(), "既定の lemma も reset_by = none なので祖先なし");
   }
 
   #[test]
@@ -418,6 +419,7 @@ mod tests {
     assert_eq!(chapter.own, 1);
     assert_eq!(ancestors(&section_1), vec![(CounterName::Part, 0), (CounterName::Chapter, 1)]);
     assert_eq!(section_1.own, 1);
+    assert_eq!(ancestors(&section_2), vec![(CounterName::Part, 0), (CounterName::Chapter, 1)]);
     assert_eq!(section_2.own, 2);
   }
 

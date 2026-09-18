@@ -140,7 +140,7 @@ pub(crate) enum TheoremReset {
 
 impl TheoremReset {
   /// 全 5 バリアントを宣言順（部 → 章 → 節 → 小節 → なし）で並べた配列
-  pub(crate) const ALL: [TheoremReset; 5] = [
+  const ALL: [TheoremReset; 5] = [
     Self::Part,
     Self::Chapter,
     Self::Section,
