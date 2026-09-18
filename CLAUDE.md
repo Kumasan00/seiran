@@ -193,7 +193,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### 値と型の書き方
 
-字面から意味が読めることを優先する（G1 のコードへの適用）。enum match・`clone` の要否・itertools と std の使い分け以外は lint が機械化。
+字面から意味が読めることを優先する（G1 のコードへの適用）。enum match・`clone` の要否・itertools と std の使い分け・derive_more と手書き impl の使い分け以外は lint が機械化。
 
 | 書き方 | lint |
 | --- | --- |
@@ -207,6 +207,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | 個数の決まった繰り返しは `(0..n).map(\|_\| v)` ではなく `repeat_n(v, n)` / `repeat_with(..).take(n)`（副作用があるなら後者） | `map_with_unused_argument_over_ranges` |
 | `PathBuf` は `clone()` + `push()` ではなく `join()` で組み立てる（拡張子だけ `set_extension`） | `pathbuf_init_then_push` |
 | イテレータ操作は std で足りるなら std。`itertools` は std だと操作の組み合わせになるものに使う（`Itertools::join` / `izip!`） | —（人が守る） |
+| 機械的な forwarding（newtype の演算・書式 1 本の `Display`）は `derive_more`、網羅性が意味を持つ対応表は手書き match（derive_more の `Display` は `#[display]` 無しの unit variant を variant 名で出すので書き忘れが通る） | —（人が守る） |
 | 数値リテラルの型サフィックスは `1u32` 形 | `separated_literal_suffix` |
 | エスケープの要らない文字列に `r"…"` を付けない | `needless_raw_strings` |
 | 識別子は ASCII（テスト名も）。日本語は doc・診断・assert 文言へ | `non_ascii_idents` |

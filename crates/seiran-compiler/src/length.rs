@@ -21,10 +21,11 @@
 use std::{
   fmt,
   iter::Sum,
-  ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign},
+  ops::{Div, Mul},
   str::FromStr,
 };
 
+use derive_more::{Add, AddAssign, Neg, Sub, SubAssign};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 /// 1 pt あたりの sp 数（TeX の scaled point と同じ分解能 2^16）。
@@ -52,7 +53,7 @@ fn round_to_pt_sp(pt: f64) -> i64 { return round_sp(pt * SP_PER_PT as f64); }
 /// 構築は [`Length::pt`] / [`Length::mm`] / [`Length::from_sp`]、pt 値の取り出しは [`Length::to_pt`]。
 /// 文字列との相互変換は [`FromStr`] / [`Display`](fmt::Display) の正準形 `<pt値>pt` を用いる。
 /// `Deref` / `From<f32>` は意図的に実装しない（変換漏れを型検査で検出するため）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Add, Sub, Neg, AddAssign, SubAssign)]
 pub struct Length(i64);
 
 impl Length {
@@ -240,32 +241,6 @@ pub(crate) fn non_negative(value: &Length, _ctx: &()) -> garde::Result {
     return Ok(());
   }
   return Err(garde::Error::new(format!("非負である必要があります（受け取った値: {value}）")));
-}
-
-impl Add for Length {
-  type Output = Self;
-
-  fn add(self, rhs: Self) -> Self::Output { return Length(self.0 + rhs.0); }
-}
-
-impl Sub for Length {
-  type Output = Self;
-
-  fn sub(self, rhs: Self) -> Self::Output { return Length(self.0 - rhs.0); }
-}
-
-impl Neg for Length {
-  type Output = Self;
-
-  fn neg(self) -> Self::Output { return Length(-self.0); }
-}
-
-impl AddAssign for Length {
-  fn add_assign(&mut self, rhs: Self) { self.0 += rhs.0; }
-}
-
-impl SubAssign for Length {
-  fn sub_assign(&mut self, rhs: Self) { self.0 -= rhs.0; }
 }
 
 impl Mul<f64> for Length {
