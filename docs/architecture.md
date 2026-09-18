@@ -300,9 +300,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と
   同じ形。`resets` を書くと既定のリセット列を丸ごと置き換える）。`<name>` は固定 9 種のみで、未知のカウンタ名は
-  `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番）と
-  `typeset::lowering`（確定した `parts` を祖先カウンタ名へ対応付ける祖先チェーン）の 2 箇所。祖先の決め方は
-  両者で同じ規則（`semantics` 節）
+  `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番と
+  祖先チェーンの決定）だけ — `typeset::lowering` はカウンタ値に載った名前を引くので `resets` を読まない
+  （祖先の決め方は `semantics` 節）
 - **数式**: `[math.script]`（上付き / 下付きの倍率・シフト。インライン数式にも効く。本来は OpenType MATH
   テーブル由来の値で、MATH 対応後は非対応フォント用フォールバックに退く）と `[math.block]`（全表示数式
   環境が共有するブロックのレイアウト）
@@ -436,11 +436,14 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   `display_name` / `number_style` が型として存在しない。G3（内容は見た目から独立）はこれで型として保証
   される（規約や property test ではなく型で）。`analyze` 自身が `&Style` を取るのは CSL 整形に渡すためで、
   走査には渡らない
-- カウンタの**値**（構造のみ。節 1.2 → `parts: [1, 2]`）はここで確定し、表示文字列は `typeset::lowering` が
-  style と合わせて作る。祖先チェーンは「自分を `resets` に含み、かつカウンタ名の宣言順で自身より手前にある
-  カウンタのうち最も近いもの」を 1 段ずつ遡って決める（既定の `Counters` は祖先の `resets` に子孫を平坦に
-  列挙するため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。定理クラスは
-  `reset_by` が指す見出しカウンタを唯一の祖先とする
+- カウンタの**値**（構造のみ。節 1.2 → 祖先 `[(chapter, 1)]` + 自身 `2`）はここで確定し、表示文字列は
+  `typeset::lowering` が style と合わせて作る。値の各要素は「どのカウンタの何番か」を名前付きで持つので、
+  表示側は `{chapter}` のような他カウンタ参照を名前で引くだけでよく、**祖先チェーンを決めるコードは
+  この module の 1 箇所だけ**にある。祖先チェーンは「自分を `resets` に含み、かつカウンタ名の宣言順で
+  自身より手前にあるカウンタのうち最も近いもの」を 1 段ずつ遡って決める（既定の `Counters` は祖先の
+  `resets` に子孫を平坦に列挙するため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。
+  定理クラスは `reset_by` が指す見出しカウンタを唯一の祖先とし、`TheoremReset` と見出しカウンタの
+  対応は `style::TheoremReset::counter_name`（とその逆写像 `for_counter`）1 箇所が持つ
 - 子 module に crate root の module と同名を付けない — 成果物は `semantic_document.rs`、CSL スタイルの読込は
   `citation/csl_style.rs`。`document.rs` / `style.rs` だと `semantics` 配下で `document::` / `style::` が
   crate root（HIR / style.toml）と自 module の 2 義になるため、この名前へ戻さない

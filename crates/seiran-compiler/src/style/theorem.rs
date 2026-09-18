@@ -9,7 +9,7 @@ pub(super) use crate::document::TheoremClass;
 use crate::{
   document::FontKind,
   length::{Length, non_negative},
-  style::{CounterTemplate, TheoremHeadingTemplate},
+  style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
 };
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
@@ -136,6 +136,39 @@ pub(crate) enum TheoremReset {
   Subsection,
   /// リセットしない（文書全体で連番）
   None,
+}
+
+impl TheoremReset {
+  /// 全 5 バリアントを宣言順（部 → 章 → 節 → 小節 → なし）で並べた配列
+  const ALL: [TheoremReset; 5] = [
+    Self::Part,
+    Self::Chapter,
+    Self::Section,
+    Self::Subsection,
+    Self::None,
+  ];
+
+  /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
+  ///
+  /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典で、逆写像
+  /// [`Self::for_counter`] もここから導く。定理カウンタのリセット先になれるのは部・章・節・
+  /// 小節の 4 レベルだけで、段落以下の見出しと図表・数式のカウンタは選べない。
+  #[must_use]
+  pub(crate) fn counter_name(self) -> Option<CounterName> {
+    return match self {
+      Self::Part => Some(CounterName::Part),
+      Self::Chapter => Some(CounterName::Chapter),
+      Self::Section => Some(CounterName::Section),
+      Self::Subsection => Some(CounterName::Subsection),
+      Self::None => None,
+    };
+  }
+
+  /// 見出しカウンタ `name` をリセット先に持つレベルを返す（[`Self::counter_name`] の逆写像）
+  #[must_use]
+  pub(crate) fn for_counter(name: CounterName) -> Option<Self> {
+    return Self::ALL.iter().copied().find(|level| return level.counter_name() == Some(name));
+  }
 }
 
 /// 定理ブロックの見た目（見出し書式・フォント・マージン）。
@@ -388,7 +421,7 @@ mod tests {
   use crate::{
     document::FontKind,
     length::Length,
-    style::{CounterTemplate, TheoremHeadingTemplate},
+    style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
   };
 
   /// `Theorems` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
@@ -665,5 +698,41 @@ font_knd = \"serif\"
 
     // Assert
     assert!(result.is_err(), "ネストした未知のフィールド名は拒否されるべき: {result:?}");
+  }
+
+  #[test]
+  fn for_counter_maps_every_counter_name() {
+    let expected: [(CounterName, Option<TheoremReset>); 9] = [
+      (CounterName::Part, Some(TheoremReset::Part)),
+      (CounterName::Chapter, Some(TheoremReset::Chapter)),
+      (CounterName::Section, Some(TheoremReset::Section)),
+      (CounterName::Subsection, Some(TheoremReset::Subsection)),
+      (CounterName::Paragraph, None),
+      (CounterName::Subparagraph, None),
+      (CounterName::Table, None),
+      (CounterName::Figure, None),
+      (CounterName::Equation, None),
+    ];
+
+    for (name, want) in expected {
+      assert_eq!(TheoremReset::for_counter(name), want, "{name:?} に対応するリセットレベル");
+    }
+    assert_eq!(expected.map(|(name, _)| return name), CounterName::ALL, "固定 9 種のカウンタ名を宣言順ですべて覆う");
+  }
+
+  #[test]
+  fn counter_name_covers_every_reset_level() {
+    let expected: [(TheoremReset, Option<CounterName>); 5] = [
+      (TheoremReset::Part, Some(CounterName::Part)),
+      (TheoremReset::Chapter, Some(CounterName::Chapter)),
+      (TheoremReset::Section, Some(CounterName::Section)),
+      (TheoremReset::Subsection, Some(CounterName::Subsection)),
+      (TheoremReset::None, None),
+    ];
+
+    for (level, want) in expected {
+      assert_eq!(level.counter_name(), want, "{level:?} が指す見出しカウンタ");
+    }
+    assert_eq!(expected.map(|(level, _)| return level), TheoremReset::ALL, "全 5 バリアントを宣言順で覆う");
   }
 }

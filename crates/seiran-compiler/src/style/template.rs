@@ -279,7 +279,7 @@ impl Placeholder for NumberPlaceholder {
 pub(crate) enum CounterPlaceholder {
   /// `{n}` — このテンプレートを持つカウンタ自身の値
   Own,
-  /// `{<counter_name>}` — 他カウンタ（祖先チェーン上）の値
+  /// `{<counter_name>}` — 構造値に載っているカウンタ（自身または祖先）の値
   Counter(CounterName),
 }
 
@@ -448,7 +448,7 @@ impl NumberTemplate {
 impl CounterTemplate {
   /// 各プレースホルダを `resolve` で表示文字列にした結果を返す
   ///
-  /// カウンタ値の復元（祖先チェーンの探索・`number_style` の適用）は caller の責務で、
+  /// カウンタ値の復元（構造値からの名前引き・`number_style` の適用）は caller の責務で、
   /// このテンプレートは「どの位置にどのカウンタを置くか」だけを知っている。
   #[must_use]
   pub(crate) fn expand(&self, mut resolve: impl FnMut(CounterPlaceholder) -> String) -> String {
