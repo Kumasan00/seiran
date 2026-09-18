@@ -468,7 +468,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
    （property test が固定する）
 
 その後 CSL 整形へ進む。書誌は HIR ではなく生成物（エントリの列）として来るため走査は書誌を見ず、書誌の
-見出し（style 由来の文字列・レベル）を作り、本文の続きとなる `HeadingKey` を 1 つ振るのは
+見出し（文字列は style 由来・レベルは `Section` 固定）を作り、本文の続きとなる `HeadingKey` を 1 つ振るのは
 `typeset::lowering` 側。
 
 #### エラー
@@ -514,9 +514,10 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - **書誌は各グループへ追加せず、戻り値として返す**。`analyze` が本文（HIR）・事実とは別枠のまま
   `SemanticDocument` の 3 フィールド目に置いて組版へ渡す。**書誌を合成グループとして groups の末尾へ連結
   する方式へ戻さない** — 別枠で渡すことで citation がグループ構造に依存しない
-- **見出しは生成物に入れない**。書誌見出しの文字列（`style.reference.title`）とレベルは style の値なので、
-  `typeset::lowering` が style から作る。style の値を analyze → generate → render と引き回して semantics の
-  成果物へ埋め込む形へ戻さない（#667）。CSL スタイル・ロケールも `CompiledCitationStyle` の外へは出さず、
+- **見出しは生成物に入れない**。書誌見出しの文字列（`style.reference.title`）は style の値、レベルは
+  `Section` 固定（`BIBLIOGRAPHY_HEADING_LEVEL`）で、いずれも `typeset::lowering` が組み立てる。style の値を
+  analyze → generate → render と引き回して semantics の成果物へ埋め込む形へ戻さない（#667）。
+  CSL スタイル・ロケールも `CompiledCitationStyle` の外へは出さず、
   hayagriva への整形要求はその型が組み立てて返す（タプルへ分解して渡し直さない）
 - 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は斜体系の書体指定を持つ生成物として運ぶ
 - 文献ファイルの読込は集約せず deserialize 時に fail-fast（著者名の排他・空 / 重複 ID）。#376 の集約基準に

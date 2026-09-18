@@ -104,8 +104,8 @@ fn collect_citation_inlines(children: &ElemChildren, targets: &[CitationId], out
 
 /// 整形済み書誌（`RenderedBibliography`）から書誌エントリ列を組み立てる。
 ///
-/// 見出しはここでは作らない — 見出しの文字列とレベルは style の値なので、`typeset::lowering` が
-/// `style.reference` から作る（semantics の成果物に style の値を埋め込まない、#667）。
+/// 見出しはここでは作らない — 見出しの文字列は style の値、レベルは `Section` 固定なので、
+/// いずれも `typeset::lowering` が組み立てる（semantics の成果物に style の値を埋め込まない、#667）。
 fn build_bibliography(bibliography: &RenderedBibliography) -> Vec<BibliographyEntry> {
   return bibliography
     .items
