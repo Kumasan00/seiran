@@ -32,6 +32,8 @@ pub(crate) use citation::{
   GeneratedInline, ReadReferencesError, References, generate_citations, generated_inlines_to_plain_text,
   load_citation_style, read_references,
 };
+#[cfg(test)]
+pub(crate) use counter::CounterPart;
 pub(crate) use counter::{CounterKind, CounterValue};
 pub(crate) use error::{AnalyzeError, SemanticError, SemanticFailures};
 pub(crate) use ids::{HeadingKey, LabelId};
