@@ -11,7 +11,9 @@ use hayagriva::{
 
 use crate::{
   document::{FontKind, HeadingLevel},
-  semantics::citation::{CitationId, GeneratedBlock, GeneratedInline, csl_style::CompiledCitationStyle},
+  semantics::citation::{
+    CitationId, CitationSiteFacts, GeneratedBlock, GeneratedInline, csl_style::CompiledCitationStyle,
+  },
 };
 
 /// hayagriva による整形結果。
@@ -24,15 +26,23 @@ pub(super) struct Rendered {
 
 /// cite サイト群を CSL 整形し、引用ラベルと書誌ブロックを返す。
 pub(super) fn render<'a>(
-  entries: &'a HashMap<String, Item>,
-  cite_sites: &[Vec<String>],
+  entries: &'a HashMap<CitationId, Item>,
+  sites: &[&CitationSiteFacts],
   style: &'a CompiledCitationStyle,
   bib_title: &str,
 ) -> Rendered {
   let mut driver: BibliographyDriver<'_, Item> = BibliographyDriver::new();
-  for site in cite_sites {
-    let items: Vec<CitationItem<'_, Item>> =
-      site.iter().filter_map(|key| return entries.get(key)).map(CitationItem::with_entry).collect();
+  for site in sites {
+    let items: Vec<CitationItem<'_, Item>> = site
+      .targets
+      .iter()
+      .map(|target| {
+        let Some(item) = entries.get(target) else {
+          unreachable!("引用キーに対応する CSL-JSON 担体は generate_citations が全件構築している: {target:?}")
+        };
+        return CitationItem::with_entry(item);
+      })
+      .collect();
     driver.citation(style.citation_request(items));
   }
 
@@ -41,8 +51,8 @@ pub(super) fn render<'a>(
   let labels = result
     .citations
     .iter()
-    .zip(cite_sites)
-    .map(|(citation, site)| return citation_children_to_inlines(&citation.citation, site))
+    .zip(sites)
+    .map(|(citation, site)| return citation_children_to_inlines(&citation.citation, &site.targets))
     .collect();
   let bibliography = build_bibliography(result.bibliography.as_ref(), bib_title);
 
@@ -54,15 +64,15 @@ pub(super) fn render<'a>(
 
 /// rendered citation の `ElemChildren` を `Vec<GeneratedInline>` に平坦化する（引用アイテムは内部リンク化）。
 ///
-/// `ElemMeta::Entry` のインデックスを `site` の引用キーへ対応させる。
-fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<GeneratedInline> {
+/// `ElemMeta::Entry` のインデックスを `targets` の引用キーへ対応させる。
+fn citation_children_to_inlines(children: &ElemChildren, targets: &[CitationId]) -> Vec<GeneratedInline> {
   let mut out = Vec::new();
-  collect_citation_inlines(children, site, &mut out);
+  collect_citation_inlines(children, targets, &mut out);
   return out;
 }
 
 /// [`citation_children_to_inlines`] の再帰本体。`ElemChildren` を走査して `out` に積む。
-fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut Vec<GeneratedInline>) {
+fn collect_citation_inlines(children: &ElemChildren, targets: &[CitationId], out: &mut Vec<GeneratedInline>) {
   for child in &children.0 {
     match child {
       ElemChild::Elem(elem) => {
@@ -72,15 +82,18 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
           if item_inlines.is_empty() {
             continue;
           }
-          match site.get(idx) {
-            Some(key) => out.push(GeneratedInline::InternalLink {
-              target: CitationId::new(key.as_str()),
-              children: item_inlines,
-            }),
-            None => out.extend(item_inlines),
-          }
+          let Some(target) = targets.get(idx) else {
+            unreachable!(
+              "ElemMeta::Entry は CitationRequest の items の添字（hayagriva が initial_idx を振る）で、\
+               items は render が targets と 1 対 1 に積んでいる: {idx}"
+            )
+          };
+          out.push(GeneratedInline::InternalLink {
+            target: target.clone(),
+            children: item_inlines,
+          });
         } else {
-          collect_citation_inlines(&elem.children, site, out);
+          collect_citation_inlines(&elem.children, targets, out);
         }
       },
       ElemChild::Text(_) | ElemChild::Markup(_) | ElemChild::Link { .. } | ElemChild::Transparent { .. } => {

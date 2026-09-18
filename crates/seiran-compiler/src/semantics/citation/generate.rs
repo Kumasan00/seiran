@@ -13,7 +13,8 @@ use tracing::debug;
 use crate::{
   document::{NodeId, NodeMap},
   semantics::citation::{
-    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json, csl_style::CompiledCitationStyle, render,
+    CitationId, CitationSiteFacts, GeneratedBlock, GeneratedInline, References, csl_json,
+    csl_style::CompiledCitationStyle, render,
   },
 };
 
@@ -95,30 +96,27 @@ pub(crate) fn generate_citations(
   style: &CompiledCitationStyle,
   bibliography_title: &str,
 ) -> Result<GeneratedCitations, CitationFormatError> {
-  let cite_sites: Vec<Vec<String>> = sites
-    .iter()
-    .map(|(_, site)| return site.targets.iter().map(|target| return target.as_str().to_string()).collect())
-    .collect();
+  let sites_in_order: Vec<&CitationSiteFacts> = sites.iter().map(|(_, site)| return site).collect();
 
   // 未引用文献の変換エラーでビルドを失敗させないよう、引用された文献だけを変換する。
-  let mut entries: HashMap<String, Item> = HashMap::new();
-  for key in cite_sites.iter().flatten() {
-    if entries.contains_key(key) {
+  let mut entries: HashMap<CitationId, Item> = HashMap::new();
+  for target in sites_in_order.iter().flat_map(|site| return site.targets.iter()) {
+    if entries.contains_key(target) {
       continue;
     }
-    let Some(reference) = references.get(key) else {
-      unreachable!("キーの存在は semantics::analyze の走査が保証している: {key}")
+    let Some(reference) = references.get(target.as_str()) else {
+      unreachable!("キーの存在は semantics::analyze の走査が保証している: {target:?}")
     };
-    let item = csl_json::to_item(key, reference).map_err(|source| {
+    let item = csl_json::to_item(target.as_str(), reference).map_err(|source| {
       return CitationFormatError::BuildEntry {
-        id: key.clone(),
+        id: target.as_str().to_string(),
         source,
       };
     })?;
-    entries.insert(key.clone(), item);
+    entries.insert(target.clone(), item);
   }
 
-  let rendered = render::render(&entries, &cite_sites, style, bibliography_title);
+  let rendered = render::render(&entries, &sites_in_order, style, bibliography_title);
 
   let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
   for ((site, _), display) in sites.iter().zip(rendered.labels) {
@@ -126,7 +124,7 @@ pub(crate) fn generate_citations(
   }
 
   debug!(
-    citation_count = cite_sites.len(),
+    citation_count = sites_in_order.len(),
     bibliography_entry_count = rendered.bibliography.len(),
     "文献引用を整形"
   );
