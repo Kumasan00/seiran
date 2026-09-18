@@ -95,8 +95,24 @@ impl SemanticDocument {
   }
 
   /// 見出しを文書順に返す
+  ///
+  /// キーは表の位置そのもので、走査が振った順と必ず一致する（索引を別表に持たない）。
+  ///
+  /// `#[must_use]` は付けない — `Iterator` 自身が `#[must_use]` なので `clippy::double_must_use`
+  /// が発火する（同ファイルの `reference_sites` / `citation_sites` と同じ扱い）。
+  pub(crate) fn headings(&self) -> impl Iterator<Item = HeadingFacts> + '_ {
+    return self.facts.headings.iter().enumerate().map(|(index, (node, level))| {
+      return HeadingFacts {
+        key: HeadingKey::new(index),
+        node,
+        level: *level,
+      };
+    });
+  }
+
+  /// 見出しの総数を返す
   #[must_use]
-  pub(crate) fn headings(&self) -> &[HeadingFacts] { return &self.facts.headings; }
+  pub(crate) fn heading_count(&self) -> usize { return self.facts.headings.len(); }
 
   /// 見出しノードの文書順キーを引く
   ///
@@ -105,10 +121,10 @@ impl SemanticDocument {
   /// 見出しでないノードを渡した場合にパニックします（見出しの網羅は走査が保証している）。
   #[must_use]
   pub(crate) fn heading_key(&self, node: NodeId) -> HeadingKey {
-    let Some(key) = self.facts.heading_keys.get(node) else {
-      unreachable!("全見出しは semantics::analyze の走査が heading_keys へ登録している: {node:?}")
+    let Some(index) = self.facts.headings.position(node) else {
+      unreachable!("全見出しは semantics::analyze の走査が headings へ登録している: {node:?}")
     };
-    return *key;
+    return HeadingKey::new(index);
   }
 
   /// 引用箇所の表示インライン列を引く

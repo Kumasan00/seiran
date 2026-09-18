@@ -282,22 +282,20 @@ pub(super) fn lower_sources_with_headings(
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
-    generated::lower_bibliography(ctx, document.bibliography(), document.headings().len());
+    generated::lower_bibliography(ctx, document.bibliography(), document.heading_count());
   result.extend(bibliography_nodes);
 
   // 見出し一覧は facts の順（= `analyze` が振った `HeadingKey` の順）で組む。走査順に依存しない。
   let mut headings: Vec<HeadingRecord> = document
     .headings()
-    .iter()
-    .map(|facts| {
+    .map(|heading| {
       return HeadingRecord {
-        index: facts.key.index(),
-        level: facts.level,
-        number: facts
-          .counter_value
-          .as_ref()
+        index: heading.key.index(),
+        level: heading.level,
+        number: document
+          .counter_value(heading.node)
           .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value)),
-        title_plain: state.heading_title(facts.node).to_string(),
+        title_plain: state.heading_title(heading.node).to_string(),
       };
     })
     .collect();

@@ -48,8 +48,13 @@ impl<T> NodeMap<T> {
     return self.entries.iter().map(|(id, value)| return (*id, value));
   }
 
+  /// `id` の挿入位置（0 起点）を返す（未登録なら `None`）
+  ///
+  /// 挿入順 = 走査順なので、位置はそのまま「文書順の何番目か」になる。見出しの `HeadingKey` は
+  /// この位置から組む（`NodeId` → キーの索引を別表として二重に持たない）。
+  pub(crate) fn position(&self, id: NodeId) -> Option<usize> { return self.index.get(&id).copied(); }
+
   /// エントリ数を返す
-  #[cfg(test)]
   pub(crate) fn len(&self) -> usize { return self.entries.len(); }
 
   /// エントリが 1 つも無いかを返す
@@ -97,5 +102,20 @@ mod tests {
     let map: NodeMap<u32> = NodeMap::default();
 
     assert!(map.is_empty());
+  }
+
+  #[test]
+  fn node_map_returns_insertion_position() {
+    // Arrange
+    let mut map: NodeMap<&str> = NodeMap::default();
+    map.insert(id(1, 7), "c");
+    map.insert(id(0, 9), "a");
+
+    // Assert — 位置は挿入順の添字（再挿入では動かない）
+    assert_eq!(map.position(id(1, 7)), Some(0));
+    assert_eq!(map.position(id(0, 9)), Some(1));
+    map.insert(id(1, 7), "c2");
+    assert_eq!(map.position(id(1, 7)), Some(0), "再挿入は順序を変えないはず");
+    assert_eq!(map.position(id(2, 2)), None, "未登録は None");
   }
 }

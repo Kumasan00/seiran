@@ -251,7 +251,7 @@ fn analyze_document(
     let phase = Phase::enter(info_span!("semantics"));
     let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
       .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-    info!(heading_count = semantic_document.headings().len(), "文書を意味解析");
+    info!(heading_count = semantic_document.heading_count(), "文書を意味解析");
     phase.succeed();
     semantic_document
   };

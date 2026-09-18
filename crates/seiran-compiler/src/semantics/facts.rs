@@ -15,10 +15,12 @@ use crate::{
   semantics::{CitationSiteFacts, HeadingKey, LabelId, counter::CounterValue},
 };
 
-/// 見出し 1 件について判明した事実
+/// 見出し 1 件について判明した事実（`headings` の 1 エントリを読み出した派生ビュー）
 ///
-/// タイトルは「内容」であって「事実」ではないので持たない（表示は HIR から作る）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// タイトルは「内容」であって「事実」ではないので持たない（表示は HIR から作る）。値は
+/// どれも表に二重で持たず、読み出すたびに組む — `key` は `headings` 上の位置そのもの、
+/// `node` は表の鍵そのもの、カウンタ構造値は `counters` を `node` で引く。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HeadingFacts {
   /// 文書順の見出しキー（PDF しおり・目次のリンク先）
   pub key: HeadingKey,
@@ -26,8 +28,6 @@ pub(crate) struct HeadingFacts {
   pub node: NodeId,
   /// 見出しレベル
   pub level: HeadingLevel,
-  /// カウンタ構造値（無採番の見出しは `None`）
-  pub counter_value: Option<CounterValue>,
 }
 
 /// 意味解析が確定した事実の集合
@@ -46,8 +46,6 @@ pub(super) struct SemanticFacts {
   pub(super) references: NodeMap<LabelId>,
   /// 引用箇所（`\cite`）→ 引用先（挿入順 = 文書順。CSL の採番がこの順序に依存する）
   pub(super) citations: NodeMap<CitationSiteFacts>,
-  /// 見出し（文書順）
-  pub(super) headings: Vec<HeadingFacts>,
-  /// 見出しノード → 文書順キー（`headings` の線形探索を避けるための索引）
-  pub(super) heading_keys: NodeMap<HeadingKey>,
+  /// 見出しノード → 見出しレベル（挿入順 = 文書順。位置がそのまま `HeadingKey`）
+  pub(super) headings: NodeMap<HeadingLevel>,
 }

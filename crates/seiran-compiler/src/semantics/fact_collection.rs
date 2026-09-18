@@ -10,10 +10,10 @@
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   semantics::{
-    CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
+    CitationId, CitationSiteFacts, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
     error::{self, UnknownCitationSite},
-    facts::{HeadingFacts, SemanticFacts},
+    facts::SemanticFacts,
   },
   style::CounterName,
 };
@@ -117,13 +117,8 @@ impl Checker<'_> {
       HirNodeKind::Heading { title, label, .. } => {
         self.require_counter(node.id, "Heading");
         assert!(
-          self.facts.headings.iter().any(|heading| return heading.node == node.id),
-          "Walker が Heading の HeadingFacts を登録し損ねている: {:?}",
-          node.id
-        );
-        assert!(
-          self.facts.heading_keys.get(node.id).is_some(),
-          "Walker が Heading の heading_keys を登録し損ねている: {:?}",
+          self.facts.headings.get(node.id).is_some(),
+          "Walker が Heading の事実を登録し損ねている: {:?}",
           node.id
         );
         self.require_declared_label(node.id, label.as_deref(), "Heading");
@@ -366,15 +361,8 @@ impl Walker<'_> {
         if !self.record_duplicate(node.id, duplicate) {
           self.record_label(node.id, label.as_deref());
         }
-        self.facts.counters.insert(node.id, counter_value.clone());
-        let key = HeadingKey::new(self.facts.headings.len());
-        self.facts.headings.push(HeadingFacts {
-          key,
-          node: node.id,
-          level: *level,
-          counter_value: Some(counter_value),
-        });
-        self.facts.heading_keys.insert(node.id, key);
+        self.facts.counters.insert(node.id, counter_value);
+        self.facts.headings.insert(node.id, *level);
         self.inlines(title);
       },
       HirNodeKind::List { items, .. } => {
@@ -614,7 +602,7 @@ mod tests {
     let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
 
     // Assert — 宣言ノードからラベルが引け、ラベルからカウンタ値が引ける
-    let heading = analyzed.headings().first().expect("見出しが 1 件あるはず");
+    let heading = analyzed.headings().next().expect("見出しが 1 件あるはず");
     assert_eq!(analyzed.declared_label(heading.node), Some(&LabelId::new("ch:intro")));
     assert!(analyzed.counter_value_of_label(&LabelId::new("ch:intro")).is_some());
   }
@@ -624,7 +612,8 @@ mod tests {
     // Arrange: quote 環境の中に入れ子の見出しがある入力
     let analyzed = analyze_source("\\section{A}\n\\begin{quote}\n\\subsection{B}\n\\end{quote}\n");
     // Act
-    let keys: Vec<usize> = analyzed.headings().iter().map(|f| return analyzed.heading_key(f.node).index()).collect();
+    let keys: Vec<usize> =
+      analyzed.headings().map(|heading| return analyzed.heading_key(heading.node).index()).collect();
     // Assert: facts の順（文書順）と一致する
     assert_eq!(keys, vec![0, 1]);
   }
