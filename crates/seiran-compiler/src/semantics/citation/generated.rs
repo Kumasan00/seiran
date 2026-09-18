@@ -22,7 +22,7 @@ use crate::{document::FontKind, semantics::citation::CitationId};
 /// 見出し・段落・アンカーを平坦に並べた汎用ブロック列にはしない（作られない形を型が
 /// 許さないようにする、#667）。書誌見出しの文字列とレベルは style の値なので、生成物には
 /// 埋め込まず `typeset::lowering` が `style.reference` から作る。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BibliographyEntry {
   /// このエントリが対応する引用キー（lowering が `AnchorMark::Citation` にする）
   pub(crate) key: CitationId,
@@ -33,7 +33,7 @@ pub(crate) struct BibliographyEntry {
 /// 引用の生成物（書誌・引用表示）が使うインライン要素
 ///
 /// セマンティックな意図を保持し、物理スタイルは lowering 層で付与される。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GeneratedInline {
   /// プレーンテキスト
   Text(String),
