@@ -5,14 +5,13 @@
 use std::collections::HashMap;
 
 use hayagriva::{
-  BibliographyDriver, BibliographyRequest, CitationItem, CitationRequest, ElemChild, ElemChildren, ElemMeta, Formatted,
-  Formatting, RenderedBibliography,
-  citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
+  BibliographyDriver, CitationItem, ElemChild, ElemChildren, ElemMeta, Formatted, Formatting, RenderedBibliography,
+  citationberg::{FontStyle, FontWeight, json::Item},
 };
 
 use crate::{
   document::{FontKind, HeadingLevel},
-  semantics::citation::{CitationId, GeneratedBlock, GeneratedInline},
+  semantics::citation::{CitationId, GeneratedBlock, GeneratedInline, csl_style::CompiledCitationStyle},
 };
 
 /// hayagriva による整形結果。
@@ -24,26 +23,20 @@ pub(super) struct Rendered {
 }
 
 /// cite サイト群を CSL 整形し、引用ラベルと書誌ブロックを返す。
-pub(crate) fn render(
-  entries: &HashMap<String, Item>,
+pub(super) fn render<'a>(
+  entries: &'a HashMap<String, Item>,
   cite_sites: &[Vec<String>],
-  style: &IndependentStyle,
-  locales: &[Locale],
-  locale_override: Option<LocaleCode>,
+  style: &'a CompiledCitationStyle,
   bib_title: &str,
 ) -> Rendered {
   let mut driver: BibliographyDriver<'_, Item> = BibliographyDriver::new();
   for site in cite_sites {
     let items: Vec<CitationItem<'_, Item>> =
       site.iter().filter_map(|key| return entries.get(key)).map(CitationItem::with_entry).collect();
-    driver.citation(CitationRequest::new(items, style, locale_override.clone(), locales, None));
+    driver.citation(style.citation_request(items));
   }
 
-  let result = driver.finish(BibliographyRequest {
-    style,
-    locale: locale_override,
-    locale_files: locales,
-  });
+  let result = driver.finish(style.bibliography_request());
 
   let labels = result
     .citations

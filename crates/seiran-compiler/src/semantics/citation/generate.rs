@@ -118,8 +118,7 @@ pub(crate) fn generate_citations(
     entries.insert(key.clone(), item);
   }
 
-  let (csl_style, locales, locale_override) = style.parts();
-  let rendered = render::render(&entries, &cite_sites, csl_style, locales, locale_override, bibliography_title);
+  let rendered = render::render(&entries, &cite_sites, style, bibliography_title);
 
   let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
   for ((site, _), display) in sites.iter().zip(rendered.labels) {
