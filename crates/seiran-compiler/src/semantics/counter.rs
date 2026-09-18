@@ -5,6 +5,11 @@
 //! G3（内容は見た目から独立）を型の設計として保証する。表示文字列の生成は typeset 側の
 //! 責務（`typeset::lowering::counter`）。
 //!
+//! 値の各要素は [`CounterPart`] として「どのカウンタの何番か」を名前付きで運ぶ。名前は
+//! 構造であって表示ではないので、値と表示の分離（#282）と矛盾しない。**祖先チェーンを
+//! 決めるコードは crate 内でこの module の [`CounterRegistry::ancestor_values`] 1 つだけ**で、
+//! 表示側は受け取った値を名前で引くだけになる（#665）。
+//!
 //! [`CounterRegistry`] は `typeset::lowering::counter::CounterRegistry`（issue #282 以前）から
 //! 移設したもの。移設にあたり `increment` 系メソッドの戻り値を書式化済み `String` から
 //! この構造値 [`CounterValue`] のみに変更し、`ref_format` 展開・`number_format` 展開などの

@@ -4,7 +4,10 @@
 //! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 //!
-//! 値そのものを作る側はここに無い — ラベル登録・カウンタ値算出（旧 `CounterRegistry`）は #282 で
+//! 祖先の決め方はここには無い — 構造値の各要素が自分のカウンタ名を持つので、`{chapter}` の
+//! ような他カウンタ参照は `CounterValue::value_of` で名前引きするだけで解ける（#665）。
+//!
+//! 値そのものを作る側もここに無い — ラベル登録・カウンタ値算出（旧 `CounterRegistry`）は #282 で
 //! `semantics` へ、脚注の出現 index 発番は `LoweringState` へ、確定ページ列からのページ単位脚注
 //! 表示番号の割り当ては `typeset::pagination::footnote_numbering` へ移してある。
 
