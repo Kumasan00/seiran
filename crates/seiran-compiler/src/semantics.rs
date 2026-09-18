@@ -24,7 +24,7 @@ mod semantic_document;
 
 pub(crate) use analyze::analyze;
 #[cfg(test)]
-pub(crate) use analyze::analyze_for_test;
+pub(crate) use analyze::test_support::analyze_for_test;
 #[cfg(test)]
 pub(crate) use citation::test_support;
 pub(crate) use citation::{

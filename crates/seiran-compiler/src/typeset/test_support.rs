@@ -1,4 +1,5 @@
-//! 確定レイアウトのテスト用 fixture builder（`#[cfg(test)]` 限定）
+//! 確定レイアウトのテスト用 fixture builder と、本番経路で組んだ確定レイアウトの取り出し口
+//! （`#[cfg(test)]` 限定）
 //!
 //! `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てる際の唯一の入口。
 //! `typeset` root が `#[cfg(test)]` でも再エクスポートしない組版中間型（`HBox` / `Line` /
@@ -12,13 +13,17 @@
 
 use std::collections::HashMap;
 
+use super::{lay_out, load_fonts};
 use crate::{
   document::{ColumnAlign, ColumnWidth, HeadingLevel},
+  failures::Failures,
   length::Length,
-  project::{FontType, ProjectPath},
+  project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::GlyphRun,
-  semantics::{HeadingKey, LabelId},
+  semantics::{HeadingKey, LabelId, SemanticDocument},
+  style::Style,
   typeset::{
+    PreparedGeometry, TypesetError,
     boxes::{
       AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
       PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
@@ -27,6 +32,33 @@ use crate::{
     pagination::{LaidOutDocument, OutlineEntry},
   },
 };
+
+/// `crate::typeset::compose` と同じ経路で組版し、確定レイアウトを取り出す。
+///
+/// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
+/// `PlacedBlock` の幾何）を検査するテストだけが使う。`compose` と同じ `load_fonts` / `lay_out` を
+/// 通るので、フォント資源の構築順序や組版の段順序を迂回できない（#522 / #535）。
+///
+/// `compose` と異なり `info_span!("typeset")` には入らない（`font` span は `load_fonts` が開くので
+/// そのまま残る）。テスト専用の出口なので tracing の出方を production と揃える必要はなく、
+/// 意図的にこのままにしてある。
+///
+/// # Errors
+///
+/// `crate::typeset::compose` と同じ条件で失敗する。
+pub(crate) fn layout_for_test(
+  source: &dyn ProjectSource,
+  config: &ProjectConfig,
+  style: &Style,
+  geometry: &PreparedGeometry,
+  font_data: &FontData,
+  document: &SemanticDocument,
+) -> Result<LaidOutDocument, Failures<TypesetError>> {
+  let (font_resources, _font_warnings) = load_fonts(config, font_data);
+  let font_resources = font_resources?;
+  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
+  return Ok(laid_out);
+}
 
 /// 計測済みボックスの寸法（`HBox` を露出させずに箱の大きさを渡すための引数まとめ）
 #[derive(Debug, Clone, Copy)]

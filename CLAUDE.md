@@ -174,7 +174,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
    - 起点は `crate::` に統一し `super::` / `self::` は使わない。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）
    - `crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`）。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外
    - `*` を避け明示 import。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
-   - `#[cfg(test)]` だけが使う import は `#[cfg(test)] use ...;`
+   - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)] pub(crate) use`（本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数（型から切り離せない。#696）
 4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かは人が見る）
 5. **`unreachable!` は積極的に使う**: 型で表現不能にできない「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` でごまかさず `unreachable!`。入力（ソース・設定）由来で到達しうる状態は miette 診断エラー。メッセージには「なぜ到達しないか」＝上流のどの検証が保証するかを書く
 6. **panic は根拠を書いてから落とす**
@@ -246,7 +246,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 - 入力は `tests/text/`（機能別 `.sei`）、フォントと CSL は `vendor/fonts/` / `vendor/csl/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
 - AAA。`// Arrange` / `// Act` / `// Assert` は 3 段が実際に複数行へ分かれるテストだけ。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
-- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` の 8 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
+- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` の 9 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
 - golden テスト・組版変更の検証・資産取得（初回 `tools/fetch-test-assets.sh`）・golden 再生成は `verify-typesetting` skill

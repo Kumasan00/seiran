@@ -47,7 +47,8 @@ mod warning;
 // こちら側で、`compiler::golden` は `dump_pages` の 1 関数だけを借りる（#353）。
 #[cfg(test)]
 mod dump;
-// `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てるための fixture builder（#353）。
+// `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てるための fixture builder（#353）と、
+// `compose` と同じ経路で組んだ確定レイアウトの取り出し口（`layout_for_test`）。
 #[cfg(test)]
 mod test_support;
 
@@ -78,6 +79,10 @@ pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
 // この名前を使うので、条件付きの再エクスポートと本体用の `use` を並べると
 // テストビルドで E0252（同名の重複定義）になる。1 本の無条件な再エクスポートで両方を賄う。
 pub(crate) use pagination::LaidOutDocument;
+// テスト専用の例外 — `compiler` 配下のテストが確定レイアウトへ直接アサートするための出口
+// （実装は `test_support` が持ち、facade は名前を出すだけ）。
+#[cfg(test)]
+pub(crate) use test_support::layout_for_test;
 // 組版が見つけた、ユーザーが直せる非致命的問題（#382）。フォント警告も包む（#535）。
 // `compiler` が `Warnings` へ積む。
 pub(crate) use warning::TypesetWarning;
@@ -209,32 +214,4 @@ fn lay_out(
   let images = image::load_image_resources(source, &image_paths)?;
   let ctx = pagination::TypesetContext::new(config, style, geometry, &font_system);
   return pagination::paginate(&ctx, document, images, image_paths).map_err(Failures::single);
-}
-
-/// [`compose`] と同じ経路で組版し、確定レイアウトを取り出すテスト専用の出口。
-///
-/// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
-/// `PlacedBlock` の幾何）を検査するテストだけが使う。[`compose`] と同じ [`load_fonts`] /
-/// [`lay_out`] を通るので、フォント資源の構築順序や組版の段順序を迂回できない（#522 / #535）。
-///
-/// [`compose`] と異なり `info_span!("typeset")` には入らない（`font` span は [`load_fonts`] が
-/// 開くのでそのまま残る）。テスト専用の出口なので tracing の出方を production と揃える必要は
-/// なく、意図的にこのままにしてある。
-///
-/// # Errors
-///
-/// [`compose`] と同じ条件で失敗する。
-#[cfg(test)]
-pub(crate) fn layout_for_test(
-  source: &dyn ProjectSource,
-  config: &ProjectConfig,
-  style: &Style,
-  geometry: &PreparedGeometry,
-  font_data: &FontData,
-  document: &SemanticDocument,
-) -> Result<LaidOutDocument, Failures<TypesetError>> {
-  let (font_resources, _font_warnings) = load_fonts(config, font_data);
-  let font_resources = font_resources?;
-  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
-  return Ok(laid_out);
 }

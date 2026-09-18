@@ -18,7 +18,7 @@
 //!
 //! 残りのテストは golden ファイルを一切読み書きせず、`Publication` へ変換すると失われる情報
 //! （anchor・索引語のページ帰属・脚注 fragment の繰越と番号・`PlacedBlock` の幾何）を見るため
-//! `TestProject::layout`（`compiler::layout_project_for_test`）を使う。
+//! `TestProject::layout` を使う。
 //!
 //! - **2 つの `typeset::Page` ダンプをテスト内で直接比較**（`assert_eq!` / `assert_ne!`）:
 //!   [`index_marks_are_invisible_to_layout`]・style 差分 2 種
@@ -156,7 +156,7 @@ fn layout_dumps_match_golden() {
 /// 組版中間表現を取り出すテストヘルパが `input::load` の横断検証を迂回していないことの検査。
 ///
 /// 余白の合計が用紙幅を超える config × style は `typeset::PreparedGeometry::prepare`（config と style の
-/// 両方を要求する横断検証）でしか検出できない。`layout_project_for_test` が将来
+/// 両方を要求する横断検証）でしか検出できない。`TestProject::layout` が将来
 /// `CompilationInputs` を直接組み立てる経路へ戻ると、この診断が出なくなって失敗する。
 #[test]
 fn layout_helper_reports_cross_input_layout_validation() {

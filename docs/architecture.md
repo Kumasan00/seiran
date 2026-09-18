@@ -418,8 +418,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 **文書木は読み取り専用で、書き戻しは一切行わない**。
 
 境界: `semantics` の外から呼ばれる操作は `analyze`、文献の読込 `read_references`（入力読込段が呼ぶ）、
-生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ（`#[cfg(test)]` の `analyze_for_test` を
-除く）。module root が再エクスポートする他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
+生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ（`#[cfg(test)]` の
+`analyze::test_support::analyze_for_test` を除く。実装は子 module に置き、facade は名前だけを出す）。module root が再エクスポートする他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
 引くための経路で外部の消費者はいない。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は
 `typeset` / `compiler` が名指しする。走査後に初めて成立する意味上の識別子 `LabelId` / `HeadingKey` も本 module
 が所有する（組版側は到達先の名前空間として使うだけで、発行はしない — 目次が事実に載った index から鍵を
@@ -542,7 +542,7 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 - 組版中間型（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系）は非公開 module `boxes` が持ち、
   **`typeset` の外に本体コードの消費者はいない**。`Publication` への写像を行う `emit` は `typeset` の子
   module なので facade へ出す必要がない。テストが確定レイアウトへ直接アサートするためだけに `#[cfg(test)]`
-  の再エクスポート（`Page` / `PlacedBlock` / `AnchorId` 等と `dump_pages`）を置く。`LaidOutDocument`（`emit` へ
+  の再エクスポート（`Page` / `PlacedBlock` / `AnchorId` 等と `dump_pages` / `layout_for_test`）を置く。`LaidOutDocument`（`emit` へ
   渡す中間成果物 — 確定ページ列・outline・画像パス・画像資源）だけは本体コードが使うので無条件の
   `pub(crate)` で、`compiler` 側の import は `#[cfg(test)]`
 - シェーピング結果 `GlyphRun` / `Glyph` は `publication` が所有する値型で、`typeset::boxing` が生成し
@@ -862,7 +862,7 @@ TRACE ログ用の要約ヘルパだけを持つ純粋関数の module。文書�
 
 | module | 役割 | 外への出し方 |
 | --- | --- | --- |
-| `test_support` | 確定レイアウトの fixture builder | 出さない（非公開 `mod`。`typeset` 配下のテストだけが使う） |
+| `test_support` | 確定レイアウトの fixture builder と、`compose` と同じ経路で組んだ確定レイアウトの取り出し口 `layout_for_test` | fixture builder は出さない（非公開 `mod`。`typeset` 配下のテストだけが使う）。`layout_for_test` だけ `typeset` root facade から出す（`compiler` 配下のテストが使う） |
 | `dump` | 確定ページ列の決定的テキストダンプ `dump_pages` | `typeset` root facade から関数 1 つだけ |
 
 `test_support` の**不変条件**: `pub(crate)` の関数・メソッドの引数型にも返り値型にも、`typeset` root が

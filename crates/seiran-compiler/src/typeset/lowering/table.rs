@@ -1,7 +1,5 @@
 //! 表環境（`document::HirNodeKind::Table`）の lowering
 
-#[cfg(test)]
-use crate::document::FontKind;
 use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
   typeset::{
@@ -98,6 +96,7 @@ pub(super) fn lower_table(
 mod tests {
   use super::*;
   use crate::{
+    document::FontKind,
     length::Length,
     style::Style as ReadStyle,
     typeset::lowering::test_support::{analyzed, lower},
