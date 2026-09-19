@@ -275,7 +275,7 @@ mod tests {
   }
 
   #[test]
-  fn arg_modes_are_declared_for_every_command_kind() {
+  fn verbatim_commands_declare_arg_modes_and_others_are_empty() {
     // 種別から直接引ける（レジストリのキーと同期する 2 枚目の表を持たない）
     assert_eq!(CommandKind::Code.arg_modes(), &[ArgMode::Verbatim]);
     assert_eq!(CommandKind::Url.arg_modes(), &[ArgMode::Verbatim]);

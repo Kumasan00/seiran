@@ -835,8 +835,8 @@ mod tests {
   /// テスト用の（コマンド名, 引数位置）→ [`ArgMode`] 解決関数
   ///
   /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンドの
-  /// スタンドイン。`syntax` は語彙を持たないので、本番レジストリ（`evaluator::command` の
-  /// `COMMAND_ARG_MODES`）とは独立した合成名でモード分岐だけを検査する。
+  /// スタンドイン。`syntax` は語彙を持たないので、本番の判定（`evaluator::command` の
+  /// `CommandKind::arg_modes`）とは独立した合成名でモード分岐だけを検査する。
   fn test_command_arg(name: &str, index: usize) -> ArgMode {
     return match (name, index) {
       ("vurl", _) | ("vhref", 0) => ArgMode::Verbatim,
