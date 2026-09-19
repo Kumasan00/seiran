@@ -2,10 +2,12 @@
 //!
 //! 生成物は HIR ではない（`NodeId` を持たない）ので、著者が書いた本文とは別経路で lower する。
 //! 箱組み（見出し・段落）そのものは本文と同じ関数を通し、この module が持つのは
-//! 「`GeneratedInline` 列 → `LayoutNode` 列」の変換と、書誌に現れる固定形の走査だけ。
+//! 「`GeneratedInline` 列 → `LayoutNode` 列」の変換と、書誌の見出し（style 由来）＋
+//! エントリ列の組み立てだけ。
 
 use crate::{
-  semantics::{GeneratedBlock, GeneratedInline, HeadingKey, generated_inlines_to_plain_text},
+  document::HeadingLevel,
+  semantics::{BibliographyEntry, GeneratedInline, HeadingKey},
   typeset::{
     boxes::{AnchorId, AnchorMark, LinkTarget},
     lowering::{
@@ -17,48 +19,50 @@ use crate::{
   },
 };
 
+/// 書誌見出しのレベル
+///
+/// `citation::render` が見出しを合成していた頃から `Section` 固定で、style に選択肢は無い。
+const BIBLIOGRAPHY_HEADING_LEVEL: HeadingLevel = HeadingLevel::Section;
+
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
 ///
-/// 書誌の見出しは無採番で、本文の続きとなる `HeadingKey` を `next_heading_index` から振る。
-/// `GeneratedBlock` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
+/// 書誌見出しは style の値（`style.reference.title`）から作る — semantics の成果物には
+/// 見出しが無く、エントリ列だけが来る（#667）。見出しは無採番で、本文の続きとなる
+/// `HeadingKey` を `next_heading_index` から振る。`bibliography` が `None`（CSL が書誌を
+/// 定義していない）のときは見出しも出さない。
 pub(super) fn lower_bibliography(
   ctx: &LoweringContext<'_>,
-  nodes: &[GeneratedBlock],
+  bibliography: Option<&[BibliographyEntry]>,
   next_heading_index: usize,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
-  let mut layout = Vec::with_capacity(nodes.len());
-  let mut headings = Vec::new();
-  let mut heading_index = next_heading_index;
+  let Some(entries) = bibliography else {
+    return (Vec::new(), Vec::new());
+  };
 
-  for node in nodes {
-    match node {
-      GeneratedBlock::Heading { level, title } => {
-        let key = HeadingKey::new(heading_index);
-        heading_index += 1;
-        let style = title_style(ctx, *level);
-        // 生成物の lowering には副作用がないので、遅延させても結果は変わらない。
-        // 書誌の見出しは無採番（`citation::render` が合成する見出しに番号は無い）なので番号は空。
-        layout.extend(heading::lower_heading(
-          ctx,
-          *level,
-          "",
-          || return lower_generated_inlines(ctx, title, style),
-          None,
-          key,
-        ));
-        headings.push(HeadingRecord {
-          index: key.index(),
-          level: *level,
-          number: String::new(),
-          title_plain: generated_inlines_to_plain_text(title),
-        });
-      },
-      GeneratedBlock::Paragraph(inlines) => {
-        let content = lower_generated_inlines(ctx, inlines, body_text_style(ctx));
-        layout.extend(assemble_paragraph(ctx, content, false));
-      },
-      GeneratedBlock::Anchor(target) => layout.push(LayoutNode::Anchor(AnchorMark::Citation(target.clone()))),
-    }
+  let key = HeadingKey::new(next_heading_index);
+  let title = vec![GeneratedInline::Text(ctx.style.reference.title.clone())];
+  let style = title_style(ctx, BIBLIOGRAPHY_HEADING_LEVEL);
+  // 生成物の lowering には副作用がないので、遅延させても結果は変わらない。
+  // 書誌の見出しは無採番（style に番号書式を持たない）なので番号は空。
+  let mut layout = heading::lower_heading(
+    ctx,
+    BIBLIOGRAPHY_HEADING_LEVEL,
+    "",
+    || return lower_generated_inlines(ctx, &title, style),
+    None,
+    key,
+  );
+  let headings = vec![HeadingRecord {
+    index: key.index(),
+    level: BIBLIOGRAPHY_HEADING_LEVEL,
+    number: String::new(),
+    title_plain: ctx.style.reference.title.clone(),
+  }];
+
+  for entry in entries {
+    layout.push(LayoutNode::Anchor(AnchorMark::Citation(entry.key.clone())));
+    let content = lower_generated_inlines(ctx, &entry.body, body_text_style(ctx));
+    layout.extend(assemble_paragraph(ctx, content, false));
   }
 
   return (layout, headings);
@@ -112,7 +116,7 @@ fn lower_generated_inline(
 mod tests {
   use super::*;
   use crate::{
-    document::{FontKind, HeadingLevel},
+    document::FontKind,
     semantics::CitationId,
     style::Style as ReadStyle,
     typeset::lowering::{
@@ -121,22 +125,18 @@ mod tests {
     },
   };
 
-  /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
-  fn bibliography() -> Vec<GeneratedBlock> {
-    return vec![
-      GeneratedBlock::Heading {
-        level: HeadingLevel::Section,
-        title: vec![GeneratedInline::Text("References".to_string())],
-      },
-      GeneratedBlock::Anchor(CitationId::new("kwan2014")),
-      GeneratedBlock::Paragraph(vec![
+  /// `citation::render` が作るのと同じ形の書誌エントリ列（1 件）を作る
+  fn bibliography() -> Vec<BibliographyEntry> {
+    return vec![BibliographyEntry {
+      key: CitationId::new("kwan2014"),
+      body: vec![
         GeneratedInline::Text("K. Kwan, ".to_string()),
         GeneratedInline::Styled {
           kind: FontKind::SerifItalic,
           children: vec![GeneratedInline::Text("Crazy Rich Asians".to_string())],
         },
-      ]),
-    ];
+      ],
+    }];
   }
 
   #[test]
@@ -147,7 +147,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let document = analyzed.with_citations_for_test(Vec::new(), bibliography());
+    let document = analyzed.with_citations_for_test(Vec::new(), Some(bibliography()));
     let (layout, headings) = lower_sources_with_headings(&ctx, &document);
 
     // Assert — 書誌の見出しは本文の見出しの続きの key を持ち、番号は空
@@ -171,7 +171,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let (layout, _headings) = lower_bibliography(&LoweringContext::new(&style), &bibliography(), 0);
+    let (layout, _headings) = lower_bibliography(&LoweringContext::new(&style), Some(&bibliography()), 0);
 
     // Assert
     assert!(
@@ -188,7 +188,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let (layout, _headings) = lower_bibliography(&LoweringContext::new(&style), &bibliography(), 0);
+    let (layout, _headings) = lower_bibliography(&LoweringContext::new(&style), Some(&bibliography()), 0);
 
     // Assert
     let italic = layout.iter().find_map(|n| match n {
@@ -212,7 +212,7 @@ mod tests {
           children: vec![GeneratedInline::Text("[1]".to_string())],
         }],
       )],
-      Vec::new(),
+      None,
     );
 
     // Act
@@ -224,5 +224,48 @@ mod tests {
     };
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(CitationId::new("kwan2014"))));
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "[1]"), "{children:?}");
+  }
+
+  #[test]
+  fn empty_bibliography_still_emits_heading() {
+    // Arrange — CSL に書誌があってエントリが 0 件の状態
+    let style = ReadStyle::default();
+
+    // Act
+    let (layout, headings) = lower_bibliography(&LoweringContext::new(&style), Some(&[]), 0);
+
+    // Assert — 見出しは 1 件出るが、エントリ由来のアンカーは無い
+    assert_eq!(headings.len(), 1, "エントリ 0 件でも書誌見出しは出るはず: {headings:?}");
+    assert_eq!(headings[0].title_plain, "References");
+    assert!(
+      !layout.iter().any(|n| matches!(n, LayoutNode::Anchor(AnchorMark::Citation(_)))),
+      "エントリが無ければ引用アンカーも無いはず: {layout:?}"
+    );
+  }
+
+  #[test]
+  fn absent_bibliography_emits_nothing() {
+    // Arrange — CSL が書誌を定義していない状態
+    let style = ReadStyle::default();
+
+    // Act
+    let (layout, headings) = lower_bibliography(&LoweringContext::new(&style), None, 0);
+
+    // Assert
+    assert!(layout.is_empty(), "書誌が無ければレイアウトノードは出ないはず: {layout:?}");
+    assert!(headings.is_empty(), "書誌が無ければ見出し記録も出ないはず: {headings:?}");
+  }
+
+  #[test]
+  fn bibliography_heading_title_comes_from_style() {
+    // Arrange — 書誌見出しの文字列は style の値（生成物には埋め込まれていない）
+    let mut style = ReadStyle::default();
+    style.reference.title = "参考文献".to_string();
+
+    // Act
+    let (_layout, headings) = lower_bibliography(&LoweringContext::new(&style), Some(&bibliography()), 0);
+
+    // Assert
+    assert_eq!(headings[0].title_plain, "参考文献", "style.reference.title が見出しになるはず");
   }
 }

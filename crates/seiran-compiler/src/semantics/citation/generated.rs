@@ -1,4 +1,4 @@
-//! CSL 整形の生成物（書誌・引用表示）が使うブロック / インライン要素の型定義
+//! CSL 整形の生成物（書誌・引用表示）の型定義 — 書誌エントリとインライン要素
 //!
 //! 著者が書いた内容は HIR（`document::hir`）だけが表現する。ここにあるのは
 //! [`super::render`] が CSL 整形の結果として組み立てる**生成物**の語彙で、
@@ -7,42 +7,33 @@
 //! ラベルに相当するフィールドも持たない（#325 / #326）。生成するのが `citation` だけなので
 //! `citation` が所有する（#333）。
 //!
-//! variant は [`super::render`] が**実際に構築するものだけ**に絞ってある（ブロック 3 /
-//! インライン 3）。これは `typeset::lowering::generated` の変換が網羅的に match できることと、
+//! [`GeneratedInline`] の variant は [`super::render`] が**実際に構築するものだけ**に絞って
+//! ある（3 つ）。これは `typeset::lowering::generated` の変換が網羅的に match できることと、
 //! 「生成物が取りうる形」がこの enum を読むだけで分かることの両方を支えている。
 //! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
+//! 書誌のほうは enum ですらなく [`BibliographyEntry`] の列 — 生産者が作る形が 1 つしか
+//! 無いものを、複数の形を許す列で表さない（#667）。
 
-use crate::{
-  document::{FontKind, HeadingLevel},
-  semantics::citation::CitationId,
-};
+use crate::{document::FontKind, semantics::citation::CitationId};
 
-/// 引用の生成物（書誌）が使うブロック要素
+/// 書誌の 1 エントリ（引用キーと CSL 整形済みの本文）
 ///
-/// セマンティック情報のみを保持し、フォントサイズや座標などの物理レイアウトは含まない。
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum GeneratedBlock {
-  /// 見出し（CSL 整形が合成する「References」見出し）
-  ///
-  /// 生成物の見出しは常に無採番・ラベルなしで、ソース位置も持たない。
-  Heading {
-    /// 見出しのレベル（Part〜Subparagraph）
-    level: HeadingLevel,
-    /// 見出しのタイトル（インライン要素として保持）
-    title: Vec<GeneratedInline>,
-  },
-
-  /// 段落（インライン要素の集合。書誌の各エントリ本文）
-  Paragraph(Vec<GeneratedInline>),
-
-  /// 参考文献エントリに置くゼロサイズの参照アンカー
-  Anchor(CitationId),
+/// 生産者は [`super::render`] の 1 箇所だけで、作られるのは常に「キーと本文の対」なので、
+/// 見出し・段落・アンカーを平坦に並べた汎用ブロック列にはしない（作られない形を型が
+/// 許さないようにする、#667）。書誌見出しの文字列は style の値（`style.reference.title`）、
+/// レベルは `Section` 固定なので、いずれも生成物には埋め込まず `typeset::lowering` が組み立てる。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BibliographyEntry {
+  /// このエントリが対応する引用キー（lowering が `AnchorMark::Citation` にする）
+  pub(crate) key: CitationId,
+  /// CSL 整形済みの本文インライン列
+  pub(crate) body: Vec<GeneratedInline>,
 }
 
 /// 引用の生成物（書誌・引用表示）が使うインライン要素
 ///
 /// セマンティックな意図を保持し、物理スタイルは lowering 層で付与される。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum GeneratedInline {
   /// プレーンテキスト
   Text(String),
@@ -61,7 +52,7 @@ pub(crate) enum GeneratedInline {
 
   /// 整形済みの内部リンク（文書内アンカーへのジャンプ）
   ///
-  /// 引用表示から書誌エントリの [`GeneratedBlock::Anchor`] へ飛ぶための唯一のリンク種別。
+  /// 引用表示から書誌エントリのアンカー（lowering が組み立てる `AnchorMark::Citation`）へ飛ぶための唯一のリンク種別。
   /// 外部 URL（DOI 等）へのリンクは `citation::render` が現状生成しない（hyperref 対応まで
   /// URL を捨ててテキストだけを残す）ため、外部リンクの variant は持たない。
   InternalLink {

@@ -467,8 +467,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
    fact の欠落は入力由来ではなく走査自身の不変条件違反なので、診断エラーではなく `assert!` で落とす
    （property test が固定する）
 
-その後 CSL 整形へ進む。書誌は HIR ではなく生成物として来るため走査は書誌を見ず、書誌へ本文の続きとなる
-`HeadingKey` を 1 つ振るのは `typeset::lowering` 側。
+その後 CSL 整形へ進む。書誌は HIR ではなく生成物（エントリの列）として来るため走査は書誌を見ず、書誌の
+見出し（文字列は style 由来・レベルは `Section` 固定）を作り、本文の続きとなる `HeadingKey` を 1 つ振るのは
+`typeset::lowering` 側。
 
 #### エラー
 
@@ -492,22 +493,32 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 無い。citation は走査を知らず、依存は 走査 → `citation` の一方向だけ（「後段が要求する入力契約は後段が
 所有し、前段が構築する」）。
 
-- **生成物の語彙**（書誌ブロック・整形済みインライン）は著者が書いた内容（HIR）とは別の enum で、
-  variant を match するのは `typeset::lowering` の生成物専用経路だけ。**variant は生産者が実際に構築する
-  ものだけに絞る** — これが消費側の match を網羅的に保つ根拠で、CSL 整形が新しい表現を出すようになったら
-  そのとき variant を足す
+- **生成物の語彙**（書誌エントリ・整形済みインライン）は著者が書いた内容（HIR）とは別の型で、
+  match するのは `typeset::lowering` の生成物専用経路だけ。**variant は生産者が実際に構築するものだけに
+  絞る** — これが消費側の match を網羅的に保つ根拠で、CSL 整形が新しい表現を出すようになったらそのとき
+  variant を足す。書誌のほうは enum ですらなく `BibliographyEntry`（キーと本文）の列 — 生産者が作る形が
+  1 つしか無いものを、複数の形を許すブロック列で表さない（#667）
 - **CSL の遅延読込**: スタイル・ロケールの読込は `analyze` の内側で、**引用箇所が 1 つも無ければ呼ばない**
   （`csl_path` 未設定の文書でも引用が無ければエラーにならない）。出力言語の決定順は `citation::csl_style` の
   doc が持つ。文献ファイル
   （`references.toml` / `.json`、拡張子で形式判別）の読込 I/O は入力読込段から呼ばれ、`analyze` の
   内側で I/O を行うのは CSL 読込だけ
-- **整形はキーの存在を保証済みとして進む**（未知キーは `unreachable!`）。文書木の所有権は受け取らず、
-  結果は引用箇所 → 表示インライン列の side table と書誌のノード列で、**どちらのフィールドも公開しない**
-  （利用側は `SemanticDocument` の query だけを見る。「全引用箇所の表示が生成済み」は生成側が確立する
-  不変条件なので、欠落は `Option` で返さず `unreachable!`）
+- **整形はキーの存在を保証済みとして進む**（未知キーは `unreachable!`）。上流が保証する状態は下流でも
+  `unreachable!` で扱い、同じ不変条件に対して「片方は `unreachable!`、片方は黙って救済」という逆向きの
+  扱いを作らない（#667）。hayagriva の `ElemMeta::Entry` の添字も、引用要求の items を引用キーと 1 対 1 に
+  積んでいるので越境は `unreachable!`。文書木の所有権は受け取らず、結果は引用箇所 → 表示インライン列の
+  side table と書誌のエントリ列で、**どちらのフィールドも公開しない**（利用側は `SemanticDocument` の
+  query だけを見る。「全引用箇所の表示が生成済み」は生成側が確立する不変条件なので、欠落は `Option` で
+  返さず `unreachable!`）。書誌の `Option` は別物で、`None` は「CSL が `bibliography` を定義していない」
+  または「文書に引用が 1 つも無い」を表す（`Some` なら件数 0 でも見出しが出る）
 - **書誌は各グループへ追加せず、戻り値として返す**。`analyze` が本文（HIR）・事実とは別枠のまま
   `SemanticDocument` の 3 フィールド目に置いて組版へ渡す。**書誌を合成グループとして groups の末尾へ連結
   する方式へ戻さない** — 別枠で渡すことで citation がグループ構造に依存しない
+- **見出しは生成物に入れない**。書誌見出しの文字列（`style.reference.title`）は style の値、レベルは
+  `Section` 固定（`BIBLIOGRAPHY_HEADING_LEVEL`）で、いずれも `typeset::lowering` が組み立てる。style の値を
+  analyze → generate → render と引き回して semantics の成果物へ埋め込む形へ戻さない（#667）。
+  CSL スタイル・ロケールも `CompiledCitationStyle` の外へは出さず、
+  hayagriva への整形要求はその型が組み立てて返す（タプルへ分解して渡し直さない）
 - 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は斜体系の書体指定を持つ生成物として運ぶ
 - 文献ファイルの読込は集約せず deserialize 時に fail-fast（著者名の排他・空 / 重複 ID）。#376 の集約基準に
   対する意図的例外として維持し、集約方式に戻さない（理由は `docs/error-handling.md`）

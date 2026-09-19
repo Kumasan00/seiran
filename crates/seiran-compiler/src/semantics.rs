@@ -28,7 +28,7 @@ pub(crate) use analyze::test_support::analyze_for_test;
 #[cfg(test)]
 pub(crate) use citation::test_support;
 pub(crate) use citation::{
-  CitationFormatError, CitationId, CitationSiteFacts, CitationStyleError, GeneratedBlock, GeneratedCitations,
+  BibliographyEntry, CitationFormatError, CitationId, CitationSiteFacts, CitationStyleError, GeneratedCitations,
   GeneratedInline, ReadReferencesError, References, generate_citations, generated_inlines_to_plain_text,
   load_citation_style, read_references,
 };

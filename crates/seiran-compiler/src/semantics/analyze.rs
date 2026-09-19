@@ -56,7 +56,7 @@ fn generate(
     return Ok(GeneratedCitations::default());
   }
   let compiled = load_citation_style(source, style)?;
-  let generated = generate_citations(&facts.citations, references, &compiled, &style.reference.title)?;
+  let generated = generate_citations(&facts.citations, references, &compiled)?;
   return Ok(generated);
 }
 
@@ -91,7 +91,10 @@ mod tests {
     let semantics = analyze(&source, document, &references, &style).expect("走査 → CSL 整形の連携は成功するはず");
 
     // Assert — 書誌と表示が生成され、事実と並んで 1 つの成果物に載る
-    assert!(!semantics.bibliography().is_empty(), "引用を含む入力なので書誌が生成されるはず");
+    assert!(
+      semantics.bibliography().is_some_and(|entries| return !entries.is_empty()),
+      "引用を含む入力なので書誌エントリが生成されるはず"
+    );
     let sites: Vec<_> = semantics.citation_sites().collect();
     assert_eq!(sites.len(), 2, "引用箇所は事実として記録されるはず");
     for site in sites {
@@ -113,7 +116,7 @@ mod tests {
     let semantics = analyze(&source, document, &references, &style).expect("引用が無ければ CSL を読まないはず");
 
     // Assert — CSL を読んでいないので MissingCslPath にならず、生成物は空のまま
-    assert!(semantics.bibliography().is_empty(), "引用が無ければ書誌は生成されないはず");
+    assert!(semantics.bibliography().is_none(), "引用が無ければ書誌は生成されないはず");
     assert_eq!(semantics.citation_sites().count(), 0, "引用箇所は 1 件も無いはず");
   }
 

@@ -13,7 +13,10 @@ use tracing::debug;
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
-  semantics::{CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument, generated_inlines_to_plain_text},
+  semantics::{
+    BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument,
+    generated_inlines_to_plain_text,
+  },
   style::Style as ReadStyle,
   typeset::boxes::AnchorMark,
 };
@@ -301,8 +304,8 @@ pub(super) fn lower_sources_with_headings(
     .collect();
   headings.extend(bibliography_headings);
 
-  let input_node_count: usize =
-    document.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>() + document.bibliography().len();
+  let input_node_count: usize = document.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>()
+    + document.bibliography().map_or(0, <[BibliographyEntry]>::len);
   debug!(input_node_count, layout_node_count = result.len(), "LayoutNode へ lowering");
   return (result, headings);
 }
@@ -878,8 +881,7 @@ mod tests {
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
     let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
-    let document =
-      analyzed.with_citations_for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], Vec::new());
+    let document = analyzed.with_citations_for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], None);
     let ctx = LoweringContext::new(&style);
 
     // Act

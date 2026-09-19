@@ -1,12 +1,13 @@
 //! CSL スタイル（`.csl`）とロケール XML の読込・解析。
 //!
 //! `.csl` ファイルと CSL ロケール（`xml:lang` 付き locale XML）を [`crate::project::ProjectSource`]
-//! 経由で読み、解析済みの [`CompiledCitationStyle`] にまとめる。表示の生成（`BibliographyDriver` の
-//! 駆動）は行わない（`citation::render` の責務）。
+//! 経由で読み、解析済みの [`CompiledCitationStyle`] にまとめる。hayagriva への整形要求
+//! （[`CitationRequest`] / [`BibliographyRequest`]）はここで組み立てるが、`BibliographyDriver` を
+//! 駆動して表示を生成するのは `citation::render` の責務。
 
 use hayagriva::{
-  archive,
-  citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile},
+  BibliographyRequest, CitationItem, CitationRequest, archive,
+  citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
 use thiserror::Error;
@@ -99,9 +100,17 @@ pub(crate) struct CompiledCitationStyle {
 }
 
 impl CompiledCitationStyle {
-  /// スタイル本体・ロケールプール・出力言語 override を分解して返す。
-  pub(crate) fn parts(&self) -> (&IndependentStyle, &[Locale], Option<LocaleCode>) {
-    return (&self.style, &self.locales, self.locale_override.clone());
+  /// 引用 1 箇所ぶんの整形要求を組み立てる。
+  ///
+  /// スタイル本体・ロケールプール・出力言語 override をこの型の外へ出さないための入口で、
+  /// 利用側（`citation::render`）は `BibliographyDriver` へ積む値だけを受け取る。
+  pub(super) fn citation_request<'a>(&'a self, items: Vec<CitationItem<'a, Item>>) -> CitationRequest<'a, Item> {
+    return CitationRequest::new(items, &self.style, self.locale_override.clone(), &self.locales, None);
+  }
+
+  /// 書誌の整形要求を組み立てる。
+  pub(super) fn bibliography_request(&self) -> BibliographyRequest<'_> {
+    return BibliographyRequest::new(&self.style, self.locale_override.clone(), &self.locales);
   }
 }
 
