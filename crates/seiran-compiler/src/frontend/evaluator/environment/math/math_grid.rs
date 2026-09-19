@@ -230,7 +230,9 @@ mod tests {
       evaluator::{self, mode_resolver, test_support},
       syntax,
       syntax::{SyntaxKind, green::GreenElement, view::EnvironmentView},
-      // この module の `test_support`（evaluator 配下）と名前が衝突するため関数を直接 import する
+      // `crate::frontend::evaluator::test_support`（上の use で束縛済み）と名前が衝突するため、
+      // `crate::frontend::test_support` は関数を直接 import する（型・モジュールではなく関数の
+      // 直接 import は「出自が自明な慣用」の例外に当たる）。
       test_support::eval_context_for_test,
     },
   };
