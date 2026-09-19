@@ -123,10 +123,12 @@ pub(crate) fn evaluate_children(
             CommandResult::Inline(inline_nodes) => {
               paragraph.extend_inline_result(child_node.span, inline_nodes);
             },
-            CommandResult::NoIndent { span } => {
+            CommandResult::NoIndent => {
               // 先行トリビアは許すが、実体のある要素や同じマーカーがあれば段落途中として扱う。
               if paragraph.has_content() {
-                return Err(EvalError::NoindentNotAtParagraphStart { span });
+                return Err(EvalError::NoindentNotAtParagraphStart {
+                  span: child_node.span.into(),
+                });
               }
               paragraph.push(ctx.leaf_inline(child_node.span, HirInlineKind::NoIndent));
             },
@@ -347,7 +349,7 @@ mod test_support {
 mod tests {
   use bumpalo::Bump;
 
-  use super::{HirInline, HirNode, evaluate_children_to_hir, test_support};
+  use super::{EvalError, HirInline, HirNode, evaluate_children_to_hir, test_support};
   use crate::document::{HirInlineKind, HirNodeKind};
 
   /// 段落 1 つを取り出す（段落以外が混ざっていれば panic する）
@@ -412,5 +414,23 @@ mod tests {
     assert_eq!(inlines.len(), 2, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::NoIndent), "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == "本文"), "{inlines:?}");
+  }
+
+  #[test]
+  fn noindent_in_the_middle_of_a_paragraph_points_at_the_command_itself() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"本文\noindent";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluate_children_to_hir(source, cst);
+
+    // Assert — 診断は `\noindent` の開始位置（バイト 6）から 9 バイトを指す
+    let Err(EvalError::NoindentNotAtParagraphStart { span }) = result else {
+      panic!("段落途中の \\noindent は拒否されるはず: {result:?}")
+    };
+    assert_eq!(span.offset(), "本文".len());
+    assert_eq!(span.len(), r"\noindent".len());
   }
 }

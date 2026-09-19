@@ -2,7 +2,6 @@
 //!
 //! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
 
-use miette::SourceSpan;
 use phf::phf_map;
 
 use crate::{
@@ -33,10 +32,10 @@ pub(super) enum CommandResult {
   /// インラインレベルの HIR ノード（記号文字等）
   Inline(Vec<HirInline>),
   /// `\noindent` — 段落先頭行の字下げ抑止マーカー
-  NoIndent {
-    /// 位置検証エラー時の診断に使うソース位置
-    span: SourceSpan,
-  },
+  ///
+  /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行うので、結果は値を運ばない。
+  /// 診断に使うソース位置は呼び出し元が持っているコマンド呼び出しノードの span と同じ。
+  NoIndent,
 }
 
 /// コマンドの種類
@@ -109,13 +108,7 @@ impl CommandKind {
 
       Self::Href => return link::href_command(view, ctx).map(CommandResult::Inline),
 
-      Self::NoIndent => {
-        return control::noindent(view).map(|()| {
-          return CommandResult::NoIndent {
-            span: view.span().into(),
-          };
-        });
-      },
+      Self::NoIndent => return control::noindent(view).map(|()| return CommandResult::NoIndent),
     }
   }
 
