@@ -6,7 +6,7 @@
 //! 書ける — `\url{https://example.com}` / `\href{https://example.com}{表示}`。verbatim なのは
 //! `\url` の必須引数と `\href` の**第 1 引数だけ**で、`\href` の第 2 引数（表示テキスト）は従来どおり
 //! 活性なので `\bold{...}` 等をネストできる（宣言は `frontend::evaluator::command` の
-//! `COMMAND_ARG_MODES`）。
+//! `CommandKind::arg_modes`）。
 //!
 //! verbatim 内では `\` も不活性なので、旧記法の `\/` は URL に literal `\/` として残る。
 

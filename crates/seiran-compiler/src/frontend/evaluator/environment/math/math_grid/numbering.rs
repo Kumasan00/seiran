@@ -15,6 +15,7 @@ use crate::{
 };
 
 /// 採番の粒度
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NumberingMode {
   /// 各行を採番対象にする（`align` / `gather`）
   PerRow,
@@ -32,7 +33,7 @@ pub(crate) enum NumberingMode {
 /// 環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）でエラーを返す。
 pub(super) fn parse_math_env_opts(
   view: &EnvironmentView<'_>,
-  mode: &NumberingMode,
+  mode: NumberingMode,
 ) -> Result<(bool, Option<String>), EvalError> {
   // 環境単位ラベル `[label=...]` は環境全体に 1 番号を振る `SingleEnv`（split / multiline）でのみ受理する。
   // 行ごと採番（`PerRow` = align / gather）の行単位ラベルは行末マーカー `\label{...}` で指定する。
@@ -92,7 +93,7 @@ pub(super) fn trim_trailing_blank_marker_rows(grid: &mut Vec<GridRow>) -> Result
 /// 無採番の行への行ラベル付与時に [`EvalError::LabelRequiresNumbering`] を返す。
 pub(super) fn assign_numbering(
   grid: Vec<GridRow>,
-  mode: &NumberingMode,
+  mode: NumberingMode,
   numbered: bool,
   view: &EnvironmentView<'_>,
 ) -> Result<(Vec<HirMathRow>, bool), EvalError> {

@@ -118,6 +118,32 @@ impl CommandKind {
       },
     }
   }
+
+  /// 必須引数の読み取り方を位置順に返す
+  ///
+  /// 返すのは必須引数を先頭から並べた読み取り方で、`\href` のように位置ごとにモードが違う
+  /// コマンドを表せる。どのコマンドのどの位置が verbatim かはこの種別が単一の真実源で、
+  /// ユーザは変更できない（P1 ガード）。将来の `\define` もここへ宣言できない。
+  ///
+  /// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラの
+  /// 責務）。`Self::Href => &[Verbatim, Inherit]` は「2 個来たときそれぞれをこう読む」であって
+  /// 「必ず 2 個来る」ではない。
+  fn arg_modes(self) -> &'static [ArgMode] {
+    return match self {
+      Self::Code | Self::Url => &[ArgMode::Verbatim],
+      Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
+      Self::Space
+      | Self::Heading(_)
+      | Self::StyledText(_)
+      | Self::ColoredText
+      | Self::Ref
+      | Self::Cite
+      | Self::Footnote
+      | Self::Index
+      | Self::NoIndent
+      | Self::PageBreak => &[],
+    };
+  }
 }
 
 /// 単一文字コマンド（`\alpha` 等）を検証して `HirInlineKind::Symbol` を生成する共通処理
@@ -196,30 +222,16 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
 };
 
-/// 必須引数の読み取り方を位置ごとに宣言するレジストリ
-///
-/// 値は必須引数を先頭から並べた読み取り方で、`\href` のように位置ごとにモードが違うコマンドを
-/// 表せる。どのコマンドのどの位置が verbatim かはこのレジストリが単一の真実源で、ユーザは
-/// 変更できない（P1 ガード）。将来の `\define` もここへ宣言できない。
-///
-/// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラの
-/// 責務）。`"href" => &[Verbatim, Inherit]` は「2 個来たときそれぞれをこう読む」であって
-/// 「必ず 2 個来る」ではない。
-static COMMAND_ARG_MODES: phf::Map<&'static str, &'static [ArgMode]> = phf_map! {
-  "code" => &[ArgMode::Verbatim],
-  "url" => &[ArgMode::Verbatim],
-  "href" => &[ArgMode::Verbatim, ArgMode::Inherit],
-};
-
 /// コマンド名と必須引数の位置（0 始まり）から読み取り方を引く
 ///
 /// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
-/// 宣言のないコマンド・宣言の範囲を超えた位置は [`ArgMode::Inherit`]（外側文脈の継承）が既定。
+/// 未登録のコマンド（記号コマンドを含む）・宣言の範囲を超えた位置は
+/// [`ArgMode::Inherit`]（外側文脈の継承）が既定。
 pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
-  let Some(modes) = COMMAND_ARG_MODES.get(name) else {
+  let Some(kind) = COMMAND_MAP.get(name) else {
     return ArgMode::Inherit;
   };
-  return modes.get(index).copied().unwrap_or(ArgMode::Inherit);
+  return kind.arg_modes().get(index).copied().unwrap_or(ArgMode::Inherit);
 }
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
@@ -263,11 +275,12 @@ mod tests {
   }
 
   #[test]
-  fn arg_mode_declarations_are_all_registered_commands() {
-    // 引数モードの宣言だけがあって本体が未登録のコマンドを作らない
-    for name in COMMAND_ARG_MODES.keys() {
-      assert!(COMMAND_MAP.contains_key(name), "引数モードを宣言した '{name}' が COMMAND_MAP に無い");
-    }
+  fn verbatim_commands_declare_arg_modes_and_others_are_empty() {
+    // 種別から直接引ける（レジストリのキーと同期する 2 枚目の表を持たない）
+    assert_eq!(CommandKind::Code.arg_modes(), &[ArgMode::Verbatim]);
+    assert_eq!(CommandKind::Url.arg_modes(), &[ArgMode::Verbatim]);
+    assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
+    assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 
   #[test]
@@ -275,6 +288,8 @@ mod tests {
     // 宣言のないコマンドは外側文脈を継承する
     assert_eq!(lookup_arg_mode("bold", 0), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("unknown", 0), ArgMode::Inherit);
+    // 記号コマンドは `COMMAND_MAP` に無いので、引き当たらない側の既定を通る
+    assert_eq!(lookup_arg_mode("alpha", 0), ArgMode::Inherit);
   }
 
   #[test]

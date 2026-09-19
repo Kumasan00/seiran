@@ -12,30 +12,18 @@ use crate::{
   },
 };
 
-/// `itemize` 環境を評価する（順序なしリスト）
+/// リスト環境（`itemize` / `enumerate`）を評価する
 ///
-/// # Errors
-///
-/// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn itemize(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  return list_common(view, ctx, false);
-}
-
-/// `enumerate` 環境を評価する（順序付きリスト）
-///
-/// # Errors
-///
-/// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn enumerate(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  return list_common(view, ctx, true);
-}
-
-/// リスト環境の共通処理
+/// `ordered` は番号付き（`enumerate`）かどうかで、レジストリの値が運ぶ。
 ///
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-fn list_common(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn list(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+  ordered: bool,
+) -> Result<Vec<HirNode>, EvalError> {
   let schema: &[(&str, OptType)] = if ordered {
     &[("start", OptType::Number), ("item_gap", OptType::Length)]
   } else {

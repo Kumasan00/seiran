@@ -27,7 +27,8 @@ use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marke
 use crate::document::NodeId;
 
 /// グリッド分割の許可設定（環境種別ごと）
-pub(super) struct GridSpec {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GridSpec {
   /// 行区切り `\\` を許可するか
   pub allow_row_breaks: bool,
   /// 列区切り `&` を許可するか
@@ -61,7 +62,7 @@ pub(crate) fn evaluate_grid(
   source: &str,
   ctx: &EvalContext<'_>,
   body: &GreenNode<'_>,
-  spec: &GridSpec,
+  spec: GridSpec,
   row_markers_allowed: bool,
 ) -> Result<Vec<GridRow>, EvalError> {
   let mut rows: Vec<GridRow> = Vec::new();
@@ -146,8 +147,8 @@ pub(crate) fn evaluate_math_env(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
   kind: MathEnvKind,
-  spec: &GridSpec,
-  mode: &NumberingMode,
+  spec: GridSpec,
+  mode: NumberingMode,
 ) -> Result<Vec<HirNode>, EvalError> {
   let (numbered, env_label) = parse_math_env_opts(view, mode)?;
 
@@ -226,10 +227,13 @@ mod tests {
   use crate::{
     document::HirMathKind,
     frontend::{
-      evaluator::mode_resolver,
+      evaluator::{self, mode_resolver, test_support},
       syntax,
       syntax::{SyntaxKind, green::GreenElement, view::EnvironmentView},
-      test_support,
+      // `crate::frontend::evaluator::test_support`（上の use で束縛済み）と名前が衝突するため、
+      // `crate::frontend::test_support` は関数を直接 import する（型・モジュールではなく関数の
+      // 直接 import は「出自が自明な慣用」の例外に当たる）。
+      test_support::eval_context_for_test,
     },
   };
 
@@ -280,8 +284,8 @@ mod tests {
     };
 
     // Act
-    let ctx = test_support::eval_context_for_test();
-    let grid = evaluate_grid(source, &ctx, body, &spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
+    let ctx = eval_context_for_test();
+    let grid = evaluate_grid(source, &ctx, body, spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
 
     // Assert
     assert_eq!(grid.len(), 2, "2 行に分割される: {grid:?}");
@@ -305,8 +309,8 @@ mod tests {
     };
 
     // Act
-    let ctx = test_support::eval_context_for_test();
-    let grid = evaluate_grid(source, &ctx, body, &spec, false).unwrap();
+    let ctx = eval_context_for_test();
+    let grid = evaluate_grid(source, &ctx, body, spec, false).unwrap();
 
     // Assert
     assert_eq!(grid.len(), 1);
@@ -325,10 +329,546 @@ mod tests {
     };
 
     // Act
-    let ctx = test_support::eval_context_for_test();
-    let result = evaluate_grid(source, &ctx, body, &spec, false);
+    let ctx = eval_context_for_test();
+    let result = evaluate_grid(source, &ctx, body, spec, false);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
+  }
+
+  /// 結果の最初の `HirNodeKind::MathBlock`（`Align`）の行スライスを取り出すヘルパ
+  fn align_rows_of(result: &[HirNode]) -> &[HirMathRow] {
+    let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Align, "align は MathEnvKind::Align");
+    return rows;
+  }
+
+  #[test]
+  fn align_splits_rows_and_columns_and_numbers_each_row() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \\ c &= d\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let rows = align_rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert_eq!(rows[0].cells.len(), 2, "行 0 は 2 列");
+    assert_eq!(rows[1].cells.len(), 2, "行 1 は 2 列");
+    assert!(rows[0].numbered);
+    assert!(rows[1].numbered);
+  }
+
+  #[test]
+  fn align_single_row_is_numbered() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}x &= y\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].cells.len(), 2);
+    assert!(rows[0].numbered);
+  }
+
+  #[test]
+  fn align_drops_trailing_blank_row_from_trailing_break() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\begin{align}a &= b \\\\\n\\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert_eq!(rows.len(), 1, "末尾の空行が除去される: {rows:?}");
+    assert!(rows[0].numbered);
+  }
+
+  #[test]
+  fn align_numbered_false_suppresses_numbering() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}[numbered=false]a &= b \\ c &= d\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|r| return !r.numbered), "無採番のはず: {rows:?}");
+  }
+
+  #[test]
+  fn align_cell_content_is_evaluated() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}x^{2} &= y\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert!(
+      rows[0].cells[0].iter().any(|n| matches!(n.kind, HirMathKind::Superscript(_))),
+      "左セルに Superscript ノードが含まれるべき: {:?}",
+      rows[0].cells[0]
+    );
+  }
+
+  #[test]
+  fn align_rejects_env_level_label_opt_arg() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}[label=eq:foo]a &= b\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
+  }
+
+  #[test]
+  fn align_row_label_captures_label_and_keeps_numbering() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \label{eq:foo} \\ c &= d\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert_eq!(rows[0].label.as_deref(), Some("eq:foo"));
+    assert!(rows[0].numbered);
+    assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
+    assert!(rows[1].numbered);
+  }
+
+  #[test]
+  fn align_row_label_on_notag_row_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \notag \label{eq:x}\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "align"));
+  }
+
+  #[test]
+  fn align_row_label_with_numbered_false_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}[numbered=false]a &= b \label{eq:x}\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "align"));
+  }
+
+  #[test]
+  fn align_row_label_not_at_row_end_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a \label{eq:x} &= b\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotAtRowEnd { .. })));
+  }
+
+  #[test]
+  fn align_duplicate_row_label_is_structured_without_error() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \label{eq:x} \\ c &= d \label{eq:x}\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert_eq!(rows[0].label.as_deref(), Some("eq:x"));
+    assert_eq!(rows[1].label.as_deref(), Some("eq:x"));
+  }
+
+  #[test]
+  fn align_notag_suppresses_single_row() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \\ c &= d \notag \\ e &= f\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = align_rows_of(&result);
+    assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
+    assert!(rows[0].numbered);
+    assert!(!rows[1].numbered, "\\notag 行は無採番のはず");
+    assert!(rows[2].numbered);
+  }
+
+  #[test]
+  fn align_notag_not_at_row_end_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}a \notag &= b\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
+  }
+
+  #[test]
+  fn align_notag_with_numbered_false_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{align}[numbered=false]a &= b \notag \\ c &= d\end{align}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagWithUnnumberedEnv { .. })));
+  }
+
+  fn gather_rows_of(result: &[HirNode]) -> &[HirMathRow] {
+    let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Gather, "gather は MathEnvKind::Gather");
+    return rows;
+  }
+
+  #[test]
+  fn gather_splits_rows_each_single_cell_and_numbers_each_row() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{gather}a = b \\ c = d\end{gather}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = gather_rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert!(rows.iter().all(|r| return r.cells.len() == 1), "各行 1 セル: {rows:?}");
+    assert!(rows.iter().all(|r| return r.numbered));
+  }
+
+  #[test]
+  fn gather_rejects_column_break() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{gather}a & b\end{gather}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
+  }
+
+  #[test]
+  fn gather_numbered_false_suppresses_numbering() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = gather_rows_of(&result);
+    assert!(rows.iter().all(|r| return !r.numbered), "無採番のはず: {rows:?}");
+  }
+
+  #[test]
+  fn gather_notag_suppresses_single_row() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = gather_rows_of(&result);
+    assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
+    assert!(rows[0].numbered);
+    assert!(!rows[1].numbered, "\\notag 行は無採番のはず");
+    assert!(rows[2].numbered);
+  }
+
+  #[test]
+  fn gather_notag_not_at_row_end_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{gather}a \notag = b\end{gather}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
+  }
+
+  #[test]
+  fn gather_row_label_captures_label_and_keeps_numbering() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let rows = gather_rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert_eq!(rows[0].label.as_deref(), Some("eq:g"));
+    assert!(rows[0].numbered);
+    assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
+    assert!(rows[1].numbered);
+  }
+
+  /// 最初の `HirNodeKind::MathBlock`（`Split`）を分解して (`rows`, `numbered`) を返す
+  fn split_block_of(result: &[HirNode]) -> (&[HirMathRow], bool) {
+    let HirNodeKind::MathBlock {
+      kind,
+      rows,
+      numbered,
+      ..
+    } = &result[0].kind
+    else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Split, "split は MathEnvKind::Split");
+    return (rows, *numbered);
+  }
+
+  #[test]
+  fn split_aligns_columns_and_numbers_whole_env_once() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{split}a &= b \\ &= c\end{split}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let (rows, numbered) = split_block_of(&result);
+    assert_eq!(rows.len(), 2, "2 行: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
+    assert!(numbered, "環境全体は採番対象");
+  }
+
+  #[test]
+  fn split_numbered_false_suppresses_numbering() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{split}[numbered=false]a &= b \\ &= c\end{split}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let (rows, numbered) = split_block_of(&result);
+    assert!(rows.iter().all(|r| return !r.numbered));
+    assert!(!numbered, "無採番のはず");
+  }
+
+  #[test]
+  fn split_with_label_captures_block_label() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{split}[label=eq:s]a &= b \\ &= c\end{split}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let HirNodeKind::MathBlock {
+      rows,
+      numbered,
+      label,
+      ..
+    } = &result[0].kind
+    else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(label.as_deref(), Some("eq:s"), "環境単位ラベルが付く");
+    assert!(*numbered, "環境全体は採番対象");
+    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
+  }
+
+  #[test]
+  fn split_numbered_false_with_label_errors() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{split}[numbered=false, label=eq:s]a &= b\end{split}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "split"));
+  }
+
+  #[test]
+  fn split_rejects_row_label_marker() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{split}a &= b \label{eq:s}\end{split}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
+  }
+
+  fn multiline_block_of(result: &[HirNode]) -> (&[HirMathRow], bool) {
+    let HirNodeKind::MathBlock {
+      kind,
+      rows,
+      numbered,
+      ..
+    } = &result[0].kind
+    else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Multiline, "multiline は MathEnvKind::Multiline");
+    return (rows, *numbered);
+  }
+
+  #[test]
+  fn multiline_splits_rows_single_cell_and_numbers_whole_env_once() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{multiline}a + b \\ + c + d \\ + e\end{multiline}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let (rows, numbered) = multiline_block_of(&result);
+    assert_eq!(rows.len(), 3, "3 行: {rows:?}");
+    assert!(rows.iter().all(|r| return r.cells.len() == 1), "各行 1 セル: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
+    assert!(numbered);
+  }
+
+  #[test]
+  fn multiline_rejects_column_break() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{multiline}a & b\end{multiline}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
+  }
+
+  #[test]
+  fn multiline_numbered_false_suppresses_numbering() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{multiline}[numbered=false]a + b \\ + c\end{multiline}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let (_, numbered) = multiline_block_of(&result);
+    assert!(!numbered, "無採番のはず");
+  }
+
+  #[test]
+  fn multiline_with_label_captures_block_label() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{multiline}[label=eq:m]a + b \\ + c\end{multiline}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let HirNodeKind::MathBlock {
+      numbered, label, ..
+    } = &result[0].kind
+    else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(label.as_deref(), Some("eq:m"), "環境単位ラベルが付く");
+    assert!(*numbered, "環境全体は採番対象");
+  }
+
+  #[test]
+  fn multiline_rejects_row_label_marker() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{multiline}a + b \label{eq:m} \\ + c\end{multiline}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
   }
 }

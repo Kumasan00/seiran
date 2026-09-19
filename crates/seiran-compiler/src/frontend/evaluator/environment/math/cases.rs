@@ -35,7 +35,7 @@ pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
       source,
       ctx,
       body_node,
-      &GridSpec {
+      GridSpec {
         allow_row_breaks: true,
         allow_column_breaks: true,
       },

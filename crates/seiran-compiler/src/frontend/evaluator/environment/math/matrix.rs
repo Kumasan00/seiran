@@ -49,7 +49,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
       source,
       ctx,
       body_node,
-      &GridSpec {
+      GridSpec {
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
