@@ -7,7 +7,7 @@ use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
     evaluator::{
-      command::CommandResult,
+      command::{CommandResult, Placement},
       inline::{InlineSink, TokenInline},
     },
     syntax::{
@@ -81,7 +81,7 @@ pub(crate) fn evaluate_children(
           // 先に段落 ID を予約しておく。ブロックだった場合、予約した ID は使われず穴になる。
           paragraph.reserve(ctx, child_node.span);
           let view = CommandView::new(child_node, source);
-          let result = command::evaluate_command(&view, ctx)?;
+          let result = command::evaluate_command(&view, ctx, Placement::Block)?;
           match result {
             CommandResult::Block(block_nodes) => {
               paragraph.flush(ctx, &mut hir_nodes);

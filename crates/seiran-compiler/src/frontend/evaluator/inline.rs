@@ -8,16 +8,8 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       command::{
-        COMMAND_MAP, CommandKind,
-        cite::cite_command,
-        code::code_command,
-        footnote::footnote_command,
-        index::index_command,
-        link::{href_command, url_command},
-        ref_::ref_command,
-        single_char,
+        self,
         symbol::{MathSymbol, SYMBOL_MAP},
-        text_style::{colored_text, styled_text},
       },
       math,
     },
@@ -241,60 +233,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           let view = CommandView::new(child_node, source);
-          match COMMAND_MAP.get(view.name()).copied() {
-            Some(CommandKind::StyledText(kind)) => {
-              sink.extend_inline_result(child_node.span, styled_text(&view, ctx, kind, index_policy)?);
-            },
-            Some(CommandKind::ColoredText) => {
-              sink.extend_inline_result(child_node.span, colored_text(&view, ctx, index_policy)?);
-            },
-            Some(CommandKind::Ref) => {
-              sink.extend_inline_result(child_node.span, ref_command(&view, ctx)?);
-            },
-            Some(CommandKind::Cite) => {
-              sink.extend_inline_result(child_node.span, cite_command(&view, ctx)?);
-            },
-            Some(CommandKind::Footnote) => {
-              sink.extend_inline_result(child_node.span, footnote_command(&view, ctx, index_policy)?);
-            },
-            Some(CommandKind::Url) => {
-              sink.extend_inline_result(child_node.span, url_command(&view, ctx)?);
-            },
-            Some(CommandKind::Href) => {
-              sink.extend_inline_result(child_node.span, href_command(&view, ctx)?);
-            },
-            Some(CommandKind::Code) => {
-              sink.extend_inline_result(child_node.span, code_command(&view, ctx)?);
-            },
-            Some(CommandKind::Heading(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
-              return Err(EvalError::BlockInInline {
-                what: format!("\\{}", view.name()),
-                span: view.span().into(),
-              });
-            },
-            // \index の可否は呼び出し元の文脈が決める（[`IndexPolicy`]）。内容が 1 箇所にしか
-            // 置かれない文脈（脚注本体・キャプション・表の本体セル）は許可、複製される文脈
-            // （表の \head セル）と本文の流れに置かれない文脈（見出しタイトル・\href の表示
-            // テキスト・\index 自身の語）は拒否する
-            Some(CommandKind::Index) => match index_policy {
-              IndexPolicy::Allow => sink.extend_inline_result(child_node.span, index_command(&view, ctx)?),
-              IndexPolicy::Reject => {
-                return Err(EvalError::IndexNotAllowedHere {
-                  span: view.span().into(),
-                });
-              },
-            },
-            None => {
-              if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-                sink.extend_inline_result(child_node.span, single_char(&view, ctx, symbol.ch)?);
-              } else {
-                return Err(EvalError::UnknownCommand {
-                  name: view.name().to_string(),
-                  span: view.span().into(),
-                });
-              }
-            },
-          }
+          sink.extend_inline_result(child_node.span, command::evaluate_inline_command(&view, ctx, index_policy)?);
         },
         SyntaxKind::InlineMath => {
           let id = ctx.alloc(child_node.span);
