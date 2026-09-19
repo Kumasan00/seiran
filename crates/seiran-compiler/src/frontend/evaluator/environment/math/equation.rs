@@ -45,7 +45,7 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
         allow_row_breaks: false,
         allow_column_breaks: false,
       };
-      let grid = evaluate_grid(source, ctx, body_node, &spec, false)?;
+      let grid = evaluate_grid(source, ctx, body_node, spec, false)?;
       match grid.into_iter().next() {
         Some(row) => (row.id, row.cells),
         None => (ctx.alloc(view.span()), vec![Vec::new()]),

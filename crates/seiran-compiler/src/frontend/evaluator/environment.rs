@@ -1,13 +1,18 @@
 //! 環境ディスパッチ
 //!
-//! [`ENVIRONMENTS`] はハンドラと本体の読み取り方（[`BodyMode`]）の対応を一元管理する。
+//! [`ENVIRONMENTS`] は環境名から [`EnvironmentKind`] を引く単一レジストリで、種別が
+//! 定理クラス・引用の種類・リストの順序付き / なし・数式環境の種別を値として持つ。
+//! 本体の読み取り方（[`BodyMode`]）は種別から導出する。
 
 use phf::phf_map;
 
 use crate::{
-  document::HirNode,
+  document::{HirNode, MathEnvKind, QuoteKind, TheoremClass},
   frontend::{
-    evaluator::{EvalContext, EvalError},
+    evaluator::{
+      EvalContext, EvalError,
+      environment::math::{GridSpec, NumberingMode},
+    },
     syntax::{BodyMode, view::EnvironmentView},
   },
 };
@@ -22,50 +27,128 @@ mod quote;
 mod table;
 mod theorem;
 
-/// 環境ハンドラの関数ポインタ型
-type EnvHandler = fn(&EnvironmentView<'_>, &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>;
-
-/// 環境の定義
-pub(super) struct EnvDef {
-  /// 本体の読み取り方（トークン化して Text / Math、または生読み）
-  pub body_mode: BodyMode,
-  /// 評価ハンドラ。`None` の場合は「本体の読み取り方のみ登録、評価は未実装」を意味し、
-  /// 評価器は [`EvalError::UnknownEnvironment`] を返す。
-  pub handler: Option<EnvHandler>,
-  /// エラーメッセージ・診断用の人間可読名
-  #[expect(
-    dead_code,
-    reason = "[`EvalError::UnknownEnvironment`] を人間可読名でも出すときに読み手が付く。値はキーから復元できないので消さずに持つ"
-  )]
-  pub display_name: &'static str,
+/// 環境の種類
+///
+/// レジストリ [`ENVIRONMENTS`] の値。名前ごとに違う情報（定理クラス・引用の種類・リストの
+/// 順序付き / なし・数式環境の種別と分割・採番の規則）を値として持ち、評価はこの種別に対する
+/// 1 操作 [`EnvironmentKind::evaluate`] に閉じる。
+#[derive(Debug, Clone, Copy)]
+enum EnvironmentKind {
+  /// リスト環境（`itemize` / `enumerate`）
+  List {
+    /// 番号付き（`enumerate`）かどうか
+    ordered: bool,
+  },
+  /// 定理環境（10 種）
+  Theorem(TheoremClass),
+  /// 引用環境（`quote` / `quotation`）
+  Quote(QuoteKind),
+  /// 図環境（`figure`）
+  Figure,
+  /// 表環境（`table`）
+  Table,
+  /// コード環境（`code`。本体は生読み）
+  Code,
+  /// 単一行数式環境（`equation`）
+  Equation,
+  /// 行・列に分割して採番する数式環境（`align` / `gather` / `split` / `multiline`）
+  MathGrid {
+    /// 数式環境の種別
+    kind: MathEnvKind,
+    /// 行・列区切りの許可設定
+    spec: GridSpec,
+    /// 採番の粒度
+    numbering: NumberingMode,
+  },
+  /// 場合分け（`cases`）
+  Cases,
+  /// 行列（`matrix`）
+  Matrix,
 }
 
-/// 環境名 → 定義 の単一レジストリ
-pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
-  "itemize"   => EnvDef { body_mode: BodyMode::Text, handler: Some(list::itemize),   display_name: "箇条書きリスト" },
-  "enumerate" => EnvDef { body_mode: BodyMode::Text, handler: Some(list::enumerate), display_name: "番号付きリスト" },
-  "equation"  => EnvDef { body_mode: BodyMode::Math, handler: Some(math::equation),     display_name: "数式" },
-  "align"     => EnvDef { body_mode: BodyMode::Math, handler: Some(math::align),         display_name: "整列数式" },
-  "gather"    => EnvDef { body_mode: BodyMode::Math, handler: Some(math::gather),        display_name: "中央寄せ数式" },
-  "split"     => EnvDef { body_mode: BodyMode::Math, handler: Some(math::split),         display_name: "分割数式" },
-  "multiline" => EnvDef { body_mode: BodyMode::Math, handler: Some(math::multiline),     display_name: "多行数式" },
-  "cases"     => EnvDef { body_mode: BodyMode::Math, handler: Some(math::cases),         display_name: "場合分け" },
-  "matrix"    => EnvDef { body_mode: BodyMode::Math, handler: Some(math::matrix),        display_name: "行列" },
-  "figure"    => EnvDef { body_mode: BodyMode::Text, handler: Some(figure::figure),      display_name: "図" },
-  "table"     => EnvDef { body_mode: BodyMode::Text, handler: Some(table::table),        display_name: "表" },
-  "theorem"     => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "定理" },
-  "lemma"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "補題" },
-  "proposition" => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "命題" },
-  "corollary"   => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "系" },
-  "definition"  => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "定義" },
-  "axiom"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "公理" },
-  "example"     => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "例" },
-  "remark"      => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
-  "claim"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
-  "proof"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
-  "code"        => EnvDef { body_mode: BodyMode::Verbatim, handler: Some(code::code), display_name: "コード" },
-  "quote"       => EnvDef { body_mode: BodyMode::Text, handler: Some(quote::quote),    display_name: "引用" },
-  "quotation"   => EnvDef { body_mode: BodyMode::Text, handler: Some(quote::quote),    display_name: "引用（段落字下げあり）" },
+impl EnvironmentKind {
+  /// 本体の読み取り方を種別から導出する
+  fn body_mode(self) -> BodyMode {
+    return match self {
+      Self::List { .. } | Self::Theorem(_) | Self::Quote(_) | Self::Figure | Self::Table => BodyMode::Text,
+      Self::Code => BodyMode::Verbatim,
+      Self::Equation | Self::MathGrid { .. } | Self::Cases | Self::Matrix => BodyMode::Math,
+    };
+  }
+
+  /// 環境を評価して `Vec<HirNode>` を生成する
+  ///
+  /// # Errors
+  ///
+  /// ハンドラ実行中のエラーが発生した場合
+  fn evaluate(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+    return match self {
+      Self::List { ordered } => list::list(view, ctx, ordered),
+      Self::Theorem(class) => theorem::theorem(view, ctx, class),
+      Self::Quote(kind) => quote::quote(view, ctx, kind),
+      Self::Figure => figure::figure(view, ctx),
+      Self::Table => table::table(view, ctx),
+      Self::Code => code::code(view, ctx),
+      Self::Equation => math::equation(view, ctx),
+      Self::MathGrid {
+        kind,
+        spec,
+        numbering,
+      } => math::evaluate_math_env(view, ctx, kind, spec, numbering),
+      Self::Cases => math::cases(view, ctx),
+      Self::Matrix => math::matrix(view, ctx),
+    };
+  }
+}
+
+/// 環境名 → 種別 の単一レジストリ
+///
+/// 環境を 1 つ足すときに編集する対応表はここだけ。
+static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
+  "itemize"   => EnvironmentKind::List { ordered: false },
+  "enumerate" => EnvironmentKind::List { ordered: true },
+
+  "equation"  => EnvironmentKind::Equation,
+  "align"     => EnvironmentKind::MathGrid {
+    kind: MathEnvKind::Align,
+    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: true },
+    numbering: NumberingMode::PerRow,
+  },
+  "gather"    => EnvironmentKind::MathGrid {
+    kind: MathEnvKind::Gather,
+    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: false },
+    numbering: NumberingMode::PerRow,
+  },
+  "split"     => EnvironmentKind::MathGrid {
+    kind: MathEnvKind::Split,
+    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: true },
+    numbering: NumberingMode::SingleEnv,
+  },
+  "multiline" => EnvironmentKind::MathGrid {
+    kind: MathEnvKind::Multiline,
+    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: false },
+    numbering: NumberingMode::SingleEnv,
+  },
+  "cases"     => EnvironmentKind::Cases,
+  "matrix"    => EnvironmentKind::Matrix,
+
+  "figure"    => EnvironmentKind::Figure,
+  "table"     => EnvironmentKind::Table,
+
+  "theorem"     => EnvironmentKind::Theorem(TheoremClass::Theorem),
+  "lemma"       => EnvironmentKind::Theorem(TheoremClass::Lemma),
+  "proposition" => EnvironmentKind::Theorem(TheoremClass::Proposition),
+  "corollary"   => EnvironmentKind::Theorem(TheoremClass::Corollary),
+  "definition"  => EnvironmentKind::Theorem(TheoremClass::Definition),
+  "axiom"       => EnvironmentKind::Theorem(TheoremClass::Axiom),
+  "example"     => EnvironmentKind::Theorem(TheoremClass::Example),
+  "remark"      => EnvironmentKind::Theorem(TheoremClass::Remark),
+  "claim"       => EnvironmentKind::Theorem(TheoremClass::Claim),
+  "proof"       => EnvironmentKind::Theorem(TheoremClass::Proof),
+
+  "code"      => EnvironmentKind::Code,
+  "quote"     => EnvironmentKind::Quote(QuoteKind::Quote),
+  "quotation" => EnvironmentKind::Quote(QuoteKind::Quotation),
 };
 
 /// 環境名から本体の読み取り方を引く
@@ -73,7 +156,7 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
 /// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
 /// 未登録の環境は [`BodyMode::Text`] が既定。
 pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
-  return ENVIRONMENTS.get(name).map_or(BodyMode::Text, |def| return def.body_mode);
+  return ENVIRONMENTS.get(name).map_or(BodyMode::Text, |kind| return kind.body_mode());
 }
 
 /// 環境を評価し、対応する `Vec<HirNode>` を生成する
@@ -85,11 +168,38 @@ pub(crate) fn evaluate_environment(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
 ) -> Result<Vec<HirNode>, EvalError> {
-  return match ENVIRONMENTS.get(view.name()).and_then(|def| return def.handler) {
-    Some(handler) => handler(view, ctx),
+  return match ENVIRONMENTS.get(view.name()) {
+    Some(kind) => kind.evaluate(view, ctx),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),
       span: view.span().into(),
     }),
   };
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{ENVIRONMENTS, EnvironmentKind, lookup_body_mode};
+  use crate::{document::TheoremClass, frontend::syntax::BodyMode};
+
+  #[test]
+  fn body_mode_is_derived_from_the_registered_kind() {
+    assert_eq!(lookup_body_mode("itemize"), BodyMode::Text);
+    assert_eq!(lookup_body_mode("align"), BodyMode::Math);
+    assert_eq!(lookup_body_mode("code"), BodyMode::Verbatim);
+  }
+
+  #[test]
+  fn unregistered_environment_falls_back_to_text() {
+    assert_eq!(lookup_body_mode("nope"), BodyMode::Text);
+  }
+
+  #[test]
+  fn theorem_names_carry_their_class_in_the_registry() {
+    // 名前から種別を求め直さず、レジストリの値がクラスを運ぶ
+    assert!(matches!(
+      ENVIRONMENTS.get("lemma"),
+      Some(EnvironmentKind::Theorem(class)) if *class == TheoremClass::Lemma
+    ));
+  }
 }

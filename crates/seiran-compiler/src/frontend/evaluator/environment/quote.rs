@@ -10,14 +10,16 @@ use crate::{
 
 /// 引用環境（`quote` / `quotation`）を評価する
 ///
+/// 種別はレジストリの値が運ぶ（環境名からの再解決はしない）。
+///
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let Ok(kind) = view.name().parse::<QuoteKind>() else {
-    unreachable!("ENVIRONMENTS は quote / quotation のみを本ハンドラに登録する");
-  };
-
+pub(super) fn quote(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+  kind: QuoteKind,
+) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
