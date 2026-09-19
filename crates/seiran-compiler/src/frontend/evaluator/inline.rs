@@ -24,7 +24,7 @@ use crate::{
     syntax::{
       green::{GreenElement, GreenNode},
       kind::SyntaxKind,
-      token::TokenKind,
+      token::{Token, TokenKind},
       view::{CommandView, EnvironmentView},
     },
   },
@@ -46,6 +46,61 @@ pub(in crate::frontend) enum IndexPolicy {
   ///
   /// 見出しタイトル・`\href` の表示テキスト・表の `\head` セル・`\index` 自身の語。
   Reject,
+}
+
+/// トークン 1 個がインライン要素として持つ内容
+///
+/// どのトークンが何になるかの対応はこの型を返す [`inline_from_token`] が単一の実装で、
+/// 本文の流れ（`crate::frontend::evaluator::evaluate_children`）と引数の再帰評価
+/// （[`extract_inline_nodes_from_elements`]）が共有する。
+///
+/// `NodeId` は発行しない — 本文の流れは段落 ID を子より先に予約する必要があり
+/// （`crate::frontend::evaluator::ParagraphBuffer` の doc 参照）、変換側が `EvalContext` を
+/// 持つと予約より先に子の ID を確保してしまうため。
+#[derive(Debug)]
+pub(super) enum TokenInline<'s> {
+  /// 索引マーカーをまたぐ結合の候補になるテキスト（[`TokenKind::Text`] 由来）
+  MergeableText(&'s str),
+  /// 結合しない単独のインライン要素
+  Leaf(HirInlineKind),
+  /// 段落の区切り（本文の流れでは段落を閉じ、引数の中ではエラーになる）
+  ParagraphBreak,
+}
+
+/// トークン 1 個をインライン要素の内容へ変換する
+///
+/// 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは `None` を返す。
+/// 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
+pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<TokenInline<'s>> {
+  return match token.kind {
+    // 索引マーカーをまたぐ結合の対象はここだけ（[`InlineSink`] の doc 参照、#514）。
+    TokenKind::Text => Some(TokenInline::MergeableText(token.text(source))),
+    // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
+    // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。`_` / `^` / `&` / `,` / `=` は
+    // 構造上の意味を失った位置に残ったものなので、トークンの原文をそのまま本文に出す。
+    TokenKind::VerbatimText
+    | TokenKind::Whitespace
+    | TokenKind::Newline
+    | TokenKind::Comma
+    | TokenKind::Equals
+    | TokenKind::Underscore
+    | TokenKind::Caret
+    | TokenKind::Ampersand => Some(TokenInline::Leaf(HirInlineKind::Text(token.text(source).to_string()))),
+    TokenKind::Escaped => {
+      let text = &source[token.span.start as usize + 1..token.span.end as usize];
+      Some(TokenInline::Leaf(HirInlineKind::Text(text.to_string())))
+    },
+    TokenKind::LineBreak => Some(TokenInline::Leaf(HirInlineKind::LineBreak)),
+    TokenKind::ParagraphBreak => Some(TokenInline::ParagraphBreak),
+    TokenKind::Command
+    | TokenKind::LBrace
+    | TokenKind::RBrace
+    | TokenKind::LBracket
+    | TokenKind::RBracket
+    | TokenKind::Dollar
+    | TokenKind::Comment
+    | TokenKind::Unknown => None,
+  };
 }
 
 /// インライン要素の積み場所（`\index` をまたぐテキストトークンを 1 ノードへ畳む）
@@ -172,47 +227,16 @@ pub(crate) fn extract_inline_nodes_from_elements(
   let mut sink = InlineSink::default();
   for child in children {
     match child {
-      GreenElement::Token(token) => match token.kind {
-        // 索引マーカーをまたぐ結合はここだけが担う（[`InlineSink`] の doc 参照、#514）。
-        TokenKind::Text => {
-          sink.push_text_token(ctx, token.span, token.text(source));
-        },
-        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-        // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
-        TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
-          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
-        },
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
-        },
-        TokenKind::LineBreak => {
-          sink.push(ctx.leaf_inline(token.span, HirInlineKind::LineBreak));
-        },
-        TokenKind::Underscore => {
-          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
-        },
-        TokenKind::Caret => {
-          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
-        },
-        TokenKind::Ampersand => {
-          sink.push(ctx.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
-        },
-        TokenKind::ParagraphBreak => {
+      GreenElement::Token(token) => match inline_from_token(source, token) {
+        Some(TokenInline::MergeableText(text)) => sink.push_text_token(ctx, token.span, text),
+        Some(TokenInline::Leaf(kind)) => sink.push(ctx.leaf_inline(token.span, kind)),
+        // 引数・セルの中では空行で段落を切れない（区切りの受け手がいない）。
+        Some(TokenInline::ParagraphBreak) => {
           return Err(EvalError::ParagraphBreakInArgument {
             span: token.span.into(),
           });
         },
-        // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
-        // 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
-        TokenKind::Command
-        | TokenKind::LBrace
-        | TokenKind::RBrace
-        | TokenKind::LBracket
-        | TokenKind::RBracket
-        | TokenKind::Dollar
-        | TokenKind::Comment
-        | TokenKind::Unknown => {},
+        None => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
@@ -315,8 +339,102 @@ mod tests {
   use super::*;
   use crate::{
     document::{FontKind, HirInlineKind},
-    frontend::evaluator::{extract_inline_nodes_to_hir, test_support},
+    frontend::{
+      evaluator::{extract_inline_nodes_to_hir, test_support},
+      syntax::token::Token,
+    },
   };
+
+  #[test]
+  fn inline_from_token_maps_single_char_tokens_to_their_source_text() {
+    // Arrange — `_` / `^` / `&` / `,` / `=` はトークンの原文がそのまま本文になる
+    let source = "_^&,=";
+    let cases = [
+      (TokenKind::Underscore, 0u32, "_"),
+      (TokenKind::Caret, 1, "^"),
+      (TokenKind::Ampersand, 2, "&"),
+      (TokenKind::Comma, 3, ","),
+      (TokenKind::Equals, 4, "="),
+    ];
+
+    for (kind, offset, expected) in cases {
+      // Act
+      let token = Token {
+        kind,
+        span: Span::new(offset, offset + 1),
+      };
+      let result = inline_from_token(source, &token);
+
+      // Assert
+      assert!(
+        matches!(result, Some(TokenInline::Leaf(HirInlineKind::Text(ref text))) if text == expected),
+        "{kind:?}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn inline_from_token_strips_the_backslash_of_an_escaped_token() {
+    // Arrange
+    let source = r"\$";
+
+    // Act
+    let token = Token {
+      kind: TokenKind::Escaped,
+      span: Span::new(0, 2),
+    };
+    let result = inline_from_token(source, &token);
+
+    // Assert
+    assert!(
+      matches!(result, Some(TokenInline::Leaf(HirInlineKind::Text(ref text))) if text == "$"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn inline_from_token_marks_plain_text_as_mergeable() {
+    // Arrange
+    let source = "abc";
+
+    // Act
+    let token = Token {
+      kind: TokenKind::Text,
+      span: Span::new(0, 3),
+    };
+    let result = inline_from_token(source, &token);
+
+    // Assert — `\index` をまたぐ結合の候補になるのは Text 由来だけ
+    assert!(matches!(result, Some(TokenInline::MergeableText("abc"))), "{result:?}");
+  }
+
+  #[test]
+  fn inline_from_token_drops_structural_tokens() {
+    // Arrange
+    let source = r"\bold{}[]$// x";
+    let kinds = [
+      TokenKind::Command,
+      TokenKind::LBrace,
+      TokenKind::RBrace,
+      TokenKind::LBracket,
+      TokenKind::RBracket,
+      TokenKind::Dollar,
+      TokenKind::Comment,
+      TokenKind::Unknown,
+    ];
+
+    for kind in kinds {
+      // Act
+      let token = Token {
+        kind,
+        span: Span::new(0, 1),
+      };
+      let result = inline_from_token(source, &token);
+
+      // Assert
+      assert!(result.is_none(), "{kind:?} は HIR に残さない: {result:?}");
+    }
+  }
 
   #[test]
   fn extract_inline_nodes_with_bold() {

@@ -6,11 +6,13 @@
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
-    evaluator::{command::CommandResult, inline::InlineSink},
+    evaluator::{
+      command::CommandResult,
+      inline::{InlineSink, TokenInline},
+    },
     syntax::{
       SyntaxKind,
       green::{GreenElement, GreenNode},
-      token::TokenKind,
       view::CommandView,
     },
   },
@@ -61,52 +63,17 @@ pub(crate) fn evaluate_children(
 
   for child in node.children {
     match child {
-      GreenElement::Token(token) => match token.kind {
-        // 索引マーカーをまたぐ結合はここだけが担う（`inline::InlineSink` の doc 参照、#514）。
-        TokenKind::Text => {
+      GreenElement::Token(token) => match inline::inline_from_token(source, token) {
+        Some(TokenInline::MergeableText(text)) => {
           paragraph.reserve(ctx, token.span);
-          paragraph.push_text_token(ctx, token.span, token.text(source));
+          paragraph.push_text_token(ctx, token.span, text);
         },
-        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-        // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
-        TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+        Some(TokenInline::Leaf(kind)) => {
           paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
+          paragraph.push(ctx.leaf_inline(token.span, kind));
         },
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
-        },
-        TokenKind::LineBreak => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::LineBreak));
-        },
-        TokenKind::ParagraphBreak => {
-          paragraph.flush(ctx, &mut hir_nodes);
-        },
-        TokenKind::Underscore => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
-        },
-        TokenKind::Caret => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
-        },
-        TokenKind::Ampersand => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
-        },
-        // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
-        // 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
-        TokenKind::Command
-        | TokenKind::LBrace
-        | TokenKind::RBrace
-        | TokenKind::LBracket
-        | TokenKind::RBracket
-        | TokenKind::Dollar
-        | TokenKind::Comment
-        | TokenKind::Unknown => {},
+        Some(TokenInline::ParagraphBreak) => paragraph.flush(ctx, &mut hir_nodes),
+        None => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
