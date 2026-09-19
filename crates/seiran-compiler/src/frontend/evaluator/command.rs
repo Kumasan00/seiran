@@ -28,15 +28,25 @@ mod text_style;
 /// コマンドの実行結果
 pub(super) enum CommandResult {
   /// ブロックレベルの HIR ノード（見出し、スペース等）
-  Block(Vec<HirNode>),
+  ///
+  /// [`BlockPermit`] を伴わずには構築できない — この結果を作れるのは
+  /// [`Placement::accept_block`] を通った arm だけである。
+  Block(BlockPermit, Vec<HirNode>),
   /// インラインレベルの HIR ノード（記号文字等）
   Inline(Vec<HirInline>),
   /// `\noindent` — 段落先頭行の字下げ抑止マーカー
   ///
-  /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行うので、結果は値を運ばない。
-  /// 診断に使うソース位置は呼び出し元が持っているコマンド呼び出しノードの span と同じ。
-  NoIndent,
+  /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行うので、`BlockPermit` 以外の
+  /// 値は運ばない。診断に使うソース位置は呼び出し元が持っているコマンド呼び出しノードの span と同じ。
+  NoIndent(BlockPermit),
 }
+
+/// ブロックを生む結果を組み立ててよいことの証
+///
+/// 発行できるのは [`Placement::accept_block`] だけで、`CommandResult` のブロック系 variant は
+/// これを要求する。新しいブロックコマンドの arm が guard を書き忘れると結果を構築できず、
+/// `unreachable!` へ落ちる代わりに**コンパイルエラー**になる。
+pub(super) struct BlockPermit(());
 
 /// コマンドを実行する文脈
 ///
@@ -53,19 +63,21 @@ pub(super) enum Placement {
 }
 
 impl Placement {
-  /// ブロックを生むコマンドをこの文脈で実行してよいか検査する
+  /// ブロックを生むコマンドをこの文脈で実行してよいか検査し、通ったことの証を返す
   ///
   /// 各 dispatch arm の**先頭**で呼ぶ。インライン文脈での拒否は引数の妥当性に依存しないので、
   /// 引数を評価する前に診断を出す（`\section` を `\bold{...}` の中へ書いたとき、引数の
-  /// 個数エラーではなくブロック混在の診断が出る）。
-  fn accept_block(self, view: &CommandView<'_>) -> Result<(), EvalError> {
+  /// 個数エラーではなくブロック混在の診断が出る）。返す [`BlockPermit`] は `CommandResult` の
+  /// ブロック系 variant を構築するのに必須で、arm がこの呼び出しを書き忘れると
+  /// `CommandResult::Block` / `CommandResult::NoIndent` を作れずコンパイルが通らない。
+  fn accept_block(self, view: &CommandView<'_>) -> Result<BlockPermit, EvalError> {
     if matches!(self, Self::Inline(_)) {
       return Err(EvalError::BlockInInline {
         what: format!("\\{}", view.name()),
         span: view.span().into(),
       });
     }
-    return Ok(());
+    return Ok(BlockPermit(()));
   }
 
   /// `\index` をこの文脈で実行してよいか検査する
@@ -139,23 +151,23 @@ impl CommandKind {
   ) -> Result<CommandResult, EvalError> {
     match self {
       Self::Space => {
-        placement.accept_block(view)?;
-        return control::space(view, ctx).map(CommandResult::Block);
+        let permit = placement.accept_block(view)?;
+        return control::space(view, ctx).map(|nodes| return CommandResult::Block(permit, nodes));
       },
 
       Self::PageBreak => {
-        placement.accept_block(view)?;
-        return control::pagebreak(view, ctx).map(CommandResult::Block);
+        let permit = placement.accept_block(view)?;
+        return control::pagebreak(view, ctx).map(|nodes| return CommandResult::Block(permit, nodes));
       },
 
       Self::Heading(level) => {
-        placement.accept_block(view)?;
-        return heading::heading(view, ctx, level).map(CommandResult::Block);
+        let permit = placement.accept_block(view)?;
+        return heading::heading(view, ctx, level).map(|nodes| return CommandResult::Block(permit, nodes));
       },
 
       Self::NoIndent => {
-        placement.accept_block(view)?;
-        return control::noindent(view).map(|()| return CommandResult::NoIndent);
+        let permit = placement.accept_block(view)?;
+        return control::noindent(view).map(|()| return CommandResult::NoIndent(permit));
       },
 
       Self::StyledText(kind) => {
@@ -338,8 +350,12 @@ pub(super) fn evaluate_inline_command(
 ) -> Result<Vec<HirInline>, EvalError> {
   return match evaluate_command(view, ctx, Placement::Inline(index_policy))? {
     CommandResult::Inline(inlines) => Ok(inlines),
-    CommandResult::Block(_) | CommandResult::NoIndent => {
-      unreachable!("インライン文脈でブロックを生む種別は Placement::accept_block が引数評価より前に弾く")
+    CommandResult::Block(..) | CommandResult::NoIndent(_) => {
+      unreachable!(
+        "CommandResult::Block / NoIndent の構築には BlockPermit が要り、それを発行できるのは \
+         Placement::accept_block だけ（private field により他の経路では作れない）。この呼び出しは \
+         Placement::Inline を渡しており、accept_block は常に Err を返すので BlockPermit は手に入らない"
+      )
     },
   };
 }
@@ -440,8 +456,8 @@ mod tests {
 
   #[test]
   fn every_command_in_inline_placement_yields_inline_or_a_diagnostic() {
-    // Arrange — ブロックを生む種別が accept_block をすり抜けると
-    // evaluate_inline_command の unreachable! が発火する（新コマンド追加時の付け忘れ検出）
+    // Arrange — レジストリに載っているコマンドがインライン文脈で UnknownCommand として
+    // 落ちないことを確認する（`{a}` × 0〜4 個の組み合わせで、成功するかどうかはコマンドごとに違う）
     for name in all_command_names() {
       for arg_count in 0usize..=4 {
         let arena = Bump::new();

@@ -83,14 +83,14 @@ pub(crate) fn evaluate_children(
           let view = CommandView::new(child_node, source);
           let result = command::evaluate_command(&view, ctx, Placement::Block)?;
           match result {
-            CommandResult::Block(block_nodes) => {
+            CommandResult::Block(_permit, block_nodes) => {
               paragraph.flush(ctx, &mut hir_nodes);
               hir_nodes.extend(block_nodes);
             },
             CommandResult::Inline(inline_nodes) => {
               paragraph.extend_inline_result(child_node.span, inline_nodes);
             },
-            CommandResult::NoIndent => {
+            CommandResult::NoIndent(_permit) => {
               // 先行トリビアは許すが、実体のある要素や同じマーカーがあれば段落途中として扱う。
               if paragraph.has_content() {
                 return Err(EvalError::NoindentNotAtParagraphStart {
