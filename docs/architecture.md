@@ -367,7 +367,7 @@ CST を走査して HIR へ評価変換する。各ハンドラは型付きビ�
 frontend 側に置くのは「評価中に持ち回る値」が frontend の関心だから（`HirBuilder` へ載せる形へ戻さない —
 signature の置換は全ハンドラで一様で、interface の凝集度で判断すると context 側が正しい）。
 
-- コマンドは `COMMAND_MAP`（引数の位置ごとの読み取りモードは `COMMAND_ARG_MODES`）、記号は
+- コマンドは `COMMAND_MAP`（引数の位置ごとの読み取りモードは値の `CommandKind` から導出する）、記号は
   `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源としてディスパッチする。数式系環境は
   複数行分割の共通基盤を共有する
 - 任意引数の検査（未知キー・同一組内のキー重複・値の型）は 1 箇所が担い、ハンドラは許可キーと型の
@@ -376,7 +376,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   決めるのは呼び出し元で、見出しタイトル・`\href` 表示テキスト・表の `\head` 行・`\index` 自身の語が
   `Reject`、キャプション・表の本体行が `Allow`、書体 / 色指定と脚注本体は**外側の方針を継承**する
   （固定 `Allow` にすると `\section{\bold{x\index{x}}}` が拒否をすり抜ける）
-- どの引数・環境本体が verbatim かはレジストリ（`COMMAND_ARG_MODES` / `ENVIRONMENTS`）の宣言だけで決まる。
+- どの引数・環境本体が verbatim かはレジストリ（`COMMAND_MAP` / `ENVIRONMENTS`）の値が持つ種別だけで決まる。
   任意引数値は宣言の対象外で常に通常のトークン化を通る
 
 #### テスト用子 module
