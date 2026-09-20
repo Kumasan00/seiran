@@ -341,14 +341,12 @@ pub(super) fn lower_nodes_inner(
 /// 単一の `HirNode` をレイアウトノードに変換する
 ///
 /// 委譲する 9 種別（`Heading` / `Paragraph` / `List` / `Theorem` / `Quote` / `CodeBlock` /
-/// `MathBlock` / `Figure` / `Table`）はすべて `(文脈, ノード, ...)` の同じ形で子 module へ渡す。
-/// `CodeBlock` は事実を読まないので `state` を取らず `(ctx, node)` に、残り 8 種は
-/// `(ctx, node, state)` になる。
-/// 採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、各 lowering が `node.id` を
-/// キーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。`PageBreak` / `Space` は
-/// 委譲せず、この関数がその場でノードを組む。委譲する 9 種別すべての lowering の先頭に、`HirNodeKind`
-/// の variant を取り出す `unreachable!` 付きの分配束縛があるのは、`HirNodeKind` の各 variant が
-/// payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
+/// `MathBlock` / `Figure` / `Table`）はすべて `HirNodeKind` の payload を取り出して子 module へ渡す。
+/// 各 lowering は実際に使うものだけを受け取る — payload は常に、`NodeId` は事実を引く 5 種
+/// （`Heading` / `Theorem` / `MathBlock` / `Figure` / `Table`）だけ、`state` は読み書きする 8 種
+/// （`CodeBlock` を除く）だけ受け取る（うち `MathBlock` は不変借用）。採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、
+/// 各 lowering が `NodeId` をキーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。
+/// `PageBreak` / `Space` は委譲せず、この関数がその場でノードを組む。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading(heading) => {
