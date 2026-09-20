@@ -370,35 +370,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Space(length) => {
       return vec![LayoutNode::Inline(InlineNode::Kern { length: *length })];
     },
-    HirNodeKind::MathBlock {
-      kind,
-      rows,
-      numbered: _,
-      label: _,
-    } => {
-      let block = &ctx.style.math.block;
-      // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
-      // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
-      // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する。
-      let mut anchor_labels: Vec<&LabelId> = Vec::new();
-      if let Some(env_label) = state.declared_label(node.id) {
-        anchor_labels.push(env_label);
-      }
-      // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで
-      // 再現するため。`with_label_anchors` の doc comment も参照）
-      anchor_labels.extend(rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
-
-      let math_block = math::lower_math_block(ctx, *kind, rows, state.counter_value(node.id), &*state);
-      let nodes = vec![
-        LayoutNode::Vkern {
-          length: block.top_margin,
-        },
-        math_block,
-        LayoutNode::Vkern {
-          length: block.bottom_margin,
-        },
-      ];
-      return with_label_anchors(anchor_labels, nodes);
+    HirNodeKind::MathBlock { .. } => {
+      return math::lower_math_block(ctx, node, &*state);
     },
     HirNodeKind::Figure {
       image_path,

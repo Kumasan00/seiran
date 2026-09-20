@@ -3,9 +3,9 @@
 use std::slice;
 
 use crate::{
-  document::{FontKind, HirMath, HirMathKind, HirMathRow, MathClass, MathEnvKind, MathVariant},
+  document::{FontKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathVariant},
   length::Length,
-  semantics::CounterValue,
+  semantics::LabelId,
   style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
   typeset::{
     boxes::Align,
@@ -13,6 +13,7 @@ use crate::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockLayout, MathBlockRow, TextStyle},
+      with_label_anchors,
     },
   },
 };
@@ -28,18 +29,25 @@ fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
 }
 
 /// `document::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
-/// `cases` / `matrix`）を `LayoutNode::MathBlock` に変換する
+/// `cases` / `matrix`）をレイアウトノード列（上下の `Vkern` + `LayoutNode::MathBlock`）に変換する
 ///
 /// 行ごと・環境ごとの採番値は `semantics::analyze` が確定させたものを引くだけで、ここでは
 /// `number_format` / `tag_format` による表示文字列化しか行わない。ディスプレイ数式の中に脚注は
 /// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext<'_>,
-  kind: MathEnvKind,
-  rows: &[HirMathRow],
-  env_counter_value: Option<&CounterValue>,
+  node: &HirNode,
   state: &LoweringState<'_>,
-) -> LayoutNode {
+) -> Vec<LayoutNode> {
+  let HirNodeKind::MathBlock {
+    kind,
+    rows,
+    numbered: _,
+    label: _,
+  } = &node.kind
+  else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::MathBlock arm からだけ呼ばれる: {:?}", node.id)
+  };
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
 
@@ -56,18 +64,40 @@ pub(super) fn lower_math_block(
     layout_rows.push(MathBlockRow { cells, number });
   }
 
-  let env_number = env_counter_value
+  let env_number = state
+    .counter_value(node.id)
     .map(|value| return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size));
 
-  return LayoutNode::MathBlock(MathBlockLayout {
-    kind,
-    rows: layout_rows,
-    env_number,
-    align: alignment_to_align(block.alignment),
-    numbers_on_right: matches!(block.number_side, NumberSide::Right),
-    row_gap: block.row_gap,
-    column_gap: block.column_gap,
-  });
+  let nodes = vec![
+    LayoutNode::Vkern {
+      length: block.top_margin,
+    },
+    LayoutNode::MathBlock(MathBlockLayout {
+      kind: *kind,
+      rows: layout_rows,
+      env_number,
+      align: alignment_to_align(block.alignment),
+      numbers_on_right: matches!(block.number_side, NumberSide::Right),
+      row_gap: block.row_gap,
+      column_gap: block.column_gap,
+    }),
+    LayoutNode::Vkern {
+      length: block.bottom_margin,
+    },
+  ];
+
+  // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
+  // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
+  // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する。
+  let mut anchor_labels: Vec<&LabelId> = Vec::new();
+  if let Some(env_label) = state.declared_label(node.id) {
+    anchor_labels.push(env_label);
+  }
+  // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで再現するため。
+  // `with_label_anchors` は与えた順にアンカーを並べる）
+  anchor_labels.extend(rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
+
+  return with_label_anchors(anchor_labels, nodes);
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
