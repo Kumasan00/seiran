@@ -1,115 +1,71 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
+//!
+//! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
+//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の拡大）
+//! だけを行う。HIR の数式語彙（`document::MathEnvKind`）はここまで届かない（#674）。
 
 use crate::{
-  document::{MathDelimiter, MathEnvKind},
   length::Length,
   project::FontType,
   typeset::{
-    boxes::{Block, HBox, MathRowNumber, PlacedHItem},
+    boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     boxing::Measurer,
-    lowering::MathBlockLayout,
+    lowering::{DelimiterGlyphs, MathBlockLayout},
   },
 };
 
-/// セルの列内での水平揃え（環境種別ごとに決まる）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CellAlign {
-  /// 左揃え
-  Left,
-  /// 中央揃え
-  Center,
-  /// 右揃え
-  Right,
-}
-
-/// 環境種別・行位置・列インデックスから、そのセルの列内での水平揃えを決める
-fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> CellAlign {
-  return match kind {
-    MathEnvKind::Align | MathEnvKind::Split => {
-      if col.is_multiple_of(2) {
-        CellAlign::Right
-      } else {
-        CellAlign::Left
-      }
-    },
-    MathEnvKind::Multiline => {
-      if n_rows <= 1 || (row_idx > 0 && row_idx < n_rows - 1) {
-        CellAlign::Center
-      } else if row_idx == 0 {
-        CellAlign::Left
-      } else {
-        CellAlign::Right
-      }
-    },
-    MathEnvKind::Gather | MathEnvKind::Matrix { .. } => CellAlign::Center,
-    MathEnvKind::Equation | MathEnvKind::Cases => CellAlign::Left,
-  };
-}
-
-/// 列幅 `col_width` の中に幅 `cell_width` のセルを置くときの水平オフセット（pt）
-fn column_offset(align: CellAlign, col_width: Length, cell_width: Length) -> Length {
-  return match align {
-    CellAlign::Left => Length::ZERO,
-    CellAlign::Center => (col_width - cell_width) / 2.0f32,
-    CellAlign::Right => col_width - cell_width,
-  };
-}
-
-/// 環境種別から本体グリッドを囲む左右の区切り括弧グリフ `(左, 右)` を決める
-fn delimiter_glyphs(kind: MathEnvKind) -> (Option<&'static str>, Option<&'static str>) {
-  return match kind {
-    MathEnvKind::Cases => (Some("{"), None),
-    MathEnvKind::Matrix { delimiter } => match delimiter {
-      MathDelimiter::None => (None, None),
-      MathDelimiter::Paren => (Some("("), Some(")")),
-      MathDelimiter::Bracket => (Some("["), Some("]")),
-      MathDelimiter::Brace => (Some("{"), Some("}")),
-      MathDelimiter::Bar => (Some("|"), Some("|")),
-      MathDelimiter::DoubleBar => (Some("\u{2016}"), Some("\u{2016}")),
-    },
-    // 揃え系の環境は括弧で囲まない。
-    MathEnvKind::Equation | MathEnvKind::Align | MathEnvKind::Gather | MathEnvKind::Split | MathEnvKind::Multiline => {
-      (None, None)
-    },
-  };
-}
-
 /// 行を measure したあとの中間表現
 struct MeasuredRow {
-  /// セルごとの閉じた Atom
-  cells: Vec<HBox>,
+  /// セルごとの計測結果
+  cells: Vec<MeasuredCell>,
   /// 行番号ボックス（採番された行のみ）
   number: Option<HBox>,
+}
+
+/// セルを measure したあとの中間表現
+struct MeasuredCell {
+  /// 閉じた Atom
+  content: HBox,
+  /// 列内での水平揃え（lowering が解決済み）
+  align: Align,
 }
 
 impl Measurer<'_> {
   /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
   pub(crate) fn build_math_block(&mut self, block: MathBlockLayout) -> Block {
     let MathBlockLayout {
-      kind,
       rows,
       env_number,
       align,
       numbers_on_right,
       row_gap,
       column_gap,
+      delimiters,
     } = block;
 
     let measured: Vec<MeasuredRow> = rows
       .into_iter()
       .map(|row| {
-        let cells = row.cells.into_iter().map(|cell| return self.build_atom(Length::ZERO, cell)).collect();
+        let cells = row
+          .cells
+          .into_iter()
+          .map(|cell| {
+            return MeasuredCell {
+              content: self.build_atom(Length::ZERO, cell.content),
+              align: cell.align,
+            };
+          })
+          .collect();
         let number = row.number.map(|number| return self.build_atom(Length::ZERO, number));
         return MeasuredRow { cells, number };
       })
       .collect();
 
-    let n_rows = measured.len();
     let ncols = measured.iter().map(|row| return row.cells.len()).max().unwrap_or(0);
     let mut col_widths = vec![Length::ZERO; ncols];
     for row in &measured {
       for (c, cell) in row.cells.iter().enumerate() {
-        col_widths[c] = col_widths[c].max(cell.width);
+        col_widths[c] = col_widths[c].max(cell.content.width);
       }
     }
     let mut col_x = vec![Length::ZERO; ncols];
@@ -124,15 +80,16 @@ impl Measurer<'_> {
     let mut baseline_dy = Length::ZERO;
     let mut prev_depth = Length::ZERO;
     for (i, row) in measured.into_iter().enumerate() {
-      let row_height = row.cells.iter().map(|cell| return cell.height).fold(Length::ZERO, Length::max);
-      let row_depth = row.cells.iter().map(|cell| return cell.depth).fold(Length::ZERO, Length::max);
+      let row_height = row.cells.iter().map(|cell| return cell.content.height).fold(Length::ZERO, Length::max);
+      let row_depth = row.cells.iter().map(|cell| return cell.content.depth).fold(Length::ZERO, Length::max);
       if i > 0 {
         baseline_dy -= prev_depth + row_gap + row_height;
       }
       for (c, cell) in row.cells.into_iter().enumerate() {
-        let intra = column_offset(cell_align(kind, i, n_rows, c), col_widths[c], cell.width);
+        // 列幅は列内のセル幅の最大値なので、`Align::offset` の 0 へのクランプは到達しない。
+        let intra = cell.align.offset(col_widths[c], cell.content.width);
         placed.push(PlacedHItem {
-          item: cell,
+          item: cell.content,
           dy: baseline_dy,
           dx: col_x[c] + intra,
         });
@@ -158,9 +115,8 @@ impl Measurer<'_> {
       });
     }
 
-    let (left, right) = delimiter_glyphs(kind);
-    if left.is_some() || right.is_some() {
-      body = self.wrap_with_delimiters(body, left, right);
+    if delimiters.is_present() {
+      body = self.wrap_with_delimiters(body, delimiters);
     }
 
     return Block::Math {
@@ -188,7 +144,7 @@ impl Measurer<'_> {
   }
 
   /// 本体 Atom を左右の区切り括弧で挟んで包み直す
-  fn wrap_with_delimiters(&mut self, body: HBox, left: Option<&str>, right: Option<&str>) -> HBox {
+  fn wrap_with_delimiters(&mut self, body: HBox, delimiters: DelimiterGlyphs) -> HBox {
     let body_height = body.height;
     let body_depth = body.depth;
     let body_width = body.width;
@@ -197,7 +153,7 @@ impl Measurer<'_> {
 
     let mut children: Vec<PlacedHItem> = Vec::new();
     let mut dx = Length::ZERO;
-    if let Some(ch) = left {
+    if let Some(ch) = delimiters.left {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
       let width = delim.width;
@@ -214,7 +170,7 @@ impl Measurer<'_> {
       dx,
     });
     dx += body_width + gap;
-    if let Some(ch) = right {
+    if let Some(ch) = delimiters.right {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
       children.push(PlacedHItem {
@@ -224,117 +180,5 @@ impl Measurer<'_> {
       });
     }
     return HBox::atom(children);
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::{CellAlign, cell_align, column_offset, delimiter_glyphs};
-  use crate::{
-    document::{MathDelimiter, MathEnvKind},
-    length::Length,
-  };
-
-  #[test]
-  fn cell_align_align_and_split_alternate_right_left_by_column() {
-    for kind in [MathEnvKind::Align, MathEnvKind::Split] {
-      assert_eq!(cell_align(kind, 0, 1, 0), CellAlign::Right, "列 0 は右: {kind:?}");
-      assert_eq!(cell_align(kind, 0, 1, 1), CellAlign::Left, "列 1 は左: {kind:?}");
-      assert_eq!(cell_align(kind, 0, 1, 2), CellAlign::Right, "列 2 は右: {kind:?}");
-    }
-  }
-
-  #[test]
-  fn cell_align_gather_is_always_center() {
-    assert_eq!(cell_align(MathEnvKind::Gather, 0, 3, 0), CellAlign::Center);
-    assert_eq!(cell_align(MathEnvKind::Gather, 1, 3, 0), CellAlign::Center);
-    assert_eq!(cell_align(MathEnvKind::Gather, 2, 3, 0), CellAlign::Center);
-  }
-
-  #[test]
-  fn cell_align_multiline_is_staircase() {
-    let kind = MathEnvKind::Multiline;
-    assert_eq!(cell_align(kind, 0, 3, 0), CellAlign::Left, "先頭行は左");
-    assert_eq!(cell_align(kind, 1, 3, 0), CellAlign::Center, "中間行は中央");
-    assert_eq!(cell_align(kind, 2, 3, 0), CellAlign::Right, "末尾行は右");
-  }
-
-  #[test]
-  fn cell_align_multiline_single_row_is_center() {
-    assert_eq!(cell_align(MathEnvKind::Multiline, 0, 1, 0), CellAlign::Center);
-  }
-
-  #[test]
-  fn cell_align_matrix_center_equation_and_cases_left() {
-    assert_eq!(
-      cell_align(
-        MathEnvKind::Matrix {
-          delimiter: MathDelimiter::None
-        },
-        0,
-        2,
-        0
-      ),
-      CellAlign::Center
-    );
-    assert_eq!(cell_align(MathEnvKind::Equation, 0, 1, 0), CellAlign::Left);
-    assert_eq!(cell_align(MathEnvKind::Cases, 0, 2, 0), CellAlign::Left);
-  }
-
-  #[test]
-  fn delimiter_glyphs_maps_cases_and_matrix() {
-    assert_eq!(delimiter_glyphs(MathEnvKind::Cases), (Some("{"), None));
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Bracket
-      }),
-      (Some("["), Some("]"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Paren
-      }),
-      (Some("("), Some(")"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Brace
-      }),
-      (Some("{"), Some("}"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Bar
-      }),
-      (Some("|"), Some("|"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::DoubleBar
-      }),
-      (Some("\u{2016}"), Some("\u{2016}"))
-    );
-  }
-
-  #[test]
-  fn delimiter_glyphs_absent_for_none_and_other_envs() {
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::None
-      }),
-      (None, None)
-    );
-    assert_eq!(delimiter_glyphs(MathEnvKind::Equation), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Align), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Gather), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Split), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Multiline), (None, None));
-  }
-
-  #[test]
-  fn column_offset_places_cell_within_column_width() {
-    assert_eq!(column_offset(CellAlign::Left, Length::pt(10.0), Length::pt(4.0)), Length::ZERO);
-    assert_eq!(column_offset(CellAlign::Center, Length::pt(10.0), Length::pt(4.0)), Length::pt(3.0));
-    assert_eq!(column_offset(CellAlign::Right, Length::pt(10.0), Length::pt(4.0)), Length::pt(6.0));
   }
 }

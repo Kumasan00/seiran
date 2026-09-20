@@ -804,6 +804,11 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   作らない — lowering の各入口が payload 型を引数で受け取れることが、入口ごとの `unreachable!` 付き分配束縛を
   型の側で不要にしている。レイアウト側の対応物（`LayoutNode::Table(TableLayout)` /
   `MathBlock(MathBlockLayout)`）とも形が揃う
+- **数式ブロックの体裁（セルの列内揃え・区切り括弧のグリフ）は lowering が解決する**（#674）。
+  `MathBlockLayout` は環境種別（`document::MathEnvKind`）を持たず、セルごとの `Align` と
+  解決済みの `DelimiterGlyphs` を載せる。`boxing` は計測と配置だけを行い、HIR の数式語彙を
+  import しない。**組版内の揃えの型は `boxes::Align` 1 つ**で、`style::Alignment` → `Align` の
+  変換だけが lowering に残る（#334 の設計どおり）
 - **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で

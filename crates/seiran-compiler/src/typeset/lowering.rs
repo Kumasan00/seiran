@@ -35,7 +35,7 @@ mod theorem;
 mod title_page;
 
 pub(super) use layout_node::{
-  AtomNode, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
+  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
 };
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
