@@ -149,26 +149,20 @@ impl Checker<'_> {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Theorem {
-        class,
-        body,
-        of,
-        label,
-        ..
-      } => {
+      HirNodeKind::Theorem(theorem) => {
         // 無採番クラス（`proof`）は採番もラベル登録もしないので、必須 fact も無い。
-        if !self.policy.theorem(*class).unnumbered {
+        if !self.policy.theorem(theorem.class).unnumbered {
           self.require_counter(node.id, "Theorem");
-          self.require_declared_label(node.id, label.as_deref(), "Theorem");
+          self.require_declared_label(node.id, theorem.label.as_deref(), "Theorem");
         }
-        if let Some(target) = of {
+        if let Some(target) = &theorem.of {
           assert!(
             self.facts.references.get(target.id).is_some(),
             "Walker が Theorem::of の参照先を登録し損ねている: {:?}",
             target.id
           );
         }
-        self.nodes(body);
+        self.nodes(&theorem.body);
       },
       HirNodeKind::MathBlock {
         rows,
@@ -419,25 +413,19 @@ impl Walker<'_> {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Theorem {
-        class,
-        body,
-        of,
-        label,
-        ..
-      } => {
+      HirNodeKind::Theorem(theorem) => {
         // 無採番クラス（`proof`）は採番もラベル登録もしない（`number_and_declare` が判断する）。
-        self.number_and_declare(CounterKind::Theorem(*class), node.id, label.as_deref(), node.id);
+        self.number_and_declare(CounterKind::Theorem(theorem.class), node.id, theorem.label.as_deref(), node.id);
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
         // 現状 frontend はこの ID を環境ヘッダの span で確保しているので実際の位置は環境と同じだが、
         // HIR 側の span 付与が細かくなればここを触らずに診断が絞り込まれる。
-        if let Some(target) = of {
+        if let Some(target) = &theorem.of {
           self.pending.push(PendingReference {
             site: target.id,
             label: target.label.clone(),
           });
         }
-        self.nodes(body);
+        self.nodes(&theorem.body);
       },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),

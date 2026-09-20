@@ -1,7 +1,7 @@
 //! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
 use crate::{
-  document::{FontKind, HirNode, HirNodeKind},
+  document::{FontKind, HirNodeKind, HirTheorem, NodeId},
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
@@ -18,42 +18,33 @@ use crate::{
 /// 定理ブロックをレイアウトノードに変換する
 pub(super) fn lower_theorem(
   ctx: &LoweringContext<'_>,
-  node: &HirNode,
+  id: NodeId,
+  theorem: &HirTheorem,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let HirNodeKind::Theorem {
-    class,
-    title,
-    body,
-    of,
-    label: _,
-  } = &node.kind
-  else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::Theorem arm からだけ呼ばれる: {:?}", node.id)
-  };
   // 番号・`[of=...]` の参照先・ラベルはすべて `semantics::analyze` が確定させた事実で、
   // ノード ID から引くだけ（lowering は採番も解決もしない）。
-  let number = state.counter_value(node.id).map(|value| return counter::format_counter_value(ctx.style, value));
-  let of_target = of.as_ref().map(|target| return state.reference_target(target.id));
-  let label = state.declared_label(node.id);
+  let number = state.counter_value(id).map(|value| return counter::format_counter_value(ctx.style, value));
+  let of_target = theorem.of.as_ref().map(|target| return state.reference_target(target.id));
+  let label = state.declared_label(id);
 
-  let theorem_style = ctx.style.theorem(*class);
+  let theorem_style = ctx.style.theorem(theorem.class);
   let pres = &theorem_style.style;
 
   let mut nodes = vec![
     LayoutNode::Vkern {
       length: pres.top_margin,
     },
-    build_heading(ctx, theorem_style, number.as_deref(), title.as_deref(), of_target, state),
+    build_heading(ctx, theorem_style, number.as_deref(), theorem.title.as_deref(), of_target, state),
   ];
 
   // 定理本体では文書本文の字下げを引き継がない。
   let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
-  let mut body_nodes = lower_nodes_inner(&body_ctx, body, state);
+  let mut body_nodes = lower_nodes_inner(&body_ctx, &theorem.body, state);
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
-    if matches!(body.last(), Some(last) if matches!(last.kind, HirNodeKind::Paragraph(_))) {
+    if matches!(theorem.body.last(), Some(last) if matches!(last.kind, HirNodeKind::Paragraph(_))) {
       let insert_at = body_nodes.len().saturating_sub(1);
       body_nodes.insert(insert_at, qed_node);
     } else {

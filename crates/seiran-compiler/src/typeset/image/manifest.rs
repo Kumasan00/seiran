@@ -25,8 +25,8 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
       HirNodeKind::Figure { image_path, .. } => {
         paths.insert(image_path.clone());
       },
-      HirNodeKind::Theorem { body, .. } => {
-        walk_nodes(body, paths);
+      HirNodeKind::Theorem(theorem) => {
+        walk_nodes(&theorem.body, paths);
       },
       HirNodeKind::Quote(quote) => {
         walk_nodes(&quote.body, paths);
