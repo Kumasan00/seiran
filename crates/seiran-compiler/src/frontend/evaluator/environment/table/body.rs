@@ -23,6 +23,9 @@ use crate::{
   source::Span,
 };
 
+/// `\row[rule_above]`（行の上に罫線を引く）
+const RULE_ABOVE: OptKey<bool> = opt_args::boolean("rule_above");
+
 /// 本体走査で収集した行・キャプション情報
 pub(super) struct TableBody {
   /// `\head` 行（列数確定後のセル数検証に使うソース位置つき）
@@ -168,9 +171,6 @@ fn extract_head(
   }
   return Ok(rows);
 }
-
-/// `\row[rule_above]`（行の上に罫線を引く）
-const RULE_ABOVE: OptKey<bool> = opt_args::boolean("rule_above");
 
 /// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
 ///

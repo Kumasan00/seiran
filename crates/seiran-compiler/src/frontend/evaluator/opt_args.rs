@@ -2,7 +2,7 @@
 //!
 //! ハンドラはキー名と期待型を束ねた型付きのキー定数 [`OptKey`] を宣言し、その [`OptKey::decl`] の列を
 //! スキーマとして渡して、同じ定数で値を取り出す（[`OptArgs::get`]）。キー文字列を書き直す経路が
-//! 無いので、スキーマと取り出しの型が食い違うことはない。
+//! 無いので、消費側がスキーマと違う型を取り違えることは構築できない。
 //!
 //! 未知キー・同一組内のキー重複・値の型・値域（正の長さ・1 以上の整数）の検査はすべてこの module に
 //! 閉じており、ハンドラは値域を検査しない。
@@ -24,7 +24,7 @@ use crate::{
 };
 
 /// 任意引数キーが期待する値の型タグ
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OptType {
   /// `true` / `false` または bare key（`[draft]` → `true`）
   Bool,
@@ -67,7 +67,7 @@ impl fmt::Display for OptType {
 ///
 /// [`FromOptValue::from_opt_value`] の引数として [`FromOptValue`] と同じ `pub(super)` を持つ
 /// （`OptType` と違い、公開シグネチャに直接現れるので `private_interfaces` を避けるため）。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum OptValue {
   /// 真偽値
   Bool(bool),
@@ -86,10 +86,8 @@ pub(super) enum OptValue {
 /// ハンドラはこれを `const` として宣言し、スキーマ（[`OptKey::decl`]）と取り出し（[`OptArgs::get`]）の
 /// 両方で同じ定数を使う。キー名の綴りと型タグが 1 箇所にしか無いので、スキーマと取り出しが
 /// 食い違うことがない。
-/// `T` が `Clone` / `Copy` でないとき（`OptKey<String>`）この型も `Clone` / `Copy` にならないが、
-/// 使う側はすべて `const` なので使用ごとに新しい値が作られ、複製は要らない（手書きの `Clone` impl は
-/// `clippy::expl_impl_clone_on_copy` に触れるので入れない）。
-#[derive(Debug, Clone, Copy)]
+/// キー定数は `const` なので使用ごとに再生成され、`Clone` / `Copy` は要らない。
+#[derive(Debug)]
 pub(super) struct OptKey<T> {
   /// キー名（ソースに書かれる綴り）
   name: &'static str,
@@ -280,7 +278,7 @@ impl OptArgs {
 ///
 /// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn collect_command_opt_args(view: &CommandView<'_>, schema: &[OptDecl]) -> Result<OptArgs, EvalError> {
+pub(super) fn collect_command_opt_args(view: &CommandView<'_>, schema: &[OptDecl]) -> Result<OptArgs, EvalError> {
   return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
 }
 
@@ -290,7 +288,7 @@ pub(crate) fn collect_command_opt_args(view: &CommandView<'_>, schema: &[OptDecl
 ///
 /// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn collect_environment_opt_args(
+pub(super) fn collect_environment_opt_args(
   view: &EnvironmentView<'_>,
   schema: &[OptDecl],
 ) -> Result<OptArgs, EvalError> {
@@ -306,7 +304,7 @@ pub(crate) fn collect_environment_opt_args(
 ///
 /// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、同じキーの重複時に
 /// [`EvalError::DuplicateOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn collect_opt_args(
+pub(super) fn collect_opt_args(
   source: &str,
   name: &str,
   opt_arg: Option<&GreenNode<'_>>,
@@ -423,7 +421,7 @@ fn parse_length(raw: &str) -> Option<Length> {
 /// 「1 以上の整数」を要求する値の、小数の扱い
 ///
 /// #689 で `Reject` 1 種へ統合し、この enum を削除する。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FractionPolicy {
   /// 小数を拒否する（`enumerate[start=N]` / `\cell[span=N]`）
   Reject,
@@ -934,21 +932,40 @@ mod tests {
     assert_eq!(opts.get(DPI), Some(73));
   }
 
+  /// `ty` を作る入力文字列と、それが作るべき [`OptValue`] を返す
+  ///
+  /// 全 variant を明示した match（wildcard なし）にしてあるので、`OptType` に variant を足すと
+  /// このヘルパがコンパイルエラーになる。`parse_value_produces_the_variant_declared_by_the_type_tag`
+  /// はこの表を回すだけなので、対応漏れに必ず気付ける。
+  fn sample_for(ty: OptType) -> (&'static str, OptValue) {
+    match ty {
+      OptType::Bool => return ("true", OptValue::Bool(true)),
+      OptType::String => return ("foo", OptValue::String("foo".to_string())),
+      OptType::Length | OptType::PositiveLength => return ("10mm", OptValue::Length(Length::mm(10.0))),
+      OptType::PositiveInt => return ("3", OptValue::Integer(3)),
+      OptType::RoundedInt => return ("3.4", OptValue::Integer(3)),
+      OptType::Color => return ("#ff0000", OptValue::Color("#ff0000".parse().unwrap())),
+    }
+  }
+
   #[test]
   fn parse_value_produces_the_variant_declared_by_the_type_tag() {
-    // Arrange — `OptType` と `OptValue` の対応（`OptArgs::get` の `unreachable!` の根拠）
+    // Arrange — `OptType` と `OptValue` の対応（`OptArgs::get` の `unreachable!` の根拠）。
+    // `sample_for` を全 variant 明示にしてあるので、`OptType` へ variant を足すとテストが
+    // コンパイルエラーで気付く。
     let cases = [
-      (OptType::Bool, "true", OptValue::Bool(true)),
-      (OptType::String, "foo", OptValue::String("foo".to_string())),
-      (OptType::Length, "10mm", OptValue::Length(Length::mm(10.0))),
-      (OptType::PositiveLength, "10mm", OptValue::Length(Length::mm(10.0))),
-      (OptType::PositiveInt, "3", OptValue::Integer(3)),
-      (OptType::RoundedInt, "3.4", OptValue::Integer(3)),
-      (OptType::Color, "#ff0000", OptValue::Color("#ff0000".parse().unwrap())),
+      OptType::Bool,
+      OptType::String,
+      OptType::Length,
+      OptType::PositiveLength,
+      OptType::PositiveInt,
+      OptType::RoundedInt,
+      OptType::Color,
     ];
 
     // Act / Assert
-    for (ty, raw, expected) in cases {
+    for ty in cases {
+      let (raw, expected) = sample_for(ty);
       let value = parse_value("k", raw, ty, "cmd", miette::SourceSpan::from((0usize, 1usize))).unwrap();
       assert_eq!(value, expected, "{ty} は宣言された型の variant を作る");
     }
