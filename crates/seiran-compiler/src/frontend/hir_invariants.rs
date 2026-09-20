@@ -113,7 +113,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
         walk_nodes(&theorem.body, here, out);
       },
       HirNodeKind::Quote(quote) => walk_nodes(&quote.body, here, out),
-      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;
@@ -381,7 +381,7 @@ fn assert_unresolved(nodes: &[HirNode]) {
           assert_unresolved_inlines(caption);
         }
       },
-      HirNodeKind::CodeBlock { .. } | HirNodeKind::MathBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock(_) | HirNodeKind::MathBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;
