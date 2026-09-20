@@ -228,19 +228,26 @@ mod tests {
   fn table_rejects_row_cell_count_mismatch() {
     // Arrange
     let source = r#"\begin{table}[columns="left right"]\row{A & B & C}\end{table}"#;
+    // 診断の span はこの `\row{...}` 呼び出し全体（node.id 経由で ctx.span_of から引く値）を指す
+    let row_command = r"\row{A & B & C}";
+    let expected_offset = source.find(row_command).expect("ソースに \\row コマンドが含まれる");
 
     // Act
     let result = eval_table(source);
 
     // Assert
-    assert!(matches!(
-      result,
-      Err(EvalError::TableRowCellCountMismatch {
-        expected: 2,
-        actual: 3,
-        ..
-      })
-    ));
+    let Err(EvalError::TableRowCellCountMismatch {
+      expected,
+      actual,
+      span,
+    }) = result
+    else {
+      panic!("TableRowCellCountMismatch が期待されます: {result:?}");
+    };
+    assert_eq!(expected, 2);
+    assert_eq!(actual, 3);
+    assert_eq!(span.offset(), expected_offset, "span は \\row コマンド呼び出し全体の開始位置を指すべき");
+    assert_eq!(span.len(), row_command.len(), "span は \\row コマンド呼び出し全体の長さを指すべき");
   }
 
   #[test]
