@@ -1245,19 +1245,19 @@ mod tests {
   #[test]
   fn evaluate_index_in_table_body_cell() {
     let result = evaluate_source("\\begin{table}\\row{語\\index{語} & B}\\end{table}");
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {result:?}");
     };
-    assert!(has_index_word(&rows[0].cells[0].content, "語"), "{:?}", rows[0].cells[0].content);
+    assert!(has_index_word(&table.rows[0].cells[0].content, "語"), "{:?}", table.rows[0].cells[0].content);
   }
 
   #[test]
   fn evaluate_index_in_cell_command() {
     let result = evaluate_source("\\begin{table}\\row{\\cell[span=2]{語\\index{語}}}\\end{table}");
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {result:?}");
     };
-    assert!(has_index_word(&rows[0].cells[0].content, "語"), "{:?}", rows[0].cells[0].content);
+    assert!(has_index_word(&table.rows[0].cells[0].content, "語"), "{:?}", table.rows[0].cells[0].content);
   }
 
   #[test]
@@ -1279,10 +1279,10 @@ mod tests {
   #[test]
   fn evaluate_index_in_caption() {
     let result = evaluate_source("\\begin{table}\\caption{表\\index{語}}\\row{A}\\end{table}");
-    let HirNodeKind::Table { caption, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {result:?}");
     };
-    let caption = caption.as_ref().expect("キャプションがあるはず");
+    let caption = table.caption.as_ref().expect("キャプションがあるはず");
     assert!(has_index_word(caption, "語"), "{caption:?}");
   }
 

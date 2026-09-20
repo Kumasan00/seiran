@@ -40,7 +40,7 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
       | HirNodeKind::CodeBlock { .. }
       | HirNodeKind::Paragraph(_)
       | HirNodeKind::MathBlock { .. }
-      | HirNodeKind::Table { .. }
+      | HirNodeKind::Table(_)
       | HirNodeKind::PageBreak
       | HirNodeKind::Space(_) => {},
     }

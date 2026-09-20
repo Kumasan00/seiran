@@ -131,21 +131,15 @@ impl Checker<'_> {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        label,
-        ..
-      } => {
+      HirNodeKind::Table(table) => {
         self.require_counter(node.id, "Table");
-        self.require_declared_label(node.id, label.as_deref(), "Table");
-        for row in head.iter().chain(rows.iter()) {
+        self.require_declared_label(node.id, table.label.as_deref(), "Table");
+        for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             self.inlines(&cell.content);
           }
         }
-        if let Some(inlines) = caption {
+        if let Some(inlines) = &table.caption {
           self.inlines(inlines);
         }
       },
@@ -392,20 +386,14 @@ impl Walker<'_> {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        label,
-        ..
-      } => {
-        self.number_and_declare(CounterKind::Counter(CounterName::Table), node.id, label.as_deref(), node.id);
-        for row in head.iter().chain(rows.iter()) {
+      HirNodeKind::Table(table) => {
+        self.number_and_declare(CounterKind::Counter(CounterName::Table), node.id, table.label.as_deref(), node.id);
+        for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             self.inlines(&cell.content);
           }
         }
-        if let Some(inlines) = caption {
+        if let Some(inlines) = &table.caption {
           self.inlines(inlines);
         }
       },

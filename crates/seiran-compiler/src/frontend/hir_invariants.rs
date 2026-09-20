@@ -85,13 +85,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
           walk_inlines(caption, here, out);
         }
       },
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        ..
-      } => {
-        for row in head.iter().chain(rows.iter()) {
+      HirNodeKind::Table(table) => {
+        for row in table.head.iter().chain(table.rows.iter()) {
           out.push(Visited {
             id: row.id,
             parent: here,
@@ -104,7 +99,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
             walk_inlines(&cell.content, Some(cell.id), out);
           }
         }
-        if let Some(caption) = caption {
+        if let Some(caption) = &table.caption {
           walk_inlines(caption, here, out);
         }
       },
@@ -371,18 +366,13 @@ fn assert_unresolved(nodes: &[HirNode]) {
       },
       HirNodeKind::Theorem(theorem) => assert_unresolved(&theorem.body),
       HirNodeKind::Quote(quote) => assert_unresolved(&quote.body),
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        ..
-      } => {
-        for row in head.iter().chain(rows.iter()) {
+      HirNodeKind::Table(table) => {
+        for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             assert_unresolved_inlines(&cell.content);
           }
         }
-        if let Some(caption) = caption {
+        if let Some(caption) = &table.caption {
           assert_unresolved_inlines(caption);
         }
       },
