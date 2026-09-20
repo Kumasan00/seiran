@@ -375,8 +375,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Space(length) => {
       return vec![LayoutNode::Inline(InlineNode::Kern { length: *length })];
     },
-    HirNodeKind::MathBlock { .. } => {
-      return math::lower_math_block(ctx, node, &*state);
+    HirNodeKind::MathBlock(math) => {
+      return math::lower_math_block(ctx, node.id, math, &*state);
     },
     HirNodeKind::Figure(figure) => {
       return figure::lower_figure(ctx, node.id, figure, state);

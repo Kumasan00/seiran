@@ -55,8 +55,8 @@ pub(crate) use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirFigure, HirGroup, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
-  HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable, HirTableCell,
-  HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
+  HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,
+  HirTableCell, HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
 };
 pub(crate) use math_class::MathClass;
 pub(crate) use math_environment::{MathDelimiter, MathEnvKind};

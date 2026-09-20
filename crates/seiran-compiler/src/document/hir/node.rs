@@ -42,16 +42,7 @@ pub(crate) enum HirNodeKind {
   List(HirList),
 
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
-  MathBlock {
-    /// 環境種別
-    kind: MathEnvKind,
-    /// 行（各行は `&` 区切りの列を持つ）
-    rows: Vec<HirMathRow>,
-    /// 環境全体で 1 つ採番するか（`split` / `multiline` 用）
-    numbered: bool,
-    /// 環境単位のラベル名（`split` / `multiline` の `[label=...]`）
-    label: Option<String>,
-  },
+  MathBlock(HirMathBlock),
 
   /// 図環境（`\begin{figure}...\end{figure}`）
   Figure(HirFigure),
@@ -103,6 +94,19 @@ pub(crate) struct HirList {
   pub(crate) start: Option<u32>,
   /// 項目間の縦アキの上書き。`None` は style.toml の既定値
   pub(crate) item_gap: Option<Length>,
+}
+
+/// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirMathBlock {
+  /// 環境種別
+  pub(crate) kind: MathEnvKind,
+  /// 行（各行は `&` 区切りの列を持つ）
+  pub(crate) rows: Vec<HirMathRow>,
+  /// 環境全体で 1 つ採番するか（`split` / `multiline` 用）
+  pub(crate) numbered: bool,
+  /// 環境単位のラベル名（`split` / `multiline` の `[label=...]`）
+  pub(crate) label: Option<String>,
 }
 
 /// 図環境（`\begin{figure}...\end{figure}`）の内容

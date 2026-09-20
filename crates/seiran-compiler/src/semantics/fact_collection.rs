@@ -158,20 +158,15 @@ impl Checker<'_> {
         }
         self.nodes(&theorem.body);
       },
-      HirNodeKind::MathBlock {
-        rows,
-        numbered,
-        label,
-        ..
-      } => {
+      HirNodeKind::MathBlock(math) => {
         // 環境単位（`split` / `multiline`）と行単位（`align` / `gather` 等）は互いに排他だが、
         // それぞれの `numbered` を独立に見る（「どちらか一方は必ず採番済み」と書くと、
         // 環境側が無採番の `align` 等で誤検出する）。
-        if *numbered {
+        if math.numbered {
           self.require_counter(node.id, "MathBlock");
-          self.require_declared_label(node.id, label.as_deref(), "MathBlock");
+          self.require_declared_label(node.id, math.label.as_deref(), "MathBlock");
         }
-        for row in rows {
+        for row in &math.rows {
           if row.numbered {
             self.require_counter(row.id, "HirMathRow");
             self.require_declared_label(row.id, row.label.as_deref(), "HirMathRow");
@@ -366,18 +361,13 @@ impl Walker<'_> {
           self.list_item(item);
         }
       },
-      HirNodeKind::MathBlock {
-        rows,
-        numbered,
-        label,
-        ..
-      } => {
+      HirNodeKind::MathBlock(math) => {
         // 行 → 環境の順に採番する（環境単位の採番は行採番の後に来る）。
-        for row in rows {
+        for row in &math.rows {
           self.math_row(row, node.id);
         }
-        if *numbered {
-          self.number_and_declare(CounterKind::Counter(CounterName::Equation), node.id, label.as_deref(), node.id);
+        if math.numbered {
+          self.number_and_declare(CounterKind::Counter(CounterName::Equation), node.id, math.label.as_deref(), node.id);
         }
       },
       HirNodeKind::Figure(figure) => {
