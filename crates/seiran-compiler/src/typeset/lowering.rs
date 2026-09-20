@@ -338,31 +338,32 @@ pub(super) fn lower_nodes_inner(
   return result;
 }
 
-/// 単一の `HirNode` をレイアウトノードに変換する（事実は `node.id` で引く）
+/// 単一の `HirNode` をレイアウトノードに変換する
+///
+/// どの種別も `(文脈, ノード, 状態)` の同じ形で子 module へ委譲する。採番値・宣言ラベル・
+/// 参照先は `semantics::analyze` が確定させた事実で、各 lowering が `node.id` をキーに
+/// [`LoweringState`] から引く（dispatcher は事実を先読みしない）。HIR の variant を取り出す
+/// `unreachable!` 付きの分配束縛が各 lowering の先頭にあるのは、`HirNodeKind` の図・表・定理・
+/// 数式ブロックが payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading { .. } => {
       return heading::lower_hir_heading(ctx, node, state);
     },
-    HirNodeKind::Paragraph(inlines) => {
-      return paragraph::lower_paragraph(ctx, inlines, state);
+    HirNodeKind::Paragraph(_) => {
+      return paragraph::lower_paragraph(ctx, node, state);
     },
-    HirNodeKind::List {
-      ordered,
-      items,
-      start,
-      item_gap,
-    } => {
-      return list::lower_list(ctx, *ordered, items, *start, *item_gap, state);
+    HirNodeKind::List { .. } => {
+      return list::lower_list(ctx, node, state);
     },
     HirNodeKind::Theorem { .. } => {
       return theorem::lower_theorem(ctx, node, state);
     },
-    HirNodeKind::Quote { kind, body } => {
-      return quote::lower_quote(ctx, *kind, body, state);
+    HirNodeKind::Quote { .. } => {
+      return quote::lower_quote(ctx, node, state);
     },
-    HirNodeKind::CodeBlock { text } => {
-      return code::lower_code_block(ctx, text);
+    HirNodeKind::CodeBlock { .. } => {
+      return code::lower_code_block(ctx, node);
     },
     HirNodeKind::PageBreak => {
       return vec![LayoutNode::PageBreak];
