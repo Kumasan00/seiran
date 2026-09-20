@@ -11,12 +11,9 @@
 use tracing::debug;
 
 use crate::{
-  document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
+  document::{HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
-  semantics::{
-    BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument,
-    generated_inlines_to_plain_text,
-  },
+  semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
   style::Style as ReadStyle,
   typeset::boxes::AnchorMark,
 };
@@ -344,33 +341,8 @@ pub(super) fn lower_nodes_inner(
 /// 単一の `HirNode` をレイアウトノードに変換する（事実は `node.id` で引く）
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
-    HirNodeKind::Heading {
-      level,
-      title,
-      label: _,
-    } => {
-      // 見出しキーは `semantics::analyze` が文書順に振ったもの。lowering は振り直さず読むだけなので、
-      // 再帰（quote / theorem / list item 本体）を挟んでも `analyzed.headings()` の添字と必ず揃う。
-      let key = state.heading_key(node.id);
-      let label = state.declared_label(node.id).cloned();
-      let number = state
-        .counter_value(node.id)
-        .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
-      // プレーンテキスト（しおり・目次表示）は不変借用でしか作れないので、可変借用が要る
-      // タイトルの lowering より先に済ませる。
-      let plain = hir_inlines_to_plain_text(title, ctx.style, &*state);
-      state.record_heading_title(node.id, plain);
-      let title_style = heading::title_style(ctx, *level);
-      // タイトルの lowering はクロージャで遅延させる。`heading.format` が `{title}` を含まない
-      // なら一度も呼ばれず、タイトル中の `\footnote` が通し index だけ消費して消える事故を防ぐ。
-      return heading::lower_heading(
-        ctx,
-        *level,
-        &number,
-        || return inline::lower_inlines(ctx, title, title_style, state),
-        label,
-        key,
-      );
+    HirNodeKind::Heading { .. } => {
+      return heading::lower_hir_heading(ctx, node, state);
     },
     HirNodeKind::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines, state);
@@ -489,38 +461,6 @@ fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: 
   }
   result.extend(nodes);
   return result;
-}
-
-/// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
-///
-/// `GeneratedInline` 側のプレーンテキスト畳み込み（`semantics` の `generated_inlines_to_plain_text`）と
-/// 同じ規則を保つ。バリアントごとの扱い（数式は `"[Math]"`、脚注・索引は空、`\cite` は整形済み表示を
-/// 辿る等）は同じに保つ。
-fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
-  let mut out = String::new();
-  for inline in inlines {
-    match &inline.kind {
-      HirInlineKind::Text(s) => out.push_str(s),
-      HirInlineKind::Styled { children, .. }
-      | HirInlineKind::Colored { children, .. }
-      | HirInlineKind::Link { children, .. } => {
-        out.push_str(&hir_inlines_to_plain_text(children, style, state));
-      },
-      // 引用の表示は生成物の side table にある（見出しの `\cite` も目次・しおりでは表示を辿る）。
-      // 生成物は `GeneratedInline` なので生成物側の畳み込みをそのまま使う。
-      HirInlineKind::Cite { .. } => {
-        out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
-      },
-      HirInlineKind::Code(text) => out.push_str(text),
-      HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
-      HirInlineKind::Symbol(ch) => out.push(*ch),
-      HirInlineKind::LineBreak => out.push('\n'),
-      // 脚注本体・索引マーカーは見出しのプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
-      HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
-      HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.reference_target(inline.id))),
-    }
-  }
-  return out;
 }
 
 #[cfg(test)]
