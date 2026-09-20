@@ -1,7 +1,7 @@
 //! 段落（`document::HirNodeKind::Paragraph`）の lowering
 
 use crate::{
-  document::{HirInlineKind, HirNode, HirNodeKind},
+  document::{HirInline, HirInlineKind},
   typeset::lowering::{
     LoweringContext, LoweringState,
     inline::lower_inline,
@@ -49,12 +49,9 @@ pub(super) fn assemble_paragraph(
 /// 段落をレイアウトノードに変換する
 pub(super) fn lower_paragraph(
   ctx: &LoweringContext<'_>,
-  node: &HirNode,
+  inlines: &[HirInline],
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let HirNodeKind::Paragraph(inlines) = &node.kind else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::Paragraph arm からだけ呼ばれる: {:?}", node.id)
-  };
   let default_style = body_text_style(ctx);
 
   // `\noindent`（[`HirInlineKind::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は

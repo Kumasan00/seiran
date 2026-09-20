@@ -354,8 +354,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Heading(heading) => {
       return heading::lower_hir_heading(ctx, node.id, heading, state);
     },
-    HirNodeKind::Paragraph(_) => {
-      return paragraph::lower_paragraph(ctx, node, state);
+    HirNodeKind::Paragraph(inlines) => {
+      return paragraph::lower_paragraph(ctx, inlines, state);
     },
     HirNodeKind::List(list) => {
       return list::lower_list(ctx, list, state);
@@ -366,8 +366,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Quote(quote) => {
       return quote::lower_quote(ctx, quote, state);
     },
-    HirNodeKind::CodeBlock { .. } => {
-      return code::lower_code_block(ctx, node);
+    HirNodeKind::CodeBlock(text) => {
+      return code::lower_code_block(ctx, text);
     },
     HirNodeKind::PageBreak => {
       return vec![LayoutNode::PageBreak];

@@ -56,11 +56,8 @@ pub(crate) enum HirNodeKind {
   /// コードブロック（`\begin{code}...\end{code}`）
   ///
   /// 本体は verbatim 読みした生テキストで、改行・空白・字下げをソースのまま保持する
-  /// （インライン要素へは分解しない）。
-  CodeBlock {
-    /// コード本体（前後の改行トリム済み。行区切りは `\n`）
-    text: String,
-  },
+  /// （インライン要素へは分解しない）。前後の改行はトリム済みで、行区切りは `\n`。
+  CodeBlock(String),
 
   /// 引用ブロック（`\begin{quote}` / `\begin{quotation}`）
   Quote(HirQuote),
