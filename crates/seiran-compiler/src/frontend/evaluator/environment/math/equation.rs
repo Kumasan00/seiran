@@ -25,7 +25,7 @@ const NUMBERED: OptKey<bool> = opt_args::boolean("numbered");
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   let opts = collect_environment_opt_args(view, &[LABEL.decl(), NUMBERED.decl()])?;
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let label = opts.get(LABEL);
@@ -63,7 +63,7 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
     // `HirMathRow::label_site` は「環境 span へフォールバック」を意味する None にする
     label_site: None,
   };
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock {
       kind: MathEnvKind::Equation,
@@ -71,7 +71,7 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
       numbered: false,
       label: None,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

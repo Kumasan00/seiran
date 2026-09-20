@@ -26,13 +26,13 @@ pub(super) fn styled_text(
   ctx: &EvalContext<'_>,
   kind: FontKind,
   index_policy: IndexPolicy,
-) -> Result<Vec<HirInline>, EvalError> {
+) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "テキスト")?;
 
   let id = ctx.alloc(view.span());
   let children = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
-  return Ok(vec![HirInline::new(id, HirInlineKind::Styled { kind, children })]);
+  return Ok(HirInline::new(id, HirInlineKind::Styled { kind, children }));
 }
 
 /// `\color[color=#rrggbb]{...}` を評価し、子要素を `HirInlineKind::Colored` でラップする
@@ -46,7 +46,7 @@ pub(super) fn colored_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
-) -> Result<Vec<HirInline>, EvalError> {
+) -> Result<HirInline, EvalError> {
   let opts = collect_command_opt_args(view, &[COLOR.decl()])?;
   let Some(color) = opts.get(COLOR) else {
     return Err(EvalError::MissingCommandArgument {
@@ -59,10 +59,7 @@ pub(super) fn colored_text(
 
   let id = ctx.alloc(view.span());
   let children = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
-  return Ok(vec![HirInline::new(
-    id,
-    HirInlineKind::Colored { color, children },
-  )]);
+  return Ok(HirInline::new(id, HirInlineKind::Colored { color, children }));
 }
 
 #[cfg(test)]
@@ -70,7 +67,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{run_inline_handler, test_support};
+  use crate::frontend::evaluator::{run_handler, test_support};
 
   #[test]
   fn bold_creates_styled_node() {
@@ -81,12 +78,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result =
-      run_inline_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
 
     // Assert
-    assert_eq!(result.len(), 1);
-    match &result[0].kind {
+    match &result.kind {
       HirInlineKind::Styled { kind, children } => {
         assert_eq!(*kind, FontKind::SerifBold);
         assert_eq!(children.len(), 1);
@@ -105,11 +100,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result =
-      run_inline_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
 
     // Assert
-    let HirInlineKind::Styled { kind, children } = &result[0].kind else {
+    let HirInlineKind::Styled { kind, children } = &result.kind else {
       panic!("Styled が期待されます");
     };
     assert_eq!(*kind, FontKind::SerifBold);
@@ -130,7 +124,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)),
+      run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -143,7 +137,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)),
+      run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -157,7 +151,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
@@ -172,11 +166,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
 
     // Assert
-    assert_eq!(result.len(), 1);
-    let HirInlineKind::Colored { color, children } = &result[0].kind else {
+    let HirInlineKind::Colored { color, children } = &result.kind else {
       panic!("Colored が期待されます: {result:?}");
     };
     assert_eq!(*color, Color::new(0xff, 0x00, 0x00));
@@ -192,7 +185,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)),
+      run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -205,7 +198,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_inline_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
+      matches!(run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
     );
   }
 
@@ -217,7 +210,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_inline_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)),
+      run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -231,10 +224,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
 
     // Assert
-    let HirInlineKind::Colored { color, children } = &result[0].kind else {
+    let HirInlineKind::Colored { color, children } = &result.kind else {
       panic!("Colored が期待されます: {result:?}");
     };
     assert_eq!(*color, Color::new(0x00, 0x00, 0xff));

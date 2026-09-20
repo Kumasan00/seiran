@@ -31,7 +31,7 @@ const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   let opts = collect_environment_opt_args(view, &[LABEL.decl()])?;
   let label = opts.get(LABEL);
 
@@ -94,7 +94,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     });
   };
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Figure {
       image_path: ctx.resolve_path(&image_path),
@@ -106,7 +106,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
       caption_position,
       label,
     },
-  )]);
+  ));
 }
 
 /// `\image` から抽出される情報の集約構造体

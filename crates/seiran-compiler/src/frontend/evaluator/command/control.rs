@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰・数値でない場合にエラーを返します
-pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "スペース量（数値）")?;
 
@@ -40,7 +40,7 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec
     },
   };
 
-  return Ok(vec![ctx.leaf_node(view.span(), HirNodeKind::Space(Length::pt(space_value)))]);
+  return Ok(ctx.leaf_node(view.span(), HirNodeKind::Space(Length::pt(space_value))));
 }
 
 /// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
@@ -61,10 +61,10 @@ pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_command_opt_args(view)?;
   arity::no_args(view)?;
-  return Ok(vec![ctx.leaf_node(view.span(), HirNodeKind::PageBreak)]);
+  return Ok(ctx.leaf_node(view.span(), HirNodeKind::PageBreak));
 }
 
 #[cfg(test)]
@@ -72,7 +72,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{evaluate_children_to_hir, run_block_handler, test_support};
+  use crate::frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support};
 
   #[test]
   fn space_rejects_unknown_opt_arg_key() {
@@ -83,7 +83,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|ctx| return space(&view, ctx));
+    let result = run_handler(|ctx| return space(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
@@ -143,10 +143,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|ctx| return pagebreak(&view, ctx));
+    let result = run_handler(|ctx| return pagebreak(&view, ctx)).unwrap();
 
     // Assert
-    assert!(matches!(result.as_deref(), Ok([node]) if matches!(node.kind, HirNodeKind::PageBreak)));
+    assert!(matches!(result.kind, HirNodeKind::PageBreak));
   }
 
   #[test]
@@ -158,7 +158,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|ctx| return pagebreak(&view, ctx));
+    let result = run_handler(|ctx| return pagebreak(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
@@ -173,7 +173,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|ctx| return pagebreak(&view, ctx));
+    let result = run_handler(|ctx| return pagebreak(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));

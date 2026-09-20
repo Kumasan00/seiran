@@ -25,7 +25,7 @@ use crate::{
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   let opts = collect_table_opts(view)?;
 
   arity::no_environment_args(view)?;
@@ -50,7 +50,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
   let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Table {
       columns,
@@ -62,7 +62,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
       label: opts.label,
       breakable: opts.breakable,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

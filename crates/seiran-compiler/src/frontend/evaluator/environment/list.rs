@@ -31,11 +31,7 @@ const UNORDERED_SCHEMA: &[OptDecl] = &[ITEM_GAP.decl()];
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-pub(super) fn list(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-  ordered: bool,
-) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn list(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool) -> Result<HirNode, EvalError> {
   let schema = if ordered {
     ORDERED_SCHEMA
   } else {
@@ -67,7 +63,7 @@ pub(super) fn list(
     }
   }
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::List {
       ordered,
@@ -75,7 +71,7 @@ pub(super) fn list(
       start,
       item_gap,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

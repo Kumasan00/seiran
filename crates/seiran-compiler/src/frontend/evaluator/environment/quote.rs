@@ -15,11 +15,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-  kind: QuoteKind,
-) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, kind: QuoteKind) -> Result<HirNode, EvalError> {
   opt_args::no_environment_opt_args(view)?;
   arity::no_environment_args(view)?;
 
@@ -29,7 +25,7 @@ pub(super) fn quote(
     None => Vec::new(),
   };
 
-  return Ok(vec![HirNode::new(id, HirNodeKind::Quote { kind, body })]);
+  return Ok(HirNode::new(id, HirNodeKind::Quote { kind, body }));
 }
 
 #[cfg(test)]

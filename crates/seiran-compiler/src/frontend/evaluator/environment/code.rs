@@ -20,7 +20,7 @@ use crate::{
 ///
 /// 任意引数が指定された場合にエラーを返します（言語指定 `[language=...]` は
 /// ハイライト段の issue でキー名と受理を決めるまで未知キーとして拒否する。P6）。
-pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_environment_opt_args(view)?;
   let text = match view.body() {
     Some(body) => trim_edge_newlines(&extract_text_content(view.source(), body)).to_string(),
@@ -28,7 +28,7 @@ pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<
   };
 
   let id = ctx.alloc(view.span());
-  return Ok(vec![HirNode::new(id, HirNodeKind::CodeBlock { text })]);
+  return Ok(HirNode::new(id, HirNodeKind::CodeBlock { text }));
 }
 
 /// 本体先頭・末尾の改行を 1 個ずつ落とす

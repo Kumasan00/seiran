@@ -76,12 +76,12 @@ impl EnvironmentKind {
     };
   }
 
-  /// 環境を評価して `Vec<HirNode>` を生成する
+  /// 環境を評価して `HirNode` を生成する
   ///
   /// # Errors
   ///
   /// ハンドラ実行中のエラーが発生した場合
-  fn evaluate(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+  fn evaluate(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
     return match self {
       Self::List { ordered } => list::list(view, ctx, ordered),
       Self::Theorem(class) => theorem::theorem(view, ctx, class),
@@ -159,15 +159,12 @@ pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
   return ENVIRONMENTS.get(name).map_or(BodyMode::Text, |kind| return kind.body_mode());
 }
 
-/// 環境を評価し、対応する `Vec<HirNode>` を生成する
+/// 環境を評価し、対応する `HirNode` を生成する
 ///
 /// # Errors
 ///
 /// 未知の環境やハンドラ実行中のエラーが発生した場合
-pub(crate) fn evaluate_environment(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   return match ENVIRONMENTS.get(view.name()) {
     Some(kind) => kind.evaluate(view, ctx),
     None => Err(EvalError::UnknownEnvironment {

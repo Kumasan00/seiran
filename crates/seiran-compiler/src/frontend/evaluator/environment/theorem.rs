@@ -33,7 +33,7 @@ pub(super) fn theorem(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
   class: TheoremClass,
-) -> Result<Vec<HirNode>, EvalError> {
+) -> Result<HirNode, EvalError> {
   let schema = if class == TheoremClass::Proof {
     PROOF_SCHEMA
   } else {
@@ -58,7 +58,7 @@ pub(super) fn theorem(
     None => Vec::new(),
   };
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Theorem {
       class,
@@ -67,7 +67,7 @@ pub(super) fn theorem(
       of,
       label,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

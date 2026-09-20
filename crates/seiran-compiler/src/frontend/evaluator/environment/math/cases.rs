@@ -19,7 +19,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
-pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_environment_opt_args(view)?;
   arity::no_environment_args(view)?;
 
@@ -46,7 +46,7 @@ pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
     });
   }
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock {
       kind: MathEnvKind::Cases,
@@ -54,7 +54,7 @@ pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
       numbered: false,
       label: None,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

@@ -26,13 +26,13 @@ pub(super) fn footnote_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
-) -> Result<Vec<HirInline>, EvalError> {
+) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "脚注本体")?;
 
   let id = ctx.alloc(view.span());
   let body = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
-  return Ok(vec![HirInline::new(id, HirInlineKind::Footnote { body })]);
+  return Ok(HirInline::new(id, HirInlineKind::Footnote { body }));
 }
 
 #[cfg(test)]
@@ -42,7 +42,7 @@ mod tests {
   use super::*;
   use crate::{
     document::FontKind,
-    frontend::evaluator::{run_inline_handler, test_support},
+    frontend::evaluator::{run_handler, test_support},
   };
 
   #[test]
@@ -54,11 +54,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
 
     // Assert
-    assert_eq!(result.len(), 1);
-    let HirInlineKind::Footnote { body } = &result[0].kind else {
+    let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
@@ -74,10 +73,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
 
     // Assert
-    let HirInlineKind::Footnote { body } = &result[0].kind else {
+    let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
@@ -97,7 +96,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "footnote"));
@@ -112,7 +111,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "footnote"));
@@ -127,7 +126,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));

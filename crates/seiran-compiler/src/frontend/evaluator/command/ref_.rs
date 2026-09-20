@@ -13,12 +13,12 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn ref_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
+pub(super) fn ref_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "ラベル名")?;
 
   let label = extract_text_content(view.source(), first_arg).trim().to_string();
-  return Ok(vec![ctx.leaf_inline(view.span(), HirInlineKind::Ref { label })]);
+  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Ref { label }));
 }
 
 #[cfg(test)]
@@ -26,7 +26,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{run_inline_handler, test_support};
+  use crate::frontend::evaluator::{run_handler, test_support};
 
   #[test]
   fn ref_produces_inline_ref_stub() {
@@ -37,11 +37,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return ref_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return ref_command(&view, ctx)).unwrap();
 
     // Assert
-    assert_eq!(result.len(), 1);
-    let HirInlineKind::Ref { label } = &result[0].kind else {
+    let HirInlineKind::Ref { label } = &result.kind else {
       panic!("Ref が期待されます");
     };
     assert_eq!(label, "sec:intro");
@@ -56,7 +55,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return ref_command(&view, ctx));
+    let result = run_handler(|ctx| return ref_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "ref"));
@@ -71,7 +70,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return ref_command(&view, ctx));
+    let result = run_handler(|ctx| return ref_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"));
@@ -86,7 +85,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|ctx| return ref_command(&view, ctx));
+    let result = run_handler(|ctx| return ref_command(&view, ctx));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
