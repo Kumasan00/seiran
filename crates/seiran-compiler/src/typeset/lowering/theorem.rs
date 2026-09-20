@@ -53,7 +53,7 @@ pub(super) fn lower_theorem(
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
-    if matches!(body.last(), Some(node) if matches!(node.kind, HirNodeKind::Paragraph(_))) {
+    if matches!(body.last(), Some(last) if matches!(last.kind, HirNodeKind::Paragraph(_))) {
       let insert_at = body_nodes.len().saturating_sub(1);
       body_nodes.insert(insert_at, qed_node);
     } else {

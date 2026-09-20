@@ -340,11 +340,15 @@ pub(super) fn lower_nodes_inner(
 
 /// 単一の `HirNode` をレイアウトノードに変換する
 ///
-/// どの種別も `(文脈, ノード, 状態)` の同じ形で子 module へ委譲する。採番値・宣言ラベル・
-/// 参照先は `semantics::analyze` が確定させた事実で、各 lowering が `node.id` をキーに
-/// [`LoweringState`] から引く（dispatcher は事実を先読みしない）。HIR の variant を取り出す
-/// `unreachable!` 付きの分配束縛が各 lowering の先頭にあるのは、`HirNodeKind` の図・表・定理・
-/// 数式ブロックが payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
+/// 委譲する 9 種別（`Heading` / `Paragraph` / `List` / `Theorem` / `Quote` / `CodeBlock` /
+/// `MathBlock` / `Figure` / `Table`）はすべて `(文脈, ノード, ...)` の同じ形で子 module へ渡す。
+/// `CodeBlock` は事実を読まないので `state` を取らず `(ctx, node)` に、残り 8 種は
+/// `(ctx, node, state)` になる。
+/// 採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、各 lowering が `node.id` を
+/// キーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。`PageBreak` / `Space` は
+/// 委譲せず、この関数がその場でノードを組む。委譲する 9 種別すべての lowering の先頭に、`HirNodeKind`
+/// の variant を取り出す `unreachable!` 付きの分配束縛があるのは、`HirNodeKind` の各 variant が
+/// payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading { .. } => {
@@ -691,7 +695,7 @@ mod tests {
   }
 
   #[test]
-  fn display_math_label_anchors_keep_env_then_reversed_row_order() {
+  fn display_math_row_label_anchors_are_reversed() {
     // Arrange
     let style = ReadStyle::default();
 

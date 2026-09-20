@@ -786,18 +786,20 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
-- **dispatcher の委譲は 1 形**。`lower_node_indexed` はどの種別も `(文脈, ノード, 状態)` で子 module へ
-  渡し、採番値・宣言ラベル・参照先は各 lowering が `NodeId` で `LoweringState` から引く（dispatcher は
-  事実を先読みしない）。図と表は「番号 → 本体 → キャプション → 包み → ラベルアンカー」が同形なので
-  `lowering/float.rs` の共通経路 1 本に寄せ、本体ノードの作り方だけをクロージャで受け取る（本体を
-  キャプションより先に組むことで、表セルの `\footnote` がキャプションの `\footnote` より先に番号を取る
-  本文の出現順を保つ）
-- **HIR の variant は payload struct にしていない**（見送り。#673 のスコープ外）。`HirNodeKind` の図・表・
-  定理・数式ブロックがインラインのフィールドを持つため、各 lowering の先頭に「自分の variant を取り出す
-  `unreachable!` 付きの分配束縛」が 1 行ずつ残る（`lowering::lower_node_indexed の HirNodeKind::<X> arm
-  からだけ呼ばれる` で grep できる）。**再検討のトリガー**: `HirNodeKind` を payload struct にする issue に
-  着手するとき（`document` / `frontend` / `semantics` へ波及する）。payload struct にすれば、この分配束縛は
-  引数の型としてそのまま消える
+- **dispatcher の委譲は 1 形**。`lower_node_indexed` は委譲する 9 種別（Heading / Paragraph / List /
+  Theorem / Quote / CodeBlock / MathBlock / Figure / Table）をすべて `(文脈, ノード, ...)` で子 module へ
+  渡す。`CodeBlock` は事実を読まないので `state` を取らず `(ctx, node)`、残り 8 種は `(ctx, node, state)`。
+  `PageBreak` / `Space` は委譲せず dispatcher がその場でノードを組む。採番値・宣言ラベル・参照先は各
+  lowering が `NodeId` で `LoweringState` から引く（dispatcher は事実を先読みしない）。図と表は
+  「番号 → 本体 → キャプション → 包み → ラベルアンカー」が同形なので `lowering/float.rs` の共通経路 1 本に
+  寄せ、本体ノードの作り方だけをクロージャで受け取る（本体をキャプションより先に組むことで、表セルの
+  `\footnote` がキャプションの `\footnote` より先に番号を取る本文の出現順を保つ）
+- **HIR の variant は payload struct にしていない**（見送り。#673 のスコープ外）。`HirNodeKind` は
+  委譲する 9 種別（Heading 〜 Table）すべてがインラインのフィールドを持つため、各 lowering の先頭に
+  「自分の variant を取り出す `unreachable!` 付きの分配束縛」が 1 行ずつ残る（`lowering::lower_node_indexed
+  の HirNodeKind::<X> arm からだけ呼ばれる` で grep できる）。**再検討のトリガー**: `HirNodeKind` を
+  payload struct にする issue に着手するとき（`document` / `frontend` / `semantics` へ波及する）。
+  payload struct にすれば、この分配束縛は引数の型としてそのまま消える
 - **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
