@@ -357,8 +357,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Paragraph(_) => {
       return paragraph::lower_paragraph(ctx, node, state);
     },
-    HirNodeKind::List { .. } => {
-      return list::lower_list(ctx, node, state);
+    HirNodeKind::List(list) => {
+      return list::lower_list(ctx, list, state);
     },
     HirNodeKind::Theorem(theorem) => {
       return theorem::lower_theorem(ctx, node.id, theorem, state);

@@ -129,25 +129,12 @@ mod tests {
   /// [`same_shape`] のブロックノード 1 個分の比較
   fn same_node_shape(a: &HirNodeKind, b: &HirNodeKind) -> bool {
     return match (a, b) {
-      (
-        HirNodeKind::List {
-          ordered: o1,
-          items: i1,
-          start: s1,
-          item_gap: g1,
-        },
-        HirNodeKind::List {
-          ordered: o2,
-          items: i2,
-          start: s2,
-          item_gap: g2,
-        },
-      ) => {
-        o1 == o2
-          && s1 == s2
-          && g1 == g2
-          && i1.len() == i2.len()
-          && i1.iter().zip(i2).all(|(x, y)| {
+      (HirNodeKind::List(a), HirNodeKind::List(b)) => {
+        a.ordered == b.ordered
+          && a.start == b.start
+          && a.item_gap == b.item_gap
+          && a.items.len() == b.items.len()
+          && a.items.iter().zip(&b.items).all(|(x, y)| {
             return x.marker == y.marker && x.item_gap == y.item_gap && same_shape(&x.content, &y.content);
           })
       },
@@ -723,9 +710,9 @@ mod tests {
     let result = evaluate_source("\\begin{enumerate}\\item{First}\\item{Second}\\end{enumerate}");
     assert_eq!(result.len(), 1);
     match &result[0].kind {
-      HirNodeKind::List { ordered, items, .. } => {
-        assert!(ordered);
-        assert_eq!(items.len(), 2);
+      HirNodeKind::List(list) => {
+        assert!(list.ordered);
+        assert_eq!(list.items.len(), 2);
       },
       _ => panic!("List が期待されます"),
     }
@@ -829,9 +816,9 @@ mod tests {
     let result = evaluate_source("\\begin{itemize}\\item{A}\\item{B}\\end{itemize}");
     assert_eq!(result.len(), 1);
     match &result[0].kind {
-      HirNodeKind::List { ordered, items, .. } => {
-        assert!(!ordered);
-        assert_eq!(items.len(), 2);
+      HirNodeKind::List(list) => {
+        assert!(!list.ordered);
+        assert_eq!(list.items.len(), 2);
       },
       _ => panic!("List が期待されます"),
     }
@@ -1103,7 +1090,7 @@ mod tests {
       panic!("Quote が期待されます: {result:?}");
     };
     assert_eq!(quote.body.len(), 1, "空白のみの段落が生成されてはいけない: {:?}", quote.body);
-    assert!(matches!(&quote.body[0].kind, HirNodeKind::List { .. }));
+    assert!(matches!(&quote.body[0].kind, HirNodeKind::List(_)));
   }
 
   #[test]
@@ -1240,7 +1227,7 @@ mod tests {
   fn evaluate_index_in_list_item() {
     let result = evaluate_source("\\begin{itemize}\\item{項目\\index{語}}\\end{itemize}");
     assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0].kind, HirNodeKind::List { .. }));
+    assert!(matches!(&result[0].kind, HirNodeKind::List(_)));
   }
 
   #[test]

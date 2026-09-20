@@ -54,8 +54,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
     match &node.kind {
       HirNodeKind::Heading(heading) => walk_inlines(&heading.title, here, out),
       HirNodeKind::Paragraph(inlines) => walk_inlines(inlines, here, out),
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           out.push(Visited {
             id: item.id,
             parent: here,
@@ -364,8 +364,8 @@ fn assert_unresolved(nodes: &[HirNode]) {
     match &node.kind {
       HirNodeKind::Heading(heading) => assert_unresolved_inlines(&heading.title),
       HirNodeKind::Paragraph(inlines) => assert_unresolved_inlines(inlines),
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           assert_unresolved(&item.content);
         }
       },
