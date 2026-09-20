@@ -10,7 +10,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
-      lower_nodes_inner, with_label_anchor,
+      lower_nodes_inner, with_label_anchors,
     },
   },
 };
@@ -59,7 +59,7 @@ pub(super) fn lower_theorem(
     length: pres.bottom_margin,
   });
 
-  return with_label_anchor(label, nodes);
+  return with_label_anchors(label, nodes);
 }
 
 /// 定理見出し（独立行）の `VBox` を構築する

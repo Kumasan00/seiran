@@ -435,7 +435,7 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
           length: block.bottom_margin,
         },
       ];
-      return with_label_anchors(&anchor_labels, nodes);
+      return with_label_anchors(anchor_labels, nodes);
     },
     HirNodeKind::Figure {
       image_path,
@@ -458,7 +458,7 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
         downsample: *downsample,
       };
       let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number, state);
-      return with_label_anchor(label, nodes);
+      return with_label_anchors(label, nodes);
     },
     HirNodeKind::Table {
       columns,
@@ -477,29 +477,25 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
       let label = state.declared_label(node.id);
       let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
       let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable, state);
-      return with_label_anchor(label, nodes);
+      return with_label_anchors(label, nodes);
     },
   }
 }
 
-/// ラベル付きブロック（図・表・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
-fn with_label_anchor(label: Option<&LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  let Some(label) = label else {
-    return nodes;
-  };
-  let mut result = Vec::with_capacity(nodes.len() + 1);
-  result.push(LayoutNode::Anchor(AnchorMark::Label(label.clone())));
-  result.extend(nodes);
-  return result;
-}
-
-/// 複数のラベルを先頭からこの順でアンカーとして 1 回の構築でまとめて付与する
-fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  if labels.is_empty() {
+/// ラベル付きブロック（図・表・定理・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
+///
+/// `labels` に与えた順でアンカーが並ぶ。図・表・定理はラベルを高々 1 つ持つので `Option<&LabelId>` を、
+/// ディスプレイ数式は環境ラベルと行ラベルを積んだ `Vec<&LabelId>` を渡す（複数行がラベルを持つ場合も、
+/// いずれもブロック先頭座標に解決される）。
+fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
+  let mut result: Vec<LayoutNode> = labels
+    .into_iter()
+    .map(|label| return LayoutNode::Anchor(AnchorMark::Label(label.clone())))
+    .collect();
+  // ラベルの無いブロック（大半がこれ）では `nodes` をそのまま返し、詰め替えを避ける
+  if result.is_empty() {
     return nodes;
   }
-  let mut result = Vec::with_capacity(nodes.len() + labels.len());
-  result.extend(labels.iter().map(|label| return LayoutNode::Anchor(AnchorMark::Label((*label).clone()))));
   result.extend(nodes);
   return result;
 }
