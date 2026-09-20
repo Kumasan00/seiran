@@ -3,7 +3,7 @@
 use std::slice;
 
 use crate::{
-  document::{FontKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathVariant},
+  document::{FontKind, HirMath, HirMathBlock, HirMathKind, MathClass, MathVariant, NodeId},
   length::Length,
   semantics::LabelId,
   style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
@@ -36,23 +36,15 @@ fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
 /// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext<'_>,
-  node: &HirNode,
+  id: NodeId,
+  math: &HirMathBlock,
   state: &LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let HirNodeKind::MathBlock {
-    kind,
-    rows,
-    numbered: _,
-    label: _,
-  } = &node.kind
-  else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::MathBlock arm からだけ呼ばれる: {:?}", node.id)
-  };
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
 
-  let mut layout_rows = Vec::with_capacity(rows.len());
-  for row in rows {
+  let mut layout_rows = Vec::with_capacity(math.rows.len());
+  for row in &math.rows {
     let cells = row
       .cells
       .iter()
@@ -65,7 +57,7 @@ pub(super) fn lower_math_block(
   }
 
   let env_number = state
-    .counter_value(node.id)
+    .counter_value(id)
     .map(|value| return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size));
 
   let nodes = vec![
@@ -73,7 +65,7 @@ pub(super) fn lower_math_block(
       length: block.top_margin,
     },
     LayoutNode::MathBlock(MathBlockLayout {
-      kind: *kind,
+      kind: math.kind,
       rows: layout_rows,
       env_number,
       align: alignment_to_align(block.alignment),
@@ -90,12 +82,12 @@ pub(super) fn lower_math_block(
   // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
   // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する。
   let mut anchor_labels: Vec<&LabelId> = Vec::new();
-  if let Some(env_label) = state.declared_label(node.id) {
+  if let Some(env_label) = state.declared_label(id) {
     anchor_labels.push(env_label);
   }
   // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで再現するため。
   // `with_label_anchors` は与えた順にアンカーを並べる）
-  anchor_labels.extend(rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
+  anchor_labels.extend(math.rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
 
   return with_label_anchors(anchor_labels, nodes);
 }

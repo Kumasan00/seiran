@@ -1,7 +1,7 @@
 //! 引用ブロック（`document::HirNodeKind::Quote`）の lowering
 
 use crate::{
-  document::{HirNode, HirNodeKind},
+  document::HirQuote,
   length::Length,
   typeset::{
     boxes::Align,
@@ -10,19 +10,20 @@ use crate::{
 };
 
 /// 引用ブロックをレイアウトノードに変換する
-pub(super) fn lower_quote(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
-  let HirNodeKind::Quote { kind, body } = &node.kind else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::Quote arm からだけ呼ばれる: {:?}", node.id)
-  };
+pub(super) fn lower_quote(
+  ctx: &LoweringContext<'_>,
+  quote: &HirQuote,
+  state: &mut LoweringState<'_>,
+) -> Vec<LayoutNode> {
   let style = &ctx.style.quote;
 
-  let first_line_indent = if kind.indents_first_line() {
+  let first_line_indent = if quote.kind.indents_first_line() {
     style.first_line_indent
   } else {
     Length::pt(0.0)
   };
   let body_ctx = ctx.with_body_font_kind(style.font_kind).with_first_line_indent(first_line_indent);
-  let children = lower_nodes_inner(&body_ctx, body, state);
+  let children = lower_nodes_inner(&body_ctx, &quote.body, state);
 
   return vec![
     LayoutNode::Vkern {

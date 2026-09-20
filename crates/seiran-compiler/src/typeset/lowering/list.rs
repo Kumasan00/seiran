@@ -1,7 +1,7 @@
 //! リスト（`document::HirNodeKind::List`）の lowering
 
 use crate::{
-  document::{HirNode, HirNodeKind},
+  document::HirList,
   length::Length,
   typeset::{
     boxes::Align,
@@ -14,16 +14,7 @@ use crate::{
 };
 
 /// リストをレイアウトノードに変換する
-pub(super) fn lower_list(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
-  let HirNodeKind::List {
-    ordered,
-    items,
-    start,
-    item_gap,
-  } = &node.kind
-  else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::List arm からだけ呼ばれる: {:?}", node.id)
-  };
+pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   let list_style = &ctx.style.list;
   let depth = ctx.list_depth;
   let mut result = Vec::new();
@@ -38,16 +29,16 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut 
     color: None,
   };
 
-  for (i, item) in items.iter().enumerate() {
+  for (i, item) in list.items.iter().enumerate() {
     // マーカーの生成。`\item[marker=...]` による個別上書きがあれば自動生成より優先する。
     // 連番カウンタ n はこの上書きと独立に i から算出するため、上書きされた項目があっても
     // 後続項目の自動番号はズレない。
-    let base = start.unwrap_or(1);
+    let base = list.start.unwrap_or(1);
     let offset = u32::try_from(i).expect("リスト項目数は u32 に収まる前提");
     let n = base.saturating_add(offset);
     let marker_body = if let Some(marker) = &item.marker {
       marker.clone()
-    } else if *ordered {
+    } else if list.ordered {
       if depth == 0 {
         list_style.ordered_marker_format.expand(&n.to_string())
       } else {
@@ -73,7 +64,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut 
 
     result.push(LayoutNode::VBox {
       children: item_nodes,
-      margin_bottom: item.item_gap.or(*item_gap).unwrap_or(list_style.item_margin_bottom),
+      margin_bottom: item.item_gap.or(list.item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
       right_indent: Length::pt(0.0),
       align: Align::Left,

@@ -10,7 +10,7 @@ use body::{resolve_column_count, scan_table_body};
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
 use crate::{
-  document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind},
+  document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind, HirTable},
   frontend::{
     evaluator::{EvalContext, EvalError, arity},
     syntax::view::EnvironmentView,
@@ -52,7 +52,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
 
   return Ok(HirNode::new(
     id,
-    HirNodeKind::Table {
+    HirNodeKind::Table(HirTable {
       columns,
       widths,
       head: body.head,
@@ -61,7 +61,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
       caption_position: body.caption_position,
       label: opts.label,
       breakable: opts.breakable,
-    },
+    }),
   ));
 }
 
@@ -137,32 +137,21 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Table {
-      columns,
-      widths,
-      head,
-      rows,
-      caption,
-      caption_position,
-      label,
-      breakable,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {:?}", result[0]);
     };
-    assert_eq!(columns, &[ColumnAlign::Left, ColumnAlign::Center, ColumnAlign::Right]);
-    assert_eq!(widths.len(), 3);
-    assert!(matches!(widths[0], ColumnWidth::Auto));
-    assert!(matches!(widths[1], ColumnWidth::Auto));
-    assert!(matches!(widths[2], ColumnWidth::Fixed(l) if (l.to_mm() - 50.0).abs() < 1e-3));
-    assert_eq!(row_texts(head), vec![vec!["Name", "Score", "Rank"]]);
-    assert_eq!(row_texts(rows), vec![vec!["Alice", "92", "1"], vec!["Bob", "88", "2"]]);
-    let caption = caption.as_ref().expect("caption あり");
+    assert_eq!(table.columns, &[ColumnAlign::Left, ColumnAlign::Center, ColumnAlign::Right]);
+    assert_eq!(table.widths.len(), 3);
+    assert!(matches!(table.widths[0], ColumnWidth::Auto));
+    assert!(matches!(table.widths[1], ColumnWidth::Auto));
+    assert!(matches!(table.widths[2], ColumnWidth::Fixed(l) if (l.to_mm() - 50.0).abs() < 1e-3));
+    assert_eq!(row_texts(&table.head), vec![vec!["Name", "Score", "Rank"]]);
+    assert_eq!(row_texts(&table.rows), vec![vec!["Alice", "92", "1"], vec!["Bob", "88", "2"]]);
+    let caption = table.caption.as_ref().expect("caption あり");
     assert_eq!(hir_inlines_to_plain_text(caption), "得点表");
-    assert_eq!(*caption_position, CaptionPosition::Bottom);
-    assert!(label.is_none());
-    assert!(*breakable);
+    assert_eq!(table.caption_position, CaptionPosition::Bottom);
+    assert!(table.label.is_none());
+    assert!(table.breakable);
   }
 
   #[test]
@@ -174,13 +163,10 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table {
-      caption_position, ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert_eq!(*caption_position, CaptionPosition::Top);
+    assert_eq!(table.caption_position, CaptionPosition::Top);
   }
 
   #[test]
@@ -192,14 +178,11 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table {
-      columns, widths, ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert_eq!(columns, &[ColumnAlign::Left; 3]);
-    assert_eq!(widths, &[ColumnWidth::Auto; 3]);
+    assert_eq!(table.columns, &[ColumnAlign::Left; 3]);
+    assert_eq!(table.widths, &[ColumnWidth::Auto; 3]);
   }
 
   #[test]
@@ -211,17 +194,17 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert_eq!(rows.len(), 2);
-    assert!(!rows[0].rule_above);
-    assert!(rows[1].rule_above);
-    assert_eq!(rows[1].cells.len(), 2);
-    assert_eq!(rows[1].cells[0].span, 2);
-    assert_eq!(hir_inlines_to_plain_text(&rows[1].cells[0].content), "合計");
-    assert_eq!(rows[1].cells[1].span, 1);
-    assert_eq!(hir_inlines_to_plain_text(&rows[1].cells[1].content), "180");
+    assert_eq!(table.rows.len(), 2);
+    assert!(!table.rows[0].rule_above);
+    assert!(table.rows[1].rule_above);
+    assert_eq!(table.rows[1].cells.len(), 2);
+    assert_eq!(table.rows[1].cells[0].span, 2);
+    assert_eq!(hir_inlines_to_plain_text(&table.rows[1].cells[0].content), "合計");
+    assert_eq!(table.rows[1].cells[1].span, 1);
+    assert_eq!(hir_inlines_to_plain_text(&table.rows[1].cells[1].content), "180");
   }
 
   #[test]
@@ -290,12 +273,12 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table { widths, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert!(matches!(widths[0], ColumnWidth::Ratio(r) if (r - 0.3).abs() < 1e-6));
-    assert!(matches!(widths[1], ColumnWidth::Flex));
-    assert!(matches!(widths[2], ColumnWidth::Auto));
+    assert!(matches!(table.widths[0], ColumnWidth::Ratio(r) if (r - 0.3).abs() < 1e-6));
+    assert!(matches!(table.widths[1], ColumnWidth::Flex));
+    assert!(matches!(table.widths[2], ColumnWidth::Auto));
   }
 
   #[test]
@@ -408,14 +391,14 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 2);
-    let HirNodeKind::Table { label, .. } = &result[0].kind else {
+    let HirNodeKind::Table(first) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert_eq!(label.as_deref(), Some("tab:a"));
-    let HirNodeKind::Table { label, .. } = &result[1].kind else {
+    assert_eq!(first.label.as_deref(), Some("tab:a"));
+    let HirNodeKind::Table(second) = &result[1].kind else {
       panic!("Table が期待されます");
     };
-    assert!(label.is_none());
+    assert!(second.label.is_none());
   }
 
   #[test]
@@ -427,10 +410,10 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table { breakable, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert!(!breakable);
+    assert!(!table.breakable);
   }
 
   #[test]
@@ -442,10 +425,10 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert_eq!(row_texts(rows), vec![vec!["Alice", "92"]]);
+    assert_eq!(row_texts(&table.rows), vec![vec!["Alice", "92"]]);
   }
 
   #[test]
@@ -457,17 +440,17 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert!(matches!(
-      &rows[0].cells[0].content[0].kind,
+      &table.rows[0].cells[0].content[0].kind,
       HirInlineKind::Styled {
         kind: FontKind::SerifBold,
         ..
       }
     ));
-    assert!(matches!(&rows[0].cells[1].content[0].kind, HirInlineKind::InlineMath(_)));
+    assert!(matches!(&table.rows[0].cells[1].content[0].kind, HirInlineKind::InlineMath(_)));
   }
 
   #[test]
@@ -479,10 +462,10 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
-    assert_eq!(rows[0].cells.len(), 3);
-    assert!(rows[0].cells[1].content.is_empty());
+    assert_eq!(table.rows[0].cells.len(), 3);
+    assert!(table.rows[0].cells[1].content.is_empty());
   }
 }

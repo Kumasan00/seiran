@@ -129,25 +129,12 @@ mod tests {
   /// [`same_shape`] のブロックノード 1 個分の比較
   fn same_node_shape(a: &HirNodeKind, b: &HirNodeKind) -> bool {
     return match (a, b) {
-      (
-        HirNodeKind::List {
-          ordered: o1,
-          items: i1,
-          start: s1,
-          item_gap: g1,
-        },
-        HirNodeKind::List {
-          ordered: o2,
-          items: i2,
-          start: s2,
-          item_gap: g2,
-        },
-      ) => {
-        o1 == o2
-          && s1 == s2
-          && g1 == g2
-          && i1.len() == i2.len()
-          && i1.iter().zip(i2).all(|(x, y)| {
+      (HirNodeKind::List(a), HirNodeKind::List(b)) => {
+        a.ordered == b.ordered
+          && a.start == b.start
+          && a.item_gap == b.item_gap
+          && a.items.len() == b.items.len()
+          && a.items.iter().zip(&b.items).all(|(x, y)| {
             return x.marker == y.marker && x.item_gap == y.item_gap && same_shape(&x.content, &y.content);
           })
       },
@@ -255,10 +242,10 @@ mod tests {
     let result = evaluate_source("\\section{Introduction}");
     assert_eq!(result.len(), 1);
     match &result[0].kind {
-      HirNodeKind::Heading { level, title, .. } => {
-        assert_eq!(*level, HeadingLevel::Section);
-        assert_eq!(title.len(), 1);
-        match &title[0].kind {
+      HirNodeKind::Heading(heading) => {
+        assert_eq!(heading.level, HeadingLevel::Section);
+        assert_eq!(heading.title.len(), 1);
+        match &heading.title[0].kind {
           HirInlineKind::Text(text) => assert_eq!(text, "Introduction"),
           _ => panic!("Text が期待されます"),
         }
@@ -271,10 +258,10 @@ mod tests {
   fn evaluate_section_with_label_then_ref_is_structured_without_resolving() {
     let result = evaluate_source(r"\chapter{X}\section[label=sec:intro]{T}See \ref{sec:intro}.");
     assert_eq!(result.len(), 3);
-    let HirNodeKind::Heading { label, .. } = &result[1].kind else {
+    let HirNodeKind::Heading(heading) = &result[1].kind else {
       panic!("Heading が期待されます: {:?}", result[1]);
     };
-    assert_eq!(label.as_deref(), Some("sec:intro"));
+    assert_eq!(heading.label.as_deref(), Some("sec:intro"));
     let HirNodeKind::Paragraph(inlines) = &result[2].kind else {
       panic!("Paragraph が期待されます: {:?}", result[2]);
     };
@@ -288,13 +275,13 @@ mod tests {
   fn evaluate_equation_with_label_is_structured_without_resolving() {
     let source = r"\chapter{C}\begin{equation}[label=eq:p]a\end{equation}See \ref{eq:p}.";
     let result = evaluate_source(source);
-    let HirNodeKind::MathBlock { rows, .. } =
-      &result.iter().find(|n| matches!(&n.kind, HirNodeKind::MathBlock { .. })).unwrap().kind
+    let HirNodeKind::MathBlock(math) =
+      &result.iter().find(|n| matches!(&n.kind, HirNodeKind::MathBlock(_))).unwrap().kind
     else {
       unreachable!();
     };
-    assert_eq!(rows[0].label.as_deref(), Some("eq:p"));
-    assert!(rows[0].numbered);
+    assert_eq!(math.rows[0].label.as_deref(), Some("eq:p"));
+    assert!(math.rows[0].numbered);
     let para = result
       .iter()
       .find_map(|n| {
@@ -347,7 +334,7 @@ mod tests {
     let result = evaluate_source("Some text\\section{Title}");
     assert_eq!(result.len(), 2);
     assert!(matches!(&result[0].kind, HirNodeKind::Paragraph(_)));
-    assert!(matches!(&result[1].kind, HirNodeKind::Heading { .. }));
+    assert!(matches!(&result[1].kind, HirNodeKind::Heading(_)));
   }
 
   #[test]
@@ -723,9 +710,9 @@ mod tests {
     let result = evaluate_source("\\begin{enumerate}\\item{First}\\item{Second}\\end{enumerate}");
     assert_eq!(result.len(), 1);
     match &result[0].kind {
-      HirNodeKind::List { ordered, items, .. } => {
-        assert!(ordered);
-        assert_eq!(items.len(), 2);
+      HirNodeKind::List(list) => {
+        assert!(list.ordered);
+        assert_eq!(list.items.len(), 2);
       },
       _ => panic!("List が期待されます"),
     }
@@ -813,10 +800,10 @@ mod tests {
     let result = evaluate_source(r"\begin{equation}x^{2}\end{equation}");
 
     assert_eq!(result.len(), 1);
-    let HirNodeKind::MathBlock { rows, .. } = &result[0].kind else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    let body = &rows[0].cells[0];
+    let body = &math.rows[0].cells[0];
 
     let has_superscript = body.iter().any(|n| matches!(&n.kind, HirMathKind::Superscript(_)));
     let has_text_x = body.iter().any(|n| matches!(&n.kind, HirMathKind::Text(t) if t == "x"));
@@ -829,9 +816,9 @@ mod tests {
     let result = evaluate_source("\\begin{itemize}\\item{A}\\item{B}\\end{itemize}");
     assert_eq!(result.len(), 1);
     match &result[0].kind {
-      HirNodeKind::List { ordered, items, .. } => {
-        assert!(!ordered);
-        assert_eq!(items.len(), 2);
+      HirNodeKind::List(list) => {
+        assert!(!list.ordered);
+        assert_eq!(list.items.len(), 2);
       },
       _ => panic!("List が期待されます"),
     }
@@ -943,10 +930,11 @@ mod tests {
   #[test]
   fn evaluate_underscore_in_heading_title_is_text() {
     let result = evaluate_source(r"\section{a_b}");
-    let HirNodeKind::Heading { title, .. } = &result[0].kind else {
+    let HirNodeKind::Heading(heading) = &result[0].kind else {
       panic!("Heading が期待されます");
     };
-    let joined: String = title
+    let joined: String = heading
+      .title
       .iter()
       .filter_map(|n| {
         if let HirInlineKind::Text(t) = &n.kind {
@@ -1067,14 +1055,14 @@ mod tests {
   fn evaluate_duplicate_label_is_structured_without_error() {
     let result = evaluate_source(r"\section[label=sec:a]{One}\section[label=sec:a]{Two}");
     assert_eq!(result.len(), 2);
-    let HirNodeKind::Heading { label: a, .. } = &result[0].kind else {
+    let HirNodeKind::Heading(first) = &result[0].kind else {
       panic!("Heading が期待されます");
     };
-    let HirNodeKind::Heading { label: b, .. } = &result[1].kind else {
+    let HirNodeKind::Heading(second) = &result[1].kind else {
       panic!("Heading が期待されます");
     };
-    assert_eq!(a.as_deref(), Some("sec:a"));
-    assert_eq!(b.as_deref(), Some("sec:a"));
+    assert_eq!(first.label.as_deref(), Some("sec:a"));
+    assert_eq!(second.label.as_deref(), Some("sec:a"));
   }
 
   #[test]
@@ -1098,11 +1086,11 @@ mod tests {
     // issue #160 — ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
     let result = evaluate_source("\\begin{quote}\\begin{itemize}\\item{x}\\end{itemize}\n  \n\\end{quote}");
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Quote { body, .. } = &result[0].kind else {
+    let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {result:?}");
     };
-    assert_eq!(body.len(), 1, "空白のみの段落が生成されてはいけない: {body:?}");
-    assert!(matches!(&body[0].kind, HirNodeKind::List { .. }));
+    assert_eq!(quote.body.len(), 1, "空白のみの段落が生成されてはいけない: {:?}", quote.body);
+    assert!(matches!(&quote.body[0].kind, HirNodeKind::List(_)));
   }
 
   #[test]
@@ -1239,7 +1227,7 @@ mod tests {
   fn evaluate_index_in_list_item() {
     let result = evaluate_source("\\begin{itemize}\\item{項目\\index{語}}\\end{itemize}");
     assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0].kind, HirNodeKind::List { .. }));
+    assert!(matches!(&result[0].kind, HirNodeKind::List(_)));
   }
 
   #[test]
@@ -1257,19 +1245,19 @@ mod tests {
   #[test]
   fn evaluate_index_in_table_body_cell() {
     let result = evaluate_source("\\begin{table}\\row{語\\index{語} & B}\\end{table}");
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {result:?}");
     };
-    assert!(has_index_word(&rows[0].cells[0].content, "語"), "{:?}", rows[0].cells[0].content);
+    assert!(has_index_word(&table.rows[0].cells[0].content, "語"), "{:?}", table.rows[0].cells[0].content);
   }
 
   #[test]
   fn evaluate_index_in_cell_command() {
     let result = evaluate_source("\\begin{table}\\row{\\cell[span=2]{語\\index{語}}}\\end{table}");
-    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {result:?}");
     };
-    assert!(has_index_word(&rows[0].cells[0].content, "語"), "{:?}", rows[0].cells[0].content);
+    assert!(has_index_word(&table.rows[0].cells[0].content, "語"), "{:?}", table.rows[0].cells[0].content);
   }
 
   #[test]
@@ -1291,10 +1279,10 @@ mod tests {
   #[test]
   fn evaluate_index_in_caption() {
     let result = evaluate_source("\\begin{table}\\caption{表\\index{語}}\\row{A}\\end{table}");
-    let HirNodeKind::Table { caption, .. } = &result[0].kind else {
+    let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {result:?}");
     };
-    let caption = caption.as_ref().expect("キャプションがあるはず");
+    let caption = table.caption.as_ref().expect("キャプションがあるはず");
     assert!(has_index_word(caption, "語"), "{caption:?}");
   }
 
@@ -1384,10 +1372,10 @@ mod tests {
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     // Assert — HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
-    let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
+    let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず: {:?}", hir.group.nodes[0].kind);
     };
-    assert_eq!(*image_path, ProjectPath::new("/project/fig/a.png"));
+    assert_eq!(figure.image_path, ProjectPath::new("/project/fig/a.png"));
   }
 
   #[test]
@@ -1400,9 +1388,9 @@ mod tests {
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     // Assert — base_dir を無視して絶対パスのまま保持する
-    let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
+    let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず");
     };
-    assert_eq!(*image_path, ProjectPath::new("/elsewhere/a.png"));
+    assert_eq!(figure.image_path, ProjectPath::new("/elsewhere/a.png"));
   }
 }

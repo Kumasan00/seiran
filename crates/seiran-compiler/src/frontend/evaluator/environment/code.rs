@@ -28,7 +28,7 @@ pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<
   };
 
   let id = ctx.alloc(view.span());
-  return Ok(HirNode::new(id, HirNodeKind::CodeBlock { text }));
+  return Ok(HirNode::new(id, HirNodeKind::CodeBlock(text)));
 }
 
 /// 本体先頭・末尾の改行を 1 個ずつ落とす
@@ -54,7 +54,7 @@ mod tests {
     let arena = Bump::new();
     let cst = test_support::parse(source, &arena).unwrap();
     let result = evaluate_children_to_hir(source, cst).unwrap();
-    let HirNodeKind::CodeBlock { text } = &result[0].kind else {
+    let HirNodeKind::CodeBlock(text) = &result[0].kind else {
       panic!("CodeBlock が期待されます: {:?}", result[0]);
     };
     return text.clone();

@@ -22,22 +22,25 @@ pub(crate) fn collect_image_paths(document: &HirDocument) -> Vec<ProjectPath> {
 fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
   for node in nodes {
     match &node.kind {
-      HirNodeKind::Figure { image_path, .. } => {
-        paths.insert(image_path.clone());
+      HirNodeKind::Figure(figure) => {
+        paths.insert(figure.image_path.clone());
       },
-      HirNodeKind::Theorem { body, .. } | HirNodeKind::Quote { body, .. } => {
-        walk_nodes(body, paths);
+      HirNodeKind::Theorem(theorem) => {
+        walk_nodes(&theorem.body, paths);
       },
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::Quote(quote) => {
+        walk_nodes(&quote.body, paths);
+      },
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           walk_nodes(&item.content, paths);
         }
       },
-      HirNodeKind::Heading { .. }
-      | HirNodeKind::CodeBlock { .. }
+      HirNodeKind::Heading(_)
+      | HirNodeKind::CodeBlock(_)
       | HirNodeKind::Paragraph(_)
-      | HirNodeKind::MathBlock { .. }
-      | HirNodeKind::Table { .. }
+      | HirNodeKind::MathBlock(_)
+      | HirNodeKind::Table(_)
       | HirNodeKind::PageBreak
       | HirNodeKind::Space(_) => {},
     }

@@ -1,7 +1,7 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
 use crate::{
-  document::{HirNode, HirNodeKind},
+  document::{HirFigure, NodeId},
   typeset::lowering::{
     LoweringContext, LoweringState,
     float::{FloatCaption, FloatSpec, lower_numbered_float},
@@ -12,29 +12,17 @@ use crate::{
 /// 図をレイアウトノードに変換する
 pub(super) fn lower_figure(
   ctx: &LoweringContext<'_>,
-  node: &HirNode,
+  id: NodeId,
+  figure: &HirFigure,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let HirNodeKind::Figure {
-    image_path,
-    width,
-    height,
-    dpi,
-    downsample,
-    caption,
-    caption_position,
-    label: _,
-  } = &node.kind
-  else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::Figure arm からだけ呼ばれる: {:?}", node.id)
-  };
   let style = &ctx.style.figure;
 
   // ダウンサンプリングの既定（max_dpi / downsample）は出力物理の設定で config `[image]` 由来。
   // per-image の `\image[dpi=...]` / `[downsample=...]` 上書きが優先される。
-  let downsample_enabled = downsample.unwrap_or(ctx.image_downsample);
+  let downsample_enabled = figure.downsample.unwrap_or(ctx.image_downsample);
   let target_dpi = if downsample_enabled {
-    Some(dpi.unwrap_or(ctx.image_max_dpi))
+    Some(figure.dpi.unwrap_or(ctx.image_max_dpi))
   } else {
     None
   };
@@ -46,15 +34,15 @@ pub(super) fn lower_figure(
   };
   let caption = FloatCaption {
     style: &style.caption,
-    inlines: caption.as_deref(),
-    position: *caption_position,
+    inlines: figure.caption.as_deref(),
+    position: figure.caption_position,
   };
-  return lower_numbered_float(ctx, node, caption, &spec, state, |_state| {
+  return lower_numbered_float(ctx, id, caption, &spec, state, |_state| {
     // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
     return LayoutNode::Image {
-      path: image_path.clone(),
-      width: *width,
-      height: *height,
+      path: figure.image_path.clone(),
+      width: figure.width,
+      height: figure.height,
       target_dpi,
     };
   });

@@ -52,10 +52,10 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
     });
     let here = Some(node.id);
     match &node.kind {
-      HirNodeKind::Heading { title, .. } => walk_inlines(title, here, out),
+      HirNodeKind::Heading(heading) => walk_inlines(&heading.title, here, out),
       HirNodeKind::Paragraph(inlines) => walk_inlines(inlines, here, out),
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           out.push(Visited {
             id: item.id,
             parent: here,
@@ -63,8 +63,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
           walk_nodes(&item.content, Some(item.id), out);
         }
       },
-      HirNodeKind::MathBlock { rows, .. } => {
-        for row in rows {
+      HirNodeKind::MathBlock(math) => {
+        for row in &math.rows {
           out.push(Visited {
             id: row.id,
             parent: here,
@@ -80,18 +80,13 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
           }
         }
       },
-      HirNodeKind::Figure { caption, .. } => {
-        if let Some(caption) = caption {
+      HirNodeKind::Figure(figure) => {
+        if let Some(caption) = &figure.caption {
           walk_inlines(caption, here, out);
         }
       },
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        ..
-      } => {
-        for row in head.iter().chain(rows.iter()) {
+      HirNodeKind::Table(table) => {
+        for row in table.head.iter().chain(table.rows.iter()) {
           out.push(Visited {
             id: row.id,
             parent: here,
@@ -104,21 +99,21 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
             walk_inlines(&cell.content, Some(cell.id), out);
           }
         }
-        if let Some(caption) = caption {
+        if let Some(caption) = &table.caption {
           walk_inlines(caption, here, out);
         }
       },
-      HirNodeKind::Theorem { body, of, .. } => {
-        if let Some(target) = of {
+      HirNodeKind::Theorem(theorem) => {
+        if let Some(target) = &theorem.of {
           out.push(Visited {
             id: target.id,
             parent: here,
           });
         }
-        walk_nodes(body, here, out);
+        walk_nodes(&theorem.body, here, out);
       },
-      HirNodeKind::Quote { body, .. } => walk_nodes(body, here, out),
-      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::Quote(quote) => walk_nodes(&quote.body, here, out),
+      HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;
@@ -321,7 +316,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
         return match &node.kind {
           HirNodeKind::Paragraph(_) => "Paragraph",
           HirNodeKind::PageBreak => "PageBreak",
-          HirNodeKind::Heading { .. } => "Heading",
+          HirNodeKind::Heading(_) => "Heading",
           _ => "Other",
         };
       })
@@ -362,39 +357,31 @@ fn hir_carries_no_resolved_facts() {
 fn assert_unresolved(nodes: &[HirNode]) {
   for node in nodes {
     match &node.kind {
-      HirNodeKind::Heading { title: inlines, .. } | HirNodeKind::Paragraph(inlines) => {
-        assert_unresolved_inlines(inlines);
-      },
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::Heading(heading) => assert_unresolved_inlines(&heading.title),
+      HirNodeKind::Paragraph(inlines) => assert_unresolved_inlines(inlines),
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           assert_unresolved(&item.content);
         }
       },
-      HirNodeKind::Theorem { body, .. } | HirNodeKind::Quote { body, .. } => assert_unresolved(body),
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        ..
-      } => {
-        for row in head.iter().chain(rows.iter()) {
+      HirNodeKind::Theorem(theorem) => assert_unresolved(&theorem.body),
+      HirNodeKind::Quote(quote) => assert_unresolved(&quote.body),
+      HirNodeKind::Table(table) => {
+        for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             assert_unresolved_inlines(&cell.content);
           }
         }
-        if let Some(caption) = caption {
+        if let Some(caption) = &table.caption {
           assert_unresolved_inlines(caption);
         }
       },
-      HirNodeKind::Figure { caption, .. } => {
-        if let Some(caption) = caption {
+      HirNodeKind::Figure(figure) => {
+        if let Some(caption) = &figure.caption {
           assert_unresolved_inlines(caption);
         }
       },
-      HirNodeKind::CodeBlock { .. }
-      | HirNodeKind::MathBlock { .. }
-      | HirNodeKind::PageBreak
-      | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock(_) | HirNodeKind::MathBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;

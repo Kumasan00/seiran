@@ -347,7 +347,7 @@ mod tests {
 
     // Assert — 段落の先頭へ回った改行は flush が捨てる（空白 glue にはならない）
     assert_eq!(nodes.len(), 2, "{nodes:?}");
-    assert!(matches!(nodes[0].kind, HirNodeKind::Heading { .. }), "{nodes:?}");
+    assert!(matches!(nodes[0].kind, HirNodeKind::Heading(_)), "{nodes:?}");
     let HirNodeKind::Paragraph(inlines) = &nodes[1].kind else {
       panic!("2 つ目は段落になるはず: {nodes:?}")
     };

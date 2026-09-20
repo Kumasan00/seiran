@@ -341,33 +341,31 @@ pub(super) fn lower_nodes_inner(
 /// 単一の `HirNode` をレイアウトノードに変換する
 ///
 /// 委譲する 9 種別（`Heading` / `Paragraph` / `List` / `Theorem` / `Quote` / `CodeBlock` /
-/// `MathBlock` / `Figure` / `Table`）はすべて `(文脈, ノード, ...)` の同じ形で子 module へ渡す。
-/// `CodeBlock` は事実を読まないので `state` を取らず `(ctx, node)` に、残り 8 種は
-/// `(ctx, node, state)` になる。
-/// 採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、各 lowering が `node.id` を
-/// キーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。`PageBreak` / `Space` は
-/// 委譲せず、この関数がその場でノードを組む。委譲する 9 種別すべての lowering の先頭に、`HirNodeKind`
-/// の variant を取り出す `unreachable!` 付きの分配束縛があるのは、`HirNodeKind` の各 variant が
-/// payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
+/// `MathBlock` / `Figure` / `Table`）はすべて `HirNodeKind` の payload を取り出して子 module へ渡す。
+/// 各 lowering は実際に使うものだけを受け取る — payload は常に、`NodeId` は事実を引く 5 種
+/// （`Heading` / `Theorem` / `MathBlock` / `Figure` / `Table`）だけ、`state` は `CodeBlock` を除く
+/// 8 種だけ（`MathBlock` は不変借用）。採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、
+/// 各 lowering が `NodeId` をキーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。
+/// `PageBreak` / `Space` は委譲せず、この関数がその場でノードを組む。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
-    HirNodeKind::Heading { .. } => {
-      return heading::lower_hir_heading(ctx, node, state);
+    HirNodeKind::Heading(heading) => {
+      return heading::lower_hir_heading(ctx, node.id, heading, state);
     },
-    HirNodeKind::Paragraph(_) => {
-      return paragraph::lower_paragraph(ctx, node, state);
+    HirNodeKind::Paragraph(inlines) => {
+      return paragraph::lower_paragraph(ctx, inlines, state);
     },
-    HirNodeKind::List { .. } => {
-      return list::lower_list(ctx, node, state);
+    HirNodeKind::List(list) => {
+      return list::lower_list(ctx, list, state);
     },
-    HirNodeKind::Theorem { .. } => {
-      return theorem::lower_theorem(ctx, node, state);
+    HirNodeKind::Theorem(theorem) => {
+      return theorem::lower_theorem(ctx, node.id, theorem, state);
     },
-    HirNodeKind::Quote { .. } => {
-      return quote::lower_quote(ctx, node, state);
+    HirNodeKind::Quote(quote) => {
+      return quote::lower_quote(ctx, quote, state);
     },
-    HirNodeKind::CodeBlock { .. } => {
-      return code::lower_code_block(ctx, node);
+    HirNodeKind::CodeBlock(text) => {
+      return code::lower_code_block(ctx, text);
     },
     HirNodeKind::PageBreak => {
       return vec![LayoutNode::PageBreak];
@@ -375,14 +373,14 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Space(length) => {
       return vec![LayoutNode::Inline(InlineNode::Kern { length: *length })];
     },
-    HirNodeKind::MathBlock { .. } => {
-      return math::lower_math_block(ctx, node, &*state);
+    HirNodeKind::MathBlock(math) => {
+      return math::lower_math_block(ctx, node.id, math, &*state);
     },
-    HirNodeKind::Figure { .. } => {
-      return figure::lower_figure(ctx, node, state);
+    HirNodeKind::Figure(figure) => {
+      return figure::lower_figure(ctx, node.id, figure, state);
     },
-    HirNodeKind::Table { .. } => {
-      return table::lower_table(ctx, node, state);
+    HirNodeKind::Table(table) => {
+      return table::lower_table(ctx, node.id, table, state);
     },
   }
 }

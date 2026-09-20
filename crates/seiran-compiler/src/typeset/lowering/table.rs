@@ -1,7 +1,7 @@
 //! 表環境（`document::HirNodeKind::Table`）の lowering
 
 use crate::{
-  document::{HirNode, HirNodeKind, HirTableRow},
+  document::{HirTable, HirTableRow, NodeId},
   typeset::{
     boxes::TableColumn,
     lowering::{
@@ -38,20 +38,12 @@ fn lower_rows(
 }
 
 /// 表をレイアウトノードに変換する
-pub(super) fn lower_table(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
-  let HirNodeKind::Table {
-    columns,
-    widths,
-    head,
-    rows,
-    caption,
-    caption_position,
-    label: _,
-    breakable,
-  } = &node.kind
-  else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::Table arm からだけ呼ばれる: {:?}", node.id)
-  };
+pub(super) fn lower_table(
+  ctx: &LoweringContext<'_>,
+  id: NodeId,
+  table: &HirTable,
+  state: &mut LoweringState<'_>,
+) -> Vec<LayoutNode> {
   let style = &ctx.style.table;
 
   let body_style = TextStyle {
@@ -72,14 +64,15 @@ pub(super) fn lower_table(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut
   };
   let caption = FloatCaption {
     style: &style.caption,
-    inlines: caption.as_deref(),
-    position: *caption_position,
+    inlines: table.caption.as_deref(),
+    position: table.caption_position,
   };
-  return lower_numbered_float(ctx, node, caption, &spec, state, |state| {
+  return lower_numbered_float(ctx, id, caption, &spec, state, |state| {
     return LayoutNode::Table(TableLayout {
-      columns: columns
+      columns: table
+        .columns
         .iter()
-        .zip(widths)
+        .zip(&table.widths)
         .map(|(align, width)| {
           return TableColumn {
             align: *align,
@@ -87,9 +80,9 @@ pub(super) fn lower_table(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut
           };
         })
         .collect(),
-      head: lower_rows(ctx, head, head_style, state),
-      rows: lower_rows(ctx, rows, body_style, state),
-      breakable: *breakable,
+      head: lower_rows(ctx, &table.head, head_style, state),
+      rows: lower_rows(ctx, &table.rows, body_style, state),
+      breakable: table.breakable,
     });
   });
 }

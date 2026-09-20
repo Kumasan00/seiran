@@ -1,7 +1,7 @@
 //! 見出しコマンド群
 
 use crate::{
-  document::{HeadingLevel, HirNode, HirNodeKind},
+  document::{HeadingLevel, HirHeading, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -38,11 +38,11 @@ pub(super) fn heading(
 
   return Ok(HirNode::new(
     id,
-    HirNodeKind::Heading {
+    HirNodeKind::Heading(HirHeading {
       level,
       title,
       label,
-    },
+    }),
   ));
 }
 
@@ -77,13 +77,13 @@ mod tests {
     let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section)).unwrap();
 
     // Assert
-    let HirNodeKind::Heading { level, label, .. } = &result.kind else {
+    let HirNodeKind::Heading(heading) = &result.kind else {
       panic!("Heading が期待されます");
     };
-    assert_eq!(*level, HeadingLevel::Section);
+    assert_eq!(heading.level, HeadingLevel::Section);
     // 見出しの numbered は HIR には存在しない（frontend が作る見出しは常に採番対象で
-    // 構造的に一意に決まるため、HirNodeKind::Heading はそもそもフィールドを持たない）
-    assert_eq!(label.as_deref(), Some("sec:foo"));
+    // 構造的に一意に決まるため、`HirHeading` は numbered フィールドを持たない）
+    assert_eq!(heading.label.as_deref(), Some("sec:foo"));
   }
 
   #[test]

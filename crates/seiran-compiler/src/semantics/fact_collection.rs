@@ -114,91 +114,74 @@ impl Checker<'_> {
   /// 単一のブロックノードを検証する
   fn node(&self, node: &HirNode) {
     match &node.kind {
-      HirNodeKind::Heading { title, label, .. } => {
+      HirNodeKind::Heading(heading) => {
         self.require_counter(node.id, "Heading");
         assert!(
           self.facts.headings.get(node.id).is_some(),
           "Walker が Heading の事実を登録し損ねている: {:?}",
           node.id
         );
-        self.require_declared_label(node.id, label.as_deref(), "Heading");
-        self.inlines(title);
+        self.require_declared_label(node.id, heading.label.as_deref(), "Heading");
+        self.inlines(&heading.title);
       },
-      HirNodeKind::Figure { caption, label, .. } => {
+      HirNodeKind::Figure(figure) => {
         self.require_counter(node.id, "Figure");
-        self.require_declared_label(node.id, label.as_deref(), "Figure");
-        if let Some(inlines) = caption {
+        self.require_declared_label(node.id, figure.label.as_deref(), "Figure");
+        if let Some(inlines) = &figure.caption {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        label,
-        ..
-      } => {
+      HirNodeKind::Table(table) => {
         self.require_counter(node.id, "Table");
-        self.require_declared_label(node.id, label.as_deref(), "Table");
-        for row in head.iter().chain(rows.iter()) {
+        self.require_declared_label(node.id, table.label.as_deref(), "Table");
+        for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             self.inlines(&cell.content);
           }
         }
-        if let Some(inlines) = caption {
+        if let Some(inlines) = &table.caption {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Theorem {
-        class,
-        body,
-        of,
-        label,
-        ..
-      } => {
+      HirNodeKind::Theorem(theorem) => {
         // 無採番クラス（`proof`）は採番もラベル登録もしないので、必須 fact も無い。
-        if !self.policy.theorem(*class).unnumbered {
+        if !self.policy.theorem(theorem.class).unnumbered {
           self.require_counter(node.id, "Theorem");
-          self.require_declared_label(node.id, label.as_deref(), "Theorem");
+          self.require_declared_label(node.id, theorem.label.as_deref(), "Theorem");
         }
-        if let Some(target) = of {
+        if let Some(target) = &theorem.of {
           assert!(
             self.facts.references.get(target.id).is_some(),
             "Walker が Theorem::of の参照先を登録し損ねている: {:?}",
             target.id
           );
         }
-        self.nodes(body);
+        self.nodes(&theorem.body);
       },
-      HirNodeKind::MathBlock {
-        rows,
-        numbered,
-        label,
-        ..
-      } => {
+      HirNodeKind::MathBlock(math) => {
         // 環境単位（`split` / `multiline`）と行単位（`align` / `gather` 等）は互いに排他だが、
         // それぞれの `numbered` を独立に見る（「どちらか一方は必ず採番済み」と書くと、
         // 環境側が無採番の `align` 等で誤検出する）。
-        if *numbered {
+        if math.numbered {
           self.require_counter(node.id, "MathBlock");
-          self.require_declared_label(node.id, label.as_deref(), "MathBlock");
+          self.require_declared_label(node.id, math.label.as_deref(), "MathBlock");
         }
-        for row in rows {
+        for row in &math.rows {
           if row.numbered {
             self.require_counter(row.id, "HirMathRow");
             self.require_declared_label(row.id, row.label.as_deref(), "HirMathRow");
           }
         }
       },
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           self.nodes(&item.content);
         }
       },
-      HirNodeKind::Quote { body, .. } => self.nodes(body),
+      HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 必須 fact を持たない variant。
-      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
   }
@@ -365,84 +348,63 @@ impl Walker<'_> {
   /// 単一のブロックノードを走査する
   fn node(&mut self, node: &HirNode) {
     match &node.kind {
-      HirNodeKind::Heading {
-        level,
-        title,
-        label,
-      } => {
+      HirNodeKind::Heading(heading) => {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
-        let counter = SemanticPolicy::counter_name_for_heading(*level);
-        self.number_and_declare(CounterKind::Counter(counter), node.id, label.as_deref(), node.id);
-        self.facts.headings.insert(node.id, *level);
-        self.inlines(title);
+        let counter = SemanticPolicy::counter_name_for_heading(heading.level);
+        self.number_and_declare(CounterKind::Counter(counter), node.id, heading.label.as_deref(), node.id);
+        self.facts.headings.insert(node.id, heading.level);
+        self.inlines(&heading.title);
       },
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           self.list_item(item);
         }
       },
-      HirNodeKind::MathBlock {
-        rows,
-        numbered,
-        label,
-        ..
-      } => {
+      HirNodeKind::MathBlock(math) => {
         // 行 → 環境の順に採番する（環境単位の採番は行採番の後に来る）。
-        for row in rows {
+        for row in &math.rows {
           self.math_row(row, node.id);
         }
-        if *numbered {
-          self.number_and_declare(CounterKind::Counter(CounterName::Equation), node.id, label.as_deref(), node.id);
+        if math.numbered {
+          self.number_and_declare(CounterKind::Counter(CounterName::Equation), node.id, math.label.as_deref(), node.id);
         }
       },
-      HirNodeKind::Figure { caption, label, .. } => {
-        self.number_and_declare(CounterKind::Counter(CounterName::Figure), node.id, label.as_deref(), node.id);
-        if let Some(inlines) = caption {
+      HirNodeKind::Figure(figure) => {
+        self.number_and_declare(CounterKind::Counter(CounterName::Figure), node.id, figure.label.as_deref(), node.id);
+        if let Some(inlines) = &figure.caption {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Table {
-        head,
-        rows,
-        caption,
-        label,
-        ..
-      } => {
-        self.number_and_declare(CounterKind::Counter(CounterName::Table), node.id, label.as_deref(), node.id);
-        for row in head.iter().chain(rows.iter()) {
+      HirNodeKind::Table(table) => {
+        self.number_and_declare(CounterKind::Counter(CounterName::Table), node.id, table.label.as_deref(), node.id);
+        for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             self.inlines(&cell.content);
           }
         }
-        if let Some(inlines) = caption {
+        if let Some(inlines) = &table.caption {
           self.inlines(inlines);
         }
       },
-      HirNodeKind::Theorem {
-        class,
-        body,
-        of,
-        label,
-        ..
-      } => {
+      HirNodeKind::Theorem(theorem) => {
         // 無採番クラス（`proof`）は採番もラベル登録もしない（`number_and_declare` が判断する）。
-        self.number_and_declare(CounterKind::Theorem(*class), node.id, label.as_deref(), node.id);
+        self.number_and_declare(CounterKind::Theorem(theorem.class), node.id, theorem.label.as_deref(), node.id);
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
         // 現状 frontend はこの ID を環境ヘッダの span で確保しているので実際の位置は環境と同じだが、
         // HIR 側の span 付与が細かくなればここを触らずに診断が絞り込まれる。
-        if let Some(target) = of {
+        if let Some(target) = &theorem.of {
           self.pending.push(PendingReference {
             site: target.id,
             label: target.label.clone(),
           });
         }
-        self.nodes(body);
+        self.nodes(&theorem.body);
       },
-      HirNodeKind::Quote { body, .. } => self.nodes(body),
+      HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 採番対象も参照箇所も含まない variant。
-      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
   }

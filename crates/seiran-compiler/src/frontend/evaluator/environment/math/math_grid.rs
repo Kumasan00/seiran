@@ -5,7 +5,7 @@
 use miette::SourceSpan;
 
 use crate::{
-  document::{HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
     syntax::{
@@ -172,12 +172,12 @@ pub(crate) fn evaluate_math_env(
   let block_label = env_numbered.then_some(env_label).flatten();
   return Ok(HirNode::new(
     id,
-    HirNodeKind::MathBlock {
+    HirNodeKind::MathBlock(HirMathBlock {
       kind,
       rows,
       numbered: env_numbered,
       label: block_label,
-    },
+    }),
   ));
 }
 
@@ -338,11 +338,11 @@ mod tests {
 
   /// 結果の最初の `HirNodeKind::MathBlock`（`Align`）の行スライスを取り出すヘルパ
   fn align_rows_of(result: &[HirNode]) -> &[HirMathRow] {
-    let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, MathEnvKind::Align, "align は MathEnvKind::Align");
-    return rows;
+    assert_eq!(math.kind, MathEnvKind::Align, "align は MathEnvKind::Align");
+    return &math.rows;
   }
 
   #[test]
@@ -571,11 +571,11 @@ mod tests {
   }
 
   fn gather_rows_of(result: &[HirNode]) -> &[HirMathRow] {
-    let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, MathEnvKind::Gather, "gather は MathEnvKind::Gather");
-    return rows;
+    assert_eq!(math.kind, MathEnvKind::Gather, "gather は MathEnvKind::Gather");
+    return &math.rows;
   }
 
   #[test]
@@ -677,17 +677,11 @@ mod tests {
 
   /// 最初の `HirNodeKind::MathBlock`（`Split`）を分解して (`rows`, `numbered`) を返す
   fn split_block_of(result: &[HirNode]) -> (&[HirMathRow], bool) {
-    let HirNodeKind::MathBlock {
-      kind,
-      rows,
-      numbered,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, MathEnvKind::Split, "split は MathEnvKind::Split");
-    return (rows, *numbered);
+    assert_eq!(math.kind, MathEnvKind::Split, "split は MathEnvKind::Split");
+    return (&math.rows, math.numbered);
   }
 
   #[test]
@@ -734,18 +728,12 @@ mod tests {
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::MathBlock {
-      rows,
-      numbered,
-      label,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(label.as_deref(), Some("eq:s"), "環境単位ラベルが付く");
-    assert!(*numbered, "環境全体は採番対象");
-    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
+    assert_eq!(math.label.as_deref(), Some("eq:s"), "環境単位ラベルが付く");
+    assert!(math.numbered, "環境全体は採番対象");
+    assert!(math.rows.iter().all(|r| return !r.numbered), "行は無採番: {:?}", math.rows);
   }
 
   #[test]
@@ -777,17 +765,11 @@ mod tests {
   }
 
   fn multiline_block_of(result: &[HirNode]) -> (&[HirMathRow], bool) {
-    let HirNodeKind::MathBlock {
-      kind,
-      rows,
-      numbered,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, MathEnvKind::Multiline, "multiline は MathEnvKind::Multiline");
-    return (rows, *numbered);
+    assert_eq!(math.kind, MathEnvKind::Multiline, "multiline は MathEnvKind::Multiline");
+    return (&math.rows, math.numbered);
   }
 
   #[test]
@@ -848,14 +830,11 @@ mod tests {
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::MathBlock {
-      numbered, label, ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(label.as_deref(), Some("eq:m"), "環境単位ラベルが付く");
-    assert!(*numbered, "環境全体は採番対象");
+    assert_eq!(math.label.as_deref(), Some("eq:m"), "環境単位ラベルが付く");
+    assert!(math.numbered, "環境全体は採番対象");
   }
 
   #[test]
