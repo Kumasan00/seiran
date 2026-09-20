@@ -19,21 +19,15 @@ use crate::{
   },
 };
 
-/// インライン数式ノード（`$...$` 由来の `InlineMath`）を [`HirMath`] のリストに変換する
+/// 数式モードで構造化された CST ノードの子要素を [`HirMath`] 列に変換する
+///
+/// 入口は 3 つ — `$...$` 由来の `InlineMath` ノード、数式コマンドの必須引数・任意引数、
+/// 数式環境のセル。どれも「ノードの子要素を数式として読む」同じ操作なので実装は 1 つ。
 ///
 /// # Errors
 ///
-/// 数式内のスタイルコマンドが不正な引数数を持つ場合などにエラーを返します。
-pub(crate) fn evaluate_inline_math(
-  source: &str,
-  ctx: &EvalContext<'_>,
-  math_node: &GreenNode<'_>,
-) -> Result<Vec<HirMath>, EvalError> {
-  return evaluate_math_children(source, ctx, math_node);
-}
-
-/// 数式モードで構造化された CST ノードの子要素を [`HirMath`] 列に変換する共通ヘルパ
-fn evaluate_math_children(
+/// 数式内のコマンドが不正な引数数を持つ場合などにエラーを返します。
+pub(super) fn evaluate_math_children(
   source: &str,
   ctx: &EvalContext<'_>,
   node: &GreenNode<'_>,
@@ -180,7 +174,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
     opt_args::no_command_opt_args(&view)?;
     let first_arg = arity::exactly_one_arg(&view, "1 個（数式本体）")?;
     let id = ctx.alloc(view.span());
-    let body = evaluate_inline_math(source, ctx, first_arg)?;
+    let body = evaluate_math_children(source, ctx, first_arg)?;
     return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
   }
 
@@ -230,6 +224,6 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
 /// 数式引数ノードを単一の [`HirMath`] に変換するヘルパー
 fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
   let group_id = ctx.alloc(arg_node.span);
-  let nodes = evaluate_inline_math(source, ctx, arg_node)?;
+  let nodes = evaluate_math_children(source, ctx, arg_node)?;
   return Ok(collapse_single(group_id, nodes));
 }

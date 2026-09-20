@@ -235,7 +235,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
         },
         SyntaxKind::InlineMath => {
           let id = ctx.alloc(child_node.span);
-          let math_nodes = math::evaluate_inline_math(source, ctx, child_node)?;
+          let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
           sink.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         SyntaxKind::Environment => {

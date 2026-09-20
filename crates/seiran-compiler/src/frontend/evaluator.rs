@@ -109,7 +109,7 @@ pub(crate) fn evaluate_children(
         SyntaxKind::InlineMath => {
           paragraph.reserve(ctx, child_node.span);
           let id = ctx.alloc(child_node.span);
-          let math_nodes = math::evaluate_inline_math(source, ctx, child_node)?;
+          let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
           paragraph.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         // これらはルート直下に現れない内部ノードである。
