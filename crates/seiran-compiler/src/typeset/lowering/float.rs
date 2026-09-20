@@ -1,15 +1,16 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
 use crate::{
-  document::{CaptionPosition, HirInline},
+  document::{CaptionPosition, HirInline, HirNode},
   length::Length,
   style::CaptionStyle,
   typeset::{
     boxes::Align,
     lowering::{
-      LoweringContext, LoweringState,
+      LoweringContext, LoweringState, counter,
       inline::lower_inlines,
       layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+      with_label_anchors,
     },
   },
 };
@@ -92,6 +93,49 @@ pub(super) fn wrap_float(
       align: Align::Center,
     },
   ];
+}
+
+/// フロート 1 件のキャプション指定（体裁・本文・位置）
+///
+/// キャプションを持たないフロートでは `inlines` が `None` になる（`position` は読まれない）。
+#[derive(Debug, Clone, Copy)]
+pub(super) struct FloatCaption<'a> {
+  /// キャプションの体裁（`style.figure.caption` / `style.table.caption`）
+  pub style: &'a CaptionStyle,
+  /// キャプション本文のインライン列。`\caption` が無ければ `None`
+  pub inlines: Option<&'a [HirInline]>,
+  /// キャプションを本体の上下どちらに置くか
+  pub position: CaptionPosition,
+}
+
+/// 採番されるフロート（図・表）1 件をレイアウトノード列に変換する
+///
+/// 図と表で違うのは本体ノードの作り方（`build_body`）と体裁（`caption` / `spec`）だけで、
+/// 「カウンタ値 → 番号文字列 → 本体 → キャプション → 上下マージン付き `VBox` → ラベルアンカー」の
+/// 手順は同じ。`build_body` を `build_caption` より先に呼ぶのは、表セルの `\footnote` が
+/// キャプションの `\footnote` より先に通し番号を取る本文の出現順を保つため。
+pub(super) fn lower_numbered_float(
+  ctx: &LoweringContext<'_>,
+  node: &HirNode,
+  caption: FloatCaption<'_>,
+  spec: &FloatSpec,
+  state: &mut LoweringState<'_>,
+  build_body: impl FnOnce(&mut LoweringState<'_>) -> LayoutNode,
+) -> Vec<LayoutNode> {
+  // `FloatCaption` は 3 フィールドとも Copy なので値で受ける（`needless_pass_by_value` は
+  // Copy 型を対象外にする。`derive(Copy)` はそのために付けてある）
+  let Some(counter_value) = state.counter_value(node.id) else {
+    unreachable!("図表は必ず採番される（analyze の Figure / Table 分岐が counters へ登録している）: {:?}", node.id)
+  };
+  let number = counter::format_counter_value(ctx.style, counter_value);
+  let label = state.declared_label(node.id);
+
+  let body = build_body(state);
+  let caption_nodes = caption
+    .inlines
+    .map(|inlines| return (caption.position, build_caption(ctx, caption.style, inlines, &number, state)));
+
+  return with_label_anchors(label, wrap_float(body, caption_nodes, spec));
 }
 
 #[cfg(test)]

@@ -1,72 +1,70 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
 use crate::{
-  document::{CaptionPosition, HirInline},
-  length::Length,
-  project::ProjectPath,
+  document::{HirNode, HirNodeKind},
   typeset::lowering::{
     LoweringContext, LoweringState,
-    float::{FloatSpec, build_caption, wrap_float},
+    float::{FloatCaption, FloatSpec, lower_numbered_float},
     layout_node::LayoutNode,
   },
 };
 
-/// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct ImageOverrides {
-  /// `\image[dpi=N]` の per-image 上書き。`None` なら config `[image].max_dpi`（既定）が使われる
-  pub dpi: Option<u32>,
-  /// `\image[downsample=true|false]` の per-image 上書き。`None` なら config `[image].downsample`（既定）が使われる
-  pub downsample: Option<bool>,
-}
-
 /// 図をレイアウトノードに変換する
-#[expect(
-  clippy::too_many_arguments,
-  reason = "図 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
-)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext<'_>,
-  image_path: &ProjectPath,
-  width: Option<Length>,
-  height: Option<Length>,
-  overrides: ImageOverrides,
-  caption: Option<(CaptionPosition, &[HirInline])>,
-  number: &str,
+  node: &HirNode,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
+  let HirNodeKind::Figure {
+    image_path,
+    width,
+    height,
+    dpi,
+    downsample,
+    caption,
+    caption_position,
+    label: _,
+  } = &node.kind
+  else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::Figure arm からだけ呼ばれる: {:?}", node.id)
+  };
   let style = &ctx.style.figure;
 
   // ダウンサンプリングの既定（max_dpi / downsample）は出力物理の設定で config `[image]` 由来。
   // per-image の `\image[dpi=...]` / `[downsample=...]` 上書きが優先される。
-  let downsample_enabled = overrides.downsample.unwrap_or(ctx.image_downsample);
+  let downsample_enabled = downsample.unwrap_or(ctx.image_downsample);
   let target_dpi = if downsample_enabled {
-    Some(overrides.dpi.unwrap_or(ctx.image_max_dpi))
+    Some(dpi.unwrap_or(ctx.image_max_dpi))
   } else {
     None
   };
 
-  let image_node = LayoutNode::Image {
-    path: image_path.clone(),
-    width,
-    height,
-    target_dpi,
-  };
-
-  let caption_nodes =
-    caption.map(|(position, inlines)| return (position, build_caption(ctx, &style.caption, inlines, number, state)));
   let spec = FloatSpec {
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
     inner_margin: style.inner_margin,
   };
-  return wrap_float(image_node, caption_nodes, &spec);
+  let caption = FloatCaption {
+    style: &style.caption,
+    inlines: caption.as_deref(),
+    position: *caption_position,
+  };
+  return lower_numbered_float(ctx, node, caption, &spec, state, |_state| {
+    // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
+    return LayoutNode::Image {
+      path: image_path.clone(),
+      width: *width,
+      height: *height,
+      target_dpi,
+    };
+  });
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::{
+    length::Length,
     style::Style as ReadStyle,
     typeset::lowering::{layout_node::InlineNode, lower_sources_with_headings, test_support::analyzed},
   };

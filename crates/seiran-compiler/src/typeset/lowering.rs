@@ -373,47 +373,11 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::MathBlock { .. } => {
       return math::lower_math_block(ctx, node, &*state);
     },
-    HirNodeKind::Figure {
-      image_path,
-      width,
-      height,
-      dpi,
-      downsample,
-      caption,
-      caption_position,
-      label: _,
-    } => {
-      let Some(counter_value) = state.counter_value(node.id) else {
-        unreachable!("図は必ず採番される（analyze の Figure 分岐が counters へ登録している）: {:?}", node.id)
-      };
-      let number = counter::format_counter_value(ctx.style, counter_value);
-      let label = state.declared_label(node.id);
-      let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
-      let overrides = figure::ImageOverrides {
-        dpi: *dpi,
-        downsample: *downsample,
-      };
-      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number, state);
-      return with_label_anchors(label, nodes);
+    HirNodeKind::Figure { .. } => {
+      return figure::lower_figure(ctx, node, state);
     },
-    HirNodeKind::Table {
-      columns,
-      widths,
-      head,
-      rows,
-      caption,
-      caption_position,
-      label: _,
-      breakable,
-    } => {
-      let Some(counter_value) = state.counter_value(node.id) else {
-        unreachable!("表は必ず採番される（analyze の Table 分岐が counters へ登録している）: {:?}", node.id)
-      };
-      let number = counter::format_counter_value(ctx.style, counter_value);
-      let label = state.declared_label(node.id);
-      let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
-      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable, state);
-      return with_label_anchors(label, nodes);
+    HirNodeKind::Table { .. } => {
+      return table::lower_table(ctx, node, state);
     },
   }
 }
