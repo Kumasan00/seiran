@@ -9,12 +9,12 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       inline::lower_inlines,
-      layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
+      layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
     },
   },
 };
 
-/// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
+/// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `InlineNode` 列）を生成する
 ///
 /// キャプション本文の lowering はクロージャで遅延させ、`format` が `{title}` を含むときだけ
 /// 含む回数ぶん実行する（キャプション中の `\footnote` が通し index だけ消費して消えるのを
@@ -25,7 +25,7 @@ pub(super) fn build_caption(
   inlines: &[HirInline],
   number: &str,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Vec<InlineNode> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,
     font_kind: caption_style.font_kind,
@@ -34,7 +34,7 @@ pub(super) fn build_caption(
   let nodes = caption_style.format.expand(
     number,
     || return lower_inlines(ctx, inlines, base_style, state),
-    |literal| return LayoutNode::Text(literal.to_string(), base_style),
+    |literal| return InlineNode::Text(literal.to_string(), base_style),
   );
   return merge_adjacent_text(nodes);
 }
@@ -56,13 +56,13 @@ pub(super) struct FloatSpec {
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
 pub(super) fn wrap_float(
   main: LayoutNode,
-  caption: Option<(CaptionPosition, Vec<LayoutNode>)>,
+  caption: Option<(CaptionPosition, Vec<InlineNode>)>,
   spec: &FloatSpec,
 ) -> Vec<LayoutNode> {
   let mut children = Vec::new();
   match caption {
     Some((CaptionPosition::Top, caption_nodes)) => {
-      children.extend(caption_nodes);
+      children.extend(caption_nodes.into_iter().map(LayoutNode::from));
       children.push(LayoutNode::Vkern {
         length: spec.inner_margin,
       });
@@ -73,7 +73,7 @@ pub(super) fn wrap_float(
       children.push(LayoutNode::Vkern {
         length: spec.inner_margin,
       });
-      children.extend(caption_nodes);
+      children.extend(caption_nodes.into_iter().map(LayoutNode::from));
     },
     None => {
       children.push(main);
@@ -124,8 +124,8 @@ mod tests {
   }
 
   /// テスト用のキャプション本体（識別しやすい固定文字列の Text）を作る
-  fn caption_node(text: &str) -> LayoutNode {
-    return LayoutNode::Text(
+  fn caption_node(text: &str) -> InlineNode {
+    return InlineNode::Text(
       text.to_string(),
       TextStyle {
         font_size: Length::pt(11.0),
@@ -136,7 +136,7 @@ mod tests {
   }
 
   /// 本体（main）として使う、キャプションと取り違えようのない固定文字列の Text を作る
-  fn main_node() -> LayoutNode { return caption_node(MAIN_TEXT); }
+  fn main_node() -> LayoutNode { return LayoutNode::from(caption_node(MAIN_TEXT)); }
 
   /// [`main_node`] が積む本文文字列（キャプションには現れない値）
   const MAIN_TEXT: &str = "MAIN";
@@ -175,9 +175,9 @@ mod tests {
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
     assert_eq!(*align, Align::Center, "図表は既定で中央寄せ");
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
+    assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
     assert_vkern(&children[1], 3.0);
-    assert!(matches!(&children[2], LayoutNode::Text(t, _) if t == MAIN_TEXT));
+    assert!(matches!(&children[2], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
   }
 
   #[test]
@@ -196,9 +196,9 @@ mod tests {
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == MAIN_TEXT));
+    assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
     assert_vkern(&children[1], 3.0);
-    assert!(matches!(&children[2], LayoutNode::Text(t, _) if t == "cap"));
+    assert!(matches!(&children[2], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
   }
 
   #[test]
@@ -238,7 +238,7 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert_eq!(children.len(), 1, "本体のみ: {children:?}");
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == MAIN_TEXT));
+    assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
   }
 
   #[test]
@@ -259,7 +259,7 @@ mod tests {
     let caption = float_body(&nodes)
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(text, text_style) => return Some((text.clone(), *text_style)),
+        LayoutNode::Inline(InlineNode::Text(text, text_style)) => return Some((text.clone(), *text_style)),
         _ => return None,
       })
       .expect("キャプション Text があるはず");
@@ -282,7 +282,7 @@ mod tests {
     let captions: Vec<(String, TextStyle)> = float_body(&nodes)
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(text, text_style) => return Some((text.clone(), *text_style)),
+        LayoutNode::Inline(InlineNode::Text(text, text_style)) => return Some((text.clone(), *text_style)),
         _ => return None,
       })
       .collect();
@@ -312,7 +312,7 @@ mod tests {
     let numbers: Vec<u32> = nodes
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Footnote { number, .. } => return Some(*number),
+        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
         _ => return None,
       })
       .collect();
@@ -339,11 +339,11 @@ mod tests {
         _ => return &[],
       })
       .find_map(|n| match n {
-        LayoutNode::Link { target, children } => return Some((target, children)),
+        LayoutNode::Inline(InlineNode::Link { target, children }) => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
     assert_eq!(*link.0, LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:one"))));
-    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Figure 1.1"), "{:?}", link.1);
+    assert!(matches!(&link.1[0], InlineNode::Text(t, _) if t == "Figure 1.1"), "{:?}", link.1);
   }
 }

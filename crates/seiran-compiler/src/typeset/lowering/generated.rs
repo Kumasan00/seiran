@@ -13,7 +13,7 @@ use crate::{
     lowering::{
       HeadingRecord, LoweringContext,
       heading::{self, title_style},
-      layout_node::{LayoutNode, TextStyle},
+      layout_node::{InlineNode, LayoutNode, TextStyle},
       paragraph::{assemble_paragraph, body_text_style},
     },
   },
@@ -68,7 +68,7 @@ pub(super) fn lower_bibliography(
   return (layout, headings);
 }
 
-/// 生成物のインライン列（CSL 整形の出力）をレイアウトノードへ変換する
+/// 生成物のインライン列（CSL 整形の出力）をインラインノードへ変換する
 ///
 /// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`GeneratedInline` はそもそもそれらの
 /// variant を持たない、#325）ので、事実を引く必要がなく `LoweringState` を取らない。
@@ -76,7 +76,7 @@ pub(super) fn lower_generated_inlines(
   ctx: &LoweringContext<'_>,
   inlines: &[GeneratedInline],
   parent_style: TextStyle,
-) -> Vec<LayoutNode> {
+) -> Vec<InlineNode> {
   let mut result = Vec::new();
   for inline in inlines {
     result.extend(lower_generated_inline(ctx, inline, parent_style));
@@ -84,7 +84,7 @@ pub(super) fn lower_generated_inlines(
   return result;
 }
 
-/// 生成物のインライン 1 個をレイアウトノードへ変換する
+/// 生成物のインライン 1 個をインラインノードへ変換する
 ///
 /// `GeneratedInline` は `citation::render` が実際に構築する 3 variant に絞られている
 /// （#325 / #326）ので、この match は網羅的で済む。
@@ -92,9 +92,9 @@ fn lower_generated_inline(
   ctx: &LoweringContext<'_>,
   inline: &GeneratedInline,
   parent_style: TextStyle,
-) -> Vec<LayoutNode> {
+) -> Vec<InlineNode> {
   match inline {
-    GeneratedInline::Text(text) => return vec![LayoutNode::Text(text.clone(), parent_style)],
+    GeneratedInline::Text(text) => return vec![InlineNode::Text(text.clone(), parent_style)],
     GeneratedInline::Styled { kind, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
@@ -104,7 +104,7 @@ fn lower_generated_inline(
       return lower_generated_inlines(ctx, children, styled);
     },
     GeneratedInline::InternalLink { target, children } => {
-      return vec![LayoutNode::Link {
+      return vec![InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Citation(target.clone())),
         children: lower_generated_inlines(ctx, children, parent_style),
       }];
@@ -192,7 +192,7 @@ mod tests {
 
     // Assert
     let italic = layout.iter().find_map(|n| match n {
-      LayoutNode::Text(t, s) if t == "Crazy Rich Asians" => return Some(*s),
+      LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,
     });
     assert_eq!(italic.map(|s| return s.font_kind), Some(FontKind::SerifItalic), "{layout:?}");
@@ -219,11 +219,11 @@ mod tests {
     let layout = lower(&style, &document);
 
     // Assert
-    let LayoutNode::Link { target, children } = &layout[0] else {
+    let LayoutNode::Inline(InlineNode::Link { target, children }) = &layout[0] else {
       panic!("Link が期待されます: {layout:?}");
     };
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(CitationId::new("kwan2014"))));
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "[1]"), "{children:?}");
+    assert!(matches!(&children[0], InlineNode::Text(t, _) if t == "[1]"), "{children:?}");
   }
 
   #[test]

@@ -8,7 +8,7 @@ use crate::{
     boxes::{Align, AnchorMark},
     lowering::{
       LoweringContext,
-      layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
+      layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
     },
   },
 };
@@ -35,7 +35,7 @@ pub(super) fn lower_heading(
   ctx: &LoweringContext<'_>,
   level: HeadingLevel,
   number: &str,
-  title: impl FnMut() -> Vec<LayoutNode>,
+  title: impl FnMut() -> Vec<InlineNode>,
   label: Option<LabelId>,
   key: HeadingKey,
 ) -> Vec<LayoutNode> {
@@ -43,9 +43,9 @@ pub(super) fn lower_heading(
   let style = title_style(ctx, level);
 
   let children = heading_style.format.expand(number, title, |literal| {
-    return LayoutNode::Text(literal.to_string(), style);
+    return InlineNode::Text(literal.to_string(), style);
   });
-  let children = merge_adjacent_text(children);
+  let children: Vec<LayoutNode> = merge_adjacent_text(children).into_iter().map(LayoutNode::from).collect();
 
   let mut result = Vec::new();
 
@@ -90,8 +90,8 @@ mod tests {
   };
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る
-  fn plain_title(ctx: &LoweringContext<'_>, level: HeadingLevel, text: &str) -> Vec<LayoutNode> {
-    return vec![LayoutNode::Text(text.to_string(), title_style(ctx, level))];
+  fn plain_title(ctx: &LoweringContext<'_>, level: HeadingLevel, text: &str) -> Vec<InlineNode> {
+    return vec![InlineNode::Text(text.to_string(), title_style(ctx, level))];
   }
 
   /// `nodes` から見出し `VBox` の子要素列を取り出す
@@ -119,7 +119,7 @@ mod tests {
     // Assert
     let children = heading_children(&nodes);
     let text = match &children[0] {
-      LayoutNode::Text(text, _) => text.clone(),
+      LayoutNode::Inline(InlineNode::Text(text, _)) => text.clone(),
       other => panic!("Text ノードが期待されます: {other:?}"),
     };
     assert_eq!(text, "[4.7] Custom Title");
@@ -139,7 +139,7 @@ mod tests {
     let italic = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "Italic" => return Some(*s),
+        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Italic" => return Some(*s),
         _ => return None,
       })
       .expect("イタリック部分の Text があるはず");
@@ -219,7 +219,7 @@ mod tests {
     return nodes
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Footnote { number, index, .. } => return Some((*number, *index)),
+        LayoutNode::Inline(InlineNode::Footnote { number, index, .. }) => return Some((*number, *index)),
         _ => return None,
       })
       .collect();
@@ -271,11 +271,11 @@ mod tests {
     let link = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Link { target, children } => return Some((target, children)),
+        LayoutNode::Inline(InlineNode::Link { target, children }) => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
     assert_eq!(*link.0, LinkTarget::Internal(AnchorId::Label(LabelId::new("ch:other"))));
-    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Chapter 1"), "{:?}", link.1);
+    assert!(matches!(&link.1[0], InlineNode::Text(t, _) if t == "Chapter 1"), "{:?}", link.1);
   }
 }

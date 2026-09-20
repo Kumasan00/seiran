@@ -5,7 +5,7 @@ use crate::{
   typeset::lowering::{
     LoweringContext, LoweringState,
     inline::lower_inline,
-    layout_node::{LayoutNode, TextStyle},
+    layout_node::{InlineNode, LayoutNode, TextStyle},
   },
 };
 
@@ -24,7 +24,7 @@ pub(super) fn body_text_style(ctx: &LoweringContext<'_>) -> TextStyle {
 /// 両方の呼び出し元がこの 1 つを使う。
 pub(super) fn assemble_paragraph(
   ctx: &LoweringContext<'_>,
-  content: Vec<LayoutNode>,
+  content: Vec<InlineNode>,
   suppress_indent: bool,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::with_capacity(content.len() + 2);
@@ -32,12 +32,12 @@ pub(super) fn assemble_paragraph(
   // 段落先頭行の字下げ。先頭に水平カーンを置くと、貪欲法ブレーカが先頭行だけ右へずらして
   // 折り返し幅を狭める（2 行目以降には残らない）。0pt のとき・`\noindent` 指定時は何も足さない。
   if ctx.first_line_indent.to_pt() > 0.0 && !suppress_indent {
-    result.push(LayoutNode::Kern {
+    result.push(LayoutNode::Inline(InlineNode::Kern {
       length: ctx.first_line_indent,
-    });
+    }));
   }
 
-  result.extend(content);
+  result.extend(content.into_iter().map(LayoutNode::from));
 
   result.push(LayoutNode::Vkern {
     length: ctx.style.text.paragraph_spacing,
@@ -58,7 +58,7 @@ pub(super) fn lower_paragraph(
   // パーサ（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
   let suppress_indent = inlines.iter().any(|inline| matches!(inline.kind, HirInlineKind::NoIndent));
 
-  let mut content = Vec::new();
+  let mut content: Vec<InlineNode> = Vec::new();
   for inline in inlines {
     if matches!(inline.kind, HirInlineKind::NoIndent) {
       continue;
@@ -111,7 +111,7 @@ mod tests {
     let nodes = lower_source(&style, "body\n");
 
     // Assert
-    let LayoutNode::Text(text, text_style) = &nodes[0] else {
+    let LayoutNode::Inline(InlineNode::Text(text, text_style)) = &nodes[0] else {
       panic!("先頭は Text であるべき: {nodes:?}");
     };
     assert_eq!(text, "body");
@@ -129,11 +129,11 @@ mod tests {
     let nodes = lower_source(&style, "body\n");
 
     // Assert
-    let LayoutNode::Kern { length } = &nodes[0] else {
+    let LayoutNode::Inline(InlineNode::Kern { length }) = &nodes[0] else {
       panic!("先頭は字下げ Kern であるべき: {nodes:?}");
     };
     assert!((length.to_pt() - 15.0).abs() < f32::EPSILON);
-    assert!(matches!(&nodes[1], LayoutNode::Text(t, _) if t == "body"));
+    assert!(matches!(&nodes[1], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"));
   }
 
   #[test]
@@ -146,8 +146,14 @@ mod tests {
     let nodes = lower_source(&style, "\\noindent body\n");
 
     // Assert
-    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は抑止される: {nodes:?}");
-    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
+    assert!(
+      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      "字下げ Kern は抑止される: {nodes:?}"
+    );
+    assert!(
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"),
+      "先頭は本文 Text: {nodes:?}"
+    );
   }
 
   #[test]
@@ -159,8 +165,14 @@ mod tests {
     let nodes = lower_source(&style, "body\n");
 
     // Assert
-    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
-    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は出ない: {nodes:?}");
+    assert!(
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"),
+      "先頭は本文 Text: {nodes:?}"
+    );
+    assert!(
+      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      "字下げ Kern は出ない: {nodes:?}"
+    );
   }
 
   #[test]
@@ -175,7 +187,7 @@ mod tests {
     let texts: Vec<&str> = nodes
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(t, _) => return Some(t.as_str()),
+        LayoutNode::Inline(InlineNode::Text(t, _)) => return Some(t.as_str()),
         _ => return None,
       })
       .collect();
@@ -194,11 +206,11 @@ mod tests {
     let link = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Link { target, children } => return Some((target, children)),
+        LayoutNode::Inline(InlineNode::Link { target, children }) => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
     assert_eq!(*link.0, LinkTarget::Internal(AnchorId::Label(LabelId::new("ch:one"))));
-    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Chapter 1"), "{:?}", link.1);
+    assert!(matches!(&link.1[0], InlineNode::Text(t, _) if t == "Chapter 1"), "{:?}", link.1);
   }
 }

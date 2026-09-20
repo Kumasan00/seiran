@@ -1,8 +1,8 @@
 //! コード（`document::HirNodeKind::CodeBlock` / `document::HirInlineKind::Code`）の lowering
 //!
 //! 内容としてのコードなので、空白・字下げ・改行はソースのまま組む。1 行を
-//! [`LayoutNode::TextAtom`]（伸縮しない閉じた箱）1 つに落とし、行と行の間に
-//! [`LayoutNode::LineBreak`] を挟むことで、行揃えでも字下げが動かないようにする。
+//! [`InlineNode::TextAtom`]（伸縮しない閉じた箱）1 つに落とし、行と行の間に
+//! [`InlineNode::LineBreak`] を挟むことで、行揃えでも字下げが動かないようにする。
 
 use crate::{
   color::Color,
@@ -10,7 +10,7 @@ use crate::{
   length::Length,
   typeset::lowering::{
     LoweringContext,
-    layout_node::{LayoutNode, TextStyle},
+    layout_node::{InlineNode, LayoutNode, TextStyle},
     paragraph,
   },
 };
@@ -37,19 +37,19 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<Lay
   let mut content = Vec::new();
   for (index, line) in text.split('\n').enumerate() {
     if index > 0 {
-      content.push(LayoutNode::LineBreak);
+      content.push(InlineNode::LineBreak);
     }
-    content.push(LayoutNode::TextAtom(line.to_string(), style));
+    content.push(InlineNode::TextAtom(line.to_string(), style));
   }
   return paragraph::assemble_paragraph(ctx, content, true);
 }
 
-/// インラインコード（`\code{...}`）をレイアウトノードに変換する
+/// インラインコード（`\code{...}`）をインラインノードに変換する
 ///
 /// 書体は等幅に差し替え、サイズと色は周囲から継承する（`\color{... \code{x} ...}` は効く）。
 /// 内容に改行があっても行を割らず、シェーピング段（`typeset::boxing`）が空白へ畳む。
-pub(super) fn lower_inline_code(text: &str, parent_style: TextStyle) -> Vec<LayoutNode> {
-  return vec![LayoutNode::TextAtom(
+pub(super) fn lower_inline_code(text: &str, parent_style: TextStyle) -> Vec<InlineNode> {
+  return vec![InlineNode::TextAtom(
     text.to_string(),
     code_text_style(parent_style.font_size, parent_style.color),
   )];
@@ -68,7 +68,7 @@ mod tests {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        LayoutNode::TextAtom(text, _) => return Some(text.as_str()),
+        LayoutNode::Inline(InlineNode::TextAtom(text, _)) => return Some(text.as_str()),
         _ => return None,
       })
       .collect();
@@ -85,7 +85,7 @@ mod tests {
 
     // Assert
     assert_eq!(atom_texts(&nodes), vec!["fn main() {", "    let x = 1;", "}"]);
-    let breaks = nodes.iter().filter(|n| matches!(n, LayoutNode::LineBreak)).count();
+    let breaks = nodes.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))).count();
     assert_eq!(breaks, 2, "行の間だけに強制改行が入る: {nodes:?}");
   }
 
@@ -113,11 +113,14 @@ mod tests {
     let nodes = lower(&style, &analyzed(source));
 
     // Assert
-    let LayoutNode::TextAtom(_, text_style) = &nodes[0] else {
+    let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = &nodes[0] else {
       panic!("先頭は TextAtom であるべき: {nodes:?}");
     };
     assert_eq!(text_style.font_kind, FontKind::Monospace);
-    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は出ない: {nodes:?}");
+    assert!(
+      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      "字下げ Kern は出ない: {nodes:?}"
+    );
   }
 
   #[test]
@@ -131,8 +134,10 @@ mod tests {
 
     // Assert
     assert_eq!(atom_texts(&nodes), vec!["if x { y }"]);
-    let LayoutNode::TextAtom(_, text_style) =
-      nodes.iter().find(|n| matches!(n, LayoutNode::TextAtom(..))).expect("TextAtom があるはず")
+    let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = nodes
+      .iter()
+      .find(|n| matches!(n, LayoutNode::Inline(InlineNode::TextAtom(..))))
+      .expect("TextAtom があるはず")
     else {
       unreachable!("find が TextAtom だけを返す")
     };

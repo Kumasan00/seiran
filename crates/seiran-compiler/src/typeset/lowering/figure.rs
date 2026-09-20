@@ -68,7 +68,7 @@ mod tests {
   use super::*;
   use crate::{
     style::Style as ReadStyle,
-    typeset::lowering::{lower_sources_with_headings, test_support::analyzed},
+    typeset::lowering::{layout_node::InlineNode, lower_sources_with_headings, test_support::analyzed},
   };
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
@@ -127,7 +127,7 @@ mod tests {
     assert_eq!(*target_dpi, Some(300));
 
     let caption_text = children.iter().find_map(|n| match n {
-      LayoutNode::Text(text, _) => return Some(text.as_str()),
+      LayoutNode::Inline(InlineNode::Text(text, _)) => return Some(text.as_str()),
       _ => return None,
     });
     assert_eq!(caption_text, Some("Figure 1.1: せいらん"));
@@ -147,7 +147,10 @@ mod tests {
 
     // Assert
     let children = figure_children(&nodes);
-    let first_text_idx = children.iter().position(|n| matches!(n, LayoutNode::Text(_, _))).expect("Text あり");
+    let first_text_idx = children
+      .iter()
+      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))))
+      .expect("Text あり");
     let first_image_idx = children.iter().position(|n| matches!(n, LayoutNode::Image { .. })).expect("Image あり");
     assert!(first_text_idx < first_image_idx, "Top: caption が image の前");
   }
@@ -163,7 +166,7 @@ mod tests {
 
     // Assert
     let children = figure_children(&nodes);
-    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
+    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
     let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image { .. }));
     assert!(has_image, "画像は出力されている: {children:?}");

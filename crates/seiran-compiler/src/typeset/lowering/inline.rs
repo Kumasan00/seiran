@@ -9,19 +9,19 @@ use crate::{
     boxes::{AnchorId, FootnoteId, LinkTarget},
     lowering::{
       LoweringContext, LoweringState, code, generated,
-      layout_node::{AtomNode, LayoutNode, TextStyle},
+      layout_node::{AtomNode, InlineNode, TextStyle},
       math::lower_inline_math,
     },
   },
 };
 
-/// インライン列をまとめてレイアウトノードに変換する
+/// インライン列をまとめてインラインノードに変換する
 pub(super) fn lower_inlines(
   ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
   parent_style: TextStyle,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Vec<InlineNode> {
   let mut result = Vec::new();
   for inline in inlines {
     result.extend(lower_inline(ctx, inline, parent_style, state));
@@ -29,16 +29,16 @@ pub(super) fn lower_inlines(
   return result;
 }
 
-/// インライン要素をレイアウトノードに変換する
+/// インライン要素をインラインノードに変換する
 pub(super) fn lower_inline(
   ctx: &LoweringContext<'_>,
   inline: &HirInline,
   parent_style: TextStyle,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Vec<InlineNode> {
   match &inline.kind {
     HirInlineKind::Text(text) => {
-      return vec![LayoutNode::Text(text.clone(), parent_style)];
+      return vec![InlineNode::Text(text.clone(), parent_style)];
     },
     HirInlineKind::Styled { kind, children } => {
       let styled = TextStyle {
@@ -63,17 +63,17 @@ pub(super) fn lower_inline(
       return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script);
     },
     HirInlineKind::Symbol(ch) => {
-      return vec![LayoutNode::Text(ch.to_string(), parent_style)];
+      return vec![InlineNode::Text(ch.to_string(), parent_style)];
     },
     HirInlineKind::LineBreak => {
-      return vec![LayoutNode::LineBreak];
+      return vec![InlineNode::LineBreak];
     },
     HirInlineKind::NoIndent => {
       // 通常は段落変換時に除去されるが、単独変換でも描画しない。
       return Vec::new();
     },
     HirInlineKind::Index { word, reading } => {
-      return vec![LayoutNode::IndexMark {
+      return vec![InlineNode::IndexMark {
         word: word.clone(),
         reading: reading.clone(),
       }];
@@ -82,9 +82,9 @@ pub(super) fn lower_inline(
       // 参照先の存在と番号は `semantics::analyze` が確定させているので、ここで表示文字列まで作る。
       let target = state.reference_target(inline.id);
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
-      return vec![LayoutNode::Link {
+      return vec![InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Label(target.clone())),
-        children: vec![LayoutNode::Text(
+        children: vec![InlineNode::Text(
           state.ref_display(ctx.style, target),
           style,
         )],
@@ -93,7 +93,7 @@ pub(super) fn lower_inline(
     HirInlineKind::Link { url, children } => {
       let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
       let inner = lower_inlines(ctx, children, style, state);
-      return vec![LayoutNode::Link {
+      return vec![InlineNode::Link {
         target: LinkTarget::External(url.clone()),
         children: inner,
       }];
@@ -112,7 +112,7 @@ pub(super) fn lower_inline(
 
       // 本文中のマーカーから脚注本体へリンクする。
       let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
-      let inline_marker = LayoutNode::Link {
+      let inline_marker = InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Footnote(FootnoteId::new(index))),
         children: vec![footnote_marker_node(
           &marker_text,
@@ -135,7 +135,7 @@ pub(super) fn lower_inline(
 
       return vec![
         inline_marker,
-        LayoutNode::Footnote {
+        InlineNode::Footnote {
           number,
           index,
           body: lowered_body,
@@ -154,19 +154,19 @@ fn footnote_number(ctx: &LoweringContext<'_>, index: u32) -> u32 {
     .unwrap_or(continuous);
 }
 
-/// 脚注マーカー（上付き番号）1 個を `LayoutNode::Raise` で組み立てる
+/// 脚注マーカー（上付き番号）1 個を `InlineNode::Raise` で組み立てる
 fn footnote_marker_node(
   marker_text: &str,
   base_font_size: Length,
   base_style: TextStyle,
   footnote_style: &FootnoteStyle,
-) -> LayoutNode {
+) -> InlineNode {
   let marker_style = TextStyle {
     font_size: base_font_size * footnote_style.marker_size_factor,
     font_kind: FontKind::Serif,
     color: base_style.color,
   };
-  return LayoutNode::Raise {
+  return InlineNode::Raise {
     offset: base_font_size * footnote_style.marker_raise_factor,
     children: vec![AtomNode::Text(marker_text.to_string(), marker_style)],
   };
@@ -188,8 +188,8 @@ mod tests {
     semantics::{CitationId, GeneratedInline, LabelId},
     style::{NumberStyle, NumberTemplate, Style as ReadStyle},
     typeset::lowering::{
-      lower_sources_with_headings,
-      test_support::{analyzed, lower},
+      LayoutNode, lower_sources_with_headings,
+      test_support::{analyzed, as_inline, lower},
     },
   };
 
@@ -204,48 +204,53 @@ mod tests {
 
   /// レイアウトノード列から最初の `Text`（文字列とスタイル）を取り出す
   fn first_text(nodes: &[LayoutNode]) -> (&str, TextStyle) {
-    let LayoutNode::Text(text, style) = &nodes[0] else {
+    let InlineNode::Text(text, style) = as_inline(&nodes[0]).expect("インラインが期待されます") else {
       panic!("Text が期待されます: {nodes:?}");
     };
     return (text, *style);
   }
 
   /// レイアウトノード列から最初の `Link`（ターゲットと子）を取り出す
-  fn first_link(nodes: &[LayoutNode]) -> (&LinkTarget, &[LayoutNode]) {
-    let link = nodes.iter().find_map(|n| match n {
-      LayoutNode::Link { target, children } => return Some((target, children.as_slice())),
+  fn first_link(nodes: &[LayoutNode]) -> (&LinkTarget, &[InlineNode]) {
+    let link = nodes.iter().find_map(|n| match as_inline(n) {
+      Some(InlineNode::Link { target, children }) => return Some((target, children.as_slice())),
       _ => return None,
     });
     return link.expect("Link が期待されます");
   }
 
   /// レイアウトノード列から最初の `Footnote` を取り出す
-  fn first_footnote(nodes: &[LayoutNode]) -> (u32, u32, &[LayoutNode]) {
-    let footnote = nodes.iter().find_map(|n| match n {
-      LayoutNode::Footnote {
+  fn first_footnote(nodes: &[LayoutNode]) -> (u32, u32, &[InlineNode]) {
+    let footnote = nodes.iter().find_map(|n| match as_inline(n) {
+      Some(InlineNode::Footnote {
         number,
         index,
         body,
-      } => return Some((*number, *index, body.as_slice())),
+      }) => return Some((*number, *index, body.as_slice())),
       _ => return None,
     });
     return footnote.expect("Footnote が期待されます");
   }
 
-  /// 脚注マーカー（`LayoutNode::Raise` + `Text`。本文中マーカーは `Link` で包まれているので、
-  /// あれば先に剥がしてから読む）の表示テキストを取り出すテストヘルパ
-  fn marker_text(node: &LayoutNode) -> &str {
+  /// 脚注マーカー（`InlineNode::Raise` + `Text`。本文中マーカーは `Link` で包まれているので、
+  /// あれば先に剥がしてから読む）の表示テキストを取り出すテストヘルパ（インライン列側）
+  fn marker_text_inline(node: &InlineNode) -> &str {
     let node = match node {
-      LayoutNode::Link { children, .. } => &children[0],
+      InlineNode::Link { children, .. } => &children[0],
       other => other,
     };
-    let LayoutNode::Raise { children, .. } = node else {
+    let InlineNode::Raise { children, .. } = node else {
       panic!("Raise が期待されます: {node:?}");
     };
     let AtomNode::Text(text, _) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     return text;
+  }
+
+  /// [`marker_text_inline`] のレイアウトノード側（本文中マーカーは `LayoutNode::Inline` 経由で届く）
+  fn marker_text(node: &LayoutNode) -> &str {
+    return marker_text_inline(as_inline(node).expect("インラインが期待されます"));
   }
 
   #[test]
@@ -305,7 +310,7 @@ mod tests {
     // Assert
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:intro"))));
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "Section 1.1"), "{children:?}");
+    assert!(matches!(&children[0], InlineNode::Text(t, _) if t == "Section 1.1"), "{children:?}");
   }
 
   #[test]
@@ -319,13 +324,13 @@ mod tests {
     // Assert
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::External("https://example.com".to_string()));
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "ここ"));
+    assert!(matches!(&children[0], InlineNode::Text(t, _) if t == "ここ"));
   }
 
   /// 解決済み `\ref` の表示テキストに付いたスタイルを取り出すテストヘルパ
   fn ref_text_style(nodes: &[LayoutNode]) -> TextStyle {
     let (_, children) = first_link(nodes);
-    let LayoutNode::Text(_, text_style) = &children[0] else {
+    let InlineNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     return *text_style;
@@ -360,7 +365,7 @@ mod tests {
 
     // Assert
     let (_, children) = first_link(&nodes);
-    let LayoutNode::Text(_, text_style) = &children[0] else {
+    let InlineNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(text_style.color, Some(blue));
@@ -421,7 +426,7 @@ mod tests {
     // Assert
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(CitationId::new("kwan2014"))));
-    let LayoutNode::Text(_, text_style) = &children[0] else {
+    let InlineNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(text_style.color, Some(blue));
@@ -437,13 +442,13 @@ mod tests {
 
     // Assert
     let (target, children) = first_link(&nodes);
-    assert!(matches!(&children[0], LayoutNode::Raise { .. }));
+    assert!(matches!(&children[0], InlineNode::Raise { .. }));
     let (number, index, body) = first_footnote(&nodes);
     assert_eq!(number, 1);
     assert_eq!(index, 0);
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Footnote(FootnoteId::new(index))));
-    assert!(matches!(&body[0], LayoutNode::Raise { .. }));
-    assert!(matches!(&body[1], LayoutNode::Text(t, _) if t == "note"));
+    assert!(matches!(&body[0], InlineNode::Raise { .. }));
+    assert!(matches!(&body[1], InlineNode::Text(t, _) if t == "note"));
   }
 
   #[test]
@@ -457,18 +462,21 @@ mod tests {
     let nodes = lower_source_with(&ctx, "a\\footnote{first}\n\nb\\footnote{note}\n");
 
     // Assert — 2 個目の脚注（index 1）の表示番号は上書きされて 1
-    let second = &nodes[nodes.iter().rposition(|n| matches!(n, LayoutNode::Footnote { .. })).expect("脚注あり")];
-    let LayoutNode::Footnote {
+    let second = &nodes[nodes
+      .iter()
+      .rposition(|n| matches!(n, LayoutNode::Inline(InlineNode::Footnote { .. })))
+      .expect("脚注あり")];
+    let LayoutNode::Inline(InlineNode::Footnote {
       number,
       index,
       body,
-    } = second
+    }) = second
     else {
       panic!("Footnote が期待されます: {nodes:?}");
     };
     assert_eq!(*number, 1);
     assert_eq!(*index, 1);
-    assert_eq!(marker_text(&body[0]), "1", "脚注エリア側のマーカー");
+    assert_eq!(marker_text_inline(&body[0]), "1", "脚注エリア側のマーカー");
     // Assert — 本文側マーカーも同じ上書き番号になる（1 個目・2 個目とも 1 番）
     assert_eq!(text_side_markers(&nodes), vec![(0, "1"), (1, "1")], "本文側のマーカー: {nodes:?}");
   }
@@ -484,15 +492,18 @@ mod tests {
     let nodes = lower_source_with(&ctx, "a\\footnote{first}\n\nb\\footnote{note}\n");
 
     // Assert
-    let last = &nodes[nodes.iter().rposition(|n| matches!(n, LayoutNode::Footnote { .. })).expect("脚注あり")];
+    let last = &nodes[nodes
+      .iter()
+      .rposition(|n| matches!(n, LayoutNode::Inline(InlineNode::Footnote { .. })))
+      .expect("脚注あり")];
     assert!(
       matches!(
         last,
-        LayoutNode::Footnote {
+        LayoutNode::Inline(InlineNode::Footnote {
           number: 2,
           index: 1,
           ..
-        }
+        })
       ),
       "{nodes:?}"
     );
@@ -506,11 +517,11 @@ mod tests {
   fn text_side_markers(nodes: &[LayoutNode]) -> Vec<(u32, &str)> {
     return nodes
       .iter()
-      .filter_map(|n| match n {
-        LayoutNode::Link {
+      .filter_map(|n| match as_inline(n) {
+        Some(InlineNode::Link {
           target: LinkTarget::Internal(AnchorId::Footnote(id)),
           ..
-        } => return Some((id.index(), marker_text(n))),
+        }) => return Some((id.index(), marker_text(n))),
         _ => return None,
       })
       .collect();
@@ -526,7 +537,7 @@ mod tests {
 
     // Assert
     let (_, _, body) = first_footnote(&nodes);
-    let LayoutNode::Text(text, text_style) = &body[1] else {
+    let InlineNode::Text(text, text_style) = &body[1] else {
       panic!("Text が期待されます: {body:?}");
     };
     assert_eq!(text, "x");
@@ -544,8 +555,8 @@ mod tests {
     // Assert
     let numbers: Vec<u32> = nodes
       .iter()
-      .filter_map(|n| match n {
-        LayoutNode::Footnote { number, .. } => return Some(*number),
+      .filter_map(|n| match as_inline(n) {
+        Some(InlineNode::Footnote { number, .. }) => return Some(*number),
         _ => return None,
       })
       .collect();
@@ -565,7 +576,7 @@ mod tests {
 
     // Assert
     let (_, link_children) = first_link(&nodes);
-    let LayoutNode::Raise { children, .. } = &link_children[0] else {
+    let InlineNode::Raise { children, .. } = &link_children[0] else {
       panic!("Raise が期待されます: {link_children:?}");
     };
     let AtomNode::Text(marker, marker_style) = &children[0] else {
@@ -582,14 +593,14 @@ mod tests {
 
     // Assert — 脚注本体側のマーカーは脚注フォントサイズ基準
     let (_, _, body) = first_footnote(&nodes);
-    let LayoutNode::Raise { children, .. } = &body[0] else {
+    let InlineNode::Raise { children, .. } = &body[0] else {
       panic!("Raise が期待されます: {body:?}");
     };
     let AtomNode::Text(_, body_marker_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     assert!((body_marker_style.font_size.to_pt() - 10.0).abs() < 1e-3, "{}", body_marker_style.font_size.to_pt());
-    let LayoutNode::Text(_, body_text_style) = &body[1] else {
+    let InlineNode::Text(_, body_text_style) = &body[1] else {
       panic!("Text が期待されます: {body:?}");
     };
     assert!((body_text_style.font_size.to_pt() - 20.0).abs() < 1e-3, "{}", body_text_style.font_size.to_pt());
@@ -607,8 +618,8 @@ mod tests {
     // Assert — 脚注エリア側
     let area_markers: Vec<&str> = nodes
       .iter()
-      .filter_map(|n| match n {
-        LayoutNode::Footnote { body, .. } => return Some(marker_text(&body[0])),
+      .filter_map(|n| match as_inline(n) {
+        Some(InlineNode::Footnote { body, .. }) => return Some(marker_text_inline(&body[0])),
         _ => return None,
       })
       .collect();
@@ -628,7 +639,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(&nodes[0], LayoutNode::IndexMark { word, reading } if word == "語" && reading.is_none()),
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark { word, reading }) if word == "語" && reading.is_none()),
       "{nodes:?}"
     );
   }
@@ -643,7 +654,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(&nodes[0], LayoutNode::IndexMark { reading, .. } if reading.as_deref() == Some("よみ")),
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark { reading, .. }) if reading.as_deref() == Some("よみ")),
       "{nodes:?}"
     );
   }

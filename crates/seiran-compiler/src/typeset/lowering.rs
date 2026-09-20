@@ -37,7 +37,7 @@ mod table;
 mod theorem;
 mod title_page;
 
-pub(super) use layout_node::{AtomNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
+pub(super) use layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
 use crate::document::{FontKind, HeadingLevel};
@@ -153,7 +153,7 @@ pub(super) struct HeadingRecord {
 /// 子 module のテストが lowering の入力を組み立てるための最小ヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
-  use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
+  use super::{InlineNode, LayoutNode, LoweringContext, TextStyle, lower_sources_with_headings};
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_source_for_test,
@@ -180,6 +180,22 @@ pub(super) mod test_support {
     let ctx = LoweringContext::new(style);
     let (layout, _headings) = lower_sources_with_headings(&ctx, document);
     return layout;
+  }
+
+  /// レイアウトノードがインラインなら中身を借りる（縦リスト用ノードなら `None`）
+  pub(crate) fn as_inline(node: &LayoutNode) -> Option<&InlineNode> {
+    return match node {
+      LayoutNode::Inline(inline) => Some(inline),
+      _ => None,
+    };
+  }
+
+  /// レイアウトノードがインラインの `Text` なら、その文字列とスタイルを借りる
+  pub(crate) fn inline_text(node: &LayoutNode) -> Option<(&str, TextStyle)> {
+    return match as_inline(node)? {
+      InlineNode::Text(text, style) => Some((text.as_str(), *style)),
+      _ => None,
+    };
   }
 }
 
@@ -387,7 +403,7 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
       return vec![LayoutNode::PageBreak];
     },
     HirNodeKind::Space(length) => {
-      return vec![LayoutNode::Kern { length: *length }];
+      return vec![LayoutNode::Inline(InlineNode::Kern { length: *length })];
     },
     HirNodeKind::MathBlock {
       kind,
@@ -561,8 +577,7 @@ mod tests {
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
   fn contains_line_break(nodes: &[LayoutNode]) -> bool {
     return nodes.iter().any(|n| match n {
-      LayoutNode::LineBreak => return true,
-      // `Raise` の子は `AtomNode`（テキストと入れ子の `Raise` のみ）で、`LineBreak` を持てない
+      LayoutNode::Inline(inline) => return contains_line_break_inline(std::slice::from_ref(inline)),
       LayoutNode::VBox { children, .. } => {
         return contains_line_break(children);
       },
@@ -571,8 +586,16 @@ mod tests {
           .head
           .iter()
           .chain(table.rows.iter())
-          .any(|row| return row.cells.iter().any(|cell| return contains_line_break(&cell.content)));
+          .any(|row| return row.cells.iter().any(|cell| return contains_line_break_inline(&cell.content)));
       },
+      _ => return false,
+    });
+  }
+
+  /// [`contains_line_break`] のインライン列側（`Raise` の子は `AtomNode` で `LineBreak` を持てない）
+  fn contains_line_break_inline(nodes: &[InlineNode]) -> bool {
+    return nodes.iter().any(|n| match n {
+      InlineNode::LineBreak => return true,
       _ => return false,
     });
   }
@@ -589,7 +612,7 @@ mod tests {
     let kern = result
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Kern { length } => return Some(*length),
+        LayoutNode::Inline(InlineNode::Kern { length }) => return Some(*length),
         _ => return None,
       })
       .expect("Kern が出力されるはず");
@@ -618,9 +641,9 @@ mod tests {
     let out = lower_source(&style, "$x^{2}$\n");
 
     // Assert
-    let placeholder = out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "[Math]"));
+    let placeholder = out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "[Math]"));
     assert!(!placeholder, "[Math] プレースホルダは消えているはず: {out:?}");
-    let has_raise = out.iter().any(|n| matches!(n, LayoutNode::Raise { .. }));
+    let has_raise = out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Raise { .. })));
     assert!(has_raise, "上付き由来の Raise が含まれるはず: {out:?}");
   }
 
@@ -637,7 +660,10 @@ mod tests {
     assert!(matches!(out.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {out:?}");
     assert!(matches!(out.get(1), Some(LayoutNode::MathBlock { .. })), "中央は MathBlock であるべき: {out:?}");
     assert!(matches!(out.last(), Some(LayoutNode::Vkern { .. })), "末尾は Vkern であるべき: {out:?}");
-    assert!(!out.iter().any(|n| matches!(n, LayoutNode::LineBreak)), "LineBreak は出力されないはず: {out:?}");
+    assert!(
+      !out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))),
+      "LineBreak は出力されないはず: {out:?}"
+    );
   }
 
   #[test]
@@ -669,7 +695,10 @@ mod tests {
     // Assert
     let vbox_count = out.iter().filter(|n| matches!(n, LayoutNode::VBox { .. })).count();
     assert!(vbox_count >= 2, "見出しとリスト項目で VBox が複数出る: {out:?}");
-    assert!(out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "P")), "段落 Text が出る: {out:?}");
+    assert!(
+      out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "P")),
+      "段落 Text が出る: {out:?}"
+    );
     assert!(matches!(out.last(), Some(LayoutNode::PageBreak)), "末尾は PageBreak: {out:?}");
   }
 
@@ -737,7 +766,7 @@ mod tests {
     let numbers: Vec<u32> = out
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Footnote { number, .. } => return Some(*number),
+        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
         _ => return None,
       })
       .collect();
@@ -757,7 +786,7 @@ mod tests {
     let indices: Vec<u32> = layout
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Footnote { index, .. } => return Some(*index),
+        LayoutNode::Inline(InlineNode::Footnote { index, .. }) => return Some(*index),
         _ => return None,
       })
       .collect();
@@ -801,7 +830,7 @@ mod tests {
     let out = lower_source(&style, "x\n");
 
     // Assert
-    let LayoutNode::Text(_, text_style) = &out[0] else {
+    let LayoutNode::Inline(InlineNode::Text(_, text_style)) = &out[0] else {
       panic!("先頭は Text であるべき: {out:?}");
     };
     assert_eq!(text_style.font_size, Length::pt(18.0));
@@ -827,13 +856,21 @@ mod tests {
     // Arrange
     fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
       return nodes.iter().any(|n| match n {
-        LayoutNode::Link {
-          target: LinkTarget::Internal(t),
-          ..
-        } => return *t == AnchorId::Label(LabelId::new(target)),
+        LayoutNode::Inline(inline) => return contains_internal_link_inline(std::slice::from_ref(inline), target),
         LayoutNode::VBox { children, .. } => {
           return contains_internal_link(children, target);
         },
+        _ => return false,
+      });
+    }
+
+    /// [`contains_internal_link`] のインライン列側
+    fn contains_internal_link_inline(nodes: &[InlineNode], target: &str) -> bool {
+      return nodes.iter().any(|n| match n {
+        InlineNode::Link {
+          target: LinkTarget::Internal(t),
+          ..
+        } => return *t == AnchorId::Label(LabelId::new(target)),
         _ => return false,
       });
     }

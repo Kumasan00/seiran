@@ -38,7 +38,7 @@ use crate::{
       max_font_size_in_items,
     },
     font::{FontSystem, UnicodeBuffer},
-    lowering::{AtomNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
+    lowering::{AtomNode, InlineNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
 };
 
@@ -132,17 +132,8 @@ impl<'a> Measurer<'a> {
   ) {
     for node in nodes {
       match node {
-        LayoutNode::Text(..)
-        | LayoutNode::TextAtom(..)
-        | LayoutNode::Kern { .. }
-        | LayoutNode::LineBreak
-        | LayoutNode::Raise { .. }
-        | LayoutNode::MathBreak { .. }
-        | LayoutNode::Link { .. }
-        | LayoutNode::FlushRight(..)
-        | LayoutNode::Footnote { .. }
-        | LayoutNode::IndexMark { .. } => {
-          self.collect_inline(node, paragraph);
+        LayoutNode::Inline(inline) => {
+          self.collect_inline(inline, paragraph);
         },
         LayoutNode::Anchor(mark) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
@@ -248,40 +239,43 @@ impl<'a> Measurer<'a> {
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する
-  fn collect_inline(&mut self, node: LayoutNode, out: &mut Vec<HItem>) {
+  ///
+  /// 受け取るのは [`InlineNode`]（段落の水平リストへ入れられるノードだけ）なので、縦リスト用の
+  /// ノードが紛れ込む場合分けは型の側で消えている。
+  fn collect_inline(&mut self, node: InlineNode, out: &mut Vec<HItem>) {
     match node {
-      LayoutNode::Text(text, style) => {
+      InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
       // コード（`code` 環境の 1 行・`\code{...}`）: 空白を glue にせず Atom 1 つへ畳む。
       // 行分割の機会が内部に無いので、幅は行揃えでも動かず、字下げがそのまま残る。
       // `build_atom` 経由なので和欧文間アキ（#174）も挿さらない（内容としてのコードには不要）。
-      LayoutNode::TextAtom(text, style) => {
+      InlineNode::TextAtom(text, style) => {
         out.push(HItem::Box(self.text_atom(text, style)));
       },
-      LayoutNode::Kern { length } => {
+      InlineNode::Kern { length } => {
         out.push(HItem::Kern(length));
       },
-      LayoutNode::LineBreak => {
+      InlineNode::LineBreak => {
         out.push(HItem::ForcedBreak);
       },
-      LayoutNode::Raise { offset, children } => {
+      InlineNode::Raise { offset, children } => {
         out.push(HItem::Box(self.build_atom(offset, children)));
       },
       // インライン数式の演算子直後の分割点。折り返さなければアキ、折り返せば消える
-      LayoutNode::MathBreak { spacing, penalty } => {
+      InlineNode::MathBreak { spacing, penalty } => {
         out.push(HItem::MathBreak { spacing, penalty });
       },
       // QED マーク: 子テキストを 1 つの閉じた箱に畳み、直前に分割機会（Penalty）を挿んで
       // 右寄せ末尾ボックスにする。折り返し時はこの Penalty で QED だけが次行へ運ばれる
-      LayoutNode::FlushRight(children) => {
+      InlineNode::FlushRight(children) => {
         let flush_box = self.build_atom(Length::ZERO, children);
         out.push(HItem::Penalty { value: 0 });
         out.push(HItem::FlushRight(flush_box));
       },
       // リンク領域（機構 B）: 子要素を幅 0 のマーカー対で囲む。行分割がこの境界で
       // 行ごとのクリック矩形を収集する（折り返しは複数矩形に分割される）
-      LayoutNode::Link { target, children } => {
+      InlineNode::Link { target, children } => {
         out.push(HItem::LinkStart(target));
         for child in children {
           self.collect_inline(child, out);
@@ -292,7 +286,7 @@ impl<'a> Measurer<'a> {
       // `lower_inline` が本 variant の手前に別ノードとして発行済みで、通常の Box として
       // 既にこの直前で積まれている）。実際のページ下部配置・区切り罫線の描画は
       // `crate::typeset::breaking`（`Line::footnotes` 経由）が行う。
-      LayoutNode::Footnote {
+      InlineNode::Footnote {
         number,
         index,
         body,
@@ -311,21 +305,8 @@ impl<'a> Measurer<'a> {
       },
       // 索引マーカーは幅 0 の運搬マーカーとしてそのまま積む。ページ確定座標化・重複除去は
       // `crate::typeset::breaking`（`Line::index_marks` 経由）が行う
-      LayoutNode::IndexMark { word, reading } => {
+      InlineNode::IndexMark { word, reading } => {
         out.push(HItem::IndexMark { word, reading });
-      },
-      // 縦リスト要素・アンカーはインライン文脈には現れない。本文では `walk_vertical` が
-      // インライン要素だけを本関数へ振り分け、表セル・脚注本体・リンク子は `HirInline` を
-      // 起点とする `lower_inlines` の出力なので、これらの variant は構造上生じない
-      LayoutNode::Anchor(_)
-      | LayoutNode::VBox { .. }
-      | LayoutNode::Vkern { .. }
-      | LayoutNode::Image { .. }
-      | LayoutNode::Table(_)
-      | LayoutNode::MathBlock { .. }
-      | LayoutNode::PageBreak
-      | LayoutNode::KeepWithNext => {
-        unreachable!("インライン文脈に来るのは walk_vertical が振り分けたインライン要素と lower_inlines の出力だけ")
       },
     }
   }
@@ -375,7 +356,7 @@ impl<'a> Measurer<'a> {
           }
         },
         // カーンは幅だけを持つので、水平カーソルを進めるだけで `out` には積まない
-        // （`LayoutNode::Kern` を水平リストで扱うのと同じ）。
+        // （`InlineNode::Kern` を水平リストで扱うのと同じ）。
         AtomNode::Kern { length } => {
           *dx += length;
         },
