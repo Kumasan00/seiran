@@ -383,17 +383,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     } => {
       return list::lower_list(ctx, *ordered, items, *start, *item_gap, state);
     },
-    HirNodeKind::Theorem {
-      class,
-      title,
-      body,
-      of,
-      label: _,
-    } => {
-      let number = state.counter_value(node.id).map(|value| return counter::format_counter_value(ctx.style, value));
-      let of_target = of.as_ref().map(|target| return state.reference_target(target.id));
-      let label = state.declared_label(node.id);
-      return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, of_target, label, state);
+    HirNodeKind::Theorem { .. } => {
+      return theorem::lower_theorem(ctx, node, state);
     },
     HirNodeKind::Quote { kind, body } => {
       return quote::lower_quote(ctx, *kind, body, state);

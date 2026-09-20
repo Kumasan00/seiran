@@ -1,14 +1,14 @@
 //! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
 use crate::{
-  document::{FontKind, HirNode, HirNodeKind, TheoremClass},
+  document::{FontKind, HirNode, HirNodeKind},
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
   typeset::{
     boxes::Align,
     lowering::{
-      LoweringContext, LoweringState,
+      LoweringContext, LoweringState, counter,
       layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
       lower_nodes_inner, with_label_anchors,
     },
@@ -16,28 +16,35 @@ use crate::{
 };
 
 /// 定理ブロックをレイアウトノードに変換する
-#[expect(
-  clippy::too_many_arguments,
-  reason = "定理ブロック 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
-)]
 pub(super) fn lower_theorem(
   ctx: &LoweringContext<'_>,
-  class: TheoremClass,
-  number: Option<&str>,
-  title: Option<&str>,
-  body: &[HirNode],
-  of: Option<&LabelId>,
-  label: Option<&LabelId>,
+  node: &HirNode,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let theorem_style = ctx.style.theorem(class);
+  let HirNodeKind::Theorem {
+    class,
+    title,
+    body,
+    of,
+    label: _,
+  } = &node.kind
+  else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::Theorem arm からだけ呼ばれる: {:?}", node.id)
+  };
+  // 番号・`[of=...]` の参照先・ラベルはすべて `semantics::analyze` が確定させた事実で、
+  // ノード ID から引くだけ（lowering は採番も解決もしない）。
+  let number = state.counter_value(node.id).map(|value| return counter::format_counter_value(ctx.style, value));
+  let of_target = of.as_ref().map(|target| return state.reference_target(target.id));
+  let label = state.declared_label(node.id);
+
+  let theorem_style = ctx.style.theorem(*class);
   let pres = &theorem_style.style;
 
   let mut nodes = vec![
     LayoutNode::Vkern {
       length: pres.top_margin,
     },
-    build_heading(ctx, theorem_style, number, title, of, state),
+    build_heading(ctx, theorem_style, number.as_deref(), title.as_deref(), of_target, state),
   ];
 
   // 定理本体では文書本文の字下げを引き継がない。
