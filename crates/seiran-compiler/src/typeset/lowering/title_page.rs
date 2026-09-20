@@ -6,7 +6,7 @@ use crate::{
   style::TitlePageStyle,
   typeset::{
     boxes::Align,
-    lowering::layout_node::{LayoutNode, TextStyle},
+    lowering::layout_node::{InlineNode, LayoutNode, TextStyle},
   },
 };
 
@@ -43,14 +43,14 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
     {
       body.push(LayoutNode::Vkern { length: gap });
     }
-    body.push(LayoutNode::Text(
+    body.push(LayoutNode::Inline(InlineNode::Text(
       text.to_string(),
       TextStyle {
         font_size,
         font_kind,
         color: None,
       },
-    ));
+    )));
     pending_gap = Some(gap_after);
   }
 
@@ -81,7 +81,10 @@ mod tests {
   use crate::{
     length::Length,
     style::TitlePageStyle,
-    typeset::{boxes::Align, lowering::layout_node::LayoutNode},
+    typeset::{
+      boxes::Align,
+      lowering::layout_node::{InlineNode, LayoutNode},
+    },
   };
 
   /// 中央寄せ `VBox` の子ノードを取り出すヘルパ
@@ -103,7 +106,7 @@ mod tests {
     return children
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(text, _) => return Some(text.clone()),
+        LayoutNode::Inline(InlineNode::Text(text, _)) => return Some(text.clone()),
         _ => return None,
       })
       .collect();
@@ -148,7 +151,7 @@ mod tests {
     let text_style = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "T" => return Some(*s),
+        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "T" => return Some(*s),
         _ => return None,
       })
       .expect("Text が見つからない");

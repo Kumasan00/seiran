@@ -3,14 +3,14 @@
 //! `TeXbook` 第 18 章のアトム間アキ表をそのまま持ち、隣り合うアトムのクラスの組み合わせから
 //! アキ幅を決める。アキは伸縮しない [`AtomNode::Kern`] として出す（glue にすると両端揃えのたびに
 //! アキが揺れる）。インライン数式のトップレベルに限り、括弧の外の二項演算子・関係子の直後のアキを
-//! 行分割点 [`LayoutNode::MathBreak`] として出す（[`assemble_breakable`]）。
+//! 行分割点 [`InlineNode::MathBreak`] として出す（[`assemble_breakable`]）。
 //!
 //! 単位は TeX と同じ mu（1mu = 1/18 em）で、em はそのレベルのフォントサイズ。
 
 use crate::{
   document::MathClass,
   length::Length,
-  typeset::lowering::layout_node::{AtomNode, LayoutNode, merge_adjacent_atom_text},
+  typeset::lowering::layout_node::{AtomNode, InlineNode, merge_adjacent_atom_text},
 };
 
 /// アイテムが開き・閉じ区切りとして働くかどうか
@@ -368,13 +368,13 @@ pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool)
 /// インライン数式のトップレベルを組み、二項演算子・関係子の直後に行分割点を置く
 ///
 /// 分割点は [`break_penalty`] が認めた境界だけで、そこでは演算子直後のアキを Kern ではなく
-/// [`LayoutNode::MathBreak`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
+/// [`InlineNode::MathBreak`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
 /// ただし右のアイテムが空（`Group([])` 由来の中身の無い Ord 等）なら、割っても行頭に何も残らないので
 /// 分割点を置かず Kern のままにする。分割点の間の並びは [`assemble`] と同じく同一スタイルのテキストを
 /// 1 本のグリフランへ畳んでから段落の語彙へ持ち上げる。上付き・下付き・グループ・分数・根号は 1 個の
 /// アイテムの中に閉じているので、その内部に分割点は生じない。
-pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<LayoutNode> {
-  let mut out: Vec<LayoutNode> = Vec::new();
+pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<InlineNode> {
+  let mut out: Vec<InlineNode> = Vec::new();
   let mut run: Vec<AtomNode> = Vec::new();
   // 開き括弧の入れ子の深さ。[`Fence`] だけで数える（数式クラスの Open/Close ではない — `!` `?` は
   // Close クラスだが区切りではないので深さに数えない）。対応の無い閉じ括弧で負にはしない。
@@ -384,7 +384,7 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
       match break_penalty(gap, depth) {
         Some(penalty) if !spaced.nodes.is_empty() => {
           flush_run(&mut run, &mut out);
-          out.push(LayoutNode::MathBreak {
+          out.push(InlineNode::MathBreak {
             spacing: gap.space,
             penalty,
           });
@@ -404,8 +404,8 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
 }
 
 /// 溜めた Atom ノード列をグリフランへ畳み、段落の語彙へ持ち上げて `out` へ移す
-fn flush_run(run: &mut Vec<AtomNode>, out: &mut Vec<LayoutNode>) {
-  out.extend(merge_adjacent_atom_text(std::mem::take(run)).into_iter().map(LayoutNode::from));
+fn flush_run(run: &mut Vec<AtomNode>, out: &mut Vec<InlineNode>) {
+  out.extend(merge_adjacent_atom_text(std::mem::take(run)).into_iter().map(InlineNode::from));
 }
 
 /// 境界 `gap` が行分割点になるなら、そのペナルティを返す
@@ -433,10 +433,7 @@ fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    document::FontKind,
-    typeset::lowering::layout_node::{LayoutNode, TextStyle},
-  };
+  use crate::{document::FontKind, typeset::lowering::layout_node::TextStyle};
 
   /// 12pt の Math テキストスタイル（アキ幅の期待値を pt で書けるようにする）
   fn style() -> TextStyle {
@@ -467,11 +464,11 @@ mod tests {
   fn items(text: &str) -> Vec<MathItem> { return text.chars().map(item).collect(); }
 
   /// ノード列に置かれた行分割点を（アキ, ペナルティ）で出現順に返す
-  fn breaks(nodes: &[LayoutNode]) -> Vec<(Length, i32)> {
+  fn breaks(nodes: &[InlineNode]) -> Vec<(Length, i32)> {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        LayoutNode::MathBreak { spacing, penalty } => return Some((*spacing, *penalty)),
+        InlineNode::MathBreak { spacing, penalty } => return Some((*spacing, *penalty)),
         _ => return None,
       })
       .collect();
@@ -653,11 +650,11 @@ mod tests {
       matches!(
         nodes.as_slice(),
         [
-          LayoutNode::Text(a, _),
-          LayoutNode::Kern { .. },
-          LayoutNode::Text(plus, _),
-          LayoutNode::MathBreak { .. },
-          LayoutNode::Text(b, _),
+          InlineNode::Text(a, _),
+          InlineNode::Kern { .. },
+          InlineNode::Text(plus, _),
+          InlineNode::MathBreak { .. },
+          InlineNode::Text(b, _),
         ] if a == "a" && plus == "+" && b == "b"
       ),
       "演算子の前は Kern、後ろは分割点: {nodes:?}"

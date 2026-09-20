@@ -7,7 +7,7 @@ use crate::{
     boxes::Align,
     lowering::{
       LoweringContext, LoweringState,
-      layout_node::{LayoutNode, TextStyle},
+      layout_node::{InlineNode, LayoutNode, TextStyle},
       lower_nodes_inner,
     },
   },
@@ -63,7 +63,7 @@ pub(super) fn lower_list(
     // 明示指定時（marker_body が空）はマーカー Text 自体を出さず、ぶら下げインデントのみにする。
     let mut item_nodes = Vec::new();
     if !marker_body.is_empty() {
-      item_nodes.push(LayoutNode::Text(format!("{marker_body} "), marker_style));
+      item_nodes.push(LayoutNode::Inline(InlineNode::Text(format!("{marker_body} "), marker_style)));
     }
 
     let content_nodes = lower_nodes_inner(&item_ctx, &item.content, state);
@@ -87,7 +87,7 @@ mod tests {
   use crate::{
     document::FontKind,
     style::{NestedOrderedFormat, NumberStyle, NumberTemplate, Style as ReadStyle},
-    typeset::lowering::test_support::{analyzed, lower},
+    typeset::lowering::test_support::{analyzed, inline_text, lower},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -107,10 +107,7 @@ mod tests {
     let LayoutNode::VBox { children, .. } = node else {
       panic!("item は VBox であるべき: {node:?}");
     };
-    let LayoutNode::Text(marker, style) = &children[0] else {
-      panic!("先頭はマーカー Text であるべき: {children:?}");
-    };
-    return (marker, *style);
+    return inline_text(&children[0]).unwrap_or_else(|| panic!("先頭はマーカー Text であるべき: {children:?}"));
   }
 
   /// item `VBox` の子から、ネストしたリストの先頭項目 `VBox` を取り出す
@@ -244,7 +241,10 @@ mod tests {
     else {
       panic!("item は VBox");
     };
-    assert!(!matches!(children[0], LayoutNode::Kern { .. }), "先頭に Kern は出さない: {children:?}");
+    assert!(
+      !matches!(children[0], LayoutNode::Inline(InlineNode::Kern { .. })),
+      "先頭に Kern は出さない: {children:?}"
+    );
     assert!((indent.to_pt() - list_style.indent.to_pt()).abs() < f32::EPSILON);
     assert!((margin_bottom.to_pt() - list_style.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
     assert_eq!(marker_style.font_kind, list_style.marker_font_kind);
@@ -306,7 +306,7 @@ mod tests {
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
       panic!("item は VBox であるべき: {:?}", nodes[0]);
     };
-    let LayoutNode::Text(text, _) = &children[0] else {
+    let LayoutNode::Inline(InlineNode::Text(text, _)) = &children[0] else {
       panic!("先頭は内容の Text であるべき: {children:?}");
     };
     assert_eq!(text, "x", "マーカー Text を挟まず内容の Text から始まるべき");

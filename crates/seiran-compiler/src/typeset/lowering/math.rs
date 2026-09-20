@@ -12,7 +12,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
-      layout_node::{AtomNode, LayoutNode, MathBlockRow, TextStyle},
+      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockRow, TextStyle},
     },
   },
 };
@@ -94,13 +94,13 @@ fn alignment_to_align(alignment: Alignment) -> Align {
 
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
-/// トップレベルの二項演算子・関係子の直後に行分割点（`LayoutNode::MathBreak`）を置く。
+/// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 /// ディスプレイ数式のセルは行分割しないので [`lower_math_cell`] を使う。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   math_style: &MathScriptStyle,
-) -> Vec<LayoutNode> {
+) -> Vec<InlineNode> {
   let ctx = MathLowerCtx::new(base_font_size, math_style);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size);
 }
@@ -298,8 +298,8 @@ mod tests {
     let mut out = String::new();
     for node in nodes {
       match node {
-        LayoutNode::Text(text, _) => out.push_str(text),
-        LayoutNode::Raise { children, .. } => out.push_str(&concat_atom_texts(children)),
+        LayoutNode::Inline(InlineNode::Text(text, _)) => out.push_str(text),
+        LayoutNode::Inline(InlineNode::Raise { children, .. }) => out.push_str(&concat_atom_texts(children)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）は表示文字列を持たない。
         _ => {},
       }
@@ -327,23 +327,25 @@ mod tests {
   /// `Text` だけに絞って見る。
   fn math_text_styles(nodes: &[LayoutNode]) -> impl Iterator<Item = TextStyle> {
     return nodes.iter().filter_map(|node| match node {
-      LayoutNode::Text(_, style) => return Some(*style),
+      LayoutNode::Inline(InlineNode::Text(_, style)) => return Some(*style),
       _ => return None,
     });
   }
 
   /// レイアウトノード列に含まれるアトム間アキの幅を出現順に返すヘルパ
   ///
-  /// インライン数式のアキは、段落の水平リストでは `LayoutNode::Kern` か、行分割点
-  /// `LayoutNode::MathBreak`（折り返さないときに残るアキ）になる。
+  /// インライン数式のアキは、段落の水平リストでは `InlineNode::Kern` か、行分割点
+  /// `InlineNode::MathBreak`（折り返さないときに残るアキ）になる。
   fn spacings(nodes: &[LayoutNode]) -> Vec<Length> {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        LayoutNode::Kern { length }
-        | LayoutNode::MathBreak {
-          spacing: length, ..
-        } => return Some(*length),
+        LayoutNode::Inline(
+          InlineNode::Kern { length }
+          | InlineNode::MathBreak {
+            spacing: length, ..
+          },
+        ) => return Some(*length),
         _ => return None,
       })
       .collect();
@@ -351,7 +353,10 @@ mod tests {
 
   /// レイアウトノード列に含まれる行分割点の数を返すヘルパ
   fn math_break_count(nodes: &[LayoutNode]) -> usize {
-    return nodes.iter().filter(|node| return matches!(node, LayoutNode::MathBreak { .. })).count();
+    return nodes
+      .iter()
+      .filter(|node| return matches!(node, LayoutNode::Inline(InlineNode::MathBreak { .. })))
+      .count();
   }
 
   /// 既定の本文フォントサイズにおける mu 単位のアキ幅を返すヘルパ
@@ -360,7 +365,7 @@ mod tests {
   /// レイアウトノード列から最初の `Raise`（offset と子）を取り出すヘルパ
   fn first_raise(nodes: &[LayoutNode]) -> (Length, &[AtomNode]) {
     let raise = nodes.iter().find_map(|node| match node {
-      LayoutNode::Raise { offset, children } => return Some((*offset, children.as_slice())),
+      LayoutNode::Inline(InlineNode::Raise { offset, children }) => return Some((*offset, children.as_slice())),
       _ => return None,
     });
     return raise.expect("Raise が期待されます");
@@ -427,7 +432,7 @@ mod tests {
     let nodes = lower_math_source("$\\alpha$\n");
 
     assert_eq!(concat_texts(&nodes), "α");
-    let LayoutNode::Text(_, style) = &nodes[0] else {
+    let LayoutNode::Inline(InlineNode::Text(_, style)) = &nodes[0] else {
       panic!("Math Text を期待: {nodes:?}");
     };
     assert_eq!(style.font_kind, FontKind::Math);
@@ -515,7 +520,8 @@ mod tests {
 
     assert_eq!(spacings(&nodes), vec![mu(4); 2], "アキが入るのは + の前後だけ（上付きの前には入らない）: {nodes:?}");
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Text(..))) && matches!(nodes.get(1), Some(LayoutNode::Raise { .. })),
+      matches!(nodes.first(), Some(LayoutNode::Inline(InlineNode::Text(..))))
+        && matches!(nodes.get(1), Some(LayoutNode::Inline(InlineNode::Raise { .. }))),
       "核の直後にアキ無しでスクリプトが続く: {nodes:?}"
     );
   }

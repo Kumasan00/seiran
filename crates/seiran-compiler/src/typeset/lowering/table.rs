@@ -99,7 +99,10 @@ mod tests {
     document::FontKind,
     length::Length,
     style::Style as ReadStyle,
-    typeset::lowering::test_support::{analyzed, lower},
+    typeset::lowering::{
+      layout_node::InlineNode,
+      test_support::{analyzed, lower},
+    },
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -172,11 +175,11 @@ mod tests {
 
     // Assert
     let table = find_table(&nodes);
-    let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+    let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
     assert_eq!(head_style.font_kind, FontKind::SerifBold);
-    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.font_kind, FontKind::Serif);
@@ -193,11 +196,11 @@ mod tests {
 
     // Assert
     let table = find_table(&nodes);
-    let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+    let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
     assert_eq!(head_style.font_kind, FontKind::SansSerif);
-    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.font_kind, FontKind::Serif, "本体セルは文脈の本文書体（最上位なので [text]）のまま");
@@ -217,11 +220,11 @@ mod tests {
 
     // Assert
     let table = find_table(&nodes);
-    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.font_kind, FontKind::SerifItalic, "本体セルは定理本体の書体に従う");
-    let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+    let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
     assert_eq!(
@@ -242,7 +245,7 @@ mod tests {
 
     // Assert
     let table = find_table(&nodes);
-    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.font_kind, FontKind::SansSerif, "本体セルは引用の書体に従う");
@@ -261,7 +264,7 @@ mod tests {
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let caption_idx = children
       .iter()
-      .position(|n| matches!(n, LayoutNode::Text(t, _) if t == "Table 1.1: 得点表"))
+      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "Table 1.1: 得点表"))
       .expect("キャプション Text あり");
     assert!(table_idx < caption_idx, "Bottom: table がキャプションの前");
   }
@@ -279,7 +282,7 @@ mod tests {
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let caption_idx = children
       .iter()
-      .position(|n| matches!(n, LayoutNode::Text(t, _) if t.starts_with("Table 1.1")))
+      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t.starts_with("Table 1.1")))
       .expect("キャプション Text あり");
     assert!(caption_idx < table_idx, "Top: キャプションが table の前");
   }
@@ -298,7 +301,9 @@ mod tests {
     let caption = table_children(&nodes)
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(text, text_style) if text.starts_with("Table 1.1") => return Some(*text_style),
+        LayoutNode::Inline(InlineNode::Text(text, text_style)) if text.starts_with("Table 1.1") => {
+          return Some(*text_style);
+        },
         _ => return None,
       })
       .expect("キャプション Text あり");
@@ -381,7 +386,7 @@ mod tests {
 
     // Assert
     let children = table_children(&nodes);
-    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
+    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
   }
 
@@ -397,7 +402,7 @@ mod tests {
     // Assert
     let table = find_table(&nodes);
     assert!(
-      matches!(&table.rows[0].cells[0].content[1], LayoutNode::Footnote { number: 2, .. }),
+      matches!(&table.rows[0].cells[0].content[1], InlineNode::Footnote { number: 2, .. }),
       "{:?}",
       table.rows[0].cells[0].content
     );

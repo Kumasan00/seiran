@@ -9,7 +9,7 @@ use crate::{
     boxes::Align,
     lowering::{
       LoweringContext, LoweringState,
-      layout_node::{AtomNode, LayoutNode, TextStyle, merge_adjacent_text},
+      layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
       lower_nodes_inner, with_label_anchor,
     },
   },
@@ -88,7 +88,7 @@ fn build_heading(
   // サブタイトルはプレーンテキスト（`[title="..."]`）なので、テンプレート展開へ渡す前に
   // 基底スタイルの `Text` 1 個へ落とす。副作用のない生成なので、遅延させても結果は変わらない。
   let make_title = || {
-    return title.map(|t| return vec![LayoutNode::Text(t.to_string(), base_style)]).unwrap_or_default();
+    return title.map(|t| return vec![InlineNode::Text(t.to_string(), base_style)]).unwrap_or_default();
   };
   let of_display = of.map(|target| return state.ref_display(ctx.style, target));
 
@@ -98,9 +98,9 @@ fn build_heading(
     of: of_display.as_deref(),
   };
   let children = template.expand(values, make_title, |literal| {
-    return LayoutNode::Text(literal.to_string(), base_style);
+    return InlineNode::Text(literal.to_string(), base_style);
   });
-  let children = merge_adjacent_text(children);
+  let children: Vec<LayoutNode> = merge_adjacent_text(children).into_iter().map(LayoutNode::from).collect();
 
   return LayoutNode::VBox {
     children,
@@ -118,7 +118,7 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
     font_kind: FontKind::Math,
     color: None,
   };
-  return LayoutNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]);
+  return LayoutNode::Inline(InlineNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]));
 }
 
 #[cfg(test)]
@@ -145,7 +145,7 @@ mod tests {
       })
       .expect("見出し VBox があるはず");
     return match &children[0] {
-      LayoutNode::Text(t, s) => (t.clone(), *s),
+      LayoutNode::Inline(InlineNode::Text(t, s)) => (t.clone(), *s),
       other => panic!("見出し先頭は Text であるべき: {other:?}"),
     };
   }
@@ -169,8 +169,16 @@ mod tests {
   /// レイアウトノードから表示テキストだけを取り出す
   fn flatten_text(node: &LayoutNode) -> String {
     return match node {
-      LayoutNode::Text(t, _) => t.clone(),
-      LayoutNode::Link { children, .. } => children.iter().map(flatten_text).collect(),
+      LayoutNode::Inline(inline) => flatten_text_inline(inline),
+      _ => String::new(),
+    };
+  }
+
+  /// [`flatten_text`] のインライン列側（`Link` の子は `InlineNode`）
+  fn flatten_text_inline(node: &InlineNode) -> String {
+    return match node {
+      InlineNode::Text(t, _) => t.clone(),
+      InlineNode::Link { children, .. } => children.iter().map(flatten_text_inline).collect(),
       _ => String::new(),
     };
   }
@@ -190,14 +198,17 @@ mod tests {
     let body = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "body" => return Some(*s),
+        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(*s),
         _ => return None,
       })
       .expect("本体 Text があるはず");
     assert_eq!(body.font_kind, FontKind::SerifItalic);
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は bottom_margin Vkern: {nodes:?}");
-    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::FlushRight(_))), "theorem に QED は出ない: {nodes:?}");
+    assert!(
+      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_)))),
+      "theorem に QED は出ない: {nodes:?}"
+    );
   }
 
   #[test]
@@ -227,12 +238,12 @@ mod tests {
     let body = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "qed" => return Some(*s),
+        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "qed" => return Some(*s),
         _ => return None,
       })
       .expect("本体 Text があるはず");
     assert_eq!(body.font_kind, FontKind::Serif, "証明本体はローマン");
-    let qed_count = nodes.iter().filter(|n| matches!(n, LayoutNode::FlushRight(_))).count();
+    let qed_count = nodes.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_)))).count();
     assert_eq!(qed_count, 1, "QED が 1 つ: {nodes:?}");
   }
 
@@ -245,9 +256,15 @@ mod tests {
     let nodes = lower_source(&style, "\\begin{proof}\nlast\n\\end{proof}\n");
 
     // Assert
-    let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
+    let qed_idx = nodes
+      .iter()
+      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_))))
+      .expect("QED があるはず");
     assert!(matches!(nodes.get(qed_idx + 1), Some(LayoutNode::Vkern { .. })), "QED の直後は Vkern: {nodes:?}");
-    let text_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Text(t, _) if t == "last")).unwrap();
+    let text_idx = nodes
+      .iter()
+      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "last"))
+      .unwrap();
     assert!(text_idx < qed_idx, "本体テキストは QED より前: {nodes:?}");
   }
 
@@ -260,7 +277,10 @@ mod tests {
     let nodes = lower_source(&style, "\\begin{proof}\n\\begin{itemize}\n\\item{item}\n\\end{itemize}\n\\end{proof}\n");
 
     // Assert
-    let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
+    let qed_idx = nodes
+      .iter()
+      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_))))
+      .expect("QED があるはず");
     assert_eq!(qed_idx, nodes.len() - 2, "QED は bottom_margin Vkern の直前: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
   }

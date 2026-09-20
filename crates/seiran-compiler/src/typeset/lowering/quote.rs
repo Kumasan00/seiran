@@ -48,7 +48,10 @@ mod tests {
   use super::*;
   use crate::{
     style::Style as ReadStyle,
-    typeset::lowering::test_support::{analyzed, lower},
+    typeset::lowering::{
+      layout_node::InlineNode,
+      test_support::{analyzed, lower},
+    },
   };
 
   /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
@@ -104,10 +107,10 @@ mod tests {
     // Assert
     let (_, _, children) = body_vbox(&nodes);
     assert!(
-      !children.iter().any(|n| matches!(n, LayoutNode::Kern { .. })),
+      !children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
       "quote に字下げ Kern は出ない: {children:?}"
     );
-    assert!(matches!(children.first(), Some(LayoutNode::Text(t, _)) if t == "body"));
+    assert!(matches!(children.first(), Some(LayoutNode::Inline(InlineNode::Text(t, _))) if t == "body"));
   }
 
   #[test]
@@ -120,7 +123,7 @@ mod tests {
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
-    let LayoutNode::Kern { length } = &children[0] else {
+    let LayoutNode::Inline(InlineNode::Kern { length }) = &children[0] else {
       panic!("quotation の本体先頭は字下げ Kern であるべき: {children:?}");
     };
     assert!((length.to_pt() - style.quote.first_line_indent.to_pt()).abs() < f32::EPSILON);
@@ -137,7 +140,7 @@ mod tests {
     // Assert
     let (_, _, children) = body_vbox(&nodes);
     let body_kind = children.iter().find_map(|n| match n {
-      LayoutNode::Text(t, s) if t == "body" => return Some(s.font_kind),
+      LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(s.font_kind),
       _ => return None,
     });
     assert_eq!(body_kind, Some(style.quote.font_kind));

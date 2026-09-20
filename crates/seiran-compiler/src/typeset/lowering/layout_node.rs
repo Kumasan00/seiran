@@ -11,8 +11,14 @@ use crate::{
 /// レイアウトエンジン（`crate::typeset::boxing::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum LayoutNode {
-  /// スタイル付きテキスト
-  Text(String, TextStyle),
+  /// 段落の水平リストへ流れるインライン要素
+  ///
+  /// 縦リストの走査（`crate::typeset::boxing` の `walk_vertical`）は、この variant を
+  /// そのまま `collect_inline` へ渡すだけで振り分けが済む。インライン専用の variant を
+  /// [`InlineNode`] へ移して包み variant 1 つにしてあるので、`LayoutNode` と `InlineNode` に
+  /// 同じ variant が 2 つ並ぶことも、インライン文脈で縦リスト用 variant を `unreachable!` で
+  /// 受けることも無い（#672）。
+  Inline(InlineNode),
   /// 垂直方向のコンテナ (段落、セクションなど)
   VBox {
     /// 内包する子ノード列
@@ -37,33 +43,10 @@ pub(in crate::typeset) enum LayoutNode {
     /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
     target_dpi: Option<u32>,
   },
-  /// 水平カーン（固定幅の空白）
-  Kern {
-    /// カーンの幅
-    length: Length,
-  },
   /// 垂直カーン（固定高さの空白）
   Vkern {
     /// カーンの高さ
     length: Length,
-  },
-  /// ベースラインから子要素を垂直方向にずらすコンテナ
-  Raise {
-    /// ベースラインからの垂直オフセット（正で上方向）
-    offset: Length,
-    /// ずらす対象の子ノード列
-    children: Vec<AtomNode>,
-  },
-  /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
-  ///
-  /// `crate::typeset::boxing` が `HItem::MathBreak` にする。折り返さなければ `spacing` 幅のアキ、
-  /// 折り返せば何も出さない。ディスプレイ数式のセルと、数式内のグループ・分数・根号・スクリプトは
-  /// [`AtomNode`] で組むので、この分割点は構造上そこへ入らない。
-  MathBreak {
-    /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
-    spacing: Length,
-    /// 数式内の分割点どうしを比べるペナルティ
-    penalty: i32,
   },
   /// 表（`table` 環境）
   Table(TableLayout),
@@ -87,25 +70,61 @@ pub(in crate::typeset) enum LayoutNode {
   },
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   Anchor(AnchorMark),
+  /// 強制改ページ
+  PageBreak,
+  /// keep-with-next マーカー（ゼロサイズ）
+  KeepWithNext,
+}
+
+/// 段落の水平リスト（`crate::typeset::boxes::HItem` 列）へ入れられるノード
+///
+/// 表セルの中身・脚注の本体・リンクの子・キャプション・インライン数式・段落の内容は、
+/// 構造上インラインしか入らない（いずれもインライン lowering の出力）。それを型で表した
+/// [`LayoutNode`] の部分集合で、消費側 `crate::typeset::boxing` の `collect_inline` の網羅 match が
+/// 縦リスト用の `unreachable!` 無しで閉じる。さらにその部分集合が [`AtomNode`]
+/// （`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) enum InlineNode {
+  /// スタイル付きテキスト
+  Text(String, TextStyle),
+  /// 行分割も伸縮もしない閉じたテキスト（`code` 環境の 1 行・`\code{...}`）
+  ///
+  /// [`InlineNode::Text`] と違い、空白を glue へ変換せず Atom（行分割をまたがない閉じた箱）
+  /// 1 つとして組む。コードは空白の個数と位置そのものが内容なので、行分割・行揃えで
+  /// 幅が動いてはならない。
+  TextAtom(String, TextStyle),
+  /// 水平カーン（固定幅の空白）
+  Kern {
+    /// カーンの幅
+    length: Length,
+  },
+  /// 強制改行（`\\` 由来）
+  LineBreak,
+  /// ベースラインから子要素を垂直方向にずらすコンテナ
+  Raise {
+    /// ベースラインからの垂直オフセット（正で上方向）
+    offset: Length,
+    /// ずらす対象の子ノード列
+    children: Vec<AtomNode>,
+  },
+  /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
+  ///
+  /// `crate::typeset::boxing` が `HItem::MathBreak` にする。折り返さなければ `spacing` 幅のアキ、
+  /// 折り返せば何も出さない。ディスプレイ数式のセルと、数式内のグループ・分数・根号・スクリプトは
+  /// [`AtomNode`] で組むので、この分割点は構造上そこへ入らない。
+  MathBreak {
+    /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
+    spacing: Length,
+    /// 数式内の分割点どうしを比べるペナルティ
+    penalty: i32,
+  },
   /// クリック可能なリンク領域（機構 B）
   Link {
     /// リンクの行き先（内部アンカー / 外部 URI）
     target: LinkTarget,
     /// リンク対象の子要素
-    children: Vec<LayoutNode>,
+    children: Vec<InlineNode>,
   },
-  /// 行分割も伸縮もしない閉じたテキスト（`code` 環境の 1 行・`\code{...}`）
-  ///
-  /// [`LayoutNode::Text`] と違い、空白を glue へ変換せず Atom（行分割をまたがない閉じた箱）
-  /// 1 つとして組む。コードは空白の個数と位置そのものが内容なので、行分割・行揃えで
-  /// 幅が動いてはならない。
-  TextAtom(String, TextStyle),
-  /// 強制改行（`\\` 由来）
-  LineBreak,
-  /// 強制改ページ
-  PageBreak,
-  /// keep-with-next マーカー（ゼロサイズ）
-  KeepWithNext,
   /// 行の右端に寄せる末尾要素（証明の QED マーク等）
   FlushRight(Vec<AtomNode>),
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
@@ -114,8 +133,8 @@ pub(in crate::typeset) enum LayoutNode {
     number: u32,
     /// 出現順の識別子（0 起点。採番方式に依らず脚注を一意に指す）
     index: u32,
-    /// 脚注本体（先頭に本体用マーカーを含む、再帰的に lowering 済みの `LayoutNode` 列）
-    body: Vec<LayoutNode>,
+    /// 脚注本体（先頭に本体用マーカーを含む、再帰的に lowering 済みのインライン列）
+    body: Vec<InlineNode>,
   },
   /// 索引語（`\index{語}`）の運搬マーカー（ゼロサイズ）
   IndexMark {
@@ -128,10 +147,10 @@ pub(in crate::typeset) enum LayoutNode {
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
-/// `LayoutNode::Raise` / `LayoutNode::FlushRight` / ディスプレイ数式のセルと番号は、
+/// `InlineNode::Raise` / `InlineNode::FlushRight` / ディスプレイ数式のセルと番号は、
 /// `crate::typeset::boxing` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
 /// 畳めるのはテキスト・カーン・入れ子の `Raise` だけなので、それ以外を表現できない型として
-/// `LayoutNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
+/// `InlineNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
 /// 消費側 `boxing::Measurer::place_atom_children` の網羅 match を分岐なしで成立させる）。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
@@ -151,16 +170,22 @@ pub(in crate::typeset) enum AtomNode {
   },
 }
 
-impl From<AtomNode> for LayoutNode {
-  /// `AtomNode` は `LayoutNode` の部分集合なので、常に無損失で持ち上がる
+impl From<AtomNode> for InlineNode {
+  /// `AtomNode` は `InlineNode` の部分集合なので、常に無損失で持ち上がる
   /// （インライン数式を段落の水平リストへ流し込むときに使う。逆方向の変換はない）
   fn from(node: AtomNode) -> Self {
     return match node {
-      AtomNode::Text(text, style) => LayoutNode::Text(text, style),
-      AtomNode::Kern { length } => LayoutNode::Kern { length },
-      AtomNode::Raise { offset, children } => LayoutNode::Raise { offset, children },
+      AtomNode::Text(text, style) => InlineNode::Text(text, style),
+      AtomNode::Kern { length } => InlineNode::Kern { length },
+      AtomNode::Raise { offset, children } => InlineNode::Raise { offset, children },
     };
   }
+}
+
+impl From<InlineNode> for LayoutNode {
+  /// インライン要素を縦リストの語彙へ持ち上げる（段落の組み立て・見出しやキャプションの
+  /// `VBox` 構築で使う。逆方向の変換はない）
+  fn from(node: InlineNode) -> Self { return LayoutNode::Inline(node); }
 }
 
 /// 表全体の物理レイアウト表現
@@ -188,8 +213,8 @@ pub(in crate::typeset) struct TableRowLayout {
 /// 表の 1 セルの物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableCellLayout {
-  /// セル内容（スタイル付与済みのレイアウトノード列）
-  pub content: Vec<LayoutNode>,
+  /// セル内容（スタイル付与済みのインライン列）
+  pub content: Vec<InlineNode>,
   /// 列方向の結合数（colspan、1 以上）
   pub span: u32,
 }
@@ -203,7 +228,7 @@ pub(in crate::typeset) struct MathBlockRow {
   pub number: Option<Vec<AtomNode>>,
 }
 
-/// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
+/// `InlineNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::typeset) struct TextStyle {
   /// フォントサイズ
@@ -217,19 +242,19 @@ pub(in crate::typeset) struct TextStyle {
 
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
 ///
-/// 幅 0 の索引マーカー（[`LayoutNode::IndexMark`]）は結合を切らず、畳んだテキストの後ろへ回す。
+/// 幅 0 の索引マーカー（[`InlineNode::IndexMark`]）は結合を切らず、畳んだテキストの後ろへ回す。
 /// マーカーを取り除いたソースと同じテキスト構造にならないと、`crate::typeset::boxing` が作る
 /// シェーピング run が割れて和欧文間アキやカーニングが変わってしまうため（#514。同じ不変条件を
 /// 評価器側で守るのは `crate::frontend` の `InlineSink`）。
-pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  let mut out: Vec<LayoutNode> = Vec::with_capacity(nodes.len());
-  let mut deferred_marks: Vec<LayoutNode> = Vec::new();
+pub(super) fn merge_adjacent_text(nodes: Vec<InlineNode>) -> Vec<InlineNode> {
+  let mut out: Vec<InlineNode> = Vec::with_capacity(nodes.len());
+  let mut deferred_marks: Vec<InlineNode> = Vec::new();
   for node in nodes {
     match (out.last_mut(), node) {
-      (Some(LayoutNode::Text(prev, prev_style)), LayoutNode::Text(cur, cur_style)) if *prev_style == cur_style => {
+      (Some(InlineNode::Text(prev, prev_style)), InlineNode::Text(cur, cur_style)) if *prev_style == cur_style => {
         prev.push_str(&cur);
       },
-      (Some(LayoutNode::Text(..)), node @ LayoutNode::IndexMark { .. }) => {
+      (Some(InlineNode::Text(..)), node @ InlineNode::IndexMark { .. }) => {
         deferred_marks.push(node);
       },
       (_, node) => {
@@ -277,9 +302,9 @@ mod tests {
     // Arrange
     let s1 = style(FontKind::Serif);
     let nodes = vec![
-      LayoutNode::Text("A".to_string(), s1),
-      LayoutNode::Text("B".to_string(), s1),
-      LayoutNode::Text("C".to_string(), s1),
+      InlineNode::Text("A".to_string(), s1),
+      InlineNode::Text("B".to_string(), s1),
+      InlineNode::Text("C".to_string(), s1),
     ];
 
     // Act
@@ -287,7 +312,7 @@ mod tests {
 
     // Assert
     assert_eq!(merged.len(), 1, "{merged:?}");
-    assert!(matches!(&merged[0], LayoutNode::Text(t, _) if t == "ABC"), "{merged:?}");
+    assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "ABC"), "{merged:?}");
   }
 
   #[test]
@@ -296,10 +321,10 @@ mod tests {
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
     let nodes = vec![
-      LayoutNode::Text("A".to_string(), s1),
-      LayoutNode::Text("B".to_string(), s1),
-      LayoutNode::Text("C".to_string(), s2),
-      LayoutNode::Text("D".to_string(), s2),
+      InlineNode::Text("A".to_string(), s1),
+      InlineNode::Text("B".to_string(), s1),
+      InlineNode::Text("C".to_string(), s2),
+      InlineNode::Text("D".to_string(), s2),
     ];
 
     // Act
@@ -307,8 +332,8 @@ mod tests {
 
     // Assert
     assert_eq!(merged.len(), 2, "{merged:?}");
-    assert!(matches!(&merged[0], LayoutNode::Text(t, _) if t == "AB"), "{merged:?}");
-    assert!(matches!(&merged[1], LayoutNode::Text(t, _) if t == "CD"), "{merged:?}");
+    assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "AB"), "{merged:?}");
+    assert!(matches!(&merged[1], InlineNode::Text(t, _) if t == "CD"), "{merged:?}");
   }
 
   #[test]
@@ -316,9 +341,9 @@ mod tests {
     // Arrange
     let s1 = style(FontKind::Serif);
     let nodes = vec![
-      LayoutNode::Text("A".to_string(), s1),
-      LayoutNode::LineBreak,
-      LayoutNode::Text("B".to_string(), s1),
+      InlineNode::Text("A".to_string(), s1),
+      InlineNode::LineBreak,
+      InlineNode::Text("B".to_string(), s1),
     ];
 
     // Act
@@ -333,12 +358,12 @@ mod tests {
     // Arrange — 幅 0 の索引マーカーはテキストの結合を切らない（#514）
     let s1 = style(FontKind::Serif);
     let nodes = vec![
-      LayoutNode::Text("foo".to_string(), s1),
-      LayoutNode::IndexMark {
+      InlineNode::Text("foo".to_string(), s1),
+      InlineNode::IndexMark {
         word: "foo".to_string(),
         reading: None,
       },
-      LayoutNode::Text(" bar".to_string(), s1),
+      InlineNode::Text(" bar".to_string(), s1),
     ];
 
     // Act
@@ -346,8 +371,8 @@ mod tests {
 
     // Assert — 畳んだテキストの後ろへマーカーを回す
     assert_eq!(merged.len(), 2, "{merged:?}");
-    assert!(matches!(&merged[0], LayoutNode::Text(t, _) if t == "foo bar"), "{merged:?}");
-    assert!(matches!(&merged[1], LayoutNode::IndexMark { .. }), "{merged:?}");
+    assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "foo bar"), "{merged:?}");
+    assert!(matches!(&merged[1], InlineNode::IndexMark { .. }), "{merged:?}");
   }
 
   #[test]
@@ -356,12 +381,12 @@ mod tests {
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
     let nodes = vec![
-      LayoutNode::Text("foo".to_string(), s1),
-      LayoutNode::IndexMark {
+      InlineNode::Text("foo".to_string(), s1),
+      InlineNode::IndexMark {
         word: "foo".to_string(),
         reading: None,
       },
-      LayoutNode::Text("bar".to_string(), s2),
+      InlineNode::Text("bar".to_string(), s2),
     ];
 
     // Act
@@ -369,8 +394,8 @@ mod tests {
 
     // Assert
     assert_eq!(merged.len(), 3, "{merged:?}");
-    assert!(matches!(&merged[1], LayoutNode::IndexMark { .. }), "{merged:?}");
-    assert!(matches!(&merged[2], LayoutNode::Text(t, _) if t == "bar"), "{merged:?}");
+    assert!(matches!(&merged[1], InlineNode::IndexMark { .. }), "{merged:?}");
+    assert!(matches!(&merged[2], InlineNode::Text(t, _) if t == "bar"), "{merged:?}");
   }
 
   #[test]
@@ -408,9 +433,23 @@ mod tests {
   }
 
   #[test]
-  fn atom_kern_lifts_to_layout_kern() {
+  fn atom_kern_lifts_to_inline_kern() {
     // Arrange
     let kern = AtomNode::Kern {
+      length: Length::pt(2.0),
+    };
+
+    // Act
+    let lifted = InlineNode::from(kern);
+
+    // Assert
+    assert!(matches!(lifted, InlineNode::Kern { length } if length == Length::pt(2.0)));
+  }
+
+  #[test]
+  fn inline_kern_lifts_to_layout_inline() {
+    // Arrange
+    let kern = InlineNode::Kern {
       length: Length::pt(2.0),
     };
 
@@ -418,6 +457,9 @@ mod tests {
     let lifted = LayoutNode::from(kern);
 
     // Assert
-    assert!(matches!(lifted, LayoutNode::Kern { length } if length == Length::pt(2.0)));
+    assert!(
+      matches!(lifted, LayoutNode::Inline(InlineNode::Kern { length }) if length == Length::pt(2.0)),
+      "インラインは包み variant 1 つで縦リストの語彙へ載る"
+    );
   }
 }
