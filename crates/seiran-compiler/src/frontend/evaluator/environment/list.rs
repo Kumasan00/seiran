@@ -6,11 +6,23 @@ use crate::{
     evaluator::{
       self, EvalContext, EvalError,
       environment::body_scan,
-      opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
+      opt_args::{self, OptDecl, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
   },
+  length::Length,
 };
+
+/// `enumerate[start=N]`（開始番号。1 以上の整数）
+const START: OptKey<u32> = opt_args::positive_int("start");
+/// リスト環境と `\item` の `[item_gap=...]`（項目間のアキ）
+const ITEM_GAP: OptKey<Length> = opt_args::length("item_gap");
+/// `\item[marker=...]`（マーカーの上書き）
+const MARKER: OptKey<String> = opt_args::string("marker");
+/// 順序付きリストのスキーマ
+const ORDERED_SCHEMA: &[OptDecl] = &[START.decl(), ITEM_GAP.decl()];
+/// 順序なしリストのスキーマ
+const UNORDERED_SCHEMA: &[OptDecl] = &[ITEM_GAP.decl()];
 
 /// リスト環境（`itemize` / `enumerate`）を評価する
 ///
@@ -24,22 +36,14 @@ pub(super) fn list(
   ctx: &EvalContext<'_>,
   ordered: bool,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let schema: &[(&str, OptType)] = if ordered {
-    &[
-      ("start", OptType::PositiveInt),
-      ("item_gap", OptType::Length),
-    ]
+  let schema = if ordered {
+    ORDERED_SCHEMA
   } else {
-    &[("item_gap", OptType::Length)]
+    UNORDERED_SCHEMA
   };
-  let opt_args = collect_environment_opt_args(view, schema)?;
-  let item_gap = find_length(&opt_args, "item_gap");
-  let mut start: Option<u32> = None;
-  for (key, value) in &opt_args {
-    if let ("start", OptValue::Integer(n)) = (key.as_str(), value) {
-      start = Some(*n);
-    }
-  }
+  let opts = collect_environment_opt_args(view, schema)?;
+  let item_gap = opts.get(ITEM_GAP);
+  let start = opts.get(START);
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
@@ -53,10 +57,9 @@ pub(super) fn list(
 
   if let Some(body) = view.body() {
     for cmd_view in body_scan::strict_command_calls(source, body, view.name(), &["item"], "\\item{...}")? {
-      let item_opt_args =
-        collect_command_opt_args(&cmd_view, &[("marker", OptType::String), ("item_gap", OptType::Length)])?;
-      let marker = find_string(&item_opt_args, "marker");
-      let item_gap = find_length(&item_opt_args, "item_gap");
+      let item_opts = collect_command_opt_args(&cmd_view, &[MARKER.decl(), ITEM_GAP.decl()])?;
+      let marker = item_opts.get(MARKER);
+      let item_gap = item_opts.get(ITEM_GAP);
       let Some(first_arg) = cmd_view.first_arg() else {
         return Err(EvalError::MissingCommandArgument {
           name: "item".to_string(),
@@ -97,10 +100,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::evaluator::{evaluate_children_to_hir, test_support},
-    length::Length,
-  };
+  use crate::frontend::evaluator::{evaluate_children_to_hir, test_support};
 
   #[test]
   fn itemize_rejects_unknown_opt_arg_key() {

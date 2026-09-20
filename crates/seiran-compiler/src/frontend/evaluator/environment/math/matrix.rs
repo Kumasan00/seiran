@@ -8,11 +8,14 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
-      opt_args::{OptType, collect_environment_opt_args, find_string},
+      opt_args::{self, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
   },
 };
+
+/// `matrix[delimiter=...]`（両端の区切り記号）
+const DELIMITER: OptKey<String> = opt_args::string("delimiter");
 
 /// `matrix` 環境を評価する
 ///
@@ -20,8 +23,8 @@ use crate::{
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
 pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
-  let delimiter = match find_string(&opt_args, "delimiter") {
+  let opts = collect_environment_opt_args(view, &[DELIMITER.decl()])?;
+  let delimiter = match opts.get(DELIMITER) {
     Some(value) => {
       let Ok(delimiter) = value.parse::<MathDelimiter>() else {
         return Err(EvalError::InvalidOptArgValue {

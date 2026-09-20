@@ -6,11 +6,14 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
-      opt_args::{OptType, collect_command_opt_args, find_string},
+      opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::view::CommandView,
   },
 };
+
+/// 見出しの `[label=...]`（`\ref` からの参照用）
+const LABEL: OptKey<String> = opt_args::string("label");
 
 /// 見出しコマンドの共通処理
 ///
@@ -26,8 +29,8 @@ pub(super) fn heading(
 ) -> Result<Vec<HirNode>, EvalError> {
   let name = level.command_name();
 
-  let opt_args = collect_command_opt_args(view, &[("label", OptType::String)])?;
-  let label = find_string(&opt_args, "label");
+  let opt_args = collect_command_opt_args(view, &[LABEL.decl()])?;
+  let label = opt_args.get(LABEL);
 
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {

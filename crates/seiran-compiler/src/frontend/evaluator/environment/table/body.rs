@@ -11,7 +11,7 @@ use crate::{
         table::cell::{build_cell, contains_line_break},
       },
       inline::IndexPolicy,
-      opt_args::{OptType, OptValue, collect_command_opt_args},
+      opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::{
       SyntaxKind,
@@ -169,6 +169,9 @@ fn extract_head(
   return Ok(rows);
 }
 
+/// `\row[rule_above]`（行の上に罫線を引く）
+const RULE_ABOVE: OptKey<bool> = opt_args::boolean("rule_above");
+
 /// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
 ///
 /// `index_policy` は本体行（[`IndexPolicy::Allow`]）と `\head` 行（[`IndexPolicy::Reject`]）を
@@ -178,10 +181,8 @@ fn extract_row(
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableRow, EvalError> {
-  let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
-  let rule_above = opt_args
-    .iter()
-    .any(|(key, value)| return key == "rule_above" && matches!(value, OptValue::Bool(true)));
+  let opts = collect_command_opt_args(view, &[RULE_ABOVE.decl()])?;
+  let rule_above = opts.get(RULE_ABOVE).unwrap_or(false);
 
   let Some(arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {

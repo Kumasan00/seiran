@@ -6,11 +6,14 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
-      opt_args::{OptType, collect_command_opt_args, find_string},
+      opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::view::CommandView,
   },
 };
+
+/// `\index[reading=...]`（読み仮名の上書き）
+const READING: OptKey<String> = opt_args::string("reading");
 
 /// `\index{語}` / `\index[reading=よみ]{語}` を `HirInlineKind::Index` に変換する
 ///
@@ -19,8 +22,8 @@ use crate::{
 /// 必須引数の欠落・過剰、未知の任意引数キー、語が非プレーンテキスト（インライン装飾・数式・
 /// コマンドを含む）または空文字列の場合にエラーを返します。
 pub(super) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
-  let opt_args = collect_command_opt_args(view, &[("reading", OptType::String)])?;
-  let reading = find_string(&opt_args, "reading");
+  let opts = collect_command_opt_args(view, &[READING.decl()])?;
+  let reading = opts.get(READING);
 
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {

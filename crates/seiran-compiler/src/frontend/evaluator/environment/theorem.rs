@@ -5,11 +5,22 @@ use crate::{
   frontend::{
     evaluator::{
       self, EvalContext, EvalError,
-      opt_args::{OptType, OptValue, collect_environment_opt_args},
+      opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
   },
 };
+
+/// 定理環境の `[title=...]`（見出しに添える題）
+const TITLE: OptKey<String> = opt_args::string("title");
+/// 定理環境の `[label=...]`（`\ref` からの参照用）
+const LABEL: OptKey<String> = opt_args::string("label");
+/// `proof` 環境の `[of=...]`（証明対象のラベル）
+const OF: OptKey<String> = opt_args::string("of");
+/// `proof` 環境のスキーマ（`proof` は採番されないのでラベルを取らない）
+const PROOF_SCHEMA: &[OptDecl] = &[TITLE.decl(), OF.decl()];
+/// `proof` 以外の定理環境のスキーマ
+const THEOREM_SCHEMA: &[OptDecl] = &[TITLE.decl(), LABEL.decl()];
 
 /// 定理環境（10 種共通）を評価する
 ///
@@ -23,27 +34,15 @@ pub(super) fn theorem(
   ctx: &EvalContext<'_>,
   class: TheoremClass,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let schema: &[(&str, OptType)] = if class == TheoremClass::Proof {
-    &[("title", OptType::String), ("of", OptType::String)]
+  let schema = if class == TheoremClass::Proof {
+    PROOF_SCHEMA
   } else {
-    &[("title", OptType::String), ("label", OptType::String)]
+    THEOREM_SCHEMA
   };
-  let opt_args = collect_environment_opt_args(view, schema)?;
-
-  let mut title: Option<String> = None;
-  let mut label: Option<String> = None;
-  let mut of_label: Option<String> = None;
-  for (key, value) in opt_args {
-    let OptValue::String(s) = value else {
-      continue;
-    };
-    match key.as_str() {
-      "title" => title = Some(s),
-      "label" => label = Some(s),
-      "of" => of_label = Some(s),
-      _ => unreachable!("collect_environment_opt_args が未知キーを弾くのでここには来ない"),
-    }
-  }
+  let opts = collect_environment_opt_args(view, schema)?;
+  let title = opts.get(TITLE);
+  let label = opts.get(LABEL);
+  let of_label = opts.get(OF);
 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
