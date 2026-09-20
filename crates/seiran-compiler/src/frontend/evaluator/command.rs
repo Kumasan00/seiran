@@ -415,14 +415,21 @@ mod tests {
   }
 
   #[test]
-  fn block_commands_are_rejected_in_inline_placement_before_their_arguments_are_checked() {
-    // Arrange — 引数を 0 個にすることで「引数検査が先に走っていないか」を判別する。
-    // 引数評価が先なら `\section` / `\space` は MissingCommandArgument になる。
-    for name in ["section", "space", "noindent", "pagebreak"] {
+  fn block_commands_are_rejected_in_inline_placement() {
+    // Arrange — 引数はコマンドごとに妥当な形を渡す。引数の検査と拒否のどちらが先に走っても
+    // 結果は `BlockInInline` になるので、「インライン文脈では拒否される」ことだけを固定できる
+    // （どの診断が先に出るかは不変条件ではない）。guard の書き忘れは `BlockPermit` が型で弾く。
+    let cases = [
+      ("section", r"\section{a}"),
+      ("space", r"\space{1}"),
+      ("noindent", r"\noindent"),
+      ("pagebreak", r"\pagebreak"),
+    ];
+
+    for (name, source) in cases {
       let arena = Bump::new();
-      let source = format!("\\{name}");
-      let node = test_support::command_call_node(&source, &arena);
-      let view = CommandView::new(node, &source);
+      let node = test_support::command_call_node(source, &arena);
+      let view = CommandView::new(node, source);
 
       // Act
       let result = evaluator::run_inline_handler(|ctx| {
@@ -438,10 +445,11 @@ mod tests {
   }
 
   #[test]
-  fn index_is_rejected_under_the_reject_policy_before_its_argument_is_checked() {
-    // Arrange — 引数 0 個。方針の判定が後なら MissingCommandArgument になる
+  fn index_is_rejected_under_the_reject_policy() {
+    // Arrange — 妥当な引数を渡す。引数の検査と方針の判定のどちらが先に走っても
+    // 結果は `IndexNotAllowedHere` になる（どの診断が先に出るかは不変条件ではない）。
     let arena = Bump::new();
-    let source = r"\index";
+    let source = r"\index{語}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
