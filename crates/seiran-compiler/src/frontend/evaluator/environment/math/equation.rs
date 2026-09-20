@@ -8,11 +8,16 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       environment::math::math_grid::{GridSpec, evaluate_grid},
-      opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
+      opt_args::{self, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
   },
 };
+
+/// 数式環境の `[label=...]`
+const LABEL: OptKey<String> = opt_args::string("label");
+/// 数式環境の `[numbered=...]`（既定 `true`）
+const NUMBERED: OptKey<bool> = opt_args::boolean("numbered");
 
 /// `equation` 環境を評価する
 ///
@@ -21,9 +26,9 @@ use crate::{
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
 pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
-  let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
-  let label = find_string(&opt_args, "label");
+  let opts = collect_environment_opt_args(view, &[LABEL.decl(), NUMBERED.decl()])?;
+  let numbered = opts.get(NUMBERED).unwrap_or(true);
+  let label = opts.get(LABEL);
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "equation".to_string(),

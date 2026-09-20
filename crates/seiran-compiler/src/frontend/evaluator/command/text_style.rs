@@ -1,16 +1,20 @@
 //! 書体・文字色を指定するコマンド群
 
 use crate::{
+  color::Color,
   document::{FontKind, HirInline, HirInlineKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError,
       inline::{IndexPolicy, extract_inline_nodes},
-      opt_args::{OptType, collect_command_opt_args, find_color},
+      opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::view::CommandView,
   },
 };
+
+/// `\color[color=#rrggbb]`（文字色）
+const COLOR: OptKey<Color> = opt_args::color("color");
 
 /// 引数 1 つを取り、子要素を `HirInline` リストに変換して `HirInlineKind::Styled` でラップする共通処理
 ///
@@ -57,8 +61,8 @@ pub(super) fn colored_text(
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   let name = view.name();
-  let opt_args = collect_command_opt_args(view, &[("color", OptType::Color)])?;
-  let Some(color) = find_color(&opt_args, "color") else {
+  let opts = collect_command_opt_args(view, &[COLOR.decl()])?;
+  let Some(color) = opts.get(COLOR) else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: "色 (color=#rrggbb)".to_string(),
@@ -92,10 +96,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    color::Color,
-    frontend::evaluator::{run_inline_handler, test_support},
-  };
+  use crate::frontend::evaluator::{run_inline_handler, test_support};
 
   #[test]
   fn bold_creates_styled_node() {

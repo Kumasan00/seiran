@@ -5,12 +5,21 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError,
-      opt_args::{OptType, OptValue, collect_environment_opt_args},
+      opt_args::{self, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
   },
   length::Length,
 };
+
+/// `table[columns="left center right"]`（列の揃え）
+const COLUMNS: OptKey<String> = opt_args::string("columns");
+/// `table[widths="auto 5cm *"]`（列幅）
+const WIDTHS: OptKey<String> = opt_args::string("widths");
+/// `table[label=...]`（`\ref` からの参照用）
+const LABEL: OptKey<String> = opt_args::string("label");
+/// `table[breakable=...]`（改ページによる分割を許可するか。既定 `true`）
+const BREAKABLE: OptKey<bool> = opt_args::boolean("breakable");
 
 /// `table` 環境の任意引数を集約した構造体
 pub(super) struct TableOpts {
@@ -28,35 +37,21 @@ pub(super) struct TableOpts {
 ///
 /// 既定では `breakable` は `true`（改ページによる分割を許可）。
 pub(super) fn collect_table_opts(view: &EnvironmentView<'_>) -> Result<TableOpts, EvalError> {
-  let opt_args = collect_environment_opt_args(
+  let opts = collect_environment_opt_args(
     view,
     &[
-      ("columns", OptType::String),
-      ("widths", OptType::String),
-      ("label", OptType::String),
-      ("breakable", OptType::Bool),
+      COLUMNS.decl(),
+      WIDTHS.decl(),
+      LABEL.decl(),
+      BREAKABLE.decl(),
     ],
   )?;
 
-  let mut columns_spec: Option<String> = None;
-  let mut widths_spec: Option<String> = None;
-  let mut label: Option<String> = None;
-  let mut breakable = true;
-  for (key, value) in opt_args {
-    match (key.as_str(), value) {
-      ("columns", OptValue::String(s)) => columns_spec = Some(s),
-      ("widths", OptValue::String(s)) => widths_spec = Some(s),
-      ("label", OptValue::String(s)) => label = Some(s),
-      ("breakable", OptValue::Bool(b)) => breakable = b,
-      _ => unreachable!("collect_environment_opt_args が未知キーを弾くのでここには来ない"),
-    }
-  }
-
   return Ok(TableOpts {
-    columns_spec,
-    widths_spec,
-    label,
-    breakable,
+    columns_spec: opts.get(COLUMNS),
+    widths_spec: opts.get(WIDTHS),
+    label: opts.get(LABEL),
+    breakable: opts.get(BREAKABLE).unwrap_or(true),
   });
 }
 

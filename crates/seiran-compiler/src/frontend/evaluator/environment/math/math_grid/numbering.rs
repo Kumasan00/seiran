@@ -8,11 +8,20 @@ use crate::{
     evaluator::{
       EvalError,
       environment::math::math_grid::{GridRow, is_blank_row},
-      opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
+      opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
   },
 };
+
+/// 数式環境の `[label=...]`（環境単位ラベル）
+const LABEL: OptKey<String> = opt_args::string("label");
+/// 数式環境の `[numbered=...]`（既定 `true`）
+const NUMBERED: OptKey<bool> = opt_args::boolean("numbered");
+/// 環境単位ラベルを受理する環境（split / multiline）のスキーマ
+const SINGLE_ENV_SCHEMA: &[OptDecl] = &[LABEL.decl(), NUMBERED.decl()];
+/// 行ごと採番の環境（align / gather）のスキーマ — 環境単位ラベルは受理しない
+const PER_ROW_SCHEMA: &[OptDecl] = &[NUMBERED.decl()];
 
 /// 採番の粒度
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,14 +47,14 @@ pub(super) fn parse_math_env_opts(
   // 環境単位ラベル `[label=...]` は環境全体に 1 番号を振る `SingleEnv`（split / multiline）でのみ受理する。
   // 行ごと採番（`PerRow` = align / gather）の行単位ラベルは行末マーカー `\label{...}` で指定する。
   let allow_env_label = matches!(mode, NumberingMode::SingleEnv);
-  let schema: &[(&str, OptType)] = if allow_env_label {
-    &[("label", OptType::String), ("numbered", OptType::Bool)]
+  let schema = if allow_env_label {
+    SINGLE_ENV_SCHEMA
   } else {
-    &[("numbered", OptType::Bool)]
+    PER_ROW_SCHEMA
   };
-  let opt_args = collect_environment_opt_args(view, schema)?;
-  let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
-  let env_label = find_string(&opt_args, "label");
+  let opts = collect_environment_opt_args(view, schema)?;
+  let numbered = opts.get(NUMBERED).unwrap_or(true);
+  let env_label = opts.get(LABEL);
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),

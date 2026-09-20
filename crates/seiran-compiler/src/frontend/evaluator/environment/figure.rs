@@ -8,12 +8,23 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       environment::{body_scan, caption::extract_caption},
-      opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
+      opt_args::{self, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
     syntax::view::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,
 };
+
+/// `figure` 環境の `[label=...]`（`\ref` からの参照用）
+const LABEL: OptKey<String> = opt_args::string("label");
+/// `\image[width=...]`（描画幅。0 と負値は収集時に拒否される）
+const WIDTH: OptKey<Length> = opt_args::positive_length("width");
+/// `\image[height=...]`（描画高さ。同上）
+const HEIGHT: OptKey<Length> = opt_args::positive_length("height");
+/// `\image[dpi=N]`（per-image DPI 上限。小数は四捨五入される — #689）
+const DPI: OptKey<u32> = opt_args::rounded_int("dpi");
+/// `\image[downsample=...]`（per-image ダウンサンプリング）
+const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 
 /// `figure` 環境を評価する
 ///
@@ -21,8 +32,8 @@ use crate::{
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
 pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
-  let label = find_string(&opt_args, "label");
+  let opts = collect_environment_opt_args(view, &[LABEL.decl()])?;
+  let label = opts.get(LABEL);
 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -119,75 +130,11 @@ struct ImageArgs {
 
 /// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` から各引数を抽出する
 fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
-  let opt_args = collect_command_opt_args(
-    view,
-    &[
-      ("width", OptType::Length),
-      ("height", OptType::Length),
-      ("dpi", OptType::Number),
-      ("downsample", OptType::Bool),
-    ],
-  )?;
-
-  let mut width: Option<Length> = None;
-  let mut height: Option<Length> = None;
-  let mut dpi: Option<u32> = None;
-  let mut downsample: Option<bool> = None;
-  for (key, value) in opt_args {
-    match (key.as_str(), value) {
-      // 0 と負値をここで弾く — 描画寸法が正であることは `Publication` の不変条件で、破れると
-      // 描画段の低水準エラー（krilla の `Size::from_wh`）になり、ソース位置を示せなくなる（#378）
-      ("width", OptValue::Length(l)) => {
-        if !l.is_positive() {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "width".to_string(),
-            expected: "positive length".to_string(),
-            span: view.span().into(),
-          });
-        }
-        width = Some(l);
-      },
-      ("height", OptValue::Length(l)) => {
-        if !l.is_positive() {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "height".to_string(),
-            expected: "positive length".to_string(),
-            span: view.span().into(),
-          });
-        }
-        height = Some(l);
-      },
-      ("dpi", OptValue::Number(n)) => {
-        if !(n.is_finite() && n > 0.0 && n <= f64::from(u32::MAX)) {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "dpi".to_string(),
-            expected: "positive integer".to_string(),
-            span: view.span().into(),
-          });
-        }
-        #[expect(
-          clippy::cast_sign_loss,
-          clippy::cast_possible_truncation,
-          reason = "直前のガードで有限・正・`u32::MAX` 以下であることを確認済み"
-        )]
-        let rounded = n.round() as u32;
-        if rounded == 0 {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "dpi".to_string(),
-            expected: "positive integer".to_string(),
-            span: view.span().into(),
-          });
-        }
-        dpi = Some(rounded);
-      },
-      ("downsample", OptValue::Bool(b)) => downsample = Some(b),
-      _ => unreachable!("collect_command_opt_args が未知キーと型不一致を弾くのでここには来ない"),
-    }
-  }
+  let opts = collect_command_opt_args(view, &[WIDTH.decl(), HEIGHT.decl(), DPI.decl(), DOWNSAMPLE.decl()])?;
+  let width = opts.get(WIDTH);
+  let height = opts.get(HEIGHT);
+  let dpi = opts.get(DPI);
+  let downsample = opts.get(DOWNSAMPLE);
 
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
