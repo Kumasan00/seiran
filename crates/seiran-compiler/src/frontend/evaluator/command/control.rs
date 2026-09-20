@@ -3,7 +3,7 @@
 use crate::{
   document::{HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, opt_args::collect_command_opt_args},
+    evaluator::{EvalContext, EvalError, arity, opt_args},
     syntax::view::{CommandView, extract_text_content},
   },
   length::Length,
@@ -15,20 +15,8 @@ use crate::{
 ///
 /// 引数の不足・過剰・数値でない場合にエラーを返します
 pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "space".to_string(),
-      expected: "スペース量（数値）".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "space".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "スペース量（数値）")?;
 
   let text = extract_text_content(view.source(), first_arg);
   let trimmed = text.trim();
@@ -63,13 +51,8 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
 pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  if !view.args_is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  arity::no_args(view)?;
   return Ok(());
 }
 
@@ -79,13 +62,8 @@ pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
 pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  if !view.args_is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  arity::no_args(view)?;
   return Ok(vec![ctx.leaf_node(view.span(), HirNodeKind::PageBreak)]);
 }
 

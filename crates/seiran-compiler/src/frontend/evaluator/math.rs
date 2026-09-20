@@ -9,7 +9,7 @@
 use crate::{
   document::{HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
-    evaluator::{EvalContext, EvalError, inline::resolve_math_symbol_command, opt_args::collect_command_opt_args},
+    evaluator::{EvalContext, EvalError, arity, inline::resolve_math_symbol_command, opt_args},
     syntax::{
       SyntaxKind,
       green::{GreenElement, GreenNode},
@@ -177,24 +177,8 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
 
   // 数式の字形コマンド（\mathbold, \mathitalic 等）
   if let Some(variant) = MathVariant::from_command_name(name) {
-    let _opt_args = collect_command_opt_args(&view, &[])?;
-    let arg_count = view.args().count();
-    if arg_count == 0 {
-      return Err(EvalError::MissingCommandArgument {
-        name: name.to_string(),
-        expected: "1 個（数式本体）".to_string(),
-        span: view.span().into(),
-      });
-    }
-    if arg_count > 1 {
-      return Err(EvalError::ExtraCommandArgument {
-        name: name.to_string(),
-        span: view.span().into(),
-      });
-    }
-    let Some(first_arg) = view.first_arg() else {
-      unreachable!("引数が 1 個であることを直前に確認している")
-    };
+    opt_args::no_command_opt_args(&view)?;
+    let first_arg = arity::exactly_one_arg(&view, "1 個（数式本体）")?;
     let id = ctx.alloc(view.span());
     let body = evaluate_inline_math(source, ctx, first_arg)?;
     return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
@@ -202,57 +186,30 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
 
   match name {
     "frac" => {
-      let _opt_args = collect_command_opt_args(&view, &[])?;
-      if view.args_count() > 2 {
-        return Err(EvalError::ExtraCommandArgument {
-          name: name.to_string(),
-          span: view.span().into(),
-        });
-      }
-      let mut args = view.args();
-      let (Some(numer_arg), Some(denom_arg)) = (args.next(), args.next()) else {
-        return Err(EvalError::MissingCommandArgument {
-          name: name.to_string(),
-          expected: "2 個（分子と分母）".to_string(),
-          span: view.span().into(),
-        });
-      };
+      opt_args::no_command_opt_args(&view)?;
+      let (numer_arg, denom_arg) = arity::exactly_two_args(&view, "2 個（分子と分母）")?;
       let id = ctx.alloc(view.span());
       let numer = Box::new(math_arg_to_node(source, ctx, numer_arg)?);
       let denom = Box::new(math_arg_to_node(source, ctx, denom_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
     },
     "sqrt" => {
-      if view.args_count() > 1 {
-        return Err(EvalError::ExtraCommandArgument {
-          name: name.to_string(),
-          span: view.span().into(),
-        });
-      }
+      // 根指数 `[n]` は任意引数を数式として読む（`no_command_opt_args` は呼ばない）。
+      // 個数検査は根指数の評価より前に置く — 現行も過剰の検査だけは前にあり、不足の検査を
+      // そこへ寄せる。両方とも入力が誤りである点は変わらない。
+      let radicand_arg = arity::exactly_one_arg(&view, "1 個（被開平数）")?;
       let id = ctx.alloc(view.span());
       let index = match view.opt_arg() {
         Some(opt) => Some(Box::new(math_arg_to_node(source, ctx, opt)?)),
         None => None,
-      };
-      let Some(radicand_arg) = view.first_arg() else {
-        return Err(EvalError::MissingCommandArgument {
-          name: name.to_string(),
-          expected: "1 個（被開平数）".to_string(),
-          span: view.span().into(),
-        });
       };
       let radicand = Box::new(math_arg_to_node(source, ctx, radicand_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
     },
     _ => {
       if let Some(symbol) = resolve_math_symbol_command(name) {
-        let _opt_args = collect_command_opt_args(&view, &[])?;
-        if !view.args_is_empty() {
-          return Err(EvalError::ExtraCommandArgument {
-            name: name.to_string(),
-            span: view.span().into(),
-          });
-        }
+        opt_args::no_command_opt_args(&view)?;
+        arity::no_args(&view)?;
         return Ok(ctx.leaf_math(
           view.span(),
           HirMathKind::Symbol {

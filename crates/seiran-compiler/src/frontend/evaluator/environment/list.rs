@@ -4,7 +4,7 @@ use crate::{
   document::{HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError,
+      self, EvalContext, EvalError, arity,
       environment::body_scan,
       opt_args::{self, OptDecl, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
@@ -60,19 +60,7 @@ pub(super) fn list(
       let item_opts = collect_command_opt_args(&cmd_view, &[MARKER.decl(), ITEM_GAP.decl()])?;
       let marker = item_opts.get(MARKER);
       let item_gap = item_opts.get(ITEM_GAP);
-      let Some(first_arg) = cmd_view.first_arg() else {
-        return Err(EvalError::MissingCommandArgument {
-          name: "item".to_string(),
-          expected: "項目の内容".to_string(),
-          span: cmd_view.span().into(),
-        });
-      };
-      if cmd_view.args_count() > 1 {
-        return Err(EvalError::ExtraCommandArgument {
-          name: "item".to_string(),
-          span: cmd_view.span().into(),
-        });
-      }
+      let first_arg = arity::exactly_one_arg(&cmd_view, "項目の内容")?;
       let item_id = ctx.alloc(cmd_view.span());
       let content = evaluator::evaluate_children(source, ctx, first_arg)?;
       items.push(HirListItem {

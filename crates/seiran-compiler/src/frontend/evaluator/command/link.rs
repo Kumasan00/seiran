@@ -14,9 +14,9 @@ use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes},
-      opt_args::collect_command_opt_args,
+      opt_args,
     },
     syntax::view::{CommandView, extract_text_content},
   },
@@ -28,20 +28,8 @@ use crate::{
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
 pub(super) fn url_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "url".to_string(),
-      expected: "URI".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "url".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "URI")?;
 
   let url = extract_text_content(view.source(), first_arg).trim().to_string();
   let id = ctx.alloc(view.span());
@@ -61,21 +49,8 @@ pub(super) fn url_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Resu
 ///
 /// 必須引数が 2 個でない場合、または任意引数が指定された場合にエラーを返します。
 pub(super) fn href_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  if view.args_count() > 2 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "href".to_string(),
-      span: view.span().into(),
-    });
-  }
-  let mut args = view.args();
-  let (Some(url_arg), Some(display_arg)) = (args.next(), args.next()) else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "href".to_string(),
-      expected: "2 個（リンク先 URI と表示テキスト）".to_string(),
-      span: view.span().into(),
-    });
-  };
+  opt_args::no_command_opt_args(view)?;
+  let (url_arg, display_arg) = arity::exactly_two_args(view, "2 個（リンク先 URI と表示テキスト）")?;
 
   let url = extract_text_content(view.source(), url_arg).trim().to_string();
   let id = ctx.alloc(view.span());

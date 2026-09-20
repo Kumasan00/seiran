@@ -3,7 +3,7 @@
 use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, opt_args::collect_command_opt_args},
+    evaluator::{EvalContext, EvalError, arity, opt_args},
     syntax::view::{CommandView, extract_text_content},
   },
 };
@@ -14,20 +14,8 @@ use crate::{
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
 pub(super) fn ref_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "ref".to_string(),
-      expected: "ラベル名".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "ref".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "ラベル名")?;
 
   let label = extract_text_content(view.source(), first_arg).trim().to_string();
   return Ok(vec![ctx.leaf_inline(view.span(), HirInlineKind::Ref { label })]);

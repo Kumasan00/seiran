@@ -4,7 +4,7 @@ use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
@@ -25,19 +25,7 @@ pub(super) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Re
   let opts = collect_command_opt_args(view, &[READING.decl()])?;
   let reading = opts.get(READING);
 
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "index".to_string(),
-      expected: "索引語".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "index".to_string(),
-      span: view.span().into(),
-    });
-  }
+  let first_arg = arity::exactly_one_arg(view, "索引語")?;
 
   let nodes = extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
   let mut word = String::new();

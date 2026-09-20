@@ -295,6 +295,19 @@ pub(super) fn collect_environment_opt_args(
   return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
 }
 
+/// 任意引数 `[...]` を受け付けないコマンドであることを検査する
+///
+/// 空のスキーマを渡す形（`collect_command_opt_args(view, &[])`）に名前を与えたもので、
+/// 書かれたキーはすべて [`EvalError::UnknownOptArgKey`] になる。
+///
+/// # Errors
+///
+/// 任意引数にキーが 1 つでも書かれている場合に [`EvalError::UnknownOptArgKey`] を返します。
+pub(super) fn no_command_opt_args(view: &CommandView<'_>) -> Result<(), EvalError> {
+  collect_command_opt_args(view, &[])?;
+  return Ok(());
+}
+
 /// 任意引数 `[...]` を型変換してスキーマで検証する低レベル関数
 ///
 /// 任意引数はコマンド名／環境名の直後の高々 1 組（P3。2 組目は parser が構文エラーにする）なので、

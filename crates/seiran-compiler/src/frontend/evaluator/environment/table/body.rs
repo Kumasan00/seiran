@@ -4,7 +4,7 @@ use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableCell, HirTableRow},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::{
         body_scan,
         caption::extract_caption,
@@ -104,20 +104,8 @@ fn extract_head(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
 ) -> Result<Vec<(HirTableRow, miette::SourceSpan)>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "head".to_string(),
-      expected: "\\row コマンド".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "head".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let arg = arity::exactly_one_arg(view, "\\row コマンド")?;
 
   let source = view.source();
   let mut rows = Vec::new();
@@ -184,19 +172,7 @@ fn extract_row(
   let opts = collect_command_opt_args(view, &[RULE_ABOVE.decl()])?;
   let rule_above = opts.get(RULE_ABOVE).unwrap_or(false);
 
-  let Some(arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "row".to_string(),
-      expected: "セル内容".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "row".to_string(),
-      span: view.span().into(),
-    });
-  }
+  let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());

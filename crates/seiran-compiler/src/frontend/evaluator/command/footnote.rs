@@ -4,9 +4,9 @@ use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes},
-      opt_args::collect_command_opt_args,
+      opt_args,
     },
     syntax::view::CommandView,
   },
@@ -27,20 +27,8 @@ pub(super) fn footnote_command(
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "footnote".to_string(),
-      expected: "脚注本体".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "footnote".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "脚注本体")?;
 
   let id = ctx.alloc(view.span());
   let body = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;

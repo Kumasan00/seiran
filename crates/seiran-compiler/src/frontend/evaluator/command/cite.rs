@@ -5,7 +5,7 @@
 use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, opt_args::collect_command_opt_args},
+    evaluator::{EvalContext, EvalError, arity, opt_args},
     syntax::view::{CommandView, extract_text_content},
   },
 };
@@ -20,20 +20,8 @@ use crate::{
 /// 必須引数が欠落 / 過剰、任意引数が指定された場合、または空のキーが含まれる場合に
 /// エラーを返します。
 pub(super) fn cite_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "cite".to_string(),
-      expected: "引用キー".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "cite".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "引用キー")?;
 
   let raw = extract_text_content(view.source(), first_arg);
   let segments: Vec<&str> = raw.split(',').collect();

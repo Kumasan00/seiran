@@ -4,7 +4,7 @@ use crate::{
   document::{HeadingLevel, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
@@ -27,24 +27,10 @@ pub(super) fn heading(
   ctx: &EvalContext<'_>,
   level: HeadingLevel,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let name = level.command_name();
-
   let opt_args = collect_command_opt_args(view, &[LABEL.decl()])?;
   let label = opt_args.get(LABEL);
 
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: name.to_string(),
-      expected: expected_name(level).to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: name.to_string(),
-      span: view.span().into(),
-    });
-  }
+  let first_arg = arity::exactly_one_arg(view, expected_name(level))?;
 
   let id = ctx.alloc(view.span());
   // 見出しタイトルは目次・走り文へも展開されうる複製文脈なので `\index` を拒否する

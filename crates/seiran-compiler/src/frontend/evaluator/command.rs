@@ -7,9 +7,7 @@ use phf::phf_map;
 use crate::{
   document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
   frontend::{
-    evaluator::{
-      EvalContext, EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args,
-    },
+    evaluator::{EvalContext, EvalError, arity, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args},
     syntax::{ArgMode, view::CommandView},
   },
 };
@@ -232,13 +230,8 @@ impl CommandKind {
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
 fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  if !view.args_is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  arity::no_args(view)?;
   return Ok(vec![ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch))]);
 }
 

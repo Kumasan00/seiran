@@ -5,7 +5,7 @@ use crate::{
   document::{FontKind, HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
@@ -27,21 +27,8 @@ pub(super) fn styled_text(
   kind: FontKind,
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let name = view.name();
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: name.to_string(),
-      expected: "テキスト".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: name.to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "テキスト")?;
 
   let id = ctx.alloc(view.span());
   let children = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
@@ -60,28 +47,15 @@ pub(super) fn colored_text(
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let name = view.name();
   let opts = collect_command_opt_args(view, &[COLOR.decl()])?;
   let Some(color) = opts.get(COLOR) else {
     return Err(EvalError::MissingCommandArgument {
-      name: name.to_string(),
+      name: view.name().to_string(),
       expected: "色 (color=#rrggbb)".to_string(),
       span: view.span().into(),
     });
   };
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: name.to_string(),
-      expected: "テキスト".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: name.to_string(),
-      span: view.span().into(),
-    });
-  }
+  let first_arg = arity::exactly_one_arg(view, "テキスト")?;
 
   let id = ctx.alloc(view.span());
   let children = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;

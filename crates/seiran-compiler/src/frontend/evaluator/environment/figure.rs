@@ -6,7 +6,7 @@ use crate::{
   document::{CaptionPosition, HirInline, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::{body_scan, caption::extract_caption},
       opt_args::{self, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
@@ -136,19 +136,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
   let dpi = opts.get(DPI);
   let downsample = opts.get(DOWNSAMPLE);
 
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "image".to_string(),
-      expected: "画像ファイルのパス".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "image".to_string(),
-      span: view.span().into(),
-    });
-  }
+  let first_arg = arity::exactly_one_arg(view, "画像ファイルのパス")?;
 
   let path = extract_text_content(view.source(), first_arg).trim().to_string();
   if path.is_empty() {

@@ -19,6 +19,7 @@ use crate::{
   source::Span,
 };
 
+mod arity;
 mod command;
 mod context;
 mod environment;
