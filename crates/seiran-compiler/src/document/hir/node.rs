@@ -110,18 +110,7 @@ pub(crate) enum HirNodeKind {
   },
 
   /// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）
-  Theorem {
-    /// 定理クラス（`theorem` / `lemma` / … / `proof`）
-    class: TheoremClass,
-    /// サブタイトル（`[title="..."]` の中身）。未指定は `None`
-    title: Option<String>,
-    /// 本体（再帰評価されたブロックノード列）
-    body: Vec<HirNode>,
-    /// `proof` の `[of=label]` 参照（証明対象の定理）。`proof` 以外や未指定は `None`
-    of: Option<HirProofTarget>,
-    /// `\ref{thm:foo}` 解決用のラベル名。未指定は `None`
-    label: Option<String>,
-  },
+  Theorem(HirTheorem),
 
   /// コードブロック（`\begin{code}...\end{code}`）
   ///
@@ -140,6 +129,21 @@ pub(crate) enum HirNodeKind {
 
   /// 固定幅スペース（`\space{N}` コマンド）
   Space(Length),
+}
+
+/// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirTheorem {
+  /// 定理クラス（`theorem` / `lemma` / … / `proof`）
+  pub(crate) class: TheoremClass,
+  /// サブタイトル（`[title="..."]` の中身）。未指定は `None`
+  pub(crate) title: Option<String>,
+  /// 本体（再帰評価されたブロックノード列）
+  pub(crate) body: Vec<HirNode>,
+  /// `proof` の `[of=label]` 参照（証明対象の定理）。`proof` 以外や未指定は `None`
+  pub(crate) of: Option<HirProofTarget>,
+  /// `\ref{thm:foo}` 解決用のラベル名。未指定は `None`
+  pub(crate) label: Option<String>,
 }
 
 /// 引用ブロック（`\begin{quote}` / `\begin{quotation}`）の内容

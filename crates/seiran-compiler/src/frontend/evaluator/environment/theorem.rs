@@ -1,7 +1,7 @@
 //! 定理環境 — `theorem` / `lemma` / … / `proof`（10 種）
 
 use crate::{
-  document::{HirNode, HirNodeKind, HirProofTarget, TheoremClass},
+  document::{HirNode, HirNodeKind, HirProofTarget, HirTheorem, TheoremClass},
   frontend::{
     evaluator::{
       self, EvalContext, EvalError, arity,
@@ -60,13 +60,13 @@ pub(super) fn theorem(
 
   return Ok(HirNode::new(
     id,
-    HirNodeKind::Theorem {
+    HirNodeKind::Theorem(HirTheorem {
       class,
       title,
       body,
       of,
       label,
-    },
+    }),
   ));
 }
 
@@ -92,23 +92,15 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Theorem {
-      class,
-      title,
-      body,
-      of,
-      label,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*class, TheoremClass::Theorem);
-    assert!(title.is_none());
-    assert!(of.is_none());
-    assert!(label.is_none());
-    assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0].kind, HirNodeKind::Paragraph(_)));
+    assert_eq!(theorem.class, TheoremClass::Theorem);
+    assert!(theorem.title.is_none());
+    assert!(theorem.of.is_none());
+    assert!(theorem.label.is_none());
+    assert_eq!(theorem.body.len(), 1);
+    assert!(matches!(&theorem.body[0].kind, HirNodeKind::Paragraph(_)));
   }
 
   #[test]
@@ -122,10 +114,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Theorem { class, .. } = &result[0].kind else {
+    let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*class, TheoremClass::Proof);
+    assert_eq!(theorem.class, TheoremClass::Proof);
   }
 
   #[test]
@@ -139,10 +131,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Theorem { title, .. } = &result[0].kind else {
+    let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます");
     };
-    assert_eq!(title.as_deref(), Some("ピタゴラスの定理"));
+    assert_eq!(theorem.title.as_deref(), Some("ピタゴラスの定理"));
   }
 
   #[test]
@@ -156,10 +148,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Theorem { label, .. } = &result[0].kind else {
+    let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
-    assert_eq!(label.as_deref(), Some("thm:p"));
+    assert_eq!(theorem.label.as_deref(), Some("thm:p"));
     let HirNodeKind::Paragraph(inlines) = &result.last().unwrap().kind else {
       panic!("Paragraph が期待されます: {:?}", result.last());
     };
@@ -179,10 +171,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Theorem { of, .. } = &result[1].kind else {
+    let HirNodeKind::Theorem(theorem) = &result[1].kind else {
       panic!("proof の Theorem が期待されます: {:?}", result[1]);
     };
-    let of = of.as_ref().expect("of 参照あり");
+    let of = theorem.of.as_ref().expect("of 参照あり");
     assert_eq!(of.label, "thm:p");
   }
 
@@ -240,13 +232,13 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 2);
-    let HirNodeKind::Theorem { label: a, .. } = &result[0].kind else {
+    let HirNodeKind::Theorem(first) = &result[0].kind else {
       panic!("Theorem が期待されます");
     };
-    let HirNodeKind::Theorem { label: b, .. } = &result[1].kind else {
+    let HirNodeKind::Theorem(second) = &result[1].kind else {
       panic!("Theorem が期待されます");
     };
-    assert_eq!(a.as_deref(), Some("dup"));
-    assert_eq!(b.as_deref(), Some("dup"));
+    assert_eq!(first.label.as_deref(), Some("dup"));
+    assert_eq!(second.label.as_deref(), Some("dup"));
   }
 }
