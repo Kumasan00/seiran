@@ -185,18 +185,9 @@ impl<'a> Measurer<'a> {
             align,
           });
         },
-        LayoutNode::MathBlock {
-          kind,
-          rows,
-          env_number,
-          align: block_align,
-          numbers_on_right,
-          row_gap,
-          column_gap,
-        } => {
+        LayoutNode::MathBlock(block) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          let math_block =
-            self.build_math_block(kind, rows, env_number, block_align, numbers_on_right, row_gap, column_gap);
+          let math_block = self.build_math_block(block);
           blocks.push(math_block);
         },
         LayoutNode::PageBreak => {

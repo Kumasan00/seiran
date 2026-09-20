@@ -1,12 +1,12 @@
 //! 表環境（`document::HirNodeKind::Table`）の lowering
 
 use crate::{
-  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
+  document::{HirNode, HirNodeKind, HirTableRow},
   typeset::{
     boxes::TableColumn,
     lowering::{
       LoweringContext, LoweringState,
-      float::{FloatSpec, build_caption, wrap_float},
+      float::{FloatCaption, FloatSpec, lower_numbered_float},
       inline::lower_inlines,
       layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
     },
@@ -38,21 +38,20 @@ fn lower_rows(
 }
 
 /// 表をレイアウトノードに変換する
-#[expect(
-  clippy::too_many_arguments,
-  reason = "表 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
-)]
-pub(super) fn lower_table(
-  ctx: &LoweringContext<'_>,
-  columns: &[ColumnAlign],
-  widths: &[ColumnWidth],
-  head: &[HirTableRow],
-  rows: &[HirTableRow],
-  caption: Option<(CaptionPosition, &[HirInline])>,
-  number: &str,
-  breakable: bool,
-  state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+pub(super) fn lower_table(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
+  let HirNodeKind::Table {
+    columns,
+    widths,
+    head,
+    rows,
+    caption,
+    caption_position,
+    label: _,
+    breakable,
+  } = &node.kind
+  else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::Table arm からだけ呼ばれる: {:?}", node.id)
+  };
   let style = &ctx.style.table;
 
   let body_style = TextStyle {
@@ -66,37 +65,40 @@ pub(super) fn lower_table(
     color: None,
   };
 
-  let table_node = LayoutNode::Table(TableLayout {
-    columns: columns
-      .iter()
-      .zip(widths)
-      .map(|(align, width)| {
-        return TableColumn {
-          align: *align,
-          width: *width,
-        };
-      })
-      .collect(),
-    head: lower_rows(ctx, head, head_style, state),
-    rows: lower_rows(ctx, rows, body_style, state),
-    breakable,
-  });
-
-  let caption_nodes =
-    caption.map(|(position, inlines)| return (position, build_caption(ctx, &style.caption, inlines, number, state)));
   let spec = FloatSpec {
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
     inner_margin: style.inner_margin,
   };
-  return wrap_float(table_node, caption_nodes, &spec);
+  let caption = FloatCaption {
+    style: &style.caption,
+    inlines: caption.as_deref(),
+    position: *caption_position,
+  };
+  return lower_numbered_float(ctx, node, caption, &spec, state, |state| {
+    return LayoutNode::Table(TableLayout {
+      columns: columns
+        .iter()
+        .zip(widths)
+        .map(|(align, width)| {
+          return TableColumn {
+            align: *align,
+            width: *width,
+          };
+        })
+        .collect(),
+      head: lower_rows(ctx, head, head_style, state),
+      rows: lower_rows(ctx, rows, body_style, state),
+      breakable: *breakable,
+    });
+  });
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::{
-    document::FontKind,
+    document::{ColumnAlign, ColumnWidth, FontKind},
     length::Length,
     style::Style as ReadStyle,
     typeset::lowering::{
@@ -406,5 +408,33 @@ mod tests {
       "{:?}",
       table.rows[0].cells[0].content
     );
+  }
+
+  #[test]
+  fn lower_table_numbers_cell_footnote_before_caption_footnote() {
+    // Arrange — 表本体（セル）が先、キャプションが後、という本文の出現順を固定する
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(
+      &style,
+      "\\begin{table}\n\\row{A\\footnote{cell note}}\n\\caption{C\\footnote{caption note}}\n\\end{table}\n",
+    );
+
+    // Assert
+    let table = find_table(&nodes);
+    let cell_number = table.rows[0].cells[0].content.iter().find_map(|n| match n {
+      InlineNode::Footnote { number, .. } => return Some(*number),
+      _ => return None,
+    });
+    assert_eq!(cell_number, Some(1), "セルの脚注が 1 番: {:?}", table.rows[0].cells[0].content);
+    let caption_numbers: Vec<u32> = table_children(&nodes)
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(caption_numbers, vec![2], "キャプションの脚注が 2 番: {nodes:?}");
   }
 }

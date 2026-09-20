@@ -1,7 +1,7 @@
 //! 引用ブロック（`document::HirNodeKind::Quote`）の lowering
 
 use crate::{
-  document::{HirNode, QuoteKind},
+  document::{HirNode, HirNodeKind},
   length::Length,
   typeset::{
     boxes::Align,
@@ -10,12 +10,10 @@ use crate::{
 };
 
 /// 引用ブロックをレイアウトノードに変換する
-pub(super) fn lower_quote(
-  ctx: &LoweringContext<'_>,
-  kind: QuoteKind,
-  body: &[HirNode],
-  state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+pub(super) fn lower_quote(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
+  let HirNodeKind::Quote { kind, body } = &node.kind else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::Quote arm からだけ呼ばれる: {:?}", node.id)
+  };
   let style = &ctx.style.quote;
 
   let first_line_indent = if kind.indents_first_line() {
@@ -47,6 +45,7 @@ pub(super) fn lower_quote(
 mod tests {
   use super::*;
   use crate::{
+    document::QuoteKind,
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,

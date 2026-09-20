@@ -3,16 +3,17 @@
 use std::slice;
 
 use crate::{
-  document::{FontKind, HirMath, HirMathKind, HirMathRow, MathClass, MathEnvKind, MathVariant},
+  document::{FontKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathVariant},
   length::Length,
-  semantics::CounterValue,
+  semantics::LabelId,
   style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
   typeset::{
     boxes::Align,
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
-      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockRow, TextStyle},
+      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockLayout, MathBlockRow, TextStyle},
+      with_label_anchors,
     },
   },
 };
@@ -28,18 +29,25 @@ fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
 }
 
 /// `document::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
-/// `cases` / `matrix`）を `LayoutNode::MathBlock` に変換する
+/// `cases` / `matrix`）をレイアウトノード列（上下の `Vkern` + `LayoutNode::MathBlock`）に変換する
 ///
 /// 行ごと・環境ごとの採番値は `semantics::analyze` が確定させたものを引くだけで、ここでは
 /// `number_format` / `tag_format` による表示文字列化しか行わない。ディスプレイ数式の中に脚注は
 /// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext<'_>,
-  kind: MathEnvKind,
-  rows: &[HirMathRow],
-  env_counter_value: Option<&CounterValue>,
+  node: &HirNode,
   state: &LoweringState<'_>,
-) -> LayoutNode {
+) -> Vec<LayoutNode> {
+  let HirNodeKind::MathBlock {
+    kind,
+    rows,
+    numbered: _,
+    label: _,
+  } = &node.kind
+  else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::MathBlock arm からだけ呼ばれる: {:?}", node.id)
+  };
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
 
@@ -56,18 +64,40 @@ pub(super) fn lower_math_block(
     layout_rows.push(MathBlockRow { cells, number });
   }
 
-  let env_number = env_counter_value
+  let env_number = state
+    .counter_value(node.id)
     .map(|value| return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size));
 
-  return LayoutNode::MathBlock {
-    kind,
-    rows: layout_rows,
-    env_number,
-    align: alignment_to_align(block.alignment),
-    numbers_on_right: matches!(block.number_side, NumberSide::Right),
-    row_gap: block.row_gap,
-    column_gap: block.column_gap,
-  };
+  let nodes = vec![
+    LayoutNode::Vkern {
+      length: block.top_margin,
+    },
+    LayoutNode::MathBlock(MathBlockLayout {
+      kind: *kind,
+      rows: layout_rows,
+      env_number,
+      align: alignment_to_align(block.alignment),
+      numbers_on_right: matches!(block.number_side, NumberSide::Right),
+      row_gap: block.row_gap,
+      column_gap: block.column_gap,
+    }),
+    LayoutNode::Vkern {
+      length: block.bottom_margin,
+    },
+  ];
+
+  // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
+  // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
+  // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する。
+  let mut anchor_labels: Vec<&LabelId> = Vec::new();
+  if let Some(env_label) = state.declared_label(node.id) {
+    anchor_labels.push(env_label);
+  }
+  // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで再現するため。
+  // `with_label_anchors` は与えた順にアンカーを並べる）
+  anchor_labels.extend(rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
+
+  return with_label_anchors(anchor_labels, nodes);
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
@@ -567,12 +597,15 @@ mod tests {
     return style;
   }
 
-  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` を取り出すヘルパ
-  fn lower_numbered_equation(style: &ReadStyle) -> LayoutNode {
+  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` の payload を取り出すヘルパ
+  fn lower_numbered_equation(style: &ReadStyle) -> MathBlockLayout {
     let nodes = lower(style, &analyzed("\\begin{equation}\na\n\\end{equation}\n"));
     return nodes
       .into_iter()
-      .find(|n| matches!(n, LayoutNode::MathBlock { .. }))
+      .find_map(|n| match n {
+        LayoutNode::MathBlock(block) => return Some(block),
+        _ => return None,
+      })
       .expect("MathBlock が出力されるはず");
   }
 
@@ -582,16 +615,10 @@ mod tests {
     let style = style_with_plain_equation_format();
 
     // Act
-    let node = lower_numbered_equation(&style);
+    let block = lower_numbered_equation(&style);
 
     // Assert
-    let LayoutNode::MathBlock {
-      rows: layout_rows, ..
-    } = node
-    else {
-      panic!("MathBlock を期待: {node:?}");
-    };
-    let number = layout_rows[0].number.as_ref().expect("番号あり");
+    let number = block.rows[0].number.as_ref().expect("番号あり");
     assert!(
       matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
       "(1) の Serif Text が番号ボックスに入るはず: {number:?}"
@@ -604,19 +631,11 @@ mod tests {
     let style = style_with_plain_equation_format();
 
     // Act
-    let node = lower_numbered_equation(&style);
+    let block = lower_numbered_equation(&style);
 
     // Assert
-    let LayoutNode::MathBlock {
-      numbers_on_right,
-      align,
-      ..
-    } = node
-    else {
-      panic!("MathBlock を期待: {node:?}");
-    };
-    assert!(numbers_on_right, "既定では番号は右寄せ");
-    assert_eq!(align, Align::Center, "既定では本体は中央寄せ");
+    assert!(block.numbers_on_right, "既定では番号は右寄せ");
+    assert_eq!(block.align, Align::Center, "既定では本体は中央寄せ");
   }
 
   #[test]
@@ -626,16 +645,10 @@ mod tests {
     style.math.block.number_side = NumberSide::Left;
 
     // Act
-    let node = lower_numbered_equation(&style);
+    let block = lower_numbered_equation(&style);
 
     // Assert
-    let LayoutNode::MathBlock {
-      numbers_on_right, ..
-    } = node
-    else {
-      panic!("MathBlock を期待: {node:?}");
-    };
-    assert!(!numbers_on_right, "number_side = Left では番号は左寄せ");
+    assert!(!block.numbers_on_right, "number_side = Left では番号は左寄せ");
   }
 
   #[test]

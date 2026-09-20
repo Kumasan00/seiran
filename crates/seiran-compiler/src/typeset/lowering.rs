@@ -11,12 +11,9 @@
 use tracing::debug;
 
 use crate::{
-  document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
+  document::{HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
-  semantics::{
-    BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument,
-    generated_inlines_to_plain_text,
-  },
+  semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
   style::Style as ReadStyle,
   typeset::boxes::AnchorMark,
 };
@@ -37,7 +34,9 @@ mod table;
 mod theorem;
 mod title_page;
 
-pub(super) use layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
+pub(super) use layout_node::{
+  AtomNode, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
+};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
 use crate::document::{FontKind, HeadingLevel};
@@ -339,65 +338,36 @@ pub(super) fn lower_nodes_inner(
   return result;
 }
 
-/// 単一の `HirNode` をレイアウトノードに変換する（事実は `node.id` で引く）
+/// 単一の `HirNode` をレイアウトノードに変換する
+///
+/// 委譲する 9 種別（`Heading` / `Paragraph` / `List` / `Theorem` / `Quote` / `CodeBlock` /
+/// `MathBlock` / `Figure` / `Table`）はすべて `(文脈, ノード, ...)` の同じ形で子 module へ渡す。
+/// `CodeBlock` は事実を読まないので `state` を取らず `(ctx, node)` に、残り 8 種は
+/// `(ctx, node, state)` になる。
+/// 採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、各 lowering が `node.id` を
+/// キーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。`PageBreak` / `Space` は
+/// 委譲せず、この関数がその場でノードを組む。委譲する 9 種別すべての lowering の先頭に、`HirNodeKind`
+/// の variant を取り出す `unreachable!` 付きの分配束縛があるのは、`HirNodeKind` の各 variant が
+/// payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
-    HirNodeKind::Heading {
-      level,
-      title,
-      label: _,
-    } => {
-      // 見出しキーは `semantics::analyze` が文書順に振ったもの。lowering は振り直さず読むだけなので、
-      // 再帰（quote / theorem / list item 本体）を挟んでも `analyzed.headings()` の添字と必ず揃う。
-      let key = state.heading_key(node.id);
-      let label = state.declared_label(node.id).cloned();
-      let number = state
-        .counter_value(node.id)
-        .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
-      // プレーンテキスト（しおり・目次表示）は不変借用でしか作れないので、可変借用が要る
-      // タイトルの lowering より先に済ませる。
-      let plain = hir_inlines_to_plain_text(title, ctx.style, &*state);
-      state.record_heading_title(node.id, plain);
-      let title_style = heading::title_style(ctx, *level);
-      // タイトルの lowering はクロージャで遅延させる。`heading.format` が `{title}` を含まない
-      // なら一度も呼ばれず、タイトル中の `\footnote` が通し index だけ消費して消える事故を防ぐ。
-      return heading::lower_heading(
-        ctx,
-        *level,
-        &number,
-        || return inline::lower_inlines(ctx, title, title_style, state),
-        label,
-        key,
-      );
+    HirNodeKind::Heading { .. } => {
+      return heading::lower_hir_heading(ctx, node, state);
     },
-    HirNodeKind::Paragraph(inlines) => {
-      return paragraph::lower_paragraph(ctx, inlines, state);
+    HirNodeKind::Paragraph(_) => {
+      return paragraph::lower_paragraph(ctx, node, state);
     },
-    HirNodeKind::List {
-      ordered,
-      items,
-      start,
-      item_gap,
-    } => {
-      return list::lower_list(ctx, *ordered, items, *start, *item_gap, state);
+    HirNodeKind::List { .. } => {
+      return list::lower_list(ctx, node, state);
     },
-    HirNodeKind::Theorem {
-      class,
-      title,
-      body,
-      of,
-      label: _,
-    } => {
-      let number = state.counter_value(node.id).map(|value| return counter::format_counter_value(ctx.style, value));
-      let of_target = of.as_ref().map(|target| return state.reference_target(target.id));
-      let label = state.declared_label(node.id);
-      return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, of_target, label, state);
+    HirNodeKind::Theorem { .. } => {
+      return theorem::lower_theorem(ctx, node, state);
     },
-    HirNodeKind::Quote { kind, body } => {
-      return quote::lower_quote(ctx, *kind, body, state);
+    HirNodeKind::Quote { .. } => {
+      return quote::lower_quote(ctx, node, state);
     },
-    HirNodeKind::CodeBlock { text } => {
-      return code::lower_code_block(ctx, text);
+    HirNodeKind::CodeBlock { .. } => {
+      return code::lower_code_block(ctx, node);
     },
     HirNodeKind::PageBreak => {
       return vec![LayoutNode::PageBreak];
@@ -405,133 +375,34 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Space(length) => {
       return vec![LayoutNode::Inline(InlineNode::Kern { length: *length })];
     },
-    HirNodeKind::MathBlock {
-      kind,
-      rows,
-      numbered: _,
-      label: _,
-    } => {
-      let block = &ctx.style.math.block;
-      // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
-      // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
-      // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する。
-      let mut anchor_labels: Vec<&LabelId> = Vec::new();
-      if let Some(env_label) = state.declared_label(node.id) {
-        anchor_labels.push(env_label);
-      }
-      // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで
-      // 再現するため。`with_label_anchors` の doc comment も参照）
-      anchor_labels.extend(rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
-
-      let math_block = math::lower_math_block(ctx, *kind, rows, state.counter_value(node.id), &*state);
-      let nodes = vec![
-        LayoutNode::Vkern {
-          length: block.top_margin,
-        },
-        math_block,
-        LayoutNode::Vkern {
-          length: block.bottom_margin,
-        },
-      ];
-      return with_label_anchors(&anchor_labels, nodes);
+    HirNodeKind::MathBlock { .. } => {
+      return math::lower_math_block(ctx, node, &*state);
     },
-    HirNodeKind::Figure {
-      image_path,
-      width,
-      height,
-      dpi,
-      downsample,
-      caption,
-      caption_position,
-      label: _,
-    } => {
-      let Some(counter_value) = state.counter_value(node.id) else {
-        unreachable!("図は必ず採番される（analyze の Figure 分岐が counters へ登録している）: {:?}", node.id)
-      };
-      let number = counter::format_counter_value(ctx.style, counter_value);
-      let label = state.declared_label(node.id);
-      let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
-      let overrides = figure::ImageOverrides {
-        dpi: *dpi,
-        downsample: *downsample,
-      };
-      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number, state);
-      return with_label_anchor(label, nodes);
+    HirNodeKind::Figure { .. } => {
+      return figure::lower_figure(ctx, node, state);
     },
-    HirNodeKind::Table {
-      columns,
-      widths,
-      head,
-      rows,
-      caption,
-      caption_position,
-      label: _,
-      breakable,
-    } => {
-      let Some(counter_value) = state.counter_value(node.id) else {
-        unreachable!("表は必ず採番される（analyze の Table 分岐が counters へ登録している）: {:?}", node.id)
-      };
-      let number = counter::format_counter_value(ctx.style, counter_value);
-      let label = state.declared_label(node.id);
-      let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
-      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable, state);
-      return with_label_anchor(label, nodes);
+    HirNodeKind::Table { .. } => {
+      return table::lower_table(ctx, node, state);
     },
   }
 }
 
-/// ラベル付きブロック（図・表・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
-fn with_label_anchor(label: Option<&LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  let Some(label) = label else {
-    return nodes;
-  };
-  let mut result = Vec::with_capacity(nodes.len() + 1);
-  result.push(LayoutNode::Anchor(AnchorMark::Label(label.clone())));
-  result.extend(nodes);
-  return result;
-}
-
-/// 複数のラベルを先頭からこの順でアンカーとして 1 回の構築でまとめて付与する
-fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  if labels.is_empty() {
-    return nodes;
-  }
-  let mut result = Vec::with_capacity(nodes.len() + labels.len());
-  result.extend(labels.iter().map(|label| return LayoutNode::Anchor(AnchorMark::Label((*label).clone()))));
-  result.extend(nodes);
-  return result;
-}
-
-/// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
+/// ラベル付きブロック（図・表・定理・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
 ///
-/// `GeneratedInline` 側のプレーンテキスト畳み込み（`semantics` の `generated_inlines_to_plain_text`）と
-/// 同じ規則を保つ。バリアントごとの扱い（数式は `"[Math]"`、脚注・索引は空、`\cite` は整形済み表示を
-/// 辿る等）は同じに保つ。
-fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
-  let mut out = String::new();
-  for inline in inlines {
-    match &inline.kind {
-      HirInlineKind::Text(s) => out.push_str(s),
-      HirInlineKind::Styled { children, .. }
-      | HirInlineKind::Colored { children, .. }
-      | HirInlineKind::Link { children, .. } => {
-        out.push_str(&hir_inlines_to_plain_text(children, style, state));
-      },
-      // 引用の表示は生成物の side table にある（見出しの `\cite` も目次・しおりでは表示を辿る）。
-      // 生成物は `GeneratedInline` なので生成物側の畳み込みをそのまま使う。
-      HirInlineKind::Cite { .. } => {
-        out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
-      },
-      HirInlineKind::Code(text) => out.push_str(text),
-      HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
-      HirInlineKind::Symbol(ch) => out.push(*ch),
-      HirInlineKind::LineBreak => out.push('\n'),
-      // 脚注本体・索引マーカーは見出しのプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
-      HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
-      HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.reference_target(inline.id))),
-    }
+/// `labels` に与えた順でアンカーが並ぶ。図・表・定理はラベルを高々 1 つ持つので `Option<&LabelId>` を、
+/// ディスプレイ数式は環境ラベルと行ラベルを積んだ `Vec<&LabelId>` を渡す（複数行がラベルを持つ場合も、
+/// いずれもブロック先頭座標に解決される）。
+fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
+  let mut result: Vec<LayoutNode> = labels
+    .into_iter()
+    .map(|label| return LayoutNode::Anchor(AnchorMark::Label(label.clone())))
+    .collect();
+  // ラベルの無いブロック（大半がこれ）では `nodes` をそのまま返し、詰め替えを避ける
+  if result.is_empty() {
+    return nodes;
   }
-  return out;
+  result.extend(nodes);
+  return result;
 }
 
 #[cfg(test)]
@@ -660,7 +531,7 @@ mod tests {
     // Assert
     assert_eq!(out.len(), 3, "Vkern + MathBlock + Vkern の 3 要素: {out:?}");
     assert!(matches!(out.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {out:?}");
-    assert!(matches!(out.get(1), Some(LayoutNode::MathBlock { .. })), "中央は MathBlock であるべき: {out:?}");
+    assert!(matches!(out.get(1), Some(LayoutNode::MathBlock(_))), "中央は MathBlock であるべき: {out:?}");
     assert!(matches!(out.last(), Some(LayoutNode::Vkern { .. })), "末尾は Vkern であるべき: {out:?}");
     assert!(
       !out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))),
@@ -678,9 +549,10 @@ mod tests {
     let out = lower_source(&style, "\\begin{equation}\na\n\\end{equation}\n");
 
     // Assert
-    let Some(LayoutNode::MathBlock { rows, .. }) = out.get(1) else {
+    let Some(LayoutNode::MathBlock(block)) = out.get(1) else {
       panic!("中央に MathBlock があるべき: {out:?}");
     };
+    let rows = &block.rows;
     assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
     let number = rows[0].number.as_ref().expect("採番された行は番号ボックスを持つ");
     assert!(matches!(&number[0], AtomNode::Text(t, _) if t == "(1)"), "番号ボックスは Text(\"(1)\"): {number:?}");
@@ -820,6 +692,30 @@ mod tests {
 
     // Assert
     assert!(!out.iter().any(|n| matches!(n, LayoutNode::Anchor(_))), "アンカーは出ない: {out:?}");
+  }
+
+  #[test]
+  fn display_math_row_label_anchors_are_reversed() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act — align の行末 `\label` は行ごとにラベルを付ける
+    let out =
+      lower_source(&style, "\\begin{align}\na &= b \\label{eq:first} \\\\\nc &= d \\label{eq:second}\n\\end{align}\n");
+
+    // Assert — 行ラベルは逆順で積まれる（「後から prepend」を繰り返す旧実装と同じ最終順序）
+    let anchors: Vec<&str> = out
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Anchor(AnchorMark::Label(label)) => return Some(label.as_str()),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(anchors, vec!["eq:second", "eq:first"], "{out:?}");
+    assert!(
+      matches!(out.get(2), Some(LayoutNode::Vkern { .. })),
+      "アンカー 2 個の直後からブロック本体が始まる: {out:?}"
+    );
   }
 
   #[test]

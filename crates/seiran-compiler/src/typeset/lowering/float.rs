@@ -1,15 +1,20 @@
-//! 図表（フロート）共通のキャプション構築と `VBox` 包み
+//! 図表（フロート）共通の lowering 経路
+//!
+//! 採番されるフロート（図・表）の「カウンタ値 → 番号文字列 → 本体 → キャプション → 上下マージン付き
+//! `VBox` → ラベルアンカー」を [`lower_numbered_float`] 1 本に持ち、図と表は本体ノードの作り方と
+//! 体裁（[`FloatCaption`] / [`FloatSpec`]）だけを渡す。
 
 use crate::{
-  document::{CaptionPosition, HirInline},
+  document::{CaptionPosition, HirInline, HirNode},
   length::Length,
   style::CaptionStyle,
   typeset::{
     boxes::Align,
     lowering::{
-      LoweringContext, LoweringState,
+      LoweringContext, LoweringState, counter,
       inline::lower_inlines,
       layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+      with_label_anchors,
     },
   },
 };
@@ -19,7 +24,7 @@ use crate::{
 /// キャプション本文の lowering はクロージャで遅延させ、`format` が `{title}` を含むときだけ
 /// 含む回数ぶん実行する（キャプション中の `\footnote` が通し index だけ消費して消えるのを
 /// 防ぐため。詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
-pub(super) fn build_caption(
+fn build_caption(
   ctx: &LoweringContext<'_>,
   caption_style: &CaptionStyle,
   inlines: &[HirInline],
@@ -54,7 +59,7 @@ pub(super) struct FloatSpec {
 }
 
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
-pub(super) fn wrap_float(
+fn wrap_float(
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<InlineNode>)>,
   spec: &FloatSpec,
@@ -92,6 +97,50 @@ pub(super) fn wrap_float(
       align: Align::Center,
     },
   ];
+}
+
+/// フロート 1 件のキャプション指定（体裁・本文・位置）
+///
+/// キャプションを持たないフロートでは `inlines` が `None` になる（`position` は読まれない）。
+#[derive(Debug, Clone, Copy)]
+pub(super) struct FloatCaption<'a> {
+  /// キャプションの体裁（`style.figure.caption` / `style.table.caption`）
+  pub style: &'a CaptionStyle,
+  /// キャプション本文のインライン列。`\caption` が無ければ `None`
+  pub inlines: Option<&'a [HirInline]>,
+  /// キャプションを本体の上下どちらに置くか
+  pub position: CaptionPosition,
+}
+
+/// 採番されるフロート（図・表）1 件をレイアウトノード列に変換する
+///
+/// 図と表で違うのは本体ノードの作り方（`build_body`）と体裁（`caption` / `spec`）だけで、
+/// 「カウンタ値 → 番号文字列 → 本体 → キャプション → 上下マージン付き `VBox` → ラベルアンカー」の
+/// 手順は同じ。`build_body` を `build_caption` より先に呼ぶのは、表セルの `\footnote` が
+/// キャプションの `\footnote` より先に通し番号を取る本文の出現順を保つため。
+///
+/// `caption` は `FloatCaption` を値で受ける（3 フィールドとも Copy なので `needless_pass_by_value` は
+/// 対象外にする。`derive(Copy)` はそのために付けてある）。
+pub(super) fn lower_numbered_float(
+  ctx: &LoweringContext<'_>,
+  node: &HirNode,
+  caption: FloatCaption<'_>,
+  spec: &FloatSpec,
+  state: &mut LoweringState<'_>,
+  build_body: impl FnOnce(&mut LoweringState<'_>) -> LayoutNode,
+) -> Vec<LayoutNode> {
+  let Some(counter_value) = state.counter_value(node.id) else {
+    unreachable!("図表は必ず採番される（analyze の Figure / Table 分岐が counters へ登録している）: {:?}", node.id)
+  };
+  let number = counter::format_counter_value(ctx.style, counter_value);
+  let label = state.declared_label(node.id);
+
+  let body = build_body(state);
+  let caption_nodes = caption
+    .inlines
+    .map(|inlines| return (caption.position, build_caption(ctx, caption.style, inlines, &number, state)));
+
+  return with_label_anchors(label, wrap_float(body, caption_nodes, spec));
 }
 
 #[cfg(test)]

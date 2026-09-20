@@ -6,7 +6,7 @@
 
 use crate::{
   color::Color,
-  document::FontKind,
+  document::{FontKind, HirNode, HirNodeKind},
   length::Length,
   typeset::lowering::{
     LoweringContext,
@@ -32,7 +32,10 @@ fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
 /// 段落 1 つとして組み、行区切りは強制改行にする。行が `Block::Paragraph` の行として
 /// 出るので、長いコードブロックでも行単位でページ分割できる。字下げ（`first_line_indent`）は
 /// 抑止する — コードの 1 桁目はソースの 1 桁目でなければならない。
-pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<LayoutNode> {
+pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, node: &HirNode) -> Vec<LayoutNode> {
+  let HirNodeKind::CodeBlock { text } = &node.kind else {
+    unreachable!("lowering::lower_node_indexed の HirNodeKind::CodeBlock arm からだけ呼ばれる: {:?}", node.id)
+  };
   let style = code_text_style(ctx.default_font_size(), None);
   let mut content = Vec::new();
   for (index, line) in text.split('\n').enumerate() {
