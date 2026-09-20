@@ -122,9 +122,9 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
   let opt_args = collect_command_opt_args(
     view,
     &[
-      ("width", OptType::Length),
-      ("height", OptType::Length),
-      ("dpi", OptType::Number),
+      ("width", OptType::PositiveLength),
+      ("height", OptType::PositiveLength),
+      ("dpi", OptType::RoundedInt),
       ("downsample", OptType::Bool),
     ],
   )?;
@@ -135,55 +135,9 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
   let mut downsample: Option<bool> = None;
   for (key, value) in opt_args {
     match (key.as_str(), value) {
-      // 0 と負値をここで弾く — 描画寸法が正であることは `Publication` の不変条件で、破れると
-      // 描画段の低水準エラー（krilla の `Size::from_wh`）になり、ソース位置を示せなくなる（#378）
-      ("width", OptValue::Length(l)) => {
-        if !l.is_positive() {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "width".to_string(),
-            expected: "positive length".to_string(),
-            span: view.span().into(),
-          });
-        }
-        width = Some(l);
-      },
-      ("height", OptValue::Length(l)) => {
-        if !l.is_positive() {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "height".to_string(),
-            expected: "positive length".to_string(),
-            span: view.span().into(),
-          });
-        }
-        height = Some(l);
-      },
-      ("dpi", OptValue::Number(n)) => {
-        if !(n.is_finite() && n > 0.0 && n <= f64::from(u32::MAX)) {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "dpi".to_string(),
-            expected: "positive integer".to_string(),
-            span: view.span().into(),
-          });
-        }
-        #[expect(
-          clippy::cast_sign_loss,
-          clippy::cast_possible_truncation,
-          reason = "直前のガードで有限・正・`u32::MAX` 以下であることを確認済み"
-        )]
-        let rounded = n.round() as u32;
-        if rounded == 0 {
-          return Err(EvalError::InvalidOptArgValue {
-            name: "image".to_string(),
-            key: "dpi".to_string(),
-            expected: "positive integer".to_string(),
-            span: view.span().into(),
-          });
-        }
-        dpi = Some(rounded);
-      },
+      ("width", OptValue::Length(l)) => width = Some(l),
+      ("height", OptValue::Length(l)) => height = Some(l),
+      ("dpi", OptValue::Integer(n)) => dpi = Some(n),
       ("downsample", OptValue::Bool(b)) => downsample = Some(b),
       _ => unreachable!("collect_command_opt_args が未知キーと型不一致を弾くのでここには来ない"),
     }

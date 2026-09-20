@@ -76,26 +76,11 @@ fn extract_cell_command(
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
-  let opt_args = collect_command_opt_args(view, &[("span", OptType::Number)])?;
+  let opt_args = collect_command_opt_args(view, &[("span", OptType::PositiveInt)])?;
   let mut span: u32 = 1;
   for (key, value) in opt_args {
-    if let ("span", OptValue::Number(n)) = (key.as_str(), value) {
-      if !(n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= f64::from(u32::MAX)) {
-        return Err(EvalError::InvalidOptArgValue {
-          name: "cell".to_string(),
-          key: "span".to_string(),
-          expected: "1 以上の整数".to_string(),
-          span: view.span().into(),
-        });
-      }
-      #[expect(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        reason = "直前のガードで有限・1 以上・整数・`u32::MAX` 以下であることを確認済み"
-      )]
-      {
-        span = n as u32;
-      }
+    if let ("span", OptValue::Integer(n)) = (key.as_str(), value) {
+      span = n;
     }
   }
 

@@ -25,7 +25,10 @@ pub(super) fn list(
   ordered: bool,
 ) -> Result<Vec<HirNode>, EvalError> {
   let schema: &[(&str, OptType)] = if ordered {
-    &[("start", OptType::Number), ("item_gap", OptType::Length)]
+    &[
+      ("start", OptType::PositiveInt),
+      ("item_gap", OptType::Length),
+    ]
   } else {
     &[("item_gap", OptType::Length)]
   };
@@ -33,23 +36,8 @@ pub(super) fn list(
   let item_gap = find_length(&opt_args, "item_gap");
   let mut start: Option<u32> = None;
   for (key, value) in &opt_args {
-    if let ("start", OptValue::Number(n)) = (key.as_str(), value) {
-      if !(n.is_finite() && *n >= 1.0 && n.fract() == 0.0 && *n <= f64::from(u32::MAX)) {
-        return Err(EvalError::InvalidOptArgValue {
-          name: view.name().to_string(),
-          key: "start".to_string(),
-          expected: "1 以上の整数".to_string(),
-          span: view.span().into(),
-        });
-      }
-      #[expect(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        reason = "直前のガードで有限・1 以上・整数・`u32::MAX` 以下であることを確認済み"
-      )]
-      {
-        start = Some(*n as u32);
-      }
+    if let ("start", OptValue::Integer(n)) = (key.as_str(), value) {
+      start = Some(*n);
     }
   }
   if !view.args().is_empty() {
