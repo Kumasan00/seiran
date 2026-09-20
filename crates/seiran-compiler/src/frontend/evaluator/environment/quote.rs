@@ -1,7 +1,7 @@
 //! 引用環境 — `quote` / `quotation`
 
 use crate::{
-  document::{HirNode, HirNodeKind, QuoteKind},
+  document::{HirNode, HirNodeKind, HirQuote, QuoteKind},
   frontend::{
     evaluator::{self, EvalContext, EvalError, arity, opt_args},
     syntax::view::EnvironmentView,
@@ -25,7 +25,7 @@ pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, kind: Quo
     None => Vec::new(),
   };
 
-  return Ok(HirNode::new(id, HirNodeKind::Quote { kind, body }));
+  return Ok(HirNode::new(id, HirNodeKind::Quote(HirQuote { kind, body })));
 }
 
 #[cfg(test)]
@@ -47,12 +47,12 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Quote { kind, body } = &result[0].kind else {
+    let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, QuoteKind::Quote);
-    assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0].kind, HirNodeKind::Paragraph(_)));
+    assert_eq!(quote.kind, QuoteKind::Quote);
+    assert_eq!(quote.body.len(), 1);
+    assert!(matches!(&quote.body[0].kind, HirNodeKind::Paragraph(_)));
   }
 
   #[test]
@@ -66,10 +66,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Quote { kind, .. } = &result[0].kind else {
+    let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, QuoteKind::Quotation);
+    assert_eq!(quote.kind, QuoteKind::Quotation);
   }
 
   #[test]
@@ -83,11 +83,11 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Quote { body, .. } = &result[0].kind else {
+    let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
-    let paragraphs = body.iter().filter(|n| matches!(n.kind, HirNodeKind::Paragraph(_))).count();
-    assert_eq!(paragraphs, 2, "本体は 2 段落: {body:?}");
+    let paragraphs = quote.body.iter().filter(|n| matches!(n.kind, HirNodeKind::Paragraph(_))).count();
+    assert_eq!(paragraphs, 2, "本体は 2 段落: {:?}", quote.body);
   }
 
   #[test]

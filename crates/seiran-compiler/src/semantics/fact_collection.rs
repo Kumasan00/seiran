@@ -195,7 +195,7 @@ impl Checker<'_> {
           self.nodes(&item.content);
         }
       },
-      HirNodeKind::Quote { body, .. } => self.nodes(body),
+      HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 必須 fact を持たない variant。
       HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
@@ -439,7 +439,7 @@ impl Walker<'_> {
         }
         self.nodes(body);
       },
-      HirNodeKind::Quote { body, .. } => self.nodes(body),
+      HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 採番対象も参照箇所も含まない variant。
       HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
