@@ -249,6 +249,7 @@ pub(in crate::typeset) struct MathBlockCell {
 /// 環境種別（`cases` は常に左波括弧、`matrix` は `[delimiter=...]`）からの解決は
 /// `crate::typeset::lowering` が済ませ、`crate::typeset::boxing` は本体の高さ・深さへ
 /// 合わせて拡大して置くだけ（#674）。伸縮グリフ（OpenType MATH）で組む件は #73。
+/// 既定（`Default`）は左右とも `None` ＝括弧なし。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(in crate::typeset) struct DelimiterGlyphs {
   /// 左括弧のグリフ（`None` は左に括弧を置かない）
