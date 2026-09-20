@@ -4,7 +4,7 @@ use crate::{
   document::{HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError,
+      self, EvalContext, EvalError, arity,
       environment::body_scan,
       opt_args::{self, OptDecl, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
@@ -31,11 +31,7 @@ const UNORDERED_SCHEMA: &[OptDecl] = &[ITEM_GAP.decl()];
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-pub(super) fn list(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-  ordered: bool,
-) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn list(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool) -> Result<HirNode, EvalError> {
   let schema = if ordered {
     ORDERED_SCHEMA
   } else {
@@ -44,35 +40,20 @@ pub(super) fn list(
   let opts = collect_environment_opt_args(view, schema)?;
   let item_gap = opts.get(ITEM_GAP);
   let start = opts.get(START);
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let mut items = Vec::new();
   let source = view.source();
 
   if let Some(body) = view.body() {
-    for cmd_view in body_scan::strict_command_calls(source, body, view.name(), &["item"], "\\item{...}")? {
+    for ((), cmd_view) in
+      body_scan::strict_command_calls(source, body.children, view.name(), &[("item", ())], "\\item{...}")?
+    {
       let item_opts = collect_command_opt_args(&cmd_view, &[MARKER.decl(), ITEM_GAP.decl()])?;
       let marker = item_opts.get(MARKER);
       let item_gap = item_opts.get(ITEM_GAP);
-      let Some(first_arg) = cmd_view.first_arg() else {
-        return Err(EvalError::MissingCommandArgument {
-          name: "item".to_string(),
-          expected: "項目の内容".to_string(),
-          span: cmd_view.span().into(),
-        });
-      };
-      if cmd_view.args_count() > 1 {
-        return Err(EvalError::ExtraCommandArgument {
-          name: "item".to_string(),
-          span: cmd_view.span().into(),
-        });
-      }
+      let first_arg = arity::exactly_one_arg(&cmd_view, "項目の内容")?;
       let item_id = ctx.alloc(cmd_view.span());
       let content = evaluator::evaluate_children(source, ctx, first_arg)?;
       items.push(HirListItem {
@@ -84,7 +65,7 @@ pub(super) fn list(
     }
   }
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::List {
       ordered,
@@ -92,7 +73,7 @@ pub(super) fn list(
       start,
       item_gap,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

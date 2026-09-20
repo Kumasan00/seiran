@@ -4,7 +4,7 @@ use crate::{
   document::{HeadingLevel, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
@@ -26,38 +26,24 @@ pub(super) fn heading(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   level: HeadingLevel,
-) -> Result<Vec<HirNode>, EvalError> {
-  let name = level.command_name();
-
+) -> Result<HirNode, EvalError> {
   let opt_args = collect_command_opt_args(view, &[LABEL.decl()])?;
   let label = opt_args.get(LABEL);
 
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: name.to_string(),
-      expected: expected_name(level).to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: name.to_string(),
-      span: view.span().into(),
-    });
-  }
+  let first_arg = arity::exactly_one_arg(view, expected_name(level))?;
 
   let id = ctx.alloc(view.span());
   // 見出しタイトルは目次・走り文へも展開されうる複製文脈なので `\index` を拒否する
   let title = extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Heading {
       level,
       title,
       label,
     },
-  )]);
+  ));
 }
 
 /// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
@@ -77,7 +63,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{run_block_handler, test_support};
+  use crate::frontend::evaluator::{run_handler, test_support};
 
   #[test]
   fn heading_captures_label_and_is_numbered() {
@@ -88,11 +74,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section)).unwrap();
+    let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section)).unwrap();
 
     // Assert
-    assert_eq!(result.len(), 1);
-    let HirNodeKind::Heading { level, label, .. } = &result[0].kind else {
+    let HirNodeKind::Heading { level, label, .. } = &result.kind else {
       panic!("Heading が期待されます");
     };
     assert_eq!(*level, HeadingLevel::Section);
@@ -110,7 +95,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section));
+    let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));

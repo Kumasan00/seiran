@@ -6,7 +6,7 @@ use crate::{
   document::{HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
       opt_args::{self, OptKey, collect_environment_opt_args},
     },
@@ -22,7 +22,7 @@ const DELIMITER: OptKey<String> = opt_args::string("delimiter");
 /// # Errors
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   let opts = collect_environment_opt_args(view, &[DELIMITER.decl()])?;
   let delimiter = match opts.get(DELIMITER) {
     Some(value) => {
@@ -38,12 +38,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     },
     None => MathDelimiter::None,
   };
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "matrix".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());
@@ -62,7 +57,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   };
   let rows = into_unnumbered_rows(grid);
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock {
       kind: MathEnvKind::Matrix { delimiter },
@@ -70,7 +65,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
       numbered: false,
       label: None,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

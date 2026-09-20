@@ -149,7 +149,7 @@ pub(crate) fn evaluate_math_env(
   kind: MathEnvKind,
   spec: GridSpec,
   mode: NumberingMode,
-) -> Result<Vec<HirNode>, EvalError> {
+) -> Result<HirNode, EvalError> {
   let (numbered, env_label) = parse_math_env_opts(view, mode)?;
 
   // 行末マーカー `\notag` / `\label` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
@@ -170,7 +170,7 @@ pub(crate) fn evaluate_math_env(
 
   // 無採番・空ブロックにダングリングアンカーを残さない。
   let block_label = env_numbered.then_some(env_label).flatten();
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock {
       kind,
@@ -178,7 +178,7 @@ pub(crate) fn evaluate_math_env(
       numbered: env_numbered,
       label: block_label,
     },
-  )]);
+  ));
 }
 
 /// 非採番環境（`cases` / `matrix`）の行リストを構築する

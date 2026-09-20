@@ -106,7 +106,7 @@ impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
   ///
   /// `\begin{...}` 側のノードと環境名は構築時に取り出して保持するので、[`EnvironmentView::name`] /
-  /// [`EnvironmentView::args`] / [`EnvironmentView::opt_arg`] は無謬になる。
+  /// [`EnvironmentView::args_is_empty`] / [`EnvironmentView::opt_arg`] は無謬になる。
   ///
   /// # Panics
   ///
@@ -156,10 +156,12 @@ impl<'a> EnvironmentView<'a> {
     return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody);
   }
 
-  /// 環境の必須引数ノードを返す（環境名の arg は除外）
+  /// 環境名以外の必須引数が無いかを返す（環境名の arg は除外）
+  ///
+  /// 必須引数を取る環境は無いので、読むのは有無だけ。
   #[must_use]
-  pub(crate) fn args(&self) -> Vec<&'a GreenNode<'a>> {
-    return self.begin.children_of_kind(SyntaxKind::MandatoryArg).skip(1).collect();
+  pub(crate) fn args_is_empty(&self) -> bool {
+    return self.begin.children_of_kind(SyntaxKind::MandatoryArg).nth(1).is_none();
   }
 
   /// 環境の任意引数 `[...]` ノードを返す
@@ -372,7 +374,7 @@ mod tests {
     let view = EnvironmentView::new(env_node, source);
     assert_eq!(view.name(), "center");
     assert!(view.body().is_some());
-    assert!(view.args().is_empty());
+    assert!(view.args_is_empty());
     assert!(view.opt_arg().is_none());
   }
 

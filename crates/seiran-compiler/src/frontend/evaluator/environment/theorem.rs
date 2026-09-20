@@ -4,7 +4,7 @@ use crate::{
   document::{HirNode, HirNodeKind, HirProofTarget, TheoremClass},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError,
+      self, EvalContext, EvalError, arity,
       opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
@@ -33,7 +33,7 @@ pub(super) fn theorem(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
   class: TheoremClass,
-) -> Result<Vec<HirNode>, EvalError> {
+) -> Result<HirNode, EvalError> {
   let schema = if class == TheoremClass::Proof {
     PROOF_SCHEMA
   } else {
@@ -43,13 +43,7 @@ pub(super) fn theorem(
   let title = opts.get(TITLE);
   let label = opts.get(LABEL);
   let of_label = opts.get(OF);
-
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   // `[of=...]` は環境ヘッダにあるので、本体より先に ID を確保する
@@ -64,7 +58,7 @@ pub(super) fn theorem(
     None => Vec::new(),
   };
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Theorem {
       class,
@@ -73,7 +67,7 @@ pub(super) fn theorem(
       of,
       label,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]

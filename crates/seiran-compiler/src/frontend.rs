@@ -216,7 +216,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_preserves_comma_and_equals() {
+  fn inline_math_preserves_comma_and_equals() {
     let result = evaluate_source("$f(x, y) = 0$");
 
     assert_eq!(result.len(), 1);
@@ -422,7 +422,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_subscript() {
+  fn inline_math_subscript() {
     let result = evaluate_source("$x_{i}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
@@ -445,7 +445,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_superscript() {
+  fn inline_math_superscript() {
     let result = evaluate_source("$x^{2}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
@@ -466,7 +466,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_subscript_with_multiple_characters() {
+  fn inline_math_subscript_with_multiple_characters() {
     let result = evaluate_source("$x_{ij}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
@@ -481,7 +481,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_subscript_and_superscript_combined() {
+  fn inline_math_subscript_and_superscript_combined() {
     let result = evaluate_source("$a_{i}^{2}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
@@ -499,7 +499,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_styled_bold() {
+  fn inline_math_styled_bold() {
     // Arrange
 
     // Act
@@ -523,7 +523,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_styled_sans_bold_italic_with_greek() {
+  fn inline_math_styled_sans_bold_italic_with_greek() {
     // Arrange
 
     // Act
@@ -544,7 +544,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_styled_math_alphabets_resolve() {
+  fn inline_math_styled_math_alphabets_resolve() {
     // Arrange
     let cases: [(&str, MathVariant); 6] = [
       ("mathdoublestruck", MathVariant::DoubleStruck),
@@ -575,21 +575,21 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inline_math_styled_rejects_missing_argument() {
+  fn inline_math_styled_rejects_missing_argument() {
     let error = evaluate_error(r"$\mathbold$");
 
     assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "mathbold"));
   }
 
   #[test]
-  fn evaluate_inline_math_styled_rejects_extra_argument() {
+  fn inline_math_styled_rejects_extra_argument() {
     let error = evaluate_error(r"$\mathbold{x}{y}$");
 
     assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "mathbold"));
   }
 
   #[test]
-  fn evaluate_inline_math_styled_nests_inner_overrides_outer() {
+  fn inline_math_styled_nests_inner_overrides_outer() {
     // Arrange
 
     // Act

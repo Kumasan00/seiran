@@ -148,13 +148,11 @@ impl InlineSink {
 
   /// インラインコマンドの評価結果を積む
   ///
-  /// 結果が索引マーカーだけなら幅 0 でテキストを分断しないので、畳みを継続できる位置として
+  /// 結果が索引マーカーなら幅 0 でテキストを分断しないので、畳みを継続できる位置として
   /// 記録する（`A\index{a}\index{b}V` のような連続マーカーもここで連鎖する）。
   /// コマンド名では判定しない — 幅 0 マーカーが増えても分岐が増えないため。
-  pub(crate) fn extend_inline_result(&mut self, span: Span, inlines: Vec<HirInline>) {
-    let is_marker_only =
-      !inlines.is_empty() && inlines.iter().all(|inline| return matches!(inline.kind, HirInlineKind::Index { .. }));
-    if is_marker_only {
+  pub(crate) fn push_inline_result(&mut self, span: Span, inline: HirInline) {
+    if matches!(inline.kind, HirInlineKind::Index { .. }) {
       let continues = self.armed_gap.map_or_else(
         || return self.last_text.is_some_and(|(_, end)| return end == span.start),
         |gap| return gap == span.start,
@@ -164,7 +162,7 @@ impl InlineSink {
       self.last_text = None;
       self.armed_gap = None;
     }
-    self.inlines.extend(inlines);
+    self.inlines.push(inline);
     return;
   }
 
@@ -233,11 +231,11 @@ pub(crate) fn extract_inline_nodes_from_elements(
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           let view = CommandView::new(child_node, source);
-          sink.extend_inline_result(child_node.span, command::evaluate_inline_command(&view, ctx, index_policy)?);
+          sink.push_inline_result(child_node.span, command::evaluate_inline_command(&view, ctx, index_policy)?);
         },
         SyntaxKind::InlineMath => {
           let id = ctx.alloc(child_node.span);
-          let math_nodes = math::evaluate_inline_math(source, ctx, child_node)?;
+          let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
           sink.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         SyntaxKind::Environment => {

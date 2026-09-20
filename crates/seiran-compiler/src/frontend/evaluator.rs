@@ -19,6 +19,7 @@ use crate::{
   source::Span,
 };
 
+mod arity;
 mod command;
 mod context;
 mod environment;
@@ -30,9 +31,7 @@ mod opt_args;
 pub(crate) use context::EvalContext;
 pub(crate) use error::EvalError;
 #[cfg(test)]
-pub(crate) use test_support::{
-  evaluate_children_to_hir, extract_inline_nodes_to_hir, run_block_handler, run_inline_handler,
-};
+pub(crate) use test_support::{evaluate_children_to_hir, extract_inline_nodes_to_hir, run_handler};
 
 use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
 
@@ -83,12 +82,12 @@ pub(crate) fn evaluate_children(
           let view = CommandView::new(child_node, source);
           let result = command::evaluate_command(&view, ctx, Placement::Block)?;
           match result {
-            CommandResult::Block(_permit, block_nodes) => {
+            CommandResult::Block(_permit, block_node) => {
               paragraph.flush(ctx, &mut hir_nodes);
-              hir_nodes.extend(block_nodes);
+              hir_nodes.push(block_node);
             },
-            CommandResult::Inline(inline_nodes) => {
-              paragraph.extend_inline_result(child_node.span, inline_nodes);
+            CommandResult::Inline(inline_node) => {
+              paragraph.push_inline_result(child_node.span, inline_node);
             },
             CommandResult::NoIndent(_permit) => {
               // 先行トリビアは許すが、実体のある要素や同じマーカーがあれば段落途中として扱う。
@@ -104,13 +103,13 @@ pub(crate) fn evaluate_children(
         SyntaxKind::Environment => {
           paragraph.flush(ctx, &mut hir_nodes);
           let view = EnvironmentView::new(child_node, source);
-          let nodes = environment::evaluate_environment(&view, ctx)?;
-          hir_nodes.extend(nodes);
+          let node = environment::evaluate_environment(&view, ctx)?;
+          hir_nodes.push(node);
         },
         SyntaxKind::InlineMath => {
           paragraph.reserve(ctx, child_node.span);
           let id = ctx.alloc(child_node.span);
-          let math_nodes = math::evaluate_inline_math(source, ctx, child_node)?;
+          let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
           paragraph.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         // これらはルート直下に現れない内部ノードである。
@@ -168,9 +167,9 @@ impl ParagraphBuffer {
     return;
   }
 
-  /// インラインコマンドの評価結果をまとめて積む
-  fn extend_inline_result(&mut self, span: Span, inlines: Vec<HirInline>) {
-    self.sink.extend_inline_result(span, inlines);
+  /// インラインコマンドの評価結果を積む
+  fn push_inline_result(&mut self, span: Span, inline: HirInline) {
+    self.sink.push_inline_result(span, inline);
     return;
   }
 
@@ -266,20 +265,10 @@ mod test_support {
     return inline::extract_inline_nodes(source, &ctx, node, index_policy);
   }
 
-  /// ハンドラを直接呼ぶテスト向けに、HIR インラインをそのまま返す
+  /// ハンドラを直接呼ぶテスト向けに、評価結果をそのまま返す
   ///
-  /// 使い方: `run_inline_handler(|ctx| return styled_text(&view, ctx, kind))`
-  pub(crate) fn run_inline_handler(
-    handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirInline>, EvalError>,
-  ) -> Result<Vec<HirInline>, EvalError> {
-    let ctx = eval_context_for_test();
-    return handler(&ctx);
-  }
-
-  /// ハンドラを直接呼ぶテスト向けに、HIR ブロックをそのまま返す
-  pub(crate) fn run_block_handler(
-    handler: impl FnOnce(&EvalContext<'_>) -> Result<Vec<HirNode>, EvalError>,
-  ) -> Result<Vec<HirNode>, EvalError> {
+  /// 使い方: `run_handler(|ctx| return styled_text(&view, ctx, kind, policy))`
+  pub(crate) fn run_handler<T>(handler: impl FnOnce(&EvalContext<'_>) -> Result<T, EvalError>) -> Result<T, EvalError> {
     let ctx = eval_context_for_test();
     return handler(&ctx);
   }

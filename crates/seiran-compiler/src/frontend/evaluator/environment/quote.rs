@@ -3,7 +3,7 @@
 use crate::{
   document::{HirNode, HirNodeKind, QuoteKind},
   frontend::{
-    evaluator::{self, EvalContext, EvalError, opt_args::collect_environment_opt_args},
+    evaluator::{self, EvalContext, EvalError, arity, opt_args},
     syntax::view::EnvironmentView,
   },
 };
@@ -15,18 +15,9 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-  kind: QuoteKind,
-) -> Result<Vec<HirNode>, EvalError> {
-  let _opt_args = collect_environment_opt_args(view, &[])?;
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, kind: QuoteKind) -> Result<HirNode, EvalError> {
+  opt_args::no_environment_opt_args(view)?;
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let body = match view.body() {
@@ -34,7 +25,7 @@ pub(super) fn quote(
     None => Vec::new(),
   };
 
-  return Ok(vec![HirNode::new(id, HirNodeKind::Quote { kind, body })]);
+  return Ok(HirNode::new(id, HirNodeKind::Quote { kind, body }));
 }
 
 #[cfg(test)]

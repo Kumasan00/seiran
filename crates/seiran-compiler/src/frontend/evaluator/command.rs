@@ -7,9 +7,7 @@ use phf::phf_map;
 use crate::{
   document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
   frontend::{
-    evaluator::{
-      EvalContext, EvalError, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args::collect_command_opt_args,
-    },
+    evaluator::{EvalContext, EvalError, arity, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args},
     syntax::{ArgMode, view::CommandView},
   },
 };
@@ -31,9 +29,9 @@ pub(super) enum CommandResult {
   ///
   /// [`BlockPermit`] を伴わずには構築できない — この結果を作れるのは
   /// [`Placement::accept_block`] を通った arm だけである。
-  Block(BlockPermit, Vec<HirNode>),
+  Block(BlockPermit, HirNode),
   /// インラインレベルの HIR ノード（記号文字等）
-  Inline(Vec<HirInline>),
+  Inline(HirInline),
   /// `\noindent` — 段落先頭行の字下げ抑止マーカー
   ///
   /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行うので、`BlockPermit` 以外の
@@ -152,17 +150,17 @@ impl CommandKind {
     match self {
       Self::Space => {
         let permit = placement.accept_block(view)?;
-        return control::space(view, ctx).map(|nodes| return CommandResult::Block(permit, nodes));
+        return control::space(view, ctx).map(|node| return CommandResult::Block(permit, node));
       },
 
       Self::PageBreak => {
         let permit = placement.accept_block(view)?;
-        return control::pagebreak(view, ctx).map(|nodes| return CommandResult::Block(permit, nodes));
+        return control::pagebreak(view, ctx).map(|node| return CommandResult::Block(permit, node));
       },
 
       Self::Heading(level) => {
         let permit = placement.accept_block(view)?;
-        return heading::heading(view, ctx, level).map(|nodes| return CommandResult::Block(permit, nodes));
+        return heading::heading(view, ctx, level).map(|node| return CommandResult::Block(permit, node));
       },
 
       Self::NoIndent => {
@@ -231,15 +229,10 @@ impl CommandKind {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Result<Vec<HirInline>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  if !view.args_is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
-  return Ok(vec![ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch))]);
+fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Result<HirInline, EvalError> {
+  opt_args::no_command_opt_args(view)?;
+  arity::no_args(view)?;
+  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch)));
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
@@ -347,9 +340,9 @@ pub(super) fn evaluate_inline_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
-) -> Result<Vec<HirInline>, EvalError> {
+) -> Result<HirInline, EvalError> {
   return match evaluate_command(view, ctx, Placement::Inline(index_policy))? {
-    CommandResult::Inline(inlines) => Ok(inlines),
+    CommandResult::Inline(inline) => Ok(inline),
     CommandResult::Block(..) | CommandResult::NoIndent(_) => {
       unreachable!(
         "CommandResult::Block / NoIndent の構築には BlockPermit が要り、それを発行できるのは \
@@ -432,7 +425,7 @@ mod tests {
       let view = CommandView::new(node, source);
 
       // Act
-      let result = evaluator::run_inline_handler(|ctx| {
+      let result = evaluator::run_handler(|ctx| {
         return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
       });
 
@@ -454,7 +447,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = evaluator::run_inline_handler(|ctx| {
+    let result = evaluator::run_handler(|ctx| {
       return evaluate_inline_command(&view, ctx, IndexPolicy::Reject);
     });
 
@@ -474,7 +467,7 @@ mod tests {
         let view = CommandView::new(node, &source);
 
         // Act
-        let result = evaluator::run_inline_handler(|ctx| {
+        let result = evaluator::run_handler(|ctx| {
           return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
         });
 

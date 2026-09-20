@@ -4,7 +4,7 @@ use crate::{
   document::{HirInline, HirInlineKind, HirTableCell},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       inline::{IndexPolicy, extract_inline_nodes, extract_inline_nodes_from_elements},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
@@ -82,19 +82,7 @@ fn extract_cell_command(
   let opts = collect_command_opt_args(view, &[SPAN.decl()])?;
   let span = opts.get(SPAN).unwrap_or(1);
 
-  let Some(arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "cell".to_string(),
-      expected: "セル内容".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "cell".to_string(),
-      span: view.span().into(),
-    });
-  }
+  let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let id = ctx.alloc(view.span());
   let content = trim_cell_content(extract_inline_nodes(view.source(), ctx, arg, index_policy)?);

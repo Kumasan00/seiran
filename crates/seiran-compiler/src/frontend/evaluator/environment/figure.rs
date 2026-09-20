@@ -6,7 +6,7 @@ use crate::{
   document::{CaptionPosition, HirInline, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::{body_scan, caption::extract_caption},
       opt_args::{self, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
@@ -26,21 +26,31 @@ const DPI: OptKey<u32> = opt_args::rounded_int("dpi");
 /// `\image[downsample=...]`（per-image ダウンサンプリング）
 const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 
+/// `figure` 環境の本体に書けるコマンド
+#[derive(Debug, Clone, Copy)]
+enum FigureCommand {
+  /// `\image[...]{path}` — 図の実体
+  Image,
+  /// `\caption{...}` — 図のキャプション
+  Caption,
+}
+
+/// `figure` 環境の本体で許可するコマンドと種別
+const FIGURE_COMMANDS: &[(&str, FigureCommand)] = &[
+  ("image", FigureCommand::Image),
+  ("caption", FigureCommand::Caption),
+];
+
 /// `figure` 環境を評価する
 ///
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   let opts = collect_environment_opt_args(view, &[LABEL.decl()])?;
   let label = opts.get(LABEL);
 
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "figure".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let source = view.source();
@@ -54,11 +64,11 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for cmd_view in
-      body_scan::strict_command_calls(source, body, "figure", &["image", "caption"], "\\image と \\caption")?
+    for (command, cmd_view) in
+      body_scan::strict_command_calls(source, body.children, "figure", FIGURE_COMMANDS, "\\image と \\caption")?
     {
-      match cmd_view.name() {
-        "image" => {
+      match command {
+        FigureCommand::Image => {
           if image_path.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
@@ -73,7 +83,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           dpi = extracted.dpi;
           downsample = extracted.downsample;
         },
-        "caption" => {
+        FigureCommand::Caption => {
           if caption.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
@@ -86,7 +96,6 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           }
           caption = Some(extract_caption(&cmd_view, ctx)?);
         },
-        _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
     }
   }
@@ -99,7 +108,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     });
   };
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Figure {
       image_path: ctx.resolve_path(&image_path),
@@ -111,7 +120,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
       caption_position,
       label,
     },
-  )]);
+  ));
 }
 
 /// `\image` から抽出される情報の集約構造体
@@ -136,19 +145,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
   let dpi = opts.get(DPI);
   let downsample = opts.get(DOWNSAMPLE);
 
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "image".to_string(),
-      expected: "画像ファイルのパス".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "image".to_string(),
-      span: view.span().into(),
-    });
-  }
+  let first_arg = arity::exactly_one_arg(view, "画像ファイルのパス")?;
 
   let path = extract_text_content(view.source(), first_arg).trim().to_string();
   if path.is_empty() {

@@ -12,7 +12,7 @@ use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 use crate::{
   document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalContext, EvalError},
+    evaluator::{EvalContext, EvalError, arity},
     syntax::view::EnvironmentView,
   },
 };
@@ -25,15 +25,10 @@ use crate::{
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   let opts = collect_table_opts(view)?;
 
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "table".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let columns_tokens = opts.columns_spec.as_deref().map(|s| return parse_columns_spec(s, view)).transpose()?;
   let widths_tokens = opts.widths_spec.as_deref().map(|s| return parse_widths_spec(s, view)).transpose()?;
@@ -50,24 +45,24 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   }
 
   let column_count =
-    resolve_column_count(columns_tokens.as_deref(), widths_tokens.as_deref(), &body.head, &body.rows, view)?;
+    resolve_column_count(columns_tokens.as_deref(), widths_tokens.as_deref(), &body.head, &body.rows, view, ctx)?;
 
   let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
   let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
 
-  return Ok(vec![HirNode::new(
+  return Ok(HirNode::new(
     id,
     HirNodeKind::Table {
       columns,
       widths,
-      head: body.head.into_iter().map(|(row, _)| return row).collect(),
-      rows: body.rows.into_iter().map(|(row, _)| return row).collect(),
+      head: body.head,
+      rows: body.rows,
       caption: body.caption,
       caption_position: body.caption_position,
       label: opts.label,
       breakable: opts.breakable,
     },
-  )]);
+  ));
 }
 
 #[cfg(test)]
@@ -233,19 +228,26 @@ mod tests {
   fn table_rejects_row_cell_count_mismatch() {
     // Arrange
     let source = r#"\begin{table}[columns="left right"]\row{A & B & C}\end{table}"#;
+    // 診断の span はこの `\row{...}` 呼び出し全体（node.id 経由で ctx.span_of から引く値）を指す
+    let row_command = r"\row{A & B & C}";
+    let expected_offset = source.find(row_command).expect("ソースに \\row コマンドが含まれる");
 
     // Act
     let result = eval_table(source);
 
     // Assert
-    assert!(matches!(
-      result,
-      Err(EvalError::TableRowCellCountMismatch {
-        expected: 2,
-        actual: 3,
-        ..
-      })
-    ));
+    let Err(EvalError::TableRowCellCountMismatch {
+      expected,
+      actual,
+      span,
+    }) = result
+    else {
+      panic!("TableRowCellCountMismatch が期待されます: {result:?}");
+    };
+    assert_eq!(expected, 2);
+    assert_eq!(actual, 3);
+    assert_eq!(span.offset(), expected_offset, "span は \\row コマンド呼び出し全体の開始位置を指すべき");
+    assert_eq!(span.len(), row_command.len(), "span は \\row コマンド呼び出し全体の長さを指すべき");
   }
 
   #[test]
@@ -378,6 +380,22 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnexpectedContentInEnvironment { ref env, .. }) if env == "table"));
+  }
+
+  #[test]
+  fn head_rejects_a_command_other_than_row() {
+    // `\head` の中は共通の本体走査を通るので、許可外コマンドは \row と同じ診断になる
+    let arena = Bump::new();
+    let source = "\\begin{table}\\head{\\bold{x}}\\row{a}\\end{table}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    assert!(
+      matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, ref expected, .. })
+        if name == "bold" && expected == "\\head の中の \\row"),
+      "{result:?}"
+    );
   }
 
   #[test]

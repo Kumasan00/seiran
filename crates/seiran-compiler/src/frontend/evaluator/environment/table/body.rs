@@ -4,7 +4,7 @@ use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableCell, HirTableRow},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::{
         body_scan,
         caption::extract_caption,
@@ -14,7 +14,6 @@ use crate::{
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::{
-      SyntaxKind,
       green::GreenElement,
       token::TokenKind,
       view::{CommandView, EnvironmentView},
@@ -26,12 +25,30 @@ use crate::{
 /// `\row[rule_above]`（行の上に罫線を引く）
 const RULE_ABOVE: OptKey<bool> = opt_args::boolean("rule_above");
 
+/// `table` 環境の本体に書けるコマンド
+#[derive(Debug, Clone, Copy)]
+enum TableCommand {
+  /// `\head{\row{...}}` — ヘッダ行
+  Head,
+  /// `\row[...]{...}` — 本体行
+  Row,
+  /// `\caption{...}` — 表のキャプション
+  Caption,
+}
+
+/// `table` 環境の本体で許可するコマンドと種別
+const TABLE_COMMANDS: &[(&str, TableCommand)] = &[
+  ("head", TableCommand::Head),
+  ("row", TableCommand::Row),
+  ("caption", TableCommand::Caption),
+];
+
 /// 本体走査で収集した行・キャプション情報
 pub(super) struct TableBody {
-  /// `\head` 行（列数確定後のセル数検証に使うソース位置つき）
-  pub(super) head: Vec<(HirTableRow, miette::SourceSpan)>,
-  /// `\row` 行（列数確定後のセル数検証に使うソース位置つき）
-  pub(super) rows: Vec<(HirTableRow, miette::SourceSpan)>,
+  /// `\head` 行
+  pub(super) head: Vec<HirTableRow>,
+  /// `\row` 行
+  pub(super) rows: Vec<HirTableRow>,
   /// `\caption` の内容（未指定なら `None`）
   pub(super) caption: Option<Vec<HirInline>>,
   /// キャプションを表の上下どちらに配置するか
@@ -41,22 +58,18 @@ pub(super) struct TableBody {
 /// 本体から `\head` / `\row` / `\caption` を走査して [`TableBody`] に収集する
 pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<TableBody, EvalError> {
   let source = view.source();
-  let mut head: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
-  let mut rows: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
+  let mut head: Vec<HirTableRow> = Vec::new();
+  let mut rows: Vec<HirTableRow> = Vec::new();
   let mut caption: Option<Vec<HirInline>> = None;
   // `\caption` が最初の行（`\head` / `\row`）よりソース上で先に現れた場合のみ Top
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for cmd_view in body_scan::strict_command_calls(
-      source,
-      body,
-      "table",
-      &["head", "row", "caption"],
-      "\\head と \\row と \\caption",
-    )? {
-      match cmd_view.name() {
-        "head" => {
+    for (command, cmd_view) in
+      body_scan::strict_command_calls(source, body.children, "table", TABLE_COMMANDS, "\\head と \\row と \\caption")?
+    {
+      match command {
+        TableCommand::Head => {
           if !head.is_empty() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
@@ -66,11 +79,10 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           }
           head = extract_head(&cmd_view, ctx)?;
         },
-        "row" => {
-          let span: miette::SourceSpan = cmd_view.span().into();
-          rows.push((extract_row(&cmd_view, ctx, IndexPolicy::Allow)?, span));
+        TableCommand::Row => {
+          rows.push(extract_row(&cmd_view, ctx, IndexPolicy::Allow)?);
         },
-        "caption" => {
+        TableCommand::Caption => {
           if caption.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
@@ -83,7 +95,6 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           }
           caption = Some(extract_caption(&cmd_view, ctx)?);
         },
-        _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
     }
   }
@@ -100,67 +111,20 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
 ///
 /// ヘッダ行は表が改ページするたび全ページへ再描画される複製文脈なので、出現ページが一意に
 /// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
-fn extract_head(
-  view: &CommandView<'_>,
-  ctx: &EvalContext<'_>,
-) -> Result<Vec<(HirTableRow, miette::SourceSpan)>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "head".to_string(),
-      expected: "\\row コマンド".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "head".to_string(),
-      span: view.span().into(),
-    });
-  }
+///
+/// `\head` の本体は [`body_scan::strict_command_calls`] で全要素を検証してから各 `\row` を
+/// 評価する。そのため本体のどこかにある構造上の誤り（`\row` 以外の内容など）は、それより
+/// 手前にある `\row` の評価エラーより先に報告される。
+fn extract_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirTableRow>, EvalError> {
+  opt_args::no_command_opt_args(view)?;
+  let arg = arity::exactly_one_arg(view, "\\row コマンド")?;
 
   let source = view.source();
   let mut rows = Vec::new();
-  for child in arg.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        TokenKind::Whitespace
-        | TokenKind::Newline
-        | TokenKind::ParagraphBreak
-        | TokenKind::Comment
-        | TokenKind::LBrace
-        | TokenKind::RBrace => {},
-        _ => {
-          return Err(EvalError::UnexpectedContentInEnvironment {
-            env: "table".to_string(),
-            expected: "\\head の中の \\row".to_string(),
-            span: token.span.into(),
-          });
-        },
-      },
-      GreenElement::Node(node) => {
-        if node.kind == SyntaxKind::CommandCall {
-          let row_view = CommandView::new(node, source);
-          if row_view.name() == "row" {
-            let span: miette::SourceSpan = row_view.span().into();
-            rows.push((extract_row(&row_view, ctx, IndexPolicy::Reject)?, span));
-          } else {
-            return Err(EvalError::UnexpectedCommandInEnvironment {
-              env: "table".to_string(),
-              name: row_view.name().to_string(),
-              expected: "\\head の中の \\row".to_string(),
-              span: node.span.into(),
-            });
-          }
-        } else {
-          return Err(EvalError::UnexpectedContentInEnvironment {
-            env: "table".to_string(),
-            expected: "\\head の中の \\row".to_string(),
-            span: node.span.into(),
-          });
-        }
-      },
-    }
+  for ((), row_view) in
+    body_scan::strict_command_calls(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
+  {
+    rows.push(extract_row(&row_view, ctx, IndexPolicy::Reject)?);
   }
   if rows.is_empty() {
     return Err(EvalError::MissingCommandArgument {
@@ -184,19 +148,7 @@ fn extract_row(
   let opts = collect_command_opt_args(view, &[RULE_ABOVE.decl()])?;
   let rule_above = opts.get(RULE_ABOVE).unwrap_or(false);
 
-  let Some(arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "row".to_string(),
-      expected: "セル内容".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "row".to_string(),
-      span: view.span().into(),
-    });
-  }
+  let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());
@@ -236,9 +188,10 @@ fn extract_row(
 pub(super) fn resolve_column_count(
   columns_tokens: Option<&[ColumnAlign]>,
   widths_tokens: Option<&[ColumnWidth]>,
-  head: &[(HirTableRow, miette::SourceSpan)],
-  rows: &[(HirTableRow, miette::SourceSpan)],
+  head: &[HirTableRow],
+  rows: &[HirTableRow],
   view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
 ) -> Result<usize, EvalError> {
   let column_count = match (columns_tokens, widths_tokens) {
     (Some(c), Some(w)) => {
@@ -253,16 +206,16 @@ pub(super) fn resolve_column_count(
     },
     (Some(c), None) => c.len(),
     (None, Some(w)) => w.len(),
-    (None, None) => head.iter().chain(rows.iter()).map(|(row, _)| return row_span_sum(row)).max().unwrap_or(0),
+    (None, None) => head.iter().chain(rows.iter()).map(row_span_sum).max().unwrap_or(0),
   };
 
-  for (row, span) in head.iter().chain(rows.iter()) {
+  for row in head.iter().chain(rows.iter()) {
     let actual = row_span_sum(row);
     if actual != column_count {
       return Err(EvalError::TableRowCellCountMismatch {
         expected: column_count,
         actual,
-        span: *span,
+        span: ctx.span_of(row.id).into(),
       });
     }
   }
