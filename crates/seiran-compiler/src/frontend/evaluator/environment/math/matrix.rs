@@ -6,7 +6,7 @@ use crate::{
   document::{HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
       opt_args::{self, OptKey, collect_environment_opt_args},
     },
@@ -38,12 +38,7 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     },
     None => MathDelimiter::None,
   };
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "matrix".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());

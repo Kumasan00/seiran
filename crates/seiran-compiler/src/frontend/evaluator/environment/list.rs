@@ -44,12 +44,7 @@ pub(super) fn list(
   let opts = collect_environment_opt_args(view, schema)?;
   let item_gap = opts.get(ITEM_GAP);
   let start = opts.get(START);
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let mut items = Vec::new();

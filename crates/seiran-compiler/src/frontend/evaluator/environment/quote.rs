@@ -3,7 +3,7 @@
 use crate::{
   document::{HirNode, HirNodeKind, QuoteKind},
   frontend::{
-    evaluator::{self, EvalContext, EvalError, opt_args::collect_environment_opt_args},
+    evaluator::{self, EvalContext, EvalError, arity, opt_args},
     syntax::view::EnvironmentView,
   },
 };
@@ -20,13 +20,8 @@ pub(super) fn quote(
   ctx: &EvalContext<'_>,
   kind: QuoteKind,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let _opt_args = collect_environment_opt_args(view, &[])?;
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_environment_opt_args(view)?;
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let body = match view.body() {

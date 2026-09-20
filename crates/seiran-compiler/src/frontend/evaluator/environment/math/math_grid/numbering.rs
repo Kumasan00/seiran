@@ -6,7 +6,7 @@ use crate::{
   document::HirMathRow,
   frontend::{
     evaluator::{
-      EvalError,
+      EvalError, arity,
       environment::math::math_grid::{GridRow, is_blank_row},
       opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
     },
@@ -55,12 +55,7 @@ pub(super) fn parse_math_env_opts(
   let opts = collect_environment_opt_args(view, schema)?;
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let env_label = opts.get(LABEL);
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
   // 無採番の環境は参照番号を持たないため、環境単位ラベルとの併用を禁じる（equation と同じ規則）
   if !numbered && env_label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {

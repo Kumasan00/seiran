@@ -6,7 +6,7 @@ use crate::{
   document::{HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::math::math_grid::{GridSpec, evaluate_grid},
       opt_args::{self, OptKey, collect_environment_opt_args},
     },
@@ -29,12 +29,7 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
   let opts = collect_environment_opt_args(view, &[LABEL.decl(), NUMBERED.decl()])?;
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let label = opts.get(LABEL);
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "equation".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
   if !numbered && label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: "equation".to_string(),

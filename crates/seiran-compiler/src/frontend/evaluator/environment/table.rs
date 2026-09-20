@@ -12,7 +12,7 @@ use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 use crate::{
   document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalContext, EvalError},
+    evaluator::{EvalContext, EvalError, arity},
     syntax::view::EnvironmentView,
   },
 };
@@ -28,12 +28,7 @@ use crate::{
 pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
   let opts = collect_table_opts(view)?;
 
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "table".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let columns_tokens = opts.columns_spec.as_deref().map(|s| return parse_columns_spec(s, view)).transpose()?;
   let widths_tokens = opts.widths_spec.as_deref().map(|s| return parse_widths_spec(s, view)).transpose()?;

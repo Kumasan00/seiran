@@ -11,7 +11,10 @@
 
 use crate::frontend::{
   evaluator::EvalError,
-  syntax::{green::GreenNode, view::CommandView},
+  syntax::{
+    green::GreenNode,
+    view::{CommandView, EnvironmentView},
+  },
 };
 
 /// 必須引数を取らないコマンドであることを検査する
@@ -81,6 +84,24 @@ pub(super) fn exactly_two_args<'a>(
     });
   }
   return Ok((first, second));
+}
+
+/// 必須引数を取らない環境であることを検査する
+///
+/// 環境名の必須引数（`\begin{name}` の `{name}`）はビューが除いているので、ここで見るのは
+/// 著者が余分に書いた `\begin{quote}{x}` のような引数だけ。
+///
+/// # Errors
+///
+/// 必須引数が 1 個以上ある場合に [`EvalError::ExtraEnvironmentArgument`] を返します。
+pub(super) fn no_environment_args(view: &EnvironmentView<'_>) -> Result<(), EvalError> {
+  if !view.args_is_empty() {
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
+  }
+  return Ok(());
 }
 
 #[cfg(test)]

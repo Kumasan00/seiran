@@ -308,6 +308,16 @@ pub(super) fn no_command_opt_args(view: &CommandView<'_>) -> Result<(), EvalErro
   return Ok(());
 }
 
+/// 任意引数 `[...]` を受け付けない環境であることを検査する
+///
+/// # Errors
+///
+/// 任意引数にキーが 1 つでも書かれている場合に [`EvalError::UnknownOptArgKey`] を返します。
+pub(super) fn no_environment_opt_args(view: &EnvironmentView<'_>) -> Result<(), EvalError> {
+  collect_environment_opt_args(view, &[])?;
+  return Ok(());
+}
+
 /// 任意引数 `[...]` を型変換してスキーマで検証する低レベル関数
 ///
 /// 任意引数はコマンド名／環境名の直後の高々 1 組（P3。2 組目は parser が構文エラーにする）なので、

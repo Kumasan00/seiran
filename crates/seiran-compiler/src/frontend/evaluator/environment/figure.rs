@@ -35,12 +35,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let opts = collect_environment_opt_args(view, &[LABEL.decl()])?;
   let label = opts.get(LABEL);
 
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "figure".to_string(),
-      span: view.span().into(),
-    });
-  }
+  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let source = view.source();

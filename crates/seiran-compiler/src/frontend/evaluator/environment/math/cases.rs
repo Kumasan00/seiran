@@ -6,9 +6,9 @@ use crate::{
   document::{HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, arity,
       environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
-      opt_args::collect_environment_opt_args,
+      opt_args,
     },
     syntax::view::EnvironmentView,
   },
@@ -20,13 +20,8 @@ use crate::{
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
 pub(crate) fn cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirNode>, EvalError> {
-  collect_environment_opt_args(view, &[])?;
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "cases".to_string(),
-      span: view.span().into(),
-    });
-  }
+  opt_args::no_environment_opt_args(view)?;
+  arity::no_environment_args(view)?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());
