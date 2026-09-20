@@ -3,7 +3,7 @@
 //! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
 
 use crate::{
-  document::{CaptionPosition, HirInline, HirNode, HirNodeKind},
+  document::{CaptionPosition, HirFigure, HirInline, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -110,7 +110,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
 
   return Ok(HirNode::new(
     id,
-    HirNodeKind::Figure {
+    HirNodeKind::Figure(HirFigure {
       image_path: ctx.resolve_path(&image_path),
       width,
       height,
@@ -119,7 +119,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
       caption,
       caption_position,
       label,
-    },
+    }),
   ));
 }
 
@@ -187,30 +187,19 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Figure {
-      image_path,
-      width,
-      height,
-      dpi,
-      downsample,
-      caption,
-      caption_position,
-      label,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(image_path.to_string(), "./images/seiran.jpg");
-    assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
-    assert!((height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
-    assert!(dpi.is_none());
-    assert!(downsample.is_none());
-    let caption = caption.as_ref().expect("caption あり");
+    assert_eq!(figure.image_path.to_string(), "./images/seiran.jpg");
+    assert!((figure.width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
+    assert!((figure.height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
+    assert!(figure.dpi.is_none());
+    assert!(figure.downsample.is_none());
+    let caption = figure.caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0].kind, HirInlineKind::Text(t) if t == "タイトル"));
-    assert_eq!(*caption_position, CaptionPosition::Bottom);
-    assert!(label.is_none());
+    assert_eq!(figure.caption_position, CaptionPosition::Bottom);
+    assert!(figure.label.is_none());
   }
 
   #[test]
@@ -224,13 +213,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Figure {
-      caption_position, ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*caption_position, CaptionPosition::Top);
+    assert_eq!(figure.caption_position, CaptionPosition::Top);
   }
 
   #[test]
@@ -244,13 +230,10 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Figure {
-      caption_position, ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*caption_position, CaptionPosition::Bottom);
+    assert_eq!(figure.caption_position, CaptionPosition::Bottom);
   }
 
   #[test]
@@ -264,11 +247,11 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Figure { label, caption, .. } = &result[0].kind else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます");
     };
-    assert_eq!(label.as_deref(), Some("fig:foo"));
-    assert!(caption.is_none());
+    assert_eq!(figure.label.as_deref(), Some("fig:foo"));
+    assert!(figure.caption.is_none());
   }
 
   #[test]
@@ -297,18 +280,12 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Figure {
-      image_path,
-      width,
-      height,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(image_path.to_string(), "a.png");
-    assert!(width.is_none());
-    assert!(height.is_none());
+    assert_eq!(figure.image_path.to_string(), "a.png");
+    assert!(figure.width.is_none());
+    assert!(figure.height.is_none());
   }
 
   #[test]
@@ -322,11 +299,11 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Figure { width, height, .. } = &result[0].kind else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
-    assert!(height.is_none());
+    assert!((figure.width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
+    assert!(figure.height.is_none());
   }
 
   #[test]
@@ -354,14 +331,11 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::Figure {
-      dpi, downsample, ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*dpi, Some(600));
-    assert_eq!(*downsample, Some(false));
+    assert_eq!(figure.dpi, Some(600));
+    assert_eq!(figure.downsample, Some(false));
   }
 
   #[test]

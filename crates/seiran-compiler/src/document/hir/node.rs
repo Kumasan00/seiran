@@ -70,24 +70,7 @@ pub(crate) enum HirNodeKind {
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）
-  Figure {
-    /// 画像ファイルへのパス（`\image{...}` の必須引数）
-    image_path: ProjectPath,
-    /// 画像の幅（未指定なら描画段で本文幅 / 縦横比から算出）
-    width: Option<Length>,
-    /// 画像の高さ（未指定なら描画段で本文幅 / 縦横比から算出）
-    height: Option<Length>,
-    /// `\image[dpi=...]` の per-image 上書き
-    dpi: Option<u32>,
-    /// `\image[downsample=...]` の per-image 上書き
-    downsample: Option<bool>,
-    /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
-    caption: Option<Vec<HirInline>>,
-    /// キャプションを図本体の上下どちらに配置するか
-    caption_position: CaptionPosition,
-    /// `\ref{fig:foo}` 解決用のラベル名
-    label: Option<String>,
-  },
+  Figure(HirFigure),
 
   /// 表環境（`\begin{table}...\end{table}`）
   Table {
@@ -129,6 +112,27 @@ pub(crate) enum HirNodeKind {
 
   /// 固定幅スペース（`\space{N}` コマンド）
   Space(Length),
+}
+
+/// 図環境（`\begin{figure}...\end{figure}`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirFigure {
+  /// 画像ファイルへのパス（`\image{...}` の必須引数）
+  pub(crate) image_path: ProjectPath,
+  /// 画像の幅（未指定なら描画段で本文幅 / 縦横比から算出）
+  pub(crate) width: Option<Length>,
+  /// 画像の高さ（未指定なら描画段で本文幅 / 縦横比から算出）
+  pub(crate) height: Option<Length>,
+  /// `\image[dpi=...]` の per-image 上書き
+  pub(crate) dpi: Option<u32>,
+  /// `\image[downsample=...]` の per-image 上書き
+  pub(crate) downsample: Option<bool>,
+  /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
+  pub(crate) caption: Option<Vec<HirInline>>,
+  /// キャプションを図本体の上下どちらに配置するか
+  pub(crate) caption_position: CaptionPosition,
+  /// `\ref{fig:foo}` 解決用のラベル名
+  pub(crate) label: Option<String>,
 }
 
 /// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）の内容

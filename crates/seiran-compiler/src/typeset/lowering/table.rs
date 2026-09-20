@@ -75,7 +75,7 @@ pub(super) fn lower_table(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut
     inlines: caption.as_deref(),
     position: *caption_position,
   };
-  return lower_numbered_float(ctx, node, caption, &spec, state, |state| {
+  return lower_numbered_float(ctx, node.id, caption, &spec, state, |state| {
     return LayoutNode::Table(TableLayout {
       columns: columns
         .iter()
