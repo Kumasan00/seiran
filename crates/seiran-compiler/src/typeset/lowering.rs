@@ -823,6 +823,30 @@ mod tests {
   }
 
   #[test]
+  fn display_math_label_anchors_keep_env_then_reversed_row_order() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act — align の行末 `\label` は行ごとにラベルを付ける
+    let out =
+      lower_source(&style, "\\begin{align}\na &= b \\label{eq:first} \\\\\nc &= d \\label{eq:second}\n\\end{align}\n");
+
+    // Assert — 行ラベルは逆順で積まれる（「後から prepend」を繰り返す旧実装と同じ最終順序）
+    let anchors: Vec<&str> = out
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Anchor(AnchorMark::Label(label)) => return Some(label.as_str()),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(anchors, vec!["eq:second", "eq:first"], "{out:?}");
+    assert!(
+      matches!(out.get(2), Some(LayoutNode::Vkern { .. })),
+      "アンカー 2 個の直後からブロック本体が始まる: {out:?}"
+    );
+  }
+
+  #[test]
   fn default_font_size_reflects_core_font_size() {
     // Arrange
     let mut style = ReadStyle::default();

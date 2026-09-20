@@ -407,4 +407,32 @@ mod tests {
       table.rows[0].cells[0].content
     );
   }
+
+  #[test]
+  fn lower_table_numbers_cell_footnote_before_caption_footnote() {
+    // Arrange — 表本体（セル）が先、キャプションが後、という本文の出現順を固定する
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(
+      &style,
+      "\\begin{table}\n\\row{A\\footnote{cell note}}\n\\caption{C\\footnote{caption note}}\n\\end{table}\n",
+    );
+
+    // Assert
+    let table = find_table(&nodes);
+    let cell_number = table.rows[0].cells[0].content.iter().find_map(|n| match n {
+      InlineNode::Footnote { number, .. } => return Some(*number),
+      _ => return None,
+    });
+    assert_eq!(cell_number, Some(1), "セルの脚注が 1 番: {:?}", table.rows[0].cells[0].content);
+    let caption_numbers: Vec<u32> = table_children(&nodes)
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(caption_numbers, vec![2], "キャプションの脚注が 2 番: {nodes:?}");
+  }
 }
