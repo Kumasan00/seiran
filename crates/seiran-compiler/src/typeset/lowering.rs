@@ -381,8 +381,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Figure(figure) => {
       return figure::lower_figure(ctx, node.id, figure, state);
     },
-    HirNodeKind::Table { .. } => {
-      return table::lower_table(ctx, node, state);
+    HirNodeKind::Table(table) => {
+      return table::lower_table(ctx, node.id, table, state);
     },
   }
 }

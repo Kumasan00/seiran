@@ -57,24 +57,7 @@ pub(crate) enum HirNodeKind {
   Figure(HirFigure),
 
   /// 表環境（`\begin{table}...\end{table}`）
-  Table {
-    /// 列ごとの揃え方向（列数に正規化済み）
-    columns: Vec<ColumnAlign>,
-    /// 列ごとの幅指定（列数に正規化済み）
-    widths: Vec<ColumnWidth>,
-    /// ヘッダ行（`\head{...}` 内の `\row`）
-    head: Vec<HirTableRow>,
-    /// 本体行（`\row{...}`）
-    rows: Vec<HirTableRow>,
-    /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
-    caption: Option<Vec<HirInline>>,
-    /// キャプションを表本体の上下どちらに配置するか
-    caption_position: CaptionPosition,
-    /// `\ref{tab:foo}` 解決用のラベル名
-    label: Option<String>,
-    /// 改ページによる分割を許可するか（`[breakable=false]` で禁止、既定 `true`）
-    breakable: bool,
-  },
+  Table(HirTable),
 
   /// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）
   Theorem(HirTheorem),
@@ -141,6 +124,27 @@ pub(crate) struct HirFigure {
   pub(crate) caption_position: CaptionPosition,
   /// `\ref{fig:foo}` 解決用のラベル名
   pub(crate) label: Option<String>,
+}
+
+/// 表環境（`\begin{table}...\end{table}`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirTable {
+  /// 列ごとの揃え方向（列数に正規化済み）
+  pub(crate) columns: Vec<ColumnAlign>,
+  /// 列ごとの幅指定（列数に正規化済み）
+  pub(crate) widths: Vec<ColumnWidth>,
+  /// ヘッダ行（`\head{...}` 内の `\row`）
+  pub(crate) head: Vec<HirTableRow>,
+  /// 本体行（`\row{...}`）
+  pub(crate) rows: Vec<HirTableRow>,
+  /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
+  pub(crate) caption: Option<Vec<HirInline>>,
+  /// キャプションを表本体の上下どちらに配置するか
+  pub(crate) caption_position: CaptionPosition,
+  /// `\ref{tab:foo}` 解決用のラベル名
+  pub(crate) label: Option<String>,
+  /// 改ページによる分割を許可するか（`[breakable=false]` で禁止、既定 `true`）
+  pub(crate) breakable: bool,
 }
 
 /// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）の内容
