@@ -2,7 +2,6 @@
 //!
 //! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
 
-use miette::SourceSpan;
 use phf::phf_map;
 
 use crate::{
@@ -15,33 +14,100 @@ use crate::{
   },
 };
 
-pub(super) mod cite;
-pub(super) mod code;
+mod cite;
+mod code;
 mod control;
-pub(super) mod footnote;
+mod footnote;
 mod heading;
-pub(super) mod index;
-pub(super) mod link;
-pub(super) mod ref_;
+mod index;
+mod link;
+mod ref_;
 pub(super) mod symbol;
-pub(super) mod text_style;
+mod text_style;
 
 /// コマンドの実行結果
 pub(super) enum CommandResult {
   /// ブロックレベルの HIR ノード（見出し、スペース等）
-  Block(Vec<HirNode>),
+  ///
+  /// [`BlockPermit`] を伴わずには構築できない — この結果を作れるのは
+  /// [`Placement::accept_block`] を通った arm だけである。
+  Block(BlockPermit, Vec<HirNode>),
   /// インラインレベルの HIR ノード（記号文字等）
   Inline(Vec<HirInline>),
   /// `\noindent` — 段落先頭行の字下げ抑止マーカー
-  NoIndent {
-    /// 位置検証エラー時の診断に使うソース位置
-    span: SourceSpan,
-  },
+  ///
+  /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行うので、`BlockPermit` 以外の
+  /// 値は運ばない。診断に使うソース位置は呼び出し元が持っているコマンド呼び出しノードの span と同じ。
+  NoIndent(BlockPermit),
+}
+
+/// ブロックを生む結果を組み立ててよいことの証
+///
+/// 発行できるのは [`Placement::accept_block`] だけで、`CommandResult` のブロック系 variant は
+/// これを要求する。新しいブロックコマンドの arm が guard を書き忘れると結果を構築できず、
+/// `unreachable!` へ落ちる代わりに**コンパイルエラー**になる。
+pub(super) struct BlockPermit(());
+
+/// コマンドを実行する文脈
+///
+/// コマンドの実行入口 [`evaluate_command`] が受け取る唯一の文脈情報で、「ブロックを受け取れるか」と
+/// 「引数の中の `\index` を許すか」の 2 つを 1 つの値で運ぶ。本文の流れは内容が 1 箇所にしか
+/// 置かれないので `\index` は常に許可でよく、インライン文脈の方針だけを呼び出し元
+/// （引数の再帰評価・表のセル）が決める。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Placement {
+  /// 本文の流れ（`crate::frontend::evaluator::evaluate_children`）— ブロックを受け取れる
+  Block,
+  /// インライン要素しか受け取れない文脈（引数の再帰評価・表のセル）
+  Inline(IndexPolicy),
+}
+
+impl Placement {
+  /// ブロックを生むコマンドをこの文脈で実行してよいか検査し、通ったことの証を返す
+  ///
+  /// 各 dispatch arm の**先頭**で呼ぶ。インライン文脈での拒否は引数の妥当性に依存しないので、
+  /// 引数を評価する前に診断を出す（`\section` を `\bold{...}` の中へ書いたとき、引数の
+  /// 個数エラーではなくブロック混在の診断が出る）。返す [`BlockPermit`] は `CommandResult` の
+  /// ブロック系 variant を構築するのに必須で、arm がこの呼び出しを書き忘れると
+  /// `CommandResult::Block` / `CommandResult::NoIndent` を作れずコンパイルが通らない。
+  fn accept_block(self, view: &CommandView<'_>) -> Result<BlockPermit, EvalError> {
+    if matches!(self, Self::Inline(_)) {
+      return Err(EvalError::BlockInInline {
+        what: format!("\\{}", view.name()),
+        span: view.span().into(),
+      });
+    }
+    return Ok(BlockPermit(()));
+  }
+
+  /// `\index` をこの文脈で実行してよいか検査する
+  ///
+  /// 拒否する文脈は見出しタイトル・`\href` の表示テキスト・表の `\head` セル・`\index` 自身の語
+  /// （[`IndexPolicy::Reject`] の doc 参照）。
+  fn accept_index(self, view: &CommandView<'_>) -> Result<(), EvalError> {
+    if matches!(self, Self::Inline(IndexPolicy::Reject)) {
+      return Err(EvalError::IndexNotAllowedHere {
+        span: view.span().into(),
+      });
+    }
+    return Ok(());
+  }
+
+  /// 引数を再帰評価するコマンド（書体 / 色指定・脚注本体）へ渡す `\index` の方針
+  ///
+  /// 外側の方針をそのまま引き継ぐ — 固定 `Allow` にすると
+  /// `\section{\bold{x\index{x}}}` が拒否をすり抜ける。
+  fn index_policy(self) -> IndexPolicy {
+    return match self {
+      Self::Block => IndexPolicy::Allow,
+      Self::Inline(policy) => policy,
+    };
+  }
 }
 
 /// コマンドの種類
 #[derive(Clone, Copy, Debug)]
-pub(super) enum CommandKind {
+enum CommandKind {
   /// `\space{N}` — 固定幅スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
@@ -73,24 +139,43 @@ pub(super) enum CommandKind {
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
   ///
-  /// この経路は `crate::frontend::evaluator::evaluate_children`（本文段落・箇条書き・定理環境などの
-  /// 直接の本文文脈）からしか来ないので、引数を再帰評価するコマンドへは
-  /// [`IndexPolicy::Allow`] を渡す。引数の中からの再帰は
-  /// `crate::frontend::evaluator::inline::extract_inline_nodes` 側が方針を持つ。
-  fn execute(self, view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<CommandResult, EvalError> {
+  /// `CommandKind` を網羅する dispatch はこの match 1 つで、本文の流れも引数の再帰評価も
+  /// ここを通る（`arg_modes` は読み取りモードの宣言表であって dispatch ではない）。
+  /// ブロックを生む種別は arm の先頭で [`Placement::accept_block`] を呼び、インライン文脈では
+  /// 引数を評価する前に拒否する。
+  fn execute(
+    self,
+    view: &CommandView<'_>,
+    ctx: &EvalContext<'_>,
+    placement: Placement,
+  ) -> Result<CommandResult, EvalError> {
     match self {
-      Self::Space => return control::space(view, ctx).map(CommandResult::Block),
+      Self::Space => {
+        let permit = placement.accept_block(view)?;
+        return control::space(view, ctx).map(|nodes| return CommandResult::Block(permit, nodes));
+      },
 
-      Self::PageBreak => return control::pagebreak(view, ctx).map(CommandResult::Block),
+      Self::PageBreak => {
+        let permit = placement.accept_block(view)?;
+        return control::pagebreak(view, ctx).map(|nodes| return CommandResult::Block(permit, nodes));
+      },
 
-      Self::Heading(level) => return heading::heading(view, ctx, level).map(CommandResult::Block),
+      Self::Heading(level) => {
+        let permit = placement.accept_block(view)?;
+        return heading::heading(view, ctx, level).map(|nodes| return CommandResult::Block(permit, nodes));
+      },
+
+      Self::NoIndent => {
+        let permit = placement.accept_block(view)?;
+        return control::noindent(view).map(|()| return CommandResult::NoIndent(permit));
+      },
 
       Self::StyledText(kind) => {
-        return text_style::styled_text(view, ctx, kind, IndexPolicy::Allow).map(CommandResult::Inline);
+        return text_style::styled_text(view, ctx, kind, placement.index_policy()).map(CommandResult::Inline);
       },
 
       Self::ColoredText => {
-        return text_style::colored_text(view, ctx, IndexPolicy::Allow).map(CommandResult::Inline);
+        return text_style::colored_text(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
       Self::Ref => return ref_::ref_command(view, ctx).map(CommandResult::Inline),
@@ -98,24 +183,19 @@ impl CommandKind {
       Self::Cite => return cite::cite_command(view, ctx).map(CommandResult::Inline),
 
       Self::Footnote => {
-        return footnote::footnote_command(view, ctx, IndexPolicy::Allow).map(CommandResult::Inline);
+        return footnote::footnote_command(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
-      Self::Index => return index::index_command(view, ctx).map(CommandResult::Inline),
+      Self::Index => {
+        placement.accept_index(view)?;
+        return index::index_command(view, ctx).map(CommandResult::Inline);
+      },
 
       Self::Code => return code::code_command(view, ctx).map(CommandResult::Inline),
 
       Self::Url => return link::url_command(view, ctx).map(CommandResult::Inline),
 
       Self::Href => return link::href_command(view, ctx).map(CommandResult::Inline),
-
-      Self::NoIndent => {
-        return control::noindent(view).map(|()| {
-          return CommandResult::NoIndent {
-            span: view.span().into(),
-          };
-        });
-      },
     }
   }
 
@@ -151,11 +231,7 @@ impl CommandKind {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(crate) fn single_char(
-  view: &CommandView<'_>,
-  ctx: &EvalContext<'_>,
-  ch: char,
-) -> Result<Vec<HirInline>, EvalError> {
+fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -167,7 +243,7 @@ pub(crate) fn single_char(
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
-pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
+static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,
   "noindent" => CommandKind::NoIndent,
@@ -236,12 +312,19 @@ pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///
+/// レジストリ（[`COMMAND_MAP`]）→ 記号表（[`SYMBOL_MAP`]）→ 未知の順に引く、コマンド実行の
+/// 唯一の入口。文脈の違いは `placement` が運ぶ。
+///
 /// # Errors
 ///
 /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-pub(crate) fn evaluate_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<CommandResult, EvalError> {
+pub(super) fn evaluate_command(
+  view: &CommandView<'_>,
+  ctx: &EvalContext<'_>,
+  placement: Placement,
+) -> Result<CommandResult, EvalError> {
   if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
-    return command_kind.execute(view, ctx);
+    return command_kind.execute(view, ctx, placement);
   }
   if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
     return single_char(view, ctx, symbol.ch).map(CommandResult::Inline);
@@ -250,6 +333,31 @@ pub(crate) fn evaluate_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) ->
     name: view.name().to_string(),
     span: view.span().into(),
   });
+}
+
+/// インライン文脈でコマンドを評価し、インライン要素だけを返す
+///
+/// ブロックを生む種別は [`Placement::accept_block`] が引数評価より前に弾くので、
+/// この経路へブロックの結果は返らない。
+///
+/// # Errors
+///
+/// 未知のコマンド、インライン文脈でのブロックコマンド、コマンド実行中のエラーが発生した場合
+pub(super) fn evaluate_inline_command(
+  view: &CommandView<'_>,
+  ctx: &EvalContext<'_>,
+  index_policy: IndexPolicy,
+) -> Result<Vec<HirInline>, EvalError> {
+  return match evaluate_command(view, ctx, Placement::Inline(index_policy))? {
+    CommandResult::Inline(inlines) => Ok(inlines),
+    CommandResult::Block(..) | CommandResult::NoIndent(_) => {
+      unreachable!(
+        "CommandResult::Block / NoIndent の構築には BlockPermit が要り、それを発行できるのは \
+         Placement::accept_block だけ（private field により他の経路では作れない）。この呼び出しは \
+         Placement::Inline を渡しており、accept_block は常に Err を返すので BlockPermit は手に入らない"
+      )
+    },
+  };
 }
 
 #[cfg(test)]
@@ -304,6 +412,79 @@ mod tests {
     // 宣言の範囲を超えた位置も継承（個数はハンドラが検査する）
     assert_eq!(lookup_arg_mode("url", 1), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("href", 2), ArgMode::Inherit);
+  }
+
+  #[test]
+  fn block_commands_are_rejected_in_inline_placement() {
+    // Arrange — 引数はコマンドごとに妥当な形を渡す。引数の検査と拒否のどちらが先に走っても
+    // 結果は `BlockInInline` になるので、「インライン文脈では拒否される」ことだけを固定できる
+    // （どの診断が先に出るかは不変条件ではない）。guard の書き忘れは `BlockPermit` が型で弾く。
+    let cases = [
+      ("section", r"\section{a}"),
+      ("space", r"\space{1}"),
+      ("noindent", r"\noindent"),
+      ("pagebreak", r"\pagebreak"),
+    ];
+
+    for (name, source) in cases {
+      let arena = Bump::new();
+      let node = test_support::command_call_node(source, &arena);
+      let view = CommandView::new(node, source);
+
+      // Act
+      let result = evaluator::run_inline_handler(|ctx| {
+        return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
+      });
+
+      // Assert
+      assert!(
+        matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if *what == format!("\\{name}")),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn index_is_rejected_under_the_reject_policy() {
+    // Arrange — 妥当な引数を渡す。引数の検査と方針の判定のどちらが先に走っても
+    // 結果は `IndexNotAllowedHere` になる（どの診断が先に出るかは不変条件ではない）。
+    let arena = Bump::new();
+    let source = r"\index{語}";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = evaluator::run_inline_handler(|ctx| {
+      return evaluate_inline_command(&view, ctx, IndexPolicy::Reject);
+    });
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn every_command_in_inline_placement_yields_inline_or_a_diagnostic() {
+    // Arrange — レジストリに載っているコマンドがインライン文脈で UnknownCommand として
+    // 落ちないことを確認する（`{a}` × 0〜4 個の組み合わせで、成功するかどうかはコマンドごとに違う）
+    for name in all_command_names() {
+      for arg_count in 0usize..=4 {
+        let arena = Bump::new();
+        let source = format!("\\{name}{}", "{a}".repeat(arg_count));
+        let node = test_support::command_call_node(&source, &arena);
+        let view = CommandView::new(node, &source);
+
+        // Act
+        let result = evaluator::run_inline_handler(|ctx| {
+          return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
+        });
+
+        // Assert — レジストリに載っているコマンドが未知として落ちることはない
+        assert!(
+          !matches!(result, Err(EvalError::UnknownCommand { .. })),
+          "{name}（引数 {arg_count} 個）が未知のコマンドとして扱われた"
+        );
+      }
+    }
   }
 
   /// `COMMAND_MAP` の全コマンド名を返す（proptest 戦略の入力用）

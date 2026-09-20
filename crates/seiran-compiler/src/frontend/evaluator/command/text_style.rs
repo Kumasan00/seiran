@@ -17,7 +17,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰の場合にエラーを返します
-pub(crate) fn styled_text(
+pub(super) fn styled_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   kind: FontKind,
@@ -51,7 +51,7 @@ pub(crate) fn styled_text(
 /// 色の欠落・必須引数の不足で [`EvalError::MissingCommandArgument`]、引数過剰で
 /// [`EvalError::ExtraCommandArgument`]、色の 16 進表記が不正な場合に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn colored_text(
+pub(super) fn colored_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,

@@ -6,11 +6,13 @@
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
-    evaluator::{command::CommandResult, inline::InlineSink},
+    evaluator::{
+      command::{CommandResult, Placement},
+      inline::{InlineSink, TokenInline},
+    },
     syntax::{
       SyntaxKind,
       green::{GreenElement, GreenNode},
-      token::TokenKind,
       view::CommandView,
     },
   },
@@ -61,52 +63,17 @@ pub(crate) fn evaluate_children(
 
   for child in node.children {
     match child {
-      GreenElement::Token(token) => match token.kind {
-        // 索引マーカーをまたぐ結合はここだけが担う（`inline::InlineSink` の doc 参照、#514）。
-        TokenKind::Text => {
+      GreenElement::Token(token) => match inline::inline_from_token(source, token) {
+        Some(TokenInline::MergeableText(text)) => {
           paragraph.reserve(ctx, token.span);
-          paragraph.push_text_token(ctx, token.span, token.text(source));
+          paragraph.push_text_token(ctx, token.span, text);
         },
-        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-        // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
-        TokenKind::VerbatimText | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+        Some(TokenInline::Leaf(kind)) => {
           paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
+          paragraph.push(ctx.leaf_inline(token.span, kind));
         },
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
-        },
-        TokenKind::LineBreak => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::LineBreak));
-        },
-        TokenKind::ParagraphBreak => {
-          paragraph.flush(ctx, &mut hir_nodes);
-        },
-        TokenKind::Underscore => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
-        },
-        TokenKind::Caret => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
-        },
-        TokenKind::Ampersand => {
-          paragraph.reserve(ctx, token.span);
-          paragraph.push(ctx.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
-        },
-        // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
-        // 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
-        TokenKind::Command
-        | TokenKind::LBrace
-        | TokenKind::RBrace
-        | TokenKind::LBracket
-        | TokenKind::RBracket
-        | TokenKind::Dollar
-        | TokenKind::Comment
-        | TokenKind::Unknown => {},
+        Some(TokenInline::ParagraphBreak) => paragraph.flush(ctx, &mut hir_nodes),
+        None => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
@@ -114,19 +81,21 @@ pub(crate) fn evaluate_children(
           // 先に段落 ID を予約しておく。ブロックだった場合、予約した ID は使われず穴になる。
           paragraph.reserve(ctx, child_node.span);
           let view = CommandView::new(child_node, source);
-          let result = command::evaluate_command(&view, ctx)?;
+          let result = command::evaluate_command(&view, ctx, Placement::Block)?;
           match result {
-            CommandResult::Block(block_nodes) => {
+            CommandResult::Block(_permit, block_nodes) => {
               paragraph.flush(ctx, &mut hir_nodes);
               hir_nodes.extend(block_nodes);
             },
             CommandResult::Inline(inline_nodes) => {
               paragraph.extend_inline_result(child_node.span, inline_nodes);
             },
-            CommandResult::NoIndent { span } => {
+            CommandResult::NoIndent(_permit) => {
               // 先行トリビアは許すが、実体のある要素や同じマーカーがあれば段落途中として扱う。
               if paragraph.has_content() {
-                return Err(EvalError::NoindentNotAtParagraphStart { span });
+                return Err(EvalError::NoindentNotAtParagraphStart {
+                  span: child_node.span.into(),
+                });
               }
               paragraph.push(ctx.leaf_inline(child_node.span, HirInlineKind::NoIndent));
             },
@@ -347,7 +316,7 @@ mod test_support {
 mod tests {
   use bumpalo::Bump;
 
-  use super::{HirInline, HirNode, evaluate_children_to_hir, test_support};
+  use super::{EvalError, HirInline, HirNode, evaluate_children_to_hir, test_support};
   use crate::document::{HirInlineKind, HirNodeKind};
 
   /// 段落 1 つを取り出す（段落以外が混ざっていれば panic する）
@@ -412,5 +381,23 @@ mod tests {
     assert_eq!(inlines.len(), 2, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::NoIndent), "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == "本文"), "{inlines:?}");
+  }
+
+  #[test]
+  fn noindent_in_the_middle_of_a_paragraph_points_at_the_command_itself() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"本文\noindent";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluate_children_to_hir(source, cst);
+
+    // Assert — 診断は `\noindent` の開始位置（バイト 6）から 9 バイトを指す
+    let Err(EvalError::NoindentNotAtParagraphStart { span }) = result else {
+      panic!("段落途中の \\noindent は拒否されるはず: {result:?}")
+    };
+    assert_eq!(span.offset(), "本文".len());
+    assert_eq!(span.len(), r"\noindent".len());
   }
 }
