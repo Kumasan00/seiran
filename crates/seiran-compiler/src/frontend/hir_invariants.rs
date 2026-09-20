@@ -52,7 +52,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
     });
     let here = Some(node.id);
     match &node.kind {
-      HirNodeKind::Heading { title, .. } => walk_inlines(title, here, out),
+      HirNodeKind::Heading(heading) => walk_inlines(&heading.title, here, out),
       HirNodeKind::Paragraph(inlines) => walk_inlines(inlines, here, out),
       HirNodeKind::List { items, .. } => {
         for item in items {
@@ -321,7 +321,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
         return match &node.kind {
           HirNodeKind::Paragraph(_) => "Paragraph",
           HirNodeKind::PageBreak => "PageBreak",
-          HirNodeKind::Heading { .. } => "Heading",
+          HirNodeKind::Heading(_) => "Heading",
           _ => "Other",
         };
       })
@@ -362,9 +362,8 @@ fn hir_carries_no_resolved_facts() {
 fn assert_unresolved(nodes: &[HirNode]) {
   for node in nodes {
     match &node.kind {
-      HirNodeKind::Heading { title: inlines, .. } | HirNodeKind::Paragraph(inlines) => {
-        assert_unresolved_inlines(inlines);
-      },
+      HirNodeKind::Heading(heading) => assert_unresolved_inlines(&heading.title),
+      HirNodeKind::Paragraph(inlines) => assert_unresolved_inlines(inlines),
       HirNodeKind::List { items, .. } => {
         for item in items {
           assert_unresolved(&item.content);

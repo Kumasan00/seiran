@@ -33,14 +33,7 @@ impl HirNode {
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirNodeKind {
   /// 見出し（`\part` 〜 `\subparagraph`）
-  Heading {
-    /// 見出しのレベル（Part〜Subparagraph）
-    level: HeadingLevel,
-    /// 見出しのタイトル（インライン要素として保持）
-    title: Vec<HirInline>,
-    /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル名
-    label: Option<String>,
-  },
+  Heading(HirHeading),
 
   /// 段落（インライン要素の集合）
   Paragraph(Vec<HirInline>),
@@ -112,6 +105,17 @@ pub(crate) enum HirNodeKind {
 
   /// 固定幅スペース（`\space{N}` コマンド）
   Space(Length),
+}
+
+/// 見出し（`\part` 〜 `\subparagraph`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirHeading {
+  /// 見出しのレベル（Part〜Subparagraph）
+  pub(crate) level: HeadingLevel,
+  /// 見出しのタイトル（インライン要素として保持）
+  pub(crate) title: Vec<HirInline>,
+  /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル名
+  pub(crate) label: Option<String>,
 }
 
 /// 図環境（`\begin{figure}...\end{figure}`）の内容

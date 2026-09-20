@@ -255,10 +255,10 @@ mod tests {
     let result = evaluate_source("\\section{Introduction}");
     assert_eq!(result.len(), 1);
     match &result[0].kind {
-      HirNodeKind::Heading { level, title, .. } => {
-        assert_eq!(*level, HeadingLevel::Section);
-        assert_eq!(title.len(), 1);
-        match &title[0].kind {
+      HirNodeKind::Heading(heading) => {
+        assert_eq!(heading.level, HeadingLevel::Section);
+        assert_eq!(heading.title.len(), 1);
+        match &heading.title[0].kind {
           HirInlineKind::Text(text) => assert_eq!(text, "Introduction"),
           _ => panic!("Text が期待されます"),
         }
@@ -271,10 +271,10 @@ mod tests {
   fn evaluate_section_with_label_then_ref_is_structured_without_resolving() {
     let result = evaluate_source(r"\chapter{X}\section[label=sec:intro]{T}See \ref{sec:intro}.");
     assert_eq!(result.len(), 3);
-    let HirNodeKind::Heading { label, .. } = &result[1].kind else {
+    let HirNodeKind::Heading(heading) = &result[1].kind else {
       panic!("Heading が期待されます: {:?}", result[1]);
     };
-    assert_eq!(label.as_deref(), Some("sec:intro"));
+    assert_eq!(heading.label.as_deref(), Some("sec:intro"));
     let HirNodeKind::Paragraph(inlines) = &result[2].kind else {
       panic!("Paragraph が期待されます: {:?}", result[2]);
     };
@@ -347,7 +347,7 @@ mod tests {
     let result = evaluate_source("Some text\\section{Title}");
     assert_eq!(result.len(), 2);
     assert!(matches!(&result[0].kind, HirNodeKind::Paragraph(_)));
-    assert!(matches!(&result[1].kind, HirNodeKind::Heading { .. }));
+    assert!(matches!(&result[1].kind, HirNodeKind::Heading(_)));
   }
 
   #[test]
@@ -943,10 +943,11 @@ mod tests {
   #[test]
   fn evaluate_underscore_in_heading_title_is_text() {
     let result = evaluate_source(r"\section{a_b}");
-    let HirNodeKind::Heading { title, .. } = &result[0].kind else {
+    let HirNodeKind::Heading(heading) = &result[0].kind else {
       panic!("Heading が期待されます");
     };
-    let joined: String = title
+    let joined: String = heading
+      .title
       .iter()
       .filter_map(|n| {
         if let HirInlineKind::Text(t) = &n.kind {
@@ -1067,14 +1068,14 @@ mod tests {
   fn evaluate_duplicate_label_is_structured_without_error() {
     let result = evaluate_source(r"\section[label=sec:a]{One}\section[label=sec:a]{Two}");
     assert_eq!(result.len(), 2);
-    let HirNodeKind::Heading { label: a, .. } = &result[0].kind else {
+    let HirNodeKind::Heading(first) = &result[0].kind else {
       panic!("Heading が期待されます");
     };
-    let HirNodeKind::Heading { label: b, .. } = &result[1].kind else {
+    let HirNodeKind::Heading(second) = &result[1].kind else {
       panic!("Heading が期待されます");
     };
-    assert_eq!(a.as_deref(), Some("sec:a"));
-    assert_eq!(b.as_deref(), Some("sec:a"));
+    assert_eq!(first.label.as_deref(), Some("sec:a"));
+    assert_eq!(second.label.as_deref(), Some("sec:a"));
   }
 
   #[test]
