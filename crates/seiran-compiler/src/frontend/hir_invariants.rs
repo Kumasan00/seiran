@@ -63,8 +63,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
           walk_nodes(&item.content, Some(item.id), out);
         }
       },
-      HirNodeKind::MathBlock { rows, .. } => {
-        for row in rows {
+      HirNodeKind::MathBlock(math) => {
+        for row in &math.rows {
           out.push(Visited {
             id: row.id,
             parent: here,
@@ -381,10 +381,7 @@ fn assert_unresolved(nodes: &[HirNode]) {
           assert_unresolved_inlines(caption);
         }
       },
-      HirNodeKind::CodeBlock { .. }
-      | HirNodeKind::MathBlock { .. }
-      | HirNodeKind::PageBreak
-      | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock { .. } | HirNodeKind::MathBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;

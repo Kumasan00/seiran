@@ -3,7 +3,7 @@
 //! 行と列に分割する非採番の数式環境。
 
 use crate::{
-  document::{HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
+  document::{HirMathBlock, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -59,12 +59,12 @@ pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
 
   return Ok(HirNode::new(
     id,
-    HirNodeKind::MathBlock {
+    HirNodeKind::MathBlock(HirMathBlock {
       kind: MathEnvKind::Matrix { delimiter },
       rows,
       numbered: false,
       label: None,
-    },
+    }),
   ));
 }
 
@@ -80,20 +80,14 @@ mod tests {
 
   /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
   fn matrix_of(result: &[HirNode]) -> (MathDelimiter, &[HirMathRow]) {
-    let HirNodeKind::MathBlock {
-      kind,
-      rows,
-      numbered,
-      ..
-    } = &result[0].kind
-    else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert!(!numbered, "matrix は非採番（環境番号なし）");
-    let MathEnvKind::Matrix { delimiter } = kind else {
-      panic!("matrix は MathEnvKind::Matrix: {kind:?}");
+    assert!(!math.numbered, "matrix は非採番（環境番号なし）");
+    let MathEnvKind::Matrix { delimiter } = math.kind else {
+      panic!("matrix は MathEnvKind::Matrix: {:?}", math.kind);
     };
-    return (*delimiter, rows);
+    return (delimiter, &math.rows);
   }
 
   #[test]

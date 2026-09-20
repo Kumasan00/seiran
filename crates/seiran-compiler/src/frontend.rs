@@ -275,13 +275,13 @@ mod tests {
   fn evaluate_equation_with_label_is_structured_without_resolving() {
     let source = r"\chapter{C}\begin{equation}[label=eq:p]a\end{equation}See \ref{eq:p}.";
     let result = evaluate_source(source);
-    let HirNodeKind::MathBlock { rows, .. } =
-      &result.iter().find(|n| matches!(&n.kind, HirNodeKind::MathBlock { .. })).unwrap().kind
+    let HirNodeKind::MathBlock(math) =
+      &result.iter().find(|n| matches!(&n.kind, HirNodeKind::MathBlock(_))).unwrap().kind
     else {
       unreachable!();
     };
-    assert_eq!(rows[0].label.as_deref(), Some("eq:p"));
-    assert!(rows[0].numbered);
+    assert_eq!(math.rows[0].label.as_deref(), Some("eq:p"));
+    assert!(math.rows[0].numbered);
     let para = result
       .iter()
       .find_map(|n| {
@@ -800,10 +800,10 @@ mod tests {
     let result = evaluate_source(r"\begin{equation}x^{2}\end{equation}");
 
     assert_eq!(result.len(), 1);
-    let HirNodeKind::MathBlock { rows, .. } = &result[0].kind else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    let body = &rows[0].cells[0];
+    let body = &math.rows[0].cells[0];
 
     let has_superscript = body.iter().any(|n| matches!(&n.kind, HirMathKind::Superscript(_)));
     let has_text_x = body.iter().any(|n| matches!(&n.kind, HirMathKind::Text(t) if t == "x"));

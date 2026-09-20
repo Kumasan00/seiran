@@ -3,7 +3,7 @@
 //! 1 行 1 セルとして評価し、行単位で採番する。
 
 use crate::{
-  document::{HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirMathBlock, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -65,12 +65,12 @@ pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Res
   };
   return Ok(HirNode::new(
     id,
-    HirNodeKind::MathBlock {
+    HirNodeKind::MathBlock(HirMathBlock {
       kind: MathEnvKind::Equation,
       rows: vec![row],
       numbered: false,
       label: None,
-    },
+    }),
   ));
 }
 
@@ -86,12 +86,12 @@ mod tests {
 
   /// 結果の最初の `HirNodeKind::MathBlock` から唯一の行を取り出すヘルパ
   fn first_row(result: &[HirNode]) -> &HirMathRow {
-    let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(*kind, MathEnvKind::Equation, "equation は MathEnvKind::Equation");
-    assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
-    return &rows[0];
+    assert_eq!(math.kind, MathEnvKind::Equation, "equation は MathEnvKind::Equation");
+    assert_eq!(math.rows.len(), 1, "equation は 1 行: {:?}", math.rows);
+    return &math.rows[0];
   }
 
   #[test]
