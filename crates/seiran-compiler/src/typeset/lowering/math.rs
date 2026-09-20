@@ -3,7 +3,7 @@
 use std::slice;
 
 use crate::{
-  document::{FontKind, HirMath, HirMathBlock, HirMathKind, MathClass, MathVariant, NodeId},
+  document::{FontKind, HirMath, HirMathBlock, HirMathKind, MathClass, MathEnvKind, MathVariant, NodeId},
   length::Length,
   semantics::LabelId,
   style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
@@ -12,7 +12,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
-      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockLayout, MathBlockRow, TextStyle},
+      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockCell, MathBlockLayout, MathBlockRow, TextStyle},
       with_label_anchors,
     },
   },
@@ -43,12 +43,19 @@ pub(super) fn lower_math_block(
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
 
-  let mut layout_rows = Vec::with_capacity(math.rows.len());
-  for row in &math.rows {
+  let n_rows = math.rows.len();
+  let mut layout_rows = Vec::with_capacity(n_rows);
+  for (row_idx, row) in math.rows.iter().enumerate() {
     let cells = row
       .cells
       .iter()
-      .map(|cell| return lower_math_cell(cell, font_size, &ctx.style.math.script))
+      .enumerate()
+      .map(|(col, cell)| {
+        return MathBlockCell {
+          content: lower_math_cell(cell, font_size, &ctx.style.math.script),
+          align: cell_align(math.kind, row_idx, n_rows, col),
+        };
+      })
       .collect();
     let number = state.counter_value(row.id).map(|value| {
       return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size);
@@ -111,6 +118,34 @@ fn alignment_to_align(alignment: Alignment) -> Align {
     Alignment::Center => Align::Center,
     Alignment::Left => Align::Left,
     Alignment::Right => Align::Right,
+  };
+}
+
+/// 環境種別・行位置・列インデックスから、そのセルの列内での水平揃えを決める
+///
+/// `align` / `split` は `&` 区切りの偶数列を右・奇数列を左へ寄せ、`multiline` は先頭行を左・
+/// 末尾行を右・中間行を中央に置く階段配置にする。`boxing` はこの結果を列幅の中の
+/// オフセット計算に使うだけで、環境種別を知らない（#674）。
+fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> Align {
+  return match kind {
+    MathEnvKind::Align | MathEnvKind::Split => {
+      if col.is_multiple_of(2) {
+        Align::Right
+      } else {
+        Align::Left
+      }
+    },
+    MathEnvKind::Multiline => {
+      if n_rows <= 1 || (row_idx > 0 && row_idx < n_rows - 1) {
+        Align::Center
+      } else if row_idx == 0 {
+        Align::Left
+      } else {
+        Align::Right
+      }
+    },
+    MathEnvKind::Gather | MathEnvKind::Matrix { .. } => Align::Center,
+    MathEnvKind::Equation | MathEnvKind::Cases => Align::Left,
   };
 }
 
@@ -300,6 +335,7 @@ fn push_text_items(text: &str, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::
 mod tests {
   use super::*;
   use crate::{
+    document::MathDelimiter,
     length::Length,
     style::{CounterTemplate, Style as ReadStyle},
     typeset::lowering::test_support::{analyzed, lower},
@@ -589,9 +625,8 @@ mod tests {
     return style;
   }
 
-  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` の payload を取り出すヘルパ
-  fn lower_numbered_equation(style: &ReadStyle) -> MathBlockLayout {
-    let nodes = lower(style, &analyzed("\\begin{equation}\na\n\\end{equation}\n"));
+  /// レイアウトノード列から最初の `LayoutNode::MathBlock` の payload を取り出す
+  fn first_math_block(nodes: Vec<LayoutNode>) -> MathBlockLayout {
     return nodes
       .into_iter()
       .find_map(|n| match n {
@@ -599,6 +634,16 @@ mod tests {
         _ => return None,
       })
       .expect("MathBlock が出力されるはず");
+  }
+
+  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` の payload を取り出すヘルパ
+  fn lower_numbered_equation(style: &ReadStyle) -> MathBlockLayout {
+    return first_math_block(lower(style, &analyzed("\\begin{equation}\na\n\\end{equation}\n")));
+  }
+
+  /// 数式環境のソースを既定 Style で lower し、`LayoutNode::MathBlock` の payload を取り出すヘルパ
+  fn math_block_of(source: &str) -> MathBlockLayout {
+    return first_math_block(lower(&ReadStyle::default(), &analyzed(source)));
   }
 
   #[test]
@@ -676,5 +721,75 @@ mod tests {
     let nodes = lower_math_source("$(a!+b)$\n");
 
     assert_eq!(math_break_count(&nodes), 0, "! は区切りクラスだが本物の括弧ではないので深さを崩さない: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_math_block_resolves_cell_align_for_align_environment() {
+    // Act
+    let block = math_block_of("\\begin{align}\na &= b \\\\\nc &= d\n\\end{align}\n");
+
+    // Assert
+    let aligns: Vec<Align> = block.rows[0].cells.iter().map(|cell| return cell.align).collect();
+    assert_eq!(aligns, vec![Align::Right, Align::Left], "align は偶数列が右・奇数列が左: {aligns:?}");
+  }
+
+  #[test]
+  fn lower_math_block_resolves_cell_align_as_staircase_for_multiline() {
+    // Act
+    let block = math_block_of("\\begin{multiline}\na \\\\\nb \\\\\nc\n\\end{multiline}\n");
+
+    // Assert
+    let aligns: Vec<Align> = block.rows.iter().map(|row| return row.cells[0].align).collect();
+    assert_eq!(
+      aligns,
+      vec![Align::Left, Align::Center, Align::Right],
+      "multiline は先頭=左・中間=中央・末尾=右の階段配置: {aligns:?}"
+    );
+  }
+
+  #[test]
+  fn cell_align_align_and_split_alternate_right_left_by_column() {
+    for kind in [MathEnvKind::Align, MathEnvKind::Split] {
+      assert_eq!(cell_align(kind, 0, 1, 0), Align::Right, "列 0 は右: {kind:?}");
+      assert_eq!(cell_align(kind, 0, 1, 1), Align::Left, "列 1 は左: {kind:?}");
+      assert_eq!(cell_align(kind, 0, 1, 2), Align::Right, "列 2 は右: {kind:?}");
+    }
+  }
+
+  #[test]
+  fn cell_align_gather_is_always_center() {
+    assert_eq!(cell_align(MathEnvKind::Gather, 0, 3, 0), Align::Center);
+    assert_eq!(cell_align(MathEnvKind::Gather, 1, 3, 0), Align::Center);
+    assert_eq!(cell_align(MathEnvKind::Gather, 2, 3, 0), Align::Center);
+  }
+
+  #[test]
+  fn cell_align_multiline_is_staircase() {
+    let kind = MathEnvKind::Multiline;
+    assert_eq!(cell_align(kind, 0, 3, 0), Align::Left, "先頭行は左");
+    assert_eq!(cell_align(kind, 1, 3, 0), Align::Center, "中間行は中央");
+    assert_eq!(cell_align(kind, 2, 3, 0), Align::Right, "末尾行は右");
+  }
+
+  #[test]
+  fn cell_align_multiline_single_row_is_center() {
+    assert_eq!(cell_align(MathEnvKind::Multiline, 0, 1, 0), Align::Center);
+  }
+
+  #[test]
+  fn cell_align_matrix_center_equation_and_cases_left() {
+    assert_eq!(
+      cell_align(
+        MathEnvKind::Matrix {
+          delimiter: MathDelimiter::None
+        },
+        0,
+        2,
+        0
+      ),
+      Align::Center
+    );
+    assert_eq!(cell_align(MathEnvKind::Equation, 0, 1, 0), Align::Left);
+    assert_eq!(cell_align(MathEnvKind::Cases, 0, 2, 0), Align::Left);
   }
 }

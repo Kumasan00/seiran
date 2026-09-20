@@ -226,10 +226,22 @@ pub(in crate::typeset) struct TableCellLayout {
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockRow {
-  /// 列（lower 済みインライン数式）
-  pub cells: Vec<Vec<AtomNode>>,
+  /// 列（lower 済みインライン数式と列内揃え）
+  pub cells: Vec<MathBlockCell>,
   /// 行番号ボックス（lower 済み、`None` は非採番）
   pub number: Option<Vec<AtomNode>>,
+}
+
+/// ディスプレイ数式環境の 1 セルの物理レイアウト表現
+///
+/// 列内での揃えは環境種別・行位置・列位置から `crate::typeset::lowering` が解決済みで、
+/// `crate::typeset::boxing` は列幅の中へ置くオフセットの算出に使うだけ（#674）。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathBlockCell {
+  /// セル内容（lower 済みインライン数式）
+  pub content: Vec<AtomNode>,
+  /// 列内での水平揃え
+  pub align: Align,
 }
 
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
