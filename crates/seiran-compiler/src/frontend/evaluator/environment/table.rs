@@ -45,7 +45,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
   }
 
   let column_count =
-    resolve_column_count(columns_tokens.as_deref(), widths_tokens.as_deref(), &body.head, &body.rows, view)?;
+    resolve_column_count(columns_tokens.as_deref(), widths_tokens.as_deref(), &body.head, &body.rows, view, ctx)?;
 
   let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
   let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
@@ -55,8 +55,8 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result
     HirNodeKind::Table {
       columns,
       widths,
-      head: body.head.into_iter().map(|(row, _)| return row).collect(),
-      rows: body.rows.into_iter().map(|(row, _)| return row).collect(),
+      head: body.head,
+      rows: body.rows,
       caption: body.caption,
       caption_position: body.caption_position,
       label: opts.label,
