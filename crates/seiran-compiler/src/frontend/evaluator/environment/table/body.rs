@@ -111,6 +111,10 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
 ///
 /// ヘッダ行は表が改ページするたび全ページへ再描画される複製文脈なので、出現ページが一意に
 /// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
+///
+/// `\head` の本体は [`body_scan::strict_command_calls`] で全要素を検証してから各 `\row` を
+/// 評価する。そのため本体のどこかにある構造上の誤り（`\row` 以外の内容など）は、それより
+/// 手前にある `\row` の評価エラーより先に報告される。
 fn extract_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirTableRow>, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let arg = arity::exactly_one_arg(view, "\\row コマンド")?;

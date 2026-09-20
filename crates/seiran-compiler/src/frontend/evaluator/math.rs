@@ -191,8 +191,9 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
     },
     "sqrt" => {
       // 根指数 `[n]` は任意引数を数式として読む（`no_command_opt_args` は呼ばない）。
-      // 個数検査は根指数の評価より前に置く — 現行も過剰の検査だけは前にあり、不足の検査を
-      // そこへ寄せる。両方とも入力が誤りである点は変わらない。
+      // 個数検査は根指数の評価より前に置く — `math_arg_to_node` は `ctx.alloc` で NodeId を
+      // 消費するので、引数の個数が誤っていて後段で reject するだけの入力に対して、その割り当てを
+      // 発生させないため。
       let radicand_arg = arity::exactly_one_arg(&view, "1 個（被開平数）")?;
       let id = ctx.alloc(view.span());
       let index = match view.opt_arg() {

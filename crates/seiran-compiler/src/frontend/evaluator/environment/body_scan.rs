@@ -18,12 +18,15 @@ use crate::frontend::{
 /// 本文モードで裸の `{` / `}` は parser が構文エラーにする（P4）ので、ここへ来るブレースは
 /// 引数の区切りだけである。
 ///
+/// `allowed` の名前は重複してはならない。重複した場合は `iter().find` が先勝ちするだけで
+/// エラーにはならず、後方の要素は静かに無視される。
+///
 /// # Errors
 ///
 /// 許可外のコマンドは [`EvalError::UnexpectedCommandInEnvironment`]、
 /// テキスト・入れ子環境などのコンテンツは [`EvalError::UnexpectedContentInEnvironment`]
 /// を返します。
-pub(crate) fn strict_command_calls<'a, K: Copy>(
+pub(super) fn strict_command_calls<'a, K: Copy>(
   source: &'a str,
   children: &'a [GreenElement<'a>],
   env_name: &str,
