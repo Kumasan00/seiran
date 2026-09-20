@@ -33,9 +33,10 @@ impl HirNode {
 ///
 /// variant の形は値の個数で決まる — 値が 2 つ以上なら payload struct（`HirHeading` /
 /// `HirList` / `HirMathBlock` / `HirFigure` / `HirTable` / `HirTheorem` / `HirQuote`）、
-/// 1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）。インラインのフィールドを持つ
-/// variant は作らない — `typeset::lowering` の各入口が payload 型を引数で受け取れるようにするため
-/// （#711。インラインのフィールドだと、入口ごとに `unreachable!` 付きの分配束縛が要る）。
+/// 1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
+/// インラインのフィールドを持つ variant は作らない — `typeset::lowering` の各入口が payload 型を
+/// 引数で受け取れるようにするため（#711。インラインのフィールドだと、入口ごとに `unreachable!`
+/// 付きの分配束縛が要る）。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirNodeKind {
   /// 見出し（`\part` 〜 `\subparagraph`）

@@ -799,7 +799,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 - **HIR のブロック variant は payload struct**（#711 で解消。見送りのトリガーだった「payload struct にする
   issue に着手するとき」が発火した）。`HirNodeKind` の variant の形は値の個数で決まる — 2 つ以上なら
   payload struct（`HirHeading` / `HirList` / `HirMathBlock` / `HirFigure` / `HirTable` / `HirTheorem` /
-  `HirQuote`）、1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）。インラインのフィールドを持つ variant は
+  `HirQuote`）、1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
+  インラインのフィールドを持つ variant は
   作らない — lowering の各入口が payload 型を引数で受け取れることが、入口ごとの `unreachable!` 付き分配束縛を
   型の側で不要にしている。レイアウト側の対応物（`LayoutNode::Table(TableLayout)` /
   `MathBlock(MathBlockLayout)`）とも形が揃う
