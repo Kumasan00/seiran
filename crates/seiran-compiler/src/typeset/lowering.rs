@@ -343,8 +343,8 @@ pub(super) fn lower_nodes_inner(
 /// 委譲する 9 種別（`Heading` / `Paragraph` / `List` / `Theorem` / `Quote` / `CodeBlock` /
 /// `MathBlock` / `Figure` / `Table`）はすべて `HirNodeKind` の payload を取り出して子 module へ渡す。
 /// 各 lowering は実際に使うものだけを受け取る — payload は常に、`NodeId` は事実を引く 5 種
-/// （`Heading` / `Theorem` / `MathBlock` / `Figure` / `Table`）だけ、`state` は読み書きする 8 種
-/// （`CodeBlock` を除く）だけ受け取る（うち `MathBlock` は不変借用）。採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、
+/// （`Heading` / `Theorem` / `MathBlock` / `Figure` / `Table`）だけ、`state` は `CodeBlock` を除く
+/// 8 種だけ（`MathBlock` は不変借用）。採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、
 /// 各 lowering が `NodeId` をキーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。
 /// `PageBreak` / `Space` は委譲せず、この関数がその場でノードを組む。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
