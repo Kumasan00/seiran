@@ -107,7 +107,7 @@ mod tests {
     let LayoutNode::VBox { children, .. } = node else {
       panic!("item は VBox であるべき: {node:?}");
     };
-    return inline_text(&children[0]).expect("先頭はマーカー Text であるべき");
+    return inline_text(&children[0]).unwrap_or_else(|| panic!("先頭はマーカー Text であるべき: {children:?}"));
   }
 
   /// item `VBox` の子から、ネストしたリストの先頭項目 `VBox` を取り出す

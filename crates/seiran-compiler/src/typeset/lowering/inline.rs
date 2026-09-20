@@ -188,7 +188,8 @@ mod tests {
     semantics::{CitationId, GeneratedInline, LabelId},
     style::{NumberStyle, NumberTemplate, Style as ReadStyle},
     typeset::lowering::{
-      LayoutNode, lower_sources_with_headings,
+      layout_node::LayoutNode,
+      lower_sources_with_headings,
       test_support::{analyzed, as_inline, lower},
     },
   };

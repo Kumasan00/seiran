@@ -183,7 +183,7 @@ pub(super) mod test_support {
   }
 
   /// レイアウトノードがインラインなら中身を借りる（縦リスト用ノードなら `None`）
-  pub(crate) fn as_inline(node: &LayoutNode) -> Option<&InlineNode> {
+  pub(super) fn as_inline(node: &LayoutNode) -> Option<&InlineNode> {
     return match node {
       LayoutNode::Inline(inline) => Some(inline),
       _ => None,
@@ -191,7 +191,7 @@ pub(super) mod test_support {
   }
 
   /// レイアウトノードがインラインの `Text` なら、その文字列とスタイルを借りる
-  pub(crate) fn inline_text(node: &LayoutNode) -> Option<(&str, TextStyle)> {
+  pub(super) fn inline_text(node: &LayoutNode) -> Option<(&str, TextStyle)> {
     return match as_inline(node)? {
       InlineNode::Text(text, style) => Some((text.as_str(), *style)),
       _ => None,
@@ -536,6 +536,8 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
 
 #[cfg(test)]
 mod tests {
+  use std::slice;
+
   use super::{test_support::analyzed, *};
   use crate::{
     document::HirDocument,
@@ -577,7 +579,7 @@ mod tests {
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
   fn contains_line_break(nodes: &[LayoutNode]) -> bool {
     return nodes.iter().any(|n| match n {
-      LayoutNode::Inline(inline) => return contains_line_break_inline(std::slice::from_ref(inline)),
+      LayoutNode::Inline(inline) => return contains_line_break_inline(slice::from_ref(inline)),
       LayoutNode::VBox { children, .. } => {
         return contains_line_break(children);
       },
@@ -856,7 +858,7 @@ mod tests {
     // Arrange
     fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
       return nodes.iter().any(|n| match n {
-        LayoutNode::Inline(inline) => return contains_internal_link_inline(std::slice::from_ref(inline), target),
+        LayoutNode::Inline(inline) => return contains_internal_link_inline(slice::from_ref(inline), target),
         LayoutNode::VBox { children, .. } => {
           return contains_internal_link(children, target);
         },
