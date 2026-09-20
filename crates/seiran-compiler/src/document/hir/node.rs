@@ -39,16 +39,7 @@ pub(crate) enum HirNodeKind {
   Paragraph(Vec<HirInline>),
 
   /// 箇条書きリスト（`\begin{itemize}` / `\begin{enumerate}`）
-  List {
-    /// 順序付き（enumerate）かどうか
-    ordered: bool,
-    /// リストアイテム
-    items: Vec<HirListItem>,
-    /// 開始番号（`enumerate[start=N]`）。`None` は既定（1 から開始）
-    start: Option<u32>,
-    /// 項目間の縦アキの上書き。`None` は style.toml の既定値
-    item_gap: Option<Length>,
-  },
+  List(HirList),
 
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   MathBlock {
@@ -116,6 +107,19 @@ pub(crate) struct HirHeading {
   pub(crate) title: Vec<HirInline>,
   /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル名
   pub(crate) label: Option<String>,
+}
+
+/// 箇条書きリスト（`\begin{itemize}` / `\begin{enumerate}`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirList {
+  /// 順序付き（enumerate）かどうか
+  pub(crate) ordered: bool,
+  /// リストアイテム
+  pub(crate) items: Vec<HirListItem>,
+  /// 開始番号（`enumerate[start=N]`）。`None` は既定（1 から開始）
+  pub(crate) start: Option<u32>,
+  /// 項目間の縦アキの上書き。`None` は style.toml の既定値
+  pub(crate) item_gap: Option<Length>,
 }
 
 /// 図環境（`\begin{figure}...\end{figure}`）の内容

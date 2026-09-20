@@ -184,8 +184,8 @@ impl Checker<'_> {
           }
         }
       },
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           self.nodes(&item.content);
         }
       },
@@ -367,8 +367,8 @@ impl Walker<'_> {
         self.facts.headings.insert(node.id, heading.level);
         self.inlines(&heading.title);
       },
-      HirNodeKind::List { items, .. } => {
-        for item in items {
+      HirNodeKind::List(list) => {
+        for item in &list.items {
           self.list_item(item);
         }
       },

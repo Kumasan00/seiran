@@ -1,7 +1,7 @@
 //! リスト環境 — 箇条書き・番号付きリスト
 
 use crate::{
-  document::{HirListItem, HirNode, HirNodeKind},
+  document::{HirList, HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
       self, EvalContext, EvalError, arity,
@@ -67,12 +67,12 @@ pub(super) fn list(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: b
 
   return Ok(HirNode::new(
     id,
-    HirNodeKind::List {
+    HirNodeKind::List(HirList {
       ordered,
       items,
       start,
       item_gap,
-    },
+    }),
   ));
 }
 
@@ -108,10 +108,10 @@ mod tests {
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::List { start, .. } = &nodes[0].kind else {
+    let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(*start, Some(5));
+    assert_eq!(list.start, Some(5));
   }
 
   #[test]
@@ -195,10 +195,10 @@ mod tests {
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::List { items, .. } = &nodes[0].kind else {
+    let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(items[0].marker, Some("☆".to_string()));
+    assert_eq!(list.items[0].marker, Some("☆".to_string()));
   }
 
   #[test]
@@ -212,10 +212,10 @@ mod tests {
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::List { items, .. } = &nodes[0].kind else {
+    let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(items[0].marker, Some(String::new()));
+    assert_eq!(list.items[0].marker, Some(String::new()));
   }
 
   #[test]
@@ -243,10 +243,10 @@ mod tests {
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::List { item_gap, .. } = &nodes[0].kind else {
+    let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(*item_gap, Some(Length::mm(0.0)));
+    assert_eq!(list.item_gap, Some(Length::mm(0.0)));
   }
 
   #[test]
@@ -260,14 +260,11 @@ mod tests {
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::List {
-      start, item_gap, ..
-    } = &nodes[0].kind
-    else {
+    let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(*start, Some(2));
-    assert_eq!(*item_gap, Some(Length::mm(8.0)));
+    assert_eq!(list.start, Some(2));
+    assert_eq!(list.item_gap, Some(Length::mm(8.0)));
   }
 
   #[test]
@@ -281,9 +278,9 @@ mod tests {
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let HirNodeKind::List { items, .. } = &nodes[0].kind else {
+    let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(items[0].item_gap, Some(Length::mm(-1.0)));
+    assert_eq!(list.items[0].item_gap, Some(Length::mm(-1.0)));
   }
 }
