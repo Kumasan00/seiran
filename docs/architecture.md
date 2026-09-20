@@ -777,7 +777,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   引き、1mu = font_size/18 の固定 kern を挟む。インライン数式のトップレベルに限り、括弧の外の Bin の直後、
   および右がアキを持つ Rel の直後（右が Ord / Op / Open のときだけ。Bin / Rel / Close / Punct は
   アキ 0 のセルか Bin→Ord 変換で現れない組み合わせなので割らない）のアキを行分割点
-  `LayoutNode::MathBreak` として出す（ディスプレイ数式のセルは
+  `InlineNode::MathBreak` として出す（ディスプレイ数式のセルは
   `AtomNode` で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt`
@@ -788,8 +788,22 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
 - **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
-- `Atom` に畳める要素（テキスト・kern・入れ子の raise）は `LayoutNode` の部分集合 `AtomNode` として型で
-  絞り、`boxing` の `Atom` 化が場合分けなしで閉じる
+- **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
+  閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
+  数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
+  キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
+  （`VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）に加えて
+  包み variant `Inline(InlineNode)` を 1 つ持ち、`boxing` の縦リスト走査はその 1 arm でインラインへ
+  振り分ける（インライン側に縦リスト用の `unreachable!` が無い。#672）。`Atom` に畳める要素
+  （テキスト・kern・入れ子の raise）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
+  なしで閉じる。持ち上げは `From` の片方向のみ（逆向きの変換は作らない）
+- **段落は明示ノードにしていない**（見送り。#672 のスコープ外）。段落の境界は「インラインを溜め、
+  縦リスト用ノードが来たら `flush_paragraph` する」という `boxing` 側の暗黙の表現で、`lowering/list.rs` は
+  これに依存して「項目マーカーの `Text` と項目先頭段落の内容が同じ水平リストへ流れ込む」形を意図的に
+  使っている（マーカーと先頭行が 1 行に組まれるのはこのため）。`lowering/theorem.rs` の QED マークも、
+  段落の組み立てが末尾に縦アキを 1 個積むことを前提に `insert(len - 1, ..)` で差し込んでいる。
+  **再検討のトリガー**: リストのマーカーと先頭段落の連結を別の構造で表すとき、または QED の挿入位置が
+  別の理由で壊れたとき
 
 #### `boxing`
 
