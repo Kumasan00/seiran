@@ -3,7 +3,9 @@
 use std::slice;
 
 use crate::{
-  document::{FontKind, HirMath, HirMathBlock, HirMathKind, MathClass, MathEnvKind, MathVariant, NodeId},
+  document::{
+    FontKind, HirMath, HirMathBlock, HirMathKind, MathClass, MathDelimiter, MathEnvKind, MathVariant, NodeId,
+  },
   length::Length,
   semantics::LabelId,
   style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
@@ -12,7 +14,9 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
-      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockCell, MathBlockLayout, MathBlockRow, TextStyle},
+      layout_node::{
+        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockCell, MathBlockLayout, MathBlockRow, TextStyle,
+      },
       with_label_anchors,
     },
   },
@@ -72,7 +76,7 @@ pub(super) fn lower_math_block(
       length: block.top_margin,
     },
     LayoutNode::MathBlock(MathBlockLayout {
-      kind: math.kind,
+      delimiters: delimiter_glyphs(math.kind),
       rows: layout_rows,
       env_number,
       align: alignment_to_align(block.alignment),
@@ -146,6 +150,43 @@ fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> A
     },
     MathEnvKind::Gather | MathEnvKind::Matrix { .. } => Align::Center,
     MathEnvKind::Equation | MathEnvKind::Cases => Align::Left,
+  };
+}
+
+/// 環境種別から本体グリッドを囲む左右の区切り括弧グリフを決める
+fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
+  return match kind {
+    MathEnvKind::Cases => DelimiterGlyphs {
+      left: Some("{"),
+      right: None,
+    },
+    MathEnvKind::Matrix { delimiter } => match delimiter {
+      MathDelimiter::None => DelimiterGlyphs::default(),
+      MathDelimiter::Paren => DelimiterGlyphs {
+        left: Some("("),
+        right: Some(")"),
+      },
+      MathDelimiter::Bracket => DelimiterGlyphs {
+        left: Some("["),
+        right: Some("]"),
+      },
+      MathDelimiter::Brace => DelimiterGlyphs {
+        left: Some("{"),
+        right: Some("}"),
+      },
+      MathDelimiter::Bar => DelimiterGlyphs {
+        left: Some("|"),
+        right: Some("|"),
+      },
+      MathDelimiter::DoubleBar => DelimiterGlyphs {
+        left: Some("\u{2016}"),
+        right: Some("\u{2016}"),
+      },
+    },
+    // 揃え系の環境は括弧で囲まない。
+    MathEnvKind::Equation | MathEnvKind::Align | MathEnvKind::Gather | MathEnvKind::Split | MathEnvKind::Multiline => {
+      DelimiterGlyphs::default()
+    },
   };
 }
 
@@ -335,7 +376,6 @@ fn push_text_items(text: &str, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::
 mod tests {
   use super::*;
   use crate::{
-    document::MathDelimiter,
     length::Length,
     style::{CounterTemplate, Style as ReadStyle},
     typeset::lowering::test_support::{analyzed, lower},
@@ -791,5 +831,96 @@ mod tests {
     );
     assert_eq!(cell_align(MathEnvKind::Equation, 0, 1, 0), Align::Left);
     assert_eq!(cell_align(MathEnvKind::Cases, 0, 2, 0), Align::Left);
+  }
+
+  #[test]
+  fn delimiter_glyphs_maps_cases_and_matrix() {
+    assert_eq!(
+      delimiter_glyphs(MathEnvKind::Cases),
+      DelimiterGlyphs {
+        left: Some("{"),
+        right: None
+      }
+    );
+    for (delimiter, expected) in [
+      (
+        MathDelimiter::Bracket,
+        DelimiterGlyphs {
+          left: Some("["),
+          right: Some("]"),
+        },
+      ),
+      (
+        MathDelimiter::Paren,
+        DelimiterGlyphs {
+          left: Some("("),
+          right: Some(")"),
+        },
+      ),
+      (
+        MathDelimiter::Brace,
+        DelimiterGlyphs {
+          left: Some("{"),
+          right: Some("}"),
+        },
+      ),
+      (
+        MathDelimiter::Bar,
+        DelimiterGlyphs {
+          left: Some("|"),
+          right: Some("|"),
+        },
+      ),
+      (
+        MathDelimiter::DoubleBar,
+        DelimiterGlyphs {
+          left: Some("\u{2016}"),
+          right: Some("\u{2016}"),
+        },
+      ),
+    ] {
+      assert_eq!(delimiter_glyphs(MathEnvKind::Matrix { delimiter }), expected, "matrix の {delimiter:?}");
+    }
+  }
+
+  #[test]
+  fn delimiter_glyphs_absent_for_none_and_other_envs() {
+    for kind in [
+      MathEnvKind::Matrix {
+        delimiter: MathDelimiter::None,
+      },
+      MathEnvKind::Equation,
+      MathEnvKind::Align,
+      MathEnvKind::Gather,
+      MathEnvKind::Split,
+      MathEnvKind::Multiline,
+    ] {
+      assert!(!delimiter_glyphs(kind).is_present(), "括弧なし: {kind:?}");
+    }
+  }
+
+  #[test]
+  fn lower_math_block_resolves_delimiter_glyphs_for_matrix() {
+    // Act
+    let block = math_block_of("\\begin{matrix}[delimiter=bracket]\na & b \\\\\nc & d\n\\end{matrix}\n");
+
+    // Assert
+    assert_eq!(
+      block.delimiters,
+      DelimiterGlyphs {
+        left: Some("["),
+        right: Some("]")
+      },
+      "matrix の delimiter=bracket は角括弧で囲む"
+    );
+  }
+
+  #[test]
+  fn lower_math_block_leaves_align_environment_without_delimiters() {
+    // Act
+    let block = math_block_of("\\begin{align}\na &= b\n\\end{align}\n");
+
+    // Assert
+    assert!(!block.delimiters.is_present(), "揃え系の環境は括弧で囲まない: {:?}", block.delimiters);
   }
 }

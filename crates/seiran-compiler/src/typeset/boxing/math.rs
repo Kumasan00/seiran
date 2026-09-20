@@ -1,34 +1,14 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
 
 use crate::{
-  document::{MathDelimiter, MathEnvKind},
   length::Length,
   project::FontType,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     boxing::Measurer,
-    lowering::MathBlockLayout,
+    lowering::{DelimiterGlyphs, MathBlockLayout},
   },
 };
-
-/// 環境種別から本体グリッドを囲む左右の区切り括弧グリフ `(左, 右)` を決める
-fn delimiter_glyphs(kind: MathEnvKind) -> (Option<&'static str>, Option<&'static str>) {
-  return match kind {
-    MathEnvKind::Cases => (Some("{"), None),
-    MathEnvKind::Matrix { delimiter } => match delimiter {
-      MathDelimiter::None => (None, None),
-      MathDelimiter::Paren => (Some("("), Some(")")),
-      MathDelimiter::Bracket => (Some("["), Some("]")),
-      MathDelimiter::Brace => (Some("{"), Some("}")),
-      MathDelimiter::Bar => (Some("|"), Some("|")),
-      MathDelimiter::DoubleBar => (Some("\u{2016}"), Some("\u{2016}")),
-    },
-    // 揃え系の環境は括弧で囲まない。
-    MathEnvKind::Equation | MathEnvKind::Align | MathEnvKind::Gather | MathEnvKind::Split | MathEnvKind::Multiline => {
-      (None, None)
-    },
-  };
-}
 
 /// 行を measure したあとの中間表現
 struct MeasuredRow {
@@ -50,13 +30,13 @@ impl Measurer<'_> {
   /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
   pub(crate) fn build_math_block(&mut self, block: MathBlockLayout) -> Block {
     let MathBlockLayout {
-      kind,
       rows,
       env_number,
       align,
       numbers_on_right,
       row_gap,
       column_gap,
+      delimiters,
     } = block;
 
     let measured: Vec<MeasuredRow> = rows
@@ -131,9 +111,8 @@ impl Measurer<'_> {
       });
     }
 
-    let (left, right) = delimiter_glyphs(kind);
-    if left.is_some() || right.is_some() {
-      body = self.wrap_with_delimiters(body, left, right);
+    if delimiters.is_present() {
+      body = self.wrap_with_delimiters(body, delimiters);
     }
 
     return Block::Math {
@@ -161,7 +140,7 @@ impl Measurer<'_> {
   }
 
   /// 本体 Atom を左右の区切り括弧で挟んで包み直す
-  fn wrap_with_delimiters(&mut self, body: HBox, left: Option<&str>, right: Option<&str>) -> HBox {
+  fn wrap_with_delimiters(&mut self, body: HBox, delimiters: DelimiterGlyphs) -> HBox {
     let body_height = body.height;
     let body_depth = body.depth;
     let body_width = body.width;
@@ -170,7 +149,7 @@ impl Measurer<'_> {
 
     let mut children: Vec<PlacedHItem> = Vec::new();
     let mut dx = Length::ZERO;
-    if let Some(ch) = left {
+    if let Some(ch) = delimiters.left {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
       let width = delim.width;
@@ -187,7 +166,7 @@ impl Measurer<'_> {
       dx,
     });
     dx += body_width + gap;
-    if let Some(ch) = right {
+    if let Some(ch) = delimiters.right {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
       children.push(PlacedHItem {
@@ -197,61 +176,5 @@ impl Measurer<'_> {
       });
     }
     return HBox::atom(children);
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::delimiter_glyphs;
-  use crate::document::{MathDelimiter, MathEnvKind};
-
-  #[test]
-  fn delimiter_glyphs_maps_cases_and_matrix() {
-    assert_eq!(delimiter_glyphs(MathEnvKind::Cases), (Some("{"), None));
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Bracket
-      }),
-      (Some("["), Some("]"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Paren
-      }),
-      (Some("("), Some(")"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Brace
-      }),
-      (Some("{"), Some("}"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::Bar
-      }),
-      (Some("|"), Some("|"))
-    );
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::DoubleBar
-      }),
-      (Some("\u{2016}"), Some("\u{2016}"))
-    );
-  }
-
-  #[test]
-  fn delimiter_glyphs_absent_for_none_and_other_envs() {
-    assert_eq!(
-      delimiter_glyphs(MathEnvKind::Matrix {
-        delimiter: MathDelimiter::None
-      }),
-      (None, None)
-    );
-    assert_eq!(delimiter_glyphs(MathEnvKind::Equation), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Align), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Gather), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Split), (None, None));
-    assert_eq!(delimiter_glyphs(MathEnvKind::Multiline), (None, None));
   }
 }

@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{FontKind, MathEnvKind},
+  document::FontKind,
   length::Length,
   project::ProjectPath,
   typeset::boxes::{Align, AnchorMark, LinkTarget, TableColumn},
@@ -175,8 +175,8 @@ impl From<InlineNode> for LayoutNode {
 /// ディスプレイ数式環境全体の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockLayout {
-  /// 環境種別（列整列・区切り括弧の決定に使う）
-  pub kind: MathEnvKind,
+  /// 本体グリッドを囲む左右の区切り括弧グリフ（環境種別から lowering が解決済み）
+  pub delimiters: DelimiterGlyphs,
   /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
   pub rows: Vec<MathBlockRow>,
   /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
@@ -242,6 +242,25 @@ pub(in crate::typeset) struct MathBlockCell {
   pub content: Vec<AtomNode>,
   /// 列内での水平揃え
   pub align: Align,
+}
+
+/// ディスプレイ数式環境の本体グリッドを囲む区切り括弧のグリフ
+///
+/// 環境種別（`cases` は常に左波括弧、`matrix` は `[delimiter=...]`）からの解決は
+/// `crate::typeset::lowering` が済ませ、`crate::typeset::boxing` は本体の高さ・深さへ
+/// 合わせて拡大して置くだけ（#674）。伸縮グリフ（OpenType MATH）で組む件は #73。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::typeset) struct DelimiterGlyphs {
+  /// 左括弧のグリフ（`None` は左に括弧を置かない）
+  pub left: Option<&'static str>,
+  /// 右括弧のグリフ（`None` は右に括弧を置かない）
+  pub right: Option<&'static str>,
+}
+
+impl DelimiterGlyphs {
+  /// 左右いずれかの括弧を持つか（本体を包み直す必要があるか）
+  #[must_use]
+  pub(in crate::typeset) fn is_present(self) -> bool { return self.left.is_some() || self.right.is_some(); }
 }
 
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
