@@ -363,8 +363,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Theorem { .. } => {
       return theorem::lower_theorem(ctx, node, state);
     },
-    HirNodeKind::Quote { .. } => {
-      return quote::lower_quote(ctx, node, state);
+    HirNodeKind::Quote(quote) => {
+      return quote::lower_quote(ctx, quote, state);
     },
     HirNodeKind::CodeBlock { .. } => {
       return code::lower_code_block(ctx, node);

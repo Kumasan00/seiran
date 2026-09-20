@@ -1098,11 +1098,11 @@ mod tests {
     // issue #160 — ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
     let result = evaluate_source("\\begin{quote}\\begin{itemize}\\item{x}\\end{itemize}\n  \n\\end{quote}");
     assert_eq!(result.len(), 1);
-    let HirNodeKind::Quote { body, .. } = &result[0].kind else {
+    let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {result:?}");
     };
-    assert_eq!(body.len(), 1, "空白のみの段落が生成されてはいけない: {body:?}");
-    assert!(matches!(&body[0].kind, HirNodeKind::List { .. }));
+    assert_eq!(quote.body.len(), 1, "空白のみの段落が生成されてはいけない: {:?}", quote.body);
+    assert!(matches!(&quote.body[0].kind, HirNodeKind::List { .. }));
   }
 
   #[test]

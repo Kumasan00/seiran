@@ -133,18 +133,22 @@ pub(crate) enum HirNodeKind {
   },
 
   /// 引用ブロック（`\begin{quote}` / `\begin{quotation}`）
-  Quote {
-    /// 引用の種別（`quote` / `quotation`）
-    kind: QuoteKind,
-    /// 本体（再帰評価されたブロックノード列）
-    body: Vec<HirNode>,
-  },
+  Quote(HirQuote),
 
   /// 改ページ
   PageBreak,
 
   /// 固定幅スペース（`\space{N}` コマンド）
   Space(Length),
+}
+
+/// 引用ブロック（`\begin{quote}` / `\begin{quotation}`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirQuote {
+  /// 引用の種別（`quote` / `quotation`）
+  pub(crate) kind: QuoteKind,
+  /// 本体（再帰評価されたブロックノード列）
+  pub(crate) body: Vec<HirNode>,
 }
 
 /// リストの個別アイテム（`\item` に対応）
