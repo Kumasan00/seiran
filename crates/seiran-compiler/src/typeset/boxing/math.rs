@@ -5,9 +5,9 @@ use crate::{
   length::Length,
   project::FontType,
   typeset::{
-    boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
+    boxes::{Block, HBox, MathRowNumber, PlacedHItem},
     boxing::Measurer,
-    lowering::{AtomNode, MathBlockRow},
+    lowering::MathBlockLayout,
   },
 };
 
@@ -84,20 +84,17 @@ struct MeasuredRow {
 
 impl Measurer<'_> {
   /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
-  #[expect(
-    clippy::too_many_arguments,
-    reason = "数式ブロック 1 件の合成に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
-  )]
-  pub(crate) fn build_math_block(
-    &mut self,
-    kind: MathEnvKind,
-    rows: Vec<MathBlockRow>,
-    env_number: Option<Vec<AtomNode>>,
-    align: Align,
-    numbers_on_right: bool,
-    row_gap: Length,
-    column_gap: Length,
-  ) -> Block {
+  pub(crate) fn build_math_block(&mut self, block: MathBlockLayout) -> Block {
+    let MathBlockLayout {
+      kind,
+      rows,
+      env_number,
+      align,
+      numbers_on_right,
+      row_gap,
+      column_gap,
+    } = block;
+
     let measured: Vec<MeasuredRow> = rows
       .into_iter()
       .map(|row| {

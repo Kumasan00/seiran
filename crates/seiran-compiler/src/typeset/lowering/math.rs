@@ -12,7 +12,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
-      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockRow, TextStyle},
+      layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockLayout, MathBlockRow, TextStyle},
     },
   },
 };
@@ -59,7 +59,7 @@ pub(super) fn lower_math_block(
   let env_number = env_counter_value
     .map(|value| return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size));
 
-  return LayoutNode::MathBlock {
+  return LayoutNode::MathBlock(MathBlockLayout {
     kind,
     rows: layout_rows,
     env_number,
@@ -67,7 +67,7 @@ pub(super) fn lower_math_block(
     numbers_on_right: matches!(block.number_side, NumberSide::Right),
     row_gap: block.row_gap,
     column_gap: block.column_gap,
-  };
+  });
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
@@ -567,12 +567,15 @@ mod tests {
     return style;
   }
 
-  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` を取り出すヘルパ
-  fn lower_numbered_equation(style: &ReadStyle) -> LayoutNode {
+  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` の payload を取り出すヘルパ
+  fn lower_numbered_equation(style: &ReadStyle) -> MathBlockLayout {
     let nodes = lower(style, &analyzed("\\begin{equation}\na\n\\end{equation}\n"));
     return nodes
       .into_iter()
-      .find(|n| matches!(n, LayoutNode::MathBlock { .. }))
+      .find_map(|n| match n {
+        LayoutNode::MathBlock(block) => return Some(block),
+        _ => return None,
+      })
       .expect("MathBlock が出力されるはず");
   }
 
@@ -582,16 +585,10 @@ mod tests {
     let style = style_with_plain_equation_format();
 
     // Act
-    let node = lower_numbered_equation(&style);
+    let block = lower_numbered_equation(&style);
 
     // Assert
-    let LayoutNode::MathBlock {
-      rows: layout_rows, ..
-    } = node
-    else {
-      panic!("MathBlock を期待: {node:?}");
-    };
-    let number = layout_rows[0].number.as_ref().expect("番号あり");
+    let number = block.rows[0].number.as_ref().expect("番号あり");
     assert!(
       matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
       "(1) の Serif Text が番号ボックスに入るはず: {number:?}"
@@ -604,19 +601,11 @@ mod tests {
     let style = style_with_plain_equation_format();
 
     // Act
-    let node = lower_numbered_equation(&style);
+    let block = lower_numbered_equation(&style);
 
     // Assert
-    let LayoutNode::MathBlock {
-      numbers_on_right,
-      align,
-      ..
-    } = node
-    else {
-      panic!("MathBlock を期待: {node:?}");
-    };
-    assert!(numbers_on_right, "既定では番号は右寄せ");
-    assert_eq!(align, Align::Center, "既定では本体は中央寄せ");
+    assert!(block.numbers_on_right, "既定では番号は右寄せ");
+    assert_eq!(block.align, Align::Center, "既定では本体は中央寄せ");
   }
 
   #[test]
@@ -626,16 +615,10 @@ mod tests {
     style.math.block.number_side = NumberSide::Left;
 
     // Act
-    let node = lower_numbered_equation(&style);
+    let block = lower_numbered_equation(&style);
 
     // Assert
-    let LayoutNode::MathBlock {
-      numbers_on_right, ..
-    } = node
-    else {
-      panic!("MathBlock を期待: {node:?}");
-    };
-    assert!(!numbers_on_right, "number_side = Left では番号は左寄せ");
+    assert!(!block.numbers_on_right, "number_side = Left では番号は左寄せ");
   }
 
   #[test]

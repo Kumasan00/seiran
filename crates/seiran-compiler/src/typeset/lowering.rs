@@ -37,7 +37,9 @@ mod table;
 mod theorem;
 mod title_page;
 
-pub(super) use layout_node::{AtomNode, InlineNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
+pub(super) use layout_node::{
+  AtomNode, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
+};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
 use crate::document::{FontKind, HeadingLevel};
@@ -660,7 +662,7 @@ mod tests {
     // Assert
     assert_eq!(out.len(), 3, "Vkern + MathBlock + Vkern の 3 要素: {out:?}");
     assert!(matches!(out.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {out:?}");
-    assert!(matches!(out.get(1), Some(LayoutNode::MathBlock { .. })), "中央は MathBlock であるべき: {out:?}");
+    assert!(matches!(out.get(1), Some(LayoutNode::MathBlock(_))), "中央は MathBlock であるべき: {out:?}");
     assert!(matches!(out.last(), Some(LayoutNode::Vkern { .. })), "末尾は Vkern であるべき: {out:?}");
     assert!(
       !out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))),
@@ -678,9 +680,10 @@ mod tests {
     let out = lower_source(&style, "\\begin{equation}\na\n\\end{equation}\n");
 
     // Assert
-    let Some(LayoutNode::MathBlock { rows, .. }) = out.get(1) else {
+    let Some(LayoutNode::MathBlock(block)) = out.get(1) else {
       panic!("中央に MathBlock があるべき: {out:?}");
     };
+    let rows = &block.rows;
     assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
     let number = rows[0].number.as_ref().expect("採番された行は番号ボックスを持つ");
     assert!(matches!(&number[0], AtomNode::Text(t, _) if t == "(1)"), "番号ボックスは Text(\"(1)\"): {number:?}");

@@ -51,23 +51,7 @@ pub(in crate::typeset) enum LayoutNode {
   /// 表（`table` 環境）
   Table(TableLayout),
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
-  MathBlock {
-    /// 環境種別（列整列・区切り括弧・採番の決定に使う）
-    kind: MathEnvKind,
-    /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
-    rows: Vec<MathBlockRow>,
-    /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
-    /// `boxing` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
-    env_number: Option<Vec<AtomNode>>,
-    /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
-    align: Align,
-    /// 番号を本文右端に寄せるか（`false` なら左端）
-    numbers_on_right: bool,
-    /// 行間
-    row_gap: Length,
-    /// 列間
-    column_gap: Length,
-  },
+  MathBlock(MathBlockLayout),
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   Anchor(AnchorMark),
   /// 強制改ページ
@@ -186,6 +170,26 @@ impl From<InlineNode> for LayoutNode {
   /// インライン要素を縦リストの語彙へ持ち上げる（段落の組み立て・見出しやキャプションの
   /// `VBox` 構築で使う。逆方向の変換はない）
   fn from(node: InlineNode) -> Self { return LayoutNode::Inline(node); }
+}
+
+/// ディスプレイ数式環境全体の物理レイアウト表現
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathBlockLayout {
+  /// 環境種別（列整列・区切り括弧の決定に使う）
+  pub kind: MathEnvKind,
+  /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
+  pub rows: Vec<MathBlockRow>,
+  /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
+  /// `boxing` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
+  pub env_number: Option<Vec<AtomNode>>,
+  /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
+  pub align: Align,
+  /// 番号を本文右端に寄せるか（`false` なら左端）
+  pub numbers_on_right: bool,
+  /// 行間
+  pub row_gap: Length,
+  /// 列間
+  pub column_gap: Length,
 }
 
 /// 表全体の物理レイアウト表現
