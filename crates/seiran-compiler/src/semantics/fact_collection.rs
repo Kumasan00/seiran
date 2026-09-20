@@ -114,15 +114,15 @@ impl Checker<'_> {
   /// 単一のブロックノードを検証する
   fn node(&self, node: &HirNode) {
     match &node.kind {
-      HirNodeKind::Heading { title, label, .. } => {
+      HirNodeKind::Heading(heading) => {
         self.require_counter(node.id, "Heading");
         assert!(
           self.facts.headings.get(node.id).is_some(),
           "Walker が Heading の事実を登録し損ねている: {:?}",
           node.id
         );
-        self.require_declared_label(node.id, label.as_deref(), "Heading");
-        self.inlines(title);
+        self.require_declared_label(node.id, heading.label.as_deref(), "Heading");
+        self.inlines(&heading.title);
       },
       HirNodeKind::Figure(figure) => {
         self.require_counter(node.id, "Figure");
@@ -359,17 +359,13 @@ impl Walker<'_> {
   /// 単一のブロックノードを走査する
   fn node(&mut self, node: &HirNode) {
     match &node.kind {
-      HirNodeKind::Heading {
-        level,
-        title,
-        label,
-      } => {
+      HirNodeKind::Heading(heading) => {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
-        let counter = SemanticPolicy::counter_name_for_heading(*level);
-        self.number_and_declare(CounterKind::Counter(counter), node.id, label.as_deref(), node.id);
-        self.facts.headings.insert(node.id, *level);
-        self.inlines(title);
+        let counter = SemanticPolicy::counter_name_for_heading(heading.level);
+        self.number_and_declare(CounterKind::Counter(counter), node.id, heading.label.as_deref(), node.id);
+        self.facts.headings.insert(node.id, heading.level);
+        self.inlines(&heading.title);
       },
       HirNodeKind::List { items, .. } => {
         for item in items {

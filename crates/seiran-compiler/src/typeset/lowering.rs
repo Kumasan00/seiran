@@ -351,8 +351,8 @@ pub(super) fn lower_nodes_inner(
 /// payload struct ではなくインラインのフィールドを持つため（#673 のスコープ外）。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
-    HirNodeKind::Heading { .. } => {
-      return heading::lower_hir_heading(ctx, node, state);
+    HirNodeKind::Heading(heading) => {
+      return heading::lower_hir_heading(ctx, node.id, heading, state);
     },
     HirNodeKind::Paragraph(_) => {
       return paragraph::lower_paragraph(ctx, node, state);

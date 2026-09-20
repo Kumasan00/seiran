@@ -1,7 +1,7 @@
 //! 見出し（`document::HirNodeKind::Heading` と、CSL 整形が合成する書誌見出し）の lowering
 
 use crate::{
-  document::{HeadingLevel, HirInline, HirInlineKind, HirNode, HirNodeKind},
+  document::{HeadingLevel, HirHeading, HirInline, HirInlineKind, NodeId},
   length::Length,
   semantics::{HeadingKey, LabelId, generated_inlines_to_plain_text},
   style::Style as ReadStyle,
@@ -65,30 +65,30 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
 /// 再帰（quote / theorem / list item 本体）を挟んでも `analyzed.headings()` の添字と必ず揃う。
 pub(super) fn lower_hir_heading(
   ctx: &LoweringContext<'_>,
-  node: &HirNode,
+  id: NodeId,
+  heading: &HirHeading,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let HirNodeKind::Heading {
-    level,
-    title,
-    label: _,
-  } = &node.kind
-  else {
-    unreachable!("lowering::lower_node_indexed の HirNodeKind::Heading arm からだけ呼ばれる: {:?}", node.id)
-  };
-  let key = state.heading_key(node.id);
-  let label = state.declared_label(node.id).cloned();
+  let key = state.heading_key(id);
+  let label = state.declared_label(id).cloned();
   let number = state
-    .counter_value(node.id)
+    .counter_value(id)
     .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
   // プレーンテキスト（しおり・目次表示）は不変借用でしか作れないので、可変借用が要る
   // タイトルの lowering より先に済ませる。
-  let plain = hir_inlines_to_plain_text(title, ctx.style, &*state);
-  state.record_heading_title(node.id, plain);
-  let style = title_style(ctx, *level);
+  let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
+  state.record_heading_title(id, plain);
+  let style = title_style(ctx, heading.level);
   // タイトルの lowering はクロージャで遅延させる。`heading.format` が `{title}` を含まない
   // なら一度も呼ばれず、タイトル中の `\footnote` が通し index だけ消費して消える事故を防ぐ。
-  return lower_heading(ctx, *level, &number, || return inline::lower_inlines(ctx, title, style, state), label, key);
+  return lower_heading(
+    ctx,
+    heading.level,
+    &number,
+    || return inline::lower_inlines(ctx, &heading.title, style, state),
+    label,
+    key,
+  );
 }
 
 /// 見出しをレイアウトノードに変換する
