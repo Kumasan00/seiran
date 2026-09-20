@@ -22,8 +22,8 @@ pub(crate) fn collect_image_paths(document: &HirDocument) -> Vec<ProjectPath> {
 fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
   for node in nodes {
     match &node.kind {
-      HirNodeKind::Figure { image_path, .. } => {
-        paths.insert(image_path.clone());
+      HirNodeKind::Figure(figure) => {
+        paths.insert(figure.image_path.clone());
       },
       HirNodeKind::Theorem(theorem) => {
         walk_nodes(&theorem.body, paths);

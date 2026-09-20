@@ -1384,10 +1384,10 @@ mod tests {
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     // Assert — HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
-    let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
+    let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず: {:?}", hir.group.nodes[0].kind);
     };
-    assert_eq!(*image_path, ProjectPath::new("/project/fig/a.png"));
+    assert_eq!(figure.image_path, ProjectPath::new("/project/fig/a.png"));
   }
 
   #[test]
@@ -1400,9 +1400,9 @@ mod tests {
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     // Assert — base_dir を無視して絶対パスのまま保持する
-    let HirNodeKind::Figure { image_path, .. } = &hir.group.nodes[0].kind else {
+    let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず");
     };
-    assert_eq!(*image_path, ProjectPath::new("/elsewhere/a.png"));
+    assert_eq!(figure.image_path, ProjectPath::new("/elsewhere/a.png"));
   }
 }

@@ -80,8 +80,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
           }
         }
       },
-      HirNodeKind::Figure { caption, .. } => {
-        if let Some(caption) = caption {
+      HirNodeKind::Figure(figure) => {
+        if let Some(caption) = &figure.caption {
           walk_inlines(caption, here, out);
         }
       },
@@ -387,8 +387,8 @@ fn assert_unresolved(nodes: &[HirNode]) {
           assert_unresolved_inlines(caption);
         }
       },
-      HirNodeKind::Figure { caption, .. } => {
-        if let Some(caption) = caption {
+      HirNodeKind::Figure(figure) => {
+        if let Some(caption) = &figure.caption {
           assert_unresolved_inlines(caption);
         }
       },

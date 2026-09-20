@@ -124,10 +124,10 @@ impl Checker<'_> {
         self.require_declared_label(node.id, label.as_deref(), "Heading");
         self.inlines(title);
       },
-      HirNodeKind::Figure { caption, label, .. } => {
+      HirNodeKind::Figure(figure) => {
         self.require_counter(node.id, "Figure");
-        self.require_declared_label(node.id, label.as_deref(), "Figure");
-        if let Some(inlines) = caption {
+        self.require_declared_label(node.id, figure.label.as_deref(), "Figure");
+        if let Some(inlines) = &figure.caption {
           self.inlines(inlines);
         }
       },
@@ -390,9 +390,9 @@ impl Walker<'_> {
           self.number_and_declare(CounterKind::Counter(CounterName::Equation), node.id, label.as_deref(), node.id);
         }
       },
-      HirNodeKind::Figure { caption, label, .. } => {
-        self.number_and_declare(CounterKind::Counter(CounterName::Figure), node.id, label.as_deref(), node.id);
-        if let Some(inlines) = caption {
+      HirNodeKind::Figure(figure) => {
+        self.number_and_declare(CounterKind::Counter(CounterName::Figure), node.id, figure.label.as_deref(), node.id);
+        if let Some(inlines) = &figure.caption {
           self.inlines(inlines);
         }
       },
