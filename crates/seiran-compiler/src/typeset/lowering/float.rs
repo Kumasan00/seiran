@@ -123,17 +123,17 @@ pub(super) struct FloatCaption<'a> {
 /// 対象外にする。`derive(Copy)` はそのために付けてある）。
 pub(super) fn lower_numbered_float(
   ctx: &LoweringContext<'_>,
-  node: NodeId,
+  id: NodeId,
   caption: FloatCaption<'_>,
   spec: &FloatSpec,
   state: &mut LoweringState<'_>,
   build_body: impl FnOnce(&mut LoweringState<'_>) -> LayoutNode,
 ) -> Vec<LayoutNode> {
-  let Some(counter_value) = state.counter_value(node) else {
-    unreachable!("図表は必ず採番される（analyze の Figure / Table 分岐が counters へ登録している）: {node:?}")
+  let Some(counter_value) = state.counter_value(id) else {
+    unreachable!("図表は必ず採番される（analyze の Figure / Table 分岐が counters へ登録している）: {id:?}")
   };
   let number = counter::format_counter_value(ctx.style, counter_value);
-  let label = state.declared_label(node);
+  let label = state.declared_label(id);
 
   let body = build_body(state);
   let caption_nodes = caption
