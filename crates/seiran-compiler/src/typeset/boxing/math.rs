@@ -1,4 +1,8 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
+//!
+//! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
+//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の拡大）
+//! だけを行う。HIR の数式語彙（`document::MathEnvKind`）はここまで届かない（#674）。
 
 use crate::{
   length::Length,

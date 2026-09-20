@@ -26,7 +26,8 @@ impl Align {
   ///
   /// [`Align::Left`] は 0、[`Align::Center`] は中央、[`Align::Right`] は右端に寄せる。
   /// 内容が利用可能幅を超える場合は 0 にクランプし、左端より左へはみ出さない。
-  /// 段落行・画像・罫線・表のいずれもこの 1 関数で揃えオフセットを算出する。
+  /// 段落行・画像・罫線・表・数式セルのいずれもこの 1 関数で揃えオフセットを算出する
+  /// （組版内の揃えの型はこの `Align` 1 つ。#674）。
   #[must_use]
   pub(crate) fn offset(self, available: Length, content_width: Length) -> Length {
     return match self {
