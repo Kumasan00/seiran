@@ -376,6 +376,22 @@ mod tests {
   }
 
   #[test]
+  fn head_rejects_a_command_other_than_row() {
+    // `\head` の中は共通の本体走査を通るので、許可外コマンドは \row と同じ診断になる
+    let arena = Bump::new();
+    let source = "\\begin{table}\\head{\\bold{x}}\\row{a}\\end{table}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    assert!(
+      matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, ref expected, .. })
+        if name == "bold" && expected == "\\head の中の \\row"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
   fn table_captures_label() {
     // Arrange
     let source = r"\begin{table}[label=tab:a]\row{A}\end{table}\begin{table}\row{B}\end{table}";

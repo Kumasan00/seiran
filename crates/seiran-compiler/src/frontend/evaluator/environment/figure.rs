@@ -26,6 +26,21 @@ const DPI: OptKey<u32> = opt_args::rounded_int("dpi");
 /// `\image[downsample=...]`（per-image ダウンサンプリング）
 const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 
+/// `figure` 環境の本体に書けるコマンド
+#[derive(Debug, Clone, Copy)]
+enum FigureCommand {
+  /// `\image[...]{path}` — 図の実体
+  Image,
+  /// `\caption{...}` — 図のキャプション
+  Caption,
+}
+
+/// `figure` 環境の本体で許可するコマンドと種別
+const FIGURE_COMMANDS: &[(&str, FigureCommand)] = &[
+  ("image", FigureCommand::Image),
+  ("caption", FigureCommand::Caption),
+];
+
 /// `figure` 環境を評価する
 ///
 /// # Errors
@@ -49,11 +64,11 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for cmd_view in
-      body_scan::strict_command_calls(source, body, "figure", &["image", "caption"], "\\image と \\caption")?
+    for (command, cmd_view) in
+      body_scan::strict_command_calls(source, body.children, "figure", FIGURE_COMMANDS, "\\image と \\caption")?
     {
-      match cmd_view.name() {
-        "image" => {
+      match command {
+        FigureCommand::Image => {
           if image_path.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
@@ -68,7 +83,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           dpi = extracted.dpi;
           downsample = extracted.downsample;
         },
-        "caption" => {
+        FigureCommand::Caption => {
           if caption.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
@@ -81,7 +96,6 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           }
           caption = Some(extract_caption(&cmd_view, ctx)?);
         },
-        _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
     }
   }

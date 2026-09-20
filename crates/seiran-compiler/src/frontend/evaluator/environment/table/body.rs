@@ -14,7 +14,6 @@ use crate::{
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::{
-      SyntaxKind,
       green::GreenElement,
       token::TokenKind,
       view::{CommandView, EnvironmentView},
@@ -25,6 +24,24 @@ use crate::{
 
 /// `\row[rule_above]`（行の上に罫線を引く）
 const RULE_ABOVE: OptKey<bool> = opt_args::boolean("rule_above");
+
+/// `table` 環境の本体に書けるコマンド
+#[derive(Debug, Clone, Copy)]
+enum TableCommand {
+  /// `\head{\row{...}}` — ヘッダ行
+  Head,
+  /// `\row[...]{...}` — 本体行
+  Row,
+  /// `\caption{...}` — 表のキャプション
+  Caption,
+}
+
+/// `table` 環境の本体で許可するコマンドと種別
+const TABLE_COMMANDS: &[(&str, TableCommand)] = &[
+  ("head", TableCommand::Head),
+  ("row", TableCommand::Row),
+  ("caption", TableCommand::Caption),
+];
 
 /// 本体走査で収集した行・キャプション情報
 pub(super) struct TableBody {
@@ -48,15 +65,11 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for cmd_view in body_scan::strict_command_calls(
-      source,
-      body,
-      "table",
-      &["head", "row", "caption"],
-      "\\head と \\row と \\caption",
-    )? {
-      match cmd_view.name() {
-        "head" => {
+    for (command, cmd_view) in
+      body_scan::strict_command_calls(source, body.children, "table", TABLE_COMMANDS, "\\head と \\row と \\caption")?
+    {
+      match command {
+        TableCommand::Head => {
           if !head.is_empty() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
@@ -66,11 +79,11 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           }
           head = extract_head(&cmd_view, ctx)?;
         },
-        "row" => {
+        TableCommand::Row => {
           let span: miette::SourceSpan = cmd_view.span().into();
           rows.push((extract_row(&cmd_view, ctx, IndexPolicy::Allow)?, span));
         },
-        "caption" => {
+        TableCommand::Caption => {
           if caption.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
@@ -83,7 +96,6 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           }
           caption = Some(extract_caption(&cmd_view, ctx)?);
         },
-        _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
     }
   }
@@ -109,46 +121,11 @@ fn extract_head(
 
   let source = view.source();
   let mut rows = Vec::new();
-  for child in arg.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        TokenKind::Whitespace
-        | TokenKind::Newline
-        | TokenKind::ParagraphBreak
-        | TokenKind::Comment
-        | TokenKind::LBrace
-        | TokenKind::RBrace => {},
-        _ => {
-          return Err(EvalError::UnexpectedContentInEnvironment {
-            env: "table".to_string(),
-            expected: "\\head の中の \\row".to_string(),
-            span: token.span.into(),
-          });
-        },
-      },
-      GreenElement::Node(node) => {
-        if node.kind == SyntaxKind::CommandCall {
-          let row_view = CommandView::new(node, source);
-          if row_view.name() == "row" {
-            let span: miette::SourceSpan = row_view.span().into();
-            rows.push((extract_row(&row_view, ctx, IndexPolicy::Reject)?, span));
-          } else {
-            return Err(EvalError::UnexpectedCommandInEnvironment {
-              env: "table".to_string(),
-              name: row_view.name().to_string(),
-              expected: "\\head の中の \\row".to_string(),
-              span: node.span.into(),
-            });
-          }
-        } else {
-          return Err(EvalError::UnexpectedContentInEnvironment {
-            env: "table".to_string(),
-            expected: "\\head の中の \\row".to_string(),
-            span: node.span.into(),
-          });
-        }
-      },
-    }
+  for ((), row_view) in
+    body_scan::strict_command_calls(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
+  {
+    let span: miette::SourceSpan = row_view.span().into();
+    rows.push((extract_row(&row_view, ctx, IndexPolicy::Reject)?, span));
   }
   if rows.is_empty() {
     return Err(EvalError::MissingCommandArgument {
