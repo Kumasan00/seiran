@@ -31,7 +31,9 @@
 //!   [`continuous_footnote_numbering_runs_through_pages`]（共通ヘルパ [`footnote_numbers_per_page`]
 //!   経由）・[`index_entries_follow_the_page_the_content_lands_on`]・
 //!   [`footnote_links_follow_the_page_the_line_lands_on`]・
-//!   [`long_footnote_splits_across_pages_without_overlapping_body`]
+//!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
+//!   [`figure_images_resolve_to_expected_display_sizes`]（`figure.sei` は golden 対象外なので、
+//!   画像の確定描画寸法はここで固定する）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -59,7 +61,7 @@ use std::{
 use crate::{
   compiler::{
     dump,
-    test_support::{self, TestProject},
+    test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
   },
   length::Length,
   style::FootnoteNumbering,
@@ -321,6 +323,56 @@ fn index_group_heading_never_ends_a_column() {
   }
   assert!(heading_count >= 5, "区分見出しが十分に出ているはず: {heading_count} 個");
   assert!(laid_out.pages.len() >= 2, "索引が複数ページへ分かれるはず: {} ページ", laid_out.pages.len());
+}
+
+/// `figure.sei` の画像の確定描画寸法を文書順に集める。
+fn figure_image_sizes() -> Vec<(Length, Length)> {
+  let project = TestProject::builder().sources(&["tests/text/figure.sei"]).assets(FIGURE_IMAGE_ASSETS).build();
+  let layout = project.layout().expect("figure.sei は組版できるはず");
+  return layout
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Image { width, height, .. } => return Some((*width, *height)),
+      _ => return None,
+    })
+    .collect();
+}
+
+#[test]
+fn figure_images_resolve_to_expected_display_sizes() {
+  // Arrange — `figure.sei` は画像のサイズ指定 4 パターン（両指定 / width のみ / height のみ /
+  // 両省略）と SVG を通す。`figure.sei` は画像実体への依存で golden の対象外なので、
+  // 寸法の確定はこのテストが固定する（本文幅 = 段幅は 425mm）
+  let expected = [
+    (Length::mm(80.0), Length::mm(60.0)),     // testimage1 1252x830・両指定
+    (Length::mm(80.0), Length::mm(120.0)),    // testimage2 1000x1500・width のみ → 高さは縦横比から
+    (Length::mm(90.0), Length::mm(60.0)),     // testimage4 1200x800・height のみ → 幅は縦横比から
+    (Length::mm(80.0), Length::mm(60.0)),     // testimage3 2348x3128・両指定
+    (Length::mm(425.0), Length::mm(566.667)), // testimage5 756x1008・両省略 → 段幅いっぱい
+    (Length::mm(80.0), Length::mm(48.0)),     // testimage6 SVG 200x120・width のみ
+  ];
+
+  // Act
+  let sizes = figure_image_sizes();
+
+  // Assert
+  assert_eq!(sizes.len(), expected.len(), "画像は 6 枚あるはず: {sizes:?}");
+  for (index, ((width, height), (expected_width, expected_height))) in sizes.iter().zip(expected).enumerate() {
+    assert!(
+      (width.to_mm() - expected_width.to_mm()).abs() < 0.01,
+      "画像 {index} の幅: actual={}mm expected={}mm",
+      width.to_mm(),
+      expected_width.to_mm()
+    );
+    assert!(
+      (height.to_mm() - expected_height.to_mm()).abs() < 0.01,
+      "画像 {index} の高さ: actual={}mm expected={}mm",
+      height.to_mm(),
+      expected_height.to_mm()
+    );
+  }
 }
 
 /// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
