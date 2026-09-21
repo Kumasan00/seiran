@@ -8,7 +8,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::project::{ProjectPath, SourceReadError};
+use crate::project::SourceReadError;
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
@@ -87,13 +87,10 @@ pub(crate) enum TypesetError {
 
   /// 画像の自然寸法が不正です（縦横比を算出できません）。
   #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
-  #[diagnostic(
-    code(typeset::image::invalid_natural_size),
-    help("画像ファイルが破損していないか、または width / height を明示指定してください。")
-  )]
+  #[diagnostic(code(typeset::image::invalid_natural_size), help("画像ファイルが破損していないか確認してください。"))]
   InvalidImageNaturalSize {
     /// 画像ファイルのパス。
-    path: ProjectPath,
+    path: String,
     /// 自然幅（ラスタはピクセル、SVG は pt）。
     width: f32,
     /// 自然高さ（ラスタはピクセル、SVG は pt）。

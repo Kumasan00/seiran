@@ -11,7 +11,11 @@ use crate::{
   length::Length,
   project::{ProjectPath, ProjectSource},
   publication::ImageFormat,
-  typeset::{boxes::Block, error::TypesetError, image::natural_size},
+  typeset::{
+    boxes::Block,
+    error::TypesetError,
+    image::natural_size::{self, NaturalSize},
+  },
 };
 
 /// 描画へ渡す画像 1 件（判定済みの形式 + 生バイト列）。
@@ -26,15 +30,15 @@ pub(crate) struct ImageAsset {
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
 pub(crate) struct ImageResources {
-  /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
-  natural_sizes: HashMap<ProjectPath, (f32, f32)>,
+  /// パス → 検証済みの自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
+  natural_sizes: HashMap<ProjectPath, NaturalSize>,
   /// パス → 判定済みの形式と生バイト列（未デコード）。
   assets: HashMap<ProjectPath, ImageAsset>,
 }
 
 impl ImageResources {
   /// `path` の自然寸法を返す。`load_image_resources` に渡さなかったパスは `None`。
-  fn natural_size(&self, path: &ProjectPath) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
+  fn natural_size(&self, path: &ProjectPath) -> Option<NaturalSize> { return self.natural_sizes.get(path).copied(); }
 
   /// 保持していた画像資源を消費して返す。
   ///
@@ -83,7 +87,7 @@ pub(crate) fn load_image_resources(
 }
 
 /// 画像 1 件を読み込み、自然寸法と描画へ渡す資源を返す。
-fn read_image(source: &dyn ProjectSource, path: &ProjectPath) -> Result<((f32, f32), ImageAsset), TypesetError> {
+fn read_image(source: &dyn ProjectSource, path: &ProjectPath) -> Result<(NaturalSize, ImageAsset), TypesetError> {
   let path_string = path.to_string();
   let file_bytes = source.read_bytes(path).map_err(|source| {
     return TypesetError::ReadImage {
@@ -129,20 +133,13 @@ pub(crate) fn resolve_images(
         target_dpi,
         align,
       } => {
-        let Some((nat_width, nat_height)) = images.natural_size(&path) else {
+        let Some(natural) = images.natural_size(&path) else {
           unreachable!(
             "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
           );
         };
         let (final_width, final_height) =
-          resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), nat_width, nat_height, text_width)
-            .ok_or_else(|| {
-              return TypesetError::InvalidImageNaturalSize {
-                path: path.clone(),
-                width: nat_width,
-                height: nat_height,
-              };
-            })?;
+          resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, text_width);
         return Ok(Block::Image {
           path,
           width: Some(Length::pt(final_width)),
@@ -161,35 +158,15 @@ pub(crate) fn resolve_images(
 
 /// 画像の最終描画寸法を指定値または自然寸法の縦横比から求める。
 ///
-/// 寸法の推論に必要な自然寸法が不正な場合は `None` を返す。
-fn resolve_image_size(
-  width: Option<f32>,
-  height: Option<f32>,
-  nat_width: f32,
-  nat_height: f32,
-  column_width: f32,
-) -> Option<(f32, f32)> {
-  let aspect_ratio = || {
-    if !nat_width.is_finite() || !nat_height.is_finite() || nat_width <= 0.0 || nat_height <= 0.0 {
-      return None;
-    }
-    return Some(nat_height / nat_width);
+/// `natural` は検証済みなので縦横比は必ず有限で、この計算は失敗しない。
+fn resolve_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize, column_width: f32) -> (f32, f32) {
+  let ratio = natural.aspect_ratio();
+  return match (width, height) {
+    (Some(w), Some(h)) => (w, h),
+    (Some(w), None) => (w, w * ratio),
+    (None, Some(h)) => (h / ratio, h),
+    (None, None) => (column_width, column_width * ratio),
   };
-  match (width, height) {
-    (Some(w), Some(h)) => return Some((w, h)),
-    (Some(w), None) => {
-      let ratio = aspect_ratio()?;
-      return Some((w, w * ratio));
-    },
-    (None, Some(h)) => {
-      let ratio = aspect_ratio()?;
-      return Some((h / ratio, h));
-    },
-    (None, None) => {
-      let ratio = aspect_ratio()?;
-      return Some((column_width, column_width * ratio));
-    },
-  }
 }
 
 #[cfg(test)]
@@ -224,9 +201,10 @@ mod tests {
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
     // Assert — 自然寸法（fixture 実寸の 756x1008）とバイト列がそのまま届いているはず
-    let (width, height) = resources
+    let natural = resources
       .natural_size(&ProjectPath::new("/project/testimage5.png"))
       .expect("自然寸法が確定するはず");
+    let (width, height) = (natural.width(), natural.height());
     assert!((width - 756.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
     assert!((height - 1008.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
     let assets = resources.into_assets();
@@ -279,13 +257,12 @@ mod tests {
   #[test]
   fn resolve_image_size_uses_specified_values_when_both_given() {
     // Arrange
-    let column_width = 400.0;
+    let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let resolved = resolve_image_size(Some(80.0), Some(60.0), 800.0, 600.0, column_width);
+    let (w, h) = resolve_image_size(Some(80.0), Some(60.0), natural, 400.0);
 
     // Assert
-    let (w, h) = resolved.expect("両指定なら必ず Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
@@ -293,13 +270,12 @@ mod tests {
   #[test]
   fn resolve_image_size_infers_height_from_aspect_when_only_width_given() {
     // Arrange
-    let column_width = 400.0;
+    let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let resolved = resolve_image_size(Some(80.0), None, 800.0, 600.0, column_width);
+    let (w, h) = resolve_image_size(Some(80.0), None, natural, 400.0);
 
     // Assert
-    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
@@ -307,13 +283,12 @@ mod tests {
   #[test]
   fn resolve_image_size_infers_width_from_aspect_when_only_height_given() {
     // Arrange
-    let column_width = 400.0;
+    let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let resolved = resolve_image_size(None, Some(60.0), 800.0, 600.0, column_width);
+    let (w, h) = resolve_image_size(None, Some(60.0), natural, 400.0);
 
     // Assert
-    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
@@ -321,53 +296,27 @@ mod tests {
   #[test]
   fn resolve_image_size_fits_to_column_when_both_omitted() {
     // Arrange
-    let column_width = 400.0;
+    let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let resolved = resolve_image_size(None, None, 800.0, 600.0, column_width);
+    let (w, h) = resolve_image_size(None, None, natural, 400.0);
 
     // Assert
-    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 400.0).abs() < 1e-4);
     assert!((h - 300.0).abs() < 1e-4);
   }
 
   #[test]
-  fn resolve_image_size_returns_none_when_natural_size_zero_and_inference_needed() {
-    // Arrange
-    let column_width = 400.0;
-
-    // Act
-    let resolved = resolve_image_size(None, None, 0.0, 600.0, column_width);
-
-    // Assert
-    assert!(resolved.is_none());
-  }
-
-  #[test]
   fn resolve_image_size_accepts_fractional_svg_natural_size() {
     // Arrange
-    let column_width = 400.0;
+    let natural = NaturalSize::new(320.5, 180.0).expect("正の有限値");
 
     // Act
-    let resolved = resolve_image_size(Some(160.0), None, 320.5, 180.0, column_width);
+    let (w, h) = resolve_image_size(Some(160.0), None, natural, 400.0);
 
     // Assert
-    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     let expected_height = 160.0 * (180.0f32 / 320.5f32);
     assert!((w - 160.0).abs() < 1e-4);
     assert!((h - expected_height).abs() < 1e-4);
-  }
-
-  #[test]
-  fn resolve_image_size_returns_none_when_natural_size_non_finite() {
-    // Arrange
-    let column_width = 400.0;
-
-    // Act
-    let resolved = resolve_image_size(None, None, f32::NAN, 100.0, column_width);
-
-    // Assert
-    assert!(resolved.is_none());
   }
 }
