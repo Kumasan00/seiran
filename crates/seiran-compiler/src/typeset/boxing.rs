@@ -4,6 +4,10 @@
 //! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Measurer`] と [`LineAccum`] を
 //! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
 //!
+//! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
+//! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
+//! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
+//!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・シェーピング・
 //! break 注入）と `math`（ディスプレイ数式）の 2 つ。`script`（スクリプト分類とフォント種別の解決）と
 //! `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、`break_opportunities`
