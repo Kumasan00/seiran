@@ -33,7 +33,10 @@
 //!   [`footnote_links_follow_the_page_the_line_lands_on`]・
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
 //!   [`figure_images_resolve_to_expected_display_sizes`]（`figure.sei` は golden 対象外なので、
-//!   画像の確定描画寸法はここで固定する）
+//!   画像の確定描画寸法はここで固定する）・
+//!   [`figure_image_without_size_fits_two_column_width_not_text_width`]（2 段組みでサイズ両省略の
+//!   画像が `body_column_width` にフィットすることを固定し、本文パスの呼び出し元が段幅を
+//!   `text_width` と取り違える退行を検出する）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -373,6 +376,48 @@ fn figure_images_resolve_to_expected_display_sizes() {
       expected_height.to_mm()
     );
   }
+}
+
+#[test]
+fn figure_image_without_size_fits_two_column_width_not_text_width() {
+  // Arrange — 2 段組みでは本文の 1 段あたりの幅（`body_column_width`）が単段の `text_width`
+  // （425mm）より狭い。サイズ両省略の画像（testimage5）は段幅いっぱいにフィットするので、
+  // 本文パスの呼び出し元が誤って `text_width` を渡していれば幅は 425mm のままになり検出できる
+  let project = TestProject::builder()
+    .sources(&["tests/text/figure.sei"])
+    .assets(FIGURE_IMAGE_ASSETS)
+    .style(|style| style.columns.count = 2)
+    .build();
+  let layout = project.layout().expect("figure.sei は 2 段組みでも組版できるはず");
+  let sizes: Vec<(Length, Length)> = layout
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Image { width, height, .. } => return Some((*width, *height)),
+      _ => return None,
+    })
+    .collect();
+
+  // Act — 6 枚中サイズ両省略は testimage5（5 番目、index 4）
+  assert_eq!(sizes.len(), 6, "画像は 6 枚あるはず: {sizes:?}");
+  let (width, height) = sizes[4];
+
+  // Assert — 段間 18pt（既定）を引いた 2 段組みの段幅（実測して固定した値）
+  let expected_width = Length::mm(209.325);
+  let expected_height = Length::mm(279.1);
+  assert!(
+    (width.to_mm() - expected_width.to_mm()).abs() < 0.01,
+    "2 段組みの段幅いっぱいにフィットするはず: actual={}mm expected={}mm",
+    width.to_mm(),
+    expected_width.to_mm()
+  );
+  assert!(
+    (height.to_mm() - expected_height.to_mm()).abs() < 0.01,
+    "縦横比から決まる高さ: actual={}mm expected={}mm",
+    height.to_mm(),
+    expected_height.to_mm()
+  );
 }
 
 /// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
