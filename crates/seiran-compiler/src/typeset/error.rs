@@ -1,6 +1,6 @@
 //! 組版パスのエラー型 [`TypesetError`]
 //!
-//! フォント資源の構築・画像資源の読込 / デコード / 寸法確定・ページ単位脚注採番の非収束で起きる失敗を持つ
+//! フォント資源の構築・画像資源の読込 / デコード / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗を持つ
 //! （#350 で `compiler` から移設）。
 //! 画像デコードの失敗は #372 で描画段のエラー（現 `seiran_pdf::PdfRenderError`）の入れ子から自前のバリアントへ移した
 //! （デコードが typeset 段で起きるため、`code` の段も `typeset` に揃う）。
@@ -8,7 +8,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::project::{ProjectPath, SourceReadError};
+use crate::project::SourceReadError;
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
@@ -87,13 +87,10 @@ pub(crate) enum TypesetError {
 
   /// 画像の自然寸法が不正です（縦横比を算出できません）。
   #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
-  #[diagnostic(
-    code(typeset::image::invalid_natural_size),
-    help("画像ファイルが破損していないか、または width / height を明示指定してください。")
-  )]
+  #[diagnostic(code(typeset::image::invalid_natural_size), help("画像ファイルが破損していないか確認してください。"))]
   InvalidImageNaturalSize {
     /// 画像ファイルのパス。
-    path: ProjectPath,
+    path: String,
     /// 自然幅（ラスタはピクセル、SVG は pt）。
     width: f32,
     /// 自然高さ（ラスタはピクセル、SVG は pt）。

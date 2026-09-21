@@ -196,7 +196,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 テストでの固定: 不正状態を構築できないことをコンストラクタのテストで押さえ、内部 helper から直接
 不変条件を破れる場合だけ `#[should_panic(expected = ...)]` で保証メッセージを確認する
-（実例は `typeset::image::resources` の `resolve_images`）。
+（実例は `typeset::image::resources` の `resolve_image_size`）。
 
 ## シグネチャの原則
 

@@ -13,7 +13,7 @@ model: sonnet
 - Cargo workspace 構成。クレート責務とパイプラインは `CLAUDE.md` の
   アーキテクチャ節、詳細は `docs/architecture.md` を必要に応じて参照する。
 - 探索の起点に迷ったら、データフロー（input（`project` / `style` の読込）→ `frontend` →
-  `semantics` → `typeset::compose`（font → 画像パス収集 → 画像読込 → lowering → boxing（計測）→ 画像寸法確定 →
+  `semantics` → `typeset::compose`（font → 画像パス収集 → 画像読込 → lowering → boxing（計測・画像寸法の確定）→
   breaking（行分割・改ページ）→ 前付け・後付け → ページラベル → 走り文 → outline → emit）→
   `seiran-pdf`）のどの段の話かをまず特定する。段はすべて `seiran-compiler` crate 内の
   非公開 module（描画のみ `seiran-pdf`）で、段の呼び出し順序を束ねるのは同 crate の `compiler`

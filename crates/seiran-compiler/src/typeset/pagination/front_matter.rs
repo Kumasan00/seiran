@@ -7,8 +7,9 @@ use tracing::{debug, debug_span};
 
 use crate::typeset::{
   boxes::{Block, Page},
-  boxing::build_blocks,
+  boxing::{BlockBuildInputs, build_blocks},
   breaking::{FootnoteOverflow, break_pages},
+  image::ImageResources,
   lowering::{TitlePageMetadata, lower_title_page},
   pagination::{
     context::{BodyPageFacts, TypesetContext},
@@ -18,7 +19,8 @@ use crate::typeset::{
 
 /// 前付け（タイトルページ・目次）を生成してページ分割する。
 ///
-/// 前付けは常に 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。
+/// 前付けは常に 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。画像ブロックの描画寸法は
+/// 本文と同じく `build_blocks` が確定させるので、前付けに画像が現れても未確定の寸法は作られない。
 /// タイトルページ→目次の順にブロックを組み立て、末尾の強制改ページ（本文との境界用）は
 /// 空ページを作らないよう分割前に取り除く。`title_page` / `toc` がともに無効・目次エントリが
 /// 空なら空ページ列を返す。
@@ -28,6 +30,7 @@ use crate::typeset::{
 pub(super) fn typeset_front_matter(
   ctx: &TypesetContext<'_>,
   facts: &BodyPageFacts,
+  images: &ImageResources,
 ) -> (Vec<Page>, Vec<FootnoteOverflow>) {
   let mut front_blocks: Vec<Block> = Vec::new();
 
@@ -40,14 +43,18 @@ pub(super) fn typeset_front_matter(
     let title_nodes = lower_title_page(&title_metadata, &ctx.style.title_page);
     {
       let _span = debug_span!("build_blocks", region = "title").entered();
-      // タイトルページはハイフネーションしない
       front_blocks.extend(build_blocks(
         title_nodes,
-        ctx.resources,
-        ctx.style.text.font_size,
-        ctx.style.text.line_height_factor,
-        None,
-        ctx.style.text.punctuation_spacing,
+        &BlockBuildInputs {
+          resources: ctx.resources,
+          images,
+          column_width: ctx.geometry.text_width(),
+          default_font_size: ctx.style.text.font_size,
+          line_height_factor: ctx.style.text.line_height_factor,
+          // タイトルページはハイフネーションしない
+          language: None,
+          punctuation_spacing: ctx.style.text.punctuation_spacing,
+        },
       ));
     }
     debug!("タイトルページを生成");

@@ -91,8 +91,8 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
   → typeset::compose   組版: SemanticDocument + 設定 + フォントバイト列 → Publication + 警告 + 画像依存パス
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
                        シェーパー）から出口（typeset::emit: 確定座標 → PaintOp・描画資源の構築）まで
-                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像パス収集 → 画像読込 → lowering →
-                       boxing（計測）→ 画像寸法確定 → breaking（行分割・改ページ）→ 前付け・後付け →
+                       typeset に閉じ、資源の借用期間も外に出さない。内部順序（画像パス収集 → 画像読込 →
+                       lowering → boxing（計測・画像寸法の確定）→ breaking（行分割・改ページ）→ 前付け・後付け →
                        ページラベル → 走り文 → outline → emit）は typeset に閉じる
   → seiran-pdf         render: compiler が確定させた Publication（純データ）を描画するのみ
                        （krilla フォントの構築・画像本体のデコード・フォントサブセット化はここに閉じる）

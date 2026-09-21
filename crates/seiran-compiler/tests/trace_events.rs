@@ -307,7 +307,6 @@ fn debug_reports_each_step_once_under_its_region_span() {
   for message in [
     "意味解析の成果物",
     "本文ブロックを構築",
-    "画像サイズの確定",
     "本文のページを分割",
     "前付けのページを分割",
     "後付けのページを分割",

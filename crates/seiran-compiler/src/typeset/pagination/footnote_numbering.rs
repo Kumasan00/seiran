@@ -20,15 +20,15 @@ const MAX_FOOTNOTE_NUMBERING_PASSES: u32 = 4;
 ///
 /// # Errors
 ///
-/// 本文パスが失敗した場合、または上限回数で収束しない場合にエラーを返す。
+/// 上限回数（`MAX_FOOTNOTE_NUMBERING_PASSES`）までに収束しない場合にエラーを返す。
 pub(super) fn solve_per_page_numbering(
-  body_pass: &impl Fn(Option<&[u32]>) -> Result<BodyLayout, TypesetError>,
+  body_pass: &impl Fn(Option<&[u32]>) -> BodyLayout,
 ) -> Result<BodyLayout, TypesetError> {
   // 1 回目は空マップ＝全脚注が通し番号へフォールバックする（＝ページ割り当てを知るための下見）。
   let mut numbers: Vec<u32> = Vec::new();
   let mut pass: u32 = 1;
   loop {
-    let layout = body_pass(Some(&numbers))?;
+    let layout = body_pass(Some(&numbers));
     let next = per_page_footnote_numbers(&layout.pages);
     if next == numbers {
       debug!(pass_count = pass, "脚注のページ単位採番が収束");
@@ -118,11 +118,11 @@ mod tests {
     let calls = RefCell::new(0u32);
     let body_pass = |_numbers: Option<&[u32]>| {
       *calls.borrow_mut() += 1;
-      return Ok(BodyLayout {
+      return BodyLayout {
         pages: vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[2])],
         headings: Vec::new(),
         overflows: Vec::new(),
-      });
+      };
     };
 
     // Act
@@ -148,11 +148,11 @@ mod tests {
       } else {
         vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[])]
       };
-      return Ok(BodyLayout {
+      return BodyLayout {
         pages,
         headings: Vec::new(),
         overflows: Vec::new(),
-      });
+      };
     };
 
     // Act — 上限回数で打ち切り、最後の不整合なレイアウトを成功として返さない。

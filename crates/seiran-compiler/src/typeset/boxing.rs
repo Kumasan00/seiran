@@ -4,6 +4,10 @@
 //! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Measurer`] と [`LineAccum`] を
 //! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
 //!
+//! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
+//! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
+//! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
+//!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・シェーピング・
 //! break 注入）と `math`（ディスプレイ数式）の 2 つ。`script`（スクリプト分類とフォント種別の解決）と
 //! `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、`break_opportunities`
@@ -38,6 +42,7 @@ use crate::{
       max_font_size_in_items,
     },
     font::{FontSystem, UnicodeBuffer},
+    image::{ImageResources, resolve_image_size},
     lowering::{AtomNode, InlineNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
 };
@@ -65,61 +70,65 @@ fn fold_newlines(text: &str) -> Cow<'_, str> {
   return Cow::Borrowed(text);
 }
 
+/// [`build_blocks`] の入力 — 文書全体で固定の資源と設定。
+///
+/// 本文・前付けの 2 つの呼び出し側が同じ形で渡す。段幅と画像資源は、画像ブロックの描画寸法を
+/// この段で確定するために要る（未確定の寸法を下流へ流さない）。
+pub(super) struct BlockBuildInputs<'a> {
+  /// シェイプ・メトリクス取得の窓口
+  pub(super) resources: &'a FontSystem<'a>,
+  /// 読込済みの画像資源（自然寸法の参照元）
+  pub(super) images: &'a ImageResources,
+  /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅）
+  pub(super) column_width: Length,
+  /// 既定のフォントサイズ
+  pub(super) default_font_size: Length,
+  /// 行送りに掛ける倍率
+  pub(super) line_height_factor: f32,
+  /// 欧文ハイフネーションの言語（`None` ならハイフネーションなし）
+  pub(super) language: Option<&'a str>,
+  /// JIS X 4051 のアキ調整（和文約物アキ・和欧文間アキ）を行うか
+  pub(super) punctuation_spacing: bool,
+}
+
 /// レイアウトノードを計測済みのブロック列に変換する
 #[must_use]
-pub(super) fn build_blocks(
-  layout_nodes: Vec<LayoutNode>,
-  resources: &FontSystem<'_>,
-  default_font_size: Length,
-  line_height_factor: f32,
-  language: Option<&str>,
-  punctuation_spacing: bool,
-) -> Vec<Block> {
-  let hyphenation = hyphenation::resolve(language);
-  let mut measurer = Measurer::new(resources, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
+pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInputs<'_>) -> Vec<Block> {
+  let hyphenation = hyphenation::resolve(inputs.language);
+  let mut builder = BlockBuilder {
+    measurer: Measurer::new(
+      inputs.resources,
+      inputs.default_font_size,
+      inputs.line_height_factor,
+      hyphenation,
+      inputs.punctuation_spacing,
+    ),
+    images: inputs.images,
+    column_width: inputs.column_width,
+  };
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
-  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
-  measurer.flush_paragraph(&mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
-  debug!(block_count = blocks.len(), "ブロックを構築");
+  builder.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
+  builder.flush_paragraph(&mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
+  let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
+  debug!(block_count = blocks.len(), image_count, "ブロックを構築");
   return blocks;
 }
 
-/// シェーピング・計測の状態を束ねた内部ワーカー
-pub(super) struct Measurer<'a> {
-  /// シェイプ・メトリクス取得の窓口
-  resources: &'a FontSystem<'a>,
-  /// シェイピングに再利用する `harfrust` バッファ
-  buffer: UnicodeBuffer,
-  /// 既定のフォントサイズ
-  default_font_size: Length,
-  /// 行送りに掛ける倍率
-  line_height_factor: f32,
-  /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
-  hyphenation: Option<Lang>,
-  /// JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を行うか
-  punctuation_spacing: bool,
+/// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
+///
+/// [`Measurer`] は生成コンテンツ（目次・索引・走り文）も使うので画像資源を持たない。縦リストの
+/// 走査だけが画像を作るので、その 2 つをここで束ねる。
+struct BlockBuilder<'a> {
+  /// シェーピング・計測の状態
+  measurer: Measurer<'a>,
+  /// 読込済みの画像資源（自然寸法の参照元）
+  images: &'a ImageResources,
+  /// この縦リストを組む段の幅
+  column_width: Length,
 }
 
-impl<'a> Measurer<'a> {
-  /// シェーパーとメトリクスから新しい `Measurer` を生成する
-  pub(super) fn new(
-    resources: &'a FontSystem<'a>,
-    default_font_size: Length,
-    line_height_factor: f32,
-    hyphenation: Option<Lang>,
-    punctuation_spacing: bool,
-  ) -> Self {
-    return Measurer {
-      resources,
-      buffer: UnicodeBuffer::new(),
-      default_font_size,
-      line_height_factor,
-      hyphenation,
-      punctuation_spacing,
-    };
-  }
-
+impl BlockBuilder<'_> {
   /// 縦リストを走査してブロック列を構築する（`VBox` に再帰適用）
   fn walk_vertical(
     &mut self,
@@ -133,7 +142,7 @@ impl<'a> Measurer<'a> {
     for node in nodes {
       match node {
         LayoutNode::Inline(inline) => {
-          self.collect_inline(inline, paragraph);
+          self.measurer.collect_inline(inline, paragraph);
         },
         LayoutNode::Anchor(mark) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
@@ -170,6 +179,9 @@ impl<'a> Measurer<'a> {
           target_dpi,
         } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
+          // 描画寸法はここで確定する。省略された辺を自然寸法と段幅から埋めるので、
+          // `Block::Image` より下流に未確定の寸法は流れない
+          let (width, height) = resolve_image_size(self.images, &path, width, height, self.column_width);
           blocks.push(Block::Image {
             path,
             width,
@@ -181,13 +193,13 @@ impl<'a> Measurer<'a> {
         LayoutNode::Table(table) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Table {
-            table: self.build_table_box(table),
+            table: self.measurer.build_table_box(table),
             align,
           });
         },
         LayoutNode::MathBlock(block) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          let math_block = self.build_math_block(block);
+          let math_block = self.measurer.build_math_block(block);
           blocks.push(math_block);
         },
         LayoutNode::PageBreak => {
@@ -219,14 +231,50 @@ impl<'a> Measurer<'a> {
       return;
     }
     let items = std::mem::take(paragraph);
-    let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+    let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
     blocks.push(Block::Paragraph {
       items,
-      leading: dominant_font_size * self.line_height_factor,
+      leading: dominant_font_size * self.measurer.line_height_factor,
       indent,
       right_indent,
       align,
     });
+  }
+}
+
+/// シェーピング・計測の状態を束ねた内部ワーカー
+pub(super) struct Measurer<'a> {
+  /// シェイプ・メトリクス取得の窓口
+  resources: &'a FontSystem<'a>,
+  /// シェイピングに再利用する `harfrust` バッファ
+  buffer: UnicodeBuffer,
+  /// 既定のフォントサイズ
+  default_font_size: Length,
+  /// 行送りに掛ける倍率
+  line_height_factor: f32,
+  /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
+  hyphenation: Option<Lang>,
+  /// JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を行うか
+  punctuation_spacing: bool,
+}
+
+impl<'a> Measurer<'a> {
+  /// シェーパーとメトリクスから新しい `Measurer` を生成する
+  pub(super) fn new(
+    resources: &'a FontSystem<'a>,
+    default_font_size: Length,
+    line_height_factor: f32,
+    hyphenation: Option<Lang>,
+    punctuation_spacing: bool,
+  ) -> Self {
+    return Measurer {
+      resources,
+      buffer: UnicodeBuffer::new(),
+      default_font_size,
+      line_height_factor,
+      hyphenation,
+      punctuation_spacing,
+    };
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する

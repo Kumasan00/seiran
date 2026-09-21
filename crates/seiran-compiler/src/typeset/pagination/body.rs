@@ -1,4 +1,4 @@
-//! 本文パス（lowering → 計測 → 画像サイズ確定 → 改行・改ページ）と、その反復制御
+//! 本文パス（lowering → 計測（画像寸法の確定を含む）→ 改行・改ページ）と、その反復制御
 
 use tracing::debug_span;
 
@@ -7,10 +7,10 @@ use crate::{
   style::FootnoteNumbering,
   typeset::{
     boxes::Page,
-    boxing::build_blocks,
+    boxing::{BlockBuildInputs, build_blocks},
     breaking::{FootnoteOverflow, break_pages},
     error::TypesetError,
-    image::{ImageResources, resolve_images},
+    image::ImageResources,
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
     pagination::{context::TypesetContext, footnote_numbering},
   },
@@ -35,8 +35,8 @@ pub(super) struct BodyLayout {
 ///
 /// # Errors
 ///
-/// 画像解決、脚注採番のいずれかに失敗した場合にエラーを返す（ラベル・`\ref` 解決は
-/// `semantics::analyze` が上流で既に完了しているため、ここでは失敗しない）。
+/// 脚注採番に失敗した場合にエラーを返す（画像の描画寸法は `build_blocks` が確定させ、
+/// ラベル・`\ref` 解決は `semantics::analyze` が上流で既に完了しているため、ここでは失敗しない）。
 pub(super) fn typeset_body(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
@@ -44,25 +44,21 @@ pub(super) fn typeset_body(
 ) -> Result<BodyLayout, TypesetError> {
   let run_pass = |footnote_numbers: Option<&[u32]>| return run_body_pass(ctx, document, images, footnote_numbers);
   return match ctx.style.footnote.numbering {
-    FootnoteNumbering::Continuous => run_pass(None),
+    FootnoteNumbering::Continuous => Ok(run_pass(None)),
     FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
   };
 }
 
 /// 本文パスを 1 回通す。
 ///
-/// lowering → `build_blocks` → 画像サイズ確定 → `break_pages` を 1 呼び出しに畳む。
+/// lowering → `build_blocks`（画像寸法の確定を含む）→ `break_pages` を 1 呼び出しに畳む。
 /// `footnote_numbers` は出現順で引く脚注番号の上書き列（ページ単位採番の不動点反復で複数回呼ばれる）。
-///
-/// # Errors
-///
-/// 画像サイズの確定に失敗した場合にエラーを返す（lowering は確定済みの事実を読むだけなので失敗しない）。
 fn run_body_pass(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
   images: &ImageResources,
   footnote_numbers: Option<&[u32]>,
-) -> Result<BodyLayout, TypesetError> {
+) -> BodyLayout {
   let mut lowering_ctx =
     LoweringContext::new(ctx.style).with_image_defaults(ctx.config.image.max_dpi, ctx.config.image.downsample);
   if let Some(numbers) = footnote_numbers {
@@ -74,15 +70,17 @@ fn run_body_pass(
     let _span = debug_span!("build_blocks", region = "body").entered();
     build_blocks(
       body_layout_nodes,
-      ctx.resources,
-      ctx.style.text.font_size,
-      ctx.style.text.line_height_factor,
-      ctx.config.document.language.as_deref(),
-      ctx.style.text.punctuation_spacing,
+      &BlockBuildInputs {
+        resources: ctx.resources,
+        images,
+        column_width: ctx.geometry.body_column_width(),
+        default_font_size: ctx.style.text.font_size,
+        line_height_factor: ctx.style.text.line_height_factor,
+        language: ctx.config.document.language.as_deref(),
+        punctuation_spacing: ctx.style.text.punctuation_spacing,
+      },
     )
   };
-
-  let body_blocks = resolve_images(body_blocks, ctx.geometry.body_column_width().to_pt(), images)?;
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "body").entered();
@@ -94,9 +92,9 @@ fn run_body_pass(
       ctx.style.text.alignment,
     )
   };
-  return Ok(BodyLayout {
+  return BodyLayout {
     pages,
     headings,
     overflows,
-  });
+  };
 }

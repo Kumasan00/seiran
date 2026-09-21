@@ -366,9 +366,6 @@ pub(crate) fn break_pages(
         target_dpi,
         align,
       } => {
-        // 縦組版は確定済みサイズを前提とする（resolve_images prepass 後）。未解決は 0 扱い
-        let width = width.unwrap_or(Length::ZERO);
-        let height = height.unwrap_or(Length::ZERO);
         let penalty = composer.take_pending_penalty();
         composer.consider_break(height, penalty, geom);
         let col_off = composer.column_offset();
@@ -464,8 +461,7 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
 fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) -> (bool, Length) {
   match block {
     Block::Image { height, .. } => {
-      let h = height.unwrap_or(Length::ZERO);
-      return (y + h > geom.page_limit, y + h);
+      return (y + *height > geom.page_limit, y + *height);
     },
     Block::Math { body, .. } => {
       let h = body.height + body.depth;
@@ -2183,8 +2179,8 @@ mod tests {
     let blocks = vec![
       Block::Image {
         path: ProjectPath::new("x.png"),
-        width: Some(pt(20.0)),
-        height: Some(pt(15.0)),
+        width: pt(20.0),
+        height: pt(15.0),
         target_dpi: None,
         align: Align::Left,
       },
@@ -2211,8 +2207,8 @@ mod tests {
       paragraph_of_lines(3),
       Block::Image {
         path: ProjectPath::new("x.png"),
-        width: Some(pt(20.0)),
-        height: Some(pt(30.0)),
+        width: pt(20.0),
+        height: pt(30.0),
         target_dpi: None,
         align: Align::Left,
       },
@@ -2994,8 +2990,8 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![Block::Image {
       path: ProjectPath::new("x.png"),
-      width: Some(pt(20.0)),
-      height: Some(pt(15.0)),
+      width: pt(20.0),
+      height: pt(15.0),
       target_dpi: None,
       align: Align::Center,
     }];
@@ -3016,8 +3012,8 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![Block::Image {
       path: ProjectPath::new("x.png"),
-      width: Some(pt(20.0)),
-      height: Some(pt(15.0)),
+      width: pt(20.0),
+      height: pt(15.0),
       target_dpi: None,
       align: Align::Right,
     }];
@@ -3639,8 +3635,8 @@ mod tests {
   fn fixed_block(height: f32) -> Block {
     return Block::Image {
       path: ProjectPath::new("fixture.png"),
-      width: Some(Length::pt(10.0)),
-      height: Some(pt(height)),
+      width: Length::pt(10.0),
+      height: pt(height),
       target_dpi: None,
       align: Align::Left,
     };

@@ -551,7 +551,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 警告は配置が成功したときにしか存在しない）。`compiler` が名指しする警告型は 1 つだけで、`typeset` の内部が
 フォント資源の構築と配置の 2 段に分かれていることは知らない。
 
-段順序（画像パス収集 → 画像読込・自然寸法取得 → lowering → boxing（計測）→ 画像サイズ確定 → 改ページ →
+段順序（画像パス収集 → 画像読込・自然寸法の検証 → lowering → boxing（計測・画像寸法の確定）→ 改ページ →
 前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
@@ -563,7 +563,8 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 - `typeset` は `seiran-pdf` に**依存しない**（依存の向きは `seiran-pdf → seiran-compiler`）。組版に必要な
   画像の自然寸法は自前で求め、描画に使う画像本体のデコードは render 側に残す（同じバイト列を 2 度読むが、
   krilla を compiler へ持ち込まないための線引き）。組版時の自然寸法と描画時の解釈が一致することは、
-  workspace で `image` / `usvg` の版を 1 つに pin することで担保する
+  workspace で `image` / `usvg` の版を 1 つに pin することで担保する。自然寸法は読込時に「有限かつ正」を
+  検証した型で持ち、表示寸法の確定（省略された辺の推論）は boxing の中で失敗しない計算として済む
 - `typeset` は `publication`（backend 非依存の確定表現）に**依存してよい**（旧原則「`typeset` は描画表現を
   知らない」（#461）へ戻さない）。krilla の隔離は `seiran-pdf` の crate 境界と `Publication` の純データ性が
   担っており、`typeset` が確定表現を名指しすることでは破れない。依存の向きは `typeset → publication` の
@@ -831,7 +832,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 #### `boxing`
 
 (a) `build_blocks`: `LayoutNode` → `Vec<Block>`。縦リストの再帰的平坦化、テキストのスクリプト分割・
-シェーピング・計測、break 注入、`Atom` 化を行う。`boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間
+シェーピング・計測、break 注入、画像ブロックの描画寸法の確定、`Atom` 化を行う。`boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間
 アキ・約物境界のアキの規則を持ち、本文テキストのスクリプト分割・シェーピング・break 注入（分割点ごとの
 glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
 の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。
