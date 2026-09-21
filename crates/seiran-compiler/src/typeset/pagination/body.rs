@@ -1,4 +1,4 @@
-//! 本文パス（lowering → 計測 → 改行・改ページ）と、その反復制御
+//! 本文パス（lowering → 計測（画像寸法の確定を含む）→ 改行・改ページ）と、その反復制御
 
 use tracing::debug_span;
 
@@ -44,32 +44,21 @@ pub(super) fn typeset_body(
 ) -> Result<BodyLayout, TypesetError> {
   let run_pass = |footnote_numbers: Option<&[u32]>| return run_body_pass(ctx, document, images, footnote_numbers);
   return match ctx.style.footnote.numbering {
-    FootnoteNumbering::Continuous => run_pass(None),
+    FootnoteNumbering::Continuous => Ok(run_pass(None)),
     FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
   };
 }
 
 /// 本文パスを 1 回通す。
 ///
-/// lowering → `build_blocks` → `break_pages` を 1 呼び出しに畳む。
+/// lowering → `build_blocks`（画像寸法の確定を含む）→ `break_pages` を 1 呼び出しに畳む。
 /// `footnote_numbers` は出現順で引く脚注番号の上書き列（ページ単位採番の不動点反復で複数回呼ばれる）。
-///
-/// # Errors
-///
-/// この経路に失敗要因は無い（画像の描画寸法は `build_blocks` が確定させ、lowering は確定済みの
-/// 事実を読むだけ）。`Result` は `footnote_numbering::solve_per_page_numbering` が要求する
-/// コールバック型に合わせて残している。
-#[expect(
-  clippy::unnecessary_wraps,
-  reason = "ページ単位採番の不動点反復 footnote_numbering::solve_per_page_numbering が \
-            Result を返すコールバックを取るため、この経路の Result は呼び出し側の型の都合で残る"
-)]
 fn run_body_pass(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
   images: &ImageResources,
   footnote_numbers: Option<&[u32]>,
-) -> Result<BodyLayout, TypesetError> {
+) -> BodyLayout {
   let mut lowering_ctx =
     LoweringContext::new(ctx.style).with_image_defaults(ctx.config.image.max_dpi, ctx.config.image.downsample);
   if let Some(numbers) = footnote_numbers {
@@ -103,9 +92,9 @@ fn run_body_pass(
       ctx.style.text.alignment,
     )
   };
-  return Ok(BodyLayout {
+  return BodyLayout {
     pages,
     headings,
     overflows,
-  });
+  };
 }
