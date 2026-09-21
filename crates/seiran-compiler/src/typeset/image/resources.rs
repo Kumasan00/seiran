@@ -1,4 +1,4 @@
-//! 画像の読込・自然寸法解決とブロック列への表示寸法確定
+//! 画像の読込・自然寸法解決と 1 画像ぶんの表示寸法確定
 //!
 //! （旧 `pdf_gen::image` → `compiler::image_resources`。epic #276 / #279 / #350 で移設）
 
@@ -12,7 +12,6 @@ use crate::{
   project::{ProjectPath, ProjectSource},
   publication::ImageFormat,
   typeset::{
-    boxes::Block,
     error::TypesetError,
     image::natural_size::{self, NaturalSize},
   },
@@ -59,7 +58,8 @@ impl ImageResources {
 ///
 /// # Errors
 ///
-/// 画像の読み込み・デコードに失敗した場合に [`TypesetError`] をパス昇順で返す。
+/// 画像の読み込み・デコードに失敗した場合と、デコーダが報告した自然寸法が有限かつ正でない場合に
+/// [`TypesetError`] をパス昇順で返す。
 pub(crate) fn load_image_resources(
   source: &dyn ProjectSource,
   paths: &[ProjectPath],
@@ -108,58 +108,37 @@ fn read_image(source: &dyn ProjectSource, path: &ProjectPath) -> Result<(Natural
   ));
 }
 
-/// ブロック列中の画像サイズを自然寸法と本文幅から確定する。
+/// 画像 1 件の描画寸法を、ソース指定値と自然寸法・段幅から確定する。
 ///
-/// # Errors
-///
-/// 自然寸法が不正で縦横比を算出できない場合に [`TypesetError`] を返す。
+/// `width` / `height` はソースが指定した値（省略された辺は `None`）。省略された辺を
+/// 自然寸法の縦横比から、両方省略なら段幅いっぱいから埋める。自然寸法は
+/// [`load_image_resources`] が検証済みなので、この操作は失敗しない。
 ///
 /// # Panics
 ///
-/// `blocks` の画像が `images` に無い場合に落ちる — 両者は同じ HIR の `Figure` から作られるので、
-/// 食い違うのは収集ロジックの不具合だけ（ユーザー入力では起こせない）。
-pub(crate) fn resolve_images(
-  blocks: Vec<Block>,
-  text_width: f32,
+/// `path` が `images` に無い場合に落ちる — 描画対象の画像と読み込む画像は同じ HIR の `Figure` から
+/// 作られるので、食い違うのは収集ロジックの不具合だけ（ユーザー入力では起こせない）。
+pub(in crate::typeset) fn resolve_image_size(
   images: &ImageResources,
-) -> Result<Vec<Block>, TypesetError> {
-  let resolved = blocks
-    .into_iter()
-    .map(|block| match block {
-      Block::Image {
-        path,
-        width,
-        height,
-        target_dpi,
-        align,
-      } => {
-        let Some(natural) = images.natural_size(&path) else {
-          unreachable!(
-            "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
-          );
-        };
-        let (final_width, final_height) =
-          resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, text_width);
-        return Ok(Block::Image {
-          path,
-          width: Some(Length::pt(final_width)),
-          height: Some(Length::pt(final_height)),
-          target_dpi,
-          align,
-        });
-      },
-      other => return Ok(other),
-    })
-    .collect::<Result<Vec<Block>, TypesetError>>()?;
-  let image_count = resolved.iter().filter(|block| matches!(block, Block::Image { .. })).count();
-  debug!(image_count, "画像サイズを確定");
-  return Ok(resolved);
+  path: &ProjectPath,
+  width: Option<Length>,
+  height: Option<Length>,
+  column_width: Length,
+) -> (Length, Length) {
+  let Some(natural) = images.natural_size(path) else {
+    unreachable!(
+      "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
+    );
+  };
+  let (width, height) =
+    fit_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, column_width.to_pt());
+  return (Length::pt(width), Length::pt(height));
 }
 
-/// 画像の最終描画寸法を指定値または自然寸法の縦横比から求める。
+/// 指定値と縦横比から最終描画寸法（pt）を求める。
 ///
 /// `natural` は検証済みなので縦横比は必ず有限で、この計算は失敗しない。
-fn resolve_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize, column_width: f32) -> (f32, f32) {
+fn fit_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize, column_width: f32) -> (f32, f32) {
   let ratio = natural.aspect_ratio();
   return match (width, height) {
     (Some(w), Some(h)) => (w, h),
@@ -174,10 +153,7 @@ mod tests {
   use std::path::Path;
 
   use super::*;
-  use crate::{
-    project::{MemoryProjectSource, SourceReadError},
-    typeset::boxes::Align,
-  };
+  use crate::project::{MemoryProjectSource, SourceReadError};
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
@@ -238,29 +214,23 @@ mod tests {
 
   #[test]
   #[should_panic(expected = "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め")]
-  fn resolve_images_panics_when_block_path_is_absent_from_resources() {
-    // Arrange — `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を、内部 helper へ
-    // 直接渡して作る（本来は同じ HIR 走査で作られるので外部入力では起こせない）
+  fn resolve_image_size_panics_when_path_is_absent_from_resources() {
+    // Arrange — `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を作る
+    // （本来は同じ HIR 走査で作られるので外部入力では起こせない）
     let resources = load_image_resources(&MemoryProjectSource::new(), &[]).expect("画像 0 件なら成功するはず");
-    let blocks = vec![Block::Image {
-      path: ProjectPath::new("/project/never-loaded.png"),
-      width: None,
-      height: None,
-      target_dpi: None,
-      align: Align::Left,
-    }];
 
     // Act — 不変条件の破れなので診断ではなく panic する
-    let _ = resolve_images(blocks, 400.0, &resources);
+    let _ =
+      resolve_image_size(&resources, &ProjectPath::new("/project/never-loaded.png"), None, None, Length::pt(400.0));
   }
 
   #[test]
-  fn resolve_image_size_uses_specified_values_when_both_given() {
+  fn fit_image_size_uses_specified_values_when_both_given() {
     // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let (w, h) = resolve_image_size(Some(80.0), Some(60.0), natural, 400.0);
+    let (w, h) = fit_image_size(Some(80.0), Some(60.0), natural, 400.0);
 
     // Assert
     assert!((w - 80.0).abs() < 1e-4);
@@ -268,12 +238,12 @@ mod tests {
   }
 
   #[test]
-  fn resolve_image_size_infers_height_from_aspect_when_only_width_given() {
+  fn fit_image_size_infers_height_from_aspect_when_only_width_given() {
     // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let (w, h) = resolve_image_size(Some(80.0), None, natural, 400.0);
+    let (w, h) = fit_image_size(Some(80.0), None, natural, 400.0);
 
     // Assert
     assert!((w - 80.0).abs() < 1e-4);
@@ -281,12 +251,12 @@ mod tests {
   }
 
   #[test]
-  fn resolve_image_size_infers_width_from_aspect_when_only_height_given() {
+  fn fit_image_size_infers_width_from_aspect_when_only_height_given() {
     // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let (w, h) = resolve_image_size(None, Some(60.0), natural, 400.0);
+    let (w, h) = fit_image_size(None, Some(60.0), natural, 400.0);
 
     // Assert
     assert!((w - 80.0).abs() < 1e-4);
@@ -294,12 +264,12 @@ mod tests {
   }
 
   #[test]
-  fn resolve_image_size_fits_to_column_when_both_omitted() {
+  fn fit_image_size_fits_to_column_when_both_omitted() {
     // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
 
     // Act
-    let (w, h) = resolve_image_size(None, None, natural, 400.0);
+    let (w, h) = fit_image_size(None, None, natural, 400.0);
 
     // Assert
     assert!((w - 400.0).abs() < 1e-4);
@@ -307,12 +277,12 @@ mod tests {
   }
 
   #[test]
-  fn resolve_image_size_accepts_fractional_svg_natural_size() {
+  fn fit_image_size_accepts_fractional_svg_natural_size() {
     // Arrange
     let natural = NaturalSize::new(320.5, 180.0).expect("正の有限値");
 
     // Act
-    let (w, h) = resolve_image_size(Some(160.0), None, natural, 400.0);
+    let (w, h) = fit_image_size(Some(160.0), None, natural, 400.0);
 
     // Assert
     let expected_height = 160.0 * (180.0f32 / 320.5f32);

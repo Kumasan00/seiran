@@ -55,8 +55,8 @@ pub(crate) struct LaidOutDocument {
 ///
 /// # Errors
 ///
-/// 画像解決、脚注採番のいずれかに失敗した場合にエラーを返す（ラベル・`\ref`・引用の解決は
-/// 上流の `semantics::analyze` が既に完了している）。
+/// 脚注採番に失敗した場合にエラーを返す（画像の描画寸法は `build_blocks` が確定させ、
+/// ラベル・`\ref`・引用の解決は上流の `semantics::analyze` が既に完了している）。
 pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
@@ -74,7 +74,7 @@ pub(super) fn paginate(
   let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);
 
   // phase 3: 前付けを組版する
-  let (front_pages, front_overflows) = front_matter::typeset_front_matter(ctx, &facts);
+  let (front_pages, front_overflows) = front_matter::typeset_front_matter(ctx, &facts, &images);
 
   // phase 4: 後付けを組版する
   let (back_pages, back_overflows) = back_matter::typeset_back_matter(ctx, &mut body_pages, &facts);

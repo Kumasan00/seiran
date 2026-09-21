@@ -64,17 +64,16 @@ pub(in crate::typeset) enum Block {
   },
   /// 画像（PNG / JPEG / SVG）
   ///
-  /// `width` / `height` はソース指定値（pt）。未指定（`None`）の場合は
-  /// `seiran_compiler::compiler::image_resources::resolve_images` prepass が自然寸法と本文幅から確定する
-  /// （旧 `pdf_gen::resolve_images`、epic #276 / #279 で compiler 側へ移設）。
-  /// 縦組版（`break_pages`）は確定済みであることを前提とし、未解決は 0 として扱う。
+  /// `width` / `height` は確定済みの描画寸法。ソースで省略された辺は
+  /// [`crate::typeset::image::resolve_image_size`] が自然寸法と段幅から埋めたうえで
+  /// `typeset::boxing` がこの variant を作るので、未確定の状態はこの型に存在しない。
   Image {
     /// 画像ファイルへのパス
     path: ProjectPath,
-    /// 描画幅。prepass 後は常に `Some`
-    width: Option<Length>,
-    /// 描画高さ。prepass 後は常に `Some`
-    height: Option<Length>,
+    /// 確定した描画幅
+    width: Length,
+    /// 確定した描画高さ
+    height: Length,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
     /// 本文幅の中での画像の水平揃え（既定は左揃え）
