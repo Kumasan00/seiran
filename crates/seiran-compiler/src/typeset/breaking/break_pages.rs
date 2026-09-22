@@ -74,8 +74,6 @@ struct PageComposer {
   column_gap: Length,
   /// 現在の段インデックス（0 = 左段）。`column_offset` の算出に使う
   col: usize,
-  /// 直前の [`Block::Penalty`] から引き継いだ分割コスト（次の内容ブロックの改ページ判定で参照）
-  pending_penalty: i32,
   /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）。[`PageComposer::end_region`] が
   /// `draft` へ渡し、`draft` がページ下部の確定座標へ変換する。
   region_footnotes: Vec<PendingFootnote>,
@@ -116,7 +114,6 @@ impl PageComposer {
       column_width,
       column_gap: geom.column_gap,
       col: 0,
-      pending_penalty: 0,
       region_footnotes: Vec::new(),
       region_footnote_height: Length::ZERO,
       carry: Vec::new(),
@@ -202,19 +199,6 @@ impl PageComposer {
       }
     }
     self.carry = rest;
-  }
-
-  /// 直前の [`Block::Penalty`] から引き継いだ分割コストを読み取ってリセットする。
-  fn take_pending_penalty(&mut self) -> i32 { return std::mem::replace(&mut self.pending_penalty, 0); }
-
-  /// ブロック配置前の改ページ判定（分割コスト参照の一本化ポイント）。
-  fn consider_break(&mut self, next_height: Length, penalty: i32, geom: &PageGeometry) {
-    if penalty == PENALTY_FORBID_BREAK {
-      return;
-    }
-    if self.y + next_height > self.region_limit(geom) {
-      self.advance_region(geom);
-    }
   }
 
   /// 現在のリージョン（段 / ページ）の先頭にいて、これ以上前へは送れない（回避不能）かを返す。
@@ -349,15 +333,15 @@ pub(crate) fn break_pages(
         composer.draft.pass_stretch(stretch);
         composer.y += natural;
       },
-      // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限は次の内容ブロックへ持ち越す。
-      // 分割禁止（+∞）は keep-with-next のグループ連結マーカーで、ゲート（keep_group_*）が処理済み
-      // なのでここでは配置上の副作用を持たない（pending にも積まない）。
-      Block::Penalty { value } => {
-        if value == PENALTY_FORCE_BREAK {
-          composer.force_new_page(geom);
-        } else if value != PENALTY_FORBID_BREAK {
-          composer.pending_penalty = value;
-        }
+      // 分割コスト。強制改ページ（−∞）は eager に改ページする。分割禁止（+∞）は keep-with-next の
+      // グループ連結マーカーで、ゲート（keep_group_*）が処理済みなのでここでは配置上の副作用を持たない。
+      Block::Penalty { value } => match value {
+        PENALTY_FORCE_BREAK => composer.force_new_page(geom),
+        PENALTY_FORBID_BREAK => {},
+        _ => unreachable!(
+          "有限値の penalty はどの構築元も作らない（boxing の PageBreak / KeepWithNext と pagination::index は \
+           強制改ページか分割禁止だけを積む）"
+        ),
       },
       Block::Image {
         path,
@@ -366,8 +350,9 @@ pub(crate) fn break_pages(
         target_dpi,
         align,
       } => {
-        let penalty = composer.take_pending_penalty();
-        composer.consider_break(height, penalty, geom);
+        if composer.y + height > composer.region_limit(geom) {
+          composer.advance_region(geom);
+        }
         let col_off = composer.column_offset();
         let y = composer.y;
         composer.draft.place_block(
