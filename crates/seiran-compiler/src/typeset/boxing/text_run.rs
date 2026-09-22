@@ -126,66 +126,13 @@ impl Measurer<'_> {
     let mut seg_byte_start = 0usize;
 
     for break_point in breaks {
-      match break_point.kind {
-        BreakKind::Glue => {
-          let glyph_index = if break_point.byte == run.text().len() {
-            run.glyphs().len()
-          } else {
-            let Some(index) = find_glyph_starting_at(run.glyphs(), break_point.byte) else {
-              continue; // クラスタ途中: 分割を抑制
-            };
-            index
-          };
-          if glyph_index <= seg_glyph_start {
-            continue;
-          }
-          let space = &run.glyphs()[glyph_index - 1];
-          let is_single_space = space.range.start == break_point.byte - 1
-            && space.range.end == break_point.byte
-            && run.text().as_bytes()[break_point.byte - 1] == b' ';
-          if !is_single_space {
-            continue; // スペースが前後とクラスタを成している場合は分割を抑制
-          }
-          push_sub_run(&run, seg_glyph_start..glyph_index - 1, seg_byte_start..break_point.byte - 1, out);
-          out.push(space_glue(run.advance_of(glyph_index - 1)).into_item());
-          seg_glyph_start = glyph_index;
-          seg_byte_start = break_point.byte;
-        },
-        BreakKind::Penalty => {
-          let Some(glyph_index) = find_glyph_starting_at(run.glyphs(), break_point.byte) else {
-            continue; // クラスタ途中: 分割を抑制
-          };
-          if glyph_index <= seg_glyph_start {
-            continue;
-          }
-          push_sub_run(&run, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
-          if is_japanese {
-            out.push(boxing::cjk_stretch_glue(run.font_size()).into_item());
-          } else {
-            out.push(HItem::Penalty { value: 0 });
-          }
-          seg_glyph_start = glyph_index;
-          seg_byte_start = break_point.byte;
-        },
-        BreakKind::Hyphen => {
-          let Some(hyphen) = hyphen else {
-            continue;
-          };
-          let Some(glyph_index) = find_glyph_starting_at(run.glyphs(), break_point.byte) else {
-            continue; // クラスタ途中: 分割を抑制
-          };
-          if glyph_index <= seg_glyph_start {
-            continue;
-          }
-          // スペースを抜かずグリフ境界で割り、語断片の間に Discretionary を挿む（語は続く）
-          push_sub_run(&run, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
-          out.push(HItem::Discretionary {
-            hyphen: hyphen.clone(),
-          });
-          seg_glyph_start = glyph_index;
-          seg_byte_start = break_point.byte;
-        },
-      }
+      let Some(cut) = plan_cut(&run, break_point, seg_glyph_start, is_japanese, hyphen) else {
+        continue;
+      };
+      push_sub_run(&run, seg_glyph_start..cut.keep_glyph_end, seg_byte_start..cut.keep_byte_end, out);
+      out.push(cut.item);
+      seg_glyph_start = cut.resume_glyph;
+      seg_byte_start = cut.resume_byte;
     }
     push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), out);
   }
@@ -360,7 +307,224 @@ fn punct_box(run: &ShapedRun, glyph_index: usize, normalize: yakumono::Normalize
   return run.replaced_glyph_box(glyph, src.range.clone(), width);
 }
 
+/// 1 つの分割点で run を切る計画
+///
+/// 3 種の分割点（Glue / Penalty / Hyphen）の違いは「どこまでを直前の部分 run に含めるか」と
+/// 「何を挟むか」だけなので、その差だけをこの値にして、部分 run を積む後処理は 1 箇所にする。
+struct Cut {
+  /// 直前の部分 run に含める最後のグリフの次の index
+  keep_glyph_end: usize,
+  /// 直前の部分 run に含める最後のバイトの次の位置
+  keep_byte_end: usize,
+  /// 切断後に再開するグリフ index
+  resume_glyph: usize,
+  /// 切断後に再開するバイト位置
+  resume_byte: usize,
+  /// 切断点に挟むアイテム
+  item: HItem,
+}
+
+/// 分割点 1 つを切断の計画に翻訳する（切れないときは `None`）
+///
+/// `glyph_start` は直前の切断で更新したカーソル。クラスタ途中・カーソル以前・スペースが前後と
+/// クラスタを成している場合は分割を抑制する。
+fn plan_cut(
+  run: &ShapedRun,
+  point: BreakPoint,
+  glyph_start: usize,
+  is_japanese: bool,
+  hyphen: Option<&HBox>,
+) -> Option<Cut> {
+  let text = run.text();
+  return match point.kind {
+    BreakKind::Glue => {
+      let glyph_index = if point.byte == text.len() {
+        run.glyphs().len()
+      } else {
+        find_glyph_starting_at(run.glyphs(), point.byte)?
+      };
+      if glyph_index <= glyph_start {
+        return None;
+      }
+      let space = &run.glyphs()[glyph_index - 1];
+      let is_single_space =
+        space.range.start == point.byte - 1 && space.range.end == point.byte && text.as_bytes()[point.byte - 1] == b' ';
+      if !is_single_space {
+        return None; // スペースが前後とクラスタを成している場合は分割を抑制
+      }
+      Some(Cut {
+        keep_glyph_end: glyph_index - 1,
+        keep_byte_end: point.byte - 1,
+        resume_glyph: glyph_index,
+        resume_byte: point.byte,
+        item: space_glue(run.advance_of(glyph_index - 1)).into_item(),
+      })
+    },
+    BreakKind::Penalty => {
+      let glyph_index = find_glyph_starting_at(run.glyphs(), point.byte)?;
+      if glyph_index <= glyph_start {
+        return None;
+      }
+      let item = if is_japanese {
+        boxing::cjk_stretch_glue(run.font_size()).into_item()
+      } else {
+        HItem::Penalty { value: 0 }
+      };
+      Some(Cut {
+        keep_glyph_end: glyph_index,
+        keep_byte_end: point.byte,
+        resume_glyph: glyph_index,
+        resume_byte: point.byte,
+        item,
+      })
+    },
+    // スペースを抜かずグリフ境界で割り、語断片の間に Discretionary を挿む（語は続く）
+    BreakKind::Hyphen => {
+      let hyphen = hyphen?;
+      let glyph_index = find_glyph_starting_at(run.glyphs(), point.byte)?;
+      if glyph_index <= glyph_start {
+        return None;
+      }
+      Some(Cut {
+        keep_glyph_end: glyph_index,
+        keep_byte_end: point.byte,
+        resume_glyph: glyph_index,
+        resume_byte: point.byte,
+        item: HItem::Discretionary {
+          hyphen: hyphen.clone(),
+        },
+      })
+    },
+  };
+}
+
 /// `byte` 位置から始まるグリフのインデックスを返す（クラスタ境界の判定）
 fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
   return glyphs.iter().position(|glyph| return glyph.range.start == byte);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{ShapedRun, plan_cut};
+  use crate::{
+    length::Length,
+    project::FontType,
+    publication::{FontMetric, Glyph, GlyphRun},
+    typeset::{
+      boxes::{HBox, HBoxContent, HItem},
+      boxing::break_opportunities::{BreakKind, BreakPoint},
+    },
+  };
+
+  /// upem 1000・1em = 10pt の仮想フォント
+  const METRIC: FontMetric = FontMetric {
+    upem: 1000.0,
+    ascender: 800.0,
+    descender: -200.0,
+  };
+
+  /// 1 文字 = 1 グリフ・送り幅 500 単位（= 0.5em）の run を組む
+  fn ascii_shaped(text: &str) -> ShapedRun {
+    return ShapedRun::measure(
+      GlyphRun {
+        font_size: Length::pt(10.0),
+        text: text.to_string(),
+        glyphs: text
+          .char_indices()
+          .map(|(start, ch)| {
+            return Glyph {
+              gid: 1,
+              range: start..start + ch.len_utf8(),
+              x_advance: 500,
+              y_advance: 0,
+              x_offset: 0,
+              y_offset: 0,
+            };
+          })
+          .collect(),
+        font_type: FontType::Serif,
+        color: None,
+      },
+      METRIC,
+    );
+  }
+
+  /// 幅 0 のダミーハイフン箱
+  fn hyphen_box() -> HBox {
+    return HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: Length::ZERO,
+      height: Length::ZERO,
+      depth: Length::ZERO,
+    };
+  }
+
+  #[test]
+  fn glue_cut_drops_the_space_glyph_and_resumes_after_it() {
+    // Arrange — "ab cd" のスペース直後（byte 3）が Glue 分割点
+    let run = ascii_shaped("ab cd");
+    let point = BreakPoint {
+      byte: 3,
+      kind: BreakKind::Glue,
+    };
+
+    // Act
+    let cut = plan_cut(&run, point, 0, false, None).expect("単独スペースは glue 切断になるはず");
+
+    // Assert
+    assert_eq!((cut.keep_glyph_end, cut.keep_byte_end), (2, 2), "スペースを含まない範囲まで積む");
+    assert_eq!((cut.resume_glyph, cut.resume_byte), (3, 3), "スペースの次から再開する");
+    let HItem::Glue {
+      natural, breakable, ..
+    } = cut.item
+    else {
+      panic!("Glue を期待");
+    };
+    assert_eq!(natural, Length::pt(5.0), "自然幅はスペースグリフの送り幅（0.5em）");
+    assert!(breakable);
+  }
+
+  #[test]
+  fn penalty_cut_uses_cjk_glue_for_japanese_and_penalty_otherwise() {
+    let run = ascii_shaped("abcd");
+    let point = BreakPoint {
+      byte: 2,
+      kind: BreakKind::Penalty,
+    };
+
+    let latin = plan_cut(&run, point, 0, false, None).expect("グリフ境界なので切れるはず");
+    let japanese = plan_cut(&run, point, 0, true, None).expect("グリフ境界なので切れるはず");
+
+    assert!(matches!(latin.item, HItem::Penalty { value: 0 }), "欧文は幅 0 の分割点");
+    assert!(matches!(japanese.item, HItem::Glue { .. }), "和文は字間 glue が分割機会");
+    assert_eq!((latin.keep_glyph_end, latin.resume_glyph), (2, 2), "スペースを抜かないので範囲は連続する");
+  }
+
+  #[test]
+  fn hyphen_cut_is_skipped_without_a_measured_hyphen_box() {
+    let run = ascii_shaped("abcd");
+    let point = BreakPoint {
+      byte: 2,
+      kind: BreakKind::Hyphen,
+    };
+
+    assert!(plan_cut(&run, point, 0, false, None).is_none(), "ハイフン箱が無ければ分割しない");
+    assert!(plan_cut(&run, point, 0, false, Some(&hyphen_box())).is_some(), "あれば Discretionary を作る");
+  }
+
+  #[test]
+  fn cut_is_skipped_inside_a_cluster_and_at_or_before_the_cursor() {
+    let run = ascii_shaped("abcd");
+    let inside_cluster = BreakPoint {
+      byte: 99,
+      kind: BreakKind::Penalty,
+    };
+    let behind_cursor = BreakPoint {
+      byte: 2,
+      kind: BreakKind::Penalty,
+    };
+
+    assert!(plan_cut(&run, inside_cluster, 0, false, None).is_none(), "グリフ先頭でないバイト位置は抑制");
+    assert!(plan_cut(&run, behind_cursor, 2, false, None).is_none(), "カーソル以前の位置は抑制");
+  }
 }
