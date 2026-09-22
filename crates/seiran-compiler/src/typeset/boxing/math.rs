@@ -130,8 +130,8 @@ impl Measurer<'_> {
   /// 区切り括弧グリフを本体グリッドの高さ・深さに合わせて拡大した閉じたボックスにして返す
   fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> HBox {
     let base = self.default_font_size;
-    let natural = self.shape_segment(ch, FontType::Math, base, None);
-    let natural_total = natural.height + natural.depth;
+    let natural = self.shaper.shape_segment(ch, FontType::Math, base, None);
+    let natural_total = natural.height() + natural.depth();
     let pad = base * 0.1;
     let target_total = target_height + target_depth + pad * 2;
     // 拡大のみ（自然サイズより小さくはしない）。小さなグリッドでも括弧は通常字より縮めない
@@ -140,7 +140,7 @@ impl Measurer<'_> {
     } else {
       1.0
     };
-    return self.shape_segment(ch, FontType::Math, base.scale(scale), None);
+    return self.shaper.shape_segment(ch, FontType::Math, base.scale(scale), None).into_hbox();
   }
 
   /// 本体 Atom を左右の区切り括弧で挟んで包み直す

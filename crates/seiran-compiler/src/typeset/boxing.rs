@@ -1,20 +1,22 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
 //! 本文の入口は (a) [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
-//! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Measurer`] と [`LineAccum`] を
+//! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Shaper`] と [`LineAccum`] を
 //! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
 //! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
 //! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //!
-//! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・シェーピング・
-//! break 注入）と `math`（ディスプレイ数式）の 2 つ。`script`（スクリプト分類とフォント種別の解決）と
-//! `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、`break_opportunities`
-//! （分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は `break_opportunities` が使い、
-//! 言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は生成コンテンツが使う 1 行組み立ての
-//! 仕組み（[`LineAccum`]）。この module 本体は縦リストの走査（`LayoutNode` → `Block`・`Atom` 化・表）と、
-//! 和欧文間アキ・約物境界のアキの規則と伸縮率の定数を持つ。
+//! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入）と
+//! `math`（ディスプレイ数式）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
+//! `ShapedRun`（グリフ列 + 確定寸法）を持ち、**箱の寸法を求める処理はここ 1 箇所**。`script`（スクリプト分類と
+//! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
+//! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
+//! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
+//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。この module 本体は縦リストの走査
+//! （`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
+//! 伸縮率の定数を持つ。
 //!
 //! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
 //!
@@ -25,6 +27,7 @@ mod composed_line;
 mod hyphenation;
 mod math;
 mod script;
+mod shaping;
 mod text_run;
 mod yakumono;
 
@@ -32,6 +35,7 @@ use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, row_width};
 use hyphenation::Lang;
+pub(super) use shaping::Shaper;
 use tracing::debug;
 
 use crate::{
@@ -41,7 +45,7 @@ use crate::{
       Align, Block, HBox, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
       max_font_size_in_items,
     },
-    font::{FontSystem, UnicodeBuffer},
+    font::FontSystem,
     image::{ImageResources, resolve_image_size},
     lowering::{AtomNode, InlineNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
@@ -117,8 +121,8 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
 ///
-/// [`Measurer`] は生成コンテンツ（目次・索引・走り文）も使うので画像資源を持たない。縦リストの
-/// 走査だけが画像を作るので、その 2 つをここで束ねる。
+/// [`Measurer`] は段落構築のポリシーだけを足す層で画像資源を持たない。縦リストの走査だけが画像を
+/// 作るので、その 2 つをここで束ねる。
 struct BlockBuilder<'a> {
   /// シェーピング・計測の状態
   measurer: Measurer<'a>,
@@ -242,12 +246,14 @@ impl BlockBuilder<'_> {
   }
 }
 
-/// シェーピング・計測の状態を束ねた内部ワーカー
-pub(super) struct Measurer<'a> {
-  /// シェイプ・メトリクス取得の窓口
-  resources: &'a FontSystem<'a>,
-  /// シェイピングに再利用する `harfrust` バッファ
-  buffer: UnicodeBuffer,
+/// 段落構築のポリシーを持つ計測器
+///
+/// シェーピングそのものは [`Shaper`] が行い、この型が足すのは段落を組むための既定値
+/// （フォントサイズ・行高係数・ハイフネーション・約物アキ）だけ。生成コンテンツ（目次・索引・
+/// 走り文）はこれらを必要としないので `Shaper` だけを構築する。
+struct Measurer<'a> {
+  /// シェーピングの部品（資源と再利用バッファ）
+  shaper: Shaper<'a>,
   /// 既定のフォントサイズ
   default_font_size: Length,
   /// 行送りに掛ける倍率
@@ -259,8 +265,8 @@ pub(super) struct Measurer<'a> {
 }
 
 impl<'a> Measurer<'a> {
-  /// シェーパーとメトリクスから新しい `Measurer` を生成する
-  pub(super) fn new(
+  /// シェーパーとポリシーから新しい `Measurer` を生成する
+  fn new(
     resources: &'a FontSystem<'a>,
     default_font_size: Length,
     line_height_factor: f32,
@@ -268,8 +274,7 @@ impl<'a> Measurer<'a> {
     punctuation_spacing: bool,
   ) -> Self {
     return Measurer {
-      resources,
-      buffer: UnicodeBuffer::new(),
+      shaper: Shaper::new(resources),
       default_font_size,
       line_height_factor,
       hyphenation,
@@ -361,9 +366,9 @@ impl<'a> Measurer<'a> {
     let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
     if is_empty {
       let font_type = script::resolve_font_type(style.font_kind, script::ScriptCategory::Latin);
-      let strut = self.shape_segment("", font_type, style.font_size, None);
-      atom.height = strut.height;
-      atom.depth = strut.depth;
+      let strut = self.shaper.shape_segment("", font_type, style.font_size, None);
+      atom.height = strut.height();
+      atom.depth = strut.depth();
     }
     return atom;
   }
@@ -384,7 +389,7 @@ impl<'a> Measurer<'a> {
     for node in nodes {
       match node {
         AtomNode::Text(text, style) => {
-          for hbox in self.shape_text(&text, style) {
+          for hbox in self.shaper.shape_text(&text, style) {
             let width = hbox.width;
             out.push(PlacedHItem {
               item: hbox,
@@ -407,16 +412,6 @@ impl<'a> Measurer<'a> {
         },
       }
     }
-  }
-
-  /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
-  pub(super) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
-    let text = fold_newlines(text);
-    let segments = script::split_text_by_script(style.font_kind, &text);
-    return segments
-      .into_iter()
-      .map(|segment| return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color))
-      .collect();
   }
 
   /// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する
@@ -453,13 +448,58 @@ impl<'a> Measurer<'a> {
   }
 }
 
+/// 伸縮アキの値（`HItem::Glue` になる前の形）
+///
+/// アキの規則（和欧文間アキ・約物境界・欧文語間スペース・和文字間）は「どれだけのアキか」だけを
+/// この型で返し、水平リストへ積む直前に [`Glue::into_item`] でアイテムにする。規則の側が `HItem` を
+/// 作らないので、観測（TRACE）は値をそのまま読める。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Glue {
+  /// 自然幅
+  natural: Length,
+  /// 伸長能力
+  stretch: Length,
+  /// 収縮能力
+  shrink: Length,
+  /// 行分割の候補点になるか
+  breakable: bool,
+}
+
+impl Glue {
+  /// 水平リストのアイテムにする
+  ///
+  /// `From` 実装にしないのは、`Glue` が `boxing` に閉じた型で `HItem` が `pub(crate)` だから
+  /// （変換は 1 方向・積む直前の 1 用途しかない）。
+  fn into_item(self) -> HItem {
+    return HItem::Glue {
+      natural: self.natural,
+      stretch: self.stretch,
+      shrink: self.shrink,
+      breakable: self.breakable,
+    };
+  }
+}
+
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）
-fn ja_latin_aki(font_size: Length) -> HItem {
-  return HItem::Glue {
+fn ja_latin_aki(font_size: Length) -> Glue {
+  return Glue {
     natural: font_size * JA_LATIN_AKI_RATIO,
     stretch: font_size * JA_LATIN_AKI_STRETCH_RATIO,
     shrink: Length::ZERO,
     breakable: false,
+  };
+}
+
+/// 和文字間の分割可能位置に置く幅 0・微小伸長の glue を作る
+///
+/// 通常文字どうしの境界（[`boundary_glue`]）と、break 注入が ICU の分割点に置く glue
+/// （`text_run`）の両方がここから出る。
+fn cjk_stretch_glue(em: Length) -> Glue {
+  return Glue {
+    natural: Length::ZERO,
+    stretch: em * CJK_STRETCH_RATIO,
+    shrink: Length::ZERO,
+    breakable: true,
   };
 }
 
@@ -479,12 +519,12 @@ fn boundary_glue(
   right: yakumono::YakumonoClass,
   em: Length,
   breakable: bool,
-) -> Option<HItem> {
+) -> Option<Glue> {
   use yakumono::YakumonoClass::Normal;
 
   if left != Normal || right != Normal {
     return yakumono::gap(left, right).map(|aki| {
-      return HItem::Glue {
+      return Glue {
         natural: em * aki.natural_em,
         stretch: Length::ZERO,
         shrink: em * aki.shrink_em,
@@ -493,12 +533,7 @@ fn boundary_glue(
     });
   }
   if breakable {
-    return Some(HItem::Glue {
-      natural: Length::ZERO,
-      stretch: em * CJK_STRETCH_RATIO,
-      shrink: Length::ZERO,
-      breakable: true,
-    });
+    return Some(cjk_stretch_glue(em));
   }
   return None;
 }
@@ -506,65 +541,84 @@ fn boundary_glue(
 #[cfg(test)]
 mod boundary_glue_tests {
   use super::{
-    CJK_STRETCH_RATIO, boundary_glue,
+    CJK_STRETCH_RATIO, Glue, boundary_glue, cjk_stretch_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
   use crate::{length::Length, typeset::boxes::HItem};
 
   const EM: Length = Length::from_sp(10 * 65536);
 
-  /// glue の各フィールドを取り出す（`HItem` は `PartialEq` 非実装のため分解して検証する）
-  fn glue_fields(item: Option<HItem>) -> Option<(Length, Length, Length, bool)> {
-    return match item {
-      Some(HItem::Glue {
-        natural,
-        stretch,
-        shrink,
-        breakable,
-      }) => Some((natural, stretch, shrink, breakable)),
-      Some(other) => panic!("glue を期待したが {other:?} だった"),
-      None => None,
-    };
-  }
-
   #[test]
   fn punctuation_boundary_carries_nibu_natural_and_shrink_no_stretch() {
-    let front = glue_fields(boundary_glue(Normal, Open, EM, true));
+    let front = boundary_glue(Normal, Open, EM, true);
     // 後アキ（終わり括弧・句読点 → 通常文字）
-    let back = glue_fields(boundary_glue(Close, Normal, EM, true));
+    let back = boundary_glue(Close, Normal, EM, true);
 
-    assert_eq!(
-      front,
-      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
-      "前アキ二分・詰め代二分・伸長なし"
-    );
-    assert_eq!(
-      back,
-      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
-      "後アキ二分・詰め代二分・伸長なし"
-    );
+    let nibu = Glue {
+      natural: Length::pt(5.0),
+      stretch: Length::ZERO,
+      shrink: Length::pt(5.0),
+      breakable: true,
+    };
+    assert_eq!(front, Some(nibu), "前アキ二分・詰め代二分・伸長なし");
+    assert_eq!(back, Some(nibu), "後アキ二分・詰め代二分・伸長なし");
   }
 
   #[test]
   fn consecutive_punctuation_has_no_glue() {
-    assert_eq!(glue_fields(boundary_glue(Comma, Close, EM, true)), None);
+    assert_eq!(boundary_glue(Comma, Close, EM, true), None);
   }
 
   #[test]
   fn breakable_flag_propagates_to_punctuation_glue() {
     assert_eq!(
-      glue_fields(boundary_glue(Normal, Open, EM, false)),
-      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), false))
+      boundary_glue(Normal, Open, EM, false),
+      Some(Glue {
+        natural: Length::pt(5.0),
+        stretch: Length::ZERO,
+        shrink: Length::pt(5.0),
+        breakable: false,
+      })
     );
   }
 
   #[test]
   fn normal_pair_gets_cjk_stretch_only_at_break_points() {
-    let at_break = glue_fields(boundary_glue(Normal, Normal, EM, true));
-    let no_break = glue_fields(boundary_glue(Normal, Normal, EM, false));
+    let at_break = boundary_glue(Normal, Normal, EM, true);
+    let no_break = boundary_glue(Normal, Normal, EM, false);
 
-    assert_eq!(at_break, Some((Length::ZERO, EM * CJK_STRETCH_RATIO, Length::ZERO, true)));
+    assert_eq!(
+      at_break,
+      Some(Glue {
+        natural: Length::ZERO,
+        stretch: EM * CJK_STRETCH_RATIO,
+        shrink: Length::ZERO,
+        breakable: true,
+      })
+    );
     assert_eq!(no_break, None);
+  }
+
+  #[test]
+  fn normal_pair_glue_is_the_same_value_as_the_cjk_stretch_rule() {
+    // 和文字間の分割点に置く glue は、text_run の break 注入もこの関数から出す
+    assert_eq!(boundary_glue(Normal, Normal, EM, true), Some(cjk_stretch_glue(EM)));
+  }
+
+  #[test]
+  fn into_item_maps_every_field_to_the_glue_variant() {
+    let glue = cjk_stretch_glue(EM);
+
+    let HItem::Glue {
+      natural,
+      stretch,
+      shrink,
+      breakable,
+    } = glue.into_item()
+    else {
+      panic!("Glue バリアントになるはず");
+    };
+    assert_eq!((natural, stretch, shrink, breakable), (glue.natural, glue.stretch, glue.shrink, glue.breakable));
   }
 }
 
@@ -574,25 +628,17 @@ mod ja_latin_aki_tests {
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::{length::Length, typeset::boxes::HItem};
+  use crate::length::Length;
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]
   fn aki_is_quarter_em_stretch_only_and_non_breakable() {
-    let HItem::Glue {
-      natural,
-      stretch,
-      shrink,
-      breakable,
-    } = ja_latin_aki(EM)
-    else {
-      panic!("Glue を期待");
-    };
+    let aki = ja_latin_aki(EM);
 
-    assert_eq!(natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
-    assert_eq!(stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
-    assert_eq!(shrink, Length::ZERO, "収縮なし");
-    assert!(!breakable, "分割不可（境界に分割点を作らない）");
+    assert_eq!(aki.natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
+    assert_eq!(aki.stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
+    assert_eq!(aki.shrink, Length::ZERO, "収縮なし");
+    assert!(!aki.breakable, "分割不可（境界に分割点を作らない）");
   }
 
   #[test]
