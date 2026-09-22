@@ -42,7 +42,7 @@ pub(super) fn typeset_front_matter(
       date: ctx.config.document.date.clone(),
     };
     let title_nodes = lower_title_page(&title_metadata, &ctx.style.title_page);
-    {
+    if !title_nodes.is_empty() {
       let _span = debug_span!("build_blocks", region = "title").entered();
       front_blocks.extend(build_blocks(
         title_nodes,
@@ -57,8 +57,8 @@ pub(super) fn typeset_front_matter(
           punctuation_spacing: ctx.style.text.punctuation_spacing,
         },
       ));
+      debug!("タイトルページを生成");
     }
-    debug!("タイトルページを生成");
   }
 
   if ctx.style.toc.enabled {
