@@ -842,7 +842,7 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK,
-        Page, PlacedBlock, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+        Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -940,6 +940,11 @@ mod tests {
     };
   }
 
+  /// ページの脚注のうち、[`footnote_item`] に渡した番号の脚注（`index = number - 1`）を返す
+  fn footnote_numbered(page: &Page, number: u32) -> Option<&PlacedFootnote> {
+    return page.footnotes.iter().find(|f| return f.index + 1 == number);
+  }
+
   /// 1 行だけの段落（widow/orphan 補正の対象外）を作る。`items` の末尾に脚注マーカーを追加できる
   fn single_line_paragraph(mut items: Vec<HItem>) -> Block {
     items.insert(0, test_box());
@@ -954,10 +959,7 @@ mod tests {
 
   /// ページの脚注のうち、指定番号の本体行ベースライン列を返す
   fn footnote_baselines(page: &Page, number: u32) -> Vec<Length> {
-    return page
-      .footnotes
-      .iter()
-      .find(|f| return f.number == number)
+    return footnote_numbered(page, number)
       .expect("指定番号の脚注があるはず")
       .blocks
       .iter()
@@ -1364,8 +1366,8 @@ mod tests {
     // Assert
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].footnotes.len(), 2);
-    assert_eq!(pages[0].footnotes[0].number, 1);
-    assert_eq!(pages[0].footnotes[1].number, 2);
+    assert_eq!(pages[0].footnotes[0].index, 0);
+    assert_eq!(pages[0].footnotes[1].index, 1);
     let first = footnote_baselines(&pages[0], 1)[0];
     let second = footnote_baselines(&pages[0], 2)[0];
     assert!(second.to_pt() > first.to_pt(), "脚注 2 は脚注 1 より下");
@@ -1383,7 +1385,7 @@ mod tests {
     return footnote_item(number, items, pt(12.0));
   }
 
-  /// ページ 1 枚の要約: 本文行数と、脚注ごとの (番号, 繰越か, 本体行数)
+  /// ページ 1 枚の要約: 本文行数と、脚注ごとの ([`footnote_item`] に渡した番号, 繰越か, 本体行数)
   type PageFootnoteLayout = (usize, Vec<(u32, bool, usize)>);
 
   /// ページごとの本文行数・脚注構成の要約（分割の連鎖を読みやすく比較する）
@@ -1396,7 +1398,7 @@ mod tests {
           .iter()
           .map(|f| {
             let lines = f.blocks.iter().filter(|b| return matches!(b, PlacedBlock::Line { .. })).count();
-            return (f.number, f.continued, lines);
+            return (f.index + 1, f.continued, lines);
           })
           .collect();
         return (page_baselines(page).len(), footnotes);
@@ -3343,7 +3345,7 @@ mod tests {
 
   /// ページの脚注のうち、指定番号の区切り罫線の x（罫線が無ければ `None`）
   fn footnote_rule_x(page: &Page, number: u32) -> Option<Length> {
-    return page.footnotes.iter().find(|f| return f.number == number)?.blocks.iter().find_map(|b| match b {
+    return footnote_numbered(page, number)?.blocks.iter().find_map(|b| match b {
       PlacedBlock::Rule { x, .. } => return Some(*x),
       _ => return None,
     });
@@ -3351,10 +3353,7 @@ mod tests {
 
   /// ページの脚注のうち、指定番号の本体行の先頭ボックスの x 列
   fn footnote_line_xs(page: &Page, number: u32) -> Vec<Length> {
-    return page
-      .footnotes
-      .iter()
-      .find(|f| return f.number == number)
+    return footnote_numbered(page, number)
       .expect("指定番号の脚注があるはず")
       .blocks
       .iter()

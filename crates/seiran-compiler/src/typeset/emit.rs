@@ -710,7 +710,7 @@ mod tests {
       .block(rule_at(1.0))
       .header_block(rule_at(2.0))
       .footer_block(rule_at(3.0))
-      .footnote(1, vec![rule_at(4.0)])
+      .footnote(vec![rule_at(4.0)])
       .build();
 
     // Act

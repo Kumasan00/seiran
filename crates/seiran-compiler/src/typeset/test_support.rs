@@ -382,10 +382,9 @@ impl PageBuilder {
   }
 
   /// ページ下部の脚注を 1 個追加する（繰越ではない先頭断片）
-  pub(crate) fn footnote(mut self, number: u32, blocks: Vec<PlacedBlock>) -> Self {
+  pub(crate) fn footnote(mut self, blocks: Vec<PlacedBlock>) -> Self {
     let index = u32::try_from(self.page.footnotes.len()).expect("テストの脚注数は u32 に収まるはず");
     self.page.footnotes.push(PlacedFootnote {
-      number,
       index,
       continued: false,
       blocks,

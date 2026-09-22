@@ -35,7 +35,7 @@ pub(crate) fn dump_pages(pages: &[Page]) -> String {
       for footnote in &page.footnotes {
         // 前ページから繰り越された脚注だけ印を付ける
         let continued = if footnote.continued { " continued" } else { "" };
-        dump_section(&mut out, &format!("  footnote number={}{continued}", footnote.number), &footnote.blocks);
+        dump_section(&mut out, &format!("  footnote index={}{continued}", footnote.index), &footnote.blocks);
       }
     }
     for anchor in &page.anchors {

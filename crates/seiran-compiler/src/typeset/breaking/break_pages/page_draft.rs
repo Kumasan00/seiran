@@ -423,7 +423,6 @@ impl PageDraft {
       top = baseline + prev_depth;
       self.entries.push(Entry::Footnote {
         footnote: PlacedFootnote {
-          number: pending.number,
           index: pending.index,
           continued: pending.continued,
           blocks,
