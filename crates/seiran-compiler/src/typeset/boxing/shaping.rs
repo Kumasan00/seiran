@@ -18,7 +18,7 @@ use crate::{
   publication::{FontMetric, Glyph, GlyphRun},
   typeset::{
     boxes::{HBox, HBoxContent},
-    boxing::{self, script},
+    boxing::{self, script, yakumono},
     font::{FontSystem, UnicodeBuffer},
     lowering::TextStyle,
     observe,
@@ -81,9 +81,6 @@ impl ShapedRun {
   /// この run のフォントサイズ
   pub(super) fn font_size(&self) -> Length { return self.run.font_size; }
 
-  /// この run を出したフォントの基本メトリクス
-  pub(super) fn metric(&self) -> FontMetric { return self.metric; }
-
   /// run 全体の幅
   pub(super) fn width(&self) -> Length { return self.width; }
 
@@ -145,15 +142,30 @@ impl ShapedRun {
     });
   }
 
-  /// グリフ 1 つを差し替えた箱を作る（約物の内蔵アキ切り詰め用。幅は呼び出し側が決める）
+  /// グリフ 1 つを内蔵アキぶん墨移動させた箱を作る（約物の内蔵アキ切り詰め用。幅は呼び出し側が決める）
   ///
-  /// 送り幅から内蔵アキを引いた幅は約物の規則（`yakumono`）が決めるのでここでは受け取るだけで、
-  /// 高さ・深さは親 run から写す。
-  pub(super) fn replaced_glyph_box(&self, glyph: Glyph, byte_range: Range<usize>, width: Length) -> HBox {
+  /// 墨を左へ寄せる量（`normalize.shift_em`）をこのフォントの `upem` へスケールして `x_offset` に
+  /// 適用するのはここだけの計算で、送り幅から内蔵アキを引いた幅は約物の規則（`yakumono`）が呼び出し側で
+  /// 決める。高さ・深さは親 run から写す。
+  pub(super) fn replaced_glyph_box(&self, glyph_index: usize, normalize: yakumono::Normalize, width: Length) -> HBox {
+    let src = &self.run.glyphs[glyph_index];
+    #[expect(
+      clippy::cast_possible_truncation,
+      reason = "`shift_em` は約物アキの em 比で、font unit 空間での端数切り捨ては視覚的に無意味な精度"
+    )]
+    let shift_units = (normalize.shift_em * self.metric.upem) as i32;
+    let glyph = Glyph {
+      gid: src.gid,
+      range: 0..(src.range.end - src.range.start),
+      x_advance: src.x_advance,
+      y_advance: src.y_advance,
+      x_offset: src.x_offset - shift_units,
+      y_offset: src.y_offset,
+    };
     return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: self.run.font_size,
-        text: self.run.text[byte_range].to_string(),
+        text: self.run.text[src.range.clone()].to_string(),
         glyphs: vec![glyph],
         font_type: self.run.font_type,
         color: self.run.color,
@@ -267,7 +279,7 @@ mod tests {
     length::Length,
     project::FontType,
     publication::{FontMetric, Glyph, GlyphRun},
-    typeset::boxes::HBoxContent,
+    typeset::{boxes::HBoxContent, boxing::yakumono},
   };
 
   /// upem 1000・ascender 800.5・descender -200.5 の仮想フォント（端数は切り捨てを見るために置く）
@@ -333,5 +345,38 @@ mod tests {
     let shaped = ShapedRun::measure(ascii_run("ab"), METRIC);
 
     assert!(shaped.sub_box(1..1, 1..1).is_none(), "空範囲は箱を作らない");
+  }
+
+  #[test]
+  fn replaced_glyph_box_shifts_x_offset_and_rebases_range() {
+    // Arrange — 2 文字目のグリフへ x_offset 20 を持たせ、shift_em 0.1（upem 1000 で 100 units）で差し替える
+    let mut source = ascii_run("abcd");
+    source.glyphs[1].x_offset = 20;
+    source.glyphs[1].y_offset = 3;
+    let shaped = ShapedRun::measure(source, METRIC);
+    let normalize = yakumono::Normalize {
+      trim_em: 0.25,
+      shift_em: 0.1,
+    };
+
+    // Act
+    let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(3.0));
+
+    // Assert
+    let HBoxContent::Glyphs(replaced) = &hbox.content else {
+      panic!("差し替え結果は Glyphs になるはず");
+    };
+    assert_eq!(replaced.glyphs.len(), 1, "差し替えたグリフ 1 つだけの run になる");
+    let glyph = &replaced.glyphs[0];
+    assert_eq!(glyph.range, 0..1, "range は差し替え元グリフの範囲（1..2）を 0 起点へ振り直す");
+    assert_eq!(
+      glyph.x_offset,
+      20 - 100,
+      "x_offset は shift_em を upem でスケールした量（0.1em = 100 units）だけ左へ寄る"
+    );
+    assert_eq!(glyph.y_offset, 3, "y_offset はそのまま");
+    assert_eq!(hbox.width, Length::pt(3.0), "幅は呼び出し側が渡した値のまま");
+    assert_eq!(hbox.height, shaped.height(), "高さは親 run と同じ");
+    assert_eq!(hbox.depth, shaped.depth(), "深さは親 run と同じ");
   }
 }

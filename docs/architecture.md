@@ -617,8 +617,9 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
 不変条件:
 
 - フォントに触れてよいのは (a) `boxing`（本文の計測・シェーピングと、生成コンテンツ（目次・索引・
-  走り文）が使うシェーピングの部品 `Shaper`）と (e) 描画だけ（`emit` は描画資源へ載せる face 設定・メトリクスを借りるだけで
-  計測しない）。box は (a) で width / height / depth を 1 回計測して保持し、`breaking` はフォントに触れない
+  走り文）が使うシェーピングの部品 `Shaper`）と (e) 描画だけ（`emit` は描画資源へ載せる face 設定・
+  メトリクスを借りるだけで計測しない）。box は (a) で width / height / depth を 1 回計測して保持し、
+  `breaking` はフォントに触れない
 - **段の中では 19 種すべてを検査して違反を `FontType::ALL` 順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
   `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする
@@ -834,8 +835,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 #### `boxing`
 
 (a) `build_blocks`: `LayoutNode` → `Vec<Block>`。縦リストの再帰的平坦化、テキストのスクリプト分割・
-シェーピング・計測、break 注入、画像ブロックの描画寸法の確定、`Atom` 化を行う。`boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間
-アキ・約物境界のアキの規則（`Glue` の値として返し、`HItem` への変換は積む直前）を持ち、本文テキストのスクリプト分割・break 注入（分割点ごとの
+シェーピング・計測、break 注入、画像ブロックの描画寸法の確定、`Atom` 化を行う。
+`boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返し、
+`HItem` への変換は積む直前）を持ち、本文テキストのスクリプト分割・break 注入（分割点ごとの
 glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
 の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。シェーピングそのものは子 `shaping` の
 `Shaper` が行い、**フォントメトリクスから箱の寸法を出すのは `ShapedRun::measure` 1 箇所**（分割した断片・

@@ -1,4 +1,4 @@
-//! テキストラン分割・シェーピング — テキストを計測済みの箱と break 注入済みの水平リストへ変換する
+//! テキストラン分割 — シェーピング済みの run を計測済みの箱と break 注入済みの水平リストへ変換する
 //!
 //! `Measurer` の `impl` をここで続ける（`boxing::math` と同じ形。別 module の impl は
 //! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は本文テキストを
@@ -214,31 +214,17 @@ fn push_sub_run(run: &ShapedRun, glyph_range: Range<usize>, byte_range: Range<us
 
 /// 約物 1 グリフを内蔵アキ抜きの実寸 box にして返す
 fn punct_box(run: &ShapedRun, glyph_index: usize, normalize: yakumono::Normalize) -> HBox {
-  let src = &run.glyphs()[glyph_index];
-  #[expect(
-    clippy::cast_possible_truncation,
-    reason = "`shift_em` は約物アキの em 比で、font unit 空間での端数切り捨ては視覚的に無意味な精度"
-  )]
-  let shift_units = (normalize.shift_em * run.metric().upem) as i32;
-  let glyph = Glyph {
-    gid: src.gid,
-    range: 0..(src.range.end - src.range.start),
-    x_advance: src.x_advance,
-    y_advance: src.y_advance,
-    x_offset: src.x_offset - shift_units,
-    y_offset: src.y_offset,
-  };
   let advance = run.advance_of(glyph_index);
   let width = advance - run.font_size() * normalize.trim_em;
   trace!(
-    char = &run.text()[src.range.clone()],
+    char = &run.text()[run.glyphs()[glyph_index].range.clone()],
     trim_em = %normalize.trim_em,
     shift_em = %normalize.shift_em,
     advance_pt = %advance.to_pt(),
     width_pt = %width.to_pt(),
     "約物の内蔵アキを切り詰め"
   );
-  return run.replaced_glyph_box(glyph, src.range.clone(), width);
+  return run.replaced_glyph_box(glyph_index, normalize, width);
 }
 
 /// 1 つの分割点で run を切る計画
@@ -446,19 +432,66 @@ mod tests {
     assert!(plan_cut(&run, point, 0, false, Some(&hyphen_box())).is_some(), "あれば Discretionary を作る");
   }
 
+  /// 先頭の 2 バイト（"ab"）を 1 グリフのクラスタが占める run（クラスタ途中のバイト境界を作るため）
+  fn clustered_run() -> ShapedRun {
+    return ShapedRun::measure(
+      GlyphRun {
+        font_size: Length::pt(10.0),
+        text: "abcd".to_string(),
+        glyphs: vec![
+          Glyph {
+            gid: 1,
+            range: 0..2,
+            x_advance: 1000,
+            y_advance: 0,
+            x_offset: 0,
+            y_offset: 0,
+          },
+          Glyph {
+            gid: 1,
+            range: 2..3,
+            x_advance: 500,
+            y_advance: 0,
+            x_offset: 0,
+            y_offset: 0,
+          },
+          Glyph {
+            gid: 1,
+            range: 3..4,
+            x_advance: 500,
+            y_advance: 0,
+            x_offset: 0,
+            y_offset: 0,
+          },
+        ],
+        font_type: FontType::Serif,
+        color: None,
+      },
+      METRIC,
+    );
+  }
+
   #[test]
-  fn cut_is_skipped_inside_a_cluster_and_at_or_before_the_cursor() {
-    let run = ascii_shaped("abcd");
+  fn cut_is_skipped_inside_a_cluster() {
+    // Arrange — byte 1 はクラスタ 0..2 の内部で、どのグリフの range.start にも一致しない
+    let run = clustered_run();
     let inside_cluster = BreakPoint {
-      byte: 99,
+      byte: 1,
       kind: BreakKind::Penalty,
     };
+
+    // Act & Assert
+    assert!(plan_cut(&run, inside_cluster, 0, false, None).is_none(), "クラスタ途中のバイト位置は抑制");
+  }
+
+  #[test]
+  fn cut_is_skipped_at_or_before_the_cursor() {
+    let run = ascii_shaped("abcd");
     let behind_cursor = BreakPoint {
       byte: 2,
       kind: BreakKind::Penalty,
     };
 
-    assert!(plan_cut(&run, inside_cluster, 0, false, None).is_none(), "グリフ先頭でないバイト位置は抑制");
     assert!(plan_cut(&run, behind_cursor, 2, false, None).is_none(), "カーソル以前の位置は抑制");
   }
 }
