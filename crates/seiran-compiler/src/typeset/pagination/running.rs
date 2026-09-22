@@ -14,7 +14,7 @@ use crate::{
   style::{RunningContentStyle, RunningTemplate, RunningValues, Style},
   typeset::{
     boxes::{HBox, Page, PlacedBlock},
-    boxing::{LineAccum, Measurer, row_width},
+    boxing::{LineAccum, Shaper, row_width},
     lowering::TextStyle,
     pagination::{context::TypesetContext, page_values::PageLabels},
   },
@@ -87,7 +87,7 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }
-  let mut measurer = Measurer::new(ctx.resources, Length::ZERO, 1.0, None, true);
+  let mut shaper = Shaper::new(ctx.resources);
   for (index, page) in pages.iter_mut().enumerate() {
     if spec.skip_first && index == 0 {
       continue;
@@ -96,10 +96,10 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
       unreachable!("ページ番号ラベル列は paginate がページ列から作るので、長さはページ数と一致する")
     };
     if let Some(slots) = &spec.header {
-      page.header = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
+      page.header = build_region(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
     if let Some(slots) = &spec.footer {
-      page.footer = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
+      page.footer = build_region(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
   }
   debug!(page_count = pages.len(), "ヘッダー・フッターを配置");
@@ -150,7 +150,7 @@ fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bo
 
 /// 1 リージョン分の配置済みブロック（行＋任意の区切り線）を組み立てる
 fn build_region(
-  measurer: &mut Measurer<'_>,
+  shaper: &mut Shaper<'_>,
   slots: &RunningSlots,
   text_width: Length,
   page_label: &str,
@@ -162,9 +162,9 @@ fn build_region(
     font_kind: slots.font_kind,
     color: None,
   };
-  let left = shape_slot(measurer, &slots.left, page_label, pages_label, metadata, style);
-  let center = shape_slot(measurer, &slots.center, page_label, pages_label, metadata, style);
-  let right = shape_slot(measurer, &slots.right, page_label, pages_label, metadata, style);
+  let left = shape_slot(shaper, &slots.left, page_label, pages_label, metadata, style);
+  let center = shape_slot(shaper, &slots.center, page_label, pages_label, metadata, style);
+  let right = shape_slot(shaper, &slots.right, page_label, pages_label, metadata, style);
 
   let center_x = (text_width - row_width(&center)) / 2.0f32;
   let right_x = text_width - row_width(&right);
@@ -205,7 +205,7 @@ fn build_region(
 
 /// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
 fn shape_slot(
-  measurer: &mut Measurer<'_>,
+  shaper: &mut Shaper<'_>,
   template: &RunningTemplate,
   page_label: &str,
   pages_label: &str,
@@ -216,7 +216,7 @@ fn shape_slot(
   if text.trim().is_empty() {
     return Vec::new();
   }
-  return measurer.shape_text(&text, style);
+  return shaper.shape_text(&text, style);
 }
 
 /// テンプレート中のトークンを実値へ置換する

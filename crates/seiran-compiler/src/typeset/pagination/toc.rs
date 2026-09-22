@@ -13,7 +13,7 @@ use crate::{
   style::{Style, TocStyle},
   typeset::{
     boxes::{AnchorId, Block, Line, LineLink, LinkTarget},
-    boxing::{LineAccum, Measurer, row_width},
+    boxing::{LineAccum, Shaper, row_width},
     font::FontSystem,
     lowering::{HeadingRecord, TextStyle},
     pagination::{
@@ -141,11 +141,11 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut measurer = Measurer::new(resources, Length::ZERO, 1.0, None, true);
+  let mut shaper = Shaper::new(resources);
   let mut blocks: Vec<Block> = Vec::new();
 
   blocks.push(Block::ComposedLine {
-    line: compose_left_line(&mut measurer, &spec.title, spec.title_style),
+    line: compose_left_line(&mut shaper, &spec.title, spec.title_style),
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
   if spec.title_bottom_margin.is_positive() {
@@ -155,7 +155,7 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'
   let entry_leading = spec.entry_style.font_size * spec.line_height_factor;
   for entry in entries {
     blocks.push(Block::ComposedLine {
-      line: compose_entry_line(&mut measurer, spec, entry),
+      line: compose_entry_line(&mut shaper, spec, entry),
       leading: entry_leading,
     });
   }
@@ -167,29 +167,29 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'
 }
 
 /// テキストを左端（x=0）からシェーピングして単一行に組む（見出し行用）
-fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) -> Line {
+fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
-  acc.place(measurer.shape_text(text, style), Length::ZERO);
+  acc.place(shaper.shape_text(text, style), Length::ZERO);
   return acc.into_line(Vec::new());
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む
-fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &TocSpec, entry: &TocEntry) -> Line {
+fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
   let label = entry_label(&entry.number, &entry.title_plain);
 
   let mut acc = LineAccum::default();
-  let left_end = acc.place(measurer.shape_text(&label, spec.entry_style), indent);
+  let left_end = acc.place(shaper.shape_text(&label, spec.entry_style), indent);
 
   let mut right_edge = left_end;
   if spec.show_page_numbers {
-    let page_boxes = measurer.shape_text(&entry.page_label, spec.entry_style);
+    let page_boxes = shaper.shape_text(&entry.page_label, spec.entry_style);
     let page_width = row_width(&page_boxes);
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
     // リーダーをページ番号側に寄せて充填する
     if let Some(unit) = &spec.leader {
-      fill_leader(measurer, unit, spec.entry_style, left_end, page_x, &mut acc);
+      fill_leader(shaper, unit, spec.entry_style, left_end, page_x, &mut acc);
     }
     acc.place(page_boxes, page_x);
     right_edge = spec.text_width;
@@ -216,7 +216,7 @@ fn entry_label(number: &str, title_plain: &str) -> String {
 
 /// `from_x` から `to_x` の間をリーダー単位文字列の反復で充填する（ページ番号側に右寄せ）
 fn fill_leader(
-  measurer: &mut Measurer<'_>,
+  shaper: &mut Shaper<'_>,
   unit: &str,
   style: TextStyle,
   from_x: Length,
@@ -227,7 +227,7 @@ fn fill_leader(
   if !available.is_positive() {
     return;
   }
-  let unit_width = row_width(&measurer.shape_text(unit, style));
+  let unit_width = row_width(&shaper.shape_text(unit, style));
   if !unit_width.is_positive() {
     return;
   }
@@ -240,7 +240,7 @@ fn fill_leader(
   if count == 0 {
     return;
   }
-  let leader_boxes = measurer.shape_text(&unit.repeat(count), style);
+  let leader_boxes = shaper.shape_text(&unit.repeat(count), style);
   let leader_width = row_width(&leader_boxes);
   acc.place(leader_boxes, to_x - leader_width);
 }

@@ -1,9 +1,9 @@
 //! テキストラン分割・シェーピング — テキストを計測済みの箱と break 注入済みの水平リストへ変換する
 //!
 //! `Measurer` の `impl` をここで続ける（`boxing::math` と同じ形。別 module の impl は
-//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は本文テキストを
-//! 水平リストへ積む `push_text_items` と、1 セグメントをシェーピングして計測する `shape_segment`
-//! （`boxing` 本体の `shape_text` / `text_atom` と兄弟 `math` が呼ぶ）の 2 つ。
+//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は
+//! `boxing` 本体の `collect_inline` が呼ぶ、本文テキストを水平リストへ積む `push_text_items` 1 つ。
+//! 1 セグメントのシェーピングは兄弟 `shaping` の [`crate::typeset::boxing::shaping::Shaper::shape_segment`] に移った。
 //!
 //! この module が持つのは、run をどこで割り（ICU の分割機会・約物境界・ハイフネーション点）、各分割点に何
 //! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかと、割った断片の切り出し。
@@ -16,11 +16,9 @@ use std::ops::Range;
 use tracing::trace;
 
 use crate::{
-  color::Color,
   document::FontKind,
   length::Length,
-  project::FontType,
-  publication::{Glyph, GlyphRun},
+  publication::Glyph,
   typeset::{
     boxes::{HBox, HItem},
     boxing::{
@@ -31,7 +29,6 @@ use crate::{
       yakumono,
     },
     lowering::TextStyle,
-    observe,
   },
 };
 
@@ -81,7 +78,7 @@ impl Measurer<'_> {
       }
       prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
-      let run = self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
+      let run = self.shaper.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
       if style.font_kind == FontKind::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
         out.push(HItem::Box(run.into_hbox()));
@@ -90,7 +87,7 @@ impl Measurer<'_> {
       // 欧文セグメントかつハイフネーション有効時のみ、語中折り返しの行末に付すハイフン箱を
       // このセグメントのフォントで計測しておく（分割の経路はシェーパーを借りない）
       let hyphen = if !is_japanese && self.hyphenation.is_some() {
-        Some(self.shape_segment("-", segment.font_type, style.font_size, style.color).into_hbox())
+        Some(self.shaper.shape_segment("-", segment.font_type, style.font_size, style.color).into_hbox())
       } else {
         None
       };
@@ -135,67 +132,6 @@ impl Measurer<'_> {
       seg_byte_start = cut.resume_byte;
     }
     push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), out);
-  }
-
-  /// 1 セグメントをシェーピングして計測済みの [`ShapedRun`] を返す
-  pub(super) fn shape_segment(
-    &mut self,
-    text: &str,
-    font_type: FontType,
-    font_size: Length,
-    color: Option<Color>,
-  ) -> ShapedRun {
-    let taken = std::mem::take(&mut self.buffer);
-    let result = self.resources.shape(font_type, taken, text, font_size.to_pt());
-    let glyph_infos = result.glyph_infos();
-    let glyph_positions = result.glyph_positions();
-    let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
-    for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
-      let start = glyph_info.cluster as usize;
-      let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| return next_glyph_info.cluster as usize);
-      // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
-      // 単独の量として取り出す経路は無いので、確定値をそのまま出す
-      trace!(
-        glyph_index = i,
-        glyph_id = glyph_info.glyph_id,
-        range_start = start,
-        range_end = end,
-        x_advance_units = glyph_position.x_advance,
-        y_advance_units = glyph_position.y_advance,
-        x_offset_units = glyph_position.x_offset,
-        y_offset_units = glyph_position.y_offset,
-        "グリフをシェーピング"
-      );
-      glyphs.push(Glyph {
-        gid: glyph_info.glyph_id,
-        range: start..end,
-        x_advance: glyph_position.x_advance,
-        y_advance: glyph_position.y_advance,
-        x_offset: glyph_position.x_offset,
-        y_offset: glyph_position.y_offset,
-      });
-    }
-    self.buffer = result.clear();
-
-    let shaped = ShapedRun::measure(
-      GlyphRun {
-        font_size,
-        text: text.to_string(),
-        glyphs,
-        font_type,
-        color,
-      },
-      self.resources.metric(font_type),
-    );
-    trace!(
-      font_type = ?font_type,
-      font_size_pt = %font_size.to_pt(),
-      glyph_count = shaped.glyphs().len(),
-      width_pt = %shaped.width().to_pt(),
-      text = observe::summarize_text(text),
-      "テキスト run をシェーピング"
-    );
-    return shaped;
   }
 }
 

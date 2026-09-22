@@ -1,7 +1,7 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
 //! 本文の入口は (a) [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
-//! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Measurer`] と [`LineAccum`] を
+//! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Shaper`] と [`LineAccum`] を
 //! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
@@ -35,6 +35,7 @@ use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, row_width};
 use hyphenation::Lang;
+pub(super) use shaping::Shaper;
 use tracing::debug;
 
 use crate::{
@@ -44,7 +45,7 @@ use crate::{
       Align, Block, HBox, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
       max_font_size_in_items,
     },
-    font::{FontSystem, UnicodeBuffer},
+    font::FontSystem,
     image::{ImageResources, resolve_image_size},
     lowering::{AtomNode, InlineNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
@@ -120,8 +121,8 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
 ///
-/// [`Measurer`] は生成コンテンツ（目次・索引・走り文）も使うので画像資源を持たない。縦リストの
-/// 走査だけが画像を作るので、その 2 つをここで束ねる。
+/// [`Measurer`] は本文の縦リスト走査専用で画像資源を持たない（生成コンテンツ—目次・索引・走り文—は
+/// [`Shaper`] だけを構築する）。縦リストの走査だけが画像を作るので、その 2 つをここで束ねる。
 struct BlockBuilder<'a> {
   /// シェーピング・計測の状態
   measurer: Measurer<'a>,
@@ -245,12 +246,14 @@ impl BlockBuilder<'_> {
   }
 }
 
-/// シェーピング・計測の状態を束ねた内部ワーカー
-pub(super) struct Measurer<'a> {
-  /// シェイプ・メトリクス取得の窓口
-  resources: &'a FontSystem<'a>,
-  /// シェイピングに再利用する `harfrust` バッファ
-  buffer: UnicodeBuffer,
+/// 段落構築のポリシーを持つ計測器
+///
+/// シェーピングそのものは [`Shaper`] が行い、この型が足すのは段落を組むための既定値
+/// （フォントサイズ・行高係数・ハイフネーション・約物アキ）だけ。生成コンテンツ（目次・索引・
+/// 走り文）はこれらを必要としないので `Shaper` だけを構築する。
+struct Measurer<'a> {
+  /// シェーピングの部品（資源と再利用バッファ）
+  shaper: Shaper<'a>,
   /// 既定のフォントサイズ
   default_font_size: Length,
   /// 行送りに掛ける倍率
@@ -262,8 +265,8 @@ pub(super) struct Measurer<'a> {
 }
 
 impl<'a> Measurer<'a> {
-  /// シェーパーとメトリクスから新しい `Measurer` を生成する
-  pub(super) fn new(
+  /// シェーパーとポリシーから新しい `Measurer` を生成する
+  fn new(
     resources: &'a FontSystem<'a>,
     default_font_size: Length,
     line_height_factor: f32,
@@ -271,8 +274,7 @@ impl<'a> Measurer<'a> {
     punctuation_spacing: bool,
   ) -> Self {
     return Measurer {
-      resources,
-      buffer: UnicodeBuffer::new(),
+      shaper: Shaper::new(resources),
       default_font_size,
       line_height_factor,
       hyphenation,
@@ -364,7 +366,7 @@ impl<'a> Measurer<'a> {
     let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
     if is_empty {
       let font_type = script::resolve_font_type(style.font_kind, script::ScriptCategory::Latin);
-      let strut = self.shape_segment("", font_type, style.font_size, None);
+      let strut = self.shaper.shape_segment("", font_type, style.font_size, None);
       atom.height = strut.height();
       atom.depth = strut.depth();
     }
@@ -387,7 +389,7 @@ impl<'a> Measurer<'a> {
     for node in nodes {
       match node {
         AtomNode::Text(text, style) => {
-          for hbox in self.shape_text(&text, style) {
+          for hbox in self.shaper.shape_text(&text, style) {
             let width = hbox.width;
             out.push(PlacedHItem {
               item: hbox,
@@ -410,18 +412,6 @@ impl<'a> Measurer<'a> {
         },
       }
     }
-  }
-
-  /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
-  pub(super) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
-    let text = fold_newlines(text);
-    let segments = script::split_text_by_script(style.font_kind, &text);
-    return segments
-      .into_iter()
-      .map(|segment| {
-        return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color).into_hbox();
-      })
-      .collect();
   }
 
   /// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する

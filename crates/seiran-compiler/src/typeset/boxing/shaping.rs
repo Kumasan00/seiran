@@ -9,10 +9,20 @@
 
 use std::ops::Range;
 
+use tracing::trace;
+
 use crate::{
+  color::Color,
   length::Length,
+  project::FontType,
   publication::{FontMetric, Glyph, GlyphRun},
-  typeset::boxes::{HBox, HBoxContent},
+  typeset::{
+    boxes::{HBox, HBoxContent},
+    boxing::{self, script},
+    font::{FontSystem, UnicodeBuffer},
+    lowering::TextStyle,
+    observe,
+  },
 };
 
 /// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
@@ -152,6 +162,101 @@ impl ShapedRun {
       height: self.height,
       depth: self.depth,
     };
+  }
+}
+
+/// シェーピングだけを行う部品（資源と再利用バッファ）
+///
+/// 段落構築のポリシー（既定フォントサイズ・行高係数・ハイフネーション・約物アキ）を持たないので、
+/// 生成コンテンツ（目次・索引・走り文）はこれだけを構築する。ポリシーを持つ計測器は `boxing` の
+/// `Measurer` で、`Shaper` を 1 フィールドとして内側に持つ。
+pub(in crate::typeset) struct Shaper<'a> {
+  /// シェイプ・メトリクス取得の窓口
+  resources: &'a FontSystem<'a>,
+  /// シェイピングに再利用する `harfrust` バッファ
+  buffer: UnicodeBuffer,
+}
+
+impl<'a> Shaper<'a> {
+  /// シェーパーの窓口から新しい `Shaper` を作る
+  pub(in crate::typeset) fn new(resources: &'a FontSystem<'a>) -> Self {
+    return Shaper {
+      resources,
+      buffer: UnicodeBuffer::new(),
+    };
+  }
+
+  /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
+  pub(in crate::typeset) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+    let text = boxing::fold_newlines(text);
+    let segments = script::split_text_by_script(style.font_kind, &text);
+    return segments
+      .into_iter()
+      .map(|segment| {
+        return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color).into_hbox();
+      })
+      .collect();
+  }
+
+  /// 1 セグメントをシェーピングして計測済みの [`ShapedRun`] を返す
+  pub(super) fn shape_segment(
+    &mut self,
+    text: &str,
+    font_type: FontType,
+    font_size: Length,
+    color: Option<Color>,
+  ) -> ShapedRun {
+    let taken = std::mem::take(&mut self.buffer);
+    let result = self.resources.shape(font_type, taken, text, font_size.to_pt());
+    let glyph_infos = result.glyph_infos();
+    let glyph_positions = result.glyph_positions();
+    let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
+    for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
+      let start = glyph_info.cluster as usize;
+      let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| return next_glyph_info.cluster as usize);
+      // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
+      // 単独の量として取り出す経路は無いので、確定値をそのまま出す
+      trace!(
+        glyph_index = i,
+        glyph_id = glyph_info.glyph_id,
+        range_start = start,
+        range_end = end,
+        x_advance_units = glyph_position.x_advance,
+        y_advance_units = glyph_position.y_advance,
+        x_offset_units = glyph_position.x_offset,
+        y_offset_units = glyph_position.y_offset,
+        "グリフをシェーピング"
+      );
+      glyphs.push(Glyph {
+        gid: glyph_info.glyph_id,
+        range: start..end,
+        x_advance: glyph_position.x_advance,
+        y_advance: glyph_position.y_advance,
+        x_offset: glyph_position.x_offset,
+        y_offset: glyph_position.y_offset,
+      });
+    }
+    self.buffer = result.clear();
+
+    let shaped = ShapedRun::measure(
+      GlyphRun {
+        font_size,
+        text: text.to_string(),
+        glyphs,
+        font_type,
+        color,
+      },
+      self.resources.metric(font_type),
+    );
+    trace!(
+      font_type = ?font_type,
+      font_size_pt = %font_size.to_pt(),
+      glyph_count = shaped.glyphs().len(),
+      width_pt = %shaped.width().to_pt(),
+      text = observe::summarize_text(text),
+      "テキスト run をシェーピング"
+    );
+    return shaped;
   }
 }
 

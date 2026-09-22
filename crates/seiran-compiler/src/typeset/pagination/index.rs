@@ -19,7 +19,7 @@ use crate::{
   style::Style,
   typeset::{
     boxes::{AnchorId, AnchorMark, Block, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
-    boxing::{LineAccum, Measurer},
+    boxing::{LineAccum, Shaper},
     font::FontSystem,
     lowering::TextStyle,
     pagination::{
@@ -203,11 +203,11 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], resources: &FontSyst
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut measurer = Measurer::new(resources, Length::ZERO, 1.0, None, true);
+  let mut shaper = Shaper::new(resources);
   let mut blocks: Vec<Block> = Vec::new();
 
   blocks.push(Block::ComposedLine {
-    line: compose_left_line(&mut measurer, &spec.title, spec.title_style),
+    line: compose_left_line(&mut shaper, &spec.title, spec.title_style),
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
   if spec.title_bottom_margin.is_positive() {
@@ -216,14 +216,14 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], resources: &FontSyst
 
   if spec.group_headings {
     for group in assign_index_groups(entries) {
-      push_group_heading(&mut blocks, &mut measurer, spec, group.label);
+      push_group_heading(&mut blocks, &mut shaper, spec, group.label);
       for entry in group.entries {
-        push_entry_line(&mut blocks, &mut measurer, spec, entry);
+        push_entry_line(&mut blocks, &mut shaper, spec, entry);
       }
     }
   } else {
     for entry in entries {
-      push_entry_line(&mut blocks, &mut measurer, spec, entry);
+      push_entry_line(&mut blocks, &mut shaper, spec, entry);
     }
   }
 
@@ -234,9 +234,9 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], resources: &FontSyst
 }
 
 /// 1 エントリ行のブロックを積む
-fn push_entry_line(blocks: &mut Vec<Block>, measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &IndexEntry) {
+fn push_entry_line(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) {
   blocks.push(Block::ComposedLine {
-    line: compose_entry_line(measurer, spec, entry),
+    line: compose_entry_line(shaper, spec, entry),
     leading: spec.entry_style.font_size * spec.line_height_factor,
   });
 }
@@ -246,7 +246,7 @@ fn push_entry_line(blocks: &mut Vec<Block>, measurer: &mut Measurer<'_>, spec: &
 /// 見出し行の直後に [`PENALTY_FORBID_BREAK`] を置くことで、`break_pages` の keep-with-next 機構
 /// （`keep_group_end`）が見出し行と直後の 1 エントリを 1 グループとして扱い、見出しが段末・ページ末に
 /// 孤立しなくなる。間に挟まる下余白（`Block::Glue`）は内容ブロックではないので走査を妨げない。
-fn push_group_heading(blocks: &mut Vec<Block>, measurer: &mut Measurer<'_>, spec: &IndexSpec, label: IndexGroupLabel) {
+fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &IndexSpec, label: IndexGroupLabel) {
   if spec.group_top_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.group_top_margin));
   }
@@ -255,7 +255,7 @@ fn push_group_heading(blocks: &mut Vec<Block>, measurer: &mut Measurer<'_>, spec
     IndexGroupLabel::Other => spec.group_other_label.as_str(),
   };
   blocks.push(Block::ComposedLine {
-    line: compose_left_line(measurer, text, spec.group_style),
+    line: compose_left_line(shaper, text, spec.group_style),
     leading: spec.group_style.font_size * spec.line_height_factor,
   });
   blocks.push(Block::Penalty {
@@ -267,9 +267,9 @@ fn push_group_heading(blocks: &mut Vec<Block>, measurer: &mut Measurer<'_>, spec
 }
 
 /// テキストを左端（x=0）からシェーピングして単一行に組む（タイトル行用）
-fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) -> Line {
+fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
-  acc.place(measurer.shape_text(text, style), Length::ZERO);
+  acc.place(shaper.shape_text(text, style), Length::ZERO);
   return acc.into_line(Vec::new());
 }
 
@@ -325,18 +325,18 @@ fn group_page_items(pages: &[IndexPageRef], collapse: bool) -> Vec<IndexPageItem
 }
 
 /// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組む
-fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &IndexEntry) -> Line {
+fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) -> Line {
   let mut acc = LineAccum::default();
   let mut links = Vec::new();
 
-  let mut x = acc.place(measurer.shape_text(&entry.word, spec.entry_style), Length::ZERO);
+  let mut x = acc.place(shaper.shape_text(&entry.word, spec.entry_style), Length::ZERO);
   if !entry.pages.is_empty() {
     x += spec.entry_gap;
   }
 
   for (i, item) in group_page_items(&entry.pages, spec.collapse_page_ranges).into_iter().enumerate() {
     if i > 0 {
-      x = acc.place(measurer.shape_text(", ", spec.entry_style), x);
+      x = acc.place(shaper.shape_text(", ", spec.entry_style), x);
     }
     let (text, link_key) = match item {
       IndexPageItem::Single(page) => (Cow::Borrowed(page.label.as_str()), page.link_key),
@@ -345,7 +345,7 @@ fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &Ind
       },
     };
     let start_x = x;
-    x = acc.place(measurer.shape_text(&text, spec.page_number_style), x);
+    x = acc.place(shaper.shape_text(&text, spec.page_number_style), x);
     links.push(LineLink {
       target: LinkTarget::Internal(AnchorId::IndexPage(link_key)),
       x0: start_x,
