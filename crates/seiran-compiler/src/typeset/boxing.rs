@@ -458,13 +458,58 @@ impl<'a> Measurer<'a> {
   }
 }
 
+/// 伸縮アキの値（`HItem::Glue` になる前の形）
+///
+/// アキの規則（和欧文間アキ・約物境界・欧文語間スペース・和文字間）は「どれだけのアキか」だけを
+/// この型で返し、水平リストへ積む直前に [`Glue::into_item`] でアイテムにする。規則の側が `HItem` を
+/// 作らないので、観測（TRACE）は値をそのまま読める。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Glue {
+  /// 自然幅
+  natural: Length,
+  /// 伸長能力
+  stretch: Length,
+  /// 収縮能力
+  shrink: Length,
+  /// 行分割の候補点になるか
+  breakable: bool,
+}
+
+impl Glue {
+  /// 水平リストのアイテムにする
+  ///
+  /// `From` 実装にしないのは、`Glue` が `boxing` に閉じた型で `HItem` が `pub(crate)` だから
+  /// （変換は 1 方向・積む直前の 1 用途しかない）。
+  fn into_item(self) -> HItem {
+    return HItem::Glue {
+      natural: self.natural,
+      stretch: self.stretch,
+      shrink: self.shrink,
+      breakable: self.breakable,
+    };
+  }
+}
+
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）
-fn ja_latin_aki(font_size: Length) -> HItem {
-  return HItem::Glue {
+fn ja_latin_aki(font_size: Length) -> Glue {
+  return Glue {
     natural: font_size * JA_LATIN_AKI_RATIO,
     stretch: font_size * JA_LATIN_AKI_STRETCH_RATIO,
     shrink: Length::ZERO,
     breakable: false,
+  };
+}
+
+/// 和文字間の分割可能位置に置く幅 0・微小伸長の glue を作る
+///
+/// 通常文字どうしの境界（[`boundary_glue`]）と、break 注入が ICU の分割点に置く glue
+/// （`text_run`）の両方がここから出る。
+fn cjk_stretch_glue(em: Length) -> Glue {
+  return Glue {
+    natural: Length::ZERO,
+    stretch: em * CJK_STRETCH_RATIO,
+    shrink: Length::ZERO,
+    breakable: true,
   };
 }
 
@@ -484,12 +529,12 @@ fn boundary_glue(
   right: yakumono::YakumonoClass,
   em: Length,
   breakable: bool,
-) -> Option<HItem> {
+) -> Option<Glue> {
   use yakumono::YakumonoClass::Normal;
 
   if left != Normal || right != Normal {
     return yakumono::gap(left, right).map(|aki| {
-      return HItem::Glue {
+      return Glue {
         natural: em * aki.natural_em,
         stretch: Length::ZERO,
         shrink: em * aki.shrink_em,
@@ -498,12 +543,7 @@ fn boundary_glue(
     });
   }
   if breakable {
-    return Some(HItem::Glue {
-      natural: Length::ZERO,
-      stretch: em * CJK_STRETCH_RATIO,
-      shrink: Length::ZERO,
-      breakable: true,
-    });
+    return Some(cjk_stretch_glue(em));
   }
   return None;
 }
@@ -511,65 +551,84 @@ fn boundary_glue(
 #[cfg(test)]
 mod boundary_glue_tests {
   use super::{
-    CJK_STRETCH_RATIO, boundary_glue,
+    CJK_STRETCH_RATIO, Glue, boundary_glue, cjk_stretch_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
   use crate::{length::Length, typeset::boxes::HItem};
 
   const EM: Length = Length::from_sp(10 * 65536);
 
-  /// glue の各フィールドを取り出す（`HItem` は `PartialEq` 非実装のため分解して検証する）
-  fn glue_fields(item: Option<HItem>) -> Option<(Length, Length, Length, bool)> {
-    return match item {
-      Some(HItem::Glue {
-        natural,
-        stretch,
-        shrink,
-        breakable,
-      }) => Some((natural, stretch, shrink, breakable)),
-      Some(other) => panic!("glue を期待したが {other:?} だった"),
-      None => None,
-    };
-  }
-
   #[test]
   fn punctuation_boundary_carries_nibu_natural_and_shrink_no_stretch() {
-    let front = glue_fields(boundary_glue(Normal, Open, EM, true));
+    let front = boundary_glue(Normal, Open, EM, true);
     // 後アキ（終わり括弧・句読点 → 通常文字）
-    let back = glue_fields(boundary_glue(Close, Normal, EM, true));
+    let back = boundary_glue(Close, Normal, EM, true);
 
-    assert_eq!(
-      front,
-      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
-      "前アキ二分・詰め代二分・伸長なし"
-    );
-    assert_eq!(
-      back,
-      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
-      "後アキ二分・詰め代二分・伸長なし"
-    );
+    let nibu = Glue {
+      natural: Length::pt(5.0),
+      stretch: Length::ZERO,
+      shrink: Length::pt(5.0),
+      breakable: true,
+    };
+    assert_eq!(front, Some(nibu), "前アキ二分・詰め代二分・伸長なし");
+    assert_eq!(back, Some(nibu), "後アキ二分・詰め代二分・伸長なし");
   }
 
   #[test]
   fn consecutive_punctuation_has_no_glue() {
-    assert_eq!(glue_fields(boundary_glue(Comma, Close, EM, true)), None);
+    assert_eq!(boundary_glue(Comma, Close, EM, true), None);
   }
 
   #[test]
   fn breakable_flag_propagates_to_punctuation_glue() {
     assert_eq!(
-      glue_fields(boundary_glue(Normal, Open, EM, false)),
-      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), false))
+      boundary_glue(Normal, Open, EM, false),
+      Some(Glue {
+        natural: Length::pt(5.0),
+        stretch: Length::ZERO,
+        shrink: Length::pt(5.0),
+        breakable: false,
+      })
     );
   }
 
   #[test]
   fn normal_pair_gets_cjk_stretch_only_at_break_points() {
-    let at_break = glue_fields(boundary_glue(Normal, Normal, EM, true));
-    let no_break = glue_fields(boundary_glue(Normal, Normal, EM, false));
+    let at_break = boundary_glue(Normal, Normal, EM, true);
+    let no_break = boundary_glue(Normal, Normal, EM, false);
 
-    assert_eq!(at_break, Some((Length::ZERO, EM * CJK_STRETCH_RATIO, Length::ZERO, true)));
+    assert_eq!(
+      at_break,
+      Some(Glue {
+        natural: Length::ZERO,
+        stretch: EM * CJK_STRETCH_RATIO,
+        shrink: Length::ZERO,
+        breakable: true,
+      })
+    );
     assert_eq!(no_break, None);
+  }
+
+  #[test]
+  fn normal_pair_glue_is_the_same_value_as_the_cjk_stretch_rule() {
+    // 和文字間の分割点に置く glue は、text_run の break 注入もこの関数から出す
+    assert_eq!(boundary_glue(Normal, Normal, EM, true), Some(cjk_stretch_glue(EM)));
+  }
+
+  #[test]
+  fn into_item_maps_every_field_to_the_glue_variant() {
+    let glue = cjk_stretch_glue(EM);
+
+    let HItem::Glue {
+      natural,
+      stretch,
+      shrink,
+      breakable,
+    } = glue.into_item()
+    else {
+      panic!("Glue バリアントになるはず");
+    };
+    assert_eq!((natural, stretch, shrink, breakable), (glue.natural, glue.stretch, glue.shrink, glue.breakable));
   }
 }
 
@@ -579,25 +638,17 @@ mod ja_latin_aki_tests {
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::{length::Length, typeset::boxes::HItem};
+  use crate::length::Length;
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]
   fn aki_is_quarter_em_stretch_only_and_non_breakable() {
-    let HItem::Glue {
-      natural,
-      stretch,
-      shrink,
-      breakable,
-    } = ja_latin_aki(EM)
-    else {
-      panic!("Glue を期待");
-    };
+    let aki = ja_latin_aki(EM);
 
-    assert_eq!(natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
-    assert_eq!(stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
-    assert_eq!(shrink, Length::ZERO, "収縮なし");
-    assert!(!breakable, "分割不可（境界に分割点を作らない）");
+    assert_eq!(aki.natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
+    assert_eq!(aki.stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
+    assert_eq!(aki.shrink, Length::ZERO, "収縮なし");
+    assert!(!aki.breakable, "分割不可（境界に分割点を作らない）");
   }
 
   #[test]

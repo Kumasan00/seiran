@@ -24,7 +24,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HItem},
     boxing::{
-      self, CJK_STRETCH_RATIO, Measurer,
+      self, Glue, Measurer,
       break_opportunities::{self, BreakKind, BreakPoint},
       script,
       shaping::ShapedRun,
@@ -41,6 +41,16 @@ const SPACE_STRETCH_RATIO: f32 = 1.0 / 2.0;
 /// 欧文単語間スペースの収縮能力（自然幅に対する倍率）
 const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
 
+/// 欧文語間スペース由来の伸縮 glue を作る（自然幅はそのスペースグリフの送り幅）
+fn space_glue(natural: Length) -> Glue {
+  return Glue {
+    natural,
+    stretch: natural * SPACE_STRETCH_RATIO,
+    shrink: natural * SPACE_SHRINK_RATIO,
+    breakable: true,
+  };
+}
+
 impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   pub(super) fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
@@ -56,19 +66,18 @@ impl Measurer<'_> {
         && let (Some((prev_category, prev_char)), Some(next_char)) = (prev_boundary, segment.text.chars().next())
         && boxing::is_ja_latin_letter_boundary(prev_category, prev_char, segment.category, next_char)
       {
-        let item = boxing::ja_latin_aki(style.font_size);
-        let (natural_pt, stretch_pt, shrink_pt) = glue_pt(&item);
+        let glue = boxing::ja_latin_aki(style.font_size);
         trace!(
           left_char = ?prev_char,
           right_char = ?next_char,
           left_category = ?prev_category,
           right_category = ?segment.category,
-          natural_pt = %natural_pt,
-          stretch_pt = %stretch_pt,
-          shrink_pt = %shrink_pt,
+          natural_pt = %glue.natural.to_pt(),
+          stretch_pt = %glue.stretch.to_pt(),
+          shrink_pt = %glue.shrink.to_pt(),
           "和欧文間アキを挿入"
         );
-        out.push(item);
+        out.push(glue.into_item());
       }
       prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
@@ -138,13 +147,7 @@ impl Measurer<'_> {
             continue; // スペースが前後とクラスタを成している場合は分割を抑制
           }
           push_sub_run(&run, seg_glyph_start..glyph_index - 1, seg_byte_start..break_point.byte - 1, out);
-          let natural = run.advance_of(glyph_index - 1);
-          out.push(HItem::Glue {
-            natural,
-            stretch: natural * SPACE_STRETCH_RATIO,
-            shrink: natural * SPACE_SHRINK_RATIO,
-            breakable: true,
-          });
+          out.push(space_glue(run.advance_of(glyph_index - 1)).into_item());
           seg_glyph_start = glyph_index;
           seg_byte_start = break_point.byte;
         },
@@ -157,12 +160,7 @@ impl Measurer<'_> {
           }
           push_sub_run(&run, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
           if is_japanese {
-            out.push(HItem::Glue {
-              natural: Length::ZERO,
-              stretch: run.font_size() * CJK_STRETCH_RATIO,
-              shrink: Length::ZERO,
-              breakable: true,
-            });
+            out.push(boxing::cjk_stretch_glue(run.font_size()).into_item());
           } else {
             out.push(HItem::Penalty { value: 0 });
           }
@@ -292,34 +290,27 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) {
   for i in 0..glyphs.len() {
     if is_space(i) {
       push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out);
-      let natural = run.advance_of(i);
-      out.push(HItem::Glue {
-        natural,
-        stretch: natural * SPACE_STRETCH_RATIO,
-        shrink: natural * SPACE_SHRINK_RATIO,
-        breakable: true,
-      });
+      out.push(space_glue(run.advance_of(i)).into_item());
       normal_start = i + 1;
       continue;
     }
 
     if i > 0 && !is_space(i - 1) {
       let breakable = break_bytes.contains(&byte_at(i));
-      if let Some(item) = boxing::boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
+      if let Some(glue) = boxing::boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
         push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out);
-        let (natural_pt, stretch_pt, shrink_pt) = glue_pt(&item);
         trace!(
           left_char = ?char_of(i - 1),
           right_char = ?char_of(i),
           left_class = ?eff_class(i - 1),
           right_class = ?eff_class(i),
-          natural_pt = %natural_pt,
-          stretch_pt = %stretch_pt,
-          shrink_pt = %shrink_pt,
+          natural_pt = %glue.natural.to_pt(),
+          stretch_pt = %glue.stretch.to_pt(),
+          shrink_pt = %glue.shrink.to_pt(),
           is_breakable = breakable,
           "約物境界のアキを挿入"
         );
-        out.push(item);
+        out.push(glue.into_item());
         normal_start = i;
       }
     }
@@ -372,18 +363,4 @@ fn punct_box(run: &ShapedRun, glyph_index: usize, normalize: yakumono::Normalize
 /// `byte` 位置から始まるグリフのインデックスを返す（クラスタ境界の判定）
 fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
   return glyphs.iter().position(|glyph| return glyph.range.start == byte);
-}
-
-/// glue の自然幅・伸長・収縮を pt で返す（TRACE 観測用）
-fn glue_pt(item: &HItem) -> (f32, f32, f32) {
-  return match item {
-    HItem::Glue {
-      natural,
-      stretch,
-      shrink,
-      ..
-    } => (natural.to_pt(), stretch.to_pt(), shrink.to_pt()),
-    // 呼び出し元は `boundary_glue` / `ja_latin_aki` が作った glue しか渡さない
-    _ => unreachable!("glue 以外のアイテムはアキとして積まれない"),
-  };
 }
