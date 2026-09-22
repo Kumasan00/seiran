@@ -11,10 +11,12 @@
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・シェーピング・
 //! break 注入）と `math`（ディスプレイ数式）の 2 つ。`script`（スクリプト分類とフォント種別の解決）と
 //! `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、`break_opportunities`
-//! （分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は `break_opportunities` が使い、
-//! 言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は生成コンテンツが使う 1 行組み立ての
-//! 仕組み（[`LineAccum`]）。この module 本体は縦リストの走査（`LayoutNode` → `Block`・`Atom` 化・表）と、
-//! 和欧文間アキ・約物境界のアキの規則と伸縮率の定数を持つ。
+//! （分割機会 (b)）は `text_run` が使う規則。`shaping`（シェーピング結果の計測・[`shaping::ShapedRun`]）は
+//! `text_run` と `math` の両方がフォントメトリクスから箱の寸法を出すのに使う。`hyphenation`（欧文語中の
+//! 分割点）は `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。
+//! `composed_line` は生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。この module 本体は
+//! 縦リストの走査（`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則と
+//! 伸縮率の定数を持つ。
 //!
 //! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
 //!
@@ -25,6 +27,7 @@ mod composed_line;
 mod hyphenation;
 mod math;
 mod script;
+mod shaping;
 mod text_run;
 mod yakumono;
 
@@ -362,8 +365,8 @@ impl<'a> Measurer<'a> {
     if is_empty {
       let font_type = script::resolve_font_type(style.font_kind, script::ScriptCategory::Latin);
       let strut = self.shape_segment("", font_type, style.font_size, None);
-      atom.height = strut.height;
-      atom.depth = strut.depth;
+      atom.height = strut.height();
+      atom.depth = strut.depth();
     }
     return atom;
   }
@@ -415,7 +418,9 @@ impl<'a> Measurer<'a> {
     let segments = script::split_text_by_script(style.font_kind, &text);
     return segments
       .into_iter()
-      .map(|segment| return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color))
+      .map(|segment| {
+        return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color).into_hbox();
+      })
       .collect();
   }
 
