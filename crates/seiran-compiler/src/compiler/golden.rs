@@ -641,3 +641,47 @@ fn blank_code_line_keeps_a_full_line_height() {
 
   assert!(!dump.contains("height=0.00"), "高さ 0 の行は出ないはず（空行も 1 行ぶんの extent を持つ）");
 }
+
+/// 前付けの構成（タイトルページ・目次）を切り替えて組んだ総ページ数を返すテストヘルパ。
+///
+/// `blank_metadata` が真なら config の `[document]` から title / author / date を取り除く
+/// （タイトルページに載せる中身が無い状態）。
+fn page_count_with_front_matter(title_page: bool, toc: bool, blank_metadata: bool) -> usize {
+  let laid_out = TestProject::builder()
+    .sources(&["tests/text/toc.sei"])
+    .config_toml(move |table| {
+      if blank_metadata && let Some(document) = table.get_mut("document").and_then(toml::Value::as_table_mut) {
+        document.remove("title");
+        document.remove("author");
+        document.remove("date");
+      }
+    })
+    .style(move |style| {
+      style.title_page.enabled = title_page;
+      style.toc.enabled = toc;
+    })
+    .build()
+    .laid_out();
+  return laid_out.pages.len();
+}
+
+#[test]
+fn front_matter_adds_no_blank_pages() {
+  // Arrange — 前付けなしの本文ページ数を基準にする
+  let body_only = page_count_with_front_matter(false, false, false);
+
+  // Act
+  let title_only = page_count_with_front_matter(true, false, false);
+  let toc_only = page_count_with_front_matter(false, true, false);
+  let both = page_count_with_front_matter(true, true, false);
+  let empty_title_only = page_count_with_front_matter(true, false, true);
+  let empty_title_and_toc = page_count_with_front_matter(true, true, true);
+
+  // Assert — タイトルページはちょうど 1 ページ、目次は 1 ページ以上、両方なら和。
+  // 中身の無いタイトルページは 0 ページ（白紙を作らない）
+  assert_eq!(title_only, body_only + 1, "タイトルページだけなら 1 ページ増える");
+  assert!(toc_only > body_only, "目次だけなら 1 ページ以上増える: {toc_only} vs {body_only}");
+  assert_eq!(both, toc_only + 1, "両方ならタイトルページ 1 + 目次のページ数");
+  assert_eq!(empty_title_only, body_only, "中身の無いタイトルページは白紙ページを作らない");
+  assert_eq!(empty_title_and_toc, toc_only, "中身の無いタイトルページは目次の前に白紙ページを作らない");
+}

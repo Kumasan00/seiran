@@ -167,17 +167,6 @@ impl Block {
       value: PENALTY_FORCE_BREAK,
     };
   }
-
-  /// 強制改ページの penalty かどうかを返す。
-  #[must_use]
-  pub(crate) fn is_force_break(&self) -> bool {
-    return matches!(
-      self,
-      Block::Penalty {
-        value: PENALTY_FORCE_BREAK
-      }
-    );
-  }
 }
 
 /// 数式ブロックの行番号（測定済み）

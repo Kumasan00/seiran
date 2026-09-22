@@ -21,9 +21,10 @@ use crate::typeset::{
 ///
 /// 前付けは常に 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。画像ブロックの描画寸法は
 /// 本文と同じく `build_blocks` が確定させるので、前付けに画像が現れても未確定の寸法は作られない。
-/// タイトルページ→目次の順にブロックを組み立て、末尾の強制改ページ（本文との境界用）は
-/// 空ページを作らないよう分割前に取り除く。`title_page` / `toc` がともに無効・目次エントリが
-/// 空なら空ページ列を返す。
+/// タイトルページ→目次の順にブロックを積む。区画の区切りはタイトルページ自身の末尾の強制改ページだけで、
+/// 前付けは強制改ページを積まない（前付けの末尾に残っても強制改ページは冪等なので白紙ページを作らない）。
+/// 積むブロックが無い（`title_page` / `toc` がともに無効、またはタイトルページの中身も目次エントリも
+/// 無い）なら空ページ列を返す。
 ///
 /// 脚注のはみ出し記録（#382）はページ列と一緒に返す。前付けは生成ブロックだけで組むので実際には
 /// 常に空だが、「空のはずだ」という非局所な不変条件を主張せず素通しする。
@@ -61,16 +62,9 @@ pub(super) fn typeset_front_matter(
   }
 
   if ctx.style.toc.enabled {
-    let toc_blocks = toc::build_toc_blocks(ctx, facts);
-    if !toc_blocks.is_empty() {
-      front_blocks.extend(toc_blocks);
-      front_blocks.push(Block::force_break());
-    }
+    front_blocks.extend(toc::build_toc_blocks(ctx, facts));
   }
 
-  if front_blocks.last().is_some_and(Block::is_force_break) {
-    front_blocks.pop();
-  }
   if front_blocks.is_empty() {
     return (Vec::new(), Vec::new());
   }

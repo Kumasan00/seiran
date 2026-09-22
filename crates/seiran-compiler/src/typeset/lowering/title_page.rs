@@ -22,6 +22,9 @@ pub(crate) struct TitlePageMetadata {
 }
 
 /// タイトルページのレイアウトノード列を生成する。
+///
+/// 中身（タイトル・著者・日付のいずれか）があれば中央寄せの縦ボックスと末尾の改ページを返し、
+/// 無ければ空を返す（前付けに白紙ページを作らない）。
 #[must_use]
 pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec<LayoutNode> {
   let mut body: Vec<LayoutNode> = Vec::new();
@@ -54,25 +57,28 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
     pending_gap = Some(gap_after);
   }
 
-  let mut result: Vec<LayoutNode> = Vec::with_capacity(2);
-  if !body.is_empty() {
-    let mut children: Vec<LayoutNode> = Vec::with_capacity(body.len() + 1);
-    if style.top_margin.is_positive() {
-      children.push(LayoutNode::Vkern {
-        length: style.top_margin,
-      });
-    }
-    children.extend(body);
-    result.push(LayoutNode::VBox {
+  // 載せる中身が無ければタイトルページそのものを出さない。末尾の PageBreak だけを返すと、前付けが
+  // それ以外に何も無いとき白紙ページになる
+  if body.is_empty() {
+    return Vec::new();
+  }
+  let mut children: Vec<LayoutNode> = Vec::with_capacity(body.len() + 1);
+  if style.top_margin.is_positive() {
+    children.push(LayoutNode::Vkern {
+      length: style.top_margin,
+    });
+  }
+  children.extend(body);
+  return vec![
+    LayoutNode::VBox {
       children,
       margin_bottom: Length::pt(0.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
       align: Align::Center,
-    });
-  }
-  result.push(LayoutNode::PageBreak);
-  return result;
+    },
+    LayoutNode::PageBreak,
+  ];
 }
 
 #[cfg(test)]
@@ -180,7 +186,7 @@ mod tests {
   }
 
   #[test]
-  fn empty_metadata_yields_only_page_break() {
+  fn empty_metadata_yields_nothing() {
     // Arrange
     let meta = TitlePageMetadata::default();
     let style = TitlePageStyle::default();
@@ -188,9 +194,8 @@ mod tests {
     // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert
-    assert_eq!(nodes.len(), 1);
-    assert!(matches!(nodes[0], LayoutNode::PageBreak));
+    // Assert — 載せる中身が無ければページ区切りも出さない（前付けに白紙ページを作らない）
+    assert!(nodes.is_empty(), "{nodes:?}");
   }
 
   #[test]
