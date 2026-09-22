@@ -8,14 +8,14 @@
 //! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
 //! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //!
-//! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・シェーピング・
-//! break 注入）と `math`（ディスプレイ数式）の 2 つ。`script`（スクリプト分類とフォント種別の解決）と
-//! `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、`break_opportunities`
-//! （分割機会 (b)）は `text_run` が使う規則。`shaping`（シェーピング結果の計測・[`shaping::ShapedRun`]）は
-//! `text_run` と `math` の両方がフォントメトリクスから箱の寸法を出すのに使う。`hyphenation`（欧文語中の
-//! 分割点）は `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。
-//! `composed_line` は生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。この module 本体は
-//! 縦リストの走査（`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則と
+//! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入）と
+//! `math`（ディスプレイ数式）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
+//! `ShapedRun`（グリフ列 + 確定寸法）を持ち、**箱の寸法を求める処理はここ 1 箇所**。`script`（スクリプト分類と
+//! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
+//! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
+//! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
+//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。この module 本体は縦リストの走査
+//! （`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
 //!
 //! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
@@ -121,8 +121,8 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
 ///
-/// [`Measurer`] は本文の縦リスト走査専用で画像資源を持たない（生成コンテンツ—目次・索引・走り文—は
-/// [`Shaper`] だけを構築する）。縦リストの走査だけが画像を作るので、その 2 つをここで束ねる。
+/// [`Measurer`] は段落構築のポリシーだけを足す層で画像資源を持たない。縦リストの走査だけが画像を
+/// 作るので、その 2 つをここで束ねる。
 struct BlockBuilder<'a> {
   /// シェーピング・計測の状態
   measurer: Measurer<'a>,

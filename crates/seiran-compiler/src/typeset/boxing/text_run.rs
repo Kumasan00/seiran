@@ -1,15 +1,13 @@
 //! テキストラン分割・シェーピング — テキストを計測済みの箱と break 注入済みの水平リストへ変換する
 //!
 //! `Measurer` の `impl` をここで続ける（`boxing::math` と同じ形。別 module の impl は
-//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は
-//! `boxing` 本体の `collect_inline` が呼ぶ、本文テキストを水平リストへ積む `push_text_items` 1 つ。
-//! 1 セグメントのシェーピングは兄弟 `shaping` の [`crate::typeset::boxing::shaping::Shaper::shape_segment`] に移った。
+//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は本文テキストを
+//! 水平リストへ積む `push_text_items` 1 つで、シェーピングそのものは兄弟 `shaping` の `Shaper` が行う。
 //!
 //! この module が持つのは、run をどこで割り（ICU の分割機会・約物境界・ハイフネーション点）、各分割点に何
-//! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかと、割った断片の切り出し。
-//! フォントメトリクスから箱の寸法を出す算術は兄弟 `shaping`（[`ShapedRun`]）に閉じており、
-//! この module は割り方の判断だけを持つ。和欧文間アキと約物境界のアキの規則（どの境界にどれだけ挿むか）と
-//! 字間の伸長率は親 `boxing` が持つ。
+//! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかだけ。箱の寸法は `shaping` が
+//! 確定済みで、割った断片は親 run の高さ・深さを写す。和欧文間アキと約物境界のアキの規則（どの境界にどれだけ
+//! 挿むか）と字間の伸長率は親 `boxing` が持つ。
 
 use std::ops::Range;
 
