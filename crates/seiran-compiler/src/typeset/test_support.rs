@@ -153,7 +153,6 @@ fn single_box_line(
       }],
       height: metrics.height,
       depth: metrics.depth,
-      is_last: true,
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),

@@ -119,7 +119,6 @@ mod tests {
       boxes: vec![glyph_box("外"), atom_box("中")],
       height: Length::ZERO,
       depth: Length::ZERO,
-      is_last: true,
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),

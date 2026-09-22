@@ -603,7 +603,6 @@ mod tests {
       boxes: Vec::new(),
       height: pt(8.0),
       depth: pt(2.0),
-      is_last: true,
       links: link
         .map(|target| {
           return vec![LineLink {

@@ -39,13 +39,12 @@ impl LineAccum {
     return x;
   }
 
-  /// 累積した内容を `Line`（段落最終行扱い）に確定する
+  /// 累積した内容を `Line` に確定する
   pub(crate) fn into_line(self, links: Vec<LineLink>) -> Line {
     return Line {
       boxes: self.boxes,
       height: self.height,
       depth: self.depth,
-      is_last: true,
       links,
       footnotes: Vec::new(),
       index_marks: Vec::new(),
@@ -108,10 +107,9 @@ mod tests {
   }
 
   #[test]
-  fn into_line_marks_the_line_as_a_paragraph_last_line() {
+  fn into_line_leaves_footnotes_and_index_marks_empty() {
     let line = LineAccum::default().into_line(Vec::new());
 
-    assert!(line.is_last, "生成コンテンツの行は常に段落最終行扱い（行揃えの伸長を受けない）");
     assert!(line.footnotes.is_empty());
     assert!(line.index_marks.is_empty());
   }

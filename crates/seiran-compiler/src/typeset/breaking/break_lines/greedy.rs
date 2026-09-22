@@ -183,9 +183,7 @@ mod tests {
     // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
-    assert!(!lines[0].is_last);
     assert_eq!(lines[1].boxes.len(), 1);
-    assert!(lines[1].is_last);
     assert!(close(lines[1].boxes[0].x, 0.0));
   }
 
@@ -215,7 +213,6 @@ mod tests {
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2);
-    assert!(lines[0].is_last);
   }
 
   #[test]
@@ -277,9 +274,7 @@ mod tests {
 
     let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
 
-    assert_eq!(lines.len(), 2);
-    assert!(lines[0].is_last, "強制改行の行は is_last: {lines:?}");
-    assert!(lines[1].is_last);
+    assert_eq!(lines.len(), 2, "{lines:?}");
   }
 
   #[test]
@@ -298,7 +293,6 @@ mod tests {
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
-    assert!(lines[0].is_last);
   }
 
   #[test]
@@ -324,7 +318,6 @@ mod tests {
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED box の 2 つ: {lines:?}");
     assert!(close(lines[0].boxes[0].x, 0.0));
     assert!(close(lines[0].boxes[1].x, 42.0), "QED は右端寄せ: {lines:?}");
-    assert!(lines[0].is_last);
   }
 
   #[test]
@@ -345,7 +338,6 @@ mod tests {
     assert!(close(lines[0].boxes[0].x, 0.0));
     assert_eq!(lines[1].boxes.len(), 1, "2 行目は QED box のみ: {lines:?}");
     assert!(close(lines[1].boxes[0].x, 6.0), "QED は右端寄せ: {lines:?}");
-    assert!(lines[1].is_last);
   }
 
   #[test]
@@ -464,7 +456,6 @@ mod tests {
 
     // Assert
     assert_eq!(lines.len(), 1);
-    assert!(lines[0].is_last);
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
@@ -484,7 +475,6 @@ mod tests {
 
     // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(lines[0].is_last);
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 

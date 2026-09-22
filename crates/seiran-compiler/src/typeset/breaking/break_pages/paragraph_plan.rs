@@ -212,7 +212,6 @@ mod tests {
       boxes: Vec::new(),
       height: Length::pt(8.0),
       depth: Length::pt(2.0),
-      is_last: false,
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),

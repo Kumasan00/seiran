@@ -11,8 +11,6 @@ use crate::{
 /// 行分割で確定した 1 行
 ///
 /// `height` / `depth` は行内ボックスの `dy ± height/depth` の最大値。
-/// `is_last` は段落最終行または強制改行（`\\`）による行で、両端揃え時に
-/// 伸縮を適用しない（ragged のまま残す）ためのフラグ。
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
   /// 行内の配置済みボックス（左から順）
@@ -21,15 +19,6 @@ pub(crate) struct Line {
   pub height: Length,
   /// ベースラインから下の深さ（正値）
   pub depth: Length,
-  /// 段落最終行・強制改行による行か
-  #[cfg_attr(
-    not(test),
-    expect(
-      dead_code,
-      reason = "書き込むだけで組版は読まない（crate 内の `#[cfg(test)]` が行分割の結果を検証する）"
-    )
-  )]
-  pub is_last: bool,
   /// この行に含まれるクリック可能なリンク領域（機構 B・行頭からの水平範囲）
   ///
   /// 1 つのリンクが折り返しをまたぐ場合は行ごとに 1 つの矩形へ分割される。
