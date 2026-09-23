@@ -281,8 +281,15 @@ pub(crate) fn break_pages(
       && is_content_block(&blocks[i])
       && let Some(end) = keep_group_end(&blocks, i)
     {
-      if keep_group_orphaned(&composer, geom, breaker, alignment, col_width, &blocks[i..=end])
-        && !composer.cursor.at_region_top(geom)
+      if keep_group_orphaned(
+        composer.cursor,
+        !composer.carry.is_empty(),
+        geom,
+        breaker,
+        alignment,
+        col_width,
+        &blocks[i..=end],
+      ) && !composer.cursor.at_region_top(geom)
       {
         composer.advance_region(geom);
       }
@@ -433,31 +440,54 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
   return if end > start { Some(end) } else { None };
 }
 
-/// keep グループの末尾が段落でない（図表・数式・合成行）ときの配置シミュレーション。
-fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) -> (bool, Length) {
+/// 段落以外の内容ブロック 1 個の配置判定（`plan_atomic` の結果。段落の `LinePlacement` に対応する）
+struct AtomicPlacement {
+  /// ブロックを次リージョンへ送るか
+  starts_region: bool,
+  /// 送らずに置いた場合の配置後カーソル
+  cursor_after: RegionCursor,
+}
+
+/// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
+/// 判定は実配置（`place_*`）と同じ [`RegionCursor`] のメソッドを通す（下限を自前で選ばない。#686）。
+fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> AtomicPlacement {
   match block {
     Block::Image { height, .. } => {
-      return (y + *height > geom.page_limit, y + *height);
+      return AtomicPlacement {
+        starts_region: cursor.overflows(*height, geom),
+        cursor_after: cursor.below(*height),
+      };
     },
     Block::Math { body, .. } => {
-      let h = body.height + body.depth;
-      return (y + h > geom.page_limit && geom.margin_top + h <= geom.page_limit, y + h);
+      let height = body.height + body.depth;
+      return AtomicPlacement {
+        starts_region: cursor.defers_unbreakable(height, geom),
+        cursor_after: cursor.below(height),
+      };
     },
     Block::ComposedLine { line, leading } => {
-      let baseline = if cae { y + line.height } else { y };
-      return (baseline + line.depth > geom.page_limit, baseline + *leading);
+      return AtomicPlacement {
+        starts_region: cursor.line_overflows(line, geom),
+        cursor_after: cursor.after_line(cursor.line_baseline(line), *leading),
+      };
     },
     Block::Table { table, .. } => {
-      let row_h = |row| return table_row_height(row, geom.default_font_size, geom.line_height_factor);
-      let total: Length = table.head.iter().chain(table.rows.iter()).map(row_h).sum();
-      if table.breakable {
+      let row_height = |row| return table_row_height(row, geom.default_font_size, geom.line_height_factor);
+      let total: Length = table.head.iter().chain(table.rows.iter()).map(row_height).sum();
+      // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）が乗るかだけで決まる（`place_table` の行ループと同じ判定）
+      let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
-        return (first.is_some_and(|r| return y + row_h(r) > geom.page_limit), y + total);
-      }
-      return (y + total > geom.page_limit && geom.margin_top + total <= geom.page_limit, y + total);
+        first.is_some_and(|row| return cursor.overflows(row_height(row), geom))
+      } else {
+        cursor.defers_unbreakable(total, geom)
+      };
+      return AtomicPlacement {
+        starts_region,
+        cursor_after: cursor.below(total),
+      };
     },
-    // 段落は行分割を伴うので `keep_group_orphaned` の専用経路が扱う
-    Block::Paragraph { .. } => unreachable!("段落は keep_group_orphaned が行分割込みの専用経路で扱う"),
+    // 段落は行分割を伴うので `keep_group_orphaned` が `plan_paragraph_lines` で扱う
+    Block::Paragraph { .. } => unreachable!("段落は keep_group_orphaned が plan_paragraph_lines で扱う"),
     // 内容ブロック以外はここへ来ない（呼び出し側が `is_content_block` で絞っている）
     Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => {
       unreachable!("内容ブロック以外は呼び出し側の is_content_block ガードが弾く")
@@ -465,10 +495,15 @@ fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) ->
   }
 }
 
-/// keep グループを現在のカーソルから配置したとき、末尾の内容ブロックの先頭チャンクが見出しと
-/// 別リージョンに落ちる（= 見出しが孤立する）かを返す純粋関数。リージョン改は行わず、収まらなければ `true`。
+/// keep グループを現在のカーソルから配置したとき、末尾の内容ブロックの先頭が見出しと別リージョンに
+/// 落ちる（= 見出しが孤立する）かを返す純粋関数。リージョン改は行わず、孤立するなら `true`。
+///
+/// 実配置と同じ規則の空回しで判定する — 段落は [`plan_paragraph_lines`]（脚注の予約・自前の脚注・
+/// widow / orphan 補正込み）、それ以外は [`plan_atomic`]。下限や行送りをここで導き直すと、脚注予約の
+/// あるリージョンで実配置と食い違う（#686）。
 fn keep_group_orphaned(
-  composer: &PageComposer,
+  mut cursor: RegionCursor,
+  mut carry_pending: bool,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
   alignment: TextAlignment,
@@ -478,15 +513,11 @@ fn keep_group_orphaned(
   let Some(last_content) = group.iter().rposition(is_content_block) else {
     return false;
   };
-  let mut y = composer.cursor.y;
-  let mut cae = composer.cursor.at_edge;
-  // 同一段落内の直前行（baseline, depth, leading）。段落境界（glue 通過）でリセットする。
-  let mut prev: Option<(Length, Length, Length)> = None;
+  let charges = FootnoteCharges::of(geom);
   for (gi, block) in group.iter().enumerate() {
     match block {
       Block::Glue { natural, .. } => {
-        y += *natural;
-        prev = None;
+        cursor.y += *natural;
       },
       Block::Paragraph {
         items,
@@ -495,44 +526,46 @@ fn keep_group_orphaned(
         right_indent,
         align,
       } => {
-        let available = (column_width - *indent - *right_indent).max(Length::ZERO);
-        let effective = if *align == Align::Left {
-          alignment
-        } else {
-          TextAlignment::RaggedRight
-        };
-        let lines = breaker.break_lines(items, available, effective);
-        // 末尾（本文）は widow/orphan で丸ごと送られない最小行数だけを keep 対象にする。見出しは全行。
-        let commit = if gi == last_content {
-          MIN_LINES_AT_BREAK.min(lines.len())
-        } else {
-          lines.len()
-        };
-        let mut last_baseline = y;
-        for (li, line) in lines.iter().enumerate() {
-          let baseline = match prev {
-            Some((pb, pd, pl)) => pb + pl.max(pd + line.height),
-            None if cae => y + line.height,
-            None => y,
-          };
-          if li < commit && baseline + line.depth > geom.page_limit {
-            return true;
-          }
-          last_baseline = baseline;
-          prev = Some((baseline, line.depth, *leading));
+        let lines = break_paragraph(breaker, alignment, items, column_width, *indent, *right_indent, *align);
+        let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width));
+        let (plan, truncated) = plan_paragraph_lines(
+          &lines,
+          cursor,
+          *leading,
+          geom.margin_top,
+          geom.page_limit,
+          &demands,
+          charges,
+          true,
+          carry_pending,
+        );
+        if gi == last_content {
+          // 本文は先頭行が見出しと同じリージョンに乗るかだけを見る。先頭リージョンに最小行数を残せない
+          // ときの送り（orphan）と短い段落を丸ごと送る widow 補正は、計画の `starts_region` に反映済み。
+          // 計画が空（繰越で先頭行すら入らない）なら実配置は改リージョンする
+          return !lines.is_empty() && plan.first().is_none_or(|placement| return placement.starts_region);
         }
-        y = last_baseline + *leading;
-        cae = false;
-        prev = None;
+        // 見出しは全行が同じリージョンに乗るか。打ち切られて残った行は実配置では次リージョンへ送られる
+        if plan.len() < lines.len() || plan.iter().any(|placement| return placement.starts_region) {
+          return true;
+        }
+        cursor = match plan.last() {
+          Some(last) => RegionCursor {
+            footnote_reserved: last.reserved_after,
+            ..cursor
+          }
+          .after_line(last.baseline, *leading),
+          None => cursor.after_line(cursor.y, *leading),
+        };
+        // 最終行で脚注が分割された（打ち切られたが行は残っていない）なら、以降は繰越を抱えて計画する
+        carry_pending |= truncated;
       },
       _ if is_content_block(block) => {
-        let (advance, y_after) = atomic_place_sim(block, y, cae, geom);
-        if gi == last_content || advance {
-          return advance;
+        let placement = plan_atomic(block, cursor, geom);
+        if gi == last_content || placement.starts_region {
+          return placement.starts_region;
         }
-        y = y_after;
-        cae = true;
-        prev = None;
+        cursor = placement.cursor_after;
       },
       _ => {},
     }
@@ -3692,6 +3725,105 @@ mod tests {
 
     // Assert
     assert_eq!(line_counts(&pages), vec![1, 2], "{pages:?}");
+  }
+
+  #[test]
+  fn heading_kept_with_body_when_footnote_reservation_shrinks_region() {
+    // Arrange: 1 行目の脚注 2 行でエリア 26 → 実効下限 24。見出し（ベースライン 22）は収まるが、
+    // 本文 1 行目（ベースライン 34）は収まらない
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines(1, 2)]),
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(pt(0.0)),
+      forbid_break(),
+      paragraph_of_lines(2), // 本文
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(line_counts(&pages), vec![1, 3], "{pages:?}");
+    assert_eq!(pages[0].footnotes.len(), 1, "脚注は参照行と同じ 1 ページ目に残る");
+  }
+
+  #[test]
+  fn heading_kept_with_body_whose_first_line_carries_a_footnote() {
+    // Arrange: 本文 1 行目（ベースライン 46）は自前の脚注（エリア 14）込みでは下限 36 を超える
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(2), // filler
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(pt(0.0)),
+      forbid_break(),
+      single_line_paragraph(vec![footnote_of_lines(1, 1)]), // 本文
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(line_counts(&pages), vec![2, 2], "{pages:?}");
+    assert_eq!(pages[1].footnotes.len(), 1, "脚注は本文と一緒に 2 ページ目へ移る");
+  }
+
+  #[test]
+  fn heading_kept_with_image_when_footnote_reservation_shrinks_region() {
+    // Arrange: 見出しの後の画像（y 34 から高さ 10 → 下端 44）は実効下限 24 を超える
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines(1, 2)]),
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(pt(0.0)),
+      forbid_break(),
+      fixed_block(10.0),
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(line_counts(&pages), vec![1, 1], "{pages:?}");
+    assert_eq!(fixed_block_ys(&pages[1]), pts(&[22.0]), "画像は見出し（ベースライン 10）の 1 行送り下");
+  }
+
+  #[test]
+  fn heading_kept_with_short_body_that_widow_control_sends_whole() {
+    // Arrange: 脚注なし。本文 3 行のうち 2 行は収まるが、widow 補正が 4 行未満の段落を丸ごと送る
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1), // filler
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(pt(0.0)),
+      forbid_break(),
+      paragraph_of_lines(3), // 本文
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(line_counts(&pages), vec![1, 4], "{pages:?}");
+  }
+
+  #[test]
+  fn heading_with_body_fitting_under_footnote_reservation_stays_in_place() {
+    // Arrange: 脚注 1 行でエリア 14 → 実効下限 36。本文（ベースライン 34・下端 36）はちょうど収まる
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines(1, 1)]),
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(pt(0.0)),
+      forbid_break(),
+      paragraph_of_lines(1), // 本文
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(line_counts(&pages), vec![3], "{pages:?}");
   }
 
   /// 下端揃えを有効にしたテスト用ジオメトリ（他は `test_geometry` と同じ）
