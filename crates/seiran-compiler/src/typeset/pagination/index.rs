@@ -19,7 +19,7 @@ use crate::{
   style::Style,
   typeset::{
     boxes::{AnchorId, AnchorMark, Block, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
-    boxing::{LineAccum, Shaper},
+    boxing::{LineAccum, Shaper, compose_left_line},
     font::FontSystem,
     lowering::TextStyle,
     pagination::{
@@ -264,13 +264,6 @@ fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &I
   if spec.group_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.group_bottom_margin));
   }
-}
-
-/// テキストを左端（x=0）からシェーピングして単一行に組む（タイトル行用）
-fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
-  let mut acc = LineAccum::default();
-  acc.place(shaper.shape_text(text, style), Length::ZERO);
-  return acc.into_line(Vec::new());
 }
 
 /// ページ番号列の 1 表示単位

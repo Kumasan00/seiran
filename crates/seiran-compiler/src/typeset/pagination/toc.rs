@@ -13,7 +13,7 @@ use crate::{
   style::{Style, TocStyle},
   typeset::{
     boxes::{AnchorId, Block, Line, LineLink, LinkTarget},
-    boxing::{LineAccum, Shaper, row_width},
+    boxing::{LineAccum, Shaper, compose_left_line, row_width},
     font::FontSystem,
     lowering::{HeadingRecord, TextStyle},
     pagination::{
@@ -164,13 +164,6 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'
     blocks.push(Block::fixed_space(spec.bottom_margin));
   }
   return blocks;
-}
-
-/// テキストを左端（x=0）からシェーピングして単一行に組む（見出し行用）
-fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
-  let mut acc = LineAccum::default();
-  acc.place(shaper.shape_text(text, style), Length::ZERO);
-  return acc.into_line(Vec::new());
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む

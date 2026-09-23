@@ -33,7 +33,7 @@ mod yakumono;
 
 use std::borrow::Cow;
 
-pub(super) use composed_line::{LineAccum, row_width};
+pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
 use hyphenation::Lang;
 pub(super) use shaping::Shaper;
 use tracing::debug;
