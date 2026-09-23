@@ -206,11 +206,6 @@ pub(crate) enum TheoremReset {
 }
 
 impl TheoremReset {
-  /// 全 5 バリアントを宣言順（部 → 章 → 節 → 小節 → なし）で並べたスライス
-  ///
-  /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
-  const ALL: &'static [TheoremReset] = <Self as VariantArray>::VARIANTS;
-
   /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
   ///
   /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典で、逆写像
@@ -230,7 +225,7 @@ impl TheoremReset {
   /// 見出しカウンタ `name` をリセット先に持つレベルを返す（[`Self::counter_name`] の逆写像）
   #[must_use]
   pub(crate) fn for_counter(name: CounterName) -> Option<Self> {
-    return Self::ALL.iter().copied().find(|level| return level.counter_name() == Some(name));
+    return Self::VARIANTS.iter().copied().find(|level| return level.counter_name() == Some(name));
   }
 }
 
@@ -427,6 +422,7 @@ impl TheoremPresentationOverride {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use strum::VariantArray;
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems};
   use crate::{
@@ -446,7 +442,7 @@ mod tests {
   fn all_default_classes_pass_validation() {
     let theorems = Theorems::default();
 
-    for &class in TheoremClass::ALL {
+    for &class in TheoremClass::VARIANTS {
       assert!(theorems[class].validate().is_ok(), "{class} should validate");
     }
   }
@@ -745,7 +741,11 @@ font_knd = \"serif\"
     for (name, want) in expected {
       assert_eq!(TheoremReset::for_counter(name), want, "{name:?} に対応するリセットレベル");
     }
-    assert_eq!(expected.map(|(name, _)| return name), CounterName::ALL, "固定 9 種のカウンタ名を宣言順ですべて覆う");
+    assert_eq!(
+      expected.map(|(name, _)| return name),
+      CounterName::VARIANTS,
+      "固定 9 種のカウンタ名を宣言順ですべて覆う"
+    );
   }
 
   #[test]
@@ -761,6 +761,6 @@ font_knd = \"serif\"
     for (level, want) in expected {
       assert_eq!(level.counter_name(), want, "{level:?} が指す見出しカウンタ");
     }
-    assert_eq!(expected.map(|(level, _)| return level), TheoremReset::ALL, "全 5 バリアントを宣言順で覆う");
+    assert_eq!(expected.map(|(level, _)| return level), TheoremReset::VARIANTS, "全 5 バリアントを宣言順で覆う");
   }
 }

@@ -287,13 +287,6 @@ pub(crate) enum CounterName {
   Equation,
 }
 
-impl CounterName {
-  /// 固定 9 種のカウンタ名を宣言順（部 → 章 → … → 数式）で並べたスライス。
-  ///
-  /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
-  pub(crate) const ALL: &'static [CounterName] = <Self as VariantArray>::VARIANTS;
-}
-
 /// [`CounterName`] の `FromStr` が受理しないカウンタ名を渡されたときのエラー。
 #[derive(Debug, Error)]
 #[error(
@@ -308,13 +301,18 @@ impl FromStr for CounterName {
   ///
   /// `IntoStaticStr` の derive が出す綴りと全 variant を照合して実装しているので、両者が食い違うことはない。
   fn from_str(name: &str) -> Result<Self, Self::Err> {
-    return Self::ALL.iter().copied().find(|&c| return <&str>::from(c) == name).ok_or(ParseCounterNameError);
+    return Self::VARIANTS
+      .iter()
+      .copied()
+      .find(|&c| return <&str>::from(c) == name)
+      .ok_or(ParseCounterNameError);
   }
 }
 
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use strum::VariantArray;
 
   use super::{CounterName, CounterStyle, Counters, NumberStyle};
 
@@ -386,7 +384,7 @@ display_name = \"図\"
   #[test]
   fn every_entry_maps_to_its_own_counter() {
     // Arrange — 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
-    let toml = CounterName::ALL
+    let toml = CounterName::VARIANTS
       .iter()
       .map(|&name| {
         let key: &str = name.into();
@@ -398,7 +396,7 @@ display_name = \"図\"
     let counters: Counters = toml::from_str(&toml).unwrap();
 
     // Assert
-    for &name in CounterName::ALL {
+    for &name in CounterName::VARIANTS {
       let key: &str = name.into();
       assert_eq!(counters[name].display_name, format!("{key}!"), "{key} の上書きが別のカウンタへ流れている");
     }
@@ -524,7 +522,7 @@ resets = [\"example\"]
   #[test]
   fn serde_accepts_strum_spelling_for_all() {
     // serde の `rename_all` と strum の `serialize_all` は別の derive 属性なので、綴りの一致をここで固定する
-    for &counter in CounterName::ALL {
+    for &counter in CounterName::VARIANTS {
       let key: &str = counter.into();
       let parsed: CounterName = toml::Value::String(key.to_owned()).try_into().unwrap();
       assert_eq!(parsed, counter);
@@ -540,7 +538,7 @@ resets = [\"example\"]
 
   #[test]
   fn from_str_roundtrips_strum_spelling_for_all() {
-    for &counter in CounterName::ALL {
+    for &counter in CounterName::VARIANTS {
       let name_str: &str = counter.into();
       let recovered = name_str.parse::<CounterName>().ok();
       assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");

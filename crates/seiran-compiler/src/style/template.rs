@@ -548,6 +548,7 @@ mod tests {
   use garde::Validate;
   use itertools::Itertools;
   use serde::Deserialize;
+  use strum::VariantArray;
 
   use super::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, ReferenceTemplate, RunningTemplate,
@@ -670,7 +671,7 @@ mod tests {
   #[test]
   fn counter_template_accepts_self_and_all_nine_counters() {
     let source: String = std::iter::once("{n}".to_string())
-      .chain(CounterName::ALL.iter().map(|&counter| return format!("{{{}}}", <&str>::from(counter))))
+      .chain(CounterName::VARIANTS.iter().map(|&counter| return format!("{{{}}}", <&str>::from(counter))))
       .collect();
 
     assert!(violation(&CounterTemplate::parse(&source)).is_none());

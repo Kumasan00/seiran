@@ -33,15 +33,10 @@ pub(crate) enum TheoremClass {
   Proof,
 }
 
-impl TheoremClass {
-  /// 全 10 クラスを宣言順に並べたスライス。
-  ///
-  /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
-  pub(crate) const ALL: &'static [TheoremClass] = <Self as VariantArray>::VARIANTS;
-}
-
 #[cfg(test)]
 mod tests {
+  use strum::VariantArray;
+
   use super::TheoremClass;
 
   #[test]
@@ -52,7 +47,7 @@ mod tests {
   #[test]
   fn serde_accepts_display_for_all() {
     // serde の `rename_all` と strum の `serialize_all` は別の derive 属性なので、綴りの一致をここで固定する
-    for &class in TheoremClass::ALL {
+    for &class in TheoremClass::VARIANTS {
       let parsed: TheoremClass = toml::Value::String(class.to_string()).try_into().unwrap();
       assert_eq!(parsed, class);
     }

@@ -241,8 +241,9 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   match なら網羅性検査が variant 追加を弾く（enum match の wildcard 判定で Yes になる「意味的な対応表」と
   同じ理由で、対応表は match に残す）。使う derive は Cargo.toml の features で必要なものだけに絞る。
 - 固定集合 enum の **全 variant の列挙と、case 変換だけで決まる文字列化は `strum`** に寄せる。全 variant を
-  宣言順に並べた `ALL` は `VariantArray` の `VARIANTS` から取る（手書きの配列は variant を足しても追記漏れが
-  コンパイルを通る。公開型は `strum` のトレイトを利用側へ import させないよう、inherent の定数で包む）。
+  宣言順に並べた列挙は `VariantArray` の `VARIANTS` を直接使う（手書きの配列は variant を足しても追記漏れが
+  コンパイルを通る）。別名の定数は挟まない。例外は crate 外から列挙される公開型で、利用側に `strum` の
+  トレイトを import させないよう inherent の定数で包む（`FontType::ALL`）。
   snake_case の綴り（TOML キー・環境名）は `#[strum(serialize_all = "…")]` 付きの `IntoStaticStr` /
   `Display` から出す — 全 variant に一律で case 変換をかけるので、variant ごとの属性が無く書き忘れようがない
   （上の derive_more の問題に当たらない）。serde の `rename_all` と綴りを 2 箇所に持つことになるので、serde が
@@ -251,7 +252,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   - variant ごとの `#[strum(serialize = "…")]` / `#[strum(to_string = "…")]`: derive_more の
     `#[display("…")]` と同じく、書き忘れが variant 名のまま通る。case 変換で導けない対応表は手書き match に残す
   - `EnumString`（`FromStr` の derive）: エラー型が汎用の `strum::ParseError` になり、受理する候補を列挙する
-    診断を失う。`FromStr` は `ALL` から find する手書きにする（`CounterName`）
+    診断を失う。`FromStr` は `VARIANTS` から find する手書きにする（`CounterName`）
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない。
 - エスケープの要らない文字列を `r"…"` で書かない（`needless_raw_strings`）。raw string は「`\` や `"` を
   そのまま置いている」という合図なので、どちらも含まない文字列に付けると読み手へ嘘の合図を送る
