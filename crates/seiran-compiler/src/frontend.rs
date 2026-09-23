@@ -995,6 +995,26 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_environment_in_math_is_error_wherever_written() {
+    // #688: 数式内の環境は、書いた位置によらず同じ診断になる
+    for source in [
+      r"$\begin{matrix}a\end{matrix}$",
+      r"${\begin{matrix}a\end{matrix}}$",
+      r"$\frac{\begin{matrix}a\end{matrix}}{2}$",
+      // 環境の本体が `{` で始まると parse_environment が先頭の `{...}` を（環境が引数を
+      // 取らなくても）本体ではなく環境の必須引数として読むため、本体を `{` 始まりにはできない
+      // （#688 とは別の不具合、#732）。前に `a` を置いて回避する。
+      r"\begin{equation}a{\begin{matrix}a\end{matrix}}\end{equation}",
+    ] {
+      let error = evaluate_error(source);
+      assert!(
+        matches!(error, EvalError::UnsupportedInMath { ref what, .. } if what == "環境 matrix"),
+        "{source}: {error:?}"
+      );
+    }
+  }
+
+  #[test]
   fn evaluate_math_frac_arg_structures_superscript() {
     let result = evaluate_source(r"$\frac{x^{2}}{y}$");
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {

@@ -183,6 +183,11 @@ impl<'a> Parser<'a> {
 
   /// 1つの構文要素をパースして `children` に追加する
   ///
+  /// テキスト・数式どちらの文脈でも、1 要素を読む規則はこの関数 1 つだけにある。`$...$`・数式グループ・
+  /// 数式環境の本体・数式モードで読む引数は、呼び出し側のループが終端と閉じないまま終わったときの診断を
+  /// 持ち、要素はここで読む。数式内の `\begin` も環境として読み、数式内で環境を使えないことの診断は評価器に任せる
+  /// （書いた位置で診断が変わらないようにするため、#688）。
+  ///
   /// `expected_closer` と一致する終端は消費せず、呼び出し側に制御を戻す。
   fn parse_element(
     &mut self,
@@ -602,25 +607,30 @@ impl<'a> Parser<'a> {
   }
 
   /// インライン数式をパース: `$...$`
+  ///
+  /// 中身の 1 要素は [`Self::parse_element`] が数式モードで読み、このループは終端だけを判定する。
+  /// `$` の前で入力が尽きた場合は [`ParserError::UnclosedInlineMath`] を返す。
   fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = dollar_open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(dollar_open));
 
     loop {
-      if self.peek_token().is_none() {
-        return Err(ParserError::UnclosedInlineMath {
-          span: start_span.into(),
-        });
-      }
-
+      // 終端より先にトリビアを積む。`parse_element` へ渡した後で閉じ `$` に出会うと、数式モード内の
+      // `$` として弾かれてしまう。
+      self.skip_trivia(&mut children);
       match self.peek_kind() {
         Some(TokenKind::Dollar) => {
           let dollar_close = self.take_peeked();
           children.push(GreenElement::Token(dollar_close));
           break;
         },
-        _ => self.parse_math_atom(&mut children)?,
+        None => {
+          return Err(ParserError::UnclosedInlineMath {
+            span: start_span.into(),
+          });
+        },
+        _ => self.parse_element(&mut children, ParseMode::Math, None)?,
       }
     }
 
@@ -630,6 +640,7 @@ impl<'a> Parser<'a> {
 
   /// 数式モード内のグループをパース: `{...}`
   ///
+  /// 中身の 1 要素は [`Self::parse_element`] が数式モードで読み、このループは終端だけを判定する。
   /// `$` または EOF で閉じられないまま終わった場合は [`ParserError::UnclosedMathGroup`] を返す。
   fn parse_math_group(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
     let lbrace = self.expect(TokenKind::LBrace)?;
@@ -638,6 +649,9 @@ impl<'a> Parser<'a> {
     children.push(GreenElement::Token(lbrace));
 
     loop {
+      // 終端より先にトリビアを積む。`parse_element` へ渡した後で `$` に出会うと、閉じていない
+      // グループではなく数式モード内の `$` として弾かれてしまう。
+      self.skip_trivia(&mut children);
       match self.peek_kind() {
         Some(TokenKind::RBrace) => {
           let rbrace = self.take_peeked();
@@ -649,61 +663,12 @@ impl<'a> Parser<'a> {
             span: start_span.into(),
           });
         },
-        _ => self.parse_math_atom(&mut children)?,
+        _ => self.parse_element(&mut children, ParseMode::Math, None)?,
       }
     }
 
     let group_span = start_span.merge(self.last_span);
     return Ok(self.alloc_node(SyntaxKind::MathGroup, group_span, children));
-  }
-
-  /// 数式コンテキスト内で 1 トークン分の内部要素を消費する共通ヘルパ
-  fn parse_math_atom(
-    &mut self,
-    children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
-  ) -> Result<(), ParserError> {
-    match self.peek_kind() {
-      Some(TokenKind::LBrace) => {
-        let group = self.parse_math_group()?;
-        children.push(GreenElement::Node(group));
-      },
-      Some(TokenKind::Command) => {
-        let cmd_token = self.take_peeked();
-        self.parse_command_call(cmd_token, ParseMode::Math, children)?;
-      },
-      Some(TokenKind::Underscore) => {
-        let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
-        children.push(GreenElement::Node(sub_node));
-      },
-      Some(TokenKind::Caret) => {
-        let sup_node = self.parse_math_script(SyntaxKind::MathSuperscript)?;
-        children.push(GreenElement::Node(sup_node));
-      },
-      Some(TokenKind::Unknown) => {
-        let token = self.take_peeked();
-        return Err(ParserError::InvalidBackslash {
-          span: token.span.into(),
-        });
-      },
-      Some(TokenKind::LBracket) => {
-        let token = self.take_peeked();
-        return Err(ParserError::BareBracket {
-          span: token.span.into(),
-        });
-      },
-      Some(TokenKind::RBracket | TokenKind::RBrace) => {
-        let token = self.take_peeked();
-        return Err(ParserError::UnexpectedToken {
-          kind: token.kind,
-          span: token.span.into(),
-        });
-      },
-      _ => {
-        let token = self.take_peeked();
-        children.push(GreenElement::Token(token));
-      },
-    }
-    return Ok(());
   }
 
   /// 数式内の上付き・下付きスクリプトをパースする: `_{...}`, `^{...}`
@@ -1203,6 +1168,69 @@ mod tests {
     let arena = Bump::new();
     let result = parse("${x", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
+  }
+
+  #[test]
+  fn environment_directly_in_inline_math_is_environment_node() {
+    let arena = Bump::new();
+    let cst = parse_source(r"$\begin{foo}a\end{foo}$", &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    assert_eq!(math.kind, SyntaxKind::InlineMath);
+    assert!(math.first_child_of_kind(SyntaxKind::Environment).is_some());
+    assert!(math.first_child_of_kind(SyntaxKind::CommandCall).is_none());
+  }
+
+  #[test]
+  fn environment_directly_in_math_group_is_environment_node() {
+    let arena = Bump::new();
+    let cst = parse_source(r"${\begin{foo}a\end{foo}}$", &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let group = math.first_child_of_kind(SyntaxKind::MathGroup).expect("MathGroup ノードが期待されます");
+    assert!(group.first_child_of_kind(SyntaxKind::Environment).is_some());
+    assert!(group.first_child_of_kind(SyntaxKind::CommandCall).is_none());
+  }
+
+  #[test]
+  fn end_directly_in_inline_math_is_stray_end_error() {
+    let arena = Bump::new();
+    let result = parse(r"$a\end{foo}$", &arena);
+    assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
+  }
+
+  #[test]
+  fn end_directly_in_math_group_is_stray_end_error() {
+    let arena = Bump::new();
+    let result = parse(r"${a\end{foo}}$", &arena);
+    assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
+  }
+
+  #[test]
+  fn trivia_before_closing_dollar_and_brace_stays_in_math() {
+    // 終端の直前のトリビアは数式の子として残り、閉じ `$` / `}` を数式モード内の記号として弾かない
+    let arena = Bump::new();
+    let cst = parse_source("$ { x } $", &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let kinds = |node: &GreenNode<'_>| -> Vec<String> {
+      return node
+        .children
+        .iter()
+        .map(|child| {
+          return match child {
+            GreenElement::Token(token) => format!("{:?}", token.kind),
+            GreenElement::Node(node) => format!("{:?}", node.kind),
+          };
+        })
+        .collect();
+    };
+    assert_eq!(kinds(math), ["Dollar", "Whitespace", "MathGroup", "Whitespace", "Dollar"]);
+    let group = math.first_child_of_kind(SyntaxKind::MathGroup).expect("MathGroup ノードが期待されます");
+    assert_eq!(kinds(group), ["LBrace", "Whitespace", "Text", "Whitespace", "RBrace"]);
   }
 
   #[test]

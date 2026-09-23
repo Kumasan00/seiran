@@ -101,6 +101,14 @@ fn diagnostic_math_script_without_group() {
 }
 
 #[test]
+fn diagnostic_environment_in_inline_math() {
+  // #688（数式内の環境は、`$...$` の直下に書いても数式内で使えないという診断になる）
+  let failure = compile_err(&["tests/text/diagnostics/environment_in_inline_math.sei"]);
+
+  assert_matches_golden("environment_in_inline_math", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_opt_args() {
   // P3（任意引数はコマンド名／環境名の直後に 1 組だけ。#488）
   let failure = compile_err(&["tests/text/diagnostics/multiple_opt_args.sei"]);
