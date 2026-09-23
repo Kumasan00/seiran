@@ -74,8 +74,6 @@ struct PageComposer {
   column_gap: Length,
   /// 現在の段インデックス（0 = 左段）。`column_offset` の算出に使う
   col: usize,
-  /// 直前の [`Block::Penalty`] から引き継いだ分割コスト（次の内容ブロックの改ページ判定で参照）
-  pending_penalty: i32,
   /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）。[`PageComposer::end_region`] が
   /// `draft` へ渡し、`draft` がページ下部の確定座標へ変換する。
   region_footnotes: Vec<PendingFootnote>,
@@ -116,7 +114,6 @@ impl PageComposer {
       column_width,
       column_gap: geom.column_gap,
       col: 0,
-      pending_penalty: 0,
       region_footnotes: Vec::new(),
       region_footnote_height: Length::ZERO,
       carry: Vec::new(),
@@ -202,19 +199,6 @@ impl PageComposer {
       }
     }
     self.carry = rest;
-  }
-
-  /// 直前の [`Block::Penalty`] から引き継いだ分割コストを読み取ってリセットする。
-  fn take_pending_penalty(&mut self) -> i32 { return std::mem::replace(&mut self.pending_penalty, 0); }
-
-  /// ブロック配置前の改ページ判定（分割コスト参照の一本化ポイント）。
-  fn consider_break(&mut self, next_height: Length, penalty: i32, geom: &PageGeometry) {
-    if penalty == PENALTY_FORBID_BREAK {
-      return;
-    }
-    if self.y + next_height > self.region_limit(geom) {
-      self.advance_region(geom);
-    }
   }
 
   /// 現在のリージョン（段 / ページ）の先頭にいて、これ以上前へは送れない（回避不能）かを返す。
@@ -349,15 +333,15 @@ pub(crate) fn break_pages(
         composer.draft.pass_stretch(stretch);
         composer.y += natural;
       },
-      // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限は次の内容ブロックへ持ち越す。
-      // 分割禁止（+∞）は keep-with-next のグループ連結マーカーで、ゲート（keep_group_*）が処理済み
-      // なのでここでは配置上の副作用を持たない（pending にも積まない）。
-      Block::Penalty { value } => {
-        if value == PENALTY_FORCE_BREAK {
-          composer.force_new_page(geom);
-        } else if value != PENALTY_FORBID_BREAK {
-          composer.pending_penalty = value;
-        }
+      // 分割コスト。強制改ページ（−∞）は eager に改ページする。分割禁止（+∞）は keep-with-next の
+      // グループ連結マーカーで、ゲート（keep_group_*）が処理済みなのでここでは配置上の副作用を持たない。
+      Block::Penalty { value } => match value {
+        PENALTY_FORCE_BREAK => composer.force_new_page(geom),
+        PENALTY_FORBID_BREAK => {},
+        _ => unreachable!(
+          "有限値の penalty はどの構築元も作らない（boxing の PageBreak / KeepWithNext と pagination::index は \
+           強制改ページか分割禁止だけを積む）"
+        ),
       },
       Block::Image {
         path,
@@ -366,8 +350,9 @@ pub(crate) fn break_pages(
         target_dpi,
         align,
       } => {
-        let penalty = composer.take_pending_penalty();
-        composer.consider_break(height, penalty, geom);
+        if composer.y + height > composer.region_limit(geom) {
+          composer.advance_region(geom);
+        }
         let col_off = composer.column_offset();
         let y = composer.y;
         composer.draft.place_block(
@@ -857,7 +842,7 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK,
-        Page, PlacedBlock, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+        Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -955,6 +940,11 @@ mod tests {
     };
   }
 
+  /// ページの脚注のうち、[`footnote_item`] に渡した番号の脚注（`index = number - 1`）を返す
+  fn footnote_numbered(page: &Page, number: u32) -> Option<&PlacedFootnote> {
+    return page.footnotes.iter().find(|f| return f.index + 1 == number);
+  }
+
   /// 1 行だけの段落（widow/orphan 補正の対象外）を作る。`items` の末尾に脚注マーカーを追加できる
   fn single_line_paragraph(mut items: Vec<HItem>) -> Block {
     items.insert(0, test_box());
@@ -969,10 +959,7 @@ mod tests {
 
   /// ページの脚注のうち、指定番号の本体行ベースライン列を返す
   fn footnote_baselines(page: &Page, number: u32) -> Vec<Length> {
-    return page
-      .footnotes
-      .iter()
-      .find(|f| return f.number == number)
+    return footnote_numbered(page, number)
       .expect("指定番号の脚注があるはず")
       .blocks
       .iter()
@@ -1379,8 +1366,8 @@ mod tests {
     // Assert
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].footnotes.len(), 2);
-    assert_eq!(pages[0].footnotes[0].number, 1);
-    assert_eq!(pages[0].footnotes[1].number, 2);
+    assert_eq!(pages[0].footnotes[0].index, 0);
+    assert_eq!(pages[0].footnotes[1].index, 1);
     let first = footnote_baselines(&pages[0], 1)[0];
     let second = footnote_baselines(&pages[0], 2)[0];
     assert!(second.to_pt() > first.to_pt(), "脚注 2 は脚注 1 より下");
@@ -1398,7 +1385,7 @@ mod tests {
     return footnote_item(number, items, pt(12.0));
   }
 
-  /// ページ 1 枚の要約: 本文行数と、脚注ごとの (番号, 繰越か, 本体行数)
+  /// ページ 1 枚の要約: 本文行数と、脚注ごとの ([`footnote_item`] に渡した番号, 繰越か, 本体行数)
   type PageFootnoteLayout = (usize, Vec<(u32, bool, usize)>);
 
   /// ページごとの本文行数・脚注構成の要約（分割の連鎖を読みやすく比較する）
@@ -1411,7 +1398,7 @@ mod tests {
           .iter()
           .map(|f| {
             let lines = f.blocks.iter().filter(|b| return matches!(b, PlacedBlock::Line { .. })).count();
-            return (f.number, f.continued, lines);
+            return (f.index + 1, f.continued, lines);
           })
           .collect();
         return (page_baselines(page).len(), footnotes);
@@ -2059,7 +2046,6 @@ mod tests {
       boxes: Vec::new(),
       height: Length::pt(8.0),
       depth: Length::pt(2.0),
-      is_last: false,
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
@@ -3133,7 +3119,6 @@ mod tests {
         }],
         height,
         depth,
-        is_last: true,
         links,
         footnotes: Vec::new(),
         index_marks: Vec::new(),
@@ -3360,7 +3345,7 @@ mod tests {
 
   /// ページの脚注のうち、指定番号の区切り罫線の x（罫線が無ければ `None`）
   fn footnote_rule_x(page: &Page, number: u32) -> Option<Length> {
-    return page.footnotes.iter().find(|f| return f.number == number)?.blocks.iter().find_map(|b| match b {
+    return footnote_numbered(page, number)?.blocks.iter().find_map(|b| match b {
       PlacedBlock::Rule { x, .. } => return Some(*x),
       _ => return None,
     });
@@ -3368,10 +3353,7 @@ mod tests {
 
   /// ページの脚注のうち、指定番号の本体行の先頭ボックスの x 列
   fn footnote_line_xs(page: &Page, number: u32) -> Vec<Length> {
-    return page
-      .footnotes
-      .iter()
-      .find(|f| return f.number == number)
+    return footnote_numbered(page, number)
       .expect("指定番号の脚注があるはず")
       .blocks
       .iter()

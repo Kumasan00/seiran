@@ -35,7 +35,7 @@ pub(crate) fn dump_pages(pages: &[Page]) -> String {
       for footnote in &page.footnotes {
         // 前ページから繰り越された脚注だけ印を付ける
         let continued = if footnote.continued { " continued" } else { "" };
-        dump_section(&mut out, &format!("  footnote number={}{continued}", footnote.number), &footnote.blocks);
+        dump_section(&mut out, &format!("  footnote index={}{continued}", footnote.index), &footnote.blocks);
       }
     }
     for anchor in &page.anchors {
@@ -136,14 +136,7 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
 
 /// テキスト行を書き出す（ベースライン位置 + 行高 + 各配置ボックス + リンク矩形）。
 fn dump_line(out: &mut String, line: &Line, baseline_y: Length) {
-  let _ = writeln!(
-    out,
-    "  line baseline_y={} height={} depth={} last={}",
-    f2(baseline_y),
-    f2(line.height),
-    f2(line.depth),
-    line.is_last
-  );
+  let _ = writeln!(out, "  line baseline_y={} height={} depth={}", f2(baseline_y), f2(line.height), f2(line.depth));
   for pbox in &line.boxes {
     dump_positioned_box(out, pbox);
   }

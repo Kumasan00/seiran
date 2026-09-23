@@ -37,7 +37,7 @@ impl LineBreaker for KnuthPlassBreaker {
     }
 
     // 強制改行（ForcedBreak）で独立サブ段落に分割し、各々を最適化する。
-    // 各サブ段落の最終行は is_last となり伸縮しない（強制改行直前の行の意味を保つ）。
+    // 各サブ段落の最終行は伸縮しない（強制改行直前の行の意味を保つ）。
     let segments = split_on_forced_break(items);
     let segment_count = segments.len();
     let mut lines: Vec<Line> = Vec::new();
@@ -460,7 +460,6 @@ mod tests {
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
-    assert!(lines[0].is_last);
   }
 
   #[test]
@@ -470,7 +469,6 @@ mod tests {
     let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1);
-    assert!(lines[0].is_last);
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
@@ -490,7 +488,6 @@ mod tests {
 
     // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(!lines[0].is_last);
     assert!(close(right_edge(&lines[0]), 27.0), "非最終行の右端は版面右端: {lines:?}");
   }
 
@@ -523,16 +520,14 @@ mod tests {
 
     // Assert
     assert_eq!(greedy.len(), 3, "greedy: {greedy:?}");
-    assert!(!greedy[0].is_last);
     assert!(right_edge(&greedy[0]) < pt(24.0), "greedy の非最終行は疎（右端 < 25）: {greedy:?}");
 
     assert_eq!(kp.len(), 2, "kp: {kp:?}");
-    assert!(!kp[0].is_last);
     assert!(close(right_edge(&kp[0]), 25.0), "KP の非最終行は右端に揃う: {kp:?}");
   }
 
   #[test]
-  fn forced_break_line_is_last_and_not_stretched() {
+  fn forced_break_line_is_not_stretched() {
     // Arrange
     let items = vec![
       test_box(),
@@ -545,10 +540,8 @@ mod tests {
     // Act
     let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert
+    // Assert — 強制改行の直前の行は両端揃えでも伸ばさない（glue は自然幅 5 のまま）
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(lines[0].is_last);
-    assert!(lines[1].is_last);
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
@@ -571,7 +564,6 @@ mod tests {
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1);
-    assert!(lines[0].is_last);
   }
 
   #[test]
@@ -693,25 +685,27 @@ mod tests {
   }
 
   #[test]
-  fn break_subparagraph_marks_only_last_line_is_last() {
-    // Arrange
+  fn break_subparagraph_stretches_all_but_last_line() {
+    // Arrange — [b10 glue b10] が 2 行（自然幅 25・伸長 2.5）。3 箱は最小幅 36.7 > 27 で 1 行に入らず、
+    // 1 箱だけの行は glue が無く伸ばせないので、分割は glue 2 本目の 1 通りに決まる
     let items = vec![
-      box_width(20.0),
+      box_width(10.0),
       stretch_glue(),
-      box_width(20.0),
+      box_width(10.0),
       stretch_glue(),
-      box_width(20.0),
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
     ];
 
     // Act
     let mut open_links = Vec::new();
-    let lines = break_subparagraph(&items, Length::pt(22.0), &mut open_links);
+    let lines = break_subparagraph(&items, Length::pt(27.0), &mut open_links);
 
-    // Assert
-    assert_eq!(lines.len(), 3, "{lines:?}");
-    assert!(!lines[0].is_last);
-    assert!(!lines[1].is_last);
-    assert!(lines[2].is_last);
+    // Assert — 非最終行は版面右端まで伸び、最終行は自然幅のまま
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(close(right_edge(&lines[0]), 27.0), "非最終行は右端に揃う: {lines:?}");
+    assert!(close(right_edge(&lines[1]), 25.0), "最終行は伸ばさない: {lines:?}");
   }
 
   #[test]
@@ -810,7 +804,6 @@ mod tests {
 
     // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(!lines[0].is_last);
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 3 つ（MB はボックスを生成しない）: {lines:?}");
     assert!(
       close(right_edge(&lines[0]), 32.0),

@@ -420,7 +420,33 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
   );
 }
 
-/// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
+/// 脚注本体の先頭行の先頭ボックス（脚注エリア側の上付きマーカー）に描かれた番号を読む。
+///
+/// マーカーは `InlineNode::Raise` なので `HBoxContent::Atom` の子にグリフ列を持つ。既定の
+/// `marker_format`（`{number}`）では番号の数字だけが並ぶ。
+fn footnote_marker_number(blocks: &[PlacedBlock]) -> u32 {
+  let marker = blocks
+    .iter()
+    .find_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return line.boxes.first(),
+      _ => return None,
+    })
+    .expect("脚注本体は先頭行にマーカーを持つはず");
+  let HBoxContent::Atom(children) = &marker.content else {
+    panic!("脚注マーカーは上付きの閉じた箱のはず: {marker:?}");
+  };
+  let text: String = children
+    .iter()
+    .filter_map(|child| match &child.item.content {
+      HBoxContent::Glyphs(run) => return Some(run.text.as_str()),
+      HBoxContent::Atom(_) => return None,
+    })
+    .collect();
+  return text.parse().unwrap_or_else(|_| panic!("マーカーは番号の数字だけのはず: {text:?}"));
+}
+
+/// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとに、そのページで始まる脚注の
+/// マーカー番号列を返すテストヘルパ
 fn footnote_numbers_per_page(numbering: FootnoteNumbering) -> Vec<Vec<u32>> {
   // 採番方式は fixture 差分の既定値を上書きする（`golden_fixture` の後に適用される）
   let laid_out = TestProject::builder()
@@ -431,7 +457,14 @@ fn footnote_numbers_per_page(numbering: FootnoteNumbering) -> Vec<Vec<u32>> {
   return laid_out
     .pages
     .iter()
-    .map(|page| return page.footnotes.iter().map(|footnote| return footnote.number).collect())
+    .map(|page| {
+      return page
+        .footnotes
+        .iter()
+        .filter(|footnote| return !footnote.continued)
+        .map(|footnote| return footnote_marker_number(&footnote.blocks))
+        .collect();
+    })
     .collect();
 }
 
@@ -531,11 +564,11 @@ fn footnote_links_follow_the_page_the_line_lands_on() {
 fn long_footnote_splits_across_pages_without_overlapping_body() {
   let laid_out = TestProject::builder().golden_fixture("footnote_split").build().laid_out();
 
-  // 脚注 1 の続きが次ページへ繰り越される
+  // 最初の脚注（index 0）の続きが次ページへ繰り越される
   let fragments: Vec<Vec<(u32, bool)>> = laid_out
     .pages
     .iter()
-    .map(|page| return page.footnotes.iter().map(|f| return (f.number, f.continued)).collect())
+    .map(|page| return page.footnotes.iter().map(|f| return (f.index, f.continued)).collect())
     .collect();
   let carried = fragments
     .iter()
@@ -543,9 +576,9 @@ fn long_footnote_splits_across_pages_without_overlapping_body() {
     .unwrap_or_else(|| panic!("脚注が分割されて繰越が生じるはず（空振り検知）: {fragments:?}"));
   assert!(carried > 0, "繰越は 2 ページ目以降に現れるはず: {fragments:?}");
   // 繰越はそのページの脚注領域の先頭（自前の脚注より前）に置かれる
-  assert_eq!(fragments[carried].first(), Some(&(1, true)), "繰越が脚注領域の先頭のはず: {fragments:?}");
+  assert_eq!(fragments[carried].first(), Some(&(0, true)), "繰越が脚注領域の先頭のはず: {fragments:?}");
   assert!(
-    fragments[carried].iter().any(|(number, continued)| return *number == 2 && !continued),
+    fragments[carried].iter().any(|(index, continued)| return *index == 1 && !continued),
     "繰越先ページの自前の脚注が繰越の後ろに積まれるはず: {fragments:?}"
   );
   // 本文と脚注が重ならない（繰越ページも含めて）
@@ -640,4 +673,48 @@ fn blank_code_line_keeps_a_full_line_height() {
   let dump = dump_pages_of("code");
 
   assert!(!dump.contains("height=0.00"), "高さ 0 の行は出ないはず（空行も 1 行ぶんの extent を持つ）");
+}
+
+/// 前付けの構成（タイトルページ・目次）を切り替えて組んだ総ページ数を返すテストヘルパ。
+///
+/// `blank_metadata` が真なら config の `[document]` から title / author / date を取り除く
+/// （タイトルページに載せる中身が無い状態）。
+fn page_count_with_front_matter(title_page: bool, toc: bool, blank_metadata: bool) -> usize {
+  let laid_out = TestProject::builder()
+    .sources(&["tests/text/toc.sei"])
+    .config_toml(move |table| {
+      if blank_metadata && let Some(document) = table.get_mut("document").and_then(toml::Value::as_table_mut) {
+        document.remove("title");
+        document.remove("author");
+        document.remove("date");
+      }
+    })
+    .style(move |style| {
+      style.title_page.enabled = title_page;
+      style.toc.enabled = toc;
+    })
+    .build()
+    .laid_out();
+  return laid_out.pages.len();
+}
+
+#[test]
+fn front_matter_adds_no_blank_pages() {
+  // Arrange — 前付けなしの本文ページ数を基準にする
+  let body_only = page_count_with_front_matter(false, false, false);
+
+  // Act
+  let title_only = page_count_with_front_matter(true, false, false);
+  let toc_only = page_count_with_front_matter(false, true, false);
+  let both = page_count_with_front_matter(true, true, false);
+  let empty_title_only = page_count_with_front_matter(true, false, true);
+  let empty_title_and_toc = page_count_with_front_matter(true, true, true);
+
+  // Assert — タイトルページはちょうど 1 ページ、目次は 1 ページ以上、両方なら和。
+  // 中身の無いタイトルページは 0 ページ（白紙を作らない）
+  assert_eq!(title_only, body_only + 1, "タイトルページだけなら 1 ページ増える");
+  assert!(toc_only > body_only, "目次だけなら 1 ページ以上増える: {toc_only} vs {body_only}");
+  assert_eq!(both, toc_only + 1, "両方ならタイトルページ 1 + 目次のページ数");
+  assert_eq!(empty_title_only, body_only, "中身の無いタイトルページは白紙ページを作らない");
+  assert_eq!(empty_title_and_toc, toc_only, "中身の無いタイトルページは目次の前に白紙ページを作らない");
 }

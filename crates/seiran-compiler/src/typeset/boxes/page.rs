@@ -71,19 +71,10 @@ pub(crate) struct Page {
 /// [`PlacedBlock::Rule`] として `blocks` の先頭に混ざる（2 個目以降の脚注には付かない）。
 /// 座標系は [`PlacedBlock`] と同じ（本文左端・ページ上端からの距離）。
 ///
-/// 脚注 1 個がページ下部に収まらないときは行単位で分割され、同じ `number` / `index` を持つ
+/// 脚注 1 個がページ下部に収まらないときは行単位で分割され、同じ `index` を持つ
 /// [`PlacedFootnote`] が複数ページに現れる（`continued` で区別する）。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedFootnote {
-  /// 発番済みの表示番号（[`super::line::LineFootnote`] から素通し）
-  #[cfg_attr(
-    not(test),
-    expect(
-      dead_code,
-      reason = "描画はマーカー側の番号を使うため読まない（crate 内の `#[cfg(test)]` が採番を検証する）"
-    )
-  )]
-  pub number: u32,
   /// 出現順の識別子（0 起点。[`super::line::LineFootnote`] から素通し）
   ///
   /// ページ単位採番の反復（`typeset::pagination::footnote_numbering`）が、確定したページ列から

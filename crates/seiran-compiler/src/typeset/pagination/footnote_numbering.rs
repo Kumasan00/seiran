@@ -97,7 +97,6 @@ mod tests {
         .iter()
         .map(|(index, continued)| {
           return PlacedFootnote {
-            number: index + 1,
             index: *index,
             continued: *continued,
             blocks: Vec::new(),

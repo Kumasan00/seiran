@@ -237,7 +237,6 @@ pub(super) fn build_line(
     boxes,
     height,
     depth,
-    is_last,
     links,
     footnotes,
     index_marks,

@@ -423,7 +423,6 @@ impl PageDraft {
       top = baseline + prev_depth;
       self.entries.push(Entry::Footnote {
         footnote: PlacedFootnote {
-          number: pending.number,
           index: pending.index,
           continued: pending.continued,
           blocks,
@@ -603,7 +602,6 @@ mod tests {
       boxes: Vec::new(),
       height: pt(8.0),
       depth: pt(2.0),
-      is_last: true,
       links: link
         .map(|target| {
           return vec![LineLink {

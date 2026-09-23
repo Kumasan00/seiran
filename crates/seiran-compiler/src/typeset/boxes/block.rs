@@ -124,7 +124,8 @@ pub(in crate::typeset) enum Block {
   /// 分割コスト（penalty）
   ///
   /// `value` はそのブロック境界で改ページする際のコスト。[`PENALTY_FORCE_BREAK`]（−∞）は強制改ページ、
-  /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止、有限値は「避けたいが可能」を表す。
+  /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止。有限値（「避けたいが可能」）はどの構築元も作らず、
+  /// `break_pages` は到達不能として扱う（導入するときは使う側と一緒に設計する）。
   Penalty {
     /// 分割コスト（小さいほど切りやすい。−∞=強制 / +∞=禁止）
     value: i32,
@@ -165,17 +166,6 @@ impl Block {
     return Block::Penalty {
       value: PENALTY_FORCE_BREAK,
     };
-  }
-
-  /// 強制改ページの penalty かどうかを返す。
-  #[must_use]
-  pub(crate) fn is_force_break(&self) -> bool {
-    return matches!(
-      self,
-      Block::Penalty {
-        value: PENALTY_FORCE_BREAK
-      }
-    );
   }
 }
 
