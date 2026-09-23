@@ -238,7 +238,8 @@ fn link_target_desc(target: &LinkTarget) -> String {
   };
 }
 
-/// [`AnchorId`] を `"prefix:"` 付きの安定な文字列にする（アンカー行と [`link_target_desc`] が共用）
+/// [`AnchorId`] を安定な文字列表現にする — ラベルはそのまま、それ以外は `"種別:"` 接頭辞付き。
+/// アンカー行と [`link_target_desc`] が共用
 fn anchor_id_desc(id: &AnchorId) -> String {
   return match id {
     AnchorId::Heading(key) => format!("heading:{}", key.index()),
