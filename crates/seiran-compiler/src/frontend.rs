@@ -1003,7 +1003,7 @@ mod tests {
       r"$\frac{\begin{matrix}a\end{matrix}}{2}$",
       // 環境の本体が `{` で始まると parse_environment が先頭の `{...}` を（環境が引数を
       // 取らなくても）本体ではなく環境の必須引数として読むため、本体を `{` 始まりにはできない
-      // （#688 とは別の既知の制約）。前に `a` を置いて回避する。
+      // （#688 とは別の不具合、#732）。前に `a` を置いて回避する。
       r"\begin{equation}a{\begin{matrix}a\end{matrix}}\end{equation}",
     ] {
       let error = evaluate_error(source);
