@@ -17,7 +17,6 @@ use crate::{
 /// 能力を持つ glue）の幅だけを変える。段落最終行・強制改行直前の行は
 /// 両端揃えでも伸縮しない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TextAlignment {
   /// 両端揃え（既定）。行の余り幅を伸縮点へ比例配分して行末を版面右端に揃える
@@ -29,7 +28,6 @@ pub(crate) enum TextAlignment {
 
 /// 本文段落のスタイル設定
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct TextBlockStyle {

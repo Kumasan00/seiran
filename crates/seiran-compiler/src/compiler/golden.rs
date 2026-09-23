@@ -67,7 +67,6 @@ use crate::{
     test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
   },
   length::Length,
-  style::FootnoteNumbering,
   typeset::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
 
@@ -168,9 +167,9 @@ fn layout_helper_reports_cross_input_layout_validation() {
   // Arrange — 左右余白の合計（600mm）が fixture の用紙幅（595mm）を超える
   let project = TestProject::builder()
     .golden_fixture("text")
-    .style(|style| {
-      style.page.margin_left = Length::mm(300.0);
-      style.page.margin_right = Length::mm(300.0);
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_left", "300mm");
+      test_support::set(table, "page", "margin_right", "300mm");
     })
     .build();
 
@@ -233,10 +232,10 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   // 収まる大きさ）。keepwithnext.sei は見出し直前を filler で埋め、見出しがページ末尾に来る配置。
   let project = TestProject::builder()
     .sources(&["tests/text/keepwithnext.sei"])
-    .config_toml(|table| test_support::set_str(table, "pdf", "height", "45mm"))
-    .style(|style| {
-      style.page.margin_top = Length::mm(10.0);
-      style.page.margin_bottom = Length::mm(10.0);
+    .config_toml(|table| test_support::set(table, "pdf", "height", "45mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "10mm");
+      test_support::set(table, "page", "margin_bottom", "10mm");
     })
     .build();
 
@@ -288,11 +287,11 @@ fn index_group_heading_never_ends_a_column() {
   // 本文行が生まれてしまう）。
   let project = TestProject::builder()
     .sources(&["tests/text/index_groups.sei"])
-    .config_toml(|table| test_support::set_str(table, "pdf", "height", "60mm"))
-    .style(|style| {
-      style.page.margin_top = Length::mm(10.0);
-      style.page.margin_bottom = Length::mm(10.0);
-      style.index.group_headings = true;
+    .config_toml(|table| test_support::set(table, "pdf", "height", "60mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "10mm");
+      test_support::set(table, "page", "margin_bottom", "10mm");
+      test_support::set(table, "index", "group_headings", true);
     })
     .build();
 
@@ -386,7 +385,7 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
   let project = TestProject::builder()
     .sources(&["tests/text/figure.sei"])
     .assets(FIGURE_IMAGE_ASSETS)
-    .style(|style| style.columns.count = 2)
+    .style_toml(|table| test_support::set(table, "columns", "count", 2))
     .build();
   let layout = project.layout().expect("figure.sei は 2 段組みでも組版できるはず");
   let sizes: Vec<(Length, Length)> = layout
@@ -445,13 +444,13 @@ fn footnote_marker_number(blocks: &[PlacedBlock]) -> u32 {
   return text.parse().unwrap_or_else(|_| panic!("マーカーは番号の数字だけのはず: {text:?}"));
 }
 
-/// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとに、そのページで始まる脚注の
-/// マーカー番号列を返すテストヘルパ
-fn footnote_numbers_per_page(numbering: FootnoteNumbering) -> Vec<Vec<u32>> {
+/// `footnote_per_page.sei` を指定の採番方式（style.toml の `[footnote].numbering` の値）で組版し、
+/// ページごとに、そのページで始まる脚注のマーカー番号列を返すテストヘルパ
+fn footnote_numbers_per_page(numbering: &'static str) -> Vec<Vec<u32>> {
   // 採番方式は fixture 差分の既定値を上書きする（`golden_fixture` の後に適用される）
   let laid_out = TestProject::builder()
     .golden_fixture("footnote_per_page")
-    .style(move |style| style.footnote.numbering = numbering)
+    .style_toml(move |table| test_support::set(table, "footnote", "numbering", numbering))
     .build()
     .laid_out();
   return laid_out
@@ -471,7 +470,7 @@ fn footnote_numbers_per_page(numbering: FootnoteNumbering) -> Vec<Vec<u32>> {
 #[test]
 fn per_page_footnote_numbering_restarts_on_each_page() {
   // Act
-  let per_page = footnote_numbers_per_page(FootnoteNumbering::PerPage);
+  let per_page = footnote_numbers_per_page("per_page");
 
   // Assert — 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
   // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
@@ -620,7 +619,7 @@ fn block_bottom(block: &PlacedBlock) -> Option<Length> {
 #[test]
 fn continuous_footnote_numbering_runs_through_pages() {
   // Act — 同じ入力を既定（通し）で組む
-  let continuous = footnote_numbers_per_page(FootnoteNumbering::Continuous);
+  let continuous = footnote_numbers_per_page("continuous");
 
   // Assert — ページをまたいでも 1 からの通し連番のまま（ページ単位採番の導入で既定が変わっていない）
   let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();
@@ -634,7 +633,12 @@ fn layout_dump_changes_with_line_height() {
   // ベースライン送りに効くため、複数行が縦に並ぶ入力（itemize）を対象にする。
   let taller = TestProject::builder()
     .golden_fixture("itemize")
-    .style(|style| style.text.line_height_factor += 0.5)
+    .style_toml(|table| {
+      let base = table["text"]["line_height_factor"]
+        .as_float()
+        .expect("fixture style.toml は [text].line_height_factor を持つはず");
+      test_support::set(table, "text", "line_height_factor", base + 0.5);
+    })
     .build();
 
   // Act
@@ -651,7 +655,7 @@ fn layout_dump_changes_with_punctuation_spacing() {
   // 約物が密な入力（yakumono）で連続約物の詰め・約物の収縮点化が座標差として現れる。
   let disabled = TestProject::builder()
     .golden_fixture("yakumono")
-    .style(|style| style.text.punctuation_spacing = false)
+    .style_toml(|table| test_support::set(table, "text", "punctuation_spacing", false))
     .build();
 
   // Act — 既定（有効）と無効（フォントの送り幅そのまま）を組版してダンプする
@@ -689,9 +693,9 @@ fn page_count_with_front_matter(title_page: bool, toc: bool, blank_metadata: boo
         document.remove("date");
       }
     })
-    .style(move |style| {
-      style.title_page.enabled = title_page;
-      style.toc.enabled = toc;
+    .style_toml(move |table| {
+      test_support::set(table, "title_page", "enabled", title_page);
+      test_support::set(table, "toc", "enabled", toc);
     })
     .build()
     .laid_out();

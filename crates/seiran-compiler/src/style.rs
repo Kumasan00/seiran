@@ -91,7 +91,6 @@ use crate::{
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct Style {
   /// 背景色。`None` は背景描画なし

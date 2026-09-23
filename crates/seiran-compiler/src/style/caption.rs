@@ -11,7 +11,6 @@ use crate::{
 
 /// キャプションの共通設定。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct CaptionStyle {

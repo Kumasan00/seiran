@@ -5,7 +5,6 @@ use serde::Deserialize;
 
 /// 番号の数字表記スタイル
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
 pub(crate) enum NumberStyle {

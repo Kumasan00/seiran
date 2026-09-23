@@ -12,7 +12,6 @@ use crate::length::{Length, non_negative};
 /// （負値）はここの garde が、用紙寸法との組み合わせでしか判定できない制約は
 /// [`crate::typeset::PreparedGeometry::prepare`] が検証する。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct PageStyle {

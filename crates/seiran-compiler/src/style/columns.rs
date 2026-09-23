@@ -9,7 +9,6 @@ use crate::length::{Length, non_negative};
 ///
 /// `count` と `config.toml` の用紙・余白との横断制約は [`crate::typeset::PreparedGeometry::prepare`] が検証する。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ColumnsStyle {

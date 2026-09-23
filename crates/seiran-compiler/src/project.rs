@@ -74,15 +74,12 @@ pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 /// 相対パスへの `base_dir` 前置は [`PathResolver`] の責務で、この型は正規化だけを保証する。
 ///
 /// serde は `PathBuf` と同じ TOML 表現（文字列）を透過する — `style.toml` の `csl_path` /
-/// `locale_path` が `Style` の一部として deserialize されるため（serialize はテストビルド限定で、
-/// `compiler::test_support::TestProject` が `Style` を書き戻す経路だけが使う。#684）。
-/// deserialize 時に行うのは字句的正規化だけで、`base_dir` の前置は `style::load` が
-/// [`PathResolver`] で行う。
+/// `locale_path` が `Style` の一部として deserialize されるため。deserialize 時に行うのは
+/// 字句的正規化だけで、`base_dir` の前置は `style::load` が [`PathResolver`] で行う。
 ///
 /// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
 /// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
-#[cfg_attr(test, derive(serde::Serialize), serde(into = "PathBuf"))]
 #[serde(from = "PathBuf")]
 pub struct ProjectPath(PathBuf);
 
@@ -98,7 +95,7 @@ impl From<PathBuf> for ProjectPath {
 }
 
 impl From<ProjectPath> for PathBuf {
-  /// テストビルドの serde `into` 経路と、公開 interface（`DependencyManifest`）への変換に使う。
+  /// 公開 interface（`DependencyManifest`）への変換に使う。
   fn from(path: ProjectPath) -> Self { return path.0; }
 }
 
@@ -169,7 +166,7 @@ pub trait ProjectSource: Send + Sync {
 mod tests {
   use std::{collections::BTreeSet, path::Path};
 
-  use serde::{Deserialize, Serialize};
+  use serde::Deserialize;
 
   use super::{ProjectPath, SourceReadError};
 
@@ -228,26 +225,6 @@ mod tests {
 
     // Assert — deserialize は字句的正規化だけを行う（base_dir の前置は resolver の仕事）
     assert_eq!(holder.path, ProjectPath::new("fig/a.png"));
-  }
-
-  #[test]
-  fn serialize_round_trips_as_a_plain_string() {
-    // Arrange — テストの `TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
-    #[derive(Serialize, Deserialize, PartialEq, Debug)]
-    struct Holder {
-      path: ProjectPath,
-    }
-    let holder = Holder {
-      path: ProjectPath::new("/project/fig/a.png"),
-    };
-
-    // Act
-    let text = toml::to_string(&holder).expect("ProjectPath は文字列として直列化できるはず");
-    let back: Holder = toml::from_str(&text).expect("書き戻した TOML を読み直せるはず");
-
-    // Assert
-    assert_eq!(text.trim(), "path = \"/project/fig/a.png\"");
-    assert_eq!(back, holder);
   }
 
   #[test]

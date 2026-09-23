@@ -7,7 +7,6 @@ use crate::length::{Length, non_negative, positive};
 
 /// 巻末索引のスタイル設定
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct IndexStyle {
   /// 索引ページのタイトル文字列

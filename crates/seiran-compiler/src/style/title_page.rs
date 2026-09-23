@@ -10,7 +10,6 @@ use crate::{
 
 /// タイトルページのスタイル設定。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct TitlePageStyle {
   /// タイトルページを生成するか（既定 `false` = 無効）

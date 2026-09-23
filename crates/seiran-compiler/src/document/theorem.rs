@@ -7,7 +7,6 @@ use serde::Deserialize;
 /// `style.toml` の `[theorems.<name>]` キー、および環境名 `\begin{<name>}` として使われ、
 /// `<name>` は `snake_case` の [`TheoremClass::as_str`] と一致する。未知の名前は登録されない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TheoremClass {
   /// 定理

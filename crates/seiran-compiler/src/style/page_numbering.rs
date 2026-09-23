@@ -7,7 +7,6 @@ use crate::style::number_style::NumberStyle;
 
 /// ページ番号のスタイル設定
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct PageNumbering {
@@ -39,12 +38,10 @@ mod tests {
   }
 
   #[test]
-  fn default_round_trips_through_toml() {
-    let pn = PageNumbering::default();
-    let toml = toml::to_string(&pn).unwrap();
-    let restored: PageNumbering = toml::from_str(&toml).unwrap();
+  fn parses_snake_case_number_styles() {
+    let pn: PageNumbering = toml::from_str("front_matter = \"arabic\"\nbody = \"roman_upper\"").unwrap();
 
-    assert_eq!(restored.front_matter, pn.front_matter);
-    assert_eq!(restored.body, pn.body);
+    assert_eq!(pn.front_matter, NumberStyle::Arabic);
+    assert_eq!(pn.body, NumberStyle::RomanUpper);
   }
 }

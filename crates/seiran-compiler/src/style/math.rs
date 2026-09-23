@@ -10,7 +10,6 @@ use crate::{
 
 /// 数式設定全体（`[math]` テーブル）。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathStyle {
@@ -33,7 +32,6 @@ impl Default for MathStyle {
 
 /// スクリプト（上付き / 下付き）のスタイル設定（`[math.script]`）
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathScriptStyle {
@@ -64,7 +62,6 @@ impl Default for MathScriptStyle {
 
 /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathBlockStyle {
@@ -109,7 +106,6 @@ impl Default for MathBlockStyle {
 
 /// 数式番号を本体のどちら側に配置するか
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
 pub(crate) enum NumberSide {
@@ -121,7 +117,6 @@ pub(crate) enum NumberSide {
 
 /// 数式本体の揃え
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
 pub(crate) enum Alignment {

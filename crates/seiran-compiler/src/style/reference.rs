@@ -10,7 +10,6 @@ use crate::{
 
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ReferenceStyle {
   /// 参考文献セクションのタイトル文字列

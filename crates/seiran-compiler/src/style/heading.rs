@@ -19,7 +19,6 @@ use crate::{
 /// TOML からは [`HeadingStylesTable`]（各エントリが差分指定 [`HeadingStyleOverride`]）として読み、
 /// [`HeadingStyles::default`] のレベル別既定へ重ねて解決済みの値を作る。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(from = "HeadingStylesTable")]
 pub(crate) struct HeadingStyles {
   /// `[heading.part]`
@@ -101,7 +100,6 @@ impl Index<HeadingLevel> for HeadingStyles {
 ///
 /// TOML のスキーマは [`HeadingStyleOverride`]。
 #[derive(Debug, Clone, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 pub(crate) struct HeadingStyle {
   /// 見出しの書式テンプレート。`{number}` と `{title}` を含めることができる

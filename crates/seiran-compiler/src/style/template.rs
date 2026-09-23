@@ -37,8 +37,7 @@ trait Placeholder: Sized {
 /// 解析済みテンプレート 1 本（元文字列・区間列・解析時に見つけた問題）
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Analyzed<P> {
-  /// TOML に書かれた元の文字列。本体では `as_str`（`RunningTemplate::is_blank` 等）と
-  /// 診断・`unreachable!` メッセージが読む唯一の真実で、テストビルド限定の `Serialize` もここを返す
+  /// TOML に書かれた元の文字列。`as_str` が返す唯一の真実
   source: String,
   /// 解析結果の区間列。`Literal` は [`Analyzed::source`] 上の byte range
   parts: Vec<Part<P>>,
@@ -209,8 +208,7 @@ macro_rules! define_template {
       #[must_use]
       pub(crate) fn parse(source: &str) -> Self { return Self(Analyzed::parse(source)); }
 
-      /// TOML に書かれた元の文字列（テストビルド限定。本体の消費者は無く、テストの検証と
-      /// テストビルド限定の `Serialize` だけが使う）
+      /// TOML に書かれた元の文字列（テスト専用）
       #[cfg(test)]
       #[must_use]
       pub(super) fn as_str(&self) -> &str { return self.0.as_str(); }
@@ -219,15 +217,6 @@ macro_rules! define_template {
     impl<'de> Deserialize<'de> for $name {
       fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         return Ok(Self::parse(&String::deserialize(deserializer)?));
-      }
-    }
-
-    /// テストビルド限定。`compiler::test_support::TestProject` が `Style` を style.toml へ書き戻すためだけに
-    /// 使う（本体に直列化の消費者はいない。#684）。
-    #[cfg(test)]
-    impl serde::Serialize for $name {
-      fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        return serializer.serialize_str(self.as_str());
       }
     }
 
@@ -558,7 +547,7 @@ impl RunningTemplate {
 mod tests {
   use garde::Validate;
   use itertools::Itertools;
-  use serde::{Deserialize, Serialize};
+  use serde::Deserialize;
 
   use super::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, ReferenceTemplate, RunningTemplate,
@@ -699,9 +688,9 @@ mod tests {
   }
 
   #[test]
-  fn serde_round_trip_keeps_the_source_string() {
+  fn deserialize_keeps_the_source_string() {
     // Arrange
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize)]
     struct Wrapper {
       /// テンプレート 1 本だけを持つ TOML テーブル
       format: NumberTitleTemplate,
@@ -713,7 +702,6 @@ mod tests {
 
     // Assert
     assert_eq!(wrapper.format.as_str(), "第{number}章 {title}");
-    assert_eq!(toml::to_string(&wrapper).unwrap(), toml);
   }
 
   #[test]

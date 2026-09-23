@@ -11,7 +11,6 @@ use crate::{
 
 /// リスト要素のスタイル設定
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ListStyle {
@@ -69,7 +68,6 @@ impl Default for ListStyle {
 
 /// ネスト段（深さ 1 以上）1 段分の ordered マーカー書式（番号書式 + 装飾テンプレート）
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct NestedOrderedFormat {
