@@ -9,7 +9,6 @@ use krilla::{
   Data,
   text::{Font, GlyphId, KrillaGlyph, Tag},
 };
-use read_fonts::{FontRef, ReadError, TableProvider};
 use seiran_compiler::{FontType, Glyph, PublicationFont, PublicationResources};
 
 use crate::error::PdfRenderError;
@@ -43,13 +42,11 @@ impl KrillaFonts {
 ///
 /// # Errors
 ///
-/// フォントバイト列の解析に失敗した、またはフォントの生成に失敗した場合に [`PdfRenderError`] を返す。
+/// krilla がフォントを生成できなかった場合に [`PdfRenderError`] を返す。
 pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<KrillaFonts, PdfRenderError> {
   let mut fonts = HashMap::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    let publication_font = resources.font(font_type);
-    let has_fvar = font_has_fvar(publication_font, font_type)?;
-    fonts.insert(font_type, build_krilla_font(font_type, publication_font, has_fvar)?);
+    fonts.insert(font_type, build_krilla_font(font_type, resources.font(font_type))?);
   }
   return Ok(KrillaFonts { fonts });
 }
@@ -73,48 +70,29 @@ fn krilla_data(bytes: &Arc<[u8]>) -> Data {
   return Data::from(shared);
 }
 
-/// 指定フォントに `fvar`（バリアブルフォント軸）テーブルがあるかを判定する。
-fn font_has_fvar(font: &PublicationFont, font_type: FontType) -> Result<bool, PdfRenderError> {
-  let font_ref = FontRef::from_index(&font.bytes, font.face.font_index)
-    .map_err(|source| return PdfRenderError::FontParse { font_type, source })?;
-  return match font_ref.fvar() {
-    Ok(_) => Ok(true),
-    Err(ReadError::TableIsMissing(_)) => Ok(false),
-    Err(source) => Err(PdfRenderError::VariationTableRead { font_type, source }),
-  };
-}
-
-/// 判定済みの `fvar` 有無に基づき krilla フォントを構築する。
+/// 軸の指定（無ければ空）で krilla フォントを構築する。
 ///
+/// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的 / 可変で呼び分けない。
+/// 軸の指定と `fvar` の整合（あるのに指定が無い・無いのに指定がある・読めない）は
+/// `typeset::font::validation` が検証済みで、renderer はフォントを自分でパースしない（#681）。
 /// バイト列は [`krilla_data`] で共有ハンドルのまま渡す（実バイト列は複製しない）。
-///
-/// # Panics
-///
-/// `fvar` を持つフォントに `variation_axes` が無い設定は、フォント資源の構築時に
-/// `typeset::font::validation` が診断 code `typeset::font::validation::missing_variation_axes` で
-/// 拒否しているため、ここまで届かない（届いたら不変条件の破れなので落とす）。
-fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool) -> Result<Font, PdfRenderError> {
-  if has_fvar {
-    let Some(axes_config) = font.face.variation_axes.as_ref() else {
-      unreachable!("fvar を持つフォントの variation_axes 欠落は typeset::font::validation が拒否する: {font_type:?}");
-    };
-    let axes = axes_config
-      .iter()
-      .map(|cfg_axis| {
-        let tag = Tag::new(&cfg_axis.name);
-        #[expect(
-          clippy::cast_possible_truncation,
-          reason = "krilla の variable font 軸値が f32 しか受け付けず、API 境界での精度低下は避けられない"
-        )]
-        let value = cfg_axis.value as f32;
-        let axis = (tag, value);
-        return axis;
-      })
-      .collect::<Vec<_>>();
-    return Font::new_variable(krilla_data(&font.bytes), font.face.font_index, &axes)
-      .ok_or(PdfRenderError::FontCreation { font_type });
-  }
-  return Font::new(krilla_data(&font.bytes), font.face.font_index).ok_or(PdfRenderError::FontCreation { font_type });
+fn build_krilla_font(font_type: FontType, font: &PublicationFont) -> Result<Font, PdfRenderError> {
+  let axes = font
+    .face
+    .variation_axes
+    .iter()
+    .flatten()
+    .map(|cfg_axis| {
+      #[expect(
+        clippy::cast_possible_truncation,
+        reason = "krilla の variable font 軸値が f32 しか受け付けず、API 境界での精度低下は避けられない"
+      )]
+      let value = cfg_axis.value as f32;
+      return (Tag::new(&cfg_axis.name), value);
+    })
+    .collect::<Vec<_>>();
+  return Font::new_variable(krilla_data(&font.bytes), font.face.font_index, &axes)
+    .ok_or(PdfRenderError::FontCreation { font_type });
 }
 
 /// レイアウト済みグリフ列を UPEM で正規化して Krilla のグリフ列へ変換する。

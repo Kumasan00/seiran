@@ -1151,10 +1151,10 @@ compiler 側の責務で、こちらへ戻さない。
 
 ### 境界
 
-- `font`: krilla フォントの構築（`fvar` の有無判定とバリアブル軸の適用を含む）とグリフの変換。フォント
-  バイト列は `Publication` の `Arc<[u8]>` を `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は
-  複製されない。構築は `FontType::ALL` の宣言順で行う — `HashMap` の反復順に任せると、複数フォントが同時に
-  不正なときに返るエラーが実行のたびに変わる
+- `font`: krilla フォントの構築（軸の指定を渡すだけで、フォントを自分でパースしない — `fvar` との整合は
+  compiler の検証が保証する）とグリフの変換。フォントバイト列は `Publication` の `Arc<[u8]>` を
+  `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は複製されない。構築は `FontType::ALL` の
+  宣言順で行う — `HashMap` の反復順に任せると、複数フォントが同時に不正なときに返るエラーが実行のたびに変わる
 - `render`: `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の `font_size`（`Length`）→ pt と
   `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、
   render 側で黒へ置き換えない。ファイル I/O は発生しない

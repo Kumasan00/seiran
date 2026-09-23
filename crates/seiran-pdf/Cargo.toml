@@ -13,7 +13,6 @@ image.workspace = true
 krilla.workspace = true
 krilla-svg.workspace = true
 miette.workspace = true
-read-fonts.workspace = true
 seiran-compiler.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

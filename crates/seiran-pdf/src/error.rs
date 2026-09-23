@@ -13,39 +13,12 @@
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
-use read_fonts::ReadError;
 use seiran_compiler::FontType;
 use thiserror::Error;
 
 /// PDF 描画中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]
 pub enum PdfRenderError {
-  /// フォントバイト列を krilla へ渡す前の解析に失敗しました。
-  #[error("フォントバイト列の解析に失敗しました: {font_type:?}")]
-  #[diagnostic(
-    code(pdf::font_parse),
-    help("描画バックエンドがフォントを解釈できませんでした。別のフォントファイルで出力できるか確認してください。")
-  )]
-  FontParse {
-    /// フォント種別。
-    font_type: FontType,
-    /// 元の解析エラー。
-    #[source]
-    source: ReadError,
-  },
-  /// バリアブルフォントの補助テーブルを読み込めませんでした。
-  #[error("バリアブルフォントの補助テーブルを読み込めませんでした: {font_type:?}")]
-  #[diagnostic(
-    code(pdf::variation_table_read),
-    help("描画バックエンドが 'fvar' テーブルを読めませんでした。別のフォントファイルで出力できるか確認してください。")
-  )]
-  VariationTableRead {
-    /// フォント種別。
-    font_type: FontType,
-    /// 元の読み込みエラー。
-    #[source]
-    source: ReadError,
-  },
   /// krilla フォントの生成に失敗しました。
   #[error("Krilla 用フォントの生成に失敗しました: {font_type:?}")]
   #[diagnostic(
