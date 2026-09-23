@@ -1,6 +1,7 @@
 //! 全フォント種別に対応する値を 1 つずつ持つ表 [`FontMap`]。
 
 use std::{
+  array,
   fmt::{self, Debug, Formatter},
   ops::Index,
 };
@@ -42,9 +43,9 @@ pub(crate) struct FontMap<T> {
 
 impl<T> FontMap<T> {
   /// 各種別の値を `value_of` で作る（[`FontType::ALL`] の順に 1 回ずつ呼ぶ）。
-  pub(crate) fn from_fn(value_of: impl FnMut(FontType) -> T) -> Self {
+  pub(crate) fn from_fn(mut value_of: impl FnMut(FontType) -> T) -> Self {
     return Self {
-      values: FontType::ALL.map(value_of),
+      values: array::from_fn(|index| return value_of(FontType::ALL[index])),
     };
   }
 
@@ -53,8 +54,8 @@ impl<T> FontMap<T> {
   /// # Errors
   ///
   /// `value_of` が `Err` を返した種別の失敗を [`FontType::ALL`] 順に集めて返す。
-  pub(crate) fn try_from_fn<E>(value_of: impl FnMut(FontType) -> Result<T, E>) -> Result<Self, Failures<E>> {
-    return Self::from_complete_results(Vec::from(FontType::ALL.map(value_of)));
+  pub(crate) fn try_from_fn<E>(mut value_of: impl FnMut(FontType) -> Result<T, E>) -> Result<Self, Failures<E>> {
+    return Self::from_complete_results(FontType::ALL.iter().map(|&font_type| return value_of(font_type)).collect());
   }
 
   /// [`FontMap::from_fn`] の並列版。
@@ -144,7 +145,7 @@ mod tests {
   fn from_fn_stores_each_value_under_its_font_type() {
     let map = FontMap::from_fn(|font_type| return font_type.as_toml_key());
 
-    for font_type in FontType::ALL {
+    for &font_type in FontType::ALL {
       assert_eq!(map[font_type], font_type.as_toml_key());
     }
   }
@@ -178,7 +179,7 @@ mod tests {
   fn try_from_fn_builds_the_map_when_every_font_type_succeeds() {
     let map = FontMap::try_from_fn(|font_type| return Ok::<_, ()>(font_type)).expect("全種別成功のはず");
 
-    for font_type in FontType::ALL {
+    for &font_type in FontType::ALL {
       assert_eq!(map[font_type], font_type);
     }
   }
@@ -190,7 +191,7 @@ mod tests {
 
     let zipped = keys.zip_with(font_types, |key, font_type| return (key, font_type));
 
-    for font_type in FontType::ALL {
+    for &font_type in FontType::ALL {
       assert_eq!(zipped[font_type], (font_type.as_toml_key(), font_type));
     }
   }

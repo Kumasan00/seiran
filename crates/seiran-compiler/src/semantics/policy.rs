@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+use strum::VariantArray;
+
 use crate::{
   document::{HeadingLevel, TheoremClass},
   style::{CounterName, Style, TheoremReset},
@@ -44,7 +46,7 @@ impl SemanticPolicy {
   #[must_use]
   pub(crate) fn from_style(style: &Style) -> Self {
     let mut counters = HashMap::new();
-    for name in CounterName::ALL {
+    for &name in CounterName::VARIANTS {
       counters.insert(
         name,
         CounterPolicy {
@@ -53,7 +55,7 @@ impl SemanticPolicy {
       );
     }
     let mut theorems = HashMap::new();
-    for class in TheoremClass::ALL {
+    for &class in TheoremClass::VARIANTS {
       let def = &style.theorems[class];
       theorems.insert(
         class,
@@ -71,7 +73,7 @@ impl SemanticPolicy {
   #[must_use]
   pub(super) fn counter(&self, name: CounterName) -> &CounterPolicy {
     let Some(policy) = self.counters.get(&name) else {
-      unreachable!("from_style が CounterName::ALL をすべて埋めている: {name:?}")
+      unreachable!("from_style が CounterName::VARIANTS をすべて埋めている: {name:?}")
     };
     return policy;
   }

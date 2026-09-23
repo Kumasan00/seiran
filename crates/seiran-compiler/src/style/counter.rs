@@ -7,6 +7,7 @@ use std::{ops::Index, str::FromStr};
 
 use garde::Validate;
 use serde::Deserialize;
+use strum::{IntoStaticStr, VariantArray};
 use thiserror::Error;
 
 use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
@@ -262,8 +263,9 @@ impl CounterStyleOverride {
 }
 
 /// カウンタ名（固定 9 種）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, IntoStaticStr, VariantArray)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum CounterName {
   /// 部
   Part,
@@ -285,37 +287,6 @@ pub(crate) enum CounterName {
   Equation,
 }
 
-impl CounterName {
-  /// 固定 9 種のカウンタ名を宣言順（部 → 章 → … → 数式）で並べた配列。
-  pub(crate) const ALL: [CounterName; 9] = [
-    Self::Part,
-    Self::Chapter,
-    Self::Section,
-    Self::Subsection,
-    Self::Paragraph,
-    Self::Subparagraph,
-    Self::Table,
-    Self::Figure,
-    Self::Equation,
-  ];
-
-  /// `snake_case` の文字列表現を返す（TOML のキーと同じ）
-  #[must_use]
-  pub(super) fn as_str(self) -> &'static str {
-    return match self {
-      Self::Part => "part",
-      Self::Chapter => "chapter",
-      Self::Section => "section",
-      Self::Subsection => "subsection",
-      Self::Paragraph => "paragraph",
-      Self::Subparagraph => "subparagraph",
-      Self::Table => "table",
-      Self::Figure => "figure",
-      Self::Equation => "equation",
-    };
-  }
-}
-
 /// [`CounterName`] の `FromStr` が受理しないカウンタ名を渡されたときのエラー。
 #[derive(Debug, Error)]
 #[error(
@@ -328,15 +299,20 @@ impl FromStr for CounterName {
 
   /// `snake_case` のカウンタ名文字列から [`CounterName`] を復元する
   ///
-  /// [`CounterName::as_str`] の走査で実装しているので、両者が食い違うことはない。
+  /// `IntoStaticStr` の derive が出す綴りと全 variant を照合して実装しているので、両者が食い違うことはない。
   fn from_str(name: &str) -> Result<Self, Self::Err> {
-    return Self::ALL.into_iter().find(|c| return c.as_str() == name).ok_or(ParseCounterNameError);
+    return Self::VARIANTS
+      .iter()
+      .copied()
+      .find(|&c| return <&str>::from(c) == name)
+      .ok_or(ParseCounterNameError);
   }
 }
 
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use strum::VariantArray;
 
   use super::{CounterName, CounterStyle, Counters, NumberStyle};
 
@@ -408,22 +384,21 @@ display_name = \"図\"
   #[test]
   fn every_entry_maps_to_its_own_counter() {
     // Arrange — 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
-    let toml = CounterName::ALL
-      .into_iter()
-      .map(|name| return format!("[{}]\ndisplay_name = \"{}!\"\n", name.as_str(), name.as_str()))
+    let toml = CounterName::VARIANTS
+      .iter()
+      .map(|&name| {
+        let key: &str = name.into();
+        return format!("[{key}]\ndisplay_name = \"{key}!\"\n");
+      })
       .collect::<String>();
 
     // Act
     let counters: Counters = toml::from_str(&toml).unwrap();
 
     // Assert
-    for name in CounterName::ALL {
-      assert_eq!(
-        counters[name].display_name,
-        format!("{}!", name.as_str()),
-        "{} の上書きが別のカウンタへ流れている",
-        name.as_str()
-      );
+    for &name in CounterName::VARIANTS {
+      let key: &str = name.into();
+      assert_eq!(counters[name].display_name, format!("{key}!"), "{key} の上書きが別のカウンタへ流れている");
     }
   }
 
@@ -533,10 +508,25 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn counter_name_as_str_matches_snake_case() {
-    assert_eq!(CounterName::Part.as_str(), "part");
-    assert_eq!(CounterName::Subparagraph.as_str(), "subparagraph");
-    assert_eq!(CounterName::Equation.as_str(), "equation");
+  fn counter_name_into_str_is_snake_case() {
+    for (name, want) in [
+      (CounterName::Part, "part"),
+      (CounterName::Subparagraph, "subparagraph"),
+      (CounterName::Equation, "equation"),
+    ] {
+      let key: &str = name.into();
+      assert_eq!(key, want);
+    }
+  }
+
+  #[test]
+  fn serde_accepts_strum_spelling_for_all() {
+    // serde の `rename_all` と strum の `serialize_all` は別の derive 属性なので、綴りの一致をここで固定する
+    for &counter in CounterName::VARIANTS {
+      let key: &str = counter.into();
+      let parsed: CounterName = toml::Value::String(key.to_owned()).try_into().unwrap();
+      assert_eq!(parsed, counter);
+    }
   }
 
   #[test]
@@ -547,9 +537,9 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn from_str_roundtrips_as_str_for_all() {
-    for counter in CounterName::ALL {
-      let name_str = counter.as_str();
+  fn from_str_roundtrips_strum_spelling_for_all() {
+    for &counter in CounterName::VARIANTS {
+      let name_str: &str = counter.into();
       let recovered = name_str.parse::<CounterName>().ok();
       assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");
     }

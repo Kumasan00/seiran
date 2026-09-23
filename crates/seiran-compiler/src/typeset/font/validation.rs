@@ -266,7 +266,7 @@ pub(super) fn validate_fonts(
 ) -> (Result<(), Failures<FontValidationFailure>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
-  for font_type in FontType::ALL {
+  for &font_type in FontType::ALL {
     let config = &font_configs[font_type];
     let font_ref = &font_refs[font_type];
     all_errors.extend(

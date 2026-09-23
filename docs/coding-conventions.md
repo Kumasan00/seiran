@@ -58,8 +58,8 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   （`multiple_inherent_impl` は子 module の impl を見ない）。例外は 2 つ —
   module facade の `#[cfg(test)] pub(crate) use ...;`（本番 API を広げずにテストへ型・ヘルパを出す唯一の
   手段で、外すと本体ビルドで `unused_imports` が `-D warnings` に当たる）と、**本番の型が持つテスト専用の
-  フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `TheoremClass::COUNT` / `NodeId::for_test`
-  のような、型そのものに属していて module へ切り離せないもの）。後者は 20 箇所あり、`mod tests` の中の
+  フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `NodeId::for_test`
+  のような、型そのものに属していて module へ切り離せないもの）。後者は 19 箇所あり、`mod tests` の中の
   `impl` へ寄せると「crate 全体から見える `pub(crate)` が `tests` という名前の module に住む」別の
   ねじれが生じるため、いまは項目に付けたまま残している（#696）。**再検討のトリガー**は
   「同じ型のテスト専用アクセサが 3 つ以上に増えたとき」— そのときは型ごとの置き場を設計し直す。
@@ -185,7 +185,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
 ## 値と型の書き方
 
 字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項・`clone` の要否・`itertools` と std の
-使い分け・`derive_more` と手書き impl の使い分けを除き lint が機械化している。
+使い分け・`derive_more` / `strum` と手書き impl の使い分けを除き lint が機械化している。
 
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。
   `x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、
@@ -239,8 +239,20 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   `#[display]` の無い unit variant を variant 名そのまま出力する仕様なので、variant を追加して属性を書き忘れても
   コンパイルが通り、`JapaneseMonospaceExtraBold` のような識別子がそのままユーザ向けの文言に出る。手書きの
   match なら網羅性検査が variant 追加を弾く（enum match の wildcard 判定で Yes になる「意味的な対応表」と
-  同じ理由で、対応表は match に残す）。`rename_all` は表示名が case 変換で機械的に導ける場合にしか使えない
-  （空白で区切る Title Case は無い）。使う derive は Cargo.toml の features で必要なものだけに絞る。
+  同じ理由で、対応表は match に残す）。使う derive は Cargo.toml の features で必要なものだけに絞る。
+- 固定集合 enum の **全 variant の列挙と、case 変換だけで決まる文字列化は `strum`** に寄せる。全 variant を
+  宣言順に並べた列挙は `VariantArray` の `VARIANTS` を直接使う（手書きの配列は variant を足しても追記漏れが
+  コンパイルを通る）。別名の定数は挟まない。例外は crate 外から列挙される公開型で、利用側に `strum` の
+  トレイトを import させないよう inherent の定数で包む（`FontType::ALL`）。
+  snake_case の綴り（TOML キー・環境名）は `#[strum(serialize_all = "…")]` 付きの `IntoStaticStr` /
+  `Display` から出す — 全 variant に一律で case 変換をかけるので、variant ごとの属性が無く書き忘れようがない
+  （上の derive_more の問題に当たらない）。serde の `rename_all` と綴りを 2 箇所に持つことになるので、serde が
+  strum の綴りを受理することをテストで固定する。`serialize_all` は 1 型に 1 つで、strum の文字列系 derive が
+  共有する（1 型で 2 種類の case を derive することはできない）。使わないのは次の 2 つ。
+  - variant ごとの `#[strum(serialize = "…")]` / `#[strum(to_string = "…")]`: derive_more の
+    `#[display("…")]` と同じく、書き忘れが variant 名のまま通る。case 変換で導けない対応表は手書き match に残す
+  - `EnumString`（`FromStr` の derive）: エラー型が汎用の `strum::ParseError` になり、受理する候補を列挙する
+    診断を失う。`FromStr` は `VARIANTS` から find する手書きにする（`CounterName`）
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない。
 - エスケープの要らない文字列を `r"…"` で書かない（`needless_raw_strings`）。raw string は「`\` や `"` を
   そのまま置いている」という合図なので、どちらも含まない文字列に付けると読み手へ嘘の合図を送る

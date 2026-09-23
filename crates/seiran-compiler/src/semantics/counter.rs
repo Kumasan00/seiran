@@ -20,6 +20,8 @@
 
 use std::collections::HashMap;
 
+use strum::VariantArray;
+
 use crate::{
   document::TheoremClass,
   semantics::SemanticPolicy,
@@ -141,7 +143,7 @@ impl CounterRegistry {
   /// 指定カウンタの現在値を、祖先チェーンを辿って [`CounterValue`] として返す
   ///
   /// 表示側フィールド（`number_format` 等）は一切参照しない。祖先は「自分を `resets` に
-  /// 含み、かつ `CounterName::ALL` の宣言順で自身より手前にあるカウンタのうち最も近いもの」
+  /// 含み、かつ `CounterName::VARIANTS` の宣言順で自身より手前にあるカウンタのうち最も近いもの」
   /// を 1 段ずつ遡って求める（`resets` は値に影響する構造データであり、issue #282 の
   /// style 分類では「値側」に属する）。既定の `Counters` は祖先の `resets` に子孫を平坦に
   /// 列挙する（例: `part.resets` は `chapter` を含む）ため、探索範囲を「自身より手前」に
@@ -158,11 +160,11 @@ impl CounterRegistry {
 
   /// `name` の祖先カウンタの現在値を、最も遠い祖先から順に集める（末尾が直近の親）
   fn ancestor_values(&self, name: CounterName) -> Vec<CounterPart> {
-    let own_index = CounterName::ALL
+    let own_index = CounterName::VARIANTS
       .iter()
       .position(|candidate| return *candidate == name)
-      .expect("CounterName::ALL は全 9 バリアントを含む");
-    let parent = CounterName::ALL[..own_index]
+      .expect("CounterName::VARIANTS は全 9 バリアントを含む");
+    let parent = CounterName::VARIANTS[..own_index]
       .iter()
       .rev()
       .find(|candidate| return self.policy.counter(**candidate).resets.contains(&name))

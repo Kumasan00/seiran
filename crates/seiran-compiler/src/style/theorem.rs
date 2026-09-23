@@ -7,6 +7,7 @@ use std::ops::Index;
 
 use garde::Validate;
 use serde::Deserialize;
+use strum::VariantArray;
 
 pub(super) use crate::document::TheoremClass;
 use crate::{
@@ -189,7 +190,7 @@ impl Default for TheoremStyle {
 }
 
 /// 定理カウンタのリセット先。`reset_by` フィールドで指定する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, VariantArray)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TheoremReset {
   /// 部が進むたびにリセット
@@ -205,15 +206,6 @@ pub(crate) enum TheoremReset {
 }
 
 impl TheoremReset {
-  /// 全 5 バリアントを宣言順（部 → 章 → 節 → 小節 → なし）で並べた配列
-  const ALL: [TheoremReset; 5] = [
-    Self::Part,
-    Self::Chapter,
-    Self::Section,
-    Self::Subsection,
-    Self::None,
-  ];
-
   /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
   ///
   /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典で、逆写像
@@ -233,7 +225,7 @@ impl TheoremReset {
   /// 見出しカウンタ `name` をリセット先に持つレベルを返す（[`Self::counter_name`] の逆写像）
   #[must_use]
   pub(crate) fn for_counter(name: CounterName) -> Option<Self> {
-    return Self::ALL.iter().copied().find(|level| return level.counter_name() == Some(name));
+    return Self::VARIANTS.iter().copied().find(|level| return level.counter_name() == Some(name));
   }
 }
 
@@ -430,6 +422,7 @@ impl TheoremPresentationOverride {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use strum::VariantArray;
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems};
   use crate::{
@@ -449,8 +442,8 @@ mod tests {
   fn all_default_classes_pass_validation() {
     let theorems = Theorems::default();
 
-    for class in TheoremClass::ALL {
-      assert!(theorems[class].validate().is_ok(), "{} should validate", class.as_str());
+    for &class in TheoremClass::VARIANTS {
+      assert!(theorems[class].validate().is_ok(), "{class} should validate");
     }
   }
 
@@ -533,7 +526,7 @@ mod tests {
       TheoremClass::Claim,
     ] {
       let style = &theorems[class];
-      assert_eq!(style.counter, "theorem", "{} should share theorem counter", class.as_str());
+      assert_eq!(style.counter, "theorem", "{class} should share theorem counter");
       assert_eq!(style.style.font_kind, FontKind::SerifItalic);
       assert!(!style.unnumbered);
     }
@@ -565,8 +558,8 @@ mod tests {
     let theorems = Theorems::default();
 
     for (class, display_name, counter) in expected {
-      assert_eq!(theorems[class].display_name, display_name, "{} の表示名", class.as_str());
-      assert_eq!(theorems[class].counter, counter, "{} の共有カウンタ", class.as_str());
+      assert_eq!(theorems[class].display_name, display_name, "{class} の表示名");
+      assert_eq!(theorems[class].counter, counter, "{class} の共有カウンタ");
     }
   }
 
@@ -748,7 +741,11 @@ font_knd = \"serif\"
     for (name, want) in expected {
       assert_eq!(TheoremReset::for_counter(name), want, "{name:?} に対応するリセットレベル");
     }
-    assert_eq!(expected.map(|(name, _)| return name), CounterName::ALL, "固定 9 種のカウンタ名を宣言順ですべて覆う");
+    assert_eq!(
+      expected.map(|(name, _)| return name),
+      CounterName::VARIANTS,
+      "固定 9 種のカウンタ名を宣言順ですべて覆う"
+    );
   }
 
   #[test]
@@ -764,6 +761,6 @@ font_knd = \"serif\"
     for (level, want) in expected {
       assert_eq!(level.counter_name(), want, "{level:?} が指す見出しカウンタ");
     }
-    assert_eq!(expected.map(|(level, _)| return level), TheoremReset::ALL, "全 5 バリアントを宣言順で覆う");
+    assert_eq!(expected.map(|(level, _)| return level), TheoremReset::VARIANTS, "全 5 バリアントを宣言順で覆う");
   }
 }
