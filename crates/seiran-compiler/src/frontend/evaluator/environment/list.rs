@@ -236,7 +236,7 @@ mod tests {
   fn itemize_item_gap_option_sets_list_item_gap() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\begin{itemize}[item_gap=0]\item{A}\end{itemize}";
+    let source = r"\begin{itemize}[item_gap=0pt]\item{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
@@ -246,7 +246,7 @@ mod tests {
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(list.item_gap, Some(Length::mm(0.0)));
+    assert_eq!(list.item_gap, Some(Length::ZERO));
   }
 
   #[test]
