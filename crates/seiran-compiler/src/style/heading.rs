@@ -2,7 +2,7 @@
 //!
 //! `[heading.<level>]` の指定を [`default_for_level`] に重ねて解釈する。
 
-use std::ops::{Index, IndexMut};
+use std::ops::Index;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -55,19 +55,6 @@ impl Index<HeadingLevel> for HeadingStyles {
       HeadingLevel::Subsection => &self.subsection,
       HeadingLevel::Paragraph => &self.paragraph,
       HeadingLevel::Subparagraph => &self.subparagraph,
-    };
-  }
-}
-
-impl IndexMut<HeadingLevel> for HeadingStyles {
-  fn index_mut(&mut self, level: HeadingLevel) -> &mut HeadingStyle {
-    return match level {
-      HeadingLevel::Part => &mut self.part,
-      HeadingLevel::Chapter => &mut self.chapter,
-      HeadingLevel::Section => &mut self.section,
-      HeadingLevel::Subsection => &mut self.subsection,
-      HeadingLevel::Paragraph => &mut self.paragraph,
-      HeadingLevel::Subparagraph => &mut self.subparagraph,
     };
   }
 }

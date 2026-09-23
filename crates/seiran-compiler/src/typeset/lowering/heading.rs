@@ -178,7 +178,7 @@ mod tests {
   fn lower_heading_uses_style_template() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = NumberTitleTemplate::parse("[{number}] {title}");
+    style.heading.section.format = NumberTitleTemplate::parse("[{number}] {title}");
     let ctx = LoweringContext::new(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
@@ -275,7 +275,7 @@ mod tests {
   fn lower_heading_with_page_break_after_omits_keep_with_next() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].page_break_after = true;
+    style.heading.section.page_break_after = true;
     let ctx = LoweringContext::new(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
@@ -302,7 +302,7 @@ mod tests {
   fn heading_format_without_title_placeholder_does_not_consume_footnote_number() {
     // Arrange — `{title}` を含まない独自フォーマット（タイトルは一切表示されない）
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = NumberTitleTemplate::parse("{number}");
+    style.heading.section.format = NumberTitleTemplate::parse("{number}");
 
     // Act
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"));
@@ -315,7 +315,7 @@ mod tests {
   fn heading_format_with_two_title_placeholders_lowers_title_twice() {
     // Arrange — `{title}` を 2 回含むフォーマット
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = NumberTitleTemplate::parse("{title} / {title}");
+    style.heading.section.format = NumberTitleTemplate::parse("{title} / {title}");
 
     // Act
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"));
