@@ -1,0 +1,44 @@
+frontend::eval::invalid_opt_arg_value
+
+  × image の任意引数 `width` の値が不正です: 期待型は positive length (pt/mm/cm)
+   ╭─[tests/text/diagnostics/length_unitless.sei:2:7]
+ 1 │ \begin{figure}
+ 2 │ \image[width=50]{./tests/image/testimage1.jpg}
+   ·       ─────┬────
+   ·            ╰── この値は期待型に変換できません
+ 3 │ \caption{c}
+   ╰────
+  help: `width` には positive length (pt/mm/cm) 形式の値を指定してください。
+
+Error: frontend::eval::invalid_opt_arg_value
+
+  × image の任意引数 `width` の値が不正です: 期待型は positive length (pt/mm/cm)
+   ╭─[tests/text/diagnostics/length_uppercase.sei:2:7]
+ 1 │ \begin{figure}
+ 2 │ \image[width=50MM]{./tests/image/testimage1.jpg}
+   ·       ──────┬─────
+   ·             ╰── この値は期待型に変換できません
+ 3 │ \caption{c}
+   ╰────
+  help: `width` には positive length (pt/mm/cm) 形式の値を指定してください。
+
+Error: frontend::eval::invalid_opt_arg_value
+
+  × itemize の任意引数 `item_gap` の値が不正です: 期待型は length (pt/mm/cm)
+   ╭─[tests/text/diagnostics/length_spaced.sei:1:16]
+ 1 │ \begin{itemize}[item_gap=5 mm]
+   ·                ───────┬───────
+   ·                       ╰── この値は期待型に変換できません
+ 2 │ \item{a}
+   ╰────
+  help: `item_gap` には length (pt/mm/cm) 形式の値を指定してください。
+
+Error: frontend::eval::invalid_command_argument
+
+  × コマンド \space の引数が不正です: 長さ（`<数値>pt` / `<数値>mm` / `<数値>cm`）
+   ╭─[tests/text/diagnostics/length_space_command.sei:1:1]
+ 1 │ \space{5}
+   · ────┬────
+   ·     ╰── この引数が不正です
+   ╰────
+  help: 引数の型や形式を確認してください
