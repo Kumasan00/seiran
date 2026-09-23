@@ -11,8 +11,8 @@ use crate::{
 ///
 /// 先頭が主診断 — ユーザーが最初に読むべき、修正可能な leaf diagnostic。残りは
 /// [`Diagnostic::related`] として同時に表示される。**空では構築できない** — 構築経路は
-/// `single` / `push` / `from_diagnostics`（空なら `None`）だけで、いずれも crate 内部限定であり
-/// `Default` も実装しない。
+/// 単一の診断から（`single`）と非空集合 [`Failures`] から（汎用 `From`）の 2 つだけで、
+/// いずれも crate 内部限定であり `Default` も実装しない。
 ///
 /// 段別の内部エラー型は公開しない。crate の外から観測できるのは `miette::Diagnostic` としての姿と
 /// 診断 `code` だけなので、内部 phase の追加・統合が公開 interface の破壊変更にならない
@@ -42,9 +42,7 @@ impl CompileFailure {
   }
 
   /// 関連診断を 1 件追加する（検出順に末尾へ積む）。
-  pub(crate) fn push<E: Diagnostic + Send + Sync + 'static>(&mut self, diagnostic: E) {
-    self.rest.push(Box::new(diagnostic));
-  }
+  fn push<E: Diagnostic + Send + Sync + 'static>(&mut self, diagnostic: E) { self.rest.push(Box::new(diagnostic)); }
 
   /// 失敗するまでに確定した警告を添える。
   ///
@@ -61,20 +59,6 @@ impl CompileFailure {
   /// 含まれない。表示する呼び出し側は `into_report` で消費する前にこちらを借用して描く。
   #[must_use]
   pub fn warnings(&self) -> &Warnings { return &self.warnings; }
-
-  /// 診断の列から失敗を作る。**1 件も無ければ `None`** を返す。
-  ///
-  /// 「エラーが 1 件でもあれば失敗」という判定をこの関数の返り値で表すことで、
-  /// 空の `CompileFailure` を構築する経路自体を無くす。
-  pub(crate) fn from_diagnostics<I: IntoIterator<Item = BoxedDiagnostic>>(diagnostics: I) -> Option<Self> {
-    let mut diagnostics = diagnostics.into_iter();
-    let primary = diagnostics.next()?;
-    return Some(CompileFailure {
-      primary,
-      rest: diagnostics.collect(),
-      warnings: Warnings::default(),
-    });
-  }
 
   /// 主診断から順に、保持する診断を返す（必ず 1 件以上）。
   #[expect(
@@ -211,26 +195,6 @@ mod tests {
 
     // Assert — 1 件なら包む前の leaf と描画が完全に一致するはず
     assert_eq!(rendered, expected);
-  }
-
-  #[test]
-  fn from_diagnostics_rejects_an_empty_iterator() {
-    let failure = CompileFailure::from_diagnostics(Vec::new());
-
-    // 空の失敗は構築できないはず
-    assert!(failure.is_none());
-  }
-
-  #[test]
-  fn from_diagnostics_keeps_the_detection_order() {
-    // Arrange
-    let diagnostics: Vec<Box<dyn Diagnostic + Send + Sync + 'static>> = vec![Box::new(LeafError), Box::new(OtherError)];
-
-    // Act
-    let failure = CompileFailure::from_diagnostics(diagnostics).expect("2 件あるので構築できるはず");
-
-    // Assert
-    assert_eq!(codes(&failure), vec!["test::leaf".to_string(), "test::other".to_string()]);
   }
 
   #[test]

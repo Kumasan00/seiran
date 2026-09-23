@@ -5,7 +5,7 @@
 
 use crate::{
   document::{HirDocument, HirSource},
-  frontend,
+  failures, frontend,
   phase::Phase,
   project::{PathResolver, ProjectPath, ProjectSource},
   semantics, typeset,
@@ -276,20 +276,14 @@ fn parse_project(inputs: &CompilationInputs, resolver: &PathResolver) -> Result<
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 /// エラーは宣言順に並べ、先頭（最初に失敗したソースの leaf 診断）を主診断にする。
 fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec<HirSource>, CompileFailure> {
-  let mut parsed: Vec<HirSource> = Vec::new();
-  let mut parse_errors: Vec<BoxedDiagnostic> = Vec::new();
-
-  for (source_id, entry) in sources.iter() {
-    match frontend::parse_source(&entry.content, source_id, resolver) {
-      Ok(hir) => parsed.push(hir),
-      Err(error) => parse_errors.push(Box::new(SourceDiagnostic::attach(sources, source_id, error))),
-    }
-  }
-
-  if let Some(failure) = CompileFailure::from_diagnostics(parse_errors) {
-    return Err(failure);
-  }
-  return Ok(parsed);
+  let results = sources
+    .iter()
+    .map(|(source_id, entry)| {
+      return frontend::parse_source(&entry.content, source_id, resolver)
+        .map_err(|error| return SourceDiagnostic::attach(sources, source_id, error));
+    })
+    .collect();
+  return failures::collect_in_input_order(results).map_err(CompileFailure::from);
 }
 
 /// `semantics::analyze` のエラーへソース本文を添え、表示可能な診断の集合にする。
@@ -303,13 +297,8 @@ fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileF
   return match error {
     AnalyzeError::CitationStyle(error) => CompileFailure::single(error),
     AnalyzeError::CitationFormat(error) => CompileFailure::single(error),
-    AnalyzeError::Analyze(failures) => {
-      let (first, rest) = failures.into_parts();
-      let mut failure = CompileFailure::single(attach_semantic_error(sources, first));
-      for error in rest {
-        failure.push(attach_semantic_error(sources, error));
-      }
-      failure
+    AnalyzeError::Analyze(errors) => {
+      CompileFailure::from(errors.map(|error| return attach_semantic_error(sources, error)))
     },
   };
 }
