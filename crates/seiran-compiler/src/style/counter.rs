@@ -292,10 +292,6 @@ impl CounterName {
   ///
   /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
   pub(crate) const ALL: &'static [CounterName] = <Self as VariantArray>::VARIANTS;
-
-  /// `snake_case` の文字列表現を返す（TOML のキーと同じ）
-  #[must_use]
-  pub(super) fn as_str(self) -> &'static str { return self.into(); }
 }
 
 /// [`CounterName`] の `FromStr` が受理しないカウンタ名を渡されたときのエラー。
@@ -310,9 +306,9 @@ impl FromStr for CounterName {
 
   /// `snake_case` のカウンタ名文字列から [`CounterName`] を復元する
   ///
-  /// [`CounterName::as_str`]（`IntoStaticStr` の derive）の走査で実装しているので、両者が食い違うことはない。
+  /// `IntoStaticStr` の derive が出す綴りと全 variant を照合して実装しているので、両者が食い違うことはない。
   fn from_str(name: &str) -> Result<Self, Self::Err> {
-    return Self::ALL.iter().copied().find(|c| return c.as_str() == name).ok_or(ParseCounterNameError);
+    return Self::ALL.iter().copied().find(|&c| return <&str>::from(c) == name).ok_or(ParseCounterNameError);
   }
 }
 
@@ -392,7 +388,10 @@ display_name = \"図\"
     // Arrange — 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
     let toml = CounterName::ALL
       .iter()
-      .map(|name| return format!("[{}]\ndisplay_name = \"{}!\"\n", name.as_str(), name.as_str()))
+      .map(|&name| {
+        let key: &str = name.into();
+        return format!("[{key}]\ndisplay_name = \"{key}!\"\n");
+      })
       .collect::<String>();
 
     // Act
@@ -400,12 +399,8 @@ display_name = \"図\"
 
     // Assert
     for &name in CounterName::ALL {
-      assert_eq!(
-        counters[name].display_name,
-        format!("{}!", name.as_str()),
-        "{} の上書きが別のカウンタへ流れている",
-        name.as_str()
-      );
+      let key: &str = name.into();
+      assert_eq!(counters[name].display_name, format!("{key}!"), "{key} の上書きが別のカウンタへ流れている");
     }
   }
 
@@ -515,17 +510,23 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn counter_name_as_str_matches_snake_case() {
-    assert_eq!(CounterName::Part.as_str(), "part");
-    assert_eq!(CounterName::Subparagraph.as_str(), "subparagraph");
-    assert_eq!(CounterName::Equation.as_str(), "equation");
+  fn counter_name_into_str_is_snake_case() {
+    for (name, want) in [
+      (CounterName::Part, "part"),
+      (CounterName::Subparagraph, "subparagraph"),
+      (CounterName::Equation, "equation"),
+    ] {
+      let key: &str = name.into();
+      assert_eq!(key, want);
+    }
   }
 
   #[test]
-  fn serde_accepts_as_str_for_all() {
+  fn serde_accepts_strum_spelling_for_all() {
     // serde の `rename_all` と strum の `serialize_all` は別の derive 属性なので、綴りの一致をここで固定する
     for &counter in CounterName::ALL {
-      let parsed: CounterName = toml::Value::String(counter.as_str().to_owned()).try_into().unwrap();
+      let key: &str = counter.into();
+      let parsed: CounterName = toml::Value::String(key.to_owned()).try_into().unwrap();
       assert_eq!(parsed, counter);
     }
   }
@@ -538,9 +539,9 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn from_str_roundtrips_as_str_for_all() {
+  fn from_str_roundtrips_strum_spelling_for_all() {
     for &counter in CounterName::ALL {
-      let name_str = counter.as_str();
+      let name_str: &str = counter.into();
       let recovered = name_str.parse::<CounterName>().ok();
       assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");
     }
