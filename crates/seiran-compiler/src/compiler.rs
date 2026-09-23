@@ -297,8 +297,8 @@ fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileF
   return match error {
     AnalyzeError::CitationStyle(error) => CompileFailure::single(error),
     AnalyzeError::CitationFormat(error) => CompileFailure::single(error),
-    AnalyzeError::Analyze(failures) => {
-      CompileFailure::from(failures.map(|error| return attach_semantic_error(sources, error)))
+    AnalyzeError::Analyze(errors) => {
+      CompileFailure::from(errors.map(|error| return attach_semantic_error(sources, error)))
     },
   };
 }

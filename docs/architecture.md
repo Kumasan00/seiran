@@ -1074,7 +1074,8 @@ phase 名（`resolve_root` は span を持たない前処理）。段の完了 e
 - `compile_failure`: `compile` の失敗型 `CompileFailure`（1 件以上の error diagnostic。先頭が主診断、残りは
   検出順の関連診断）。中身は型消去済みの `Box<dyn Diagnostic + Send + Sync>` で、`miette::Report` の列には
   しない — `Report` は `Diagnostic` を実装しないので 2 件目以降を `related` へ載せられないため。**空では
-  構築できない**（構築経路はすべて `pub(crate)`。`Default` も実装しない）。1 件のときは `into_report` が
+  構築できない**（構築経路は単一の診断から（`single`）と非空集合 `Failures<E>` から（汎用 `From`）の 2 つだけで、
+  いずれも crate 内部限定。`Default` も実装しない）。1 件のときは `into_report` が
   leaf をそのまま返すので、包む前後で表示が完全に一致する。段別の内部エラー型は公開せず、呼び出し側の
   分類手段は安定した診断 `code`。失敗するまでに確定した警告を `warnings()` で別に返し、`Diagnostic` 実装
   （`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で変わらない）
