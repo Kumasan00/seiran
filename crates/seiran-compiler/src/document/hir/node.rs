@@ -72,7 +72,7 @@ pub(crate) enum HirNodeKind {
   /// 改ページ
   PageBreak,
 
-  /// 固定幅スペース（`\space{N}` コマンド）
+  /// 固定幅スペース（`\space{<長さ>}` コマンド）
   Space(Length),
 }
 

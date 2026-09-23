@@ -146,6 +146,29 @@ fn diagnostic_opt_arg_positive_int_rejects_fraction() {
 }
 
 #[test]
+fn diagnostic_length_has_a_single_format() {
+  // 長さの書式は言語全体で 1 つ — 単位必須・小文字の pt / mm / cm・数値と単位の間に空白なし（#690）。
+  // 単位なし・大文字・空白入りを任意引数で、単位なしを `\space` の必須引数で拒否する
+  let failure = compile_err(&[
+    "tests/text/diagnostics/length_unitless.sei",
+    "tests/text/diagnostics/length_uppercase.sei",
+    "tests/text/diagnostics/length_spaced.sei",
+    "tests/text/diagnostics/length_space_command.sei",
+  ]);
+
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "frontend::eval::invalid_opt_arg_value",
+      "frontend::eval::invalid_opt_arg_value",
+      "frontend::eval::invalid_opt_arg_value",
+      "frontend::eval::invalid_command_argument",
+    ]
+  );
+  assert_matches_golden("length_format", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

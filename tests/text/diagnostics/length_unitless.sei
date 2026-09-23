@@ -1,0 +1,4 @@
+\begin{figure}
+\image[width=50]{./tests/image/testimage1.jpg}
+\caption{c}
+\end{figure}

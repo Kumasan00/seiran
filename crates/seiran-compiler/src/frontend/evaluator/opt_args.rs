@@ -30,7 +30,7 @@ enum OptType {
   Bool,
   /// 任意の文字列
   String,
-  /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`crate::length::Length`] に正規化する
+  /// 長さ。字面は [`crate::length::Length`] の `FromStr`（config / style と共通の 1 つの書式）で読む
   Length,
   /// 正の長さ。`Length` に加えて 0 と負値を拒否する
   ///
@@ -48,8 +48,8 @@ impl fmt::Display for OptType {
     let s = match self {
       Self::Bool => "boolean",
       Self::String => "string",
-      Self::Length => "length (mm/cm)",
-      Self::PositiveLength => "positive length",
+      Self::Length => "length (pt/mm/cm)",
+      Self::PositiveLength => "positive length (pt/mm/cm)",
       Self::PositiveInt => "positive integer",
       Self::Color => "color (#rrggbb)",
     };
@@ -370,11 +370,15 @@ fn parse_value(
       return Ok(OptValue::String(raw.trim().to_string()));
     },
     OptType::Length => {
-      let v = parse_length(raw).ok_or_else(|| return invalid(name, key, expected, span))?;
+      let Ok(v) = raw.parse::<Length>() else {
+        return Err(invalid(name, key, expected, span));
+      };
       return Ok(OptValue::Length(v));
     },
     OptType::PositiveLength => {
-      let v = parse_length(raw).ok_or_else(|| return invalid(name, key, expected, span))?;
+      let Ok(v) = raw.parse::<Length>() else {
+        return Err(invalid(name, key, expected, span));
+      };
       if !v.is_positive() {
         return Err(invalid(name, key, expected, span));
       }
@@ -391,28 +395,6 @@ fn parse_value(
       return Ok(OptValue::Color(v));
     },
   }
-}
-
-/// 長さ文字列を [`Length`] に変換する
-///
-/// 受理する形式: `"<num>"`, `"<num>mm"`, `"<num>cm"`（前後空白可、サフィックスは大小無視）。
-/// サフィックスなしは `mm` 扱い。
-fn parse_length(raw: &str) -> Option<Length> {
-  let trimmed = raw.trim();
-  if trimmed.is_empty() {
-    return None;
-  }
-  let lower = trimmed.to_ascii_lowercase();
-  if let Some(stripped) = lower.strip_suffix("mm") {
-    let value: f32 = stripped.trim_end().parse().ok()?;
-    return Some(Length::mm(value));
-  }
-  if let Some(stripped) = lower.strip_suffix("cm") {
-    let value: f32 = stripped.trim_end().parse().ok()?;
-    return Some(Length::cm(value));
-  }
-  let value: f32 = lower.parse().ok()?;
-  return Some(Length::mm(value));
 }
 
 /// 「1 以上の整数」の検査と `u32` への変換（値域の検査はここ 1 箇所）
@@ -603,8 +585,8 @@ mod tests {
   }
 
   #[test]
-  fn collect_returns_length_with_no_suffix() {
-    // Arrange
+  fn collect_rejects_length_without_unit() {
+    // Arrange — 単位のない数値は長さとして読まない（#690）
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10]{T}";
@@ -612,10 +594,10 @@ mod tests {
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
-    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
+    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
     // Assert
-    assert_eq!(opts.get(WIDTH), Some(Length::mm(10.0)));
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
 
   #[test]
@@ -651,27 +633,11 @@ mod tests {
   }
 
   #[test]
-  fn collect_returns_length_case_insensitive_suffix() {
-    // Arrange
+  fn collect_rejects_uppercase_length_unit() {
+    // Arrange — 単位は小文字のみ（#690）
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=2CM]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    // Act
-    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
-
-    // Assert
-    assert_eq!(opts.get(WIDTH), Some(Length::cm(2.0)));
-  }
-
-  #[test]
-  fn collect_returns_error_for_invalid_length_suffix() {
-    // Arrange
-    const WIDTH: OptKey<Length> = length("width");
-    let arena = Bump::new();
-    let source = r"\section[width=10pt]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
@@ -680,6 +646,38 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
+  }
+
+  #[test]
+  fn collect_rejects_space_between_number_and_unit() {
+    // Arrange
+    const WIDTH: OptKey<Length> = length("width");
+    let arena = Bump::new();
+    let source = r"\section[width=10 mm]{T}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let view = CommandView::new(first_command_node(cst), source);
+
+    // Act
+    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
+  }
+
+  #[test]
+  fn collect_returns_length_with_pt_suffix() {
+    // Arrange — `pt` は config / style と同じくソースでも受理する（#690）
+    const WIDTH: OptKey<Length> = length("width");
+    let arena = Bump::new();
+    let source = r"\section[width=10pt]{T}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let view = CommandView::new(first_command_node(cst), source);
+
+    // Act
+    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
+
+    // Assert
+    assert_eq!(opts.get(WIDTH), Some(Length::pt(10.0)));
   }
 
   #[test]
@@ -737,7 +735,7 @@ mod tests {
     const WIDTH: OptKey<Length> = length("width");
 
     // Act / Assert
-    assert_eq!(format_expected(&[LABEL.decl(), WIDTH.decl()]), "label: string, width: length (mm/cm)");
+    assert_eq!(format_expected(&[LABEL.decl(), WIDTH.decl()]), "label: string, width: length (pt/mm/cm)");
   }
 
   #[test]
@@ -759,7 +757,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive length"),
+      matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive length (pt/mm/cm)"),
       "0 の長さは値の解釈側で拒否される"
     );
   }
@@ -848,8 +846,8 @@ mod tests {
     let cases = [
       (OptType::Bool, "boolean"),
       (OptType::String, "string"),
-      (OptType::Length, "length (mm/cm)"),
-      (OptType::PositiveLength, "positive length"),
+      (OptType::Length, "length (pt/mm/cm)"),
+      (OptType::PositiveLength, "positive length (pt/mm/cm)"),
       (OptType::PositiveInt, "positive integer"),
       (OptType::Color, "color (#rrggbb)"),
     ];

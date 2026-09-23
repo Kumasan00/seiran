@@ -106,7 +106,7 @@ impl Placement {
 /// コマンドの種類
 #[derive(Clone, Copy, Debug)]
 enum CommandKind {
-  /// `\space{N}` — 固定幅スペース挿入
+  /// `\space{<長さ>}` — 固定幅スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
   Heading(HeadingLevel),
@@ -414,7 +414,7 @@ mod tests {
     // （どの診断が先に出るかは不変条件ではない）。guard の書き忘れは `BlockPermit` が型で弾く。
     let cases = [
       ("section", r"\section{a}"),
-      ("space", r"\space{1}"),
+      ("space", r"\space{1pt}"),
       ("noindent", r"\noindent"),
       ("pagebreak", r"\pagebreak"),
     ];

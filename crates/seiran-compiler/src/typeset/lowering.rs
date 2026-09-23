@@ -492,7 +492,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let result = lower_source(&style, r"\space{5}");
+    let result = lower_source(&style, r"\space{5pt}");
 
     // Assert
     let kern = result

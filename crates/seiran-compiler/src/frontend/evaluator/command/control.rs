@@ -9,38 +9,27 @@ use crate::{
   length::Length,
 };
 
-/// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド
+/// `\space{<長さ>}` — 固定幅スペースを挿入するコマンド
+///
+/// 長さの書式は config / style と同じ（[`Length`] の `FromStr`）。値域は制限しない（負値は詰め）。
 ///
 /// # Errors
 ///
-/// 引数の不足・過剰・数値でない場合にエラーを返します
+/// 引数の不足・過剰・長さとして読めない場合にエラーを返します
 pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "スペース量（数値）")?;
-
+  let first_arg = arity::exactly_one_arg(view, "スペース量（長さ）")?;
   let text = extract_text_content(view.source(), first_arg);
-  let trimmed = text.trim();
 
-  if trimmed.is_empty() {
+  let Ok(length) = text.parse::<Length>() else {
     return Err(EvalError::InvalidCommandArgument {
       name: "space".to_string(),
-      reason: "数値のみ".to_string(),
+      reason: "長さ（`<数値>pt` / `<数値>mm` / `<数値>cm`）".to_string(),
       span: view.span().into(),
     });
-  }
-
-  let space_value: f32 = match trimmed.parse() {
-    Ok(val) => val,
-    Err(_) => {
-      return Err(EvalError::InvalidCommandArgument {
-        name: "space".to_string(),
-        reason: "数値".to_string(),
-        span: view.span().into(),
-      });
-    },
   };
 
-  return Ok(ctx.leaf_node(view.span(), HirNodeKind::Space(Length::pt(space_value))));
+  return Ok(ctx.leaf_node(view.span(), HirNodeKind::Space(length)));
 }
 
 /// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
@@ -78,7 +67,7 @@ mod tests {
   fn space_rejects_unknown_opt_arg_key() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\space[draft]{10}";
+    let source = r"\space[draft]{10pt}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
@@ -87,6 +76,38 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
+  }
+
+  #[test]
+  fn space_reads_its_argument_as_a_length() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\space{5mm}";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = run_handler(|ctx| return space(&view, ctx)).unwrap();
+
+    // Assert
+    assert_eq!(result.kind, HirNodeKind::Space(Length::mm(5.0)));
+  }
+
+  #[test]
+  fn space_rejects_non_length_argument() {
+    // 単位のない数値が暗黙の単位（旧 pt）を持つ場所を残さない（#690）
+    for source in [r"\space{5}", r"\space{5PT}", r"\space{5 pt}", r"\space{}"] {
+      let arena = Bump::new();
+      let node = test_support::command_call_node(source, &arena);
+      let view = CommandView::new(node, source);
+
+      let result = run_handler(|ctx| return space(&view, ctx));
+
+      assert!(
+        matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "space"),
+        "{source} は拒否される: {result:?}"
+      );
+    }
   }
 
   #[test]

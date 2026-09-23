@@ -284,7 +284,7 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる。`[heading.<level>]` / `[theorems.<class>]` / `[counters.<name>]` は種類別既定に差分を重ねる 2 レイヤーマージ）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
-- **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"`（素の数値は不可）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
+- **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"` / `"1.5cm"`（単位は小文字の `pt` / `mm` / `cm` のみ・数値と単位の間に空白なし・素の数値は不可。ソースの引数も同じ書式）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
 - **style.toml の設計**（キャプションと番号 3 系統・見出し・定理・カウンタの 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の余白と `flush_bottom` 等、非自明な意味を持つもの）は `docs/architecture.md` の `style` 節。キー一覧と既定値の正典は `crates/seiran-compiler/src/style.rs` / `style/*.rs` の struct と doc コメント（`missing_docs_in_private_items` が有無を検査する）で、ドキュメントへは複製しない
 
 19 フォント種別のキー名は `project::font::FontType`（`FontType::ALL`）と config の struct doc が正典で、ここにも `README.md` にも列挙しない
