@@ -66,9 +66,8 @@ impl Index<HeadingLevel> for HeadingStyles {
 }
 
 /// 見出し要素のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields, default)]
 pub(crate) struct HeadingStyle {
   /// 見出しの書式テンプレート。`{number}` と `{title}` を含めることができる
   #[garde(dive)]
@@ -136,29 +135,31 @@ impl From<HeadingStylesTable> for HeadingStyles {
   }
 }
 
-/// [`HeadingStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+/// [`HeadingStyle`] の各フィールドを `Option<_>` で覆った差分指定型（`[heading.<level>]` の TOML スキーマ）。
+///
+/// `None` のフィールドはレベル別既定のまま残す。
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct HeadingStyleOverride {
   /// 見出しの書式テンプレート
-  pub format: Option<NumberTitleTemplate>,
+  format: Option<NumberTitleTemplate>,
   /// 見出しテキストのフォントサイズ
-  pub font_size: Option<Length>,
+  font_size: Option<Length>,
   /// 見出しブロックの下余白
-  pub bottom_margin: Option<Length>,
+  bottom_margin: Option<Length>,
   /// 見出しの直前で改ページするか
-  pub page_break_before: Option<bool>,
+  page_break_before: Option<bool>,
   /// 見出しの直後で改ページするか
-  pub page_break_after: Option<bool>,
+  page_break_after: Option<bool>,
   /// 見出しテキストのフォント種別
-  pub font_kind: Option<FontKind>,
+  font_kind: Option<FontKind>,
 }
 
 impl HeadingStyleOverride {
   /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(&self, target: &mut HeadingStyle) {
-    if let Some(format) = &self.format {
-      target.format.clone_from(format);
+  fn apply(self, target: &mut HeadingStyle) {
+    if let Some(format) = self.format {
+      target.format = format;
     }
     if let Some(font_size) = self.font_size {
       target.font_size = font_size;

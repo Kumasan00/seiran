@@ -72,9 +72,10 @@ impl Index<TheoremClass> for Theorems {
 }
 
 /// 1 つの定理クラスのスタイル定義（クラス別既定 + 差分上書きで解決済み）。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+///
+/// TOML のスキーマは [`TheoremStyleOverride`]。
+#[derive(Debug, Clone, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields, default)]
 pub(crate) struct TheoremStyle {
   /// 表示名（例: `"Theorem"`、`"定理"`）。見出し書式の `{display_name}` から参照される
   #[garde(length(chars, min = 1))]
@@ -163,9 +164,10 @@ impl TheoremReset {
 }
 
 /// 定理ブロックの見た目（見出し書式・フォント・マージン）。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+///
+/// TOML のスキーマは [`TheoremPresentationOverride`]。
+#[derive(Debug, Clone, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields, default)]
 pub(crate) struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる
   #[garde(dive)]
@@ -307,87 +309,91 @@ impl From<TheoremsTable> for Theorems {
   }
 }
 
-/// [`TheoremStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+/// [`TheoremStyle`] の各フィールドを `Option<_>` で覆った差分指定型（`[theorems.<class>]` の TOML スキーマ）。
+///
+/// `None` のフィールドはクラス別既定のまま残す。
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct TheoremStyleOverride {
   /// 表示名
-  pub display_name: Option<String>,
+  display_name: Option<String>,
   /// 共有カウンタ名
-  pub counter: Option<String>,
+  counter: Option<String>,
   /// カウンタのリセット先
-  pub reset_by: Option<TheoremReset>,
+  reset_by: Option<TheoremReset>,
   /// 番号構築テンプレート
-  pub number_format: Option<CounterTemplate>,
+  number_format: Option<CounterTemplate>,
   /// 採番しないか
-  pub unnumbered: Option<bool>,
+  unnumbered: Option<bool>,
   /// QED マーク（TOML からは設定のみ可。`None` への解除は非対応）
-  pub qed_mark: Option<String>,
+  qed_mark: Option<String>,
   /// 見た目（ネストした差分）
-  pub style: TheoremPresentationOverride,
+  style: TheoremPresentationOverride,
 }
 
 impl TheoremStyleOverride {
   /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(&self, target: &mut TheoremStyle) {
-    if let Some(display_name) = &self.display_name {
-      target.display_name.clone_from(display_name);
+  fn apply(self, target: &mut TheoremStyle) {
+    if let Some(display_name) = self.display_name {
+      target.display_name = display_name;
     }
-    if let Some(counter) = &self.counter {
-      target.counter.clone_from(counter);
+    if let Some(counter) = self.counter {
+      target.counter = counter;
     }
     if let Some(reset_by) = self.reset_by {
       target.reset_by = reset_by;
     }
-    if let Some(number_format) = &self.number_format {
-      target.number_format.clone_from(number_format);
+    if let Some(number_format) = self.number_format {
+      target.number_format = number_format;
     }
     if let Some(unnumbered) = self.unnumbered {
       target.unnumbered = unnumbered;
     }
-    if let Some(qed_mark) = &self.qed_mark {
-      target.qed_mark = Some(qed_mark.clone());
+    if let Some(qed_mark) = self.qed_mark {
+      target.qed_mark = Some(qed_mark);
     }
     self.style.apply(&mut target.style);
   }
 }
 
-/// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型。
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+/// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型（`[theorems.<class>.style]` の TOML スキーマ）。
+///
+/// `None` のフィールドはクラス別既定のまま残す。
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct TheoremPresentationOverride {
   /// サブタイトルなしの見出し書式
-  pub heading_format: Option<TheoremHeadingTemplate>,
+  heading_format: Option<TheoremHeadingTemplate>,
   /// サブタイトルありの見出し書式
-  pub heading_with_title: Option<TheoremHeadingTemplate>,
+  heading_with_title: Option<TheoremHeadingTemplate>,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式
-  pub heading_with_of: Option<TheoremHeadingTemplate>,
+  heading_with_of: Option<TheoremHeadingTemplate>,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式
-  pub heading_with_of_and_title: Option<TheoremHeadingTemplate>,
+  heading_with_of_and_title: Option<TheoremHeadingTemplate>,
   /// 本文のフォント種別
-  pub font_kind: Option<FontKind>,
+  font_kind: Option<FontKind>,
   /// 見出しのフォント種別
-  pub heading_font_kind: Option<FontKind>,
+  heading_font_kind: Option<FontKind>,
   /// 上余白
-  pub top_margin: Option<Length>,
+  top_margin: Option<Length>,
   /// 下余白
-  pub bottom_margin: Option<Length>,
+  bottom_margin: Option<Length>,
 }
 
 impl TheoremPresentationOverride {
   /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(&self, target: &mut TheoremPresentation) {
-    if let Some(heading_format) = &self.heading_format {
-      target.heading_format.clone_from(heading_format);
+  fn apply(self, target: &mut TheoremPresentation) {
+    if let Some(heading_format) = self.heading_format {
+      target.heading_format = heading_format;
     }
-    if let Some(heading_with_title) = &self.heading_with_title {
-      target.heading_with_title.clone_from(heading_with_title);
+    if let Some(heading_with_title) = self.heading_with_title {
+      target.heading_with_title = heading_with_title;
     }
-    if let Some(heading_with_of) = &self.heading_with_of {
-      target.heading_with_of.clone_from(heading_with_of);
+    if let Some(heading_with_of) = self.heading_with_of {
+      target.heading_with_of = heading_with_of;
     }
-    if let Some(heading_with_of_and_title) = &self.heading_with_of_and_title {
-      target.heading_with_of_and_title.clone_from(heading_with_of_and_title);
+    if let Some(heading_with_of_and_title) = self.heading_with_of_and_title {
+      target.heading_with_of_and_title = heading_with_of_and_title;
     }
     if let Some(font_kind) = self.font_kind {
       target.font_kind = font_kind;
