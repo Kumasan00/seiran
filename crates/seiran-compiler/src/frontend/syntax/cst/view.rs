@@ -179,51 +179,63 @@ impl<'a> EnvironmentView<'a> {
 /// 構造トークンとコメントを除いて連結する。
 #[must_use]
 pub(crate) fn extract_text_content(source: &str, node: &GreenNode<'_>) -> String {
+  return elements_text(source, node.children);
+}
+
+/// 要素列のテキストを連結する（[`extract_text_content`] と同じ規則）
+fn elements_text(source: &str, elements: &[GreenElement<'_>]) -> String {
   let mut text = String::new();
-  for child in node.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのまま連結する
-        // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
-        TokenKind::Text
-        | TokenKind::VerbatimText
-        | TokenKind::Whitespace
-        | TokenKind::Newline
-        | TokenKind::Comma
-        | TokenKind::Equals
-        | TokenKind::Underscore
-        | TokenKind::Caret
-        | TokenKind::Ampersand => {
-          text.push_str(token.text(source));
-        },
-        TokenKind::Escaped => {
-          let escaped = &source[token.span.start as usize + 1..token.span.end as usize];
-          text.push_str(escaped);
-        },
-        // 構造トークン（引数・数式の境界）とコメント・不正トークンは文字列に含めない。
-        TokenKind::Command
-        | TokenKind::LBrace
-        | TokenKind::RBrace
-        | TokenKind::LBracket
-        | TokenKind::RBracket
-        | TokenKind::Dollar
-        | TokenKind::LineBreak
-        | TokenKind::ParagraphBreak
-        | TokenKind::Comment
-        | TokenKind::Unknown => {},
-      },
-      GreenElement::Node(child_node) => {
-        text.push_str(&extract_text_content(source, child_node));
-      },
-    }
+  for element in elements {
+    push_element_text(source, element, &mut text);
   }
   return text;
 }
 
+/// 1 要素ぶんのテキストを `text` へ追記する
+fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String) {
+  match element {
+    GreenElement::Token(token) => match token.kind {
+      // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのまま連結する
+      // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
+      TokenKind::Text
+      | TokenKind::VerbatimText
+      | TokenKind::Whitespace
+      | TokenKind::Newline
+      | TokenKind::Comma
+      | TokenKind::Equals
+      | TokenKind::Underscore
+      | TokenKind::Caret
+      | TokenKind::Ampersand => {
+        text.push_str(token.text(source));
+      },
+      TokenKind::Escaped => {
+        let escaped = &source[token.span.start as usize + 1..token.span.end as usize];
+        text.push_str(escaped);
+      },
+      // 構造トークン（引数・数式の境界）とコメント・不正トークンは文字列に含めない。
+      TokenKind::Command
+      | TokenKind::LBrace
+      | TokenKind::RBrace
+      | TokenKind::LBracket
+      | TokenKind::RBracket
+      | TokenKind::Dollar
+      | TokenKind::LineBreak
+      | TokenKind::ParagraphBreak
+      | TokenKind::Comment
+      | TokenKind::Unknown => {},
+    },
+    GreenElement::Node(child_node) => {
+      text.push_str(&extract_text_content(source, child_node));
+    },
+  }
+}
+
 /// `OptArg` ノードを `key=value` 形式としてパースする
 ///
-/// `=` を含まないエントリは boolean フラグとして扱い `("key", "true")` を生成する
-/// （例: `[draft]`）。
+/// 区切りは構造トークンだけで決まる（#687）: 直下の `Comma` がエントリの区切り、各エントリの最初の
+/// `Equals` が key と value の区切り。`\,` / `\=`（`Escaped`）・2 個目以降の `=`・入れ子のノードの中身は
+/// 値の文字になる。引用符 `"` は値の境界ではない。`=` を含まないエントリは boolean フラグとして扱い
+/// `("key", "true")` を生成する（例: `[draft]`）。空のエントリは読み飛ばす。
 #[must_use]
 pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode<'_>) -> Vec<(String, String)> {
   debug_assert_eq!(
@@ -231,20 +243,32 @@ pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode<'_>) -> 
     SyntaxKind::OptArg,
     "key=value のパース対象は OptArg ノードだけ（呼び出し元が OptArg を選んで渡す）"
   );
-  let text = extract_text_content(source, opt_arg);
   let mut pairs = Vec::new();
-  for entry in text.split(',') {
-    let (key, value) = if let Some((k, v)) = entry.split_once('=') {
-      (k.trim(), v.trim().to_string())
-    } else {
-      (entry.trim(), "true".to_string())
+  // 境界の `[` `]` はエントリの先頭・末尾に入るが、`push_element_text` が文字列に含めない
+  for entry in opt_arg.children.split(|element| return is_token(element, TokenKind::Comma)) {
+    let (key, value) = match entry.iter().position(|element| return is_token(element, TokenKind::Equals)) {
+      Some(eq) => {
+        let (key_part, rest) = entry.split_at(eq);
+        // `rest` の先頭は区切りの `=` そのもの
+        (
+          elements_text(source, key_part),
+          elements_text(source, rest.get(1..).unwrap_or_default()).trim().to_string(),
+        )
+      },
+      None => (elements_text(source, entry), "true".to_string()),
     };
+    let key = key.trim();
     if key.is_empty() {
       continue;
     }
     pairs.push((key.to_string(), value));
   }
   return pairs;
+}
+
+/// 要素が指定種別の構造トークンか
+fn is_token(element: &GreenElement<'_>, kind: TokenKind) -> bool {
+  return matches!(element, GreenElement::Token(token) if token.kind == kind);
 }
 
 #[cfg(test)]
@@ -515,5 +539,89 @@ mod tests {
     let pairs = parse_key_value_options(source, opt_arg);
 
     assert!(pairs.is_empty());
+  }
+
+  /// `source` の最初のコマンドの任意引数を key=value の列にする
+  fn command_pairs(source: &str) -> Vec<(String, String)> {
+    let arena = bumpalo::Bump::new();
+    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    return parse_key_value_options(source, first_opt_arg(cst, SyntaxKind::CommandCall));
+  }
+
+  #[test]
+  fn parse_key_value_options_keeps_escaped_comma_in_value() {
+    let pairs = command_pairs(r"\cmd[title=a\, b, label=x]{y}");
+
+    assert_eq!(
+      pairs,
+      vec![
+        ("title".to_string(), "a, b".to_string()),
+        ("label".to_string(), "x".to_string())
+      ]
+    );
+  }
+
+  #[test]
+  fn parse_key_value_options_keeps_escaped_equals_in_value() {
+    let pairs = command_pairs(r"\cmd[title=a\=b]{y}");
+
+    assert_eq!(pairs, vec![("title".to_string(), "a=b".to_string())]);
+  }
+
+  #[test]
+  fn parse_key_value_options_keeps_later_equals_in_value() {
+    let pairs = command_pairs(r"\cmd[title=a=b]{y}");
+
+    assert_eq!(pairs, vec![("title".to_string(), "a=b".to_string())]);
+  }
+
+  #[test]
+  fn parse_key_value_options_treats_quote_as_plain_character() {
+    // 引用符は値の境界ではない（#687）。`,` は引用符の内側でも区切りになる
+    let pairs = command_pairs(r#"\cmd[title="a, b"]{y}"#);
+
+    assert_eq!(
+      pairs,
+      vec![
+        ("title".to_string(), "\"a".to_string()),
+        ("b\"".to_string(), "true".to_string())
+      ]
+    );
+  }
+
+  #[test]
+  fn parse_key_value_options_skips_consecutive_and_trailing_commas() {
+    let pairs = command_pairs(r"\cmd[a=1,, b=2,]{y}");
+
+    assert_eq!(
+      pairs,
+      vec![
+        ("a".to_string(), "1".to_string()),
+        ("b".to_string(), "2".to_string())
+      ]
+    );
+  }
+
+  #[test]
+  fn extract_text_content_still_flattens_escaped_comma() {
+    // `\cite{a\,b}` 等の利用者向けの平坦化は変えない（区切りの判断は各利用者が持つ）
+    let arena = bumpalo::Bump::new();
+    let source = r"\cmd{a\,b, c}";
+    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let command = cst
+      .children
+      .iter()
+      .find_map(|element| {
+        if let GreenElement::Node(node) = element
+          && node.kind == SyntaxKind::CommandCall
+        {
+          return Some(*node);
+        }
+        return None;
+      })
+      .expect("CommandCall があるはず");
+    let arg = CommandView::new(command, source).first_arg().expect("必須引数があるはず");
+
+    assert_eq!(extract_text_content(source, arg), "a,b, c");
   }
 }
