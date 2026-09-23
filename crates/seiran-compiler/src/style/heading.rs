@@ -1,6 +1,7 @@
 //! 見出し要素（part / chapter / section …）のスタイル設定型。
 //!
-//! `[heading.<level>]` の指定を [`default_for_level`] に重ねて解釈する。
+//! `[heading.<level>]` の指定を [`HeadingStyles::default`] のレベル別既定に重ねて解釈する
+//! （定理・カウンタと同じ 2 レイヤーマージ）。
 
 use std::ops::Index;
 
@@ -40,12 +41,39 @@ pub(crate) struct HeadingStyles {
 impl Default for HeadingStyles {
   fn default() -> Self {
     return Self {
-      part: default_for_level(HeadingLevel::Part),
-      chapter: default_for_level(HeadingLevel::Chapter),
-      section: default_for_level(HeadingLevel::Section),
-      subsection: default_for_level(HeadingLevel::Subsection),
-      paragraph: default_for_level(HeadingLevel::Paragraph),
-      subparagraph: default_for_level(HeadingLevel::Subparagraph),
+      part: HeadingStyle {
+        format: NumberTitleTemplate::parse("Part {number}: {title}"),
+        font_size: Length::pt(40.0),
+        bottom_margin: Length::pt(20.0),
+        page_break_before: true,
+        page_break_after: true,
+        ..HeadingStyle::default()
+      },
+      chapter: HeadingStyle {
+        format: NumberTitleTemplate::parse("Chapter {number}: {title}"),
+        font_size: Length::pt(25.0),
+        bottom_margin: Length::pt(15.0),
+        page_break_before: true,
+        ..HeadingStyle::default()
+      },
+      section: HeadingStyle {
+        font_size: Length::pt(20.0),
+        ..HeadingStyle::default()
+      },
+      subsection: HeadingStyle {
+        font_size: Length::pt(16.0),
+        ..HeadingStyle::default()
+      },
+      paragraph: HeadingStyle {
+        font_size: Length::pt(14.0),
+        bottom_margin: Length::pt(5.0),
+        ..HeadingStyle::default()
+      },
+      subparagraph: HeadingStyle {
+        font_size: Length::pt(12.0),
+        bottom_margin: Length::pt(5.0),
+        ..HeadingStyle::default()
+      },
     };
   }
 }
@@ -86,6 +114,7 @@ pub(crate) struct HeadingStyle {
   pub font_kind: FontKind,
 }
 
+/// レベル別既定（[`HeadingStyles::default`]）が共通に使う基底。
 impl Default for HeadingStyle {
   fn default() -> Self {
     return Self {
@@ -119,19 +148,14 @@ struct HeadingStylesTable {
 
 impl From<HeadingStylesTable> for HeadingStyles {
   fn from(table: HeadingStylesTable) -> Self {
-    let build = |level: HeadingLevel, over: HeadingStyleOverride| -> HeadingStyle {
-      let mut style = default_for_level(level);
-      over.apply(&mut style);
-      return style;
-    };
-    return Self {
-      part: build(HeadingLevel::Part, table.part),
-      chapter: build(HeadingLevel::Chapter, table.chapter),
-      section: build(HeadingLevel::Section, table.section),
-      subsection: build(HeadingLevel::Subsection, table.subsection),
-      paragraph: build(HeadingLevel::Paragraph, table.paragraph),
-      subparagraph: build(HeadingLevel::Subparagraph, table.subparagraph),
-    };
+    let mut styles = Self::default();
+    table.part.apply(&mut styles.part);
+    table.chapter.apply(&mut styles.chapter);
+    table.section.apply(&mut styles.section);
+    table.subsection.apply(&mut styles.subsection);
+    table.paragraph.apply(&mut styles.paragraph);
+    table.subparagraph.apply(&mut styles.subparagraph);
+    return styles;
   }
 }
 
@@ -179,47 +203,11 @@ impl HeadingStyleOverride {
   }
 }
 
-/// 指定レベルの [`HeadingStyle`] デフォルトを返す。
-#[must_use]
-pub(super) fn default_for_level(level: HeadingLevel) -> HeadingStyle {
-  let mut style = HeadingStyle::default();
-  match level {
-    HeadingLevel::Part => {
-      style.format = NumberTitleTemplate::parse("Part {number}: {title}");
-      style.font_size = Length::pt(40.0);
-      style.bottom_margin = Length::pt(20.0);
-      style.page_break_before = true;
-      style.page_break_after = true;
-    },
-    HeadingLevel::Chapter => {
-      style.format = NumberTitleTemplate::parse("Chapter {number}: {title}");
-      style.font_size = Length::pt(25.0);
-      style.bottom_margin = Length::pt(15.0);
-      style.page_break_before = true;
-    },
-    HeadingLevel::Section => {
-      style.font_size = Length::pt(20.0);
-    },
-    HeadingLevel::Subsection => {
-      style.font_size = Length::pt(16.0);
-    },
-    HeadingLevel::Paragraph => {
-      style.font_size = Length::pt(14.0);
-      style.bottom_margin = Length::pt(5.0);
-    },
-    HeadingLevel::Subparagraph => {
-      style.font_size = Length::pt(12.0);
-      style.bottom_margin = Length::pt(5.0);
-    },
-  }
-  return style;
-}
-
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
-  use super::{HeadingStyle, HeadingStyles, default_for_level};
+  use super::{HeadingStyle, HeadingStyles};
   use crate::{
     document::{FontKind, HeadingLevel},
     length::Length,
@@ -289,13 +277,11 @@ mod tests {
   }
 
   #[test]
-  fn default_for_level_uses_distinct_font_sizes() {
-    let part = default_for_level(HeadingLevel::Part);
-    let section = default_for_level(HeadingLevel::Section);
-    let subparagraph = default_for_level(HeadingLevel::Subparagraph);
+  fn default_styles_use_distinct_font_sizes() {
+    let styles = HeadingStyles::default();
 
-    assert!(part.font_size > section.font_size);
-    assert!(section.font_size > subparagraph.font_size);
+    assert!(styles[HeadingLevel::Part].font_size > styles[HeadingLevel::Section].font_size);
+    assert!(styles[HeadingLevel::Section].font_size > styles[HeadingLevel::Subparagraph].font_size);
   }
 
   #[test]
@@ -312,6 +298,30 @@ mod tests {
 
     assert_eq!(styles[HeadingLevel::Section].format.as_str(), "{number} {title}");
     assert!(styles[HeadingLevel::Chapter].format.as_str().starts_with("Chapter"));
+  }
+
+  #[test]
+  fn default_styles_match_level_defaults() {
+    // (level, format, font_size_pt, bottom_margin_pt, page_break_before, page_break_after)
+    let expected: [(HeadingLevel, &str, f32, f32, bool, bool); 6] = [
+      (HeadingLevel::Part, "Part {number}: {title}", 40.0, 20.0, true, true),
+      (HeadingLevel::Chapter, "Chapter {number}: {title}", 25.0, 15.0, true, false),
+      (HeadingLevel::Section, "{number} {title}", 20.0, 10.0, false, false),
+      (HeadingLevel::Subsection, "{number} {title}", 16.0, 10.0, false, false),
+      (HeadingLevel::Paragraph, "{number} {title}", 14.0, 5.0, false, false),
+      (HeadingLevel::Subparagraph, "{number} {title}", 12.0, 5.0, false, false),
+    ];
+    let styles = HeadingStyles::default();
+
+    for (level, format, font_size, bottom_margin, before, after) in expected {
+      let style = &styles[level];
+      assert_eq!(style.format.as_str(), format, "{level:?} の書式");
+      assert!((style.font_size.to_pt() - font_size).abs() < f32::EPSILON, "{level:?} の文字サイズ");
+      assert!((style.bottom_margin.to_pt() - bottom_margin).abs() < f32::EPSILON, "{level:?} の下余白");
+      assert_eq!(style.page_break_before, before, "{level:?} の前改ページ");
+      assert_eq!(style.page_break_after, after, "{level:?} の後改ページ");
+      assert_eq!(style.font_kind, FontKind::SerifBold, "{level:?} の書体");
+    }
   }
 
   #[test]

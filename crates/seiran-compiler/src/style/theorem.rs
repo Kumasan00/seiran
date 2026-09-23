@@ -1,4 +1,7 @@
 //! 定理環境（theorem / lemma / proof …）のスタイル設定型。
+//!
+//! `[theorems.<class>]` の指定を [`Theorems::default`] のクラス別既定に重ねて解釈する
+//! （見出し・カウンタと同じ 2 レイヤーマージ）。
 
 use std::ops::Index;
 
@@ -49,7 +52,75 @@ pub(crate) struct Theorems {
 }
 
 impl Default for Theorems {
-  fn default() -> Self { return Self::from(TheoremsTable::default()); }
+  fn default() -> Self {
+    return Self {
+      theorem: TheoremStyle {
+        display_name: "Theorem".to_string(),
+        ..TheoremStyle::default()
+      },
+      lemma: TheoremStyle {
+        display_name: "Lemma".to_string(),
+        ..TheoremStyle::default()
+      },
+      proposition: TheoremStyle {
+        display_name: "Proposition".to_string(),
+        ..TheoremStyle::default()
+      },
+      corollary: TheoremStyle {
+        display_name: "Corollary".to_string(),
+        ..TheoremStyle::default()
+      },
+      definition: TheoremStyle {
+        display_name: "Definition".to_string(),
+        counter: "definition".to_string(),
+        style: TheoremPresentation {
+          font_kind: FontKind::Serif,
+          ..TheoremPresentation::default()
+        },
+        ..TheoremStyle::default()
+      },
+      axiom: TheoremStyle {
+        display_name: "Axiom".to_string(),
+        counter: "axiom".to_string(),
+        ..TheoremStyle::default()
+      },
+      example: TheoremStyle {
+        display_name: "Example".to_string(),
+        counter: "example".to_string(),
+        style: TheoremPresentation {
+          font_kind: FontKind::Serif,
+          ..TheoremPresentation::default()
+        },
+        ..TheoremStyle::default()
+      },
+      remark: TheoremStyle {
+        display_name: "Remark".to_string(),
+        counter: "remark".to_string(),
+        style: TheoremPresentation {
+          font_kind: FontKind::Serif,
+          ..TheoremPresentation::default()
+        },
+        ..TheoremStyle::default()
+      },
+      claim: TheoremStyle {
+        display_name: "Claim".to_string(),
+        ..TheoremStyle::default()
+      },
+      proof: TheoremStyle {
+        display_name: "Proof".to_string(),
+        counter: "proof".to_string(),
+        unnumbered: true,
+        qed_mark: Some("□".to_string()),
+        style: TheoremPresentation {
+          font_kind: FontKind::Serif,
+          heading_format: TheoremHeadingTemplate::parse("{display_name}"),
+          heading_with_title: TheoremHeadingTemplate::parse("{display_name} ({title})"),
+          ..TheoremPresentation::default()
+        },
+        ..TheoremStyle::default()
+      },
+    };
+  }
 }
 
 impl Index<TheoremClass> for Theorems {
@@ -209,58 +280,6 @@ impl Default for TheoremPresentation {
   }
 }
 
-/// 指定クラスの [`TheoremStyle`] デフォルトを返す。
-#[must_use]
-pub(super) fn default_for_class(class: TheoremClass) -> TheoremStyle {
-  let mut style = TheoremStyle::default();
-  match class {
-    TheoremClass::Theorem => {
-      style.display_name = "Theorem".to_string();
-    },
-    TheoremClass::Lemma => {
-      style.display_name = "Lemma".to_string();
-    },
-    TheoremClass::Proposition => {
-      style.display_name = "Proposition".to_string();
-    },
-    TheoremClass::Corollary => {
-      style.display_name = "Corollary".to_string();
-    },
-    TheoremClass::Claim => {
-      style.display_name = "Claim".to_string();
-    },
-    TheoremClass::Axiom => {
-      style.display_name = "Axiom".to_string();
-      style.counter = "axiom".to_string();
-    },
-    TheoremClass::Definition => {
-      style.display_name = "Definition".to_string();
-      style.counter = "definition".to_string();
-      style.style.font_kind = FontKind::Serif;
-    },
-    TheoremClass::Example => {
-      style.display_name = "Example".to_string();
-      style.counter = "example".to_string();
-      style.style.font_kind = FontKind::Serif;
-    },
-    TheoremClass::Remark => {
-      style.display_name = "Remark".to_string();
-      style.counter = "remark".to_string();
-      style.style.font_kind = FontKind::Serif;
-    },
-    TheoremClass::Proof => {
-      style.display_name = "Proof".to_string();
-      style.counter = "proof".to_string();
-      style.unnumbered = true;
-      style.qed_mark = Some("□".to_string());
-      style.style.font_kind = FontKind::Serif;
-      style.style.heading_format = TheoremHeadingTemplate::parse("{display_name}");
-      style.style.heading_with_title = TheoremHeadingTemplate::parse("{display_name} ({title})");
-    },
-  }
-  return style;
-}
-
 /// `[theorems]` テーブル全体の TOML スキーマ。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
@@ -289,23 +308,18 @@ struct TheoremsTable {
 
 impl From<TheoremsTable> for Theorems {
   fn from(table: TheoremsTable) -> Self {
-    let build = |class: TheoremClass, over: TheoremStyleOverride| -> TheoremStyle {
-      let mut style = default_for_class(class);
-      over.apply(&mut style);
-      return style;
-    };
-    return Self {
-      theorem: build(TheoremClass::Theorem, table.theorem),
-      lemma: build(TheoremClass::Lemma, table.lemma),
-      proposition: build(TheoremClass::Proposition, table.proposition),
-      corollary: build(TheoremClass::Corollary, table.corollary),
-      definition: build(TheoremClass::Definition, table.definition),
-      axiom: build(TheoremClass::Axiom, table.axiom),
-      example: build(TheoremClass::Example, table.example),
-      remark: build(TheoremClass::Remark, table.remark),
-      claim: build(TheoremClass::Claim, table.claim),
-      proof: build(TheoremClass::Proof, table.proof),
-    };
+    let mut theorems = Self::default();
+    table.theorem.apply(&mut theorems.theorem);
+    table.lemma.apply(&mut theorems.lemma);
+    table.proposition.apply(&mut theorems.proposition);
+    table.corollary.apply(&mut theorems.corollary);
+    table.definition.apply(&mut theorems.definition);
+    table.axiom.apply(&mut theorems.axiom);
+    table.example.apply(&mut theorems.example);
+    table.remark.apply(&mut theorems.remark);
+    table.claim.apply(&mut theorems.claim);
+    table.proof.apply(&mut theorems.proof);
+    return theorems;
   }
 }
 
@@ -414,7 +428,7 @@ impl TheoremPresentationOverride {
 mod tests {
   use garde::Validate;
 
-  use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems, default_for_class};
+  use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems};
   use crate::{
     document::FontKind,
     length::Length,
@@ -430,8 +444,10 @@ mod tests {
 
   #[test]
   fn all_default_classes_pass_validation() {
+    let theorems = Theorems::default();
+
     for class in TheoremClass::ALL {
-      assert!(default_for_class(class).validate().is_ok(), "{} should validate", class.as_str());
+      assert!(theorems[class].validate().is_ok(), "{} should validate", class.as_str());
     }
   }
 
@@ -493,7 +509,8 @@ mod tests {
 
   #[test]
   fn default_proof_is_unnumbered_with_qed_mark() {
-    let proof = default_for_class(TheoremClass::Proof);
+    let theorems = Theorems::default();
+    let proof = &theorems[TheoremClass::Proof];
 
     assert!(proof.unnumbered);
     assert_eq!(proof.qed_mark.as_deref(), Some("□"));
@@ -503,6 +520,8 @@ mod tests {
 
   #[test]
   fn default_theorem_like_classes_share_counter_and_italic_body() {
+    let theorems = Theorems::default();
+
     for class in [
       TheoremClass::Theorem,
       TheoremClass::Lemma,
@@ -510,7 +529,7 @@ mod tests {
       TheoremClass::Corollary,
       TheoremClass::Claim,
     ] {
-      let style = default_for_class(class);
+      let style = &theorems[class];
       assert_eq!(style.counter, "theorem", "{} should share theorem counter", class.as_str());
       assert_eq!(style.style.font_kind, FontKind::SerifItalic);
       assert!(!style.unnumbered);
@@ -519,10 +538,33 @@ mod tests {
 
   #[test]
   fn default_remark_style_uses_roman_body_and_own_counter() {
-    let remark = default_for_class(TheoremClass::Remark);
+    let theorems = Theorems::default();
+    let remark = &theorems[TheoremClass::Remark];
 
     assert_eq!(remark.counter, "remark");
     assert_eq!(remark.style.font_kind, FontKind::Serif);
+  }
+
+  #[test]
+  fn default_classes_have_expected_display_name_and_counter() {
+    let expected: [(TheoremClass, &str, &str); 10] = [
+      (TheoremClass::Theorem, "Theorem", "theorem"),
+      (TheoremClass::Lemma, "Lemma", "theorem"),
+      (TheoremClass::Proposition, "Proposition", "theorem"),
+      (TheoremClass::Corollary, "Corollary", "theorem"),
+      (TheoremClass::Definition, "Definition", "definition"),
+      (TheoremClass::Axiom, "Axiom", "axiom"),
+      (TheoremClass::Example, "Example", "example"),
+      (TheoremClass::Remark, "Remark", "remark"),
+      (TheoremClass::Claim, "Claim", "theorem"),
+      (TheoremClass::Proof, "Proof", "proof"),
+    ];
+    let theorems = Theorems::default();
+
+    for (class, display_name, counter) in expected {
+      assert_eq!(theorems[class].display_name, display_name, "{} の表示名", class.as_str());
+      assert_eq!(theorems[class].counter, counter, "{} の共有カウンタ", class.as_str());
+    }
   }
 
   #[test]
@@ -573,7 +615,8 @@ font_kind = \"sans_serif_bold\"
 
   #[test]
   fn default_proof_of_templates_render_proof_of_target() {
-    let proof = default_for_class(TheoremClass::Proof);
+    let theorems = Theorems::default();
+    let proof = &theorems[TheoremClass::Proof];
 
     assert_eq!(proof.style.heading_with_of.as_str(), "{display_name} of {of}");
     assert_eq!(proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
