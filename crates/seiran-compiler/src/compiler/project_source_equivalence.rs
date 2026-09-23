@@ -23,7 +23,7 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
   // Arrange — fixture の既定 sources（`cite.sei` + `figure.sei`）をそのまま使う。`figure.sei` の
   // 相対画像（`\image{./tests/image/...}`）は builder が自動登録するので、そのまま同値検証の対象になる
   let project = TestProject::builder().absolute_base_dir().build();
-  let filesystem = FilesystemProjectSource::new();
+  let filesystem = FilesystemProjectSource;
 
   // Act
   let memory = project.compile().expect("memory adapter 経由のコンパイル");

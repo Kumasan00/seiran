@@ -276,7 +276,7 @@ mod tests {
   fn load_locales_without_custom_loads_only_active() {
     // Arrange
     let style = Style::default();
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let (locales, locale_override) = load_locales(&style, None, &source).expect("内蔵 en-US のみで成功するはず");
@@ -291,7 +291,7 @@ mod tests {
   fn load_locales_overlays_custom_before_builtin() {
     // Arrange
     let style = style_with_locale_path(custom_locale_path());
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let (locales, locale_override) =
@@ -313,7 +313,7 @@ mod tests {
     // Arrange
     let mut style = style_with_locale_path(custom_locale_path());
     style.reference.locale = Some("ja-JP".to_string());
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let (_locales, locale_override) = load_locales(&style, None, &source).expect("読み込みは成功するはず");
@@ -327,7 +327,7 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.reference.locale = Some("ja-JP".to_string());
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let (locales, locale_override) = load_locales(&style, None, &source).expect("成功するはず");
@@ -345,7 +345,7 @@ mod tests {
     // Arrange
     let style = Style::default();
     let csl_default = LocaleCode("de-DE".to_string());
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let (locales, locale_override) = load_locales(&style, Some(&csl_default), &source).expect("成功するはず");
@@ -361,7 +361,7 @@ mod tests {
   fn load_locales_reports_missing_file() {
     // Arrange
     let style = style_with_locale_path(ProjectPath::new("/nonexistent/locales-en-US.xml"));
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let error = load_locales(&style, None, &source).expect_err("読み込み失敗するはず");
@@ -376,7 +376,7 @@ mod tests {
     let mut file = tempfile::Builder::new().suffix(".xml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(b"this is not a CSL locale").expect("一時ファイルへ書き込めるはず");
     let style = style_with_locale_path(ProjectPath::new(file.path()));
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let error = load_locales(&style, None, &source).expect_err("解析失敗するはず");

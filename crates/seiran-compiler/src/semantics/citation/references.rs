@@ -125,7 +125,7 @@ mod tests {
   #[test]
   fn read_references_returns_empty_when_path_is_none() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let result: super::References = read_references(&source, None).unwrap();
@@ -295,7 +295,7 @@ mod tests {
   #[test]
   fn read_references_fails_on_read_file_error() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let path = ProjectPath::new("/nonexistent/path/to/references.toml");
 
     // Act
@@ -346,7 +346,7 @@ mod tests {
   #[test]
   fn read_references_succeeds_with_valid_file() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
@@ -400,7 +400,7 @@ mod tests {
   #[test]
   fn read_references_succeeds_with_valid_json_file() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.json");
     let json = json_doc(
@@ -435,7 +435,7 @@ mod tests {
   #[test]
   fn read_references_parses_structured_date_in_toml() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
@@ -517,7 +517,7 @@ mod tests {
   #[test]
   fn read_references_parses_structured_date_in_json() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.json");
     let json = json_doc(
@@ -559,7 +559,7 @@ mod tests {
   #[test]
   fn read_references_fails_on_unsupported_extension_file() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.yaml");
     std::fs::write(&references_path, b"anything: true").unwrap();

@@ -99,7 +99,7 @@ fn build_pdf_bytes_with_background(name: &str, background: Option<&str>) -> Vec<
     clippy::panic,
     reason = "失敗時に読みたいのは miette の整形出力（`into_report`）で、`expect` の Debug では代替できない"
   )]
-  let compilation = seiran_compiler::compile(&FilesystemProjectSource::new(), &root, &workspace_root())
+  let compilation = seiran_compiler::compile(&FilesystemProjectSource, &root, &workspace_root())
     .unwrap_or_else(|failure| panic!("fixture {name} の compile は成功するはず: {:?}", failure.into_report()));
   return seiran_pdf::render(&compilation.publication).expect("PDF の描画");
 }

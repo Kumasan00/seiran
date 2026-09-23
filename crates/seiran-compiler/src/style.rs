@@ -376,7 +376,7 @@ mod tests {
   #[test]
   fn resolve_reference_paths_reports_missing_files() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let resolver = PathResolver::new(Path::new("/unused"));
     let mut reference = ReferenceStyle {
       csl_path: Some(ProjectPath::new("/nonexistent/style.csl")),
@@ -396,7 +396,7 @@ mod tests {
   #[test]
   fn resolve_reference_paths_skips_none() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let resolver = PathResolver::new(Path::new("/unused"));
     let mut reference = ReferenceStyle::default();
 
@@ -578,7 +578,7 @@ mod parse_tests {
   #[test]
   fn load_returns_default_when_path_is_none() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let style = load(&source, None, &PathResolver::new(std::path::Path::new("."))).unwrap();
@@ -849,7 +849,7 @@ mod parse_tests {
   fn load_fails_on_nonexistent_path() {
     // Arrange
     let path = std::path::PathBuf::from("/nonexistent/style.toml");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = path.parent().expect("フィクスチャパスは親ディレクトリを持つはず");
 
     // Act

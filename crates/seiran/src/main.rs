@@ -123,7 +123,7 @@ fn run(command: cli::Command, base_dir: io::Result<PathBuf>, reporter: &Reporter
 fn build(config_path: &Path, base_dir: io::Result<PathBuf>, reporter: &Reporter) -> miette::Result<()> {
   let build_start = Instant::now();
   let base_dir = base_dir.map_err(|source| return CurrentDirError::Get { source })?;
-  let source = seiran_compiler::FilesystemProjectSource::new();
+  let source = seiran_compiler::FilesystemProjectSource;
   let root = seiran_compiler::ProjectPath::new(config_path);
   let compilation = match seiran_compiler::compile(&source, &root, &base_dir) {
     Ok(compilation) => compilation,

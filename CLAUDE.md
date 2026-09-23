@@ -201,7 +201,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | 共有する読み取り専用バイト列は `Arc<[u8]>`（`Arc<Vec<u8>>` は二重間接なうえ移し替えで複製が走る。外部 API 都合は `AsRef<[u8]>` の newtype で包む） | `rc_buffer` |
 | move で済む値を `clone()` しない。発火は真陽性として直す（false-negative なので通っても「無駄な clone なし」の証明にはならない — 判断は人） | `redundant_clone` |
 | `Eq` を導出できる型に `PartialEq` だけを derive しない（`PartialEq` 止まりは f32 / f64 を持つ型だけ）。derive の並びは `Debug, Clone, Copy, PartialEq, Eq, Hash` | `derive_partial_eq_without_eq` |
-| 公開型に `Debug`。生バイト列が載る型（読込キャッシュ・フォント・画像）は手書きで件数・長さだけ出す | `missing_debug_implementations` |
+| 公開型に `Debug`。生バイト列が載る型（登録済みファイル・フォント・画像）は手書きで件数・長さだけ出す | `missing_debug_implementations` |
 | 借用を持つ型は `Foo<'_>` | `elided_lifetimes_in_paths` |
 | 型推論で足りる `as` は書かない。auto trait を落とす必須キャストだけ `#[expect]` + 理由 | `trivial_casts` |
 | 個数の決まった繰り返しは `(0..n).map(\|_\| v)` ではなく `repeat_n(v, n)` / `repeat_with(..).take(n)`（副作用があるなら後者） | `map_with_unused_argument_over_ranges` |
