@@ -1,7 +1,8 @@
 //! 単位付き長さ値 [`Length`]。
 //!
-//! TOML 上では `"12pt"` / `"5mm"` / `"1.5cm"` のいずれかの文字列で指定する。
-//! 素の数値（`12.0` のような）は受け付けない。
+//! 字面は config.toml / style.toml / ソースの引数で共通の `"12pt"` / `"5mm"` / `"1.5cm"`（数値と単位の間に
+//! 空白なし・単位は小文字の `pt` / `mm` / `cm` のみ）で、解釈は [`FromStr`] 1 箇所。単位のない数値
+//! （`12.0` や `"0"`）は受け付けない。`pt` は 1/72 inch。
 //!
 //! 内部表現は **sp（scaled point）= 1/65536 pt** の整数（i64）。整数加算は結合的かつ正確なので、
 //! 伸縮配分や比例配分の多段加算でも誤差が蓄積せず、並列 reduce でも順序非依存でビット同一の結果を得る。
@@ -123,38 +124,33 @@ impl Length {
   pub const fn abs(self) -> Self { return Length(self.0.abs()); }
 }
 
+/// 単位の綴りと、1 単位あたりの pt。字面の単位は小文字のこの 3 つだけ。
+const UNITS: [(&str, f64); 3] = [("pt", 1.0), ("mm", MM_TO_PT), ("cm", CM_TO_PT)];
+
 /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。失敗時は `None`。
+///
+/// 前後の空白は落とすが、数値と単位の間の空白は受け付けない（`5 pt` は `5pt` の第 2 の綴り）。
+/// `f64::from_str` は空白を含む文字列を拒否するので、数値部を `trim` しないことがその検査になる。
 fn parse_length(value: &str) -> Option<Length> {
   // 数値は f64 で読む。sp（1/65536pt）は f32 の仮数では表しきれず、f32 経由だとユーザ入力の
   // 数値どおりの sp にならず PDF の座標がずれる。
   let trimmed = value.trim();
-  if let Some(num) = trimmed.strip_suffix("pt") {
-    let parsed: f64 = num.trim().parse().ok()?;
-    if !parsed.is_finite() {
-      return None;
+  for (unit, pt_per_unit) in UNITS {
+    if let Some(num) = trimmed.strip_suffix(unit) {
+      let parsed: f64 = num.parse().ok()?;
+      if !parsed.is_finite() {
+        return None;
+      }
+      return Some(Length(round_to_pt_sp(parsed * pt_per_unit)));
     }
-    return Some(Length(round_to_pt_sp(parsed)));
-  }
-  if let Some(num) = trimmed.strip_suffix("mm") {
-    let parsed: f64 = num.trim().parse().ok()?;
-    if !parsed.is_finite() {
-      return None;
-    }
-    return Some(Length(round_to_pt_sp(parsed * MM_TO_PT)));
-  }
-  if let Some(num) = trimmed.strip_suffix("cm") {
-    let parsed: f64 = num.trim().parse().ok()?;
-    if !parsed.is_finite() {
-      return None;
-    }
-    return Some(Length(round_to_pt_sp(parsed * CM_TO_PT)));
   }
   return None;
 }
 
 /// [`Length`] の文字列パース失敗を表すエラー。
 ///
-/// `<数値>pt` / `<数値>mm` / `<数値>cm` 以外の形式で [`Length::from_str`] が返す。
+/// `<数値>pt` / `<数値>mm` / `<数値>cm`（数値と単位の間に空白なし・単位は小文字）以外の形式で
+/// [`Length::from_str`] が返す。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseLengthError {
   /// パースに失敗した入力文字列。
@@ -165,7 +161,7 @@ impl fmt::Display for ParseLengthError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     return write!(
       f,
-      "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式で指定してください: {:?}",
+      "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: {:?}",
       self.input
     );
   }
@@ -176,7 +172,7 @@ impl std::error::Error for ParseLengthError {}
 impl FromStr for Length {
   type Err = ParseLengthError;
 
-  /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。前後の空白は許容する。
+  /// "<数値>pt" / "<数値>mm" / "<数値>cm" を解釈する。前後の空白は許容し、数値と単位の間の空白は拒否する。
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     return parse_length(s).ok_or_else(|| {
       return ParseLengthError {
@@ -338,6 +334,28 @@ mod tests {
     let result = "12px".parse::<Length>();
 
     assert!(result.is_err());
+  }
+
+  #[test]
+  fn from_str_rejects_space_between_number_and_unit() {
+    // `5 pt` は `5pt` の第 2 の綴りになるので受け付けない（#690）。前後の空白は許す
+    for input in ["5 pt", "5 mm", "5 cm", " 5 mm "] {
+      assert!(input.parse::<Length>().is_err(), "{input:?} は拒否される");
+    }
+  }
+
+  #[test]
+  fn from_str_rejects_uppercase_unit() {
+    for input in ["5PT", "5MM", "5Cm"] {
+      assert!(input.parse::<Length>().is_err(), "{input:?} は拒否される");
+    }
+  }
+
+  #[test]
+  fn from_str_rejects_unitless_zero() {
+    // 単位なしの `0` も例外にしない（`0` と `0pt` の 2 通りの綴りを作らない。#690）
+    assert!("0".parse::<Length>().is_err());
+    assert_eq!("0pt".parse::<Length>().unwrap(), Length::ZERO);
   }
 
   #[test]
