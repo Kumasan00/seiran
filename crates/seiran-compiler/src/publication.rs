@@ -107,7 +107,7 @@ impl Publication {
 
 /// 描画に必要なフォント・画像資源（すべて生データ）。
 ///
-/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が構築時に保証する）。構築経路は
+/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が `[T; 19]` で持つので欠けた表を構築できない）。構築経路は
 /// [`PublicationResources::new`] だけで、これは crate 内非公開 — `compile` 以外が
 /// `Publication` を組み立てることはできない。
 #[derive(Clone, PartialEq)]

@@ -282,6 +282,8 @@ missing_docs = "warn"
 unnameable_types = "warn"
 # 「モジュールは既定で非公開 + root ファサード」の機械化。
 unreachable_pub = "warn"
+# 必須ルール 7 の前段。unsafe は既定で書かせず、要る箇所だけ `#[expect(unsafe_code, reason)]` で開ける（#679 で 0 件）。
+unsafe_code = "warn"
 # Edition 2018 以降 `extern crate` は不要（依存は `use` だけで引く）。
 unused_extern_crates = "warn"
 # use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。

@@ -181,7 +181,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
    - 本体で `.unwrap()` は使わず `.expect("なぜ落ちないか")`（条件の言い換えは不可。同じ根拠が並ぶならヘルパへ畳む）。`assert!` 系にもメッセージ必須（テストでは発火しないので素の `assert_eq!` でよい）
    - `-> Result` の中では panic しない（`panic_in_result_fn`。`unreachable!` / `debug_assert!` は対象外）。裸の `panic!` は書かない（`panic`。`tests/` から使うヘルパは cfg(test) 外なので効く）
    - `-> Result` / `-> Option` の関数で返り値と同じ型ファミリを `unwrap` / `expect` したら `#[expect(clippy::unwrap_in_result, reason = ...)]` — テストの中でも発火する。`reason` に書けるのは「panic が必要」か「panic し得ない」だけで、どちらも書けないなら診断エラー化かリファクタ。lint は網羅ではないので属性が無い ≠ 根拠検討済み
-7. **unsafe は 1 操作 1 ブロック 1 SAFETY**: `unsafe {}` 1 つに操作 1 つ、直上に `// SAFETY:`（間に文を挟まない）。unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc は書かない（`// NOTE:` 等を使う）。`unsafe fn` の本体でも `unsafe {}`
+7. **unsafe は 1 操作 1 ブロック 1 SAFETY**: 既定で拒否（`unsafe_code`。要る箇所だけ `#[expect]`）。`unsafe {}` 1 つに操作 1 つ、直上に `// SAFETY:`（間に文を挟まない）。unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc は書かない（`// NOTE:` 等を使う）。`unsafe fn` の本体でも `unsafe {}`
 
 ### モジュール構成
 

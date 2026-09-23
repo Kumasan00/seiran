@@ -968,7 +968,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 | `PublicationPage` | ページ矩形と画像の描画矩形の幅・高さが正（太さ 0 の罫線を描く塗りつぶし矩形は 0 サイズを許す） |
 | `Publication` | 内部リンクとしおりの到達先ページが実在する |
 | `PublicationResources` | `ImageRef` の発行経路は crate 内非公開の 1 つだけなので、資源に無い画像を指す描画命令を型として作れない |
-| `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` の構築時保証） |
+| `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` は `[T; 19]` で持つので欠けた表を構築できない） |
 
 これが「renderer は確定座標の描画のみ」を**型で**担保している部分で、`seiran-pdf` が防衛的な error variant を
 持たない根拠（`seiran-pdf` 節）。`PublicationResources` のフィールドを隠すのは、`FontMap` を facade へ出さずに
