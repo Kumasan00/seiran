@@ -125,7 +125,7 @@ mod tests {
   use crate::{
     style::Style as ReadStyle,
     typeset::{
-      boxes::AnchorMark,
+      boxes::AnchorId,
       lowering::test_support::{analyzed, lower},
     },
   };
@@ -350,7 +350,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Anchor(AnchorMark::Label(l))) if l.as_str() == "thm:x"),
+      matches!(nodes.first(), Some(LayoutNode::Anchor(AnchorId::Label(l))) if l.as_str() == "thm:x"),
       "先頭は Label アンカー: {nodes:?}"
     );
   }

@@ -13,7 +13,7 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{
-      AnchorMark, FootnoteId, HItem, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
+      AnchorId, FootnoteId, HItem, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
       PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,
       position_table_row_boxes,
     },
@@ -139,7 +139,7 @@ pub(super) struct PageDraft {
   /// 配置順台帳
   entries: Vec<Entry>,
   /// 未解決のアンカー。次の着地点で解決する。ページ確定をまたいで保持する
-  pending_anchors: Vec<AnchorMark>,
+  pending_anchors: Vec<AnchorId>,
   /// このページの索引語（`(word, reading)` で初出順に重複除去済み）。座標を持たないので台帳の外
   index_entries: Vec<IndexTerm>,
   /// 現在リージョンの先頭 index（`entries` 内）。下端揃えはここから末尾までを対象にする
@@ -161,14 +161,14 @@ impl PageDraft {
   }
 
   /// アンカーを未解決として積む（次の着地点で解決する）
-  pub(super) fn defer_anchor(&mut self, mark: AnchorMark) { self.pending_anchors.push(mark); }
+  pub(super) fn defer_anchor(&mut self, id: AnchorId) { self.pending_anchors.push(id); }
 
   /// 伸縮アキを通過した（下端揃えの配分重みを累積する）
   pub(super) fn pass_stretch(&mut self, stretch: Length) { self.region_stretch += stretch; }
 
   /// 未解決アンカーを `(x, y)` で解決して取り出す
   fn take_pending_anchors(&mut self, x: Length, y: Length) -> Vec<PlacedAnchor> {
-    return self.pending_anchors.drain(..).map(|mark| return PlacedAnchor { mark, x, y }).collect();
+    return self.pending_anchors.drain(..).map(|id| return PlacedAnchor { id, x, y }).collect();
   }
 
   /// 内容を伴わない着地点 `(x, y)`（文書末尾）で未解決アンカーを解決する。未解決が無ければ何もしない
@@ -386,7 +386,7 @@ impl PageDraft {
       top += geom.footnote_rule_gap;
       let anchor = (!pending.continued).then(|| {
         return PlacedAnchor {
-          mark: AnchorMark::Footnote(FootnoteId::new(pending.index)),
+          id: AnchorId::Footnote(FootnoteId::new(pending.index)),
           x: column_x,
           y: top,
         };
@@ -539,7 +539,7 @@ mod tests {
     semantics::LabelId,
     typeset::{
       boxes::{
-        AnchorMark, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, TableCellBox,
+        AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, TableCellBox,
         TableColumn, TableRowBox,
       },
       breaking::break_pages::PendingFootnote,
@@ -643,10 +643,10 @@ mod tests {
     // Arrange — リージョン 1: 本文行(リンク A) + 脚注(リンク F1)、リージョン 2: 本文行(リンク B) + 脚注(リンク F2)
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("a")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("a")));
     draft.place_line(line(Some(external("A")), None), pt(10.0), Length::ZERO);
     draft.close_region(&geom, Length::ZERO, pt(36.0), false, vec![footnote(0, "F1", false)]);
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("b")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("b")));
     draft.place_line(line(Some(external("B")), None), pt(10.0), pt(55.0));
     draft.close_region(&geom, pt(55.0), pt(36.0), false, vec![footnote(1, "F2", true)]);
 
@@ -666,9 +666,9 @@ mod tests {
     let anchor_kinds: Vec<&str> = page
       .anchors
       .iter()
-      .map(|a| match &a.mark {
-        AnchorMark::Label(_) => return "label",
-        AnchorMark::Footnote(_) => return "footnote",
+      .map(|a| match &a.id {
+        AnchorId::Label(_) => return "label",
+        AnchorId::Footnote(_) => return "footnote",
         _ => return "other",
       })
       .collect();
@@ -682,7 +682,7 @@ mod tests {
     // Arrange
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("tab")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
     draft.land_anchors(Length::ZERO, pt(46.0));
     assert!(!draft.has_content(), "アンカーだけではページ内容にならない");
 
@@ -722,7 +722,7 @@ mod tests {
     let mut draft = PageDraft::new();
     draft.place_line(line(None, None), pt(10.0), Length::ZERO);
     draft.pass_stretch(pt(4.0));
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("x")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("x")));
     draft.place_line(line(Some(external("L")), None), pt(26.0), Length::ZERO);
 
     // Act
@@ -938,7 +938,7 @@ mod tests {
     // Arrange — 数式ブロック相当: アンカーは上端 10、block の baseline は 18
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("eq")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("eq")));
     draft.place_block(
       PlacedBlock::MathBlock {
         body: HBox {
@@ -960,7 +960,7 @@ mod tests {
 
     // Assert
     assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(3.0), pt(10.0)));
-    assert!(matches!(page.anchors[0].mark, AnchorMark::Label(_)));
+    assert!(matches!(page.anchors[0].id, AnchorId::Label(_)));
   }
 
   #[test]
@@ -968,7 +968,7 @@ mod tests {
     // Arrange — 段オフセット 55・揃えオフセット 5 の表断片。アンカーは揃えオフセット抜きの段左端 × 先頭行上端
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("tab")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
     let columns = vec![TableColumn {
       align: ColumnAlign::Left,
       width: ColumnWidth::Auto,
@@ -1007,7 +1007,7 @@ mod tests {
     // Assert
     assert_eq!(page.anchors.len(), 1, "{:?}", page.anchors);
     assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(55.0), pt(22.0)), "段左端 × 先頭行の上端");
-    assert!(matches!(page.anchors[0].mark, AnchorMark::Label(_)));
+    assert!(matches!(page.anchors[0].id, AnchorId::Label(_)));
     let PlacedBlock::Table { rows } = &page.blocks[0] else {
       unreachable!("place_table_fragment は Table block を積む");
     };
@@ -1019,7 +1019,7 @@ mod tests {
     // Arrange — 先頭行が収まらないときの `flush(空)` 相当。空断片はアンカーを消費せず、次の着地点で解決する
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.defer_anchor(AnchorMark::Label(LabelId::new("tab")));
+    draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
     let columns: Vec<TableColumn> = Vec::new();
     let col_widths: Vec<Length> = Vec::new();
     let frame = TableFrame {

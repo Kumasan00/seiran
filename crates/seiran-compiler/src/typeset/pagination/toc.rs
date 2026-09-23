@@ -231,7 +231,7 @@ mod tests {
     length::Length,
     semantics::HeadingKey,
     style::{PageNumbering, Style, TocStyle},
-    typeset::boxes::{AnchorMark, Page, PlacedAnchor},
+    typeset::boxes::{AnchorId, Page, PlacedAnchor},
   };
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
@@ -253,10 +253,7 @@ mod tests {
           footer: Vec::new(),
           footnotes: Vec::new(),
           anchors: vec![PlacedAnchor {
-            mark: AnchorMark::Heading {
-              key: HeadingKey::new(index),
-              label: None,
-            },
+            id: AnchorId::Heading(HeadingKey::new(index)),
             x: Length::ZERO,
             y: Length::ZERO,
           }],

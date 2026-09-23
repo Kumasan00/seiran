@@ -5,7 +5,7 @@ use crate::{
   document::FontKind,
   length::Length,
   project::ProjectPath,
-  typeset::boxes::{Align, AnchorMark, IndexTerm, LinkTarget, TableColumn},
+  typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
 };
 
 /// レイアウトエンジン（`crate::typeset::boxing::build_blocks`）が処理する最小単位
@@ -53,7 +53,7 @@ pub(in crate::typeset) enum LayoutNode {
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   MathBlock(MathBlockLayout),
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
-  Anchor(AnchorMark),
+  Anchor(AnchorId),
   /// 強制改ページ
   PageBreak,
   /// keep-with-next マーカー（ゼロサイズ）

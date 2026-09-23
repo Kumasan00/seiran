@@ -18,9 +18,7 @@ use crate::{
   length::Length,
   style::Style,
   typeset::{
-    boxes::{
-      AnchorId, AnchorMark, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor,
-    },
+    boxes::{AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
     font::FontSystem,
     lowering::TextStyle,
@@ -66,7 +64,7 @@ struct IndexEntry {
 /// 本文全ページの索引語を集約し、照合順に並べ、区分へ割り当て、ページ番号列を畳んで行に組むまでを
 /// この 1 操作に閉じる。`\index` が 1 個もなければ空の `Vec` を返す。
 ///
-/// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorMark::IndexPage`）を
+/// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorId::IndexPage`）を
 /// 事後追加する（`body_pages` の破壊的更新）。索引語は座標を持たないため、リンク先は語の位置ではなく
 /// 出現ページの先頭になる。
 #[must_use]
@@ -97,7 +95,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
   let anchored_pages: BTreeSet<usize> = occurrences.values().flatten().copied().collect();
   for page_index in anchored_pages {
     body_pages[page_index].anchors.push(PlacedAnchor {
-      mark: AnchorMark::IndexPage(page_index),
+      id: AnchorId::IndexPage(page_index),
       x: Length::ZERO,
       y: Length::ZERO,
     });
@@ -354,7 +352,7 @@ mod tests {
     length::Length,
     style::{PageNumbering, Style},
     typeset::{
-      boxes::{AnchorId, AnchorMark, IndexTerm, LinkTarget, Page},
+      boxes::{AnchorId, IndexTerm, LinkTarget, Page},
       pagination::page_values::BodyPageValues,
     },
   };
@@ -540,8 +538,8 @@ mod tests {
     assert!(!entries.is_empty());
     assert_eq!(body_pages[0].anchors.len(), 1, "page0 は 2 語出現しても事後アンカーは 1 個");
     assert_eq!(body_pages[1].anchors.len(), 1);
-    assert!(matches!(body_pages[0].anchors[0].mark, AnchorMark::IndexPage(0)));
-    assert!(matches!(body_pages[1].anchors[0].mark, AnchorMark::IndexPage(1)));
+    assert!(matches!(body_pages[0].anchors[0].id, AnchorId::IndexPage(0)));
+    assert!(matches!(body_pages[1].anchors[0].id, AnchorId::IndexPage(1)));
   }
 
   #[test]

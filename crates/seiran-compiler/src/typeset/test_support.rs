@@ -25,9 +25,9 @@ use crate::{
   typeset::{
     PreparedGeometry, TypesetError,
     boxes::{
-      AnchorId, AnchorMark, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
-      PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox,
-      TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
+      AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
+      PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox, TableCellBox,
+      TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
     },
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -395,7 +395,7 @@ impl PageBuilder {
   /// ラベル（図・表・式）の到達先アンカーを追加する
   pub(crate) fn label_anchor(mut self, label: LabelId, x: Length, y: Length) -> Self {
     self.page.anchors.push(PlacedAnchor {
-      mark: AnchorMark::Label(label),
+      id: AnchorId::Label(label),
       x,
       y,
     });
@@ -405,7 +405,7 @@ impl PageBuilder {
   /// 見出しの到達先アンカーを追加する（`\ref` ラベルなし）
   pub(crate) fn heading_anchor(mut self, key: HeadingKey, x: Length, y: Length) -> Self {
     self.page.anchors.push(PlacedAnchor {
-      mark: AnchorMark::Heading { key, label: None },
+      id: AnchorId::Heading(key),
       x,
       y,
     });

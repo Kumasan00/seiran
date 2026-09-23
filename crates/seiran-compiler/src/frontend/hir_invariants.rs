@@ -349,7 +349,7 @@ fn hir_carries_no_resolved_facts() {
 
 /// HIR が生成物由来の表示専用ノードを持たないことを、網羅 match で強制する
 ///
-/// `AnchorMark::Citation`（書誌エントリのアンカー、lowering が `BibliographyEntry` から組み立てる）・
+/// `AnchorId::Citation`（書誌エントリのアンカー、lowering が `BibliographyEntry` から組み立てる）・
 /// `GeneratedInline::InternalLink`（CSL 整形後の内部リンク）は生成物なので、`HirNodeKind` / `HirInlineKind` にそもそも
 /// variant として存在しない。ここでの網羅 match（`_ =>` を書かない）が、その不変条件の実行時チェックに
 /// 代わる強制手段になっている。将来どちらかの enum に解決済み表示専用の variant が

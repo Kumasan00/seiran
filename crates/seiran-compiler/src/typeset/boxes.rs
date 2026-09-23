@@ -4,7 +4,7 @@
 //! 対称に参照される共有語彙のため、どちらの所有物にもせず本 module に集約する（#280）。
 //!
 //! 組版時に初めて成立する配置・アンカーの型（[`Align`] / [`FootnoteId`] / [`AnchorId`] /
-//! [`AnchorMark`] / [`LinkTarget`]）と、lowering が構築する表レイアウトの入力契約
+//! [`LinkTarget`]）と、lowering が構築する表レイアウトの入力契約
 //! [`TableColumn`] も本 module が所有する（#334）。
 
 mod align;
@@ -19,7 +19,7 @@ pub(super) use align::Align;
 pub(super) use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK};
 pub(crate) use hitem::{HBox, HBoxContent, HItem, IndexTerm, MeasuredFootnote, PlacedHItem};
 pub(super) use line::{Line, LineLink, PositionedBox};
-pub(crate) use link::{AnchorId, AnchorMark, FootnoteId, LinkTarget};
+pub(crate) use link::{AnchorId, FootnoteId, LinkTarget};
 pub(crate) use page::{
   Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
 };

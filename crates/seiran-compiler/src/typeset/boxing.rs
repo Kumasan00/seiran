@@ -148,9 +148,9 @@ impl BlockBuilder<'_> {
         LayoutNode::Inline(inline) => {
           self.measurer.collect_inline(inline, paragraph);
         },
-        LayoutNode::Anchor(mark) => {
+        LayoutNode::Anchor(id) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          blocks.push(Block::Anchor(mark));
+          blocks.push(Block::Anchor(id));
         },
         LayoutNode::VBox {
           children,

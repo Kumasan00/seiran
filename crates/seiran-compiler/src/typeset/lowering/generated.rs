@@ -9,7 +9,7 @@ use crate::{
   document::HeadingLevel,
   semantics::{BibliographyEntry, GeneratedInline, HeadingKey},
   typeset::{
-    boxes::{AnchorId, AnchorMark, LinkTarget},
+    boxes::{AnchorId, LinkTarget},
     lowering::{
       HeadingRecord, LoweringContext,
       heading::{self, title_style},
@@ -60,7 +60,7 @@ pub(super) fn lower_bibliography(
   }];
 
   for entry in entries {
-    layout.push(LayoutNode::Anchor(AnchorMark::Citation(entry.key.clone())));
+    layout.push(LayoutNode::Anchor(AnchorId::Citation(entry.key.clone())));
     let content = lower_generated_inlines(ctx, &entry.body, body_text_style(ctx));
     layout.extend(assemble_paragraph(ctx, content, false));
   }
@@ -158,7 +158,7 @@ mod tests {
     let keys: Vec<usize> = layout
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Anchor(AnchorMark::Heading { key, .. }) => return Some(key.index()),
+        LayoutNode::Anchor(AnchorId::Heading(key)) => return Some(key.index()),
         _ => return None,
       })
       .collect();
@@ -177,7 +177,7 @@ mod tests {
     assert!(
       layout
         .iter()
-        .any(|n| matches!(n, LayoutNode::Anchor(AnchorMark::Citation(k)) if k.as_str() == "kwan2014")),
+        .any(|n| matches!(n, LayoutNode::Anchor(AnchorId::Citation(k)) if k.as_str() == "kwan2014")),
       "{layout:?}"
     );
   }
@@ -238,7 +238,7 @@ mod tests {
     assert_eq!(headings.len(), 1, "エントリ 0 件でも書誌見出しは出るはず: {headings:?}");
     assert_eq!(headings[0].title_plain, "References");
     assert!(
-      !layout.iter().any(|n| matches!(n, LayoutNode::Anchor(AnchorMark::Citation(_)))),
+      !layout.iter().any(|n| matches!(n, LayoutNode::Anchor(AnchorId::Citation(_)))),
       "エントリが無ければ引用アンカーも無いはず: {layout:?}"
     );
   }

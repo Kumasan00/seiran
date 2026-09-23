@@ -14,7 +14,7 @@ use crate::{
   typeset::boxes::{
     hitem::{HBox, IndexTerm},
     line::{Line, PositionedBox},
-    link::{AnchorMark, LinkTarget},
+    link::{AnchorId, LinkTarget},
   },
 };
 
@@ -101,8 +101,8 @@ pub(crate) struct PlacedFootnote {
 /// 下方向に正）。描画 adapter が左マージンを加算して `XyzDestination` 点にする。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedAnchor {
-  /// アンカー種別（見出し / ラベル付きブロック）
-  pub mark: AnchorMark,
+  /// このアンカーを指す名前（見出し・ラベル・引用・脚注・索引ページ）
+  pub id: AnchorId,
   /// 本文左端からの水平オフセット（pt、通常 0）
   pub x: Length,
   /// ページ上端からの距離（pt）

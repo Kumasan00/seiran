@@ -6,7 +6,7 @@ use crate::{
   semantics::{HeadingKey, LabelId, generated_inlines_to_plain_text},
   style::Style as ReadStyle,
   typeset::{
-    boxes::{Align, AnchorMark},
+    boxes::{Align, AnchorId},
     lowering::{
       LoweringContext, LoweringState, counter, inline,
       layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
@@ -119,8 +119,12 @@ pub(super) fn lower_heading(
   }
 
   // しおり・目次リンク・`\ref` の到達先アンカー。改ページ後に置くことで正しいページに解決される。
-  // `key` は `analyze` が文書順に振ったもの（目次エントリの内部リンクと一致する）。
-  result.push(LayoutNode::Anchor(AnchorMark::Heading { key, label }));
+  // `key` は `analyze` が文書順に振ったもの（目次エントリの内部リンクと一致する）。ラベルのアンカーは
+  // 直後に続けて置き、次の実ブロックの同じ座標で解決される。
+  result.push(LayoutNode::Anchor(AnchorId::Heading(key)));
+  if let Some(label) = label {
+    result.push(LayoutNode::Anchor(AnchorId::Label(label)));
+  }
 
   result.push(LayoutNode::VBox {
     children,
@@ -229,21 +233,25 @@ mod tests {
       HeadingKey::new(3),
     );
 
-    // Assert
-    let anchor = nodes.iter().find_map(|n| match n {
-      LayoutNode::Anchor(mark) => return Some(mark.clone()),
-      _ => return None,
-    });
-    assert_eq!(
-      anchor,
-      Some(AnchorMark::Heading {
-        key: HeadingKey::new(3),
-        label: Some(LabelId::new("sec:intro")),
+    // Assert — 見出しキーのアンカー、ラベルのアンカーの順で、どちらも VBox より前
+    let anchors: Vec<(usize, &AnchorId)> = nodes
+      .iter()
+      .enumerate()
+      .filter_map(|(i, n)| match n {
+        LayoutNode::Anchor(id) => return Some((i, id)),
+        _ => return None,
       })
+      .collect();
+    let ids: Vec<&AnchorId> = anchors.iter().map(|(_, id)| return *id).collect();
+    assert_eq!(
+      ids,
+      vec![
+        &AnchorId::Heading(HeadingKey::new(3)),
+        &AnchorId::Label(LabelId::new("sec:intro"))
+      ]
     );
-    let anchor_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Anchor(_))).unwrap();
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
-    assert!(anchor_idx < vbox_idx, "アンカーは VBox より前: {nodes:?}");
+    assert!(anchors.iter().all(|(i, _)| return *i < vbox_idx), "アンカーは VBox より前: {nodes:?}");
   }
 
   #[test]

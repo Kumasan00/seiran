@@ -384,8 +384,8 @@ pub(crate) fn break_pages(
         composer.cursor_at_edge = true;
       },
       // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため台帳に未解決として積む
-      Block::Anchor(mark) => {
-        composer.draft.defer_anchor(mark);
+      Block::Anchor(id) => {
+        composer.draft.defer_anchor(id);
       },
     }
     i += 1;
@@ -1431,7 +1431,6 @@ mod tests {
   #[test]
   fn footnote_anchor_is_placed_only_on_non_continued_fragment() {
     // Arrange
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       single_line_paragraph(vec![footnote_of_lines(1, 4)]),
@@ -1446,7 +1445,7 @@ mod tests {
       return page
         .anchors
         .iter()
-        .filter(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == FootnoteId::new(0)))
+        .filter(|a| return matches!(&a.id, AnchorId::Footnote(id) if *id == FootnoteId::new(0)))
         .count();
     };
     assert_eq!(anchors_on(&pages[0]), 1, "{:?}", pages[0].anchors);
@@ -1454,7 +1453,7 @@ mod tests {
     let anchor = pages[0]
       .anchors
       .iter()
-      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == FootnoteId::new(0)))
+      .find(|a| return matches!(&a.id, AnchorId::Footnote(id) if *id == FootnoteId::new(0)))
       .expect("先頭断片のアンカーがあるはず");
     assert!(close(anchor.y, 16.0), "アンカーは脚注先頭行の上端のはず: {anchor:?}");
     assert!(close(anchor.x, 0.0));
@@ -2509,13 +2508,9 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_to_next_paragraph_top() {
     // Arrange
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
-      Block::Anchor(AnchorMark::Heading {
-        key: HeadingKey::new(0),
-        label: None,
-      }),
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
       paragraph_of_lines(1),
     ];
 
@@ -2527,17 +2522,37 @@ mod tests {
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
     assert!(close(pages[0].anchors[0].y, 2.0));
     assert!(close(pages[0].anchors[0].x, 0.0));
-    assert!(matches!(pages[0].anchors[0].mark, AnchorMark::Heading { label: None, .. }));
+    assert!(matches!(pages[0].anchors[0].id, AnchorId::Heading(_)));
+  }
+
+  #[test]
+  fn consecutive_anchors_resolve_to_the_same_point() {
+    // Arrange — ラベル付き見出しと同じ並び（見出しキー → ラベル → 内容）
+    let geom = test_geometry();
+    let blocks = vec![
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
+      Block::Anchor(AnchorId::Label(LabelId::new("sec:x"))),
+      paragraph_of_lines(1),
+    ];
+
+    // Act
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    let anchors = &pages[0].anchors;
+    assert_eq!(anchors.len(), 2, "{anchors:?}");
+    assert_eq!(anchors[0].id, AnchorId::Heading(HeadingKey::new(0)));
+    assert_eq!(anchors[1].id, AnchorId::Label(LabelId::new("sec:x")));
+    assert_eq!((anchors[0].x, anchors[0].y), (anchors[1].x, anchors[1].y), "同じ座標で解決される");
   }
 
   #[test]
   fn pending_anchor_resolves_on_page_after_break() {
     // Arrange
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
-      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       paragraph_of_lines(1),
     ];
 
@@ -3155,16 +3170,9 @@ mod tests {
   #[test]
   fn composed_line_resolves_anchor_and_collects_link() {
     // Arrange
-    use crate::{
-      semantics::HeadingKey,
-      typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
-    };
     let geom = test_geometry();
     let blocks = vec![
-      Block::Anchor(AnchorMark::Heading {
-        key: HeadingKey::new(0),
-        label: None,
-      }),
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
       composed_line(20.0, 8.0, 2.0, Some(LinkTarget::Internal(AnchorId::Heading(HeadingKey::new(5))))),
     ];
 
@@ -3778,14 +3786,13 @@ mod tests {
     // Arrange — 伸縮アキ 2 個の前・間・後に行（リンク付き）とアンカーを置く。
     // 不足 = 50 − 44 = 6、分母 = 末尾行より前の stretch 8 → ratio 0.75。
     // 先行 stretch が 0 / 4 / 8 の要素はそれぞれ +0 / +3 / +6 動く
-    use crate::typeset::boxes::AnchorMark;
     let geom = flush_geometry();
     let link = || return Some(LinkTarget::External("https://example.com".to_string()));
     let blocks = vec![
-      Block::Anchor(AnchorMark::Label(LabelId::new("a0"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("a0"))),
       composed_line(20.0, 8.0, 2.0, link()), // baseline 10（先行 stretch 0）
       Block::stretchable_space(pt(4.0), pt(4.0)),
-      Block::Anchor(AnchorMark::Label(LabelId::new("a1"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("a1"))),
       composed_line(20.0, 8.0, 2.0, link()), // baseline 26（先行 stretch 4）
       Block::stretchable_space(pt(4.0), pt(4.0)),
       composed_line(20.0, 8.0, 2.0, link()), // baseline 42・下端 44（先行 stretch 8）
@@ -3809,7 +3816,6 @@ mod tests {
     // Arrange — 2 行目は本文リンクと 1 行脚注（リンク付き）を持つ。脚注エリア 14（gap 4 + 行 10）で
     // region_limit = 36、不足 = 36 − 28 = 8、分母 = 先行 stretch 4 → ratio 2、2 行目は +8。
     // 脚注は region_limit 36 + gap 4 = 40 から組まれ、揃えでは動かない
-    use crate::typeset::boxes::AnchorMark;
     let geom = flush_geometry();
     let blocks = vec![
       paragraph_of_lines(1), // baseline 10
@@ -3842,7 +3848,7 @@ mod tests {
     let footnote_anchor = pages[0]
       .anchors
       .iter()
-      .find(|a| return matches!(a.mark, AnchorMark::Footnote(_)))
+      .find(|a| return matches!(a.id, AnchorId::Footnote(_)))
       .expect("脚注先頭のアンカーがあるはず");
     assert!(close(footnote_anchor.y, 40.0), "脚注のアンカーは脚注の上端のまま: {footnote_anchor:?}");
   }
@@ -3902,7 +3908,6 @@ mod tests {
   fn pending_anchor_before_breakable_table_lands_with_the_first_row_on_the_next_page() {
     // Arrange — 3 行段落の後（y=46）で表を開始するが、最初の行（高さ 10）は収まらず次ページへ送られる。
     // アンカーは表の実配置（2 ページ目の先頭行上端 = margin_top）で解決し、1 ページ目には残らない（#525）
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let table = TableBox {
       columns: vec![TableColumn {
@@ -3915,7 +3920,7 @@ mod tests {
     };
     let blocks = vec![
       paragraph_of_lines(3),
-      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
         align: Align::Left,
@@ -3939,7 +3944,6 @@ mod tests {
   fn pending_anchor_before_breakable_table_lands_in_the_column_of_the_first_row() {
     // Arrange — 2 段。左段 3 行（y=46）の後の表の先頭行（高さ 10）が収まらず右段へ送られる。
     // アンカーの x は着地段（右段）のオフセット 55、y は右段先頭 = margin_top
-    use crate::typeset::boxes::AnchorMark;
     let geom = two_column_geometry();
     let table = TableBox {
       columns: vec![TableColumn {
@@ -3952,7 +3956,7 @@ mod tests {
     };
     let blocks = vec![
       paragraph_of_lines(3),
-      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
         align: Align::Left,
@@ -3980,7 +3984,6 @@ mod tests {
   fn pending_anchor_before_unbreakable_table_moves_with_the_whole_table() {
     // Arrange — 分割禁止の表（高さ 20）は y=46 に収まらず、先読みで表ごと次ページへ送られる。
     // アンカーは従来どおり 2 ページ目の表先頭で解決する（修正前後で不変）
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let table = TableBox {
       columns: vec![TableColumn {
@@ -3993,7 +3996,7 @@ mod tests {
     };
     let blocks = vec![
       paragraph_of_lines(3),
-      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
         align: Align::Left,
@@ -4015,7 +4018,6 @@ mod tests {
   #[test]
   fn pending_anchor_before_fitting_table_resolves_at_the_table_top() {
     // Arrange — 1 行段落の後（y=22）に収まる表。アンカーは表先頭 = 先頭行の上端 y=22（修正前後で不変）
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let table = TableBox {
       columns: vec![TableColumn {
@@ -4028,7 +4030,7 @@ mod tests {
     };
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
         align: Align::Left,
@@ -4049,11 +4051,10 @@ mod tests {
   fn pending_anchor_survives_suppressed_blank_page() {
     // Arrange — アンカーの後ろに強制改ページが 2 連続。1 つ目で 1 ページ目が確定し、2 つ目は内容が無いので
     // 白紙ページを作らない。その間アンカーは未解決のまま保持され、次の段落の先頭で 2 ページ目に解決する
-    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::Anchor(AnchorMark::Label(LabelId::new("x"))),
+      Block::Anchor(AnchorId::Label(LabelId::new("x"))),
       Block::force_break(),
       Block::force_break(),
       paragraph_of_lines(1),

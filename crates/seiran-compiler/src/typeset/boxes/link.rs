@@ -1,4 +1,4 @@
-//! 配置済み文書のアンカーと行き先 — [`FootnoteId`] / [`AnchorId`] / [`AnchorMark`] / [`LinkTarget`]。
+//! 配置済み文書のアンカーと行き先 — [`FootnoteId`] / [`AnchorId`] / [`LinkTarget`]。
 //!
 //! いずれも「どこに何が置かれたか」が決まって初めて成立する組版側の概念なので、layout が所有する
 //! （#334）。到達先の名前空間には意味解析が確定した識別子（`semantics` の `LabelId` / `HeadingKey`）と
@@ -26,39 +26,23 @@ impl FootnoteId {
 
 /// 到達先アンカーを一意に指すキー
 ///
-/// 各バリアントで名前空間を分離し、同じ文字列や数値による衝突を防ぐ。
+/// ページ上のアンカー（[`PlacedAnchor`](crate::typeset::boxes::PlacedAnchor)）と内部リンクの行き先
+/// （[`LinkTarget::Internal`]）の両方がこの値を持つ。各バリアントで名前空間を分離し、同じ文字列や
+/// 数値による衝突を防ぐ。1 つの位置が複数の名前で指されるとき（ラベル付き見出し・複数ラベルの
+/// ディスプレイ数式）は、同じ位置にアンカーを複数置く。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum AnchorId {
-  /// 見出しの暗黙 destination キー（目次エントリの内部リンク到達先）
+  /// 見出しの暗黙 destination キー。`\ref` ラベルの有無にかかわらず全見出しの先頭に 1 個ずつ置かれ、
+  /// 目次エントリの内部リンクとしおりの到達先になる
   Heading(HeadingKey),
-  /// `\ref{label}` で参照する、図・表・式・見出しのラベル
+  /// `\ref{label}` の到達先。ラベル付きブロック（図・表・式・定理）の先頭と、ラベル付き見出しの
+  /// 先頭（`Heading` の直後・同じ位置）に置かれる
   Label(LabelId),
-  /// `\cite{key}` の引用キー（書誌エントリへのジャンプ先）
+  /// `\cite{key}` の到達先。CSL 整形ステージが参考文献エントリの先頭に置く
   Citation(CitationId),
-  /// 脚注マーカーから脚注本体への到達先
+  /// 脚注マーカーから脚注本体への到達先（脚注本体の先頭）
   Footnote(FootnoteId),
-  /// 索引ページの各ページ番号リンクが指す、本文内ページの到達先
-  IndexPage(usize),
-}
-
-/// ブロック先頭に置くゼロサイズのアンカー
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AnchorMark {
-  /// 見出しのアンカー（アウトライン用 + 目次リンク到達先 + 任意で `\ref` 到達先）
-  Heading {
-    /// 文書順から決まる暗黙の destination キー（目次エントリの内部リンク到達先）。
-    /// `\ref` ラベルの有無にかかわらず全見出しに付与される
-    key: HeadingKey,
-    /// `\section[label=...]` で付与された参照ラベル。`\ref` 対象なら `Some`
-    label: Option<LabelId>,
-  },
-  /// ラベル付きブロック（図・表・式）の `\ref` 到達先アンカー
-  Label(LabelId),
-  /// CSL 整形ステージが参考文献エントリに付けるアンカー
-  Citation(CitationId),
-  /// 脚注本体先頭のアンカー
-  Footnote(FootnoteId),
-  /// 索引語が出現した本文ページのアンカー
+  /// 索引ページの各ページ番号リンクが指す、索引語が出現した本文ページの先頭
   IndexPage(usize),
 }
 
