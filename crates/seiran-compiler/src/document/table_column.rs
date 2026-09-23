@@ -11,7 +11,7 @@ use crate::length::Length;
 
 /// 列内のセル内容の揃え方向
 ///
-/// 環境任意引数 `columns="left center right"` の各トークンに対応する。
+/// 環境任意引数 `columns=left center right` の各トークンに対応する。
 /// LaTeX の `l/c/r` 略記は採用せずフルスペルのみを受理する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ColumnAlign {
@@ -48,7 +48,7 @@ impl FromStr for ColumnAlign {
 
 /// 列幅の指定方法
 ///
-/// 環境任意引数 `widths="auto 5cm 0.3 *"` の各トークンに対応する。
+/// 環境任意引数 `widths=auto 5cm 0.3 *` の各トークンに対応する。
 /// 実際の幅解決（自然幅の実測・残余分配）は `typeset::boxes::table_box::resolve_column_widths` で行われる
 /// （`typeset::breaking` が呼ぶ）。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

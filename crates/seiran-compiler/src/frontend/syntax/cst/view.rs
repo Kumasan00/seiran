@@ -249,11 +249,12 @@ pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode<'_>) -> 
     let (key, value) = match entry.iter().position(|element| return is_token(element, TokenKind::Equals)) {
       Some(eq) => {
         let (key_part, rest) = entry.split_at(eq);
-        // `rest` の先頭は区切りの `=` そのもの
-        (
-          elements_text(source, key_part),
-          elements_text(source, rest.get(1..).unwrap_or_default()).trim().to_string(),
-        )
+        // `rest` の先頭は position が見つけた区切りの `=` そのもの（split_at(eq) の後半なので
+        // 必ず 1 要素以上ある）。到達しないのでスライスパターンで剥がす
+        let [_, value_part @ ..] = rest else {
+          unreachable!("rest の先頭要素は position(Equals) が見つけたトークンなので必ず存在する")
+        };
+        (elements_text(source, key_part), elements_text(source, value_part).trim().to_string())
       },
       None => (elements_text(source, entry), "true".to_string()),
     };
@@ -573,6 +574,28 @@ mod tests {
     let pairs = command_pairs(r"\cmd[title=a=b]{y}");
 
     assert_eq!(pairs, vec![("title".to_string(), "a=b".to_string())]);
+  }
+
+  #[test]
+  fn parse_key_value_options_keeps_escaped_equals_in_key() {
+    let pairs = command_pairs(r"\cmd[a\=b=c]{y}");
+
+    assert_eq!(pairs, vec![("a=b".to_string(), "c".to_string())]);
+  }
+
+  #[test]
+  fn parse_key_value_options_ignores_comma_nested_in_child_node() {
+    // 入れ子ノード（ここではコマンド引数）内の `,` は OptArg 直下のトークンではないので
+    // エントリを分割しない（#687）
+    let pairs = command_pairs(r"\cmd[title=\bold{a, b}, label=x]{y}");
+
+    assert_eq!(
+      pairs,
+      vec![
+        ("title".to_string(), "a, b".to_string()),
+        ("label".to_string(), "x".to_string())
+      ]
+    );
   }
 
   #[test]
