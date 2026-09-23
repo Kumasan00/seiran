@@ -75,7 +75,7 @@ pub(crate) struct Page {
 /// [`PlacedFootnote`] が複数ページに現れる（`continued` で区別する）。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedFootnote {
-  /// 出現順の識別子（0 起点。[`super::line::LineFootnote`] から素通し）
+  /// 出現順の識別子（0 起点。[`super::hitem::MeasuredFootnote`] から素通し）
   ///
   /// ページ単位採番の反復（`typeset::pagination::footnote_numbering`）が、確定したページ列から
   /// 「どの脚注に何番を振り直すか」を決めるためのキー。

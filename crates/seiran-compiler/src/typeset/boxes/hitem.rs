@@ -83,22 +83,7 @@ pub(crate) enum HItem {
   ///
   /// `LinkStart`/`LinkEnd` と同様、行内では場所取りをしない。実際の行分割・ページ下部配置は
   /// `typeset::breaking` が `Line::footnotes`（`build_line` が本バリアントから収集する）経由で行う。
-  Footnote {
-    /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
-    ///
-    /// 採番方式（文書通し / ページ単位）により意味が変わるので、脚注の同一性には使わない
-    /// （それは `index` の役目）。
-    number: u32,
-    /// 出現順の識別子（0 起点、文書全体で一意）
-    ///
-    /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。ページ単位採番の
-    /// 反復（`seiran_compiler::compiler`）が「どの脚注が何ページ目に載ったか」を追跡するのに使う。
-    index: u32,
-    /// 脚注本体（計測済みの水平アイテム列）
-    items: Vec<HItem>,
-    /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
-    leading: Length,
-  },
+  Footnote(MeasuredFootnote),
   /// 索引語（`\index{語}`）の運搬マーカー（幅 0・分割不可）
   ///
   /// `LinkStart`/`LinkEnd`/`Footnote` と同様、行内では場所取りをしない。この行がどのページに
@@ -110,6 +95,32 @@ pub(crate) enum HItem {
     /// 読みソートキー（`[reading=...]`）
     reading: Option<String>,
   },
+}
+
+/// 計測済みの脚注 1 個（`\footnote{...}`）
+///
+/// boxing が [`HItem::Footnote`] に載せ、行分割（`build_line`）がそのまま [`Line::footnotes`]
+/// へ移す。本体は計測済みだが未行分割で、ページ下部に置くときに `typeset::breaking` が行分割する
+/// （行分割後の `PendingFootnote`・確定座標の [`PlacedFootnote`] とは段が違う）。
+///
+/// [`Line::footnotes`]: crate::typeset::boxes::Line::footnotes
+/// [`PlacedFootnote`]: crate::typeset::boxes::PlacedFootnote
+#[derive(Debug, Clone)]
+pub(crate) struct MeasuredFootnote {
+  /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
+  ///
+  /// 採番方式（文書通し / ページ単位）により意味が変わるので、脚注の同一性には使わない
+  /// （それは `index` の役目）。
+  pub number: u32,
+  /// 出現順の識別子（0 起点、文書全体で一意）
+  ///
+  /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。ページ単位採番の
+  /// 反復が「どの脚注が何ページ目に載ったか」を追跡するのに使う。
+  pub index: u32,
+  /// 脚注本体（計測済みの水平アイテム列）
+  pub items: Vec<HItem>,
+  /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
+  pub leading: Length,
 }
 
 impl HItem {
@@ -130,7 +141,7 @@ impl HItem {
       | HItem::ForcedBreak
       | HItem::LinkStart(_)
       | HItem::LinkEnd
-      | HItem::Footnote { .. }
+      | HItem::Footnote(_)
       | HItem::IndexMark { .. } => Length::ZERO,
     };
   }

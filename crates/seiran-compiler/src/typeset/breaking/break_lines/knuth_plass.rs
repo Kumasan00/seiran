@@ -183,7 +183,7 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       | HItem::ForcedBreak
       | HItem::LinkStart(_)
       | HItem::LinkEnd
-      | HItem::Footnote { .. }
+      | HItem::Footnote(_)
       | HItem::IndexMark { .. } => {},
     }
   }

@@ -841,8 +841,9 @@ mod tests {
     style::TextAlignment,
     typeset::{
       boxes::{
-        Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK,
-        Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+        Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, MeasuredFootnote,
+        PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox, TableCellBox,
+        TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -932,12 +933,12 @@ mod tests {
 
   /// 幅 0 の脚注マーカー（`HItem::Footnote`）を作るテストヘルパ
   fn footnote_item(number: u32, body: Vec<HItem>, leading: Length) -> HItem {
-    return HItem::Footnote {
+    return HItem::Footnote(MeasuredFootnote {
       number,
       index: number - 1,
       items: body,
       leading,
-    };
+    });
   }
 
   /// ページの脚注のうち、[`footnote_item`] に渡した番号の脚注（`index = number - 1`）を返す

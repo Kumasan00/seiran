@@ -3,7 +3,7 @@
 use crate::{
   length::Length,
   typeset::boxes::{
-    hitem::{HBoxContent, HItem},
+    hitem::{HBoxContent, MeasuredFootnote},
     link::LinkTarget,
     page::PlacedLink,
   },
@@ -28,7 +28,7 @@ pub(crate) struct Line {
   ///
   /// `typeset::breaking::break_pages` がこの行を配置する際に本体を行分割し、
   /// 実効ページ下限（`page_limit` から脚注ぶんを差し引いた値）へ織り込む。
-  pub footnotes: Vec<LineFootnote>,
+  pub footnotes: Vec<MeasuredFootnote>,
   /// この行に含まれる索引語（`\index{語}`、出現順）
   ///
   /// `typeset::breaking::break_pages` がこの行の所属ページを索引語の出現ページとして扱い、
@@ -63,19 +63,6 @@ impl Line {
       link.x1 += dx;
     }
   }
-}
-
-/// 行内の脚注（`\footnote{...}`）本体
-#[derive(Debug, Clone)]
-pub(crate) struct LineFootnote {
-  /// 発番済みの表示番号（[`HItem::Footnote`] から素通し）
-  pub number: u32,
-  /// 出現順の識別子（0 起点。[`HItem::Footnote`] から素通し）
-  pub index: u32,
-  /// 脚注本体（計測済みの水平アイテム列。ページ下部配置時に行分割する）
-  pub items: Vec<HItem>,
-  /// 脚注本体の行送り（支配的フォントサイズ × 行高係数）
-  pub leading: Length,
 }
 
 /// 行内の索引語（`\index{語}`）1 件

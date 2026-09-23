@@ -3,7 +3,7 @@
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox},
+  typeset::boxes::{HBox, HItem, Line, LineIndexEntry, LineLink, LinkTarget, MeasuredFootnote, PositionedBox},
 };
 
 mod greedy;
@@ -130,7 +130,7 @@ pub(super) fn build_line(
 
   let mut boxes: Vec<PositionedBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
-  let mut footnotes: Vec<LineFootnote> = Vec::new();
+  let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
   let mut index_marks: Vec<LineIndexEntry> = Vec::new();
   let mut x = Length::ZERO;
   let mut height = Length::ZERO;
@@ -192,17 +192,7 @@ pub(super) fn build_line(
       },
       // 脚注マーカーは幅 0・分割不可。行に積むだけで、この行の脚注として収集する
       // （ページ下部への行分割・配置は `break_pages` の責務）
-      HItem::Footnote {
-        number,
-        index,
-        items,
-        leading,
-      } => footnotes.push(LineFootnote {
-        number: *number,
-        index: *index,
-        items: items.clone(),
-        leading: *leading,
-      }),
+      HItem::Footnote(footnote) => footnotes.push(footnote.clone()),
       // 索引マーカーは幅 0・分割不可。行に積むだけで、この行の索引語として収集する
       // （重複除去・ページ確定座標化は break_pages の責務）
       HItem::IndexMark { word, reading } => index_marks.push(LineIndexEntry {
