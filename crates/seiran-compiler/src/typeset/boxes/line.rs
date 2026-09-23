@@ -5,6 +5,7 @@ use crate::{
   typeset::boxes::{
     hitem::{HBoxContent, HItem},
     link::LinkTarget,
+    page::PlacedLink,
   },
 };
 
@@ -86,18 +87,38 @@ pub(crate) struct LineIndexEntry {
   pub reading: Option<String>,
 }
 
-/// 行内のリンク領域（クリック矩形の水平範囲）
+/// 水平 1 行内のリンク領域（クリック矩形の水平範囲）
 ///
-/// `x0` / `x1` は行頭（着地する段の左端）からの水平オフセット（pt）。縦範囲は所属する
-/// [`Line`] の `height` / `depth` から `break_pages` が確定する。
+/// `x0` / `x1` は基準点からの水平オフセット。基準点は持ち主で決まり、[`Line::links`] なら行頭
+/// （着地する段の左端）、表行（`collect_row_links` の戻り値）なら表の左端。縦範囲は持たず、
+/// 確定座標への展開時（[`LineLink::place`]）に呼び出し側が与える。
 #[derive(Debug, Clone)]
 pub(crate) struct LineLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
   pub target: LinkTarget,
-  /// 領域左端の行頭からの水平オフセット
+  /// 領域左端の基準点からの水平オフセット
   pub x0: Length,
-  /// 領域右端の行頭からの水平オフセット
+  /// 領域右端の基準点からの水平オフセット
   pub x1: Length,
+}
+
+impl LineLink {
+  /// 基準点を `dx` に置いたときの確定矩形を返す。縦範囲は `top` から `height`
+  ///
+  /// 退化矩形（`x1 <= x0`）は描画しないので `None`。行と表の両経路がこの規則を共有する。
+  #[must_use]
+  pub(crate) fn place(&self, dx: Length, top: Length, height: Length) -> Option<PlacedLink> {
+    if self.x1 <= self.x0 {
+      return None;
+    }
+    return Some(PlacedLink {
+      target: self.target.clone(),
+      x: dx + self.x0,
+      y: top,
+      width: self.x1 - self.x0,
+      height,
+    });
+  }
 }
 
 /// 行内に配置されたボックス

@@ -245,18 +245,11 @@ impl PageDraft {
       for positioned in &mut boxes {
         positioned.x += x;
       }
-      for link in collect_row_links(&pending.row, frame.columns, frame.col_widths, frame.cell_padding) {
-        if link.x1 <= link.x0 {
-          continue; // 退化矩形は出力しない（行のリンクと同じ規則）
-        }
-        links.push(PlacedLink {
-          target: link.target,
-          x: x + link.x0,
-          y: pending.top_y,
-          width: link.x1 - link.x0,
-          height: pending.height,
-        });
-      }
+      links.extend(
+        collect_row_links(&pending.row, frame.columns, frame.col_widths, frame.cell_padding)
+          .iter()
+          .filter_map(|link| return link.place(x, pending.top_y, pending.height)),
+      );
       let baseline_offset = pending
         .row
         .cells
@@ -487,26 +480,13 @@ impl PageDraft {
   }
 }
 
-/// 行のリンク領域を確定座標の矩形へ展開する（退化矩形 `x1 <= x0` は捨てる）
+/// 行のリンク領域を確定座標の矩形へ展開する（退化矩形の扱いは [`LineLink::place`](crate::typeset::boxes::LineLink::place)）
 ///
 /// 矩形の上端は `baseline_y − height`、高さは `height + depth`（行 box 全体）。
 fn line_links(line: &Line, baseline_y: Length) -> Vec<PlacedLink> {
   let top = baseline_y - line.height;
   let height = line.height + line.depth;
-  return line
-    .links
-    .iter()
-    .filter(|link| return link.x1 > link.x0)
-    .map(|link| {
-      return PlacedLink {
-        target: link.target.clone(),
-        x: link.x0,
-        y: top,
-        width: link.x1 - link.x0,
-        height,
-      };
-    })
-    .collect();
+  return line.links.iter().filter_map(|link| return link.place(Length::ZERO, top, height)).collect();
 }
 
 /// [`PlacedBlock`] の底辺（ページ上端からの距離、pt）を返す。下端揃えのリージョン下端算出に使う。
