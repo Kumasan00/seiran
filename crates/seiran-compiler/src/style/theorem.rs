@@ -13,48 +13,39 @@ use crate::{
 };
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(from = "TheoremsTable")]
 pub(crate) struct Theorems {
   /// `[theorems.theorem]`
+  #[garde(dive)]
   pub theorem: TheoremStyle,
   /// `[theorems.lemma]`
+  #[garde(dive)]
   pub lemma: TheoremStyle,
   /// `[theorems.proposition]`
+  #[garde(dive)]
   pub proposition: TheoremStyle,
   /// `[theorems.corollary]`
+  #[garde(dive)]
   pub corollary: TheoremStyle,
   /// `[theorems.definition]`
+  #[garde(dive)]
   pub definition: TheoremStyle,
   /// `[theorems.axiom]`
+  #[garde(dive)]
   pub axiom: TheoremStyle,
   /// `[theorems.example]`
+  #[garde(dive)]
   pub example: TheoremStyle,
   /// `[theorems.remark]`
+  #[garde(dive)]
   pub remark: TheoremStyle,
   /// `[theorems.claim]`
+  #[garde(dive)]
   pub claim: TheoremStyle,
   /// `[theorems.proof]`
+  #[garde(dive)]
   pub proof: TheoremStyle,
-}
-
-impl Theorems {
-  /// 各クラスにクラス名を添えて走査するイテレータ。
-  pub(crate) fn iter_with_class(&self) -> impl Iterator<Item = (TheoremClass, &TheoremStyle)> {
-    return [
-      (TheoremClass::Theorem, &self.theorem),
-      (TheoremClass::Lemma, &self.lemma),
-      (TheoremClass::Proposition, &self.proposition),
-      (TheoremClass::Corollary, &self.corollary),
-      (TheoremClass::Definition, &self.definition),
-      (TheoremClass::Axiom, &self.axiom),
-      (TheoremClass::Example, &self.example),
-      (TheoremClass::Remark, &self.remark),
-      (TheoremClass::Claim, &self.claim),
-      (TheoremClass::Proof, &self.proof),
-    ]
-    .into_iter();
-  }
 }
 
 impl Default for Theorems {
@@ -526,18 +517,6 @@ mod tests {
 
     assert_eq!(remark.counter, "remark");
     assert_eq!(remark.style.font_kind, FontKind::Serif);
-  }
-
-  #[test]
-  fn iter_with_class_yields_all_ten_classes_in_order() {
-    // Arrange
-    let theorems = Theorems::default();
-
-    // Act
-    let classes: Vec<TheoremClass> = theorems.iter_with_class().map(|(class, _)| return class).collect();
-
-    // Assert
-    assert_eq!(classes, TheoremClass::ALL.to_vec());
   }
 
   #[test]

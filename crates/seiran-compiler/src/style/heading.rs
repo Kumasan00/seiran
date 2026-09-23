@@ -14,20 +14,26 @@ use crate::{
 };
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(from = "HeadingStylesTable")]
 pub(crate) struct HeadingStyles {
   /// `[heading.part]`
+  #[garde(dive)]
   pub part: HeadingStyle,
   /// `[heading.chapter]`
+  #[garde(dive)]
   pub chapter: HeadingStyle,
   /// `[heading.section]`
+  #[garde(dive)]
   pub section: HeadingStyle,
   /// `[heading.subsection]`
+  #[garde(dive)]
   pub subsection: HeadingStyle,
   /// `[heading.paragraph]`
+  #[garde(dive)]
   pub paragraph: HeadingStyle,
   /// `[heading.subparagraph]`
+  #[garde(dive)]
   pub subparagraph: HeadingStyle,
 }
 
@@ -56,21 +62,6 @@ impl Index<HeadingLevel> for HeadingStyles {
       HeadingLevel::Paragraph => &self.paragraph,
       HeadingLevel::Subparagraph => &self.subparagraph,
     };
-  }
-}
-
-impl HeadingStyles {
-  /// 各レベルにレベル名を添えて走査するイテレータ。
-  pub(super) fn iter_with_level(&self) -> impl Iterator<Item = (HeadingLevel, &HeadingStyle)> {
-    return [
-      (HeadingLevel::Part, &self.part),
-      (HeadingLevel::Chapter, &self.chapter),
-      (HeadingLevel::Section, &self.section),
-      (HeadingLevel::Subsection, &self.subsection),
-      (HeadingLevel::Paragraph, &self.paragraph),
-      (HeadingLevel::Subparagraph, &self.subparagraph),
-    ]
-    .into_iter();
   }
 }
 
@@ -372,14 +363,10 @@ format = \"§ {number} {title}\"
   }
 
   #[test]
-  fn iter_with_level_yields_all_six_levels_in_order() {
-    // Arrange
+  fn indexing_returns_matching_field() {
     let styles = HeadingStyles::default();
 
-    // Act
-    let levels: Vec<HeadingLevel> = styles.iter_with_level().map(|(level, _)| return level).collect();
-
-    // Assert
-    assert_eq!(levels, HeadingLevel::ALL.to_vec());
+    assert!(std::ptr::eq(&raw const styles[HeadingLevel::Chapter], &raw const styles.chapter));
+    assert!(std::ptr::eq(&raw const styles[HeadingLevel::Subparagraph], &raw const styles.subparagraph));
   }
 }

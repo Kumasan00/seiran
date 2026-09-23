@@ -97,7 +97,7 @@ pub(crate) struct Style {
   #[garde(skip)]
   pub background_color: Option<Color>,
   /// 見出し全 6 レベルのスタイル
-  #[garde(skip)]
+  #[garde(dive)]
   pub heading: HeadingStyles,
   /// 本文段落のスタイル
   #[garde(dive)]
@@ -130,7 +130,7 @@ pub(crate) struct Style {
   #[garde(dive)]
   pub counters: Counters,
   /// 定理クラス定義テーブル（`[theorems.<class>]`、固定 10 種）
-  #[garde(skip)]
+  #[garde(dive)]
   pub theorems: Theorems,
   /// ページ番号のスタイル（前付け＝ローマ数字 / 本文＝算用数字）
   #[garde(dive)]
@@ -269,44 +269,23 @@ fn validation_failures(path: &str, errors: Vec<StyleValidationError>) -> Option<
 }
 
 /// [`Style`] の値検証を実行します（I/O なし）。
+///
+/// 違反の並びは garde の走査順（`Style` のフィールド宣言順）。
 fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
-  let mut errors: Vec<StyleValidationError> = Vec::new();
-
-  if let Err(report) = style.validate() {
-    errors.extend(report.iter().map(|(path, error)| {
-      return StyleValidationError::Field {
-        path: path.to_string(),
-        message: error.to_string(),
-      };
-    }));
-  }
-
-  for (level, heading) in style.heading.iter_with_level() {
-    if let Err(report) = heading.validate() {
-      errors.extend(report.iter().map(|(path, error)| {
-        return StyleValidationError::Field {
-          path: format!("heading.{}.{path}", level.command_name()),
-          message: error.to_string(),
-        };
-      }));
-    }
-  }
-
-  for (class, theorem) in style.theorems.iter_with_class() {
-    if let Err(report) = theorem.validate() {
-      errors.extend(report.iter().map(|(path, error)| {
-        return StyleValidationError::Field {
-          path: format!("theorems.{}.{path}", class.as_str()),
-          message: error.to_string(),
-        };
-      }));
-    }
-  }
-
-  if errors.is_empty() {
+  let Err(report) = style.validate() else {
     return Ok(());
-  }
-  return Err(errors);
+  };
+  return Err(
+    report
+      .iter()
+      .map(|(path, error)| {
+        return StyleValidationError::Field {
+          path: path.to_string(),
+          message: error.to_string(),
+        };
+      })
+      .collect(),
+  );
 }
 
 /// `style.reference` の CSL 関連パス（`csl_path` / `locale_path`）を `resolver` で解決し、
@@ -544,6 +523,20 @@ mod tests {
   fn validate_dives_into_counters_display_name() {
     let mut style = Style::default();
     style.counters.figure.display_name = String::new();
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_dives_into_heading_font_size() {
+    let mut style = Style::default();
+    style.heading.chapter.font_size = Length::pt(-1.0);
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_dives_into_theorems_display_name() {
+    let mut style = Style::default();
+    style.theorems.lemma.display_name = String::new();
     assert!(style.validate().is_err());
   }
 

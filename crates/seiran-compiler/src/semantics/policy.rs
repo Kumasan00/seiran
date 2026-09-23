@@ -53,7 +53,8 @@ impl SemanticPolicy {
       );
     }
     let mut theorems = HashMap::new();
-    for (class, def) in style.theorems.iter_with_class() {
+    for class in TheoremClass::ALL {
+      let def = &style.theorems[class];
       theorems.insert(
         class,
         TheoremPolicy {

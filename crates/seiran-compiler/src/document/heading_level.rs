@@ -21,17 +21,7 @@ pub(crate) enum HeadingLevel {
 }
 
 impl HeadingLevel {
-  /// 6 つのレベルすべてを宣言順で並べた配列
-  #[cfg(test)]
-  pub(crate) const ALL: [HeadingLevel; 6] = [
-    HeadingLevel::Part,
-    HeadingLevel::Chapter,
-    HeadingLevel::Section,
-    HeadingLevel::Subsection,
-    HeadingLevel::Paragraph,
-    HeadingLevel::Subparagraph,
-  ];
-  /// `HeadingLevel::ALL` の要素数
+  /// 見出しレベルの総数（`Part` から `Subparagraph` までの 6 つ）
   pub(crate) const COUNT: usize = 6;
 
   /// 数値インデックスを返す（0=Part, 5=Subparagraph）
