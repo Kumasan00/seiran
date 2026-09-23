@@ -11,12 +11,11 @@ use harfrust::{
   ShaperInstance, Tag, Variation,
 };
 use miette::Diagnostic;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
 use crate::{
-  failures::{self, Failures},
-  project::{FontConfig, FontConfigs, FontMap, FontType, TextDirection},
+  failures::Failures,
+  project::{FontConfig, FontConfigs, FontMap, TextDirection},
   typeset::font::FontRefs,
 };
 
@@ -48,9 +47,7 @@ pub(super) trait ShaperDatasExt {
 
 impl ShaperDatasExt for ShaperDatas {
   fn new(font_refs: &FontRefs<'_>) -> Self {
-    let shaper_datas: Vec<ShaperData> =
-      FontType::ALL.iter().map(|&font_type| return ShaperData::new(&font_refs[font_type])).collect();
-    return ShaperDatas::from_all(shaper_datas);
+    return ShaperDatas::from_fn(|font_type| return ShaperData::new(&font_refs[font_type]));
   }
 }
 
@@ -65,15 +62,9 @@ pub(super) trait ShaperInstancesExt {
 
 impl ShaperInstancesExt for ShaperInstances {
   fn new(configs: &FontConfigs, font_refs: &FontRefs<'_>) -> Self {
-    let shaper_instances: Vec<Option<ShaperInstance>> = FontType::ALL
-      .par_iter()
-      .map(|&font_type| {
-        let config = &configs[font_type];
-        let font_ref = &font_refs[font_type];
-        return build_shaper_instance(config, font_ref);
-      })
-      .collect();
-    return ShaperInstances::from_all(shaper_instances);
+    return ShaperInstances::par_from_fn(|font_type| {
+      return build_shaper_instance(&configs[font_type], &font_refs[font_type]);
+    });
   }
 }
 
@@ -108,8 +99,7 @@ pub(super) trait HarfRustShapersExt<'a>: Sized {
   /// 全フォント種別のシェイパーを並列に生成する。
   ///
   /// フォントは互いに独立にシェーパーを組めるので、1 件目で打ち切らず全種別を試して失敗を
-  /// 全件返す。`FontType::ALL.par_iter()` は `IndexedParallelIterator` なので
-  /// `collect::<Vec<_>>()` が入力順を保証し、完了順は報告順に漏れない。
+  /// 全件返す。順序は `FontMap::par_try_from_fn` が `FontType::ALL` 順に揃える。
   ///
   /// # Errors
   ///
@@ -129,17 +119,13 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
     shaper_datas: &'a ShaperDatas,
     instances: &'a ShaperInstances,
   ) -> Result<Self, Failures<ShaperError>> {
-    let results: Vec<Result<HarfRustShaper<'a>, ShaperError>> = FontType::ALL
-      .par_iter()
-      .map(|&font_type| {
-        let config = &configs[font_type];
-        let font_ref = &font_refs[font_type];
-        let shaper_data = &shaper_datas[font_type];
-        let instance = instances[font_type].as_ref();
-        return HarfRustShaper::new(config, font_ref, shaper_data, instance);
-      })
-      .collect::<Vec<Result<HarfRustShaper<'a>, ShaperError>>>();
-    return Ok(HarfRustShapers::from_all(failures::collect_in_input_order(results)?));
+    return HarfRustShapers::par_try_from_fn(|font_type| {
+      let config = &configs[font_type];
+      let font_ref = &font_refs[font_type];
+      let shaper_data = &shaper_datas[font_type];
+      let instance = instances[font_type].as_ref();
+      return HarfRustShaper::new(config, font_ref, shaper_data, instance);
+    });
   }
 }
 

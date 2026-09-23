@@ -428,7 +428,7 @@ pub(crate) mod test_support {
   use std::sync::Arc;
 
   use super::{FontFaceConfig, FontMetric, PublicationFont, PublicationImage, PublicationResources};
-  use crate::project::{FontMap, FontType};
+  use crate::project::FontMap;
 
   /// 指定した画像だけを持つ描画資源を返す（フォントは全種別ダミーのバイト列 0 個）。
   ///
@@ -446,7 +446,7 @@ pub(crate) mod test_support {
         descender: -200.0,
       },
     };
-    let fonts = FontMap::from_all(FontType::ALL.iter().map(|_| return font.clone()));
+    let fonts = FontMap::from_fn(|_| return font.clone());
     return PublicationResources::new(fonts, images);
   }
 }

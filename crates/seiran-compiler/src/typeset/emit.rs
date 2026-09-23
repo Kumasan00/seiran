@@ -19,7 +19,7 @@ use std::{collections::HashMap, mem};
 
 use crate::{
   length::Length,
-  project::{FontData, FontMap, FontType, ProjectPath, config::ProjectConfig},
+  project::{FontData, FontMap, ProjectPath, config::ProjectConfig},
   publication::{
     Destination, PaintOp, Point, Publication, PublicationFont, PublicationImage, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
@@ -61,13 +61,13 @@ fn build_resources(
 ) -> PublicationResources {
   let face_configs = font_resources.face_configs();
   let metrics = font_resources.metrics();
-  let fonts = FontMap::from_all(FontType::ALL.iter().map(|&font_type| {
+  let fonts = FontMap::from_fn(|font_type| {
     return PublicationFont {
       bytes: font_data.shared_bytes(font_type),
       face: face_configs[font_type].clone(),
       metric: metrics[font_type],
     };
-  }));
+  });
   let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
   sorted.sort_by(|(left, _), (right, _)| return left.cmp(right));
   let images = sorted
@@ -351,7 +351,7 @@ mod tests {
     document::HeadingLevel,
     length::Length,
     project::{
-      FontConfig, FontConfigs, FontType, ProjectPath,
+      FontConfig, FontConfigs, ProjectPath,
       config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
@@ -406,7 +406,7 @@ mod tests {
         max_dpi: 300,
         downsample: false,
       },
-      font_configs: FontConfigs::from_all(FontType::ALL.iter().map(|_| return test_font_config())),
+      font_configs: FontConfigs::from_fn(|_| return test_font_config()),
       sources: Vec::new(),
       style_path: None,
       references_path: None,

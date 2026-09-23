@@ -5,7 +5,7 @@
 //! 複製型を作らせない（issue #305 / #372）。
 
 use crate::{
-  project::{FontConfigs, FontMap, FontType},
+  project::{FontConfigs, FontMap},
   publication::{FontFaceConfig, VariationAxisConfig},
 };
 
@@ -18,8 +18,8 @@ pub(super) type FontFaceConfigs = FontMap<FontFaceConfig>;
 /// （compiler 側で手書きの複製を書かせないため。issue #305）。
 #[must_use]
 pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
-  return FontMap::from_all(FontType::ALL.iter().map(|font_type| {
-    let font_config = &configs[*font_type];
+  return FontMap::from_fn(|font_type| {
+    let font_config = &configs[font_type];
     return FontFaceConfig {
       font_index: font_config.font_index,
       variation_axes: font_config.variation_axes.as_ref().map(|axes| {
@@ -34,7 +34,7 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
           .collect();
       }),
     };
-  }));
+  });
 }
 
 #[cfg(test)]
@@ -58,7 +58,7 @@ mod tests {
   #[test]
   fn build_face_configs_copies_only_the_two_convertible_fields() {
     // Arrange
-    let configs: FontConfigs = FontMap::from_all(FontType::ALL.iter().map(|_| return font_config_with(3, None)));
+    let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(3, None));
 
     // Act
     let face_configs = build_face_configs(&configs);
@@ -84,8 +84,7 @@ mod tests {
         value: 1.0,
       },
     ];
-    let configs: FontConfigs =
-      FontMap::from_all(FontType::ALL.iter().map(|_| return font_config_with(0, Some(axes.clone()))));
+    let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(0, Some(axes.clone())));
 
     // Act
     let face_configs = build_face_configs(&configs);
