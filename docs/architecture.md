@@ -1166,7 +1166,8 @@ compiler 側の責務で、こちらへ戻さない。
 
 **「有効な `Publication` に対して backend が失敗しうるもの」だけ**を持つ（3 系統の内訳は `error` の `//!`）。
 compiler が構築時に検証済みの不変条件を再検査する variant（invalid page size / rule rect / link rect /
-image not in manifest / 未対応の画像拡張子）は持たない — 同じ検査を 2 箇所に持つと、どちらが真の保証点か
+image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性（保証点は
+`typeset::font::validation`。#681））は持たない — 同じ検査を 2 箇所に持つと、どちらが真の保証点か
 読めなくなるため（保証点は `publication` 節の表。#378）。
 
 ### 不変条件・注意点

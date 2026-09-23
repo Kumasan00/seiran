@@ -1,6 +1,8 @@
 //! フォント設定と OpenType テーブルの検証モジュール
 //!
-//! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。
+//! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。軸が未設定でも
+//! `fvar` 自体が読めなければ parse error として拒否する — このモジュールが唯一の保証点で、描画側
+//! （seiran-pdf）はフォントを再パースしない（#681）。
 //! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
 //! severity(Warning) の [`FontWarning`] として集める。成功した `Compilation` と一緒に返すほか、
 //! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す（#550）
@@ -292,8 +294,9 @@ pub(super) fn validate_font(
   let mut errors = Vec::new();
   // `fvar` は「読めた / 無い / あるが読めない」の 3 通りで、3 つ目を静的フォント扱いにしない — krilla は
   // 壊れた `fvar` を空軸に畳んで既定インスタンスで描いてしまうので、拒否できるのはここだけ（#681）。
-  // テーブルディレクトリのレコードがファイル範囲外を指すときも read-fonts は `TableIsMissing` を返すが、
-  // 描画側（skrifa）も同じく軸なしとして扱うので静的フォントとして通す
+  // read-fonts は「レコードが無い」場合と「レコードがファイル範囲外を指す」場合の両方で同じ
+  // `TableIsMissing` を返し、ここでは区別していない（`variation-axes` サブコマンドはテーブルディレクトリを
+  // 直接見るので区別できる）。後者（範囲外）は既知の対象外ギャップで、静的フォントとして通ってしまう。
   match (font_ref.fvar(), &config.variation_axes) {
     (Ok(fvar), Some(variation_axes)) => validate_variation_axes(&fvar, variation_axes, &mut errors),
     (Ok(_), None) => errors.push(FontValidationErrorKind::MissingVariationAxes),
@@ -657,23 +660,29 @@ mod tests {
 
   #[test]
   fn missing_fvar_with_axes_is_not_variable_font() {
+    // Arrange
     let bytes = sfnt_with_fvar(None);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
 
+    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
 
+    // Assert
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::NotVariableFont]), "{errors:?}");
   }
 
   #[test]
   fn missing_fvar_without_axes_is_a_valid_static_font() {
+    // Arrange
     let bytes = sfnt_with_fvar(None);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
 
+    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
 
+    // Assert
     assert!(errors.is_empty(), "{errors:?}");
   }
 }
