@@ -365,7 +365,7 @@ impl Default for RawImageConfig {
 /// 19 フォント種別の `font_name` がすべて一意であることを検証し、違反を `errors` に追加します。
 pub(crate) fn validate_unique_font_names(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   let mut seen = std::collections::HashSet::new();
-  for font_type in FontType::ALL {
+  for &font_type in FontType::ALL {
     let name = value[font_type].font_name.as_str();
     if !seen.insert(name) {
       errors.push(ConfigValidationError::Field {
@@ -378,7 +378,7 @@ pub(crate) fn validate_unique_font_names(value: &RawFontConfigs, errors: &mut Ve
 
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
 pub(crate) fn validate_font_language_constraints(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
-  for font_type in FontType::ALL {
+  for &font_type in FontType::ALL {
     let cfg = &value[font_type];
     if cfg.ot_language.is_some() && cfg.script.is_none() {
       errors.push(ConfigValidationError::Field {

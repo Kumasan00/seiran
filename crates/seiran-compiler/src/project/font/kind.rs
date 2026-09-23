@@ -1,7 +1,10 @@
 //! 最終的なフォント種別 [`FontType`]。
 
+use strum::{IntoStaticStr, VariantArray};
+
 /// 言語とスタイルが確定した 19 フォント種別
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, VariantArray)]
+#[strum(serialize_all = "snake_case")]
 pub enum FontType {
   /// Serif 標準フォント（通常の太さ、通常のゆがみ）
   Serif,
@@ -43,56 +46,12 @@ pub enum FontType {
   JapaneseMonospaceBold,
 }
 
-impl std::fmt::Display for FontType {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let name = match self {
-      FontType::Serif => "Serif",
-      FontType::SerifBold => "Serif Bold",
-      FontType::SerifItalic => "Serif Italic",
-      FontType::SerifBoldItalic => "Serif Bold Italic",
-      FontType::SansSerif => "Sans Serif",
-      FontType::SansSerifBold => "Sans Serif Bold",
-      FontType::SansSerifItalic => "Sans Serif Italic",
-      FontType::SansSerifBoldItalic => "Sans Serif Bold Italic",
-      FontType::Monospace => "Monospace",
-      FontType::MonospaceBold => "Monospace Bold",
-      FontType::MonospaceItalic => "Monospace Italic",
-      FontType::MonospaceBoldItalic => "Monospace Bold Italic",
-      FontType::Math => "Math",
-      FontType::JapaneseSerif => "Japanese Serif",
-      FontType::JapaneseSerifBold => "Japanese Serif Bold",
-      FontType::JapaneseSansSerif => "Japanese Sans Serif",
-      FontType::JapaneseSansSerifBold => "Japanese Sans Serif Bold",
-      FontType::JapaneseMonospace => "Japanese Monospace",
-      FontType::JapaneseMonospaceBold => "Japanese Monospace Bold",
-    };
-    return write!(f, "{name}");
-  }
-}
-
 impl FontType {
-  /// 全フォント種別を宣言順に並べた配列
-  pub const ALL: [FontType; 19] = [
-    FontType::Serif,
-    FontType::SerifBold,
-    FontType::SerifItalic,
-    FontType::SerifBoldItalic,
-    FontType::SansSerif,
-    FontType::SansSerifBold,
-    FontType::SansSerifItalic,
-    FontType::SansSerifBoldItalic,
-    FontType::Monospace,
-    FontType::MonospaceBold,
-    FontType::MonospaceItalic,
-    FontType::MonospaceBoldItalic,
-    FontType::Math,
-    FontType::JapaneseSerif,
-    FontType::JapaneseSerifBold,
-    FontType::JapaneseSansSerif,
-    FontType::JapaneseSansSerifBold,
-    FontType::JapaneseMonospace,
-    FontType::JapaneseMonospaceBold,
-  ];
+  /// 全フォント種別を宣言順に並べたスライス
+  ///
+  /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
+  /// 利用側に `strum` のトレイトを import させないよう inherent の定数で包む。
+  pub const ALL: &'static [FontType] = <Self as VariantArray>::VARIANTS;
 
   /// TOML でこのフォント種別を指す `snake_case` のキーを返す
   ///
@@ -100,27 +59,5 @@ impl FontType {
   /// 表示する際の正規表記としても使用されます（`Debug` フォーマットは `PascalCase` で
   /// ユーザの書いた TOML キーと一致しないため、エラーパスにはこちらを使ってください）。
   #[must_use]
-  pub fn as_toml_key(self) -> &'static str {
-    return match self {
-      FontType::Serif => "serif",
-      FontType::SerifBold => "serif_bold",
-      FontType::SerifItalic => "serif_italic",
-      FontType::SerifBoldItalic => "serif_bold_italic",
-      FontType::SansSerif => "sans_serif",
-      FontType::SansSerifBold => "sans_serif_bold",
-      FontType::SansSerifItalic => "sans_serif_italic",
-      FontType::SansSerifBoldItalic => "sans_serif_bold_italic",
-      FontType::Monospace => "monospace",
-      FontType::MonospaceBold => "monospace_bold",
-      FontType::MonospaceItalic => "monospace_italic",
-      FontType::MonospaceBoldItalic => "monospace_bold_italic",
-      FontType::Math => "math",
-      FontType::JapaneseSerif => "japanese_serif",
-      FontType::JapaneseSerifBold => "japanese_serif_bold",
-      FontType::JapaneseSansSerif => "japanese_sans_serif",
-      FontType::JapaneseSansSerifBold => "japanese_sans_serif_bold",
-      FontType::JapaneseMonospace => "japanese_monospace",
-      FontType::JapaneseMonospaceBold => "japanese_monospace_bold",
-    };
-  }
+  pub fn as_toml_key(self) -> &'static str { return self.into(); }
 }

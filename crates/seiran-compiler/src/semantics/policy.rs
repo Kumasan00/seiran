@@ -44,7 +44,7 @@ impl SemanticPolicy {
   #[must_use]
   pub(crate) fn from_style(style: &Style) -> Self {
     let mut counters = HashMap::new();
-    for name in CounterName::ALL {
+    for &name in CounterName::ALL {
       counters.insert(
         name,
         CounterPolicy {
@@ -53,7 +53,7 @@ impl SemanticPolicy {
       );
     }
     let mut theorems = HashMap::new();
-    for class in TheoremClass::ALL {
+    for &class in TheoremClass::ALL {
       let def = &style.theorems[class];
       theorems.insert(
         class,

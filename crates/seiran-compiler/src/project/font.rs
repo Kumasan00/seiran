@@ -151,7 +151,7 @@ mod tests {
 
     // Assert — read_bytes は 1 回だけ呼ばれ、全 19 種別に同じ内容が入る
     assert_eq!(source.read_count("/fonts/shared.ttf"), 1, "共有パスは 1 回しか読まれないはず");
-    for font_type in FontType::ALL {
+    for &font_type in FontType::ALL {
       assert_eq!(font_data.get(font_type), b"FAKE");
     }
   }

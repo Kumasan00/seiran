@@ -64,7 +64,7 @@ mod tests {
     let face_configs = build_face_configs(&configs);
 
     // Assert
-    for font_type in FontType::ALL {
+    for &font_type in FontType::ALL {
       let face_config = &face_configs[font_type];
       assert_eq!(face_config.font_index, 3, "font_index がそのまま複製されるはず");
       assert!(face_config.variation_axes.is_none(), "variation_axes が None ならそのまま None のはず");

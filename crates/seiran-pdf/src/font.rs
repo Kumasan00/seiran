@@ -45,7 +45,7 @@ impl KrillaFonts {
 /// krilla がフォントを生成できなかった場合に [`PdfRenderError`] を返す。
 pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<KrillaFonts, PdfRenderError> {
   let mut fonts = HashMap::with_capacity(FontType::ALL.len());
-  for font_type in FontType::ALL {
+  for &font_type in FontType::ALL {
     fonts.insert(font_type, build_krilla_font(font_type, resources.font(font_type))?);
   }
   return Ok(KrillaFonts { fonts });

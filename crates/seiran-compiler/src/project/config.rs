@@ -1405,7 +1405,7 @@ mod tests {
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
     // Assert
-    for font_type in FontType::ALL {
+    for &font_type in FontType::ALL {
       assert_eq!(config.font_configs[font_type].direction, None, "{font_type:?}");
     }
   }

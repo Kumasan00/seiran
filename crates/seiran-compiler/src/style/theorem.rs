@@ -7,6 +7,7 @@ use std::ops::Index;
 
 use garde::Validate;
 use serde::Deserialize;
+use strum::VariantArray;
 
 pub(super) use crate::document::TheoremClass;
 use crate::{
@@ -189,7 +190,7 @@ impl Default for TheoremStyle {
 }
 
 /// 定理カウンタのリセット先。`reset_by` フィールドで指定する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, VariantArray)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TheoremReset {
   /// 部が進むたびにリセット
@@ -205,14 +206,10 @@ pub(crate) enum TheoremReset {
 }
 
 impl TheoremReset {
-  /// 全 5 バリアントを宣言順（部 → 章 → 節 → 小節 → なし）で並べた配列
-  const ALL: [TheoremReset; 5] = [
-    Self::Part,
-    Self::Chapter,
-    Self::Section,
-    Self::Subsection,
-    Self::None,
-  ];
+  /// 全 5 バリアントを宣言順（部 → 章 → 節 → 小節 → なし）で並べたスライス
+  ///
+  /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
+  const ALL: &'static [TheoremReset] = <Self as VariantArray>::VARIANTS;
 
   /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
   ///
@@ -449,8 +446,8 @@ mod tests {
   fn all_default_classes_pass_validation() {
     let theorems = Theorems::default();
 
-    for class in TheoremClass::ALL {
-      assert!(theorems[class].validate().is_ok(), "{} should validate", class.as_str());
+    for &class in TheoremClass::ALL {
+      assert!(theorems[class].validate().is_ok(), "{class} should validate");
     }
   }
 
@@ -533,7 +530,7 @@ mod tests {
       TheoremClass::Claim,
     ] {
       let style = &theorems[class];
-      assert_eq!(style.counter, "theorem", "{} should share theorem counter", class.as_str());
+      assert_eq!(style.counter, "theorem", "{class} should share theorem counter");
       assert_eq!(style.style.font_kind, FontKind::SerifItalic);
       assert!(!style.unnumbered);
     }
@@ -565,8 +562,8 @@ mod tests {
     let theorems = Theorems::default();
 
     for (class, display_name, counter) in expected {
-      assert_eq!(theorems[class].display_name, display_name, "{} の表示名", class.as_str());
-      assert_eq!(theorems[class].counter, counter, "{} の共有カウンタ", class.as_str());
+      assert_eq!(theorems[class].display_name, display_name, "{class} の表示名");
+      assert_eq!(theorems[class].counter, counter, "{class} の共有カウンタ");
     }
   }
 
