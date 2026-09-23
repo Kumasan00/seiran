@@ -39,33 +39,19 @@ pub(crate) enum ShaperError {
 /// 全フォント種別の `HarfRust` 解析データ。
 pub(super) type ShaperDatas = FontMap<ShaperData>;
 
-/// [`ShaperDatas`] の構築機能。
-pub(super) trait ShaperDatasExt {
-  /// 全フォント参照からシェイピング用の解析データを生成する。
-  fn new(font_refs: &FontRefs<'_>) -> Self;
-}
-
-impl ShaperDatasExt for ShaperDatas {
-  fn new(font_refs: &FontRefs<'_>) -> Self {
-    return ShaperDatas::from_fn(|font_type| return ShaperData::new(&font_refs[font_type]));
-  }
+/// 全フォント参照からシェイピング用の解析データを生成する。
+pub(super) fn build_shaper_datas(font_refs: &FontRefs<'_>) -> ShaperDatas {
+  return ShaperDatas::from_fn(|font_type| return ShaperData::new(&font_refs[font_type]));
 }
 
 /// 全フォント種別のバリエーション軸インスタンス。
 pub(super) type ShaperInstances = FontMap<Option<ShaperInstance>>;
 
-/// [`ShaperInstances`] の構築機能。
-pub(super) trait ShaperInstancesExt {
-  /// 設定にバリエーション軸があるフォントのインスタンスを並列に生成する。
-  fn new(configs: &FontConfigs, font_refs: &FontRefs<'_>) -> Self;
-}
-
-impl ShaperInstancesExt for ShaperInstances {
-  fn new(configs: &FontConfigs, font_refs: &FontRefs<'_>) -> Self {
-    return ShaperInstances::par_from_fn(|font_type| {
-      return build_shaper_instance(&configs[font_type], &font_refs[font_type]);
-    });
-  }
+/// 設定にバリエーション軸があるフォントのインスタンスを並列に生成する。
+pub(super) fn build_shaper_instances(configs: &FontConfigs, font_refs: &FontRefs<'_>) -> ShaperInstances {
+  return ShaperInstances::par_from_fn(|font_type| {
+    return build_shaper_instance(&configs[font_type], &font_refs[font_type]);
+  });
 }
 
 /// バリエーション軸設定があればシェイパーインスタンスを生成する。
@@ -94,39 +80,27 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef<'_>) -> Option<
 /// 全フォント種別の [`HarfRustShaper`]。
 pub(super) type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
 
-/// [`HarfRustShapers`] の構築機能。
-pub(super) trait HarfRustShapersExt<'a>: Sized {
-  /// 全フォント種別のシェイパーを並列に生成する。
-  ///
-  /// フォントは互いに独立にシェーパーを組めるので、1 件目で打ち切らず全種別を試して失敗を
-  /// 全件返す。順序は `FontMap::par_try_from_fn` が `FontType::ALL` 順に揃える。
-  ///
-  /// # Errors
-  ///
-  /// 言語タグを解析できない場合に [`ShaperError`] を `FontType::ALL` 順で返す。
-  fn new(
-    configs: &FontConfigs,
-    font_refs: &'a FontRefs<'_>,
-    shaper_datas: &'a ShaperDatas,
-    instances: &'a ShaperInstances,
-  ) -> Result<Self, Failures<ShaperError>>;
-}
-
-impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
-  fn new(
-    configs: &FontConfigs,
-    font_refs: &'a FontRefs<'_>,
-    shaper_datas: &'a ShaperDatas,
-    instances: &'a ShaperInstances,
-  ) -> Result<Self, Failures<ShaperError>> {
-    return HarfRustShapers::par_try_from_fn(|font_type| {
-      let config = &configs[font_type];
-      let font_ref = &font_refs[font_type];
-      let shaper_data = &shaper_datas[font_type];
-      let instance = instances[font_type].as_ref();
-      return HarfRustShaper::new(config, font_ref, shaper_data, instance);
-    });
-  }
+/// 全フォント種別のシェイパーを並列に生成する。
+///
+/// フォントは互いに独立にシェーパーを組めるので、1 件目で打ち切らず全種別を試して失敗を
+/// 全件返す（順序は [`FontMap::par_try_from_fn`] が `FontType::ALL` 順に揃える）。
+///
+/// # Errors
+///
+/// 言語タグを解析できない場合に [`ShaperError`] を `FontType::ALL` 順で返す。
+pub(super) fn build_harfrust_shapers<'a>(
+  configs: &FontConfigs,
+  font_refs: &'a FontRefs<'_>,
+  shaper_datas: &'a ShaperDatas,
+  instances: &'a ShaperInstances,
+) -> Result<HarfRustShapers<'a>, Failures<ShaperError>> {
+  return HarfRustShapers::par_try_from_fn(|font_type| {
+    let config = &configs[font_type];
+    let font_ref = &font_refs[font_type];
+    let shaper_data = &shaper_datas[font_type];
+    let instance = instances[font_type].as_ref();
+    return HarfRustShaper::new(config, font_ref, shaper_data, instance);
+  });
 }
 
 /// 単一フォントの `HarfRust` シェイパー。
