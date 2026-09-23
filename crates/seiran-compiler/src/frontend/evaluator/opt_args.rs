@@ -381,13 +381,8 @@ fn parse_value(
       return Err(invalid(name, key, expected, span));
     },
     OptType::String => {
-      let trimmed = raw.trim();
-      let unquoted = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
-        &trimmed[1..trimmed.len() - 1]
-      } else {
-        trimmed
-      };
-      return Ok(OptValue::String(unquoted.to_string()));
+      // 引用符は値の境界ではない（#687）。`"` も値の文字としてそのまま残す
+      return Ok(OptValue::String(raw.trim().to_string()));
     },
     OptType::Length => {
       let v = parse_length(raw).ok_or_else(|| return invalid(name, key, expected, span))?;
@@ -551,6 +546,38 @@ mod tests {
 
     // Assert
     assert_eq!(opts.get(LABEL), Some("foo".to_string()));
+  }
+
+  #[test]
+  fn collect_keeps_quotes_in_string_value() {
+    // Arrange
+    const TITLE: OptKey<String> = string("title");
+    let arena = Bump::new();
+    let source = r#"\section[title="x"]{Title}"#;
+    let cst = test_support::parse(source, &arena).unwrap();
+    let view = CommandView::new(first_command_node(cst), source);
+
+    // Act
+    let opts = collect_command_opt_args(&view, &[TITLE.decl()]).unwrap();
+
+    // Assert
+    assert_eq!(opts.get(TITLE), Some("\"x\"".to_string()));
+  }
+
+  #[test]
+  fn collect_rejects_comma_inside_quotes_as_unknown_key() {
+    // Arrange
+    const TITLE: OptKey<String> = string("title");
+    let arena = Bump::new();
+    let source = r#"\section[title="a, b"]{Title}"#;
+    let cst = test_support::parse(source, &arena).unwrap();
+    let view = CommandView::new(first_command_node(cst), source);
+
+    // Act
+    let result = collect_command_opt_args(&view, &[TITLE.decl()]);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "b\""));
   }
 
   #[test]

@@ -83,7 +83,7 @@ fn build_heading(
     (false, false) => &pres.heading_format,
   };
 
-  // サブタイトルはプレーンテキスト（`[title="..."]`）なので、テンプレート展開へ渡す前に
+  // サブタイトルはプレーンテキスト（`[title=...]`）なので、テンプレート展開へ渡す前に
   // 基底スタイルの `Text` 1 個へ落とす。副作用のない生成なので、遅延させても結果は変わらない。
   let make_title = || {
     return title.map(|t| return vec![InlineNode::Text(t.to_string(), base_style)]).unwrap_or_default();
@@ -215,7 +215,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_source(&style, "\\begin{theorem}[title=\"Pythagoras\"]\nx\n\\end{theorem}\n");
+    let nodes = lower_source(&style, "\\begin{theorem}[title=Pythagoras]\nx\n\\end{theorem}\n");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -320,7 +320,7 @@ mod tests {
     let nodes = lower_source(
       &style,
       "\\begin{theorem}[label=thm:p]\np\n\\end{theorem}\n\n\
-       \\begin{proof}[of=thm:p, title=\"sketch\"]\nx\n\\end{proof}\n",
+       \\begin{proof}[of=thm:p, title=sketch]\nx\n\\end{proof}\n",
     );
 
     // Assert
@@ -333,7 +333,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_source(&style, "\\begin{proof}[title=\"sketch\"]\nx\n\\end{proof}\n");
+    let nodes = lower_source(&style, "\\begin{proof}[title=sketch]\nx\n\\end{proof}\n");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);

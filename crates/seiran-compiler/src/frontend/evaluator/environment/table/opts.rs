@@ -12,9 +12,9 @@ use crate::{
   length::Length,
 };
 
-/// `table[columns="left center right"]`（列の揃え）
+/// `table[columns=left center right]`（列の揃え）
 const COLUMNS: OptKey<String> = opt_args::string("columns");
-/// `table[widths="auto 5cm *"]`（列幅）
+/// `table[widths=auto 5cm *]`（列幅）
 const WIDTHS: OptKey<String> = opt_args::string("widths");
 /// `table[label=...]`（`\ref` からの参照用）
 const LABEL: OptKey<String> = opt_args::string("label");
