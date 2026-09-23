@@ -343,7 +343,7 @@ pub(crate) fn break_pages(
         target_dpi,
         align,
       } => {
-        if composer.cursor.y + height > composer.cursor.region_limit(geom) {
+        if composer.cursor.overflows(height, geom) {
           composer.advance_region(geom);
         }
         let col_off = composer.column_offset();
@@ -360,8 +360,7 @@ pub(crate) fn break_pages(
           col_off,
           y,
         );
-        composer.cursor.y += height;
-        composer.cursor.at_edge = true;
+        composer.cursor = composer.cursor.below(height);
       },
       Block::Table { table, align } => {
         place_table(&mut composer, geom, &table, col_width, align);
@@ -374,7 +373,6 @@ pub(crate) fn break_pages(
         align,
       } => {
         place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width);
-        composer.cursor.at_edge = true;
       },
       // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため台帳に未解決として積む
       Block::Anchor(id) => {
@@ -542,6 +540,71 @@ fn keep_group_orphaned(
   return false;
 }
 
+/// 段落を段幅・インデント・揃えに従って行に割り、段内の揃えオフセットまで加えた行列を返す。
+/// 実配置（[`place_paragraph`]）と keep-with-next の見積り（[`keep_group_orphaned`]）が共用する
+fn break_paragraph(
+  breaker: &dyn LineBreaker,
+  alignment: TextAlignment,
+  items: &[HItem],
+  column_width: Length,
+  indent: Length,
+  right_indent: Length,
+  align: Align,
+) -> Vec<Line> {
+  let available = (column_width - indent - right_indent).max(Length::ZERO);
+  // 両端揃えは左揃え段落にのみ適用する。中央・右寄せ段落は行を自然幅のまま組み、
+  // 確定後に揃えオフセットでシフトする（伸縮すると余り幅が消えて揃え自体が無意味になる）
+  let effective_alignment = if align == Align::Left {
+    alignment
+  } else {
+    TextAlignment::RaggedRight
+  };
+  let mut lines = breaker.break_lines(items, available, effective_alignment);
+  // 行は段左端 (x=0) 基準で組まれるため、インデント + 揃えオフセット（段内 [0, column_width]）を
+  // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
+  // 行ごとに変わるため、ここでは足さず、配置ループ内で着地段ごとに足す。
+  for line in &mut lines {
+    let line_width = line.width();
+    line.shift_x(indent + align.offset(available, line_width));
+  }
+  return lines;
+}
+
+/// 各行に付いた脚注（`line.footnotes`）を段幅で行分割し、未確定の脚注にする（`lines` と同順・同長）
+fn footnote_bodies(breaker: &dyn LineBreaker, lines: &[Line], column_width: Length) -> Vec<Vec<PendingFootnote>> {
+  return lines
+    .iter()
+    .map(|line| {
+      return line
+        .footnotes
+        .iter()
+        .map(|footnote| {
+          return PendingFootnote {
+            number: footnote.number,
+            index: footnote.index,
+            continued: false,
+            lines: breaker.break_lines(&footnote.items, column_width, TextAlignment::RaggedRight),
+            leading: footnote.leading,
+          };
+        })
+        .collect();
+    })
+    .collect();
+}
+
+/// 行ごとの未確定脚注から、分割可能な需要（行ごとの積み上げ高さ）を作る（`bodies` と同順・同長）
+fn footnote_demands(bodies: &[Vec<PendingFootnote>]) -> Vec<Vec<FootnoteDemand>> {
+  return bodies
+    .iter()
+    .map(|line_bodies| {
+      return line_bodies
+        .iter()
+        .map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading))
+        .collect();
+    })
+    .collect();
+}
+
 /// 段落を行に割ってベースライン送りで配置する
 #[expect(
   clippy::too_many_arguments,
@@ -559,45 +622,13 @@ fn place_paragraph(
   right_indent: Length,
   align: Align,
 ) {
-  let available = (column_width - indent - right_indent).max(Length::ZERO);
-  // 両端揃えは左揃え段落にのみ適用する。中央・右寄せ段落は行を自然幅のまま組み、
-  // 確定後に揃えオフセットでシフトする（伸縮すると余り幅が消えて揃え自体が無意味になる）
-  let effective_alignment = if align == Align::Left {
-    alignment
-  } else {
-    TextAlignment::RaggedRight
-  };
-  let mut lines = breaker.break_lines(items, available, effective_alignment);
-  // 行は段左端 (x=0) 基準で組まれるため、インデント + 揃えオフセット（段内 [0, column_width]）を
-  // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
-  // 行ごとに変わるため、この事前ループには含めず、配置ループ内で着地段ごとに足す。
-  for line in &mut lines {
-    let line_width = line.width();
-    line.shift_x(indent + align.offset(available, line_width));
-  }
-  // 各行に付いた脚注（`line.footnotes`）を行分割し、分割可能な需要（行ごとの積み上げ高さ）を作る。
+  let mut lines = break_paragraph(breaker, alignment, items, column_width, indent, right_indent, align);
+  // 各行に付いた脚注を行分割し、分割可能な需要（行ごとの積み上げ高さ）を作る。
   // ここで 1 回だけ計算し、widow/orphan の再フロー（`plan_paragraph_lines` 内のリトライ）や
   // chunk の再計画では再計算しない（脚注の構成は改リージョン点の選び方で変わらないため）。
   let charges = FootnoteCharges::of(geom);
-  let mut demands: Vec<Vec<FootnoteDemand>> = Vec::with_capacity(lines.len());
-  let mut bodies: Vec<Vec<PendingFootnote>> = Vec::with_capacity(lines.len());
-  for line in &lines {
-    let mut line_demands = Vec::with_capacity(line.footnotes.len());
-    let mut line_bodies = Vec::with_capacity(line.footnotes.len());
-    for footnote in &line.footnotes {
-      let broken = breaker.break_lines(&footnote.items, column_width, TextAlignment::RaggedRight);
-      line_demands.push(FootnoteDemand::new(&broken, footnote.leading));
-      line_bodies.push(PendingFootnote {
-        number: footnote.number,
-        index: footnote.index,
-        continued: false,
-        lines: broken,
-        leading: footnote.leading,
-      });
-    }
-    demands.push(line_demands);
-    bodies.push(line_bodies);
-  }
+  let mut bodies = footnote_bodies(breaker, &lines, column_width);
+  let mut demands = footnote_demands(&bodies);
   // 段落を前から chunk 単位で確定する。計画は「脚注が分割された行」「繰越が残っている状態での
   // 改リージョン」で打ち切られるので、そこまでを配置 → 改リージョンして繰越を詰める
   // （`advance_region` → `seed_carry`）→ 残りを計画し直す、と回す。**seed してから再計画する**のが
@@ -667,25 +698,20 @@ fn place_paragraph(
       composer.advance_region(geom);
     }
   }
-  composer.cursor.y = last_baseline + leading;
-  composer.cursor.at_edge = false;
+  composer.cursor = composer.cursor.after_line(last_baseline, leading);
 }
 
 /// 合成済みの単一行（[`Block::ComposedLine`]）を 1 行として配置する
 fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line: Line, leading: Length) {
-  let mut baseline = composer.cursor.y;
-  if composer.cursor.at_edge {
-    baseline += line.height;
-  }
-  if baseline + line.depth > composer.cursor.region_limit(geom) {
+  let mut baseline = composer.cursor.line_baseline(&line);
+  if composer.cursor.line_overflows(&line, geom) {
     composer.advance_region(geom);
     baseline = geom.margin_top;
   }
   let col_off = composer.column_offset();
   line.shift_x(col_off);
   composer.draft.place_line(line, baseline, col_off);
-  composer.cursor.y = baseline + leading;
-  composer.cursor.at_edge = false;
+  composer.cursor = composer.cursor.after_line(baseline, leading);
 }
 
 /// ディスプレイ数式ブロックを配置する
@@ -699,8 +725,7 @@ fn place_math_block(
   column_width: Length,
 ) {
   let total_height = body.height + body.depth;
-  let limit = composer.cursor.region_limit(geom);
-  if composer.cursor.y + total_height > limit && geom.margin_top + total_height <= limit {
+  if composer.cursor.defers_unbreakable(total_height, geom) {
     composer.advance_region(geom);
   }
   let col_off = composer.column_offset();
@@ -736,7 +761,7 @@ fn place_math_block(
     col_off,
     top,
   );
-  composer.cursor.y += total_height;
+  composer.cursor = composer.cursor.below(total_height);
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
@@ -762,8 +787,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 
   // 分割禁止の表は、現ページに収まらず新しいページなら収まる場合のみ先に改ページする
   let total_height: Length = head_heights.iter().chain(row_heights.iter()).sum();
-  let limit = composer.cursor.region_limit(geom);
-  if !table.breakable && composer.cursor.y + total_height > limit && geom.margin_top + total_height <= limit {
+  if !table.breakable && composer.cursor.defers_unbreakable(total_height, geom) {
     composer.advance_region(geom);
   }
 
@@ -795,7 +819,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   };
 
   for (row, height) in table.head.iter().zip(&head_heights) {
-    if composer.cursor.y + *height > composer.cursor.region_limit(geom) {
+    if composer.cursor.overflows(*height, geom) {
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
     }
@@ -803,7 +827,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     composer.cursor.y += *height;
   }
   for (row, height) in table.rows.iter().zip(&row_heights) {
-    if composer.cursor.y + *height > composer.cursor.region_limit(geom) {
+    if composer.cursor.overflows(*height, geom) {
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
       for (head_row, head_height) in table.head.iter().zip(&head_heights) {
@@ -820,7 +844,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 #[cfg(test)]
 mod tests {
   use super::{
-    FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind, PageGeometry, break_pages,
+    FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind, PageGeometry, RegionCursor, break_pages,
     is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
@@ -3433,6 +3457,74 @@ mod tests {
     assert!(!is_content_block(&Block::fixed_space(pt(5.0))));
     assert!(!is_content_block(&forbid_break()));
     assert!(!is_content_block(&Block::force_break()));
+  }
+
+  /// 位置 `y`・脚注予約 `reserved` のカーソル
+  fn cursor(y: f32, at_edge: bool, reserved: f32) -> RegionCursor {
+    return RegionCursor {
+      y: pt(y),
+      at_edge,
+      footnote_reserved: pt(reserved),
+    };
+  }
+
+  /// 高さ 8・深さ 2 の空行（カーソル判定のテスト用）
+  fn bare_line() -> Line {
+    return Line {
+      boxes: Vec::new(),
+      height: pt(8.0),
+      depth: pt(2.0),
+      links: Vec::new(),
+      footnotes: Vec::new(),
+      index_marks: Vec::new(),
+    };
+  }
+
+  #[test]
+  fn region_limit_subtracts_footnote_reservation() {
+    assert_eq!(cursor(10.0, false, 14.0).region_limit(&test_geometry()), pt(36.0));
+  }
+
+  #[test]
+  fn overflows_uses_the_reserved_limit() {
+    let geom = test_geometry();
+
+    assert!(!cursor(26.0, false, 14.0).overflows(pt(10.0), &geom), "下端 36 は下限 36 に収まる");
+    assert!(cursor(26.0, false, 14.0).overflows(pt(11.0), &geom), "下端 37 は下限 36 を超える");
+  }
+
+  #[test]
+  fn defers_unbreakable_only_when_an_empty_region_would_hold_it() {
+    let geom = test_geometry();
+
+    assert!(cursor(30.0, false, 0.0).defers_unbreakable(pt(30.0), &geom), "空リージョンなら 40 ≤ 50 で収まる");
+    assert!(
+      !cursor(30.0, false, 0.0).defers_unbreakable(pt(45.0), &geom),
+      "空リージョンでも収まらないなら送らない"
+    );
+    assert!(!cursor(10.0, false, 0.0).defers_unbreakable(pt(30.0), &geom), "収まるなら送らない");
+  }
+
+  #[test]
+  fn line_baseline_drops_by_ascent_after_an_edge_block() {
+    assert_eq!(cursor(20.0, false, 0.0).line_baseline(&bare_line()), pt(20.0));
+    assert_eq!(cursor(20.0, true, 0.0).line_baseline(&bare_line()), pt(28.0));
+  }
+
+  #[test]
+  fn line_overflows_compares_descender_with_the_reserved_limit() {
+    let geom = test_geometry();
+
+    assert!(!cursor(34.0, false, 14.0).line_overflows(&bare_line(), &geom), "下端 36 は下限 36 に収まる");
+    assert!(cursor(34.0, false, 26.0).line_overflows(&bare_line(), &geom), "下端 36 は下限 24 を超える");
+  }
+
+  #[test]
+  fn below_and_after_line_keep_the_reservation() {
+    let start = cursor(20.0, false, 14.0);
+
+    assert_eq!(start.below(pt(5.0)), cursor(25.0, true, 14.0));
+    assert_eq!(start.after_line(pt(22.0), pt(12.0)), cursor(34.0, false, 14.0));
   }
 
   #[test]
