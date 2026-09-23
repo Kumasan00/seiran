@@ -133,6 +133,19 @@ fn diagnostic_opt_arg_quoted_comma() {
 }
 
 #[test]
+fn diagnostic_opt_arg_positive_int_rejects_fraction() {
+  // 「1 以上の整数」を取るキーは、どれも小数を同じ診断で拒否する（#689。`dpi` は以前は四捨五入していた）
+  let failure = compile_err(&[
+    "tests/text/diagnostics/opt_arg_positive_int_dpi.sei",
+    "tests/text/diagnostics/opt_arg_positive_int_start.sei",
+    "tests/text/diagnostics/opt_arg_positive_int_span.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::invalid_opt_arg_value"; 3]);
+  assert_matches_golden("opt_arg_positive_int", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

@@ -1,0 +1,4 @@
+\begin{figure}
+\image[dpi=72.5]{./tests/image/testimage1.jpg}
+\caption{c}
+\end{figure}

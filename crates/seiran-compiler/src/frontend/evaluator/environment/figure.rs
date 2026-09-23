@@ -21,8 +21,8 @@ const LABEL: OptKey<String> = opt_args::string("label");
 const WIDTH: OptKey<Length> = opt_args::positive_length("width");
 /// `\image[height=...]`（描画高さ。同上）
 const HEIGHT: OptKey<Length> = opt_args::positive_length("height");
-/// `\image[dpi=N]`（per-image DPI 上限。小数は四捨五入される — #689）
-const DPI: OptKey<u32> = opt_args::rounded_int("dpi");
+/// `\image[dpi=N]`（per-image DPI 上限。小数と 1 未満は収集時に拒否される）
+const DPI: OptKey<u32> = opt_args::positive_int("dpi");
 /// `\image[downsample=...]`（per-image ダウンサンプリング）
 const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 
