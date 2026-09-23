@@ -172,7 +172,7 @@ impl std::error::Error for ParseLengthError {}
 impl FromStr for Length {
   type Err = ParseLengthError;
 
-  /// "<数値>pt" / "<数値>mm" / "<数値>cm" を解釈する。前後の空白は許容し、数値と単位の間の空白は拒否する。
+  /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。前後の空白は許容し、数値と単位の間の空白は拒否する。
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     return parse_length(s).ok_or_else(|| {
       return ParseLengthError {
