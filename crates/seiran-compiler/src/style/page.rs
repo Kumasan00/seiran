@@ -1,7 +1,7 @@
 //! ページ組版の挙動スタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::length::{Length, non_negative};
 
@@ -11,7 +11,7 @@ use crate::length::{Length, non_negative};
 /// （用紙そのものの寸法は物理設定として `config.toml` の `[pdf]` が持つ）。余白単体の不正
 /// （負値）はここの garde が、用紙寸法との組み合わせでしか判定できない制約は
 /// [`crate::typeset::PreparedGeometry::prepare`] が検証する。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct PageStyle {

@@ -31,7 +31,7 @@ mod title_page;
 mod toc;
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::debug;
 
 // `compiler::input::error::CompileError` が `#[from]` で運ぶために名指しする読込エラー。
@@ -90,7 +90,7 @@ use crate::{
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct Style {
   /// 背景色。`None` は背景描画なし

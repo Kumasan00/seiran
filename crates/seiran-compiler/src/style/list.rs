@@ -1,7 +1,7 @@
 //! リスト要素（順序付き / 順序なし）のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   document::FontKind,
@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// リスト要素のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ListStyle {
@@ -67,7 +67,7 @@ impl Default for ListStyle {
 }
 
 /// ネスト段（深さ 1 以上）1 段分の ordered マーカー書式（番号書式 + 装飾テンプレート）
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct NestedOrderedFormat {

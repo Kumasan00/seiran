@@ -6,7 +6,7 @@
 use std::{ops::Index, str::FromStr};
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 
 use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
@@ -15,7 +15,7 @@ use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle
 ///
 /// TOML からは [`CountersTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
 /// [`Counters::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(from = "CountersTable")]
 pub(crate) struct Counters {
   /// 部
@@ -138,7 +138,7 @@ impl Index<CounterName> for Counters {
 /// 1 つのカウンタ定義（カウンタ別既定 + `[counters.<name>]` の差分上書きで解決済み）。
 ///
 /// TOML のスキーマは [`CounterStyleOverride`]。
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Debug, Clone, Validate)]
 #[garde(allow_unvalidated)]
 pub(crate) struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
@@ -262,7 +262,7 @@ impl CounterStyleOverride {
 }
 
 /// カウンタ名（固定 9 種）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CounterName {
   /// 部
@@ -471,24 +471,12 @@ resets = []
     // Arrange
     let parsed: Counters = toml::from_str("").unwrap();
 
-    // Act — `CounterStyle` は `PartialEq` を持たないので直列化した文字列で比べる
-    let parsed_text = toml::to_string(&parsed).unwrap();
-    let default_text = toml::to_string(&Counters::default()).unwrap();
+    // Act — `CounterStyle` は `PartialEq` を持たないので全フィールドを出す `Debug` 表現で比べる
+    let parsed_text = format!("{parsed:?}");
+    let default_text = format!("{:?}", Counters::default());
 
     // Assert
     assert_eq!(parsed_text, default_text);
-  }
-
-  #[test]
-  fn serialized_default_roundtrips_through_table() {
-    // Arrange — `compiler::test_support::TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
-    let text = toml::to_string(&Counters::default()).unwrap();
-
-    // Act
-    let reparsed: Counters = toml::from_str(&text).unwrap();
-
-    // Assert
-    assert_eq!(toml::to_string(&reparsed).unwrap(), text);
   }
 
   #[test]

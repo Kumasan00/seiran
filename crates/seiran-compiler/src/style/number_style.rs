@@ -1,10 +1,10 @@
 //! カウンタ番号の数字表記スタイル（アラビア数字・ローマ数字・アルファベット・漢数字）。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// 番号の数字表記スタイル
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
 pub(crate) enum NumberStyle {

@@ -4,7 +4,7 @@
 //! （組版より前・設定読込の時点で成立する値なので `typeset` の配置型とは変更理由が違う、#334）。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   document::FontKind,
@@ -16,7 +16,7 @@ use crate::{
 /// 行分割の分割点選択には影響せず、確定した行内の伸縮点（`stretch` / `shrink`
 /// 能力を持つ glue）の幅だけを変える。段落最終行・強制改行直前の行は
 /// 両端揃えでも伸縮しない。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TextAlignment {
   /// 両端揃え（既定）。行の余り幅を伸縮点へ比例配分して行末を版面右端に揃える
@@ -27,7 +27,7 @@ pub(crate) enum TextAlignment {
 }
 
 /// 本文段落のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct TextBlockStyle {

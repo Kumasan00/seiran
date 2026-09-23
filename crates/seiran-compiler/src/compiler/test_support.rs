@@ -23,11 +23,11 @@
 //!
 //! # 設定の上書き
 //!
-//! config.toml の差分は**生の TOML テーブルへ 1 回だけ**適用する（`ProjectConfig` は `Serialize` を
-//! 持たず、production が実際に読む表現もこの TOML なので、型付きの並行実装を作らない）。
-//! `Style` だけは型付きで書き換えてよいが、pipeline へは必ず `style.toml` として登録し
-//! `input::load` に読み直させる。上書きが 1 つも無いファイルは実ファイルのテキストをそのまま
-//! 登録する（再直列化を挟まない）。
+//! config.toml / style.toml の差分はどちらも**生の TOML テーブルへ 1 回だけ**適用する（`ProjectConfig` も
+//! `Style` も `Serialize` を持たず、production が実際に読む表現もこの TOML なので、型付きの並行実装を
+//! 作らない）。上書きした値も `input::load` が本番と同じ deserialize・検証で読み直すので、キー名の
+//! 打ち間違い（`deny_unknown_fields`）や型違いはテストの失敗として現れる。上書きが 1 つも無いファイルは
+//! 実ファイルのテキストをそのまま登録する（再直列化を挟まない）。
 
 use std::{
   collections::HashSet,
@@ -37,9 +37,7 @@ use std::{
 
 use crate::{
   compiler::{self, Compilation, CompileFailure},
-  length::Length,
   project::{MemoryProjectSource, ProjectPath},
-  style::{self, FootnoteNumbering, RunningTemplate, Style},
   typeset::{self, LaidOutDocument},
 };
 
@@ -56,11 +54,8 @@ pub(super) const FIGURE_IMAGE_ASSETS: &[&str] = &[
   "./tests/image/testimage6.svg",
 ];
 
-/// config.toml の生テーブルへの上書き。
-type ConfigOverride = Box<dyn Fn(&mut toml::value::Table)>;
-
-/// 型付き `Style` への上書き。
-type StyleOverride = Box<dyn Fn(&mut Style)>;
+/// 設定ファイル（config.toml / style.toml）の生テーブルへの上書き。
+type TomlOverride = Box<dyn Fn(&mut toml::value::Table)>;
 
 /// ワークスペースルートを返す。
 fn workspace_root() -> PathBuf {
@@ -71,13 +66,26 @@ fn workspace_root() -> PathBuf {
     .to_path_buf();
 }
 
-/// `[section]` の `key` へ文字列値を設定する（テーブルが無ければ作る）。
-pub(super) fn set_str(table: &mut toml::value::Table, section: &str, key: &str, value: &str) {
-  let section_table = table.entry(section).or_insert_with(|| return toml::Value::Table(toml::value::Table::new()));
-  section_table
+/// `[section]` の `key` へ値を設定する（テーブルが無ければ作る）。
+///
+/// 長さ・色・テンプレート・列挙は style.toml / config.toml に書くのと同じ文字列で渡す（`"45mm"` /
+/// `"per_page"` / `"{title}"`）。
+pub(super) fn set(table: &mut toml::value::Table, section: &str, key: &str, value: impl Into<toml::Value>) {
+  section_mut(table, section).insert(key.to_string(), value.into());
+}
+
+/// `[section]` から `key` を取り除く（既定値へ戻す・任意項目を未設定にする）。
+pub(super) fn remove(table: &mut toml::value::Table, section: &str, key: &str) {
+  section_mut(table, section).remove(key);
+}
+
+/// `[section]` のテーブルを返す（無ければ空で作る）。
+fn section_mut<'a>(table: &'a mut toml::value::Table, section: &str) -> &'a mut toml::value::Table {
+  return table
+    .entry(section)
+    .or_insert_with(|| return toml::Value::Table(toml::value::Table::new()))
     .as_table_mut()
-    .unwrap_or_else(|| panic!("[{section}] はテーブルのはず"))
-    .insert(key.to_string(), toml::Value::String(value.to_string()));
+    .unwrap_or_else(|| panic!("[{section}] はテーブルのはず"));
 }
 
 /// テストが [`Self::compile`] / [`Self::layout`] へ渡す fixture プロジェクト。
@@ -166,9 +174,9 @@ pub(super) struct TestProjectBuilder {
   /// `sources` の差し替え（`None` なら fixture config.toml の値をそのまま使う）
   sources: Option<Vec<String>>,
   /// config.toml の生テーブルへの上書き
-  config_overrides: Vec<ConfigOverride>,
-  /// 型付き `Style` への上書き
-  style_overrides: Vec<StyleOverride>,
+  config_overrides: Vec<TomlOverride>,
+  /// style.toml の生テーブルへの上書き
+  style_overrides: Vec<TomlOverride>,
   /// ワークスペース相対で書く資源（画像）。登録キーは他と同じく `base_dir` を前置する
   assets: Vec<PathBuf>,
 }
@@ -206,8 +214,8 @@ impl TestProjectBuilder {
     return self;
   }
 
-  /// 型付き `Style` へ差分を適用する（TOML へ直列化して `style.toml` として登録される）。
-  pub(super) fn style(mut self, apply: impl Fn(&mut Style) + 'static) -> Self {
+  /// style.toml の生テーブルへ差分を適用する。
+  pub(super) fn style_toml(mut self, apply: impl Fn(&mut toml::value::Table) + 'static) -> Self {
     self.style_overrides.push(Box::new(apply));
     return self;
   }
@@ -233,7 +241,7 @@ impl TestProjectBuilder {
     return self
       .sources(&[&format!("tests/text/{name}.sei")])
       .config_toml(move |table| apply_fixture_config_overrides(&fixture, table))
-      .style(move |style| apply_fixture_style_overrides(&name, style));
+      .style_toml(move |table| apply_fixture_style_overrides(&name, table));
   }
 
   /// 資源を登録した [`TestProject`] を組み立てる。
@@ -268,14 +276,14 @@ impl TestProjectBuilder {
     let references_rel =
       string_field(&table, "references_path").expect("fixture config.toml は references_path を持つはず");
     let style_text = fs::read_to_string(root.join(&style_rel)).expect("fixture style.toml を読めるはず");
-    let mut style = style::parse(&style_text, &style_rel).expect("fixture style.toml をパースできるはず");
+    let mut style_table: toml::value::Table = style_text.parse().expect("fixture style.toml をパースできるはず");
+    for apply in &self.style_overrides {
+      apply(&mut style_table);
+    }
     let style_text = if self.style_overrides.is_empty() {
       style_text
     } else {
-      for apply in &self.style_overrides {
-        apply(&mut style);
-      }
-      toml::to_string(&style).expect("Style を TOML へ再直列化できるはず")
+      toml::to_string(&style_table).expect("style.toml を再直列化できるはず")
     };
 
     let mut source = MemoryProjectSource::new()
@@ -296,16 +304,14 @@ impl TestProjectBuilder {
     let (source_with_fonts, font_keys) = self.register_fonts(source, &root, &table);
     source = source_with_fonts;
 
-    for path in [
-      style.reference.csl_path.as_ref(),
-      style.reference.locale_path.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-      let bytes = fs::read(root.join(path)).unwrap_or_else(|error| panic!("CSL 資産を読めるはず: {path}: {error}"));
+    let reference = style_table.get("reference").and_then(toml::Value::as_table);
+    for key in ["csl_path", "locale_path"] {
+      let Some(path) = reference.and_then(|reference| return string_field(reference, key)) else {
+        continue;
+      };
+      let bytes = fs::read(root.join(&path)).unwrap_or_else(|error| panic!("CSL 資産を読めるはず: {path}: {error}"));
       // `style.toml` が持つ CSL パスも他の資源と同じくワークスペース相対なので、同じ規則で前置する
-      source = source.with_bytes(self.key(path), bytes);
+      source = source.with_bytes(self.key(ProjectPath::new(&path)), bytes);
     }
 
     for asset in &self.assets_to_register() {
@@ -391,49 +397,46 @@ fn string_array_field(table: &toml::value::Table, key: &str) -> Vec<String> {
 ///
 /// ページ余白は style が所有する（#389）ので版面を変える上書きもここに置く。config 側の上書き
 /// （[`apply_fixture_config_overrides`]）は用紙寸法と言語だけを扱う。
-fn apply_fixture_style_overrides(name: &str, style: &mut Style) {
+fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
   match name {
     "title_page" => {
-      style.title_page.enabled = true;
-      style.header.left = RunningTemplate::parse("{title}");
-      style.header.right = RunningTemplate::parse("{page} / {pages}");
-      style.footer.center = RunningTemplate::parse("{page}");
+      set(table, "title_page", "enabled", true);
+      set(table, "header", "left", "{title}");
+      set(table, "header", "right", "{page} / {pages}");
+      set(table, "footer", "center", "{page}");
     },
-    "toc" => style.toc.enabled = true,
+    "toc" => set(table, "toc", "enabled", true),
     // 索引のページ番号列を範囲表記へ畳む（既定は無効なので golden ではここで有効化する）
-    "index_ranges" => style.index.collapse_page_ranges = true,
+    "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     // 索引へ区分見出し（五十音行・A–Z）を挟む（既定は無効なので golden ではここで有効化する）
-    "index_groups" => style.index.group_headings = true,
+    "index_groups" => set(table, "index", "group_headings", true),
     "hyphenation" => {
-      style.page.margin_left = Length::mm(275.0);
-      style.page.margin_right = Length::mm(275.0);
+      set(table, "page", "margin_left", "275mm");
+      set(table, "page", "margin_right", "275mm");
     },
     // 本文 2 段組みで左段・右段の両方に脚注が着地する版面（用紙寸法の縮小は config 側が持つ）
     "footnote_columns" => {
-      style.columns.count = 2;
-      style.page.margin_left = Length::mm(10.0);
-      style.page.margin_right = Length::mm(10.0);
-      style.page.margin_top = Length::mm(10.0);
-      style.page.margin_bottom = Length::mm(10.0);
+      set(table, "columns", "count", 2);
+      set_page_margins(table, "10mm", "10mm");
     },
     // ページ単位採番が複数ページにまたがる版面にする（用紙寸法の縮小は config 側が持つ）
     "footnote_per_page" => {
-      style.footnote.numbering = FootnoteNumbering::PerPage;
-      style.page.margin_left = Length::mm(20.0);
-      style.page.margin_right = Length::mm(20.0);
-      style.page.margin_top = Length::mm(15.0);
-      style.page.margin_bottom = Length::mm(15.0);
+      set(table, "footnote", "numbering", "per_page");
+      set_page_margins(table, "20mm", "15mm");
     },
     // 1 個の脚注が収まらず繰越が連鎖する版面（`footnote_split`）と、そこへ長い表を足して
     // ページ跨ぎも起こす版面（`index_split`、索引語の出現ページ帰属の検証用）
-    "footnote_split" | "index_split" => {
-      style.page.margin_left = Length::mm(15.0);
-      style.page.margin_right = Length::mm(15.0);
-      style.page.margin_top = Length::mm(12.0);
-      style.page.margin_bottom = Length::mm(12.0);
-    },
+    "footnote_split" | "index_split" => set_page_margins(table, "15mm", "12mm"),
     _ => {},
   }
+}
+
+/// style.toml の `[page]` の余白 4 辺を左右・上下の 2 値で設定する。
+fn set_page_margins(table: &mut toml::value::Table, horizontal: &str, vertical: &str) {
+  set(table, "page", "margin_left", horizontal);
+  set(table, "page", "margin_right", horizontal);
+  set(table, "page", "margin_top", vertical);
+  set(table, "page", "margin_bottom", vertical);
 }
 
 /// 検証対象の機能に必要な config 差分を fixture 名ごとに適用する。
@@ -442,21 +445,21 @@ fn apply_fixture_style_overrides(name: &str, style: &mut Style) {
 /// （型付き `ProjectConfig` への並行実装は持たない）。
 fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
   match name {
-    "hyphenation" => set_str(table, "document", "language", "en"),
+    "hyphenation" => set(table, "document", "language", "en"),
     // 本文 2 段組みで段の折返しが起きる版面にする（余白・段数は style の上書きが担う）
     "footnote_columns" => {
-      set_str(table, "pdf", "width", "120mm");
-      set_str(table, "pdf", "height", "60mm");
+      set(table, "pdf", "width", "120mm");
+      set(table, "pdf", "height", "60mm");
     },
     // ページ単位採番が複数ページにまたがる版面にする（余白側は style の上書きが担う）
     "footnote_per_page" => {
-      set_str(table, "pdf", "width", "150mm");
-      set_str(table, "pdf", "height", "130mm");
+      set(table, "pdf", "width", "150mm");
+      set(table, "pdf", "height", "130mm");
     },
     // 脚注の繰越（`footnote_split`）と、それに加えて表のページ跨ぎ（`index_split`）が起きる版面にする
     "footnote_split" | "index_split" => {
-      set_str(table, "pdf", "width", "120mm");
-      set_str(table, "pdf", "height", "85mm");
+      set(table, "pdf", "width", "120mm");
+      set(table, "pdf", "height", "85mm");
     },
     _ => {},
   }

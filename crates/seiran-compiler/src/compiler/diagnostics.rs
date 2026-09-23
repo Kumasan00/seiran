@@ -10,7 +10,10 @@ use std::{
 use miette::{GraphicalReportHandler, GraphicalTheme};
 
 use crate::{
-  compiler::{CompileFailure, test_support::TestProject},
+  compiler::{
+    CompileFailure,
+    test_support::{self, TestProject},
+  },
   project::{self, MemoryProjectSource, PathResolver, ProjectPath},
   style,
 };
@@ -270,7 +273,7 @@ fn diagnostic_missing_csl_path() {
   // という段名だけの診断が 1 段挟まっていた）
   let failure = TestProject::builder()
     .sources(&["tests/text/cite.sei"])
-    .style(|style| style.reference.csl_path = None)
+    .style_toml(|table| test_support::remove(table, "reference", "csl_path"))
     .build()
     .compile_err();
 

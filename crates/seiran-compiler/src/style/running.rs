@@ -8,7 +8,7 @@
 //! - `{title}` / `{author}` / `{date}` — `config.toml` の `[document]` メタデータ
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   color::Color,
@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct RunningContentStyle {
@@ -55,9 +55,7 @@ impl RunningContentStyle {
   /// 3 スロットすべてが空（空白のみを含む）かどうかを返す。
   #[must_use]
   pub(crate) fn is_empty(&self) -> bool {
-    return self.left.as_str().trim().is_empty()
-      && self.center.as_str().trim().is_empty()
-      && self.right.as_str().trim().is_empty();
+    return self.left.is_blank() && self.center.is_blank() && self.right.is_blank();
   }
 }
 

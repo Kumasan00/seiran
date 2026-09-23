@@ -1,9 +1,9 @@
 //! 言語判定前のフォントスタイル分類 [`FontKind`]。
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// 言語判定前のフォントスタイル分類
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum FontKind {
   /// Serif 標準フォント

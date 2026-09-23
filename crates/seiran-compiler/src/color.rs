@@ -2,11 +2,11 @@
 //!
 //! TOML 上では `"#rrggbb"` の 16 進文字列で指定する（`[r, g, b]` 配列は受け付けない）。
 //! 文字列との相互変換は [`FromStr`] / [`Display`](fmt::Display) の正準形 `#rrggbb`（小文字）に
-//! 集約し、serde の [`Serialize`] / [`Deserialize`] もこの 2 実装へ委譲する。
+//! 集約し、serde の [`Deserialize`] も [`FromStr`] へ委譲する。
 
 use std::{fmt, str::FromStr};
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+use serde::{Deserialize, Deserializer, de::Error};
 
 /// 8bit RGB 色（`[u8; 3]`）の newtype
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -94,27 +94,14 @@ impl<'de> Deserialize<'de> for Color {
   }
 }
 
-impl Serialize for Color {
-  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    // 正準形は [`Display`](fmt::Display) が唯一の定義箇所。`Length` と違い `#rrggbb` は
-    // 無損失なので、往復精度のための別実装を持たない。
-    return serializer.serialize_str(&self.to_string());
-  }
-}
-
 #[cfg(test)]
 mod tests {
-  use serde::{Deserialize, Serialize};
+  use serde::Deserialize;
 
   use super::Color;
 
   #[derive(Debug, Deserialize)]
   struct Wrapper {
-    color: Color,
-  }
-
-  #[derive(Debug, Serialize)]
-  struct SerWrapper {
     color: Color,
   }
 
@@ -194,19 +181,5 @@ mod tests {
     // Assert
     assert_eq!(text, "#cc9966");
     assert_eq!(text.parse::<Color>().unwrap(), value);
-  }
-
-  #[test]
-  fn serializes_to_lowercase_hex_string() {
-    // Arrange
-    let value = SerWrapper {
-      color: Color::new(0xcc, 0x99, 0x66),
-    };
-
-    // Act
-    let s = toml::to_string(&value).unwrap();
-
-    // Assert
-    assert!(s.contains("color = \"#cc9966\""), "serialized form: {s}");
   }
 }

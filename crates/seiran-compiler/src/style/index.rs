@@ -1,12 +1,12 @@
 //! 巻末索引のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::length::{Length, non_negative, positive};
 
 /// 巻末索引のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct IndexStyle {
   /// 索引ページのタイトル文字列

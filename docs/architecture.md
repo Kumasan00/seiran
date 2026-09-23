@@ -1109,8 +1109,8 @@ phase 名（`resolve_root` は span を持たない前処理）。段の完了 e
 - `test_support`: compiler 配下のテストが共有する fixture builder `TestProject`。組み立てた入力を production と
   同じ入口（`compile` / 組版中間表現の出口）へ渡すので、テストも `input::load` の読込順序と横断検証を必ず
   通る。パスの扱い（`base_dir` 既定は空パス＝ワークスペース相対、`set_current_dir` は使わない、画像も同じ
-  規則で登録）と設定上書きの規則（config は生 TOML 1 系統、`Style` は型付きで書き換えて `style.toml` として
-  登録）は `//!`。字面のまま登録する画像の例外・型付きの config 並行実装を再導入しない
+  規則で登録）と設定上書きの規則（config.toml・style.toml とも生 TOML テーブルへの差分 1 系統）は `//!`。
+  字面のまま登録する画像の例外・型付きの config / style 並行実装（`Style` の `Serialize` を含む）を再導入しない
 - `golden`: レイアウトダンプ golden の比較テスト。golden ファイル（`crates/seiran-compiler/tests/golden/`）と
   実際に比較するのは主入口 `layout_dumps_match_golden` だけで、公開 facade `compile()` → `dump_publication` を
   通る。残りは golden を介さず組版中間表現の出口を通る（分類は `//!`、検証手段の使い分けと再生成手順は

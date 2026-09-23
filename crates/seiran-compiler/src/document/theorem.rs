@@ -1,12 +1,12 @@
 //! 定理クラス [`TheoremClass`]。
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// ビルトイン定理クラス（固定 10 種）。
 ///
 /// `style.toml` の `[theorems.<name>]` キー、および環境名 `\begin{<name>}` として使われ、
 /// `<name>` は `snake_case` の [`TheoremClass::as_str`] と一致する。未知の名前は登録されない。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TheoremClass {
   /// 定理
