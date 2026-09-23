@@ -150,7 +150,7 @@
 
 埋め草の段落です。
 
-\begin{table}[label=tab:break, columns="left center right"]
+\begin{table}[label=tab:break, columns=left center right]
 \head{
   \row{Name & Score & Rank}
 }

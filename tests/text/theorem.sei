@@ -3,7 +3,7 @@
 定理・補題・定義・証明の組版確認用フィクスチャ。見出しは独立行・太字、定理本体は斜体、
 証明本体はローマンで、証明末尾には QED マークが右寄せで付く。
 
-\begin{theorem}[title="ピタゴラスの定理", label=thm:pythagoras]
+\begin{theorem}[title=ピタゴラスの定理, label=thm:pythagoras]
 直角三角形において、斜辺の長さの二乗は他の二辺の長さの二乗の和に等しい。
 \end{theorem}
 
@@ -15,7 +15,7 @@
 コンパクト集合上の連続関数は最大値を達成する。
 \end{lemma}
 
-\begin{definition}[title="連続性"]
+\begin{definition}[title=連続性]
 関数 $f$ が点 $a$ で連続であるとは、任意の $\epsilon > 0$ に対しある $\delta > 0$ が存在して、
 $|x - a| < \delta$ ならば $|f(x) - f(a)| < \epsilon$ が成り立つことをいう。
 \end{definition}

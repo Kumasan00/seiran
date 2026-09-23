@@ -145,7 +145,7 @@ mod tests {
     // Act
     let nodes = lower_source(
       &style,
-      "\\begin{table}[columns=\"left right\"]\n\\head{\n\\row{Name & Score}\n}\n\
+      "\\begin{table}[columns=left right]\n\\head{\n\\row{Name & Score}\n}\n\
        \\row{Alice & 92}\n\\row{Bob & 88}\n\\end{table}\n",
     );
 
@@ -331,7 +331,7 @@ mod tests {
     // Act
     let nodes = lower_source(
       &style,
-      "\\begin{table}[columns=\"left center right\", widths=\"40mm 0.25 *\"]\n\\row{a & b & c}\n\\end{table}\n",
+      "\\begin{table}[columns=left center right, widths=40mm 0.25 *]\n\\row{a & b & c}\n\\end{table}\n",
     );
 
     // Assert

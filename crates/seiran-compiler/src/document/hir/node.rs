@@ -160,7 +160,7 @@ pub(crate) struct HirTable {
 pub(crate) struct HirTheorem {
   /// 定理クラス（`theorem` / `lemma` / … / `proof`）
   pub(crate) class: TheoremClass,
-  /// サブタイトル（`[title="..."]` の中身）。未指定は `None`
+  /// サブタイトル（`[title=...]` の中身）。未指定は `None`
   pub(crate) title: Option<String>,
   /// 本体（再帰評価されたブロックノード列）
   pub(crate) body: Vec<HirNode>,

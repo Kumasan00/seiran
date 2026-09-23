@@ -123,14 +123,14 @@ mod tests {
   #[test]
   fn table_extracts_head_rows_and_caption() {
     // Arrange
-    let source = r#"\begin{table}[columns="left center right", widths="auto auto 5cm"]
+    let source = r"\begin{table}[columns=left center right, widths=auto auto 5cm]
 \head{
   \row{Name & Score & Rank}
 }
 \row{Alice & 92 & 1}
 \row{Bob & 88 & 2}
 \caption{得点表}
-\end{table}"#;
+\end{table}";
 
     // Act
     let result = eval_table(source).unwrap();
@@ -210,7 +210,7 @@ mod tests {
   #[test]
   fn table_rejects_row_cell_count_mismatch() {
     // Arrange
-    let source = r#"\begin{table}[columns="left right"]\row{A & B & C}\end{table}"#;
+    let source = r"\begin{table}[columns=left right]\row{A & B & C}\end{table}";
     // 診断の span はこの `\row{...}` 呼び出し全体（node.id 経由で ctx.span_of から引く値）を指す
     let row_command = r"\row{A & B & C}";
     let expected_offset = source.find(row_command).expect("ソースに \\row コマンドが含まれる");
@@ -236,7 +236,7 @@ mod tests {
   #[test]
   fn table_rejects_columns_widths_length_mismatch() {
     // Arrange
-    let source = r#"\begin{table}[columns="left right", widths="auto"]\row{A & B}\end{table}"#;
+    let source = r"\begin{table}[columns=left right, widths=auto]\row{A & B}\end{table}";
 
     // Act
     let result = eval_table(source);
@@ -255,7 +255,7 @@ mod tests {
   #[test]
   fn table_rejects_unknown_align_keyword() {
     // Arrange
-    let source = r#"\begin{table}[columns="l r"]\row{A & B}\end{table}"#;
+    let source = r"\begin{table}[columns=l r]\row{A & B}\end{table}";
 
     // Act
     let result = eval_table(source);
@@ -267,7 +267,7 @@ mod tests {
   #[test]
   fn table_parses_width_ratio_and_flex() {
     // Arrange
-    let source = r#"\begin{table}[widths="0.3 * auto"]\row{A & B & C}\end{table}"#;
+    let source = r"\begin{table}[widths=0.3 * auto]\row{A & B & C}\end{table}";
 
     // Act
     let result = eval_table(source).unwrap();
@@ -284,7 +284,7 @@ mod tests {
   #[test]
   fn table_rejects_invalid_width_token() {
     // Arrange
-    let source = r#"\begin{table}[widths="1.5 auto"]\row{A & B}\end{table}"#;
+    let source = r"\begin{table}[widths=1.5 auto]\row{A & B}\end{table}";
 
     // Act
     let result = eval_table(source);

@@ -117,6 +117,14 @@ fn diagnostic_duplicate_opt_arg_key() {
 }
 
 #[test]
+fn diagnostic_opt_arg_quoted_comma() {
+  // 引用符は値の境界ではない。値の `,` は `\,` と書く（#687）
+  let failure = compile_err(&["tests/text/diagnostics/opt_arg_quoted_comma.sei"]);
+
+  assert_matches_golden("opt_arg_quoted_comma", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

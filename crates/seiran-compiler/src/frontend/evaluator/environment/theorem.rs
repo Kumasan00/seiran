@@ -124,7 +124,7 @@ mod tests {
   fn theorem_captures_title() {
     // Arrange
     let arena = Bump::new();
-    let source = "\\begin{theorem}[title=\"ピタゴラスの定理\"]本文\\end{theorem}";
+    let source = "\\begin{theorem}[title=ピタゴラスの定理]本文\\end{theorem}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
@@ -135,6 +135,23 @@ mod tests {
       panic!("Theorem が期待されます");
     };
     assert_eq!(theorem.title.as_deref(), Some("ピタゴラスの定理"));
+  }
+
+  #[test]
+  fn theorem_title_accepts_escaped_comma() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{theorem}[title=a\, b]本文\end{theorem}";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluate_children_to_hir(source, cst).unwrap();
+
+    // Assert
+    let HirNodeKind::Theorem(theorem) = &result[0].kind else {
+      panic!("Theorem が期待されます");
+    };
+    assert_eq!(theorem.title.as_deref(), Some("a, b"));
   }
 
   #[test]

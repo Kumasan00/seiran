@@ -109,7 +109,10 @@ pub(crate) enum EvalError {
 
   /// コマンド/環境の任意引数に未許可のキーが指定された場合
   #[error("{name} の任意引数に不明なキー `{key}` が指定されています")]
-  #[diagnostic(code(frontend::eval::unknown_opt_arg_key), help("許可されているキー: {expected_keys}"))]
+  #[diagnostic(
+    code(frontend::eval::unknown_opt_arg_key),
+    help("許可されているキー: {expected_keys}。値に `,` や `=` を含めるときは `\\,` / `\\=` と書きます")
+  )]
   UnknownOptArgKey {
     /// コマンド名または環境名（先頭の `\` は含めない）
     name: String,

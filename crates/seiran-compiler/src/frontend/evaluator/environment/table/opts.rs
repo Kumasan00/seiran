@@ -12,9 +12,9 @@ use crate::{
   length::Length,
 };
 
-/// `table[columns="left center right"]`（列の揃え）
+/// `table[columns=left center right]`（列の揃え）
 const COLUMNS: OptKey<String> = opt_args::string("columns");
-/// `table[widths="auto 5cm *"]`（列幅）
+/// `table[widths=auto 5cm *]`（列幅）
 const WIDTHS: OptKey<String> = opt_args::string("widths");
 /// `table[label=...]`（`\ref` からの参照用）
 const LABEL: OptKey<String> = opt_args::string("label");
@@ -55,7 +55,7 @@ pub(super) fn collect_table_opts(view: &EnvironmentView<'_>) -> Result<TableOpts
   });
 }
 
-/// `columns="left center right"` の値を [`ColumnAlign`] の列に変換する
+/// `columns=left center right` の値を [`ColumnAlign`] の列に変換する
 pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Result<Vec<ColumnAlign>, EvalError> {
   let invalid = || {
     return EvalError::InvalidOptArgValue {
@@ -72,7 +72,7 @@ pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Resu
   return tokens.iter().map(|t| return t.parse::<ColumnAlign>().ok().ok_or_else(invalid)).collect();
 }
 
-/// `widths="auto auto 5cm 0.3 *"` の値を [`ColumnWidth`] の列に変換する
+/// `widths=auto auto 5cm 0.3 *` の値を [`ColumnWidth`] の列に変換する
 pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Result<Vec<ColumnWidth>, EvalError> {
   let invalid = || {
     return EvalError::InvalidOptArgValue {
