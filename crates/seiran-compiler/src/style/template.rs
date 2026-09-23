@@ -37,7 +37,8 @@ trait Placeholder: Sized {
 /// 解析済みテンプレート 1 本（元文字列・区間列・解析時に見つけた問題）
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Analyzed<P> {
-  /// TOML に書かれた元の文字列。直列化と `as_str` が返す唯一の真実
+  /// TOML に書かれた元の文字列。本体では `as_str`（`RunningTemplate::is_blank` 等）と
+  /// 診断・`unreachable!` メッセージが読む唯一の真実で、テストビルド限定の `Serialize` もここを返す
   source: String,
   /// 解析結果の区間列。`Literal` は [`Analyzed::source`] 上の byte range
   parts: Vec<Part<P>>,

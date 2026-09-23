@@ -174,7 +174,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
    - 起点は `crate::` に統一し `super::` / `self::` は使わない。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）
    - `crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`）。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外
    - `*` を避け明示 import。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
-   - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)] pub(crate) use`（本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数（型から切り離せない。#696）
+   - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)] pub(crate) use`（本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数・trait 実装（型から切り離せない。#696 / #684。`Style` 系の `Serialize` は `#[cfg_attr(test, derive(serde::Serialize))]`）
 4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かは人が見る）
 5. **`unreachable!` は積極的に使う**: 型で表現不能にできない「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` でごまかさず `unreachable!`。入力（ソース・設定）由来で到達しうる状態は miette 診断エラー。メッセージには「なぜ到達しないか」＝上流のどの検証が保証するかを書く
 6. **panic は根拠を書いてから落とす**

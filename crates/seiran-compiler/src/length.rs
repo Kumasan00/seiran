@@ -125,8 +125,10 @@ impl Length {
 
 /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。失敗時は `None`。
 fn parse_length(value: &str) -> Option<Length> {
-  // 数値は f64 で読む。sp（1/65536pt）は f32 の仮数では表しきれず、f32 経由だと
-  // `Serialize` が書き出した正準形を読み戻したときに最大数 sp ずれる（往復が壊れる）。
+  // 数値は f64 で読む。sp（1/65536pt）は f32 の仮数では表しきれず、f32 経由だとユーザ入力の
+  // 数値どおりの sp にならず PDF の座標がずれる。テストビルド限定の `TestProject` 経由の
+  // 往復（`Style` を書き換えて style.toml へ書き戻し、`Serialize` の正準形を読み戻す）でも
+  // この精度が要る。
   let trimmed = value.trim();
   if let Some(num) = trimmed.strip_suffix("pt") {
     let parsed: f64 = num.trim().parse().ok()?;
