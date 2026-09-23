@@ -10,7 +10,6 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 /// 2 回読まないことは、資源を列挙する呼び出し側（フォントは `FontData::load`、画像は
 /// `collect_image_paths`）が重複を除いて保証する。
 #[derive(Debug, Default)]
-#[non_exhaustive]
 pub struct FilesystemProjectSource;
 
 impl FilesystemProjectSource {

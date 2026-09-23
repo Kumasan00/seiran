@@ -88,7 +88,6 @@ pub(super) struct UnknownCitationSite {
 
 /// 解決（ラベル登録・`\ref` の名前解決・引用キーの存在検証）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
-#[non_exhaustive]
 pub(crate) enum SemanticError {
   /// `\cite{...}` のキーが参照定義に存在しない場合（1 ソース分をまとめて 1 度に報告する）
   ///
