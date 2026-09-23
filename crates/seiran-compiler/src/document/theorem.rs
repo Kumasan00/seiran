@@ -33,7 +33,6 @@ pub(crate) enum TheoremClass {
 
 impl TheoremClass {
   /// 全 10 クラスを宣言順に並べた配列。
-  #[cfg(test)]
   pub(crate) const ALL: [TheoremClass; 10] = [
     TheoremClass::Theorem,
     TheoremClass::Lemma,

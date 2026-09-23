@@ -1,10 +1,10 @@
 style::validation::field
 
-  × diagnostics/style.toml: 'text.font_size': 正値である必要があります（受け取った値: 0pt）
+  × diagnostics/style.toml: 'heading.chapter.font_size': 正値である必要があります（受け取った値:
+  │ -1pt）
   help: style.toml の該当フィールドの値を確認してください。
 
 Error: style::validation::field
 
-  × diagnostics/style.toml: 'heading.chapter.font_size': 正値である必要があります（受け取った値:
-  │ -1pt）
+  × diagnostics/style.toml: 'text.font_size': 正値である必要があります（受け取った値: 0pt）
   help: style.toml の該当フィールドの値を確認してください。
