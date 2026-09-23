@@ -50,12 +50,11 @@ impl SourceSet {
   }
 
   /// ソースを登録し、新しい `SourceId` を発行する。
-  fn register(&mut self, name: String, content: String) -> SourceId {
+  ///
+  /// 本文は seam が返した割り当てをそのまま格納する（複製しない）。
+  fn register(&mut self, name: String, content: Arc<str>) -> SourceId {
     let id = SourceId::new(self.entries.len());
-    self.entries.push(SourceEntry {
-      name,
-      content: Arc::from(content),
-    });
+    self.entries.push(SourceEntry { name, content });
     return id;
   }
 
@@ -85,7 +84,7 @@ impl SourceSet {
     source: &dyn ProjectSource,
     sources: &[ProjectPath],
   ) -> Result<SourceSet, Failures<SourceSetReadError>> {
-    let results: Vec<Result<(String, String), SourceSetReadError>> = sources
+    let results: Vec<Result<(String, Arc<str>), SourceSetReadError>> = sources
       .iter()
       .map(|source_path| {
         let content = source.read_text(source_path).map_err(|error| {
@@ -94,7 +93,7 @@ impl SourceSet {
             source: error,
           };
         })?;
-        return Ok((source_path.to_string(), content.to_string()));
+        return Ok((source_path.to_string(), content));
       })
       .collect();
 
@@ -108,8 +107,10 @@ impl SourceSet {
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
   use super::SourceSet;
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, SourceReadError};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
 
   /// 一時ディレクトリに 1 つソースファイルを書き出し、その `ProjectPath` を返す。
   ///
@@ -119,6 +120,24 @@ mod tests {
     let path = dir.path().join(name);
     std::fs::write(&path, content).expect("一時ディレクトリへ書き込めるはず");
     return ProjectPath::new(path);
+  }
+
+  /// 保持している本文の割り当てを `Arc::clone` でそのまま返す seam（どのパスにも同じ本文を返す）。
+  ///
+  /// `SourceSet` が seam の返した割り当てを複製せずに格納するかを `Arc::ptr_eq` で観測するために使う。
+  struct SharedTextSource {
+    /// 返す本文
+    text: Arc<str>,
+  }
+
+  impl ProjectSource for SharedTextSource {
+    fn read_text(&self, _path: &ProjectPath) -> Result<Arc<str>, SourceReadError> { return Ok(Arc::clone(&self.text)); }
+
+    fn read_bytes(&self, _path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
+      return Err(SourceReadError::NotFound);
+    }
+
+    fn exists(&self, _path: &ProjectPath) -> bool { return true; }
   }
 
   #[test]
@@ -188,13 +207,30 @@ mod tests {
   }
 
   #[test]
+  fn read_keeps_the_text_allocation_returned_by_the_seam() {
+    // Arrange
+    let text: Arc<str> = Arc::from("本文");
+    let source = SharedTextSource {
+      text: Arc::clone(&text),
+    };
+
+    // Act
+    let source_set =
+      SourceSet::read(&source, &[ProjectPath::new("/project/a.sei")]).expect("SharedTextSource は常に読めるはず");
+
+    // Assert — seam が返した割り当てを複製せずに格納するはず
+    let (_, entry) = source_set.iter().next().expect("1 件登録したはず");
+    assert!(Arc::ptr_eq(&entry.content, &text));
+  }
+
+  #[test]
   fn register_issues_sequential_ids_and_get_looks_them_up() {
     // Arrange
     let mut set = SourceSet::new();
 
     // Act
-    let id_a = set.register("a.sei".to_string(), "content-a".to_string());
-    let id_b = set.register("b.sei".to_string(), "content-b".to_string());
+    let id_a = set.register("a.sei".to_string(), Arc::from("content-a"));
+    let id_b = set.register("b.sei".to_string(), Arc::from("content-b"));
 
     // Assert
     assert_eq!(set.get(id_a).name, "a.sei");
