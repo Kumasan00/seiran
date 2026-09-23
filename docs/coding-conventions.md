@@ -115,6 +115,10 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
 
 ### 7. unsafe は 1 操作 1 ブロック 1 SAFETY
 
+unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
+`#[expect(unsafe_code, reason = "...")]` で開け、その中で以下を守る。`forbid` にしないのはこの開け口を残すため
+（`forbid` は `expect` で上書きできない）。
+
 `unsafe {}` 1 つに unsafe 操作は 1 つだけ置き（`multiple_unsafe_ops_per_block`）、その直上の行に
 `// SAFETY:` を書く（`undocumented_unsafe_blocks`。間に別の文を挟むと検出されない）。「どの操作のどの前提が
 根拠か」を 1 対 1 で対応させるためで、逆に unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc を

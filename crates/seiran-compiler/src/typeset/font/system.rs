@@ -17,10 +17,7 @@ use crate::{
   typeset::font::{
     FontLoadError, FontMetrics, FontRefs, build_font_metrics, build_font_refs,
     face_config::{FontFaceConfigs, build_face_configs},
-    shaper::{
-      HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
-      ShaperInstancesExt, UnicodeBuffer,
-    },
+    shaper::{self, HarfRustShapers, ShaperDatas, ShaperError, ShaperInstances, UnicodeBuffer},
     validation::{self, FontValidationFailure, FontWarning},
   },
 };
@@ -42,7 +39,7 @@ pub(crate) enum FontSystemError {
   #[error(transparent)]
   #[diagnostic(transparent)]
   Validation(#[from] FontValidationFailure),
-  /// シェーパー初期化の失敗（[`HarfRustShapers::new`] に由来）
+  /// シェーパー初期化の失敗（[`shaper::build_harfrust_shapers`] に由来）
   #[error(transparent)]
   #[diagnostic(transparent)]
   Shaper(#[from] ShaperError),
@@ -102,8 +99,8 @@ impl<'a> FontResources<'a> {
     }
     debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");
 
-    let shaper_datas = ShaperDatas::new(&font_refs);
-    let shaper_instances = ShaperInstances::new(configs, &font_refs);
+    let shaper_datas = shaper::build_shaper_datas(&font_refs);
+    let shaper_instances = shaper::build_shaper_instances(configs, &font_refs);
     return (
       Ok(Self {
         configs,
@@ -137,8 +134,9 @@ impl<'a> FontResources<'a> {
   ///
   /// 言語タグの解析に失敗した場合に [`FontSystemError`] の非空集合を返す。
   pub(crate) fn system(&self) -> Result<FontSystem<'_>, Failures<FontSystemError>> {
-    let shapers = HarfRustShapers::new(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)
-      .map_err(|failures| return failures.map(Into::into))?;
+    let shapers =
+      shaper::build_harfrust_shapers(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)
+        .map_err(|failures| return failures.map(Into::into))?;
     debug!("シェーパーを初期化");
     return Ok(FontSystem {
       shapers,

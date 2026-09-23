@@ -622,7 +622,9 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
   `breaking` はフォントに触れない
 - **段の中では 19 種すべてを検査して違反を `FontType::ALL` 順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
-  `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする
+  `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする — 19 種のフォント種別については
+  これは `FontMap::par_try_from_fn` / `FontMap::try_from_fn` の内側で行われ、呼び出し側が
+  `collect_in_input_order` を直接呼ぶことはない
 - 検証違反の leaf は `FontValidationFailure { font_type, kind }` で、`code` / `help` / `labels` は内側へ
   委譲しメッセージにだけ config.toml のキーを前置する**帰属 adapter**（`compiler::source_diagnostic` と同じ
   形）。全体・種別ごとの集約 wrapper は作らない（#376）。`kind` は cause ではないので `#[source]` にも
@@ -968,7 +970,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 | `PublicationPage` | ページ矩形と画像の描画矩形の幅・高さが正（太さ 0 の罫線を描く塗りつぶし矩形は 0 サイズを許す） |
 | `Publication` | 内部リンクとしおりの到達先ページが実在する |
 | `PublicationResources` | `ImageRef` の発行経路は crate 内非公開の 1 つだけなので、資源に無い画像を指す描画命令を型として作れない |
-| `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` の構築時保証） |
+| `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` は `[T; 19]` で持つので欠けた表を構築できない） |
 
 これが「renderer は確定座標の描画のみ」を**型で**担保している部分で、`seiran-pdf` が防衛的な error variant を
 持たない根拠（`seiran-pdf` 節）。`PublicationResources` のフィールドを隠すのは、`FontMap` を facade へ出さずに

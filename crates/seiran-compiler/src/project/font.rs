@@ -91,14 +91,10 @@ impl FontData {
       .collect::<Vec<Result<(ProjectPath, Arc<[u8]>), FontReadError>>>();
     let loaded: HashMap<ProjectPath, Arc<[u8]>> = failures::collect_in_input_order(results)?.into_iter().collect();
 
-    let font_datas = FontType::ALL
-      .iter()
-      .map(|&font_type| {
-        let path = &font_configs[font_type].font_path;
-        return Arc::clone(loaded.get(path).expect("上のループで全パスを読み込み済みのはず"));
-      })
-      .collect::<Vec<Arc<[u8]>>>();
-    return Ok(FontData(FontMap::from_all(font_datas)));
+    return Ok(FontData(FontMap::from_fn(|font_type| {
+      let path = &font_configs[font_type].font_path;
+      return Arc::clone(loaded.get(path).expect("上のループで全パスを読み込み済みのはず"));
+    })));
   }
 
   /// 指定されたフォント種別のバイト列を返す。
@@ -119,7 +115,7 @@ mod tests {
 
   /// 全 19 種別が同じ `shared_path` を指す `FontConfigs` fixture を作る。
   fn make_font_configs(shared_path: &str) -> FontConfigs {
-    return FontConfigs::from_all(FontType::ALL.iter().map(|_| {
+    return FontConfigs::from_fn(|_| {
       return FontConfig {
         font_path: ProjectPath::new(shared_path),
         font_index: 0,
@@ -130,7 +126,7 @@ mod tests {
         direction: None,
         features: None,
       };
-    }));
+    });
   }
 
   #[test]

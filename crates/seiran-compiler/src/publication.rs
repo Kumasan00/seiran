@@ -107,7 +107,7 @@ impl Publication {
 
 /// 描画に必要なフォント・画像資源（すべて生データ）。
 ///
-/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が構築時に保証する）。構築経路は
+/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が `[T; 19]` で持つので欠けた表を構築できない）。構築経路は
 /// [`PublicationResources::new`] だけで、これは crate 内非公開 — `compile` 以外が
 /// `Publication` を組み立てることはできない。
 #[derive(Clone, PartialEq)]
@@ -428,7 +428,7 @@ pub(crate) mod test_support {
   use std::sync::Arc;
 
   use super::{FontFaceConfig, FontMetric, PublicationFont, PublicationImage, PublicationResources};
-  use crate::project::{FontMap, FontType};
+  use crate::project::FontMap;
 
   /// 指定した画像だけを持つ描画資源を返す（フォントは全種別ダミーのバイト列 0 個）。
   ///
@@ -446,7 +446,7 @@ pub(crate) mod test_support {
         descender: -200.0,
       },
     };
-    let fonts = FontMap::from_all(FontType::ALL.iter().map(|_| return font.clone()));
+    let fonts = FontMap::from_fn(|_| return font.clone());
     return PublicationResources::new(fonts, images);
   }
 }

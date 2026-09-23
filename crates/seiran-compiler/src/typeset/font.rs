@@ -8,7 +8,6 @@
 //! `FontRefs` / `FontMetrics` / シェーパー / 検証を含めこの module の名前は `typeset` の外から見えない。
 //! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる（#352）。
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 
@@ -26,7 +25,7 @@ pub(super) use system::{FontResources, FontSystem, FontSystemError};
 pub(super) use validation::FontWarning;
 
 use crate::{
-  failures::{self, Failures},
+  failures::Failures,
   project::{FontConfigs, FontData, FontMap, FontType},
   publication::FontMetric,
 };
@@ -76,10 +75,8 @@ type FontRefs<'a> = FontMap<FontRef<'a>>;
 
 /// バイナリデータから設定されたフェースのフォント参照を生成する。
 ///
-/// フォントは互いに独立に解析できるので、1 件目で打ち切らず全種別を解析して違反を全件返す。
-/// `FontType::ALL.par_iter()` は `IndexedParallelIterator` なので `collect::<Vec<_>>()` が入力順を
-/// 保証し、どのフォントの解析が先に完了したかは報告順に漏れない（`collect::<Result<Vec<_>, E>>()`
-/// は複数エラーのうちどれを返すかが非決定的なので使わない）。
+/// フォントは互いに独立に解析できるので、1 件目で打ち切らず全種別を解析して違反を全件返す
+/// （順序は [`FontMap::par_try_from_fn`] が `FontType::ALL` 順に揃える）。
 ///
 /// # Errors
 ///
@@ -89,22 +86,18 @@ fn build_font_refs<'a>(
   config: &'a FontConfigs,
   font_data: &'a FontData,
 ) -> Result<FontRefs<'a>, Failures<FontLoadError>> {
-  let results = FontType::ALL
-    .par_iter()
-    .map(|&font_type| {
-      let font_data = font_data.get(font_type);
-      let font_config = &config[font_type];
-      let index = font_config.font_index;
-      return FontRef::from_index(font_data, index).map_err(|source| {
-        return FontLoadError::ParseFont {
-          font_type,
-          index,
-          source,
-        };
-      });
-    })
-    .collect::<Vec<Result<FontRef<'a>, FontLoadError>>>();
-  return Ok(FontMap::from_all(failures::collect_in_input_order(results)?));
+  return FontMap::par_try_from_fn(|font_type| {
+    let font_data = font_data.get(font_type);
+    let font_config = &config[font_type];
+    let index = font_config.font_index;
+    return FontRef::from_index(font_data, index).map_err(|source| {
+      return FontLoadError::ParseFont {
+        font_type,
+        index,
+        source,
+      };
+    });
+  });
 }
 
 /// 全フォント種別の基本メトリクス。
@@ -118,30 +111,26 @@ type FontMetrics = FontMap<FontMetric>;
 ///
 /// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を `FontType::ALL` 順で返す。
 fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMetrics, Failures<FontLoadError>> {
-  let results = FontType::ALL
-    .iter()
-    .map(|&font_type| {
-      let font_ref = &font_refs[font_type];
-      let head = font_ref.head().map_err(|source| {
-        return FontLoadError::ReadMetricsTable {
-          font_type,
-          table: "head",
-          source,
-        };
-      })?;
-      let hhea = font_ref.hhea().map_err(|source| {
-        return FontLoadError::ReadMetricsTable {
-          font_type,
-          table: "hhea",
-          source,
-        };
-      })?;
-      return Ok(FontMetric {
-        upem: f32::from(head.units_per_em()),
-        ascender: f32::from(hhea.ascender().to_i16()),
-        descender: f32::from(hhea.descender().to_i16()),
-      });
-    })
-    .collect::<Vec<Result<FontMetric, FontLoadError>>>();
-  return Ok(FontMap::from_all(failures::collect_in_input_order(results)?));
+  return FontMap::try_from_fn(|font_type| {
+    let font_ref = &font_refs[font_type];
+    let head = font_ref.head().map_err(|source| {
+      return FontLoadError::ReadMetricsTable {
+        font_type,
+        table: "head",
+        source,
+      };
+    })?;
+    let hhea = font_ref.hhea().map_err(|source| {
+      return FontLoadError::ReadMetricsTable {
+        font_type,
+        table: "hhea",
+        source,
+      };
+    })?;
+    return Ok(FontMetric {
+      upem: f32::from(head.units_per_em()),
+      ascender: f32::from(hhea.ascender().to_i16()),
+      descender: f32::from(hhea.descender().to_i16()),
+    });
+  });
 }

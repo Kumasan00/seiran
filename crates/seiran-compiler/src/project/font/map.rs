@@ -1,158 +1,130 @@
-//! 全フォント種別に対応する値を保持する [`FontMap`]。
+//! 全フォント種別に対応する値を 1 つずつ持つ表 [`FontMap`]。
 
 use std::{
-  collections::HashMap,
-  ops::{Index, IndexMut},
+  fmt::{self, Debug, Formatter},
+  ops::Index,
 };
 
-use crate::project::font::FontType;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-/// 全フォント種別 ([`FontType`]) に対応する値を保持する汎用コンテナ
+use crate::{
+  failures::{self, Failures},
+  project::font::FontType,
+};
+
+/// フォント種別の数（[`FontMap`] のスロット数）
+const SLOTS: usize = FontType::ALL.len();
+
+// `FontType::ALL` が宣言順（＝判別子の昇順）に並んでいることをコンパイル時に確かめる。
+// `FontMap` は判別子をそのまま配列の添字に使うので、ここが破れると別の種別の値を返してしまう。
+const _: () = {
+  let mut index = 0;
+  while index < SLOTS {
+    assert!(FontType::ALL[index] as usize == index, "FontType::ALL は宣言順に並んでいなければならない");
+    index += 1;
+  }
+};
+
+/// 全フォント種別 ([`FontType`]) に対応する値を 1 つずつ持つ読み取り専用の表
 ///
-/// イテレーション時は [`FontType::ALL`] の順序で要素を返す。
+/// 値は `[T; 19]` に [`FontType::ALL`] の順で並ぶので、全種別が揃っていることは型が保証する
+/// （欠けた表・余った表は構築できない）。構築後に変更する経路は無く、種別での参照
+/// （`map[font_type]`）だけを提供する。
 ///
-/// # Examples
-///
-/// ```ignore
-/// // `project::font` は非公開 module のため、この例は擬似コードとして提示するのみ（コンパイル・
-/// // 実行はしない）。実際の検証は本ファイル末尾の `#[cfg(test)] mod tests` を参照（#307 の model
-/// // crate 吸収で `FontMap` / `FontType` が crate 外から到達不能になり、rustdoc テストとしては
-/// // 成立しなくなった。#352 で所有者が `project::font` に移った後も同じ）。
-/// use crate::project::font::{FontMap, FontType};
-///
-/// let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
-/// assert_eq!(map[FontType::Serif], "Serif");
-/// assert_eq!(map.iter().count(), 19);
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 構築は種別から値を作るクロージャを渡す形だけで、並列版（`par_*`）と失敗しうる版（`try_*`）がある。
+/// 失敗しうる版は 1 件目で打ち切らず全種別を試し、失敗を [`FontType::ALL`] 順に全件返す — 並列版でも
+/// どの種別が先に完了したかは報告順に漏れない（集約は [`failures::collect_in_input_order`] を通す）。
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct FontMap<T> {
-  /// フォント種別ごとの値
-  inner: HashMap<FontType, T>,
+  /// [`FontType::ALL`] の順に並んだ種別ごとの値
+  values: [T; SLOTS],
 }
 
 impl<T> FontMap<T> {
-  /// [`FontType::ALL`] の順序に対応するイテレータから構築する
-  ///
-  /// # Panics
-  ///
-  /// イテレータの要素数が [`FontType::ALL`] の要素数と異なる場合にパニックする。
-  pub(crate) fn from_all(values: impl IntoIterator<Item = T>) -> Self {
-    let inner: HashMap<FontType, T> = FontType::ALL.into_iter().zip(values).collect();
-    assert_eq!(inner.len(), FontType::ALL.len(), "FontMap: 要素数が FontType::ALL と一致しません");
-    return Self { inner };
-  }
-
-  /// [`FontType::ALL`] の順序で反復する
-  #[must_use]
-  pub(crate) fn iter(&self) -> FontMapIter<'_, T> {
-    return FontMapIter {
-      inner: &self.inner,
-      index: 0,
+  /// 各種別の値を `value_of` で作る（[`FontType::ALL`] の順に 1 回ずつ呼ぶ）。
+  pub(crate) fn from_fn(value_of: impl FnMut(FontType) -> T) -> Self {
+    return Self {
+      values: FontType::ALL.map(value_of),
     };
   }
 
-  /// [`FontType::ALL`] の順序で可変反復する
-  pub(crate) fn iter_mut(&mut self) -> FontMapIterMut<'_, T> {
-    return FontMapIterMut {
-      inner: &mut self.inner,
-      index: 0,
+  /// 各種別の値を `value_of` で作る。1 種別でも失敗すれば表は作らず、失敗を全件返す。
+  ///
+  /// # Errors
+  ///
+  /// `value_of` が `Err` を返した種別の失敗を [`FontType::ALL`] 順に集めて返す。
+  pub(crate) fn try_from_fn<E>(value_of: impl FnMut(FontType) -> Result<T, E>) -> Result<Self, Failures<E>> {
+    return Self::from_complete_results(Vec::from(FontType::ALL.map(value_of)));
+  }
+
+  /// [`FontMap::from_fn`] の並列版。
+  pub(crate) fn par_from_fn(value_of: impl Fn(FontType) -> T + Sync) -> Self
+  where
+    T: Send,
+  {
+    let values = FontType::ALL.par_iter().map(|&font_type| return value_of(font_type)).collect::<Vec<T>>();
+    return Self::from_complete(values);
+  }
+
+  /// [`FontMap::try_from_fn`] の並列版。
+  ///
+  /// # Errors
+  ///
+  /// `value_of` が `Err` を返した種別の失敗を、完了順ではなく [`FontType::ALL`] 順に集めて返す。
+  pub(crate) fn par_try_from_fn<E>(value_of: impl Fn(FontType) -> Result<T, E> + Sync) -> Result<Self, Failures<E>>
+  where
+    T: Send,
+    E: Send,
+  {
+    let results = FontType::ALL.par_iter().map(|&font_type| return value_of(font_type)).collect::<Vec<Result<T, E>>>();
+    return Self::from_complete_results(results);
+  }
+
+  /// 2 つの表の同じ種別の値どうしを `combine` で合わせた表を作る。
+  pub(crate) fn zip_with<U, V>(self, other: FontMap<U>, mut combine: impl FnMut(T, U) -> V) -> FontMap<V> {
+    let values = self
+      .values
+      .into_iter()
+      .zip(other.values)
+      .map(|(value, other_value)| return combine(value, other_value))
+      .collect::<Vec<V>>();
+    return FontMap::from_complete(values);
+  }
+
+  /// [`FontType::ALL`] 順の結果列を、全件成功なら表へ、1 件でも失敗があれば失敗の全件へまとめる。
+  fn from_complete_results<E>(results: Vec<Result<T, E>>) -> Result<Self, Failures<E>> {
+    return Ok(Self::from_complete(failures::collect_in_input_order(results)?));
+  }
+
+  /// [`FontType::ALL`] を 1 対 1 に写した列から表を作る。
+  ///
+  /// 呼び出し元はこの module 内だけで、どれも [`FontType::ALL`]（または 19 要素の配列）を写した列を渡す。
+  /// `Vec` を経由するのは、rayon の `collect` と [`failures::collect_in_input_order`] が配列へ直接
+  /// 集められないため。
+  fn from_complete(values: Vec<T>) -> Self {
+    let Ok(values) = <[T; SLOTS]>::try_from(values) else {
+      unreachable!(
+        "呼び出し元は FontType::ALL を 1 対 1 に写した列だけを渡し、collect_in_input_order は全件成功なら同数を返す"
+      );
     };
+    return Self { values };
   }
 }
 
 impl<T> Index<FontType> for FontMap<T> {
   type Output = T;
 
-  fn index(&self, font_type: FontType) -> &T { return &self.inner[&font_type]; }
+  // 添字は判別子。module 先頭の const 検査が `FontType::ALL` と判別子の順序の一致を保証する。
+  fn index(&self, font_type: FontType) -> &T { return &self.values[font_type as usize]; }
 }
 
-impl<T> IndexMut<FontType> for FontMap<T> {
-  fn index_mut(&mut self, font_type: FontType) -> &mut T {
-    return self
-      .inner
-      .get_mut(&font_type)
-      .expect("from_all が FontType::ALL 全種別を埋めるので、どの種別でも必ず引ける");
-  }
-}
-
-/// [`FontMap`] の不変イテレータ
+/// `{種別: 値, ..}` の形で [`FontType::ALL`] 順に出す。
 ///
-/// [`FontType::ALL`] の順序で `(FontType, &T)` を返します。
-pub(crate) struct FontMapIter<'a, T> {
-  /// 走査対象
-  inner: &'a HashMap<FontType, T>,
-  /// 現在位置
-  index: usize,
-}
-
-impl<'a, T> Iterator for FontMapIter<'a, T> {
-  type Item = (FontType, &'a T);
-
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.index >= FontType::ALL.len() {
-      return None;
-    }
-    let font_type = FontType::ALL[self.index];
-    let value = &self.inner[&font_type];
-    self.index += 1;
-    return Some((font_type, value));
+/// 配列の derive `Debug` は位置しか出さず、比較失敗時の出力でどの種別の値か読めなくなる。
+impl<T: Debug> Debug for FontMap<T> {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+    return formatter.debug_map().entries(FontType::ALL.iter().zip(&self.values)).finish();
   }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining = FontType::ALL.len().saturating_sub(self.index);
-    return (remaining, Some(remaining));
-  }
-}
-
-impl<T> ExactSizeIterator for FontMapIter<'_, T> {}
-
-/// [`FontMap`] の可変イテレータ
-///
-/// [`FontType::ALL`] の順序で `(FontType, &mut T)` を返します。
-pub(crate) struct FontMapIterMut<'a, T> {
-  /// 走査対象
-  inner: &'a mut HashMap<FontType, T>,
-  /// 現在位置
-  index: usize,
-}
-
-impl<'a, T> Iterator for FontMapIterMut<'a, T> {
-  type Item = (FontType, &'a mut T);
-
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.index >= FontType::ALL.len() {
-      return None;
-    }
-    let font_type = FontType::ALL[self.index];
-    self.index += 1;
-    let value = self.inner.get_mut(&font_type)?;
-    // SAFETY: 借用の寿命を `&mut self` から `'a` へ延長する。`index` は単調増加し
-    // `FontType::ALL` の要素は一意なので、同じキーを 2 回返すことはなく、
-    // 返した `&mut T` どうしがエイリアスすることもない。
-    let value = unsafe { &mut *std::ptr::from_mut(value) };
-    return Some((font_type, value));
-  }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining = FontType::ALL.len().saturating_sub(self.index);
-    return (remaining, Some(remaining));
-  }
-}
-
-impl<T> ExactSizeIterator for FontMapIterMut<'_, T> {}
-
-impl<'a, T> IntoIterator for &'a FontMap<T> {
-  type IntoIter = FontMapIter<'a, T>;
-  type Item = (FontType, &'a T);
-
-  fn into_iter(self) -> Self::IntoIter { return self.iter(); }
-}
-
-impl<'a, T> IntoIterator for &'a mut FontMap<T> {
-  type IntoIter = FontMapIterMut<'a, T>;
-  type Item = (FontType, &'a mut T);
-
-  fn into_iter(self) -> Self::IntoIter { return self.iter_mut(); }
 }
 
 #[cfg(test)]
@@ -160,16 +132,75 @@ mod tests {
   use super::FontMap;
   use crate::project::font::FontType;
 
+  /// Serif と Math だけ失敗させる（`FontType::ALL` の先頭と中ほど）。
+  fn fail_serif_and_math(font_type: FontType) -> Result<(), FontType> {
+    if matches!(font_type, FontType::Serif | FontType::Math) {
+      return Err(font_type);
+    }
+    return Ok(());
+  }
+
   #[test]
-  fn from_all_and_get_round_trip_by_font_type() {
-    // Arrange
-    let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
+  fn from_fn_stores_each_value_under_its_font_type() {
+    let map = FontMap::from_fn(|font_type| return font_type.as_toml_key());
 
-    // Act
-    let serif_value = &map[FontType::Serif];
+    for font_type in FontType::ALL {
+      assert_eq!(map[font_type], font_type.as_toml_key());
+    }
+  }
 
-    // Assert
-    assert_eq!(serif_value, "Serif", "FontType::Serif の Debug 表記のはず");
-    assert_eq!(map.iter().count(), 19, "FontType は 19 種別のはず");
+  #[test]
+  fn par_from_fn_builds_the_same_map_as_from_fn() {
+    let sequential = FontMap::from_fn(|font_type| return font_type.as_toml_key());
+
+    let parallel = FontMap::par_from_fn(|font_type| return font_type.as_toml_key());
+
+    assert_eq!(parallel, sequential);
+  }
+
+  #[test]
+  fn try_from_fn_reports_every_failure_in_font_type_order() {
+    let result = FontMap::try_from_fn(fail_serif_and_math);
+
+    let failures: Vec<FontType> = result.expect_err("2 種別が失敗するはず").into_iter().collect();
+    assert_eq!(failures, vec![FontType::Serif, FontType::Math]);
+  }
+
+  #[test]
+  fn par_try_from_fn_reports_every_failure_in_font_type_order() {
+    let result = FontMap::par_try_from_fn(fail_serif_and_math);
+
+    let failures: Vec<FontType> = result.expect_err("2 種別が失敗するはず").into_iter().collect();
+    assert_eq!(failures, vec![FontType::Serif, FontType::Math]);
+  }
+
+  #[test]
+  fn try_from_fn_builds_the_map_when_every_font_type_succeeds() {
+    let map = FontMap::try_from_fn(|font_type| return Ok::<_, ()>(font_type)).expect("全種別成功のはず");
+
+    for font_type in FontType::ALL {
+      assert_eq!(map[font_type], font_type);
+    }
+  }
+
+  #[test]
+  fn zip_with_combines_values_of_the_same_font_type() {
+    let keys = FontMap::from_fn(|font_type| return font_type.as_toml_key());
+    let font_types = FontMap::from_fn(|font_type| return font_type);
+
+    let zipped = keys.zip_with(font_types, |key, font_type| return (key, font_type));
+
+    for font_type in FontType::ALL {
+      assert_eq!(zipped[font_type], (font_type.as_toml_key(), font_type));
+    }
+  }
+
+  #[test]
+  fn debug_lists_values_keyed_by_font_type_in_declaration_order() {
+    let map = FontMap::from_fn(|_| return 0u8);
+
+    let text = format!("{map:?}");
+
+    assert!(text.starts_with("{Serif: 0, SerifBold: 0, "), "種別をキーに宣言順で出るはず: {text}");
   }
 }

@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{
-    self, Feature, FontConfig, FontConfigs, FontType, InFile, PathResolver, ProjectPath, ProjectSource, TextDirection,
+    self, Feature, FontConfig, FontMap, FontType, InFile, PathResolver, ProjectPath, ProjectSource, TextDirection,
     TomlErrorParts, VariationAxis,
   },
 };
@@ -31,12 +31,9 @@ pub(crate) use error::{ConfigValidationError, ConfigWarning, ReadConfigError};
 pub(crate) use resolved::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
 
 /// 読み取り I/O フェーズで集約する解決済みパス群。
-///
-/// `font_paths` は [`FontType::ALL`] の順序に対応する解決済みフォントパスで、エラーが
-/// ない場合のみ 19 要素が揃います。
 struct ResolvedPaths {
-  /// `FontType::ALL` の順序に対応する解決済みフォントパス
-  font_paths: Vec<ProjectPath>,
+  /// 解決済みフォントパス。1 種別でも解決できなければ `None`（違反は同時に返すエラー列に入る）
+  font_paths: Option<FontMap<ProjectPath>>,
   /// 解決済みソースファイルパス
   sources: Vec<ProjectPath>,
   /// 解決済みスタイルファイルパス（未指定なら `None`）
@@ -156,20 +153,22 @@ fn resolve(
 fn build_config(
   raw: RawConfig,
   resolver: &PathResolver,
-  validation: Result<Vec<FontValues>, Vec<ConfigValidationError>>,
+  validation: Result<FontMap<FontValues>, Vec<ConfigValidationError>>,
   resolved: ResolvedPaths,
   path_errors: Vec<ConfigValidationError>,
 ) -> Result<ProjectConfig, Failures<ConfigValidationError>> {
-  let font_values = match validation {
-    Ok(font_values) if path_errors.is_empty() => font_values,
-    result => {
+  let (font_values, font_paths) = match (validation, resolved.font_paths) {
+    (Ok(font_values), Some(font_paths)) if path_errors.is_empty() => (font_values, font_paths),
+    (result, _) => {
       let mut errors = match result {
         Ok(_) => Vec::new(),
         Err(value_errors) => value_errors,
       };
       errors.extend(path_errors);
       let Some(failures) = Failures::from_vec(errors) else {
-        unreachable!("この分岐は検証エラーかパスエラーが 1 件以上あるときにだけ入る")
+        unreachable!(
+          "この分岐は検証エラーかパスエラーが 1 件以上あるときにだけ入る（font_paths が None なら resolve_paths が違反を積んでいる）"
+        )
       };
       return Err(failures);
     },
@@ -185,19 +184,18 @@ fn build_config(
     ..
   } = raw;
 
-  let font_configs =
-    FontConfigs::from_all(font_values.into_iter().zip(resolved.font_paths).map(|(values, font_path)| {
-      return FontConfig {
-        font_path,
-        font_index: values.font_index,
-        variation_axes: values.variation_axes,
-        script: values.script,
-        language: values.language,
-        ot_language_tag: values.ot_language_tag,
-        direction: values.direction,
-        features: values.features,
-      };
-    }));
+  let font_configs = font_values.zip_with(font_paths, |values, font_path| {
+    return FontConfig {
+      font_path,
+      font_index: values.font_index,
+      variation_axes: values.variation_axes,
+      script: values.script,
+      language: values.language,
+      ot_language_tag: values.ot_language_tag,
+      direction: values.direction,
+      features: values.features,
+    };
+  });
 
   return Ok(ProjectConfig {
     document: DocumentConfig {
@@ -229,7 +227,7 @@ fn build_config(
 }
 
 /// [`RawConfig`] の純粋な値検証とタグ・書字方向の変換を一括で実行します（I/O なし）。
-fn validate_and_convert(raw: &RawConfig) -> Result<Vec<FontValues>, Vec<ConfigValidationError>> {
+fn validate_and_convert(raw: &RawConfig) -> Result<FontMap<FontValues>, Vec<ConfigValidationError>> {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
   if let Err(report) = raw.validate() {
     errors.extend(report.iter().map(|(path, error)| {
@@ -242,16 +240,11 @@ fn validate_and_convert(raw: &RawConfig) -> Result<Vec<FontValues>, Vec<ConfigVa
   raw::validate_unique_font_names(&raw.font_configs, &mut errors);
   raw::validate_font_language_constraints(&raw.font_configs, &mut errors);
 
-  let mut font_values: Vec<FontValues> = Vec::with_capacity(FontType::ALL.len());
-  for font_type in FontType::ALL {
-    match parse_font_values(font_type, &raw.font_configs[font_type]) {
-      Ok(values) => font_values.push(values),
-      Err(value_errors) => errors.extend(value_errors),
-    }
-  }
-
-  if errors.is_empty() {
-    return Ok(font_values);
+  let font_values = FontMap::try_from_fn(|font_type| return parse_font_values(font_type, &raw.font_configs[font_type]));
+  match font_values {
+    Ok(font_values) if errors.is_empty() => return Ok(font_values),
+    Ok(_) => {},
+    Err(value_errors) => errors.extend(value_errors.into_iter().flatten()),
   }
   return Err(errors);
 }
@@ -282,18 +275,23 @@ fn resolve_paths(
     return ConfigValidationError::ReferencesPathResolution { path };
   });
 
-  let mut font_paths: Vec<ProjectPath> = Vec::with_capacity(FontType::ALL.len());
-  for font_type in FontType::ALL {
+  let font_paths = FontMap::try_from_fn(|font_type| {
     let resolved = resolver.resolve(&raw.font_configs[font_type].font_path);
     if source.exists(&resolved) {
-      font_paths.push(resolved);
-    } else {
-      errors.push(ConfigValidationError::FontPathResolution {
-        font_type,
-        path: resolved.to_string(),
-      });
+      return Ok(resolved);
     }
-  }
+    return Err(ConfigValidationError::FontPathResolution {
+      font_type,
+      path: resolved.to_string(),
+    });
+  });
+  let font_paths = match font_paths {
+    Ok(font_paths) => Some(font_paths),
+    Err(path_failures) => {
+      errors.extend(path_failures);
+      None
+    },
+  };
 
   let sources = resolve_sources(&raw.sources, resolver, source, &mut errors, &mut warnings);
 
@@ -595,10 +593,12 @@ mod tests {
 
     // Assert — 19 件すべてが同じ正規化済みパスになる
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
+    let font_paths = resolved.font_paths.expect("全フォントパスが解決できるはず");
     assert!(
-      resolved.font_paths.iter().all(|path| return *path == ProjectPath::new("/project/fonts/dummy.ttf")),
-      "表記が違っても正規化後は同じ ProjectPath のはず: {:?}",
-      resolved.font_paths
+      FontType::ALL
+        .iter()
+        .all(|&font_type| return font_paths[font_type] == ProjectPath::new("/project/fonts/dummy.ttf")),
+      "表記が違っても正規化後は同じ ProjectPath のはず: {font_paths:?}"
     );
   }
 
@@ -1077,7 +1077,6 @@ mod tests {
     assert_eq!(config.output.name, "test_doc");
     assert_eq!(config.document.title.as_deref(), Some("Test Doc"));
     assert_eq!(config.sources.len(), 1);
-    assert_eq!(config.font_configs.iter().count(), 19);
     assert!(config.pdf.show_bookmarks);
     assert_eq!(config.image.max_dpi, 300);
     assert!(config.image.downsample);
