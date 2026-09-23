@@ -50,7 +50,7 @@ pub(crate) enum FontReadError {
 /// バイト列は `Arc` で共有する — 同じフォントファイルを指す種別は同一の `Arc` を持ち、
 /// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。seam
 /// （[`ProjectSource::read_bytes`]）が返す `Arc<[u8]>` をそのまま持つのはこのためで、
-/// `Vec` へ移し替えると seam のキャッシュと二重に常駐する。
+/// `Vec` へ移し替えると読み込んだバイト列を複製することになる。
 #[derive(Clone, PartialEq)]
 pub(crate) struct FontData(FontMap<Arc<[u8]>>);
 
