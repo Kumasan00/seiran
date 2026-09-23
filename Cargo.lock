@@ -2314,7 +2314,6 @@ dependencies = [
  "krilla-svg",
  "lopdf",
  "miette",
- "read-fonts 0.43.3",
  "seiran-compiler",
  "tempfile",
  "thiserror",

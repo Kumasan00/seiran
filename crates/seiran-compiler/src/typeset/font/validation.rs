@@ -1,6 +1,8 @@
 //! フォント設定と OpenType テーブルの検証モジュール
 //!
-//! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。
+//! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。軸が未設定でも
+//! `fvar` 自体が読めなければ parse error として拒否する — このモジュールが唯一の保証点で、描画側
+//! （seiran-pdf）はフォントを再パースしない（#681）。
 //! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
 //! severity(Warning) の [`FontWarning`] として集める。成功した `Compilation` と一緒に返すほか、
 //! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す（#550）
@@ -8,7 +10,10 @@
 
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
-use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
+use read_fonts::{
+  FontRef, ReadError, TableProvider,
+  tables::{fvar::Fvar, layout::ScriptList},
+};
 use thiserror::Error;
 use tracing::debug;
 
@@ -287,10 +292,17 @@ pub(super) fn validate_font(
   warnings: &mut Vec<FontWarning>,
 ) -> Vec<FontValidationErrorKind> {
   let mut errors = Vec::new();
-  if let Some(variation_axes) = &config.variation_axes {
-    validate_variation_axes(font_ref, variation_axes, &mut errors);
-  } else if font_ref.fvar().is_ok() {
-    errors.push(FontValidationErrorKind::MissingVariationAxes);
+  // `fvar` は「読めた / 無い / あるが読めない」の 3 通りで、3 つ目を静的フォント扱いにしない — krilla は
+  // 壊れた `fvar` を空軸に畳んで既定インスタンスで描いてしまうので、拒否できるのはここだけ（#681）。
+  // read-fonts は「レコードが無い」場合と「レコードがファイル範囲外を指す」場合の両方で同じ
+  // `TableIsMissing` を返し、ここでは区別していない（`variation-axes` サブコマンドはテーブルディレクトリを
+  // 直接見るので区別できる）。後者（範囲外）は既知の対象外ギャップで、静的フォントとして通ってしまう。
+  match (font_ref.fvar(), &config.variation_axes) {
+    (Ok(fvar), Some(variation_axes)) => validate_variation_axes(&fvar, variation_axes, &mut errors),
+    (Ok(_), None) => errors.push(FontValidationErrorKind::MissingVariationAxes),
+    (Err(ReadError::TableIsMissing(_)), Some(_)) => errors.push(FontValidationErrorKind::NotVariableFont),
+    (Err(ReadError::TableIsMissing(_)), None) => {},
+    (Err(source), _) => errors.push(FontValidationErrorKind::Parse(source)),
   }
 
   check_script_language_support(font_type, config, font_ref, warnings);
@@ -299,14 +311,10 @@ pub(super) fn validate_font(
 
 /// バリエーション軸の存在・値域・設定漏れを検証する。
 fn validate_variation_axes(
-  font_ref: &FontRef<'_>,
+  fvar: &Fvar<'_>,
   config_variation_axes: &[VariationAxis],
   errors: &mut Vec<FontValidationErrorKind>,
 ) {
-  let Ok(fvar) = font_ref.fvar() else {
-    errors.push(FontValidationErrorKind::NotVariableFont);
-    return;
-  };
   let font_axes = match fvar.axes() {
     Ok(axes) => axes,
     Err(e) => {
@@ -573,5 +581,108 @@ mod tests {
     };
     assert_eq!(*script, Tag::new(b"kana"));
     assert_eq!(*language, Tag::new(b"JAN "));
+  }
+
+  /// `fvar` テーブル 1 つだけをテーブルディレクトリに持つ sfnt バイト列を組む（`None` ならテーブル 0 件）。
+  ///
+  /// ヘッダ 12 バイト + レコード 16 バイトの直後に本体を置く。本体を 1 バイトにすると、
+  /// レコードはあるのに `Fvar` のヘッダを読めない（`TableIsMissing` 以外の `ReadError`）フォントになる。
+  fn sfnt_with_fvar(fvar: Option<&[u8]>) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&0x0001_0000u32.to_be_bytes()); // sfntVersion
+    bytes.extend_from_slice(&u16::from(fvar.is_some()).to_be_bytes()); // numTables
+    bytes.extend_from_slice(&[0; 6]); // searchRange / entrySelector / rangeShift
+    if let Some(body) = fvar {
+      bytes.extend_from_slice(b"fvar");
+      bytes.extend_from_slice(&0u32.to_be_bytes()); // checksum
+      bytes.extend_from_slice(&28u32.to_be_bytes()); // offset
+      bytes.extend_from_slice(&u32::try_from(body.len()).unwrap().to_be_bytes()); // length
+      bytes.extend_from_slice(body);
+    }
+    return bytes;
+  }
+
+  /// `variation_axes` だけを指定した検証用の設定（script 無しなので警告の検査は走らない）。
+  fn config_with_axes(variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
+    return FontConfig {
+      font_path: ProjectPath::new(FONT_PATH),
+      font_index: 0,
+      variation_axes,
+      script: None,
+      language: None,
+      ot_language_tag: None,
+      direction: None,
+      features: None,
+    };
+  }
+
+  /// 検証用の軸指定 1 本。
+  fn wght_axis() -> Vec<VariationAxis> {
+    return vec![VariationAxis {
+      name: *b"wght",
+      value: 400.0,
+    }];
+  }
+
+  #[test]
+  fn unreadable_fvar_without_axes_is_rejected_as_parse_error() {
+    // Arrange
+    let bytes = sfnt_with_fvar(Some(&[0]));
+    let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
+    let mut warnings = Vec::new();
+
+    // Act
+    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+
+    // Assert
+    assert!(
+      matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
+      "壊れた fvar を静的フォントとして通さない: {errors:?}"
+    );
+  }
+
+  #[test]
+  fn unreadable_fvar_with_axes_is_a_parse_error_not_a_static_font() {
+    // Arrange
+    let bytes = sfnt_with_fvar(Some(&[0]));
+    let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
+    let mut warnings = Vec::new();
+
+    // Act
+    let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
+
+    // Assert
+    assert!(
+      matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
+      "壊れた fvar を「可変フォントではない」にしない: {errors:?}"
+    );
+  }
+
+  #[test]
+  fn missing_fvar_with_axes_is_not_variable_font() {
+    // Arrange
+    let bytes = sfnt_with_fvar(None);
+    let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
+    let mut warnings = Vec::new();
+
+    // Act
+    let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
+
+    // Assert
+    assert!(matches!(errors.as_slice(), [FontValidationErrorKind::NotVariableFont]), "{errors:?}");
+  }
+
+  #[test]
+  fn missing_fvar_without_axes_is_a_valid_static_font() {
+    // Arrange
+    let bytes = sfnt_with_fvar(None);
+    let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
+    let mut warnings = Vec::new();
+
+    // Act
+    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+
+    // Assert
+    assert!(errors.is_empty(), "{errors:?}");
   }
 }
