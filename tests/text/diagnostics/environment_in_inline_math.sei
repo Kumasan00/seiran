@@ -1,0 +1,3 @@
+\section{見出し}
+
+インライン数式 $\begin{matrix}a\end{matrix}$ の中に環境を書いています。
