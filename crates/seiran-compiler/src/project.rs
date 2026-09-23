@@ -63,7 +63,7 @@ pub(crate) use font::{
 pub(crate) use in_file::InFile;
 pub use memory::MemoryProjectSource;
 pub(crate) use path_resolver::PathResolver;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 pub(crate) use source_set::SourceSet;
 use thiserror::Error;
 pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
@@ -74,13 +74,16 @@ pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 /// 相対パスへの `base_dir` 前置は [`PathResolver`] の責務で、この型は正規化だけを保証する。
 ///
 /// serde は `PathBuf` と同じ TOML 表現（文字列）を透過する — `style.toml` の `csl_path` /
-/// `locale_path` が `Style` の一部として deserialize / serialize されるため。deserialize 時に行うのは
-/// 字句的正規化だけで、`base_dir` の前置は `style::load` が [`PathResolver`] で行う。
+/// `locale_path` が `Style` の一部として deserialize されるため（serialize はテストビルド限定で、
+/// `compiler::test_support::TestProject` が `Style` を書き戻す経路だけが使う。#684）。
+/// deserialize 時に行うのは字句的正規化だけで、`base_dir` の前置は `style::load` が
+/// [`PathResolver`] で行う。
 ///
 /// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
 /// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(from = "PathBuf", into = "PathBuf")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize), serde(into = "PathBuf"))]
+#[serde(from = "PathBuf")]
 pub struct ProjectPath(PathBuf);
 
 impl ProjectPath {
@@ -95,7 +98,7 @@ impl From<PathBuf> for ProjectPath {
 }
 
 impl From<ProjectPath> for PathBuf {
-  /// serde の `into` 経路と、公開 interface（`DependencyManifest`）への変換に使う。
+  /// テストビルドの serde `into` 経路と、公開 interface（`DependencyManifest`）への変換に使う。
   fn from(path: ProjectPath) -> Self { return path.0; }
 }
 
@@ -229,7 +232,7 @@ mod tests {
 
   #[test]
   fn serialize_round_trips_as_a_plain_string() {
-    // Arrange — `TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
+    // Arrange — テストの `TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct Holder {
       path: ProjectPath,

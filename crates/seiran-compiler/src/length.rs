@@ -26,7 +26,7 @@ use std::{
 };
 
 use derive_more::{Add, AddAssign, Neg, Sub, SubAssign};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+use serde::{Deserialize, Deserializer, de::Error};
 
 /// 1 pt あたりの sp 数（TeX の scaled point と同じ分解能 2^16）。
 const SP_PER_PT: i64 = 65536;
@@ -88,7 +88,7 @@ impl Length {
   )]
   pub fn to_pt(self) -> f32 { return (self.0 as f64 / SP_PER_PT as f64) as f32; }
 
-  /// pt 値を f64 で返す（[`Serialize`] の正準形やダンプ整形など、高精度が要る出力境界用）。
+  /// pt 値を f64 で返す（mm 換算やダンプ整形など、f32 では精度が足りない変換・出力境界用）。
   #[must_use]
   pub fn to_pt_f64(self) -> f64 { return self.0 as f64 / SP_PER_PT as f64; }
 
@@ -198,8 +198,11 @@ impl<'de> Deserialize<'de> for Length {
   }
 }
 
-impl Serialize for Length {
-  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+/// テストビルド限定。`compiler::test_support::TestProject` が型付きで書き換えた `Style` を
+/// style.toml へ書き戻すためだけに使う（本体に直列化の消費者はいない。#684）。
+#[cfg(test)]
+impl serde::Serialize for Length {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     // 内部表現は sp なので pt に戻して pt サフィックス付きの正準形で書き出す。
     // 人間向けの [`Display`](fmt::Display)（f32）ではなく f64 で書くのは、`Deserialize` と
     // 無損失に往復させるため（sp は f32 の仮数に収まらない）。
@@ -365,8 +368,8 @@ mod tests {
   #[test]
   fn serde_round_trip_is_lossless_for_mm_values() {
     // Arrange — mm 由来の値は sp が f32 の仮数に収まらず、f32 経由の往復では数 sp ずれる。
-    // style.toml を型付き `Style` から再直列化して読み直す経路（golden）が座標を動かさないよう、
-    // serde の往復は無損失であることを固定する。
+    // テストの `TestProject` が型付き `Style` を style.toml へ再直列化して読み直す経路（golden）が
+    // 座標を動かさないよう、テストビルド限定の serde 往復が無損失であることを固定する。
     for mm in [99.0f32, 85.0, 275.0, 12.0, 0.5] {
       let value = Length::mm(mm);
 

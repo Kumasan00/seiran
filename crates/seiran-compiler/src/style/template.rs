@@ -18,7 +18,7 @@
 use std::ops::Range;
 
 use garde::{Path, Report, Validate};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer};
 
 use crate::style::counter::CounterName;
 
@@ -208,7 +208,9 @@ macro_rules! define_template {
       #[must_use]
       pub(crate) fn parse(source: &str) -> Self { return Self(Analyzed::parse(source)); }
 
-      /// TOML に書かれた元の文字列
+      /// TOML に書かれた元の文字列（テストビルド限定。本体の消費者は無く、テストの検証と
+      /// テストビルド限定の `Serialize` だけが使う）
+      #[cfg(test)]
       #[must_use]
       pub(super) fn as_str(&self) -> &str { return self.0.as_str(); }
     }
@@ -219,8 +221,11 @@ macro_rules! define_template {
       }
     }
 
-    impl Serialize for $name {
-      fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    /// テストビルド限定。`compiler::test_support::TestProject` が `Style` を style.toml へ書き戻すためだけに
+    /// 使う（本体に直列化の消費者はいない。#684）。
+    #[cfg(test)]
+    impl serde::Serialize for $name {
+      fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         return serializer.serialize_str(self.as_str());
       }
     }
@@ -542,6 +547,10 @@ impl RunningTemplate {
       };
     });
   }
+
+  /// テンプレート文字列が空白のみかどうか
+  #[must_use]
+  pub(super) fn is_blank(&self) -> bool { return self.0.as_str().trim().is_empty(); }
 }
 
 #[cfg(test)]

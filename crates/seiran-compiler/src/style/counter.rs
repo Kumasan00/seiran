@@ -484,7 +484,7 @@ resets = []
 
   #[test]
   fn serialized_default_roundtrips_through_table() {
-    // Arrange — `compiler::test_support::TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
+    // Arrange — テストの `compiler::test_support::TestProject` が `Style` を `toml::to_string` で書き戻す経路と同じ形
     let text = toml::to_string(&Counters::default()).unwrap();
 
     // Act

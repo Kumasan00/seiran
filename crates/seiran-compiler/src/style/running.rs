@@ -56,9 +56,7 @@ impl RunningContentStyle {
   /// 3 スロットすべてが空（空白のみを含む）かどうかを返す。
   #[must_use]
   pub(crate) fn is_empty(&self) -> bool {
-    return self.left.as_str().trim().is_empty()
-      && self.center.as_str().trim().is_empty()
-      && self.right.as_str().trim().is_empty();
+    return self.left.is_blank() && self.center.is_blank() && self.right.is_blank();
   }
 }
 

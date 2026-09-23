@@ -2,11 +2,11 @@
 //!
 //! TOML 上では `"#rrggbb"` の 16 進文字列で指定する（`[r, g, b]` 配列は受け付けない）。
 //! 文字列との相互変換は [`FromStr`] / [`Display`](fmt::Display) の正準形 `#rrggbb`（小文字）に
-//! 集約し、serde の [`Serialize`] / [`Deserialize`] もこの 2 実装へ委譲する。
+//! 集約し、serde の [`Deserialize`]（とテストビルド限定の `Serialize`）もこの 2 実装へ委譲する。
 
 use std::{fmt, str::FromStr};
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+use serde::{Deserialize, Deserializer, de::Error};
 
 /// 8bit RGB 色（`[u8; 3]`）の newtype
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -94,8 +94,11 @@ impl<'de> Deserialize<'de> for Color {
   }
 }
 
-impl Serialize for Color {
-  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+/// テストビルド限定。`compiler::test_support::TestProject` が `Style` を style.toml へ書き戻すためだけに
+/// 使う（本体に直列化の消費者はいない。#684）。
+#[cfg(test)]
+impl serde::Serialize for Color {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     // 正準形は [`Display`](fmt::Display) が唯一の定義箇所。`Length` と違い `#rrggbb` は
     // 無損失なので、往復精度のための別実装を持たない。
     return serializer.serialize_str(&self.to_string());
