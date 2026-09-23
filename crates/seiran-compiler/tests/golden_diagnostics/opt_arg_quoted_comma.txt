@@ -1,0 +1,11 @@
+frontend::eval::unknown_opt_arg_key
+
+  × theorem の任意引数に不明なキー `b"` が指定されています
+   ╭─[tests/text/diagnostics/opt_arg_quoted_comma.sei:1:16]
+ 1 │ \begin{theorem}[title="a, b"]
+   ·                ───────┬──────
+   ·                       ╰── このキーは許可されていません
+ 2 │ 本文。
+   ╰────
+  help: 許可されているキー: title: string, label: string。値に `,` や `=` を含めるときは `\,` /
+        `\=` と書きます
