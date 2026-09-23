@@ -58,8 +58,8 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   （`multiple_inherent_impl` は子 module の impl を見ない）。例外は 2 つ —
   module facade の `#[cfg(test)] pub(crate) use ...;`（本番 API を広げずにテストへ型・ヘルパを出す唯一の
   手段で、外すと本体ビルドで `unused_imports` が `-D warnings` に当たる）と、**本番の型が持つテスト専用の
-  フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `TheoremClass::ALL` / `NodeId::for_test`
-  のような、型そのものに属していて module へ切り離せないもの）。後者は 22 箇所あり、`mod tests` の中の
+  フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `TheoremClass::COUNT` / `NodeId::for_test`
+  のような、型そのものに属していて module へ切り離せないもの）。後者は 20 箇所あり、`mod tests` の中の
   `impl` へ寄せると「crate 全体から見える `pub(crate)` が `tests` という名前の module に住む」別の
   ねじれが生じるため、いまは項目に付けたまま残している（#696）。**再検討のトリガー**は
   「同じ型のテスト専用アクセサが 3 つ以上に増えたとき」— そのときは型ごとの置き場を設計し直す。

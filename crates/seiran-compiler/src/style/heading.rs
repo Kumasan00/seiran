@@ -15,6 +15,9 @@ use crate::{
 };
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
+///
+/// TOML からは [`HeadingStylesTable`]（各エントリが差分指定 [`HeadingStyleOverride`]）として読み、
+/// [`HeadingStyles::default`] のレベル別既定へ重ねて解決済みの値を作る。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(from = "HeadingStylesTable")]
 pub(crate) struct HeadingStyles {
@@ -94,6 +97,8 @@ impl Index<HeadingLevel> for HeadingStyles {
 }
 
 /// 見出し要素のスタイル設定
+///
+/// TOML のスキーマは [`HeadingStyleOverride`]。
 #[derive(Debug, Clone, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 pub(crate) struct HeadingStyle {

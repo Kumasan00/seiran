@@ -16,6 +16,9 @@ use crate::{
 };
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
+///
+/// TOML からは [`TheoremsTable`]（各エントリが差分指定 [`TheoremStyleOverride`]）として読み、
+/// [`Theorems::default`] のクラス別既定へ重ねて解決済みの値を作る。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(from = "TheoremsTable")]
 pub(crate) struct Theorems {
