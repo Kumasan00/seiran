@@ -14,7 +14,7 @@ use krilla::{
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
 use seiran_compiler::{
-  Color, Destination as PubDestination, GlyphRun, ImageFormat, ImageRef, PaintOp, Point as PubPoint, Publication,
+  Color, Destination as PubDestination, GlyphRun, PaintOp, Point as PubPoint, Publication, PublicationImage,
   PublicationLink, PublicationLinkTarget, PublicationOutlineEntry, PublicationResources, Rect as PubRect,
 };
 
@@ -140,23 +140,6 @@ fn draw_glyph_run(
   }
 }
 
-/// `PaintOp::DrawImage` を描画する。
-fn draw_publication_image(
-  surface: &mut Surface<'_>,
-  resources: &PublicationResources,
-  image: ImageRef,
-  rect: PubRect,
-  target_dpi: Option<u32>,
-) -> Result<(), PdfRenderError> {
-  let image = resources.image(image);
-  return draw_image(surface, &image.path, image.format, &image.bytes, rect, target_dpi);
-}
-
-/// `PaintOp::FillRect` を描画する
-fn draw_publication_fill(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) {
-  draw_filled_rect(surface, rect, color);
-}
-
 /// `PaintOp` 1 個を描画する
 fn draw_paint_op(
   surface: &mut Surface<'_>,
@@ -173,10 +156,10 @@ fn draw_paint_op(
       rect,
       target_dpi,
     } => {
-      draw_publication_image(surface, resources, *image, *rect, *target_dpi)?;
+      draw_image(surface, resources.image(*image), *rect, *target_dpi)?;
     },
     PaintOp::FillRect { rect, color } => {
-      draw_publication_fill(surface, *rect, *color);
+      draw_filled_rect(surface, *rect, *color);
     },
   }
   return Ok(());
@@ -214,19 +197,17 @@ pub(crate) fn render_pages(
   return Ok(());
 }
 
-/// 確定済みの矩形に画像を描画する。
+/// 確定済みの矩形に画像資源を描画する。
 ///
 /// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する。
 fn draw_image(
   surface: &mut Surface<'_>,
-  path: &str,
-  format: ImageFormat,
-  bytes: &[u8],
+  image: &PublicationImage,
   rect: PubRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfRenderError> {
   let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
-  let loaded = load_image(path, format, bytes, None)?;
+  let loaded = load_image(&image.path, image.format, &image.bytes, None)?;
   let (nat_width, nat_height) = loaded.natural_size();
   let loaded = if matches!(loaded, LoadedImage::Raster(_))
     && let Some(dpi) = target_dpi
@@ -239,7 +220,7 @@ fn draw_image(
       reason = "`required_pixels` は有限かつ正の値だけを返し、`ceil().max(1.0)` で 1 以上に丸めた後の縮小目標ピクセル数"
     )]
     let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
-    load_image(path, format, bytes, Some(target_u))?
+    load_image(&image.path, image.format, &image.bytes, Some(target_u))?
   } else {
     loaded
   };
@@ -254,7 +235,7 @@ fn draw_image(
     LoadedImage::Svg(tree) => {
       surface.draw_svg(tree.as_ref(), size, SvgSettings::default()).ok_or_else(|| {
         return PdfRenderError::DrawSvg {
-          path: path.to_string(),
+          path: image.path.clone(),
         };
       })?;
     },
