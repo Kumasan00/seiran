@@ -39,11 +39,6 @@ enum OptType {
   PositiveLength,
   /// 1 以上の整数。小数は拒否する
   PositiveInt,
-  /// 1 以上の整数。小数は四捨五入して受理する
-  ///
-  /// `\image[dpi=N]` の現行の振る舞いを保つための暫定エントリ。#689 で [`OptType::PositiveInt`] へ
-  /// 統合し、この variant と [`FractionPolicy`] を削除する。
-  RoundedInt,
   /// 色。`#rrggbb` の 16 進文字列を [`crate::color::Color`] に変換する（大文字小文字不問）
   Color,
 }
@@ -55,8 +50,7 @@ impl fmt::Display for OptType {
       Self::String => "string",
       Self::Length => "length (mm/cm)",
       Self::PositiveLength => "positive length",
-      // 小数の扱いの違いはユーザ向けの表記に出さない（どちらも「1 以上の整数」を要求する）
-      Self::PositiveInt | Self::RoundedInt => "positive integer",
+      Self::PositiveInt => "positive integer",
       Self::Color => "color (#rrggbb)",
     };
     return f.write_str(s);
@@ -75,7 +69,7 @@ pub(super) enum OptValue {
   String(String),
   /// [`crate::length::Length`] に正規化された長さ（`Length` / `PositiveLength` 共通）
   Length(Length),
-  /// 1 以上の整数（`PositiveInt` / `RoundedInt` 共通）
+  /// 1 以上の整数
   Integer(u32),
   /// [`crate::color::Color`] に変換された色
   Color(Color),
@@ -163,15 +157,6 @@ pub(super) const fn positive_int(name: &'static str) -> OptKey<u32> {
   return OptKey {
     name,
     ty: OptType::PositiveInt,
-    marker: PhantomData,
-  };
-}
-
-/// 1 以上の整数のキーを宣言する（小数は四捨五入して受理する。#689 で [`positive_int`] へ統合する）
-pub(super) const fn rounded_int(name: &'static str) -> OptKey<u32> {
-  return OptKey {
-    name,
-    ty: OptType::RoundedInt,
     marker: PhantomData,
   };
 }
@@ -396,13 +381,7 @@ fn parse_value(
       return Ok(OptValue::Length(v));
     },
     OptType::PositiveInt => {
-      let v =
-        parse_positive_int(raw, FractionPolicy::Reject).ok_or_else(|| return invalid(name, key, expected, span))?;
-      return Ok(OptValue::Integer(v));
-    },
-    OptType::RoundedInt => {
-      let v =
-        parse_positive_int(raw, FractionPolicy::Round).ok_or_else(|| return invalid(name, key, expected, span))?;
+      let v = parse_positive_int(raw).ok_or_else(|| return invalid(name, key, expected, span))?;
       return Ok(OptValue::Integer(v));
     },
     OptType::Color => {
@@ -436,32 +415,13 @@ fn parse_length(raw: &str) -> Option<Length> {
   return Some(Length::mm(value));
 }
 
-/// 「1 以上の整数」を要求する値の、小数の扱い
-///
-/// #689 で `Reject` 1 種へ統合し、この enum を削除する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FractionPolicy {
-  /// 小数を拒否する（`enumerate[start=N]` / `\cell[span=N]`）
-  Reject,
-  /// 小数を四捨五入して受理する（`\image[dpi=N]` の現行の振る舞い）
-  Round,
-}
-
 /// 「1 以上の整数」の検査と `u32` への変換（値域の検査はここ 1 箇所）
 ///
-/// `f64` として読めること・有限・`u32::MAX` 以下を確認し、`policy` に従って小数を拒否または
-/// 四捨五入したうえで、1 以上であることを確認する。
-fn parse_positive_int(raw: &str, policy: FractionPolicy) -> Option<u32> {
+/// `f64` として読めること・有限・`u32::MAX` 以下・小数部が 0・1 以上であることを確認する。
+/// 小数を丸めて受理しないのは、書かれた値と別の値を使うことになるため（P6）。
+fn parse_positive_int(raw: &str) -> Option<u32> {
   let parsed: f64 = raw.trim().parse().ok()?;
-  if !parsed.is_finite() || parsed > f64::from(u32::MAX) {
-    return None;
-  }
-  let value = match policy {
-    FractionPolicy::Reject if parsed.fract() != 0.0 => return None,
-    FractionPolicy::Reject => parsed,
-    FractionPolicy::Round => parsed.round(),
-  };
-  if value < 1.0 {
+  if !parsed.is_finite() || parsed > f64::from(u32::MAX) || parsed.fract() != 0.0 || parsed < 1.0 {
     return None;
   }
   // `#[expect]` は `as` を含む `let` に付ける（`return` 文に付けると expectation が満たされない）
@@ -470,7 +430,7 @@ fn parse_positive_int(raw: &str, policy: FractionPolicy) -> Option<u32> {
     clippy::cast_possible_truncation,
     reason = "直前のガードで有限・1 以上・整数・`u32::MAX` 以下であることを確認済み"
   )]
-  let truncated = value as u32;
+  let truncated = parsed as u32;
   return Some(truncated);
 }
 
@@ -857,7 +817,16 @@ mod tests {
     // Arrange — 0 / 負値 / 小数 / `u32::MAX` 超過 / 数値でない値をすべて拒否する
     const START: OptKey<u32> = positive_int("start");
     let arena = Bump::new();
-    for raw in ["0", "-1", "1.5", "4294967296", "foo"] {
+    for raw in [
+      "0",
+      "-1",
+      "1.5",
+      "72.5",
+      "0.4",
+      "4294967295.4",
+      "4294967296",
+      "foo",
+    ] {
       let source = format!(r"\section[start={raw}]{{T}}");
       let cst = test_support::parse(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
@@ -874,52 +843,14 @@ mod tests {
   }
 
   #[test]
-  fn collect_rounds_fraction_for_rounded_int() {
-    // Arrange — #689 で `PositiveInt` へ統合するまでの `\image[dpi=N]` の現行の振る舞い
-    const DPI: OptKey<u32> = rounded_int("dpi");
-    let arena = Bump::new();
-    let source = r"\section[dpi=72.5]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    // Act
-    let opts = collect_command_opt_args(&view, &[DPI.decl()]).unwrap();
-
-    // Assert
-    assert_eq!(opts.get(DPI), Some(73));
-  }
-
-  #[test]
-  fn collect_rejects_out_of_range_values_for_rounded_int() {
-    // Arrange — 四捨五入して 0 になる値・負値・`u32::MAX` 超過は受理しない
-    const DPI: OptKey<u32> = rounded_int("dpi");
-    let arena = Bump::new();
-    for raw in ["0", "0.4", "-150", "4294967295.4"] {
-      let source = format!(r"\section[dpi={raw}]{{T}}");
-      let cst = test_support::parse(&source, &arena).unwrap();
-      let view = CommandView::new(first_command_node(cst), &source);
-
-      // Act
-      let result = collect_command_opt_args(&view, &[DPI.decl()]);
-
-      // Assert
-      assert!(
-        matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive integer"),
-        "`dpi={raw}` は 1 以上の整数にならないので拒否される"
-      );
-    }
-  }
-
-  #[test]
   fn opt_type_display_lists_expected_format() {
-    // Arrange — 診断の `expected` 文字列（`RoundedInt` は `PositiveInt` と同じ表記）
+    // Arrange — 診断の `expected` 文字列
     let cases = [
       (OptType::Bool, "boolean"),
       (OptType::String, "string"),
       (OptType::Length, "length (mm/cm)"),
       (OptType::PositiveLength, "positive length"),
       (OptType::PositiveInt, "positive integer"),
-      (OptType::RoundedInt, "positive integer"),
       (OptType::Color, "color (#rrggbb)"),
     ];
 
@@ -964,24 +895,6 @@ mod tests {
     assert_eq!(opts.get(NUMBERED), None, "ソースに書かれていないキーは None");
   }
 
-  #[test]
-  fn declared_key_carries_expected_type_into_schema() {
-    // Arrange — キー定数 1 つがスキーマの型と取り出しの型の両方を決める
-    // `\image` は figure 環境の中でしか出現できないので、トップレベルで通る `\section` を使う
-    // （テストの主題はキー定数の型タグの確認で、コマンド名ではない）
-    const DPI: OptKey<u32> = rounded_int("dpi");
-    let arena = Bump::new();
-    let source = r"\section[dpi=72.5]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    // Act
-    let opts = collect_command_opt_args(&view, &[DPI.decl()]).unwrap();
-
-    // Assert
-    assert_eq!(opts.get(DPI), Some(73));
-  }
-
   /// `ty` を作る入力文字列と、それが作るべき [`OptValue`] を返す
   ///
   /// 全 variant を明示した match（wildcard なし）にしてあるので、`OptType` に variant を足すと
@@ -993,7 +906,6 @@ mod tests {
       OptType::String => return ("foo", OptValue::String("foo".to_string())),
       OptType::Length | OptType::PositiveLength => return ("10mm", OptValue::Length(Length::mm(10.0))),
       OptType::PositiveInt => return ("3", OptValue::Integer(3)),
-      OptType::RoundedInt => return ("3.4", OptValue::Integer(3)),
       OptType::Color => return ("#ff0000", OptValue::Color("#ff0000".parse().unwrap())),
     }
   }
@@ -1009,7 +921,6 @@ mod tests {
       OptType::Length,
       OptType::PositiveLength,
       OptType::PositiveInt,
-      OptType::RoundedInt,
       OptType::Color,
     ];
 

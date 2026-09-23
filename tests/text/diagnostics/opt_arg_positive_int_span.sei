@@ -1,0 +1,4 @@
+\begin{table}[columns=left left]
+\row{\cell[span=1.5]{a} & b}
+\caption{c}
+\end{table}
