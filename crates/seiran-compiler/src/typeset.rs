@@ -58,7 +58,7 @@ mod test_support;
 // テストが確定レイアウトを**組み立てる**手段は `#[cfg(test)]` の子 module `test_support` が持つ
 // （#353）。
 #[cfg(test)]
-pub(crate) use boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, PlacedBlock};
+pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
 // テスト専用の例外 — `compiler::golden` が確定ページ列をダンプ比較するための関数 1 つだけを出す
 // （中間型そのものは出さない。`compiler::project_source_equivalence` はここも消費しない）。
 #[cfg(test)]

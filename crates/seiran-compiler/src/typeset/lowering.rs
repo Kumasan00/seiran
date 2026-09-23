@@ -15,7 +15,7 @@ use crate::{
   length::Length,
   semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
   style::Style as ReadStyle,
-  typeset::boxes::AnchorMark,
+  typeset::boxes::AnchorId,
 };
 
 mod code;
@@ -147,6 +147,23 @@ pub(super) struct HeadingRecord {
   pub number: String,
   /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）
   pub title_plain: String,
+}
+
+impl HeadingRecord {
+  /// 目次の項目としおりに表示する「番号 タイトル」を組む
+  ///
+  /// 番号・タイトルのどちらかが空ならもう片方だけを返す（区切りの空白を付けない）。目次としおりの
+  /// 表示を揃えるため、両者はこのメソッドだけを使う。
+  #[must_use]
+  pub(in crate::typeset) fn label(&self) -> String {
+    if self.number.is_empty() {
+      return self.title_plain.clone();
+    }
+    if self.title_plain.is_empty() {
+      return self.number.clone();
+    }
+    return format!("{} {}", self.number, self.title_plain);
+  }
 }
 
 /// 子 module のテストが lowering の入力を組み立てるための最小ヘルパ
@@ -391,10 +408,8 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
 /// ディスプレイ数式は環境ラベルと行ラベルを積んだ `Vec<&LabelId>` を渡す（複数行がラベルを持つ場合も、
 /// いずれもブロック先頭座標に解決される）。
 fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  let mut result: Vec<LayoutNode> = labels
-    .into_iter()
-    .map(|label| return LayoutNode::Anchor(AnchorMark::Label(label.clone())))
-    .collect();
+  let mut result: Vec<LayoutNode> =
+    labels.into_iter().map(|label| return LayoutNode::Anchor(AnchorId::Label(label.clone()))).collect();
   // ラベルの無いブロック（大半がこれ）では `nodes` をそのまま返し、詰め替えを避ける
   if result.is_empty() {
     return nodes;
@@ -414,7 +429,7 @@ mod tests {
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
     style::CounterTemplate,
-    typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
+    typeset::boxes::{AnchorId, LinkTarget},
   };
 
   /// 複数の `.sei` ソースを 1 つの文書として parse → analyze するテストヘルパ
@@ -587,7 +602,7 @@ mod tests {
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
     let indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
     assert_eq!(indices, vec![0, 1, 2], "見出し index は文書順に連番のはず: {headings:?}");
-    // `AnchorMark::Heading` の key が `HeadingRecord::index` と 1:1 かつ同順で対応することを確かめる。
+    // `AnchorId::Heading` の key が `HeadingRecord::index` と 1:1 かつ同順で対応することを確かめる。
     //
     // 左辺（アンカー）は「レイアウト木を文書順に辿って現れた順」、右辺（見出し記録）は
     // 「`analyze` が facts に積んだ順」で、出所が独立している。両者がずれると
@@ -598,12 +613,12 @@ mod tests {
     assert_eq!(anchor_keys, indices, "アンカーの key は見出し記録の index と順序込みで一致するはず: {layout:?}");
   }
 
-  /// レイアウトノード木から `AnchorMark::Heading` の key（文書順インデックス）を集める
+  /// レイアウトノード木から `AnchorId::Heading` の key（文書順インデックス）を集める
   fn collect_heading_anchor_keys(nodes: &[LayoutNode]) -> Vec<usize> {
     let mut keys = Vec::new();
     for node in nodes {
       match node {
-        LayoutNode::Anchor(AnchorMark::Heading { key, .. }) => keys.push(key.index()),
+        LayoutNode::Anchor(AnchorId::Heading(key)) => keys.push(key.index()),
         LayoutNode::VBox { children, .. } => {
           keys.extend(collect_heading_anchor_keys(children));
         },
@@ -675,7 +690,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(out.first(), Some(LayoutNode::Anchor(AnchorMark::Label(l))) if l.as_str() == "eq:foo"),
+      matches!(out.first(), Some(LayoutNode::Anchor(AnchorId::Label(l))) if l.as_str() == "eq:foo"),
       "先頭は Label アンカー: {out:?}"
     );
   }
@@ -705,7 +720,7 @@ mod tests {
     let anchors: Vec<&str> = out
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Anchor(AnchorMark::Label(label)) => return Some(label.as_str()),
+        LayoutNode::Anchor(AnchorId::Label(label)) => return Some(label.as_str()),
         _ => return None,
       })
       .collect();
@@ -822,5 +837,20 @@ mod tests {
 
     // Assert
     assert_eq!(headings[0].title_plain, "結論 [1]", "{headings:?}");
+  }
+
+  #[test]
+  fn heading_label_combines_number_and_title() {
+    let record = |number: &str, title_plain: &str| {
+      return HeadingRecord {
+        index: 0,
+        level: HeadingLevel::Section,
+        number: number.to_string(),
+        title_plain: title_plain.to_string(),
+      };
+    };
+    assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");
+    assert_eq!(record("", "Intro").label(), "Intro");
+    assert_eq!(record("1.2", "").label(), "1.2");
   }
 }

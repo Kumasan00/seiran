@@ -33,7 +33,7 @@ mod yakumono;
 
 use std::borrow::Cow;
 
-pub(super) use composed_line::{LineAccum, row_width};
+pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
 use hyphenation::Lang;
 pub(super) use shaping::Shaper;
 use tracing::debug;
@@ -42,8 +42,8 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{
-      Align, Block, HBox, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
-      max_font_size_in_items,
+      Align, Block, HBox, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox,
+      TableRowBox, max_font_size_in_items,
     },
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
@@ -148,9 +148,9 @@ impl BlockBuilder<'_> {
         LayoutNode::Inline(inline) => {
           self.measurer.collect_inline(inline, paragraph);
         },
-        LayoutNode::Anchor(mark) => {
+        LayoutNode::Anchor(id) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          blocks.push(Block::Anchor(mark));
+          blocks.push(Block::Anchor(id));
         },
         LayoutNode::VBox {
           children,
@@ -340,17 +340,17 @@ impl<'a> Measurer<'a> {
           self.collect_inline(child, &mut items);
         }
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
-        out.push(HItem::Footnote {
+        out.push(HItem::Footnote(MeasuredFootnote {
           number,
           index,
           items,
           leading: dominant_font_size * self.line_height_factor,
-        });
+        }));
       },
       // 索引マーカーは幅 0 の運搬マーカーとしてそのまま積む。ページ確定座標化・重複除去は
       // `crate::typeset::breaking`（`Line::index_marks` 経由）が行う
-      InlineNode::IndexMark { word, reading } => {
-        out.push(HItem::IndexMark { word, reading });
+      InlineNode::IndexMark(term) => {
+        out.push(HItem::IndexMark(term));
       },
     }
   }

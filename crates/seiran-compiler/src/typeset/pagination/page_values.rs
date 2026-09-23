@@ -7,7 +7,7 @@
 
 use crate::{
   style::PageNumbering,
-  typeset::boxes::{AnchorMark, Page},
+  typeset::boxes::{AnchorId, Page},
 };
 
 /// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
@@ -68,7 +68,7 @@ impl BodyPageValues {
     let mut heading_pages = Vec::new();
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
-        if matches!(anchor.mark, AnchorMark::Heading { .. }) {
+        if matches!(anchor.id, AnchorId::Heading(_)) {
           heading_pages.push(PageIndex::new(page_index));
         }
       }
@@ -147,21 +147,21 @@ mod tests {
     length::Length,
     semantics::{HeadingKey, LabelId},
     style::PageNumbering,
-    typeset::boxes::{AnchorMark, Page, PlacedAnchor},
+    typeset::boxes::{AnchorId, Page, PlacedAnchor},
   };
 
-  /// 指定マークのアンカーだけを持つページを作るヘルパ
-  fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {
+  /// 指定 id のアンカーだけを持つページを作るヘルパ
+  fn page_with_anchors(ids: Vec<AnchorId>) -> Page {
     return Page {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
       footnotes: Vec::new(),
-      anchors: marks
+      anchors: ids
         .into_iter()
-        .map(|mark| {
+        .map(|id| {
           return PlacedAnchor {
-            mark,
+            id,
             x: Length::ZERO,
             y: Length::ZERO,
           };
@@ -178,16 +178,10 @@ mod tests {
   fn from_body_pages_picks_heading_anchors_in_order() {
     // Arrange — page0 に見出し 1 つ、page1 に Label（無視）+ 見出し 1 つ
     let pages = vec![
-      page_with_anchors(vec![AnchorMark::Heading {
-        key: HeadingKey::new(0),
-        label: None,
-      }]),
+      page_with_anchors(vec![AnchorId::Heading(HeadingKey::new(0))]),
       page_with_anchors(vec![
-        AnchorMark::Label(LabelId::new("tab:1")),
-        AnchorMark::Heading {
-          key: HeadingKey::new(1),
-          label: None,
-        },
+        AnchorId::Label(LabelId::new("tab:1")),
+        AnchorId::Heading(HeadingKey::new(1)),
       ]),
     ];
 

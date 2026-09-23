@@ -1,13 +1,18 @@
 //! 生成コンテンツ（目次・索引・走り文）が使う 1 行組み立ての仕組み
 //!
-//! [`Shaper`](crate::typeset::boxing::Shaper) がシェーピングした `HBox` 列を、指定した x 座標から水平に
+//! [`Shaper`] がシェーピングした `HBox` 列を、指定した x 座標から水平に
 //! 並べて `Line` へ確定する。
 //! 何を組むか（目次のリーダー・索引のページ番号列・走り文のスロット）は消費側の機能 module が持ち、
 //! ここは「箱を並べて行の高さ・深さを取る」計測側の仕組みだけを持つ。
+//! 左寄せ 1 行（目次・索引の見出し行）のように、どの消費者でも同じ形の行はここに置く。
 
 use crate::{
   length::Length,
-  typeset::boxes::{HBox, Line, LineLink, PositionedBox},
+  typeset::{
+    boxes::{HBox, Line, LineLink, PositionedBox},
+    boxing::Shaper,
+    lowering::TextStyle,
+  },
 };
 
 /// 単一行を組み立てる際の累積状態（配置済みボックス・行の高さ・深さ）
@@ -54,6 +59,13 @@ impl LineAccum {
 
 /// `HBox` 列の合計幅を返す（右寄せ・中央揃えの基準に使う）
 pub(crate) fn row_width(hboxes: &[HBox]) -> Length { return hboxes.iter().map(|hbox| return hbox.width).sum(); }
+
+/// テキストを左端（x=0）からシェーピングして単一行に組む（目次・索引の見出し行用）
+pub(in crate::typeset) fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
+  let mut acc = LineAccum::default();
+  acc.place(shaper.shape_text(text, style), Length::ZERO);
+  return acc.into_line(Vec::new());
+}
 
 #[cfg(test)]
 mod tests {

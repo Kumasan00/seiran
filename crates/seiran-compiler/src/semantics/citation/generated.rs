@@ -24,7 +24,7 @@ use crate::{document::FontKind, semantics::citation::CitationId};
 /// レベルは `Section` 固定なので、いずれも生成物には埋め込まず `typeset::lowering` が組み立てる。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BibliographyEntry {
-  /// このエントリが対応する引用キー（lowering が `AnchorMark::Citation` にする）
+  /// このエントリが対応する引用キー（lowering が `AnchorId::Citation` にする）
   pub(crate) key: CitationId,
   /// CSL 整形済みの本文インライン列
   pub(crate) body: Vec<GeneratedInline>,
@@ -52,11 +52,11 @@ pub(crate) enum GeneratedInline {
 
   /// 整形済みの内部リンク（文書内アンカーへのジャンプ）
   ///
-  /// 引用表示から書誌エントリのアンカー（lowering が組み立てる `AnchorMark::Citation`）へ飛ぶための唯一のリンク種別。
+  /// 引用表示から書誌エントリのアンカー（lowering が組み立てる `AnchorId::Citation`）へ飛ぶための唯一のリンク種別。
   /// 外部 URL（DOI 等）へのリンクは `citation::render` が現状生成しない（hyperref 対応まで
   /// URL を捨ててテキストだけを残す）ため、外部リンクの variant は持たない。
   InternalLink {
-    /// ジャンプ先の引用キー（`AnchorMark::Citation(target)` と一致させる）
+    /// ジャンプ先の引用キー（`AnchorId::Citation(target)` と一致させる）
     target: CitationId,
     /// 表示テキスト（インライン要素）
     children: Vec<GeneratedInline>,

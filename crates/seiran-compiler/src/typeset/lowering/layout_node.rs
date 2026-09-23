@@ -5,7 +5,7 @@ use crate::{
   document::FontKind,
   length::Length,
   project::ProjectPath,
-  typeset::boxes::{Align, AnchorMark, LinkTarget, TableColumn},
+  typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
 };
 
 /// レイアウトエンジン（`crate::typeset::boxing::build_blocks`）が処理する最小単位
@@ -53,7 +53,7 @@ pub(in crate::typeset) enum LayoutNode {
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   MathBlock(MathBlockLayout),
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
-  Anchor(AnchorMark),
+  Anchor(AnchorId),
   /// 強制改ページ
   PageBreak,
   /// keep-with-next マーカー（ゼロサイズ）
@@ -121,12 +121,7 @@ pub(in crate::typeset) enum InlineNode {
     body: Vec<InlineNode>,
   },
   /// 索引語（`\index{語}`）の運搬マーカー（ゼロサイズ）
-  IndexMark {
-    /// 索引語
-    word: String,
-    /// 読みソートキー（`[reading=...]`）
-    reading: Option<String>,
-  },
+  IndexMark(IndexTerm),
 }
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
@@ -290,7 +285,7 @@ pub(super) fn merge_adjacent_text(nodes: Vec<InlineNode>) -> Vec<InlineNode> {
       (Some(InlineNode::Text(prev, prev_style)), InlineNode::Text(cur, cur_style)) if *prev_style == cur_style => {
         prev.push_str(&cur);
       },
-      (Some(InlineNode::Text(..)), node @ InlineNode::IndexMark { .. }) => {
+      (Some(InlineNode::Text(..)), node @ InlineNode::IndexMark(_)) => {
         deferred_marks.push(node);
       },
       (_, node) => {
@@ -395,10 +390,10 @@ mod tests {
     let s1 = style(FontKind::Serif);
     let nodes = vec![
       InlineNode::Text("foo".to_string(), s1),
-      InlineNode::IndexMark {
+      InlineNode::IndexMark(IndexTerm {
         word: "foo".to_string(),
         reading: None,
-      },
+      }),
       InlineNode::Text(" bar".to_string(), s1),
     ];
 
@@ -408,7 +403,7 @@ mod tests {
     // Assert — 畳んだテキストの後ろへマーカーを回す
     assert_eq!(merged.len(), 2, "{merged:?}");
     assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "foo bar"), "{merged:?}");
-    assert!(matches!(&merged[1], InlineNode::IndexMark { .. }), "{merged:?}");
+    assert!(matches!(&merged[1], InlineNode::IndexMark(_)), "{merged:?}");
   }
 
   #[test]
@@ -418,10 +413,10 @@ mod tests {
     let s2 = style(FontKind::SerifBold);
     let nodes = vec![
       InlineNode::Text("foo".to_string(), s1),
-      InlineNode::IndexMark {
+      InlineNode::IndexMark(IndexTerm {
         word: "foo".to_string(),
         reading: None,
-      },
+      }),
       InlineNode::Text("bar".to_string(), s2),
     ];
 
@@ -430,7 +425,7 @@ mod tests {
 
     // Assert
     assert_eq!(merged.len(), 3, "{merged:?}");
-    assert!(matches!(&merged[1], InlineNode::IndexMark { .. }), "{merged:?}");
+    assert!(matches!(&merged[1], InlineNode::IndexMark(_)), "{merged:?}");
     assert!(matches!(&merged[2], InlineNode::Text(t, _) if t == "bar"), "{merged:?}");
   }
 

@@ -739,7 +739,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 
 組版中間型の定義そのもの。`boxing` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
 所有物にもせず本 module に集約する。組版時に初めて成立する配置・アンカーの型（`FootnoteId` / `AnchorId` /
-`AnchorMark` / `LinkTarget`。到達先の名前空間には前段が確定した `semantics` の ID を借りるだけで、発行は
+`LinkTarget`。到達先の名前空間には前段が確定した `semantics` の ID を借りるだけで、発行は
 しない）と、lowering が構築する表レイアウトの入力契約もここに置く。揃えの水平オフセット算出は 1 関数で、
 行・画像・数式・表が共有する（style の設定値そのものではなく lowering が決めた結果なので serde は導出しない）。
 

@@ -7,7 +7,7 @@ use crate::{document::HeadingLevel, typeset::lowering::HeadingRecord};
 pub(crate) struct OutlineEntry {
   /// 見出しレベル（ネストの深さに使う）
   pub(crate) level: HeadingLevel,
-  /// しおりに表示するテキスト（`"{number} {plain title}"`）
+  /// しおりに表示するテキスト（[`HeadingRecord::label`]）
   pub(crate) text: String,
 }
 
@@ -18,34 +18,10 @@ pub(super) fn collect_outline_entries(headings: &[HeadingRecord]) -> Vec<Outline
   return headings
     .iter()
     .map(|info| {
-      let text = heading_label(&info.number, &info.title_plain);
       return OutlineEntry {
         level: info.level,
-        text,
+        text: info.label(),
       };
     })
     .collect();
-}
-
-/// 番号とタイトルの空を考慮して表示文字列を組む。
-fn heading_label(number: &str, title_plain: &str) -> String {
-  if number.is_empty() {
-    return title_plain.to_string();
-  }
-  if title_plain.is_empty() {
-    return number.to_string();
-  }
-  return format!("{number} {title_plain}");
-}
-
-#[cfg(test)]
-mod tests {
-  use super::heading_label;
-
-  #[test]
-  fn heading_label_combines_number_and_title() {
-    assert_eq!(heading_label("1.2", "Intro"), "1.2 Intro");
-    assert_eq!(heading_label("", "Intro"), "Intro");
-    assert_eq!(heading_label("1.2", ""), "1.2");
-  }
 }

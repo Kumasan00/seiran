@@ -10,7 +10,7 @@ use crate::{
     align::Align,
     hitem::{HBox, HItem},
     line::Line,
-    link::AnchorMark,
+    link::AnchorId,
     table_box::TableBox,
   },
 };
@@ -134,7 +134,7 @@ pub(in crate::typeset) enum Block {
   ///
   /// `break_pages` で次に配置される実ブロックの確定座標に解決され、`Page::anchors` に
   /// `PlacedAnchor` として格納される。それ自身は縦方向のアキを生まない。
-  Anchor(AnchorMark),
+  Anchor(AnchorId),
 }
 
 impl Block {

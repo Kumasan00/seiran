@@ -26,7 +26,7 @@ use crate::{
   },
   typeset::{
     LaidOutDocument,
-    boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget as TypesetLinkTarget, Page, PlacedBlock, PlacedTableRow},
+    boxes::{AnchorId, HBoxContent, LinkTarget as TypesetLinkTarget, Page, PlacedBlock, PlacedTableRow},
     font::FontResources,
     image::ImageAsset,
   },
@@ -225,26 +225,10 @@ fn build_destination_index(pages: &[Page]) -> (HashMap<AnchorId, Destination>, V
           y: anchor.y.to_pt(),
         },
       };
-      match &anchor.mark {
-        AnchorMark::Heading { key, label } => {
-          heading_dests.push(dest);
-          dest_by_id.insert(AnchorId::Heading(*key), dest);
-          if let Some(label) = label {
-            dest_by_id.insert(AnchorId::Label(label.clone()), dest);
-          }
-        },
-        AnchorMark::Label(label) => {
-          dest_by_id.insert(AnchorId::Label(label.clone()), dest);
-        },
-        AnchorMark::Citation(key) => {
-          dest_by_id.insert(AnchorId::Citation(key.clone()), dest);
-        },
-        AnchorMark::Footnote(index) => {
-          dest_by_id.insert(AnchorId::Footnote(*index), dest);
-        },
-        AnchorMark::IndexPage(page_index) => {
-          dest_by_id.insert(AnchorId::IndexPage(*page_index), dest);
-        },
+      dest_by_id.insert(anchor.id.clone(), dest);
+      // 見出しアンカーは見出し 1 件につき 1 個なので、文書順に拾えばしおりと 1:1 に対応する
+      if matches!(anchor.id, AnchorId::Heading(_)) {
+        heading_dests.push(dest);
       }
     }
   }

@@ -18,8 +18,8 @@ use crate::{
   length::Length,
   style::Style,
   typeset::{
-    boxes::{AnchorId, AnchorMark, Block, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
-    boxing::{LineAccum, Shaper},
+    boxes::{AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
+    boxing::{LineAccum, Shaper, compose_left_line},
     font::FontSystem,
     lowering::TextStyle,
     pagination::{
@@ -59,16 +59,12 @@ struct IndexEntry {
   pages: Vec<IndexPageRef>,
 }
 
-/// 索引語の同一性キー。`PlacedIndexEntry` のページ内重複除去キーと一致させる
-/// （同じ語でも `reading` が異なれば別エントリとして扱う）。
-type IndexEntryKey = (String, Option<String>);
-
 /// 巻末索引の計測済みブロック列を組み立てる。
 ///
 /// 本文全ページの索引語を集約し、照合順に並べ、区分へ割り当て、ページ番号列を畳んで行に組むまでを
 /// この 1 操作に閉じる。`\index` が 1 個もなければ空の `Vec` を返す。
 ///
-/// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorMark::IndexPage`）を
+/// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorId::IndexPage`）を
 /// 事後追加する（`body_pages` の破壊的更新）。索引語は座標を持たないため、リンク先は語の位置ではなく
 /// 出現ページの先頭になる。
 #[must_use]
@@ -86,10 +82,10 @@ pub(super) fn build_index_blocks(
 ///
 /// 索引語があるページには内部リンク用アンカーも追加する。
 fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageValues) -> Vec<IndexEntry> {
-  let mut occurrences: BTreeMap<IndexEntryKey, BTreeSet<usize>> = BTreeMap::new();
+  let mut occurrences: BTreeMap<IndexTerm, BTreeSet<usize>> = BTreeMap::new();
   for (page_index, page) in body_pages.iter().enumerate() {
-    for placed in &page.index_entries {
-      occurrences.entry((placed.word.clone(), placed.reading.clone())).or_default().insert(page_index);
+    for term in &page.index_entries {
+      occurrences.entry(term.clone()).or_default().insert(page_index);
     }
   }
   if occurrences.is_empty() {
@@ -99,7 +95,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
   let anchored_pages: BTreeSet<usize> = occurrences.values().flatten().copied().collect();
   for page_index in anchored_pages {
     body_pages[page_index].anchors.push(PlacedAnchor {
-      mark: AnchorMark::IndexPage(page_index),
+      id: AnchorId::IndexPage(page_index),
       x: Length::ZERO,
       y: Length::ZERO,
     });
@@ -107,7 +103,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
 
   let mut entries: Vec<IndexEntry> = occurrences
     .into_iter()
-    .map(|((word, reading), pages)| {
+    .map(|(IndexTerm { word, reading }, pages)| {
       return IndexEntry {
         word,
         reading,
@@ -266,13 +262,6 @@ fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &I
   }
 }
 
-/// テキストを左端（x=0）からシェーピングして単一行に組む（タイトル行用）
-fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
-  let mut acc = LineAccum::default();
-  acc.place(shaper.shape_text(text, style), Length::ZERO);
-  return acc.into_line(Vec::new());
-}
-
 /// ページ番号列の 1 表示単位
 #[derive(Debug)]
 enum IndexPageItem<'a> {
@@ -363,7 +352,7 @@ mod tests {
     length::Length,
     style::{PageNumbering, Style},
     typeset::{
-      boxes::{AnchorId, AnchorMark, LinkTarget, Page, PlacedIndexEntry},
+      boxes::{AnchorId, IndexTerm, LinkTarget, Page},
       pagination::page_values::BodyPageValues,
     },
   };
@@ -505,7 +494,7 @@ mod tests {
       index_entries: entries
         .into_iter()
         .map(|(word, reading)| {
-          return PlacedIndexEntry {
+          return IndexTerm {
             word: word.to_string(),
             reading: reading.map(str::to_string),
           };
@@ -549,8 +538,8 @@ mod tests {
     assert!(!entries.is_empty());
     assert_eq!(body_pages[0].anchors.len(), 1, "page0 は 2 語出現しても事後アンカーは 1 個");
     assert_eq!(body_pages[1].anchors.len(), 1);
-    assert!(matches!(body_pages[0].anchors[0].mark, AnchorMark::IndexPage(0)));
-    assert!(matches!(body_pages[1].anchors[0].mark, AnchorMark::IndexPage(1)));
+    assert!(matches!(body_pages[0].anchors[0].id, AnchorId::IndexPage(0)));
+    assert!(matches!(body_pages[1].anchors[0].id, AnchorId::IndexPage(1)));
   }
 
   #[test]

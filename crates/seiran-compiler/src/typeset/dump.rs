@@ -12,8 +12,7 @@ use crate::{
   color::Color,
   length::Length,
   typeset::boxes::{
-    AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
-    PositionedBox,
+    AnchorId, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox,
   },
 };
 
@@ -39,7 +38,7 @@ pub(crate) fn dump_pages(pages: &[Page]) -> String {
       }
     }
     for anchor in &page.anchors {
-      let _ = writeln!(out, "anchor mark={} x={} y={}", anchor_mark_desc(&anchor.mark), f2(anchor.x), f2(anchor.y));
+      let _ = writeln!(out, "anchor id={:?} x={} y={}", anchor_id_desc(&anchor.id), f2(anchor.x), f2(anchor.y));
     }
     for entry in &page.index_entries {
       let _ = writeln!(out, "index word={:?} reading={:?}", entry.word, entry.reading);
@@ -231,25 +230,7 @@ fn content_summary(content: &HBoxContent) -> String {
   };
 }
 
-/// [`AnchorMark`] を従来の golden 形式へ変換する。
-///
-/// 内部の typed ID とスナップショット形式を分離し、型変更だけでは golden を変えない。
-fn anchor_mark_desc(mark: &AnchorMark) -> String {
-  return match mark {
-    AnchorMark::Heading { key, label } => {
-      let label = label
-        .as_ref()
-        .map_or_else(|| return "None".to_string(), |l| return format!("Some({:?})", l.as_str()));
-      format!("Heading {{ key: {:?}, label: {label} }}", format!("heading:{}", key.index()))
-    },
-    AnchorMark::Label(id) => format!("Label({:?})", id.as_str()),
-    AnchorMark::Citation(id) => format!("Label({:?})", format!("cite:{}", id.as_str())),
-    AnchorMark::Footnote(id) => format!("Label({:?})", format!("footnote:{}", id.index())),
-    AnchorMark::IndexPage(index) => format!("Label({:?})", format!("index-page:{index}")),
-  };
-}
-
-/// [`LinkTarget`] を golden 資産と同じ文字列表現にする（[`anchor_mark_desc`] と対）。
+/// [`LinkTarget`] を golden 資産と同じ文字列表現にする。
 fn link_target_desc(target: &LinkTarget) -> String {
   return match target {
     LinkTarget::Internal(id) => format!("Internal({:?})", anchor_id_desc(id)),
@@ -257,7 +238,8 @@ fn link_target_desc(target: &LinkTarget) -> String {
   };
 }
 
-/// [`AnchorId`] を、対応する旧 `"prefix:"` 文字列に戻す（[`link_target_desc`] 用）。
+/// [`AnchorId`] を安定な文字列表現にする — ラベルはそのまま、それ以外は `"種別:"` 接頭辞付き。
+/// アンカー行と [`link_target_desc`] が共用
 fn anchor_id_desc(id: &AnchorId) -> String {
   return match id {
     AnchorId::Heading(key) => format!("heading:{}", key.index()),

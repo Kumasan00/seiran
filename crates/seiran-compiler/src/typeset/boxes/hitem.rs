@@ -83,33 +83,54 @@ pub(crate) enum HItem {
   ///
   /// `LinkStart`/`LinkEnd` と同様、行内では場所取りをしない。実際の行分割・ページ下部配置は
   /// `typeset::breaking` が `Line::footnotes`（`build_line` が本バリアントから収集する）経由で行う。
-  Footnote {
-    /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
-    ///
-    /// 採番方式（文書通し / ページ単位）により意味が変わるので、脚注の同一性には使わない
-    /// （それは `index` の役目）。
-    number: u32,
-    /// 出現順の識別子（0 起点、文書全体で一意）
-    ///
-    /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。ページ単位採番の
-    /// 反復（`seiran_compiler::compiler`）が「どの脚注が何ページ目に載ったか」を追跡するのに使う。
-    index: u32,
-    /// 脚注本体（計測済みの水平アイテム列）
-    items: Vec<HItem>,
-    /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
-    leading: Length,
-  },
+  Footnote(MeasuredFootnote),
   /// 索引語（`\index{語}`）の運搬マーカー（幅 0・分割不可）
   ///
   /// `LinkStart`/`LinkEnd`/`Footnote` と同様、行内では場所取りをしない。この行がどのページに
   /// 置かれるかで「出現ページ」が自然に決まる（`typeset::breaking::break_pages` が
   /// `Line::index_marks` 経由で収集し、ページ確定時に重複を畳んで `Page::index_entries` へ積む）。
-  IndexMark {
-    /// 索引語
-    word: String,
-    /// 読みソートキー（`[reading=...]`）
-    reading: Option<String>,
-  },
+  IndexMark(IndexTerm),
+}
+
+/// 計測済みの脚注 1 個（`\footnote{...}`）
+///
+/// boxing が [`HItem::Footnote`] に載せ、行分割（`build_line`）がそのまま [`Line::footnotes`]
+/// へ移す。本体は計測済みだが未行分割で、ページ下部に置くときに `typeset::breaking` が行分割する
+/// （行分割後の `PendingFootnote`・確定座標の [`PlacedFootnote`] とは段が違う）。
+///
+/// [`Line::footnotes`]: crate::typeset::boxes::Line::footnotes
+/// [`PlacedFootnote`]: crate::typeset::boxes::PlacedFootnote
+#[derive(Debug, Clone)]
+pub(crate) struct MeasuredFootnote {
+  /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
+  ///
+  /// 採番方式（文書通し / ページ単位）により意味が変わるので、脚注の同一性には使わない
+  /// （それは `index` の役目）。
+  pub number: u32,
+  /// 出現順の識別子（0 起点、文書全体で一意）
+  ///
+  /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。ページ単位採番の
+  /// 反復が「どの脚注が何ページ目に載ったか」を追跡するのに使う。
+  pub index: u32,
+  /// 脚注本体（計測済みの水平アイテム列）
+  pub items: Vec<HItem>,
+  /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
+  pub leading: Length,
+}
+
+/// 索引語 1 件（`\index[reading=...]{語}`）
+///
+/// lowering の `InlineNode::IndexMark` から [`HItem::IndexMark`]・`Line::index_marks`・
+/// `Page::index_entries` まで同じ値のまま運ばれる。`Eq` / `Ord` がそのまま索引語の同一性と
+/// 集約順になる — 同じ語でも `reading` が違えば別の索引語で、ページ内の重複除去（`break_pages`）と
+/// 巻末索引の集約（`pagination::index`）が同じ比較を使う。フィールド順（`word` → `reading`）は
+/// derive `Ord` の比較順なので並べ替えない。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct IndexTerm {
+  /// 索引語（表示テキスト）
+  pub word: String,
+  /// 読みソートキー（`[reading=...]`）
+  pub reading: Option<String>,
 }
 
 impl HItem {
@@ -130,8 +151,8 @@ impl HItem {
       | HItem::ForcedBreak
       | HItem::LinkStart(_)
       | HItem::LinkEnd
-      | HItem::Footnote { .. }
-      | HItem::IndexMark { .. } => Length::ZERO,
+      | HItem::Footnote(_)
+      | HItem::IndexMark(_) => Length::ZERO,
     };
   }
 }
@@ -202,7 +223,7 @@ pub(crate) struct PlacedHItem {
 
 #[cfg(test)]
 mod tests {
-  use super::{HBox, HBoxContent, HItem, PlacedHItem};
+  use super::{HBox, HBoxContent, HItem, IndexTerm, PlacedHItem};
   use crate::length::Length;
 
   /// pt 値から `Length` を作る
@@ -294,10 +315,10 @@ mod tests {
 
   #[test]
   fn index_mark_is_zero_width() {
-    let mark = HItem::IndexMark {
+    let mark = HItem::IndexMark(IndexTerm {
       word: "語".to_string(),
       reading: None,
-    };
+    });
     assert_eq!(mark.natural_width(), Length::ZERO);
   }
 

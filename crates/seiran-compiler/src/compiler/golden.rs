@@ -68,7 +68,7 @@ use crate::{
   },
   length::Length,
   style::FootnoteNumbering,
-  typeset::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
+  typeset::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
 
 /// golden 比較対象の入力名。
@@ -203,7 +203,7 @@ fn index_marks_are_invisible_to_layout() {
       }
       return usize::try_from(page_index).is_ok_and(|index| return index < body_page_count)
         && !line.starts_with("index ")
-        && !line.starts_with("anchor mark=Label(\"index-page:");
+        && !line.starts_with("anchor id=\"index-page:");
     })
     .collect();
   let stripped = stripped_lines.iter().fold(String::new(), |mut acc, line| {
@@ -223,7 +223,7 @@ fn page_ends_with_heading(page: &Page) -> bool {
   };
   let top = *baseline_y - line.height;
   return page.anchors.iter().any(|anchor| {
-    return matches!(anchor.mark, AnchorMark::Heading { .. }) && (anchor.y - top).abs() < Length::pt(0.5);
+    return matches!(anchor.id, AnchorId::Heading(_)) && (anchor.y - top).abs() < Length::pt(0.5);
   });
 }
 

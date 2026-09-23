@@ -9,7 +9,7 @@ use crate::{
   length::Length,
   typeset::boxes::{
     hitem::{HBoxContent, HItem},
-    line::PositionedBox,
+    line::{LineLink, PositionedBox},
     link::LinkTarget,
   },
 };
@@ -84,8 +84,8 @@ pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
       | HItem::ForcedBreak
       | HItem::LinkStart(_)
       | HItem::LinkEnd
-      | HItem::Footnote { .. }
-      | HItem::IndexMark { .. } => return None,
+      | HItem::Footnote(_)
+      | HItem::IndexMark(_) => return None,
     })
     .reduce(Length::max);
 }
@@ -263,26 +263,15 @@ pub(crate) fn position_table_row_boxes(
         | HItem::LinkStart(_)
         | HItem::LinkEnd
         | HItem::FlushRight(_)
-        | HItem::Footnote { .. }
-        | HItem::IndexMark { .. } => {},
+        | HItem::Footnote(_)
+        | HItem::IndexMark(_) => {},
       }
     }
   }
   return boxes;
 }
 
-/// 表セル内のリンク領域（表左端からの相対座標）
-#[derive(Debug)]
-pub(in crate::typeset) struct RowLink {
-  /// リンクの行き先
-  pub target: LinkTarget,
-  /// 表左端からの相対な左端オフセット
-  pub x0: Length,
-  /// 表左端からの相対な右端オフセット
-  pub x1: Length,
-}
-
-/// 1 行内のセルに含まれるリンク領域を、表左端からの相対 x0/x1 として収集する
+/// 1 行内のセルに含まれるリンク領域を、表左端を基準点とする [`LineLink`] として収集する
 ///
 /// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
 /// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。カーソル前進は
@@ -295,7 +284,7 @@ pub(crate) fn collect_row_links(
   columns: &[TableColumn],
   col_widths: &[Length],
   padding: Length,
-) -> Vec<RowLink> {
+) -> Vec<LineLink> {
   let mut links = Vec::new();
   for placement in layout_row_cells(row, columns, col_widths, padding) {
     let mut cursor = placement.content_x;
@@ -305,7 +294,7 @@ pub(crate) fn collect_row_links(
         HItem::LinkStart(target) => open.push((target.clone(), cursor)),
         HItem::LinkEnd => {
           if let Some((target, x0)) = open.pop() {
-            links.push(RowLink {
+            links.push(LineLink {
               target,
               x0,
               x1: cursor,
