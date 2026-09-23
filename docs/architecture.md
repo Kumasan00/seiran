@@ -155,9 +155,12 @@ TOML 解析部品 `toml_error_parts` は crate 内の他 module に依存しな�
 
 - `exists` が seam にあるのは、パス存在確認まで seam 経由にしないと全パス不正を 1 度に載せる集約報告が
   逐次 `?` に退化し、memory adapter でもパス検証ができなくなるため
-- `FilesystemProjectSource` のパス単位キャッシュは `ProjectSource` の契約ではなく実装の私的性質で、
-  `MemoryProjectSource` は持たない。2 実装が同じ結果を返すことと共有フォントを 1 回しか読まないことは
-  `compiler::project_source_equivalence` が回帰テストとして固定する
+- `ProjectSource` の 2 実装はどちらもキャッシュを持たず、要求のたびに読む。1 回の `compile` で同じ資源を
+  2 回読まないことは資源を列挙する側の責務で、フォントは `FontData::load`（パスの sort + dedup）、画像は
+  `typeset::image` の `collect_image_paths`（`BTreeSet`）の 1 箇所ずつにある。`sources` に同じファイルを
+  2 回書いた場合だけ読込が 2 回になる（出力は変わらない）。キャッシュは seam の契約ではなく、watch /
+  インクリメンタルビルドで必要になったら無効化の規則と一緒に設計する。2 実装が同じ結果を返すことと共有
+  フォントを 1 回しか読まないことは `compiler::project_source_equivalence` が回帰テストとして固定する
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**で、画像も同じ型で識別する。同じパスを表す
   newtype（画像専用の `AssetId` 等）を並立させない。正規化は字句的のみで symlink は解決せず、`Ord` を
   持つので `BTreeSet` による決定的な重複除去・昇順ソートに使える。`base_dir` の前置は deserialize では

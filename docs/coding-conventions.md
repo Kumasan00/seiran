@@ -207,8 +207,8 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   を持つ型だけ（そこでは lint が発火しない）。`Length` は sp（1/65536pt の整数）なので float を経由しない
   限りこの方針に乗る。derive の並びは `Debug, Clone, Copy, PartialEq, Eq, Hash` の順。
 - 公開型には `Debug` を実装する（`missing_debug_implementations`）。derive で生バイト列が出力に載る型
-  （読込キャッシュ・フォント・画像）は手書きにして件数・長さだけを出す（`publication` /
-  `project::filesystem` の `Debug`）。
+  （登録済みファイル・フォント・画像）は手書きにして件数・長さだけを出す（`publication` /
+  `project::memory` の `Debug`）。
 - 借用を持つ型は `Foo<'_>` と書く（`elided_lifetimes_in_paths`）。`Foo` と書けると借用の有無が字面から消え、
   宣言まで遡らないと読めない。
 - 型推論で足りる `as` は書かない（`trivial_casts`）。trait object から auto trait（`Send` / `Sync`）を落とす
