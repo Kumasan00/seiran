@@ -9,14 +9,8 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 /// 状態を持たず、要求のたびに実ファイルを読む（キャッシュしない）。1 回の `compile` で同じ資源を
 /// 2 回読まないことは、資源を列挙する呼び出し側（フォントは `FontData::load`、画像は
 /// `collect_image_paths`）が重複を除いて保証する。
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FilesystemProjectSource;
-
-impl FilesystemProjectSource {
-  /// `FilesystemProjectSource` を作る。
-  #[must_use]
-  pub fn new() -> Self { return FilesystemProjectSource; }
-}
 
 impl ProjectSource for FilesystemProjectSource {
   fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
@@ -45,7 +39,7 @@ mod tests {
     // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     write!(file, "hello").expect("書き込めるはず");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let path = ProjectPath::new(file.path());
 
     // Act
@@ -60,7 +54,7 @@ mod tests {
     // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     file.write_all(&[0x00, 0xff, 0x10]).expect("書き込めるはず");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let path = ProjectPath::new(file.path());
 
     // Act
@@ -75,7 +69,7 @@ mod tests {
     // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     file.write_all(&[0xff, 0xfe]).expect("書き込めるはず");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let path = ProjectPath::new(file.path());
 
     // Act
@@ -88,7 +82,7 @@ mod tests {
   #[test]
   fn read_text_reports_missing_file() {
     // Arrange
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let path = ProjectPath::new("/nonexistent/does-not-exist.toml");
 
     // Act
@@ -101,7 +95,7 @@ mod tests {
   #[test]
   fn exists_reflects_real_filesystem() {
     let file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     assert!(source.exists(&ProjectPath::new(file.path())));
     assert!(!source.exists(&ProjectPath::new("/nonexistent/does-not-exist.toml")));

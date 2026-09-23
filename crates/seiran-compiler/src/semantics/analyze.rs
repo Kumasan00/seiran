@@ -78,7 +78,7 @@ mod tests {
   #[test]
   fn analyze_composes_fact_collection_then_citation() {
     // Arrange — 実 CSL（tests/data/ieee.csl）と参照定義で、走査 → CSL 整形の連携を確認する
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let references = sample_references();
     let mut style = Style::default();
     style.reference.csl_path = Some(ieee_csl_path());

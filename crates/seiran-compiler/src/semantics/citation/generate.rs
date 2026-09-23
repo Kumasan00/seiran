@@ -193,7 +193,7 @@ mod tests {
     // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"本文 \cite{kwan2014} と \cite{doe2020}", &references);
-    let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
+    let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
     let generated = generate_citations(&analyzed.citations, &references, &compiled).expect("整形は成功するはず");
@@ -218,7 +218,7 @@ mod tests {
     // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"\cite{kwan2014, doe2020}", &references);
-    let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
+    let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
     let generated = generate_citations(&analyzed.citations, &references, &compiled).expect("整形は成功するはず");
@@ -239,7 +239,7 @@ mod tests {
   #[test]
   fn generate_ignores_uncited_malformed_reference() {
     // Arrange — 引用しない文献 `bad9999` は CSL-JSON へ変換できない日付を持つ
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let toml = String::from(
       "[kwan2014]\n\
        type = \"book\"\n\
@@ -290,7 +290,7 @@ mod tests {
     // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020}", &references);
-    let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
+    let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
     let generated = generate_citations(&analyzed.citations, &references, &compiled).expect("整形は成功するはず");
@@ -313,7 +313,7 @@ mod tests {
     // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020} \cite{kwan2014}", &references);
-    let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
+    let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act — 同じ facts + 同じ CSL で 2 回生成する
     let first = generate_citations(&analyzed.citations, &references, &compiled).expect("1 回目");
@@ -342,9 +342,9 @@ mod tests {
     // からは同じ表示・書誌が得られる一方、CSL が異なれば生成物も異なる）。
     let references = sample_references();
     let analyzed = analyzed(r"本文 \cite{kwan2014}", &references);
-    let base = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
-    let variant = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl_path(variant_csl_path()))
-      .expect("読めるはず");
+    let base = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
+    let variant =
+      load_citation_style(&FilesystemProjectSource, &style_with_csl_path(variant_csl_path())).expect("読めるはず");
 
     // Act
     let generated_base = generate_citations(&analyzed.citations, &references, &base).expect("整形は成功するはず");

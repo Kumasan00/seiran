@@ -126,7 +126,7 @@ mod tests {
     // Arrange
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let path = write_source(&dir, "text.sei", "本文");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let source_set =
@@ -145,7 +145,7 @@ mod tests {
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let existing = write_source(&dir, "text.sei", "本文");
     let missing = ProjectPath::new(dir.path().join("__does_not_exist__.sei"));
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let result = SourceSet::read(&source, &[existing, missing.clone()]);

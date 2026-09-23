@@ -1068,7 +1068,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1095,7 +1095,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1118,7 +1118,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1140,7 +1140,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (result, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
@@ -1170,7 +1170,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (result, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
@@ -1232,7 +1232,7 @@ mod tests {
         make_font_sections(font_path),
       );
     });
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
 
     // Act
@@ -1256,7 +1256,7 @@ mod tests {
       );
     });
 
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1279,7 +1279,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1305,7 +1305,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1330,7 +1330,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1353,7 +1353,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1376,7 +1376,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1399,7 +1399,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
@@ -1415,7 +1415,7 @@ mod tests {
     // Arrange — 実ファイルシステム経由で存在しない config.toml を指す
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let config_path = tempdir.path().join("does-not-exist.toml");
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
 
     // Act
     let failures = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(tempdir.path()))
@@ -1469,7 +1469,7 @@ mod tests {
     });
 
     // Act
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (_, warnings) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 

@@ -42,7 +42,7 @@ pub(crate) fn sample_references() -> References {
      [doe2020.issued]\n\
      date-parts = [[2020, 5, 1]]\n",
   );
-  let source = FilesystemProjectSource::new();
+  let source = FilesystemProjectSource;
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
   return read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");

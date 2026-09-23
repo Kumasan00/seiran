@@ -105,7 +105,7 @@ mod tests {
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
   fn references_from_toml(toml: &str) -> References {
-    let source = FilesystemProjectSource::new();
+    let source = FilesystemProjectSource;
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
     return read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
