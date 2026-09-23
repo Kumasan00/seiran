@@ -19,10 +19,12 @@ use crate::{
 mod footnote_packing;
 mod page_draft;
 mod paragraph_plan;
+mod region_cursor;
 
 use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
 use page_draft::{PageDraft, PendingTableRow, TableFrame};
 use paragraph_plan::plan_paragraph_lines;
+use region_cursor::RegionCursor;
 
 /// 脚注がリージョンに収まらないまま配置された事実（#382）。
 ///
@@ -62,10 +64,8 @@ struct PageComposer {
   pages: Vec<Page>,
   /// 現在ページの配置台帳
   draft: PageDraft,
-  /// カーソル位置（ページ上端からの距離、pt）。基本は「次のベースライン位置」
-  y: Length,
-  /// 直前のブロックが底辺基準（画像・表）で終わったか
-  cursor_at_edge: bool,
+  /// リージョン内のカーソル（位置・底辺基準フラグ・脚注予約）。収まり判定はこれのメソッドを通す
+  cursor: RegionCursor,
   /// 段組み数（1 = 単段）
   num_columns: usize,
   /// 1 段あたりの幅（pt）。行分割・揃え・表の列幅解決に使う
@@ -77,9 +77,6 @@ struct PageComposer {
   /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）。[`PageComposer::end_region`] が
   /// `draft` へ渡し、`draft` がページ下部の確定座標へ変換する。
   region_footnotes: Vec<PendingFootnote>,
-  /// 現在リージョンの脚注が占有する高さ（pt、脚注間・本文とのアキ込み）。0 は脚注なし。
-  /// [`PageComposer::region_limit`] が本文の実効下限からこの分を差し引く。
-  region_footnote_height: Length,
   /// 次リージョンへ繰り越す脚注の残り（#227、出現順）。
   carry: Vec<PendingFootnote>,
   /// 収まらないまま配置した脚注の記録（#382、検出順＝ページ順）。
@@ -108,21 +105,20 @@ impl PageComposer {
     return PageComposer {
       pages: Vec::new(),
       draft: PageDraft::new(),
-      y: geom.margin_top,
-      cursor_at_edge: false,
+      cursor: RegionCursor {
+        y: geom.margin_top,
+        at_edge: false,
+        footnote_reserved: Length::ZERO,
+      },
       num_columns: geom.num_columns.max(1),
       column_width,
       column_gap: geom.column_gap,
       col: 0,
       region_footnotes: Vec::new(),
-      region_footnote_height: Length::ZERO,
       carry: Vec::new(),
       overflows: Vec::new(),
     };
   }
-
-  /// 現在リージョンの実効下限（pt）。脚注が占有する高さぶん `geom.page_limit` を縮める。
-  fn region_limit(&self, geom: &PageGeometry) -> Length { return geom.page_limit - self.region_footnote_height; }
 
   /// 現在の段の左端 x オフセット（本文左端基準、pt）。段 `k` は `k * (段幅 + 段間)` だけ右へ寄る
   fn column_offset(&self) -> Length {
@@ -148,8 +144,8 @@ impl PageComposer {
   fn next_region(&mut self, geom: &PageGeometry) {
     if self.col + 1 < self.num_columns {
       self.col += 1;
-      self.y = geom.margin_top;
-      self.cursor_at_edge = false;
+      self.cursor.y = geom.margin_top;
+      self.cursor.at_edge = false;
     } else {
       self.start_new_page(geom);
     }
@@ -187,7 +183,7 @@ impl PageComposer {
         },
       });
     }
-    self.region_footnote_height = packing.height;
+    self.cursor.footnote_reserved = packing.height;
     let mut rest = Vec::new();
     for (pending, &placed) in std::mem::take(&mut self.carry).into_iter().zip(&packing.splits) {
       let (head, tail) = split_pending(pending, placed);
@@ -201,9 +197,6 @@ impl PageComposer {
     self.carry = rest;
   }
 
-  /// 現在のリージョン（段 / ページ）の先頭にいて、これ以上前へは送れない（回避不能）かを返す。
-  fn at_region_top(&self, geom: &PageGeometry) -> bool { return self.y <= geom.margin_top && !self.cursor_at_edge; }
-
   /// 現在ページを確定し、新しいページを開始する
   fn start_new_page(&mut self, geom: &PageGeometry) {
     // 強制改ページ（[`PENALTY_FORCE_BREAK`]）はこのメソッドを [`PageComposer::advance_region`] 経由せず
@@ -216,8 +209,8 @@ impl PageComposer {
       return;
     }
     self.pages.push(self.draft.take_page(geom));
-    self.y = geom.margin_top;
-    self.cursor_at_edge = false;
+    self.cursor.y = geom.margin_top;
+    self.cursor.at_edge = false;
     self.col = 0;
   }
 
@@ -225,7 +218,7 @@ impl PageComposer {
   fn finish(mut self, geom: &PageGeometry) -> (Vec<Page>, Vec<FootnoteOverflow>) {
     // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
     let x = self.column_offset();
-    self.draft.land_anchors(x, self.y);
+    self.draft.land_anchors(x, self.cursor.y);
     // 最終リージョンに残っている脚注を確定させる（flush-bottom 対象ではないので `flush=false`）
     self.end_region(geom, false);
     // 文書末尾の行で分割された脚注の繰越を出し切る。本文がもう無いので、繰越だけのリージョンを
@@ -254,10 +247,10 @@ impl PageComposer {
     let footnotes = std::mem::take(&mut self.region_footnotes);
     let had_footnotes = !footnotes.is_empty();
     let column_x = self.column_offset();
-    let region_limit = self.region_limit(geom);
+    let region_limit = self.cursor.region_limit(geom);
     self.draft.close_region(geom, column_x, region_limit, flush, footnotes);
     if had_footnotes {
-      self.region_footnote_height = Length::ZERO;
+      self.cursor.footnote_reserved = Length::ZERO;
     }
   }
 }
@@ -289,7 +282,7 @@ pub(crate) fn break_pages(
       && let Some(end) = keep_group_end(&blocks, i)
     {
       if keep_group_orphaned(&composer, geom, breaker, alignment, col_width, &blocks[i..=end])
-        && !composer.at_region_top(geom)
+        && !composer.cursor.at_region_top(geom)
       {
         composer.advance_region(geom);
       }
@@ -328,10 +321,10 @@ pub(crate) fn break_pages(
       },
       // 伸縮アキ。カーソルへは自然値のみ加算する（下端揃え無効時は VSpace と同一挙動）。stretch は
       // 下端揃え（#169）の配分重みとして台帳に累積させ、リージョン確定時に不足高さを配分する。
-      // cursor_at_edge は触らない（アキはフラグを変えない）。
+      // cursor.at_edge は触らない（アキはフラグを変えない）。
       Block::Glue { natural, stretch } => {
         composer.draft.pass_stretch(stretch);
-        composer.y += natural;
+        composer.cursor.y += natural;
       },
       // 分割コスト。強制改ページ（−∞）は eager に改ページする。分割禁止（+∞）は keep-with-next の
       // グループ連結マーカーで、ゲート（keep_group_*）が処理済みなのでここでは配置上の副作用を持たない。
@@ -350,11 +343,11 @@ pub(crate) fn break_pages(
         target_dpi,
         align,
       } => {
-        if composer.y + height > composer.region_limit(geom) {
+        if composer.cursor.y + height > composer.cursor.region_limit(geom) {
           composer.advance_region(geom);
         }
         let col_off = composer.column_offset();
-        let y = composer.y;
+        let y = composer.cursor.y;
         composer.draft.place_block(
           PlacedBlock::Image {
             path,
@@ -367,12 +360,12 @@ pub(crate) fn break_pages(
           col_off,
           y,
         );
-        composer.y += height;
-        composer.cursor_at_edge = true;
+        composer.cursor.y += height;
+        composer.cursor.at_edge = true;
       },
       Block::Table { table, align } => {
         place_table(&mut composer, geom, &table, col_width, align);
-        composer.cursor_at_edge = true;
+        composer.cursor.at_edge = true;
       },
       Block::Math {
         body,
@@ -381,7 +374,7 @@ pub(crate) fn break_pages(
         align,
       } => {
         place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width);
-        composer.cursor_at_edge = true;
+        composer.cursor.at_edge = true;
       },
       // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため台帳に未解決として積む
       Block::Anchor(id) => {
@@ -487,8 +480,8 @@ fn keep_group_orphaned(
   let Some(last_content) = group.iter().rposition(is_content_block) else {
     return false;
   };
-  let mut y = composer.y;
-  let mut cae = composer.cursor_at_edge;
+  let mut y = composer.cursor.y;
+  let mut cae = composer.cursor.at_edge;
   // 同一段落内の直前行（baseline, depth, leading）。段落境界（glue 通過）でリセットする。
   let mut prev: Option<(Length, Length, Length)> = None;
   for (gi, block) in group.iter().enumerate() {
@@ -610,18 +603,16 @@ fn place_paragraph(
   // （`advance_region` → `seed_carry`）→ 残りを計画し直す、と回す。**seed してから再計画する**のが
   // 要点で、逆にすると計画が繰越ぶんの予約を知らないままベースラインを決めてしまい、本文が
   // 繰越脚注に重なる。繰越が生じない段落ではループは 1 周で、移行前と同一の経路になる。
-  let mut last_baseline = composer.y;
+  let mut last_baseline = composer.cursor.y;
   let mut is_paragraph_start = true;
   while !lines.is_empty() {
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
-      composer.y,
-      composer.cursor_at_edge,
+      composer.cursor,
       leading,
       geom.margin_top,
       geom.page_limit,
       &demands,
-      composer.region_footnote_height,
       charges,
       is_paragraph_start,
       !composer.carry.is_empty(),
@@ -664,7 +655,7 @@ fn place_paragraph(
           composer.carry.push(tail);
         }
       }
-      composer.region_footnote_height = placement.reserved_after;
+      composer.cursor.footnote_reserved = placement.reserved_after;
       // 行の着地が確定した。未解決アンカー（段落先頭でだけ非空）はこの行の上端で解決される
       composer.draft.place_line(line, baseline, col_off);
     }
@@ -676,25 +667,25 @@ fn place_paragraph(
       composer.advance_region(geom);
     }
   }
-  composer.y = last_baseline + leading;
-  composer.cursor_at_edge = false;
+  composer.cursor.y = last_baseline + leading;
+  composer.cursor.at_edge = false;
 }
 
 /// 合成済みの単一行（[`Block::ComposedLine`]）を 1 行として配置する
 fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line: Line, leading: Length) {
-  let mut baseline = composer.y;
-  if composer.cursor_at_edge {
+  let mut baseline = composer.cursor.y;
+  if composer.cursor.at_edge {
     baseline += line.height;
   }
-  if baseline + line.depth > composer.region_limit(geom) {
+  if baseline + line.depth > composer.cursor.region_limit(geom) {
     composer.advance_region(geom);
     baseline = geom.margin_top;
   }
   let col_off = composer.column_offset();
   line.shift_x(col_off);
   composer.draft.place_line(line, baseline, col_off);
-  composer.y = baseline + leading;
-  composer.cursor_at_edge = false;
+  composer.cursor.y = baseline + leading;
+  composer.cursor.at_edge = false;
 }
 
 /// ディスプレイ数式ブロックを配置する
@@ -708,12 +699,12 @@ fn place_math_block(
   column_width: Length,
 ) {
   let total_height = body.height + body.depth;
-  let limit = composer.region_limit(geom);
-  if composer.y + total_height > limit && geom.margin_top + total_height <= limit {
+  let limit = composer.cursor.region_limit(geom);
+  if composer.cursor.y + total_height > limit && geom.margin_top + total_height <= limit {
     composer.advance_region(geom);
   }
   let col_off = composer.column_offset();
-  let top = composer.y;
+  let top = composer.cursor.y;
 
   let x = col_off + align.offset(column_width, body.width);
   let baseline_y = top + body.height;
@@ -745,7 +736,7 @@ fn place_math_block(
     col_off,
     top,
   );
-  composer.y += total_height;
+  composer.cursor.y += total_height;
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
@@ -771,8 +762,8 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 
   // 分割禁止の表は、現ページに収まらず新しいページなら収まる場合のみ先に改ページする
   let total_height: Length = head_heights.iter().chain(row_heights.iter()).sum();
-  let limit = composer.region_limit(geom);
-  if !table.breakable && composer.y + total_height > limit && geom.margin_top + total_height <= limit {
+  let limit = composer.cursor.region_limit(geom);
+  if !table.breakable && composer.cursor.y + total_height > limit && geom.margin_top + total_height <= limit {
     composer.advance_region(geom);
   }
 
@@ -804,24 +795,24 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   };
 
   for (row, height) in table.head.iter().zip(&head_heights) {
-    if composer.y + *height > composer.region_limit(geom) {
+    if composer.cursor.y + *height > composer.cursor.region_limit(geom) {
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
     }
-    push_row(&mut pending_rows, row, composer.y, *height, true);
-    composer.y += *height;
+    push_row(&mut pending_rows, row, composer.cursor.y, *height, true);
+    composer.cursor.y += *height;
   }
   for (row, height) in table.rows.iter().zip(&row_heights) {
-    if composer.y + *height > composer.region_limit(geom) {
+    if composer.cursor.y + *height > composer.cursor.region_limit(geom) {
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
       for (head_row, head_height) in table.head.iter().zip(&head_heights) {
-        push_row(&mut pending_rows, head_row, composer.y, *head_height, true);
-        composer.y += *head_height;
+        push_row(&mut pending_rows, head_row, composer.cursor.y, *head_height, true);
+        composer.cursor.y += *head_height;
       }
     }
-    push_row(&mut pending_rows, row, composer.y, *height, false);
-    composer.y += *height;
+    push_row(&mut pending_rows, row, composer.cursor.y, *height, false);
+    composer.cursor.y += *height;
   }
   flush(composer, &mut pending_rows);
 }

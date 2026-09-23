@@ -12,6 +12,7 @@ use crate::{
     breaking::break_pages::{
       MIN_LINES_AT_BREAK,
       footnote_packing::{FootnoteCharges, FootnoteDemand, LineFootnoteFit, fit_line_footnotes, footnote_area_full},
+      region_cursor::RegionCursor,
     },
   },
 };
@@ -25,7 +26,7 @@ pub(super) struct LinePlacement {
   pub(super) starts_region: bool,
   /// この行を確定した時点でのリージョンの脚注予約高さ（pt）。新リージョンが始まった行は
   /// そのリージョンで最初の予約（＝この行自身の脚注ぶんのみ）になる。
-  /// [`super::place_paragraph`] が確定ループで `composer.region_footnote_height` へそのまま反映する。
+  /// [`super::place_paragraph`] が確定ループで `composer.cursor.footnote_reserved` へそのまま反映する。
   pub(super) reserved_after: Length,
   /// この行の脚注ごとに、この行が乗るリージョンへ置く行数（行の脚注と同順・同長。脚注が無ければ空）
   pub(super) own_splits: Vec<usize>,
@@ -42,26 +43,24 @@ pub(super) struct LinePlacement {
 )]
 fn place_lines(
   lines: &[Line],
-  y0: Length,
-  cursor_at_edge: bool,
+  cursor: RegionCursor,
   leading: Length,
   margin_top: Length,
   page_limit: Length,
   forced: &[bool],
   demands: &[Vec<FootnoteDemand>],
-  initial_reserved: Length,
   charges: FootnoteCharges,
   carry_pending: bool,
 ) -> (Vec<LinePlacement>, bool) {
   let mut plan = Vec::with_capacity(lines.len());
-  let mut baseline = y0;
+  let mut baseline = cursor.y;
   let mut prev_depth: Option<Length> = None;
-  let mut reserved = initial_reserved;
+  let mut reserved = cursor.footnote_reserved;
   for (i, line) in lines.iter().enumerate() {
     match prev_depth {
       // 段落先頭行: 直前が底辺基準ブロックならアセント分下げる
       None => {
-        if cursor_at_edge {
+        if cursor.at_edge {
           baseline += line.height;
         }
       },
@@ -161,32 +160,19 @@ fn pick_correction(
 )]
 pub(super) fn plan_paragraph_lines(
   lines: &[Line],
-  y0: Length,
-  cursor_at_edge: bool,
+  cursor: RegionCursor,
   leading: Length,
   margin_top: Length,
   page_limit: Length,
   demands: &[Vec<FootnoteDemand>],
-  initial_reserved: Length,
   charges: FootnoteCharges,
   is_paragraph_start: bool,
   carry_pending: bool,
 ) -> (Vec<LinePlacement>, bool) {
   let mut forced = vec![false; lines.len()];
   loop {
-    let (plan, truncated) = place_lines(
-      lines,
-      y0,
-      cursor_at_edge,
-      leading,
-      margin_top,
-      page_limit,
-      &forced,
-      demands,
-      initial_reserved,
-      charges,
-      carry_pending,
-    );
+    let (plan, truncated) =
+      place_lines(lines, cursor, leading, margin_top, page_limit, &forced, demands, charges, carry_pending);
     // 打ち切られた計画の末尾は段落の末尾ではない（続きは繰越を詰めてから計画し直す）
     let is_paragraph_end = !truncated;
     match pick_correction(&plan, MIN_LINES_AT_BREAK, is_paragraph_start, is_paragraph_end) {
@@ -201,10 +187,22 @@ pub(super) fn plan_paragraph_lines(
 #[cfg(test)]
 mod tests {
   use super::{FootnoteCharges, FootnoteDemand, LinePlacement, plan_paragraph_lines};
-  use crate::{length::Length, typeset::boxes::Line};
+  use crate::{
+    length::Length,
+    typeset::{boxes::Line, breaking::break_pages::region_cursor::RegionCursor},
+  };
 
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
+
+  /// 脚注予約なし・底辺基準でないカーソルを `y` に置く
+  fn cursor_at(y: Length) -> RegionCursor {
+    return RegionCursor {
+      y,
+      at_edge: false,
+      footnote_reserved: Length::ZERO,
+    };
+  }
 
   /// 高さ 8・深さ 2 の単純な行（純粋関数テスト用）
   fn test_line() -> Line {
@@ -240,13 +238,11 @@ mod tests {
     // Act
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
-      pt(10.0),
-      false,
+      cursor_at(pt(10.0)),
       pt(12.0),
       pt(10.0),
       pt(50.0),
       &no_footnotes(3),
-      Length::ZERO,
       no_charges(),
       true,
       false,
@@ -290,13 +286,11 @@ mod tests {
     // Act
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
-      pt(46.0),
-      false,
+      cursor_at(pt(46.0)),
       pt(12.0),
       pt(10.0),
       pt(50.0),
       &no_footnotes(3),
-      Length::ZERO,
       no_charges(),
       true,
       false,
@@ -346,13 +340,11 @@ mod tests {
     // Act
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
-      pt(10.0),
-      false,
+      cursor_at(pt(10.0)),
       pt(12.0),
       pt(10.0),
       pt(50.0),
       &no_footnotes(5),
-      Length::ZERO,
       no_charges(),
       true,
       false,
