@@ -25,9 +25,9 @@ use crate::{
   typeset::{
     PreparedGeometry, TypesetError,
     boxes::{
-      AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
-      PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
-      PositionedBox, TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
+      AnchorId, AnchorMark, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
+      PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox,
+      TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
     },
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -438,7 +438,7 @@ impl PageBuilder {
 
   /// このページに出現した索引語を追加する
   pub(crate) fn index_entry(mut self, word: &str, reading: Option<&str>) -> Self {
-    self.page.index_entries.push(PlacedIndexEntry {
+    self.page.index_entries.push(IndexTerm {
       word: word.to_string(),
       reading: reading.map(str::to_string),
     });

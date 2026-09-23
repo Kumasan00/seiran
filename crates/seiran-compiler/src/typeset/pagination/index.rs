@@ -18,7 +18,9 @@ use crate::{
   length::Length,
   style::Style,
   typeset::{
-    boxes::{AnchorId, AnchorMark, Block, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
+    boxes::{
+      AnchorId, AnchorMark, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor,
+    },
     boxing::{LineAccum, Shaper, compose_left_line},
     font::FontSystem,
     lowering::TextStyle,
@@ -59,10 +61,6 @@ struct IndexEntry {
   pages: Vec<IndexPageRef>,
 }
 
-/// 索引語の同一性キー。`PlacedIndexEntry` のページ内重複除去キーと一致させる
-/// （同じ語でも `reading` が異なれば別エントリとして扱う）。
-type IndexEntryKey = (String, Option<String>);
-
 /// 巻末索引の計測済みブロック列を組み立てる。
 ///
 /// 本文全ページの索引語を集約し、照合順に並べ、区分へ割り当て、ページ番号列を畳んで行に組むまでを
@@ -86,10 +84,10 @@ pub(super) fn build_index_blocks(
 ///
 /// 索引語があるページには内部リンク用アンカーも追加する。
 fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageValues) -> Vec<IndexEntry> {
-  let mut occurrences: BTreeMap<IndexEntryKey, BTreeSet<usize>> = BTreeMap::new();
+  let mut occurrences: BTreeMap<IndexTerm, BTreeSet<usize>> = BTreeMap::new();
   for (page_index, page) in body_pages.iter().enumerate() {
-    for placed in &page.index_entries {
-      occurrences.entry((placed.word.clone(), placed.reading.clone())).or_default().insert(page_index);
+    for term in &page.index_entries {
+      occurrences.entry(term.clone()).or_default().insert(page_index);
     }
   }
   if occurrences.is_empty() {
@@ -107,7 +105,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
 
   let mut entries: Vec<IndexEntry> = occurrences
     .into_iter()
-    .map(|((word, reading), pages)| {
+    .map(|(IndexTerm { word, reading }, pages)| {
       return IndexEntry {
         word,
         reading,
@@ -356,7 +354,7 @@ mod tests {
     length::Length,
     style::{PageNumbering, Style},
     typeset::{
-      boxes::{AnchorId, AnchorMark, LinkTarget, Page, PlacedIndexEntry},
+      boxes::{AnchorId, AnchorMark, IndexTerm, LinkTarget, Page},
       pagination::page_values::BodyPageValues,
     },
   };
@@ -498,7 +496,7 @@ mod tests {
       index_entries: entries
         .into_iter()
         .map(|(word, reading)| {
-          return PlacedIndexEntry {
+          return IndexTerm {
             word: word.to_string(),
             reading: reading.map(str::to_string),
           };

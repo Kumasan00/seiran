@@ -6,7 +6,7 @@ use crate::{
   length::Length,
   style::FootnoteStyle,
   typeset::{
-    boxes::{AnchorId, FootnoteId, LinkTarget},
+    boxes::{AnchorId, FootnoteId, IndexTerm, LinkTarget},
     lowering::{
       LoweringContext, LoweringState, code, generated,
       layout_node::{AtomNode, InlineNode, TextStyle},
@@ -73,10 +73,10 @@ pub(super) fn lower_inline(
       return Vec::new();
     },
     HirInlineKind::Index { word, reading } => {
-      return vec![InlineNode::IndexMark {
+      return vec![InlineNode::IndexMark(IndexTerm {
         word: word.clone(),
         reading: reading.clone(),
-      }];
+      })];
     },
     HirInlineKind::Ref { .. } => {
       // 参照先の存在と番号は `semantics::analyze` が確定させているので、ここで表示文字列まで作る。
@@ -640,7 +640,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark { word, reading }) if word == "語" && reading.is_none()),
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.word == "語" && term.reading.is_none()),
       "{nodes:?}"
     );
   }
@@ -655,7 +655,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark { reading, .. }) if reading.as_deref() == Some("よみ")),
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.reading.as_deref() == Some("よみ")),
       "{nodes:?}"
     );
   }

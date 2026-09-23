@@ -72,7 +72,7 @@ impl LineBreaker for GreedyBreaker {
           width_so_far += *spacing;
         },
         // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可。行に積むだけで build_line が収集する
-        HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark { .. } => {
+        HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {
           buffer.push(item);
         },
         HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {

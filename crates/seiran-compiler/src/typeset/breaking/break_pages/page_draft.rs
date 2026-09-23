@@ -13,8 +13,8 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{
-      AnchorMark, FootnoteId, HItem, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry,
-      PlacedLink, PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,
+      AnchorMark, FootnoteId, HItem, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
+      PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,
       position_table_row_boxes,
     },
     breaking::break_pages::PendingFootnote,
@@ -141,7 +141,7 @@ pub(super) struct PageDraft {
   /// 未解決のアンカー。次の着地点で解決する。ページ確定をまたいで保持する
   pending_anchors: Vec<AnchorMark>,
   /// このページの索引語（`(word, reading)` で初出順に重複除去済み）。座標を持たないので台帳の外
-  index_entries: Vec<PlacedIndexEntry>,
+  index_entries: Vec<IndexTerm>,
   /// 現在リージョンの先頭 index（`entries` 内）。下端揃えはここから末尾までを対象にする
   region_start: usize,
   /// 現在リージョンで通過した伸縮アキの stretch 累積量
@@ -191,7 +191,7 @@ impl PageDraft {
     let anchors = self.take_pending_anchors(column_x, baseline_y - line.height);
     let links = line_links(&line, baseline_y);
     for entry in &line.index_marks {
-      self.push_index_entry(&entry.word, entry.reading.as_deref());
+      self.push_index_entry(entry);
     }
     self.push_block(PlacedBlock::Line { line, baseline_y }, anchors, links);
   }
@@ -232,8 +232,8 @@ impl PageDraft {
     for pending in rows.iter().filter(|pending| return !pending.is_head) {
       for cell in &pending.row.cells {
         for item in &cell.items {
-          if let HItem::IndexMark { word, reading } = item {
-            self.push_index_entry(word, reading.as_deref());
+          if let HItem::IndexMark(term) = item {
+            self.push_index_entry(term);
           }
         }
       }
@@ -289,13 +289,10 @@ impl PageDraft {
   ///
   /// 同一ページ内の同じ `(語, reading)` は 1 出現に畳む（#246 の規則）。本文行・脚注行・表の
   /// 本体行のどこから来たマーカーも同じページの同じ集合へ入るので、畳みは経路をまたいで効く。
-  fn push_index_entry(&mut self, word: &str, reading: Option<&str>) {
-    let exists = self.index_entries.iter().any(|e| return e.word == word && e.reading.as_deref() == reading);
-    if !exists {
-      self.index_entries.push(PlacedIndexEntry {
-        word: word.to_string(),
-        reading: reading.map(str::to_string),
-      });
+  /// 同一性は `IndexTerm` の `Eq`。
+  fn push_index_entry(&mut self, term: &IndexTerm) {
+    if !self.index_entries.contains(term) {
+      self.index_entries.push(term.clone());
     }
   }
 
@@ -406,7 +403,7 @@ impl PageDraft {
         line.shift_x(column_x);
         links.extend(line_links(&line, baseline));
         for entry in &line.index_marks {
-          self.push_index_entry(&entry.word, entry.reading.as_deref());
+          self.push_index_entry(entry);
         }
         blocks.push(PlacedBlock::Line {
           line,
@@ -542,8 +539,8 @@ mod tests {
     semantics::LabelId,
     typeset::{
       boxes::{
-        AnchorMark, HBox, HBoxContent, HItem, Line, LineIndexEntry, LineLink, LinkTarget, Page, PlacedBlock,
-        TableCellBox, TableColumn, TableRowBox,
+        AnchorMark, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, TableCellBox,
+        TableColumn, TableRowBox,
       },
       breaking::break_pages::PendingFootnote,
       geometry::PageGeometry,
@@ -594,7 +591,7 @@ mod tests {
       footnotes: Vec::new(),
       index_marks: index_word
         .map(|word| {
-          return vec![LineIndexEntry {
+          return vec![IndexTerm {
             word: word.to_string(),
             reading: None,
           }];
@@ -842,10 +839,10 @@ mod tests {
             height: pt(10.0),
             depth: Length::ZERO,
           }),
-          HItem::IndexMark {
+          HItem::IndexMark(IndexTerm {
             word: word.to_string(),
             reading: None,
-          },
+          }),
         ],
         span: 1,
       }],
@@ -897,7 +894,7 @@ mod tests {
       Length::ZERO,
     );
     let mut in_footnote = footnote(0, "F", false);
-    in_footnote.lines[0].index_marks.push(LineIndexEntry {
+    in_footnote.lines[0].index_marks.push(IndexTerm {
       word: "語".to_string(),
       reading: None,
     });

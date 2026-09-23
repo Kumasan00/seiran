@@ -841,9 +841,9 @@ mod tests {
     style::TextAlignment,
     typeset::{
       boxes::{
-        Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, MeasuredFootnote,
-        PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox, TableCellBox,
-        TableColumn, TableRowBox,
+        Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
+        MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox,
+        TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -973,10 +973,10 @@ mod tests {
 
   /// 幅 0 の索引マーカー（`HItem::IndexMark`）を作るテストヘルパ
   fn index_mark_item(word: &str, reading: Option<&str>) -> HItem {
-    return HItem::IndexMark {
+    return HItem::IndexMark(IndexTerm {
       word: word.to_string(),
       reading: reading.map(str::to_string),
-    };
+    });
   }
 
   #[test]

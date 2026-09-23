@@ -12,7 +12,7 @@ use crate::{
   length::Length,
   project::ProjectPath,
   typeset::boxes::{
-    hitem::HBox,
+    hitem::{HBox, IndexTerm},
     line::{Line, PositionedBox},
     link::{AnchorMark, LinkTarget},
   },
@@ -52,7 +52,7 @@ pub(crate) struct Page {
   /// `break_pages` がページ確定時に `Line::index_marks` から集約する。同一 word/reading の
   /// 重複は 1 出現に畳む。座標を持たない — 索引は場所ではなくページ番号だけを必要とするため
   /// （[`PlacedAnchor`] とは異なる）。
-  pub index_entries: Vec<PlacedIndexEntry>,
+  pub index_entries: Vec<IndexTerm>,
   /// ページ背景色（RGB）。`None` は塗りつぶさない。`style` 非依存のため
   /// 生の `[u8; 3]` で保持する（`PlacedBlock::Rule.color` と同じ規約）
   pub background_color: Option<[u8; 3]>,
@@ -125,17 +125,6 @@ pub(crate) struct PlacedLink {
   pub width: Length,
   /// 矩形の高さ（pt）
   pub height: Length,
-}
-
-/// ページに出現した索引語 1 件
-///
-/// `HItem::IndexMark` → `Line::index_marks` を経て `break_pages` がページ単位に集約する。
-#[derive(Debug, Clone)]
-pub(crate) struct PlacedIndexEntry {
-  /// 索引語
-  pub word: String,
-  /// 読みソートキー（`[reading=...]`）
-  pub reading: Option<String>,
 }
 
 /// ページ内に配置されたブロック

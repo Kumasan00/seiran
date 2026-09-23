@@ -184,7 +184,7 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
       | HItem::LinkStart(_)
       | HItem::LinkEnd
       | HItem::Footnote(_)
-      | HItem::IndexMark { .. } => {},
+      | HItem::IndexMark(_) => {},
     }
   }
   breaks.push(Breakpoint {

@@ -85,7 +85,7 @@ pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
       | HItem::LinkStart(_)
       | HItem::LinkEnd
       | HItem::Footnote(_)
-      | HItem::IndexMark { .. } => return None,
+      | HItem::IndexMark(_) => return None,
     })
     .reduce(Length::max);
 }
@@ -264,7 +264,7 @@ pub(crate) fn position_table_row_boxes(
         | HItem::LinkEnd
         | HItem::FlushRight(_)
         | HItem::Footnote(_)
-        | HItem::IndexMark { .. } => {},
+        | HItem::IndexMark(_) => {},
       }
     }
   }

@@ -3,7 +3,7 @@
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HBox, HItem, Line, LineIndexEntry, LineLink, LinkTarget, MeasuredFootnote, PositionedBox},
+  typeset::boxes::{HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PositionedBox},
 };
 
 mod greedy;
@@ -131,7 +131,7 @@ pub(super) fn build_line(
   let mut boxes: Vec<PositionedBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
   let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
-  let mut index_marks: Vec<LineIndexEntry> = Vec::new();
+  let mut index_marks: Vec<IndexTerm> = Vec::new();
   let mut x = Length::ZERO;
   let mut height = Length::ZERO;
   let mut depth = Length::ZERO;
@@ -195,10 +195,7 @@ pub(super) fn build_line(
       HItem::Footnote(footnote) => footnotes.push(footnote.clone()),
       // 索引マーカーは幅 0・分割不可。行に積むだけで、この行の索引語として収集する
       // （重複除去・ページ確定座標化は break_pages の責務）
-      HItem::IndexMark { word, reading } => index_marks.push(LineIndexEntry {
-        word: word.clone(),
-        reading: reading.clone(),
-      }),
+      HItem::IndexMark(term) => index_marks.push(term.clone()),
       // 行内の Discretionary は描画しない（折り返し位置のハイフンは trailing_hyphen で出す）
       HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak => {},
     }
@@ -239,7 +236,7 @@ pub(super) mod test_support {
   use crate::{
     length::Length,
     semantics::LabelId,
-    typeset::boxes::{AnchorId, HBox, HBoxContent, HItem, LinkTarget},
+    typeset::boxes::{AnchorId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
   };
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
@@ -340,9 +337,9 @@ pub(super) mod test_support {
 
   /// テスト用の索引マーカー（幅 0・分割不可）
   pub(super) fn index_mark(word: &str, reading: Option<&str>) -> HItem {
-    return HItem::IndexMark {
+    return HItem::IndexMark(IndexTerm {
       word: word.to_string(),
       reading: reading.map(str::to_string),
-    };
+    });
   }
 }

@@ -17,12 +17,11 @@ mod table_box;
 
 pub(super) use align::Align;
 pub(super) use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK};
-pub(crate) use hitem::{HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHItem};
-pub(super) use line::{Line, LineIndexEntry, LineLink, PositionedBox};
+pub(crate) use hitem::{HBox, HBoxContent, HItem, IndexTerm, MeasuredFootnote, PlacedHItem};
+pub(super) use line::{Line, LineLink, PositionedBox};
 pub(crate) use link::{AnchorId, AnchorMark, FootnoteId, LinkTarget};
 pub(crate) use page::{
-  Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow,
-  PlacedTableRule,
+  Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
 };
 pub(super) use table_box::{
   TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,

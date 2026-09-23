@@ -349,8 +349,8 @@ impl<'a> Measurer<'a> {
       },
       // 索引マーカーは幅 0 の運搬マーカーとしてそのまま積む。ページ確定座標化・重複除去は
       // `crate::typeset::breaking`（`Line::index_marks` 経由）が行う
-      InlineNode::IndexMark { word, reading } => {
-        out.push(HItem::IndexMark { word, reading });
+      InlineNode::IndexMark(term) => {
+        out.push(HItem::IndexMark(term));
       },
     }
   }

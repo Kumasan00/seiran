@@ -3,7 +3,7 @@
 use crate::{
   length::Length,
   typeset::boxes::{
-    hitem::{HBoxContent, MeasuredFootnote},
+    hitem::{HBoxContent, IndexTerm, MeasuredFootnote},
     link::LinkTarget,
     page::PlacedLink,
   },
@@ -33,7 +33,7 @@ pub(crate) struct Line {
   ///
   /// `typeset::breaking::break_pages` がこの行の所属ページを索引語の出現ページとして扱い、
   /// 重複除去のうえ `Page::index_entries` へ集約する。
-  pub index_marks: Vec<LineIndexEntry>,
+  pub index_marks: Vec<IndexTerm>,
 }
 
 impl Line {
@@ -63,15 +63,6 @@ impl Line {
       link.x1 += dx;
     }
   }
-}
-
-/// 行内の索引語（`\index{語}`）1 件
-#[derive(Debug, Clone)]
-pub(crate) struct LineIndexEntry {
-  /// 索引語
-  pub word: String,
-  /// 読みソートキー（`[reading=...]`）
-  pub reading: Option<String>,
 }
 
 /// 水平 1 行内のリンク領域（クリック矩形の水平範囲）
