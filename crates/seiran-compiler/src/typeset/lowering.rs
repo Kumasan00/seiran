@@ -149,6 +149,23 @@ pub(super) struct HeadingRecord {
   pub title_plain: String,
 }
 
+impl HeadingRecord {
+  /// 目次の項目としおりに表示する「番号 タイトル」を組む
+  ///
+  /// 番号・タイトルのどちらかが空ならもう片方だけを返す（区切りの空白を付けない）。目次としおりの
+  /// 表示を揃えるため、両者はこのメソッドだけを使う。
+  #[must_use]
+  pub(in crate::typeset) fn label(&self) -> String {
+    if self.number.is_empty() {
+      return self.title_plain.clone();
+    }
+    if self.title_plain.is_empty() {
+      return self.number.clone();
+    }
+    return format!("{} {}", self.number, self.title_plain);
+  }
+}
+
 /// 子 module のテストが lowering の入力を組み立てるための最小ヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
@@ -822,5 +839,20 @@ mod tests {
 
     // Assert
     assert_eq!(headings[0].title_plain, "結論 [1]", "{headings:?}");
+  }
+
+  #[test]
+  fn heading_label_combines_number_and_title() {
+    let record = |number: &str, title_plain: &str| {
+      return HeadingRecord {
+        index: 0,
+        level: HeadingLevel::Section,
+        number: number.to_string(),
+        title_plain: title_plain.to_string(),
+      };
+    };
+    assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");
+    assert_eq!(record("", "Intro").label(), "Intro");
+    assert_eq!(record("1.2", "").label(), "1.2");
   }
 }

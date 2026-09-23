@@ -53,10 +53,8 @@ struct TocSpec {
 struct TocEntry {
   /// 見出しレベル（インデントの深さに使う）
   level: HeadingLevel,
-  /// 書式化済みの見出し番号（空なら番号なし）
-  number: String,
-  /// 見出しタイトル（プレーンテキスト）
-  title_plain: String,
+  /// 表示する「番号 タイトル」（[`HeadingRecord::label`]）
+  label: String,
   /// 表示するページ番号ラベル
   page_label: String,
   /// 対応見出しの暗黙 destination キー（内部リンクの行き先）
@@ -98,8 +96,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
     .map(|(info, page_index)| {
       return TocEntry {
         level: info.level,
-        number: info.number.clone(),
-        title_plain: info.title_plain.clone(),
+        label: info.label(),
         page_label: page_values.body_page_label(page_index),
         link_key: HeadingKey::new(info.index),
       };
@@ -169,10 +166,9 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む
 fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
-  let label = entry_label(&entry.number, &entry.title_plain);
 
   let mut acc = LineAccum::default();
-  let left_end = acc.place(shaper.shape_text(&label, spec.entry_style), indent);
+  let left_end = acc.place(shaper.shape_text(&entry.label, spec.entry_style), indent);
 
   let mut right_edge = left_end;
   if spec.show_page_numbers {
@@ -194,17 +190,6 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry)
     x1: right_edge,
   }];
   return acc.into_line(links);
-}
-
-/// 「番号 タイトル」のラベル文字列を組む（番号・タイトルの空を考慮）
-fn entry_label(number: &str, title_plain: &str) -> String {
-  if number.is_empty() {
-    return title_plain.to_string();
-  }
-  if title_plain.is_empty() {
-    return number.to_string();
-  }
-  return format!("{number} {title_plain}");
 }
 
 /// `from_x` から `to_x` の間をリーダー単位文字列の反復で充填する（ページ番号側に右寄せ）
@@ -240,7 +225,7 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, HeadingRecord, build_toc_spec, collect_toc_entries, entry_label};
+  use super::{BodyPageValues, HeadingRecord, build_toc_spec, collect_toc_entries};
   use crate::{
     document::{FontKind, HeadingLevel},
     length::Length,
@@ -283,13 +268,6 @@ mod tests {
       })
       .collect();
     return BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
-  }
-
-  #[test]
-  fn entry_label_combines_number_and_title() {
-    assert_eq!(entry_label("1.2", "Intro"), "1.2 Intro");
-    assert_eq!(entry_label("", "Intro"), "Intro");
-    assert_eq!(entry_label("1.2", ""), "1.2");
   }
 
   #[test]
@@ -346,10 +324,10 @@ mod tests {
 
     // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].number, "1");
+    assert_eq!(entries[0].label, "1 Ch");
     assert_eq!(entries[0].page_label, "1");
     assert_eq!(entries[0].link_key, HeadingKey::new(0));
-    assert_eq!(entries[1].title_plain, "Sec");
+    assert_eq!(entries[1].label, "1.1 Sec");
     assert_eq!(entries[1].page_label, "2");
     assert_eq!(entries[1].link_key, HeadingKey::new(1));
   }
