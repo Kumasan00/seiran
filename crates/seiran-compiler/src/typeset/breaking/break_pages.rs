@@ -272,8 +272,8 @@ pub(crate) fn break_pages(
   let mut blocks = blocks;
 
   // keep-with-next（見出し直後の分割禁止・#168）を尊重しつつ前から順に配置する。FORBID penalty で
-  // 連結された見出し群（keep グループ）の先頭で一度だけ、末尾ブロックの先頭チャンクが現在のリージョンに
-  // 収まるかを判定し、収まらなければグループごと次リージョンへ送る（見出しがページ末尾に孤立するのを防ぐ）。
+  // 連結された見出し群（keep グループ）の先頭で一度だけ、末尾ブロックの先頭行が見出しと同じリージョンに
+  // 乗るかを判定し、収まらなければグループごと次リージョンへ送る（見出しがページ末尾に孤立するのを防ぐ）。
   let mut i = 0;
   let mut gated_end: Option<usize> = None;
   while i < blocks.len() {
