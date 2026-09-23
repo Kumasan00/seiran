@@ -1,7 +1,7 @@
 //! 脚注（`\footnote`）のスタイル設定型（`[footnote]` テーブル）。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   color::Color,
@@ -10,7 +10,8 @@ use crate::{
 };
 
 /// 脚注番号のリセット方式
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
 pub(crate) enum FootnoteNumbering {
@@ -26,7 +27,8 @@ pub(crate) enum FootnoteNumbering {
 }
 
 /// 脚注のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct FootnoteStyle {

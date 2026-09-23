@@ -6,7 +6,7 @@
 use std::ops::Index;
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub(super) use crate::document::TheoremClass;
 use crate::{
@@ -19,7 +19,8 @@ use crate::{
 ///
 /// TOML からは [`TheoremsTable`]（各エントリが差分指定 [`TheoremStyleOverride`]）として読み、
 /// [`Theorems::default`] のクラス別既定へ重ねて解決済みの値を作る。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(from = "TheoremsTable")]
 pub(crate) struct Theorems {
   /// `[theorems.theorem]`
@@ -148,7 +149,8 @@ impl Index<TheoremClass> for Theorems {
 /// 1 つの定理クラスのスタイル定義（クラス別既定 + 差分上書きで解決済み）。
 ///
 /// TOML のスキーマは [`TheoremStyleOverride`]。
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Debug, Clone, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 pub(crate) struct TheoremStyle {
   /// 表示名（例: `"Theorem"`、`"定理"`）。見出し書式の `{display_name}` から参照される
@@ -189,7 +191,8 @@ impl Default for TheoremStyle {
 }
 
 /// 定理カウンタのリセット先。`reset_by` フィールドで指定する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TheoremReset {
   /// 部が進むたびにリセット
@@ -240,7 +243,8 @@ impl TheoremReset {
 /// 定理ブロックの見た目（見出し書式・フォント・マージン）。
 ///
 /// TOML のスキーマは [`TheoremPresentationOverride`]。
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Debug, Clone, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 pub(crate) struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる

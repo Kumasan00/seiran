@@ -1,14 +1,15 @@
 //! 段組み（1 段 / 2 段切替）のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::length::{Length, non_negative};
 
 /// 段組みのスタイル設定
 ///
 /// `count` と `config.toml` の用紙・余白との横断制約は [`crate::typeset::PreparedGeometry::prepare`] が検証する。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ColumnsStyle {

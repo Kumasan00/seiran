@@ -1,9 +1,10 @@
 //! 見出しのレベル [`HeadingLevel`]。
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// `\part` から `\subparagraph` までの見出しレベル
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum HeadingLevel {
   /// `\part` — 部（最上位の区分）

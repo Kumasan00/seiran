@@ -1,7 +1,7 @@
 //! 参考文献セクションのスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
@@ -9,7 +9,8 @@ use crate::{
 };
 
 /// 参考文献セクションのスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ReferenceStyle {
   /// 参考文献セクションのタイトル文字列

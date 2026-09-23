@@ -6,7 +6,7 @@
 use std::{ops::Index, str::FromStr};
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 
 use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
@@ -15,7 +15,8 @@ use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle
 ///
 /// TOML からは [`CountersTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
 /// [`Counters::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(from = "CountersTable")]
 pub(crate) struct Counters {
   /// 部
@@ -138,7 +139,8 @@ impl Index<CounterName> for Counters {
 /// 1 つのカウンタ定義（カウンタ別既定 + `[counters.<name>]` の差分上書きで解決済み）。
 ///
 /// TOML のスキーマは [`CounterStyleOverride`]。
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Debug, Clone, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 pub(crate) struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
@@ -262,7 +264,8 @@ impl CounterStyleOverride {
 }
 
 /// カウンタ名（固定 9 種）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CounterName {
   /// 部

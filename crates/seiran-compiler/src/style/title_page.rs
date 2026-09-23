@@ -1,7 +1,7 @@
 //! タイトルページ（`\maketitle` 相当）のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   document::FontKind,
@@ -9,7 +9,8 @@ use crate::{
 };
 
 /// タイトルページのスタイル設定。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct TitlePageStyle {
   /// タイトルページを生成するか（既定 `false` = 無効）

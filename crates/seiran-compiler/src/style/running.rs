@@ -8,7 +8,7 @@
 //! - `{title}` / `{author}` / `{date}` — `config.toml` の `[document]` メタデータ
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   color::Color,
@@ -18,7 +18,8 @@ use crate::{
 };
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct RunningContentStyle {

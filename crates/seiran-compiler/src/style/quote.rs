@@ -1,7 +1,7 @@
 //! 引用ブロック（`quote` / `quotation`）のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
   document::FontKind,
@@ -9,7 +9,8 @@ use crate::{
 };
 
 /// 引用ブロックのスタイル設定
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct QuoteStyle {
