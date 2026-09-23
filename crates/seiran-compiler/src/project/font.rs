@@ -7,7 +7,7 @@
 //! TOML に対応する未検証型（`RawFontConfig` 等）とそこから検証済み値を構築する処理は
 //! 兄弟 module `project::config` が持つ。
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -51,8 +51,19 @@ pub(crate) enum FontReadError {
 /// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。seam
 /// （[`ProjectSource::read_bytes`]）が返す `Arc<[u8]>` をそのまま持つのはこのためで、
 /// `Vec` へ移し替えると seam のキャッシュと二重に常駐する。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct FontData(FontMap<Arc<[u8]>>);
+
+/// 種別ごとのバイト列の長さだけを出し、中身は出さない。
+///
+/// 19 種別ぶんの生バイト列（日本語フォントを含めると数十〜数百 MB）を整形すると、`expect_err` 等の
+/// 失敗メッセージが読めなくなる（`crate::publication::PublicationFont` の `Debug` と同じ理由）。
+impl fmt::Debug for FontData {
+  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let bytes_len = FontMap::from_fn(|font_type| return self.0[font_type].len());
+    return formatter.debug_struct("FontData").field("bytes_len", &bytes_len).finish();
+  }
+}
 
 impl FontData {
   /// 設定された全フォントファイルを読み込む。同じパスを指す種別は 1 回だけ読む。
@@ -143,6 +154,23 @@ mod tests {
     for font_type in FontType::ALL {
       assert_eq!(font_data.get(font_type), b"FAKE");
     }
+  }
+
+  #[test]
+  fn debug_shows_byte_lengths_by_font_type_instead_of_contents() {
+    // Arrange — 中身が `70, 65, 75, 69` と整形されうる 4 バイトを全 19 種別に入れる
+    let source = MemoryProjectSource::new().with_bytes("/fonts/shared.ttf", b"FAKE".to_vec());
+    let font_data = FontData::load(&source, &make_font_configs("/fonts/shared.ttf")).expect("読み込めるはず");
+
+    // Act
+    let text = format!("{font_data:?}");
+
+    // Assert
+    assert!(
+      text.starts_with("FontData { bytes_len: {Serif: 4, SerifBold: 4, "),
+      "種別をキーに長さだけが宣言順で出るはず: {text}"
+    );
+    assert!(!text.contains("70, 65"), "バイト列の中身は出ないはず: {text}");
   }
 
   #[test]
