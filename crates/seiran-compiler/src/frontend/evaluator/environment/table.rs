@@ -73,6 +73,7 @@ mod tests {
   use crate::{
     document::{CaptionPosition, FontKind, HirInline, HirInlineKind, HirTableRow},
     frontend::evaluator::{evaluate_children_to_hir, test_support},
+    length::Length,
   };
 
   /// ソースを評価して最初の `HirNodeKind::Table` を取り出すヘルパ
@@ -291,6 +292,36 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "widths"));
+  }
+
+  #[test]
+  fn table_parses_fixed_width_in_pt() {
+    // Arrange — 固定幅の書式は config / style と同じ（`pt` も受理。#690）
+    let source = r"\begin{table}[widths=12pt auto]\row{A & B}\end{table}";
+
+    // Act
+    let result = eval_table(source).unwrap();
+
+    // Assert
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます");
+    };
+    assert_eq!(table.widths[0], ColumnWidth::Fixed(Length::pt(12.0)));
+  }
+
+  #[test]
+  fn table_rejects_width_tokens_outside_the_length_format() {
+    // 大文字の単位・単位なしの 0（比率の値域外）・0 の長さはどれも拒否する（#690）
+    for widths in ["5MM auto", "0 auto", "0pt auto"] {
+      let source = format!(r"\begin{{table}}[widths={widths}]\row{{A & B}}\end{{table}}");
+
+      let result = eval_table(&source);
+
+      assert!(
+        matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "widths"),
+        "widths={widths} は拒否される: {result:?}"
+      );
+    }
   }
 
   #[test]

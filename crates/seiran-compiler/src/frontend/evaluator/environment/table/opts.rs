@@ -78,7 +78,7 @@ pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Resul
     return EvalError::InvalidOptArgValue {
       name: "table".to_string(),
       key: "widths".to_string(),
-      expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
+      expected: "auto / <num>pt / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
       span: view.span().into(),
     };
   };
@@ -91,8 +91,9 @@ pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Resul
 
 /// `widths=` の 1 トークンを [`ColumnWidth`] に変換する
 ///
-/// 受理する形式: `auto` / `*` / `<num>mm` / `<num>cm`（サフィックスは大小無視）/
-/// `0` より大きく `1` 以下の小数（本文幅に対する比率）。
+/// 受理する形式: `auto` / `*` / 正の長さ（書式は [`Length`] の `FromStr` と同じ）/
+/// 単位のない `0` より大きく `1` 以下の小数（本文幅に対する比率）。
+/// 単位の有無で長さと比率が決まるので、両者の読みがぶつかることはない。
 fn parse_width_token(token: &str) -> Option<ColumnWidth> {
   if token == "auto" {
     return Some(ColumnWidth::Auto);
@@ -100,22 +101,10 @@ fn parse_width_token(token: &str) -> Option<ColumnWidth> {
   if token == "*" {
     return Some(ColumnWidth::Flex);
   }
-  let lower = token.to_ascii_lowercase();
-  if let Some(stripped) = lower.strip_suffix("mm") {
-    let value: f32 = stripped.parse().ok()?;
-    if !(value.is_finite() && value > 0.0) {
-      return None;
-    }
-    return Some(ColumnWidth::Fixed(Length::mm(value)));
+  if let Ok(length) = token.parse::<Length>() {
+    return length.is_positive().then_some(ColumnWidth::Fixed(length));
   }
-  if let Some(stripped) = lower.strip_suffix("cm") {
-    let value: f32 = stripped.parse().ok()?;
-    if !(value.is_finite() && value > 0.0) {
-      return None;
-    }
-    return Some(ColumnWidth::Fixed(Length::cm(value)));
-  }
-  let ratio: f32 = lower.parse().ok()?;
+  let ratio: f32 = token.parse().ok()?;
   if !(ratio.is_finite() && ratio > 0.0 && ratio <= 1.0) {
     return None;
   }
