@@ -71,11 +71,10 @@ impl<T> FontMap<T> {
   /// # Errors
   ///
   /// `value_of` が `Err` を返した種別の失敗を、完了順ではなく [`FontType::ALL`] 順に集めて返す。
-  pub(crate) fn par_try_from_fn<E: Send>(
-    value_of: impl Fn(FontType) -> Result<T, E> + Sync,
-  ) -> Result<Self, Failures<E>>
+  pub(crate) fn par_try_from_fn<E>(value_of: impl Fn(FontType) -> Result<T, E> + Sync) -> Result<Self, Failures<E>>
   where
     T: Send,
+    E: Send,
   {
     let results = FontType::ALL.par_iter().map(|&font_type| return value_of(font_type)).collect::<Vec<Result<T, E>>>();
     return Self::from_complete_results(results);

@@ -115,7 +115,7 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
 
 ### 7. unsafe は 1 操作 1 ブロック 1 SAFETY
 
-unsafe は既定で書かない（`unsafe_code`。#679 で workspace の unsafe は 0 件になった）。本当に要る箇所だけ
+unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
 `#[expect(unsafe_code, reason = "...")]` で開け、その中で以下を守る。`forbid` にしないのはこの開け口を残すため
 （`forbid` は `expect` で上書きできない）。
 

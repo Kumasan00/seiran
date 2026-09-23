@@ -622,7 +622,9 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
   `breaking` はフォントに触れない
 - **段の中では 19 種すべてを検査して違反を `FontType::ALL` 順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
-  `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする
+  `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする — 19 種のフォント種別については
+  これは `FontMap::par_try_from_fn` / `FontMap::try_from_fn` の内側で行われ、呼び出し側が
+  `collect_in_input_order` を直接呼ぶことはない
 - 検証違反の leaf は `FontValidationFailure { font_type, kind }` で、`code` / `help` / `labels` は内側へ
   委譲しメッセージにだけ config.toml のキーを前置する**帰属 adapter**（`compiler::source_diagnostic` と同じ
   形）。全体・種別ごとの集約 wrapper は作らない（#376）。`kind` は cause ではないので `#[source]` にも
