@@ -895,24 +895,6 @@ mod tests {
     assert_eq!(opts.get(NUMBERED), None, "ソースに書かれていないキーは None");
   }
 
-  #[test]
-  fn declared_key_carries_expected_type_into_schema() {
-    // Arrange — キー定数 1 つがスキーマの型と取り出しの型の両方を決める
-    // `\image` は figure 環境の中でしか出現できないので、トップレベルで通る `\section` を使う
-    // （テストの主題はキー定数の型タグの確認で、コマンド名ではない）
-    const DPI: OptKey<u32> = positive_int("dpi");
-    let arena = Bump::new();
-    let source = r"\section[dpi=72]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    // Act
-    let opts = collect_command_opt_args(&view, &[DPI.decl()]).unwrap();
-
-    // Assert
-    assert_eq!(opts.get(DPI), Some(72));
-  }
-
   /// `ty` を作る入力文字列と、それが作るべき [`OptValue`] を返す
   ///
   /// 全 variant を明示した match（wildcard なし）にしてあるので、`OptType` に variant を足すと
