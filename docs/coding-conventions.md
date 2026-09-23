@@ -61,8 +61,13 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `TheoremClass::COUNT` / `NodeId::for_test`
   のような、型そのものに属していて module へ切り離せないもの）。後者は 20 箇所あり、`mod tests` の中の
   `impl` へ寄せると「crate 全体から見える `pub(crate)` が `tests` という名前の module に住む」別の
-  ねじれが生じるため、いまは項目に付けたまま残している（#696）。**再検討のトリガー**は
-  「同じ型のテスト専用アクセサが 3 つ以上に増えたとき」— そのときは型ごとの置き場を設計し直す。
+  ねじれが生じるため、いまは項目に付けたまま残している（#696）。テストビルドでだけ要る **trait 実装**も
+  同じ扱いで項目に付ける — `Style` の木と配下の値型の `Serialize`（`compiler::test_support::TestProject` が
+  型付きで書き換えた `Style` を style.toml へ書き戻すためだけに使う。#684）。derive は
+  `#[cfg_attr(test, derive(serde::Serialize))]`、手書きは `#[cfg(test)] impl serde::Serialize for …` と書き、
+  trait 名を `serde::` で修飾する（import すると本体ビルドで未使用になり、`use` 行の個別ゲートが要るため）。
+  **再検討のトリガー**は「同じ型のテスト専用アクセサが 3 つ以上に増えたとき」— そのときは型ごとの置き場を
+  設計し直す。
 
 ### 4. ドキュメントコメント
 
