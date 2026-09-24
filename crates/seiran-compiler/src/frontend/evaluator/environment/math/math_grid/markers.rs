@@ -16,13 +16,13 @@ use crate::{
 
 /// 行末マーカー `\label{...}` から取り込んだ行ラベル
 #[derive(Debug)]
-pub(crate) struct RowLabel {
+pub(super) struct RowLabel {
   /// 著者が書いたラベル名
-  pub(crate) name: String,
+  pub(super) name: String,
   /// 診断に使うマーカーのソース位置
-  pub(crate) span: SourceSpan,
+  pub(super) span: SourceSpan,
   /// マーカー自身の HIR ノード ID（`HirMathRow::label_site` になる）
-  pub(crate) site: NodeId,
+  pub(super) site: NodeId,
 }
 
 /// 立っている行末マーカーの後ろに意味のある要素が続いていないか検証する

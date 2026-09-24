@@ -8,7 +8,8 @@ use std::slice;
 
 use crate::{
   document::{
-    FontKind, HirMath, HirMathBlock, HirMathKind, MathClass, MathDelimiter, MathEnvKind, MathVariant, NodeId,
+    FontKind, GridLayout, HirMath, HirMathBlock, HirMathKind, MathClass, MathDelimiter, MathEnvKind, MathVariant,
+    NodeId,
   },
   length::Length,
   semantics::LabelId,
@@ -131,19 +132,19 @@ fn alignment_to_align(alignment: Alignment) -> Align {
 
 /// 環境種別・行位置・列インデックスから、そのセルの列内での水平揃えを決める
 ///
-/// `align` / `split` は `&` 区切りの偶数列を右・奇数列を左へ寄せ、`multiline` は先頭行を左・
-/// 末尾行を右・中間行を中央に置く階段配置にする。`boxing` はこの結果を列幅の中の
-/// オフセット計算に使うだけで、環境種別を知らない（#674）。
+/// `Grid(Aligned)`（`align` / `split`）は `&` 区切りの偶数列を右・奇数列を左へ寄せ、`Grid(Staircase)`
+/// （`multiline`）は先頭行を左・末尾行を右・中間行を中央に置く階段配置にする。`boxing` はこの結果を
+/// 列幅の中のオフセット計算に使うだけで、環境種別を知らない（#674）。
 fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> Align {
   return match kind {
-    MathEnvKind::Align | MathEnvKind::Split => {
+    MathEnvKind::Grid(GridLayout::Aligned) => {
       if col.is_multiple_of(2) {
         Align::Right
       } else {
         Align::Left
       }
     },
-    MathEnvKind::Multiline => {
+    MathEnvKind::Grid(GridLayout::Staircase) => {
       if n_rows <= 1 || (row_idx > 0 && row_idx < n_rows - 1) {
         Align::Center
       } else if row_idx == 0 {
@@ -152,7 +153,7 @@ fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> A
         Align::Right
       }
     },
-    MathEnvKind::Gather | MathEnvKind::Matrix { .. } => Align::Center,
+    MathEnvKind::Grid(GridLayout::Centered) | MathEnvKind::Matrix { .. } => Align::Center,
     MathEnvKind::Equation | MathEnvKind::Cases => Align::Left,
   };
 }
@@ -187,8 +188,8 @@ fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
         right: Some("\u{2016}"),
       },
     },
-    // 揃え系の環境は括弧で囲まない。
-    MathEnvKind::Equation | MathEnvKind::Align | MathEnvKind::Gather | MathEnvKind::Split | MathEnvKind::Multiline => {
+    // 区切り括弧を持たない環境。
+    MathEnvKind::Equation | MathEnvKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
       DelimiterGlyphs::default()
     },
   };
@@ -792,32 +793,32 @@ mod tests {
   }
 
   #[test]
-  fn cell_align_align_and_split_alternate_right_left_by_column() {
-    for kind in [MathEnvKind::Align, MathEnvKind::Split] {
-      assert_eq!(cell_align(kind, 0, 1, 0), Align::Right, "列 0 は右: {kind:?}");
-      assert_eq!(cell_align(kind, 0, 1, 1), Align::Left, "列 1 は左: {kind:?}");
-      assert_eq!(cell_align(kind, 0, 1, 2), Align::Right, "列 2 は右: {kind:?}");
-    }
+  fn cell_align_aligned_alternates_right_left_by_column() {
+    let kind = MathEnvKind::Grid(GridLayout::Aligned);
+    assert_eq!(cell_align(kind, 0, 1, 0), Align::Right, "列 0 は右");
+    assert_eq!(cell_align(kind, 0, 1, 1), Align::Left, "列 1 は左");
+    assert_eq!(cell_align(kind, 0, 1, 2), Align::Right, "列 2 は右");
   }
 
   #[test]
-  fn cell_align_gather_is_always_center() {
-    assert_eq!(cell_align(MathEnvKind::Gather, 0, 3, 0), Align::Center);
-    assert_eq!(cell_align(MathEnvKind::Gather, 1, 3, 0), Align::Center);
-    assert_eq!(cell_align(MathEnvKind::Gather, 2, 3, 0), Align::Center);
+  fn cell_align_centered_is_always_center() {
+    let kind = MathEnvKind::Grid(GridLayout::Centered);
+    assert_eq!(cell_align(kind, 0, 3, 0), Align::Center);
+    assert_eq!(cell_align(kind, 1, 3, 0), Align::Center);
+    assert_eq!(cell_align(kind, 2, 3, 0), Align::Center);
   }
 
   #[test]
-  fn cell_align_multiline_is_staircase() {
-    let kind = MathEnvKind::Multiline;
+  fn cell_align_staircase_is_staircase() {
+    let kind = MathEnvKind::Grid(GridLayout::Staircase);
     assert_eq!(cell_align(kind, 0, 3, 0), Align::Left, "先頭行は左");
     assert_eq!(cell_align(kind, 1, 3, 0), Align::Center, "中間行は中央");
     assert_eq!(cell_align(kind, 2, 3, 0), Align::Right, "末尾行は右");
   }
 
   #[test]
-  fn cell_align_multiline_single_row_is_center() {
-    assert_eq!(cell_align(MathEnvKind::Multiline, 0, 1, 0), Align::Center);
+  fn cell_align_staircase_single_row_is_center() {
+    assert_eq!(cell_align(MathEnvKind::Grid(GridLayout::Staircase), 0, 1, 0), Align::Center);
   }
 
   #[test]
@@ -894,10 +895,9 @@ mod tests {
         delimiter: MathDelimiter::None,
       },
       MathEnvKind::Equation,
-      MathEnvKind::Align,
-      MathEnvKind::Gather,
-      MathEnvKind::Split,
-      MathEnvKind::Multiline,
+      MathEnvKind::Grid(GridLayout::Aligned),
+      MathEnvKind::Grid(GridLayout::Centered),
+      MathEnvKind::Grid(GridLayout::Staircase),
     ] {
       assert!(!delimiter_glyphs(kind).is_present(), "括弧なし: {kind:?}");
     }

@@ -5,7 +5,7 @@
 use miette::SourceSpan;
 
 use crate::{
-  document::{HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
     syntax::{
@@ -19,20 +19,38 @@ use crate::{
 mod markers;
 mod numbering;
 
-pub(crate) use markers::RowLabel;
-use markers::{ensure_markers_at_row_end, try_take_row_marker};
-pub(crate) use numbering::NumberingMode;
+use markers::{RowLabel, ensure_markers_at_row_end, try_take_row_marker};
+pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
 use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
 
 use crate::document::NodeId;
 
-/// グリッド分割の許可設定（環境種別ごと）
+/// グリッド分割の許可設定
+///
+/// 行・列に分割する数式環境（`MathGrid`）は [`GridSpec::for_layout`] でセル配置から導出し、
+/// それ以外の数式環境（`equation` / `cases` / `matrix`）は呼び出し側が値を直書きする。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GridSpec {
+pub(super) struct GridSpec {
   /// 行区切り `\\` を許可するか
   pub allow_row_breaks: bool,
   /// 列区切り `&` を許可するか
   pub allow_column_breaks: bool,
+}
+
+impl GridSpec {
+  /// グリッド環境のセル配置から区切りの許可を導出する
+  ///
+  /// 行区切り `\\` は常に許可し、列区切り `&` は列を持つ配置（[`GridLayout::Aligned`]）だけが受理する。
+  const fn for_layout(layout: GridLayout) -> Self {
+    let allow_column_breaks = match layout {
+      GridLayout::Aligned => true,
+      GridLayout::Centered | GridLayout::Staircase => false,
+    };
+    return Self {
+      allow_row_breaks: true,
+      allow_column_breaks,
+    };
+  }
 }
 
 /// グリッド 1 行の評価結果
@@ -43,9 +61,9 @@ pub(super) struct GridRow {
   /// 列（`&` 区切り）。各列は数式ノード列
   pub cells: Vec<Vec<HirMath>>,
   /// 行末マーカー `\notag` の位置（`None` は採番する）
-  pub notag_span: Option<SourceSpan>,
+  notag_span: Option<SourceSpan>,
   /// 行末マーカー `\label{...}` で付与された行ラベル（`None` は参照対象外）
-  pub label: Option<RowLabel>,
+  label: Option<RowLabel>,
 }
 
 /// 数式環境本体を行 × 列のグリッドに分割して評価する
@@ -58,7 +76,7 @@ pub(super) struct GridRow {
 /// [`EvalError::NotagNotSupported`] / [`EvalError::RowLabelNotSupported`]、行末以外・引数不正・1 行に
 /// 複数＝[`EvalError::NotagNotAtRowEnd`] / [`EvalError::RowLabelNotAtRowEnd`]）、セル内の数式評価失敗時に
 /// エラーを返す。
-pub(crate) fn evaluate_grid(
+pub(super) fn evaluate_grid(
   source: &str,
   ctx: &EvalContext<'_>,
   body: &GreenNode<'_>,
@@ -137,17 +155,17 @@ pub(crate) fn evaluate_grid(
 
 /// `align` / `gather` / `split` / `multiline` の共通評価本体
 ///
-/// グリッド分割後に [`NumberingMode`] に応じた採番対象とラベルを構造化する。
+/// セル配置から区切りの許可を導出してグリッド分割し、[`NumberingMode`] に応じた採番対象とラベルを
+/// 構造化する。
 ///
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価や許可しない区切りトークンの出現、無採番への
 /// ラベル付与・重複ラベル時にエラーを返す。
-pub(crate) fn evaluate_math_env(
+pub(in crate::frontend::evaluator::environment) fn evaluate_math_env(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
-  kind: MathEnvKind,
-  spec: GridSpec,
+  layout: GridLayout,
   mode: NumberingMode,
 ) -> Result<HirNode, EvalError> {
   let (numbered, env_label) = parse_math_env_opts(view, mode)?;
@@ -156,7 +174,7 @@ pub(crate) fn evaluate_math_env(
   let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
   let id = ctx.alloc(view.span());
   let mut grid = match view.body() {
-    Some(body_node) => evaluate_grid(view.source(), ctx, body_node, spec, row_markers_allowed)?,
+    Some(body_node) => evaluate_grid(view.source(), ctx, body_node, GridSpec::for_layout(layout), row_markers_allowed)?,
     None => Vec::new(),
   };
   trim_trailing_blank_marker_rows(&mut grid)?;
@@ -173,7 +191,7 @@ pub(crate) fn evaluate_math_env(
   return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock(HirMathBlock {
-      kind,
+      kind: MathEnvKind::Grid(layout),
       rows,
       numbered: env_numbered,
       label: block_label,
@@ -182,7 +200,7 @@ pub(crate) fn evaluate_math_env(
 }
 
 /// 非採番環境（`cases` / `matrix`）の行リストを構築する
-pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<HirMathRow> {
+pub(super) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<HirMathRow> {
   while grid.last().is_some_and(|row| return is_blank_row(&row.cells)) {
     grid.pop();
   }
@@ -336,12 +354,12 @@ mod tests {
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
   }
 
-  /// 結果の最初の `HirNodeKind::MathBlock`（`Align`）の行スライスを取り出すヘルパ
+  /// 結果の最初の `HirNodeKind::MathBlock`（`align` ＝ `Grid(Aligned)`）の行スライスを取り出すヘルパ
   fn align_rows_of(result: &[HirNode]) -> &[HirMathRow] {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Align, "align は MathEnvKind::Align");
+    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Aligned), "align は Grid(Aligned)");
     return &math.rows;
   }
 
@@ -574,7 +592,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Gather, "gather は MathEnvKind::Gather");
+    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Centered), "gather は Grid(Centered)");
     return &math.rows;
   }
 
@@ -675,12 +693,12 @@ mod tests {
     assert!(rows[1].numbered);
   }
 
-  /// 最初の `HirNodeKind::MathBlock`（`Split`）を分解して (`rows`, `numbered`) を返す
+  /// 最初の `HirNodeKind::MathBlock`（`split` ＝ `Grid(Aligned)`）を分解して (`rows`, `numbered`) を返す
   fn split_block_of(result: &[HirNode]) -> (&[HirMathRow], bool) {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Split, "split は MathEnvKind::Split");
+    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Aligned), "split は Grid(Aligned)");
     return (&math.rows, math.numbered);
   }
 
@@ -768,7 +786,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Multiline, "multiline は MathEnvKind::Multiline");
+    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Staircase), "multiline は Grid(Staircase)");
     return (&math.rows, math.numbered);
   }
 

@@ -1,18 +1,15 @@
 //! 環境ディスパッチ
 //!
 //! [`ENVIRONMENTS`] は環境名から [`EnvironmentKind`] を引く単一レジストリで、種別が
-//! 定理クラス・引用の種類・リストの順序付き / なし・数式環境の種別を値として持つ。
-//! 本体の読み取り方（[`BodyMode`]）は種別から導出する。
+//! 定理クラス・引用の種類・リストの順序付き / なし・数式グリッド環境のセル配置と採番の粒度を
+//! 値として持つ。本体の読み取り方（[`BodyMode`]）は種別から導出する。
 
 use phf::phf_map;
 
 use crate::{
-  document::{HirNode, MathEnvKind, QuoteKind, TheoremClass},
+  document::{GridLayout, HirNode, QuoteKind, TheoremClass},
   frontend::{
-    evaluator::{
-      EvalContext, EvalError,
-      environment::math::{GridSpec, NumberingMode},
-    },
+    evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
     syntax::{BodyMode, view::EnvironmentView},
   },
 };
@@ -30,7 +27,7 @@ mod theorem;
 /// 環境の種類
 ///
 /// レジストリ [`ENVIRONMENTS`] の値。名前ごとに違う情報（定理クラス・引用の種類・リストの
-/// 順序付き / なし・数式環境の種別と分割・採番の規則）を値として持ち、評価はこの種別に対する
+/// 順序付き / なし・数式グリッド環境のセル配置と採番の粒度）を値として持ち、評価はこの種別に対する
 /// 1 操作 [`EnvironmentKind::evaluate`] に閉じる。
 #[derive(Debug, Clone, Copy)]
 enum EnvironmentKind {
@@ -52,11 +49,11 @@ enum EnvironmentKind {
   /// 単一行数式環境（`equation`）
   Equation,
   /// 行・列に分割して採番する数式環境（`align` / `gather` / `split` / `multiline`）
+  ///
+  /// セル配置と採番の粒度は独立の 2 軸で、どの組み合わせも有効（区切りの許可は配置から導出する）。
   MathGrid {
-    /// 数式環境の種別
-    kind: MathEnvKind,
-    /// 行・列区切りの許可設定
-    spec: GridSpec,
+    /// セル配置
+    layout: GridLayout,
     /// 採番の粒度
     numbering: NumberingMode,
   },
@@ -90,11 +87,7 @@ impl EnvironmentKind {
       Self::Table => table::table(view, ctx),
       Self::Code => code::code(view, ctx),
       Self::Equation => math::equation(view, ctx),
-      Self::MathGrid {
-        kind,
-        spec,
-        numbering,
-      } => math::evaluate_math_env(view, ctx, kind, spec, numbering),
+      Self::MathGrid { layout, numbering } => math::evaluate_math_env(view, ctx, layout, numbering),
       Self::Cases => math::cases(view, ctx),
       Self::Matrix => math::matrix(view, ctx),
     };
@@ -109,26 +102,10 @@ static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
   "enumerate" => EnvironmentKind::List { ordered: true },
 
   "equation"  => EnvironmentKind::Equation,
-  "align"     => EnvironmentKind::MathGrid {
-    kind: MathEnvKind::Align,
-    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: true },
-    numbering: NumberingMode::PerRow,
-  },
-  "gather"    => EnvironmentKind::MathGrid {
-    kind: MathEnvKind::Gather,
-    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: false },
-    numbering: NumberingMode::PerRow,
-  },
-  "split"     => EnvironmentKind::MathGrid {
-    kind: MathEnvKind::Split,
-    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: true },
-    numbering: NumberingMode::SingleEnv,
-  },
-  "multiline" => EnvironmentKind::MathGrid {
-    kind: MathEnvKind::Multiline,
-    spec: GridSpec { allow_row_breaks: true, allow_column_breaks: false },
-    numbering: NumberingMode::SingleEnv,
-  },
+  "align"     => EnvironmentKind::MathGrid { layout: GridLayout::Aligned,   numbering: NumberingMode::PerRow },
+  "gather"    => EnvironmentKind::MathGrid { layout: GridLayout::Centered,  numbering: NumberingMode::PerRow },
+  "split"     => EnvironmentKind::MathGrid { layout: GridLayout::Aligned,   numbering: NumberingMode::SingleEnv },
+  "multiline" => EnvironmentKind::MathGrid { layout: GridLayout::Staircase, numbering: NumberingMode::SingleEnv },
   "cases"     => EnvironmentKind::Cases,
   "matrix"    => EnvironmentKind::Matrix,
 

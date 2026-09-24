@@ -22,7 +22,10 @@ const DELIMITER: OptKey<String> = opt_args::string("delimiter");
 /// # Errors
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn matrix(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
+pub(in crate::frontend::evaluator::environment) fn matrix(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<HirNode, EvalError> {
   let opts = collect_environment_opt_args(view, &[DELIMITER.decl()])?;
   let delimiter = match opts.get(DELIMITER) {
     Some(value) => {
