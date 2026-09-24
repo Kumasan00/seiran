@@ -1,0 +1,16 @@
+project::config::parse_toml
+
+  × 設定ファイルの TOML 解析に失敗しました
+  ╰─▶ unknown field `font_name`, expected one of `font_path`, `font_index`, `variation_axes`,
+      `language`, `script`, `ot_language`, `direction`, `features`
+      in `font_configs.serif`
+      
+   ╭─[diagnostics/config.toml:2:1]
+ 1 │ [font_configs.serif]
+ 2 │ font_name = "MyFont"
+   · ────┬────
+   ·     ╰── ここ
+ 3 │ font_path = "a.ttf"
+   ╰────
+  help: TOML の構文とキー名を確認してください。使えないキー（廃止されたキーを含む）は削除してくだ
+        さい。

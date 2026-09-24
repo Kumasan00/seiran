@@ -502,3 +502,22 @@ fn diagnostic_config_parse_toml() {
   assert!(!rendered.contains("TOML parse error at line"), "{rendered}");
   assert_matches_golden("config_parse_toml", &rendered);
 }
+
+#[test]
+fn diagnostic_config_removed_font_name() {
+  // Arrange — #692 で外した font_name を書いたままの config（未知キーとして拒否し、削除を案内する）
+  let source = MemoryProjectSource::new()
+    .with_text("diagnostics/config.toml", "[font_configs.serif]\nfont_name = \"MyFont\"\nfont_path = \"a.ttf\"\n");
+  let config_path = ProjectPath::new("diagnostics/config.toml");
+
+  // Act
+  let (result, _warnings) = project::config::load(&source, &config_path, &PathResolver::new(Path::new("diagnostics")));
+  let Err(failures) = result else {
+    panic!("このケースは失敗するはず");
+  };
+
+  // Assert — cause 行がキー名を、ラベルがキーの位置を、help が削除を示す
+  let rendered = render_failure(CompileFailure::from(failures));
+  assert!(rendered.contains("font_name"), "{rendered}");
+  assert_matches_golden("config_removed_font_name", &rendered);
+}

@@ -248,7 +248,12 @@ impl Index<FontType> for RawFontConfigs {
 }
 
 /// 単一フォント種別のプリセット設定情報
+///
+/// 未知キーを静かに無視すると、書いた値に効果があると誤解させたまま出力が変わらない
+/// （旧 `font_name` は検査だけされて PDF に使われていなかった。#692）。`deny_unknown_fields` で
+/// 未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub(super) struct RawFontConfig {
   /// フォントファイルへのパス（相対または絶対）

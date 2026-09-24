@@ -715,6 +715,49 @@ mod tests {
   }
 
   #[test]
+  fn parse_config_fails_on_removed_font_name_key() {
+    // Arrange — font_name は #692 でスキーマから外した。静かに無視すると値に効果があると
+    // 誤解させたままになるので、TOML 解析時に未知キーとして拒否する
+    let toml = format!(
+      "{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections_with_serif_extra("dummy.ttf", "font_name = \"font_serif\""),
+    );
+
+    // Act
+    let failures = parse_config(&toml, dummy_source()).unwrap_err();
+
+    // Assert — 値検証ではなく TOML 解析の段で落ち、メッセージがキー名を示す
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    let ReadConfigError::ParseToml { source, .. } = first else {
+      panic!("font_name は deny_unknown_fields で ParseToml になるはず: {first:?}");
+    };
+    assert!(source.to_string().contains("unknown field `font_name`"), "{source}");
+  }
+
+  #[test]
+  fn parse_config_fails_on_misspelled_font_key() {
+    // Arrange — 種別セクション内の綴り違いは、黙って既定値（font_index = 0）へ落とさず拒否する
+    let toml = format!(
+      "{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections_with_serif_extra("dummy.ttf", "font_indx = 1"),
+    );
+
+    // Act
+    let failures = parse_config(&toml, dummy_source()).unwrap_err();
+
+    // Assert
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    let ReadConfigError::ParseToml { source, .. } = first else {
+      panic!("未知キーは ParseToml になるはず: {first:?}");
+    };
+    assert!(source.to_string().contains("unknown field `font_indx`"), "{source}");
+  }
+
+  #[test]
   fn parse_config_fails_on_legacy_top_level_name() {
     // Arrange
     let toml = format!(
