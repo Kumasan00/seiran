@@ -1,4 +1,4 @@
-//! 数式環境の種別 [`MathEnvKind`] と区切り括弧 [`MathDelimiter`]。
+//! 数式環境の種別 [`MathEnvKind`]・グリッド環境のセル配置 [`GridLayout`]・区切り括弧 [`MathDelimiter`]。
 
 use std::str::FromStr;
 
@@ -6,27 +6,36 @@ use thiserror::Error;
 
 /// ディスプレイ数式環境の種別
 ///
-/// `frontend` が `\begin{...}` の環境名から決定する。`boxing` 段がこの種別に応じて
-/// 列の揃え（`align` は `&` 位置で交互、`matrix` は中央）・区切り括弧・行採番を決める。
+/// `frontend` が環境レジストリの値から決定する。`typeset::lowering` がこの種別からセルの列内揃えと
+/// 区切り括弧を決める。採番（行ごとか環境全体に 1 つか）は種別に含めず、`HirMathRow::numbered` /
+/// `HirMathBlock::numbered` がデータとして運ぶ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathEnvKind {
-  /// `equation` — 単一行・単一セル・採番あり
+  /// `equation` — 単一行・単一セル
   Equation,
-  /// `align` — 複数行・`&` 整列・行ごと採番
-  Align,
-  /// `gather` — 複数行・各行中央寄せ・行ごと採番
-  Gather,
-  /// `split` — 複数行・`&` 整列・環境全体に 1 つだけ採番（縦中央）
-  Split,
-  /// `multiline` — 複数行・単一列・先頭=左 / 末尾=右 / 中間=中央の階段配置・環境全体に 1 つだけ採番（縦中央）
-  Multiline,
-  /// `cases` — 左波括弧 + 2 列・非採番
+  /// 行・列に分割する数式環境（どの環境名がどの配置かは frontend の環境レジストリが持つ）
+  Grid(GridLayout),
+  /// `cases` — 左波括弧 + 2 列
   Cases,
-  /// `matrix` — グリッド整列 + 区切り括弧・非採番
+  /// `matrix` — グリッド整列 + 区切り括弧
   Matrix {
     /// 区切り括弧の種別
     delimiter: MathDelimiter,
   },
+}
+
+/// 行・列に分割する数式環境のセル配置
+///
+/// 採番の粒度とは独立の軸で、どの組み合わせも意味を持つ（環境名との対応は frontend の
+/// 環境レジストリが持つ）。列区切り `&` を受理するかは配置から決まる。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GridLayout {
+  /// `&` 区切りの列を右・左交互に揃える
+  Aligned,
+  /// 単一列・各行中央寄せ
+  Centered,
+  /// 単一列・先頭行 = 左 / 末尾行 = 右 / 中間行 = 中央の階段配置
+  Staircase,
 }
 
 /// 行列・場合分けを囲む区切り括弧の種別

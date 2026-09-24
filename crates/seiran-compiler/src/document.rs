@@ -23,8 +23,8 @@
 //!
 //! HIR 木の型は子 module `hir`、HIR の variant が値として直接持つ閉じた語彙型
 //! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TheoremClass`] / [`MathEnvKind`] /
-//! [`MathDelimiter`] / [`MathVariant`] / [`MathClass`] / [`ColumnAlign`] / [`ColumnWidth`] / [`FontKind`]）は
-//! この module の直下。
+//! [`GridLayout`] / [`MathDelimiter`] / [`MathVariant`] / [`MathClass`] / [`ColumnAlign`] / [`ColumnWidth`] /
+//! [`FontKind`]）はこの module の直下。
 //! 語彙置き場は型の無制限な受け皿にはせず、HIR の variant と同じ理由で増減する語彙だけを置く
 //! （複数 consumer が使うことは、ここへ置く理由にならない）。
 //!
@@ -59,7 +59,7 @@ pub(crate) use hir::{
   HirTableCell, HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
 };
 pub(crate) use math_class::MathClass;
-pub(crate) use math_environment::{MathDelimiter, MathEnvKind};
+pub(crate) use math_environment::{GridLayout, MathDelimiter, MathEnvKind};
 pub(crate) use math_variant::MathVariant;
 pub(crate) use quote::QuoteKind;
 pub(crate) use table_column::{ColumnAlign, ColumnWidth};
