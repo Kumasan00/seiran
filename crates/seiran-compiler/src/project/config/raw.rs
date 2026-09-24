@@ -248,12 +248,14 @@ impl Index<FontType> for RawFontConfigs {
 }
 
 /// 単一フォント種別のプリセット設定情報
+///
+/// 未知キーを静かに無視すると、書いた値に効果があると誤解させたまま出力が変わらない
+/// （旧 `font_name` は検査だけされて PDF に使われていなかった。#692）。`deny_unknown_fields` で
+/// 未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub(super) struct RawFontConfig {
-  /// `PDF FontDescriptor` での基本フォント名（各フォント種別で一意）
-  #[garde(length(min = 1))]
-  pub font_name: String,
   /// フォントファイルへのパス（相対または絶対）
   pub font_path: PathBuf,
   /// TTC ファイル内のフォントインデックス（デフォルト 0）
@@ -359,20 +361,6 @@ impl Default for RawImageConfig {
       max_dpi: 300,
       downsample: true,
     };
-  }
-}
-
-/// 19 フォント種別の `font_name` がすべて一意であることを検証し、違反を `errors` に追加します。
-pub(crate) fn validate_unique_font_names(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
-  let mut seen = std::collections::HashSet::new();
-  for &font_type in FontType::ALL {
-    let name = value[font_type].font_name.as_str();
-    if !seen.insert(name) {
-      errors.push(ConfigValidationError::Field {
-        path: format!("font_configs.{}", font_type.as_toml_key()),
-        message: format!("フォント名 '{name}' が重複しています"),
-      });
-    }
   }
 }
 

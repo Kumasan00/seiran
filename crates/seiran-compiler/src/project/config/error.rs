@@ -20,7 +20,10 @@ pub(crate) enum ReadConfigError {
   },
   /// TOML 解析失敗
   #[error("設定ファイルの TOML 解析に失敗しました")]
-  #[diagnostic(code(project::config::parse_toml), help("TOML の構文を確認してください。"))]
+  #[diagnostic(
+    code(project::config::parse_toml),
+    help("TOML の構文とキー名を確認してください。使えないキー（廃止されたキーを含む）は削除してください。")
+  )]
   ParseToml {
     #[source_code]
     /// エラー位置を示すためのソース全文

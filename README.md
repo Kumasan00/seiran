@@ -98,7 +98,6 @@ width = "595pt"                # ページ幅（A4 = 595pt）
 # downsample = true
 
 [font_configs.serif]           # 19種別それぞれに設定
-font_name = "MyFont"           # PDF 内フォント名（一意必須）
 font_path = "fonts/MyFont.ttf" # フォントファイルパス
 script = "latn"                # OpenType スクリプトタグ（オプション）
 language = "en"                # BCP 47 言語タグ（オプション）

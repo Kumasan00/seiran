@@ -30,35 +30,30 @@ width = "595mm"
 
 [font_configs.serif]
 direction = "left-to-right"
-font_name = "STIXTwoText_serif"
 font_path = "vendor/fonts/STIXTwoText[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
 [font_configs.serif_bold]
 direction = "left-to-right"
-font_name = "STIXTwoText_serif_bold"
 font_path = "vendor/fonts/STIXTwoText[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
 [font_configs.serif_italic]
 direction = "left-to-right"
-font_name = "STIXTwoText_serif_italic"
 font_path = "vendor/fonts/STIXTwoText-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
 [font_configs.serif_bold_italic]
 direction = "left-to-right"
-font_name = "STIXTwoText_serif_bold_italic"
 font_path = "vendor/fonts/STIXTwoText-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
 [font_configs.sans_serif]
 direction = "left-to-right"
-font_name = "NotoSans"
 font_path = "vendor/fonts/NotoSans[wdth,wght].ttf"
 script = "latn"
 variation_axes = [
@@ -68,7 +63,6 @@ variation_axes = [
 
 [font_configs.sans_serif_bold]
 direction = "left-to-right"
-font_name = "NotoSans_bold"
 font_path = "vendor/fonts/NotoSans[wdth,wght].ttf"
 script = "latn"
 variation_axes = [
@@ -78,7 +72,6 @@ variation_axes = [
 
 [font_configs.sans_serif_italic]
 direction = "left-to-right"
-font_name = "NotoSans_italic"
 font_path = "vendor/fonts/NotoSans-Italic[wdth,wght].ttf"
 script = "latn"
 variation_axes = [
@@ -88,7 +81,6 @@ variation_axes = [
 
 [font_configs.sans_serif_bold_italic]
 direction = "left-to-right"
-font_name = "NotoSans_bold_italic"
 font_path = "vendor/fonts/NotoSans-Italic[wdth,wght].ttf"
 script = "latn"
 variation_axes = [
@@ -98,35 +90,30 @@ variation_axes = [
 
 [font_configs.monospace]
 direction = "left-to-right"
-font_name = "JetBrainsMono"
 font_path = "vendor/fonts/JetBrainsMono[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
 [font_configs.monospace_bold]
 direction = "left-to-right"
-font_name = "JetBrainsMono_bold"
 font_path = "vendor/fonts/JetBrainsMono[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
 [font_configs.monospace_italic]
 direction = "left-to-right"
-font_name = "JetBrainsMono_italic"
 font_path = "vendor/fonts/JetBrainsMono-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
 [font_configs.monospace_bold_italic]
 direction = "left-to-right"
-font_name = "JetBrainsMono_bold_italic"
 font_path = "vendor/fonts/JetBrainsMono-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
 [font_configs.math]
 direction = "left-to-right"
-font_name = "STIXTwoMath"
 font_path = "vendor/fonts/STIXTwoMath-Regular.ttf"
 script = "math"
 
@@ -137,7 +124,6 @@ features = [
   { tag = "liga", value = 1 },
   { tag = "plat", value = 1 },
 ]
-font_name = "NotoSerifJP"
 font_path = "vendor/fonts/NotoSerifJP[wght].ttf"
 language = "JAN"
 script = "kana"
@@ -150,7 +136,6 @@ features = [
   { tag = "liga", value = 1 },
   { tag = "plat", value = 1 },
 ]
-font_name = "NotoSerifJP_bold"
 font_path = "vendor/fonts/NotoSerifJP[wght].ttf"
 language = "JAN"
 script = "kana"
@@ -163,7 +148,6 @@ features = [
   { tag = "liga", value = 1 },
   { tag = "plat", value = 1 },
 ]
-font_name = "NotoSansJP"
 font_path = "vendor/fonts/NotoSansJP[wght].ttf"
 language = "JAN"
 script = "kana"
@@ -176,7 +160,6 @@ features = [
   { tag = "liga", value = 1 },
   { tag = "plat", value = 1 },
 ]
-font_name = "NotoSansJP_bold"
 font_path = "vendor/fonts/NotoSansJP[wght].ttf"
 language = "JAN"
 script = "kana"
@@ -185,11 +168,9 @@ variation_axes = [{ name = "wght", value = 700.0 }]
 [font_configs.japanese_monospace]
 direction = "left-to-right"
 font_index = 0
-font_name = "SourceHanCodeJP"
 font_path = "vendor/fonts/SourceHanCodeJP.ttc"
 
 [font_configs.japanese_monospace_bold]
 direction = "left-to-right"
 font_index = 10
-font_name = "SourceHanCodeJP_bold"
 font_path = "vendor/fonts/SourceHanCodeJP.ttc"

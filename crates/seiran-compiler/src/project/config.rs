@@ -237,7 +237,6 @@ fn validate_and_convert(raw: &RawConfig) -> Result<FontMap<FontValues>, Vec<Conf
       };
     }));
   }
-  raw::validate_unique_font_names(&raw.font_configs, &mut errors);
   raw::validate_font_language_constraints(&raw.font_configs, &mut errors);
 
   let font_values = FontMap::try_from_fn(|font_type| return parse_font_values(font_type, &raw.font_configs[font_type]));
@@ -716,27 +715,46 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_fails_on_duplicate_font_names_with_font_type_in_path() {
-    // Arrange
-    let sections = make_font_sections("dummy.ttf").replace(
-      "[font_configs.serif_bold]\nfont_name = \"font_serif_bold\"",
-      "[font_configs.serif_bold]\nfont_name = \"font_serif\"",
+  fn parse_config_fails_on_removed_font_name_key() {
+    // Arrange — font_name は #692 でスキーマから外した。静かに無視すると値に効果があると
+    // 誤解させたままになるので、TOML 解析時に未知キーとして拒否する
+    let toml = format!(
+      "{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections_with_serif_extra("dummy.ttf", "font_name = \"font_serif\""),
     );
-    let toml = format!("{}{}{sections}", valid_output_section("test", "out"), valid_pdf_section());
-    let raw = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&raw).unwrap_err();
+    let failures = parse_config(&toml, dummy_source()).unwrap_err();
+
+    // Assert — 値検証ではなく TOML 解析の段で落ち、メッセージがキー名を示す
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    let ReadConfigError::ParseToml { source, .. } = first else {
+      panic!("font_name は deny_unknown_fields で ParseToml になるはず: {first:?}");
+    };
+    assert!(source.to_string().contains("unknown field `font_name`"), "{source}");
+  }
+
+  #[test]
+  fn parse_config_fails_on_misspelled_font_key() {
+    // Arrange — 種別セクション内の綴り違いは、黙って既定値（font_index = 0）へ落とさず拒否する
+    let toml = format!(
+      "{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections_with_serif_extra("dummy.ttf", "font_indx = 1"),
+    );
+
+    // Act
+    let failures = parse_config(&toml, dummy_source()).unwrap_err();
 
     // Assert
-    let dup_path = errors
-      .iter()
-      .find_map(|error| match error {
-        ConfigValidationError::Field { path, message } if message.contains("重複") => return Some(path.as_str()),
-        _ => return None,
-      })
-      .expect("expected duplicate font name error");
-    assert_eq!(dup_path, "font_configs.serif_bold");
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    let ReadConfigError::ParseToml { source, .. } = first else {
+      panic!("未知キーは ParseToml になるはず: {first:?}");
+    };
+    assert!(source.to_string().contains("unknown field `font_indx`"), "{source}");
   }
 
   #[test]

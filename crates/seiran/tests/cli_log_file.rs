@@ -63,7 +63,7 @@ fn write_config_with_two_violations(dir: &Path) -> PathBuf {
      \"297mm\"\n",
   );
   for font_type in FONT_TYPES {
-    write!(toml, "\n[font_configs.{font_type}]\nfont_name = \"{font_type}\"\nfont_path = \"font.ttf\"\n")
+    write!(toml, "\n[font_configs.{font_type}]\nfont_path = \"font.ttf\"\n")
       .expect("String への書き込みは失敗しないはず");
   }
   fs::write(dir.join("font.ttf"), b"").expect("ダミーのフォントファイルを書けるはず");

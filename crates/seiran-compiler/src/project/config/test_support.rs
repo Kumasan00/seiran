@@ -10,7 +10,7 @@ pub fn make_font_sections(font_path: &str) -> String {
   let mut out = String::new();
   for &font_type in FontType::ALL {
     let key = font_type.as_toml_key();
-    write!(out, "[font_configs.{key}]\nfont_name = \"font_{key}\"\nfont_path = \"{font_path}\"\n\n")
+    write!(out, "[font_configs.{key}]\nfont_path = \"{font_path}\"\n\n")
       .expect("`String` への `write!` は `fmt::Error` を返さない");
   }
   return out;
@@ -32,7 +32,7 @@ pub fn valid_pdf_section() -> String { return "[pdf]\nheight = \"842pt\"\nwidth 
 #[must_use]
 pub fn font_sections_with_serif_extra(font_path: &str, extra_lines: &str) -> String {
   let base = make_font_sections(font_path);
-  let needle = "[font_configs.serif]\nfont_name = \"font_serif\"\nfont_path = \"";
-  let injected = format!("[font_configs.serif]\nfont_name = \"font_serif\"\n{extra_lines}\nfont_path = \"");
+  let needle = "[font_configs.serif]\nfont_path = \"";
+  let injected = format!("[font_configs.serif]\n{extra_lines}\nfont_path = \"");
   return base.replace(needle, &injected);
 }
