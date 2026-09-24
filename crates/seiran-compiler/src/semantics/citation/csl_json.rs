@@ -64,7 +64,7 @@ fn sanitize_value(value: Value) -> Value {
 mod tests {
   use std::io::Write;
 
-  use hayagriva::citationberg::json::Value;
+  use hayagriva::citationberg::json::{FixedDateRange, Value};
 
   use super::{sanitize_value, to_item};
   use crate::{
@@ -185,5 +185,32 @@ mod tests {
     // Assert
     assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
     assert!(!item.0.contains_key("title"), "未指定フィールドは null 落としで欠落する");
+  }
+
+  #[test]
+  fn to_item_carries_date_parts_season_and_circa() {
+    // Arrange
+    let references = references_from_toml(
+      "[r1]\n\
+       type = \"book\"\n\
+       [r1.issued]\n\
+       date-parts = [[2014, 5]]\n\
+       season = 2\n\
+       circa = true\n",
+    );
+    let reference = references.get("r1").expect("r1 があるはず");
+
+    // Act
+    let item = to_item("r1", reference).expect("Item 化できるはず");
+
+    // Assert
+    let Some(Value::Date(date)) = item.0.get("issued") else {
+      panic!("issued は Date として載るはず: {:?}", item.0.get("issued"));
+    };
+    assert!(date.is_approx(), "circa が整形器まで届くはず");
+    let fixed = FixedDateRange::try_from(date.clone()).expect("単一日付なので FixedDateRange になるはず");
+    assert_eq!(fixed.start.year, 2014);
+    assert_eq!(fixed.start.month, Some(4), "月は 0 始まりで保持される");
+    assert!(fixed.start.season.is_some(), "整数の season は整形器まで届くはず");
   }
 }
