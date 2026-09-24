@@ -212,6 +212,15 @@ fn diagnostic_unknown_cite_key() {
 }
 
 #[test]
+fn diagnostic_cite_escaped_comma() {
+  // `\,` はキーの区切りではなくキーの文字（#731）。`kwan2014` と `doe2020` は fixture に存在するので、
+  // 割られていればこのビルドは成功する
+  let failure = compile_err(&["tests/text/diagnostics/cite_escaped_comma.sei"]);
+
+  assert_matches_golden("cite_escaped_comma", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_duplicate_label() {
   // 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
   let failure = compile_err(&["tests/text/diagnostics/duplicate_label.sei"]);

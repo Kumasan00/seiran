@@ -642,7 +642,8 @@ mod tests {
 
   #[test]
   fn extract_text_content_still_flattens_escaped_comma() {
-    // `\cite{a\,b}` 等の利用者向けの平坦化は変えない（区切りの判断は各利用者が持つ）
+    // `extract_text_content` 自体の平坦化は変えない（`\ref` / `\href` / `code` / `figure` 等の利用者向け）。
+    // 区切りを持つ引数は平坦化してから割らず、`split_text_on_commas` で割る（#731）
     let arena = bumpalo::Bump::new();
     let source = r"\cmd{a\,b, c}";
     let cst = syntax::parse(source, &arena, text_modes()).unwrap();
