@@ -46,7 +46,6 @@ pub(super) fn lower_quote(
 mod tests {
   use super::*;
   use crate::{
-    document::QuoteKind,
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,
@@ -54,12 +53,8 @@ mod tests {
     },
   };
 
-  /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
-  fn lower_quote_source(style: &ReadStyle, kind: QuoteKind) -> Vec<LayoutNode> {
-    let name = match kind {
-      QuoteKind::Quote => "quote",
-      QuoteKind::Quotation => "quotation",
-    };
+  /// 環境 `name`（`quote` / `quotation`）1 つだけの `.sei` ソースを lower するヘルパ
+  fn lower_quote_source(style: &ReadStyle, name: &str) -> Vec<LayoutNode> {
     let source = format!("\\begin{{{name}}}\nbody\n\\end{{{name}}}\n");
     return lower(style, &analyzed(&source));
   }
@@ -86,7 +81,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_quote_source(&style, QuoteKind::Quote);
+    let nodes = lower_quote_source(&style, "quote");
 
     // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
@@ -102,7 +97,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_quote_source(&style, QuoteKind::Quote);
+    let nodes = lower_quote_source(&style, "quote");
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
@@ -119,7 +114,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_quote_source(&style, QuoteKind::Quotation);
+    let nodes = lower_quote_source(&style, "quotation");
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
@@ -135,7 +130,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_quote_source(&style, QuoteKind::Quote);
+    let nodes = lower_quote_source(&style, "quote");
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
