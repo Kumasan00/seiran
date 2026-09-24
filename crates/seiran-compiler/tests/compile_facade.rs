@@ -343,6 +343,104 @@ fn compile_failure_keeps_font_warnings_when_font_validation_fails() {
   assert!(codes.iter().all(|code| return code.starts_with("typeset::font::script::")), "{codes:?}");
 }
 
+/// `vendor/fonts/NotoSans[wdth,wght].ttf`（`fvar` を持つ可変フォント）のバイト列を読み、テーブルディレクトリの
+/// `fvar` レコード 16 バイト（tag / checksum / offset / length）を `patch` で書き換えて返す。
+///
+/// sfnt のヘッダは 12 バイトで numTables が 4〜5 バイト目、以後 16 バイトのレコードが並ぶ。
+fn variable_font_with_patched_fvar_record(patch: impl FnOnce(&mut [u8])) -> Vec<u8> {
+  let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+    .ancestors()
+    .nth(2)
+    .expect("crates/seiran-compiler の 2 階層上がワークスペースルート");
+  let mut font = std::fs::read(workspace_root.join("vendor/fonts/NotoSans[wdth,wght].ttf")).expect(
+    "vendor/fonts/NotoSans[wdth,wght].ttf を読めるはず（tools/fetch-test-assets.sh の実行が必要な場合があります）",
+  );
+  let table_count = usize::from(u16::from_be_bytes([font[4], font[5]]));
+  let record = (0..table_count)
+    .map(|index| return 12 + 16 * index)
+    .find(|&position| return font[position..position + 4] == *b"fvar")
+    .expect("NotoSans[wdth,wght] には fvar のレコードがあるはず");
+  patch(&mut font[record..record + 16]);
+  return font;
+}
+
+/// `failure` の全診断の code を出現順に集める。
+fn diagnostic_codes(failure: &seiran_compiler::CompileFailure) -> Vec<String> {
+  return failure
+    .diagnostics()
+    .map(|diagnostic| return diagnostic.code().expect("leaf の診断コードを持つはず").to_string())
+    .collect();
+}
+
+#[test]
+fn compile_rejects_an_fvar_record_whose_length_runs_past_the_file() {
+  // Arrange — 19 種別すべてが、fvar レコードの length をファイル範囲外まで伸ばしたフォントを指す（軸指定なし）
+  let font = variable_font_with_patched_fvar_record(|record| {
+    record[12..16].copy_from_slice(&0xffff_fff0u32.to_be_bytes());
+  });
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
+    .with_text("/project/text.sei", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", font);
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir())
+    .expect_err("範囲外を指す fvar は静的フォントとして通さない");
+
+  // Assert — 1 件目で打ち切らず、全種別ぶん fvar の破損を指す
+  let codes = diagnostic_codes(&failure);
+  assert_eq!(codes.len(), 19, "19 フォント種別すべてが違反: {codes:?}");
+  assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
+}
+
+#[test]
+fn compile_rejects_an_fvar_record_whose_offset_is_zero() {
+  // Arrange — fvar レコードの offset を 0 にする
+  let font = variable_font_with_patched_fvar_record(|record| {
+    record[8..12].copy_from_slice(&0u32.to_be_bytes());
+  });
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
+    .with_text("/project/text.sei", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", font);
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir())
+    .expect_err("オフセット 0 の fvar は静的フォントとして通さない");
+
+  // Assert
+  let codes = diagnostic_codes(&failure);
+  assert!(!codes.is_empty(), "違反があるはず");
+  assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
+}
+
+#[test]
+fn compile_reports_an_out_of_range_fvar_record_as_broken_even_with_axes() {
+  // Arrange — serif だけ軸を指定しても「可変フォントではない」にならない
+  let font = variable_font_with_patched_fvar_record(|record| {
+    record[12..16].copy_from_slice(&0xffff_fff0u32.to_be_bytes());
+  });
+  let config = minimal_config_toml_with_serif_extra(
+    "/project/text.sei",
+    "variation_axes = [{ name = \"wght\", value = 400.0 }, { name = \"wdth\", value = 100.0 }]",
+  );
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/text.sei", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", font);
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("範囲外を指す fvar は通さない");
+
+  // Assert
+  let codes = diagnostic_codes(&failure);
+  assert!(!codes.iter().any(|code| return code == "typeset::font::validation::not_variable_font"), "{codes:?}");
+  assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
+}
+
 #[test]
 fn compile_failure_keeps_confirmed_warnings_when_an_image_is_missing() {
   // Arrange — config の警告（拡張子）とフォントの警告（script 不一致）が確定した後、画像の読込で失敗する
