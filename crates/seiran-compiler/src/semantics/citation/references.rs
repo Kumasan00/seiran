@@ -588,6 +588,18 @@ mod tests {
   }
 
   #[test]
+  fn parse_references_rejects_duplicate_date_key_in_json() {
+    // JSON は重複キーを構文で拒否しないので、後勝ちで先の値を黙って捨てずに拒否する
+    for key in ["date-parts", "season", "circa"] {
+      let value = if key == "date-parts" { "[[2014]]" } else { "1" };
+      let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"{key}\": {value}, \"{key}\": {value}}}"));
+
+      assert!(message.contains(&format!("`{key}`")), "{key}: {message}");
+      assert!(message.contains("duplicate"), "{key}: {message}");
+    }
+  }
+
+  #[test]
   fn parse_references_rejects_empty_date_parts() {
     let message = issued_toml_error("date-parts = []");
 

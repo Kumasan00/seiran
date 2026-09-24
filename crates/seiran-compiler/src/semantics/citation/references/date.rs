@@ -119,14 +119,28 @@ impl<'de> Deserialize<'de> for Date {
         let mut parts = None;
         let mut season = None;
         let mut circa = None;
+        // JSON は重複キーを構文で拒否しないので、各キーは 2 度目を後勝ちで上書きせず拒否する
         while let Some(key) = map.next_key::<String>()? {
           match key.as_str() {
             "date-parts" => {
+              if parts.is_some() {
+                return Err(<A::Error as serde::de::Error>::duplicate_field("date-parts"));
+              }
               let dates = map.next_value()?;
               parts = Some(single_date(dates).map_err(<A::Error as serde::de::Error>::custom)?);
             },
-            "season" => season = Some(map.next_value()?),
-            "circa" => circa = Some(map.next_value()?),
+            "season" => {
+              if season.is_some() {
+                return Err(<A::Error as serde::de::Error>::duplicate_field("season"));
+              }
+              season = Some(map.next_value()?);
+            },
+            "circa" => {
+              if circa.is_some() {
+                return Err(<A::Error as serde::de::Error>::duplicate_field("circa"));
+              }
+              circa = Some(map.next_value()?);
+            },
             "raw" | "literal" => {
               return Err(<A::Error as serde::de::Error>::custom(format!(
                 "日付の `{key}` は受理しません。日付は `date-parts` で指定してください（例: `[[2024, 1, 15]]`）"
