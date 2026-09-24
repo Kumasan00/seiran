@@ -1,6 +1,6 @@
 //! OpenType の Script/Language System と Feature の対応を表示するサブコマンド
 
-use std::{collections::BTreeSet, fs, io::Write, path::Path};
+use std::{collections::BTreeSet, io::Write, path::Path};
 
 use miette::Diagnostic;
 use read_fonts::{
@@ -10,40 +10,14 @@ use read_fonts::{
 use thiserror::Error;
 use tracing::info;
 
-use crate::subcommand::listing;
+use crate::subcommand::{
+  font_file::{self, FaceInspection, Inspection},
+  listing,
+};
 
 /// フォントの Script/Language System 解析エラー。
 #[derive(Error, Debug, Diagnostic)]
 enum ScriptLangsError {
-  /// フォントファイルの読み込みエラー
-  #[error("フォントファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(cli::script_langs::read_file), help("フォントファイルのパスと読み取り権限を確認してください。"))]
-  ReadFile {
-    /// ファイルパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
-  /// 指定インデックスのフォント解析エラー
-  #[error("インデックス {font_index} のフォント解析に失敗しました: {path}")]
-  #[diagnostic(
-    code(cli::script_langs::font_parse_error),
-    help(
-      "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は別のインデックスを試してください。"
-    )
-  )]
-  FontParse {
-    /// ファイルパス
-    path: String,
-    /// フォント インデックス（TTC の場合）
-    font_index: u32,
-    /// 元の読み込みエラー
-    #[source]
-    source: ReadError,
-  },
-
   /// GSUB テーブルの取得エラー
   #[error("GSUB テーブルが見つからないか、無効です: {path}")]
   #[diagnostic(
@@ -144,15 +118,11 @@ enum ScriptLangsError {
 /// ファイルの読み込み、フォントや GSUB/GPOS 内の各テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn script_langs(file_path: &Path, font_index: u32, out: &mut impl Write) -> miette::Result<()> {
-  let font_data = fs::read(file_path).map_err(|source| {
-    return ScriptLangsError::ReadFile {
-      path: file_path.display().to_string(),
-      source,
-    };
-  })?;
+  let font_data = font_file::read(file_path, Inspection::SingleFace(FaceInspection::ScriptLangs))?;
   info!(font_path = %file_path.display(), font_index, "スクリプト・言語を調べるフォントファイルを読込");
 
-  let lines = listing_lines(&font_data, font_index, file_path)?;
+  let font_ref = font_file::select_face(&font_data, font_index, file_path, FaceInspection::ScriptLangs)?;
+  let lines = listing_lines(&font_ref, file_path)?;
   listing::emit(&lines, out)?;
   return Ok(());
 }
@@ -161,16 +131,9 @@ pub(crate) fn script_langs(file_path: &Path, font_index: u32, out: &mut impl Wri
 ///
 /// # Errors
 ///
-/// フォント、GSUB/GPOS 内の各テーブルの解析に失敗した場合にエラーを返す。
-fn listing_lines(font_data: &[u8], font_index: u32, file_path: &Path) -> Result<Vec<String>, ScriptLangsError> {
+/// GSUB/GPOS 内の各テーブルの解析に失敗した場合にエラーを返す。
+fn listing_lines(font_ref: &FontRef<'_>, file_path: &Path) -> Result<Vec<String>, ScriptLangsError> {
   let path = || return file_path.display().to_string();
-  let font_ref = FontRef::from_index(font_data, font_index).map_err(|source| {
-    return ScriptLangsError::FontParse {
-      path: path(),
-      font_index,
-      source,
-    };
-  })?;
   let mut lines = Vec::new();
   let mut referenced_features = BTreeSet::new();
 

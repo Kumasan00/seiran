@@ -1,28 +1,20 @@
 //! TTC ファイル内の OpenType name レコードを表示するサブコマンド
 
-use std::{fs, io::Write, path::Path};
+use std::{io::Write, path::Path};
 
 use miette::Diagnostic;
 use read_fonts::{FileRef, ReadError, TableProvider};
 use thiserror::Error;
 use tracing::info;
 
-use crate::subcommand::listing;
+use crate::subcommand::{
+  font_file::{self, Inspection},
+  listing,
+};
 
 /// TTC ファイル情報取得時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 enum TtcNamesError {
-  /// ファイルの読み込みに失敗した場合
-  #[error("TTC ファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(cli::ttc_names::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
-  ReadFile {
-    /// ファイルパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
   /// ファイルがフォントとしてもフォントコレクションとしても解析できない場合
   #[error("フォントファイルとして解析できませんでした: {path}")]
   #[diagnostic(
@@ -77,12 +69,7 @@ enum TtcNamesError {
 /// ファイルの読み込み、フォントまたは name テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn ttc_names(file_path: &Path, out: &mut impl Write) -> miette::Result<()> {
-  let data = fs::read(file_path).map_err(|source| {
-    return TtcNamesError::ReadFile {
-      path: file_path.display().to_string(),
-      source,
-    };
-  })?;
+  let data = font_file::read(file_path, Inspection::TtcNames)?;
   info!(ttc_path = %file_path.display(), "TTC ファイルを読込");
 
   let lines = listing_lines(&data, file_path)?;
