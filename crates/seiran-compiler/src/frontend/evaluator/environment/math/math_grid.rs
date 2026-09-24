@@ -19,9 +19,8 @@ use crate::{
 mod markers;
 mod numbering;
 
-pub(crate) use markers::RowLabel;
-use markers::{ensure_markers_at_row_end, try_take_row_marker};
-pub(crate) use numbering::NumberingMode;
+use markers::{RowLabel, ensure_markers_at_row_end, try_take_row_marker};
+pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
 use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
 
 use crate::document::NodeId;
@@ -62,9 +61,9 @@ pub(super) struct GridRow {
   /// 列（`&` 区切り）。各列は数式ノード列
   pub cells: Vec<Vec<HirMath>>,
   /// 行末マーカー `\notag` の位置（`None` は採番する）
-  pub notag_span: Option<SourceSpan>,
+  notag_span: Option<SourceSpan>,
   /// 行末マーカー `\label{...}` で付与された行ラベル（`None` は参照対象外）
-  pub label: Option<RowLabel>,
+  label: Option<RowLabel>,
 }
 
 /// 数式環境本体を行 × 列のグリッドに分割して評価する

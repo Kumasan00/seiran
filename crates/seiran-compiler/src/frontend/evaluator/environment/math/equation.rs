@@ -25,7 +25,10 @@ const NUMBERED: OptKey<bool> = opt_args::boolean("numbered");
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
+pub(in crate::frontend::evaluator::environment) fn equation(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<HirNode, EvalError> {
   let opts = collect_environment_opt_args(view, &[LABEL.decl(), NUMBERED.decl()])?;
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let label = opts.get(LABEL);

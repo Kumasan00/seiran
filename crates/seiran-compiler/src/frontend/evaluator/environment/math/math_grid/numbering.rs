@@ -25,7 +25,7 @@ const PER_ROW_SCHEMA: &[OptDecl] = &[NUMBERED.decl()];
 
 /// 採番の粒度
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NumberingMode {
+pub(in crate::frontend::evaluator::environment) enum NumberingMode {
   /// 各行を採番対象にする（`align` / `gather`）
   PerRow,
   /// 環境全体を採番対象にする（`split` / `multiline`）
