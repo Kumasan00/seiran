@@ -230,6 +230,21 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
   }
 }
 
+/// ノード直下の構造トークン `,` で子要素を区間に割り、各区間のテキストを返す
+///
+/// 区切りは構造トークンだけで決まる（#687 / #731）: `\,`（`Escaped`）と入れ子のノードの中身は区間の
+/// 文字として [`extract_text_content`] と同じ規則で平坦化する。区間は trim せず、空の区間も残す
+/// （空白・空の区間の扱いは利用者が決める）。平坦化した文字列を `,` で割るとエスケープの区別が消えるので、
+/// 区切りを持つ引数はこの関数で割る。
+#[must_use]
+pub(crate) fn split_text_on_commas(source: &str, node: &GreenNode<'_>) -> Vec<String> {
+  return node
+    .children
+    .split(|element| return is_token(element, TokenKind::Comma))
+    .map(|segment| return elements_text(source, segment))
+    .collect();
+}
+
 /// `OptArg` ノードを `key=value` 形式としてパースする
 ///
 /// 区切りは構造トークンだけで決まる（#687）: 直下の `Comma` がエントリの区切り、各エントリの最初の
@@ -646,5 +661,65 @@ mod tests {
     let arg = CommandView::new(command, source).first_arg().expect("必須引数があるはず");
 
     assert_eq!(extract_text_content(source, arg), "a,b, c");
+  }
+
+  /// `source` の最初のコマンドの最初の必須引数を、構造 `,` で割ったテキスト列にする
+  fn first_arg_segments(source: &str) -> Vec<String> {
+    let arena = bumpalo::Bump::new();
+    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let command = cst
+      .children
+      .iter()
+      .find_map(|element| {
+        if let GreenElement::Node(node) = element
+          && node.kind == SyntaxKind::CommandCall
+        {
+          return Some(*node);
+        }
+        return None;
+      })
+      .expect("CommandCall があるはず");
+    let arg = CommandView::new(command, source).first_arg().expect("必須引数があるはず");
+    return split_text_on_commas(source, arg);
+  }
+
+  #[test]
+  fn split_text_on_commas_splits_on_structural_comma_without_trimming() {
+    let segments = first_arg_segments(r"\cmd{a, b}");
+
+    assert_eq!(segments, vec!["a".to_string(), " b".to_string()]);
+  }
+
+  #[test]
+  fn split_text_on_commas_keeps_escaped_comma_in_segment() {
+    // `\,` は区切りではなく区間の文字（#731。#687 と同じ規則）
+    let segments = first_arg_segments(r"\cmd{a\,b}");
+
+    assert_eq!(segments, vec!["a,b".to_string()]);
+  }
+
+  #[test]
+  fn split_text_on_commas_ignores_comma_nested_in_child_node() {
+    // 入れ子ノード内の `,` は直下のトークンではないので区切らない
+    let segments = first_arg_segments(r"\cmd{\bold{a,b}, c}");
+
+    assert_eq!(segments, vec!["a,b".to_string(), " c".to_string()]);
+  }
+
+  #[test]
+  fn split_text_on_commas_keeps_empty_segments() {
+    // 空の区間をどう扱うかは利用者が決める（`\cite` は拒否する）
+    let segments = first_arg_segments(r"\cmd{,a,,b,}");
+
+    assert_eq!(
+      segments,
+      vec![
+        String::new(),
+        "a".to_string(),
+        String::new(),
+        "b".to_string(),
+        String::new()
+      ]
+    );
   }
 }
