@@ -188,7 +188,7 @@ fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
         right: Some("\u{2016}"),
       },
     },
-    // 揃え系の環境は括弧で囲まない。
+    // 区切り括弧を持たない環境。
     MathEnvKind::Equation | MathEnvKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
       DelimiterGlyphs::default()
     },

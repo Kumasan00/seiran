@@ -26,7 +26,10 @@ use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marke
 
 use crate::document::NodeId;
 
-/// グリッド分割の許可設定（環境種別ごと）
+/// グリッド分割の許可設定
+///
+/// 行・列に分割する数式環境（`MathGrid`）は [`GridSpec::for_layout`] でセル配置から導出し、
+/// それ以外の数式環境（`equation` / `cases` / `matrix`）は呼び出し側が値を直書きする。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GridSpec {
   /// 行区切り `\\` を許可するか
@@ -74,7 +77,7 @@ pub(super) struct GridRow {
 /// [`EvalError::NotagNotSupported`] / [`EvalError::RowLabelNotSupported`]、行末以外・引数不正・1 行に
 /// 複数＝[`EvalError::NotagNotAtRowEnd`] / [`EvalError::RowLabelNotAtRowEnd`]）、セル内の数式評価失敗時に
 /// エラーを返す。
-pub(crate) fn evaluate_grid(
+pub(super) fn evaluate_grid(
   source: &str,
   ctx: &EvalContext<'_>,
   body: &GreenNode<'_>,
@@ -160,7 +163,7 @@ pub(crate) fn evaluate_grid(
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価や許可しない区切りトークンの出現、無採番への
 /// ラベル付与・重複ラベル時にエラーを返す。
-pub(crate) fn evaluate_math_env(
+pub(in crate::frontend::evaluator::environment) fn evaluate_math_env(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
   layout: GridLayout,
@@ -198,7 +201,7 @@ pub(crate) fn evaluate_math_env(
 }
 
 /// 非採番環境（`cases` / `matrix`）の行リストを構築する
-pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<HirMathRow> {
+pub(super) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<HirMathRow> {
   while grid.last().is_some_and(|row| return is_blank_row(&row.cells)) {
     grid.pop();
   }
