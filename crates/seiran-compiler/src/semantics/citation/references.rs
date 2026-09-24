@@ -122,6 +122,35 @@ mod tests {
   /// 参照 ID をキーとするトップレベル JSON をそのまま返す（ラッパーテーブルは持たない）。
   fn json_doc(references_json: &str) -> String { return references_json.to_string(); }
 
+  /// `[ref1.issued]` テーブルの本体だけを差し替えた TOML を解析し、`ParseToml` の元エラー文言を返す。
+  fn issued_toml_error(issued_body: &str) -> String {
+    let toml = format!(
+      "[ref1]\n\
+       type = \"book\"\n\
+       [[ref1.author]]\n\
+       family = \"Doe\"\n\n\
+       [ref1.issued]\n\
+       {issued_body}\n"
+    );
+    let result = parse_references(&toml, dummy_source());
+    let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
+      panic!("expected ParseToml, got {result:?}");
+    };
+    return source.to_string();
+  }
+
+  /// `issued` の JSON 値だけを差し替えた JSON を解析し、`ParseJson` の元エラー文言を返す。
+  fn issued_json_error(issued_json: &str) -> String {
+    let json = json_doc(&format!(
+      "{{\"ref1\": {{\"type\": \"book\", \"issued\": {issued_json}, \"author\": [{{\"family\": \"Doe\"}}]}}}}"
+    ));
+    let result = parse_references(&json, dummy_json_source());
+    let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
+      panic!("expected ParseJson, got {result:?}");
+    };
+    return source.to_string();
+  }
+
   #[test]
   fn read_references_returns_empty_when_path_is_none() {
     // Arrange
@@ -420,10 +449,8 @@ mod tests {
     assert_eq!(result.len(), 1);
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    let parts = issued.date_parts.as_ref().unwrap();
-    assert_eq!(parts.len(), 1);
     assert!(matches!(
-      parts[0].as_slice(),
+      issued.parts.as_slice(),
       [
         DatePart::Number(2024),
         DatePart::Number(1),
@@ -457,10 +484,8 @@ mod tests {
     // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    let parts = issued.date_parts.as_ref().unwrap();
-    assert_eq!(parts.len(), 1);
     assert!(matches!(
-      parts[0].as_slice(),
+      issued.parts.as_slice(),
       [
         DatePart::Number(2024),
         DatePart::Number(1),
@@ -515,6 +540,94 @@ mod tests {
   }
 
   #[test]
+  fn parse_references_rejects_raw_date_in_toml() {
+    let message = issued_toml_error("raw = \"2014-05-01\"");
+
+    // 診断はキー名を言い、toml のスニペットが該当エントリの日付テーブルを指す
+    assert!(message.contains("`raw`"), "{message}");
+    assert!(message.contains("`date-parts`"), "{message}");
+    assert!(message.contains("[ref1.issued]"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_literal_date_in_toml() {
+    let message = issued_toml_error("literal = \"circa 1900\"");
+
+    assert!(message.contains("`literal`"), "{message}");
+    assert!(message.contains("[ref1.issued]"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_literal_alongside_date_parts() {
+    // `date-parts` があっても `literal` は整形器に読まれないので黙って捨てずに拒否する
+    let message = issued_toml_error("date-parts = [[2014]]\nliteral = \"early 2014\"");
+
+    assert!(message.contains("`literal`"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_raw_and_literal_in_json() {
+    for key in ["raw", "literal"] {
+      let message = issued_json_error(&format!("{{\"{key}\": \"2014\"}}"));
+
+      // JSON はスニペットを持たないので、キー名と行・列で位置を示す
+      assert!(message.contains(&format!("`{key}`")), "{message}");
+      assert!(message.contains("line"), "{message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_date_without_date_parts() {
+    for body in ["season = 1", "circa = true"] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("`date-parts` が必要"), "{body}: {message}");
+    }
+    let message = issued_json_error("{}");
+    assert!(message.contains("`date-parts` が必要"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_duplicate_date_key_in_json() {
+    // JSON は重複キーを構文で拒否しないので、後勝ちで先の値を黙って捨てずに拒否する
+    for key in ["date-parts", "season", "circa"] {
+      let value = if key == "date-parts" { "[[2014]]" } else { "1" };
+      let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"{key}\": {value}, \"{key}\": {value}}}"));
+
+      assert!(message.contains(&format!("`{key}`")), "{key}: {message}");
+      assert!(message.contains("duplicate"), "{key}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_empty_date_parts() {
+    let message = issued_toml_error("date-parts = []");
+
+    assert!(message.contains("`date-parts` が空"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_date_parts_with_wrong_arity() {
+    // 要素 0 個は整形器の内部で panic し、4 個目以降は黙って捨てられる
+    for body in ["date-parts = [[]]", "date-parts = [[2024, 1, 15, 3]]"] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("1〜3 要素"), "{body}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_empty_string_date_part() {
+    // 整形器は空文字列の要素を捨てるので、`[[""]]` は要素 0 個と同じく panic し、
+    // `[["", 2024]]` は黙って年がずれる
+    for body in ["date-parts = [[\"\"]]", "date-parts = [[\"\", 2024]]"] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("空文字列"), "{body}: {message}");
+    }
+  }
+
+  #[test]
   fn read_references_parses_structured_date_in_json() {
     // Arrange
     let source = FilesystemProjectSource;
@@ -526,9 +639,7 @@ mod tests {
          \"issued\": {\
            \"date-parts\": [[2024, 1, 15]], \
            \"season\": 1, \
-           \"circa\": true, \
-           \"literal\": \"early 2024\", \
-           \"raw\": \"Jan 15, 2024\"\
+           \"circa\": true\
          }, \
          \"author\": [{\"family\": \"Doe\"}]\
        }}",
@@ -541,9 +652,8 @@ mod tests {
     // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    let parts = issued.date_parts.as_ref().unwrap();
     assert!(matches!(
-      parts[0].as_slice(),
+      issued.parts.as_slice(),
       [
         DatePart::Number(2024),
         DatePart::Number(1),
@@ -552,8 +662,6 @@ mod tests {
     ));
     assert!(matches!(issued.season, Some(DateSeason::Number(1))));
     assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
-    assert_eq!(issued.literal.as_deref(), Some("early 2024"));
-    assert_eq!(issued.raw.as_deref(), Some("Jan 15, 2024"));
   }
 
   #[test]
