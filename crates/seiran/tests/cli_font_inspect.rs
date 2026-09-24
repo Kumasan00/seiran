@@ -315,6 +315,67 @@ fn script_langs_reports_a_missing_file_with_its_path() {
 }
 
 #[test]
+fn variation_axes_rejects_a_file_that_is_not_a_font() {
+  // Arrange
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
+
+  // Act
+  let output = seiran(dir.path(), &["variation-axes", "notes.txt"]);
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
+  assert!(stderr.contains("cli::variation_axes::font_parse"), "face 選択失敗の診断: {stderr}");
+  assert!(stderr.contains("notes.txt"), "対象パスが出る: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
+fn script_langs_rejects_a_file_that_is_not_a_font() {
+  // Arrange
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
+
+  // Act
+  let output = seiran(dir.path(), &["script-langs", "notes.txt"]);
+
+  // Assert
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
+  // `_error` 接尾辞は script-langs だけの不揃いだが、利用者に見える code なので保つ（#685 のスコープ外）
+  assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
+  assert!(stderr.contains("notes.txt"), "対象パスが出る: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
+fn variation_axes_rejects_a_font_index_outside_the_collection() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let font = vendor_font("SourceHanCodeJP.ttc");
+
+  let output = seiran(dir.path(), &["variation-axes", path_arg(&font), "--font-index", "99"]);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "範囲外のインデックスは処理失敗: {stderr}");
+  assert!(stderr.contains("cli::variation_axes::font_parse"), "face 選択失敗の診断: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
+fn script_langs_rejects_a_font_index_outside_the_collection() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let font = vendor_font("SourceHanCodeJP.ttc");
+
+  let output = seiran(dir.path(), &["script-langs", path_arg(&font), "--font-index", "99"]);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "範囲外のインデックスは処理失敗: {stderr}");
+  assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
+  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
+}
+
+#[test]
 fn script_langs_survives_a_closed_reader() {
   let font = vendor_font("NotoSans[wdth,wght].ttf");
 

@@ -9,6 +9,10 @@ warning と tracing の分担・内部不変条件違反の扱い・garde バリ
 
 - 各クレートの `lib.rs`（または該当モジュール）に `thiserror::Error` + `miette::Diagnostic` 派生のエラー列挙型を定義する。`#[derive(Debug, Error, Diagnostic)]` を常に併用する
 - バリアントごとに `#[error("...")]`（メッセージ、日本語）と `#[diagnostic(code(...), help("..."))]` を付与する。`code` の付け方は次節の規約に従う
+- 例外: 複数の呼び出し元が 1 つのエラー型を共有しつつ、`code` / help を呼び出し元ごとに変える必要があるときだけ、
+  `Diagnostic` を手書きして値が持つキーから網羅 match で引く（derive の `code(...)` は静的なパスしか書けない）。
+  例は CLI の `subcommand::font_file` — フォント調査 3 サブコマンドの前段を共有しつつ、code の第 2 階層
+  （サブコマンド名）を保つ（#685）。キーの enum は wildcard を使わず全 variant を対応表に書く
 - 外部エラーを巻き取る場合は `#[source] source: ExternalError` フィールドで chain を形成し、`?` 演算子で伝播する。`map_err` でメッセージのコンテキスト（ファイルパス等）を付与する
 - **中間の seam エラーを `#[diagnostic_source]` で連鎖させない。** `code` / `help` を持つ Diagnostic を
   `#[diagnostic_source]` に載せると、miette がその変種ぶんの診断ブロックを入れ子で追加描画し、

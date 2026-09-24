@@ -1246,8 +1246,11 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 - `pdf_output`: PDF の atomic write と、ログの出力先との衝突検査（保存先とログの出力先を canonicalize して
   比較し、同じ実体なら保存前に拒否する）
 - `subcommand`: フォント調査 3 サブコマンド。`read-fonts` を直接使い、`seiran-compiler` のフォント処理には
-  依存しない（組版を伴わないため）。書き出しは 1 箇所を通る（`BrokenPipe` とそれ以外の分類を 1 つの関数に
-  閉じ、失敗する writer を注入する in-src テストで覆うため）
+  依存しない（組版を伴わないため）。前段（ファイルの読込と、`--font-index` を取る 2 つでは face の選択）と
+  書き出しはそれぞれ 1 箇所を通る（`ttc-names` はコレクションの列挙を自分で持つ）。前段の失敗の診断 code は第 2 階層に
+  サブコマンド名を保つ（利用者に見えるため）ので、code と help はサブコマンドをキーにした対応表 1 つから
+  引く。書き出しは `BrokenPipe` とそれ以外の分類を 1 つの関数に閉じ、失敗する writer を注入する in-src
+  テストで覆う
 - `write_error`: PDF 保存（出力パスの解決・ログ出力先との衝突・出力ディレクトリ作成・書き込み）のエラー型。
   `compile` の失敗とは型を分ける
 - 統合テスト（`tests/`）は binary を起動する（`CARGO_BIN_EXE_seiran`、依存追加なし）。`--log-file` への記録・

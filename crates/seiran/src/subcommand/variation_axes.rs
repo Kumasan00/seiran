@@ -1,6 +1,6 @@
 //! バリアブルフォントの fvar 軸と名前付きインスタンスを表示するサブコマンド
 
-use std::{fs, io::Write, path::Path};
+use std::{io::Write, path::Path};
 
 use miette::Diagnostic;
 use read_fonts::{
@@ -14,7 +14,10 @@ use read_fonts::{
 use thiserror::Error;
 use tracing::info;
 
-use crate::subcommand::listing;
+use crate::subcommand::{
+  font_file::{self, FaceInspection, Inspection},
+  listing,
+};
 
 /// fvar を持たないフォントに対して出す 1 行。
 const NOT_VARIABLE: &str = "The font is not a variable font.";
@@ -22,38 +25,6 @@ const NOT_VARIABLE: &str = "The font is not a variable font.";
 /// バリアブルフォント軸情報取得時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 enum VariationAxesError {
-  /// フォントファイルの読み込みに失敗した場合
-  #[error("フォントファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(
-    code(cli::variation_axes::read_file),
-    help("フォントファイルのパスと読み取り権限を確認してください。")
-  )]
-  ReadFile {
-    /// ファイルパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
-  /// フォント解析に失敗した場合
-  #[error("インデックス {font_index} のフォント解析に失敗しました: {path}")]
-  #[diagnostic(
-    code(cli::variation_axes::font_parse),
-    help(
-      "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は --font-index を確認してください。"
-    )
-  )]
-  FontParse {
-    /// ファイルパス
-    path: String,
-    /// フォントインデックス
-    font_index: u32,
-    /// 元の解析エラー
-    #[source]
-    source: ReadError,
-  },
-
   /// fvar テーブルがあるのに読めない場合
   #[error("fvar テーブルを読めませんでした: {path}")]
   #[diagnostic(
@@ -144,29 +115,18 @@ struct FvarRecords<'a> {
 /// ファイルの読み込み、フォント・fvar・name テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn variation_axes(font_path: &Path, font_index: u32, out: &mut impl Write) -> miette::Result<()> {
-  let font_bytes = fs::read(font_path).map_err(|source| {
-    return VariationAxesError::ReadFile {
-      path: font_path.display().to_string(),
-      source,
-    };
-  })?;
+  let font_bytes = font_file::read(font_path, Inspection::SingleFace(FaceInspection::VariationAxes))?;
   info!(font_path = %font_path.display(), font_index, "バリエーション軸を調べるフォントファイルを読込");
 
-  let lines = listing_lines(&font_bytes, font_index, font_path)?;
+  let font_ref = font_file::select_face(&font_bytes, font_index, font_path, FaceInspection::VariationAxes)?;
+  let lines = listing_lines(&font_ref, font_path)?;
   listing::emit(&lines, out)?;
   return Ok(());
 }
 
 /// 軸 1 本 1 行、続いて名前付きインスタンス 1 件 1 行の一覧を組み立てる。
-fn listing_lines(font_bytes: &[u8], font_index: u32, font_path: &Path) -> Result<Vec<String>, VariationAxesError> {
+fn listing_lines(font_ref: &FontRef<'_>, font_path: &Path) -> Result<Vec<String>, VariationAxesError> {
   let path = || return font_path.display().to_string();
-  let font_ref = FontRef::from_index(font_bytes, font_index).map_err(|source| {
-    return VariationAxesError::FontParse {
-      path: path(),
-      font_index,
-      source,
-    };
-  })?;
 
   // 「fvar が無い」はテーブルディレクトリにレコードが無いことで判定する。`fvar()` の `TableIsMissing` は、
   // レコードはあるがオフセット + 長さがファイルからはみ出す破損フォントでも返るので、エラーの種類だけでは
