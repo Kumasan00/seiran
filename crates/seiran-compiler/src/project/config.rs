@@ -237,7 +237,6 @@ fn validate_and_convert(raw: &RawConfig) -> Result<FontMap<FontValues>, Vec<Conf
       };
     }));
   }
-  raw::validate_unique_font_names(&raw.font_configs, &mut errors);
   raw::validate_font_language_constraints(&raw.font_configs, &mut errors);
 
   let font_values = FontMap::try_from_fn(|font_type| return parse_font_values(font_type, &raw.font_configs[font_type]));
@@ -713,30 +712,6 @@ mod tests {
       matches!(first, ReadConfigError::ParseToml { .. }),
       "旧 margin キーは deny_unknown_fields で ParseToml になるはず: {first:?}"
     );
-  }
-
-  #[test]
-  fn validate_values_fails_on_duplicate_font_names_with_font_type_in_path() {
-    // Arrange
-    let sections = make_font_sections("dummy.ttf").replace(
-      "[font_configs.serif_bold]\nfont_name = \"font_serif_bold\"",
-      "[font_configs.serif_bold]\nfont_name = \"font_serif\"",
-    );
-    let toml = format!("{}{}{sections}", valid_output_section("test", "out"), valid_pdf_section());
-    let raw = parse_config(&toml, dummy_source()).unwrap();
-
-    // Act
-    let errors = validate_values(&raw).unwrap_err();
-
-    // Assert
-    let dup_path = errors
-      .iter()
-      .find_map(|error| match error {
-        ConfigValidationError::Field { path, message } if message.contains("重複") => return Some(path.as_str()),
-        _ => return None,
-      })
-      .expect("expected duplicate font name error");
-    assert_eq!(dup_path, "font_configs.serif_bold");
   }
 
   #[test]
