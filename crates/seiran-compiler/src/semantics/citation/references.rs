@@ -105,11 +105,7 @@ mod tests {
   use std::path::Path;
 
   use super::{
-    ReadReferencesError,
-    date::{DatePart, Season},
-    name::Name,
-    parse_references, read_references,
-    reference::NumberOrString,
+    ReadReferencesError, date::Season, name::Name, parse_references, read_references, reference::NumberOrString,
   };
   use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, SourceReadError};
 
@@ -449,14 +445,7 @@ mod tests {
     assert_eq!(result.len(), 1);
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    assert!(matches!(
-      issued.parts.as_slice(),
-      [
-        DatePart::Number(2024),
-        DatePart::Number(1),
-        DatePart::Number(15)
-      ]
-    ));
+    assert_eq!(issued.parts, [2024, 1, 15]);
   }
 
   #[test]
@@ -483,14 +472,7 @@ mod tests {
     // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    assert!(matches!(
-      issued.parts.as_slice(),
-      [
-        DatePart::Number(2024),
-        DatePart::Number(1),
-        DatePart::Number(15)
-      ]
-    ));
+    assert_eq!(issued.parts, [2024, 1, 15]);
     assert_eq!(issued.circa, Some(true));
     assert_eq!(issued.season, None);
   }
@@ -622,11 +604,12 @@ mod tests {
   #[test]
   fn parse_references_rejects_empty_string_date_part() {
     // 整形器は空文字列の要素を捨てるので、`[[""]]` は要素 0 個と同じく panic し、
-    // `[["", 2024]]` は黙って年がずれる
+    // `[["", 2024]]` は黙って年がずれる。年は文字列を受理しないので、年の文字列として拒否する
     for body in ["date-parts = [[\"\"]]", "date-parts = [[\"\", 2024]]"] {
       let message = issued_toml_error(body);
 
-      assert!(message.contains("空文字列"), "{body}: {message}");
+      assert!(message.contains("年"), "{body}: {message}");
+      assert!(message.contains("整数"), "{body}: {message}");
     }
   }
 
@@ -705,28 +688,63 @@ mod tests {
 
       // Assert
       let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
-      assert!(
-        matches!(issued.parts.get(1), Some(DatePart::Number(month)) if *month == expected_month),
-        "{body}: {:?}",
-        issued.parts
-      );
-      match expected_day {
-        Some(day) => assert!(
-          matches!(issued.parts.get(2), Some(DatePart::Number(actual)) if *actual == day),
-          "{body}: {:?}",
-          issued.parts
-        ),
-        None => assert_eq!(issued.parts.len(), 2, "{body}"),
-      }
+      assert_eq!(issued.parts.get(1), Some(&expected_month), "{body}");
+      assert_eq!(issued.parts.get(2), expected_day.as_ref(), "{body}");
     }
   }
 
   #[test]
-  fn parse_references_keeps_year_unrestricted() {
-    // 月・日の検査を年へ波及させない（負数の年は紀元前、文字列の年は従来どおり読込では受理）
+  fn parse_references_rejects_out_of_range_year_in_toml() {
+    // 整形器（citationberg の `VecDate`）は年を i16 で持つので、範囲外の年は引用時の変換で落ちる（#759）
+    for (body, value) in [
+      ("date-parts = [[40000, 5]]", "40000"),
+      ("date-parts = [[32768]]", "32768"),
+      ("date-parts = [[-32769]]", "-32769"),
+    ] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("`date-parts`"), "{body}: {message}");
+      assert!(message.contains("年"), "{body}: {message}");
+      assert!(message.contains("-32768〜32767"), "{body}: {message}");
+      assert!(message.contains(&format!("`{value}`")), "{body}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_out_of_range_year_in_json() {
+    let message = issued_json_error("{\"date-parts\": [[40000, 5]]}");
+
+    // JSON はスニペットを持たないので、文言のキー名と値・行位置で場所を示す
+    assert!(message.contains("`date-parts`"), "{message}");
+    assert!(message.contains("年"), "{message}");
+    assert!(message.contains("`40000`"), "{message}");
+    assert!(message.contains("line"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_string_year() {
+    // 数値として読める `"2014"` も同じ値の別綴りなので拒否し、読めない `"abc"` も読込で止める（#759）
     for body in [
-      "date-parts = [[-100, 5]]",
-      "date-parts = [[\"2014\", 5, 1]]",
+      "date-parts = [[\"2014\", 5]]",
+      "date-parts = [[\"abc\", 5]]",
+      "date-parts = [[\"-100\"]]",
+    ] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("`date-parts`"), "{body}: {message}");
+      assert!(message.contains("年"), "{body}: {message}");
+      assert!(message.contains("整数"), "{body}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_accepts_integer_years_within_i16() {
+    // 負数は紀元前。i16 の両端まで受理し、値をそのまま保持する
+    for (body, expected) in [
+      ("date-parts = [[-32768]]", -32768i16),
+      ("date-parts = [[32767, 12, 31]]", 32767i16),
+      ("date-parts = [[-100, 5]]", -100i16),
+      ("date-parts = [[0]]", 0i16),
     ] {
       // Arrange
       let toml = format!(
@@ -737,10 +755,11 @@ mod tests {
       );
 
       // Act
-      let result = parse_references(&toml, dummy_source());
+      let references = parse_references(&toml, dummy_source()).unwrap();
 
       // Assert
-      assert!(result.is_ok(), "{body}: {result:?}");
+      let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
+      assert_eq!(issued.parts.first(), Some(&expected), "{body}");
     }
   }
 
@@ -870,7 +889,7 @@ mod tests {
     // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    assert!(matches!(issued.parts.as_slice(), [DatePart::Number(2024)]));
+    assert_eq!(issued.parts, [2024]);
     assert_eq!(issued.season, Some(Season::Spring));
     assert_eq!(issued.circa, Some(true));
   }

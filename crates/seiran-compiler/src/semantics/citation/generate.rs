@@ -138,8 +138,6 @@ pub(crate) fn generate_citations(
 
 #[cfg(test)]
 mod tests {
-  use std::io::Write;
-
   use super::{GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     document::{FontKind, HirDocument},
@@ -149,7 +147,7 @@ mod tests {
       References, SemanticPolicy,
       fact_collection::collect_facts,
       facts::SemanticFacts,
-      load_citation_style, read_references,
+      load_citation_style,
       test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -234,39 +232,6 @@ mod tests {
       })
       .collect();
     assert_eq!(targets, vec!["kwan2014", "doe2020"], "キーごとに内部リンクになるはず");
-  }
-
-  #[test]
-  fn generate_ignores_uncited_malformed_reference() {
-    // Arrange — 引用しない文献 `bad9999` は CSL-JSON へ変換できない日付を持つ
-    let source = FilesystemProjectSource;
-    let toml = String::from(
-      "[kwan2014]\n\
-       type = \"book\"\n\
-       title = \"Crazy Rich Asians\"\n\
-       [[kwan2014.author]]\n\
-       family = \"Kwan\"\n\
-       given = \"Kevin\"\n\
-       [kwan2014.issued]\n\
-       date-parts = [[2014]]\n\n\
-       [bad9999]\n\
-       type = \"book\"\n\
-       title = \"Broken\"\n\
-       [bad9999.issued]\n\
-       date-parts = [[99999]]\n",
-    );
-    let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
-    file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    let references =
-      read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
-    let analyzed = analyzed(r"\cite{kwan2014}", &references);
-    let compiled = load_citation_style(&source, &style_with_csl()).expect("CSL を読めるはず");
-
-    // Act
-    let result = generate_citations(&analyzed.citations, &references, &compiled);
-
-    // Assert
-    assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
   }
 
   /// インライン列を再帰走査し、serif イタリック系の `Styled` 配下のプレーンテキストを集める。
