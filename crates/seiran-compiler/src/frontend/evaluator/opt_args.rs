@@ -46,7 +46,7 @@ enum OptType {
 impl fmt::Display for OptType {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let s = match self {
-      Self::Bool => "boolean",
+      Self::Bool => "boolean (true/false)",
       Self::String => "string",
       Self::Length => "length (pt/mm/cm)",
       Self::PositiveLength => "positive length (pt/mm/cm)",
@@ -879,7 +879,7 @@ mod tests {
   fn opt_type_display_lists_expected_format() {
     // Arrange — 診断の `expected` 文字列
     let cases = [
-      (OptType::Bool, "boolean"),
+      (OptType::Bool, "boolean (true/false)"),
       (OptType::String, "string"),
       (OptType::Length, "length (pt/mm/cm)"),
       (OptType::PositiveLength, "positive length (pt/mm/cm)"),
