@@ -6,7 +6,8 @@
 
 use std::{fmt, str::FromStr};
 
-use serde::{Deserialize, Deserializer, de::Error};
+use serde::{Deserialize, Deserializer, de::Error as _};
+use thiserror::Error;
 
 /// 8bit RGB 色（`[u8; 3]`）の newtype
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,19 +34,12 @@ impl From<Color> for [u8; 3] {
 /// [`Color`] の文字列パース失敗を表すエラー。
 ///
 /// `#rrggbb` 以外の形式で [`Color::from_str`] が返す。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("色は `#rrggbb` 形式の 16 進表記で指定してください: {input:?}")]
 pub struct ParseColorError {
   /// パースに失敗した入力文字列。
   input: String,
 }
-
-impl fmt::Display for ParseColorError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    return write!(f, "色は `#rrggbb` 形式の 16 進表記で指定してください: {:?}", self.input);
-  }
-}
-
-impl std::error::Error for ParseColorError {}
 
 impl FromStr for Color {
   type Err = ParseColorError;
@@ -96,6 +90,8 @@ impl<'de> Deserialize<'de> for Color {
 
 #[cfg(test)]
 mod tests {
+  use std::error::Error as _;
+
   use serde::Deserialize;
 
   use super::Color;
@@ -181,5 +177,26 @@ mod tests {
     // Assert
     assert_eq!(text, "#cc9966");
     assert_eq!(text.parse::<Color>().unwrap(), value);
+  }
+
+  #[test]
+  fn from_str_error_message_names_expected_format() {
+    let err = "cc9966".parse::<Color>().unwrap_err();
+
+    assert_eq!(err.to_string(), "色は `#rrggbb` 形式の 16 進表記で指定してください: \"cc9966\"");
+  }
+
+  #[test]
+  fn from_str_error_message_escapes_input_as_debug() {
+    let err = "#\"12345".parse::<Color>().unwrap_err();
+
+    assert!(err.to_string().ends_with(": \"#\\\"12345\""));
+  }
+
+  #[test]
+  fn from_str_error_has_no_source() {
+    let err = "#zzzzzz".parse::<Color>().unwrap_err();
+
+    assert!(err.source().is_none());
   }
 }
