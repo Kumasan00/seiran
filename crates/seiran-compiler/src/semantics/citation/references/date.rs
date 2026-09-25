@@ -1,8 +1,8 @@
 //! CSL (Citation Style Language) の日付値の型と手書きデシリアライザ。
 //!
 //! 構造化された日付オブジェクトのうち、整形器（hayagriva の CSL-JSON 日付解決）が実際に読むキーと値だけを
-//! 受理する: `date-parts`（必須・単一日付。月は整数 1〜12・日は整数 1〜31）/ `season`（整数 1〜4・月の無い
-//! 日付のみ）/ `circa`（真偽値）。未知のキーは拒否する。
+//! 受理する: `date-parts`（必須・単一日付。年は整数 -32768〜32767・月は整数 1〜12・日は整数 1〜31）/
+//! `season`（整数 1〜4・月の無い日付のみ）/ `circa`（真偽値）。未知のキーは拒否する。
 //!
 //! CSL が定義する `raw` / `literal` は受理しない（見送り、恒久不採用ではない）。整形器は `literal` を読まず、
 //! `raw` は `YYYY[-MM[-DD]]` 形式だけを解析して日付範囲では panic するので、渡しても黙って消えるか落ちる。
@@ -17,10 +17,16 @@
 //!
 //! `date-parts` の月・日は範囲内の整数だけを受理する（#743）。整形器は月・日を `(値 - 1) as u8` で変換する
 //! ので、0 は 255 に折り返し 13 以上もそのまま書誌に出る。数値文字列（`"5"`）も整形器は整数と同じに読むが、
-//! `season` と同じく同じ値に綴りを複数持たせないため拒否する（文字列を許すのは年＝紀元前表記の用途だけ）。
+//! `season` と同じく同じ値に綴りを複数持たせないため拒否する。
 //! 月ごとの日数・閏年（2 月 30 日等）の検査は見送り（恒久不採用ではない）。範囲内の値は整形器が書かれた
 //! とおりに出すので誤った値にはならない。再検討トリガーは、暦上存在しない日付の誤記が実際に問題になった
 //! とき、または整形器が暦上の妥当性を前提にする処理（曜日・日付の並べ替え等）を持つようになったとき。
+//!
+//! `date-parts` の年も整数だけを受理し、範囲は整形器の担体（citationberg の `VecDate(Vec<i16>)`）に合わせて
+//! i16 に限る（#759）。整形器は数値文字列の年（`"2014"`）を整数と同じに読み、数値として読めない文字列と
+//! i16 の外の整数は引用時の変換で落ちるので、読込が受理した年は必ず整形できるよう読込時に確定させる。
+//! 紀元前は負数の年で書く（整形器が文字列の年を紀元前表記として読むことは無い）。これで `date-parts` は
+//! どの要素も文字列を受理しないので、[`Date::parts`] は担体と同じ `i16` の列として持つ。
 
 use std::{fmt, ops::RangeInclusive, slice};
 
@@ -40,25 +46,27 @@ pub(crate) struct Date {
   ///
   /// CSL の `date-parts` は日付範囲を表すために外側にもう 1 段の配列を持つが、範囲は CSL-JSON 担体
   /// （`citationberg::json::DateValue` 経由の hayagriva）が未対応なのでデシリアライズ時に拒否し、
-  /// 単一日付の内側配列だけを持つ。要素 0 個・空文字列の要素は整形器の内部で panic するか年がずれるので、
-  /// 同じくデシリアライズ時に拒否する。月・日（2・3 要素目）は範囲内の整数（`DatePart::Number`）だけを持つ。
-  pub parts: Vec<DatePart>,
+  /// 単一日付の内側配列だけを持つ。要素 0 個は整形器の内部で panic するので同じく拒否する。
+  /// 要素は担体の `VecDate` と同じ `i16` で持ち、年は i16 全域・月は 1〜12・日は 1〜31 だけを持つ
+  /// （いずれもデシリアライズ時に検査する）。
+  pub parts: Vec<i16>,
   /// 季節。月の代わりに描画されるので、`parts` が年だけのときにだけ持つ（デシリアライズ時に検査する）。
   pub season: Option<Season>,
   /// 概算日付フラグ。
   pub circa: Option<bool>,
 }
 
-/// `date-parts` の 1 要素（年・月・日のいずれか）。
+/// `date-parts` の 1 要素（年・月・日のいずれか）のデシリアライズ用の中間表現。
 ///
-/// CSL では数値表現が一般的だが、紀元前の年など特殊な表記のため文字列も許容される。
-/// 文字列を受理するのは年だけで、月・日の文字列はデシリアライズ時に拒否する。
-#[derive(Debug, Serialize, Deserialize)]
+/// CSL-JSON は要素に数値と文字列の両方を許すが、受理するのは整数だけ。文字列も一旦受けてから拒否するのは、
+/// 診断に違反値を載せるため（untagged enum の汎用文言では値が読めない）。検査を通った値は `i16` に
+/// 絞って [`Date::parts`] へ入るので、この型はデシリアライズの外へ出ない。
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub(crate) enum DatePart {
+enum DatePart {
   /// 数値での日付要素
   Number(i64),
-  /// 文字列での日付要素
+  /// 文字列での日付要素（常に拒否する）
   String(String),
 }
 
@@ -183,17 +191,17 @@ impl<'de> Deserialize<'de> for Circa {
   }
 }
 
-/// CSL の `date-parts`（外側配列）を単一日付の内側配列へ絞る。
+/// CSL の `date-parts`（外側配列）を単一日付の内側配列へ絞り、各要素を範囲内の整数に確定させる。
 ///
 /// エラーは診断文言だけを返し、呼び出し側（`Visitor`）が `serde::de::Error::custom` へ包む
 /// （deserializer のエラー型をここでジェネリックにすると `?` の変換先が推論できない）。
-/// TOML の診断スニペットは日付のテーブルを指すだけで要素を指さないので、月・日の文言には違反値を載せる。
+/// TOML の診断スニペットは日付のテーブルを指すだけで要素を指さないので、要素の文言には違反値を載せる。
 ///
 /// # Errors
 ///
-/// 日付範囲（外側 2 要素以上）・空（外側 0 要素）・内側が 1〜3 要素でない・空文字列の要素を含む・
-/// 月が整数 1〜12 でない・日が整数 1〜31 でない場合。
-fn single_date(mut dates: Vec<Vec<DatePart>>) -> Result<Vec<DatePart>, String> {
+/// 日付範囲（外側 2 要素以上）・空（外側 0 要素）・内側が 1〜3 要素でない・文字列の要素を含む・
+/// 年が i16 の範囲の整数でない・月が整数 1〜12 でない・日が整数 1〜31 でない場合。
+fn single_date(mut dates: Vec<Vec<DatePart>>) -> Result<Vec<i16>, String> {
   if dates.len() > 1 {
     return Err(String::from(
       "日付範囲はサポートされていません。`date-parts` には単一の日付（内側配列 1 つ）のみ指定してください",
@@ -205,36 +213,39 @@ fn single_date(mut dates: Vec<Vec<DatePart>>) -> Result<Vec<DatePart>, String> {
   if !(1..=3).contains(&parts.len()) {
     return Err(String::from("`date-parts` の日付は年・月・日の 1〜3 要素で指定してください"));
   }
-  if parts.iter().any(|part| return matches!(part, DatePart::String(text) if text.is_empty())) {
-    return Err(String::from("`date-parts` の要素に空文字列は指定できません"));
-  }
-  // 年（1 要素目）は範囲を持たないので、2 要素目以降だけを月・日の順に照合する
-  for (part, (label, range)) in parts.iter().skip(1).zip(MONTH_DAY_RANGES.iter()) {
-    check_month_or_day(part, label, range)?;
-  }
-  return Ok(parts);
+  // 要素数は 1〜3 に確定済みなので、範囲表（年・月・日）との zip で全要素を照合できる
+  return parts
+    .iter()
+    .zip(DATE_PART_RANGES.iter())
+    .map(|(part, (label, range))| return check_part(part, label, range))
+    .collect();
 }
 
-/// `date-parts` の月・日（2・3 要素目）の名前と受理範囲。
+/// `date-parts` の年・月・日の名前と受理範囲。
 ///
-/// 整形器は月・日を `(値 - 1) as u8` で 0 始まりへ変換するので、範囲外は折り返すかそのまま書誌に出る。
-const MONTH_DAY_RANGES: [(&str, RangeInclusive<i64>); 2] = [("月", 1..=12), ("日", 1..=31)];
+/// 年は整形器の担体（citationberg の `VecDate(Vec<i16>)`）が持てる i16 全域（負数は紀元前）。月・日は
+/// 整形器が `(値 - 1) as u8` で 0 始まりへ変換するので、範囲外は折り返すかそのまま書誌に出る。
+const DATE_PART_RANGES: [(&str, RangeInclusive<i16>); 3] =
+  [("年", i16::MIN..=i16::MAX), ("月", 1..=12), ("日", 1..=31)];
 
-/// 月・日の要素 1 つが範囲内の整数であることを検査する。
+/// `date-parts` の要素 1 つが範囲内の整数であることを検査し、`i16` に確定させる。
 ///
 /// 文字列は数値として読める値でも拒否する（整形器は数値文字列を整数と同じに読むので、同じ値に綴りを
-/// 2 つ持たせない）。`label` は診断に出す要素名（「月」/「日」）。
+/// 2 つ持たせない）。`label` は診断に出す要素名（「年」/「月」/「日」）。
 ///
 /// # Errors
 ///
 /// 要素が文字列の場合、または整数が `range` の外にある場合。
-fn check_month_or_day(part: &DatePart, label: &str, range: &RangeInclusive<i64>) -> Result<(), String> {
+fn check_part(part: &DatePart, label: &str, range: &RangeInclusive<i16>) -> Result<i16, String> {
   let (start, end) = (range.start(), range.end());
   return match part {
-    DatePart::Number(value) if range.contains(value) => Ok(()),
-    DatePart::Number(value) => Err(format!(
-      "`date-parts` の{label} `{value}` は範囲外です。{label}は {start}〜{end} の整数で指定してください"
-    )),
+    DatePart::Number(value) => match i16::try_from(*value) {
+      Ok(narrowed) if range.contains(&narrowed) => Ok(narrowed),
+      // i16 に収まらない値と、収まるが範囲外の値は同じ「範囲外」として報告する
+      Ok(_) | Err(_) => Err(format!(
+        "`date-parts` の{label} `{value}` は範囲外です。{label}は {start}〜{end} の整数で指定してください"
+      )),
+    },
     DatePart::String(text) => Err(format!(
       "`date-parts` の{label}に文字列 `\"{text}\"` は指定できません。{label}は {start}〜{end} の整数で指定してください"
     )),

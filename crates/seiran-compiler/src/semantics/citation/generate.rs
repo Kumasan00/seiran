@@ -6,8 +6,6 @@
 use std::collections::HashMap;
 
 use hayagriva::citationberg::json::Item;
-use miette::Diagnostic;
-use thiserror::Error;
 use tracing::debug;
 
 use crate::{
@@ -17,24 +15,6 @@ use crate::{
     csl_style::CompiledCitationStyle, render,
   },
 };
-
-/// CSL 整形（表示の生成）で発生し得るエラー
-#[derive(Debug, Error, Diagnostic)]
-pub(crate) enum CitationFormatError {
-  /// 参照定義を CSL-JSON 担体（`Item`）に変換できなかった場合。
-  #[error("参照定義を CSL-JSON に変換できませんでした: {id}")]
-  #[diagnostic(
-    code(semantics::citation::build_entry),
-    help("`date-parts` は整数の単一日付で指定してください（日付範囲・文字列の年・i16 を超える年は不可）。")
-  )]
-  BuildEntry {
-    /// 変換に失敗した参照 ID
-    id: String,
-    /// 元の `serde_json` 変換エラー
-    #[source]
-    source: serde_json::Error,
-  },
-}
 
 /// 引用の生成物（引用箇所ごとの表示インライン列 + 書誌）
 ///
@@ -89,18 +69,15 @@ impl GeneratedCitations {
 /// 引用箇所の事実と CSL から、引用箇所ごとの表示インライン列と書誌を生成する
 ///
 /// 採番は `sites` の挿入順（= 文書順）に hayagriva へ引用要求を積むことで決まる。
-///
-/// # Errors
-///
-/// 引用された参照定義を CSL-JSON 担体へ変換できなかった場合に [`CitationFormatError`] を返します。
+/// 参照定義の CSL-JSON 担体への変換は失敗しない（読込の検査が保証する。[`csl_json::to_item`]）。
 pub(crate) fn generate_citations(
   sites: &NodeMap<CitationSiteFacts>,
   references: &References,
   style: &CompiledCitationStyle,
-) -> Result<GeneratedCitations, CitationFormatError> {
+) -> GeneratedCitations {
   let sites_in_order: Vec<&CitationSiteFacts> = sites.iter().map(|(_, site)| return site).collect();
 
-  // 未引用文献の変換エラーでビルドを失敗させないよう、引用された文献だけを変換する。
+  // 書誌は引用された文献だけで作るので、引用された文献だけを変換する。
   let mut entries: HashMap<CitationId, Item> = HashMap::new();
   for target in sites_in_order.iter().flat_map(|site| return site.targets.iter()) {
     if entries.contains_key(target) {
@@ -109,13 +86,7 @@ pub(crate) fn generate_citations(
     let Some(reference) = references.get(target.as_str()) else {
       unreachable!("キーの存在は semantics::analyze の走査が保証している: {target:?}")
     };
-    let item = csl_json::to_item(target.as_str(), reference).map_err(|source| {
-      return CitationFormatError::BuildEntry {
-        id: target.as_str().to_string(),
-        source,
-      };
-    })?;
-    entries.insert(target.clone(), item);
+    entries.insert(target.clone(), csl_json::to_item(target.as_str(), reference));
   }
 
   let rendered = render::render(&entries, &sites_in_order, style);
@@ -130,16 +101,14 @@ pub(crate) fn generate_citations(
     bibliography_entry_count = rendered.bibliography.as_ref().map_or(0, Vec::len),
     "文献引用を整形"
   );
-  return Ok(GeneratedCitations {
+  return GeneratedCitations {
     displays,
     bibliography: rendered.bibliography,
-  });
+  };
 }
 
 #[cfg(test)]
 mod tests {
-  use std::io::Write;
-
   use super::{GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     document::{FontKind, HirDocument},
@@ -149,7 +118,7 @@ mod tests {
       References, SemanticPolicy,
       fact_collection::collect_facts,
       facts::SemanticFacts,
-      load_citation_style, read_references,
+      load_citation_style,
       test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -196,7 +165,7 @@ mod tests {
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let generated = generate_citations(&analyzed.citations, &references, &compiled).expect("整形は成功するはず");
+    let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
     // Assert — 引用箇所ごとに表示が 1 つずつ付く
     for (site, _) in analyzed.citations.iter() {
@@ -221,7 +190,7 @@ mod tests {
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let generated = generate_citations(&analyzed.citations, &references, &compiled).expect("整形は成功するはず");
+    let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
     // Assert
     let (site, _) = analyzed.citations.iter().next().expect("1 箇所あるはず");
@@ -234,39 +203,6 @@ mod tests {
       })
       .collect();
     assert_eq!(targets, vec!["kwan2014", "doe2020"], "キーごとに内部リンクになるはず");
-  }
-
-  #[test]
-  fn generate_ignores_uncited_malformed_reference() {
-    // Arrange — 引用しない文献 `bad9999` は CSL-JSON へ変換できない日付を持つ
-    let source = FilesystemProjectSource;
-    let toml = String::from(
-      "[kwan2014]\n\
-       type = \"book\"\n\
-       title = \"Crazy Rich Asians\"\n\
-       [[kwan2014.author]]\n\
-       family = \"Kwan\"\n\
-       given = \"Kevin\"\n\
-       [kwan2014.issued]\n\
-       date-parts = [[2014]]\n\n\
-       [bad9999]\n\
-       type = \"book\"\n\
-       title = \"Broken\"\n\
-       [bad9999.issued]\n\
-       date-parts = [[99999]]\n",
-    );
-    let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
-    file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    let references =
-      read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
-    let analyzed = analyzed(r"\cite{kwan2014}", &references);
-    let compiled = load_citation_style(&source, &style_with_csl()).expect("CSL を読めるはず");
-
-    // Act
-    let result = generate_citations(&analyzed.citations, &references, &compiled);
-
-    // Assert
-    assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
   }
 
   /// インライン列を再帰走査し、serif イタリック系の `Styled` 配下のプレーンテキストを集める。
@@ -293,7 +229,7 @@ mod tests {
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let generated = generate_citations(&analyzed.citations, &references, &compiled).expect("整形は成功するはず");
+    let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
     // Assert
     let mut italic_texts: Vec<String> = Vec::new();
@@ -316,8 +252,8 @@ mod tests {
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act — 同じ facts + 同じ CSL で 2 回生成する
-    let first = generate_citations(&analyzed.citations, &references, &compiled).expect("1 回目");
-    let second = generate_citations(&analyzed.citations, &references, &compiled).expect("2 回目");
+    let first = generate_citations(&analyzed.citations, &references, &compiled);
+    let second = generate_citations(&analyzed.citations, &references, &compiled);
 
     // Assert
     // 全表示の走査が要るのはこのテストだけなので、query ではなく private フィールドを直接読む。
@@ -347,8 +283,8 @@ mod tests {
       load_citation_style(&FilesystemProjectSource, &style_with_csl_path(variant_csl_path())).expect("読めるはず");
 
     // Act
-    let generated_base = generate_citations(&analyzed.citations, &references, &base).expect("整形は成功するはず");
-    let generated_variant = generate_citations(&analyzed.citations, &references, &variant).expect("整形は成功するはず");
+    let generated_base = generate_citations(&analyzed.citations, &references, &base);
+    let generated_variant = generate_citations(&analyzed.citations, &references, &variant);
 
     // Assert
     assert_ne!(generated_base.bibliography(), generated_variant.bibliography(), "CSL を変えたら生成物は変わるはず");
