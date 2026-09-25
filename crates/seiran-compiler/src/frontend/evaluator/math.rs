@@ -9,7 +9,9 @@
 use crate::{
   document::{HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, inline::resolve_math_symbol_command, opt_args},
+    evaluator::{
+      EvalContext, EvalError, arity, command::symbol::MathSymbol, inline::resolve_math_symbol_command, opt_args,
+    },
     syntax::{
       SyntaxKind,
       green::{GreenElement, GreenNode},
@@ -166,22 +168,79 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
   return HirMath::new(group_id, HirMathKind::Group(nodes));
 }
 
-/// 数式内コマンドを [`HirMath`] に変換する
-fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
-  let view = CommandView::new(cmd_node, source);
-  let name = view.name();
+/// 数式内コマンドの種類
+///
+/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
+/// 経由、#753）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
+/// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
+#[derive(Debug, Clone, Copy)]
+enum MathCommandKind {
+  /// 字形コマンド（`\mathbold` 等）— 必須引数 1 個（数式本体）
+  Styled(MathVariant),
+  /// `\frac` — 必須引数 2 個（分子と分母）
+  Frac,
+  /// `\sqrt` — 必須引数 1 個（被開平数）。根指数は任意引数なので数えない
+  Sqrt,
+  /// 記号コマンド（`\alpha` 等）— 必須引数なし
+  Symbol(MathSymbol),
+}
 
-  // 数式の字形コマンド（\mathbold, \mathitalic 等）
-  if let Some(variant) = MathVariant::from_command_name(name) {
-    opt_args::no_command_opt_args(&view)?;
-    let first_arg = arity::exactly_one_arg(&view, "1 個（数式本体）")?;
-    let id = ctx.alloc(view.span());
-    let body = evaluate_math_children(source, ctx, first_arg)?;
-    return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
+impl MathCommandKind {
+  /// コマンド名から数式の語彙を引く。数式の語彙に無ければ `None`
+  fn from_name(name: &str) -> Option<Self> {
+    if let Some(variant) = MathVariant::from_command_name(name) {
+      return Some(Self::Styled(variant));
+    }
+    return match name {
+      "frac" => Some(Self::Frac),
+      "sqrt" => Some(Self::Sqrt),
+      _ => resolve_math_symbol_command(name).map(Self::Symbol),
+    };
   }
 
-  match name {
-    "frac" => {
+  /// 必須引数の個数
+  fn arg_count(self) -> usize {
+    return match self {
+      Self::Styled(_) | Self::Sqrt => 1,
+      Self::Frac => 2,
+      Self::Symbol(_) => 0,
+    };
+  }
+}
+
+/// 数式内のコマンド名から必須引数の個数を引く
+///
+/// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。数式の語彙に無い
+/// コマンドは `None` — 評価器が未知のコマンドとして拒否するだけなので個数が定まらず、パーサーは個数で
+/// 打ち切らない（レジストリの verbatim 宣言どおりに引数を読み、`$\code{a // b}$` を「未知のコマンド」で
+/// 診断できるようにするため）。
+pub(super) fn lookup_math_arg_count(name: &str) -> Option<usize> {
+  return MathCommandKind::from_name(name).map(MathCommandKind::arg_count);
+}
+
+/// 数式内コマンドを [`HirMath`] に変換する
+///
+/// 数式内ではパーサーが [`MathCommandKind::arg_count`] 個で引数の読みを打ち切るので（#753）、
+/// 各 arm の `arity` 検査で実際に起きうるのは不足だけになる。
+fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
+  let view = CommandView::new(cmd_node, source);
+  let Some(kind) = MathCommandKind::from_name(view.name()) else {
+    return Err(EvalError::UnknownCommand {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
+  };
+
+  match kind {
+    MathCommandKind::Styled(variant) => {
+      opt_args::no_command_opt_args(&view)?;
+      let first_arg = arity::exactly_one_arg(&view, "1 個（数式本体）")?;
+      let id = ctx.alloc(view.span());
+      let body = evaluate_math_children(source, ctx, first_arg)?;
+      return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
+    },
+    MathCommandKind::Frac => {
       opt_args::no_command_opt_args(&view)?;
       let (numer_arg, denom_arg) = arity::exactly_two_args(&view, "2 個（分子と分母）")?;
       let id = ctx.alloc(view.span());
@@ -189,7 +248,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
       let denom = Box::new(math_arg_to_node(source, ctx, denom_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
     },
-    "sqrt" => {
+    MathCommandKind::Sqrt => {
       // 根指数 `[n]` は任意引数を数式として読む（`no_command_opt_args` は呼ばない）。
       // 個数検査は根指数の評価より前に置く — `math_arg_to_node` は `ctx.alloc` で NodeId を
       // 消費するので、引数の個数が誤っていて後段で reject するだけの入力に対して、その割り当てを
@@ -203,23 +262,16 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
       let radicand = Box::new(math_arg_to_node(source, ctx, radicand_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
     },
-    _ => {
-      if let Some(symbol) = resolve_math_symbol_command(name) {
-        opt_args::no_command_opt_args(&view)?;
-        arity::no_args(&view)?;
-        return Ok(ctx.leaf_math(
-          view.span(),
-          HirMathKind::Symbol {
-            ch: symbol.ch,
-            class: symbol.class,
-          },
-        ));
-      }
-
-      return Err(EvalError::UnknownCommand {
-        name: name.to_string(),
-        span: view.span().into(),
-      });
+    MathCommandKind::Symbol(symbol) => {
+      opt_args::no_command_opt_args(&view)?;
+      arity::no_args(&view)?;
+      return Ok(ctx.leaf_math(
+        view.span(),
+        HirMathKind::Symbol {
+          ch: symbol.ch,
+          class: symbol.class,
+        },
+      ));
     },
   }
 }

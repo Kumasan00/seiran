@@ -86,8 +86,10 @@ mod tests {
 
   use super::{EvalError, ParseSourceError, parse_source};
   use crate::{
-    document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathVariant},
-    frontend::test_support,
+    document::{
+      FontKind, HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant,
+    },
+    frontend::{evaluator, test_support},
     project::{PathResolver, ProjectPath},
     source::SourceId,
   };
@@ -110,6 +112,24 @@ mod tests {
       Err(ParseSourceError::Eval(error)) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }
+  }
+
+  /// 段落 1 個・インライン数式 1 個だけのソースを評価し、数式の要素列を返すテストヘルパ
+  fn inline_math_nodes(source: &str) -> Vec<HirMath> {
+    let mut result = evaluate_source(source);
+    let HirNodeKind::Paragraph(mut inlines) = result.swap_remove(0).kind else {
+      panic!("Paragraph が期待されます: {source}");
+    };
+    let HirInlineKind::InlineMath(math) = inlines.swap_remove(0).kind else {
+      panic!("InlineMath が期待されます: {source}");
+    };
+    return math;
+  }
+
+  /// 数式要素が `Text(text)` 1 個だけを持つグループか
+  fn is_group_of_text(node: &HirMath, text: &str) -> bool {
+    return matches!(&node.kind, HirMathKind::Group(children)
+      if children.len() == 1 && matches!(&children[0].kind, HirMathKind::Text(t) if t == text));
   }
 
   /// `NodeId` を無視して 2 つの HIR ブロック列が同じ構造かどうかを判定する
@@ -569,10 +589,22 @@ mod tests {
   }
 
   #[test]
-  fn inline_math_styled_rejects_extra_argument() {
-    let error = evaluate_error(r"$\mathbold{x}{y}$");
+  fn inline_math_styled_is_followed_by_group() {
+    // #753: 字形コマンドの 1 個を超えた位置の `{...}` は後ろに続く数式グループ
+    let math = inline_math_nodes(r"$\mathbold{x}{y}$");
 
-    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "mathbold"));
+    assert_eq!(math.len(), 2, "{math:?}");
+    assert!(
+      matches!(
+        &math[0].kind,
+        HirMathKind::Styled {
+          variant: MathVariant::Bold,
+          ..
+        }
+      ),
+      "{math:?}"
+    );
+    assert!(is_group_of_text(&math[1], "y"), "{math:?}");
   }
 
   #[test]
@@ -981,9 +1013,29 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_math_frac_extra_arg_is_error() {
-    let error = evaluate_error(r"$\frac{a}{b}{c}$");
-    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "frac"));
+  fn evaluate_math_frac_is_followed_by_group() {
+    // #753: `\frac` の 2 個を超えた位置の `{...}` は後ろに続く数式グループ
+    for source in [
+      r"$\frac{a}{b}{c}$",
+      r"$\frac{a}{b} {c}$",
+      r"$\frac{a} {b}{c}$",
+    ] {
+      let math = inline_math_nodes(source);
+
+      // `}` と `{c}` の間の空白はコマンドの外（数式本体の空白）に返るので、先頭と末尾だけを見る
+      assert!(matches!(&math[0].kind, HirMathKind::Frac { .. }), "{source}: {math:?}");
+      assert!(math.last().is_some_and(|last| return is_group_of_text(last, "c")), "{source}: {math:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_sqrt_is_followed_by_group() {
+    // 根指数（任意引数）は個数に数えない
+    let math = inline_math_nodes(r"$\sqrt[n]{x}{y}$");
+
+    assert_eq!(math.len(), 2, "{math:?}");
+    assert!(matches!(&math[0].kind, HirMathKind::Sqrt { index: Some(_), .. }), "{math:?}");
+    assert!(is_group_of_text(&math[1], "y"), "{math:?}");
   }
 
   #[test]
@@ -1005,9 +1057,55 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_math_symbol_command_with_arg_is_error() {
-    let error = evaluate_error(r"$\alpha{x}$");
-    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "alpha"));
+  fn evaluate_math_symbol_is_followed_by_group() {
+    // #753: 引数を取らない記号コマンドでは直後の `{...}` から数式グループ（空白を挟んでも同じ）
+    for source in [r"$\alpha{b}$", r"$\alpha {b}$"] {
+      let math = inline_math_nodes(source);
+
+      assert_eq!(math.len(), 2, "{source}: {math:?}");
+      assert!(matches!(&math[0].kind, HirMathKind::Symbol { ch: 'α', .. }), "{source}: {math:?}");
+      assert!(is_group_of_text(&math[1], "b"), "{source}: {math:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_env_command_is_followed_by_group() {
+    // 数式環境の本体・セルもインライン数式と同じ規則
+    let result = evaluate_source(r"\begin{equation}\alpha{b}\end{equation}");
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    let cell = &math.rows[0].cells[0];
+    assert!(matches!(&cell[0].kind, HirMathKind::Symbol { ch: 'α', .. }), "{cell:?}");
+    assert!(is_group_of_text(&cell[1], "b"), "{cell:?}");
+
+    let result = evaluate_source(r"\begin{align}\frac{a}{b}{c}&=d\end{align}");
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    let cell = &math.rows[0].cells[0];
+    assert!(matches!(&cell[0].kind, HirMathKind::Frac { .. }), "{cell:?}");
+    assert!(is_group_of_text(&cell[1], "c"), "{cell:?}");
+  }
+
+  #[test]
+  fn math_arg_count_matches_evaluator_arity() {
+    // パーサーが打ち切る個数（`ModeResolver::math_command_arg_count`）と評価器の個数検査が食い違わないことの固定:
+    // 宣言どおりの個数の引数に `{z}` を続けると、評価が通り末尾が `{z}` のグループになる。
+    // 数式の語彙の種類（字形・\frac・\sqrt・記号の Ord / Rel）ごとに代表を 1 つずつ。
+    let arg_count = evaluator::mode_resolver().math_command_arg_count;
+    for name in ["mathbold", "frac", "sqrt", "alpha", "leq"] {
+      let count = arg_count(name).unwrap_or_else(|| panic!("{name} は数式の語彙にあるはず"));
+      let args = "{a}".repeat(count);
+      let source = format!(r"$\{name}{args}{{z}}$");
+
+      let math = inline_math_nodes(&source);
+
+      assert_eq!(math.len(), 2, "{source}: {math:?}");
+      assert!(is_group_of_text(&math[1], "z"), "{source}: {math:?}");
+    }
+    assert_eq!(arg_count("bold"), None, "テキストのコマンドは数式の語彙に無い");
+    assert_eq!(arg_count("nosuchmathcmd"), None);
   }
 
   #[test]
