@@ -38,8 +38,8 @@ pub(crate) struct Date {
   pub parts: Vec<DatePart>,
   /// 季節。月の代わりに描画されるので、`parts` が年だけのときにだけ持つ（デシリアライズ時に検査する）。
   pub season: Option<Season>,
-  /// 概算日付フラグ。CSL では真偽値・整数・文字列のいずれも許容する。
-  pub circa: Option<DateCirca>,
+  /// 概算日付フラグ。
+  pub circa: Option<bool>,
 }
 
 /// `date-parts` の 1 要素（年・月・日のいずれか）。
@@ -142,18 +142,37 @@ impl Serialize for Season {
   }
 }
 
-/// 概算日付フラグの表現。
+/// `circa` の値を読むための newtype。
 ///
-/// CSL では真偽値・整数（0/1）・文字列のいずれも許容する。
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum DateCirca {
-  /// 真偽値での指定
-  Bool(bool),
-  /// 整数での指定
-  Number(i64),
-  /// 文字列での指定
-  String(String),
+/// 中身は素の `bool` だが、型不一致の診断にキー名を載せるため専用の `expecting` を持つ
+/// （`bool` の既定の文言はキー名を含まず、スニペットの無い JSON では位置が読めない）。
+struct Circa(bool);
+
+impl<'de> Deserialize<'de> for Circa {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    /// `Circa` のデシリアライズを担う `Visitor`。真偽値以外（整数・文字列）は型不一致として拒否する。
+    struct CircaVisitor;
+
+    impl Visitor<'_> for CircaVisitor {
+      type Value = Circa;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return formatter.write_str("`circa` には真偽値（true / false）");
+      }
+
+      fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+      where
+        E: serde::de::Error,
+      {
+        return Ok(Circa(value));
+      }
+    }
+
+    return deserializer.deserialize_bool(CircaVisitor);
+  }
 }
 
 /// CSL の `date-parts`（外側配列）を単一日付の内側配列へ絞る。
@@ -222,7 +241,7 @@ impl<'de> Deserialize<'de> for Date {
               if circa.is_some() {
                 return Err(<A::Error as serde::de::Error>::duplicate_field("circa"));
               }
-              circa = Some(map.next_value()?);
+              circa = Some(map.next_value::<Circa>()?.0);
             },
             "raw" | "literal" => {
               return Err(<A::Error as serde::de::Error>::custom(format!(

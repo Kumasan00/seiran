@@ -106,7 +106,7 @@ mod tests {
 
   use super::{
     ReadReferencesError,
-    date::{DateCirca, DatePart, Season},
+    date::{DatePart, Season},
     name::Name,
     parse_references, read_references,
     reference::NumberOrString,
@@ -491,7 +491,7 @@ mod tests {
         DatePart::Number(15)
       ]
     ));
-    assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
+    assert_eq!(issued.circa, Some(true));
     assert_eq!(issued.season, None);
   }
 
@@ -590,7 +590,11 @@ mod tests {
   fn parse_references_rejects_duplicate_date_key_in_json() {
     // JSON は重複キーを構文で拒否しないので、後勝ちで先の値を黙って捨てずに拒否する
     for key in ["date-parts", "season", "circa"] {
-      let value = if key == "date-parts" { "[[2014]]" } else { "1" };
+      let value = match key {
+        "date-parts" => "[[2014]]",
+        "season" => "1",
+        _ => "true",
+      };
       let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"{key}\": {value}, \"{key}\": {value}}}"));
 
       assert!(message.contains(&format!("`{key}`")), "{key}: {message}");
@@ -690,6 +694,44 @@ mod tests {
   }
 
   #[test]
+  fn parse_references_accepts_false_circa() {
+    // Arrange
+    let toml = "[ref1]\n\
+                type = \"book\"\n\
+                [ref1.issued]\n\
+                date-parts = [[2014]]\n\
+                circa = false\n";
+
+    // Act
+    let references = parse_references(toml, dummy_source()).unwrap();
+
+    // Assert
+    let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
+    assert_eq!(issued.circa, Some(false));
+  }
+
+  #[test]
+  fn parse_references_rejects_non_bool_circa_in_toml() {
+    // 整形器は `"true"` / `1` を真、それ以外を黙って偽とする。別綴りも含めて真偽値以外は拒否する（#741）
+    for value in ["\"yes\"", "\"true\"", "1", "0", "2"] {
+      let message = issued_toml_error(&format!("date-parts = [[2014]]\ncirca = {value}"));
+
+      assert!(message.contains("`circa`"), "{value}: {message}");
+      assert!(message.contains("真偽値"), "{value}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_non_bool_circa_in_json() {
+    for value in ["1", "\"true\"", "\"yes\""] {
+      let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"circa\": {value}}}"));
+
+      assert!(message.contains("`circa`"), "{value}: {message}");
+      assert!(message.contains("line"), "{value}: {message}");
+    }
+  }
+
+  #[test]
   fn read_references_parses_structured_date_in_json() {
     // Arrange
     let source = FilesystemProjectSource;
@@ -716,7 +758,7 @@ mod tests {
     let issued = reference.issued.as_ref().unwrap();
     assert!(matches!(issued.parts.as_slice(), [DatePart::Number(2024)]));
     assert_eq!(issued.season, Some(Season::Spring));
-    assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
+    assert_eq!(issued.circa, Some(true));
   }
 
   #[test]
