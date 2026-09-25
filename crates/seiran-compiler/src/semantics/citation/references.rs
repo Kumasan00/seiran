@@ -631,6 +631,120 @@ mod tests {
   }
 
   #[test]
+  fn parse_references_rejects_out_of_range_month_and_day_in_toml() {
+    // 整形器は月・日を `(v - 1) as u8` で変換するので、0 は 255 に折り返し 13 以上もそのまま書誌に出る
+    for (body, label, range, value) in [
+      ("date-parts = [[2014, 0]]", "月", "1〜12", "0"),
+      ("date-parts = [[2014, 13]]", "月", "1〜12", "13"),
+      ("date-parts = [[2014, -1]]", "月", "1〜12", "-1"),
+      ("date-parts = [[2014, 5, 0]]", "日", "1〜31", "0"),
+      ("date-parts = [[2014, 5, 32]]", "日", "1〜31", "32"),
+      ("date-parts = [[2014, 5, -1]]", "日", "1〜31", "-1"),
+    ] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("`date-parts`"), "{body}: {message}");
+      assert!(message.contains(label), "{body}: {message}");
+      assert!(message.contains(range), "{body}: {message}");
+      assert!(message.contains(&format!("`{value}`")), "{body}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_out_of_range_month_and_day_in_json() {
+    for (issued, label, value) in [
+      ("{\"date-parts\": [[2014, 13]]}", "月", "13"),
+      ("{\"date-parts\": [[2014, 5, 32]]}", "日", "32"),
+    ] {
+      let message = issued_json_error(issued);
+
+      // JSON はスニペットを持たないので、文言のキー名と値・行位置で場所を示す
+      assert!(message.contains("`date-parts`"), "{issued}: {message}");
+      assert!(message.contains(label), "{issued}: {message}");
+      assert!(message.contains(&format!("`{value}`")), "{issued}: {message}");
+      assert!(message.contains("line"), "{issued}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_string_month_and_day() {
+    // 整形器は数値文字列を整数と同じに読むので、`"13"` は範囲外の整数と同じ不具合を起こす。
+    // 範囲内の `"5"` も同じ値の別綴りなので拒否する（#743: 月・日は整数だけ受理）
+    for (body, label) in [
+      ("date-parts = [[2014, \"13\"]]", "月"),
+      ("date-parts = [[2014, \"5\"]]", "月"),
+      ("date-parts = [[2014, 5, \"0\"]]", "日"),
+      ("date-parts = [[2014, 5, \"1\"]]", "日"),
+    ] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("`date-parts`"), "{body}: {message}");
+      assert!(message.contains(label), "{body}: {message}");
+      assert!(message.contains("整数"), "{body}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_accepts_month_and_day_boundaries() {
+    for (body, expected_month, expected_day) in [
+      ("date-parts = [[2014, 1]]", 1, None),
+      ("date-parts = [[2014, 12]]", 12, None),
+      ("date-parts = [[2014, 1, 1]]", 1, Some(1)),
+      ("date-parts = [[2014, 12, 31]]", 12, Some(31)),
+    ] {
+      // Arrange
+      let toml = format!(
+        "[ref1]\n\
+         type = \"book\"\n\
+         [ref1.issued]\n\
+         {body}\n"
+      );
+
+      // Act
+      let references = parse_references(&toml, dummy_source()).unwrap();
+
+      // Assert
+      let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
+      assert!(
+        matches!(issued.parts.get(1), Some(DatePart::Number(month)) if *month == expected_month),
+        "{body}: {:?}",
+        issued.parts
+      );
+      match expected_day {
+        Some(day) => assert!(
+          matches!(issued.parts.get(2), Some(DatePart::Number(actual)) if *actual == day),
+          "{body}: {:?}",
+          issued.parts
+        ),
+        None => assert_eq!(issued.parts.len(), 2, "{body}"),
+      }
+    }
+  }
+
+  #[test]
+  fn parse_references_keeps_year_unrestricted() {
+    // 月・日の検査を年へ波及させない（負数の年は紀元前、文字列の年は従来どおり読込では受理）
+    for body in [
+      "date-parts = [[-100, 5]]",
+      "date-parts = [[\"2014\", 5, 1]]",
+    ] {
+      // Arrange
+      let toml = format!(
+        "[ref1]\n\
+         type = \"book\"\n\
+         [ref1.issued]\n\
+         {body}\n"
+      );
+
+      // Act
+      let result = parse_references(&toml, dummy_source());
+
+      // Assert
+      assert!(result.is_ok(), "{body}: {result:?}");
+    }
+  }
+
+  #[test]
   fn parse_references_accepts_season_numbers_on_year_only_date() {
     for (number, expected) in [
       (1, Season::Spring),

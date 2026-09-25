@@ -1,8 +1,8 @@
 //! CSL (Citation Style Language) の日付値の型と手書きデシリアライザ。
 //!
 //! 構造化された日付オブジェクトのうち、整形器（hayagriva の CSL-JSON 日付解決）が実際に読むキーと値だけを
-//! 受理する: `date-parts`（必須・単一日付）/ `season`（整数 1〜4・月の無い日付のみ）/ `circa`（真偽値）。
-//! 未知のキーは拒否する。
+//! 受理する: `date-parts`（必須・単一日付。月は整数 1〜12・日は整数 1〜31）/ `season`（整数 1〜4・月の無い
+//! 日付のみ）/ `circa`（真偽値）。未知のキーは拒否する。
 //!
 //! CSL が定義する `raw` / `literal` は受理しない（見送り、恒久不採用ではない）。整形器は `literal` を読まず、
 //! `raw` は `YYYY[-MM[-DD]]` 形式だけを解析して日付範囲では panic するので、渡しても黙って消えるか落ちる。
@@ -14,8 +14,15 @@
 //! `season` の季節名の文字列（`"spring"` 等）は見送り（恒久不採用ではない）。再検討トリガーは、整形器が
 //! 季節名の文字列を読むようになったとき、または季節名で書かれた CSL-JSON をそのまま読み込む用途が出たとき。
 //! 季節は月の代わりに描画されるので（月があると整形器は季節を使わない）、月を持つ日付への `season` も拒否する。
+//!
+//! `date-parts` の月・日は範囲内の整数だけを受理する（#743）。整形器は月・日を `(値 - 1) as u8` で変換する
+//! ので、0 は 255 に折り返し 13 以上もそのまま書誌に出る。数値文字列（`"5"`）も整形器は整数と同じに読むが、
+//! `season` と同じく同じ値に綴りを複数持たせないため拒否する（文字列を許すのは年＝紀元前表記の用途だけ）。
+//! 月ごとの日数・閏年（2 月 30 日等）の検査は見送り（恒久不採用ではない）。範囲内の値は整形器が書かれた
+//! とおりに出すので誤った値にはならない。再検討トリガーは、暦上存在しない日付の誤記が実際に問題になった
+//! とき、または整形器が暦上の妥当性を前提にする処理（曜日・日付の並べ替え等）を持つようになったとき。
 
-use std::{fmt, slice};
+use std::{fmt, ops::RangeInclusive, slice};
 
 use serde::{
   Deserialize, Serialize,
@@ -34,7 +41,7 @@ pub(crate) struct Date {
   /// CSL の `date-parts` は日付範囲を表すために外側にもう 1 段の配列を持つが、範囲は CSL-JSON 担体
   /// （`citationberg::json::DateValue` 経由の hayagriva）が未対応なのでデシリアライズ時に拒否し、
   /// 単一日付の内側配列だけを持つ。要素 0 個・空文字列の要素は整形器の内部で panic するか年がずれるので、
-  /// 同じくデシリアライズ時に拒否する。
+  /// 同じくデシリアライズ時に拒否する。月・日（2・3 要素目）は範囲内の整数（`DatePart::Number`）だけを持つ。
   pub parts: Vec<DatePart>,
   /// 季節。月の代わりに描画されるので、`parts` が年だけのときにだけ持つ（デシリアライズ時に検査する）。
   pub season: Option<Season>,
@@ -45,6 +52,7 @@ pub(crate) struct Date {
 /// `date-parts` の 1 要素（年・月・日のいずれか）。
 ///
 /// CSL では数値表現が一般的だが、紀元前の年など特殊な表記のため文字列も許容される。
+/// 文字列を受理するのは年だけで、月・日の文字列はデシリアライズ時に拒否する。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum DatePart {
@@ -179,24 +187,58 @@ impl<'de> Deserialize<'de> for Circa {
 ///
 /// エラーは診断文言だけを返し、呼び出し側（`Visitor`）が `serde::de::Error::custom` へ包む
 /// （deserializer のエラー型をここでジェネリックにすると `?` の変換先が推論できない）。
+/// TOML の診断スニペットは日付のテーブルを指すだけで要素を指さないので、月・日の文言には違反値を載せる。
 ///
 /// # Errors
 ///
-/// 日付範囲（外側 2 要素以上）・空（外側 0 要素）・内側が 1〜3 要素でない・空文字列の要素を含む場合。
-fn single_date(mut dates: Vec<Vec<DatePart>>) -> Result<Vec<DatePart>, &'static str> {
+/// 日付範囲（外側 2 要素以上）・空（外側 0 要素）・内側が 1〜3 要素でない・空文字列の要素を含む・
+/// 月が整数 1〜12 でない・日が整数 1〜31 でない場合。
+fn single_date(mut dates: Vec<Vec<DatePart>>) -> Result<Vec<DatePart>, String> {
   if dates.len() > 1 {
-    return Err("日付範囲はサポートされていません。`date-parts` には単一の日付（内側配列 1 つ）のみ指定してください");
+    return Err(String::from(
+      "日付範囲はサポートされていません。`date-parts` には単一の日付（内側配列 1 つ）のみ指定してください",
+    ));
   }
   let Some(parts) = dates.pop() else {
-    return Err("`date-parts` が空です。単一の日付（例: `[[2024, 1, 15]]`）を指定してください");
+    return Err(String::from("`date-parts` が空です。単一の日付（例: `[[2024, 1, 15]]`）を指定してください"));
   };
   if !(1..=3).contains(&parts.len()) {
-    return Err("`date-parts` の日付は年・月・日の 1〜3 要素で指定してください");
+    return Err(String::from("`date-parts` の日付は年・月・日の 1〜3 要素で指定してください"));
   }
   if parts.iter().any(|part| return matches!(part, DatePart::String(text) if text.is_empty())) {
-    return Err("`date-parts` の要素に空文字列は指定できません");
+    return Err(String::from("`date-parts` の要素に空文字列は指定できません"));
+  }
+  // 年（1 要素目）は範囲を持たないので、2 要素目以降だけを月・日の順に照合する
+  for (part, (label, range)) in parts.iter().skip(1).zip(MONTH_DAY_RANGES.iter()) {
+    check_month_or_day(part, label, range)?;
   }
   return Ok(parts);
+}
+
+/// `date-parts` の月・日（2・3 要素目）の名前と受理範囲。
+///
+/// 整形器は月・日を `(値 - 1) as u8` で 0 始まりへ変換するので、範囲外は折り返すかそのまま書誌に出る。
+const MONTH_DAY_RANGES: [(&str, RangeInclusive<i64>); 2] = [("月", 1..=12), ("日", 1..=31)];
+
+/// 月・日の要素 1 つが範囲内の整数であることを検査する。
+///
+/// 文字列は数値として読める値でも拒否する（整形器は数値文字列を整数と同じに読むので、同じ値に綴りを
+/// 2 つ持たせない）。`label` は診断に出す要素名（「月」/「日」）。
+///
+/// # Errors
+///
+/// 要素が文字列の場合、または整数が `range` の外にある場合。
+fn check_month_or_day(part: &DatePart, label: &str, range: &RangeInclusive<i64>) -> Result<(), String> {
+  let (start, end) = (range.start(), range.end());
+  return match part {
+    DatePart::Number(value) if range.contains(value) => Ok(()),
+    DatePart::Number(value) => Err(format!(
+      "`date-parts` の{label} `{value}` は範囲外です。{label}は {start}〜{end} の整数で指定してください"
+    )),
+    DatePart::String(text) => Err(format!(
+      "`date-parts` の{label}に文字列 `\"{text}\"` は指定できません。{label}は {start}〜{end} の整数で指定してください"
+    )),
+  };
 }
 
 impl<'de> Deserialize<'de> for Date {
