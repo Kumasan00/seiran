@@ -490,13 +490,100 @@ pub(crate) enum ReferenceType {
 /// CSL の Number Variables は整数・小数のいずれの数値も、ページ範囲（例: `"1-10"`）など
 /// 数値で表現できない値を保持する文字列も許容する。
 /// <https://docs.citationstyles.org/en/stable/specification.html#number-variables>
-#[derive(Debug, Serialize, Deserialize)]
+///
+/// 受理するのは整数・有限の数・文字列（#764）。TOML の `nan` / `inf` は拒否する: 整形器の担体へ渡す前の
+/// `serde_json` が有限でない数を `null` にし、未指定と区別できないまま書誌から黙って消えるため。
+/// i64 を超える整数（JSON だけが書ける）は担体の整数（i64）に嵌らないので、桁を落とさず文字列として受ける。
+/// `Deserialize` は untagged 導出だと違反値も受理集合も言えない汎用文言になるので手書きする
+/// （`Serialize` は variant の中身をそのまま出すので untagged 導出のまま）。
+#[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub(crate) enum NumberOrString {
   /// 整数値
   Integer(i64),
-  /// 小数値
-  Float(f64),
+  /// 小数値（有限値だけ）
+  Float(FiniteFloat),
   /// 文字列値
   String(String),
+}
+
+/// 有限の浮動小数点数（NaN・無限大を持たない `f64`）。
+///
+/// [`NumberOrString::Float`] の中身。非有限値を型で持てなくし、「読込が受理した数値変数は CSL-JSON 担体への
+/// 変換で `null` にならない（消えない）」を保証する（#764）。構築は [`NumberOrString`] のデシリアライズだけ。
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(transparent)]
+pub(crate) struct FiniteFloat(f64);
+
+impl FiniteFloat {
+  /// 有限値なら包んで返す。NaN・無限大は `None`。
+  fn new(value: f64) -> Option<Self> { return value.is_finite().then_some(Self(value)); }
+
+  /// 包んでいる値を返す（テストで受理した値を確かめるため）。
+  #[cfg(test)]
+  pub(super) const fn get(self) -> f64 { return self.0; }
+}
+
+impl<'de> Deserialize<'de> for NumberOrString {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    /// `NumberOrString` のデシリアライズを担う `Visitor`。真偽値・配列・テーブルは `expecting` の文言で
+    /// 型不一致として拒否する。
+    struct NumberOrStringVisitor;
+
+    impl Visitor<'_> for NumberOrStringVisitor {
+      type Value = NumberOrString;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return formatter.write_str("数値変数には整数・有限の数・文字列");
+      }
+
+      fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+      where
+        E: Error,
+      {
+        return Ok(NumberOrString::Integer(value));
+      }
+
+      /// `serde_json` は正の整数をここへ渡す。i64 に収まらない整数は桁を落とさず文字列として受ける。
+      fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+      where
+        E: Error,
+      {
+        return Ok(match i64::try_from(value) {
+          Ok(integer) => NumberOrString::Integer(integer),
+          Err(_) => NumberOrString::String(value.to_string()),
+        });
+      }
+
+      fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+      where
+        E: Error,
+      {
+        return FiniteFloat::new(value).map(NumberOrString::Float).ok_or_else(|| {
+          return E::custom(format!(
+            "数値変数に有限でない数 `{value}` は指定できません。整数・有限の数・文字列で指定してください"
+          ));
+        });
+      }
+
+      fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+      where
+        E: Error,
+      {
+        return Ok(NumberOrString::String(value.to_owned()));
+      }
+
+      fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+      where
+        E: Error,
+      {
+        return Ok(NumberOrString::String(value));
+      }
+    }
+
+    return deserializer.deserialize_any(NumberOrStringVisitor);
+  }
 }

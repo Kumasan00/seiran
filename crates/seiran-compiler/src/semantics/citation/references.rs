@@ -929,7 +929,9 @@ mod tests {
 
     // Assert
     assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
-    assert!(matches!(reference.edition, Some(NumberOrString::Float(value)) if (value - 2.5).abs() < f64::EPSILON));
+    assert!(
+      matches!(reference.edition, Some(NumberOrString::Float(value)) if (value.get() - 2.5).abs() < f64::EPSILON)
+    );
     assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
     assert!(matches!(reference.issue, Some(NumberOrString::Integer(7))));
   }
@@ -954,9 +956,127 @@ mod tests {
 
     // Assert
     assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
-    assert!(matches!(reference.edition, Some(NumberOrString::Float(value)) if (value - 2.5).abs() < f64::EPSILON));
+    assert!(
+      matches!(reference.edition, Some(NumberOrString::Float(value)) if (value.get() - 2.5).abs() < f64::EPSILON)
+    );
     assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
     assert!(matches!(&reference.issue, Some(NumberOrString::String(value)) if value == "S2"));
+  }
+
+  #[test]
+  fn parse_references_rejects_non_finite_number_variable_in_toml() {
+    // serde_json は有限でない数を `null` にし、CSL-JSON 化の前処理で未指定と区別できなくなるので、
+    // 読込時に拒否する（#764）。TOML は符号付きの綴りも浮動小数点数として読む
+    for key in ["volume", "page", "edition"] {
+      for (value, shown) in [
+        ("nan", "NaN"),
+        ("+nan", "NaN"),
+        ("-nan", "NaN"),
+        ("inf", "inf"),
+        ("+inf", "inf"),
+        ("-inf", "-inf"),
+      ] {
+        // Arrange
+        let toml = format!(
+          "[ref1]\n\
+           type = \"book\"\n\
+           {key} = {value}\n"
+        );
+
+        // Act
+        let result = parse_references(&toml, dummy_source());
+
+        // Assert
+        let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
+          panic!("{key} = {value}: expected ParseToml, got {result:?}");
+        };
+        let message = source.to_string();
+        // スニペットがキーの行を指し、文言が違反値と受理集合を示す
+        assert!(message.contains(&format!("{key} = {value}")), "{key} = {value}: {message}");
+        assert!(message.contains(&format!("`{shown}`")), "{key} = {value}: {message}");
+        assert!(message.contains("整数・有限の数・文字列"), "{key} = {value}: {message}");
+      }
+    }
+  }
+
+  #[test]
+  fn parse_references_accepts_finite_non_integer_number_variables() {
+    for (value, expected) in [
+      ("-2.5", -2.5f64),
+      ("0.0", 0.0f64),
+      ("-0.0", -0.0f64),
+      ("1e300", 1e300f64),
+    ] {
+      // Arrange
+      let toml = format!(
+        "[ref1]\n\
+         type = \"book\"\n\
+         volume = {value}\n"
+      );
+
+      // Act
+      let references = parse_references(&toml, dummy_source()).unwrap();
+
+      // Assert
+      let Some(NumberOrString::Float(volume)) = references.get("ref1").unwrap().volume else {
+        panic!("volume = {value} は非整数として受理されるはず");
+      };
+      assert_eq!(volume.get().to_bits(), expected.to_bits(), "volume = {value}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_non_number_non_string_number_variable() {
+    // 真偽値・配列は従来も拒否していたが、untagged の汎用文言ではなく受理集合を案内する
+    for value in ["true", "[1]"] {
+      let toml = format!(
+        "[ref1]\n\
+         type = \"book\"\n\
+         volume = {value}\n"
+      );
+      let result = parse_references(&toml, dummy_source());
+
+      let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
+        panic!("volume = {value}: expected ParseToml, got {result:?}");
+      };
+      let message = source.to_string();
+      assert!(message.contains("整数・有限の数・文字列"), "volume = {value}: {message}");
+      assert!(!message.contains("untagged"), "volume = {value}: {message}");
+    }
+    let json = json_doc("{\"ref1\": {\"type\": \"book\", \"volume\": true}}");
+    let result = parse_references(&json, dummy_json_source());
+    let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
+      panic!("expected ParseJson, got {result:?}");
+    };
+    let message = source.to_string();
+    // JSON はスニペットを持たないので、受理集合の文言と行・列位置で示す
+    assert!(message.contains("整数・有限の数・文字列"), "{message}");
+    assert!(message.contains("line"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_keeps_json_integers_beyond_i64_as_exact_strings() {
+    // TOML の整数は i64 までだが、JSON は u64 の範囲まで整数として書ける。i64 に収まれば整数、
+    // 収まらなければ桁を落とさず文字列として受ける（整形器の担体は i64 の整数しか持てない）
+    for (literal, expect_integer) in [
+      ("9223372036854775807", true),
+      ("9223372036854775808", false),
+      ("18446744073709551615", false),
+    ] {
+      // Arrange
+      let json = json_doc(&format!("{{\"ref1\": {{\"type\": \"book\", \"volume\": {literal}}}}}"));
+
+      // Act
+      let references = parse_references(&json, dummy_json_source()).unwrap();
+
+      // Assert
+      let volume = &references.get("ref1").unwrap().volume;
+      if expect_integer {
+        assert!(matches!(volume, Some(NumberOrString::Integer(i64::MAX))), "{literal}: {volume:?}");
+      } else {
+        assert!(matches!(volume, Some(NumberOrString::String(text)) if text == literal), "{literal}: {volume:?}");
+      }
+    }
   }
 
   #[test]
