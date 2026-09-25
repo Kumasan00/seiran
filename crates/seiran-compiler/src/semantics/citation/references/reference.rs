@@ -493,7 +493,9 @@ pub(crate) enum ReferenceType {
 ///
 /// 受理するのは整数・有限の数・文字列（#764）。TOML の `nan` / `inf` は拒否する: 整形器の担体へ渡す前の
 /// `serde_json` が有限でない数を `null` にし、未指定と区別できないまま書誌から黙って消えるため。
-/// i64 を超える整数（JSON だけが書ける）は担体の整数（i64）に嵌らないので、桁を落とさず文字列として受ける。
+/// i64 を超え u64 に収まる整数（JSON だけが書ける）は担体の整数（i64）に嵌らないので、桁を落とさず文字列として
+/// 受ける。u64 を超える整数と i64 の下限未満の整数は `serde_json` が f64 として渡すので、有限の非整数として受ける
+/// （担体へは丸めた数の文字列で渡る）。
 /// `Deserialize` は untagged 導出だと違反値も受理集合も言えない汎用文言になるので手書きする
 /// （`Serialize` は variant の中身をそのまま出すので untagged 導出のまま）。
 #[derive(Debug, Serialize)]
@@ -547,7 +549,8 @@ impl<'de> Deserialize<'de> for NumberOrString {
         return Ok(NumberOrString::Integer(value));
       }
 
-      /// `serde_json` は正の整数をここへ渡す。i64 に収まらない整数は桁を落とさず文字列として受ける。
+      /// `serde_json` は正の整数（u64 の範囲まで）をここへ渡す。i64 に収まらない整数は桁を落とさず文字列として
+      /// 受ける。
       fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
       where
         E: Error,
