@@ -25,7 +25,9 @@ pub(crate) enum CitationFormatError {
   #[error("参照定義を CSL-JSON に変換できませんでした: {id}")]
   #[diagnostic(
     code(semantics::citation::build_entry),
-    help("`date-parts` は整数の単一日付で指定してください（日付範囲・文字列の年・i16 を超える年は不可）。")
+    help(
+      "参照定義の読込検査を通った値が CSL-JSON に変換できませんでした（読込検査の漏れです）。原因の値を添えて報告してください。"
+    )
   )]
   BuildEntry {
     /// 変換に失敗した参照 ID
@@ -100,7 +102,7 @@ pub(crate) fn generate_citations(
 ) -> Result<GeneratedCitations, CitationFormatError> {
   let sites_in_order: Vec<&CitationSiteFacts> = sites.iter().map(|(_, site)| return site).collect();
 
-  // 未引用文献の変換エラーでビルドを失敗させないよう、引用された文献だけを変換する。
+  // 書誌は引用された文献だけで作るので、引用された文献だけを変換する。
   let mut entries: HashMap<CitationId, Item> = HashMap::new();
   for target in sites_in_order.iter().flat_map(|site| return site.targets.iter()) {
     if entries.contains_key(target) {

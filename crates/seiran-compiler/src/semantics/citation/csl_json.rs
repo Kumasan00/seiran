@@ -17,8 +17,8 @@ use crate::semantics::citation::Reference;
 /// # Errors
 ///
 /// `Reference` の CSL-JSON 表現が `Item`（`citationberg::json::Value` のマップ）にデシリアライズ
-/// できない場合（例: `date-parts` に文字列の年や i16 を超える年が含まれる場合）に
-/// [`serde_json::Error`] を返す。
+/// できない場合に [`serde_json::Error`] を返す。日付は読込時に担体と同じ `i16` の範囲へ確定させて
+/// いるので（`references::date`）、日付が原因で失敗することはない。
 pub(crate) fn to_item(id: &str, reference: &Reference) -> Result<Item, serde_json::Error> {
   let value = serde_json::to_value(reference)?;
   let Value::Object(map) = value else {
@@ -244,6 +244,31 @@ mod tests {
       };
       let fixed = FixedDateRange::try_from(date.clone()).expect("単一日付なので FixedDateRange になるはず");
       assert_eq!(fixed.start.season, Some(expected), "season = {number}");
+    }
+  }
+
+  #[test]
+  fn to_item_accepts_years_at_i16_bounds() {
+    // 読込が受理した年は必ず整形器の担体へ変換できる（#759: 読込と整形の受理集合を一致させる）
+    for (date_parts, expected_year) in [("[[-32768]]", -32768i16), ("[[32767, 12, 31]]", 32767i16)] {
+      // Arrange
+      let references = references_from_toml(&format!(
+        "[r1]\n\
+         type = \"book\"\n\
+         [r1.issued]\n\
+         date-parts = {date_parts}\n"
+      ));
+      let reference = references.get("r1").expect("r1 があるはず");
+
+      // Act
+      let item = to_item("r1", reference).expect("読込を通った年は Item 化できるはず");
+
+      // Assert
+      let Some(Value::Date(date)) = item.0.get("issued") else {
+        panic!("issued は Date として載るはず: {:?}", item.0.get("issued"));
+      };
+      let fixed = FixedDateRange::try_from(date.clone()).expect("単一日付なので FixedDateRange になるはず");
+      assert_eq!(fixed.start.year, expected_year, "{date_parts}");
     }
   }
 }
