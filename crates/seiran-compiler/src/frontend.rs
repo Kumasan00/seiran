@@ -812,6 +812,34 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_env_body_starting_with_group() {
+    // #732: 数式環境の本体先頭の `{...}` は環境の引数ではなく数式グループ
+    let result = evaluate_source(r"\begin{equation}{a}+b\end{equation}");
+
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    let cell = &math.rows[0].cells[0];
+    let HirMathKind::Group(children) = &cell[0].kind else {
+      panic!("本体の先頭は Group が期待されます: {cell:?}");
+    };
+    assert!(matches!(&children[0].kind, HirMathKind::Text(t) if t == "a"), "{children:?}");
+  }
+
+  #[test]
+  fn evaluate_math_grid_env_body_starting_with_group() {
+    // equation 以外の数式本体の環境も同じ規則（行・セルに分割する環境）
+    for source in [
+      r"\begin{align}{a}&=b\end{align}",
+      r"\begin{matrix}{a}&b\end{matrix}",
+      "\\begin{cases}\n{a}&b\\end{cases}",
+    ] {
+      let result = evaluate_source(source);
+      assert_eq!(result.len(), 1, "{source}");
+    }
+  }
+
+  #[test]
   fn evaluate_itemize_creates_unordered_list() {
     let result = evaluate_source("\\begin{itemize}\\item{A}\\item{B}\\end{itemize}");
     assert_eq!(result.len(), 1);
@@ -1001,10 +1029,7 @@ mod tests {
       r"$\begin{matrix}a\end{matrix}$",
       r"${\begin{matrix}a\end{matrix}}$",
       r"$\frac{\begin{matrix}a\end{matrix}}{2}$",
-      // 環境の本体が `{` で始まると parse_environment が先頭の `{...}` を（環境が引数を
-      // 取らなくても）本体ではなく環境の必須引数として読むため、本体を `{` 始まりにはできない
-      // （#688 とは別の不具合、#732）。前に `a` を置いて回避する。
-      r"\begin{equation}a{\begin{matrix}a\end{matrix}}\end{equation}",
+      r"\begin{equation}{\begin{matrix}a\end{matrix}}\end{equation}",
     ] {
       let error = evaluate_error(source);
       assert!(
@@ -1067,8 +1092,16 @@ mod tests {
 
   #[test]
   fn evaluate_environment_with_extra_mandatory_arg_is_error() {
-    let error = evaluate_error(r"\begin{equation}{x}a\end{equation}");
-    assert!(matches!(error, EvalError::ExtraEnvironmentArgument { ref name, .. } if name == "equation"));
+    // テキスト本体の環境では `\begin{name}` の後ろの `{...}` は引数として読まれ、評価器が余分と診断する
+    let error = evaluate_error(r"\begin{theorem}{x}本文\end{theorem}");
+    assert!(matches!(error, EvalError::ExtraEnvironmentArgument { ref name, .. } if name == "theorem"));
+  }
+
+  #[test]
+  fn evaluate_unknown_environment_with_argument_is_unknown_environment() {
+    // 未登録の環境はテキスト本体として読むので、後ろの `{...}` は引数になり、裸の `{` の構文エラーにはならない
+    let error = evaluate_error(r"\begin{nope}{x}\end{nope}");
+    assert!(matches!(error, EvalError::UnknownEnvironment { ref name, .. } if name == "nope"));
   }
 
   #[test]

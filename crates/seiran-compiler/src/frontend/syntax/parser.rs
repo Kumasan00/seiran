@@ -308,6 +308,12 @@ impl<'a> Parser<'a> {
   /// 環境をパース: `\begin{name}[opt]{arg}...body...\end{name}`
   ///
   /// `\begin` トークンは既に消費済み。
+  ///
+  /// 本体の読み取り方（[`BodyMode`]）は環境名が確定した時点でレジストリから引き、`\begin` 側の引数の
+  /// 読み方もそれで決まる。`{...}` を必須引数として読むのは、本体が `{` を内容として持てない
+  /// [`BodyMode::Text`] のときだけ — [`BodyMode::Math`] では `{...}` は数式グループなので本体の先頭に
+  /// なる（#732）。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の余分な引数は
+  /// 評価器が診断する）。必須引数を取る環境を足すときは、個数をレジストリから引く形へ変える。
   fn parse_environment(&mut self, begin_token: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = begin_token.span;
     let mut env_children = bumpalo::collections::Vec::new_in(self.arena);
@@ -332,10 +338,18 @@ impl<'a> Parser<'a> {
           begin_children.push(GreenElement::Node(opt));
         }
       },
-      BodyMode::Text | BodyMode::Math => {
+      BodyMode::Math => {
+        // 数式本体では `{...}` は数式グループなので、必須引数として読まず本体の先頭に残す（#732）。
+        // `[` は数式本体にも書けないので、任意引数の読みはテキスト本体と同じ。
+        self.skip_trivia(&mut begin_children);
+        self.parse_single_opt_arg(&mut begin_children)?;
+      },
+      BodyMode::Text => {
         self.skip_trivia(&mut begin_children);
         self.parse_single_opt_arg(&mut begin_children)?;
 
+        // テキスト本体では裸の `{` を書けない（P4）ので、後ろに続く `{...}` は引数以外に読めない。
+        // 個数は評価器（`arity::no_environment_args`）が環境名つきの診断で検査する。
         while let Some(TokenKind::LBrace) = self.peek_kind() {
           let arg = self.parse_mandatory_arg(ParseMode::Text)?;
           begin_children.push(GreenElement::Node(arg));
@@ -1614,6 +1628,40 @@ mod tests {
     assert_eq!(sups.len(), 0, "Text モードでは MathSuperscript 化されない");
     let has_caret = body.children.iter().any(|c| matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Caret));
     assert!(has_caret, "raw Caret トークンとして残っているはず");
+  }
+
+  #[test]
+  fn math_env_body_may_start_with_math_group() {
+    // #732: 数式本体では `{...}` は数式グループなので、本体の先頭に書いても環境の引数にならない
+    for source in [
+      r"\begin{equation}{a}+b\end{equation}",
+      "\\begin{equation}\n{a}+b\\end{equation}",
+      r"\begin{equation}[label=x]{a}+b\end{equation}",
+    ] {
+      let arena = Bump::new();
+      let cst = parse_source(source, &arena);
+      let GreenElement::Node(env) = &cst.children[0] else {
+        panic!("Environment ノードが期待されます: {source}");
+      };
+      let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
+      assert_eq!(begin.children_of_kind(SyntaxKind::MandatoryArg).count(), 1, "環境名の引数だけのはず: {source}");
+      let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+      let first = body.child_nodes().next().unwrap();
+      assert_eq!(first.kind, SyntaxKind::MathGroup, "本体の先頭は MathGroup のはず: {source}");
+    }
+  }
+
+  #[test]
+  fn text_env_reads_following_braces_as_arguments() {
+    // テキスト本体では裸の `{` を書けない（P4）ので、`\begin{name}` の後ろの `{...}` は引数として読み、
+    // 個数は評価器が環境名つきで診断する
+    let arena = Bump::new();
+    let cst = parse_source("\\begin{itemize}{x}\n{y}\\end{itemize}", &arena);
+    let GreenElement::Node(env) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
+    assert_eq!(begin.children_of_kind(SyntaxKind::MandatoryArg).count(), 3);
   }
 
   // --- verbatim 字句モード（#447）-------------------------------------------
