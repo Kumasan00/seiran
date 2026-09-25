@@ -149,7 +149,7 @@ pub(crate) enum EvalError {
     name: String,
     /// 値が不正なキー
     key: String,
-    /// 期待された型の表示用文字列（"boolean" / "string" / "length (pt/mm/cm)" /
+    /// 期待された型の表示用文字列（"boolean (true/false)" / "string" / "length (pt/mm/cm)" /
     /// "positive length (pt/mm/cm)" / "positive integer" / "color (#rrggbb)"）
     expected: String,
     /// 任意引数ノードのソース位置

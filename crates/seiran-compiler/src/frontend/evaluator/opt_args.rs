@@ -26,7 +26,7 @@ use crate::{
 /// 任意引数キーが期待する値の型タグ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OptType {
-  /// `true` / `false` または bare key（`[draft]` → `true`）
+  /// `true` / `false`（小文字のみ）または bare key（`[draft]` → `true`）
   Bool,
   /// 任意の文字列
   String,
@@ -46,7 +46,7 @@ enum OptType {
 impl fmt::Display for OptType {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let s = match self {
-      Self::Bool => "boolean",
+      Self::Bool => "boolean (true/false)",
       Self::String => "string",
       Self::Length => "length (pt/mm/cm)",
       Self::PositiveLength => "positive length (pt/mm/cm)",
@@ -356,14 +356,12 @@ fn parse_value(
 ) -> Result<OptValue, EvalError> {
   match expected {
     OptType::Bool => {
-      let trimmed = raw.trim();
-      if trimmed.eq_ignore_ascii_case("true") {
-        return Ok(OptValue::Bool(true));
-      }
-      if trimmed.eq_ignore_ascii_case("false") {
-        return Ok(OptValue::Bool(false));
-      }
-      return Err(invalid(name, key, expected, span));
+      // 綴りは小文字のみ。`True` / `TRUE` を受理すると同じ値への第 2 の綴りになる（#739。#690 と同じ論法）
+      return match raw.trim() {
+        "true" => Ok(OptValue::Bool(true)),
+        "false" => Ok(OptValue::Bool(false)),
+        _ => Err(invalid(name, key, expected, span)),
+      };
     },
     OptType::String => {
       // 引用符は値の境界ではない（#687）。`"` も値の文字としてそのまま残す
@@ -713,6 +711,43 @@ mod tests {
   }
 
   #[test]
+  fn collect_returns_bool_for_explicit_true() {
+    // Arrange
+    const DRAFT: OptKey<bool> = boolean("draft");
+    let arena = Bump::new();
+    let source = r"\section[draft=true]{T}";
+    let cst = test_support::parse(source, &arena).unwrap();
+    let view = CommandView::new(first_command_node(cst), source);
+
+    // Act
+    let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
+
+    // Assert
+    assert_eq!(opts.get(DRAFT), Some(true));
+  }
+
+  #[test]
+  fn collect_rejects_non_lowercase_bool() {
+    // Arrange — 真偽値は小文字のみ（#739。大文字の単位を拒否する #690 と同じ論法）
+    const DRAFT: OptKey<bool> = boolean("draft");
+    for value in ["True", "TRUE", "False", "FALSE"] {
+      let arena = Bump::new();
+      let source = format!(r"\section[draft={value}]{{T}}");
+      let cst = test_support::parse(&source, &arena).unwrap();
+      let view = CommandView::new(first_command_node(cst), &source);
+
+      // Act
+      let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
+
+      // Assert
+      assert!(
+        matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "draft"),
+        "`draft={value}` は拒否されるべき"
+      );
+    }
+  }
+
+  #[test]
   fn collect_returns_error_for_bare_key_on_non_bool() {
     // Arrange
     const DRAFT: OptKey<u32> = positive_int("draft");
@@ -844,7 +879,7 @@ mod tests {
   fn opt_type_display_lists_expected_format() {
     // Arrange — 診断の `expected` 文字列
     let cases = [
-      (OptType::Bool, "boolean"),
+      (OptType::Bool, "boolean (true/false)"),
       (OptType::String, "string"),
       (OptType::Length, "length (pt/mm/cm)"),
       (OptType::PositiveLength, "positive length (pt/mm/cm)"),
