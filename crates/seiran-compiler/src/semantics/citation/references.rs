@@ -106,7 +106,7 @@ mod tests {
 
   use super::{
     ReadReferencesError,
-    date::{DateCirca, DatePart, DateSeason},
+    date::{DatePart, Season},
     name::Name,
     parse_references, read_references,
     reference::NumberOrString,
@@ -473,8 +473,7 @@ mod tests {
        family = \"Doe\"\n\n\
        [ref1.issued]\n\
        date-parts = [[2024, 1, 15]]\n\
-       circa = true\n\
-       season = \"spring\"\n",
+       circa = true\n",
     )
     .unwrap();
 
@@ -492,8 +491,8 @@ mod tests {
         DatePart::Number(15)
       ]
     ));
-    assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
-    assert!(matches!(&issued.season, Some(DateSeason::String(s)) if s == "spring"));
+    assert_eq!(issued.circa, Some(true));
+    assert_eq!(issued.season, None);
   }
 
   #[test]
@@ -591,7 +590,11 @@ mod tests {
   fn parse_references_rejects_duplicate_date_key_in_json() {
     // JSON は重複キーを構文で拒否しないので、後勝ちで先の値を黙って捨てずに拒否する
     for key in ["date-parts", "season", "circa"] {
-      let value = if key == "date-parts" { "[[2014]]" } else { "1" };
+      let value = match key {
+        "date-parts" => "[[2014]]",
+        "season" => "1",
+        _ => "true",
+      };
       let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"{key}\": {value}, \"{key}\": {value}}}"));
 
       assert!(message.contains(&format!("`{key}`")), "{key}: {message}");
@@ -628,6 +631,107 @@ mod tests {
   }
 
   #[test]
+  fn parse_references_accepts_season_numbers_on_year_only_date() {
+    for (number, expected) in [
+      (1, Season::Spring),
+      (2, Season::Summer),
+      (3, Season::Autumn),
+      (4, Season::Winter),
+    ] {
+      // Arrange
+      let toml = format!(
+        "[ref1]\n\
+         type = \"book\"\n\
+         [ref1.issued]\n\
+         date-parts = [[2014]]\n\
+         season = {number}\n"
+      );
+
+      // Act
+      let references = parse_references(&toml, dummy_source()).unwrap();
+
+      // Assert
+      let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
+      assert_eq!(issued.season, Some(expected), "season = {number}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_season_other_than_integer_one_to_four() {
+    // 整形器は 1〜4 の整数（と数値文字列）しか季節として読まず、他は黙って捨てる。
+    // 数値文字列 `"1"` も別綴りなので拒否する（#741: 1 綴りだけ受理）
+    for value in ["\"spring\"", "\"1\"", "0", "5", "-1", "1.0"] {
+      let message = issued_toml_error(&format!("date-parts = [[2014]]\nseason = {value}"));
+
+      assert!(message.contains("`season`"), "{value}: {message}");
+      assert!(message.contains("1〜4"), "{value}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_string_season_in_json() {
+    let message = issued_json_error("{\"date-parts\": [[2014]], \"season\": \"spring\"}");
+
+    // JSON はスニペットを持たないので、文言のキー名で位置を示す
+    assert!(message.contains("`season`"), "{message}");
+    assert!(message.contains("line"), "{message}");
+  }
+
+  #[test]
+  fn parse_references_rejects_season_on_date_with_month() {
+    // 整形器は月があると季節を描画しないので、月付きの日付への季節は黙って捨てずに拒否する。
+    // キー順に依らない（`season` が `date-parts` より前でも拒否する）
+    for body in [
+      "date-parts = [[2014, 5]]\nseason = 2",
+      "date-parts = [[2014, 5, 1]]\nseason = 2",
+      "season = 2\ndate-parts = [[2014, 5]]",
+    ] {
+      let message = issued_toml_error(body);
+
+      assert!(message.contains("`season`"), "{body}: {message}");
+      assert!(message.contains("月の無い日付"), "{body}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_accepts_false_circa() {
+    // Arrange
+    let toml = "[ref1]\n\
+                type = \"book\"\n\
+                [ref1.issued]\n\
+                date-parts = [[2014]]\n\
+                circa = false\n";
+
+    // Act
+    let references = parse_references(toml, dummy_source()).unwrap();
+
+    // Assert
+    let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
+    assert_eq!(issued.circa, Some(false));
+  }
+
+  #[test]
+  fn parse_references_rejects_non_bool_circa_in_toml() {
+    // 整形器は `"true"` / `1` を真、それ以外を黙って偽とする。別綴りも含めて真偽値以外は拒否する（#741）
+    for value in ["\"yes\"", "\"true\"", "1", "0", "2"] {
+      let message = issued_toml_error(&format!("date-parts = [[2014]]\ncirca = {value}"));
+
+      assert!(message.contains("`circa`"), "{value}: {message}");
+      assert!(message.contains("真偽値"), "{value}: {message}");
+    }
+  }
+
+  #[test]
+  fn parse_references_rejects_non_bool_circa_in_json() {
+    for value in ["1", "\"true\"", "\"yes\""] {
+      let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"circa\": {value}}}"));
+
+      assert!(message.contains("`circa`"), "{value}: {message}");
+      assert!(message.contains("line"), "{value}: {message}");
+    }
+  }
+
+  #[test]
   fn read_references_parses_structured_date_in_json() {
     // Arrange
     let source = FilesystemProjectSource;
@@ -637,7 +741,7 @@ mod tests {
       "{\"ref1\": {\
          \"type\": \"book\", \
          \"issued\": {\
-           \"date-parts\": [[2024, 1, 15]], \
+           \"date-parts\": [[2024]], \
            \"season\": 1, \
            \"circa\": true\
          }, \
@@ -652,16 +756,9 @@ mod tests {
     // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
-    assert!(matches!(
-      issued.parts.as_slice(),
-      [
-        DatePart::Number(2024),
-        DatePart::Number(1),
-        DatePart::Number(15)
-      ]
-    ));
-    assert!(matches!(issued.season, Some(DateSeason::Number(1))));
-    assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
+    assert!(matches!(issued.parts.as_slice(), [DatePart::Number(2024)]));
+    assert_eq!(issued.season, Some(Season::Spring));
+    assert_eq!(issued.circa, Some(true));
   }
 
   #[test]
