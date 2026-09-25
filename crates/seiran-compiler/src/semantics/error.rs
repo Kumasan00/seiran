@@ -49,30 +49,53 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 /// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
 /// 「このソースの `\cite` キーが参照定義と合っていない」という 1 問題として読めるため）。
 /// miette は 1 診断につき `source_code` を 1 つしか持てないので、ソースを跨いで束ねることはできない。
+/// そのソースの未定義キーに `,` を含むものが 1 つでもあれば、help に `\,` の案内を足す（#751）。
 ///
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
 /// 添えて返す。1 箇所も無ければ空を返す。
 pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<(SourceId, NodeId)> = Vec::new();
-  let mut per_source: HashMap<SourceId, Vec<LabeledSpan>> = HashMap::new();
+  // ソースごとのラベルと、未定義キーに `,` を含むものがあったか
+  let mut per_source: HashMap<SourceId, (Vec<LabeledSpan>, bool)> = HashMap::new();
   for site in sites {
-    let labels = per_source.entry(site.source_id).or_insert_with(|| {
+    let (labels, has_comma_key) = per_source.entry(site.source_id).or_insert_with(|| {
       order.push((site.source_id, site.site));
-      return Vec::new();
+      return (Vec::new(), false);
     });
     labels.push(LabeledSpan::new_with_span(Some(unknown_keys_label(&site.keys)), site.span));
+    *has_comma_key |= site.keys.iter().any(|key| return key.contains(','));
   }
   return order
     .into_iter()
     .map(|(source_id, first_site)| {
-      let Some(labels) = per_source.remove(&source_id) else {
+      let Some((labels, has_comma_key)) = per_source.remove(&source_id) else {
         unreachable!("order には per_source へ登録した SourceId しか入らない")
       };
-      return (first_site, SemanticError::UnknownCitationKeys { source_id, labels });
+      let comma_hint = if has_comma_key {
+        ESCAPED_COMMA_HINT
+      } else {
+        ""
+      };
+      return (
+        first_site,
+        SemanticError::UnknownCitationKeys {
+          source_id,
+          labels,
+          comma_hint,
+        },
+      );
     })
     .collect();
 }
+
+/// 未定義キーに `,` を含むとき help の末尾に足す案内
+///
+/// `,` を含むキーは `\,` で書いたもの（エスケープしない `,` はキーの区切りなのでキーに残らない。#731）。
+/// 2 キーを並べるつもりで `\,` と書いた誤りへ導くため、任意引数の未知キー診断の `\,` / `\=` の案内（#687）と
+/// 同じく書き方を示す。先頭の句点は基本文との継ぎ目。
+const ESCAPED_COMMA_HINT: &str =
+  "。`\\,` はキーの中の文字 `,` です。キーを区切るにはエスケープしない `,` を使ってください";
 
 /// 引用箇所 1 件の未定義キーを並べたラベル文字列を組み立てる。
 ///
@@ -107,7 +130,7 @@ pub(crate) enum SemanticError {
   #[error("未定義の引用キーがあります")]
   #[diagnostic(
     code(semantics::unknown_citation_key),
-    help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
+    help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください{comma_hint}")
   )]
   UnknownCitationKeys {
     /// この診断が属するソース
@@ -115,6 +138,8 @@ pub(crate) enum SemanticError {
     /// このソース内の `\cite{...}` ごとの未定義キー（文書順）
     #[label(collection)]
     labels: Vec<LabeledSpan>,
+    /// help の末尾に足す `\,` の案内（このソースの未定義キーに `,` を含むものが無ければ空文字列。#751）
+    comma_hint: &'static str,
   },
 
   /// `\ref{label}` / `proof` の `[of=...]` が参照するラベルが未定義の場合

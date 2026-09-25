@@ -7,4 +7,5 @@ semantics::unknown_citation_key
    ·                                      ────────────┬───────────
    ·                                                  ╰── 未定義の引用キー: `kwan2014,doe2020`
    ╰────
-  help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください
+  help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください。`\,` は
+        キーの中の文字 `,` です。キーを区切るにはエスケープしない `,` を使ってください
