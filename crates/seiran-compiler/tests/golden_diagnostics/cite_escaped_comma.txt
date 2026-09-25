@@ -5,6 +5,6 @@ semantics::unknown_citation_key
  2 │ 
  3 │ エスケープしたカンマはキーの文字です \cite{kwan2014\,doe2020}。
    ·                                      ────────────┬───────────
-   ·                                                  ╰── 未定義の引用キー: kwan2014,doe2020
+   ·                                                  ╰── 未定義の引用キー: `kwan2014,doe2020`
    ╰────
   help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください

@@ -20,7 +20,7 @@ Error: semantics::unknown_citation_key
  4 │ 
  5 │ 存在しない文献キーを引用します \cite{totally-unknown-key}。
    ·                                ─────────────┬────────────
-   ·                                             ╰── 未定義の引用キー: totally-unknown-key
+   ·                                             ╰── 未定義の引用キー: `totally-unknown-key`
  6 │ 
    ╰────
   help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください

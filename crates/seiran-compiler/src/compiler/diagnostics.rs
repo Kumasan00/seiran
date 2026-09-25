@@ -221,6 +221,14 @@ fn diagnostic_cite_escaped_comma() {
 }
 
 #[test]
+fn diagnostic_cite_escaped_comma_with_other_key() {
+  // `,` を含むキーと別のキーが同じ `\cite` に並んでも、ラベルでキーの境目が読める（#750）
+  let failure = compile_err(&["tests/text/diagnostics/cite_escaped_comma_with_other_key.sei"]);
+
+  assert_matches_golden("cite_escaped_comma_with_other_key", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_duplicate_label() {
   // 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
   let failure = compile_err(&["tests/text/diagnostics/duplicate_label.sei"]);
