@@ -64,7 +64,10 @@ fn sanitize_value(value: Value) -> Value {
 mod tests {
   use std::io::Write;
 
-  use hayagriva::citationberg::json::{FixedDateRange, Value};
+  use hayagriva::citationberg::{
+    json::{FixedDateRange, Value},
+    taxonomy::Season,
+  };
 
   use super::{sanitize_value, to_item};
   use crate::{
@@ -194,7 +197,7 @@ mod tests {
       "[r1]\n\
        type = \"book\"\n\
        [r1.issued]\n\
-       date-parts = [[2014, 5]]\n\
+       date-parts = [[2014]]\n\
        season = 2\n\
        circa = true\n",
     );
@@ -210,7 +213,37 @@ mod tests {
     assert!(date.is_approx(), "circa が整形器まで届くはず");
     let fixed = FixedDateRange::try_from(date.clone()).expect("単一日付なので FixedDateRange になるはず");
     assert_eq!(fixed.start.year, 2014);
-    assert_eq!(fixed.start.month, Some(4), "月は 0 始まりで保持される");
-    assert!(fixed.start.season.is_some(), "整数の season は整形器まで届くはず");
+    assert_eq!(fixed.start.month, None);
+    assert_eq!(fixed.start.season, Some(Season::Summer), "season = 2 は夏として整形器まで届くはず");
+  }
+
+  #[test]
+  fn to_item_maps_each_season_number_to_formatter_season() {
+    for (number, expected) in [
+      (1, Season::Spring),
+      (2, Season::Summer),
+      (3, Season::Autumn),
+      (4, Season::Winter),
+    ] {
+      // Arrange
+      let references = references_from_toml(&format!(
+        "[r1]\n\
+         type = \"book\"\n\
+         [r1.issued]\n\
+         date-parts = [[2014]]\n\
+         season = {number}\n"
+      ));
+      let reference = references.get("r1").expect("r1 があるはず");
+
+      // Act
+      let item = to_item("r1", reference).expect("Item 化できるはず");
+
+      // Assert
+      let Some(Value::Date(date)) = item.0.get("issued") else {
+        panic!("issued は Date として載るはず: {:?}", item.0.get("issued"));
+      };
+      let fixed = FixedDateRange::try_from(date.clone()).expect("単一日付なので FixedDateRange になるはず");
+      assert_eq!(fixed.start.season, Some(expected), "season = {number}");
+    }
   }
 }

@@ -1,17 +1,25 @@
 //! CSL (Citation Style Language) の日付値の型と手書きデシリアライザ。
 //!
-//! 構造化された日付オブジェクトのうち、整形器（hayagriva の CSL-JSON 日付解決）が実際に読むキーだけを
-//! 受理する: `date-parts`（必須・単一日付）/ `season` / `circa`。未知のキーは拒否する。
+//! 構造化された日付オブジェクトのうち、整形器（hayagriva の CSL-JSON 日付解決）が実際に読むキーと値だけを
+//! 受理する: `date-parts`（必須・単一日付）/ `season`（整数 1〜4・月の無い日付のみ）/ `circa`（真偽値）。
+//! 未知のキーは拒否する。
 //!
 //! CSL が定義する `raw` / `literal` は受理しない（見送り、恒久不採用ではない）。整形器は `literal` を読まず、
 //! `raw` は `YYYY[-MM[-DD]]` 形式だけを解析して日付範囲では panic するので、渡しても黙って消えるか落ちる。
 //! 再検討トリガーは、hayagriva の CSL-JSON 日付解決が `literal` を読む、または日付範囲を扱うようになったとき。
+//!
+//! `season` / `circa` は CSL-JSON が許す別綴りを受理せず 1 綴りに絞る（#741）。整形器は `season` を 1〜4 の
+//! 整数（とその数値文字列）でしか読まず、`circa` は `true` / `"true"` / `1` だけを真とし、それ以外は黙って
+//! 捨てるか偽にする。`"1"` や `circa = 1` のように描画に効く別綴りも、同じ値に綴りを複数持たせないため拒否する。
+//! `season` の季節名の文字列（`"spring"` 等）は見送り（恒久不採用ではない）。再検討トリガーは、整形器が
+//! 季節名の文字列を読むようになったとき、または季節名で書かれた CSL-JSON をそのまま読み込む用途が出たとき。
+//! 季節は月の代わりに描画されるので（月があると整形器は季節を使わない）、月を持つ日付への `season` も拒否する。
 
 use std::{fmt, slice};
 
 use serde::{
   Deserialize, Serialize,
-  de::{MapAccess, Visitor},
+  de::{MapAccess, Unexpected, Visitor},
   ser::SerializeMap,
 };
 
@@ -28,8 +36,8 @@ pub(crate) struct Date {
   /// 単一日付の内側配列だけを持つ。要素 0 個・空文字列の要素は整形器の内部で panic するか年がずれるので、
   /// 同じくデシリアライズ時に拒否する。
   pub parts: Vec<DatePart>,
-  /// 季節（`"spring"` / `"summer"` / `"fall"` / `"winter"`、または 1〜4 の整数）。
-  pub season: Option<DateSeason>,
+  /// 季節。月の代わりに描画されるので、`parts` が年だけのときにだけ持つ（デシリアライズ時に検査する）。
+  pub season: Option<Season>,
   /// 概算日付フラグ。CSL では真偽値・整数・文字列のいずれも許容する。
   pub circa: Option<DateCirca>,
 }
@@ -46,17 +54,92 @@ pub(crate) enum DatePart {
   String(String),
 }
 
-/// 季節の表現。
+/// 季節（CSL の季節番号 1〜4）。
 ///
-/// CSL では `"spring"` / `"summer"` / `"fall"` / `"winter"` の文字列、
-/// または 1〜4 の整数のいずれも許容する。
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum DateSeason {
-  /// 整数での季節指定（1: spring, 2: summer, 3: fall, 4: winter）
-  Number(i64),
-  /// 文字列での季節指定
-  String(String),
+/// 受理は整数 1〜4 だけで、整形器が季節として読む値と 1 対 1 に対応させる（文字列・範囲外は拒否）。
+/// 受理集合を整形器の版に引きずらせないため、整形器の `Season` 型ではなく自前の型で持つ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Season {
+  /// 春（1）
+  Spring,
+  /// 夏（2）
+  Summer,
+  /// 秋（3）
+  Autumn,
+  /// 冬（4）
+  Winter,
+}
+
+impl Season {
+  /// CSL の季節番号（1〜4）を返す。
+  const fn csl_number(self) -> u8 {
+    return match self {
+      Season::Spring => 1,
+      Season::Summer => 2,
+      Season::Autumn => 3,
+      Season::Winter => 4,
+    };
+  }
+
+  /// CSL の季節番号から季節を引く。1〜4 以外は `None`。
+  const fn from_csl_number(number: u64) -> Option<Self> {
+    return match number {
+      1 => Some(Season::Spring),
+      2 => Some(Season::Summer),
+      3 => Some(Season::Autumn),
+      4 => Some(Season::Winter),
+      _ => None,
+    };
+  }
+}
+
+impl<'de> Deserialize<'de> for Season {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    /// `Season` のデシリアライズを担う `Visitor`。整数以外（文字列・浮動小数点数）は `expecting` の
+    /// 文言で型不一致として拒否する。
+    struct SeasonVisitor;
+
+    impl Visitor<'_> for SeasonVisitor {
+      type Value = Season;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return formatter.write_str("`season` には季節番号の整数 1〜4（1: 春 / 2: 夏 / 3: 秋 / 4: 冬）");
+      }
+
+      fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+      where
+        E: serde::de::Error,
+      {
+        return Season::from_csl_number(value)
+          .ok_or_else(|| return E::invalid_value(Unexpected::Unsigned(value), &self));
+      }
+
+      fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+      where
+        E: serde::de::Error,
+      {
+        return match u64::try_from(value) {
+          Ok(unsigned) => self.visit_u64(unsigned),
+          Err(_) => Err(E::invalid_value(Unexpected::Signed(value), &self)),
+        };
+      }
+    }
+
+    return deserializer.deserialize_u64(SeasonVisitor);
+  }
+}
+
+impl Serialize for Season {
+  /// CSL-JSON の季節番号（整数 1〜4）として出力する。
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    return serializer.serialize_u8(self.csl_number());
+  }
 }
 
 /// 概算日付フラグの表現。
@@ -156,6 +239,13 @@ impl<'de> Deserialize<'de> for Date {
             "日付には `date-parts` が必要です（例: `[[2024, 1, 15]]`）",
           ));
         };
+        // 季節は月の代わりに描画されるので、月を持つ日付の季節は整形器に黙って捨てられる。
+        // キー順に依らず判定するため、全キーを読み終えてから検査する
+        if season.is_some() && parts.len() > 1 {
+          return Err(<A::Error as serde::de::Error>::custom(
+            "`season` は月の無い日付（`date-parts` が年だけ）にだけ指定できます。月があると季節は表示されません",
+          ));
+        }
         return Ok(Date {
           parts,
           season,
