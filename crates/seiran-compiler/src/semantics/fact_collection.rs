@@ -699,7 +699,7 @@ mod tests {
     };
     assert_eq!(*source_id, SourceId::new(0));
     assert_eq!(labels.len(), 1);
-    assert_eq!(labels[0].label(), Some("未定義の引用キー: missing-key"));
+    assert_eq!(labels[0].label(), Some("未定義の引用キー: `missing-key`"));
     let start = labels[0].offset();
     let end = start + labels[0].len();
     assert!(

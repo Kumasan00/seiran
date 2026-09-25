@@ -1,0 +1,10 @@
+semantics::unknown_citation_key
+
+  × 未定義の引用キーがあります
+   ╭─[tests/text/diagnostics/cite_escaped_comma_with_other_key.sei:3:77]
+ 2 │ 
+ 3 │ エスケープしたカンマを含むキーと別のキーを並べます \cite{kwan2014\,doe2020, x}。
+   ·                                                    ─────────────┬─────────────
+   ·                                                                 ╰── 未定義の引用キー: `kwan2014,doe2020`, `x`
+   ╰────
+  help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください

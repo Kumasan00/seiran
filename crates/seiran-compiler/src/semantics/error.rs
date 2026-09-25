@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
@@ -60,7 +61,7 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
       order.push((site.source_id, site.site));
       return Vec::new();
     });
-    labels.push(LabeledSpan::new_with_span(Some(format!("未定義の引用キー: {}", site.keys.join(", "))), site.span));
+    labels.push(LabeledSpan::new_with_span(Some(unknown_keys_label(&site.keys)), site.span));
   }
   return order
     .into_iter()
@@ -71,6 +72,15 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
       return (first_site, SemanticError::UnknownCitationKeys { source_id, labels });
     })
     .collect();
+}
+
+/// 引用箇所 1 件の未定義キーを並べたラベル文字列を組み立てる。
+///
+/// キーは `\,` で書いた `,` を含みうる（#731）ので、区切りの `, ` だけでは `,` を含む 1 キーと
+/// 複数キーの境目が読めない。各キーをバッククォートで括り、境目を字面から一意にする（#750）。
+/// `,` を含まないキーも同じ規則で括る。
+fn unknown_keys_label(keys: &[String]) -> String {
+  return format!("未定義の引用キー: {}", keys.iter().map(|key| return format!("`{key}`")).join(", "));
 }
 
 /// 未定義キーを含む引用箇所 1 件
@@ -221,4 +231,22 @@ impl FirstLabelDefinition {
   /// 最初の定義が属するソースを返す。
   #[must_use]
   pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn unknown_keys_label_quotes_single_key() {
+    assert_eq!(unknown_keys_label(&["missing-key".to_string()]), "未定義の引用キー: `missing-key`");
+  }
+
+  #[test]
+  fn unknown_keys_label_separates_keys_containing_comma() {
+    // `,` を含むキー（`\,` で書いたもの）と複数キーの境目が括りで一意に読める（#750）
+    let keys = ["kwan2014,doe2020".to_string(), "x".to_string()];
+
+    assert_eq!(unknown_keys_label(&keys), "未定義の引用キー: `kwan2014,doe2020`, `x`");
+  }
 }
