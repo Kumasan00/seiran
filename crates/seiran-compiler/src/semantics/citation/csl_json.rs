@@ -14,16 +14,20 @@ use crate::semantics::citation::Reference;
 ///
 /// `id` は参照定義のキー（`references` マップのキー）で、hayagriva の cite key となる。
 ///
-/// 変換は失敗しない（#759）。読込が受理した値はすべて `Item` の `Value` に嵌る: 文字列は `String`、
-/// 整数は `Number`（i64 を超える整数は読込で非整数として受けて文字列化する）、非整数は文字列化、
-/// 著者名は `Names`、日付は読込時に担体と同じ `i16` の範囲へ確定させた `Date`。
+/// 変換は失敗せず、読込が受理した値を落とさない（#759 / #764）。読込が受理した値はすべて `Item` の `Value`
+/// に嵌る: 文字列は `String`、整数は `Number`（i64 を超え u64 に収まる整数は読込で桁を保った文字列として
+/// 受ける。u64 を超える整数と i64 の下限未満の整数は `serde_json` が f64 として渡すので、非整数と同じく丸めた
+/// 数の文字列になる）、
+/// 非整数は文字列化（読込が有限値だけを受理するので、`serde_json` が `null` にして未指定と区別できなく
+/// なることは無い）、著者名は `Names`、日付は読込時に担体と同じ `i16` の範囲へ確定させた `Date`。
 ///
 /// # Panics
 ///
 /// 読込の受理集合と `Item` の受理集合が食い違ったとき（読込検査の漏れ。上の対応が保証する）。
 pub(crate) fn to_item(id: &str, reference: &Reference) -> Item {
-  let value = serde_json::to_value(reference)
-    .expect("`Reference` の Serialize は文字列キーのマップと有限値だけを出すので JSON 化は失敗しない");
+  let value = serde_json::to_value(reference).expect(
+    "`Reference` の Serialize は文字列キーのマップと有限値（数値変数の非整数は `FiniteFloat`）だけを出すので JSON 化は失敗しない",
+  );
   let Value::Object(map) = value else {
     unreachable!("`Reference` は struct なので serde は必ず JSON object へ変換する")
   };
@@ -195,6 +199,29 @@ mod tests {
   }
 
   #[test]
+  fn to_item_keeps_every_accepted_non_integer_number() {
+    // 読込が受理した非整数は必ず文字列として担体に残る（#764: serde_json が非有限値を null にして
+    // 未指定と区別できなくなる経路を、読込が有限値だけを受理することで塞ぐ）
+    // Arrange
+    let references = references_from_toml(
+      "[r1]\n\
+       type = \"book\"\n\
+       edition = -0.5\n\
+       volume = 1e300\n\
+       issue = 0.0\n",
+    );
+    let reference = references.get("r1").expect("r1 があるはず");
+
+    // Act
+    let item = to_item("r1", reference);
+
+    // Assert
+    assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("-0.5"));
+    assert_eq!(item.0.get("volume").and_then(Value::to_str).as_deref(), Some("1e+300"));
+    assert_eq!(item.0.get("issue").and_then(Value::to_str).as_deref(), Some("0.0"));
+  }
+
+  #[test]
   fn to_item_carries_date_parts_season_and_circa() {
     // Arrange
     let references = references_from_toml(
@@ -312,7 +339,11 @@ mod tests {
     // Assert
     assert_eq!(item.0.get("volume"), Some(&Value::Number(3)));
     assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
-    assert!(matches!(item.0.get("number"), Some(Value::String(_))), "i64 を超える整数は文字列化される");
+    assert_eq!(
+      item.0.get("number").and_then(Value::to_str).as_deref(),
+      Some("18446744073709551615"),
+      "i64 を超える整数は桁を落とさず文字列として渡る"
+    );
     assert!(matches!(item.0.get("author"), Some(Value::Names(names)) if names.len() == 2));
     assert!(matches!(item.0.get("editor"), Some(Value::Names(names)) if names.is_empty()));
     assert!(matches!(item.0.get("issued"), Some(Value::Date(_))));
