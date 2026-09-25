@@ -297,6 +297,7 @@ mod tests {
     return ModeResolver {
       env_body: |_| return BodyMode::Text,
       command_arg: |_, _| return ArgMode::Inherit,
+      math_command_arg_count: |_| return None,
     };
   }
 

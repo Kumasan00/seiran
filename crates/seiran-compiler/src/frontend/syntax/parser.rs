@@ -50,7 +50,8 @@ pub(in crate::frontend) enum BodyMode {
 /// コマンドの必須引数の読み取り方
 ///
 /// レジストリ（`crate::frontend::evaluator`）がコマンド名と引数位置ごとに宣言し、[`ModeResolver`]
-/// 経由でパーサーへ渡る。宣言は外側文脈からの継承に優先する。
+/// 経由でパーサーへ渡る。宣言は外側文脈からの継承に優先する。数式内で何個目まで引数として読むかは別に
+/// [`ModeResolver::math_command_arg_count`] が決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::frontend) enum ArgMode {
   /// 外側文脈の [`ParseMode`] を継承してトークン化する（既定）
@@ -61,14 +62,19 @@ pub(in crate::frontend) enum ArgMode {
 
 /// レジストリが答える「この位置をどう読むか」の解決器
 ///
-/// どの環境・コマンドが verbatim かという語彙は `syntax` 層が持たず、evaluator の phf レジストリが
-/// 単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。
+/// どの環境・コマンドが verbatim か、数式内のコマンドが必須引数を何個取るかという語彙は `syntax` 層が
+/// 持たず、evaluator のレジストリが単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。
 #[derive(Clone, Copy)]
 pub(in crate::frontend) struct ModeResolver {
   /// 環境名 → 本体の読み取り方
   pub env_body: fn(&str) -> BodyMode,
   /// コマンド名と必須引数の位置（0 始まり）→ その位置の読み取り方
   pub command_arg: fn(&str, usize) -> ArgMode,
+  /// 数式内のコマンド名 → 必須引数の個数（数式の語彙に無いコマンドは `None`）
+  ///
+  /// 数式内では `{...}` が数式グループにもなるので、個数を超えた位置の `{...}` を引数として読まない
+  /// ために引く（#753）。テキスト内は裸の `{` を書けない（P4）ので引かない。
+  pub math_command_arg_count: fn(&str) -> Option<usize>,
 }
 
 /// アリーナベース CST 構築パーサー
@@ -469,6 +475,11 @@ impl<'a> Parser<'a> {
   /// 宣言は引数の位置ごとに引くので、同じコマンドでも位置によってモードが違いうる（`\href` は
   /// 第 1 引数だけ verbatim）。任意引数はテキストモードでパースする。
   ///
+  /// 数式内では、数式の語彙が宣言する個数（[`ModeResolver::math_command_arg_count`]）を読んだところで
+  /// 打ち切る。後ろの `{...}` は数式グループとして外側のループが読む（`$\alpha{b}$` の `{b}`、
+  /// `$\frac{a}{b}{c}$` の `{c}`。#753）。数式の語彙に無いコマンドとテキスト内のコマンドは個数で
+  /// 打ち切らず、後ろに続く `{...}` をすべて引数として読む（余分は評価器が診断する）。
+  ///
   /// 必須引数を 1 つ以上読んだ後に**次の引数を探して跨いだトリビア**は、引数が見つかったときだけ
   /// コマンド呼び出しの子になる。見つからなければ `out` へそのまま積み直してコマンドの外側へ返す
   /// （`\bold{x} y` の `}` の直後の空白は語間のアキであってコマンドの一部ではない、#516）。
@@ -497,8 +508,13 @@ impl<'a> Parser<'a> {
     // 次の引数を探して跨いだトリビア。引数が見つかれば `children` へ、見つからなければ `out` へ移す。
     let mut pending = bumpalo::collections::Vec::new_in(self.arena);
 
+    // 数式内では個数に達したら打ち切る。`None` は「個数で打ち切らない」。
+    let max_args = match mode {
+      ParseMode::Math => (self.modes.math_command_arg_count)(command_name),
+      ParseMode::Text => None,
+    };
     let mut arg_index = 0usize;
-    while let Some(TokenKind::LBrace) = self.peek_kind() {
+    while max_args.is_none_or(|max| return arg_index < max) && self.peek_kind() == Some(TokenKind::LBrace) {
       children.append(&mut pending);
       let arg_node = match (self.modes.command_arg)(command_name, arg_index) {
         ArgMode::Verbatim => self.parse_verbatim_arg()?,
@@ -823,11 +839,24 @@ mod tests {
     };
   }
 
+  /// テスト用の数式内コマンド名 → 必須引数の個数の解決関数
+  ///
+  /// `vfrac` は 2 個、`valpha` は 0 個の必須引数を取る数式コマンドのスタンドイン。それ以外は数式の語彙に
+  /// 無い扱い（`None`）で、個数で打ち切らない。
+  fn test_math_arg_count(name: &str) -> Option<usize> {
+    return match name {
+      "vfrac" => Some(2),
+      "valpha" => Some(0),
+      _ => None,
+    };
+  }
+
   /// テスト用の [`ModeResolver`]
   fn test_modes() -> ModeResolver {
     return ModeResolver {
       env_body: test_env_body,
       command_arg: test_command_arg,
+      math_command_arg_count: test_math_arg_count,
     };
   }
 
@@ -1953,5 +1982,72 @@ mod tests {
     assert_eq!(url_token.kind, TokenKind::VerbatimText);
     assert_eq!(url_token.text(source), "https://example.com");
     assert!(args[1].first_child_of_kind(SyntaxKind::CommandCall).is_some(), "{:?}", args[1]);
+  }
+
+  /// インライン数式 `$...$` 1 個だけのソースを読み、その直下の子ノードの種類とコマンド呼び出しの必須引数の個数を返す
+  fn inline_math_shape(source: &str) -> Vec<(SyntaxKind, usize)> {
+    let arena = Bump::new();
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます: {source}");
+    };
+    return math
+      .child_nodes()
+      .map(|node| return (node.kind, node.children_of_kind(SyntaxKind::MandatoryArg).count()))
+      .collect();
+  }
+
+  #[test]
+  fn math_command_stops_reading_args_at_its_arg_count() {
+    // #753: 数式内では、コマンドが取る個数を超えた位置の `{...}` は後ろに続く数式グループ
+    let cases = [
+      (r"$\valpha{b}$", vec![(SyntaxKind::CommandCall, 0), (SyntaxKind::MathGroup, 0)]),
+      (r"$\valpha {b}$", vec![(SyntaxKind::CommandCall, 0), (SyntaxKind::MathGroup, 0)]),
+      (r"$\vfrac{a}{b}{c}$", vec![(SyntaxKind::CommandCall, 2), (SyntaxKind::MathGroup, 0)]),
+      (r"$\vfrac{a}{b} {c}$", vec![(SyntaxKind::CommandCall, 2), (SyntaxKind::MathGroup, 0)]),
+    ];
+    for (source, expected) in cases {
+      assert_eq!(inline_math_shape(source), expected, "{source}");
+    }
+  }
+
+  #[test]
+  fn math_command_reads_args_across_trivia_up_to_its_arg_count() {
+    // 個数に達するまでは従来どおりトリビアを跨いで引数を探す。不足は評価器が診断する
+    assert_eq!(inline_math_shape(r"$\vfrac{a} {b}$"), vec![(SyntaxKind::CommandCall, 2)]);
+    assert_eq!(inline_math_shape(r"$\vfrac{a}$"), vec![(SyntaxKind::CommandCall, 1)]);
+  }
+
+  #[test]
+  fn trivia_after_last_math_arg_is_returned_outside_the_command() {
+    // 個数に達した後のトリビアはコマンド呼び出しの子にならず、外側（数式本体）へ返る
+    let arena = Bump::new();
+    let source = r"$\vfrac{a}{b} {c}$";
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
+    assert_eq!(cmd.span.end as usize, r"$\vfrac{a}{b}".len(), "コマンドは最後の引数で閉じる");
+    let has_outer_space = math
+      .children
+      .iter()
+      .any(|c| return matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Whitespace));
+    assert!(has_outer_space, "`}}` と `{{c}}` の間の空白は数式本体の子のはず");
+  }
+
+  #[test]
+  fn command_outside_math_vocabulary_reads_args_greedily_in_math() {
+    // 数式の語彙に無いコマンドは個数が定まらないので打ち切らない（評価器が未知のコマンドとして拒否する）
+    assert_eq!(inline_math_shape(r"$\unknowncmd{a}{b}$"), vec![(SyntaxKind::CommandCall, 2)]);
+  }
+
+  #[test]
+  fn math_arg_count_does_not_apply_in_text() {
+    // テキスト内では裸の `{` を書けない（P4）ので、後ろの `{...}` はすべて引数として読み、余分は評価器が診断する
+    let arena = Bump::new();
+    let cst = parse_source(r"\vfrac{a}{b}{c}", &arena);
+    let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
+    assert_eq!(cmd.children_of_kind(SyntaxKind::MandatoryArg).count(), 3);
   }
 }

@@ -37,11 +37,12 @@ use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
 
 /// `crate::frontend::syntax::parse` へ渡すレジストリ解決器を組む
 ///
-/// 環境本体・コマンド必須引数の読み取り方を、それぞれの phf レジストリから引く。
+/// 環境本体・コマンド必須引数の読み取り方と、数式内のコマンドの必須引数の個数を、それぞれのレジストリから引く。
 pub(crate) fn mode_resolver() -> ModeResolver {
   return ModeResolver {
     env_body: environment::lookup_body_mode,
     command_arg: command::lookup_arg_mode,
+    math_command_arg_count: math::lookup_math_arg_count,
   };
 }
 
