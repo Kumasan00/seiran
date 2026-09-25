@@ -214,7 +214,7 @@ fn diagnostic_unknown_cite_key() {
 #[test]
 fn diagnostic_cite_escaped_comma() {
   // `\,` はキーの区切りではなくキーの文字（#731）。`kwan2014` と `doe2020` は fixture に存在するので、
-  // 割られていればこのビルドは成功する
+  // 割られていればこのビルドは成功する。help は `\,` がキーの文字で区切りはエスケープしない `,` だと案内する（#751）
   let failure = compile_err(&["tests/text/diagnostics/cite_escaped_comma.sei"]);
 
   assert_matches_golden("cite_escaped_comma", &render_failure(failure));
@@ -222,7 +222,7 @@ fn diagnostic_cite_escaped_comma() {
 
 #[test]
 fn diagnostic_cite_escaped_comma_with_other_key() {
-  // `,` を含むキーと別のキーが同じ `\cite` に並んでも、ラベルでキーの境目が読める（#750）
+  // `,` を含むキーと別のキーが同じ `\cite` に並んでも、ラベルでキーの境目が読め（#750）、help が `\,` を案内する（#751）
   let failure = compile_err(&["tests/text/diagnostics/cite_escaped_comma_with_other_key.sei"]);
 
   assert_matches_golden("cite_escaped_comma_with_other_key", &render_failure(failure));

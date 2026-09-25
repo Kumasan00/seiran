@@ -480,6 +480,8 @@ impl Walker<'_> {
 
 #[cfg(test)]
 mod tests {
+  use miette::Diagnostic;
+
   use super::collect_facts;
   use crate::{
     document::{HirDocument, NodeId},
@@ -694,7 +696,16 @@ mod tests {
 
     // Assert
     assert_eq!(failures.iter().count(), 1, "1 ソースぶんの診断にまとまるはず");
-    let SemanticError::UnknownCitationKeys { source_id, labels } = failures.first() else {
+    let error = failures.first();
+    assert_eq!(
+      error.help().map(|help| return help.to_string()).as_deref(),
+      Some("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください"),
+      "`,` を含まないキーの help は基本文だけのはず"
+    );
+    let SemanticError::UnknownCitationKeys {
+      source_id, labels, ..
+    } = error
+    else {
       panic!("UnknownCitationKeys が期待されます: {failures:?}");
     };
     assert_eq!(*source_id, SourceId::new(0));
@@ -707,6 +718,48 @@ mod tests {
       "span が `\\cite` 全体を指すはず: {}",
       &source[start..end]
     );
+  }
+
+  #[test]
+  fn unknown_citation_key_containing_comma_explains_escaped_comma() {
+    // Arrange — 2 キーを並べるつもりで `\,` と書いた（#751）
+    let hir = document(r"本文 \cite{kwan2014\,doe2020} です。");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+
+    // Assert
+    assert_eq!(
+      failures.first().help().map(|help| return help.to_string()).as_deref(),
+      Some(
+        "\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください。\
+         `\\,` はキーの中の文字 `,` です。キーを区切るにはエスケープしない `,` を使ってください"
+      ),
+      "`,` を含む未定義キーには `\\,` の案内が付くはず"
+    );
+  }
+
+  #[test]
+  fn escaped_comma_hint_is_decided_per_source() {
+    // Arrange — ソース 0 は `,` 無しと `,` 有りが混在、ソース 1 は `,` 無しだけ
+    let a = parse_source_for_test(r"\cite{missing} と \cite{x\,y}", SourceId::new(0)).expect("パースに成功するはず");
+    let b = parse_source_for_test(r"\cite{other}", SourceId::new(1)).expect("パースに成功するはず");
+    let hir = HirDocument::assemble(vec![a, b]);
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+
+    // Assert — 診断はソースごとに 1 つで、案内の有無もソースごとに決まる
+    let helps: Vec<(SourceId, bool)> = failures
+      .iter()
+      .map(|error| {
+        let help = error.help().expect("未定義引用キーの診断は help を持つはず").to_string();
+        return (error.source_id(), help.contains("`\\,` はキーの中の文字"));
+      })
+      .collect();
+    assert_eq!(helps, vec![(SourceId::new(0), true), (SourceId::new(1), false)]);
   }
 
   #[test]
@@ -811,7 +864,7 @@ mod tests {
     return failures
       .iter()
       .map(|error| {
-        return miette::Diagnostic::code(error).expect("意味解析の診断は code を持つはず").to_string();
+        return error.code().expect("意味解析の診断は code を持つはず").to_string();
       })
       .collect();
   }
