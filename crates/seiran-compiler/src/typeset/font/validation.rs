@@ -8,6 +8,7 @@
 //! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す（#550）
 //! （`tracing::warn!` だけで通知していた形は #377 で廃止した）。
 
+use derive_more::Display;
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
 use read_fonts::{
@@ -34,18 +35,13 @@ use crate::{
 /// 種別を落とすと、`FontType::ALL` 順に並んだ違反のどれがどのフォントのものか読めなくなる。
 /// 種別名は Debug 表現（`Serif`）ではなく config.toml のキー（`serif`）を使い、
 /// `[fonts.serif]` を直せばよいと分かるようにする。
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display("{}: {kind}", font_type.as_toml_key())]
 pub(crate) struct FontValidationFailure {
   /// 違反が見つかったフォント種別
   font_type: FontType,
   /// 違反の内容
   kind: FontValidationErrorKind,
-}
-
-impl std::fmt::Display for FontValidationFailure {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    return write!(f, "{}: {}", self.font_type.as_toml_key(), self.kind);
-  }
 }
 
 /// `kind` は cause ではなくこの診断自身の内容なので `#[source]` には載せない
@@ -798,5 +794,19 @@ mod tests {
 
     // Assert
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]), "{errors:?}");
+  }
+
+  #[test]
+  fn failure_message_is_prefixed_with_the_toml_key_of_the_font_type() {
+    let failure = FontValidationFailure {
+      font_type: FontType::Serif,
+      kind: FontValidationErrorKind::NotVariableFont,
+    };
+
+    // Debug 表現（`Serif`）ではなく config.toml のキー（`serif`）を前置する
+    assert_eq!(
+      failure.to_string(),
+      "serif: このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。"
+    );
   }
 }

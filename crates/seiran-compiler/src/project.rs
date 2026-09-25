@@ -49,6 +49,7 @@ use std::{
 
 #[doc(hidden)]
 pub use config::test_support;
+use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
 // `FontType` は `GlyphRun` と描画資源のキーとして `Publication` に載るため crate 外まで届く
 // （crate root の facade が再エクスポートする。#372）。
@@ -79,8 +80,11 @@ pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 ///
 /// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
 /// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+///
+/// `Display` は内側のパスの表示（[`Path::display`]）で、幅・寄せなどの書式パラメータもそのまま渡る。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Display)]
 #[serde(from = "PathBuf")]
+#[display("{}", _0.display())]
 pub struct ProjectPath(PathBuf);
 
 impl ProjectPath {
@@ -101,10 +105,6 @@ impl From<ProjectPath> for PathBuf {
 
 impl AsRef<Path> for ProjectPath {
   fn as_ref(&self) -> &Path { return &self.0; }
-}
-
-impl std::fmt::Display for ProjectPath {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return write!(f, "{}", self.0.display()); }
 }
 
 /// 外部資源の取得エラー。**単独では描画しない低水準 cause**。
@@ -210,6 +210,14 @@ mod tests {
     let path = ProjectPath::new("/a/b.ttf");
 
     assert_eq!(path.to_string(), "/a/b.ttf");
+  }
+
+  #[test]
+  fn display_honors_width_like_the_path_itself() {
+    let path = ProjectPath::new("/a/b");
+
+    // 表示はパスそのものの Display へ書式パラメータごと委譲する
+    assert_eq!(format!("{path:>6}"), "  /a/b");
   }
 
   #[test]
