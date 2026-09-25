@@ -20,14 +20,14 @@
 )]
 
 use std::{
-  fmt,
   iter::Sum,
   ops::{Div, Mul},
   str::FromStr,
 };
 
 use derive_more::{Add, AddAssign, Display, Neg, Sub, SubAssign};
-use serde::{Deserialize, Deserializer, de::Error};
+use serde::{Deserialize, Deserializer, de::Error as _};
+use thiserror::Error;
 
 /// 1 pt あたりの sp 数（TeX の scaled point と同じ分解能 2^16）。
 const SP_PER_PT: i64 = 65536;
@@ -52,7 +52,7 @@ fn round_to_pt_sp(pt: f64) -> i64 { return round_sp(pt * SP_PER_PT as f64); }
 /// 単位付き長さ値。内部は sp（1/65536 pt）の整数で保持する。
 ///
 /// 構築は [`Length::pt`] / [`Length::mm`] / [`Length::from_sp`]、pt 値の取り出しは [`Length::to_pt`]。
-/// 文字列との相互変換は [`FromStr`] / [`Display`](fmt::Display) の正準形 `<pt値>pt` を用いる。
+/// 文字列との相互変換は [`FromStr`] / [`Display`](std::fmt::Display) の正準形 `<pt値>pt` を用いる。
 /// `Display` の出力は [`Length::from_str`] と往復する固定の字面で、幅・寄せなどの書式パラメータは無視する。
 /// `Deref` / `From<f32>` は意図的に実装しない（変換漏れを型検査で検出するため）。
 #[derive(
@@ -155,23 +155,14 @@ fn parse_length(value: &str) -> Option<Length> {
 ///
 /// `<数値>pt` / `<数値>mm` / `<数値>cm`（数値と単位の間に空白なし・単位は小文字）以外の形式で
 /// [`Length::from_str`] が返す。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error(
+  "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: {input:?}"
+)]
 pub struct ParseLengthError {
   /// パースに失敗した入力文字列。
   input: String,
 }
-
-impl fmt::Display for ParseLengthError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    return write!(
-      f,
-      "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: {:?}",
-      self.input
-    );
-  }
-}
-
-impl std::error::Error for ParseLengthError {}
 
 impl FromStr for Length {
   type Err = ParseLengthError;
@@ -271,6 +262,8 @@ impl<'a> Sum<&'a Length> for Length {
 
 #[cfg(test)]
 mod tests {
+  use std::error::Error as _;
+
   use serde::Deserialize;
 
   use super::{Length, non_negative, positive};
@@ -546,5 +539,36 @@ mod tests {
     // Assert
     assert_eq!(total, Length::pt(6.0));
     assert_eq!(total_ref, Length::pt(6.0));
+  }
+
+  #[test]
+  fn from_str_error_message_names_expected_format() {
+    let err = "5 pt".parse::<Length>().unwrap_err();
+
+    assert_eq!(
+      err.to_string(),
+      "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: \"5 pt\""
+    );
+  }
+
+  #[test]
+  fn from_str_error_message_escapes_input_as_debug() {
+    let err = "1\"pt".parse::<Length>().unwrap_err();
+
+    assert!(err.to_string().ends_with(": \"1\\\"pt\""));
+  }
+
+  #[test]
+  fn from_str_error_has_no_source() {
+    let err = "abc".parse::<Length>().unwrap_err();
+
+    assert!(err.source().is_none());
+  }
+
+  #[test]
+  fn deserialize_error_carries_from_str_message() {
+    let err = toml::from_str::<Wrapper>("length = \"12\"").unwrap_err();
+
+    assert!(err.to_string().contains("で指定してください: \"12\""));
   }
 }
