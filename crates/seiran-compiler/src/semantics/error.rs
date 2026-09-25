@@ -2,7 +2,7 @@
 //!
 //! 入口 [`analyze`](fn@crate::semantics::analyze) が返す [`AnalyzeError`] と、HIR 走査が返す
 //! [`SemanticFailures`] / [`SemanticError`] の 2 層に分かれる。後者は必ずソース位置に帰属する
-//! （`source_id` を持つ）ため、呼び出し元は本文を添えた診断へ組み替えられる。CSL の読込・整形
+//! （`source_id` を持つ）ため、呼び出し元は本文を添えた診断へ組み替えられる。CSL の読込
 //! エラーはソース位置を持たないので、この不変条件を壊さないよう [`SemanticError`] には混ぜず
 //! [`AnalyzeError`] の別バリアントに置く。
 
@@ -15,13 +15,13 @@ use thiserror::Error;
 use crate::{
   document::{NodeId, SourceLocation},
   failures::Failures,
-  semantics::{CitationFormatError, CitationStyleError},
+  semantics::CitationStyleError,
   source::{SourceId, Span},
 };
 
 /// [`analyze`](fn@crate::semantics::analyze) のエラー
 ///
-/// 内側の意味解析 / CSL スタイル読込 / CSL 整形のいずれかを `?` で運ぶための制御フロー型で、
+/// 内側の意味解析 / CSL スタイル読込のいずれかを `?` で運ぶための制御フロー型で、
 /// **表示単位ではない**（`miette::Diagnostic` を実装しない）。呼び出し元（`compiler`）が
 /// 必ず全バリアントを分解し、内側の leaf 診断だけがユーザーへ届く。
 #[derive(Debug, Error)]
@@ -29,9 +29,6 @@ pub(crate) enum AnalyzeError {
   /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
   #[error(transparent)]
   CitationStyle(#[from] CitationStyleError),
-  /// `\cite` の CSL 整形（表示の生成）エラー
-  #[error(transparent)]
-  CitationFormat(#[from] CitationFormatError),
   /// ラベル・`\ref`・カウンタ・引用キーの意味解析エラー
   #[error(transparent)]
   Analyze(#[from] SemanticFailures),

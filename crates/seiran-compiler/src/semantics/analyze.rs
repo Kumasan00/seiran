@@ -56,8 +56,7 @@ fn generate(
     return Ok(GeneratedCitations::default());
   }
   let compiled = load_citation_style(source, style)?;
-  let generated = generate_citations(&facts.citations, references, &compiled)?;
-  return Ok(generated);
+  return Ok(generate_citations(&facts.citations, references, &compiled));
 }
 
 #[cfg(test)]

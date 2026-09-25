@@ -288,7 +288,7 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 
 /// `semantics::analyze` のエラーへソース本文を添え、表示可能な診断の集合にする。
 ///
-/// CSL 由来（`CitationStyle` / `CitationFormat`）はそれ自身が leaf 診断なのでそのまま運ぶ。
+/// CSL 由来（`CitationStyle`）はそれ自身が leaf 診断なのでそのまま運ぶ。
 /// 意味解析由来はソースごとに分割済みなので、`SourceSet` から本文を引いて添えるだけでよい
 /// （`SourceId` は `SourceSet::register` が発行した値をそのまま運んでいるため、ここでの参照は
 /// 確定 ID による引き当てであり帰属元の推定ではない）。別ソースにある関連位置（重複ラベルの
@@ -296,7 +296,6 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileFailure {
   return match error {
     AnalyzeError::CitationStyle(error) => CompileFailure::single(error),
-    AnalyzeError::CitationFormat(error) => CompileFailure::single(error),
     AnalyzeError::Analyze(errors) => {
       CompileFailure::from(errors.map(|error| return attach_semantic_error(sources, error)))
     },

@@ -14,19 +14,23 @@ use crate::semantics::citation::Reference;
 ///
 /// `id` は参照定義のキー（`references` マップのキー）で、hayagriva の cite key となる。
 ///
-/// # Errors
+/// 変換は失敗しない（#759）。読込が受理した値はすべて `Item` の `Value` に嵌る: 文字列は `String`、
+/// 整数は `Number`（i64 を超える整数は読込で非整数として受けて文字列化する）、非整数は文字列化、
+/// 著者名は `Names`、日付は読込時に担体と同じ `i16` の範囲へ確定させた `Date`。
 ///
-/// `Reference` の CSL-JSON 表現が `Item`（`citationberg::json::Value` のマップ）にデシリアライズ
-/// できない場合に [`serde_json::Error`] を返す。日付は読込時に担体と同じ `i16` の範囲へ確定させて
-/// いるので（`references::date`）、日付が原因で失敗することはない。
-pub(crate) fn to_item(id: &str, reference: &Reference) -> Result<Item, serde_json::Error> {
-  let value = serde_json::to_value(reference)?;
+/// # Panics
+///
+/// 読込の受理集合と `Item` の受理集合が食い違ったとき（読込検査の漏れ。上の対応が保証する）。
+pub(crate) fn to_item(id: &str, reference: &Reference) -> Item {
+  let value = serde_json::to_value(reference)
+    .expect("`Reference` の Serialize は文字列キーのマップと有限値だけを出すので JSON 化は失敗しない");
   let Value::Object(map) = value else {
     unreachable!("`Reference` は struct なので serde は必ず JSON object へ変換する")
   };
   let mut object = sanitize_object(map);
   object.insert("id".to_string(), Value::String(id.to_string()));
-  return serde_json::from_value(Value::Object(object));
+  return serde_json::from_value(Value::Object(object))
+    .expect("読込が受理した値は Item の Value に嵌る（references の Deserialize と sanitize_value が保証する）");
 }
 
 /// CSL-JSON オブジェクトを `Item` 化できる形に整える（再帰）。
@@ -121,7 +125,7 @@ mod tests {
     let reference = references.get("kwan2014").expect("book エントリがあるはず");
 
     // Act
-    let item = to_item("kwan2014", reference).expect("Item 化できるはず");
+    let item = to_item("kwan2014", reference);
 
     // Assert
     assert_eq!(item.id().as_deref(), Some("kwan2014"), "id は keyed-table のキー");
@@ -137,7 +141,7 @@ mod tests {
     let reference = references.get("doe2020").expect("article エントリがあるはず");
 
     // Act
-    let item = to_item("doe2020", reference).expect("Item 化できるはず");
+    let item = to_item("doe2020", reference);
 
     // Assert
     assert_eq!(item.type_().as_deref(), Some("article-journal"));
@@ -163,7 +167,7 @@ mod tests {
     let reference = references.get("r1").expect("r1 があるはず");
 
     // Act
-    let item = to_item("r1", reference).expect("Item 化できるはず");
+    let item = to_item("r1", reference);
 
     // Assert
     assert_eq!(item.0.get("genre").and_then(Value::to_str).as_deref(), Some("fiction"));
@@ -183,7 +187,7 @@ mod tests {
     let reference = references.get("r1").expect("r1 があるはず");
 
     // Act
-    let item = to_item("r1", reference).expect("Item 化できるはず");
+    let item = to_item("r1", reference);
 
     // Assert
     assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
@@ -204,7 +208,7 @@ mod tests {
     let reference = references.get("r1").expect("r1 があるはず");
 
     // Act
-    let item = to_item("r1", reference).expect("Item 化できるはず");
+    let item = to_item("r1", reference);
 
     // Assert
     let Some(Value::Date(date)) = item.0.get("issued") else {
@@ -236,7 +240,7 @@ mod tests {
       let reference = references.get("r1").expect("r1 があるはず");
 
       // Act
-      let item = to_item("r1", reference).expect("Item 化できるはず");
+      let item = to_item("r1", reference);
 
       // Assert
       let Some(Value::Date(date)) = item.0.get("issued") else {
@@ -261,7 +265,7 @@ mod tests {
       let reference = references.get("r1").expect("r1 があるはず");
 
       // Act
-      let item = to_item("r1", reference).expect("読込を通った年は Item 化できるはず");
+      let item = to_item("r1", reference);
 
       // Assert
       let Some(Value::Date(date)) = item.0.get("issued") else {
@@ -270,5 +274,48 @@ mod tests {
       let fixed = FixedDateRange::try_from(date.clone()).expect("単一日付なので FixedDateRange になるはず");
       assert_eq!(fixed.start.year, expected_year, "{date_parts}");
     }
+  }
+
+  #[test]
+  fn to_item_converts_every_field_kind() {
+    // 読込が受理する値の種類（文字列・整数・非整数・範囲外の整数・個人名・組織名・日付）がすべて
+    // `Item` の `Value` に嵌ることを固定する。`to_item` が失敗しない根拠（#759）
+    // Arrange
+    let source = FilesystemProjectSource;
+    let mut file = tempfile::Builder::new().suffix(".json").tempfile().expect("一時ファイルを作成できるはず");
+    file
+      .write_all(
+        br#"{"r1": {
+          "type": "book",
+          "title": "T",
+          "volume": 3,
+          "edition": 2.5,
+          "number": 18446744073709551615,
+          "page": "10-20",
+          "author": [
+            {"family": "Doe", "given": "J", "dropping-particle": "de", "non-dropping-particle": "van", "suffix": "Jr."},
+            {"literal": "ACME"}
+          ],
+          "editor": [],
+          "issued": {"date-parts": [[-32768, 12, 31]], "circa": true},
+          "accessed": {"date-parts": [[2024]], "season": 4}
+        }}"#,
+      )
+      .expect("一時ファイルへ書き込めるはず");
+    let references =
+      read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
+    let reference = references.get("r1").expect("r1 があるはず");
+
+    // Act
+    let item = to_item("r1", reference);
+
+    // Assert
+    assert_eq!(item.0.get("volume"), Some(&Value::Number(3)));
+    assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
+    assert!(matches!(item.0.get("number"), Some(Value::String(_))), "i64 を超える整数は文字列化される");
+    assert!(matches!(item.0.get("author"), Some(Value::Names(names)) if names.len() == 2));
+    assert!(matches!(item.0.get("editor"), Some(Value::Names(names)) if names.is_empty()));
+    assert!(matches!(item.0.get("issued"), Some(Value::Date(_))));
+    assert!(matches!(item.0.get("accessed"), Some(Value::Date(_))));
   }
 }
