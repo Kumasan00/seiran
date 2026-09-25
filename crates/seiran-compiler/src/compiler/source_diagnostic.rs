@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use derive_more::Display;
 use miette::{Diagnostic, NamedSource};
 
 use crate::{project::SourceSet, source::SourceId};
@@ -12,14 +13,15 @@ use crate::{project::SourceSet, source::SourceId};
 /// 本文の一元管理は [`SourceSet`] の責務。この adapter は `source_code` **だけ**を補い、
 /// `code` / `severity` / `help` / `url` / `labels` / `related` / `diagnostic_source` は
 /// すべて内側の診断へ委譲する（`#[diagnostic(transparent)]` は `source_code` まで内側へ
-/// 委譲してしまうため使えず、手書きする）。
+/// 委譲してしまうため使えず、手書きする）。メッセージ（`Display`）も書式パラメータごと内側へ委譲する。
 ///
 /// これが compiler seam の唯一の source attribution 手段で、段ごとの専用 wrapper は持たない。
 ///
 /// 別ソースの位置を示す関連診断（重複ラベルの最初の定義など）も、[`SourceDiagnostic::with_related_in`]
 /// でそのソースの本文を添えてから持つ — miette は本文を持たない関連診断を主診断の本文で描くので、
 /// 添えずに渡すと別ファイルの位置を誤った本文の上に描いてしまう（#552）。
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display("{inner}")]
 pub(super) struct SourceDiagnostic<E> {
   /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）。本文は `SourceSet` の割り当てを共有する
   named_source: NamedSource<Arc<str>>,
@@ -56,10 +58,6 @@ impl<E> SourceDiagnostic<E> {
     self.elsewhere.push(Box::new(SourceDiagnostic::attach(sources, source_id, note)));
     return self;
   }
-}
-
-impl<E: std::fmt::Display> std::fmt::Display for SourceDiagnostic<E> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.inner.fmt(f); }
 }
 
 impl<E: std::error::Error + 'static> std::error::Error for SourceDiagnostic<E> {
@@ -193,5 +191,19 @@ mod tests {
       .read_span(&miette::SourceSpan::from((0usize, 3usize)), 0, 0)
       .expect("span を読めるはず");
     assert_eq!(contents.name(), Some("/project/b.sei"));
+  }
+
+  #[test]
+  fn display_passes_formatting_parameters_through_to_the_inner_diagnostic() {
+    // Arrange
+    let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
+    let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
+    let (source_id, _entry) = sources.iter().next().expect("1 件登録されているはず");
+
+    // Act
+    let attributed = SourceDiagnostic::attach(&sources, source_id, "a");
+
+    // Assert — 幅・寄せは内側の Display へそのまま渡る
+    assert_eq!(format!("{attributed:>3}"), "  a");
   }
 }

@@ -10,6 +10,8 @@
 //! 「複数のエラーがあります」に相当する表示単位が生まれ、ユーザーが最初に読むメッセージが
 //! 修正可能な leaf でなくなる。
 
+use derive_more::Display;
+
 /// 1 件以上の失敗（**空では構築できない**）
 ///
 /// `first` が主診断で、`rest` が同時に報告する残り。順序は入力の論理順（source は宣言順、
@@ -19,7 +21,11 @@
 ///
 /// 構築経路は [`Failures::single`] と [`Failures::from_vec`]（空なら `None`）だけで、
 /// `Default` は実装しない。
-#[derive(Debug)]
+///
+/// 表示（`Display`）は主の失敗そのもので、書式パラメータごと主へ委譲する。この型自身は表示単位ではないが、
+/// `thiserror` の `#[error(transparent)]` で運ぶ経路（例: `AnalyzeError::Analyze`）が `Display` を要求するため。
+#[derive(Debug, Display)]
+#[display("{first}")]
 pub(crate) struct Failures<E> {
   /// 主となる失敗
   first: E,
@@ -105,14 +111,6 @@ impl<E> From<E> for Failures<E> {
   fn from(failure: E) -> Self { return Failures::single(failure); }
 }
 
-/// 表示は主の失敗そのもの。
-///
-/// この型自身は表示単位ではないが、`thiserror` の `#[error(transparent)]` で運ぶ経路
-/// （例: `AnalyzeError::Analyze`）が `Display` を要求するため、主へ委譲する。
-impl<E: std::fmt::Display> std::fmt::Display for Failures<E> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.first.fmt(f); }
-}
-
 impl<E: std::error::Error + 'static> std::error::Error for Failures<E> {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return std::error::Error::source(&self.first); }
 }
@@ -196,5 +194,13 @@ mod tests {
     // 表示は主の失敗そのもので、集約を表す文言を足さない
     assert_eq!(failures.to_string(), "失敗 1");
     assert!(std::error::Error::source(&failures).is_none());
+  }
+
+  #[test]
+  fn display_passes_formatting_parameters_through_to_the_first_failure() {
+    let failures = Failures::from_vec(vec!["a", "b"]).expect("2 件あるので構築できるはず");
+
+    // 幅・寄せは主の失敗の Display へそのまま渡る（集約側で書式を作り直さない）
+    assert_eq!(format!("{failures:>3}"), "  a");
   }
 }

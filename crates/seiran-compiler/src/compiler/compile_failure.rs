@@ -1,5 +1,6 @@
 //! `compile` の失敗を表す不透明な診断集合 [`CompileFailure`]
 
+use derive_more::Display;
 use miette::Diagnostic;
 
 use crate::{
@@ -14,6 +15,8 @@ use crate::{
 /// 単一の診断から（`single`）と非空集合 [`Failures`] から（汎用 `From`）の 2 つだけで、
 /// いずれも crate 内部限定であり `Default` も実装しない。
 ///
+/// メッセージ（`Display`）は主診断へ書式パラメータごと委譲する。
+///
 /// 段別の内部エラー型は公開しない。crate の外から観測できるのは `miette::Diagnostic` としての姿と
 /// 診断 `code` だけなので、内部 phase の追加・統合が公開 interface の破壊変更にならない
 /// （呼び出し側の分類手段は Rust の enum variant ではなく安定した診断 `code`）。
@@ -21,7 +24,8 @@ use crate::{
 /// error の列とは別に、**失敗するまでに確定した警告**（0 件以上）を [`CompileFailure::warnings`] で返す。
 /// 警告は `Diagnostic` としての姿（`related` / [`CompileFailure::into_report`] の描画）には載せない —
 /// error と warning は別の集合で、表示する呼び出し側が「確定済み警告 → 主エラー」の順に描く（#550）。
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display("{primary}")]
 pub struct CompileFailure {
   /// 主診断（ユーザーが最初に読むべき leaf diagnostic）
   primary: BoxedDiagnostic,
@@ -100,10 +104,6 @@ impl<E: Diagnostic + Send + Sync + 'static> From<Failures<E>> for CompileFailure
   }
 }
 
-impl std::fmt::Display for CompileFailure {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.primary.fmt(f); }
-}
-
 impl std::error::Error for CompileFailure {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return self.primary.source(); }
 }
@@ -176,6 +176,20 @@ mod tests {
   #[error("テスト用の警告")]
   #[diagnostic(severity(Warning), code(test::warning))]
   struct TestWarning;
+
+  /// 書式パラメータ（幅・寄せ）を尊重する Display を持つテスト用エラー
+  ///
+  /// thiserror の `#[error]` は `write!` で幅を捨てるので、委譲が書式パラメータを渡すかを見るには手書きが要る。
+  #[derive(Debug)]
+  struct PaddedError;
+
+  impl std::fmt::Display for PaddedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return f.pad("a"); }
+  }
+
+  impl std::error::Error for PaddedError {}
+
+  impl Diagnostic for PaddedError {}
 
   /// 診断列の `code` を文字列として集める
   fn codes(failure: &CompileFailure) -> Vec<String> {
@@ -271,5 +285,13 @@ mod tests {
     assert_eq!(related, vec!["test::other".to_string()]);
     let rendered = format!("{:?}", failure.into_report());
     assert!(!rendered.contains("test::warning"), "警告は主エラーの描画に含めない: {rendered}");
+  }
+
+  #[test]
+  fn display_passes_formatting_parameters_through_to_the_primary_diagnostic() {
+    let failure = CompileFailure::single(PaddedError);
+
+    // 幅・寄せは主診断の Display へそのまま渡る
+    assert_eq!(format!("{failure:>3}"), "  a");
   }
 }

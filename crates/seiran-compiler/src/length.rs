@@ -26,7 +26,7 @@ use std::{
   str::FromStr,
 };
 
-use derive_more::{Add, AddAssign, Neg, Sub, SubAssign};
+use derive_more::{Add, AddAssign, Display, Neg, Sub, SubAssign};
 use serde::{Deserialize, Deserializer, de::Error};
 
 /// 1 pt あたりの sp 数（TeX の scaled point と同じ分解能 2^16）。
@@ -53,8 +53,12 @@ fn round_to_pt_sp(pt: f64) -> i64 { return round_sp(pt * SP_PER_PT as f64); }
 ///
 /// 構築は [`Length::pt`] / [`Length::mm`] / [`Length::from_sp`]、pt 値の取り出しは [`Length::to_pt`]。
 /// 文字列との相互変換は [`FromStr`] / [`Display`](fmt::Display) の正準形 `<pt値>pt` を用いる。
+/// `Display` の出力は [`Length::from_str`] と往復する固定の字面で、幅・寄せなどの書式パラメータは無視する。
 /// `Deref` / `From<f32>` は意図的に実装しない（変換漏れを型検査で検出するため）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Add, Sub, Neg, AddAssign, SubAssign)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Add, Sub, Neg, AddAssign, SubAssign, Display,
+)]
+#[display("{}pt", self.to_pt())]
 pub struct Length(i64);
 
 impl Length {
@@ -180,11 +184,6 @@ impl FromStr for Length {
       };
     });
   }
-}
-
-impl fmt::Display for Length {
-  /// 正準の人間可読表現 `<pt値>pt`。[`Length::from_str`] と往復する。
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { return write!(f, "{}pt", self.to_pt()); }
 }
 
 impl<'de> Deserialize<'de> for Length {
@@ -369,6 +368,12 @@ mod tests {
     // Assert
     assert_eq!(text, "12.5pt");
     assert_eq!(text.parse::<Length>().unwrap(), value);
+  }
+
+  #[test]
+  fn display_ignores_formatting_parameters() {
+    // 正準形は FromStr と往復する固定の字面なので、幅・寄せを付けても変わらない
+    assert_eq!(format!("{:>8}", Length::pt(1.0)), "1pt");
   }
 
   #[test]
