@@ -180,7 +180,7 @@ impl<'a> Parser<'a> {
         break;
       }
 
-      self.parse_element(&mut children, ParseMode::Text, None)?;
+      self.parse_element(&mut children, ParseMode::Text)?;
     }
 
     let end = self.last_span.end;
@@ -194,12 +194,12 @@ impl<'a> Parser<'a> {
   /// 持ち、要素はここで読む。数式内の `\begin` も環境として読み、数式内で環境を使えないことの診断は評価器に任せる
   /// （書いた位置で診断が変わらないようにするため、#688）。
   ///
-  /// `expected_closer` と一致する終端は消費せず、呼び出し側に制御を戻す。
+  /// 終端は知らない — 各ループは終端を判定してからこの関数を呼ぶので、ここに届いた `}` / `]` はどの区間の
+  /// 終端でもなく、常に [`ParserError::UnexpectedToken`] になる（#771）。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
     mode: ParseMode,
-    expected_closer: Option<TokenKind>,
   ) -> Result<(), ParserError> {
     self.skip_trivia(children);
 
@@ -266,10 +266,6 @@ impl<'a> Parser<'a> {
         return Err(ParserError::BareBracket {
           span: token.span.into(),
         });
-      },
-      TokenKind::RBrace | TokenKind::RBracket if Some(kind) == expected_closer => {
-        // 終端は呼び出し側が消費する。
-        return Ok(());
       },
       TokenKind::RBrace | TokenKind::RBracket => {
         let token = self.take_peeked();
@@ -438,7 +434,7 @@ impl<'a> Parser<'a> {
         }
       }
 
-      self.parse_element(&mut body_children, mode, None)?;
+      self.parse_element(&mut body_children, mode)?;
     }
 
     let last_span_end = self.last_span.end;
@@ -532,6 +528,11 @@ impl<'a> Parser<'a> {
   }
 
   /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
+  ///
+  /// 終端 `close_kind` の判定はこのループだけが持つ。トリビアを積んでから次のトークンを見て、終端なら
+  /// 消費して抜け、EOF なら [`ParserError::UnclosedDelimiter`]、それ以外は [`Self::parse_element`] に
+  /// 1 要素を読ませる。`parse_element` は終端を受け取らないので、「終端をどちらが見るか」の判断は
+  /// 構造的にここ 1 箇所になる（#771）。
   fn parse_delimited(
     &mut self,
     open_kind: TokenKind,
@@ -556,7 +557,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, mode, Some(close_kind))?;
+      self.parse_element(&mut children, mode)?;
     }
 
     let close = self.take_peeked();
@@ -660,7 +661,7 @@ impl<'a> Parser<'a> {
             span: start_span.into(),
           });
         },
-        _ => self.parse_element(&mut children, ParseMode::Math, None)?,
+        _ => self.parse_element(&mut children, ParseMode::Math)?,
       }
     }
 
@@ -693,7 +694,7 @@ impl<'a> Parser<'a> {
             span: start_span.into(),
           });
         },
-        _ => self.parse_element(&mut children, ParseMode::Math, None)?,
+        _ => self.parse_element(&mut children, ParseMode::Math)?,
       }
     }
 
@@ -1146,6 +1147,56 @@ mod tests {
         ..
       })
     ));
+  }
+
+  // --- 終端の所有（#771）-------------------------------------------------------
+
+  #[test]
+  fn nested_closers_in_math_arg_are_consumed_by_their_own_loops() {
+    // #771: `{{a}}` の内側の `}` は数式グループのループが、外側の `}` は引数のループが消費する。
+    // 終端の判定は各ループだけが持ち、`parse_element` は終端を知らない（変更前後で同じ形になる固定テスト）
+    let arena = Bump::new();
+    let cst = parse_source(r"$\vfrac{{a}}{b}$", &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
+    let args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
+    assert_eq!(args.len(), 2, "第 1 引数と第 2 引数の 2 つのはず");
+    assert!(args[0].first_child_of_kind(SyntaxKind::MathGroup).is_some(), "第 1 引数の中身は MathGroup のはず");
+    assert!(
+      math.first_child_of_kind(SyntaxKind::MathGroup).is_none(),
+      "数式本体の直下に MathGroup が漏れないはず"
+    );
+  }
+
+  #[test]
+  fn trivia_before_closer_stays_inside_the_arg() {
+    // #771: 終端の直前のトリビアはループが終端判定より先に積むので、引数の子として `}` の手前に残る。
+    // `parse_element` の先頭の skip_trivia に頼っていないことの固定（変更前後で同じ形になる）
+    let arena = Bump::new();
+    let cst = parse_source(r"\cmd{x }", &arena);
+    let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
+    let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).expect("MandatoryArg ノードが期待されます");
+    let kinds: Vec<TokenKind> = arg
+      .children
+      .iter()
+      .filter_map(|element| {
+        return match element {
+          GreenElement::Token(token) => Some(token.kind),
+          GreenElement::Node(_) => None,
+        };
+      })
+      .collect();
+    assert_eq!(
+      kinds,
+      vec![
+        TokenKind::LBrace,
+        TokenKind::Text,
+        TokenKind::Whitespace,
+        TokenKind::RBrace
+      ]
+    );
   }
 
   #[test]
