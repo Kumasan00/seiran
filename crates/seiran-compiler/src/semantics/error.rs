@@ -6,7 +6,7 @@
 //! エラーはソース位置を持たないので、この不変条件を壊さないよう [`SemanticError`] には混ぜず
 //! [`AnalyzeError`] の別バリアントに置く。
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use miette::{Diagnostic, LabeledSpan};
@@ -41,7 +41,17 @@ pub(crate) enum AnalyzeError {
 /// **semantics 自身**で、診断文・`code`・help を `compiler` 側へ複製しない。
 pub(crate) type SemanticFailures = Failures<SemanticError>;
 
-/// 文書順の未定義引用箇所を、初出ソース順にソースごとの診断へまとめる。
+/// 1 ソース分の未定義引用箇所の集約（1 診断になる）
+struct UnknownCitationGroup {
+  /// そのソースの最初の引用箇所（他の種別の診断と文書順にマージするための位置）
+  first_site: NodeId,
+  /// `\cite{...}` ごとのラベル（文書順）
+  labels: Vec<LabeledSpan>,
+  /// 未定義キーに `,` を含むものがあったか（help に `\,` の案内を足す。#751）
+  has_comma_key: bool,
+}
+
+/// 文書順の未定義引用箇所を、ソース順（`SourceId` 昇順 = 宣言順）にソースごとの診断へまとめる。
 ///
 /// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
 /// 「このソースの `\cite` キーが参照定義と合っていない」という 1 問題として読めるため）。
@@ -51,34 +61,32 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
 /// 添えて返す。1 箇所も無ければ空を返す。
 pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
-  // 出現順を保つため、初出順の Vec に積んでから組み立てる。
-  let mut order: Vec<(SourceId, NodeId)> = Vec::new();
-  // ソースごとのラベルと、未定義キーに `,` を含むものがあったか
-  let mut per_source: HashMap<SourceId, (Vec<LabeledSpan>, bool)> = HashMap::new();
+  // `BTreeMap` の反復順が `SourceId` の順序（宣言順）そのものなので、初出順を別の入れ物で持たない。
+  let mut per_source: BTreeMap<SourceId, UnknownCitationGroup> = BTreeMap::new();
   for site in sites {
-    let (labels, has_comma_key) = per_source.entry(site.source_id).or_insert_with(|| {
-      order.push((site.source_id, site.site));
-      return (Vec::new(), false);
-    });
-    labels.push(LabeledSpan::new_with_span(Some(unknown_keys_label(&site.keys)), site.span));
-    *has_comma_key |= site.keys.iter().any(|key| return key.contains(','));
-  }
-  return order
-    .into_iter()
-    .map(|(source_id, first_site)| {
-      let Some((labels, has_comma_key)) = per_source.remove(&source_id) else {
-        unreachable!("order には per_source へ登録した SourceId しか入らない")
+    let group = per_source.entry(site.source_id).or_insert_with(|| {
+      return UnknownCitationGroup {
+        first_site: site.site,
+        labels: Vec::new(),
+        has_comma_key: false,
       };
-      let comma_hint = if has_comma_key {
+    });
+    group.labels.push(LabeledSpan::new_with_span(Some(unknown_keys_label(&site.keys)), site.span));
+    group.has_comma_key |= site.keys.iter().any(|key| return key.contains(','));
+  }
+  return per_source
+    .into_iter()
+    .map(|(source_id, group)| {
+      let comma_hint = if group.has_comma_key {
         ESCAPED_COMMA_HINT
       } else {
         ""
       };
       return (
-        first_site,
+        group.first_site,
         SemanticError::UnknownCitationKeys {
           source_id,
-          labels,
+          labels: group.labels,
           comma_hint,
         },
       );
@@ -270,5 +278,46 @@ mod tests {
     let keys = ["kwan2014,doe2020".to_string(), "x".to_string()];
 
     assert_eq!(unknown_keys_label(&keys), "未定義の引用キー: `kwan2014,doe2020`, `x`");
+  }
+
+  /// テスト用の未定義引用箇所 1 件（span は位置合わせだけに使うので local から機械的に作る）
+  fn site(source: usize, local: u32, key: &str) -> UnknownCitationSite {
+    let source_id = SourceId::new(source);
+    return UnknownCitationSite {
+      site: NodeId::for_test(source_id, local),
+      source_id,
+      span: Span::new(local, local + 1),
+      keys: vec![key.to_string()],
+    };
+  }
+
+  #[test]
+  fn group_unknown_citations_attaches_first_site_of_each_source() {
+    // Arrange — ソース 0 に 2 箇所、ソース 1 に 1 箇所（文書順）
+    let sites = [site(0, 3, "a"), site(0, 7, "b"), site(1, 5, "c")];
+
+    // Act
+    let grouped = group_unknown_citations(&sites);
+
+    // Assert — ソースごとに 1 診断。添える位置はそのソースの最初の箇所で、ラベル数は箇所数
+    let summary: Vec<(NodeId, SourceId, usize)> = grouped
+      .iter()
+      .map(|(first_site, error)| {
+        let SemanticError::UnknownCitationKeys {
+          source_id, labels, ..
+        } = error
+        else {
+          panic!("UnknownCitationKeys が期待されます: {error:?}");
+        };
+        return (*first_site, *source_id, labels.len());
+      })
+      .collect();
+    assert_eq!(
+      summary,
+      vec![
+        (NodeId::for_test(SourceId::new(0), 3), SourceId::new(0), 2),
+        (NodeId::for_test(SourceId::new(1), 5), SourceId::new(1), 1),
+      ]
+    );
   }
 }
