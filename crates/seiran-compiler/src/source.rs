@@ -10,7 +10,9 @@ use miette::{SourceOffset, SourceSpan};
 ///
 /// 名前・パスは持たない不透明な識別子。呼び出し元が渡した順序に対応するインデックスを
 /// そのまま運び、ID の発行とファイル名・内容への逆引きは `project::SourceSet` の責務とする。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// 順序（`Ord`）は `index()` の昇順 = `config.sources` の宣言順で、`HirDocument::assemble` の
+/// グループ正規化と `semantics` の文書順ソート鍵（`order_key`）が使う鍵と同じもの。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct SourceId(usize);
 
 impl SourceId {
