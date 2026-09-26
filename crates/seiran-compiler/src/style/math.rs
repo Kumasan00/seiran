@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// 数式設定全体（`[math]` テーブル）。
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathStyle {
@@ -19,15 +19,6 @@ pub(crate) struct MathStyle {
   /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）。全表示数式環境が共有する。
   #[garde(dive)]
   pub block: MathBlockStyle,
-}
-
-impl Default for MathStyle {
-  fn default() -> Self {
-    return Self {
-      script: MathScriptStyle::default(),
-      block: MathBlockStyle::default(),
-    };
-  }
 }
 
 /// スクリプト（上付き / 下付き）のスタイル設定（`[math.script]`）

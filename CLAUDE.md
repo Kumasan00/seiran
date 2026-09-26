@@ -193,7 +193,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### 値と型の書き方
 
-字面から意味が読めることを優先する（G1 のコードへの適用）。enum match・`clone` の要否・itertools と std の使い分け・derive_more / strum と手書き impl の使い分け以外は lint が機械化。
+字面から意味が読めることを優先する（G1 のコードへの適用）。enum match・`clone` の要否・itertools と std の使い分け・derive_more / strum / Default の derive と手書き impl の使い分け以外は lint が機械化。
 
 | 書き方 | lint |
 | --- | --- |
@@ -209,6 +209,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | イテレータ操作は std で足りるなら std。`itertools` は std だと操作の組み合わせになるものに使う（`Itertools::join` / `izip!`） | —（人が守る） |
 | 機械的な forwarding（newtype の演算・書式 1 本の `Display`）は `derive_more`、網羅性が意味を持つ対応表は手書き match（derive_more の `Display` は `#[display]` 無しの unit variant を variant 名で出すので書き忘れが通る） | —（人が守る） |
 | 全 variant の列挙は `strum` の `VariantArray`、case 変換だけで決まる綴りは `#[strum(serialize_all)]` 付きの `IntoStaticStr` / `Display`。variant ごとの `#[strum(serialize)]` と `EnumString` は使わない（前者は書き忘れが通り、後者は診断を失う） | —（人が守る） |
+| 全フィールドが `default()` / `None` だけの `Default` は `#[derive(Default)]`、手書き `impl Default` は非既定値を持つ型の印（`derivable_impls` は `return Self { .. };` 形で沈黙するので lint は再発を止めない）。型引数を持つ型は derive が `T: Default` 境界を足すので手書きのまま（`NodeMap<T>`） | —（人が守る） |
 | 数値リテラルの型サフィックスは `1u32` 形 | `separated_literal_suffix` |
 | エスケープの要らない文字列に `r"…"` を付けない | `needless_raw_strings` |
 | 識別子は ASCII（テスト名も）。日本語は doc・診断・assert 文言へ | `non_ascii_idents` |

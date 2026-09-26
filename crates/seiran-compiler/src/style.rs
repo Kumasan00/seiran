@@ -90,7 +90,7 @@ use crate::{
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct Style {
   /// 背景色。`None` は背景描画なし
@@ -156,34 +156,6 @@ pub(crate) struct Style {
   /// 巻末索引のスタイル
   #[garde(dive)]
   pub index: IndexStyle,
-}
-
-impl Default for Style {
-  fn default() -> Self {
-    return Self {
-      background_color: None,
-      heading: HeadingStyles::default(),
-      text: TextBlockStyle::default(),
-      columns: ColumnsStyle::default(),
-      page: PageStyle::default(),
-      list: ListStyle::default(),
-      quote: QuoteStyle::default(),
-      table: TableStyle::default(),
-      figure: FigureStyle::default(),
-      footnote: FootnoteStyle::default(),
-      math: MathStyle::default(),
-      counters: Counters::default(),
-      theorems: Theorems::default(),
-      page_numbering: PageNumbering::default(),
-      header: RunningContentStyle::default(),
-      footer: RunningContentStyle::default(),
-      reference: ReferenceStyle::default(),
-      hyperref: HyperrefStyle::default(),
-      title_page: TitlePageStyle::default(),
-      toc: TocStyle::default(),
-      index: IndexStyle::default(),
-    };
-  }
 }
 
 impl Style {

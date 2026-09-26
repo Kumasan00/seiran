@@ -15,7 +15,7 @@ use crate::color::Color;
   clippy::struct_field_names,
   reason = "3 フィールドとも `style.toml` の TOML キーに直接対応し、`_color` を外すのはスキーマの破壊的変更になる"
 )]
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct HyperrefStyle {
@@ -25,16 +25,6 @@ pub(crate) struct HyperrefStyle {
   pub url_color: Option<Color>,
   /// 文献引用（`\cite`）の文字色。`None` は本文色を継承
   pub cite_color: Option<Color>,
-}
-
-impl Default for HyperrefStyle {
-  fn default() -> Self {
-    return Self {
-      link_color: None,
-      url_color: None,
-      cite_color: None,
-    };
-  }
 }
 
 #[cfg(test)]

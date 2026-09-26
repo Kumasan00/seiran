@@ -185,7 +185,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
 ## 値と型の書き方
 
 字面から意味が読めることを優先する（G1 のコードへの適用）。末尾の enum match の項・`clone` の要否・`itertools` と std の
-使い分け・`derive_more` / `strum` と手書き impl の使い分けを除き lint が機械化している。
+使い分け・`derive_more` / `strum` / `Default` の derive と手書き impl の使い分けを除き lint が機械化している。
 
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。
   `x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、
@@ -240,6 +240,12 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   コンパイルが通り、`JapaneseMonospaceExtraBold` のような識別子がそのままユーザ向けの文言に出る。手書きの
   match なら網羅性検査が variant 追加を弾く（enum match の wildcard 判定で Yes になる「意味的な対応表」と
   同じ理由で、対応表は match に残す）。使う derive は Cargo.toml の features で必要なものだけに絞る。
+- `Default` も同じ線引き — **全フィールドがそのフィールド型の `default()` / `None` だけなら `#[derive(Default)]`**、
+  手書き `impl Default` は「非既定値のリテラルを持つ型」の印として残す（`MathScriptStyle` の `script_size_factor: 0.7`
+  等）。読む側は derive か手書きかで「非既定値があるか」を全行見ずに判別できる。例外は型引数を持つ型で、derive は
+  `T: Default` 境界を足してしまうので、フィールドが全部既定値でも手書きのまま（`NodeMap<T>`。`derivable_impls` も
+  同じ理由で型引数のある型を対象外にする）。この形を `derivable_impls` が検出できない理由は「Clippy」節の
+  「採用条件」（#767）。
 - 固定集合 enum の **全 variant の列挙と、case 変換だけで決まる文字列化は `strum`** に寄せる。全 variant を
   宣言順に並べた列挙は `VariantArray` の `VARIANTS` を直接使う（手書きの配列は variant を足しても追記漏れが
   コンパイルを通る）。別名の定数は挟まない。例外は crate 外から列挙される公開型で、利用側に `strum` の
@@ -365,6 +371,11 @@ arm は網羅性判定に参加しないので、同じ variant を wildcard 側
 - 発火 0 件で規約と整合する lint は無料の再発防止として採る。0 件は lint 単位で実測する（手順は「運用」節）
 - 2 通り書ける形は現行スタイル側（0 件の側）に固定する
 - nursery は Known problems を理解した lint だけを 1 件ずつ、根拠コメント付きで採る
+- **発火 0 件は「規約が lint の検出形を外している」場合もある** — `derivable_impls`（`clippy::all` で deny）は本体が
+  末尾式 `Self { .. }` のときだけ発火し、必須ルール 1 の `return Self { .. };` 形では沈黙する（`needless_return` を
+  allow にしている裏返し。#767 の変更前、まだ手書きだった `HyperrefStyle` の本体を末尾式に変えると 1 件発火し、
+  `return` 形へ戻すと 0 件になることを確認）。この盲点は lint で埋めず、全フィールドが `default()` / `None` だけの
+  `Default` は `#[derive(Default)]` にし、手書き `impl Default` に非既定値があることを人が確認する（「値と型の書き方」節）
 
 `clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は
 既定の 0）。
