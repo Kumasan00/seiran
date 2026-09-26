@@ -56,25 +56,21 @@ pub(super) fn build_shaper_instances(configs: &FontConfigs, font_refs: &FontRefs
 
 /// バリエーション軸設定があればシェイパーインスタンスを生成する。
 fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef<'_>) -> Option<ShaperInstance> {
-  config.variation_axes.as_ref()?;
+  let axes = config.variation_axes.as_ref()?;
 
-  let variations = config.variation_axes.as_ref().map(|axes| {
-    return axes
-      .iter()
-      .map(|axis| {
-        #[expect(
-          clippy::cast_possible_truncation,
-          reason = "harfrust の API が f32 の軸値を要求するため、境界で f32 へ落とす"
-        )]
-        let value = axis.value as f32;
-        return Variation::from((Tag::new(&axis.name), value));
-      })
-      .collect::<Vec<Variation>>();
-  });
+  let variations = axes
+    .iter()
+    .map(|axis| {
+      #[expect(
+        clippy::cast_possible_truncation,
+        reason = "harfrust の API が f32 の軸値を要求するため、境界で f32 へ落とす"
+      )]
+      let value = axis.value as f32;
+      return Variation::from((Tag::new(&axis.name), value));
+    })
+    .collect::<Vec<Variation>>();
 
-  let instance = variations.as_ref().map(|variations| return ShaperInstance::from_variations(font_ref, variations));
-
-  return instance;
+  return Some(ShaperInstance::from_variations(font_ref, &variations));
 }
 
 /// 全フォント種別の [`HarfRustShaper`]。
