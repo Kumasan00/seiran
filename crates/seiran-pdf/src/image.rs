@@ -69,9 +69,14 @@ pub(crate) fn load_image(
 
 /// krilla のラスタ画像コンストラクタの共通の形（`Image::from_png` / `Image::from_jpeg`）。
 ///
+/// 第 1 引数はエンコード済みのバイト列、第 2 引数は krilla の `interpolate`（[`INTERPOLATE`] で固定）。
 /// 形式ごとに違うのはこの関数値と再エンコード形式の 2 値だけで、縮小・デコード・エラー変換の本体は
 /// [`load_raster`] が 1 経路で持つ（#770）。
 type RasterDecoder = fn(Data, bool) -> Result<Image, String>;
+
+/// krilla のコンストラクタへ渡す `interpolate`。画像 `XObject` の `/Interpolate`（ビューアが拡大時に
+/// ピクセルを補間するかの指示）で、ラスタ画像には指示しない。
+const INTERPOLATE: bool = false;
 
 /// ラスタ画像を必要なら `resize_to` 以下に縮小してから、krilla の `decode` でデコードする。
 ///
@@ -90,7 +95,7 @@ fn load_raster(
   } else {
     bytes.to_vec()
   };
-  let image = decode(bytes.into(), false).map_err(|reason| {
+  let image = decode(bytes.into(), INTERPOLATE).map_err(|reason| {
     return PdfRenderError::DecodeImage {
       path: path.to_string(),
       reason,
@@ -201,7 +206,8 @@ mod tests {
       let bytes = raster_bytes(reencode_as, 4, 4);
 
       // Act
-      let loaded = load_image("big.img", format, &bytes, Some((2, 2))).expect("縮小して読めるはず");
+      let loaded = load_image("big.img", format, &bytes, Some((2, 2)))
+        .unwrap_or_else(|error| panic!("{format:?} は縮小して読めるはず: {error}"));
 
       // Assert
       let (width, height) = loaded.natural_size();
