@@ -121,7 +121,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::lowering::{
       lower_sources_with_headings,
-      test_support::{analyzed, lower},
+      test_support::{analyzed, context, lower},
     },
   };
 
@@ -144,7 +144,7 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{本文}\n");
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act
     let document = analyzed.with_citations_for_test(Vec::new(), Some(bibliography()));
@@ -171,7 +171,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let (layout, _headings) = lower_bibliography(&LoweringContext::new(&style), Some(&bibliography()), 0);
+    let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
     // Assert
     assert!(
@@ -188,7 +188,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let (layout, _headings) = lower_bibliography(&LoweringContext::new(&style), Some(&bibliography()), 0);
+    let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
     // Assert
     let italic = layout.iter().find_map(|n| match n {
@@ -232,7 +232,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let (layout, headings) = lower_bibliography(&LoweringContext::new(&style), Some(&[]), 0);
+    let (layout, headings) = lower_bibliography(&context(&style), Some(&[]), 0);
 
     // Assert — 見出しは 1 件出るが、エントリ由来のアンカーは無い
     assert_eq!(headings.len(), 1, "エントリ 0 件でも書誌見出しは出るはず: {headings:?}");
@@ -249,7 +249,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let (layout, headings) = lower_bibliography(&LoweringContext::new(&style), None, 0);
+    let (layout, headings) = lower_bibliography(&context(&style), None, 0);
 
     // Assert
     assert!(layout.is_empty(), "書誌が無ければレイアウトノードは出ないはず: {layout:?}");
@@ -263,7 +263,7 @@ mod tests {
     style.reference.title = "参考文献".to_string();
 
     // Act
-    let (_layout, headings) = lower_bibliography(&LoweringContext::new(&style), Some(&bibliography()), 0);
+    let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
     // Assert
     assert_eq!(headings[0].title_plain, "参考文献", "style.reference.title が見出しになるはず");

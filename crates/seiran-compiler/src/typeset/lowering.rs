@@ -13,6 +13,7 @@ use tracing::debug;
 use crate::{
   document::{HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
+  project::config::ImageConfig,
   semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
   style::Style as ReadStyle,
   typeset::boxes::AnchorId,
@@ -42,6 +43,11 @@ pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 use crate::document::{FontKind, HeadingLevel};
 
 /// Lowering のコンテキスト
+///
+/// 全フィールドが `Copy` で、派生文脈（`with_*`）は「差し替えるフィールド + `..self`」の構造体更新記法
+/// 1 形で作る。非 `Copy` のフィールドを足すと `derive(Copy)` がコンパイルエラーになる — そのときは
+/// 写しを増やさず、この型の設計（何を文脈として運ぶか）を見直す（#766）。
+#[derive(Debug, Clone, Copy)]
 pub(super) struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来。未指定キーは `serde(default)` の既定値）
   pub style: &'a ReadStyle,
@@ -60,76 +66,53 @@ pub(super) struct LoweringContext<'a> {
 }
 
 impl<'a> LoweringContext<'a> {
-  /// 新しい `LoweringContext` を生成する
+  /// スタイルと検証済みの画像設定（config `[image]`）から文脈を生成する
+  ///
+  /// 画像の既定値に固定値を焼き込まない — 本番は `pagination/body.rs` が config の値を渡し、テストの
+  /// 既定は `test_support::context` が持つ（本番で必ず上書きされる値を `new` に置かない、#766）。
   #[must_use]
-  pub(super) fn new(style: &'a ReadStyle) -> Self {
+  pub(super) fn new(style: &'a ReadStyle, image: ImageConfig) -> Self {
     return LoweringContext {
       style,
       body_font_kind: style.text.font_kind,
       first_line_indent: style.text.first_line_indent,
-      image_max_dpi: 300,
-      image_downsample: true,
+      image_max_dpi: image.max_dpi,
+      image_downsample: image.downsample,
       list_depth: 0,
       footnote_numbers: None,
     };
   }
 
-  /// 画像出力の既定値（config `[image]` 由来）を差し替えた文脈を返す
-  #[must_use]
-  pub(super) fn with_image_defaults(mut self, image_max_dpi: u32, image_downsample: bool) -> Self {
-    self.image_max_dpi = image_max_dpi;
-    self.image_downsample = image_downsample;
-    return self;
-  }
-
   /// 脚注の表示番号の上書きマップを与えた文脈を返す
   #[must_use]
-  pub(super) fn with_footnote_numbers(mut self, numbers: &'a [u32]) -> Self {
-    self.footnote_numbers = Some(numbers);
-    return self;
+  pub(super) fn with_footnote_numbers(self, numbers: &'a [u32]) -> Self {
+    return LoweringContext {
+      footnote_numbers: Some(numbers),
+      ..self
+    };
   }
 
   /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_body_font_kind(&self, body_font_kind: FontKind) -> LoweringContext<'a> {
+  pub(super) fn with_body_font_kind(self, body_font_kind: FontKind) -> Self {
     return LoweringContext {
-      style: self.style,
       body_font_kind,
-      first_line_indent: self.first_line_indent,
-      image_max_dpi: self.image_max_dpi,
-      image_downsample: self.image_downsample,
-      list_depth: self.list_depth,
-      footnote_numbers: self.footnote_numbers,
+      ..self
     };
   }
 
   /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_first_line_indent(&self, first_line_indent: Length) -> LoweringContext<'a> {
+  pub(super) fn with_first_line_indent(self, first_line_indent: Length) -> Self {
     return LoweringContext {
-      style: self.style,
-      body_font_kind: self.body_font_kind,
       first_line_indent,
-      image_max_dpi: self.image_max_dpi,
-      image_downsample: self.image_downsample,
-      list_depth: self.list_depth,
-      footnote_numbers: self.footnote_numbers,
+      ..self
     };
   }
 
   /// 箇条書きのネスト深さだけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_list_depth(&self, list_depth: usize) -> LoweringContext<'a> {
-    return LoweringContext {
-      style: self.style,
-      body_font_kind: self.body_font_kind,
-      first_line_indent: self.first_line_indent,
-      image_max_dpi: self.image_max_dpi,
-      image_downsample: self.image_downsample,
-      list_depth,
-      footnote_numbers: self.footnote_numbers,
-    };
-  }
+  pub(super) fn with_list_depth(self, list_depth: usize) -> Self { return LoweringContext { list_depth, ..self }; }
 
   /// 既定フォントサイズ（段落本文用、`style.text.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
@@ -173,6 +156,7 @@ pub(super) mod test_support {
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_source_for_test,
+    project::config::ImageConfig,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
     style::Style,
@@ -191,10 +175,25 @@ pub(super) mod test_support {
       .expect("解析できる入力のはず");
   }
 
+  /// テスト既定の画像設定で lowering の文脈を作る
+  ///
+  /// 値は config.toml の `[image]` 未指定時と同じ `max_dpi = 300` / `downsample = true`（正典は
+  /// `project::config` の raw 側 `RawImageConfig::default()`。`pub(super)` でここから届かないので値を置く）。
+  /// 本番の `LoweringContext::new` は既定値を持たず検証済み config の `ImageConfig` を受けるので、
+  /// テストだけが観測する既定はここに閉じる。`figure.rs` の `target_dpi == Some(300)` はこの値を見ている。
+  pub(super) fn context(style: &Style) -> LoweringContext<'_> {
+    return LoweringContext::new(
+      style,
+      ImageConfig {
+        max_dpi: 300,
+        downsample: true,
+      },
+    );
+  }
+
   /// 意味解析済みドキュメントを lower してレイアウトノード列を返す
   pub(crate) fn lower(style: &Style, document: &SemanticDocument) -> Vec<LayoutNode> {
-    let ctx = LoweringContext::new(style);
-    let (layout, _headings) = lower_sources_with_headings(&ctx, document);
+    let (layout, _headings) = lower_sources_with_headings(&context(style), document);
     return layout;
   }
 
@@ -422,7 +421,10 @@ fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: 
 mod tests {
   use std::slice;
 
-  use super::{test_support::analyzed, *};
+  use super::{
+    test_support::{analyzed, context},
+    *,
+  };
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_source_for_test,
@@ -451,7 +453,7 @@ mod tests {
 
   /// 入力を lower して、レイアウトノード列と見出し記録の両方を返すテストヘルパ
   fn lower_body(style: &ReadStyle, document: &SemanticDocument) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
-    let ctx = LoweringContext::new(style);
+    let ctx = context(style);
     return lower_sources_with_headings(&ctx, document);
   }
 
@@ -830,7 +832,7 @@ mod tests {
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
     let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
     let document = analyzed.with_citations_for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], None);
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act
     let (_layout, headings) = lower_sources_with_headings(&ctx, &document);

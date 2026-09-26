@@ -154,7 +154,7 @@ mod tests {
     style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
-      lowering::test_support::{analyzed, lower},
+      lowering::test_support::{analyzed, context, lower},
     },
   };
 
@@ -179,7 +179,7 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.heading.section.format = NumberTitleTemplate::parse("[{number}] {title}");
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
     // Act
@@ -220,7 +220,7 @@ mod tests {
   fn lower_heading_emits_anchor_with_label() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     // Act
@@ -258,7 +258,7 @@ mod tests {
   fn lower_heading_emits_keep_with_next_after_vbox() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     // Act
@@ -276,7 +276,7 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.heading.section.page_break_after = true;
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     // Act
