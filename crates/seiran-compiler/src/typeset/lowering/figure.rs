@@ -53,13 +53,18 @@ mod tests {
   use super::*;
   use crate::{
     length::Length,
+    project::config::ImageConfig,
     style::Style as ReadStyle,
-    typeset::lowering::{layout_node::InlineNode, lower_sources_with_headings, test_support::analyzed},
+    typeset::lowering::{
+      layout_node::InlineNode,
+      lower_sources_with_headings,
+      test_support::{analyzed, context},
+    },
   };
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///
-  /// 画像の既定値（`with_image_defaults`）を差し替えるテストがあるため、`LoweringContext` を
+  /// 画像の既定値（`new` に渡す `ImageConfig`）を差し替えるテストがあるため、`LoweringContext` を
   /// 呼び出し側から渡せる形にしてある。
   fn lower_source(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
     let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
@@ -83,7 +88,7 @@ mod tests {
   fn lower_figure_emits_image_and_caption_in_bottom_order() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act
     let nodes = lower_source(
@@ -123,7 +128,7 @@ mod tests {
   fn lower_figure_caption_position_top_swaps_order() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act — `\caption` を `\image` より前に置くとキャプションは図の上になる
     let nodes = lower_source(
@@ -145,7 +150,7 @@ mod tests {
   fn lower_figure_without_caption_omits_caption_node() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n");
@@ -162,7 +167,7 @@ mod tests {
   fn lower_figure_per_image_downsample_false_yields_no_target_dpi() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[downsample=false]{a.png}\n\\end{figure}\n");
@@ -178,7 +183,7 @@ mod tests {
   fn lower_figure_per_image_dpi_overrides_style() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
+    let ctx = context(&style);
 
     // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[dpi=600]{a.png}\n\\end{figure}\n");
@@ -194,7 +199,13 @@ mod tests {
   fn lower_figure_style_downsample_false_yields_no_target_dpi() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_image_defaults(300, false);
+    let ctx = LoweringContext::new(
+      &style,
+      ImageConfig {
+        max_dpi: 300,
+        downsample: false,
+      },
+    );
 
     // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.png}\n\\end{figure}\n");

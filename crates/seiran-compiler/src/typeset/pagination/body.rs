@@ -59,8 +59,7 @@ fn run_body_pass(
   images: &ImageResources,
   footnote_numbers: Option<&[u32]>,
 ) -> BodyLayout {
-  let mut lowering_ctx =
-    LoweringContext::new(ctx.style).with_image_defaults(ctx.config.image.max_dpi, ctx.config.image.downsample);
+  let mut lowering_ctx = LoweringContext::new(ctx.style, ctx.config.image);
   if let Some(numbers) = footnote_numbers {
     lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
   }

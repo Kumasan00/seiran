@@ -190,7 +190,7 @@ mod tests {
     typeset::lowering::{
       layout_node::LayoutNode,
       lower_sources_with_headings,
-      test_support::{analyzed, as_inline, lower},
+      test_support::{analyzed, as_inline, context, lower},
     },
   };
 
@@ -457,7 +457,7 @@ mod tests {
     // Arrange — ページ単位採番で 2 個目の脚注も 1 番になる場合を模す
     let style = ReadStyle::default();
     let numbers = [1, 1];
-    let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
+    let ctx = context(&style).with_footnote_numbers(&numbers);
 
     // Act
     let nodes = lower_source_with(&ctx, "a\\footnote{first}\n\nb\\footnote{note}\n");
@@ -487,7 +487,7 @@ mod tests {
     // Arrange — 上書きマップは index 0 しか持たない
     let style = ReadStyle::default();
     let numbers = [1];
-    let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
+    let ctx = context(&style).with_footnote_numbers(&numbers);
 
     // Act
     let nodes = lower_source_with(&ctx, "a\\footnote{first}\n\nb\\footnote{note}\n");
