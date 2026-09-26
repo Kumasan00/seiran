@@ -41,16 +41,6 @@ pub(crate) enum AnalyzeError {
 /// **semantics 自身**で、診断文・`code`・help を `compiler` 側へ複製しない。
 pub(crate) type SemanticFailures = Failures<SemanticError>;
 
-/// 1 ソース分の未定義引用箇所の集約（1 診断になる）
-struct UnknownCitationGroup {
-  /// そのソースの最初の引用箇所（他の種別の診断と文書順にマージするための位置）
-  first_site: NodeId,
-  /// `\cite{...}` ごとのラベル（文書順）
-  labels: Vec<LabeledSpan>,
-  /// 未定義キーに `,` を含むものがあったか（help に `\,` の案内を足す。#751）
-  has_comma_key: bool,
-}
-
 /// 文書順の未定義引用箇所を、ソース順（`SourceId` 昇順 = 宣言順）にソースごとの診断へまとめる。
 ///
 /// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
@@ -61,32 +51,28 @@ struct UnknownCitationGroup {
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
 /// 添えて返す。1 箇所も無ければ空を返す。
 pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
+  // ソースごとの（最初の引用箇所, ラベル列, 未定義キーに `,` を含むものがあったか）。
   // `BTreeMap` の反復順が `SourceId` の順序（宣言順）そのものなので、初出順を別の入れ物で持たない。
-  let mut per_source: BTreeMap<SourceId, UnknownCitationGroup> = BTreeMap::new();
+  let mut per_source: BTreeMap<SourceId, (NodeId, Vec<LabeledSpan>, bool)> = BTreeMap::new();
   for site in sites {
-    let group = per_source.entry(site.source_id).or_insert_with(|| {
-      return UnknownCitationGroup {
-        first_site: site.site,
-        labels: Vec::new(),
-        has_comma_key: false,
-      };
-    });
-    group.labels.push(LabeledSpan::new_with_span(Some(unknown_keys_label(&site.keys)), site.span));
-    group.has_comma_key |= site.keys.iter().any(|key| return key.contains(','));
+    let (_, labels, has_comma_key) =
+      per_source.entry(site.source_id).or_insert_with(|| return (site.site, Vec::new(), false));
+    labels.push(LabeledSpan::new_with_span(Some(unknown_keys_label(&site.keys)), site.span));
+    *has_comma_key |= site.keys.iter().any(|key| return key.contains(','));
   }
   return per_source
     .into_iter()
-    .map(|(source_id, group)| {
-      let comma_hint = if group.has_comma_key {
+    .map(|(source_id, (first_site, labels, has_comma_key))| {
+      let comma_hint = if has_comma_key {
         ESCAPED_COMMA_HINT
       } else {
         ""
       };
       return (
-        group.first_site,
+        first_site,
         SemanticError::UnknownCitationKeys {
           source_id,
-          labels: group.labels,
+          labels,
           comma_hint,
         },
       );
