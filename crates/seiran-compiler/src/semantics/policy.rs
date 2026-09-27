@@ -15,14 +15,14 @@ use crate::{
 };
 
 /// 1 カウンタぶんの値側設定
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) struct CounterPolicy {
   /// このカウンタが増えたときに 0 へ戻す下位カウンタ
   pub resets: Vec<CounterName>,
 }
 
 /// 1 定理クラスぶんの値側設定
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) struct TheoremPolicy {
   /// 共有カウンタ名（複数クラスが 1 つのカウンタを共有しうる）
   pub counter: String,
@@ -33,7 +33,7 @@ pub(super) struct TheoremPolicy {
 }
 
 /// 意味解析が読む設定だけを持つ投影
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SemanticPolicy {
   /// カウンタ名 → 値側設定（固定 9 種すべてを `from_style` が埋める）
   counters: HashMap<CounterName, CounterPolicy>,
