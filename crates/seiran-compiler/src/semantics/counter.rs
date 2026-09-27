@@ -346,6 +346,28 @@ mod tests {
   }
 
   #[test]
+  fn shared_theorem_counter_resets_for_every_sharing_class() {
+    // Arrange
+    let mut style = Style::default();
+    style.theorems.theorem.reset_by = TheoremReset::Section;
+    let policy = SemanticPolicy::from_style(&style);
+    let mut r = CounterRegistry::from_policy(&policy);
+    r.increment(CounterName::Chapter);
+    r.increment(CounterName::Section); // section = 1
+    r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず"); // 共有カウンタ theorem = 1
+    let before = r.increment_theorem(TheoremClass::Lemma).expect("採番されるはず"); // theorem = 2
+
+    // Act
+    r.increment(CounterName::Section); // theorem クラスの reset_by で共有カウンタ theorem が 0 に戻る
+    let after = r.increment_theorem(TheoremClass::Lemma).expect("採番されるはず");
+
+    // Assert
+    assert_eq!(before.own, 2, "lemma は既定で theorem とカウンタを共有する");
+    assert_eq!(after.own, 1, "theorem クラスの reset_by が共有カウンタを戻し、lemma の番号にも効く");
+    assert!(after.ancestors.is_empty(), "lemma 自身は reset_by = none なので祖先なし");
+  }
+
+  #[test]
   fn counter_value_of_part_has_no_ancestor() {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
