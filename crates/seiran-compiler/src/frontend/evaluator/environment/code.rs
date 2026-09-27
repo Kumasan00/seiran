@@ -62,61 +62,38 @@ mod tests {
 
   #[test]
   fn code_block_keeps_indentation_and_blank_lines() {
-    // Arrange
     let source = "\\begin{code}\nfn main() {\n\n    let x = 1;\n}\n\\end{code}";
-
-    // Act
     let text = code_text(source);
-
-    // Assert
     assert_eq!(text, "fn main() {\n\n    let x = 1;\n}");
   }
 
   #[test]
   fn code_block_trims_only_one_newline_at_each_edge() {
-    // Arrange — 前後に空行を 1 つずつ足した形
+    // 前後に空行を 1 つずつ足した形
     let source = "\\begin{code}\n\nbody\n\n\\end{code}";
-
-    // Act
     let text = code_text(source);
-
-    // Assert
     assert_eq!(text, "\nbody\n");
   }
 
   #[test]
   fn code_block_keeps_special_characters_inert() {
-    // Arrange
     let source = "\\begin{code}\n// $x$ \\alpha {a} _ ^ &\n\\end{code}";
-
-    // Act
     let text = code_text(source);
-
-    // Assert
     assert_eq!(text, "// $x$ \\alpha {a} _ ^ &");
   }
 
   #[test]
   fn code_block_can_be_empty() {
-    // Arrange
     let source = r"\begin{code}\end{code}";
-
-    // Act
     let text = code_text(source);
-
-    // Assert
     assert_eq!(text, "");
   }
 
   #[test]
   fn code_block_keeps_indentation_of_the_end_marker_as_a_trailing_line() {
-    // Arrange — `\end{code}` の直前は改行ではなく空白なので、何も落ちない
+    // `\end{code}` の直前は改行ではなく空白なので、何も落ちない
     let source = "\\begin{code}\nbody\n  \\end{code}";
-
-    // Act
     let text = code_text(source);
-
-    // Assert
     assert_eq!(text, "body\n  ");
   }
 

@@ -185,7 +185,6 @@ fn visit_source(hir: &HirSource) -> Vec<Visited> {
 #[test]
 fn same_source_parsed_twice_yields_identical_hir() {
   for (name, content) in fixture_sources() {
-    // 同じソースを 2 回パースする
     let first = parse_fixture(&name, &content, SourceId::new(0));
     let second = parse_fixture(&name, &content, SourceId::new(0));
 
@@ -225,7 +224,6 @@ fn source_order_does_not_affect_ids_or_spans() {
       );
     }
   }
-  // 組み立て順が違っても groups は SourceId 昇順に正規化される
   assert_eq!(
     a_then_b.groups().iter().map(|g| return g.source_id).collect::<Vec<_>>(),
     b_then_a.groups().iter().map(|g| return g.source_id).collect::<Vec<_>>(),
@@ -243,7 +241,6 @@ fn every_hir_node_has_location_inside_source() {
     let mut visited = Vec::new();
     walk_nodes(&group.nodes, None, &mut visited);
 
-    // 全ノードがソース範囲内の位置を持つ
     for entry in &visited {
       let location = document.locations().get(entry.id).unwrap_or_else(|| {
         panic!("{name}: すべての HIR ノードは SourceMap から位置を引けるはず");
@@ -268,13 +265,11 @@ fn every_hir_node_has_location_inside_source() {
 #[test]
 fn child_node_ids_come_after_their_parent() {
   for (name, content) in fixture_sources() {
-    // Arrange
     let hir = parse_fixture(&name, &content, SourceId::new(0));
 
-    // Act
     let visited = visit_source(&hir);
 
-    // Assert — 親は子より先に ID を確保する（preorder）。ID は一意
+    // 親は子より先に ID を確保する（preorder）。ID は一意
     let mut seen = HashSet::new();
     for entry in &visited {
       assert!(seen.insert(entry.id), "{name}: NodeId はソース内で一意のはず");
@@ -293,7 +288,7 @@ fn child_node_ids_come_after_their_parent() {
 
 #[test]
 fn paragraph_boundaries_are_unchanged_by_id_reservation() {
-  // Arrange — 段落 ID は「インラインを返すか、ブロックを返すか」が確定する前に予約する。
+  // 段落 ID は「インラインを返すか、ブロックを返すか」が確定する前に予約する。
   // 予約が段落の切れ目を動かしていないことを、ブロック / インラインが混ざるソースで固定する。
   let cases: [(&str, &[&str]); 5] = [
     ("本文です。", &["Paragraph"]),
@@ -304,10 +299,8 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
   ];
 
   for (source, expected) in cases {
-    // Act
     let hir = parse_source_for_test(source, SourceId::new(0)).unwrap();
 
-    // Assert
     let kinds: Vec<&str> = hir
       .group
       .nodes

@@ -20,7 +20,8 @@ const COLOR: OptKey<Color> = opt_args::color("color");
 ///
 /// # Errors
 ///
-/// 引数の不足・過剰の場合にエラーを返します
+/// 任意引数があれば [`EvalError::UnknownOptArgKey`]、必須引数の不足で [`EvalError::MissingCommandArgument`]、
+/// 過剰で [`EvalError::ExtraCommandArgument`] を返します。引数内の評価エラーはそのまま伝播します。
 pub(super) fn styled_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
@@ -41,7 +42,8 @@ pub(super) fn styled_text(
 ///
 /// 色の欠落・必須引数の不足で [`EvalError::MissingCommandArgument`]、引数過剰で
 /// [`EvalError::ExtraCommandArgument`]、色の 16 進表記が不正な場合に
-/// [`EvalError::InvalidOptArgValue`] を返します。
+/// [`EvalError::InvalidOptArgValue`]、`color` 以外のキーで [`EvalError::UnknownOptArgKey`]、キーの重複で
+/// [`EvalError::DuplicateOptArgKey`] を返します。引数内の評価エラーはそのまま伝播します。
 pub(super) fn colored_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,

@@ -123,7 +123,6 @@ mod tests {
 
   #[test]
   fn table_extracts_head_rows_and_caption() {
-    // Arrange
     let source = r"\begin{table}[columns=left center right, widths=auto auto 5cm]
 \head{
   \row{Name & Score & Rank}
@@ -132,11 +131,7 @@ mod tests {
 \row{Bob & 88 & 2}
 \caption{得点表}
 \end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます: {:?}", result[0]);
@@ -157,13 +152,8 @@ mod tests {
 
   #[test]
   fn table_caption_before_rows_yields_top_position() {
-    // Arrange
     let source = r"\begin{table}\caption{c}\row{A & B}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -172,13 +162,8 @@ mod tests {
 
   #[test]
   fn table_infers_column_count_from_rows() {
-    // Arrange
     let source = r"\begin{table}\row{A & B & C}\row{D & E & F}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -188,13 +173,8 @@ mod tests {
 
   #[test]
   fn table_cell_span_counts_toward_column_count() {
-    // Arrange
     let source = r"\begin{table}\row{A & B & C}\row[rule_above]{\cell[span=2]{合計} & 180}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -236,13 +216,8 @@ mod tests {
 
   #[test]
   fn table_rejects_columns_widths_length_mismatch() {
-    // Arrange
     let source = r"\begin{table}[columns=left right, widths=auto]\row{A & B}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(
       result,
       Err(EvalError::TableColumnsWidthsMismatch {
@@ -255,25 +230,15 @@ mod tests {
 
   #[test]
   fn table_rejects_unknown_align_keyword() {
-    // Arrange
     let source = r"\begin{table}[columns=l r]\row{A & B}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "columns"));
   }
 
   #[test]
   fn table_parses_width_ratio_and_flex() {
-    // Arrange
     let source = r"\begin{table}[widths=0.3 * auto]\row{A & B & C}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -284,25 +249,16 @@ mod tests {
 
   #[test]
   fn table_rejects_invalid_width_token() {
-    // Arrange
     let source = r"\begin{table}[widths=1.5 auto]\row{A & B}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "widths"));
   }
 
   #[test]
   fn table_parses_fixed_width_in_pt() {
-    // Arrange — 固定幅の書式は config / style と同じ（`pt` も受理。#690）
+    // 固定幅の書式は config / style と同じ（`pt` も受理。#690）
     let source = r"\begin{table}[widths=12pt auto]\row{A & B}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -326,73 +282,43 @@ mod tests {
 
   #[test]
   fn table_rejects_missing_rows() {
-    // Arrange
     let source = r"\begin{table}\caption{c}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::MissingEnvironmentArgument { ref name, .. }) if name == "table"));
   }
 
   #[test]
   fn table_rejects_mixed_cell_and_text_in_segment() {
-    // Arrange
     let source = r"\begin{table}\row{\cell[span=2]{合計} extra & 180}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::TableCellMixedContent { .. })));
   }
 
   #[test]
   fn table_rejects_rowspan_key() {
-    // Arrange
     let source = r"\begin{table}\row{\cell[rowspan=2]{X} & Y}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "rowspan"));
   }
 
   #[test]
   fn table_rejects_line_break_in_cell() {
-    // Arrange
     let source = r"\begin{table}\row{A \\ B & C}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::LineBreakInTableCell { .. })));
   }
 
   #[test]
   fn table_rejects_duplicate_head() {
-    // Arrange
     let source = r"\begin{table}\head{\row{A}}\head{\row{B}}\row{C}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::DuplicateCommandInEnvironment { ref name, .. }) if name == "head"));
   }
 
   #[test]
   fn table_rejects_stray_text_in_head() {
-    // Arrange
     let source = r"\begin{table}\head{stray \row{A}}\row{B}\end{table}";
-
-    // Act
     let result = eval_table(source);
-
-    // Assert
     assert!(matches!(result, Err(EvalError::UnexpectedContentInEnvironment { ref env, .. }) if env == "table"));
   }
 
@@ -414,13 +340,8 @@ mod tests {
 
   #[test]
   fn table_captures_label() {
-    // Arrange
     let source = r"\begin{table}[label=tab:a]\row{A}\end{table}\begin{table}\row{B}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     assert_eq!(result.len(), 2);
     let HirNodeKind::Table(first) = &result[0].kind else {
       panic!("Table が期待されます");
@@ -434,13 +355,8 @@ mod tests {
 
   #[test]
   fn table_breakable_false_is_captured() {
-    // Arrange
     let source = r"\begin{table}[breakable=false]\row{A & B}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -449,13 +365,8 @@ mod tests {
 
   #[test]
   fn table_cell_content_is_trimmed() {
-    // Arrange
     let source = r"\begin{table}\row{  Alice   &   92  }\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -464,13 +375,8 @@ mod tests {
 
   #[test]
   fn table_cell_preserves_inline_styles() {
-    // Arrange
     let source = r"\begin{table}\row{\bold{強調} & $x^{2}$}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
@@ -486,13 +392,8 @@ mod tests {
 
   #[test]
   fn table_empty_cell_is_allowed() {
-    // Arrange
     let source = r"\begin{table}\row{A & & C}\end{table}";
-
-    // Act
     let result = eval_table(source).unwrap();
-
-    // Assert
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };

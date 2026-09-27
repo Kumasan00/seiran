@@ -34,8 +34,6 @@ pub(super) struct TableOpts {
 }
 
 /// `table` の任意引数（`columns` / `widths` / `label` / `breakable`）を収集してスカラー化する
-///
-/// 既定では `breakable` は `true`（改ページによる分割を許可）。
 pub(super) fn collect_table_opts(view: &EnvironmentView<'_>) -> Result<TableOpts, EvalError> {
   let opts = collect_environment_opt_args(
     view,

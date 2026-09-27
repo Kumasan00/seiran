@@ -95,8 +95,6 @@ impl<T> OptKey<T> {
   /// スキーマへ載せる、型消去した宣言を返す
   ///
   /// `const fn` なので `const SCHEMA: &[OptDecl] = &[KEY.decl()];` の形に書ける。
-  // 想定外に「destructor of `OptKey<T>` cannot be evaluated at compile-time」で落ちたら
-  // `decl(&self)` に変える（`PhantomData<fn() -> T>` は drop glue を持たないので通るはず）。
   pub(super) const fn decl(self) -> OptDecl {
     return OptDecl {
       name: self.name,
@@ -282,9 +280,6 @@ pub(super) fn collect_environment_opt_args(
 
 /// 任意引数 `[...]` を受け付けないコマンドであることを検査する
 ///
-/// 空のスキーマを渡す形（`collect_command_opt_args(view, &[])`）に名前を与えたもので、
-/// 書かれたキーはすべて [`EvalError::UnknownOptArgKey`] になる。
-///
 /// # Errors
 ///
 /// 任意引数にキーが 1 つでも書かれている場合に [`EvalError::UnknownOptArgKey`] を返します。
@@ -397,7 +392,6 @@ fn parse_value(
 
 /// 「1 以上の整数」の検査と `u32` への変換（値域の検査はここ 1 箇所）
 ///
-/// `f64` として読めること・有限・`u32::MAX` 以下・小数部が 0・1 以上であることを確認する。
 /// 小数を丸めて受理しないのは、書かれた値と別の値を使うことになるため（P6）。
 fn parse_positive_int(raw: &str) -> Option<u32> {
   let parsed: f64 = raw.trim().parse().ok()?;
@@ -425,8 +419,6 @@ fn invalid(name: &str, key: &str, expected: OptType, span: miette::SourceSpan) -
 }
 
 /// 許可キー一覧の表示用文字列を生成する
-///
-/// 空リスト時は「任意引数を受け付けない」旨の日本語を返す。
 fn format_expected(schema: &[OptDecl]) -> String {
   if schema.is_empty() {
     return "（このコマンド/環境は任意引数を受け付けません）".to_string();
@@ -765,11 +757,9 @@ mod tests {
 
   #[test]
   fn format_expected_lists_keys_with_types_when_non_empty() {
-    // Arrange
     const LABEL: OptKey<String> = string("label");
     const WIDTH: OptKey<Length> = length("width");
 
-    // Act / Assert
     assert_eq!(format_expected(&[LABEL.decl(), WIDTH.decl()]), "label: string, width: length (pt/mm/cm)");
   }
 
@@ -877,7 +867,7 @@ mod tests {
 
   #[test]
   fn opt_type_display_lists_expected_format() {
-    // Arrange — 診断の `expected` 文字列
+    // 診断の `expected` 文字列
     let cases = [
       (OptType::Bool, "boolean (true/false)"),
       (OptType::String, "string"),
@@ -887,7 +877,6 @@ mod tests {
       (OptType::Color, "color (#rrggbb)"),
     ];
 
-    // Act / Assert
     for (ty, expected) in cases {
       assert_eq!(ty.to_string(), expected);
     }
@@ -945,7 +934,7 @@ mod tests {
 
   #[test]
   fn parse_value_produces_the_variant_declared_by_the_type_tag() {
-    // Arrange — `OptType` と `OptValue` の対応（`OptArgs::get` の `unreachable!` の根拠）。
+    // `OptType` と `OptValue` の対応（`OptArgs::get` の `unreachable!` の根拠）。
     // `sample_for` を全 variant 明示にしてあるので、`OptType` へ variant を足すとテストが
     // コンパイルエラーで気付く。
     let cases = [
@@ -957,7 +946,6 @@ mod tests {
       OptType::Color,
     ];
 
-    // Act / Assert
     for ty in cases {
       let (raw, expected) = sample_for(ty);
       let value = parse_value("k", raw, ty, "cmd", miette::SourceSpan::from((0usize, 1usize))).unwrap();

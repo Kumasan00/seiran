@@ -34,8 +34,6 @@ pub(in crate::frontend::evaluator::environment) enum NumberingMode {
 
 /// 数式環境の任意引数 `[numbered]` / `[label=...]` を解析・検証する
 ///
-/// 環境ラベルは [`NumberingMode::SingleEnv`] の場合だけ受理する。
-///
 /// # Errors
 ///
 /// 未知の任意引数キー・不正な値、無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）で

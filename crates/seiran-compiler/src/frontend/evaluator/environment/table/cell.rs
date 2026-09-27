@@ -90,8 +90,6 @@ fn extract_cell_command(
 }
 
 /// セル内容の前後の空白由来 `Text` ノードをトリムする
-///
-/// 境界にある空白だけのノードと、境界のテキスト端を削る。
 fn trim_cell_content(mut content: Vec<HirInline>) -> Vec<HirInline> {
   while matches!(content.first().map(|inline| return &inline.kind), Some(HirInlineKind::Text(t)) if t.trim().is_empty())
   {

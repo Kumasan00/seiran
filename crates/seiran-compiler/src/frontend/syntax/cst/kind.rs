@@ -1,8 +1,6 @@
 //! CST（具象構文木）の種別定義
 
 /// CST ノードの種別
-///
-/// トークンレベル（リーフ）と合成ノード（内部ノード）の両方を表現します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::frontend) enum SyntaxKind {
   /// ドキュメント全体のルートノード

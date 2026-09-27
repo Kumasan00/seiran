@@ -36,8 +36,6 @@ pub(crate) use test_support::{evaluate_children_to_hir, extract_inline_nodes_to_
 use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
 
 /// `crate::frontend::syntax::parse` へ渡すレジストリ解決器を組む
-///
-/// 環境本体・コマンド必須引数の読み取り方と、数式内のコマンドの必須引数の個数を、それぞれのレジストリから引く。
 pub(crate) fn mode_resolver() -> ModeResolver {
   return ModeResolver {
     env_body: environment::lookup_body_mode,
@@ -113,7 +111,6 @@ pub(crate) fn evaluate_children(
           let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
           paragraph.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
-        // これらはルート直下に現れない内部ノードである。
         SyntaxKind::Root
         | SyntaxKind::EnvironmentBegin
         | SyntaxKind::EnvironmentEnd
@@ -249,7 +246,7 @@ mod test_support {
 
   /// CST ノードの子要素を評価して `Vec<HirNode>` をそのまま返す
   ///
-  /// 評価器が既に組み立てている HIR を変換なしで返す。テストは `&node.kind` を match して検証する
+  /// テストは `&node.kind` を match して検証する
   /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
   pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
     let ctx = eval_context_for_test();

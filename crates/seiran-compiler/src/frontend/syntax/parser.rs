@@ -231,7 +231,6 @@ impl<'a> Parser<'a> {
         let first_dollar = self.take_peeked();
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
-          // 最初の 2 つの `$` をまとめてエラー範囲にする。
           let second_dollar = self.take_peeked();
           return Err(ParserError::DollarDollarNotSupported {
             span: first_dollar.span.merge(second_dollar.span).into(),
@@ -1872,13 +1871,11 @@ mod tests {
 
   #[test]
   fn verbatim_body_can_be_empty() {
-    // Arrange
     let arena = Bump::new();
 
-    // Act
     let body = verbatim_body("\\begin{code}\\end{code}", &arena);
 
-    // Assert — 空でも VerbatimText トークンを 1 個持つ
+    // 空でも VerbatimText トークンを 1 個持つ
     assert_eq!(body, "");
   }
 

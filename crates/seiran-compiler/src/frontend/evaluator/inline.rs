@@ -191,7 +191,8 @@ impl InlineSink {
 ///
 /// # Errors
 ///
-/// 上記のほか、インラインコマンドの引数不足・過剰などでエラーを返します。
+/// 空行で [`EvalError::ParagraphBreakInArgument`]、環境で [`EvalError::BlockInInline`] を返します。
+/// インラインコマンド・インライン数式の評価エラーはそのまま伝播します。
 pub(crate) fn extract_inline_nodes(
   source: &str,
   ctx: &EvalContext<'_>,

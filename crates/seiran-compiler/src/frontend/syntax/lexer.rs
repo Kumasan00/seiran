@@ -362,13 +362,10 @@ mod tests {
 
   #[test]
   fn advance_bytes_moves_cursor() {
-    // Arrange
     let mut lexer = Lexer::new("abcdef");
 
-    // Act
     lexer.advance_bytes(3);
 
-    // Assert
     assert_eq!(lexer.cursor, 3);
     assert_eq!(lexer.peek_char(), Some('d'));
     return;
@@ -1090,26 +1087,20 @@ mod tests {
 
   #[test]
   fn consume_empty_lines_skips_whitespace_and_newlines() {
-    // Arrange
     let mut lexer = Lexer::new("\n \n \ntext");
 
-    // Act
     lexer.consume_empty_lines();
 
-    // Assert
     assert_eq!(lexer.peek_char(), Some('t'));
     return;
   }
 
   #[test]
   fn consume_empty_lines_stops_at_non_whitespace() {
-    // Arrange
     let mut lexer = Lexer::new("abc");
 
-    // Act
     lexer.consume_empty_lines();
 
-    // Assert
     assert_eq!(lexer.cursor, 0);
     return;
   }

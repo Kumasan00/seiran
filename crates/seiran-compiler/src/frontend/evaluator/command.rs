@@ -139,8 +139,6 @@ impl CommandKind {
   ///
   /// `CommandKind` を網羅する dispatch はこの match 1 つで、本文の流れも引数の再帰評価も
   /// ここを通る（`arg_modes` は読み取りモードの宣言表であって dispatch ではない）。
-  /// ブロックを生む種別は arm の先頭で [`Placement::accept_block`] を呼び、インライン文脈では
-  /// 引数を評価する前に拒否する。
   fn execute(
     self,
     view: &CommandView<'_>,
@@ -242,22 +240,16 @@ static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   "noindent" => CommandKind::NoIndent,
   "pagebreak" => CommandKind::PageBreak,
 
-  // 相互参照
   "ref" => CommandKind::Ref,
 
-  // 文献引用
   "cite" => CommandKind::Cite,
 
-  // 脚注
   "footnote" => CommandKind::Footnote,
 
-  // 索引
   "index" => CommandKind::Index,
 
-  // 内容としてのコード（必須引数は verbatim）
   "code" => CommandKind::Code,
 
-  // 外部リンク
   "url" => CommandKind::Url,
   "href" => CommandKind::Href,
 
@@ -278,10 +270,8 @@ static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   "monoitalic" => CommandKind::StyledText(FontKind::MonospaceItalic),
   "monobolditalic" => CommandKind::StyledText(FontKind::MonospaceBoldItalic),
 
-  // テキスト色指定
   "color" => CommandKind::ColoredText,
 
-  // 見出しコマンド
   "part" => CommandKind::Heading(HeadingLevel::Part),
   "chapter" => CommandKind::Heading(HeadingLevel::Chapter),
   "section" => CommandKind::Heading(HeadingLevel::Section),

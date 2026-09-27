@@ -103,10 +103,6 @@ mod tests {
   }
 
   /// ソースを評価して `EvalError` を取り出すテストヘルパ
-  ///
-  /// `parse_source` は [`ParseSourceError`] でラップして返すため、
-  /// `Eval` バリアントから内側のエラーを取り出して返す。
-  /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
   fn evaluate_error(source: &str) -> EvalError {
     match test_support::parse_source_for_test(source, SourceId::new(0)) {
       Err(ParseSourceError::Eval(error)) => return error,
@@ -507,12 +503,8 @@ mod tests {
 
   #[test]
   fn inline_math_styled_bold() {
-    // Arrange
-
-    // Act
     let result = evaluate_source(r"$\mathbold{x}$");
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
@@ -531,12 +523,8 @@ mod tests {
 
   #[test]
   fn inline_math_styled_sans_bold_italic_with_greek() {
-    // Arrange
-
-    // Act
     let result = evaluate_source(r"$\mathsansbolditalic{\alpha}$");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
@@ -552,7 +540,6 @@ mod tests {
 
   #[test]
   fn inline_math_styled_math_alphabets_resolve() {
-    // Arrange
     let cases: [(&str, MathVariant); 6] = [
       ("mathdoublestruck", MathVariant::DoubleStruck),
       ("mathscript", MathVariant::Script),
@@ -563,10 +550,8 @@ mod tests {
     ];
 
     for (name, expected) in cases {
-      // Act
       let result = evaluate_source(&format!(r"$\{name}{{R}}$"));
 
-      // Assert
       let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
         panic!("Paragraph が期待されます: {name}");
       };
@@ -609,12 +594,8 @@ mod tests {
 
   #[test]
   fn inline_math_styled_nests_inner_overrides_outer() {
-    // Arrange
-
-    // Act
     let result = evaluate_source(r"$\mathbold{\mathitalic{x}}$");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
@@ -1273,10 +1254,10 @@ mod tests {
 
   #[test]
   fn evaluate_index_inside_a_word_keeps_one_text_node() {
-    // Arrange / Act — マーカーを取り除けば 1 つの Text トークンになる位置（#514）
+    // マーカーを取り除けば 1 つの Text トークンになる位置（#514）
     let result = evaluate_source("A\\index{k}V");
 
-    // Assert — シェーピング run が割れないよう、テキストは 1 ノードへ畳まれる
+    // シェーピング run が割れないよう、テキストは 1 ノードへ畳まれる
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
@@ -1287,10 +1268,9 @@ mod tests {
 
   #[test]
   fn evaluate_consecutive_index_markers_inside_a_word_keep_one_text_node() {
-    // Arrange / Act — 連続したマーカーも透過して畳みが連鎖する
+    // 連続したマーカーも透過して畳みが連鎖する
     let result = evaluate_source("A\\index{a}\\index{b}V");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
@@ -1302,10 +1282,9 @@ mod tests {
 
   #[test]
   fn evaluate_index_after_whitespace_does_not_merge_text() {
-    // Arrange / Act — マーカーの前の空白は畳みを切る
+    // マーカーの前の空白は畳みを切る
     let result = evaluate_source("A \\index{k}V");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
@@ -1318,10 +1297,9 @@ mod tests {
 
   #[test]
   fn evaluate_index_next_to_a_styled_command_does_not_merge_text() {
-    // Arrange / Act — マーカー以外のコマンドはテキストを分断するので畳みを切る
+    // マーカー以外のコマンドはテキストを分断するので畳みを切る
     let result = evaluate_source("A\\index{k}\\bold{V}");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
@@ -1333,10 +1311,9 @@ mod tests {
 
   #[test]
   fn evaluate_index_next_to_a_comma_does_not_merge_text() {
-    // Arrange / Act — `,` は別トークンなので、マーカーを取り除いても 1 トークンにはならない
+    // `,` は別トークンなので、マーカーを取り除いても 1 トークンにはならない
     let result = evaluate_source("a\\index{k},b");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
@@ -1349,10 +1326,9 @@ mod tests {
 
   #[test]
   fn evaluate_index_next_to_an_escape_does_not_merge_text() {
-    // Arrange / Act — エスケープ由来のテキストも baseline では別トークンなので畳まない
+    // エスケープ由来のテキストも baseline では別トークンなので畳まない
     let result = evaluate_source("a\\index{k}\\{b");
 
-    // Assert
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };

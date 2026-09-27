@@ -26,9 +26,6 @@ use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marke
 use crate::document::NodeId;
 
 /// グリッド分割の許可設定
-///
-/// 行・列に分割する数式環境（`MathGrid`）は [`GridSpec::for_layout`] でセル配置から導出し、
-/// それ以外の数式環境（`equation` / `cases` / `matrix`）は呼び出し側が値を直書きする。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GridSpec {
   /// 行区切り `\\` を許可するか
@@ -39,8 +36,6 @@ pub(super) struct GridSpec {
 
 impl GridSpec {
   /// グリッド環境のセル配置から区切りの許可を導出する
-  ///
-  /// 行区切り `\\` は常に許可し、列区切り `&` は列を持つ配置（[`GridLayout::Aligned`]）だけが受理する。
   const fn for_layout(layout: GridLayout) -> Self {
     let allow_column_breaks = match layout {
       GridLayout::Aligned => true,
@@ -129,7 +124,6 @@ pub(super) fn evaluate_grid(
       }
     }
 
-    // 行末マーカー `\notag` / `\label{...}` を検出したら走査ローカル状態へ取り込む
     if try_take_row_marker(child, source, ctx, row_markers_allowed, &mut current_notag, &mut current_label)? {
       continue;
     }
@@ -142,7 +136,6 @@ pub(super) fn evaluate_grid(
     current_cell.push(*child);
   }
 
-  // 末尾のセル・行を確定する（行区切りで終わっていなければ最後の行を 1 つ積む）
   current_row.push(evaluate_math_elements(source, ctx, &current_cell)?);
   rows.push(GridRow {
     id: current_row_id,
@@ -154,9 +147,6 @@ pub(super) fn evaluate_grid(
 }
 
 /// `align` / `gather` / `split` / `multiline` の共通評価本体
-///
-/// セル配置から区切りの許可を導出してグリッド分割し、[`NumberingMode`] に応じた採番対象とラベルを
-/// 構造化する。
 ///
 /// # Errors
 ///
