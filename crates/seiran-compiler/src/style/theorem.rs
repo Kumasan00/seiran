@@ -303,18 +303,19 @@ struct TheoremsTable {
 
 impl From<TheoremsTable> for Theorems {
   fn from(table: TheoremsTable) -> Self {
-    let mut theorems = Self::default();
-    table.theorem.apply(&mut theorems.theorem);
-    table.lemma.apply(&mut theorems.lemma);
-    table.proposition.apply(&mut theorems.proposition);
-    table.corollary.apply(&mut theorems.corollary);
-    table.definition.apply(&mut theorems.definition);
-    table.axiom.apply(&mut theorems.axiom);
-    table.example.apply(&mut theorems.example);
-    table.remark.apply(&mut theorems.remark);
-    table.claim.apply(&mut theorems.claim);
-    table.proof.apply(&mut theorems.proof);
-    return theorems;
+    let defaults = Self::default();
+    return Self {
+      theorem: table.theorem.apply(defaults.theorem),
+      lemma: table.lemma.apply(defaults.lemma),
+      proposition: table.proposition.apply(defaults.proposition),
+      corollary: table.corollary.apply(defaults.corollary),
+      definition: table.definition.apply(defaults.definition),
+      axiom: table.axiom.apply(defaults.axiom),
+      example: table.example.apply(defaults.example),
+      remark: table.remark.apply(defaults.remark),
+      claim: table.claim.apply(defaults.claim),
+      proof: table.proof.apply(defaults.proof),
+    };
   }
 }
 
@@ -341,27 +342,29 @@ struct TheoremStyleOverride {
 }
 
 impl TheoremStyleOverride {
-  /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(self, target: &mut TheoremStyle) {
-    if let Some(display_name) = self.display_name {
-      target.display_name = display_name;
-    }
-    if let Some(counter) = self.counter {
-      target.counter = counter;
-    }
-    if let Some(reset_by) = self.reset_by {
-      target.reset_by = reset_by;
-    }
-    if let Some(number_format) = self.number_format {
-      target.number_format = number_format;
-    }
-    if let Some(unnumbered) = self.unnumbered {
-      target.unnumbered = unnumbered;
-    }
-    if let Some(qed_mark) = self.qed_mark {
-      target.qed_mark = Some(qed_mark);
-    }
-    self.style.apply(&mut target.style);
+  /// 自身の `Some` 値で `base` のフィールドを置き換えた値を返す。
+  ///
+  /// `self` の分割と戻り値のリテラルがどちらも `..` 無しなので、差分指定型・解決済み型のどちらに
+  /// フィールドを足しても、ここで扱いを決めるまでコンパイルが通らない。
+  fn apply(self, base: TheoremStyle) -> TheoremStyle {
+    let Self {
+      display_name,
+      counter,
+      reset_by,
+      number_format,
+      unnumbered,
+      qed_mark,
+      style,
+    } = self;
+    return TheoremStyle {
+      display_name: display_name.unwrap_or(base.display_name),
+      counter: counter.unwrap_or(base.counter),
+      reset_by: reset_by.unwrap_or(base.reset_by),
+      number_format: number_format.unwrap_or(base.number_format),
+      unnumbered: unnumbered.unwrap_or(base.unnumbered),
+      qed_mark: qed_mark.or(base.qed_mark),
+      style: style.apply(base.style),
+    };
   }
 }
 
@@ -390,32 +393,31 @@ struct TheoremPresentationOverride {
 }
 
 impl TheoremPresentationOverride {
-  /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(self, target: &mut TheoremPresentation) {
-    if let Some(heading_format) = self.heading_format {
-      target.heading_format = heading_format;
-    }
-    if let Some(heading_with_title) = self.heading_with_title {
-      target.heading_with_title = heading_with_title;
-    }
-    if let Some(heading_with_of) = self.heading_with_of {
-      target.heading_with_of = heading_with_of;
-    }
-    if let Some(heading_with_of_and_title) = self.heading_with_of_and_title {
-      target.heading_with_of_and_title = heading_with_of_and_title;
-    }
-    if let Some(font_kind) = self.font_kind {
-      target.font_kind = font_kind;
-    }
-    if let Some(heading_font_kind) = self.heading_font_kind {
-      target.heading_font_kind = heading_font_kind;
-    }
-    if let Some(top_margin) = self.top_margin {
-      target.top_margin = top_margin;
-    }
-    if let Some(bottom_margin) = self.bottom_margin {
-      target.bottom_margin = bottom_margin;
-    }
+  /// 自身の `Some` 値で `base` のフィールドを置き換えた値を返す。
+  ///
+  /// `self` の分割と戻り値のリテラルがどちらも `..` 無しなので、差分指定型・解決済み型のどちらに
+  /// フィールドを足しても、ここで扱いを決めるまでコンパイルが通らない。
+  fn apply(self, base: TheoremPresentation) -> TheoremPresentation {
+    let Self {
+      heading_format,
+      heading_with_title,
+      heading_with_of,
+      heading_with_of_and_title,
+      font_kind,
+      heading_font_kind,
+      top_margin,
+      bottom_margin,
+    } = self;
+    return TheoremPresentation {
+      heading_format: heading_format.unwrap_or(base.heading_format),
+      heading_with_title: heading_with_title.unwrap_or(base.heading_with_title),
+      heading_with_of: heading_with_of.unwrap_or(base.heading_with_of),
+      heading_with_of_and_title: heading_with_of_and_title.unwrap_or(base.heading_with_of_and_title),
+      font_kind: font_kind.unwrap_or(base.font_kind),
+      heading_font_kind: heading_font_kind.unwrap_or(base.heading_font_kind),
+      top_margin: top_margin.unwrap_or(base.top_margin),
+      bottom_margin: bottom_margin.unwrap_or(base.bottom_margin),
+    };
   }
 }
 
