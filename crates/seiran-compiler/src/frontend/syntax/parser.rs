@@ -194,6 +194,9 @@ impl<'a> Parser<'a> {
   /// 持ち、要素はここで読む。数式内の `\begin` も環境として読み、数式内で環境を使えないことの診断は評価器に任せる
   /// （書いた位置で診断が変わらないようにするため、#688）。
   ///
+  /// 前提条件: 先読みは非トリビアのトークン。トリビアを積むのも EOF を判定するのも各ループで、この関数は
+  /// 自衛しない（#775）。その代わり必ず 1 トークン以上消費するので、呼び出し元のループは毎周進む。
+  ///
   /// 終端は知らない — 各ループは終端を判定してからこの関数を呼ぶので、ここに届いた `}` / `]` はどの区間の
   /// 終端でもなく、常に [`ParserError::UnexpectedToken`] になる（#771）。
   fn parse_element(
@@ -201,10 +204,11 @@ impl<'a> Parser<'a> {
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
     mode: ParseMode,
   ) -> Result<(), ParserError> {
-    self.skip_trivia(children);
-
     let Some(kind) = self.peek_kind() else {
-      return Ok(());
+      unreachable!(
+        "各ループ（parse_root / parse_tokenized_body / parse_delimited / parse_inline_math / parse_math_group）は \
+         先読みが None なら break か Unclosed* の診断で抜けてから呼ぶので、ここには必ずトークンがある"
+      )
     };
 
     match kind {
@@ -290,12 +294,12 @@ impl<'a> Parser<'a> {
       | TokenKind::Escaped
       | TokenKind::Text
       | TokenKind::LineBreak
-      | TokenKind::ParagraphBreak
-      | TokenKind::Whitespace
-      | TokenKind::Newline
-      | TokenKind::Comment => {
+      | TokenKind::ParagraphBreak => {
         let token = self.take_peeked();
         children.push(GreenElement::Token(token));
+      },
+      TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comment => {
+        unreachable!("各ループは skip_trivia でトリビアを積み終えてから呼ぶので、先読みがトリビアであることはない")
       },
       TokenKind::VerbatimText => {
         unreachable!(
@@ -647,8 +651,8 @@ impl<'a> Parser<'a> {
     children.push(GreenElement::Token(dollar_open));
 
     loop {
-      // 終端より先にトリビアを積む。`parse_element` へ渡した後で閉じ `$` に出会うと、数式モード内の
-      // `$` として弾かれてしまう。
+      // 終端の判定より先にトリビアを積む。先読みがトリビアのままでは閉じ `$` を見落とし、
+      // `parse_element` の前提条件（先読みは非トリビア）も破る。
       self.skip_trivia(&mut children);
       match self.peek_kind() {
         Some(TokenKind::Dollar) => {
@@ -680,8 +684,8 @@ impl<'a> Parser<'a> {
     children.push(GreenElement::Token(lbrace));
 
     loop {
-      // 終端より先にトリビアを積む。`parse_element` へ渡した後で `$` に出会うと、閉じていない
-      // グループではなく数式モード内の `$` として弾かれてしまう。
+      // 終端の判定より先にトリビアを積む。先読みがトリビアのままでは `}` や閉じていないグループの `$` を
+      // 見落とし、`parse_element` の前提条件（先読みは非トリビア）も破る。
       self.skip_trivia(&mut children);
       match self.peek_kind() {
         Some(TokenKind::RBrace) => {
@@ -1094,6 +1098,56 @@ mod tests {
         ..
       })
     ));
+  }
+
+  #[test]
+  fn trivia_only_source_is_root_of_trivia_tokens() {
+    // #775: トリビアだけのソースは parse_root のループが積み切って EOF で抜け、parse_element を呼ばない
+    // （変更前後で同じ形になる固定テスト）
+    let arena = Bump::new();
+    let cst = parse_source("  // c", &arena);
+    let kinds: Vec<TokenKind> = cst
+      .children
+      .iter()
+      .map(|element| {
+        return match element {
+          GreenElement::Token(token) => token.kind,
+          GreenElement::Node(node) => panic!("トリビアだけのソースにノード {:?} は出ない", node.kind),
+        };
+      })
+      .collect();
+    assert_eq!(kinds, vec![TokenKind::Whitespace, TokenKind::Comment]);
+  }
+
+  #[test]
+  fn environment_body_ending_in_trivia_without_end_is_error() {
+    // #775: 本体がトリビアで終わって EOF なら、本体ループが積み切って抜け、閉じていない環境として診断する
+    // （変更前後で同じ診断になる固定テスト）
+    let arena = Bump::new();
+    let result = parse("\\begin{env}body \n", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
+  }
+
+  #[test]
+  #[should_panic(expected = "トリビアを積み終えてから")]
+  fn parse_element_does_not_skip_leading_trivia() {
+    // #775: トリビアを積むのは各ループの責務で、parse_element は自衛しない。前提を破る呼び出しは落ちる
+    let arena = Bump::new();
+    let source = " x";
+    let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
+    let mut children = bumpalo::collections::Vec::new_in(&arena);
+    let _ = parser.parse_element(&mut children, ParseMode::Text);
+  }
+
+  #[test]
+  #[should_panic(expected = "先読みが None なら")]
+  fn parse_element_does_not_accept_eof() {
+    // #775: EOF を判定するのは各ループの責務で、parse_element は進捗ゼロの Ok を返さない
+    let arena = Bump::new();
+    let source = "";
+    let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
+    let mut children = bumpalo::collections::Vec::new_in(&arena);
+    let _ = parser.parse_element(&mut children, ParseMode::Text);
   }
 
   #[test]
