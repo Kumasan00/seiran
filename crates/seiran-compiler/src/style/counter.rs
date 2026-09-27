@@ -208,17 +208,18 @@ struct CountersTable {
 
 impl From<CountersTable> for Counters {
   fn from(table: CountersTable) -> Self {
-    let mut counters = Self::default();
-    table.part.apply(&mut counters.part);
-    table.chapter.apply(&mut counters.chapter);
-    table.section.apply(&mut counters.section);
-    table.subsection.apply(&mut counters.subsection);
-    table.paragraph.apply(&mut counters.paragraph);
-    table.subparagraph.apply(&mut counters.subparagraph);
-    table.table.apply(&mut counters.table);
-    table.figure.apply(&mut counters.figure);
-    table.equation.apply(&mut counters.equation);
-    return counters;
+    let defaults = Self::default();
+    return Self {
+      part: table.part.apply(defaults.part),
+      chapter: table.chapter.apply(defaults.chapter),
+      section: table.section.apply(defaults.section),
+      subsection: table.subsection.apply(defaults.subsection),
+      paragraph: table.paragraph.apply(defaults.paragraph),
+      subparagraph: table.subparagraph.apply(defaults.subparagraph),
+      table: table.table.apply(defaults.table),
+      figure: table.figure.apply(defaults.figure),
+      equation: table.equation.apply(defaults.equation),
+    };
   }
 }
 
@@ -242,23 +243,25 @@ struct CounterStyleOverride {
 }
 
 impl CounterStyleOverride {
-  /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(self, target: &mut CounterStyle) {
-    if let Some(display_name) = self.display_name {
-      target.display_name = display_name;
-    }
-    if let Some(number_format) = self.number_format {
-      target.number_format = number_format;
-    }
-    if let Some(number_style) = self.number_style {
-      target.number_style = number_style;
-    }
-    if let Some(ref_format) = self.ref_format {
-      target.ref_format = ref_format;
-    }
-    if let Some(resets) = self.resets {
-      target.resets = resets;
-    }
+  /// 自身の `Some` 値で `base` のフィールドを置き換えた値を返す。
+  ///
+  /// `self` の分割と戻り値のリテラルがどちらも `..` 無しなので、差分指定型・解決済み型のどちらに
+  /// フィールドを足しても、ここで扱いを決めるまでコンパイルが通らない。
+  fn apply(self, base: CounterStyle) -> CounterStyle {
+    let Self {
+      display_name,
+      number_format,
+      number_style,
+      ref_format,
+      resets,
+    } = self;
+    return CounterStyle {
+      display_name: display_name.unwrap_or(base.display_name),
+      number_format: number_format.unwrap_or(base.number_format),
+      number_style: number_style.unwrap_or(base.number_style),
+      ref_format: ref_format.unwrap_or(base.ref_format),
+      resets: resets.unwrap_or(base.resets),
+    };
   }
 }
 
