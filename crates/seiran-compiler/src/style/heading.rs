@@ -153,14 +153,15 @@ struct HeadingStylesTable {
 
 impl From<HeadingStylesTable> for HeadingStyles {
   fn from(table: HeadingStylesTable) -> Self {
-    let mut styles = Self::default();
-    table.part.apply(&mut styles.part);
-    table.chapter.apply(&mut styles.chapter);
-    table.section.apply(&mut styles.section);
-    table.subsection.apply(&mut styles.subsection);
-    table.paragraph.apply(&mut styles.paragraph);
-    table.subparagraph.apply(&mut styles.subparagraph);
-    return styles;
+    let defaults = Self::default();
+    return Self {
+      part: table.part.apply(defaults.part),
+      chapter: table.chapter.apply(defaults.chapter),
+      section: table.section.apply(defaults.section),
+      subsection: table.subsection.apply(defaults.subsection),
+      paragraph: table.paragraph.apply(defaults.paragraph),
+      subparagraph: table.subparagraph.apply(defaults.subparagraph),
+    };
   }
 }
 
@@ -185,26 +186,27 @@ struct HeadingStyleOverride {
 }
 
 impl HeadingStyleOverride {
-  /// 自身の `Some` 値で `target` のフィールドを上書きする。
-  fn apply(self, target: &mut HeadingStyle) {
-    if let Some(format) = self.format {
-      target.format = format;
-    }
-    if let Some(font_size) = self.font_size {
-      target.font_size = font_size;
-    }
-    if let Some(bottom_margin) = self.bottom_margin {
-      target.bottom_margin = bottom_margin;
-    }
-    if let Some(page_break_before) = self.page_break_before {
-      target.page_break_before = page_break_before;
-    }
-    if let Some(page_break_after) = self.page_break_after {
-      target.page_break_after = page_break_after;
-    }
-    if let Some(font_kind) = self.font_kind {
-      target.font_kind = font_kind;
-    }
+  /// 自身の `Some` 値で `base` のフィールドを置き換えた値を返す。
+  ///
+  /// `self` の分割と戻り値のリテラルがどちらも `..` 無しなので、差分指定型・解決済み型のどちらに
+  /// フィールドを足しても、ここで扱いを決めるまでコンパイルが通らない。
+  fn apply(self, base: HeadingStyle) -> HeadingStyle {
+    let Self {
+      format,
+      font_size,
+      bottom_margin,
+      page_break_before,
+      page_break_after,
+      font_kind,
+    } = self;
+    return HeadingStyle {
+      format: format.unwrap_or(base.format),
+      font_size: font_size.unwrap_or(base.font_size),
+      bottom_margin: bottom_margin.unwrap_or(base.bottom_margin),
+      page_break_before: page_break_before.unwrap_or(base.page_break_before),
+      page_break_after: page_break_after.unwrap_or(base.page_break_after),
+      font_kind: font_kind.unwrap_or(base.font_kind),
+    };
   }
 }
 
