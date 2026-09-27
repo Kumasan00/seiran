@@ -101,25 +101,15 @@ mod tests {
 
   #[test]
   fn read_text_returns_registered_content() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("config.toml", "title = \"x\"");
-
-    // Act
     let text = source.read_text(&ProjectPath::new("config.toml")).expect("登録済みのはず");
-
-    // Assert
     assert_eq!(&*text, "title = \"x\"");
   }
 
   #[test]
   fn read_bytes_reports_not_found_for_unregistered_path() {
-    // Arrange
     let source = MemoryProjectSource::new();
-
-    // Act
     let result = source.read_bytes(&ProjectPath::new("missing.ttf"));
-
-    // Assert
     assert!(matches!(result, Err(SourceReadError::NotFound)));
   }
 

@@ -7,9 +7,6 @@ use serde::de::DeserializeOwned;
 
 /// TOML 設定ファイル（config.toml / style.toml）の本文 `content` を `T` へ解析する。失敗は表示名
 /// `display_path` 付きの診断部品 [`TomlErrorParts`] で返す。
-///
-/// 設定ファイルの TOML 解析はすべてここを通る。呼び出し側は `toml::from_str` を直接呼ばず、
-/// 返った部品から自分の `ParseToml` variant を組む（#647）。
 pub(crate) fn parse_toml<T: DeserializeOwned>(
   display_path: impl AsRef<str>,
   content: &str,
@@ -44,13 +41,10 @@ impl TomlErrorParts {
   /// [`parse_toml`] だけが呼ぶ — TOML 解析エラーの位置付けが 1 か所に閉じる構造を、
   /// このコンストラクタを非公開にすることで保証する。
   fn new(display_path: impl AsRef<str>, content: &str, mut error: toml::de::Error) -> Self {
-    // span は input とは別フィールドに保持されるので set_input(None) の後でも失われないが、読む順序は既存実装に揃える
     let span = error.span().map_or_else(
       || return SourceSpan::new(0.into(), 0),
       |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
     );
-    // toml::de::Error::Display は input が設定されていると line/column の自前スニペットを描画する。
-    // miette の #[label] と二重に位置情報が出るため、ここで input をクリアして抑止する。
     error.set_input(None);
     return TomlErrorParts {
       src: NamedSource::new(display_path, content.to_string()),

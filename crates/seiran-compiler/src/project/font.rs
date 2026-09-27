@@ -113,8 +113,6 @@ impl FontData {
   pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return &self.0[font_type]; }
 
   /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
-  ///
-  /// `Publication` の描画資源へ渡すために使う（バイト列は複製されない）。
   #[must_use]
   pub(crate) fn shared_bytes(&self, font_type: FontType) -> Arc<[u8]> { return Arc::clone(&self.0[font_type]); }
 }
@@ -142,14 +140,14 @@ mod tests {
 
   #[test]
   fn load_reads_shared_font_path_only_once() {
-    // Arrange — 全 19 種別が同じフォントファイルを指す fixture
+    // Arrange
     let source = MemoryProjectSource::new().with_bytes("/fonts/shared.ttf", b"FAKE".to_vec());
     let font_configs = make_font_configs("/fonts/shared.ttf");
 
     // Act
     let font_data = FontData::load(&source, &font_configs).expect("読み込めるはず");
 
-    // Assert — read_bytes は 1 回だけ呼ばれ、全 19 種別に同じ内容が入る
+    // Assert
     assert_eq!(source.read_count("/fonts/shared.ttf"), 1, "共有パスは 1 回しか読まれないはず");
     for &font_type in FontType::ALL {
       assert_eq!(font_data.get(font_type), b"FAKE");

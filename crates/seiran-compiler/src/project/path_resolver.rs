@@ -47,7 +47,7 @@ impl PathResolver {
     };
   }
 
-  /// 入力パスを解決する（絶対はそのまま・相対は `base_dir` 前置・正規化は [`ProjectPath::new`]）。
+  /// 入力パスをモジュール doc の「解決の契約」に従って解決する。
   ///
   /// 解決済みの絶対パスを渡しても値は変わらない（冪等）。
   pub(crate) fn resolve(&self, path: impl AsRef<Path>) -> ProjectPath {

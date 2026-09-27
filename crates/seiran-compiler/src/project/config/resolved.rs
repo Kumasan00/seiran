@@ -10,7 +10,7 @@ use crate::{
 /// PDF 生成に必要な完全な設定情報
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectConfig {
-  /// ドキュメントメタデータ（title / author / date / subject）
+  /// ドキュメントメタデータ
   pub document: DocumentConfig,
   /// 出力ファイル名・ディレクトリ
   pub output: OutputConfig,
@@ -28,14 +28,14 @@ pub(crate) struct ProjectConfig {
   pub references_path: Option<ProjectPath>,
 }
 
-/// PDF メタデータ
+/// 文書のメタデータ（`date` 以外は PDF メタデータにも入る）
 #[derive(Debug, Clone)]
 pub(crate) struct DocumentConfig {
   /// ドキュメントタイトル（PDF メタデータの /Title）
   pub title: Option<String>,
   /// 著者名（PDF メタデータの /Author）
   pub author: Option<String>,
-  /// 日付（ISO 8601 形式想定。PDF 出力時に必要に応じて D:YYYYMMDD 形式に変換）
+  /// 日付（表紙・走り文に表示する文字列。PDF メタデータには入らない）
   pub date: Option<String>,
   /// 主題（PDF メタデータの /Subject）
   pub subject: Option<String>,

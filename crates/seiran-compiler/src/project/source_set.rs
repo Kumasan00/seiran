@@ -11,9 +11,7 @@ use crate::{
 /// 全ソースの表示名・本文を [`SourceId`] で引ける集合。
 ///
 /// `register` が唯一の `SourceId` 発行元。呼び出し元は発行された ID をそのまま運ぶだけで、
-/// 別の場所で ID を作り直したり、配列の並び順から ID を推測したりしない
-/// （旧 `SourceMap` は「並び順が `SourceId` のインデックスに一致する」という規約だけで
-/// driver 側の別の採番と結び付いていた。この struct はその規約を型に落とす）。
+/// 別の場所で ID を作り直したり、配列の並び順から ID を推測したりしない。
 pub(crate) struct SourceSet {
   /// ソースエントリの配列（`register` によって逐次追加される）
   entries: Vec<SourceEntry>,
@@ -42,7 +40,7 @@ pub(crate) struct SourceSetReadError {
 }
 
 impl SourceSet {
-  /// 空の `SourceSet` を作る（`read` が登録前の初期値として使う）。
+  /// 空の `SourceSet` を作る。
   fn new() -> Self {
     return SourceSet {
       entries: Vec::new(),
@@ -59,9 +57,6 @@ impl SourceSet {
   }
 
   /// `id` に対応するソースを返す。
-  ///
-  /// `id` はこの `SourceSet` の `register` が発行した値だけが渡される前提
-  /// （driver が発行元と参照元を分けないため、範囲外は構造的に起こらない）。
   pub(crate) fn get(&self, id: SourceId) -> &SourceEntry {
     return self.entries.get(id.index()).expect("SourceId は SourceSet.register が発行した範囲内のはず");
   }
@@ -160,7 +155,7 @@ mod tests {
 
   #[test]
   fn read_fails_fast_on_missing_file_without_aggregating() {
-    // Arrange — 存在しないパスを混ぜる。I/O 失敗はパースエラーと違い集約しない
+    // Arrange
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let existing = write_source(&dir, "text.sei", "本文");
     let missing = ProjectPath::new(dir.path().join("__does_not_exist__.sei"));
@@ -183,7 +178,7 @@ mod tests {
 
   #[test]
   fn read_reads_through_project_source_without_touching_disk() {
-    // Arrange — MemoryProjectSource で 2 ファイル分の fixture を用意する
+    // Arrange
     let source = MemoryProjectSource::new()
       .with_text("/project/a.sei", "content-a")
       .with_text("/project/b.sei", "content-b");
@@ -218,7 +213,7 @@ mod tests {
     let source_set =
       SourceSet::read(&source, &[ProjectPath::new("/project/a.sei")]).expect("SharedTextSource は常に読めるはず");
 
-    // Assert — seam が返した割り当てを複製せずに格納するはず
+    // Assert
     let (_, entry) = source_set.iter().next().expect("1 件登録したはず");
     assert!(Arc::ptr_eq(&entry.content, &text));
   }

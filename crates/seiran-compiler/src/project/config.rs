@@ -62,7 +62,7 @@ struct FontValues {
 
 /// 指定パスから設定ファイルを読み込みます。
 ///
-/// `config_path` は呼び出し元（`compile` facade）が `resolver` で解決済みの値で、ここでは再解決しません。
+/// `config_path` は呼び出し元が `resolver` で解決済みの値で、ここでは再解決しません。
 /// `resolver` は config 内の相対パス（`sources` / `style_path` / フォントパス等）の解決に使います
 /// （本関数は `std::env::current_dir` を呼びません）。
 ///
@@ -100,10 +100,6 @@ pub(crate) fn load(
 }
 
 /// 設定ファイルを読み、TOML を [`RawConfig`] へパースします。
-///
-/// # Errors
-///
-/// ファイル読み込み・TOML 解析の失敗時にエラーを返します。
 fn read_raw_config(
   source: &dyn ProjectSource,
   config_path: &ProjectPath,
@@ -120,7 +116,6 @@ fn read_raw_config(
 /// TOML 文字列を [`RawConfig`] にパースします（I/O なし）。
 ///
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
-/// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
 fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures<ReadConfigError>> {
   return project::parse_toml(source_path.display().to_string(), content).map_err(
     |TomlErrorParts { src, span, source }| {
@@ -132,7 +127,7 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
 /// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
-/// 組み立てるだけです（作成は driver 側の責務、#300）。警告はパス解決の時点で確定するので、
+/// 組み立てるだけです（作成は CLI 側の責務、#300）。警告はパス解決の時点で確定するので、
 /// 構築の成否と独立に返します。違反にはファイルのパスを添えない（添えるのは `config_path` を持つ
 /// [`load`]）。
 fn resolve(
@@ -509,9 +504,7 @@ mod tests {
     return (config.expect("読み込みは成功するはず"), warnings);
   }
 
-  /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
-  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ。実ファイルシステム経由の
-  /// `load`/`FilesystemProjectSource` の振る舞いを検証するテストでのみ使う）。
+  /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let font_path = tempdir.path().join("dummy.ttf");
@@ -528,7 +521,7 @@ mod tests {
 
   #[test]
   fn resolve_paths_reports_missing_paths_without_touching_disk() {
-    // Arrange — MemoryProjectSource は何も登録しない＝存在しないパスとして扱われる
+    // Arrange
     let toml = format!(
       "sources = [\"a.sei\"]\nstyle_path = \"style.toml\"\nreferences_path = \"references.toml\"\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -541,7 +534,7 @@ mod tests {
     // Act
     let (_, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
-    // Assert — スタイル・文献・ソース・フォント全種のパス不存在が集約されるはず
+    // Assert
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::ReferencesPathResolution { .. })));
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::SourcePathResolution { .. })));
@@ -590,7 +583,7 @@ mod tests {
     // Act
     let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
-    // Assert — 19 件すべてが同じ正規化済みパスになる
+    // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     let font_paths = resolved.font_paths.expect("全フォントパスが解決できるはず");
     assert!(
@@ -603,10 +596,8 @@ mod tests {
 
   #[test]
   fn read_config_does_not_create_the_output_directory() {
-    // Arrange — 存在しない出力ディレクトリを指す config を MemoryProjectSource で読む。
-    // output_dir は実ディスク上の tempdir 配下の絶対パスにする（絶対パスは
-    // resolve_output_dir_path でそのまま使われるため MemoryProjectSource フィクスチャと
-    // 矛盾しない）。旧実装ならここで fs::create_dir_all が実際にディレクトリを作ってしまうため、
+    // Arrange — output_dir は実ディスク上の tempdir 配下の絶対パスにする（絶対パスはそのまま
+    // 使われるので MemoryProjectSource と矛盾しない）。ディレクトリを作る実装なら実際に作られるので、
     // 「存在しないパスを検証する」だけの空振りテストにならない。
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let output_dir = tempdir.path().join("does-not-exist-yet");
@@ -625,46 +616,35 @@ mod tests {
     let (result, _) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert — 出力ディレクトリの作成は driver 側の責務になり、config は作らない
+    // Assert
     result.expect("fixture は妥当な最小 config のはず");
     assert!(!output_dir.exists(), "config は出力ディレクトリを作成してはいけない");
   }
 
   #[test]
   fn resolve_output_dir_path_keeps_absolute_path_as_is() {
-    // Arrange
     let current_dir = Path::new("/home/user/project");
     let output_dir = PathBuf::from("/var/out");
 
-    // Act
     let resolved = resolve_output_dir_path(current_dir, Some(&output_dir));
 
-    // Assert
     assert_eq!(resolved, PathBuf::from("/var/out"));
   }
 
   #[test]
   fn resolve_output_dir_path_joins_relative_path_to_current_dir() {
-    // Arrange
     let current_dir = Path::new("/home/user/project");
     let output_dir = PathBuf::from("build/out");
 
-    // Act
     let resolved = resolve_output_dir_path(current_dir, Some(&output_dir));
 
-    // Assert
     assert_eq!(resolved, PathBuf::from("/home/user/project/build/out"));
   }
 
   #[test]
   fn resolve_output_dir_path_uses_current_dir_when_none() {
-    // Arrange
     let current_dir = Path::new("/home/user/project");
-
-    // Act
     let resolved = resolve_output_dir_path(current_dir, None);
-
-    // Assert
     assert_eq!(resolved, PathBuf::from("/home/user/project"));
   }
 
@@ -680,14 +660,10 @@ mod tests {
 
   #[test]
   fn parse_config_reads_pdf_section_without_margins() {
-    // Arrange — `[pdf]` は用紙寸法としおり出力だけを持つ（余白は style.toml の `[page]`、#389）
+    // `[pdf]` は用紙寸法としおり出力だけを持つ（余白は style.toml の `[page]`、#389）
     let toml =
       format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
-
-    // Act
     let raw = parse_config(&toml, dummy_source()).unwrap();
-
-    // Assert
     assert!((raw.pdf.height.to_pt() - 842.0).abs() < f32::EPSILON);
     assert!((raw.pdf.width.to_pt() - 595.0).abs() < f32::EPSILON);
     assert!(raw.pdf.show_bookmarks);
@@ -695,18 +671,14 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_legacy_pdf_margin_keys() {
-    // Arrange — 旧 `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
+    // 旧 `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
     // 変わるため、TOML 解析時に未知キーとして拒否する（#389 の意図的な破壊的変更）
     let toml = format!(
       "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\nmargin_top = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
       make_font_sections("dummy.ttf"),
     );
-
-    // Act
     let failures = parse_config(&toml, dummy_source()).unwrap_err();
-
-    // Assert — 値検証（Validation）ではなく TOML 解析（ParseToml）の段で落ちる
     let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
     assert!(
       matches!(first, ReadConfigError::ParseToml { .. }),
@@ -716,7 +688,7 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_removed_font_name_key() {
-    // Arrange — font_name は #692 でスキーマから外した。静かに無視すると値に効果があると
+    // font_name は #692 でスキーマから外した。静かに無視すると値に効果があると
     // 誤解させたままになるので、TOML 解析時に未知キーとして拒否する
     let toml = format!(
       "{}{}{}",
@@ -724,11 +696,7 @@ mod tests {
       valid_pdf_section(),
       font_sections_with_serif_extra("dummy.ttf", "font_name = \"font_serif\""),
     );
-
-    // Act
     let failures = parse_config(&toml, dummy_source()).unwrap_err();
-
-    // Assert — 値検証ではなく TOML 解析の段で落ち、メッセージがキー名を示す
     let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
     let ReadConfigError::ParseToml { source, .. } = first else {
       panic!("font_name は deny_unknown_fields で ParseToml になるはず: {first:?}");
@@ -738,18 +706,14 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_misspelled_font_key() {
-    // Arrange — 種別セクション内の綴り違いは、黙って既定値（font_index = 0）へ落とさず拒否する
+    // 種別セクション内の綴り違いは、黙って既定値（font_index = 0）へ落とさず拒否する
     let toml = format!(
       "{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
       font_sections_with_serif_extra("dummy.ttf", "font_indx = 1"),
     );
-
-    // Act
     let failures = parse_config(&toml, dummy_source()).unwrap_err();
-
-    // Assert
     let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
     let ReadConfigError::ParseToml { source, .. } = first else {
       panic!("未知キーは ParseToml になるはず: {first:?}");
@@ -759,16 +723,11 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_legacy_top_level_name() {
-    // Arrange
     let toml = format!(
       "name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n{}",
       make_font_sections("dummy.ttf"),
     );
-
-    // Act
     let result = parse_config(&toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadConfigError::ParseToml { .. })
@@ -955,13 +914,8 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_ot_language_without_script() {
-    // Arrange
-    let extra = "ot_language = \"JAN\"";
+    let errors = run_validate_with_serif_extra("ot_language = \"JAN\"").unwrap_err();
 
-    // Act
-    let errors = run_validate_with_serif_extra(extra).unwrap_err();
-
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, message }
@@ -1067,11 +1021,6 @@ mod tests {
       ConfigValidationError::Field { path, message } if path.contains("keywords") && message.contains("空")
     )));
   }
-
-  // 以下は旧 `crates/config/tests/config.rs`（`load` の公開 API を実ファイルシステム経由で
-  // 検証する統合テスト）を移設したもの。上のテスト群が `MemoryProjectSource` で内部関数を
-  // 直接検証するのに対し、こちらは `FilesystemProjectSource` + tempfile で `load` を
-  // end-to-end に検証する。
 
   #[test]
   fn read_config_succeeds_with_valid_config() {
@@ -1263,7 +1212,6 @@ mod tests {
 
   #[test]
   fn read_config_preserves_user_script_tag_case() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "script = \"Latn\"";
       return format!(
@@ -1430,7 +1378,7 @@ mod tests {
 
   #[test]
   fn load_keeps_the_io_error_kind_as_cause_when_the_file_is_missing() {
-    // Arrange — 実ファイルシステム経由で存在しない config.toml を指す
+    // Arrange
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let config_path = tempdir.path().join("does-not-exist.toml");
     let source = FilesystemProjectSource;
@@ -1452,15 +1400,10 @@ mod tests {
 
   #[test]
   fn load_keeps_invalid_utf8_as_cause() {
-    // Arrange — UTF-8 として読めないバイト列を config.toml として登録する
     let source = MemoryProjectSource::new().with_bytes("/project/config.toml", vec![0xff, 0xfe]);
-
-    // Act
     let failures = load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")))
       .0
       .expect_err("読み込みは失敗するはず");
-
-    // Assert
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
       panic!("ReadFile を期待");
     };
@@ -1491,7 +1434,7 @@ mod tests {
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (_, warnings) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert — 宣言順に 2 件（`.sei` の 1 件は警告にならない）
+    // Assert
     let paths: Vec<&str> = warnings
       .iter()
       .map(|warning| {
@@ -1506,8 +1449,7 @@ mod tests {
 
   #[test]
   fn load_keeps_source_extension_warnings_when_path_resolution_fails() {
-    // Arrange — `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）。
-    // 実ファイルシステムに触れない MemoryProjectSource で組む（入力読込のテストは I/O から切り離す）
+    // Arrange — `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
     let toml = format!(
       "sources = [\"missing.txt\"]\n\n{}{}{}",
       valid_output_section("test", "/project/out"),
