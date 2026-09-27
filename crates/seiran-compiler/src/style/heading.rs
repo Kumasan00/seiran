@@ -379,6 +379,32 @@ format = \"§ {number} {title}\"
   }
 
   #[test]
+  fn heading_styles_full_level_overrides_every_key() {
+    // Arrange — 1 レベルに 6 キー全部を書いた形（同型のフィールド同士の取り違えを検出する）
+    let toml = "
+[heading.subsection]
+format = \"{title}\"
+font_size = \"13pt\"
+bottom_margin = \"4pt\"
+page_break_before = true
+page_break_after = true
+font_kind = \"sans_serif_bold\"
+";
+
+    // Act
+    let wrapper: HeadingWrapper = toml::from_str(toml).unwrap();
+    let subsection = &wrapper.heading[HeadingLevel::Subsection];
+
+    // Assert
+    assert_eq!(subsection.format.as_str(), "{title}");
+    assert_eq!(subsection.font_size, Length::pt(13.0));
+    assert_eq!(subsection.bottom_margin, Length::pt(4.0));
+    assert!(subsection.page_break_before);
+    assert!(subsection.page_break_after);
+    assert_eq!(subsection.font_kind, FontKind::SansSerifBold);
+  }
+
+  #[test]
   fn indexing_returns_matching_field() {
     let styles = HeadingStyles::default();
 

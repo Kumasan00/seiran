@@ -610,6 +610,68 @@ font_kind = \"sans_serif_bold\"
   }
 
   #[test]
+  fn full_override_replaces_every_field() {
+    // Arrange — 6 キーとネスト `style` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
+    let toml = "
+[theorems.theorem]
+display_name = \"定理\"
+counter = \"main\"
+reset_by = \"chapter\"
+number_format = \"{chapter}.{n}\"
+unnumbered = true
+qed_mark = \"■\"
+
+[theorems.theorem.style]
+heading_format = \"{display_name}{number}\"
+heading_with_title = \"{display_name}{number}（{title}）\"
+heading_with_of = \"{of}の{display_name}\"
+heading_with_of_and_title = \"{of}の{display_name}（{title}）\"
+font_kind = \"serif\"
+heading_font_kind = \"sans_serif_bold\"
+top_margin = \"6pt\"
+bottom_margin = \"8pt\"
+";
+
+    // Act
+    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let theorem = wrapper.theorems.theorem;
+
+    // Assert
+    assert_eq!(theorem.display_name, "定理");
+    assert_eq!(theorem.counter, "main");
+    assert_eq!(theorem.reset_by, TheoremReset::Chapter);
+    assert_eq!(theorem.number_format.as_str(), "{chapter}.{n}");
+    assert!(theorem.unnumbered);
+    assert_eq!(theorem.qed_mark.as_deref(), Some("■"));
+    assert_eq!(theorem.style.heading_format.as_str(), "{display_name}{number}");
+    assert_eq!(theorem.style.heading_with_title.as_str(), "{display_name}{number}（{title}）");
+    assert_eq!(theorem.style.heading_with_of.as_str(), "{of}の{display_name}");
+    assert_eq!(theorem.style.heading_with_of_and_title.as_str(), "{of}の{display_name}（{title}）");
+    assert_eq!(theorem.style.font_kind, FontKind::Serif);
+    assert_eq!(theorem.style.heading_font_kind, FontKind::SansSerifBold);
+    assert_eq!(theorem.style.top_margin, Length::pt(6.0));
+    assert_eq!(theorem.style.bottom_margin, Length::pt(8.0));
+  }
+
+  #[test]
+  fn partial_proof_override_keeps_default_qed_mark() {
+    // Arrange — `qed_mark` を書かない差分指定は既定の QED マークを消さない
+    let toml = "
+[theorems.proof]
+display_name = \"証明\"
+";
+
+    // Act
+    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let proof = wrapper.theorems.proof;
+
+    // Assert
+    assert_eq!(proof.display_name, "証明");
+    assert_eq!(proof.qed_mark.as_deref(), Some("□"));
+    assert!(proof.unnumbered);
+  }
+
+  #[test]
   fn default_proof_of_templates_render_proof_of_target() {
     let theorems = Theorems::default();
     let proof = &theorems[TheoremClass::Proof];
