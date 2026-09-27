@@ -80,21 +80,23 @@ impl CounterValue {
 
 /// カウンタ群の状態を保持するレジストリ
 #[derive(Debug)]
-pub(super) struct CounterRegistry {
-  /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）
-  policy: SemanticPolicy,
+pub(super) struct CounterRegistry<'p> {
+  /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）。呼び出し元が走査の間ずっと
+  /// 持っている値なので借用で持ち、複製しない
+  policy: &'p SemanticPolicy,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,
-  /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremPolicy.counter`）。未登場は 0
-  theorem_values: HashMap<String, u32>,
+  /// 定理カウンタの現在値。キーは `policy` から借りた共有カウンタ名（`TheoremPolicy.counter`）で、
+  /// 同じ名前を持つ別クラスは文字列の等値で同じ項目に当たる。未登場は 0
+  theorem_values: HashMap<&'p str, u32>,
 }
 
-impl CounterRegistry {
-  /// `crate::semantics::SemanticPolicy` からレジストリを構築する
+impl<'p> CounterRegistry<'p> {
+  /// `crate::semantics::SemanticPolicy` を借用してレジストリを構築する
   #[must_use]
-  pub(super) fn from_policy(policy: &SemanticPolicy) -> Self {
+  pub(super) fn from_policy(policy: &'p SemanticPolicy) -> Self {
     return Self {
-      policy: policy.clone(),
+      policy,
       values: HashMap::new(),
       theorem_values: HashMap::new(),
     };
@@ -103,7 +105,7 @@ impl CounterRegistry {
   /// 指定カウンタを 1 増やし、リセット連鎖を実行し、構造値を返す
   pub(super) fn increment(&mut self, name: CounterName) -> CounterValue {
     *self.values.entry(name).or_insert(0) += 1;
-    for r in self.policy.counter(name).resets.clone() {
+    for &r in &self.policy.counter(name).resets {
       self.values.insert(r, 0);
     }
     if let Some(level) = TheoremReset::for_counter(name) {
@@ -115,25 +117,18 @@ impl CounterRegistry {
 
   /// 指定した見出しレベルを `reset_by` に持つ定理カウンタをすべて 0 に戻す
   fn reset_theorems_for_level(&mut self, level: TheoremReset) {
-    // self.policy への不変借用を先に解消してから theorem_values を変更するため、対象を収集する
-    let to_reset: Vec<String> =
-      self.policy.theorems_reset_by(level).map(|counter| return counter.to_string()).collect();
-    for counter in to_reset {
+    for counter in self.policy.theorems_reset_by(level) {
       self.theorem_values.insert(counter, 0);
     }
   }
 
   /// 定理環境を採番し、構造値を返す（無採番クラス（`proof`）は `None`）
   pub(super) fn increment_theorem(&mut self, class: TheoremClass) -> Option<CounterValue> {
-    // def への借用を必要なクローンに落としてから theorem_values を変更する
-    let (counter, unnumbered) = {
-      let def = self.policy.theorem(class);
-      (def.counter.clone(), def.unnumbered)
-    };
-    if unnumbered {
+    let def = self.policy.theorem(class);
+    if def.unnumbered {
       return None;
     }
-    *self.theorem_values.entry(counter).or_insert(0) += 1;
+    *self.theorem_values.entry(def.counter.as_str()).or_insert(0) += 1;
     return Some(self.theorem_counter_value(class));
   }
 
@@ -184,7 +179,7 @@ impl CounterRegistry {
   #[must_use]
   fn theorem_counter_value(&self, class: TheoremClass) -> CounterValue {
     let def = self.policy.theorem(class);
-    let own = *self.theorem_values.get(&def.counter).unwrap_or(&0);
+    let own = *self.theorem_values.get(def.counter.as_str()).unwrap_or(&0);
     let ancestors = match def.reset_by.counter_name() {
       Some(heading_counter) => vec![CounterPart {
         name: heading_counter,
@@ -205,20 +200,16 @@ mod tests {
   use super::*;
   use crate::style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset};
 
-  impl CounterRegistry {
-    /// seiran 既定のカウンタセットでレジストリを構築する
-    #[must_use]
-    fn default_for_seiran() -> Self { return Self::from_policy(&SemanticPolicy::from_style(&Style::default())); }
+  /// seiran 既定のスタイルから意味解析の投影を作る
+  fn default_policy() -> SemanticPolicy { return SemanticPolicy::from_style(&Style::default()); }
 
-    /// `crate::style::Counters` から直接レジストリを構築する（テスト・カスタム用）
-    #[must_use]
-    fn from_counters(counters: &Counters) -> Self {
-      let style = Style {
-        counters: counters.clone(),
-        ..Style::default()
-      };
-      return Self::from_policy(&SemanticPolicy::from_style(&style));
-    }
+  /// `crate::style::Counters` だけを差し替えたスタイルから意味解析の投影を作る
+  fn policy_from_counters(counters: &Counters) -> SemanticPolicy {
+    let style = Style {
+      counters: counters.clone(),
+      ..Style::default()
+    };
+    return SemanticPolicy::from_style(&style);
   }
 
   /// 祖先チェーンを `(カウンタ名, 値)` の列にしてアサートしやすくする
@@ -229,7 +220,8 @@ mod tests {
   #[test]
   fn increment_theorem_numbers_with_default_style() {
     // Arrange
-    let mut r = CounterRegistry::default_for_seiran();
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
 
     // Act
     let thm = r.increment_theorem(TheoremClass::Theorem).expect("既定の theorem は採番されるはず");
@@ -245,7 +237,8 @@ mod tests {
   #[test]
   fn increment_theorem_proof_is_unnumbered() {
     // Arrange
-    let mut r = CounterRegistry::default_for_seiran();
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
 
     // Act
     let value = r.increment_theorem(TheoremClass::Proof);
@@ -257,7 +250,8 @@ mod tests {
   #[test]
   fn counter_registry_increment_builds_ancestor_chain() {
     // Arrange
-    let mut r = CounterRegistry::default_for_seiran();
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
 
     // Act
     let chapter = r.increment(CounterName::Chapter);
@@ -276,7 +270,8 @@ mod tests {
   #[test]
   fn counter_registry_section_reset_on_chapter_increment() {
     // Arrange
-    let mut r = CounterRegistry::default_for_seiran();
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Chapter); // chapter = 1
     r.increment(CounterName::Section); // section = 1
     r.increment(CounterName::Section); // section = 2
@@ -310,7 +305,8 @@ mod tests {
       },
       ..Counters::default()
     };
-    let mut r = CounterRegistry::from_counters(&counters);
+    let policy = policy_from_counters(&counters);
+    let mut r = CounterRegistry::from_policy(&policy);
 
     // Act
     r.increment(CounterName::Part); // I
@@ -327,7 +323,8 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
-    let mut r = CounterRegistry::from_policy(&SemanticPolicy::from_style(&style));
+    let policy = SemanticPolicy::from_style(&style);
+    let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section); // section = 1
 
@@ -370,7 +367,8 @@ mod tests {
   #[test]
   fn counter_value_of_part_has_no_ancestor() {
     // Arrange
-    let mut r = CounterRegistry::default_for_seiran();
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Part);
 
     // Act
@@ -384,7 +382,8 @@ mod tests {
   #[test]
   fn value_of_reads_own_and_ancestors_by_name() {
     // Arrange
-    let mut r = CounterRegistry::default_for_seiran();
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Chapter);
 

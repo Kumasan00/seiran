@@ -281,13 +281,14 @@ fn record_references(facts: &mut SemanticFacts, pending: &[PendingReference]) {
 }
 
 /// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の収集を 1 回の走査で行う
-struct Walker<'a> {
+struct Walker<'a, 'p> {
   /// `NodeId` → ソース位置の対応表
   locations: &'a SourceMap,
   /// 引用キーの既知性を判定する参照定義
   references: &'a References,
-  /// カウンタの採番状態
-  registry: &'a mut CounterRegistry,
+  /// カウンタの採番状態。`'p`（レジストリが借りる `SemanticPolicy` の寿命）を `'a` と分けるのは、
+  /// `&mut` が中身の型について不変なので、1 本にするとグループごとの可変借用が全グループへ延びるため
+  registry: &'a mut CounterRegistry<'p>,
   /// 走査中に確定した事実の書き込み先
   facts: &'a mut SemanticFacts,
   /// 走査後にまとめて検証する参照箇所の書き込み先
@@ -298,7 +299,7 @@ struct Walker<'a> {
   duplicate_labels: &'a mut Vec<(NodeId, SemanticError)>,
 }
 
-impl Walker<'_> {
+impl Walker<'_, '_> {
   /// ブロックノード列を文書順に走査する
   ///
   /// 走査は失敗しない — 重複ラベルを見つけても打ち切らず、最初の定義を有効なまま残して
