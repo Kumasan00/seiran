@@ -29,14 +29,6 @@ fn workspace_root() -> PathBuf {
     .to_path_buf();
 }
 
-/// カレントディレクトリをワークスペースルートへ固定する。
-///
-/// `compile` の相対パスは `base_dir`（[`workspace_root`]）基準で解決されるので、これに依存するのは
-/// テスト資産 `vendor/fonts` の存在確認（相対パス）だけ。
-fn enter_workspace_root() {
-  std::env::set_current_dir(workspace_root()).expect("カレントディレクトリをワークスペースルートへ固定");
-}
-
 /// PDF 構造 golden ファイルを置くディレクトリを返す。
 fn pdf_structure_golden_dir() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
@@ -87,9 +79,8 @@ fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_with_backgrou
 
 /// 背景色の差分を style へ適用して PDF を生成する。
 fn build_pdf_bytes_with_background(name: &str, background: Option<&str>) -> Vec<u8> {
-  enter_workspace_root();
   assert!(
-    Path::new("vendor/fonts").is_dir(),
+    workspace_root().join("vendor/fonts").is_dir(),
     "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
   let dir = TempDir::new().expect("一時ディレクトリを作成できるはず");
