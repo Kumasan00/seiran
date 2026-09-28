@@ -457,86 +457,65 @@ mod tests {
   fn page_box() -> Rect { return Rect::new(0.0, 0.0, 595.0, 842.0).unwrap(); }
 
   #[test]
-  fn rect_new_rejects_negative_size() {
-    let negative_width = Rect::new(0.0, 0.0, -1.0, 10.0);
-    let negative_height = Rect::new(0.0, 0.0, 10.0, -1.0);
-    let zero = Rect::new(0.0, 0.0, 0.0, 0.0);
-
-    assert!(negative_width.is_none(), "負の幅は構築できないはず");
-    assert!(negative_height.is_none(), "負の高さは構築できないはず");
-    assert!(zero.is_some(), "0 は krilla の Rect::from_xywh が受け付けるので構築できるはず");
-  }
-
-  #[test]
-  fn rect_new_rejects_non_finite_values() {
+  fn rect_new_accepts_only_finite_non_negative_values() {
+    assert!(Rect::new(0.0, 0.0, -1.0, 10.0).is_none(), "負の幅は構築できないはず");
+    assert!(Rect::new(0.0, 0.0, 10.0, -1.0).is_none(), "負の高さは構築できないはず");
     assert!(Rect::new(f32::NAN, 0.0, 1.0, 1.0).is_none(), "NaN 座標は構築できないはず");
     assert!(Rect::new(0.0, 0.0, f32::INFINITY, 1.0).is_none(), "無限大の幅は構築できないはず");
+    assert!(
+      Rect::new(0.0, 0.0, 0.0, 0.0).is_some(),
+      "0 は krilla の Rect::from_xywh が受け付けるので構築できるはず"
+    );
   }
 
   #[test]
-  fn page_new_rejects_zero_sized_page_box() {
-    let degenerate = Rect::new(0.0, 0.0, 0.0, 842.0).unwrap();
-    let page = PublicationPage::new(degenerate, Vec::new(), Vec::new());
-    assert!(page.is_none(), "幅 0 のページ矩形は構築できないはず");
-  }
-
-  #[test]
-  fn page_new_rejects_zero_sized_image_rect() {
-    let ops = vec![PaintOp::DrawImage {
+  fn page_new_requires_positive_size_only_for_page_box_and_image_rect() {
+    let zero_width_page_box = Rect::new(0.0, 0.0, 0.0, 842.0).unwrap();
+    let zero_height_image = vec![PaintOp::DrawImage {
       image: ImageRef(0),
       rect: Rect::new(0.0, 0.0, 10.0, 0.0).unwrap(),
       target_dpi: None,
     }];
-
-    let page = PublicationPage::new(page_box(), ops, Vec::new());
-
-    assert!(page.is_none(), "高さ 0 の画像矩形は構築できないはず");
-  }
-
-  #[test]
-  fn page_new_accepts_zero_sized_fill_rect() {
     // 太さ 0 の罫線（style.toml が非負を許す）は描画されないだけで不正ではない
-    let ops = vec![PaintOp::FillRect {
+    let zero_height_fill = vec![PaintOp::FillRect {
       rect: Rect::new(10.0, 10.0, 100.0, 0.0).unwrap(),
       color: None,
     }];
 
-    let page = PublicationPage::new(page_box(), ops, Vec::new());
+    let degenerate_page = PublicationPage::new(zero_width_page_box, Vec::new(), Vec::new());
+    let degenerate_image = PublicationPage::new(page_box(), zero_height_image, Vec::new());
+    let degenerate_fill = PublicationPage::new(page_box(), zero_height_fill, Vec::new());
 
-    assert!(page.is_some(), "0 高さの塗りつぶし矩形は許されるはず");
+    assert!(degenerate_page.is_none(), "幅 0 のページ矩形は構築できないはず");
+    assert!(degenerate_image.is_none(), "高さ 0 の画像矩形は構築できないはず");
+    assert!(degenerate_fill.is_some(), "0 高さの塗りつぶし矩形は許されるはず");
   }
 
   #[test]
-  fn publication_new_rejects_link_to_missing_page() {
-    let link = PublicationLink {
-      target: PublicationLinkTarget::Internal(Destination {
-        page_index: 1,
+  fn publication_new_rejects_destination_to_missing_page() {
+    let missing_page = |page_index| {
+      return Destination {
+        page_index,
         point: Point { x: 0.0, y: 0.0 },
-      }),
+      };
+    };
+    let link = PublicationLink {
+      target: PublicationLinkTarget::Internal(missing_page(1)),
       rect: Rect::new(0.0, 0.0, 10.0, 10.0).unwrap(),
     };
-    let pages = vec![PublicationPage::new(page_box(), Vec::new(), vec![link]).unwrap()];
-
-    let publication = Publication::new(pages, None, metadata(), resources(Vec::new()));
-
-    assert!(publication.is_none(), "存在しないページを指す内部リンクは構築できないはず");
-  }
-
-  #[test]
-  fn publication_new_rejects_outline_entry_to_missing_page() {
-    let pages = vec![PublicationPage::new(page_box(), Vec::new(), Vec::new()).unwrap()];
+    let linked_pages = vec![PublicationPage::new(page_box(), Vec::new(), vec![link]).unwrap()];
+    let plain_pages = vec![PublicationPage::new(page_box(), Vec::new(), Vec::new()).unwrap()];
     let outline = Some(vec![PublicationOutlineEntry {
       depth: 0,
       text: "見出し".to_string(),
-      dest: Destination {
-        page_index: 3,
-        point: Point { x: 0.0, y: 0.0 },
-      },
+      dest: missing_page(3),
     }]);
 
-    let publication = Publication::new(pages, outline, metadata(), resources(Vec::new()));
+    let with_link = Publication::new(linked_pages, None, metadata(), resources(Vec::new()));
+    let with_outline = Publication::new(plain_pages, outline, metadata(), resources(Vec::new()));
 
-    assert!(publication.is_none(), "存在しないページを指すしおりは構築できないはず");
+    assert!(with_link.is_none(), "存在しないページを指す内部リンクは構築できないはず");
+    assert!(with_outline.is_none(), "存在しないページを指すしおりは構築できないはず");
   }
 
   #[test]
