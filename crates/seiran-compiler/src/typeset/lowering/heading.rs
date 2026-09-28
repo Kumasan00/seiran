@@ -30,8 +30,7 @@ pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> Tex
 /// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
 ///
 /// `GeneratedInline` 側のプレーンテキスト畳み込み（`semantics` の `generated_inlines_to_plain_text`）と
-/// 同じ規則を保つ。バリアントごとの扱い（数式は `"[Math]"`、脚注・索引は空、`\cite` は整形済み表示を
-/// 辿る等）は同じに保つ。
+/// 同じ規則を保つ。
 fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
   let mut out = String::new();
   for inline in inlines {
@@ -51,7 +50,6 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
       HirInlineKind::Symbol(ch) => out.push(*ch),
       HirInlineKind::LineBreak => out.push('\n'),
-      // 脚注本体・索引マーカーは見出しのプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
       HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
       HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.reference_target(inline.id))),
     }
@@ -79,8 +77,6 @@ pub(super) fn lower_hir_heading(
   let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
   state.record_heading_title(id, plain);
   let style = title_style(ctx, heading.level);
-  // タイトルの lowering はクロージャで遅延させる。`heading.format` が `{title}` を含まない
-  // なら一度も呼ばれず、タイトル中の `\footnote` が通し index だけ消費して消える事故を防ぐ。
   return lower_heading(
     ctx,
     heading.level,
@@ -176,16 +172,13 @@ mod tests {
 
   #[test]
   fn lower_heading_uses_style_template() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.heading.section.format = NumberTitleTemplate::parse("[{number}] {title}");
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
-    // Act
     let nodes = lower_heading(&ctx, HeadingLevel::Section, "4.7", || return title.clone(), None, HeadingKey::new(0));
 
-    // Assert
     let children = heading_children(&nodes);
     let text = match &children[0] {
       LayoutNode::Inline(InlineNode::Text(text, _)) => text.clone(),
@@ -196,13 +189,11 @@ mod tests {
 
   #[test]
   fn lower_heading_preserves_styled_title() {
-    // Arrange — 書体切り替えを含むタイトルは呼び出し元が lower して渡す
+    // 書体切り替えを含むタイトルは呼び出し元が lower して渡す
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower(&style, &analyzed("\\section{Intro \\italic{Italic}}\n"));
 
-    // Assert
     let children = heading_children(&nodes);
     let heading_size = style.heading(HeadingLevel::Section).font_size;
     let italic = children
@@ -218,12 +209,10 @@ mod tests {
 
   #[test]
   fn lower_heading_emits_anchor_with_label() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    // Act
     let nodes = lower_heading(
       &ctx,
       HeadingLevel::Section,
@@ -233,7 +222,7 @@ mod tests {
       HeadingKey::new(3),
     );
 
-    // Assert — 見出しキーのアンカー、ラベルのアンカーの順で、どちらも VBox より前
+    // 見出しキーのアンカー、ラベルのアンカーの順で、どちらも VBox より前
     let anchors: Vec<(usize, &AnchorId)> = nodes
       .iter()
       .enumerate()
@@ -256,15 +245,12 @@ mod tests {
 
   #[test]
   fn lower_heading_emits_keep_with_next_after_vbox() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    // Act
     let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
 
-    // Assert
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
     let keep_idx = nodes.iter().position(|n| matches!(n, LayoutNode::KeepWithNext)).expect("KeepWithNext が出るはず");
     assert!(keep_idx > vbox_idx, "KeepWithNext は VBox の後に出る: {nodes:?}");
@@ -273,16 +259,13 @@ mod tests {
 
   #[test]
   fn lower_heading_with_page_break_after_omits_keep_with_next() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.heading.section.page_break_after = true;
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    // Act
     let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
 
-    // Assert
     assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
   }
@@ -300,39 +283,34 @@ mod tests {
 
   #[test]
   fn heading_format_without_title_placeholder_does_not_consume_footnote_number() {
-    // Arrange — `{title}` を含まない独自フォーマット（タイトルは一切表示されない）
+    // `{title}` を含まない独自フォーマット（タイトルは一切表示されない）
     let mut style = ReadStyle::default();
     style.heading.section.format = NumberTitleTemplate::parse("{number}");
 
-    // Act
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"));
 
-    // Assert — タイトルを lower しないので、本文の脚注が 1 番のままになる
+    // タイトルを lower しないので、本文の脚注が 1 番のままになる
     assert_eq!(footnotes(&nodes), vec![(1, 0)], "{nodes:?}");
   }
 
   #[test]
   fn heading_format_with_two_title_placeholders_lowers_title_twice() {
-    // Arrange — `{title}` を 2 回含むフォーマット
     let mut style = ReadStyle::default();
     style.heading.section.format = NumberTitleTemplate::parse("{title} / {title}");
 
-    // Act
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"));
 
-    // Assert — 出現ごとに lower し直すので、マーカーと本体が対になった別々の脚注が 2 個出る
+    // 出現ごとに lower し直すので、マーカーと本体が対になった別々の脚注が 2 個出る
     assert_eq!(footnotes(heading_children(&nodes)), vec![(1, 0), (2, 1)], "{nodes:?}");
   }
 
   #[test]
   fn ref_in_heading_title_is_resolved_to_internal_link() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower(&style, &analyzed("\\chapter[label=ch:other]{Other}\n\n\\section{\\ref{ch:other}}\n"));
 
-    // Assert — 2 つ目の見出し（section）の VBox に解決済みリンクが入る
+    // 2 つ目の見出し（section）の VBox に解決済みリンクが入る
     let children = nodes
       .iter()
       .rev()

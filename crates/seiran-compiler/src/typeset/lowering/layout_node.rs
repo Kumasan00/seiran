@@ -151,7 +151,6 @@ pub(in crate::typeset) enum AtomNode {
 
 impl From<AtomNode> for InlineNode {
   /// `AtomNode` は `InlineNode` の部分集合なので、常に無損失で持ち上がる
-  /// （インライン数式を段落の水平リストへ流し込むときに使う。逆方向の変換はない）
   fn from(node: AtomNode) -> Self {
     return match node {
       AtomNode::Text(text, style) => InlineNode::Text(text, style),
@@ -162,8 +161,7 @@ impl From<AtomNode> for InlineNode {
 }
 
 impl From<InlineNode> for LayoutNode {
-  /// インライン要素を縦リストの語彙へ持ち上げる（段落の組み立て・見出しやキャプションの
-  /// `VBox` 構築で使う。逆方向の変換はない）
+  /// インライン要素を縦リストの語彙へ持ち上げる
   fn from(node: InlineNode) -> Self { return LayoutNode::Inline(node); }
 }
 
@@ -244,7 +242,6 @@ pub(in crate::typeset) struct MathBlockCell {
 /// 環境種別（`cases` は常に左波括弧、`matrix` は `[delimiter=...]`）からの解決は
 /// `crate::typeset::lowering` が済ませ、`crate::typeset::boxing` は本体の高さ・深さへ
 /// 合わせて拡大して置くだけ（#674）。伸縮グリフ（OpenType MATH）で組む件は #73。
-/// 既定（`Default`）は左右とも `None` ＝括弧なし。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(in crate::typeset) struct DelimiterGlyphs {
   /// 左括弧のグリフ（`None` は左に括弧を置かない）
@@ -259,7 +256,7 @@ impl DelimiterGlyphs {
   pub(in crate::typeset) fn is_present(self) -> bool { return self.left.is_some() || self.right.is_some(); }
 }
 
-/// `InlineNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
+/// `InlineNode::Text` 1 つに付与するテキスト書体情報
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::typeset) struct TextStyle {
   /// フォントサイズ
@@ -267,7 +264,6 @@ pub(in crate::typeset) struct TextStyle {
   /// フォント種別（書体 + 太字 / イタリック等の組み合わせ）
   pub font_kind: FontKind,
   /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
-  /// `\color[color=#rrggbb]{...}` のときだけ `Some` になる。
   pub color: Option<Color>,
 }
 
@@ -330,7 +326,6 @@ mod tests {
 
   #[test]
   fn adjacent_same_style_text_is_merged() {
-    // Arrange
     let s1 = style(FontKind::Serif);
     let nodes = vec![
       InlineNode::Text("A".to_string(), s1),
@@ -338,17 +333,14 @@ mod tests {
       InlineNode::Text("C".to_string(), s1),
     ];
 
-    // Act
     let merged = merge_adjacent_text(nodes);
 
-    // Assert
     assert_eq!(merged.len(), 1, "{merged:?}");
     assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "ABC"), "{merged:?}");
   }
 
   #[test]
   fn different_style_text_is_not_merged() {
-    // Arrange
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
     let nodes = vec![
@@ -358,10 +350,8 @@ mod tests {
       InlineNode::Text("D".to_string(), s2),
     ];
 
-    // Act
     let merged = merge_adjacent_text(nodes);
 
-    // Assert
     assert_eq!(merged.len(), 2, "{merged:?}");
     assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "AB"), "{merged:?}");
     assert!(matches!(&merged[1], InlineNode::Text(t, _) if t == "CD"), "{merged:?}");
@@ -369,7 +359,6 @@ mod tests {
 
   #[test]
   fn non_text_node_breaks_merging() {
-    // Arrange
     let s1 = style(FontKind::Serif);
     let nodes = vec![
       InlineNode::Text("A".to_string(), s1),
@@ -377,16 +366,14 @@ mod tests {
       InlineNode::Text("B".to_string(), s1),
     ];
 
-    // Act
     let merged = merge_adjacent_text(nodes);
 
-    // Assert
     assert_eq!(merged.len(), 3, "{merged:?}");
   }
 
   #[test]
   fn index_mark_does_not_break_merging() {
-    // Arrange — 幅 0 の索引マーカーはテキストの結合を切らない（#514）
+    // 幅 0 の索引マーカーはテキストの結合を切らない（#514）
     let s1 = style(FontKind::Serif);
     let nodes = vec![
       InlineNode::Text("foo".to_string(), s1),
@@ -397,10 +384,8 @@ mod tests {
       InlineNode::Text(" bar".to_string(), s1),
     ];
 
-    // Act
     let merged = merge_adjacent_text(nodes);
 
-    // Assert — 畳んだテキストの後ろへマーカーを回す
     assert_eq!(merged.len(), 2, "{merged:?}");
     assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "foo bar"), "{merged:?}");
     assert!(matches!(&merged[1], InlineNode::IndexMark(_)), "{merged:?}");
@@ -408,7 +393,7 @@ mod tests {
 
   #[test]
   fn index_mark_keeps_its_place_when_styles_differ() {
-    // Arrange — 書体が違えば結合しないので、マーカーは元の位置に残る
+    // 書体が違えば結合しないので、マーカーは元の位置に残る
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
     let nodes = vec![
@@ -420,10 +405,8 @@ mod tests {
       InlineNode::Text("bar".to_string(), s2),
     ];
 
-    // Act
     let merged = merge_adjacent_text(nodes);
 
-    // Assert
     assert_eq!(merged.len(), 3, "{merged:?}");
     assert!(matches!(&merged[1], InlineNode::IndexMark(_)), "{merged:?}");
     assert!(matches!(&merged[2], InlineNode::Text(t, _) if t == "bar"), "{merged:?}");
@@ -431,23 +414,19 @@ mod tests {
 
   #[test]
   fn merge_adjacent_atom_text_joins_same_style_runs() {
-    // Arrange
     let nodes = vec![
       AtomNode::Text("a".to_string(), style(FontKind::Math)),
       AtomNode::Text("b".to_string(), style(FontKind::Math)),
     ];
 
-    // Act
     let merged = merge_adjacent_atom_text(nodes);
 
-    // Assert
     assert_eq!(merged.len(), 1);
     assert!(matches!(&merged[0], AtomNode::Text(text, _) if text == "ab"));
   }
 
   #[test]
   fn merge_adjacent_atom_text_keeps_runs_separated_by_kern() {
-    // Arrange
     let nodes = vec![
       AtomNode::Text("a".to_string(), style(FontKind::Math)),
       AtomNode::Kern {
@@ -456,38 +435,30 @@ mod tests {
       AtomNode::Text("b".to_string(), style(FontKind::Math)),
     ];
 
-    // Act
     let merged = merge_adjacent_atom_text(nodes);
 
-    // Assert
     assert_eq!(merged.len(), 3, "カーンを挟んだラン同士は結合しない: {merged:?}");
   }
 
   #[test]
   fn atom_kern_lifts_to_inline_kern() {
-    // Arrange
     let kern = AtomNode::Kern {
       length: Length::pt(2.0),
     };
 
-    // Act
     let lifted = InlineNode::from(kern);
 
-    // Assert
     assert!(matches!(lifted, InlineNode::Kern { length } if length == Length::pt(2.0)));
   }
 
   #[test]
   fn inline_kern_lifts_to_layout_inline() {
-    // Arrange
     let kern = InlineNode::Kern {
       length: Length::pt(2.0),
     };
 
-    // Act
     let lifted = LayoutNode::from(kern);
 
-    // Assert
     assert!(
       matches!(lifted, LayoutNode::Inline(InlineNode::Kern { length }) if length == Length::pt(2.0)),
       "インラインは包み variant 1 つで縦リストの語彙へ載る"

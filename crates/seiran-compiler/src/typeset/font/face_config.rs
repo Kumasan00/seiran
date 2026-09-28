@@ -13,9 +13,6 @@ use crate::{
 pub(super) type FontFaceConfigs = FontMap<FontFaceConfig>;
 
 /// `crate::project::FontConfigs` から renderer 用の [`FontFaceConfigs`] を構築する。
-///
-/// `crate::project::FontConfig` → [`FontFaceConfig`] の変換をこの 1 箇所に閉じる
-/// （compiler 側で手書きの複製を書かせないため。issue #305）。
 #[must_use]
 pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
   return FontMap::from_fn(|font_type| {
@@ -57,13 +54,8 @@ mod tests {
 
   #[test]
   fn build_face_configs_copies_only_the_two_convertible_fields() {
-    // Arrange
     let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(3, None));
-
-    // Act
     let face_configs = build_face_configs(&configs);
-
-    // Assert
     for &font_type in FontType::ALL {
       let face_config = &face_configs[font_type];
       assert_eq!(face_config.font_index, 3, "font_index がそのまま複製されるはず");

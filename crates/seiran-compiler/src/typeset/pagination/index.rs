@@ -53,7 +53,7 @@ struct IndexPageRef {
 struct IndexEntry {
   /// 索引語（表示テキスト）
   word: String,
-  /// 読みソートキー（`[reading=...]`）。ソートにのみ使い、表示はしない
+  /// 読みソートキー（`[reading=...]`）。照合（ソートと区分の割り当て）にのみ使い、表示はしない
   reading: Option<String>,
   /// 出現ページ（昇順・重複なし）
   pages: Vec<IndexPageRef>,
@@ -130,17 +130,17 @@ struct IndexSpec {
   title: String,
   /// タイトル文字列の書体
   title_style: TextStyle,
-  /// タイトルとエントリ群の間の縦アキ（pt）
+  /// タイトルとエントリ群の間の縦アキ
   title_bottom_margin: Length,
   /// エントリの語部分の書体
   entry_style: TextStyle,
   /// ページ番号部分の書体（既存の参照リンク色を反映済み）
   page_number_style: TextStyle,
-  /// 語とページ番号列の間の水平アキ（pt）
+  /// 語とページ番号列の間の水平アキ
   entry_gap: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
   line_height_factor: f32,
-  /// 索引ブロック全体の下余白（pt）
+  /// 索引ブロック全体の下余白
   bottom_margin: Length,
   /// 連続する 3 ページ以上を範囲表記へ畳むか
   collapse_page_ranges: bool,
@@ -148,9 +148,9 @@ struct IndexSpec {
   group_headings: bool,
   /// 区分見出しの書体
   group_style: TextStyle,
-  /// 区分見出しの上余白（pt）
+  /// 区分見出しの上余白
   group_top_margin: Length,
-  /// 区分見出しと最初のエントリの間の下余白（pt）
+  /// 区分見出しと最初のエントリの間の下余白
   group_bottom_margin: Length,
   /// 受け皿の区分（数字・記号始まり等）の見出し文字列
   group_other_label: String,
@@ -278,7 +278,7 @@ enum IndexPageItem<'a> {
 
 /// ページ参照列を表示単位（単独ページ / 畳んだ連続範囲）へ分ける
 ///
-/// `collapse` が `false` なら全ページが [`IndexPageItem::Single`] になり、従来の表記と一致する。
+/// `collapse` が `false` なら全ページが [`IndexPageItem::Single`] になる。
 /// `true` のときは連続が [`MIN_COLLAPSED_RUN`] ページ以上の走りだけを範囲へ畳み、2 ページ連続は
 /// 単独ページ 2 つのまま残す。
 ///
@@ -412,13 +412,11 @@ mod tests {
 
   #[test]
   fn group_page_items_mixes_runs_and_single_pages() {
-    // Arrange — 3 連続 → 単独 → 2 連続（末尾の 2 連続は畳まない）
+    // 3 連続 → 単独 → 2 連続（末尾の 2 連続は畳まない）
     let pages = page_refs(&[0, 1, 2, 4, 6, 7]);
 
-    // Act
     let items = group_page_items(&pages, true);
 
-    // Assert
     assert_eq!(item_descs(&items), vec!["1-3", "5", "7", "8"]);
   }
 
@@ -507,7 +505,7 @@ mod tests {
 
   #[test]
   fn collect_index_entries_returns_empty_when_no_index_entries() {
-    // Arrange — \index が 1 個もない本文ページ
+    // Arrange
     let mut body_pages = vec![
       page_with_index_entries(vec![]),
       page_with_index_entries(vec![]),
@@ -517,14 +515,14 @@ mod tests {
     // Act
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
-    // Assert — 索引エントリを出さず、アンカーも追加しない
+    // Assert
     assert!(entries.is_empty());
     assert!(body_pages.iter().all(|p| return p.anchors.is_empty()), "索引が無ければアンカーも追加しない");
   }
 
   #[test]
   fn collect_index_entries_injects_one_anchor_per_page_with_entries() {
-    // Arrange — page0 に 2 語、page1 に重複語（アンカーは 1 個だけになるはず）
+    // Arrange
     let mut body_pages = vec![
       page_with_index_entries(vec![("犬", None), ("猫", None)]),
       page_with_index_entries(vec![("犬", None)]),
@@ -534,7 +532,7 @@ mod tests {
     // Act
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
-    // Assert — page0/page1 それぞれにアンカーが 1 個ずつ追加される
+    // Assert
     assert!(!entries.is_empty());
     assert_eq!(body_pages[0].anchors.len(), 1, "page0 は 2 語出現しても事後アンカーは 1 個");
     assert_eq!(body_pages[1].anchors.len(), 1);
@@ -544,7 +542,7 @@ mod tests {
 
   #[test]
   fn collect_index_entries_merges_same_word_and_reading_across_pages() {
-    // Arrange — 同じ語(reading なし)が page0/page1 に出現、別語 (word 同じだが reading 違い) は別エントリ
+    // Arrange
     let mut body_pages = vec![
       page_with_index_entries(vec![("犬", None), ("猫", Some("びょう"))]),
       page_with_index_entries(vec![("犬", None), ("猫", Some("ねこ"))]),

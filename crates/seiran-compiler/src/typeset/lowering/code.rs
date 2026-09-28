@@ -63,7 +63,7 @@ mod tests {
     typeset::lowering::test_support::{analyzed, lower},
   };
 
-  /// `.sei` ソースを lower して `TextAtom` のテキストだけを並べる
+  /// レイアウトノード列から `TextAtom` のテキストだけを並べる
   fn atom_texts(nodes: &[LayoutNode]) -> Vec<&str> {
     return nodes
       .iter()
@@ -76,14 +76,11 @@ mod tests {
 
   #[test]
   fn code_block_lowers_each_line_to_one_atom_separated_by_line_breaks() {
-    // Arrange
     let style = ReadStyle::default();
     let source = "\\begin{code}\nfn main() {\n    let x = 1;\n}\n\\end{code}\n";
 
-    // Act
     let nodes = lower(&style, &analyzed(source));
 
-    // Assert
     assert_eq!(atom_texts(&nodes), vec!["fn main() {", "    let x = 1;", "}"]);
     let breaks = nodes.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))).count();
     assert_eq!(breaks, 2, "行の間だけに強制改行が入る: {nodes:?}");
@@ -91,28 +88,22 @@ mod tests {
 
   #[test]
   fn code_block_keeps_blank_line_as_an_empty_atom() {
-    // Arrange
     let style = ReadStyle::default();
     let source = "\\begin{code}\na\n\nb\n\\end{code}\n";
 
-    // Act
     let nodes = lower(&style, &analyzed(source));
 
-    // Assert
     assert_eq!(atom_texts(&nodes), vec!["a", "", "b"]);
   }
 
   #[test]
   fn code_block_uses_monospace_and_suppresses_first_line_indent() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.text.first_line_indent = Length::pt(15.0);
     let source = "\\begin{code}\nx\n\\end{code}\n";
 
-    // Act
     let nodes = lower(&style, &analyzed(source));
 
-    // Assert
     let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = &nodes[0] else {
       panic!("先頭は TextAtom であるべき: {nodes:?}");
     };
@@ -125,14 +116,11 @@ mod tests {
 
   #[test]
   fn inline_code_becomes_a_monospace_atom_in_the_paragraph() {
-    // Arrange
     let style = ReadStyle::default();
     let source = "前 \\code{if x { y }} 後\n";
 
-    // Act
     let nodes = lower(&style, &analyzed(source));
 
-    // Assert
     assert_eq!(atom_texts(&nodes), vec!["if x { y }"]);
     let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = nodes
       .iter()

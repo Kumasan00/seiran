@@ -188,7 +188,6 @@ fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
         right: Some("\u{2016}"),
       },
     },
-    // 区切り括弧を持たない環境。
     MathEnvKind::Equation | MathEnvKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
       DelimiterGlyphs::default()
     },
@@ -607,11 +606,9 @@ mod tests {
 
   #[test]
   fn lower_inline_math_ignores_source_whitespace() {
-    // Arrange / Act
     let spaced = lower_math_source("$a + b$\n");
     let tight = lower_math_source("$a+b$\n");
 
-    // Assert
     assert_eq!(concat_texts(&spaced), concat_texts(&tight), "ソースの空白は組版に出さない");
     assert_eq!(spacings(&spaced), spacings(&tight));
   }
@@ -631,10 +628,8 @@ mod tests {
 
   #[test]
   fn lower_inline_math_suppresses_bracketed_space_inside_script() {
-    // Arrange / Act
     let nodes = lower_math_source("$x^{a+b}$\n");
 
-    // Assert
     let (_, children) = first_raise(&nodes);
     let inner_kerns = children.iter().filter(|node| return matches!(node, AtomNode::Kern { .. })).count();
     assert_eq!(inner_kerns, 0, "script style では括弧付きセルのアキが抑制される: {children:?}");
@@ -663,7 +658,7 @@ mod tests {
     assert_eq!(spacings(&nodes), vec![mu(3); 2], "大型演算子の前後は細アキ: {nodes:?}");
   }
 
-  /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
+  /// equation カウンタの `number_format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
   fn style_with_plain_equation_format() -> ReadStyle {
     let mut style = ReadStyle::default();
     style.counters.equation.number_format = CounterTemplate::parse("{n}");
@@ -693,13 +688,9 @@ mod tests {
 
   #[test]
   fn lower_math_block_formats_number_with_template_and_serif_font() {
-    // Arrange
     let style = style_with_plain_equation_format();
-
-    // Act
     let block = lower_numbered_equation(&style);
 
-    // Assert
     let number = block.rows[0].number.as_ref().expect("番号あり");
     assert!(
       matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
@@ -709,27 +700,19 @@ mod tests {
 
   #[test]
   fn lower_math_block_uses_right_numbers_and_center_align_by_default() {
-    // Arrange
     let style = style_with_plain_equation_format();
-
-    // Act
     let block = lower_numbered_equation(&style);
 
-    // Assert
     assert!(block.numbers_on_right, "既定では番号は右寄せ");
     assert_eq!(block.align, Align::Center, "既定では本体は中央寄せ");
   }
 
   #[test]
   fn lower_math_block_left_number_side_sets_numbers_on_left() {
-    // Arrange
     let mut style = style_with_plain_equation_format();
     style.math.block.number_side = NumberSide::Left;
-
-    // Act
     let block = lower_numbered_equation(&style);
 
-    // Assert
     assert!(!block.numbers_on_right, "number_side = Left では番号は左寄せ");
   }
 
@@ -770,20 +753,16 @@ mod tests {
 
   #[test]
   fn lower_math_block_resolves_cell_align_for_align_environment() {
-    // Act
     let block = math_block_of("\\begin{align}\na &= b \\\\\nc &= d\n\\end{align}\n");
 
-    // Assert
     let aligns: Vec<Align> = block.rows[0].cells.iter().map(|cell| return cell.align).collect();
     assert_eq!(aligns, vec![Align::Right, Align::Left], "align は偶数列が右・奇数列が左: {aligns:?}");
   }
 
   #[test]
   fn lower_math_block_resolves_cell_align_as_staircase_for_multiline() {
-    // Act
     let block = math_block_of("\\begin{multiline}\na \\\\\nb \\\\\nc\n\\end{multiline}\n");
 
-    // Assert
     let aligns: Vec<Align> = block.rows.iter().map(|row| return row.cells[0].align).collect();
     assert_eq!(
       aligns,
@@ -905,10 +884,8 @@ mod tests {
 
   #[test]
   fn lower_math_block_resolves_delimiter_glyphs_for_matrix() {
-    // Act
     let block = math_block_of("\\begin{matrix}[delimiter=bracket]\na & b \\\\\nc & d\n\\end{matrix}\n");
 
-    // Assert
     assert_eq!(
       block.delimiters,
       DelimiterGlyphs {
@@ -921,10 +898,8 @@ mod tests {
 
   #[test]
   fn lower_math_block_leaves_align_environment_without_delimiters() {
-    // Act
     let block = math_block_of("\\begin{align}\na &= b\n\\end{align}\n");
 
-    // Assert
     assert!(!block.delimiters.is_present(), "揃え系の環境は括弧で囲まない: {:?}", block.delimiters);
   }
 }

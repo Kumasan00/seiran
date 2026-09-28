@@ -77,7 +77,7 @@ pub(crate) enum LayoutValidationError {
   },
 }
 
-/// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
+/// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅を返す。
 ///
 /// `(text_width - (num_columns - 1) * column_gap) / num_columns`。
 /// [`PreparedGeometry::prepare`] と `typeset::breaking::break_pages` の実配置が同じ式を参照する。
@@ -101,24 +101,24 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
 /// ページの物理ジオメトリと既定の行送りパラメータ
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PageGeometry {
-  /// 本文の水平原点（pt）= 用紙左端から本文左端まで（`style.page.margin_left`）。
+  /// 本文の水平原点 = 用紙左端から本文左端まで（`style.page.margin_left`）。
   ///
   /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
   /// [`crate::typeset::boxes::Page::content_origin_x`] へそのまま載せて描画側の加算に使わせる。
   pub content_origin_x: Length,
-  /// 上マージン（pt）。ページ先頭のベースライン位置
+  /// 上マージン。ページ先頭のベースライン位置
   pub margin_top: Length,
-  /// 本文下限（pt）= ページ高さ − 下マージン。超えると改ページ（または改段）
+  /// 本文下限 = ページ高さ − 下マージン。超えると改ページ（または改段）
   pub page_limit: Length,
-  /// 既定フォントサイズ（pt）。表の行高のフォールバックに使用
+  /// 既定フォントサイズ。表の行高のフォールバックに使用
   pub default_font_size: Length,
   /// 行高係数。表の行高の算出に使用
   pub line_height_factor: f32,
-  /// 表セルの内側余白（pt、左右各）。列幅の解決に使用
+  /// 表セルの内側余白（左右各）。列幅の解決に使用
   pub table_cell_padding: Length,
   /// 段組み数（1 = 単段）。本文を左段 → 右段 → 次ページの順に流す段の本数
   pub num_columns: usize,
-  /// 段間（gutter、pt）。隣り合う段の間隔
+  /// 段間（gutter）。隣り合う段の間隔
   pub column_gap: Length,
   /// 下端揃え（flush bottom）を有効にするか（`style.toml` の `[page] flush_bottom`）。
   pub flush_bottom: bool,
@@ -253,7 +253,7 @@ impl PreparedGeometry {
 
 /// 本文・前付け・後付けのページジオメトリを組み立てる。
 ///
-/// 段数・段間以外は本文の値を共有する。
+/// 段数・段間・下端揃え以外は本文の値を共有する。
 fn build_page_geometries(
   config: &ProjectConfig,
   style: &Style,
@@ -307,9 +307,8 @@ mod tests {
   };
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
-  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ、`project/config.rs` の
-  /// `mod tests` にある同名ヘルパの複製 — `PreparedGeometry::prepare` は `config::load` の実結果に
-  /// 対して検証するため、こちらでも同じ実ファイルシステム経由のフィクスチャ生成が要る）。
+  /// （`project/config.rs` の `mod tests` にある同名ヘルパの複製 — `PreparedGeometry::prepare` は
+  /// `config::load` の実結果に対して検証するため、こちらでも同じ実ファイルシステム経由のフィクスチャ生成が要る）。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let font_path = tempdir.path().join("dummy.ttf");
@@ -346,7 +345,6 @@ mod tests {
 
   #[test]
   fn column_width_helper_divides_text_width() {
-    // 本文幅 100pt を 2 段（段間 10pt）と 1 段に割ったときの 1 段幅
     assert!(close(column_width(pt(100.0), 2, pt(10.0)), 45.0));
     assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
   }
@@ -421,14 +419,14 @@ mod tests {
 
   #[test]
   fn prepare_reports_vertical_and_horizontal_violations_in_input_order() {
-    // Arrange — 上下・左右がともに不正
+    // Arrange
     let (_tempdir, config) = read_test_config();
     let style = test_style(450.0, 450.0, 300.0, 300.0);
 
     // Act
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
-    // Assert — 縦 → 横の論理順で 2 件
+    // Assert
     let (first, rest) = failures.into_parts();
     assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
     assert_eq!(rest.len(), 1);
@@ -437,7 +435,7 @@ mod tests {
 
   #[test]
   fn prepare_derives_text_width_and_body_column_width() {
-    // Arrange — 用紙幅から左右 50pt ずつを引いた本文幅を、段間 15pt の 2 段に割る
+    // Arrange
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
@@ -458,7 +456,7 @@ mod tests {
 
   #[test]
   fn prepare_derives_front_and_back_geometry_from_body() {
-    // Arrange — 本文 2 段・下端揃えあり、索引 3 段
+    // Arrange
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
@@ -468,7 +466,7 @@ mod tests {
     // Act
     let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
 
-    // Assert — 前付けは常に 1 段・段間 0・下端揃えなし、後付けは索引の段数で下端揃えなし
+    // Assert
     assert_eq!(prepared.body_geometry().num_columns, 2);
     assert!(prepared.body_geometry().flush_bottom, "本文は style の flush_bottom に従うはず");
     assert_eq!(prepared.front_geometry().num_columns, 1);

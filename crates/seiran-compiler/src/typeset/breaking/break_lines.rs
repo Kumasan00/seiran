@@ -230,7 +230,7 @@ pub(super) fn build_line(
   };
 }
 
-/// 行分割テストの共有フィクスチャ（[`greedy`] / [`knuth_plass`] 両モジュールのテストが使う）
+/// 行分割テストの共有フィクスチャ
 #[cfg(test)]
 pub(super) mod test_support {
   use crate::{

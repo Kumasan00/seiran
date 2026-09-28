@@ -8,12 +8,12 @@ use crate::document::MathVariant;
 ///
 /// `base + offset` が Unicode スカラー値でない場合にパニックします。呼び出し元が渡す `base` は
 /// この module がリテラルで持つブロック先頭（0x1D400〜0x1D7F6）、`offset` は ASCII 英数字の差分
-/// （25 以下）か [`greek_math_offset`] の値（51 以下）なので、サロゲート域にも 0x10FFFF 超にも
+/// （25 以下）か [`greek_math_offset`] の値（57 以下）なので、サロゲート域にも 0x10FFFF 超にも
 /// 届かず、通常は起こりません。
 fn math_alphanumeric(base: u32, offset: u32) -> char {
   let Some(ch) = char::from_u32(base + offset) else {
     unreachable!(
-      "base（0x1D400〜0x1D7F6 のブロック先頭リテラル）と offset（51 以下）の和はサロゲート域にも \
+      "base（0x1D400〜0x1D7F6 のブロック先頭リテラル）と offset（57 以下）の和はサロゲート域にも \
        0x10FFFF 超にも届かない: base={base:#x} offset={offset}"
     )
   };

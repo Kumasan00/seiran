@@ -376,8 +376,7 @@ pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool)
 pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<InlineNode> {
   let mut out: Vec<InlineNode> = Vec::new();
   let mut run: Vec<AtomNode> = Vec::new();
-  // 開き括弧の入れ子の深さ。[`Fence`] だけで数える（数式クラスの Open/Close ではない — `!` `?` は
-  // Close クラスだが区切りではないので深さに数えない）。対応の無い閉じ括弧で負にはしない。
+  // 開き括弧の入れ子の深さ。[`Fence`] だけで数え、対応の無い閉じ括弧で負にはしない。
   let mut depth = 0usize;
   for spaced in space_items(items, font_size, false) {
     if let Some(gap) = spaced.gap {
@@ -498,49 +497,34 @@ mod tests {
 
   #[test]
   fn resolve_bin_classes_demotes_leading_binary_operator() {
-    // Arrange
     let mut classes = [MathClass::Bin, MathClass::Ord];
-
-    // Act
     resolve_bin_classes(&mut classes);
 
-    // Assert
     assert_eq!(classes, [MathClass::Ord, MathClass::Ord], "先頭の二項演算子は順序子になる");
   }
 
   #[test]
   fn resolve_bin_classes_demotes_binary_operator_before_relation() {
-    // Arrange
     let mut classes = [MathClass::Ord, MathClass::Bin, MathClass::Rel];
-
-    // Act
     resolve_bin_classes(&mut classes);
 
-    // Assert
     assert_eq!(classes, [MathClass::Ord, MathClass::Ord, MathClass::Rel], "関係子の直前の二項演算子も落ちる");
   }
 
   #[test]
   fn resolve_bin_classes_keeps_binary_operator_between_ordinaries() {
-    // Arrange
     let mut classes = [MathClass::Ord, MathClass::Bin, MathClass::Ord];
-
-    // Act
     resolve_bin_classes(&mut classes);
 
-    // Assert
     assert_eq!(classes, [MathClass::Ord, MathClass::Bin, MathClass::Ord], "通常記号に挟まれた二項演算子は残る");
   }
 
   #[test]
   fn resolve_bin_classes_does_not_cascade_to_the_next_operator() {
-    // Arrange — `$++a$`。先頭が Ord へ落ちても、2 つ目は「直前が Ord」なので Bin のまま
+    // `$++a$`。先頭が Ord へ落ちても、2 つ目は「直前が Ord」なので Bin のまま
     let mut classes = [MathClass::Bin, MathClass::Bin, MathClass::Ord];
-
-    // Act
     resolve_bin_classes(&mut classes);
 
-    // Assert
     assert_eq!(classes, [MathClass::Ord, MathClass::Bin, MathClass::Ord]);
   }
 
@@ -561,77 +545,53 @@ mod tests {
 
   #[test]
   fn assemble_inserts_medium_space_around_binary_operator() {
-    // Arrange
     let font_size = Length::pt(12.0);
     let items = vec![item('a'), item('+'), item('b')];
-
-    // Act
     let nodes = assemble(items, font_size, false);
 
-    // Assert
     assert_eq!(kerns(&nodes), vec![mu(4, font_size); 2]);
   }
 
   #[test]
   fn assemble_merges_ordinaries_into_a_single_run() {
-    // Arrange
     let items = vec![item('a'), item('b')];
-
-    // Act
     let nodes = assemble(items, Length::pt(12.0), false);
 
-    // Assert
     assert_eq!(nodes.len(), 1, "アキの無い並びは 1 本のグリフランに戻る: {nodes:?}");
     assert!(matches!(&nodes[0], AtomNode::Text(text, _) if text == "ab"));
   }
 
   #[test]
   fn assemble_omits_space_for_leading_binary_operator() {
-    // Arrange
     let items = vec![item('-'), item('x')];
-
-    // Act
     let nodes = assemble(items, Length::pt(12.0), false);
 
-    // Assert
     assert!(kerns(&nodes).is_empty(), "先頭の二項演算子は順序子なのでアキが入らない: {nodes:?}");
   }
 
   #[test]
   fn push_attachment_extends_the_preceding_item() {
-    // Arrange
     let mut items = vec![item('x')];
-
-    // Act
     push_attachment(&mut items, vec![AtomNode::Text("2".to_string(), style())]);
 
-    // Assert
     assert_eq!(items.len(), 1, "スクリプトは新しいアトムを作らない");
     assert_eq!(items[0].nodes.len(), 2);
   }
 
   #[test]
   fn push_attachment_without_nucleus_creates_an_ordinary_item() {
-    // Arrange
     let mut items: Vec<MathItem> = Vec::new();
-
-    // Act
     push_attachment(&mut items, vec![AtomNode::Text("2".to_string(), style())]);
 
-    // Assert
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].class, MathClass::Ord);
   }
 
   #[test]
   fn assemble_breakable_breaks_after_binary_operator_and_relation() {
-    // Arrange
     let font_size = Length::pt(12.0);
-
-    // Act
     let nodes = assemble_breakable(items("a+b=c"), font_size);
 
-    // Assert
     assert_eq!(
       breaks(&nodes),
       vec![
@@ -740,17 +700,14 @@ mod tests {
 
   #[test]
   fn assemble_breakable_does_not_break_before_empty_group() {
-    // Arrange — `$a+{}$` の `{}` は Group([]) → 中身の無い Ord アイテムになる
+    // `$a+{}$` の `{}` は Group([]) → 中身の無い Ord アイテムになる
     let items = vec![
       item('a'),
       item('+'),
       MathItem::new(MathClass::Ord, None, Vec::new()),
     ];
-
-    // Act
     let nodes = assemble_breakable(items, Length::pt(12.0));
 
-    // Assert
     assert!(breaks(&nodes).is_empty(), "右が空アイテムなら分割点を置かず Kern のまま: {nodes:?}");
   }
 }

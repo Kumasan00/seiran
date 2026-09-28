@@ -100,7 +100,6 @@ pub(super) fn lower_inline(
     },
     HirInlineKind::Cite { .. } => {
       // 表示（CSL 整形済みインライン列）は文書木ではなく生成物の side table から引く。
-      // 生成物は `NodeId` を持たないので、著者が書いた本文とは別経路で lower する。
       let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
       return generated::lower_generated_inlines(ctx, state.citation_display(inline.id), style);
     },
@@ -110,7 +109,6 @@ pub(super) fn lower_inline(
       let footnote_style = &ctx.style.footnote;
       let marker_text = footnote_style.marker_format.expand(&footnote_style.number_style.render(number));
 
-      // 本文中のマーカーから脚注本体へリンクする。
       let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       let inline_marker = InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Footnote(FootnoteId::new(index))),
@@ -256,14 +254,11 @@ mod tests {
 
   #[test]
   fn lower_inline_styled_overrides_parent_kind() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.text.font_kind = FontKind::SerifBold;
 
-    // Act
     let nodes = lower_source(&style, "\\italic{x}\n");
 
-    // Assert
     let (text, text_style) = first_text(&nodes);
     assert_eq!(text, "x");
     assert_eq!(text_style.font_kind, FontKind::SerifItalic);
@@ -272,14 +267,11 @@ mod tests {
 
   #[test]
   fn lower_inline_colored_overrides_color_keeps_font() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.text.font_kind = FontKind::SansSerif;
 
-    // Act
     let nodes = lower_source(&style, "\\color[color=#ff0000]{x}\n");
 
-    // Assert
     let (text, text_style) = first_text(&nodes);
     assert_eq!(text, "x");
     assert_eq!(text_style.font_kind, FontKind::SansSerif);
@@ -288,13 +280,10 @@ mod tests {
 
   #[test]
   fn lower_bold_inside_color_keeps_color() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\color[color=#008000]{\\bold{x}}\n");
 
-    // Assert
     let (_, text_style) = first_text(&nodes);
     assert_eq!(text_style.font_kind, FontKind::SerifBold);
     assert_eq!(text_style.color, Some(Color::new(0x00, 0x80, 0x00)));
@@ -302,13 +291,10 @@ mod tests {
 
   #[test]
   fn lower_ref_resolves_to_internal_link_with_display_number() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\section[label=sec:intro]{S}\n\n\\ref{sec:intro}\n");
 
-    // Assert
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:intro"))));
     assert!(matches!(&children[0], InlineNode::Text(t, _) if t == "Section 1.1"), "{children:?}");
@@ -316,13 +302,10 @@ mod tests {
 
   #[test]
   fn lower_external_link_maps_to_external_target() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\href{https://example.com}{ここ}\n");
 
-    // Assert
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::External("https://example.com".to_string()));
     assert!(matches!(&children[0], InlineNode::Text(t, _) if t == "ここ"));
@@ -342,29 +325,23 @@ mod tests {
 
   #[test]
   fn lower_ref_applies_link_color() {
-    // Arrange
     let blue = Color::new(0x00, 0x00, 0xff);
     let mut style = ReadStyle::default();
     style.hyperref.link_color = Some(blue);
 
-    // Act
     let nodes = lower_source(&style, REF_SOURCE);
 
-    // Assert
     assert_eq!(ref_text_style(&nodes).color, Some(blue));
   }
 
   #[test]
   fn lower_external_link_applies_url_color() {
-    // Arrange
     let blue = Color::new(0x00, 0x00, 0xff);
     let mut style = ReadStyle::default();
     style.hyperref.url_color = Some(blue);
 
-    // Act
     let nodes = lower_source(&style, "\\href{https://example.com}{ここ}\n");
 
-    // Assert
     let (_, children) = first_link(&nodes);
     let InlineNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
@@ -374,37 +351,31 @@ mod tests {
 
   #[test]
   fn lower_ref_inherits_black_when_link_color_none() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.hyperref.link_color = None;
 
-    // Act
     let nodes = lower_source(&style, REF_SOURCE);
 
-    // Assert
     assert_eq!(ref_text_style(&nodes).color, None);
   }
 
   #[test]
   fn lower_explicit_color_overrides_link_color() {
-    // Arrange
     let red = Color::new(0xff, 0x00, 0x00);
     let mut style = ReadStyle::default();
     style.hyperref.link_color = Some(Color::new(0x00, 0x00, 0xff));
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\chapter{C}\n\n\\section[label=sec:intro]{S}\n\n\\color[color=#ff0000]{\\ref{sec:intro}}\n",
     );
 
-    // Assert
     assert_eq!(ref_text_style(&nodes).color, Some(red));
   }
 
   #[test]
   fn lower_cite_label_applies_cite_color_and_links() {
-    // Arrange — 引用の表示（CSL 整形の生成物）は side table 側から与える
+    // 引用の表示（CSL 整形の生成物）は side table 側から与える
     let blue = Color::new(0x00, 0x00, 0xff);
     let mut style = ReadStyle::default();
     style.hyperref.cite_color = Some(blue);
@@ -421,10 +392,8 @@ mod tests {
       None,
     );
 
-    // Act
     let nodes = lower(&style, &document);
 
-    // Assert
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(CitationId::new("kwan2014"))));
     let InlineNode::Text(_, text_style) = &children[0] else {
@@ -435,13 +404,10 @@ mod tests {
 
   #[test]
   fn lower_footnote_assigns_sequential_number_and_lowers_body() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\footnote{note}\n");
 
-    // Assert
     let (target, children) = first_link(&nodes);
     assert!(matches!(&children[0], InlineNode::Raise { .. }));
     let (number, index, body) = first_footnote(&nodes);
@@ -454,15 +420,13 @@ mod tests {
 
   #[test]
   fn lower_footnote_applies_number_override_to_both_markers() {
-    // Arrange — ページ単位採番で 2 個目の脚注も 1 番になる場合を模す
+    // ページ単位採番で 2 個目の脚注も 1 番になる場合を模す
     let style = ReadStyle::default();
     let numbers = [1, 1];
     let ctx = context(&style).with_footnote_numbers(&numbers);
 
-    // Act
     let nodes = lower_source_with(&ctx, "a\\footnote{first}\n\nb\\footnote{note}\n");
 
-    // Assert — 2 個目の脚注（index 1）の表示番号は上書きされて 1
     let second = &nodes[nodes
       .iter()
       .rposition(|n| matches!(n, LayoutNode::Inline(InlineNode::Footnote { .. })))
@@ -478,21 +442,18 @@ mod tests {
     assert_eq!(*number, 1);
     assert_eq!(*index, 1);
     assert_eq!(marker_text_inline(&body[0]), "1", "脚注エリア側のマーカー");
-    // Assert — 本文側マーカーも同じ上書き番号になる（1 個目・2 個目とも 1 番）
     assert_eq!(text_side_markers(&nodes), vec![(0, "1"), (1, "1")], "本文側のマーカー: {nodes:?}");
   }
 
   #[test]
   fn lower_footnote_falls_back_to_continuous_number_outside_override_map() {
-    // Arrange — 上書きマップは index 0 しか持たない
+    // 上書きマップは index 0 しか持たない
     let style = ReadStyle::default();
     let numbers = [1];
     let ctx = context(&style).with_footnote_numbers(&numbers);
 
-    // Act
     let nodes = lower_source_with(&ctx, "a\\footnote{first}\n\nb\\footnote{note}\n");
 
-    // Assert
     let last = &nodes[nodes
       .iter()
       .rposition(|n| matches!(n, LayoutNode::Inline(InlineNode::Footnote { .. })))
@@ -530,13 +491,10 @@ mod tests {
 
   #[test]
   fn lower_footnote_body_preserves_nested_styling() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\footnote{\\bold{x}}\n");
 
-    // Assert
     let (_, _, body) = first_footnote(&nodes);
     let InlineNode::Text(text, text_style) = &body[1] else {
       panic!("Text が期待されます: {body:?}");
@@ -547,13 +505,10 @@ mod tests {
 
   #[test]
   fn lower_footnote_increments_state_across_calls() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "a\\footnote{a}\n\nb\\footnote{b}\n");
 
-    // Assert
     let numbers: Vec<u32> = nodes
       .iter()
       .filter_map(|n| match as_inline(n) {
@@ -566,16 +521,13 @@ mod tests {
 
   #[test]
   fn lower_footnote_reflects_non_default_footnote_style() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.footnote.font_size = Length::pt(20.0);
     style.footnote.marker_size_factor = 0.5;
     style.footnote.marker_format = NumberTemplate::parse("[{number}]");
 
-    // Act
     let nodes = lower_source(&style, "\\footnote{note}\n");
 
-    // Assert
     let (_, link_children) = first_link(&nodes);
     let InlineNode::Raise { children, .. } = &link_children[0] else {
       panic!("Raise が期待されます: {link_children:?}");
@@ -592,7 +544,7 @@ mod tests {
       marker_style.font_size.to_pt()
     );
 
-    // Assert — 脚注本体側のマーカーは脚注フォントサイズ基準
+    // 脚注本体側のマーカーは脚注フォントサイズ基準
     let (_, _, body) = first_footnote(&nodes);
     let InlineNode::Raise { children, .. } = &body[0] else {
       panic!("Raise が期待されます: {body:?}");
@@ -609,14 +561,11 @@ mod tests {
 
   #[test]
   fn lower_footnote_applies_number_style_to_both_markers() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.footnote.number_style = NumberStyle::RomanUpper;
 
-    // Act
     let nodes = lower_source(&style, "a\\footnote{a}\n\nb\\footnote{b}\n");
 
-    // Assert — 脚注エリア側
     let area_markers: Vec<&str> = nodes
       .iter()
       .filter_map(|n| match as_inline(n) {
@@ -626,19 +575,15 @@ mod tests {
       .collect();
     assert_eq!(area_markers, vec!["I", "II"], "脚注エリア側のマーカー: {nodes:?}");
 
-    // Assert — 本文側
     assert_eq!(text_side_markers(&nodes), vec![(0, "I"), (1, "II")], "本文側のマーカー: {nodes:?}");
   }
 
   #[test]
   fn lower_inline_index_produces_index_mark_layout_node() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\index{語}\n");
 
-    // Assert
     assert!(
       matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.word == "語" && term.reading.is_none()),
       "{nodes:?}"
@@ -647,13 +592,10 @@ mod tests {
 
   #[test]
   fn lower_inline_index_with_reading_preserves_reading() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\index[reading=よみ]{語}\n");
 
-    // Assert
     assert!(
       matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.reading.as_deref() == Some("よみ")),
       "{nodes:?}"
@@ -662,13 +604,10 @@ mod tests {
 
   #[test]
   fn lower_inline_index_does_not_consume_footnote_counter() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act — 索引マーカーの後の脚注が 1 番のままであることを見る
     let nodes = lower_source(&style, "\\index{語}\\footnote{a}\n");
 
-    // Assert
     let (number, _, _) = first_footnote(&nodes);
     assert_eq!(number, 1, "{nodes:?}");
   }

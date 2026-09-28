@@ -20,7 +20,6 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
   let mut result = Vec::new();
 
   // 項目内容には本文の段落先頭字下げを波及させない（マーカー直後への字下げを避ける）。
-  // 同時にネスト深さを +1 して渡し、item 内容中のネストしたリストが深さ +1 で lower されるようにする。
   let item_ctx = ctx.with_first_line_indent(Length::pt(0.0)).with_list_depth(depth + 1);
 
   let marker_style = TextStyle {
@@ -30,9 +29,8 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
   };
 
   for (i, item) in list.items.iter().enumerate() {
-    // マーカーの生成。`\item[marker=...]` による個別上書きがあれば自動生成より優先する。
-    // 連番カウンタ n はこの上書きと独立に i から算出するため、上書きされた項目があっても
-    // 後続項目の自動番号はズレない。
+    // 連番カウンタ n は `\item[marker=...]` の上書きと独立に i から算出するため、上書きされた項目が
+    // あっても後続項目の自動番号はズレない。
     let base = list.start.unwrap_or(1);
     let offset = u32::try_from(i).expect("リスト項目数は u32 に収まる前提");
     let n = base.saturating_add(offset);
@@ -51,7 +49,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
       list_style.nested_unordered_markers[(depth - 1) % list_style.nested_unordered_markers.len()].clone()
     };
 
-    // マーカー + 内容。左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
+    // 左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
     // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。`marker=""` の
     // 明示指定時（marker_body が空）はマーカー Text 自体を出さず、ぶら下げインデントのみにする。
     let mut item_nodes = Vec::new();
@@ -127,38 +125,30 @@ mod tests {
 
   #[test]
   fn empty_list_yields_no_layout_nodes() {
-    // Arrange — `\item` が 1 つも無いリスト環境はソースとして書ける（パースも通る）
+    // `\item` が 1 つも無いリスト環境はソースとして書ける（パースも通る）
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{itemize}\n\\end{itemize}\n");
 
-    // Assert
     assert!(nodes.is_empty(), "{nodes:?}");
   }
 
   #[test]
   fn unordered_list_uses_marker_with_trailing_space() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{itemize}\n\\item{apple}\n\\end{itemize}\n");
 
-    // Assert
     let (marker, _) = marker_of(&nodes[0]);
     assert_eq!(marker, "• ");
   }
 
   #[test]
   fn ordered_list_numbers_start_at_one_and_increment() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{enumerate}\n\\item{a}\n\\item{b}\n\\item{c}\n\\end{enumerate}\n");
 
-    // Assert
     assert_eq!(nodes.len(), 3);
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
@@ -166,31 +156,25 @@ mod tests {
 
   #[test]
   fn ordered_list_with_start_numbers_from_start() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes =
       lower_source(&style, "\\begin{enumerate}[start=5]\n\\item{a}\n\\item{b}\n\\item{c}\n\\end{enumerate}\n");
 
-    // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["5. ", "6. ", "7. "]);
   }
 
   #[test]
   fn nested_start_does_not_affect_outer_numbering() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{enumerate}\n\\item{outer-a}\n\\item{outer-b\n\
        \\begin{enumerate}[start=10]\n\\item{inner-a}\n\\item{inner-b}\n\\end{enumerate}\n}\n\\end{enumerate}\n",
     );
 
-    // Assert
     let outer_markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(outer_markers, vec!["1. ", "2. "]);
     let inner_vbox = first_nested_vbox(&nodes[1]);
@@ -199,30 +183,24 @@ mod tests {
 
   #[test]
   fn sibling_list_after_start_list_is_unaffected() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{enumerate}[start=5]\n\\item{a}\n\\item{b}\n\\end{enumerate}\n\n\
        \\begin{enumerate}\n\\item{x}\n\\end{enumerate}\n",
     );
 
-    // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["5. ", "6. ", "1. "]);
   }
 
   #[test]
   fn item_vbox_uses_indent_margin_and_marker_style() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{itemize}\n\\item{x}\n\\end{itemize}\n");
 
-    // Assert
     let list_style = &style.list;
     let (_, marker_style) = marker_of(&nodes[0]);
     let LayoutNode::VBox {
@@ -247,13 +225,10 @@ mod tests {
 
   #[test]
   fn nested_list_item_also_carries_indent() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[false, false]));
 
-    // Assert
     let indent = style.list.indent.to_pt();
     let LayoutNode::VBox {
       indent: outer_indent,
@@ -275,27 +250,21 @@ mod tests {
 
   #[test]
   fn item_marker_override_replaces_auto_marker() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes =
       lower_source(&style, "\\begin{enumerate}\n\\item{a}\n\\item[marker=Q1.]{b}\n\\item{c}\n\\end{enumerate}\n");
 
-    // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "Q1. ", "3. "]);
   }
 
   #[test]
   fn item_marker_override_empty_string_omits_marker_text() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{itemize}\n\\item[marker=]{x}\n\\end{itemize}\n");
 
-    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
       panic!("item は VBox であるべき: {:?}", nodes[0]);
     };
@@ -307,49 +276,37 @@ mod tests {
 
   #[test]
   fn nested_unordered_markers_vary_by_depth() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[false, false, false]));
 
-    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
   }
 
   #[test]
   fn nested_ordered_markers_vary_by_depth() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[true, true, true]));
 
-    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "(a) ", "i. "]);
   }
 
   #[test]
   fn mixed_nesting_advances_each_kind_by_depth() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[false, true, false]));
 
-    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
   }
 
   #[test]
   fn item_gap_env_override_applies_to_all_items() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{itemize}[item_gap=3mm]\n\\item{a}\n\\item{b}\n\\end{itemize}\n");
 
-    // Assert
     for node in &nodes {
       let LayoutNode::VBox { margin_bottom, .. } = node else {
         panic!("item は VBox であるべき: {node:?}");
@@ -360,14 +317,11 @@ mod tests {
 
   #[test]
   fn item_gap_item_override_takes_priority_over_env() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes =
       lower_source(&style, "\\begin{itemize}[item_gap=3mm]\n\\item[item_gap=1mm]{a}\n\\item{b}\n\\end{itemize}\n");
 
-    // Assert
     let LayoutNode::VBox {
       margin_bottom: gap0,
       ..
@@ -388,13 +342,10 @@ mod tests {
 
   #[test]
   fn item_gap_unspecified_falls_back_to_style_default() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{itemize}\n\\item{a}\n\\end{itemize}\n");
 
-    // Assert
     let LayoutNode::VBox { margin_bottom, .. } = &nodes[0] else {
       panic!("item は VBox であるべき");
     };
@@ -403,17 +354,14 @@ mod tests {
 
   #[test]
   fn item_gap_does_not_propagate_to_nested_list() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{itemize}[item_gap=5mm]\n\\item{outer\n\
        \\begin{itemize}\n\\item{inner}\n\\end{itemize}\n}\n\\end{itemize}\n",
     );
 
-    // Assert
     let LayoutNode::VBox { margin_bottom, .. } = first_nested_vbox(&nodes[0]) else {
       panic!("ネスト item は VBox であるべき");
     };
@@ -422,32 +370,25 @@ mod tests {
 
   #[test]
   fn unordered_marker_sequence_cycles_after_fourth_level() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[false; 5]));
 
-    // Assert
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);
   }
 
   #[test]
   fn nested_unordered_markers_use_style_override() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_unordered_markers = vec!["§".to_string(), "†".to_string()];
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[false, false, false]));
 
-    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "§ ", "† "]);
   }
 
   #[test]
   fn nested_ordered_formats_use_style_override() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_ordered_formats = vec![
       NestedOrderedFormat {
@@ -460,10 +401,8 @@ mod tests {
       },
     ];
 
-    // Act
     let nodes = lower_source(&style, &nested_source(&[true, true, true]));
 
-    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "[I] ", "一、 "]);
   }
 }

@@ -8,7 +8,7 @@ use crate::{
   typeset::{boxes::Line, geometry::PageGeometry},
 };
 
-/// `demands` を全行そのまま積んだときの脚注エリアの高さ（pt、固定費込み）を返す（純粋関数）
+/// `demands` を全行そのまま積んだときの脚注エリアの高さ（固定費込み）を返す
 pub(super) fn footnote_area_full(demands: &[FootnoteDemand], reserved: Length, charges: FootnoteCharges) -> Length {
   let mut area = reserved;
   for demand in demands {
@@ -19,16 +19,15 @@ pub(super) fn footnote_area_full(demands: &[FootnoteDemand], reserved: Length, c
 
 /// 行 1 個の脚注を、リージョンの脚注エリアへどう収めるかの判定結果
 pub(super) enum LineFootnoteFit {
-  /// 全部そのまま入る。値はエリアの新しい高さ（pt）
+  /// 全部そのまま入る。値はエリアの新しい高さ
   Full(Length),
-  /// 入り切らないので分割する。エリアの新しい高さ（pt）と脚注ごとの配置行数
+  /// 入り切らないので分割する。エリアの新しい高さと脚注ごとの配置行数
   Split(Length, Vec<usize>),
   /// この行はこのリージョンに置けない（脚注の先頭 1 行すら入らない、または行自体が入らない）
   Rejected,
 }
 
-/// 行 `i` をベースライン基準で置いたとき、その行の脚注をリージョンの脚注エリアへどう収めるかを
-/// 決める（純粋関数）
+/// 行をベースライン基準で置いたとき、その行の脚注をリージョンの脚注エリアへどう収めるかを決める
 pub(super) fn fit_line_footnotes(
   demands: &[FootnoteDemand],
   reserved: Length,
@@ -72,7 +71,7 @@ impl FootnoteCharges {
     };
   }
 
-  /// 脚注エリアを `base_reserved` まで確保済みのリージョンへ、脚注 1 個を新たに置くときの固定費（pt）
+  /// 脚注エリアを `base_reserved` まで確保済みのリージョンへ、脚注 1 個を新たに置くときの固定費
   fn entry_overhead(self, base_reserved: Length) -> Length {
     if base_reserved == Length::ZERO {
       return self.top_margin + self.rule_thickness + self.rule_gap;
@@ -109,10 +108,10 @@ impl FootnoteDemand {
   /// 本体の行数
   pub(super) fn line_count(&self) -> usize { return self.prefix.len() - 1; }
 
-  /// 全行を置くのに要する本体高さ（pt）
+  /// 全行を置くのに要する本体高さ
   fn full_height(&self) -> Length { return *self.prefix.last().expect("prefix は必ず prefix[0] を持つ"); }
 
-  /// 先頭 1 行だけを置くのに要する本体高さ（pt）。行が無ければ 0
+  /// 先頭 1 行だけを置くのに要する本体高さ。行が無ければ 0
   fn first_line_height(&self) -> Length { return self.prefix.get(1).copied().unwrap_or(Length::ZERO); }
 
   /// 高さ `allowance` に収まる最大の行数を返す（`prefix` の単調増加性を使う）
@@ -133,7 +132,7 @@ pub(super) struct FootnotePacking {
   /// 脚注ごとの、このリージョンへ置く行数（入力 `demands` と同順・同長）。
   /// 行数未満なら残りは繰り越す
   pub(super) splits: Vec<usize>,
-  /// この詰め込みで脚注エリアに追加される高さ（pt、固定費込み）
+  /// この詰め込みで脚注エリアに追加される高さ（固定費込み）
   pub(super) height: Length,
   /// 先頭の脚注の 1 行がリージョン全体を超えたまま置いたか（`require_first_line = false` の
   /// 繰越詰め込みでのみ起こる病的ケース）。`true` のとき呼び出し側が警告を組み立てる

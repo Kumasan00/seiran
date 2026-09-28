@@ -14,16 +14,16 @@ pub(crate) enum HItem {
   ///
   /// Latin 単語間スペース由来（自然幅あり・伸長 / 収縮つき）のほか、和文字間の
   /// 分割可能位置にも幅 0・微小伸長・収縮なしの glue を置く（和文の両端揃え用）。
-  /// `stretch` / `shrink` は伸縮能力（pt）で生成時に常に付与し、両端揃え
+  /// `stretch` / `shrink` は伸縮能力で生成時に常に付与し、両端揃え
   /// （`TextAlignment::Justify`）の行末処理でのみ使う。ragged-right（左揃え）では
   /// 適用されず、自然幅のまま並ぶ。
   /// `breakable` が `true` のとき行分割の候補点になり、行末では破棄される。
   Glue {
-    /// 自然幅（pt）
+    /// 自然幅
     natural: Length,
-    /// 伸長能力（pt。両端揃えの行末処理でのみ使う）
+    /// 伸長能力（両端揃えの行末処理でのみ使う）
     stretch: Length,
-    /// 収縮能力（pt。両端揃えの行末処理でのみ使う）
+    /// 収縮能力（両端揃えの行末処理でのみ使う）
     shrink: Length,
     /// 行分割の候補点になるか（`true` のとき行末では破棄される）
     breakable: bool,
@@ -134,7 +134,7 @@ pub(crate) struct IndexTerm {
 }
 
 impl HItem {
-  /// アイテムの自然幅（pt）を返す
+  /// アイテムの自然幅を返す
   ///
   /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` / `IndexMark` は 0。`Discretionary` も自然幅 0
   /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。`MathBreak` は折り返さない
@@ -160,7 +160,7 @@ impl HItem {
 /// 計測済みボックス
 ///
 /// `width` / `height` / `depth` は生成時に確定し、以降不変。
-/// `height` はベースラインから上、`depth` はベースラインから下の寸法（いずれも正値、pt）。
+/// `height` はベースラインから上、`depth` はベースラインから下の寸法（いずれも正値）。
 #[derive(Debug, Clone)]
 pub(crate) struct HBox {
   /// ボックスの内容
@@ -241,7 +241,6 @@ mod tests {
 
   #[test]
   fn atom_dimensions_from_superscript_like_children() {
-    // Arrange — ベース (幅 10, 高さ 8, 深さ 2) + 上付き (dx=10, dy=+4, 幅 5, 高さ 6, 深さ 1)
     let children = vec![
       PlacedHItem {
         item: text_free_box(10.0, 8.0, 2.0),
@@ -254,11 +253,8 @@ mod tests {
         dx: pt(10.0),
       },
     ];
-
-    // Act
     let atom = HBox::atom(children);
-
-    // Assert — width = 10+5, height = max(8, 4+6) = 10, depth = max(2, 1-4) = 2
+    // width = 10+5, height = max(8, 4+6) = 10, depth = max(2, 1-4) = 2
     assert_eq!(atom.width, pt(15.0));
     assert_eq!(atom.height, pt(10.0));
     assert_eq!(atom.depth, pt(2.0));
@@ -266,7 +262,7 @@ mod tests {
 
   #[test]
   fn atom_dimensions_from_subscript_like_children() {
-    // Arrange — ベース + 下付き (dy=-3): 下付きの深さがベースラインの下に突き出す
+    // 下付きの深さがベースラインの下に突き出す
     let children = vec![
       PlacedHItem {
         item: text_free_box(10.0, 8.0, 2.0),
@@ -279,11 +275,8 @@ mod tests {
         dx: pt(10.0),
       },
     ];
-
-    // Act
     let atom = HBox::atom(children);
-
-    // Assert — height = max(8, -3+6) = 8, depth = max(2, 1+3) = 4
+    // height = max(8, -3+6) = 8, depth = max(2, 1+3) = 4
     assert_eq!(atom.height, pt(8.0));
     assert_eq!(atom.depth, pt(4.0));
   }

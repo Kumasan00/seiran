@@ -77,13 +77,10 @@ mod tests {
 
   #[test]
   fn quote_wraps_body_in_symmetric_indent_vbox_with_margins() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_quote_source(&style, "quote");
 
-    // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は bottom_margin Vkern: {nodes:?}");
     let (indent, right_indent, _) = body_vbox(&nodes);
@@ -93,13 +90,10 @@ mod tests {
 
   #[test]
   fn quote_body_paragraph_has_no_first_line_indent_kern() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_quote_source(&style, "quote");
 
-    // Assert
     let (_, _, children) = body_vbox(&nodes);
     assert!(
       !children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
@@ -110,13 +104,10 @@ mod tests {
 
   #[test]
   fn quotation_body_paragraph_has_first_line_indent_kern() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_quote_source(&style, "quotation");
 
-    // Assert
     let (_, _, children) = body_vbox(&nodes);
     let LayoutNode::Inline(InlineNode::Kern { length }) = &children[0] else {
       panic!("quotation の本体先頭は字下げ Kern であるべき: {children:?}");
@@ -126,13 +117,10 @@ mod tests {
 
   #[test]
   fn quote_body_uses_quote_style_font_kind() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_quote_source(&style, "quote");
 
-    // Assert
     let (_, _, children) = body_vbox(&nodes);
     let body_kind = children.iter().find_map(|n| match n {
       LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(s.font_kind),

@@ -86,17 +86,15 @@ mod tests {
 
   #[test]
   fn lower_figure_emits_image_and_caption_in_bottom_order() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
 
-    // Act
     let nodes = lower_source(
       &ctx,
       "\\chapter{C}\n\n\\begin{figure}\n\\image[width=80mm, height=60mm]{./images/seiran.jpg}\n\\caption{せいらん}\n\\end{figure}\n",
     );
 
-    // Assert — フロート本体の直前には top_margin の Vkern が入る
+    // フロート本体の直前には top_margin の Vkern が入る
     let body_idx = nodes
       .iter()
       .position(|n| matches!(n, LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. }))))
@@ -126,17 +124,15 @@ mod tests {
 
   #[test]
   fn lower_figure_caption_position_top_swaps_order() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
 
-    // Act — `\caption` を `\image` より前に置くとキャプションは図の上になる
+    // `\caption` を `\image` より前に置くとキャプションは図の上になる
     let nodes = lower_source(
       &ctx,
       "\\begin{figure}\n\\caption{せいらん}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n",
     );
 
-    // Assert
     let children = figure_children(&nodes);
     let first_text_idx = children
       .iter()
@@ -148,14 +144,11 @@ mod tests {
 
   #[test]
   fn lower_figure_without_caption_omits_caption_node() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
 
-    // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n");
 
-    // Assert
     let children = figure_children(&nodes);
     let has_text = children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
@@ -165,14 +158,11 @@ mod tests {
 
   #[test]
   fn lower_figure_per_image_downsample_false_yields_no_target_dpi() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
 
-    // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[downsample=false]{a.png}\n\\end{figure}\n");
 
-    // Assert
     let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
@@ -181,14 +171,11 @@ mod tests {
 
   #[test]
   fn lower_figure_per_image_dpi_overrides_style() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = context(&style);
 
-    // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[dpi=600]{a.png}\n\\end{figure}\n");
 
-    // Assert
     let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
@@ -197,7 +184,6 @@ mod tests {
 
   #[test]
   fn lower_figure_style_downsample_false_yields_no_target_dpi() {
-    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(
       &style,
@@ -207,10 +193,8 @@ mod tests {
       },
     );
 
-    // Act
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.png}\n\\end{figure}\n");
 
-    // Assert
     let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };

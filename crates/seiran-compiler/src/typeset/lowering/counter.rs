@@ -23,7 +23,6 @@ use crate::{
 ///
 /// カウンタの `ref_format` と違い style に対応するフィールドが無く、cleveref 相当の
 /// 「表示名 + 番号」に固定されている（issue #282 以前の `CounterRegistry` から引き継いだ挙動）。
-/// style 由来のテンプレートと同じく、解析は 1 回だけ行う。
 static THEOREM_REF_FORMAT: LazyLock<ReferenceTemplate> =
   LazyLock::new(|| return ReferenceTemplate::parse("{display_name} {number}"));
 
@@ -135,44 +134,34 @@ mod tests {
 
   #[test]
   fn chapter_uses_arabic_number_only() {
-    // Arrange
     let style = Style::default();
 
-    // Act
     let text = format_counter_value(&style, &counter_value(CounterName::Chapter, &[(CounterName::Part, 0)], 1));
 
-    // Assert
     assert_eq!(text, "1");
   }
 
   #[test]
   fn part_uses_roman_upper_number_style() {
-    // Arrange
     let style = Style::default();
 
-    // Act
     let text = format_counter_value(&style, &counter_value(CounterName::Part, &[], 2));
 
-    // Assert
     assert_eq!(text, "II");
   }
 
   #[test]
   fn section_embeds_ancestor_chapter_value() {
-    // Arrange
     let style = Style::default();
     let value = counter_value(CounterName::Section, &[(CounterName::Part, 0), (CounterName::Chapter, 1)], 2);
 
-    // Act
     let text = format_counter_value(&style, &value);
 
-    // Assert
     assert_eq!(text, "1.2", "既定の section は number_format = \"{{chapter}}.{{n}}\"");
   }
 
   #[test]
   fn subsection_embeds_two_ancestor_values() {
-    // Arrange
     let style = Style::default();
     let ancestors = [
       (CounterName::Part, 0),
@@ -181,144 +170,115 @@ mod tests {
     ];
     let value = counter_value(CounterName::Subsection, &ancestors, 3);
 
-    // Act
     let text = format_counter_value(&style, &value);
 
-    // Assert
     assert_eq!(text, "1.2.3");
   }
 
   #[test]
   fn own_name_placeholder_resolves_to_own_value() {
-    // Arrange — 自身のカウンタ名で自身を参照する書式（`{n}` と同じ値を指す）
     let mut style = Style::default();
     style.counters.section.number_format = CounterTemplate::parse("{section}");
     let value = counter_value(CounterName::Section, &[(CounterName::Part, 0), (CounterName::Chapter, 1)], 4);
 
-    // Act
     let text = format_counter_value(&style, &value);
 
-    // Assert
     assert_eq!(text, "4", "自身名のプレースホルダは own を指す");
   }
 
   #[test]
   fn literal_decoration_in_number_format_is_kept() {
-    // Arrange
     let mut style = Style::default();
     style.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
 
-    // Act
     let text = format_counter_value(&style, &counter_value(CounterName::Chapter, &[(CounterName::Part, 0)], 3));
 
-    // Assert
     assert_eq!(text, "第3章");
   }
 
   #[test]
   fn cross_counter_reference_uses_target_number_style() {
-    // Arrange — part は RomanUpper、chapter は Arabic
+    // part は RomanUpper、chapter は Arabic
     let mut style = Style::default();
     style.counters.chapter.number_format = CounterTemplate::parse("{part}-{n}");
     style.counters.chapter.number_style = NumberStyle::Arabic;
 
-    // Act
     let text = format_counter_value(&style, &counter_value(CounterName::Chapter, &[(CounterName::Part, 2)], 1));
 
-    // Assert
     assert_eq!(text, "II-1", "祖先 part は part 自身の number_style で描画される");
   }
 
   #[test]
   fn chapter_ref_display_applies_ref_format() {
-    // Arrange
     let style = Style::default();
 
-    // Act
     let text = format_ref_display(&style, &counter_value(CounterName::Chapter, &[(CounterName::Part, 0)], 1));
 
-    // Assert
     assert_eq!(text, "Chapter 1");
   }
 
   #[test]
   fn equation_ref_display_uses_parenthesized_ref_format() {
-    // Arrange
     let style = Style::default();
     let value = counter_value(CounterName::Equation, &[(CounterName::Part, 0), (CounterName::Chapter, 1)], 1);
 
-    // Act
     let text = format_ref_display(&style, &value);
 
-    // Assert
     assert_eq!(text, "(1.1)");
   }
 
   #[test]
   fn theorem_number_uses_plain_own_value() {
-    // Arrange
     let style = Style::default();
 
-    // Act
     let text = format_counter_value(&style, &theorem_value(TheoremClass::Theorem, &[], 2));
 
-    // Assert
     assert_eq!(text, "2");
   }
 
   #[test]
   fn theorem_number_embeds_reset_by_counter() {
-    // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
     style.theorems.theorem.number_format = CounterTemplate::parse("{section}.{n}");
     let value = theorem_value(TheoremClass::Theorem, &[(CounterName::Section, 3)], 1);
 
-    // Act
     let text = format_counter_value(&style, &value);
 
-    // Assert
     assert_eq!(text, "3.1");
   }
 
   #[test]
   fn theorem_reference_to_counter_off_the_value_is_empty() {
-    // Arrange — reset_by は section なので、chapter の値は構造値に載っていない
+    // reset_by は section なので、chapter の値は構造値に載っていない
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
     style.theorems.theorem.number_format = CounterTemplate::parse("{chapter}.{n}");
     let value = theorem_value(TheoremClass::Theorem, &[(CounterName::Section, 3)], 1);
 
-    // Act
     let text = format_counter_value(&style, &value);
 
-    // Assert
     assert_eq!(text, ".1", "祖先に無いカウンタ参照は空文字列になる（既知の制限）");
   }
 
   #[test]
   fn theorem_ref_display_uses_display_name_and_number() {
-    // Arrange
     let style = Style::default();
 
-    // Act
     let text = format_ref_display(&style, &theorem_value(TheoremClass::Lemma, &[], 4));
 
-    // Assert
     assert_eq!(text, "Lemma 4");
   }
 
   #[test]
   fn counter_not_on_ancestor_chain_renders_empty_placeholder() {
-    // Arrange — 図の既定の祖先は chapter なので、section の値は構造値に含まれない
+    // 図の既定の祖先は chapter なので、section の値は構造値に含まれない
     let mut style = Style::default();
     style.counters.figure.number_format = CounterTemplate::parse("{section}.{n}");
     let value = counter_value(CounterName::Figure, &[(CounterName::Part, 0), (CounterName::Chapter, 1)], 5);
 
-    // Act
     let text = format_counter_value(&style, &value);
 
-    // Assert
     assert_eq!(text, ".5", "復元できない他カウンタ参照は空文字列になる（既知の制限）");
   }
 }

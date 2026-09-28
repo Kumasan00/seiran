@@ -26,7 +26,7 @@ pub(crate) struct Page {
   /// ヘッダー（ページ上端の余白領域に描く走り文）の配置済みブロック
   ///
   /// `break_pages` は空で生成し、ページ数確定後にヘッダー・フッター配置パス
-  /// （`layout::build_running_content`）が埋める。本文と同じ [`PlacedBlock`] を流用するため、
+  /// （`pagination::running::place_running_content`）が埋める。本文と同じ [`PlacedBlock`] を流用するため、
   /// 描画 adapter は本文と同一の変換ロジックで扱える。
   pub header: Vec<PlacedBlock>,
   /// フッター（ページ下端の余白領域に描く走り文）の配置済みブロック
@@ -103,9 +103,9 @@ pub(crate) struct PlacedFootnote {
 pub(crate) struct PlacedAnchor {
   /// このアンカーを指す名前（見出し・ラベル・引用・脚注・索引ページ）
   pub id: AnchorId,
-  /// 本文左端からの水平オフセット（pt、通常 0）
+  /// 本文左端からの水平オフセット（通常 0）
   pub x: Length,
-  /// ページ上端からの距離（pt）
+  /// ページ上端からの距離
   pub y: Length,
 }
 
@@ -117,13 +117,13 @@ pub(crate) struct PlacedAnchor {
 pub(crate) struct PlacedLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
   pub target: LinkTarget,
-  /// 矩形左端の本文左端からの水平オフセット（pt）
+  /// 矩形左端の本文左端からの水平オフセット
   pub x: Length,
-  /// 矩形上端のページ上端からの距離（pt）
+  /// 矩形上端のページ上端からの距離
   pub y: Length,
-  /// 矩形の幅（pt）
+  /// 矩形の幅
   pub width: Length,
-  /// 矩形の高さ（pt）
+  /// 矩形の高さ
   pub height: Length,
 }
 
@@ -134,7 +134,7 @@ pub(crate) enum PlacedBlock {
   Line {
     /// 行の内容
     line: Line,
-    /// ベースラインのページ上端からの距離（pt）
+    /// ベースラインのページ上端からの距離
     baseline_y: Length,
   },
   /// 表の断片（このページに描く行の集まり。改ページ後のヘッダ再描画行も含む）
@@ -146,26 +146,26 @@ pub(crate) enum PlacedBlock {
   Image {
     /// 画像ファイルへのパス
     path: ProjectPath,
-    /// 本文左端からの水平オフセット（pt）
+    /// 本文左端からの水平オフセット
     x: Length,
-    /// ページ上端からの距離（pt、画像上端）
+    /// ページ上端からの距離（画像上端）
     y: Length,
-    /// 描画幅（pt）
+    /// 描画幅
     width: Length,
-    /// 描画高さ（pt）
+    /// 描画高さ
     height: Length,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
   },
   /// 罫線（塗りつぶし矩形）
   Rule {
-    /// 本文左端からの水平オフセット（pt）
+    /// 本文左端からの水平オフセット
     x: Length,
-    /// ページ上端からの距離（pt、矩形上端）
+    /// ページ上端からの距離（矩形上端）
     y: Length,
-    /// 幅（pt）
+    /// 幅
     width: Length,
-    /// 高さ（pt）
+    /// 高さ
     height: Length,
     /// 塗り色（RGB）。`None` は黒。`style` 非依存のため生の `[u8; 3]` で保持する
     color: Option<[u8; 3]>,
@@ -174,9 +174,9 @@ pub(crate) enum PlacedBlock {
   MathBlock {
     /// 数式本体（閉じた Atom）
     body: HBox,
-    /// 本体の本文左端からの水平オフセット（pt、揃えで算出済み）
+    /// 本体の本文左端からの水平オフセット（揃えで算出済み）
     x: Length,
-    /// 本体ベースラインのページ上端からの距離（pt）
+    /// 本体ベースラインのページ上端からの距離
     baseline_y: Length,
     /// 行番号（位置確定済み）
     numbers: Vec<PlacedMathNumber>,
@@ -190,9 +190,9 @@ pub(crate) enum PlacedBlock {
 pub(crate) struct PlacedMathNumber {
   /// 番号ボックス（シェーピング済み）
   pub content: HBox,
-  /// 本文左端からの水平オフセット（pt）
+  /// 本文左端からの水平オフセット
   pub x: Length,
-  /// ベースラインのページ上端からの距離（pt）
+  /// ベースラインのページ上端からの距離
   pub baseline_y: Length,
 }
 
@@ -202,11 +202,11 @@ pub(crate) struct PlacedMathNumber {
 /// のまま足し込んであり、pt の `f32` へ変換するのは描画命令を作る 1 回だけである。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedTableRow {
-  /// 行帯上端のページ上端からの距離（pt）
+  /// 行帯上端のページ上端からの距離
   pub top_y: Length,
-  /// 行帯の高さ（pt）
+  /// 行帯の高さ
   pub height: Length,
-  /// セル内容が共有するベースラインのページ上端からの距離（pt）
+  /// セル内容が共有するベースラインのページ上端からの距離
   pub baseline_y: Length,
   /// 本文左端からの絶対 x 座標へ配置済みのセル内容
   pub boxes: Vec<PositionedBox>,
@@ -217,13 +217,13 @@ pub(crate) struct PlacedTableRow {
 /// 位置と見た目が確定した表の横罫線
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PlacedTableRule {
-  /// 本文左端からの水平オフセット（pt）
+  /// 本文左端からの水平オフセット
   pub x: Length,
-  /// ページ上端からの距離（pt）
+  /// ページ上端からの距離
   pub y: Length,
-  /// 罫線の幅（pt）
+  /// 罫線の幅
   pub width: Length,
-  /// 罫線の高さ（pt）
+  /// 罫線の高さ
   pub height: Length,
   /// 罫線色（RGB）。`None` は黒
   pub color: Option<[u8; 3]>,

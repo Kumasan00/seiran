@@ -35,13 +35,13 @@ pub(in crate::typeset) enum Block {
     items: Vec<HItem>,
     /// 行送り = 支配的フォントサイズ × 行高係数
     leading: Length,
-    /// 本文左端からの左インデント（pt）
+    /// 本文左端からの左インデント
     ///
     /// リスト項目などブロック単位で字下げする段落で使う。全行（折り返し行を含む）に
     /// 一律適用され、行折り返しの利用可能幅は `text_width - indent - right_indent` に縮む。
     /// 通常の段落は 0。
     indent: Length,
-    /// 本文右端からの右インデント（pt）
+    /// 本文右端からの右インデント
     ///
     /// 引用ブロックなど左右に字下げする段落で使う。全行（折り返し行を含む）の利用可能幅を
     /// `text_width - indent - right_indent` に縮める（行は左端 + `indent` から始まる）。通常の段落は 0。
@@ -110,7 +110,7 @@ pub(in crate::typeset) enum Block {
   },
   /// 縦方向の伸縮アキ（glue）
   ///
-  /// `natural` は自然値（pt）、`stretch` は伸長能力（pt）。固定アキは
+  /// `natural` は自然値、`stretch` は伸長能力。固定アキは
   /// `stretch = 0.0`（[`Block::fixed_space`]）。ブロック間アキは自然値に比例した
   /// `stretch` を持ち（[`Block::stretchable_space`]）、下端揃えが満杯リージョンの不足高さを
   /// この `stretch` へ比例配分する。下端揃えが無効なら `break_pages` は `stretch` を無視して `natural`

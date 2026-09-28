@@ -32,7 +32,6 @@ pub(crate) fn dump_pages(pages: &[Page]) -> String {
     if !page.footnotes.is_empty() {
       let _ = writeln!(out, "footnotes:");
       for footnote in &page.footnotes {
-        // 前ページから繰り越された脚注だけ印を付ける
         let continued = if footnote.continued { " continued" } else { "" };
         dump_section(&mut out, &format!("  footnote index={}{continued}", footnote.index), &footnote.blocks);
       }
@@ -198,7 +197,7 @@ fn dump_table_row(out: &mut String, row: &PlacedTableRow) {
 }
 
 /// Atom の子要素を再帰的に書き出す（数式の上付き・下付き・分数などの内部配置）。
-/// Atom 以外の内容（グリフ・罫線）は子を持たないため何も出力しない。
+/// Atom 以外の内容（グリフ列）は子を持たないため何も出力しない。
 fn dump_content_children(out: &mut String, content: &HBoxContent, indent: usize) {
   let HBoxContent::Atom(children) = content else {
     return;
@@ -239,7 +238,6 @@ fn link_target_desc(target: &LinkTarget) -> String {
 }
 
 /// [`AnchorId`] を安定な文字列表現にする — ラベルはそのまま、それ以外は `"種別:"` 接頭辞付き。
-/// アンカー行と [`link_target_desc`] が共用
 fn anchor_id_desc(id: &AnchorId) -> String {
   return match id {
     AnchorId::Heading(key) => format!("heading:{}", key.index()),
@@ -293,7 +291,7 @@ mod tests {
     let before = dump_pages(&higher);
     let after = dump_pages(&lower);
 
-    // Assert — レイアウトに影響する差はダンプに現れる
+    // Assert
     assert_ne!(before, after);
     assert!(before.contains("baseline_y=734.00"));
     assert!(after.contains("baseline_y=720.00"));
@@ -303,7 +301,6 @@ mod tests {
   fn dump_includes_page_header_and_glyph_text() {
     let dump = dump_pages(&[page_with_text_line(734.0, "Test")]);
 
-    // ページ見出し・セクション・グリフのテキストと寸法が含まれる
     assert!(dump.contains("=== page 0 ==="));
     assert!(dump.contains("body:"));
     assert!(dump.contains("text=\"Test\""));
@@ -312,17 +309,12 @@ mod tests {
 
   #[test]
   fn dump_pages_includes_index_entries() {
-    // Arrange
     let page = PageBuilder::new()
       .block(glyph_line_with_metrics(glyph_run("Test"), Length::pt(734.0), LineMetrics::pt(12.34, 9.63, 2.71)))
       .index_entry("組版", Some("くみはん"))
       .index_entry("typesetting", None)
       .build();
-
-    // Act
     let dump = dump_pages(&[page]);
-
-    // Assert
     assert!(dump.contains(r#"index word="組版" reading=Some("くみはん")"#));
     assert!(dump.contains(r#"index word="typesetting" reading=None"#));
   }

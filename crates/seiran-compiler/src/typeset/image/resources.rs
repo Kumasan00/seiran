@@ -26,7 +26,7 @@ pub(crate) struct ImageAsset {
   pub(crate) bytes: Vec<u8>,
 }
 
-/// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
+/// 画像パスごとの自然寸法と生バイト列。
 #[derive(Debug)]
 pub(crate) struct ImageResources {
   /// パス → 検証済みの自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
@@ -49,8 +49,7 @@ impl ImageResources {
 /// 画像ファイルを読み込み、自然寸法と判定済み形式・生バイト列を格納した [`ImageResources`] を返す。
 ///
 /// 画像ファイルを読む唯一の箇所。`source`（[`crate::project::ProjectSource`]）経由で読み込むため、
-/// 本体コードはここでも `std::fs` に直接触れない。ここで保持した資源は
-/// [`ImageResources::into_assets`] で取り出し、`Publication` の描画資源へ渡す。
+/// 本体コードはここでも `std::fs` に直接触れない。
 ///
 /// 画像は互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を全件返す。`paths` は
 /// [`super::collect_image_paths`] が `BTreeSet<ProjectPath>` で作った正規化済みパスの昇順なので、
@@ -165,9 +164,7 @@ mod tests {
 
   #[test]
   fn load_image_resources_reads_through_project_source() {
-    // Arrange — 実 fixture（tests/image/testimage5.png、756x1008 の PNG）のバイト列を
-    // MemoryProjectSource に登録する。`with_bytes` に渡す前に長さを控え、後で
-    // 「登録したバイト列がそのまま保持されているか」を検証できるようにする
+    // Arrange
     let png_bytes = read_image_fixture("testimage5.png");
     let expected_len = png_bytes.len();
     let source = MemoryProjectSource::new().with_bytes("/project/testimage5.png", png_bytes);
@@ -195,7 +192,7 @@ mod tests {
 
   #[test]
   fn load_image_resources_wraps_missing_path_as_read_image_error() {
-    // Arrange — 何も登録していない MemoryProjectSource に存在しないパスを要求する
+    // Arrange
     let source = MemoryProjectSource::new();
     let paths = vec![ProjectPath::new("/project/does-not-exist.png")];
 
@@ -215,76 +212,50 @@ mod tests {
   #[test]
   #[should_panic(expected = "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め")]
   fn resolve_image_size_panics_when_path_is_absent_from_resources() {
-    // Arrange — `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を作る
+    // `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を作る
     // （本来は同じ HIR 走査で作られるので外部入力では起こせない）
     let resources = load_image_resources(&MemoryProjectSource::new(), &[]).expect("画像 0 件なら成功するはず");
-
-    // Act — 不変条件の破れなので診断ではなく panic する
+    // 不変条件の破れなので診断ではなく panic する
     let _ =
       resolve_image_size(&resources, &ProjectPath::new("/project/never-loaded.png"), None, None, Length::pt(400.0));
   }
 
   #[test]
   fn fit_image_size_uses_specified_values_when_both_given() {
-    // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
-
-    // Act
     let (w, h) = fit_image_size(Some(80.0), Some(60.0), natural, 400.0);
-
-    // Assert
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
 
   #[test]
   fn fit_image_size_infers_height_from_aspect_when_only_width_given() {
-    // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
-
-    // Act
     let (w, h) = fit_image_size(Some(80.0), None, natural, 400.0);
-
-    // Assert
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
 
   #[test]
   fn fit_image_size_infers_width_from_aspect_when_only_height_given() {
-    // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
-
-    // Act
     let (w, h) = fit_image_size(None, Some(60.0), natural, 400.0);
-
-    // Assert
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
 
   #[test]
   fn fit_image_size_fits_to_column_when_both_omitted() {
-    // Arrange
     let natural = NaturalSize::new(800.0, 600.0).expect("正の有限値");
-
-    // Act
     let (w, h) = fit_image_size(None, None, natural, 400.0);
-
-    // Assert
     assert!((w - 400.0).abs() < 1e-4);
     assert!((h - 300.0).abs() < 1e-4);
   }
 
   #[test]
   fn fit_image_size_accepts_fractional_svg_natural_size() {
-    // Arrange
     let natural = NaturalSize::new(320.5, 180.0).expect("正の有限値");
-
-    // Act
     let (w, h) = fit_image_size(Some(160.0), None, natural, 400.0);
-
-    // Assert
     let expected_height = 160.0 * (180.0f32 / 320.5f32);
     assert!((w - 160.0).abs() < 1e-4);
     assert!((h - expected_height).abs() < 1e-4);

@@ -114,9 +114,7 @@ pub(super) struct FloatCaption<'a> {
 
 /// 採番されるフロート（図・表）1 件をレイアウトノード列に変換する
 ///
-/// 図と表で違うのは本体ノードの作り方（`build_body`）と体裁（`caption` / `spec`）だけで、
-/// 「カウンタ値 → 番号文字列 → 本体 → キャプション → 上下マージン付き `VBox` → ラベルアンカー」の
-/// 手順は同じ。`build_body` を `build_caption` より先に呼ぶのは、表セルの `\footnote` が
+/// `build_body` を `build_caption` より先に呼ぶのは、表セルの `\footnote` が
 /// キャプションの `\footnote` より先に通し番号を取る本文の出現順を保つため。
 ///
 /// `caption` は `FloatCaption` を値で受ける（3 フィールドとも Copy なので `needless_pass_by_value` は
@@ -200,17 +198,14 @@ mod tests {
 
   #[test]
   fn wrap_float_top_orders_caption_inner_kern_then_main() {
-    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
       inner_margin: Length::pt(3.0),
     };
 
-    // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
 
-    // Assert
     assert_eq!(nodes.len(), 2);
     assert_vkern(&nodes[0], 5.0);
     let LayoutNode::VBox {
@@ -231,17 +226,14 @@ mod tests {
 
   #[test]
   fn wrap_float_bottom_orders_main_inner_kern_then_caption() {
-    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
       inner_margin: Length::pt(3.0),
     };
 
-    // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &spec);
 
-    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
@@ -252,17 +244,14 @@ mod tests {
 
   #[test]
   fn wrap_float_zero_inner_margin_still_emits_harmless_vkern() {
-    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
       inner_margin: Length::pt(0.0),
     };
 
-    // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
 
-    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
@@ -272,17 +261,14 @@ mod tests {
 
   #[test]
   fn wrap_float_without_caption_contains_only_main() {
-    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
       inner_margin: Length::pt(3.0),
     };
 
-    // Act
     let nodes = wrap_float(main_node(), None, &spec);
 
-    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
@@ -292,7 +278,6 @@ mod tests {
 
   #[test]
   fn build_caption_expands_template_with_default_caption_font_kind() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
       format: NumberTitleTemplate::parse("Fig {number}: {title}"),
@@ -300,11 +285,9 @@ mod tests {
       ..CaptionStyle::default()
     };
 
-    // Act
     let nodes =
       lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
 
-    // Assert
     let caption = float_body(&nodes)
       .iter()
       .find_map(|n| match n {
@@ -319,15 +302,12 @@ mod tests {
 
   #[test]
   fn build_caption_follows_style_caption_font_kind() {
-    // Arrange — 番号リテラルと本文の両方が同じ書体で組まれる（`merge_adjacent_text` で 1 個の Text に併合される）
     let mut style = ReadStyle::default();
     style.figure.caption.font_kind = FontKind::SansSerif;
 
-    // Act
     let nodes =
       lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
 
-    // Assert
     let captions: Vec<(String, TextStyle)> = float_body(&nodes)
       .iter()
       .filter_map(|n| match n {
@@ -342,7 +322,7 @@ mod tests {
 
   #[test]
   fn caption_format_without_title_placeholder_does_not_consume_footnote_number() {
-    // Arrange — `{title}` を含まない独自フォーマット（キャプション本文は一切表示されない）
+    // `{title}` を含まない独自フォーマット（キャプション本文は一切表示されない）
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
       format: NumberTitleTemplate::parse("図 {number}"),
@@ -350,14 +330,13 @@ mod tests {
       ..CaptionStyle::default()
     };
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview\\footnote{in caption}}\n\\end{figure}\n\n\
        body\\footnote{in body}\n",
     );
 
-    // Assert — キャプション本文を lower しないので、本文の脚注が 1 番のままになる
+    // キャプション本文を lower しないので、本文の脚注が 1 番のままになる
     let numbers: Vec<u32> = nodes
       .iter()
       .filter_map(|n| match n {
@@ -370,17 +349,15 @@ mod tests {
 
   #[test]
   fn build_caption_ref_is_resolved_to_internal_link() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act — 2 枚目のキャプションから 1 枚目を `\ref` する
+    // 2 枚目のキャプションから 1 枚目を `\ref` する
     let nodes = lower_source(
       &style,
       "\\chapter{C}\n\n\\begin{figure}[label=fig:one]\n\\image{a.png}\n\\caption{one}\n\\end{figure}\n\n\
        \\begin{figure}\n\\image{b.png}\n\\caption{\\ref{fig:one}}\n\\end{figure}\n",
     );
 
-    // Assert
     let link = nodes
       .iter()
       .flat_map(|n| match n {

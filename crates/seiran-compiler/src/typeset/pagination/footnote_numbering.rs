@@ -24,7 +24,7 @@ const MAX_FOOTNOTE_NUMBERING_PASSES: u32 = 4;
 pub(super) fn solve_per_page_numbering(
   body_pass: &impl Fn(Option<&[u32]>) -> BodyLayout,
 ) -> Result<BodyLayout, TypesetError> {
-  // 1 回目は空マップ＝全脚注が通し番号へフォールバックする（＝ページ割り当てを知るための下見）。
+  // 1 回目は空の番号列＝全脚注が通し番号へフォールバックする（＝ページ割り当てを知るための下見）。
   let mut numbers: Vec<u32> = Vec::new();
   let mut pass: u32 = 1;
   loop {
@@ -168,59 +168,39 @@ mod tests {
 
   #[test]
   fn per_page_numbers_restart_from_one_on_each_page() {
-    // Arrange
     let pages = vec![
       page_with_footnotes(&[0, 1, 2]),
       page_with_footnotes(&[3, 4]),
     ];
-
-    // Act
     let numbers = per_page_footnote_numbers(&pages);
-
-    // Assert
     assert_eq!(numbers, vec![1, 2, 3, 1, 2]);
   }
 
   #[test]
   fn per_page_numbers_restart_after_page_without_footnotes() {
-    // Arrange
     let pages = vec![
       page_with_footnotes(&[0]),
       page_with_footnotes(&[]),
       page_with_footnotes(&[1]),
     ];
-
-    // Act
     let numbers = per_page_footnote_numbers(&pages);
-
-    // Assert
     assert_eq!(numbers, vec![1, 1]);
   }
 
   #[test]
   fn per_page_numbers_ignore_carried_over_fragments() {
-    // Arrange
     let pages = vec![
       page_with_footnote_fragments(&[(0, false)]),
       page_with_footnote_fragments(&[(0, true), (1, false)]),
     ];
-
-    // Act
     let numbers = per_page_footnote_numbers(&pages);
-
-    // Assert
     assert_eq!(numbers, vec![1, 1]);
   }
 
   #[test]
   fn per_page_numbers_fill_unplaced_footnotes_with_continuous_value() {
-    // Arrange
     let pages = vec![page_with_footnotes(&[0, 2])];
-
-    // Act
     let numbers = per_page_footnote_numbers(&pages);
-
-    // Assert
     assert_eq!(numbers, vec![1, 2, 2]);
   }
 

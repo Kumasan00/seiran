@@ -43,8 +43,6 @@ impl<'a> TypesetContext<'a> {
 }
 
 /// 本文のページ分割で確定し、後続段が参照する値。
-///
-/// ページ値と、目次・しおりに使う見出し記録を保持する。
 pub(super) struct BodyPageFacts {
   /// 見出しページ・本文ページラベル・本文ページ数
   pub(super) page_values: BodyPageValues,

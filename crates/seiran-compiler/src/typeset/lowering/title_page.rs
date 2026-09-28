@@ -57,8 +57,6 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
     pending_gap = Some(gap_after);
   }
 
-  // 載せる中身が無ければタイトルページそのものを出さない。末尾の PageBreak だけを返すと、前付けが
-  // それ以外に何も無いとき白紙ページになる
   if body.is_empty() {
     return Vec::new();
   }
@@ -120,7 +118,6 @@ mod tests {
 
   #[test]
   fn full_metadata_yields_centered_vbox_then_page_break() {
-    // Arrange
     let meta = TitlePageMetadata {
       title: Some("My Title".to_string()),
       author: Some("Me".to_string()),
@@ -128,10 +125,8 @@ mod tests {
     };
     let style = TitlePageStyle::default();
 
-    // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert
     assert!(matches!(nodes.last(), Some(LayoutNode::PageBreak)), "末尾は PageBreak: {nodes:?}");
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["My Title", "Me", "2026-06-15"]);
@@ -139,7 +134,6 @@ mod tests {
 
   #[test]
   fn title_uses_style_font_size_and_kind() {
-    // Arrange
     let meta = TitlePageMetadata {
       title: Some("T".to_string()),
       ..TitlePageMetadata::default()
@@ -149,10 +143,8 @@ mod tests {
       ..TitlePageStyle::default()
     };
 
-    // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert
     let children = title_vbox_children(&nodes);
     let text_style = children
       .iter()
@@ -167,7 +159,6 @@ mod tests {
 
   #[test]
   fn missing_author_skips_element_and_its_gap() {
-    // Arrange
     let meta = TitlePageMetadata {
       title: Some("T".to_string()),
       author: None,
@@ -175,10 +166,8 @@ mod tests {
     };
     let style = TitlePageStyle::default();
 
-    // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["T", "D"]);
     let vkern_count = children.iter().filter(|n| matches!(n, LayoutNode::Vkern { .. })).count();
@@ -187,20 +176,17 @@ mod tests {
 
   #[test]
   fn empty_metadata_yields_nothing() {
-    // Arrange
     let meta = TitlePageMetadata::default();
     let style = TitlePageStyle::default();
 
-    // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert — 載せる中身が無ければページ区切りも出さない（前付けに白紙ページを作らない）
+    // 載せる中身が無ければページ区切りも出さない（前付けに白紙ページを作らない）
     assert!(nodes.is_empty(), "{nodes:?}");
   }
 
   #[test]
   fn blank_title_is_treated_as_empty() {
-    // Arrange
     let meta = TitlePageMetadata {
       title: Some("   ".to_string()),
       author: Some("A".to_string()),
@@ -208,10 +194,8 @@ mod tests {
     };
     let style = TitlePageStyle::default();
 
-    // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["A"]);
   }

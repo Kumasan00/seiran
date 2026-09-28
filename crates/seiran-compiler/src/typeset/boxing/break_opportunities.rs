@@ -9,7 +9,8 @@ use crate::typeset::boxing::hyphenation::{self, Lang};
 pub(super) enum BreakKind {
   /// 欧文空白由来（破棄可・幅あり）。直前のスペースを `HItem::Glue` に変換する
   Glue,
-  /// CJK 文字間など空白を伴わない分割可能点（ゼロ幅）。`HItem::Penalty { value: 0 }` を挿入する
+  /// CJK 文字間など空白を伴わない分割可能点（ゼロ幅）。
+  /// 欧文では `HItem::Penalty { value: 0 }`、和文では字間 glue を挿入する
   Penalty,
   /// 欧文語中のハイフネーション位置。折り返した場合のみ行末にハイフンを出す
   /// （`HItem::Discretionary`）。空白での分割より優先度が低い分割候補。

@@ -22,7 +22,7 @@ use crate::{
   },
 };
 
-/// 下端揃え（#169）で配分を行う不足高さの下限（pt）。これ未満は浮動小数の誤差とみなし揃えない。
+/// 下端揃え（#169）で配分を行う不足高さの下限。これ以下は浮動小数の誤差とみなし揃えない。
 const FLUSH_EPSILON: Length = Length::from_sp(66);
 
 /// 配置順台帳の 1 entry
@@ -486,7 +486,7 @@ fn line_links(line: &Line, baseline_y: Length) -> Vec<PlacedLink> {
   return line.links.iter().filter_map(|link| return link.place(Length::ZERO, top, height)).collect();
 }
 
-/// [`PlacedBlock`] の底辺（ページ上端からの距離、pt）を返す。下端揃えのリージョン下端算出に使う。
+/// [`PlacedBlock`] の底辺（ページ上端からの距離）を返す
 pub(super) fn placed_block_bottom(block: &PlacedBlock) -> Length {
   return match block {
     PlacedBlock::Line { line, baseline_y } => *baseline_y + line.depth,
@@ -699,7 +699,7 @@ mod tests {
 
   #[test]
   fn flush_uses_stretch_before_last_block_as_denominator() {
-    // Arrange — A(10..20), stretch 4, B(24..34), stretch 4（末尾アキ）。不足 50 − 34 = 16、分母は B の先行 4
+    // A(10..20), stretch 4, B(24..34), stretch 4（末尾アキ）。不足 50 − 34 = 16、分母は B の先行 4
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
@@ -707,11 +707,10 @@ mod tests {
     draft.place_block(image(24.0, 10.0), Length::ZERO, pt(24.0));
     draft.pass_stretch(pt(4.0));
 
-    // Act
     draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
     let page = draft.take_page(&geom);
 
-    // Assert — ratio 4: A は +0、B は 4 × 4 = +16 で下端 50
+    // ratio 4: A は +0、B は 4 × 4 = +16 で下端 50
     assert_eq!(image_ys(&page), vec![pt(10.0), pt(40.0)]);
   }
 
@@ -745,17 +744,14 @@ mod tests {
 
   #[test]
   fn flush_skips_region_without_stretch() {
-    // Arrange — stretch 無し
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
     draft.place_block(image(24.0, 10.0), Length::ZERO, pt(24.0));
 
-    // Act
     draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
     let page = draft.take_page(&geom);
 
-    // Assert
     assert_eq!(image_ys(&page), vec![pt(10.0), pt(24.0)]);
   }
 
@@ -791,34 +787,30 @@ mod tests {
 
   #[test]
   fn closing_an_already_closed_region_changes_nothing() {
-    // Arrange
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.pass_stretch(pt(4.0));
     draft.place_block(image(14.0, 10.0), Length::ZERO, pt(14.0));
     draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
 
-    // Act — 強制改ページ経路の二重 close
+    // 強制改ページ経路の二重 close
     draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new());
     let page = draft.take_page(&geom);
 
-    // Assert — 1 回目の揃え（不足 26、分母 4 → +26）のまま
+    // 1 回目の揃え（不足 26、分母 4 → +26）のまま
     assert_eq!(image_ys(&page), vec![pt(40.0)]);
   }
 
   #[test]
   fn degenerate_line_links_are_dropped() {
-    // Arrange
     let geom = geometry();
     let mut draft = PageDraft::new();
     let mut degenerate = line(Some(external("D")), None);
     degenerate.links[0].x1 = degenerate.links[0].x0;
     draft.place_line(degenerate, pt(10.0), Length::ZERO);
 
-    // Act
     let page = draft.take_page(&geom);
 
-    // Assert
     assert!(page.links.is_empty(), "{:?}", page.links);
   }
 
@@ -852,7 +844,6 @@ mod tests {
 
   #[test]
   fn index_entries_dedup_across_line_table_and_footnote() {
-    // Arrange
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.place_line(line(None, Some("語")), pt(10.0), Length::ZERO);
@@ -899,11 +890,10 @@ mod tests {
       reading: None,
     });
 
-    // Act
     draft.close_region(&geom, Length::ZERO, pt(36.0), false, vec![in_footnote]);
     let page = draft.take_page(&geom);
 
-    // Assert — head の語は集めず、「語」は初出 1 件、順序は出現順
+    // head の語は集めず、「語」は初出 1 件、順序は出現順
     let words: Vec<&str> = page.index_entries.iter().map(|e| return e.word.as_str()).collect();
     assert_eq!(words, vec!["語", "表語"]);
   }
@@ -935,7 +925,7 @@ mod tests {
 
   #[test]
   fn place_block_resolves_anchor_at_the_given_point_not_the_block() {
-    // Arrange — 数式ブロック相当: アンカーは上端 10、block の baseline は 18
+    // 数式ブロック相当: アンカーは上端 10、block の baseline は 18
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("eq")));
@@ -955,17 +945,15 @@ mod tests {
       pt(10.0),
     );
 
-    // Act
     let page = draft.take_page(&geom);
 
-    // Assert
     assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(3.0), pt(10.0)));
     assert!(matches!(page.anchors[0].id, AnchorId::Label(_)));
   }
 
   #[test]
   fn place_table_fragment_resolves_pending_anchor_at_column_x_and_first_row_top() {
-    // Arrange — 段オフセット 55・揃えオフセット 5 の表断片。アンカーは揃えオフセット抜きの段左端 × 先頭行上端
+    // Arrange — 段オフセット 55・揃えオフセット 5 の表断片
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
@@ -1016,7 +1004,7 @@ mod tests {
 
   #[test]
   fn empty_table_fragment_keeps_pending_anchors_for_the_next_landing() {
-    // Arrange — 先頭行が収まらないときの `flush(空)` 相当。空断片はアンカーを消費せず、次の着地点で解決する
+    // 先頭行が収まらないときの `flush(空)` 相当
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
@@ -1031,13 +1019,11 @@ mod tests {
       align_offset: Length::ZERO,
     };
 
-    // Act
     draft.place_table_fragment(Vec::new(), &frame, Length::ZERO);
     assert!(!draft.has_content(), "空断片は内容にならない");
     draft.place_block(image(30.0, 10.0), pt(7.0), pt(30.0));
     let page = draft.take_page(&geom);
 
-    // Assert
     assert_eq!(page.anchors.len(), 1, "{:?}", page.anchors);
     assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(7.0), pt(30.0)), "次の着地点で解決する");
   }

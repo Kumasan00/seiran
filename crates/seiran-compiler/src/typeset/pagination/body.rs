@@ -51,7 +51,6 @@ pub(super) fn typeset_body(
 
 /// 本文パスを 1 回通す。
 ///
-/// lowering → `build_blocks`（画像寸法の確定を含む）→ `break_pages` を 1 呼び出しに畳む。
 /// `footnote_numbers` は出現順で引く脚注番号の上書き列（ページ単位採番の不動点反復で複数回呼ばれる）。
 fn run_body_pass(
   ctx: &TypesetContext<'_>,

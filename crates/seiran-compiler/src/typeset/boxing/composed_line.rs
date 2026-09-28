@@ -97,10 +97,7 @@ mod tests {
 
   #[test]
   fn place_positions_boxes_left_to_right() {
-    // Arrange
     let mut acc = LineAccum::default();
-
-    // Act
     let end_x = acc.place(
       vec![
         box_of_width(Length::pt(10.0)),
@@ -109,7 +106,6 @@ mod tests {
       Length::pt(100.0),
     );
 
-    // Assert
     let line = acc.into_line(Vec::new());
     let xs: Vec<Length> = line.boxes.iter().map(|b| return b.x).collect();
     assert_eq!(xs, vec![Length::pt(100.0), Length::pt(110.0)]);

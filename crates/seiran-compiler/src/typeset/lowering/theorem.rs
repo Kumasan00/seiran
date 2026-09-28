@@ -183,13 +183,10 @@ mod tests {
 
   #[test]
   fn theorem_renders_block_heading_and_italic_body() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{theorem}\nbody\n\\end{theorem}\n");
 
-    // Assert
     let (heading, heading_style) = first_heading_text(&nodes);
     assert_eq!(heading, "Theorem 1");
     assert_eq!(heading_style.font_kind, FontKind::SerifBold);
@@ -211,26 +208,20 @@ mod tests {
 
   #[test]
   fn theorem_with_title_uses_heading_with_title_template() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{theorem}[title=Pythagoras]\nx\n\\end{theorem}\n");
 
-    // Assert
     let (heading, _) = first_heading_text(&nodes);
     assert_eq!(heading, "Theorem 1 (Pythagoras)");
   }
 
   #[test]
   fn proof_has_unnumbered_heading_roman_body_and_qed() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{proof}\nqed\n\\end{proof}\n");
 
-    // Assert
     let (heading, _) = first_heading_text(&nodes);
     assert_eq!(heading, "Proof");
     let body = nodes
@@ -247,13 +238,10 @@ mod tests {
 
   #[test]
   fn proof_qed_sits_in_last_paragraph_before_trailing_vkern() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{proof}\nlast\n\\end{proof}\n");
 
-    // Assert
     let qed_idx = nodes
       .iter()
       .position(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_))))
@@ -268,13 +256,10 @@ mod tests {
 
   #[test]
   fn proof_qed_on_own_line_when_body_ends_with_non_paragraph() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{proof}\n\\begin{itemize}\n\\item{item}\n\\end{itemize}\n\\end{proof}\n");
 
-    // Assert
     let qed_idx = nodes
       .iter()
       .position(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_))))
@@ -285,70 +270,55 @@ mod tests {
 
   #[test]
   fn proof_with_of_renders_proof_of_target_heading() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{theorem}[label=thm:p]\np\n\\end{theorem}\n\n\\begin{proof}[of=thm:p]\nx\n\\end{proof}\n",
     );
 
-    // Assert — 後ろ側（proof）の見出しを見る
     assert_eq!(last_heading_plain_text(&nodes), "Proof of Theorem 1");
   }
 
   #[test]
   fn proof_without_of_keeps_plain_proof_heading() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{proof}\nx\n\\end{proof}\n");
 
-    // Assert
     let (heading, _) = first_heading_text(&nodes);
     assert_eq!(heading, "Proof");
   }
 
   #[test]
   fn proof_with_of_and_title_combines_both() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{theorem}[label=thm:p]\np\n\\end{theorem}\n\n\
        \\begin{proof}[of=thm:p, title=sketch]\nx\n\\end{proof}\n",
     );
 
-    // Assert
     assert_eq!(last_heading_plain_text(&nodes), "Proof of Theorem 1 (sketch)");
   }
 
   #[test]
   fn proof_with_title_only_ignores_of_templates() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{proof}[title=sketch]\nx\n\\end{proof}\n");
 
-    // Assert
     let (heading, _) = first_heading_text(&nodes);
     assert_eq!(heading, "Proof (sketch)");
   }
 
   #[test]
   fn theorem_with_label_prepends_anchor() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{theorem}[label=thm:x]\nb\n\\end{theorem}\n");
 
-    // Assert
     assert!(
       matches!(nodes.first(), Some(LayoutNode::Anchor(AnchorId::Label(l))) if l.as_str() == "thm:x"),
       "先頭は Label アンカー: {nodes:?}"

@@ -42,17 +42,13 @@ pub(super) struct Aki {
 /// 文字を約物クラスへ分類する
 pub(crate) fn classify(ch: char) -> YakumonoClass {
   return match ch {
-    // 始め括弧類（全角・互換全角）
     '（' | '「' | '『' | '【' | '〔' | '〈' | '《' | '［' | '｛' | '〖' | '〘' | '〚' | '｟' => {
       YakumonoClass::Open
     },
-    // 終わり括弧類
     '）' | '」' | '』' | '】' | '〕' | '〉' | '》' | '］' | '｝' | '〗' | '〙' | '〛' | '｠' => {
       YakumonoClass::Close
     },
-    // 句読点類
     '、' | '。' | '，' | '．' => YakumonoClass::Comma,
-    // 中点類
     '・' | '：' | '；' => YakumonoClass::MiddleDot,
     _ => YakumonoClass::Normal,
   };

@@ -139,17 +139,14 @@ mod tests {
 
   #[test]
   fn lower_table_builds_columns_and_rows() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{table}[columns=left right]\n\\head{\n\\row{Name & Score}\n}\n\
        \\row{Alice & 92}\n\\row{Bob & 88}\n\\end{table}\n",
     );
 
-    // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
     let table = find_table(&nodes);
     assert_eq!(table.columns.len(), 2);
@@ -162,13 +159,10 @@ mod tests {
 
   #[test]
   fn lower_table_head_cells_use_default_head_font_kind() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
 
-    // Assert
     let table = find_table(&nodes);
     let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
@@ -182,14 +176,12 @@ mod tests {
 
   #[test]
   fn lower_table_head_cells_follow_style_head_font_kind() {
-    // Arrange — 太字でない書体を指定しても、そのまま使われる（太字化しない）
+    // 太字でない書体を指定しても、そのまま使われる（太字化しない）
     let mut style = ReadStyle::default();
     style.table.head_font_kind = FontKind::SansSerif;
 
-    // Act
     let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
 
-    // Assert
     let table = find_table(&nodes);
     let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
@@ -203,17 +195,15 @@ mod tests {
 
   #[test]
   fn lower_table_in_theorem_body_cells_use_theorem_font_kind() {
-    // Arrange — 既定 style で [theorems.theorem].font_kind は serif_italic
+    // 既定 style で [theorems.theorem].font_kind は serif_italic
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{theorem}\n定理本体の段落。\n\n\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\
        \\end{table}\n\\end{theorem}\n",
     );
 
-    // Assert
     let table = find_table(&nodes);
     let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
@@ -231,14 +221,11 @@ mod tests {
 
   #[test]
   fn lower_table_in_quote_body_cells_use_quote_font_kind() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.quote.font_kind = FontKind::SansSerif;
 
-    // Act
     let nodes = lower_source(&style, "\\begin{quote}\n\\begin{table}\n\\row{Alice}\n\\end{table}\n\\end{quote}\n");
 
-    // Assert
     let table = find_table(&nodes);
     let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
@@ -248,13 +235,11 @@ mod tests {
 
   #[test]
   fn lower_table_caption_bottom_places_caption_after_table() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act — `\caption` を行より後ろに置くとキャプションは表の下になる
+    // `\caption` を行より後ろに置くとキャプションは表の下になる
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
-    // Assert
     let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let caption_idx = children
@@ -266,13 +251,11 @@ mod tests {
 
   #[test]
   fn lower_table_caption_top_places_caption_before_table() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act — `\caption` を行より前に置くとキャプションは表の上になる
+    // `\caption` を行より前に置くとキャプションは表の上になる
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\caption{得点表}\n\\row{A}\n\\end{table}\n");
 
-    // Assert
     let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let caption_idx = children
@@ -284,15 +267,13 @@ mod tests {
 
   #[test]
   fn lower_table_caption_follows_style_caption_font_kind() {
-    // Arrange — 図とは別の書体を立て、表キャプションが `[table.caption]` の側だけを見ることを確かめる
+    // 図とは別の書体を立て、表キャプションが `[table.caption]` の側だけを見ることを確かめる
     let mut style = ReadStyle::default();
     style.table.caption.font_kind = FontKind::Monospace;
     style.figure.caption.font_kind = FontKind::SansSerif;
 
-    // Act
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
-    // Assert
     let caption = table_children(&nodes)
       .iter()
       .find_map(|n| match n {
@@ -307,13 +288,10 @@ mod tests {
 
   #[test]
   fn lower_table_inserts_inner_margin_between_table_and_caption() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
-    // Assert
     let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let inner_kern = children.get(table_idx + 1);
@@ -325,16 +303,13 @@ mod tests {
 
   #[test]
   fn lower_table_preserves_column_widths() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{table}[columns=left center right, widths=40mm 0.25 *]\n\\row{a & b & c}\n\\end{table}\n",
     );
 
-    // Assert
     let table = find_table(&nodes);
     assert_eq!(table.columns.len(), 3);
     assert!(
@@ -347,39 +322,30 @@ mod tests {
 
   #[test]
   fn lower_table_breakable_false_is_preserved() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{table}[breakable=false]\n\\row{A}\n\\end{table}\n");
 
-    // Assert
     let table = find_table(&nodes);
     assert!(!table.breakable);
   }
 
   #[test]
   fn lower_table_preserves_rule_above_flag() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{table}\n\\row[rule_above]{A}\n\\end{table}\n");
 
-    // Assert
     let table = find_table(&nodes);
     assert!(table.rows[0].rule_above);
   }
 
   #[test]
   fn lower_table_without_caption_omits_caption_text() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
 
-    // Assert
     let children = table_children(&nodes);
     let has_text = children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
@@ -387,14 +353,12 @@ mod tests {
 
   #[test]
   fn lower_table_cell_footnote_shares_document_wide_counter() {
-    // Arrange — 本文側で 1 個採番したあとに、表セルの脚注が 2 番になることを見る
+    // 本文側で 1 個採番したあとに、表セルの脚注が 2 番になることを見る
     let style = ReadStyle::default();
 
-    // Act
     let nodes =
       lower_source(&style, "本文\\footnote{body note}\n\n\\begin{table}\n\\row{\\footnote{cell note}}\n\\end{table}\n");
 
-    // Assert
     let table = find_table(&nodes);
     assert!(
       matches!(&table.rows[0].cells[0].content[1], InlineNode::Footnote { number: 2, .. }),
@@ -405,16 +369,14 @@ mod tests {
 
   #[test]
   fn lower_table_numbers_cell_footnote_before_caption_footnote() {
-    // Arrange — 表本体（セル）が先、キャプションが後、という本文の出現順を固定する
+    // 表本体（セル）が先、キャプションが後、という本文の出現順を固定する
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(
       &style,
       "\\begin{table}\n\\row{A\\footnote{cell note}}\n\\caption{C\\footnote{caption note}}\n\\end{table}\n",
     );
 
-    // Assert
     let table = find_table(&nodes);
     let cell_number = table.rows[0].cells[0].content.iter().find_map(|n| match n {
       InlineNode::Footnote { number, .. } => return Some(*number),

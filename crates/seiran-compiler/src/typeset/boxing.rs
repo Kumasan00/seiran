@@ -76,7 +76,7 @@ fn fold_newlines(text: &str) -> Cow<'_, str> {
 
 /// [`build_blocks`] の入力 — 文書全体で固定の資源と設定。
 ///
-/// 本文・前付けの 2 つの呼び出し側が同じ形で渡す。段幅と画像資源は、画像ブロックの描画寸法を
+/// 段幅と画像資源は、画像ブロックの描画寸法を
 /// この段で確定するために要る（未確定の寸法を下流へ流さない）。
 pub(super) struct BlockBuildInputs<'a> {
   /// シェイプ・メトリクス取得の窓口
@@ -258,7 +258,7 @@ struct Measurer<'a> {
   default_font_size: Length,
   /// 行送りに掛ける倍率
   line_height_factor: f32,
-  /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
+  /// 欧文ハイフネーション言語。`None` ならハイフネーションなし
   hyphenation: Option<Lang>,
   /// JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を行うか
   punctuation_spacing: bool,
@@ -551,7 +551,6 @@ mod boundary_glue_tests {
   #[test]
   fn punctuation_boundary_carries_nibu_natural_and_shrink_no_stretch() {
     let front = boundary_glue(Normal, Open, EM, true);
-    // 後アキ（終わり括弧・句読点 → 通常文字）
     let back = boundary_glue(Close, Normal, EM, true);
 
     let nibu = Glue {
@@ -647,7 +646,6 @@ mod ja_latin_aki_tests {
     assert!(is_ja_latin_letter_boundary(Latin, 'c', Japanese, '和'), "c→和");
     assert!(is_ja_latin_letter_boundary(Japanese, '語', Latin, '1'), "語→1（数字）");
     assert!(is_ja_latin_letter_boundary(Latin, '3', Japanese, '文'), "3→文（数字）");
-    // ギリシャ・キリルも Latin カテゴリの字として境界になる
     assert!(is_ja_latin_letter_boundary(Japanese, '数', Latin, 'α'), "数→α（ギリシャ）");
     assert!(is_ja_latin_letter_boundary(Latin, 'я', Japanese, '文'), "я→文（キリル）");
   }
@@ -658,7 +656,6 @@ mod ja_latin_aki_tests {
     assert!(!is_ja_latin_letter_boundary(Latin, 'c', Japanese, '「'), "c→「 は約物側で除外");
     assert!(!is_ja_latin_letter_boundary(Japanese, '。', Latin, '1'), "。→1 は約物側で除外");
     assert!(!is_ja_latin_letter_boundary(Latin, ' ', Japanese, '文'), "空白→文 は空白側で除外");
-    // 同一カテゴリ（和文どうし・欧文どうし）は境界にならない
     assert!(!is_ja_latin_letter_boundary(Japanese, '文', Japanese, '字'), "和文どうし");
     assert!(!is_ja_latin_letter_boundary(Latin, 'a', Latin, 'b'), "欧文どうし");
   }

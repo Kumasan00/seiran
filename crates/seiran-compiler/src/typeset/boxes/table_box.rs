@@ -195,7 +195,7 @@ struct CellPlacement<'a> {
   content_x: Length,
 }
 
-/// 1 行の各セルの帯位置・内容開始位置を順に計算する
+/// 1 行の各セルの内容開始位置を順に計算する
 ///
 /// 列揃え（[`ColumnAlign`]）と内側余白から `content_x` を求める。
 #[must_use]
@@ -331,13 +331,10 @@ mod tests {
 
   #[test]
   fn table_column_holds_align_and_width() {
-    // Arrange
     let col = TableColumn {
       align: ColumnAlign::Right,
       width: ColumnWidth::Ratio(0.25),
     };
-
-    // Assert
     assert_eq!(col.align, ColumnAlign::Right);
     assert_eq!(col.width, ColumnWidth::Ratio(0.25));
   }
@@ -457,7 +454,6 @@ mod tests {
 
   #[test]
   fn resolve_column_widths_fixed_auto_ratio() {
-    // Arrange
     let table = TableBox {
       columns: vec![
         TableColumn {
@@ -481,11 +477,7 @@ mod tests {
       ])],
       breakable: true,
     };
-
-    // Act
     let widths = resolve_column_widths(&table, pt(200.0), pt(2.0));
-
-    // Assert
     assert!(close(widths[0], 40.0), "Fixed: {widths:?}");
     assert!(close(widths[1], 34.0), "Auto=内容+2*padding: {widths:?}");
     assert!(close(widths[2], 100.0), "Ratio=比*available: {widths:?}");
@@ -493,7 +485,6 @@ mod tests {
 
   #[test]
   fn resolve_column_widths_flex_shares_remaining() {
-    // Arrange
     let table = TableBox {
       columns: vec![
         TableColumn {
@@ -512,18 +503,13 @@ mod tests {
       ])],
       breakable: true,
     };
-
-    // Act
     let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
-
-    // Assert
     assert!(close(widths[0], 20.0), "{widths:?}");
     assert!(close(widths[1], 80.0), "Flex=残り幅の等分: {widths:?}");
   }
 
   #[test]
   fn resolve_column_widths_flex_never_below_natural() {
-    // Arrange
     let table = TableBox {
       columns: vec![
         TableColumn {
@@ -542,11 +528,7 @@ mod tests {
       ])],
       breakable: true,
     };
-
-    // Act
     let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
-
-    // Assert
     assert!(close(widths[1], 40.0), "Flex は自然幅を下回らない: {widths:?}");
   }
 
@@ -701,7 +683,6 @@ mod tests {
 
   #[test]
   fn collect_row_links_respects_column_alignment() {
-    // Arrange
     let target = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(target),
@@ -713,11 +694,7 @@ mod tests {
       align: ColumnAlign::Right,
       width: ColumnWidth::Auto,
     }];
-
-    // Act
     let links = collect_row_links(&row, &columns, &col_widths, pt(2.0));
-
-    // Assert
     assert!(close(links[0].x0, 18.0) && close(links[0].x1, 28.0), "{links:?}");
   }
 }

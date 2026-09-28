@@ -555,14 +555,9 @@ mod tests {
 
   #[test]
   fn build_omits_background_fill_when_style_has_no_background_color() {
-    // Arrange
     let config = test_config();
     let page = empty_page();
-
-    // Act
     let publication = build(&config, vec![page], vec![]);
-
-    // Assert
     assert!(publication.pages()[0].ops().is_empty(), "背景なし・本文なしなら op は 0 個");
   }
 
@@ -754,7 +749,6 @@ mod tests {
 
   #[test]
   fn build_drops_internal_link_with_no_matching_anchor() {
-    // Arrange
     let config = test_config();
     let page = page_builder()
       .internal_link(
@@ -765,11 +759,7 @@ mod tests {
         Length::pt(4.0),
       )
       .build();
-
-    // Act
     let publication = build(&config, vec![page], vec![]);
-
-    // Assert
     assert!(publication.pages()[0].links().is_empty());
   }
 
@@ -794,58 +784,38 @@ mod tests {
 
   #[test]
   fn build_omits_outline_when_bookmarks_disabled() {
-    // Arrange
     let config = test_config();
     let key = HeadingKey::new(0);
     let page = page_builder().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
     let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
-
-    // Act
     let publication = build(&config, vec![page], outline_entries);
-
-    // Assert
     assert!(publication.outline().is_none());
   }
 
   #[test]
   fn build_omits_outline_when_no_heading_anchors_even_if_bookmarks_enabled() {
-    // Arrange
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let page = empty_page();
     let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
-
-    // Act
     let publication = build(&config, vec![page], outline_entries);
-
-    // Assert
     assert!(publication.outline().is_none());
   }
 
   #[test]
   fn build_resolves_title_from_document_title_when_present() {
-    // Arrange
     let mut config = test_config();
     config.document.title = Some("本のタイトル".to_string());
     let page = empty_page();
-
-    // Act
     let publication = build(&config, vec![page], vec![]);
-
-    // Assert
     assert_eq!(publication.metadata().title, "本のタイトル");
   }
 
   #[test]
   fn build_falls_back_title_to_output_name_when_document_title_absent() {
-    // Arrange
     let config = test_config();
     let page = empty_page();
-
-    // Act
     let publication = build(&config, vec![page], vec![]);
-
-    // Assert
     assert_eq!(
       publication.metadata().title,
       "out",
@@ -875,7 +845,7 @@ mod tests {
     // Act
     let publication = build(&config, vec![first, second], outline_entries);
 
-    // Assert — 本文・リンク・しおり到達先のすべてに、そのページ自身の原点が 1 回だけ乗る
+    // Assert
     let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[0].ops()[0] else {
       panic!("グリフ行は DrawGlyphRun になるはず")
     };

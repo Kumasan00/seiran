@@ -157,33 +157,22 @@ mod tests {
 
   #[test]
   fn sort_index_entries_prefers_reading_over_word() {
-    // Arrange
     let mut entries = vec![entry("後", Some("うしろ")), entry("前", Some("あいうえお"))];
-
-    // Act
     sort_index_entries(&mut entries);
-
-    // Assert
     assert_eq!(entries[0].word, "前");
     assert_eq!(entries[1].word, "後");
   }
 
   #[test]
   fn sort_index_entries_falls_back_to_word_without_reading() {
-    // Arrange
     let mut entries = vec![entry("b", None), entry("a", None)];
-
-    // Act
     sort_index_entries(&mut entries);
-
-    // Assert
     assert_eq!(entries[0].word, "a");
     assert_eq!(entries[1].word, "b");
   }
 
   #[test]
   fn sort_index_entries_is_stable_for_equal_keys() {
-    // Arrange
     let mut entries = vec![
       IndexEntry {
         word: "same".to_string(),
@@ -202,11 +191,7 @@ mod tests {
         }],
       },
     ];
-
-    // Act
     sort_index_entries(&mut entries);
-
-    // Assert
     assert_eq!(entries[0].pages[0].label, "1");
     assert_eq!(entries[1].pages[0].label, "2");
   }
@@ -253,13 +238,9 @@ mod tests {
 
   #[test]
   fn assign_index_groups_places_kana_by_collation_interval() {
-    // Arrange — 濁音・半濁音・カタカナ・「ん」始まり
     let input = entries(&["がぎ", "ピアノ", "んご", "はな"]);
-
-    // Act
     let groups = group_descs(&input);
-
-    // Assert — 個別の正規化規則ではなく区間割り当てから行が決まる
+    // 個別の正規化規則ではなく区間割り当てから行が決まる
     assert_eq!(
       groups,
       vec![
@@ -272,13 +253,9 @@ mod tests {
 
   #[test]
   fn assign_index_groups_folds_latin_case_into_one_group() {
-    // Arrange — 小文字始まりが受け皿へ落ちないこと（一次強度で比較する理由）
+    // 小文字始まりが受け皿へ落ちないこと（一次強度で比較する理由）
     let input = entries(&["Apricot", "apple", "Banana"]);
-
-    // Act
     let groups = group_descs(&input);
-
-    // Assert
     assert_eq!(
       groups,
       vec![
@@ -290,13 +267,10 @@ mod tests {
 
   #[test]
   fn assign_index_groups_merges_underflow_and_overflow_into_other() {
-    // Arrange — 数字・記号（underflow）と reading の無い漢字語（overflow）。照合順に並んだ入力を渡す
+    // 数字・記号（underflow）と reading の無い漢字語（overflow）。照合順に並んだ入力を渡す
     let input = entries(&["!important", "3月", "あさひ", "漢字"]);
-
-    // Act
     let groups = group_descs(&input);
-
-    // Assert — 受け皿は 1 つだけで末尾、内部は照合順（underflow → overflow）のまま
+    // 受け皿は 1 つだけで末尾、内部は照合順（underflow → overflow）のまま
     assert_eq!(
       groups,
       vec![
@@ -315,25 +289,17 @@ mod tests {
 
   #[test]
   fn assign_index_groups_orders_groups_latin_then_kana_then_other() {
-    // Arrange
     let input = entries(&["apple", "Zebra", "あさひ", "わたし", "漢字"]);
-
-    // Act
     let labels: Vec<String> = group_descs(&input).into_iter().map(|(label, _)| return label).collect();
-
-    // Assert — A–Z → 五十音行 → 受け皿（末尾）。エントリのない区分は出てこない
+    // エントリのない区分は出てこない
     assert_eq!(labels, vec!["A", "Z", "あ", "わ", "other"]);
   }
 
   #[test]
   fn assign_index_groups_uses_reading_as_the_group_key() {
-    // Arrange — 表示語は漢字でも reading があればその行へ入る（ソートと同じキー）
+    // 表示語は漢字でも reading があればその行へ入る（ソートと同じキー）
     let input = vec![entry("朝日", Some("あさひ")), entry("季節", Some("きせつ"))];
-
-    // Act
     let groups = group_descs(&input);
-
-    // Assert
     assert_eq!(
       groups,
       vec![

@@ -19,9 +19,6 @@ pub(super) fn body_text_style(ctx: &LoweringContext<'_>) -> TextStyle {
 }
 
 /// 段落の箱組み（先頭行の字下げカーン + 内容 + 段落間アキ）
-///
-/// 内容の lowering 経路（著者が書いた HIR / CSL 整形の生成物）に依らず共通なので、
-/// 両方の呼び出し元がこの 1 つを使う。
 pub(super) fn assemble_paragraph(
   ctx: &LoweringContext<'_>,
   content: Vec<InlineNode>,
@@ -29,7 +26,7 @@ pub(super) fn assemble_paragraph(
 ) -> Vec<LayoutNode> {
   let mut result = Vec::with_capacity(content.len() + 2);
 
-  // 段落先頭行の字下げ。先頭に水平カーンを置くと、貪欲法ブレーカが先頭行だけ右へずらして
+  // 段落先頭行の字下げ。先頭に水平カーンを置くと、行分割が先頭行だけ右へずらして
   // 折り返し幅を狭める（2 行目以降には残らない）。0pt のとき・`\noindent` 指定時は何も足さない。
   if ctx.first_line_indent.to_pt() > 0.0 && !suppress_indent {
     result.push(LayoutNode::Inline(InlineNode::Kern {
@@ -55,7 +52,7 @@ pub(super) fn lower_paragraph(
   let default_style = body_text_style(ctx);
 
   // `\noindent`（[`HirInlineKind::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
-  // パーサ（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
+  // 評価器（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
   let suppress_indent = inlines.iter().any(|inline| matches!(inline.kind, HirInlineKind::NoIndent));
 
   let mut content: Vec<InlineNode> = Vec::new();
@@ -87,13 +84,10 @@ mod tests {
 
   #[test]
   fn paragraph_appends_single_trailing_vkern_with_paragraph_spacing() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "hello\n");
 
-    // Assert
     let LayoutNode::Vkern { length } = nodes.last().expect("末尾要素") else {
       panic!("末尾は Vkern であるべき: {nodes:?}");
     };
@@ -104,13 +98,10 @@ mod tests {
 
   #[test]
   fn paragraph_text_uses_default_style_from_core_text() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "body\n");
 
-    // Assert
     let LayoutNode::Inline(InlineNode::Text(text, text_style)) = &nodes[0] else {
       panic!("先頭は Text であるべき: {nodes:?}");
     };
@@ -121,14 +112,11 @@ mod tests {
 
   #[test]
   fn paragraph_prepends_first_line_indent_kern_when_positive() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.text.first_line_indent = Length::pt(15.0);
 
-    // Act
     let nodes = lower_source(&style, "body\n");
 
-    // Assert
     let LayoutNode::Inline(InlineNode::Kern { length }) = &nodes[0] else {
       panic!("先頭は字下げ Kern であるべき: {nodes:?}");
     };
@@ -138,14 +126,11 @@ mod tests {
 
   #[test]
   fn paragraph_noindent_marker_suppresses_indent_kern() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.text.first_line_indent = Length::pt(15.0);
 
-    // Act
     let nodes = lower_source(&style, "\\noindent body\n");
 
-    // Assert
     assert!(
       !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
       "字下げ Kern は抑止される: {nodes:?}"
@@ -158,13 +143,10 @@ mod tests {
 
   #[test]
   fn paragraph_omits_first_line_indent_kern_by_default() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "body\n");
 
-    // Assert
     assert!(
       matches!(&nodes[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"),
       "先頭は本文 Text: {nodes:?}"
@@ -177,13 +159,11 @@ mod tests {
 
   #[test]
   fn paragraph_preserves_inline_order() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act — 書体切り替えを挟んで、インラインが Text へ落ちる順序を見る
+    // 書体切り替えを挟んで、インラインが Text へ落ちる順序を見る
     let nodes = lower_source(&style, "\\italic{one}\\bold{two}\\mono{three}\n");
 
-    // Assert
     let texts: Vec<&str> = nodes
       .iter()
       .filter_map(|n| match n {
@@ -196,13 +176,11 @@ mod tests {
 
   #[test]
   fn paragraph_ref_is_resolved_to_internal_link() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let nodes = lower_source(&style, "\\chapter[label=ch:one]{Intro}\n\n\\ref{ch:one}\n");
 
-    // Assert — 段落は解決済み `\ref` をそのままリンクとして通す
+    // 段落は解決済み `\ref` をそのままリンクとして通す
     let link = nodes
       .iter()
       .find_map(|n| match n {

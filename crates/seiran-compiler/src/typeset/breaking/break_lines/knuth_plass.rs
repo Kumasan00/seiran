@@ -125,8 +125,7 @@ impl PathCost {
 enum Edge {
   /// 実現可能
   Feasible {
-    /// この行に課される demerits（[`PathCost::then`] が積み上げ、DP はその合計を [`PathCost`] として
-    /// 最小化する）
+    /// この行に課される demerits
     demerits: f64,
     /// 疎密の罰点。`INFINITE_BADNESS` で頭打ち
     badness: f64,
@@ -142,7 +141,6 @@ enum Edge {
 
 /// 強制改行を含まない 1 サブ段落を最適分割する
 fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<OpenLink>) -> Vec<Line> {
-  // 合法破断点を列挙し、末尾に仮想の強制破断点（最終行）を足す
   let mut breaks: Vec<Breakpoint> = Vec::new();
   for (i, item) in items.iter().enumerate() {
     match item {
@@ -247,7 +245,6 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
     return GreedyBreaker.break_lines(items, text_width, TextAlignment::Justify);
   }
 
-  // 逆リンクを辿って破断点列（行末順）を復元する
   let mut chain: Vec<usize> = Vec::new();
   let mut node = node_count - 1;
   loop {
@@ -259,7 +256,6 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
   }
   chain.reverse();
 
-  // 破断点列から各行を build_line で確定する（open_links を行順に引き継ぐ）
   let mut lines: Vec<Line> = Vec::new();
   let mut line_start = 0usize;
   for (line_index, &node) in chain.iter().enumerate() {
@@ -423,7 +419,7 @@ mod tests {
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  /// `Length` が pt 値 `expected` に（差 1e-3 pt 未満で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
   /// 2 つの `Length` が（sp 丸め精度内で）一致するか
@@ -474,7 +470,6 @@ mod tests {
 
   #[test]
   fn justify_flushes_non_final_line_to_right_edge() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -483,10 +478,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(right_edge(&lines[0]), 27.0), "非最終行の右端は版面右端: {lines:?}");
   }
@@ -528,7 +521,6 @@ mod tests {
 
   #[test]
   fn forced_break_line_is_not_stretched() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -537,10 +529,9 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert — 強制改行の直前の行は両端揃えでも伸ばさない（glue は自然幅 5 のまま）
+    // glue は自然幅 5 のまま
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
@@ -631,13 +622,10 @@ mod tests {
 
   #[test]
   fn breaks_at_discretionary_and_appends_hyphen() {
-    // Arrange
     let items = vec![box_width(20.0), discretionary(3.0), box_width(20.0)];
 
-    // Act
     let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box + 行末ハイフン: {lines:?}");
     assert!(close(lines[0].boxes[1].width, 3.0), "行末ハイフン: {lines:?}");
@@ -702,7 +690,7 @@ mod tests {
     let mut open_links = Vec::new();
     let lines = break_subparagraph(&items, Length::pt(27.0), &mut open_links);
 
-    // Assert — 非最終行は版面右端まで伸び、最終行は自然幅のまま
+    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(right_edge(&lines[0]), 27.0), "非最終行は右端に揃う: {lines:?}");
     assert!(close(right_edge(&lines[1]), 25.0), "最終行は伸ばさない: {lines:?}");
@@ -739,8 +727,8 @@ mod tests {
 
   #[test]
   fn uses_math_break_when_no_other_fit_exists() {
-    // Arrange — [b20][glue][b10][MB 3][b20] を幅 36 に。空白で折ると 1 行目が伸縮点の無い b20 だけ
-    // （実現不能）、折らないと 58 で溢れる。数式内分割点で折る道だけが残る
+    // Arrange — 空白で折ると 1 行目が伸縮点の無い b20 だけ（実現不能）、折らないと 58 で溢れる。
+    // 数式内分割点で折る道だけが残る
     let items = vec![
       box_width(20.0),
       stretch_glue(),
@@ -785,8 +773,7 @@ mod tests {
 
   #[test]
   fn unbroken_math_break_counts_toward_justify_ratio_on_non_final_line() {
-    // Arrange — [b10][glue][b5][MB 5][b5][Penalty0][b10] を幅 32 に。
-    // 分割点は glue（index1）と penalty（index5）の 2 つだけ。全体は自然幅 40 で単独行には収まらない
+    // Arrange — 分割点は glue（index1）と penalty（index5）の 2 つだけ。全体は自然幅 40 で単独行には収まらない
     // ので、必ず penalty で 2 行に折る。1 行目 [b10, glue, b5, MB, b5] は非最終行で MB を折らずに含む。
     // MB のアキ（5）を自然幅に数えなければ両端揃えの配分比がずれて右端が 32 に一致しなくなる。
     let items = vec![

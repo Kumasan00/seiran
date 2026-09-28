@@ -102,26 +102,16 @@ mod tests {
 
   #[test]
   fn natural_image_size_returns_svg_dimensions_from_bytes() {
-    // Arrange
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
-
-    // Act
     let size = natural_image_size("icon.svg", ImageFormat::Svg, svg).expect("有効な SVG はデコードできるはず");
-
-    // Assert
     assert!((size.width() - 80.0).abs() < 1e-4);
     assert!((size.height() - 60.0).abs() < 1e-4);
   }
 
   #[test]
   fn natural_image_size_reports_broken_raster_as_decode_error() {
-    // Arrange — 形式は PNG と判定済みだが中身が PNG ではない
     let bytes = b"not a png";
-
-    // Act
     let result = natural_image_size("broken.png", ImageFormat::Png, bytes);
-
-    // Assert
     assert!(matches!(result, Err(TypesetError::DecodeImage { path, .. }) if path == "broken.png"));
   }
 
@@ -136,10 +126,7 @@ mod tests {
 
   #[test]
   fn natural_size_keeps_positive_finite_values_and_aspect_ratio() {
-    // Arrange / Act
     let size = NaturalSize::new(320.0, 240.0).expect("正の有限値は通るはず");
-
-    // Assert
     assert!((size.width() - 320.0).abs() < 1e-4);
     assert!((size.height() - 240.0).abs() < 1e-4);
     assert!((size.aspect_ratio() - 0.75).abs() < 1e-4, "縦横比は高さ / 幅");

@@ -29,7 +29,7 @@ struct RunningContentSpec {
   footer: Option<RunningSlots>,
   /// トークン置換に使う文書メタデータ
   metadata: RunningMetadata,
-  /// 本文幅（pt）。スロットの左／中央／右揃えの基準
+  /// 本文幅。スロットの左／中央／右揃えの基準
   text_width: Length,
   /// 各物理ページの `(\{page\} ラベル, \{pages\} ラベル)`。`pages` と同じ長さ・同じ順序。
   page_numbers: Vec<(String, String)>,
@@ -48,15 +48,15 @@ struct RunningSlots {
   right: RunningTemplate,
   /// フォント種別
   font_kind: FontKind,
-  /// フォントサイズ（pt）
+  /// フォントサイズ
   font_size: Length,
-  /// ベースラインのページ上端からの距離（pt、絶対座標。フッターは投影時に換算済み）
+  /// ベースラインのページ上端からの距離（絶対座標。フッターは投影時に換算済み）
   baseline_y: Length,
   /// 区切り線をテキストの下に置くか（`true`: ヘッダー、`false`: フッター）
   rule_below: bool,
-  /// 区切り線の太さ（pt）。0 のとき線を描画しない
+  /// 区切り線の太さ。0 のとき線を描画しない
   rule_thickness: Length,
-  /// テキストと区切り線の間隔（pt）
+  /// テキストと区切り線の間隔
   rule_gap: Length,
   /// 区切り線の色（RGB）。`None` は黒
   rule_color: Option<[u8; 3]>,
@@ -75,7 +75,7 @@ struct RunningMetadata {
 
 /// 全ページのラベル確定後にヘッダー・フッターを配置する。
 ///
-/// [`PageLabels`] を引数に要求して呼び出し順を制約する。全スロットが空なら何もしない。
+/// 全スロットが空なら何もしない。
 ///
 /// # Panics
 ///
@@ -266,10 +266,7 @@ mod tests {
 
   #[test]
   fn substitute_unset_metadata_becomes_empty() {
-    // Arrange
     let result = substitute(&RunningTemplate::parse("[{title}]"), "1", "1", &RunningMetadata::default());
-
-    // Assert
     assert_eq!(result, "[]");
   }
 

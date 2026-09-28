@@ -30,21 +30,21 @@ struct TocSpec {
   title: String,
   /// 見出し文字列の書体
   title_style: TextStyle,
-  /// 見出しとエントリ群の間の縦アキ（pt）
+  /// 見出しとエントリ群の間の縦アキ
   title_bottom_margin: Length,
   /// エントリ本文・ページ番号・リーダーの書体
   entry_style: TextStyle,
-  /// 見出しレベルの深さ 1 段ごとに加える左インデント（pt）
+  /// 見出しレベルの深さ 1 段ごとに加える左インデント
   indent_per_level: Length,
   /// リーダー単位文字列（`None` でリーダー無し）。残り幅いっぱいに反復する
   leader: Option<String>,
   /// ページ番号を表示するか
   show_page_numbers: bool,
-  /// 本文幅（pt）。ページ番号の右端揃えの基準
+  /// 本文幅。ページ番号の右端揃えの基準
   text_width: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
   line_height_factor: f32,
-  /// 目次ブロック全体の下余白（pt）
+  /// 目次ブロック全体の下余白
   bottom_margin: Length,
 }
 
@@ -176,7 +176,6 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry)
     let page_width = row_width(&page_boxes);
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
-    // リーダーをページ番号側に寄せて充填する
     if let Some(unit) = &spec.leader {
       fill_leader(shaper, unit, spec.entry_style, left_end, page_x, &mut acc);
     }

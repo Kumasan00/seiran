@@ -21,14 +21,13 @@ use crate::{
 
 /// 書誌見出しのレベル
 ///
-/// `citation::render` が見出しを合成していた頃から `Section` 固定で、style に選択肢は無い。
+/// `Section` 固定で、style に選択肢は無い。
 const BIBLIOGRAPHY_HEADING_LEVEL: HeadingLevel = HeadingLevel::Section;
 
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
 ///
 /// 書誌見出しは style の値（`style.reference.title`）から作る — semantics の成果物には
-/// 見出しが無く、エントリ列だけが来る（#667）。見出しは無採番で、本文の続きとなる
-/// `HeadingKey` を `next_heading_index` から振る。`bibliography` が `None`（CSL が書誌を
+/// 見出しが無く、エントリ列だけが来る（#667）。`bibliography` が `None`（CSL が書誌を
 /// 定義していない）のときは見出しも出さない。
 pub(super) fn lower_bibliography(
   ctx: &LoweringContext<'_>,
@@ -150,7 +149,7 @@ mod tests {
     let document = analyzed.with_citations_for_test(Vec::new(), Some(bibliography()));
     let (layout, headings) = lower_sources_with_headings(&ctx, &document);
 
-    // Assert — 書誌の見出しは本文の見出しの続きの key を持ち、番号は空
+    // Assert
     assert_eq!(headings.len(), 2, "{headings:?}");
     assert_eq!(headings[1].index, 1, "書誌見出しは本文の続きの index: {headings:?}");
     assert_eq!(headings[1].number, "", "書誌の見出しは無採番");
@@ -167,13 +166,10 @@ mod tests {
 
   #[test]
   fn bibliography_entry_anchor_becomes_citation_anchor() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
-    // Assert
     assert!(
       layout
         .iter()
@@ -184,13 +180,10 @@ mod tests {
 
   #[test]
   fn bibliography_paragraph_keeps_generated_styling() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
-    // Assert
     let italic = layout.iter().find_map(|n| match n {
       LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,
@@ -200,7 +193,7 @@ mod tests {
 
   #[test]
   fn generated_internal_link_maps_to_citation_anchor() {
-    // Arrange — `\cite` の表示は生成物なので、この経路で lower される
+    // `\cite` の表示は生成物なので、この経路で lower される
     let style = ReadStyle::default();
     let analyzed = analyzed("\\cite{kwan2014}\n");
     let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
@@ -215,10 +208,8 @@ mod tests {
       None,
     );
 
-    // Act
     let layout = lower(&style, &document);
 
-    // Assert
     let LayoutNode::Inline(InlineNode::Link { target, children }) = &layout[0] else {
       panic!("Link が期待されます: {layout:?}");
     };
@@ -228,13 +219,11 @@ mod tests {
 
   #[test]
   fn empty_bibliography_still_emits_heading() {
-    // Arrange — CSL に書誌があってエントリが 0 件の状態
+    // CSL に書誌があってエントリが 0 件の状態
     let style = ReadStyle::default();
 
-    // Act
     let (layout, headings) = lower_bibliography(&context(&style), Some(&[]), 0);
 
-    // Assert — 見出しは 1 件出るが、エントリ由来のアンカーは無い
     assert_eq!(headings.len(), 1, "エントリ 0 件でも書誌見出しは出るはず: {headings:?}");
     assert_eq!(headings[0].title_plain, "References");
     assert!(
@@ -245,27 +234,23 @@ mod tests {
 
   #[test]
   fn absent_bibliography_emits_nothing() {
-    // Arrange — CSL が書誌を定義していない状態
+    // CSL が書誌を定義していない状態
     let style = ReadStyle::default();
 
-    // Act
     let (layout, headings) = lower_bibliography(&context(&style), None, 0);
 
-    // Assert
     assert!(layout.is_empty(), "書誌が無ければレイアウトノードは出ないはず: {layout:?}");
     assert!(headings.is_empty(), "書誌が無ければ見出し記録も出ないはず: {headings:?}");
   }
 
   #[test]
   fn bibliography_heading_title_comes_from_style() {
-    // Arrange — 書誌見出しの文字列は style の値（生成物には埋め込まれていない）
+    // 書誌見出しの文字列は style の値（生成物には埋め込まれていない）
     let mut style = ReadStyle::default();
     style.reference.title = "参考文献".to_string();
 
-    // Act
     let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
-    // Assert
     assert_eq!(headings[0].title_plain, "参考文献", "style.reference.title が見出しになるはず");
   }
 }

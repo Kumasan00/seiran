@@ -1,7 +1,7 @@
 //! フォント資源の構築順序を隠蔽する窓口モジュール
 //!
-//! `FontData` → `FontRefs` → 検証 → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers` という
-//! 構築順序と寿命関係をここに閉じ込め、呼び出し側には [`FontResources::load`] と
+//! `FontData` → `FontRefs` → `FontMetrics` → 検証 → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers`
+//! という構築順序と寿命関係をここに閉じ込め、呼び出し側には [`FontResources::load`] と
 //! [`FontResources::system`] の 2 段呼び出しだけを公開する。
 
 use std::time::Instant;

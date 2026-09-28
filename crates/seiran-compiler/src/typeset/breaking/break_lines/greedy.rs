@@ -83,8 +83,6 @@ impl LineBreaker for GreedyBreaker {
           while width_so_far + item_width > text_width
             && let Some(break_index) = last_break.or(last_math_break)
           {
-            // 分割可能点までで行を確定し、残りを次行へ持ち越す。
-            // 語中（Discretionary）で折り返すときは行末にハイフンを付す
             let trailing_hyphen = match buffer[break_index] {
               HItem::Discretionary { hyphen } => Some(hyphen),
               _ => None,
@@ -94,7 +92,6 @@ impl LineBreaker for GreedyBreaker {
             push_line(&mut lines, line, false, trailing_hyphen.is_some());
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
-            // 持ち越し先頭の breakable glue は破棄する
             while matches!(
               buffer.first(),
               Some(HItem::Glue {
@@ -160,7 +157,7 @@ mod tests {
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  /// `Length` が pt 値 `expected` に（差 1e-3 pt 未満で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
   /// 2 つの `Length` が（sp 丸め精度内で）一致するか
@@ -189,7 +186,6 @@ mod tests {
 
   #[test]
   fn discards_trailing_glue_at_line_end() {
-    // Arrange
     let items = vec![
       test_box(),
       space_glue(),
@@ -198,10 +194,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
@@ -217,13 +211,10 @@ mod tests {
 
   #[test]
   fn index_mark_is_collected_without_affecting_width_or_breaks() {
-    // Arrange
     let items = vec![test_box(), index_mark("語", None), test_box()];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2, "index_mark はボックスとして描画されない");
     assert!(close(lines[0].boxes[1].x, 10.0), "index_mark を挟んでも 2 つ目の box の x は不変: {lines:?}");
@@ -307,13 +298,10 @@ mod tests {
 
   #[test]
   fn flush_right_box_sits_on_last_line_when_it_fits() {
-    // Arrange
     let items = vec![test_box(), space_glue(), flush_right_box(8.0)];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(50.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED box の 2 つ: {lines:?}");
     assert!(close(lines[0].boxes[0].x, 0.0));
@@ -448,20 +436,16 @@ mod tests {
 
   #[test]
   fn justify_does_not_stretch_last_line() {
-    // Arrange
     let items = vec![test_box(), stretch_glue(), test_box()];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 1);
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
   #[test]
   fn justify_does_not_stretch_line_before_forced_break() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -470,17 +454,14 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
   #[test]
   fn justify_clamps_at_stretch_limit() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -489,17 +470,14 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 17.5), "伸長は能力の上限で止まる: {lines:?}");
   }
 
   #[test]
   fn justify_shrinks_overfull_line() {
-    // Arrange
     let items = vec![
       test_box(),
       non_breakable_stretch_glue(),
@@ -508,17 +486,14 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(24.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 14.0), "{lines:?}");
   }
 
   #[test]
   fn justify_clamps_at_shrink_limit() {
-    // Arrange
     let items = vec![
       test_box(),
       non_breakable_stretch_glue(),
@@ -527,17 +502,14 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(23.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 15.0 - 5.0 / 3.0), "収縮は能力の下限で止まる: {lines:?}");
   }
 
   #[test]
   fn justify_leaves_line_without_stretch_points_ragged() {
-    // Arrange
     let items = vec![
       test_box(),
       HItem::Kern(Length::pt(5.0)),
@@ -546,10 +518,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(26.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
@@ -579,7 +549,6 @@ mod tests {
 
   #[test]
   fn ragged_right_ignores_stretch_capacity() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -588,23 +557,18 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
   #[test]
   fn justify_stretches_cjk_zero_width_glue_to_flush_right_edge() {
-    // Arrange
     let items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(20.3), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 10.3), "{lines:?}");
     let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
@@ -715,13 +679,10 @@ mod tests {
 
   #[test]
   fn breaks_at_math_break_when_no_other_breakpoint() {
-    // Arrange — [b20][MB 3][b20] を幅 30 に。通常の分割点が無いので数式内分割点で折る
     let items = vec![box_width(20.0), math_break(3.0, 500), box_width(20.0)];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "{lines:?}");
     assert_eq!(lines[1].boxes.len(), 1, "{lines:?}");
@@ -730,7 +691,7 @@ mod tests {
 
   #[test]
   fn prefers_ordinary_break_over_math_break() {
-    // Arrange — [b10][glue][b10][MB 3][b10] を幅 30 に。溢れた時点で両方の分割点があり、通常の方を使う
+    // Arrange
     let items = vec![
       box_width(10.0),
       space_glue(),
@@ -751,7 +712,6 @@ mod tests {
 
   #[test]
   fn math_break_carried_past_ordinary_break_stays_usable() {
-    // Arrange — 空白で折った後、持ち越した側の数式内分割点が次の溢れで使われる
     let items = vec![
       box_width(5.0),
       space_glue(),
@@ -761,19 +721,16 @@ mod tests {
       box_width(10.0),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::RaggedRight);
 
-    // Assert
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 2], "{lines:?}");
   }
 
   #[test]
   fn carried_math_break_is_used_for_the_item_that_overflowed() {
-    // Arrange — [b5][glue][b10][MB 3][b10] を幅 20 に。glue で折った後の持ち越し [b10, MB] は
-    // それ単体では 20 に収まるが、次の b10 を足すと再び溢れる。持ち越し後の item でも溢れを
-    // 再判定し、持ち越した数式内分割点で折れることを確かめる
+    // glue で折った後の持ち越し [b10, MB] はそれ単体では 20 に収まるが、次の b10 を足すと再び溢れる。
+    // 持ち越し後の item でも溢れを再判定し、持ち越した数式内分割点で折れることを確かめる
     let items = vec![
       box_width(5.0),
       space_glue(),
@@ -782,10 +739,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::RaggedRight);
 
-    // Assert
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 1], "{lines:?}");
   }

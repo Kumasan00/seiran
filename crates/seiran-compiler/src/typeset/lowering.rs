@@ -114,7 +114,7 @@ impl<'a> LoweringContext<'a> {
   #[must_use]
   pub(super) fn with_list_depth(self, list_depth: usize) -> Self { return LoweringContext { list_depth, ..self }; }
 
-  /// 既定フォントサイズ（段落本文用、`style.text.font_size` に等しい）を pt 値で返すヘルパー
+  /// 既定フォントサイズ（段落本文用、`style.text.font_size` に等しい）を返すヘルパー
   #[must_use]
   pub(super) fn default_font_size(&self) -> Length { return self.style.text.font_size; }
 }
@@ -135,8 +135,7 @@ pub(super) struct HeadingRecord {
 impl HeadingRecord {
   /// 目次の項目としおりに表示する「番号 タイトル」を組む
   ///
-  /// 番号・タイトルのどちらかが空ならもう片方だけを返す（区切りの空白を付けない）。目次としおりの
-  /// 表示を揃えるため、両者はこのメソッドだけを使う。
+  /// 目次としおりの表示を揃えるため、両者はこのメソッドだけを使う。
   #[must_use]
   pub(in crate::typeset) fn label(&self) -> String {
     if self.number.is_empty() {
@@ -179,8 +178,6 @@ pub(super) mod test_support {
   ///
   /// 値は config.toml の `[image]` 未指定時と同じ `max_dpi = 300` / `downsample = true`（正典は
   /// `project::config` の raw 側 `RawImageConfig::default()`。`pub(super)` でここから届かないので値を置く）。
-  /// 本番の `LoweringContext::new` は既定値を持たず検証済み config の `ImageConfig` を受けるので、
-  /// テストだけが観測する既定はここに閉じる。`figure.rs` の `target_dpi == Some(300)` はこの値を見ている。
   pub(super) fn context(style: &Style) -> LoweringContext<'_> {
     return LoweringContext::new(
       style,
@@ -356,13 +353,8 @@ pub(super) fn lower_nodes_inner(
 
 /// 単一の `HirNode` をレイアウトノードに変換する
 ///
-/// 委譲する 9 種別（`Heading` / `Paragraph` / `List` / `Theorem` / `Quote` / `CodeBlock` /
-/// `MathBlock` / `Figure` / `Table`）はすべて `HirNodeKind` の payload を取り出して子 module へ渡す。
-/// 各 lowering は実際に使うものだけを受け取る — payload は常に、`NodeId` は事実を引く 5 種
-/// （`Heading` / `Theorem` / `MathBlock` / `Figure` / `Table`）だけ、`state` は `CodeBlock` を除く
-/// 8 種だけ（`MathBlock` は不変借用）。採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、
-/// 各 lowering が `NodeId` をキーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。
-/// `PageBreak` / `Space` は委譲せず、この関数がその場でノードを組む。
+/// 採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、各 lowering が `NodeId` を
+/// キーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading(heading) => {
@@ -403,9 +395,7 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
 
 /// ラベル付きブロック（図・表・定理・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
 ///
-/// `labels` に与えた順でアンカーが並ぶ。図・表・定理はラベルを高々 1 つ持つので `Option<&LabelId>` を、
-/// ディスプレイ数式は環境ラベルと行ラベルを積んだ `Vec<&LabelId>` を渡す（複数行がラベルを持つ場合も、
-/// いずれもブロック先頭座標に解決される）。
+/// ディスプレイ数式の行ラベルも、複数行がラベルを持つ場合を含めすべてブロック先頭座標に解決される。
 fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
   let mut result: Vec<LayoutNode> =
     labels.into_iter().map(|label| return LayoutNode::Anchor(AnchorId::Label(label.clone()))).collect();
@@ -435,8 +425,6 @@ mod tests {
   };
 
   /// 複数の `.sei` ソースを 1 つの文書として parse → analyze するテストヘルパ
-  ///
-  /// 採番・`\ref` 解決がソース跨ぎで通ることを見るテストだけが使う。
   fn analyzed_sources(sources: &[&str]) -> SemanticDocument {
     let hir = HirDocument::assemble(
       sources
@@ -490,13 +478,10 @@ mod tests {
 
   #[test]
   fn lower_space_becomes_horizontal_kern() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let result = lower_source(&style, r"\space{5pt}");
 
-    // Assert
     let kern = result
       .iter()
       .find_map(|n| match n {
@@ -509,26 +494,20 @@ mod tests {
 
   #[test]
   fn lower_page_break() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let result = lower_source(&style, "\\pagebreak\n");
 
-    // Assert
     assert_eq!(result.len(), 1);
     assert!(matches!(result[0], LayoutNode::PageBreak));
   }
 
   #[test]
   fn lower_inline_math_replaces_placeholder() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out = lower_source(&style, "$x^{2}$\n");
 
-    // Assert
     let placeholder = out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "[Math]"));
     assert!(!placeholder, "[Math] プレースホルダは消えているはず: {out:?}");
     let has_raise = out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Raise { .. })));
@@ -537,13 +516,10 @@ mod tests {
 
   #[test]
   fn lower_math_block_wraps_with_vkerns_and_emits_no_line_break() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out = lower_source(&style, "\\begin{equation}[numbered=false]\na\n\\end{equation}\n");
 
-    // Assert
     assert_eq!(out.len(), 3, "Vkern + MathBlock + Vkern の 3 要素: {out:?}");
     assert!(matches!(out.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {out:?}");
     assert!(matches!(out.get(1), Some(LayoutNode::MathBlock(_))), "中央は MathBlock であるべき: {out:?}");
@@ -556,14 +532,11 @@ mod tests {
 
   #[test]
   fn lower_math_block_carries_numbered_row() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.counters.equation.number_format = CounterTemplate::parse("{n}");
 
-    // Act
     let out = lower_source(&style, "\\begin{equation}\na\n\\end{equation}\n");
 
-    // Assert
     let Some(LayoutNode::MathBlock(block)) = out.get(1) else {
       panic!("中央に MathBlock があるべき: {out:?}");
     };
@@ -575,13 +548,10 @@ mod tests {
 
   #[test]
   fn lower_nodes_dispatches_each_variant_in_order() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out = lower_source(&style, "\\section{H}\n\nP\n\n\\begin{itemize}\n\\item{L}\n\\end{itemize}\n\n\\pagebreak\n");
 
-    // Assert
     let vbox_count = out.iter().filter(|n| matches!(n, LayoutNode::VBox { .. })).count();
     assert!(vbox_count >= 2, "見出しとリスト項目で VBox が複数出る: {out:?}");
     assert!(
@@ -593,14 +563,11 @@ mod tests {
 
   #[test]
   fn nested_heading_gets_sequential_anchor_index() {
-    // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{Top1}\n\n\\begin{quote}\n\\section{Nested}\n\\end{quote}\n\n\\section{Top2}\n");
 
-    // Act
     let (layout, headings) = lower_body(&style, &analyzed);
 
-    // Assert
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
     let indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
     assert_eq!(indices, vec![0, 1, 2], "見出し index は文書順に連番のはず: {headings:?}");
@@ -632,26 +599,20 @@ mod tests {
 
   #[test]
   fn block_boundaries_use_no_bare_line_break() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out =
       lower_source(&style, "\\section{Heading}\n\nPara\n\n\\begin{enumerate}\n\\item{Item}\n\\end{enumerate}\n");
 
-    // Assert
     assert!(!contains_line_break(&out), "段落内 \\\\ 以外で LineBreak は出力されない: {out:?}");
   }
 
   #[test]
   fn footnotes_across_paragraphs_number_sequentially() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out = lower_source(&style, "one \\footnote{a}\n\ntwo \\footnote{b}\n\nthree \\footnote{c}\n");
 
-    // Assert
     let numbers: Vec<u32> = out
       .iter()
       .filter_map(|n| match n {
@@ -664,14 +625,11 @@ mod tests {
 
   #[test]
   fn footnote_indices_continue_across_source_groups() {
-    // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed_sources(&["one \\footnote{a}\n", "two \\footnote{b}\n"]);
 
-    // Act
     let (layout, _headings) = lower_body(&style, &analyzed);
 
-    // Assert
     let indices: Vec<u32> = layout
       .iter()
       .filter_map(|n| match n {
@@ -684,13 +642,10 @@ mod tests {
 
   #[test]
   fn labeled_display_math_emits_label_anchor() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out = lower_source(&style, "\\begin{equation}[label=eq:foo]\na\n\\end{equation}\n");
 
-    // Assert
     assert!(
       matches!(out.first(), Some(LayoutNode::Anchor(AnchorId::Label(l))) if l.as_str() == "eq:foo"),
       "先頭は Label アンカー: {out:?}"
@@ -699,26 +654,21 @@ mod tests {
 
   #[test]
   fn unlabeled_display_math_emits_no_anchor() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act
     let out = lower_source(&style, "\\begin{equation}\na\n\\end{equation}\n");
 
-    // Assert
     assert!(!out.iter().any(|n| matches!(n, LayoutNode::Anchor(_))), "アンカーは出ない: {out:?}");
   }
 
   #[test]
   fn display_math_row_label_anchors_are_reversed() {
-    // Arrange
     let style = ReadStyle::default();
 
-    // Act — align の行末 `\label` は行ごとにラベルを付ける
+    // align の行末 `\label` は行ごとにラベルを付ける
     let out =
       lower_source(&style, "\\begin{align}\na &= b \\label{eq:first} \\\\\nc &= d \\label{eq:second}\n\\end{align}\n");
 
-    // Assert — 行ラベルは逆順で積まれる（「後から prepend」を繰り返す旧実装と同じ最終順序）
     let anchors: Vec<&str> = out
       .iter()
       .filter_map(|n| match n {
@@ -735,14 +685,11 @@ mod tests {
 
   #[test]
   fn default_font_size_reflects_core_font_size() {
-    // Arrange
     let mut style = ReadStyle::default();
     style.text.font_size = Length::pt(18.0);
 
-    // Act
     let out = lower_source(&style, "x\n");
 
-    // Assert
     let LayoutNode::Inline(InlineNode::Text(_, text_style)) = &out[0] else {
       panic!("先頭は Text であるべき: {out:?}");
     };
@@ -751,14 +698,11 @@ mod tests {
 
   #[test]
   fn numbering_continues_across_sources() {
-    // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed_sources(&["\\chapter{A}\n", "\\chapter{B}\n"]);
 
-    // Act
     let (_layout, headings) = lower_body(&style, &analyzed);
 
-    // Assert
     assert_eq!(headings.len(), 2, "{headings:?}");
     assert_eq!(headings[0].number, "1", "1 グループ目の chapter は 1");
     assert_eq!(headings[1].number, "2", "2 グループ目の chapter は連番の 2: {headings:?}");
@@ -766,7 +710,6 @@ mod tests {
 
   #[test]
   fn ref_resolves_across_sources() {
-    // Arrange
     fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
       return nodes.iter().any(|n| match n {
         LayoutNode::Inline(inline) => return contains_internal_link_inline(slice::from_ref(inline), target),
@@ -791,53 +734,43 @@ mod tests {
     let style = ReadStyle::default();
     let analyzed = analyzed_sources(&["\\chapter[label=ch:intro]{Intro}\n", "\\ref{ch:intro}\n"]);
 
-    // Act
     let (layout, _headings) = lower_body(&style, &analyzed);
 
-    // Assert
     assert!(contains_internal_link(&layout, "ch:intro"), "跨りの \\ref が解決されるはず: {layout:?}");
   }
 
   #[test]
   fn heading_number_uses_style_number_format() {
-    // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed("\\chapter{C}\n\n\\section{S}\n\n\\section{S2}\n");
 
-    // Act
     let (_layout, headings) = lower_body(&style, &analyzed);
 
-    // Assert
     let numbers: Vec<&str> = headings.iter().map(|h| return h.number.as_str()).collect();
     assert_eq!(numbers, vec!["1", "1.1", "1.2"], "section は既定で \"{{chapter}}.{{n}}\"");
   }
 
   #[test]
   fn heading_title_plain_resolves_embedded_ref() {
-    // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed("\\chapter[label=ch:intro]{Intro}\n\n\\section{見出し \\ref{ch:intro}}\n");
 
-    // Act
     let (_layout, headings) = lower_body(&style, &analyzed);
 
-    // Assert
     assert_eq!(headings[1].title_plain, "見出し Chapter 1", "タイトル中の \\ref も表示文字列になる");
   }
 
   #[test]
   fn heading_title_plain_uses_generated_citation_display() {
-    // Arrange — 見出しタイトルの `\cite` は、しおり・目次では CSL 整形済みの表示を辿る
+    // 見出しタイトルの `\cite` は、しおり・目次では CSL 整形済みの表示を辿る
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
     let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
     let document = analyzed.with_citations_for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], None);
     let ctx = context(&style);
 
-    // Act
     let (_layout, headings) = lower_sources_with_headings(&ctx, &document);
 
-    // Assert
     assert_eq!(headings[0].title_plain, "結論 [1]", "{headings:?}");
   }
 

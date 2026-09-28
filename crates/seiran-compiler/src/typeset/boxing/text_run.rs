@@ -270,7 +270,7 @@ fn plan_cut(
       let is_single_space =
         space.range.start == point.byte - 1 && space.range.end == point.byte && text.as_bytes()[point.byte - 1] == b' ';
       if !is_single_space {
-        return None; // スペースが前後とクラスタを成している場合は分割を抑制
+        return None;
       }
       Some(Cut {
         keep_glyph_end: glyph_index - 1,
@@ -381,17 +381,13 @@ mod tests {
 
   #[test]
   fn glue_cut_drops_the_space_glyph_and_resumes_after_it() {
-    // Arrange — "ab cd" のスペース直後（byte 3）が Glue 分割点
     let run = ascii_shaped("ab cd");
     let point = BreakPoint {
       byte: 3,
       kind: BreakKind::Glue,
     };
-
-    // Act
     let cut = plan_cut(&run, point, 0, false, None).expect("単独スペースは glue 切断になるはず");
 
-    // Assert
     assert_eq!((cut.keep_glyph_end, cut.keep_byte_end), (2, 2), "スペースを含まない範囲まで積む");
     assert_eq!((cut.resume_glyph, cut.resume_byte), (3, 3), "スペースの次から再開する");
     let HItem::Glue {
@@ -473,14 +469,13 @@ mod tests {
 
   #[test]
   fn cut_is_skipped_inside_a_cluster() {
-    // Arrange — byte 1 はクラスタ 0..2 の内部で、どのグリフの range.start にも一致しない
+    // byte 1 はクラスタ 0..2 の内部で、どのグリフの range.start にも一致しない
     let run = clustered_run();
     let inside_cluster = BreakPoint {
       byte: 1,
       kind: BreakKind::Penalty,
     };
 
-    // Act & Assert
     assert!(plan_cut(&run, inside_cluster, 0, false, None).is_none(), "クラスタ途中のバイト位置は抑制");
   }
 

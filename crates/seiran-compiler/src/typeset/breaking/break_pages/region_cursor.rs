@@ -13,16 +13,16 @@ use crate::{
 /// リージョン（段）内のカーソル状態。実配置（`PageComposer`）と keep-with-next の見積りが同じ値を使う
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RegionCursor {
-  /// カーソル位置（ページ上端からの距離、pt）。基本は「次のベースライン位置」
+  /// カーソル位置（ページ上端からの距離）。基本は「次のベースライン位置」
   pub(super) y: Length,
   /// 直前のブロックが底辺基準（画像・表・数式）で終わったか
   pub(super) at_edge: bool,
-  /// 現在リージョンの脚注が占有する高さ（pt、脚注間・本文とのアキ込み）。0 は脚注なし
+  /// 現在リージョンの脚注が占有する高さ（脚注間・本文とのアキ込み）。0 は脚注なし
   pub(super) footnote_reserved: Length,
 }
 
 impl RegionCursor {
-  /// 現在リージョンの実効下限（pt）。脚注が占有する高さぶん `geom.page_limit` を縮める
+  /// 現在リージョンの実効下限。脚注が占有する高さぶん `geom.page_limit` を縮める
   pub(super) fn region_limit(self, geom: &PageGeometry) -> Length { return geom.page_limit - self.footnote_reserved; }
 
   /// リージョンの先頭にいて、これ以上前へは送れない（回避不能）かを返す

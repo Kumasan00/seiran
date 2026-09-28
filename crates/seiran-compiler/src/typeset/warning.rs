@@ -76,7 +76,7 @@ mod tests {
 
   #[test]
   fn font_variant_forwards_severity_message_and_code() {
-    // Arrange — フォント検証の警告をそのまま包む
+    // Arrange
     let inner = FontWarning::MissingLayoutTable {
       font_type: FontType::Serif,
       path: ProjectPath::new("/project/font.ttf"),
@@ -100,16 +100,11 @@ mod tests {
 
   #[test]
   fn footnote_overflow_lists_all_numbers_on_the_line() {
-    // Arrange
     let warning = TypesetWarning::FootnoteOverflow {
       page: "iii".to_owned(),
       numbers: vec![3, 4],
     };
-
-    // Act
     let message = warning.to_string();
-
-    // Assert
     assert!(message.contains("iii ページ"), "印字ラベルが本文に出るはず: {message}");
     assert!(message.contains("脚注 3, 4"), "行の脚注番号が列挙されるはず: {message}");
   }

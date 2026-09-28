@@ -107,8 +107,7 @@ impl ShapedRun {
 
   /// 部分グリフ列を計測済みの箱にする（空範囲なら `None`）
   ///
-  /// グリフのテキスト範囲は `byte_range` の先頭を 0 とする位置へ振り直す。高さ・深さは親 run から
-  /// 写す（同じフォント種別・同じフォントサイズなので、メトリクスから出し直しても同じ値）。
+  /// グリフのテキスト範囲は `byte_range` の先頭を 0 とする位置へ振り直す。
   pub(super) fn sub_box(&self, glyph_range: Range<usize>, byte_range: Range<usize>) -> Option<HBox> {
     if glyph_range.is_empty() {
       return None;
@@ -146,7 +145,7 @@ impl ShapedRun {
   ///
   /// 墨を左へ寄せる量（`normalize.shift_em`）をこのフォントの `upem` へスケールして `x_offset` に
   /// 適用するのはここだけの計算で、送り幅から内蔵アキを引いた幅は約物の規則（`yakumono`）が呼び出し側で
-  /// 決める。高さ・深さは親 run から写す。
+  /// 決める。
   pub(super) fn replaced_glyph_box(&self, glyph_index: usize, normalize: yakumono::Normalize, width: Length) -> HBox {
     let src = &self.run.glyphs[glyph_index];
     #[expect(
@@ -180,8 +179,7 @@ impl ShapedRun {
 /// シェーピングだけを行う部品（資源と再利用バッファ）
 ///
 /// 段落構築のポリシー（既定フォントサイズ・行高係数・ハイフネーション・約物アキ）を持たないので、
-/// 生成コンテンツ（目次・索引・走り文）はこれだけを構築する。ポリシーを持つ計測器は `boxing` の
-/// `Measurer` で、`Shaper` を 1 フィールドとして内側に持つ。
+/// 生成コンテンツ（目次・索引・走り文）はこれだけを構築する。
 pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
   resources: &'a FontSystem<'a>,
@@ -323,13 +321,9 @@ mod tests {
 
   #[test]
   fn sub_box_rebases_glyph_ranges_and_copies_parent_extent() {
-    // Arrange
     let shaped = ShapedRun::measure(ascii_run("abcd"), METRIC);
-
-    // Act
     let hbox = shaped.sub_box(1..3, 1..3).expect("空でない範囲は箱になるはず");
 
-    // Assert
     let HBoxContent::Glyphs(run) = &hbox.content else {
       panic!("部分 run は Glyphs になるはず");
     };
@@ -349,7 +343,6 @@ mod tests {
 
   #[test]
   fn replaced_glyph_box_shifts_x_offset_and_rebases_range() {
-    // Arrange — 2 文字目のグリフへ x_offset 20 を持たせ、shift_em 0.1（upem 1000 で 100 units）で差し替える
     let mut source = ascii_run("abcd");
     source.glyphs[1].x_offset = 20;
     source.glyphs[1].y_offset = 3;
@@ -358,11 +351,8 @@ mod tests {
       trim_em: 0.25,
       shift_em: 0.1,
     };
-
-    // Act
     let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(3.0));
 
-    // Assert
     let HBoxContent::Glyphs(replaced) = &hbox.content else {
       panic!("差し替え結果は Glyphs になるはず");
     };

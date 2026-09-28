@@ -256,8 +256,7 @@ pub(crate) enum FontWarning {
 
 /// 全フォント種別を検証し、違反を `FontType::ALL` 順に**全件**集める。
 ///
-/// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。順序は
-/// `FontType::ALL` の宣言順で固定である。
+/// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。
 /// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
 /// 違反と独立に確定するため（#550）。
 ///
@@ -551,12 +550,9 @@ mod tests {
 
   #[test]
   fn unreadable_script_subtable_is_silent_without_ot_language() {
-    // Arrange
     let bytes = script_list_bytes(0xffff);
     let script_list = ScriptList::read(FontData::new(&bytes)).expect("ScriptList 自体は読めるはず");
     let mut warnings = Vec::new();
-
-    // Act
     check_script_in_table(
       Ok(script_list),
       Tag::new(b"kana"),
@@ -566,8 +562,6 @@ mod tests {
       &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
-
-    // Assert
     assert!(warnings.is_empty(), "確認すべき言語が無いので警告は出ないはず: {warnings:?}");
   }
 
@@ -660,15 +654,10 @@ mod tests {
 
   #[test]
   fn unreadable_fvar_without_axes_is_rejected_as_parse_error() {
-    // Arrange
     let bytes = sfnt_with_fvar(Some(&[0]));
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-
-    // Assert
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
       "壊れた fvar を静的フォントとして通さない: {errors:?}"
@@ -677,15 +666,10 @@ mod tests {
 
   #[test]
   fn unreadable_fvar_with_axes_is_a_parse_error_not_a_static_font() {
-    // Arrange
     let bytes = sfnt_with_fvar(Some(&[0]));
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
-
-    // Assert
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
       "壊れた fvar を「可変フォントではない」にしない: {errors:?}"
@@ -694,43 +678,29 @@ mod tests {
 
   #[test]
   fn missing_fvar_with_axes_is_not_variable_font() {
-    // Arrange
     let bytes = sfnt_with_fvar(None);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
-
-    // Assert
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::NotVariableFont]), "{errors:?}");
   }
 
   #[test]
   fn missing_fvar_without_axes_is_a_valid_static_font() {
-    // Arrange
     let bytes = sfnt_with_fvar(None);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-
-    // Assert
     assert!(errors.is_empty(), "{errors:?}");
   }
 
   #[test]
   fn fvar_record_past_the_file_without_axes_is_out_of_range() {
-    // Arrange — 長さがファイル末尾を大きく超える
+    // 長さがファイル末尾を大きく超える
     let bytes = sfnt_with_fvar_record(28, 0xffff_fff0, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-
-    // Assert
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::FvarRecordOutOfRange]),
       "範囲外を指す fvar を静的フォントとして通さない: {errors:?}"
@@ -739,15 +709,10 @@ mod tests {
 
   #[test]
   fn fvar_record_past_the_file_with_axes_is_out_of_range_not_variable_font() {
-    // Arrange
     let bytes = sfnt_with_fvar_record(28, 0xffff_fff0, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
-
-    // Assert
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::FvarRecordOutOfRange]),
       "範囲外を指す fvar を「可変フォントではない」にしない: {errors:?}"
@@ -756,43 +721,31 @@ mod tests {
 
   #[test]
   fn fvar_record_with_zero_offset_is_out_of_range() {
-    // Arrange — read-fonts はオフセット 0 のレコードもテーブル無しとして扱う
+    // read-fonts はオフセット 0 のレコードもテーブル無しとして扱う
     let bytes = sfnt_with_fvar_record(0, 1, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-
-    // Assert
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::FvarRecordOutOfRange]), "{errors:?}");
   }
 
   #[test]
   fn fvar_record_whose_offset_is_past_the_file_is_out_of_range() {
-    // Arrange — 長さは小さいがオフセットがファイル末尾より後ろ
+    // 長さは小さいがオフセットがファイル末尾より後ろ
     let bytes = sfnt_with_fvar_record(0x0001_0000, 1, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-
-    // Assert
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::FvarRecordOutOfRange]), "{errors:?}");
   }
 
   #[test]
   fn fvar_record_with_zero_length_is_a_parse_error() {
-    // Arrange — 範囲内の空テーブル。範囲外ではなく中身の破損なので解析エラーのまま
+    // 範囲内の空テーブル。範囲外ではなく中身の破損なので解析エラーのまま
     let bytes = sfnt_with_fvar_record(28, 0, &[]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-
-    // Act
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-
-    // Assert
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]), "{errors:?}");
   }
 

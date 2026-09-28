@@ -20,13 +20,12 @@ use crate::{
 /// 段落 1 行の配置計画（純粋な幾何判定の結果）
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct LinePlacement {
-  /// 行のベースライン（ページ上端からの距離、pt）
+  /// 行のベースライン（ページ上端からの距離）
   pub(super) baseline: Length,
   /// この行から新しいリージョン（次段 / 次ページ）が始まるか
   pub(super) starts_region: bool,
-  /// この行を確定した時点でのリージョンの脚注予約高さ（pt）。新リージョンが始まった行は
+  /// この行を確定した時点でのリージョンの脚注予約高さ。新リージョンが始まった行は
   /// そのリージョンで最初の予約（＝この行自身の脚注ぶんのみ）になる。
-  /// [`super::place_paragraph`] が確定ループで `composer.cursor.footnote_reserved` へそのまま反映する。
   pub(super) reserved_after: Length,
   /// この行の脚注ごとに、この行が乗るリージョンへ置く行数（行の脚注と同順・同長。脚注が無ければ空）
   pub(super) own_splits: Vec<usize>,
@@ -36,7 +35,7 @@ pub(super) struct LinePlacement {
   pub(super) overflowed: bool,
 }
 
-/// 強制改リージョン点（`forced`）を尊重しつつ、貪欲にベースラインを送って各行を配置する（純粋関数）
+/// 強制改リージョン点（`forced`）を尊重しつつ、貪欲にベースラインを送って各行を配置する
 #[expect(
   clippy::too_many_arguments,
   reason = "純粋関数として計画に要る値をすべて引数で受け取る（暗黙の状態を持たせない）"
@@ -115,7 +114,7 @@ fn place_lines(
   return (plan, false);
 }
 
-/// 配置計画から widow/orphan 違反を 1 つ検出し、追加すべき強制改リージョン点を返す（純粋関数）
+/// 配置計画から widow/orphan 違反を 1 つ検出し、追加すべき強制改リージョン点を返す
 fn pick_correction(
   plan: &[LinePlacement],
   min_lines: usize,
@@ -153,7 +152,7 @@ fn pick_correction(
   return None;
 }
 
-/// 段落の行列を現在のカーソルから前から順に配置する計画を立てる（純粋関数・widow/orphan 制御込み）
+/// 段落の行列を現在のカーソルから前から順に配置する計画を立てる（widow/orphan 制御込み）
 #[expect(
   clippy::too_many_arguments,
   reason = "純粋関数として計画に要る値をすべて引数で受け取る（暗黙の状態を持たせない）"
@@ -176,7 +175,6 @@ pub(super) fn plan_paragraph_lines(
     // 打ち切られた計画の末尾は段落の末尾ではない（続きは繰越を詰めてから計画し直す）
     let is_paragraph_end = !truncated;
     match pick_correction(&plan, MIN_LINES_AT_BREAK, is_paragraph_start, is_paragraph_end) {
-      // 新しい補正点なら強制して再フロー
       Some(idx) if !forced[idx] => forced[idx] = true,
       // 補正不要、または前進しない（回避不能）なら確定
       _ => return (plan, truncated),
@@ -216,7 +214,7 @@ mod tests {
     };
   }
 
-  /// 脚注を持たない `count` 行ぶんの需要（[`super::place_lines`] / [`plan_paragraph_lines`] のテスト用）
+  /// 脚注を持たない `count` 行ぶんの需要
   fn no_footnotes(count: usize) -> Vec<Vec<FootnoteDemand>> {
     return std::iter::repeat_with(Vec::new).take(count).collect();
   }
@@ -232,10 +230,8 @@ mod tests {
 
   #[test]
   fn plan_leaves_fitting_paragraph_untouched() {
-    // Arrange
     let lines = vec![test_line(), test_line(), test_line()];
 
-    // Act
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
       cursor_at(pt(10.0)),
@@ -248,7 +244,6 @@ mod tests {
       false,
     );
 
-    // Assert
     assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
     assert_eq!(
       plan,
@@ -280,10 +275,8 @@ mod tests {
 
   #[test]
   fn plan_defers_orphan_first_line() {
-    // Arrange
     let lines = vec![test_line(), test_line(), test_line()];
 
-    // Act
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
       cursor_at(pt(46.0)),
@@ -296,7 +289,6 @@ mod tests {
       false,
     );
 
-    // Assert
     assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
     assert_eq!(
       plan,

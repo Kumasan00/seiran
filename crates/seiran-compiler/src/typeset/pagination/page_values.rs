@@ -33,15 +33,11 @@ struct PageValue(u32);
 
 impl PageValue {
   /// 0 始まりの物理 index から 1 始まりの論理値を作る。
-  ///
-  /// ページ数が `u32::MAX` に達することはない前提。
   fn from_index(index: PageIndex) -> Self {
     return PageValue(u32::try_from(index.get()).expect("ページ数は u32 に収まる前提") + 1);
   }
 
-  /// 0 始まりの物理カウント（総ページ数）から 1 始まりの論理値を作る。
-  ///
-  /// ページ数が `u32::MAX` に達することはない前提。
+  /// 総ページ数をそのまま論理値にする。
   fn from_count(count: usize) -> Self {
     return PageValue(u32::try_from(count).expect("ページ数は u32 に収まる前提"));
   }
@@ -51,8 +47,6 @@ impl PageValue {
 }
 
 /// 本文ページ分割後に確定する、目次生成用の値。
-///
-/// 見出しの本文内ページ index とページ番号スタイルを保持する。
 pub(super) struct BodyPageValues {
   /// 見出し → 本文内ページ index（文書順）
   heading_pages: Vec<PageIndex>,
@@ -176,7 +170,6 @@ mod tests {
 
   #[test]
   fn from_body_pages_picks_heading_anchors_in_order() {
-    // Arrange — page0 に見出し 1 つ、page1 に Label（無視）+ 見出し 1 つ
     let pages = vec![
       page_with_anchors(vec![AnchorId::Heading(HeadingKey::new(0))]),
       page_with_anchors(vec![
@@ -184,29 +177,21 @@ mod tests {
         AnchorId::Heading(HeadingKey::new(1)),
       ]),
     ];
-
-    // Act
     let page_values = BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
-
-    // Assert — 見出しアンカーのページ index だけを文書順に拾う（Label は無視）
     assert_eq!(page_values.heading_pages(), &[PageIndex::new(0), PageIndex::new(1)]);
   }
 
   #[test]
   fn body_page_label_renders_with_body_style() {
-    // Arrange — 既定は前付け=ローマ小文字 / 本文=算用数字
+    // 既定は前付け=ローマ小文字 / 本文=算用数字
     let page_values = BodyPageValues::from_body_pages(&[], &PageNumbering::default());
-
-    // Act
     let label = page_values.body_page_label(PageIndex::new(0));
-
-    // Assert — 本文スタイル（算用数字）でレンダリングされ、前付けのローマ数字にはならない
     assert_eq!(label, "1");
   }
 
   #[test]
   fn finalize_roman_front_arabic_body() {
-    // Arrange — 既定（前付け=ローマ小文字 / 本文=算用）。前付け 2 ページ、本文 3 ページ
+    // Arrange — 既定（前付け=ローマ小文字 / 本文=算用）
     let front_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let body_pages = vec![
       page_with_anchors(vec![]),
@@ -227,7 +212,7 @@ mod tests {
 
   #[test]
   fn with_back_matter_extends_body_region_numbering() {
-    // Arrange — 前付け 1 ページ・本文 2 ページ・索引（back matter）1 ページ
+    // Arrange
     let front_pages = vec![page_with_anchors(vec![])];
     let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let back_pages = vec![page_with_anchors(vec![])];
