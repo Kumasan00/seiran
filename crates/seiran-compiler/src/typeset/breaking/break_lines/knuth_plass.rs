@@ -629,6 +629,36 @@ mod tests {
   }
 
   #[test]
+  fn avoids_consecutive_hyphen_breaks() {
+    // 幅 25。1 行目は `breaks_at_discretionary_and_appends_hyphen` と同じく語中分割でしか組めない。
+    // 2 行目を 2 つ目の語中分割で折ると b14+5+b2 = 21 が 22 へ伸長 2.5 のうち 1 を使う
+    // （比 0.4・badness 6.4）ので 16.4² + 2500 = 2768.96。3 本目の空白で折ると b14+5+b2+b2 = 23 が
+    // 25 へ 2 を使う（比 0.8・badness 51.2）ので 61.2² = 3745.44。2 本目の空白は b14 だけで実現不能、
+    // 折らずに最終行とすると 38 で溢れる。単独ではハイフン行が安いが、前の行もハイフンで終わるので
+    // 連続ハイフンの demerits 10000 が加わって空白で折る側が勝つ
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(7.0),
+      discretionary(3.0),
+      box_width(14.0),
+      stretch_glue(),
+      box_width(2.0),
+      discretionary(3.0),
+      box_width(2.0),
+      stretch_glue(),
+      box_width(10.0),
+    ];
+
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
+
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "{lines:?}");
+    assert_eq!(box_widths(&lines[1]), vec![pt(14.0), pt(2.0), pt(2.0)], "ハイフンを続けず空白で折る: {lines:?}");
+    assert_eq!(box_widths(&lines[2]), vec![pt(10.0)], "{lines:?}");
+  }
+
+  #[test]
   fn no_feasible_path_falls_back_to_greedy() {
     let items = vec![
       box_width(40.0),
