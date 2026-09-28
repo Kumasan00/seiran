@@ -659,6 +659,35 @@ mod tests {
   }
 
   #[test]
+  fn rejects_hyphen_break_that_overflows_by_hyphen_width() {
+    // 幅 34。語中分割で折る 1 行目 b10+5+b10+5+b5 = 35 は、ハイフン 3 を引いた 31 に対して 4 溢れ、
+    // 収縮 10/3 を超えるので実現不能（ハイフン幅を数えなければ 1 溢れるだけで badness 2.7 の行になる）。
+    // 3 本目の空白で折る 1 行目 b10+5+b10+5+b5+b2 = 37 は 34 へ収縮 3 を使う（比 -0.9）ので組める。
+    // 2 本目の空白は 1 行目 25 が伸長 2.5 で 9 余り、1 本目は b10 だけで実現不能
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
+      stretch_glue(),
+      box_width(5.0),
+      discretionary(3.0),
+      box_width(2.0),
+      stretch_glue(),
+      box_width(10.0),
+    ];
+
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(34.0), TextAlignment::Justify);
+
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(
+      box_widths(&lines[0]),
+      vec![pt(10.0), pt(10.0), pt(5.0), pt(2.0)],
+      "ハイフン込みで溢れる語中分割は選ばない: {lines:?}"
+    );
+    assert_eq!(box_widths(&lines[1]), vec![pt(10.0)], "{lines:?}");
+  }
+
+  #[test]
   fn no_feasible_path_falls_back_to_greedy() {
     let items = vec![
       box_width(40.0),
