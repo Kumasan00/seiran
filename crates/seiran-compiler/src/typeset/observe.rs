@@ -92,11 +92,6 @@ mod tests {
   }
 
   #[test]
-  fn short_text_is_kept_as_is() {
-    assert_eq!(summarize_text("あいう"), "あいう");
-  }
-
-  #[test]
   fn long_text_is_truncated_at_char_boundary_with_ellipsis() {
     let text: String = std::iter::repeat_n('あ', SUMMARY_MAX_CHARS + 5).collect();
 

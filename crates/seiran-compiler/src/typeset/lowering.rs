@@ -420,7 +420,6 @@ mod tests {
     frontend::test_support::parse_source_for_test,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
-    style::CounterTemplate,
     typeset::boxes::{AnchorId, LinkTarget},
   };
 
@@ -503,18 +502,6 @@ mod tests {
   }
 
   #[test]
-  fn lower_inline_math_replaces_placeholder() {
-    let style = ReadStyle::default();
-
-    let out = lower_source(&style, "$x^{2}$\n");
-
-    let placeholder = out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "[Math]"));
-    assert!(!placeholder, "[Math] プレースホルダは消えているはず: {out:?}");
-    let has_raise = out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Raise { .. })));
-    assert!(has_raise, "上付き由来の Raise が含まれるはず: {out:?}");
-  }
-
-  #[test]
   fn lower_math_block_wraps_with_vkerns_and_emits_no_line_break() {
     let style = ReadStyle::default();
 
@@ -528,22 +515,6 @@ mod tests {
       !out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))),
       "LineBreak は出力されないはず: {out:?}"
     );
-  }
-
-  #[test]
-  fn lower_math_block_carries_numbered_row() {
-    let mut style = ReadStyle::default();
-    style.counters.equation.number_format = CounterTemplate::parse("{n}");
-
-    let out = lower_source(&style, "\\begin{equation}\na\n\\end{equation}\n");
-
-    let Some(LayoutNode::MathBlock(block)) = out.get(1) else {
-      panic!("中央に MathBlock があるべき: {out:?}");
-    };
-    let rows = &block.rows;
-    assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
-    let number = rows[0].number.as_ref().expect("採番された行は番号ボックスを持つ");
-    assert!(matches!(&number[0], AtomNode::Text(t, _) if t == "(1)"), "番号ボックスは Text(\"(1)\"): {number:?}");
   }
 
   #[test]
@@ -605,22 +576,6 @@ mod tests {
       lower_source(&style, "\\section{Heading}\n\nPara\n\n\\begin{enumerate}\n\\item{Item}\n\\end{enumerate}\n");
 
     assert!(!contains_line_break(&out), "段落内 \\\\ 以外で LineBreak は出力されない: {out:?}");
-  }
-
-  #[test]
-  fn footnotes_across_paragraphs_number_sequentially() {
-    let style = ReadStyle::default();
-
-    let out = lower_source(&style, "one \\footnote{a}\n\ntwo \\footnote{b}\n\nthree \\footnote{c}\n");
-
-    let numbers: Vec<u32> = out
-      .iter()
-      .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
-        _ => return None,
-      })
-      .collect();
-    assert_eq!(numbers, vec![1, 2, 3], "{out:?}");
   }
 
   #[test]

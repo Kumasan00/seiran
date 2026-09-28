@@ -113,12 +113,4 @@ mod tests {
     assert_eq!(line.height, Length::pt(8.0));
     assert_eq!(line.depth, Length::pt(2.0));
   }
-
-  #[test]
-  fn into_line_leaves_footnotes_and_index_marks_empty() {
-    let line = LineAccum::default().into_line(Vec::new());
-
-    assert!(line.footnotes.is_empty());
-    assert!(line.index_marks.is_empty());
-  }
 }

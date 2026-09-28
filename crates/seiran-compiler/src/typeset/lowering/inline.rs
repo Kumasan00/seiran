@@ -293,11 +293,12 @@ mod tests {
   fn lower_ref_resolves_to_internal_link_with_display_number() {
     let style = ReadStyle::default();
 
-    let nodes = lower_source(&style, "\\chapter{C}\n\n\\section[label=sec:intro]{S}\n\n\\ref{sec:intro}\n");
+    let nodes = lower_source(&style, REF_SOURCE);
 
     let (target, children) = first_link(&nodes);
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:intro"))));
     assert!(matches!(&children[0], InlineNode::Text(t, _) if t == "Section 1.1"), "{children:?}");
+    assert_eq!(ref_text_style(&nodes).color, None);
   }
 
   #[test]
@@ -347,16 +348,6 @@ mod tests {
       panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(text_style.color, Some(blue));
-  }
-
-  #[test]
-  fn lower_ref_inherits_black_when_link_color_none() {
-    let mut style = ReadStyle::default();
-    style.hyperref.link_color = None;
-
-    let nodes = lower_source(&style, REF_SOURCE);
-
-    assert_eq!(ref_text_style(&nodes).color, None);
   }
 
   #[test]
@@ -579,25 +570,13 @@ mod tests {
   }
 
   #[test]
-  fn lower_inline_index_produces_index_mark_layout_node() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\index{語}\n");
-
-    assert!(
-      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.word == "語" && term.reading.is_none()),
-      "{nodes:?}"
-    );
-  }
-
-  #[test]
   fn lower_inline_index_with_reading_preserves_reading() {
     let style = ReadStyle::default();
 
     let nodes = lower_source(&style, "\\index[reading=よみ]{語}\n");
 
     assert!(
-      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.reading.as_deref() == Some("よみ")),
+      matches!(&nodes[0], LayoutNode::Inline(InlineNode::IndexMark(term)) if term.word == "語" && term.reading.as_deref() == Some("よみ")),
       "{nodes:?}"
     );
   }

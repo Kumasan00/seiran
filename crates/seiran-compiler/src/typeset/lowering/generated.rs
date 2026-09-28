@@ -162,7 +162,7 @@ mod tests {
   }
 
   #[test]
-  fn bibliography_entry_anchor_becomes_citation_anchor() {
+  fn bibliography_paragraph_keeps_generated_styling() {
     let style = ReadStyle::default();
 
     let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
@@ -173,14 +173,6 @@ mod tests {
         .any(|n| matches!(n, LayoutNode::Anchor(AnchorId::Citation(k)) if k.as_str() == "kwan2014")),
       "{layout:?}"
     );
-  }
-
-  #[test]
-  fn bibliography_paragraph_keeps_generated_styling() {
-    let style = ReadStyle::default();
-
-    let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
-
     let italic = layout.iter().find_map(|n| match n {
       LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,

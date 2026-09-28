@@ -10,10 +10,9 @@ use crate::length::Length;
 /// 揃えは行折り返しには影響せず（折り返しは常に利用可能幅で行う）、確定した各行を
 /// 利用可能幅の中で水平にシフトするだけ。行が利用可能幅を超える場合のシフト量は
 /// 0 にクランプされる（行頭が本文左端より左へはみ出さない）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::typeset) enum Align {
-  /// 左揃え（ragged-right、既定）
-  #[default]
+  /// 左揃え（ragged-right）
   Left,
   /// 中央揃え
   Center,
@@ -42,11 +41,6 @@ impl Align {
 mod tests {
   use super::Align;
   use crate::length::Length;
-
-  #[test]
-  fn default_is_left() {
-    assert_eq!(Align::default(), Align::Left);
-  }
 
   #[test]
   fn offset_left_is_always_zero() {

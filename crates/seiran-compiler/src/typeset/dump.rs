@@ -282,27 +282,15 @@ mod tests {
   }
 
   #[test]
-  fn dump_reflects_baseline_change() {
-    // ベースライン位置（行送り相当）だけが異なる 2 ページ
-    let higher = vec![page_with_text_line(734.0, "Test")];
-    let lower = vec![page_with_text_line(720.0, "Test")];
-
-    let before = dump_pages(&higher);
-    let after = dump_pages(&lower);
-
-    assert_ne!(before, after);
-    assert!(before.contains("baseline_y=734.00"));
-    assert!(after.contains("baseline_y=720.00"));
-  }
-
-  #[test]
   fn dump_includes_page_header_and_glyph_text() {
     let dump = dump_pages(&[page_with_text_line(734.0, "Test")]);
 
     assert!(dump.contains("=== page 0 ==="));
     assert!(dump.contains("body:"));
+    assert!(dump.contains("baseline_y=734.00"));
     assert!(dump.contains("text=\"Test\""));
     assert!(dump.contains("w=12.34"));
+    assert!(!dump.contains("index word="));
   }
 
   #[test]
@@ -315,12 +303,5 @@ mod tests {
     let dump = dump_pages(&[page]);
     assert!(dump.contains(r#"index word="組版" reading=Some("くみはん")"#));
     assert!(dump.contains(r#"index word="typesetting" reading=None"#));
-  }
-
-  #[test]
-  fn dump_pages_omits_index_lines_when_empty() {
-    let dump = dump_pages(&[page_with_text_line(734.0, "Test")]);
-
-    assert!(!dump.contains("index word="));
   }
 }

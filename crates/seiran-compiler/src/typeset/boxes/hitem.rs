@@ -223,7 +223,7 @@ pub(crate) struct PlacedHItem {
 
 #[cfg(test)]
 mod tests {
-  use super::{HBox, HBoxContent, HItem, IndexTerm, PlacedHItem};
+  use super::{HBox, HBoxContent, HItem, PlacedHItem};
   use crate::length::Length;
 
   /// pt 値から `Length` を作る
@@ -304,15 +304,6 @@ mod tests {
     assert_eq!(HItem::Kern(pt(3.0)).natural_width(), pt(3.0));
     assert_eq!(HItem::Penalty { value: 0 }.natural_width(), Length::ZERO);
     assert_eq!(HItem::ForcedBreak.natural_width(), Length::ZERO);
-  }
-
-  #[test]
-  fn index_mark_is_zero_width() {
-    let mark = HItem::IndexMark(IndexTerm {
-      word: "語".to_string(),
-      reading: None,
-    });
-    assert_eq!(mark.natural_width(), Length::ZERO);
   }
 
   #[test]

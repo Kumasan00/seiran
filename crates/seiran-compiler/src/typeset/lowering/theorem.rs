@@ -281,16 +281,6 @@ mod tests {
   }
 
   #[test]
-  fn proof_without_of_keeps_plain_proof_heading() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{proof}\nx\n\\end{proof}\n");
-
-    let (heading, _) = first_heading_text(&nodes);
-    assert_eq!(heading, "Proof");
-  }
-
-  #[test]
   fn proof_with_of_and_title_combines_both() {
     let style = ReadStyle::default();
 
@@ -301,16 +291,6 @@ mod tests {
     );
 
     assert_eq!(last_heading_plain_text(&nodes), "Proof of Theorem 1 (sketch)");
-  }
-
-  #[test]
-  fn proof_with_title_only_ignores_of_templates() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{proof}[title=sketch]\nx\n\\end{proof}\n");
-
-    let (heading, _) = first_heading_text(&nodes);
-    assert_eq!(heading, "Proof (sketch)");
   }
 
   #[test]

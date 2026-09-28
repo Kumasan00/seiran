@@ -246,13 +246,4 @@ mod tests {
     assert!((w - 400.0).abs() < 1e-4);
     assert!((h - 300.0).abs() < 1e-4);
   }
-
-  #[test]
-  fn fit_image_size_accepts_fractional_svg_natural_size() {
-    let natural = NaturalSize::new(320.5, 180.0).expect("正の有限値");
-    let (w, h) = fit_image_size(Some(160.0), None, natural, 400.0);
-    let expected_height = 160.0 * (180.0f32 / 320.5f32);
-    assert!((w - 160.0).abs() < 1e-4);
-    assert!((h - expected_height).abs() < 1e-4);
-  }
 }

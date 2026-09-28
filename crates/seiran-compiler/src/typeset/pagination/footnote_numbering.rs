@@ -168,21 +168,11 @@ mod tests {
   fn per_page_numbers_restart_from_one_on_each_page() {
     let pages = vec![
       page_with_footnotes(&[0, 1, 2]),
+      page_with_footnotes(&[]),
       page_with_footnotes(&[3, 4]),
     ];
     let numbers = per_page_footnote_numbers(&pages);
     assert_eq!(numbers, vec![1, 2, 3, 1, 2]);
-  }
-
-  #[test]
-  fn per_page_numbers_restart_after_page_without_footnotes() {
-    let pages = vec![
-      page_with_footnotes(&[0]),
-      page_with_footnotes(&[]),
-      page_with_footnotes(&[1]),
-    ];
-    let numbers = per_page_footnote_numbers(&pages);
-    assert_eq!(numbers, vec![1, 1]);
   }
 
   #[test]

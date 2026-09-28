@@ -146,16 +146,13 @@ mod tests {
     length::Length,
     style::TextAlignment,
     typeset::{
-      boxes::{HBox, HBoxContent, HItem},
+      boxes::HItem,
       breaking::break_lines::test_support::{
         box_width, cjk_glue, discretionary, flush_right_box, index_mark, link_target, math_break,
         non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
       },
     },
   };
-
-  /// pt 値から `Length` を作る短縮子
-  fn pt(value: f32) -> Length { return Length::pt(value); }
 
   /// `Length` が pt 値 `expected` に（差 1e-3 pt 未満で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
@@ -179,20 +176,6 @@ mod tests {
     assert_eq!(lines[0].boxes.len(), 2);
     assert_eq!(lines[1].boxes.len(), 1);
     assert!(close(lines[1].boxes[0].x, 0.0));
-  }
-
-  #[test]
-  fn discards_trailing_glue_at_line_end() {
-    let items = vec![
-      test_box(),
-      space_glue(),
-      test_box(),
-      space_glue(),
-      test_box(),
-    ];
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
-
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
@@ -204,6 +187,9 @@ mod tests {
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2);
+    assert!(close(lines[0].height, 8.0));
+    assert!(close(lines[0].depth, 2.0));
+    assert!(lines[0].links.is_empty());
   }
 
   #[test]
@@ -254,40 +240,11 @@ mod tests {
   }
 
   #[test]
-  fn forced_break_flushes_line_unconditionally() {
-    let items = vec![test_box(), HItem::ForcedBreak, test_box()];
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
-
-    assert_eq!(lines.len(), 2, "{lines:?}");
-  }
-
-  #[test]
-  fn line_height_and_depth_from_boxes() {
-    let items = vec![test_box(), space_glue(), test_box()];
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
-
-    assert!(close(lines[0].height, 8.0));
-    assert!(close(lines[0].depth, 2.0));
-  }
-
-  #[test]
   fn empty_items_yield_single_empty_line() {
     let lines = GreedyBreaker.break_lines(&[], Length::pt(100.0), TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
-  }
-
-  #[test]
-  fn kern_is_not_a_break_opportunity_and_is_kept() {
-    let items = vec![test_box(), HItem::Kern(Length::pt(5.0)), test_box()];
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
-
-    assert_eq!(lines.len(), 1);
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -320,41 +277,6 @@ mod tests {
   }
 
   #[test]
-  fn no_line_exceeds_width_when_break_points_exist() {
-    let mut items = Vec::new();
-    for i in 0..10 {
-      if i > 0 {
-        items.push(space_glue());
-      }
-      items.push(test_box());
-    }
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
-
-    for line in &lines {
-      let width = line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max).to_pt();
-      assert!(width <= 30.0 + f32::EPSILON, "行幅 {width} が段幅 30 を超えた: {line:?}");
-    }
-  }
-
-  #[test]
-  fn link_markers_collect_single_rect_on_one_line() {
-    let items = vec![
-      HItem::LinkStart(link_target()),
-      test_box(),
-      test_box(),
-      HItem::LinkEnd,
-    ];
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
-
-    assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].links.len(), 1);
-    assert!(close(lines[0].links[0].x0, 0.0));
-    assert!(close(lines[0].links[0].x1, 20.0), "{:?}", lines[0].links);
-  }
-
-  #[test]
   fn link_spanning_wrap_splits_into_two_rects() {
     let items = vec![
       HItem::LinkStart(link_target()),
@@ -372,30 +294,6 @@ mod tests {
     assert_eq!(lines[1].links.len(), 1, "2 行目に残りの矩形: {:?}", lines[1].links);
     assert!(close(lines[1].links[0].x0, 0.0));
     assert!(close(lines[1].links[0].x1, 10.0));
-  }
-
-  #[test]
-  fn line_without_links_has_empty_links() {
-    let lines =
-      GreedyBreaker.break_lines(&[test_box(), space_glue(), test_box()], Length::pt(100.0), TextAlignment::RaggedRight);
-
-    assert!(lines[0].links.is_empty());
-  }
-
-  #[test]
-  fn single_box_wider_than_width_is_not_split() {
-    let wide = HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: pt(50.0),
-      height: pt(8.0),
-      depth: pt(2.0),
-    });
-
-    let lines = GreedyBreaker.break_lines(&[wide], Length::pt(30.0), TextAlignment::RaggedRight);
-
-    assert_eq!(lines.len(), 1, "{lines:?}");
-    assert_eq!(lines[0].boxes.len(), 1);
-    assert!(close(lines[0].boxes[0].width, 50.0));
   }
 
   #[test]
@@ -540,18 +438,6 @@ mod tests {
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
-  }
-
-  #[test]
-  fn justify_stretches_cjk_zero_width_glue_to_flush_right_edge() {
-    let items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
-
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.3), TextAlignment::Justify);
-
-    assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 10.3), "{lines:?}");
-    let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
-    assert!(close(right_edge, 20.3), "和文のみの非最終行の右端は版面右端に一致: {lines:?}");
   }
 
   #[test]

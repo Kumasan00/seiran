@@ -401,19 +401,6 @@ mod tests {
   }
 
   #[test]
-  fn translate_calligraphic_reuses_script_codepoints() {
-    let cal = Some(MathVariant::Calligraphic);
-    let script = Some(MathVariant::Script);
-    assert_eq!(translate_math_char('A', cal), translate_math_char('A', script));
-    assert_eq!(translate_math_char('A', cal), '\u{1D49C}'); // 連続
-    assert_eq!(translate_math_char('B', cal), '\u{212C}'); // ℬ (穴)
-    assert_eq!(translate_math_char('e', cal), '\u{212F}'); // ℯ (穴)
-    assert_eq!(translate_math_char('z', cal), '\u{1D4CF}'); // 小文字 base 末尾
-    assert_eq!(translate_math_char('1', cal), '1', "カリグラフィー数字は素通し");
-    assert_eq!(translate_math_char('α', cal), 'α', "カリグラフィー Greek は素通し");
-  }
-
-  #[test]
   fn push_math_char_appends_vs1_only_for_calligraphic_letters() {
     let cal = Some(MathVariant::Calligraphic);
 

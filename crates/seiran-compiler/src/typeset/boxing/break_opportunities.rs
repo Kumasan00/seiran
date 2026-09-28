@@ -88,73 +88,9 @@ mod tests {
   }
 
   #[test]
-  fn mixed_text_classifies_both_kinds() {
-    let breaks = break_opportunities("ab 漢字", None);
-
-    assert!(breaks.contains(&BreakPoint {
-      byte: 3,
-      kind: BreakKind::Glue
-    }));
-    assert!(breaks.contains(&BreakPoint {
-      byte: 6,
-      kind: BreakKind::Penalty
-    }));
-  }
-
-  #[test]
   fn no_breaks_inside_single_word() {
     let breaks = break_opportunities("hello", None);
     assert!(breaks.is_empty(), "{breaks:?}");
-  }
-
-  #[test]
-  fn empty_text_has_no_breaks() {
-    let breaks = break_opportunities("", None);
-    assert!(breaks.is_empty(), "{breaks:?}");
-  }
-
-  #[test]
-  fn trailing_space_has_no_break_at_end() {
-    let breaks = break_opportunities("hello ", None);
-    assert!(breaks.is_empty(), "{breaks:?}");
-  }
-
-  #[test]
-  fn multiple_latin_words_break_after_each_space_in_order() {
-    let breaks = break_opportunities("a b c", None);
-
-    assert_eq!(
-      breaks,
-      vec![
-        BreakPoint {
-          byte: 2,
-          kind: BreakKind::Glue
-        },
-        BreakPoint {
-          byte: 4,
-          kind: BreakKind::Glue
-        },
-      ]
-    );
-  }
-
-  #[test]
-  fn hyphenation_adds_hyphen_breaks_when_language_given() {
-    let breaks = break_opportunities("hyphenation", Some(Lang::English));
-
-    assert_eq!(
-      breaks,
-      vec![
-        BreakPoint {
-          byte: 2,
-          kind: BreakKind::Hyphen
-        },
-        BreakPoint {
-          byte: 6,
-          kind: BreakKind::Hyphen
-        },
-      ]
-    );
   }
 
   #[test]

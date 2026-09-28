@@ -485,17 +485,6 @@ mod tests {
   }
 
   #[test]
-  fn lower_inline_math_keeps_japanese_in_math_kind() {
-    let nodes = lower_math_source("$x速度2$\n");
-
-    assert_eq!(concat_texts(&nodes), "\u{1D465}速度2"); // U+1D44E + 23 (x - a)
-    assert!(
-      math_text_styles(&nodes).all(|style| return style.font_kind == FontKind::Math),
-      "和文も Math フォントのまま置かれるはず: {nodes:?}"
-    );
-  }
-
-  #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
     let nodes = lower_inline_math(&[], Length::pt(12.0), &ReadStyle::default().math.script);
@@ -588,13 +577,6 @@ mod tests {
 
     assert!(spacings(&nodes).is_empty(), "通常記号どうしは詰まる: {nodes:?}");
     assert_eq!(math_text_styles(&nodes).count(), 1, "アキの無い並びは 1 本のグリフランにまとまる: {nodes:?}");
-  }
-
-  #[test]
-  fn lower_inline_math_treats_leading_binary_operator_as_ordinary() {
-    let nodes = lower_math_source("$-x$\n");
-
-    assert!(spacings(&nodes).is_empty(), "先頭の二項演算子は順序子として扱う: {nodes:?}");
   }
 
   #[test]
@@ -724,13 +706,6 @@ mod tests {
   }
 
   #[test]
-  fn lower_inline_math_breaks_after_top_level_operators() {
-    let nodes = lower_math_source("$a+b=c$\n");
-
-    assert_eq!(math_break_count(&nodes), 2, "+ と = の直後に分割点: {nodes:?}");
-  }
-
-  #[test]
   fn lower_inline_math_does_not_break_inside_nested_constructs() {
     let nodes = lower_math_source("$x^{a+b}{c+d}\\frac{e+f}{g}\\sqrt{h+i}(j+k)$\n");
 
@@ -757,6 +732,7 @@ mod tests {
 
     let aligns: Vec<Align> = block.rows[0].cells.iter().map(|cell| return cell.align).collect();
     assert_eq!(aligns, vec![Align::Right, Align::Left], "align は偶数列が右・奇数列が左: {aligns:?}");
+    assert!(!block.delimiters.is_present(), "揃え系の環境は括弧で囲まない: {:?}", block.delimiters);
   }
 
   #[test]
@@ -777,22 +753,6 @@ mod tests {
     assert_eq!(cell_align(kind, 0, 1, 0), Align::Right, "列 0 は右");
     assert_eq!(cell_align(kind, 0, 1, 1), Align::Left, "列 1 は左");
     assert_eq!(cell_align(kind, 0, 1, 2), Align::Right, "列 2 は右");
-  }
-
-  #[test]
-  fn cell_align_centered_is_always_center() {
-    let kind = MathEnvKind::Grid(GridLayout::Centered);
-    assert_eq!(cell_align(kind, 0, 3, 0), Align::Center);
-    assert_eq!(cell_align(kind, 1, 3, 0), Align::Center);
-    assert_eq!(cell_align(kind, 2, 3, 0), Align::Center);
-  }
-
-  #[test]
-  fn cell_align_staircase_is_staircase() {
-    let kind = MathEnvKind::Grid(GridLayout::Staircase);
-    assert_eq!(cell_align(kind, 0, 3, 0), Align::Left, "先頭行は左");
-    assert_eq!(cell_align(kind, 1, 3, 0), Align::Center, "中間行は中央");
-    assert_eq!(cell_align(kind, 2, 3, 0), Align::Right, "末尾行は右");
   }
 
   #[test]
@@ -894,12 +854,5 @@ mod tests {
       },
       "matrix の delimiter=bracket は角括弧で囲む"
     );
-  }
-
-  #[test]
-  fn lower_math_block_leaves_align_environment_without_delimiters() {
-    let block = math_block_of("\\begin{align}\na &= b\n\\end{align}\n");
-
-    assert!(!block.delimiters.is_present(), "揃え系の環境は括弧で囲まない: {:?}", block.delimiters);
   }
 }

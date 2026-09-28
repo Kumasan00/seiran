@@ -108,6 +108,10 @@ mod tests {
     assert_eq!(text, "body");
     assert_eq!(text_style.font_kind, style.text.font_kind);
     assert_eq!(text_style.font_size, style.text.font_size);
+    assert!(
+      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      "字下げ Kern は出ない: {nodes:?}"
+    );
   }
 
   #[test]
@@ -138,22 +142,6 @@ mod tests {
     assert!(
       matches!(&nodes[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"),
       "先頭は本文 Text: {nodes:?}"
-    );
-  }
-
-  #[test]
-  fn paragraph_omits_first_line_indent_kern_by_default() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "body\n");
-
-    assert!(
-      matches!(&nodes[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"),
-      "先頭は本文 Text: {nodes:?}"
-    );
-    assert!(
-      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
-      "字下げ Kern は出ない: {nodes:?}"
     );
   }
 

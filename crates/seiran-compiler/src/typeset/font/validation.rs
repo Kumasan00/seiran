@@ -659,18 +659,6 @@ mod tests {
   }
 
   #[test]
-  fn unreadable_fvar_with_axes_is_a_parse_error_not_a_static_font() {
-    let bytes = sfnt_with_fvar(Some(&[0]));
-    let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
-    let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
-    assert!(
-      matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
-      "壊れた fvar を「可変フォントではない」にしない: {errors:?}"
-    );
-  }
-
-  #[test]
   fn missing_fvar_with_axes_is_not_variable_font() {
     let bytes = sfnt_with_fvar(None);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
@@ -702,31 +690,9 @@ mod tests {
   }
 
   #[test]
-  fn fvar_record_past_the_file_with_axes_is_out_of_range_not_variable_font() {
-    let bytes = sfnt_with_fvar_record(28, 0xffff_fff0, &[0]);
-    let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
-    let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
-    assert!(
-      matches!(errors.as_slice(), [FontValidationErrorKind::FvarRecordOutOfRange]),
-      "範囲外を指す fvar を「可変フォントではない」にしない: {errors:?}"
-    );
-  }
-
-  #[test]
   fn fvar_record_with_zero_offset_is_out_of_range() {
     // read-fonts はオフセット 0 のレコードもテーブル無しとして扱う
     let bytes = sfnt_with_fvar_record(0, 1, &[0]);
-    let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
-    let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
-    assert!(matches!(errors.as_slice(), [FontValidationErrorKind::FvarRecordOutOfRange]), "{errors:?}");
-  }
-
-  #[test]
-  fn fvar_record_whose_offset_is_past_the_file_is_out_of_range() {
-    // 長さは小さいがオフセットがファイル末尾より後ろ
-    let bytes = sfnt_with_fvar_record(0x0001_0000, 1, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
     let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);

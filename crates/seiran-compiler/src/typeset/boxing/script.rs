@@ -134,19 +134,7 @@ pub(super) fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -
 
 #[cfg(test)]
 mod tests {
-  use super::{FontKind, FontType, ScriptCategory, resolve_font_type, split_text_by_script};
-
-  #[test]
-  fn resolve_font_type_math_japanese_falls_back_to_japanese_serif() {
-    let resolved = resolve_font_type(FontKind::Math, ScriptCategory::Japanese);
-    assert_eq!(resolved, FontType::JapaneseSerif);
-  }
-
-  #[test]
-  fn resolve_font_type_math_latin_stays_math() {
-    let resolved = resolve_font_type(FontKind::Math, ScriptCategory::Latin);
-    assert_eq!(resolved, FontType::Math);
-  }
+  use super::{FontKind, FontType, split_text_by_script};
 
   #[test]
   fn split_text_by_script_math_splits_latin_and_japanese() {

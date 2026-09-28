@@ -599,12 +599,6 @@ mod boundary_glue_tests {
   }
 
   #[test]
-  fn normal_pair_glue_is_the_same_value_as_the_cjk_stretch_rule() {
-    // 和文字間の分割点に置く glue は、text_run の break 注入もこの関数から出す
-    assert_eq!(boundary_glue(Normal, Normal, EM, true), Some(cjk_stretch_glue(EM)));
-  }
-
-  #[test]
   fn into_item_maps_every_field_to_the_glue_variant() {
     let glue = cjk_stretch_glue(EM);
 

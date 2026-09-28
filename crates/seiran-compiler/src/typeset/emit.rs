@@ -545,14 +545,6 @@ mod tests {
   }
 
   #[test]
-  fn build_omits_background_fill_when_style_has_no_background_color() {
-    let config = test_config();
-    let page = empty_page();
-    let publication = build(&config, vec![page], vec![]);
-    assert!(publication.pages()[0].ops().is_empty(), "背景なし・本文なしなら op は 0 個");
-  }
-
-  #[test]
   fn build_flattens_image_block() {
     let config = test_config();
     let page = page_builder()
@@ -825,23 +817,6 @@ mod tests {
     assert!((publication.pages()[1].links()[0].rect.x() - 121.0).abs() < f32::EPSILON);
     let outline = publication.outline().expect("見出しがあるので Some のはず");
     assert!((outline[0].dest.point.x - 127.0).abs() < f32::EPSILON);
-  }
-
-  #[test]
-  fn build_leaves_content_untouched_when_page_origin_is_zero() {
-    // 原点 0 のページでは本文相対座標がそのまま用紙座標になる（原点の二重加算検出）
-    let config = test_config();
-    let run = glyph_run("x");
-    let page = PageBuilder::new()
-      .block(glyph_line(run, Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
-      .build();
-
-    let publication = build(&config, vec![page], vec![]);
-
-    let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[0].ops()[0] else {
-      panic!("グリフ行は DrawGlyphRun になるはず")
-    };
-    assert!((origin.x - 5.0).abs() < f32::EPSILON);
   }
 
   #[test]

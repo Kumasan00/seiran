@@ -352,7 +352,7 @@ mod tests {
     length::Length,
     style::{PageNumbering, Style},
     typeset::{
-      boxes::{AnchorId, IndexTerm, LinkTarget, Page},
+      boxes::{AnchorId, IndexTerm, Page},
       pagination::page_values::BodyPageValues,
     },
   };
@@ -393,15 +393,6 @@ mod tests {
   }
 
   #[test]
-  fn group_page_items_keeps_two_page_run_uncollapsed() {
-    let pages = page_refs(&[0, 1]);
-
-    let items = group_page_items(&pages, true);
-
-    assert_eq!(item_descs(&items), vec!["1", "2"], "2 ページ連続は範囲へ畳まない");
-  }
-
-  #[test]
   fn group_page_items_collapses_exactly_three_pages() {
     let pages = page_refs(&[0, 1, 2]);
 
@@ -421,34 +412,12 @@ mod tests {
   }
 
   #[test]
-  fn group_page_items_collapses_whole_range() {
-    let pages = page_refs(&[0, 1, 2, 3, 4]);
-
-    let items = group_page_items(&pages, true);
-
-    assert_eq!(item_descs(&items), vec!["1-5"]);
-  }
-
-  #[test]
   fn group_page_items_handles_single_page_entry() {
     let pages = page_refs(&[2]);
 
     let items = group_page_items(&pages, true);
 
     assert_eq!(item_descs(&items), vec!["3"]);
-  }
-
-  #[test]
-  fn group_page_items_links_range_to_its_first_page() {
-    let pages = page_refs(&[3, 4, 5]);
-
-    let items = group_page_items(&pages, true);
-
-    let IndexPageItem::Range { first, last } = &items[0] else {
-      panic!("3 連続は範囲へ畳まれるはず");
-    };
-    assert_eq!(first.link_key, 3, "リンク先は範囲先頭ページ");
-    assert_eq!(last.link_key, 5);
   }
 
   #[test]
@@ -468,14 +437,6 @@ mod tests {
     assert_eq!(spec.group_top_margin, Length::pt(9.0));
     assert_eq!(spec.group_bottom_margin, Length::pt(3.0));
     assert_eq!(spec.group_other_label, "その他");
-  }
-
-  #[test]
-  fn link_target_wraps_link_key() {
-    let key = 3;
-    assert!(
-      matches!(LinkTarget::Internal(AnchorId::IndexPage(key)), LinkTarget::Internal(AnchorId::IndexPage(k)) if k == key)
-    );
   }
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ

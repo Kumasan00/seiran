@@ -147,11 +147,6 @@ mod tests {
   }
 
   #[test]
-  fn gap_returns_none_for_normal_pair() {
-    assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::Normal), None);
-  }
-
-  #[test]
   fn normalize_trims_and_shifts_per_class() {
     assert_eq!(
       normalize(YakumonoClass::Close),

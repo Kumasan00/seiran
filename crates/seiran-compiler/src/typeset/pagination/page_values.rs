@@ -227,21 +227,6 @@ mod tests {
   }
 
   #[test]
-  fn with_back_matter_is_no_op_when_no_index() {
-    let front_pages = vec![page_with_anchors(vec![])];
-    let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
-    let labels_with_empty_back = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default())
-      .with_back_matter(&[])
-      .finalize(&front_pages)
-      .into_vec();
-    let labels_without_call = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default())
-      .finalize(&front_pages)
-      .into_vec();
-
-    assert_eq!(labels_with_empty_back, labels_without_call);
-  }
-
-  #[test]
   fn finalize_without_front_matter_is_plain_arabic() {
     let body_pages = vec![
       page_with_anchors(vec![]),

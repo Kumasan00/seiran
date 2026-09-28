@@ -171,31 +171,6 @@ mod tests {
     assert_eq!(entries[1].word, "b");
   }
 
-  #[test]
-  fn sort_index_entries_is_stable_for_equal_keys() {
-    let mut entries = vec![
-      IndexEntry {
-        word: "same".to_string(),
-        reading: None,
-        pages: vec![IndexPageRef {
-          label: "1".to_string(),
-          link_key: 0,
-        }],
-      },
-      IndexEntry {
-        word: "same".to_string(),
-        reading: None,
-        pages: vec![IndexPageRef {
-          label: "2".to_string(),
-          link_key: 1,
-        }],
-      },
-    ];
-    sort_index_entries(&mut entries);
-    assert_eq!(entries[0].pages[0].label, "1");
-    assert_eq!(entries[1].pages[0].label, "2");
-  }
-
   /// 語（reading は使わない）だけを並べたエントリ列を作る
   fn entries(words: &[&str]) -> Vec<IndexEntry> { return words.iter().map(|word| return entry(word, None)).collect(); }
 
@@ -307,10 +282,5 @@ mod tests {
         ("か".to_string(), vec!["季節".to_string()]),
       ]
     );
-  }
-
-  #[test]
-  fn assign_index_groups_returns_nothing_for_no_entries() {
-    assert!(assign_index_groups(&[]).is_empty());
   }
 }

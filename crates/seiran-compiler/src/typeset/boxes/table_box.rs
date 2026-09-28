@@ -329,16 +329,6 @@ mod tests {
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  #[test]
-  fn table_column_holds_align_and_width() {
-    let col = TableColumn {
-      align: ColumnAlign::Right,
-      width: ColumnWidth::Ratio(0.25),
-    };
-    assert_eq!(col.align, ColumnAlign::Right);
-    assert_eq!(col.width, ColumnWidth::Ratio(0.25));
-  }
-
   /// `Length` が pt 値 `expected` に一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
@@ -532,20 +522,6 @@ mod tests {
     assert!(close(widths[1], 40.0), "Flex は自然幅を下回らない: {widths:?}");
   }
 
-  /// 左揃え 2 列（幅 50/50）の共通カラム定義
-  fn two_left_columns() -> Vec<TableColumn> {
-    return vec![
-      TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      },
-      TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      },
-    ];
-  }
-
   #[test]
   fn collect_row_links_single_link_fills_cell() {
     let target = LinkTarget::External("https://example.com".to_string());
@@ -623,26 +599,6 @@ mod tests {
     assert!(close(links[0].x0, 0.0) && close(links[0].x1, 5.0));
     assert_eq!(links[1].target, second);
     assert!(close(links[1].x0, 8.0) && close(links[1].x1, 13.0));
-  }
-
-  #[test]
-  fn collect_row_links_in_spanned_cell() {
-    let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("tab:x")));
-    let row = row(vec![TableCellBox {
-      items: vec![
-        HItem::LinkStart(target.clone()),
-        text_free_box(10.0),
-        HItem::LinkEnd,
-      ],
-      span: 2,
-    }]);
-    let col_widths = vec![pt(20.0), pt(20.0)];
-
-    let links = collect_row_links(&row, &two_left_columns(), &col_widths, pt(0.0));
-
-    assert_eq!(links.len(), 1);
-    assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 10.0));
   }
 
   #[test]

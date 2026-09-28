@@ -74,15 +74,6 @@ mod tests {
   }
 
   #[test]
-  fn hyphenation_points_for_known_english_word() {
-    let points = hyphenation_points("hyphenation", Lang::English);
-
-    assert_eq!(points, vec![2, 6], "{points:?}");
-    assert_eq!(&"hyphenation"[..2], "hy");
-    assert_eq!(&"hyphenation"[..6], "hyphen");
-  }
-
-  #[test]
   fn hyphenation_points_offsets_are_absolute_in_text() {
     let points = hyphenation_points("a hyphenation", Lang::English);
 

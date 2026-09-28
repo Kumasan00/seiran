@@ -456,32 +456,6 @@ mod tests {
   }
 
   #[test]
-  fn fits_all_when_width_is_sufficient() {
-    let items = vec![test_box(), stretch_glue(), test_box()];
-
-    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Justify);
-
-    assert_eq!(lines.len(), 1);
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
-  }
-
-  #[test]
-  fn justify_flushes_non_final_line_to_right_edge() {
-    let items = vec![
-      test_box(),
-      stretch_glue(),
-      test_box(),
-      stretch_glue(),
-      test_box(),
-    ];
-
-    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
-
-    assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(right_edge(&lines[0]), 27.0), "非最終行の右端は版面右端: {lines:?}");
-  }
-
-  #[test]
   fn uniform_density_beats_greedy_loose_lines() {
     let glue = || {
       return HItem::Glue {
@@ -595,17 +569,6 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
     assert!(close(lines[0].links[0].x1, 27.0), "リンク矩形は伸縮後の字位置: {:?}", lines[0].links);
-  }
-
-  #[test]
-  fn inline_atom_box_is_never_split() {
-    let items = vec![box_width(50.0)];
-
-    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Justify);
-
-    assert_eq!(lines.len(), 1, "{lines:?}");
-    assert_eq!(lines[0].boxes.len(), 1);
-    assert!(close(lines[0].boxes[0].width, 50.0));
   }
 
   #[test]

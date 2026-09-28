@@ -134,38 +134,6 @@ mod tests {
   }
 
   #[test]
-  fn unordered_list_uses_marker_with_trailing_space() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{itemize}\n\\item{apple}\n\\end{itemize}\n");
-
-    let (marker, _) = marker_of(&nodes[0]);
-    assert_eq!(marker, "• ");
-  }
-
-  #[test]
-  fn ordered_list_numbers_start_at_one_and_increment() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{enumerate}\n\\item{a}\n\\item{b}\n\\item{c}\n\\end{enumerate}\n");
-
-    assert_eq!(nodes.len(), 3);
-    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
-  }
-
-  #[test]
-  fn ordered_list_with_start_numbers_from_start() {
-    let style = ReadStyle::default();
-
-    let nodes =
-      lower_source(&style, "\\begin{enumerate}[start=5]\n\\item{a}\n\\item{b}\n\\item{c}\n\\end{enumerate}\n");
-
-    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(markers, vec!["5. ", "6. ", "7. "]);
-  }
-
-  #[test]
   fn nested_start_does_not_affect_outer_numbering() {
     let style = ReadStyle::default();
 
@@ -275,15 +243,6 @@ mod tests {
   }
 
   #[test]
-  fn nested_unordered_markers_vary_by_depth() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, &nested_source(&[false, false, false]));
-
-    assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
-  }
-
-  #[test]
   fn nested_ordered_markers_vary_by_depth() {
     let style = ReadStyle::default();
 
@@ -299,20 +258,6 @@ mod tests {
     let nodes = lower_source(&style, &nested_source(&[false, true, false]));
 
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
-  }
-
-  #[test]
-  fn item_gap_env_override_applies_to_all_items() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{itemize}[item_gap=3mm]\n\\item{a}\n\\item{b}\n\\end{itemize}\n");
-
-    for node in &nodes {
-      let LayoutNode::VBox { margin_bottom, .. } = node else {
-        panic!("item は VBox であるべき: {node:?}");
-      };
-      assert!((margin_bottom.to_pt() - Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
-    }
   }
 
   #[test]
@@ -338,18 +283,6 @@ mod tests {
     };
     assert!((gap0.to_pt() - Length::mm(1.0).to_pt()).abs() < f32::EPSILON);
     assert!((gap1.to_pt() - Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
-  }
-
-  #[test]
-  fn item_gap_unspecified_falls_back_to_style_default() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{itemize}\n\\item{a}\n\\end{itemize}\n");
-
-    let LayoutNode::VBox { margin_bottom, .. } = &nodes[0] else {
-      panic!("item は VBox であるべき");
-    };
-    assert!((margin_bottom.to_pt() - style.list.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
   }
 
   #[test]

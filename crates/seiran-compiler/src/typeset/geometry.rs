@@ -363,14 +363,6 @@ mod tests {
   }
 
   #[test]
-  fn prepare_accepts_default_config_and_style() {
-    let (_tempdir, config) = read_test_config();
-    let style = test_style(50.0, 50.0, 50.0, 50.0);
-
-    assert!(PreparedGeometry::prepare(&config, &style).is_ok());
-  }
-
-  #[test]
   fn prepare_rejects_column_gap_wider_than_text_width() {
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);

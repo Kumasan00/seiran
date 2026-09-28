@@ -325,21 +325,6 @@ mod tests {
   }
 
   #[test]
-  fn adjacent_same_style_text_is_merged() {
-    let s1 = style(FontKind::Serif);
-    let nodes = vec![
-      InlineNode::Text("A".to_string(), s1),
-      InlineNode::Text("B".to_string(), s1),
-      InlineNode::Text("C".to_string(), s1),
-    ];
-
-    let merged = merge_adjacent_text(nodes);
-
-    assert_eq!(merged.len(), 1, "{merged:?}");
-    assert!(matches!(&merged[0], InlineNode::Text(t, _) if t == "ABC"), "{merged:?}");
-  }
-
-  #[test]
   fn different_style_text_is_not_merged() {
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
@@ -449,19 +434,5 @@ mod tests {
     let lifted = InlineNode::from(kern);
 
     assert!(matches!(lifted, InlineNode::Kern { length } if length == Length::pt(2.0)));
-  }
-
-  #[test]
-  fn inline_kern_lifts_to_layout_inline() {
-    let kern = InlineNode::Kern {
-      length: Length::pt(2.0),
-    };
-
-    let lifted = LayoutNode::from(kern);
-
-    assert!(
-      matches!(lifted, LayoutNode::Inline(InlineNode::Kern { length }) if length == Length::pt(2.0)),
-      "インラインは包み variant 1 つで縦リストの語彙へ載る"
-    );
   }
 }

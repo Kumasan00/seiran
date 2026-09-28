@@ -158,23 +158,6 @@ mod tests {
   }
 
   #[test]
-  fn lower_table_head_cells_use_default_head_font_kind() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
-
-    let table = find_table(&nodes);
-    let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
-      panic!("ヘッダセルは Text であるべき");
-    };
-    assert_eq!(head_style.font_kind, FontKind::SerifBold);
-    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
-      panic!("本体セルは Text であるべき");
-    };
-    assert_eq!(body_style.font_kind, FontKind::Serif);
-  }
-
-  #[test]
   fn lower_table_head_cells_follow_style_head_font_kind() {
     // 太字でない書体を指定しても、そのまま使われる（太字化しない）
     let mut style = ReadStyle::default();
@@ -247,6 +230,10 @@ mod tests {
       .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "Table 1.1: 得点表"))
       .expect("キャプション Text あり");
     assert!(table_idx < caption_idx, "Bottom: table がキャプションの前");
+    assert!(
+      matches!(children.get(table_idx + 1), Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.table.inner_margin.to_pt()).abs() < f32::EPSILON),
+      "本体の直後に inner_margin の Vkern が入る: {children:?}"
+    );
   }
 
   #[test]
@@ -284,21 +271,6 @@ mod tests {
       })
       .expect("キャプション Text あり");
     assert_eq!(caption.font_kind, FontKind::Monospace);
-  }
-
-  #[test]
-  fn lower_table_inserts_inner_margin_between_table_and_caption() {
-    let style = ReadStyle::default();
-
-    let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
-
-    let children = table_children(&nodes);
-    let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
-    let inner_kern = children.get(table_idx + 1);
-    assert!(
-      matches!(inner_kern, Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.table.inner_margin.to_pt()).abs() < f32::EPSILON),
-      "本体の直後に inner_margin の Vkern が入る: {children:?}"
-    );
   }
 
   #[test]

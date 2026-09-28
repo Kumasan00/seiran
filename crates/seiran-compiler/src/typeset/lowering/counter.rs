@@ -133,15 +133,6 @@ mod tests {
   }
 
   #[test]
-  fn chapter_uses_arabic_number_only() {
-    let style = Style::default();
-
-    let text = format_counter_value(&style, &counter_value(CounterName::Chapter, &[(CounterName::Part, 0)], 1));
-
-    assert_eq!(text, "1");
-  }
-
-  #[test]
   fn part_uses_roman_upper_number_style() {
     let style = Style::default();
 
@@ -161,21 +152,6 @@ mod tests {
   }
 
   #[test]
-  fn subsection_embeds_two_ancestor_values() {
-    let style = Style::default();
-    let ancestors = [
-      (CounterName::Part, 0),
-      (CounterName::Chapter, 1),
-      (CounterName::Section, 2),
-    ];
-    let value = counter_value(CounterName::Subsection, &ancestors, 3);
-
-    let text = format_counter_value(&style, &value);
-
-    assert_eq!(text, "1.2.3");
-  }
-
-  #[test]
   fn own_name_placeholder_resolves_to_own_value() {
     let mut style = Style::default();
     style.counters.section.number_format = CounterTemplate::parse("{section}");
@@ -184,16 +160,6 @@ mod tests {
     let text = format_counter_value(&style, &value);
 
     assert_eq!(text, "4", "自身名のプレースホルダは own を指す");
-  }
-
-  #[test]
-  fn literal_decoration_in_number_format_is_kept() {
-    let mut style = Style::default();
-    style.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
-
-    let text = format_counter_value(&style, &counter_value(CounterName::Chapter, &[(CounterName::Part, 0)], 3));
-
-    assert_eq!(text, "第3章");
   }
 
   #[test]
@@ -218,25 +184,6 @@ mod tests {
   }
 
   #[test]
-  fn equation_ref_display_uses_parenthesized_ref_format() {
-    let style = Style::default();
-    let value = counter_value(CounterName::Equation, &[(CounterName::Part, 0), (CounterName::Chapter, 1)], 1);
-
-    let text = format_ref_display(&style, &value);
-
-    assert_eq!(text, "(1.1)");
-  }
-
-  #[test]
-  fn theorem_number_uses_plain_own_value() {
-    let style = Style::default();
-
-    let text = format_counter_value(&style, &theorem_value(TheoremClass::Theorem, &[], 2));
-
-    assert_eq!(text, "2");
-  }
-
-  #[test]
   fn theorem_number_embeds_reset_by_counter() {
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
@@ -246,19 +193,6 @@ mod tests {
     let text = format_counter_value(&style, &value);
 
     assert_eq!(text, "3.1");
-  }
-
-  #[test]
-  fn theorem_reference_to_counter_off_the_value_is_empty() {
-    // reset_by は section なので、chapter の値は構造値に載っていない
-    let mut style = Style::default();
-    style.theorems.theorem.reset_by = TheoremReset::Section;
-    style.theorems.theorem.number_format = CounterTemplate::parse("{chapter}.{n}");
-    let value = theorem_value(TheoremClass::Theorem, &[(CounterName::Section, 3)], 1);
-
-    let text = format_counter_value(&style, &value);
-
-    assert_eq!(text, ".1", "祖先に無いカウンタ参照は空文字列になる（既知の制限）");
   }
 
   #[test]

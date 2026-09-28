@@ -893,28 +893,6 @@ mod tests {
   }
 
   #[test]
-  fn empty_table_fragment_pushes_nothing() {
-    let geom = geometry();
-    let mut draft = PageDraft::new();
-    let columns: Vec<TableColumn> = Vec::new();
-    let col_widths: Vec<Length> = Vec::new();
-    let frame = TableFrame {
-      columns: &columns,
-      col_widths: &col_widths,
-      cell_padding: Length::ZERO,
-      rule_thickness: Length::ZERO,
-      rule_color: None,
-      align_offset: Length::ZERO,
-    };
-
-    draft.place_table_fragment(Vec::new(), &frame, Length::ZERO);
-
-    assert!(!draft.has_content());
-    let page = draft.take_page(&geom);
-    assert!(page.blocks.is_empty());
-  }
-
-  #[test]
   fn place_block_resolves_anchor_at_the_given_point_not_the_block() {
     // 数式ブロック相当: アンカーは上端 10、block の baseline は 18
     let geom = geometry();

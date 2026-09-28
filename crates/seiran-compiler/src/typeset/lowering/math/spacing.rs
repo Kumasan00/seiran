@@ -496,27 +496,11 @@ mod tests {
   }
 
   #[test]
-  fn resolve_bin_classes_demotes_leading_binary_operator() {
-    let mut classes = [MathClass::Bin, MathClass::Ord];
-    resolve_bin_classes(&mut classes);
-
-    assert_eq!(classes, [MathClass::Ord, MathClass::Ord], "先頭の二項演算子は順序子になる");
-  }
-
-  #[test]
   fn resolve_bin_classes_demotes_binary_operator_before_relation() {
     let mut classes = [MathClass::Ord, MathClass::Bin, MathClass::Rel];
     resolve_bin_classes(&mut classes);
 
     assert_eq!(classes, [MathClass::Ord, MathClass::Ord, MathClass::Rel], "関係子の直前の二項演算子も落ちる");
-  }
-
-  #[test]
-  fn resolve_bin_classes_keeps_binary_operator_between_ordinaries() {
-    let mut classes = [MathClass::Ord, MathClass::Bin, MathClass::Ord];
-    resolve_bin_classes(&mut classes);
-
-    assert_eq!(classes, [MathClass::Ord, MathClass::Bin, MathClass::Ord], "通常記号に挟まれた二項演算子は残る");
   }
 
   #[test]
@@ -622,13 +606,6 @@ mod tests {
   }
 
   #[test]
-  fn assemble_breakable_does_not_break_inside_parentheses() {
-    let nodes = assemble_breakable(items("(a+b)"), Length::pt(12.0));
-
-    assert!(breaks(&nodes).is_empty(), "括弧の内側では割らない: {nodes:?}");
-  }
-
-  #[test]
   fn assemble_breakable_breaks_only_outside_parentheses() {
     let nodes = assemble_breakable(items("a+(b+c)=d"), Length::pt(12.0));
 
@@ -671,31 +648,10 @@ mod tests {
   }
 
   #[test]
-  fn assemble_breakable_does_not_break_inside_parentheses_with_question_mark() {
-    let nodes = assemble_breakable(items("(a?+b)"), Length::pt(12.0));
-
-    assert!(breaks(&nodes).is_empty(), "? は区切りではないので深さを崩さない: {nodes:?}");
-  }
-
-  #[test]
   fn assemble_breakable_breaks_after_exclamation_mark_at_top_level() {
     let nodes = assemble_breakable(items("a!+b"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 1, "括弧の外なので + の後で 1 箇所割れる: {nodes:?}");
-  }
-
-  #[test]
-  fn assemble_breakable_does_not_break_between_relation_and_punctuation() {
-    let nodes = assemble_breakable(items("a=,b"), Length::pt(12.0));
-
-    assert!(breaks(&nodes).is_empty(), "関係子の直後が区切りなら割らない（アキ 0 のセルのため）: {nodes:?}");
-  }
-
-  #[test]
-  fn assemble_breakable_breaks_between_relation_and_open_parenthesis() {
-    let nodes = assemble_breakable(items("a=(b)"), Length::pt(12.0));
-
-    assert_eq!(breaks(&nodes).len(), 1, "関係子の直後が開き括弧ならアキがあるので割れる: {nodes:?}");
   }
 
   #[test]

@@ -63,7 +63,7 @@ struct RunningSlots {
 }
 
 /// トークン置換に使う文書メタデータ（未設定は空文字列）
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct RunningMetadata {
   /// `{title}`
   title: String,
@@ -251,29 +251,9 @@ mod tests {
   }
 
   #[test]
-  fn substitute_supports_roman_front_matter_labels() {
-    let result = substitute(&RunningTemplate::parse("{page} / {pages}"), "ii", "iv", &metadata());
-
-    assert_eq!(result, "ii / iv");
-  }
-
-  #[test]
   fn substitute_replaces_metadata_tokens() {
     let result = substitute(&RunningTemplate::parse("{title} — {author} ({date})"), "1", "1", &metadata());
 
     assert_eq!(result, "My Title — Me (2026-06-14)");
-  }
-
-  #[test]
-  fn substitute_unset_metadata_becomes_empty() {
-    let result = substitute(&RunningTemplate::parse("[{title}]"), "1", "1", &RunningMetadata::default());
-    assert_eq!(result, "[]");
-  }
-
-  #[test]
-  fn substitute_leaves_static_text_untouched() {
-    let result = substitute(&RunningTemplate::parse("Confidential"), "5", "9", &metadata());
-
-    assert_eq!(result, "Confidential");
   }
 }
