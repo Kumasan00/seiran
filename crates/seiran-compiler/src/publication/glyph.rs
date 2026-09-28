@@ -20,7 +20,7 @@ pub struct GlyphRun {
   /// このグリフ列が使用するフォント種別
   pub font_type: FontType,
   /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
-  /// `\color[color=#rrggbb]{...}` 由来のテキストだけ `Some` になる。
+  /// `\color` かリンク色（style.toml の `[hyperref]`）が効いたテキストだけ `Some` になる。
   pub color: Option<Color>,
 }
 

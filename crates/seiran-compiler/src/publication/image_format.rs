@@ -2,14 +2,11 @@
 //!
 //! `PublicationImage` に載って描画バックエンドまで届く描画契約の値型。判定をここ 1 箇所に
 //! 置くのは、描画側（`seiran-pdf`）が拡張子を読み直すと同じ判定が 2 つになり食い違いうる
-//! ため（#378 で `pdf::unsupported_image_format` を削除した根拠）。呼ぶのは組版の画像資源
-//! 解決（`crate::typeset::image`）で、判定済みの値だけが `Publication` に載る。
+//! ため（#378 で `pdf::unsupported_image_format` を削除した根拠）。
 
 use std::path::Path;
 
 /// 対応している画像形式。
-///
-/// `Publication` に載って描画バックエンドまで届く leaf 値型（`crate::publication::PublicationImage`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageFormat {
   /// PNG（`.png`）

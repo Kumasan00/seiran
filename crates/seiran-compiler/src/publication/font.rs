@@ -25,8 +25,6 @@ pub struct VariationAxisConfig {
 }
 
 /// 1 フォントの基本メトリクス。
-///
-/// 値はフォントユニット系で、`descender` は OpenType の慣例どおり通常は負値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FontMetric {
   /// units-per-em（`head` テーブル由来）

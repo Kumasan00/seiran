@@ -107,9 +107,7 @@ impl Publication {
 
 /// 描画に必要なフォント・画像資源（すべて生データ）。
 ///
-/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が `[T; 19]` で持つので欠けた表を構築できない）。構築経路は
-/// [`PublicationResources::new`] だけで、これは crate 内非公開 — `compile` 以外が
-/// `Publication` を組み立てることはできない。
+/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が `[T; 19]` で持つので欠けた表を構築できない）。
 #[derive(Clone, PartialEq)]
 pub struct PublicationResources {
   /// フォント種別ごとの描画資源
@@ -132,7 +130,6 @@ impl PublicationResources {
 
   /// 指定パスの画像への参照を返す。保持していないパスは `None`。
   ///
-  /// [`ImageRef`] の発行経路はここだけなので、`PaintOp::DrawImage` は必ず実在する画像を指す。
   /// 画像は 1 文書あたり数十件なので、索引を二重に持たず線形探索で引く。
   pub(crate) fn image_ref(&self, path: &str) -> Option<ImageRef> {
     return self.images.iter().position(|image| return image.path == path).map(ImageRef);
@@ -143,7 +140,7 @@ impl PublicationResources {
   /// # Panics
   ///
   /// [`ImageRef`] の発行経路は [`PublicationResources::image_ref`] だけで、`images` は構築後に
-  /// 変更されないため添字は必ず有効（破れていたら不変条件の破れなのでここで落とす）。
+  /// 変更されないため添字は必ず有効。
   #[must_use]
   pub fn image(&self, image_ref: ImageRef) -> &PublicationImage {
     let Some(image) = self.images.get(image_ref.0) else {
@@ -294,11 +291,11 @@ fn is_positive_size(rect: Rect) -> bool { return rect.width > 0.0 && rect.height
 /// 描画命令。
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaintOp {
-  /// シェーピング済みグリフ列の描画（`origin` はベースライン左端）
+  /// シェーピング済みグリフ列の描画
   DrawGlyphRun {
     /// 描画原点（ページ左上基準、ベースライン位置）
     origin: Point,
-    /// シェーピング結果一式（フォント種別・グリフ・元テキスト・サイズ・色）
+    /// シェーピング結果
     run: GlyphRun,
   },
   /// 画像の描画
@@ -419,10 +416,9 @@ pub struct PublicationOutlineEntry {
   pub dest: Destination,
 }
 
-/// テストが描画資源を組み立てるための fixture（本体コードは `build` の構築経路だけを使う）。
+/// テストが描画資源を組み立てるための fixture。
 ///
-/// `pub(crate)` なのは `publication` の外（`compiler::dump` / `typeset::emit`）のテストも使うため
-/// （`Publication` のダンプは描画資源の中身を読まないので、同じダミー資源で足りる）。
+/// `pub(crate)` なのは `publication` の外（`compiler::dump` / `typeset::emit`）のテストも使うため。
 #[cfg(test)]
 pub(crate) mod test_support {
   use std::sync::Arc;
@@ -492,13 +488,8 @@ mod tests {
 
   #[test]
   fn page_new_rejects_zero_sized_page_box() {
-    // Arrange
     let degenerate = Rect::new(0.0, 0.0, 0.0, 842.0).unwrap();
-
-    // Act
     let page = PublicationPage::new(degenerate, Vec::new(), Vec::new());
-
-    // Assert
     assert!(page.is_none(), "幅 0 のページ矩形は構築できないはず");
   }
 
