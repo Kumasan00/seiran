@@ -54,7 +54,7 @@ pub(super) fn dump_publication(publication: &Publication) -> String {
   return out;
 }
 
-/// メタデータを書き出す（`title` は必須、他は `Some` のときだけ 1 行ずつ追加する）。
+/// メタデータを書き出す。
 fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
   let _ = writeln!(out, "title={:?}", metadata.title);
   if let Some(author) = &metadata.author {
@@ -137,9 +137,6 @@ fn dump_publication_link(out: &mut String, link: &PublicationLink) {
 }
 
 /// pt 単位の `f32`（描画命令に載っている値）を小数第 2 位へ丸め、負のゼロを正規化する。
-///
-/// `typeset::dump` の `f2` と丸め桁数・負のゼロ正規化の仕様を揃える（`Publication` の座標はすでに
-/// pt の `f32` なので `Length` 経由の単位変換をしないだけの違い）。
 fn f2_pt(value: f32) -> String {
   let text = format!("{value:.2}");
   return if text == "-0.00" {
@@ -174,7 +171,7 @@ mod tests {
 
   #[test]
   fn dump_metadata_includes_all_present_optional_fields() {
-    // Arrange — title 以外の全フィールドを Some にする
+    // Arrange
     let metadata = PublicationMetadata {
       title: "Test".to_string(),
       author: Some("Author".to_string()),
@@ -197,14 +194,11 @@ mod tests {
 
   #[test]
   fn dump_metadata_omits_optional_fields_when_absent() {
-    // Arrange — title だけを持つ最小メタデータ
     let metadata = minimal_metadata();
     let mut out = String::new();
 
-    // Act
     dump_metadata(&mut out, &metadata);
 
-    // Assert
     assert_eq!(out, "title=\"Test\"\n");
   }
 
@@ -254,17 +248,14 @@ mod tests {
 
   #[test]
   fn dump_publication_link_writes_external_target() {
-    // Arrange
     let link = PublicationLink {
       target: PublicationLinkTarget::External("https://example.com".to_string()),
       rect: Rect::new(0.0, 0.0, 30.0, 12.0).unwrap(),
     };
     let mut out = String::new();
 
-    // Act
     dump_publication_link(&mut out, &link);
 
-    // Assert
     assert!(out.contains(r#"link target=External("https://example.com")"#));
   }
 }

@@ -201,13 +201,10 @@ mod tests {
 
   #[test]
   fn single_diagnostic_renders_identically_to_the_leaf() {
-    // Arrange
     let expected = format!("{:?}", miette::Report::new(LeafError));
 
-    // Act
     let rendered = format!("{:?}", CompileFailure::single(LeafError).into_report());
 
-    // Assert — 1 件なら包む前の leaf と描画が完全に一致するはず
     assert_eq!(rendered, expected);
   }
 
@@ -222,37 +219,31 @@ mod tests {
 
   #[test]
   fn related_lists_the_rest_after_the_primary() {
-    // Arrange
     let mut failure = CompileFailure::single(LeafError);
     failure.push(OtherError);
 
-    // Act
     let related: Vec<String> = failure
       .related()
       .expect("関連診断を持つはず")
       .map(|diagnostic| return diagnostic.code().expect("code を持つはず").to_string())
       .collect();
 
-    // Assert
     assert_eq!(related, vec!["test::other".to_string()]);
   }
 
   #[test]
   fn related_keeps_the_primary_own_related() {
-    // Arrange — 主診断自身が関連診断を持つ場合、それを落とさず後ろへ連結するはず
     let mut failure = CompileFailure::single(WithRelatedError {
       related: vec![OtherError],
     });
     failure.push(LeafError);
 
-    // Act
     let related: Vec<String> = failure
       .related()
       .expect("関連診断を持つはず")
       .map(|diagnostic| return diagnostic.code().expect("code を持つはず").to_string())
       .collect();
 
-    // Assert
     assert_eq!(related, vec!["test::other".to_string(), "test::leaf".to_string()]);
   }
 
@@ -274,7 +265,7 @@ mod tests {
     // Act
     let failure = failure.with_warnings(warnings);
 
-    // Assert — 警告は warnings() からだけ見え、error の列・関連診断・描画には混ざらない
+    // Assert
     assert_eq!(failure.warnings().iter().count(), 1);
     assert_eq!(codes(&failure), vec!["test::leaf".to_string(), "test::other".to_string()]);
     let related: Vec<String> = failure
@@ -291,7 +282,6 @@ mod tests {
   fn display_passes_formatting_parameters_through_to_the_primary_diagnostic() {
     let failure = CompileFailure::single(PaddedError);
 
-    // 幅・寄せは主診断の Display へそのまま渡る
     assert_eq!(format!("{failure:>3}"), "  a");
   }
 }

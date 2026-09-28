@@ -1,8 +1,7 @@
 //! ソースの同一性 [`SourceId`] と位置 [`Span`]。
 //!
 //! どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。
-//! 診断型は持たず、`miette::SourceSpan` への変換（`impl From<Span> for SourceSpan`）だけを持つ leaf module として、
-//! `crate::source` から crate 全体が参照する（#337 で `model` から移設）。
+//! 診断型は持たず、`miette::SourceSpan` への変換（`impl From<Span> for SourceSpan`）だけを持つ leaf module。
 
 use miette::{SourceOffset, SourceSpan};
 
@@ -26,8 +25,6 @@ impl SourceId {
 }
 
 /// ソーステキスト上のバイト範囲
-///
-/// 開始位置と終了位置のバイトオフセットを保持する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Span {
   /// 開始バイトオフセット（0-indexed, inclusive）
@@ -59,10 +56,6 @@ impl Span {
 }
 
 /// 診断ラベルの位置 `miette::SourceSpan` への変換
-///
-/// パーサ・評価器（`frontend`）と意味解析（`semantics`）の診断構築点が共有する唯一の変換。共有コードは
-/// 操作対象の型の所有者に置く規約に従い、`Span` の所有者であるこの module に置く。`project` の TOML 構文
-/// エラーは toml の byte range から `SourceSpan` を作る別経路で、`Span` を経由しない。
 impl From<Span> for SourceSpan {
   fn from(span: Span) -> Self { return SourceSpan::new(SourceOffset::from(span.start as usize), span.len() as usize); }
 }
@@ -90,27 +83,21 @@ mod tests {
 
   #[test]
   fn merge_combines_two_spans() {
-    // Arrange
     let a = Span::new(5, 10);
     let b = Span::new(8, 15);
 
-    // Act
     let merged = a.merge(b);
 
-    // Assert
     assert_eq!(merged, Span::new(5, 15));
   }
 
   #[test]
   fn merge_non_overlapping_spans() {
-    // Arrange
     let a = Span::new(0, 5);
     let b = Span::new(10, 20);
 
-    // Act
     let merged = a.merge(b);
 
-    // Assert — 間の範囲も含む最小の Span になる
     assert_eq!(merged, Span::new(0, 20));
   }
 

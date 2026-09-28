@@ -80,7 +80,7 @@ fn compile_reports_a_leaf_diagnostic_on_failure() {
   let failure =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未登録の設定ファイルは失敗するはず");
 
-  // Assert — 主診断は段名の wrapper ではなく、修正できる leaf そのものであるはず
+  // Assert
   assert_eq!(failure.diagnostics().count(), 1);
   assert_eq!(
     failure.code().expect("leaf の診断コードを持つはず").to_string(),
@@ -140,7 +140,7 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
   // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("いずれも致命的ではないはず");
 
-  // Assert — 表示順は段の実行順（設定 → フォント → 組版）で固定
+  // Assert
   let codes: Vec<String> = compilation
     .warnings
     .iter()
@@ -176,7 +176,7 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
   // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
-  // Assert — 組版の警告が成功成果物と一緒に返り、severity は Warning
+  // Assert
   let reports: Vec<&(dyn Diagnostic + 'static)> = compilation.warnings.iter().collect();
   let codes: Vec<String> = reports
     .iter()
@@ -209,7 +209,7 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
   // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
-  // Assert — 収束したパスの警告だけが残る
+  // Assert
   let codes: Vec<String> = compilation
     .warnings
     .iter()
@@ -280,7 +280,7 @@ fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
   // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("壊れた style は失敗するはず");
 
-  // Assert — 入力読込の後段が失敗しても、先に確定した config の警告は残る
+  // Assert
   assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "style::parse_toml");
   assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
 }
@@ -454,7 +454,7 @@ fn compile_failure_keeps_confirmed_warnings_when_an_image_is_missing() {
   // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("読めない画像は失敗するはず");
 
-  // Assert — 表示順は段の実行順（設定 → フォント）
+  // Assert
   assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "typeset::image::read_image");
   let codes = warning_codes(failure.warnings());
   assert_eq!(codes.first().map(String::as_str), Some("project::config::source_extension"), "{codes:?}");
@@ -558,7 +558,7 @@ fn compile_reads_a_font_once_when_it_is_spelled_two_ways() {
   // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("compile は成功するはず");
 
-  // Assert — 旧実装は PathBuf の字面で dedup していたので 2 回読んでいた
+  // Assert
   assert_eq!(compilation.dependencies.font_paths, vec![PathBuf::from("/project/fonts/font.ttf")]);
   assert_eq!(source.read_count("/project/fonts/font.ttf"), 1, "表記が違っても同じフォントは 1 回だけ読むはず");
 }

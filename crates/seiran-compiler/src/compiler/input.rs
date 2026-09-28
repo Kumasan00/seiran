@@ -35,11 +35,10 @@ use crate::{
 
 /// 読込・個別検証・横断検証をすべて通った入力。
 ///
-/// フィールドは非公開で、構築経路は [`load`] だけ（テスト専用のコンストラクタも持たない）。
-/// 「検証を通っていない値が後段へ流れない」ことを型で保証するため、外から組み立てられる
-/// コンストラクタを持たない（受け入れ条件、#351 / #522）。画像はパース後にパスが分かるため含めない。
+/// 構築経路は [`load`] だけで（テスト専用のコンストラクタも持たない）、検証を通っていない値が後段へ
+/// 流れないことを型で保証する（#351 / #522）。画像はパース後にパスが分かるため含めない。
 pub(super) struct CompilationInputs {
-  /// 検証済みの設定（用紙・余白・`sources`・`font_configs` 等）
+  /// 検証済みの設定（用紙・`sources`・`font_configs` 等）
   config: ProjectConfig,
   /// 検証済みのスタイル
   style: Style,
@@ -77,21 +76,14 @@ impl CompilationInputs {
 
 /// 設定・スタイル・文献・フォント・ソースを読み込み、検証済みの入力を組み立てる。
 ///
-/// `source` は呼び出し元が 1 回だけ構築したものを受け取り、ここでは構築しない。
-///
 /// 戻り値は読込の成否と、config.toml の読込で確定した警告（`sources` の宣言順）の組。警告は後段
 /// （style・横断検証・文献・フォント・ソース）が失敗しても、config 自身の検証が失敗しても返す（#550）。
 ///
 /// # Errors
 ///
 /// 設定・スタイルの読込または検証、両者の横断検証、文献・フォント・ソースの読込のいずれかに
-/// 失敗した場合に、組の第 1 要素がエラーになる。
-///
-/// **後段の入力を構築できない境界だけ早期 return する** — config が読めなければ style path が決まらず、
-/// style が無ければ横断検証ができないので、config → style → 横断検証の間は跨いで集約しない（#376）。
-/// 横断検証まで通った後の文献・フォント・ソースの読込は互いに独立なので、1 件目で打ち切らず
-/// 文献 → フォント → ソースの順に全件を集約する（#552）。種類の中で独立に検査できるもの
-/// （複数フォントパス・複数ソース）も従来どおり全件を集約する。
+/// 失敗した場合に、組の第 1 要素がエラーになる。後段の入力を構築できない境界（config → style →
+/// 横断検証）では早期 return し、跨いで集約しない（#376）。
 pub(super) fn load(
   source: &dyn ProjectSource,
   config_path: &ProjectPath,
@@ -197,13 +189,13 @@ mod tests {
     config::test_support::{make_font_sections, valid_output_section, valid_pdf_section},
   };
 
-  /// `project::SourceSet` の素のエラーを、移設前と同じ位置付き診断へ組み替えることを固定する。
+  /// `project::SourceSet` の素のエラーを位置付き診断へ組み替えることを固定する。
   ///
   /// `code` と役割・パスを含むメッセージの組み立ては `project` ではなくここの責務なので、
   /// `SourceSet::read` 側のテストではこの層を通らない（#351）。
   #[test]
   fn read_sources_maps_missing_file_to_read_text_file_diagnostic() {
-    // Arrange — 存在するソースと存在しないソースを混ぜる
+    // Arrange
     let source = MemoryProjectSource::new().with_text("/project/a.sei", "content-a");
     let sources = vec![
       ProjectPath::new("/project/a.sei"),
@@ -245,7 +237,7 @@ mod tests {
       panic!("2 件とも失敗するはず");
     };
 
-    // Assert — パス名の辞書順ではなく config.sources の宣言順
+    // Assert
     let paths: Vec<&str> = failures
       .iter()
       .map(|error| {
@@ -337,7 +329,7 @@ mod tests {
     let (result, _) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert — 1 件目で打ち切らず、文献 → フォント → ソースの順に 1 度で並ぶ
+    // Assert
     let Err(failures) = result else {
       panic!("3 種の読込失敗を期待");
     };
@@ -364,7 +356,7 @@ mod tests {
     let (result, _) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert — style で早期 return し、後段の 3 種は 1 度も読まれない
+    // Assert
     let Err(failures) = result else {
       panic!("style の解析失敗を期待");
     };

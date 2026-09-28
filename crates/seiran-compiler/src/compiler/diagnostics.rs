@@ -182,11 +182,9 @@ fn diagnostic_multiple_source_errors() {
 
 #[test]
 fn diagnostic_multi_source_resolve_error_attributes_second_source() {
-  // 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（resolve 段）。
-  // `semantics::analyze` はラベル名前空間を全ソースで共有するため
-  // （単一の `CounterRegistry` に対して逐次解決し、`\ref` の存在検証を全体へ 1 回だけ実行する）、
-  // parse 段の集約（`diagnostic_multiple_source_errors`）とは別に、resolve 段の複数 source でも
-  // `Origin::Source` が正しいファイルへ帰属することを確認する。
+  // 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義。`semantics::analyze` はラベル名前空間を
+  // 全ソースで共有するため、パース段の集約（`diagnostic_multiple_source_errors`）とは別に、意味解析段の
+  // 複数ソースでも診断が正しいファイルへ帰属することを確認する。
   let failure = compile_err(&[
     "tests/text/diagnostics/multi_source_a.sei",
     "tests/text/diagnostics/multi_source_b.sei",
@@ -197,7 +195,7 @@ fn diagnostic_multi_source_resolve_error_attributes_second_source() {
 
 #[test]
 fn diagnostic_undefined_ref() {
-  // `\ref` の未定義ラベル（source 帰属つき `Resolve` エラー）
+  // `\ref` の未定義ラベル
   let failure = compile_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
   assert_matches_golden("undefined_ref", &render_failure(failure));
@@ -280,13 +278,13 @@ fn diagnostic_multiple_missing_sources_follow_declaration_order() {
     "tests/text/diagnostics/a-does-not-exist.sei",
   ]);
 
-  // 宣言順に全件（1 件目で打ち切らない）。欠落ソースは `input::load` の設定パス解決が検出する
+  // 宣言順に全件（1 件目で打ち切らない）。欠落ソースは config.toml の検証が検出する
   assert_eq!(codes(&failure), vec!["project::config::validation::source_path".to_string(); 2]);
 }
 
 #[test]
 fn diagnostic_missing_image() {
-  // 画像アセット欠落（`image_resources::load_image_resources` の `ProjectSource::read_bytes` が検出）
+  // 画像アセット欠落（組版の画像読込が `ProjectSource::read_bytes` で検出）
   let failure = compile_err(&["tests/text/diagnostics/missing_image.sei"]);
 
   assert_matches_golden("missing_image", &render_failure(failure));
@@ -306,21 +304,18 @@ fn diagnostic_unsupported_image_format() {
 
 #[test]
 fn diagnostic_font_validation_error() {
-  // Arrange — 実在するバリアブルフォントに不明なバリエーション軸を設定し、font phase の
-  // `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
+  // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる
+  // （`FontSystemError::Validation` の `transparent` 委譲を確認）
   let project = TestProject::builder().config_toml(|table| set_unknown_variation_axis(table, "serif")).build();
 
-  // Act
   let failure = project.compile_err();
 
-  // Assert
   assert_matches_golden("font_validation_error", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
-  // Arrange — 2 種別に不明な軸を設定する。宣言は Japanese Serif → Serif の順だが、
-  // 報告は `FontType::ALL` の順（Serif が先）になるはず
+  // 宣言は Japanese Serif → Serif の順だが、報告は `FontType::ALL` の順（Serif が先）になるはず
   let project = TestProject::builder()
     .config_toml(|table| {
       set_unknown_variation_axis(table, "japanese_serif");
@@ -328,25 +323,20 @@ fn diagnostic_font_validation_errors_follow_font_type_order() {
     })
     .build();
 
-  // Act
   let failure = project.compile_err();
 
-  // Assert
   assert_matches_golden("font_validation_multiple_fonts", &render_failure(failure));
 }
 
 #[test]
 fn diagnostic_missing_csl_path() {
-  // 引用があるのに CSL スタイル未設定（CSL 由来のエラーが leaf のまま出ることの回帰。
-  // 旧実装ではここに `compiler::citation::style`「文献引用の CSL スタイルを読み込めませんでした。」
-  // という段名だけの診断が 1 段挟まっていた）
+  // 引用があるのに CSL スタイル未設定（CSL 由来のエラーが leaf のまま出ることの回帰）
   let failure = TestProject::builder()
     .sources(&["tests/text/cite.sei"])
     .style_toml(|table| test_support::remove(table, "reference", "csl_path"))
     .build()
     .compile_err();
 
-  // Assert
   assert_eq!(codes(&failure), vec!["semantics::citation::style::missing_csl_path".to_string()]);
   assert_matches_golden("missing_csl_path", &render_failure(failure));
 }
@@ -355,7 +345,6 @@ fn diagnostic_missing_csl_path() {
 fn primary_diagnostic_is_the_leaf_for_unknown_command() {
   let failure = compile_err(&["tests/text/diagnostics/unknown_command.sei"]);
 
-  // ユーザーが最初に読むのは段名の wrapper ではなく修正可能な leaf
   assert_eq!(codes(&failure), vec!["frontend::eval::unknown_command".to_string()]);
 }
 
@@ -376,7 +365,6 @@ fn primary_diagnostic_is_the_leaf_for_unknown_citation_key() {
 
 #[test]
 fn multiple_source_errors_keep_declaration_order() {
-  // config.sources の宣言順で並ぶ
   let failure = compile_err(&[
     "tests/text/diagnostics/unknown_command.sei",
     "tests/text/diagnostics/bare_braces.sei",
@@ -474,15 +462,14 @@ fn diagnostic_config_validation_field() {
 
 #[test]
 fn diagnostic_style_validation_aggregate() {
-  // Arrange — 2 つの font_size を同時に不正にする
+  // 2 つの font_size を同時に不正にする
   let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
-  // Act
   let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
     panic!("このケースは失敗するはず");
   };
 
-  // Assert — compile 経路と同じく CompileFailure へ平坦化して描画する
+  // compile 経路と同じく CompileFailure へ平坦化して描画する
   assert_matches_golden("style_validation_aggregate", &render_failure(CompileFailure::from(failures)));
 }
 

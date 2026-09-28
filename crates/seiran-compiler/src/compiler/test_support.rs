@@ -226,7 +226,7 @@ impl TestProjectBuilder {
     return self;
   }
 
-  /// 複数の資源をまとめて登録する（[`Self::asset`] の繰り返し）。
+  /// 複数の資源をまとめて登録する。
   pub(super) fn assets(mut self, paths: &[&str]) -> Self {
     for path in paths {
       self = self.asset(path);
@@ -360,11 +360,8 @@ impl TestProjectBuilder {
     return (source, keys);
   }
 
-  /// 登録する資産の一覧（明示登録 `self.assets` に加え、`sources` が既定（fixture の
-  /// `cite.sei` + `figure.sei`）のままなら `FIGURE_IMAGE_ASSETS` も足す。重複除去済み。
-  ///
-  /// `sources` を差し替えたテストは `figure.sei` を読まないことが多いので自動登録しない —
-  /// 必要なら呼び出し側が [`Self::asset`] / [`Self::assets`] で明示する。
+  /// 登録する資産の一覧（明示登録 `self.assets` に加え、`sources` が既定のままなら
+  /// `FIGURE_IMAGE_ASSETS` も足す。重複除去済み）。
   fn assets_to_register(&self) -> Vec<PathBuf> {
     let mut assets = self.assets.clone();
     if self.sources.is_none() {
@@ -440,9 +437,6 @@ fn set_page_margins(table: &mut toml::value::Table, horizontal: &str, vertical: 
 }
 
 /// 検証対象の機能に必要な config 差分を fixture 名ごとに適用する。
-///
-/// production が実際に読む表現へ揃えるため、生の TOML テーブルへ 1 回だけ適用する
-/// （型付き `ProjectConfig` への並行実装は持たない）。
 fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
   match name {
     "hyphenation" => set(table, "document", "language", "en"),

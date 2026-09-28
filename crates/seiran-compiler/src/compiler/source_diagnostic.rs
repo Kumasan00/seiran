@@ -73,7 +73,6 @@ impl<E: Diagnostic + 'static> Diagnostic for SourceDiagnostic<E> {
 
   fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.url(); }
 
-  /// この adapter が補う唯一の情報。
   fn source_code(&self) -> Option<&dyn miette::SourceCode> { return Some(&self.named_source); }
 
   fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { return self.inner.labels(); }
@@ -128,7 +127,7 @@ mod tests {
     // Act
     let attributed = SourceDiagnostic::attach(&sources, source_id, inner);
 
-    // Assert — source_code だけを補い、他は内側の値がそのまま出るはず
+    // Assert
     assert!(attributed.source_code().is_some(), "本文を補うはず");
     assert_eq!(attributed.code().expect("code を委譲するはず").to_string(), "test::leaf");
     assert_eq!(attributed.help().expect("help を委譲するはず").to_string(), "テスト用のヘルプ");
@@ -148,11 +147,11 @@ mod tests {
       };
     };
 
-    // Act — 同じソースに 2 件の診断を添える
+    // Act
     let first = SourceDiagnostic::attach(&sources, source_id, leaf());
     let second = SourceDiagnostic::attach(&sources, source_id, leaf());
 
-    // Assert — 本文を複製せず、SourceSet が持つ 1 つの割り当てを全員が指す
+    // Assert
     assert!(Arc::ptr_eq(first.named_source.inner(), &entry.content), "1 件目は SourceSet の本文を共有する");
     assert!(Arc::ptr_eq(second.named_source.inner(), &entry.content), "2 件目も同じ本文を共有する");
     assert_eq!(Arc::strong_count(&entry.content), 3, "所有者は SourceSet と診断 2 件だけ");
@@ -160,7 +159,7 @@ mod tests {
 
   #[test]
   fn related_notes_carry_their_own_source_text() {
-    // Arrange — 主診断は a.sei、関連位置は b.sei
+    // Arrange
     let source = MemoryProjectSource::new()
       .with_text("/project/a.sei", "本文 A")
       .with_text("/project/b.sei", "本文 B");
@@ -182,7 +181,7 @@ mod tests {
     // Act
     let attributed = SourceDiagnostic::attach(&sources, ids[0], leaf()).with_related_in(&sources, ids[1], leaf());
 
-    // Assert — 関連診断は b.sei の本文を自分で持つ（主診断の a.sei の本文で描かれない）
+    // Assert
     let related: Vec<&dyn Diagnostic> = attributed.related().expect("関連診断を持つはず").collect();
     assert_eq!(related.len(), 1);
     let contents = related[0]
@@ -195,15 +194,12 @@ mod tests {
 
   #[test]
   fn display_passes_formatting_parameters_through_to_the_inner_diagnostic() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
     let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, _entry) = sources.iter().next().expect("1 件登録されているはず");
 
-    // Act
     let attributed = SourceDiagnostic::attach(&sources, source_id, "a");
 
-    // Assert — 幅・寄せは内側の Display へそのまま渡る
     assert_eq!(format!("{attributed:>3}"), "  a");
   }
 }

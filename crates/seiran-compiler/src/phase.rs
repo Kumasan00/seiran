@@ -29,7 +29,7 @@ enum PhaseStatus {
 /// 工程の span を保持するので、この値が生きている間の event はすべて工程の prefix を持つ。
 #[must_use = "drop した時点で工程の終了を記録するので、工程の処理が終わるまで束縛しておく"]
 pub(crate) struct Phase {
-  /// 工程の span（drop で抜ける）。値を読まず保持するだけなので `_` 始まり
+  /// 工程の span（drop で抜ける）
   _span: EnteredSpan,
   /// 開始時刻
   started: Instant,
@@ -126,7 +126,7 @@ mod tests {
 
   #[test]
   fn panicking_phase_records_a_failed_end() {
-    // Arrange / Act — panic メッセージがテストの素の stderr に出ることは避けられない（`set_hook` は
+    // panic メッセージがテストの素の stderr に出ることは避けられない（`set_hook` は
     // プロセス全体で共有されるグローバル状態なので、他のテストを壊さないよう変更しない）。cargo test の
     // 既定の出力捕捉により、このテストが失敗しない限り表示されない。
     let log = capture_probe_log(|| {
@@ -137,7 +137,6 @@ mod tests {
       assert!(unwound.is_err(), "panic が起きるはず");
     });
 
-    // Assert
     assert!(
       log.lines().any(|line| {
         return line.contains("probe:")
@@ -151,13 +150,11 @@ mod tests {
 
   #[test]
   fn succeeding_phase_records_a_succeeded_end() {
-    // Arrange / Act
     let log = capture_probe_log(|| {
       let phase = Phase::enter(info_span!("probe"));
       phase.succeed();
     });
 
-    // Assert
     assert!(
       log.lines().any(|line| {
         return line.contains("probe:")

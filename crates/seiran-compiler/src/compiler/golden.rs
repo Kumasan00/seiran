@@ -6,7 +6,7 @@
 //! 本モジュール内部のテスト分類はこの doc が正典。
 //!
 //! 入力は例外なく [`crate::compiler::test_support::TestProject`] が組み立て、production と同じ
-//! `input::load` → frontend → semantics → font → typeset を通る。
+//! `input::load` → frontend → semantics → typeset を通る。
 //!
 //! # テストの分類
 //!
@@ -36,7 +36,8 @@
 //!   画像の確定描画寸法はここで固定する）・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]（2 段組みでサイズ両省略の
 //!   画像が `body_column_width` にフィットすることを固定し、本文パスの呼び出し元が段幅を
-//!   `text_width` と取り違える退行を検出する）
+//!   `text_width` と取り違える退行を検出する）・
+//!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -134,7 +135,6 @@ fn layout_dumps_match_golden() {
     fs::create_dir_all(golden_dir()).expect("golden ディレクトリの作成");
   }
 
-  // 各入力を compile() 経由で組版し、Publication のダンプを golden と比較
   let mut mismatches = Vec::new();
   for name in GOLDEN_INPUTS {
     let dump = dump_publication_of(name);
@@ -242,7 +242,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   // Act
   let laid_out = project.laid_out();
 
-  // Assert — 見出しがページ末尾に孤立せず、テストが複数ページを使っている
+  // Assert
   assert!(laid_out.pages.len() >= 2, "複数ページに分かれるはず: {} ページ", laid_out.pages.len());
   for (index, page) in laid_out.pages.iter().enumerate() {
     assert!(!page_ends_with_heading(page), "page {index} が見出しで終わっている（孤立）: {:#?}", page.blocks);
@@ -344,7 +344,7 @@ fn figure_image_sizes() -> Vec<(Length, Length)> {
 
 #[test]
 fn figure_images_resolve_to_expected_display_sizes() {
-  // Arrange — `figure.sei` は画像のサイズ指定 4 パターン（両指定 / width のみ / height のみ /
+  // `figure.sei` は画像のサイズ指定 4 パターン（両指定 / width のみ / height のみ /
   // 両省略）と SVG を通す。`figure.sei` は画像実体への依存で golden の対象外なので、
   // 寸法の確定はこのテストが固定する（本文幅 = 段幅は 425mm）
   let expected = [
@@ -356,10 +356,8 @@ fn figure_images_resolve_to_expected_display_sizes() {
     (Length::mm(80.0), Length::mm(48.0)),     // testimage6 SVG 200x120・width のみ
   ];
 
-  // Act
   let sizes = figure_image_sizes();
 
-  // Assert
   assert_eq!(sizes.len(), expected.len(), "画像は 6 枚あるはず: {sizes:?}");
   for (index, ((width, height), (expected_width, expected_height))) in sizes.iter().zip(expected).enumerate() {
     assert!(
@@ -469,10 +467,9 @@ fn footnote_numbers_per_page(numbering: &'static str) -> Vec<Vec<u32>> {
 
 #[test]
 fn per_page_footnote_numbering_restarts_on_each_page() {
-  // Act
   let per_page = footnote_numbers_per_page("per_page");
 
-  // Assert — 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
+  // 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
   // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
   // ページ単位採番では 1 桁に縮み、その幅の変化が行分割へ跳ね返る循環を踏んだうえで収束している。
   let pages_with_footnotes: Vec<&Vec<u32>> = per_page.iter().filter(|numbers| return !numbers.is_empty()).collect();
@@ -618,10 +615,8 @@ fn block_bottom(block: &PlacedBlock) -> Option<Length> {
 
 #[test]
 fn continuous_footnote_numbering_runs_through_pages() {
-  // Act — 同じ入力を既定（通し）で組む
   let continuous = footnote_numbers_per_page("continuous");
 
-  // Assert — ページをまたいでも 1 からの通し連番のまま（ページ単位採番の導入で既定が変わっていない）
   let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();
   let expected: Vec<u32> = (1..=u32::try_from(flattened.len()).expect("脚注数は u32 に収まる")).collect();
   assert_eq!(flattened, expected, "通し採番はページをまたいで連番のはず: {continuous:?}");
@@ -645,7 +640,7 @@ fn layout_dump_changes_with_line_height() {
   let base_dump = dump_pages_of("itemize");
   let taller_dump = dump_pages(&taller.laid_out().pages);
 
-  // Assert — レイアウトに影響する定数変更はダンプの差分として現れる
+  // Assert
   assert_ne!(base_dump, taller_dump);
 }
 
@@ -658,11 +653,11 @@ fn layout_dump_changes_with_punctuation_spacing() {
     .style_toml(|table| test_support::set(table, "text", "punctuation_spacing", false))
     .build();
 
-  // Act — 既定（有効）と無効（フォントの送り幅そのまま）を組版してダンプする
+  // Act
   let enabled_dump = dump_pages_of("yakumono");
   let disabled_dump = dump_pages(&disabled.laid_out().pages);
 
-  // Assert — 約物アキ調整はレイアウトを変える（無効化で従来出力へ戻せる）
+  // Assert
   assert_ne!(enabled_dump, disabled_dump);
 }
 
@@ -704,7 +699,7 @@ fn page_count_with_front_matter(title_page: bool, toc: bool, blank_metadata: boo
 
 #[test]
 fn front_matter_adds_no_blank_pages() {
-  // Arrange — 前付けなしの本文ページ数を基準にする
+  // Arrange
   let body_only = page_count_with_front_matter(false, false, false);
 
   // Act
@@ -714,8 +709,7 @@ fn front_matter_adds_no_blank_pages() {
   let empty_title_only = page_count_with_front_matter(true, false, true);
   let empty_title_and_toc = page_count_with_front_matter(true, true, true);
 
-  // Assert — タイトルページはちょうど 1 ページ、目次は 1 ページ以上、両方なら和。
-  // 中身の無いタイトルページは 0 ページ（白紙を作らない）
+  // Assert
   assert_eq!(title_only, body_only + 1, "タイトルページだけなら 1 ページ増える");
   assert!(toc_only > body_only, "目次だけなら 1 ページ以上増える: {toc_only} vs {body_only}");
   assert_eq!(both, toc_only + 1, "両方ならタイトルページ 1 + 目次のページ数");

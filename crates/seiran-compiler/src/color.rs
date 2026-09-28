@@ -32,8 +32,6 @@ impl From<Color> for [u8; 3] {
 }
 
 /// [`Color`] の文字列パース失敗を表すエラー。
-///
-/// `#rrggbb` 以外の形式で [`Color::from_str`] が返す。
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("色は `#rrggbb` 形式の 16 進表記で指定してください: {input:?}")]
 pub struct ParseColorError {
@@ -131,10 +129,8 @@ mod tests {
 
   #[test]
   fn rejects_hex_without_prefix() {
-    // Arrange
     let result: Result<Wrapper, _> = toml::from_str("color = \"cc9966\"");
 
-    // Assert
     assert!(result.is_err());
   }
 
@@ -161,20 +157,16 @@ mod tests {
 
   #[test]
   fn from_str_rejects_surrounding_whitespace() {
-    // 前後空白は呼び出し側の責務（受理範囲を `#rrggbb` ちょうどに保つ）
     assert!(" #cc9966".parse::<Color>().is_err());
     assert!("#cc9966 ".parse::<Color>().is_err());
   }
 
   #[test]
   fn display_and_from_str_round_trip() {
-    // Arrange
     let value = Color::new(0xcc, 0x99, 0x66);
 
-    // Act: Display の正準形 `#rrggbb` を FromStr で往復
     let text = value.to_string();
 
-    // Assert
     assert_eq!(text, "#cc9966");
     assert_eq!(text.parse::<Color>().unwrap(), value);
   }

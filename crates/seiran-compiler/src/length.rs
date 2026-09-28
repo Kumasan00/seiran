@@ -51,9 +51,7 @@ fn round_to_pt_sp(pt: f64) -> i64 { return round_sp(pt * SP_PER_PT as f64); }
 
 /// 単位付き長さ値。内部は sp（1/65536 pt）の整数で保持する。
 ///
-/// 構築は [`Length::pt`] / [`Length::mm`] / [`Length::from_sp`]、pt 値の取り出しは [`Length::to_pt`]。
-/// 文字列との相互変換は [`FromStr`] / [`Display`](std::fmt::Display) の正準形 `<pt値>pt` を用いる。
-/// `Display` の出力は [`Length::from_str`] と往復する固定の字面で、幅・寄せなどの書式パラメータは無視する。
+/// [`Display`](std::fmt::Display) の出力は [`Length::from_str`] と往復する固定の字面で、幅・寄せなどの書式パラメータは無視する。
 /// `Deref` / `From<f32>` は意図的に実装しない（変換漏れを型検査で検出するため）。
 #[derive(
   Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Add, Sub, Neg, AddAssign, SubAssign, Display,
@@ -152,9 +150,6 @@ fn parse_length(value: &str) -> Option<Length> {
 }
 
 /// [`Length`] の文字列パース失敗を表すエラー。
-///
-/// `<数値>pt` / `<数値>mm` / `<数値>cm`（数値と単位の間に空白なし・単位は小文字）以外の形式で
-/// [`Length::from_str`] が返す。
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error(
   "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: {input:?}"
@@ -167,7 +162,6 @@ pub struct ParseLengthError {
 impl FromStr for Length {
   type Err = ParseLengthError;
 
-  /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。前後の空白は許容し、数値と単位の間の空白は拒否する。
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     return parse_length(s).ok_or_else(|| {
       return ParseLengthError {
@@ -186,8 +180,6 @@ impl<'de> Deserialize<'de> for Length {
 
 /// `garde` 用バリデータ: [`Length`] が厳密に正の値であることを要求する。
 ///
-/// `#[garde(custom(positive))]` で各フィールドに付ける。
-///
 /// # Errors
 ///
 /// 値が 0 以下の場合に [`garde::Error`] を返す。
@@ -203,8 +195,6 @@ pub(crate) fn positive(value: &Length, _ctx: &()) -> garde::Result {
 }
 
 /// `garde` 用バリデータ: [`Length`] が非負の値であることを要求する。
-///
-/// `#[garde(custom(non_negative))]` で各フィールドに付ける。
 ///
 /// # Errors
 ///
@@ -282,25 +272,22 @@ mod tests {
 
   #[test]
   fn parses_mm_suffix_using_inch_identity() {
-    // Arrange: 25.4 mm = 1 inch = 72 pt
+    // 25.4 mm = 1 inch = 72 pt
     let w: Wrapper = toml::from_str("length = \"25.4mm\"").unwrap();
 
-    // Assert
     assert!((w.length.to_pt() - 72.0).abs() < 0.01);
   }
 
   #[test]
   fn parses_cm_suffix_using_inch_identity() {
-    // Arrange: 2.54 cm = 1 inch = 72 pt
+    // 2.54 cm = 1 inch = 72 pt
     let w: Wrapper = toml::from_str("length = \"2.54cm\"").unwrap();
 
-    // Assert
     assert!((w.length.to_pt() - 72.0).abs() < 0.01);
   }
 
   #[test]
   fn cm_and_mm_are_consistent() {
-    // 1 cm == 10 mm（sp 整数として厳密一致）
     let a: Wrapper = toml::from_str("length = \"1cm\"").unwrap();
     let b: Wrapper = toml::from_str("length = \"10mm\"").unwrap();
 
@@ -352,20 +339,16 @@ mod tests {
 
   #[test]
   fn display_and_from_str_round_trip() {
-    // Arrange
     let value = Length::pt(12.5);
 
-    // Act: Display の正準形 `<pt>pt` を FromStr で往復
     let text = value.to_string();
 
-    // Assert
     assert_eq!(text, "12.5pt");
     assert_eq!(text.parse::<Length>().unwrap(), value);
   }
 
   #[test]
   fn display_ignores_formatting_parameters() {
-    // 正準形は FromStr と往復する固定の字面なので、幅・寄せを付けても変わらない
     assert_eq!(format!("{:>8}", Length::pt(1.0)), "1pt");
   }
 
@@ -378,38 +361,30 @@ mod tests {
 
   #[test]
   fn rejects_unknown_unit() {
-    // Arrange
     let result: Result<Wrapper, _> = toml::from_str("length = \"12px\"");
 
-    // Assert
     assert!(result.is_err());
   }
 
   #[test]
   fn rejects_missing_unit() {
-    // Arrange
     let result: Result<Wrapper, _> = toml::from_str("length = \"12\"");
 
-    // Assert
     assert!(result.is_err());
   }
 
   #[test]
   fn pt_round_trips_through_sp() {
-    // Arrange: 12pt = 12 * 65536 sp = 786432 sp
     let value = Length::pt(12.0);
 
-    // Assert
     assert_eq!(value.sp(), 12 * 65536);
     assert!((value.to_pt() - 12.0).abs() < f32::EPSILON);
   }
 
   #[test]
   fn zero_is_additive_identity() {
-    // Arrange
     let a = Length::pt(7.0);
 
-    // Assert
     assert_eq!(a + Length::ZERO, a);
     assert_eq!(Length::ZERO.sp(), 0);
   }
@@ -489,32 +464,27 @@ mod tests {
 
   #[test]
   fn scale_rounds_through_single_site() {
-    // Arrange: 3pt = 196608 sp、× 0.5 = 98304 sp = 1.5pt
     let a = Length::pt(3.0);
 
-    // Assert
     assert_eq!(a.scale(0.5), Length::pt(1.5));
   }
 
   #[test]
   fn scale_uses_round_ties_even() {
-    // Arrange: 1 sp を 0.5 倍すると 0.5 sp → 偶数丸めで 0 sp
+    // 1 sp を 0.5 倍すると 0.5 sp → 偶数丸めで 0 sp
     let one_sp = Length::from_sp(1);
     // 3 sp を 0.5 倍すると 1.5 sp → 偶数丸めで 2 sp
     let three_sp = Length::from_sp(3);
 
-    // Assert
     assert_eq!(one_sp.scale(0.5), Length::from_sp(0));
     assert_eq!(three_sp.scale(0.5), Length::from_sp(2));
   }
 
   #[test]
   fn ratio_is_dimensionless() {
-    // Arrange
     let a = Length::pt(6.0);
     let b = Length::pt(2.0);
 
-    // Assert
     assert!((a.ratio(b) - 3.0).abs() < f64::EPSILON);
   }
 
@@ -529,14 +499,11 @@ mod tests {
 
   #[test]
   fn sum_of_lengths_is_exact() {
-    // Arrange
     let items = [Length::pt(1.0), Length::pt(2.0), Length::pt(3.0)];
 
-    // Act
     let total: Length = items.iter().copied().sum();
     let total_ref: Length = items.iter().sum();
 
-    // Assert
     assert_eq!(total, Length::pt(6.0));
     assert_eq!(total_ref, Length::pt(6.0));
   }

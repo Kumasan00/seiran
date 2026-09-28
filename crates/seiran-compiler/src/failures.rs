@@ -16,8 +16,7 @@ use derive_more::Display;
 ///
 /// `first` が主診断で、`rest` が同時に報告する残り。順序は入力の論理順（source は宣言順、
 /// フォントは読込がパスの昇順・解析 / 検証が `FontType::ALL` 順、画像は正規化済みパスの昇順、意味解析は
-/// 文書順）であり、
-/// `HashMap` の反復順や並列処理の完了順に依存させない。
+/// 文書順）であり、`HashMap` の反復順や並列処理の完了順に依存させない。
 ///
 /// 構築経路は [`Failures::single`] と [`Failures::from_vec`]（空なら `None`）だけで、
 /// `Default` は実装しない。
@@ -130,20 +129,16 @@ mod tests {
   fn from_vec_rejects_an_empty_vec() {
     let failures = Failures::from_vec(Vec::<TestError>::new());
 
-    // 空の集合は構築できないはず
     assert!(failures.is_none());
   }
 
   #[test]
   fn from_vec_keeps_the_detection_order() {
-    // Arrange
     let failures =
       Failures::from_vec(vec![TestError(1), TestError(2), TestError(3)]).expect("3 件あるので構築できるはず");
 
-    // Act
     let (first, rest) = failures.into_parts();
 
-    // Assert
     assert_eq!(first, TestError(1));
     assert_eq!(rest, vec![TestError(2), TestError(3)]);
   }
@@ -158,19 +153,16 @@ mod tests {
 
   #[test]
   fn collect_in_input_order_returns_the_values_when_everything_succeeds() {
-    // Arrange
     let results: Vec<Result<u32, TestError>> = vec![Ok(1), Ok(2), Ok(3)];
 
-    // Act
     let values = super::collect_in_input_order(results).expect("すべて成功なら値が返るはず");
 
-    // Assert
     assert_eq!(values, vec![1, 2, 3]);
   }
 
   #[test]
   fn collect_in_input_order_reports_errors_in_input_order() {
-    // Arrange — 「完了順」ではなく「入力順の slot」で並ぶことを見る。並列処理の完了順に
+    // 「完了順」ではなく「入力順の slot」で並ぶことを見る。並列処理の完了順に
     // 依存していれば、この並び（3 → 1 → 2 ではなく 1 → 2 → 3 の slot 順）は再現できない
     let results: Vec<Result<u32, TestError>> = vec![
       Err(TestError(1)),
@@ -180,10 +172,8 @@ mod tests {
       Err(TestError(3)),
     ];
 
-    // Act
     let failures = super::collect_in_input_order(results).expect_err("3 件失敗しているはず");
 
-    // Assert
     assert_eq!(failures.into_iter().collect::<Vec<_>>(), vec![TestError(1), TestError(2), TestError(3)]);
   }
 
@@ -191,7 +181,6 @@ mod tests {
   fn display_and_source_delegate_to_the_first_failure() {
     let failures = Failures::from_vec(vec![TestError(1), TestError(2)]).expect("2 件あるので構築できるはず");
 
-    // 表示は主の失敗そのもので、集約を表す文言を足さない
     assert_eq!(failures.to_string(), "失敗 1");
     assert!(std::error::Error::source(&failures).is_none());
   }
@@ -200,7 +189,6 @@ mod tests {
   fn display_passes_formatting_parameters_through_to_the_first_failure() {
     let failures = Failures::from_vec(vec!["a", "b"]).expect("2 件あるので構築できるはず");
 
-    // 幅・寄せは主の失敗の Display へそのまま渡る（集約側で書式を作り直さない）
     assert_eq!(format!("{failures:>3}"), "  a");
   }
 }

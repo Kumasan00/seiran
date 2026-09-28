@@ -17,9 +17,6 @@ use crate::{
 /// なるようにする。自前のバリアントを持つのは、内側が `SourceReadError` で診断を持たず、
 /// パス入りのメッセージと help をこの型自身が与える `ReadTextFile` 1 つだけ。
 ///
-/// PDF の保存は `compile` の責務ではないため、ここには含まない
-/// （呼び出し元である CLI 側が保存専用のエラー型を別途持つ）。
-///
 /// 可視性が `pub(in ...)` 形なのは、この型が `input::load` の `pub(super)` な
 /// シグネチャに現れるため — `compiler` module 全体から名指しできないと rustc の
 /// `private_interfaces` が落ちる。`compiler` の外に消費者はいないので `pub(crate)` へは広げない。
@@ -76,7 +73,7 @@ mod tests {
 
   #[test]
   fn layout_error_keeps_the_inner_leaf_code() {
-    // Arrange — 横断検証の leaf エラー（段名だけの wrapper を挟まないことの回帰）
+    // Arrange
     let error = LayoutValidationError::InvalidColumnWidth {
       text_width: 100.0,
       num_columns: 2,
@@ -86,7 +83,7 @@ mod tests {
     // Act
     let error = CompileError::from(error);
 
-    // Assert — `compiler::layout` ではなく内側の leaf の code が出るはず
+    // Assert
     assert_eq!(
       error.code().expect("code を持つはず").to_string(),
       "typeset::geometry::invalid_columns",

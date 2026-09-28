@@ -66,7 +66,6 @@ pub struct BuildStatistics {
 
 /// `compile` の結果。
 ///
-/// 描画直前の `Publication` と、それに付随する情報（依存パス・警告・統計・出力先）を束ねる。
 /// `Publication` 以外に組版の中間型は含まない。
 #[derive(Debug)]
 pub struct Compilation {
@@ -86,12 +85,9 @@ pub struct Compilation {
 /// `source`、`root`（設定ファイルパス）、`base_dir`（相対パスの解決基準）から
 /// PDF 直前の `Publication` までを 1 回で作る。
 ///
-/// 言語処理・意味解決・組版を内部で順に実行する。呼び出し元は各段の中間型を知らない。
 /// `base_dir` は呼び出し元が実行環境に応じて明示し、本関数はカレントディレクトリを取得しない。
 /// 相対 `root` は読み込みの前に `base_dir` を基準に解決するため、`Compilation.dependencies.config_path`
 /// と診断が示す設定ファイルパスは解決後の値になる。
-/// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
-/// 呼び出し元の責務とする。
 ///
 /// # Errors
 ///
@@ -185,13 +181,6 @@ fn run_phases(
 }
 
 /// `base_dir` から入力パスの resolver を 1 回だけ構築し、`root`（設定ファイルパス）を同じ規則で解決する。
-///
-/// `compile` の公開シグネチャ `(source, root, base_dir)` は維持し、`base_dir` を compiler 側で暗黙に
-/// 取得しない（`std::env::current_dir()` を呼ばない）判断も維持する。相対 `root` はここで `base_dir`
-/// 基準の絶対パスになり、`DependencyManifest::config_path` と config 読込診断には解決後の値が現れる
-/// （#530 で受け入れた唯一の意味的な差分。CLI は `base_dir` に `current_dir` を渡すので指す実体は同じ）。
-/// これとは別に、`PathResolver` の解決契約（字句的正規化）により、診断・manifest・ソース名に出る
-/// パスは一様に正規化済みの表示になる（中間の `.` が消える）— こちらは差分ではなく契約の帰結。
 fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPath) {
   let resolver = PathResolver::new(base_dir);
   let root = resolver.resolve(root);
@@ -222,10 +211,6 @@ fn load_inputs(
 
 /// 検証済み入力から意味解析済み文書までの 2 phase（frontend / semantics）を実行する
 /// （production / test 共通）。
-///
-/// 各 phase の記録（[`Phase`]）・完了 event・診断への変換をここが所有し、`compile` と
-/// `test_support::TestProject::layout`（テスト専用）は同じ実装を通る。組版（フォント資源の構築・
-/// 配置・`Publication` への変換）は `typeset::compose` の内側にあり、この関数は関与しない。
 ///
 /// # Errors
 ///
@@ -260,9 +245,6 @@ fn analyze_document(
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
 ///
-/// 画像パスは frontend が `resolver` で解決して HIR へ格納する。意味解析（ラベル・`\ref`・カウンタ・
-/// 引用キー）と CSL 整形は `semantics::analyze` が、画像パスの収集は `typeset::compose` が担う。
-///
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
@@ -273,7 +255,6 @@ fn parse_project(inputs: &CompilationInputs, resolver: &PathResolver) -> Result<
 
 /// 全ソースをパースし、パース・評価エラーを集約する。
 ///
-/// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 /// エラーは宣言順に並べ、先頭（最初に失敗したソースの leaf 診断）を主診断にする。
 fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec<HirSource>, CompileFailure> {
   let results = sources
@@ -289,10 +270,6 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 /// `semantics::analyze` のエラーへソース本文を添え、表示可能な診断の集合にする。
 ///
 /// CSL 由来（`CitationStyle`）はそれ自身が leaf 診断なのでそのまま運ぶ。
-/// 意味解析由来はソースごとに分割済みなので、`SourceSet` から本文を引いて添えるだけでよい
-/// （`SourceId` は `SourceSet::register` が発行した値をそのまま運んでいるため、ここでの参照は
-/// 確定 ID による引き当てであり帰属元の推定ではない）。別ソースにある関連位置（重複ラベルの
-/// 最初の定義）も、そのソースの本文を添えて主診断の関連診断にする（#552）。
 fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileFailure {
   return match error {
     AnalyzeError::CitationStyle(error) => CompileFailure::single(error),
@@ -302,7 +279,7 @@ fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileF
   };
 }
 
-/// 意味解析の診断 1 件へ、帰属するソースの本文と、別ソースにある関連位置（そのソースの本文付き）を添える。
+/// 意味解析の診断 1 件へ、帰属するソースの本文と、別ソースにある関連位置（そのソースの本文付き）を添える（#552）。
 ///
 /// 関連位置を持つかどうか・その文言は semantics が決め（`SemanticError::first_definition_elsewhere`）、
 /// ここは確定 ID で本文を引いて添えるだけ。

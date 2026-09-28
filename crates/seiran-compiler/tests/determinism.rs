@@ -41,11 +41,11 @@ fn compile_is_deterministic_for_the_same_source() {
       .with_bytes("/project/font.ttf", font_bytes);
     let root = ProjectPath::new("/project/config.toml");
 
-    // Act — 同じ source から 2 回 compile する
+    // Act
     let first = seiran_compiler::compile(&source, &root, project_base_dir()).expect("1 回目の compile は成功するはず");
     let second = seiran_compiler::compile(&source, &root, project_base_dir()).expect("2 回目の compile は成功するはず");
 
-    // Assert — Publication は完全に同一（PartialEq 比較）
+    // Assert
     assert_eq!(first.publication, second.publication, "text={text:?} で決定性が崩れているはず");
   }
 }
@@ -104,7 +104,7 @@ fn error_path_is_deterministic_across_repeated_runs() {
       .with_bytes("/project/font.ttf", font_bytes);
     let root = ProjectPath::new("/project/config.toml");
 
-    // Act — 同じ入力を繰り返しコンパイルし、診断の code 列を集める
+    // Act
     let runs: Vec<Vec<String>> = std::iter::repeat_with(|| {
       let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("この入力は失敗するはず");
       return failure
@@ -117,7 +117,7 @@ fn error_path_is_deterministic_across_repeated_runs() {
     .take(32)
     .collect();
 
-    // Assert — 全実行で code 列（件数と順序）が一致する
+    // Assert
     let first = runs.first().expect("32 回実行しているはず");
     assert!(!first.is_empty(), "失敗時は 1 件以上の診断があるはず");
     for (index, codes) in runs.iter().enumerate() {

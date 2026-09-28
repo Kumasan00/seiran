@@ -110,14 +110,11 @@ mod tests {
 
   #[test]
   fn push_keeps_severity_and_insertion_order() {
-    // Arrange
     let mut warnings = Warnings::default();
 
-    // Act
     warnings.push(TestWarning);
     warnings.push(TestWarning);
 
-    // Assert
     assert!(!warnings.is_empty());
     assert_eq!(warnings.iter().count(), 2);
     assert!(warnings.iter().all(|warning| return warning.severity() == Some(miette::Severity::Warning)));
@@ -148,7 +145,7 @@ mod tests {
     warnings.push(TestWarning);
     let failure = CompileFailure::single(TestError);
 
-    // Act — 同じ関数（要素型 `&dyn Diagnostic` の反復子を受ける）へ両方を渡す
+    // Act
     let warning_codes = codes(warnings.iter());
     let error_codes = codes(failure.diagnostics());
 
@@ -159,14 +156,11 @@ mod tests {
 
   #[test]
   fn extend_keeps_the_given_order() {
-    // Arrange
     let mut warnings = Warnings::default();
 
-    // Act — 異なる `code` を持つ警告を、段をまたぐ 2 回の `extend` 呼び出しで渡された順に積む
     warnings.extend(vec![TestWarning]);
     warnings.extend(vec![TestWarningTwo]);
 
-    // Assert
     assert_eq!(
       codes(warnings.iter()),
       vec![
