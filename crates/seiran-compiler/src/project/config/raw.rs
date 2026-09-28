@@ -157,7 +157,7 @@ fn validate_document_name(value: &str, _: &()) -> garde::Result {
   return Ok(());
 }
 
-/// 19 フォント種別すべてのプリプロセス設定
+/// 19 フォント種別すべての未検証のフォント設定
 #[derive(Deserialize, Debug, Validate)]
 pub(super) struct RawFontConfigs {
   /// Serif 標準フォント
@@ -247,7 +247,7 @@ impl Index<FontType> for RawFontConfigs {
   }
 }
 
-/// 単一フォント種別のプリセット設定情報
+/// 単一フォント種別の未検証のフォント設定
 ///
 /// 未知キーを静かに無視すると、書いた値に効果があると誤解させたまま出力が変わらない
 /// （旧 `font_name` は検査だけされて PDF に使われていなかった。#692）。`deny_unknown_fields` で
@@ -319,7 +319,7 @@ pub(super) struct RawFontFeature {
   pub value: u32,
 }
 
-/// PDF ページの物理設定（用紙寸法と PDF 出力）のプリセット設定
+/// PDF ページの物理設定（用紙寸法と PDF 出力）の未検証の設定
 ///
 /// 本文領域の余白は見た目なので style.toml の `[page]` が持つ（#389）。旧 `margin_*` を静かに
 /// 無視すると既定余白へ切り替わってレイアウトが黙って変わるため、`deny_unknown_fields` で

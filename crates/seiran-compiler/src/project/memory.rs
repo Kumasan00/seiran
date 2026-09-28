@@ -15,7 +15,6 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 /// および「同じパスが何回要求されたか」の検査（重複読み込みの検出）に使う。
 ///
 /// 読み込みをキャッシュしないのはこの検査のため — 要求はすべて `read_count` に載る。
-/// `read_text` は登録済みバイト列から毎回 UTF-8 検証して `Arc<str>` を作る。
 pub struct MemoryProjectSource {
   /// 事前登録したファイルデータ。
   files: HashMap<ProjectPath, Arc<[u8]>>,
@@ -65,7 +64,7 @@ impl MemoryProjectSource {
     return self.read_counts.lock().expect("read_counts mutex は poison しない").get(&key).copied().unwrap_or(0);
   }
 
-  /// `path` の読み込み回数をカウントする（内部用）。
+  /// `path` の読み込み回数をカウントする。
   fn record_read(&self, path: &ProjectPath) {
     *self
       .read_counts
@@ -115,15 +114,12 @@ mod tests {
 
   #[test]
   fn read_count_tracks_every_call_including_misses() {
-    // Arrange
     let source = MemoryProjectSource::new().with_bytes("a.ttf", b"AAAA".to_vec());
 
-    // Act
     let _ = source.read_bytes(&ProjectPath::new("a.ttf"));
     let _ = source.read_bytes(&ProjectPath::new("a.ttf"));
     let _ = source.read_bytes(&ProjectPath::new("missing.ttf"));
 
-    // Assert
     assert_eq!(source.read_count("a.ttf"), 2);
     assert_eq!(source.read_count("missing.ttf"), 1);
     assert_eq!(source.read_count("never-asked.ttf"), 0);

@@ -63,8 +63,7 @@ struct FontValues {
 /// 指定パスから設定ファイルを読み込みます。
 ///
 /// `config_path` は呼び出し元が `resolver` で解決済みの値で、ここでは再解決しません。
-/// `resolver` は config 内の相対パス（`sources` / `style_path` / フォントパス等）の解決に使います
-/// （本関数は `std::env::current_dir` を呼びません）。
+/// `resolver` は config 内の相対パス（`sources` / `style_path` / フォントパス等）の解決に使います。
 ///
 /// 戻り値は検証の成否と、読み込みを止めない警告 [`ConfigWarning`] の列（`sources` の宣言順）の組です。
 /// 警告は検証が失敗しても返します — `sources` の拡張子の検査は他の違反と独立に確定するためです（#550）。
@@ -126,7 +125,7 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
 
 /// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
 ///
-/// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
+/// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、パスを
 /// 組み立てるだけです（作成は CLI 側の責務、#300）。警告はパス解決の時点で確定するので、
 /// 構築の成否と独立に返します。違反にはファイルのパスを添えない（添えるのは `config_path` を持つ
 /// [`load`]）。
@@ -462,10 +461,9 @@ fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> O
   }
 }
 
-/// 出力ディレクトリの絶対パスを決定します（I/O なし・純粋）。
+/// 出力ディレクトリのパスを `base_dir` 基準で決定します（I/O なし）。
 ///
-/// `output_dir` が相対パスまたは未指定の場合は `base_dir` を基準に解決します。出力パスは外部資源の
-/// 取得 seam ではなく書き込み側の関心事なので `ProjectPath` にせず、`PathBuf` のまま組み立てる。
+/// `ProjectPath` にしない理由は [`PathResolver::base_dir`] の doc。
 fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBuf {
   match output_dir {
     Some(path) if path.is_absolute() => return path.to_path_buf(),
@@ -736,7 +734,6 @@ mod tests {
 
   #[test]
   fn validate_values_fails_on_empty_sources() {
-    // Arrange
     let toml = format!(
       "sources = []\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -745,10 +742,8 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    // Act
     let errors = validate_values(&raw).unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, .. } if path == "sources"
@@ -757,15 +752,12 @@ mod tests {
 
   #[test]
   fn validate_values_fails_on_omitted_sources() {
-    // Arrange
     let toml =
       format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    // Act
     let errors = validate_values(&raw).unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, .. } if path == "sources"
@@ -774,15 +766,12 @@ mod tests {
 
   #[test]
   fn validate_values_fails_on_empty_output_dir() {
-    // Arrange
     let toml =
       format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), make_font_sections("dummy.ttf"));
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    // Act
     let errors = validate_values(&raw).unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, .. } if path == "output.output_dir"
@@ -791,7 +780,6 @@ mod tests {
 
   #[test]
   fn validate_values_fails_on_out_of_range_max_dpi() {
-    // Arrange
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
       valid_output_section("test", "out"),
@@ -800,10 +788,8 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    // Act
     let errors = validate_values(&raw).unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, .. } if path == "image.max_dpi"
@@ -982,7 +968,6 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_invalid_document_language() {
-    // Arrange
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"!!\"\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -991,10 +976,8 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    // Act
     let errors = validate_values(&raw).unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
@@ -1003,7 +986,6 @@ mod tests {
 
   #[test]
   fn validate_values_rejects_empty_keyword_entry() {
-    // Arrange
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n[document]\nkeywords = [\"foo\", \"\", \"bar\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -1012,10 +994,8 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    // Act
     let errors = validate_values(&raw).unwrap_err();
 
-    // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, message } if path.contains("keywords") && message.contains("空")
@@ -1024,7 +1004,6 @@ mod tests {
 
   #[test]
   fn read_config_succeeds_with_valid_config() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n[document]\ntitle = \"Test Doc\"\n\n{}{}{}",
@@ -1034,13 +1013,11 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     assert_eq!(config.output.name, "test_doc");
     assert_eq!(config.document.title.as_deref(), Some("Test Doc"));
     assert_eq!(config.sources.len(), 1);
@@ -1051,7 +1028,6 @@ mod tests {
 
   #[test]
   fn read_config_reads_image_overrides() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
@@ -1061,20 +1037,17 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     assert_eq!(config.image.max_dpi, 150);
     assert!(!config.image.downsample);
   }
 
   #[test]
   fn read_config_respects_show_bookmarks_false() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
@@ -1084,19 +1057,16 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     assert!(!config.pdf.show_bookmarks);
   }
 
   #[test]
   fn read_config_fails_on_nonexistent_font_path() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|_font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -1106,12 +1076,10 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (result, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     let Err(failures) = result else {
       panic!("19 件のフォントパスエラーを期待");
     };
@@ -1126,7 +1094,6 @@ mod tests {
 
   #[test]
   fn read_config_fails_on_nonexistent_source_path() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, _source_path| {
       return format!(
         "sources = [\"/nonexistent/source.sei\"]\n\n{}{}{}",
@@ -1136,12 +1103,10 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (result, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     let Err(failures) = result else {
       panic!("ソースパスエラーを期待");
     };
@@ -1172,7 +1137,7 @@ mod tests {
       &PathResolver::new(Path::new("/project")),
     );
 
-    // Assert — どの違反にも実際に読んだファイルのパスが前置され、診断 code は内側のまま
+    // Assert
     let Err(failures) = result else {
       panic!("値の違反とパスの違反を期待");
     };
@@ -1205,7 +1170,7 @@ mod tests {
     // Act
     let (config, _) = load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert — output_dir 省略時は base_dir がそのまま使われる（呼び出し元がその意味付けを担う）
+    // Assert
     assert_eq!(config.output.output_dir, base_dir);
     assert_eq!(config.output.pdf_path(), base_dir.join("out.pdf"));
   }
@@ -1233,7 +1198,6 @@ mod tests {
 
   #[test]
   fn read_config_builds_language_string_with_ot_language_suffix() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
       return format!(
@@ -1244,13 +1208,11 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
     assert_eq!(serif.script, Some(*b"kana"));
@@ -1259,7 +1221,6 @@ mod tests {
 
   #[test]
   fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "script = \"latn\"\not_language = \"ENG\"";
       return format!(
@@ -1270,13 +1231,11 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.language.as_deref(), Some("und-x-hbotENG"));
     assert_eq!(serif.ot_language_tag, Some(*b"ENG "));
@@ -1284,7 +1243,6 @@ mod tests {
 
   #[test]
   fn read_config_preserves_user_direction() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "direction = \"right-to-left\"";
       return format!(
@@ -1295,20 +1253,17 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.direction, Some(TextDirection::RightToLeft));
   }
 
   #[test]
   fn read_config_preserves_document_language_and_keywords() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n[document]\nlanguage = \"ja\"\nkeywords = [\"組版\", \"PDF\"]\n\n{}{}{}",
@@ -1318,20 +1273,17 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     assert_eq!(config.document.language.as_deref(), Some("ja"));
     assert_eq!(config.document.keywords.as_deref(), Some(&["組版".to_string(), "PDF".to_string()][..]));
   }
 
   #[test]
   fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -1341,20 +1293,17 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     assert_eq!(config.document.language, None);
     assert_eq!(config.document.keywords, None);
   }
 
   #[test]
   fn read_config_keeps_direction_none_when_omitted() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -1364,13 +1313,11 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     for &font_type in FontType::ALL {
       assert_eq!(config.font_configs[font_type].direction, None, "{font_type:?}");
     }
@@ -1388,7 +1335,7 @@ mod tests {
       .0
       .expect_err("読み込みは失敗するはず");
 
-    // Assert — 役割つきの leaf 診断の下に、元の I/O エラー kind が cause として残る
+    // Assert
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
       panic!("ReadFile を期待");
     };
@@ -1412,7 +1359,6 @@ mod tests {
 
   #[test]
   fn load_warns_once_per_non_sei_source_in_declaration_order() {
-    // Arrange — `.sei` でない拡張子を 2 つ、`.sei` を 1 つ宣言する
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let dir = Path::new(source_path).parent().expect("ソースは親ディレクトリを持つはず");
       let txt = dir.join("b.txt");
@@ -1429,12 +1375,10 @@ mod tests {
       );
     });
 
-    // Act
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (_, warnings) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     let paths: Vec<&str> = warnings
       .iter()
       .map(|warning| {

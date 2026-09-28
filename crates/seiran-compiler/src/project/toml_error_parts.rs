@@ -15,7 +15,7 @@ pub(crate) fn parse_toml<T: DeserializeOwned>(
 }
 
 /// TOML 解析エラー 1 件を、`#[source_code]` / `#[label]` / `#[source]` を持つ leaf diagnostic の部品へ
-/// 分解したもの。[`parse_toml`] が解析に失敗したときだけ作られる。
+/// 分解したもの。
 ///
 /// 位置を示すのは miette のラベル（`src` + `span`）だけにする。`toml::de::Error` の `Display` は input を
 /// 持つと `TOML parse error at line N, column M` の自前スニペットを描画し、miette の `╰─▶` 行とラベルで

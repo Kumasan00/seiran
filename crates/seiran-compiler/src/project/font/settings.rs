@@ -66,7 +66,6 @@ pub(crate) struct TextDirectionParseError;
 impl FromStr for TextDirection {
   type Err = TextDirectionParseError;
 
-  /// 書字方向文字列を [`TextDirection`] に変換します。
   fn from_str(value: &str) -> Result<Self, Self::Err> {
     return match value {
       "left-to-right" => Ok(Self::LeftToRight),

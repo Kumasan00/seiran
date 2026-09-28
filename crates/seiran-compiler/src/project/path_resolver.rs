@@ -13,7 +13,7 @@
 //! 3. `.` と冗長な区切りを `Path::components()` の畳み込みで正規化する（[`ProjectPath::new`] と同じ。
 //!    先頭の `./` は `components()` の仕様どおり残る）
 //! 4. `..` は `Path::components()` の意味どおり保持する
-//! 5. 存在確認・symlink 解決・filesystem I/O を行わない。存在確認は従来どおり
+//! 5. 存在確認・symlink 解決・filesystem I/O を行わない。存在確認は
 //!    [`crate::project::ProjectSource::exists`] が担い、複数の欠落を入力の論理順で全件報告する
 //!    診断モデル（#376）を維持する
 //!

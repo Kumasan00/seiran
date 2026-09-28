@@ -6,29 +6,29 @@ use strum::{IntoStaticStr, VariantArray};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, VariantArray)]
 #[strum(serialize_all = "snake_case")]
 pub enum FontType {
-  /// Serif 標準フォント（通常の太さ、通常のゆがみ）
+  /// Serif 標準フォント
   Serif,
-  /// Serif 太字フォント（太字の太さ、通常のゆがみ）
+  /// Serif 太字フォント
   SerifBold,
-  /// Serif イタリックフォント（通常の太さ、右に傾いた形）
+  /// Serif イタリックフォント
   SerifItalic,
-  /// Serif 太字イタリックフォント（太字の太さ、右に傾いた形）
+  /// Serif 太字イタリックフォント
   SerifBoldItalic,
-  /// Sans Serif 標準フォント（通常の太さ、通常のゆがみ）
+  /// Sans Serif 標準フォント
   SansSerif,
-  /// Sans Serif 太字フォント（太字の太さ、通常のゆがみ）
+  /// Sans Serif 太字フォント
   SansSerifBold,
-  /// Sans Serif イタリックフォント（通常の太さ、右に傾いた形）
+  /// Sans Serif イタリックフォント
   SansSerifItalic,
-  /// Sans Serif 太字イタリックフォント（太字の太さ、右に傾いた形）
+  /// Sans Serif 太字イタリックフォント
   SansSerifBoldItalic,
-  /// Monospace 標準フォント（等幅、通常の太さ）
+  /// Monospace 標準フォント
   Monospace,
-  /// Monospace 太字フォント（等幅、太字の太さ）
+  /// Monospace 太字フォント
   MonospaceBold,
-  /// Monospace イタリックフォント（等幅、右に傾いた形）
+  /// Monospace イタリックフォント
   MonospaceItalic,
-  /// Monospace 太字イタリックフォント（等幅、太字で傾いた形）
+  /// Monospace 太字イタリックフォント
   MonospaceBoldItalic,
   /// 数式用フォント（OpenType Math テーブル対応）
   Math,

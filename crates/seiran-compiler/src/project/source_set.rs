@@ -107,10 +107,8 @@ mod tests {
   use super::SourceSet;
   use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
 
-  /// 一時ディレクトリに 1 つソースファイルを書き出し、その `ProjectPath` を返す。
-  ///
-  /// 実ファイルシステム adapter を通す 2 テストがカレントディレクトリに依存しないようにする
-  /// （`SourceSet` は `project` の型なので、テストも repo のディレクトリ構成を前提にしない）。
+  /// 一時ディレクトリに 1 つソースファイルを書き出し、その `ProjectPath` を返す（テストを
+  /// カレントディレクトリと repo のディレクトリ構成に依存させない）。
   fn write_source(dir: &tempfile::TempDir, name: &str, content: &str) -> ProjectPath {
     let path = dir.path().join(name);
     std::fs::write(&path, content).expect("一時ディレクトリへ書き込めるはず");
@@ -190,7 +188,7 @@ mod tests {
     // Act
     let source_set = SourceSet::read(&source, &sources).expect("メモリ上の fixture を読めるはず");
 
-    // Assert — 実ディスクに触れず、登録順（＝ sources の並び順）が SourceId のインデックスに一致する
+    // Assert — 登録順（＝ sources の並び順）が SourceId のインデックスに一致する
     let entries: Vec<_> = source_set.iter().collect();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].0.index(), 0);
@@ -220,14 +218,11 @@ mod tests {
 
   #[test]
   fn register_issues_sequential_ids_and_get_looks_them_up() {
-    // Arrange
     let mut set = SourceSet::new();
 
-    // Act
     let id_a = set.register("a.sei".to_string(), Arc::from("content-a"));
     let id_b = set.register("b.sei".to_string(), Arc::from("content-b"));
 
-    // Assert
     assert_eq!(set.get(id_a).name, "a.sei");
     assert_eq!(set.get(id_b).name, "b.sei");
   }

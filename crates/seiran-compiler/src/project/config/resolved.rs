@@ -14,7 +14,7 @@ pub(crate) struct ProjectConfig {
   pub document: DocumentConfig,
   /// 出力ファイル名・ディレクトリ
   pub output: OutputConfig,
-  /// PDF ページレイアウト設定（検証済み）
+  /// 用紙寸法としおり出力（検証済み）
   pub pdf: PdfConfig,
   /// ラスタ画像のダウンサンプリング設定（検証済み）
   pub image: ImageConfig,
@@ -50,12 +50,12 @@ pub(crate) struct DocumentConfig {
 pub(crate) struct OutputConfig {
   /// 出力ファイル名の基盤（拡張子なし。実際の PDF パスは `{output_dir}/{name}.pdf`）
   pub name: String,
-  /// 出力ディレクトリの絶対パス（正規化済み）
+  /// 出力ディレクトリ（相対指定は `base_dir` を前置済み。字句的な正規化はしない）
   pub output_dir: PathBuf,
 }
 
 impl OutputConfig {
-  /// `{output_dir}/{name}.pdf` の絶対パスを返す
+  /// `{output_dir}/{name}.pdf` のパスを返す
   #[must_use]
   pub(crate) fn pdf_path(&self) -> PathBuf {
     let mut path = self.output_dir.join(&self.name);
@@ -70,9 +70,9 @@ impl OutputConfig {
 /// （`style::page::PageStyle`）が所有する（#389）。
 #[derive(Debug, Clone)]
 pub(crate) struct PdfConfig {
-  /// ページの高さ（[`Length`]）
+  /// ページの高さ
   pub height: Length,
-  /// ページの幅（[`Length`]）
+  /// ページの幅
   pub width: Length,
   /// PDF のしおり（ブックマーク）を出力するか（既定 true）
   pub show_bookmarks: bool,

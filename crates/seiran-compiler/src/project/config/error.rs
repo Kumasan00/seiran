@@ -49,7 +49,7 @@ pub(crate) enum ReadConfigError {
 /// 設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum ConfigValidationError {
-  /// garde が検出した設定値の不正
+  /// 設定値の不正（garde の値検証・フォントの言語制約・タグと書字方向の変換で検出）
   #[error("'{path}': {message}")]
   #[diagnostic(
     code(project::config::validation::field),
@@ -58,7 +58,7 @@ pub(crate) enum ConfigValidationError {
   Field {
     /// 不正な値を持つフィールドの TOML パス（例: `pdf.width`）
     path: String,
-    /// garde が生成したエラーメッセージ
+    /// 違反の内容
     message: String,
   },
   /// フォントパスが見つからない

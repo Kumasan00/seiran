@@ -36,59 +36,47 @@ mod tests {
 
   #[test]
   fn read_text_returns_file_contents() {
-    // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     write!(file, "hello").expect("書き込めるはず");
     let source = FilesystemProjectSource;
     let path = ProjectPath::new(file.path());
 
-    // Act
     let text = source.read_text(&path).expect("読み込めるはず");
 
-    // Assert
     assert_eq!(&*text, "hello");
   }
 
   #[test]
   fn read_bytes_returns_file_contents() {
-    // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     file.write_all(&[0x00, 0xff, 0x10]).expect("書き込めるはず");
     let source = FilesystemProjectSource;
     let path = ProjectPath::new(file.path());
 
-    // Act
     let bytes = source.read_bytes(&path).expect("読み込めるはず");
 
-    // Assert
     assert_eq!(&*bytes, &[0x00, 0xff, 0x10]);
   }
 
   #[test]
   fn read_text_rejects_invalid_utf8() {
-    // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     file.write_all(&[0xff, 0xfe]).expect("書き込めるはず");
     let source = FilesystemProjectSource;
     let path = ProjectPath::new(file.path());
 
-    // Act
     let result = source.read_text(&path);
 
-    // Assert
     assert!(matches!(result, Err(SourceReadError::InvalidUtf8(_))));
   }
 
   #[test]
   fn read_text_reports_missing_file() {
-    // Arrange
     let source = FilesystemProjectSource;
     let path = ProjectPath::new("/nonexistent/does-not-exist.toml");
 
-    // Act
     let result = source.read_text(&path);
 
-    // Assert
     assert!(matches!(result, Err(SourceReadError::Io { .. })));
   }
 
