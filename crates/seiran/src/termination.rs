@@ -88,8 +88,8 @@ pub(super) fn decide(run: Result<(), miette::Report>, log: Result<(), LogFailure
 impl Outcome {
   /// 端末へ報告し、終了コードを返す。
   ///
-  /// 主診断の体裁は miette のグローバル handler（`Report` の `Debug` 表示）に任せ、`Termination` に
-  /// 任せていたときと同じ `Error: ` 前置きのまま出す。ログの失敗はログへは書かない — 記録できない
+  /// 主診断の体裁は miette のグローバル handler（`Report` の `Debug` 表示）に任せ、`Termination` と同じ
+  /// `Error: ` 前置きで出す。ログの失敗はログへは書かない — 記録できない
   /// 出力先へ、記録できなかったことを書きに行っても同じ失敗を繰り返すだけ。
   ///
   /// `stderr` への書き込み失敗は捨てる — 報告の失敗を同じ `stderr` へ報告し直しても同じ失敗を繰り返す

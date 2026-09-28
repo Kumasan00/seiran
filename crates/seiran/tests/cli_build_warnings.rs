@@ -3,7 +3,6 @@
 //! 警告の保持そのものは `seiran-compiler` の `compile_facade` が覆う。ここでは CLI の報告順序（確定済み警告 →
 //! 主エラー）と、compile 成功後に保存が失敗した実行でも警告が消えないことを見る。render の失敗は注入できない
 //! ので、保存の失敗（出力ディレクトリの親が通常ファイル）で「compile 成功後の失敗」を代表させる。
-//! プロジェクトの組み立ては `tests/common` が担う。
 
 mod common;
 
@@ -60,7 +59,7 @@ fn quiet_keeps_warnings_of_a_failed_write_only_in_the_log() {
   // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "-q", "--log-file", "x.log"], None);
 
-  // Assert — `-q` が黙らせるのは端末の警告だけで、主エラーは端末にも出る
+  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1));
   assert!(!stderr.contains(WARNING_CODE), "-q では端末に警告を出さない: {stderr}");
@@ -95,7 +94,7 @@ fn successful_build_reports_warnings_before_the_summary() {
   // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml"], None);
 
-  // Assert — 成功した実行の順序（警告 → 成功サマリ）は #550 の前と同じ
+  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert_appears_before(&stderr, WARNING_CODE, "\u{2713}");

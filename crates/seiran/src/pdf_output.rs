@@ -123,31 +123,27 @@ mod tests {
 
   #[test]
   fn the_same_path_is_rejected() {
-    // Arrange — ログファイルは既に存在する（`--log-file` が新規作成済み）
+    // ログファイルは既に存在する（`--log-file` が新規作成済み）
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let path = dir.path().join("main.pdf");
     fs::write(&path, b"log").expect("ログファイルを作れるはず");
 
-    // Act
     let error = ensure_distinct_from_log(&path, Some(&path)).expect_err("同じパスは拒否するはず");
 
-    // Assert
     assert!(matches!(error, WriteError::LogPathCollision { .. }), "衝突として報告する");
   }
 
   #[test]
   fn different_spellings_of_the_same_path_are_rejected() {
-    // Arrange — `sub/..` を挟んだ綴りは文字列としては別だが同じ実体を指す
+    // `sub/..` を挟んだ綴りは文字列としては別だが同じ実体を指す
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let log_path = dir.path().join("main.pdf");
     fs::write(&log_path, b"log").expect("ログファイルを作れるはず");
     fs::create_dir(dir.path().join("sub")).expect("下位ディレクトリを作れるはず");
     let pdf_path = dir.path().join("sub").join("..").join("main.pdf");
 
-    // Act
     let error = ensure_distinct_from_log(&pdf_path, Some(&log_path)).expect_err("同じ実体なので拒否するはず");
 
-    // Assert
     assert!(matches!(error, WriteError::LogPathCollision { .. }));
   }
 
@@ -169,15 +165,12 @@ mod tests {
 
   #[test]
   fn the_save_is_refused_before_any_file_is_created() {
-    // Arrange — ログファイルは既に存在し、PDF の保存先として同じパスを指定する
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let path = dir.path().join("main.pdf");
     fs::write(&path, b"log").expect("ログファイルを作れるはず");
 
-    // Act
     let error = write_pdf_atomically(&path, b"%PDF", Some(&path)).expect_err("衝突する保存は拒否するはず");
 
-    // Assert — 衝突の診断で止まり、保存先にも一時ファイルにも触れていない
     assert!(format!("{error:?}").contains("cli::log_path_collision"), "衝突の診断で止まる: {error:?}");
     assert_eq!(fs::read(&path).expect("読めるはず"), b"log", "拒否した実行は保存先へ触らない");
     assert_eq!(fs::read_dir(dir.path()).expect("読めるはず").count(), 1, "一時ファイルも作らない");
@@ -186,17 +179,14 @@ mod tests {
   #[cfg(unix)]
   #[test]
   fn a_symlink_to_the_log_file_is_rejected() {
-    // Arrange — PDF の保存先がログファイルへの symlink（文字列比較では見抜けない）
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let log_path = dir.path().join("run.log");
     fs::write(&log_path, b"log").expect("ログファイルを作れるはず");
     let pdf_path = dir.path().join("main.pdf");
     symlink(&log_path, &pdf_path).expect("symlink を張れるはず");
 
-    // Act
     let error = ensure_distinct_from_log(&pdf_path, Some(&log_path)).expect_err("同じ実体なので拒否するはず");
 
-    // Assert
     assert!(matches!(error, WriteError::LogPathCollision { .. }));
   }
 }

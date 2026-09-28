@@ -125,7 +125,7 @@ fn quiet_keeps_the_terminal_silent_but_records_the_failure() {
   // Act
   let output = seiran(dir.path(), &["build", "-c", "missing.toml", "-q", "--log-file", "x.log"]);
 
-  // Assert — `-q` が黙らせるのは端末の非エラー出力だけで、致命的エラーは端末にも現状どおり出る
+  // Assert
   assert!(!output.status.success());
   let stderr = stderr_text(&output);
   assert!(stderr.contains(MISSING_CONFIG_CODE), "端末には miette の描画が 1 回出る: {stderr}");
@@ -187,7 +187,7 @@ fn existing_log_path_is_refused_before_the_build() {
   // Act
   let output = seiran(dir.path(), &["build", "-c", "missing.toml", "--log-file", "logs"]);
 
-  // Assert — 記録先を用意できないので端末だけに診断が出て、ビルドへは進まない
+  // Assert
   assert!(!output.status.success());
   let stderr = stderr_text(&output);
   assert!(stderr.contains("cli::log_file_exists"), "端末には既存パスの診断が出る: {stderr}");

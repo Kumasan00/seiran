@@ -190,7 +190,7 @@ fn variation_axes_lists_axes_and_instances_of_a_variable_font() {
     stdout.starts_with(
       "Axis: wght, Min: 100, Default: 400, Max: 900\nAxis: wdth, Min: 62.5, Default: 100, Max: 100\nThin: [100.0, 100.0]\n"
     ),
-    "軸 → インスタンスの順で現行と同じ書式: {stdout}"
+    "軸 → インスタンスの順: {stdout}"
   );
   assert_eq!(stdout.lines().count(), 11, "軸 2 本とインスタンス 9 件: {stdout}");
 }
@@ -343,7 +343,6 @@ fn script_langs_rejects_a_file_that_is_not_a_font() {
   // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
-  // `_error` 接尾辞は script-langs だけの不揃いだが、利用者に見える code なので保つ（#685 のスコープ外）
   assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
   assert!(stderr.contains("notes.txt"), "対象パスが出る: {stderr}");
   assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
@@ -400,7 +399,7 @@ fn script_langs_ends_with_feature_statistics() {
     stdout.ends_with(
       "\nFeature Statistics:\n  Total Features in GSUB/GPOS: 29\n  Referenced in Script/Language Systems: 29\n  Unreferenced Features: []\n"
     ),
-    "空行を挟んで統計で終わる（現行と同じ書式）: {stdout}"
+    "空行を挟んで統計で終わる: {stdout}"
   );
 }
 
@@ -412,7 +411,7 @@ fn unwritable_stderr_does_not_turn_a_failure_into_a_panic() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let dev_full = fs::OpenOptions::new().write(true).open("/dev/full").expect("/dev/full を開けるはず");
 
-  // Act — 失敗する実行の診断を、書けない stderr へ出させる
+  // Act
   let output = Command::new(env!("CARGO_BIN_EXE_seiran"))
     .args(["ttc-names", "missing.ttc"])
     .current_dir(dir.path())

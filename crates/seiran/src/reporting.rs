@@ -72,8 +72,7 @@ enum FilterWarning {
 /// [`Reporter::init`] でプロセス全体に 1 回だけ初期化する。
 ///
 /// `--log-file` 指定時はログファイルの書き出し口も保持する。書き出しは同期で、書き込み・flush の失敗は
-/// sink が保持し、[`Reporter::finish`] が 1 度だけ取り出す — `main` は本処理の結果とログの結果の両方を
-/// 受けてから終了コードを決める。
+/// sink が保持し、[`Reporter::finish`] が 1 度だけ取り出す。
 pub(super) struct Reporter {
   /// 端末への非エラー出力を抑止するか。
   quiet: bool,
@@ -91,24 +90,13 @@ pub(super) struct Reporter {
 impl Reporter {
   /// tracing を初期化し、同じ quiet 方針と装飾方針を持つ報告器を返す。
   ///
-  /// フィルタの優先順位は `RUST_LOG`、`--verbose`、既定値の順で、`--verbose` が詳細化するのは Seiran 自身の
-  /// 3 target だけ（依存 crate は WARN のまま）。有効な `RUST_LOG` が `--verbose` を覆うとき・`RUST_LOG` を
-  /// 解釈できないときは warning 診断を 1 件出す（実効フィルタを通らない）。
-  /// `--quiet` は端末側のフィルタを `off` にするだけで、ログファイルの内容は減らさない — 「静かに回して
-  /// 後で読む」がファイル出力の目的だから。`--verbose` とは独立で、`-q -vv --log-file` は端末を黙らせたまま
-  /// ファイルだけ詳しくする。
-  ///
   /// 端末側の出力先は stderr を明示する（`fmt` の既定は stdout で、そのままではログが成果物の経路へ流れる）。
   /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の既定は
   /// `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある（#493）。
   ///
-  /// `--log-file` 指定時は、subscriber を設置する前にファイルの先頭へ実行記録（開始時刻・バージョン・
-  /// サブコマンド・基準ディレクトリ・実効フィルタ）を書く。tracing を通さないのでフィルタに依らず残る。
-  ///
   /// # Errors
   ///
-  /// `--log-file` のパスを開けないとき [`LogFileError`] を返す。ログが残らないまま処理が進むより、
-  /// 指定が効いていないことを即座に知らせる。
+  /// `--log-file` のパスを開けないとき [`LogFileError`] を返す。
   pub(super) fn init(
     verbose: u8,
     quiet: bool,
@@ -169,10 +157,6 @@ impl Reporter {
   }
 
   /// コンパイルが返した warning 診断を報告する。
-  ///
-  /// 端末へは miette の既定 handler で描き、致命的エラー（`Report` の `Debug` 表示）と同じ体裁にする
-  /// （[`TerminalDiagnostic`]）。tracing へは複製しないため、同じ問題が 1 つの出力先へ 2 回出ることはない。
-  /// ログファイルへは装飾なしで書き、`--quiet` でも省かない — warning の抜けた記録は事後解析に使えないため。
   pub(super) fn warnings(&self, warnings: &seiran_compiler::Warnings) {
     for warning in warnings {
       self.warning(warning);
@@ -181,8 +165,10 @@ impl Reporter {
 
   /// warning 診断 1 件を報告する。
   ///
-  /// 端末へは `--quiet` でなければ miette の既定 handler で描き、ログファイルへは装飾なしで常に書く。
-  /// compile の警告と CLI 自身の通知（[`FilterWarning`]）が同じ体裁・同じ振り分けで出る。
+  /// 端末へは致命的エラー（`Report` の `Debug` 表示）と同じ体裁で描く（[`TerminalDiagnostic`]）。tracing へは
+  /// 複製しないため、同じ問題が 1 つの出力先へ 2 回出ることはない。ログファイルへは `--quiet` でも
+  /// 省かない — warning の抜けた記録は事後解析に使えないため。compile の警告と CLI 自身の通知
+  /// （[`FilterWarning`]）が同じ体裁・同じ振り分けで出る。
   fn warning(&self, diagnostic: &dyn Diagnostic) {
     if !self.quiet {
       eprintln!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic));
@@ -195,8 +181,7 @@ impl Reporter {
   /// ビルド成功時のサマリを報告する。
   ///
   /// 時間は compiler だけでなく render と保存を含む CLI の build 全体。完了記号を着色するかは
-  /// [`Reporter::init`] が決めた 1 つの判定に従うため、ログの装飾と食い違わない。ログファイルへは
-  /// 装飾なしで書き、`--quiet` でも省かない。
+  /// [`Reporter::init`] が決めた 1 つの判定に従うため、ログの装飾と食い違わない。
   pub(super) fn build(&self, compilation: &seiran_compiler::Compilation, elapsed: Duration) {
     let page_count = compilation.statistics.page_count;
     // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
@@ -211,12 +196,11 @@ impl Reporter {
 
   /// ビルドを止めた致命的エラーの診断をログファイルへ記録する。
   ///
-  /// 端末側は `termination::Outcome::report` が miette のグローバル handler（`Report` の `Debug` 表示）で
-  /// 1 回だけ描くのでここでは触らない — 端末とファイルで同じ診断が 1 回ずつ。`--quiet` は端末だけを黙らせるものなので、ファイルへは
-  /// 常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くすのがこの操作の目的）。体裁は warning と
-  /// 同じ装飾なし・ハイパーリンクなし・時刻なしで、`CompileFailure` の関連診断（`related`）も同じ handler が
-  /// 続けて描くため、`Failures` 集約の全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは
-  /// miette で報告し ERROR レベルは使わないという線引き（#103）を、ファイルでも保つ。
+  /// 端末側は `termination::Outcome::report` が 1 回だけ描くのでここでは触らない — 端末とファイルで同じ診断が
+  /// 1 回ずつ。`--quiet` でもファイルへは常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くす
+  /// のがこの操作の目的）。`CompileFailure` の関連診断（`related`）も続けて描くので、`Failures` 集約の
+  /// 全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは miette で報告し ERROR レベルは
+  /// 使わないという線引き（#103）を、ファイルでも保つ。
   pub(super) fn failure(&self, report: &miette::Report) {
     if let Some(log) = &self.log {
       log.write_block(&render_diagnostic_plain(report.as_ref()));
@@ -224,8 +208,6 @@ impl Reporter {
   }
 
   /// `--log-file` の出力先（指定が無ければ `None`）。
-  ///
-  /// PDF の保存先と同じ実体を指していないかを保存前に確かめるために公開する。
   pub(super) fn log_path(&self) -> Option<&Path> { return self.log.as_ref().map(LogSink::path) }
 
   /// 実行記録の末尾（終了時刻・終了状態）を書いてからログの書き残しを流し切り、記録に失敗していれば
@@ -436,9 +418,6 @@ fn parse_directive(directive: &str) -> EnvFilter { return EnvFilter::builder().p
 /// 読めなくなるため。代わりに `--verbose` が 1 段以上あれば「無視した」と警告する（`--verbose` 未指定なら
 /// 警告しない — `RUST_LOG` だけで制御する開発者運用を汚さない）。`RUST_LOG` が不正なら CLI の verbose 設定へ
 /// 戻し、こちらも警告する。
-///
-/// 通知はどちらも [`FilterWarning`] の warning 診断で、実効フィルタを通らない — `RUST_LOG` が WARN を
-/// 通さない指定でも、端末（`-q` 以外）とログファイルに出る。優先順位そのものは変えない（#551）。
 fn resolve_filter(raw_filter: Option<&str>, verbose: u8) -> FilterChoice {
   if let Some(raw) = raw_filter
     && !raw.trim().is_empty()
@@ -710,15 +689,13 @@ mod tests {
 
   #[test]
   fn rendered_report_includes_related_leaves() {
-    // Arrange — `CompileFailure` は 2 件目以降を `related` に載せるので、同じ形の診断で全 leaf が残ることを見る
+    // `CompileFailure` は 2 件目以降を `related` に載せるので、同じ形の診断で全 leaf が残ることを見る
     let diagnostic = TestPrimary {
       rest: vec![TestRelated, TestRelated],
     };
 
-    // Act
     let rendered = render_diagnostic_plain(&diagnostic);
 
-    // Assert
     assert!(!rendered.contains('\u{1b}'), "致命的エラーも装飾なし");
     assert!(rendered.contains("cli::test_primary"), "主診断の code が残る");
     assert!(rendered.contains("主診断のヘルプ"), "主診断の help が残る");
@@ -739,13 +716,10 @@ mod tests {
 
   #[test]
   fn terminal_rendering_of_a_borrowed_diagnostic_matches_the_report() {
-    // Arrange — 変更前の端末描画は `Report` の `Debug` だった
     let expected = format!("{:?}", miette::Report::new(TestWarning));
 
-    // Act
     let rendered = format!("{:?}", TerminalDiagnostic(&MietteHandler::new(), &TestWarning));
 
-    // Assert — 借用から描いても端末へ出るバイト列は変わらない
     assert_eq!(rendered, expected);
   }
 

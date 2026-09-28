@@ -442,13 +442,10 @@ mod tests {
 
   #[test]
   fn unreadable_script_subtable_is_reported_as_a_marker_line() {
-    // Arrange
     let bytes = script_list_bytes(OUT_OF_BOUNDS_OFFSET, false, &[]);
 
-    // Act
     let (lines, referenced_features) = run_script_lines(&bytes);
 
-    // Assert
     assert_eq!(lines.len(), 2, "script タグの行と失敗を伝えるマーカー行の 2 行が出るはず");
     assert_eq!(lines[0], "  Script: latn");
     assert!(
@@ -461,13 +458,10 @@ mod tests {
 
   #[test]
   fn null_script_offset_is_reported_as_a_marker_line() {
-    // Arrange
     let bytes = script_list_bytes(0, false, &[]);
 
-    // Act
     let (lines, _) = run_script_lines(&bytes);
 
-    // Assert
     assert_eq!(lines.len(), 2, "NULL オフセットも読み取り失敗として 1 行に出るはず");
     assert!(
       lines[1].starts_with("    (Script サブテーブルの読み取りに失敗しました:"),
@@ -478,15 +472,12 @@ mod tests {
 
   #[test]
   fn unreadable_default_lang_sys_is_reported_as_a_marker_line() {
-    // Arrange
     let mut bytes = script_list_bytes(SCRIPT_OFFSET, true, &[]);
     let default_offset_at = usize::from(SCRIPT_OFFSET);
     bytes[default_offset_at..default_offset_at + 2].copy_from_slice(&OUT_OF_BOUNDS_OFFSET.to_be_bytes());
 
-    // Act
     let (lines, referenced_features) = run_script_lines(&bytes);
 
-    // Assert
     assert_eq!(lines.len(), 2, "既定 Language System の失敗も 1 行として残るはず");
     assert!(
       lines[1].starts_with("    (既定 Language System の読み取りに失敗しました:"),
@@ -498,15 +489,12 @@ mod tests {
 
   #[test]
   fn unreadable_lang_sys_is_reported_but_other_languages_are_listed() {
-    // Arrange
     let bytes = script_list_bytes(SCRIPT_OFFSET, false, &[("JAN ", None), ("TRK ", Some(OUT_OF_BOUNDS_OFFSET))]);
 
-    // Act
     let (lines, referenced_features) = run_script_lines(&bytes);
 
-    // Assert
     assert_eq!(lines.len(), 3, "script タグの行と言語 2 件の行が出るはず");
-    assert_eq!(lines[1], "    JAN : [\"liga\"]", "読めた言語は従来どおり一覧に出る");
+    assert_eq!(lines[1], "    JAN : [\"liga\"]", "読めた言語は一覧に出る");
     assert!(
       lines[2].starts_with("    TRK : (Language System の読み取りに失敗しました:"),
       "読めなかった言語はタグ付きのマーカー行になるはず: {}",
@@ -517,13 +505,10 @@ mod tests {
 
   #[test]
   fn readable_script_lists_its_language_systems() {
-    // Arrange
     let bytes = script_list_bytes(SCRIPT_OFFSET, true, &[("JAN ", None)]);
 
-    // Act
     let (lines, referenced_features) = run_script_lines(&bytes);
 
-    // Assert
     assert_eq!(
       lines,
       vec![

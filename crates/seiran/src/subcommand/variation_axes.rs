@@ -338,14 +338,12 @@ mod tests {
 
   #[test]
   fn unresolvable_axes_array_is_an_fvar_error() {
-    // Arrange — axesArrayOffset をテーブル外へ向ける
+    // axesArrayOffset をテーブル外へ向ける
     let mut bytes = fvar_bytes(1, 0, 8, &[axis_record()]);
     bytes[4..6].copy_from_slice(&0xffffu16.to_be_bytes());
 
-    // Act
     let error = run_fvar_records(&bytes).expect_err("配列を解決できない fvar は失敗する");
 
-    // Assert
     assert!(
       matches!(&error, VariationAxesError::Fvar { path, .. } if path == FONT_PATH),
       "対象パス付きの fvar 破損: {error:?}"
@@ -392,13 +390,11 @@ mod tests {
 
   #[test]
   fn unreadable_instance_record_is_not_dropped() {
-    // Arrange — instanceSize 2 は軸 1 本の InstanceRecord（8 バイト）に足りず、要素の読み取りが Err になる
+    // instanceSize 2 は軸 1 本の InstanceRecord（8 バイト）に足りず、要素の読み取りが Err になる
     let bytes = fvar_bytes(1, 2, 2, &[axis_record(), vec![0; 4]]);
 
-    // Act
     let error = run_fvar_records(&bytes).expect_err("読めない InstanceRecord は失敗する");
 
-    // Assert
     assert!(
       matches!(
         error,
@@ -447,14 +443,12 @@ mod tests {
 
   #[test]
   fn unreadable_name_string_is_marked_not_folded_into_the_name_id() {
-    // Arrange — 文字列の位置を文字列領域の外へ向ける
+    // 文字列の位置を文字列領域の外へ向ける
     let bytes = name_bytes(0x00ff);
     let name = Name::read(FontData::new(&bytes)).expect("name テーブルの枠は読める");
 
-    // Act
     let shown = subfamily_name(&name, NameId::new(256));
 
-    // Assert
     assert!(
       shown.starts_with(&format!("NameID({}) (name 文字列の読み取りに失敗しました:", NameId::new(256))),
       "「レコードが無い」と同じ表示に畳まない: {shown}"

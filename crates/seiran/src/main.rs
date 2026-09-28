@@ -37,10 +37,8 @@ enum CurrentDirError {
 /// CLI を初期化し、指定されたサブコマンドを実行する。
 ///
 /// 端末への描画を `Result` の `Termination` へ委ねず、報告を終えてから `ExitCode` を返す — ログ出力先の
-/// 終了処理（flush と失敗の取り出し）を、終了コードを決める前に必ず通すため。`--log-file` 指定時は、
-/// ファイルの先頭と末尾に実行記録を書く（`Reporter::init` / `Reporter::finish`）。致命的エラーの診断は
-/// `Err` を受けた直後に [`Reporter::failure`] でファイルへも残す。ログの記録に失敗した実行は、本処理が
-/// 成功していても終了コード 1 で終わる。
+/// 終了処理（flush と失敗の取り出し）を、終了コードを決める前に必ず通すため。ログの記録に失敗した実行は、
+/// 本処理が成功していても終了コード 1 で終わる。
 ///
 /// `reporter.finish()` の後は tracing へ何も出さない — layer は同じ writer を保持したままなので、
 /// flush 後に書いたものを流し切る主体がいない。終了処理の報告は stderr への直接書き込みだけで行う
@@ -69,7 +67,6 @@ fn main() -> ExitCode {
   if let Err(report) = &outcome {
     reporter.failure(report);
   }
-  // 報告を書き終えてから終了記録を書いて flush する。ここで初めてログの記録が成功したかが確定する。
   let log_outcome = reporter.finish(outcome.is_ok());
 
   return termination::decide(outcome, log_outcome).report(&mut io::stderr());
@@ -114,8 +111,7 @@ fn run(command: cli::Command, base_dir: io::Result<PathBuf>, reporter: &Reporter
 /// 確定済みの警告は、コンパイル・描画・保存のどこで失敗しても主エラーより先に報告する（#550）。主エラーは
 /// この関数が `Err` を返した後で [`main`] が端末とログファイルへ出すので、どちらの出力先でも
 /// 「確定済み警告 → 主エラー」の順になる。成功した実行では警告を描画・保存の後に出す（`-v` の工程表示 →
-/// 警告 → 成功サマリという順序は #550 の前と同じ）。`base_dir` は `main` が起動時に 1 回だけ取得した値で、
-/// 実行記録の基準ディレクトリと同じ。
+/// 警告 → 成功サマリの順）。
 ///
 /// # Errors
 ///

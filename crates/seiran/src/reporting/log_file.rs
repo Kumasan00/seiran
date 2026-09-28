@@ -10,12 +10,7 @@
 //! 直接の報告（[`LogSink::write_block`]）は書くたびに flush する。DEBUG / TRACE は `BufWriter` に
 //! 溜めたままにする（TRACE は文書の要素数に比例して出るため、event ごとの flush はハングした実行の
 //! 診断に見合わない I/O コストになる）。この方針により、ハングや `SIGINT` / `SIGKILL` で止まった実行でも
-//! ファイルからそこまでの工程の開始・完了・終了を読める。最初の失敗の保持と `finish` の報告は不変 —
-//! flush 失敗も他の I/O 失敗と同じく [`SinkState::check`] を通る。
-//!
-//! `finish` を呼ばずに落ちた実行（`run` 内の panic 等）でも [`LogSink`] の `Drop` が書き残しを流し切る。
-//! ただしその経路では保持した失敗を報告する主体がいない（`finish` を経由しないので `LogFailure` を
-//! 受け取る側が存在しない）。
+//! ファイルからそこまでの工程の開始・完了・終了を読める。
 
 use std::{
   fs::{self, File},
@@ -98,8 +93,7 @@ impl<'writer> MakeWriter<'writer> for LogWriter {
 
   /// `meta` の event を書く writer を作る。
   ///
-  /// INFO 以上（`Phase` の「工程を開始」「工程を終了」を含む）は drop 時に flush し、DEBUG / TRACE は
-  /// 従来どおり `BufWriter` に溜める（flush 方針の根拠はモジュール doc を参照）。
+  /// INFO 以上は drop 時に flush し、DEBUG / TRACE は `BufWriter` に溜める（根拠はモジュール doc）。
   fn make_writer_for(&'writer self, meta: &Metadata<'_>) -> Self::Writer {
     return SinkGuard {
       guard: lock(&self.state),
@@ -257,7 +251,6 @@ fn open_log_file(path: &Path) -> Result<File, LogFileError> {
     })?;
   }
   return File::create_new(path).map_err(|source| {
-    // 既存パスは truncate せず拒否する — ログの指定で入力（設定・本文・フォント・画像・CSL）を壊さないため。
     // `O_CREAT|O_EXCL` なので、判定と作成の間に割り込まれる余地が無い。
     if source.kind() == io::ErrorKind::AlreadyExists {
       return LogFileError::AlreadyExists {
@@ -376,15 +369,12 @@ mod tests {
 
   #[test]
   fn successful_writes_reach_the_writer_and_finish_cleanly() {
-    // Arrange
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
 
-    // Act
     sink.write_block("記録する 1 行");
     sink.finish().expect("書き込みが成功した実行は失敗を持たない");
 
-    // Assert
     let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     assert_eq!(String::from_utf8(written).expect("UTF-8 のはず"), "記録する 1 行\n", "末尾に改行を足して書く");
   }
@@ -407,17 +397,14 @@ mod tests {
 
   #[test]
   fn info_event_reaches_the_writer_before_finish() {
-    // Arrange
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
     let guard = set_fmt_subscriber(&sink);
 
-    // Act
     info!("工程を開始");
     let written_before_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     drop(guard);
 
-    // Assert
     assert!(
       String::from_utf8(written_before_finish).expect("UTF-8 のはず").contains("工程を開始"),
       "INFO の event は書くたびに flush するので finish 前に届く"
@@ -427,17 +414,14 @@ mod tests {
 
   #[test]
   fn debug_event_stays_buffered_until_finish() {
-    // Arrange
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
     let guard = set_fmt_subscriber(&sink);
 
-    // Act
     debug!("内部詳細");
     let written_before_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     drop(guard);
 
-    // Assert
     assert!(written_before_finish.is_empty(), "DEBUG は BufWriter に溜まり finish 前には届かない");
     sink.finish().expect("書き込みが成功した実行は失敗を持たない");
     let written_after_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
@@ -449,15 +433,12 @@ mod tests {
 
   #[test]
   fn write_block_reaches_the_writer_before_finish() {
-    // Arrange
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
 
-    // Act
     sink.write_block("実行記録の 1 行");
     let written_before_finish = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
 
-    // Assert
     assert_eq!(
       String::from_utf8(written_before_finish).expect("UTF-8 のはず"),
       "実行記録の 1 行\n",
@@ -468,22 +449,19 @@ mod tests {
 
   #[test]
   fn info_event_flush_failure_is_retained_and_reported_by_finish() {
-    // Arrange
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(FailingWriter { calls: 0 }));
     let guard = set_fmt_subscriber(&sink);
 
-    // Act
     info!("工程を開始");
     drop(guard);
     let failure = sink.finish().expect_err("書き込み・flush に失敗した実行は失敗を報告する");
 
-    // Assert
     assert_eq!(failure.path, "run.log", "失敗はログのパスとともに報告する");
   }
 
   #[test]
   fn dropping_without_finish_still_flushes_buffered_content() {
-    // Arrange — tracing の layer が `writer()` で `SinkState` をもう 1 つの `Arc` として握り続ける状況を再現する。
+    // tracing の layer が `writer()` で `SinkState` をもう 1 つの `Arc` として握り続ける状況を再現する。
     // `sink` だけが所有者なら drop で参照カウントが 0 になり `BufWriter` 自身の drop-flush で届いてしまい、
     // `LogSink` の `Drop` を消しても通ってしまう（判別力が無い）。`writer` を生かしたまま `sink` を drop することで、
     // `SinkState` は生き残ったまま（参照カウント 1）flush が必要になる、実際の panic 経路と同じ状況を作る。
@@ -491,18 +469,16 @@ mod tests {
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
     let writer = sink.writer();
 
-    // Act — `finish` を呼ばず panic 中の unwind を模す。`writer` はまだ生きているので `SinkState` は解放されない。
+    // `finish` を呼ばず panic 中の unwind を模す
     sink.write_block("記録する 1 行");
     drop(sink);
 
-    // Assert
     let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     assert_eq!(
       String::from_utf8(written).expect("UTF-8 のはず"),
       "記録する 1 行\n",
       "finish を経由せず、他の Arc が生きたまま drop されても書き残しを流す"
     );
-    // `writer` をここまで生かして「共有所有で SinkState が解放されない」状況を保証する。
     drop(writer);
   }
 
@@ -518,16 +494,14 @@ mod tests {
 
   #[test]
   fn only_the_first_failure_is_kept() {
-    // Arrange — BufWriter の容量（8 KiB）を超える書き込みは素通しになるので、write_block ごとに失敗が起きる
+    // BufWriter の容量（8 KiB）を超える書き込みは素通しになるので、write_block ごとに失敗が起きる
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(FailingWriter { calls: 0 }));
     let long_line = "あ".repeat(8 * 1024);
 
-    // Act
     sink.write_block(&long_line);
     sink.write_block(&long_line);
     let failure = sink.finish().expect_err("失敗を報告する");
 
-    // Assert
     assert!(failure.source.to_string().contains("1 回目"), "後続の失敗で上書きしない: {}", failure.source);
   }
 
@@ -544,15 +518,12 @@ mod tests {
 
   #[test]
   fn refuses_existing_file_without_touching_it() {
-    // Arrange
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let path = dir.path().join("build.log");
     fs::write(&path, "前回の実行の記録").expect("事前の内容を書けるはず");
 
-    // Act
     let error = open_log_file(&path).expect_err("既存ファイルは拒否するはず");
 
-    // Assert
     assert!(matches!(error, LogFileError::AlreadyExists { .. }), "既存パスとして報告する");
     assert_eq!(
       fs::read_to_string(&path).expect("読めるはず"),

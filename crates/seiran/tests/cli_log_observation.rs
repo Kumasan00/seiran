@@ -122,7 +122,7 @@ const OVERRIDE_CODE: &str = "cli::rust_log::overrides_verbose";
 
 #[test]
 fn override_notice_survives_a_rust_log_that_hides_warn() {
-  // Arrange — `error` は WARN を通さないので、tracing の WARN だった通知は以前は消えていた
+  // Arrange — `error` は WARN を通さないので、通知を tracing の WARN で出すと消える
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_ok_project(dir.path());
 

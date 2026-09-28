@@ -24,7 +24,7 @@ enum PhaseStatus {
 /// 1 工程の記録。生成で開始を、drop で終了を記録する。
 #[must_use = "drop した時点で工程の終了を記録するので、工程の処理が終わるまで束縛しておく"]
 pub(super) struct Phase {
-  /// 工程の span（drop で抜ける）。値を読まず保持するだけなので `_` 始まり
+  /// 工程の span（drop で抜ける）
   _span: EnteredSpan,
   /// 開始時刻
   started: Instant,

@@ -208,7 +208,6 @@ mod tests {
         "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は --font-index を確認してください。",
       ),
       (
-        // `_error` 接尾辞は script-langs だけの不揃いだが、利用者に見える code なので保つ（#685 のスコープ外）
         FaceInspection::ScriptLangs,
         "cli::script_langs::font_parse_error",
         "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は別のインデックスを試してください。",
