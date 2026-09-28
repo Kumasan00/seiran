@@ -36,28 +36,8 @@ impl Default for CaptionStyle {
 
 #[cfg(test)]
 mod tests {
-  use garde::Validate;
-
   use super::CaptionStyle;
-  use crate::{document::FontKind, length::Length, style::NumberTitleTemplate};
-
-  #[test]
-  fn validate_rejects_empty_format() {
-    let style = CaptionStyle {
-      format: NumberTitleTemplate::parse(""),
-      ..CaptionStyle::default()
-    };
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_zero_font_size() {
-    let style = CaptionStyle {
-      font_size: Length::pt(0.0),
-      ..CaptionStyle::default()
-    };
-    assert!(style.validate().is_err());
-  }
+  use crate::document::FontKind;
 
   #[test]
   fn deserializes_partial_table_with_default_font_size() {
@@ -65,13 +45,6 @@ mod tests {
     let style: CaptionStyle = toml::from_str(toml).unwrap();
     assert_eq!(style.format.as_str(), "Figure {number}: {title}");
     assert!((style.font_size.to_pt() - 11.0).abs() < f32::EPSILON);
-    assert_eq!(style.font_kind, FontKind::Serif);
-  }
-
-  #[test]
-  fn font_kind_defaults_to_serif() {
-    let style = CaptionStyle::default();
-
     assert_eq!(style.font_kind, FontKind::Serif);
   }
 

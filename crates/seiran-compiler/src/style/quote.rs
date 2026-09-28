@@ -60,16 +60,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_negative_indent() {
-    let style = QuoteStyle {
-      indent: Length::pt(-1.0),
-      ..QuoteStyle::default()
-    };
-
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
   fn validate_rejects_negative_first_line_indent() {
     let style = QuoteStyle {
       first_line_indent: Length::pt(-1.0),

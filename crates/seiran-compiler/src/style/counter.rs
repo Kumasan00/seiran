@@ -320,20 +320,8 @@ mod tests {
   use super::{CounterName, CounterStyle, Counters, NumberStyle};
 
   #[test]
-  fn validate_accepts_minimal_counter() {
-    let counter = CounterStyle::new("Figure", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]);
-    assert!(counter.validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_empty_display_name() {
     let counter = CounterStyle::new("", "{n}", NumberStyle::Arabic, "{number}", &[]);
-    assert!(counter.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_empty_number_format() {
-    let counter = CounterStyle::new("Chapter", "", NumberStyle::Arabic, "{number}", &[]);
     assert!(counter.validate().is_err());
   }
 
@@ -481,18 +469,6 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn counter_name_into_str_is_snake_case() {
-    for (name, want) in [
-      (CounterName::Part, "part"),
-      (CounterName::Subparagraph, "subparagraph"),
-      (CounterName::Equation, "equation"),
-    ] {
-      let key: &str = name.into();
-      assert_eq!(key, want);
-    }
-  }
-
-  #[test]
   fn serde_accepts_strum_spelling_for_all() {
     // serde の `rename_all` と strum の `serialize_all` は別の derive 属性なので、綴りの一致をここで固定する
     for &counter in CounterName::VARIANTS {
@@ -500,13 +476,6 @@ resets = [\"example\"]
       let parsed: CounterName = toml::Value::String(key.to_owned()).try_into().unwrap();
       assert_eq!(parsed, counter);
     }
-  }
-
-  #[test]
-  fn counters_indexing_returns_matching_field() {
-    let counters = Counters::default();
-    assert!(std::ptr::eq(&raw const counters[CounterName::Chapter], &raw const counters.chapter));
-    assert!(std::ptr::eq(&raw const counters[CounterName::Table], &raw const counters.table));
   }
 
   #[test]

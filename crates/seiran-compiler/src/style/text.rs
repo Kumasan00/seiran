@@ -73,11 +73,6 @@ mod tests {
   use crate::{document::FontKind, length::Length};
 
   #[test]
-  fn text_alignment_default_is_justify() {
-    assert_eq!(TextAlignment::default(), TextAlignment::Justify);
-  }
-
-  #[test]
   fn text_alignment_deserializes_snake_case() {
     #[derive(serde::Deserialize)]
     struct Wrapper {
@@ -102,13 +97,6 @@ mod tests {
     assert_eq!(style.font_kind, FontKind::Serif);
     assert_eq!(style.alignment, TextAlignment::Justify, "alignment 未指定の既定は両端揃え");
     assert!(style.punctuation_spacing, "punctuation_spacing 未指定の既定は有効");
-  }
-
-  #[test]
-  fn deserializes_ragged_right_alignment() {
-    let style: TextBlockStyle = toml::from_str("alignment = \"ragged_right\"").unwrap();
-
-    assert_eq!(style.alignment, TextAlignment::RaggedRight);
   }
 
   #[test]

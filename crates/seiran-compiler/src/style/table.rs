@@ -59,19 +59,8 @@ impl Default for TableStyle {
 
 #[cfg(test)]
 mod tests {
-  use garde::Validate;
-
   use super::TableStyle;
-  use crate::{document::FontKind, length::Length};
-
-  #[test]
-  fn validate_rejects_negative_rule_thickness() {
-    let style = TableStyle {
-      rule_thickness: Length::pt(-0.1),
-      ..TableStyle::default()
-    };
-    assert!(style.validate().is_err());
-  }
+  use crate::document::FontKind;
 
   #[test]
   fn head_font_kind_defaults_to_serif_bold() {

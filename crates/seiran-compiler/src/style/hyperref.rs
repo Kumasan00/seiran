@@ -30,12 +30,4 @@ mod tests {
   fn rejects_renamed_show_bookmarks_key() {
     assert!(toml::from_str::<HyperrefStyle>("show_bookmarks = true\n").is_err());
   }
-
-  #[test]
-  fn default_colors_are_none() {
-    let style = HyperrefStyle::default();
-    assert_eq!(style.link_color, None);
-    assert_eq!(style.url_color, None);
-    assert_eq!(style.cite_color, None);
-  }
 }

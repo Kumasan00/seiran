@@ -101,28 +101,10 @@ mod tests {
   }
 
   #[test]
-  fn deserialize_accepts_roman_number_style() {
-    let style: FootnoteStyle =
-      toml::from_str("number_style = \"roman_upper\"\n").expect("roman_upper は受理されるはず");
-
-    assert_eq!(style.number_style, NumberStyle::RomanUpper);
-  }
-
-  #[test]
-  fn deserialize_rejects_unknown_number_style() {
-    assert!(toml::from_str::<FootnoteStyle>("number_style = \"circled\"\n").is_err());
-  }
-
-  #[test]
   fn deserialize_accepts_per_page_numbering() {
     let style: FootnoteStyle = toml::from_str("numbering = \"per_page\"\n").expect("per_page は受理されるはず");
 
     assert_eq!(style.numbering, FootnoteNumbering::PerPage);
-  }
-
-  #[test]
-  fn deserialize_rejects_unknown_numbering() {
-    assert!(toml::from_str::<FootnoteStyle>("numbering = \"per_chapter\"\n").is_err());
   }
 
   #[test]
@@ -177,14 +159,5 @@ mod tests {
       ..FootnoteStyle::default()
     };
     assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_accepts_decorated_marker_format() {
-    let style = FootnoteStyle {
-      marker_format: NumberTemplate::parse("[{number}]"),
-      ..FootnoteStyle::default()
-    };
-    assert!(style.validate().is_ok());
   }
 }

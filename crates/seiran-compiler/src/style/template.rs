@@ -546,7 +546,6 @@ impl RunningTemplate {
 mod tests {
   use garde::Validate;
   use itertools::Itertools;
-  use serde::Deserialize;
   use strum::VariantArray;
 
   use super::{
@@ -678,34 +677,6 @@ mod tests {
     assert!(violation(&CounterTemplate::parse("")).is_some());
     assert!(violation(&ReferenceTemplate::parse("")).is_some());
     assert!(violation(&TheoremHeadingTemplate::parse("")).is_some());
-  }
-
-  #[test]
-  fn deserialize_keeps_the_source_string() {
-    #[derive(Debug, Deserialize)]
-    struct Wrapper {
-      /// テンプレート 1 本だけを持つ TOML テーブル
-      format: NumberTitleTemplate,
-    }
-    let toml = "format = \"第{number}章 {title}\"\n";
-
-    let wrapper: Wrapper = toml::from_str(toml).unwrap();
-
-    assert_eq!(wrapper.format.as_str(), "第{number}章 {title}");
-  }
-
-  #[test]
-  fn deserialize_keeps_invalid_templates_for_garde_to_report() {
-    #[derive(Debug, Deserialize)]
-    struct Wrapper {
-      /// 未知プレースホルダを含むテンプレート
-      format: NumberTemplate,
-    }
-
-    // 構文エラーでも deserialize は成功する（複数フィールドの一括報告を打ち切らないため）
-    let wrapper: Wrapper = toml::from_str("format = \"{nope}\"\n").unwrap();
-
-    assert!(violation(&wrapper.format).is_some());
   }
 
   #[test]

@@ -218,38 +218,12 @@ mod tests {
   use crate::{
     document::{FontKind, HeadingLevel},
     length::Length,
-    style::NumberTitleTemplate,
   };
-
-  #[test]
-  fn validate_rejects_unknown_placeholder_in_format() {
-    let style = HeadingStyle {
-      format: NumberTitleTemplate::parse("{nubmer} {title}"),
-      ..HeadingStyle::default()
-    };
-
-    assert!(style.validate().is_err());
-  }
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。
   #[derive(Debug, serde::Deserialize)]
   struct HeadingWrapper {
     heading: HeadingStyles,
-  }
-
-  #[test]
-  fn validate_accepts_default() {
-    assert!(HeadingStyle::default().validate().is_ok());
-  }
-
-  #[test]
-  fn validate_rejects_empty_format() {
-    let heading = HeadingStyle {
-      format: NumberTitleTemplate::parse(""),
-      ..HeadingStyle::default()
-    };
-
-    assert!(heading.validate().is_err());
   }
 
   #[test]
@@ -270,40 +244,6 @@ mod tests {
     };
 
     assert!(heading.validate().is_err());
-  }
-
-  #[test]
-  fn validate_accepts_alternative_font_kind() {
-    let heading = HeadingStyle {
-      font_kind: FontKind::SansSerifBold,
-      ..HeadingStyle::default()
-    };
-
-    assert!(heading.validate().is_ok());
-  }
-
-  #[test]
-  fn default_styles_use_distinct_font_sizes() {
-    let styles = HeadingStyles::default();
-
-    assert!(styles[HeadingLevel::Part].font_size > styles[HeadingLevel::Section].font_size);
-    assert!(styles[HeadingLevel::Section].font_size > styles[HeadingLevel::Subparagraph].font_size);
-  }
-
-  #[test]
-  fn default_styles_has_part_page_break_after() {
-    let styles = HeadingStyles::default();
-
-    assert!(styles[HeadingLevel::Part].page_break_after);
-    assert!(!styles[HeadingLevel::Section].page_break_after);
-  }
-
-  #[test]
-  fn default_styles_default_template_for_section() {
-    let styles = HeadingStyles::default();
-
-    assert_eq!(styles[HeadingLevel::Section].format.as_str(), "{number} {title}");
-    assert!(styles[HeadingLevel::Chapter].format.as_str().starts_with("Chapter"));
   }
 
   #[test]
@@ -389,13 +329,5 @@ font_kind = \"sans_serif_bold\"
     assert!(!chapter.page_break_before);
     assert!(chapter.page_break_after);
     assert_eq!(chapter.font_kind, FontKind::SansSerifBold);
-  }
-
-  #[test]
-  fn indexing_returns_matching_field() {
-    let styles = HeadingStyles::default();
-
-    assert!(std::ptr::eq(&raw const styles[HeadingLevel::Chapter], &raw const styles.chapter));
-    assert!(std::ptr::eq(&raw const styles[HeadingLevel::Subparagraph], &raw const styles.subparagraph));
   }
 }

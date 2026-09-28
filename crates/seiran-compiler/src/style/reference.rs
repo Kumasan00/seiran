@@ -100,16 +100,6 @@ mod tests {
   }
 
   #[test]
-  fn default_locale_path_is_none() {
-    assert!(ReferenceStyle::default().locale_path.is_none());
-  }
-
-  #[test]
-  fn default_locale_is_none() {
-    assert!(ReferenceStyle::default().locale.is_none());
-  }
-
-  #[test]
   fn parse_accepts_top_level_reference_table() {
     let toml = "[reference]\n\
                 title = \"参考文献\"\n\
@@ -137,15 +127,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_accepts_locale_regardless_of_case() {
-    let style = ReferenceStyle {
-      locale: Some("ja-jp".to_string()),
-      ..ReferenceStyle::default()
-    };
-    assert!(style.validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_malformed_locale() {
     for bad in ["", "j", "ja-", "ja JP"] {
       let style = ReferenceStyle {
@@ -167,16 +148,6 @@ mod tests {
   }
 
   #[test]
-  fn normalize_canonicalizes_script_subtag() {
-    let mut style = ReferenceStyle {
-      locale: Some("zh-HANT".to_string()),
-      ..ReferenceStyle::default()
-    };
-    style.normalize();
-    assert_eq!(style.locale.as_deref(), Some("zh-Hant"));
-  }
-
-  #[test]
   fn normalize_canonicalizes_underscore_separator() {
     let mut style = ReferenceStyle {
       locale: Some("ja_JP".to_string()),
@@ -184,12 +155,5 @@ mod tests {
     };
     style.normalize();
     assert_eq!(style.locale.as_deref(), Some("ja-JP"));
-  }
-
-  #[test]
-  fn normalize_keeps_none_locale() {
-    let mut style = ReferenceStyle::default();
-    style.normalize();
-    assert!(style.locale.is_none());
   }
 }

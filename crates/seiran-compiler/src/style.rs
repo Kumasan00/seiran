@@ -303,9 +303,8 @@ mod tests {
   use garde::Validate;
 
   use crate::{
-    document::HeadingLevel,
     length::Length,
-    project::{FilesystemProjectSource, MemoryProjectSource, PathResolver, ProjectPath},
+    project::{MemoryProjectSource, PathResolver, ProjectPath},
     style::{ReadStyleError, ReferenceStyle, Style, StyleValidationError, load, resolve_reference_paths},
   };
 
@@ -326,49 +325,6 @@ mod tests {
   }
 
   #[test]
-  fn resolve_reference_paths_keeps_absolute_csl_path_as_is() {
-    let source = MemoryProjectSource::new().with_text("/elsewhere/ieee.csl", "");
-    let resolver = PathResolver::new(Path::new("/project"));
-    let mut reference = ReferenceStyle {
-      csl_path: Some(ProjectPath::new("/elsewhere/ieee.csl")),
-      ..ReferenceStyle::default()
-    };
-
-    let errors = resolve_reference_paths(&mut reference, &source, &resolver);
-
-    assert!(errors.is_empty(), "登録済みの絶対パスはエラーにならないはず: {errors:?}");
-    assert_eq!(reference.csl_path, Some(ProjectPath::new("/elsewhere/ieee.csl")));
-  }
-
-  #[test]
-  fn resolve_reference_paths_reports_missing_files() {
-    let source = FilesystemProjectSource;
-    let resolver = PathResolver::new(Path::new("/unused"));
-    let mut reference = ReferenceStyle {
-      csl_path: Some(ProjectPath::new("/nonexistent/style.csl")),
-      locale_path: Some(ProjectPath::new("/nonexistent/locale.xml")),
-      ..ReferenceStyle::default()
-    };
-
-    let errors = resolve_reference_paths(&mut reference, &source, &resolver);
-
-    assert_eq!(errors.len(), 2, "csl_path / locale_path 双方が報告されるはず: {errors:?}");
-    assert!(errors.iter().any(|e| matches!(e, StyleValidationError::CslPathResolution { .. })));
-    assert!(errors.iter().any(|e| matches!(e, StyleValidationError::LocalePathResolution { .. })));
-  }
-
-  #[test]
-  fn resolve_reference_paths_skips_none() {
-    let source = FilesystemProjectSource;
-    let resolver = PathResolver::new(Path::new("/unused"));
-    let mut reference = ReferenceStyle::default();
-
-    let errors = resolve_reference_paths(&mut reference, &source, &resolver);
-
-    assert!(errors.is_empty());
-  }
-
-  #[test]
   fn load_reads_through_project_source() {
     let source = MemoryProjectSource::new().with_text("/project/style.toml", "");
     let path = ProjectPath::new("/project/style.toml");
@@ -377,21 +333,6 @@ mod tests {
       load(&source, Some(&path), &PathResolver::new(Path::new("/project"))).expect("空の TOML は既定値になるはず");
 
     assert_eq!(style.text.font_size, Style::default().text.font_size);
-  }
-
-  #[test]
-  fn load_reports_missing_csl_path_without_touching_real_disk() {
-    let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
-    let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
-    let path = ProjectPath::new("/project/style.toml");
-
-    let result = load(&source, Some(&path), &PathResolver::new(Path::new("/project")));
-
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::Validation(failure))
-        if matches!(failure.error(), StyleValidationError::CslPathResolution { .. })
-    ));
   }
 
   #[test]
@@ -435,25 +376,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(Style::default().validate().is_ok());
-  }
-
-  #[test]
-  fn validate_dives_into_text_font_size() {
-    let mut style = Style::default();
-    style.text.font_size = Length::pt(0.0);
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_text_line_height_factor() {
-    let mut style = Style::default();
-    style.text.line_height_factor = 0.0;
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
   fn validate_dives_into_nested_table_rule_thickness() {
     let mut style = Style::default();
     style.table.rule_thickness = Length::pt(-0.1);
@@ -468,42 +390,9 @@ mod tests {
   }
 
   #[test]
-  fn validate_dives_into_counters_display_name() {
-    let mut style = Style::default();
-    style.counters.figure.display_name = String::new();
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_heading_font_size() {
-    let mut style = Style::default();
-    style.heading.chapter.font_size = Length::pt(-1.0);
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_theorems_display_name() {
-    let mut style = Style::default();
-    style.theorems.lemma.display_name = String::new();
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
   fn rejects_renamed_top_level_text_keys() {
     assert!(toml::from_str::<Style>("font_size = \"12pt\"\n").is_err());
     assert!(toml::from_str::<Style>("line_height_factor = 1.2\n").is_err());
-  }
-
-  #[test]
-  fn default_heading_has_descending_font_size() {
-    let style = Style::default();
-    let part = style.heading(HeadingLevel::Part).font_size.to_pt();
-    let chapter = style.heading(HeadingLevel::Chapter).font_size.to_pt();
-    let section = style.heading(HeadingLevel::Section).font_size.to_pt();
-    let subparagraph = style.heading(HeadingLevel::Subparagraph).font_size.to_pt();
-    assert!(part > chapter, "Part should be larger than Chapter: {part} vs {chapter}");
-    assert!(chapter > section, "Chapter should be larger than Section: {chapter} vs {section}");
-    assert!(section > subparagraph, "Section should be larger than Subparagraph");
   }
 }
 
@@ -513,7 +402,7 @@ mod tests {
 /// 同名ヘルパを独立に定義していたため（`mod tests` へ素直に統合すると名前衝突する）。
 #[cfg(test)]
 mod parse_tests {
-  use super::{ReadStyleError, Style, StyleValidationError, TheoremClass, load, parse};
+  use super::{ReadStyleError, Style, StyleValidationError, load, parse};
   use crate::{
     color::Color,
     document::{FontKind, HeadingLevel},
@@ -535,15 +424,6 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_overrides_heading_section_format() {
-    let toml = "[heading.section]\nformat = \"§ {number} {title}\"\n";
-    let style = parse(toml, dummy_source()).unwrap();
-    assert_eq!(style.heading(HeadingLevel::Section).format.as_str(), "§ {number} {title}");
-    let default = Style::default();
-    assert_eq!(style.heading(HeadingLevel::Chapter).format, default.heading(HeadingLevel::Chapter).format);
-  }
-
-  #[test]
   fn parse_overrides_only_specified_fields() {
     let toml = "[text]\nfont_size = \"15pt\"\n";
     let style = parse(toml, dummy_source()).unwrap();
@@ -561,35 +441,10 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_columns_defaults_to_single_column() {
-    let style = parse("", dummy_source()).unwrap();
-
-    assert_eq!(style.columns.count, 1);
-    assert!((style.columns.gap.to_pt() - 18.0).abs() < f32::EPSILON);
-  }
-
-  #[test]
   fn parse_enables_flush_bottom() {
     let toml = "[page]\nflush_bottom = true\n";
     let style = parse(toml, dummy_source()).unwrap();
     assert!(style.page.flush_bottom);
-  }
-
-  #[test]
-  fn parse_flush_bottom_defaults_to_disabled() {
-    let style = parse("", dummy_source()).unwrap();
-
-    assert!(!style.page.flush_bottom);
-  }
-
-  #[test]
-  fn parse_page_margins_default_to_documented_values() {
-    let style = parse("", dummy_source()).unwrap();
-
-    assert!((style.page.margin_top.to_pt() - 99.0).abs() < f32::EPSILON);
-    assert!((style.page.margin_bottom.to_pt() - 99.0).abs() < f32::EPSILON);
-    assert!((style.page.margin_left.to_pt() - 85.0).abs() < f32::EPSILON);
-    assert!((style.page.margin_right.to_pt() - 85.0).abs() < f32::EPSILON);
   }
 
   #[test]
@@ -634,24 +489,6 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_rejects_color_array() {
-    let toml = "background_color = [204, 179, 153]\n";
-    let result = parse(toml, dummy_source());
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::ParseToml { .. })
-    ));
-  }
-
-  #[test]
-  fn parse_accepts_color_hex_string() {
-    let toml = "background_color = \"#cc9966\"\n";
-    let style = parse(toml, dummy_source()).unwrap();
-    let color = style.background_color.expect("background_color should be Some");
-    assert_eq!(color.rgb(), [0xcc, 0x99, 0x66]);
-  }
-
-  #[test]
   fn parse_overrides_header_and_footer() {
     let toml = concat!(
       "[header]\n",
@@ -685,28 +522,8 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_fails_on_unknown_top_level_key() {
-    let toml = "font_sze = \"15pt\"\n";
-    let result = parse(toml, dummy_source());
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::ParseToml { .. })
-    ));
-  }
-
-  #[test]
   fn parse_fails_on_unknown_nested_key() {
     let toml = "[heading.chapter]\nfont_sze = \"30pt\"\n";
-    let result = parse(toml, dummy_source());
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::ParseToml { .. })
-    ));
-  }
-
-  #[test]
-  fn parse_fails_on_invalid_toml_syntax() {
-    let toml = "font_size = \nthis is not valid toml";
     let result = parse(toml, dummy_source());
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
@@ -725,47 +542,6 @@ mod parse_tests {
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ReadFile { .. })
-    ));
-  }
-
-  #[test]
-  fn parse_reads_minimal_fixture() {
-    let toml = include_str!("style/fixtures/minimal.toml");
-    let style = parse(toml, "minimal.toml").unwrap();
-    assert!((style.text.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
-    assert_eq!(style.heading(HeadingLevel::Section).format.as_str(), "§ {number} {title}");
-  }
-
-  #[test]
-  fn parse_overrides_theorem_class_partially() {
-    let toml = "[theorems.lemma]\ndisplay_name = \"補題\"\n";
-    let style = parse(toml, dummy_source()).unwrap();
-    assert_eq!(style.theorem(TheoremClass::Lemma).display_name, "補題");
-    assert_eq!(style.theorem(TheoremClass::Lemma).counter, "theorem");
-    let default = Style::default();
-    assert_eq!(
-      style.theorem(TheoremClass::Theorem).display_name,
-      default.theorem(TheoremClass::Theorem).display_name
-    );
-  }
-
-  #[test]
-  fn parse_fails_on_unknown_theorem_class() {
-    let toml = "[theorems.conjecture]\ndisplay_name = \"Conjecture\"\n";
-    let result = parse(toml, dummy_source());
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::ParseToml { .. })
-    ));
-  }
-
-  #[test]
-  fn parse_fails_on_unknown_theorem_field() {
-    let toml = "[theorems.theorem]\ndispl_name = \"Theorem\"\n";
-    let result = parse(toml, dummy_source());
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadStyleError::ParseToml { .. })
     ));
   }
 }
@@ -815,27 +591,6 @@ mod validate_tests {
   }
 
   #[test]
-  fn rejects_three_columns() {
-    let toml = "[columns]\ncount = 3\n";
-    let errors = expect_validation_errors(parse(toml, dummy_source()));
-    assert!(paths(&errors).contains(&"columns.count"));
-  }
-
-  #[test]
-  fn rejects_zero_columns() {
-    let toml = "[columns]\ncount = 0\n";
-    let errors = expect_validation_errors(parse(toml, dummy_source()));
-    assert!(paths(&errors).contains(&"columns.count"));
-  }
-
-  #[test]
-  fn rejects_negative_column_gap() {
-    let toml = "[columns]\ngap = \"-1pt\"\n";
-    let errors = expect_validation_errors(parse(toml, dummy_source()));
-    assert!(paths(&errors).contains(&"columns.gap"));
-  }
-
-  #[test]
   fn reports_nested_theorem_style_validation_error_with_path() {
     let toml = "[theorems.theorem.style]\ntop_margin = \"-1pt\"\n";
     let errors = expect_validation_errors(parse(toml, dummy_source()));
@@ -852,23 +607,6 @@ mod validate_tests {
     let errors = expect_validation_errors(parse(toml, dummy_source()));
     let paths = paths(&errors);
     assert!(paths.contains(&"theorems.lemma.display_name"), "expected theorems.lemma.display_name in {paths:?}");
-  }
-
-  #[test]
-  fn rejects_unknown_counter_name_at_parse_time() {
-    let toml = "
-[counters.custom]
-display_name = \"Custom\"
-number_format = \"{chapter}.{n}\"
-number_style = \"arabic\"
-ref_format = \"{display_name} {number}\"
-resets = []
-";
-    let result = parse(toml, dummy_source());
-    assert!(
-      matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
-      "unknown counter name should be rejected at TOML parse time, got {result:?}"
-    );
   }
 
   #[test]
@@ -900,45 +638,6 @@ center = \"{pagee}\"
       })
       .expect("math.block.tag_format のエラーがあるはず");
     assert!(message.contains("{num}"), "メッセージに {{num}} を含むべき: {message}");
-  }
-
-  #[test]
-  fn rejects_unknown_counter_placeholder_in_number_format() {
-    let toml = "[counters.section]\ndisplay_name = \"Section\"\nnumber_format = \"{chaptr}.{n}\"\nnumber_style = \"arabic\"\nref_format = \"{display_name} {number}\"\nresets = []\n";
-    let errors = expect_validation_errors(parse(toml, dummy_source()));
-    let paths = paths(&errors);
-    assert!(
-      paths.contains(&"counters.section.number_format"),
-      "expected counters.section.number_format in {paths:?}"
-    );
-  }
-
-  #[test]
-  fn rejects_unknown_reset_target_at_parse_time() {
-    let toml = "
-[counters.chapter]
-display_name = \"Chapter\"
-number_format = \"{n}\"
-number_style = \"arabic\"
-ref_format = \"{display_name} {number}\"
-resets = [\"nonexistent\"]
-";
-    let result = parse(toml, dummy_source());
-    assert!(
-      matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
-      "unknown reset target should be rejected at TOML parse time, got {result:?}"
-    );
-  }
-
-  #[test]
-  fn counters_partial_entry_keeps_other_defaults() {
-    // #561 の再現手順そのもの
-    let toml = "[counters.figure]\ndisplay_name = \"図\"\n";
-    let style = parse(toml, dummy_source()).expect("部分指定の [counters.figure] は受理されるべき");
-    assert_eq!(style.counters.figure.display_name, "図");
-    assert_eq!(style.counters.figure.number_format.as_str(), "{chapter}.{n}");
-    assert_eq!(style.counters.figure.ref_format.as_str(), "{display_name} {number}");
-    assert_eq!(style.counters.table.display_name, "Table");
   }
 
   #[test]

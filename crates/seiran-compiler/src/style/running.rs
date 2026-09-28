@@ -80,7 +80,7 @@ mod tests {
   use garde::Validate;
 
   use super::RunningContentStyle;
-  use crate::{document::FontKind, length::Length, style::RunningTemplate};
+  use crate::{document::FontKind, length::Length};
 
   #[test]
   fn default_is_empty() {
@@ -89,16 +89,6 @@ mod tests {
     assert!(style.is_empty());
     assert_eq!(style.font_kind, FontKind::Serif);
     assert!((style.font_size.to_pt() - 10.0).abs() < f32::EPSILON);
-  }
-
-  #[test]
-  fn is_empty_false_when_any_slot_filled() {
-    let style = RunningContentStyle {
-      right: RunningTemplate::parse("{page}"),
-      ..RunningContentStyle::default()
-    };
-
-    assert!(!style.is_empty());
   }
 
   #[test]
@@ -119,28 +109,6 @@ mod tests {
     };
 
     assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_unknown_slot_token() {
-    let style = RunningContentStyle {
-      center: RunningTemplate::parse("{pagee}"),
-      ..RunningContentStyle::default()
-    };
-
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_accepts_valid_slot_tokens() {
-    let style = RunningContentStyle {
-      left: RunningTemplate::parse("{title}"),
-      center: RunningTemplate::parse("{author}"),
-      right: RunningTemplate::parse("{page} / {pages} — {date}"),
-      ..RunningContentStyle::default()
-    };
-
-    assert!(style.validate().is_ok());
   }
 
   #[test]

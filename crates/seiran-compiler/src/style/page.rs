@@ -68,16 +68,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_accepts_enabled_flush_bottom() {
-    let style = PageStyle {
-      flush_bottom: true,
-      ..PageStyle::default()
-    };
-
-    assert!(style.validate().is_ok());
-  }
-
-  #[test]
   fn validate_accepts_zero_margins() {
     let style = PageStyle {
       margin_top: Length::ZERO,

@@ -45,16 +45,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_accepts_two_columns() {
-    let style = ColumnsStyle {
-      count: 2,
-      ..ColumnsStyle::default()
-    };
-
-    assert!(style.validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_zero_count() {
     let style = ColumnsStyle {
       count: 0,

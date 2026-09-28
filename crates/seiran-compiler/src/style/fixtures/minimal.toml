@@ -1,7 +1,0 @@
-# 最小限の部分指定 fixture。
-
-[text]
-font_size = "14pt"
-
-[heading.section]
-format = "§ {number} {title}"

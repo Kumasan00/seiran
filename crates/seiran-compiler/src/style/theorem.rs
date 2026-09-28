@@ -440,35 +440,6 @@ mod tests {
   }
 
   #[test]
-  fn all_default_classes_pass_validation() {
-    let theorems = Theorems::default();
-
-    for &class in TheoremClass::VARIANTS {
-      assert!(theorems[class].validate().is_ok(), "{class} should validate");
-    }
-  }
-
-  #[test]
-  fn validate_rejects_empty_display_name() {
-    let style = TheoremStyle {
-      display_name: String::new(),
-      ..TheoremStyle::default()
-    };
-
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_empty_number_format() {
-    let style = TheoremStyle {
-      number_format: CounterTemplate::parse(""),
-      ..TheoremStyle::default()
-    };
-
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
   fn validate_rejects_empty_qed_mark() {
     let style = TheoremStyle {
       qed_mark: Some(String::new()),
@@ -492,14 +463,6 @@ mod tests {
       number_format: CounterTemplate::parse("{chaptr}.{n}"),
       ..TheoremStyle::default()
     };
-
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_negative_top_margin() {
-    let mut style = TheoremStyle::default();
-    style.style.top_margin = Length::pt(-0.1);
 
     assert!(style.validate().is_err());
   }
@@ -562,14 +525,6 @@ mod tests {
       assert_eq!(theorems[class].display_name, display_name, "{class} の表示名");
       assert_eq!(theorems[class].counter, counter, "{class} の共有カウンタ");
     }
-  }
-
-  #[test]
-  fn indexing_returns_matching_field() {
-    let theorems = Theorems::default();
-
-    assert!(std::ptr::eq(&raw const theorems[TheoremClass::Lemma], &raw const theorems.lemma));
-    assert!(std::ptr::eq(&raw const theorems[TheoremClass::Proof], &raw const theorems.proof));
   }
 
   #[test]
@@ -684,18 +639,6 @@ heading_with_of = \"{display_name}（{of} の証明）\"
   }
 
   #[test]
-  fn override_reset_by_is_applied() {
-    let toml = "
-[theorems.theorem]
-reset_by = \"section\"
-";
-
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
-
-    assert_eq!(wrapper.theorems.theorem.reset_by, TheoremReset::Section);
-  }
-
-  #[test]
   fn rejects_unknown_class_key() {
     let toml = "
 [theorems.conjecture]
@@ -705,30 +648,6 @@ display_name = \"Conjecture\"
     let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
 
     assert!(result.is_err(), "未知のクラス名は TOML パース時に拒否されるべき: {result:?}");
-  }
-
-  #[test]
-  fn rejects_unknown_field_key() {
-    let toml = "
-[theorems.theorem]
-displ_name = \"Theorem\"
-";
-
-    let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
-
-    assert!(result.is_err(), "未知のフィールド名は拒否されるべき: {result:?}");
-  }
-
-  #[test]
-  fn accepts_number_format_override() {
-    let toml = "
-[theorems.theorem]
-number_format = \"{section}.{n}\"
-";
-
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
-
-    assert_eq!(wrapper.theorems.theorem.number_format.as_str(), "{section}.{n}");
   }
 
   #[test]

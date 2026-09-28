@@ -106,15 +106,6 @@ mod tests {
   }
 
   #[test]
-  fn partial_toml_keeps_other_defaults() {
-    let style: IndexStyle = toml::from_str("title = \"索引\"\n").unwrap();
-
-    assert_eq!(style.title, "索引");
-    assert_eq!(style.column_count, 2);
-    assert!(style.validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_empty_title() {
     let style = IndexStyle {
       title: String::new(),

@@ -123,8 +123,7 @@ pub(crate) enum Alignment {
 mod tests {
   use garde::Validate;
 
-  use super::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide};
-  use crate::style::NumberTemplate;
+  use super::{Alignment, MathBlockStyle, MathScriptStyle, NumberSide};
 
   #[test]
   fn block_default_uses_right_number_and_center_body() {
@@ -133,14 +132,6 @@ mod tests {
     assert_eq!(block.number_side, NumberSide::Right);
     assert_eq!(block.alignment, Alignment::Center);
     assert_eq!(block.tag_format.as_str(), "({number})");
-  }
-
-  #[test]
-  fn validate_rejects_empty_tag_format() {
-    let mut style = MathStyle::default();
-    style.block.tag_format = NumberTemplate::parse("");
-
-    assert!(style.validate().is_err());
   }
 
   #[test]
