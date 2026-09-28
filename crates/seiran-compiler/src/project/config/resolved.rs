@@ -56,12 +56,11 @@ pub(crate) struct OutputConfig {
 
 impl OutputConfig {
   /// `{output_dir}/{name}.pdf` のパスを返す
+  ///
+  /// `set_extension` は使わない — `name` の最後の `.` 以降を拡張子とみなして置き換えるので、
+  /// `report-v1.2` が `report-v1.pdf` になる。
   #[must_use]
-  pub(crate) fn pdf_path(&self) -> PathBuf {
-    let mut path = self.output_dir.join(&self.name);
-    path.set_extension("pdf");
-    return path;
-  }
+  pub(crate) fn pdf_path(&self) -> PathBuf { return self.output_dir.join(format!("{}.pdf", self.name)); }
 }
 
 /// PDF ページの物理設定（用紙寸法と PDF 出力）の検証済み・処理済み設定
@@ -85,4 +84,21 @@ pub(crate) struct ImageConfig {
   pub max_dpi: u32,
   /// ラスタ画像のダウンサンプリングを行うか
   pub downsample: bool,
+}
+
+#[cfg(test)]
+mod tests {
+  use std::path::PathBuf;
+
+  use super::OutputConfig;
+
+  #[test]
+  fn pdf_path_appends_the_extension_even_when_the_name_contains_a_dot() {
+    let output = OutputConfig {
+      name: "report-v1.2".to_string(),
+      output_dir: PathBuf::from("/project/out"),
+    };
+
+    assert_eq!(output.pdf_path(), PathBuf::from("/project/out/report-v1.2.pdf"));
+  }
 }
