@@ -175,7 +175,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
    - `crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`）。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外
    - `*` を避け明示 import。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
    - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)] pub(crate) use`（本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数（型から切り離せない。#696）
-4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かと長さは人が見る。長さの規律は「簡潔さ」節）
+4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かと長さは人が見る。長さの規律は「簡潔さ」節）。doc が正典を兼ねる箇所（`//!`・設定キー・`--help`）を lint 1 枚で守る代価として、名前の日本語化だけの 1 行は可。名前・型に無い情報（単位・由来・値域・`None` の意味）はその 1 行へ載せる
 5. **`unreachable!` は積極的に使う**: 型で表現不能にできない「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` でごまかさず `unreachable!`。入力（ソース・設定）由来で到達しうる状態は miette 診断エラー。メッセージには「なぜ到達しないか」＝上流のどの検証が保証するかを書く
 6. **panic は根拠を書いてから落とす**
    - 本体で `.unwrap()` は使わず `.expect("なぜ落ちないか")`（条件の言い換えは不可。同じ根拠が並ぶならヘルパへ畳む）。`assert!` 系にもメッセージ必須（テストでは発火しないので素の `assert_eq!` でよい）
@@ -227,7 +227,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 - **整理 PR は「消したもの」を言えるときだけ**: case・状態・型・検査・重複のどれを消したかを PR 本文に書く。書けない整理は構造を動かしただけなので出さない。機能追加・バグ修正・診断の改善は対象外
 - **新しい型（struct / enum / newtype）は不変条件を運ぶときだけ**: その型があることで分岐・検査・`unreachable!` を省くコードが実在すること。名前を付けるため・読みやすさのためだけなら素の型・既存 enum の variant で書く。**診断のためでも例外なし** — キー名や対象パスを文言に載せるのは `#[serde(deserialize_with)]` の関数や既存エラー型のフィールド・variant で行い、newtype + 手書き `Visitor` や呼び元ごとに `code` を変えるためだけの enum は作らない（削るのは構造であって診断ではない）
-- **doc は「なぜ / 不変条件」を数行**: 何をするか 1 行と、上流のどの保証に依存するか・何を保証するか・なぜこの形か。本体の言い換え・手順の再掲・呼び出し関係の列挙は書かない（必須ルール 4 は有無だけ検査する）
+- **コメントは「なぜ / 不変条件」を数行**: doc も `//` も、書くのは上流のどの保証に依存するか・何を保証するか・なぜこの形か・外部仕様との対応（doc はこれに何をするか 1 行を足す）。本体・テスト名・assert 文言の言い換え、手順の実況、呼び出し関係の列挙、他 doc との重複、経緯（「旧実装では」。なぜを issue で決めたなら番号を添える）は書かない（必須ルール 4 は有無だけ検査する）
 
 ### エラーハンドリング・バリデーション
 
@@ -258,7 +258,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 ### テスト
 
 - 入力は `tests/text/`（機能別 `.sei`）、フォントと CSL は `vendor/fonts/` / `vendor/csl/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
-- AAA。`// Arrange` / `// Act` / `// Assert` は 3 段が実際に複数行へ分かれるテストだけ。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
+- AAA。3 段は空行で分け、`// Arrange` / `// Act` / `// Assert` のラベルは書かない（段の「なぜ」は普通の `//` コメントで）。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
 - 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` の 9 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
