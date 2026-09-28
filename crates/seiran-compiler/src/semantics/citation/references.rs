@@ -10,8 +10,6 @@ mod reference;
 
 use std::{collections::HashMap, path::Path};
 
-// `Date` / `Name` / `ReferenceType` / `NumberOrString` は [`Reference`] のフィールド型として
-// 生きているが、名前を再エクスポートする必要はない（外から名指しする消費者がいない）。
 pub(crate) use error::ReadReferencesError;
 pub(crate) use reference::{Reference, References};
 use tracing::debug;
@@ -42,7 +40,7 @@ impl Format {
 /// 参照定義ファイルを読み込む。
 ///
 /// `path` が `None` の場合は空の参照定義を返す。`path` は `project::config::load` が `PathResolver` で
-/// 解決済みの `ProjectPath` を渡す想定で、このクレート自身は相対パスの解決を行わない。
+/// 解決済みなので、ここでは相対パスを解決しない。
 ///
 /// # Errors
 ///
@@ -149,13 +147,8 @@ mod tests {
 
   #[test]
   fn read_references_returns_empty_when_path_is_none() {
-    // Arrange
     let source = FilesystemProjectSource;
-
-    // Act
     let result: super::References = read_references(&source, None).unwrap();
-
-    // Assert
     assert!(result.is_empty());
   }
 
@@ -168,18 +161,13 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_empty_id() {
-    // Arrange
     let toml = String::from(
       "[\"\"]\n\
        type = \"book\"\n\
        [[\"\".author]]\n\
        family = \"Doe\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
@@ -188,18 +176,13 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_whitespace_only_id() {
-    // Arrange
     let toml = String::from(
       "[\"  \"]\n\
        type = \"book\"\n\
        [[\"  \".author]]\n\
        family = \"Doe\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
@@ -208,7 +191,6 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_duplicate_toml_keys() {
-    // Arrange
     let toml = String::from(
       "[dup]\n\
        type = \"book\"\n\
@@ -219,17 +201,12 @@ mod tests {
        [[dup.author]]\n\
        family = \"Roe\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
   }
 
   #[test]
   fn parse_references_reads_personal_author() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -238,11 +215,7 @@ mod tests {
        given = \"John\"\n\
        suffix = \"Jr.\"\n",
     );
-
-    // Act
     let refs = parse_references(&toml, dummy_source()).unwrap();
-
-    // Assert
     let author = &refs.0["ref1"].author.as_ref().unwrap()[0];
     assert_eq!(
       *author,
@@ -258,18 +231,13 @@ mod tests {
 
   #[test]
   fn parse_references_reads_organization_author() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
        [[ref1.author]]\n\
        literal = \"ACME Corp\"\n",
     );
-
-    // Act
     let refs = parse_references(&toml, dummy_source()).unwrap();
-
-    // Assert
     let author = &refs.0["ref1"].author.as_ref().unwrap()[0];
     assert_eq!(
       *author,
@@ -281,7 +249,6 @@ mod tests {
 
   #[test]
   fn parse_references_fails_when_author_has_both_family_and_literal() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -289,11 +256,7 @@ mod tests {
        family = \"Doe\"\n\
        literal = \"ACME Corp\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
@@ -302,18 +265,13 @@ mod tests {
 
   #[test]
   fn parse_references_fails_when_author_has_neither_family_nor_literal() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
        [[ref1.author]]\n\
        given = \"John\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
   }
 
@@ -409,13 +367,8 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_empty_id_for_json() {
-    // Arrange
     let json = json_doc("{\"\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}}");
-
-    // Act
     let result = parse_references(&json, dummy_json_source());
-
-    // Assert
     let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
       panic!("expected ParseJson, got {result:?}");
     };
@@ -479,7 +432,6 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_date_range_in_toml() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -488,11 +440,7 @@ mod tests {
        [ref1.issued]\n\
        date-parts = [[2024, 1, 15], [2024, 12, 31]]\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
@@ -501,7 +449,6 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_date_range_in_json() {
-    // Arrange
     let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
@@ -509,11 +456,7 @@ mod tests {
          \"author\": [{\"family\": \"Doe\"}]\
        }}",
     );
-
-    // Act
     let result = parse_references(&json, dummy_json_source());
-
-    // Assert
     let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
       panic!("expected ParseJson, got {result:?}");
     };
@@ -524,7 +467,6 @@ mod tests {
   fn parse_references_rejects_raw_date_in_toml() {
     let message = issued_toml_error("raw = \"2014-05-01\"");
 
-    // 診断はキー名を言い、toml のスニペットが該当エントリの日付テーブルを指す
     assert!(message.contains("`raw`"), "{message}");
     assert!(message.contains("`date-parts`"), "{message}");
     assert!(message.contains("[ref1.issued]"), "{message}");
@@ -675,18 +617,13 @@ mod tests {
       ("date-parts = [[2014, 1, 1]]", 1, Some(1)),
       ("date-parts = [[2014, 12, 31]]", 12, Some(31)),
     ] {
-      // Arrange
       let toml = format!(
         "[ref1]\n\
          type = \"book\"\n\
          [ref1.issued]\n\
          {body}\n"
       );
-
-      // Act
       let references = parse_references(&toml, dummy_source()).unwrap();
-
-      // Assert
       let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
       assert_eq!(issued.parts.get(1), Some(&expected_month), "{body}");
       assert_eq!(issued.parts.get(2), expected_day.as_ref(), "{body}");
@@ -739,25 +676,20 @@ mod tests {
 
   #[test]
   fn parse_references_accepts_integer_years_within_i16() {
-    // 負数は紀元前。i16 の両端まで受理し、値をそのまま保持する
+    // 負数は紀元前
     for (body, expected) in [
       ("date-parts = [[-32768]]", -32768i16),
       ("date-parts = [[32767, 12, 31]]", 32767i16),
       ("date-parts = [[-100, 5]]", -100i16),
       ("date-parts = [[0]]", 0i16),
     ] {
-      // Arrange
       let toml = format!(
         "[ref1]\n\
          type = \"book\"\n\
          [ref1.issued]\n\
          {body}\n"
       );
-
-      // Act
       let references = parse_references(&toml, dummy_source()).unwrap();
-
-      // Assert
       let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
       assert_eq!(issued.parts.first(), Some(&expected), "{body}");
     }
@@ -771,7 +703,6 @@ mod tests {
       (3, Season::Autumn),
       (4, Season::Winter),
     ] {
-      // Arrange
       let toml = format!(
         "[ref1]\n\
          type = \"book\"\n\
@@ -779,11 +710,7 @@ mod tests {
          date-parts = [[2014]]\n\
          season = {number}\n"
       );
-
-      // Act
       let references = parse_references(&toml, dummy_source()).unwrap();
-
-      // Assert
       let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
       assert_eq!(issued.season, Some(expected), "season = {number}");
     }
@@ -828,17 +755,12 @@ mod tests {
 
   #[test]
   fn parse_references_accepts_false_circa() {
-    // Arrange
     let toml = "[ref1]\n\
                 type = \"book\"\n\
                 [ref1.issued]\n\
                 date-parts = [[2014]]\n\
                 circa = false\n";
-
-    // Act
     let references = parse_references(toml, dummy_source()).unwrap();
-
-    // Assert
     let issued = references.get("ref1").unwrap().issued.as_ref().unwrap();
     assert_eq!(issued.circa, Some(false));
   }
@@ -911,7 +833,6 @@ mod tests {
 
   #[test]
   fn read_references_accepts_number_variables_as_integers_and_strings_in_toml() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -922,12 +843,8 @@ mod tests {
        [[ref1.author]]\n\
        family = \"Doe\"\n",
     );
-
-    // Act
     let refs = parse_references(&toml, dummy_source()).unwrap();
     let reference = refs.get("ref1").unwrap();
-
-    // Assert
     assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
     assert!(
       matches!(reference.edition, Some(NumberOrString::Float(value)) if (value.get() - 2.5).abs() < f64::EPSILON)
@@ -938,7 +855,6 @@ mod tests {
 
   #[test]
   fn read_references_accepts_number_variables_as_integers_and_strings_in_json() {
-    // Arrange
     let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
@@ -949,12 +865,8 @@ mod tests {
          \"author\": [{\"family\": \"Doe\"}]\
        }}",
     );
-
-    // Act
     let refs = parse_references(&json, dummy_json_source()).unwrap();
     let reference = refs.get("ref1").unwrap();
-
-    // Assert
     assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
     assert!(
       matches!(reference.edition, Some(NumberOrString::Float(value)) if (value.get() - 2.5).abs() < f64::EPSILON)
@@ -976,22 +888,16 @@ mod tests {
         ("+inf", "inf"),
         ("-inf", "-inf"),
       ] {
-        // Arrange
         let toml = format!(
           "[ref1]\n\
            type = \"book\"\n\
            {key} = {value}\n"
         );
-
-        // Act
         let result = parse_references(&toml, dummy_source());
-
-        // Assert
         let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
           panic!("{key} = {value}: expected ParseToml, got {result:?}");
         };
         let message = source.to_string();
-        // スニペットがキーの行を指し、文言が違反値と受理集合を示す
         assert!(message.contains(&format!("{key} = {value}")), "{key} = {value}: {message}");
         assert!(message.contains(&format!("`{shown}`")), "{key} = {value}: {message}");
         assert!(message.contains("整数・有限の数・文字列"), "{key} = {value}: {message}");
@@ -1007,17 +913,12 @@ mod tests {
       ("-0.0", -0.0f64),
       ("1e300", 1e300f64),
     ] {
-      // Arrange
       let toml = format!(
         "[ref1]\n\
          type = \"book\"\n\
          volume = {value}\n"
       );
-
-      // Act
       let references = parse_references(&toml, dummy_source()).unwrap();
-
-      // Assert
       let Some(NumberOrString::Float(volume)) = references.get("ref1").unwrap().volume else {
         panic!("volume = {value} は非整数として受理されるはず");
       };
@@ -1027,7 +928,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_non_number_non_string_number_variable() {
-    // 真偽値・配列は従来も拒否していたが、untagged の汎用文言ではなく受理集合を案内する
+    // untagged の汎用文言ではなく受理集合を案内する
     for value in ["true", "[1]"] {
       let toml = format!(
         "[ref1]\n\
@@ -1063,13 +964,8 @@ mod tests {
       ("9223372036854775808", false),
       ("18446744073709551615", false),
     ] {
-      // Arrange
       let json = json_doc(&format!("{{\"ref1\": {{\"type\": \"book\", \"volume\": {literal}}}}}"));
-
-      // Act
       let references = parse_references(&json, dummy_json_source()).unwrap();
-
-      // Assert
       let volume = &references.get("ref1").unwrap().volume;
       if expect_integer {
         assert!(matches!(volume, Some(NumberOrString::Integer(i64::MAX))), "{literal}: {volume:?}");
@@ -1081,7 +977,6 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_unknown_field_in_reference() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -1089,17 +984,12 @@ mod tests {
        [[ref1.author]]\n\
        family = \"Doe\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
   }
 
   #[test]
   fn parse_references_rejects_unknown_field_in_name() {
-    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -1107,29 +997,19 @@ mod tests {
        family = \"Doe\"\n\
        unknown_name_field = \"oops\"\n",
     );
-
-    // Act
     let result = parse_references(&toml, dummy_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
   }
 
   #[test]
   fn parse_references_rejects_non_table_top_level_value() {
-    // Arrange
     let toml = "unexpected = true\n";
-
-    // Act
     let result = parse_references(toml, dummy_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
   }
 
   #[test]
   fn parse_references_rejects_unknown_date_field() {
-    // Arrange
     let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
@@ -1137,26 +1017,17 @@ mod tests {
          \"author\": [{\"family\": \"Doe\"}]\
        }}",
     );
-
-    // Act
     let result = parse_references(&json, dummy_json_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
   }
 
   #[test]
   fn parse_references_rejects_duplicate_json_keys() {
-    // Arrange
     let json = json_doc(
       "{\"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}, \
         \"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Roe\"}]}}",
     );
-
-    // Act
     let result = parse_references(&json, dummy_json_source());
-
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
   }
 }

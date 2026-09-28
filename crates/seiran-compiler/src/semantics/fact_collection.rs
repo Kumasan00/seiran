@@ -180,7 +180,6 @@ impl Checker<'_> {
       },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
-      // 必須 fact を持たない variant。
       HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
@@ -204,7 +203,6 @@ impl Checker<'_> {
           "Walker が Cite の引用先を登録し損ねている: {:?}",
           inline.id
         ),
-        // 必須 fact を持たない variant。
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
         | HirInlineKind::InlineMath(_)
@@ -363,7 +361,6 @@ impl Walker<'_, '_> {
         }
       },
       HirNodeKind::MathBlock(math) => {
-        // 行 → 環境の順に採番する（環境単位の採番は行採番の後に来る）。
         for row in &math.rows {
           self.math_row(row, node.id);
         }
@@ -404,7 +401,6 @@ impl Walker<'_, '_> {
       },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
-      // 採番対象も参照箇所も含まない variant。
       HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
@@ -442,7 +438,7 @@ impl Walker<'_, '_> {
 
   /// 数式ブロックの 1 行を走査する
   ///
-  /// 未採番の行は何もしない。ラベルの診断位置は `[label=...]` 引数自身（`label_site`）を使い、
+  /// ラベルの診断位置は `[label=...]` 引数自身（`label_site`）を使い、
   /// 無ければ環境ノードの位置へフォールバックする。
   fn math_row(&mut self, row: &HirMathRow, environment: NodeId) {
     if !row.numbered {
@@ -533,7 +529,7 @@ mod tests {
     // Act
     let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
 
-    // Assert — 宣言ノードからラベルが引け、ラベルからカウンタ値が引ける
+    // Assert
     let heading = analyzed.headings().next().expect("見出しが 1 件あるはず");
     assert_eq!(analyzed.declared_label(heading.node), Some(&LabelId::new("ch:intro")));
     assert!(analyzed.counter_value_of_label(&LabelId::new("ch:intro")).is_some());
@@ -541,18 +537,16 @@ mod tests {
 
   #[test]
   fn heading_key_is_queryable_for_nested_headings() {
-    // Arrange: quote 環境の中に入れ子の見出しがある入力
     let analyzed = analyze_source("\\section{A}\n\\begin{quote}\n\\subsection{B}\n\\end{quote}\n");
-    // Act
     let keys: Vec<usize> =
       analyzed.headings().map(|heading| return analyzed.heading_key(heading.node).index()).collect();
-    // Assert: facts の順（文書順）と一致する
+    // facts の順（文書順）と一致する
     assert_eq!(keys, vec![0, 1]);
   }
 
   #[test]
   fn analyze_resolves_forward_reference_from_proof_of() {
-    // Arrange — proof が後方で定義される定理を [of=...] で参照する（前方参照）
+    // Arrange
     let hir =
       document("\\begin{proof}[of=thm:a]\n証明\n\\end{proof}\n\n\\begin{theorem}[label=thm:a]\n主張\n\\end{theorem}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
@@ -560,8 +554,7 @@ mod tests {
     // Act
     let analyzed = analyze(hir, &policy, &no_references()).expect("前方参照は解決できるはず");
 
-    // Assert — 参照箇所がちょうど 1 件で、その site から thm:a が引ける
-    // （`any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する）
+    // Assert — `any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する
     let sites: Vec<_> = analyzed.reference_sites().map(|(id, label)| return (id, label.clone())).collect();
     assert_eq!(sites.len(), 1, "参照箇所は [of=...] の 1 件だけのはず");
     assert_eq!(sites[0].1, LabelId::new("thm:a"));
@@ -582,7 +575,7 @@ mod tests {
     // Act
     let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
-    // Assert — span が `\ref{...}` 全体を指す
+    // Assert
     let SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
       panic!("UnresolvedReference が期待されます: {failures:?}");
     };
@@ -593,7 +586,7 @@ mod tests {
 
   #[test]
   fn analyze_resolves_ref_across_source_groups() {
-    // Arrange — 別ソースで宣言されたラベルを参照する
+    // Arrange
     let a =
       parse_source_for_test("\\chapter[label=ch:intro]{Intro}\n", SourceId::new(0)).expect("パースに成功するはず");
     let b = parse_source_for_test(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
@@ -609,7 +602,7 @@ mod tests {
 
   #[test]
   fn analyze_finds_references_in_nested_containers() {
-    // Arrange — 箇条書き・脚注・表セル・キャプションの中の `\ref` も拾う
+    // Arrange
     let hir = document(
       "\\chapter[label=ch:a]{A}\n\n\
        \\begin{itemize}\n\\item{\\ref{ch:a}}\n\\end{itemize}\n\n\
@@ -743,7 +736,7 @@ mod tests {
 
   #[test]
   fn escaped_comma_hint_is_decided_per_source() {
-    // Arrange — ソース 0 は `,` 無しと `,` 有りが混在、ソース 1 は `,` 無しだけ
+    // Arrange
     let a = parse_source_for_test(r"\cite{missing} と \cite{x\,y}", SourceId::new(0)).expect("パースに成功するはず");
     let b = parse_source_for_test(r"\cite{other}", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
@@ -752,7 +745,7 @@ mod tests {
     // Act
     let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
 
-    // Assert — 診断はソースごとに 1 つで、案内の有無もソースごとに決まる
+    // Assert
     let helps: Vec<(SourceId, bool)> = failures
       .iter()
       .map(|error| {
@@ -765,7 +758,7 @@ mod tests {
 
   #[test]
   fn analyze_finds_citation_sites_in_nested_containers() {
-    // Arrange — 表セル・箇条書き・脚注の中の引用も拾う
+    // Arrange
     let hir = document(
       "\\begin{itemize}\n\\item{\\cite{kwan2014}}\n\\end{itemize}\n\n本文\\footnote{\\cite{doe2020}}\n\n\
        \\begin{table}\n\\row{\\cite{kwan2014}}\n\\end{table}\n",
@@ -781,7 +774,7 @@ mod tests {
 
   #[test]
   fn analyze_is_deterministic() {
-    // Arrange — CSL 非依存は `analyze` が `Style` / CSL を一切引数に取らないことで型として
+    // Arrange — CSL 非依存は `collect_facts` が `Style` / CSL を一切引数に取らないことで型として
     // 保証されており、ここでは同じ HIR + 同じ references から同じ facts が得られる決定性を固定する
     let policy = SemanticPolicy::from_style(&Style::default());
     let source = r"\cite{kwan2014} と \cite{doe2020}";
@@ -839,7 +832,7 @@ mod tests {
 
   #[test]
   fn duplicate_label_across_sources_points_to_the_first_definition_in_the_other_source() {
-    // Arrange — 最初の定義はソース 0、重複はソース 1
+    // Arrange
     let first = parse_source_for_test("\\chapter[label=dup]{A}\n", SourceId::new(0)).expect("パースに成功するはず");
     let second =
       parse_source_for_test("本文。\n\n\\chapter[label=dup]{B}\n", SourceId::new(1)).expect("パースに成功するはず");
@@ -849,7 +842,7 @@ mod tests {
     // Act
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
-    // Assert — 主診断は重複側のソースに帰属してラベルは 2 回目の 1 本だけ。最初の定義は別ソースの関連位置になる
+    // Assert
     let error = failures.first();
     assert_eq!(error.source_id(), SourceId::new(1));
     let SemanticError::DuplicateLabel { labels, .. } = error else {
@@ -901,13 +894,13 @@ mod tests {
     // Act
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
-    // Assert — 束ねず 2 件返す
+    // Assert
     assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string(); 2]);
   }
 
   #[test]
   fn analyze_continues_the_walk_after_a_duplicate_label() {
-    // Arrange — 重複ラベルの「後ろ」に未解決参照を置く
+    // Arrange
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\ref{missing} です。\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -926,7 +919,7 @@ mod tests {
 
   #[test]
   fn duplicate_label_keeps_the_first_definition() {
-    // Arrange — 重複ラベルと、そのラベルへの参照を同居させる
+    // Arrange
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\ref{dup} です。\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -941,13 +934,9 @@ mod tests {
 
   #[test]
   fn label_resolves_to_the_counter_value_of_its_definition() {
-    // Arrange — chapter → section の順に採番された見出しへラベルを付ける
     let analyzed = analyze_source("\\chapter{A}\n\n\\section[label=sec:x]{B}\n");
-
-    // Act
     let value = analyzed.counter_value_of_label(&LabelId::new("sec:x")).expect("ラベルが解決するはず");
-
-    // Assert — 定義ノードのカウンタ値そのもの（祖先チェーン込み）が引ける
+    // 定義ノードのカウンタ値そのもの（祖先チェーン込み）が引ける
     let section = analyzed.headings().nth(1).expect("見出しが 2 件あるはず");
     assert_eq!(Some(value), analyzed.counter_value(section.node));
     assert_eq!(value.own, 1);
@@ -1001,10 +990,9 @@ mod completeness_tests {
     fn analyze_facts_are_complete_for_any_element_combination(
       elements in prop::collection::vec(element_strategy(), 0..=8),
     ) {
-      // Arrange — 先頭に `\ref` / `[of=...]` の参照先になるラベル付き定理を置く
+      // Arrange
       let mut source = "\\begin{theorem}[label=l0]\n基準\n\\end{theorem}\n\n".to_string();
       for (index, element) in elements.iter().enumerate() {
-        // 宣言側のラベルは出現位置で一意にする（同じ要素が 2 回選ばれても重複しないように）
         source.push_str(&element.replace("%I%", &index.to_string()));
         source.push('\n');
       }

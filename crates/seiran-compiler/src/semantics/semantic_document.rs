@@ -28,7 +28,7 @@ pub(crate) struct SemanticDocument {
 }
 
 impl SemanticDocument {
-  /// `analyze` だけが呼べる構築子
+  /// 構築子（本体経路で呼ぶのは `analyze` だけ）
   pub(super) fn new(hir: HirDocument, facts: SemanticFacts, citations: GeneratedCitations) -> Self {
     return SemanticDocument {
       hir,

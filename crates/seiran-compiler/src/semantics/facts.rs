@@ -70,9 +70,6 @@ pub(super) struct SemanticFacts {
 impl SemanticFacts {
   /// ラベル宣言を先勝ちで記録する（ノード → ラベル / ラベル → 定義の双方向）
   ///
-  /// 定義表はこの 1 つだけで、重複の検出も未解決参照の判定も同じ表を引く。2 つの表が
-  /// 別の勝ち方をすることが原理的に無いので、呼び出し手順で整合させる必要がない。
-  ///
   /// # Errors
   ///
   /// 同名ラベルが既に定義済みなら何も記録せず、最初の定義を返します。
@@ -114,7 +111,7 @@ mod tests {
     // Act
     let second = facts.declare_label(id(2), "sec:x", id(2));
 
-    // Assert — 先勝ち。2 回目は記録されず、最初の定義が返る
+    // Assert
     let Err(first) = second else {
       panic!("重複した宣言は Err になるはず");
     };
@@ -133,13 +130,9 @@ mod tests {
 
   #[test]
   fn declare_label_records_the_diagnostic_site_apart_from_the_node() {
-    // Arrange — 数式行のように fact の鍵と診断位置が別ノードになる場合
+    // 数式行のように fact の鍵と診断位置が別ノードになる場合
     let mut facts = SemanticFacts::default();
-
-    // Act
     facts.declare_label(id(4), "eq:x", id(5)).expect("初回の宣言は成功するはず");
-
-    // Assert
     let definition = facts.label_definition("eq:x").expect("定義を引けるはず");
     assert_eq!(definition.node, id(4), "fact の鍵は宣言ノード");
     assert_eq!(definition.site, id(5), "診断位置は [label=...] 引数自身");

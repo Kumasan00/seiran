@@ -251,7 +251,7 @@ mod tests {
     let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020} \cite{kwan2014}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
-    // Act — 同じ facts + 同じ CSL で 2 回生成する
+    // Act
     let first = generate_citations(&analyzed.citations, &references, &compiled);
     let second = generate_citations(&analyzed.citations, &references, &compiled);
 
@@ -270,12 +270,9 @@ mod tests {
 
   #[test]
   fn generating_with_different_csl_produces_different_bibliography() {
-    // Arrange — `generate_citations` は引用箇所の side table と `&CompiledCitationStyle` を
-    // 共有参照でしか受け取らない（`&mut` を取らない）ため、呼び出し元の authored HIR や facts を
-    // 書き換える経路はそもそも型として存在しない（「CSL を変えても authored HIR と引用 facts は
-    // 変化しない」という受け入れ条件は、この型シグネチャ自体が保証する）。ここで固定するのは
-    // 「CSL を変えれば書誌の表示内容が変わる」という一点だけ（受け入れ条件の対偶: 同じ facts と CSL
-    // からは同じ表示・書誌が得られる一方、CSL が異なれば生成物も異なる）。
+    // Arrange — CSL を変えても authored HIR と facts が変わらないことは、`generate_citations` が
+    // 共有参照しか受け取らないシグネチャが保証する。ここで固定するのは「CSL を変えれば書誌の
+    // 表示内容が変わる」の一点だけ。
     let references = sample_references();
     let analyzed = analyzed(r"本文 \cite{kwan2014}", &references);
     let base = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");

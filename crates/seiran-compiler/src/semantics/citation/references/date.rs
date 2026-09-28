@@ -72,7 +72,6 @@ enum DatePart {
 
 /// 季節（CSL の季節番号 1〜4）。
 ///
-/// 受理は整数 1〜4 だけで、整形器が季節として読む値と 1 対 1 に対応させる（文字列・範囲外は拒否）。
 /// 受理集合を整形器の版に引きずらせないため、整形器の `Season` 型ではなく自前の型で持つ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Season {
@@ -114,8 +113,7 @@ impl<'de> Deserialize<'de> for Season {
   where
     D: serde::Deserializer<'de>,
   {
-    /// `Season` のデシリアライズを担う `Visitor`。整数以外（文字列・浮動小数点数）は `expecting` の
-    /// 文言で型不一致として拒否する。
+    /// `Season` のデシリアライズを担う `Visitor`。
     struct SeasonVisitor;
 
     impl Visitor<'_> for SeasonVisitor {
@@ -169,7 +167,7 @@ impl<'de> Deserialize<'de> for Circa {
   where
     D: serde::Deserializer<'de>,
   {
-    /// `Circa` のデシリアライズを担う `Visitor`。真偽値以外（整数・文字列）は型不一致として拒否する。
+    /// `Circa` のデシリアライズを担う `Visitor`。
     struct CircaVisitor;
 
     impl Visitor<'_> for CircaVisitor {
@@ -332,8 +330,6 @@ impl<'de> Deserialize<'de> for Date {
 
 impl Serialize for Date {
   /// CSL-JSON の date オブジェクトとして出力する。
-  ///
-  /// 単一日付の `parts` を外側配列で包んで `date-parts` とし、`season` / `circa` があれば併せて出力する。
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: serde::Serializer,

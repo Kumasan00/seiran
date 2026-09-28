@@ -34,8 +34,6 @@ impl<'de> Deserialize<'de> for References {
 }
 
 /// 参照定義マップを参照 ID の検証付きでデシリアライズする。
-///
-/// 空・空白のみの参照 ID と重複キーを拒否する。
 fn deserialize_unique_references<'de, D>(deserializer: D) -> Result<HashMap<String, Reference>, D::Error>
 where
   D: Deserializer<'de>,
@@ -531,8 +529,7 @@ impl<'de> Deserialize<'de> for NumberOrString {
   where
     D: Deserializer<'de>,
   {
-    /// `NumberOrString` のデシリアライズを担う `Visitor`。真偽値・配列・テーブルは `expecting` の文言で
-    /// 型不一致として拒否する。
+    /// `NumberOrString` のデシリアライズを担う `Visitor`。
     struct NumberOrStringVisitor;
 
     impl Visitor<'_> for NumberOrStringVisitor {

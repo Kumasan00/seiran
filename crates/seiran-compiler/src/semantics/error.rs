@@ -45,7 +45,6 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 ///
 /// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
 /// 「このソースの `\cite` キーが参照定義と合っていない」という 1 問題として読めるため）。
-/// miette は 1 診断につき `source_code` を 1 つしか持てないので、ソースを跨いで束ねることはできない。
 /// そのソースの未定義キーに `,` を含むものが 1 つでもあれば、help に `\,` の案内を足す（#751）。
 ///
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
@@ -181,10 +180,6 @@ impl SemanticError {
   }
 
   /// ラベル `label` の重複定義 `duplicate` を、最初の定義 `first` とともに報告する診断を作る。
-  ///
-  /// 最初の定義が同じソースにあれば同じスニペットの 2 本目のラベルとして示す。別ソースにあれば
-  /// ラベルは 2 回目の 1 本だけで、最初の定義は [`SemanticError::first_definition_elsewhere`] が
-  /// 返す関連診断になる（本文を添えるのは compiler）。
   pub(crate) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
     let mut labels = vec![LabeledSpan::new_primary_with_span(
       Some("このラベルは既に定義されています".to_string()),
@@ -202,9 +197,6 @@ impl SemanticError {
   }
 
   /// この診断と同じ 1 つの問題を、主診断とは別のソースで示す関連診断を返す（無ければ `None`）。
-  ///
-  /// 関連診断は `SourceId` と span だけを持ち本文を持たない。本文を添えて主診断の `related` へ連結するのは
-  /// compiler の `SourceDiagnostic`（1 診断が持てる `source_code` は 1 つなので、主診断の本文では描けない）。
   #[must_use]
   pub(crate) fn first_definition_elsewhere(&self) -> Option<FirstLabelDefinition> {
     return match self {
@@ -279,13 +271,8 @@ mod tests {
 
   #[test]
   fn group_unknown_citations_attaches_first_site_of_each_source() {
-    // Arrange — ソース 0 に 2 箇所、ソース 1 に 1 箇所（文書順）
     let sites = [site(0, 3, "a"), site(0, 7, "b"), site(1, 5, "c")];
-
-    // Act
     let grouped = group_unknown_citations(&sites);
-
-    // Assert — ソースごとに 1 診断。添える位置はそのソースの最初の箇所で、ラベル数は箇所数
     let summary: Vec<(NodeId, SourceId, usize)> = grouped
       .iter()
       .map(|(first_site, error)| {

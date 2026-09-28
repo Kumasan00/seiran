@@ -40,9 +40,7 @@ pub(crate) enum GeneratedInline {
 
   /// 書体指定テキスト（CSL 整形が太字・斜体を表現する際に使う）
   ///
-  /// 3 ファミリ（serif / sans / mono）× 4 スタイル（normal / bold / italic / bolditalic）の
-  /// 組み合わせを 1 variant = 1 `FontKind` で明示する。ネスト時は内側の `kind` が
-  /// 完全に上書きする（`HirMathKind::Styled` と同じ規則で、親スタイルとの合成はしない）。
+  /// ネスト時は内側の `kind` が完全に上書きする（`HirMathKind::Styled` と同じ規則で、親スタイルとの合成はしない）。
   Styled {
     /// 適用する書体（Lowering 層でそのまま `TextStyle.font_kind` になる）
     kind: FontKind,
@@ -68,7 +66,6 @@ impl GeneratedInline {
   ///
   /// スタイル情報を無視して、含まれる文字列を連結して返す。生成物（`citation::render` が
   /// 作るインライン列）は `\ref` 等の未解決参照を持たないため、解決コールバックは不要。
-  /// 見出しタイトルのプレーンテキスト取得などに使用します。
   #[must_use]
   pub(super) fn to_plain_text(&self) -> String {
     match self {
@@ -97,49 +94,33 @@ mod tests {
 
   #[test]
   fn generated_text_to_plain_text() {
-    // Arrange
     let node = GeneratedInline::Text("hello".to_string());
-
-    // Act
     let plain = node.to_plain_text();
-
-    // Assert
     assert_eq!(plain, "hello");
   }
 
   #[test]
   fn generated_styled_to_plain_text() {
-    // Arrange
     let node = GeneratedInline::Styled {
       kind: FontKind::SerifItalic,
       children: vec![GeneratedInline::Text("important".to_string())],
     };
-
-    // Act
     let plain = node.to_plain_text();
-
-    // Assert
     assert_eq!(plain, "important");
   }
 
   #[test]
   fn generated_internal_link_to_plain_text() {
-    // Arrange
     let node = GeneratedInline::InternalLink {
       target: CitationId::new("kwan2014"),
       children: vec![GeneratedInline::Text("[1]".to_string())],
     };
-
-    // Act
     let plain = node.to_plain_text();
-
-    // Assert
     assert_eq!(plain, "[1]");
   }
 
   #[test]
   fn generated_nested_to_plain_text() {
-    // Arrange
     let node = GeneratedInline::Styled {
       kind: FontKind::SerifBold,
       children: vec![
@@ -150,17 +131,12 @@ mod tests {
         },
       ],
     };
-
-    // Act
     let plain = node.to_plain_text();
-
-    // Assert
     assert_eq!(plain, "bold and italic");
   }
 
   #[test]
   fn generated_inlines_to_plain_text_mixed() {
-    // Arrange
     let inlines = vec![
       GeneratedInline::Text("Hello ".to_string()),
       GeneratedInline::Styled {
@@ -169,11 +145,7 @@ mod tests {
       },
       GeneratedInline::Text("!".to_string()),
     ];
-
-    // Act
     let plain = generated_inlines_to_plain_text(&inlines);
-
-    // Assert
     assert_eq!(plain, "Hello world!");
   }
 }

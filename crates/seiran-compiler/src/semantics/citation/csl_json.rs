@@ -54,7 +54,6 @@ fn sanitize_value(value: Value) -> Value {
   return match value {
     Value::Object(map) => Value::Object(sanitize_object(map)),
     Value::Array(items) => Value::Array(items.into_iter().map(sanitize_value).collect()),
-    // 非整数だけ文字列化する（`Item` の `Value` は i64 しか持てない）。整数はそのまま通す。
     Value::Number(n) => {
       if n.is_f64() {
         Value::String(n.to_string())
@@ -85,7 +84,6 @@ mod tests {
 
   #[test]
   fn sanitize_value_normalizes_every_json_variant() {
-    // Arrange
     let input = serde_json::json!({
       "integer": 2014,
       "float": 1.5,
@@ -94,13 +92,8 @@ mod tests {
       "nested": { "float": 0.5, "absent": null },
       "list": [2.5, 3, "x", null],
     });
-
-    // Act
     let output = sanitize_value(input);
-
-    // Assert
-    // 非整数だけ文字列化し、整数・文字列・真偽値はそのまま。object / array は再帰し、
-    // object のキーに付いた null だけが落ちる（array の null は要素位置を保つため残る）。
+    // object のキーに付いた null だけが落ちる（array の null は要素位置を保つため残る）
     assert_eq!(
       output,
       serde_json::json!({

@@ -20,13 +20,10 @@ use crate::{
 
 /// HIR を意味解析し、引用の表示と書誌を生成して [`SemanticDocument`] にまとめて返す。
 ///
-/// `document`（HIR）からラベル・参照・カウンタ・見出し・引用箇所の事実を取り、引用箇所の事実から
-/// 表示インライン列と書誌を生成する。生成物は著者が書いた文書木へは一切書き戻さない。
-///
 /// # Errors
 ///
-/// 意味解析（重複ラベル・未解決参照・未定義引用キー）、CSL スタイルの読込、または表示の生成に
-/// 失敗した場合にエラーを返す。
+/// 意味解析（重複ラベル・未解決参照・未定義引用キー）または CSL スタイルの読込に失敗した場合に
+/// エラーを返す。
 pub(crate) fn analyze(
   source: &dyn ProjectSource,
   document: HirDocument,
@@ -34,8 +31,7 @@ pub(crate) fn analyze(
   style: &Style,
 ) -> Result<SemanticDocument, AnalyzeError> {
   // ラベル・参照・カウンタ・見出し・引用箇所の走査はここで完了する
-  // （以降 `\cite` のキーは必ず参照定義に存在する）。走査には表示設定を渡さない
-  // （`SemanticPolicy` は値に影響する設定だけの投影）。
+  // （以降 `\cite` のキーは必ず参照定義に存在する）。
   let policy = SemanticPolicy::from_style(style);
   let facts = fact_collection::collect_facts(&document, &policy, references)?;
   let citations = generate(source, &facts, references, style)?;
@@ -148,7 +144,7 @@ mod tests {
 
   #[test]
   fn analyze_maps_resolve_error() {
-    // Arrange — 未解決の \ref を含むソース（引用なし）を渡し、Resolve エラーへ写像されることを確認する
+    // Arrange — 未解決の \ref を含むソース（引用なし）を渡し、`AnalyzeError::Analyze` へ写像されることを確認する
     let source = MemoryProjectSource::new();
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");

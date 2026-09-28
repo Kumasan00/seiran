@@ -70,7 +70,7 @@ fn citation_children_to_inlines(children: &ElemChildren, targets: &[CitationId])
   return out;
 }
 
-/// [`citation_children_to_inlines`] の再帰本体。`ElemChildren` を走査して `out` に積む。
+/// [`citation_children_to_inlines`] の再帰本体。
 fn collect_citation_inlines(children: &ElemChildren, targets: &[CitationId], out: &mut Vec<GeneratedInline>) {
   for child in &children.0 {
     match child {

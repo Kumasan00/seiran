@@ -1,7 +1,7 @@
 //! カウンタの値（構造のみ）と、カウンタの現在値を保持するレジストリ
 //!
 //! [`CounterValue`] は `resets` / `reset_by`（値に影響する style フィールド）だけから
-//! 組み立てる。`number_format` 等の表示側フィールドはこのクレートが一切読まないことで、
+//! 組み立てる。`number_format` 等の表示側フィールドを意味解析が一切読まないことで、
 //! G3（内容は見た目から独立）を型の設計として保証する。表示文字列の生成は typeset 側の
 //! 責務（`typeset::lowering::counter`）。
 //!
@@ -9,11 +9,6 @@
 //! 構造であって表示ではないので、値と表示の分離（#282）と矛盾しない。**祖先の決め方を
 //! 持つのは crate 内でこの module だけ**で、表示側は受け取った値を名前で引くだけになる
 //! （#665）。
-//!
-//! [`CounterRegistry`] は `typeset::lowering::counter::CounterRegistry`（issue #282 以前）から
-//! 移設したもの。移設にあたり `increment` 系メソッドの戻り値を書式化済み `String` から
-//! この構造値 [`CounterValue`] のみに変更し、`ref_format` 展開・`number_format` 展開などの
-//! 表示生成コードは一切持ち込んでいない
 //!
 //! ラベルの定義表は持たない — ラベルは意味の事実なので `semantics::facts` の 1 表が先勝ちで
 //! 持ち、レジストリは採番だけを担う（#666）。
@@ -52,7 +47,7 @@ pub(crate) struct CounterPart {
 }
 
 /// カウンタの値（構造のみ）。表示書式（`number_format` / `ref_format` / `number_style`）は
-/// このクレートの対象外（typeset 側が `&crate::style::Style` と併せて表示文字列を作る）
+/// 意味解析の対象外（typeset 側が `&crate::style::Style` と併せて表示文字列を作る）
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CounterValue {
   /// このカウンタの種別
@@ -136,14 +131,6 @@ impl<'p> CounterRegistry<'p> {
   fn value(&self, name: CounterName) -> u32 { return self.values.get(&name).copied().unwrap_or(0); }
 
   /// 指定カウンタの現在値を、祖先チェーンを辿って [`CounterValue`] として返す
-  ///
-  /// 表示側フィールド（`number_format` 等）は一切参照しない。祖先は「自分を `resets` に
-  /// 含み、かつ `CounterName::VARIANTS` の宣言順で自身より手前にあるカウンタのうち最も近いもの」
-  /// を 1 段ずつ遡って求める（`resets` は値に影響する構造データであり、issue #282 の
-  /// style 分類では「値側」に属する）。既定の `Counters` は祖先の `resets` に子孫を平坦に
-  /// 列挙する（例: `part.resets` は `chapter` を含む）ため、探索範囲を「自身より手前」に
-  /// 限定して最も近い候補を選ぶ。これにより祖先の飛び越え（`part` が `section` の直接の
-  /// 親と誤認されること）を防ぎ、かつ候補の添字が再帰のたびに単調に減るため必ず停止する
   #[must_use]
   fn counter_value(&self, name: CounterName) -> CounterValue {
     return CounterValue {
@@ -154,6 +141,12 @@ impl<'p> CounterRegistry<'p> {
   }
 
   /// `name` の祖先カウンタの現在値を、最も遠い祖先から順に集める（末尾が直近の親）
+  ///
+  /// 祖先は「自分を `resets` に含み、かつ `CounterName::VARIANTS` の宣言順で自身より手前にある
+  /// カウンタのうち最も近いもの」を 1 段ずつ遡って求める。既定の `Counters` は祖先の `resets` に
+  /// 子孫を平坦に列挙する（例: `part.resets` は `chapter` を含む）ため、探索範囲を「自身より手前」に
+  /// 限定して最も近い候補を選ぶ。これにより祖先の飛び越え（`part` が `section` の直接の
+  /// 親と誤認されること）を防ぎ、かつ候補の添字が再帰のたびに単調に減るため必ず停止する
   fn ancestor_values(&self, name: CounterName) -> Vec<CounterPart> {
     let own_index = CounterName::VARIANTS
       .iter()
@@ -236,14 +229,9 @@ mod tests {
 
   #[test]
   fn increment_theorem_proof_is_unnumbered() {
-    // Arrange
     let policy = default_policy();
     let mut r = CounterRegistry::from_policy(&policy);
-
-    // Act
     let value = r.increment_theorem(TheoremClass::Proof);
-
-    // Assert
     assert!(value.is_none());
   }
 
@@ -309,8 +297,8 @@ mod tests {
     let mut r = CounterRegistry::from_policy(&policy);
 
     // Act
-    r.increment(CounterName::Part); // I
-    r.increment(CounterName::Part); // II
+    r.increment(CounterName::Part);
+    r.increment(CounterName::Part);
     let ch = r.increment(CounterName::Chapter);
 
     // Assert
