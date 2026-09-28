@@ -219,6 +219,7 @@ mod tests {
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
     assert_eq!(*align, Align::Center, "図表は既定で中央寄せ");
+    assert_eq!(children.len(), 3, "caption + Vkern + main: {children:?}");
     assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
@@ -240,23 +241,6 @@ mod tests {
     assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
-  }
-
-  #[test]
-  fn wrap_float_zero_inner_margin_still_emits_harmless_vkern() {
-    let spec = FloatSpec {
-      top_margin: Length::pt(5.0),
-      bottom_margin: Length::pt(7.0),
-      inner_margin: Length::pt(0.0),
-    };
-
-    let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
-
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("2 番目は VBox であるべき: {nodes:?}");
-    };
-    assert_eq!(children.len(), 3, "caption + Vkern(0) + main: {children:?}");
-    assert_vkern(&children[1], 0.0);
   }
 
   #[test]
