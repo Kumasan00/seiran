@@ -37,7 +37,7 @@ use crate::{
 #[derive(Debug, Error, miette::Diagnostic)]
 pub(crate) enum FontLoadError {
   /// フォントを解析できない。
-  #[error("{font_type:?} のフォント解析に失敗しました (index: {index})")]
+  #[error("{} のフォント解析に失敗しました (index: {index})", .font_type.as_toml_key())]
   #[diagnostic(
     code(typeset::font::parse),
     help(
@@ -54,7 +54,7 @@ pub(crate) enum FontLoadError {
     source: read_fonts::ReadError,
   },
   /// メトリクス取得に必要な OpenType テーブルを読めない。
-  #[error("{font_type:?} の {table} テーブルの読み込みに失敗しました")]
+  #[error("{} の {table} テーブルの読み込みに失敗しました", .font_type.as_toml_key())]
   #[diagnostic(
     code(typeset::font::metrics_table),
     help("入力フォントが壊れていないか、font_index が正しいかを確認してください。")
@@ -133,4 +133,27 @@ fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMetrics, Failures<
       descender: f32::from(hhea.descender().to_i16()),
     });
   });
+}
+
+#[cfg(test)]
+mod tests {
+  use super::FontLoadError;
+  use crate::project::FontType;
+
+  #[test]
+  fn messages_name_the_font_type_by_its_config_key() {
+    let parse = FontLoadError::ParseFont {
+      font_type: FontType::SansSerifBold,
+      index: 0,
+      source: read_fonts::ReadError::OutOfBounds,
+    };
+    let metrics = FontLoadError::ReadMetricsTable {
+      font_type: FontType::SansSerifBold,
+      table: "head",
+      source: read_fonts::ReadError::OutOfBounds,
+    };
+
+    assert!(parse.to_string().starts_with("sans_serif_bold "), "{parse}");
+    assert!(metrics.to_string().starts_with("sans_serif_bold "), "{metrics}");
+  }
 }

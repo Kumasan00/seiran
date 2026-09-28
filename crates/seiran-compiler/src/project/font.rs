@@ -30,7 +30,7 @@ use crate::{
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontReadError {
   /// フォントファイルを読み込めない。
-  #[error("{font_type:?} のフォントファイルの読み込みに失敗しました: {path}")]
+  #[error("{} のフォントファイルの読み込みに失敗しました: {path}", .font_type.as_toml_key())]
   #[diagnostic(code(project::font::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
   ReadFont {
     /// フォント種別
@@ -186,5 +186,10 @@ mod tests {
     };
     let FontReadError::ReadFont { font_type, .. } = failures.first();
     assert_eq!(*font_type, FontType::ALL[0], "唯一のフォント種別が報告されるはず");
+    assert!(
+      failures.first().to_string().starts_with("serif のフォントファイル"),
+      "種別は config.toml のキーで出るはず: {}",
+      failures.first()
+    );
   }
 }
