@@ -90,7 +90,6 @@ mod tests {
 
   #[test]
   fn from_str_maps_known_values_case_insensitively() {
-    // 前後の空白と大小文字は `from_str` の中で正規化する
     assert_eq!("none".parse::<MathDelimiter>().ok(), Some(MathDelimiter::None));
     assert_eq!("paren".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Paren));
     assert_eq!("BRACKET".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bracket));

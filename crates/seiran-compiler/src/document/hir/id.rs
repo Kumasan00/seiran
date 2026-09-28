@@ -18,7 +18,7 @@ pub(crate) struct NodeId {
 }
 
 impl NodeId {
-  /// `SourceSpans` だけが呼べる構築子
+  /// `hir` 内に閉じた構築子（位置の記録と同時に呼ぶ `SourceSpans::alloc` 専用）
   pub(super) fn new(source: SourceId, local: u32) -> Self { return NodeId { source, local }; }
 
   /// 属するソースを返す

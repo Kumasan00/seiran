@@ -10,8 +10,6 @@ use crate::{
 };
 
 /// ブロックレベルの HIR ノード
-///
-/// 位置は各 variant ではなく `SourceMap` が `id` をキーに保持する。
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirNode {
   /// このノードの ID
@@ -118,9 +116,9 @@ pub(crate) struct HirMathBlock {
 pub(crate) struct HirFigure {
   /// 画像ファイルへのパス（`\image{...}` の必須引数）
   pub(crate) image_path: ProjectPath,
-  /// 画像の幅（未指定なら描画段で本文幅 / 縦横比から算出）
+  /// 画像の幅（未指定なら `typeset::image` が本文幅 / 縦横比から決める）
   pub(crate) width: Option<Length>,
-  /// 画像の高さ（未指定なら描画段で本文幅 / 縦横比から算出）
+  /// 画像の高さ（未指定なら `typeset::image` が本文幅 / 縦横比から決める）
   pub(crate) height: Option<Length>,
   /// `\image[dpi=...]` の per-image 上書き
   pub(crate) dpi: Option<u32>,

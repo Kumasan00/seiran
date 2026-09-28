@@ -26,8 +26,6 @@ impl SourceSpans {
   }
 
   /// 新しい `NodeId` を発行し、同時に span を記録する
-  ///
-  /// 親ノードの ID を子より先に確保する（予約する）用途にも使う。
   pub(super) fn alloc(&mut self, span: Span) -> NodeId {
     let Ok(local) = u32::try_from(self.spans.len()) else {
       unreachable!("1 ソースの HIR ノード数が u32::MAX を超えることはない")
@@ -115,14 +113,9 @@ mod tests {
 
   #[test]
   fn alloc_records_span_and_increments_local() {
-    // Arrange
     let mut spans = SourceSpans::new(SourceId::new(0));
-
-    // Act
     let first = spans.alloc(Span::new(0, 3));
     let second = spans.alloc(Span::new(3, 7));
-
-    // Assert
     assert_eq!(first.local(), 0);
     assert_eq!(second.local(), 1);
     assert_eq!(spans.span_of(first), Span::new(0, 3));
@@ -131,14 +124,9 @@ mod tests {
 
   #[test]
   fn set_span_overwrites_reserved_span() {
-    // Arrange
     let mut spans = SourceSpans::new(SourceId::new(0));
     let id = spans.alloc(Span::new(5, 5));
-
-    // Act
     spans.set_span(id, Span::new(5, 12));
-
-    // Assert
     assert_eq!(spans.span_of(id), Span::new(5, 12));
   }
 
@@ -164,14 +152,9 @@ mod tests {
 
   #[test]
   fn get_returns_none_for_unregistered_source() {
-    // Arrange
     let mut spans = SourceSpans::new(SourceId::new(2));
     let id = spans.alloc(Span::new(0, 1));
-
-    // Act — SourceId(2) を登録しないまま引く
     let map = SourceMap::default();
-
-    // Assert
     assert!(map.get(id).is_none());
   }
 }

@@ -3,8 +3,6 @@
 use crate::document::{MathClass, MathVariant, hir::NodeId};
 
 /// 数式レベルの HIR ノード
-///
-/// 位置は各 variant ではなく `SourceMap` が `id` をキーに保持する。
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirMath {
   /// このノードの ID

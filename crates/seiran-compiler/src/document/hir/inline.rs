@@ -9,8 +9,6 @@ use crate::{
 };
 
 /// インラインレベルの HIR ノード
-///
-/// 位置は各 variant ではなく `SourceMap` が `id` をキーに保持する。
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirInline {
   /// このノードの ID

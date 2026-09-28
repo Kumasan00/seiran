@@ -9,9 +9,6 @@ use crate::{
 
 /// HIR ノードの ID を発行し、同時にソース位置を記録する builder
 ///
-/// `NodeId` を発行できる唯一の型。ID 発行と位置記録が同じ呼び出しで起きるため、
-/// 「位置を持たない `NodeId`」は構築できない。
-///
 /// 外部資源パス（`\image{...}`）の解決はここには無い。解決規則を持つのは `project::PathResolver` で、
 /// 評価中に builder と resolver を束ねて持ち回るのは frontend の評価 context である。
 /// この型は文書構築の不変条件（ID・位置・leaf ノード）だけを持つ（#534）。
@@ -37,8 +34,6 @@ impl HirBuilder {
   }
 
   /// 新しい ID を発行し、`span` を記録する
-  ///
-  /// 子を持つノードの ID 確保（予約）にも使う。
   pub(crate) fn alloc(&self, span: Span) -> NodeId { return self.spans.borrow_mut().alloc(span); }
 
   /// 予約済み ID の span を確定させる
@@ -81,14 +76,9 @@ mod tests {
 
   #[test]
   fn alloc_before_children_yields_preorder_locals() {
-    // Arrange
     let builder = builder();
-
-    // Act — 親を先に確保してから子を作る
     let parent = builder.alloc(Span::new(0, 10));
     let child = builder.leaf_inline(Span::new(3, 7), HirInlineKind::Text("abc".to_string()));
-
-    // Assert
     assert!(parent.local() < child.id.local());
     assert_eq!(builder.span_of(parent), Span::new(0, 10));
     assert_eq!(builder.span_of(child.id), Span::new(3, 7));
@@ -117,15 +107,10 @@ mod tests {
 
   #[test]
   fn finish_returns_all_allocated_spans() {
-    // Arrange
     let builder = builder();
     let first = builder.alloc(Span::new(0, 1));
     let second = builder.alloc(Span::new(1, 2));
-
-    // Act
     let spans = builder.finish();
-
-    // Assert
     assert_eq!(spans.len(), 2);
     assert_eq!(spans.span_of(first), Span::new(0, 1));
     assert_eq!(spans.span_of(second), Span::new(1, 2));

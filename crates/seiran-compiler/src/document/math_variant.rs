@@ -48,10 +48,7 @@ pub(crate) enum MathVariant {
 }
 
 impl MathVariant {
-  /// コマンド名から対応する `MathVariant` を解決する
-  ///
-  /// 数式モード内で `evaluate_math_command` から呼び出される。
-  /// 未対応の名前は `None` を返す。
+  /// コマンド名から対応する `MathVariant` を解決する（未対応の名前は `None`）
   #[must_use]
   pub(crate) fn from_command_name(name: &str) -> Option<Self> {
     return match name {
@@ -81,7 +78,6 @@ mod tests {
 
   #[test]
   fn math_variant_from_command_name_resolves_all_styles() {
-    // 15 個のスタイルコマンドが正しく解決される
     assert_eq!(MathVariant::from_command_name("mathserif"), Some(MathVariant::Serif));
     assert_eq!(MathVariant::from_command_name("mathitalic"), Some(MathVariant::Italic));
     assert_eq!(MathVariant::from_command_name("mathbold"), Some(MathVariant::Bold));
@@ -101,7 +97,6 @@ mod tests {
 
   #[test]
   fn math_variant_from_command_name_rejects_unknown() {
-    // 未知名は None
     assert_eq!(MathVariant::from_command_name("mathrm"), None);
     assert_eq!(MathVariant::from_command_name("mathbf"), None);
     assert_eq!(MathVariant::from_command_name("foo"), None);

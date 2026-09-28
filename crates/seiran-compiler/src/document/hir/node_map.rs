@@ -71,15 +71,11 @@ mod tests {
 
   #[test]
   fn node_map_iterates_in_insertion_order() {
-    // Arrange
     let mut map: NodeMap<&str> = NodeMap::default();
-
-    // Act — 意図的に local の降順・ソース跨ぎで入れる
+    // 意図的に local の降順・ソース跨ぎで入れる
     map.insert(id(1, 7), "c");
     map.insert(id(0, 9), "a");
     map.insert(id(0, 2), "b");
-
-    // Assert
     let values: Vec<&str> = map.iter().map(|(_, value)| return *value).collect();
     assert_eq!(values, vec!["c", "a", "b"], "iter は挿入順（走査順）を保つはず");
     assert_eq!(map.len(), 3);
@@ -106,12 +102,9 @@ mod tests {
 
   #[test]
   fn node_map_returns_insertion_position() {
-    // Arrange
     let mut map: NodeMap<&str> = NodeMap::default();
     map.insert(id(1, 7), "c");
     map.insert(id(0, 9), "a");
-
-    // Assert — 位置は挿入順の添字（再挿入では動かない）
     assert_eq!(map.position(id(1, 7)), Some(0));
     assert_eq!(map.position(id(0, 9)), Some(1));
     map.insert(id(1, 7), "c2");
