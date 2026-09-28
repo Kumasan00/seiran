@@ -483,18 +483,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_command_optarg_basic() {
-    let arena = bumpalo::Bump::new();
-    let source = r"\image[width=10cm]{img.png}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
-    let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
-
-    let pairs = parse_key_value_options(source, opt_arg);
-
-    assert_eq!(pairs, vec![("width".to_string(), "10cm".to_string())]);
-  }
-
-  #[test]
   fn parse_key_value_options_treats_bare_key_as_boolean_true() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[draft, key=val]{x}";

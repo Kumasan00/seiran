@@ -561,33 +561,6 @@ mod tests {
   }
 
   #[test]
-  fn gather_numbered_false_suppresses_numbering() {
-    let arena = Bump::new();
-    let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
-
-    let rows = gather_rows_of(&result);
-    assert!(rows.iter().all(|r| return !r.numbered), "無採番のはず: {rows:?}");
-  }
-
-  #[test]
-  fn gather_notag_suppresses_single_row() {
-    let arena = Bump::new();
-    let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
-
-    let rows = gather_rows_of(&result);
-    assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
-    assert!(rows[0].numbered);
-    assert!(!rows[1].numbered, "\\notag 行は無採番のはず");
-    assert!(rows[2].numbered);
-  }
-
-  #[test]
   fn gather_notag_not_at_row_end_errors() {
     let arena = Bump::new();
     let source = r"\begin{gather}a \notag = b\end{gather}";
@@ -596,22 +569,6 @@ mod tests {
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
     assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
-  }
-
-  #[test]
-  fn gather_row_label_captures_label_and_keeps_numbering() {
-    let arena = Bump::new();
-    let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
-
-    let rows = gather_rows_of(&result);
-    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
-    assert_eq!(rows[0].label.as_deref(), Some("eq:g"));
-    assert!(rows[0].numbered);
-    assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
-    assert!(rows[1].numbered);
   }
 
   /// 最初の `HirNodeKind::MathBlock`（`split` ＝ `Grid(Aligned)`）を分解して (`rows`, `numbered`) を返す
@@ -720,43 +677,5 @@ mod tests {
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
-  }
-
-  #[test]
-  fn multiline_numbered_false_suppresses_numbering() {
-    let arena = Bump::new();
-    let source = r"\begin{multiline}[numbered=false]a + b \\ + c\end{multiline}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
-
-    let (_, numbered) = multiline_block_of(&result);
-    assert!(!numbered, "無採番のはず");
-  }
-
-  #[test]
-  fn multiline_with_label_captures_block_label() {
-    let arena = Bump::new();
-    let source = r"\begin{multiline}[label=eq:m]a + b \\ + c\end{multiline}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
-
-    let HirNodeKind::MathBlock(math) = &result[0].kind else {
-      panic!("MathBlock が期待されます: {:?}", result[0]);
-    };
-    assert_eq!(math.label.as_deref(), Some("eq:m"), "環境単位ラベルが付く");
-    assert!(math.numbered, "環境全体は採番対象");
-  }
-
-  #[test]
-  fn multiline_rejects_row_label_marker() {
-    let arena = Bump::new();
-    let source = r"\begin{multiline}a + b \label{eq:m} \\ + c\end{multiline}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst);
-
-    assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
   }
 }

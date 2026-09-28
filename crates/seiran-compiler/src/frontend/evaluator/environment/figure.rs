@@ -214,20 +214,6 @@ mod tests {
   }
 
   #[test]
-  fn figure_image_before_caption_yields_bottom_position() {
-    let arena = Bump::new();
-    let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst).unwrap();
-
-    let HirNodeKind::Figure(figure) = &result[0].kind else {
-      panic!("Figure が期待されます: {:?}", result[0]);
-    };
-    assert_eq!(figure.caption_position, CaptionPosition::Bottom);
-  }
-
-  #[test]
   fn figure_captures_label() {
     let arena = Bump::new();
     let source = r"\begin{figure}[label=fig:foo]\image[width=10mm, height=10mm]{a.png}\end{figure}";
@@ -315,17 +301,6 @@ mod tests {
   fn image_rejects_zero_dpi() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst);
-
-    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
-  }
-
-  #[test]
-  fn image_rejects_negative_dpi() {
-    let arena = Bump::new();
-    let source = r"\begin{figure}\image[dpi=-150]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);

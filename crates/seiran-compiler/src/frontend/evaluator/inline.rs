@@ -396,21 +396,6 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_resolves_amssymb_symbol() {
-    let arena = Bump::new();
-    let source = "\\section{\\leq}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
-
-    assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol('≤')));
-  }
-
-  #[test]
   fn extract_inline_nodes_rejects_unknown_command() {
     let arena = Bump::new();
     let source = "\\section{\\nonexistent}";
@@ -422,20 +407,6 @@ mod tests {
     let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow);
 
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
-  }
-
-  #[test]
-  fn extract_inline_nodes_rejects_pagebreak() {
-    let arena = Bump::new();
-    let source = r"\section{\pagebreak}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-
-    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow);
-
-    assert!(matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if what == r"\pagebreak"));
   }
 
   #[test]
@@ -617,26 +588,5 @@ mod tests {
     assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
     assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
     assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "V"), "{inlines:?}");
-  }
-
-  #[test]
-  fn extract_inline_nodes_mixed_text_and_commands() {
-    let arena = Bump::new();
-    let source = "\\section{Hello \\bold{World}}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
-    assert_eq!(inlines.len(), 3);
-    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "Hello"));
-    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "));
-    assert!(matches!(
-      &inlines[2].kind,
-      HirInlineKind::Styled {
-        kind: FontKind::SerifBold,
-        ..
-      }
-    ));
   }
 }

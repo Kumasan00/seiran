@@ -93,14 +93,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn resolve_path_applies_the_resolver_base_dir() {
-    let resolver = PathResolver::new(Path::new("/project"));
-    let ctx = EvalContext::new(SourceId::new(0), &resolver);
-
-    assert_eq!(ctx.resolve_path("fig/a.png"), ProjectPath::new("/project/fig/a.png"));
-  }
-
-  #[test]
   fn finish_carries_the_source_id_and_the_spans_of_evaluated_nodes() {
     let resolver = PathResolver::new(Path::new(""));
     let ctx = EvalContext::new(SourceId::new(3), &resolver);

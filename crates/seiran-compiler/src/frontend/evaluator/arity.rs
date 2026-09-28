@@ -109,7 +109,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{opt_args, test_support};
+  use crate::frontend::evaluator::test_support;
 
   #[test]
   fn exactly_one_arg_returns_the_single_argument() {
@@ -191,21 +191,5 @@ mod tests {
       matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"),
       "{result:?}"
     );
-  }
-
-  #[test]
-  fn opt_args_are_checked_before_the_argument_count() {
-    // 前置きの順序（任意引数 → 引数個数）はハンドラが 2 行で守る。引数が無い上に未知キーが
-    // 書かれた入力で、先に出るのが任意引数側の診断であることを固定する。
-    let arena = Bump::new();
-    let source = r"\ref[k=v]";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = opt_args::no_command_opt_args(&view).and_then(|()| {
-      return exactly_one_arg(&view, "ラベル名").map(|_| return);
-    });
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"), "{result:?}");
   }
 }

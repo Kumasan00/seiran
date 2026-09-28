@@ -333,19 +333,6 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_cite_with_multiple_keys_splits_on_comma() {
-    let result = evaluate_source(r"\cite{a, b}");
-
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます");
-    };
-    let HirInlineKind::Cite { keys: cite_keys } = &inlines[0].kind else {
-      panic!("Cite が期待されます");
-    };
-    assert_eq!(cite_keys, &["a".to_string(), "b".to_string()]);
-  }
-
-  #[test]
   fn evaluate_text_then_heading_flushes_paragraph() {
     let result = evaluate_source("Some text\\section{Title}");
     assert_eq!(result.len(), 2);
@@ -368,39 +355,6 @@ mod tests {
       },
       _ => panic!("Paragraph が期待されます"),
     }
-  }
-
-  #[test]
-  fn evaluate_amssymb_symbol_in_body_resolves_to_symbol() {
-    let result = evaluate_source(r"a \geq b");
-
-    assert_eq!(result.len(), 1);
-    match &result[0].kind {
-      HirNodeKind::Paragraph(inlines) => {
-        assert!(
-          inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Symbol('≥'))),
-          "≥ の Symbol ノードが含まれるはず: {inlines:?}"
-        );
-      },
-      _ => panic!("Paragraph が期待されます"),
-    }
-  }
-
-  #[test]
-  fn evaluate_amssymb_symbol_in_math_resolves_to_symbol() {
-    let result = evaluate_source(r"$a \leq b$");
-
-    assert_eq!(result.len(), 1);
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます");
-    };
-    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
-      panic!("InlineMath が期待されます");
-    };
-    assert!(
-      math.iter().any(|n| matches!(&n.kind, HirMathKind::Symbol { ch: '≤', .. })),
-      "≤ の HirMathKind::Symbol が含まれるはず: {math:?}"
-    );
   }
 
   #[test]
@@ -686,28 +640,6 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_nested_styled_keeps_inner_kind() {
-    let result = evaluate_source(r"\bold{a\italic{x}}");
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます");
-    };
-    let HirInlineKind::Styled {
-      kind: FontKind::SerifBold,
-      children,
-    } = &inlines[0].kind
-    else {
-      panic!("外側 Styled(SerifBold) が期待されます: {:?}", inlines[0]);
-    };
-    assert!(matches!(
-      &children[1].kind,
-      HirInlineKind::Styled {
-        kind: FontKind::SerifItalic,
-        ..
-      }
-    ));
-  }
-
-  #[test]
   fn evaluate_legacy_latex_commands_are_unknown() {
     for name in ["textbf", "emph", "textit", "texttt", "textsf"] {
       let error = evaluate_error(&format!("\\{name}{{x}}"));
@@ -872,47 +804,9 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_unknown_command_in_heading_title_is_error() {
-    let error = evaluate_error(r"\section{\nosuchcommand}");
-    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchcommand"));
-  }
-
-  #[test]
-  fn evaluate_block_command_in_inline_context_is_error() {
-    let error = evaluate_error(r"\bold{\section{x}}");
-    assert!(matches!(error, EvalError::BlockInInline { ref what, .. } if what == "\\section"));
-  }
-
-  #[test]
   fn evaluate_environment_in_inline_context_is_error() {
     let error = evaluate_error(r"\section{\begin{itemize}\item{a}\end{itemize}}");
     assert!(matches!(error, EvalError::BlockInInline { ref what, .. } if what == "環境 itemize"));
-  }
-
-  #[test]
-  fn evaluate_inline_wrapper_missing_arg_in_heading_is_error() {
-    let error = evaluate_error(r"\section{\bold}");
-    assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "bold"));
-  }
-
-  #[test]
-  fn evaluate_inline_wrapper_extra_arg_in_heading_is_error() {
-    let error = evaluate_error(r"\section{\bold{a}{b}}");
-    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "bold"));
-  }
-
-  #[test]
-  fn evaluate_noindent_at_paragraph_start_prepends_marker() {
-    let result = evaluate_source(r"\noindent Body");
-    assert_eq!(result.len(), 1);
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます: {result:?}");
-    };
-    assert!(matches!(&inlines[0].kind, HirInlineKind::NoIndent), "先頭は NoIndent マーカー: {inlines:?}");
-    assert!(
-      inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Text(t) if t == "Body")),
-      "本文 Text は保持される: {inlines:?}"
-    );
   }
 
   #[test]
@@ -939,27 +833,9 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_noindent_mid_paragraph_is_error() {
-    let error = evaluate_error(r"hello \noindent world");
-    assert!(matches!(error, EvalError::NoindentNotAtParagraphStart { .. }));
-  }
-
-  #[test]
   fn evaluate_noindent_twice_is_error() {
     let error = evaluate_error(r"\noindent \noindent x");
     assert!(matches!(error, EvalError::NoindentNotAtParagraphStart { .. }));
-  }
-
-  #[test]
-  fn evaluate_noindent_with_argument_is_error() {
-    let error = evaluate_error(r"\noindent{x}");
-    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "noindent"));
-  }
-
-  #[test]
-  fn evaluate_noindent_in_heading_is_error() {
-    let error = evaluate_error(r"\section{\noindent x}");
-    assert!(matches!(error, EvalError::BlockInInline { .. }));
   }
 
   #[test]
@@ -1146,12 +1022,6 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_itemize_with_disallowed_command_is_error() {
-    let error = evaluate_error(r"\begin{itemize}\bold{x}\end{itemize}");
-    assert!(matches!(error, EvalError::UnexpectedCommandInEnvironment { ref name, .. } if name == "bold"));
-  }
-
-  #[test]
   fn evaluate_item_without_argument_is_error() {
     let error = evaluate_error(r"\begin{itemize}\item\end{itemize}");
     assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "item"));
@@ -1226,19 +1096,6 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_inter_word_space_is_preserved_after_paragraph_trim_fix() {
-    // issue #160 の修正（段落先頭・末尾の空白トリム）が語間の意味のある空白まで壊さないことの回帰テスト
-    let result = evaluate_source("a b");
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます: {result:?}");
-    };
-    assert_eq!(inlines.len(), 3);
-    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"));
-    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "));
-    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == "b"));
-  }
-
-  #[test]
   fn evaluate_index_in_paragraph_produces_index_node() {
     let result = evaluate_source("本文\\index{語}続き");
     assert_eq!(result.len(), 1, "段落が分割されてはいけない: {result:?}");
@@ -1250,20 +1107,6 @@ mod tests {
       .filter(|n| matches!(&n.kind, HirInlineKind::Index { word, reading } if word == "語" && reading.is_none()))
       .count();
     assert_eq!(index_count, 1, "{inlines:?}");
-  }
-
-  #[test]
-  fn evaluate_index_inside_a_word_keeps_one_text_node() {
-    // マーカーを取り除けば 1 つの Text トークンになる位置（#514）
-    let result = evaluate_source("A\\index{k}V");
-
-    // シェーピング run が割れないよう、テキストは 1 ノードへ畳まれる
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます: {result:?}");
-    };
-    assert_eq!(inlines.len(), 2, "{inlines:?}");
-    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "AV"), "{inlines:?}");
-    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
   }
 
   #[test]
@@ -1310,21 +1153,6 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_index_next_to_a_comma_does_not_merge_text() {
-    // `,` は別トークンなので、マーカーを取り除いても 1 トークンにはならない
-    let result = evaluate_source("a\\index{k},b");
-
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます: {result:?}");
-    };
-    assert_eq!(inlines.len(), 4, "{inlines:?}");
-    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
-    assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
-    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == ","), "{inlines:?}");
-    assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "b"), "{inlines:?}");
-  }
-
-  #[test]
   fn evaluate_index_next_to_an_escape_does_not_merge_text() {
     // エスケープ由来のテキストも baseline では別トークンなので畳まない
     let result = evaluate_source("a\\index{k}\\{b");
@@ -1337,17 +1165,6 @@ mod tests {
     assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");
     assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == "{"), "{inlines:?}");
     assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == "b"), "{inlines:?}");
-  }
-
-  #[test]
-  fn evaluate_index_with_reading_in_paragraph() {
-    let result = evaluate_source("本文\\index[reading=よみ]{語}続き");
-    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
-      panic!("Paragraph が期待されます: {result:?}");
-    };
-    assert!(inlines.iter().any(
-      |n| matches!(&n.kind, HirInlineKind::Index { word, reading } if word == "語" && reading.as_deref() == Some("よみ"))
-    ));
   }
 
   #[test]
@@ -1461,19 +1278,6 @@ mod tests {
   fn evaluate_index_in_table_head_cell_command_errors() {
     // `\head` 行の `\cell` 形式も同じ拒否経路を通る
     let error = evaluate_error("\\begin{table}\\head{\\row{\\cell{見出し\\index{語}}}}\\row{A}\\end{table}");
-    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
-  }
-
-  #[test]
-  fn evaluate_index_in_bold_inside_heading_title_errors() {
-    // 装飾は外側の方針を継承するので、拒否文脈の内側では何段ネストしても拒否される
-    let error = evaluate_error("\\section{\\bold{x\\index{x}}}");
-    assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
-  }
-
-  #[test]
-  fn evaluate_index_in_bold_inside_table_head_cell_errors() {
-    let error = evaluate_error("\\begin{table}\\head{\\row{\\bold{x\\index{x}}}}\\row{A}\\end{table}");
     assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
   }
 

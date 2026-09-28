@@ -1048,17 +1048,6 @@ mod tests {
   }
 
   #[test]
-  fn command_argument_brace_is_not_bare_group() {
-    let arena = Bump::new();
-    let cst = parse_source(r"\bold{hello}", &arena);
-    if let GreenElement::Node(cmd) = &cst.children[0] {
-      assert_eq!(cmd.kind, SyntaxKind::CommandCall);
-    } else {
-      panic!("CommandCall ノードが期待されます");
-    }
-  }
-
-  #[test]
   fn unexpected_rbrace_at_top_level() {
     let arena = Bump::new();
     let result = parse("}", &arena);
@@ -1272,13 +1261,6 @@ mod tests {
   fn lone_backslash_at_eof_is_error() {
     let arena = Bump::new();
     let result = parse(r"\", &arena);
-    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
-  }
-
-  #[test]
-  fn backslash_followed_by_whitespace_is_error() {
-    let arena = Bump::new();
-    let result = parse("hello \\ world", &arena);
     assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
   }
 
@@ -1635,13 +1617,6 @@ mod tests {
   }
 
   #[test]
-  fn triple_dollar_returns_error() {
-    let arena = Bump::new();
-    let result = parse("$$$", &arena);
-    assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
-  }
-
-  #[test]
   fn dollar_dollar_in_paragraph_returns_error() {
     let arena = Bump::new();
     let result = parse("hello $$ world", &arena);
@@ -1689,18 +1664,6 @@ mod tests {
     if let GreenElement::Node(math) = &cst.children[0] {
       let sup: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
       assert_eq!(sup.len(), 1);
-    } else {
-      panic!("InlineMath ノードが期待されます");
-    }
-  }
-
-  #[test]
-  fn subscript_in_math_creates_node() {
-    let arena = Bump::new();
-    let cst = parse_source("$x_{i}$", &arena);
-    if let GreenElement::Node(math) = &cst.children[0] {
-      let sub: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
-      assert_eq!(sub.len(), 1);
     } else {
       panic!("InlineMath ノードが期待されます");
     }

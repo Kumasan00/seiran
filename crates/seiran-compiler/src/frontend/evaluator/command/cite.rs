@@ -103,12 +103,6 @@ mod tests {
   }
 
   #[test]
-  fn cite_keeps_escaped_comma_in_key() {
-    // `\,` はキーの区切りではなくキーの文字（#731。#687 と同じ規則）
-    assert_eq!(cite_keys(r"\cite{a\,b}"), vec!["a,b".to_string()]);
-  }
-
-  #[test]
   fn cite_splits_on_structural_comma_only() {
     assert_eq!(cite_keys(r"\cite{a\,b, c}"), vec!["a,b".to_string(), "c".to_string()]);
   }

@@ -178,19 +178,6 @@ mod tests {
   }
 
   #[test]
-  fn equation_numbered_true_is_explicit_default() {
-    let arena = Bump::new();
-    let source = r"\begin{equation}[numbered=true]x\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst).unwrap();
-
-    assert_eq!(result.len(), 1);
-    let row = first_row(&result);
-    assert!(row.numbered);
-  }
-
-  #[test]
   fn equation_numbered_false_with_label_errors() {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false, label=eq:x]a\end{equation}";

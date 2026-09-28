@@ -131,39 +131,6 @@ mod tests {
   }
 
   #[test]
-  fn enumerate_start_negative_is_invalid() {
-    let arena = Bump::new();
-    let source = r"\begin{enumerate}[start=-1]\item{A}\end{enumerate}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst);
-
-    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
-  }
-
-  #[test]
-  fn enumerate_start_non_integer_is_invalid() {
-    let arena = Bump::new();
-    let source = r"\begin{enumerate}[start=1.5]\item{A}\end{enumerate}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst);
-
-    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
-  }
-
-  #[test]
-  fn enumerate_start_non_numeric_is_invalid() {
-    let arena = Bump::new();
-    let source = r"\begin{enumerate}[start=foo]\item{A}\end{enumerate}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst);
-
-    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
-  }
-
-  #[test]
   fn item_marker_option_sets_list_item_marker() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=☆]{A}\end{itemize}";

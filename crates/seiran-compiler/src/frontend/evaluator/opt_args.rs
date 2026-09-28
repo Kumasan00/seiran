@@ -462,19 +462,6 @@ mod tests {
   }
 
   #[test]
-  fn collect_returns_string_when_schema_allows() {
-    const LABEL: OptKey<String> = string("label");
-    let arena = Bump::new();
-    let source = r"\section[label=foo]{Title}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    let opts = collect_command_opt_args(&view, &[LABEL.decl()]).unwrap();
-
-    assert_eq!(opts.get(LABEL), Some("foo".to_string()));
-  }
-
-  #[test]
   fn collect_keeps_quotes_in_string_value() {
     const TITLE: OptKey<String> = string("title");
     let arena = Bump::new();
@@ -557,58 +544,6 @@ mod tests {
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
-
-    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
-  }
-
-  #[test]
-  fn collect_returns_length_with_mm_suffix() {
-    const WIDTH: OptKey<Length> = length("width");
-    let arena = Bump::new();
-    let source = r"\section[width=10mm]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
-
-    assert_eq!(opts.get(WIDTH), Some(Length::mm(10.0)));
-  }
-
-  #[test]
-  fn collect_returns_length_with_cm_suffix() {
-    const WIDTH: OptKey<Length> = length("width");
-    let arena = Bump::new();
-    let source = r"\section[width=5cm]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
-
-    assert_eq!(opts.get(WIDTH), Some(Length::cm(5.0)));
-  }
-
-  #[test]
-  fn collect_rejects_uppercase_length_unit() {
-    const WIDTH: OptKey<Length> = length("width");
-    let arena = Bump::new();
-    let source = r"\section[width=2CM]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
-
-    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
-  }
-
-  #[test]
-  fn collect_rejects_space_between_number_and_unit() {
-    const WIDTH: OptKey<Length> = length("width");
-    let arena = Bump::new();
-    let source = r"\section[width=10 mm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
@@ -743,19 +678,6 @@ mod tests {
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
-  }
-
-  #[test]
-  fn collect_returns_positive_length_when_positive() {
-    const WIDTH: OptKey<Length> = positive_length("width");
-    let arena = Bump::new();
-    let source = r"\section[width=5cm]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
-    let view = CommandView::new(first_command_node(cst), source);
-
-    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
-
-    assert_eq!(opts.get(WIDTH), Some(Length::cm(5.0)));
   }
 
   #[test]

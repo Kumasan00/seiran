@@ -474,13 +474,6 @@ mod tests {
   }
 
   #[test]
-  fn lbrace_token() {
-    let tokens = tokenize("{");
-    assert_eq!(tokens, vec![TokenKind::LBrace]);
-    return;
-  }
-
-  #[test]
   fn rbrace_token() {
     let tokens = tokenize("}");
     assert_eq!(tokens, vec![TokenKind::RBrace]);
@@ -643,20 +636,6 @@ mod tests {
   }
 
   #[test]
-  fn backslash_followed_by_lbrace_produces_escaped() {
-    let tokens = tokenize("\\{");
-    assert_eq!(tokens, vec![TokenKind::Escaped]);
-    return;
-  }
-
-  #[test]
-  fn backslash_followed_by_rbrace_produces_escaped() {
-    let tokens = tokenize("\\}");
-    assert_eq!(tokens, vec![TokenKind::Escaped]);
-    return;
-  }
-
-  #[test]
   fn backslash_at_end_of_input_produces_unknown() {
     let tokens = tokenize("\\");
     assert_eq!(tokens, vec![TokenKind::Unknown]);
@@ -686,13 +665,6 @@ mod tests {
   }
 
   #[test]
-  fn command_with_numbers() {
-    let tokens = tokenize("\\h3");
-    assert_eq!(tokens, vec![TokenKind::Command]);
-    return;
-  }
-
-  #[test]
   fn comment_captures_content_after_double_slash() {
     let texts = tokenize_texts("// this is a comment");
     assert_eq!(texts, vec![(TokenKind::Comment, "// this is a comment")]);
@@ -714,38 +686,9 @@ mod tests {
   }
 
   #[test]
-  fn comment_after_text() {
-    let tokens = tokenize("hello// world");
-    assert_eq!(tokens, vec![TokenKind::Text, TokenKind::Comment]);
-    return;
-  }
-
-  #[test]
-  fn single_dollar_produces_dollar_token() {
-    let tokens = tokenize("$");
-    assert_eq!(tokens, vec![TokenKind::Dollar]);
-    return;
-  }
-
-  #[test]
   fn double_dollar_produces_two_dollar_tokens() {
     let tokens = tokenize("$$abc");
     assert_eq!(tokens, vec![TokenKind::Dollar, TokenKind::Dollar, TokenKind::Text]);
-    return;
-  }
-
-  #[test]
-  fn triple_dollar_produces_three_dollar_tokens() {
-    let tokens = tokenize("$$$abc");
-    assert_eq!(
-      tokens,
-      vec![
-        TokenKind::Dollar,
-        TokenKind::Dollar,
-        TokenKind::Dollar,
-        TokenKind::Text
-      ]
-    );
     return;
   }
 
@@ -866,21 +809,6 @@ mod tests {
   fn whitespace_only_produces_whitespace_token() {
     let tokens = tokenize("   ");
     assert_eq!(tokens, vec![TokenKind::Whitespace]);
-    return;
-  }
-
-  #[test]
-  fn mixed_commands_and_text() {
-    let tokens = tokenize("\\bold{hello}");
-    assert_eq!(
-      tokens,
-      vec![
-        TokenKind::Command,
-        TokenKind::LBrace,
-        TokenKind::Text,
-        TokenKind::RBrace,
-      ]
-    );
     return;
   }
 

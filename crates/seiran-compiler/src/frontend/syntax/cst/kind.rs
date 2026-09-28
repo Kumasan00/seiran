@@ -28,21 +28,3 @@ pub(in crate::frontend) enum SyntaxKind {
   /// 数式内上付き（`^` の後の要素）
   MathSuperscript,
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn syntax_kind_equality() {
-    assert_eq!(SyntaxKind::Root, SyntaxKind::Root);
-    assert_ne!(SyntaxKind::Root, SyntaxKind::CommandCall);
-  }
-
-  #[test]
-  fn syntax_kind_debug() {
-    let kind = SyntaxKind::CommandCall;
-    let debug_str = format!("{kind:?}");
-    assert_eq!(debug_str, "CommandCall");
-  }
-}

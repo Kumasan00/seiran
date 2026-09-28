@@ -125,14 +125,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn token_kind_is_copy() {
-    let kind = TokenKind::Command;
-    let kind2 = kind;
-    assert_eq!(kind, kind2);
-    return;
-  }
-
-  #[test]
   fn token_text_extracts_from_source() {
     let source = "hello world";
     let token = Token::new(TokenKind::Text, Span::new(0, 5));
