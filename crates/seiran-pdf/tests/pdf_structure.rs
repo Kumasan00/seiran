@@ -31,19 +31,18 @@ fn workspace_root() -> PathBuf {
 
 /// カレントディレクトリをワークスペースルートへ固定する。
 ///
-/// fixture の config / style / `.sei` / フォントのパスはすべてワークスペースルート基準で、
-/// `compile` はカレントディレクトリを基準に相対パスを解決する（画像パスは `.sei` に書かれた
-/// 値がそのまま `ProjectSource` へ渡るため、ここを固定しないと解決できない）。
+/// `compile` の相対パスは `base_dir`（[`workspace_root`]）基準で解決されるので、これに依存するのは
+/// テスト資産 `vendor/fonts` の存在確認（相対パス）だけ。
 fn enter_workspace_root() {
   std::env::set_current_dir(workspace_root()).expect("カレントディレクトリをワークスペースルートへ固定");
 }
 
-/// PDF 構造 golden ファイルを置くディレクトリ（`crates/seiran-pdf/tests/golden_pdf_structure`）を返す。
+/// PDF 構造 golden ファイルを置くディレクトリを返す。
 fn pdf_structure_golden_dir() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
 }
 
-/// 指定キーで始まる行を差し替える（fixture の TOML を再直列化せずに 1 行だけ上書きする）。
+/// 指定キーで始まる行を差し替える。
 fn replace_line(text: &str, key: &str, replacement: &str) -> String {
   let mut out = String::with_capacity(text.len() + replacement.len());
   let mut replaced = false;
@@ -173,7 +172,6 @@ fn pdf_structure_matches_golden() {
     fs::create_dir_all(pdf_structure_golden_dir()).expect("golden ディレクトリの作成");
   }
 
-  // 各入力の構造ダンプを golden と比較（UPDATE_GOLDEN=1 で再生成）
   let mut mismatches = Vec::new();
   for name in PDF_STRUCTURE_INPUTS {
     let dump = dump_pdf_structure(&build_pdf_bytes(name));
@@ -203,12 +201,12 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
   let bytes = build_pdf_bytes("hyperref");
   let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
 
-  // Act — ToUnicode CMap 経由でテキスト抽出する（ページ番号は 1 始まり）。1 文字ごとの glyph 単位
-  // 描画を lopdf 側が別々のテキスト行として抽出するため、空白除去してから内容を確認する。
+  // Act — lopdf は glyph 単位の描画を別々のテキスト行として抽出するので、空白を除いてから見る
+  // （ページ番号は 1 始まり）
   let extracted = document.extract_text(&[1]).expect("ToUnicode CMap 経由のテキスト抽出");
   let stripped: String = extracted.chars().filter(|character| return !character.is_whitespace()).collect();
 
-  // Assert — 空でないこと（vacuous pass 防止）＋ 既知の日本語文字列を含むこと
+  // Assert
   assert!(!stripped.is_empty(), "ToUnicode 抽出が空: krilla が CMap を生成していない可能性: {extracted:?}");
   assert!(stripped.contains("はじめに"), "ToUnicode 経由で日本語テキストが復元されるはず: {stripped:?}");
 }
@@ -239,7 +237,7 @@ fn pdf_structure_background_paints_before_body_content() {
   let content_bytes = document.get_page_content(page_id);
   let content = Content::decode(&content_bytes).expect("content stream のデコード");
 
-  // Act — オペレータを大まかなカテゴリへ分類し、初出順を見る
+  // Act
   let categories: Vec<&str> = content
     .operations
     .iter()
@@ -248,7 +246,7 @@ fn pdf_structure_background_paints_before_body_content() {
   let first_fill = categories.iter().position(|category| return *category == "fill");
   let first_body = categories.iter().position(|category| return *category == "text" || *category == "image");
 
-  // Assert — 非空性（vacuous pass 防止）＋ 背景 fill が本文描画より前に来ること
+  // Assert
   assert!(first_fill.is_some(), "背景の fill が content stream に現れるはず: {categories:?}");
   assert!(first_body.is_some(), "本文の描画（text/image）が現れるはず: {categories:?}");
   assert!(first_fill < first_body, "背景 fill は本文描画より前に来るはず: {categories:?}");

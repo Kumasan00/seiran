@@ -65,7 +65,7 @@ fn build_outline_from_entries(entries: &[PublicationOutlineEntry]) -> Option<Out
 struct OutlineTreeNode {
   /// 見出しレベルの深さ（`HeadingLevel::depth()`、0 = Part）
   depth: u8,
-  /// しおりに表示するテキスト（`"{number} {plain title}"`）
+  /// しおりに表示するテキスト
   text: String,
   /// ジャンプ先
   dest: XyzDestination,
@@ -167,8 +167,7 @@ fn draw_paint_op(
 
 /// [`Publication`] を Krilla の文書へ描画する。
 ///
-/// 描画命令に加えてリンク注釈としおりを出力する。画像資源は `publication.resources` から、krilla
-/// フォントは構築済みの `fonts` から取るだけで、ここではファイル I/O を行わない。
+/// 描画命令に加えてリンク注釈としおりを出力する。
 pub(crate) fn render_pages(
   document: &mut Document,
   publication: &Publication,
@@ -248,9 +247,8 @@ fn draw_image(
 ///
 /// # Panics
 ///
-/// 矩形が krilla の受け入れ条件（幅・高さが非負の有限値）を満たすことは
-/// `seiran_compiler::Rect` のコンストラクタが保証しており、その矩形 1 個から作るパスも
-/// 必ず構築できる（空でも move だけでもなく、点はすべて有限）。
+/// krilla が受け入れる矩形（[`to_krilla_rect`]）1 個から作るパスは必ず構築できる
+/// （空でも move だけでもなく、点はすべて有限）。
 fn draw_filled_rect(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) {
   let mut path_builder = PathBuilder::new();
   path_builder.push_rect(to_krilla_rect(rect));
@@ -280,29 +278,23 @@ mod tests {
   #[test]
   #[expect(clippy::float_cmp, reason = "座標を素通しする関数の検証なので、丸めのない厳密一致を見るのが正しい")]
   fn to_krilla_point_passes_through_pt_coordinates_without_adding_margin() {
-    // Arrange
     let point = PubPoint { x: 123.0, y: 45.0 };
 
-    // Act
     let converted = to_krilla_point(point);
 
-    // Assert
     assert_eq!(converted.x, 123.0);
     assert_eq!(converted.y, 45.0);
   }
 
   #[test]
   fn to_xyz_destination_preserves_page_index_and_point() {
-    // Arrange
     let dest = PubDestination {
       page_index: 2,
       point: PubPoint { x: 1.0, y: 2.0 },
     };
 
-    // Act
     let xyz = to_xyz_destination(dest);
 
-    // Assert
     assert_eq!(format!("{xyz:?}"), format!("{:?}", XyzDestination::new(2, Point::from_xy(1.0, 2.0))));
   }
 
@@ -318,13 +310,11 @@ mod tests {
 
   #[test]
   fn insert_outline_node_nests_by_depth() {
-    // Arrange
     let mut roots: Vec<OutlineTreeNode> = Vec::new();
     for (depth, text) in [(0, "P"), (1, "C1"), (2, "S1"), (2, "S2"), (1, "C2")] {
       insert_outline_node(&mut roots, depth, text.to_string(), dummy_dest());
     }
 
-    // Assert
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].depth, 0);
     assert_eq!(roots[0].children.len(), 2, "Part の下に Chapter が 2 個");
@@ -336,12 +326,10 @@ mod tests {
 
   #[test]
   fn insert_outline_node_handles_level_skip() {
-    // Arrange
     let mut roots: Vec<OutlineTreeNode> = Vec::new();
     insert_outline_node(&mut roots, 0, "P".to_string(), dummy_dest());
     insert_outline_node(&mut roots, 2, "S".to_string(), dummy_dest());
 
-    // Assert
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].children.len(), 1);
     assert_eq!(roots[0].children[0].depth, 2);

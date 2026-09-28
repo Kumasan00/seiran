@@ -75,7 +75,6 @@ fn krilla_data(bytes: &Arc<[u8]>) -> Data {
 /// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的 / 可変で呼び分けない。
 /// 軸の指定と `fvar` の整合（あるのに指定が無い・無いのに指定がある・読めない）は
 /// `typeset::font::validation` が検証済みで、renderer はフォントを自分でパースしない（#681）。
-/// バイト列は [`krilla_data`] で共有ハンドルのまま渡す（実バイト列は複製しない）。
 fn build_krilla_font(font_type: FontType, font: &PublicationFont) -> Result<Font, PdfRenderError> {
   let axes = font
     .face

@@ -32,9 +32,6 @@ pub enum PdfRenderError {
     font_type: FontType,
   },
   /// SVG のパースに失敗しました。
-  ///
-  /// 組版段（`seiran_compiler` の `typeset::image`）は同じ `usvg` で自然寸法を取るだけなので、
-  /// 描画用のパースがここで別に失敗しうる。
   #[error("SVG のパースに失敗しました: {path}")]
   #[diagnostic(code(pdf::parse_svg), help("SVG ファイルが妥当な XML / SVG であることを確認してください。"))]
   ParseSvg {
