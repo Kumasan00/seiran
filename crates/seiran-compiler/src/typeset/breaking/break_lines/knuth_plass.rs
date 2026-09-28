@@ -416,6 +416,9 @@ mod tests {
     return line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
   }
 
+  /// 行の box 幅を左から並べたもの（行末ハイフンを含む）
+  fn box_widths(line: &Line) -> Vec<Length> { return line.boxes.iter().map(|b| return b.width).collect(); }
+
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
@@ -573,14 +576,26 @@ mod tests {
 
   #[test]
   fn breaks_at_discretionary_and_appends_hyphen() {
-    let items = vec![box_width(20.0), discretionary(3.0), box_width(20.0)];
+    // 幅 25。1 本目の空白で折ると 1 行目が伸縮点の無い b10 だけ（実現不能）、2 本目の空白で折ると
+    // b10+5+b7+b10 = 32 が収縮 5/3 を超えて溢れる。語中分割で折る 1 行目は b10+5+b7 = 22 が
+    // 本文幅からハイフン 3 を引いた 22 にぴったり収まり、2 行目 b10+5+b10 = 25 も最終行に収まる。
+    // Knuth–Plass 自身が語中分割を選ぶ道だけが残り、貪欲法へのフォールバックは通らない
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(7.0),
+      discretionary(3.0),
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
+    ];
 
     let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert_eq!(lines[0].boxes.len(), 2, "本文 box + 行末ハイフン: {lines:?}");
-    assert!(close(lines[0].boxes[1].width, 3.0), "行末ハイフン: {lines:?}");
-    assert_eq!(lines[1].boxes.len(), 1);
+    assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "行末にハイフンが付く: {lines:?}");
+    assert_eq!(lines[0].boxes[2].x, pt(22.0), "ハイフンは行内アイテムの直後に置く: {lines:?}");
+    assert_eq!(box_widths(&lines[1]), vec![pt(10.0), pt(10.0)], "{lines:?}");
   }
 
   #[test]
