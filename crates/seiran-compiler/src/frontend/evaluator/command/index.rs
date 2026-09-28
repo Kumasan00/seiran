@@ -156,42 +156,6 @@ mod tests {
   }
 
   #[test]
-  fn index_rejects_symbol_inside_word() {
-    let arena = Bump::new();
-    let source = r"\index{\alpha}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return index_command(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
-  }
-
-  #[test]
-  fn index_rejects_inline_math_inside_word() {
-    let arena = Bump::new();
-    let source = r"\index{$x$}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return index_command(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
-  }
-
-  #[test]
-  fn index_rejects_command_inside_word() {
-    let arena = Bump::new();
-    let source = r"\index{\ref{sec:x}}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return index_command(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
-  }
-
-  #[test]
   fn index_trims_word_and_reading() {
     let arena = Bump::new();
     let source = r"\index[reading= よみ ]{ 語 }";

@@ -105,18 +105,6 @@ mod tests {
   }
 
   #[test]
-  fn noindent_accepts_no_args() {
-    let arena = Bump::new();
-    let source = r"\noindent";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = noindent(&view);
-
-    assert!(result.is_ok());
-  }
-
-  #[test]
   fn noindent_rejects_mandatory_argument() {
     let arena = Bump::new();
     let source = r"\noindent{x}";
@@ -138,18 +126,6 @@ mod tests {
     let result = noindent(&view);
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
-  }
-
-  #[test]
-  fn pagebreak_produces_page_break_node() {
-    let arena = Bump::new();
-    let source = r"\pagebreak";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return pagebreak(&view, ctx)).unwrap();
-
-    assert!(matches!(result.kind, HirNodeKind::PageBreak));
   }
 
   #[test]

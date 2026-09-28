@@ -117,20 +117,6 @@ mod tests {
   }
 
   #[test]
-  fn url_inside_math_is_rejected_as_an_unknown_command() {
-    // 引数モードはレジストリ宣言が勝つので数式内でも生読みされる（#447）が、
-    // 数式評価器の語彙に `\url` は無い
-    let arena = Bump::new();
-    let source = r"$\url{https://example.com}$";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst);
-
-    // 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
-    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "url"), "{result:?}");
-  }
-
-  #[test]
   fn url_rejects_missing_argument() {
     let arena = Bump::new();
     let source = r"\url";

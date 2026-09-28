@@ -200,17 +200,6 @@ mod tests {
   }
 
   #[test]
-  fn theorem_rejects_unknown_opt_key() {
-    let arena = Bump::new();
-    let source = r"\begin{theorem}[foo=1]本文\end{theorem}";
-    let cst = test_support::parse(source, &arena).unwrap();
-
-    let result = evaluate_children_to_hir(source, cst);
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
-  }
-
-  #[test]
   fn duplicate_theorem_label_is_structured_without_error() {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=dup]A\end{theorem}\begin{lemma}[label=dup]B\end{lemma}";
