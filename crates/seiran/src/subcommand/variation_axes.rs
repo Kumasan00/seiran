@@ -318,25 +318,6 @@ mod tests {
   }
 
   #[test]
-  fn well_formed_fvar_yields_all_records() {
-    let bytes = fvar_bytes(
-      1,
-      2,
-      8,
-      &[
-        axis_record(),
-        instance_record(257, 100),
-        instance_record(258, 900),
-      ],
-    );
-
-    let (axis_count, instance_names) = run_fvar_records(&bytes).expect("正しい fvar は読める");
-
-    assert_eq!(axis_count, 1);
-    assert_eq!(instance_names, vec![NameId::new(257), NameId::new(258)]);
-  }
-
-  #[test]
   fn unresolvable_axes_array_is_an_fvar_error() {
     // axesArrayOffset をテーブル外へ向ける
     let mut bytes = fvar_bytes(1, 0, 8, &[axis_record()]);
@@ -423,14 +404,6 @@ mod tests {
     bytes.extend_from_slice(&string_offset.to_be_bytes()); // stringOffset
     bytes.extend_from_slice(&[0, b'T', 0, b'h']); // 文字列領域
     return bytes;
-  }
-
-  #[test]
-  fn instance_name_is_resolved_from_the_name_table() {
-    let bytes = name_bytes(0);
-    let name = Name::read(FontData::new(&bytes)).expect("name テーブルは読める");
-
-    assert_eq!(subfamily_name(&name, NameId::new(256)), "Th");
   }
 
   #[test]

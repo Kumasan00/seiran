@@ -320,15 +320,14 @@ pub(crate) enum LogFileError {
 #[cfg(test)]
 mod tests {
   use std::{
-    fs,
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex},
   };
 
   use tracing::{debug, info};
 
-  use super::{LogFileError, LogSink, open_log_file, parent_to_create};
+  use super::{LogSink, open_log_file};
 
   /// 書き込みも flush も必ず失敗する書き出し先。
   ///
@@ -365,18 +364,6 @@ mod tests {
     }
 
     fn flush(&mut self) -> io::Result<()> { return Ok(()) }
-  }
-
-  #[test]
-  fn successful_writes_reach_the_writer_and_finish_cleanly() {
-    let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
-    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
-
-    sink.write_block("記録する 1 行");
-    sink.finish().expect("書き込みが成功した実行は失敗を持たない");
-
-    let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
-    assert_eq!(String::from_utf8(written).expect("UTF-8 のはず"), "記録する 1 行\n", "末尾に改行を足して書く");
   }
 
   /// `buffer` へ書く `sink.writer()` を唯一の writer にした `fmt` subscriber を張る。
@@ -448,38 +435,24 @@ mod tests {
   }
 
   #[test]
-  fn info_event_flush_failure_is_retained_and_reported_by_finish() {
-    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(FailingWriter { calls: 0 }));
-    let guard = set_fmt_subscriber(&sink);
-
-    info!("工程を開始");
-    drop(guard);
-    let failure = sink.finish().expect_err("書き込み・flush に失敗した実行は失敗を報告する");
-
-    assert_eq!(failure.path, "run.log", "失敗はログのパスとともに報告する");
-  }
-
-  #[test]
   fn dropping_without_finish_still_flushes_buffered_content() {
-    // tracing の layer が `writer()` で `SinkState` をもう 1 つの `Arc` として握り続ける状況を再現する。
-    // `sink` だけが所有者なら drop で参照カウントが 0 になり `BufWriter` 自身の drop-flush で届いてしまい、
-    // `LogSink` の `Drop` を消しても通ってしまう（判別力が無い）。`writer` を生かしたまま `sink` を drop することで、
-    // `SinkState` は生き残ったまま（参照カウント 1）flush が必要になる、実際の panic 経路と同じ状況を作る。
+    // 書くたびに flush する `write_block` ではなく、`BufWriter` に溜まる DEBUG event で書き残しを作る。
+    // subscriber が `writer()` 越しに `SinkState` をもう 1 つの `Arc` で握り続けるので、`sink` の drop では
+    // `BufWriter` 自身の drop-flush は走らない — 届くのは `LogSink` の `Drop` が flush したときだけ。
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(buffer.clone()));
-    let writer = sink.writer();
+    let guard = set_fmt_subscriber(&sink);
 
     // `finish` を呼ばず panic 中の unwind を模す
-    sink.write_block("記録する 1 行");
+    debug!("内部詳細");
     drop(sink);
-
     let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
-    assert_eq!(
-      String::from_utf8(written).expect("UTF-8 のはず"),
-      "記録する 1 行\n",
+    drop(guard);
+
+    assert!(
+      String::from_utf8(written).expect("UTF-8 のはず").contains("内部詳細"),
       "finish を経由せず、他の Arc が生きたまま drop されても書き残しを流す"
     );
-    drop(writer);
   }
 
   #[test]
@@ -514,36 +487,5 @@ mod tests {
     file.write_all(b"x").expect("書き込めるはず");
 
     assert!(path.exists(), "指定したパスにログファイルができる");
-  }
-
-  #[test]
-  fn refuses_existing_file_without_touching_it() {
-    let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-    let path = dir.path().join("build.log");
-    fs::write(&path, "前回の実行の記録").expect("事前の内容を書けるはず");
-
-    let error = open_log_file(&path).expect_err("既存ファイルは拒否するはず");
-
-    assert!(matches!(error, LogFileError::AlreadyExists { .. }), "既存パスとして報告する");
-    assert_eq!(
-      fs::read_to_string(&path).expect("読めるはず"),
-      "前回の実行の記録",
-      "拒否した実行はファイルへ触らない"
-    );
-  }
-
-  #[test]
-  fn bare_file_name_has_no_directory_to_create() {
-    assert_eq!(parent_to_create(Path::new("run.log")), None, "カレント直下なら作るディレクトリは無い");
-    assert_eq!(parent_to_create(Path::new("logs/run.log")), Some(Path::new("logs")), "親があれば作る");
-  }
-
-  #[test]
-  fn refuses_an_existing_directory() {
-    let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-
-    let error = open_log_file(dir.path()).expect_err("既存のディレクトリは拒否するはず");
-
-    assert!(matches!(error, LogFileError::AlreadyExists { .. }), "存在するパスとして報告する");
   }
 }

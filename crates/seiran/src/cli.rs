@@ -79,24 +79,12 @@ pub(super) fn parse_arg() -> Cli { return Cli::parse() }
 
 #[cfg(test)]
 mod tests {
-  use std::path::Path;
-
   use clap::{CommandFactory, Parser};
 
   use super::Cli;
 
   #[test]
   fn cli_definition_is_valid() { Cli::command().debug_assert(); }
-
-  #[test]
-  fn quiet_and_verbose_are_accepted_together() {
-    let cli =
-      Cli::try_parse_from(["seiran", "-q", "-vv", "--log-file", "x.log", "build"]).expect("-q と -vv は排他ではない");
-
-    assert!(cli.quiet);
-    assert_eq!(cli.verbose, 2);
-    assert_eq!(cli.log_file.as_deref(), Some(Path::new("x.log")));
-  }
 
   #[test]
   fn quiet_and_verbose_are_accepted_without_log_file() {

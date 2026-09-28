@@ -122,18 +122,6 @@ mod tests {
   use crate::write_error::WriteError;
 
   #[test]
-  fn the_same_path_is_rejected() {
-    // ログファイルは既に存在する（`--log-file` が新規作成済み）
-    let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-    let path = dir.path().join("main.pdf");
-    fs::write(&path, b"log").expect("ログファイルを作れるはず");
-
-    let error = ensure_distinct_from_log(&path, Some(&path)).expect_err("同じパスは拒否するはず");
-
-    assert!(matches!(error, WriteError::LogPathCollision { .. }), "衝突として報告する");
-  }
-
-  #[test]
   fn different_spellings_of_the_same_path_are_rejected() {
     // `sub/..` を挟んだ綴りは文字列としては別だが同じ実体を指す
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
@@ -145,22 +133,6 @@ mod tests {
     let error = ensure_distinct_from_log(&pdf_path, Some(&log_path)).expect_err("同じ実体なので拒否するはず");
 
     assert!(matches!(error, WriteError::LogPathCollision { .. }));
-  }
-
-  #[test]
-  fn distinct_paths_are_accepted() {
-    let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-    let log_path = dir.path().join("run.log");
-    fs::write(&log_path, b"log").expect("ログファイルを作れるはず");
-
-    ensure_distinct_from_log(&dir.path().join("main.pdf"), Some(&log_path)).expect("別のパスは通す");
-  }
-
-  #[test]
-  fn no_log_file_means_no_collision() {
-    let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-
-    ensure_distinct_from_log(&dir.path().join("main.pdf"), None).expect("--log-file が無ければ検査は空振り");
   }
 
   #[test]

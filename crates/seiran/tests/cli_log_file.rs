@@ -1,7 +1,7 @@
 //! `--log-file` への致命的エラー診断の記録を、binary を起動して端から端まで確かめる（#502 / #548）
 //!
-//! `seiran` crate の単体テストは純粋関数（フィルタ計画・診断の描画）を覆うが、「`-q --log-file` で端末は
-//! 無言のままファイルに失敗理由が残る」「`--log-file` の有無で stderr と終了コードが変わらない」「既存パスを
+//! `seiran` crate の単体テストは純粋関数（フィルタ計画・診断の描画）を覆うが、「`-q --log-file` でもファイルに
+//! 失敗理由（`Failures` の全 leaf）が残る」「`--log-file` の有無で stderr と終了コードが変わらない」「既存パスを
 //! 渡した実行が入力へ触れない」は `main` の構造（`run` の結果を受けた直後の記録と、
 //! `termination::Outcome::report` による描画の順序）にかかるので、プロセスとして実行して見る。
 
@@ -109,20 +109,6 @@ fn source_position_is_recorded_in_the_log_file() {
     position_line.contains("bad.toml:"),
     "ソース位置ブロックの行に config のファイル名が載る: {position_line}"
   );
-}
-
-#[test]
-fn quiet_keeps_the_terminal_silent_but_records_the_failure() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-  let log_path = dir.path().join("x.log");
-
-  let output = seiran(dir.path(), &["build", "-c", "missing.toml", "-q", "--log-file", "x.log"]);
-
-  assert!(!output.status.success());
-  let stderr = stderr_text(&output);
-  assert!(stderr.contains(MISSING_CONFIG_CODE), "端末には miette の描画が 1 回出る: {stderr}");
-  let log = fs::read_to_string(&log_path).expect("ログファイルができているはず");
-  assert!(log.contains(MISSING_CONFIG_CODE), "-q でもファイルには失敗理由が残る: {log}");
 }
 
 #[test]

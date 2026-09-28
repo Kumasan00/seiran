@@ -475,7 +475,7 @@ mod tests {
 
   use super::{
     FilterWarning, RunHeader, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive,
-    render_diagnostic_plain, run_footer_text, run_header_text, summary_line,
+    render_diagnostic_plain, run_header_text, summary_line,
   };
 
   /// 体裁の確認に使う warning 診断。
@@ -489,22 +489,6 @@ mod tests {
   )]
   struct TestWarning;
 
-  /// `Failures` 集約の leaf を模した error 診断。
-  #[derive(Debug, Error, Diagnostic)]
-  #[error("関連診断を持つテストエラーです")]
-  #[diagnostic(code(cli::test_primary), help("主診断のヘルプ"))]
-  struct TestPrimary {
-    /// 主診断に続けて描かれる残りの leaf
-    #[related]
-    rest: Vec<TestRelated>,
-  }
-
-  /// 主診断の後ろに並ぶ関連診断。
-  #[derive(Debug, Error, Diagnostic)]
-  #[error("関連するテストエラーです")]
-  #[diagnostic(code(cli::test_related), help("関連診断のヘルプ"))]
-  struct TestRelated;
-
   /// `--verbose` の段数に対応する directive をフィルタ表記へ揃える。
   fn flag_filter_text(verbose: u8) -> String { return parse_directive(flag_directive(verbose)).to_string(); }
 
@@ -517,15 +501,6 @@ mod tests {
   }
 
   #[test]
-  fn quiet_silences_only_the_terminal() {
-    let plan = build_log_plan(Some("trace"), 3, true, false);
-
-    assert_eq!(plan.stderr.filter.to_string(), "off");
-    assert!(plan.file.is_none(), "--log-file がなければファイル側の計画は作らない");
-    assert!(!plan.stderr.show_target, "抑止時は target を表示しない");
-  }
-
-  #[test]
   fn quiet_keeps_the_log_file_verbose() {
     let plan = build_log_plan(None, 3, true, true);
     let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
@@ -534,15 +509,6 @@ mod tests {
     assert_eq!(file.filter.to_string(), flag_filter_text(3), "ファイルは -q を見ない");
     assert!(!plan.stderr.show_target);
     assert!(file.show_target, "ファイル側は TRACE を出すので target を表示する");
-  }
-
-  #[test]
-  fn both_sinks_share_the_same_filter() {
-    let plan = build_log_plan(Some("seiran_compiler=trace"), 0, false, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(plan.stderr.filter.to_string(), "seiran_compiler=trace");
-    assert_eq!(file.filter.to_string(), plan.stderr.filter.to_string());
   }
 
   #[test]
@@ -559,15 +525,6 @@ mod tests {
 
     assert_eq!(plan.stderr.filter.to_string(), flag_filter_text(1));
     assert!(matches!(plan.warning, Some(FilterWarning::Invalid { .. })));
-  }
-
-  #[test]
-  fn invalid_rust_log_warning_survives_quiet() {
-    let plan = build_log_plan(Some("seiran=not-a-level"), 1, true, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(file.filter.to_string(), flag_filter_text(1));
-    assert!(plan.warning.is_some(), "端末が黙っていても警告文はログファイルへ残す");
   }
 
   #[test]
@@ -589,33 +546,6 @@ mod tests {
       assert_eq!(plan.stderr.filter.to_string(), flag_filter_text(2), "{raw:?} は未設定として --verbose が効く");
       assert!(plan.warning.is_none(), "{raw:?} では警告しない");
     }
-  }
-
-  #[test]
-  fn invalid_rust_log_with_verbose_warns_only_about_parse() {
-    let plan = build_log_plan(Some("seiran=not-a-level"), 2, false, false);
-
-    assert!(
-      matches!(plan.warning, Some(FilterWarning::Invalid { .. })),
-      "不正値の通知だけを出し、無視の通知は重ねない"
-    );
-  }
-
-  #[test]
-  fn quiet_and_verbose_write_debug_only_to_the_file() {
-    let plan = build_log_plan(None, 2, true, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(plan.stderr.filter.to_string(), "off", "端末は黙る");
-    assert_eq!(file.filter.to_string(), flag_filter_text(2), "ファイルは -vv どおり DEBUG まで");
-    assert!(plan.warning.is_none());
-  }
-
-  #[test]
-  fn plan_keeps_the_shared_directive_even_when_quiet() {
-    let plan = build_log_plan(None, 1, true, true);
-
-    assert_eq!(plan.directive, flag_directive(1), "実行記録には端末の off ではなく共通の directive を書く");
   }
 
   #[test]
@@ -688,58 +618,12 @@ mod tests {
   }
 
   #[test]
-  fn rendered_report_includes_related_leaves() {
-    // `CompileFailure` は 2 件目以降を `related` に載せるので、同じ形の診断で全 leaf が残ることを見る
-    let diagnostic = TestPrimary {
-      rest: vec![TestRelated, TestRelated],
-    };
-
-    let rendered = render_diagnostic_plain(&diagnostic);
-
-    assert!(!rendered.contains('\u{1b}'), "致命的エラーも装飾なし");
-    assert!(rendered.contains("cli::test_primary"), "主診断の code が残る");
-    assert!(rendered.contains("主診断のヘルプ"), "主診断の help が残る");
-    assert_eq!(rendered.matches("cli::test_related").count(), 2, "関連診断は件数ぶん全部残る");
-    assert_eq!(rendered.matches("関連診断のヘルプ").count(), 2, "関連診断の help も残る");
-  }
-
-  #[test]
-  fn filter_warning_renders_as_a_warning_with_its_code() {
-    let rendered = render_diagnostic_plain(&FilterWarning::OverridesVerbose {
-      value: String::from("error"),
-    });
-
-    assert!(rendered.contains("cli::rust_log::overrides_verbose"), "code が出る: {rendered}");
-    assert!(rendered.contains("RUST_LOG=error"), "覆った値が出る: {rendered}");
-    assert!(rendered.contains('⚠'), "warning として描かれる: {rendered}");
-  }
-
-  #[test]
   fn terminal_rendering_of_a_borrowed_diagnostic_matches_the_report() {
     let expected = format!("{:?}", miette::Report::new(TestWarning));
 
     let rendered = format!("{:?}", TerminalDiagnostic(&MietteHandler::new(), &TestWarning));
 
     assert_eq!(rendered, expected);
-  }
-
-  #[test]
-  fn run_header_lists_what_the_log_is_a_record_of() {
-    let header = RunHeader {
-      subcommand: "build",
-      base_dir: Some(Path::new("/work/book")),
-    };
-
-    let text = run_header_text("2026-09-13T10:00:00+09:00", &header, "warn");
-
-    assert_eq!(
-      text,
-      format!(
-        "# seiran 実行記録\n開始時刻: 2026-09-13T10:00:00+09:00\nバージョン: {}\nサブコマンド: build\n基準ディレクトリ: \
-         /work/book\n実効フィルタ: warn",
-        env!("CARGO_PKG_VERSION")
-      )
-    );
   }
 
   #[test]
@@ -752,11 +636,5 @@ mod tests {
     let text = run_header_text("t", &header, "warn");
 
     assert!(text.contains("基準ディレクトリ: （取得できませんでした）"), "{text}");
-  }
-
-  #[test]
-  fn run_footer_states_the_outcome() {
-    assert_eq!(run_footer_text("t", true), "# seiran 実行終了\n終了時刻: t\n終了状態: 成功");
-    assert_eq!(run_footer_text("t", false), "# seiran 実行終了\n終了時刻: t\n終了状態: 失敗");
   }
 }

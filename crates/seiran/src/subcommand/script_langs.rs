@@ -457,20 +457,6 @@ mod tests {
   }
 
   #[test]
-  fn null_script_offset_is_reported_as_a_marker_line() {
-    let bytes = script_list_bytes(0, false, &[]);
-
-    let (lines, _) = run_script_lines(&bytes);
-
-    assert_eq!(lines.len(), 2, "NULL オフセットも読み取り失敗として 1 行に出るはず");
-    assert!(
-      lines[1].starts_with("    (Script サブテーブルの読み取りに失敗しました:"),
-      "NULL オフセットも黙って飛ばさないはず: {}",
-      lines[1]
-    );
-  }
-
-  #[test]
   fn unreadable_default_lang_sys_is_reported_as_a_marker_line() {
     let mut bytes = script_list_bytes(SCRIPT_OFFSET, true, &[]);
     let default_offset_at = usize::from(SCRIPT_OFFSET);

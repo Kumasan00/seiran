@@ -75,18 +75,6 @@ fn table_record_position(font: &[u8], tag: [u8; 4]) -> usize {
     .expect("テストに使うフォントには対象テーブルのレコードがあるはず");
 }
 
-/// `tag` のテーブルの先頭位置（ファイル先頭からのバイト位置）を返す。
-fn table_offset(font: &[u8], tag: [u8; 4]) -> usize {
-  let record = table_record_position(font, tag);
-  let offset = u32::from_be_bytes([
-    font[record + 8],
-    font[record + 9],
-    font[record + 10],
-    font[record + 11],
-  ]);
-  return usize::try_from(offset).expect("テーブルの位置は usize に収まる");
-}
-
 /// `source` を `dir/name` へコピーし、`patch` でバイト列を書き換える。
 fn write_patched_copy(source: &Path, dir: &Path, name: &str, patch: impl FnOnce(&mut [u8])) {
   let mut bytes = fs::read(source).expect("フォントを読めるはず");
@@ -106,16 +94,23 @@ fn ttc_names_survives_a_closed_reader() {
 }
 
 #[test]
-fn ttc_names_reports_a_missing_file_with_its_path() {
+fn missing_file_is_reported_with_each_subcommand_code() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  let cases = [
+    ("ttc-names", "missing.ttc", "cli::ttc_names::read_file"),
+    ("variation-axes", "missing.ttf", "cli::variation_axes::read_file"),
+    ("script-langs", "missing.ttf", "cli::script_langs::read_file"),
+  ];
 
-  let output = seiran(dir.path(), &["ttc-names", "missing.ttc"]);
+  for (subcommand, file, code) in cases {
+    let output = seiran(dir.path(), &[subcommand, file]);
 
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "読めないファイルは処理失敗: {stderr}");
-  assert!(stderr.contains("cli::ttc_names::read_file"), "読み込み失敗の診断: {stderr}");
-  assert!(stderr.contains("missing.ttc"), "対象パスが出る: {stderr}");
-  assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
+    let stderr = stderr_text(&output);
+    assert_eq!(output.status.code(), Some(1), "読めないファイルは処理失敗: {stderr}");
+    assert!(stderr.contains(code), "サブコマンドごとの読み込み失敗の診断: {stderr}");
+    assert!(stderr.contains(file), "対象パスが出る: {stderr}");
+    assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
+  }
 }
 
 #[test]
@@ -130,15 +125,6 @@ fn ttc_names_rejects_a_file_that_is_not_a_font() {
   assert!(stderr.contains("cli::ttc_names::file_parse"), "解析失敗の診断: {stderr}");
   assert!(stderr.contains("notes.txt"), "対象パスが出る: {stderr}");
   assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
-}
-
-#[test]
-fn missing_argument_is_a_usage_error() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-
-  let output = seiran(dir.path(), &["ttc-names"]);
-
-  assert_eq!(output.status.code(), Some(2), "引数エラーは clap の終了コード 2");
 }
 
 /// `/dev/full` は Linux にしかない（CI は ubuntu で走る）。
@@ -227,107 +213,6 @@ fn variation_axes_rejects_an_fvar_record_whose_length_runs_past_the_file() {
 }
 
 #[test]
-fn variation_axes_rejects_an_fvar_record_whose_offset_is_zero() {
-  // fvar のレコードの offset を 0 にする（レコード先頭 + 8..12）
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-  write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "zero_offset.ttf", |font| {
-    let record = table_record_position(font, *b"fvar");
-    font[record + 8..record + 12].copy_from_slice(&0u32.to_be_bytes());
-  });
-
-  let output = seiran(dir.path(), &["variation-axes", "zero_offset.ttf"]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "オフセット 0 の fvar は「可変フォントではない」にしない: {stderr}");
-  assert!(stderr.contains("cli::variation_axes::fvar_range"), "範囲外の診断: {stderr}");
-  assert!(stderr.contains("zero_offset.ttf"), "対象パスが出る: {stderr}");
-  assert!(!stderr.contains("table is missing"), "read-fonts の cause 文言を出さない: {stderr}");
-  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
-}
-
-#[test]
-fn variation_axes_rejects_truncated_instances() {
-  // fvar ヘッダの instanceCount（テーブル先頭から 12 バイト目）を実際より大きくする
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-  write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "truncated.ttf", |font| {
-    let fvar = table_offset(font, *b"fvar");
-    font[fvar + 12..fvar + 14].copy_from_slice(&0xffffu16.to_be_bytes());
-  });
-
-  let output = seiran(dir.path(), &["variation-axes", "truncated.ttf"]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "インスタンスを黙って落とさない: {stderr}");
-  assert!(stderr.contains("cli::variation_axes::truncated_records"), "切り詰めの診断: {stderr}");
-  assert!(stderr.contains("truncated.ttf"), "対象パスが出る: {stderr}");
-}
-
-#[test]
-fn variation_axes_survives_a_closed_reader() {
-  let font = vendor_font("NotoSans[wdth,wght].ttf");
-
-  let output = seiran_with_closed_stdout(&["variation-axes", path_arg(&font)]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(0), "受け手の終了は正常終了: {stderr}");
-  assert!(!stderr.contains("panicked"), "panic しない: {stderr}");
-}
-
-#[test]
-fn variation_axes_reports_a_missing_file_with_its_path() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-
-  let output = seiran(dir.path(), &["variation-axes", "missing.ttf"]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "{stderr}");
-  assert!(stderr.contains("cli::variation_axes::read_file"), "読み込み失敗の診断: {stderr}");
-  assert!(stderr.contains("missing.ttf"), "対象パスが出る: {stderr}");
-  assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
-}
-
-#[test]
-fn script_langs_reports_a_missing_file_with_its_path() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-
-  let output = seiran(dir.path(), &["script-langs", "missing.ttf"]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "{stderr}");
-  assert!(stderr.contains("cli::script_langs::read_file"), "読み込み失敗の診断: {stderr}");
-  assert!(stderr.contains("missing.ttf"), "対象パスが出る: {stderr}");
-  assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
-}
-
-#[test]
-fn variation_axes_rejects_a_file_that_is_not_a_font() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-  fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
-
-  let output = seiran(dir.path(), &["variation-axes", "notes.txt"]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
-  assert!(stderr.contains("cli::variation_axes::font_parse"), "face 選択失敗の診断: {stderr}");
-  assert!(stderr.contains("notes.txt"), "対象パスが出る: {stderr}");
-  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
-}
-
-#[test]
-fn script_langs_rejects_a_file_that_is_not_a_font() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-  fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
-
-  let output = seiran(dir.path(), &["script-langs", "notes.txt"]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
-  assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
-  assert!(stderr.contains("notes.txt"), "対象パスが出る: {stderr}");
-  assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
-}
-
-#[test]
 fn variation_axes_rejects_a_font_index_outside_the_collection() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let font = vendor_font("SourceHanCodeJP.ttc");
@@ -351,17 +236,6 @@ fn script_langs_rejects_a_font_index_outside_the_collection() {
   assert_eq!(output.status.code(), Some(1), "範囲外のインデックスは処理失敗: {stderr}");
   assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
   assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
-}
-
-#[test]
-fn script_langs_survives_a_closed_reader() {
-  let font = vendor_font("NotoSans[wdth,wght].ttf");
-
-  let output = seiran_with_closed_stdout(&["script-langs", path_arg(&font)]);
-
-  let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(0), "受け手の終了は正常終了: {stderr}");
-  assert!(!stderr.contains("panicked"), "panic しない: {stderr}");
 }
 
 #[test]

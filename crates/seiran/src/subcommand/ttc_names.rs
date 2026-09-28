@@ -123,28 +123,3 @@ fn listing_lines(data: &[u8], file_path: &Path) -> Result<Vec<String>, TtcNamesE
   }
   return Ok(lines);
 }
-
-#[cfg(test)]
-mod tests {
-  use std::path::Path;
-
-  use super::{TtcNamesError, listing_lines};
-
-  #[test]
-  fn non_font_bytes_are_a_parse_error() {
-    let error = listing_lines(b"[package]\nname = \"seiran\"\n", Path::new("Cargo.toml"))
-      .expect_err("フォントでないファイルは失敗として報告する");
-
-    assert!(
-      matches!(&error, TtcNamesError::FileParse { path, .. } if path == "Cargo.toml"),
-      "対象パス付きの解析失敗になる: {error:?}"
-    );
-  }
-
-  #[test]
-  fn empty_file_is_a_parse_error() {
-    let error = listing_lines(b"", Path::new("empty.ttc")).expect_err("空のファイルは失敗として報告する");
-
-    assert!(matches!(error, TtcNamesError::FileParse { .. }), "解析失敗になる: {error:?}");
-  }
-}

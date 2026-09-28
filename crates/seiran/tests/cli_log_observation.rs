@@ -146,31 +146,6 @@ fn override_notice_survives_a_target_limited_rust_log() {
 }
 
 #[test]
-fn quiet_hides_the_notice_only_from_the_terminal() {
-  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
-  write_ok_project(dir.path());
-
-  let output = seiran(
-    dir.path(),
-    &[
-      "build",
-      "-c",
-      "config.toml",
-      "-q",
-      "-v",
-      "--log-file",
-      "x.log",
-    ],
-    Some("error"),
-  );
-
-  assert_eq!(output.status.code(), Some(0));
-  assert!(output.stderr.is_empty(), "-q の端末は無言: {}", stderr_text(&output));
-  let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
-  assert!(log.contains(OVERRIDE_CODE), "-q でもファイルには通知が残る: {log}");
-}
-
-#[test]
 fn invalid_rust_log_is_a_warning_diagnostic_on_both_sinks() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_ok_project(dir.path());
@@ -258,6 +233,7 @@ fn header_records_the_effective_filter_and_precedes_the_notice() {
   );
 
   assert_eq!(output.status.code(), Some(0));
+  assert!(output.stderr.is_empty(), "-q の端末には通知も出ない: {}", stderr_text(&output));
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(log.contains("実効フィルタ: error"), "実効フィルタは RUST_LOG の値: {log}");
   let header_at = log.find("# seiran 実行記録").expect("実行記録が残る");

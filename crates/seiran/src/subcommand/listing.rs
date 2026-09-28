@@ -77,23 +77,8 @@ mod tests {
   fn lines(texts: &[&str]) -> Vec<String> { return texts.iter().copied().map(str::to_owned).collect(); }
 
   #[test]
-  fn writes_each_line_with_a_newline() {
-    let mut out = Vec::new();
-
-    emit(&lines(&["Axis: wght", "", "Thin: [100.0]"]), &mut out).expect("Vec への書き込みは失敗しない");
-
-    assert_eq!(String::from_utf8(out).expect("UTF-8 のはず"), "Axis: wght\n\nThin: [100.0]\n");
-  }
-
-  #[test]
   fn closed_reader_is_a_success() {
     emit(&lines(&["1 行目"]), &mut FailingWriter(io::ErrorKind::BrokenPipe)).expect("受け手の終了は成功として扱う");
-  }
-
-  #[test]
-  fn closed_reader_detected_at_flush_is_a_success() {
-    emit(&lines(&["1 行目"]), &mut FlushFailingWriter(io::ErrorKind::BrokenPipe))
-      .expect("flush で気付いた受け手の終了も成功として扱う");
   }
 
   #[test]

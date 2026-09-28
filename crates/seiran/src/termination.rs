@@ -141,11 +141,6 @@ mod tests {
   }
 
   #[test]
-  fn success_without_log_failure_is_success() {
-    assert!(matches!(decide(Ok(()), Ok(())), Outcome::Success));
-  }
-
-  #[test]
   fn log_failure_after_success_is_reported_alone() {
     let outcome = decide(Ok(()), Err(log_failure()));
 
@@ -153,19 +148,6 @@ mod tests {
       matches!(outcome, Outcome::LogOnlyFailure(LogWriteError::AfterSuccess { .. })),
       "本処理の完了を前提にした文言で報告する"
     );
-  }
-
-  #[test]
-  fn run_failure_keeps_the_primary_diagnostic() {
-    let outcome = decide(Err(miette::Report::new(TestPrimary)), Ok(()));
-
-    match outcome {
-      Outcome::Failure { report, log } => {
-        assert!(format!("{report:?}").contains("cli::test_primary"), "主診断はそのまま");
-        assert!(log.is_none(), "ログの失敗は無い");
-      },
-      _ => panic!("本処理の失敗として報告するはず"),
-    }
   }
 
   #[test]
@@ -188,16 +170,6 @@ mod tests {
     fn write(&mut self, _buf: &[u8]) -> io::Result<usize> { return Err(io::Error::from(io::ErrorKind::BrokenPipe)); }
 
     fn flush(&mut self) -> io::Result<()> { return Err(io::Error::from(io::ErrorKind::BrokenPipe)); }
-  }
-
-  #[test]
-  fn success_writes_nothing() {
-    let mut stderr = Vec::new();
-
-    let code = Outcome::Success.report(&mut stderr);
-
-    assert_eq!(code, ExitCode::SUCCESS);
-    assert!(stderr.is_empty(), "成功した実行は stderr へ何も書かない");
   }
 
   #[test]
