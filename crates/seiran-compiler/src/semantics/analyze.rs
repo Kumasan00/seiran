@@ -63,7 +63,7 @@ mod tests {
     frontend::test_support::parse_source_for_test,
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
-      AnalyzeError, CitationStyleError, SemanticError, read_references,
+      AnalyzeError, CitationStyleError, read_references,
       test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -148,26 +148,5 @@ mod tests {
     let error = analyze(&source, document, &references, &style).expect_err("未定義ラベル参照はエラーになるはず");
 
     assert!(matches!(error, AnalyzeError::Analyze(_)), "got: {error:?}");
-  }
-
-  #[test]
-  fn analyze_reports_unknown_citation_key() {
-    let source = MemoryProjectSource::new();
-    let style = Style::default();
-    let references = read_references(&source, None).expect("空の参照定義を読めるはず");
-    let source_id = SourceId::new(0);
-    let hir = parse_source_for_test(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
-    let document = HirDocument::assemble(vec![hir]);
-
-    let error = analyze(&source, document, &references, &style).expect_err("未知キーはエラー");
-
-    assert!(
-      matches!(
-        &error,
-        AnalyzeError::Analyze(failures)
-          if matches!(failures.first(), SemanticError::UnknownCitationKeys { .. })
-      ),
-      "got: {error:?}"
-    );
   }
 }

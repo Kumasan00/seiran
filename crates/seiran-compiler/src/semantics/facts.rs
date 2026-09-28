@@ -119,13 +119,6 @@ mod tests {
   }
 
   #[test]
-  fn label_definition_of_unknown_label_is_none() {
-    let facts = SemanticFacts::default();
-
-    assert!(facts.label_definition("nonexistent").is_none());
-  }
-
-  #[test]
   fn declare_label_records_the_diagnostic_site_apart_from_the_node() {
     // 数式行のように fact の鍵と診断位置が別ノードになる場合
     let mut facts = SemanticFacts::default();

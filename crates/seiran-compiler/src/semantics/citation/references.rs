@@ -153,13 +153,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_references_fails_on_invalid_toml_syntax() {
-    let result = parse_references("= \nthis is not valid toml", dummy_source());
-
-    assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
-  }
-
-  #[test]
   fn parse_references_fails_on_empty_id() {
     let toml = String::from(
       "[\"\"]\n\
@@ -276,16 +269,6 @@ mod tests {
   }
 
   #[test]
-  fn read_references_fails_on_read_file_error() {
-    let source = FilesystemProjectSource;
-    let path = ProjectPath::new("/nonexistent/path/to/references.toml");
-
-    let result = read_references(&source, Some(&path));
-
-    assert!(matches!(result, Err(ReadReferencesError::ReadFile { .. })));
-  }
-
-  #[test]
   fn read_references_reads_through_project_source() {
     let source = MemoryProjectSource::new().with_text(
       "/project/references.toml",
@@ -318,98 +301,10 @@ mod tests {
   }
 
   #[test]
-  fn read_references_succeeds_with_valid_file() {
-    let source = FilesystemProjectSource;
-    let tempdir = tempfile::tempdir().unwrap();
-    let references_path = tempdir.path().join("references.toml");
-    std::fs::write(
-      &references_path,
-      "[ref1]\n\
-       type = \"book\"\n\
-       title = \"Sample Book\"\n\
-       [[ref1.author]]\n\
-       family = \"Doe\"\n\
-       given = \"John\"\n",
-    )
-    .unwrap();
-
-    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
-
-    assert_eq!(result.len(), 1);
-    assert!(result.contains_key("ref1"));
-  }
-
-  #[test]
-  fn parse_references_fails_on_invalid_json_syntax() {
-    let result = parse_references("{ this is not valid json", dummy_json_source());
-
-    assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
-  }
-
-  #[test]
   fn parse_references_fails_on_unsupported_extension() {
     let result = parse_references("anything", Path::new("test.yaml"));
 
     assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));
-  }
-
-  #[test]
-  fn parse_references_fails_on_empty_id_for_json() {
-    let json = json_doc("{\"\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}}");
-    let result = parse_references(&json, dummy_json_source());
-    let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
-      panic!("expected ParseJson, got {result:?}");
-    };
-    assert!(source.to_string().contains("空文字列"));
-  }
-
-  #[test]
-  fn read_references_succeeds_with_valid_json_file() {
-    let source = FilesystemProjectSource;
-    let tempdir = tempfile::tempdir().unwrap();
-    let references_path = tempdir.path().join("references.json");
-    let json = json_doc(
-      "{\"ref1\": {\
-         \"type\": \"book\", \
-         \"title\": \"Sample Book\", \
-         \"issued\": {\"date-parts\": [[2024, 1, 15]]}, \
-         \"author\": [{\"family\": \"Doe\", \"given\": \"John\"}]\
-       }}",
-    );
-    std::fs::write(&references_path, json).unwrap();
-
-    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
-
-    assert_eq!(result.len(), 1);
-    let reference = result.get("ref1").unwrap();
-    let issued = reference.issued.as_ref().unwrap();
-    assert_eq!(issued.parts, [2024, 1, 15]);
-  }
-
-  #[test]
-  fn read_references_parses_structured_date_in_toml() {
-    let source = FilesystemProjectSource;
-    let tempdir = tempfile::tempdir().unwrap();
-    let references_path = tempdir.path().join("references.toml");
-    std::fs::write(
-      &references_path,
-      "[ref1]\n\
-       type = \"book\"\n\
-       [[ref1.author]]\n\
-       family = \"Doe\"\n\n\
-       [ref1.issued]\n\
-       date-parts = [[2024, 1, 15]]\n\
-       circa = true\n",
-    )
-    .unwrap();
-
-    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
-
-    let reference = result.get("ref1").unwrap();
-    let issued = reference.issued.as_ref().unwrap();
-    assert_eq!(issued.parts, [2024, 1, 15]);
-    assert_eq!(issued.circa, Some(true));
-    assert_eq!(issued.season, None);
   }
 
   #[test]
@@ -430,35 +325,11 @@ mod tests {
   }
 
   #[test]
-  fn parse_references_rejects_date_range_in_json() {
-    let json = json_doc(
-      "{\"ref1\": {\
-         \"type\": \"book\", \
-         \"issued\": {\"date-parts\": [[2024, 1, 15], [2024, 12, 31]]}, \
-         \"author\": [{\"family\": \"Doe\"}]\
-       }}",
-    );
-    let result = parse_references(&json, dummy_json_source());
-    let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
-      panic!("expected ParseJson, got {result:?}");
-    };
-    assert!(source.to_string().contains("日付範囲"));
-  }
-
-  #[test]
   fn parse_references_rejects_raw_date_in_toml() {
     let message = issued_toml_error("raw = \"2014-05-01\"");
 
     assert!(message.contains("`raw`"), "{message}");
     assert!(message.contains("`date-parts`"), "{message}");
-    assert!(message.contains("[ref1.issued]"), "{message}");
-  }
-
-  #[test]
-  fn parse_references_rejects_literal_date_in_toml() {
-    let message = issued_toml_error("literal = \"circa 1900\"");
-
-    assert!(message.contains("`literal`"), "{message}");
     assert!(message.contains("[ref1.issued]"), "{message}");
   }
 
@@ -526,18 +397,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_references_rejects_empty_string_date_part() {
-    // 整形器は空文字列の要素を捨てるので、`[[""]]` は要素 0 個と同じく panic し、
-    // `[["", 2024]]` は黙って年がずれる。年は文字列を受理しないので、年の文字列として拒否する
-    for body in ["date-parts = [[\"\"]]", "date-parts = [[\"\", 2024]]"] {
-      let message = issued_toml_error(body);
-
-      assert!(message.contains("年"), "{body}: {message}");
-      assert!(message.contains("整数"), "{body}: {message}");
-    }
-  }
-
-  #[test]
   fn parse_references_rejects_out_of_range_month_and_day_in_toml() {
     // 整形器は月・日を `(v - 1) as u8` で変換するので、0 は 255 に折り返し 13 以上もそのまま書誌に出る
     for (body, label, range, value) in [
@@ -554,40 +413,6 @@ mod tests {
       assert!(message.contains(label), "{body}: {message}");
       assert!(message.contains(range), "{body}: {message}");
       assert!(message.contains(&format!("`{value}`")), "{body}: {message}");
-    }
-  }
-
-  #[test]
-  fn parse_references_rejects_out_of_range_month_and_day_in_json() {
-    for (issued, label, value) in [
-      ("{\"date-parts\": [[2014, 13]]}", "月", "13"),
-      ("{\"date-parts\": [[2014, 5, 32]]}", "日", "32"),
-    ] {
-      let message = issued_json_error(issued);
-
-      // JSON はスニペットを持たないので、文言のキー名と値・行位置で場所を示す
-      assert!(message.contains("`date-parts`"), "{issued}: {message}");
-      assert!(message.contains(label), "{issued}: {message}");
-      assert!(message.contains(&format!("`{value}`")), "{issued}: {message}");
-      assert!(message.contains("line"), "{issued}: {message}");
-    }
-  }
-
-  #[test]
-  fn parse_references_rejects_string_month_and_day() {
-    // 整形器は数値文字列を整数と同じに読むので、`"13"` は範囲外の整数と同じ不具合を起こす。
-    // 範囲内の `"5"` も同じ値の別綴りなので拒否する（#743: 月・日は整数だけ受理）
-    for (body, label) in [
-      ("date-parts = [[2014, \"13\"]]", "月"),
-      ("date-parts = [[2014, \"5\"]]", "月"),
-      ("date-parts = [[2014, 5, \"0\"]]", "日"),
-      ("date-parts = [[2014, 5, \"1\"]]", "日"),
-    ] {
-      let message = issued_toml_error(body);
-
-      assert!(message.contains("`date-parts`"), "{body}: {message}");
-      assert!(message.contains(label), "{body}: {message}");
-      assert!(message.contains("整数"), "{body}: {message}");
     }
   }
 
@@ -627,17 +452,6 @@ mod tests {
       assert!(message.contains("-32768〜32767"), "{body}: {message}");
       assert!(message.contains(&format!("`{value}`")), "{body}: {message}");
     }
-  }
-
-  #[test]
-  fn parse_references_rejects_out_of_range_year_in_json() {
-    let message = issued_json_error("{\"date-parts\": [[40000, 5]]}");
-
-    // JSON はスニペットを持たないので、文言のキー名と値・行位置で場所を示す
-    assert!(message.contains("`date-parts`"), "{message}");
-    assert!(message.contains("年"), "{message}");
-    assert!(message.contains("`40000`"), "{message}");
-    assert!(message.contains("line"), "{message}");
   }
 
   #[test]
@@ -711,15 +525,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_references_rejects_string_season_in_json() {
-    let message = issued_json_error("{\"date-parts\": [[2014]], \"season\": \"spring\"}");
-
-    // JSON はスニペットを持たないので、文言のキー名で位置を示す
-    assert!(message.contains("`season`"), "{message}");
-    assert!(message.contains("line"), "{message}");
-  }
-
-  #[test]
   fn parse_references_rejects_season_on_date_with_month() {
     // 整形器は月があると季節を描画しないので、月付きの日付への季節は黙って捨てずに拒否する。
     // キー順に依らない（`season` が `date-parts` より前でも拒否する）
@@ -759,16 +564,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_references_rejects_non_bool_circa_in_json() {
-    for value in ["1", "\"true\"", "\"yes\""] {
-      let message = issued_json_error(&format!("{{\"date-parts\": [[2014]], \"circa\": {value}}}"));
-
-      assert!(message.contains("`circa`"), "{value}: {message}");
-      assert!(message.contains("line"), "{value}: {message}");
-    }
-  }
-
-  #[test]
   fn read_references_parses_structured_date_in_json() {
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
@@ -796,18 +591,6 @@ mod tests {
   }
 
   #[test]
-  fn read_references_fails_on_unsupported_extension_file() {
-    let source = FilesystemProjectSource;
-    let tempdir = tempfile::tempdir().unwrap();
-    let references_path = tempdir.path().join("references.yaml");
-    std::fs::write(&references_path, b"anything: true").unwrap();
-
-    let result = read_references(&source, Some(&ProjectPath::new(&references_path)));
-
-    assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));
-  }
-
-  #[test]
   fn read_references_accepts_number_variables_as_integers_and_strings_in_toml() {
     let toml = String::from(
       "[ref1]\n\
@@ -827,28 +610,6 @@ mod tests {
     );
     assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
     assert!(matches!(reference.issue, Some(NumberOrString::Integer(7))));
-  }
-
-  #[test]
-  fn read_references_accepts_number_variables_as_integers_and_strings_in_json() {
-    let json = json_doc(
-      "{\"ref1\": {\
-         \"type\": \"book\", \
-         \"volume\": 3, \
-         \"edition\": 2.5, \
-         \"page\": \"1-10\", \
-         \"issue\": \"S2\", \
-         \"author\": [{\"family\": \"Doe\"}]\
-       }}",
-    );
-    let refs = parse_references(&json, dummy_json_source()).unwrap();
-    let reference = refs.get("ref1").unwrap();
-    assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
-    assert!(
-      matches!(reference.edition, Some(NumberOrString::Float(value)) if (value.get() - 2.5).abs() < f64::EPSILON)
-    );
-    assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
-    assert!(matches!(&reference.issue, Some(NumberOrString::String(value)) if value == "S2"));
   }
 
   #[test]

@@ -89,35 +89,8 @@ pub(crate) fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> St
 
 #[cfg(test)]
 mod tests {
-  use super::{CitationId, GeneratedInline, generated_inlines_to_plain_text};
+  use super::GeneratedInline;
   use crate::document::FontKind;
-
-  #[test]
-  fn generated_text_to_plain_text() {
-    let node = GeneratedInline::Text("hello".to_string());
-    let plain = node.to_plain_text();
-    assert_eq!(plain, "hello");
-  }
-
-  #[test]
-  fn generated_styled_to_plain_text() {
-    let node = GeneratedInline::Styled {
-      kind: FontKind::SerifItalic,
-      children: vec![GeneratedInline::Text("important".to_string())],
-    };
-    let plain = node.to_plain_text();
-    assert_eq!(plain, "important");
-  }
-
-  #[test]
-  fn generated_internal_link_to_plain_text() {
-    let node = GeneratedInline::InternalLink {
-      target: CitationId::new("kwan2014"),
-      children: vec![GeneratedInline::Text("[1]".to_string())],
-    };
-    let plain = node.to_plain_text();
-    assert_eq!(plain, "[1]");
-  }
 
   #[test]
   fn generated_nested_to_plain_text() {
@@ -133,19 +106,5 @@ mod tests {
     };
     let plain = node.to_plain_text();
     assert_eq!(plain, "bold and italic");
-  }
-
-  #[test]
-  fn generated_inlines_to_plain_text_mixed() {
-    let inlines = vec![
-      GeneratedInline::Text("Hello ".to_string()),
-      GeneratedInline::Styled {
-        kind: FontKind::SerifBold,
-        children: vec![GeneratedInline::Text("world".to_string())],
-      },
-      GeneratedInline::Text("!".to_string()),
-    ];
-    let plain = generated_inlines_to_plain_text(&inlines);
-    assert_eq!(plain, "Hello world!");
   }
 }

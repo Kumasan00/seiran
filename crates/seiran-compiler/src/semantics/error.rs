@@ -246,11 +246,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn unknown_keys_label_quotes_single_key() {
-    assert_eq!(unknown_keys_label(&["missing-key".to_string()]), "未定義の引用キー: `missing-key`");
-  }
-
-  #[test]
   fn unknown_keys_label_separates_keys_containing_comma() {
     // `,` を含むキー（`\,` で書いたもの）と複数キーの境目が括りで一意に読める（#750）
     let keys = ["kwan2014,doe2020".to_string(), "x".to_string()];

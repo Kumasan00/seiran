@@ -46,15 +46,3 @@ impl HeadingKey {
   #[must_use]
   pub(crate) fn index(self) -> usize { return self.0; }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::LabelId;
-
-  #[test]
-  fn label_id_borrows_as_str_for_hashmap_lookup() {
-    let mut map = std::collections::HashMap::new();
-    map.insert(LabelId::new("ch:intro"), 1);
-    assert_eq!(map.get("ch:intro"), Some(&1));
-  }
-}

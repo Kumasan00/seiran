@@ -59,7 +59,7 @@ pub(crate) struct MathBlockStyle {
   /// 式の横に出る数式番号（タグ）の書式テンプレート。`{number}` を発番番号で置換する（既定
   /// `"({number})"` → `"(1.1)"`）。これは番号 3 系統のうち **tag**（式の横に出す）で、番号を構築する
   /// `counters.equation`（**number**）や `\ref{eq:x}` の表示を決める
-  /// [`crate::style::CounterStyle::ref_format`]（**ref**）とは別物。既定値が一致するのは LaTeX 慣習で
+  /// [`crate::style::counter::CounterStyle::ref_format`]（**ref**）とは別物。既定値が一致するのは LaTeX 慣習で
   /// 「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に変更できる。
   #[garde(dive)]
   pub tag_format: NumberTemplate,

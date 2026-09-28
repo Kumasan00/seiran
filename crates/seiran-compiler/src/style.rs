@@ -48,7 +48,7 @@ pub(crate) use crate::style::error::ReadStyleError;
 )]
 pub(crate) use crate::style::{
   caption::CaptionStyle,
-  counter::{CounterName, CounterStyle, Counters},
+  counter::{CounterName, Counters},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
   math::{Alignment, MathScriptStyle, NumberSide},

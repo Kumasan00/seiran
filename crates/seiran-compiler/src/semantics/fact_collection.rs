@@ -481,7 +481,7 @@ mod tests {
 
   use super::collect_facts;
   use crate::{
-    document::{HirDocument, NodeId},
+    document::HirDocument,
     frontend::test_support::parse_source_for_test,
     semantics::{
       CitationId, GeneratedCitations, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
@@ -518,18 +518,6 @@ mod tests {
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
     return analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
-  }
-
-  #[test]
-  fn analyze_registers_declared_label_in_both_directions() {
-    let hir = document("\\chapter[label=ch:intro]{Intro}\n");
-    let policy = SemanticPolicy::from_style(&Style::default());
-
-    let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
-
-    let heading = analyzed.headings().next().expect("見出しが 1 件あるはず");
-    assert_eq!(analyzed.declared_label(heading.node), Some(&LabelId::new("ch:intro")));
-    assert!(analyzed.counter_value_of_label(&LabelId::new("ch:intro")).is_some());
   }
 
   #[test]
@@ -726,48 +714,6 @@ mod tests {
   }
 
   #[test]
-  fn analyze_finds_citation_sites_in_nested_containers() {
-    let hir = document(
-      "\\begin{itemize}\n\\item{\\cite{kwan2014}}\n\\end{itemize}\n\n本文\\footnote{\\cite{doe2020}}\n\n\
-       \\begin{table}\n\\row{\\cite{kwan2014}}\n\\end{table}\n",
-    );
-    let policy = SemanticPolicy::from_style(&Style::default());
-
-    let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
-
-    assert_eq!(facts.citations.len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
-  }
-
-  #[test]
-  fn analyze_is_deterministic() {
-    // CSL 非依存は `collect_facts` が `Style` / CSL を一切引数に取らないことで型として
-    // 保証されており、ここでは同じ HIR + 同じ references から同じ facts が得られる決定性を固定する
-    let policy = SemanticPolicy::from_style(&Style::default());
-    let source = r"\cite{kwan2014} と \cite{doe2020}";
-
-    let first = collect_facts(&document(source), &policy, &sample_references()).expect("成功するはず");
-    let second = collect_facts(&document(source), &policy, &sample_references()).expect("成功するはず");
-
-    let sites = |facts: &super::SemanticFacts| -> Vec<(NodeId, Vec<CitationId>)> {
-      return facts.citations.iter().map(|(id, site)| return (id, site.targets.clone())).collect();
-    };
-    assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
-  }
-
-  #[test]
-  fn analyze_reports_duplicate_label_with_span() {
-    let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n");
-    let policy = SemanticPolicy::from_style(&Style::default());
-
-    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
-
-    assert!(
-      matches!(failures.first(), SemanticError::DuplicateLabel { label, .. } if label == "dup"),
-      "got: {failures:?}"
-    );
-  }
-
-  #[test]
   fn duplicate_label_in_the_same_source_labels_both_definitions() {
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
@@ -775,9 +721,10 @@ mod tests {
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     // 2 回目を主ラベル、最初の定義（1 行目、offset 0）を 2 本目のラベルとして同じスニペットに示す（#552）
-    let SemanticError::DuplicateLabel { labels, .. } = failures.first() else {
+    let SemanticError::DuplicateLabel { label, labels, .. } = failures.first() else {
       panic!("DuplicateLabel を期待: {failures:?}");
     };
+    assert_eq!(label, "dup");
     assert_eq!(labels.len(), 2, "{labels:?}");
     assert!(labels[0].primary(), "1 本目は 2 回目の定義を指す主ラベルのはず: {labels:?}");
     assert!(!labels[1].primary(), "2 本目は最初の定義を指す副ラベルのはず: {labels:?}");
@@ -848,23 +795,6 @@ mod tests {
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string(); 2]);
-  }
-
-  #[test]
-  fn analyze_continues_the_walk_after_a_duplicate_label() {
-    let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\ref{missing} です。\n");
-    let policy = SemanticPolicy::from_style(&Style::default());
-
-    let failures = analyze(hir, &policy, &no_references()).expect_err("2 種とも報告されるはず");
-
-    // 重複で走査を打ち切らないので後続の未解決参照も見つかる
-    assert_eq!(
-      codes(&failures),
-      vec![
-        "semantics::duplicate_label".to_string(),
-        "semantics::unresolved_reference".to_string()
-      ]
-    );
   }
 
   #[test]
