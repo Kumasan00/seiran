@@ -96,8 +96,6 @@ pub(super) struct TestProject {
   config_path: ProjectPath,
   /// 相対パス解決の基準ディレクトリ
   base_dir: PathBuf,
-  /// 登録したフォントの登録キー（重複除去済み）
-  font_keys: Vec<PathBuf>,
 }
 
 impl TestProject {
@@ -154,17 +152,11 @@ impl TestProject {
       .unwrap_or_else(|failure| panic!("fixture の組版は成功するはず: {:?}", failure.into_report()));
   }
 
-  /// 読込回数の検査に使う入力 seam。
-  pub(super) fn memory_source(&self) -> &MemoryProjectSource { return &self.source; }
-
   /// `compile` へ渡している設定ファイルパス。
   pub(super) fn config_path(&self) -> &ProjectPath { return &self.config_path; }
 
   /// `compile` へ渡している相対パス解決の基準ディレクトリ。
   pub(super) fn base_dir(&self) -> &Path { return &self.base_dir; }
-
-  /// 登録したフォントの登録キー（同じファイルを指す種別は 1 件に畳まれている）。
-  pub(super) fn font_keys(&self) -> &[PathBuf] { return &self.font_keys; }
 }
 
 /// [`TestProject`] の組み立て（差分は宣言順に適用される）。
@@ -301,8 +293,7 @@ impl TestProjectBuilder {
       }
     }
 
-    let (source_with_fonts, font_keys) = self.register_fonts(source, &root, &table);
-    source = source_with_fonts;
+    source = self.register_fonts(source, &root, &table);
 
     let reference = style_table.get("reference").and_then(toml::Value::as_table);
     for key in ["csl_path", "locale_path"] {
@@ -324,25 +315,21 @@ impl TestProjectBuilder {
       source,
       config_path: ProjectPath::new(self.key(CONFIG_REL)),
       base_dir: self.base_dir,
-      font_keys,
     };
   }
 
   /// `config.toml` の `[font_configs.*]` が指すフォントを実バイト列で登録する（同じパスは 1 回だけ）。
-  ///
-  /// 登録したキーも返す（同じフォントを複数回読まないことの検査に使う）。
   fn register_fonts(
     &self,
     mut source: MemoryProjectSource,
     root: &Path,
     table: &toml::value::Table,
-  ) -> (MemoryProjectSource, Vec<PathBuf>) {
+  ) -> MemoryProjectSource {
     let font_configs = table
       .get("font_configs")
       .and_then(|value| return value.as_table())
       .expect("fixture config.toml は [font_configs.*] を持つはず");
     let mut registered: HashSet<PathBuf> = HashSet::new();
-    let mut keys: Vec<PathBuf> = Vec::new();
     for entry in font_configs.values() {
       let Some(font_path) =
         entry.as_table().and_then(|font| return font.get("font_path")).and_then(|v| return v.as_str())
@@ -354,10 +341,9 @@ impl TestProjectBuilder {
         let bytes =
           fs::read(root.join(font_path)).unwrap_or_else(|error| panic!("フォントを読めるはず: {font_path}: {error}"));
         source = source.with_bytes(&key, bytes);
-        keys.push(key);
       }
     }
-    return (source, keys);
+    return source;
   }
 
   /// 登録する資産の一覧（明示登録 `self.assets` に加え、`sources` が既定のままなら

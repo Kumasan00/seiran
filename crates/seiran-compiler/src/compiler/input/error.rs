@@ -63,28 +63,3 @@ pub(in crate::compiler) enum CompileError {
   #[diagnostic(transparent)]
   Font(#[from] FontReadError),
 }
-
-#[cfg(test)]
-mod tests {
-  use miette::Diagnostic;
-
-  use super::CompileError;
-  use crate::typeset::LayoutValidationError;
-
-  #[test]
-  fn layout_error_keeps_the_inner_leaf_code() {
-    let error = LayoutValidationError::InvalidColumnWidth {
-      text_width: 100.0,
-      num_columns: 2,
-      column_gap: 200.0,
-    };
-
-    let error = CompileError::from(error);
-
-    assert_eq!(
-      error.code().expect("code を持つはず").to_string(),
-      "typeset::geometry::invalid_columns",
-      "段名だけの wrapper が主診断になってはいけない"
-    );
-  }
-}

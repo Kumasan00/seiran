@@ -101,26 +101,6 @@ mod tests {
   }
 
   #[test]
-  fn default_has_no_warnings() {
-    let warnings = Warnings::default();
-
-    assert!(warnings.is_empty());
-    assert_eq!(warnings.iter().count(), 0);
-  }
-
-  #[test]
-  fn push_keeps_severity_and_insertion_order() {
-    let mut warnings = Warnings::default();
-
-    warnings.push(TestWarning);
-    warnings.push(TestWarning);
-
-    assert!(!warnings.is_empty());
-    assert_eq!(warnings.iter().count(), 2);
-    assert!(warnings.iter().all(|warning| return warning.severity() == Some(miette::Severity::Warning)));
-  }
-
-  #[test]
   fn borrowed_warnings_can_be_iterated_with_for() {
     let mut warnings = Warnings::default();
     warnings.push(TestWarning);

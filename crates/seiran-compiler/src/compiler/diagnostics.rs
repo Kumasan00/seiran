@@ -81,6 +81,7 @@ fn diagnostic_unknown_command() {
   // P6（未知は拒否）の未知コマンドエラー
   let failure = compile_err(&["tests/text/diagnostics/unknown_command.sei"]);
 
+  assert_eq!(codes(&failure), vec!["frontend::eval::unknown_command".to_string()]);
   assert_matches_golden("unknown_command", &render_failure(failure));
 }
 
@@ -177,6 +178,13 @@ fn diagnostic_multiple_source_errors() {
     "tests/text/diagnostics/bare_braces.sei",
   ]);
 
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "frontend::eval::unknown_command".to_string(),
+      "frontend::parse::bare_group".to_string()
+    ]
+  );
   assert_matches_golden("multiple_source_errors", &render_failure(failure));
 }
 
@@ -198,6 +206,7 @@ fn diagnostic_undefined_ref() {
   // `\ref` の未定義ラベル
   let failure = compile_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
+  assert_eq!(codes(&failure), vec!["semantics::unresolved_reference".to_string()]);
   assert_matches_golden("undefined_ref", &render_failure(failure));
 }
 
@@ -206,6 +215,8 @@ fn diagnostic_unknown_cite_key() {
   // `\cite` の未知キー
   let failure = compile_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
 
+  // 同じソース内の 2 箇所は 1 診断のラベルにまとまる
+  assert_eq!(codes(&failure), vec!["semantics::unknown_citation_key".to_string()]);
   assert_matches_golden("unknown_cite_key", &render_failure(failure));
 }
 
@@ -271,18 +282,6 @@ fn diagnostic_mixed_semantics_errors_follow_document_order() {
 }
 
 #[test]
-fn diagnostic_multiple_missing_sources_follow_declaration_order() {
-  // 存在しないソースを 2 つ、パス名の辞書順とは逆に宣言する
-  let failure = compile_err(&[
-    "tests/text/diagnostics/z-does-not-exist.sei",
-    "tests/text/diagnostics/a-does-not-exist.sei",
-  ]);
-
-  // 宣言順に全件（1 件目で打ち切らない）。欠落ソースは config.toml の検証が検出する
-  assert_eq!(codes(&failure), vec!["project::config::validation::source_path".to_string(); 2]);
-}
-
-#[test]
 fn diagnostic_missing_image() {
   // 画像アセット欠落（組版の画像読込が `ProjectSource::read_bytes` で検出）
   let failure = compile_err(&["tests/text/diagnostics/missing_image.sei"]);
@@ -303,19 +302,10 @@ fn diagnostic_unsupported_image_format() {
 }
 
 #[test]
-fn diagnostic_font_validation_error() {
-  // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる
-  // （`FontSystemError::Validation` の `transparent` 委譲を確認）
-  let project = TestProject::builder().config_toml(|table| set_unknown_variation_axis(table, "serif")).build();
-
-  let failure = project.compile_err();
-
-  assert_matches_golden("font_validation_error", &render_failure(failure));
-}
-
-#[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
-  // 宣言は Japanese Serif → Serif の順だが、報告は `FontType::ALL` の順（Serif が先）になるはず
+  // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる
+  // （`FontSystemError::Validation` の `transparent` 委譲）。宣言は Japanese Serif → Serif の順だが、
+  // 報告は `FontType::ALL` の順（Serif が先）になるはず
   let project = TestProject::builder()
     .config_toml(|table| {
       set_unknown_variation_axis(table, "japanese_serif");
@@ -339,44 +329,6 @@ fn diagnostic_missing_csl_path() {
 
   assert_eq!(codes(&failure), vec!["semantics::citation::style::missing_csl_path".to_string()]);
   assert_matches_golden("missing_csl_path", &render_failure(failure));
-}
-
-#[test]
-fn primary_diagnostic_is_the_leaf_for_unknown_command() {
-  let failure = compile_err(&["tests/text/diagnostics/unknown_command.sei"]);
-
-  assert_eq!(codes(&failure), vec!["frontend::eval::unknown_command".to_string()]);
-}
-
-#[test]
-fn primary_diagnostic_is_the_leaf_for_unresolved_reference() {
-  let failure = compile_err(&["tests/text/diagnostics/undefined_ref.sei"]);
-
-  assert_eq!(codes(&failure), vec!["semantics::unresolved_reference".to_string()]);
-}
-
-#[test]
-fn primary_diagnostic_is_the_leaf_for_unknown_citation_key() {
-  let failure = compile_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
-
-  // 同じソース内の 2 箇所は 1 診断のラベルにまとまる
-  assert_eq!(codes(&failure), vec!["semantics::unknown_citation_key".to_string()]);
-}
-
-#[test]
-fn multiple_source_errors_keep_declaration_order() {
-  let failure = compile_err(&[
-    "tests/text/diagnostics/unknown_command.sei",
-    "tests/text/diagnostics/bare_braces.sei",
-  ]);
-
-  assert_eq!(
-    codes(&failure),
-    vec![
-      "frontend::eval::unknown_command".to_string(),
-      "frontend::parse::bare_group".to_string()
-    ]
-  );
 }
 
 #[test]

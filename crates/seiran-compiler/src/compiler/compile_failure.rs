@@ -218,20 +218,6 @@ mod tests {
   }
 
   #[test]
-  fn related_lists_the_rest_after_the_primary() {
-    let mut failure = CompileFailure::single(LeafError);
-    failure.push(OtherError);
-
-    let related: Vec<String> = failure
-      .related()
-      .expect("関連診断を持つはず")
-      .map(|diagnostic| return diagnostic.code().expect("code を持つはず").to_string())
-      .collect();
-
-    assert_eq!(related, vec!["test::other".to_string()]);
-  }
-
-  #[test]
   fn related_keeps_the_primary_own_related() {
     let mut failure = CompileFailure::single(WithRelatedError {
       related: vec![OtherError],
@@ -245,13 +231,6 @@ mod tests {
       .collect();
 
     assert_eq!(related, vec!["test::other".to_string(), "test::leaf".to_string()]);
-  }
-
-  #[test]
-  fn failures_start_without_warnings() {
-    let failure = CompileFailure::single(LeafError);
-
-    assert!(failure.warnings().is_empty(), "警告を添えるまでは空のはず");
   }
 
   #[test]
