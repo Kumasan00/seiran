@@ -158,26 +158,18 @@ mod tests {
   }
 
   #[test]
-  fn load_image_dispatches_on_the_declared_format_not_the_extension() {
-    // 拡張子は .bin だが組版段が PNG と判定した実 PNG バイト列
-    let png = raster_bytes(image::ImageFormat::Png, 1, 1);
+  fn load_image_decodes_raster_by_the_declared_format_not_the_extension() {
+    // 拡張子は .bin だが組版段が形式を判定済みの実バイト列
+    for (format, reencode_as) in RASTER_FORMATS {
+      let bytes = raster_bytes(reencode_as, 3, 2);
 
-    let loaded = load_image("figure.bin", ImageFormat::Png, &png, None).expect("PNG として読めるはず");
+      let loaded = load_image("figure.bin", format, &bytes, None)
+        .unwrap_or_else(|error| panic!("{format:?} として読めるはず: {error}"));
 
-    let (width, height) = loaded.natural_size();
-    assert!((width - 1.0).abs() < 1e-4);
-    assert!((height - 1.0).abs() < 1e-4);
-  }
-
-  #[test]
-  fn load_image_decodes_jpeg_through_the_same_raster_path() {
-    let jpeg = raster_bytes(image::ImageFormat::Jpeg, 3, 2);
-
-    let loaded = load_image("photo.jpg", ImageFormat::Jpeg, &jpeg, None).expect("JPEG として読めるはず");
-
-    let (width, height) = loaded.natural_size();
-    assert!((width - 3.0).abs() < 1e-4);
-    assert!((height - 2.0).abs() < 1e-4);
+      let (width, height) = loaded.natural_size();
+      assert!((width - 3.0).abs() < 1e-4, "{format:?} の幅は 3px のまま");
+      assert!((height - 2.0).abs() < 1e-4, "{format:?} の高さは 2px のまま");
+    }
   }
 
   #[test]

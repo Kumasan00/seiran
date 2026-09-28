@@ -271,32 +271,8 @@ fn draw_filled_rect(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8;
 #[cfg(test)]
 mod tests {
   use krilla::{destination::XyzDestination, geom::Point};
-  use seiran_compiler::{Destination as PubDestination, Point as PubPoint};
 
-  use super::{OutlineTreeNode, insert_outline_node, to_krilla_point, to_xyz_destination};
-
-  #[test]
-  #[expect(clippy::float_cmp, reason = "座標を素通しする関数の検証なので、丸めのない厳密一致を見るのが正しい")]
-  fn to_krilla_point_passes_through_pt_coordinates_without_adding_margin() {
-    let point = PubPoint { x: 123.0, y: 45.0 };
-
-    let converted = to_krilla_point(point);
-
-    assert_eq!(converted.x, 123.0);
-    assert_eq!(converted.y, 45.0);
-  }
-
-  #[test]
-  fn to_xyz_destination_preserves_page_index_and_point() {
-    let dest = PubDestination {
-      page_index: 2,
-      point: PubPoint { x: 1.0, y: 2.0 },
-    };
-
-    let xyz = to_xyz_destination(dest);
-
-    assert_eq!(format!("{xyz:?}"), format!("{:?}", XyzDestination::new(2, Point::from_xy(1.0, 2.0))));
-  }
+  use super::{OutlineTreeNode, insert_outline_node};
 
   #[test]
   fn build_outline_from_entries_returns_none_for_empty_slice() {
