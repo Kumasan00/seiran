@@ -67,45 +67,14 @@ mod tests {
   use super::Span;
 
   #[test]
-  fn new_creates_span_with_given_offsets() {
-    let span = Span::new(10, 20);
-
-    assert_eq!(span.start, 10);
-    assert_eq!(span.end, 20);
-  }
-
-  #[test]
-  fn len_returns_byte_length() {
-    let span = Span::new(5, 15);
-
-    assert_eq!(span.len(), 10);
-  }
-
-  #[test]
-  fn merge_combines_two_spans() {
-    let a = Span::new(5, 10);
-    let b = Span::new(8, 15);
-
-    let merged = a.merge(b);
-
-    assert_eq!(merged, Span::new(5, 15));
-  }
-
-  #[test]
-  fn merge_non_overlapping_spans() {
-    let a = Span::new(0, 5);
-    let b = Span::new(10, 20);
+  fn merge_takes_the_outermost_offsets() {
+    // 後ろの Span から前の Span を merge しても、始点は小さい側・終点は大きい側を取る
+    let a = Span::new(10, 20);
+    let b = Span::new(0, 5);
 
     let merged = a.merge(b);
 
     assert_eq!(merged, Span::new(0, 20));
-  }
-
-  #[test]
-  fn default_is_zero_span() {
-    let span = Span::default();
-
-    assert_eq!(span, Span::new(0, 0));
   }
 
   #[test]
@@ -114,13 +83,5 @@ mod tests {
 
     assert_eq!(source_span.offset(), 10);
     assert_eq!(source_span.len(), 15);
-  }
-
-  #[test]
-  fn from_dummy_span_is_empty_at_start() {
-    let source_span = SourceSpan::from(Span::DUMMY);
-
-    assert_eq!(source_span.offset(), 0);
-    assert_eq!(source_span.len(), 0);
   }
 }

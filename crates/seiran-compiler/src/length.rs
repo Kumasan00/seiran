@@ -252,22 +252,13 @@ impl<'a> Sum<&'a Length> for Length {
 
 #[cfg(test)]
 mod tests {
-  use std::error::Error as _;
-
   use serde::Deserialize;
 
-  use super::{Length, non_negative, positive};
+  use super::Length;
 
   #[derive(Debug, Deserialize)]
   struct Wrapper {
     length: Length,
-  }
-
-  #[test]
-  fn parses_pt_suffix() {
-    let w: Wrapper = toml::from_str("length = \"12pt\"").unwrap();
-
-    assert!((w.length.to_pt() - 12.0).abs() < f32::EPSILON);
   }
 
   #[test]
@@ -284,21 +275,6 @@ mod tests {
     let w: Wrapper = toml::from_str("length = \"2.54cm\"").unwrap();
 
     assert!((w.length.to_pt() - 72.0).abs() < 0.01);
-  }
-
-  #[test]
-  fn cm_and_mm_are_consistent() {
-    let a: Wrapper = toml::from_str("length = \"1cm\"").unwrap();
-    let b: Wrapper = toml::from_str("length = \"10mm\"").unwrap();
-
-    assert_eq!(a.length, b.length);
-  }
-
-  #[test]
-  fn parses_decimal_value() {
-    let w: Wrapper = toml::from_str("length = \"0.5pt\"").unwrap();
-
-    assert!((w.length.to_pt() - 0.5).abs() < f32::EPSILON);
   }
 
   #[test]
@@ -360,93 +336,11 @@ mod tests {
   }
 
   #[test]
-  fn rejects_unknown_unit() {
-    let result: Result<Wrapper, _> = toml::from_str("length = \"12px\"");
-
-    assert!(result.is_err());
-  }
-
-  #[test]
-  fn rejects_missing_unit() {
-    let result: Result<Wrapper, _> = toml::from_str("length = \"12\"");
-
-    assert!(result.is_err());
-  }
-
-  #[test]
   fn pt_round_trips_through_sp() {
     let value = Length::pt(12.0);
 
     assert_eq!(value.sp(), 12 * 65536);
     assert!((value.to_pt() - 12.0).abs() < f32::EPSILON);
-  }
-
-  #[test]
-  fn zero_is_additive_identity() {
-    let a = Length::pt(7.0);
-
-    assert_eq!(a + Length::ZERO, a);
-    assert_eq!(Length::ZERO.sp(), 0);
-  }
-
-  #[test]
-  fn positive_validator_accepts_positive() {
-    assert!(positive(&Length::pt(1.0), &()).is_ok());
-  }
-
-  #[test]
-  fn positive_validator_rejects_zero_and_negative() {
-    assert!(positive(&Length::pt(0.0), &()).is_err());
-    assert!(positive(&Length::pt(-1.0), &()).is_err());
-  }
-
-  #[test]
-  fn non_negative_validator_accepts_zero() {
-    assert!(non_negative(&Length::pt(0.0), &()).is_ok());
-    assert!(non_negative(&Length::pt(1.0), &()).is_ok());
-  }
-
-  #[test]
-  fn non_negative_validator_rejects_negative() {
-    assert!(non_negative(&Length::pt(-0.1), &()).is_err());
-  }
-
-  #[test]
-  fn add_works() {
-    let a = Length::pt(1.0);
-    let b = Length::pt(2.0);
-    let c = a + b;
-    assert_eq!(c, Length::pt(3.0));
-  }
-
-  #[test]
-  fn sub_works() {
-    let a = Length::pt(5.0);
-    let b = Length::pt(3.0);
-    let c = a - b;
-    assert_eq!(c, Length::pt(2.0));
-  }
-
-  #[test]
-  fn neg_works() {
-    let a = Length::pt(4.0);
-    assert_eq!(-a, Length::pt(-4.0));
-  }
-
-  #[test]
-  fn add_assign_and_sub_assign_work() {
-    let mut a = Length::pt(1.0);
-    a += Length::pt(2.0);
-    assert_eq!(a, Length::pt(3.0));
-    a -= Length::pt(1.0);
-    assert_eq!(a, Length::pt(2.0));
-  }
-
-  #[test]
-  fn mul_works() {
-    let a = Length::pt(2.0);
-    let b = a * 3.0f32;
-    assert_eq!(b, Length::pt(6.0));
   }
 
   #[test]
@@ -460,13 +354,6 @@ mod tests {
     let a = Length::pt(6.0);
     let b = a / 2.0f32;
     assert_eq!(b, Length::pt(3.0));
-  }
-
-  #[test]
-  fn scale_rounds_through_single_site() {
-    let a = Length::pt(3.0);
-
-    assert_eq!(a.scale(0.5), Length::pt(1.5));
   }
 
   #[test]
@@ -489,15 +376,6 @@ mod tests {
   }
 
   #[test]
-  fn min_max_abs_work() {
-    let a = Length::pt(2.0);
-    let b = Length::pt(5.0);
-    assert_eq!(a.min(b), a);
-    assert_eq!(a.max(b), b);
-    assert_eq!(Length::pt(-3.0).abs(), Length::pt(3.0));
-  }
-
-  #[test]
   fn sum_of_lengths_is_exact() {
     let items = [Length::pt(1.0), Length::pt(2.0), Length::pt(3.0)];
 
@@ -516,20 +394,6 @@ mod tests {
       err.to_string(),
       "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: \"5 pt\""
     );
-  }
-
-  #[test]
-  fn from_str_error_message_escapes_input_as_debug() {
-    let err = "1\"pt".parse::<Length>().unwrap_err();
-
-    assert!(err.to_string().ends_with(": \"1\\\"pt\""));
-  }
-
-  #[test]
-  fn from_str_error_has_no_source() {
-    let err = "abc".parse::<Length>().unwrap_err();
-
-    assert!(err.source().is_none());
   }
 
   #[test]

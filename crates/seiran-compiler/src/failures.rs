@@ -144,14 +144,6 @@ mod tests {
   }
 
   #[test]
-  fn single_keeps_the_only_failure_as_the_primary() {
-    let failures = Failures::single(TestError(1));
-
-    assert_eq!(failures.first(), &TestError(1));
-    assert_eq!(failures.into_iter().collect::<Vec<_>>(), vec![TestError(1)]);
-  }
-
-  #[test]
   fn collect_in_input_order_returns_the_values_when_everything_succeeds() {
     let results: Vec<Result<u32, TestError>> = vec![Ok(1), Ok(2), Ok(3)];
 

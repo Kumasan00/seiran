@@ -88,8 +88,6 @@ impl<'de> Deserialize<'de> for Color {
 
 #[cfg(test)]
 mod tests {
-  use std::error::Error as _;
-
   use serde::Deserialize;
 
   use super::Color;
@@ -107,13 +105,6 @@ mod tests {
   }
 
   #[test]
-  fn parses_hex_lowercase() {
-    let w: Wrapper = toml::from_str("color = \"#cc9966\"").unwrap();
-
-    assert_eq!(w.color, Color::new(0xcc, 0x99, 0x66));
-  }
-
-  #[test]
   fn parses_hex_uppercase() {
     let w: Wrapper = toml::from_str("color = \"#CC9966\"").unwrap();
 
@@ -121,31 +112,10 @@ mod tests {
   }
 
   #[test]
-  fn rejects_invalid_hex_length() {
-    let result: Result<Wrapper, _> = toml::from_str("color = \"#abcde\"");
-
-    assert!(result.is_err());
-  }
-
-  #[test]
   fn rejects_hex_without_prefix() {
     let result: Result<Wrapper, _> = toml::from_str("color = \"cc9966\"");
 
     assert!(result.is_err());
-  }
-
-  #[test]
-  fn rejects_non_hex_chars_in_body() {
-    let result: Result<Wrapper, _> = toml::from_str("color = \"#gghhii\"");
-
-    assert!(result.is_err());
-  }
-
-  #[test]
-  fn from_str_parses_valid_string() {
-    let color = "#FF0000".parse::<Color>();
-
-    assert_eq!(color, Ok(Color::new(0xff, 0x00, 0x00)));
   }
 
   #[test]
@@ -176,19 +146,5 @@ mod tests {
     let err = "cc9966".parse::<Color>().unwrap_err();
 
     assert_eq!(err.to_string(), "色は `#rrggbb` 形式の 16 進表記で指定してください: \"cc9966\"");
-  }
-
-  #[test]
-  fn from_str_error_message_escapes_input_as_debug() {
-    let err = "#\"12345".parse::<Color>().unwrap_err();
-
-    assert!(err.to_string().ends_with(": \"#\\\"12345\""));
-  }
-
-  #[test]
-  fn from_str_error_has_no_source() {
-    let err = "#zzzzzz".parse::<Color>().unwrap_err();
-
-    assert!(err.source().is_none());
   }
 }

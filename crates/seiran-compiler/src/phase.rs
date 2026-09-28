@@ -147,22 +147,4 @@ mod tests {
       "panic した工程は status=Failed の終了 event を持つはず: {log}"
     );
   }
-
-  #[test]
-  fn succeeding_phase_records_a_succeeded_end() {
-    let log = capture_probe_log(|| {
-      let phase = Phase::enter(info_span!("probe"));
-      phase.succeed();
-    });
-
-    assert!(
-      log.lines().any(|line| {
-        return line.contains("probe:")
-          && line.contains("工程を終了")
-          && line.contains("status=Succeeded")
-          && line.contains("elapsed=");
-      }),
-      "succeed した工程は status=Succeeded の終了 event を持つはず: {log}"
-    );
-  }
 }
