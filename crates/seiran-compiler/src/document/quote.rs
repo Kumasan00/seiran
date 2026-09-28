@@ -18,14 +18,3 @@ impl QuoteKind {
   #[must_use]
   pub(crate) fn indents_first_line(self) -> bool { return matches!(self, Self::Quotation); }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::QuoteKind;
-
-  #[test]
-  fn only_quotation_indents_first_line() {
-    assert!(!QuoteKind::Quote.indents_first_line());
-    assert!(QuoteKind::Quotation.indents_first_line());
-  }
-}

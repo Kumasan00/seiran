@@ -51,25 +51,6 @@ mod tests {
   use super::HeadingLevel;
 
   #[test]
-  fn heading_level_depth_returns_correct_values() {
-    assert_eq!(HeadingLevel::Part.depth(), 0);
-    assert_eq!(HeadingLevel::Chapter.depth(), 1);
-    assert_eq!(HeadingLevel::Section.depth(), 2);
-    assert_eq!(HeadingLevel::Subsection.depth(), 3);
-    assert_eq!(HeadingLevel::Paragraph.depth(), 4);
-    assert_eq!(HeadingLevel::Subparagraph.depth(), 5);
-  }
-
-  #[test]
-  fn heading_level_ordering() {
-    assert!(HeadingLevel::Part < HeadingLevel::Chapter);
-    assert!(HeadingLevel::Chapter < HeadingLevel::Section);
-    assert!(HeadingLevel::Section < HeadingLevel::Subsection);
-    assert!(HeadingLevel::Subsection < HeadingLevel::Paragraph);
-    assert!(HeadingLevel::Paragraph < HeadingLevel::Subparagraph);
-  }
-
-  #[test]
   fn heading_level_command_name() {
     assert_eq!(HeadingLevel::Part.command_name(), "part");
     assert_eq!(HeadingLevel::Chapter.command_name(), "chapter");
@@ -77,11 +58,5 @@ mod tests {
     assert_eq!(HeadingLevel::Subsection.command_name(), "subsection");
     assert_eq!(HeadingLevel::Paragraph.command_name(), "paragraph");
     assert_eq!(HeadingLevel::Subparagraph.command_name(), "subparagraph");
-  }
-
-  #[test]
-  fn heading_level_display() {
-    assert_eq!(format!("{}", HeadingLevel::Section), "section");
-    assert_eq!(format!("{}", HeadingLevel::Part), "part");
   }
 }

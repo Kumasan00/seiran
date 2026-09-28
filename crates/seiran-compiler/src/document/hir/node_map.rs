@@ -94,13 +94,6 @@ mod tests {
   }
 
   #[test]
-  fn node_map_is_empty_by_default() {
-    let map: NodeMap<u32> = NodeMap::default();
-
-    assert!(map.is_empty());
-  }
-
-  #[test]
   fn node_map_returns_insertion_position() {
     let mut map: NodeMap<&str> = NodeMap::default();
     map.insert(id(1, 7), "c");

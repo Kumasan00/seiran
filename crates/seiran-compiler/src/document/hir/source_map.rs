@@ -53,10 +53,6 @@ impl SourceSpans {
 
   /// 属するソースを返す
   pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
-
-  /// 発行済み ID 数を返す
-  #[cfg(test)]
-  pub(crate) fn len(&self) -> usize { return self.spans.len(); }
 }
 
 /// 全ソース分をまとめた位置表（添字 = `SourceId::index()`）

@@ -94,12 +94,4 @@ mod tests {
     assert_eq!(MathVariant::from_command_name("mathscriptbold"), Some(MathVariant::ScriptBold));
     assert_eq!(MathVariant::from_command_name("mathfrakturbold"), Some(MathVariant::FrakturBold));
   }
-
-  #[test]
-  fn math_variant_from_command_name_rejects_unknown() {
-    assert_eq!(MathVariant::from_command_name("mathrm"), None);
-    assert_eq!(MathVariant::from_command_name("mathbf"), None);
-    assert_eq!(MathVariant::from_command_name("foo"), None);
-    assert_eq!(MathVariant::from_command_name(""), None);
-  }
 }

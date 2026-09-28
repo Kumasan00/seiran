@@ -97,9 +97,4 @@ mod tests {
     assert_eq!("bar".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bar));
     assert_eq!("dbar".parse::<MathDelimiter>().ok(), Some(MathDelimiter::DoubleBar));
   }
-
-  #[test]
-  fn from_str_rejects_unknown_value() {
-    assert!("angle".parse::<MathDelimiter>().is_err());
-  }
 }

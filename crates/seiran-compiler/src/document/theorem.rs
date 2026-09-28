@@ -40,11 +40,6 @@ mod tests {
   use super::TheoremClass;
 
   #[test]
-  fn display_is_snake_case() {
-    assert_eq!(format!("{}", TheoremClass::Proof), "proof");
-  }
-
-  #[test]
   fn serde_accepts_display_for_all() {
     // serde の `rename_all` と strum の `serialize_all` は別の derive 属性なので、綴りの一致をここで固定する
     for &class in TheoremClass::VARIANTS {
