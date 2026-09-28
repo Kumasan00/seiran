@@ -47,8 +47,6 @@ pub(crate) struct LaidOutDocument {
 
 /// 不変な入力から描画直前の確定レイアウトを構築する。
 ///
-/// 本文、前付け、後付け、ページラベル、走り文、outline の順序をこの操作 1 つに固定する。
-///
 /// 組版を止めないがユーザーが直せる問題（脚注のはみ出し）は [`TypesetWarning`] として一緒に返す。
 /// 各段の [`break_pages`](crate::typeset::breaking::break_pages) はセクション内の page index しか
 /// 知らないので、物理ページ番号への写像と印字ラベルの解決はこの操作（phase 5）が行う。

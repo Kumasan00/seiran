@@ -65,14 +65,10 @@ mod tests {
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
-    // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する。
+    // fixture config は serif / serif_bold が同じフォントファイルを共有する。
     // 画像を持つ入力を選び、`\image{...}` から集めたパスが manifest に載ることも合わせて見る
     let project = TestProject::builder().sources(&["tests/text/figure.sei"]).assets(FIGURE_IMAGE_ASSETS).build();
-
-    // Act
     let manifest = project.compile().expect("fixture のコンパイル").dependencies;
-
-    // Assert
     assert_eq!(manifest.config_path, PathBuf::from("crates/seiran-compiler/tests/config/config.toml"));
     assert_eq!(manifest.source_paths, vec![PathBuf::from("tests/text/figure.sei")]);
     assert_eq!(

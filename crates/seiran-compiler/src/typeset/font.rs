@@ -20,8 +20,6 @@ mod validation;
 // `UnicodeBuffer` だけを `typeset` 内へ出す。
 pub(super) use shaper::UnicodeBuffer;
 pub(super) use system::{FontResources, FontSystem, FontSystemError};
-// フォント検証が集める warning。`compose` が `TypesetWarning::Font`（`typeset::warning`）に包むので
-// `typeset` 内で名指しされる。
 pub(super) use validation::FontWarning;
 
 use crate::{
@@ -75,8 +73,7 @@ type FontRefs<'a> = FontMap<FontRef<'a>>;
 
 /// バイナリデータから設定されたフェースのフォント参照を生成する。
 ///
-/// フォントは互いに独立に解析できるので、1 件目で打ち切らず全種別を解析して違反を全件返す
-/// （順序は [`FontMap::par_try_from_fn`] が `FontType::ALL` 順に揃える）。
+/// フォントは互いに独立に解析できるので、1 件目で打ち切らず全種別を解析して違反を全件返す。
 ///
 /// # Errors
 ///

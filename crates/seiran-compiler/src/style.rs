@@ -322,14 +322,14 @@ mod tests {
     // Act
     let errors = resolve_reference_paths(&mut reference, &source, &resolver);
 
-    // Assert — 登録済みパスはエラーにならず、解決済みの値へ置き換わる
+    // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     assert_eq!(reference.csl_path, Some(ProjectPath::new("/project/styles/ieee.csl")));
   }
 
   #[test]
   fn resolve_reference_paths_keeps_absolute_csl_path_as_is() {
-    // Arrange — 絶対パスは base_dir に関係なくそのまま使う
+    // Arrange
     let source = MemoryProjectSource::new().with_text("/elsewhere/ieee.csl", "");
     let resolver = PathResolver::new(Path::new("/project"));
     let mut reference = ReferenceStyle {
@@ -433,8 +433,7 @@ mod tests {
 
   #[test]
   fn load_aggregates_both_missing_csl_and_locale_paths() {
-    // Arrange — csl_path / locale_path のどちらも欠落している場合、片方だけで
-    // fail-fast せず、両方が同じ Vec に集約されることを検証する
+    // Arrange
     let toml = "[reference]\ncsl_path = \"missing.csl\"\nlocale_path = \"missing.xml\"\n";
     let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
     let path = ProjectPath::new("/project/style.toml");
@@ -549,13 +548,8 @@ mod parse_tests {
 
   #[test]
   fn load_returns_default_when_path_is_none() {
-    // Arrange
     let source = FilesystemProjectSource;
-
-    // Act
     let style = load(&source, None, &PathResolver::new(std::path::Path::new("."))).unwrap();
-
-    // Assert
     let default = Style::default();
     assert!((style.text.font_size.to_pt() - default.text.font_size.to_pt()).abs() < f32::EPSILON);
     assert!((style.text.line_height_factor - default.text.line_height_factor).abs() < f32::EPSILON);
@@ -565,13 +559,8 @@ mod parse_tests {
 
   #[test]
   fn parse_overrides_heading_section_format() {
-    // Arrange
     let toml = "[heading.section]\nformat = \"§ {number} {title}\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert_eq!(style.heading(HeadingLevel::Section).format.as_str(), "§ {number} {title}");
     let default = Style::default();
     assert_eq!(style.heading(HeadingLevel::Chapter).format, default.heading(HeadingLevel::Chapter).format);
@@ -579,13 +568,8 @@ mod parse_tests {
 
   #[test]
   fn parse_overrides_only_specified_fields() {
-    // Arrange
     let toml = "[text]\nfont_size = \"15pt\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert!((style.text.font_size.to_pt() - 15.0).abs() < f32::EPSILON);
     let default = Style::default();
     assert!((style.text.line_height_factor - default.text.line_height_factor).abs() < f32::EPSILON);
@@ -593,13 +577,8 @@ mod parse_tests {
 
   #[test]
   fn parse_overrides_columns() {
-    // Arrange
     let toml = "[columns]\ncount = 2\ngap = \"24pt\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert_eq!(style.columns.count, 2);
     assert!((style.columns.gap.to_pt() - 24.0).abs() < f32::EPSILON);
   }
@@ -614,13 +593,8 @@ mod parse_tests {
 
   #[test]
   fn parse_enables_flush_bottom() {
-    // Arrange
     let toml = "[page]\nflush_bottom = true\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert!(style.page.flush_bottom);
   }
 
@@ -643,13 +617,8 @@ mod parse_tests {
 
   #[test]
   fn parse_overrides_page_margins_individually() {
-    // Arrange — 左余白だけを上書きし、他の 3 方向は既定値のまま残ることを確かめる
     let toml = "[page]\nmargin_left = \"30mm\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert!((style.page.margin_left.to_pt() - Length::mm(30.0).to_pt()).abs() < f32::EPSILON);
     assert!((style.page.margin_right.to_pt() - 85.0).abs() < f32::EPSILON);
     assert!((style.page.margin_top.to_pt() - 99.0).abs() < f32::EPSILON);
@@ -658,13 +627,9 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_negative_page_margin() {
-    // Arrange
     let toml = "[page]\nmargin_top = \"-1pt\"\n";
-
-    // Act
     let failures = parse(toml, dummy_source()).unwrap_err();
-
-    // Assert — 余白単体の不正は style の値検証（`style::validation::field`）が報告する
+    // 余白単体の不正は style の値検証（`style::validation::field`）が報告する
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
     assert!(matches!(
@@ -676,25 +641,15 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_unknown_page_key() {
-    // Arrange
     let toml = "[page]\nflush_botom = true\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(result.is_err());
   }
 
   #[test]
   fn parse_fails_on_unknown_columns_key() {
-    // Arrange
     let toml = "[columns]\ncont = 2\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -703,13 +658,8 @@ mod parse_tests {
 
   #[test]
   fn parse_rejects_color_array() {
-    // Arrange
     let toml = "background_color = [204, 179, 153]\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -718,20 +668,14 @@ mod parse_tests {
 
   #[test]
   fn parse_accepts_color_hex_string() {
-    // Arrange
     let toml = "background_color = \"#cc9966\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     let color = style.background_color.expect("background_color should be Some");
     assert_eq!(color.rgb(), [0xcc, 0x99, 0x66]);
   }
 
   #[test]
   fn parse_overrides_header_and_footer() {
-    // Arrange
     let toml = concat!(
       "[header]\n",
       "right = \"{page} / {pages}\"\n",
@@ -742,11 +686,7 @@ mod parse_tests {
       "[footer]\n",
       "center = \"{title}\"\n",
     );
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert_eq!(style.header.right.as_str(), "{page} / {pages}");
     assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
     assert_eq!(style.header.font_kind, FontKind::SansSerif);
@@ -759,13 +699,8 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_unknown_header_key() {
-    // Arrange
     let toml = "[header]\nrght = \"{page}\"\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -774,13 +709,8 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_unknown_top_level_key() {
-    // Arrange
     let toml = "font_sze = \"15pt\"\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -789,13 +719,8 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_unknown_nested_key() {
-    // Arrange
     let toml = "[heading.chapter]\nfont_sze = \"30pt\"\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -804,13 +729,8 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_invalid_toml_syntax() {
-    // Arrange
     let toml = "font_size = \nthis is not valid toml";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -836,26 +756,16 @@ mod parse_tests {
 
   #[test]
   fn parse_reads_minimal_fixture() {
-    // Arrange
     let toml = include_str!("style/fixtures/minimal.toml");
-
-    // Act
     let style = parse(toml, "minimal.toml").unwrap();
-
-    // Assert
     assert!((style.text.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
     assert_eq!(style.heading(HeadingLevel::Section).format.as_str(), "§ {number} {title}");
   }
 
   #[test]
   fn parse_overrides_theorem_class_partially() {
-    // Arrange
     let toml = "[theorems.lemma]\ndisplay_name = \"補題\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).unwrap();
-
-    // Assert
     assert_eq!(style.theorem(TheoremClass::Lemma).display_name, "補題");
     assert_eq!(style.theorem(TheoremClass::Lemma).counter, "theorem");
     let default = Style::default();
@@ -867,13 +777,8 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_unknown_theorem_class() {
-    // Arrange
     let toml = "[theorems.conjecture]\ndisplay_name = \"Conjecture\"\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -882,13 +787,8 @@ mod parse_tests {
 
   #[test]
   fn parse_fails_on_unknown_theorem_field() {
-    // Arrange
     let toml = "[theorems.theorem]\ndispl_name = \"Theorem\"\n";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ParseToml { .. })
@@ -933,13 +833,8 @@ mod validate_tests {
 
   #[test]
   fn parse_collects_multiple_validation_errors() {
-    // Arrange
     let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let paths = paths(&errors);
     assert!(paths.contains(&"text.font_size"));
     assert!(paths.contains(&"heading.chapter.font_size"));
@@ -947,49 +842,29 @@ mod validate_tests {
 
   #[test]
   fn rejects_three_columns() {
-    // Arrange
     let toml = "[columns]\ncount = 3\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     assert!(paths(&errors).contains(&"columns.count"));
   }
 
   #[test]
   fn rejects_zero_columns() {
-    // Arrange
     let toml = "[columns]\ncount = 0\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     assert!(paths(&errors).contains(&"columns.count"));
   }
 
   #[test]
   fn rejects_negative_column_gap() {
-    // Arrange
     let toml = "[columns]\ngap = \"-1pt\"\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     assert!(paths(&errors).contains(&"columns.gap"));
   }
 
   #[test]
   fn reports_nested_theorem_style_validation_error_with_path() {
-    // Arrange
     let toml = "[theorems.theorem.style]\ntop_margin = \"-1pt\"\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let paths = paths(&errors);
     assert!(
       paths.contains(&"theorems.theorem.style.top_margin"),
@@ -999,20 +874,14 @@ mod validate_tests {
 
   #[test]
   fn reports_theorem_empty_display_name_with_path() {
-    // Arrange
     let toml = "[theorems.lemma]\ndisplay_name = \"\"\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let paths = paths(&errors);
     assert!(paths.contains(&"theorems.lemma.display_name"), "expected theorems.lemma.display_name in {paths:?}");
   }
 
   #[test]
   fn rejects_unknown_counter_name_at_parse_time() {
-    // Arrange
     let toml = "
 [counters.custom]
 display_name = \"Custom\"
@@ -1021,11 +890,7 @@ number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = []
 ";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(
       matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
       "unknown counter name should be rejected at TOML parse time, got {result:?}"
@@ -1034,7 +899,6 @@ resets = []
 
   #[test]
   fn reports_unknown_placeholders_across_fields_together() {
-    // Arrange
     let toml = "
 [heading.section]
 format = \"{nubmer} {title}\"
@@ -1042,11 +906,7 @@ format = \"{nubmer} {title}\"
 [footer]
 center = \"{pagee}\"
 ";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let paths = paths(&errors);
     assert!(paths.contains(&"heading.section.format"), "expected heading.section.format in {paths:?}");
     assert!(paths.contains(&"footer.center"), "expected footer.center in {paths:?}");
@@ -1054,13 +914,8 @@ center = \"{pagee}\"
 
   #[test]
   fn placeholder_error_message_names_the_offending_token() {
-    // Arrange
     let toml = "[math.block]\ntag_format = \"({num})\"\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let message = errors
       .iter()
       .find_map(|error| match error {
@@ -1075,13 +930,8 @@ center = \"{pagee}\"
 
   #[test]
   fn rejects_unknown_counter_placeholder_in_number_format() {
-    // Arrange
     let toml = "[counters.section]\ndisplay_name = \"Section\"\nnumber_format = \"{chaptr}.{n}\"\nnumber_style = \"arabic\"\nref_format = \"{display_name} {number}\"\nresets = []\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let paths = paths(&errors);
     assert!(
       paths.contains(&"counters.section.number_format"),
@@ -1091,7 +941,6 @@ center = \"{pagee}\"
 
   #[test]
   fn rejects_unknown_reset_target_at_parse_time() {
-    // Arrange
     let toml = "
 [counters.chapter]
 display_name = \"Chapter\"
@@ -1100,11 +949,7 @@ number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = [\"nonexistent\"]
 ";
-
-    // Act
     let result = parse(toml, dummy_source());
-
-    // Assert
     assert!(
       matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
       "unknown reset target should be rejected at TOML parse time, got {result:?}"
@@ -1113,13 +958,9 @@ resets = [\"nonexistent\"]
 
   #[test]
   fn counters_partial_entry_keeps_other_defaults() {
-    // Arrange — #561 の再現手順そのもの
+    // #561 の再現手順そのもの
     let toml = "[counters.figure]\ndisplay_name = \"図\"\n";
-
-    // Act
     let style = parse(toml, dummy_source()).expect("部分指定の [counters.figure] は受理されるべき");
-
-    // Assert
     assert_eq!(style.counters.figure.display_name, "図");
     assert_eq!(style.counters.figure.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(style.counters.figure.ref_format.as_str(), "{display_name} {number}");
@@ -1128,13 +969,9 @@ resets = [\"nonexistent\"]
 
   #[test]
   fn reports_partial_counter_placeholder_error_with_path() {
-    // Arrange — 部分指定でも garde の dive が効き、パスは従来と同じ形
+    // 部分指定でも garde の dive が効く
     let toml = "[counters.section]\nnumber_format = \"{chaptr}.{n}\"\n";
-
-    // Act
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-
-    // Assert
     let paths = paths(&errors);
     assert!(
       paths.contains(&"counters.section.number_format"),
@@ -1144,12 +981,10 @@ resets = [\"nonexistent\"]
 
   #[test]
   fn parse_attributes_validation_errors_to_the_style_file_it_read() {
-    // Act — `style.toml` 以外の名前で置いたスタイルファイル
     let Err(failures) = parse("[text]\nfont_size = \"0pt\"\n", "themes/custom-style.toml") else {
       panic!("値検証の違反を期待");
     };
-
-    // Assert — 実際に読んだファイルのパスが前置される（#552）
+    // 実際に読んだファイルのパスが前置される（#552）
     let message = failures.first().to_string();
     assert!(message.starts_with("themes/custom-style.toml: 'text.font_size': "), "{message}");
   }

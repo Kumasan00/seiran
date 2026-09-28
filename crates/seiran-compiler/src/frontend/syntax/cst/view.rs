@@ -212,7 +212,6 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
         let escaped = &source[token.span.start as usize + 1..token.span.end as usize];
         text.push_str(escaped);
       },
-      // 構造トークン（引数・数式の境界）とコメント・不正トークンは文字列に含めない。
       TokenKind::Command
       | TokenKind::LBrace
       | TokenKind::RBrace
@@ -702,7 +701,6 @@ mod tests {
 
   #[test]
   fn split_text_on_commas_ignores_comma_nested_in_child_node() {
-    // 入れ子ノード内の `,` は直下のトークンではないので区切らない
     let segments = first_arg_segments(r"\cmd{\bold{a,b}, c}");
 
     assert_eq!(segments, vec!["a,b".to_string(), " c".to_string()]);
@@ -710,7 +708,6 @@ mod tests {
 
   #[test]
   fn split_text_on_commas_keeps_empty_segments() {
-    // 空の区間をどう扱うかは利用者が決める（`\cite` は拒否する）
     let segments = first_arg_segments(r"\cmd{,a,,b,}");
 
     assert_eq!(

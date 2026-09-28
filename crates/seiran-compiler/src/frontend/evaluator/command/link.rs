@@ -4,7 +4,7 @@
 //!
 //! リンク先を受け取る引数は verbatim（生読み）なので、`//` もコメント開始にならず URL をそのまま
 //! 書ける — `\url{https://example.com}` / `\href{https://example.com}{表示}`。verbatim なのは
-//! `\url` の必須引数と `\href` の**第 1 引数だけ**で、`\href` の第 2 引数（表示テキスト）は従来どおり
+//! `\url` の必須引数と `\href` の**第 1 引数だけ**で、`\href` の第 2 引数（表示テキスト）は
 //! 活性なので `\bold{...}` 等をネストできる（宣言は `frontend::evaluator::command` の
 //! `CommandKind::arg_modes`）。
 //!
@@ -102,7 +102,6 @@ mod tests {
   fn url_trims_surrounding_whitespace() {
     let (url, display) = url_link(r"\url{  https://example.com  }");
 
-    // 前後の空白だけは落とす（verbatim 化前からの挙動）
     assert_eq!(url, "https://example.com");
     assert_eq!(display, "https://example.com");
   }

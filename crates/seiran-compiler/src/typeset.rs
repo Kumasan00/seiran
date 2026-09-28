@@ -43,29 +43,21 @@ mod observe;
 mod pagination;
 mod warning;
 
-// 確定ページ列の決定的テキストダンプ（golden 比較用）。走査対象が `boxes` の中間型なので所有は
-// こちら側で、`compiler::golden` は `dump_pages` の 1 関数だけを借りる（#353）。
 #[cfg(test)]
 mod dump;
-// `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てるための fixture builder（#353）と、
-// `compose` と同じ経路で組んだ確定レイアウトの取り出し口（`layout_for_test`）。
 #[cfg(test)]
 mod test_support;
 
 // 組版中間型は `typeset` の外に本体コードの消費者を持たない（#535）。`compiler::golden` が
-// 確定レイアウトへ直接アサートするためだけに、テストビルドでのみ facade へ出す
-// （`compiler::project_source_equivalence` はこれらの型を使わず `Publication` にしかアサートしない）。
-// テストが確定レイアウトを**組み立てる**手段は `#[cfg(test)]` の子 module `test_support` が持つ
-// （#353）。
+// 確定レイアウトへ直接アサートするためだけに、テストビルドでのみ facade へ出す。
 #[cfg(test)]
 pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
 // テスト専用の例外 — `compiler::golden` が確定ページ列をダンプ比較するための関数 1 つだけを出す
-// （中間型そのものは出さない。`compiler::project_source_equivalence` はここも消費しない）。
+// （中間型そのものは出さない。#353）。
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 // `compose` / `layout_for_test` の失敗型。`compiler` は `CompileFailure::from` の総称 impl 越しに
-// 扱うだけだが、`pub(crate)` の signature に現れる名前なので facade に載せる（`compiler` 節の
-// doc からも intra-doc link で指す）。
+// 扱うだけだが、`pub(crate)` の signature に現れる名前なので facade に載せる。
 pub(crate) use error::TypesetError;
 // 入口は `compose` 1 操作という原則の意図した例外（#351）。用紙・余白 × 段組みの横断制約は
 // 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
@@ -79,12 +71,10 @@ pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
 // この名前を使うので、条件付きの再エクスポートと本体用の `use` を並べると
 // テストビルドで E0252（同名の重複定義）になる。1 本の無条件な再エクスポートで両方を賄う。
 pub(crate) use pagination::LaidOutDocument;
-// テスト専用の例外 — `compiler` 配下のテストが確定レイアウトへ直接アサートするための出口
-// （実装は `test_support` が持ち、facade は名前を出すだけ）。
+// テスト専用の例外 — `compiler` 配下のテストが確定レイアウトへ直接アサートするための出口。
 #[cfg(test)]
 pub(crate) use test_support::layout_for_test;
 // 組版が見つけた、ユーザーが直せる非致命的問題（#382）。フォント警告も包む（#535）。
-// `compiler` が `Warnings` へ積む。
 pub(crate) use warning::TypesetWarning;
 
 /// [`compose`] の成果物 — 描画直前の出版物と、それに付随する情報。
@@ -168,8 +158,7 @@ pub(crate) fn compose(
 
 /// フォント資源を構築する（`font` phase）。
 ///
-/// 工程の記録（[`Phase`]）と完了 event をここが持ち、構築順序（解析 → メトリクス → 検証 → シェーパー）は
-/// `font` module に閉じる（#352）。検証で確定した警告は、構築が失敗しても組の第 2 要素で返す。
+/// 検証で確定した警告は、構築が失敗しても組の第 2 要素で返す。
 ///
 /// # Errors
 ///
@@ -191,9 +180,6 @@ fn load_fonts<'a>(
 }
 
 /// 意味解析の成果物を確定レイアウトへ組版する（`typeset` phase の前半）。
-///
-/// 段順序（シェーパー構築 → 画像パス収集 → 画像読込 → lowering → 計測（画像の描画寸法もここで確定）→
-/// 行分割・改ページ → 前付け・後付け → ページラベル → 走り文 → outline）はここから先の実装に閉じる。
 ///
 /// # Errors
 ///

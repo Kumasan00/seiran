@@ -134,7 +134,7 @@ impl Measurer<'_> {
     let natural_total = natural.height() + natural.depth();
     let pad = base * 0.1;
     let target_total = target_height + target_depth + pad * 2;
-    // 拡大のみ（自然サイズより小さくはしない）。小さなグリッドでも括弧は通常字より縮めない
+    // 小さなグリッドでも括弧は通常字より縮めない
     let scale = if natural_total.is_positive() {
       target_total.ratio(natural_total).max(1.0)
     } else {

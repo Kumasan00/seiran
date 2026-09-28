@@ -120,7 +120,7 @@ mod tests {
 
   #[test]
   fn document_policy_ignores_display_only_style_fields() {
-    // Arrange — 表示専用フィールドだけが異なる 2 つの Style
+    // Arrange
     let base = Style::default();
     let mut display_variant = Style::default();
     display_variant.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
@@ -138,7 +138,7 @@ mod tests {
 
   #[test]
   fn document_policy_reflects_value_affecting_style_fields() {
-    // Arrange — resets（値側フィールド）だけが異なる Style
+    // Arrange
     let base = Style::default();
     let mut reset_variant = Style::default();
     reset_variant.counters.chapter.resets = vec![];

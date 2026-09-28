@@ -2,8 +2,7 @@
 //!
 //! seam（[`ProjectPath`] / [`ProjectSource`] と filesystem / memory の 2 adapter）は設定の入力だけの
 //! 道具ではなく全外部資源の窓口なので、`config` の子ではなく crate root 直下の module が所有する
-//! （#337）。[`ProjectPath`] は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する
-//! （画像パスの newtype だった `document::AssetId` は同じパスを表す重複だったため削除済み）。
+//! （#337）。[`ProjectPath`] は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する。
 //!
 //! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を、
 //! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ（#351）。
@@ -75,13 +74,10 @@ pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 /// 相対パスへの `base_dir` 前置は [`PathResolver`] の責務で、この型は正規化だけを保証する。
 ///
 /// serde は `PathBuf` と同じ TOML 表現（文字列）を透過する — `style.toml` の `csl_path` /
-/// `locale_path` が `Style` の一部として deserialize されるため。deserialize 時に行うのは
-/// 字句的正規化だけで、`base_dir` の前置は `style::load` が [`PathResolver`] で行う。
+/// `locale_path` が `Style` の一部として deserialize されるため。
 ///
 /// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
 /// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
-///
-/// `Display` は内側のパスの表示（[`Path::display`]）で、幅・寄せなどの書式パラメータもそのまま渡る。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Display)]
 #[serde(from = "PathBuf")]
 #[display("{}", _0.display())]
@@ -180,13 +176,8 @@ mod tests {
 
   #[test]
   fn as_ref_borrows_the_normalized_path() {
-    // Arrange
     let path = ProjectPath::new("/a/./b.ttf");
-
-    // Act
     let borrowed: &Path = path.as_ref();
-
-    // Assert
     assert_eq!(borrowed, Path::new("/a/b.ttf"), "正規化済みの Path を借りるはず");
   }
 
@@ -201,7 +192,7 @@ mod tests {
     // Act
     let sorted: Vec<ProjectPath> = set.into_iter().collect();
 
-    // Assert — 正規化して等しいパスは 1 件に畳まれ、残りは昇順に並ぶ
+    // Assert
     assert_eq!(sorted, vec![ProjectPath::new("fig/a.png"), ProjectPath::new("fig/b.png")]);
   }
 
@@ -216,7 +207,6 @@ mod tests {
   fn display_honors_width_like_the_path_itself() {
     let path = ProjectPath::new("/a/b");
 
-    // 表示はパスそのものの Display へ書式パラメータごと委譲する
     assert_eq!(format!("{path:>6}"), "  /a/b");
   }
 
@@ -237,13 +227,8 @@ mod tests {
 
   #[test]
   fn io_variant_is_transparent_over_the_original_error() {
-    // Arrange
     let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied (os error 13)");
-
-    // Act
     let error = SourceReadError::from(io_error);
-
-    // Assert — 所有段の診断へ挟まる行が増えないよう、Display は元の I/O エラーそのもの
     assert_eq!(error.to_string(), "Permission denied (os error 13)");
     let SourceReadError::Io(inner) = &error else {
       panic!("Io variant のはず");
@@ -260,7 +245,7 @@ mod tests {
     // Act
     let error = SourceReadError::InvalidUtf8(utf8_error);
 
-    // Assert — パスは所有段のメッセージ側が持つので、この型のメッセージには含めない
+    // Assert
     assert_eq!(error.to_string(), "ファイルを UTF-8 として読めません");
     assert!(std::error::Error::source(&error).is_some(), "元の UTF-8 検証エラーを cause として保つはず");
   }
