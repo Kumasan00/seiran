@@ -108,7 +108,7 @@ impl Publication {
 /// 描画に必要なフォント・画像資源（すべて生データ）。
 ///
 /// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が `[T; 19]` で持つので欠けた表を構築できない）。
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PublicationResources {
   /// フォント種別ごとの描画資源
   fonts: FontMap<PublicationFont>,
@@ -147,19 +147,6 @@ impl PublicationResources {
       unreachable!("ImageRef は PublicationResources::image_ref が発行した添字だけを持つ: {image_ref:?}");
     };
     return image;
-  }
-}
-
-impl Debug for PublicationResources {
-  /// バイト列の中身は出さず、フォント種別ごとの長さと設定・画像のパスと長さだけを出す。
-  ///
-  /// 生バイト列を出すと（フォント 19 種別 + 画像で数百 MB になり）比較失敗時の出力が読めなくなる。
-  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-    return formatter
-      .debug_struct("PublicationResources")
-      .field("fonts", &self.fonts)
-      .field("images", &self.images)
-      .finish();
   }
 }
 
