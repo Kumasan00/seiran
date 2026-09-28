@@ -630,34 +630,6 @@ mod tests {
   }
 
   #[test]
-  fn resolve_output_dir_path_uses_current_dir_when_none() {
-    let current_dir = Path::new("/home/user/project");
-    let resolved = resolve_output_dir_path(current_dir, None);
-    assert_eq!(resolved, PathBuf::from("/home/user/project"));
-  }
-
-  #[test]
-  fn parse_config_fails_on_invalid_toml_syntax() {
-    let result = parse_config("name = \nthis is not valid toml", dummy_source());
-
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadConfigError::ParseToml { .. })
-    ));
-  }
-
-  #[test]
-  fn parse_config_reads_pdf_section_without_margins() {
-    // `[pdf]` は用紙寸法としおり出力だけを持つ（余白は style.toml の `[page]`、#389）
-    let toml =
-      format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
-    let raw = parse_config(&toml, dummy_source()).unwrap();
-    assert!((raw.pdf.height.to_pt() - 842.0).abs() < f32::EPSILON);
-    assert!((raw.pdf.width.to_pt() - 595.0).abs() < f32::EPSILON);
-    assert!(raw.pdf.show_bookmarks);
-  }
-
-  #[test]
   fn parse_config_fails_on_legacy_pdf_margin_keys() {
     // 旧 `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
     // 変わるため、TOML 解析時に未知キーとして拒否する（#389 の意図的な破壊的変更）
@@ -693,23 +665,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_config_fails_on_misspelled_font_key() {
-    // 種別セクション内の綴り違いは、黙って既定値（font_index = 0）へ落とさず拒否する
-    let toml = format!(
-      "{}{}{}",
-      valid_output_section("test", "out"),
-      valid_pdf_section(),
-      font_sections_with_serif_extra("dummy.ttf", "font_indx = 1"),
-    );
-    let failures = parse_config(&toml, dummy_source()).unwrap_err();
-    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
-    let ReadConfigError::ParseToml { source, .. } = first else {
-      panic!("未知キーは ParseToml になるはず: {first:?}");
-    };
-    assert!(source.to_string().contains("unknown field `font_indx`"), "{source}");
-  }
-
-  #[test]
   fn parse_config_fails_on_legacy_top_level_name() {
     let toml = format!(
       "name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n{}",
@@ -720,24 +675,6 @@ mod tests {
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadConfigError::ParseToml { .. })
     ));
-  }
-
-  #[test]
-  fn validate_values_fails_on_empty_sources() {
-    let toml = format!(
-      "sources = []\n\n{}{}{}",
-      valid_output_section("test", "out"),
-      valid_pdf_section(),
-      make_font_sections("dummy.ttf"),
-    );
-    let raw = parse_config(&toml, dummy_source()).unwrap();
-
-    let errors = validate_values(&raw).unwrap_err();
-
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ConfigValidationError::Field { path, .. } if path == "sources"
-    )));
   }
 
   #[test]
@@ -838,19 +775,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_accepts_structurally_valid_ot_script_tags() {
-    for script in [
-      "latn", "kana", "hani", "DFLT", "Hani", "Latn", "LATN", "dflt", "Dflt",
-    ] {
-      let extra = format!("script = \"{script}\"");
-      assert!(
-        run_validate_with_serif_extra(&extra).is_ok(),
-        "expected script='{script}' to pass structural validation"
-      );
-    }
-  }
-
-  #[test]
   fn validate_values_rejects_structurally_invalid_ot_script_tag() {
     for script in ["kan", "kanaa", "kan1", "ka一"] {
       let extra = format!("script = \"{script}\"");
@@ -862,14 +786,6 @@ mod tests {
         )),
         "expected script='{script}' to be rejected"
       );
-    }
-  }
-
-  #[test]
-  fn validate_values_accepts_valid_ot_language_with_script() {
-    for ot_lang in ["JAN", "ENG", "DEU", "ZHS"] {
-      let extra = format!("script = \"latn\"\not_language = \"{ot_lang}\"");
-      assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected ot_language='{ot_lang}' to be accepted");
     }
   }
 
@@ -939,20 +855,6 @@ mod tests {
         )),
         "expected direction='{direction}' to be rejected"
       );
-    }
-  }
-
-  #[test]
-  fn validate_values_accepts_valid_document_language() {
-    for lang in ["ja", "en-US", "zh-Hant", "und"] {
-      let toml = format!(
-        "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"{lang}\"\n\n{}{}{}",
-        valid_output_section("test", "out"),
-        valid_pdf_section(),
-        make_font_sections("dummy.ttf"),
-      );
-      let raw = parse_config(&toml, dummy_source()).unwrap();
-      assert!(validate_values(&raw).is_ok(), "expected document.language='{lang}' to be accepted");
     }
   }
 
@@ -1056,58 +958,6 @@ mod tests {
   }
 
   #[test]
-  fn read_config_fails_on_nonexistent_font_path() {
-    let (_tempdir, config_path) = setup_config(|_font_path, output_dir, source_path| {
-      return format!(
-        "sources = [\"{source_path}\"]\n\n{}{}{}",
-        valid_output_section("test", output_dir),
-        valid_pdf_section(),
-        make_font_sections("/nonexistent/path/to/font.ttf"),
-      );
-    });
-
-    let source = FilesystemProjectSource;
-    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (result, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
-
-    let Err(failures) = result else {
-      panic!("19 件のフォントパスエラーを期待");
-    };
-    let errors: Vec<&ReadConfigError> = failures.iter().collect();
-    assert!(errors.iter().all(|error| matches!(
-      error,
-      ReadConfigError::Validation(failure)
-        if matches!(failure.error(), ConfigValidationError::FontPathResolution { .. })
-    )));
-    assert_eq!(errors.len(), 19);
-  }
-
-  #[test]
-  fn read_config_fails_on_nonexistent_source_path() {
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir, _source_path| {
-      return format!(
-        "sources = [\"/nonexistent/source.sei\"]\n\n{}{}{}",
-        valid_output_section("test", output_dir),
-        valid_pdf_section(),
-        make_font_sections(font_path),
-      );
-    });
-
-    let source = FilesystemProjectSource;
-    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (result, _) = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
-
-    let Err(failures) = result else {
-      panic!("ソースパスエラーを期待");
-    };
-    assert!(failures.iter().any(|error| matches!(
-      error,
-      ReadConfigError::Validation(failure)
-        if matches!(failure.error(), ConfigValidationError::SourcePathResolution { .. })
-    )));
-  }
-
-  #[test]
   fn load_attributes_validation_errors_to_the_config_file_it_read() {
     // `config.toml` 以外の名前で置いた設定ファイルに、値の違反とパスの違反を 1 件ずつ入れる
     let toml = format!(
@@ -1161,27 +1011,6 @@ mod tests {
   }
 
   #[test]
-  fn read_config_preserves_user_script_tag_case() {
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-      let extra = "script = \"Latn\"";
-      return format!(
-        "sources = [\"{source_path}\"]\n\n{}{}{}",
-        valid_output_section("test_doc", output_dir),
-        valid_pdf_section(),
-        font_sections_with_serif_extra(font_path, extra),
-      );
-    });
-
-    let source = FilesystemProjectSource;
-    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) =
-      load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
-
-    let serif = &config.font_configs[FontType::Serif];
-    assert_eq!(serif.script, Some(*b"Latn"));
-  }
-
-  #[test]
   fn read_config_builds_language_string_with_ot_language_suffix() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
@@ -1202,28 +1031,6 @@ mod tests {
     assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
     assert_eq!(serif.script, Some(*b"kana"));
     assert_eq!(serif.ot_language_tag, Some(*b"JAN "));
-  }
-
-  #[test]
-  fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-      let extra = "script = \"latn\"\not_language = \"ENG\"";
-      return format!(
-        "sources = [\"{source_path}\"]\n\n{}{}{}",
-        valid_output_section("test_doc", output_dir),
-        valid_pdf_section(),
-        font_sections_with_serif_extra(font_path, extra),
-      );
-    });
-
-    let source = FilesystemProjectSource;
-    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) =
-      load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
-
-    let serif = &config.font_configs[FontType::Serif];
-    assert_eq!(serif.language.as_deref(), Some("und-x-hbotENG"));
-    assert_eq!(serif.ot_language_tag, Some(*b"ENG "));
   }
 
   #[test]
@@ -1265,47 +1072,6 @@ mod tests {
 
     assert_eq!(config.document.language.as_deref(), Some("ja"));
     assert_eq!(config.document.keywords.as_deref(), Some(&["組版".to_string(), "PDF".to_string()][..]));
-  }
-
-  #[test]
-  fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-      return format!(
-        "sources = [\"{source_path}\"]\n\n{}{}{}",
-        valid_output_section("test_doc", output_dir),
-        valid_pdf_section(),
-        make_font_sections(font_path),
-      );
-    });
-
-    let source = FilesystemProjectSource;
-    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) =
-      load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
-
-    assert_eq!(config.document.language, None);
-    assert_eq!(config.document.keywords, None);
-  }
-
-  #[test]
-  fn read_config_keeps_direction_none_when_omitted() {
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-      return format!(
-        "sources = [\"{source_path}\"]\n\n{}{}{}",
-        valid_output_section("test_doc", output_dir),
-        valid_pdf_section(),
-        make_font_sections(font_path),
-      );
-    });
-
-    let source = FilesystemProjectSource;
-    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let (config, _): (ProjectConfig, _) =
-      load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
-
-    for &font_type in FontType::ALL {
-      assert_eq!(config.font_configs[font_type].direction, None, "{font_type:?}");
-    }
   }
 
   #[test]

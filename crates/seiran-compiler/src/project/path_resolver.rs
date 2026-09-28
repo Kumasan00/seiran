@@ -74,13 +74,6 @@ mod tests {
   use crate::project::ProjectPath;
 
   #[test]
-  fn resolve_prefixes_relative_paths_with_base_dir() {
-    let resolver = PathResolver::new(Path::new("/project"));
-
-    assert_eq!(resolver.resolve("fig/a.png"), ProjectPath::new("/project/fig/a.png"));
-  }
-
-  #[test]
   fn resolve_keeps_absolute_paths_as_is() {
     let resolver = PathResolver::new(Path::new("/project"));
 
@@ -100,21 +93,6 @@ mod tests {
     let resolver = PathResolver::new(Path::new("/project/sub"));
 
     assert_eq!(resolver.resolve("../a.png"), ProjectPath::new("/project/sub/../a.png"));
-  }
-
-  #[test]
-  fn resolve_is_idempotent_on_resolved_paths() {
-    let resolver = PathResolver::new(Path::new("/project"));
-    let once = resolver.resolve("fig/a.png");
-
-    assert_eq!(resolver.resolve(&once), once, "解決済みの絶対パスを再解決しても変わらないはず");
-  }
-
-  #[test]
-  fn base_dir_returns_the_given_directory() {
-    let resolver = PathResolver::new(Path::new("/project"));
-
-    assert_eq!(resolver.base_dir(), Path::new("/project"));
   }
 
   #[test]

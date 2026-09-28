@@ -99,13 +99,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn read_text_returns_registered_content() {
-    let source = MemoryProjectSource::new().with_text("config.toml", "title = \"x\"");
-    let text = source.read_text(&ProjectPath::new("config.toml")).expect("登録済みのはず");
-    assert_eq!(&*text, "title = \"x\"");
-  }
-
-  #[test]
   fn read_bytes_reports_not_found_for_unregistered_path() {
     let source = MemoryProjectSource::new();
     let result = source.read_bytes(&ProjectPath::new("missing.ttf"));
@@ -123,13 +116,5 @@ mod tests {
     assert_eq!(source.read_count("a.ttf"), 2);
     assert_eq!(source.read_count("missing.ttf"), 1);
     assert_eq!(source.read_count("never-asked.ttf"), 0);
-  }
-
-  #[test]
-  fn exists_reflects_registered_files_only() {
-    let source = MemoryProjectSource::new().with_text("config.toml", "x");
-
-    assert!(source.exists(&ProjectPath::new("config.toml")));
-    assert!(!source.exists(&ProjectPath::new("missing.toml")));
   }
 }

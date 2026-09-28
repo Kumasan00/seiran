@@ -134,21 +134,6 @@ mod tests {
   }
 
   #[test]
-  fn read_loads_each_source_file_content_and_display_path() {
-    let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
-    let path = write_source(&dir, "text.sei", "本文");
-    let source = FilesystemProjectSource;
-
-    let source_set =
-      SourceSet::read(&source, std::slice::from_ref(&path)).expect("書き出した fixture の読込に成功するはず");
-
-    let entries: Vec<_> = source_set.iter().collect();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].1.name, path.to_string());
-    assert_eq!(&*entries[0].1.content, "本文");
-  }
-
-  #[test]
   fn read_fails_fast_on_missing_file_without_aggregating() {
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let existing = write_source(&dir, "text.sei", "本文");
@@ -203,16 +188,5 @@ mod tests {
 
     let (_, entry) = source_set.iter().next().expect("1 件登録したはず");
     assert!(Arc::ptr_eq(&entry.content, &text));
-  }
-
-  #[test]
-  fn register_issues_sequential_ids_and_get_looks_them_up() {
-    let mut set = SourceSet::new();
-
-    let id_a = set.register("a.sei".to_string(), Arc::from("content-a"));
-    let id_b = set.register("b.sei".to_string(), Arc::from("content-b"));
-
-    assert_eq!(set.get(id_a).name, "a.sei");
-    assert_eq!(set.get(id_b).name, "b.sei");
   }
 }

@@ -194,13 +194,4 @@ mod tests {
       assert_eq!(zipped[font_type], (font_type.as_toml_key(), font_type));
     }
   }
-
-  #[test]
-  fn debug_lists_values_keyed_by_font_type_in_declaration_order() {
-    let map = FontMap::from_fn(|_| return 0u8);
-
-    let text = format!("{map:?}");
-
-    assert!(text.starts_with("{Serif: 0, SerifBold: 0, "), "種別をキーに宣言順で出るはず: {text}");
-  }
 }

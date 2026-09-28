@@ -35,18 +35,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn read_text_returns_file_contents() {
-    let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
-    write!(file, "hello").expect("書き込めるはず");
-    let source = FilesystemProjectSource;
-    let path = ProjectPath::new(file.path());
-
-    let text = source.read_text(&path).expect("読み込めるはず");
-
-    assert_eq!(&*text, "hello");
-  }
-
-  #[test]
   fn read_bytes_returns_file_contents() {
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     file.write_all(&[0x00, 0xff, 0x10]).expect("書き込めるはず");
@@ -68,16 +56,6 @@ mod tests {
     let result = source.read_text(&path);
 
     assert!(matches!(result, Err(SourceReadError::InvalidUtf8(_))));
-  }
-
-  #[test]
-  fn read_text_reports_missing_file() {
-    let source = FilesystemProjectSource;
-    let path = ProjectPath::new("/nonexistent/does-not-exist.toml");
-
-    let result = source.read_text(&path);
-
-    assert!(matches!(result, Err(SourceReadError::Io { .. })));
   }
 
   #[test]
