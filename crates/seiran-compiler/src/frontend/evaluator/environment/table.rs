@@ -190,16 +190,13 @@ mod tests {
 
   #[test]
   fn table_rejects_row_cell_count_mismatch() {
-    // Arrange
     let source = r"\begin{table}[columns=left right]\row{A & B & C}\end{table}";
     // 診断の span はこの `\row{...}` 呼び出し全体（node.id 経由で ctx.span_of から引く値）を指す
     let row_command = r"\row{A & B & C}";
     let expected_offset = source.find(row_command).expect("ソースに \\row コマンドが含まれる");
 
-    // Act
     let result = eval_table(source);
 
-    // Assert
     let Err(EvalError::TableRowCellCountMismatch {
       expected,
       actual,

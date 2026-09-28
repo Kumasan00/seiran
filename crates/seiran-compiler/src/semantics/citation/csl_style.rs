@@ -274,14 +274,11 @@ mod tests {
 
   #[test]
   fn load_locales_without_custom_loads_only_active() {
-    // Arrange
     let style = Style::default();
     let source = FilesystemProjectSource;
 
-    // Act
     let (locales, locale_override) = load_locales(&style, None, &source).expect("内蔵 en-US のみで成功するはず");
 
-    // Assert
     assert_eq!(locales.len(), 1, "active=en-US なら en-US 1 件だけ: {locales:?}");
     assert_eq!(lang_of(&locales[0]), Some("en-US"));
     assert!(locale_override.is_none(), "override 指定が無ければ None");
@@ -289,15 +286,12 @@ mod tests {
 
   #[test]
   fn load_locales_overlays_custom_before_builtin() {
-    // Arrange
     let style = style_with_locale_path(custom_locale_path());
     let source = FilesystemProjectSource;
 
-    // Act
     let (locales, locale_override) =
       load_locales(&style, None, &source).expect("カスタムロケールの読み込みは成功するはず");
 
-    // Assert
     let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
     let expected: Locale = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
     assert_eq!(locales[0], expected, "先頭はカスタムロケール（同一言語コードはカスタム優先）");
@@ -310,29 +304,23 @@ mod tests {
 
   #[test]
   fn load_locales_explicit_locale_overrides_file_lang() {
-    // Arrange
     let mut style = style_with_locale_path(custom_locale_path());
     style.reference.locale = Some("ja-JP".to_string());
     let source = FilesystemProjectSource;
 
-    // Act
     let (_locales, locale_override) = load_locales(&style, None, &source).expect("読み込みは成功するはず");
 
-    // Assert
     assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
   }
 
   #[test]
   fn load_locales_explicit_locale_loads_active_and_fallback() {
-    // Arrange
     let mut style = Style::default();
     style.reference.locale = Some("ja-JP".to_string());
     let source = FilesystemProjectSource;
 
-    // Act
     let (locales, locale_override) = load_locales(&style, None, &source).expect("成功するはず");
 
-    // Assert
     let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
     assert!(langs.contains(&"ja-JP"), "明示 locale ja-JP を読むはず: {langs:?}");
     assert!(langs.contains(&"en-US"), "en-US フォールバックも読むはず: {langs:?}");
@@ -342,15 +330,12 @@ mod tests {
 
   #[test]
   fn load_locales_uses_csl_default_when_no_override() {
-    // Arrange
     let style = Style::default();
     let csl_default = LocaleCode("de-DE".to_string());
     let source = FilesystemProjectSource;
 
-    // Act
     let (locales, locale_override) = load_locales(&style, Some(&csl_default), &source).expect("成功するはず");
 
-    // Assert
     let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
     assert!(langs.contains(&"de-DE"), ".csl default の de-DE を読むはず: {langs:?}");
     assert!(langs.contains(&"en-US"), "en-US フォールバックも読むはず: {langs:?}");
@@ -359,44 +344,35 @@ mod tests {
 
   #[test]
   fn load_locales_reports_missing_file() {
-    // Arrange
     let style = style_with_locale_path(ProjectPath::new("/nonexistent/locales-en-US.xml"));
     let source = FilesystemProjectSource;
 
-    // Act
     let error = load_locales(&style, None, &source).expect_err("読み込み失敗するはず");
 
-    // Assert
     assert!(matches!(error, CitationStyleError::ReadLocaleFile { .. }), "got: {error:?}");
   }
 
   #[test]
   fn load_locales_reports_malformed_file() {
-    // Arrange
     let mut file = tempfile::Builder::new().suffix(".xml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(b"this is not a CSL locale").expect("一時ファイルへ書き込めるはず");
     let style = style_with_locale_path(ProjectPath::new(file.path()));
     let source = FilesystemProjectSource;
 
-    // Act
     let error = load_locales(&style, None, &source).expect_err("解析失敗するはず");
 
-    // Assert
     assert!(matches!(error, CitationStyleError::ParseLocale { .. }), "got: {error:?}");
   }
 
   #[test]
   fn load_citation_style_reads_csl_through_project_source() {
-    // Arrange
     let csl_xml = std::fs::read_to_string(ieee_csl_path()).expect("fixture CSL を読めるはず");
     let source = MemoryProjectSource::new().with_text("/project/ieee.csl", csl_xml);
     let mut style = Style::default();
     style.reference.csl_path = Some(ProjectPath::new("/project/ieee.csl"));
 
-    // Act
     let compiled = load_citation_style(&source, &style);
 
-    // Assert
     assert!(compiled.is_ok(), "seam 経由で CSL を読めるはず: {compiled:?}");
     assert_eq!(source.read_count("/project/ieee.csl"), 1, "実ディスクを介さず seam 経由で 1 回だけ読むはず");
   }

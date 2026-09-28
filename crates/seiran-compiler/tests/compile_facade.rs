@@ -48,7 +48,7 @@ fn project_base_dir() -> &'static Path { return Path::new("/project"); }
 
 #[test]
 fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
-  // Arrange — 実ファイルシステムに一切触れない MemoryProjectSource（フォントバイナリの読込
+  // 実ファイルシステムに一切触れない MemoryProjectSource（フォントバイナリの読込
   // だけはテストコード自身が std::fs で行う。本体コードは ProjectSource 経由のみ）。
   let font_bytes = read_test_font();
   let source = MemoryProjectSource::new()
@@ -57,11 +57,10 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect("最小構成の compile は成功するはず");
 
-  // Assert — Publication と統計が確定し、警告の出る設定ではないので warnings は空
+  // Publication と統計が確定し、警告の出る設定ではないので warnings は空
   assert!(compilation.statistics.page_count >= 1, "本文が 1 ページ以上生成されるはず");
   assert_eq!(compilation.publication.pages().len(), compilation.statistics.page_count);
   assert!(compilation.warnings.is_empty(), "警告の出る設定ではないので空のはず");
@@ -72,15 +71,13 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
 
 #[test]
 fn compile_reports_a_leaf_diagnostic_on_failure() {
-  // Arrange — config.toml 自体を未登録にして読込エラーを起こす
+  // config.toml 自体を未登録にして読込エラーを起こす
   let source = MemoryProjectSource::new();
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未登録の設定ファイルは失敗するはず");
 
-  // Assert
   assert_eq!(failure.diagnostics().count(), 1);
   assert_eq!(
     failure.code().expect("leaf の診断コードを持つはず").to_string(),
@@ -91,7 +88,7 @@ fn compile_reports_a_leaf_diagnostic_on_failure() {
 
 #[test]
 fn compile_returns_font_warnings_with_the_successful_compilation() {
-  // Arrange — テストフォントが持たない script タグを serif に指定する（組版は成功する）
+  // テストフォントが持たない script タグを serif に指定する（組版は成功する）
   let font_bytes = read_test_font();
   let config = minimal_config_toml_with_serif_extra("/project/text.sei", "script = \"kana\"");
   let source = MemoryProjectSource::new()
@@ -100,11 +97,9 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect("script 不一致は致命的ではないはず");
 
-  // Assert — 警告は成功成果物と一緒に返り、severity は Warning、code は leaf のもの
   let codes: Vec<String> = compilation
     .warnings
     .iter()
@@ -126,7 +121,7 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
 
 #[test]
 fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
-  // Arrange — config の警告（拡張子）・フォントの警告（script 不一致）・組版の警告
+  // config の警告（拡張子）・フォントの警告（script 不一致）・組版の警告
   // （脚注 1 行がページの高さを超える）を同時に起こす
   let font_bytes = read_test_font();
   let config = config_toml_with_style("/project/text.txt", "/project/style.toml", "script = \"kana\"");
@@ -137,10 +132,8 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("いずれも致命的ではないはず");
 
-  // Assert
   let codes: Vec<String> = compilation
     .warnings
     .iter()
@@ -163,7 +156,7 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
 
 #[test]
 fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page() {
-  // Arrange — 脚注 1 行がページの高さを超える style.toml（本文自体は組版できる）
+  // 脚注 1 行がページの高さを超える style.toml（本文自体は組版できる）
   let font_bytes = read_test_font();
   let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
   let source = MemoryProjectSource::new()
@@ -173,10 +166,8 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
-  // Assert
   let reports: Vec<&(dyn Diagnostic + 'static)> = compilation.warnings.iter().collect();
   let codes: Vec<String> = reports
     .iter()
@@ -196,7 +187,7 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
 
 #[test]
 fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
-  // Arrange — ページ単位採番は本文パスを不動点まで反復する（同じ問題を毎パス報告しない）
+  // ページ単位採番は本文パスを不動点まで反復する（同じ問題を毎パス報告しない）
   let font_bytes = read_test_font();
   let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
   let source = MemoryProjectSource::new()
@@ -206,10 +197,8 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
-  // Assert
   let codes: Vec<String> = compilation
     .warnings
     .iter()
@@ -220,7 +209,7 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
 
 #[test]
 fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
-  // Arrange — 拡張子が `.sei` でないソースを宣言する（読み込み自体は成功する）
+  // 拡張子が `.sei` でないソースを宣言する（読み込み自体は成功する）
   let font_bytes = read_test_font();
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
@@ -228,11 +217,9 @@ fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect("拡張子違いは致命的ではないはず");
 
-  // Assert
   let codes: Vec<String> = compilation
     .warnings
     .iter()
@@ -251,24 +238,22 @@ fn warning_codes(warnings: &seiran_compiler::Warnings) -> Vec<String> {
 
 #[test]
 fn compile_failure_keeps_config_warnings_when_config_validation_fails() {
-  // Arrange — `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
+  // `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("存在しないソースは失敗するはず");
 
-  // Assert
   assert!(failure.diagnostics().count() >= 1, "error の集合は非空のまま");
   assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
 }
 
 #[test]
 fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
-  // Arrange — config は通るが style.toml が TOML として壊れている
+  // config は通るが style.toml が TOML として壊れている
   let config = config_toml_with_style("/project/text.txt", "/project/style.toml", "");
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", config)
@@ -277,27 +262,23 @@ fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("壊れた style は失敗するはず");
 
-  // Assert
   assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "style::parse_toml");
   assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
 }
 
 #[test]
 fn compile_failure_keeps_config_warnings_when_parsing_fails() {
-  // Arrange — issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
+  // issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
     .with_text("/project/text.txt", "\\unknowncommand{x}")
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未知コマンドは失敗するはず");
 
-  // Assert
   let primary = failure.code().expect("leaf の診断コードを持つはず").to_string();
   assert!(primary.starts_with("frontend::"), "主診断は frontend の leaf: {primary}");
   assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
@@ -321,7 +302,7 @@ fn figure_source(image_path: &str) -> String {
 
 #[test]
 fn compile_failure_keeps_font_warnings_when_font_validation_fails() {
-  // Arrange — serif に script 不一致（警告）と、可変でないフォントへの軸指定（違反）を同時に書く
+  // serif に script 不一致（警告）と、可変でないフォントへの軸指定（違反）を同時に書く
   let config = minimal_config_toml_with_serif_extra(
     "/project/text.sei",
     "script = \"kana\"\nvariation_axes = [{ name = \"wght\", value = 400.0 }]",
@@ -332,10 +313,9 @@ fn compile_failure_keeps_font_warnings_when_font_validation_fails() {
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("軸の違反は失敗するはず");
 
-  // Assert — 同じ検証段の違反があっても、独立に確定した script の警告は残る
+  // 同じ検証段の違反があっても、独立に確定した script の警告は残る
   let primary = failure.code().expect("leaf の診断コードを持つはず").to_string();
   assert!(primary.starts_with("typeset::font::validation::"), "主診断はフォント検証の leaf: {primary}");
   let codes = warning_codes(failure.warnings());
@@ -374,7 +354,7 @@ fn diagnostic_codes(failure: &seiran_compiler::CompileFailure) -> Vec<String> {
 
 #[test]
 fn compile_rejects_an_fvar_record_whose_length_runs_past_the_file() {
-  // Arrange — 19 種別すべてが、fvar レコードの length をファイル範囲外まで伸ばしたフォントを指す（軸指定なし）
+  // 19 種別すべてが、fvar レコードの length をファイル範囲外まで伸ばしたフォントを指す（軸指定なし）
   let font = variable_font_with_patched_fvar_record(|record| {
     record[12..16].copy_from_slice(&0xffff_fff0u32.to_be_bytes());
   });
@@ -384,11 +364,10 @@ fn compile_rejects_an_fvar_record_whose_length_runs_past_the_file() {
     .with_bytes("/project/font.ttf", font);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir())
     .expect_err("範囲外を指す fvar は静的フォントとして通さない");
 
-  // Assert — 1 件目で打ち切らず、全種別ぶん fvar の破損を指す
+  // 1 件目で打ち切らず、全種別ぶん fvar の破損を指す
   let codes = diagnostic_codes(&failure);
   assert_eq!(codes.len(), 19, "19 フォント種別すべてが違反: {codes:?}");
   assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
@@ -396,7 +375,6 @@ fn compile_rejects_an_fvar_record_whose_length_runs_past_the_file() {
 
 #[test]
 fn compile_rejects_an_fvar_record_whose_offset_is_zero() {
-  // Arrange — fvar レコードの offset を 0 にする
   let font = variable_font_with_patched_fvar_record(|record| {
     record[8..12].copy_from_slice(&0u32.to_be_bytes());
   });
@@ -406,11 +384,9 @@ fn compile_rejects_an_fvar_record_whose_offset_is_zero() {
     .with_bytes("/project/font.ttf", font);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir())
     .expect_err("オフセット 0 の fvar は静的フォントとして通さない");
 
-  // Assert
   let codes = diagnostic_codes(&failure);
   assert!(!codes.is_empty(), "違反があるはず");
   assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
@@ -418,7 +394,7 @@ fn compile_rejects_an_fvar_record_whose_offset_is_zero() {
 
 #[test]
 fn compile_reports_an_out_of_range_fvar_record_as_broken_even_with_axes() {
-  // Arrange — serif だけ軸を指定しても「可変フォントではない」にならない
+  // serif だけ軸を指定しても「可変フォントではない」にならない
   let font = variable_font_with_patched_fvar_record(|record| {
     record[12..16].copy_from_slice(&0xffff_fff0u32.to_be_bytes());
   });
@@ -432,10 +408,8 @@ fn compile_reports_an_out_of_range_fvar_record_as_broken_even_with_axes() {
     .with_bytes("/project/font.ttf", font);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("範囲外を指す fvar は通さない");
 
-  // Assert
   let codes = diagnostic_codes(&failure);
   assert!(!codes.iter().any(|code| return code == "typeset::font::validation::not_variable_font"), "{codes:?}");
   assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
@@ -443,7 +417,7 @@ fn compile_reports_an_out_of_range_fvar_record_as_broken_even_with_axes() {
 
 #[test]
 fn compile_failure_keeps_confirmed_warnings_when_an_image_is_missing() {
-  // Arrange — config の警告（拡張子）とフォントの警告（script 不一致）が確定した後、画像の読込で失敗する
+  // config の警告（拡張子）とフォントの警告（script 不一致）が確定した後、画像の読込で失敗する
   let config = minimal_config_toml_with_serif_extra("/project/text.txt", "script = \"kana\"");
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", config)
@@ -451,10 +425,8 @@ fn compile_failure_keeps_confirmed_warnings_when_an_image_is_missing() {
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("読めない画像は失敗するはず");
 
-  // Assert
   assert_eq!(failure.code().expect("leaf の診断コードを持つはず").to_string(), "typeset::image::read_image");
   let codes = warning_codes(failure.warnings());
   assert_eq!(codes.first().map(String::as_str), Some("project::config::source_extension"), "{codes:?}");
@@ -464,7 +436,7 @@ fn compile_failure_keeps_confirmed_warnings_when_an_image_is_missing() {
 
 #[test]
 fn compile_failure_does_not_keep_layout_warnings() {
-  // Arrange — 脚注がはみ出す style（成功すれば組版の警告が出る）で、画像の読込に失敗させる
+  // 脚注がはみ出す style（成功すれば組版の警告が出る）で、画像の読込に失敗させる
   let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
   let body = format!("本文\\footnote{{はみ出す脚注}}。\n{}", figure_source("missing.png"));
   let source = MemoryProjectSource::new()
@@ -474,10 +446,9 @@ fn compile_failure_does_not_keep_layout_warnings() {
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("読めない画像は失敗するはず");
 
-  // Assert — 配置由来の警告は組版が成功したときにしか確定しないので、失敗には現れない
+  // 配置由来の警告は組版が成功したときにしか確定しないので、失敗には現れない
   let codes = warning_codes(failure.warnings());
   assert!(
     !codes.iter().any(|code| return code.starts_with("typeset::footnote::")),
@@ -487,7 +458,7 @@ fn compile_failure_does_not_keep_layout_warnings() {
 
 #[test]
 fn compile_resolves_relative_root_source_and_image_against_base_dir() {
-  // Arrange — root・source・画像のすべてを相対で書き、base_dir=/project だけを絶対にする（#530）
+  // root・source・画像のすべてを相対で書き、base_dir=/project だけを絶対にする（#530）
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
     .with_text("/project/text.sei", figure_source("fig/a.png"))
@@ -495,11 +466,10 @@ fn compile_resolves_relative_root_source_and_image_against_base_dir() {
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("config.toml");
 
-  // Act
   let compilation =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect("相対 root でも base_dir 基準で読めるはず");
 
-  // Assert — manifest はすべて解決済み。config_path が絶対になるのが唯一の意味的な差分
+  // manifest はすべて解決済み。config_path が絶対になるのが唯一の意味的な差分
   assert_eq!(compilation.dependencies.config_path, PathBuf::from("/project/config.toml"));
   assert_eq!(compilation.dependencies.source_paths, vec![PathBuf::from("/project/text.sei")]);
   assert_eq!(compilation.dependencies.image_paths, vec![PathBuf::from("/project/fig/a.png")]);
@@ -508,22 +478,19 @@ fn compile_resolves_relative_root_source_and_image_against_base_dir() {
 
 #[test]
 fn compile_reports_the_resolved_root_when_a_relative_config_is_missing() {
-  // Arrange — 相対 root を未登録にする
   let source = MemoryProjectSource::new();
   let root = ProjectPath::new("config.toml");
 
-  // Act
   let failure =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未登録の設定ファイルは失敗するはず");
 
-  // Assert — 診断に現れる root は base_dir で解決した後の値（振る舞いの差分の明示的な固定）
+  // 診断に現れる root は base_dir で解決した後の値（振る舞いの差分の明示的な固定）
   let message = failure.diagnostics().next().expect("主診断があるはず").to_string();
   assert!(message.contains("/project/config.toml"), "解決後の root が診断に出るはず: {message}");
 }
 
 #[test]
 fn compile_reads_an_image_once_when_it_is_spelled_two_ways() {
-  // Arrange — 同じ画像を `fig/./a.png` と `fig/a.png` の 2 表記で参照する
   let body = format!("{}{}", figure_source("fig/./a.png"), figure_source("fig/a.png"));
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
@@ -532,17 +499,16 @@ fn compile_reads_an_image_once_when_it_is_spelled_two_ways() {
     .with_bytes("/project/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("compile は成功するはず");
 
-  // Assert — 正規化後に 1 件へ畳まれ、manifest も 1 件・読込も 1 回
+  // 正規化後に 1 件へ畳まれ、manifest も 1 件・読込も 1 回
   assert_eq!(compilation.dependencies.image_paths, vec![PathBuf::from("/project/fig/a.png")]);
   assert_eq!(source.read_count("/project/fig/a.png"), 1);
 }
 
 #[test]
 fn compile_reads_a_font_once_when_it_is_spelled_two_ways() {
-  // Arrange — 1 種別だけ `fonts/./font.ttf`、残り 18 種別は `fonts/font.ttf` を指す
+  // 1 種別だけ `fonts/./font.ttf`、残り 18 種別は `fonts/font.ttf` を指す
   let font_sections = test_support::make_font_sections("fonts/font.ttf").replacen(
     "font_path = \"fonts/font.ttf\"",
     "font_path = \"fonts/./font.ttf\"",
@@ -555,10 +521,8 @@ fn compile_reads_a_font_once_when_it_is_spelled_two_ways() {
     .with_bytes("/project/fonts/font.ttf", read_test_font());
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("compile は成功するはず");
 
-  // Assert
   assert_eq!(compilation.dependencies.font_paths, vec![PathBuf::from("/project/fonts/font.ttf")]);
   assert_eq!(source.read_count("/project/fonts/font.ttf"), 1, "表記が違っても同じフォントは 1 回だけ読むはず");
 }

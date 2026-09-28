@@ -33,7 +33,6 @@ const REPRESENTATIVE_SOURCES: &[&str] = &[
 #[test]
 fn compile_is_deterministic_for_the_same_source() {
   for text in REPRESENTATIVE_SOURCES {
-    // Arrange
     let font_bytes = read_test_font();
     let source = MemoryProjectSource::new()
       .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
@@ -41,11 +40,9 @@ fn compile_is_deterministic_for_the_same_source() {
       .with_bytes("/project/font.ttf", font_bytes);
     let root = ProjectPath::new("/project/config.toml");
 
-    // Act
     let first = seiran_compiler::compile(&source, &root, project_base_dir()).expect("1 回目の compile は成功するはず");
     let second = seiran_compiler::compile(&source, &root, project_base_dir()).expect("2 回目の compile は成功するはず");
 
-    // Assert
     assert_eq!(first.publication, second.publication, "text={text:?} で決定性が崩れているはず");
   }
 }
@@ -70,7 +67,6 @@ const MISSING_IMAGES: &str = concat!(
 /// 複数の画像が欠落しているとき、正規化済みパスの昇順で全件が報告される。
 #[test]
 fn missing_images_are_reported_in_path_order() {
-  // Arrange
   let font_bytes = read_test_font();
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
@@ -78,11 +74,10 @@ fn missing_images_are_reported_in_path_order() {
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
-  // Act
   let failure =
     seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("2 枚とも欠落しているので失敗するはず");
 
-  // Assert — 1 枚目で打ち切らず、文書順ではなくパス昇順（a → z）で並ぶ
+  // 1 枚目で打ち切らず、文書順ではなくパス昇順（a → z）で並ぶ
   let messages: Vec<String> = failure.diagnostics().map(|diagnostic| return diagnostic.to_string()).collect();
   assert_eq!(messages.len(), 2, "欠落した 2 枚が両方報告されるはず: {messages:?}");
   assert!(messages[0].contains("/project/a-missing.png"), "パス昇順の 1 件目が先のはず: {messages:?}");
@@ -96,7 +91,6 @@ fn missing_images_are_reported_in_path_order() {
 #[test]
 fn error_path_is_deterministic_across_repeated_runs() {
   for text in ERROR_CASES {
-    // Arrange
     let font_bytes = read_test_font();
     let source = MemoryProjectSource::new()
       .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
@@ -104,7 +98,6 @@ fn error_path_is_deterministic_across_repeated_runs() {
       .with_bytes("/project/font.ttf", font_bytes);
     let root = ProjectPath::new("/project/config.toml");
 
-    // Act
     let runs: Vec<Vec<String>> = std::iter::repeat_with(|| {
       let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("この入力は失敗するはず");
       return failure
@@ -117,7 +110,6 @@ fn error_path_is_deterministic_across_repeated_runs() {
     .take(32)
     .collect();
 
-    // Assert
     let first = runs.first().expect("32 回実行しているはず");
     assert!(!first.is_empty(), "失敗時は 1 件以上の診断があるはず");
     for (index, codes) in runs.iter().enumerate() {

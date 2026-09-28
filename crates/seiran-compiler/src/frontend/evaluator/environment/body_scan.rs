@@ -95,47 +95,38 @@ mod tests {
 
   #[test]
   fn strict_scan_collects_allowed_commands() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{itemize}\n\\item{A}\n\\item{B}\n\\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    // Act
     let views = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item").unwrap();
 
-    // Assert
     let names: Vec<&str> = views.iter().map(|((), view)| return view.name()).collect();
     assert_eq!(names, vec!["item", "item"]);
   }
 
   #[test]
   fn strict_scan_rejects_stray_text() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}some text\item{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    // Act
     let result = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item");
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnexpectedContentInEnvironment { ref env, .. }) if env == "itemize"));
   }
 
   #[test]
   fn strict_scan_rejects_disallowed_command() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\bold{x}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    // Act
     let result = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item");
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, .. }) if name == "bold"));
   }
 }

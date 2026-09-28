@@ -548,7 +548,6 @@ mod tests {
 
   #[test]
   fn collect_row_links_single_link_fills_cell() {
-    // Arrange
     let target = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(target.clone()),
@@ -557,7 +556,6 @@ mod tests {
     ])]);
     let col_widths = vec![pt(30.0)];
 
-    // Act
     let links = collect_row_links(
       &row,
       &[TableColumn {
@@ -568,7 +566,6 @@ mod tests {
       pt(2.0),
     );
 
-    // Assert
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 2.0));
@@ -577,7 +574,6 @@ mod tests {
 
   #[test]
   fn position_table_row_boxes_resolves_alignment_and_spacing() {
-    // Arrange
     let row = row(vec![cell(vec![
       text_free_box(5.0),
       HItem::Kern(pt(3.0)),
@@ -594,10 +590,8 @@ mod tests {
       width: ColumnWidth::Auto,
     }];
 
-    // Act
     let boxes = position_table_row_boxes(&row, &columns, &[pt(30.0)], pt(2.0));
 
-    // Assert
     assert_eq!(boxes.len(), 2);
     assert!(close(boxes[0].x, 14.0), "右揃えの先頭 x: {boxes:?}");
     assert!(close(boxes[1].x, 24.0), "box + kern + glue 後の x: {boxes:?}");
@@ -605,7 +599,6 @@ mod tests {
 
   #[test]
   fn collect_row_links_multiple_links_in_one_cell() {
-    // Arrange
     let first = LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:1")));
     let second = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
@@ -623,10 +616,8 @@ mod tests {
       width: ColumnWidth::Auto,
     }];
 
-    // Act
     let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
 
-    // Assert
     assert_eq!(links.len(), 2);
     assert_eq!(links[0].target, first);
     assert!(close(links[0].x0, 0.0) && close(links[0].x1, 5.0));
@@ -636,7 +627,6 @@ mod tests {
 
   #[test]
   fn collect_row_links_in_spanned_cell() {
-    // Arrange
     let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("tab:x")));
     let row = row(vec![TableCellBox {
       items: vec![
@@ -648,10 +638,8 @@ mod tests {
     }]);
     let col_widths = vec![pt(20.0), pt(20.0)];
 
-    // Act
     let links = collect_row_links(&row, &two_left_columns(), &col_widths, pt(0.0));
 
-    // Assert
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 0.0) && close(links[0].x1, 10.0));
@@ -659,7 +647,6 @@ mod tests {
 
   #[test]
   fn collect_row_links_ignores_unbalanced_link_end() {
-    // Arrange
     let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("x")));
     let row = row(vec![cell(vec![
       HItem::LinkStart(target.clone()),
@@ -672,10 +659,8 @@ mod tests {
       width: ColumnWidth::Auto,
     }];
 
-    // Act
     let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
 
-    // Assert
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 0.0) && close(links[0].x1, 0.0));

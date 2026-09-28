@@ -191,7 +191,7 @@ mod tests {
 
   #[test]
   fn finalize_roman_front_arabic_body() {
-    // Arrange — 既定（前付け=ローマ小文字 / 本文=算用）
+    // 既定（前付け=ローマ小文字 / 本文=算用）
     let front_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let body_pages = vec![
       page_with_anchors(vec![]),
@@ -200,10 +200,9 @@ mod tests {
     ];
     let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
 
-    // Act
     let labels = page_values.finalize(&front_pages).into_vec();
 
-    // Assert — 前付けは i, ii（総数 ii）、本文は 1..3（総数 3）でリージョン別に振り直す
+    // 前付けは i, ii（総数 ii）、本文は 1..3（総数 3）でリージョン別に振り直す
     assert_eq!(labels[0], ("i".to_string(), "ii".to_string()));
     assert_eq!(labels[1], ("ii".to_string(), "ii".to_string()));
     assert_eq!(labels[2], ("1".to_string(), "3".to_string()));
@@ -212,17 +211,15 @@ mod tests {
 
   #[test]
   fn with_back_matter_extends_body_region_numbering() {
-    // Arrange
     let front_pages = vec![page_with_anchors(vec![])];
     let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let back_pages = vec![page_with_anchors(vec![])];
     let page_values =
       BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default()).with_back_matter(&back_pages);
 
-    // Act
     let labels = page_values.finalize(&front_pages).into_vec();
 
-    // Assert — 索引ページも本文領域の通し番号（算用数字）に含まれ、総数は本文+索引の 3
+    // 索引ページも本文領域の通し番号（算用数字）に含まれ、総数は本文+索引の 3
     assert_eq!(labels.len(), 4);
     assert_eq!(labels[1], ("1".to_string(), "3".to_string()));
     assert_eq!(labels[2], ("2".to_string(), "3".to_string()));
@@ -246,7 +243,6 @@ mod tests {
 
   #[test]
   fn finalize_without_front_matter_is_plain_arabic() {
-    // Arrange
     let body_pages = vec![
       page_with_anchors(vec![]),
       page_with_anchors(vec![]),
@@ -254,10 +250,8 @@ mod tests {
     ];
     let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
 
-    // Act
     let labels = page_values.finalize(&[]).into_vec();
 
-    // Assert
     assert_eq!(labels[0].0, "1");
     assert_eq!(labels[2], ("3".to_string(), "3".to_string()));
   }

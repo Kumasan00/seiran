@@ -116,7 +116,6 @@ mod tests {
 
   #[test]
   fn supplies_only_source_code_and_delegates_the_rest() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
     let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, _entry) = sources.iter().next().expect("1 件登録されているはず");
@@ -124,10 +123,8 @@ mod tests {
       span: miette::SourceSpan::from((0usize, 3usize)),
     };
 
-    // Act
     let attributed = SourceDiagnostic::attach(&sources, source_id, inner);
 
-    // Assert
     assert!(attributed.source_code().is_some(), "本文を補うはず");
     assert_eq!(attributed.code().expect("code を委譲するはず").to_string(), "test::leaf");
     assert_eq!(attributed.help().expect("help を委譲するはず").to_string(), "テスト用のヘルプ");
@@ -137,7 +134,6 @@ mod tests {
 
   #[test]
   fn diagnostics_on_the_same_source_share_one_copy_of_the_text() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
     let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, entry) = sources.iter().next().expect("1 件登録されているはず");
@@ -147,11 +143,9 @@ mod tests {
       };
     };
 
-    // Act
     let first = SourceDiagnostic::attach(&sources, source_id, leaf());
     let second = SourceDiagnostic::attach(&sources, source_id, leaf());
 
-    // Assert
     assert!(Arc::ptr_eq(first.named_source.inner(), &entry.content), "1 件目は SourceSet の本文を共有する");
     assert!(Arc::ptr_eq(second.named_source.inner(), &entry.content), "2 件目も同じ本文を共有する");
     assert_eq!(Arc::strong_count(&entry.content), 3, "所有者は SourceSet と診断 2 件だけ");
@@ -159,7 +153,6 @@ mod tests {
 
   #[test]
   fn related_notes_carry_their_own_source_text() {
-    // Arrange
     let source = MemoryProjectSource::new()
       .with_text("/project/a.sei", "本文 A")
       .with_text("/project/b.sei", "本文 B");
@@ -178,10 +171,8 @@ mod tests {
       };
     };
 
-    // Act
     let attributed = SourceDiagnostic::attach(&sources, ids[0], leaf()).with_related_in(&sources, ids[1], leaf());
 
-    // Assert
     let related: Vec<&dyn Diagnostic> = attributed.related().expect("関連診断を持つはず").collect();
     assert_eq!(related.len(), 1);
     let contents = related[0]

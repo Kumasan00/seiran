@@ -437,7 +437,7 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
 
 #[test]
 fn diagnostic_config_validation_field() {
-  // Arrange — 値域外の `image.max_dpi`（config.toml の値検証の違反 1 件）
+  // 値域外の `image.max_dpi`（config.toml の値検証の違反 1 件）
   let project = TestProject::builder()
     .config_toml(|table| {
       let image = table
@@ -450,10 +450,9 @@ fn diagnostic_config_validation_field() {
     .build();
   let config_path = project.config_path().to_string();
 
-  // Act
   let failure = project.compile_err();
 
-  // Assert — 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま（#552）
+  // 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま（#552）
   assert_eq!(codes(&failure), vec!["project::config::validation::field".to_string()]);
   let rendered = render_failure(failure);
   assert!(rendered.contains(&format!("{config_path}: 'image.max_dpi'")), "{rendered}");
@@ -475,15 +474,14 @@ fn diagnostic_style_validation_aggregate() {
 
 #[test]
 fn diagnostic_style_parse_toml() {
-  // Arrange — 閉じ引用符の無い文字列（style.toml の TOML 構文エラー。#647）
+  // 閉じ引用符の無い文字列（style.toml の TOML 構文エラー。#647）
   let toml = "[page]\nmargin_top = \"10mm\n";
 
-  // Act
   let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
     panic!("このケースは失敗するはず");
   };
 
-  // Assert — config.toml と同形: cause 行は toml のメッセージだけ、位置は miette のラベル 1 回
+  // config.toml と同形: cause 行は toml のメッセージだけ、位置は miette のラベル 1 回
   let rendered = render_failure(CompileFailure::from(failures));
   assert!(!rendered.contains("TOML parse error at line"), "{rendered}");
   assert_matches_golden("style_parse_toml", &rendered);
@@ -491,17 +489,16 @@ fn diagnostic_style_parse_toml() {
 
 #[test]
 fn diagnostic_config_parse_toml() {
-  // Arrange — 閉じ括弧の無い配列（config.toml の TOML 構文エラー）
+  // 閉じ括弧の無い配列（config.toml の TOML 構文エラー）
   let source = MemoryProjectSource::new().with_text("diagnostics/config.toml", "sources = [\"a.sei\"\n");
   let config_path = ProjectPath::new("diagnostics/config.toml");
 
-  // Act
   let (result, _warnings) = project::config::load(&source, &config_path, &PathResolver::new(Path::new("diagnostics")));
   let Err(failures) = result else {
     panic!("このケースは失敗するはず");
   };
 
-  // Assert — 位置は miette のラベルだけが示し、toml の自前スニペットを重ねない
+  // 位置は miette のラベルだけが示し、toml の自前スニペットを重ねない
   let rendered = render_failure(CompileFailure::from(failures));
   assert!(!rendered.contains("TOML parse error at line"), "{rendered}");
   assert_matches_golden("config_parse_toml", &rendered);
@@ -509,18 +506,17 @@ fn diagnostic_config_parse_toml() {
 
 #[test]
 fn diagnostic_config_removed_font_name() {
-  // Arrange — #692 で外した font_name を書いたままの config（未知キーとして拒否し、削除を案内する）
+  // #692 で外した font_name を書いたままの config（未知キーとして拒否し、削除を案内する）
   let source = MemoryProjectSource::new()
     .with_text("diagnostics/config.toml", "[font_configs.serif]\nfont_name = \"MyFont\"\nfont_path = \"a.ttf\"\n");
   let config_path = ProjectPath::new("diagnostics/config.toml");
 
-  // Act
   let (result, _warnings) = project::config::load(&source, &config_path, &PathResolver::new(Path::new("diagnostics")));
   let Err(failures) = result else {
     panic!("このケースは失敗するはず");
   };
 
-  // Assert — cause 行がキー名を、ラベルがキーの位置を、help が削除を示す
+  // cause 行がキー名を、ラベルがキーの位置を、help が削除を示す
   let rendered = render_failure(CompileFailure::from(failures));
   assert!(rendered.contains("font_name"), "{rendered}");
   assert_matches_golden("config_removed_font_name", &rendered);

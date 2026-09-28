@@ -37,15 +37,12 @@ mod tests {
 
   #[test]
   fn quote_carries_kind_and_body() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{quote}引用本文\end{quote}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
@@ -57,15 +54,12 @@ mod tests {
 
   #[test]
   fn quotation_resolves_to_quotation_kind() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{quotation}引用本文\end{quotation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
@@ -74,15 +68,12 @@ mod tests {
 
   #[test]
   fn quote_body_can_contain_multiple_paragraphs() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{quote}第一段落\n\n第二段落\\end{quote}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Quote(quote) = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
@@ -92,29 +83,23 @@ mod tests {
 
   #[test]
   fn quote_rejects_extra_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{quote}{余分}本文\end{quote}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::ExtraEnvironmentArgument { ref name, .. }) if name == "quote"));
   }
 
   #[test]
   fn quote_rejects_unknown_opt_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{quote}[foo=1]本文\end{quote}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 }

@@ -682,7 +682,6 @@ mod tests {
 
   #[test]
   fn deserialize_keeps_the_source_string() {
-    // Arrange
     #[derive(Debug, Deserialize)]
     struct Wrapper {
       /// テンプレート 1 本だけを持つ TOML テーブル
@@ -690,26 +689,22 @@ mod tests {
     }
     let toml = "format = \"第{number}章 {title}\"\n";
 
-    // Act
     let wrapper: Wrapper = toml::from_str(toml).unwrap();
 
-    // Assert
     assert_eq!(wrapper.format.as_str(), "第{number}章 {title}");
   }
 
   #[test]
   fn deserialize_keeps_invalid_templates_for_garde_to_report() {
-    // Arrange
     #[derive(Debug, Deserialize)]
     struct Wrapper {
       /// 未知プレースホルダを含むテンプレート
       format: NumberTemplate,
     }
 
-    // Act — 構文エラーでも deserialize は成功する（複数フィールドの一括報告を打ち切らないため）
+    // 構文エラーでも deserialize は成功する（複数フィールドの一括報告を打ち切らないため）
     let wrapper: Wrapper = toml::from_str("format = \"{nope}\"\n").unwrap();
 
-    // Assert
     assert!(violation(&wrapper.format).is_some());
   }
 
@@ -735,11 +730,10 @@ mod tests {
 
   #[test]
   fn title_closure_is_not_called_without_a_title_placeholder() {
-    // Arrange — タイトル生成には脚注 index を払い出す副作用があるので呼んではならない
+    // タイトル生成には脚注 index を払い出す副作用があるので呼んではならない
     let template = NumberTitleTemplate::parse("No.{number}");
     let mut calls = 0u32;
 
-    // Act
     let nodes = template.expand(
       "7",
       || {
@@ -749,18 +743,15 @@ mod tests {
       |literal| return Node::Literal(literal.to_string()),
     );
 
-    // Assert
     assert_eq!(calls, 0);
     assert_eq!(nodes, vec![Node::Literal("No.7".to_string())]);
   }
 
   #[test]
   fn title_closure_is_called_once_per_occurrence() {
-    // Arrange
     let template = NumberTitleTemplate::parse("{title} / {title}");
     let mut calls = 0u32;
 
-    // Act
     let nodes = template.expand(
       "7",
       || {
@@ -770,7 +761,7 @@ mod tests {
       |literal| return Node::Literal(literal.to_string()),
     );
 
-    // Assert — 2 回とも別々に生成される（clone で同じノードを 2 つ置くのではない）
+    // 2 回とも別々に生成される（clone で同じノードを 2 つ置くのではない）
     assert_eq!(calls, 2);
     assert_eq!(
       nodes,

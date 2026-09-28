@@ -104,14 +104,11 @@ mod tests {
 
   #[test]
   fn declare_label_keeps_the_first_definition() {
-    // Arrange
     let mut facts = SemanticFacts::default();
     facts.declare_label(id(1), "sec:x", id(1)).expect("初回の宣言は成功するはず");
 
-    // Act
     let second = facts.declare_label(id(2), "sec:x", id(2));
 
-    // Assert
     let Err(first) = second else {
       panic!("重複した宣言は Err になるはず");
     };

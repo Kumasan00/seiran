@@ -95,15 +95,12 @@ mod tests {
 
   #[test]
   fn matrix_splits_grid_default_delimiter_none_unnumbered() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}a & b \\ c & d\end{matrix}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let (delimiter, rows) = matrix_of(&result);
     assert_eq!(delimiter, MathDelimiter::None, "既定は区切りなし");
@@ -114,44 +111,35 @@ mod tests {
 
   #[test]
   fn matrix_parses_delimiter_option() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=bracket]a & b \\ c & d\end{matrix}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let (delimiter, _) = matrix_of(&result);
     assert_eq!(delimiter, MathDelimiter::Bracket);
   }
 
   #[test]
   fn matrix_rejects_unknown_delimiter_value() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=angle]a & b\end{matrix}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "delimiter"));
   }
 
   #[test]
   fn matrix_rejects_unknown_opt_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[numbered=true]a & b\end{matrix}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "numbered"));
   }
 }

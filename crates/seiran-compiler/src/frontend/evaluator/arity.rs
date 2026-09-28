@@ -113,16 +113,13 @@ mod tests {
 
   #[test]
   fn exactly_one_arg_returns_the_single_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\ref{sec:a}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let arg = exactly_one_arg(&view, "ラベル名");
 
-    // Assert
     assert!(arg.is_ok(), "{arg:?}");
   }
 

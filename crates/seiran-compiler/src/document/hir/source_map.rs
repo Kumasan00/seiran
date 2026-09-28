@@ -132,18 +132,15 @@ mod tests {
 
   #[test]
   fn source_map_is_indexed_by_source_id_not_insertion_order() {
-    // Arrange
     let mut first = SourceSpans::new(SourceId::new(0));
     let a = first.alloc(Span::new(0, 1));
     let mut second = SourceSpans::new(SourceId::new(1));
     let b = second.alloc(Span::new(0, 4));
 
-    // Act — 逆順に差し込む
     let mut map = SourceMap::default();
     map.insert(second);
     map.insert(first);
 
-    // Assert
     assert_eq!(map.location(a).span, Span::new(0, 1));
     assert_eq!(map.location(a).source_id, SourceId::new(0));
     assert_eq!(map.location(b).span, Span::new(0, 4));

@@ -111,17 +111,14 @@ mod tests {
 
   #[test]
   fn parse_accepts_top_level_reference_table() {
-    // Arrange
     let toml = "[reference]\n\
                 title = \"参考文献\"\n\
                 csl_path = \"styles/ieee.csl\"\n\
                 locale_path = \"locales/locales-ja-JP.xml\"\n\
                 locale = \"ja-JP\"\n";
 
-    // Act
     let style = parse(toml, "style.toml").expect("[reference] を含む style.toml はパースできるはず");
 
-    // Assert
     assert_eq!(style.reference.title, "参考文献");
     assert_eq!(style.reference.csl_path, Some(ProjectPath::new("styles/ieee.csl")));
     assert_eq!(style.reference.locale_path, Some(ProjectPath::new("locales/locales-ja-JP.xml")));

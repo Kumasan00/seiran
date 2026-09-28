@@ -67,16 +67,13 @@ mod tests {
 
   #[test]
   fn heading_captures_label_and_is_numbered() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\section[label=sec:foo]{Title}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section)).unwrap();
 
-    // Assert
     let HirNodeKind::Heading(heading) = &result.kind else {
       panic!("Heading が期待されます");
     };
@@ -88,16 +85,13 @@ mod tests {
 
   #[test]
   fn heading_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\section[draft=true]{Title}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
 }

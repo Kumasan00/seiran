@@ -159,21 +159,18 @@ mod tests {
 
   #[test]
   fn generate_produces_display_per_site_and_bibliography() {
-    // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"本文 \cite{kwan2014} と \cite{doe2020}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
-    // Act
     let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
-    // Assert — 引用箇所ごとに表示が 1 つずつ付く
     for (site, _) in analyzed.citations.iter() {
       let text: String = generated.display_at(site).iter().map(GeneratedInline::to_plain_text).collect();
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
     }
 
-    // Assert — 書誌はエントリ列として本文と別枠で返る（見出しは持たない）
+    // 書誌はエントリ列として本文と別枠で返る（見出しは持たない）
     let bibliography = generated.bibliography().expect("CSL に書誌があるので Some のはず");
     assert!(
       bibliography.iter().any(|entry| return entry.key.as_str() == "kwan2014"),
@@ -184,15 +181,12 @@ mod tests {
 
   #[test]
   fn generate_links_each_key_of_multi_key_site() {
-    // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"\cite{kwan2014, doe2020}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
-    // Act
     let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
-    // Assert
     let (site, _) = analyzed.citations.iter().next().expect("1 箇所あるはず");
     let targets: Vec<&str> = generated
       .display_at(site)
@@ -223,15 +217,12 @@ mod tests {
 
   #[test]
   fn generate_bibliography_italicizes_titles() {
-    // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
-    // Act
     let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
-    // Assert
     let mut italic_texts: Vec<String> = Vec::new();
     for entry in generated.bibliography().expect("CSL に書誌があるので Some のはず") {
       collect_italic_texts(&entry.body, &mut italic_texts);
@@ -246,16 +237,13 @@ mod tests {
 
   #[test]
   fn generate_is_deterministic() {
-    // Arrange
     let references = sample_references();
     let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020} \cite{kwan2014}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");
 
-    // Act
     let first = generate_citations(&analyzed.citations, &references, &compiled);
     let second = generate_citations(&analyzed.citations, &references, &compiled);
 
-    // Assert
     // 全表示の走査が要るのはこのテストだけなので、query ではなく private フィールドを直接読む。
     let plain = |generated: &GeneratedCitations| -> Vec<String> {
       return generated
@@ -270,7 +258,7 @@ mod tests {
 
   #[test]
   fn generating_with_different_csl_produces_different_bibliography() {
-    // Arrange — CSL を変えても authored HIR と facts が変わらないことは、`generate_citations` が
+    // CSL を変えても authored HIR と facts が変わらないことは、`generate_citations` が
     // 共有参照しか受け取らないシグネチャが保証する。ここで固定するのは「CSL を変えれば書誌の
     // 表示内容が変わる」の一点だけ。
     let references = sample_references();
@@ -279,11 +267,9 @@ mod tests {
     let variant =
       load_citation_style(&FilesystemProjectSource, &style_with_csl_path(variant_csl_path())).expect("読めるはず");
 
-    // Act
     let generated_base = generate_citations(&analyzed.citations, &references, &base);
     let generated_variant = generate_citations(&analyzed.citations, &references, &variant);
 
-    // Assert
     assert_ne!(generated_base.bibliography(), generated_variant.bibliography(), "CSL を変えたら生成物は変わるはず");
   }
 }

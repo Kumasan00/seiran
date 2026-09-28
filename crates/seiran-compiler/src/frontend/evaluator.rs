@@ -317,15 +317,12 @@ mod tests {
 
   #[test]
   fn paragraph_keeps_the_space_after_an_inline_command() {
-    // Arrange
     let arena = Bump::new();
     let source = r"ab \bold{cd} ef";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert — `}` の直後の空白が語間のアキとして残る（#516）
     let inlines = single_paragraph(&nodes);
     assert_eq!(inlines.len(), 5, "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
@@ -335,15 +332,13 @@ mod tests {
 
   #[test]
   fn paragraph_drops_the_newline_after_a_block_command() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\section{見出し}\n本文";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert — 段落の先頭へ回った改行は flush が捨てる（空白 glue にはならない）
+    // 段落の先頭へ回った改行は flush が捨てる（空白 glue にはならない）
     assert_eq!(nodes.len(), 2, "{nodes:?}");
     assert!(matches!(nodes[0].kind, HirNodeKind::Heading(_)), "{nodes:?}");
     let HirNodeKind::Paragraph(inlines) = &nodes[1].kind else {
@@ -355,15 +350,13 @@ mod tests {
 
   #[test]
   fn paragraph_keeps_the_space_swallowed_by_a_command_without_arguments() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\noindent 本文";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert — 引数の無いコマンドの直後の空白はコマンド名の終端を示すだけなので本文に出さない
+    // 引数の無いコマンドの直後の空白はコマンド名の終端を示すだけなので本文に出さない
     let inlines = single_paragraph(&nodes);
     assert_eq!(inlines.len(), 2, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::NoIndent), "{inlines:?}");
@@ -372,15 +365,13 @@ mod tests {
 
   #[test]
   fn noindent_in_the_middle_of_a_paragraph_points_at_the_command_itself() {
-    // Arrange
     let arena = Bump::new();
     let source = r"本文\noindent";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert — 診断は `\noindent` の開始位置（バイト 6）から 9 バイトを指す
+    // 診断は `\noindent` の開始位置（バイト 6）から 9 バイトを指す
     let Err(EvalError::NoindentNotAtParagraphStart { span }) = result else {
       panic!("段落途中の \\noindent は拒否されるはず: {result:?}")
     };

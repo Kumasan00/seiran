@@ -73,16 +73,13 @@ mod tests {
 
   #[test]
   fn bold_creates_styled_node() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\bold{hello}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
 
-    // Assert
     match &result.kind {
       HirInlineKind::Styled { kind, children } => {
         assert_eq!(*kind, FontKind::SerifBold);
@@ -95,16 +92,13 @@ mod tests {
 
   #[test]
   fn nested_styled_commands_keep_inner_kind() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\bold{\italic{x}}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
 
-    // Assert
     let HirInlineKind::Styled { kind, children } = &result.kind else {
       panic!("Styled が期待されます");
     };
@@ -146,31 +140,25 @@ mod tests {
 
   #[test]
   fn bold_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\bold[heavy]{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
   }
 
   #[test]
   fn color_creates_colored_node() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#ff0000]{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
 
-    // Assert
     let HirInlineKind::Colored { color, children } = &result.kind else {
       panic!("Colored が期待されます: {result:?}");
     };
@@ -219,16 +207,13 @@ mod tests {
 
   #[test]
   fn nested_bold_inside_color_keeps_both() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#0000ff]{\bold{x}}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
 
-    // Assert
     let HirInlineKind::Colored { color, children } = &result.kind else {
       panic!("Colored が期待されます: {result:?}");
     };

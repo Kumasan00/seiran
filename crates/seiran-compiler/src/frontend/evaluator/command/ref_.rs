@@ -30,16 +30,13 @@ mod tests {
 
   #[test]
   fn ref_produces_inline_ref_stub() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\ref{sec:intro}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return ref_command(&view, ctx)).unwrap();
 
-    // Assert
     let HirInlineKind::Ref { label } = &result.kind else {
       panic!("Ref が期待されます");
     };
@@ -48,46 +45,37 @@ mod tests {
 
   #[test]
   fn ref_rejects_missing_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\ref";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return ref_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "ref"));
   }
 
   #[test]
   fn ref_rejects_extra_arguments() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\ref{a}{b}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return ref_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"));
   }
 
   #[test]
   fn ref_rejects_opt_args() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\ref[k=v]{label}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return ref_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
 }

@@ -187,17 +187,16 @@ fn pdf_structure_matches_golden() {
 
 #[test]
 fn pdf_structure_tounicode_extracts_hyperref_text() {
-  // Arrange — CJK を含む hyperref を対象にする（ASCII だけだと ToUnicode CMap が壊れていても
+  // CJK を含む hyperref を対象にする（ASCII だけだと ToUnicode CMap が壊れていても
   // 標準エンコーディングで拾えてしまい、CMap 経由の復元を検証したことにならない）
   let bytes = build_pdf_bytes("hyperref");
   let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
 
-  // Act — lopdf は glyph 単位の描画を別々のテキスト行として抽出するので、空白を除いてから見る
+  // lopdf は glyph 単位の描画を別々のテキスト行として抽出するので、空白を除いてから見る
   // （ページ番号は 1 始まり）
   let extracted = document.extract_text(&[1]).expect("ToUnicode CMap 経由のテキスト抽出");
   let stripped: String = extracted.chars().filter(|character| return !character.is_whitespace()).collect();
 
-  // Assert
   assert!(!stripped.is_empty(), "ToUnicode 抽出が空: krilla が CMap を生成していない可能性: {extracted:?}");
   assert!(stripped.contains("はじめに"), "ToUnicode 経由で日本語テキストが復元されるはず: {stripped:?}");
 }
@@ -217,7 +216,7 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 
 #[test]
 fn pdf_structure_background_paints_before_body_content() {
-  // Arrange — text（本文段落のみ）に背景色を明示的に設定し、compiler が定める描画順
+  // text（本文段落のみ）に背景色を明示的に設定し、compiler が定める描画順
   // （背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
   // 入力に figure を使わないのは、下の assert が見るのが「fill と body の初出順」だけで、画像の
   // 有無が結論に一切効かないため（初出 body は本文テキスト）。figure は巨大なラスタ画像 5 枚の
@@ -228,7 +227,6 @@ fn pdf_structure_background_paints_before_body_content() {
   let content_bytes = document.get_page_content(page_id);
   let content = Content::decode(&content_bytes).expect("content stream のデコード");
 
-  // Act
   let categories: Vec<&str> = content
     .operations
     .iter()
@@ -237,7 +235,6 @@ fn pdf_structure_background_paints_before_body_content() {
   let first_fill = categories.iter().position(|category| return *category == "fill");
   let first_body = categories.iter().position(|category| return *category == "text" || *category == "image");
 
-  // Assert
   assert!(first_fill.is_some(), "背景の fill が content stream に現れるはず: {categories:?}");
   assert!(first_body.is_some(), "本文の描画（text/image）が現れるはず: {categories:?}");
   assert!(first_fill < first_body, "背景 fill は本文描画より前に来るはず: {categories:?}");

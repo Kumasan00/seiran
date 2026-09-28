@@ -102,16 +102,13 @@ mod tests {
 
   #[test]
   fn finish_carries_the_source_id_and_the_spans_of_evaluated_nodes() {
-    // Arrange
     let resolver = PathResolver::new(Path::new(""));
     let ctx = EvalContext::new(SourceId::new(3), &resolver);
 
-    // Act
     let node = ctx.leaf_node(Span::new(0, 4), HirNodeKind::Paragraph(Vec::new()));
     let id = node.id;
     let hir = ctx.finish(vec![node]);
 
-    // Assert
     assert_eq!(hir.group.source_id, SourceId::new(3));
     assert_eq!(hir.group.nodes.len(), 1);
     assert_eq!(hir.spans.span_of(id), Span::new(0, 4));

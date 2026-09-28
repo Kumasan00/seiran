@@ -165,7 +165,6 @@ mod tests {
 
   #[test]
   fn breaks_at_glue_when_box_exceeds_width() {
-    // Arrange
     let items = vec![
       test_box(),
       space_glue(),
@@ -174,10 +173,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
     assert_eq!(lines[1].boxes.len(), 1);
@@ -225,7 +222,6 @@ mod tests {
 
   #[test]
   fn breaks_at_zero_penalty_between_boxes() {
-    // Arrange
     let items = vec![
       test_box(),
       HItem::Penalty { value: 0 },
@@ -234,10 +230,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
     assert_eq!(lines[1].boxes.len(), 1);
@@ -310,17 +304,14 @@ mod tests {
 
   #[test]
   fn flush_right_box_wraps_to_next_line_when_it_does_not_fit() {
-    // Arrange
     let items = vec![
       test_box(),
       HItem::Penalty { value: 0 },
       flush_right_box(8.0),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(14.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
     assert!(close(lines[0].boxes[0].x, 0.0));
@@ -348,7 +339,6 @@ mod tests {
 
   #[test]
   fn link_markers_collect_single_rect_on_one_line() {
-    // Arrange
     let items = vec![
       HItem::LinkStart(link_target()),
       test_box(),
@@ -356,10 +346,8 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].links.len(), 1);
     assert!(close(lines[0].links[0].x0, 0.0));
@@ -368,7 +356,6 @@ mod tests {
 
   #[test]
   fn link_spanning_wrap_splits_into_two_rects() {
-    // Arrange
     let items = vec![
       HItem::LinkStart(link_target()),
       test_box(),
@@ -377,10 +364,8 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(12.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "1 行目に継続中の矩形: {:?}", lines[0].links);
     assert!(close(lines[0].links[0].x1, 10.0));
@@ -415,7 +400,6 @@ mod tests {
 
   #[test]
   fn justify_stretches_glue_to_flush_right_edge() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -424,10 +408,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 17.0), "{lines:?}");
     let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
@@ -526,7 +508,6 @@ mod tests {
 
   #[test]
   fn justify_moves_link_rects_with_stretched_glue() {
-    // Arrange
     let items = vec![
       HItem::LinkStart(link_target()),
       test_box(),
@@ -537,10 +518,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
     assert!(close(lines[0].links[0].x0, 0.0));
@@ -577,7 +556,6 @@ mod tests {
 
   #[test]
   fn breaks_at_discretionary_and_appends_hyphen() {
-    // Arrange
     let items = vec![
       test_box(),
       discretionary(3.0),
@@ -586,10 +564,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 2 つ + 行末ハイフン: {lines:?}");
     assert!(close(lines[0].boxes[2].x, 20.0), "{lines:?}");
@@ -611,7 +587,6 @@ mod tests {
 
   #[test]
   fn discretionary_rejected_when_hyphen_would_overflow() {
-    // Arrange
     let items = vec![
       test_box(),
       discretionary(1.0),
@@ -620,10 +595,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(22.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "box1 + ハイフン: {lines:?}");
     assert!(close(lines[0].boxes[1].width, 1.0), "使われたのは disc1 のハイフン: {lines:?}");
@@ -632,7 +605,6 @@ mod tests {
 
   #[test]
   fn justify_includes_hyphen_width_at_flush_right_edge() {
-    // Arrange
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -641,10 +613,8 @@ mod tests {
       test_box(),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(29.0), TextAlignment::Justify);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 16.0), "glue 伸長後の box2: {lines:?}");
     let right_edge = lines[0].boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
@@ -653,7 +623,6 @@ mod tests {
 
   #[test]
   fn cjk_zero_width_glue_breaks_like_zero_penalty() {
-    // Arrange
     let penalty_items = vec![
       test_box(),
       HItem::Penalty { value: 0 },
@@ -663,11 +632,9 @@ mod tests {
     ];
     let glue_items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
 
-    // Act
     let penalty_lines = GreedyBreaker.break_lines(&penalty_items, Length::pt(25.0), TextAlignment::RaggedRight);
     let glue_lines = GreedyBreaker.break_lines(&glue_items, Length::pt(25.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(penalty_lines.len(), glue_lines.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
     for (penalty_line, glue_line) in penalty_lines.iter().zip(&glue_lines) {
       assert_eq!(penalty_line.boxes.len(), glue_line.boxes.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
@@ -691,7 +658,6 @@ mod tests {
 
   #[test]
   fn prefers_ordinary_break_over_math_break() {
-    // Arrange
     let items = vec![
       box_width(10.0),
       space_glue(),
@@ -700,10 +666,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    // Act
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "空白で折る: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");

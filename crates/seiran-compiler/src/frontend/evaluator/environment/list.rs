@@ -85,29 +85,23 @@ mod tests {
 
   #[test]
   fn itemize_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));
   }
 
   #[test]
   fn enumerate_start_option_sets_list_start() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=5]\item{A}\end{enumerate}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
@@ -116,85 +110,67 @@ mod tests {
 
   #[test]
   fn itemize_rejects_start_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[start=5]\item{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "start"));
   }
 
   #[test]
   fn enumerate_start_zero_is_invalid() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=0]\item{A}\end{enumerate}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
   }
 
   #[test]
   fn enumerate_start_negative_is_invalid() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=-1]\item{A}\end{enumerate}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
   }
 
   #[test]
   fn enumerate_start_non_integer_is_invalid() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=1.5]\item{A}\end{enumerate}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
   }
 
   #[test]
   fn enumerate_start_non_numeric_is_invalid() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=foo]\item{A}\end{enumerate}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
   }
 
   #[test]
   fn item_marker_option_sets_list_item_marker() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=☆]{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
@@ -203,15 +179,12 @@ mod tests {
 
   #[test]
   fn item_marker_option_accepts_empty_string() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=]{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
@@ -220,29 +193,23 @@ mod tests {
 
   #[test]
   fn item_rejects_unknown_opt_arg_key_other_than_marker() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[foo=bar]{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 
   #[test]
   fn itemize_item_gap_option_sets_list_item_gap() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[item_gap=0pt]\item{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
@@ -251,15 +218,12 @@ mod tests {
 
   #[test]
   fn enumerate_item_gap_option_combines_with_start() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=2, item_gap=8mm]\item{A}\end{enumerate}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
@@ -269,15 +233,12 @@ mod tests {
 
   #[test]
   fn item_gap_option_accepts_negative_value() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[item_gap=-1mm]{A}\end{itemize}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::List(list) = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };

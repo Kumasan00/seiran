@@ -120,14 +120,11 @@ fn ttc_names_reports_a_missing_file_with_its_path() {
 
 #[test]
 fn ttc_names_rejects_a_file_that_is_not_a_font() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
 
-  // Act
   let output = seiran(dir.path(), &["ttc-names", "notes.txt"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "フォントでないファイルは成功扱いにしない: {stderr}");
   assert!(stderr.contains("cli::ttc_names::file_parse"), "解析失敗の診断: {stderr}");
@@ -148,11 +145,9 @@ fn missing_argument_is_a_usage_error() {
 #[cfg(target_os = "linux")]
 #[test]
 fn full_stdout_is_a_failure() {
-  // Arrange
   let font = vendor_font("SourceHanCodeJP.ttc");
   let dev_full = fs::OpenOptions::new().write(true).open("/dev/full").expect("/dev/full を開けるはず");
 
-  // Act
   let output = Command::new(env!("CARGO_BIN_EXE_seiran"))
     .args(["ttc-names", path_arg(&font)])
     .env_remove("RUST_LOG")
@@ -160,7 +155,6 @@ fn full_stdout_is_a_failure() {
     .output()
     .expect("seiran を起動できるはず");
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "受け手の終了以外の書き込み失敗は処理失敗: {stderr}");
   assert!(stderr.contains("cli::write_stdout"), "書き込み失敗の診断: {stderr}");
@@ -197,17 +191,15 @@ fn variation_axes_lists_axes_and_instances_of_a_variable_font() {
 
 #[test]
 fn variation_axes_rejects_a_broken_fvar() {
-  // Arrange — fvar のレコードの length だけを 1 にする（#549 の再現手順 1。他のテーブルは無傷）
+  // fvar のレコードの length だけを 1 にする（#549 の再現手順 1。他のテーブルは無傷）
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "broken.ttf", |font| {
     let record = table_record_position(font, *b"fvar");
     font[record + 12..record + 16].copy_from_slice(&1u32.to_be_bytes());
   });
 
-  // Act
   let output = seiran(dir.path(), &["variation-axes", "broken.ttf"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "壊れた fvar は「可変フォントではない」にしない: {stderr}");
   assert!(stderr.contains("cli::variation_axes::fvar"), "fvar 破損の診断: {stderr}");
@@ -218,17 +210,14 @@ fn variation_axes_rejects_a_broken_fvar() {
 
 #[test]
 fn variation_axes_rejects_an_fvar_record_whose_length_runs_past_the_file() {
-  // Arrange — fvar のレコードの length をファイルの範囲外まで伸ばす
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "range.ttf", |font| {
     let record = table_record_position(font, *b"fvar");
     font[record + 12..record + 16].copy_from_slice(&0xffff_fff0u32.to_be_bytes());
   });
 
-  // Act
   let output = seiran(dir.path(), &["variation-axes", "range.ttf"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "範囲外を指す fvar は「可変フォントではない」にしない: {stderr}");
   assert!(stderr.contains("cli::variation_axes::fvar_range"), "範囲外の診断: {stderr}");
@@ -239,17 +228,15 @@ fn variation_axes_rejects_an_fvar_record_whose_length_runs_past_the_file() {
 
 #[test]
 fn variation_axes_rejects_an_fvar_record_whose_offset_is_zero() {
-  // Arrange — fvar のレコードの offset を 0 にする（レコード先頭 + 8..12）
+  // fvar のレコードの offset を 0 にする（レコード先頭 + 8..12）
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "zero_offset.ttf", |font| {
     let record = table_record_position(font, *b"fvar");
     font[record + 8..record + 12].copy_from_slice(&0u32.to_be_bytes());
   });
 
-  // Act
   let output = seiran(dir.path(), &["variation-axes", "zero_offset.ttf"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "オフセット 0 の fvar は「可変フォントではない」にしない: {stderr}");
   assert!(stderr.contains("cli::variation_axes::fvar_range"), "範囲外の診断: {stderr}");
@@ -260,17 +247,15 @@ fn variation_axes_rejects_an_fvar_record_whose_offset_is_zero() {
 
 #[test]
 fn variation_axes_rejects_truncated_instances() {
-  // Arrange — fvar ヘッダの instanceCount（テーブル先頭から 12 バイト目）を実際より大きくする
+  // fvar ヘッダの instanceCount（テーブル先頭から 12 バイト目）を実際より大きくする
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "truncated.ttf", |font| {
     let fvar = table_offset(font, *b"fvar");
     font[fvar + 12..fvar + 14].copy_from_slice(&0xffffu16.to_be_bytes());
   });
 
-  // Act
   let output = seiran(dir.path(), &["variation-axes", "truncated.ttf"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "インスタンスを黙って落とさない: {stderr}");
   assert!(stderr.contains("cli::variation_axes::truncated_records"), "切り詰めの診断: {stderr}");
@@ -316,14 +301,11 @@ fn script_langs_reports_a_missing_file_with_its_path() {
 
 #[test]
 fn variation_axes_rejects_a_file_that_is_not_a_font() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
 
-  // Act
   let output = seiran(dir.path(), &["variation-axes", "notes.txt"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
   assert!(stderr.contains("cli::variation_axes::font_parse"), "face 選択失敗の診断: {stderr}");
@@ -333,14 +315,11 @@ fn variation_axes_rejects_a_file_that_is_not_a_font() {
 
 #[test]
 fn script_langs_rejects_a_file_that_is_not_a_font() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   fs::write(dir.path().join("notes.txt"), "not a font").expect("フォントでないファイルを書けるはず");
 
-  // Act
   let output = seiran(dir.path(), &["script-langs", "notes.txt"]);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "フォントでないファイルは処理失敗: {stderr}");
   assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
@@ -407,11 +386,9 @@ fn script_langs_ends_with_feature_statistics() {
 #[cfg(target_os = "linux")]
 #[test]
 fn unwritable_stderr_does_not_turn_a_failure_into_a_panic() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let dev_full = fs::OpenOptions::new().write(true).open("/dev/full").expect("/dev/full を開けるはず");
 
-  // Act
   let output = Command::new(env!("CARGO_BIN_EXE_seiran"))
     .args(["ttc-names", "missing.ttc"])
     .current_dir(dir.path())
@@ -420,6 +397,5 @@ fn unwritable_stderr_does_not_turn_a_failure_into_a_panic() {
     .output()
     .expect("seiran を起動できるはず");
 
-  // Assert
   assert_eq!(output.status.code(), Some(1), "報告を書けなくても処理失敗の終了コード 1（panic の 101 ではない）");
 }

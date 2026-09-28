@@ -519,7 +519,6 @@ mod tests {
 
   #[test]
   fn resolve_paths_reports_missing_paths_without_touching_disk() {
-    // Arrange
     let toml = format!(
       "sources = [\"a.sei\"]\nstyle_path = \"style.toml\"\nreferences_path = \"references.toml\"\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -529,10 +528,8 @@ mod tests {
     let raw = parse_config(&toml, dummy_source()).unwrap();
     let source = MemoryProjectSource::new();
 
-    // Act
     let (_, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
-    // Assert
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::ReferencesPathResolution { .. })));
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::SourcePathResolution { .. })));
@@ -541,7 +538,6 @@ mod tests {
 
   #[test]
   fn resolve_paths_succeeds_when_memory_source_has_all_paths() {
-    // Arrange
     let toml = format!(
       "style_path = \"style.toml\"\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -553,10 +549,8 @@ mod tests {
       .with_text("/project/style.toml", "")
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
-    // Act
     let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
-    // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     assert_eq!(resolved.style_path, Some(ProjectPath::new("/project/style.toml")));
     assert!(resolved.references_path.is_none());
@@ -564,7 +558,7 @@ mod tests {
 
   #[test]
   fn resolve_paths_normalizes_font_paths_so_that_spelling_variants_collapse() {
-    // Arrange — serif だけ `fonts/./dummy.ttf`、他は `fonts/dummy.ttf` を指す
+    // serif だけ `fonts/./dummy.ttf`、他は `fonts/dummy.ttf` を指す
     let toml = format!(
       "sources = []\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -578,10 +572,8 @@ mod tests {
     let raw = parse_config(&toml, dummy_source()).unwrap();
     let source = MemoryProjectSource::new().with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
-    // Act
     let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
-    // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     let font_paths = resolved.font_paths.expect("全フォントパスが解決できるはず");
     assert!(
@@ -594,7 +586,7 @@ mod tests {
 
   #[test]
   fn read_config_does_not_create_the_output_directory() {
-    // Arrange — output_dir は実ディスク上の tempdir 配下の絶対パスにする（絶対パスはそのまま
+    // output_dir は実ディスク上の tempdir 配下の絶対パスにする（絶対パスはそのまま
     // 使われるので MemoryProjectSource と矛盾しない）。ディレクトリを作る実装なら実際に作られるので、
     // 「存在しないパスを検証する」だけの空振りテストにならない。
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
@@ -610,11 +602,9 @@ mod tests {
       .with_bytes("/project/a.sei", Vec::new())
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
-    // Act
     let (result, _) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert
     result.expect("fixture は妥当な最小 config のはず");
     assert!(!output_dir.exists(), "config は出力ディレクトリを作成してはいけない");
   }
@@ -1119,7 +1109,7 @@ mod tests {
 
   #[test]
   fn load_attributes_validation_errors_to_the_config_file_it_read() {
-    // Arrange — `config.toml` 以外の名前で置いた設定ファイルに、値の違反とパスの違反を 1 件ずつ入れる
+    // `config.toml` 以外の名前で置いた設定ファイルに、値の違反とパスの違反を 1 件ずつ入れる
     let toml = format!(
       "sources = [\"missing.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
       valid_output_section("test", "out"),
@@ -1130,14 +1120,12 @@ mod tests {
       .with_text("/project/settings/custom.toml", &toml)
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
-    // Act
     let (result, _) = load(
       &source,
       &ProjectPath::new("/project/settings/custom.toml"),
       &PathResolver::new(Path::new("/project")),
     );
 
-    // Assert
     let Err(failures) = result else {
       panic!("値の違反とパスの違反を期待");
     };
@@ -1156,7 +1144,6 @@ mod tests {
 
   #[test]
   fn read_config_uses_base_dir_when_output_dir_omitted() {
-    // Arrange
     let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
@@ -1167,10 +1154,8 @@ mod tests {
     let source = FilesystemProjectSource;
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
 
-    // Act
     let (config, _) = load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    // Assert
     assert_eq!(config.output.output_dir, base_dir);
     assert_eq!(config.output.pdf_path(), base_dir.join("out.pdf"));
   }
@@ -1325,17 +1310,14 @@ mod tests {
 
   #[test]
   fn load_keeps_the_io_error_kind_as_cause_when_the_file_is_missing() {
-    // Arrange
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let config_path = tempdir.path().join("does-not-exist.toml");
     let source = FilesystemProjectSource;
 
-    // Act
     let failures = load(&source, &ProjectPath::new(&config_path), &PathResolver::new(tempdir.path()))
       .0
       .expect_err("読み込みは失敗するはず");
 
-    // Assert
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
       panic!("ReadFile を期待");
     };
@@ -1393,7 +1375,7 @@ mod tests {
 
   #[test]
   fn load_keeps_source_extension_warnings_when_path_resolution_fails() {
-    // Arrange — `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
+    // `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
     let toml = format!(
       "sources = [\"missing.txt\"]\n\n{}{}{}",
       valid_output_section("test", "/project/out"),
@@ -1404,11 +1386,10 @@ mod tests {
       .with_text("/project/config.toml", &toml)
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
-    // Act
     let (config, warnings) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert — 設定は失敗するが、拡張子の検査は独立に確定しているので警告は残る
+    // 設定は失敗するが、拡張子の検査は独立に確定しているので警告は残る
     assert!(config.is_err(), "存在しないソースは違反になるはず");
     let paths: Vec<&str> = warnings
       .iter()

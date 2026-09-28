@@ -277,20 +277,16 @@ mod tests {
 
   #[test]
   fn read_references_fails_on_read_file_error() {
-    // Arrange
     let source = FilesystemProjectSource;
     let path = ProjectPath::new("/nonexistent/path/to/references.toml");
 
-    // Act
     let result = read_references(&source, Some(&path));
 
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::ReadFile { .. })));
   }
 
   #[test]
   fn read_references_reads_through_project_source() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text(
       "/project/references.toml",
       "[ref1]\n\
@@ -301,10 +297,8 @@ mod tests {
     );
     let path = ProjectPath::new("/project/references.toml");
 
-    // Act
     let references = read_references(&source, Some(&path)).expect("有効な TOML は読み込めるはず");
 
-    // Assert
     assert_eq!(references.len(), 1);
     assert!(references.contains_key("ref1"));
     assert_eq!(source.read_count("/project/references.toml"), 1, "実ディスクを介さず seam 経由で 1 回だけ読むはず");
@@ -312,14 +306,11 @@ mod tests {
 
   #[test]
   fn read_references_reports_missing_file_via_source_read_error() {
-    // Arrange
     let source = MemoryProjectSource::new();
     let path = ProjectPath::new("/project/missing.toml");
 
-    // Act
     let result = read_references(&source, Some(&path));
 
-    // Assert
     let Err(ReadReferencesError::ReadFile { source, .. }) = result else {
       panic!("ReadFile を期待, got {result:?}");
     };
@@ -328,7 +319,6 @@ mod tests {
 
   #[test]
   fn read_references_succeeds_with_valid_file() {
-    // Arrange
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.toml");
@@ -343,10 +333,8 @@ mod tests {
     )
     .unwrap();
 
-    // Act
     let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     assert!(result.contains_key("ref1"));
   }
@@ -377,7 +365,6 @@ mod tests {
 
   #[test]
   fn read_references_succeeds_with_valid_json_file() {
-    // Arrange
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.json");
@@ -391,10 +378,8 @@ mod tests {
     );
     std::fs::write(&references_path, json).unwrap();
 
-    // Act
     let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
@@ -403,7 +388,6 @@ mod tests {
 
   #[test]
   fn read_references_parses_structured_date_in_toml() {
-    // Arrange
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.toml");
@@ -419,10 +403,8 @@ mod tests {
     )
     .unwrap();
 
-    // Act
     let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
-    // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
     assert_eq!(issued.parts, [2024, 1, 15]);
@@ -788,7 +770,6 @@ mod tests {
 
   #[test]
   fn read_references_parses_structured_date_in_json() {
-    // Arrange
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.json");
@@ -805,10 +786,8 @@ mod tests {
     );
     std::fs::write(&references_path, json).unwrap();
 
-    // Act
     let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
-    // Assert
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
     assert_eq!(issued.parts, [2024]);
@@ -818,16 +797,13 @@ mod tests {
 
   #[test]
   fn read_references_fails_on_unsupported_extension_file() {
-    // Arrange
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.yaml");
     std::fs::write(&references_path, b"anything: true").unwrap();
 
-    // Act
     let result = read_references(&source, Some(&ProjectPath::new(&references_path)));
 
-    // Assert
     assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));
   }
 

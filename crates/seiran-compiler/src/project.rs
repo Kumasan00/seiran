@@ -183,16 +183,14 @@ mod tests {
 
   #[test]
   fn ord_sorts_normalized_paths_deterministically() {
-    // Arrange — 画像 manifest は `BTreeSet<ProjectPath>` で重複除去とソートを行う
+    // 画像 manifest は `BTreeSet<ProjectPath>` で重複除去とソートを行う
     let mut set = BTreeSet::new();
     set.insert(ProjectPath::new("fig/b.png"));
     set.insert(ProjectPath::new("fig/a.png"));
     set.insert(ProjectPath::new("fig/./a.png"));
 
-    // Act
     let sorted: Vec<ProjectPath> = set.into_iter().collect();
 
-    // Assert
     assert_eq!(sorted, vec![ProjectPath::new("fig/a.png"), ProjectPath::new("fig/b.png")]);
   }
 
@@ -212,16 +210,15 @@ mod tests {
 
   #[test]
   fn deserialize_normalizes_the_written_path() {
-    // Arrange — `Style` の一部として TOML から読まれる形を最小で再現する
+    // `Style` の一部として TOML から読まれる形を最小で再現する
     #[derive(Deserialize)]
     struct Holder {
       path: ProjectPath,
     }
 
-    // Act
     let holder: Holder = toml::from_str("path = \"fig/./a.png\"").expect("文字列は ProjectPath として読めるはず");
 
-    // Assert — deserialize は字句的正規化だけを行う（base_dir の前置は resolver の仕事）
+    // deserialize は字句的正規化だけを行う（base_dir の前置は resolver の仕事）
     assert_eq!(holder.path, ProjectPath::new("fig/a.png"));
   }
 
@@ -238,14 +235,11 @@ mod tests {
 
   #[test]
   fn invalid_utf8_keeps_the_utf8_error_as_cause() {
-    // Arrange
     let invalid: Vec<u8> = vec![0xff];
     let utf8_error = std::str::from_utf8(&invalid).expect_err("不正なバイト列は UTF-8 として読めないはず");
 
-    // Act
     let error = SourceReadError::InvalidUtf8(utf8_error);
 
-    // Assert
     assert_eq!(error.to_string(), "ファイルを UTF-8 として読めません");
     assert!(std::error::Error::source(&error).is_some(), "元の UTF-8 検証エラーを cause として保つはず");
   }

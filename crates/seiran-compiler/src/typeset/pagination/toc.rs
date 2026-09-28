@@ -268,7 +268,7 @@ mod tests {
 
   #[test]
   fn build_toc_spec_projects_style_fields() {
-    // Arrange — すべて既定でない値を入れる（style.toml の差し替えだけで反映されること）
+    // すべて既定でない値を入れる（style.toml の差し替えだけで反映されること）
     let mut style = Style::default();
     style.toc.title = "もくじ".to_string();
     style.toc.font_size = Length::pt(11.0);
@@ -281,10 +281,9 @@ mod tests {
     style.heading.section.bottom_margin = Length::pt(4.0);
     style.heading.section.font_kind = FontKind::SansSerif;
 
-    // Act
     let spec = build_toc_spec(&style, Length::pt(333.0));
 
-    // Assert — 目次見出しは節見出しスタイル由来、エントリは [toc] 由来、本文幅は引数由来
+    // 目次見出しは節見出しスタイル由来、エントリは [toc] 由来、本文幅は引数由来
     assert_eq!(spec.title, "もくじ");
     assert_eq!(spec.title_style.font_size, Length::pt(17.0));
     assert_eq!(spec.title_style.font_kind, FontKind::SansSerif);
@@ -303,7 +302,7 @@ mod tests {
 
   #[test]
   fn collect_toc_entries_filters_by_max_depth_and_renders_page_label() {
-    // Arrange — Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
+    // Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
     let headings = vec![
       heading_record(0, HeadingLevel::Chapter, "1", "Ch"),
       heading_record(1, HeadingLevel::Section, "1.1", "Sec"),
@@ -315,10 +314,9 @@ mod tests {
       ..TocStyle::default()
     };
 
-    // Act
     let entries = collect_toc_entries(&headings, &page_values, &toc);
 
-    // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
+    // Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].label, "1 Ch");
     assert_eq!(entries[0].page_label, "1");

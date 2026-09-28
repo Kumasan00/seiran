@@ -117,14 +117,11 @@ mod tests {
 
   #[test]
   fn to_item_maps_id_type_title_author() {
-    // Arrange
     let references = sample_references();
     let reference = references.get("kwan2014").expect("book エントリがあるはず");
 
-    // Act
     let item = to_item("kwan2014", reference);
 
-    // Assert
     assert_eq!(item.id().as_deref(), Some("kwan2014"), "id は keyed-table のキー");
     assert_eq!(item.type_().as_deref(), Some("book"));
     assert_eq!(item.0.get("title").and_then(Value::to_str).as_deref(), Some("Crazy Rich Asians"));
@@ -133,14 +130,11 @@ mod tests {
 
   #[test]
   fn to_item_keeps_container_title_as_field() {
-    // Arrange
     let references = sample_references();
     let reference = references.get("doe2020").expect("article エントリがあるはず");
 
-    // Act
     let item = to_item("doe2020", reference);
 
-    // Assert
     assert_eq!(item.type_().as_deref(), Some("article-journal"));
     assert_eq!(
       item.0.get("container-title").and_then(Value::to_str).as_deref(),
@@ -151,7 +145,6 @@ mod tests {
 
   #[test]
   fn to_item_preserves_fields_dropped_by_old_conversion() {
-    // Arrange
     let references = references_from_toml(
       "[r1]\n\
        type = \"book\"\n\
@@ -163,17 +156,14 @@ mod tests {
     );
     let reference = references.get("r1").expect("r1 があるはず");
 
-    // Act
     let item = to_item("r1", reference);
 
-    // Assert
     assert_eq!(item.0.get("genre").and_then(Value::to_str).as_deref(), Some("fiction"));
     assert_eq!(item.0.get("note").and_then(Value::to_str).as_deref(), Some("a note"));
   }
 
   #[test]
   fn to_item_omits_absent_fields_and_coerces_float_numbers() {
-    // Arrange
     let references = references_from_toml(
       "[r1]\n\
        type = \"book\"\n\
@@ -183,10 +173,8 @@ mod tests {
     );
     let reference = references.get("r1").expect("r1 があるはず");
 
-    // Act
     let item = to_item("r1", reference);
 
-    // Assert
     assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
     assert!(!item.0.contains_key("title"), "未指定フィールドは null 落としで欠落する");
   }
@@ -195,7 +183,6 @@ mod tests {
   fn to_item_keeps_every_accepted_non_integer_number() {
     // 読込が受理した非整数は必ず文字列として担体に残る（#764: serde_json が非有限値を null にして
     // 未指定と区別できなくなる経路を、読込が有限値だけを受理することで塞ぐ）
-    // Arrange
     let references = references_from_toml(
       "[r1]\n\
        type = \"book\"\n\
@@ -205,10 +192,8 @@ mod tests {
     );
     let reference = references.get("r1").expect("r1 があるはず");
 
-    // Act
     let item = to_item("r1", reference);
 
-    // Assert
     assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("-0.5"));
     assert_eq!(item.0.get("volume").and_then(Value::to_str).as_deref(), Some("1e+300"));
     assert_eq!(item.0.get("issue").and_then(Value::to_str).as_deref(), Some("0.0"));
@@ -216,7 +201,6 @@ mod tests {
 
   #[test]
   fn to_item_carries_date_parts_season_and_circa() {
-    // Arrange
     let references = references_from_toml(
       "[r1]\n\
        type = \"book\"\n\
@@ -227,10 +211,8 @@ mod tests {
     );
     let reference = references.get("r1").expect("r1 があるはず");
 
-    // Act
     let item = to_item("r1", reference);
 
-    // Assert
     let Some(Value::Date(date)) = item.0.get("issued") else {
       panic!("issued は Date として載るはず: {:?}", item.0.get("issued"));
     };
@@ -249,7 +231,6 @@ mod tests {
       (3, Season::Autumn),
       (4, Season::Winter),
     ] {
-      // Arrange
       let references = references_from_toml(&format!(
         "[r1]\n\
          type = \"book\"\n\
@@ -259,10 +240,8 @@ mod tests {
       ));
       let reference = references.get("r1").expect("r1 があるはず");
 
-      // Act
       let item = to_item("r1", reference);
 
-      // Assert
       let Some(Value::Date(date)) = item.0.get("issued") else {
         panic!("issued は Date として載るはず: {:?}", item.0.get("issued"));
       };
@@ -275,7 +254,6 @@ mod tests {
   fn to_item_accepts_years_at_i16_bounds() {
     // 読込が受理した年は必ず整形器の担体へ変換できる（#759: 読込と整形の受理集合を一致させる）
     for (date_parts, expected_year) in [("[[-32768]]", -32768i16), ("[[32767, 12, 31]]", 32767i16)] {
-      // Arrange
       let references = references_from_toml(&format!(
         "[r1]\n\
          type = \"book\"\n\
@@ -284,10 +262,8 @@ mod tests {
       ));
       let reference = references.get("r1").expect("r1 があるはず");
 
-      // Act
       let item = to_item("r1", reference);
 
-      // Assert
       let Some(Value::Date(date)) = item.0.get("issued") else {
         panic!("issued は Date として載るはず: {:?}", item.0.get("issued"));
       };
@@ -300,7 +276,6 @@ mod tests {
   fn to_item_converts_every_field_kind() {
     // 読込が受理する値の種類（文字列・整数・非整数・範囲外の整数・個人名・組織名・日付）がすべて
     // `Item` の `Value` に嵌ることを固定する。`to_item` が失敗しない根拠（#759）
-    // Arrange
     let source = FilesystemProjectSource;
     let mut file = tempfile::Builder::new().suffix(".json").tempfile().expect("一時ファイルを作成できるはず");
     file
@@ -326,10 +301,8 @@ mod tests {
       read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
     let reference = references.get("r1").expect("r1 があるはず");
 
-    // Act
     let item = to_item("r1", reference);
 
-    // Assert
     assert_eq!(item.0.get("volume"), Some(&Value::Number(3)));
     assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
     assert_eq!(

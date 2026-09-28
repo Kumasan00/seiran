@@ -120,7 +120,6 @@ mod tests {
 
   #[test]
   fn document_policy_ignores_display_only_style_fields() {
-    // Arrange
     let base = Style::default();
     let mut display_variant = Style::default();
     display_variant.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
@@ -128,26 +127,21 @@ mod tests {
     display_variant.counters.chapter.display_name = "章".to_string();
     display_variant.counters.chapter.number_style = NumberStyle::RomanUpper;
 
-    // Act
     let base_policy = SemanticPolicy::from_style(&base);
     let variant_policy = SemanticPolicy::from_style(&display_variant);
 
-    // Assert
     assert_eq!(base_policy, variant_policy, "表示専用フィールドは SemanticPolicy に写らないはず");
   }
 
   #[test]
   fn document_policy_reflects_value_affecting_style_fields() {
-    // Arrange
     let base = Style::default();
     let mut reset_variant = Style::default();
     reset_variant.counters.chapter.resets = vec![];
 
-    // Act
     let base_policy = SemanticPolicy::from_style(&base);
     let variant_policy = SemanticPolicy::from_style(&reset_variant);
 
-    // Assert
     assert_ne!(base_policy, variant_policy, "resets は値側フィールドなので SemanticPolicy に写るはず");
     assert!(variant_policy.counter(CounterName::Chapter).resets.is_empty());
   }

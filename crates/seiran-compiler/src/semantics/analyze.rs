@@ -72,7 +72,6 @@ mod tests {
 
   #[test]
   fn analyze_composes_fact_collection_then_citation() {
-    // Arrange — 実 CSL（tests/data/ieee.csl）と参照定義で、走査 → CSL 整形の連携を確認する
     let source = FilesystemProjectSource;
     let references = sample_references();
     let mut style = Style::default();
@@ -82,10 +81,8 @@ mod tests {
       parse_source_for_test(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
-    // Act
     let semantics = analyze(&source, document, &references, &style).expect("走査 → CSL 整形の連携は成功するはず");
 
-    // Assert — 書誌と表示が生成され、事実と並んで 1 つの成果物に載る
     assert!(
       semantics.bibliography().is_some_and(|entries| return !entries.is_empty()),
       "引用を含む入力なので書誌エントリが生成されるはず"
@@ -99,7 +96,7 @@ mod tests {
 
   #[test]
   fn analyze_skips_csl_when_document_has_no_citation() {
-    // Arrange — 引用を含まない本文を、csl_path 未設定の style で解析する（CSL 遅延読込）
+    // 引用を含まない本文を、csl_path 未設定の style で解析する（CSL 遅延読込）
     let source = MemoryProjectSource::new();
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
@@ -107,17 +104,16 @@ mod tests {
     let hir = parse_source_for_test("本文だけの段落。\n", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
-    // Act
     let semantics = analyze(&source, document, &references, &style).expect("引用が無ければ CSL を読まないはず");
 
-    // Assert — CSL を読んでいないので MissingCslPath にならず、生成物は空のまま
+    // CSL を読んでいないので MissingCslPath にならず、生成物は空のまま
     assert!(semantics.bibliography().is_none(), "引用が無ければ書誌は生成されないはず");
     assert_eq!(semantics.citation_sites().count(), 0, "引用箇所は 1 件も無いはず");
   }
 
   #[test]
   fn analyze_maps_citation_error() {
-    // Arrange — 既知キーの \cite を含むソースを、csl_path 未設定のまま渡す。
+    // 既知キーの \cite を含むソースを、csl_path 未設定のまま渡す。
     // キーは既知にしておかないと analyze の未知キー検証で先に弾かれてしまうため、
     // ここで確認したい CitationStyleError::MissingCslPath（load_citation_style 側）まで到達しない。
     let source = MemoryProjectSource::new().with_text(
@@ -135,16 +131,13 @@ mod tests {
     let hir = parse_source_for_test(r"\cite{ref1}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
-    // Act
     let error = analyze(&source, document, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
 
-    // Assert
     assert!(matches!(error, AnalyzeError::CitationStyle(CitationStyleError::MissingCslPath)), "got: {error:?}");
   }
 
   #[test]
   fn analyze_maps_resolve_error() {
-    // Arrange — 未解決の \ref を含むソース（引用なし）を渡し、`AnalyzeError::Analyze` へ写像されることを確認する
     let source = MemoryProjectSource::new();
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
@@ -152,16 +145,13 @@ mod tests {
     let hir = parse_source_for_test(r"\ref{missing}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
-    // Act
     let error = analyze(&source, document, &references, &style).expect_err("未定義ラベル参照はエラーになるはず");
 
-    // Assert
     assert!(matches!(error, AnalyzeError::Analyze(_)), "got: {error:?}");
   }
 
   #[test]
   fn analyze_reports_unknown_citation_key() {
-    // Arrange — 参照定義が空のまま `\cite` を含むソースを渡す
     let source = MemoryProjectSource::new();
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
@@ -169,10 +159,8 @@ mod tests {
     let hir = parse_source_for_test(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
-    // Act
     let error = analyze(&source, document, &references, &style).expect_err("未知キーはエラー");
 
-    // Assert
     assert!(
       matches!(
         &error,

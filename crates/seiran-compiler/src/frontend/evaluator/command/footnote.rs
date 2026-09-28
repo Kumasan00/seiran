@@ -47,16 +47,13 @@ mod tests {
 
   #[test]
   fn footnote_with_plain_text_produces_footnote_node() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\footnote{hello}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
 
-    // Assert
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
     };
@@ -66,16 +63,13 @@ mod tests {
 
   #[test]
   fn footnote_with_styled_body_recursively_evaluates() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\footnote{\bold{x}}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
 
-    // Assert
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
     };
@@ -89,46 +83,37 @@ mod tests {
 
   #[test]
   fn footnote_rejects_missing_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\footnote";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "footnote"));
   }
 
   #[test]
   fn footnote_rejects_extra_arguments() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\footnote{a}{b}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "footnote"));
   }
 
   #[test]
   fn footnote_rejects_opt_args() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\footnote[k=v]{body}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
 }

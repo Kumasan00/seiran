@@ -46,12 +46,11 @@ fn verbose_terminal_shows_start_and_end_of_render_and_write() {
 
 #[test]
 fn failed_write_records_a_failed_end_in_the_log() {
-  // Arrange — 出力ディレクトリの親を通常ファイルにして保存を必ず失敗させる
+  // 出力ディレクトリの親を通常ファイルにして保存を必ず失敗させる
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   fs::write(dir.path().join("blocker"), "").expect("通常ファイルを書けるはず");
   write_project(dir.path(), "doc.sei", BODY, "blocker/out");
 
-  // Act
   let output = seiran(
     dir.path(),
     &[
@@ -66,7 +65,6 @@ fn failed_write_records_a_failed_end_in_the_log() {
     None,
   );
 
-  // Assert
   assert_eq!(output.status.code(), Some(1), "保存の失敗は処理失敗: {}", stderr_text(&output));
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(
@@ -83,14 +81,11 @@ fn failed_write_records_a_failed_end_in_the_log() {
 
 #[test]
 fn failed_frontend_is_recorded_without_duplicating_the_diagnostic() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_project(dir.path(), "doc.sei", "\\unknowncommand{x}", "out");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "-v", "--log-file", "x.log"], None);
 
-  // Assert
   assert_eq!(output.status.code(), Some(1), "未知コマンドは処理失敗: {}", stderr_text(&output));
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(
@@ -122,14 +117,12 @@ const OVERRIDE_CODE: &str = "cli::rust_log::overrides_verbose";
 
 #[test]
 fn override_notice_survives_a_rust_log_that_hides_warn() {
-  // Arrange — `error` は WARN を通さないので、通知を tracing の WARN で出すと消える
+  // `error` は WARN を通さないので、通知を tracing の WARN で出すと消える
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_ok_project(dir.path());
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "-v", "--log-file", "x.log"], Some("error"));
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert!(stderr.contains(OVERRIDE_CODE), "端末に通知が出る: {stderr}");
@@ -198,14 +191,12 @@ fn non_empty_lines(log: &str) -> Vec<&str> {
 
 #[test]
 fn log_file_alone_records_the_run_header_and_footer() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_ok_project(dir.path());
 
-  // Act — `-v` も `RUST_LOG` も無い: tracing の event は 1 行も通らない
+  // `-v` も `RUST_LOG` も無い: tracing の event は 1 行も通らない
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "x.log"], None);
 
-  // Assert
   assert_eq!(output.status.code(), Some(0), "成功するはず: {}", stderr_text(&output));
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   let lines = non_empty_lines(&log);

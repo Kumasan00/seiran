@@ -1289,7 +1289,6 @@ mod tests {
 
   #[test]
   fn index_mark_does_not_affect_page_layout() {
-    // Arrange
     let geom = test_geometry();
     let with_marks = vec![
       single_line_paragraph(vec![index_mark_item("A", None)]),
@@ -1304,12 +1303,10 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    // Act
     let (with_pages, _) = break_pages(with_marks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
     let (without_pages, _) =
       break_pages(without_marks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
-    // Assert
     assert_eq!(line_counts(&with_pages), line_counts(&without_pages));
     for (with_page, without_page) in with_pages.iter().zip(&without_pages) {
       assert_eq!(page_baselines(with_page), page_baselines(without_page));

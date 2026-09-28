@@ -73,17 +73,14 @@ mod tests {
 
   #[test]
   fn layout_error_keeps_the_inner_leaf_code() {
-    // Arrange
     let error = LayoutValidationError::InvalidColumnWidth {
       text_width: 100.0,
       num_columns: 2,
       column_gap: 200.0,
     };
 
-    // Act
     let error = CompileError::from(error);
 
-    // Assert
     assert_eq!(
       error.code().expect("code を持つはず").to_string(),
       "typeset::geometry::invalid_columns",

@@ -164,7 +164,7 @@ fn layout_dumps_match_golden() {
 /// `CompilationInputs` を直接組み立てる経路へ戻ると、この診断が出なくなって失敗する。
 #[test]
 fn layout_helper_reports_cross_input_layout_validation() {
-  // Arrange — 左右余白の合計（600mm）が fixture の用紙幅（595mm）を超える
+  // 左右余白の合計（600mm）が fixture の用紙幅（595mm）を超える
   let project = TestProject::builder()
     .golden_fixture("text")
     .style_toml(|table| {
@@ -173,12 +173,11 @@ fn layout_helper_reports_cross_input_layout_validation() {
     })
     .build();
 
-  // Act
   let Err(failure) = project.layout() else {
     panic!("横断検証に失敗するはず");
   };
 
-  // Assert — 段名 wrapper ではなく leaf の診断がそのまま出る
+  // 段名 wrapper ではなく leaf の診断がそのまま出る
   let codes: Vec<String> = failure
     .diagnostics()
     .map(|diagnostic| return diagnostic.code().expect("leaf 診断は code を持つはず").to_string())
@@ -189,7 +188,6 @@ fn layout_helper_reports_cross_input_layout_validation() {
 /// 索引マーカーを除けば本文レイアウトが変わらないことを確認する。
 #[test]
 fn index_marks_are_invisible_to_layout() {
-  // Act
   let with_index = dump_pages_of("index");
   let without_index = dump_pages_of("index_baseline");
   let body_page_count = without_index.lines().filter(|line| return line.starts_with("=== page ")).count();
@@ -211,7 +209,6 @@ fn index_marks_are_invisible_to_layout() {
     return acc;
   });
 
-  // Assert — 索引ページを除いた本文だけを比較する
   assert_eq!(stripped, without_index, "\\index の有無で本文のレイアウトが変わってはならない");
 }
 
@@ -228,7 +225,7 @@ fn page_ends_with_heading(page: &Page) -> bool {
 
 #[test]
 fn keep_with_next_prevents_heading_orphan_end_to_end() {
-  // Arrange — 版面を小さくして見出しがページ境界に当たりやすくする（見出し + 本文数行は空ページに
+  // 版面を小さくして見出しがページ境界に当たりやすくする（見出し + 本文数行は空ページに
   // 収まる大きさ）。keepwithnext.sei は見出し直前を filler で埋め、見出しがページ末尾に来る配置。
   let project = TestProject::builder()
     .sources(&["tests/text/keepwithnext.sei"])
@@ -239,10 +236,8 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
     })
     .build();
 
-  // Act
   let laid_out = project.laid_out();
 
-  // Assert
   assert!(laid_out.pages.len() >= 2, "複数ページに分かれるはず: {} ページ", laid_out.pages.len());
   for (index, page) in laid_out.pages.iter().enumerate() {
     assert!(!page_ends_with_heading(page), "page {index} が見出しで終わっている（孤立）: {:#?}", page.blocks);
@@ -282,7 +277,7 @@ fn index_group_heading_label(block: &PlacedBlock) -> Option<String> {
 
 #[test]
 fn index_group_heading_never_ends_a_column() {
-  // Arrange — 索引が複数の段・ページへ分かれる小さな版面にする（段組みは style.index.column_count = 2）。
+  // 索引が複数の段・ページへ分かれる小さな版面にする（段組みは style.index.column_count = 2）。
   // 用紙高さだけを縮め、幅は既定のまま（幅を詰めると本文が 1 行 1 文字になり、見出しと同じ文字列の
   // 本文行が生まれてしまう）。
   let project = TestProject::builder()
@@ -295,10 +290,9 @@ fn index_group_heading_never_ends_a_column() {
     })
     .build();
 
-  // Act
   let laid_out = project.laid_out();
 
-  // Assert — 見出し行の直後には必ず同じ段の中に次の行が来る（段が変わると baseline_y が上へ戻る）
+  // 見出し行の直後には必ず同じ段の中に次の行が来る（段が変わると baseline_y が上へ戻る）
   let mut heading_count = 0usize;
   for (page_index, page) in laid_out.pages.iter().enumerate().filter(|(_, page)| return is_index_page(page)) {
     for (block_index, block) in page.blocks.iter().enumerate() {
@@ -377,7 +371,7 @@ fn figure_images_resolve_to_expected_display_sizes() {
 
 #[test]
 fn figure_image_without_size_fits_two_column_width_not_text_width() {
-  // Arrange — 2 段組みでは本文の 1 段あたりの幅（`body_column_width`）が単段の `text_width`
+  // 2 段組みでは本文の 1 段あたりの幅（`body_column_width`）が単段の `text_width`
   // （425mm）より狭い。サイズ両省略の画像（testimage5）は段幅いっぱいにフィットするので、
   // 本文パスの呼び出し元が誤って `text_width` を渡していれば幅は 425mm のままになり検出できる
   let project = TestProject::builder()
@@ -396,11 +390,11 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
     })
     .collect();
 
-  // Act — 6 枚中サイズ両省略は testimage5（5 番目、index 4）
+  // 6 枚中サイズ両省略は testimage5（5 番目、index 4）
   assert_eq!(sizes.len(), 6, "画像は 6 枚あるはず: {sizes:?}");
   let (width, height) = sizes[4];
 
-  // Assert — 段間 18pt（既定）を引いた 2 段組みの段幅（実測して固定した値）
+  // 段間 18pt（既定）を引いた 2 段組みの段幅（実測して固定した値）
   let expected_width = Length::mm(209.325);
   let expected_height = Length::mm(279.1);
   assert!(
@@ -624,7 +618,7 @@ fn continuous_footnote_numbering_runs_through_pages() {
 
 #[test]
 fn layout_dump_changes_with_line_height() {
-  // Arrange — 行送り（line_height_factor）だけを変えた 2 スタイル。行送りは 2 行目以降の
+  // 行送り（line_height_factor）だけを変えた 2 スタイル。行送りは 2 行目以降の
   // ベースライン送りに効くため、複数行が縦に並ぶ入力（itemize）を対象にする。
   let taller = TestProject::builder()
     .golden_fixture("itemize")
@@ -636,28 +630,24 @@ fn layout_dump_changes_with_line_height() {
     })
     .build();
 
-  // Act
   let base_dump = dump_pages_of("itemize");
   let taller_dump = dump_pages(&taller.laid_out().pages);
 
-  // Assert
   assert_ne!(base_dump, taller_dump);
 }
 
 #[test]
 fn layout_dump_changes_with_punctuation_spacing() {
-  // Arrange — 和文約物アキ調整（JIS X 4051）の on/off だけを変えた 2 スタイル。
+  // 和文約物アキ調整（JIS X 4051）の on/off だけを変えた 2 スタイル。
   // 約物が密な入力（yakumono）で連続約物の詰め・約物の収縮点化が座標差として現れる。
   let disabled = TestProject::builder()
     .golden_fixture("yakumono")
     .style_toml(|table| test_support::set(table, "text", "punctuation_spacing", false))
     .build();
 
-  // Act
   let enabled_dump = dump_pages_of("yakumono");
   let disabled_dump = dump_pages(&disabled.laid_out().pages);
 
-  // Assert
   assert_ne!(enabled_dump, disabled_dump);
 }
 
@@ -699,17 +689,14 @@ fn page_count_with_front_matter(title_page: bool, toc: bool, blank_metadata: boo
 
 #[test]
 fn front_matter_adds_no_blank_pages() {
-  // Arrange
   let body_only = page_count_with_front_matter(false, false, false);
 
-  // Act
   let title_only = page_count_with_front_matter(true, false, false);
   let toc_only = page_count_with_front_matter(false, true, false);
   let both = page_count_with_front_matter(true, true, false);
   let empty_title_only = page_count_with_front_matter(true, false, true);
   let empty_title_and_toc = page_count_with_front_matter(true, true, true);
 
-  // Assert
   assert_eq!(title_only, body_only + 1, "タイトルページだけなら 1 ページ増える");
   assert!(toc_only > body_only, "目次だけなら 1 ページ以上増える: {toc_only} vs {body_only}");
   assert_eq!(both, toc_only + 1, "両方ならタイトルページ 1 + 目次のページ数");

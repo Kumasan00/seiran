@@ -65,31 +65,25 @@ mod tests {
 
   #[test]
   fn space_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\space[draft]{10pt}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return space(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
 
   #[test]
   fn space_reads_its_argument_as_a_length() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\space{5mm}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return space(&view, ctx)).unwrap();
 
-    // Assert
     assert_eq!(result.kind, HirNodeKind::Space(Length::mm(5.0)));
   }
 
@@ -112,105 +106,84 @@ mod tests {
 
   #[test]
   fn noindent_accepts_no_args() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\noindent";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = noindent(&view);
 
-    // Assert
     assert!(result.is_ok());
   }
 
   #[test]
   fn noindent_rejects_mandatory_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\noindent{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = noindent(&view);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "noindent"));
   }
 
   #[test]
   fn noindent_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\noindent[draft]";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = noindent(&view);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
 
   #[test]
   fn pagebreak_produces_page_break_node() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return pagebreak(&view, ctx)).unwrap();
 
-    // Assert
     assert!(matches!(result.kind, HirNodeKind::PageBreak));
   }
 
   #[test]
   fn pagebreak_rejects_mandatory_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return pagebreak(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
   }
 
   #[test]
   fn pagebreak_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak[weight=2]";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return pagebreak(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));
   }
 
   #[test]
   fn pagebreak_splits_surrounding_paragraph() {
-    // Arrange
     let arena = Bump::new();
     let source = r"前\pagebreak 後";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 3);
     assert!(matches!(result[0].kind, HirNodeKind::Paragraph(_)));
     assert!(matches!(result[1].kind, HirNodeKind::PageBreak));
