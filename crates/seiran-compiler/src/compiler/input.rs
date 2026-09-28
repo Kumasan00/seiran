@@ -195,17 +195,14 @@ mod tests {
   /// `SourceSet::read` 側のテストではこの層を通らない（#351）。
   #[test]
   fn read_sources_maps_missing_file_to_read_text_file_diagnostic() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("/project/a.sei", "content-a");
     let sources = vec![
       ProjectPath::new("/project/a.sei"),
       ProjectPath::new("/project/missing.sei"),
     ];
 
-    // Act
     let result = read_sources(&source, &sources);
 
-    // Assert
     let Err(failures) = result else {
       panic!("ReadTextFile を期待");
     };
@@ -225,19 +222,17 @@ mod tests {
 
   #[test]
   fn read_sources_reports_every_missing_file_in_declaration_order() {
-    // Arrange — 2 つの欠落を宣言順とは逆のパス名で並べる（宣言順で報告されることを見る）
+    // 2 つの欠落を宣言順とは逆のパス名で並べる（宣言順で報告されることを見る）
     let source = MemoryProjectSource::new();
     let sources = vec![
       ProjectPath::new("/project/z-missing.sei"),
       ProjectPath::new("/project/a-missing.sei"),
     ];
 
-    // Act
     let Err(failures) = read_sources(&source, &sources) else {
       panic!("2 件とも失敗するはず");
     };
 
-    // Assert
     let paths: Vec<&str> = failures
       .iter()
       .map(|error| {
@@ -315,7 +310,7 @@ mod tests {
 
   #[test]
   fn load_reports_references_font_and_source_read_failures_together_in_input_order() {
-    // Arrange — 3 種とも config の検証（存在確認）は通り、読込段で初めて失敗する
+    // 3 種とも config の検証（存在確認）は通り、読込段で初めて失敗する
     let source = UnreadablePaths {
       inner: registered_project(&config_toml(None)),
       unreadable: vec![
@@ -325,11 +320,9 @@ mod tests {
       ],
     };
 
-    // Act
     let (result, _) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert
     let Err(failures) = result else {
       panic!("3 種の読込失敗を期待");
     };
@@ -349,14 +342,12 @@ mod tests {
 
   #[test]
   fn load_does_not_read_references_fonts_or_sources_when_the_style_fails() {
-    // Arrange — style.toml だけが TOML として壊れている
+    // style.toml だけが TOML として壊れている
     let source = registered_project(&config_toml(Some("style.toml"))).with_text("/project/style.toml", "x = \n");
 
-    // Act
     let (result, _) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // Assert
     let Err(failures) = result else {
       panic!("style の解析失敗を期待");
     };

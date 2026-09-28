@@ -372,16 +372,13 @@ mod tests {
 
   #[test]
   fn prepare_rejects_column_gap_wider_than_text_width() {
-    // Arrange
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
     style.columns.gap = config.pdf.width;
 
-    // Act
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
-    // Assert
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
     assert!(matches!(first, LayoutValidationError::InvalidColumnWidth { num_columns: 2, .. }));
@@ -389,14 +386,12 @@ mod tests {
 
   #[test]
   fn prepare_rejects_vertical_margins_exceeding_page_height() {
-    // Arrange — 用紙高 842pt に対し上下合計 900pt
+    // 用紙高 842pt に対し上下合計 900pt
     let (_tempdir, config) = read_test_config();
     let style = test_style(450.0, 450.0, 50.0, 50.0);
 
-    // Act
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
-    // Assert
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
     assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
@@ -404,14 +399,13 @@ mod tests {
 
   #[test]
   fn prepare_rejects_horizontal_margins_exceeding_page_width() {
-    // Arrange — 用紙幅 595pt に対し左右合計 600pt
+    // 用紙幅 595pt に対し左右合計 600pt
     let (_tempdir, config) = read_test_config();
     let style = test_style(50.0, 50.0, 300.0, 300.0);
 
-    // Act
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
-    // Assert — 左右余白だけで本文幅が尽きているので、派生する段幅エラーは重ねない
+    // 左右余白だけで本文幅が尽きているので、派生する段幅エラーは重ねない
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty(), "段幅エラーを重ねないはず: {rest:?}");
     assert!(matches!(first, LayoutValidationError::HorizontalMarginsExceedPageWidth { .. }));
@@ -419,14 +413,11 @@ mod tests {
 
   #[test]
   fn prepare_reports_vertical_and_horizontal_violations_in_input_order() {
-    // Arrange
     let (_tempdir, config) = read_test_config();
     let style = test_style(450.0, 450.0, 300.0, 300.0);
 
-    // Act
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
-    // Assert
     let (first, rest) = failures.into_parts();
     assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
     assert_eq!(rest.len(), 1);
@@ -435,16 +426,14 @@ mod tests {
 
   #[test]
   fn prepare_derives_text_width_and_body_column_width() {
-    // Arrange
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
     style.columns.gap = pt(15.0);
 
-    // Act
     let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
 
-    // Assert — fixture の用紙幅から導出して、式そのものを固定する
+    // fixture の用紙幅から導出して、式そのものを固定する
     let expected_text_width = config.pdf.width.to_pt() - 100.0;
     assert!(close(prepared.text_width(), expected_text_width), "本文幅: {:?}", prepared.text_width());
     assert!(
@@ -456,17 +445,14 @@ mod tests {
 
   #[test]
   fn prepare_derives_front_and_back_geometry_from_body() {
-    // Arrange
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
     style.page.flush_bottom = true;
     style.index.column_count = 3;
 
-    // Act
     let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
 
-    // Assert
     assert_eq!(prepared.body_geometry().num_columns, 2);
     assert!(prepared.body_geometry().flush_bottom, "本文は style の flush_bottom に従うはず");
     assert_eq!(prepared.front_geometry().num_columns, 1);

@@ -79,17 +79,14 @@ mod tests {
 
   #[test]
   fn text_alignment_deserializes_snake_case() {
-    // Arrange
     #[derive(serde::Deserialize)]
     struct Wrapper {
       alignment: TextAlignment,
     }
 
-    // Act
     let justify: Wrapper = toml::from_str("alignment = \"justify\"").unwrap();
     let ragged: Wrapper = toml::from_str("alignment = \"ragged_right\"").unwrap();
 
-    // Assert
     assert_eq!(justify.alignment, TextAlignment::Justify);
     assert_eq!(ragged.alignment, TextAlignment::RaggedRight);
   }

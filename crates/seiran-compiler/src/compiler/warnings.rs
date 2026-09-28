@@ -122,34 +122,29 @@ mod tests {
 
   #[test]
   fn borrowed_warnings_can_be_iterated_with_for() {
-    // Arrange
     let mut warnings = Warnings::default();
     warnings.push(TestWarning);
     warnings.push(TestWarning);
 
-    // Act
     let mut severities = Vec::new();
     for warning in &warnings {
       severities.push(warning.severity());
     }
 
-    // Assert — 借用反復なので反復後も warnings を読める
+    // 借用反復なので反復後も warnings を読める
     assert_eq!(severities, vec![Some(miette::Severity::Warning); 2]);
     assert_eq!(warnings.iter().count(), 2);
   }
 
   #[test]
   fn warnings_iterate_like_compile_failure_diagnostics() {
-    // Arrange
     let mut warnings = Warnings::default();
     warnings.push(TestWarning);
     let failure = CompileFailure::single(TestError);
 
-    // Act
     let warning_codes = codes(warnings.iter());
     let error_codes = codes(failure.diagnostics());
 
-    // Assert
     assert_eq!(warning_codes, vec!["typeset::font::script::unsupported_script".to_string()]);
     assert_eq!(error_codes, vec!["test::leaf".to_string()]);
   }

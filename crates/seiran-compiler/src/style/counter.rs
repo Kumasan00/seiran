@@ -365,16 +365,14 @@ mod tests {
 
   #[test]
   fn partial_entry_keeps_other_defaults() {
-    // Arrange — 表示名だけ日本語化する典型例（#561 の再現手順）
+    // 表示名だけ日本語化する典型例（#561 の再現手順）
     let toml = "
 [figure]
 display_name = \"図\"
 ";
 
-    // Act
     let counters: Counters = toml::from_str(toml).unwrap();
 
-    // Assert
     assert_eq!(counters.figure.display_name, "図");
     assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
@@ -386,7 +384,7 @@ display_name = \"図\"
 
   #[test]
   fn every_entry_maps_to_its_own_counter() {
-    // Arrange — 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
+    // 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
     let toml = CounterName::VARIANTS
       .iter()
       .map(|&name| {
@@ -395,10 +393,8 @@ display_name = \"図\"
       })
       .collect::<String>();
 
-    // Act
     let counters: Counters = toml::from_str(&toml).unwrap();
 
-    // Assert
     for &name in CounterName::VARIANTS {
       let key: &str = name.into();
       assert_eq!(counters[name].display_name, format!("{key}!"), "{key} の上書きが別のカウンタへ流れている");
@@ -407,7 +403,6 @@ display_name = \"図\"
 
   #[test]
   fn full_entry_overrides_every_key() {
-    // Arrange
     let toml = "
 [figure]
 display_name = \"Fig.\"
@@ -417,10 +412,8 @@ ref_format = \"{display_name}{number}\"
 resets = [\"equation\"]
 ";
 
-    // Act
     let counters: Counters = toml::from_str(toml).unwrap();
 
-    // Assert
     assert_eq!(counters.figure.display_name, "Fig.");
     assert_eq!(counters.figure.number_format.as_str(), "{section}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::RomanLower);

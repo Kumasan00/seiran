@@ -320,7 +320,6 @@ mod tests {
 
   #[test]
   fn plan_pulls_widow_last_line_back() {
-    // Arrange
     let lines = vec![
       test_line(),
       test_line(),
@@ -329,7 +328,6 @@ mod tests {
       test_line(),
     ];
 
-    // Act
     let (plan, truncated) = plan_paragraph_lines(
       &lines,
       cursor_at(pt(10.0)),
@@ -342,7 +340,6 @@ mod tests {
       false,
     );
 
-    // Assert
     assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
     assert_eq!(
       plan,

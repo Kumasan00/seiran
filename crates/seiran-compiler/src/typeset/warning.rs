@@ -76,7 +76,6 @@ mod tests {
 
   #[test]
   fn font_variant_forwards_severity_message_and_code() {
-    // Arrange
     let inner = FontWarning::MissingLayoutTable {
       font_type: FontType::Serif,
       path: ProjectPath::new("/project/font.ttf"),
@@ -85,10 +84,9 @@ mod tests {
     let expected_message = inner.to_string();
     let expected_code = inner.code().expect("フォント警告は診断 code を持つはず").to_string();
 
-    // Act
     let warning = TypesetWarning::Font(inner);
 
-    // Assert — transparent なので severity / メッセージ / code は内側そのまま
+    // transparent なので severity / メッセージ / code は内側そのまま
     assert_eq!(warning.severity(), Some(Severity::Warning), "警告 severity を転送するはず");
     assert_eq!(warning.to_string(), expected_message, "メッセージを転送するはず");
     assert_eq!(

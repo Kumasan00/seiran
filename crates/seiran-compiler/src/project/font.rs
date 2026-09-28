@@ -140,14 +140,11 @@ mod tests {
 
   #[test]
   fn load_reads_shared_font_path_only_once() {
-    // Arrange
     let source = MemoryProjectSource::new().with_bytes("/fonts/shared.ttf", b"FAKE".to_vec());
     let font_configs = make_font_configs("/fonts/shared.ttf");
 
-    // Act
     let font_data = FontData::load(&source, &font_configs).expect("読み込めるはず");
 
-    // Assert
     assert_eq!(source.read_count("/fonts/shared.ttf"), 1, "共有パスは 1 回しか読まれないはず");
     for &font_type in FontType::ALL {
       assert_eq!(font_data.get(font_type), b"FAKE");
@@ -156,14 +153,12 @@ mod tests {
 
   #[test]
   fn debug_shows_byte_lengths_by_font_type_instead_of_contents() {
-    // Arrange — 中身が `70, 65, 75, 69` と整形されうる 4 バイトを全 19 種別に入れる
+    // 中身が `70, 65, 75, 69` と整形されうる 4 バイトを全 19 種別に入れる
     let source = MemoryProjectSource::new().with_bytes("/fonts/shared.ttf", b"FAKE".to_vec());
     let font_data = FontData::load(&source, &make_font_configs("/fonts/shared.ttf")).expect("読み込めるはず");
 
-    // Act
     let text = format!("{font_data:?}");
 
-    // Assert
     assert!(
       text.starts_with("FontData { bytes_len: {Serif: 4, SerifBold: 4, "),
       "種別をキーに長さだけが宣言順で出るはず: {text}"
@@ -173,14 +168,11 @@ mod tests {
 
   #[test]
   fn load_reports_missing_font_with_its_font_type() {
-    // Arrange
     let source = MemoryProjectSource::new();
     let font_configs = make_font_configs("/fonts/missing.ttf");
 
-    // Act
     let result = FontData::load(&source, &font_configs);
 
-    // Assert
     let Err(failures) = result else {
       panic!("ReadFont を期待");
     };

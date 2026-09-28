@@ -171,7 +171,6 @@ mod tests {
 
   #[test]
   fn dump_metadata_includes_all_present_optional_fields() {
-    // Arrange
     let metadata = PublicationMetadata {
       title: "Test".to_string(),
       author: Some("Author".to_string()),
@@ -181,10 +180,8 @@ mod tests {
     };
     let mut out = String::new();
 
-    // Act
     dump_metadata(&mut out, &metadata);
 
-    // Assert
     assert!(out.contains("title=\"Test\""));
     assert!(out.contains("author=\"Author\""));
     assert!(out.contains("subject=\"Subject\""));
@@ -204,7 +201,6 @@ mod tests {
 
   #[test]
   fn dump_paint_op_writes_glyph_run_text_and_size() {
-    // Arrange
     let run = GlyphRun {
       font_size: Length::pt(10.0),
       text: "Test".to_string(),
@@ -218,17 +214,14 @@ mod tests {
     };
     let mut out = String::new();
 
-    // Act
     dump_paint_op(&mut out, &op, &resources(Vec::new()));
 
-    // Assert
     assert!(out.contains("x=10.00 y=20.00"));
     assert!(out.contains("text=\"Test\""));
   }
 
   #[test]
   fn dump_publication_link_writes_internal_target_with_destination() {
-    // Arrange
     let link = PublicationLink {
       target: PublicationLinkTarget::Internal(Destination {
         page_index: 0,
@@ -238,10 +231,8 @@ mod tests {
     };
     let mut out = String::new();
 
-    // Act
     dump_publication_link(&mut out, &link);
 
-    // Assert
     assert!(out.contains("link target=Internal(page=0, x=0.00, y=0.00)"));
     assert!(out.contains("x=10.00 y=20.00 w=30.00 h=12.00"));
   }

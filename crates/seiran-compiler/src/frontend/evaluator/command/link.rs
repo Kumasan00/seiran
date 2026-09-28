@@ -118,16 +118,15 @@ mod tests {
 
   #[test]
   fn url_inside_math_is_rejected_as_an_unknown_command() {
-    // Arrange — 引数モードはレジストリ宣言が勝つので数式内でも生読みされる（#447）が、
+    // 引数モードはレジストリ宣言が勝つので数式内でも生読みされる（#447）が、
     // 数式評価器の語彙に `\url` は無い
     let arena = Bump::new();
     let source = r"$\url{https://example.com}$";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert — 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
+    // 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "url"), "{result:?}");
   }
 
@@ -238,16 +237,15 @@ mod tests {
 
   #[test]
   fn href_inside_math_is_rejected_as_an_unknown_command() {
-    // Arrange — 引数モードはレジストリ宣言が勝つので数式内でも第 1 引数は生読みされる（#447）が、
+    // 引数モードはレジストリ宣言が勝つので数式内でも第 1 引数は生読みされる（#447）が、
     // 数式評価器の語彙に `\href` は無い
     let arena = Bump::new();
     let source = r"$\href{https://example.com}{ここ}$";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert — 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
+    // 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "href"), "{result:?}");
   }
 }

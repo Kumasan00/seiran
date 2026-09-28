@@ -33,15 +33,13 @@ fn assert_appears_before(text: &str, before: &str, after: &str) {
 
 #[test]
 fn warnings_survive_a_failed_write_on_the_terminal_and_in_the_log() {
-  // Arrange — issue #550 の再現手順: `.txt` 入力（拡張子警告 1 件）で PDF の保存先を作れなくする
+  // issue #550 の再現手順: `.txt` 入力（拡張子警告 1 件）で PDF の保存先を作れなくする
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let output_dir = unwritable_output_dir(dir.path());
   write_project(dir.path(), "doc.txt", "Hello, Seiran!", output_dir);
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "x.log"], None);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "保存の失敗は処理失敗: {stderr}");
   assert_appears_before(&stderr, WARNING_CODE, WRITE_ERROR_CODE);
@@ -51,15 +49,12 @@ fn warnings_survive_a_failed_write_on_the_terminal_and_in_the_log() {
 
 #[test]
 fn quiet_keeps_warnings_of_a_failed_write_only_in_the_log() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let output_dir = unwritable_output_dir(dir.path());
   write_project(dir.path(), "doc.txt", "Hello, Seiran!", output_dir);
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "-q", "--log-file", "x.log"], None);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1));
   assert!(!stderr.contains(WARNING_CODE), "-q では端末に警告を出さない: {stderr}");
@@ -70,14 +65,12 @@ fn quiet_keeps_warnings_of_a_failed_write_only_in_the_log() {
 
 #[test]
 fn warnings_of_a_failed_compile_come_before_the_error() {
-  // Arrange — issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
+  // issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_project(dir.path(), "doc.txt", "\\unknowncommand{x}", "out");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "x.log"], None);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "未知コマンドは処理失敗: {stderr}");
   assert_appears_before(&stderr, WARNING_CODE, "frontend::");
@@ -87,14 +80,11 @@ fn warnings_of_a_failed_compile_come_before_the_error() {
 
 #[test]
 fn successful_build_reports_warnings_before_the_summary() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_project(dir.path(), "doc.txt", "Hello, Seiran!", "out");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml"], None);
 
-  // Assert
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert_appears_before(&stderr, WARNING_CODE, "\u{2713}");

@@ -66,16 +66,13 @@ mod tests {
 
   #[test]
   fn index_produces_inline_index_stub() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{語}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx)).unwrap();
 
-    // Assert
     let HirInlineKind::Index { word, reading } = &result.kind else {
       panic!("Index が期待されます");
     };
@@ -85,16 +82,13 @@ mod tests {
 
   #[test]
   fn index_with_reading_opt_arg() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index[reading=よみ]{語}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx)).unwrap();
 
-    // Assert
     let HirInlineKind::Index { reading, .. } = &result.kind else {
       panic!("Index が期待されます");
     };
@@ -103,136 +97,109 @@ mod tests {
 
   #[test]
   fn index_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index[foo=bar]{語}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 
   #[test]
   fn index_rejects_missing_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_rejects_extra_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{語}{余分}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_rejects_empty_word() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{ }";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_rejects_styled_text_inside_word() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{\bold{語}}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_rejects_symbol_inside_word() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{\alpha}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_rejects_inline_math_inside_word() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{$x$}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_rejects_command_inside_word() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index{\ref{sec:x}}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx));
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
 
   #[test]
   fn index_trims_word_and_reading() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\index[reading= よみ ]{ 語 }";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return index_command(&view, ctx)).unwrap();
 
-    // Assert
     let HirInlineKind::Index { word, reading } = &result.kind else {
       panic!("Index が期待されます");
     };

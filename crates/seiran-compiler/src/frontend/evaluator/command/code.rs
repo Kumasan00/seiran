@@ -83,15 +83,12 @@ mod tests {
 
   #[test]
   fn inline_code_rejects_second_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\code{a}{b}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(
       matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "code"),
       "{result:?}"
@@ -100,15 +97,12 @@ mod tests {
 
   #[test]
   fn inline_code_requires_an_argument() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\code";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(
       matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "code"),
       "{result:?}"
@@ -117,30 +111,26 @@ mod tests {
 
   #[test]
   fn inline_code_inside_math_is_rejected_as_an_unknown_command() {
-    // Arrange — 引数モードはレジストリ宣言が勝つので数式内でも生読みされる（#447）が、
+    // 引数モードはレジストリ宣言が勝つので数式内でも生読みされる（#447）が、
     // 数式評価器の語彙に `\code` は無い
     let arena = Bump::new();
     let source = r"$\code{a // b}$";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert — 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
+    // 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "code"), "{result:?}");
   }
 
   #[test]
   fn inline_code_rejects_opt_arg() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\code[language=rust]{a}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(
       matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "language"),
       "{result:?}"

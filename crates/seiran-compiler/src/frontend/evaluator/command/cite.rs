@@ -51,16 +51,13 @@ mod tests {
 
   #[test]
   fn cite_produces_single_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\cite{rika}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return cite_command(&view, ctx)).unwrap();
 
-    // Assert
     let HirInlineKind::Cite { keys } = &result.kind else {
       panic!("Cite が期待されます");
     };
@@ -69,16 +66,13 @@ mod tests {
 
   #[test]
   fn cite_splits_multiple_keys_and_trims() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\cite{a, b ,c}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = run_handler(|ctx| return cite_command(&view, ctx)).unwrap();
 
-    // Assert
     let HirInlineKind::Cite { keys } = &result.kind else {
       panic!("Cite が期待されます");
     };

@@ -1491,14 +1491,12 @@ mod tests {
 
   #[test]
   fn evaluate_figure_resolves_relative_image_path_against_base_dir() {
-    // Arrange — `\image{...}` の字面は相対、resolver の base_dir は絶対
     let source = "\\begin{figure}\n\\image{fig/./a.png}\n\\caption{c}\n\\end{figure}\n";
     let resolver = PathResolver::new(Path::new("/project"));
 
-    // Act
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
-    // Assert — HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
+    // HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
     let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず: {:?}", hir.group.nodes[0].kind);
     };
@@ -1507,14 +1505,11 @@ mod tests {
 
   #[test]
   fn evaluate_figure_keeps_absolute_image_path_as_is() {
-    // Arrange — `\image{...}` の字面が絶対パス
     let source = "\\begin{figure}\n\\image{/elsewhere/a.png}\n\\caption{c}\n\\end{figure}\n";
     let resolver = PathResolver::new(Path::new("/project"));
 
-    // Act
     let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
-    // Assert — base_dir を無視して絶対パスのまま保持する
     let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず");
     };

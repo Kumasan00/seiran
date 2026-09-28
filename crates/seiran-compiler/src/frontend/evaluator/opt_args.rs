@@ -450,277 +450,229 @@ mod tests {
 
   #[test]
   fn collect_returns_empty_for_no_opt_args() {
-    // Arrange
     const LABEL: OptKey<String> = string("label");
     let arena = Bump::new();
     let source = r"\bold{x}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(LABEL), None);
   }
 
   #[test]
   fn collect_returns_string_when_schema_allows() {
-    // Arrange
     const LABEL: OptKey<String> = string("label");
     let arena = Bump::new();
     let source = r"\section[label=foo]{Title}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[LABEL.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(LABEL), Some("foo".to_string()));
   }
 
   #[test]
   fn collect_keeps_quotes_in_string_value() {
-    // Arrange
     const TITLE: OptKey<String> = string("title");
     let arena = Bump::new();
     let source = r#"\section[title="x"]{Title}"#;
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[TITLE.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(TITLE), Some("\"x\"".to_string()));
   }
 
   #[test]
   fn collect_rejects_comma_inside_quotes_as_unknown_key() {
-    // Arrange
     const TITLE: OptKey<String> = string("title");
     let arena = Bump::new();
     let source = r#"\section[title="a, b"]{Title}"#;
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[TITLE.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "b\""));
   }
 
   #[test]
   fn collect_returns_error_for_unknown_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\section[unknown=v]{Title}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "unknown"));
   }
 
   #[test]
   fn collect_returns_error_for_unknown_boolean_shorthand() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{Title}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
 
   #[test]
   fn collect_returns_error_for_duplicate_key() {
-    // Arrange — P3: 同一 `[...]` 内のキー重複はエラー（先勝ち・後勝ちに倒さない）
+    // P3: 同一 `[...]` 内のキー重複はエラー（先勝ち・後勝ちに倒さない）
     const LABEL: OptKey<String> = string("label");
     let arena = Bump::new();
     let source = r"\section[label=x, label=y]{Title}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[LABEL.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::DuplicateOptArgKey { ref key, .. }) if key == "label"));
   }
 
   #[test]
   fn collect_returns_error_for_duplicate_bare_key() {
-    // Arrange — bare key `draft` は `draft=true` の略記なので `draft=false` と重複する
+    // bare key `draft` は `draft=true` の略記なので `draft=false` と重複する
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft, draft=false]{Title}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::DuplicateOptArgKey { ref key, .. }) if key == "draft"));
   }
 
   #[test]
   fn collect_rejects_length_without_unit() {
-    // Arrange — 単位のない数値は長さとして読まない（#690）
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
 
   #[test]
   fn collect_returns_length_with_mm_suffix() {
-    // Arrange
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10mm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(WIDTH), Some(Length::mm(10.0)));
   }
 
   #[test]
   fn collect_returns_length_with_cm_suffix() {
-    // Arrange
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=5cm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(WIDTH), Some(Length::cm(5.0)));
   }
 
   #[test]
   fn collect_rejects_uppercase_length_unit() {
-    // Arrange — 単位は小文字のみ（#690）
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=2CM]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
 
   #[test]
   fn collect_rejects_space_between_number_and_unit() {
-    // Arrange
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10 mm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
 
   #[test]
   fn collect_returns_length_with_pt_suffix() {
-    // Arrange — `pt` は config / style と同じくソースでも受理する（#690）
+    // `pt` は config / style と同じくソースでも受理する（#690）
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10pt]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(WIDTH), Some(Length::pt(10.0)));
   }
 
   #[test]
   fn collect_returns_bool_for_bare_key() {
-    // Arrange
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(DRAFT), Some(true));
   }
 
   #[test]
   fn collect_returns_bool_for_explicit_false() {
-    // Arrange
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft=false]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(DRAFT), Some(false));
   }
 
   #[test]
   fn collect_returns_bool_for_explicit_true() {
-    // Arrange
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft=true]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(DRAFT), Some(true));
   }
 
   #[test]
   fn collect_rejects_non_lowercase_bool() {
-    // Arrange — 真偽値は小文字のみ（#739。大文字の単位を拒否する #690 と同じ論法）
+    // 真偽値は小文字のみ（#739。大文字の単位を拒否する #690 と同じ論法）
     const DRAFT: OptKey<bool> = boolean("draft");
     for value in ["True", "TRUE", "False", "FALSE"] {
       let arena = Bump::new();
@@ -728,10 +680,8 @@ mod tests {
       let cst = test_support::parse(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
 
-      // Act
       let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
 
-      // Assert
       assert!(
         matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "draft"),
         "`draft={value}` は拒否されるべき"
@@ -741,17 +691,15 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_bare_key_on_non_bool() {
-    // Arrange
     const DRAFT: OptKey<u32> = positive_int("draft");
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act — bare key は `"true"` になるので整数としては読めない
+    // bare key は `"true"` になるので整数としては読めない
     let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "draft"));
   }
 
@@ -770,17 +718,14 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_zero_positive_length() {
-    // Arrange
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
     let source = r"\section[width=0mm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
-    // Assert
     assert!(
       matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive length (pt/mm/cm)"),
       "0 の長さは値の解釈側で拒否される"
@@ -789,55 +734,45 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_negative_positive_length() {
-    // Arrange
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
     let source = r"\section[width=-5mm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
 
   #[test]
   fn collect_returns_positive_length_when_positive() {
-    // Arrange
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
     let source = r"\section[width=5cm]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(WIDTH), Some(Length::cm(5.0)));
   }
 
   #[test]
   fn collect_returns_integer_for_positive_int() {
-    // Arrange
     const START: OptKey<u32> = positive_int("start");
     let arena = Bump::new();
     let source = r"\section[start=5]{T}";
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[START.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(START), Some(5));
   }
 
   #[test]
   fn collect_rejects_out_of_range_values_for_positive_int() {
-    // Arrange — 0 / 負値 / 小数 / `u32::MAX` 超過 / 数値でない値をすべて拒否する
     const START: OptKey<u32> = positive_int("start");
     let arena = Bump::new();
     for raw in [
@@ -854,10 +789,8 @@ mod tests {
       let cst = test_support::parse(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
 
-      // Act
       let result = collect_command_opt_args(&view, &[START.decl()]);
 
-      // Assert
       assert!(
         matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive integer"),
         "`start={raw}` は 1 以上の整数ではないので拒否される"
@@ -884,7 +817,6 @@ mod tests {
 
   #[test]
   fn get_returns_typed_value_for_declared_key() {
-    // Arrange
     const LABEL: OptKey<String> = string("label");
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
@@ -892,17 +824,14 @@ mod tests {
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[LABEL.decl(), WIDTH.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(LABEL), Some("foo".to_string()));
     assert_eq!(opts.get(WIDTH), Some(Length::cm(5.0)));
   }
 
   #[test]
   fn get_returns_none_for_unspecified_key() {
-    // Arrange
     const LABEL: OptKey<String> = string("label");
     const NUMBERED: OptKey<bool> = boolean("numbered");
     let arena = Bump::new();
@@ -910,10 +839,8 @@ mod tests {
     let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    // Act
     let opts = collect_command_opt_args(&view, &[LABEL.decl(), NUMBERED.decl()]).unwrap();
 
-    // Assert
     assert_eq!(opts.get(NUMBERED), None, "ソースに書かれていないキーは None");
   }
 

@@ -461,17 +461,14 @@ mod tests {
 
   #[test]
   fn build_flattens_single_glyph_run_line() {
-    // Arrange
     let config = test_config();
     let run = glyph_run("hello");
     let page = page_builder()
       .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     assert_eq!(publication.pages().len(), 1, "ページは 1 枚");
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 1, "背景なし・ブロック 1 個のみなので op は 1 個");
@@ -489,7 +486,6 @@ mod tests {
 
   #[test]
   fn build_flattens_atom_children_recursively() {
-    // Arrange
     let config = test_config();
     let run_a = glyph_run("a");
     let run_b = glyph_run("b");
@@ -501,10 +497,8 @@ mod tests {
       .block(atom_line(children, Length::pt(10.0), Length::pt(0.0), Length::pt(100.0)))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2);
     assert_eq!(
@@ -531,17 +525,14 @@ mod tests {
 
   #[test]
   fn build_places_background_fill_first_when_style_has_background_color() {
-    // Arrange
     let config = test_config();
     let page = page_builder()
       .background_color([200, 200, 200])
       .block(rule_block(Length::pt(0.0), Length::pt(0.0), Length::pt(10.0), Length::pt(1.0), None))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2, "背景 1 個 + 本文 Rule 1 個");
     assert_eq!(
@@ -563,7 +554,6 @@ mod tests {
 
   #[test]
   fn build_flattens_image_block() {
-    // Arrange
     let config = test_config();
     let page = page_builder()
       .block(image_block(
@@ -576,10 +566,8 @@ mod tests {
       ))
       .build();
 
-    // Act
     let publication = build_with_images(&config, vec![page], vec![], &["figures/a.png"]);
 
-    // Assert
     let image = publication.resources().image_ref("figures/a.png").expect("登録した画像は参照を得られるはず");
     assert_eq!(
       publication.pages()[0].ops()[0],
@@ -593,7 +581,6 @@ mod tests {
 
   #[test]
   fn build_flattens_math_block_body_before_numbers() {
-    // Arrange
     let config = test_config();
     let body_run = glyph_run("x=1");
     let number_run = glyph_run("(1)");
@@ -606,10 +593,8 @@ mod tests {
       ))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2);
     assert_eq!(
@@ -636,7 +621,6 @@ mod tests {
 
   #[test]
   fn build_flattens_table_rule_above_then_cell_content() {
-    // Arrange
     let config = test_config();
     let cell_run = glyph_run("cell");
     let row = TableRowSpec {
@@ -656,10 +640,8 @@ mod tests {
       ))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2, "罫線 1 個 + セル内容 1 個");
     // 表は本文左端（x = 0pt）に置いたので、罫線には原点がそのまま、セル内容には原点 + セル余白
@@ -680,7 +662,6 @@ mod tests {
 
   #[test]
   fn build_walks_blocks_header_footer_footnotes_in_render_order() {
-    // Arrange
     let config = test_config();
     let rule_at = |y: f32| {
       return rule_block(Length::pt(0.0), Length::pt(y), Length::pt(1.0), Length::pt(1.0), None);
@@ -692,10 +673,8 @@ mod tests {
       .footnote(vec![rule_at(4.0)])
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     let ops = &publication.pages()[0].ops();
     let ys: Vec<f32> = ops
       .iter()
@@ -711,16 +690,13 @@ mod tests {
 
   #[test]
   fn build_keeps_external_link() {
-    // Arrange
     let config = test_config();
     let page = page_builder()
       .external_link("https://example.com", Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     assert_eq!(publication.pages()[0].links().len(), 1);
     assert!(
       matches!(&publication.pages()[0].links()[0].target, PublicationLinkTarget::External(uri) if uri == "https://example.com")
@@ -729,7 +705,6 @@ mod tests {
 
   #[test]
   fn build_resolves_internal_link_with_matching_anchor() {
-    // Arrange
     let config = test_config();
     let label = LabelId::new("fig:1");
     let page = page_builder()
@@ -737,10 +712,8 @@ mod tests {
       .internal_link(AnchorId::Label(label), Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     assert_eq!(publication.pages()[0].links().len(), 1);
     assert!(
       matches!(publication.pages()[0].links()[0].target, PublicationLinkTarget::Internal(dest) if dest.page_index == 0)
@@ -765,17 +738,14 @@ mod tests {
 
   #[test]
   fn build_produces_outline_entries_when_bookmarks_enabled_and_headings_present() {
-    // Arrange
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let key = HeadingKey::new(0);
     let page = page_builder().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
     let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
-    // Act
     let publication = build(&config, vec![page], outline_entries);
 
-    // Assert
     let outline = publication.outline().expect("エントリがあるので Some のはず");
     assert_eq!(outline.len(), 1);
     assert_eq!(outline[0].text, "第一章");
@@ -825,7 +795,7 @@ mod tests {
 
   #[test]
   fn build_applies_each_page_own_origin_to_content_links_and_anchors() {
-    // Arrange — 2 ページに別々の本文原点を与える（見開きで左右余白を変える将来の形。全ページ共通の
+    // 2 ページに別々の本文原点を与える（見開きで左右余白を変える将来の形。全ページ共通の
     // 左余白へ退行すると 2 ページ目の座標がずれて落ちる）
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
@@ -842,10 +812,8 @@ mod tests {
       .build();
     let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
-    // Act
     let publication = build(&config, vec![first, second], outline_entries);
 
-    // Assert
     let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[0].ops()[0] else {
       panic!("グリフ行は DrawGlyphRun になるはず")
     };
@@ -861,17 +829,15 @@ mod tests {
 
   #[test]
   fn build_leaves_content_untouched_when_page_origin_is_zero() {
-    // Arrange — 原点 0 のページでは本文相対座標がそのまま用紙座標になる（原点の二重加算検出）
+    // 原点 0 のページでは本文相対座標がそのまま用紙座標になる（原点の二重加算検出）
     let config = test_config();
     let run = glyph_run("x");
     let page = PageBuilder::new()
       .block(glyph_line(run, Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
       .build();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[0].ops()[0] else {
       panic!("グリフ行は DrawGlyphRun になるはず")
     };
@@ -880,7 +846,6 @@ mod tests {
 
   #[test]
   fn build_carries_author_subject_language_keywords_through() {
-    // Arrange
     let mut config = test_config();
     config.document.author = Some("著者".to_string());
     config.document.subject = Some("主題".to_string());
@@ -888,10 +853,8 @@ mod tests {
     config.document.keywords = Some(vec!["a".to_string(), "b".to_string()]);
     let page = empty_page();
 
-    // Act
     let publication = build(&config, vec![page], vec![]);
 
-    // Assert
     assert_eq!(publication.metadata().author, Some("著者".to_string()));
     assert_eq!(publication.metadata().subject, Some("主題".to_string()));
     assert_eq!(publication.metadata().language, Some("ja".to_string()));

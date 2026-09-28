@@ -113,7 +113,7 @@ mod tests {
 
   #[test]
   fn per_page_footnote_passes_stop_at_fixed_point() {
-    // Arrange — ページ割り当てが番号に依らず安定している本文パスを模す（実文書の通常ケース）。
+    // ページ割り当てが番号に依らず安定している本文パスを模す（実文書の通常ケース）。
     let calls = RefCell::new(0u32);
     let body_pass = |_numbers: Option<&[u32]>| {
       *calls.borrow_mut() += 1;
@@ -124,17 +124,16 @@ mod tests {
       };
     };
 
-    // Act
     let layout = solve_per_page_numbering(&body_pass).expect("収束するはず");
 
-    // Assert — 1 回目でページ割り当てを知り、2 回目でページ単位番号を反映して不動点に達する。
+    // 1 回目でページ割り当てを知り、2 回目でページ単位番号を反映して不動点に達する。
     assert_eq!(*calls.borrow(), 2, "実質 2 回で収束するはず");
     assert_eq!(layout.pages.len(), 2);
   }
 
   #[test]
   fn per_page_footnote_passes_report_diagnostic_when_not_converged() {
-    // Arrange — 番号を与えるたびにページ割り当てが変わり続けて収束しない本文パスを模す。
+    // 番号を与えるたびにページ割り当てが変わり続けて収束しない本文パスを模す。
     let calls = RefCell::new(0u32);
     let body_pass = |_numbers: Option<&[u32]>| {
       let call = {
@@ -154,10 +153,9 @@ mod tests {
       };
     };
 
-    // Act — 上限回数で打ち切り、最後の不整合なレイアウトを成功として返さない。
+    // 上限回数で打ち切り、最後の不整合なレイアウトを成功として返さない。
     let error = solve_per_page_numbering(&body_pass).expect_err("収束しない場合は診断を返すはず");
 
-    // Assert
     assert_eq!(*calls.borrow(), MAX_FOOTNOTE_NUMBERING_PASSES, "上限回数で打ち切るはず");
     assert_eq!(
       error.code().expect("診断コードを持つはず").to_string(),

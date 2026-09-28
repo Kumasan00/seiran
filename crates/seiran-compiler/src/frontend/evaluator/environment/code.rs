@@ -99,15 +99,13 @@ mod tests {
 
   #[test]
   fn code_block_rejects_language_option() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{code}[language=rust]\nbody\n\\end{code}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert — キー名と受理はハイライト段の issue で決めるので、今は未知キー（P6）
+    // キー名と受理はハイライト段の issue で決めるので、今は未知キー（P6）
     assert!(
       matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "language"),
       "{result:?}"

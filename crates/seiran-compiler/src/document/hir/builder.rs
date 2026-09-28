@@ -86,10 +86,9 @@ mod tests {
 
   #[test]
   fn alloc_during_nested_use_does_not_panic() {
-    // Arrange — 再帰評価中に借用が重ならないことの回帰テスト
+    // 再帰評価中に借用が重ならないことの回帰テスト
     let builder = builder();
 
-    // Act
     let outer = builder.alloc(Span::new(0, 9));
     let inner = builder.leaf_math(
       Span::new(1, 2),
@@ -100,7 +99,6 @@ mod tests {
     );
     builder.set_span(outer, Span::new(0, 12));
 
-    // Assert
     assert_eq!(builder.span_of(outer), Span::new(0, 12));
     assert_eq!(builder.span_of(inner.id), Span::new(1, 2));
   }

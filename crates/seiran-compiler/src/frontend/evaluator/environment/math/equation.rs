@@ -99,15 +99,12 @@ mod tests {
 
   #[test]
   fn equation_produces_math_block() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}x^{2} = y\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
     assert!(row.label.is_none());
@@ -122,15 +119,12 @@ mod tests {
 
   #[test]
   fn equation_with_label_captures_label() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[label=eq:pythag]a^{2}+b^{2}=c^{2}\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
     assert_eq!(row.label.as_deref(), Some("eq:pythag"));
@@ -139,57 +133,45 @@ mod tests {
 
   #[test]
   fn equation_rejects_column_break() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a & b\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
   }
 
   #[test]
   fn equation_rejects_row_break() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a \\ b\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
   }
 
   #[test]
   fn equation_rejects_unknown_opt_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[foo=1]x\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 
   #[test]
   fn equation_numbered_false_suppresses_numbering() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false]x\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
     assert!(!row.numbered, "無採番なので numbered は false のはず");
@@ -197,15 +179,12 @@ mod tests {
 
   #[test]
   fn equation_numbered_true_is_explicit_default() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=true]x\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
     assert!(row.numbered);
@@ -213,43 +192,34 @@ mod tests {
 
   #[test]
   fn equation_numbered_false_with_label_errors() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false, label=eq:x]a\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "equation"));
   }
 
   #[test]
   fn equation_rejects_notag() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a \notag\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
   }
 
   #[test]
   fn equation_rejects_row_label_marker() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a \label{eq:x}\end{equation}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
   }
 }

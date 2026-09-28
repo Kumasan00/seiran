@@ -74,14 +74,11 @@ fn write_config_with_two_violations(dir: &Path) -> PathBuf {
 
 #[test]
 fn failure_diagnostic_is_recorded_in_the_log_file() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let log_path = dir.path().join("x.log");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "missing.toml", "--log-file", "x.log"]);
 
-  // Assert
   assert!(!output.status.success(), "失敗する入力なので終了コードは非 0");
   let log = fs::read_to_string(&log_path).expect("ログファイルができているはず");
   assert!(log.contains(MISSING_CONFIG_CODE), "診断の code が残る: {log}");
@@ -92,15 +89,13 @@ fn failure_diagnostic_is_recorded_in_the_log_file() {
 
 #[test]
 fn source_position_is_recorded_in_the_log_file() {
-  // Arrange — TOML の構文エラーは位置付きの診断になる
+  // TOML の構文エラーは位置付きの診断になる
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   fs::write(dir.path().join("bad.toml"), "x = \n").expect("壊れた config.toml を書けるはず");
   let log_path = dir.path().join("x.log");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "bad.toml", "--log-file", "x.log"]);
 
-  // Assert
   assert!(!output.status.success());
   let log = fs::read_to_string(&log_path).expect("ログファイルができているはず");
   assert!(log.contains("project::config::parse_toml"), "診断の code が残る: {log}");
@@ -118,14 +113,11 @@ fn source_position_is_recorded_in_the_log_file() {
 
 #[test]
 fn quiet_keeps_the_terminal_silent_but_records_the_failure() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let log_path = dir.path().join("x.log");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "missing.toml", "-q", "--log-file", "x.log"]);
 
-  // Assert
   assert!(!output.status.success());
   let stderr = stderr_text(&output);
   assert!(stderr.contains(MISSING_CONFIG_CODE), "端末には miette の描画が 1 回出る: {stderr}");
@@ -135,14 +127,11 @@ fn quiet_keeps_the_terminal_silent_but_records_the_failure() {
 
 #[test]
 fn log_file_does_not_change_stderr_or_exit_code() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
 
-  // Act
   let without = seiran(dir.path(), &["build", "-c", "missing.toml"]);
   let with = seiran(dir.path(), &["build", "-c", "missing.toml", "--log-file", "x.log"]);
 
-  // Assert
   assert!(!without.status.success());
   assert_eq!(with.status.code(), without.status.code(), "終了コードは --log-file の有無で変わらない");
   assert_eq!(without.status.code(), Some(1), "失敗した実行の終了コードは 1");
@@ -152,12 +141,10 @@ fn log_file_does_not_change_stderr_or_exit_code() {
 
 #[test]
 fn all_leaves_of_an_aggregated_failure_are_recorded() {
-  // Arrange
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let config_path = write_config_with_two_violations(dir.path());
   let log_path = dir.path().join("x.log");
 
-  // Act
   let output = seiran(
     dir.path(),
     &[
@@ -170,7 +157,6 @@ fn all_leaves_of_an_aggregated_failure_are_recorded() {
     ],
   );
 
-  // Assert
   assert!(!output.status.success());
   let log = fs::read_to_string(&log_path).expect("ログファイルができているはず");
   assert!(log.contains("sources は最低 1 つ"), "主診断が残る: {log}");
@@ -179,15 +165,13 @@ fn all_leaves_of_an_aggregated_failure_are_recorded() {
 
 #[test]
 fn existing_log_path_is_refused_before_the_build() {
-  // Arrange — 既存のディレクトリは「既にあるパス」として拒否する
+  // 既存のディレクトリは「既にあるパス」として拒否する
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let log_dir = dir.path().join("logs");
   fs::create_dir(&log_dir).expect("ディレクトリを作れるはず");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "missing.toml", "--log-file", "logs"]);
 
-  // Assert
   assert!(!output.status.success());
   let stderr = stderr_text(&output);
   assert!(stderr.contains("cli::log_file_exists"), "端末には既存パスの診断が出る: {stderr}");
@@ -197,15 +181,13 @@ fn existing_log_path_is_refused_before_the_build() {
 
 #[test]
 fn log_file_never_overwrites_the_config_it_is_pointed_at() {
-  // Arrange — `-c` と `--log-file` に同じパスを渡す（#548 の再現手順）
+  // `-c` と `--log-file` に同じパスを渡す（#548 の再現手順）
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let config_path = write_config_with_two_violations(dir.path());
   let original = fs::read(&config_path).expect("設定ファイルを読めるはず");
 
-  // Act
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "config.toml"]);
 
-  // Assert
   assert!(!output.status.success(), "既存パスへのログ指定は診断エラーで止まる");
   let stderr = stderr_text(&output);
   assert!(stderr.contains("cli::log_file_exists"), "既存パスの診断が出る: {stderr}");

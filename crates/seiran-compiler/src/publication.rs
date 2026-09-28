@@ -482,38 +482,32 @@ mod tests {
 
   #[test]
   fn page_new_rejects_zero_sized_image_rect() {
-    // Arrange
     let ops = vec![PaintOp::DrawImage {
       image: ImageRef(0),
       rect: Rect::new(0.0, 0.0, 10.0, 0.0).unwrap(),
       target_dpi: None,
     }];
 
-    // Act
     let page = PublicationPage::new(page_box(), ops, Vec::new());
 
-    // Assert
     assert!(page.is_none(), "高さ 0 の画像矩形は構築できないはず");
   }
 
   #[test]
   fn page_new_accepts_zero_sized_fill_rect() {
-    // Arrange — 太さ 0 の罫線（style.toml が非負を許す）は描画されないだけで不正ではない
+    // 太さ 0 の罫線（style.toml が非負を許す）は描画されないだけで不正ではない
     let ops = vec![PaintOp::FillRect {
       rect: Rect::new(10.0, 10.0, 100.0, 0.0).unwrap(),
       color: None,
     }];
 
-    // Act
     let page = PublicationPage::new(page_box(), ops, Vec::new());
 
-    // Assert
     assert!(page.is_some(), "0 高さの塗りつぶし矩形は許されるはず");
   }
 
   #[test]
   fn publication_new_rejects_link_to_missing_page() {
-    // Arrange
     let link = PublicationLink {
       target: PublicationLinkTarget::Internal(Destination {
         page_index: 1,
@@ -523,16 +517,13 @@ mod tests {
     };
     let pages = vec![PublicationPage::new(page_box(), Vec::new(), vec![link]).unwrap()];
 
-    // Act
     let publication = Publication::new(pages, None, metadata(), resources(Vec::new()));
 
-    // Assert
     assert!(publication.is_none(), "存在しないページを指す内部リンクは構築できないはず");
   }
 
   #[test]
   fn publication_new_rejects_outline_entry_to_missing_page() {
-    // Arrange
     let pages = vec![PublicationPage::new(page_box(), Vec::new(), Vec::new()).unwrap()];
     let outline = Some(vec![PublicationOutlineEntry {
       depth: 0,
@@ -543,27 +534,22 @@ mod tests {
       },
     }]);
 
-    // Act
     let publication = Publication::new(pages, outline, metadata(), resources(Vec::new()));
 
-    // Assert
     assert!(publication.is_none(), "存在しないページを指すしおりは構築できないはず");
   }
 
   #[test]
   fn image_ref_resolves_only_registered_paths() {
-    // Arrange
     let resources = resources(vec![PublicationImage {
       path: "a.png".to_string(),
       format: ImageFormat::Png,
       bytes: vec![1, 2, 3],
     }]);
 
-    // Act
     let registered = resources.image_ref("a.png");
     let missing = resources.image_ref("b.png");
 
-    // Assert
     assert!(missing.is_none(), "登録していないパスは ImageRef を得られないはず");
     let image = resources.image(registered.expect("登録済みパスは ImageRef を得られるはず"));
     assert_eq!(image.bytes, vec![1, 2, 3]);

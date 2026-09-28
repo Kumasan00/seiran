@@ -82,15 +82,12 @@ mod tests {
 
   #[test]
   fn theorem_carries_class_and_body_with_no_number() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}本文\end{theorem}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
@@ -105,15 +102,12 @@ mod tests {
 
   #[test]
   fn proof_class_is_structured() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{proof}証明本文\end{proof}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
@@ -122,15 +116,12 @@ mod tests {
 
   #[test]
   fn theorem_captures_title() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{theorem}[title=ピタゴラスの定理]本文\\end{theorem}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます");
     };
@@ -139,15 +130,12 @@ mod tests {
 
   #[test]
   fn theorem_title_accepts_escaped_comma() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[title=a\, b]本文\end{theorem}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます");
     };
@@ -156,15 +144,12 @@ mod tests {
 
   #[test]
   fn theorem_captures_label_without_resolving() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\ref{thm:p}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Theorem(theorem) = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
@@ -179,15 +164,12 @@ mod tests {
 
   #[test]
   fn proof_of_captures_target_label_without_resolving() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\begin{proof}[of=thm:p]証明\end{proof}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Theorem(theorem) = &result[1].kind else {
       panic!("proof の Theorem が期待されます: {:?}", result[1]);
     };
@@ -197,57 +179,45 @@ mod tests {
 
   #[test]
   fn theorem_rejects_of_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[of=thm:p]本文\end{theorem}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "of"));
   }
 
   #[test]
   fn proof_rejects_label_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{proof}[label=pf:1]証明\end{proof}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
   }
 
   #[test]
   fn theorem_rejects_unknown_opt_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[foo=1]本文\end{theorem}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 
   #[test]
   fn duplicate_theorem_label_is_structured_without_error() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=dup]A\end{theorem}\begin{lemma}[label=dup]B\end{lemma}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 2);
     let HirNodeKind::Theorem(first) = &result[0].kind else {
       panic!("Theorem が期待されます");

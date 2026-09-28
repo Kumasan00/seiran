@@ -353,15 +353,12 @@ mod tests {
 
   #[test]
   fn single_char_rejects_unknown_opt_arg_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
 
@@ -399,7 +396,7 @@ mod tests {
 
   #[test]
   fn block_commands_are_rejected_in_inline_placement() {
-    // Arrange — 引数はコマンドごとに妥当な形を渡す。引数の検査と拒否のどちらが先に走っても
+    // 引数はコマンドごとに妥当な形を渡す。引数の検査と拒否のどちらが先に走っても
     // 結果は `BlockInInline` になるので、「インライン文脈では拒否される」ことだけを固定できる
     // （どの診断が先に出るかは不変条件ではない）。guard の書き忘れは `BlockPermit` が型で弾く。
     let cases = [
@@ -414,12 +411,10 @@ mod tests {
       let node = test_support::command_call_node(source, &arena);
       let view = CommandView::new(node, source);
 
-      // Act
       let result = evaluator::run_handler(|ctx| {
         return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
       });
 
-      // Assert
       assert!(
         matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if *what == format!("\\{name}")),
         "{name}: {result:?}"
@@ -429,25 +424,23 @@ mod tests {
 
   #[test]
   fn index_is_rejected_under_the_reject_policy() {
-    // Arrange — 妥当な引数を渡す。引数の検査と方針の判定のどちらが先に走っても
+    // 妥当な引数を渡す。引数の検査と方針の判定のどちらが先に走っても
     // 結果は `IndexNotAllowedHere` になる（どの診断が先に出るかは不変条件ではない）。
     let arena = Bump::new();
     let source = r"\index{語}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act
     let result = evaluator::run_handler(|ctx| {
       return evaluate_inline_command(&view, ctx, IndexPolicy::Reject);
     });
 
-    // Assert
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "{result:?}");
   }
 
   #[test]
   fn every_command_in_inline_placement_yields_inline_or_a_diagnostic() {
-    // Arrange — レジストリに載っているコマンドがインライン文脈で UnknownCommand として
+    // レジストリに載っているコマンドがインライン文脈で UnknownCommand として
     // 落ちないことを確認する（`{a}` × 0〜4 個の組み合わせで、成功するかどうかはコマンドごとに違う）
     for name in all_command_names() {
       for arg_count in 0usize..=4 {
@@ -456,12 +449,10 @@ mod tests {
         let node = test_support::command_call_node(&source, &arena);
         let view = CommandView::new(node, &source);
 
-        // Act
         let result = evaluator::run_handler(|ctx| {
           return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
         });
 
-        // Assert — レジストリに載っているコマンドが未知として落ちることはない
         assert!(
           !matches!(result, Err(EvalError::UnknownCommand { .. })),
           "{name}（引数 {arg_count} 個）が未知のコマンドとして扱われた"
@@ -491,16 +482,13 @@ mod tests {
       name in prop::sample::select(all_command_names()),
       arg_count in 0usize..=4,
     ) {
-      // Arrange
       let arena = Bump::new();
       let args = "{a}".repeat(arg_count);
       let source = format!("\\{name}{args}");
 
-      // Act
       let cst = test_support::parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
       let result = evaluator::evaluate_children_to_hir(&source, cst);
 
-      // Assert
       let is_known_outcome = matches!(
         result,
         Ok(_)

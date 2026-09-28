@@ -256,16 +256,13 @@ mod tests {
 
   #[test]
   fn attached_warnings_are_kept_apart_from_the_errors() {
-    // Arrange
     let mut warnings = Warnings::default();
     warnings.push(TestWarning);
     let mut failure = CompileFailure::single(LeafError);
     failure.push(OtherError);
 
-    // Act
     let failure = failure.with_warnings(warnings);
 
-    // Assert
     assert_eq!(failure.warnings().iter().count(), 1);
     assert_eq!(codes(&failure), vec!["test::leaf".to_string(), "test::other".to_string()]);
     let related: Vec<String> = failure

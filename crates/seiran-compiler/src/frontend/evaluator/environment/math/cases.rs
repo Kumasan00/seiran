@@ -81,15 +81,12 @@ mod tests {
 
   #[test]
   fn cases_splits_rows_and_two_columns_unnumbered() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & x > 0 \\ b & x < 0\end{cases}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
@@ -99,43 +96,34 @@ mod tests {
 
   #[test]
   fn cases_rejects_three_columns() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & b & c\end{cases}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::CasesColumnOverflow { found: 3, .. })));
   }
 
   #[test]
   fn cases_rejects_unknown_opt_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}[foo=1]a & b\end{cases}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 
   #[test]
   fn cases_rejects_notag() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & b \notag\end{cases}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
   }
 }

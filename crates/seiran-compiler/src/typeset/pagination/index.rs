@@ -453,7 +453,7 @@ mod tests {
 
   #[test]
   fn build_index_spec_carries_group_fields_from_style() {
-    // Arrange — 既定でない値を style へ入れる（style.toml の差し替えだけで反映されること）
+    // 既定でない値を style へ入れる（style.toml の差し替えだけで反映されること）
     let mut style = Style::default();
     style.index.group_headings = true;
     style.index.group_font_size = Length::pt(14.0);
@@ -461,10 +461,8 @@ mod tests {
     style.index.group_bottom_margin = Length::pt(3.0);
     style.index.group_other_label = "その他".to_string();
 
-    // Act
     let spec = build_index_spec(&style);
 
-    // Assert
     assert!(spec.group_headings);
     assert_eq!(spec.group_style.font_size, Length::pt(14.0));
     assert_eq!(spec.group_top_margin, Length::pt(9.0));
@@ -505,34 +503,28 @@ mod tests {
 
   #[test]
   fn collect_index_entries_returns_empty_when_no_index_entries() {
-    // Arrange
     let mut body_pages = vec![
       page_with_index_entries(vec![]),
       page_with_index_entries(vec![]),
     ];
     let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
 
-    // Act
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
-    // Assert
     assert!(entries.is_empty());
     assert!(body_pages.iter().all(|p| return p.anchors.is_empty()), "索引が無ければアンカーも追加しない");
   }
 
   #[test]
   fn collect_index_entries_injects_one_anchor_per_page_with_entries() {
-    // Arrange
     let mut body_pages = vec![
       page_with_index_entries(vec![("犬", None), ("猫", None)]),
       page_with_index_entries(vec![("犬", None)]),
     ];
     let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
 
-    // Act
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
-    // Assert
     assert!(!entries.is_empty());
     assert_eq!(body_pages[0].anchors.len(), 1, "page0 は 2 語出現しても事後アンカーは 1 個");
     assert_eq!(body_pages[1].anchors.len(), 1);
@@ -542,17 +534,15 @@ mod tests {
 
   #[test]
   fn collect_index_entries_merges_same_word_and_reading_across_pages() {
-    // Arrange
     let mut body_pages = vec![
       page_with_index_entries(vec![("犬", None), ("猫", Some("びょう"))]),
       page_with_index_entries(vec![("犬", None), ("猫", Some("ねこ"))]),
     ];
     let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
 
-    // Act
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
-    // Assert — 「犬」は 1 エントリに 2 ページ、「猫」は reading 違いで 2 エントリに分かれ各 1 ページ
+    // 「犬」は 1 エントリに 2 ページ、「猫」は reading 違いで 2 エントリに分かれ各 1 ページ
     let dog = entries.iter().find(|e| return e.word == "犬").expect("犬エントリがあるはず");
     assert_eq!(dog.pages.len(), 2);
     assert_eq!(dog.pages[0].label, "1");

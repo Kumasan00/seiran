@@ -1164,97 +1164,79 @@ mod tests {
 
   #[test]
   fn scan_verbatim_until_stops_before_the_marker() {
-    // Arrange
     let input = "a// b\n$x\\y\\end{code}rest";
     let mut lexer = Lexer::new(input);
 
-    // Act
     let span = lexer.scan_verbatim_until("\\end{code}").unwrap();
 
-    // Assert — マーカーは消費せず、その直前でカーソルが止まる
     assert_eq!(&input[span.start as usize..span.end as usize], "a// b\n$x\\y");
     assert_eq!(lexer.next().map(|t| return t.kind), Some(TokenKind::Command));
   }
 
   #[test]
   fn scan_verbatim_until_returns_none_and_keeps_cursor_on_eof() {
-    // Arrange
     let input = "a\\end {code}b";
     let mut lexer = Lexer::new(input);
 
-    // Act
     let span = lexer.scan_verbatim_until("\\end{code}");
 
-    // Assert — 変形（空白入り）はマーカーに一致しない
+    // 変形（空白入り）はマーカーに一致しない
     assert!(span.is_none());
     assert_eq!(lexer.cursor, 0);
   }
 
   #[test]
   fn scan_verbatim_until_keeps_multibyte_content_intact() {
-    // Arrange
     let input = "日本語のコード\\end{code}";
     let mut lexer = Lexer::new(input);
 
-    // Act
     let span = lexer.scan_verbatim_until("\\end{code}").unwrap();
 
-    // Assert
     assert_eq!(&input[span.start as usize..span.end as usize], "日本語のコード");
   }
 
   #[test]
   fn scan_verbatim_balanced_includes_matched_braces() {
-    // Arrange — 開き `{` を消費済みの位置から呼ぶ
+    // 開き `{` を消費済みの位置から呼ぶ
     let input = "a{b{c}d}e}tail";
     let mut lexer = Lexer::new(input);
 
-    // Act
     let span = lexer.scan_verbatim_balanced().unwrap();
 
-    // Assert — 対応しない `}` の直前で止まる
+    // 対応しない `}` の直前で止まる
     assert_eq!(&input[span.start as usize..span.end as usize], "a{b{c}d}e");
     assert_eq!(lexer.next().map(|t| return t.kind), Some(TokenKind::RBrace));
   }
 
   #[test]
   fn scan_verbatim_balanced_returns_none_and_keeps_cursor_on_eof() {
-    // Arrange
     let input = "a{b";
     let mut lexer = Lexer::new(input);
 
-    // Act
     let span = lexer.scan_verbatim_balanced();
 
-    // Assert
     assert!(span.is_none());
     assert_eq!(lexer.cursor, 0);
   }
 
   #[test]
   fn scan_verbatim_balanced_keeps_multibyte_content_intact() {
-    // Arrange
     let input = "見出し{入れ子}です}";
     let mut lexer = Lexer::new(input);
 
-    // Act
     let span = lexer.scan_verbatim_balanced().unwrap();
 
-    // Assert
     assert_eq!(&input[span.start as usize..span.end as usize], "見出し{入れ子}です");
   }
 
   #[test]
   fn rewind_to_replays_the_same_token() {
-    // Arrange
     let input = "\\cmd{arg}";
     let mut lexer = Lexer::new(input);
     let first = lexer.next().unwrap();
 
-    // Act
     lexer.rewind_to(first.span.start);
 
-    // Assert
     assert_eq!(lexer.next(), Some(first));
   }
 }

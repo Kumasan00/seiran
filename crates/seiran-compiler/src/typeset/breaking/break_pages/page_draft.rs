@@ -640,7 +640,7 @@ mod tests {
 
   #[test]
   fn page_orders_anchors_and_links_body_then_footnote_per_region() {
-    // Arrange — リージョン 1: 本文行(リンク A) + 脚注(リンク F1)、リージョン 2: 本文行(リンク B) + 脚注(リンク F2)
+    // リージョン 1: 本文行(リンク A) + 脚注(リンク F1)、リージョン 2: 本文行(リンク B) + 脚注(リンク F2)
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("a")));
@@ -650,10 +650,8 @@ mod tests {
     draft.place_line(line(Some(external("B")), None), pt(10.0), pt(55.0));
     draft.close_region(&geom, pt(55.0), pt(36.0), false, vec![footnote(1, "F2", true)]);
 
-    // Act
     let page = draft.take_page(&geom);
 
-    // Assert
     let link_uris: Vec<&str> = page
       .links
       .iter()
@@ -679,19 +677,17 @@ mod tests {
 
   #[test]
   fn anchors_alone_are_not_content_and_survive_until_a_block_lands() {
-    // Arrange
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
     draft.land_anchors(Length::ZERO, pt(46.0));
     assert!(!draft.has_content(), "アンカーだけではページ内容にならない");
 
-    // Act — 内容が無いのでページは取らず、次のリージョンで block を置く
+    // 内容が無いのでページは取らず、次のリージョンで block を置く
     draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new());
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
     let page = draft.take_page(&geom);
 
-    // Assert
     assert_eq!(page.anchors.len(), 1);
     assert_eq!(page.anchors[0].y, pt(46.0), "着地点の座標のまま");
     assert_eq!(image_ys(&page), vec![pt(10.0)]);
@@ -716,7 +712,7 @@ mod tests {
 
   #[test]
   fn flush_moves_block_anchor_and_link_of_the_same_entry_together() {
-    // Arrange — 行 1 (baseline 10)、stretch 4、行 2 (baseline 26、アンカー・リンク付き)。不足 50 − 28 = 22、分母 4
+    // 行 1 (baseline 10)、stretch 4、行 2 (baseline 26、アンカー・リンク付き)。不足 50 − 28 = 22、分母 4
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.place_line(line(None, None), pt(10.0), Length::ZERO);
@@ -724,11 +720,10 @@ mod tests {
     draft.defer_anchor(AnchorId::Label(LabelId::new("x")));
     draft.place_line(line(Some(external("L")), None), pt(26.0), Length::ZERO);
 
-    // Act
     draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
     let page = draft.take_page(&geom);
 
-    // Assert — 行 2 は +22 で baseline 48、アンカーとリンクは行上端 18 + 22 = 40
+    // 行 2 は +22 で baseline 48、アンカーとリンクは行上端 18 + 22 = 40
     let baselines: Vec<Length> = page
       .blocks
       .iter()
@@ -757,17 +752,16 @@ mod tests {
 
   #[test]
   fn footnotes_are_stacked_from_region_limit_and_not_flushed() {
-    // Arrange — 本文 1 block + stretch。脚注 2 個: 1 個目は gap 4 の後、2 個目はさらに gap 4
+    // 本文 1 block + stretch。脚注 2 個: 1 個目は gap 4 の後、2 個目はさらに gap 4
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.pass_stretch(pt(4.0));
     draft.place_block(image(14.0, 10.0), Length::ZERO, pt(14.0));
 
-    // Act
     draft.close_region(&geom, pt(5.0), pt(30.0), true, vec![footnote(0, "F1", false), footnote(1, "F2", false)]);
     let page = draft.take_page(&geom);
 
-    // Assert — 本文は下端 30 へ +6。脚注 1: top 34、baseline 42、下端 44。脚注 2: top 48、baseline 56
+    // 本文は下端 30 へ +6。脚注 1: top 34、baseline 42、下端 44。脚注 2: top 48、baseline 56
     assert_eq!(image_ys(&page), vec![pt(20.0)]);
     let footnote_baselines: Vec<Length> = page
       .footnotes
@@ -900,7 +894,6 @@ mod tests {
 
   #[test]
   fn empty_table_fragment_pushes_nothing() {
-    // Arrange
     let geom = geometry();
     let mut draft = PageDraft::new();
     let columns: Vec<TableColumn> = Vec::new();
@@ -914,10 +907,8 @@ mod tests {
       align_offset: Length::ZERO,
     };
 
-    // Act
     draft.place_table_fragment(Vec::new(), &frame, Length::ZERO);
 
-    // Assert
     assert!(!draft.has_content());
     let page = draft.take_page(&geom);
     assert!(page.blocks.is_empty());
@@ -953,7 +944,7 @@ mod tests {
 
   #[test]
   fn place_table_fragment_resolves_pending_anchor_at_column_x_and_first_row_top() {
-    // Arrange — 段オフセット 55・揃えオフセット 5 の表断片
+    // 段オフセット 55・揃えオフセット 5 の表断片
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
@@ -971,7 +962,6 @@ mod tests {
       align_offset: pt(5.0),
     };
 
-    // Act
     draft.place_table_fragment(
       vec![
         PendingTableRow {
@@ -992,7 +982,6 @@ mod tests {
     );
     let page = draft.take_page(&geom);
 
-    // Assert
     assert_eq!(page.anchors.len(), 1, "{:?}", page.anchors);
     assert_eq!((page.anchors[0].x, page.anchors[0].y), (pt(55.0), pt(22.0)), "段左端 × 先頭行の上端");
     assert!(matches!(page.anchors[0].id, AnchorId::Label(_)));

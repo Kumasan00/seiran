@@ -532,16 +532,13 @@ mod tests {
 
   #[test]
   fn extract_text_content_preserves_comma_and_equals() {
-    // Arrange
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[a=1, b=2]{x}";
     let cst = syntax::parse(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
-    // Act
     let text = extract_text_content(source, opt_arg);
 
-    // Assert
     assert_eq!(text, "a=1, b=2");
   }
 

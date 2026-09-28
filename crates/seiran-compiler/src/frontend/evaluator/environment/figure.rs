@@ -177,15 +177,12 @@ mod tests {
 
   #[test]
   fn figure_extracts_image_and_caption() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{./images/seiran.jpg}\caption{タイトル}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
@@ -204,15 +201,12 @@ mod tests {
 
   #[test]
   fn figure_caption_before_image_yields_top_position() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -221,15 +215,12 @@ mod tests {
 
   #[test]
   fn figure_image_before_caption_yields_bottom_position() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -238,15 +229,12 @@ mod tests {
 
   #[test]
   fn figure_captures_label() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}[label=fig:foo]\image[width=10mm, height=10mm]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます");
     };
@@ -256,29 +244,23 @@ mod tests {
 
   #[test]
   fn figure_rejects_missing_image() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{c}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::MissingEnvironmentArgument { ref name, .. }) if name == "figure"));
   }
 
   #[test]
   fn figure_accepts_image_without_size() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     assert_eq!(result.len(), 1);
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
@@ -290,15 +272,12 @@ mod tests {
 
   #[test]
   fn figure_accepts_image_with_only_width() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -308,29 +287,23 @@ mod tests {
 
   #[test]
   fn figure_rejects_unknown_opt_key() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}[foo=1]\image[width=1mm, height=1mm]{a}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 
   #[test]
   fn image_captures_dpi_and_downsample() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
-    // Assert
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -340,57 +313,46 @@ mod tests {
 
   #[test]
   fn image_rejects_zero_dpi() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
   }
 
   #[test]
   fn image_rejects_negative_dpi() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=-150]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
   }
 
   #[test]
   fn image_rejects_zero_width() {
-    // Arrange — 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く（#378）
+    // 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く（#378）
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=0mm]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
 
   #[test]
   fn image_rejects_negative_height() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[height=-5mm]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();
 
-    // Act
     let result = evaluate_children_to_hir(source, cst);
 
-    // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "height"));
   }
 }

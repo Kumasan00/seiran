@@ -352,17 +352,14 @@ font_kind = \"sans_serif_bold\"
 
   #[test]
   fn heading_styles_partial_level_keeps_other_defaults() {
-    // Arrange
     let toml = "
 [heading.section]
 format = \"§ {number} {title}\"
 ";
 
-    // Act
     let wrapper: HeadingWrapper = toml::from_str(toml).unwrap();
     let styles = wrapper.heading;
 
-    // Assert
     assert_eq!(styles[HeadingLevel::Section].format.as_str(), "§ {number} {title}");
     assert!((styles[HeadingLevel::Section].font_size.to_pt() - 20.0).abs() < f32::EPSILON);
     assert!(styles[HeadingLevel::Part].page_break_after);
@@ -371,7 +368,7 @@ format = \"§ {number} {title}\"
 
   #[test]
   fn heading_styles_full_level_overrides_every_key() {
-    // Arrange — 1 レベルに 6 キー全部を書いた形（同型のフィールド同士の取り違えを検出する）。
+    // 1 レベルに 6 キー全部を書いた形（同型のフィールド同士の取り違えを検出する）。
     // chapter は改ページの既定が before = true / after = false なので、逆の値で取り違えも無視も落ちる
     let toml = "
 [heading.chapter]
@@ -383,11 +380,9 @@ page_break_after = true
 font_kind = \"sans_serif_bold\"
 ";
 
-    // Act
     let wrapper: HeadingWrapper = toml::from_str(toml).unwrap();
     let chapter = &wrapper.heading[HeadingLevel::Chapter];
 
-    // Assert
     assert_eq!(chapter.format.as_str(), "{title}");
     assert_eq!(chapter.font_size, Length::pt(13.0));
     assert_eq!(chapter.bottom_margin, Length::pt(4.0));

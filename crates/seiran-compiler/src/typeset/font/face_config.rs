@@ -65,7 +65,6 @@ mod tests {
 
   #[test]
   fn build_face_configs_copies_variation_axes_verbatim() {
-    // Arrange
     let axes = vec![
       VariationAxis {
         name: *b"wght",
@@ -78,10 +77,8 @@ mod tests {
     ];
     let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(0, Some(axes.clone())));
 
-    // Act
     let face_configs = build_face_configs(&configs);
 
-    // Assert
     let face_config = &face_configs[FontType::ALL[0]];
     let got_axes = face_config.variation_axes.as_ref().expect("variation_axes が Some のはず");
     assert_eq!(got_axes.len(), 2, "軸の個数がそのまま複製されるはず");

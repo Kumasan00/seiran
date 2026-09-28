@@ -164,16 +164,14 @@ mod tests {
 
   #[test]
   fn load_image_resources_reads_through_project_source() {
-    // Arrange
     let png_bytes = read_image_fixture("testimage5.png");
     let expected_len = png_bytes.len();
     let source = MemoryProjectSource::new().with_bytes("/project/testimage5.png", png_bytes);
     let paths = vec![ProjectPath::new("/project/testimage5.png")];
 
-    // Act
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
-    // Assert — 自然寸法（fixture 実寸の 756x1008）とバイト列がそのまま届いているはず
+    // 自然寸法（fixture 実寸の 756x1008）とバイト列がそのまま届いているはず
     let natural = resources
       .natural_size(&ProjectPath::new("/project/testimage5.png"))
       .expect("自然寸法が確定するはず");
@@ -192,14 +190,11 @@ mod tests {
 
   #[test]
   fn load_image_resources_wraps_missing_path_as_read_image_error() {
-    // Arrange
     let source = MemoryProjectSource::new();
     let paths = vec![ProjectPath::new("/project/does-not-exist.png")];
 
-    // Act
     let result = load_image_resources(&source, &paths);
 
-    // Assert
     let Err(failures) = result else {
       panic!("読込エラーを期待");
     };

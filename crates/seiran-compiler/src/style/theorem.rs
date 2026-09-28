@@ -574,17 +574,14 @@ mod tests {
 
   #[test]
   fn partial_override_keeps_other_class_defaults() {
-    // Arrange
     let toml = "
 [theorems.lemma]
 display_name = \"補題\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
     let theorems = wrapper.theorems;
 
-    // Assert
     assert_eq!(theorems.lemma.display_name, "補題");
     assert_eq!(theorems.lemma.counter, "theorem");
     assert_eq!(theorems.lemma.style.font_kind, FontKind::SerifItalic);
@@ -594,17 +591,14 @@ display_name = \"補題\"
 
   #[test]
   fn partial_override_nested_style_keeps_other_style_fields() {
-    // Arrange
     let toml = "
 [theorems.theorem.style]
 font_kind = \"sans_serif_bold\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
-    // Assert
     assert_eq!(theorem.style.font_kind, FontKind::SansSerifBold);
     assert_eq!(theorem.style.heading_format.as_str(), "{display_name} {number}");
     assert!((theorem.style.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
@@ -612,7 +606,7 @@ font_kind = \"sans_serif_bold\"
 
   #[test]
   fn full_override_replaces_every_field() {
-    // Arrange — 6 キーとネスト `style` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
+    // 6 キーとネスト `style` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
     let toml = "
 [theorems.theorem]
 display_name = \"定理\"
@@ -633,11 +627,9 @@ top_margin = \"6pt\"
 bottom_margin = \"8pt\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
-    // Assert
     assert_eq!(theorem.display_name, "定理");
     assert_eq!(theorem.counter, "main");
     assert_eq!(theorem.reset_by, TheoremReset::Chapter);
@@ -656,17 +648,14 @@ bottom_margin = \"8pt\"
 
   #[test]
   fn partial_proof_override_keeps_default_qed_mark() {
-    // Arrange
     let toml = "
 [theorems.proof]
 display_name = \"証明\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
     let proof = wrapper.theorems.proof;
 
-    // Assert
     assert_eq!(proof.display_name, "証明");
     assert_eq!(proof.qed_mark.as_deref(), Some("□"));
     assert!(proof.unnumbered);

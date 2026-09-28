@@ -1831,41 +1831,33 @@ mod tests {
 
   #[test]
   fn verbatim_body_keeps_comment_math_escape_and_braces_inert() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{code}\n// not a comment\nlet x = $y\\{z&_^\n\\end{code}";
 
-    // Act
     let body = verbatim_body(source, &arena);
 
-    // Assert
     assert_eq!(body, "\n// not a comment\nlet x = $y\\{z&_^\n");
   }
 
   #[test]
   fn verbatim_body_does_not_count_nested_begin() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{code}\\begin{code}inner\\end{code}";
 
-    // Act
     let body = verbatim_body(source, &arena);
 
-    // Assert — 最初の `\end{code}` で終端するので、内側の `\begin{code}` は内容のまま
+    // 最初の `\end{code}` で終端するので、内側の `\begin{code}` は内容のまま
     assert_eq!(body, "\\begin{code}inner");
   }
 
   #[test]
   fn verbatim_body_requires_exact_end_marker_bytes() {
-    // Arrange
     let arena = Bump::new();
     // `\end {code}` と `\end{codex}` はマーカーに一致せず、内容として走査を続行する
     let source = "\\begin{code}a\\end {code}b\\end{codex}c\\end{code}";
 
-    // Act
     let body = verbatim_body(source, &arena);
 
-    // Assert
     assert_eq!(body, "a\\end {code}b\\end{codex}c");
   }
 
@@ -1881,50 +1873,43 @@ mod tests {
 
   #[test]
   fn verbatim_environment_reads_one_adjacent_opt_arg() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{code}[lang=rust]\nfoo\n\\end{code}";
 
-    // Act
     let cst = parse_source(source, &arena);
     let GreenElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
 
-    // Assert — 任意引数は読まれ、本体は `]` の直後（先頭の改行込み）から始まる
+    // 任意引数は読まれ、本体は `]` の直後（先頭の改行込み）から始まる
     assert_eq!(begin.children_of_kind(SyntaxKind::OptArg).count(), 1);
     assert_eq!(verbatim_body(source, &arena), "\nfoo\n");
   }
 
   #[test]
   fn verbatim_environment_opt_arg_must_be_adjacent() {
-    // Arrange — 通常環境と違い、トリビアを跨いだ `[...]` は任意引数にならず本体のバイトになる
+    // 通常環境と違い、トリビアを跨いだ `[...]` は任意引数にならず本体のバイトになる
     let arena = Bump::new();
     let source = "\\begin{code} [x]\\end{code}";
 
-    // Act
     let cst = parse_source(source, &arena);
     let GreenElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
 
-    // Assert
     assert_eq!(begin.children_of_kind(SyntaxKind::OptArg).count(), 0);
     assert_eq!(verbatim_body(source, &arena), " [x]");
   }
 
   #[test]
   fn unterminated_verbatim_environment_is_error_at_begin() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\begin{code}\nfoo\n";
 
-    // Act
     let result = parse(source, &arena);
 
-    // Assert — label は `\begin{code}` に載る
     let Err(ParserError::UnclosedEnvironment { name, span }) = result else {
       panic!("UnclosedEnvironment が期待されます");
     };
@@ -1935,11 +1920,10 @@ mod tests {
 
   #[test]
   fn verbatim_environment_nested_in_a_tokenized_environment() {
-    // Arrange — 通常環境の本体に置かれても本体は生読みされる
+    // 通常環境の本体に置かれても本体は生読みされる
     let arena = Bump::new();
     let source = "\\begin{quote}\\begin{code}a$b//c\\end{code}\\end{quote}";
 
-    // Act
     let cst = parse_source(source, &arena);
     let GreenElement::Node(outer) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
@@ -1948,7 +1932,6 @@ mod tests {
     let inner = outer_body.first_child_of_kind(SyntaxKind::Environment).unwrap();
     let inner_body = inner.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
 
-    // Assert
     assert_eq!(inner_body.children.len(), 1);
     let GreenElement::Token(token) = &inner_body.children[0] else {
       panic!("VerbatimText トークンが期待されます");
@@ -1959,41 +1942,34 @@ mod tests {
 
   #[test]
   fn verbatim_arg_keeps_slashes_and_escapes_inert() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\vurl{https://example.com/a_b^c$d}";
 
-    // Act
     let body = verbatim_arg(source, &arena);
 
-    // Assert — この epic の動機そのもの: URL をエスケープなしで書ける
+    // この epic の動機そのもの: URL をエスケープなしで書ける
     assert_eq!(body, "https://example.com/a_b^c$d");
   }
 
   #[test]
   fn verbatim_arg_includes_balanced_braces_and_ends_at_unmatched_rbrace() {
-    // Arrange
     let arena = Bump::new();
     let source = "\\vurl{a{b{c}d}e}f";
 
-    // Act
     let body = verbatim_arg(source, &arena);
 
-    // Assert
     assert_eq!(body, "a{b{c}d}e");
   }
 
   #[test]
   fn verbatim_arg_treats_backslash_as_dead_bytes() {
-    // Arrange — `\` は不活性なので `\{` の `{` も深さに数える
+    // `\` は不活性なので `\{` の `{` も深さに数える
     let arena = Bump::new();
     let unterminated_arena = Bump::new();
 
-    // Act
     let unterminated = parse(r"\vurl{a\{b}", &unterminated_arena);
     let terminated = verbatim_arg(r"\vurl{a\}b", &arena);
 
-    // Assert
     assert!(matches!(
       unterminated,
       Err(ParserError::UnclosedDelimiter {
@@ -2007,14 +1983,11 @@ mod tests {
 
   #[test]
   fn unterminated_verbatim_arg_is_error_at_open_brace() {
-    // Arrange
     let arena = Bump::new();
     let source = r"\vurl{https://example.com";
 
-    // Act
     let result = parse(source, &arena);
 
-    // Assert — label は開き `{` に載る
     let Err(ParserError::UnclosedDelimiter { open_kind, span }) = result else {
       panic!("UnclosedDelimiter が期待されます");
     };
@@ -2025,11 +1998,10 @@ mod tests {
 
   #[test]
   fn verbatim_arg_mode_applies_inside_inline_math() {
-    // Arrange — 数式モード内でもレジストリの引数モード宣言が効く（#236 と整合）
+    // 数式モード内でもレジストリの引数モード宣言が効く（#236 と整合）
     let arena = Bump::new();
     let source = "$\\vurl{a//b}$";
 
-    // Act
     let cst = parse_source(source, &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
@@ -2037,7 +2009,6 @@ mod tests {
     let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
     let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
 
-    // Assert
     assert_eq!(arg.children.len(), 3);
     let GreenElement::Token(token) = &arg.children[1] else {
       panic!("VerbatimText トークンが期待されます");
@@ -2048,10 +2019,8 @@ mod tests {
 
   #[test]
   fn non_verbatim_command_arg_still_inherits_outer_mode() {
-    // Arrange — 回帰: 宣言のないコマンドは従来どおり外側の `ParseMode` を継承する
     let arena = Bump::new();
 
-    // Act
     let cst = parse_source("$\\frac{x^{2}}{y}$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
@@ -2059,24 +2028,23 @@ mod tests {
     let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
     let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
 
-    // Assert — `^` は Math モードで構造化される（生読みではない）
+    // `^` は Math モードで構造化される（生読みではない）
     assert!(arg.first_child_of_kind(SyntaxKind::MathSuperscript).is_some());
   }
 
   #[test]
   fn arg_mode_is_resolved_per_argument_position() {
-    // Arrange — `vhref` は第 1 引数だけが verbatim（本番の `\href` と同じ形）
+    // `vhref` は第 1 引数だけが verbatim（本番の `\href` と同じ形）
     let arena = Bump::new();
     let source = "\\vhref{https://example.com}{\\bold{強調}}";
 
-    // Act
     let cst = parse_source(source, &arena);
     let GreenElement::Node(cmd) = &cst.children[0] else {
       panic!("CommandCall ノードが期待されます");
     };
     let args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
 
-    // Assert — 第 1 引数は生読みした 1 個の塊、第 2 引数は通常のトークン化を通る
+    // 第 1 引数は生読みした 1 個の塊、第 2 引数は通常のトークン化を通る
     assert_eq!(args.len(), 2);
     let GreenElement::Token(url_token) = &args[0].children[1] else {
       panic!("VerbatimText トークンが期待されます");

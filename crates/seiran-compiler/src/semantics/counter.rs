@@ -212,15 +212,12 @@ mod tests {
 
   #[test]
   fn increment_theorem_numbers_with_default_style() {
-    // Arrange
     let policy = default_policy();
     let mut r = CounterRegistry::from_policy(&policy);
 
-    // Act
     let thm = r.increment_theorem(TheoremClass::Theorem).expect("既定の theorem は採番されるはず");
     let lemma = r.increment_theorem(TheoremClass::Lemma).expect("既定の lemma は採番されるはず");
 
-    // Assert
     assert_eq!(thm.own, 1);
     assert!(thm.ancestors.is_empty(), "既定の theorem は reset_by = none なので祖先なし");
     assert_eq!(lemma.own, 2, "既定では lemma が theorem とカウンタを共有する");
@@ -237,16 +234,13 @@ mod tests {
 
   #[test]
   fn counter_registry_increment_builds_ancestor_chain() {
-    // Arrange
     let policy = default_policy();
     let mut r = CounterRegistry::from_policy(&policy);
 
-    // Act
     let chapter = r.increment(CounterName::Chapter);
     let section_1 = r.increment(CounterName::Section);
     let section_2 = r.increment(CounterName::Section);
 
-    // Assert
     assert_eq!(ancestors(&chapter), vec![(CounterName::Part, 0)], "part は未登場につき 0");
     assert_eq!(chapter.own, 1);
     assert_eq!(ancestors(&section_1), vec![(CounterName::Part, 0), (CounterName::Chapter, 1)]);
@@ -257,7 +251,6 @@ mod tests {
 
   #[test]
   fn counter_registry_section_reset_on_chapter_increment() {
-    // Arrange
     let policy = default_policy();
     let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Chapter); // chapter = 1
@@ -265,17 +258,14 @@ mod tests {
     r.increment(CounterName::Section); // section = 2
     r.increment(CounterName::Chapter); // chapter = 2、section は 0 にリセット
 
-    // Act
     let next = r.increment(CounterName::Section);
 
-    // Assert
     assert_eq!(ancestors(&next), vec![(CounterName::Part, 0), (CounterName::Chapter, 2)]);
     assert_eq!(next.own, 1);
   }
 
   #[test]
   fn template_cross_counter_resets_via_config() {
-    // Arrange
     let counters = Counters {
       part: CounterStyle {
         display_name: "Part".to_string(),
@@ -296,19 +286,16 @@ mod tests {
     let policy = policy_from_counters(&counters);
     let mut r = CounterRegistry::from_policy(&policy);
 
-    // Act
     r.increment(CounterName::Part);
     r.increment(CounterName::Part);
     let ch = r.increment(CounterName::Chapter);
 
-    // Assert
     assert_eq!(ancestors(&ch), vec![(CounterName::Part, 2)], "part = 2");
     assert_eq!(ch.own, 1, "chapter = 1");
   }
 
   #[test]
   fn theorem_counter_resets_on_reset_by_heading() {
-    // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
     let policy = SemanticPolicy::from_style(&style);
@@ -316,13 +303,11 @@ mod tests {
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section); // section = 1
 
-    // Act
     let a = r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず");
     let b = r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず");
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
     let c = r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず");
 
-    // Assert
     assert_eq!(ancestors(&a), vec![(CounterName::Section, 1)], "祖先は reset_by が指す section だけ");
     assert_eq!(a.own, 1);
     assert_eq!(b.own, 2);
@@ -332,7 +317,6 @@ mod tests {
 
   #[test]
   fn shared_theorem_counter_resets_for_every_sharing_class() {
-    // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
     let policy = SemanticPolicy::from_style(&style);
@@ -342,11 +326,9 @@ mod tests {
     r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず"); // 共有カウンタ theorem = 1
     let before = r.increment_theorem(TheoremClass::Lemma).expect("採番されるはず"); // theorem = 2
 
-    // Act
     r.increment(CounterName::Section); // theorem クラスの reset_by で共有カウンタ theorem が 0 に戻る
     let after = r.increment_theorem(TheoremClass::Lemma).expect("採番されるはず");
 
-    // Assert
     assert_eq!(before.own, 2, "lemma は既定で theorem とカウンタを共有する");
     assert_eq!(after.own, 1, "theorem クラスの reset_by が共有カウンタを戻し、lemma の番号にも効く");
     assert!(after.ancestors.is_empty(), "lemma 自身は reset_by = none なので祖先なし");
@@ -354,31 +336,25 @@ mod tests {
 
   #[test]
   fn counter_value_of_part_has_no_ancestor() {
-    // Arrange
     let policy = default_policy();
     let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Part);
 
-    // Act
     let value = r.increment(CounterName::Part);
 
-    // Assert
     assert!(value.ancestors.is_empty(), "part を resets に含むカウンタは既定に無いので祖先なし");
     assert_eq!(value.own, 2);
   }
 
   #[test]
   fn value_of_reads_own_and_ancestors_by_name() {
-    // Arrange
     let policy = default_policy();
     let mut r = CounterRegistry::from_policy(&policy);
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Chapter);
 
-    // Act
     let value = r.increment(CounterName::Section);
 
-    // Assert
     assert_eq!(value.value_of(CounterName::Section), Some(1), "自身の値は kind から引ける");
     assert_eq!(value.value_of(CounterName::Chapter), Some(2), "祖先は名前で引ける");
     assert_eq!(value.value_of(CounterName::Figure), None, "値に載っていないカウンタは None");

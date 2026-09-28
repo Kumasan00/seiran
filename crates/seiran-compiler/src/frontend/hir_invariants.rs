@@ -195,11 +195,9 @@ fn same_source_parsed_twice_yields_identical_hir() {
 
 #[test]
 fn source_order_does_not_affect_ids_or_spans() {
-  // Arrange — 2 つのソースを用意し、B を 3 通りの文脈でパースする
   let source_a = "\\section{最初}\n\n本文 A です。";
   let source_b = "\\section{次}\n\n本文 B の $x^{2}$ です。";
 
-  // Act
   let alone = parse_source_for_test(source_b, SourceId::new(1)).unwrap();
   let a_then_b = {
     let a = parse_source_for_test(source_a, SourceId::new(0)).unwrap();
@@ -212,7 +210,6 @@ fn source_order_does_not_affect_ids_or_spans() {
     HirDocument::assemble(vec![b, a])
   };
 
-  // Assert — パース順・組み立て順によらず B の位置表と ID 列は同じ
   for document in [&a_then_b, &b_then_a] {
     let group = document.groups().iter().find(|g| return g.source_id == SourceId::new(1)).unwrap();
     assert_eq!(group.nodes, alone.group.nodes, "B の HIR はパース順に依存しないはず");

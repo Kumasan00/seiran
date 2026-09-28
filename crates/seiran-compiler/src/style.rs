@@ -311,7 +311,7 @@ mod tests {
 
   #[test]
   fn resolve_reference_paths_resolves_relative_csl_path_against_base_dir() {
-    // Arrange — style.toml に書かれた相対パスは `Style` の deserialize では正規化されるだけ
+    // style.toml に書かれた相対パスは `Style` の deserialize では正規化されるだけ
     let source = MemoryProjectSource::new().with_text("/project/styles/ieee.csl", "");
     let resolver = PathResolver::new(Path::new("/project"));
     let mut reference = ReferenceStyle {
@@ -319,17 +319,14 @@ mod tests {
       ..ReferenceStyle::default()
     };
 
-    // Act
     let errors = resolve_reference_paths(&mut reference, &source, &resolver);
 
-    // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     assert_eq!(reference.csl_path, Some(ProjectPath::new("/project/styles/ieee.csl")));
   }
 
   #[test]
   fn resolve_reference_paths_keeps_absolute_csl_path_as_is() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("/elsewhere/ieee.csl", "");
     let resolver = PathResolver::new(Path::new("/project"));
     let mut reference = ReferenceStyle {
@@ -337,17 +334,14 @@ mod tests {
       ..ReferenceStyle::default()
     };
 
-    // Act
     let errors = resolve_reference_paths(&mut reference, &source, &resolver);
 
-    // Assert
     assert!(errors.is_empty(), "登録済みの絶対パスはエラーにならないはず: {errors:?}");
     assert_eq!(reference.csl_path, Some(ProjectPath::new("/elsewhere/ieee.csl")));
   }
 
   #[test]
   fn resolve_reference_paths_reports_missing_files() {
-    // Arrange
     let source = FilesystemProjectSource;
     let resolver = PathResolver::new(Path::new("/unused"));
     let mut reference = ReferenceStyle {
@@ -356,10 +350,8 @@ mod tests {
       ..ReferenceStyle::default()
     };
 
-    // Act
     let errors = resolve_reference_paths(&mut reference, &source, &resolver);
 
-    // Assert
     assert_eq!(errors.len(), 2, "csl_path / locale_path 双方が報告されるはず: {errors:?}");
     assert!(errors.iter().any(|e| matches!(e, StyleValidationError::CslPathResolution { .. })));
     assert!(errors.iter().any(|e| matches!(e, StyleValidationError::LocalePathResolution { .. })));
@@ -367,43 +359,34 @@ mod tests {
 
   #[test]
   fn resolve_reference_paths_skips_none() {
-    // Arrange
     let source = FilesystemProjectSource;
     let resolver = PathResolver::new(Path::new("/unused"));
     let mut reference = ReferenceStyle::default();
 
-    // Act
     let errors = resolve_reference_paths(&mut reference, &source, &resolver);
 
-    // Assert
     assert!(errors.is_empty());
   }
 
   #[test]
   fn load_reads_through_project_source() {
-    // Arrange
     let source = MemoryProjectSource::new().with_text("/project/style.toml", "");
     let path = ProjectPath::new("/project/style.toml");
 
-    // Act
     let style =
       load(&source, Some(&path), &PathResolver::new(Path::new("/project"))).expect("空の TOML は既定値になるはず");
 
-    // Assert
     assert_eq!(style.text.font_size, Style::default().text.font_size);
   }
 
   #[test]
   fn load_reports_missing_csl_path_without_touching_real_disk() {
-    // Arrange
     let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
     let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
     let path = ProjectPath::new("/project/style.toml");
 
-    // Act
     let result = load(&source, Some(&path), &PathResolver::new(Path::new("/project")));
 
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::Validation(failure))
@@ -413,17 +396,14 @@ mod tests {
 
   #[test]
   fn load_attributes_a_missing_csl_path_to_the_style_file_it_read() {
-    // Arrange
     let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
     let source = MemoryProjectSource::new().with_text("/project/themes/custom.toml", toml);
     let path = ProjectPath::new("/project/themes/custom.toml");
 
-    // Act
     let Err(failures) = load(&source, Some(&path), &PathResolver::new(Path::new("/project"))) else {
       panic!("CSL パスの違反を期待");
     };
 
-    // Assert
     let message = failures.first().to_string();
     assert!(
       message.starts_with("/project/themes/custom.toml: CSL スタイルファイルが見つかりません"),
@@ -433,15 +413,12 @@ mod tests {
 
   #[test]
   fn load_aggregates_both_missing_csl_and_locale_paths() {
-    // Arrange
     let toml = "[reference]\ncsl_path = \"missing.csl\"\nlocale_path = \"missing.xml\"\n";
     let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
     let path = ProjectPath::new("/project/style.toml");
 
-    // Act
     let result = load(&source, Some(&path), &PathResolver::new(Path::new("/project")));
 
-    // Assert
     let Err(failures) = result else {
       panic!("2 件の検証エラーを期待");
     };
@@ -739,15 +716,12 @@ mod parse_tests {
 
   #[test]
   fn load_fails_on_nonexistent_path() {
-    // Arrange
     let path = std::path::PathBuf::from("/nonexistent/style.toml");
     let source = FilesystemProjectSource;
     let base_dir = path.parent().expect("フィクスチャパスは親ディレクトリを持つはず");
 
-    // Act
     let result = load(&source, Some(&ProjectPath::new(&path)), &PathResolver::new(base_dir));
 
-    // Assert
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
       Err(ReadStyleError::ReadFile { .. })

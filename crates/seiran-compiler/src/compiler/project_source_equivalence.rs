@@ -29,7 +29,6 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
 
 #[test]
 fn shared_font_path_is_read_only_once() {
-  // Arrange
   let project = TestProject::builder().absolute_base_dir().build();
   assert!(
     project.font_keys().len() < FontType::ALL.len(),
@@ -37,10 +36,8 @@ fn shared_font_path_is_read_only_once() {
     project.font_keys()
   );
 
-  // Act
   let _compilation = project.compile().expect("memory adapter 経由のコンパイル");
 
-  // Assert
   for font_key in project.font_keys() {
     assert_eq!(project.memory_source().read_count(font_key), 1, "フォントの読込は 1 回だけのはず: {font_key:?}");
   }

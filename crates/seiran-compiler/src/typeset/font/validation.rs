@@ -513,12 +513,10 @@ mod tests {
 
   #[test]
   fn unreadable_script_subtable_warns_that_language_support_is_unverified() {
-    // Arrange
     let bytes = script_list_bytes(0xffff);
     let script_list = ScriptList::read(FontData::new(&bytes)).expect("ScriptList 自体は読めるはず");
     let mut warnings = Vec::new();
 
-    // Act
     check_script_in_table(
       Ok(script_list),
       Tag::new(b"kana"),
@@ -529,7 +527,6 @@ mod tests {
       &mut warnings,
     );
 
-    // Assert
     let [
       FontWarning::UnreadableScript {
         font_type,
@@ -567,12 +564,10 @@ mod tests {
 
   #[test]
   fn readable_script_without_the_language_warns_unsupported_language() {
-    // Arrange
     let bytes = script_list_bytes(8);
     let script_list = ScriptList::read(FontData::new(&bytes)).expect("ScriptList 自体は読めるはず");
     let mut warnings = Vec::new();
 
-    // Act
     check_script_in_table(
       Ok(script_list),
       Tag::new(b"kana"),
@@ -583,7 +578,6 @@ mod tests {
       &mut warnings,
     );
 
-    // Assert
     let [
       FontWarning::UnsupportedLanguage {
         script, language, ..

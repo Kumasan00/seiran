@@ -140,16 +140,13 @@ mod tests {
 
   #[test]
   fn bibliography_is_appended_after_body_with_continuing_heading_key() {
-    // Arrange
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{本文}\n");
     let ctx = context(&style);
 
-    // Act
     let document = analyzed.with_citations_for_test(Vec::new(), Some(bibliography()));
     let (layout, headings) = lower_sources_with_headings(&ctx, &document);
 
-    // Assert
     assert_eq!(headings.len(), 2, "{headings:?}");
     assert_eq!(headings[1].index, 1, "書誌見出しは本文の続きの index: {headings:?}");
     assert_eq!(headings[1].number, "", "書誌の見出しは無採番");
