@@ -76,7 +76,6 @@ impl<P: Placeholder> Analyzed<P> {
       }
 
       push_literal(&mut parts, literal_start..index);
-      // 対応する '}' まで名前を読み取る。途中で '{' が再出現したらネストとして扱う。
       let name_start = index + '{'.len_utf8();
       let mut name_end = name_start;
       let mut closed = false;
@@ -582,10 +581,8 @@ mod tests {
 
   #[test]
   fn expands_japanese_literals_without_breaking_utf8() {
-    // Arrange
     let template = CounterTemplate::parse("第{n}章・{chapter}節");
 
-    // Act
     let text = template.expand(|placeholder| {
       return match placeholder {
         CounterPlaceholder::Own => "3".to_string(),
@@ -594,16 +591,13 @@ mod tests {
       };
     });
 
-    // Assert
     assert_eq!(text, "第3章・２節");
   }
 
   #[test]
   fn expansion_is_single_pass_and_does_not_reinterpret_values() {
-    // Arrange — 埋める値そのものがプレースホルダの見た目をしている
     let template = RunningTemplate::parse("{title} — {page}");
 
-    // Act
     let text = template.expand(RunningValues {
       page: "7",
       pages: "9",
@@ -612,7 +606,6 @@ mod tests {
       date: "",
     });
 
-    // Assert
     assert_eq!(text, "{page} 章 — 7", "埋めた値の中の {{page}} は再解釈されない");
   }
 
@@ -647,7 +640,6 @@ mod tests {
   fn reports_multiple_problems_in_one_violation_in_source_order() {
     let message = violation(&NumberTemplate::parse("{a} } {b}")).unwrap();
 
-    // 1 テンプレート ＝ 違反 1 件（フィールド単位の集約は style::validate_values の担当）
     assert_eq!(
       message,
       "未知のプレースホルダ '{a}' があります; 対応する '{' のない '}' があります; \
@@ -723,17 +715,14 @@ mod tests {
 
   #[test]
   fn structural_expansion_keeps_literal_and_title_order() {
-    // Arrange
     let template = NumberTitleTemplate::parse("第{number}章 {title} 終");
 
-    // Act
     let nodes = template.expand(
       "3",
       || return vec![Node::Title("序論".to_string())],
       |literal| return Node::Literal(literal.to_string()),
     );
 
-    // Assert
     assert_eq!(
       nodes,
       vec![
@@ -795,10 +784,8 @@ mod tests {
 
   #[test]
   fn theorem_heading_omits_of_when_absent() {
-    // Arrange
     let template = TheoremHeadingTemplate::parse("{display_name} {number}{of}");
 
-    // Act
     let nodes = template.expand(
       TheoremHeadingValues {
         display_name: "Theorem",
@@ -809,14 +796,12 @@ mod tests {
       |literal| return Node::Literal(literal.to_string()),
     );
 
-    // Assert
     assert_eq!(nodes, vec![Node::Literal("Theorem 1".to_string())]);
   }
 
   #[test]
   #[should_panic(expected = "検証を通ったテンプレートだけが展開へ届く")]
   fn expanding_an_unvalidated_template_panics() {
-    // style::parse を通っていれば到達しない状態
     let template = NumberTemplate::parse("{nope}");
 
     let _ = template.expand("1");

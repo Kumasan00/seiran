@@ -161,46 +161,31 @@ mod tests {
 
   #[test]
   fn normalize_canonicalizes_locale_case() {
-    // Arrange
     let mut style = ReferenceStyle {
       locale: Some("EN-us".to_string()),
       ..ReferenceStyle::default()
     };
-
-    // Act
     style.normalize();
-
-    // Assert
     assert_eq!(style.locale.as_deref(), Some("en-US"));
   }
 
   #[test]
   fn normalize_canonicalizes_script_subtag() {
-    // Arrange
     let mut style = ReferenceStyle {
       locale: Some("zh-HANT".to_string()),
       ..ReferenceStyle::default()
     };
-
-    // Act
     style.normalize();
-
-    // Assert
     assert_eq!(style.locale.as_deref(), Some("zh-Hant"));
   }
 
   #[test]
   fn normalize_canonicalizes_underscore_separator() {
-    // Arrange
     let mut style = ReferenceStyle {
       locale: Some("ja_JP".to_string()),
       ..ReferenceStyle::default()
     };
-
-    // Act
     style.normalize();
-
-    // Assert
     assert_eq!(style.locale.as_deref(), Some("ja-JP"));
   }
 

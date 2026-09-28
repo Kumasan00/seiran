@@ -67,10 +67,10 @@ pub(crate) struct MathBlockStyle {
   pub number_side: NumberSide,
   /// 数式本体の揃え
   pub alignment: Alignment,
-  /// 行間（隣り合う行のベースライン間に挿入する追加アキ、pt）
+  /// 行間（隣り合う行のベースライン間に挿入する追加アキ）
   #[garde(custom(non_negative))]
   pub row_gap: Length,
-  /// 列間（`&` で分割した列の間隔、pt）
+  /// 列間（`&` で分割した列の間隔）
   #[garde(custom(non_negative))]
   pub column_gap: Length,
   /// 数式ブロックの上余白

@@ -79,13 +79,8 @@ mod tests {
 
   #[test]
   fn deserializes_partial_with_defaults() {
-    // Arrange
     let toml = "enabled = true\n";
-
-    // Act
     let style: TitlePageStyle = toml::from_str(toml).unwrap();
-
-    // Assert
     assert!(style.enabled);
     assert!((style.author_font_size.to_pt() - 18.0).abs() < f32::EPSILON);
   }

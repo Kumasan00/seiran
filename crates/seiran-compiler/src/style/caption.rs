@@ -61,13 +61,8 @@ mod tests {
 
   #[test]
   fn deserializes_partial_table_with_default_font_size() {
-    // Arrange
     let toml = "format = \"Figure {number}: {title}\"\n";
-
-    // Act
     let style: CaptionStyle = toml::from_str(toml).unwrap();
-
-    // Assert
     assert_eq!(style.format.as_str(), "Figure {number}: {title}");
     assert!((style.font_size.to_pt() - 11.0).abs() < f32::EPSILON);
     assert_eq!(style.font_kind, FontKind::Serif);
@@ -82,13 +77,8 @@ mod tests {
 
   #[test]
   fn deserialize_overrides_font_kind() {
-    // Arrange
     let toml = "font_kind = \"sans_serif\"\n";
-
-    // Act
     let style: CaptionStyle = toml::from_str(toml).expect("`[figure.caption]` の本体として読めるはず");
-
-    // Assert
     assert_eq!(style.font_kind, FontKind::SansSerif);
   }
 }

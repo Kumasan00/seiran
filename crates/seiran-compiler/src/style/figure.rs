@@ -13,7 +13,7 @@ use crate::{
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct FigureStyle {
-  /// キャプション本体（書式テンプレートとフォントサイズ）
+  /// キャプション本体（書式テンプレート・フォントサイズ・書体）
   #[garde(dive)]
   pub caption: CaptionStyle,
   /// 図ブロックの上余白

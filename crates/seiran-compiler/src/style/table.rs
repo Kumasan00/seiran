@@ -15,7 +15,7 @@ use crate::{
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct TableStyle {
-  /// キャプション本体（書式テンプレートとフォントサイズ）
+  /// キャプション本体（書式テンプレート・フォントサイズ・書体）
   #[garde(dive)]
   pub caption: CaptionStyle,
   /// 表ブロックの上余白
@@ -82,15 +82,10 @@ mod tests {
 
   #[test]
   fn deserialize_overrides_head_font_kind() {
-    // Arrange
     let toml = "
 head_font_kind = \"sans_serif_bold\"
 ";
-
-    // Act
     let style: TableStyle = toml::from_str(toml).expect("`[table]` の本体として読めるはず");
-
-    // Assert
     assert_eq!(style.head_font_kind, FontKind::SansSerifBold);
   }
 }

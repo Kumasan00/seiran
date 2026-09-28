@@ -19,8 +19,6 @@ pub(crate) struct TocStyle {
   #[garde(length(chars, min = 1))]
   pub title: String,
   /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
-  ///
-  /// `crate::document::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
   #[garde(range(min = 1, max = 6))]
   pub max_depth: u32,
   /// 目次エントリのフォントサイズ

@@ -165,7 +165,7 @@ pub(crate) struct TheoremStyle {
   /// （counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
   #[garde(dive)]
   pub number_format: CounterTemplate,
-  /// 採番しない（`proof` 等）。`true` のとき番号は付かない
+  /// 採番しない（`proof` 等）
   pub unnumbered: bool,
   /// QED マーク（`proof` 末尾に配置する記号）。`None` のときマークなし
   #[garde(inner(length(chars, min = 1)))]
@@ -434,7 +434,6 @@ mod tests {
   };
 
   /// `Theorems` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
-  /// 本番では `Style.theorems` が同形でこの型を保持する。
   #[derive(Debug, serde::Deserialize)]
   struct TheoremsWrapper {
     theorems: Theorems,
@@ -657,7 +656,7 @@ bottom_margin = \"8pt\"
 
   #[test]
   fn partial_proof_override_keeps_default_qed_mark() {
-    // Arrange — `qed_mark` を書かない差分指定は既定の QED マークを消さない
+    // Arrange
     let toml = "
 [theorems.proof]
 display_name = \"証明\"
@@ -684,107 +683,86 @@ display_name = \"証明\"
 
   #[test]
   fn override_proof_of_template_localizes_prefix() {
-    // Arrange
     let toml = "
 [theorems.proof.style]
 heading_with_of = \"{display_name}（{of} の証明）\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
 
-    // Assert
     assert_eq!(wrapper.theorems.proof.style.heading_with_of.as_str(), "{display_name}（{of} の証明）");
     assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
   }
 
   #[test]
   fn override_reset_by_is_applied() {
-    // Arrange
     let toml = "
 [theorems.theorem]
 reset_by = \"section\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
 
-    // Assert
     assert_eq!(wrapper.theorems.theorem.reset_by, TheoremReset::Section);
   }
 
   #[test]
   fn rejects_unknown_class_key() {
-    // Arrange
     let toml = "
 [theorems.conjecture]
 display_name = \"Conjecture\"
 ";
 
-    // Act
     let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
 
-    // Assert
     assert!(result.is_err(), "未知のクラス名は TOML パース時に拒否されるべき: {result:?}");
   }
 
   #[test]
   fn rejects_unknown_field_key() {
-    // Arrange
     let toml = "
 [theorems.theorem]
 displ_name = \"Theorem\"
 ";
 
-    // Act
     let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
 
-    // Assert
     assert!(result.is_err(), "未知のフィールド名は拒否されるべき: {result:?}");
   }
 
   #[test]
   fn accepts_number_format_override() {
-    // Arrange
     let toml = "
 [theorems.theorem]
 number_format = \"{section}.{n}\"
 ";
 
-    // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
 
-    // Assert
     assert_eq!(wrapper.theorems.theorem.number_format.as_str(), "{section}.{n}");
   }
 
   #[test]
   fn rejects_renamed_format_key() {
-    // Arrange
     let toml = "
 [theorems.theorem]
 format = \"{section}.{n}\"
 ";
 
-    // Act
     let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
 
-    // Assert
     assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される: {result:?}");
   }
 
   #[test]
   fn rejects_unknown_nested_style_key() {
-    // Arrange
     let toml = "
 [theorems.theorem.style]
 font_knd = \"serif\"
 ";
 
-    // Act
     let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
 
-    // Assert
     assert!(result.is_err(), "ネストした未知のフィールド名は拒否されるべき: {result:?}");
   }
 

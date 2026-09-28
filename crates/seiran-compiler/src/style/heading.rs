@@ -232,7 +232,6 @@ mod tests {
   }
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。
-  /// 本番では `Style.heading` が同形でこの型を保持する。
   #[derive(Debug, serde::Deserialize)]
   struct HeadingWrapper {
     heading: HeadingStyles,
@@ -333,31 +332,21 @@ mod tests {
 
   #[test]
   fn heading_styles_rejects_unknown_level_key() {
-    // Arrange
     let toml = "
 [heading.unknown_level]
 font_size = \"12pt\"
 ";
-
-    // Act
     let result: Result<HeadingWrapper, _> = toml::from_str(toml);
-
-    // Assert
     assert!(result.is_err(), "未知のレベル名は拒否されるべき: {result:?}");
   }
 
   #[test]
   fn heading_styles_rejects_base_scalar_keys() {
-    // Arrange
     let toml = "
 [heading]
 font_kind = \"sans_serif_bold\"
 ";
-
-    // Act
     let result: Result<HeadingWrapper, _> = toml::from_str(toml);
-
-    // Assert
     assert!(result.is_err(), "[heading] 直下のスカラー指定は拒否されるべき: {result:?}");
   }
 

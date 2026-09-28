@@ -152,7 +152,7 @@ pub(crate) struct CounterStyle {
   pub number_format: CounterTemplate,
   /// 各プレースホルダの数字表記スタイル（参照先カウンタは参照先のスタイルが使われる）
   pub number_style: NumberStyle,
-  /// `\ref{label}` の表示テンプレート。`{number}` で `format` の出力、`{display_name}` で
+  /// `\ref{label}` の表示テンプレート。`{number}` で `number_format` の出力、`{display_name}` で
   /// 種別名を埋め込む
   ///
   /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`
@@ -374,7 +374,7 @@ display_name = \"図\"
     // Act
     let counters: Counters = toml::from_str(toml).unwrap();
 
-    // Assert — 書いたキーだけが変わり、残り 4 キーは figure の既定、他カウンタは無傷
+    // Assert
     assert_eq!(counters.figure.display_name, "図");
     assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
@@ -407,7 +407,7 @@ display_name = \"図\"
 
   #[test]
   fn full_entry_overrides_every_key() {
-    // Arrange — 従来どおり 5 キー全部を書いた形
+    // Arrange
     let toml = "
 [figure]
 display_name = \"Fig.\"
@@ -430,51 +430,37 @@ resets = [\"equation\"]
 
   #[test]
   fn resets_override_replaces_default_list() {
-    // Arrange — `resets = []` は既定のリセット列の解除
     let toml = "
 [chapter]
 resets = []
 ";
-
-    // Act
     let counters: Counters = toml::from_str(toml).unwrap();
-
-    // Assert
     assert!(counters.chapter.resets.is_empty());
     assert_eq!(counters.chapter.display_name, "Chapter");
   }
 
   #[test]
   fn empty_table_equals_default() {
-    // Arrange
     let parsed: Counters = toml::from_str("").unwrap();
-
-    // Act — `CounterStyle` は `PartialEq` を持たないので全フィールドを出す `Debug` 表現で比べる
+    // `CounterStyle` は `PartialEq` を持たないので全フィールドを出す `Debug` 表現で比べる
     let parsed_text = format!("{parsed:?}");
     let default_text = format!("{:?}", Counters::default());
-
-    // Assert
     assert_eq!(parsed_text, default_text);
   }
 
   #[test]
   fn rejects_renamed_format_key() {
-    // Arrange — 部分指定でも未知キーは拒否される（P6）
+    // 部分指定でも未知キーは拒否される（P6）
     let toml = "
 [figure]
 format = \"{chapter}.{n}\"
 ";
-
-    // Act
     let result: Result<Counters, _> = toml::from_str(toml);
-
-    // Assert
     assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される");
   }
 
   #[test]
   fn counters_rejects_unknown_counter_name() {
-    // Arrange
     let toml = "
 [example]
 display_name = \"Example\"
@@ -483,17 +469,12 @@ number_style = \"arabic\"
 ref_format = \"{number}\"
 resets = []
 ";
-
-    // Act
     let result: Result<Counters, _> = toml::from_str(toml);
-
-    // Assert
     assert!(result.is_err(), "未知のカウンタ名 `example` は TOML パース時に拒否される");
   }
 
   #[test]
   fn counters_rejects_unknown_reset_target() {
-    // Arrange
     let toml = "
 [chapter]
 display_name = \"Chapter\"
@@ -502,11 +483,7 @@ number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = [\"example\"]
 ";
-
-    // Act
     let result: Result<Counters, _> = toml::from_str(toml);
-
-    // Assert
     assert!(result.is_err(), "未知の reset 対象 `example` は TOML パース時に拒否される");
   }
 

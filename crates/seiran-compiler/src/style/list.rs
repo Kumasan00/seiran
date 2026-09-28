@@ -142,7 +142,6 @@ mod tests {
 
   #[test]
   fn rejects_renamed_ordered_format_key() {
-    // Arrange
     let toml = "
 indent = \"20pt\"
 item_margin_bottom = \"4pt\"
@@ -150,11 +149,8 @@ unordered_marker = \"•\"
 ordered_format = \"{number}.\"
 marker_font_kind = \"serif\"
 ";
-
-    // Act
     let result: Result<ListStyle, _> = toml::from_str(toml);
 
-    // Assert
     assert!(result.is_err(), "旧キー `ordered_format` は未知フィールドとして拒否される");
   }
 
