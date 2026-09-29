@@ -203,7 +203,6 @@ fn diagnostic_multi_source_resolve_error_attributes_second_source() {
 
 #[test]
 fn diagnostic_undefined_ref() {
-  // `\ref` の未定義ラベル
   let failure = compile_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
   assert_eq!(codes(&failure), vec!["semantics::unresolved_reference".to_string()]);
@@ -212,7 +211,6 @@ fn diagnostic_undefined_ref() {
 
 #[test]
 fn diagnostic_unknown_cite_key() {
-  // `\cite` の未知キー
   let failure = compile_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
 
   // 同じソース内の 2 箇所は 1 診断のラベルにまとまる
@@ -242,7 +240,6 @@ fn diagnostic_duplicate_label() {
   // 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
   let failure = compile_err(&["tests/text/diagnostics/duplicate_label.sei"]);
 
-  // 束ねず 2 件並ぶ
   assert_eq!(codes(&failure), vec!["semantics::duplicate_label".to_string(); 2]);
   assert_matches_golden("duplicate_label", &render_failure(failure));
 }
@@ -269,7 +266,6 @@ fn diagnostic_mixed_semantics_errors_follow_document_order() {
   // 重複ラベル・未知引用キー・未解決参照が混在する入力
   let failure = compile_err(&["tests/text/diagnostics/mixed_semantics.sei"]);
 
-  // カテゴリ順ではなく文書順に全件並ぶ
   assert_eq!(
     codes(&failure),
     vec![
@@ -283,7 +279,6 @@ fn diagnostic_mixed_semantics_errors_follow_document_order() {
 
 #[test]
 fn diagnostic_missing_image() {
-  // 画像アセット欠落（組版の画像読込が `ProjectSource::read_bytes` で検出）
   let failure = compile_err(&["tests/text/diagnostics/missing_image.sei"]);
 
   assert_matches_golden("missing_image", &render_failure(failure));
@@ -303,9 +298,8 @@ fn diagnostic_unsupported_image_format() {
 
 #[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
-  // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる
-  // （`FontSystemError::Validation` の `transparent` 委譲）。宣言は Japanese Serif → Serif の順だが、
-  // 報告は `FontType::ALL` の順（Serif が先）になるはず
+  // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる。
+  // 宣言は Japanese Serif → Serif の順だが、報告は `FontType::ALL` の順（Serif が先）になるはず
   let project = TestProject::builder()
     .config_toml(|table| {
       set_unknown_variation_axis(table, "japanese_serif");
@@ -403,7 +397,6 @@ fn diagnostic_config_validation_field() {
 
   let failure = project.compile_err();
 
-  // 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま
   assert_eq!(codes(&failure), vec!["project::config::validation::field".to_string()]);
   let rendered = render_failure(failure);
   assert!(rendered.contains(&format!("{config_path}: 'image.max_dpi'")), "{rendered}");

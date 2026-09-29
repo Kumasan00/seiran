@@ -72,8 +72,7 @@ pub struct Compilation {
   pub warnings: Warnings,
   /// コンパイル結果の統計情報
   pub statistics: BuildStatistics,
-  /// 出力 PDF の保存先。書き込みを行う呼び出し側だけが使う出力情報で、組版の成果ではなく
-  /// 検証済み設定から決まる値
+  /// 出力 PDF の保存先（組版の成果ではなく検証済み設定から決まる値）
   pub pdf_path: PathBuf,
 }
 
@@ -137,8 +136,7 @@ struct Compiled {
 /// 入力読込から組版までの phase を順に実行し、各段が返した警告を段の実行順で `warnings` へ積む。
 ///
 /// 警告は段が失敗しても捨てない — 段が返した警告は、その段や後段が失敗してもその時点で確定しているため。
-/// `warnings` へ積むのは各段の戻り値だけで、段の内側から直接積む経路は作らない。失敗した実行では
-/// 呼び出し元（[`compile`]）が積み終えた `warnings` を [`CompileFailure::with_warnings`] で添える。
+/// `warnings` へ積むのは各段の戻り値だけで、段の内側から直接積む経路は作らない。
 ///
 /// # Errors
 ///
@@ -182,9 +180,8 @@ fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPa
   return (resolver, root);
 }
 
-/// 入力読込 phase を実行する（production / test 共通）。
+/// 入力読込 phase を実行する。
 ///
-/// 読込順序とエラー集約は [`input::load`] が所有し、この関数が持つのは工程の記録（[`Phase`]）と完了 event だけ。
 /// 戻り値は読込の成否と config の警告の組（警告は失敗しても返る）。
 ///
 /// # Errors
@@ -204,8 +201,7 @@ fn load_inputs(
   return (inputs.map_err(CompileFailure::from), config_warnings);
 }
 
-/// 検証済み入力から意味解析済み文書までの 2 phase（frontend / semantics）を実行する
-/// （production / test 共通）。
+/// 検証済み入力から意味解析済み文書までの 2 phase（frontend / semantics）を実行する。
 ///
 /// # Errors
 ///

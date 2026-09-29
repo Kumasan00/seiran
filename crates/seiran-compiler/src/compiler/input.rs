@@ -5,9 +5,8 @@
 //! 両方を要求する）。横断検証は検証済み版面 `PreparedGeometry` の構築でもあり、その値は
 //! `CompilationInputs` が保持して組版へ渡す。横断検証まで通った後の文献・フォント・ソースは
 //! 検証済み config だけを入力にして互いの成果を必要としないので、実行順（文献 → フォント → ソース）の
-//! まま全部試し、失敗をこの順に集約する。この順序とエラー集約を知るのはこの module だけで、
-//! 呼び出し元（`compile`）は [`load`] を 1 回呼ぶだけになる。`config_path` は facade が解決済み。
-//! `resolver` も facade が 1 回構築したものを受け取る。
+//! まま全部試し、失敗をこの順に集約する。`config_path` は facade が解決済みで、`resolver` も facade が
+//! 1 回構築したものを受け取る。
 //!
 //! CSL スタイル・ロケールはここでは読まない — 引用箇所が 1 つも無ければ `.csl` を読まない
 //! という遅延は `semantics::analyze` の内側に閉じている。
@@ -45,8 +44,7 @@ pub(super) struct CompilationInputs {
   /// config × style の横断検証を通った版面（本文・前付け・後付けの寸法）。
   /// 組版はこの確定値を受け取り、幅・ページ幾何を再計算しない
   geometry: PreparedGeometry,
-  /// `\cite` の CSL 整形に使う文献データ。`semantics::analyze` へ共有参照として渡すので
-  /// `Arc` で持つ
+  /// `\cite` の CSL 整形に使う文献データ
   references: Arc<References>,
   /// 読込済みの全フォントバイナリ
   font_data: FontData,
@@ -154,7 +152,7 @@ fn read_independent_inputs(
   };
 }
 
-/// 段まるごとの失敗（後続の入力を構築できないもの）を 1 件の非空集合へ包む。
+/// 単一のエラーを 1 件の非空集合へ包む。
 fn single<E: Into<CompileError>>(error: E) -> Failures<CompileError> { return Failures::single(error.into()); }
 
 /// 段が集めた非空集合を、そのまま `CompileError` の非空集合へ持ち上げる。
@@ -189,10 +187,6 @@ mod tests {
     config::test_support::{make_font_sections, valid_output_section, valid_pdf_section},
   };
 
-  /// `project::SourceSet` の素のエラーを位置付き診断へ組み替えることを固定する。
-  ///
-  /// `code` と役割・パスを含むメッセージの組み立ては `project` ではなくここの責務なので、
-  /// `SourceSet::read` 側のテストではこの層を通らない。
   #[test]
   fn read_sources_maps_missing_file_to_read_text_file_diagnostic() {
     let source = MemoryProjectSource::new().with_text("/project/a.sei", "content-a");

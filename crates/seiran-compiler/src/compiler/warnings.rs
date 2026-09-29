@@ -9,15 +9,15 @@ use crate::compiler::BoxedDiagnostic;
 /// [`Warnings`] の借用反復子。要素は保持する診断の借用で、[`CompileFailure::diagnostics`](crate::CompileFailure::diagnostics)
 /// と同じ型になる。
 ///
-/// 変換を関数ポインタにしてあるのは、`IntoIterator for &Warnings` の関連型として名指しできるようにするため
-/// （closure の型は名指しできず、専用の反復子型を公開すると公開 API の名前が 1 つ増える）。
+/// 変換が関数ポインタなのは、`IntoIterator for &Warnings` の関連型として名指しするため（closure の型は
+/// 名指しできない）。
 type DiagnosticIter<'a> = Map<slice::Iter<'a, BoxedDiagnostic>, fn(&BoxedDiagnostic) -> &(dyn Diagnostic + 'static)>;
 
 /// `compile` が成果物または失敗と一緒に返す warning 診断の集合。
 ///
 /// 中身は型消去済みの `Box<dyn Diagnostic>` で、[`CompileFailure`](crate::CompileFailure) の leaf と同じ保持形。
 /// 公開する操作は描画済みの文字列ではなく診断の借用なので、表示の方式（端末・ファイル・体裁）は呼び出し側が
-/// 決める。致命的エラーはこの型ではなく `CompileFailure` が持つ（error と warning で公開型を共用しない）。
+/// 決める。致命的エラーはこの型ではなく `CompileFailure` が持つ。
 /// `CompileFailure` と違って空は正当な状態（警告なしでコンパイルが通るのが通常）なので、
 /// [`Default`] で空を構築できる。
 ///
@@ -40,7 +40,7 @@ impl Warnings {
     self.diagnostics.push(Box::new(warning));
   }
 
-  /// warning severity の診断を、渡された順にまとめて追加する（段が返した警告の列を積むため）。
+  /// warning severity の診断を、渡された順にまとめて追加する。
   pub(crate) fn extend<D: Diagnostic + Send + Sync + 'static, I: IntoIterator<Item = D>>(&mut self, warnings: I) {
     for warning in warnings {
       self.push(warning);

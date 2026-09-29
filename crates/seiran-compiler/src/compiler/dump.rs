@@ -72,8 +72,7 @@ fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
 
 /// 1 描画命令を書き出す（インデント 2）。
 ///
-/// `run.color` は `crate::color::Color` の RGB 成分から書き出す（型の Debug 表記に依存しない形で
-/// `Color([r, g, b])` を作る）— golden の文字列比較を変えないため。
+/// `run.color` は型の `Debug` 表記に依存しないよう、RGB 成分から `Color([r, g, b])` の形で書き出す。
 fn dump_paint_op(out: &mut String, op: &PaintOp, resources: &PublicationResources) {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {

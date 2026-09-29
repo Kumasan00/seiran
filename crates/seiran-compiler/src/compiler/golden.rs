@@ -32,11 +32,8 @@
 //!   経由）・[`index_entries_follow_the_page_the_content_lands_on`]・
 //!   [`footnote_links_follow_the_page_the_line_lands_on`]・
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
-//!   [`figure_images_resolve_to_expected_display_sizes`]（`figure.sei` は golden 対象外なので、
-//!   画像の確定描画寸法はここで固定する）・
-//!   [`figure_image_without_size_fits_two_column_width_not_text_width`]（2 段組みでサイズ両省略の
-//!   画像が `body_column_width` にフィットすることを固定し、本文パスの呼び出し元が段幅を
-//!   `text_width` と取り違える退行を検出する）・
+//!   [`figure_images_resolve_to_expected_display_sizes`]・
+//!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
 //!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
@@ -160,8 +157,8 @@ fn layout_dumps_match_golden() {
 /// 組版中間表現を取り出すテストヘルパが `input::load` の横断検証を迂回していないことの検査。
 ///
 /// 余白の合計が用紙幅を超える config × style は `typeset::PreparedGeometry::prepare`（config と style の
-/// 両方を要求する横断検証）でしか検出できない。`TestProject::layout` が将来
-/// `CompilationInputs` を直接組み立てる経路へ戻ると、この診断が出なくなって失敗する。
+/// 両方を要求する横断検証）でしか検出できない。`TestProject::layout` が `input::load` を迂回すると、
+/// この診断が出なくなって失敗する。
 #[test]
 fn layout_helper_reports_cross_input_layout_validation() {
   // 左右余白の合計（600mm）が fixture の用紙幅（595mm）を超える

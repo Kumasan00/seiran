@@ -12,10 +12,7 @@ use crate::{project::SourceSet, source::SourceId};
 /// leaf 側（`frontend` / `semantics`）はソース本文を複製せず `SourceId` と span だけを持ち、
 /// 本文の一元管理は [`SourceSet`] の責務。この adapter は `source_code` **だけ**を補い、
 /// `code` / `severity` / `help` / `url` / `labels` / `related` / `diagnostic_source` は
-/// すべて内側の診断へ委譲する（`#[diagnostic(transparent)]` は `source_code` まで内側へ
-/// 委譲してしまうため使えず、手書きする）。メッセージ（`Display`）も書式パラメータごと内側へ委譲する。
-///
-/// これが compiler seam の唯一の source attribution 手段で、段ごとの専用 wrapper は持たない。
+/// すべて内側の診断へ委譲する。メッセージ（`Display`）も書式パラメータごと内側へ委譲する。
 ///
 /// 別ソースの位置を示す関連診断（重複ラベルの最初の定義など）も、[`SourceDiagnostic::with_related_in`]
 /// でそのソースの本文を添えてから持つ — miette は本文を持たない関連診断を主診断の本文で描くので、
@@ -35,8 +32,7 @@ impl<E> SourceDiagnostic<E> {
   /// `source_id` のソース本文を [`SourceSet`] から引いて `inner` に添える。
   ///
   /// `source_id` は `SourceSet::register` が発行した値をそのまま運んできたものなので、
-  /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。本文は複製せず
-  /// `SourceSet` の割り当てを共有する — 同じソースに E 件の診断が付いても本文の追加割り当ては無い。
+  /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
   pub(super) fn attach(sources: &SourceSet, source_id: SourceId, inner: E) -> Self {
     let entry = sources.get(source_id);
     return SourceDiagnostic {

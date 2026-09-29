@@ -23,10 +23,9 @@
 //!
 //! # 設定の上書き
 //!
-//! config.toml / style.toml の差分はどちらも**生の TOML テーブルへ 1 回だけ**適用する（`ProjectConfig` も
-//! `Style` も `Serialize` を持たず、production が実際に読む表現もこの TOML なので、型付きの並行実装を
-//! 作らない）。上書きした値も `input::load` が本番と同じ deserialize・検証で読み直すので、キー名の
-//! 打ち間違い（`deny_unknown_fields`）や型違いはテストの失敗として現れる。上書きが 1 つも無いファイルは
+//! config.toml / style.toml の差分はどちらも**生の TOML テーブルへ 1 回だけ**適用する。上書きした値も
+//! `input::load` が本番と同じ deserialize・検証で読み直すので、キー名の打ち間違い（`deny_unknown_fields`）
+//! や型違いはテストの失敗として現れる。上書きが 1 つも無いファイルは
 //! 実ファイルのテキストをそのまま登録する（再直列化を挟まない）。
 
 use std::{
@@ -121,10 +120,7 @@ impl TestProject {
 
   /// 入力読込から組版までを production と同じ実装で通し、組版中間表現を取り出す。
   ///
-  /// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
-  /// `PlacedBlock` の幾何）を検査するテストだけが使う。phase の処理は再実装せず
-  /// `compiler::load_inputs` / `compiler::analyze_document` / `typeset::layout_for_test` を
-  /// 呼ぶだけなので、`input::load` の横断検証も組版の段順序も迂回できない。
+  /// phase の処理を再実装しないので、`input::load` の横断検証も組版の段順序も迂回できない。
   ///
   /// # Errors
   ///
@@ -186,9 +182,6 @@ impl TestProjectBuilder {
   }
 
   /// `base_dir` をワークスペースルート（絶対パス）にする。
-  ///
-  /// `FilesystemProjectSource` と同じ入力を要求するテストだけが使う — 実 adapter は
-  /// カレントディレクトリ非依存であるために絶対パスを必要とする。
   pub(super) fn absolute_base_dir(mut self) -> Self {
     self.base_dir = workspace_root();
     return self;
@@ -377,9 +370,6 @@ fn string_array_field(table: &toml::value::Table, key: &str) -> Vec<String> {
 }
 
 /// 検証対象の機能に必要な style 差分を fixture 名ごとに適用する。
-///
-/// ページ余白は style が所有するので版面を変える上書きもここに置く。config 側の上書き
-/// （[`apply_fixture_config_overrides`]）は用紙寸法と言語だけを扱う。
 fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
   match name {
     "title_page" => {
@@ -389,20 +379,18 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "footer", "center", "{page}");
     },
     "toc" => set(table, "toc", "enabled", true),
-    // 索引のページ番号列を範囲表記へ畳む（既定は無効なので golden ではここで有効化する）
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
-    // 索引へ区分見出し（五十音行・A–Z）を挟む（既定は無効なので golden ではここで有効化する）
     "index_groups" => set(table, "index", "group_headings", true),
     "hyphenation" => {
       set(table, "page", "margin_left", "275mm");
       set(table, "page", "margin_right", "275mm");
     },
-    // 本文 2 段組みで左段・右段の両方に脚注が着地する版面（用紙寸法の縮小は config 側が持つ）
+    // 本文 2 段組みで左段・右段の両方に脚注が着地する版面
     "footnote_columns" => {
       set(table, "columns", "count", 2);
       set_page_margins(table, "10mm", "10mm");
     },
-    // ページ単位採番が複数ページにまたがる版面にする（用紙寸法の縮小は config 側が持つ）
+    // ページ単位採番が複数ページにまたがる版面
     "footnote_per_page" => {
       set(table, "footnote", "numbering", "per_page");
       set_page_margins(table, "20mm", "15mm");
@@ -426,17 +414,14 @@ fn set_page_margins(table: &mut toml::value::Table, horizontal: &str, vertical: 
 fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
   match name {
     "hyphenation" => set(table, "document", "language", "en"),
-    // 本文 2 段組みで段の折返しが起きる版面にする（余白・段数は style の上書きが担う）
     "footnote_columns" => {
       set(table, "pdf", "width", "120mm");
       set(table, "pdf", "height", "60mm");
     },
-    // ページ単位採番が複数ページにまたがる版面にする（余白側は style の上書きが担う）
     "footnote_per_page" => {
       set(table, "pdf", "width", "150mm");
       set(table, "pdf", "height", "130mm");
     },
-    // 脚注の繰越（`footnote_split`）と、それに加えて表のページ跨ぎ（`index_split`）が起きる版面にする
     "footnote_split" | "index_split" => {
       set(table, "pdf", "width", "120mm");
       set(table, "pdf", "height", "85mm");

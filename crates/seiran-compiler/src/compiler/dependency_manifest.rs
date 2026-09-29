@@ -13,8 +13,7 @@ use crate::{
 /// この型の構築自体は新しい I/O を発生させない。
 #[derive(Debug, Clone)]
 pub struct DependencyManifest {
-  /// 設定ファイル自体のパス（`base_dir` 適用済み・正規化済みの解決後の値。`compile` へ渡した引数を
-  /// そのまま運ぶわけではない）
+  /// 設定ファイル自体のパス（`base_dir` 適用済み・正規化済みの解決後の値）
   pub config_path: PathBuf,
   /// スタイルファイルのパス（既定値使用時は `None`）
   pub style_path: Option<PathBuf>,
@@ -34,8 +33,6 @@ pub struct DependencyManifest {
 
 impl DependencyManifest {
   /// 解決済み設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
-  ///
-  /// 内部は解決済みの `ProjectPath` で運び、公開 interface の `PathBuf` へはここで 1 回だけ変換する。
   pub(super) fn collect(config_path: &ProjectPath, inputs: &CompilationInputs, image_paths: &[ProjectPath]) -> Self {
     let font_paths: BTreeSet<PathBuf> = FontType::ALL
       .iter()
@@ -54,7 +51,7 @@ impl DependencyManifest {
   }
 }
 
-/// 公開フィールド用に `ProjectPath` を `PathBuf` へ写す（値は同じ。型だけ公開 interface に合わせる）。
+/// 公開フィールド用に `ProjectPath` を `PathBuf` へ写す。
 fn to_path_buf(path: &ProjectPath) -> PathBuf { return path.as_ref().to_path_buf(); }
 
 #[cfg(test)]

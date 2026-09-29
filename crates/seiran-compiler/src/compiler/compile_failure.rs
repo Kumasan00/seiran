@@ -18,12 +18,10 @@ use crate::{
 /// メッセージ（`Display`）は主診断へ書式パラメータごと委譲する。
 ///
 /// 段別の内部エラー型は公開しない。crate の外から観測できるのは `miette::Diagnostic` としての姿と
-/// 診断 `code` だけなので、内部 phase の追加・統合が公開 interface の破壊変更にならない
-/// （呼び出し側の分類手段は Rust の enum variant ではなく安定した診断 `code`）。
+/// 診断 `code` だけ。
 ///
 /// error の列とは別に、**失敗するまでに確定した警告**（0 件以上）を [`CompileFailure::warnings`] で返す。
-/// 警告は `Diagnostic` としての姿（`related` / [`CompileFailure::into_report`] の描画）には載せない —
-/// error と warning は別の集合で、表示する呼び出し側が「確定済み警告 → 主エラー」の順に描く。
+/// 警告は `Diagnostic` としての姿（`related` / [`CompileFailure::into_report`] の描画）には載せない。
 #[derive(Debug, Display)]
 #[display("{primary}")]
 pub struct CompileFailure {
@@ -31,7 +29,7 @@ pub struct CompileFailure {
   primary: BoxedDiagnostic,
   /// 主診断と同時に報告する残りの診断（検出順）
   rest: Vec<BoxedDiagnostic>,
-  /// 失敗するまでに確定した警告（入力の論理順）。`compile` facade の出口で 1 回だけ添える
+  /// 失敗するまでに確定した警告（入力の論理順）
   warnings: Warnings,
 }
 
@@ -58,9 +56,6 @@ impl CompileFailure {
   }
 
   /// 失敗するまでに確定した warning 診断を、入力の論理順に返す（0 件もありうる）。
-  ///
-  /// error の集合（[`CompileFailure::diagnostics`]）とは別で、[`CompileFailure::into_report`] の描画にも
-  /// 含まれない。表示する呼び出し側は `into_report` で消費する前にこちらを借用して描く。
   #[must_use]
   pub fn warnings(&self) -> &Warnings { return &self.warnings; }
 
@@ -77,8 +72,7 @@ impl CompileFailure {
   /// [`miette::Report`] へ変換する。
   ///
   /// 1 件だけの場合は主診断をそのまま `Report` にする（[`miette::Report::new_boxed`]）ため、
-  /// 表示は leaf diagnostic 単体と完全に一致する（`CompileFailure` に包んだことによる
-  /// 追加の描画が無い）。複数件の場合はこの型自身を診断として包む。
+  /// 表示は leaf diagnostic 単体と完全に一致する。複数件の場合はこの型自身を診断として包む。
   /// 警告（[`CompileFailure::warnings`]）は含まない。
   #[must_use]
   pub fn into_report(self) -> miette::Report {
@@ -92,7 +86,7 @@ impl CompileFailure {
 /// 段が集めた非空の失敗集合を、そのまま公開の失敗へ平坦化する。
 ///
 /// [`Failures`] は `Diagnostic` を実装しない（集約は表示単位ではない）ので、ユーザー表示になるのは
-/// 個々の leaf diagnostic だけ。集約そのものを表す診断は先頭にも途中にも現れない。
+/// 個々の leaf diagnostic だけ。
 impl<E: Diagnostic + Send + Sync + 'static> From<Failures<E>> for CompileFailure {
   fn from(failures: Failures<E>) -> Self {
     let (first, rest) = failures.into_parts();

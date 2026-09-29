@@ -16,10 +16,6 @@ use crate::{
 /// `transparent` でそのまま委譲し、ユーザーが最初に読むメッセージが常に修正可能な leaf に
 /// なるようにする。自前のバリアントを持つのは、内側が `SourceReadError` で診断を持たず、
 /// パス入りのメッセージと help をこの型自身が与える `ReadTextFile` 1 つだけ。
-///
-/// 可視性が `pub(in ...)` 形なのは、この型が `input::load` の `pub(super)` な
-/// シグネチャに現れるため — `compiler` module 全体から名指しできないと rustc の
-/// `private_interfaces` が落ちる。`compiler` の外に消費者はいないので `pub(crate)` へは広げない。
 #[derive(Debug, Error, Diagnostic)]
 pub(in crate::compiler) enum CompileError {
   /// テキストファイルの読み込みエラー
