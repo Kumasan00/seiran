@@ -5,7 +5,7 @@
 //! [`CitationSiteFacts`]）と「そこから作る生成物」（[`generate_citations`]）の 2 段構成で、
 //! 著者が書いた文書木（HIR）へは一切書き戻さない。引用の同一性（[`CitationId`]）・入力契約
 //! （[`CitationSiteFacts`]）・生成物の語彙（[`BibliographyEntry`] / [`GeneratedInline`]）はいずれも
-//! この module が所有する（#333）。生成物の collection と「全引用箇所の表示が生成済み」という
+//! この module が所有する。生成物の collection と「全引用箇所の表示が生成済み」という
 //! 完全性は [`GeneratedCitations`] が隠し、利用側は `NodeId` で表示を引く query だけを見る。
 
 mod csl_json;

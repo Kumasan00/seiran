@@ -7,7 +7,7 @@
 //! typeset 側の責務で、ここでは一切行わない。
 //!
 //! [`fn@analyze`] の後に初めて成立する意味上の識別子（[`LabelId`] / [`HeadingKey`]）も本 module が
-//! 所有する（`ids` 子 module、#334）。組版側はこれを到達先の名前空間として使うだけで発行しない。
+//! 所有する（`ids` 子 module）。組版側はこれを到達先の名前空間として使うだけで発行しない。
 
 mod analyze;
 mod citation;

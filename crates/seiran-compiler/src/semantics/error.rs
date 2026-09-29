@@ -45,7 +45,7 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 ///
 /// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
 /// 「このソースの `\cite` キーが参照定義と合っていない」という 1 問題として読めるため）。
-/// そのソースの未定義キーに `,` を含むものが 1 つでもあれば、help に `\,` の案内を足す（#751）。
+/// そのソースの未定義キーに `,` を含むものが 1 つでもあれば、help に `\,` の案内を足す。
 ///
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
 /// 添えて返す。1 箇所も無ければ空を返す。
@@ -81,16 +81,16 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
 
 /// 未定義キーに `,` を含むとき help の末尾に足す案内
 ///
-/// `,` を含むキーは `\,` で書いたもの（エスケープしない `,` はキーの区切りなのでキーに残らない。#731）。
-/// 2 キーを並べるつもりで `\,` と書いた誤りへ導くため、任意引数の未知キー診断の `\,` / `\=` の案内（#687）と
+/// `,` を含むキーは `\,` で書いたもの（エスケープしない `,` はキーの区切りなのでキーに残らない）。
+/// 2 キーを並べるつもりで `\,` と書いた誤りへ導くため、任意引数の未知キー診断の `\,` / `\=` の案内と
 /// 同じく書き方を示す。先頭の句点は基本文との継ぎ目。
 const ESCAPED_COMMA_HINT: &str =
   "。`\\,` はキーの中の文字 `,` です。キーを区切るにはエスケープしない `,` を使ってください";
 
 /// 引用箇所 1 件の未定義キーを並べたラベル文字列を組み立てる。
 ///
-/// キーは `\,` で書いた `,` を含みうる（#731）ので、区切りの `, ` だけでは `,` を含む 1 キーと
-/// 複数キーの境目が読めない。各キーをバッククォートで括り、境目を字面から一意にする（#750）。
+/// キーは `\,` で書いた `,` を含みうるので、区切りの `, ` だけでは `,` を含む 1 キーと
+/// 複数キーの境目が読めない。各キーをバッククォートで括り、境目を字面から一意にする。
 /// `,` を含まないキーも同じ規則で括る。
 fn unknown_keys_label(keys: &[String]) -> String {
   return format!("未定義の引用キー: {}", keys.iter().map(|key| return format!("`{key}`")).join(", "));
@@ -128,7 +128,7 @@ pub(crate) enum SemanticError {
     /// このソース内の `\cite{...}` ごとの未定義キー（文書順）
     #[label(collection)]
     labels: Vec<LabeledSpan>,
-    /// help の末尾に足す `\,` の案内（このソースの未定義キーに `,` を含むものが無ければ空文字列。#751）
+    /// help の末尾に足す `\,` の案内（このソースの未定義キーに `,` を含むものが無ければ空文字列）
     comma_hint: &'static str,
   },
 
@@ -149,7 +149,7 @@ pub(crate) enum SemanticError {
   ///
   /// 構築は [`SemanticError::duplicate_label`] だけ。2 回目の定義を主ラベルに、最初の定義が同じソースに
   /// あればそれを 2 本目のラベルに並べる。別ソースにあるときは 1 診断が `source_code` を 1 つしか
-  /// 持てないので、[`SemanticError::first_definition_elsewhere`] が返す関連診断で示す（#552）。
+  /// 持てないので、[`SemanticError::first_definition_elsewhere`] が返す関連診断で示す。
   #[error("ラベルが重複しています: {label}")]
   #[diagnostic(code(semantics::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
   DuplicateLabel {
@@ -220,7 +220,7 @@ impl SemanticError {
 /// 重複ラベルの最初の定義が主診断と別のソースにあるときの、その位置を示す関連診断
 ///
 /// 独立した修正箇所ではなく主診断と同じ 1 つの問題の別の位置なので、`code` は持たず severity は
-/// `Advice`（#376 の `related` の用途）。本文は持たず、compiler の `SourceDiagnostic` が
+/// `Advice`。本文は持たず、compiler の `SourceDiagnostic` が
 /// `source_id` のソース本文を添える。
 #[derive(Debug, Error, Diagnostic)]
 #[error("ラベル `{label}` の最初の定義")]
@@ -247,7 +247,7 @@ mod tests {
 
   #[test]
   fn unknown_keys_label_separates_keys_containing_comma() {
-    // `,` を含むキー（`\,` で書いたもの）と複数キーの境目が括りで一意に読める（#750）
+    // `,` を含むキー（`\,` で書いたもの）と複数キーの境目が括りで一意に読める
     let keys = ["kwan2014,doe2020".to_string(), "x".to_string()];
 
     assert_eq!(unknown_keys_label(&keys), "未定義の引用キー: `kwan2014,doe2020`, `x`");

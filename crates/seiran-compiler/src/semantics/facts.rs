@@ -2,7 +2,7 @@
 //!
 //! ここに入るのは「意味と識別」だけ。`number_format` / `ref_format` 適用後の表示文字列、
 //! CSL による引用ラベルと書誌、font・色・長さ・座標、脚注のページ単位表示番号はいずれも
-//! 後段の生成物なので持たない（issue #324）。
+//! 後段の生成物なので持たない。
 //!
 //! [`SemanticFacts`] のフィールドは `crate::semantics` の外から見えない。利用側は collection
 //! 構造を知らず、[`SemanticDocument`](crate::semantics::SemanticDocument) の目的別 query 経由でのみ
@@ -10,7 +10,7 @@
 //!
 //! ラベルの定義表（`label_definitions` / `declared_labels`）だけはフィールドを private にし、
 //! 書き込み口を [`SemanticFacts::declare_label`]（先勝ち）1 つに限る。同じ対応を別の勝ち方で
-//! 持つ表を作れないことを、呼び出し手順ではなく可視性で保証する（#666）。
+//! 持つ表を作れないことを、呼び出し手順ではなく可視性で保証する。
 
 use std::collections::HashMap;
 

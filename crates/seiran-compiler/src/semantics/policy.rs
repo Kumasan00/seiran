@@ -2,7 +2,7 @@
 //!
 //! `style.toml` の表示側フィールド（`number_format` / `ref_format` / `display_name` /
 //! `number_style`）はここに写さない。意味解析が表示設定を読めないことを、規約や property test
-//! ではなく型として保証するための境界（issue #324）。写すのは採番の値に影響する
+//! ではなく型として保証するための境界。写すのは採番の値に影響する
 //! `resets` / `counter` / `reset_by` / `unnumbered` と、見出しレベル → カウンタ名の写像だけ。
 
 use std::collections::HashMap;

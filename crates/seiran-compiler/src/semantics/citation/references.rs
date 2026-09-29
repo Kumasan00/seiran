@@ -439,7 +439,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_out_of_range_year_in_toml() {
-    // 整形器（citationberg の `VecDate`）は年を i16 で持つので、範囲外の年は引用時の変換で落ちる（#759）
+    // 整形器（citationberg の `VecDate`）は年を i16 で持つので、範囲外の年は引用時の変換で落ちる
     for (body, value) in [
       ("date-parts = [[40000, 5]]", "40000"),
       ("date-parts = [[32768]]", "32768"),
@@ -456,7 +456,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_string_year() {
-    // 数値として読める `"2014"` も同じ値の別綴りなので拒否し、読めない `"abc"` も読込で止める（#759）
+    // 数値として読める `"2014"` も同じ値の別綴りなので拒否し、読めない `"abc"` も読込で止める
     for body in [
       "date-parts = [[\"2014\", 5]]",
       "date-parts = [[\"abc\", 5]]",
@@ -515,7 +515,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_season_other_than_integer_one_to_four() {
     // 整形器は 1〜4 の整数（と数値文字列）しか季節として読まず、他は黙って捨てる。
-    // 数値文字列 `"1"` も別綴りなので拒否する（#741: 1 綴りだけ受理）
+    // 数値文字列 `"1"` も別綴りなので拒否する
     for value in ["\"spring\"", "\"1\"", "0", "5", "-1", "1.0"] {
       let message = issued_toml_error(&format!("date-parts = [[2014]]\nseason = {value}"));
 
@@ -554,7 +554,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_non_bool_circa_in_toml() {
-    // 整形器は `"true"` / `1` を真、それ以外を黙って偽とする。別綴りも含めて真偽値以外は拒否する（#741）
+    // 整形器は `"true"` / `1` を真、それ以外を黙って偽とする。別綴りも含めて真偽値以外は拒否する
     for value in ["\"yes\"", "\"true\"", "1", "0", "2"] {
       let message = issued_toml_error(&format!("date-parts = [[2014]]\ncirca = {value}"));
 
@@ -615,7 +615,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_non_finite_number_variable_in_toml() {
     // serde_json は有限でない数を `null` にし、CSL-JSON 化の前処理で未指定と区別できなくなるので、
-    // 読込時に拒否する（#764）。TOML は符号付きの綴りも浮動小数点数として読む
+    // 読込時に拒否する。TOML は符号付きの綴りも浮動小数点数として読む
     for key in ["volume", "page", "edition"] {
       for (value, shown) in [
         ("nan", "NaN"),

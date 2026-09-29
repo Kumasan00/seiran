@@ -2,7 +2,7 @@
 //!
 //! ラベル宣言・カウンタ構造値・見出しをここで確定し、`NodeId` をキーにした side table へ入れる。
 //! 文書木は読み取り専用で、書き戻しは一切行わない。表示文字列（`number_format` 等の適用結果）は
-//! 作らない — 表示は typeset 側の責務（issue #324）。
+//! 作らない — 表示は typeset 側の責務。
 //!
 //! 走査順は文書順（preorder）。数式ブロックは「行 → 環境」の順に採番する（`\split` / `\multiline` の
 //! 環境単位採番が行採番の後に来る）。
@@ -38,7 +38,7 @@ pub(super) fn collect_facts(
   let mut pending: Vec<PendingReference> = Vec::new();
   let mut unknown_citations: Vec<UnknownCitationSite> = Vec::new();
   // 重複ラベルは走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
-  // 続けても後続のカウンタ値はずれない（#376）。
+  // 続けても後続のカウンタ値はずれない。
   let mut duplicate_labels: Vec<(NodeId, SemanticError)> = Vec::new();
   for group in hir.groups() {
     let mut walker = Walker {
@@ -54,7 +54,6 @@ pub(super) fn collect_facts(
   }
 
   // 独立に検査できる 3 種（重複ラベル・未定義引用キー・未解決参照）を全件集め、文書順にマージする。
-  // カテゴリごとに早いもの勝ちで 1 件だけ返すと、1 回の実行で確認できる修正箇所が減るため（#376）。
   let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
@@ -302,7 +301,7 @@ impl Walker<'_, '_> {
   ///
   /// 走査は失敗しない — 重複ラベルを見つけても打ち切らず、最初の定義を有効なまま残して
   /// 診断を積み、後続の独立した問題（他の重複・未解決参照・未定義引用キー）も同じ 1 回の
-  /// 走査で見つける（#376）。
+  /// 走査で見つける。
   fn nodes(&mut self, nodes: &[HirNode]) {
     for node in nodes {
       self.node(node);
@@ -330,7 +329,7 @@ impl Walker<'_, '_> {
   /// ラベル宣言を記録し、重複していれば診断を積む（走査は打ち切らない）
   ///
   /// 採番はこの手前で済んでいるので、走査を続けても後続のカウンタ値はずれない。最初の定義が
-  /// 有効なまま残るのは、定義表が先勝ちの 1 つしかないことから従う（#376 / #666）。
+  /// 有効なまま残るのは、定義表が先勝ちの 1 つしかないことから従う。
   fn declare_label(&mut self, node: NodeId, label: Option<&str>, site: NodeId) {
     let Some(name) = label else {
       return;
@@ -678,7 +677,7 @@ mod tests {
 
   #[test]
   fn unknown_citation_key_containing_comma_explains_escaped_comma() {
-    // 2 キーを並べるつもりで `\,` と書いた（#751）
+    // 2 キーを並べるつもりで `\,` と書いた
     let hir = document(r"本文 \cite{kwan2014\,doe2020} です。");
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -720,7 +719,7 @@ mod tests {
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
-    // 2 回目を主ラベル、最初の定義（1 行目、offset 0）を 2 本目のラベルとして同じスニペットに示す（#552）
+    // 2 回目を主ラベル、最初の定義（1 行目、offset 0）を 2 本目のラベルとして同じスニペットに示す
     let SemanticError::DuplicateLabel { label, labels, .. } = failures.first() else {
       panic!("DuplicateLabel を期待: {failures:?}");
     };
@@ -822,7 +821,7 @@ mod tests {
 }
 
 /// `analyze` が確定する fact の完全性（variant ごとの必須 fact が欠けないこと）を固定する
-/// property test（issue #324）
+/// property test
 #[cfg(test)]
 mod completeness_tests {
   use proptest::prelude::*;

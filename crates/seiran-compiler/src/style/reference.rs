@@ -25,7 +25,7 @@ pub(crate) struct ReferenceStyle {
   ///
   /// `None`（既定）で引用（`\cite`）が存在する場合は `semantics::citation` がエラーを報告する。
   /// deserialize では字句的に正規化されるだけで、[`load`](crate::style::load) が `PathResolver` で
-  /// `base_dir` 基準の解決済み値へ置き換える（#530）。
+  /// `base_dir` 基準の解決済み値へ置き換える。
   #[garde(skip)]
   pub csl_path: Option<ProjectPath>,
   /// 引用整形に用いる CSL ロケールファイル（`.xml`）のパス。

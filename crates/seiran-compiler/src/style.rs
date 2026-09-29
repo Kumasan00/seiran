@@ -233,7 +233,7 @@ pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<
 
 /// 値検証の違反列を、1 件ずつ独立した leaf 診断として運ぶ非空集合へ変換する（空なら `None`）。
 ///
-/// 各違反には、それを見つけたスタイルファイルのパス `path` を添える（#552）。
+/// 各違反には、それを見つけたスタイルファイルのパス `path` を添える。
 fn validation_failures(path: &str, errors: Vec<StyleValidationError>) -> Option<Failures<ReadStyleError>> {
   return Failures::from_vec(
     errors.into_iter().map(|error| return ReadStyleError::from(InFile::new(path, error))).collect(),
@@ -657,7 +657,7 @@ center = \"{pagee}\"
     let Err(failures) = parse("[text]\nfont_size = \"0pt\"\n", "themes/custom-style.toml") else {
       panic!("値検証の違反を期待");
     };
-    // 実際に読んだファイルのパスが前置される（#552）
+    // 実際に読んだファイルのパスが前置される
     let message = failures.first().to_string();
     assert!(message.starts_with("themes/custom-style.toml: 'text.font_size': "), "{message}");
   }

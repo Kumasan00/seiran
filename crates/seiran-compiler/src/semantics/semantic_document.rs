@@ -1,7 +1,7 @@
 //! 意味解析の唯一の成果物 [`SemanticDocument`]。
 //!
 //! 著者が書いた HIR・意味解析が確定した事実（`NodeId` キーの side table）・CSL 整形の生成物の
-//! 3 つを、混ぜずに分離したまま 1 つの型へ束ねる（issue #349）。利用側（`typeset` の lowering）は
+//! 3 つを、混ぜずに分離したまま 1 つの型へ束ねる。利用側（`typeset` の lowering）は
 //! collection 構造も 3 つの内訳も知らず、目的別の query 経由でのみ参照する。
 
 use crate::{

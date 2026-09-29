@@ -4,23 +4,20 @@
 //! [`super::render`] が CSL 整形の結果として組み立てる**生成物**の語彙で、
 //! 著者が書いた行に対応しないため `NodeId` もソース位置も持たない。採番・`\ref` 解決・
 //! 見出しキーの確定は `semantics` の走査が HIR に対してのみ行うので、採番フラグや
-//! ラベルに相当するフィールドも持たない（#325 / #326）。生成するのが `citation` だけなので
-//! `citation` が所有する（#333）。
+//! ラベルに相当するフィールドも持たない。
 //!
 //! [`GeneratedInline`] の variant は [`super::render`] が**実際に構築するものだけ**に絞って
 //! ある（3 つ）。これは `typeset::lowering::generated` の変換が網羅的に match できることと、
 //! 「生成物が取りうる形」がこの enum を読むだけで分かることの両方を支えている。
-//! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
 //! 書誌のほうは enum ですらなく [`BibliographyEntry`] の列 — 生産者が作る形が 1 つしか
-//! 無いものを、複数の形を許す列で表さない（#667）。
+//! 無いので、型もその 1 つの形しか許さない。
 
 use crate::{document::FontKind, semantics::citation::CitationId};
 
 /// 書誌の 1 エントリ（引用キーと CSL 整形済みの本文）
 ///
 /// 生産者は [`super::render`] の 1 箇所だけで、作られるのは常に「キーと本文の対」なので、
-/// 見出し・段落・アンカーを平坦に並べた汎用ブロック列にはしない（作られない形を型が
-/// 許さないようにする、#667）。書誌見出しの文字列は style の値（`style.reference.title`）、
+/// 作られない形を型が許さない。書誌見出しの文字列は style の値（`style.reference.title`）、
 /// レベルは `Section` 固定なので、いずれも生成物には埋め込まず `typeset::lowering` が組み立てる。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BibliographyEntry {

@@ -353,7 +353,7 @@ mod tests {
 
   #[test]
   fn partial_entry_keeps_other_defaults() {
-    // 表示名だけ日本語化する典型例（#561 の再現手順）
+    // 表示名だけ日本語化する典型例
     let toml = "
 [figure]
 display_name = \"図\"

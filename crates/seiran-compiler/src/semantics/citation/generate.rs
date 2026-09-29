@@ -19,7 +19,7 @@ use crate::{
 /// 引用の生成物（引用箇所ごとの表示インライン列 + 書誌）
 ///
 /// side table の collection 実装と「全引用箇所の表示が生成済み」という完全性はこの型が隠し、
-/// 利用側は下の query だけを見る（`NodeMap` は外へ出さない、#333）。
+/// 利用側は下の query だけを見る（`NodeMap` は外へ出さない）。
 /// `Default`（空）は「引用が 1 つも無いプロジェクト」を表す。
 #[derive(Debug, Default)]
 pub(crate) struct GeneratedCitations {

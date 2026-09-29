@@ -489,7 +489,7 @@ pub(crate) enum ReferenceType {
 /// 数値で表現できない値を保持する文字列も許容する。
 /// <https://docs.citationstyles.org/en/stable/specification.html#number-variables>
 ///
-/// 受理するのは整数・有限の数・文字列（#764）。TOML の `nan` / `inf` は拒否する: 整形器の担体へ渡す前の
+/// 受理するのは整数・有限の数・文字列。TOML の `nan` / `inf` は拒否する: 整形器の担体へ渡す前の
 /// `serde_json` が有限でない数を `null` にし、未指定と区別できないまま書誌から黙って消えるため。
 /// i64 を超え u64 に収まる整数（JSON だけが書ける）は担体の整数（i64）に嵌らないので、桁を落とさず文字列として
 /// 受ける。u64 を超える整数と i64 の下限未満の整数は `serde_json` が f64 として渡すので、有限の非整数として受ける
@@ -510,7 +510,7 @@ pub(crate) enum NumberOrString {
 /// 有限の浮動小数点数（NaN・無限大を持たない `f64`）。
 ///
 /// [`NumberOrString::Float`] の中身。非有限値を型で持てなくし、「読込が受理した数値変数は CSL-JSON 担体への
-/// 変換で `null` にならない（消えない）」を保証する（#764）。構築は [`NumberOrString`] のデシリアライズだけ。
+/// 変換で `null` にならない（消えない）」を保証する。構築は [`NumberOrString`] のデシリアライズだけ。
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(transparent)]
 pub(crate) struct FiniteFloat(f64);

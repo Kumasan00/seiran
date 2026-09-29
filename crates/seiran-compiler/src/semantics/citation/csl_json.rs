@@ -14,7 +14,7 @@ use crate::semantics::citation::Reference;
 ///
 /// `id` は参照定義のキー（`references` マップのキー）で、hayagriva の cite key となる。
 ///
-/// 変換は失敗せず、読込が受理した値を落とさない（#759 / #764）。読込が受理した値はすべて `Item` の `Value`
+/// 変換は失敗せず、読込が受理した値を落とさない。読込が受理した値はすべて `Item` の `Value`
 /// に嵌る: 文字列は `String`、整数は `Number`（i64 を超え u64 に収まる整数は読込で桁を保った文字列として
 /// 受ける。u64 を超える整数と i64 の下限未満の整数は `serde_json` が f64 として渡すので、非整数と同じく丸めた
 /// 数の文字列になる）、
@@ -181,7 +181,7 @@ mod tests {
 
   #[test]
   fn to_item_accepts_years_at_i16_bounds() {
-    // 読込が受理した年は必ず整形器の担体へ変換できる（#759: 読込と整形の受理集合を一致させる）
+    // 読込が受理した年は必ず整形器の担体へ変換できる（読込と整形の受理集合を一致させる）
     for (date_parts, expected_year) in [("[[-32768]]", -32768i16), ("[[32767, 12, 31]]", 32767i16)] {
       let references = references_from_toml(&format!(
         "[r1]\n\
@@ -204,7 +204,7 @@ mod tests {
   #[test]
   fn to_item_converts_every_field_kind() {
     // 読込が受理する値の種類（文字列・整数・非整数・範囲外の整数・個人名・組織名・日付）がすべて
-    // `Item` の `Value` に嵌ることを固定する。`to_item` が失敗しない根拠（#759）
+    // `Item` の `Value` に嵌ることを固定する。`to_item` が失敗しない根拠
     let source = FilesystemProjectSource;
     let mut file = tempfile::Builder::new().suffix(".json").tempfile().expect("一時ファイルを作成できるはず");
     file

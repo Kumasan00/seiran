@@ -1,7 +1,4 @@
 //! 本文段落（`HirNodeKind::Paragraph`）のスタイル設定型。
-//!
-//! `[text].alignment` の検証済み設定値 [`TextAlignment`] は、それを読み込む本 module が所有する
-//! （組版より前・設定読込の時点で成立する値なので `typeset` の配置型とは変更理由が違う、#334）。
 
 use garde::Validate;
 use serde::Deserialize;

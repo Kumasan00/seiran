@@ -36,8 +36,8 @@ pub(crate) enum ReadStyleError {
   ///
   /// 複数の違反は `Failures<ReadStyleError>` の別要素として並ぶ。段名だけを表す集約
   /// バリアントは持たない — ユーザーが最初に読むのは
-  /// 「どのフィールドをどう直すか」であるべきで、「バリデーションに失敗しました」ではない（#376）。
-  /// パスは `style_path` で任意の名前を付けたファイルでも分かるように添える（#552）。
+  /// 「どのフィールドをどう直すか」であるべきで、「バリデーションに失敗しました」ではない。
+  /// パスは `style_path` で任意の名前を付けたファイルでも分かるように添える。
   #[error(transparent)]
   #[diagnostic(transparent)]
   Validation(#[from] InFile<StyleValidationError>),
