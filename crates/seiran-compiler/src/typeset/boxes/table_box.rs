@@ -638,4 +638,132 @@ mod tests {
     let links = collect_row_links(&row, &columns, &col_widths, pt(2.0));
     assert!(close(links[0].x0, 18.0) && close(links[0].x1, 28.0), "{links:?}");
   }
+
+  #[test]
+  fn resolve_column_widths_spreads_span_shortfall_evenly() {
+    // 跨ぐ列の自然幅を 12 / 22 と不揃いにし、均等配分と比例配分を区別する。span セルは列 1 から始める
+    let auto = TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Auto,
+    };
+    let table = TableBox {
+      columns: vec![auto, auto, auto],
+      head: Vec::new(),
+      rows: vec![
+        row(vec![
+          cell(vec![text_free_box(5.0)]),
+          cell(vec![text_free_box(10.0)]),
+          cell(vec![text_free_box(20.0)]),
+        ]),
+        row(vec![
+          cell(vec![text_free_box(5.0)]),
+          TableCellBox {
+            items: vec![text_free_box(50.0)],
+            span: 2,
+          },
+        ]),
+      ],
+      breakable: true,
+    };
+
+    let widths = resolve_column_widths(&table, pt(200.0), pt(1.0));
+
+    assert!(close(widths[0], 7.0), "span が跨がない列は変わらない: {widths:?}");
+    assert!(close(widths[1], 21.0), "不足 18 の半分を足す: {widths:?}");
+    assert!(close(widths[2], 31.0), "不足 18 の半分を足す: {widths:?}");
+  }
+
+  #[test]
+  fn resolve_column_widths_keeps_naturals_when_span_fits() {
+    let auto = TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Auto,
+    };
+    let table = TableBox {
+      columns: vec![auto, auto, auto],
+      head: Vec::new(),
+      rows: vec![
+        row(vec![
+          cell(vec![text_free_box(5.0)]),
+          cell(vec![text_free_box(10.0)]),
+          cell(vec![text_free_box(20.0)]),
+        ]),
+        row(vec![
+          cell(vec![text_free_box(5.0)]),
+          TableCellBox {
+            items: vec![text_free_box(20.0)],
+            span: 2,
+          },
+        ]),
+      ],
+      breakable: true,
+    };
+
+    let widths = resolve_column_widths(&table, pt(200.0), pt(1.0));
+
+    assert!(close(widths[0], 7.0), "{widths:?}");
+    assert!(close(widths[1], 12.0), "跨ぐ列の合計 34 が span セル幅 22 を満たすので配分しない: {widths:?}");
+    assert!(close(widths[2], 22.0), "跨ぐ列の合計 34 が span セル幅 22 を満たすので配分しない: {widths:?}");
+  }
+
+  #[test]
+  fn position_table_row_boxes_aligns_spanned_cell_within_band() {
+    // 揃えは開始列（Center）で決まり、被覆列（Left）は読まない
+    let row = row(vec![
+      TableCellBox {
+        items: vec![text_free_box(10.0)],
+        span: 2,
+      },
+      cell(vec![text_free_box(4.0)]),
+    ]);
+    let columns = vec![
+      TableColumn {
+        align: ColumnAlign::Center,
+        width: ColumnWidth::Auto,
+      },
+      TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      },
+      TableColumn {
+        align: ColumnAlign::Right,
+        width: ColumnWidth::Auto,
+      },
+    ];
+
+    let boxes = position_table_row_boxes(&row, &columns, &[pt(20.0), pt(30.0), pt(25.0)], pt(2.0));
+
+    assert_eq!(boxes.len(), 2);
+    assert!(close(boxes[0].x, 20.0), "帯幅 50 の中央: {boxes:?}");
+    assert!(close(boxes[1].x, 69.0), "後続セルは帯の右端 50 から始まる: {boxes:?}");
+  }
+
+  #[test]
+  fn collect_row_links_in_spanned_cell_follow_band() {
+    let target = LinkTarget::External("https://example.com".to_string());
+    let row = row(vec![TableCellBox {
+      items: vec![
+        HItem::LinkStart(target.clone()),
+        text_free_box(10.0),
+        HItem::LinkEnd,
+      ],
+      span: 2,
+    }]);
+    let columns = vec![
+      TableColumn {
+        align: ColumnAlign::Right,
+        width: ColumnWidth::Auto,
+      },
+      TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      },
+    ];
+
+    let links = collect_row_links(&row, &columns, &[pt(20.0), pt(30.0)], pt(2.0));
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, target);
+    assert!(close(links[0].x0, 38.0) && close(links[0].x1, 48.0), "帯幅 50 の右揃え: {links:?}");
+  }
 }
