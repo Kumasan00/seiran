@@ -17,7 +17,7 @@ pub(in crate::typeset) enum LayoutNode {
   /// そのまま `collect_inline` へ渡すだけで振り分けが済む。インライン専用の variant を
   /// [`InlineNode`] へ移して包み variant 1 つにしてあるので、`LayoutNode` と `InlineNode` に
   /// 同じ variant が 2 つ並ぶことも、インライン文脈で縦リスト用 variant を `unreachable!` で
-  /// 受けることも無い（#672）。
+  /// 受けることも無い。
   Inline(InlineNode),
   /// 垂直方向のコンテナ (段落、セクションなど)
   VBox {
@@ -228,7 +228,7 @@ pub(in crate::typeset) struct MathBlockRow {
 /// ディスプレイ数式環境の 1 セルの物理レイアウト表現
 ///
 /// 列内での揃えは環境種別・行位置・列位置から `crate::typeset::lowering` が解決済みで、
-/// `crate::typeset::boxing` は列幅の中へ置くオフセットの算出に使うだけ（#674）。
+/// `crate::typeset::boxing` は列幅の中へ置くオフセットの算出に使うだけ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockCell {
   /// セル内容（lower 済みインライン数式）
@@ -241,7 +241,7 @@ pub(in crate::typeset) struct MathBlockCell {
 ///
 /// 環境種別（`cases` は常に左波括弧、`matrix` は `[delimiter=...]`）からの解決は
 /// `crate::typeset::lowering` が済ませ、`crate::typeset::boxing` は本体の高さ・深さへ
-/// 合わせて拡大して置くだけ（#674）。伸縮グリフ（OpenType MATH）で組む件は #73。
+/// 合わせて拡大して置くだけ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(in crate::typeset) struct DelimiterGlyphs {
   /// 左括弧のグリフ（`None` は左に括弧を置かない）
@@ -271,7 +271,7 @@ pub(in crate::typeset) struct TextStyle {
 ///
 /// 幅 0 の索引マーカー（[`InlineNode::IndexMark`]）は結合を切らず、畳んだテキストの後ろへ回す。
 /// マーカーを取り除いたソースと同じテキスト構造にならないと、`crate::typeset::boxing` が作る
-/// シェーピング run が割れて和欧文間アキやカーニングが変わってしまうため（#514。同じ不変条件を
+/// シェーピング run が割れて和欧文間アキやカーニングが変わってしまうため（同じ不変条件を
 /// 評価器側で守るのは `crate::frontend` の `InlineSink`）。
 pub(super) fn merge_adjacent_text(nodes: Vec<InlineNode>) -> Vec<InlineNode> {
   let mut out: Vec<InlineNode> = Vec::with_capacity(nodes.len());
@@ -358,7 +358,6 @@ mod tests {
 
   #[test]
   fn index_mark_does_not_break_merging() {
-    // 幅 0 の索引マーカーはテキストの結合を切らない（#514）
     let s1 = style(FontKind::Serif);
     let nodes = vec![
       InlineNode::Text("foo".to_string(), s1),

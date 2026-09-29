@@ -1,19 +1,18 @@
 //! 組版 module — 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の [`Publication`]
-//! へ変換する（旧 `typeset` crate、#307 でライブラリ crate（現 `seiran-compiler`）の非公開 module として吸収）
+//! へ変換する。
 //!
 //! 外向きの操作は [`compose`]（と入力読込が呼ぶ版面の構築 `PreparedGeometry::prepare`）だけで、フォント
 //! 資源の構築（解析 → メトリクス → 検証 → シェーパー）から段順序（画像パス収集 → 画像読込 → lowering →
 //! 計測（画像の描画寸法もここで確定）→ 行分割・改ページ → 前付け・後付け → ページラベル → 走り文 → outline）、
 //! 確定座標の描画命令への変換までを、その間に成立する
 //! 不変条件（box 計測は 1 回だけ・`breaking` はフォントに触れない）とあわせてすべて実装側に
-//! 閉じる（#350 / #535）。
+//! 閉じる。
 //!
 //! 組版中間型（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
-//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。組版中間型は `typeset` の外に
-//! 本体コードの消費者を持たない（#535）。
+//! 子 module `boxes` が所有する。組版中間型は `typeset` の外に本体コードの消費者を持たない。
 //!
-//! フォント処理（OpenType 解析・検証・メトリクス・シェイピング）は子 module `font` が持つ
-//! （#352）。入力の 19 種別・設定・バイト列は `project::font` の所有で、この module はそこから
+//! フォント処理（OpenType 解析・検証・メトリクス・シェイピング）は子 module `font` が持つ。
+//! 入力の 19 種別・設定・バイト列は `project::font` の所有で、この module はそこから
 //! フォント資源を組み立てて使う側になる。
 
 use std::mem;
@@ -48,24 +47,24 @@ mod dump;
 #[cfg(test)]
 mod test_support;
 
-// 組版中間型は `typeset` の外に本体コードの消費者を持たない（#535）。`compiler::golden` が
+// 組版中間型は `typeset` の外に本体コードの消費者を持たない。`compiler::golden` が
 // 確定レイアウトへ直接アサートするためだけに、テストビルドでのみ facade へ出す。
 #[cfg(test)]
 pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
 // テスト専用の例外 — `compiler::golden` が確定ページ列をダンプ比較するための関数 1 つだけを出す
-// （中間型そのものは出さない。#353）。
+// （中間型そのものは出さない）。
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 // `compose` / `layout_for_test` の失敗型。`compiler` は `CompileFailure::from` の総称 impl 越しに
 // 扱うだけだが、`pub(crate)` の signature に現れる名前なので facade に載せる。
 pub(crate) use error::TypesetError;
-// 入口は `compose` 1 操作という原則の意図した例外（#351）。用紙・余白 × 段組みの横断制約は
-// 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
-// 行い、確定した版面 `PreparedGeometry` を `compose` の引数として受け取り直す（#533）。
+// 入口は `compose` 1 操作という原則の意図した例外。用紙・余白 × 段組みの横断制約はここが所有するが、
+// **呼び出しは入力読込（`compiler::input::load`）の中**で行い、確定した版面 `PreparedGeometry` を
+// `compose` の引数として受け取り直す。
 pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
 // 確定レイアウト。本体コードの消費者は `typeset` 自身（`lay_out` の戻り値と `emit` の入力）だけで、
 // `pub(crate)` にしてあるのは `#[cfg(test)]` の出口 `layout_for_test` の戻り値型として
-// `compiler` から名指しされるため（#535）。
+// `compiler` から名指しされるため。
 //
 // **`#[cfg(test)]` を付けてはいけない** — `typeset.rs` の本体コード（`compose` / `lay_out`）が
 // この名前を使うので、条件付きの再エクスポートと本体用の `use` を並べると
@@ -74,7 +73,7 @@ pub(crate) use pagination::LaidOutDocument;
 // テスト専用の例外 — `compiler` 配下のテストが確定レイアウトへ直接アサートするための出口。
 #[cfg(test)]
 pub(crate) use test_support::layout_for_test;
-// 組版が見つけた、ユーザーが直せる非致命的問題（#382）。フォント警告も包む（#535）。
+// 組版が見つけた、ユーザーが直せる非致命的問題。フォント警告も包む。
 pub(crate) use warning::TypesetWarning;
 
 /// [`compose`] の成果物 — 描画直前の出版物と、それに付随する情報。
@@ -82,7 +81,7 @@ pub(crate) use warning::TypesetWarning;
 /// 組版中間型（`Page` / `LaidOutDocument`）は含まない。呼び出し元が要るのは
 /// 「描画できる文書」「読んだ画像のパス」の 2 つで、ユーザーに見せる警告は成否と独立に
 /// [`compose`] の組の第 2 要素で返す。フォント資源と配置済みページの組を引き回す知識は
-/// `typeset` の内側に閉じる（#535 / #550）。
+/// `typeset` の内側に閉じる。
 #[derive(Debug)]
 pub(crate) struct TypesetOutput {
   /// 座標と描画順が確定した文書
@@ -95,26 +94,25 @@ pub(crate) struct TypesetOutput {
 ///
 /// フォント資源の構築（解析 → メトリクス → 検証 → シェーパー）から確定座標の描画命令への
 /// 変換までをこの操作 1 つに閉じる。フォントバイト列を借りるのはこの関数の中だけで、
-/// 呼び出し元は資源の借用期間を知らない（#535）。
+/// 呼び出し元は資源の借用期間を知らない。
 ///
 /// 画像は `document` が参照しているぶんだけを `source` 経由で読み込み、自然寸法から表示寸法を
 /// 確定して描画資源へ載せる（読込は 1 回だけ）。
 ///
 /// 組版を止めないがユーザーが直せる問題（フォント設定の警告・脚注のはみ出し）は
 /// [`TypesetWarning`] として組の第 2 要素で返す。順序はフォント → 本体で、これが `compiler::Warnings` に
-/// 現れる順序になる（#382 / #535）。**失敗しても確定した警告は返す** — フォント資源の構築で確定した警告は
+/// 現れる順序になる。**失敗しても確定した警告は返す** — フォント資源の構築で確定した警告は
 /// 後の配置が失敗しても残す。配置由来の警告（脚注のはみ出し）は配置が成功したときにしか確定しない
 /// （脚注のページ単位採番の反復で採用されなかった配置の警告を残さない）ので、配置が失敗した実行では
-/// 返さない（#550）。
+/// 返さない。
 ///
 /// 版面（`geometry`）は入力読込が検証済みの値として渡すもので、この中で config / style から
-/// 幅・ページ幾何を組み立て直すことはしない（#533）。`geometry` は必ず、ここで渡す `config` /
+/// 幅・ページ幾何を組み立て直すことはしない。`geometry` は必ず、ここで渡す `config` /
 /// `style` と同じ組から `PreparedGeometry::prepare` した値でなければなりません — 引数はいずれも
 /// 同じ `CompilationInputs` から読むもので、型としてはこの一致を強制していません。
 ///
 /// 工程の記録（[`Phase`]）と各段の完了 event はこの操作の内側
-/// （[`load_fonts`] / [`compose`]）が持つ（#500 の工程表示を変えないため、span 名と
-/// event のメッセージ・フィールドは #535 の前後で同一）。
+/// （[`load_fonts`] / [`compose`]）が持つ。
 ///
 /// # Errors
 ///

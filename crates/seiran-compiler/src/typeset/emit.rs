@@ -1,10 +1,7 @@
 //! 組版の出口 — 確定ページ列と資源から [`Publication`] を構築する。
 //!
-//! この写像が renderer ではなく compiler 側にあるのは、epic #276 で `pdf_gen`（現 `seiran-pdf`）から
-//! 移設した「compiler 側の最終変換」だから — renderer は確定座標の描画だけを行い、レイアウト判断を
-//! 持たない。`typeset` の中にあるのは、この写像が組版中間型（`crate::typeset::Page` /
-//! `PlacedBlock` / `HBoxContent`）とフォント資源の借用を要求する唯一の読み手だから（#535）。
-//! 依存の向きは `typeset → publication` の一方向で、`publication` はここを知らない。
+//! renderer は確定座標の描画だけを行い、レイアウト判断を持たない。依存の向きは `typeset → publication` の
+//! 一方向で、`publication` はここを知らない。
 //!
 //! ここで `Style` に依存する判断は一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は
 //! 前段（`crate::typeset::breaking`）が解決済みの値を `crate::typeset::Page` /
@@ -13,7 +10,7 @@
 //! `crate::publication` の座標は pt 単位の `f32` なので、ここでの `crate::length::Length::to_pt()` 呼び出しは
 //! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列
 //! （`crate::publication::GlyphRun`）はシェイピング結果をそのまま載せ、フォントサイズ・色の
-//! 単位変換は render が行う（#372）。
+//! 単位変換は render が行う。
 
 use std::{collections::HashMap, mem};
 
@@ -433,7 +430,7 @@ mod tests {
 
   /// テスト用ページの本文水平原点（用紙左端から本文左端まで、pt）。
   ///
-  /// 余白は `style.toml` の `[page]` が持ち、`typeset` が解決した値をページが運ぶ（#389）。
+  /// 余白は `style.toml` の `[page]` が持ち、`typeset` が解決した値をページが運ぶ。
   /// ここでは `build_publication` が `config` ではなくページの値を使うことを固定するため、
   /// config には無い原点を明示的に載せる。
   const ORIGIN_X_PT: f32 = 50.0;

@@ -1,9 +1,9 @@
-//! 段落の行列に対する配置計画（#395）— 純粋関数・データのみ。`PageComposer` には依存しない。
+//! 段落の行列に対する配置計画 — 純粋関数・データのみ。`PageComposer` には依存しない。
 //!
 //! ベースライン送り・脚注予約・widow / orphan 補正までをここで決め、結果は [`LinePlacement`] の列として
 //! 返すだけにする。計画を実際のページへ確定させる（リージョンを進める・脚注を積む・はみ出しを記録する）のは
 //! 親 module の [`super::place_paragraph`] の責務。計画は widow / orphan 補正で何度も立て直されるので、
-//! 一度きりであるべき記録をここで作ると重複する（#382）。
+//! 一度きりであるべき記録をここで作ると重複する。
 
 use crate::{
   length::Length,
@@ -29,7 +29,7 @@ pub(super) struct LinePlacement {
   pub(super) reserved_after: Length,
   /// この行の脚注ごとに、この行が乗るリージョンへ置く行数（行の脚注と同順・同長。脚注が無ければ空）
   pub(super) own_splits: Vec<usize>,
-  /// この行の脚注群が空のリージョンにも収まらず、はみ出したまま置かれるか（#382）。
+  /// この行の脚注群が空のリージョンにも収まらず、はみ出したまま置かれるか。
   /// 計画は widow / orphan 補正で何度も立て直されるので、ここでは事実を載せるだけにして、
   /// 警告は確定した計画を配置する [`super::place_paragraph`] だけが組み立てる
   pub(super) overflowed: bool,

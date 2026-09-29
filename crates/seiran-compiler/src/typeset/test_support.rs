@@ -4,7 +4,7 @@
 //! `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てる際の唯一の入口。
 //! `typeset` root が `#[cfg(test)]` でも再エクスポートしない組版中間型（`HBox` / `Line` /
 //! `PositionedBox` / `PlacedBlock` 以外の `Placed*` / `TableRowBox` / `TableCellBox` / `OutlineEntry`）を
-//! facade へ出さずに済ませるために置く（#353）。
+//! facade へ出さずに済ませるために置く。
 //!
 //! **不変条件**: ここの関数・メソッドは引数型にも返り値型にも上記の中間型を現さない。受け取るのは
 //! 意味的な値（テキスト・座標・構造）だけで、返すのは [`Page`] / [`PlacedBlock`] /
@@ -37,7 +37,7 @@ use crate::{
 ///
 /// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
 /// `PlacedBlock` の幾何）を検査するテストだけが使う。`compose` と同じ `load_fonts` / `lay_out` を
-/// 通るので、フォント資源の構築順序や組版の段順序を迂回できない（#522 / #535）。
+/// 通るので、フォント資源の構築順序や組版の段順序を迂回できない。
 ///
 /// `compose` と異なり `info_span!("typeset")` には入らない（`font` span は `load_fonts` が開くので
 /// そのまま残る）。テスト専用の出口なので tracing の出方を production と揃える必要はなく、

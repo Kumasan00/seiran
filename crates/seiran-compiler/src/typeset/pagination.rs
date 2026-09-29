@@ -1,7 +1,7 @@
 //! 確定ページ列の組み立て — 本文・前付け・後付け・ページラベル・走り文・outline の段順序
 //!
 //! 各段の呼び出し順序はこの module に閉じており、`typeset` root から見えるのは [`paginate`] と
-//! [`TypesetContext::new`] の 2 つだけ（#350 で `compiler` から移設）。
+//! [`TypesetContext::new`] の 2 つだけ。
 
 mod back_matter;
 mod body;
@@ -94,7 +94,7 @@ pub(super) fn paginate(
     )
   }
   // セクション内 index を連結後の物理ページ index へ直してから診断にする。前付け → 本文 → 後付けの
-  // 順に並べるので、表示順は物理ページの昇順で決定的になる（#382）
+  // 順に並べるので、表示順は物理ページの昇順で決定的になる
   let warnings = footnote_overflow_warnings(
     &page_labels,
     [

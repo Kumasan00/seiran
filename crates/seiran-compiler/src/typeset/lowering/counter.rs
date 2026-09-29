@@ -1,15 +1,15 @@
 //! [`CounterValue`]（構造値）から表示文字列を作る純粋関数群
 //!
-//! issue #282 の「値と表示の分離」の表示側。`semantics` module は `resets` / `reset_by`
+//! 「値と表示の分離」の表示側。`semantics` module は `resets` / `reset_by`
 //! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 //!
 //! 祖先の決め方はここには無い — 構造値の各要素が自分のカウンタ名を持つので、`{chapter}` の
-//! ような他カウンタ参照は `CounterValue::value_of` で名前引きするだけで解ける（#665）。
+//! ような他カウンタ参照は `CounterValue::value_of` で名前引きするだけで解ける。
 //!
-//! 値そのものを作る側もここに無い — ラベル登録・カウンタ値算出（旧 `CounterRegistry`）は #282 で
-//! `semantics` へ、脚注の出現 index 発番は `LoweringState` へ、確定ページ列からのページ単位脚注
-//! 表示番号の割り当ては `typeset::pagination::footnote_numbering` へ移してある。
+//! 値そのものを作る側もここに無い — ラベル登録・カウンタ値算出は `semantics`、脚注の出現 index
+//! 発番は `LoweringState`、確定ページ列からのページ単位脚注表示番号の割り当ては
+//! `typeset::pagination::footnote_numbering` が持つ。
 
 use std::sync::LazyLock;
 
@@ -22,7 +22,7 @@ use crate::{
 /// 定理の `\ref` 表示に使う固定書式
 ///
 /// カウンタの `ref_format` と違い style に対応するフィールドが無く、cleveref 相当の
-/// 「表示名 + 番号」に固定されている（issue #282 以前の `CounterRegistry` から引き継いだ挙動）。
+/// 「表示名 + 番号」に固定されている。
 static THEOREM_REF_FORMAT: LazyLock<ReferenceTemplate> =
   LazyLock::new(|| return ReferenceTemplate::parse("{display_name} {number}"));
 
@@ -84,8 +84,7 @@ fn expand_theorem_template(style: &Style, class: TheoremClass, value: &CounterVa
 /// 構造値に載っている `target` カウンタの値を、`target` 自身の `number_style` で描画する
 ///
 /// 値に載っていないカウンタ — 例えば `number_format = "{section}.{n}"` の図（既定では
-/// `section` は図の祖先ではない）— は復元できないため空文字列にする。issue #282 以前は
-/// 採番時点の現在値を読めたため、この点だけは表示が退行している。
+/// `section` は図の祖先ではない）— は復元できないため空文字列にする。
 fn render_named(style: &Style, value: &CounterValue, target: CounterName) -> String {
   let Some(number) = value.value_of(target) else {
     return String::new();

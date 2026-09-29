@@ -18,8 +18,7 @@ use crate::typeset::pagination::index::IndexEntry;
 /// 区分見出しのラベル固定表（A–Z 26 個 + 五十音行 10 個）
 ///
 /// CLDR の `ja` index characters と同じ並びで、配列順がそのまま区分の出力順（A–Z → 五十音行）になる。
-/// 言語慣習の固定表なので style へは出さない（#509）。受け皿の見出しだけは
-/// `IndexSpec::group_other_label` で差し替えられる。
+/// 受け皿の見出しだけは `IndexSpec::group_other_label` で差し替えられる。
 const GROUP_LABELS: [&str; 36] = [
   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W",
   "X", "Y", "Z", "あ", "か", "さ", "た", "な", "は", "ま", "や", "ら", "わ",
@@ -28,7 +27,7 @@ const GROUP_LABELS: [&str; 36] = [
 /// 五十音の最後の文字。これより後に照合される先頭文字を持つキーは受け皿（other）へ入る
 ///
 /// ICU の `AlphabeticIndex` が script 境界で決める overflow の判定を、ラベル固定表と同じ
-/// 慣習定数で代替する（#509）。`ja` 照合は Latin → かな → 漢字 → その他の順に並べ替えるため、
+/// 慣習定数で代替する。`ja` 照合は Latin → かな → 漢字 → その他の順に並べ替えるため、
 /// reading の無い漢字語やギリシャ文字始まりの語はこの判定で受け皿へ落ちる。
 const KANA_RANGE_END: &str = "ん";
 

@@ -17,8 +17,7 @@ use crate::{
 /// 表の 1 列の定義（揃え + 幅指定）
 ///
 /// 著者が書いた `columns=` / `widths=` は HIR では別々の列（[`ColumnAlign`] / [`ColumnWidth`]）で、
-/// `typeset::lowering` が列ごとに 1 つへ束ねたものが本型。表レイアウトの入力契約なので後段の
-/// layout が所有する（#334）。
+/// `typeset::lowering` が列ごとに 1 つへ束ねたものが本型。
 #[derive(Debug, Clone, Copy)]
 pub(in crate::typeset) struct TableColumn {
   /// セル内容の揃え方向

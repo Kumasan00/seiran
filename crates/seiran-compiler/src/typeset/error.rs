@@ -1,9 +1,7 @@
 //! 組版パスのエラー型 [`TypesetError`]
 //!
-//! フォント資源の構築・画像資源の読込 / デコード / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗を持つ
-//! （#350 で `compiler` から移設）。
-//! 画像デコードの失敗は #372 で描画段のエラー（現 `seiran_pdf::PdfRenderError`）の入れ子から自前のバリアントへ移した
-//! （デコードが typeset 段で起きるため、`code` の段も `typeset` に揃う）。
+//! フォント資源の構築・画像資源の読込 / デコード / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗を持つ。
+//! 画像デコードは typeset 段で起きるので、その失敗の `code` の段も `typeset` に揃う。
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -16,9 +14,8 @@ pub(crate) enum TypesetError {
   /// フォント資源の構築（`font::FontResources::load`）とシェーパー構築
   /// （`font::FontResources::system`）の失敗。
   ///
-  /// `FontSystemError` は移設前も `?` でそのまま `miette::Report` になっていたので、
   /// `transparent` でメッセージ・code・help・label・related をすべて内側へ委譲し、
-  /// 診断の出方を変えない（#352）。
+  /// 診断の出方を変えない。
   #[error(transparent)]
   #[diagnostic(transparent)]
   Font(#[from] super::font::FontSystemError),

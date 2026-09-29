@@ -2,7 +2,7 @@
 //!
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathEnvKind`）から決まるセルの列内
 //! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。
-//! `crate::typeset::boxing` は計測と配置だけを行う（#674）。
+//! `crate::typeset::boxing` は計測と配置だけを行う。
 
 use std::slice;
 
@@ -134,7 +134,7 @@ fn alignment_to_align(alignment: Alignment) -> Align {
 ///
 /// `Grid(Aligned)`（`align` / `split`）は `&` 区切りの偶数列を右・奇数列を左へ寄せ、`Grid(Staircase)`
 /// （`multiline`）は先頭行を左・末尾行を右・中間行を中央に置く階段配置にする。`boxing` はこの結果を
-/// 列幅の中のオフセット計算に使うだけで、環境種別を知らない（#674）。
+/// 列幅の中のオフセット計算に使うだけで、環境種別を知らない。
 fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> Align {
   return match kind {
     MathEnvKind::Grid(GridLayout::Aligned) => {

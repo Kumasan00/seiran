@@ -2,11 +2,11 @@
 //!
 //! `typeset::breaking::break_pages` がすべてのレイアウト判断（行送り・改ページ・表の分割）を
 //! 終えた確定座標を保持する。`typeset::emit` はここの確定座標を `Publication` へ写すだけで、
-//! 実際の描画命令生成は renderer（`seiran-pdf`）の責務（#372 / #535）。
+//! 実際の描画命令生成は renderer（`seiran-pdf`）の責務。
 //!
 //! 座標系: `x` は本文左端からのオフセット、`y` はページ上端からの距離（下方向に正）。
 //! 用紙左端からの絶対位置は、ページ自身が持つ [`Page::content_origin_x`] を描画時に
-//! ちょうど 1 回加算して得る（余白の所有は `style.toml` の `[page]`、#389）。
+//! ちょうど 1 回加算して得る（余白の所有は `style.toml` の `[page]`）。
 
 use crate::{
   length::Length,
@@ -58,9 +58,7 @@ pub(crate) struct Page {
   pub background_color: Option<[u8; 3]>,
   /// このページの本文水平原点（用紙左端から本文左端まで）
   ///
-  /// `typeset` が `style.page.margin_left` から解決して載せる。ページごとに持つのは、
-  /// 見開きで左右の余白を変える将来の拡張でも `typeset::emit` の読み込み interface を
-  /// 変えずに済ませるため（#389、#535）。
+  /// `typeset` が `style.page.margin_left` から解決して載せる。
   pub content_origin_x: Length,
 }
 

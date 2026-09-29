@@ -1,7 +1,7 @@
-//! 脚注エリアへの詰め込み計算（#227）— 純粋関数・データのみ。`PageComposer` には依存しない。
+//! 脚注エリアへの詰め込み計算 — 純粋関数・データのみ。`PageComposer` には依存しない。
 //!
 //! 収まらなかった事実は `FootnotePacking::overflowed` としてデータで返すだけで、ここでは診断を
-//! 作らない（警告を組み立てるのは、どのページのどの脚注かを知っている `PageComposer` 側。#382）。
+//! 作らない（警告を組み立てるのは、どのページのどの脚注かを知っている `PageComposer` 側）。
 
 use crate::{
   length::Length,
@@ -139,7 +139,7 @@ pub(super) struct FootnotePacking {
   pub(super) overflowed: bool,
 }
 
-/// 脚注エリアの「予算に対して何行入るか」を決める唯一の純粋関数（#227）
+/// 脚注エリアの「予算に対して何行入るか」を決める唯一の純粋関数
 pub(super) fn pack_footnotes(
   demands: &[FootnoteDemand],
   base_reserved: Length,

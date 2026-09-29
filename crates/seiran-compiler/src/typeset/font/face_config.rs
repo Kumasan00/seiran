@@ -2,7 +2,7 @@
 //!
 //! 値型は `crate::publication` が所有し、ここは `crate::project::FontConfig` からの変換
 //! （`build_face_configs`）だけを持つ。この変換をここ 1 箇所だけに閉じ、renderer 側に同型の
-//! 複製型を作らせない（issue #305 / #372）。
+//! 複製型を作らせない。
 
 use crate::{
   project::{FontConfigs, FontMap},

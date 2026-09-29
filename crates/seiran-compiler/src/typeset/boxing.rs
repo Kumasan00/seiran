@@ -167,7 +167,7 @@ impl BlockBuilder<'_> {
           let child_right_indent = right_indent + vbox_right_indent;
           self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, vbox_align);
           self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, vbox_align);
-          // ブロック間アキは伸縮 glue にする。下端揃え（#169）が満杯リージョンの不足高さを
+          // ブロック間アキは伸縮 glue にする。下端揃えが満杯リージョンの不足高さを
           // 自然値比で配分する。下端揃え無効時は break_pages が stretch を無視するため出力不変。
           let natural = margin_bottom;
           blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
@@ -260,7 +260,7 @@ struct Measurer<'a> {
   line_height_factor: f32,
   /// 欧文ハイフネーション言語。`None` ならハイフネーションなし
   hyphenation: Option<Lang>,
-  /// JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を行うか
+  /// JIS X 4051 のアキ調整（和文約物アキ・和欧文間アキ）を行うか
   punctuation_spacing: bool,
 }
 
@@ -293,7 +293,7 @@ impl<'a> Measurer<'a> {
       },
       // コード（`code` 環境の 1 行・`\code{...}`）: 空白を glue にせず Atom 1 つへ畳む。
       // 行分割の機会が内部に無いので、幅は行揃えでも動かず、字下げがそのまま残る。
-      // `build_atom` 経由なので和欧文間アキ（#174）も挿さらない（内容としてのコードには不要）。
+      // `build_atom` 経由なので和欧文間アキも挿さらない（内容としてのコードには不要）。
       InlineNode::TextAtom(text, style) => {
         out.push(HItem::Box(self.text_atom(text, style)));
       },
@@ -480,7 +480,7 @@ impl Glue {
   }
 }
 
-/// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）
+/// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051）
 fn ja_latin_aki(font_size: Length) -> Glue {
   return Glue {
     natural: font_size * JA_LATIN_AKI_RATIO,
@@ -503,7 +503,7 @@ fn cjk_stretch_glue(em: Length) -> Glue {
   };
 }
 
-/// 和文文字と欧文文字が直接隣接する境界か（四分アキ挿入の判定、issue #174）
+/// 和文文字と欧文文字が直接隣接する境界か（四分アキ挿入の判定）
 fn is_ja_latin_letter_boundary(
   left_category: script::ScriptCategory,
   left_char: char,

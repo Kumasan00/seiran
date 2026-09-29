@@ -2,9 +2,8 @@
 //!
 //! golden テスト用に、座標・寸法を 0.01pt へ丸めて環境依存の差を抑える。
 //!
-//! 走査対象が `boxes` の組版中間型（`Line` / `PositionedBox` / `Placed*`）なので、所有は
-//! `typeset` 側に置く（#353）。`Publication` のダンプは `compiler::dump` が持つ — 別の型の
-//! 別の表現で、共有するのは丸め桁数と負のゼロ正規化の規約だけ。
+//! `Publication` のダンプは `compiler::dump` が持つ — 別の型の別の表現で、共有するのは丸め桁数と
+//! 負のゼロ正規化の規約だけ。
 
 use std::fmt::Write;
 

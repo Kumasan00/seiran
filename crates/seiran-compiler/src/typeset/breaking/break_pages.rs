@@ -26,7 +26,7 @@ use page_draft::{PageDraft, PendingTableRow, TableFrame};
 use paragraph_plan::plan_paragraph_lines;
 use region_cursor::RegionCursor;
 
-/// 脚注がリージョンに収まらないまま配置された事実（#382）。
+/// 脚注がリージョンに収まらないまま配置された事実。
 ///
 /// 診断そのものではなく純データで、ページの指し方も**この [`break_pages`] 呼び出しが返すページ列の
 /// 中での index**。前付け・本文・後付けを連結した物理ページ番号や印字ラベルは
@@ -77,9 +77,9 @@ struct PageComposer {
   /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）。[`PageComposer::end_region`] が
   /// `draft` へ渡し、`draft` がページ下部の確定座標へ変換する。
   region_footnotes: Vec<PendingFootnote>,
-  /// 次リージョンへ繰り越す脚注の残り（#227、出現順）。
+  /// 次リージョンへ繰り越す脚注の残り（出現順）。
   carry: Vec<PendingFootnote>,
-  /// 収まらないまま配置した脚注の記録（#382、検出順＝ページ順）。
+  /// 収まらないまま配置した脚注の記録（検出順＝ページ順）。
   /// 純粋関数（`paragraph_plan::place_lines` / [`pack_footnotes`]）が返した「はみ出した」という事実に、
   /// ページ index と脚注番号を添えるのはページを組んでいるこの型の責務。
   overflows: Vec<FootnoteOverflow>,
@@ -132,7 +132,7 @@ impl PageComposer {
 
   /// ページ下限を超えたときの遷移。次の段があれば改段、なければ改ページし、繰越脚注を新リージョンへ詰める。
   fn advance_region(&mut self, geom: &PageGeometry) {
-    // 満杯になったリージョン（段）を先に確定する。下端揃え（#169）が有効なら不足高さを段内の
+    // 満杯になったリージョン（段）を先に確定する。下端揃えが有効なら不足高さを段内の
     // 伸縮アキへ配分してから次段 / 次ページへ移る。強制改ページ・最終ページはこの経路を通らない
     // （それぞれ `force_new_page`・`finish` が確定）ため揃えられない。
     self.end_region(geom, true);
@@ -237,7 +237,7 @@ impl PageComposer {
     return (self.pages, self.overflows);
   }
 
-  /// 現在リージョン（段）を確定する。下端揃え（#169）の配分と脚注の確定座標化は `draft` が行う
+  /// 現在リージョン（段）を確定する。下端揃えの配分と脚注の確定座標化は `draft` が行う
   ///
   /// 脚注はリージョンが閉じるたびに常に確定する（flush-bottom の対象ではないため `flush` を問わない。
   /// 強制改ページ・最終ページでも脚注を落とさない）。`region_footnotes` は分割済み（[`place_paragraph`] /
@@ -255,7 +255,7 @@ impl PageComposer {
   }
 }
 
-/// ブロック列をページへ配置し、確定ページ列と脚注のはみ出し記録（#382）を返す。
+/// ブロック列をページへ配置し、確定ページ列と脚注のはみ出し記録を返す。
 #[must_use]
 pub(crate) fn break_pages(
   blocks: Vec<Block>,
@@ -269,7 +269,7 @@ pub(crate) fn break_pages(
   let block_count = blocks.len();
   let mut blocks = blocks;
 
-  // keep-with-next（見出し直後の分割禁止・#168）を尊重しつつ前から順に配置する。FORBID penalty で
+  // keep-with-next（見出し直後の分割禁止）を尊重しつつ前から順に配置する。FORBID penalty で
   // 連結された見出し群（keep グループ）の先頭で一度だけ、末尾ブロックの先頭が見出しと同じリージョンに
   // 乗るかを判定し、収まらなければグループごと次リージョンへ送る（見出しがページ末尾に孤立するのを防ぐ）。
   let mut i = 0;
@@ -324,7 +324,7 @@ pub(crate) fn break_pages(
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
       },
-      // 伸縮アキ。stretch は下端揃え（#169）の配分重みとして台帳に累積させ、リージョン確定時に
+      // 伸縮アキ。stretch は下端揃えの配分重みとして台帳に累積させ、リージョン確定時に
       // 不足高さを配分する。アキは cursor.at_edge を変えない。
       Block::Glue { natural, stretch } => {
         composer.draft.pass_stretch(stretch);
@@ -446,7 +446,7 @@ struct AtomicPlacement {
 }
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
-/// 判定は実配置（`place_*`）と同じ [`RegionCursor`] のメソッドを通す（下限を自前で選ばない。#686）。
+/// 判定は実配置（`place_*`）と同じ [`RegionCursor`] のメソッドを通す（下限を自前で選ばない）。
 fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> AtomicPlacement {
   match block {
     Block::Image { height, .. } => {
@@ -495,7 +495,7 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Atom
 ///
 /// 実配置と同じ規則の空回しで判定する — 段落は [`plan_paragraph_lines`]（脚注の予約・自前の脚注・
 /// widow / orphan 補正込み）、それ以外は [`plan_atomic`]。下限や行送りをここで導き直すと、脚注予約の
-/// あるリージョンで実配置と食い違う（#686）。
+/// あるリージョンで実配置と食い違う。
 fn keep_group_orphaned(
   mut cursor: RegionCursor,
   mut carry_pending: bool,
@@ -690,7 +690,7 @@ fn place_paragraph(
       if placement.starts_region {
         composer.advance_region(geom);
       }
-      // 改リージョン後＝この行が実際に乗るページが確定してから記録する（#382）。計画そのものは
+      // 改リージョン後＝この行が実際に乗るページが確定してから記録する。計画そのものは
       // widow / orphan 補正で捨てられることがあるので、確定したこのループでだけ警告の種を作る
       if placement.overflowed {
         composer.overflows.push(FootnoteOverflow {
@@ -795,7 +795,7 @@ fn place_math_block(
 ///
 /// 未解決アンカー（`\ref{tab:...}` の到達先）はここでは解決せず、空でない最初の断片の着地
 /// （[`PageDraft::place_table_fragment`]）に任せる。先頭行の fit 判定より前に解決すると、先頭行が
-/// 次リージョンへ送られたときアンカーが前リージョンに残るため（#525）。
+/// 次リージョンへ送られたときアンカーが前リージョンに残るため。
 fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBox, column_width: Length, align: Align) {
   let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
   // 表全体の自然幅は確定済み列幅の総和。段幅の中で揃えオフセット（段内）を 1 回だけ算出する
@@ -3453,7 +3453,7 @@ mod tests {
   #[test]
   fn pending_anchor_before_breakable_table_lands_with_the_first_row_on_the_next_page() {
     // 3 行段落の後（y=46）で表を開始するが、最初の行（高さ 10）は収まらず次ページへ送られる。
-    // アンカーは表の実配置（2 ページ目の先頭行上端 = margin_top）で解決し、1 ページ目には残らない（#525）
+    // アンカーは表の実配置（2 ページ目の先頭行上端 = margin_top）で解決し、1 ページ目には残らない
     let geom = test_geometry();
     let table = TableBox {
       columns: vec![TableColumn {

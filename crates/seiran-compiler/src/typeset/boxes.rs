@@ -1,11 +1,8 @@
 //! 組版中間型そのもの — [`Block`] / [`HItem`] / [`Line`] / [`Page`] と表の計測・配置ヘルパ。
 //!
-//! `boxing` module（シェーピング + 計測）と `breaking` module（行分割 + 縦組版）の双方から
-//! 対称に参照される共有語彙のため、どちらの所有物にもせず本 module に集約する（#280）。
-//!
 //! 組版時に初めて成立する配置・アンカーの型（[`Align`] / [`FootnoteId`] / [`AnchorId`] /
 //! [`LinkTarget`]）と、lowering が構築する表レイアウトの入力契約
-//! [`TableColumn`] も本 module が所有する（#334）。
+//! [`TableColumn`] も本 module が所有する。
 
 mod align;
 mod block;

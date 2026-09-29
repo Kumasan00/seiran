@@ -2,12 +2,10 @@
 //! 横断バリデーションと、そこから確定する版面 [`PreparedGeometry`] の構築、および
 //! ページの物理ジオメトリを表す値型 [`PageGeometry`] の定義。
 //!
-//! どちらの設定 module にも属さない（片方だけでは判定できない）ので、この制約を不変条件として
-//! 使う組版側が所有する（#351）。余白単体の不正（負値）は style の値検証が持ち、ここが持つのは
-//! 「用紙寸法と突き合わせないと判定できない制約」だけ（#389）。
-//! [`PreparedGeometry::prepare`] を呼ぶのは入力読込（`compiler::input::load`）で、組版に入る前に
-//! 不正な組み合わせを弾く。検証を通った版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）は
-//! 戻り値として下流へ渡り、`typeset::pagination` はそれを読むだけで再計算しない（#533）。
+//! 余白単体の不正（負値）は style の値検証が持ち、ここが持つのは「用紙寸法と突き合わせないと判定できない
+//! 制約」だけ。[`PreparedGeometry::prepare`] を呼ぶのは入力読込（`compiler::input::load`）で、組版に
+//! 入る前に不正な組み合わせを弾く。検証を通った版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）は
+//! 戻り値として下流へ渡り、`typeset::pagination` はそれを読むだけで再計算しない。
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -147,7 +145,7 @@ pub(super) struct PageGeometry {
 ///
 /// 本文幅・本文の 1 段あたりの幅・本文 / 前付け / 後付けのページ幾何を確定値として持つ。
 /// フィールドは module 非公開で、構築経路は [`PreparedGeometry::prepare`] だけ — 「検証を通って
-/// いない版面が組版へ流れない」ことを型で保証する（`Failures` と同じ方針、#533）。
+/// いない版面が組版へ流れない」ことを型で保証する（`Failures` と同じ方針）。
 #[derive(Debug)]
 pub(crate) struct PreparedGeometry {
   /// 版面幅（段組み前）= `pdf.width - page.margin_left - page.margin_right`
@@ -352,7 +350,7 @@ mod tests {
   /// 用紙（`valid_pdf_section` の A4 = 595×842pt）に収まる余白を明示した style を作る。
   ///
   /// 余白は style が所有するため、横断検証のテストは config 側ではなくここを動かして
-  /// 版面の組み合わせを作る（#389）。
+  /// 版面の組み合わせを作る。
   fn test_style(margin_top: f32, margin_bottom: f32, margin_left: f32, margin_right: f32) -> Style {
     let mut style = Style::default();
     style.page.margin_top = pt(margin_top);

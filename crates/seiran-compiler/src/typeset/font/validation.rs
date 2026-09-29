@@ -2,11 +2,10 @@
 //!
 //! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。軸が未設定でも
 //! `fvar` 自体が読めなければ（テーブルディレクトリのレコードがファイル範囲外を指す場合を含む）error として
-//! 拒否する — このモジュールが唯一の保証点で、描画側（seiran-pdf）はフォントを再パースしない（#681 / #725）。
+//! 拒否する — このモジュールが唯一の保証点で、描画側（seiran-pdf）はフォントを再パースしない。
 //! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
 //! severity(Warning) の [`FontWarning`] として集める。成功した `Compilation` と一緒に返すほか、
-//! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す（#550）
-//! （`tracing::warn!` だけで通知していた形は #377 で廃止した）。
+//! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す。
 
 use derive_more::Display;
 use font_types::{Fixed, Tag};
@@ -150,7 +149,7 @@ pub(super) enum FontValidationErrorKind {
 /// 19 種別のどれを直せばよいか分からない。エラー（[`FontValidationErrorKind`]）とは別の型に
 /// しているのは、error と warning が別の集合だから — error は `CompileFailure` の診断列、
 /// warning は `Warnings` で、コンパイルが成功すれば `Compilation` と一緒に、失敗しても
-/// `CompileFailure::warnings()` で返る（#550）。互いに混ざることはない。
+/// `CompileFailure::warnings()` で返る。互いに混ざることはない。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
@@ -258,7 +257,7 @@ pub(crate) enum FontWarning {
 ///
 /// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。
 /// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
-/// 違反と独立に確定するため（#550）。
+/// 違反と独立に確定するため。
 ///
 /// # Errors
 ///
@@ -310,10 +309,10 @@ pub(super) fn validate_font(
 /// `fvar` を「読めた（`Ok(Some)`）/ 無い（`Ok(None)`）/ あるが壊れている（`Err`）」の 3 通りに分ける。
 ///
 /// 3 つ目を静的フォント扱いにしない — krilla は壊れた `fvar` を空軸に畳んで既定インスタンスで描いてしまうので、
-/// 拒否できるのはここだけ（#681）。「無い」はテーブルディレクトリにレコードが無いことで判定する。read-fonts の
+/// 拒否できるのはここだけ。「無い」はテーブルディレクトリにレコードが無いことで判定する。read-fonts の
 /// `fvar()` は、レコードのオフセット + 長さがファイルからはみ出す（またはオフセットが 0 の）破損フォントでも
-/// `TableIsMissing` を返すので、エラーの種類だけでは「無い」と「壊れている」を区別できない（#725。
-/// `variation-axes` サブコマンドと同じ判定）。
+/// `TableIsMissing` を返すので、エラーの種類だけでは「無い」と「壊れている」を区別できない
+/// （`variation-axes` サブコマンドと同じ判定）。
 fn read_fvar<'a>(font_ref: &FontRef<'a>) -> Result<Option<Fvar<'a>>, FontValidationErrorKind> {
   let has_record = font_ref.table_directory.table_records().iter().any(|record| return record.tag() == Fvar::TAG);
   if !has_record {

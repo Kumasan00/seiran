@@ -46,7 +46,7 @@ use crate::document::{FontKind, HeadingLevel};
 ///
 /// 全フィールドが `Copy` で、派生文脈（`with_*`）は「差し替えるフィールド + `..self`」の構造体更新記法
 /// 1 形で作る。非 `Copy` のフィールドを足すと `derive(Copy)` がコンパイルエラーになる — そのときは
-/// 写しを増やさず、この型の設計（何を文脈として運ぶか）を見直す（#766）。
+/// 写しを増やさず、この型の設計（何を文脈として運ぶか）を見直す。
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来。未指定キーは `serde(default)` の既定値）
@@ -69,7 +69,7 @@ impl<'a> LoweringContext<'a> {
   /// スタイルと検証済みの画像設定（config `[image]`）から文脈を生成する
   ///
   /// 画像の既定値に固定値を焼き込まない — 本番は `pagination/body.rs` が config の値を渡し、テストの
-  /// 既定は `test_support::context` が持つ（本番で必ず上書きされる値を `new` に置かない、#766）。
+  /// 既定は `test_support::context` が持つ（本番で必ず上書きされる値を `new` に置かない）。
   #[must_use]
   pub(super) fn new(style: &'a ReadStyle, image: ImageConfig) -> Self {
     return LoweringContext {

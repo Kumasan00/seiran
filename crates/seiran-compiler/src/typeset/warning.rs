@@ -1,4 +1,4 @@
-//! 組版が検出した、ユーザーが直せる非致命的問題（#382）
+//! 組版が検出した、ユーザーが直せる非致命的問題
 //!
 //! 組版を止めない問題は error ではなく severity(Warning) の leaf diagnostic にして、成功した
 //! `Compilation` と一緒に返す（`compiler::Warnings`）。`tracing::warn!` は開発者向け観測に限り、
@@ -13,7 +13,7 @@ use crate::typeset::font::FontWarning;
 /// 組版段の警告。
 ///
 /// フォント資源の構築で見つかった警告（[`FontWarning`]）も、組版 phase の中で起きるので
-/// この型が包む（#535）。`compiler` は警告型を 1 つだけ名指しし、`typeset` の内部が
+/// この型が包む。`compiler` は警告型を 1 つだけ名指しし、`typeset` の内部が
 /// フォント → 本体の 2 段に分かれていることを知らない。
 ///
 /// ページの指し方は**印字ページラベル**（前付けはローマ数字など `style.page_numbering` に従う）で、

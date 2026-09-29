@@ -1,6 +1,4 @@
 //! 画像の読込・自然寸法解決と 1 画像ぶんの表示寸法確定
-//!
-//! （旧 `pdf_gen::image` → `compiler::image_resources`。epic #276 / #279 / #350 で移設）
 
 use std::collections::HashMap;
 

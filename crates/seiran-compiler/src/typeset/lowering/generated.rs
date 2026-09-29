@@ -27,7 +27,7 @@ const BIBLIOGRAPHY_HEADING_LEVEL: HeadingLevel = HeadingLevel::Section;
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
 ///
 /// 書誌見出しは style の値（`style.reference.title`）から作る — semantics の成果物には
-/// 見出しが無く、エントリ列だけが来る（#667）。`bibliography` が `None`（CSL が書誌を
+/// 見出しが無く、エントリ列だけが来る。`bibliography` が `None`（CSL が書誌を
 /// 定義していない）のときは見出しも出さない。
 pub(super) fn lower_bibliography(
   ctx: &LoweringContext<'_>,
@@ -70,7 +70,7 @@ pub(super) fn lower_bibliography(
 /// 生成物のインライン列（CSL 整形の出力）をインラインノードへ変換する
 ///
 /// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`GeneratedInline` はそもそもそれらの
-/// variant を持たない、#325）ので、事実を引く必要がなく `LoweringState` を取らない。
+/// variant を持たない）ので、事実を引く必要がなく `LoweringState` を取らない。
 pub(super) fn lower_generated_inlines(
   ctx: &LoweringContext<'_>,
   inlines: &[GeneratedInline],
@@ -85,8 +85,8 @@ pub(super) fn lower_generated_inlines(
 
 /// 生成物のインライン 1 個をインラインノードへ変換する
 ///
-/// `GeneratedInline` は `citation::render` が実際に構築する 3 variant に絞られている
-/// （#325 / #326）ので、この match は網羅的で済む。
+/// `GeneratedInline` は `citation::render` が実際に構築する 3 variant に絞られているので、
+/// この match は網羅的で済む。
 fn lower_generated_inline(
   ctx: &LoweringContext<'_>,
   inline: &GeneratedInline,

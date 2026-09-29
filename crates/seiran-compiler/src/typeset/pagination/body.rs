@@ -23,7 +23,7 @@ pub(super) struct BodyLayout {
   pub(super) pages: Vec<Page>,
   /// 目次・しおり用の見出し情報（文書順）
   pub(super) headings: Vec<HeadingRecord>,
-  /// このパスで収まらなかった脚注の記録（#382、`pages` の中での page index 基準）。
+  /// このパスで収まらなかった脚注の記録（`pages` の中での page index 基準）。
   /// ページ単位採番の不動点反復では収束したパスの `BodyLayout` だけが返るので、
   /// 途中のパスで検出したぶんはここで自然に捨てられる（同じ警告が重複しない）
   pub(super) overflows: Vec<FootnoteOverflow>,

@@ -6,7 +6,7 @@
 //!
 //! 構築の入口は [`FontResources`] 1 型だけで（[`FontSystem`] はその `system()` が返す借用ビュー）、
 //! `FontRefs` / `FontMetrics` / シェーパー / 検証を含めこの module の名前は `typeset` の外から見えない。
-//! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる（#352）。
+//! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる。
 
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;

@@ -53,7 +53,7 @@ pub(super) fn solve_per_page_numbering(
 fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
   let mut numbers: Vec<u32> = Vec::new();
   for page in pages {
-    // 繰越（前ページからの続き、#227）はこのページで「始まった」脚注ではないので数えない。
+    // 繰越（前ページからの続き）はこのページで「始まった」脚注ではないので数えない。
     // 数えると (a) 自分自身が本体を置いた前ページの番号を上書きし、(b) このページの本当の
     // 1 個目を 2 番へずらす。
     for (position, footnote) in page.footnotes.iter().filter(|footnote| return !footnote.continued).enumerate() {

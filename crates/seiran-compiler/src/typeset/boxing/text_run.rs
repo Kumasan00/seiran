@@ -50,11 +50,11 @@ impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   pub(super) fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
     let text = boxing::fold_newlines(text);
-    // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキ（#174）の境界判定に使う。
+    // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキの境界判定に使う。
     let mut prev_boundary: Option<(script::ScriptCategory, char)> = None;
     for segment in script::split_text_by_script(style.font_kind, &text) {
       let is_japanese = segment.category == script::ScriptCategory::Japanese;
-      // 和文↔欧文が直接隣接する（字・数字どうしの）境界に四分アキを挿む（JIS X 4051、issue #174）。
+      // 和文↔欧文が直接隣接する（字・数字どうしの）境界に四分アキを挿む（JIS X 4051）。
       // 数式（Math）境界はスコープ外、約物アキ無効時（punctuation_spacing = false）も挿まない。
       if style.font_kind != FontKind::Math
         && self.punctuation_spacing
