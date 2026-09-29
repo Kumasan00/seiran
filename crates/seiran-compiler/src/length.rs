@@ -10,9 +10,6 @@
 //! 無次元比の算出（[`Length::ratio`]）だけに閉じ、乗除（倍率・比例配分）の丸め規約は [`round_sp`] 1 箇所へ
 //! 集約する。i64 の値域は ±1.4e14 pt と実質無限のため、
 //! オーバーフロー・飽和・上限（`\maxdimen` 相当）といった境界処理は一切設けない。
-//!
-//! 各スタイル構造体の `font_size` / `bottom_margin` などはこの型を用い、`garde` の `custom`
-//! バリデータ [`positive`] / [`non_negative`] で 0 や負値を弾く。
 
 #![expect(
   clippy::cast_precision_loss,
@@ -52,7 +49,6 @@ fn round_to_pt_sp(pt: f64) -> i64 { return round_sp(pt * SP_PER_PT as f64); }
 /// 単位付き長さ値。内部は sp（1/65536 pt）の整数で保持する。
 ///
 /// [`Display`](std::fmt::Display) の出力は [`Length::from_str`] と往復する固定の字面で、幅・寄せなどの書式パラメータは無視する。
-/// `Deref` / `From<f32>` は意図的に実装しない（変換漏れを型検査で検出するため）。
 #[derive(
   Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Add, Sub, Neg, AddAssign, SubAssign, Display,
 )]
@@ -131,7 +127,7 @@ const UNITS: [(&str, f64); 3] = [("pt", 1.0), ("mm", MM_TO_PT), ("cm", CM_TO_PT)
 
 /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。失敗時は `None`。
 ///
-/// 前後の空白は落とすが、数値と単位の間の空白は受け付けない（`5 pt` は `5pt` の第 2 の綴り）。
+/// 前後の空白は落とすが、数値と単位の間の空白は受け付けない。
 /// `f64::from_str` は空白を含む文字列を拒否するので、数値部を `trim` しないことがその検査になる。
 fn parse_length(value: &str) -> Option<Length> {
   // 数値は f64 で読む。sp（1/65536pt）は f32 の仮数では表しきれず、f32 経由だとユーザ入力の
@@ -185,7 +181,7 @@ impl<'de> Deserialize<'de> for Length {
 /// 値が 0 以下の場合に [`garde::Error`] を返す。
 #[expect(
   clippy::trivially_copy_pass_by_ref,
-  reason = "garde の derive が `#[garde(custom(positive))]` の呼び出しを `&self.field` / `&()` で生成するため、値渡しへ変えると型が合わない（#307 で E0308 が 15 件出ることを確認済み）"
+  reason = "garde の derive が `#[garde(custom(positive))]` の呼び出しを `&self.field` / `&()` で生成するため、値渡しへ変えると型が合わない"
 )]
 pub(crate) fn positive(value: &Length, _ctx: &()) -> garde::Result {
   if value.is_positive() {
@@ -226,7 +222,6 @@ impl Mul<i32> for Length {
   type Output = Self;
 
   /// 整数倍（無次元カウント）。sp 整数のまま乗算するので丸め・浮動小数を経由せず厳密。
-  /// 整数リテラルは既定で `i32` に解決されるため受け側も `i32` とする。
   fn mul(self, rhs: i32) -> Self::Output { return Length(self.0 * i64::from(rhs)); }
 }
 

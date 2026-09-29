@@ -1,15 +1,10 @@
 //! 工程（phase）の開始と、結果付きの終了の記録
 //!
 //! 工程の入れ子は span が表す。この module は、その span の中で「工程を開始」と
-//! 「工程を終了」（`status` と `elapsed`）の 2 つの INFO event を出す唯一の site を持つ。事実（件数）は
-//! 引き続き各工程の callee が完了 event で出し、所要時間は終了 event だけが持つ（1 事象 1 オーナー）。
+//! 「工程を終了」（`status` と `elapsed`）の 2 つの INFO event を出す唯一の site を持つ。
 //!
 //! 終了の状態は「[`Phase::succeed`] が呼ばれたか」だけで決まる。`?` の早期 return・失敗を返す
-//! `return`・panic の unwind はどれも `succeed` を通らないので、失敗した工程も必ず終了 event を持つ
-//! — ログから「どの工程で止まったか」を読めるようにするのがこの記録の目的だから。
-//!
-//! CLI の `render` / `write` は `seiran` crate の同名 module が同じ契約で記録する（target を各 crate に
-//! 保つため、この型を facade へは載せない）。
+//! `return`・panic の unwind はどれも `succeed` を通らないので、失敗した工程も必ず終了 event を持つ。
 
 use std::time::Instant;
 
@@ -40,11 +35,7 @@ pub(crate) struct Phase {
 impl Phase {
   /// `span` に入り、工程の開始を記録する。
   ///
-  /// span は呼び出し側の `info_span!("input")` 等で作る — span の名前と target は callsite で決まり、
-  /// ここで作ると全工程の target がこの module になってしまう。一方「工程を開始」「工程を終了」の
-  /// event 自身の target はこの module（`seiran_compiler::phase`）になる。そのため
-  /// `RUST_LOG=seiran_compiler::typeset=info` のように工程の module 単位で絞ると、この開始・終了
-  /// event は通らない — 見るには `seiran_compiler::phase=info` を directive へ足す。
+  /// span は呼び出し側の `info_span!("input")` 等で作る（span の名前と target は callsite で決まる）。
   pub(crate) fn enter(span: Span) -> Self {
     let span = span.entered();
     info!("工程を開始");
@@ -81,8 +72,7 @@ mod tests {
 
   use super::Phase;
 
-  /// 書かれた内容を後から検査できる、複製可能な書き出し先。tracing の layer へそのまま渡せるよう
-  /// `MakeWriter` も実装する（自身の複製を返す。`tests/trace_events.rs` の `CapturedLog` と同じ形）。
+  /// 書かれた内容を後から検査できる、複製可能な書き出し先。`MakeWriter` は自身の複製を返す。
   #[derive(Clone)]
   struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
 

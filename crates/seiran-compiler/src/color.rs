@@ -44,8 +44,7 @@ impl FromStr for Color {
 
   /// `"#rrggbb"` 形式の文字列を `Color` に変換する。大文字小文字は区別しない。
   ///
-  /// [`Length`](crate::Length) と違い前後の空白は許容しない（style.toml の受理範囲を
-  /// `"#rrggbb"` ちょうどに保つため）。空白を落とす必要がある呼び出し側は自分で `trim` する。
+  /// 前後の空白は許容しない（落とすのは呼び出し側の責務）。
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     let invalid = || {
       return ParseColorError {

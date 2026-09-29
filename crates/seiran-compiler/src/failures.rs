@@ -1,28 +1,16 @@
 //! 段が「1 回の検査で見つけた複数の失敗」を運ぶための非空集合 [`Failures`]
-//!
-//! 集約するかどうかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める。
-//! 続けられる検査（文書全体の重複ラベル・`FontType::ALL` の各フォント・manifest の各画像・
-//! 設定に列挙された複数パスなど）は全件を検査し、その結果をこの型で運ぶ。
-//!
-//! **この型は [`miette::Diagnostic`] を実装しない。** それが「aggregate 自身に新しい診断 `code` を
-//! 付けない」という規約の型による実装になっている — 集約はそれ自体では描画されず、`compiler` seam で
-//! `CompileFailure` へ平坦化されて初めてユーザー表示になる。`Diagnostic` を実装してしまうと
-//! 「複数のエラーがあります」に相当する表示単位が生まれ、ユーザーが最初に読むメッセージが
-//! 修正可能な leaf でなくなる。
 
 use derive_more::Display;
 
 /// 1 件以上の失敗（**空では構築できない**）
 ///
-/// `first` が主診断で、`rest` が同時に報告する残り。順序は入力の論理順（source は宣言順、
-/// フォントは読込がパスの昇順・解析 / 検証が `FontType::ALL` 順、画像は正規化済みパスの昇順、意味解析は
-/// 文書順）であり、`HashMap` の反復順や並列処理の完了順に依存させない。
+/// `first` が主診断で、`rest` が同時に報告する残り。順序は入力の論理順であり、`HashMap` の反復順や
+/// 並列処理の完了順に依存させない。
 ///
 /// 構築経路は [`Failures::single`] と [`Failures::from_vec`]（空なら `None`）だけで、
 /// `Default` は実装しない。
 ///
-/// 表示（`Display`）は主の失敗そのもので、書式パラメータごと主へ委譲する。この型自身は表示単位ではないが、
-/// `thiserror` の `#[error(transparent)]` で運ぶ経路（例: `AnalyzeError::Analyze`）が `Display` を要求するため。
+/// 表示（`Display`）は主の失敗そのもので、書式パラメータごと主へ委譲する。
 #[derive(Debug, Display)]
 #[display("{first}")]
 pub(crate) struct Failures<E> {
@@ -42,9 +30,6 @@ impl<E> Failures<E> {
   }
 
   /// 失敗の列から集合を作る。**1 件も無ければ `None`** を返す。
-  ///
-  /// 「違反が 1 件でもあれば失敗」という判定をこの関数の返り値で表すことで、
-  /// 空の集合を構築する経路自体を無くす。
   pub(crate) fn from_vec(failures: Vec<E>) -> Option<Self> {
     let mut failures = failures.into_iter();
     let first = failures.next()?;
@@ -58,10 +43,6 @@ impl<E> Failures<E> {
   pub(crate) fn into_parts(self) -> (E, Vec<E>) { return (self.first, self.rest); }
 
   /// 各要素を変換する（順序は保つ）。
-  ///
-  /// 段の error 型を上位の error 型へ持ち上げるのに使う。`impl<E, F: From<E>> From<Failures<E>>
-  /// for Failures<F>` は標準の反射的な `impl From<T> for T` とコヒーレンスが衝突して書けないため、
-  /// 呼び出し側が明示的にこのメソッドを呼ぶ。
   pub(crate) fn map<F>(self, mut convert: impl FnMut(E) -> F) -> Failures<F> {
     return Failures {
       first: convert(self.first),

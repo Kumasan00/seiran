@@ -1,16 +1,13 @@
 //! ソースの同一性 [`SourceId`] と位置 [`Span`]。
 //!
-//! どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。
 //! 診断型は持たず、`miette::SourceSpan` への変換（`impl From<Span> for SourceSpan`）だけを持つ leaf module。
 
 use miette::{SourceOffset, SourceSpan};
 
 /// 複数ソースファイルをまとめて処理する際の、実ソース 1 つ分の位置識別子
 ///
-/// 名前・パスは持たない不透明な識別子。呼び出し元が渡した順序に対応するインデックスを
-/// そのまま運び、ID の発行とファイル名・内容への逆引きは `project::SourceSet` の責務とする。
-/// 順序（`Ord`）は `index()` の昇順 = `config.sources` の宣言順で、`HirDocument::assemble` の
-/// グループ正規化と `semantics` の文書順ソート鍵（`order_key`）が使う鍵と同じもの。
+/// 名前・パスは持たない不透明な識別子で、呼び出し元が渡した順序に対応するインデックスをそのまま運ぶ。
+/// 順序（`Ord`）は `index()` の昇順 = `config.sources` の宣言順。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct SourceId(usize);
 

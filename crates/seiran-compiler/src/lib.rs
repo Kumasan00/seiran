@@ -22,8 +22,6 @@ mod source;
 mod style;
 mod typeset;
 
-// `SourceReadError` は `ProjectSource::read_text` / `read_bytes` の戻り値型に現れるので、再輸出しないと
-// 外部から `ProjectSource` を実装できない。
 pub use color::{Color, ParseColorError};
 pub use compiler::{BuildStatistics, Compilation, CompileFailure, DependencyManifest, Warnings, compile};
 pub use length::{Length, ParseLengthError};
@@ -32,10 +30,6 @@ pub use project::test_support;
 pub use project::{
   FilesystemProjectSource, FontType, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError,
 };
-// `Publication` から到達できる leaf 値型はすべてここに載せる — 描画バックエンド（`seiran-pdf`）が
-// 描画命令を読むために名指しする必要があるため。`ProjectConfig` / `Style` /
-// `typeset::Page` のような内部データモデル・組版中間型は載せない（renderer が「確定座標の描画のみ」で
-// いられる防火壁は、この公開範囲の狭さが担っている）。
 pub use publication::{
   Destination, FontFaceConfig, FontMetric, Glyph, GlyphRun, ImageFormat, ImageRef, PaintOp, Point, Publication,
   PublicationFont, PublicationImage, PublicationLink, PublicationLinkTarget, PublicationMetadata,
