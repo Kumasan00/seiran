@@ -1,7 +1,7 @@
 //! 画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプリングを行う。
 //!
 //! 描画に使う画像本体のデコードだけを担う。自然寸法の解決・width / height の確定は
-//! compiler 側 `seiran_compiler` の `typeset::image` に閉じている（epic #276 / #279、#350、#372）。
+//! compiler 側 `seiran_compiler` の `typeset::image` に閉じている。
 
 use krilla::{Data, image::Image};
 use seiran_compiler::ImageFormat;
@@ -43,7 +43,7 @@ impl LoadedImage {
 ///
 /// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない（読み込み済みの `bytes` を
 /// そのままデコードする）。形式は組版段（`seiran_compiler` の `typeset::image`）が判定済みで、
-/// ここで拡張子を読み直さない — 同じ判定を 2 回書くと両者が食い違いうるため（#378）。
+/// ここで拡張子を読み直さない。
 pub(crate) fn load_image(
   path: &str,
   format: ImageFormat,
@@ -77,7 +77,7 @@ const INTERPOLATE: bool = false;
 /// ラスタ画像を必要なら `resize_to` 以下に縮小してから、krilla の `decode` でデコードする。
 ///
 /// PNG / JPEG の差は「縮小後の再エンコード形式 `reencode_as`」と「krilla のコンストラクタ `decode`」の
-/// 2 値だけなので、両形式でこの 1 経路を共有する（#770）。
+/// 2 値だけなので、両形式でこの 1 経路を共有する。
 fn load_raster(
   path: &str,
   bytes: &[u8],

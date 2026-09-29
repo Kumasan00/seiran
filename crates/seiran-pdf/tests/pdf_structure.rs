@@ -4,9 +4,6 @@
 //!
 //! 入力は `crates/seiran-compiler/tests/config/` の fixture（layout dump golden と共有）で、
 //! `seiran_compiler::compile` → [`seiran_pdf::render`] という本番の経路をそのまま通す。
-//! `seiran-compiler` 側の in-src テストではなくこちらに置くのは、依存が
-//! `seiran-pdf → seiran-compiler` の一方向で、in-src（`#[cfg(test)]`）だと unit test ビルドの
-//! compiler と `seiran-pdf` がリンクする compiler が別コンパイルになり型が一致しないため（#372）。
 
 use std::{
   fs,
@@ -204,7 +201,7 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
 ///
 /// `PublicationPage.ops` は「背景の矩形塗り（パス構築 + `f`）→ 本文（テキスト `Tj`/`TJ`・画像 `Do`）」
-/// の順で並ぶ（`seiran_compiler` の `typeset::emit` が `Publication` を構築する際に定める描画順、#535）。
+/// の順で並ぶ（`seiran_compiler` の `typeset::emit` が `Publication` を構築する際に定める描画順）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {
     "f" | "F" | "f*" => Some("fill"),

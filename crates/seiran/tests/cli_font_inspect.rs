@@ -1,5 +1,5 @@
 //! フォント調査サブコマンド（`variation-axes` / `ttc-names` / `script-langs`）の終了コードと出力先を、binary を
-//! 起動して確かめる（#549）
+//! 起動して確かめる
 //!
 //! 一覧の書き出しの分類（`BrokenPipe` は成功・それ以外は失敗）は `subcommand::listing` の in-src テストが
 //! 失敗する writer の注入で決定的に覆う。ここではプロセスとしての終了コード・stderr の診断・panic しないことを
@@ -177,7 +177,7 @@ fn variation_axes_lists_axes_and_instances_of_a_variable_font() {
 
 #[test]
 fn variation_axes_rejects_a_broken_fvar() {
-  // fvar のレコードの length だけを 1 にする（#549 の再現手順 1。他のテーブルは無傷）
+  // fvar のレコードの length だけを 1 にする（他のテーブルは無傷）
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_patched_copy(&vendor_font("NotoSans[wdth,wght].ttf"), dir.path(), "broken.ttf", |font| {
     let record = table_record_position(font, *b"fvar");

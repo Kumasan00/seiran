@@ -1,4 +1,4 @@
-//! `--log-file` への致命的エラー診断の記録を、binary を起動して端から端まで確かめる（#502 / #548）
+//! `--log-file` への致命的エラー診断の記録を、binary を起動して端から端まで確かめる
 //!
 //! `seiran` crate の単体テストは純粋関数（フィルタ計画・診断の描画）を覆うが、「`-q --log-file` でもファイルに
 //! 失敗理由（`Failures` の全 leaf）が残る」「`--log-file` の有無で stderr と終了コードが変わらない」「既存パスを
@@ -99,7 +99,7 @@ fn source_position_is_recorded_in_the_log_file() {
   assert!(!output.status.success());
   let log = fs::read_to_string(&log_path).expect("ログファイルができているはず");
   assert!(log.contains("project::config::parse_toml"), "診断の code が残る: {log}");
-  // `-c` の相対パスは base_dir（起動時のカレントディレクトリ）を基準に解決してから読むので（#530）、
+  // `-c` の相対パスは base_dir（起動時のカレントディレクトリ）を基準に解決してから読むので、
   // ソース位置ブロックにはファイル名の前に絶対パスが付く。ここではプレフィックスを固定せず、
   // ブロック自体とファイル名部分が残っていることだけを見る。
   let position_line = log.lines().find(|line| return line.contains("╭─[")).unwrap_or_else(|| {
@@ -167,7 +167,7 @@ fn existing_log_path_is_refused_before_the_build() {
 
 #[test]
 fn log_file_never_overwrites_the_config_it_is_pointed_at() {
-  // `-c` と `--log-file` に同じパスを渡す（#548 の再現手順）
+  // `-c` と `--log-file` に同じパスを渡す
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let config_path = write_config_with_two_violations(dir.path());
   let original = fs::read(&config_path).expect("設定ファイルを読めるはず");

@@ -1,5 +1,5 @@
 //! 工程の記録・実行記録・`RUST_LOG` の通知が、`-q` / `-v` / `RUST_LOG` の組み合わせごとに端末とログファイルへ
-//! どう出るかを、binary を起動して確かめる（#551）
+//! どう出るかを、binary を起動して確かめる
 //!
 //! compiler 内の工程（`compile` とその子）の契約は `seiran-compiler` の `tests/trace_events.rs` が固定する。
 //! ここでは CLI が開く `render` / `write` の工程と、出力先ごとの振り分け（`Reporter` の構造）を見る。

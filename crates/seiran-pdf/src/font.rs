@@ -1,7 +1,6 @@
 //! krilla フォントの構築とグリフ変換。
 //!
-//! `Publication` が持つのはフォントのバイト列と構築設定だけなので、krilla の `Font` をここで組む
-//! （#372 以前は compiler 側が構築済みの `Font` を渡していた）。
+//! `Publication` が持つのはフォントのバイト列と構築設定だけなので、krilla の `Font` をここで組む。
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -74,7 +73,7 @@ fn krilla_data(bytes: &Arc<[u8]>) -> Data {
 ///
 /// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的 / 可変で呼び分けない。
 /// 軸の指定と `fvar` の整合（あるのに指定が無い・無いのに指定がある・読めない）は
-/// `typeset::font::validation` が検証済みで、renderer はフォントを自分でパースしない（#681）。
+/// `typeset::font::validation` が検証済みで、renderer はフォントを自分でパースしない。
 fn build_krilla_font(font_type: FontType, font: &PublicationFont) -> Result<Font, PdfRenderError> {
   let axes = font
     .face

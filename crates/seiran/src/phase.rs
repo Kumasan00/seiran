@@ -1,4 +1,4 @@
-//! CLI が開く工程（`render` / `write`）の開始と、結果付きの終了の記録（#551）
+//! CLI が開く工程（`render` / `write`）の開始と、結果付きの終了の記録
 //!
 //! compiler の工程は `seiran-compiler` の同名 module が記録する。メッセージ（「工程を開始」「工程を終了」）と
 //! フィールド（`status` / `elapsed`）は 2 つの module で同一に保つ — ログを読む側から見て 1 つの契約だから。

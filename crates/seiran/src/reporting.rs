@@ -34,7 +34,7 @@ const QUIET_DIRECTIVE: &str = "off";
 ///
 /// tracing の WARN では出さない — 通知の対象である `RUST_LOG` 自身が WARN を通さない指定（`error` / target
 /// 限定）だと、通知が消えてしまうため。warning 診断として [`Reporter::warning`] が端末（`-q` 以外）と
-/// ログファイルへ出す（#551）。
+/// ログファイルへ出す。
 #[derive(Debug, Error, Diagnostic)]
 enum FilterWarning {
   /// `RUST_LOG` を解釈できず、`--verbose` の設定へ戻した
@@ -88,7 +88,7 @@ impl Reporter {
   ///
   /// 端末側の出力先は stderr を明示する（`fmt` の既定は stdout で、そのままではログが成果物の経路へ流れる）。
   /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の既定は
-  /// `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある（#493）。
+  /// `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある。
   ///
   /// # Errors
   ///
@@ -195,7 +195,7 @@ impl Reporter {
   /// 1 回ずつ。`--quiet` でもファイルへは常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くす
   /// のがこの操作の目的）。`CompileFailure` の関連診断（`related`）も続けて描くので、`Failures` 集約の
   /// 全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは miette で報告し ERROR レベルは
-  /// 使わないという線引き（#103）を、ファイルでも保つ。
+  /// 使わないという線引きを、ファイルでも保つ。
   pub(super) fn failure(&self, report: &miette::Report) {
     if let Some(log) = &self.log {
       log.write_block(&render_diagnostic_plain(report.as_ref()));
@@ -240,7 +240,7 @@ fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool)
 /// `Report` は所有した診断からしか作れないので、`Warnings` が貸す `&dyn Diagnostic` を端末へ出すにはこの
 /// 形が要る。`Report` の `Debug` は構築時に既定 handler（`set_hook` していなければ `MietteHandler::new()`。
 /// seiran は `set_hook` を呼ばない）を捕まえて `handler.debug(診断, f)` を呼ぶだけなので、同じ handler で
-/// 同じ関数を呼べば、端末へ出るバイト列は `Report` 経由のときと一致する（#550）。
+/// 同じ関数を呼べば、端末へ出るバイト列は `Report` 経由のときと一致する。
 struct TerminalDiagnostic<'a>(&'a MietteHandler, &'a dyn Diagnostic);
 
 impl std::fmt::Debug for TerminalDiagnostic<'_> {

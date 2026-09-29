@@ -1,7 +1,7 @@
 //! PDF 描画時のエラーを定義する。
 //!
 //! ここにあるのは「有効な [`Publication`](seiran_compiler::Publication) を渡されたうえで、なお
-//! backend が失敗しうるもの」だけ（#378）。3 系統に限る:
+//! backend が失敗しうるもの」だけ。3 系統に限る:
 //!
 //! 1. 有効な `Publication` を backend の表現へ変換できない（krilla フォントの構築）
 //! 2. 画像デコーダ / SVG renderer が入力を処理できない

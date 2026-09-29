@@ -6,7 +6,7 @@
 //! [`LogSink::finish`] で取り出す — tracing の writer が返したエラーは呼び出し元の `Result` へ伝わらないので、
 //! sink 自身が保持しないと「記録できていない実行」を成功として終えてしまう。
 //!
-//! **flush 方針**（#551）: INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と、
+//! **flush 方針**:INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と、
 //! 直接の報告（[`LogSink::write_block`]）は書くたびに flush する。DEBUG / TRACE は `BufWriter` に
 //! 溜めたままにする（TRACE は文書の要素数に比例して出るため、event ごとの flush はハングした実行の
 //! 診断に見合わない I/O コストになる）。この方針により、ハングや `SIGINT` / `SIGKILL` で止まった実行でも

@@ -1,4 +1,4 @@
-//! 失敗した `build` でも確定済みの警告が端末とログファイルへ出ることを、binary を起動して確かめる（#550）
+//! 失敗した `build` でも確定済みの警告が端末とログファイルへ出ることを、binary を起動して確かめる
 //!
 //! 警告の保持そのものは `seiran-compiler` の `compile_facade` が覆う。ここでは CLI の報告順序（確定済み警告 →
 //! 主エラー）と、compile 成功後に保存が失敗した実行でも警告が消えないことを見る。render の失敗は注入できない
@@ -33,7 +33,7 @@ fn assert_appears_before(text: &str, before: &str, after: &str) {
 
 #[test]
 fn warnings_survive_a_failed_write_on_the_terminal_and_in_the_log() {
-  // issue #550 の再現手順: `.txt` 入力（拡張子警告 1 件）で PDF の保存先を作れなくする
+  // `.txt` 入力（拡張子警告 1 件）で PDF の保存先を作れなくする
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let output_dir = unwritable_output_dir(dir.path());
   write_project(dir.path(), "doc.txt", "Hello, Seiran!", output_dir);
@@ -65,7 +65,7 @@ fn quiet_keeps_warnings_of_a_failed_write_only_in_the_log() {
 
 #[test]
 fn warnings_of_a_failed_compile_come_before_the_error() {
-  // issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
+  // `.txt` 入力に未知コマンドを足す
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_project(dir.path(), "doc.txt", "\\unknowncommand{x}", "out");
 

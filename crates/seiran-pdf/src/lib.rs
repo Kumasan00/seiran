@@ -2,7 +2,7 @@
 //!
 //! 受け取るのは確定座標の描画命令とフォント・画像の生資源だけで、レイアウトの判断は一切しない
 //! （組版は `seiran_compiler::compile` に閉じている）。krilla フォントの構築・画像のデコード・
-//! PDF の encode がこの crate の責務（#372）。
+//! PDF の encode がこの crate の責務。
 
 mod error;
 mod font;
@@ -21,7 +21,7 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_p
 ///
 /// フォント・画像資源は `publication.resources()` から取り、ファイル I/O は一切行わない。
 /// 描画命令の値（ページサイズ・矩形・画像参照・到達先ページ）は `Publication` の構築時に
-/// 検証済みなので、ここで検査し直さない（#378）。
+/// 検証済みなので、ここで検査し直さない。
 ///
 /// # Errors
 ///
