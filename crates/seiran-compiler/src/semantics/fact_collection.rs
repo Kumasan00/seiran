@@ -1,9 +1,5 @@
 //! 意味解析 — HIR を 1 回走査して `SemanticFacts` を確定する。
 //!
-//! ラベル宣言・カウンタ構造値・見出しをここで確定し、`NodeId` をキーにした side table へ入れる。
-//! 文書木は読み取り専用で、書き戻しは一切行わない。表示文字列（`number_format` 等の適用結果）は
-//! 作らない — 表示は typeset 側の責務。
-//!
 //! 走査順は文書順（preorder）。数式ブロックは「行 → 環境」の順に採番する（`\split` / `\multiline` の
 //! 環境単位採番が行採番の後に来る）。
 
@@ -53,7 +49,6 @@ pub(super) fn collect_facts(
     walker.nodes(&group.nodes);
   }
 
-  // 独立に検査できる 3 種（重複ラベル・未定義引用キー・未解決参照）を全件集め、文書順にマージする。
   let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
@@ -82,9 +77,8 @@ fn order_key(node: NodeId) -> OrderKey { return (node.source().index(), node.loc
 
 /// variant ごとに必要な fact がすべて登録されているかを検証する
 ///
-/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、lowering の
-/// 遠い `unreachable!` で壊れる前にここで落とす。入力由来のエラー（重複ラベル・未解決参照・
-/// 未定義引用キー）はすべてこの検証より手前で診断として返している。
+/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので `assert!` で落とす。
+/// 入力由来のエラーはすべてこの検証より手前で診断として返している。
 fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &SemanticPolicy) {
   let checker = Checker { facts, policy };
   for group in hir.groups() {
@@ -158,9 +152,8 @@ impl Checker<'_> {
         self.nodes(&theorem.body);
       },
       HirNodeKind::MathBlock(math) => {
-        // 環境単位（`split` / `multiline`）と行単位（`align` / `gather` 等）は互いに排他だが、
-        // それぞれの `numbered` を独立に見る（「どちらか一方は必ず採番済み」と書くと、
-        // 環境側が無採番の `align` 等で誤検出する）。
+        // 環境単位（`split` / `multiline`）と行単位（`align` / `gather` 等）は互いに排他で、
+        // それぞれの `numbered` を独立に見る
         if math.numbered {
           self.require_counter(node.id, "MathBlock");
           self.require_declared_label(node.id, math.label.as_deref(), "MathBlock");
@@ -298,10 +291,6 @@ struct Walker<'a, 'p> {
 
 impl Walker<'_, '_> {
   /// ブロックノード列を文書順に走査する
-  ///
-  /// 走査は失敗しない — 重複ラベルを見つけても打ち切らず、最初の定義を有効なまま残して
-  /// 診断を積み、後続の独立した問題（他の重複・未解決参照・未定義引用キー）も同じ 1 回の
-  /// 走査で見つける。
   fn nodes(&mut self, nodes: &[HirNode]) {
     for node in nodes {
       self.node(node);
@@ -327,9 +316,6 @@ impl Walker<'_, '_> {
   }
 
   /// ラベル宣言を記録し、重複していれば診断を積む（走査は打ち切らない）
-  ///
-  /// 採番はこの手前で済んでいるので、走査を続けても後続のカウンタ値はずれない。最初の定義が
-  /// 有効なまま残るのは、定義表が先勝ちの 1 つしかないことから従う。
   fn declare_label(&mut self, node: NodeId, label: Option<&str>, site: NodeId) {
     let Some(name) = label else {
       return;
@@ -385,11 +371,8 @@ impl Walker<'_, '_> {
         }
       },
       HirNodeKind::Theorem(theorem) => {
-        // 無採番クラス（`proof`）は採番もラベル登録もしない（`number_and_declare` が判断する）。
         self.number_and_declare(CounterKind::Theorem(theorem.class), node.id, theorem.label.as_deref(), node.id);
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
-        // 現状 frontend はこの ID を環境ヘッダの span で確保しているので実際の位置は環境と同じだが、
-        // HIR 側の span 付与が細かくなればここを触らずに診断が絞り込まれる。
         if let Some(target) = &theorem.of {
           self.pending.push(PendingReference {
             site: target.id,
@@ -436,9 +419,6 @@ impl Walker<'_, '_> {
   }
 
   /// 数式ブロックの 1 行を走査する
-  ///
-  /// ラベルの診断位置は `[label=...]` 引数自身（`label_site`）を使い、
-  /// 無ければ環境ノードの位置へフォールバックする。
   fn math_row(&mut self, row: &HirMathRow, environment: NodeId) {
     if !row.numbered {
       return;
@@ -490,10 +470,7 @@ mod tests {
     style::Style,
   };
 
-  /// 走査結果を `SemanticDocument` に束ねるテスト用の入口
-  ///
-  /// 本体経路（`semantics::analyze`）は CSL 整形まで含むが、走査そのものの検証には要らないので、
-  /// ここでは `collect_facts` の結果だけを HIR と束ね、引用の生成物は空にする。
+  /// 走査結果を `SemanticDocument` に束ねるテスト用の入口（引用の生成物は空）
   fn analyze(
     hir: HirDocument,
     policy: &SemanticPolicy,
@@ -524,7 +501,6 @@ mod tests {
     let analyzed = analyze_source("\\section{A}\n\\begin{quote}\n\\subsection{B}\n\\end{quote}\n");
     let keys: Vec<usize> =
       analyzed.headings().map(|heading| return analyzed.heading_key(heading.node).index()).collect();
-    // facts の順（文書順）と一致する
     assert_eq!(keys, vec![0, 1]);
   }
 
@@ -593,12 +569,8 @@ mod tests {
 
   #[test]
   fn analyze_reports_unresolved_of_target_with_its_own_node_span() {
-    // 未解決の [of=...]。診断位置は `HirProofTarget::id`（定理ノードとは別の NodeId）から引く。
-    //
-    // なお現状の frontend は `HirProofTarget::id` を環境ヘッダの span（`view.span()`、
-    // `frontend::evaluator::environment::theorem`）で確保しており、引数だけを指す狭い span を
-    // HIR が持っていない。よってここで固定できるのは「報告位置が of を含む定理環境の位置である」
-    // ことまでで、引数単体への絞り込みは HIR 側の span 付与が細かくなってから。
+    // HIR は `HirProofTarget::id` に環境ヘッダの span を与えているので、固定できるのは
+    // 報告位置が of を含むことまで
     let source = "\\begin{proof}[of=missing]\n証明\n\\end{proof}\n";
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
@@ -719,7 +691,6 @@ mod tests {
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
-    // 2 回目を主ラベル、最初の定義（1 行目、offset 0）を 2 本目のラベルとして同じスニペットに示す
     let SemanticError::DuplicateLabel { label, labels, .. } = failures.first() else {
       panic!("DuplicateLabel を期待: {failures:?}");
     };
@@ -767,7 +738,6 @@ mod tests {
 
   #[test]
   fn analyze_reports_duplicate_label_unresolved_ref_and_unknown_cite_in_document_order() {
-    // 3 種を意図的に散らす（重複ラベル → 未知引用キー → 未解決参照 の文書順）
     let hir = document(
       "\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\cite{missing-key} です。\n\n本文 \\ref{missing} です。\n",
     );
@@ -803,9 +773,7 @@ mod tests {
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
-    // 参照は解決済み（最初の定義に対して解決される）なので、未解決参照は報告されない。
-    // 定義表は `SemanticFacts::declare_label` が先勝ちで持つ 1 つだけなので、重複側の定義が
-    // 紛れ込んで参照解決先と食い違うことは構造的に起きない（この assert がその回帰を止める）。
+    // 参照は最初の定義に対して解決されるので、未解決参照は報告されない
     assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string()]);
   }
 
@@ -813,7 +781,6 @@ mod tests {
   fn label_resolves_to_the_counter_value_of_its_definition() {
     let analyzed = analyze_source("\\chapter{A}\n\n\\section[label=sec:x]{B}\n");
     let value = analyzed.counter_value_of_label(&LabelId::new("sec:x")).expect("ラベルが解決するはず");
-    // 定義ノードのカウンタ値そのもの（祖先チェーン込み）が引ける
     let section = analyzed.headings().nth(1).expect("見出しが 2 件あるはず");
     assert_eq!(Some(value), analyzed.counter_value(section.node));
     assert_eq!(value.own, 1);

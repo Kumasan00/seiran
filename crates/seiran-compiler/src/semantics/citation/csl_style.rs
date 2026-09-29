@@ -1,9 +1,7 @@
 //! CSL スタイル（`.csl`）とロケール XML の読込・解析。
 //!
 //! `.csl` ファイルと CSL ロケール（`xml:lang` 付き locale XML）を [`crate::project::ProjectSource`]
-//! 経由で読み、解析済みの [`CompiledCitationStyle`] にまとめる。hayagriva への整形要求
-//! （[`CitationRequest`] / [`BibliographyRequest`]）はここで組み立てるが、`BibliographyDriver` を
-//! 駆動して表示を生成するのは `citation::render` の責務。
+//! 経由で読み、解析済みの [`CompiledCitationStyle`] にまとめる。
 
 use hayagriva::{
   BibliographyRequest, CitationItem, CitationRequest, archive,
@@ -86,9 +84,6 @@ pub(crate) enum CitationStyleError {
 }
 
 /// 解析済みの CSL スタイル一式（独立スタイル本体 + ロケールプール + 出力言語 override）。
-///
-/// `IndependentStyle::from_xml` によるパースと `load_locales` によるロケール解決を済ませた後の
-/// 値で、これ以降 I/O を伴わずに `citation::render` へ渡せる。
 #[derive(Debug)]
 pub(crate) struct CompiledCitationStyle {
   /// CSL 独立スタイル本体
@@ -101,9 +96,6 @@ pub(crate) struct CompiledCitationStyle {
 
 impl CompiledCitationStyle {
   /// 引用 1 箇所ぶんの整形要求を組み立てる。
-  ///
-  /// スタイル本体・ロケールプール・出力言語 override をこの型の外へ出さないための入口で、
-  /// 利用側（`citation::render`）は `BibliographyDriver` へ積む値だけを受け取る。
   pub(super) fn citation_request<'a>(&'a self, items: Vec<CitationItem<'a, Item>>) -> CitationRequest<'a, Item> {
     return CitationRequest::new(items, &self.style, self.locale_override.clone(), &self.locales, None);
   }

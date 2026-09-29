@@ -4,10 +4,6 @@
 //! CSL による引用ラベルと書誌、font・色・長さ・座標、脚注のページ単位表示番号はいずれも
 //! 後段の生成物なので持たない。
 //!
-//! [`SemanticFacts`] のフィールドは `crate::semantics` の外から見えない。利用側は collection
-//! 構造を知らず、[`SemanticDocument`](crate::semantics::SemanticDocument) の目的別 query 経由でのみ
-//! fact を参照する。
-//!
 //! ラベルの定義表（`label_definitions` / `declared_labels`）だけはフィールドを private にし、
 //! 書き込み口を [`SemanticFacts::declare_label`]（先勝ち）1 つに限る。同じ対応を別の勝ち方で
 //! 持つ表を作れないことを、呼び出し手順ではなく可視性で保証する。
@@ -22,8 +18,7 @@ use crate::{
 /// ラベル定義 1 件 — 宣言したノードと、診断位置に使うノード
 ///
 /// `node` は fact の鍵（カウンタ構造値はこのノードで引く）、`site` は `[label=...]` 引数自身の
-/// ノード（数式行だけ `node` と異なり、引数が無ければ環境ノード）。ソース位置そのものは持たない —
-/// fact に入るのは「意味と識別」だけで、位置は診断を組むときに `SourceMap` から引く。
+/// ノード（数式行だけ `node` と異なり、引数が無ければ環境ノード）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct LabelDefinition {
   /// ラベルを宣言したノード
@@ -33,10 +28,6 @@ pub(super) struct LabelDefinition {
 }
 
 /// 見出し 1 件について判明した事実（`headings` の 1 エントリを読み出した派生ビュー）
-///
-/// タイトルは「内容」であって「事実」ではないので持たない（表示は HIR から作る）。値は
-/// どれも表に二重で持たず、読み出すたびに組む — `key` は `headings` 上の位置そのもの、
-/// `node` は表の鍵そのもの、カウンタ構造値は `counters` を `node` で引く。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HeadingFacts {
   /// 文書順の見出しキー（PDF しおり・目次のリンク先）
@@ -48,12 +39,9 @@ pub(crate) struct HeadingFacts {
 }
 
 /// 意味解析が確定した事実の集合
-///
-/// 種類ごとに型付きの side table へ分けており、「どの fact が入っているか」の無効な
-/// 組み合わせ（`NodeFacts { a: Option<_>, b: Option<_>, .. }` のような形）を表現できない。
 #[derive(Debug, Default)]
 pub(super) struct SemanticFacts {
-  /// ラベル名 → 定義（先勝ち。書き込み口は [`SemanticFacts::declare_label`] だけ）
+  /// ラベル名 → 定義（先勝ち）
   label_definitions: HashMap<LabelId, LabelDefinition>,
   /// ラベルを宣言したノード → そのラベル（`label_definitions` と同時にのみ書かれる）
   declared_labels: NodeMap<LabelId>,
@@ -120,7 +108,6 @@ mod tests {
 
   #[test]
   fn declare_label_records_the_diagnostic_site_apart_from_the_node() {
-    // 数式行のように fact の鍵と診断位置が別ノードになる場合
     let mut facts = SemanticFacts::default();
     facts.declare_label(id(4), "eq:x", id(5)).expect("初回の宣言は成功するはず");
     let definition = facts.label_definition("eq:x").expect("定義を引けるはず");

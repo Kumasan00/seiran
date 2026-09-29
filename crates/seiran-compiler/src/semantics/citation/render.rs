@@ -103,9 +103,6 @@ fn collect_citation_inlines(children: &ElemChildren, targets: &[CitationId], out
 }
 
 /// 整形済み書誌（`RenderedBibliography`）から書誌エントリ列を組み立てる。
-///
-/// 見出しはここでは作らない — 見出しの文字列は style の値、レベルは `Section` 固定なので、
-/// いずれも `typeset::lowering` が組み立てる（semantics の成果物に style の値を埋め込まない）。
 fn build_bibliography(bibliography: &RenderedBibliography) -> Vec<BibliographyEntry> {
   return bibliography
     .items
@@ -145,8 +142,8 @@ fn collect_inlines(children: &ElemChildren, out: &mut Vec<GeneratedInline>) {
 ///
 /// `Text` / `Link` のアンカーテキストはリーフの実効 `Formatting` を反映し（[`formatted_to_inline`]）、
 /// `Elem` は子へ再帰する。`Markup`（Typst 向けの生マークアップ）はプレーンテキストとして積み、
-/// 置換前提の `Transparent` と空テキストは無視する。`Link` の URL は hyperref 対応まで当面捨て、
-/// アンカーテキストのみ残す（近似）。
+/// 置換前提の `Transparent` と空テキストは無視する。`Link` の URL は捨て、アンカーテキストのみ
+/// 残す（近似）。
 fn push_elem_child(child: &ElemChild, out: &mut Vec<GeneratedInline>) {
   match child {
     ElemChild::Text(formatted)
@@ -183,7 +180,7 @@ fn formatted_to_inline(formatted: &Formatted) -> Option<GeneratedInline> {
 ///
 /// `font_weight == Bold` を太字、`font_style == Italic` を斜体とみなす（`FontWeight::Light` は
 /// 対応する書体が無いため normal 扱い）。スモールキャップス（`font_variant`）・下線（`text_decoration`）・
-/// 上付き下付き（`vertical_align`）は `GeneratedInline` に表現が無いため当面無視する（近似）。
+/// 上付き下付き（`vertical_align`）は `GeneratedInline` に表現が無いため無視する（近似）。
 fn formatting_to_font_kind(formatting: Formatting) -> FontKind {
   let bold = matches!(formatting.font_weight, FontWeight::Bold);
   let italic = matches!(formatting.font_style, FontStyle::Italic);

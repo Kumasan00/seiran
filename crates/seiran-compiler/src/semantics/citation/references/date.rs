@@ -71,8 +71,6 @@ enum DatePart {
 }
 
 /// 季節（CSL の季節番号 1〜4）。
-///
-/// 受理集合を整形器の版に引きずらせないため、整形器の `Season` 型ではなく自前の型で持つ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Season {
   /// 春（1）
@@ -191,8 +189,7 @@ impl<'de> Deserialize<'de> for Circa {
 
 /// CSL の `date-parts`（外側配列）を単一日付の内側配列へ絞り、各要素を範囲内の整数に確定させる。
 ///
-/// エラーは診断文言だけを返し、呼び出し側（`Visitor`）が `serde::de::Error::custom` へ包む
-/// （deserializer のエラー型をここでジェネリックにすると `?` の変換先が推論できない）。
+/// エラーは診断文言だけを返し、呼び出し側（`Visitor`）が `serde::de::Error::custom` へ包む。
 /// TOML の診断スニペットは日付のテーブルを指すだけで要素を指さないので、要素の文言には違反値を載せる。
 ///
 /// # Errors
@@ -228,8 +225,7 @@ const DATE_PART_RANGES: [(&str, RangeInclusive<i16>); 3] =
 
 /// `date-parts` の要素 1 つが範囲内の整数であることを検査し、`i16` に確定させる。
 ///
-/// 文字列は数値として読める値でも拒否する（整形器は数値文字列を整数と同じに読むので、同じ値に綴りを
-/// 2 つ持たせない）。`label` は診断に出す要素名（「年」/「月」/「日」）。
+/// 文字列は数値として読める値でも拒否する。`label` は診断に出す要素名（「年」/「月」/「日」）。
 ///
 /// # Errors
 ///

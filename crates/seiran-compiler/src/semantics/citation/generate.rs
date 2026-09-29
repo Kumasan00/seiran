@@ -1,6 +1,5 @@
 //! 引用の生成物 — [`CitationSiteFacts`] と CSL から表示インライン列と書誌を作る。
 //!
-//! authored な文書木には一切書き戻さない（表示は `NodeId` をキーにする side table で返す）。
 //! I/O は行わない — CSL スタイル・ロケールは解析済みの [`CompiledCitationStyle`] を受け取る。
 
 use std::collections::HashMap;
@@ -18,9 +17,7 @@ use crate::{
 
 /// 引用の生成物（引用箇所ごとの表示インライン列 + 書誌）
 ///
-/// side table の collection 実装と「全引用箇所の表示が生成済み」という完全性はこの型が隠し、
-/// 利用側は下の query だけを見る（`NodeMap` は外へ出さない）。
-/// `Default`（空）は「引用が 1 つも無いプロジェクト」を表す。
+/// 「全引用箇所の表示が生成済み」という完全性はこの型が保つ。`Default`（空）は「引用が 1 つも無いプロジェクト」を表す。
 #[derive(Debug, Default)]
 pub(crate) struct GeneratedCitations {
   /// 引用箇所 → CSL 整形済みの表示インライン列（挿入順 = 文書順）
@@ -35,7 +32,7 @@ impl GeneratedCitations {
   /// # Panics
   ///
   /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは [`generate_citations`] が
-  /// 保証しており、欠落は不変条件の破れなので黙って空を返さない）。
+  /// 保証している）。
   pub(crate) fn display_at(&self, site: NodeId) -> &[GeneratedInline] {
     let Some(display) = self.displays.get(site) else {
       unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
@@ -46,10 +43,7 @@ impl GeneratedCitations {
   /// 書誌のエントリ列を返す（CSL が書誌を定義していない・引用が無い場合は `None`）
   pub(crate) fn bibliography(&self) -> Option<&[BibliographyEntry]> { return self.bibliography.as_deref(); }
 
-  /// テスト専用の直接構築（`NodeId::for_test` と同じ位置づけ）
-  ///
-  /// 本番経路では [`generate_citations`] だけが構築する。lowering のテストが「表示・書誌がある
-  /// 状態」を CSL 抜きで作れるようにするための抜け道で、完全性の不変条件は保証しない。
+  /// テスト専用の直接構築（完全性の不変条件は保証しない）
   #[cfg(test)]
   pub(crate) fn for_test(
     displays: Vec<(NodeId, Vec<GeneratedInline>)>,
@@ -170,7 +164,6 @@ mod tests {
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
     }
 
-    // 書誌はエントリ列として本文と別枠で返る（見出しは持たない）
     let bibliography = generated.bibliography().expect("CSL に書誌があるので Some のはず");
     assert!(
       bibliography.iter().any(|entry| return entry.key.as_str() == "kwan2014"),
@@ -244,7 +237,6 @@ mod tests {
     let first = generate_citations(&analyzed.citations, &references, &compiled);
     let second = generate_citations(&analyzed.citations, &references, &compiled);
 
-    // 全表示の走査が要るのはこのテストだけなので、query ではなく private フィールドを直接読む。
     let plain = |generated: &GeneratedCitations| -> Vec<String> {
       return generated
         .displays
@@ -258,9 +250,6 @@ mod tests {
 
   #[test]
   fn generating_with_different_csl_produces_different_bibliography() {
-    // CSL を変えても authored HIR と facts が変わらないことは、`generate_citations` が
-    // 共有参照しか受け取らないシグネチャが保証する。ここで固定するのは「CSL を変えれば書誌の
-    // 表示内容が変わる」の一点だけ。
     let references = sample_references();
     let analyzed = analyzed(r"本文 \cite{kwan2014}", &references);
     let base = load_citation_style(&FilesystemProjectSource, &style_with_csl()).expect("CSL を読めるはず");

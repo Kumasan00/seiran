@@ -494,8 +494,6 @@ pub(crate) enum ReferenceType {
 /// i64 を超え u64 に収まる整数（JSON だけが書ける）は担体の整数（i64）に嵌らないので、桁を落とさず文字列として
 /// 受ける。u64 を超える整数と i64 の下限未満の整数は `serde_json` が f64 として渡すので、有限の非整数として受ける
 /// （担体へは丸めた数の文字列で渡る）。
-/// `Deserialize` は untagged 導出だと違反値も受理集合も言えない汎用文言になるので手書きする
-/// （`Serialize` は variant の中身をそのまま出すので untagged 導出のまま）。
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub(crate) enum NumberOrString {
@@ -519,7 +517,7 @@ impl FiniteFloat {
   /// 有限値なら包んで返す。NaN・無限大は `None`。
   fn new(value: f64) -> Option<Self> { return value.is_finite().then_some(Self(value)); }
 
-  /// 包んでいる値を返す（テストで受理した値を確かめるため）。
+  /// 包んでいる値を返す。
   #[cfg(test)]
   pub(super) const fn get(self) -> f64 { return self.0; }
 }

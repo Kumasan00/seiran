@@ -1,7 +1,4 @@
-//! CSL を読まない走査だけの入口を、意味解析の外（`typeset::lowering` のテスト）へ渡すためのヘルパ
-//!
-//! 本体経路の `analyze` は `ProjectSource` と CSL スタイルを要求するが、走査結果だけを見るテストは
-//! そこを通らない。走査そのものは production と同じ `fact_collection::collect_facts` を呼ぶ。
+//! CSL を読まずに走査だけを行う意味解析のテストヘルパ
 
 use crate::{
   document::HirDocument,

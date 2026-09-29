@@ -1,16 +1,7 @@
 //! カウンタの値（構造のみ）と、カウンタの現在値を保持するレジストリ
 //!
-//! [`CounterValue`] は `resets` / `reset_by`（値に影響する style フィールド）だけから
-//! 組み立てる。`number_format` 等の表示側フィールドを意味解析が一切読まないことで、
-//! G3（内容は見た目から独立）を型の設計として保証する。表示文字列の生成は typeset 側の
-//! 責務（`typeset::lowering::counter`）。
-//!
-//! 値の各要素は [`CounterPart`] として「どのカウンタの何番か」を名前付きで運ぶ。名前は
-//! 構造であって表示ではないので、値と表示の分離と矛盾しない。**祖先の決め方を
+//! 値の各要素は [`CounterPart`] として「どのカウンタの何番か」を名前付きで運ぶ。**祖先の決め方を
 //! 持つのは crate 内でこの module だけ**で、表示側は受け取った値を名前で引くだけになる。
-//!
-//! ラベルの定義表は持たない — ラベルは意味の事実なので `semantics::facts` の 1 表が先勝ちで
-//! 持ち、レジストリは採番だけを担う。
 
 use std::collections::HashMap;
 
@@ -35,8 +26,7 @@ pub(crate) enum CounterKind {
 /// カウンタ値を構成する 1 要素 — どのカウンタの何番かの対
 ///
 /// 名前は「どのカウンタか」という**構造**であって表示ではない（`display_name` /
-/// `number_style` は持たない）。これを値に載せることで、表示側は祖先チェーンを
-/// 再計算せずに `{chapter}` のような他カウンタ参照を名前で引ける
+/// `number_style` は持たない）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CounterPart {
   /// この数がどのカウンタのものか
@@ -45,8 +35,7 @@ pub(crate) struct CounterPart {
   pub value: u32,
 }
 
-/// カウンタの値（構造のみ）。表示書式（`number_format` / `ref_format` / `number_style`）は
-/// 意味解析の対象外（typeset 側が `&crate::style::Style` と併せて表示文字列を作る）
+/// カウンタの値（構造のみ）
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CounterValue {
   /// このカウンタの種別
@@ -60,8 +49,7 @@ pub(crate) struct CounterValue {
 impl CounterValue {
   /// `target` カウンタの値を返す（自身か祖先チェーン上にあるときだけ `Some`）
   ///
-  /// 表示側（`typeset::lowering::counter`）が `{chapter}` のような他カウンタ参照を解決する
-  /// 唯一の入口。値に載っていないカウンタ — 例えば `number_format = "{section}.{n}"` の図
+  /// 値に載っていないカウンタ — 例えば `number_format = "{section}.{n}"` の図
   /// （既定では `section` は図の祖先ではない）— は復元できないので `None` を返す
   #[must_use]
   pub(crate) fn value_of(&self, target: CounterName) -> Option<u32> {
@@ -75,8 +63,7 @@ impl CounterValue {
 /// カウンタ群の状態を保持するレジストリ
 #[derive(Debug)]
 pub(super) struct CounterRegistry<'p> {
-  /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）。呼び出し元が走査の間ずっと
-  /// 持っている値なので借用で持ち、複製しない
+  /// 意味解析が読む設定の投影
   policy: &'p SemanticPolicy,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,

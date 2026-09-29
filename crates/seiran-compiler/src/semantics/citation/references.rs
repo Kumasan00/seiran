@@ -113,7 +113,7 @@ mod tests {
   /// JSON 用のダミーパス。
   fn dummy_json_source() -> &'static Path { return Path::new("test.json"); }
 
-  /// 参照 ID をキーとするトップレベル JSON をそのまま返す（ラッパーテーブルは持たない）。
+  /// 参照 ID をキーとするトップレベル JSON をそのまま返す。
   fn json_doc(references_json: &str) -> String { return references_json.to_string(); }
 
   /// `[ref1.issued]` テーブルの本体だけを差し替えた TOML を解析し、`ParseToml` の元エラー文言を返す。

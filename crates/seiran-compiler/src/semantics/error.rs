@@ -2,9 +2,8 @@
 //!
 //! 入口 [`analyze`](fn@crate::semantics::analyze) が返す [`AnalyzeError`] と、HIR 走査が返す
 //! [`SemanticFailures`] / [`SemanticError`] の 2 層に分かれる。後者は必ずソース位置に帰属する
-//! （`source_id` を持つ）ため、呼び出し元は本文を添えた診断へ組み替えられる。CSL の読込
-//! エラーはソース位置を持たないので、この不変条件を壊さないよう [`SemanticError`] には混ぜず
-//! [`AnalyzeError`] の別バリアントに置く。
+//! （`source_id` を持つ）。CSL の読込エラーはソース位置を持たないので、この不変条件を壊さないよう
+//! [`SemanticError`] には混ぜず [`AnalyzeError`] の別バリアントに置く。
 
 use std::collections::BTreeMap;
 
@@ -22,8 +21,7 @@ use crate::{
 /// [`analyze`](fn@crate::semantics::analyze) のエラー
 ///
 /// 内側の意味解析 / CSL スタイル読込のいずれかを `?` で運ぶための制御フロー型で、
-/// **表示単位ではない**（`miette::Diagnostic` を実装しない）。呼び出し元（`compiler`）が
-/// 必ず全バリアントを分解し、内側の leaf 診断だけがユーザーへ届く。
+/// **表示単位ではない**（`miette::Diagnostic` を実装しない）。
 #[derive(Debug, Error)]
 pub(crate) enum AnalyzeError {
   /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
@@ -37,21 +35,18 @@ pub(crate) enum AnalyzeError {
 /// 表示単位（1 診断 = 1 ソース）に分けた意味解析エラーの非空集合。
 ///
 /// 未定義引用キーだけは 1 回の走査で複数ソースに跨って見つかるが、miette は 1 診断につき
-/// `source_code` を 1 つしか持てないため、表示のためにソースごとへ分ける。分けるのは
-/// **semantics 自身**で、診断文・`code`・help を `compiler` 側へ複製しない。
+/// `source_code` を 1 つしか持てないため、ソースごとへ分ける。
 pub(crate) type SemanticFailures = Failures<SemanticError>;
 
 /// 文書順の未定義引用箇所を、ソース順（`SourceId` 昇順 = 宣言順）にソースごとの診断へまとめる。
 ///
-/// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
-/// 「このソースの `\cite` キーが参照定義と合っていない」という 1 問題として読めるため）。
-/// そのソースの未定義キーに `,` を含むものが 1 つでもあれば、help に `\,` の案内を足す。
+/// 同じソース内の複数箇所は 1 診断のラベルとして並べる。そのソースの未定義キーに `,` を含むものが 1 つでもあれば、help に `\,` の案内を足す。
 ///
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
 /// 添えて返す。1 箇所も無ければ空を返す。
 pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
   // ソースごとの（最初の引用箇所, ラベル列, 未定義キーに `,` を含むものがあったか）。
-  // `BTreeMap` の反復順が `SourceId` の順序（宣言順）そのものなので、初出順を別の入れ物で持たない。
+  // `BTreeMap` の反復順が `SourceId` の順序（宣言順）そのもの。
   let mut per_source: BTreeMap<SourceId, (NodeId, Vec<LabeledSpan>, bool)> = BTreeMap::new();
   for site in sites {
     let (_, labels, has_comma_key) =
@@ -82,8 +77,7 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
 /// 未定義キーに `,` を含むとき help の末尾に足す案内
 ///
 /// `,` を含むキーは `\,` で書いたもの（エスケープしない `,` はキーの区切りなのでキーに残らない）。
-/// 2 キーを並べるつもりで `\,` と書いた誤りへ導くため、任意引数の未知キー診断の `\,` / `\=` の案内と
-/// 同じく書き方を示す。先頭の句点は基本文との継ぎ目。
+/// 先頭の句点は基本文との継ぎ目。
 const ESCAPED_COMMA_HINT: &str =
   "。`\\,` はキーの中の文字 `,` です。キーを区切るにはエスケープしない `,` を使ってください";
 
@@ -91,7 +85,6 @@ const ESCAPED_COMMA_HINT: &str =
 ///
 /// キーは `\,` で書いた `,` を含みうるので、区切りの `, ` だけでは `,` を含む 1 キーと
 /// 複数キーの境目が読めない。各キーをバッククォートで括り、境目を字面から一意にする。
-/// `,` を含まないキーも同じ規則で括る。
 fn unknown_keys_label(keys: &[String]) -> String {
   return format!("未定義の引用キー: {}", keys.iter().map(|key| return format!("`{key}`")).join(", "));
 }
@@ -113,10 +106,6 @@ pub(super) struct UnknownCitationSite {
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum SemanticError {
   /// `\cite{...}` のキーが参照定義に存在しない場合（1 ソース分をまとめて 1 度に報告する）
-  ///
-  /// 同じソース内の複数箇所はラベルを並べる（箇所ごとに未定義キーが違うため、
-  /// `#[label(collection)]` に静的な文言は付けない）。複数ソースに跨る場合は
-  /// [`SemanticFailures`] がソースごとのこの診断を並べる。
   #[error("未定義の引用キーがあります")]
   #[diagnostic(
     code(semantics::unknown_citation_key),
@@ -147,9 +136,9 @@ pub(crate) enum SemanticError {
 
   /// `label=...` で同名ラベルが重複登録された場合
   ///
-  /// 構築は [`SemanticError::duplicate_label`] だけ。2 回目の定義を主ラベルに、最初の定義が同じソースに
-  /// あればそれを 2 本目のラベルに並べる。別ソースにあるときは 1 診断が `source_code` を 1 つしか
-  /// 持てないので、[`SemanticError::first_definition_elsewhere`] が返す関連診断で示す。
+  /// 構築は [`SemanticError::duplicate_label`] だけ。最初の定義が別ソースにあるときは 1 診断が
+  /// `source_code` を 1 つしか持てないので、[`SemanticError::first_definition_elsewhere`] が返す
+  /// 関連診断で示す。
   #[error("ラベルが重複しています: {label}")]
   #[diagnostic(code(semantics::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
   DuplicateLabel {
@@ -220,8 +209,7 @@ impl SemanticError {
 /// 重複ラベルの最初の定義が主診断と別のソースにあるときの、その位置を示す関連診断
 ///
 /// 独立した修正箇所ではなく主診断と同じ 1 つの問題の別の位置なので、`code` は持たず severity は
-/// `Advice`。本文は持たず、compiler の `SourceDiagnostic` が
-/// `source_id` のソース本文を添える。
+/// `Advice`。本文は持たない。
 #[derive(Debug, Error, Diagnostic)]
 #[error("ラベル `{label}` の最初の定義")]
 #[diagnostic(severity(Advice))]
@@ -247,7 +235,6 @@ mod tests {
 
   #[test]
   fn unknown_keys_label_separates_keys_containing_comma() {
-    // `,` を含むキー（`\,` で書いたもの）と複数キーの境目が括りで一意に読める
     let keys = ["kwan2014,doe2020".to_string(), "x".to_string()];
 
     assert_eq!(unknown_keys_label(&keys), "未定義の引用キー: `kwan2014,doe2020`, `x`");

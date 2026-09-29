@@ -1,9 +1,5 @@
 //! 意味解析の入口 — HIR の走査（ラベル登録・`\ref` 検証・カウンタ構造値の確定・引用箇所の収集）と
 //! `\cite` の CSL 整形を 1 回の呼び出しの背後に隠す。
-//!
-//! 走査 → CSL 整形という呼び出し順序は、この module の外からは見えない。
-//! 生成物（引用表示・書誌）は著者が書いた文書木へは一切書き戻さず、[`SemanticDocument`] の別
-//! フィールドに置いたまま組版へ渡る。
 
 #[cfg(test)]
 pub(super) mod test_support;
@@ -30,10 +26,9 @@ pub(crate) fn analyze(
   references: &References,
   style: &Style,
 ) -> Result<SemanticDocument, AnalyzeError> {
-  // ラベル・参照・カウンタ・見出し・引用箇所の走査はここで完了する
-  // （以降 `\cite` のキーは必ず参照定義に存在する）。
   let policy = SemanticPolicy::from_style(style);
   let facts = fact_collection::collect_facts(&document, &policy, references)?;
+  // `collect_facts` が成功した以降、`\cite` のキーは必ず参照定義に存在する
   let citations = generate(source, &facts, references, style)?;
 
   return Ok(SemanticDocument::new(document, facts, citations));
@@ -96,7 +91,6 @@ mod tests {
 
   #[test]
   fn analyze_skips_csl_when_document_has_no_citation() {
-    // 引用を含まない本文を、csl_path 未設定の style で解析する（CSL 遅延読込）
     let source = MemoryProjectSource::new();
     let style = Style::default();
     let references = read_references(&source, None).expect("空の参照定義を読めるはず");
@@ -106,16 +100,13 @@ mod tests {
 
     let semantics = analyze(&source, document, &references, &style).expect("引用が無ければ CSL を読まないはず");
 
-    // CSL を読んでいないので MissingCslPath にならず、生成物は空のまま
     assert!(semantics.bibliography().is_none(), "引用が無ければ書誌は生成されないはず");
     assert_eq!(semantics.citation_sites().count(), 0, "引用箇所は 1 件も無いはず");
   }
 
   #[test]
   fn analyze_maps_citation_error() {
-    // 既知キーの \cite を含むソースを、csl_path 未設定のまま渡す。
-    // キーは既知にしておかないと analyze の未知キー検証で先に弾かれてしまうため、
-    // ここで確認したい CitationStyleError::MissingCslPath（load_citation_style 側）まで到達しない。
+    // キーが未知だと走査の未定義キー検証で先に弾かれ、MissingCslPath まで到達しない
     let source = MemoryProjectSource::new().with_text(
       "/project/references.toml",
       "[ref1]\n\

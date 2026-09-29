@@ -1,13 +1,7 @@
 //! 意味解析（[`fn@analyze`]）— 著者が書いた HIR から「判明した事実」と引用の生成物を確定する段。
 //!
-//! [`fn@analyze`] が HIR を 1 回走査してラベル宣言・カウンタ構造値・見出し・`\ref` の解決・引用箇所を
-//! `SemanticFacts` として確定し（`fact_collection` 子 module）、引用箇所があるときだけ CSL スタイルを読んで
-//! 表示と書誌を生成する（`citation` 子 module）。走査 → CSL 整形という順序は module の外からは
-//! 見えない。文書木は読み取り専用で書き戻さない。表示文字列の生成（`number_format` 等 style 依存）は
-//! typeset 側の責務で、ここでは一切行わない。
-//!
-//! [`fn@analyze`] の後に初めて成立する意味上の識別子（[`LabelId`] / [`HeadingKey`]）も本 module が
-//! 所有する（`ids` 子 module）。組版側はこれを到達先の名前空間として使うだけで発行しない。
+//! 文書木は読み取り専用で書き戻さない。[`fn@analyze`] の後に初めて成立する意味上の識別子
+//! （[`LabelId`] / [`HeadingKey`]）も本 module が所有する。
 
 mod analyze;
 mod citation;

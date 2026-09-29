@@ -1,8 +1,7 @@
 //! 意味解析の唯一の成果物 [`SemanticDocument`]。
 //!
 //! 著者が書いた HIR・意味解析が確定した事実（`NodeId` キーの side table）・CSL 整形の生成物の
-//! 3 つを、混ぜずに分離したまま 1 つの型へ束ねる。利用側（`typeset` の lowering）は
-//! collection 構造も 3 つの内訳も知らず、目的別の query 経由でのみ参照する。
+//! 3 つを、混ぜずに分離したまま 1 つの型へ束ねる。
 
 use crate::{
   document::{HirDocument, NodeId},
@@ -28,7 +27,7 @@ pub(crate) struct SemanticDocument {
 }
 
 impl SemanticDocument {
-  /// 構築子（本体経路で呼ぶのは `analyze` だけ）
+  /// 構築子
   pub(super) fn new(hir: HirDocument, facts: SemanticFacts, citations: GeneratedCitations) -> Self {
     return SemanticDocument {
       hir,
@@ -46,9 +45,6 @@ impl SemanticDocument {
   pub(crate) fn counter_value(&self, node: NodeId) -> Option<&CounterValue> { return self.facts.counters.get(node); }
 
   /// ラベルが指す先のカウンタ構造値を引く
-  ///
-  /// `label_definitions` と `counters` の合成で求める派生 query（`LabelId -> CounterValue` を
-  /// 別の表として二重に持たない）。
   #[must_use]
   pub(crate) fn counter_value_of_label(&self, label: &LabelId) -> Option<&CounterValue> {
     let definition = self.facts.label_definition(label.as_str())?;
@@ -60,9 +56,6 @@ impl SemanticDocument {
   pub(crate) fn declared_label(&self, node: NodeId) -> Option<&LabelId> { return self.facts.declared_label(node); }
 
   /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
-  ///
-  /// `Option` ではなく `LabelId` を直接返す。`analyze` が成功した時点で「すべての参照は実在する
-  /// ラベルへ解決済み」が不変条件として成立しており、参照先が無い状態は表現しない。
   ///
   /// # Panics
   ///
@@ -77,18 +70,12 @@ impl SemanticDocument {
   }
 
   /// 参照箇所を文書順に走査する
-  ///
-  /// 本体経路は参照箇所を `NodeId` で点引きする（[`Self::reference_target`]）ので、走査が要るのは
-  /// 「どこに `\ref` があるか」を網羅した走査自身のテストだけ。
   #[cfg(test)]
   pub(crate) fn reference_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> {
     return self.facts.references.iter();
   }
 
   /// 引用箇所を文書順に走査する
-  ///
-  /// 本体経路は引用箇所を `NodeId` で点引きする（[`Self::citation_display`]）。走査が要るのは
-  /// 「どこに `\cite` があるか」を知りたいテストだけなので、side table の型は外へ出さない。
   #[cfg(test)]
   pub(crate) fn citation_sites(&self) -> impl Iterator<Item = NodeId> + '_ {
     return self.facts.citations.iter().map(|(site, _)| return site);
@@ -96,10 +83,7 @@ impl SemanticDocument {
 
   /// 見出しを文書順に返す
   ///
-  /// キーは表の位置そのもので、走査が振った順と必ず一致する（索引を別表に持たない）。
-  ///
-  /// `#[must_use]` は付けない — `Iterator` 自身が `#[must_use]` なので `clippy::double_must_use`
-  /// が発火する（同ファイルの `reference_sites` / `citation_sites` と同じ扱い）。
+  /// キーは表の位置そのもので、走査が振った順と必ず一致する。
   pub(crate) fn headings(&self) -> impl Iterator<Item = HeadingFacts> + '_ {
     return self.facts.headings.iter().enumerate().map(|(index, (node, level))| {
       return HeadingFacts {
@@ -128,8 +112,6 @@ impl SemanticDocument {
   }
 
   /// 引用箇所の表示インライン列を引く
-  ///
-  /// 表示の欠落を検出するのは `GeneratedCitations` の責務（完全性の不変条件はそちらが持つ）。
   #[must_use]
   pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] { return self.citations.display_at(site); }
 
@@ -138,11 +120,6 @@ impl SemanticDocument {
   pub(crate) fn bibliography(&self) -> Option<&[BibliographyEntry]> { return self.citations.bibliography(); }
 
   /// CSL 生成物だけを差し替えたコピーを作る（テスト専用）
-  ///
-  /// lowering のテストは走査結果に任意の引用表示・書誌を差し込みたいが、本体経路の [`analyze`]
-  /// は実 CSL の読込を伴う。生成物の側だけを注入できるようにして CSL への依存を切る。
-  ///
-  /// [`analyze`]: crate::semantics::analyze
   #[cfg(test)]
   #[must_use]
   pub(crate) fn with_citations_for_test(
