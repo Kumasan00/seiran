@@ -36,13 +36,11 @@ enum CurrentDirError {
 
 /// CLI を初期化し、指定されたサブコマンドを実行する。
 ///
-/// 端末への描画を `Result` の `Termination` へ委ねず、報告を終えてから `ExitCode` を返す — ログ出力先の
-/// 終了処理（flush と失敗の取り出し）を、終了コードを決める前に必ず通すため。ログの記録に失敗した実行は、
+/// ログ出力先の終了処理（flush と失敗の取り出し）を通してから終了コードを決める。ログの記録に失敗した実行は、
 /// 本処理が成功していても終了コード 1 で終わる。
 ///
 /// `reporter.finish()` の後は tracing へ何も出さない — layer は同じ writer を保持したままなので、
-/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は stderr への直接書き込みだけで行う
-/// （書き込みに失敗しても panic せず、終了コードはそのまま保つ）。
+/// flush 後に書いたものを流し切る主体がいない。終了処理の報告は stderr への直接書き込みだけで行う。
 fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
   let base_dir = std::env::current_dir();
@@ -52,7 +50,6 @@ fn main() -> ExitCode {
   };
   let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref(), &header) {
     Ok(reporter) => reporter,
-    // ログファイルを用意できない失敗は記録先が無いので、端末へ出して終わる。
     Err(error) => {
       return Outcome::Failure {
         report: miette::Report::new(error),
@@ -73,8 +70,7 @@ fn main() -> ExitCode {
 
 /// サブコマンドを実行する。
 ///
-/// 失敗は `miette::Report` として呼び出し側へ返すだけで、表示も記録もしない — 端末とファイルのどちらへ
-/// 何回出すかを決めるのは [`main`] の責務。
+/// 失敗は表示も記録もせず、`miette::Report` として返す。
 ///
 /// # Errors
 ///

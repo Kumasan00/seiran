@@ -123,7 +123,6 @@ mod tests {
 
   #[test]
   fn different_spellings_of_the_same_path_are_rejected() {
-    // `sub/..` を挟んだ綴りは文字列としては別だが同じ実体を指す
     let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
     let log_path = dir.path().join("main.pdf");
     fs::write(&log_path, b"log").expect("ログファイルを作れるはず");

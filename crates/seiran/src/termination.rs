@@ -1,6 +1,4 @@
 //! 実行結果の端末への報告と、終了コードへの変換
-//!
-//! 「何を端末へ出すか」の判断を出力から分けてあるので、判断そのものは in-src テストで確かめられる。
 
 use std::{io::Write, process::ExitCode};
 
@@ -25,9 +23,6 @@ pub(super) enum Outcome {
 }
 
 /// ログの記録に失敗したときのエラー型。
-///
-/// 同じ失敗でも読む人の状況が違うので、本処理の結果ごとに variant を分ける — 成果物が残っているかどうかは
-/// 次に何をすべきかを変える。`code` はどちらも同じ（同じ種類の失敗）。
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum LogWriteError {
   /// 本処理が完了した実行でのログ記録失敗
@@ -63,8 +58,7 @@ pub(super) enum LogWriteError {
 
 /// 本処理とログの結果から、端末への報告内容を決める。
 ///
-/// 本処理の失敗は常に主診断で、ログの失敗がそれを覆い隠すことはない — ユーザーが最初に読むべきなのは
-/// 実行を止めた理由のほうだから。
+/// 本処理の失敗は常に主診断で、ログの失敗がそれを覆い隠すことはない。
 pub(super) fn decide(run: Result<(), miette::Report>, log: Result<(), LogFailure>) -> Outcome {
   return match (run, log) {
     (Ok(()), Ok(())) => Outcome::Success,
@@ -88,12 +82,9 @@ impl Outcome {
   /// 端末へ報告し、終了コードを返す。
   ///
   /// 主診断の体裁は miette のグローバル handler（`Report` の `Debug` 表示）に任せ、`Termination` と同じ
-  /// `Error: ` 前置きで出す。ログの失敗はログへは書かない — 記録できない
-  /// 出力先へ、記録できなかったことを書きに行っても同じ失敗を繰り返すだけ。
+  /// `Error: ` 前置きで出す。ログの失敗はログへは書かない。
   ///
-  /// `stderr` への書き込み失敗は捨てる — 報告の失敗を同じ `stderr` へ報告し直しても同じ失敗を繰り返す
-  /// だけで、終わりが無い。終了コードは報告を書けたかに依らず本来のものを返す（失敗した実行は、報告を
-  /// 出せなくても終了 1 で終わる）。`eprintln!` を使わないのは、書き込み失敗で panic（終了 101）するため。
+  /// `stderr` への書き込み失敗は捨て、終了コードは報告を書けたかに依らず本来のものを返す。
   pub(super) fn report(self, stderr: &mut impl Write) -> ExitCode {
     return match self {
       Outcome::Success => ExitCode::SUCCESS,

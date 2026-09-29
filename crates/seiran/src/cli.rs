@@ -62,8 +62,6 @@ pub(super) enum Command {
 
 impl Command {
   /// 実行記録に書くサブコマンド名（コマンドラインで打つ綴り）。
-  ///
-  /// サブコマンドを足したらここへ必ず綴りを足す — 実行記録が何の実行かを示せなくなるため、wildcard にしない。
   pub(super) fn name(&self) -> &'static str {
     return match self {
       Command::Build { .. } => "build",

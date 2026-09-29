@@ -1,9 +1,4 @@
 //! `--log-file` への致命的エラー診断の記録を、binary を起動して端から端まで確かめる
-//!
-//! `seiran` crate の単体テストは純粋関数（フィルタ計画・診断の描画）を覆うが、「`-q --log-file` でもファイルに
-//! 失敗理由（`Failures` の全 leaf）が残る」「`--log-file` の有無で stderr と終了コードが変わらない」「既存パスを
-//! 渡した実行が入力へ触れない」は `main` の構造（`run` の結果を受けた直後の記録と、
-//! `termination::Outcome::report` による描画の順序）にかかるので、プロセスとして実行して見る。
 
 use std::{
   fmt::Write,
@@ -167,7 +162,6 @@ fn existing_log_path_is_refused_before_the_build() {
 
 #[test]
 fn log_file_never_overwrites_the_config_it_is_pointed_at() {
-  // `-c` と `--log-file` に同じパスを渡す
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let config_path = write_config_with_two_violations(dir.path());
   let original = fs::read(&config_path).expect("設定ファイルを読めるはず");

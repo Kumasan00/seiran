@@ -235,8 +235,7 @@ fn ensure_record_count(
 /// インスタンスの表示名を name テーブルから引く。
 ///
 /// 該当するレコードが無ければ `NameID(n)`。レコードはあるが文字列を読めなければ、その旨のマーカーを
-/// 添える — 読めなかったことを「名前が無い」と同じ表示に畳まない（`script-langs` のマーカー行と同じ、
-/// 表示用の解決はレコード単位で閉じて続行する扱い）。
+/// 添える。
 fn subfamily_name(name: &Name<'_>, name_id: NameId) -> String {
   let Some(record) = name.name_record().iter().find(|record| return record.name_id() == name_id) else {
     return format!("NameID({name_id})");

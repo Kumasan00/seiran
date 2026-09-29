@@ -8,8 +8,7 @@
 //!
 //! **flush 方針**:INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と、
 //! 直接の報告（[`LogSink::write_block`]）は書くたびに flush する。DEBUG / TRACE は `BufWriter` に
-//! 溜めたままにする（TRACE は文書の要素数に比例して出るため、event ごとの flush はハングした実行の
-//! 診断に見合わない I/O コストになる）。この方針により、ハングや `SIGINT` / `SIGKILL` で止まった実行でも
+//! 溜めたままにする。この方針により、ハングや `SIGINT` / `SIGKILL` で止まった実行でも
 //! ファイルからそこまでの工程の開始・完了・終了を読める。
 
 use std::{
@@ -25,9 +24,6 @@ use tracing::{Level, Metadata};
 use tracing_subscriber::fmt::MakeWriter;
 
 /// ログファイルへの書き出し口。
-///
-/// 経路を 1 本に保つのは、イベントと報告の前後関係を崩さないためと、失敗の保持と flush の完了を
-/// 1 箇所（[`LogSink::finish`]）へ集約するため。
 pub(super) struct LogSink {
   /// 書き出し先と保持した失敗（layer 側と共有する）
   state: Arc<Mutex<SinkState>>,
@@ -127,10 +123,7 @@ impl Drop for SinkGuard<'_> {
   }
 }
 
-/// ログの記録に失敗したという事実（診断の体裁は報告側が決める）。
-///
-/// 同じ失敗でも「本処理は完了した実行」と「本処理も失敗した実行」で書くべき説明が違うので、
-/// sink は生の事実だけを返し、文言は `termination` が付ける。
+/// ログの記録に失敗したという事実（診断の体裁は `termination` が決める）。
 #[derive(Debug)]
 pub(crate) struct LogFailure {
   /// ログファイルのパス
@@ -151,9 +144,6 @@ impl LogSink {
   }
 
   /// 任意の書き出し先から作る。
-  ///
-  /// ファイル以外を渡せる入口を持つのは、書き込み失敗の注入をテストから行うため（実ファイルの
-  /// 書き込み失敗は移植可能な形で起こせない）。
   fn from_writer(path: PathBuf, writer: Box<dyn Write + Send>) -> Self {
     return LogSink {
       state: Arc::new(Mutex::new(SinkState {
@@ -223,8 +213,7 @@ impl Drop for LogSink {
 
 /// ログファイルを新規作成して開く。
 ///
-/// 既存パスは truncate せずエラーにする — `--log-file` に入力ファイルを渡した実行でその入力を壊さないため。
-/// 親ディレクトリが無ければ作る — 出力先を掘ってから実行し直す手間を、ログの指定ごときで掛けさせないため。
+/// 既存パスは truncate せずエラーにし、親ディレクトリが無ければ作る。
 fn open_log_file(path: &Path) -> Result<File, LogFileError> {
   if let Some(parent) = parent_to_create(path) {
     fs::create_dir_all(parent).map_err(|source| {
@@ -256,9 +245,6 @@ fn parent_to_create(path: &Path) -> Option<&Path> {
 }
 
 /// ログファイルを準備できなかったときのエラー型。
-///
-/// 開けなかった時点でビルドを止める — ログが残らないまま処理が進むより、指定が効いていないことを
-/// 即座に知らせるほうがよい。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum LogFileError {
   /// ログファイルの親ディレクトリの作成エラー
@@ -353,9 +339,7 @@ mod tests {
   /// `buffer` へ書く `sink.writer()` を唯一の writer にした `fmt` subscriber を張る。
   ///
   /// `set_default`（thread-local）で入れるので global default を汚さない。`with_max_level` は既定の
-  /// `INFO` のままだと DEBUG event が subscriber に届く前に捨てられてしまうので TRACE まで開く
-  /// （フィルタは `LogSink` の外側の話で、ここではフィルタなしで届いた event が flush 方針でどう
-  /// 振り分けられるかだけを見る）。
+  /// `INFO` のままだと DEBUG event が subscriber に届く前に捨てられてしまうので TRACE まで開く。
   fn set_fmt_subscriber(sink: &LogSink) -> tracing::subscriber::DefaultGuard {
     let subscriber = tracing_subscriber::fmt()
       .with_max_level(tracing::Level::TRACE)

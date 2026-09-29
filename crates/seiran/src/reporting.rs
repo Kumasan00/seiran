@@ -32,9 +32,7 @@ const QUIET_DIRECTIVE: &str = "off";
 
 /// 実効フィルタの決定に伴う、ユーザーが直せる通知。
 ///
-/// tracing の WARN では出さない — 通知の対象である `RUST_LOG` 自身が WARN を通さない指定（`error` / target
-/// 限定）だと、通知が消えてしまうため。warning 診断として [`Reporter::warning`] が端末（`-q` 以外）と
-/// ログファイルへ出す。
+/// warning 診断として [`Reporter::warning`] が端末（`-q` 以外）とログファイルへ出す。
 #[derive(Debug, Error, Diagnostic)]
 enum FilterWarning {
   /// `RUST_LOG` を解釈できず、`--verbose` の設定へ戻した
@@ -76,8 +74,7 @@ pub(super) struct Reporter {
   ansi: bool,
   /// ログファイルへの書き出し口（`--log-file` 指定時のみ）。
   log: Option<LogSink>,
-  /// 端末へ warning 診断を描く miette の既定 handler。`Report` の `Debug` 表示が使うのと同じもので、
-  /// 端末幅・色・unicode の判定を [`Reporter::init`] で 1 回だけ行うためにここへ持つ。
+  /// 端末へ warning 診断を描く miette の既定 handler（`Report` の `Debug` 表示が使うのと同じもの）。
   terminal: MietteHandler,
   /// ログファイルの時刻表現（実行記録の開始・終了時刻に使う。イベントの時刻と同じ）
   timer: LogTimer,
@@ -129,8 +126,7 @@ impl Reporter {
         .with_file(false)
         .with_line_number(false)
         .with_timer(timer.clone())
-        // 書き込み失敗は sink が保持して `finish` が報告するので、layer 側から stderr へ出させない
-        // （出すと同じ失敗が 2 回出るうえ、`--log-file` の有無で stderr のバイト列が変わる）。
+        // 書き込み失敗は sink が保持して `finish` が報告するので、layer 側から stderr へ出させない。
         // このフラグは書き込み失敗だけでなく event の整形失敗の報告も同じく抑止する。整形失敗は
         // `compact()` と seiran が出すフィールドの単純さからいって理論上のものでしかなく、しかも
         // 何も書かれないので sink 側も保持しようがない（保持できるのは writer へ渡った後の失敗だけ）。
@@ -161,9 +157,8 @@ impl Reporter {
 
   /// warning 診断 1 件を報告する。
   ///
-  /// 端末へは致命的エラー（`Report` の `Debug` 表示）と同じ体裁で描く（[`TerminalDiagnostic`]）。tracing へは
-  /// 複製しないため、同じ問題が 1 つの出力先へ 2 回出ることはない。ログファイルへは `--quiet` でも
-  /// 省かない — warning の抜けた記録は事後解析に使えないため。
+  /// 端末へは致命的エラー（`Report` の `Debug` 表示）と同じ体裁で描く（[`TerminalDiagnostic`]）。
+  /// ログファイルへは `--quiet` でも省かない。
   fn warning(&self, diagnostic: &dyn Diagnostic) {
     if !self.quiet {
       eprintln!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic));
@@ -191,11 +186,8 @@ impl Reporter {
 
   /// ビルドを止めた致命的エラーの診断をログファイルへ記録する。
   ///
-  /// 端末側は `termination::Outcome::report` が 1 回だけ描くのでここでは触らない — 端末とファイルで同じ診断が
-  /// 1 回ずつ。`--quiet` でもファイルへは常に書く（`-q --log-file` で失敗理由がどこにも残らない経路を無くす
-  /// のがこの操作の目的）。`CompileFailure` の関連診断（`related`）も続けて描くので、`Failures` 集約の
-  /// 全 leaf が残る。tracing の ERROR event には流さない — 致命的エラーは miette で報告し ERROR レベルは
-  /// 使わないという線引きを、ファイルでも保つ。
+  /// 端末側は `termination::Outcome::report` が描くので、ここではファイルへだけ書く（`--quiet` でも書く）。
+  /// `CompileFailure` の関連診断（`related`）も続けて描くので、`Failures` 集約の全 leaf が残る。
   pub(super) fn failure(&self, report: &miette::Report) {
     if let Some(log) = &self.log {
       log.write_block(&render_diagnostic_plain(report.as_ref()));
@@ -223,8 +215,6 @@ impl Reporter {
 }
 
 /// ビルド成功サマリの 1 行を組み立てる。
-///
-/// 装飾の有無だけが出力先ごとに変わるので、体裁はここ 1 箇所に置いて端末とファイルで共有する。
 fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool) -> String {
   let mark = if ansi {
     "\u{1b}[32m\u{2713}\u{1b}[0m"
@@ -249,9 +239,7 @@ impl std::fmt::Debug for TerminalDiagnostic<'_> {
 
 /// ユーザー向け診断（warning・致命的エラー）をログファイル向けに装飾なしで文字列化する。
 ///
-/// 端末側は既定の miette handler に任せたままにする — ここで体裁を作るのは「出力先が tty でないファイル」の
-/// ためだけで、端末の見え方は `--log-file` の有無で変わらない。`related` を持つ診断は、端末と同じく
-/// 関連診断まで続けて描く。
+/// `related` を持つ診断は、端末と同じく関連診断まで続けて描く。
 fn render_diagnostic_plain(diagnostic: &dyn Diagnostic) -> String {
   let mut rendered = String::new();
   // `new_themed` の既定はハイパーリンク有効で、url を持つ診断に OSC 8 のエスケープを出す。
@@ -270,10 +258,9 @@ fn ansi_enabled(no_color: Option<&OsStr>, stderr_is_terminal: bool) -> bool {
   return no_color.is_none_or(|value| return value.is_empty()) && stderr_is_terminal;
 }
 
-/// ログファイルへ書く時刻の表現。
+/// ログファイルへ書く時刻の表現（ローカル時刻か UTC）。
 ///
-/// ローカル時刻とその UTC フォールバックで型が違うので 1 つの型へ畳む。tracing の layer（イベントの時刻）と
-/// 実行記録（開始・終了時刻）が同じ表現を使うよう、`Arc` で共有する。
+/// tracing の layer（イベントの時刻）と実行記録（開始・終了時刻）が共有する。
 #[derive(Clone)]
 struct LogTimer(Arc<dyn FormatTime + Send + Sync>);
 
@@ -283,12 +270,10 @@ impl FormatTime for LogTimer {
 
 /// ログファイル用の時刻表現を決める。
 ///
-/// 事後に読むログは手元の時計と突き合わせられたほうがよいのでローカル時刻を採る。オフセットを取得できない
-/// 環境では UTC へ落とす — 時刻が無いログよりは、ずれの分かる時刻があるほうが使える。
+/// ローカル時刻を採り、オフセットを取得できない環境では UTC へ落とす（取得失敗そのものは報告しない）。
 fn log_timer() -> LogTimer {
   return match OffsetTime::local_rfc_3339() {
     Ok(timer) => LogTimer(Arc::new(timer)),
-    // オフセットの取得失敗そのものは報告しない（ログの体裁の話で、ビルドの成否には関わらない）。
     Err(_) => LogTimer(Arc::new(UtcTime::rfc_3339())),
   };
 }
@@ -311,8 +296,6 @@ pub(super) struct RunHeader<'a> {
 }
 
 /// 実行記録の先頭ブロックを組み立てる。
-///
-/// tracing を通さずファイルへ直接書くので、`-v` も `RUST_LOG` も無い実行でも「何の記録か」が分かる。
 fn run_header_text(started_at: &str, header: &RunHeader<'_>, directive: &str) -> String {
   let base_dir = match header.base_dir {
     Some(dir) => dir.display().to_string(),
@@ -376,11 +359,8 @@ struct LogPlan {
 
 /// 優先順位に従って出力先ごとのフィルタを構築する。
 ///
-/// `--quiet` は「端末をうるさくするな」の意味に限定し、フィルタの決定ではなく端末側への適用だけに効かせる。
-/// ログファイル側は `--quiet` を見ないので、`-q --log-file x.log` は端末に何も出さずファイルへは通常どおり書く。
-/// `--verbose` とは直交で、`-q -vv --log-file x.log` は端末無言のままファイルへ DEBUG まで書く。`--log-file` の
-/// 無い `-q -vv` は矛盾ではなく効果が無いだけなので、警告もエラーも出さない（`-v` を常に付ける運用に `-q` を
-/// 足せる）。`EnvFilter` は `Clone` できないため、共通の directive を 1 度決めて出力先ごとに parse し直す。
+/// `--quiet` は端末側への適用だけに効き、ログファイル側のフィルタは変えない。`EnvFilter` は `Clone`
+/// できないため、共通の directive を 1 度決めて出力先ごとに parse し直す。
 fn build_log_plan(raw_filter: Option<&str>, verbose: u8, quiet: bool, has_log_file: bool) -> LogPlan {
   let choice = resolve_filter(raw_filter, verbose);
   let stderr_directive = if quiet {
@@ -400,18 +380,15 @@ fn build_log_plan(raw_filter: Option<&str>, verbose: u8, quiet: bool, has_log_fi
 
 /// 妥当性を確認済みの directive から `EnvFilter` を作る。
 ///
-/// `EnvFilter::new` は使わない — 不正な directive を stderr へ通知して黙って捨てるうえ、大域の既定
-/// directive を足すため、`RUST_LOG` に書いたとおりの実効フィルタにならない。ここへ渡る directive は
-/// [`resolve_filter`] が strict な parse で通したものか静的な既定値なので、取りこぼしは起きない。
+/// 大域の既定 directive を足さないので、実効フィルタは directive の字面どおりになる。ここへ渡る directive は
+/// [`resolve_filter`] が strict な parse で通したものか静的な既定値なので、lossy な parse でも取りこぼしは
+/// 起きない。
 fn parse_directive(directive: &str) -> EnvFilter { return EnvFilter::builder().parse_lossy(directive); }
 
 /// 両方の出力先が使う directive を決める。
 ///
-/// `RUST_LOG` が有効ならそれが全権で、`--verbose` は無視する — 合成（フラグの directive へ `RUST_LOG` を
-/// 上書きで足す等）はしない。同一 target への複数 directive の優先規則に依存して、実効フィルタが字面から
-/// 読めなくなるため。代わりに `--verbose` が 1 段以上あれば「無視した」と警告する（`--verbose` 未指定なら
-/// 警告しない — `RUST_LOG` だけで制御する開発者運用を汚さない）。`RUST_LOG` が不正なら CLI の verbose 設定へ
-/// 戻し、こちらも警告する。
+/// `RUST_LOG` が有効ならそれをそのまま使い、`--verbose` が 1 段以上あれば無視した旨を警告する。
+/// `RUST_LOG` が不正なら `--verbose` の設定へ戻し、こちらも警告する。
 fn resolve_filter(raw_filter: Option<&str>, verbose: u8) -> FilterChoice {
   if let Some(raw) = raw_filter
     && !raw.trim().is_empty()
@@ -442,10 +419,7 @@ fn resolve_filter(raw_filter: Option<&str>, verbose: u8) -> FilterChoice {
   };
 }
 
-/// フィルタが TRACE を出しうるか。
-///
-/// TRACE は文書の中身に比例して出るため、どの module 由来かが分からないと読めない。そこで target 表示は
-/// `--verbose` の段数ではなく実効フィルタの上限で決める — `RUST_LOG` で TRACE を要求したときも表示される。
+/// フィルタが TRACE を出しうるか（出しうるときだけ target を表示する）。
 fn shows_target(filter: &EnvFilter) -> bool {
   return <EnvFilter as Layer<Registry>>::max_level_hint(filter).is_none_or(|hint| return hint >= LevelFilter::TRACE);
 }
