@@ -13,54 +13,25 @@ single_line_let_else_max_width = 50
 struct_lit_width = 18
 struct_variant_width = 35
 
-# インデントをスペース2つに設定
 tab_spaces = 2
-
-# use 文を並べ替える
 reorder_imports = true
-
-# mod 宣言を並べ替える
 reorder_modules = true
-
-# std, external crate, 自作モジュールごとにグループ分け（グループ間は空行）
 group_imports = "StdExternalCrate"
-
-# 同じ crate からの import を 1 つの use に統合する
 imports_granularity = "Crate"
-
-# 関数を1行にまとめるかの閾値
 fn_single_line = true
-
-# ドキュメントコメント内のコードもフォーマットする
 format_code_in_doc_comments = true
-
-# マクロ本体とマッチャーもフォーマットする
 format_macro_bodies = true
 format_macro_matchers = true
-
-# 文字列リテラル内はフォーマットしない
 format_strings = false
-
-# 16進数リテラルの大文字小文字のスタイル
 hex_literal_case = "Lower"
-
-# match 式のフォーマット設定
 match_arm_blocks = true
 match_arm_leading_pipes = "Never"
 match_block_trailing_comma = true
-
-# コメントとドキュメント属性の正規化
 normalize_comments = true
 normalize_doc_attributes = true
-
-# impl 内のアイテムを並べ替える
 reorder_impl_items = true
-
-# スペースの設定
 space_after_colon = true
 space_before_colon = false
 spaces_around_ranges = false
-
-# 末尾のカンマとセミコロンの設定
 trailing_comma = "Vertical"
 trailing_semicolon = true

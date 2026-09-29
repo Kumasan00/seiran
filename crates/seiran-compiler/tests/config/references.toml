@@ -1,7 +1,5 @@
 # golden テスト用の固定文献データ（fixture）。
 #
-# 文献データのみを記述する。CSL スタイル（.csl）の選択は見た目設定として
-# style.toml の [reference].csl_path に置く。
 # トップレベルのテーブルキーがそのまま参照 ID になる（references. 接頭辞は不要）。
 
 # サンプル文献（tests/text/cite.sei の \cite で参照される）。

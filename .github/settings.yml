@@ -43,7 +43,7 @@ labels:
     color: "006b75"
     description: リファクタ（振る舞いを変えないコード整理・ロードマップ軸ではない）
 
-  # Tier（seiran_feature_scope の実装順序軸）
+  # Tier
   - name: tier-1a
     color: "0e8a16"
     description: "Tier 1a: 既存スタブ完成+全ジャンル必須"

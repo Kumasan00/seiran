@@ -12,8 +12,6 @@ pub(crate) struct OutlineEntry {
 }
 
 /// 見出し記録から PDF しおりを文書順に組み立てる。
-///
-/// 番号があれば表題の前に付ける。
 pub(super) fn collect_outline_entries(headings: &[HeadingRecord]) -> Vec<OutlineEntry> {
   return headings
     .iter()
