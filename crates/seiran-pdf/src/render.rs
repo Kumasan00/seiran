@@ -114,9 +114,6 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) {
 }
 
 /// `PaintOp::DrawGlyphRun` を描画する
-///
-/// グリフ列はシェイピング結果（`seiran_compiler::GlyphRun`）そのままなので、フォントサイズ（`Length`）と
-/// 色（`Color`）の単位変換はここで行う。
 fn draw_glyph_run(
   surface: &mut Surface<'_>,
   resources: &PublicationResources,

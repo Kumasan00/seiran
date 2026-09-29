@@ -1,15 +1,8 @@
 //! PDF 描画時のエラーを定義する。
 //!
-//! ここにあるのは「有効な [`Publication`](seiran_compiler::Publication) を渡されたうえで、なお
-//! backend が失敗しうるもの」だけ。3 系統に限る:
-//!
-//! 1. 有効な `Publication` を backend の表現へ変換できない（krilla フォントの構築）
-//! 2. 画像デコーダ / SVG renderer が入力を処理できない
-//! 3. krilla が文書を最終化できない
-//!
-//! 描画命令の値そのものが壊れている（ページサイズが 0、矩形の幅が負、資源に無い画像を指す等）
-//! ケースは含まない — `Publication` のコンストラクタが構築時に弾いており、renderer 側では
-//! `unreachable!` で顕在化させる。
+//! 持つのは有効な [`Publication`](seiran_compiler::Publication) を渡されてもなお backend が
+//! 失敗しうるものだけ。描画命令の値そのものの破損（ページサイズが 0、矩形の幅が負、資源に無い
+//! 画像を指す等）は `Publication` のコンストラクタが構築時に弾くので、ここには無い。
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;

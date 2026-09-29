@@ -2,7 +2,7 @@
 //!
 //! 独立した reader（`lopdf`）で PDF を読み返し、決定的な構造情報だけを比較する。
 //!
-//! 入力は `crates/seiran-compiler/tests/config/` の fixture（layout dump golden と共有）で、
+//! 入力は `crates/seiran-compiler/tests/config/` の fixture で、
 //! `seiran_compiler::compile` → [`seiran_pdf::render`] という本番の経路をそのまま通す。
 
 use std::{
@@ -50,7 +50,7 @@ fn replace_line(text: &str, key: &str, replacement: &str) -> String {
 
 /// fixture の config / style を一時ディレクトリへ写し、入力ソースと背景色だけ差し替える。
 ///
-/// 差し替えは行単位で行い、TOML の再直列化はしない（他のキーの表記・並びを一切動かさないため）。
+/// 差し替えは行単位で、他のキーの表記・並びは動かさない。
 /// 戻り値は `compile` に渡す config.toml のパス（`TempDir` は呼び出し側が生存させる）。
 fn write_fixture_project(dir: &TempDir, name: &str, background: Option<&str>) -> ProjectPath {
   let fixture_dir = workspace_root().join("crates/seiran-compiler/tests/config");
@@ -112,8 +112,7 @@ struct PdfStructureFacts {
   link_annotation_count: usize,
   /// しおり（アウトライン）の有無
   has_outline: bool,
-  /// 画像 `XObject` 数（`/Subtype /Image`）。SVG はラスタ画像と異なりベクタパスとして展開され
-  /// `XObject` にならない場合があるため、期待値は決め打ちせず golden で確定させる。
+  /// 画像 `XObject` 数（`/Subtype /Image`）。SVG はベクタパスとして展開され数に入らない場合がある。
   image_xobject_count: usize,
 }
 
@@ -199,9 +198,6 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 }
 
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
-///
-/// `PublicationPage.ops` は「背景の矩形塗り（パス構築 + `f`）→ 本文（テキスト `Tj`/`TJ`・画像 `Do`）」
-/// の順で並ぶ（`seiran_compiler` の `typeset::emit` が `Publication` を構築する際に定める描画順）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {
     "f" | "F" | "f*" => Some("fill"),
@@ -213,11 +209,6 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 
 #[test]
 fn pdf_structure_background_paints_before_body_content() {
-  // text（本文段落のみ）に背景色を明示的に設定し、compiler が定める描画順
-  // （背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
-  // 入力に figure を使わないのは、下の assert が見るのが「fill と body の初出順」だけで、画像の
-  // 有無が結論に一切効かないため（初出 body は本文テキスト）。figure は巨大なラスタ画像 5 枚の
-  // デコード + ダウンサンプルに数十秒かかり、この検証に対して費用だけが乗る。
   let bytes = build_pdf_bytes_with_background("text", Some("#dcdcdc"));
   let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
   let (_, &page_id) = document.get_pages().iter().next().expect("少なくとも 1 ページあるはず");

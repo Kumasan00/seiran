@@ -19,9 +19,8 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_p
 
 /// [`Publication`] から PDF バイト列を生成する。
 ///
-/// フォント・画像資源は `publication.resources()` から取り、ファイル I/O は一切行わない。
-/// 描画命令の値（ページサイズ・矩形・画像参照・到達先ページ）は `Publication` の構築時に
-/// 検証済みなので、ここで検査し直さない。
+/// ファイル I/O は行わない。描画命令の値（ページサイズ・矩形・画像参照・到達先ページ）は
+/// `Publication` の構築時に検証済みで、ここでは検査しない。
 ///
 /// # Errors
 ///

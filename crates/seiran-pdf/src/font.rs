@@ -1,6 +1,4 @@
 //! krilla フォントの構築とグリフ変換。
-//!
-//! `Publication` が持つのはフォントのバイト列と構築設定だけなので、krilla の `Font` をここで組む。
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -24,7 +22,7 @@ impl KrillaFonts {
   /// # Panics
   ///
   /// 構築経路は [`build_krilla_fonts`] 1 つで、そこが `FontType::ALL` を全件構築するため
-  /// 欠落は起こらない（起きたら不変条件の破れなのでここで落とす）。
+  /// 欠落は起こらない。
   pub(crate) fn font(&self, font_type: FontType) -> &Font {
     let Some(font) = self.fonts.get(&font_type) else {
       unreachable!("build_krilla_fonts が FontType::ALL を全件構築する: {font_type:?} が欠落している");
@@ -35,9 +33,8 @@ impl KrillaFonts {
 
 /// 描画資源のフォントバイト列と構築設定から krilla フォント集合を構築する。
 ///
-/// [`FontType::ALL`] の宣言順で構築する — `HashMap` の反復順は `RandomState` によりプロセスごとに
-/// 変わるため、宣言順に固定しないと複数フォントが同時に不正な場合にどの [`PdfRenderError`] が
-/// 返るかが実行のたびに変わってしまう（診断内容は実行のたびに同一という制約に反する）。
+/// [`FontType::ALL`] の宣言順で構築するので、複数フォントが不正でも返る [`PdfRenderError`] は
+/// 実行ごとに同じ。
 ///
 /// # Errors
 ///
@@ -50,12 +47,10 @@ pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<Kri
   return Ok(KrillaFonts { fonts });
 }
 
-/// krilla へフォントバイト列を渡すための `AsRef<[u8]>` 包み。
+/// krilla へフォントバイト列を複製せず渡すための `AsRef<[u8]>` 包み。
 ///
-/// krilla の [`Data`] を**バイト列を複製せず**作れる経路は `Arc<Vec<u8>>` と
-/// `Arc<dyn AsRef<[u8]> + Send + Sync>` の 2 つだけで、`Publication` が持つ `Arc<[u8]>` は
-/// どちらにも直接は当たらない（スライスは `Sized` でないので `Arc<[u8]>` は
-/// `Arc<dyn AsRef<[u8]>>` へ unsize できない）。包むのは共有ハンドルだけで、バイト列は複製しない。
+/// krilla の [`Data`] を複製なしで作れるのは `Arc<Vec<u8>>` と `Arc<dyn AsRef<[u8]> + Send + Sync>`
+/// からだけで、`Arc<[u8]>` はスライスが `Sized` でないため後者へ unsize できない。
 struct FontBytes(Arc<[u8]>);
 
 impl AsRef<[u8]> for FontBytes {
@@ -71,9 +66,8 @@ fn krilla_data(bytes: &Arc<[u8]>) -> Data {
 
 /// 軸の指定（無ければ空）で krilla フォントを構築する。
 ///
-/// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的 / 可変で呼び分けない。
-/// 軸の指定と `fvar` の整合（あるのに指定が無い・無いのに指定がある・読めない）は
-/// `typeset::font::validation` が検証済みで、renderer はフォントを自分でパースしない。
+/// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的フォントもこの経路で組める。
+/// 軸の指定と `fvar` の整合は `typeset::font::validation` が検証済み。
 fn build_krilla_font(font_type: FontType, font: &PublicationFont) -> Result<Font, PdfRenderError> {
   let axes = font
     .face

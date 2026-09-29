@@ -1,7 +1,4 @@
 //! 画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプリングを行う。
-//!
-//! 描画に使う画像本体のデコードだけを担う。自然寸法の解決・width / height の確定は
-//! compiler 側 `seiran_compiler` の `typeset::image` に閉じている。
 
 use krilla::{Data, image::Image};
 use seiran_compiler::ImageFormat;
@@ -14,8 +11,6 @@ pub(crate) enum LoadedImage {
   /// PNG / JPEG などのラスタ画像。
   Raster(Image),
   /// usvg でパースした SVG。
-  ///
-  /// バリアント間のサイズ差を抑えるためヒープに保持する。
   Svg(Box<Tree>),
 }
 
@@ -41,9 +36,7 @@ impl LoadedImage {
 
 /// 判定済みの形式に従ってバイト列をデコードし、必要ならラスタ画像を指定サイズ以下に縮小する。
 ///
-/// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない（読み込み済みの `bytes` を
-/// そのままデコードする）。形式は組版段（`seiran_compiler` の `typeset::image`）が判定済みで、
-/// ここで拡張子を読み直さない。
+/// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない。`format` は組版段が判定済み。
 pub(crate) fn load_image(
   path: &str,
   format: ImageFormat,
@@ -75,9 +68,6 @@ type RasterDecoder = fn(Data, bool) -> Result<Image, String>;
 const INTERPOLATE: bool = false;
 
 /// ラスタ画像を必要なら `resize_to` 以下に縮小してから、krilla の `decode` でデコードする。
-///
-/// PNG / JPEG の差は「縮小後の再エンコード形式 `reencode_as`」と「krilla のコンストラクタ `decode`」の
-/// 2 値だけなので、両形式でこの 1 経路を共有する。
 fn load_raster(
   path: &str,
   bytes: &[u8],
@@ -159,7 +149,6 @@ mod tests {
 
   #[test]
   fn load_image_decodes_raster_by_the_declared_format_not_the_extension() {
-    // 拡張子は .bin だが組版段が形式を判定済みの実バイト列
     for (format, reencode_as) in RASTER_FORMATS {
       let bytes = raster_bytes(reencode_as, 3, 2);
 
@@ -211,7 +200,7 @@ mod tests {
 
   /// `width` x `height` の RGB ラスタ画像を `format` でエンコードしたバイト列を返す。
   ///
-  /// RGB なのは `image` crate の JPEG エンコーダが RGBA を受け付けないため（PNG はどちらでも書ける）。
+  /// RGB なのは `image` crate の JPEG エンコーダが RGBA を受け付けないため。
   fn raster_bytes(format: image::ImageFormat, width: u32, height: u32) -> Vec<u8> {
     let mut out = Vec::new();
     image::RgbImage::new(width, height)
