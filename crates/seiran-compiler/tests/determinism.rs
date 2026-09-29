@@ -16,12 +16,7 @@ use seiran_compiler::{MemoryProjectSource, ProjectPath};
 /// メモリ上のテストプロジェクトで相対パスを解決する基準ディレクトリを返す。
 fn project_base_dir() -> &'static Path { return Path::new("/project"); }
 
-/// 代表的な入力の一覧（filesystem を使わず埋め込む。網羅目的の fixture 追加ではなく、
-/// テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通すための最小集合）。
-///
-/// 集合が小さく固定なので、ランダムサンプリングではなく全件を漏れなく走査する
-/// （`prop::sample::select` は `cases` 回のうち一部しか各要素を引かない可能性があり、
-/// 3 要素すべてを確実に検証するには全走査のほうが単純かつ強い）。
+/// 代表的な入力の一覧（テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通す）。
 const REPRESENTATIVE_SOURCES: &[&str] = &[
   "Hello, Seiran!",
   r"\bold{強調されたテキスト}",
@@ -29,7 +24,6 @@ const REPRESENTATIVE_SOURCES: &[&str] = &[
 ];
 
 /// 同じ入力から `compile` を 2 回呼んでも同一の `Publication` が得られる。
-/// 代表的な入力すべてに対して検証する。
 #[test]
 fn compile_is_deterministic_for_the_same_source() {
   for text in REPRESENTATIVE_SOURCES {
@@ -48,9 +42,6 @@ fn compile_is_deterministic_for_the_same_source() {
 }
 
 /// エラー経路の入力（意味解析の 3 種混在・重複ラベルの複数件・複数画像の読込失敗）。
-///
-/// フォントの失敗は `MemoryProjectSource` では 19 種すべてが同じファイルを指すため種別ごとの差を
-/// 作れず、`FontType::ALL` 順は `compiler::diagnostics` の golden が固定している。
 const ERROR_CASES: &[&str] = &[
   "\\section[label=dup]{A}\n\n\\section[label=dup]{B}\n\n\\cite{missing-key} と \\ref{missing-label}\n",
   "\\section[label=dup]{A}\n\n\\section[label=dup]{B}\n\n\\section[label=dup]{C}\n",

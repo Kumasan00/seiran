@@ -1,12 +1,10 @@
-//! 統合テスト間で共有するヘルパ（`tests/common/mod.rs` は Rust の慣例でテストファイルとして
-//! 扱われないため、共有ヘルパの置き場所として使う）。
+//! 統合テスト間で共有するヘルパ。
 
 use std::path::Path;
 
 use seiran_compiler::test_support;
 
-/// `vendor/fonts/` にある golden テスト用の実フォント（他の golden テストと共有する資産。
-/// 初回は `tools/fetch-test-assets.sh` の実行が必要 — CI はキャッシュ済みかここで取得する）。
+/// `vendor/fonts/` にある golden テスト用の実フォント（初回は `tools/fetch-test-assets.sh` の実行が必要）。
 pub(crate) fn read_test_font() -> Vec<u8> {
   let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
@@ -21,7 +19,6 @@ pub(crate) fn read_test_font() -> Vec<u8> {
 /// 妥当な `[pdf]` / `[output]` に任意の `[font_configs.*]` 群を足して `config.toml` を組む。
 ///
 /// `extra_top_level` は `sources` の直後へ差し込むトップレベル行（末尾の改行込み。不要なら空文字）。
-/// `font_sections` の作り分けはこの関数の呼び出し側が担う。
 pub(crate) fn config_toml_with_font_sections(source_path: &str, extra_top_level: &str, font_sections: &str) -> String {
   return format!(
     "sources = [\"{source_path}\"]\n{extra_top_level}\n{}{}{font_sections}",

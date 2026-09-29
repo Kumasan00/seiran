@@ -1,10 +1,5 @@
 //! `seiran_compiler::compile` が lib target の公開 API として呼べることを検証する統合テスト
 //!
-//! crate 内部の `#[cfg(test)]` ではなく、この crate の外部から `cargo test -p seiran-compiler` で
-//! 実行される独立バイナリとして置く。`compile` が `pub(crate)` のままでも内部テストは
-//! 通ってしまうため、「lib target から compile が呼べる」という受け入れ条件を機械的に
-//! 検証するには外部からのコンパイルが必要。
-//!
 //! `MemoryProjectSource` に `/project/...` の資源を事前登録し、`compile` へ `/project` を明示して
 //! `std::env::current_dir` に依存しない。最初のテストは相対 source パスがこの基準で解決されることも固定する。
 
@@ -48,8 +43,6 @@ fn project_base_dir() -> &'static Path { return Path::new("/project"); }
 
 #[test]
 fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
-  // 実ファイルシステムに一切触れない MemoryProjectSource（フォントバイナリの読込
-  // だけはテストコード自身が std::fs で行う。本体コードは ProjectSource 経由のみ）。
   let font_bytes = read_test_font();
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
@@ -221,8 +214,7 @@ fn compile_failure_keeps_config_warnings_when_parsing_fails() {
   assert_eq!(warning_codes(failure.warnings()), vec!["project::config::source_extension".to_string()]);
 }
 
-/// 画像 fixture（`tests/image/testimage5.png`）の実バイト列。テストコード自身の I/O で、本体は
-/// `ProjectSource` 経由のみ。
+/// 画像 fixture（`tests/image/testimage5.png`）の実バイト列。
 fn read_test_image() -> Vec<u8> {
   let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
