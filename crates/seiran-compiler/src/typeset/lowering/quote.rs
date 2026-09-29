@@ -46,6 +46,7 @@ pub(super) fn lower_quote(
 mod tests {
   use super::*;
   use crate::{
+    document::FontKind,
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,
@@ -117,7 +118,9 @@ mod tests {
 
   #[test]
   fn quote_body_uses_quote_style_font_kind() {
-    let style = ReadStyle::default();
+    // [text].font_kind の既定（Serif）と区別できる値にする
+    let mut style = ReadStyle::default();
+    style.quote.font_kind = FontKind::SansSerif;
 
     let nodes = lower_quote_source(&style, "quote");
 
@@ -126,6 +129,6 @@ mod tests {
       LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(s.font_kind),
       _ => return None,
     });
-    assert_eq!(body_kind, Some(style.quote.font_kind));
+    assert_eq!(body_kind, Some(FontKind::SansSerif), "引用本文は [quote] の書体に従う");
   }
 }
