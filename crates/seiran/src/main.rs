@@ -45,7 +45,6 @@ enum CurrentDirError {
 /// （書き込みに失敗しても panic せず、終了コードはそのまま保つ）。
 fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
-  // 基準ディレクトリは 1 回だけ取得し、実行記録と `build` の相対パス解決の両方がこの値を使う。
   let base_dir = std::env::current_dir();
   let header = RunHeader {
     subcommand: cli_args.command.name(),

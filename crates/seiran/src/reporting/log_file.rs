@@ -26,9 +26,8 @@ use tracing_subscriber::fmt::MakeWriter;
 
 /// ログファイルへの書き出し口。
 ///
-/// tracing の layer へ渡す writer と、warning 診断・成功サマリ・致命的エラー診断を直接書く経路の両方が
-/// 同じ状態を共有する。経路を 1 本に保つのは、イベントと報告の前後関係を崩さないためと、失敗の保持と
-/// flush の完了を 1 箇所（[`LogSink::finish`]）へ集約するため。
+/// 経路を 1 本に保つのは、イベントと報告の前後関係を崩さないためと、失敗の保持と flush の完了を
+/// 1 箇所（[`LogSink::finish`]）へ集約するため。
 pub(super) struct LogSink {
   /// 書き出し先と保持した失敗（layer 側と共有する）
   state: Arc<Mutex<SinkState>>,
@@ -46,8 +45,6 @@ struct SinkState {
 
 impl SinkState {
   /// I/O の結果を検査し、最初の失敗だけを保持したうえで結果をそのまま返す。
-  ///
-  /// 呼び出し側（tracing の layer）はエラーを握り潰すが、保持したぶんが `finish` で報告される。
   fn check<T>(&mut self, result: io::Result<T>) -> io::Result<T> {
     return match result {
       Ok(value) => Ok(value),
@@ -72,8 +69,6 @@ fn lock(state: &Mutex<SinkState>) -> MutexGuard<'_, SinkState> {
 }
 
 /// tracing の layer へ渡す writer 生成器。
-///
-/// [`LogSink`] と同じ状態を共有するので、layer 側の書き込み失敗も `finish` から取り出せる。
 #[derive(Clone)]
 pub(super) struct LogWriter {
   /// [`LogSink`] と共有する書き出し先
@@ -91,9 +86,7 @@ impl<'writer> MakeWriter<'writer> for LogWriter {
     };
   }
 
-  /// `meta` の event を書く writer を作る。
-  ///
-  /// INFO 以上は drop 時に flush し、DEBUG / TRACE は `BufWriter` に溜める（根拠はモジュール doc）。
+  /// `meta` の event を書く writer を作る（flush 方針はモジュール doc）。
   fn make_writer_for(&'writer self, meta: &Metadata<'_>) -> Self::Writer {
     return SinkGuard {
       guard: lock(&self.state),
@@ -126,9 +119,6 @@ impl Write for SinkGuard<'_> {
 
 impl Drop for SinkGuard<'_> {
   /// INFO 以上の event を書き終えたガードだけ flush する。
-  ///
-  /// flush 失敗は他の I/O 失敗と同じく [`SinkState::check`] を通して最初の失敗として保持する — ここで
-  /// 検査した `Result` を読む主体はいないが、保持自体は `check` の呼び出しだけで完結する。
   fn drop(&mut self) {
     if self.flush_on_drop {
       let result = self.guard.writer.flush();
@@ -141,9 +131,6 @@ impl Drop for SinkGuard<'_> {
 ///
 /// 同じ失敗でも「本処理は完了した実行」と「本処理も失敗した実行」で書くべき説明が違うので、
 /// sink は生の事実だけを返し、文言は `termination` が付ける。
-///
-/// 可視性が `pub(crate)` なのは、文言を付ける `termination` module が `reporting` の外にあるため
-/// （`LogFileError` と同じ扱い）。
 #[derive(Debug)]
 pub(crate) struct LogFailure {
   /// ログファイルのパス
@@ -188,9 +175,6 @@ impl LogSink {
   }
 
   /// ユーザー向け報告 1 件ぶんをファイルへ書き、flush する（末尾に改行を足す）。
-  ///
-  /// 失敗はその場では報告しない — 報告の途中で処理を分岐させず、[`LogSink::finish`] が 1 度だけ返す。
-  /// flush するのは INFO 以上の event と同じ理由（ハングした実行でもファイルから読めるようにするため）。
   pub(super) fn write_block(&self, text: &str) {
     let mut guard = lock(&self.state);
     let written = writeln!(guard.writer, "{text}");

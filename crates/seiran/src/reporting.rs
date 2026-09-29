@@ -4,9 +4,8 @@
 //! 呼び出し側は [`Reporter`] の初期化と報告操作だけを知り、フィルタ優先順位・表示形式・端末装飾は
 //! 本 module に閉じる。端末側の出力先は stderr で、stdout はパイプできる成果物のための経路として空けておく。
 //!
-//! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。ファイルには先頭の実行記録・
-//! tracing イベント・warning 診断・成功サマリ・致命的エラー診断・末尾の終了記録を、装飾なし・イベントには
-//! 時刻付きで残す。実行記録と終了記録は tracing を通さないので、フィルタに依らず残る。
+//! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。実行記録と終了記録は
+//! tracing を通さないので、フィルタに依らず残る。
 
 mod log_file;
 
@@ -70,9 +69,6 @@ enum FilterWarning {
 ///
 /// `quiet` の解釈と ANSI 装飾の可否を保持し、warning と成功サマリへ一貫して適用する。tracing subscriber は
 /// [`Reporter::init`] でプロセス全体に 1 回だけ初期化する。
-///
-/// `--log-file` 指定時はログファイルの書き出し口も保持する。書き出しは同期で、書き込み・flush の失敗は
-/// sink が保持し、[`Reporter::finish`] が 1 度だけ取り出す。
 pub(super) struct Reporter {
   /// 端末への非エラー出力を抑止するか。
   quiet: bool,
@@ -167,8 +163,7 @@ impl Reporter {
   ///
   /// 端末へは致命的エラー（`Report` の `Debug` 表示）と同じ体裁で描く（[`TerminalDiagnostic`]）。tracing へは
   /// 複製しないため、同じ問題が 1 つの出力先へ 2 回出ることはない。ログファイルへは `--quiet` でも
-  /// 省かない — warning の抜けた記録は事後解析に使えないため。compile の警告と CLI 自身の通知
-  /// （[`FilterWarning`]）が同じ体裁・同じ振り分けで出る。
+  /// 省かない — warning の抜けた記録は事後解析に使えないため。
   fn warning(&self, diagnostic: &dyn Diagnostic) {
     if !self.quiet {
       eprintln!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic));
@@ -213,8 +208,7 @@ impl Reporter {
   /// 実行記録の末尾（終了時刻・終了状態）を書いてからログの書き残しを流し切り、記録に失敗していれば
   /// それを返す。
   ///
-  /// `succeeded` は本処理の成否。終了記録はほかのどの報告よりも後に書く（`main` は致命的エラーの記録を
-  /// 済ませてからこれを呼ぶ）。
+  /// `succeeded` は本処理の成否。終了記録はほかのどの報告よりも後に書く。
   ///
   /// # Errors
   ///

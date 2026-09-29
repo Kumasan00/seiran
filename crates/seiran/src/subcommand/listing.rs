@@ -9,9 +9,7 @@ use std::io::{self, Write};
 use miette::Diagnostic;
 use thiserror::Error;
 
-/// 一覧を書き出せなかったときのエラー。
-///
-/// 受け手の終了（`BrokenPipe`）は含まない — それは [`emit`] が正常終了として扱う。
+/// 一覧を書き出せなかったときのエラー（受け手の終了は含まない）。
 #[derive(Debug, Error, Diagnostic)]
 #[error("一覧を標準出力へ書き込めませんでした")]
 #[diagnostic(
