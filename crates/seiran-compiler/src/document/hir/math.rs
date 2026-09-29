@@ -17,8 +17,6 @@ impl HirMath {
 }
 
 /// 数式ノードの種別
-///
-/// 組版側はこの種別を直接読む。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirMathKind {
   /// テキスト / 記号（変数名、数字、演算子等）
@@ -72,7 +70,6 @@ pub(crate) struct HirMathRow {
   pub(crate) label: Option<String>,
   /// 行末マーカー `\label{...}` 自身の ID
   ///
-  /// `None` は「行に固有の位置がなく、環境の位置をフォールバックとして使う」という既存の
-  /// 診断挙動を表すため、行の位置で埋めずに `None` のまま保つ。
+  /// `None` は行に固有の位置が無く、診断が環境の位置へフォールバックすることを表す。
   pub(crate) label_site: Option<NodeId>,
 }

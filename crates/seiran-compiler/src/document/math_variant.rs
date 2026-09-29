@@ -37,7 +37,7 @@ pub(crate) enum MathVariant {
   /// スクリプトと同一の基底コードポイントに異体字セレクタ VS1（U+FE00）を付与して
   /// chancery 字形を要求する。Unicode の数式異体字シーケンスに対応した数式フォントでのみ
   /// chancery 字形が選ばれ、非対応フォントでは VS1 が無視されてスクリプト字形に
-  /// フォールバックする（フォント非依存対応は OpenType `ss01` を使う別 issue で行う）。
+  /// フォールバックする。
   Calligraphic,
   /// `\mathfraktur` — フラクトゥール（ドイツ文字, ℌ ℑ ℜ 等）
   Fraktur,

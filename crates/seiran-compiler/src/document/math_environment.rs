@@ -6,14 +6,13 @@ use thiserror::Error;
 
 /// ディスプレイ数式環境の種別
 ///
-/// `frontend` が環境レジストリの値から決定する。`typeset::lowering` がこの種別からセルの列内揃えと
-/// 区切り括弧を決める。採番（行ごとか環境全体に 1 つか）は種別に含めず、`HirMathRow::numbered` /
+/// 採番（行ごとか環境全体に 1 つか）は種別に含めず、`HirMathRow::numbered` /
 /// `HirMathBlock::numbered` がデータとして運ぶ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathEnvKind {
   /// `equation` — 単一行・単一セル
   Equation,
-  /// 行・列に分割する数式環境（どの環境名がどの配置かは frontend の環境レジストリが持つ）
+  /// 行・列に分割する数式環境
   Grid(GridLayout),
   /// `cases` — 左波括弧 + 2 列
   Cases,
@@ -26,8 +25,7 @@ pub(crate) enum MathEnvKind {
 
 /// 行・列に分割する数式環境のセル配置
 ///
-/// 採番の粒度とは独立の軸で、どの組み合わせも意味を持つ（環境名との対応は frontend の
-/// 環境レジストリが持つ）。列区切り `&` を受理するかは配置から決まる。
+/// 採番の粒度とは独立の軸で、どの組み合わせも意味を持つ。列区切り `&` を受理するかは配置から決まる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GridLayout {
   /// `&` 区切りの列を右・左交互に揃える
@@ -68,9 +66,8 @@ impl FromStr for MathDelimiter {
 
   /// `matrix` 環境の `[delimiter=...]` オプション値文字列を [`MathDelimiter`] に変換する
   ///
-  /// 受理する値は `none` / `paren` / `bracket` / `brace` / `bar` / `dbar`。
-  /// 他の語彙型と違い前後の空白と大小文字をここで正規化する — 現行の受理範囲
-  /// （`" brace "` / `"BRACKET"` も通る）をそのまま保つため。
+  /// 受理する値は `none` / `paren` / `bracket` / `brace` / `bar` / `dbar`。前後の空白と大小文字は
+  /// 正規化してから照合する。
   fn from_str(value: &str) -> Result<Self, Self::Err> {
     return match value.trim().to_ascii_lowercase().as_str() {
       "none" => Ok(MathDelimiter::None),

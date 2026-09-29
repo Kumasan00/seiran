@@ -1,7 +1,4 @@
 //! `NodeId` をキーにする挿入順の side table [`NodeMap`]。
-//!
-//! 「全ノード数ぶんの `Option<T>`」を露出させないため、fact を持つノードだけを保持する。
-//! 走査順（= 文書順）に依存する利用者（CSL の採番）のため、`iter` は挿入順を保つ。
 
 use std::collections::HashMap;
 
@@ -50,8 +47,7 @@ impl<T> NodeMap<T> {
 
   /// `id` の挿入位置（0 起点）を返す（未登録なら `None`）
   ///
-  /// 挿入順 = 走査順なので、位置はそのまま「文書順の何番目か」になる。見出しの `HeadingKey` は
-  /// この位置から組む（`NodeId` → キーの索引を別表として二重に持たない）。
+  /// 挿入順 = 走査順なので、位置はそのまま「文書順の何番目か」になる。
   pub(crate) fn position(&self, id: NodeId) -> Option<usize> { return self.index.get(&id).copied(); }
 
   /// エントリ数を返す

@@ -1,7 +1,7 @@
 //! 著者が書いた文書（authored HIR）を所有する module。
 //!
 //! HIR は frontend の一時的な構文木ではなく、`semantics` と `typeset` が共有する authored 文書の
-//! 正典である。診断ライブラリ（miette）も I/O も持たない。
+//! 正典である。
 //!
 //! # 提供する interface
 //!
@@ -12,29 +12,12 @@
 //!   更新漏れをコンパイラに検出させる
 //! - 診断側が [`NodeId`] からソース位置を引く query（[`SourceMap`]）
 //!
-//! interface に出さないもの: `NodeId` の発行、位置表の内部 collection（`SourceSpans`）、
-//! ソース順の正規化。`NodeId` を発行できるのは [`HirBuilder`] だけで、発行と同時に位置が
-//! 記録される（`NodeId::new` / `SourceSpans::alloc` は `hir` module 内に閉じている）。
-//! side table の [`NodeMap`] も crate 内 interface に留め、`SemanticDocument` や
-//! `GeneratedCitations` の外部表現としては公開しない。
-//!
-//! # 置く型・置かない型
+//! # 置く型
 //!
 //! HIR 木の型は子 module `hir`、HIR の variant が値として直接持つ閉じた語彙型
 //! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TheoremClass`] / [`MathEnvKind`] /
 //! [`GridLayout`] / [`MathDelimiter`] / [`MathVariant`] / [`MathClass`] / [`ColumnAlign`] / [`ColumnWidth`] /
 //! [`FontKind`]）はこの module の直下。
-//! 語彙置き場は型の無制限な受け皿にはせず、HIR の variant と同じ理由で増減する語彙だけを置く
-//! （複数 consumer が使うことは、ここへ置く理由にならない）。
-//!
-//! HIR と同形の中間 IR は持たない — `typeset::lowering` は [`HirMath`] / [`HirMathKind`] を直接読む。
-//! HIR は未解決のラベル名・引用キーを持ち、解決済み ID（`LabelId` / `citation::CitationId`）・
-//! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
-//!
-//! 依存方向は `source` / `project` / `length` / `color` の 4 つだけで、
-//! `semantics` / `typeset` / `compiler` は知らない。`project` へ依存するのは HIR が値として
-//! `ProjectPath` を持つためだけで、パスの解決規則（`PathResolver`）は持たない — 解決は frontend の
-//! 評価 context が `project` の規則を借りて行う。
 
 mod caption;
 mod font_kind;
@@ -50,7 +33,6 @@ mod theorem;
 pub(crate) use caption::CaptionPosition;
 pub(crate) use font_kind::FontKind;
 pub(crate) use heading_level::HeadingLevel;
-// HIR は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirFigure, HirGroup, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
   HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,

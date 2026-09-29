@@ -24,9 +24,7 @@ impl HirInline {
 
 /// インラインノードの種別
 ///
-/// 解決済みの表示内容は持たない。`GeneratedInline::InternalLink`（CSL 整形後の内部リンク）は
-/// 著者が書いた内容ではなく生成物なので HIR には無い（引用の表示も同様で、`Cite` は
-/// 引用「箇所」だけを表す）。
+/// 解決済みの表示内容・生成物は持たない（`Cite` は引用「箇所」だけを表す）。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirInlineKind {
   /// プレーンテキスト

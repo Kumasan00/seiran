@@ -25,16 +25,11 @@ impl HirNode {
 
 /// ブロックノードの種別
 ///
-/// 著者が書いた内容だけを持つ。書誌エントリのアンカー（`typeset::lowering` が `BibliographyEntry` から
-/// 組み立てる `AnchorId::Citation`）は CSL 整形ステージの生成物なので HIR には無い。見出しの `numbered` も、
-/// frontend が作る見出しは常に採番対象で構造的に一意に決まるため持たない。
+/// 著者が書いた内容だけを持つ。
 ///
 /// variant の形は値の個数で決まる — 値が 2 つ以上なら payload struct（`HirHeading` /
 /// `HirList` / `HirMathBlock` / `HirFigure` / `HirTable` / `HirTheorem` / `HirQuote`）、
 /// 1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
-/// インラインのフィールドを持つ variant は作らない — `typeset::lowering` の各入口が payload 型を
-/// 引数で受け取れるようにするため（インラインのフィールドだと、入口ごとに `unreachable!`
-/// 付きの分配束縛が要る）。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirNodeKind {
   /// 見出し（`\part` 〜 `\subparagraph`）
@@ -116,9 +111,9 @@ pub(crate) struct HirMathBlock {
 pub(crate) struct HirFigure {
   /// 画像ファイルへのパス（`\image{...}` の必須引数）
   pub(crate) image_path: ProjectPath,
-  /// 画像の幅（未指定なら `typeset::image` が本文幅 / 縦横比から決める）
+  /// 画像の幅（`None` は本文幅と縦横比から決まる）
   pub(crate) width: Option<Length>,
-  /// 画像の高さ（未指定なら `typeset::image` が本文幅 / 縦横比から決める）
+  /// 画像の高さ（`None` は本文幅と縦横比から決まる）
   pub(crate) height: Option<Length>,
   /// `\image[dpi=...]` の per-image 上書き
   pub(crate) dpi: Option<u32>,

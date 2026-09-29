@@ -1,7 +1,4 @@
 //! 著者が `columns=` / `widths=` に書く表の列指定語彙。
-//!
-//! どちらも HIR（`HirNodeKind::Table`）に直接現れる authored な語彙なので `document` が持つ。
-//! 2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有。
 
 use std::str::FromStr;
 
@@ -34,8 +31,7 @@ impl FromStr for ColumnAlign {
 
   /// `columns=` のトークン（フルスペル）から揃え方向を解決する
   ///
-  /// `l` / `c` / `r` の略記は受理しない。前後の空白も落とさない（呼び出し側が
-  /// `split_whitespace` で切り出したトークンを渡す）。
+  /// 前後の空白は落とさない（呼び出し側が `split_whitespace` で切り出したトークンを渡す）。
   fn from_str(keyword: &str) -> Result<Self, Self::Err> {
     return match keyword {
       "left" => Ok(ColumnAlign::Left),
@@ -49,7 +45,6 @@ impl FromStr for ColumnAlign {
 /// 列幅の指定方法
 ///
 /// 環境任意引数 `widths=auto 5cm 0.3 *` の各トークンに対応する。
-/// 実際の幅解決（自然幅の実測・残余分配）は `typeset::boxes::table_box::resolve_column_widths` で行われる。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) enum ColumnWidth {
   /// 内容の自然幅に合わせる（既定）
