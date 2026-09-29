@@ -1,15 +1,9 @@
 //! 確定レイアウトのテスト用 fixture builder と、本番経路で組んだ確定レイアウトの取り出し口
 //! （`#[cfg(test)]` 限定）
 //!
-//! `typeset` 内のテスト（`dump` / `emit` / `observe`）が確定レイアウトを組み立てる際の唯一の入口。
-//! `typeset` root が `#[cfg(test)]` でも再エクスポートしない組版中間型（`HBox` / `Line` /
-//! `PositionedBox` / `PlacedBlock` 以外の `Placed*` / `TableRowBox` / `TableCellBox` / `OutlineEntry`）を
-//! facade へ出さずに済ませるために置く。
-//!
-//! **不変条件**: ここの関数・メソッドは引数型にも返り値型にも上記の中間型を現さない。受け取るのは
-//! 意味的な値（テキスト・座標・構造）だけで、返すのは [`Page`] / [`PlacedBlock`] /
-//! [`LaidOutDocument`] / [`crate::publication::GlyphRun`] に限る。この規約が破れると `typeset` の
-//! 内部 struct のフィールド構成に外側のテストが再び結合し、再編の妨げになる。
+//! **不変条件**: `pub(crate)` の関数・メソッドは引数型にも返り値型にも、`typeset` root が `#[cfg(test)]` でも
+//! 再エクスポートしない組版中間型（`HBox` / `Line` / `PositionedBox` / `PlacedBlock` 以外の `Placed*` /
+//! `TableRowBox` / `TableCellBox` / `OutlineEntry`）を現さない。
 
 use std::collections::HashMap;
 
@@ -35,13 +29,8 @@ use crate::{
 
 /// `crate::typeset::compose` と同じ経路で組版し、確定レイアウトを取り出す。
 ///
-/// `Publication` へ変換すると失われる情報（anchor・索引語のページ帰属・脚注 fragment・
-/// `PlacedBlock` の幾何）を検査するテストだけが使う。`compose` と同じ `load_fonts` / `lay_out` を
-/// 通るので、フォント資源の構築順序や組版の段順序を迂回できない。
-///
-/// `compose` と異なり `info_span!("typeset")` には入らない（`font` span は `load_fonts` が開くので
-/// そのまま残る）。テスト専用の出口なので tracing の出方を production と揃える必要はなく、
-/// 意図的にこのままにしてある。
+/// `compose` と同じ `load_fonts` / `lay_out` を通るので、フォント資源の構築順序や組版の段順序を
+/// 迂回できない。`compose` と異なり `info_span!("typeset")` には入らない（`font` span は残る）。
 ///
 /// # Errors
 ///
@@ -60,7 +49,7 @@ pub(crate) fn layout_for_test(
   return Ok(laid_out);
 }
 
-/// 計測済みボックスの寸法（`HBox` を露出させずに箱の大きさを渡すための引数まとめ）
+/// 計測済みボックスの寸法
 #[derive(Debug, Clone, Copy)]
 pub(super) struct BoxSize {
   /// 幅
@@ -82,7 +71,7 @@ impl BoxSize {
   }
 }
 
-/// 表の 1 行の指定（`TableRowBox` / `TableCellBox` を露出させないための記述）
+/// 表の 1 行の指定
 pub(super) struct TableRowSpec {
   /// 行帯上端のページ上端からの距離
   pub(crate) top_y: Length,
@@ -94,7 +83,7 @@ pub(super) struct TableRowSpec {
   pub(crate) cells: Vec<Vec<(GlyphRun, BoxSize)>>,
 }
 
-/// 行の寸法（`Line` / `PositionedBox` を露出させずに行の大きさを渡すための引数まとめ）
+/// 行の寸法
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LineMetrics {
   /// 行内ボックスの幅
@@ -117,7 +106,7 @@ impl LineMetrics {
 }
 
 impl Default for LineMetrics {
-  /// 幅 0・高さ 10pt・深さ 2pt（内容の座標だけを検証するテスト向けの既定値）
+  /// 幅 0・高さ 10pt・深さ 2pt
   fn default() -> Self { return LineMetrics::pt(0.0, 10.0, 2.0); }
 }
 
@@ -356,8 +345,7 @@ impl PageBuilder {
 
   /// 本文の水平原点（用紙左端から本文左端まで）を設定する
   ///
-  /// 既定は [`Length::ZERO`]（本文相対座標がそのまま用紙座標になる）で、原点の加算を検証する
-  /// テストだけが明示的に動かす。
+  /// 既定は [`Length::ZERO`]（本文相対座標がそのまま用紙座標になる）。
   pub(crate) fn content_origin_x(mut self, origin: Length) -> Self {
     self.page.content_origin_x = origin;
     return self;

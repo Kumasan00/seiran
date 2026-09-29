@@ -24,7 +24,6 @@ fn math_alphanumeric(base: u32, offset: u32) -> char {
 pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> char {
   // `hole` は連続ブロックではなく Letterlike Symbols ブロックに散在する文字
   // （例: 黒板太字の ℝ=U+211D、italic の h=U+210E）を上書きするためのルックアップ。
-  // 該当文字がなければ `None` を返し、通常の base + offset 変換を行う。
   let map_ascii = |ch: char, upper_base: u32, lower_base: u32, hole: fn(char) -> Option<char>| -> char {
     if let Some(mapped) = hole(ch) {
       return mapped;
@@ -126,9 +125,8 @@ pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> cha
     },
     Some(MathVariant::Script | MathVariant::Calligraphic) => {
       // スクリプト（roundhand）とカリグラフィー（chancery）は同一の基底コードポイントを共有する
-      // （大文字に 8 個・小文字に 3 個の穴。数字・Greek は素通し）。両者の字形差はここでは付けず、
-      // カリグラフィーのみ呼び出し側 `push_math_char` が異体字セレクタ VS1（U+FE00）を付与して
-      // chancery 字形を選ぶ（VS1 はフォント依存。非対応フォントではスクリプト字形にフォールバック）。
+      // （大文字に 8 個・小文字に 3 個の穴。数字・Greek は素通し）。chancery 字形は `push_math_char` が
+      // 付ける異体字セレクタ VS1（U+FE00）で選ぶ（VS1 はフォント依存。非対応フォントではスクリプト字形）。
       return map_ascii(ch, 0x1d49c, 0x1d4b6, script_hole);
     },
     Some(MathVariant::Fraktur) => {

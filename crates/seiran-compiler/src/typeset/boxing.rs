@@ -1,8 +1,7 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
 //! 本文の入口は (a) [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
-//! 走り文）は自前の機能 module（`typeset::pagination` の下）から [`Shaper`] と [`LineAccum`] を
-//! 使って組み立てるので、この module は機能固有の入力型・並び順・区分を持たない。
+//! 走り文）向けには [`Shaper`] と [`LineAccum`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
 //! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
@@ -17,10 +16,6 @@
 //! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
-//!
-//! box の寸法計測はここで 1 回だけ行い、`typeset::breaking` 以降はフォントに触れない。
-//!
-//! 分割機会 (b) は計測側に閉じているので、この module は `typeset::breaking` に依存しない。
 
 mod break_opportunities;
 mod composed_line;
@@ -66,7 +61,6 @@ const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
 /// テキスト中の改行を空白 1 個へ畳む。
 ///
 /// ソース上の改行は語の区切りであって行分割の指示ではないため、シェーピング前に空白へ均す。
-/// 改行を含まない入力（大多数）は借用のまま返す。
 fn fold_newlines(text: &str) -> Cow<'_, str> {
   if text.contains('\n') {
     return Cow::Owned(text.replace('\n', " "));
@@ -75,9 +69,6 @@ fn fold_newlines(text: &str) -> Cow<'_, str> {
 }
 
 /// [`build_blocks`] の入力 — 文書全体で固定の資源と設定。
-///
-/// 段幅と画像資源は、画像ブロックの描画寸法を
-/// この段で確定するために要る（未確定の寸法を下流へ流さない）。
 pub(super) struct BlockBuildInputs<'a> {
   /// シェイプ・メトリクス取得の窓口
   pub(super) resources: &'a FontSystem<'a>,
@@ -120,9 +111,6 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
 }
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
-///
-/// [`Measurer`] は段落構築のポリシーだけを足す層で画像資源を持たない。縦リストの走査だけが画像を
-/// 作るので、その 2 つをここで束ねる。
 struct BlockBuilder<'a> {
   /// シェーピング・計測の状態
   measurer: Measurer<'a>,
@@ -160,15 +148,11 @@ impl BlockBuilder<'_> {
           align: vbox_align,
         } => {
           // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
-          // インデント（左右とも）は入れ子ごとに累積する（ネストしたリストが段ごとに深くなる）。
-          // 揃えは累積せず、この VBox 自身の align を子へ渡す。
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           let child_indent = indent + vbox_indent;
           let child_right_indent = right_indent + vbox_right_indent;
           self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, vbox_align);
           self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, vbox_align);
-          // ブロック間アキは伸縮 glue にする。下端揃えが満杯リージョンの不足高さを
-          // 自然値比で配分する。下端揃え無効時は break_pages が stretch を無視するため出力不変。
           let natural = margin_bottom;
           blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
         },
@@ -183,8 +167,6 @@ impl BlockBuilder<'_> {
           target_dpi,
         } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          // 描画寸法はここで確定する。省略された辺を自然寸法と段幅から埋めるので、
-          // `Block::Image` より下流に未確定の寸法は流れない
           let (width, height) = resolve_image_size(self.images, &path, width, height, self.column_width);
           blocks.push(Block::Image {
             path,
@@ -210,8 +192,7 @@ impl BlockBuilder<'_> {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::force_break());
         },
-        // keep-with-next（見出し直後の分割禁止）: 直前ブロックと直後ブロックの間の改ページを
-        // 禁止する +∞ penalty を出す。break_pages がこれを keep グループの連結として扱う。
+        // keep-with-next（見出し直後の分割禁止）: 直前ブロックと直後ブロックの間の改ページを禁止する
         LayoutNode::KeepWithNext => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Penalty {
@@ -247,10 +228,6 @@ impl BlockBuilder<'_> {
 }
 
 /// 段落構築のポリシーを持つ計測器
-///
-/// シェーピングそのものは [`Shaper`] が行い、この型が足すのは段落を組むための既定値
-/// （フォントサイズ・行高係数・ハイフネーション・約物アキ）だけ。生成コンテンツ（目次・索引・
-/// 走り文）はこれらを必要としないので `Shaper` だけを構築する。
 struct Measurer<'a> {
   /// シェーピングの部品（資源と再利用バッファ）
   shaper: Shaper<'a>,
@@ -283,17 +260,12 @@ impl<'a> Measurer<'a> {
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する
-  ///
-  /// 受け取るのは [`InlineNode`]（段落の水平リストへ入れられるノードだけ）なので、縦リスト用の
-  /// ノードが紛れ込む場合分けは型の側で消えている。
   fn collect_inline(&mut self, node: InlineNode, out: &mut Vec<HItem>) {
     match node {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
-      // コード（`code` 環境の 1 行・`\code{...}`）: 空白を glue にせず Atom 1 つへ畳む。
-      // 行分割の機会が内部に無いので、幅は行揃えでも動かず、字下げがそのまま残る。
-      // `build_atom` 経由なので和欧文間アキも挿さらない（内容としてのコードには不要）。
+      // コード: `build_atom` 経由なので空白は glue にならず、和欧文間アキも挿さらない
       InlineNode::TextAtom(text, style) => {
         out.push(HItem::Box(self.text_atom(text, style)));
       },
@@ -306,19 +278,15 @@ impl<'a> Measurer<'a> {
       InlineNode::Raise { offset, children } => {
         out.push(HItem::Box(self.build_atom(offset, children)));
       },
-      // インライン数式の演算子直後の分割点。折り返さなければアキ、折り返せば消える
       InlineNode::MathBreak { spacing, penalty } => {
         out.push(HItem::MathBreak { spacing, penalty });
       },
-      // QED マーク: 子テキストを 1 つの閉じた箱に畳み、直前に分割機会（Penalty）を挿んで
-      // 右寄せ末尾ボックスにする。折り返し時はこの Penalty で QED だけが次行へ運ばれる
+      // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
       InlineNode::FlushRight(children) => {
         let flush_box = self.build_atom(Length::ZERO, children);
         out.push(HItem::Penalty { value: 0 });
         out.push(HItem::FlushRight(flush_box));
       },
-      // リンク領域（機構 B）: 子要素を幅 0 のマーカー対で囲む。行分割がこの境界で
-      // 行ごとのクリック矩形を収集する（折り返しは複数矩形に分割される）
       InlineNode::Link { target, children } => {
         out.push(HItem::LinkStart(target));
         for child in children {
@@ -326,10 +294,7 @@ impl<'a> Measurer<'a> {
         }
         out.push(HItem::LinkEnd);
       },
-      // 脚注本体を独立に計測し、幅 0 の運搬マーカーとして積む（本文中の上付きマーカーは
-      // `lower_inline` が本 variant の手前に別ノードとして発行済みで、通常の Box として
-      // 既にこの直前で積まれている）。実際のページ下部配置・区切り罫線の描画は
-      // `crate::typeset::breaking`（`Line::footnotes` 経由）が行う。
+      // 本文中の上付きマーカーは lowering がこの variant の手前に別ノードとして発行済み
       InlineNode::Footnote {
         number,
         index,
@@ -347,8 +312,6 @@ impl<'a> Measurer<'a> {
           leading: dominant_font_size * self.line_height_factor,
         }));
       },
-      // 索引マーカーは幅 0 の運搬マーカーとしてそのまま積む。ページ確定座標化・重複除去は
-      // `crate::typeset::breaking`（`Line::index_marks` 経由）が行う
       InlineNode::IndexMark(term) => {
         out.push(HItem::IndexMark(term));
       },
@@ -357,10 +320,8 @@ impl<'a> Measurer<'a> {
 
   /// テキスト 1 塊を閉じた箱（Atom）にする
   ///
-  /// 空文字列（コードの空行）でも 1 行ぶんの高さを持たせる — Atom の extent は子から決まるので、
-  /// 内容が空だと高さ・深さが 0 になり、行送り `leading.max(前の行の深さ + この行の高さ)` が
-  /// その行だけ leading まで縮む。空セグメントを同じ書体・サイズで測って（グリフは 0 個・
-  /// 幅 0 で、高さ・深さはフォントの ascender / descender から決まる）extent だけを移す。
+  /// 空文字列（コードの空行）でも、同じ書体・サイズの空セグメント（高さ・深さはフォントの
+  /// ascender / descender から決まる）を測って 1 行ぶんの高さ・深さを持たせる。
   fn text_atom(&mut self, text: String, style: TextStyle) -> HBox {
     let is_empty = text.is_empty();
     let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
@@ -382,9 +343,6 @@ impl<'a> Measurer<'a> {
   }
 
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  ///
-  /// 受け取るのは `AtomNode`（テキスト・カーン・入れ子の `Raise` だけ）なので、畳めない要素が
-  /// 紛れ込む場合分けは型の側で消えている。
   fn place_atom_children(&mut self, nodes: Vec<AtomNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
     for node in nodes {
       match node {
@@ -399,8 +357,6 @@ impl<'a> Measurer<'a> {
             *dx += width;
           }
         },
-        // カーンは幅だけを持つので、水平カーソルを進めるだけで `out` には積まない
-        // （`InlineNode::Kern` を水平リストで扱うのと同じ）。
         AtomNode::Kern { length } => {
           *dx += length;
         },
@@ -449,10 +405,6 @@ impl<'a> Measurer<'a> {
 }
 
 /// 伸縮アキの値（`HItem::Glue` になる前の形）
-///
-/// アキの規則（和欧文間アキ・約物境界・欧文語間スペース・和文字間）は「どれだけのアキか」だけを
-/// この型で返し、水平リストへ積む直前に [`Glue::into_item`] でアイテムにする。規則の側が `HItem` を
-/// 作らないので、観測（TRACE）は値をそのまま読める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Glue {
   /// 自然幅
@@ -467,9 +419,6 @@ struct Glue {
 
 impl Glue {
   /// 水平リストのアイテムにする
-  ///
-  /// `From` 実装にしないのは、`Glue` が `boxing` に閉じた型で `HItem` が `pub(crate)` だから
-  /// （変換は 1 方向・積む直前の 1 用途しかない）。
   fn into_item(self) -> HItem {
     return HItem::Glue {
       natural: self.natural,
@@ -491,9 +440,6 @@ fn ja_latin_aki(font_size: Length) -> Glue {
 }
 
 /// 和文字間の分割可能位置に置く幅 0・微小伸長の glue を作る
-///
-/// 通常文字どうしの境界（[`boundary_glue`]）と、break 注入が ICU の分割点に置く glue
-/// （`text_run`）の両方がここから出る。
 fn cjk_stretch_glue(em: Length) -> Glue {
   return Glue {
     natural: Length::ZERO,

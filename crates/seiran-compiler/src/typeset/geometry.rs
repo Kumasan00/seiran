@@ -1,11 +1,6 @@
 //! 版面の幾何 — `config.toml`（用紙寸法）× `style.toml`（`[page]` の余白・`[columns]`）の
 //! 横断バリデーションと、そこから確定する版面 [`PreparedGeometry`] の構築、および
 //! ページの物理ジオメトリを表す値型 [`PageGeometry`] の定義。
-//!
-//! 余白単体の不正（負値）は style の値検証が持ち、ここが持つのは「用紙寸法と突き合わせないと判定できない
-//! 制約」だけ。[`PreparedGeometry::prepare`] を呼ぶのは入力読込（`compiler::input::load`）で、組版に
-//! 入る前に不正な組み合わせを弾く。検証を通った版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）は
-//! 戻り値として下流へ渡り、`typeset::pagination` はそれを読むだけで再計算しない。
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -78,7 +73,6 @@ pub(crate) enum LayoutValidationError {
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅を返す。
 ///
 /// `(text_width - (num_columns - 1) * column_gap) / num_columns`。
-/// [`PreparedGeometry::prepare`] と `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 #[must_use]
 pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
   let count = num_columns.max(1);
@@ -101,18 +95,17 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
 pub(super) struct PageGeometry {
   /// 本文の水平原点 = 用紙左端から本文左端まで（`style.page.margin_left`）。
   ///
-  /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
-  /// [`crate::typeset::boxes::Page::content_origin_x`] へそのまま載せて描画側の加算に使わせる。
+  /// ページ内の確定座標は本文左端からの相対値で、この値は組版の座標計算に入らない。
   pub content_origin_x: Length,
   /// 上マージン。ページ先頭のベースライン位置
   pub margin_top: Length,
   /// 本文下限 = ページ高さ − 下マージン。超えると改ページ（または改段）
   pub page_limit: Length,
-  /// 既定フォントサイズ。表の行高のフォールバックに使用
+  /// 既定フォントサイズ
   pub default_font_size: Length,
-  /// 行高係数。表の行高の算出に使用
+  /// 行高係数
   pub line_height_factor: f32,
-  /// 表セルの内側余白（左右各）。列幅の解決に使用
+  /// 表セルの内側余白（左右各）
   pub table_cell_padding: Length,
   /// 段組み数（1 = 単段）。本文を左段 → 右段 → 次ページの順に流す段の本数
   pub num_columns: usize,
@@ -126,31 +119,27 @@ pub(super) struct PageGeometry {
   pub footnote_rule_length: Length,
   /// 脚注: 区切り罫線の太さ（0 のとき描画しない、`style.footnote.rule_thickness`）
   pub footnote_rule_thickness: Length,
-  /// 脚注: 区切り罫線の色（RGB）。`None` は黒。呼び出し側が `crate::color::Color::rgb()` で
-  /// 変換済みの値を渡す（`RunningSlots.rule_color` と同じ規約）
+  /// 脚注: 区切り罫線の色（RGB）。`None` は黒
   pub footnote_rule_color: Option<[u8; 3]>,
   /// 脚注: 区切り罫線〜最初の脚注、および脚注どうしの間隔（`style.footnote.rule_gap`）
   pub footnote_rule_gap: Length,
   /// 表: 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
   pub table_rule_thickness: Length,
-  /// 表: 罫線の色（RGB）。`None` は黒。呼び出し側が `crate::color::Color::rgb()` で
-  /// 変換済みの値を渡す（`footnote_rule_color` と同じ規約）
+  /// 表: 罫線の色（RGB）。`None` は黒
   pub table_rule_color: Option<[u8; 3]>,
-  /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）。
-  /// 呼び出し側が `crate::color::Color::rgb()` で変換済みの値を渡す
+  /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）
   pub background_color: Option<[u8; 3]>,
 }
 
 /// 横断検証を通った版面。
 ///
-/// 本文幅・本文の 1 段あたりの幅・本文 / 前付け / 後付けのページ幾何を確定値として持つ。
 /// フィールドは module 非公開で、構築経路は [`PreparedGeometry::prepare`] だけ — 「検証を通って
-/// いない版面が組版へ流れない」ことを型で保証する（`Failures` と同じ方針）。
+/// いない版面が組版へ流れない」ことを型で保証する。
 #[derive(Debug)]
 pub(crate) struct PreparedGeometry {
   /// 版面幅（段組み前）= `pdf.width - page.margin_left - page.margin_right`
   text_width: Length,
-  /// 本文の 1 段あたりの幅（画像サイズ解決に使う）
+  /// 本文の 1 段あたりの幅
   body_column_width: Length,
   /// 本文のページジオメトリ（`style.columns.count` 段）
   body_geometry: PageGeometry,
@@ -171,12 +160,10 @@ impl PreparedGeometry {
   /// 3. 本文幅（`pdf.width - page.margin_left - page.margin_right`）を `style.columns` の段数・段間で
   ///    割った 1 段あたりの幅が正であること
   ///
-  /// 3 は 2 が通っているときだけ検査します（左右余白だけで本文幅が尽きているときに、そこから
-  /// 派生するだけの段幅エラーを重ねてもユーザーの修正先が増えないため）。
+  /// 3 は 2 が通っているときだけ検査します。
   ///
-  /// ページ幾何を組み立てるのは 3 件すべてが通った後だけです。本文幅・段幅は検査の前に求めますが、
-  /// 集約した違反が 1 件でもあれば早期 return するので、検証を通らなかった値が [`PreparedGeometry`]
-  /// として外へ出る経路はありません。
+  /// 本文幅・段幅は検査の前に求めますが、集約した違反が 1 件でもあれば早期 return するので、
+  /// 検証を通らなかった値が [`PreparedGeometry`] として外へ出る経路はありません。
   ///
   /// # Errors
   ///
@@ -305,8 +292,6 @@ mod tests {
   };
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
-  /// （`project/config.rs` の `mod tests` にある同名ヘルパの複製 — `PreparedGeometry::prepare` は
-  /// `config::load` の実結果に対して検証するため、こちらでも同じ実ファイルシステム経由のフィクスチャ生成が要る）。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let font_path = tempdir.path().join("dummy.ttf");
@@ -347,10 +332,7 @@ mod tests {
     assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
   }
 
-  /// 用紙（`valid_pdf_section` の A4 = 595×842pt）に収まる余白を明示した style を作る。
-  ///
-  /// 余白は style が所有するため、横断検証のテストは config 側ではなくここを動かして
-  /// 版面の組み合わせを作る。
+  /// 用紙（`valid_pdf_section` の A4 = 595×842pt）に対する余白を明示した style を作る。
   fn test_style(margin_top: f32, margin_bottom: f32, margin_left: f32, margin_right: f32) -> Style {
     let mut style = Style::default();
     style.page.margin_top = pt(margin_top);
@@ -395,7 +377,6 @@ mod tests {
 
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
-    // 左右余白だけで本文幅が尽きているので、派生する段幅エラーは重ねない
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty(), "段幅エラーを重ねないはず: {rest:?}");
     assert!(matches!(first, LayoutValidationError::HorizontalMarginsExceedPageWidth { .. }));
@@ -423,7 +404,6 @@ mod tests {
 
     let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
 
-    // fixture の用紙幅から導出して、式そのものを固定する
     let expected_text_width = config.pdf.width.to_pt() - 100.0;
     assert!(close(prepared.text_width(), expected_text_width), "本文幅: {:?}", prepared.text_width());
     assert!(

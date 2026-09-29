@@ -20,10 +20,6 @@ use crate::{
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `InlineNode` 列）を生成する
-///
-/// キャプション本文の lowering はクロージャで遅延させ、`format` が `{title}` を含むときだけ
-/// 含む回数ぶん実行する（キャプション中の `\footnote` が通し index だけ消費して消えるのを
-/// 防ぐため。詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
 fn build_caption(
   ctx: &LoweringContext<'_>,
   caption_style: &CaptionStyle,
@@ -54,7 +50,7 @@ pub(super) struct FloatSpec {
   pub top_margin: Length,
   /// フロート全体の下マージン（VBox の `margin_bottom`）
   pub bottom_margin: Length,
-  /// 本体とキャプションの間に入れる余白（`Vkern` として出力。0pt なら実質アキなし）
+  /// 本体とキャプションの間に入れる余白（`Vkern` として出力）
   pub inner_margin: Length,
 }
 
@@ -101,7 +97,7 @@ fn wrap_float(
 
 /// フロート 1 件のキャプション指定（体裁・本文・位置）
 ///
-/// キャプションを持たないフロートでは `inlines` が `None` になる（`position` は読まれない）。
+/// `inlines` が `None` なら `position` は読まれない。
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FloatCaption<'a> {
   /// キャプションの体裁（`style.figure.caption` / `style.table.caption`）
@@ -116,9 +112,6 @@ pub(super) struct FloatCaption<'a> {
 ///
 /// `build_body` を `build_caption` より先に呼ぶのは、表セルの `\footnote` が
 /// キャプションの `\footnote` より先に通し番号を取る本文の出現順を保つため。
-///
-/// `caption` は `FloatCaption` を値で受ける（3 フィールドとも Copy なので `needless_pass_by_value` は
-/// 対象外にする。`derive(Copy)` はそのために付けてある）。
 pub(super) fn lower_numbered_float(
   ctx: &LoweringContext<'_>,
   id: NodeId,
@@ -306,7 +299,6 @@ mod tests {
 
   #[test]
   fn caption_format_without_title_placeholder_does_not_consume_footnote_number() {
-    // `{title}` を含まない独自フォーマット（キャプション本文は一切表示されない）
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
       format: NumberTitleTemplate::parse("図 {number}"),
@@ -320,7 +312,6 @@ mod tests {
        body\\footnote{in body}\n",
     );
 
-    // キャプション本文を lower しないので、本文の脚注が 1 番のままになる
     let numbers: Vec<u32> = nodes
       .iter()
       .filter_map(|n| match n {
@@ -335,7 +326,6 @@ mod tests {
   fn build_caption_ref_is_resolved_to_internal_link() {
     let style = ReadStyle::default();
 
-    // 2 枚目のキャプションから 1 枚目を `\ref` する
     let nodes = lower_source(
       &style,
       "\\chapter{C}\n\n\\begin{figure}[label=fig:one]\n\\image{a.png}\n\\caption{one}\n\\end{figure}\n\n\

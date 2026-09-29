@@ -1,7 +1,4 @@
 //! 文書の縦リスト要素 [`Block`]。
-//!
-//! `typeset::boxing::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
-//! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
 use crate::{
   length::Length,
@@ -16,14 +13,9 @@ use crate::{
 };
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
-///
-/// 水平リストの禁止規約（[`super::hitem::HItem::Penalty`] は `i32::MAX` が禁止）と対称に、
-/// 縦方向では最小値を強制（必ず切る）、最大値を禁止（決して切らない）とする。
 pub(crate) const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
 /// 分割禁止の分割コスト（+∞）
-///
-/// keep-with-next など、隣接ブロックを同じリージョンに置く制御に使用する。
 pub(crate) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 
 /// 文書の縦リスト要素
@@ -37,19 +29,14 @@ pub(in crate::typeset) enum Block {
     leading: Length,
     /// 本文左端からの左インデント
     ///
-    /// リスト項目などブロック単位で字下げする段落で使う。全行（折り返し行を含む）に
-    /// 一律適用され、行折り返しの利用可能幅は `text_width - indent - right_indent` に縮む。
-    /// 通常の段落は 0。
+    /// 全行（折り返し行を含む）に一律適用され、行折り返しの利用可能幅は
+    /// `text_width - indent - right_indent` に縮む。通常の段落は 0。
     indent: Length,
     /// 本文右端からの右インデント
     ///
-    /// 引用ブロックなど左右に字下げする段落で使う。全行（折り返し行を含む）の利用可能幅を
-    /// `text_width - indent - right_indent` に縮める（行は左端 + `indent` から始まる）。通常の段落は 0。
+    /// 全行（折り返し行を含む）の利用可能幅を縮める（行は左端 + `indent` から始まる）。通常の段落は 0。
     right_indent: Length,
     /// 段落内の各行の水平揃え（既定は左揃え）
-    ///
-    /// 折り返しには影響せず、確定した各行を利用可能幅（`text_width - indent - right_indent`）の中で
-    /// 中央・右へシフトする。タイトルページの中央寄せ等で使う。通常の段落は [`Align::Left`]。
     align: Align,
   },
   /// 表（シェーピング済み）
@@ -77,16 +64,11 @@ pub(in crate::typeset) enum Block {
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
     /// 本文幅の中での画像の水平揃え（既定は左揃え）
-    ///
-    /// 揃えオフセットは確定済み描画幅と本文幅から `break_pages` で算出する。
     align: Align,
   },
   /// 合成済みの単一行（行分割をかけずそのまま配置する）
   ///
-  /// 目次エントリの「番号＋タイトル …リーダー… ページ番号（右寄せ）」のように、
-  /// 生成側で絶対座標まで組み上げた [`Line`] を 1 行として配置するためのプリミティブ。
-  /// `break_pages` は段落 1 行分と同じ規則（ベースライン送り・改ページ・アンカー解決・
-  /// リンク収集）で扱うが、`break_lines` は通さない。
+  /// 配置は段落 1 行分と同じ規則（ベースライン送り・改ページ・アンカー解決・リンク収集）に従う。
   ComposedLine {
     /// 配置する合成済みの行
     line: Line,
@@ -95,9 +77,7 @@ pub(in crate::typeset) enum Block {
   },
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
   ///
-  /// 全セルを絶対配置した 1 つの閉じた Atom（`body`）として保持する（行分割をまたがない）。
-  /// 列整列・行積み・区切り括弧は `boxing` 段で `body` の局所座標へ解決済み。`break_pages` は
-  /// `align` で本体を本文幅の中に中央寄せし、各行番号（`numbers`）を本文端へ寄せるだけ。
+  /// 列整列・行積み・区切り括弧は `body` の局所座標へ解決済みで、行分割をまたがない。
   Math {
     /// 数式本体（全セル + 区切り括弧を絶対配置した閉じた Atom）
     body: HBox,
@@ -110,11 +90,8 @@ pub(in crate::typeset) enum Block {
   },
   /// 縦方向の伸縮アキ（glue）
   ///
-  /// `natural` は自然値、`stretch` は伸長能力。固定アキは
-  /// `stretch = 0.0`（[`Block::fixed_space`]）。ブロック間アキは自然値に比例した
-  /// `stretch` を持ち（[`Block::stretchable_space`]）、下端揃えが満杯リージョンの不足高さを
-  /// この `stretch` へ比例配分する。下端揃えが無効なら `break_pages` は `stretch` を無視して `natural`
-  /// のみカーソルへ加算するため出力は不変。
+  /// 下端揃えは満杯リージョンの不足高さを `stretch` へ比例配分する。下端揃えが無効なら `stretch` は
+  /// 無視され、`natural` だけカーソルが進む。
   Glue {
     /// 自然値
     natural: Length,
@@ -125,20 +102,19 @@ pub(in crate::typeset) enum Block {
   ///
   /// `value` はそのブロック境界で改ページする際のコスト。[`PENALTY_FORCE_BREAK`]（−∞）は強制改ページ、
   /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止。有限値（「避けたいが可能」）はどの構築元も作らず、
-  /// `break_pages` は到達不能として扱う（導入するときは使う側と一緒に設計する）。
+  /// `break_pages` は到達不能として扱う。
   Penalty {
     /// 分割コスト（小さいほど切りやすい。−∞=強制 / +∞=禁止）
     value: i32,
   },
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///
-  /// `break_pages` で次に配置される実ブロックの確定座標に解決され、`Page::anchors` に
-  /// `PlacedAnchor` として格納される。それ自身は縦方向のアキを生まない。
+  /// 次に配置される実ブロックの確定座標に解決される。それ自身は縦方向のアキを生まない。
   Anchor(AnchorId),
 }
 
 impl Block {
-  /// 固定の縦アキ（伸縮なし）を作る。`natural = pt`, `stretch = 0`。
+  /// 固定の縦アキ（伸縮なし）を作る。
   #[must_use]
   pub(crate) fn fixed_space(pt: Length) -> Block {
     return Block::Glue {
@@ -147,11 +123,9 @@ impl Block {
     };
   }
 
-  /// 伸縮する縦アキ（glue）を作る。`natural = pt`, `stretch = stretch`。
+  /// 伸縮する縦アキ（glue）を作る。
   ///
-  /// ブロック間アキ（段落間・見出し前後等）に使う。下端揃えが満杯リージョンの不足高さを
-  /// `stretch` へ比例配分し、最終ベースラインを版面下端へ寄せる。収縮は持たない（リージョンは
-  /// オーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
+  /// 収縮は持たない（リージョンはオーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
   #[must_use]
   pub(crate) fn stretchable_space(pt: Length, stretch: Length) -> Block {
     return Block::Glue {
@@ -160,7 +134,7 @@ impl Block {
     };
   }
 
-  /// 強制改ページ（`Penalty { value: PENALTY_FORCE_BREAK }`）を作る。
+  /// 強制改ページを作る。
   #[must_use]
   pub(crate) fn force_break() -> Block {
     return Block::Penalty {
@@ -170,9 +144,6 @@ impl Block {
 }
 
 /// 数式ブロックの行番号（測定済み）
-///
-/// `break_pages` が `dy`（本体ベースラインからのオフセット）と本文幅から本文端に寄せて
-/// 確定座標を与え、[`super::page::PlacedMathNumber`] にする。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathRowNumber {
   /// 番号ボックス（`"(1)"` 等、シェーピング済み）

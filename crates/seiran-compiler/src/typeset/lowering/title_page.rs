@@ -181,7 +181,6 @@ mod tests {
 
     let nodes = lower_title_page(&meta, &style);
 
-    // 載せる中身が無ければページ区切りも出さない（前付けに白紙ページを作らない）
     assert!(nodes.is_empty(), "{nodes:?}");
   }
 

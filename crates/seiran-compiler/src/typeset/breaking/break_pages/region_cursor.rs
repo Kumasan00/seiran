@@ -1,16 +1,11 @@
 //! リージョン内のカーソルと、「このブロックは現在のリージョンに収まるか」の判定 — 純粋関数・データのみ。
-//!
-//! keep-with-next の見積り（[`super::keep_group_orphaned`]）と実配置（`place_*`）は、収まり判定をすべて
-//! このカーソルを通して行う。実効下限は引数で受け取らず、カーソルが持つ脚注予約と `geom` から
-//! [`RegionCursor::region_limit`] の 1 箇所でだけ導く。見積り側が下限を自分で選べると、脚注予約のある
-//! リージョンで判定と実配置が食い違う。段落の行は `paragraph_plan` が同じカーソルを受けて判定する。
 
 use crate::{
   length::Length,
   typeset::{boxes::Line, geometry::PageGeometry},
 };
 
-/// リージョン（段）内のカーソル状態。実配置（`PageComposer`）と keep-with-next の見積りが同じ値を使う
+/// リージョン（段）内のカーソル状態
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RegionCursor {
   /// カーソル位置（ページ上端からの距離）。基本は「次のベースライン位置」

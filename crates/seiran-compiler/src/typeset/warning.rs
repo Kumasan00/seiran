@@ -1,8 +1,4 @@
 //! 組版が検出した、ユーザーが直せる非致命的問題
-//!
-//! 組版を止めない問題は error ではなく severity(Warning) の leaf diagnostic にして、成功した
-//! `Compilation` と一緒に返す（`compiler::Warnings`）。`tracing::warn!` は開発者向け観測に限り、
-//! 同じ問題を診断と tracing の両方では出さない。
 
 use itertools::Itertools;
 use miette::Diagnostic;
@@ -11,19 +7,12 @@ use thiserror::Error;
 use crate::typeset::font::FontWarning;
 
 /// 組版段の警告。
-///
-/// フォント資源の構築で見つかった警告（[`FontWarning`]）も、組版 phase の中で起きるので
-/// この型が包む。`compiler` は警告型を 1 つだけ名指しし、`typeset` の内部が
-/// フォント → 本体の 2 段に分かれていることを知らない。
-///
-/// ページの指し方は**印字ページラベル**（前付けはローマ数字など `style.page_numbering` に従う）で、
-/// 物理 index からの変換は [`super::pagination`] が行う。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TypesetWarning {
   /// フォント資源の構築（解析・検証）で見つかった警告。
   ///
   /// `transparent` でメッセージ・code・help・severity をすべて内側へ委譲し、診断の出方を
-  /// 変えない（`TypesetError::Font` と同じ形）。
+  /// 変えない。
   #[error(transparent)]
   #[diagnostic(transparent)]
   Font(#[from] FontWarning),
@@ -61,7 +50,7 @@ pub(crate) enum TypesetWarning {
   },
 }
 
-/// 脚注番号の列を `1, 2` の形へ整形する（[`TypesetWarning::FootnoteOverflow`] のメッセージ用）
+/// 脚注番号の列を `1, 2` の形へ整形する
 fn join_numbers(numbers: &[u32]) -> String { return numbers.iter().join(", "); }
 
 #[cfg(test)]
@@ -86,7 +75,6 @@ mod tests {
 
     let warning = TypesetWarning::Font(inner);
 
-    // transparent なので severity / メッセージ / code は内側そのまま
     assert_eq!(warning.severity(), Some(Severity::Warning), "警告 severity を転送するはず");
     assert_eq!(warning.to_string(), expected_message, "メッセージを転送するはず");
     assert_eq!(

@@ -1,9 +1,7 @@
-//! 段落の行列に対する配置計画 — 純粋関数・データのみ。`PageComposer` には依存しない。
+//! 段落の行列に対する配置計画 — 純粋関数・データのみ。
 //!
 //! ベースライン送り・脚注予約・widow / orphan 補正までをここで決め、結果は [`LinePlacement`] の列として
-//! 返すだけにする。計画を実際のページへ確定させる（リージョンを進める・脚注を積む・はみ出しを記録する）のは
-//! 親 module の [`super::place_paragraph`] の責務。計画は widow / orphan 補正で何度も立て直されるので、
-//! 一度きりであるべき記録をここで作ると重複する。
+//! 返すだけにする。
 
 use crate::{
   length::Length,
@@ -29,9 +27,7 @@ pub(super) struct LinePlacement {
   pub(super) reserved_after: Length,
   /// この行の脚注ごとに、この行が乗るリージョンへ置く行数（行の脚注と同順・同長。脚注が無ければ空）
   pub(super) own_splits: Vec<usize>,
-  /// この行の脚注群が空のリージョンにも収まらず、はみ出したまま置かれるか。
-  /// 計画は widow / orphan 補正で何度も立て直されるので、ここでは事実を載せるだけにして、
-  /// 警告は確定した計画を配置する [`super::place_paragraph`] だけが組み立てる
+  /// この行の脚注群が空のリージョンにも収まらず、はみ出したまま置かれるか
   pub(super) overflowed: bool,
 }
 
@@ -57,13 +53,11 @@ fn place_lines(
   let mut reserved = cursor.footnote_reserved;
   for (i, line) in lines.iter().enumerate() {
     match prev_depth {
-      // 段落先頭行: 直前が底辺基準ブロックならアセント分下げる
       None => {
         if cursor.at_edge {
           baseline += line.height;
         }
       },
-      // 2 行目以降: leading か「前の行の深さ + この行の高さ」の大きい方だけ送る
       Some(depth) => {
         baseline += leading.max(depth + line.height);
       },
@@ -77,7 +71,7 @@ fn place_lines(
     if starts_region {
       if carry_pending {
         // 次リージョンの脚注エリアは繰越で埋まる。どれだけ埋まるかを詰めるまでこの行の
-        // ベースラインは決められないので、ここで計画を打ち切る（呼び出し元が seed して計画し直す）
+        // ベースラインは決められないので、ここで計画を打ち切る
         return (plan, true);
       }
       baseline = margin_top;
@@ -172,7 +166,7 @@ pub(super) fn plan_paragraph_lines(
   loop {
     let (plan, truncated) =
       place_lines(lines, cursor, leading, margin_top, page_limit, &forced, demands, charges, carry_pending);
-    // 打ち切られた計画の末尾は段落の末尾ではない（続きは繰越を詰めてから計画し直す）
+    // 打ち切られた計画の末尾は段落の末尾ではない
     let is_paragraph_end = !truncated;
     match pick_correction(&plan, MIN_LINES_AT_BREAK, is_paragraph_start, is_paragraph_end) {
       Some(idx) if !forced[idx] => forced[idx] = true,
@@ -202,7 +196,7 @@ mod tests {
     };
   }
 
-  /// 高さ 8・深さ 2 の単純な行（純粋関数テスト用）
+  /// 高さ 8・深さ 2 の単純な行
   fn test_line() -> Line {
     return Line {
       boxes: Vec::new(),
@@ -219,7 +213,7 @@ mod tests {
     return std::iter::repeat_with(Vec::new).take(count).collect();
   }
 
-  /// 課金ゼロの脚注パラメータ（脚注を使わない計画テスト用）
+  /// 課金ゼロの脚注パラメータ
   fn no_charges() -> FootnoteCharges {
     return FootnoteCharges {
       top_margin: Length::ZERO,

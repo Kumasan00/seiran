@@ -1,7 +1,5 @@
 //! 巻末索引の生成 — 出現箇所の集約・並び順・区分・ページ番号の表示方針・style 投影・行組み立て
 //!
-//! 段 4（後付け）から呼ばれる。本文のページ分割が確定した後に走るので、入力は本文ページ列と
-//! [`BodyPageFacts`] で足りる。後付けのページ分割は呼び出し元 `back_matter` が持つ。
 //! 並び順と区分の割り当ては子 module [`grouping`] に閉じる。
 
 mod grouping;
@@ -59,12 +57,10 @@ struct IndexEntry {
 
 /// 巻末索引の計測済みブロック列を組み立てる。
 ///
-/// 本文全ページの索引語を集約し、照合順に並べ、区分へ割り当て、ページ番号列を畳んで行に組むまでを
-/// この 1 操作に閉じる。`\index` が 1 個もなければ空の `Vec` を返す。
+/// `\index` が 1 個もなければ空の `Vec` を返す。
 ///
 /// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorId::IndexPage`）を
-/// 事後追加する（`body_pages` の破壊的更新）。索引語は座標を持たないため、リンク先は語の位置ではなく
-/// 出現ページの先頭になる。
+/// 事後追加する（`body_pages` の破壊的更新）。
 #[must_use]
 pub(super) fn build_index_blocks(
   ctx: &TypesetContext<'_>,
@@ -501,7 +497,6 @@ mod tests {
 
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
-    // 「犬」は 1 エントリに 2 ページ、「猫」は reading 違いで 2 エントリに分かれ各 1 ページ
     let dog = entries.iter().find(|e| return e.word == "犬").expect("犬エントリがあるはず");
     assert_eq!(dog.pages.len(), 2);
     assert_eq!(dog.pages[0].label, "1");

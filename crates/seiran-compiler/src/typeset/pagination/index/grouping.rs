@@ -1,7 +1,7 @@
 //! 索引の並び順と区分の割り当て
 //!
 //! ソート（`ja` ロケール固定の ICU `Collator`）と区分見出しへの割り当てが**同じ照合キー・同じ照合順序**
-//! から出ることを、この module 1 箇所で保証する。かな正規化表や「ん」の特例は持たない。
+//! から出ることを、この module 1 箇所で保証する。
 
 use std::cmp::Ordering;
 
@@ -18,7 +18,6 @@ use crate::typeset::pagination::index::IndexEntry;
 /// 区分見出しのラベル固定表（A–Z 26 個 + 五十音行 10 個）
 ///
 /// CLDR の `ja` index characters と同じ並びで、配列順がそのまま区分の出力順（A–Z → 五十音行）になる。
-/// 受け皿の見出しだけは `IndexSpec::group_other_label` で差し替えられる。
 const GROUP_LABELS: [&str; 36] = [
   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W",
   "X", "Y", "Z", "あ", "か", "さ", "た", "な", "は", "ま", "や", "ら", "わ",
@@ -214,7 +213,6 @@ mod tests {
   fn assign_index_groups_places_kana_by_collation_interval() {
     let input = entries(&["がぎ", "ピアノ", "んご", "はな"]);
     let groups = group_descs(&input);
-    // 個別の正規化規則ではなく区間割り当てから行が決まる
     assert_eq!(
       groups,
       vec![
@@ -244,7 +242,6 @@ mod tests {
     // 数字・記号（underflow）と reading の無い漢字語（overflow）。照合順に並んだ入力を渡す
     let input = entries(&["!important", "3月", "あさひ", "漢字"]);
     let groups = group_descs(&input);
-    // 受け皿は 1 つだけで末尾、内部は照合順（underflow → overflow）のまま
     assert_eq!(
       groups,
       vec![
@@ -271,7 +268,6 @@ mod tests {
 
   #[test]
   fn assign_index_groups_uses_reading_as_the_group_key() {
-    // 表示語は漢字でも reading があればその行へ入る（ソートと同じキー）
     let input = vec![entry("朝日", Some("あさひ")), entry("季節", Some("きせつ"))];
     let groups = group_descs(&input);
     assert_eq!(

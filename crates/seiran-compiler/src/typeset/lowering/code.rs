@@ -15,10 +15,7 @@ use crate::{
   },
 };
 
-/// コードのテキストスタイル（等幅・本文サイズ）を返す
-///
-/// フォントは config.toml の既存 monospace スロット。書体・サイズの style.toml 設定
-/// （`[code]` セクション）はハイライト段の issue のスコープ。
+/// コードのテキストスタイル（等幅）を返す
 fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
   return TextStyle {
     font_size,
@@ -29,9 +26,8 @@ fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
 
 /// コードブロック（`code` 環境）をレイアウトノードに変換する
 ///
-/// 段落 1 つとして組み、行区切りは強制改行にする。行が `Block::Paragraph` の行として
-/// 出るので、長いコードブロックでも行単位でページ分割できる。字下げ（`first_line_indent`）は
-/// 抑止する — コードの 1 桁目はソースの 1 桁目でなければならない。
+/// 行が `Block::Paragraph` の行として出るので、長いコードブロックでも行単位でページ分割できる。
+/// 字下げ（`first_line_indent`）は抑止する — コードの 1 桁目はソースの 1 桁目でなければならない。
 pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<LayoutNode> {
   let style = code_text_style(ctx.default_font_size(), None);
   let mut content = Vec::new();

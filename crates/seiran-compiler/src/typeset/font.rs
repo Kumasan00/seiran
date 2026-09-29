@@ -1,11 +1,5 @@
 //! フォント処理 — OpenType 解析・検証・メトリクス取得・シェイピング。
 //!
-//! 入力は `project::font` が持つフォント資源（[`crate::project::FontConfigs`] と
-//! [`crate::project::FontData`]）で、そこから解析済みフォント参照・メトリクス・シェーパーを
-//! 組み立てる。フォントのサブセット化は `krilla` に委ねる。
-//!
-//! 構築の入口は [`FontResources`] 1 型だけで（[`FontSystem`] はその `system()` が返す借用ビュー）、
-//! `FontRefs` / `FontMetrics` / シェーパー / 検証を含めこの module の名前は `typeset` の外から見えない。
 //! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる。
 
 use read_fonts::{FontRef, TableProvider};
@@ -16,8 +10,6 @@ mod shaper;
 mod system;
 mod validation;
 
-// `shaper` module のパス自体は `typeset::font` に閉じ、`typeset::boxing` が shape 呼び出しに要る
-// `UnicodeBuffer` だけを `typeset` 内へ出す。
 pub(super) use shaper::UnicodeBuffer;
 pub(super) use system::{FontResources, FontSystem, FontSystemError};
 pub(super) use validation::FontWarning;
@@ -29,9 +21,6 @@ use crate::{
 };
 
 /// フォントの解析エラー。
-///
-/// 名指しするのは `system::FontSystemError::Load` だけで、`typeset::font` の facade には載せない
-/// （`TypesetError` 越しに `pub(crate)` へ到達しうるので型自体の可視性はそこに合わせる）。
 #[derive(Debug, Error, miette::Diagnostic)]
 pub(crate) enum FontLoadError {
   /// フォントを解析できない。
@@ -73,8 +62,6 @@ type FontRefs<'a> = FontMap<FontRef<'a>>;
 
 /// バイナリデータから設定されたフェースのフォント参照を生成する。
 ///
-/// フォントは互いに独立に解析できるので、1 件目で打ち切らず全種別を解析して違反を全件返す。
-///
 /// # Errors
 ///
 /// フォントを解析できない場合、または TTC のインデックスが範囲外の場合に
@@ -101,8 +88,6 @@ fn build_font_refs<'a>(
 type FontMetrics = FontMap<FontMetric>;
 
 /// 全フォントの `head` / `hhea` テーブルからメトリクスを取得する。
-///
-/// フォントは互いに独立にメトリクスを読めるので、1 件目で打ち切らず全種別を読んで違反を全件返す。
 ///
 /// # Errors
 ///

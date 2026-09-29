@@ -1,8 +1,7 @@
 //! シェーピング済みの表ボックスと計測関数。
 //!
 //! セル内容は計測済みの [`HItem`] 列として保持されるため、列幅・行高・セル内 x 座標の算出は
-//! フォントに触れない純粋関数として本モジュールで提供する。`breaking::break_pages` がページ上の
-//! 絶対座標へ確定し、描画 adapter は確定値を型変換するだけになる。
+//! フォントに触れない純粋関数になる。
 
 use crate::{
   document::{ColumnAlign, ColumnWidth},
@@ -15,9 +14,6 @@ use crate::{
 };
 
 /// 表の 1 列の定義（揃え + 幅指定）
-///
-/// 著者が書いた `columns=` / `widths=` は HIR では別々の列（[`ColumnAlign`] / [`ColumnWidth`]）で、
-/// `typeset::lowering` が列ごとに 1 つへ束ねたものが本型。
 #[derive(Debug, Clone, Copy)]
 pub(in crate::typeset) struct TableColumn {
   /// セル内容の揃え方向
@@ -59,14 +55,10 @@ pub(in crate::typeset) struct TableCellBox {
 }
 
 /// アイテム列の自然幅を返す
-///
-/// box は計測済みの幅を持つため、フォントに触れずに合計できる。
 #[must_use]
 fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
 
 /// アイテム列に含まれるテキストの最大フォントサイズを返す（テキストがなければ `None`）
-///
-/// Atom（数式）の子要素も再帰的に走査する。
 #[must_use]
 pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
   return items
@@ -136,7 +128,6 @@ pub(crate) fn resolve_column_widths(table: &TableBox, available: Length, padding
       column_index += span;
     }
   }
-  // span セルの不足分を跨ぐ列に均等配分する
   for row in table.head.iter().chain(table.rows.iter()) {
     let mut column_index = 0usize;
     for cell in &row.cells {
@@ -226,12 +217,8 @@ fn layout_row_cells<'a>(
 
 /// 表の 1 行に含まれる描画対象の箱を、表左端からの相対 x 座標へ配置する
 ///
-/// 列揃え・padding・`Kern` / `Glue` のカーソル前進はこの時点ですべて解決する。
-/// リンク marker は [`collect_row_links`] が別に確定矩形へ変換するため描画箱には含めない。
-/// 索引 marker は幅 0 で描画箱を持たず、どのページへ帰属するかは行の着地段を決める
-/// `crate::typeset::breaking` の表配置が収集する。セル内脚注は入力から到達可能だが、
-/// 表セル内では本体を配置しない現行制限を維持して描画箱を生成しない
-/// （その脚注本体に置かれた `\index` も脚注ごと落ちる）。
+/// 列揃え・padding・`Kern` / `Glue` のカーソル前進はこの時点ですべて解決する。リンク・索引・脚注の
+/// marker は描画箱に含めない。
 #[must_use]
 pub(crate) fn position_table_row_boxes(
   row: &TableRowBox,
@@ -273,10 +260,7 @@ pub(crate) fn position_table_row_boxes(
 /// 1 行内のセルに含まれるリンク領域を、表左端を基準点とする [`LineLink`] として収集する
 ///
 /// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
-/// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。カーソル前進は
-/// [`HItem::natural_width`] を使う。セル内脚注・索引 marker はいずれも幅 0 で、ここでは
-/// カーソルを進めるだけ（索引語の収集は `crate::typeset::breaking` の表配置、脚注本体は
-/// 現行制限どおり未配置）。
+/// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。
 #[must_use]
 pub(crate) fn collect_row_links(
   row: &TableRowBox,

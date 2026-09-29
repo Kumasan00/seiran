@@ -12,10 +12,6 @@ use crate::{
 
 /// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
 /// 連結する前のリージョン内）における位置を表す。
-///
-/// 表示用の論理ページ値（[`PageValue`]）とは別の型にして、「何番目のページか」と
-/// 「何ページと表示されるか」を取り違えないようにする（両方とも `usize`/`u32` のままだと、
-/// 引数を取り違えても型検査を素通りしてしまう）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct PageIndex(usize);
 
@@ -52,7 +48,7 @@ pub(super) struct BodyPageValues {
   heading_pages: Vec<PageIndex>,
   /// 本文ページの総数
   body_page_count: usize,
-  /// ページ番号のスタイル設定（クローン所有。借用にするとライフタイムが波及するため）
+  /// ページ番号のスタイル設定
   numbering: PageNumbering,
 }
 
@@ -191,7 +187,6 @@ mod tests {
 
   #[test]
   fn finalize_roman_front_arabic_body() {
-    // 既定（前付け=ローマ小文字 / 本文=算用）
     let front_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let body_pages = vec![
       page_with_anchors(vec![]),

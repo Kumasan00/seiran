@@ -1,8 +1,4 @@
 //! 目次（table of contents）の生成 — 見出しの絞り込み・ページラベル解決・style 投影・行組み立て
-//!
-//! 段 3（前付け）から呼ばれる。ページ分割で見出しのページ番号が確定した後に走るので、
-//! 入力は [`BodyPageFacts`]（本文の見出し記録 + ページ値）で足りる。
-//! 前付けの構成（タイトルページとの順序）は呼び出し元 `front_matter` が持つ。
 
 use tracing::debug;
 
@@ -63,8 +59,7 @@ struct TocEntry {
 
 /// 目次の計測済みブロック列を組み立てる。
 ///
-/// 見出しの絞り込み（`style.toc.max_depth`）・ページラベルの解決・style の投影・行組み立てまでを
-/// この 1 操作に閉じる。目次に載る見出しが 1 つも無ければ空の `Vec` を返す。
+/// 目次に載る見出しが 1 つも無ければ空の `Vec` を返す。
 #[must_use]
 pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Block> {
   let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
@@ -283,7 +278,6 @@ mod tests {
 
     let spec = build_toc_spec(&style, Length::pt(333.0));
 
-    // 目次見出しは節見出しスタイル由来、エントリは [toc] 由来、本文幅は引数由来
     assert_eq!(spec.title, "もくじ");
     assert_eq!(spec.title_style.font_size, Length::pt(17.0));
     assert_eq!(spec.title_style.font_kind, FontKind::SansSerif);
@@ -316,7 +310,6 @@ mod tests {
 
     let entries = collect_toc_entries(&headings, &page_values, &toc);
 
-    // Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].label, "1 Ch");
     assert_eq!(entries[0].page_label, "1");

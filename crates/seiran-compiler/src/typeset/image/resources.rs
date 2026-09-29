@@ -38,20 +38,14 @@ impl ImageResources {
   fn natural_size(&self, path: &ProjectPath) -> Option<NaturalSize> { return self.natural_sizes.get(path).copied(); }
 
   /// 保持していた画像資源を消費して返す。
-  ///
-  /// `Publication` の描画資源の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
   pub(crate) fn into_assets(self) -> HashMap<ProjectPath, ImageAsset> { return self.assets; }
 }
 
 /// 画像ファイルを読み込み、自然寸法と判定済み形式・生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// 画像ファイルを読む唯一の箇所。`source`（[`crate::project::ProjectSource`]）経由で読み込むため、
-/// 本体コードはここでも `std::fs` に直接触れない。
-///
-/// 画像は互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を全件返す。`paths` は
-/// [`super::collect_image_paths`] が `BTreeSet<ProjectPath>` で作った正規化済みパスの昇順なので、
-/// 報告順もそのまま昇順で決定的になる。
+/// `paths` は [`super::collect_image_paths`] が `BTreeSet<ProjectPath>` で作った正規化済みパスの昇順
+/// なので、失敗の報告順もそのまま昇順で決定的になる。
 ///
 /// # Errors
 ///
@@ -133,8 +127,6 @@ pub(in crate::typeset) fn resolve_image_size(
 }
 
 /// 指定値と縦横比から最終描画寸法（pt）を求める。
-///
-/// `natural` は検証済みなので縦横比は必ず有限で、この計算は失敗しない。
 fn fit_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize, column_width: f32) -> (f32, f32) {
   let ratio = natural.aspect_ratio();
   return match (width, height) {
@@ -154,7 +146,7 @@ mod tests {
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
-  /// `crates/seiran-compiler` から見て 2 階層上がワークスペースルート（`compiler::test_support::workspace_root` と同じ関係）。
+  /// `crates/seiran-compiler` から見て 2 階層上がワークスペースルート。
   fn read_image_fixture(name: &str) -> Vec<u8> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image").join(name);
     return std::fs::read(&path).unwrap_or_else(|error| panic!("画像 fixture を読めるはず: {path:?}: {error}"));
@@ -169,7 +161,6 @@ mod tests {
 
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
-    // 自然寸法（fixture 実寸の 756x1008）とバイト列がそのまま届いているはず
     let natural = resources
       .natural_size(&ProjectPath::new("/project/testimage5.png"))
       .expect("自然寸法が確定するはず");
@@ -206,9 +197,8 @@ mod tests {
   #[should_panic(expected = "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め")]
   fn resolve_image_size_panics_when_path_is_absent_from_resources() {
     // `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を作る
-    // （本来は同じ HIR 走査で作られるので外部入力では起こせない）
     let resources = load_image_resources(&MemoryProjectSource::new(), &[]).expect("画像 0 件なら成功するはず");
-    // 不変条件の破れなので診断ではなく panic する
+
     let _ =
       resolve_image_size(&resources, &ProjectPath::new("/project/never-loaded.png"), None, None, Length::pt(400.0));
   }

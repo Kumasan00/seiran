@@ -1,7 +1,4 @@
 //! 水平方向の揃え [`Align`]。
-//!
-//! lowering が style の設定値（`style::Alignment` 等）から決めた結果であって設定値そのものでは
-//! ないので、TOML から直接デシリアライズされることはない（serde は導出しない）。
 
 use crate::length::Length;
 
@@ -22,11 +19,6 @@ pub(in crate::typeset) enum Align {
 
 impl Align {
   /// 利用可能幅 `available` の中に幅 `content_width` の内容を置くときの水平オフセット。
-  ///
-  /// [`Align::Left`] は 0、[`Align::Center`] は中央、[`Align::Right`] は右端に寄せる。
-  /// 内容が利用可能幅を超える場合は 0 にクランプし、左端より左へはみ出さない。
-  /// 段落行・画像・罫線・表・数式セルのいずれもこの 1 関数で揃えオフセットを算出する
-  /// （組版内の揃えの型はこの `Align` 1 つ）。
   #[must_use]
   pub(crate) fn offset(self, available: Length, content_width: Length) -> Length {
     return match self {

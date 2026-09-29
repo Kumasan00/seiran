@@ -15,10 +15,9 @@ pub(in crate::typeset) struct TypesetContext<'a> {
   pub(super) config: &'a ProjectConfig,
   /// 見た目の設定
   pub(super) style: &'a Style,
-  /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
+  /// シェイプ・メトリクス取得の窓口
   pub(super) resources: &'a FontSystem<'a>,
-  /// 入力読込で検証済みの版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）。
-  /// ここでは幾何を組み立て直さず、この値を読むだけ
+  /// 入力読込で検証済みの版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）
   pub(super) geometry: &'a PreparedGeometry,
   /// 全段が使う行分割アルゴリズム（段落全体最適の Knuth–Plass）
   pub(super) breaker: KnuthPlassBreaker,

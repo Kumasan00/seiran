@@ -25,14 +25,8 @@ pub(crate) struct Line {
   /// 1 つのリンクが折り返しをまたぐ場合は行ごとに 1 つの矩形へ分割される。
   pub links: Vec<LineLink>,
   /// この行に含まれる脚注（出現順）
-  ///
-  /// `typeset::breaking::break_pages` がこの行を配置する際に本体を行分割し、
-  /// 実効ページ下限（`page_limit` から脚注ぶんを差し引いた値）へ織り込む。
   pub footnotes: Vec<MeasuredFootnote>,
   /// この行に含まれる索引語（`\index{語}`、出現順）
-  ///
-  /// `typeset::breaking::break_pages` がこの行の所属ページを索引語の出現ページとして扱い、
-  /// 重複除去のうえ `Page::index_entries` へ集約する。
   pub index_marks: Vec<IndexTerm>,
 }
 
@@ -83,7 +77,7 @@ pub(crate) struct LineLink {
 impl LineLink {
   /// 基準点を `dx` に置いたときの確定矩形を返す。縦範囲は `top` から `height`
   ///
-  /// 退化矩形（`x1 <= x0`）は描画しないので `None`。行と表の両経路がこの規則を共有する。
+  /// 退化矩形（`x1 <= x0`）は描画しないので `None`。
   #[must_use]
   pub(crate) fn place(&self, dx: Length, top: Length, height: Length) -> Option<PlacedLink> {
     if self.x1 <= self.x0 {
@@ -100,9 +94,6 @@ impl LineLink {
 }
 
 /// 行内に配置されたボックス
-///
-/// `x` は行頭（着地する段の左端）からの水平オフセット、`dy` はベースラインからの
-/// 縦オフセット（正で上方向）。
 #[derive(Debug, Clone)]
 pub(crate) struct PositionedBox {
   /// ボックスの内容

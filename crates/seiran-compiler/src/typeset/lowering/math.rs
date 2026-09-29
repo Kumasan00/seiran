@@ -2,7 +2,6 @@
 //!
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathEnvKind`）から決まるセルの列内
 //! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。
-//! `crate::typeset::boxing` は計測と配置だけを行う。
 
 use std::slice;
 
@@ -39,10 +38,6 @@ fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
 
 /// `document::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
 /// `cases` / `matrix`）をレイアウトノード列（上下の `Vkern` + `LayoutNode::MathBlock`）に変換する
-///
-/// 行ごと・環境ごとの採番値は `semantics::analyze` が確定させたものを引くだけで、ここでは
-/// `number_format` / `tag_format` による表示文字列化しか行わない。ディスプレイ数式の中に脚注は
-/// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext<'_>,
   id: NodeId,
@@ -101,8 +96,6 @@ pub(super) fn lower_math_block(
   if let Some(env_label) = state.declared_label(id) {
     anchor_labels.push(env_label);
   }
-  // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで再現するため。
-  // `with_label_anchors` は与えた順にアンカーを並べる）
   anchor_labels.extend(math.rows.iter().rev().filter_map(|row| return state.declared_label(row.id)));
 
   return with_label_anchors(anchor_labels, nodes);
@@ -133,8 +126,7 @@ fn alignment_to_align(alignment: Alignment) -> Align {
 /// 環境種別・行位置・列インデックスから、そのセルの列内での水平揃えを決める
 ///
 /// `Grid(Aligned)`（`align` / `split`）は `&` 区切りの偶数列を右・奇数列を左へ寄せ、`Grid(Staircase)`
-/// （`multiline`）は先頭行を左・末尾行を右・中間行を中央に置く階段配置にする。`boxing` はこの結果を
-/// 列幅の中のオフセット計算に使うだけで、環境種別を知らない。
+/// （`multiline`）は先頭行を左・末尾行を右・中間行を中央に置く階段配置にする。
 fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> Align {
   return match kind {
     MathEnvKind::Grid(GridLayout::Aligned) => {
@@ -197,7 +189,6 @@ fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
 /// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
-/// ディスプレイ数式のセルは行分割しないので [`lower_math_cell`] を使う。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
@@ -215,7 +206,7 @@ fn lower_math_cell(math_nodes: &[HirMath], base_font_size: Length, math_style: &
 /// 数式 1 レベルぶんの lowering 文脈
 ///
 /// スクリプト（上付き / 下付き）へ潜るとフォントサイズが縮み、TeXbook の括弧付きセルのアキが
-/// 抑制される。その 2 つを同時に持ち回るための束ね。
+/// 抑制される。
 struct MathLowerCtx<'a> {
   /// このレベルのフォントサイズ
   font_size: Length,
@@ -284,8 +275,7 @@ fn lower_math_list(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<AtomNode> {
 
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
 ///
-/// `Group` / `Frac` / `Sqrt` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする —
-/// TeX と同じく、`$a{+}b$` と書けば二項演算子のアキを殺せる。
+/// `Group` / `Frac` / `Sqrt` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
 fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::MathItem>) {
   match &node.kind {
     HirMathKind::Text(text) => {
@@ -324,7 +314,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
       );
     },
     HirMathKind::Frac { numer, denom } => {
-      // インラインでは真の縦書き分数は無理なので、`a / b` の形式で代替する
+      // 縦組みの分数は組まず、インライン・ディスプレイとも `a / b` の形式で代替する
       let mut nodes = lower_math_list(slice::from_ref(numer.as_ref()), ctx);
       nodes.push(AtomNode::Text("/".to_string(), ctx.text_style()));
       nodes.extend(lower_math_list(slice::from_ref(denom.as_ref()), ctx));
@@ -359,8 +349,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
 
 /// 数式中のテキストを 1 文字ずつのアイテムへ展開する
 ///
-/// ソースに書かれた空白は組版に出さない（TeX と同じ）。アキはクラスの組み合わせだけで決まるので、
-/// `$a+b$` と `$a + b$` は同じ出力になる。
+/// ソースに書かれた空白は組版に出さない（TeX と同じ）。
 fn push_text_items(text: &str, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::MathItem>) {
   for ch in text.chars() {
     if ch.is_whitespace() {
@@ -386,16 +375,9 @@ mod tests {
   };
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
-  ///
-  /// 本体の入力経路（parse → HIR → lowering）をそのまま通すため、テストが数式の木を
-  /// 直接組み立てることはない。
   fn lower_math_source(source: &str) -> Vec<LayoutNode> { return lower(&ReadStyle::default(), &analyzed(source)); }
 
-  /// レイアウトノード列に含まれる `Text` を出現順に連結する
-  ///
-  /// 1 個の数式が何個の `Text` ノードに分かれるかは HIR のノード分割に依存するので、
-  /// 表示文字列だけを見たいアサートはこのヘルパで分割に依存しない形にする。
-  /// スクリプト（上付き / 下付き）の中身も表示されるため `Raise` は再帰的にたどる。
+  /// レイアウトノード列に含まれる `Text` を出現順に連結する（`Raise` の中身も含む）
   fn concat_texts(nodes: &[LayoutNode]) -> String {
     let mut out = String::new();
     for node in nodes {
@@ -424,9 +406,6 @@ mod tests {
   }
 
   /// レイアウトノード列に含まれる `Text` のスタイルを出現順に返すヘルパ
-  ///
-  /// 段落の lowering は数式のあとに `Vkern` を足すので、フォント種別のアサートは
-  /// `Text` だけに絞って見る。
   fn math_text_styles(nodes: &[LayoutNode]) -> impl Iterator<Item = TextStyle> {
     return nodes.iter().filter_map(|node| match node {
       LayoutNode::Inline(InlineNode::Text(_, style)) => return Some(*style),
@@ -597,7 +576,6 @@ mod tests {
 
   #[test]
   fn lower_inline_math_omits_space_before_script() {
-    // 「核 + スクリプト」が 1 個のアトムとして振る舞い、`+` のアキは核ではなくそのアトムとの間に入る。
     let nodes = lower_math_source("$x^{2}+y$\n");
 
     assert_eq!(spacings(&nodes), vec![mu(4); 2], "アキが入るのは + の前後だけ（上付きの前には入らない）: {nodes:?}");
@@ -640,7 +618,7 @@ mod tests {
     assert_eq!(spacings(&nodes), vec![mu(3); 2], "大型演算子の前後は細アキ: {nodes:?}");
   }
 
-  /// equation カウンタの `number_format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
+  /// equation カウンタの `number_format` を `"{n}"` に縮約した Style
   fn style_with_plain_equation_format() -> ReadStyle {
     let mut style = ReadStyle::default();
     style.counters.equation.number_format = CounterTemplate::parse("{n}");

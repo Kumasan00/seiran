@@ -71,7 +71,7 @@ impl LineBreaker for GreedyBreaker {
           // 折り返さなければアキとして幅を持つ
           width_so_far += *spacing;
         },
-        // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可。行に積むだけで build_line が収集する
+        // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可
         HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {
           buffer.push(item);
         },
@@ -104,9 +104,7 @@ impl LineBreaker for GreedyBreaker {
             width_so_far = buffer.iter().map(|i| return i.natural_width()).sum();
             last_break = None;
             // 通常の分割点で折ったとき、それより後ろにあった数式内分割点は持ち越し側に残る
-            // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す。
-            // これが Some のままなら、次のループ判定で「持ち越し + 現在の item」がまだ溢れるとき
-            // その数式内分割点で再び折れる
+            // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す
             last_math_break = buffer.iter().rposition(|carried| return matches!(carried, HItem::MathBreak { .. }));
           }
           buffer.push(item);
@@ -125,8 +123,7 @@ impl LineBreaker for GreedyBreaker {
 
 /// 確定した行を積み、TRACE へ出す
 ///
-/// `line_index` は段落内の連番（0 起点。強制改行でもリセットしない — 貪欲法は強制改行を段落の途中として
-/// 扱うため）。badness は載せない（貪欲法は疎密のコストを評価しないので存在しない値）。
+/// `line_index` は段落内の連番（0 起点。強制改行でもリセットしない）。
 fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
   trace!(
     line_index = lines.len(),
@@ -579,8 +576,7 @@ mod tests {
 
   #[test]
   fn carried_math_break_is_used_for_the_item_that_overflowed() {
-    // glue で折った後の持ち越し [b10, MB] はそれ単体では 20 に収まるが、次の b10 を足すと再び溢れる。
-    // 持ち越し後の item でも溢れを再判定し、持ち越した数式内分割点で折れることを確かめる
+    // glue で折った後の持ち越し [b10, MB] はそれ単体では 20 に収まるが、次の b10 を足すと再び溢れる
     let items = vec![
       box_width(5.0),
       space_glue(),

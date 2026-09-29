@@ -1,13 +1,7 @@
 //! テキストラン分割 — シェーピング済みの run を計測済みの箱と break 注入済みの水平リストへ変換する
 //!
-//! `Measurer` の `impl` をここで続ける（`boxing::math` と同じ形。別 module の impl は
-//! `multiple_inherent_impl` の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`）。入口は本文テキストを
-//! 水平リストへ積む `push_text_items` 1 つで、シェーピングそのものは兄弟 `shaping` の `Shaper` が行う。
-//!
 //! この module が持つのは、run をどこで割り（ICU の分割機会・約物境界・ハイフネーション点）、各分割点に何
-//! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかだけ。箱の寸法は `shaping` が
-//! 確定済みで、割った断片は親 run の高さ・深さを写す。和欧文間アキと約物境界のアキの規則（どの境界にどれだけ
-//! 挿むか）と字間の伸長率は親 `boxing` が持つ。
+//! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかだけ。
 
 use std::ops::Range;
 
@@ -55,7 +49,6 @@ impl Measurer<'_> {
     for segment in script::split_text_by_script(style.font_kind, &text) {
       let is_japanese = segment.category == script::ScriptCategory::Japanese;
       // 和文↔欧文が直接隣接する（字・数字どうしの）境界に四分アキを挿む（JIS X 4051）。
-      // 数式（Math）境界はスコープ外、約物アキ無効時（punctuation_spacing = false）も挿まない。
       if style.font_kind != FontKind::Math
         && self.punctuation_spacing
         && let (Some((prev_category, prev_char)), Some(next_char)) = (prev_boundary, segment.text.chars().next())
@@ -82,8 +75,7 @@ impl Measurer<'_> {
         out.push(HItem::Box(run.into_hbox()));
         continue;
       }
-      // 欧文セグメントかつハイフネーション有効時のみ、語中折り返しの行末に付すハイフン箱を
-      // このセグメントのフォントで計測しておく（分割の経路はシェーパーを借りない）
+      // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
       let hyphen = if !is_japanese && self.hyphenation.is_some() {
         Some(self.shaper.shape_segment("-", segment.font_type, style.font_size, style.color).into_hbox())
       } else {
@@ -95,14 +87,12 @@ impl Measurer<'_> {
 
   /// シェーピング済みの run を分割可能位置で `HItem` 列に分割する
   fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut Vec<HItem>) {
-    // 和文かつ約物アキ調整が有効なときは、隣接グリフ対を走査する専用パスへ委ねる
-    // （約物境界は禁則で ICU 分割点に現れないため、break 駆動の下の経路では拾えない）
+    // 約物境界は禁則で ICU 分割点に現れないため、break 駆動の下の経路では拾えない
     if is_japanese && self.punctuation_spacing {
       split_japanese_run(&run, out);
       return;
     }
 
-    // 和文セグメントはハイフネーションしない（`Lang` を渡さない＝Hyphen 分割点を生じさせない）
     let hyphenation_lang = if is_japanese { None } else { self.hyphenation };
     let mut breaks = break_opportunities::break_opportunities(run.text(), hyphenation_lang);
     // セグメント末尾のスペースは（次の Text ノードとの境界として）glue に変換する
@@ -228,9 +218,6 @@ fn punct_box(run: &ShapedRun, glyph_index: usize, normalize: yakumono::Normalize
 }
 
 /// 1 つの分割点で run を切る計画
-///
-/// 3 種の分割点（Glue / Penalty / Hyphen）の違いは「どこまでを直前の部分 run に含めるか」と
-/// 「何を挟むか」だけなので、その差だけをこの値にして、部分 run を積む後処理は 1 箇所にする。
 struct Cut {
   /// 直前の部分 run に含める最後のグリフの次の index
   keep_glyph_end: usize,
@@ -298,7 +285,6 @@ fn plan_cut(
         item,
       })
     },
-    // スペースを抜かずグリフ境界で割り、語断片の間に Discretionary を挿む（語は続く）
     BreakKind::Hyphen => {
       let hyphen = hyphen?;
       let glyph_index = find_glyph_starting_at(run.glyphs(), point.byte)?;
@@ -469,7 +455,6 @@ mod tests {
 
   #[test]
   fn cut_is_skipped_inside_a_cluster() {
-    // byte 1 はクラスタ 0..2 の内部で、どのグリフの range.start にも一致しない
     let run = clustered_run();
     let inside_cluster = BreakPoint {
       byte: 1,

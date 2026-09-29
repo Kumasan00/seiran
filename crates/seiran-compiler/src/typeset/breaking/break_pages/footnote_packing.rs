@@ -1,7 +1,4 @@
-//! 脚注エリアへの詰め込み計算 — 純粋関数・データのみ。`PageComposer` には依存しない。
-//!
-//! 収まらなかった事実は `FootnotePacking::overflowed` としてデータで返すだけで、ここでは診断を
-//! 作らない（警告を組み立てるのは、どのページのどの脚注かを知っている `PageComposer` 側）。
+//! 脚注エリアへの詰め込み計算 — 純粋関数・データのみ。
 
 use crate::{
   length::Length,
@@ -50,7 +47,7 @@ pub(super) fn fit_line_footnotes(
   };
 }
 
-/// 脚注エリアの高さ課金パラメータ（`style.footnote` 由来、`geom` から切り出した純粋な値）
+/// 脚注エリアの高さ課金パラメータ（`style.footnote` 由来）
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FootnoteCharges {
   /// 本文と区切り罫線の間隔（`style.footnote.top_margin`）
@@ -135,7 +132,7 @@ pub(super) struct FootnotePacking {
   /// この詰め込みで脚注エリアに追加される高さ（固定費込み）
   pub(super) height: Length,
   /// 先頭の脚注の 1 行がリージョン全体を超えたまま置いたか（`require_first_line = false` の
-  /// 繰越詰め込みでのみ起こる病的ケース）。`true` のとき呼び出し側が警告を組み立てる
+  /// 繰越詰め込みでのみ起こる病的ケース）
   pub(super) overflowed: bool,
 }
 
@@ -162,7 +159,7 @@ pub(super) fn pack_footnotes(
     let mut placed = demand.fit_lines(budget - height - overhead - rest_min);
     if placed == 0 && demand.line_count() > 0 {
       if require_first_line {
-        // この行の脚注は先頭 1 行すら置けない。呼び出し側が行ごと次リージョンへ送る
+        // この行の脚注は先頭 1 行すら置けない
         return None;
       }
       if j > 0 {

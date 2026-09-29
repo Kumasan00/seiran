@@ -190,11 +190,9 @@ pub(super) fn build_line(
           });
         }
       },
-      // 脚注マーカーは幅 0・分割不可。行に積むだけで、この行の脚注として収集する
-      // （ページ下部への行分割・配置は `break_pages` の責務）
+      // 脚注マーカーは幅 0・分割不可。この行の脚注として収集する
       HItem::Footnote(footnote) => footnotes.push(footnote.clone()),
-      // 索引マーカーは幅 0・分割不可。行に積むだけで、この行の索引語として収集する
-      // （重複除去・ページ確定座標化は break_pages の責務）
+      // 索引マーカーは幅 0・分割不可。この行の索引語として収集する
       HItem::IndexMark(term) => index_marks.push(term.clone()),
       // 行内の Discretionary は描画しない（折り返し位置のハイフンは trailing_hyphen で出す）
       HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak => {},
@@ -239,7 +237,7 @@ pub(super) mod test_support {
     typeset::boxes::{AnchorId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
   };
 
-  /// pt 値から `Length` を作る短縮子（テスト可読性のため）
+  /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
   /// テスト用の合成ボックス（幅 10、高さ 8、深さ 2）

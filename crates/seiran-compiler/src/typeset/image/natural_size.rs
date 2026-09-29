@@ -1,8 +1,4 @@
 //! 画像バイト列から自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を得る。
-//!
-//! デコードと寸法の検証だけを行い、表示寸法の確定（縦横比・段幅からの推論）は行わない
-//! （兄弟 module `resources` の `resolve_image_size` の責務）。ラスタは寸法ヘッダだけを読み、
-//! 描画に使う画像本体のデコードは render（`seiran-pdf`）が別に行う。
 
 use std::io::Cursor;
 
@@ -12,8 +8,8 @@ use crate::{publication::ImageFormat, typeset::error::TypesetError};
 
 /// 検証済みの自然寸法（幅・高さとも有限かつ正）。
 ///
-/// デコーダ（`image` / `usvg`）が報告した値をこの型へ通す時点で検証するので、表示寸法の確定
-/// （`super::resources::resolve_image_size`）は縦横比を必ず算出でき、失敗しない。
+/// デコーダ（`image` / `usvg`）が報告した値をこの型へ通す時点で検証するので、表示寸法の確定は
+/// 縦横比を必ず算出でき、失敗しない。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct NaturalSize {
   /// 自然幅（ラスタはピクセル、SVG は usvg が報告した width）
@@ -31,11 +27,11 @@ impl NaturalSize {
     return Some(NaturalSize { width, height });
   }
 
-  /// 自然幅（テスト専用アクセサ。本体は `aspect_ratio` 経由で縦横比だけを使う）
+  /// 自然幅
   #[cfg(test)]
   pub(super) fn width(self) -> f32 { return self.width; }
 
-  /// 自然高さ（テスト専用アクセサ。本体は `aspect_ratio` 経由で縦横比だけを使う）
+  /// 自然高さ
   #[cfg(test)]
   pub(super) fn height(self) -> f32 { return self.height; }
 
@@ -45,10 +41,7 @@ impl NaturalSize {
 
 /// 判定済みの画像形式に従ってバイト列をデコードし、検証済みの自然寸法を返す。
 ///
-/// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない
-/// （読み込み済みの `bytes` をそのままデコードする）。形式の判定は
-/// [`ImageFormat::from_path`](crate::publication::ImageFormat) が済ませている。
-/// デコーダが報告した寸法をここで検証するので、下流は縦横比を算出できる値しか受け取らない。
+/// `path` はエラーメッセージにのみ使う。
 ///
 /// # Errors
 ///

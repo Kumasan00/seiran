@@ -1,15 +1,6 @@
 //! [`CounterValue`]（構造値）から表示文字列を作る純粋関数群
 //!
-//! 「値と表示の分離」の表示側。`semantics` module は `resets` / `reset_by`
-//! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
-//! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
-//!
-//! 祖先の決め方はここには無い — 構造値の各要素が自分のカウンタ名を持つので、`{chapter}` の
-//! ような他カウンタ参照は `CounterValue::value_of` で名前引きするだけで解ける。
-//!
-//! 値そのものを作る側もここに無い — ラベル登録・カウンタ値算出は `semantics`、脚注の出現 index
-//! 発番は `LoweringState`、確定ページ列からのページ単位脚注表示番号の割り当ては
-//! `typeset::pagination::footnote_numbering` が持つ。
+//! カウンタの表示側フィールド（`number_format` / `number_style` / `ref_format`）を読むのはこの module だけ。
 
 use std::sync::LazyLock;
 
@@ -29,7 +20,6 @@ static THEOREM_REF_FORMAT: LazyLock<ReferenceTemplate> =
 /// [`CounterValue`] を、その種別の `number_format` / `number_style` で表示番号にする
 ///
 /// 見出し・図・表・数式・定理の「本体に出る番号」（例: `"1.2"` / `"(1.1)"` の中身）がこれ。
-/// `\ref` の表示文字列が欲しい場合は [`format_ref_display`] を使う。
 #[must_use]
 pub(crate) fn format_counter_value(style: &Style, value: &CounterValue) -> String {
   return match value.kind {
@@ -163,7 +153,6 @@ mod tests {
 
   #[test]
   fn cross_counter_reference_uses_target_number_style() {
-    // part は RomanUpper、chapter は Arabic
     let mut style = Style::default();
     style.counters.chapter.number_format = CounterTemplate::parse("{part}-{n}");
     style.counters.chapter.number_style = NumberStyle::Arabic;
@@ -205,7 +194,6 @@ mod tests {
 
   #[test]
   fn counter_not_on_ancestor_chain_renders_empty_placeholder() {
-    // 図の既定の祖先は chapter なので、section の値は構造値に含まれない
     let mut style = Style::default();
     style.counters.figure.number_format = CounterTemplate::parse("{section}.{n}");
     let value = counter_value(CounterName::Figure, &[(CounterName::Part, 0), (CounterName::Chapter, 1)], 5);

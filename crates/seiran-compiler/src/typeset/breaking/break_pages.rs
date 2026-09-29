@@ -27,13 +27,10 @@ use paragraph_plan::plan_paragraph_lines;
 use region_cursor::RegionCursor;
 
 /// 脚注がリージョンに収まらないまま配置された事実。
-///
-/// 診断そのものではなく純データで、ページの指し方も**この [`break_pages`] 呼び出しが返すページ列の
-/// 中での index**。前付け・本文・後付けを連結した物理ページ番号や印字ラベルは
-/// `typeset::pagination` が確定させる（この段は自分が組んだページ列しか知らないため）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::typeset) struct FootnoteOverflow {
-  /// はみ出しが起きたページの 0 起点 index（返されるページ列の中での位置）
+  /// はみ出しが起きたページの 0 起点 index（この [`break_pages`] 呼び出しが返すページ列の中での位置。
+  /// 前付け・後付けを連結した物理ページ番号ではない）
   pub page_index: usize,
   /// はみ出し方
   pub kind: FootnoteOverflowKind,
@@ -55,33 +52,26 @@ pub(in crate::typeset) enum FootnoteOverflowKind {
 }
 
 /// 縦組版の内部状態（確定ページ列・カーソル・脚注の予約と繰越）
-///
-/// ページ帰属データ（アンカー・リンク・索引語）の収集、下端揃えの座標補正、`Page` の排出は
-/// `draft`（[`PageDraft`]）が所有する。ここは改段・改ページの判断と脚注の予約・繰越だけを持ち、
-/// 「この内容の着地が確定した」時点で `draft` の操作を呼ぶ。
 struct PageComposer {
   /// 確定済みページ
   pages: Vec<Page>,
   /// 現在ページの配置台帳
   draft: PageDraft,
-  /// リージョン内のカーソル（位置・底辺基準フラグ・脚注予約）。収まり判定はこれのメソッドを通す
+  /// リージョン内のカーソル（位置・底辺基準フラグ・脚注予約）
   cursor: RegionCursor,
   /// 段組み数（1 = 単段）
   num_columns: usize,
-  /// 1 段あたりの幅。行分割・揃え・表の列幅解決に使う
+  /// 1 段あたりの幅
   column_width: Length,
   /// 段間（gutter）
   column_gap: Length,
   /// 現在の段インデックス（0 = 左段）
   col: usize,
-  /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）。[`PageComposer::end_region`] が
-  /// `draft` へ渡し、`draft` がページ下部の確定座標へ変換する。
+  /// 現在リージョン（段）に集約された脚注（出現順、行分割済み）
   region_footnotes: Vec<PendingFootnote>,
   /// 次リージョンへ繰り越す脚注の残り（出現順）。
   carry: Vec<PendingFootnote>,
-  /// 収まらないまま配置した脚注の記録（検出順＝ページ順）。
-  /// 純粋関数（`paragraph_plan::place_lines` / [`pack_footnotes`]）が返した「はみ出した」という事実に、
-  /// ページ index と脚注番号を添えるのはページを組んでいるこの型の責務。
+  /// 収まらないまま配置した脚注の記録（検出順＝ページ順）
   overflows: Vec<FootnoteOverflow>,
 }
 
@@ -89,9 +79,9 @@ struct PageComposer {
 struct PendingFootnote {
   /// 発番済みの表示番号
   number: u32,
-  /// 出現順の識別子（0 起点。`PlacedFootnote` へ素通しする）
+  /// 出現順の識別子（0 起点）
   index: u32,
-  /// 前リージョンからの繰越（続き）か。`PlacedFootnote` へ素通しする
+  /// 前リージョンからの繰越（続き）か
   continued: bool,
   /// 行分割済みの本体（このリージョンに置く分だけに切り詰め済み）
   lines: Vec<Line>,
@@ -132,9 +122,7 @@ impl PageComposer {
 
   /// ページ下限を超えたときの遷移。次の段があれば改段、なければ改ページし、繰越脚注を新リージョンへ詰める。
   fn advance_region(&mut self, geom: &PageGeometry) {
-    // 満杯になったリージョン（段）を先に確定する。下端揃えが有効なら不足高さを段内の
-    // 伸縮アキへ配分してから次段 / 次ページへ移る。強制改ページ・最終ページはこの経路を通らない
-    // （それぞれ `force_new_page`・`finish` が確定）ため揃えられない。
+    // 下端揃えの対象は満杯で閉じるリージョンだけ（強制改ページ・最終ページは `flush = false` で閉じる）
     self.end_region(geom, true);
     self.next_region(geom);
     self.seed_carry(geom);
@@ -169,10 +157,9 @@ impl PageComposer {
       .map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading))
       .collect();
     // はみ出しの記録に使う繰越先頭の表示番号（`pack_footnotes` が `overflowed` を立てるのは
-    // 先頭の脚注に限られる）。`carry` を取り出す前に控える
+    // 先頭の脚注に限られる）
     let leading_number = self.carry[0].number;
-    // 繰越は「そのページの自前の脚注より前」に置くので、常にエリア先頭（`base_reserved` = 0）から詰める。
-    // `require_first_line = false` の詰め込みは最低 1 行を強制するので必ず成功する
+    // 繰越は「そのページの自前の脚注より前」に置くので、常にエリア先頭（`base_reserved` = 0）から詰める
     let packing = pack_footnotes(&demands, Length::ZERO, geom.page_limit - geom.margin_top, charges, false)
       .expect("繰越の詰め込みは先頭に最低 1 行を強制するので None にならない");
     if packing.overflowed {
@@ -199,10 +186,8 @@ impl PageComposer {
 
   /// 現在ページを確定し、新しいページを開始する
   fn start_new_page(&mut self, geom: &PageGeometry) {
-    // 強制改ページ（[`PENALTY_FORCE_BREAK`]）はこのメソッドを [`PageComposer::advance_region`] 経由せず
-    // [`PageComposer::force_new_page`] から呼ぶため、現在リージョンに残っている脚注をここで必ず確定させる
-    // （flush-bottom 対象ではないので `flush=false`。`advance_region` 経由の場合は既に確定済みで、
-    // この呼び出しは無害な二重呼び出しになる）。
+    // 強制改ページは `advance_region` を経ないので、残っている脚注をここで確定させる
+    // （`advance_region` 経由では確定済みで、この二重呼び出しは無害）
     self.end_region(geom, false);
     // 本文 block も確定脚注も無ければ白紙ページを作らない。未解決アンカーは `draft` が持ち越す
     if !self.draft.has_content() {
@@ -219,11 +204,9 @@ impl PageComposer {
     // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
     let x = self.column_offset();
     self.draft.land_anchors(x, self.cursor.y);
-    // 最終リージョンに残っている脚注を確定させる（flush-bottom 対象ではないので `flush=false`）
     self.end_region(geom, false);
-    // 文書末尾の行で分割された脚注の繰越を出し切る。本文がもう無いので、繰越だけのリージョンを
-    // 尽きるまで重ねる（[`PageComposer::seed_carry`] は 1 リージョンぶんしか詰めないため、
-    // 最終ページより長い繰越には複数回まわす必要がある）。
+    // 文書末尾の行で分割された脚注の繰越を、繰越だけのリージョンへ尽きるまで出す
+    // （[`PageComposer::seed_carry`] は 1 リージョンぶんしか詰めない）
     while !self.carry.is_empty() {
       self.next_region(geom);
       self.seed_carry(geom);
@@ -239,10 +222,8 @@ impl PageComposer {
 
   /// 現在リージョン（段）を確定する。下端揃えの配分と脚注の確定座標化は `draft` が行う
   ///
-  /// 脚注はリージョンが閉じるたびに常に確定する（flush-bottom の対象ではないため `flush` を問わない。
-  /// 強制改ページ・最終ページでも脚注を落とさない）。`region_footnotes` は分割済み（[`place_paragraph`] /
-  /// [`PageComposer::seed_carry`] が [`pack_footnotes`] の決めた行数へ切り詰め済み）なので、あるものを
-  /// そのまま渡すだけでよい。
+  /// 脚注は `flush` を問わずリージョンが閉じるたびに確定する（強制改ページ・最終ページでも落とさない）。
+  /// `region_footnotes` は [`pack_footnotes`] の決めた行数へ切り詰め済み。
   fn end_region(&mut self, geom: &PageGeometry, flush: bool) {
     let footnotes = std::mem::take(&mut self.region_footnotes);
     let had_footnotes = !footnotes.is_empty();
@@ -269,9 +250,8 @@ pub(crate) fn break_pages(
   let block_count = blocks.len();
   let mut blocks = blocks;
 
-  // keep-with-next（見出し直後の分割禁止）を尊重しつつ前から順に配置する。FORBID penalty で
-  // 連結された見出し群（keep グループ）の先頭で一度だけ、末尾ブロックの先頭が見出しと同じリージョンに
-  // 乗るかを判定し、収まらなければグループごと次リージョンへ送る（見出しがページ末尾に孤立するのを防ぐ）。
+  // FORBID penalty で連結された keep グループの先頭で一度だけ、末尾ブロックの先頭が見出しと同じ
+  // リージョンに乗るかを判定し、収まらなければグループごと次リージョンへ送る
   let mut i = 0;
   let mut gated_end: Option<usize> = None;
   while i < blocks.len() {
@@ -324,14 +304,12 @@ pub(crate) fn break_pages(
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
       },
-      // 伸縮アキ。stretch は下端揃えの配分重みとして台帳に累積させ、リージョン確定時に
-      // 不足高さを配分する。アキは cursor.at_edge を変えない。
+      // アキは cursor.at_edge を変えない
       Block::Glue { natural, stretch } => {
         composer.draft.pass_stretch(stretch);
         composer.cursor.y += natural;
       },
-      // 分割コスト。強制改ページ（−∞）は eager に改ページする。分割禁止（+∞）は keep-with-next の
-      // グループ連結マーカーで、ゲート（keep_group_*）が処理済みなのでここでは配置上の副作用を持たない。
+      // 分割禁止は keep グループの連結マーカーで、ゲート（keep_group_*）が処理済み
       Block::Penalty { value } => match value {
         PENALTY_FORCE_BREAK => composer.force_new_page(geom),
         PENALTY_FORBID_BREAK => {},
@@ -378,7 +356,7 @@ pub(crate) fn break_pages(
       } => {
         place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width);
       },
-      // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため台帳に未解決として積む
+      // アンカーはゼロサイズで、次の実ブロックの確定座標で解決する
       Block::Anchor(id) => {
         composer.draft.defer_anchor(id);
       },
@@ -437,7 +415,7 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
   return if end > start { Some(end) } else { None };
 }
 
-/// 段落以外の内容ブロック 1 個の配置判定（`plan_atomic` の結果。段落の `LinePlacement` に対応する）
+/// 段落以外の内容ブロック 1 個の配置判定
 struct AtomicPlacement {
   /// ブロックを次リージョンへ送るか
   starts_region: bool,
@@ -446,7 +424,6 @@ struct AtomicPlacement {
 }
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
-/// 判定は実配置（`place_*`）と同じ [`RegionCursor`] のメソッドを通す（下限を自前で選ばない）。
 fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> AtomicPlacement {
   match block {
     Block::Image { height, .. } => {
@@ -492,10 +469,6 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Atom
 
 /// keep グループを現在のカーソルから配置したとき、末尾の内容ブロックの先頭が見出しと別リージョンに
 /// 落ちる（= 見出しが孤立する）かを返す純粋関数。リージョン改は行わず、孤立するなら `true`。
-///
-/// 実配置と同じ規則の空回しで判定する — 段落は [`plan_paragraph_lines`]（脚注の予約・自前の脚注・
-/// widow / orphan 補正込み）、それ以外は [`plan_atomic`]。下限や行送りをここで導き直すと、脚注予約の
-/// あるリージョンで実配置と食い違う。
 fn keep_group_orphaned(
   mut cursor: RegionCursor,
   mut carry_pending: bool,
@@ -587,9 +560,8 @@ fn break_paragraph(
     TextAlignment::RaggedRight
   };
   let mut lines = breaker.break_lines(items, available, effective_alignment);
-  // 行は段左端 (x=0) 基準で組まれるため、インデント + 揃えオフセット（段内 [0, column_width]）を
-  // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
-  // 行ごとに変わるため、ここでは足さず、配置ループ内で着地段ごとに足す。
+  // 行は段左端 (x=0) 基準で組まれる。段オフセットは段をまたぐと行ごとに変わるため、ここでは足さず
+  // 着地段が決まってから足す
   for line in &mut lines {
     let line_width = line.width();
     line.shift_x(indent + align.offset(available, line_width));
@@ -650,17 +622,12 @@ fn place_paragraph(
   align: Align,
 ) {
   let mut lines = break_paragraph(breaker, alignment, items, column_width, indent, right_indent, align);
-  // 脚注の行分割と需要はここで 1 回だけ計算し、widow/orphan の再フロー
-  // （`plan_paragraph_lines` 内のリトライ）や chunk の再計画では再計算しない
-  // （脚注の構成は改リージョン点の選び方で変わらないため）。
+  // 脚注の行分割と需要は widow/orphan の再フローや chunk の再計画で再計算しない
+  // （脚注の構成は改リージョン点の選び方で変わらないため）
   let charges = FootnoteCharges::of(geom);
   let mut bodies = footnote_bodies(breaker, &lines, column_width);
   let mut demands = footnote_demands(&bodies);
-  // 段落を前から chunk 単位で確定する。計画は「脚注が分割された行」「繰越が残っている状態での
-  // 改リージョン」で打ち切られるので、そこまでを配置 → 改リージョンして繰越を詰める
-  // （`advance_region` → `seed_carry`）→ 残りを計画し直す、と回す。**seed してから再計画する**のが
-  // 要点で、逆にすると計画が繰越ぶんの予約を知らないままベースラインを決めてしまい、本文が
-  // 繰越脚注に重なる。繰越が生じない段落ではループは 1 周で終わる。
+  // 段落を前から chunk 単位で確定する。繰越が生じない段落ではループは 1 周で終わる
   let mut last_baseline = composer.cursor.y;
   let mut is_paragraph_start = true;
   while !lines.is_empty() {
@@ -690,8 +657,7 @@ fn place_paragraph(
       if placement.starts_region {
         composer.advance_region(geom);
       }
-      // 改リージョン後＝この行が実際に乗るページが確定してから記録する。計画そのものは
-      // widow / orphan 補正で捨てられることがあるので、確定したこのループでだけ警告の種を作る
+      // `page_index` が正しいのは改リージョン後（この行が乗るページが確定してから）
       if placement.overflowed {
         composer.overflows.push(FootnoteOverflow {
           page_index: composer.pages.len(),
@@ -718,9 +684,8 @@ fn place_paragraph(
       composer.draft.place_line(line, baseline, col_off);
     }
     is_paragraph_start = false;
-    // 打ち切った chunk の続きがあるなら、改リージョンして繰越を詰めてから次の chunk を計画する。
     // 続きが無い（段落末尾の行で分割した）場合の繰越は、次のブロックの改リージョンか
-    // [`PageComposer::finish`] が拾う。
+    // [`PageComposer::finish`] が拾う
     if truncated && !lines.is_empty() {
       composer.advance_region(geom);
     }
@@ -793,13 +758,11 @@ fn place_math_block(
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
 ///
-/// 未解決アンカー（`\ref{tab:...}` の到達先）はここでは解決せず、空でない最初の断片の着地
-/// （[`PageDraft::place_table_fragment`]）に任せる。先頭行の fit 判定より前に解決すると、先頭行が
-/// 次リージョンへ送られたときアンカーが前リージョンに残るため。
+/// 未解決アンカーは空でない最初の断片の着地（[`PageDraft::place_table_fragment`]）で解決する。
+/// 先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
 fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBox, column_width: Length, align: Align) {
   let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
-  // 表全体の自然幅は確定済み列幅の総和。段幅の中で揃えオフセット（段内）を 1 回だけ算出する
-  // （全幅の表ではオフセットが 0 になり段左端のまま）。段オフセットは flush 時に断片ごとに足す。
+  // 揃えオフセットは段内のもの。段オフセットは着地段が決まる flush 時に断片ごとに足す
   let table_align_offset = align.offset(column_width, col_widths.iter().sum());
   let head_heights: Vec<Length> = table
     .head
@@ -812,7 +775,6 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     .map(|row| return table_row_height(row, geom.default_font_size, geom.line_height_factor))
     .collect();
 
-  // 分割禁止の表は、現ページに収まらず新しいページなら収まる場合のみ先に改ページする
   let total_height: Length = head_heights.iter().chain(row_heights.iter()).sum();
   if !table.breakable && composer.cursor.defers_unbreakable(total_height, geom) {
     composer.advance_region(geom);
@@ -827,8 +789,6 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     align_offset: table_align_offset,
   };
   let mut pending_rows: Vec<PendingTableRow> = Vec::new();
-  // head 行・本体行・改ページ後のヘッダ再描画を同じ経路へ積む。セルの絶対 x は
-  // 着地段が決まる flush 時に確定する。
   let push_row =
     |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, height: Length, is_head: bool| {
       pending_rows.push(PendingTableRow {
@@ -838,8 +798,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
         is_head,
       });
     };
-  // 現在の pending_rows を表断片として台帳へ着地させる。断片の段オフセットは着地段のもの
-  // （flush は advance_region の前に呼ばれるので column は正しい）。揃えオフセットは frame が持つ。
+  // 断片の段オフセットは着地段のもの（flush は advance_region の前に呼ばれるので column は正しい）
   let flush = |composer: &mut PageComposer, pending_rows: &mut Vec<PendingTableRow>| {
     let column_x = composer.column_offset();
     composer.draft.place_table_fragment(std::mem::take(pending_rows), &frame, column_x);
@@ -1083,7 +1042,6 @@ mod tests {
   #[test]
   fn index_entries_in_carried_footnote_lines_land_on_the_carry_page() {
     // 4 行の脚注は 3 行目までが 1 ページ目、4 行目が繰越
-    // （`long_footnote_splits_and_carries_remainder_to_next_page` と同じ分割）
     let geom = test_geometry();
     let blocks = vec![
       single_line_paragraph(vec![footnote_of_lines_with_index_at(1, 4, 3, "繰越語")]),
@@ -1155,7 +1113,6 @@ mod tests {
   #[test]
   fn links_in_carried_footnote_lines_land_on_the_carry_page() {
     // 4 行の脚注は 3 行目までが 1 ページ目、4 行目が繰越
-    // （`long_footnote_splits_and_carries_remainder_to_next_page` と同じ分割）
     let geom = test_geometry();
     let blocks = vec![
       single_line_paragraph(vec![footnote_of_lines_with_link_at(
@@ -1191,7 +1148,6 @@ mod tests {
   #[test]
   fn index_entries_in_table_body_cells_land_on_the_row_page() {
     // 5 行の表は 2 ページに分かれる
-    // （`breakable_table_splits_across_pages_and_redraws_header` と同じ構成）
     let geom = test_geometry();
     let table = TableBox {
       columns: vec![TableColumn {
@@ -1517,7 +1473,6 @@ mod tests {
 
     let (_, overflows) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
-    // 計画は何度も立て直されるが、記録するのは確定した配置だけなので行ごとに 1 件
     let recorded: Vec<(usize, Vec<u32>)> = overflows
       .iter()
       .map(|overflow| {
@@ -1554,7 +1509,6 @@ mod tests {
     let (pages, overflows) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 3, "繰越は次ページへ送られる: {pages:?}");
-    // 「置いたページごとに 1 件」であり、脚注 1 個につき 1 件へ束ねてはいない
     assert_eq!(
       overflows,
       vec![
@@ -3244,9 +3198,6 @@ mod tests {
   }
 
   /// 高さ `height` の内容ブロック（幅 10・左揃えの画像）
-  ///
-  /// 高さだけが意味を持つ汎用の内容ブロックとして使う。脚注の区切り罫線
-  /// （`PlacedBlock::Rule`）と取り違えないよう、本文側の fixture は画像で組む。
   fn fixed_block(height: f32) -> Block {
     return Block::Image {
       path: ProjectPath::new("fixture.png"),

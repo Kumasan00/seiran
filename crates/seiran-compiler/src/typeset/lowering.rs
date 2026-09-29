@@ -2,7 +2,6 @@
 //!
 //! ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` が済ませているため、
 //! この層は「確定した構造値を style の表示側フィールドで文字列にして箱に積む」だけを行う。
-//! 意味解析を行わないので、この層に失敗はない（`Result` を返さない）。
 //!
 //! 著者が書いた本文は HIR（`document::hir`）を走査し、事実は `NodeId` をキーに [`LoweringState`] の
 //! query で引く。CSL 整形の生成物（書誌・引用表示）は `NodeId` を持たないので、別経路
@@ -43,13 +42,9 @@ pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 use crate::document::{FontKind, HeadingLevel};
 
 /// Lowering のコンテキスト
-///
-/// 全フィールドが `Copy` で、派生文脈（`with_*`）は「差し替えるフィールド + `..self`」の構造体更新記法
-/// 1 形で作る。非 `Copy` のフィールドを足すと `derive(Copy)` がコンパイルエラーになる — そのときは
-/// 写しを増やさず、この型の設計（何を文脈として運ぶか）を見直す。
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LoweringContext<'a> {
-  /// スタイル設定への参照（`config/style.toml` 由来。未指定キーは `serde(default)` の既定値）
+  /// スタイル設定への参照
   pub style: &'a ReadStyle,
   /// 本文段落の既定フォント種別
   pub body_font_kind: FontKind,
@@ -67,9 +62,6 @@ pub(super) struct LoweringContext<'a> {
 
 impl<'a> LoweringContext<'a> {
   /// スタイルと検証済みの画像設定（config `[image]`）から文脈を生成する
-  ///
-  /// 画像の既定値に固定値を焼き込まない — 本番は `pagination/body.rs` が config の値を渡し、テストの
-  /// 既定は `test_support::context` が持つ（本番で必ず上書きされる値を `new` に置かない）。
   #[must_use]
   pub(super) fn new(style: &'a ReadStyle, image: ImageConfig) -> Self {
     return LoweringContext {
@@ -114,12 +106,12 @@ impl<'a> LoweringContext<'a> {
   #[must_use]
   pub(super) fn with_list_depth(self, list_depth: usize) -> Self { return LoweringContext { list_depth, ..self }; }
 
-  /// 既定フォントサイズ（段落本文用、`style.text.font_size` に等しい）を返すヘルパー
+  /// 既定フォントサイズ（段落本文用）を返す
   #[must_use]
   pub(super) fn default_font_size(&self) -> Length { return self.style.text.font_size; }
 }
 
-/// 見出し 1 件の記録（PDF しおり・目次生成が消費する）
+/// 見出し 1 件の記録
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct HeadingRecord {
   /// 見出しの文書順インデックス（0 始まり）
@@ -134,8 +126,6 @@ pub(super) struct HeadingRecord {
 
 impl HeadingRecord {
   /// 目次の項目としおりに表示する「番号 タイトル」を組む
-  ///
-  /// 目次としおりの表示を揃えるため、両者はこのメソッドだけを使う。
   #[must_use]
   pub(in crate::typeset) fn label(&self) -> String {
     if self.number.is_empty() {
@@ -148,7 +138,7 @@ impl HeadingRecord {
   }
 }
 
-/// 子 module のテストが lowering の入力を組み立てるための最小ヘルパ
+/// lowering のテスト入力を組み立てるヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
   use super::{InlineNode, LayoutNode, LoweringContext, TextStyle, lower_sources_with_headings};
@@ -163,10 +153,7 @@ pub(super) mod test_support {
 
   /// `.sei` スニペットを parse → analyze して意味解析済みドキュメントを作る
   ///
-  /// `SemanticDocument` は `analyze` からしか作れない（`NodeId` を捏造できない）ので、lowering の
-  /// テストは本番と同じ経路を通す。`\cite` を含むスニペットのために、参照定義には文献フィクスチャ
-  /// （`kwan2014` / `doe2020`）を渡しておく。引用の表示・書誌を要るテストは
-  /// `SemanticDocument::with_citations_for_test` で差し込む。
+  /// 参照定義は文献フィクスチャ（`kwan2014` / `doe2020`）で、引用の表示・書誌は持たない。
   pub(crate) fn analyzed(source: &str) -> SemanticDocument {
     let hir =
       HirDocument::assemble(vec![parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず")]);
@@ -176,8 +163,7 @@ pub(super) mod test_support {
 
   /// テスト既定の画像設定で lowering の文脈を作る
   ///
-  /// 値は config.toml の `[image]` 未指定時と同じ `max_dpi = 300` / `downsample = true`（正典は
-  /// `project::config` の raw 側 `RawImageConfig::default()`。`pub(super)` でここから届かないので値を置く）。
+  /// 値は config.toml の `[image]` 未指定時の既定（`RawImageConfig::default()`）と同じ。
   pub(super) fn context(style: &Style) -> LoweringContext<'_> {
     return LoweringContext::new(
       style,
@@ -212,16 +198,12 @@ pub(super) mod test_support {
 }
 
 /// 走査中に更新される可変状態と、事実を引く query の窓口
-///
-/// 採番・`\ref` の解決・見出しキーの付与はいずれも `semantics::analyze` が済ませているため、
-/// ここに残る可変状態は「脚注の出現順に払い出す通し index」と「見出しタイトルのプレーンテキスト」
-/// だけになる（後者は走査中にしか作れず、[`HeadingRecord`] の組み立てで使う）。
 pub(super) struct LoweringState<'a> {
   /// 意味解析の成果物（HIR + 事実 + CSL 生成物）
   document: &'a SemanticDocument,
   /// これまでに払い出した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
-  /// 見出しノード → タイトルのプレーンテキスト（`HeadingRecord` の組み立てに使う）
+  /// 見出しノード → タイトルのプレーンテキスト
   heading_titles: NodeMap<String>,
 }
 
@@ -243,8 +225,6 @@ impl<'a> LoweringState<'a> {
   }
 
   /// 引用箇所の表示インライン列を引く
-  ///
-  /// 表示の欠落を検出するのは `GeneratedCitations` の責務（完全性の不変条件はそちらが持つ）。
   pub(super) fn citation_display(&self, site: NodeId) -> &'a [GeneratedInline] {
     return self.document.citation_display(site);
   }
@@ -297,7 +277,7 @@ impl<'a> LoweringState<'a> {
   }
 }
 
-/// 意味解析の成果物をレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
+/// 意味解析の成果物をレイアウトノードに変換し、見出し記録も返す
 #[must_use]
 pub(super) fn lower_sources_with_headings(
   ctx: &LoweringContext<'_>,
@@ -305,8 +285,6 @@ pub(super) fn lower_sources_with_headings(
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut state = LoweringState::new(document);
   let mut result = Vec::new();
-  // グループの起源（`HirGroup::source_id`）はエラー帰属のための情報で、`analyze` が
-  // 診断を出し終えた後の lowering では読む先が無い（診断を出さないので文脈に持たない）。
   for group in document.hir().groups() {
     result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
   }
@@ -352,9 +330,6 @@ pub(super) fn lower_nodes_inner(
 }
 
 /// 単一の `HirNode` をレイアウトノードに変換する
-///
-/// 採番値・宣言ラベル・参照先は `semantics::analyze` が確定させた事実で、各 lowering が `NodeId` を
-/// キーに [`LoweringState`] から引く（dispatcher は事実を先読みしない）。
 fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading(heading) => {
@@ -399,7 +374,6 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
 fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
   let mut result: Vec<LayoutNode> =
     labels.into_iter().map(|label| return LayoutNode::Anchor(AnchorId::Label(label.clone()))).collect();
-  // ラベルの無いブロック（大半がこれ）では `nodes` をそのまま返し、詰め替えを避ける
   if result.is_empty() {
     return nodes;
   }
@@ -542,13 +516,9 @@ mod tests {
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
     let indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
     assert_eq!(indices, vec![0, 1, 2], "見出し index は文書順に連番のはず: {headings:?}");
-    // `AnchorId::Heading` の key が `HeadingRecord::index` と 1:1 かつ同順で対応することを確かめる。
-    //
     // 左辺（アンカー）は「レイアウト木を文書順に辿って現れた順」、右辺（見出し記録）は
-    // 「`analyze` が facts に積んだ順」で、出所が独立している。両者がずれると
-    // `compiler::front_matter` が見出しとページ番号を zip するときに目次のページ番号が
-    // 静かにずれる（長さ違いは debug_assert しか見ておらず release では素通りする）。
-    // 集合一致では key の入れ替わりを検出できないため、ソートせず順序も含めて比較する。
+    // 「`analyze` が facts に積んだ順」で、出所が独立している。集合一致では key の入れ替わりを
+    // 検出できないため、ソートせず順序も含めて比較する。
     let anchor_keys = collect_heading_anchor_keys(&layout);
     assert_eq!(anchor_keys, indices, "アンカーの key は見出し記録の index と順序込みで一致するはず: {layout:?}");
   }
@@ -620,7 +590,6 @@ mod tests {
   fn display_math_row_label_anchors_are_reversed() {
     let style = ReadStyle::default();
 
-    // align の行末 `\label` は行ごとにラベルを付ける
     let out =
       lower_source(&style, "\\begin{align}\na &= b \\label{eq:first} \\\\\nc &= d \\label{eq:second}\n\\end{align}\n");
 
@@ -717,7 +686,6 @@ mod tests {
 
   #[test]
   fn heading_title_plain_uses_generated_citation_display() {
-    // 見出しタイトルの `\cite` は、しおり・目次では CSL 整形済みの表示を辿る
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
     let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");

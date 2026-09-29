@@ -4,8 +4,6 @@
 //! 分割で割った断片（[`ShapedRun::sub_box`]）と約物 1 字（[`ShapedRun::replaced_glyph_box`]）は親 run の
 //! 高さ・深さをそのまま写す — 同じフォント種別・同じフォントサイズなので、メトリクスから計算し直しても
 //! 同じ値になる。引数にメトリクスもフォントサイズも取らないので、計算し直す材料が呼び出し側に無い。
-//!
-//! 兄弟 `text_run` が持つのは「どこで割り、何を挟むか」だけで、寸法の算術はこの module に閉じる。
 
 use std::ops::Range;
 
@@ -57,7 +55,7 @@ pub(super) struct ShapedRun {
 }
 
 impl ShapedRun {
-  /// グリフ列とメトリクスから寸法を確定する（箱の寸法を求める唯一の場所）
+  /// グリフ列とメトリクスから寸法を確定する
   pub(super) fn measure(run: GlyphRun, metric: FontMetric) -> Self {
     let advance_units: i64 = run.glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     let width = units_to_length(advance_units, run.font_size, metric.upem);
@@ -141,11 +139,7 @@ impl ShapedRun {
     });
   }
 
-  /// グリフ 1 つを内蔵アキぶん墨移動させた箱を作る（約物の内蔵アキ切り詰め用。幅は呼び出し側が決める）
-  ///
-  /// 墨を左へ寄せる量（`normalize.shift_em`）をこのフォントの `upem` へスケールして `x_offset` に
-  /// 適用するのはここだけの計算で、送り幅から内蔵アキを引いた幅は約物の規則（`yakumono`）が呼び出し側で
-  /// 決める。
+  /// グリフ 1 つを内蔵アキぶん墨移動させた箱を作る（幅は呼び出し側が決める）
   pub(super) fn replaced_glyph_box(&self, glyph_index: usize, normalize: yakumono::Normalize, width: Length) -> HBox {
     let src = &self.run.glyphs[glyph_index];
     #[expect(
@@ -177,9 +171,6 @@ impl ShapedRun {
 }
 
 /// シェーピングだけを行う部品（資源と再利用バッファ）
-///
-/// 段落構築のポリシー（既定フォントサイズ・行高係数・ハイフネーション・約物アキ）を持たないので、
-/// 生成コンテンツ（目次・索引・走り文）はこれだけを構築する。
 pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
   resources: &'a FontSystem<'a>,

@@ -1,7 +1,6 @@
 //! 組版パスのエラー型 [`TypesetError`]
 //!
 //! フォント資源の構築・画像資源の読込 / デコード / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗を持つ。
-//! 画像デコードは typeset 段で起きるので、その失敗の `code` の段も `typeset` に揃う。
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -22,7 +21,7 @@ pub(crate) enum TypesetError {
 
   /// 脚注のページ単位採番が上限回数で収束しないエラー
   ///
-  /// 不整合なページ列は採用せず、回避策付きの診断を返す。
+  /// 収束しなかったページ列は採用しない。
   #[error("脚注のページ単位採番が {passes} 回の組版で収束しませんでした。")]
   #[diagnostic(
     code(typeset::footnote::per_page_not_converged),

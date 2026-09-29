@@ -1,9 +1,6 @@
 //! 確定レイアウト（[`Page`] 列）の決定的テキストダンプ（`#[cfg(test)]` 限定）
 //!
-//! golden テスト用に、座標・寸法を 0.01pt へ丸めて環境依存の差を抑える。
-//!
-//! `Publication` のダンプは `compiler::dump` が持つ — 別の型の別の表現で、共有するのは丸め桁数と
-//! 負のゼロ正規化の規約だけ。
+//! 座標・寸法を 0.01pt へ丸めて環境依存の差を抑える。
 
 use std::fmt::Write;
 
@@ -196,7 +193,6 @@ fn dump_table_row(out: &mut String, row: &PlacedTableRow) {
 }
 
 /// Atom の子要素を再帰的に書き出す（数式の上付き・下付き・分数などの内部配置）。
-/// Atom 以外の内容（グリフ列）は子を持たないため何も出力しない。
 fn dump_content_children(out: &mut String, content: &HBoxContent, indent: usize) {
   let HBoxContent::Atom(children) = content else {
     return;
@@ -217,7 +213,7 @@ fn dump_content_children(out: &mut String, content: &HBoxContent, indent: usize)
   }
 }
 
-/// ボックス内容の 1 行要約を返す（子要素の展開は呼び出し側が担う）。
+/// ボックス内容の 1 行要約を返す（子要素は展開しない）。
 fn content_summary(content: &HBoxContent) -> String {
   return match content {
     HBoxContent::Glyphs(run) => {
@@ -228,7 +224,7 @@ fn content_summary(content: &HBoxContent) -> String {
   };
 }
 
-/// [`LinkTarget`] を golden 資産と同じ文字列表現にする。
+/// [`LinkTarget`] を安定な文字列表現にする。
 fn link_target_desc(target: &LinkTarget) -> String {
   return match target {
     LinkTarget::Internal(id) => format!("Internal({:?})", anchor_id_desc(id)),

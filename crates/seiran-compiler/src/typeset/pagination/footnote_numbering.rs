@@ -1,7 +1,4 @@
 //! 脚注のページ単位採番（`crate::style::FootnoteNumbering::PerPage`）の不動点 solver
-//!
-//! 番号とページ割り当ての循環をこのモジュールに閉じ込める。確定ページ列から次の番号列を得る
-//! 算出もこの solver の内部操作なのでここが持つ。
 
 use tracing::debug;
 
@@ -13,8 +10,6 @@ use crate::typeset::{boxes::Page, error::TypesetError, pagination::body::BodyLay
 const MAX_FOOTNOTE_NUMBERING_PASSES: u32 = 4;
 
 /// 脚注のページ単位採番を不動点まで反復して本文ページを確定する。
-///
-/// 番号はマーカー幅を通じてページ割り当てを変えうるため、番号を与えて本文を組み直す。
 ///
 /// ページ列から再計算した番号が入力番号と一致すれば、不動点として確定する。
 ///
@@ -153,7 +148,6 @@ mod tests {
       };
     };
 
-    // 上限回数で打ち切り、最後の不整合なレイアウトを成功として返さない。
     let error = solve_per_page_numbering(&body_pass).expect_err("収束しない場合は診断を返すはず");
 
     assert_eq!(*calls.borrow(), MAX_FOOTNOTE_NUMBERING_PASSES, "上限回数で打ち切るはず");

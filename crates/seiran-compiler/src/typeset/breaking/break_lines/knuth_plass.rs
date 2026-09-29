@@ -31,13 +31,12 @@ pub(crate) struct KnuthPlassBreaker;
 
 impl LineBreaker for KnuthPlassBreaker {
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line> {
-    // 両端揃え以外（大域設定 ragged_right / 中央・右寄せ段落）は従来の貪欲法のまま
+    // 左揃え（`RaggedRight`）は貪欲法で組む
     if alignment != TextAlignment::Justify {
       return GreedyBreaker.break_lines(items, text_width, alignment);
     }
 
-    // 強制改行（ForcedBreak）で独立サブ段落に分割し、各々を最適化する。
-    // 各サブ段落の最終行は伸縮しない（強制改行直前の行の意味を保つ）。
+    // 強制改行（ForcedBreak）で区切ったサブ段落ごとに最適化する。各サブ段落の最終行は伸縮しない
     let segments = split_on_forced_break(items);
     let segment_count = segments.len();
     let mut lines: Vec<Line> = Vec::new();
@@ -87,11 +86,9 @@ struct Breakpoint {
 
 /// 破断経路の累積コスト（DP が最小化する量）
 ///
-/// 数式内分割点（[`HItem::MathBreak`]）は「他の分割点で組めないときだけ使う」ので、その使用回数を
-/// demerits より優先して比べる（derive した `PartialOrd` はフィールドの宣言順に辞書式比較する）。
-/// demerits への定数加算では表せない — どれほど大きな定数でも、疎な行が十分に続けば数式内分割の方が
-/// 安くなってしまう。数式内分割点を含まない段落では `math_breaks` が常に 0 なので、比較は従来の
-/// demerits 比較と一致する。
+/// 数式内分割点（[`HItem::MathBreak`]）の使用回数を demerits より優先して比べる（derive した `PartialOrd` は
+/// フィールドの宣言順に辞書式比較するので、フィールド順が優先順位になる）。数式内分割点を含まない段落では
+/// `math_breaks` が常に 0 なので、demerits だけの比較と一致する。
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct PathCost {
   /// 経路上の数式内分割の回数
@@ -117,11 +114,6 @@ impl PathCost {
 }
 
 /// 1 本の候補行（開始位置 → 破断点）のコスト評価結果
-///
-/// `Feasible` が demerits だけでなく badness と調整比も持つのは、DP が最小化する [`PathCost`] へは
-/// この行の demerits だけ渡せば足りる（数式内分割の回数は breakpoint 自身の `math_penalty` から
-/// [`PathCost::then`] が決めるので、Edge 側は関与しない）一方で、TRACE 観測では「なぜその demerits に
-/// なったか」を見るのに元の疎密が要るため。
 enum Edge {
   /// 実現可能
   Feasible {
@@ -170,9 +162,7 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
         math_penalty: Some(*penalty),
         is_end: false,
       }),
-      // 破断候補にならないアイテム。`Glue` / `Penalty` が上の arm にも出るのは、
-      // 分割不可な glue（`breakable: false`）と正の penalty をここで落とすため。
-      // `ForcedBreak` は段落を部分段落へ切る側（`break_subparagraph` の呼び出し元）が扱う。
+      // 破断候補にならないアイテム（分割不可な glue・正の penalty を含む）
       HItem::Glue { .. }
       | HItem::Penalty { .. }
       | HItem::Box(_)
@@ -286,8 +276,6 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
 }
 
 /// 候補行のコストを評価し、結果を TRACE へ出す
-///
-/// 評価そのものは [`evaluate_edge`] が行う。return 点が多いので、観測はこのラッパ 1 箇所に集約する。
 fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: bool, text_width: Length) -> Edge {
   let edge = evaluate_edge(items, line_start, brk, prev_hyphen, text_width);
   let (outcome, demerits, badness, ratio) = match &edge {
@@ -322,7 +310,7 @@ fn evaluate_edge(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyph
   let refs = trim_trailing_glue(refs);
 
   let (natural, stretch, shrink) = glue_metrics(refs);
-  // FlushRight（QED）は右端を占有するため、収まり判定では幅に数える（build_line の自然幅からは除外済み）
+  // FlushRight（QED）は右端を占有するため、収まり判定では幅に数える（`glue_metrics` の自然幅には含まれない）
   let flush_width: Length = refs
     .iter()
     .filter_map(|item| match item {
@@ -338,8 +326,8 @@ fn evaluate_edge(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyph
   let available = text_width - hyphen_width;
   let leftover = available - (natural + flush_width);
 
-  // 最終行は build_line が左揃え（伸縮なし）で組むため、自然幅で収まらなければ実現不能。
-  // 収まってさえいれば疎密を罰しない（badness 0）。溢れは早期打ち切り対象（行頭を前へずらすと更に長い）。
+  // 最終行は build_line が伸縮なしで組むため、自然幅で収まらなければ実現不能。
+  // 収まってさえいれば疎密を罰しない（badness 0）
   if brk.is_end {
     if leftover < Length::ZERO {
       return Edge::Overflow;
@@ -351,14 +339,13 @@ fn evaluate_edge(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyph
     };
   }
 
-  // 非最終行は収縮を使える。収縮能力を超えて溢れる行は実現不能（行頭を前へずらすと更に長いので打ち切り対象）
+  // 非最終行は収縮を使える。収縮能力を超えて溢れる行は実現不能
   let overflows = leftover < Length::ZERO && (!shrink.is_positive() || leftover.ratio(shrink) < -1.0);
   if overflows {
     return Edge::Overflow;
   }
 
-  // 非最終行の調整比。伸縮点が無いのに余る行は両端揃えできない（孤立した長語など）→ 実現不能。
-  // このケースは行頭を前へずらして空白を得れば組めることがあるので早期打ち切りにはしない。
+  // 非最終行の調整比。伸縮点が無いのに余る行は両端揃えできない（孤立した長語など）
   let ratio: f64 = match leftover.cmp(&Length::ZERO) {
     std::cmp::Ordering::Greater => {
       if !stretch.is_positive() {
@@ -757,8 +744,7 @@ mod tests {
 
   #[test]
   fn uses_math_break_when_no_other_fit_exists() {
-    // 空白で折ると 1 行目が伸縮点の無い b20 だけ（実現不能）、折らないと 58 で溢れる。
-    // 数式内分割点で折る道だけが残る
+    // 空白で折ると 1 行目が伸縮点の無い b20 だけ（実現不能）、折らないと 58 で溢れる
     let items = vec![
       box_width(20.0),
       stretch_glue(),
@@ -778,7 +764,7 @@ mod tests {
   #[test]
   fn prefers_loose_line_over_math_break() {
     // 幅 40。数式内分割点で折れば 1 行目がぴったり（badness 0）だが、空白で折る疎な行
-    // （badness 上限）が実現可能なので、そちらを選ぶ
+    // （badness 上限）も実現可能
     let items = vec![
       box_width(10.0),
       stretch_glue(),

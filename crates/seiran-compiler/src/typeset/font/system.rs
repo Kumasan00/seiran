@@ -1,7 +1,7 @@
 //! フォント資源の構築順序を隠蔽する窓口モジュール
 //!
 //! `FontData` → `FontRefs` → `FontMetrics` → 検証 → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers`
-//! という構築順序と寿命関係をここに閉じ込め、呼び出し側には [`FontResources::load`] と
+//! という構築順序と寿命関係をここに閉じ込め、呼び出し側には構築の入口として [`FontResources::load`] と
 //! [`FontResources::system`] の 2 段呼び出しだけを公開する。
 
 use std::time::Instant;
@@ -24,22 +24,19 @@ use crate::{
 
 /// [`FontResources::load`] / [`FontResources::system`] のエラー 1 件。
 ///
-/// 既存の [`FontLoadError`] / [`FontValidationFailure`] / [`ShaperError`] を運ぶ薄いラッパーで、
-/// `transparent` でメッセージ・code・help・label・related をすべて内側の leaf へ委譲する。
 /// **1 フォントぶんの違反 1 件**を表し、複数フォントの違反は `Failures<FontSystemError>` の
-/// 別要素になる（related 付きの 1 診断へ束ねると、`FontType::ALL` 順のフラットな leaf 列に
-/// ならない）。
+/// 別要素になる。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontSystemError {
-  /// フォント解析・メトリクス取得の失敗（`build_font_refs` / `build_font_metrics` に由来）
+  /// フォント解析・メトリクス取得の失敗
   #[error(transparent)]
   #[diagnostic(transparent)]
   Load(#[from] FontLoadError),
-  /// フォント設定検証の失敗（[`validation::validate_fonts`] に由来）
+  /// フォント設定検証の失敗
   #[error(transparent)]
   #[diagnostic(transparent)]
   Validation(#[from] FontValidationFailure),
-  /// シェーパー初期化の失敗（[`shaper::build_harfrust_shapers`] に由来）
+  /// シェーパー初期化の失敗
   #[error(transparent)]
   #[diagnostic(transparent)]
   Shaper(#[from] ShaperError),
@@ -48,11 +45,8 @@ pub(crate) enum FontSystemError {
 /// `FontData` を借用し、フォント資源の「所有される」部分をまとめる。
 ///
 /// フィールドは互いを借用しない（`font_refs` だけが外部の `FontData` を借用する）。
-/// `HarfRustShapers` は `FontRefs` と `ShaperDatas`/`ShaperInstances`（本来なら兄弟フィールド）を
-/// 両方借用し続ける実装のため、1 つの構造体が両方を所有すると自己参照構造体になってしまう。
-/// これを避けるため、シェーパー本体は [`FontSystem`] という別の薄いビューへ分離している。
 pub(in crate::typeset) struct FontResources<'a> {
-  /// `load` に渡された設定（`system` が同じ設定でシェーパーを構築するために保持する）
+  /// `load` に渡された設定
   configs: &'a FontConfigs,
   /// 解析済み OpenType フォント参照（`FontData` を借用）
   font_refs: FontRefs<'a>,
@@ -67,14 +61,7 @@ pub(in crate::typeset) struct FontResources<'a> {
 impl<'a> FontResources<'a> {
   /// 読み込み済み `FontData` から、検証済みのフォント資源一式を構築する。
   ///
-  /// 構築順序は `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances`。
-  ///
-  /// 各段の中ではフォントを独立に検査して違反を `FontType::ALL` 順に全件集めるが、**段の間**は
-  /// 早期 return する — 解析できなかったフォントのメトリクスは取得できず、メトリクスの無い
-  /// フォントは検証できないという依存があるため。
-  ///
-  /// 検証で見つかった警告（[`FontWarning`]）は資源ではなくコンパイルの副産物なので、
-  /// この構造体には持たせず組の第 2 要素として外へ出す。検証の違反で構築が失敗しても警告は返す。
+  /// 組の第 2 要素は検証で見つかった警告（[`FontWarning`]）。検証の違反で構築が失敗しても警告は返す。
   /// 解析・メトリクス取得で失敗したときは検証に進んでいないので、警告は空。
   ///
   /// # Errors
@@ -111,22 +98,18 @@ impl<'a> FontResources<'a> {
     );
   }
 
-  /// `Publication` の描画資源を組み立てるための `FontMetrics` アクセサ。
+  /// `FontMetrics` アクセサ。
   #[must_use]
   pub(crate) fn metrics(&self) -> &FontMetrics { return &self.metrics; }
 
-  /// `Publication` の描画資源を組み立てるための [`FontFaceConfigs`] アクセサ。
+  /// [`FontFaceConfigs`] を構築して返す。
   #[must_use]
   pub(crate) fn face_configs(&self) -> FontFaceConfigs { return build_face_configs(self.configs); }
 
   /// シェーパー一式を構築し、シェイプ操作だけを公開する [`FontSystem`] を返す。
   ///
-  /// `load` に渡されたのと同じ設定（`self.configs`）を使う — 呼び出し側が別の設定を渡して
-  /// フォント参照・バリエーション軸と食い違うシェーパーを組んでしまう余地をなくすため、
-  /// 引数では受け取らない。
-  ///
-  /// 戻り値の [`FontSystem`] は `self` を借用するだけの寿命を持ち、`FontData` への寿命 `'a` とは
-  /// 独立する（`'a` に固定すると呼び出し側で `FontResources` の借用が不必要に長引く）。
+  /// `load` に渡されたのと同じ設定（`self.configs`）を使うので、フォント参照・バリエーション軸と
+  /// 食い違うシェーパーは組めない。
   ///
   /// # Errors
   ///
@@ -158,9 +141,6 @@ fn build_refs_and_metrics<'a>(
 }
 
 /// シェイプ・メトリクス取得だけを公開するビュー。
-///
-/// 呼び出し側は `FontRefs`/`ShaperDatas`/`ShaperInstances`/`HarfRustShapers` の構築順序・寿命関係を
-/// 一切知らない。
 pub(in crate::typeset) struct FontSystem<'a> {
   /// 19 種別ぶんのシェーパー
   shapers: HarfRustShapers<'a>,
@@ -170,8 +150,6 @@ pub(in crate::typeset) struct FontSystem<'a> {
 
 impl FontSystem<'_> {
   /// 指定フォント種別でテキストをシェイプする。
-  ///
-  /// `buffer` は返り値に `clear()` を呼ぶことで再利用できる。
   #[must_use]
   pub(crate) fn shape(
     &self,

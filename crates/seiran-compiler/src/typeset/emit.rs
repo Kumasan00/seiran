@@ -1,16 +1,7 @@
 //! 組版の出口 — 確定ページ列と資源から [`Publication`] を構築する。
 //!
-//! renderer は確定座標の描画だけを行い、レイアウト判断を持たない。依存の向きは `typeset → publication` の
-//! 一方向で、`publication` はここを知らない。
-//!
-//! ここで `Style` に依存する判断は一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は
-//! 前段（`crate::typeset::breaking`）が解決済みの値を `crate::typeset::Page` /
-//! `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
-//!
-//! `crate::publication` の座標は pt 単位の `f32` なので、ここでの `crate::length::Length::to_pt()` 呼び出しは
-//! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列
-//! （`crate::publication::GlyphRun`）はシェイピング結果をそのまま載せ、フォントサイズ・色の
-//! 単位変換は render が行う。
+//! `crate::publication` の座標は pt 単位の `f32` で、`crate::length::Length::to_pt()` は描画命令へ載せる
+//! 直前の単位変換。
 
 use std::{collections::HashMap, mem};
 
@@ -30,9 +21,6 @@ use crate::{
 };
 
 /// 組版の確定結果と読込済み資源から描画直前の [`Publication`] を構築する。
-///
-/// フォント資源は組版で使った解析結果を再利用し、画像はパス昇順に並べて不透明な `ImageRef` の
-/// 発行順を決定的にする。`compiler` はこの内部順序と組版中間型の走査を知らない。
 pub(crate) fn emit(
   config: &ProjectConfig,
   font_data: &FontData,
@@ -45,9 +33,6 @@ pub(crate) fn emit(
 }
 
 /// 読み込み済みフォント資源と画像資源から `Publication` の描画資源を組み立てる。
-///
-/// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
-/// バイト列は `Arc` 共有なので複製しない。krilla フォントの構築は render（`seiran-pdf`）の責務。
 ///
 /// 画像はパス昇順に並べてから渡す — `ImageRef` は配列添字なので、`HashMap` の反復順のままだと
 /// 同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
@@ -81,9 +66,6 @@ fn build_resources(
 }
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
-///
-/// 確定レイアウトは**消費する** — グリフ列・しおりテキスト・外部リンクの URI はここが最後の
-/// 読み手なので、複製せず move する（借りて複製すると shaped glyph 全体の複製がピークで 2 部残る）。
 fn build_publication(
   config: &ProjectConfig,
   resources: PublicationResources,
@@ -365,7 +347,7 @@ mod tests {
     },
   };
 
-  /// テスト用の最小フォント設定を返す（`ProjectConfig` の組み立てにだけ使い、実ファイルは読まない）。
+  /// テスト用の最小フォント設定を返す（実ファイルは読まない）。
   fn test_font_config() -> FontConfig {
     return FontConfig {
       font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
@@ -430,8 +412,7 @@ mod tests {
 
   /// テスト用ページの本文水平原点（用紙左端から本文左端まで、pt）。
   ///
-  /// 余白は `style.toml` の `[page]` が持ち、`typeset` が解決した値をページが運ぶ。
-  /// ここでは `build_publication` が `config` ではなくページの値を使うことを固定するため、
+  /// `build_publication` が `config` ではなくページの値を使うことを固定するため、
   /// config には無い原点を明示的に載せる。
   const ORIGIN_X_PT: f32 = 50.0;
 
@@ -784,8 +765,7 @@ mod tests {
 
   #[test]
   fn build_applies_each_page_own_origin_to_content_links_and_anchors() {
-    // 2 ページに別々の本文原点を与える（見開きで左右余白を変える将来の形。全ページ共通の
-    // 左余白へ退行すると 2 ページ目の座標がずれて落ちる）
+    // 2 ページに別々の本文原点を与える（全ページ共通の左余白へ退行すると 2 ページ目の座標がずれて落ちる）
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let run = glyph_run("x");

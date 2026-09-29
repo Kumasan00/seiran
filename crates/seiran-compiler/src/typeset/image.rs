@@ -2,11 +2,9 @@
 //!
 //! 文書木（HIR）から参照されている画像パスを集め（`manifest`）、`ProjectSource` 経由で読み込んで
 //! 自然寸法を検証し、1 画像ぶんの描画寸法を確定する（`resources`）までをここに閉じる。
-//! 寸法を `Block::Image` へ載せるのは呼び出し側の `typeset::boxing`。
 //!
 //! 自然寸法の取得（`image` による寸法ヘッダの読み取りと `usvg` による SVG のパース）は
 //! 子 module `natural_size` に閉じる。
-//! 描画に使う画像本体のデコード・ダウンサンプリングは render（`seiran-pdf`）の責務。
 
 mod manifest;
 mod natural_size;

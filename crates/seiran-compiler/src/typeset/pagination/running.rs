@@ -1,8 +1,7 @@
 //! 段 6 — 走り文（ヘッダー・フッター）の生成と配置
 //!
 //! style の投影（テンプレート・書体・区切り線）、`{page}` 等のトークン置換、左 / 中央 / 右スロットの
-//! 配置までをこの module に閉じる。全ページのラベルが確定してからでないと組めないので、
-//! [`PageLabels`] を引数に要求して呼び出し順を型で制約する。
+//! 配置までをこの module に閉じる。
 
 use tracing::debug;
 
@@ -179,7 +178,6 @@ fn build_region(
     return Vec::new();
   }
 
-  // 区切り線の y は行の高さ・深さから決まるので、`line` を move する前に控える
   let (height, depth) = (line.height, line.depth);
   let mut result = Vec::with_capacity(2);
   result.push(PlacedBlock::Line {

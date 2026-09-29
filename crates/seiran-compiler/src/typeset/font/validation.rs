@@ -3,9 +3,7 @@
 //! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。軸が未設定でも
 //! `fvar` 自体が読めなければ（テーブルディレクトリのレコードがファイル範囲外を指す場合を含む）error として
 //! 拒否する — このモジュールが唯一の保証点で、描画側（seiran-pdf）はフォントを再パースしない。
-//! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
-//! severity(Warning) の [`FontWarning`] として集める。成功した `Compilation` と一緒に返すほか、
-//! 検証やその後の段が失敗しても確定した分は `CompileFailure::warnings()` で返す。
+//! GSUB/GPOS のスクリプト・言語サポート不足は [`FontWarning`] として集める。
 
 use derive_more::Display;
 use font_types::{Fixed, Tag};
@@ -24,16 +22,6 @@ use crate::{
 };
 
 /// 1 件のフォント検証違反を、どのフォント種別のものかを添えて表す leaf diagnostic。
-///
-/// `code` / `severity` / `help` / `url` / `labels` / `related` / `diagnostic_source` は内側の
-/// [`FontValidationErrorKind`] へ委譲し、メッセージにだけ config.toml のフォント種別キーを
-/// 前置する。`compiler::source_diagnostic::SourceDiagnostic` がソース本文だけを補うのと同じ
-/// **帰属 adapter** であって集約 wrapper ではない — 描画は leaf 1 件ぶんで、入れ子の診断ブロックを
-/// 作らない。
-///
-/// 種別を落とすと、`FontType::ALL` 順に並んだ違反のどれがどのフォントのものか読めなくなる。
-/// 種別名は Debug 表現（`Serif`）ではなく config.toml のキー（`serif`）を使い、
-/// `[fonts.serif]` を直せばよいと分かるようにする。
 #[derive(Debug, Display)]
 #[display("{}: {kind}", font_type.as_toml_key())]
 pub(crate) struct FontValidationFailure {
@@ -44,8 +32,7 @@ pub(crate) struct FontValidationFailure {
 }
 
 /// `kind` は cause ではなくこの診断自身の内容なので `#[source]` には載せない
-/// （載せると miette が `╰─▶` で同じ文言をもう一度描画する）。cause chain は `kind` が持つ
-/// 外部エラー（`ReadError` 等）へそのまま素通しする。
+/// （載せると miette が `╰─▶` で同じ文言をもう一度描画する）。
 impl std::error::Error for FontValidationFailure {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return std::error::Error::source(&self.kind); }
 }
@@ -144,12 +131,6 @@ pub(super) enum FontValidationErrorKind {
 }
 
 /// フォント設定の警告（組版は続行できるが、ユーザーが設定かフォントを直したほうがよい問題）。
-///
-/// 全バリアントが「どのフォント種別の、どのファイルの、どのタグか」を持つ — これが無いと
-/// 19 種別のどれを直せばよいか分からない。エラー（[`FontValidationErrorKind`]）とは別の型に
-/// しているのは、error と warning が別の集合だから — error は `CompileFailure` の診断列、
-/// warning は `Warnings` で、コンパイルが成功すれば `Compilation` と一緒に、失敗しても
-/// `CompileFailure::warnings()` で返る。互いに混ざることはない。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
@@ -255,7 +236,6 @@ pub(crate) enum FontWarning {
 
 /// 全フォント種別を検証し、違反を `FontType::ALL` 順に**全件**集める。
 ///
-/// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。
 /// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
 /// 違反と独立に確定するため。
 ///
@@ -399,8 +379,6 @@ fn check_script_language_support(
   for (table, script_list) in tables {
     match script_list {
       Ok(script_list) => check_script_in_table(script_list, script_tag, lang_tag, table, font_type, path, warnings),
-      // テーブルが無いのか壊れているのかで直し方が違う（前者は設定かフォントの選択、
-      // 後者はフォントファイル自体）。`ReadError` を捨てて一方に丸めない
       Err(ReadError::TableIsMissing(_)) => warnings.push(FontWarning::MissingLayoutTable {
         font_type,
         path: path.clone(),
@@ -677,7 +655,6 @@ mod tests {
 
   #[test]
   fn fvar_record_past_the_file_without_axes_is_out_of_range() {
-    // 長さがファイル末尾を大きく超える
     let bytes = sfnt_with_fvar_record(28, 0xffff_fff0, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
@@ -715,7 +692,6 @@ mod tests {
       kind: FontValidationErrorKind::NotVariableFont,
     };
 
-    // Debug 表現（`Serif`）ではなく config.toml のキー（`serif`）を前置する
     assert_eq!(
       failure.to_string(),
       "serif: このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。"

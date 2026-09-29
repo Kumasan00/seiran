@@ -27,7 +27,7 @@ pub(super) fn assemble_paragraph(
   let mut result = Vec::with_capacity(content.len() + 2);
 
   // 段落先頭行の字下げ。先頭に水平カーンを置くと、行分割が先頭行だけ右へずらして
-  // 折り返し幅を狭める（2 行目以降には残らない）。0pt のとき・`\noindent` 指定時は何も足さない。
+  // 折り返し幅を狭める（2 行目以降には残らない）。
   if ctx.first_line_indent.to_pt() > 0.0 && !suppress_indent {
     result.push(LayoutNode::Inline(InlineNode::Kern {
       length: ctx.first_line_indent,
@@ -51,8 +51,7 @@ pub(super) fn lower_paragraph(
 ) -> Vec<LayoutNode> {
   let default_style = body_text_style(ctx);
 
-  // `\noindent`（[`HirInlineKind::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
-  // 評価器（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
+  // `\noindent` の位置は評価器（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
   let suppress_indent = inlines.iter().any(|inline| matches!(inline.kind, HirInlineKind::NoIndent));
 
   let mut content: Vec<InlineNode> = Vec::new();
@@ -149,7 +148,6 @@ mod tests {
   fn paragraph_preserves_inline_order() {
     let style = ReadStyle::default();
 
-    // 書体切り替えを挟んで、インラインが Text へ落ちる順序を見る
     let nodes = lower_source(&style, "\\italic{one}\\bold{two}\\mono{three}\n");
 
     let texts: Vec<&str> = nodes
@@ -168,7 +166,6 @@ mod tests {
 
     let nodes = lower_source(&style, "\\chapter[label=ch:one]{Intro}\n\n\\ref{ch:one}\n");
 
-    // 段落は解決済み `\ref` をそのままリンクとして通す
     let link = nodes
       .iter()
       .find_map(|n| match n {

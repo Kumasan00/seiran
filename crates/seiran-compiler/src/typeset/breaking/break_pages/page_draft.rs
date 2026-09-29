@@ -1,11 +1,5 @@
 //! 現在ページの配置台帳 `PageDraft` — ページ帰属データの抽出・下端揃え・`Page` への確定。
 //!
-//! 親の `PageComposer` は改段・改ページの判断と脚注の予約・繰越だけを持ち、「この内容の着地が確定した」
-//! 時点でこの型の操作を呼ぶ。台帳の entry は本文 block と、その block から導出した anchor / link を
-//! 同じ単位に持つので、帰属データを配置経路ごとに集め直す約束が要らない。
-//! 下端揃えは entry ごとの「先行 stretch 累積量」から配分するので、block / link / anchor の
-//! index を別々に同期する必要もない。
-//!
 //! この module は改ページ可否・widow / orphan・脚注の詰め込み・フォント・style・publication を知らない。
 //! 座標系は [`Page`] と同じ（`x` は本文左端、`y` はページ上端からの距離）。
 
@@ -26,13 +20,8 @@ use crate::{
 const FLUSH_EPSILON: Length = Length::from_sp(66);
 
 /// 配置順台帳の 1 entry
-///
-/// 本文・脚注・内容を伴わないアンカーを 1 本の列に持つのは、`Page::anchors` / `Page::links` の順序が
-/// 「リージョンごとに本文 → 脚注」の交互だから（脚注はリージョン確定時に積まれる）。2 本に分けると
-/// この順が再現できない。
 enum Entry {
-  /// 本文 block の着地。同じ着地で解決したアンカーと、block から導出したリンク矩形を一緒に持つ。
-  /// 下端揃えの対象
+  /// 本文 block の着地。下端揃えの対象
   Block {
     /// 確定座標の block
     block: PlacedBlock,
@@ -51,7 +40,7 @@ enum Entry {
     /// リージョン内でこの entry より前に通過した伸縮アキの stretch 累積量
     stretch_before: Length,
   },
-  /// 確定脚注。先頭断片の到達先アンカーと本体行のリンク矩形を持つ。下端揃えの対象外
+  /// 確定脚注。下端揃えの対象外
   Footnote {
     /// 確定座標の脚注（区切り罫線を含む）
     footnote: PlacedFootnote,
@@ -63,8 +52,7 @@ enum Entry {
 }
 
 impl Entry {
-  /// 下端揃えの配分: 先行 stretch 累積量 × `ratio` だけ下方へ動かす。同じ entry の block / anchor / link は
-  /// 同じ量だけ動く
+  /// 下端揃えの配分: 先行 stretch 累積量 × `ratio` だけ下方へ動かす
   fn shift_by_stretch(&mut self, ratio: f64) {
     match self {
       Entry::Block {
@@ -102,8 +90,8 @@ impl Entry {
 
 /// 表断片の確定に要る、表 1 個で固定の幾何（列定義・列幅・セル余白・罫線・段内揃えオフセット）
 ///
-/// 断片ごとに変わる段オフセットは [`PageDraft::place_table_fragment`] の引数。断片の左端 x は
-/// `段オフセット + align_offset`、アンカーは揃えオフセット抜きの段オフセットで解決する（行・数式と同じ規則）。
+/// 断片の左端 x は `段オフセット + align_offset`、アンカーは揃えオフセット抜きの段オフセットで解決する
+/// （行・数式と同じ規則）。
 pub(super) struct TableFrame<'a> {
   /// 列定義（揃え）
   pub(super) columns: &'a [TableColumn],
@@ -127,20 +115,17 @@ pub(super) struct PendingTableRow {
   pub(super) top_y: Length,
   /// 行帯の高さ
   pub(super) height: Length,
-  /// `\head` 行か（改ページのたびに再描画される複製なので索引語を収集しない）
+  /// `\head` 行か
   pub(super) is_head: bool,
 }
 
 /// 現在ページの配置台帳
-///
-/// 内部ベクタは公開しない。親は「行を置いた」「ブロックを置いた」「表断片を置いた」「アンカーを着地させた」
-/// 「リージョンを閉じた」「ページを確定した」だけを伝える。
 pub(super) struct PageDraft {
   /// 配置順台帳
   entries: Vec<Entry>,
   /// 未解決のアンカー。次の着地点で解決する。ページ確定をまたいで保持する
   pending_anchors: Vec<AnchorId>,
-  /// このページの索引語（`(word, reading)` で初出順に重複除去済み）。座標を持たないので台帳の外
+  /// このページの索引語（`(word, reading)` で初出順に重複除去済み）
   index_entries: Vec<IndexTerm>,
   /// 現在リージョンの先頭 index（`entries` 内）。下端揃えはここから末尾までを対象にする
   region_start: usize,
@@ -197,9 +182,6 @@ impl PageDraft {
   }
 
   /// 行・表以外の block（画像・ディスプレイ数式）を置いた。未解決アンカーは `(anchor_x, anchor_y)` で解決する
-  ///
-  /// アンカー点を block から導かないのは、数式ブロックのアンカーが上端（`baseline_y − height`）で
-  /// 解決される一方、`PlacedBlock::MathBlock` は上端を持たないため。
   pub(super) fn place_block(&mut self, block: PlacedBlock, anchor_x: Length, anchor_y: Length) {
     match &block {
       PlacedBlock::Line { .. } | PlacedBlock::Table { .. } => {
@@ -287,9 +269,7 @@ impl PageDraft {
 
   /// 索引語 1 件をこのページの索引語集合へ加える
   ///
-  /// 同一ページ内の同じ `(語, reading)` は 1 出現に畳む。本文行・脚注行・表の
-  /// 本体行のどこから来たマーカーも同じページの同じ集合へ入るので、畳みは経路をまたいで効く。
-  /// 同一性は `IndexTerm` の `Eq`。
+  /// 同一ページ内の同じ `(語, reading)` は 1 出現に畳む。同一性は `IndexTerm` の `Eq`。
   fn push_index_entry(&mut self, term: &IndexTerm) {
     if !self.index_entries.contains(term) {
       self.index_entries.push(term.clone());
@@ -321,8 +301,7 @@ impl PageDraft {
   /// 下端揃え: 現在リージョンの本文 entry を、不足高さ `target_bottom − 本文下端` を先行 stretch
   /// 累積量に比例配分して下方へ動かす
   ///
-  /// 分母は**最後の本文 block** の先行累積量（最後の block より後のアキは分母に入れない）。不足高さが
-  /// `FLUSH_EPSILON` 以下、または分母が正でなければ動かさない（自然高のまま）。
+  /// 不足高さが `FLUSH_EPSILON` 以下、または分母（最後の本文 block の先行累積量）が正でなければ動かさない。
   fn flush_region(&mut self, target_bottom: Length) {
     let region = &mut self.entries[self.region_start..];
     let Some(last_block) = region.iter().rposition(|entry| return matches!(entry, Entry::Block { .. })) else {
@@ -358,8 +337,6 @@ impl PageDraft {
   ///
   /// 繰越でない（＝本体先頭の、マーカーを持つ行を含む）断片だけに到達先アンカーを打つ。長い脚注の
   /// ページ間分割が入っても、本文中マーカーからは常に本体の先頭位置へ飛べるようにするため。
-  /// 脚注本体は段幅で行分割されているが x は行頭基準のままなので、着地する段が確定したここで段オフセットを
-  /// 足し、その**後**にリンク矩形・索引語を導出する（クリック矩形が実描画位置と一致する）。
   fn place_footnotes(
     &mut self,
     geom: &PageGeometry,
@@ -498,7 +475,7 @@ pub(super) fn placed_block_bottom(block: &PlacedBlock) -> Length {
   };
 }
 
-/// [`PlacedBlock`] とその内部の確定座標を下方へ `dy` だけずらす（下端揃えの配分で使う）。
+/// [`PlacedBlock`] とその内部の確定座標を下方へ `dy` だけずらす
 fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
   if dy == Length::ZERO {
     return;
@@ -640,7 +617,6 @@ mod tests {
 
   #[test]
   fn page_orders_anchors_and_links_body_then_footnote_per_region() {
-    // リージョン 1: 本文行(リンク A) + 脚注(リンク F1)、リージョン 2: 本文行(リンク B) + 脚注(リンク F2)
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("a")));
@@ -683,7 +659,6 @@ mod tests {
     draft.land_anchors(Length::ZERO, pt(46.0));
     assert!(!draft.has_content(), "アンカーだけではページ内容にならない");
 
-    // 内容が無いのでページは取らず、次のリージョンで block を置く
     draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new());
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
     let page = draft.take_page(&geom);
@@ -787,7 +762,6 @@ mod tests {
     draft.place_block(image(14.0, 10.0), Length::ZERO, pt(14.0));
     draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
 
-    // 強制改ページ経路の二重 close
     draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new());
     let page = draft.take_page(&geom);
 
@@ -922,7 +896,6 @@ mod tests {
 
   #[test]
   fn place_table_fragment_resolves_pending_anchor_at_column_x_and_first_row_top() {
-    // 段オフセット 55・揃えオフセット 5 の表断片
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
@@ -971,7 +944,6 @@ mod tests {
 
   #[test]
   fn empty_table_fragment_keeps_pending_anchors_for_the_next_landing() {
-    // 先頭行が収まらないときの `flush(空)` 相当
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));

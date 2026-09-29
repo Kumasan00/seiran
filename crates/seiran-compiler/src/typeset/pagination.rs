@@ -1,7 +1,4 @@
 //! 確定ページ列の組み立て — 本文・前付け・後付け・ページラベル・走り文・outline の段順序
-//!
-//! 各段の呼び出し順序はこの module に閉じており、`typeset` root から見えるのは [`paginate`] と
-//! [`TypesetContext::new`] の 2 つだけ。
 
 mod back_matter;
 mod body;
@@ -41,15 +38,13 @@ pub(crate) struct LaidOutDocument {
   pub(crate) outline_entries: Vec<OutlineEntry>,
   /// 文書が参照した画像ファイルのパス一覧（重複なし・昇順）
   pub(crate) image_paths: Vec<ProjectPath>,
-  /// 画像ファイルの形式と生バイト列（描画の資源束へ渡す）
+  /// 画像ファイルの形式と生バイト列
   pub(crate) images: HashMap<ProjectPath, ImageAsset>,
 }
 
 /// 不変な入力から描画直前の確定レイアウトを構築する。
 ///
 /// 組版を止めないがユーザーが直せる問題（脚注のはみ出し）は [`TypesetWarning`] として一緒に返す。
-/// 各段の [`break_pages`](crate::typeset::breaking::break_pages) はセクション内の page index しか
-/// 知らないので、物理ページ番号への写像と印字ラベルの解決はこの操作（phase 5）が行う。
 ///
 /// # Errors
 ///
@@ -93,8 +88,7 @@ pub(super) fn paginate(
       pages.len()
     )
   }
-  // セクション内 index を連結後の物理ページ index へ直してから診断にする。前付け → 本文 → 後付けの
-  // 順に並べるので、表示順は物理ページの昇順で決定的になる
+  // 前付け → 本文 → 後付けの順に並べるので、警告の表示順は物理ページの昇順で決定的になる
   let warnings = footnote_overflow_warnings(
     &page_labels,
     [

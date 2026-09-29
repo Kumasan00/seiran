@@ -1,9 +1,9 @@
 //! 数式クラスに基づくアトム間スペーシング
 //!
 //! `TeXbook` 第 18 章のアトム間アキ表をそのまま持ち、隣り合うアトムのクラスの組み合わせから
-//! アキ幅を決める。アキは伸縮しない [`AtomNode::Kern`] として出す（glue にすると両端揃えのたびに
-//! アキが揺れる）。インライン数式のトップレベルに限り、括弧の外の二項演算子・関係子の直後のアキを
-//! 行分割点 [`InlineNode::MathBreak`] として出す（[`assemble_breakable`]）。
+//! アキ幅を決める。アキは伸縮しない [`AtomNode::Kern`] として出す。インライン数式のトップレベルに
+//! 限り、括弧の外の二項演算子・関係子の直後のアキを行分割点 [`InlineNode::MathBreak`] として出す
+//! （[`assemble_breakable`]）。
 //!
 //! 単位は TeX と同じ mu（1mu = 1/18 em）で、em はそのレベルのフォントサイズ。
 
@@ -17,7 +17,7 @@ use crate::{
 ///
 /// 対応する開き括弧を持つ「本物の区切り」だけを表す。数式クラスの `Open` / `Close`（アキ表の分類）
 /// とは独立 — `!` `?` は `plain TeX` の mathcode で `Close` クラスに入るが区切りではないので `None`
-/// になる。[`assemble_breakable`] の括弧の深さはこちらで数える。
+/// になる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Fence {
   /// 開き区切り（`(` `[` や `\langle` 等）
@@ -31,7 +31,7 @@ pub(super) enum Fence {
 pub(super) struct MathItem {
   /// このアイテムの数式クラス
   class: MathClass,
-  /// このアイテムが開き・閉じ区切りとして働くか（括弧の深さの計算に使う。区切りでなければ `None`）
+  /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
   /// このアイテムが生む Atom ノード列
   nodes: Vec<AtomNode>,
@@ -86,8 +86,7 @@ enum Cell {
 
 /// 二項演算子の直後で折り返すときのペナルティ（TeX の `\binoppenalty` の既定値）
 ///
-/// 数式内の分割点どうしの比較にだけ効く。本文の分割点より後回しにする規則は行分割側が持つ
-/// （`HItem::MathBreak`）。アキ表と同じく数式組版の慣習定数なので style.toml へは出さない。
+/// 数式内の分割点どうしの比較にだけ効く。
 const BIN_BREAK_PENALTY: i32 = 700;
 
 /// 関係子の直後で折り返すときのペナルティ（TeX の `\relpenalty` の既定値）
@@ -177,7 +176,7 @@ const SPACING: [[Cell; CLASS_COUNT]; CLASS_COUNT] = {
   ]
 };
 
-/// [`SPACING`] の添字（`as` キャストではなく対応表として書く）
+/// [`SPACING`] の添字
 const fn class_index(class: MathClass) -> usize {
   return match class {
     MathClass::Ord => 0,
@@ -247,9 +246,7 @@ fn resolve_bin_classes(classes: &mut [MathClass]) {
 
 /// 直接入力された 1 文字の数式クラスを返す
 ///
-/// plain TeX の `\mathcode` 割り当てに合わせてある。記号コマンド（`\times` 等）のクラスは
-/// 記号テーブルが持つので、ここに来るのはソースへ直接書かれた文字だけ。表に無い文字（和文を含む）は
-/// Ord として扱う。
+/// plain TeX の `\mathcode` 割り当てに合わせてある。表に無い文字（和文を含む）は Ord として扱う。
 pub(super) fn char_class(ch: char) -> MathClass {
   return match ch {
     '+' | '-' | '*' => MathClass::Bin,
@@ -262,9 +259,6 @@ pub(super) fn char_class(ch: char) -> MathClass {
 }
 
 /// 直接入力された 1 文字が開き・閉じ区切りとして働くかどうかを返す
-///
-/// [`char_class`] の `Close` クラスには `!` `?` も含むが、これらは対応する開き括弧を持たない
-/// （アキの決定にだけ使う分類で、括弧の深さには数えない）ので `None` になる。
 pub(super) fn char_fence(ch: char) -> Option<Fence> {
   return match ch {
     '(' | '[' => Some(Fence::Open),
@@ -315,7 +309,7 @@ struct Gap {
 struct Spaced {
   /// 直前のアイテムとの境界（先頭のアイテムは `None`）
   gap: Option<Gap>,
-  /// このアイテムが開き・閉じ区切りとして働くか（[`MathItem`] の同名フィールドをそのまま運ぶ）
+  /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
   /// このアイテムが生む Atom ノード列
   nodes: Vec<AtomNode>,
@@ -370,9 +364,7 @@ pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool)
 /// 分割点は [`break_penalty`] が認めた境界だけで、そこでは演算子直後のアキを Kern ではなく
 /// [`InlineNode::MathBreak`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
 /// ただし右のアイテムが空（`Group([])` 由来の中身の無い Ord 等）なら、割っても行頭に何も残らないので
-/// 分割点を置かず Kern のままにする。分割点の間の並びは [`assemble`] と同じく同一スタイルのテキストを
-/// 1 本のグリフランへ畳んでから段落の語彙へ持ち上げる。上付き・下付き・グループ・分数・根号は 1 個の
-/// アイテムの中に閉じているので、その内部に分割点は生じない。
+/// 分割点を置かず Kern のままにする。
 pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<InlineNode> {
   let mut out: Vec<InlineNode> = Vec::new();
   let mut run: Vec<AtomNode> = Vec::new();
@@ -411,10 +403,9 @@ fn flush_run(run: &mut Vec<AtomNode>, out: &mut Vec<InlineNode>) {
 ///
 /// 分割できるのは括弧の外（`depth == 0`）で、左が二項演算子か関係子の境界だけ。左が Bin なのは
 /// Bin→Ord 変換を生き残った本物の二項演算子に限る（`$-x$` の `-` の後では割らない）。左が Rel のときは
-/// 右が Ord / Op / Open のときだけ割る — [`SPACING`] の Rel 行で実際にアキが入るのがこの 3 クラスだけで、
-/// 残り（Bin / Rel / Close / Punct）はアキ 0 のセルなので、割ってしまうと組んだときと違う見た目になる
-/// うえ、次行の先頭が `,` や `)` から始まってしまう（`:=` の `:` と `=` の間や `a=,b` の `=` の後で
-/// 割らない理由）。Rel の右に Bin が来る組み合わせは Bin→Ord 変換で消えるので実際には現れない。
+/// 右が Ord / Op / Open のときだけ割る — [`SPACING`] の Rel 行でアキが入るのはこの 3 クラスだけで、
+/// Rel / Close / Punct はアキ 0 のセル（割ると組んだときと違う見た目になり、次行が `,` や `)` から
+/// 始まる）、Bin は Bin→Ord 変換で現れない。
 fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
   if depth > 0 {
     return None;
@@ -434,7 +425,7 @@ mod tests {
   use super::*;
   use crate::{document::FontKind, typeset::lowering::layout_node::TextStyle};
 
-  /// 12pt の Math テキストスタイル（アキ幅の期待値を pt で書けるようにする）
+  /// 12pt の Math テキストスタイル
   fn style() -> TextStyle {
     return TextStyle {
       font_size: Length::pt(12.0),

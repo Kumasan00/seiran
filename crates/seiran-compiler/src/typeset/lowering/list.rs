@@ -50,8 +50,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
     };
 
     // 左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
-    // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。`marker=""` の
-    // 明示指定時（marker_body が空）はマーカー Text 自体を出さず、ぶら下げインデントのみにする。
+    // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。
     let mut item_nodes = Vec::new();
     if !marker_body.is_empty() {
       item_nodes.push(LayoutNode::Inline(InlineNode::Text(format!("{marker_body} "), marker_style)));

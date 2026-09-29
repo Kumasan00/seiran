@@ -22,8 +22,6 @@ pub(super) fn lower_theorem(
   theorem: &HirTheorem,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  // 番号・`[of=...]` の参照先・ラベルはすべて `semantics::analyze` が確定させた事実で、
-  // ノード ID から引くだけ（lowering は採番も解決もしない）。
   let number = state.counter_value(id).map(|value| return counter::format_counter_value(ctx.style, value));
   let of_target = theorem.of.as_ref().map(|target| return state.reference_target(target.id));
   let label = state.declared_label(id);
@@ -38,7 +36,6 @@ pub(super) fn lower_theorem(
     build_heading(ctx, theorem_style, number.as_deref(), theorem.title.as_deref(), of_target, state),
   ];
 
-  // 定理本体では文書本文の字下げを引き継がない。
   let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
   let mut body_nodes = lower_nodes_inner(&body_ctx, &theorem.body, state);
 
@@ -83,8 +80,7 @@ fn build_heading(
     (false, false) => &pres.heading_format,
   };
 
-  // サブタイトルはプレーンテキスト（`[title=...]`）なので、テンプレート展開へ渡す前に
-  // 基底スタイルの `Text` 1 個へ落とす。副作用のない生成なので、遅延させても結果は変わらない。
+  // 副作用のない生成なので、遅延させても結果は変わらない。
   let make_title = || {
     return title.map(|t| return vec![InlineNode::Text(t.to_string(), base_style)]).unwrap_or_default();
   };
@@ -149,9 +145,6 @@ mod tests {
   }
 
   /// 最後の見出し `VBox` 内の全 `Text`（`Link` に包まれた解決済み `\ref` も含む）を連結する
-  ///
-  /// `proof` の `[of=...]` を見るテストは「定理 → proof」の 2 ブロックを lower するので、
-  /// 後ろ側（proof）の見出しを取る。
   fn last_heading_plain_text(nodes: &[LayoutNode]) -> String {
     let children = nodes
       .iter()

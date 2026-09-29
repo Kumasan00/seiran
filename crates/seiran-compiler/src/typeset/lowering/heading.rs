@@ -15,9 +15,6 @@ use crate::{
 };
 
 /// 見出しのタイトル・番号に使う基底テキストスタイルを返す
-///
-/// タイトルの lowering は呼び出し元（本文なら HIR、書誌なら CSL 整形の生成物）が行うため、
-/// そこで使うスタイルをこの 1 箇所から配る。
 pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> TextStyle {
   let heading_style = ctx.style.heading(level);
   return TextStyle {
@@ -41,8 +38,6 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       | HirInlineKind::Link { children, .. } => {
         out.push_str(&hir_inlines_to_plain_text(children, style, state));
       },
-      // 引用の表示は生成物の side table にある（見出しの `\cite` も目次・しおりでは表示を辿る）。
-      // 生成物は `GeneratedInline` なので生成物側の畳み込みをそのまま使う。
       HirInlineKind::Cite { .. } => {
         out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
       },
@@ -72,8 +67,6 @@ pub(super) fn lower_hir_heading(
   let number = state
     .counter_value(id)
     .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
-  // プレーンテキスト（しおり・目次表示）は不変借用でしか作れないので、可変借用が要る
-  // タイトルの lowering より先に済ませる。
   let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
   state.record_heading_title(id, plain);
   let style = title_style(ctx, heading.level);
@@ -89,9 +82,7 @@ pub(super) fn lower_hir_heading(
 
 /// 見出しをレイアウトノードに変換する
 ///
-/// `title` は「呼ぶとタイトルを lower して返すクロージャ」。`format` に `{title}` が現れた
-/// ときだけ、現れた回数ぶん呼ばれる（タイトル中の `\footnote` が採番だけ消費する事故を防ぐ。
-/// 詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
+/// `title` は呼ぶとタイトルを lower して返すクロージャで、`format` の `{title}` の出現回数だけ呼ばれる。
 pub(super) fn lower_heading(
   ctx: &LoweringContext<'_>,
   level: HeadingLevel,
@@ -115,8 +106,7 @@ pub(super) fn lower_heading(
   }
 
   // しおり・目次リンク・`\ref` の到達先アンカー。改ページ後に置くことで正しいページに解決される。
-  // `key` は `analyze` が文書順に振ったもの（目次エントリの内部リンクと一致する）。ラベルのアンカーは
-  // 直後に続けて置き、次の実ブロックの同じ座標で解決される。
+  // ラベルのアンカーは直後に続けて置き、次の実ブロックの同じ座標で解決される。
   result.push(LayoutNode::Anchor(AnchorId::Heading(key)));
   if let Some(label) = label {
     result.push(LayoutNode::Anchor(AnchorId::Label(label)));
@@ -189,7 +179,6 @@ mod tests {
 
   #[test]
   fn lower_heading_preserves_styled_title() {
-    // 書体切り替えを含むタイトルは呼び出し元が lower して渡す
     let style = ReadStyle::default();
 
     let nodes = lower(&style, &analyzed("\\section{Intro \\italic{Italic}}\n"));
@@ -222,7 +211,6 @@ mod tests {
       HeadingKey::new(3),
     );
 
-    // 見出しキーのアンカー、ラベルのアンカーの順で、どちらも VBox より前
     let anchors: Vec<(usize, &AnchorId)> = nodes
       .iter()
       .enumerate()
@@ -283,13 +271,11 @@ mod tests {
 
   #[test]
   fn heading_format_without_title_placeholder_does_not_consume_footnote_number() {
-    // `{title}` を含まない独自フォーマット（タイトルは一切表示されない）
     let mut style = ReadStyle::default();
     style.heading.section.format = NumberTitleTemplate::parse("{number}");
 
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"));
 
-    // タイトルを lower しないので、本文の脚注が 1 番のままになる
     assert_eq!(footnotes(&nodes), vec![(1, 0)], "{nodes:?}");
   }
 
@@ -300,7 +286,6 @@ mod tests {
 
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"));
 
-    // 出現ごとに lower し直すので、マーカーと本体が対になった別々の脚注が 2 個出る
     assert_eq!(footnotes(heading_children(&nodes)), vec![(1, 0), (2, 1)], "{nodes:?}");
   }
 
@@ -310,7 +295,6 @@ mod tests {
 
     let nodes = lower(&style, &analyzed("\\chapter[label=ch:other]{Other}\n\n\\section{\\ref{ch:other}}\n"));
 
-    // 2 つ目の見出し（section）の VBox に解決済みリンクが入る
     let children = nodes
       .iter()
       .rev()

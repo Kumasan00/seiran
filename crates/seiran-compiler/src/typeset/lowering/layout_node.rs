@@ -8,16 +8,10 @@ use crate::{
   typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
 };
 
-/// レイアウトエンジン（`crate::typeset::boxing::build_blocks`）が処理する最小単位
+/// レイアウトエンジンが処理する最小単位
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum LayoutNode {
   /// 段落の水平リストへ流れるインライン要素
-  ///
-  /// 縦リストの走査（`crate::typeset::boxing` の `walk_vertical`）は、この variant を
-  /// そのまま `collect_inline` へ渡すだけで振り分けが済む。インライン専用の variant を
-  /// [`InlineNode`] へ移して包み variant 1 つにしてあるので、`LayoutNode` と `InlineNode` に
-  /// 同じ variant が 2 つ並ぶことも、インライン文脈で縦リスト用 variant を `unreachable!` で
-  /// 受けることも無い。
   Inline(InlineNode),
   /// 垂直方向のコンテナ (段落、セクションなど)
   VBox {
@@ -62,11 +56,7 @@ pub(in crate::typeset) enum LayoutNode {
 
 /// 段落の水平リスト（`crate::typeset::boxes::HItem` 列）へ入れられるノード
 ///
-/// 表セルの中身・脚注の本体・リンクの子・キャプション・インライン数式・段落の内容は、
-/// 構造上インラインしか入らない（いずれもインライン lowering の出力）。それを型で表した
-/// [`LayoutNode`] の部分集合で、消費側 `crate::typeset::boxing` の `collect_inline` の網羅 match が
-/// 縦リスト用の `unreachable!` 無しで閉じる。さらにその部分集合が [`AtomNode`]
-/// （`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）。
+/// [`LayoutNode`] の部分集合（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum InlineNode {
   /// スタイル付きテキスト
@@ -93,9 +83,7 @@ pub(in crate::typeset) enum InlineNode {
   },
   /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
   ///
-  /// `crate::typeset::boxing` が `HItem::MathBreak` にする。折り返さなければ `spacing` 幅のアキ、
-  /// 折り返せば何も出さない。ディスプレイ数式のセルと、数式内のグループ・分数・根号・スクリプトは
-  /// [`AtomNode`] で組むので、この分割点は構造上そこへ入らない。
+  /// 折り返さなければ `spacing` 幅のアキ、折り返せば何も出さない。
   MathBreak {
     /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
     spacing: Length,
@@ -126,11 +114,7 @@ pub(in crate::typeset) enum InlineNode {
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
-/// `InlineNode::Raise` / `InlineNode::FlushRight` / ディスプレイ数式のセルと番号は、
-/// `crate::typeset::boxing` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
-/// 畳めるのはテキスト・カーン・入れ子の `Raise` だけなので、それ以外を表現できない型として
-/// `InlineNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
-/// 消費側 `boxing::Measurer::place_atom_children` の網羅 match を分岐なしで成立させる）。
+/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・入れ子の `Raise` だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -168,12 +152,12 @@ impl From<InlineNode> for LayoutNode {
 /// ディスプレイ数式環境全体の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockLayout {
-  /// 本体グリッドを囲む左右の区切り括弧グリフ（環境種別から lowering が解決済み）
+  /// 本体グリッドを囲む左右の区切り括弧グリフ
   pub delimiters: DelimiterGlyphs,
   /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
   pub rows: Vec<MathBlockRow>,
-  /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
-  /// `boxing` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
+  /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み。ブロックの縦中央に置く）。
+  /// 行ごと採番や無採番では `None`
   pub env_number: Option<Vec<AtomNode>>,
   /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
   pub align: Align,
@@ -226,9 +210,6 @@ pub(in crate::typeset) struct MathBlockRow {
 }
 
 /// ディスプレイ数式環境の 1 セルの物理レイアウト表現
-///
-/// 列内での揃えは環境種別・行位置・列位置から `crate::typeset::lowering` が解決済みで、
-/// `crate::typeset::boxing` は列幅の中へ置くオフセットの算出に使うだけ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockCell {
   /// セル内容（lower 済みインライン数式）
@@ -237,11 +218,7 @@ pub(in crate::typeset) struct MathBlockCell {
   pub align: Align,
 }
 
-/// ディスプレイ数式環境の本体グリッドを囲む区切り括弧のグリフ
-///
-/// 環境種別（`cases` は常に左波括弧、`matrix` は `[delimiter=...]`）からの解決は
-/// `crate::typeset::lowering` が済ませ、`crate::typeset::boxing` は本体の高さ・深さへ
-/// 合わせて拡大して置くだけ。
+/// ディスプレイ数式環境の本体グリッドを囲む区切り括弧のグリフ（本体の高さ・深さへ合わせて拡大して置く）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(in crate::typeset) struct DelimiterGlyphs {
   /// 左括弧のグリフ（`None` は左に括弧を置かない）
@@ -270,9 +247,8 @@ pub(in crate::typeset) struct TextStyle {
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
 ///
 /// 幅 0 の索引マーカー（[`InlineNode::IndexMark`]）は結合を切らず、畳んだテキストの後ろへ回す。
-/// マーカーを取り除いたソースと同じテキスト構造にならないと、`crate::typeset::boxing` が作る
-/// シェーピング run が割れて和欧文間アキやカーニングが変わってしまうため（同じ不変条件を
-/// 評価器側で守るのは `crate::frontend` の `InlineSink`）。
+/// マーカーを取り除いたソースと同じテキスト構造にならないと、シェーピング run が割れて
+/// 和欧文間アキやカーニングが変わってしまうため。
 pub(super) fn merge_adjacent_text(nodes: Vec<InlineNode>) -> Vec<InlineNode> {
   let mut out: Vec<InlineNode> = Vec::with_capacity(nodes.len());
   let mut deferred_marks: Vec<InlineNode> = Vec::new();
@@ -377,7 +353,6 @@ mod tests {
 
   #[test]
   fn index_mark_keeps_its_place_when_styles_differ() {
-    // 書体が違えば結合しないので、マーカーは元の位置に残る
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
     let nodes = vec![

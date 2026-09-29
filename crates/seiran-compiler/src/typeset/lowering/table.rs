@@ -159,7 +159,6 @@ mod tests {
 
   #[test]
   fn lower_table_head_cells_follow_style_head_font_kind() {
-    // 太字でない書体を指定しても、そのまま使われる（太字化しない）
     let mut style = ReadStyle::default();
     style.table.head_font_kind = FontKind::SansSerif;
 
@@ -325,7 +324,6 @@ mod tests {
 
   #[test]
   fn lower_table_cell_footnote_shares_document_wide_counter() {
-    // 本文側で 1 個採番したあとに、表セルの脚注が 2 番になることを見る
     let style = ReadStyle::default();
 
     let nodes =
@@ -341,7 +339,6 @@ mod tests {
 
   #[test]
   fn lower_table_numbers_cell_footnote_before_caption_footnote() {
-    // 表本体（セル）が先、キャプションが後、という本文の出現順を固定する
     let style = ReadStyle::default();
 
     let nodes = lower_source(

@@ -18,8 +18,6 @@ pub(super) fn lower_figure(
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.figure;
 
-  // ダウンサンプリングの既定（max_dpi / downsample）は出力物理の設定で config `[image]` 由来。
-  // per-image の `\image[dpi=...]` / `[downsample=...]` 上書きが優先される。
   let downsample_enabled = figure.downsample.unwrap_or(ctx.image_downsample);
   let target_dpi = if downsample_enabled {
     Some(figure.dpi.unwrap_or(ctx.image_max_dpi))
@@ -63,9 +61,6 @@ mod tests {
   };
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
-  ///
-  /// 画像の既定値（`new` に渡す `ImageConfig`）を差し替えるテストがあるため、`LoweringContext` を
-  /// 呼び出し側から渡せる形にしてある。
   fn lower_source(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
     let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
     return layout;
@@ -94,7 +89,6 @@ mod tests {
       "\\chapter{C}\n\n\\begin{figure}\n\\image[width=80mm, height=60mm]{./images/seiran.jpg}\n\\caption{せいらん}\n\\end{figure}\n",
     );
 
-    // フロート本体の直前には top_margin の Vkern が入る
     let body_idx = nodes
       .iter()
       .position(|n| matches!(n, LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. }))))
@@ -127,7 +121,6 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = context(&style);
 
-    // `\caption` を `\image` より前に置くとキャプションは図の上になる
     let nodes = lower_source(
       &ctx,
       "\\begin{figure}\n\\caption{せいらん}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n",

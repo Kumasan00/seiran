@@ -1,7 +1,4 @@
 //! 水平リストの最小単位 [`HItem`] と計測済みボックス [`HBox`]。
-//!
-//! box の width / height / depth は生成時（`typeset::boxing::build_blocks`）に 1 回だけ計測して
-//! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
 
 use crate::{length::Length, publication::GlyphRun, typeset::boxes::link::LinkTarget};
 
@@ -14,10 +11,7 @@ pub(crate) enum HItem {
   ///
   /// Latin 単語間スペース由来（自然幅あり・伸長 / 収縮つき）のほか、和文字間の
   /// 分割可能位置にも幅 0・微小伸長・収縮なしの glue を置く（和文の両端揃え用）。
-  /// `stretch` / `shrink` は伸縮能力で生成時に常に付与し、両端揃え
-  /// （`TextAlignment::Justify`）の行末処理でのみ使う。ragged-right（左揃え）では
-  /// 適用されず、自然幅のまま並ぶ。
-  /// `breakable` が `true` のとき行分割の候補点になり、行末では破棄される。
+  /// ragged-right（左揃え）では伸縮は適用されず、自然幅のまま並ぶ。
   Glue {
     /// 自然幅
     natural: Length,
@@ -33,7 +27,7 @@ pub(crate) enum HItem {
   /// 行の右端に寄せる末尾ボックス（証明の QED マーク等）
   ///
   /// 自然幅ぶん行分割の収まり判定に参加し、現在行に収まらなければ次行へ折り返す。
-  /// 確定行内では `x` を `本文幅 − 幅` に置いて右マージンへ寄せる（`break_lines`）。
+  /// 確定行内では `x` を `本文幅 − 幅` に置いて右マージンへ寄せる。
   /// 末尾専用で、後続のアイテムが続くことは想定しない（同居時に最終語と重ならないよう、
   /// 収まり判定が最終語右端 ≤ 自身の x を保証する）。
   FlushRight(HBox),
@@ -49,8 +43,7 @@ pub(crate) enum HItem {
   /// 欧文語中のハイフネーション分割点（discretionary）
   ///
   /// ここで折り返した場合**のみ**行末に `hyphen` 箱を出す。折り返さなければ幅 0
-  /// （前後の単語断片 `Box` が語の幅を持つ）。`hyphen` は生成時（`typeset::boxing`）に計測済みで、
-  /// 行分割はその `width` を収まり判定・両端揃えに使う。空白での分割より優先度が低い候補。
+  /// （前後の単語断片 `Box` が語の幅を持つ）。空白での分割より優先度が低い候補。
   Discretionary {
     /// 折り返した場合のみ行末に出すハイフン箱（計測済み）
     hyphen: HBox,
@@ -74,32 +67,21 @@ pub(crate) enum HItem {
   /// リンク領域（機構 B）の開始マーカー（幅 0・分割不可）
   ///
   /// 後続の `LinkEnd` までのボックス連がクリック可能なリンク領域になる。
-  /// 行分割（`break_lines`）が行ごとの矩形を収集する際の境界に使う。
   /// 折り返しをまたぐ場合は次行へ継続する。
   LinkStart(LinkTarget),
   /// リンク領域（機構 B）の終了マーカー（幅 0・分割不可）
   LinkEnd,
   /// 脚注本体（`\footnote{...}`）の運搬マーカー（幅 0・分割不可）
-  ///
-  /// `LinkStart`/`LinkEnd` と同様、行内では場所取りをしない。実際の行分割・ページ下部配置は
-  /// `typeset::breaking` が `Line::footnotes`（`build_line` が本バリアントから収集する）経由で行う。
   Footnote(MeasuredFootnote),
   /// 索引語（`\index{語}`）の運搬マーカー（幅 0・分割不可）
   ///
-  /// `LinkStart`/`LinkEnd`/`Footnote` と同様、行内では場所取りをしない。この行がどのページに
-  /// 置かれるかで「出現ページ」が自然に決まる（`typeset::breaking::break_pages` が
-  /// `Line::index_marks` 経由で収集し、ページ確定時に重複を畳んで `Page::index_entries` へ積む）。
+  /// この行が置かれるページが索引語の「出現ページ」になる。
   IndexMark(IndexTerm),
 }
 
 /// 計測済みの脚注 1 個（`\footnote{...}`）
 ///
-/// boxing が [`HItem::Footnote`] に載せ、行分割（`build_line`）がそのまま [`Line::footnotes`]
-/// へ移す。本体は計測済みだが未行分割で、ページ下部に置くときに `typeset::breaking` が行分割する
-/// （行分割後の `PendingFootnote`・確定座標の [`PlacedFootnote`] とは段が違う）。
-///
-/// [`Line::footnotes`]: crate::typeset::boxes::Line::footnotes
-/// [`PlacedFootnote`]: crate::typeset::boxes::PlacedFootnote
+/// 本体は計測済みだが未行分割（行分割はページ下部に置くとき）。
 #[derive(Debug, Clone)]
 pub(crate) struct MeasuredFootnote {
   /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
@@ -109,8 +91,7 @@ pub(crate) struct MeasuredFootnote {
   pub number: u32,
   /// 出現順の識別子（0 起点、文書全体で一意）
   ///
-  /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。ページ単位採番の
-  /// 反復が「どの脚注が何ページ目に載ったか」を追跡するのに使う。
+  /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。
   pub index: u32,
   /// 脚注本体（計測済みの水平アイテム列）
   pub items: Vec<HItem>,
@@ -120,11 +101,8 @@ pub(crate) struct MeasuredFootnote {
 
 /// 索引語 1 件（`\index[reading=...]{語}`）
 ///
-/// lowering の `InlineNode::IndexMark` から [`HItem::IndexMark`]・`Line::index_marks`・
-/// `Page::index_entries` まで同じ値のまま運ばれる。`Eq` / `Ord` がそのまま索引語の同一性と
-/// 集約順になる — 同じ語でも `reading` が違えば別の索引語で、ページ内の重複除去（`break_pages`）と
-/// 巻末索引の集約（`pagination::index`）が同じ比較を使う。フィールド順（`word` → `reading`）は
-/// derive `Ord` の比較順なので並べ替えない。
+/// `Eq` / `Ord` がそのまま索引語の同一性と集約順になる — 同じ語でも `reading` が違えば別の索引語。
+/// フィールド順（`word` → `reading`）は derive `Ord` の比較順なので並べ替えない。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct IndexTerm {
   /// 索引語（表示テキスト）
@@ -135,10 +113,6 @@ pub(crate) struct IndexTerm {
 
 impl HItem {
   /// アイテムの自然幅を返す
-  ///
-  /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` / `IndexMark` は 0。`Discretionary` も自然幅 0
-  /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。`MathBreak` は折り返さない
-  /// ときに残るアキの幅。
   #[must_use]
   pub(crate) fn natural_width(&self) -> Length {
     return match self {
@@ -175,12 +149,6 @@ pub(crate) struct HBox {
 
 impl HBox {
   /// 子要素の絶対配置（`dx` / `dy`）から寸法を確定した Atom ボックスを構築する
-  ///
-  /// - `width = max(child.dx + child.width)`
-  /// - `height = max(child.dy + child.height)`（`dy` は正で上方向）
-  /// - `depth = max(child.depth - child.dy)`
-  ///
-  /// 上付き・下付きを含む行の行高はこの寸法から自然に決まる。
   #[must_use]
   pub(crate) fn atom(children: Vec<PlacedHItem>) -> Self {
     let width = children.iter().map(|c| return c.dx + c.item.width).fold(Length::ZERO, Length::max);
@@ -208,9 +176,6 @@ pub(crate) enum HBoxContent {
 }
 
 /// Atom 内の絶対配置済み要素
-///
-/// `dy` はベースラインからの縦オフセット（正で上方向）、`dx` は親 Atom 内の
-/// 水平オフセット。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedHItem {
   /// 配置するボックス
@@ -262,7 +227,6 @@ mod tests {
 
   #[test]
   fn atom_dimensions_from_subscript_like_children() {
-    // 下付きの深さがベースラインの下に突き出す
     let children = vec![
       PlacedHItem {
         item: text_free_box(10.0, 8.0, 2.0),

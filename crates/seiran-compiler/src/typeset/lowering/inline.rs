@@ -79,7 +79,6 @@ pub(super) fn lower_inline(
       })];
     },
     HirInlineKind::Ref { .. } => {
-      // 参照先の存在と番号は `semantics::analyze` が確定させているので、ここで表示文字列まで作る。
       let target = state.reference_target(inline.id);
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       return vec![InlineNode::Link {
@@ -99,7 +98,6 @@ pub(super) fn lower_inline(
       }];
     },
     HirInlineKind::Cite { .. } => {
-      // 表示（CSL 整形済みインライン列）は文書木ではなく生成物の side table から引く。
       let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
       return generated::lower_generated_inlines(ctx, state.citation_display(inline.id), style);
     },
@@ -195,7 +193,7 @@ mod tests {
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
-  /// 与えた文脈で `.sei` ソースを lower するテストヘルパ（脚注番号の上書きを使うテスト用）
+  /// 与えた文脈で `.sei` ソースを lower するテストヘルパ
   fn lower_source_with(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
     let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
     return layout;
@@ -231,8 +229,7 @@ mod tests {
     return footnote.expect("Footnote が期待されます");
   }
 
-  /// 脚注マーカー（`InlineNode::Raise` + `Text`。本文中マーカーは `Link` で包まれているので、
-  /// あれば先に剥がしてから読む）の表示テキストを取り出すテストヘルパ（インライン列側）
+  /// 脚注マーカー（`InlineNode::Raise` + `Text`。本文中マーカーは `Link` の中）の表示テキストを取り出す
   fn marker_text_inline(node: &InlineNode) -> &str {
     let node = match node {
       InlineNode::Link { children, .. } => &children[0],
@@ -247,7 +244,7 @@ mod tests {
     return text;
   }
 
-  /// [`marker_text_inline`] のレイアウトノード側（本文中マーカーは `LayoutNode::Inline` 経由で届く）
+  /// [`marker_text_inline`] のレイアウトノード側
   fn marker_text(node: &LayoutNode) -> &str {
     return marker_text_inline(as_inline(node).expect("インラインが期待されます"));
   }
@@ -366,7 +363,6 @@ mod tests {
 
   #[test]
   fn lower_cite_label_applies_cite_color_and_links() {
-    // 引用の表示（CSL 整形の生成物）は side table 側から与える
     let blue = Color::new(0x00, 0x00, 0xff);
     let mut style = ReadStyle::default();
     style.hyperref.cite_color = Some(blue);
@@ -438,7 +434,6 @@ mod tests {
 
   #[test]
   fn lower_footnote_falls_back_to_continuous_number_outside_override_map() {
-    // 上書きマップは index 0 しか持たない
     let style = ReadStyle::default();
     let numbers = [1];
     let ctx = context(&style).with_footnote_numbers(&numbers);
@@ -464,9 +459,6 @@ mod tests {
 
   /// 本文中の脚注マーカー（`AnchorId::Footnote` を指す `Link`）を、脚注 index と表示テキストの
   /// 組で文書順に集めるテストヘルパ
-  ///
-  /// 本文側マーカーの幅はページ単位採番の不動点計算に効くので、脚注エリア側だけでなく
-  /// こちらも検証する。
   fn text_side_markers(nodes: &[LayoutNode]) -> Vec<(u32, &str)> {
     return nodes
       .iter()

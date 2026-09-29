@@ -31,12 +31,9 @@ pub(super) struct BodyLayout {
 
 /// 本文を組版し、確定ページ列と見出し記録を返す。
 ///
-/// ページ単位の脚注採番では、不動点まで本文パスを反復する。
-///
 /// # Errors
 ///
-/// 脚注採番に失敗した場合にエラーを返す（画像の描画寸法は `build_blocks` が確定させ、
-/// ラベル・`\ref` 解決は `semantics::analyze` が上流で既に完了しているため、ここでは失敗しない）。
+/// 脚注採番に失敗した場合にエラーを返す。
 pub(super) fn typeset_body(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
@@ -51,7 +48,7 @@ pub(super) fn typeset_body(
 
 /// 本文パスを 1 回通す。
 ///
-/// `footnote_numbers` は出現順で引く脚注番号の上書き列（ページ単位採番の不動点反復で複数回呼ばれる）。
+/// `footnote_numbers` は出現順で引く脚注番号の上書き列。
 fn run_body_pass(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,

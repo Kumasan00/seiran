@@ -78,9 +78,6 @@ pub(super) type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
 
 /// 全フォント種別のシェイパーを並列に生成する。
 ///
-/// フォントは互いに独立にシェーパーを組めるので、1 件目で打ち切らず全種別を試して失敗を
-/// 全件返す（順序は [`FontMap::par_try_from_fn`] が `FontType::ALL` 順に揃える）。
-///
 /// # Errors
 ///
 /// 言語タグを解析できない場合に [`ShaperError`] を `FontType::ALL` 順で返す。

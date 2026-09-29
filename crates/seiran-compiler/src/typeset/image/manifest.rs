@@ -8,8 +8,6 @@ use crate::{
 };
 
 /// 文書木（HIR）を再帰的に走査し、画像パスを重複なく収集する（`ProjectPath` の昇順）。
-///
-/// 定理、引用、リスト内の入れ子も探索する。
 pub(crate) fn collect_image_paths(document: &HirDocument) -> Vec<ProjectPath> {
   let mut paths: BTreeSet<ProjectPath> = BTreeSet::new();
   for group in document.groups() {
@@ -75,7 +73,6 @@ mod tests {
     let source = format!("{}{}", figure("fig/./a.png"), figure("fig/a.png"));
     let paths = collect_image_paths(&document(&source));
 
-    // `ProjectPath` の正規化は重複除去より前に効くので 1 件に畳まれる（同じファイルを 2 回読まない）
     assert_eq!(paths, vec![ProjectPath::new("fig/a.png")]);
   }
 
