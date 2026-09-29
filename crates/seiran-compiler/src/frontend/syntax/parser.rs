@@ -34,9 +34,6 @@ enum ParseMode {
 }
 
 /// 環境本体の読み取り方
-///
-/// レジストリ（`crate::frontend::evaluator`）が環境名ごとに宣言し、[`ModeResolver`] 経由で
-/// パーサーへ渡る。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::frontend) enum BodyMode {
   /// トークン化してテキストモードで読む
@@ -49,8 +46,7 @@ pub(in crate::frontend) enum BodyMode {
 
 /// コマンドの必須引数の読み取り方
 ///
-/// レジストリ（`crate::frontend::evaluator`）がコマンド名と引数位置ごとに宣言し、[`ModeResolver`]
-/// 経由でパーサーへ渡る。宣言は外側文脈からの継承に優先する。数式内で何個目まで引数として読むかは別に
+/// 宣言は外側文脈からの継承に優先する。数式内で何個目まで引数として読むかは別に
 /// [`ModeResolver::math_command_arg_count`] が決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::frontend) enum ArgMode {
@@ -189,10 +185,8 @@ impl<'a> Parser<'a> {
 
   /// 1つの構文要素をパースして `children` に追加する
   ///
-  /// テキスト・数式どちらの文脈でも、1 要素を読む規則はこの関数 1 つだけにある。`$...$`・数式グループ・
-  /// 数式環境の本体・数式モードで読む引数は、呼び出し側のループが終端と閉じないまま終わったときの診断を
-  /// 持ち、要素はここで読む。数式内の `\begin` も環境として読み、数式内で環境を使えないことの診断は評価器に任せる
-  /// （書いた位置で診断が変わらないようにするため）。
+  /// テキスト・数式どちらの文脈でも、1 要素を読む規則はこの関数 1 つだけにある。数式内の `\begin` も
+  /// 環境として読み、数式内で環境を使えないことの診断は評価器に任せる。
   ///
   /// 前提条件: 先読みは非トリビアのトークン。トリビアを積むのも EOF を判定するのも各ループで、この関数は
   /// 自衛しない。その代わり必ず 1 トークン以上消費するので、呼び出し元のループは毎周進む。
@@ -315,10 +309,8 @@ impl<'a> Parser<'a> {
   /// `\begin` トークンは既に消費済み。
   ///
   /// 本体の読み取り方（[`BodyMode`]）は環境名が確定した時点でレジストリから引き、`\begin` 側の引数の
-  /// 読み方もそれで決まる。`{...}` を必須引数として読むのは、本体が `{` を内容として持てない
-  /// [`BodyMode::Text`] のときだけ — [`BodyMode::Math`] では `{...}` は数式グループなので本体の先頭に
-  /// なる。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の余分な引数は
-  /// 評価器が診断する）。必須引数を取る環境を足すときは、個数をレジストリから引く形へ変える。
+  /// 読み方もそれで決まる。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の
+  /// 余分な引数は評価器が診断する）。
   fn parse_environment(&mut self, begin_token: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = begin_token.span;
     let mut env_children = bumpalo::collections::Vec::new_in(self.arena);
@@ -330,8 +322,8 @@ impl<'a> Parser<'a> {
     let env_name = self.extract_text_from_arg(name_arg);
     begin_children.push(GreenElement::Node(name_arg));
 
-    // 本体の読み取り方は環境名が確定した時点で引く。verbatim では `\begin{...}` の直後から本体の
-    // バイトが始まるので、ここより後ろでトリビアや引数をトークン化すると内容が壊れる。
+    // verbatim では `\begin{...}` の直後から本体のバイトが始まるので、ここより後ろでトリビアや引数を
+    // トークン化すると内容が壊れる。
     let body_mode = (self.modes.env_body)(env_name.as_str());
 
     match body_mode {
@@ -416,7 +408,7 @@ impl<'a> Parser<'a> {
 
   /// 環境本体をトークン化して読む: `\end` の直前まで
   ///
-  /// `\end` 自体は消費せず、呼び出し側（[`Self::parse_environment`]）に残す。
+  /// `\end` 自体は消費しない。
   fn parse_tokenized_body(&mut self, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
     let last_span_end = self.last_span.end;
     let body_start = self.peek_token().map_or(last_span_end, |t| return t.span.start);
@@ -447,10 +439,9 @@ impl<'a> Parser<'a> {
 
   /// 環境本体を生読みする: `\end{<環境名>}` の正確なバイト列一致まで
   ///
-  /// 本体はコメント・エスケープ・数式・括弧をいっさい解釈しない 1 個の
-  /// [`TokenKind::VerbatimText`] になる。`\end {code}` のような変形はマーカーに一致せず、内容として
-  /// 走査を続行する。本体内の `\begin{<環境名>}` も計数しない（最初の `\end{<環境名>}` で終端）。
-  /// 本体が空でもトークンを 1 個積み、「本体の子はちょうど 1 個」を利用側の不変条件にする。
+  /// 本体は 1 個の [`TokenKind::VerbatimText`] になる。本体内の `\begin{<環境名>}` は計数しない
+  /// （最初の `\end{<環境名>}` で終端）。本体が空でもトークンを 1 個積み、「本体の子はちょうど 1 個」を
+  /// 利用側の不変条件にする。
   fn parse_verbatim_body(&mut self, env_name: &str, begin_span: Span) -> Result<&'a GreenNode<'a>, ParserError> {
     self.rewind_peeked();
 
@@ -470,9 +461,8 @@ impl<'a> Parser<'a> {
 
   /// コマンド呼び出しをパースして `out` へ積む: `\cmd[opt]{arg}`
   ///
-  /// 必須引数の読み取り方はレジストリの宣言（[`ArgMode`]）が外側文脈からの継承に優先する。
-  /// 宣言は引数の位置ごとに引くので、同じコマンドでも位置によってモードが違いうる（`\href` は
-  /// 第 1 引数だけ verbatim）。任意引数はテキストモードでパースする。
+  /// 必須引数の読み取り方（[`ArgMode`]）は引数の位置ごとに引くので、同じコマンドでも位置によって
+  /// モードが違いうる（`\href` は第 1 引数だけ verbatim）。任意引数はテキストモードでパースする。
   ///
   /// 数式内では、数式の語彙が宣言する個数（[`ModeResolver::math_command_arg_count`]）を読んだところで
   /// 打ち切る。後ろの `{...}` は数式グループとして外側のループが読む（`$\alpha{b}$` の `{b}`、
@@ -507,7 +497,7 @@ impl<'a> Parser<'a> {
     // 次の引数を探して跨いだトリビア。引数が見つかれば `children` へ、見つからなければ `out` へ移す。
     let mut pending = bumpalo::collections::Vec::new_in(self.arena);
 
-    // 数式内では個数に達したら打ち切る。`None` は「個数で打ち切らない」。
+    // `None` は「個数で打ち切らない」。
     let max_args = match mode {
       ParseMode::Math => (self.modes.math_command_arg_count)(command_name),
       ParseMode::Text => None,
@@ -532,10 +522,8 @@ impl<'a> Parser<'a> {
 
   /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
   ///
-  /// 終端 `close_kind` の判定はこのループだけが持つ。トリビアを積んでから次のトークンを見て、終端なら
-  /// 消費して抜け、EOF なら [`ParserError::UnclosedDelimiter`]、それ以外は [`Self::parse_element`] に
-  /// 1 要素を読ませる。`parse_element` は終端を受け取らないので、「終端をどちらが見るか」の判断は
-  /// 構造的にここ 1 箇所になる。
+  /// 終端 `close_kind` の判定はこのループだけが持つ（[`Self::parse_element`] は終端を受け取らない）。
+  /// 閉じないまま入力が尽きたら [`ParserError::UnclosedDelimiter`] を返す。
   fn parse_delimited(
     &mut self,
     open_kind: TokenKind,
@@ -583,7 +571,6 @@ impl<'a> Parser<'a> {
   /// 2 組目が閉じていなければ読み切りの途中で [`ParserError::UnclosedDelimiter`] が先に出る）。
   /// 通常のコマンド・環境はトリビアを跨いで引数を探すので、空白・改行を挟んだ `[` も 2 組目として
   /// 扱う（`[` は本文に書けず、裸なら [`ParserError::BareBracket`] になる文字なので、意味の衝突はない）。
-  /// verbatim 環境は隣接する 1 組しか読まないので、この関数を通らない。
   fn parse_single_opt_arg(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
@@ -611,9 +598,8 @@ impl<'a> Parser<'a> {
 
   /// 必須引数を生読みする: `{...}` をブレースバランスで
   ///
-  /// 対応の取れた `{}` は内容に含め、対応しない `}` で終端する。`\` は不活性なので `\{` の `{` も
-  /// 深さに数える。ノード種別が [`SyntaxKind::MandatoryArg`] のままなのは、ブレースバランス走査が
-  /// `{}` の意味 1「引数境界」の解釈であって第 3 の意味を作らないため（P4）。
+  /// ノード種別が [`SyntaxKind::MandatoryArg`] のままなのは、ブレースバランス走査が `{}` の意味 1
+  /// 「引数境界」の解釈であって第 3 の意味を作らないため（P4）。
   fn parse_verbatim_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
     let open = self.expect(TokenKind::LBrace)?;
     debug_assert!(
@@ -642,7 +628,6 @@ impl<'a> Parser<'a> {
 
   /// インライン数式をパース: `$...$`
   ///
-  /// 中身の 1 要素は [`Self::parse_element`] が数式モードで読み、このループは終端だけを判定する。
   /// `$` の前で入力が尽きた場合は [`ParserError::UnclosedInlineMath`] を返す。
   fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = dollar_open.span;
@@ -674,7 +659,6 @@ impl<'a> Parser<'a> {
 
   /// 数式モード内のグループをパース: `{...}`
   ///
-  /// 中身の 1 要素は [`Self::parse_element`] が数式モードで読み、このループは終端だけを判定する。
   /// `$` または EOF で閉じられないまま終わった場合は [`ParserError::UnclosedMathGroup`] を返す。
   fn parse_math_group(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
     let lbrace = self.expect(TokenKind::LBrace)?;
@@ -715,7 +699,6 @@ impl<'a> Parser<'a> {
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(script_token));
 
-    // `^`/`_` と内容の間の空白・改行・コメントは内容とみなさずスキップする
     self.skip_trivia(&mut children);
 
     match self.peek_kind() {
@@ -731,7 +714,6 @@ impl<'a> Parser<'a> {
           span: token.span.into(),
         });
       },
-      // 許可するのは `{` だけで、残りはすべて同じ診断にする（既定エラーなので wildcard を維持する）
       Some(_) => {
         return Err(ParserError::ScriptRequiresGroup {
           span: start_span.into(),
@@ -832,8 +814,7 @@ mod tests {
   /// テスト用の（コマンド名, 引数位置）→ [`ArgMode`] 解決関数
   ///
   /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンドの
-  /// スタンドイン。`syntax` は語彙を持たないので、本番の判定（`evaluator::command` の
-  /// `CommandKind::arg_modes`）とは独立した合成名でモード分岐だけを検査する。
+  /// スタンドイン。
   fn test_command_arg(name: &str, index: usize) -> ArgMode {
     return match (name, index) {
       ("vurl", _) | ("vhref", 0) => ArgMode::Verbatim,
@@ -1073,8 +1054,6 @@ mod tests {
 
   #[test]
   fn stray_rbrace_in_environment_body_is_error_not_hang() {
-    // 以前は環境本体で stray `}` が出ると parse_element が消費せず Ok を返し、
-    // body ループが進捗ゼロで無限ループしていた。エラーで早期に止まることを確認する。
     let arena = Bump::new();
     let result = parse(r"\begin{env}}\end{env}", &arena);
     assert!(matches!(
@@ -1106,7 +1085,6 @@ mod tests {
 
   #[test]
   fn environment_body_ending_in_trivia_without_end_is_error() {
-    // 本体がトリビアで終わって EOF なら、本体ループが積み切って抜け、閉じていない環境として診断する
     let arena = Bump::new();
     let result = parse("\\begin{env}body \n", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
@@ -1115,7 +1093,6 @@ mod tests {
   #[test]
   #[should_panic(expected = "トリビアを積み終えてから")]
   fn parse_element_does_not_skip_leading_trivia() {
-    // トリビアを積むのは各ループの責務で、parse_element は自衛しない。前提を破る呼び出しは落ちる
     let arena = Bump::new();
     let source = " x";
     let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
@@ -1126,7 +1103,6 @@ mod tests {
   #[test]
   #[should_panic(expected = "先読みが None なら")]
   fn parse_element_does_not_accept_eof() {
-    // EOF を判定するのは各ループの責務で、parse_element は進捗ゼロの Ok を返さない
     let arena = Bump::new();
     let source = "";
     let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
@@ -1136,7 +1112,6 @@ mod tests {
 
   #[test]
   fn stray_rbracket_in_mandatory_arg_is_error_not_hang() {
-    // 必須引数 `{...}` の中に stray `]` が出た場合も同様に無限ループしていた。
     let arena = Bump::new();
     let result = parse(r"\cmd{abc]def}", &arena);
     assert!(matches!(
@@ -1192,7 +1167,6 @@ mod tests {
   #[test]
   fn nested_closers_in_math_arg_are_consumed_by_their_own_loops() {
     // `{{a}}` の内側の `}` は数式グループのループが、外側の `}` は引数のループが消費する。
-    // 終端の判定は各ループだけが持ち、`parse_element` は終端を知らない
     let arena = Bump::new();
     let cst = parse_source(r"$\vfrac{{a}}{b}$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
@@ -1211,7 +1185,6 @@ mod tests {
   #[test]
   fn trivia_before_closer_stays_inside_the_arg() {
     // 終端の直前のトリビアはループが終端判定より先に積むので、引数の子として `}` の手前に残る。
-    // `parse_element` の先頭の skip_trivia に頼っていないことの固定
     let arena = Bump::new();
     let cst = parse_source(r"\cmd{x }", &arena);
     let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
@@ -1453,7 +1426,6 @@ mod tests {
 
   #[test]
   fn command_call_keeps_the_trivia_it_crossed_to_find_an_argument() {
-    // 引数が見つかった側のトリビアはコマンド呼び出しに残る（`\cmd {x}` / `\vhref{u} {t}`）
     let arena = Bump::new();
     let source = r"\vhref{u} {t}";
     let cst = parse_source(source, &arena);
@@ -1467,7 +1439,6 @@ mod tests {
 
   #[test]
   fn command_call_without_arguments_keeps_the_following_trivia() {
-    // 必須引数を 1 つも読まないなら、直後のトリビアはコマンド名の終端を示しているだけなので残す
     let arena = Bump::new();
     let source = r"\cmd x";
     let cst = parse_source(source, &arena);
@@ -1509,7 +1480,6 @@ mod tests {
 
   #[test]
   fn command_rejects_second_opt_arg_across_trivia() {
-    // 通常のコマンド・環境はトリビアを跨いで引数を探すので、空白を挟んだ 2 組目も同じ扱い
     let arena = Bump::new();
     let result = parse(r"\cmd[a=1] [b=2]{x}", &arena);
     assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
@@ -1531,7 +1501,6 @@ mod tests {
 
   #[test]
   fn second_opt_arg_span_covers_whole_group() {
-    // ラベルは 2 組目の `[...]` 全体を指す（裸の `[` ではなく「まとめる」修正を促す）
     let arena = Bump::new();
     let source = r"\cmd[a=1][b=2]{x}";
     let Err(ParserError::MultipleOptArgs { span }) = parse(source, &arena) else {
@@ -1724,7 +1693,6 @@ mod tests {
 
   #[test]
   fn math_env_body_may_start_with_math_group() {
-    // 数式本体では `{...}` は数式グループなので、本体の先頭に書いても環境の引数にならない
     for source in [
       r"\begin{equation}{a}+b\end{equation}",
       "\\begin{equation}\n{a}+b\\end{equation}",
@@ -1745,8 +1713,6 @@ mod tests {
 
   #[test]
   fn text_env_reads_following_braces_as_arguments() {
-    // テキスト本体では裸の `{` を書けない（P4）ので、`\begin{name}` の後ろの `{...}` は引数として読み、
-    // 個数は評価器が環境名つきで診断する
     let arena = Bump::new();
     let cst = parse_source("\\begin{itemize}{x}\n{y}\\end{itemize}", &arena);
     let GreenElement::Node(env) = &cst.children[0] else {
@@ -1805,14 +1771,12 @@ mod tests {
 
     let body = verbatim_body(source, &arena);
 
-    // 最初の `\end{code}` で終端するので、内側の `\begin{code}` は内容のまま
     assert_eq!(body, "\\begin{code}inner");
   }
 
   #[test]
   fn verbatim_body_requires_exact_end_marker_bytes() {
     let arena = Bump::new();
-    // `\end {code}` と `\end{codex}` はマーカーに一致せず、内容として走査を続行する
     let source = "\\begin{code}a\\end {code}b\\end{codex}c\\end{code}";
 
     let body = verbatim_body(source, &arena);
@@ -1826,7 +1790,6 @@ mod tests {
 
     let body = verbatim_body("\\begin{code}\\end{code}", &arena);
 
-    // 空でも VerbatimText トークンを 1 個持つ
     assert_eq!(body, "");
   }
 
@@ -1879,7 +1842,6 @@ mod tests {
 
   #[test]
   fn verbatim_environment_nested_in_a_tokenized_environment() {
-    // 通常環境の本体に置かれても本体は生読みされる
     let arena = Bump::new();
     let source = "\\begin{quote}\\begin{code}a$b//c\\end{code}\\end{quote}";
 
@@ -1906,7 +1868,6 @@ mod tests {
 
     let body = verbatim_arg(source, &arena);
 
-    // この epic の動機そのもの: URL をエスケープなしで書ける
     assert_eq!(body, "https://example.com/a_b^c$d");
   }
 
@@ -1922,7 +1883,6 @@ mod tests {
 
   #[test]
   fn verbatim_arg_treats_backslash_as_dead_bytes() {
-    // `\` は不活性なので `\{` の `{` も深さに数える
     let arena = Bump::new();
     let unterminated_arena = Bump::new();
 
@@ -1957,7 +1917,6 @@ mod tests {
 
   #[test]
   fn verbatim_arg_mode_applies_inside_inline_math() {
-    // 数式モード内でもレジストリの引数モード宣言が効く
     let arena = Bump::new();
     let source = "$\\vurl{a//b}$";
 
@@ -1993,7 +1952,6 @@ mod tests {
 
   #[test]
   fn arg_mode_is_resolved_per_argument_position() {
-    // `vhref` は第 1 引数だけが verbatim（本番の `\href` と同じ形）
     let arena = Bump::new();
     let source = "\\vhref{https://example.com}{\\bold{強調}}";
 
@@ -2042,14 +2000,13 @@ mod tests {
 
   #[test]
   fn math_command_reads_args_across_trivia_up_to_its_arg_count() {
-    // 個数に達するまでは従来どおりトリビアを跨いで引数を探す。不足は評価器が診断する
+    // 個数に達するまではトリビアを跨いで引数を探す。不足は評価器が診断する
     assert_eq!(inline_math_shape(r"$\vfrac{a} {b}$"), vec![(SyntaxKind::CommandCall, 2)]);
     assert_eq!(inline_math_shape(r"$\vfrac{a}$"), vec![(SyntaxKind::CommandCall, 1)]);
   }
 
   #[test]
   fn trivia_after_last_math_arg_is_returned_outside_the_command() {
-    // 個数に達した後のトリビアはコマンド呼び出しの子にならず、外側（数式本体）へ返る
     let arena = Bump::new();
     let source = r"$\vfrac{a}{b} {c}$";
     let cst = parse_source(source, &arena);

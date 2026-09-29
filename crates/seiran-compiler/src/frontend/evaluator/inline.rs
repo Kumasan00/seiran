@@ -31,8 +31,7 @@ use crate::{
 /// 受け取った方針を子へ渡す（`\section{\bold{x\index{x}}}` に穴を開けないため）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::frontend) enum IndexPolicy {
-  /// `\index` を許可する（キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈。書体 / 色指定と
-  /// 脚注本体は呼び出し元の方針を引き継ぐ）
+  /// `\index` を許可する（キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈）
   Allow,
   /// `\index` を [`EvalError::IndexNotAllowedHere`] で拒否する
   ///
@@ -42,13 +41,8 @@ pub(in crate::frontend) enum IndexPolicy {
 
 /// トークン 1 個がインライン要素として持つ内容
 ///
-/// どのトークンが何になるかの対応はこの型を返す [`inline_from_token`] が単一の実装で、
-/// 本文の流れ（`crate::frontend::evaluator::evaluate_children`）と引数の再帰評価
-/// （[`extract_inline_nodes_from_elements`]）が共有する。
-///
-/// `NodeId` は発行しない — 本文の流れは段落 ID を子より先に予約する必要があり
-/// （`crate::frontend::evaluator::ParagraphBuffer` の doc 参照）、変換側が `EvalContext` を
-/// 持つと予約より先に子の ID を確保してしまうため。
+/// `NodeId` は発行しない — 本文の流れは段落 ID を子より先に予約する必要があり、変換側が
+/// `EvalContext` を持つと予約より先に子の ID を確保してしまうため。
 #[derive(Debug)]
 pub(super) enum TokenInline<'s> {
   /// 索引マーカーをまたぐ結合の候補になるテキスト（[`TokenKind::Text`] 由来）
@@ -65,11 +59,10 @@ pub(super) enum TokenInline<'s> {
 /// 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
 pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<TokenInline<'s>> {
   return match token.kind {
-    // 索引マーカーをまたぐ結合の対象はここだけ（[`InlineSink`] の doc 参照）。
     TokenKind::Text => Some(TokenInline::MergeableText(token.text(source))),
-    // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-    // （実際の消費者は verbatim 環境・コマンド）。`_` / `^` / `&` / `,` / `=` は
-    // 構造上の意味を失った位置に残ったものなので、トークンの原文をそのまま本文に出す。
+    // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする。
+    // `_` / `^` / `&` / `,` / `=` は構造上の意味を失った位置に残ったものなので、トークンの原文を
+    // そのまま本文に出す。
     TokenKind::VerbatimText
     | TokenKind::Whitespace
     | TokenKind::Newline
@@ -150,7 +143,6 @@ impl InlineSink {
   ///
   /// 結果が索引マーカーなら幅 0 でテキストを分断しないので、畳みを継続できる位置として
   /// 記録する（`A\index{a}\index{b}V` のような連続マーカーもここで連鎖する）。
-  /// コマンド名では判定しない — 幅 0 マーカーが増えても分岐が増えないため。
   pub(crate) fn push_inline_result(&mut self, span: Span, inline: HirInline) {
     if matches!(inline.kind, HirInlineKind::Index { .. }) {
       let continues = self.armed_gap.map_or_else(
@@ -264,9 +256,6 @@ pub(crate) fn extract_inline_nodes_from_elements(
 }
 
 /// 記号コマンド名から数式記号（文字 + 数式クラス）を解決する
-///
-/// 本文モードは文字だけを見て [`SYMBOL_MAP`] を直接引くが、数式モードはアトム間のアキ決定に
-/// クラスが要るのでエントリごと返す。
 #[must_use]
 pub(crate) fn resolve_math_symbol_command(name: &str) -> Option<MathSymbol> { return SYMBOL_MAP.get(name).copied(); }
 
@@ -334,7 +323,6 @@ mod tests {
     };
     let result = inline_from_token(source, &token);
 
-    // `\index` をまたぐ結合の候補になるのは Text 由来だけ
     assert!(matches!(result, Some(TokenInline::MergeableText("abc"))), "{result:?}");
   }
 
@@ -495,7 +483,6 @@ mod tests {
 
     let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
-    // `,` はマーカーが無くても別トークンなので畳まない
     assert_eq!(inlines.len(), 4, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Index { .. }), "{inlines:?}");

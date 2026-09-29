@@ -12,14 +12,9 @@ use crate::{
 
 /// 1 ソース分の評価 context
 ///
-/// 評価ハンドラが受け取る唯一の context で、[`HirBuilder`]（ID 発行・位置記録）と
-/// `PathResolver`（外部資源パスの解決規則）を束ねる。文書構築の不変条件
+/// [`HirBuilder`]（ID 発行・位置記録）と `PathResolver`（外部資源パスの解決規則）を束ねる。文書構築の不変条件
 /// （ID 発行と位置記録が同じ呼び出しで起きる・親の ID を子より先に確保する）を持つのは
-/// [`HirBuilder`] のままで、この型は転送するだけで規約を再定義しない。パス解決規則の実装も
-/// `project::PathResolver` 1 箇所に閉じており、frontend は `base_dir.join` を書かない。
-///
-/// builder は 1 ソースに 1 つなので所有し、resolver は `compile` facade が `base_dir` から
-/// 1 回だけ構築した値を借用する。
+/// [`HirBuilder`] のままで、この型は転送するだけで規約を再定義しない。
 #[derive(Debug)]
 pub(crate) struct EvalContext<'a> {
   /// このソースの HIR ノード ID 発行と位置記録
@@ -38,8 +33,6 @@ impl<'a> EvalContext<'a> {
   }
 
   /// ソースに書かれた外部資源のパスを、`base_dir` 基準の正規化済み [`ProjectPath`] へ解決する
-  ///
-  /// HIR へ格納する時点で解決するので、後段が文書木を走査して書き戻す解決 pass は要らない。
   pub(crate) fn resolve_path(&self, path: impl AsRef<Path>) -> ProjectPath { return self.resolver.resolve(path); }
 
   /// 新しい ID を発行し `span` を記録する（[`HirBuilder::alloc`] へ委譲）
@@ -70,9 +63,6 @@ impl<'a> EvalContext<'a> {
   }
 
   /// 評価し終えたノード列と位置表を 1 ソース分の [`HirSource`] にまとめて context を終える
-  ///
-  /// 位置表（`SourceSpans`）は `document` の interface に出ていないため、この型の返り値として
-  /// 名指しせず [`HirSource`] の一部として運ぶ。
   pub(crate) fn finish(self, nodes: Vec<HirNode>) -> HirSource {
     let spans = self.builder.finish();
     let source_id = spans.source_id();

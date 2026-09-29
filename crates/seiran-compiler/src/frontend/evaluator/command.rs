@@ -26,16 +26,12 @@ mod text_style;
 /// コマンドの実行結果
 pub(super) enum CommandResult {
   /// ブロックレベルの HIR ノード（見出し、スペース等）
-  ///
-  /// [`BlockPermit`] を伴わずには構築できない — この結果を作れるのは
-  /// [`Placement::accept_block`] を通った arm だけである。
   Block(BlockPermit, HirNode),
   /// インラインレベルの HIR ノード（記号文字等）
   Inline(HirInline),
   /// `\noindent` — 段落先頭行の字下げ抑止マーカー
   ///
-  /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行うので、`BlockPermit` 以外の
-  /// 値は運ばない。診断に使うソース位置は呼び出し元が持っているコマンド呼び出しノードの span と同じ。
+  /// 位置の検証（段落の先頭かどうか）は段落境界を知る呼び出し元が行う。
   NoIndent(BlockPermit),
 }
 
@@ -43,18 +39,16 @@ pub(super) enum CommandResult {
 ///
 /// 発行できるのは [`Placement::accept_block`] だけで、`CommandResult` のブロック系 variant は
 /// これを要求する。新しいブロックコマンドの arm が guard を書き忘れると結果を構築できず、
-/// `unreachable!` へ落ちる代わりに**コンパイルエラー**になる。
+/// **コンパイルエラー**になる。
 pub(super) struct BlockPermit(());
 
 /// コマンドを実行する文脈
 ///
-/// コマンドの実行入口 [`evaluate_command`] が受け取る唯一の文脈情報で、「ブロックを受け取れるか」と
-/// 「引数の中の `\index` を許すか」の 2 つを 1 つの値で運ぶ。本文の流れは内容が 1 箇所にしか
-/// 置かれないので `\index` は常に許可でよく、インライン文脈の方針だけを呼び出し元
-/// （引数の再帰評価・表のセル）が決める。
+/// 「ブロックを受け取れるか」と「引数の中の `\index` を許すか」の 2 つを 1 つの値で運ぶ。
+/// 本文の流れは内容が 1 箇所にしか置かれないので `\index` は常に許可でよい。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Placement {
-  /// 本文の流れ（`crate::frontend::evaluator::evaluate_children`）— ブロックを受け取れる
+  /// 本文の流れ — ブロックを受け取れる
   Block,
   /// インライン要素しか受け取れない文脈（引数の再帰評価・表のセル）
   Inline(IndexPolicy),
@@ -64,10 +58,7 @@ impl Placement {
   /// ブロックを生むコマンドをこの文脈で実行してよいか検査し、通ったことの証を返す
   ///
   /// 各 dispatch arm の**先頭**で呼ぶ。インライン文脈での拒否は引数の妥当性に依存しないので、
-  /// 引数を評価する前に診断を出す（`\section` を `\bold{...}` の中へ書いたとき、引数の
-  /// 個数エラーではなくブロック混在の診断が出る）。返す [`BlockPermit`] は `CommandResult` の
-  /// ブロック系 variant を構築するのに必須で、arm がこの呼び出しを書き忘れると
-  /// `CommandResult::Block` / `CommandResult::NoIndent` を作れずコンパイルが通らない。
+  /// 引数を評価する前に拒否してよい。
   fn accept_block(self, view: &CommandView<'_>) -> Result<BlockPermit, EvalError> {
     if matches!(self, Self::Inline(_)) {
       return Err(EvalError::BlockInInline {
@@ -79,9 +70,6 @@ impl Placement {
   }
 
   /// `\index` をこの文脈で実行してよいか検査する
-  ///
-  /// 拒否する文脈は見出しタイトル・`\href` の表示テキスト・表の `\head` セル・`\index` 自身の語
-  /// （[`IndexPolicy::Reject`] の doc 参照）。
   fn accept_index(self, view: &CommandView<'_>) -> Result<(), EvalError> {
     if matches!(self, Self::Inline(IndexPolicy::Reject)) {
       return Err(EvalError::IndexNotAllowedHere {
@@ -114,11 +102,11 @@ enum CommandKind {
   StyledText(FontKind),
   /// 引数 1 つを取りテキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
   ColoredText,
-  /// `\ref{label}` — 相互参照のスタブを生成する（解決は `semantics::analyze` の責務）
+  /// `\ref{label}` — 相互参照のスタブを生成する（解決はしない）
   Ref,
-  /// `\cite{key}` — 文献引用のスタブを生成する（キー存在の検証は `semantics::analyze` の責務）
+  /// `\cite{key}` — 文献引用のスタブを生成する（キー存在の検証はしない）
   Cite,
-  /// `\footnote{...}` — 脚注本体を再帰評価してスタブを生成する（採番は `typeset::lowering` の責務）
+  /// `\footnote{...}` — 脚注本体を再帰評価してスタブを生成する（採番はしない）
   Footnote,
   /// `\index{語}` — 索引マーカー。本文に出力を持たず、語・reading を収集用に運ぶだけ
   Index,
@@ -136,9 +124,6 @@ enum CommandKind {
 
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
-  ///
-  /// `CommandKind` を網羅する dispatch はこの match 1 つで、本文の流れも引数の再帰評価も
-  /// ここを通る（`arg_modes` は読み取りモードの宣言表であって dispatch ではない）。
   fn execute(
     self,
     view: &CommandView<'_>,
@@ -197,13 +182,10 @@ impl CommandKind {
 
   /// 必須引数の読み取り方を位置順に返す
   ///
-  /// 返すのは必須引数を先頭から並べた読み取り方で、`\href` のように位置ごとにモードが違う
-  /// コマンドを表せる。どのコマンドのどの位置が verbatim かはこの種別が単一の真実源で、
-  /// ユーザは変更できない（P1 ガード）。将来の `\define` もここへ宣言できない。
+  /// どのコマンドのどの位置が verbatim かはこの種別が単一の真実源で、ユーザは変更できない
+  /// （P1 ガード）。将来の `\define` もここへ宣言できない。
   ///
-  /// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラの
-  /// 責務）。`Self::Href => &[Verbatim, Inherit]` は「2 個来たときそれぞれをこう読む」であって
-  /// 「必ず 2 個来る」ではない。
+  /// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラ）。
   fn arg_modes(self) -> &'static [ArgMode] {
     return match self {
       Self::Code | Self::Url => &[ArgMode::Verbatim],
@@ -283,7 +265,6 @@ static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
 /// コマンド名と必須引数の位置（0 始まり）から読み取り方を引く
 ///
-/// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
 /// 未登録のコマンド（記号コマンドを含む）・宣言の範囲を超えた位置は
 /// [`ArgMode::Inherit`]（外側文脈の継承）が既定。
 pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
@@ -296,7 +277,7 @@ pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///
 /// レジストリ（[`COMMAND_MAP`]）→ 記号表（[`SYMBOL_MAP`]）→ 未知の順に引く、コマンド実行の
-/// 唯一の入口。文脈の違いは `placement` が運ぶ。
+/// 唯一の入口。
 ///
 /// # Errors
 ///
@@ -319,9 +300,6 @@ pub(super) fn evaluate_command(
 }
 
 /// インライン文脈でコマンドを評価し、インライン要素だけを返す
-///
-/// ブロックを生む種別は [`Placement::accept_block`] が引数評価より前に弾くので、
-/// この経路へブロックの結果は返らない。
 ///
 /// # Errors
 ///
@@ -364,7 +342,6 @@ mod tests {
 
   #[test]
   fn verbatim_commands_declare_arg_modes_and_others_are_empty() {
-    // 種別から直接引ける（レジストリのキーと同期する 2 枚目の表を持たない）
     assert_eq!(CommandKind::Code.arg_modes(), &[ArgMode::Verbatim]);
     assert_eq!(CommandKind::Url.arg_modes(), &[ArgMode::Verbatim]);
     assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
@@ -373,7 +350,6 @@ mod tests {
 
   #[test]
   fn lookup_arg_mode_defaults_to_inherit() {
-    // 宣言のないコマンドは外側文脈を継承する
     assert_eq!(lookup_arg_mode("bold", 0), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("unknown", 0), ArgMode::Inherit);
     // 記号コマンドは `COMMAND_MAP` に無いので、引き当たらない側の既定を通る
@@ -382,14 +358,12 @@ mod tests {
 
   #[test]
   fn lookup_arg_mode_resolves_per_position() {
-    // `\href` は第 1 引数だけが verbatim
     assert_eq!(lookup_arg_mode("href", 0), ArgMode::Verbatim);
     assert_eq!(lookup_arg_mode("href", 1), ArgMode::Inherit);
   }
 
   #[test]
   fn lookup_arg_mode_beyond_declaration_is_inherit() {
-    // 宣言の範囲を超えた位置も継承（個数はハンドラが検査する）
     assert_eq!(lookup_arg_mode("url", 1), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("href", 2), ArgMode::Inherit);
   }
@@ -398,7 +372,7 @@ mod tests {
   fn block_commands_are_rejected_in_inline_placement() {
     // 引数はコマンドごとに妥当な形を渡す。引数の検査と拒否のどちらが先に走っても
     // 結果は `BlockInInline` になるので、「インライン文脈では拒否される」ことだけを固定できる
-    // （どの診断が先に出るかは不変条件ではない）。guard の書き忘れは `BlockPermit` が型で弾く。
+    // （どの診断が先に出るかは不変条件ではない）。
     let cases = [
       ("section", r"\section{a}"),
       ("space", r"\space{1pt}"),
@@ -440,8 +414,7 @@ mod tests {
 
   #[test]
   fn every_command_in_inline_placement_yields_inline_or_a_diagnostic() {
-    // レジストリに載っているコマンドがインライン文脈で UnknownCommand として
-    // 落ちないことを確認する（`{a}` × 0〜4 個の組み合わせで、成功するかどうかはコマンドごとに違う）
+    // 成功するかどうかはコマンドごとに違うので、UnknownCommand にならないことだけを見る
     for name in all_command_names() {
       for arg_count in 0usize..=4 {
         let arena = Bump::new();
@@ -461,17 +434,14 @@ mod tests {
     }
   }
 
-  /// `COMMAND_MAP` の全コマンド名を返す（proptest 戦略の入力用）
+  /// `COMMAND_MAP` の全コマンド名を返す
   fn all_command_names() -> Vec<&'static str> { return COMMAND_MAP.entries().map(|(name, _)| return *name).collect(); }
 
   proptest! {
     #![proptest_config(ProptestConfig::with_cases(1500))]
 
-    /// コマンド名（28 種）× `{}` 引数個数（0〜4 個）の全 140 通りを 1500 ケースで
-    /// 反復抽出しても panic せず、かつ「成功」または引数・オプション規則（P2/P3/P6）に
-    /// 関する既知のエラー種別のいずれかを返す。組み合わせ数が 140 と小さいため、ケース数は
-    /// proptest 既定の 256 では取りこぼしうる（サンプリング1回あたり約 16% の確率で
-    /// ある組み合わせが未試行になる）ことを踏まえ明示的に増やしている。
+    /// 成功または引数・オプション規則（P2/P3/P6）に関する既知のエラー種別だけを返す。
+    /// 組み合わせ（コマンド数 × 5）を proptest 既定の 256 ケースでは取りこぼしうるので 1500 に増やす。
     ///
     /// 環境・数式・表専用のエラー種別（`TableRowCellCountMismatch` 等）が返った場合は、
     /// トップレベルの単一コマンド呼び出しでは本来発生しえない経路に迷い込んだことを意味し、

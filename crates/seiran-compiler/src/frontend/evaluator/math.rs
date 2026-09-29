@@ -2,8 +2,7 @@
 //!
 //! インライン数式と数式環境のセルを [`HirMath`] 列に変換する。
 //!
-//! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。コマンドの数式引数
-//! （[`math_arg_to_node`]）のように単一ノードへ畳まれてグループ用の ID が使われない場合は
+//! コマンドの数式引数（[`math_arg_to_node`]）のように単一ノードへ畳まれて、先に確保したグループ用の ID が使われない場合は
 //! `NodeId` に穴が空くが、同じ入力なら常に同じ穴になるので決定性は保たれる。
 
 use crate::{
@@ -44,8 +43,7 @@ pub(crate) fn evaluate_math_elements(
   for child in elements {
     match child {
       GreenElement::Token(token) => match token.kind {
-        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-        // （実際の消費者は verbatim コマンド）。
+        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする。
         TokenKind::Text
         | TokenKind::VerbatimText
         | TokenKind::Comma
@@ -206,8 +204,7 @@ impl MathCommandKind {
 
 /// 数式内のコマンド名から必須引数の個数を引く
 ///
-/// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。数式の語彙に無い
-/// コマンドは `None` — 評価器が未知のコマンドとして拒否するだけなので個数が定まらず、パーサーは個数で
+/// 数式の語彙に無いコマンドは `None` — 評価器が未知のコマンドとして拒否するだけなので個数が定まらず、パーサーは個数で
 /// 打ち切らない（レジストリの verbatim 宣言どおりに引数を読み、`$\code{a // b}$` を「未知のコマンド」で
 /// 診断できるようにするため）。
 pub(super) fn lookup_math_arg_count(name: &str) -> Option<usize> {

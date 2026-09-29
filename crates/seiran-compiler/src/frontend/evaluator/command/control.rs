@@ -34,8 +34,6 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Hir
 
 /// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
 ///
-/// 段落先頭の位置検証は段落境界を知る `evaluate_children` が行う。
-///
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します

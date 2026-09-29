@@ -1,6 +1,6 @@
 //! 数式記号テーブル
 //!
-//! 単一の Unicode 文字と、`typeset` がアトム間のアキを決めるのに使う数式クラスを保持する。
+//! 単一の Unicode 文字と、アトム間のアキを決める数式クラスを保持する。
 
 use phf::phf_map;
 
@@ -11,12 +11,12 @@ use crate::document::MathClass;
 pub(in crate::frontend::evaluator) struct MathSymbol {
   /// 出力する Unicode 文字
   pub(crate) ch: char,
-  /// 数式クラス（`typeset::lowering::math::spacing` がアトム間のアキ決定に消費する）
+  /// 数式クラス
   pub(crate) class: MathClass,
 }
 
 impl MathSymbol {
-  /// 記号エントリを生成する（[`SYMBOL_MAP`] 初期化用の const コンストラクタ）
+  /// 記号エントリを生成する
   const fn new(ch: char, class: MathClass) -> Self { return Self { ch, class }; }
 }
 

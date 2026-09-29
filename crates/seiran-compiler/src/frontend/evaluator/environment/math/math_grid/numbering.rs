@@ -38,13 +38,11 @@ pub(in crate::frontend::evaluator::environment) enum NumberingMode {
 ///
 /// 未知の任意引数キー・不正な値、無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）で
 /// エラーを返す。数式本体の環境は parser が `{...}` を必須引数として読まないので、
-/// [`EvalError::ExtraEnvironmentArgument`] はここでは起きない（テキスト本体の環境と同じ個数検査を通すだけ）。
+/// [`EvalError::ExtraEnvironmentArgument`] はここでは起きない。
 pub(super) fn parse_math_env_opts(
   view: &EnvironmentView<'_>,
   mode: NumberingMode,
 ) -> Result<(bool, Option<String>), EvalError> {
-  // 環境単位ラベル `[label=...]` は環境全体に 1 番号を振る `SingleEnv`（split / multiline）でのみ受理する。
-  // 行ごと採番（`PerRow` = align / gather）の行単位ラベルは行末マーカー `\label{...}` で指定する。
   let allow_env_label = matches!(mode, NumberingMode::SingleEnv);
   let schema = if allow_env_label {
     SINGLE_ENV_SCHEMA
@@ -55,7 +53,7 @@ pub(super) fn parse_math_env_opts(
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let env_label = opts.get(LABEL);
   arity::no_environment_args(view)?;
-  // 無採番の環境は参照番号を持たないため、環境単位ラベルとの併用を禁じる（equation と同じ規則）
+  // 無採番の環境は参照番号を持たないため、環境単位ラベルとの併用を禁じる
   if !numbered && env_label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: view.name().to_string(),
@@ -88,8 +86,6 @@ pub(super) fn trim_trailing_blank_marker_rows(grid: &mut Vec<GridRow>) -> Result
 }
 
 /// グリッドを採番粒度（`mode`）に応じて [`HirMathRow`] 列へ変換する
-///
-/// 実際の番号は付けず、行と環境の採番対象フラグだけを返す。
 ///
 /// # Errors
 ///

@@ -26,7 +26,7 @@ const UNORDERED_SCHEMA: &[OptDecl] = &[ITEM_GAP.decl()];
 
 /// リスト環境（`itemize` / `enumerate`）を評価する
 ///
-/// `ordered` は番号付き（`enumerate`）かどうかで、レジストリの値が運ぶ。
+/// `ordered` は番号付き（`enumerate`）かどうか。
 ///
 /// # Errors
 ///

@@ -1,7 +1,4 @@
 //! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
-//!
-//! `parse_source` は 1 ソース分の [`HirSource`] を返す。本体経路もテストも HIR をそのまま扱い、
-//! 他の文書木表現へ落とす adapter は持たない。
 
 use bumpalo::Bump;
 use miette::Diagnostic;
@@ -19,11 +16,6 @@ mod evaluator;
 #[cfg(test)]
 mod hir_invariants;
 mod syntax;
-// `semantics` / `typeset` の test module からも `frontend::test_support::parse_source_for_test` と
-// 名指しするので `pub(crate) mod`。既存の `lowering` / `break_lines` / `evaluator` の `test_support` は
-// インライン module で、前 2 つは直近の親だけが使うため `pub(super) mod`、`evaluator` のものは子孫だけが
-// 使うため無印 `mod` になっている — 利用範囲が違うだけで、「`test_support` という module 名が置き場を
-// 表す」規則は同じ。
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -31,14 +23,8 @@ pub(crate) use evaluator::EvalError;
 
 /// `parse_source` が返すエラー型
 ///
-/// この型自身は message / `code` / help を持たない — 修正情報を持つのは内側の
-/// `ParserError` / `EvalError` であり、この enum は 2 種類の leaf を `?` で運ぶための union に
-/// すぎない（phase 名だけの wrapper 診断をユーザー表示へ挟まないため、両バリアントとも
-/// `transparent` で内側へ委譲する）。
-///
-/// ソース本文も `SourceId` も持たない。どのソースをパースしていたかは呼び出し元
-/// （`compiler` の `parse_all_sources`）が `SourceSet` の走査から分かっており、
-/// 本文の添付は compiler seam の source attribution adapter が行う。
+/// 内側の `ParserError` / `EvalError` の 2 種類の leaf を `?` で運ぶための union で、この型自身は
+/// message / `code` / help を持たない。ソース本文も `SourceId` も持たず、帰属は呼び出し元が添える。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum ParseSourceError {
   /// 構文解析（`crate::frontend::syntax::parse`）で発生したエラー
@@ -57,8 +43,7 @@ pub(crate) enum ParseSourceError {
 /// ノードの `NodeId` はこのソース内で閉じた連番なので、複数ソースをどの順序で
 /// パースしても結果は変わらない。
 ///
-/// `resolver` は `\image{...}` の字面を `ProjectPath` へ解決するために評価 context
-/// （`evaluator::EvalContext`）へ渡す（`compile` facade が `base_dir` から 1 回だけ構築した値）。
+/// `resolver` は `\image{...}` の字面を `ProjectPath` へ解決するのに使う。
 ///
 /// # Errors
 ///
@@ -94,8 +79,6 @@ mod tests {
   };
 
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
-  ///
-  /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
   fn evaluate_source(source: &str) -> Vec<HirNode> {
     let hir = test_support::parse_source_for_test(source, SourceId::new(0)).unwrap();
     return hir.group.nodes;
@@ -129,11 +112,8 @@ mod tests {
 
   /// `NodeId` を無視して 2 つの HIR ブロック列が同じ構造かどうかを判定する
   ///
-  /// インデント整形の有無で `NodeId` 割り当てが変わっても内容が一致することを確認するための
-  /// テスト専用ヘルパ（`HirNode` は `id` を含む `PartialEq` を持つため `assert_eq!` は使えない）。
-  /// 呼び出し元テストが実際に使う範囲（`List` / `Paragraph` / プレーンテキストの `Text`）だけに
-  /// 対応する。想定外の variant が現れたら、比較を諦めて `false` を返すのではなく
-  /// 「対応範囲外の入力が来た」ことが分かるよう panic する。
+  /// 対応するのは `List` / `Paragraph` / プレーンテキストの `Text` だけで、それ以外の variant が
+  /// 現れたら panic する。
   fn same_shape(a: &[HirNode], b: &[HirNode]) -> bool {
     if a.len() != b.len() {
       return false;
@@ -978,7 +958,6 @@ mod tests {
 
   #[test]
   fn evaluate_environment_in_math_is_error_wherever_written() {
-    // 数式内の環境は、書いた位置によらず同じ診断になる
     for source in [
       r"$\begin{matrix}a\end{matrix}$",
       r"${\begin{matrix}a\end{matrix}}$",
@@ -1068,9 +1047,7 @@ mod tests {
 
   #[test]
   fn evaluate_item_indented_nested_list_matches_packed_equivalent() {
-    // \item{...} の内容を改行・インデントして書いても、詰めて 1 行で書いた場合と
-    // 完全に同じ HIR になるべき（余分な空白・空段落が出ない）。ID 予約の穴の位置は
-    // 空白トークンの量に応じて変わるため、比較は NodeId を無視した構造比較（same_shape）で行う。
+    // ID 予約の穴の位置は空白トークンの量に応じて変わるため、NodeId を無視した構造比較で比べる
     let indented = evaluate_source(
       "\\begin{itemize}\n  \\item{1 段目の項目。マーカーは黒丸。\n    \\begin{itemize}\n      \
        \\item{2 段目の項目。}\n    \\end{itemize}\n  }\n\\end{itemize}",
@@ -1084,7 +1061,6 @@ mod tests {
 
   #[test]
   fn evaluate_trailing_whitespace_after_nested_environment_produces_no_blank_paragraph() {
-    // ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
     let result = evaluate_source("\\begin{quote}\\begin{itemize}\\item{x}\\end{itemize}\n  \n\\end{quote}");
     assert_eq!(result.len(), 1);
     let HirNodeKind::Quote(quote) = &result[0].kind else {
@@ -1124,7 +1100,6 @@ mod tests {
 
   #[test]
   fn evaluate_index_after_whitespace_does_not_merge_text() {
-    // マーカーの前の空白は畳みを切る
     let result = evaluate_source("A \\index{k}V");
 
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {

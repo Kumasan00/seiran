@@ -196,7 +196,6 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
   match element {
     GreenElement::Token(token) => match token.kind {
       // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのまま連結する
-      // （実際の消費者は verbatim 環境・コマンド）。
       TokenKind::Text
       | TokenKind::VerbatimText
       | TokenKind::Whitespace
@@ -585,8 +584,6 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_ignores_comma_nested_in_child_node() {
-    // 入れ子ノード（ここではコマンド引数）内の `,` は OptArg 直下のトークンではないので
-    // エントリを分割しない
     let pairs = command_pairs(r"\cmd[title=\bold{a, b}, label=x]{y}");
 
     assert_eq!(
@@ -600,7 +597,7 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_treats_quote_as_plain_character() {
-    // 引用符は値の境界ではない。`,` は引用符の内側でも区切りになる
+    // `,` は引用符の内側でも区切りになる
     let pairs = command_pairs(r#"\cmd[title="a, b"]{y}"#);
 
     assert_eq!(
@@ -627,8 +624,6 @@ mod tests {
 
   #[test]
   fn extract_text_content_still_flattens_escaped_comma() {
-    // `extract_text_content` 自体の平坦化は変えない（`\ref` / `\href` / `code` / `figure` 等の利用者向け）。
-    // 区切りを持つ引数は平坦化してから割らず、`split_text_on_commas` で割る
     let arena = bumpalo::Bump::new();
     let source = r"\cmd{a\,b, c}";
     let cst = syntax::parse(source, &arena, text_modes()).unwrap();
@@ -678,7 +673,6 @@ mod tests {
 
   #[test]
   fn split_text_on_commas_keeps_escaped_comma_in_segment() {
-    // `\,` は区切りではなく区間の文字
     let segments = first_arg_segments(r"\cmd{a\,b}");
 
     assert_eq!(segments, vec!["a,b".to_string()]);

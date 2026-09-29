@@ -88,7 +88,6 @@ mod tests {
   }
 
   /// HIR インラインをプレーンテキストへ変換するテスト専用ヘルパ
-  /// （生成物側の `semantics::generated_inlines_to_plain_text` の HIR 版）
   ///
   /// スタイル情報を無視して文字列を連結する。`\ref` は本テストでは解決しないため空文字列扱い。
   fn hir_inlines_to_plain_text(inlines: &[HirInline]) -> String {
@@ -191,7 +190,6 @@ mod tests {
   #[test]
   fn table_rejects_row_cell_count_mismatch() {
     let source = r"\begin{table}[columns=left right]\row{A & B & C}\end{table}";
-    // 診断の span はこの `\row{...}` 呼び出し全体（node.id 経由で ctx.span_of から引く値）を指す
     let row_command = r"\row{A & B & C}";
     let expected_offset = source.find(row_command).expect("ソースに \\row コマンドが含まれる");
 
@@ -253,7 +251,6 @@ mod tests {
 
   #[test]
   fn table_parses_fixed_width_in_pt() {
-    // 固定幅の書式は config / style と同じ（`pt` も受理）
     let source = r"\begin{table}[widths=12pt auto]\row{A & B}\end{table}";
     let result = eval_table(source).unwrap();
     let HirNodeKind::Table(table) = &result[0].kind else {

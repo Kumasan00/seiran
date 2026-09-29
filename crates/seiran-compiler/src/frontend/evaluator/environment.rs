@@ -24,11 +24,7 @@ mod quote;
 mod table;
 mod theorem;
 
-/// 環境の種類
-///
-/// レジストリ [`ENVIRONMENTS`] の値。名前ごとに違う情報（定理クラス・引用の種類・リストの
-/// 順序付き / なし・数式グリッド環境のセル配置と採番の粒度）を値として持ち、評価はこの種別に対する
-/// 1 操作 [`EnvironmentKind::evaluate`] に閉じる。
+/// 環境の種類（レジストリ [`ENVIRONMENTS`] の値）
 #[derive(Debug, Clone, Copy)]
 enum EnvironmentKind {
   /// リスト環境（`itemize` / `enumerate`）
@@ -130,7 +126,6 @@ static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
 
 /// 環境名から本体の読み取り方を引く
 ///
-/// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
 /// 未登録の環境は [`BodyMode::Text`] が既定。
 pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
   return ENVIRONMENTS.get(name).map_or(BodyMode::Text, |kind| return kind.body_mode());
@@ -170,7 +165,6 @@ mod tests {
 
   #[test]
   fn theorem_names_carry_their_class_in_the_registry() {
-    // 名前から種別を求め直さず、レジストリの値がクラスを運ぶ
     assert!(matches!(
       ENVIRONMENTS.get("lemma"),
       Some(EnvironmentKind::Theorem(class)) if *class == TheoremClass::Lemma

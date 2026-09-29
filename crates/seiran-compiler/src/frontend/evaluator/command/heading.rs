@@ -78,8 +78,6 @@ mod tests {
       panic!("Heading が期待されます");
     };
     assert_eq!(heading.level, HeadingLevel::Section);
-    // 見出しの numbered は HIR には存在しない（frontend が作る見出しは常に採番対象で
-    // 構造的に一意に決まるため、`HirHeading` は numbered フィールドを持たない）
     assert_eq!(heading.label.as_deref(), Some("sec:foo"));
   }
 

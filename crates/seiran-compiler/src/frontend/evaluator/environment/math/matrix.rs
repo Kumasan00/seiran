@@ -81,7 +81,7 @@ mod tests {
     frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
 
-  /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
+  /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ
   fn matrix_of(result: &[HirNode]) -> (MathDelimiter, &[HirMathRow]) {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);

@@ -62,8 +62,7 @@ pub(in crate::frontend::evaluator::environment) fn equation(
     cells,
     numbered,
     label,
-    // `equation` の `[label=...]` は環境ヘッダにあり行固有の位置を持たないため、
-    // `HirMathRow::label_site` は「環境 span へフォールバック」を意味する None にする
+    // `[label=...]` は環境ヘッダにあり行固有の位置を持たない
     label_site: None,
   };
   return Ok(HirNode::new(

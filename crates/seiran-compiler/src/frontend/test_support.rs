@@ -1,9 +1,5 @@
-//! frontend 配下と後段（semantics / typeset）の test module が共有する、resolver 注入済みの入口。
-//!
-//! 本番の `parse_source` は `compile` facade が構築した `PathResolver` を要求する。テストは画像パスの
-//! 解決を見ないものが大半なので、**空の `base_dir`**（相対パスがそのまま残る）を注入した形を 1 箇所に置く。
-//! パス解決そのものを検証するテストは `PathResolver::new(Path::new("/project"))` を明示して
-//! `frontend::parse_source` を直接呼ぶ。
+//! frontend 配下と後段（semantics / typeset）の test module が共有する、**空の `base_dir`**（相対パスが
+//! そのまま残る）の resolver を注入した入口。
 
 use std::{path::Path, sync::LazyLock};
 

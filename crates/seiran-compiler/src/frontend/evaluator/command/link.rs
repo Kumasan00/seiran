@@ -5,10 +5,9 @@
 //! リンク先を受け取る引数は verbatim（生読み）なので、`//` もコメント開始にならず URL をそのまま
 //! 書ける — `\url{https://example.com}` / `\href{https://example.com}{表示}`。verbatim なのは
 //! `\url` の必須引数と `\href` の**第 1 引数だけ**で、`\href` の第 2 引数（表示テキスト）は
-//! 活性なので `\bold{...}` 等をネストできる（宣言は `frontend::evaluator::command` の
-//! `CommandKind::arg_modes`）。
+//! 活性なので `\bold{...}` 等をネストできる。
 //!
-//! verbatim 内では `\` も不活性なので、旧記法の `\/` は URL に literal `\/` として残る。
+//! verbatim 内では `\` も不活性なので、`\/` は URL に literal `\/` として残る。
 
 use crate::{
   document::{HirInline, HirInlineKind},
@@ -108,10 +107,8 @@ mod tests {
 
   #[test]
   fn url_keeps_backslash_inert() {
-    // 旧記法。verbatim 内では `\` も不活性
     let (url, display) = url_link(r"\url{https:\/\/example.com}");
 
-    // `\/` はエスケープ解釈されず literal のまま残る
     assert_eq!(url, r"https:\/\/example.com");
     assert_eq!(display, r"https:\/\/example.com");
   }
@@ -170,14 +167,11 @@ mod tests {
 
   #[test]
   fn href_trims_surrounding_whitespace_in_the_url_arg() {
-    // 前後の空白だけは落とす（`\url` と同じ規則）
     assert_eq!(href_url(r"\href{  https://example.com  }{ここ}"), "https://example.com");
   }
 
   #[test]
   fn href_keeps_backslash_inert_in_the_url_arg() {
-    // 旧記法の名残。verbatim 内では `\` も不活性なので、`\/` は
-    // エスケープ解釈されず literal のまま残る
     assert_eq!(href_url(r"\href{https:\/\/example.com}{ここ}"), r"https:\/\/example.com");
   }
 
@@ -200,10 +194,8 @@ mod tests {
 
   #[test]
   fn href_rejects_the_old_opt_url_syntax() {
-    // 旧記法 `\href[url=...]{表示}`。`url` は任意引数キーではなくなった
     let error = href_error(r"\href[url=https:\/\/example.com]{ここ}");
 
-    // 静かに壊れず P6 の診断で落ちる
     assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "url"), "{error:?}");
   }
 
@@ -231,7 +223,6 @@ mod tests {
 
     let result = evaluate_children_to_hir(source, cst);
 
-    // 静かな無視ではなく P6 の診断で落ちる
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "href"), "{result:?}");
   }
 }

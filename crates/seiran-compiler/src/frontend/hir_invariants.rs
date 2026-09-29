@@ -1,7 +1,6 @@
 //! HIR の不変条件テスト
 //!
-//! 検証面は `parse_source` の出力そのものにする。個々の評価器ハンドラではなく、
-//! 「frontend が返す HIR が満たすべき性質」をここでまとめて固定する。
+//! `parse_source` の出力（frontend が返す HIR）が満たすべき性質をまとめて固定する。
 
 use std::{collections::HashSet, fs, path::PathBuf};
 
@@ -188,7 +187,6 @@ fn same_source_parsed_twice_yields_identical_hir() {
     let first = parse_fixture(&name, &content, SourceId::new(0));
     let second = parse_fixture(&name, &content, SourceId::new(0));
 
-    // ノード列も位置表も完全に一致する
     assert!(first == second, "{name}: 同じソースからは同じ HIR が得られるはず");
   }
 }
@@ -266,7 +264,6 @@ fn child_node_ids_come_after_their_parent() {
 
     let visited = visit_source(&hir);
 
-    // 親は子より先に ID を確保する（preorder）。ID は一意
     let mut seen = HashSet::new();
     for entry in &visited {
       assert!(seen.insert(entry.id), "{name}: NodeId はソース内で一意のはず");
@@ -314,7 +311,6 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
     assert_eq!(kinds, expected, "{source:?}: ブロックの並びが変わらないはず（{:?}）", hir.group.nodes);
   }
 
-  // 段落の位置は最初のインラインの開始から最後のインラインの終わりまでを覆う
   let source = "  本文です。  ";
   let hir = parse_source_for_test(source, SourceId::new(0)).unwrap();
   let visited = visit_source(&hir);
@@ -332,18 +328,15 @@ fn hir_carries_no_resolved_facts() {
   for (name, content) in fixture_sources() {
     let hir = parse_fixture(&name, &content, SourceId::new(0));
 
-    // 網羅 match そのものが検証を兼ねる（assert_unresolved 参照）
     assert_unresolved(&hir.group.nodes);
   }
 }
 
 /// HIR が生成物由来の表示専用ノードを持たないことを、網羅 match で強制する
 ///
-/// `AnchorId::Citation`（書誌エントリのアンカー、lowering が `BibliographyEntry` から組み立てる）・
-/// `GeneratedInline::InternalLink`（CSL 整形後の内部リンク）は生成物なので、`HirNodeKind` / `HirInlineKind` にそもそも
-/// variant として存在しない。ここでの網羅 match（`_ =>` を書かない）が、その不変条件の実行時チェックに
-/// 代わる強制手段になっている。将来どちらかの enum に解決済み表示専用の variant が
-/// 追加されたら、この match が更新を要求してコンパイルが止まる。
+/// `AnchorId::Citation`（書誌エントリのアンカー）・`GeneratedInline::InternalLink`（CSL 整形後の内部リンク）は
+/// 生成物なので、`HirNodeKind` / `HirInlineKind` にそもそも variant として存在しない。網羅 match（`_ =>` を
+/// 書かない）が、どちらかの enum に解決済み表示専用の variant が追加されたらコンパイルを止める。
 fn assert_unresolved(nodes: &[HirNode]) {
   for node in nodes {
     match &node.kind {

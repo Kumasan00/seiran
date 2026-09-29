@@ -226,12 +226,9 @@ impl<'a> Lexer<'a> {
 
   /// カーソルを指定バイト位置へ戻す
   ///
-  /// パーサーの 1 トークン先読みバッファに入った分を raw 走査の前に返却するために使う。
-  ///
   /// # Panics
   ///
-  /// 既に消費した位置より後ろを指定した場合に落ちる。呼び出し元は先読み済みトークンの
-  /// 開始位置しか渡さないため、通常は起こらない。
+  /// 既に消費した位置より後ろを指定した場合に落ちる。
   pub(super) fn rewind_to(&mut self, offset: u32) {
     let offset = offset as usize;
     assert!(
@@ -1125,13 +1122,11 @@ mod tests {
 
   #[test]
   fn scan_verbatim_balanced_includes_matched_braces() {
-    // 開き `{` を消費済みの位置から呼ぶ
     let input = "a{b{c}d}e}tail";
     let mut lexer = Lexer::new(input);
 
     let span = lexer.scan_verbatim_balanced().unwrap();
 
-    // 対応しない `}` の直前で止まる
     assert_eq!(&input[span.start as usize..span.end as usize], "a{b{c}d}e");
     assert_eq!(lexer.next().map(|t| return t.kind), Some(TokenKind::RBrace));
   }

@@ -76,7 +76,7 @@ pub(crate) fn evaluate_children(
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           // コマンドがインラインを返すかブロックを返すかは実行するまで確定しないので、
-          // 先に段落 ID を予約しておく。ブロックだった場合、予約した ID は使われず穴になる。
+          // 先に段落 ID を予約しておく。
           paragraph.reserve(ctx, child_node.span);
           let view = CommandView::new(child_node, source);
           let result = command::evaluate_command(&view, ctx, Placement::Block)?;
@@ -204,8 +204,7 @@ impl ParagraphBuffer {
 fn is_non_blank_inline(inline: &HirInline) -> bool {
   return match &inline.kind {
     HirInlineKind::Text(text) => !text.trim().is_empty(),
-    // テキスト以外はすべて実体のある内容として数える。`NoIndent` は同じマーカーの重複を
-    // 段落途中として弾くためにここに含める。
+    // `NoIndent` は同じマーカーの重複を段落途中として弾くためにここに含める。
     HirInlineKind::Styled { .. }
     | HirInlineKind::Colored { .. }
     | HirInlineKind::Code(_)
@@ -221,10 +220,7 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
   };
 }
 
-/// 子 module のテストが CST を組み立て、評価器を本番と同じ経路で呼ぶための共有ヘルパ
-///
-/// 本番のレジストリ（`mode_resolver`）を注入した `parse` ラッパを持ち、テストが本番と同じ経路を通ることを
-/// 1 箇所で保証する。評価結果を変換なしで受け取る入口（[`evaluate_children_to_hir`] 等）も、同じ理由でここが持つ。
+/// 子 module のテストが本番のレジストリ（`mode_resolver`）で CST を組み立て、評価器を呼ぶための共有ヘルパ
 #[cfg(test)]
 mod test_support {
   use bumpalo::Bump;
@@ -237,8 +233,6 @@ mod test_support {
         self, ParserError, SyntaxKind,
         green::{GreenElement, GreenNode},
       },
-      // この module 自身の名前と衝突するため、frontend 直下の `test_support` は関数を直接 import する
-      // （型・モジュールではなく関数の直接 import は「出自が自明な慣用」の例外に当たる）。
       test_support::eval_context_for_test,
     },
   };
@@ -337,7 +331,6 @@ mod tests {
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
-    // 段落の先頭へ回った改行は flush が捨てる（空白 glue にはならない）
     assert_eq!(nodes.len(), 2, "{nodes:?}");
     assert!(matches!(nodes[0].kind, HirNodeKind::Heading(_)), "{nodes:?}");
     let HirNodeKind::Paragraph(inlines) = &nodes[1].kind else {
@@ -370,7 +363,6 @@ mod tests {
 
     let result = evaluate_children_to_hir(source, cst);
 
-    // 診断は `\noindent` の開始位置（バイト 6）から 9 バイトを指す
     let Err(EvalError::NoindentNotAtParagraphStart { span }) = result else {
       panic!("段落途中の \\noindent は拒否されるはず: {result:?}")
     };

@@ -14,8 +14,7 @@ use crate::{
 
 /// `\code{...}` を [`HirInlineKind::Code`] に変換する
 ///
-/// 内容は生読みしたバイト列そのもので、空白も改行も落とさない（改行を含む断片の組版上の
-/// 扱いは `typeset::lowering` の責務）。
+/// 内容は生読みしたバイト列そのもので、空白も改行も落とさない。
 ///
 /// # Errors
 ///
@@ -70,7 +69,6 @@ mod tests {
   fn inline_code_keeps_surrounding_spaces() {
     let text = code_text(r"\code{  x  }");
 
-    // `\url` と違って trim しない（空白も内容）
     assert_eq!(text, "  x  ");
   }
 
@@ -119,7 +117,6 @@ mod tests {
 
     let result = evaluate_children_to_hir(source, cst);
 
-    // 静かな無視ではなく P6 の診断で落ちる
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "code"), "{result:?}");
   }
 

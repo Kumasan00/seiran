@@ -58,9 +58,6 @@ impl fmt::Display for OptType {
 }
 
 /// 型変換済みの任意引数値
-///
-/// [`FromOptValue::from_opt_value`] の引数として [`FromOptValue`] と同じ `pub(super)` を持つ
-/// （`OptType` と違い、公開シグネチャに直接現れるので `private_interfaces` を避けるため）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum OptValue {
   /// 真偽値
@@ -76,11 +73,6 @@ pub(super) enum OptValue {
 }
 
 /// 任意引数キーの宣言 — キー名・期待する値の型・取り出す Rust の型を 1 つに束ねる
-///
-/// ハンドラはこれを `const` として宣言し、スキーマ（[`OptKey::decl`]）と取り出し（[`OptArgs::get`]）の
-/// 両方で同じ定数を使う。キー名の綴りと型タグが 1 箇所にしか無いので、スキーマと取り出しが
-/// 食い違うことがない。
-/// キー定数は `const` なので使用ごとに再生成され、`Clone` / `Copy` は要らない。
 #[derive(Debug)]
 pub(super) struct OptKey<T> {
   /// キー名（ソースに書かれる綴り）
@@ -93,8 +85,6 @@ pub(super) struct OptKey<T> {
 
 impl<T> OptKey<T> {
   /// スキーマへ載せる、型消去した宣言を返す
-  ///
-  /// `const fn` なので `const SCHEMA: &[OptDecl] = &[KEY.decl()];` の形に書ける。
   pub(super) const fn decl(self) -> OptDecl {
     return OptDecl {
       name: self.name,
@@ -226,8 +216,6 @@ impl FromOptValue for Color {
 }
 
 /// 収集・型変換済みの任意引数
-///
-/// 値の取り出しは宣言したキー定数で行う（キー文字列を書き直す経路は無い）。
 #[derive(Debug)]
 pub(super) struct OptArgs {
   /// キー名と変換済みの値の対（ソース上の出現順）
@@ -351,7 +339,6 @@ fn parse_value(
 ) -> Result<OptValue, EvalError> {
   match expected {
     OptType::Bool => {
-      // 綴りは小文字のみ
       return match raw.trim() {
         "true" => Ok(OptValue::Bool(true)),
         "false" => Ok(OptValue::Bool(false)),
@@ -390,7 +377,7 @@ fn parse_value(
   }
 }
 
-/// 「1 以上の整数」の検査と `u32` への変換（値域の検査はここ 1 箇所）
+/// 「1 以上の整数」の検査と `u32` への変換
 ///
 /// 小数を丸めて受理しないのは、書かれた値と別の値を使うことになるため（P6）。
 fn parse_positive_int(raw: &str) -> Option<u32> {
@@ -513,7 +500,6 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_duplicate_key() {
-    // P3: 同一 `[...]` 内のキー重複はエラー（先勝ち・後勝ちに倒さない）
     const LABEL: OptKey<String> = string("label");
     let arena = Bump::new();
     let source = r"\section[label=x, label=y]{Title}";
@@ -554,7 +540,6 @@ mod tests {
 
   #[test]
   fn collect_returns_length_with_pt_suffix() {
-    // `pt` は config / style と同じくソースでも受理する
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10pt]{T}";
@@ -721,7 +706,6 @@ mod tests {
 
   #[test]
   fn opt_type_display_lists_expected_format() {
-    // 診断の `expected` 文字列
     let cases = [
       (OptType::Bool, "boolean (true/false)"),
       (OptType::String, "string"),
@@ -767,9 +751,8 @@ mod tests {
 
   /// `ty` を作る入力文字列と、それが作るべき [`OptValue`] を返す
   ///
-  /// 全 variant を明示した match（wildcard なし）にしてあるので、`OptType` に variant を足すと
-  /// このヘルパがコンパイルエラーになる。`parse_value_produces_the_variant_declared_by_the_type_tag`
-  /// はこの表を回すだけなので、対応漏れに必ず気付ける。
+  /// 全 variant を明示した match（wildcard なし）なので、`OptType` に variant を足すと
+  /// このヘルパがコンパイルエラーになり、対応漏れに気付ける。
   fn sample_for(ty: OptType) -> (&'static str, OptValue) {
     match ty {
       OptType::Bool => return ("true", OptValue::Bool(true)),
@@ -783,8 +766,6 @@ mod tests {
   #[test]
   fn parse_value_produces_the_variant_declared_by_the_type_tag() {
     // `OptType` と `OptValue` の対応（`OptArgs::get` の `unreachable!` の根拠）。
-    // `sample_for` を全 variant 明示にしてあるので、`OptType` へ variant を足すとテストが
-    // コンパイルエラーで気付く。
     let cases = [
       OptType::Bool,
       OptType::String,

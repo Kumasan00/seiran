@@ -17,8 +17,6 @@ use crate::{
 const SPAN: OptKey<u32> = opt_args::positive_int("span");
 
 /// `&` 分割後の 1 区画を [`HirTableCell`] に変換する
-///
-/// `index_policy` は呼び出し元（本体行かヘッダ行か）が決める。
 pub(super) fn build_cell(
   source: &str,
   ctx: &EvalContext<'_>,

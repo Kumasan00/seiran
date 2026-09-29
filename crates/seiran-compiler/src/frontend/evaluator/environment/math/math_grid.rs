@@ -83,7 +83,6 @@ pub(super) fn evaluate_grid(
   let mut current_cell: Vec<GreenElement<'_>> = Vec::new();
   let mut current_notag: Option<SourceSpan> = None;
   let mut current_label: Option<RowLabel> = None;
-  // 行 ID はセルより先に確保する（行の位置は本体全体を覆う span から始め、行区切りで更新する）
   let mut current_row_id = ctx.alloc(body.span);
 
   for child in body.children {
@@ -160,7 +159,6 @@ pub(in crate::frontend::evaluator::environment) fn evaluate_math_env(
 ) -> Result<HirNode, EvalError> {
   let (numbered, env_label) = parse_math_env_opts(view, mode)?;
 
-  // 行末マーカー `\notag` / `\label` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
   let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
   let id = ctx.alloc(view.span());
   let mut grid = match view.body() {
@@ -238,9 +236,6 @@ mod tests {
       evaluator::{self, mode_resolver, test_support},
       syntax,
       syntax::{SyntaxKind, green::GreenElement, view::EnvironmentView},
-      // `crate::frontend::evaluator::test_support`（上の use で束縛済み）と名前が衝突するため、
-      // `crate::frontend::test_support` は関数を直接 import する（型・モジュールではなく関数の
-      // 直接 import は「出自が自明な慣用」の例外に当たる）。
       test_support::eval_context_for_test,
     },
   };

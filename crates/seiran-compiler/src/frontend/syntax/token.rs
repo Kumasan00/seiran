@@ -29,8 +29,7 @@ impl Token {
   /// # Panics
   ///
   /// `kind` が `TokenKind::Command` でない場合パニックします。呼び出し元が `kind` を確認してから
-  /// 呼ぶため、通常は起こりません（`debug_assert` にすると release ビルドでは先頭 1 バイトを
-  /// 削った壊れた名前が黙って返るため、release でも効く形にしてある）。
+  /// 呼ぶため、通常は起こりません。
   #[must_use]
   pub(super) fn command_name<'s>(&self, source: &'s str) -> &'s str {
     if self.kind != TokenKind::Command {

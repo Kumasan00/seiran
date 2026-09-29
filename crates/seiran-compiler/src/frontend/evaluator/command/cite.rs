@@ -13,9 +13,8 @@ use crate::{
 
 /// `\cite{a,b}` を `HirInlineKind::Cite` に変換する
 ///
-/// 引数を構造トークンの `,` で割り（`\,` はキーの文字）、各キーを trim する。空のキー
-/// （`\cite{}` や `\cite{a,}` / `\cite{,a}` / `\cite{a,,b}` のような先頭・末尾・連続カンマ）は曖昧さを
-/// 排除するためエラーとする。
+/// 各キーを trim し、空のキー（`\cite{}` や `\cite{a,}` / `\cite{,a}` / `\cite{a,,b}` のような
+/// 先頭・末尾・連続カンマ）はエラーとする。
 ///
 /// # Errors
 ///
@@ -119,7 +118,7 @@ mod tests {
 
   #[test]
   fn cite_does_not_split_on_comma_in_nested_node() {
-    // 直下の構造 `,` だけが区切り。入れ子ノードの中身はキーの文字として平坦化する
+    // 入れ子ノードの中身はキーの文字として平坦化する
     assert_eq!(cite_keys(r"\cite{\bold{a,b}}"), vec!["a,b".to_string()]);
   }
 

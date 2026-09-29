@@ -18,8 +18,7 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 任意引数が指定された場合にエラーを返します（言語指定 `[language=...]` は
-/// ハイライト段の issue でキー名と受理を決めるまで未知キーとして拒否する。P6）。
+/// 任意引数が指定された場合にエラーを返します。
 pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_environment_opt_args(view)?;
   let text = match view.body() {
@@ -69,7 +68,6 @@ mod tests {
 
   #[test]
   fn code_block_trims_only_one_newline_at_each_edge() {
-    // 前後に空行を 1 つずつ足した形
     let source = "\\begin{code}\n\nbody\n\n\\end{code}";
     let text = code_text(source);
     assert_eq!(text, "\nbody\n");
@@ -91,7 +89,6 @@ mod tests {
 
   #[test]
   fn code_block_keeps_indentation_of_the_end_marker_as_a_trailing_line() {
-    // `\end{code}` の直前は改行ではなく空白なので、何も落ちない
     let source = "\\begin{code}\nbody\n  \\end{code}";
     let text = code_text(source);
     assert_eq!(text, "body\n  ");
@@ -105,7 +102,6 @@ mod tests {
 
     let result = evaluate_children_to_hir(source, cst);
 
-    // キー名と受理はハイライト段の issue で決めるので、今は未知キー（P6）
     assert!(
       matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "language"),
       "{result:?}"
