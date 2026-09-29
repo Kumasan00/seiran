@@ -35,7 +35,7 @@ enum OptType {
   /// 正の長さ。`Length` に加えて 0 と負値を拒否する
   ///
   /// 描画寸法が正であることは `Publication` の不変条件で、破れると描画段の低水準エラー
-  /// （krilla の `Size::from_wh`）になりソース位置を示せなくなる（#378）。
+  /// （krilla の `Size::from_wh`）になりソース位置を示せなくなる。
   PositiveLength,
   /// 1 以上の整数。小数は拒否する
   PositiveInt,
@@ -351,7 +351,7 @@ fn parse_value(
 ) -> Result<OptValue, EvalError> {
   match expected {
     OptType::Bool => {
-      // 綴りは小文字のみ。`True` / `TRUE` を受理すると同じ値への第 2 の綴りになる（#739。#690 と同じ論法）
+      // 綴りは小文字のみ
       return match raw.trim() {
         "true" => Ok(OptValue::Bool(true)),
         "false" => Ok(OptValue::Bool(false)),
@@ -359,7 +359,7 @@ fn parse_value(
       };
     },
     OptType::String => {
-      // 引用符は値の境界ではない（#687）。`"` も値の文字としてそのまま残す
+      // 引用符は値の境界ではない。`"` も値の文字としてそのまま残す
       return Ok(OptValue::String(raw.trim().to_string()));
     },
     OptType::Length => {
@@ -554,7 +554,7 @@ mod tests {
 
   #[test]
   fn collect_returns_length_with_pt_suffix() {
-    // `pt` は config / style と同じくソースでも受理する（#690）
+    // `pt` は config / style と同じくソースでも受理する
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10pt]{T}";
@@ -607,7 +607,6 @@ mod tests {
 
   #[test]
   fn collect_rejects_non_lowercase_bool() {
-    // 真偽値は小文字のみ（#739。大文字の単位を拒否する #690 と同じ論法）
     const DRAFT: OptKey<bool> = boolean("draft");
     for value in ["True", "TRUE", "False", "FALSE"] {
       let arena = Bump::new();

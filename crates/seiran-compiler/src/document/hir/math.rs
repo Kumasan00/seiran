@@ -18,7 +18,7 @@ impl HirMath {
 
 /// 数式ノードの種別
 ///
-/// 組版側はこの種別を直接読む（同形の中間型 `MathNode` は #335 で削除した）。
+/// 組版側はこの種別を直接読む。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirMathKind {
   /// テキスト / 記号（変数名、数字、演算子等）

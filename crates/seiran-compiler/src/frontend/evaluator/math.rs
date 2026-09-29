@@ -45,7 +45,7 @@ pub(crate) fn evaluate_math_elements(
     match child {
       GreenElement::Token(token) => match token.kind {
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-        // （実際の消費者は verbatim コマンド、#449）。
+        // （実際の消費者は verbatim コマンド）。
         TokenKind::Text
         | TokenKind::VerbatimText
         | TokenKind::Comma
@@ -128,7 +128,7 @@ pub(crate) fn evaluate_math_elements(
 
 /// 上付き・下付きスクリプトノードの中身を単一の [`HirMath`] に変換する
 ///
-/// `parse_math_script`（`syntax::parser`）が内容を `{...}` グループ 1 個に限定しているので（#486）、
+/// `parse_math_script`（`syntax::parser`）が内容を `{...}` グループ 1 個に限定しているので、
 /// 子は `^` / `_` 自身・先行トリビアのトークンと、内容の `MathGroup` ノード 1 個だけになる。
 fn evaluate_math_script_content(
   source: &str,
@@ -167,7 +167,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 ///
 /// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
-/// 経由、#753）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
+/// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
 #[derive(Debug, Clone, Copy)]
 enum MathCommandKind {
@@ -216,7 +216,7 @@ pub(super) fn lookup_math_arg_count(name: &str) -> Option<usize> {
 
 /// 数式内コマンドを [`HirMath`] に変換する
 ///
-/// 数式内ではパーサーが [`MathCommandKind::arg_count`] 個で引数の読みを打ち切るので（#753）、
+/// 数式内ではパーサーが [`MathCommandKind::arg_count`] 個で引数の読みを打ち切るので、
 /// 各 arm の `arity` 検査で実際に起きうるのは不足だけになる。
 fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
   let view = CommandView::new(cmd_node, source);

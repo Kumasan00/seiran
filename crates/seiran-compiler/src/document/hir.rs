@@ -1,7 +1,7 @@
 //! 著者が書いた内容を表す文書木（HIR）。
 //!
 //! 全ノード（block / inline / math）が [`NodeId`] を持ち、ソース位置は各 variant ではなく
-//! [`SourceMap`] に集約する（epic #321 Phase 1、issue #322）。
+//! [`SourceMap`] に集約する。
 mod builder;
 mod id;
 mod inline;

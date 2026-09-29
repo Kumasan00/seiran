@@ -65,10 +65,10 @@ pub(super) enum TokenInline<'s> {
 /// 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
 pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<TokenInline<'s>> {
   return match token.kind {
-    // 索引マーカーをまたぐ結合の対象はここだけ（[`InlineSink`] の doc 参照、#514）。
+    // 索引マーカーをまたぐ結合の対象はここだけ（[`InlineSink`] の doc 参照）。
     TokenKind::Text => Some(TokenInline::MergeableText(token.text(source))),
     // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
-    // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。`_` / `^` / `&` / `,` / `=` は
+    // （実際の消費者は verbatim 環境・コマンド）。`_` / `^` / `&` / `,` / `=` は
     // 構造上の意味を失った位置に残ったものなので、トークンの原文をそのまま本文に出す。
     TokenKind::VerbatimText
     | TokenKind::Whitespace
@@ -100,8 +100,8 @@ pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<To
 /// lexer は空白と構造文字で [`TokenKind::Text`] を切るので、`A\index{k}V` は素朴に評価すると
 /// `Text("A")` / `Index` / `Text("V")` の 3 ノードになる。`crate::typeset::boxing` はテキストノード
 /// ごとに 1 つのシェーピング run を作るため、run 境界でカーニング・合字・和欧文間アキ・分割機会が
-/// 失われてしまう（#514）。マーカーを取り除いたソースと同じテキスト構造へ畳み直すことで、
-/// 「`\index` の有無でレイアウトが変わらない」という #246 の不変条件を構造として保つ。
+/// 失われてしまう。マーカーを取り除いたソースと同じテキスト構造へ畳み直すことで、
+/// 「`\index` の有無でレイアウトが変わらない」という不変条件を構造として保つ。
 ///
 /// 畳むのは**マーカーを取り除くと 1 つの [`TokenKind::Text`] になる**場合だけ — 両隣が
 /// [`TokenKind::Text`] 由来で、ソース上でマーカーの span を挟んで連続しているときに限る。
@@ -109,7 +109,7 @@ pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<To
 /// マーカーが無くても別トークンなので畳まない。
 ///
 /// マーカーの**直後**の空白・改行も畳まない — パーサは引数の後で見つからなかったトリビアを
-/// コマンド呼び出しの外へ返すので（#516）、`A\index{k} V` の空白はトークンとして
+/// コマンド呼び出しの外へ返すので、`A\index{k} V` の空白はトークンとして
 /// [`Self::push`] を通り、畳みが切れる。
 #[derive(Debug, Default)]
 pub(super) struct InlineSink {

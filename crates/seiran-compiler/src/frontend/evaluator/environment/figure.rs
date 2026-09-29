@@ -310,7 +310,7 @@ mod tests {
 
   #[test]
   fn image_rejects_zero_width() {
-    // 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く（#378）
+    // 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=0mm]{a.png}\end{figure}";
     let cst = test_support::parse(source, &arena).unwrap();

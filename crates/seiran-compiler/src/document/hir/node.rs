@@ -33,7 +33,7 @@ impl HirNode {
 /// `HirList` / `HirMathBlock` / `HirFigure` / `HirTable` / `HirTheorem` / `HirQuote`）、
 /// 1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
 /// インラインのフィールドを持つ variant は作らない — `typeset::lowering` の各入口が payload 型を
-/// 引数で受け取れるようにするため（#711。インラインのフィールドだと、入口ごとに `unreachable!`
+/// 引数で受け取れるようにするため（インラインのフィールドだと、入口ごとに `unreachable!`
 /// 付きの分配束縛が要る）。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirNodeKind {

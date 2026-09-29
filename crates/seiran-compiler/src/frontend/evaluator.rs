@@ -223,9 +223,8 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
 
 /// 子 module のテストが CST を組み立て、評価器を本番と同じ経路で呼ぶための共有ヘルパ
 ///
-/// 本番のレジストリ（`mode_resolver`）を注入した `parse` ラッパは、以前は evaluator 配下の
-/// 各 test module へ同じ形で複製されていた（#400）。テストが本番と同じ経路を通ることを 1 箇所で保証する。
-/// 評価結果を変換なしで受け取る入口（[`evaluate_children_to_hir`] 等）も、同じ理由でここが持つ。
+/// 本番のレジストリ（`mode_resolver`）を注入した `parse` ラッパを持ち、テストが本番と同じ経路を通ることを
+/// 1 箇所で保証する。評価結果を変換なしで受け取る入口（[`evaluate_children_to_hir`] 等）も、同じ理由でここが持つ。
 #[cfg(test)]
 mod test_support {
   use bumpalo::Bump;

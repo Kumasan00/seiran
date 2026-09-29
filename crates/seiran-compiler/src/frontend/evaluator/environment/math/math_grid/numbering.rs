@@ -37,7 +37,7 @@ pub(in crate::frontend::evaluator::environment) enum NumberingMode {
 /// # Errors
 ///
 /// 未知の任意引数キー・不正な値、無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）で
-/// エラーを返す。数式本体の環境は parser が `{...}` を必須引数として読まない（#732）ので、
+/// エラーを返す。数式本体の環境は parser が `{...}` を必須引数として読まないので、
 /// [`EvalError::ExtraEnvironmentArgument`] はここでは起きない（テキスト本体の環境と同じ個数検査を通すだけ）。
 pub(super) fn parse_math_env_opts(
   view: &EnvironmentView<'_>,

@@ -73,7 +73,7 @@ pub(in crate::frontend) struct ModeResolver {
   /// 数式内のコマンド名 → 必須引数の個数（数式の語彙に無いコマンドは `None`）
   ///
   /// 数式内では `{...}` が数式グループにもなるので、個数を超えた位置の `{...}` を引数として読まない
-  /// ために引く（#753）。テキスト内は裸の `{` を書けない（P4）ので引かない。
+  /// ために引く。テキスト内は裸の `{` を書けない（P4）ので引かない。
   pub math_command_arg_count: fn(&str) -> Option<usize>,
 }
 
@@ -192,13 +192,13 @@ impl<'a> Parser<'a> {
   /// テキスト・数式どちらの文脈でも、1 要素を読む規則はこの関数 1 つだけにある。`$...$`・数式グループ・
   /// 数式環境の本体・数式モードで読む引数は、呼び出し側のループが終端と閉じないまま終わったときの診断を
   /// 持ち、要素はここで読む。数式内の `\begin` も環境として読み、数式内で環境を使えないことの診断は評価器に任せる
-  /// （書いた位置で診断が変わらないようにするため、#688）。
+  /// （書いた位置で診断が変わらないようにするため）。
   ///
   /// 前提条件: 先読みは非トリビアのトークン。トリビアを積むのも EOF を判定するのも各ループで、この関数は
-  /// 自衛しない（#775）。その代わり必ず 1 トークン以上消費するので、呼び出し元のループは毎周進む。
+  /// 自衛しない。その代わり必ず 1 トークン以上消費するので、呼び出し元のループは毎周進む。
   ///
   /// 終端は知らない — 各ループは終端を判定してからこの関数を呼ぶので、ここに届いた `}` / `]` はどの区間の
-  /// 終端でもなく、常に [`ParserError::UnexpectedToken`] になる（#771）。
+  /// 終端でもなく、常に [`ParserError::UnexpectedToken`] になる。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
@@ -317,7 +317,7 @@ impl<'a> Parser<'a> {
   /// 本体の読み取り方（[`BodyMode`]）は環境名が確定した時点でレジストリから引き、`\begin` 側の引数の
   /// 読み方もそれで決まる。`{...}` を必須引数として読むのは、本体が `{` を内容として持てない
   /// [`BodyMode::Text`] のときだけ — [`BodyMode::Math`] では `{...}` は数式グループなので本体の先頭に
-  /// なる（#732）。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の余分な引数は
+  /// なる。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の余分な引数は
   /// 評価器が診断する）。必須引数を取る環境を足すときは、個数をレジストリから引く形へ変える。
   fn parse_environment(&mut self, begin_token: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = begin_token.span;
@@ -344,7 +344,7 @@ impl<'a> Parser<'a> {
         }
       },
       BodyMode::Math => {
-        // 数式本体では `{...}` は数式グループなので、必須引数として読まず本体の先頭に残す（#732）。
+        // 数式本体では `{...}` は数式グループなので、必須引数として読まず本体の先頭に残す。
         // `[` は数式本体にも書けないので、任意引数の読みはテキスト本体と同じ。
         self.skip_trivia(&mut begin_children);
         self.parse_single_opt_arg(&mut begin_children)?;
@@ -476,12 +476,12 @@ impl<'a> Parser<'a> {
   ///
   /// 数式内では、数式の語彙が宣言する個数（[`ModeResolver::math_command_arg_count`]）を読んだところで
   /// 打ち切る。後ろの `{...}` は数式グループとして外側のループが読む（`$\alpha{b}$` の `{b}`、
-  /// `$\frac{a}{b}{c}$` の `{c}`。#753）。数式の語彙に無いコマンドとテキスト内のコマンドは個数で
+  /// `$\frac{a}{b}{c}$` の `{c}`）。数式の語彙に無いコマンドとテキスト内のコマンドは個数で
   /// 打ち切らず、後ろに続く `{...}` をすべて引数として読む（余分は評価器が診断する）。
   ///
   /// 必須引数を 1 つ以上読んだ後に**次の引数を探して跨いだトリビア**は、引数が見つかったときだけ
   /// コマンド呼び出しの子になる。見つからなければ `out` へそのまま積み直してコマンドの外側へ返す
-  /// （`\bold{x} y` の `}` の直後の空白は語間のアキであってコマンドの一部ではない、#516）。
+  /// （`\bold{x} y` の `}` の直後の空白は語間のアキであってコマンドの一部ではない）。
   /// ノードの span も最後の引数で閉じる。
   ///
   /// 必須引数を 1 つも読まなかった場合、コマンド名の直後のトリビアはコマンド呼び出しに残す
@@ -535,7 +535,7 @@ impl<'a> Parser<'a> {
   /// 終端 `close_kind` の判定はこのループだけが持つ。トリビアを積んでから次のトークンを見て、終端なら
   /// 消費して抜け、EOF なら [`ParserError::UnclosedDelimiter`]、それ以外は [`Self::parse_element`] に
   /// 1 要素を読ませる。`parse_element` は終端を受け取らないので、「終端をどちらが見るか」の判断は
-  /// 構造的にここ 1 箇所になる（#771）。
+  /// 構造的にここ 1 箇所になる。
   fn parse_delimited(
     &mut self,
     open_kind: TokenKind,
@@ -708,9 +708,7 @@ impl<'a> Parser<'a> {
   /// 数式内の上付き・下付きスクリプトをパースする: `_{...}`, `^{...}`
   ///
   /// 内容は `{...}` グループのみを受け付ける。`$x^2$` のような裸の 1 トークンも
-  /// `$x^\alpha$` のような裸のコマンドも [`ParserError::ScriptRequiresGroup`] にする（#486）—
-  /// 裸の内容を許すと範囲が字句のトークン境界で決まり、`$x^2+y$` と `$x^2=y$` で
-  /// スコープが変わってしまう。
+  /// `$x^\alpha$` のような裸のコマンドも [`ParserError::ScriptRequiresGroup`] にする。
   fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
     let script_token = self.take_peeked();
     let start_span = script_token.span;
@@ -1090,8 +1088,7 @@ mod tests {
 
   #[test]
   fn trivia_only_source_is_root_of_trivia_tokens() {
-    // #775: トリビアだけのソースは parse_root のループが積み切って EOF で抜け、parse_element を呼ばない
-    // （変更前後で同じ形になる固定テスト）
+    // トリビアだけのソースは parse_root のループが積み切って EOF で抜け、parse_element を呼ばない
     let arena = Bump::new();
     let cst = parse_source("  // c", &arena);
     let kinds: Vec<TokenKind> = cst
@@ -1109,8 +1106,7 @@ mod tests {
 
   #[test]
   fn environment_body_ending_in_trivia_without_end_is_error() {
-    // #775: 本体がトリビアで終わって EOF なら、本体ループが積み切って抜け、閉じていない環境として診断する
-    // （変更前後で同じ診断になる固定テスト）
+    // 本体がトリビアで終わって EOF なら、本体ループが積み切って抜け、閉じていない環境として診断する
     let arena = Bump::new();
     let result = parse("\\begin{env}body \n", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
@@ -1119,7 +1115,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "トリビアを積み終えてから")]
   fn parse_element_does_not_skip_leading_trivia() {
-    // #775: トリビアを積むのは各ループの責務で、parse_element は自衛しない。前提を破る呼び出しは落ちる
+    // トリビアを積むのは各ループの責務で、parse_element は自衛しない。前提を破る呼び出しは落ちる
     let arena = Bump::new();
     let source = " x";
     let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
@@ -1130,7 +1126,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "先読みが None なら")]
   fn parse_element_does_not_accept_eof() {
-    // #775: EOF を判定するのは各ループの責務で、parse_element は進捗ゼロの Ok を返さない
+    // EOF を判定するのは各ループの責務で、parse_element は進捗ゼロの Ok を返さない
     let arena = Bump::new();
     let source = "";
     let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
@@ -1191,12 +1187,12 @@ mod tests {
     ));
   }
 
-  // --- 終端の所有（#771）-------------------------------------------------------
+  // --- 終端の所有 -------------------------------------------------------
 
   #[test]
   fn nested_closers_in_math_arg_are_consumed_by_their_own_loops() {
-    // #771: `{{a}}` の内側の `}` は数式グループのループが、外側の `}` は引数のループが消費する。
-    // 終端の判定は各ループだけが持ち、`parse_element` は終端を知らない（変更前後で同じ形になる固定テスト）
+    // `{{a}}` の内側の `}` は数式グループのループが、外側の `}` は引数のループが消費する。
+    // 終端の判定は各ループだけが持ち、`parse_element` は終端を知らない
     let arena = Bump::new();
     let cst = parse_source(r"$\vfrac{{a}}{b}$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
@@ -1214,8 +1210,8 @@ mod tests {
 
   #[test]
   fn trivia_before_closer_stays_inside_the_arg() {
-    // #771: 終端の直前のトリビアはループが終端判定より先に積むので、引数の子として `}` の手前に残る。
-    // `parse_element` の先頭の skip_trivia に頼っていないことの固定（変更前後で同じ形になる）
+    // 終端の直前のトリビアはループが終端判定より先に積むので、引数の子として `}` の手前に残る。
+    // `parse_element` の先頭の skip_trivia に頼っていないことの固定
     let arena = Bump::new();
     let cst = parse_source(r"\cmd{x }", &arena);
     let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
@@ -1427,7 +1423,7 @@ mod tests {
 
   #[test]
   fn command_call_ends_at_its_last_argument() {
-    // 引数の後で見つからなかったトリビアはコマンド呼び出しに含めず、親の子として返す（#516）
+    // 引数の後で見つからなかったトリビアはコマンド呼び出しに含めず、親の子として返す
     let arena = Bump::new();
     let cst = parse_source(r"\bold{x} y", &arena);
 
@@ -1728,7 +1724,7 @@ mod tests {
 
   #[test]
   fn math_env_body_may_start_with_math_group() {
-    // #732: 数式本体では `{...}` は数式グループなので、本体の先頭に書いても環境の引数にならない
+    // 数式本体では `{...}` は数式グループなので、本体の先頭に書いても環境の引数にならない
     for source in [
       r"\begin{equation}{a}+b\end{equation}",
       "\\begin{equation}\n{a}+b\\end{equation}",
@@ -1760,7 +1756,7 @@ mod tests {
     assert_eq!(begin.children_of_kind(SyntaxKind::MandatoryArg).count(), 3);
   }
 
-  // --- verbatim 字句モード（#447）-------------------------------------------
+  // --- verbatim 字句モード -------------------------------------------
 
   /// verbatim 環境の本体テキストを取り出す（本体はちょうど 1 個の `VerbatimText`）
   fn verbatim_body<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
@@ -1961,7 +1957,7 @@ mod tests {
 
   #[test]
   fn verbatim_arg_mode_applies_inside_inline_math() {
-    // 数式モード内でもレジストリの引数モード宣言が効く（#236 と整合）
+    // 数式モード内でもレジストリの引数モード宣言が効く
     let arena = Bump::new();
     let source = "$\\vurl{a//b}$";
 
@@ -2032,7 +2028,7 @@ mod tests {
 
   #[test]
   fn math_command_stops_reading_args_at_its_arg_count() {
-    // #753: 数式内では、コマンドが取る個数を超えた位置の `{...}` は後ろに続く数式グループ
+    // 数式内では、コマンドが取る個数を超えた位置の `{...}` は後ろに続く数式グループ
     let cases = [
       (r"$\valpha{b}$", vec![(SyntaxKind::CommandCall, 0), (SyntaxKind::MathGroup, 0)]),
       (r"$\valpha {b}$", vec![(SyntaxKind::CommandCall, 0), (SyntaxKind::MathGroup, 0)]),

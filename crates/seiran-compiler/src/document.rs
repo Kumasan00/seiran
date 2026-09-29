@@ -1,8 +1,7 @@
 //! 著者が書いた文書（authored HIR）を所有する module。
 //!
 //! HIR は frontend の一時的な構文木ではなく、`semantics` と `typeset` が共有する authored 文書の
-//! 正典である。producer は frontend 1 つだが、HIR の意味と寿命は frontend の実装より広いので、
-//! ここが所有者になる（epic #332）。診断ライブラリ（miette）も I/O も持たない。
+//! 正典である。診断ライブラリ（miette）も I/O も持たない。
 //!
 //! # 提供する interface
 //!
@@ -28,15 +27,14 @@
 //! 語彙置き場は型の無制限な受け皿にはせず、HIR の variant と同じ理由で増減する語彙だけを置く
 //! （複数 consumer が使うことは、ここへ置く理由にならない）。
 //!
-//! HIR と同形の中間 IR は持たない — 数式の中間型 `MathNode` とその変換（`to_math_nodes`）は、
-//! `typeset::lowering` が [`HirMath`] / [`HirMathKind`] を直接読むようにして削除済み（#335）。
+//! HIR と同形の中間 IR は持たない — `typeset::lowering` は [`HirMath`] / [`HirMathKind`] を直接読む。
 //! HIR は未解決のラベル名・引用キーを持ち、解決済み ID（`LabelId` / `citation::CitationId`）・
 //! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
 //!
 //! 依存方向は `source` / `project` / `length` / `color` の 4 つだけで、
 //! `semantics` / `typeset` / `compiler` は知らない。`project` へ依存するのは HIR が値として
 //! `ProjectPath` を持つためだけで、パスの解決規則（`PathResolver`）は持たない — 解決は frontend の
-//! 評価 context が `project` の規則を借りて行う（#534）。
+//! 評価 context が `project` の規則を借りて行う。
 
 mod caption;
 mod font_kind;
@@ -52,7 +50,7 @@ mod theorem;
 pub(crate) use caption::CaptionPosition;
 pub(crate) use font_kind::FontKind;
 pub(crate) use heading_level::HeadingLevel;
-// HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
+// HIR は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirFigure, HirGroup, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
   HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,

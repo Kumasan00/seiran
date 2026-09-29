@@ -3,7 +3,7 @@
 /// 数式記号のクラス
 ///
 /// `unicode-math-table.tex` 由来のキュレーション済み分類。frontend の記号テーブルが記号ごとに
-/// 記録し、`typeset::lowering::math::spacing` がアトム間のアキを決めるのに消費する（#86）。
+/// 記録し、`typeset::lowering::math::spacing` がアトム間のアキを決めるのに消費する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathClass {
   /// 順序子（`\mathord`）— 変数・名前付き記号など（`\alpha` `\infty` `\hbar`）

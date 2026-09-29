@@ -1088,7 +1088,7 @@ mod tests {
     return;
   }
 
-  // --- raw 走査（verbatim 字句モード、#447）----------------------------------
+  // --- raw 走査（verbatim 字句モード）----------------------------------
 
   #[test]
   fn scan_verbatim_until_stops_before_the_marker() {

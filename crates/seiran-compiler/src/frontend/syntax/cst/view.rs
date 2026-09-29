@@ -196,7 +196,7 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
   match element {
     GreenElement::Token(token) => match token.kind {
       // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのまま連結する
-      // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
+      // （実際の消費者は verbatim 環境・コマンド）。
       TokenKind::Text
       | TokenKind::VerbatimText
       | TokenKind::Whitespace
@@ -231,7 +231,7 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
 
 /// ノード直下の構造トークン `,` で子要素を区間に割り、各区間のテキストを返す
 ///
-/// 区切りは構造トークンだけで決まる（#687 / #731）: `\,`（`Escaped`）と入れ子のノードの中身は区間の
+/// 区切りは構造トークンだけで決まる: `\,`（`Escaped`）と入れ子のノードの中身は区間の
 /// 文字として [`extract_text_content`] と同じ規則で平坦化する。区間は trim せず、空の区間も残す
 /// （空白・空の区間の扱いは利用者が決める）。平坦化した文字列を `,` で割るとエスケープの区別が消えるので、
 /// 区切りを持つ引数はこの関数で割る。
@@ -246,7 +246,7 @@ pub(crate) fn split_text_on_commas(source: &str, node: &GreenNode<'_>) -> Vec<St
 
 /// `OptArg` ノードを `key=value` 形式としてパースする
 ///
-/// 区切りは構造トークンだけで決まる（#687）: 直下の `Comma` がエントリの区切り、各エントリの最初の
+/// 区切りは構造トークンだけで決まる: 直下の `Comma` がエントリの区切り、各エントリの最初の
 /// `Equals` が key と value の区切り。`\,` / `\=`（`Escaped`）・2 個目以降の `=`・入れ子のノードの中身は
 /// 値の文字になる。引用符 `"` は値の境界ではない。`=` を含まないエントリは boolean フラグとして扱い
 /// `("key", "true")` を生成する（例: `[draft]`）。空のエントリは読み飛ばす。
@@ -586,7 +586,7 @@ mod tests {
   #[test]
   fn parse_key_value_options_ignores_comma_nested_in_child_node() {
     // 入れ子ノード（ここではコマンド引数）内の `,` は OptArg 直下のトークンではないので
-    // エントリを分割しない（#687）
+    // エントリを分割しない
     let pairs = command_pairs(r"\cmd[title=\bold{a, b}, label=x]{y}");
 
     assert_eq!(
@@ -600,7 +600,7 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_treats_quote_as_plain_character() {
-    // 引用符は値の境界ではない（#687）。`,` は引用符の内側でも区切りになる
+    // 引用符は値の境界ではない。`,` は引用符の内側でも区切りになる
     let pairs = command_pairs(r#"\cmd[title="a, b"]{y}"#);
 
     assert_eq!(
@@ -628,7 +628,7 @@ mod tests {
   #[test]
   fn extract_text_content_still_flattens_escaped_comma() {
     // `extract_text_content` 自体の平坦化は変えない（`\ref` / `\href` / `code` / `figure` 等の利用者向け）。
-    // 区切りを持つ引数は平坦化してから割らず、`split_text_on_commas` で割る（#731）
+    // 区切りを持つ引数は平坦化してから割らず、`split_text_on_commas` で割る
     let arena = bumpalo::Bump::new();
     let source = r"\cmd{a\,b, c}";
     let cst = syntax::parse(source, &arena, text_modes()).unwrap();
@@ -678,7 +678,7 @@ mod tests {
 
   #[test]
   fn split_text_on_commas_keeps_escaped_comma_in_segment() {
-    // `\,` は区切りではなく区間の文字（#731。#687 と同じ規則）
+    // `\,` は区切りではなく区間の文字
     let segments = first_arg_segments(r"\cmd{a\,b}");
 
     assert_eq!(segments, vec!["a,b".to_string()]);

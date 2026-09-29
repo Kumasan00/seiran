@@ -111,7 +111,7 @@ mod tests {
 
   #[test]
   fn inline_code_inside_math_is_rejected_as_an_unknown_command() {
-    // 引数モードはレジストリ宣言が勝つので数式内でも生読みされる（#447）が、
+    // 引数モードはレジストリ宣言が勝つので数式内でも生読みされるが、
     // 数式評価器の語彙に `\code` は無い
     let arena = Bump::new();
     let source = r"$\code{a // b}$";
@@ -119,7 +119,7 @@ mod tests {
 
     let result = evaluate_children_to_hir(source, cst);
 
-    // 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
+    // 静かな無視ではなく P6 の診断で落ちる
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "code"), "{result:?}");
   }
 

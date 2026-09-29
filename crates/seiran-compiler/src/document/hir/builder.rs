@@ -11,7 +11,7 @@ use crate::{
 ///
 /// 外部資源パス（`\image{...}`）の解決はここには無い。解決規則を持つのは `project::PathResolver` で、
 /// 評価中に builder と resolver を束ねて持ち回るのは frontend の評価 context である。
-/// この型は文書構築の不変条件（ID・位置・leaf ノード）だけを持つ（#534）。
+/// この型は文書構築の不変条件（ID・位置・leaf ノード）だけを持つ。
 ///
 /// 子を持つノードは、子を評価する**前**に [`HirBuilder::alloc`] で自分の ID を確保すること。
 /// `NodeId::local` がソース出現順（preorder）になるのはこの規約だけで成り立つ。

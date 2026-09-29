@@ -1,7 +1,7 @@
 //! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
 //!
 //! `parse_source` は 1 ソース分の [`HirSource`] を返す。本体経路もテストも HIR をそのまま扱い、
-//! 他の文書木表現へ落とす adapter は持たない（#325）。
+//! 他の文書木表現へ落とす adapter は持たない。
 
 use bumpalo::Bump;
 use miette::Diagnostic;
@@ -78,8 +78,7 @@ pub(crate) fn parse_source(
   return Ok(ctx.finish(nodes));
 }
 
-/// 評価器の統合テスト（旧 `frontend` crate の `tests/evaluate.rs`、#307 で本 module 直下の
-/// inline テストへ移設）
+/// 評価器の統合テスト
 #[cfg(test)]
 mod tests {
   use std::path::Path;
@@ -316,7 +315,7 @@ mod tests {
   #[test]
   fn evaluate_cite_produces_cite_stub() {
     // キー存在検証は semantics::analyze の責務なので、frontend は
-    // 未知キーでもスタブノードを生成する（#323 Task 4）
+    // 未知キーでもスタブノードを生成する
     let result = evaluate_source(r"See \cite{rika}.");
 
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
@@ -387,7 +386,7 @@ mod tests {
         assert_eq!(math.len(), 2);
         assert!(matches!(&math[0].kind, HirMathKind::Text(t) if t == "x"));
         assert!(matches!(&math[1].kind, HirMathKind::Subscript(_)));
-        // 内容は必ず `{...}` グループなので、スクリプトの子は 1 要素の `Group` になる（#486）
+        // 内容は必ず `{...}` グループなので、スクリプトの子は 1 要素の `Group` になる
         if let HirMathKind::Subscript(inner) = &math[1].kind {
           assert!(
             matches!(&inner.kind, HirMathKind::Group(children) if matches!(&children[0].kind, HirMathKind::Text(t) if t == "i"))
@@ -529,7 +528,7 @@ mod tests {
 
   #[test]
   fn inline_math_styled_is_followed_by_group() {
-    // #753: 字形コマンドの 1 個を超えた位置の `{...}` は後ろに続く数式グループ
+    // 字形コマンドの 1 個を超えた位置の `{...}` は後ろに続く数式グループ
     let math = inline_math_nodes(r"$\mathbold{x}{y}$");
 
     assert_eq!(math.len(), 2, "{math:?}");
@@ -758,7 +757,7 @@ mod tests {
 
   #[test]
   fn evaluate_math_env_body_starting_with_group() {
-    // #732: 数式環境の本体先頭の `{...}` は環境の引数ではなく数式グループ
+    // 数式環境の本体先頭の `{...}` は環境の引数ではなく数式グループ
     let result = evaluate_source(r"\begin{equation}{a}+b\end{equation}");
 
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
@@ -871,7 +870,7 @@ mod tests {
 
   #[test]
   fn evaluate_math_frac_is_followed_by_group() {
-    // #753: `\frac` の 2 個を超えた位置の `{...}` は後ろに続く数式グループ
+    // `\frac` の 2 個を超えた位置の `{...}` は後ろに続く数式グループ
     for source in [
       r"$\frac{a}{b}{c}$",
       r"$\frac{a}{b} {c}$",
@@ -915,7 +914,7 @@ mod tests {
 
   #[test]
   fn evaluate_math_symbol_is_followed_by_group() {
-    // #753: 引数を取らない記号コマンドでは直後の `{...}` から数式グループ（空白を挟んでも同じ）
+    // 引数を取らない記号コマンドでは直後の `{...}` から数式グループ（空白を挟んでも同じ）
     for source in [r"$\alpha{b}$", r"$\alpha {b}$"] {
       let math = inline_math_nodes(source);
 
@@ -979,7 +978,7 @@ mod tests {
 
   #[test]
   fn evaluate_environment_in_math_is_error_wherever_written() {
-    // #688: 数式内の環境は、書いた位置によらず同じ診断になる
+    // 数式内の環境は、書いた位置によらず同じ診断になる
     for source in [
       r"$\begin{matrix}a\end{matrix}$",
       r"${\begin{matrix}a\end{matrix}}$",
@@ -1069,7 +1068,7 @@ mod tests {
 
   #[test]
   fn evaluate_item_indented_nested_list_matches_packed_equivalent() {
-    // issue #160 — \item{...} の内容を改行・インデントして書いても、詰めて 1 行で書いた場合と
+    // \item{...} の内容を改行・インデントして書いても、詰めて 1 行で書いた場合と
     // 完全に同じ HIR になるべき（余分な空白・空段落が出ない）。ID 予約の穴の位置は
     // 空白トークンの量に応じて変わるため、比較は NodeId を無視した構造比較（same_shape）で行う。
     let indented = evaluate_source(
@@ -1085,7 +1084,7 @@ mod tests {
 
   #[test]
   fn evaluate_trailing_whitespace_after_nested_environment_produces_no_blank_paragraph() {
-    // issue #160 — ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
+    // ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
     let result = evaluate_source("\\begin{quote}\\begin{itemize}\\item{x}\\end{itemize}\n  \n\\end{quote}");
     assert_eq!(result.len(), 1);
     let HirNodeKind::Quote(quote) = &result[0].kind else {

@@ -89,7 +89,7 @@ mod tests {
 
   #[test]
   fn space_rejects_non_length_argument() {
-    // 単位のない数値が暗黙の単位（旧 pt）を持つ場所を残さない（#690）
+    // 単位のない数値が暗黙の単位を持つ場所を残さない
     for source in [r"\space{5}", r"\space{5PT}", r"\space{5 pt}", r"\space{}"] {
       let arena = Bump::new();
       let node = test_support::command_call_node(source, &arena);

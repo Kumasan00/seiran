@@ -18,11 +18,6 @@ use crate::{
 /// [`HirBuilder`] のままで、この型は転送するだけで規約を再定義しない。パス解決規則の実装も
 /// `project::PathResolver` 1 箇所に閉じており、frontend は `base_dir.join` を書かない。
 ///
-/// 束ねる置き場が frontend なのは、「評価中に持ち回る値」という括りが frontend の関心だから（#534）。
-/// `document` は authored HIR と語彙型の所有者であり、`project` の解決規則を抱える理由は
-/// その責務からは導けない。ハンドラの dispatch が fn ポインタの phf テーブルであることは
-/// 置き場の判断材料にしない — signature の置換は全ハンドラで一様だから。
-///
 /// builder は 1 ソースに 1 つなので所有し、resolver は `compile` facade が `base_dir` から
 /// 1 回だけ構築した値を借用する。
 #[derive(Debug)]

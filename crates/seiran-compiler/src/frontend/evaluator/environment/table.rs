@@ -253,7 +253,7 @@ mod tests {
 
   #[test]
   fn table_parses_fixed_width_in_pt() {
-    // 固定幅の書式は config / style と同じ（`pt` も受理。#690）
+    // 固定幅の書式は config / style と同じ（`pt` も受理）
     let source = r"\begin{table}[widths=12pt auto]\row{A & B}\end{table}";
     let result = eval_table(source).unwrap();
     let HirNodeKind::Table(table) = &result[0].kind else {
@@ -264,7 +264,7 @@ mod tests {
 
   #[test]
   fn table_rejects_width_tokens_outside_the_length_format() {
-    // 大文字の単位・単位なしの 0（比率の値域外）・0 の長さはどれも拒否する（#690）
+    // 大文字の単位・単位なしの 0（比率の値域外）・0 の長さはどれも拒否する
     for widths in ["5MM auto", "0 auto", "0pt auto"] {
       let source = format!(r"\begin{{table}}[widths={widths}]\row{{A & B}}\end{{table}}");
 
