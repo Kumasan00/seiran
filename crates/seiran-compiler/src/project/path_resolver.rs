@@ -1,10 +1,5 @@
 //! 外部資源を指す**入力パス**の解決規則 [`PathResolver`]（I/O なし）。
 //!
-//! 「相対なら `base_dir` を前置、絶対ならそのまま、`.` と冗長な区切りは畳む」という規則は config
-//! （style / references / sources / fonts）・style（CSL / locale）・frontend（画像）の 3 箇所が同じものを
-//! 使う。trait にしないのは、解決規則が filesystem / memory の adapter で変わらず、
-//! 差し替え点ではないため（差し替え点は引き続き [`crate::project::ProjectSource`] だけ）。
-//!
 //! # 解決の契約
 //!
 //! 1. 絶対パスはそのまま使う
@@ -13,8 +8,7 @@
 //!    先頭の `./` は `components()` の仕様どおり残る）
 //! 4. `..` は `Path::components()` の意味どおり保持する
 //! 5. 存在確認・symlink 解決・filesystem I/O を行わない。存在確認は
-//!    [`crate::project::ProjectSource::exists`] が担い、複数の欠落を入力の論理順で全件報告する
-//!    診断モデルを維持する
+//!    [`crate::project::ProjectSource::exists`] が担う
 //!
 //! # `canonicalize` を採用しない理由
 //!
@@ -30,7 +24,6 @@ use crate::project::ProjectPath;
 
 /// 相対パスの解決基準 `base_dir` を保持し、入力パスを [`ProjectPath`] へ解決する。
 ///
-/// `compile` facade が `base_dir` から 1 回だけ構築し、config / style / frontend へ渡す。
 /// compiler はカレントディレクトリを取得しない（`base_dir` は呼び出し元が明示する）。
 #[derive(Debug)]
 pub(crate) struct PathResolver {
@@ -59,9 +52,8 @@ impl PathResolver {
 
   /// 基準ディレクトリを返す。
   ///
-  /// **出力パス（`output_dir` / `pdf_path`）の組み立て専用**。出力先は外部資源の取得 seam ではなく
-  /// 書き込み側の関心事なので `ProjectPath` にせず、`project::config::resolve_output_dir_path` が
-  /// この値から `PathBuf` を組む。入力パスの解決にこの accessor を使って `join` を書かないこと。
+  /// **出力パス（`output_dir` / `pdf_path`）の組み立て専用**。入力パスの解決にこの accessor を使って
+  /// `join` を書かないこと。
   pub(crate) fn base_dir(&self) -> &Path { return &self.base_dir; }
 }
 
@@ -96,7 +88,6 @@ mod tests {
 
   #[test]
   fn empty_base_dir_leaves_relative_paths_relative() {
-    // テスト fixture（`compiler::test_support`）は空の base_dir でワークスペース相対のまま運ぶ
     let resolver = PathResolver::new(Path::new(""));
 
     assert_eq!(resolver.resolve("./tests/image/a.png"), ProjectPath::new("./tests/image/a.png"));

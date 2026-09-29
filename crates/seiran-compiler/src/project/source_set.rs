@@ -28,9 +28,8 @@ pub(crate) struct SourceEntry {
 
 /// ソースファイルの読込に失敗したことを、パスと元エラーだけで伝える。
 ///
-/// `miette::Diagnostic` は実装しない — 診断（`code` / 役割とパスを含むメッセージ）は入力読込側
-/// （`compiler::input`）が組み立てる責務で、`project` はどのパスがどう失敗したかだけを返す。
-/// `source` の `SourceReadError` はそのまま leaf 診断の `#[source]` へ載る低水準 cause。
+/// `miette::Diagnostic` は実装しない — 診断（`code` / 役割とパスを含むメッセージ）は入力読込側が組み立て、
+/// `project` はどのパスがどう失敗したかだけを返す。
 #[derive(Debug)]
 pub(crate) struct SourceSetReadError {
   /// 読込に失敗した表示用パス
@@ -116,8 +115,6 @@ mod tests {
   }
 
   /// 保持している本文の割り当てを `Arc::clone` でそのまま返す seam（どのパスにも同じ本文を返す）。
-  ///
-  /// `SourceSet` が seam の返した割り当てを複製せずに格納するかを `Arc::ptr_eq` で観測するために使う。
   struct SharedTextSource {
     /// 返す本文
     text: Arc<str>,

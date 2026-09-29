@@ -37,10 +37,7 @@ pub(crate) enum ReadConfigError {
   },
   /// 値検証の違反 1 件（実際に読んだ config ファイルのパスを添える）
   ///
-  /// 複数の違反は `Failures<ReadConfigError>` の別要素として並ぶ。段名だけを表す集約
-  /// バリアントは持たない — ユーザーが最初に読むのは
-  /// 「どのフィールドをどう直すか」であるべきで、「複数のバリデーションエラー」ではない。
-  /// パスは `-c` で任意の名前を付けた設定ファイルでも分かるように添える。
+  /// 複数の違反は `Failures<ReadConfigError>` の別要素として並ぶ。
   #[error(transparent)]
   #[diagnostic(transparent)]
   Validation(#[from] InFile<ConfigValidationError>),

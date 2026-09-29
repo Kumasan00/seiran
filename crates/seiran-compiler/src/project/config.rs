@@ -126,9 +126,8 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
 /// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、パスを
-/// 組み立てるだけです（作成は CLI 側の責務）。警告はパス解決の時点で確定するので、
-/// 構築の成否と独立に返します。違反にはファイルのパスを添えない（添えるのは `config_path` を持つ
-/// [`load`]）。
+/// 組み立てるだけです。警告はパス解決の時点で確定するので、構築の成否と独立に返します。
+/// 違反にはファイルのパスを添えません。
 fn resolve(
   raw: RawConfig,
   source: &dyn ProjectSource,
@@ -252,7 +251,6 @@ fn validate_values(raw: &RawConfig) -> Result<(), Vec<ConfigValidationError>> {
 /// `source.exists` で確認します。
 ///
 /// 解決規則（絶対 / 相対 / 正規化）は `PathResolver` に閉じ、ここは存在確認と集約だけを持つ。
-/// `canonicalize` は使わない（理由は `project::path_resolver` の module doc）。
 fn resolve_paths(
   raw: &RawConfig,
   source: &dyn ProjectSource,
@@ -462,8 +460,6 @@ fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> O
 }
 
 /// 出力ディレクトリのパスを `base_dir` 基準で決定します（I/O なし）。
-///
-/// `ProjectPath` にしない理由は [`PathResolver::base_dir`] の doc。
 fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBuf {
   match output_dir {
     Some(path) if path.is_absolute() => return path.to_path_buf(),
@@ -631,8 +627,6 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_legacy_pdf_margin_keys() {
-    // `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
-    // 変わるため、TOML 解析時に未知キーとして拒否する
     let toml = format!(
       "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\nmargin_top = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
@@ -648,8 +642,6 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_removed_font_name_key() {
-    // font_name を静かに無視すると値に効果があると誤解させたままになるので、
-    // TOML 解析時に未知キーとして拒否する
     let toml = format!(
       "{}{}{}",
       valid_output_section("test", "out"),
@@ -1155,7 +1147,6 @@ mod tests {
     let (config, warnings) =
       load(&source, &ProjectPath::new("/project/config.toml"), &PathResolver::new(Path::new("/project")));
 
-    // 設定は失敗するが、拡張子の検査は独立に確定しているので警告は残る
     assert!(config.is_err(), "存在しないソースは違反になるはず");
     let paths: Vec<&str> = warnings
       .iter()

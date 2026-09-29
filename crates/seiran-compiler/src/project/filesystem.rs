@@ -6,9 +6,7 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 
 /// 実ファイルシステムから読み込む `ProjectSource`。
 ///
-/// 状態を持たず、要求のたびに実ファイルを読む（キャッシュしない）。1 回の `compile` で同じ資源を
-/// 2 回読まないことは、資源を列挙する呼び出し側（フォントは `FontData::load`、画像は
-/// `collect_image_paths`）が重複を除いて保証する。
+/// 状態を持たず、要求のたびに実ファイルを読む（キャッシュしない）。
 #[derive(Debug)]
 pub struct FilesystemProjectSource;
 

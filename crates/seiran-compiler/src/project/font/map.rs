@@ -33,7 +33,7 @@ const _: () = {
 /// （`map[font_type]`）だけを提供する。
 ///
 /// 失敗しうる構築（`try_*`）は 1 件目で打ち切らず全種別を試し、失敗を [`FontType::ALL`] 順に全件返す — 並列版でも
-/// どの種別が先に完了したかは報告順に漏れない（集約は [`failures::collect_in_input_order`] を通す）。
+/// どの種別が先に完了したかは報告順に漏れない。
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct FontMap<T> {
   /// [`FontType::ALL`] の順に並んだ種別ごとの値
@@ -99,8 +99,6 @@ impl<T> FontMap<T> {
   /// [`FontType::ALL`] を 1 対 1 に写した列から表を作る。
   ///
   /// 呼び出し元はこの module 内だけで、どれも [`FontType::ALL`]（または 19 要素の配列）を写した列を渡す。
-  /// `Vec` を経由するのは、rayon の `collect` と [`failures::collect_in_input_order`] が配列へ直接
-  /// 集められないため。
   fn from_complete(values: Vec<T>) -> Self {
     let Ok(values) = <[T; SLOTS]>::try_from(values) else {
       unreachable!(
@@ -119,8 +117,6 @@ impl<T> Index<FontType> for FontMap<T> {
 }
 
 /// `{種別: 値, ..}` の形で [`FontType::ALL`] 順に出す。
-///
-/// 配列の derive `Debug` は位置しか出さず、比較失敗時の出力でどの種別の値か読めなくなる。
 impl<T: Debug> Debug for FontMap<T> {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     return formatter.debug_map().entries(FontType::ALL.iter().zip(&self.values)).finish();

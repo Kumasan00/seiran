@@ -50,14 +50,12 @@ impl FontType {
   /// 全フォント種別を宣言順に並べたスライス
   ///
   /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
-  /// 利用側に `strum` のトレイトを import させないよう inherent の定数で包む。
   pub const ALL: &'static [FontType] = <Self as VariantArray>::VARIANTS;
 
   /// TOML でこのフォント種別を指す `snake_case` のキーを返す
   ///
-  /// `[font_configs.<key>]` セクションのキーと一致し、診断メッセージで設定パスを
-  /// 表示する際の正規表記としても使用されます（`Debug` フォーマットは `PascalCase` で
-  /// ユーザの書いた TOML キーと一致しないため、エラーパスにはこちらを使ってください）。
+  /// `[font_configs.<key>]` セクションのキーと一致する。診断で設定パスを示すときはこちらを使う
+  /// （`Debug` は `PascalCase` で TOML キーと一致しない）。
   #[must_use]
   pub fn as_toml_key(self) -> &'static str { return self.into(); }
 }

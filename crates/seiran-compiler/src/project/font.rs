@@ -1,6 +1,5 @@
 //! config.toml が宣言するフォント資源 — 19 種別の分類・検証済み設定・読込済みバイト列。
 //!
-//! 「どのフォントファイルを使うか」はプロジェクトの物理的な入力なので、この module が所有する。
 //! フォントの解析・検証・シェーピングという**処理**は `crate::typeset::font` の側にあり、
 //! この module はその入力契約（[`FontConfigs`]）と素材（[`FontData`]）までを持つ。
 //!
@@ -48,16 +47,11 @@ pub(crate) enum FontReadError {
 /// 構築経路は [`FontData::load`] だけで、`ProjectSource` seam を必ず経由する。
 ///
 /// バイト列は `Arc` で共有する — 同じフォントファイルを指す種別は同一の `Arc` を持ち、
-/// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。seam
-/// （[`ProjectSource::read_bytes`]）が返す `Arc<[u8]>` をそのまま持つのはこのためで、
-/// `Vec` へ移し替えると読み込んだバイト列を複製することになる。
+/// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。
 #[derive(Clone, PartialEq)]
 pub(crate) struct FontData(FontMap<Arc<[u8]>>);
 
 /// 種別ごとのバイト列の長さだけを出し、中身は出さない。
-///
-/// 19 種別ぶんの生バイト列（日本語フォントを含めると数十〜数百 MB）を整形すると、`expect_err` 等の
-/// 失敗メッセージが読めなくなる（`crate::publication::PublicationFont` の `Debug` と同じ理由）。
 impl fmt::Debug for FontData {
   fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     let bytes_len = FontMap::from_fn(|font_type| return self.0[font_type].len());

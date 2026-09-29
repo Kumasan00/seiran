@@ -6,13 +6,8 @@ use miette::Diagnostic;
 /// 設定ファイルの値検証の違反 1 件に、実際に読んだファイルのパスを添える leaf diagnostic。
 ///
 /// メッセージにだけパスを前置し、`code` / `severity` / `help` / `url` / `source_code` / `labels` /
-/// `related` / `diagnostic_source` は内側の違反へ委譲する。`typeset::font::validation::FontValidationFailure`
-/// （フォント種別を前置）や `compiler::source_diagnostic::SourceDiagnostic`（本文を補う）と同じ
-/// **帰属 adapter** であって集約 wrapper ではない — 描画は leaf 1 件ぶんで、入れ子の診断ブロックを作らず、
-/// 診断 code も内側のまま変わらない。
-///
-/// help の定型文は役割名（「config.toml の該当フィールド」）しか書けないので、`-c` や `style_path` で
-/// 任意の名前を付けた実際のファイルはこの前置でしか分からない。
+/// `related` / `diagnostic_source` は内側の違反へ委譲する。**帰属 adapter** であって集約 wrapper ではない —
+/// 描画は leaf 1 件ぶんで、入れ子の診断ブロックを作らず、診断 code も内側のまま変わらない。
 #[derive(Debug, Display)]
 #[display("{path}: {error}")]
 pub(crate) struct InFile<E> {

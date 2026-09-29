@@ -7,30 +7,21 @@
 //! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ。
 //! `font` は config.toml が宣言するフォント資源 — 19 種別の分類（[`FontType`] / [`FontMap`]）・
 //! 検証済み設定（[`FontConfigs`]）・読込済みバイト列（[`FontData`]）を持つ。
-//! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
-//! 区別がそのまま module 境界になっている。
-//!
-//! フォントの解析・検証・シェーピングという**処理**は `typeset::font` の側にあり、
-//! この module はその入力（どのファイルをどう使うか）までを持つ。
+//! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有。
 //!
 //! 入力パスの解決規則（相対への `base_dir` 前置・絶対の維持・字句的正規化）は子 module `path_resolver` の
-//! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う。
+//! [`PathResolver`] 1 型に閉じる。
 //!
 //! TOML 設定ファイル（config.toml / style.toml）の解析そのものと、解析エラーを leaf diagnostic の部品へ
-//! 分解する規則（位置は miette のラベルだけが示し、toml の自前スニペットを重ねない）は子 module
-//! `toml_error_parts` の [`parse_toml`] + [`TomlErrorParts`] に閉じ、config / style は `toml::from_str` を
-//! 直接呼ばずこれを使う。
+//! 分解する規則は子 module `toml_error_parts` の [`parse_toml`] + [`TomlErrorParts`] に閉じ、config / style は
+//! `toml::from_str` を直接呼ばずこれを使う。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` /
 //! `toml_error_parts` は crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が
 //! seam / `in_file` / `toml_error_parts` / `font` / `length` / `failures` を、`font` が seam（[`ProjectSource`] /
-//! [`ProjectPath`]）と `failures` を、`source_set` が `source` / `failures` を参照する（`ProjectConfig.font_configs`
-//! が `font::FontConfigs` を、`SourceSet` が `source::SourceId` を値として持つため）。`config` → `font` → seam は
+//! [`ProjectPath`]）と `failures` を、`source_set` が `source` / `failures` を参照する。`config` → `font` → seam は
 //! 一方向に閉じる。
 
-// `config` だけは module 名が名前空間として意味を持つので `pub(crate)` で公開する。
-// 入口が `project::config::load` と読めることで、`style::load`（style.toml）と取り違えようがなくなる。
-// このため `ProjectConfig` 等の型も facade へ再エクスポートしない（同じ型に 2 つの公開パスを作らない）。
 pub(crate) mod config;
 mod filesystem;
 mod font;
@@ -49,13 +40,7 @@ use std::{
 pub use config::test_support;
 use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
-// `FontType` は `GlyphRun` と描画資源のキーとして `Publication` に載るため crate 外まで届く
-// （crate root の facade が再エクスポートする）。
 pub use font::FontType;
-// フォント資源（19 種別の分類・検証済み設定・読込済みバイト列）は `font` の所有だが、
-// 利用側は常に `project::FontType` のように最浅のパスで参照する。`FontMap` は
-// `typeset::font` が `FontRefs` / `FontMetrics` の実体に使うので facade へ出す。
-// `FontReadError` は `compiler::input::error::CompileError` が `#[from]` で運ぶために名指しする。
 pub(crate) use font::{
   Feature, FontConfig, FontConfigs, FontData, FontMap, FontReadError, TextDirection, VariationAxis,
 };
@@ -71,12 +56,9 @@ pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
 /// （シンボリックリンク解決はしない。存在確認は [`ProjectSource::exists`] が担う）。
 ///
 /// 相対パスへの `base_dir` 前置は [`PathResolver`] の責務で、この型は正規化だけを保証する。
+/// serde は `PathBuf` と同じ TOML 表現（文字列）を透過する。
 ///
-/// serde は `PathBuf` と同じ TOML 表現（文字列）を透過する — `style.toml` の `csl_path` /
-/// `locale_path` が `Style` の一部として deserialize されるため。
-///
-/// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
-/// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
+/// `Ord` は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Display)]
 #[serde(from = "PathBuf")]
 #[display("{}", _0.display())]
@@ -94,7 +76,6 @@ impl From<PathBuf> for ProjectPath {
 }
 
 impl From<ProjectPath> for PathBuf {
-  /// 公開 interface（`DependencyManifest`）への変換に使う。
   fn from(path: ProjectPath) -> Self { return path.0; }
 }
 
@@ -104,19 +85,12 @@ impl AsRef<Path> for ProjectPath {
 
 /// 外部資源の取得エラー。**単独では描画しない低水準 cause**。
 ///
-/// `miette::Diagnostic` を実装しないのは、この型が「どの資源を読もうとしたか」を知らないため。
-/// 役割（設定 / スタイル / 文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic は
-/// 所有段（`project::config` / `style` / `semantics::citation` / `project::font` /
-/// `compiler::input` / `typeset::image`）が作り、この型はその `#[source]` に入って
+/// 「どの資源を読もうとしたか」を知らない（`miette::Diagnostic` を実装せず、パスも持たない）。
+/// 役割とパスを含む leaf diagnostic は所有段が作り、この型はその `#[source]` に入って
 /// 「何が起きたか」だけを伝える。
-///
-/// パスを持たないのも同じ理由で、パスは常に所有段の診断メッセージ側にある。
 #[derive(Debug, Error)]
 pub enum SourceReadError {
   /// ファイルの読み込みに失敗した（`ErrorKind` で not found / permission denied を区別できる）。
-  ///
-  /// `transparent` にしているのは、所有段のメッセージが既にパスと役割を持っており、
-  /// 間に「ファイルを読み込めません」という行をもう 1 段挟んでも情報が増えないため。
   #[error(transparent)]
   Io(#[from] std::io::Error),
   /// UTF-8 として解釈できない。
@@ -133,10 +107,8 @@ pub enum SourceReadError {
 /// （決定的テスト用）の 2 つ。`rayon` 並列読み込み（フォント）から共有されるため
 /// `Send + Sync` を要求する。
 ///
-/// キャッシュはこの trait の契約ではない — 同じパスを 2 回要求したときに実 I/O が起きるかは
-/// 実装に委ねる（現行の 2 実装はどちらもキャッシュを持たず、要求のたびに読む）。呼び出し側は
-/// 「同じパスを何度読んでも安い」ことを前提にせず、同じ資源を 2 回読まないことは資源を列挙する側
-/// （フォント・画像）が重複を除いて保証する。
+/// キャッシュはこの trait の契約ではない。呼び出し側は「同じパスを何度読んでも安い」ことを前提にせず、
+/// 同じ資源を 2 回読まないことは資源を列挙する側が重複を除いて保証する。
 pub trait ProjectSource: Send + Sync {
   /// UTF-8 テキストとして読み込む（設定・スタイル・文献・ソースファイル用）。
   ///
@@ -152,7 +124,7 @@ pub trait ProjectSource: Send + Sync {
   /// 読み込みに失敗した場合にエラーを返す。
   fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError>;
 
-  /// パスが存在するかどうかを返す（`config` / `style` のパス検証用）。
+  /// パスが存在するかどうかを返す。
   fn exists(&self, path: &ProjectPath) -> bool;
 }
 

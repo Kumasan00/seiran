@@ -21,10 +21,7 @@ pub(crate) fn parse_toml<T: DeserializeOwned>(
 /// 持つと `TOML parse error at line N, column M` の自前スニペットを描画し、miette の `╰─▶` 行とラベルで
 /// 位置が二重に出るため、`source` は input を消してから持つ。
 ///
-/// 診断 code / help は設定ファイルの役割ごとに違うので、variant は各所有者
-/// （`project::config::ReadConfigError::ParseToml` / `style::ReadStyleError::ParseToml`）が持ち、
-/// ここは部品だけを返す。`Failures` で包むのも呼び出し側 — この module は crate 内の他 module に
-/// 依存しない（`project` の依存の不変条件）。
+/// 診断 code / help は設定ファイルの役割ごとに違うので、variant は各所有者が持ち、ここは部品だけを返す。
 #[derive(Debug)]
 pub(crate) struct TomlErrorParts {
   /// 位置表示に使うソース全文と表示名

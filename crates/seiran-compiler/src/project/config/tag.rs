@@ -19,8 +19,7 @@ pub(super) enum TagError {
 /// `script` タグ（4 文字 ASCII アルファベット）を検証して `[u8; 4]` に変換します。
 ///
 /// case は正規化せずユーザ指定をそのまま保持します（例: `"latn"` / `"Latn"` / `"LATN"` は
-/// それぞれ異なるバイト列になります）。harfrust 側の case 正規化やフォント実態との突合せは
-/// `typeset::font` が担当します。
+/// それぞれ異なるバイト列になります）。
 pub(crate) fn parse_script_tag(value: &str) -> Result<[u8; 4], TagError> {
   if value.len() == 4 && value.bytes().all(|b| return b.is_ascii_alphabetic()) {
     return Ok(to_array(value));

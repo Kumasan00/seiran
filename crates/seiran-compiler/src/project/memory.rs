@@ -11,10 +11,7 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 
 /// メモリ上に事前登録したファイルだけを読む `ProjectSource`。
 ///
-/// `FilesystemProjectSource` と同じ入力を与えたときに同じ結果になることを検証するテスト、
-/// および「同じパスが何回要求されたか」の検査（重複読み込みの検出）に使う。
-///
-/// 読み込みをキャッシュしないのはこの検査のため — 要求はすべて `read_count` に載る。
+/// 読み込みをキャッシュせず、要求はすべて `read_count` に載る。
 pub struct MemoryProjectSource {
   /// 事前登録したファイルデータ。
   files: HashMap<ProjectPath, Arc<[u8]>>,
@@ -57,7 +54,7 @@ impl MemoryProjectSource {
   ///
   /// # Panics
   ///
-  /// `read_counts` の mutex が poison した場合（他スレッドのパニック）。通常は発生しない。
+  /// `read_counts` の mutex が poison した場合（他スレッドのパニック）。
   #[must_use]
   pub fn read_count(&self, path: impl AsRef<Path>) -> usize {
     let key = ProjectPath::new(path);
