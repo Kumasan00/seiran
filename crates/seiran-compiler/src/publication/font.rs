@@ -1,11 +1,7 @@
 //! フォントの描画契約 — krilla フォント構築設定 [`FontFaceConfig`] / [`VariationAxisConfig`] と
 //! 基本メトリクス [`FontMetric`]。
-//!
-//! `PublicationFont` のフィールド型として描画バックエンドまで届く leaf 値型。
-//! `crate::project::FontConfig` からの変換（`build_face_configs`）と OpenType テーブルからの
-//! 取得（`build_font_metrics`）は `crate::typeset::font` が持ち、ここは値の形だけを所有する。
 
-/// Krilla フォント構築に必要な設定（`crate::project::FontConfig` から renderer が要る値だけを取り出した最小表現）。
+/// Krilla フォント構築に必要な設定（`crate::project::FontConfig` から取り出した値）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontFaceConfig {
   /// TTC（TrueType Collection）ファイル内のインデックス

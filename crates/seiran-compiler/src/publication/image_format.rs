@@ -1,6 +1,4 @@
 //! 画像形式 [`ImageFormat`] と、拡張子からの判定。
-//!
-//! `PublicationImage` に載って描画バックエンドまで届く描画契約の値型。
 
 use std::path::Path;
 

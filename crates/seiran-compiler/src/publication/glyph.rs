@@ -1,8 +1,4 @@
 //! シェーピング済みグリフ列 [`GlyphRun`] と [`Glyph`]。
-//!
-//! `PaintOp::DrawGlyphRun` がそのまま載せる描画契約の値型で、シェイピング処理そのものは
-//! `crate::typeset::font` が持つ。フォントサイズ・色の
-//! 単位変換は render（`seiran-pdf`）が行う。
 
 use std::ops::Range;
 
@@ -19,7 +15,7 @@ pub struct GlyphRun {
   pub glyphs: Vec<Glyph>,
   /// このグリフ列が使用するフォント種別
   pub font_type: FontType,
-  /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
+  /// テキスト色。`None` は既定色（黒）。
   /// `\color` かリンク色（style.toml の `[hyperref]`）が効いたテキストだけ `Some` になる。
   pub color: Option<Color>,
 }

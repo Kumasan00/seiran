@@ -1,30 +1,15 @@
 //! 描画直前の確定済み中間表現 [`Publication`] — compile の成果物。
 //!
-//! 座標は pt 単位の `f32`、描画順は配列順で確定している。ここに置くデータ型は**純データ**だけで、
-//! 描画バックエンド（`seiran-pdf` / krilla）のハンドルは 1 つも含まない。
-//! フォント・画像は生バイト列と構築設定のまま持ち、krilla フォントの構築は render が行う。
+//! 座標は pt 単位の `f32`、描画順は配列順で確定している。描画バックエンド（`seiran-pdf` / krilla）の
+//! ハンドルは含まず、フォント・画像は生バイト列と構築設定のまま持つ。
 //!
-//! データ型は組版の中間型（`crate::typeset::Page` 等）をフィールドに持たない。描画契約の
-//! 値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetric`]、フォント
-//! 構築設定 [`FontFaceConfig`] / [`VariationAxisConfig`]、判定済みの画像形式 [`ImageFormat`] —
-//! はこの module 自身が子 module（`glyph` / `font` / `image_format`）に持ち、組版はそれを
-//! 生成する側になる。同型の複製は作らない。
-//!
-//! 組版中間型からこれらのデータ型への写像は、それを唯一読む `crate::typeset::emit` が持つ。
-//! この module が公開するのは確定表現と、不正状態を作れない検証付きコンストラクタ
-//! （下記）だけで、`crate::typeset` を import しない。
-//!
-//! # 外部から不正状態を作れないこと
+//! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetric`]、フォント
+//! 構築設定 [`FontFaceConfig`] / [`VariationAxisConfig`]、判定済みの画像形式 [`ImageFormat`] — は
+//! 子 module（`glyph` / `font` / `image_format`）が持つ。
 //!
 //! 文書を組み立てる型（[`Publication`] / [`PublicationPage`] / [`PublicationResources`]）と、
-//! 不変条件を持つ値（[`Rect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を `pub(crate)` の
-//! コンストラクタへ限定してある。コンストラクタは検証を通った値だけを返すので、`seiran-pdf` は
-//! 「描画命令の値が壊れている」ケースを考えなくてよい:
-//!
-//! - [`Rect`] は幅・高さが非負の有限値（krilla の `Rect::from_xywh` が受け付ける範囲）
-//! - [`PublicationPage`] のページ矩形と画像の描画矩形は幅・高さが正（krilla の `Size::from_wh` の要求）
-//! - [`PublicationLinkTarget::Internal`] と [`PublicationOutlineEntry`] の到達先ページは必ず存在する
-//! - [`PaintOp::DrawImage`] が持つ [`ImageRef`] は必ず [`PublicationResources`] の画像を指す
+//! 不変条件を持つ値（[`Rect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を検証付きの `pub(crate)`
+//! コンストラクタへ限定してある。
 
 mod font;
 mod glyph;
@@ -57,8 +42,7 @@ pub struct Publication {
 impl Publication {
   /// 確定ページ列・しおり・メタデータ・描画資源から [`Publication`] を構築する。
   ///
-  /// 内部リンクとしおりの到達先が実在するページを指していなければ `None` を返す
-  /// （描画側が「壊れた到達先」を扱わずに済むようにするための唯一の検査点）。
+  /// 内部リンクとしおりの到達先が実在するページを指していなければ `None` を返す。
   pub(crate) fn new(
     pages: Vec<PublicationPage>,
     outline: Option<Vec<PublicationOutlineEntry>>,
@@ -129,8 +113,6 @@ impl PublicationResources {
   pub fn font(&self, font_type: FontType) -> &PublicationFont { return &self.fonts[font_type]; }
 
   /// 指定パスの画像への参照を返す。保持していないパスは `None`。
-  ///
-  /// 画像は 1 文書あたり数十件なので、索引を二重に持たず線形探索で引く。
   pub(crate) fn image_ref(&self, path: &str) -> Option<ImageRef> {
     return self.images.iter().position(|image| return image.path == path).map(ImageRef);
   }
@@ -155,14 +137,13 @@ impl PublicationResources {
 pub struct PublicationImage {
   /// 画像ファイルへのパス（診断メッセージ用）
   pub path: String,
-  /// 判定済みの画像形式（判定は `typeset::image` が済ませている）
+  /// 判定済みの画像形式
   pub format: ImageFormat,
   /// ファイルの生バイト列（未デコード）
   pub bytes: Vec<u8>,
 }
 
 impl Debug for PublicationImage {
-  /// バイト列の中身は出さず、長さだけを出す（[`PublicationResources`] の `Debug` と同じ理由）。
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     return formatter
       .debug_struct("PublicationImage")
@@ -192,7 +173,6 @@ pub struct PublicationFont {
 }
 
 impl Debug for PublicationFont {
-  /// バイト列の中身は出さず、長さだけを出す（[`PublicationResources`] の `Debug` と同じ理由）。
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     return formatter
       .debug_struct("PublicationFont")
@@ -208,7 +188,7 @@ impl Debug for PublicationFont {
 /// `title` は `document.title` を優先し、未設定なら `output.name` にフォールバック済み。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicationMetadata {
-  /// 文書タイトル（フォールバック解決済み）
+  /// 文書タイトル
   pub title: String,
   /// 著者名
   pub author: Option<String>,
@@ -315,8 +295,7 @@ pub struct Point {
 /// ページ左上原点の矩形（左上角 + 幅 + 高さ、単位: pt）。
 ///
 /// 座標が有限で、幅・高さが非負の有限値であることが構築時に保証される（krilla の `Rect::from_xywh` の
-/// 受け入れ条件と同じ）。画像・ページのように「0 も許されない」箇所は
-/// [`PublicationPage::new`] が追加で検査する。
+/// 受け入れ条件と同じ）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
   /// 左端の水平座標（pt）
@@ -404,8 +383,6 @@ pub struct PublicationOutlineEntry {
 }
 
 /// テストが描画資源を組み立てるための fixture。
-///
-/// `pub(crate)` なのは `publication` の外（`compiler::dump` / `typeset::emit`）のテストも使うため。
 #[cfg(test)]
 pub(crate) mod test_support {
   use std::sync::Arc;
@@ -414,8 +391,6 @@ pub(crate) mod test_support {
   use crate::project::FontMap;
 
   /// 指定した画像だけを持つ描画資源を返す（フォントは全種別ダミーのバイト列 0 個）。
-  ///
-  /// 座標・寸法に影響しない資源が必要なだけのテスト（ダンプ・`Publication` の組み立て）向け。
   pub(crate) fn resources(images: Vec<PublicationImage>) -> PublicationResources {
     let font = PublicationFont {
       bytes: Arc::from(Vec::new()),
