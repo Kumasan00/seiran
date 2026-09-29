@@ -293,7 +293,7 @@ mod tests {
 
   #[test]
   fn from_str_rejects_space_between_number_and_unit() {
-    // `5 pt` は `5pt` の第 2 の綴りになるので受け付けない（#690）。前後の空白は許す
+    // `5 pt` は `5pt` の第 2 の綴りになるので受け付けない。前後の空白は許す
     for input in ["5 pt", "5 mm", "5 cm", " 5 mm "] {
       assert!(input.parse::<Length>().is_err(), "{input:?} は拒否される");
     }
@@ -308,7 +308,7 @@ mod tests {
 
   #[test]
   fn from_str_rejects_unitless_zero() {
-    // 単位なしの `0` も例外にしない（`0` と `0pt` の 2 通りの綴りを作らない。#690）
+    // 単位なしの `0` も例外にしない（`0` と `0pt` の 2 通りの綴りを作らない）
     assert!("0".parse::<Length>().is_err());
     assert_eq!("0pt".parse::<Length>().unwrap(), Length::ZERO);
   }

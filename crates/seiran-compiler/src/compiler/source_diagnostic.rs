@@ -19,7 +19,7 @@ use crate::{project::SourceSet, source::SourceId};
 ///
 /// 別ソースの位置を示す関連診断（重複ラベルの最初の定義など）も、[`SourceDiagnostic::with_related_in`]
 /// でそのソースの本文を添えてから持つ — miette は本文を持たない関連診断を主診断の本文で描くので、
-/// 添えずに渡すと別ファイルの位置を誤った本文の上に描いてしまう（#552）。
+/// 添えずに渡すと別ファイルの位置を誤った本文の上に描いてしまう。
 #[derive(Debug, Display)]
 #[display("{inner}")]
 pub(super) struct SourceDiagnostic<E> {
@@ -36,7 +36,7 @@ impl<E> SourceDiagnostic<E> {
   ///
   /// `source_id` は `SourceSet::register` が発行した値をそのまま運んできたものなので、
   /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。本文は複製せず
-  /// `SourceSet` の割り当てを共有する — 同じソースに E 件の診断が付いても本文の追加割り当ては無い（#550）。
+  /// `SourceSet` の割り当てを共有する — 同じソースに E 件の診断が付いても本文の追加割り当ては無い。
   pub(super) fn attach(sources: &SourceSet, source_id: SourceId, inner: E) -> Self {
     let entry = sources.get(source_id);
     return SourceDiagnostic {

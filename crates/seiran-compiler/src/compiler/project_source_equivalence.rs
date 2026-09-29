@@ -1,5 +1,4 @@
-//! `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から同じ結果を返すことの検証
-//! （issue #300 受け入れ条件「filesystem adapter と memory adapter から同じ結果が得られる」）。
+//! `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から同じ結果を返すことの検証。
 //!
 //! 両 adapter へ**同じ絶対パス**を引かせるため、fixture は `absolute_base_dir` で組む
 //! （実 adapter はカレントディレクトリに依存しない絶対パスでしか読めない）。memory 側には
@@ -7,7 +6,7 @@
 //!
 //! fixture の既定 `sources` は画像を持つ `figure.sei` を含み、画像は builder が自動登録する
 //! （`compiler::test_support`）ので、`sources` を差し替えないこの module のテストは画像も含めた同値を
-//! 検証する（#530）。
+//! 検証する。
 
 use crate::{
   compiler::{self, test_support::TestProject},

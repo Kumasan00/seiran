@@ -3,7 +3,7 @@
 //! crate 内部の `#[cfg(test)]` ではなく、この crate の外部から `cargo test -p seiran-compiler` で
 //! 実行される独立バイナリとして置く。`compile` が `pub(crate)` のままでも内部テストは
 //! 通ってしまうため、「lib target から compile が呼べる」という受け入れ条件を機械的に
-//! 検証するには外部からのコンパイルが必要（issue #304）。
+//! 検証するには外部からのコンパイルが必要。
 //!
 //! `MemoryProjectSource` に `/project/...` の資源を事前登録し、`compile` へ `/project` を明示して
 //! `std::env::current_dir` に依存しない。最初のテストは相対 source パスがこの基準で解決されることも固定する。
@@ -207,7 +207,7 @@ fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
 
 #[test]
 fn compile_failure_keeps_config_warnings_when_parsing_fails() {
-  // issue #550 の再現手順: `.txt` 入力に未知コマンドを足す
+  // `.txt` 入力に未知コマンドを足す
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
     .with_text("/project/text.txt", "\\unknowncommand{x}")
@@ -358,7 +358,7 @@ fn compile_failure_does_not_keep_layout_warnings() {
 
 #[test]
 fn compile_resolves_relative_root_source_and_image_against_base_dir() {
-  // root・source・画像のすべてを相対で書き、base_dir=/project だけを絶対にする（#530）
+  // root・source・画像のすべてを相対で書き、base_dir=/project だけを絶対にする
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
     .with_text("/project/text.sei", figure_source("fig/a.png"))

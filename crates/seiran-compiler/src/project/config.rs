@@ -66,7 +66,7 @@ struct FontValues {
 /// `resolver` は config 内の相対パス（`sources` / `style_path` / フォントパス等）の解決に使います。
 ///
 /// 戻り値は検証の成否と、読み込みを止めない警告 [`ConfigWarning`] の列（`sources` の宣言順）の組です。
-/// 警告は検証が失敗しても返します — `sources` の拡張子の検査は他の違反と独立に確定するためです（#550）。
+/// 警告は検証が失敗しても返します — `sources` の拡張子の検査は他の違反と独立に確定するためです。
 /// ファイルを読めない・TOML として解析できないときは `sources` も分からないので、警告は空です。
 ///
 /// # Errors
@@ -126,7 +126,7 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
 /// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、パスを
-/// 組み立てるだけです（作成は CLI 側の責務、#300）。警告はパス解決の時点で確定するので、
+/// 組み立てるだけです（作成は CLI 側の責務）。警告はパス解決の時点で確定するので、
 /// 構築の成否と独立に返します。違反にはファイルのパスを添えない（添えるのは `config_path` を持つ
 /// [`load`]）。
 fn resolve(
@@ -631,8 +631,8 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_legacy_pdf_margin_keys() {
-    // 旧 `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
-    // 変わるため、TOML 解析時に未知キーとして拒否する（#389 の意図的な破壊的変更）
+    // `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
+    // 変わるため、TOML 解析時に未知キーとして拒否する
     let toml = format!(
       "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\nmargin_top = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
@@ -648,8 +648,8 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_removed_font_name_key() {
-    // font_name は #692 でスキーマから外した。静かに無視すると値に効果があると
-    // 誤解させたままになるので、TOML 解析時に未知キーとして拒否する
+    // font_name を静かに無視すると値に効果があると誤解させたままになるので、
+    // TOML 解析時に未知キーとして拒否する
     let toml = format!(
       "{}{}{}",
       valid_output_section("test", "out"),

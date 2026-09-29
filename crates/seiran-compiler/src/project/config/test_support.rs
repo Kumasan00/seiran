@@ -24,7 +24,7 @@ pub fn valid_output_section(name: &str, output_dir: &str) -> String {
 
 /// 妥当な `[pdf]` セクションを生成します（A4 縦）。
 ///
-/// 本文領域の余白は style.toml の `[page]` が持つので、ここには含めない（#389）。
+/// 本文領域の余白は style.toml の `[page]` が持つので、ここには含めない。
 #[must_use]
 pub fn valid_pdf_section() -> String { return "[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n".to_string(); }
 

@@ -249,9 +249,8 @@ impl Index<FontType> for RawFontConfigs {
 
 /// 単一フォント種別の未検証のフォント設定
 ///
-/// 未知キーを静かに無視すると、書いた値に効果があると誤解させたまま出力が変わらない
-/// （旧 `font_name` は検査だけされて PDF に使われていなかった。#692）。`deny_unknown_fields` で
-/// 未知キーとして拒否する。
+/// 未知キーを静かに無視すると、書いた値に効果があると誤解させたまま出力が変わらない。
+/// `deny_unknown_fields` で未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]
 #[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]
@@ -321,7 +320,7 @@ pub(super) struct RawFontFeature {
 
 /// PDF ページの物理設定（用紙寸法と PDF 出力）の未検証の設定
 ///
-/// 本文領域の余白は見た目なので style.toml の `[page]` が持つ（#389）。旧 `margin_*` を静かに
+/// 本文領域の余白は見た目なので style.toml の `[page]` が持つ。旧 `margin_*` を静かに
 /// 無視すると既定余白へ切り替わってレイアウトが黙って変わるため、`deny_unknown_fields` で
 /// 未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]

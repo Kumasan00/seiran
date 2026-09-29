@@ -33,7 +33,7 @@ pub use project::{
   FilesystemProjectSource, FontType, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError,
 };
 // `Publication` から到達できる leaf 値型はすべてここに載せる — 描画バックエンド（`seiran-pdf`）が
-// 描画命令を読むために名指しする必要があるため（#372、#535）。`ProjectConfig` / `Style` /
+// 描画命令を読むために名指しする必要があるため。`ProjectConfig` / `Style` /
 // `typeset::Page` のような内部データモデル・組版中間型は載せない（renderer が「確定座標の描画のみ」で
 // いられる防火壁は、この公開範囲の狭さが担っている）。
 pub use publication::{

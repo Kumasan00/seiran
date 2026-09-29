@@ -3,8 +3,7 @@
 //!
 //! `PublicationFont` のフィールド型として描画バックエンドまで届く leaf 値型。
 //! `crate::project::FontConfig` からの変換（`build_face_configs`）と OpenType テーブルからの
-//! 取得（`build_font_metrics`）は `crate::typeset::font` が持ち、ここは値の形だけを所有する
-//! （#535 で `typeset` から移設。renderer 側に同型の複製型を作らせない #305 / #372 の判断は維持）。
+//! 取得（`build_font_metrics`）は `crate::typeset::font` が持ち、ここは値の形だけを所有する。
 
 /// Krilla フォント構築に必要な設定（`crate::project::FontConfig` から renderer が要る値だけを取り出した最小表現）。
 #[derive(Debug, Clone, PartialEq)]

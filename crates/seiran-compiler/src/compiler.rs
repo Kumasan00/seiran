@@ -48,11 +48,6 @@ use crate::{
 };
 
 /// 型消去済みの診断 1 件（error・warning 共通の保持形）。
-///
-/// [`miette::Report`] ではなく `Box<dyn Diagnostic>` にするのは、`Report` が `Diagnostic` を
-/// 実装しない（miette 側の trait coherence の制約）ため。`Report` の列では 2 件目以降を
-/// [`miette::Diagnostic::related`] へ載せられず、呼び出し側も error と warning で違う反復 API を
-/// 使うことになる（#550）。
 type BoxedDiagnostic = Box<dyn miette::Diagnostic + Send + Sync + 'static>;
 
 /// コンパイル結果の統計情報。
@@ -141,8 +136,8 @@ struct Compiled {
 
 /// 入力読込から組版までの phase を順に実行し、各段が返した警告を段の実行順で `warnings` へ積む。
 ///
-/// 警告は段が失敗しても捨てない — 段が返した警告は、その段や後段が失敗してもその時点で確定しているため
-/// （#550）。`warnings` へ積むのは各段の戻り値だけで、段の内側から直接積む経路は作らない。失敗した実行では
+/// 警告は段が失敗しても捨てない — 段が返した警告は、その段や後段が失敗してもその時点で確定しているため。
+/// `warnings` へ積むのは各段の戻り値だけで、段の内側から直接積む経路は作らない。失敗した実行では
 /// 呼び出し元（[`compile`]）が積み終えた `warnings` を [`CompileFailure::with_warnings`] で添える。
 ///
 /// # Errors
@@ -279,7 +274,7 @@ fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileF
   };
 }
 
-/// 意味解析の診断 1 件へ、帰属するソースの本文と、別ソースにある関連位置（そのソースの本文付き）を添える（#552）。
+/// 意味解析の診断 1 件へ、帰属するソースの本文と、別ソースにある関連位置（そのソースの本文付き）を添える。
 ///
 /// 関連位置を持つかどうか・その文言は semantics が決め（`SemanticError::first_definition_elsewhere`）、
 /// ここは確定 ID で本文を引いて添えるだけ。

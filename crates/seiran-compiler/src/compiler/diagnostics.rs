@@ -95,7 +95,7 @@ fn diagnostic_bare_braces() {
 
 #[test]
 fn diagnostic_math_script_without_group() {
-  // #486（上付き・下付きの内容は `{...}` のみ）
+  // 上付き・下付きの内容は `{...}` のみ
   let failure = compile_err(&["tests/text/diagnostics/math_script_without_group.sei"]);
 
   assert_matches_golden("math_script_without_group", &render_failure(failure));
@@ -103,7 +103,7 @@ fn diagnostic_math_script_without_group() {
 
 #[test]
 fn diagnostic_environment_in_inline_math() {
-  // #688（数式内の環境は、`$...$` の直下に書いても数式内で使えないという診断になる）
+  // 数式内の環境は、`$...$` の直下に書いても数式内で使えないという診断になる
   let failure = compile_err(&["tests/text/diagnostics/environment_in_inline_math.sei"]);
 
   assert_matches_golden("environment_in_inline_math", &render_failure(failure));
@@ -111,7 +111,7 @@ fn diagnostic_environment_in_inline_math() {
 
 #[test]
 fn diagnostic_multiple_opt_args() {
-  // P3（任意引数はコマンド名／環境名の直後に 1 組だけ。#488）
+  // P3（任意引数はコマンド名／環境名の直後に 1 組だけ）
   let failure = compile_err(&["tests/text/diagnostics/multiple_opt_args.sei"]);
 
   assert_matches_golden("multiple_opt_args", &render_failure(failure));
@@ -119,7 +119,7 @@ fn diagnostic_multiple_opt_args() {
 
 #[test]
 fn diagnostic_duplicate_opt_arg_key() {
-  // P3（同一 `[...]` 内のキー重複はエラー。#488）
+  // P3（同一 `[...]` 内のキー重複はエラー）
   let failure = compile_err(&["tests/text/diagnostics/duplicate_opt_arg_key.sei"]);
 
   assert_matches_golden("duplicate_opt_arg_key", &render_failure(failure));
@@ -127,7 +127,7 @@ fn diagnostic_duplicate_opt_arg_key() {
 
 #[test]
 fn diagnostic_opt_arg_quoted_comma() {
-  // 引用符は値の境界ではない。値の `,` は `\,` と書く（#687）
+  // 引用符は値の境界ではない。値の `,` は `\,` と書く
   let failure = compile_err(&["tests/text/diagnostics/opt_arg_quoted_comma.sei"]);
 
   assert_matches_golden("opt_arg_quoted_comma", &render_failure(failure));
@@ -135,7 +135,7 @@ fn diagnostic_opt_arg_quoted_comma() {
 
 #[test]
 fn diagnostic_opt_arg_positive_int_rejects_fraction() {
-  // 「1 以上の整数」を取るキーは、どれも小数を同じ診断で拒否する（#689。`dpi` は以前は四捨五入していた）
+  // 「1 以上の整数」を取るキーは、どれも小数を同じ診断で拒否する
   let failure = compile_err(&[
     "tests/text/diagnostics/opt_arg_positive_int_dpi.sei",
     "tests/text/diagnostics/opt_arg_positive_int_start.sei",
@@ -148,7 +148,7 @@ fn diagnostic_opt_arg_positive_int_rejects_fraction() {
 
 #[test]
 fn diagnostic_length_has_a_single_format() {
-  // 長さの書式は言語全体で 1 つ — 単位必須・小文字の pt / mm / cm・数値と単位の間に空白なし（#690）。
+  // 長さの書式は言語全体で 1 つ — 単位必須・小文字の pt / mm / cm・数値と単位の間に空白なし。
   // 単位なし・大文字・空白入りを任意引数で、単位なしを `\space` の必須引数で拒否する
   let failure = compile_err(&[
     "tests/text/diagnostics/length_unitless.sei",
@@ -222,8 +222,8 @@ fn diagnostic_unknown_cite_key() {
 
 #[test]
 fn diagnostic_cite_escaped_comma() {
-  // `\,` はキーの区切りではなくキーの文字（#731）。`kwan2014` と `doe2020` は fixture に存在するので、
-  // 割られていればこのビルドは成功する。help は `\,` がキーの文字で区切りはエスケープしない `,` だと案内する（#751）
+  // `\,` はキーの区切りではなくキーの文字。`kwan2014` と `doe2020` は fixture に存在するので、
+  // 割られていればこのビルドは成功する。help は `\,` がキーの文字で区切りはエスケープしない `,` だと案内する
   let failure = compile_err(&["tests/text/diagnostics/cite_escaped_comma.sei"]);
 
   assert_matches_golden("cite_escaped_comma", &render_failure(failure));
@@ -231,7 +231,7 @@ fn diagnostic_cite_escaped_comma() {
 
 #[test]
 fn diagnostic_cite_escaped_comma_with_other_key() {
-  // `,` を含むキーと別のキーが同じ `\cite` に並んでも、ラベルでキーの境目が読め（#750）、help が `\,` を案内する（#751）
+  // `,` を含むキーと別のキーが同じ `\cite` に並んでも、ラベルでキーの境目が読め、help が `\,` を案内する
   let failure = compile_err(&["tests/text/diagnostics/cite_escaped_comma_with_other_key.sei"]);
 
   assert_matches_golden("cite_escaped_comma_with_other_key", &render_failure(failure));
@@ -250,7 +250,7 @@ fn diagnostic_duplicate_label() {
 #[test]
 fn diagnostic_duplicate_label_across_sources() {
   // 最初の定義（a）と重複（b）が別ソース。主診断は b の位置を示し、a の位置は a の本文付きの
-  // 関連診断で示す（#552。1 診断が持てる source_code は 1 つなので同じスニペットには載せられない）
+  // 関連診断で示す（1 診断が持てる source_code は 1 つなので同じスニペットには載せられない）
   let failure = compile_err(&[
     "tests/text/diagnostics/duplicate_label_a.sei",
     "tests/text/diagnostics/duplicate_label_b.sei",
@@ -334,8 +334,7 @@ fn diagnostic_missing_csl_path() {
 #[test]
 fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
   // 「複数」「phase に失敗」だけを表す診断が表示へ現れないことを golden 全件で固定する。
-  // 診断 code 全体の規約を機械検査するものではなく、#375 / #376 で削除した wrapper が
-  // 復活していないことだけを見る狭いガード。
+  // 診断 code 全体の規約を機械検査するものではなく、これらの wrapper だけを見る狭いガード。
   let forbidden_codes = [
     "compiler::multiple_source_errors",
     "compiler::multiple_citation_errors",
@@ -345,7 +344,7 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "compiler::layout",
     "frontend::parse_source::eval",
     "frontend::parse_source::syntax",
-    // #376 で削除した集約 wrapper。集約自身は表示単位ではないので code を持たない
+    // 集約 wrapper。集約自身は表示単位ではないので code を持たない
     "project::config::multiple_validation_errors",
     "style::multiple_validation_errors",
     "typeset::font::validation::multiple_errors",
@@ -404,7 +403,7 @@ fn diagnostic_config_validation_field() {
 
   let failure = project.compile_err();
 
-  // 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま（#552）
+  // 実際に読んだ設定ファイルのパスがメッセージに載り、code は leaf のまま
   assert_eq!(codes(&failure), vec!["project::config::validation::field".to_string()]);
   let rendered = render_failure(failure);
   assert!(rendered.contains(&format!("{config_path}: 'image.max_dpi'")), "{rendered}");
@@ -426,7 +425,7 @@ fn diagnostic_style_validation_aggregate() {
 
 #[test]
 fn diagnostic_style_parse_toml() {
-  // 閉じ引用符の無い文字列（style.toml の TOML 構文エラー。#647）
+  // 閉じ引用符の無い文字列（style.toml の TOML 構文エラー）
   let toml = "[page]\nmargin_top = \"10mm\n";
 
   let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
@@ -458,7 +457,7 @@ fn diagnostic_config_parse_toml() {
 
 #[test]
 fn diagnostic_config_removed_font_name() {
-  // #692 で外した font_name を書いたままの config（未知キーとして拒否し、削除を案内する）
+  // font_name を書いた config（未知キーとして拒否し、削除を案内する）
   let source = MemoryProjectSource::new()
     .with_text("diagnostics/config.toml", "[font_configs.serif]\nfont_name = \"MyFont\"\nfont_path = \"a.ttf\"\n");
   let config_path = ProjectPath::new("diagnostics/config.toml");

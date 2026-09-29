@@ -378,7 +378,7 @@ fn string_array_field(table: &toml::value::Table, key: &str) -> Vec<String> {
 
 /// 検証対象の機能に必要な style 差分を fixture 名ごとに適用する。
 ///
-/// ページ余白は style が所有する（#389）ので版面を変える上書きもここに置く。config 側の上書き
+/// ページ余白は style が所有するので版面を変える上書きもここに置く。config 側の上書き
 /// （[`apply_fixture_config_overrides`]）は用紙寸法と言語だけを扱う。
 fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
   match name {

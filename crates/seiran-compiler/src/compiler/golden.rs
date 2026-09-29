@@ -514,7 +514,7 @@ fn index_entries_follow_the_page_the_content_lands_on() {
   assert!(row_pages.windows(2).all(|w| return w[0][0] <= w[1][0]), "行の順序どおりに並ぶはず: {row_pages:?}");
 }
 
-/// 脚注本体のリンクが、その行が落ちたページのクリック矩形になることを end-to-end で確かめる（#515）
+/// 脚注本体のリンクが、その行が落ちたページのクリック矩形になることを end-to-end で確かめる
 ///
 /// `footnote_split.sei` の長い脚注は前半に `\href`、繰越される後半に `\ref` を持つ。帰属を決める
 /// `crate::typeset::breaking` 側の単体テストと違い、こちらはソース（`.sei`）から確定ページまでを

@@ -1,13 +1,12 @@
 //! プロジェクトの物理的な入力の所有者。外部資源取得の seam と `config.toml` を持つ。
 //!
-//! seam（[`ProjectPath`] / [`ProjectSource`] と filesystem / memory の 2 adapter）は設定の入力だけの
-//! 道具ではなく全外部資源の窓口なので、`config` の子ではなく crate root 直下の module が所有する
-//! （#337）。[`ProjectPath`] は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する。
+//! seam（[`ProjectPath`] / [`ProjectSource`] と filesystem / memory の 2 adapter）は全外部資源の窓口。
+//! [`ProjectPath`] は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する。
 //!
 //! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を、
-//! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ（#351）。
+//! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ。
 //! `font` は config.toml が宣言するフォント資源 — 19 種別の分類（[`FontType`] / [`FontMap`]）・
-//! 検証済み設定（[`FontConfigs`]）・読込済みバイト列（[`FontData`]）を持つ（#352）。
+//! 検証済み設定（[`FontConfigs`]）・読込済みバイト列（[`FontData`]）を持つ。
 //! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
 //! 区別がそのまま module 境界になっている。
 //!
@@ -15,12 +14,12 @@
 //! この module はその入力（どのファイルをどう使うか）までを持つ。
 //!
 //! 入力パスの解決規則（相対への `base_dir` 前置・絶対の維持・字句的正規化）は子 module `path_resolver` の
-//! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う（#530）。
+//! [`PathResolver`] 1 型に閉じ、config / style / frontend はこれを使う。
 //!
 //! TOML 設定ファイル（config.toml / style.toml）の解析そのものと、解析エラーを leaf diagnostic の部品へ
 //! 分解する規則（位置は miette のラベルだけが示し、toml の自前スニペットを重ねない）は子 module
 //! `toml_error_parts` の [`parse_toml`] + [`TomlErrorParts`] に閉じ、config / style は `toml::from_str` を
-//! 直接呼ばずこれを使う（#647）。
+//! 直接呼ばずこれを使う。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` /
 //! `toml_error_parts` は crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が
@@ -51,7 +50,7 @@ pub use config::test_support;
 use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
 // `FontType` は `GlyphRun` と描画資源のキーとして `Publication` に載るため crate 外まで届く
-// （crate root の facade が再エクスポートする。#372）。
+// （crate root の facade が再エクスポートする）。
 pub use font::FontType;
 // フォント資源（19 種別の分類・検証済み設定・読込済みバイト列）は `font` の所有だが、
 // 利用側は常に `project::FontType` のように最浅のパスで参照する。`FontMap` は
@@ -109,8 +108,7 @@ impl AsRef<Path> for ProjectPath {
 /// 役割（設定 / スタイル / 文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic は
 /// 所有段（`project::config` / `style` / `semantics::citation` / `project::font` /
 /// `compiler::input` / `typeset::image`）が作り、この型はその `#[source]` に入って
-/// 「何が起きたか」だけを伝える（#377。旧 `into_io()` による平坦化は元の kind と cause chain を
-/// 捨てていたため廃止した）。
+/// 「何が起きたか」だけを伝える。
 ///
 /// パスを持たないのも同じ理由で、パスは常に所有段の診断メッセージ側にある。
 #[derive(Debug, Error)]

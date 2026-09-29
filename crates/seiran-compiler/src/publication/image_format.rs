@@ -1,8 +1,6 @@
 //! 画像形式 [`ImageFormat`] と、拡張子からの判定。
 //!
-//! `PublicationImage` に載って描画バックエンドまで届く描画契約の値型。判定をここ 1 箇所に
-//! 置くのは、描画側（`seiran-pdf`）が拡張子を読み直すと同じ判定が 2 つになり食い違いうる
-//! ため（#378 で `pdf::unsupported_image_format` を削除した根拠）。
+//! `PublicationImage` に載って描画バックエンドまで届く描画契約の値型。
 
 use std::path::Path;
 

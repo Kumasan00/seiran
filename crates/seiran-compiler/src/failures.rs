@@ -1,6 +1,6 @@
 //! 段が「1 回の検査で見つけた複数の失敗」を運ぶための非空集合 [`Failures`]
 //!
-//! 集約するかどうかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める（#376）。
+//! 集約するかどうかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める。
 //! 続けられる検査（文書全体の重複ラベル・`FontType::ALL` の各フォント・manifest の各画像・
 //! 設定に列挙された複数パスなど）は全件を検査し、その結果をこの型で運ぶ。
 //!
@@ -83,7 +83,7 @@ impl<E> Failures<E> {
 /// 並列処理（rayon）の結果を集約するときは必ずこれを通す。`collect::<Result<Vec<_>, E>>()` は
 /// 複数エラーのうちどれを返すかが非決定的（rayon 自身がそう文書化している）だが、
 /// `IndexedParallelIterator` の `collect::<Vec<_>>()` は入力順を保つので、**入力順の slot に
-/// 戻してから**集約すればどの error が先に完了したかは表示順に漏れない（#376）。
+/// 戻してから**集約すればどの error が先に完了したかは表示順に漏れない。
 pub(crate) fn collect_in_input_order<T, E>(results: Vec<Result<T, E>>) -> Result<Vec<T>, Failures<E>> {
   let mut values = Vec::with_capacity(results.len());
   let mut errors = Vec::new();

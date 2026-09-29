@@ -1,10 +1,10 @@
-//! `compile` の決定性 property test（#306 / #376）。
+//! `compile` の決定性 property test。
 //!
 //! 同じ `MemoryProjectSource` から `compile` を複数回呼んでも、常に同じ `Publication` が
 //! 得られることを検証する（時刻・乱数・HashMap 反復順序等の環境依存値が紛れ込んでいないこと）。
 //!
 //! 失敗する入力についても、報告される診断の **code 列（件数と順序）** が毎回一致することを
-//! 検証する — 並列処理（rayon）の完了順や `HashMap` の反復順が表示順へ漏れていないこと（#376）。
+//! 検証する — 並列処理（rayon）の完了順や `HashMap` の反復順が表示順へ漏れていないこと。
 
 mod common;
 
@@ -87,7 +87,7 @@ fn missing_images_are_reported_in_path_order() {
 /// 同じ入力から `compile` を繰り返し呼んでも、報告される診断の code 列と件数が一致する。
 ///
 /// 並列処理（rayon）の完了順や `HashMap` の反復順が表示順へ漏れていれば、繰り返しのどこかで
-/// 順序が変わって落ちる（#376）。
+/// 順序が変わって落ちる。
 #[test]
 fn error_path_is_deterministic_across_repeated_runs() {
   for text in ERROR_CASES {

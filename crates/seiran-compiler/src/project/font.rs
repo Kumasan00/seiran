@@ -2,7 +2,7 @@
 //!
 //! 「どのフォントファイルを使うか」はプロジェクトの物理的な入力なので、この module が所有する。
 //! フォントの解析・検証・シェーピングという**処理**は `crate::typeset::font` の側にあり、
-//! この module はその入力契約（[`FontConfigs`]）と素材（[`FontData`]）までを持つ（#352）。
+//! この module はその入力契約（[`FontConfigs`]）と素材（[`FontData`]）までを持つ。
 //!
 //! TOML に対応する未検証型（`RawFontConfig` 等）とそこから検証済み値を構築する処理は
 //! 兄弟 module `project::config` が持つ。

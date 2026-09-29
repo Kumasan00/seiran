@@ -22,7 +22,7 @@ pub(crate) struct SourceEntry {
   /// 表示用のソースパス文字列（診断の `NamedSource` 名になる）
   pub(crate) name: String,
   /// ソースファイルの元テキスト全体。同じソースに付く診断はこの割り当てを `Arc::clone` で共有し、
-  /// 診断の件数ぶん本文を複製しない（#550）
+  /// 診断の件数ぶん本文を複製しない
   pub(crate) content: Arc<str>,
 }
 
@@ -30,7 +30,7 @@ pub(crate) struct SourceEntry {
 ///
 /// `miette::Diagnostic` は実装しない — 診断（`code` / 役割とパスを含むメッセージ）は入力読込側
 /// （`compiler::input`）が組み立てる責務で、`project` はどのパスがどう失敗したかだけを返す。
-/// `source` の `SourceReadError` はそのまま leaf 診断の `#[source]` へ載る低水準 cause（#377）。
+/// `source` の `SourceReadError` はそのまま leaf 診断の `#[source]` へ載る低水準 cause。
 #[derive(Debug)]
 pub(crate) struct SourceSetReadError {
   /// 読込に失敗した表示用パス
@@ -68,7 +68,7 @@ impl SourceSet {
 
   /// `sources` を宣言順に読み込んで登録する。
   ///
-  /// パスは互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を宣言順に全件返す（#376）。
+  /// パスは互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を宣言順に全件返す。
   /// **登録（`register`）は全件成功したときだけ**行う — 途中で失敗したぶんを飛ばして登録すると
   /// 「`SourceId::index()` == `config.sources` の宣言順」という crate 全体の不変条件が崩れる。
   ///

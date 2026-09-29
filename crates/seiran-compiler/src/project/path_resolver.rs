@@ -2,8 +2,7 @@
 //!
 //! 「相対なら `base_dir` を前置、絶対ならそのまま、`.` と冗長な区切りは畳む」という規則は config
 //! （style / references / sources / fonts）・style（CSL / locale）・frontend（画像）の 3 箇所が同じものを
-//! 使う。この型を消すと `is_absolute` / `base_dir.join` が 3 箇所へ再び分散するので、`project` の seam 部
-//! に 1 つだけ置く（#530）。trait にしないのは、解決規則が filesystem / memory の adapter で変わらず、
+//! 使う。trait にしないのは、解決規則が filesystem / memory の adapter で変わらず、
 //! 差し替え点ではないため（差し替え点は引き続き [`crate::project::ProjectSource`] だけ）。
 //!
 //! # 解決の契約
@@ -15,7 +14,7 @@
 //! 4. `..` は `Path::components()` の意味どおり保持する
 //! 5. 存在確認・symlink 解決・filesystem I/O を行わない。存在確認は
 //!    [`crate::project::ProjectSource::exists`] が担い、複数の欠落を入力の論理順で全件報告する
-//!    診断モデル（#376）を維持する
+//!    診断モデルを維持する
 //!
 //! # `canonicalize` を採用しない理由
 //!

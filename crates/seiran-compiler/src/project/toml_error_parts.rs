@@ -19,7 +19,7 @@ pub(crate) fn parse_toml<T: DeserializeOwned>(
 ///
 /// 位置を示すのは miette のラベル（`src` + `span`）だけにする。`toml::de::Error` の `Display` は input を
 /// 持つと `TOML parse error at line N, column M` の自前スニペットを描画し、miette の `╰─▶` 行とラベルで
-/// 位置が二重に出るため、`source` は input を消してから持つ（#647）。
+/// 位置が二重に出るため、`source` は input を消してから持つ。
 ///
 /// 診断 code / help は設定ファイルの役割ごとに違うので、variant は各所有者
 /// （`project::config::ReadConfigError::ParseToml` / `style::ReadStyleError::ParseToml`）が持ち、
@@ -58,7 +58,7 @@ impl TomlErrorParts {
 mod tests {
   use super::{TomlErrorParts, parse_toml};
 
-  /// 閉じ引用符の無い文字列（issue #647 の再現入力）
+  /// 閉じ引用符の無い文字列
   const UNCLOSED_STRING: &str = "[page]\nmargin_top = \"10mm\n";
 
   #[test]

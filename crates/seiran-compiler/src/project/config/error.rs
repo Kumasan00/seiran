@@ -39,8 +39,8 @@ pub(crate) enum ReadConfigError {
   ///
   /// 複数の違反は `Failures<ReadConfigError>` の別要素として並ぶ。段名だけを表す集約
   /// バリアントは持たない — ユーザーが最初に読むのは
-  /// 「どのフィールドをどう直すか」であるべきで、「複数のバリデーションエラー」ではない（#376）。
-  /// パスは `-c` で任意の名前を付けた設定ファイルでも分かるように添える（#552）。
+  /// 「どのフィールドをどう直すか」であるべきで、「複数のバリデーションエラー」ではない。
+  /// パスは `-c` で任意の名前を付けた設定ファイルでも分かるように添える。
   #[error(transparent)]
   #[diagnostic(transparent)]
   Validation(#[from] InFile<ConfigValidationError>),
@@ -106,9 +106,6 @@ pub(crate) enum ConfigValidationError {
 }
 
 /// config.toml の警告（読み込みは成功するが、ユーザーが直したほうがよい問題）。
-///
-/// エラー（[`ConfigValidationError`]）と型を分けているのは、warning が成功した
-/// `Compilation` と一緒に返り `CompileFailure` には混ざらないため（#377）。
 #[derive(Debug, Clone, Error, Diagnostic)]
 pub(crate) enum ConfigWarning {
   /// `sources` のファイル拡張子が `.sei` ではない。

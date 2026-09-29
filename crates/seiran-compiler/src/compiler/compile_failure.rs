@@ -23,7 +23,7 @@ use crate::{
 ///
 /// error の列とは別に、**失敗するまでに確定した警告**（0 件以上）を [`CompileFailure::warnings`] で返す。
 /// 警告は `Diagnostic` としての姿（`related` / [`CompileFailure::into_report`] の描画）には載せない —
-/// error と warning は別の集合で、表示する呼び出し側が「確定済み警告 → 主エラー」の順に描く（#550）。
+/// error と warning は別の集合で、表示する呼び出し側が「確定済み警告 → 主エラー」の順に描く。
 #[derive(Debug, Display)]
 #[display("{primary}")]
 pub struct CompileFailure {
