@@ -1,7 +1,4 @@
 //! カウンタ（chapter / section / figure 等）のスタイル設定型。
-//!
-//! `[counters.<name>]` の指定を [`Counters::default`] のカウンタ別既定に重ねて解釈する
-//! （見出し・定理と同じ 2 レイヤーマージ）。
 
 use std::{ops::Index, str::FromStr};
 
@@ -353,7 +350,6 @@ mod tests {
 
   #[test]
   fn partial_entry_keeps_other_defaults() {
-    // 表示名だけ日本語化する典型例
     let toml = "
 [figure]
 display_name = \"図\"
@@ -431,7 +427,6 @@ resets = []
 
   #[test]
   fn rejects_renamed_format_key() {
-    // 部分指定でも未知キーは拒否される（P6）
     let toml = "
 [figure]
 format = \"{chapter}.{n}\"

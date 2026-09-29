@@ -13,7 +13,7 @@ use crate::{
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct TocStyle {
-  /// 目次を生成するか（既定 `false`。既存設定の出力を変えないようオプトイン）
+  /// 目次を生成するか（既定 `false`）
   pub enabled: bool,
   /// 目次のタイトル文字列
   #[garde(length(chars, min = 1))]
@@ -52,10 +52,8 @@ impl Default for TocStyle {
   }
 }
 
-/// 型レベルの整合チェック: `TocStyle::max_depth` の上限が `HeadingLevel::COUNT` と一致する
-///
-/// `garde` の `range` 属性は const 式しか受け付けないため上限値はリテラルだが、ここで
-/// 静的アサートを置くことで `HeadingLevel` を増減した際に誤値を検出できる。
+/// `TocStyle::max_depth` の上限リテラル（`garde` の `range` は const 式しか受け付けない）が
+/// `HeadingLevel::COUNT` と一致することの静的検査
 const _: () = assert!(
   HeadingLevel::COUNT == 6,
   "garde の range 上限リテラル 6 と HeadingLevel::COUNT がずれている（HeadingLevel を増減したら上限も更新する）"

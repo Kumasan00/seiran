@@ -1,7 +1,4 @@
 //! 定理環境（theorem / lemma / proof …）のスタイル設定型。
-//!
-//! `[theorems.<class>]` の指定を [`Theorems::default`] のクラス別既定に重ねて解釈する
-//! （見出し・カウンタと同じ 2 レイヤーマージ）。
 
 use std::ops::Index;
 
@@ -209,8 +206,7 @@ impl TheoremReset {
   /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
   ///
   /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典で、逆写像
-  /// [`Self::for_counter`] もここから導く。定理カウンタのリセット先になれるのは部・章・節・
-  /// 小節の 4 レベルだけで、段落以下の見出しと図表・数式のカウンタは選べない。
+  /// [`Self::for_counter`] もここから導く。
   #[must_use]
   pub(crate) fn counter_name(self) -> Option<CounterName> {
     return match self {

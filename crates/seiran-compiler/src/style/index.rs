@@ -31,13 +31,9 @@ pub(crate) struct IndexStyle {
   #[garde(custom(non_negative))]
   pub bottom_margin: Length,
   /// 連続する 3 ページ以上のページ番号を範囲表記（`3–5`）へ畳むか
-  ///
-  /// 既定 `false`（既存の出力を変えないオプトイン）。
   #[garde(skip)]
   pub collapse_page_ranges: bool,
   /// 区分見出し（五十音行・A–Z）をエントリ列へ挟むか
-  ///
-  /// 既定 `false`（既存の出力を変えないオプトイン）。
   #[garde(skip)]
   pub group_headings: bool,
   /// 区分見出しのフォントサイズ
@@ -51,8 +47,7 @@ pub(crate) struct IndexStyle {
   pub group_bottom_margin: Length,
   /// どの区分にも入らないエントリ（数字・記号始まり・かなより後に照合される語）の区分見出し
   ///
-  /// 行ラベル（「あ」「か」…）と A–Z は言語慣習の固定表で差し替えられないが、この受け皿だけは
-  /// 文字列を選べる。既定が英語なのは「表示文字列の i18n は style.toml の明示指定のみ」に従う。
+  /// 行ラベル（「あ」「か」…）と A–Z は固定表で差し替えられず、この受け皿だけ文字列を選べる。
   #[garde(length(chars, min = 1))]
   pub group_other_label: String,
 }

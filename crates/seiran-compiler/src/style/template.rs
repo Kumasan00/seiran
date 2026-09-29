@@ -8,9 +8,7 @@
 //! `expand` だけを使い、テンプレートの文法や許可リストを知らない。
 //!
 //! 解析は失敗しない。不正な波括弧・未知のプレースホルダは値の中に「問題」として溜め、
-//! `garde` の検証違反として `style::validate_values` が他フィールドの違反と一括で報告する
-//! （`Deserialize` を失敗させると `ReadStyleError::ParseToml` へ早期変換され、
-//! 複数フィールドの一括報告が打ち切られてしまうため）。
+//! `garde` の検証違反として `style::validate_values` が他フィールドの違反と一括で報告する。
 //!
 //! 展開は検証を通った値にだけ許可する。問題を持つテンプレートが `expand` へ届いたら、それは
 //! `style::parse` / `validate_values` の上流保証が破れているので `unreachable!` で落とす。
@@ -24,8 +22,7 @@ use crate::style::counter::CounterName;
 
 /// 用途別プレースホルダ集合が満たす性質
 ///
-/// 「どの名前を書けるか」と「空テンプレートを許すか」の 2 点だけが用途ごとの差分で、
-/// 解析器・検証器・展開器はこの trait 越しに用途差を吸収する。
+/// 「どの名前を書けるか」と「空テンプレートを許すか」の 2 点だけが用途ごとの差分。
 trait Placeholder: Sized {
   /// 空文字列のテンプレートを許可するか（走り文スロットだけが `true`）
   const ALLOW_EMPTY: bool;
@@ -133,7 +130,6 @@ impl<P: Placeholder> Analyzed<P> {
   /// 溜めた問題（と空テンプレート違反）を `garde` のフィールド違反として報告する
   ///
   /// 1 テンプレート ＝ 違反 1 件にまとめる（複数の問題は `"; "` 区切りで 1 メッセージに繋ぐ）。
-  /// フィールド単位の集約は `style::validate_values` の担当なので、ここでは分割しない。
   fn validate_into(&self, parent: &mut dyn FnMut() -> Path, report: &mut Report) {
     if !P::ALLOW_EMPTY && self.source.is_empty() {
       report.append(parent(), garde::Error::new("テンプレートが空です"));
@@ -194,8 +190,6 @@ fn flush_literal<T>(nodes: &mut Vec<T>, buffer: &mut String, literal: &mut impl 
 }
 
 /// 用途別テンプレート型の共通実装（newtype・解析・`serde`・`garde`）を生成する
-///
-/// 用途ごとに違うのは許可プレースホルダと `expand` の引数だけなので、配管はここで 1 度だけ書く。
 macro_rules! define_template {
   ($(#[$meta:meta])* $name:ident($placeholder:ty)) => {
     $(#[$meta])*
@@ -522,8 +516,6 @@ pub(crate) struct RunningValues<'a> {
 
 impl RunningTemplate {
   /// メタデータとページ番号を埋めた文字列を返す
-  ///
-  /// 置換は単一パスなので、埋めた値（タイトル等）に `{page}` が含まれていても再解釈しない。
   #[must_use]
   pub(crate) fn expand(&self, values: RunningValues<'_>) -> String {
     return self.0.expand_to_string(|placeholder| {
@@ -701,7 +693,6 @@ mod tests {
 
   #[test]
   fn title_closure_is_not_called_without_a_title_placeholder() {
-    // タイトル生成には脚注 index を払い出す副作用があるので呼んではならない
     let template = NumberTitleTemplate::parse("No.{number}");
     let mut calls = 0u32;
 

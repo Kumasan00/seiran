@@ -1,7 +1,4 @@
 //! 見出し要素（part / chapter / section …）のスタイル設定型。
-//!
-//! `[heading.<level>]` の指定を [`HeadingStyles::default`] のレベル別既定に重ねて解釈する
-//! （定理・カウンタと同じ 2 レイヤーマージ）。
 
 use std::ops::Index;
 

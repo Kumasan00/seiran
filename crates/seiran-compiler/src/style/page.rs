@@ -7,10 +7,8 @@ use crate::length::{Length, non_negative};
 
 /// ページ組版の挙動スタイル設定
 ///
-/// 4 方向の余白は「用紙のどこを本文領域として使うか」という見た目の判断なので style が所有する
-/// （用紙そのものの寸法は物理設定として `config.toml` の `[pdf]` が持つ）。余白単体の不正
-/// （負値）はここの garde が、用紙寸法との組み合わせでしか判定できない制約は
-/// [`crate::typeset::PreparedGeometry::prepare`] が検証する。
+/// 余白単体の不正（負値）はここの garde が、用紙寸法（`config.toml` の `[pdf]`）との組み合わせでしか
+/// 判定できない制約は [`crate::typeset::PreparedGeometry::prepare`] が検証する。
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

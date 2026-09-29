@@ -1,10 +1,8 @@
 //! `style.toml`（見た目）のデータモデル・既定値・読込・検証
 //!
-//! 言語設計原則 P10 が区別する 2 概念のうち「種類ごとの見た目」を所有する crate root の module。
-//! 物理・実体・メタデータ（`config.toml`）は [`crate::project::config`] の所有で、両者は互いを知らない
-//! （どちらか一方だけでは判定できない横断制約は [`crate::typeset::PreparedGeometry::prepare`] が持つ）。
-//! CSL ファイル自体の読込は行わない — 引用箇所の存在が確定するまで遅延させるため、ここは
-//! `csl_path` / `locale_path` の正規化と存在確認までで止める。
+//! 物理・実体・メタデータ（`config.toml`）を所有する [`crate::project::config`] とは互いを知らず、
+//! どちらか一方だけでは判定できない横断制約は [`crate::typeset::PreparedGeometry::prepare`] が持つ。
+//! CSL ファイル自体は読まず、`csl_path` / `locale_path` の解決と存在確認までで止める。
 
 mod caption;
 mod columns;
@@ -34,11 +32,7 @@ use garde::Validate;
 use serde::Deserialize;
 use tracing::debug;
 
-// `compiler::input::error::CompileError` が `#[from]` で運ぶために名指しする読込エラー。
 pub(crate) use crate::style::error::ReadStyleError;
-// module root が再エクスポートするのは、`style` の外から実際に名指しされる名前だけ。
-// `Style` の内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` 等）は
-// 下の非公開 `use` に留め、`crate::style::FigureStyle` という到達経路を作らない。
 #[cfg_attr(
   not(test),
   expect(
@@ -64,29 +58,27 @@ pub(crate) use crate::style::{
   title_page::TitlePageStyle,
   toc::TocStyle,
 };
-// `Style` のフィールド型と、この module 内でのみ名指しする型。`style` の子 module からは
-// `crate::style::<Type>` で参照できる（非公開 `use` の名前も子孫からは見える）。
-use crate::style::{
-  columns::ColumnsStyle,
-  error::StyleValidationError,
-  figure::FigureStyle,
-  heading::{HeadingStyle, HeadingStyles},
-  hyperref::HyperrefStyle,
-  index::IndexStyle,
-  list::ListStyle,
-  math::MathStyle,
-  page::PageStyle,
-  quote::QuoteStyle,
-  reference::ReferenceStyle,
-  table::TableStyle,
-  text::TextBlockStyle,
-  theorem::{TheoremClass, Theorems},
-};
 use crate::{
   color::Color,
   document::HeadingLevel,
   failures::Failures,
   project::{self, InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
+  style::{
+    columns::ColumnsStyle,
+    error::StyleValidationError,
+    figure::FigureStyle,
+    heading::{HeadingStyle, HeadingStyles},
+    hyperref::HyperrefStyle,
+    index::IndexStyle,
+    list::ListStyle,
+    math::MathStyle,
+    page::PageStyle,
+    quote::QuoteStyle,
+    reference::ReferenceStyle,
+    table::TableStyle,
+    text::TextBlockStyle,
+    theorem::{TheoremClass, Theorems},
+  },
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -262,8 +254,6 @@ fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
 
 /// `style.reference` の CSL 関連パス（`csl_path` / `locale_path`）を `resolver` で解決し、
 /// `source.exists` でファイルの存在を同時に検証します（I/O フェーズ）。
-///
-/// deserialize 時点の値は字句的に正規化されているだけなので、ここで `base_dir` 基準の値へ置き換える。
 fn resolve_reference_paths(
   reference: &mut ReferenceStyle,
   source: &dyn ProjectSource,
@@ -310,7 +300,6 @@ mod tests {
 
   #[test]
   fn resolve_reference_paths_resolves_relative_csl_path_against_base_dir() {
-    // style.toml に書かれた相対パスは `Style` の deserialize では正規化されるだけ
     let source = MemoryProjectSource::new().with_text("/project/styles/ieee.csl", "");
     let resolver = PathResolver::new(Path::new("/project"));
     let mut reference = ReferenceStyle {
@@ -396,10 +385,7 @@ mod tests {
   }
 }
 
-/// TOML パース系の統合テスト（旧 `crates/config/tests/parse.rs`）。
-///
-/// `mod tests` と同居させず別 module にしているのは、両ファイルとも `fn dummy_source()` という
-/// 同名ヘルパを独立に定義していたため（`mod tests` へ素直に統合すると名前衝突する）。
+/// TOML パース系のテスト。
 #[cfg(test)]
 mod parse_tests {
   use super::{ReadStyleError, Style, StyleValidationError, load, parse};
@@ -546,9 +532,7 @@ mod parse_tests {
   }
 }
 
-/// 検証系の統合テスト（旧 `crates/config/tests/validate.rs`）。
-///
-/// `parse_tests` と同様、独立の `fn dummy_source()` を持つため別 module にしている。
+/// 値検証系のテスト。
 #[cfg(test)]
 mod validate_tests {
   use super::{Failures, ReadStyleError, Style, StyleValidationError, parse};
@@ -657,7 +641,6 @@ center = \"{pagee}\"
     let Err(failures) = parse("[text]\nfont_size = \"0pt\"\n", "themes/custom-style.toml") else {
       panic!("値検証の違反を期待");
     };
-    // 実際に読んだファイルのパスが前置される
     let message = failures.first().to_string();
     assert!(message.starts_with("themes/custom-style.toml: 'text.font_size': "), "{message}");
   }
