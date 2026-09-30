@@ -26,7 +26,7 @@ pub(super) fn lower_theorem(
   let of_target = theorem.of.as_ref().map(|target| return state.reference_target(target.id));
   let label = state.declared_label(id);
 
-  let theorem_style = ctx.style.theorem(theorem.class);
+  let theorem_style = &ctx.style.theorems[theorem.class];
   let pres = &theorem_style.style;
 
   let mut nodes = vec![

@@ -60,24 +60,12 @@ pub(crate) use crate::style::{
 };
 use crate::{
   color::Color,
-  document::HeadingLevel,
   failures::Failures,
   project::{self, InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
   style::{
-    columns::ColumnsStyle,
-    error::StyleValidationError,
-    figure::FigureStyle,
-    heading::{HeadingStyle, HeadingStyles},
-    hyperref::HyperrefStyle,
-    index::IndexStyle,
-    list::ListStyle,
-    math::MathStyle,
-    page::PageStyle,
-    quote::QuoteStyle,
-    reference::ReferenceStyle,
-    table::TableStyle,
-    text::TextBlockStyle,
-    theorem::{TheoremClass, Theorems},
+    columns::ColumnsStyle, error::StyleValidationError, figure::FigureStyle, heading::HeadingStyles,
+    hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle, page::PageStyle, quote::QuoteStyle,
+    reference::ReferenceStyle, table::TableStyle, text::TextBlockStyle, theorem::Theorems,
   },
 };
 
@@ -148,16 +136,6 @@ pub(crate) struct Style {
   /// 巻末索引のスタイル
   #[garde(dive)]
   pub index: IndexStyle,
-}
-
-impl Style {
-  /// 指定された見出しレベルの [`HeadingStyle`] への不変参照を返す
-  #[must_use]
-  pub(crate) fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.heading[level]; }
-
-  /// 指定された定理クラスのスタイル定義への不変参照を返す（10 種固定のため必ず存在する）。
-  #[must_use]
-  pub(crate) fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return &self.theorems[class]; }
 }
 
 /// スタイル設定ファイルを読み込みます。
@@ -406,7 +384,7 @@ mod parse_tests {
     assert!((style.text.font_size.to_pt() - default.text.font_size.to_pt()).abs() < f32::EPSILON);
     assert!((style.text.line_height_factor - default.text.line_height_factor).abs() < f32::EPSILON);
     assert!(style.background_color.is_none());
-    assert_eq!(style.heading(HeadingLevel::Part).format, default.heading(HeadingLevel::Part).format);
+    assert_eq!(style.heading[HeadingLevel::Part].format, default.heading[HeadingLevel::Part].format);
   }
 
   #[test]

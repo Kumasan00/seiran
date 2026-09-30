@@ -104,7 +104,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
 /// 目次見出しの書体は文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
 fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
   let toc = &style.toc;
-  let title_heading = style.heading(HeadingLevel::Section);
+  let title_heading = &style.heading[HeadingLevel::Section];
   return TocSpec {
     title: toc.title.clone(),
     title_style: TextStyle {

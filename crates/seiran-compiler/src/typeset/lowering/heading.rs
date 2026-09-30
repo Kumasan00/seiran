@@ -16,7 +16,7 @@ use crate::{
 
 /// 見出しのタイトル・番号に使う基底テキストスタイルを返す
 pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> TextStyle {
-  let heading_style = ctx.style.heading(level);
+  let heading_style = &ctx.style.heading[level];
   return TextStyle {
     font_size: heading_style.font_size,
     font_kind: heading_style.font_kind,
@@ -91,7 +91,7 @@ pub(super) fn lower_heading(
   label: Option<LabelId>,
   key: HeadingKey,
 ) -> Vec<LayoutNode> {
-  let heading_style = ctx.style.heading(level);
+  let heading_style = &ctx.style.heading[level];
   let style = title_style(ctx, level);
 
   let children = heading_style.format.expand(number, title, |literal| {
@@ -184,7 +184,7 @@ mod tests {
     let nodes = lower(&style, &analyzed("\\section{Intro \\italic{Italic}}\n"));
 
     let children = heading_children(&nodes);
-    let heading_size = style.heading(HeadingLevel::Section).font_size;
+    let heading_size = style.heading[HeadingLevel::Section].font_size;
     let italic = children
       .iter()
       .find_map(|n| match n {
