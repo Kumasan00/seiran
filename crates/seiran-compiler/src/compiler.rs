@@ -19,10 +19,7 @@ mod source_diagnostic;
 mod test_support;
 mod warnings;
 
-use std::{
-  path::{Path, PathBuf},
-  time::Instant,
-};
+use std::path::{Path, PathBuf};
 
 pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
@@ -44,15 +41,6 @@ use crate::{
 /// 型消去済みの診断 1 件（error・warning 共通の保持形）。
 type BoxedDiagnostic = Box<dyn miette::Diagnostic + Send + Sync + 'static>;
 
-/// コンパイル結果の統計情報。
-#[derive(Debug, Clone, Copy)]
-pub struct BuildStatistics {
-  /// 確定ページ総数（前付け + 本文 + 後付け）
-  pub page_count: usize,
-  /// コンパイル全体の所要ミリ秒
-  pub total_elapsed_ms: u64,
-}
-
 /// `compile` の結果。
 ///
 /// `Publication` 以外に組版の中間型は含まない。
@@ -64,8 +52,6 @@ pub struct Compilation {
   pub dependencies: DependencyManifest,
   /// 致命的ではない warning 診断（フォント・設定のうちユーザーが直せる非致命的な問題）
   pub warnings: Warnings,
-  /// コンパイル結果の統計情報
-  pub statistics: BuildStatistics,
   /// 出力 PDF の保存先（組版の成果ではなく検証済み設定から決まる値）
   pub pdf_path: PathBuf,
 }
@@ -88,7 +74,6 @@ pub fn compile<S: ProjectSource>(
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
   let phase = Phase::enter(info_span!("compile"));
-  let build_start = Instant::now();
 
   let mut warnings = Warnings::default();
   let (publication, dependencies, pdf_path) = match run_phases(source, config_path, base_dir, &mut warnings) {
@@ -96,19 +81,13 @@ pub fn compile<S: ProjectSource>(
     Err(failure) => return Err(failure.with_warnings(warnings)),
   };
 
-  let statistics = BuildStatistics {
-    page_count: publication.pages().len(),
-    // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
-    total_elapsed_ms: u64::try_from(build_start.elapsed().as_millis()).unwrap_or(u64::MAX),
-  };
-  info!(page_count = statistics.page_count, warning_count = warnings.iter().count(), "文書をコンパイル");
+  info!(page_count = publication.pages().len(), warning_count = warnings.iter().count(), "文書をコンパイル");
   phase.succeed();
 
   return Ok(Compilation {
     publication,
     dependencies,
     warnings,
-    statistics,
     pdf_path,
   });
 }

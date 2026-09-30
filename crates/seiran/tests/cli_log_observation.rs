@@ -297,6 +297,7 @@ fn terminal_without_flags_shows_only_the_summary() {
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert!(stderr.contains('\u{2713}'), "成功サマリが出る: {stderr}");
+  assert!(stderr.contains("out/doc.pdf · 1 ページ ·"), "サマリは保存先・ページ数・所要時間を出す: {stderr}");
   assert!(!stderr.contains("工程を開始"), "既定では工程の event は出ない: {stderr}");
   assert!(!stderr.contains("# seiran 実行記録"), "実行記録はファイルだけ: {stderr}");
 }

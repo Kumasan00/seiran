@@ -23,7 +23,7 @@ mod style;
 mod typeset;
 
 pub use color::{Color, ParseColorError};
-pub use compiler::{BuildStatistics, Compilation, CompileFailure, DependencyManifest, Warnings, compile};
+pub use compiler::{Compilation, CompileFailure, DependencyManifest, Warnings, compile};
 pub use length::{Length, ParseLengthError};
 #[doc(hidden)]
 pub use project::test_support;
