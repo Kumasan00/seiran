@@ -85,6 +85,8 @@ absolute_paths = "warn"
 allow_attributes = "warn"
 # 抑制には「なぜ許してよいか」の reason を必ず書かせる。
 allow_attributes_without_reason = "warn"
+# use 規約「`mod` 宣言 → `use` → その他の項目」の並び。`clippy.toml` の source-item-ordering = ["module"] で module 直下の並びだけを見る。
+arbitrary_source_item_ordering = "warn"
 # 「名前側を変えて衝突自体を無くす」（`ConfigValidationError` / `StyleValidationError`）の機械化。
 error_impl_error = "warn"
 # 必須ルール 1「`return` キーワード必須」。

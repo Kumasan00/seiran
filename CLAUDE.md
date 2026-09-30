@@ -174,6 +174,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
    - 起点は `crate::` に統一し `super::` / `self::` は使わない。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）
    - `crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`）。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外
    - `*` を避け明示 import。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
+   - 並びは `mod` 宣言（空行なしの 1 ブロック。`pub mod` も `#[cfg(test)]` 付きも同じブロック）→ `use` → その他の項目（`arbitrary_source_item_ordering`。`#[cfg(test)]` 付きの module は lint が見ないので置き場は人が守る）。ブロック内の順序は rustfmt に任せ、`pub use` を `use` から分けて並べ直さない
    - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)] pub(crate) use`（本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数（型から切り離せない。#696）
 4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かと長さは人が見る。長さの規律は「簡潔さ」節）。doc が正典を兼ねる箇所（`//!`・設定キー・`--help`）を lint 1 枚で守る代価として、名前の日本語化だけの 1 行は可。名前・型に無い情報（単位・由来・値域・`None` の意味）はその 1 行へ載せる
 5. **`unreachable!` は積極的に使う**: 型で表現不能にできない「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` でごまかさず `unreachable!`。入力（ソース・設定）由来で到達しうる状態は miette 診断エラー。メッセージには「なぜ到達しないか」＝上流のどの検証が保証するかを書く

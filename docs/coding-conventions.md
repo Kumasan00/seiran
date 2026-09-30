@@ -50,6 +50,16 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   再修飾すると落ちる。どちらの lint も `#[cfg(test)]` の中で発火するので、テストにも同じ規約が効く。
   doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外。
 - `*` を避け明示的にインポート、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`。
+- **並びは `mod` 宣言 → `use` → その他の項目**: `mod` 宣言はファイル先頭に空行なしの 1 ブロックで置き
+  （`pub mod` も `#[cfg(test)]` 付きも同じブロック）、その下に `use` を置く。例外 (a) の相対 use が必ず
+  `mod` 宣言の下に来て、`use` が 1 本の連続になるので rustfmt が `use crate::{…}` を 1 つへ畳める。
+  ブロック間の順序は `clippy::arbitrary_source_item_ordering`（`clippy.toml` の `source-item-ordering` /
+  `module-item-order-groupings`）、ブロック内の順序は rustfmt（`reorder_modules` が名前順、`group_imports` が
+  std / 外部 crate / `crate::`）が担う。人が守るのは 2 つだけ — `mod` 宣言を空行で分けないこと（rustfmt は
+  空行をまたいで並べ替えない）と、`#[cfg(test)] mod x;` を同じブロックへ置くこと（lint は `#[cfg(test)]`
+  付きの module を見ない。末尾の `#[cfg(test)] mod tests { … }` が通るのはこのため）。rustfmt は子 module
+  相対パスを外部 crate 群へ分類するので、`pub use child::X` は外部 crate の `use` と名前順で混ざる —
+  分ける並びは機械化できないので規約にしない。
 - 型・トレイト・モジュールは直接 import する。関数は既定でモジュール経由で呼ぶ（`mem::swap` 方式）が、
   呼び出し元で `fn_name(...)` だけ見ても出自・曖昧さがない場合（private な単一関数サブモジュールからの
   re-export、`tracing::debug!` 等の広く知られた慣用）は直接 import してよい。
@@ -401,15 +411,17 @@ Unicode の文字名）。doc はこれに何をするか 1 行を足す。ど�
 （差分＝意図として読める形を保ち、既定値の複製で upstream の既定変更に追随する二重帳簿を作らないため。
 ノブ 113 個の全数棚卸しと維持判断の記録は #473 が持つ）。
 
-| ノブ                                | 値         | 根拠                                                                                                             |
-| ----------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- |
-| `absolute-paths-max-segments`       | `3`        | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                                                 |
-| `allow-mixed-uninlined-format-args` | `false`    | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる                                  |
-| `allow-panic-in-tests`              | `true`     | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                                                   |
-| `allow-unwrap-in-tests`             | `true`     | テストの `unwrap` は許容                                                                                         |
-| `avoid-breaking-exported-api`       | `false`    | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる                              |
-| `inherent-impl-lint-scope`          | `"module"` | `multiple_inherent_impl` を同一 module 内に限る（既定 `crate` は子 module へ切り出した impl どうしも衝突させる） |
-| `upper-case-acronyms-aggressive`    | `true`     | `HTTPResponse` 形も `HttpResponse` に固定する                                                                    |
+| ノブ                                | 値           | 根拠                                                                                                                     |
+| ----------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `absolute-paths-max-segments`       | `3`          | use 規約の最終防衛線（末尾の enum variant / 関連関数を数えない）                                                         |
+| `allow-mixed-uninlined-format-args` | `false`      | `format!("{} {x}", y)` の混在形を禁じ、`uninlined_format_args` を全面に効かせる                                          |
+| `allow-panic-in-tests`              | `true`       | テストの `panic!` は許容（`allow-unwrap-in-tests` と同じ扱い）                                                           |
+| `allow-unwrap-in-tests`             | `true`       | テストの `unwrap` は許容                                                                                                 |
+| `avoid-breaking-exported-api`       | `false`      | 既定 true は crates.io 公開 crate 向け。非公開 workspace なので公開項目の穴を閉じる                                      |
+| `inherent-impl-lint-scope`          | `"module"`   | `multiple_inherent_impl` を同一 module 内に限る（既定 `crate` は子 module へ切り出した impl どうしも衝突させる）         |
+| `module-item-order-groupings`       | 3 群         | `mod` → `use` → その他の項目（use 規約の並び。その他の項目どうしの順序は 1 群にまとめて問わない）                        |
+| `source-item-ordering`              | `["module"]` | `arbitrary_source_item_ordering` を module 直下の並びに限る（既定は enum・struct・impl・trait の中身の名前順も強制する） |
+| `upper-case-acronyms-aggressive`    | `true`       | `HTTPResponse` 形も `HttpResponse` に固定する                                                                            |
 
 `avoid-breaking-exported-api = false` の帰結として `rc_mutex` / `needless_pass_by_ref_mut` / `ref_option` /
 `unused_self` / `wrong_self_convention` 等が公開項目にも効く。逆に `check-private-items` は既定の false を

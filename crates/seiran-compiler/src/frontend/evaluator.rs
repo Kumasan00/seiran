@@ -3,22 +3,6 @@
 //! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。段落は蓄積した
 //! インラインを後からまとめる構造なので、子を評価する前に ID を予約しておく。
 
-use crate::{
-  document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
-  frontend::{
-    evaluator::{
-      command::{CommandResult, Placement},
-      inline::{InlineSink, TokenInline},
-    },
-    syntax::{
-      SyntaxKind,
-      green::{GreenElement, GreenNode},
-      view::CommandView,
-    },
-  },
-  source::Span,
-};
-
 mod arity;
 mod command;
 mod context;
@@ -33,7 +17,21 @@ pub(crate) use error::EvalError;
 #[cfg(test)]
 pub(crate) use test_support::{evaluate_children_to_hir, extract_inline_nodes_to_hir, run_handler};
 
-use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
+use crate::{
+  document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
+  frontend::{
+    evaluator::{
+      command::{CommandResult, Placement},
+      inline::{InlineSink, TokenInline},
+    },
+    syntax::{
+      ModeResolver, SyntaxKind,
+      green::{GreenElement, GreenNode},
+      view::{CommandView, EnvironmentView},
+    },
+  },
+  source::Span,
+};
 
 /// `crate::frontend::syntax::parse` へ渡すレジストリ解決器を組む
 pub(crate) fn mode_resolver() -> ModeResolver {

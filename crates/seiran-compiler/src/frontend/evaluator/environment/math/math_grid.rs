@@ -2,10 +2,16 @@
 //!
 //! トップレベルの `\\` と `&` で本体を行とセルに分割する。
 
+mod markers;
+mod numbering;
+
+use markers::{RowLabel, ensure_markers_at_row_end, try_take_row_marker};
 use miette::SourceSpan;
+pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
+use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
 
 use crate::{
-  document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind, NodeId},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
     syntax::{
@@ -15,15 +21,6 @@ use crate::{
     },
   },
 };
-
-mod markers;
-mod numbering;
-
-use markers::{RowLabel, ensure_markers_at_row_end, try_take_row_marker};
-pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
-use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
-
-use crate::document::NodeId;
 
 /// グリッド分割の許可設定
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

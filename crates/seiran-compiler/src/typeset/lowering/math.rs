@@ -3,7 +3,12 @@
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathEnvKind`）から決まるセルの列内
 //! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。
 
+mod alphanumeric;
+mod spacing;
+
 use std::slice;
+
+use alphanumeric::push_math_char;
 
 use crate::{
   document::{
@@ -25,11 +30,6 @@ use crate::{
     },
   },
 };
-
-mod alphanumeric;
-mod spacing;
-
-use alphanumeric::push_math_char;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
 fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {

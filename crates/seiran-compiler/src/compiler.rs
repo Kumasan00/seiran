@@ -3,30 +3,21 @@
 //! PDF バイト列の生成は `seiran-pdf`、ファイルへの保存は CLI の責務で、この module は
 //! どちらも行わない。
 
-use crate::{
-  document::{HirDocument, HirSource},
-  failures, frontend,
-  phase::Phase,
-  project::{PathResolver, ProjectPath, ProjectSource},
-  semantics, typeset,
-};
-
 mod compile_failure;
 mod dependency_manifest;
-mod input;
-mod source_diagnostic;
-mod warnings;
-
 #[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
 mod dump;
 #[cfg(test)]
 mod golden;
+mod input;
 #[cfg(test)]
 mod project_source_equivalence;
+mod source_diagnostic;
 #[cfg(test)]
 mod test_support;
+mod warnings;
 
 use std::{
   path::{Path, PathBuf},
@@ -41,10 +32,13 @@ use tracing::{info, info_span};
 pub use warnings::Warnings;
 
 use crate::{
-  project::{SourceSet, config::ConfigWarning},
+  document::{HirDocument, HirSource},
+  failures, frontend,
+  phase::Phase,
+  project::{PathResolver, ProjectPath, ProjectSource, SourceSet, config::ConfigWarning},
   publication::Publication,
-  semantics::{AnalyzeError, SemanticDocument, SemanticError},
-  typeset::TypesetOutput,
+  semantics::{self, AnalyzeError, SemanticDocument, SemanticError},
+  typeset::{self, TypesetOutput},
 };
 
 /// 型消去済みの診断 1 件（error・warning 共通の保持形）。

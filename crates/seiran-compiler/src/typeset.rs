@@ -10,10 +10,39 @@
 //!
 //! フォント処理（OpenType 解析・検証・メトリクス・シェイピング）は子 module `font` が持つ。
 
+mod boxes;
+mod boxing;
+mod breaking;
+#[cfg(test)]
+mod dump;
+mod emit;
+mod error;
+mod font;
+mod geometry;
+mod image;
+mod lowering;
+mod observe;
+mod pagination;
+#[cfg(test)]
+mod test_support;
+mod warning;
+
 use std::mem;
 
+#[cfg(test)]
+pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
+#[cfg(test)]
+pub(crate) use dump::dump_pages;
+pub(crate) use error::TypesetError;
 use font::{FontResources, FontWarning};
+pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
+// `#[cfg(test)]` を付けない — 本体コード（`compose` / `lay_out`）もこの名前を使い、条件付きの
+// 再エクスポートと本体用の `use` を並べるとテストビルドで E0252（同名の重複定義）になる。
+pub(crate) use pagination::LaidOutDocument;
+#[cfg(test)]
+pub(crate) use test_support::layout_for_test;
 use tracing::{info, info_span};
+pub(crate) use warning::TypesetWarning;
 
 use crate::{
   failures::Failures,
@@ -23,37 +52,6 @@ use crate::{
   semantics::SemanticDocument,
   style::Style,
 };
-
-mod boxes;
-mod boxing;
-mod breaking;
-mod emit;
-mod error;
-mod font;
-mod geometry;
-mod image;
-mod lowering;
-mod observe;
-mod pagination;
-mod warning;
-
-#[cfg(test)]
-mod dump;
-#[cfg(test)]
-mod test_support;
-
-#[cfg(test)]
-pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
-#[cfg(test)]
-pub(crate) use dump::dump_pages;
-pub(crate) use error::TypesetError;
-pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
-// `#[cfg(test)]` を付けない — 本体コード（`compose` / `lay_out`）もこの名前を使い、条件付きの
-// 再エクスポートと本体用の `use` を並べるとテストビルドで E0252（同名の重複定義）になる。
-pub(crate) use pagination::LaidOutDocument;
-#[cfg(test)]
-pub(crate) use test_support::layout_for_test;
-pub(crate) use warning::TypesetWarning;
 
 /// [`compose`] の成果物 — 描画直前の出版物と、それに付随する情報。
 #[derive(Debug)]

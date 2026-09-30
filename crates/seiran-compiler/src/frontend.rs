@@ -1,6 +1,14 @@
 //! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
 
+mod evaluator;
+#[cfg(test)]
+mod hir_invariants;
+mod syntax;
+#[cfg(test)]
+pub(crate) mod test_support;
+
 use bumpalo::Bump;
+pub(crate) use evaluator::EvalError;
 use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
@@ -11,15 +19,6 @@ use crate::{
   project::PathResolver,
   source::SourceId,
 };
-
-mod evaluator;
-#[cfg(test)]
-mod hir_invariants;
-mod syntax;
-#[cfg(test)]
-pub(crate) mod test_support;
-
-pub(crate) use evaluator::EvalError;
 
 /// `parse_source` が返すエラー型
 ///

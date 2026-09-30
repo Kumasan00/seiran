@@ -7,12 +7,10 @@
 
 mod font_file;
 mod listing;
-
-mod variation_axes;
-pub(super) use variation_axes::variation_axes;
-
-mod ttc_names;
-pub(super) use ttc_names::ttc_names;
-
 mod script_langs;
+mod ttc_names;
+mod variation_axes;
+
 pub(super) use script_langs::script_langs;
+pub(super) use ttc_names::ttc_names;
+pub(super) use variation_axes::variation_axes;

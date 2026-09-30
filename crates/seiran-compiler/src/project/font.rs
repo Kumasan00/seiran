@@ -6,19 +6,18 @@
 //! TOML に対応する未検証型（`RawFontConfig` 等）とそこから検証済み値を構築する処理は
 //! 兄弟 module `project::config` が持つ。
 
-use std::{collections::HashMap, fmt, sync::Arc};
-
-use miette::Diagnostic;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use thiserror::Error;
-
 mod kind;
 mod map;
 mod settings;
 
+use std::{collections::HashMap, fmt, sync::Arc};
+
 pub use kind::FontType;
 pub(crate) use map::FontMap;
+use miette::Diagnostic;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub(crate) use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
+use thiserror::Error;
 
 use crate::{
   failures::{self, Failures},

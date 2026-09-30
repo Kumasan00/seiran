@@ -7,17 +7,6 @@
 //! query で引く。CSL 整形の生成物（書誌・引用表示）は `NodeId` を持たないので、別経路
 //! （子 module `generated`）で lower する。
 
-use tracing::debug;
-
-use crate::{
-  document::{HirNode, HirNodeKind, NodeId, NodeMap},
-  length::Length,
-  project::config::ImageConfig,
-  semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
-  style::Style as ReadStyle,
-  typeset::boxes::AnchorId,
-};
-
 mod code;
 mod counter;
 mod figure;
@@ -38,8 +27,16 @@ pub(super) use layout_node::{
   AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
 };
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
+use tracing::debug;
 
-use crate::document::{FontKind, HeadingLevel};
+use crate::{
+  document::{FontKind, HeadingLevel, HirNode, HirNodeKind, NodeId, NodeMap},
+  length::Length,
+  project::config::ImageConfig,
+  semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
+  style::Style as ReadStyle,
+  typeset::boxes::AnchorId,
+};
 
 /// Lowering のコンテキスト
 #[derive(Debug, Clone, Copy)]

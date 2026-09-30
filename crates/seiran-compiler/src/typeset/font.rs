@@ -2,16 +2,15 @@
 //!
 //! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる。
 
-use read_fonts::{FontRef, TableProvider};
-use thiserror::Error;
-
 mod face_config;
 mod shaper;
 mod system;
 mod validation;
 
+use read_fonts::{FontRef, TableProvider};
 pub(super) use shaper::UnicodeBuffer;
 pub(super) use system::{FontResources, FontSystem, FontSystemError};
+use thiserror::Error;
 pub(super) use validation::FontWarning;
 
 use crate::{

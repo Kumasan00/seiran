@@ -1,16 +1,16 @@
 //! (c) 行分割
 
-use crate::{
-  length::Length,
-  style::TextAlignment,
-  typeset::boxes::{HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PositionedBox},
-};
-
 mod greedy;
 mod knuth_plass;
 
 pub(super) use greedy::GreedyBreaker;
 pub(crate) use knuth_plass::KnuthPlassBreaker;
+
+use crate::{
+  length::Length,
+  style::TextAlignment,
+  typeset::boxes::{HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PositionedBox},
+};
 
 /// 行分割アルゴリズムの抽象
 pub(in crate::typeset) trait LineBreaker {

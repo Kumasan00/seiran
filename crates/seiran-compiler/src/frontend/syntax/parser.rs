@@ -2,7 +2,10 @@
 //!
 //! 空白・改行・コメントを含む全トークンを保持し、エラー回復による暗黙の補完は行わない。
 
+mod error;
+
 use bumpalo::Bump;
+pub(crate) use error::ParserError;
 use tracing::debug;
 
 use crate::{
@@ -16,10 +19,6 @@ use crate::{
   },
   source::Span,
 };
-
-mod error;
-
-pub(crate) use error::ParserError;
 
 /// 入れ子要素をトークン化して読むときの語彙的解釈を示すモード
 ///

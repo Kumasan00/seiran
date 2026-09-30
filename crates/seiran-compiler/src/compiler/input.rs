@@ -11,13 +11,12 @@
 //! CSL スタイル・ロケールはここでは読まない — 引用箇所が 1 つも無ければ `.csl` を読まない
 //! という遅延は `semantics::analyze` の内側に閉じている。
 
-use std::{sync::Arc, time::Instant};
-
-use tracing::debug;
-
 mod error;
 
+use std::{sync::Arc, time::Instant};
+
 use error::CompileError;
+use tracing::debug;
 
 use crate::{
   failures::Failures,

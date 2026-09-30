@@ -2,16 +2,6 @@
 //!
 //! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
 
-use phf::phf_map;
-
-use crate::{
-  document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
-  frontend::{
-    evaluator::{EvalContext, EvalError, arity, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args},
-    syntax::{ArgMode, view::CommandView},
-  },
-};
-
 mod cite;
 mod code;
 mod control;
@@ -22,6 +12,16 @@ mod link;
 mod ref_;
 pub(super) mod symbol;
 mod text_style;
+
+use phf::phf_map;
+
+use crate::{
+  document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
+  frontend::{
+    evaluator::{EvalContext, EvalError, arity, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args},
+    syntax::{ArgMode, view::CommandView},
+  },
+};
 
 /// コマンドの実行結果
 pub(super) enum CommandResult {

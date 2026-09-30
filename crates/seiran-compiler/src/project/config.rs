@@ -5,9 +5,19 @@
 //! 解析しない** — 検証済みのパスを返すだけで、それぞれの読込は [`crate::style`] と
 //! `crate::semantics` が担う。
 
+mod error;
+mod raw;
+mod resolved;
+mod tag;
+#[doc(hidden)]
+pub mod test_support;
+
 use std::path::{Path, PathBuf};
 
+pub(crate) use error::{ConfigValidationError, ConfigWarning, ReadConfigError};
 use garde::Validate;
+use raw::{RawConfig, RawFontConfig};
+pub(crate) use resolved::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
 use tracing::debug;
 
 use crate::{
@@ -17,18 +27,6 @@ use crate::{
     TomlErrorParts, VariationAxis,
   },
 };
-
-mod error;
-mod raw;
-use raw::{RawConfig, RawFontConfig};
-mod resolved;
-mod tag;
-
-#[doc(hidden)]
-pub mod test_support;
-
-pub(crate) use error::{ConfigValidationError, ConfigWarning, ReadConfigError};
-pub(crate) use resolved::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
 
 /// 読み取り I/O フェーズで集約する解決済みパス群。
 struct ResolvedPaths {

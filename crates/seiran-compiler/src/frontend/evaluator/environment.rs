@@ -4,16 +4,6 @@
 //! 定理クラス・引用の種類・リストの順序付き / なし・数式グリッド環境のセル配置と採番の粒度を
 //! 値として持つ。本体の読み取り方（[`BodyMode`]）は種別から導出する。
 
-use phf::phf_map;
-
-use crate::{
-  document::{GridLayout, HirNode, QuoteKind, TheoremClass},
-  frontend::{
-    evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
-    syntax::{BodyMode, view::EnvironmentView},
-  },
-};
-
 mod body_scan;
 mod caption;
 mod code;
@@ -23,6 +13,16 @@ mod math;
 mod quote;
 mod table;
 mod theorem;
+
+use phf::phf_map;
+
+use crate::{
+  document::{GridLayout, HirNode, QuoteKind, TheoremClass},
+  frontend::{
+    evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
+    syntax::{BodyMode, view::EnvironmentView},
+  },
+};
 
 /// 環境の種類（レジストリ [`ENVIRONMENTS`] の値）
 #[derive(Debug, Clone, Copy)]

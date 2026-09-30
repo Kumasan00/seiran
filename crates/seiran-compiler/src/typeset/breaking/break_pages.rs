@@ -1,6 +1,15 @@
 //! 縦組版 — ブロック列をページへ配置する
 
+mod footnote_packing;
+mod page_draft;
+mod paragraph_plan;
+mod region_cursor;
+
+use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
 use itertools::izip;
+use page_draft::{PageDraft, PendingTableRow, TableFrame};
+use paragraph_plan::plan_paragraph_lines;
+use region_cursor::RegionCursor;
 use tracing::debug;
 
 use crate::{
@@ -15,16 +24,6 @@ use crate::{
     geometry::{PageGeometry, column_width},
   },
 };
-
-mod footnote_packing;
-mod page_draft;
-mod paragraph_plan;
-mod region_cursor;
-
-use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
-use page_draft::{PageDraft, PendingTableRow, TableFrame};
-use paragraph_plan::plan_paragraph_lines;
-use region_cursor::RegionCursor;
 
 /// 脚注がリージョンに収まらないまま配置された事実。
 #[derive(Debug, Clone, PartialEq, Eq)]
