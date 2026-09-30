@@ -1029,7 +1029,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 
 `seiran-compiler` の外部入口 `compile` を持つ module。言語処理・意味解決・組版を 1 回の呼び出しに畳み、
 段の呼び出し順序・中間型（`LaidOutDocument` / フォント資源 / 画像資源等）は一切公開しない。`lib.rs` が
-crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `Warnings` / `BuildStatistics`）・
+crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `Warnings`）・
 失敗型 `CompileFailure`・`Publication` とそこから到達できる leaf 値型・`ProjectSource` 系（trait・2 実装・
 `ProjectPath` / `SourceReadError`）・`Length` / `Color` とその `FromStr` エラー型・`#[doc(hidden)]` の
 `test_support` のみ。PDF バイト列の生成と保存は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
@@ -1076,9 +1076,9 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
 その span を開いた側（facade / `compose`）が出し（この crate の規約。CLI 側は `seiran` 節）、各 module が
 知る内部手順（設定・style・文献の個別読込、lowering、boxing、区画ごとの
 改ページ等）は DEBUG として callee 側が出す — 内部構成を変えても `-v` の工程一覧が不用意に変わらないように
-する。所要時間は終了 event の `elapsed = ?Duration` の 1 形式で、u64 のミリ秒が要るのは公開 API の
-`BuildStatistics.total_elapsed_ms` だけ。描画と保存の工程（`render` / `write`）は CLI が開く。成功した実行の
-`-v` に出る compiler の INFO は 6 工程 × 開始・完了・終了の 18 行（`tests/trace_events.rs` が固定する）。
+する。所要時間は終了 event の `elapsed = ?Duration` の 1 形式。描画と保存の工程（`render` / `write`）は CLI が
+開く。成功した実行の `-v` に出る compiler の INFO は 6 工程 × 開始・完了・終了の 18 行（`tests/trace_events.rs` が
+固定する）。
 
 #### 子 module
 
@@ -1381,8 +1381,9 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   module（`compile` / `input` / `frontend` / `semantics` は `seiran_compiler::compiler`、`font` / `typeset` は
   `seiran_compiler::typeset`）と、開始・終了 event の target `seiran_compiler::phase` を `info` で directive に
   足す
-- **成功サマリの所要時間は build 全体**。`Compilation.statistics.total_elapsed_ms` は compiler facade の
-  所要時間だが、CLI が表示する値は compile → render → atomic write の全体を計測する
+- **成功サマリの所要時間は build 全体**。CLI が compile → render → atomic write の全体を自前で計測する。
+  compiler facade だけの所要時間を持つのは `compile` span の終了 event（`elapsed`）で、`Compilation` は
+  持たない。ページ数は `Compilation.publication` のページ列から得る
 - **保存は CLI 側の責務**。`compile` は `Compilation.pdf_path` を返すだけで書き出さない。atomic write は
   保存先と同じディレクトリに一時ファイルを作ってから rename する（cross-filesystem の rename は atomic に
   ならないため）

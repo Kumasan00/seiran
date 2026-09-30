@@ -129,7 +129,7 @@ crate はデプロイ・外部依存・独立再利用の単位に限る（コ�
 ```text
 seiran-compiler    言語処理・意味解決・組版のライブラリ（lib target のみ）。組版成果物
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
-                   （Publication / DependencyManifest / Warnings / BuildStatistics / pdf_path）
+                   （Publication / DependencyManifest / Warnings / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource とその 2 実装 / ProjectPath /
                    SourceReadError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType と Publication 系）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
