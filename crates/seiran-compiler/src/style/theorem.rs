@@ -6,9 +6,8 @@ use garde::Validate;
 use serde::Deserialize;
 use strum::VariantArray;
 
-pub(super) use crate::document::TheoremClass;
 use crate::{
-  document::FontKind,
+  document::{FontKind, TheoremClass},
   length::{Length, non_negative},
   style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
 };
