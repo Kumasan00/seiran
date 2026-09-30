@@ -91,7 +91,7 @@ fn section_mut<'a>(table: &'a mut toml::value::Table, section: &str) -> &'a mut 
 pub(super) struct TestProject {
   /// 登録済みの資源だけを持つ入力 seam
   source: MemoryProjectSource,
-  /// `compile` の `root`（設定ファイルパス）
+  /// `compile` へ渡す設定ファイルパス
   config_path: ProjectPath,
   /// 相対パス解決の基準ディレクトリ
   base_dir: PathBuf,
@@ -126,8 +126,8 @@ impl TestProject {
   ///
   /// 入力読込または組版までのいずれかの phase が失敗した場合にエラーを返す。
   pub(super) fn layout(&self) -> Result<LaidOutDocument, CompileFailure> {
-    let (resolver, root) = compiler::resolve_root(&self.config_path, &self.base_dir);
-    let (inputs, _config_warnings) = compiler::load_inputs(&self.source, &root, &resolver);
+    let (resolver, config_path) = compiler::resolve_config_path(&self.config_path, &self.base_dir);
+    let (inputs, _config_warnings) = compiler::load_inputs(&self.source, &config_path, &resolver);
     let inputs = inputs?;
     let semantic_document = compiler::analyze_document(&self.source, &inputs, &resolver)?;
     return typeset::layout_for_test(
