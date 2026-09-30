@@ -173,7 +173,7 @@ impl Reporter {
   /// 時間は compiler だけでなく render と保存を含む CLI の build 全体。完了記号を着色するかは
   /// [`Reporter::init`] が決めた 1 つの判定に従うため、ログの装飾と食い違わない。
   pub(super) fn build(&self, compilation: &seiran_compiler::Compilation, elapsed: Duration) {
-    let page_count = compilation.statistics.page_count;
+    let page_count = compilation.publication.pages().len();
     // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
     let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     if !self.quiet {

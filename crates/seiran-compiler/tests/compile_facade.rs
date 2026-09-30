@@ -53,9 +53,8 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   let compilation =
     seiran_compiler::compile(&source, &config_path, project_base_dir()).expect("最小構成の compile は成功するはず");
 
-  // Publication と統計が確定し、警告の出る設定ではないので warnings は空
-  assert!(compilation.statistics.page_count >= 1, "本文が 1 ページ以上生成されるはず");
-  assert_eq!(compilation.publication.pages().len(), compilation.statistics.page_count);
+  // Publication が確定し、警告の出る設定ではないので warnings は空
+  assert!(!compilation.publication.pages().is_empty(), "本文が 1 ページ以上生成されるはず");
   assert!(compilation.warnings.is_empty(), "警告の出る設定ではないので空のはず");
   assert_eq!(compilation.dependencies.source_paths, vec![PathBuf::from("/project/text.sei")]);
   assert_eq!(compilation.dependencies.config_path, PathBuf::from("/project/config.toml"));

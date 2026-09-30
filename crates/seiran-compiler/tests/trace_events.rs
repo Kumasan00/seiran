@@ -260,6 +260,10 @@ fn info_events_record_start_and_end_of_each_phase() {
       Expected::End("compile:", "Succeeded"),
     ],
   );
+  assert!(
+    log.lines().any(|line| return line.contains("文書をコンパイル") && line.contains("page_count=1")),
+    "compile の完了 event は確定ページ数を持つはず:\n{log}"
+  );
 }
 
 #[test]
