@@ -91,12 +91,8 @@ pub fn compile<S: ProjectSource>(
   let build_start = Instant::now();
 
   let mut warnings = Warnings::default();
-  let Compiled {
-    publication,
-    dependencies,
-    pdf_path,
-  } = match run_phases(source, config_path, base_dir, &mut warnings) {
-    Ok(compiled) => compiled,
+  let (publication, dependencies, pdf_path) = match run_phases(source, config_path, base_dir, &mut warnings) {
+    Ok(outputs) => outputs,
     Err(failure) => return Err(failure.with_warnings(warnings)),
   };
 
@@ -117,20 +113,12 @@ pub fn compile<S: ProjectSource>(
   });
 }
 
-/// [`run_phases`] の成果のうち、警告と統計を除いた部分。
-struct Compiled {
-  /// 描画直前の確定済み出版物
-  publication: Publication,
-  /// 読み取った外部資源のパス一覧
-  dependencies: DependencyManifest,
-  /// 出力 PDF の保存先
-  pdf_path: PathBuf,
-}
-
 /// 入力読込から組版までの phase を順に実行し、各段が返した警告を段の実行順で `warnings` へ積む。
 ///
 /// 警告は段が失敗しても捨てない — 段が返した警告は、その段や後段が失敗してもその時点で確定しているため。
 /// `warnings` へ積むのは各段の戻り値だけで、段の内側から直接積む経路は作らない。
+///
+/// 戻り値は、描画直前の確定済み出版物・読み取った外部資源のパス一覧・出力 PDF の保存先の組。
 ///
 /// # Errors
 ///
@@ -140,7 +128,7 @@ fn run_phases(
   config_path: &ProjectPath,
   base_dir: &Path,
   warnings: &mut Warnings,
-) -> Result<Compiled, CompileFailure> {
+) -> Result<(Publication, DependencyManifest, PathBuf), CompileFailure> {
   let (resolver, config_path) = resolve_config_path(config_path, base_dir);
   let (inputs, config_warnings) = load_inputs(source, &config_path, &resolver);
   warnings.extend(config_warnings);
@@ -160,11 +148,11 @@ fn run_phases(
     image_paths,
   } = typeset_output.map_err(CompileFailure::from)?;
 
-  return Ok(Compiled {
+  return Ok((
     publication,
-    dependencies: DependencyManifest::collect(&config_path, &inputs, &image_paths),
-    pdf_path: inputs.config().output.pdf_path(),
-  });
+    DependencyManifest::collect(&config_path, &inputs, &image_paths),
+    inputs.config().output.pdf_path(),
+  ));
 }
 
 /// `base_dir` から入力パスの resolver を 1 回だけ構築し、`config_path` を同じ規則で解決する。
