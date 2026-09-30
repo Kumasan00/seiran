@@ -1038,14 +1038,14 @@ crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifes
 `compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順と成果物への写像は知らない:
 
 ```text
-resolve_root（PathResolver を 1 回構築・root を解決）
+resolve_config_path（PathResolver を 1 回構築・config_path を解決）
   → input::load → frontend（全ソースのパース）→ semantics::analyze → typeset::compose
   → DependencyManifest::collect
 ```
 
-- `compile<S: ProjectSource>(source, root, base_dir)` が唯一の公開エントリーポイントで、`root` は設定ファイル
-  パスそのもの、`base_dir` は相対パス解決の基準ディレクトリ。compiler は `std::env::current_dir()` を
-  呼ばないため、`MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。相対 `root` は
+- `compile<S: ProjectSource>(source, config_path, base_dir)` が唯一の公開エントリーポイントで、`base_dir` は
+  相対パス解決の基準ディレクトリ。compiler は `std::env::current_dir()` を呼ばないため、
+  `MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。相対 `config_path` は
   `base_dir` 基準に解決してから読み込むため、`Compilation.dependencies.config_path` と config 読込診断が示す
   設定ファイルパスは常に解決後の値になる（受け入れ済みの唯一の意味的な差分 — CLI は `base_dir` に
   `current_dir` を渡すので指す実体は同じ）。`PathResolver` の契約により、診断・manifest・ソース名に出る
@@ -1072,7 +1072,7 @@ resolve_root（PathResolver を 1 回構築・root を解決）
 
 `compile` span と `input` / `frontend` / `semantics` の 3 段をこの facade が持ち、`font` / `typeset` の
 2 段は `typeset::compose` が持つ。各段は `Phase::enter(info_span!(…))` を持つブロック 1 つで、span の名前が
-phase 名（`resolve_root` は span を持たない前処理）。段の完了 event（件数などの事実）は成功したときだけ、
+phase 名（`resolve_config_path` は span を持たない前処理）。段の完了 event（件数などの事実）は成功したときだけ、
 その span を開いた側（facade / `compose`）が出し（この crate の規約。CLI 側は `seiran` 節）、各 module が
 知る内部手順（設定・style・文献の個別読込、lowering、boxing、区画ごとの
 改ページ等）は DEBUG として callee 側が出す — 内部構成を変えても `-v` の工程一覧が不用意に変わらないように
@@ -1159,7 +1159,7 @@ phase 名（`resolve_root` は span を持たない前処理）。段の完了 e
 
 crate 内部の `#[cfg(test)]` ではなく独立テストバイナリ。`compile` が lib target の公開 API として crate
 外部から呼べること（`pub(crate)` のままでも crate 内部テストは通ってしまうため、crate 境界をまたぐ独立
-テストでしか機械的に検証できない）、相対 `root` / source / 画像が `base_dir` 基準で解決されること、表記違い
+テストでしか機械的に検証できない）、相対 `config_path` / source / 画像が `base_dir` 基準で解決されること、表記違い
 の同じパスが manifest に 1 件しか載らず読込も 1 回だけであることを固定する。共有ヘルパは Rust の慣例どおり
 `tests/common/mod.rs`（`common.rs` だと独立テストバイナリとして扱われる）。
 

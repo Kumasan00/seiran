@@ -81,7 +81,7 @@ git config core.hooksPath .git-hooks                      # pre-commit（fmt / c
 ### データフロー
 
 ```text
-CLI 引数パース → compile facade      base_dir から PathResolver を 1 回構築し root を解決
+CLI 引数パース → compile facade      base_dir から PathResolver を 1 回構築し config_path を解決
   → compiler::input::load 入力読込: config.toml → style.toml → 横断検証
                        → references → フォントバイト列（project::FontData）→ sources
                        （順序とエラー集約は input に閉じる）

@@ -32,10 +32,12 @@ fn compile_is_deterministic_for_the_same_source() {
       .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
       .with_text("/project/text.sei", *text)
       .with_bytes("/project/font.ttf", font_bytes);
-    let root = ProjectPath::new("/project/config.toml");
+    let config_path = ProjectPath::new("/project/config.toml");
 
-    let first = seiran_compiler::compile(&source, &root, project_base_dir()).expect("1 回目の compile は成功するはず");
-    let second = seiran_compiler::compile(&source, &root, project_base_dir()).expect("2 回目の compile は成功するはず");
+    let first =
+      seiran_compiler::compile(&source, &config_path, project_base_dir()).expect("1 回目の compile は成功するはず");
+    let second =
+      seiran_compiler::compile(&source, &config_path, project_base_dir()).expect("2 回目の compile は成功するはず");
 
     assert_eq!(first.publication, second.publication, "text={text:?} で決定性が崩れているはず");
   }
@@ -63,10 +65,10 @@ fn missing_images_are_reported_in_path_order() {
     .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
     .with_text("/project/text.sei", MISSING_IMAGES)
     .with_bytes("/project/font.ttf", font_bytes);
-  let root = ProjectPath::new("/project/config.toml");
+  let config_path = ProjectPath::new("/project/config.toml");
 
-  let failure =
-    seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("2 枚とも欠落しているので失敗するはず");
+  let failure = seiran_compiler::compile(&source, &config_path, project_base_dir())
+    .expect_err("2 枚とも欠落しているので失敗するはず");
 
   // 1 枚目で打ち切らず、文書順ではなくパス昇順（a → z）で並ぶ
   let messages: Vec<String> = failure.diagnostics().map(|diagnostic| return diagnostic.to_string()).collect();
@@ -87,10 +89,11 @@ fn error_path_is_deterministic_across_repeated_runs() {
       .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
       .with_text("/project/text.sei", *text)
       .with_bytes("/project/font.ttf", font_bytes);
-    let root = ProjectPath::new("/project/config.toml");
+    let config_path = ProjectPath::new("/project/config.toml");
 
     let runs: Vec<Vec<String>> = std::iter::repeat_with(|| {
-      let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("この入力は失敗するはず");
+      let failure =
+        seiran_compiler::compile(&source, &config_path, project_base_dir()).expect_err("この入力は失敗するはず");
       return failure
         .diagnostics()
         .map(|diagnostic| {
@@ -123,10 +126,10 @@ fn missing_sources_are_reported_in_declaration_order_on_every_run() {
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", config)
     .with_bytes("/project/font.ttf", font_bytes);
-  let root = ProjectPath::new("/project/config.toml");
+  let config_path = ProjectPath::new("/project/config.toml");
 
   for _ in 0..32 {
-    let failure = seiran_compiler::compile(&source, &root, project_base_dir())
+    let failure = seiran_compiler::compile(&source, &config_path, project_base_dir())
       .expect_err("2 ソースとも欠落しているので失敗するはず");
     let messages: Vec<String> = failure.diagnostics().map(|diagnostic| return diagnostic.to_string()).collect();
     assert_eq!(messages.len(), 2, "欠落した 2 件が両方報告されるはず");

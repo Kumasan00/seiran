@@ -119,8 +119,8 @@ fn capture_compile_log(filter: &str, text: &str) -> (String, Result<Compilation,
     .with_text("/project/config.toml", japanese_config_toml())
     .with_text("/project/text.sei", text)
     .with_bytes("/project/font.ttf", read_japanese_test_font());
-  let root = ProjectPath::new("/project/config.toml");
-  let result = seiran_compiler::compile(&source, &root, Path::new("/project"));
+  let config_path = ProjectPath::new("/project/config.toml");
+  let result = seiran_compiler::compile(&source, &config_path, Path::new("/project"));
 
   return (captured.contents(), result);
 }

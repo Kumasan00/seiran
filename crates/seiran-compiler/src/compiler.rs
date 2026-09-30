@@ -70,11 +70,11 @@ pub struct Compilation {
   pub pdf_path: PathBuf,
 }
 
-/// `source`、`root`（設定ファイルパス）、`base_dir`（相対パスの解決基準）から
+/// `source`、`config_path`、`base_dir`（相対パスの解決基準）から
 /// PDF 直前の `Publication` までを 1 回で作る。
 ///
 /// `base_dir` は呼び出し元が実行環境に応じて明示し、本関数はカレントディレクトリを取得しない。
-/// 相対 `root` は読み込みの前に `base_dir` を基準に解決するため、`Compilation.dependencies.config_path`
+/// 相対 `config_path` は読み込みの前に `base_dir` を基準に解決するため、`Compilation.dependencies.config_path`
 /// と診断が示す設定ファイルパスは解決後の値になる。
 ///
 /// # Errors
@@ -84,7 +84,7 @@ pub struct Compilation {
 /// [`CompileFailure::warnings`] に入力の論理順で入っている。
 pub fn compile<S: ProjectSource>(
   source: &S,
-  root: &ProjectPath,
+  config_path: &ProjectPath,
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
   let phase = Phase::enter(info_span!("compile"));
@@ -95,7 +95,7 @@ pub fn compile<S: ProjectSource>(
     publication,
     dependencies,
     pdf_path,
-  } = match run_phases(source, root, base_dir, &mut warnings) {
+  } = match run_phases(source, config_path, base_dir, &mut warnings) {
     Ok(compiled) => compiled,
     Err(failure) => return Err(failure.with_warnings(warnings)),
   };
@@ -137,12 +137,12 @@ struct Compiled {
 /// いずれかの phase が失敗した場合に、その phase の失敗を返す。
 fn run_phases(
   source: &dyn ProjectSource,
-  root: &ProjectPath,
+  config_path: &ProjectPath,
   base_dir: &Path,
   warnings: &mut Warnings,
 ) -> Result<Compiled, CompileFailure> {
-  let (resolver, root) = resolve_root(root, base_dir);
-  let (inputs, config_warnings) = load_inputs(source, &root, &resolver);
+  let (resolver, config_path) = resolve_config_path(config_path, base_dir);
+  let (inputs, config_warnings) = load_inputs(source, &config_path, &resolver);
   warnings.extend(config_warnings);
   let inputs = inputs?;
   let semantic_document = analyze_document(source, &inputs, &resolver)?;
@@ -162,16 +162,16 @@ fn run_phases(
 
   return Ok(Compiled {
     publication,
-    dependencies: DependencyManifest::collect(&root, &inputs, &image_paths),
+    dependencies: DependencyManifest::collect(&config_path, &inputs, &image_paths),
     pdf_path: inputs.config().output.pdf_path(),
   });
 }
 
-/// `base_dir` から入力パスの resolver を 1 回だけ構築し、`root`（設定ファイルパス）を同じ規則で解決する。
-fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPath) {
+/// `base_dir` から入力パスの resolver を 1 回だけ構築し、`config_path` を同じ規則で解決する。
+fn resolve_config_path(config_path: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPath) {
   let resolver = PathResolver::new(base_dir);
-  let root = resolver.resolve(root);
-  return (resolver, root);
+  let config_path = resolver.resolve(config_path);
+  return (resolver, config_path);
 }
 
 /// 入力読込 phase を実行する。
@@ -183,13 +183,13 @@ fn resolve_root(root: &ProjectPath, base_dir: &Path) -> (PathResolver, ProjectPa
 /// 設定・スタイル・文献・フォント・ソースの読込または検証に失敗した場合に、組の第 1 要素がエラーになる。
 fn load_inputs(
   source: &dyn ProjectSource,
-  root: &ProjectPath,
+  config_path: &ProjectPath,
   resolver: &PathResolver,
 ) -> (Result<CompilationInputs, CompileFailure>, Vec<ConfigWarning>) {
   let phase = Phase::enter(info_span!("input"));
-  let (inputs, config_warnings) = input::load(source, root, resolver);
+  let (inputs, config_warnings) = input::load(source, config_path, resolver);
   if inputs.is_ok() {
-    info!(config_path = %root, "入力を読込");
+    info!(config_path = %config_path, "入力を読込");
     phase.succeed();
   }
   return (inputs.map_err(CompileFailure::from), config_warnings);

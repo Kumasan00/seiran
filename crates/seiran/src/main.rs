@@ -115,8 +115,8 @@ fn build(config_path: &Path, base_dir: io::Result<PathBuf>, reporter: &Reporter)
   let build_start = Instant::now();
   let base_dir = base_dir.map_err(|source| return CurrentDirError::Get { source })?;
   let source = seiran_compiler::FilesystemProjectSource;
-  let root = seiran_compiler::ProjectPath::new(config_path);
-  let compilation = match seiran_compiler::compile(&source, &root, &base_dir) {
+  let config_path = seiran_compiler::ProjectPath::new(config_path);
+  let compilation = match seiran_compiler::compile(&source, &config_path, &base_dir) {
     Ok(compilation) => compilation,
     Err(failure) => {
       reporter.warnings(failure.warnings());
