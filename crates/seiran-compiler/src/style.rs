@@ -50,7 +50,7 @@ pub(crate) use crate::style::{
   page_numbering::PageNumbering,
   running::RunningContentStyle,
   template::{
-    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, ReferenceTemplate, RunningTemplate,
+    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
     RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
   },
   text::TextAlignment,
