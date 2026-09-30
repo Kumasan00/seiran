@@ -17,7 +17,7 @@ use crate::{
 /// なるようにする。自前のバリアントを持つのは、内側が `SourceReadError` で診断を持たず、
 /// パス入りのメッセージと help をこの型自身が与える `ReadTextFile` 1 つだけ。
 #[derive(Debug, Error, Diagnostic)]
-pub(in crate::compiler) enum CompileError {
+pub(in crate::compiler) enum InputError {
   /// テキストファイルの読み込みエラー
   #[error("テキストファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(

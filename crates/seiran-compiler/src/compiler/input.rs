@@ -15,7 +15,7 @@ mod error;
 
 use std::{sync::Arc, time::Instant};
 
-use error::CompileError;
+use error::InputError;
 use tracing::debug;
 
 use crate::{
@@ -85,7 +85,7 @@ pub(super) fn load(
   source: &dyn ProjectSource,
   config_path: &ProjectPath,
   resolver: &PathResolver,
-) -> (Result<CompilationInputs, Failures<CompileError>>, Vec<ConfigWarning>) {
+) -> (Result<CompilationInputs, Failures<InputError>>, Vec<ConfigWarning>) {
   let (config, config_warnings) = project::config::load(source, config_path, resolver);
   let inputs = config.map_err(lift).and_then(|config| return load_after_config(source, config, resolver));
   return (inputs, config_warnings);
@@ -100,7 +100,7 @@ fn load_after_config(
   source: &dyn ProjectSource,
   config: ProjectConfig,
   resolver: &PathResolver,
-) -> Result<CompilationInputs, Failures<CompileError>> {
+) -> Result<CompilationInputs, Failures<InputError>> {
   let style = style::load(source, config.style_path.as_ref(), resolver).map_err(lift)?;
   let geometry = PreparedGeometry::prepare(&config, &style).map_err(lift)?;
   let (references, font_data, sources) = read_independent_inputs(source, &config)?;
@@ -127,7 +127,7 @@ fn load_after_config(
 fn read_independent_inputs(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
-) -> Result<(Arc<References>, FontData, SourceSet), Failures<CompileError>> {
+) -> Result<(Arc<References>, FontData, SourceSet), Failures<InputError>> {
   let references = read_references(source, config.references_path.as_ref()).map(Arc::new).map_err(single);
 
   let stage_start = Instant::now();
@@ -141,7 +141,7 @@ fn read_independent_inputs(
   return match (references, font_data, sources) {
     (Ok(references), Ok(font_data), Ok(sources)) => Ok((references, font_data, sources)),
     (references, font_data, sources) => {
-      let errors: Vec<CompileError> =
+      let errors: Vec<InputError> =
         [references.err(), font_data.err(), sources.err()].into_iter().flatten().flatten().collect();
       let Some(failures) = Failures::from_vec(errors) else {
         unreachable!("この arm は 3 つの読込のうち少なくとも 1 つが Err のときにだけ入る")
@@ -152,10 +152,10 @@ fn read_independent_inputs(
 }
 
 /// 単一のエラーを 1 件の非空集合へ包む。
-fn single<E: Into<CompileError>>(error: E) -> Failures<CompileError> { return Failures::single(error.into()); }
+fn single<E: Into<InputError>>(error: E) -> Failures<InputError> { return Failures::single(error.into()); }
 
-/// 段が集めた非空集合を、そのまま `CompileError` の非空集合へ持ち上げる。
-fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> { return failures.map(Into::into); }
+/// 段が集めた非空集合を、そのまま `InputError` の非空集合へ持ち上げる。
+fn lift<E: Into<InputError>>(failures: Failures<E>) -> Failures<InputError> { return failures.map(Into::into); }
 
 /// `config.sources` を読み込み、失敗を位置付き診断へ組み替える。
 ///
@@ -163,10 +163,10 @@ fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> 
 /// パスを含む leaf diagnostic を組み立てるのはここ。seam の `SourceReadError` は
 /// `Diagnostic` を実装しない低水準 cause なので、そのまま `#[source]` に載せても
 /// 入れ子の診断ブロックにはならない。
-fn read_sources(source: &dyn ProjectSource, sources: &[ProjectPath]) -> Result<SourceSet, Failures<CompileError>> {
+fn read_sources(source: &dyn ProjectSource, sources: &[ProjectPath]) -> Result<SourceSet, Failures<InputError>> {
   return SourceSet::read(source, sources).map_err(|failures| {
     return failures.map(|error| {
-      return CompileError::ReadTextFile {
+      return InputError::ReadTextFile {
         path: error.path,
         source: error.source,
       };
@@ -180,7 +180,7 @@ mod tests {
 
   use miette::Diagnostic;
 
-  use super::{CompileError, load, read_sources};
+  use super::{InputError, load, read_sources};
   use crate::project::{
     MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, SourceReadError,
     config::test_support::{make_font_sections, valid_output_section, valid_pdf_section},
@@ -199,7 +199,7 @@ mod tests {
     let Err(failures) = result else {
       panic!("ReadTextFile を期待");
     };
-    let CompileError::ReadTextFile {
+    let InputError::ReadTextFile {
       path,
       source: read_error,
     } = failures.first()
@@ -229,7 +229,7 @@ mod tests {
     let paths: Vec<&str> = failures
       .iter()
       .map(|error| {
-        let CompileError::ReadTextFile { path, .. } = error else {
+        let InputError::ReadTextFile { path, .. } = error else {
           panic!("ReadTextFile を期待");
         };
         return path.as_str();

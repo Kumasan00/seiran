@@ -661,7 +661,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFa
 
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
 非収束）。`compose` の失敗型は
-`Failures<TypesetError>` で、画像は正規化済みパスの昇順に**全件**検査する。`compiler` の `CompileError` を
+`Failures<TypesetError>` で、画像は正規化済みパスの昇順に**全件**検査する。`compiler` の `InputError` を
 経由せず、`Failures<E>` の汎用 `From` で直接 `CompileFailure` へ平坦化される。
 
 組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた `unreachable!` で
@@ -1092,10 +1092,10 @@ phase 名（`resolve_root` は span を持たない前処理）。段の完了 e
   **画像は含めない** — `\image{...}` でしかパスが分からないため、`compose` が文書木から集めて内部で読む。
   config の警告（`sources` の拡張子等）は `CompilationInputs` に持たせず、`load` が成否と独立に組の第 2
   要素で返す — 後段が失敗しても確定済みの警告を失わないため
-- `input::error`: 入力読込のエラーを束ねる `CompileError`。**段名だけを足す wrapper にはしない** — 内側が
+- `input::error`: 入力読込のエラーを束ねる `InputError`。**段名だけを足す wrapper にはしない** — 内側が
   独立した診断を持つもの（config / style / 版面 / 文献 / フォント）は `#[diagnostic(transparent)]` で
   そのまま委譲し、自前のバリアントを持つのは内側が診断を持たない `ReadTextFile` 1 つだけ（カレント
-  ディレクトリの取得は CLI の責務で、その診断は `seiran` が持つ）。組版の `TypesetError` は `CompileError` を
+  ディレクトリの取得は CLI の責務で、その診断は `seiran` が持つ）。組版の `TypesetError` は `InputError` を
   経由せず、`Failures<E>` の汎用 `From` で直接平坦化する。PDF の保存は `compile` の関心事ではないため
   含まれず、bin 側の `WriteError` が持つ
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧（設定・スタイル・文献・ソース・画像・
