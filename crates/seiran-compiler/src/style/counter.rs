@@ -7,7 +7,7 @@ use serde::Deserialize;
 use strum::{IntoStaticStr, VariantArray};
 use thiserror::Error;
 
-use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
+use crate::style::{CounterTemplate, RefTemplate, number_style::NumberStyle};
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。
 ///
@@ -154,7 +154,7 @@ pub(crate) struct CounterStyle {
   ///
   /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`
   #[garde(dive)]
-  pub ref_format: ReferenceTemplate,
+  pub ref_format: RefTemplate,
   /// このカウンタが進んだときに 0 にリセットする下位カウンタ群
   pub resets: Vec<CounterName>,
 }
@@ -173,7 +173,7 @@ impl CounterStyle {
       display_name: display_name.to_string(),
       number_format: CounterTemplate::parse(number_format),
       number_style,
-      ref_format: ReferenceTemplate::parse(ref_format),
+      ref_format: RefTemplate::parse(ref_format),
       resets: resets.to_vec(),
     };
   }
@@ -234,7 +234,7 @@ struct CounterStyleOverride {
   /// 数字表記スタイル
   number_style: Option<NumberStyle>,
   /// `\ref{label}` の表示テンプレート
-  ref_format: Option<ReferenceTemplate>,
+  ref_format: Option<RefTemplate>,
   /// リセットする下位カウンタ群（既定の列を置き換える）
   resets: Option<Vec<CounterName>>,
 }

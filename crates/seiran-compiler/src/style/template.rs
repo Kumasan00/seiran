@@ -284,14 +284,14 @@ impl Placeholder for CounterPlaceholder {
 
 /// 参照書式（`ref_format`）で使えるプレースホルダ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReferencePlaceholder {
+enum RefPlaceholder {
   /// `{number}` — 参照先の表示番号
   Number,
   /// `{display_name}` — 参照先カウンタの表示名（「図」「Theorem」等）
   DisplayName,
 }
 
-impl Placeholder for ReferencePlaceholder {
+impl Placeholder for RefPlaceholder {
   const ALLOW_EMPTY: bool = false;
 
   fn from_name(name: &str) -> Option<Self> {
@@ -377,7 +377,7 @@ define_template! {
 
 define_template! {
   /// `{number}` / `{display_name}` を持つ書式（カウンタの `ref_format`）
-  ReferenceTemplate(ReferencePlaceholder)
+  RefTemplate(RefPlaceholder)
 }
 
 define_template! {
@@ -444,14 +444,14 @@ impl CounterTemplate {
   }
 }
 
-impl ReferenceTemplate {
+impl RefTemplate {
   /// `{number}` / `{display_name}` を埋めた文字列を返す
   #[must_use]
   pub(crate) fn expand(&self, number: &str, display_name: &str) -> String {
     return self.0.expand_to_string(|placeholder| {
       return match placeholder {
-        ReferencePlaceholder::Number => number.to_string(),
-        ReferencePlaceholder::DisplayName => display_name.to_string(),
+        RefPlaceholder::Number => number.to_string(),
+        RefPlaceholder::DisplayName => display_name.to_string(),
       };
     });
   }
@@ -541,7 +541,7 @@ mod tests {
   use strum::VariantArray;
 
   use super::{
-    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, ReferenceTemplate, RunningTemplate,
+    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
     RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
   };
   use crate::style::CounterName;
@@ -643,8 +643,8 @@ mod tests {
     assert!(violation(&NumberTitleTemplate::parse("{number} {title}")).is_none());
     assert!(violation(&NumberTitleTemplate::parse("{display_name}")).is_some());
     assert!(violation(&NumberTemplate::parse("{title}")).is_some());
-    assert!(violation(&ReferenceTemplate::parse("{display_name} {number}")).is_none());
-    assert!(violation(&ReferenceTemplate::parse("{title}")).is_some());
+    assert!(violation(&RefTemplate::parse("{display_name} {number}")).is_none());
+    assert!(violation(&RefTemplate::parse("{title}")).is_some());
     assert!(violation(&TheoremHeadingTemplate::parse("{display_name} of {of} ({title}) {number}")).is_none());
     assert!(violation(&TheoremHeadingTemplate::parse("{page}")).is_some());
     assert!(violation(&RunningTemplate::parse("{page} / {pages} — {title}{author}{date}")).is_none());
@@ -667,7 +667,7 @@ mod tests {
     assert_eq!(violation(&NumberTemplate::parse("")).unwrap(), "テンプレートが空です");
     assert!(violation(&NumberTitleTemplate::parse("")).is_some());
     assert!(violation(&CounterTemplate::parse("")).is_some());
-    assert!(violation(&ReferenceTemplate::parse("")).is_some());
+    assert!(violation(&RefTemplate::parse("")).is_some());
     assert!(violation(&TheoremHeadingTemplate::parse("")).is_some());
   }
 

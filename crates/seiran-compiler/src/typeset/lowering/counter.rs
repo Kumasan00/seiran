@@ -7,15 +7,15 @@ use std::sync::LazyLock;
 use crate::{
   document::TheoremClass,
   semantics::{CounterKind, CounterValue},
-  style::{CounterName, CounterPlaceholder, ReferenceTemplate, Style},
+  style::{CounterName, CounterPlaceholder, RefTemplate, Style},
 };
 
 /// 定理の `\ref` 表示に使う固定書式
 ///
 /// カウンタの `ref_format` と違い style に対応するフィールドが無く、cleveref 相当の
 /// 「表示名 + 番号」に固定されている。
-static THEOREM_REF_FORMAT: LazyLock<ReferenceTemplate> =
-  LazyLock::new(|| return ReferenceTemplate::parse("{display_name} {number}"));
+static THEOREM_REF_FORMAT: LazyLock<RefTemplate> =
+  LazyLock::new(|| return RefTemplate::parse("{display_name} {number}"));
 
 /// [`CounterValue`] を、その種別の `number_format` / `number_style` で表示番号にする
 ///
