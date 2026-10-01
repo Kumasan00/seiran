@@ -47,7 +47,8 @@ pub(super) struct SemanticFacts {
   declared_labels: NodeMap<LabelId>,
   /// 採番対象ノード → カウンタ構造値
   pub(super) counters: NodeMap<CounterValue>,
-  /// 参照箇所（`\ref` / `proof` の `[of=...]`）→ 解決済みの参照先
+  /// 参照箇所（`\ref` / `proof` の `[of=...]`）→ 参照先のラベル（走査が記録し、存在は走査後に検証する。
+  /// `collect_facts` が `Ok` を返した後は、すべて実在するラベルを指す）
   pub(super) references: NodeMap<LabelId>,
   /// 引用箇所（`\cite`）→ 引用先（挿入順 = 文書順。CSL の採番がこの順序に依存する）
   pub(super) citations: NodeMap<CitationSiteFacts>,

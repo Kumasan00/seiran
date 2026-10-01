@@ -16,7 +16,7 @@ use crate::{
 
 /// HIR 全体を文書順に走査し、意味の事実を確定する
 ///
-/// 走査（ラベル登録・採番・参照箇所の収集）を全グループぶん終えてから、まとめて参照の存在検証を
+/// 走査（ラベル登録・採番・参照箇所の記録）を全グループぶん終えてから、まとめて参照の存在検証を
 /// 行う。前方参照（`proof` が後方で定義される定理を `[of=...]` で参照する等）とソース跨ぎの参照を
 /// 許すため、検証は走査中ではなく走査後に置く。
 ///
@@ -31,7 +31,6 @@ pub(super) fn collect_facts(
 ) -> Result<SemanticFacts, SemanticFailures> {
   let mut registry = CounterRegistry::from_policy(policy);
   let mut facts = SemanticFacts::default();
-  let mut pending: Vec<PendingReference> = Vec::new();
   let mut unknown_citations: Vec<UnknownCitationSite> = Vec::new();
   // 重複ラベルは走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
   // 続けても後続のカウンタ値はずれない。
@@ -42,7 +41,6 @@ pub(super) fn collect_facts(
       references,
       registry: &mut registry,
       facts: &mut facts,
-      pending: &mut pending,
       unknown_citations: &mut unknown_citations,
       duplicate_labels: &mut duplicate_labels,
     };
@@ -53,7 +51,7 @@ pub(super) fn collect_facts(
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
     .map(|(node, error)| return (order_key(node), error))
-    .chain(unresolved_references(&facts, &pending, hir.locations()))
+    .chain(unresolved_references(&facts, hir.locations()))
     .collect();
   // 3 種はそれぞれ文書順に積まれているので、安定ソートで種別を跨いだ文書順になる。
   errors.sort_by_key(|(key, _)| return *key);
@@ -61,7 +59,6 @@ pub(super) fn collect_facts(
     return Err(failures);
   }
 
-  record_references(&mut facts, &pending);
   assert_facts_complete(hir, &facts, policy);
   return Ok(facts);
 }
@@ -227,50 +224,28 @@ impl Checker<'_> {
   }
 }
 
-/// 走査中に見つかった、まだ存在検証していない参照箇所
-struct PendingReference {
-  /// 参照箇所のノード（`\ref` インライン、または `[of=...]` 引数自身）
-  site: NodeId,
-  /// 参照先のラベル名
-  label: String,
-}
-
-/// 収集済みの参照箇所のうち、解決できないものを文書順に**全件**集める
+/// `references` fact に記録された参照箇所のうち、解決できないものを文書順に**全件**集める
 ///
 /// 参照先は先勝ちで記録された最初の定義（[`SemanticFacts::declare_label`]）なので、同名ラベルが
 /// 重複していても解決先は一意に決まる。重複の検出と同じ 1 つの表を引く。
-fn unresolved_references(
-  facts: &SemanticFacts,
-  pending: &[PendingReference],
-  locations: &SourceMap,
-) -> Vec<(OrderKey, SemanticError)> {
-  return pending
+fn unresolved_references(facts: &SemanticFacts, locations: &SourceMap) -> Vec<(OrderKey, SemanticError)> {
+  return facts
+    .references
     .iter()
-    .filter(|reference| return facts.label_definition(&reference.label).is_none())
-    .map(|reference| {
-      let location = locations.location(reference.site);
+    .filter(|(_, label)| return facts.label_definition(label.as_str()).is_none())
+    .map(|(site, label)| {
+      let location = locations.location(site);
       let error = SemanticError::UnresolvedReference {
-        label: reference.label.clone(),
+        label: label.as_str().to_owned(),
         span: location.span.into(),
         source_id: location.source_id,
       };
-      return (order_key(reference.site), error);
+      return (order_key(site), error);
     })
     .collect();
 }
 
-/// 解決済みの参照箇所を `references` fact へ記録する
-///
-/// 呼ばれるのは [`unresolved_references`] が空だったときだけなので、すべての参照は実在する
-/// ラベルを指している（`analyze` 成功後の不変条件）。
-fn record_references(facts: &mut SemanticFacts, pending: &[PendingReference]) {
-  for reference in pending {
-    facts.references.insert(reference.site, LabelId::new(reference.label.clone()));
-  }
-  return;
-}
-
-/// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の収集を 1 回の走査で行う
+/// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の記録を 1 回の走査で行う
 struct Walker<'a, 'p> {
   /// `NodeId` → ソース位置の対応表
   locations: &'a SourceMap,
@@ -279,10 +254,8 @@ struct Walker<'a, 'p> {
   /// カウンタの採番状態。`'p`（レジストリが借りる `SemanticPolicy` の寿命）を `'a` と分けるのは、
   /// `&mut` が中身の型について不変なので、1 本にするとグループごとの可変借用が全グループへ延びるため
   registry: &'a mut CounterRegistry<'p>,
-  /// 走査中に確定した事実の書き込み先
+  /// 走査中に記録する事実の書き込み先（参照箇所の存在検証は走査後の [`unresolved_references`]）
   facts: &'a mut SemanticFacts,
-  /// 走査後にまとめて検証する参照箇所の書き込み先
-  pending: &'a mut Vec<PendingReference>,
   /// 走査中に見つかった未定義引用キーの書き込み先
   unknown_citations: &'a mut Vec<UnknownCitationSite>,
   /// 走査中に見つかった重複ラベルの書き込み先（診断と、文書順マージ用のノード）
@@ -374,10 +347,7 @@ impl Walker<'_, '_> {
         self.number_and_declare(CounterKind::Theorem(theorem.class), node.id, theorem.label.as_deref(), node.id);
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
         if let Some(target) = &theorem.of {
-          self.pending.push(PendingReference {
-            site: target.id,
-            label: target.label.clone(),
-          });
+          self.facts.references.insert(target.id, LabelId::new(target.label.clone()));
         }
         self.nodes(&theorem.body);
       },
@@ -391,7 +361,7 @@ impl Walker<'_, '_> {
   /// リストアイテムの内容（ネストしたブロックノード列）を走査する
   fn list_item(&mut self, item: &HirListItem) { return self.nodes(&item.content); }
 
-  /// インラインノード列を走査し、参照箇所（`\ref`）を集める
+  /// インラインノード列を走査し、参照箇所（`\ref`）を記録する
   ///
   /// インラインに採番対象は無いので失敗しない（存在検証は走査後の [`unresolved_references`]）。
   fn inlines(&mut self, inlines: &[HirInline]) {
@@ -401,10 +371,7 @@ impl Walker<'_, '_> {
         | HirInlineKind::Colored { children, .. }
         | HirInlineKind::Link { children, .. }
         | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
-        HirInlineKind::Ref { label } => self.pending.push(PendingReference {
-          site: inline.id,
-          label: label.clone(),
-        }),
+        HirInlineKind::Ref { label } => self.facts.references.insert(inline.id, LabelId::new(label.clone())),
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
@@ -583,6 +550,41 @@ mod tests {
     assert_eq!(label, "missing");
     let reported = &source[span.offset()..span.offset() + span.len()];
     assert!(reported.contains("of=missing"), "span は of を含む位置を指すはず: {reported}");
+  }
+
+  #[test]
+  fn analyze_reports_every_unresolved_reference_site_in_document_order() {
+    // 同じ未定義ラベルを 2 箇所が参照したら、修正箇所も 2 つ
+    let hir = document("本文 \\ref{a} と \\ref{a} です。\n\n\\begin{proof}[of=b]\n証明\n\\end{proof}\n");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
+
+    let labels: Vec<&str> = failures
+      .iter()
+      .map(|error| {
+        let SemanticError::UnresolvedReference { label, .. } = error else {
+          panic!("UnresolvedReference だけが期待されます: {error:?}");
+        };
+        return label.as_str();
+      })
+      .collect();
+    assert_eq!(labels, vec!["a", "a", "b"]);
+  }
+
+  #[test]
+  fn analyze_resolves_forward_ref_across_source_groups() {
+    let a = parse_source_for_test(r"\ref{ch:later}", SourceId::new(0)).expect("パースに成功するはず");
+    let b =
+      parse_source_for_test("\\chapter[label=ch:later]{Later}\n", SourceId::new(1)).expect("パースに成功するはず");
+    let hir = HirDocument::assemble(vec![a, b]);
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの前方参照は解決できるはず");
+
+    let sites: Vec<_> = analyzed.reference_sites().map(|(id, _)| return id).collect();
+    assert_eq!(sites.len(), 1, "参照箇所が 1 件記録されるはず");
+    assert_eq!(analyzed.reference_target(sites[0]), &LabelId::new("ch:later"));
   }
 
   #[test]
