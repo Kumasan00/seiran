@@ -123,8 +123,8 @@ pub(crate) enum SemanticError {
 
   /// `\ref{label}` / `proof` の `[of=...]` が参照するラベルが未定義の場合
   #[error("未解決の参照です: ラベル `{label}`")]
-  #[diagnostic(code(semantics::unresolved_reference), help("対応する label が定義されているか確認してください。"))]
-  UnresolvedReference {
+  #[diagnostic(code(semantics::unresolved_ref), help("対応する label が定義されているか確認してください。"))]
+  UnresolvedRef {
     /// 解決できなかったラベル名
     label: String,
     /// `\ref{...}` のソース位置
@@ -163,7 +163,7 @@ impl SemanticError {
   pub(crate) fn source_id(&self) -> SourceId {
     return match self {
       SemanticError::UnknownCitationKeys { source_id, .. }
-      | SemanticError::UnresolvedReference { source_id, .. }
+      | SemanticError::UnresolvedRef { source_id, .. }
       | SemanticError::DuplicateLabel { source_id, .. } => *source_id,
     };
   }
@@ -201,7 +201,7 @@ impl SemanticError {
       }),
       SemanticError::DuplicateLabel { .. }
       | SemanticError::UnknownCitationKeys { .. }
-      | SemanticError::UnresolvedReference { .. } => None,
+      | SemanticError::UnresolvedRef { .. } => None,
     };
   }
 }

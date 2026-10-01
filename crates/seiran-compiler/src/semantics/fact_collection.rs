@@ -235,7 +235,7 @@ fn unresolved_refs(facts: &SemanticFacts, locations: &SourceMap) -> Vec<(OrderKe
     .filter(|(_, label)| return facts.label_definition(label.as_str()).is_none())
     .map(|(site, label)| {
       let location = locations.location(site);
-      let error = SemanticError::UnresolvedReference {
+      let error = SemanticError::UnresolvedRef {
         label: label.as_str().to_owned(),
         span: location.span.into(),
         source_id: location.source_id,
@@ -498,8 +498,8 @@ mod tests {
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
-    let SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
-      panic!("UnresolvedReference が期待されます: {failures:?}");
+    let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
+      panic!("UnresolvedRef が期待されます: {failures:?}");
     };
     assert_eq!(label, "missing");
     let start = span.offset();
@@ -544,8 +544,8 @@ mod tests {
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
 
-    let SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
-      panic!("UnresolvedReference が期待されます: {failures:?}");
+    let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
+      panic!("UnresolvedRef が期待されます: {failures:?}");
     };
     assert_eq!(label, "missing");
     let reported = &source[span.offset()..span.offset() + span.len()];
@@ -563,8 +563,8 @@ mod tests {
     let labels: Vec<&str> = failures
       .iter()
       .map(|error| {
-        let SemanticError::UnresolvedReference { label, .. } = error else {
-          panic!("UnresolvedReference だけが期待されます: {error:?}");
+        let SemanticError::UnresolvedRef { label, .. } = error else {
+          panic!("UnresolvedRef だけが期待されます: {error:?}");
         };
         return label.as_str();
       })
@@ -752,7 +752,7 @@ mod tests {
       vec![
         "semantics::duplicate_label".to_string(),
         "semantics::unknown_citation_key".to_string(),
-        "semantics::unresolved_reference".to_string()
+        "semantics::unresolved_ref".to_string()
       ]
     );
   }
