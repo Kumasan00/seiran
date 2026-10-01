@@ -258,10 +258,10 @@ fn resolve_paths(
   let mut warnings: Vec<ConfigWarning> = Vec::new();
 
   let style_path = resolve_optional_path(raw.style_path.as_deref(), resolver, source, &mut errors, |path| {
-    return ConfigValidationError::StylePathResolution { path };
+    return ConfigValidationError::StyleFileNotFound { path };
   });
   let references_path = resolve_optional_path(raw.references_path.as_deref(), resolver, source, &mut errors, |path| {
-    return ConfigValidationError::ReferencesPathResolution { path };
+    return ConfigValidationError::ReferencesFileNotFound { path };
   });
 
   let font_paths = FontMap::try_from_fn(|font_type| {
@@ -269,7 +269,7 @@ fn resolve_paths(
     if source.exists(&resolved) {
       return Ok(resolved);
     }
-    return Err(ConfigValidationError::FontPathResolution {
+    return Err(ConfigValidationError::FontFileNotFound {
       font_type,
       path: resolved.to_string(),
     });
@@ -334,7 +334,7 @@ fn resolve_sources(
     if project_source.exists(&resolved) {
       resolved_sources.push(resolved);
     } else {
-      errors.push(ConfigValidationError::SourcePathResolution {
+      errors.push(ConfigValidationError::SourceFileNotFound {
         path: resolved.to_string(),
       });
     }
@@ -468,7 +468,10 @@ fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBu
 
 #[cfg(test)]
 mod tests {
-  use std::path::{Path, PathBuf};
+  use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+  };
 
   use miette::Diagnostic;
 
@@ -524,10 +527,19 @@ mod tests {
 
     let (_, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
 
-    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
-    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::ReferencesPathResolution { .. })));
-    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::SourcePathResolution { .. })));
-    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::FontPathResolution { .. })));
+    let codes: BTreeSet<String> = errors
+      .iter()
+      .map(|error| return error.code().expect("leaf の code を持つはず").to_string())
+      .collect();
+    assert_eq!(
+      codes,
+      BTreeSet::from([
+        "project::config::validation::font_file_not_found".to_owned(),
+        "project::config::validation::references_file_not_found".to_owned(),
+        "project::config::validation::source_file_not_found".to_owned(),
+        "project::config::validation::style_file_not_found".to_owned(),
+      ])
+    );
   }
 
   #[test]
@@ -975,7 +987,7 @@ mod tests {
       .collect();
     assert_eq!(reported.len(), 2, "{reported:?}");
     assert_eq!(reported[0].0, "project::config::validation::field");
-    assert_eq!(reported[1].0, "project::config::validation::source_path");
+    assert_eq!(reported[1].0, "project::config::validation::source_file_not_found");
     assert!(
       reported.iter().all(|(_, message)| return message.starts_with("/project/settings/custom.toml: ")),
       "{reported:?}"

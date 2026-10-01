@@ -56,10 +56,10 @@ pub(crate) enum StyleValidationError {
   /// `csl_path`（CSL スタイルファイル）が見つからない。
   #[error("CSL スタイルファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(style::validation::csl_path_resolution),
+    code(style::validation::csl_file_not_found),
     help("style.toml の [reference].csl_path が指すファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  CslPathResolution {
+  CslFileNotFound {
     /// 見つからなかったパス
     path: String,
   },
@@ -67,10 +67,10 @@ pub(crate) enum StyleValidationError {
   /// `locale_path`（CSL ロケールファイル）が見つからない。
   #[error("CSL ロケールファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(style::validation::locale_path_resolution),
+    code(style::validation::locale_file_not_found),
     help("style.toml の [reference].locale_path が指すファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  LocalePathResolution {
+  LocaleFileNotFound {
     /// 見つからなかったパス
     path: String,
   },
