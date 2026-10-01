@@ -52,9 +52,9 @@ pub(crate) struct RunningContentStyle {
 }
 
 impl RunningContentStyle {
-  /// 3 スロットすべてが空（空白のみを含む）かどうかを返す。
+  /// 3 スロットすべてが空白のみかどうかを返す。
   #[must_use]
-  pub(crate) fn is_empty(&self) -> bool {
+  pub(crate) fn is_blank(&self) -> bool {
     return self.left.is_blank() && self.center.is_blank() && self.right.is_blank();
   }
 }
@@ -80,15 +80,27 @@ mod tests {
   use garde::Validate;
 
   use super::RunningContentStyle;
-  use crate::{document::FontKind, length::Length};
+  use crate::{document::FontKind, length::Length, style::RunningTemplate};
 
   #[test]
-  fn default_is_empty() {
+  fn default_is_blank() {
     let style = RunningContentStyle::default();
 
-    assert!(style.is_empty());
+    assert!(style.is_blank());
     assert_eq!(style.font_kind, FontKind::Serif);
     assert!((style.font_size.to_pt() - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn whitespace_only_slots_are_blank() {
+    let style = RunningContentStyle {
+      left: RunningTemplate::parse("  "),
+      center: RunningTemplate::parse("\t"),
+      right: RunningTemplate::parse("\u{3000}"),
+      ..RunningContentStyle::default()
+    };
+
+    assert!(style.is_blank());
   }
 
   #[test]
