@@ -14,11 +14,11 @@ use crate::{
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
 ///
-/// TOML からは [`TheoremsTable`]（各エントリが差分指定 [`TheoremStyleOverride`]）として読み、
-/// [`Theorems::default`] のクラス別既定へ重ねて解決済みの値を作る。
+/// TOML からは [`TheoremStylesTable`]（各エントリが差分指定 [`TheoremStyleOverride`]）として読み、
+/// [`TheoremStyles::default`] のクラス別既定へ重ねて解決済みの値を作る。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[serde(from = "TheoremsTable")]
-pub(crate) struct Theorems {
+#[serde(from = "TheoremStylesTable")]
+pub(crate) struct TheoremStyles {
   /// `[theorems.theorem]`
   #[garde(dive)]
   pub theorem: TheoremStyle,
@@ -51,7 +51,7 @@ pub(crate) struct Theorems {
   pub proof: TheoremStyle,
 }
 
-impl Default for Theorems {
+impl Default for TheoremStyles {
   fn default() -> Self {
     return Self {
       theorem: TheoremStyle {
@@ -123,7 +123,7 @@ impl Default for Theorems {
   }
 }
 
-impl Index<TheoremClass> for Theorems {
+impl Index<TheoremClass> for TheoremStyles {
   type Output = TheoremStyle;
 
   fn index(&self, class: TheoremClass) -> &TheoremStyle {
@@ -273,7 +273,7 @@ impl Default for TheoremPresentation {
 /// `[theorems]` テーブル全体の TOML スキーマ。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
-struct TheoremsTable {
+struct TheoremStylesTable {
   /// `theorem` クラスの上書き
   theorem: TheoremStyleOverride,
   /// `lemma` クラスの上書き
@@ -296,8 +296,8 @@ struct TheoremsTable {
   proof: TheoremStyleOverride,
 }
 
-impl From<TheoremsTable> for Theorems {
-  fn from(table: TheoremsTable) -> Self {
+impl From<TheoremStylesTable> for TheoremStyles {
+  fn from(table: TheoremStylesTable) -> Self {
     let defaults = Self::default();
     return Self {
       theorem: table.theorem.apply(defaults.theorem),
@@ -421,17 +421,17 @@ mod tests {
   use garde::Validate;
   use strum::VariantArray;
 
-  use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems};
+  use super::{TheoremClass, TheoremReset, TheoremStyle, TheoremStyles};
   use crate::{
     document::FontKind,
     length::Length,
     style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
   };
 
-  /// `Theorems` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
+  /// `TheoremStyles` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
   #[derive(Debug, serde::Deserialize)]
-  struct TheoremsWrapper {
-    theorems: Theorems,
+  struct TheoremStylesWrapper {
+    theorems: TheoremStyles,
   }
 
   #[test]
@@ -464,7 +464,7 @@ mod tests {
 
   #[test]
   fn default_proof_is_unnumbered_with_qed_mark() {
-    let theorems = Theorems::default();
+    let theorems = TheoremStyles::default();
     let proof = &theorems[TheoremClass::Proof];
 
     assert!(proof.unnumbered);
@@ -475,7 +475,7 @@ mod tests {
 
   #[test]
   fn default_theorem_like_classes_share_counter_and_italic_body() {
-    let theorems = Theorems::default();
+    let theorems = TheoremStyles::default();
 
     for class in [
       TheoremClass::Theorem,
@@ -493,7 +493,7 @@ mod tests {
 
   #[test]
   fn default_remark_style_uses_roman_body_and_own_counter() {
-    let theorems = Theorems::default();
+    let theorems = TheoremStyles::default();
     let remark = &theorems[TheoremClass::Remark];
 
     assert_eq!(remark.counter, "remark");
@@ -514,7 +514,7 @@ mod tests {
       (TheoremClass::Claim, "Claim", "theorem"),
       (TheoremClass::Proof, "Proof", "proof"),
     ];
-    let theorems = Theorems::default();
+    let theorems = TheoremStyles::default();
 
     for (class, display_name, counter) in expected {
       assert_eq!(theorems[class].display_name, display_name, "{class} の表示名");
@@ -529,7 +529,7 @@ mod tests {
 display_name = \"補題\"
 ";
 
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
     let theorems = wrapper.theorems;
 
     assert_eq!(theorems.lemma.display_name, "補題");
@@ -546,7 +546,7 @@ display_name = \"補題\"
 font_kind = \"sans_serif_bold\"
 ";
 
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
     assert_eq!(theorem.style.font_kind, FontKind::SansSerifBold);
@@ -577,7 +577,7 @@ top_margin = \"6pt\"
 bottom_margin = \"8pt\"
 ";
 
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
     assert_eq!(theorem.display_name, "定理");
@@ -603,7 +603,7 @@ bottom_margin = \"8pt\"
 display_name = \"証明\"
 ";
 
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
     let proof = wrapper.theorems.proof;
 
     assert_eq!(proof.display_name, "証明");
@@ -613,7 +613,7 @@ display_name = \"証明\"
 
   #[test]
   fn default_proof_of_templates_render_proof_of_target() {
-    let theorems = Theorems::default();
+    let theorems = TheoremStyles::default();
     let proof = &theorems[TheoremClass::Proof];
 
     assert_eq!(proof.style.heading_with_of.as_str(), "{display_name} of {of}");
@@ -627,7 +627,7 @@ display_name = \"証明\"
 heading_with_of = \"{display_name}（{of} の証明）\"
 ";
 
-    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+    let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
 
     assert_eq!(wrapper.theorems.proof.style.heading_with_of.as_str(), "{display_name}（{of} の証明）");
     assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
@@ -640,7 +640,7 @@ heading_with_of = \"{display_name}（{of} の証明）\"
 display_name = \"Conjecture\"
 ";
 
-    let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
+    let result: Result<TheoremStylesWrapper, _> = toml::from_str(toml);
 
     assert!(result.is_err(), "未知のクラス名は TOML パース時に拒否されるべき: {result:?}");
   }
@@ -652,7 +652,7 @@ display_name = \"Conjecture\"
 format = \"{section}.{n}\"
 ";
 
-    let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
+    let result: Result<TheoremStylesWrapper, _> = toml::from_str(toml);
 
     assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される: {result:?}");
   }
@@ -664,7 +664,7 @@ format = \"{section}.{n}\"
 font_knd = \"serif\"
 ";
 
-    let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
+    let result: Result<TheoremStylesWrapper, _> = toml::from_str(toml);
 
     assert!(result.is_err(), "ネストした未知のフィールド名は拒否されるべき: {result:?}");
   }

@@ -42,7 +42,7 @@ pub(crate) use crate::style::error::ReadStyleError;
 )]
 pub(crate) use crate::style::{
   caption::CaptionStyle,
-  counter::{CounterName, Counters},
+  counter::{CounterName, CounterStyles},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
   math::{MathAlignment, MathScriptStyle, NumberSide},
@@ -65,7 +65,7 @@ use crate::{
   style::{
     columns::ColumnsStyle, error::StyleValidationError, figure::FigureStyle, heading::HeadingStyles,
     hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle, page::PageStyle, quote::QuoteStyle,
-    reference::ReferenceStyle, table::TableStyle, text::TextBlockStyle, theorem::Theorems,
+    reference::ReferenceStyle, table::TableStyle, text::TextBlockStyle, theorem::TheoremStyles,
   },
 };
 
@@ -108,10 +108,10 @@ pub(crate) struct Style {
   pub math: MathStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
-  pub counters: Counters,
+  pub counters: CounterStyles,
   /// 定理クラス定義テーブル（`[theorems.<class>]`、固定 10 種）
   #[garde(dive)]
-  pub theorems: Theorems,
+  pub theorems: TheoremStyles,
   /// ページ番号のスタイル（前付け＝ローマ数字 / 本文＝算用数字）
   #[garde(dive)]
   pub page_numbering: PageNumbering,
