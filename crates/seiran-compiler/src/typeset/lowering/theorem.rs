@@ -23,7 +23,7 @@ pub(super) fn lower_theorem(
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let number = state.counter_value(id).map(|value| return counter::format_counter_value(ctx.style, value));
-  let of_target = theorem.of.as_ref().map(|target| return state.reference_target(target.id));
+  let of_target = theorem.of.as_ref().map(|target| return state.ref_target(target.id));
   let label = state.declared_label(id);
 
   let theorem_style = &ctx.style.theorems[theorem.class];

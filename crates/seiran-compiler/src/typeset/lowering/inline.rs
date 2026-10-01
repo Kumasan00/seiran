@@ -79,7 +79,7 @@ pub(super) fn lower_inline(
       })];
     },
     HirInlineKind::Ref { .. } => {
-      let target = state.reference_target(inline.id);
+      let target = state.ref_target(inline.id);
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       return vec![InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Label(target.clone())),

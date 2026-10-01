@@ -152,7 +152,7 @@ mod tests {
   }
 
   #[test]
-  fn cross_counter_reference_uses_target_number_style() {
+  fn cross_counter_placeholder_uses_target_number_style() {
     let mut style = Style::default();
     style.counters.chapter.number_format = CounterTemplate::parse("{part}-{n}");
     style.counters.chapter.number_style = NumberStyle::Arabic;

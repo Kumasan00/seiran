@@ -62,18 +62,16 @@ impl SemanticDocument {
   /// `analyze` が返した `SemanticDocument` に無い `site` を渡した場合にパニックします
   /// （参照箇所の網羅は走査が保証している）。
   #[must_use]
-  pub(crate) fn reference_target(&self, site: NodeId) -> &LabelId {
-    let Some(target) = self.facts.references.get(site) else {
-      unreachable!("全参照箇所は semantics::analyze の走査が references へ登録している: {site:?}")
+  pub(crate) fn ref_target(&self, site: NodeId) -> &LabelId {
+    let Some(target) = self.facts.refs.get(site) else {
+      unreachable!("全参照箇所は semantics::analyze の走査が refs へ登録している: {site:?}")
     };
     return target;
   }
 
   /// 参照箇所を文書順に走査する
   #[cfg(test)]
-  pub(crate) fn reference_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> {
-    return self.facts.references.iter();
-  }
+  pub(crate) fn ref_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.refs.iter(); }
 
   /// 引用箇所を文書順に走査する
   #[cfg(test)]
