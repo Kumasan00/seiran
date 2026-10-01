@@ -472,7 +472,7 @@ mod parse_tests {
     assert_eq!(style.header.rule_color.map(Color::rgb), Some([0x33, 0x33, 0x33]));
     assert_eq!(style.footer.center.as_str(), "{title}");
     assert_eq!(style.footer.left.as_str(), "");
-    assert!(!style.header.is_empty());
+    assert!(!style.header.is_blank());
   }
 
   #[test]

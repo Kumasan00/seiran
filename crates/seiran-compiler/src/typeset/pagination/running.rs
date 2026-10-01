@@ -128,9 +128,9 @@ fn build_running_spec(
 
 /// `RunningContentStyle` を配置用の [`RunningSlots`] に変換する。
 ///
-/// 全スロットが空なら描画を省略するため `None` を返す。
+/// 全スロットが空白のみなら描画を省略するため `None` を返す。
 fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bool) -> Option<RunningSlots> {
-  if style.is_empty() {
+  if style.is_blank() {
     return None;
   }
   return Some(RunningSlots {
