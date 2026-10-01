@@ -338,7 +338,7 @@ mod tests {
   #[test]
   fn evaluate_empty_input_returns_empty() {
     let result = evaluate_source("");
-    assert!(result.is_empty());
+    assert_eq!(result, []);
   }
 
   #[test]

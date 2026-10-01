@@ -471,7 +471,7 @@ mod parse_tests {
     assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
     assert_eq!(style.header.rule_color.map(Color::rgb), Some([0x33, 0x33, 0x33]));
     assert_eq!(style.footer.center.as_str(), "{title}");
-    assert!(style.footer.left.as_str().is_empty());
+    assert_eq!(style.footer.left.as_str(), "");
     assert!(!style.header.is_empty());
   }
 

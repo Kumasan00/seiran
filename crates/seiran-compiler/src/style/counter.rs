@@ -361,7 +361,7 @@ display_name = \"図\"
     assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
     assert_eq!(counters.figure.ref_format.as_str(), "{display_name} {number}");
-    assert!(counters.figure.resets.is_empty());
+    assert_eq!(counters.figure.resets, []);
     assert_eq!(counters.table.display_name, "Table");
     assert_eq!(counters.chapter.resets.len(), 7);
   }
@@ -412,7 +412,7 @@ resets = [\"equation\"]
 resets = []
 ";
     let counters: Counters = toml::from_str(toml).unwrap();
-    assert!(counters.chapter.resets.is_empty());
+    assert_eq!(counters.chapter.resets, []);
     assert_eq!(counters.chapter.display_name, "Chapter");
   }
 

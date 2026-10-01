@@ -141,7 +141,7 @@ mod tests {
     let variant_policy = SemanticPolicy::from_style(&reset_variant);
 
     assert_ne!(base_policy, variant_policy, "resets は値側フィールドなので SemanticPolicy に写るはず");
-    assert!(variant_policy.counter(CounterName::Chapter).resets.is_empty());
+    assert_eq!(variant_policy.counter(CounterName::Chapter).resets, []);
   }
 
   #[test]

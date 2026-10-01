@@ -466,7 +466,7 @@ mod tests {
   fn empty_input_returns_no_tokens() {
     let tokens = tokenize("");
 
-    assert!(tokens.is_empty());
+    assert_eq!(tokens, []);
     return;
   }
 

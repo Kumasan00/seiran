@@ -538,7 +538,7 @@ mod tests {
 
     let pairs = parse_key_value_options(source, opt_arg);
 
-    assert!(pairs.is_empty());
+    assert_eq!(pairs, []);
   }
 
   /// `source` の最初のコマンドの任意引数を key=value の列にする

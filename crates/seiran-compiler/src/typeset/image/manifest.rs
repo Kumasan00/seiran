@@ -95,6 +95,6 @@ mod tests {
   fn returns_empty_manifest_when_no_figures_present() {
     let source = "\\pagebreak\n";
     let paths = collect_image_paths(&document(source));
-    assert!(paths.is_empty());
+    assert_eq!(paths, []);
   }
 }

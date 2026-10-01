@@ -93,7 +93,7 @@ mod tests {
 
   #[test]
   fn without_language_no_hyphen_breaks() {
-    assert!(break_opportunities("hyphenation", None).is_empty());
+    assert_eq!(break_opportunities("hyphenation", None), []);
   }
 
   #[test]

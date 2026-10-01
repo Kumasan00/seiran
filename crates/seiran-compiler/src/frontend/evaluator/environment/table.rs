@@ -392,6 +392,6 @@ mod tests {
       panic!("Table が期待されます");
     };
     assert_eq!(table.rows[0].cells.len(), 3);
-    assert!(table.rows[0].cells[1].content.is_empty());
+    assert_eq!(table.rows[0].cells[1].content, []);
   }
 }

@@ -190,6 +190,6 @@ mod tests {
   fn per_page_numbers_are_empty_without_footnotes() {
     let numbers = per_page_footnote_numbers(&[page_with_footnotes(&[])]);
 
-    assert!(numbers.is_empty());
+    assert_eq!(numbers, Vec::<u32>::new());
   }
 }

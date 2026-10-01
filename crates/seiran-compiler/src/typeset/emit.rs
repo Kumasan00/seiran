@@ -703,7 +703,7 @@ mod tests {
       )
       .build();
     let publication = build(&config, vec![page], vec![]);
-    assert!(publication.pages()[0].links().is_empty());
+    assert_eq!(publication.pages()[0].links(), []);
   }
 
   #[test]

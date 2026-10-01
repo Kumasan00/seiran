@@ -82,8 +82,8 @@ mod tests {
 
   #[test]
   fn short_word_has_no_hyphenation_points() {
-    assert!(hyphenation_points("the", Lang::English).is_empty());
-    assert!(hyphenation_points("hello", Lang::English).is_empty());
+    assert_eq!(hyphenation_points("the", Lang::English), Vec::<usize>::new());
+    assert_eq!(hyphenation_points("hello", Lang::English), Vec::<usize>::new());
   }
 
   #[test]

@@ -854,7 +854,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("", &arena);
     assert_eq!(cst.kind, SyntaxKind::Root);
-    assert!(cst.children.is_empty());
+    assert_eq!(cst.children, []);
   }
 
   #[test]
