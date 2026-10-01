@@ -205,7 +205,7 @@ fn diagnostic_multi_source_resolve_error_attributes_second_source() {
 fn diagnostic_undefined_ref() {
   let failure = compile_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
-  assert_eq!(codes(&failure), vec!["semantics::unresolved_reference".to_string()]);
+  assert_eq!(codes(&failure), vec!["semantics::unresolved_ref".to_string()]);
   assert_matches_golden("undefined_ref", &render_failure(failure));
 }
 
@@ -271,7 +271,7 @@ fn diagnostic_mixed_semantics_errors_follow_document_order() {
     vec![
       "semantics::duplicate_label".to_string(),
       "semantics::unknown_citation_key".to_string(),
-      "semantics::unresolved_reference".to_string()
+      "semantics::unresolved_ref".to_string()
     ]
   );
   assert_matches_golden("mixed_semantics", &render_failure(failure));

@@ -1,4 +1,4 @@
-semantics::unresolved_reference
+semantics::unresolved_ref
 
   × 未解決の参照です: ラベル `undefined-in-b`
    ╭─[tests/text/diagnostics/multi_source_b.sei:3:18]

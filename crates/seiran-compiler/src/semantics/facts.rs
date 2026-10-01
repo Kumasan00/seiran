@@ -49,7 +49,7 @@ pub(super) struct SemanticFacts {
   pub(super) counters: NodeMap<CounterValue>,
   /// 参照箇所（`\ref` / `proof` の `[of=...]`）→ 参照先のラベル（`collect_facts` が `Ok` を
   /// 返した後は、すべて実在するラベルを指す）
-  pub(super) references: NodeMap<LabelId>,
+  pub(super) refs: NodeMap<LabelId>,
   /// 引用箇所（`\cite`）→ 引用先（挿入順 = 文書順。CSL の採番がこの順序に依存する）
   pub(super) citations: NodeMap<CitationSiteFacts>,
   /// 見出しノード → 見出しレベル（挿入順 = 文書順。位置がそのまま `HeadingKey`）

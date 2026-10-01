@@ -253,7 +253,7 @@ impl<'a> LoweringState<'a> {
   }
 
   /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
-  pub(super) fn reference_target(&self, site: NodeId) -> &'a LabelId { return self.document.reference_target(site); }
+  pub(super) fn ref_target(&self, site: NodeId) -> &'a LabelId { return self.document.ref_target(site); }
 
   /// 見出しタイトルのプレーンテキストを記録する
   pub(super) fn record_heading_title(&mut self, node: NodeId, plain: String) {

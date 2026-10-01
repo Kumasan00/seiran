@@ -25,7 +25,7 @@ Error: semantics::unknown_citation_key
    ╰────
   help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください
 
-Error: semantics::unresolved_reference
+Error: semantics::unresolved_ref
 
   × 未解決の参照です: ラベル `undefined-label`
    ╭─[tests/text/diagnostics/mixed_semantics.sei:7:38]

@@ -51,7 +51,7 @@ pub(super) fn collect_facts(
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
     .map(|(node, error)| return (order_key(node), error))
-    .chain(unresolved_references(&facts, hir.locations()))
+    .chain(unresolved_refs(&facts, hir.locations()))
     .collect();
   // 3 種はそれぞれ文書順に積まれているので、安定ソートで種別を跨いだ文書順になる。
   errors.sort_by_key(|(key, _)| return *key);
@@ -141,7 +141,7 @@ impl Checker<'_> {
         }
         if let Some(target) = &theorem.of {
           assert!(
-            self.facts.references.get(target.id).is_some(),
+            self.facts.refs.get(target.id).is_some(),
             "Walker が Theorem::of の参照先を登録し損ねている: {:?}",
             target.id
           );
@@ -183,7 +183,7 @@ impl Checker<'_> {
         | HirInlineKind::Link { children, .. }
         | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
         HirInlineKind::Ref { .. } => assert!(
-          self.facts.references.get(inline.id).is_some(),
+          self.facts.refs.get(inline.id).is_some(),
           "Walker が Ref の参照先を登録し損ねている: {:?}",
           inline.id
         ),
@@ -224,18 +224,18 @@ impl Checker<'_> {
   }
 }
 
-/// `references` fact に記録された参照箇所のうち、解決できないものを文書順に**全件**集める
+/// `refs` fact に記録された参照箇所のうち、解決できないものを文書順に**全件**集める
 ///
 /// 参照先は先勝ちで記録された最初の定義（[`SemanticFacts::declare_label`]）なので、同名ラベルが
 /// 重複していても解決先は一意に決まる。重複の検出と同じ 1 つの表を引く。
-fn unresolved_references(facts: &SemanticFacts, locations: &SourceMap) -> Vec<(OrderKey, SemanticError)> {
+fn unresolved_refs(facts: &SemanticFacts, locations: &SourceMap) -> Vec<(OrderKey, SemanticError)> {
   return facts
-    .references
+    .refs
     .iter()
     .filter(|(_, label)| return facts.label_definition(label.as_str()).is_none())
     .map(|(site, label)| {
       let location = locations.location(site);
-      let error = SemanticError::UnresolvedReference {
+      let error = SemanticError::UnresolvedRef {
         label: label.as_str().to_owned(),
         span: location.span.into(),
         source_id: location.source_id,
@@ -347,7 +347,7 @@ impl Walker<'_, '_> {
         self.number_and_declare(CounterKind::Theorem(theorem.class), node.id, theorem.label.as_deref(), node.id);
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
         if let Some(target) = &theorem.of {
-          self.facts.references.insert(target.id, LabelId::new(target.label.clone()));
+          self.facts.refs.insert(target.id, LabelId::new(target.label.clone()));
         }
         self.nodes(&theorem.body);
       },
@@ -371,7 +371,7 @@ impl Walker<'_, '_> {
         | HirInlineKind::Colored { children, .. }
         | HirInlineKind::Link { children, .. }
         | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
-        HirInlineKind::Ref { label } => self.facts.references.insert(inline.id, LabelId::new(label.clone())),
+        HirInlineKind::Ref { label } => self.facts.refs.insert(inline.id, LabelId::new(label.clone())),
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
@@ -472,7 +472,7 @@ mod tests {
   }
 
   #[test]
-  fn analyze_resolves_forward_reference_from_proof_of() {
+  fn analyze_resolves_forward_ref_from_proof_of() {
     let hir =
       document("\\begin{proof}[of=thm:a]\n証明\n\\end{proof}\n\n\\begin{theorem}[label=thm:a]\n主張\n\\end{theorem}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
@@ -480,26 +480,26 @@ mod tests {
     let analyzed = analyze(hir, &policy, &no_references()).expect("前方参照は解決できるはず");
 
     // `any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する
-    let sites: Vec<_> = analyzed.reference_sites().map(|(id, label)| return (id, label.clone())).collect();
+    let sites: Vec<_> = analyzed.ref_sites().map(|(id, label)| return (id, label.clone())).collect();
     assert_eq!(sites.len(), 1, "参照箇所は [of=...] の 1 件だけのはず");
     assert_eq!(sites[0].1, LabelId::new("thm:a"));
     assert_eq!(
-      analyzed.reference_target(sites[0].0),
+      analyzed.ref_target(sites[0].0),
       &LabelId::new("thm:a"),
-      "reference_target は site の NodeId から同じ LabelId を返すはず"
+      "ref_target は site の NodeId から同じ LabelId を返すはず"
     );
   }
 
   #[test]
-  fn analyze_reports_unresolved_reference_with_span() {
+  fn analyze_reports_unresolved_ref_with_span() {
     let source = r"本文 \ref{missing} です。";
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
-    let SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
-      panic!("UnresolvedReference が期待されます: {failures:?}");
+    let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
+      panic!("UnresolvedRef が期待されます: {failures:?}");
     };
     assert_eq!(label, "missing");
     let start = span.offset();
@@ -516,11 +516,11 @@ mod tests {
 
     let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの参照は解決できるはず");
 
-    assert_eq!(analyzed.reference_sites().count(), 1, "参照箇所が 1 件記録されるはず");
+    assert_eq!(analyzed.ref_sites().count(), 1, "参照箇所が 1 件記録されるはず");
   }
 
   #[test]
-  fn analyze_finds_references_in_nested_containers() {
+  fn analyze_finds_refs_in_nested_containers() {
     let hir = document(
       "\\chapter[label=ch:a]{A}\n\n\
        \\begin{itemize}\n\\item{\\ref{ch:a}}\n\\end{itemize}\n\n\
@@ -531,7 +531,7 @@ mod tests {
 
     let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
 
-    assert_eq!(analyzed.reference_sites().count(), 4, "箇条書き・脚注・表セル・キャプションを全部拾うはず");
+    assert_eq!(analyzed.ref_sites().count(), 4, "箇条書き・脚注・表セル・キャプションを全部拾うはず");
   }
 
   #[test]
@@ -544,8 +544,8 @@ mod tests {
 
     let failures = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
 
-    let SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
-      panic!("UnresolvedReference が期待されます: {failures:?}");
+    let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
+      panic!("UnresolvedRef が期待されます: {failures:?}");
     };
     assert_eq!(label, "missing");
     let reported = &source[span.offset()..span.offset() + span.len()];
@@ -553,7 +553,7 @@ mod tests {
   }
 
   #[test]
-  fn analyze_reports_every_unresolved_reference_site_in_document_order() {
+  fn analyze_reports_every_unresolved_ref_site_in_document_order() {
     // 同じ未定義ラベルを 2 箇所が参照したら、修正箇所も 2 つ
     let hir = document("本文 \\ref{a} と \\ref{a} です。\n\n\\begin{proof}[of=b]\n証明\n\\end{proof}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
@@ -563,8 +563,8 @@ mod tests {
     let labels: Vec<&str> = failures
       .iter()
       .map(|error| {
-        let SemanticError::UnresolvedReference { label, .. } = error else {
-          panic!("UnresolvedReference だけが期待されます: {error:?}");
+        let SemanticError::UnresolvedRef { label, .. } = error else {
+          panic!("UnresolvedRef だけが期待されます: {error:?}");
         };
         return label.as_str();
       })
@@ -582,9 +582,9 @@ mod tests {
 
     let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの前方参照は解決できるはず");
 
-    let sites: Vec<_> = analyzed.reference_sites().map(|(id, _)| return id).collect();
+    let sites: Vec<_> = analyzed.ref_sites().map(|(id, _)| return id).collect();
     assert_eq!(sites.len(), 1, "参照箇所が 1 件記録されるはず");
-    assert_eq!(analyzed.reference_target(sites[0]), &LabelId::new("ch:later"));
+    assert_eq!(analyzed.ref_target(sites[0]), &LabelId::new("ch:later"));
   }
 
   #[test]
@@ -752,7 +752,7 @@ mod tests {
       vec![
         "semantics::duplicate_label".to_string(),
         "semantics::unknown_citation_key".to_string(),
-        "semantics::unresolved_reference".to_string()
+        "semantics::unresolved_ref".to_string()
       ]
     );
   }
