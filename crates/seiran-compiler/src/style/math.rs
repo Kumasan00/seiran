@@ -64,7 +64,7 @@ pub(crate) struct MathBlockStyle {
   /// 数式番号の配置側
   pub number_side: NumberSide,
   /// 数式本体の揃え
-  pub alignment: Alignment,
+  pub alignment: MathAlignment,
   /// 行間（隣り合う行のベースライン間に挿入する追加アキ）
   #[garde(custom(non_negative))]
   pub row_gap: Length,
@@ -84,7 +84,7 @@ impl Default for MathBlockStyle {
     return Self {
       tag_format: NumberTemplate::parse("({number})"),
       number_side: NumberSide::Right,
-      alignment: Alignment::Center,
+      alignment: MathAlignment::Center,
       row_gap: Length::pt(3.0),
       column_gap: Length::pt(6.0),
       top_margin: Length::pt(8.0),
@@ -108,7 +108,7 @@ pub(crate) enum NumberSide {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
-pub(crate) enum Alignment {
+pub(crate) enum MathAlignment {
   /// 中央揃え
   Center,
   /// 左揃え
@@ -121,14 +121,14 @@ pub(crate) enum Alignment {
 mod tests {
   use garde::Validate;
 
-  use super::{Alignment, MathBlockStyle, MathScriptStyle, NumberSide};
+  use super::{MathAlignment, MathBlockStyle, MathScriptStyle, NumberSide};
 
   #[test]
   fn block_default_uses_right_number_and_center_body() {
     let block = MathBlockStyle::default();
 
     assert_eq!(block.number_side, NumberSide::Right);
-    assert_eq!(block.alignment, Alignment::Center);
+    assert_eq!(block.alignment, MathAlignment::Center);
     assert_eq!(block.tag_format.as_str(), "({number})");
   }
 

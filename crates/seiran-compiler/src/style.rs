@@ -45,7 +45,7 @@ pub(crate) use crate::style::{
   counter::{CounterName, Counters},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
-  math::{Alignment, MathScriptStyle, NumberSide},
+  math::{MathAlignment, MathScriptStyle, NumberSide},
   number_style::NumberStyle,
   page_numbering::PageNumbering,
   running::RunningContentStyle,
