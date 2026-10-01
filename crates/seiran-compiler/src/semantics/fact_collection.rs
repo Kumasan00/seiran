@@ -254,7 +254,7 @@ struct Walker<'a, 'p> {
   /// カウンタの採番状態。`'p`（レジストリが借りる `SemanticPolicy` の寿命）を `'a` と分けるのは、
   /// `&mut` が中身の型について不変なので、1 本にするとグループごとの可変借用が全グループへ延びるため
   registry: &'a mut CounterRegistry<'p>,
-  /// 走査中に記録する事実の書き込み先（参照箇所の存在検証は走査後の [`unresolved_references`]）
+  /// 走査中に記録する事実の書き込み先
   facts: &'a mut SemanticFacts,
   /// 走査中に見つかった未定義引用キーの書き込み先
   unknown_citations: &'a mut Vec<UnknownCitationSite>,
@@ -363,7 +363,7 @@ impl Walker<'_, '_> {
 
   /// インラインノード列を走査し、参照箇所（`\ref`）を記録する
   ///
-  /// インラインに採番対象は無いので失敗しない（存在検証は走査後の [`unresolved_references`]）。
+  /// インラインに採番対象は無いので失敗しない。
   fn inlines(&mut self, inlines: &[HirInline]) {
     for inline in inlines {
       match &inline.kind {
