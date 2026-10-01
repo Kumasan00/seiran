@@ -224,7 +224,7 @@ mod tests {
     document::{FontKind, HeadingLevel},
     length::Length,
     semantics::HeadingKey,
-    style::{PageNumbering, Style, TocStyle},
+    style::{PageNumberingStyle, Style, TocStyle},
     typeset::boxes::{AnchorId, Page, PlacedAnchor},
   };
 
@@ -258,7 +258,7 @@ mod tests {
         };
       })
       .collect();
-    return BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
+    return BodyPageValues::from_body_pages(&pages, &PageNumberingStyle::default());
   }
 
   #[test]

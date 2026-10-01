@@ -6,7 +6,7 @@
 //! - Stage 2 [`PageLabels`]: `finalize`（前付けページ列確定）後にしか得られない（running の引数型）
 
 use crate::{
-  style::PageNumbering,
+  style::PageNumberingStyle,
   typeset::boxes::{AnchorId, Page},
 };
 
@@ -49,12 +49,12 @@ pub(super) struct BodyPageValues {
   /// 本文ページの総数
   body_page_count: usize,
   /// ページ番号のスタイル設定
-  numbering: PageNumbering,
+  numbering: PageNumberingStyle,
 }
 
 impl BodyPageValues {
   /// 本文ページ列とページ番号スタイルから構築する。
-  pub(super) fn from_body_pages(body_pages: &[Page], numbering: &PageNumbering) -> Self {
+  pub(super) fn from_body_pages(body_pages: &[Page], numbering: &PageNumberingStyle) -> Self {
     let mut heading_pages = Vec::new();
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
@@ -136,7 +136,7 @@ mod tests {
   use crate::{
     length::Length,
     semantics::{HeadingKey, LabelId},
-    style::PageNumbering,
+    style::PageNumberingStyle,
     typeset::boxes::{AnchorId, Page, PlacedAnchor},
   };
 
@@ -173,14 +173,14 @@ mod tests {
         AnchorId::Heading(HeadingKey::new(1)),
       ]),
     ];
-    let page_values = BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
+    let page_values = BodyPageValues::from_body_pages(&pages, &PageNumberingStyle::default());
     assert_eq!(page_values.heading_pages(), &[PageIndex::new(0), PageIndex::new(1)]);
   }
 
   #[test]
   fn body_page_label_renders_with_body_style() {
     // 既定は前付け=ローマ小文字 / 本文=算用数字
-    let page_values = BodyPageValues::from_body_pages(&[], &PageNumbering::default());
+    let page_values = BodyPageValues::from_body_pages(&[], &PageNumberingStyle::default());
     let label = page_values.body_page_label(PageIndex::new(0));
     assert_eq!(label, "1");
   }
@@ -193,7 +193,7 @@ mod tests {
       page_with_anchors(vec![]),
       page_with_anchors(vec![]),
     ];
-    let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
+    let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumberingStyle::default());
 
     let labels = page_values.finalize(&front_pages).into_vec();
 
@@ -210,7 +210,7 @@ mod tests {
     let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let back_pages = vec![page_with_anchors(vec![])];
     let page_values =
-      BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default()).with_back_matter(&back_pages);
+      BodyPageValues::from_body_pages(&body_pages, &PageNumberingStyle::default()).with_back_matter(&back_pages);
 
     let labels = page_values.finalize(&front_pages).into_vec();
 
@@ -228,7 +228,7 @@ mod tests {
       page_with_anchors(vec![]),
       page_with_anchors(vec![]),
     ];
-    let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
+    let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumberingStyle::default());
 
     let labels = page_values.finalize(&[]).into_vec();
 

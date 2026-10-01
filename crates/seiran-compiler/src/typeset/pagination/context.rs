@@ -2,7 +2,7 @@
 
 use crate::{
   project::config::ProjectConfig,
-  style::{PageNumbering, Style},
+  style::{PageNumberingStyle, Style},
   typeset::{
     boxes::Page, breaking::KnuthPlassBreaker, font::FontSystem, geometry::PreparedGeometry, lowering::HeadingRecord,
     pagination::page_values::BodyPageValues,
@@ -51,7 +51,7 @@ pub(super) struct BodyPageFacts {
 
 impl BodyPageFacts {
   /// 確定した本文ページ列と見出し記録から組み立てる。
-  pub(super) fn new(body_pages: &[Page], headings: Vec<HeadingRecord>, numbering: &PageNumbering) -> Self {
+  pub(super) fn new(body_pages: &[Page], headings: Vec<HeadingRecord>, numbering: &PageNumberingStyle) -> Self {
     return Self {
       page_values: BodyPageValues::from_body_pages(body_pages, numbering),
       headings,
