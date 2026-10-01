@@ -11,11 +11,11 @@ use crate::style::{CounterTemplate, RefTemplate, number_style::NumberStyle};
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。
 ///
-/// TOML からは [`CountersTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
-/// [`Counters::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
+/// TOML からは [`CounterStylesTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
+/// [`CounterStyles::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
 #[derive(Debug, Clone, Deserialize, Validate)]
-#[serde(from = "CountersTable")]
-pub(crate) struct Counters {
+#[serde(from = "CounterStylesTable")]
+pub(crate) struct CounterStyles {
   /// 部
   #[garde(dive)]
   pub part: CounterStyle,
@@ -45,7 +45,7 @@ pub(crate) struct Counters {
   pub equation: CounterStyle,
 }
 
-impl Default for Counters {
+impl Default for CounterStyles {
   fn default() -> Self {
     return Self {
       part: CounterStyle::new(
@@ -115,7 +115,7 @@ impl Default for Counters {
   }
 }
 
-impl Index<CounterName> for Counters {
+impl Index<CounterName> for CounterStyles {
   type Output = CounterStyle;
 
   fn index(&self, name: CounterName) -> &CounterStyle {
@@ -182,7 +182,7 @@ impl CounterStyle {
 /// `[counters]` テーブル全体の TOML スキーマ。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
-struct CountersTable {
+struct CounterStylesTable {
   /// `part` カウンタの上書き
   part: CounterStyleOverride,
   /// `chapter` カウンタの上書き
@@ -203,8 +203,8 @@ struct CountersTable {
   equation: CounterStyleOverride,
 }
 
-impl From<CountersTable> for Counters {
-  fn from(table: CountersTable) -> Self {
+impl From<CounterStylesTable> for CounterStyles {
+  fn from(table: CounterStylesTable) -> Self {
     let defaults = Self::default();
     return Self {
       part: table.part.apply(defaults.part),
@@ -314,7 +314,7 @@ mod tests {
   use garde::Validate;
   use strum::VariantArray;
 
-  use super::{CounterName, CounterStyle, Counters, NumberStyle};
+  use super::{CounterName, CounterStyle, CounterStyles, NumberStyle};
 
   #[test]
   fn validate_rejects_empty_display_name() {
@@ -330,7 +330,7 @@ mod tests {
 
   #[test]
   fn default_counters_section_references_chapter() {
-    let counters = Counters::default();
+    let counters = CounterStyles::default();
     assert_eq!(counters.section.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(counters.section.number_style, NumberStyle::Arabic);
     assert_eq!(counters.section.ref_format.as_str(), "{display_name} {number}");
@@ -338,13 +338,13 @@ mod tests {
 
   #[test]
   fn default_counters_equation_uses_parens_ref_format() {
-    let counters = Counters::default();
+    let counters = CounterStyles::default();
     assert_eq!(counters.equation.ref_format.as_str(), "({number})");
   }
 
   #[test]
   fn default_counters_part_uses_roman_upper() {
-    let counters = Counters::default();
+    let counters = CounterStyles::default();
     assert_eq!(counters.part.number_style, NumberStyle::RomanUpper);
   }
 
@@ -355,7 +355,7 @@ mod tests {
 display_name = \"図\"
 ";
 
-    let counters: Counters = toml::from_str(toml).unwrap();
+    let counters: CounterStyles = toml::from_str(toml).unwrap();
 
     assert_eq!(counters.figure.display_name, "図");
     assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
@@ -368,7 +368,7 @@ display_name = \"図\"
 
   #[test]
   fn every_entry_maps_to_its_own_counter() {
-    // 9 エントリ全部に別々の表示名を与え、`From<CountersTable>` の対応付けを固定する
+    // 9 エントリ全部に別々の表示名を与え、`From<CounterStylesTable>` の対応付けを固定する
     let toml = CounterName::VARIANTS
       .iter()
       .map(|&name| {
@@ -377,7 +377,7 @@ display_name = \"図\"
       })
       .collect::<String>();
 
-    let counters: Counters = toml::from_str(&toml).unwrap();
+    let counters: CounterStyles = toml::from_str(&toml).unwrap();
 
     for &name in CounterName::VARIANTS {
       let key: &str = name.into();
@@ -396,7 +396,7 @@ ref_format = \"{display_name}{number}\"
 resets = [\"equation\"]
 ";
 
-    let counters: Counters = toml::from_str(toml).unwrap();
+    let counters: CounterStyles = toml::from_str(toml).unwrap();
 
     assert_eq!(counters.figure.display_name, "Fig.");
     assert_eq!(counters.figure.number_format.as_str(), "{section}.{n}");
@@ -411,17 +411,17 @@ resets = [\"equation\"]
 [chapter]
 resets = []
 ";
-    let counters: Counters = toml::from_str(toml).unwrap();
+    let counters: CounterStyles = toml::from_str(toml).unwrap();
     assert_eq!(counters.chapter.resets, []);
     assert_eq!(counters.chapter.display_name, "Chapter");
   }
 
   #[test]
   fn empty_table_equals_default() {
-    let parsed: Counters = toml::from_str("").unwrap();
+    let parsed: CounterStyles = toml::from_str("").unwrap();
     // `CounterStyle` は `PartialEq` を持たないので全フィールドを出す `Debug` 表現で比べる
     let parsed_text = format!("{parsed:?}");
-    let default_text = format!("{:?}", Counters::default());
+    let default_text = format!("{:?}", CounterStyles::default());
     assert_eq!(parsed_text, default_text);
   }
 
@@ -431,7 +431,7 @@ resets = []
 [figure]
 format = \"{chapter}.{n}\"
 ";
-    let result: Result<Counters, _> = toml::from_str(toml);
+    let result: Result<CounterStyles, _> = toml::from_str(toml);
     assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される");
   }
 
@@ -445,7 +445,7 @@ number_style = \"arabic\"
 ref_format = \"{number}\"
 resets = []
 ";
-    let result: Result<Counters, _> = toml::from_str(toml);
+    let result: Result<CounterStyles, _> = toml::from_str(toml);
     assert!(result.is_err(), "未知のカウンタ名 `example` は TOML パース時に拒否される");
   }
 
@@ -459,7 +459,7 @@ number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = [\"example\"]
 ";
-    let result: Result<Counters, _> = toml::from_str(toml);
+    let result: Result<CounterStyles, _> = toml::from_str(toml);
     assert!(result.is_err(), "未知の reset 対象 `example` は TOML パース時に拒否される");
   }
 

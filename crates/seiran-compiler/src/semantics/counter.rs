@@ -13,11 +13,11 @@ use crate::{
   style::{CounterName, TheoremReset},
 };
 
-/// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
+/// カウンタの種別。`CounterStyles`（見出し・図表・数式）と `TheoremStyles`（定理クラス）の
 /// 2 系統をひとつの型で表す
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CounterKind {
-  /// `crate::style::Counters` が定義する固定 9 種のいずれか
+  /// `crate::style::CounterStyles` が定義する固定 9 種のいずれか
   Counter(CounterName),
   /// 定理クラス（共有カウンタは `TheoremStyle.counter` で複数クラスが 1 つを共有しうる）
   Theorem(TheoremClass),
@@ -129,7 +129,7 @@ impl<'p> CounterRegistry<'p> {
   /// `name` の祖先カウンタの現在値を、最も遠い祖先から順に集める（末尾が直近の親）
   ///
   /// 祖先は「自分を `resets` に含み、かつ `CounterName::VARIANTS` の宣言順で自身より手前にある
-  /// カウンタのうち最も近いもの」を 1 段ずつ遡って求める。既定の `Counters` は祖先の `resets` に
+  /// カウンタのうち最も近いもの」を 1 段ずつ遡って求める。既定の `CounterStyles` は祖先の `resets` に
   /// 子孫を平坦に列挙する（例: `part.resets` は `chapter` を含む）ため、探索範囲を「自身より手前」に
   /// 限定して最も近い候補を選ぶ。これにより祖先の飛び越え（`part` が `section` の直接の
   /// 親と誤認されること）を防ぎ、かつ候補の添字が再帰のたびに単調に減るため必ず停止する
