@@ -61,10 +61,10 @@ pub(crate) enum ConfigValidationError {
   /// フォントパスが見つからない
   #[error("フォントファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(project::config::validation::font_path),
+    code(project::config::validation::font_file_not_found),
     help("フォントファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  FontPathResolution {
+  FontFileNotFound {
     /// 対象のフォント種別
     font_type: FontType,
     /// 見つからなかったフォントファイルのパス
@@ -73,30 +73,30 @@ pub(crate) enum ConfigValidationError {
   /// スタイル設定ファイルが見つからない
   #[error("スタイル設定ファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(project::config::validation::style_path),
+    code(project::config::validation::style_file_not_found),
     help("スタイル設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  StylePathResolution {
+  StyleFileNotFound {
     /// 見つからなかったスタイル設定ファイルのパス
     path: String,
   },
   /// 参照設定ファイルが見つからない
   #[error("参照設定ファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(project::config::validation::references_path),
+    code(project::config::validation::references_file_not_found),
     help("参照設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  ReferencesPathResolution {
+  ReferencesFileNotFound {
     /// 見つからなかった参照設定ファイルのパス
     path: String,
   },
   /// ソースファイルが見つからない
   #[error("ソースファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(project::config::validation::source_path),
+    code(project::config::validation::source_file_not_found),
     help("`sources` に列挙したファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  SourcePathResolution {
+  SourceFileNotFound {
     /// 見つからなかったソースファイルのパス
     path: String,
   },

@@ -244,7 +244,7 @@ fn resolve_reference_paths(
     if source.exists(&resolved) {
       reference.csl_path = Some(resolved);
     } else {
-      errors.push(StyleValidationError::CslPathResolution {
+      errors.push(StyleValidationError::CslFileNotFound {
         path: resolved.to_string(),
       });
     }
@@ -255,7 +255,7 @@ fn resolve_reference_paths(
     if source.exists(&resolved) {
       reference.locale_path = Some(resolved);
     } else {
-      errors.push(StyleValidationError::LocalePathResolution {
+      errors.push(StyleValidationError::LocaleFileNotFound {
         path: resolved.to_string(),
       });
     }
@@ -266,14 +266,15 @@ fn resolve_reference_paths(
 
 #[cfg(test)]
 mod tests {
-  use std::path::Path;
+  use std::{collections::BTreeSet, path::Path};
 
   use garde::Validate;
+  use miette::Diagnostic;
 
   use crate::{
     length::Length,
     project::{MemoryProjectSource, PathResolver, ProjectPath},
-    style::{ReadStyleError, ReferenceStyle, Style, StyleValidationError, load, resolve_reference_paths},
+    style::{ReferenceStyle, Style, load, resolve_reference_paths},
   };
 
   #[test]
@@ -330,16 +331,17 @@ mod tests {
     let Err(failures) = result else {
       panic!("2 件の検証エラーを期待");
     };
-    let errors: Vec<&ReadStyleError> = failures.iter().collect();
-    assert!(errors.iter().any(|e| matches!(
-      e,
-      ReadStyleError::Validation(failure) if matches!(failure.error(), StyleValidationError::CslPathResolution { .. })
-    )));
-    assert!(errors.iter().any(|e| matches!(
-      e,
-      ReadStyleError::Validation(failure)
-        if matches!(failure.error(), StyleValidationError::LocalePathResolution { .. })
-    )));
+    let codes: BTreeSet<String> = failures
+      .iter()
+      .map(|error| return error.code().expect("leaf の code を持つはず").to_string())
+      .collect();
+    assert_eq!(
+      codes,
+      BTreeSet::from([
+        "style::validation::csl_file_not_found".to_owned(),
+        "style::validation::locale_file_not_found".to_owned()
+      ])
+    );
   }
 
   #[test]
@@ -537,8 +539,8 @@ mod validate_tests {
       .iter()
       .map(|error| match error {
         StyleValidationError::Field { path, .. }
-        | StyleValidationError::CslPathResolution { path, .. }
-        | StyleValidationError::LocalePathResolution { path, .. } => return path.as_str(),
+        | StyleValidationError::CslFileNotFound { path, .. }
+        | StyleValidationError::LocaleFileNotFound { path, .. } => return path.as_str(),
       })
       .collect();
   }
