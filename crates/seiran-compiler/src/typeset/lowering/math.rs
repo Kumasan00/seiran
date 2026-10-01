@@ -17,7 +17,7 @@ use crate::{
   },
   length::Length,
   semantics::LabelId,
-  style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
+  style::{MathAlignment, MathScriptStyle, NumberSide, NumberTemplate},
   typeset::{
     boxes::Align,
     lowering::{
@@ -114,12 +114,12 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
   )];
 }
 
-/// `crate::style::Alignment`（数式本体の揃え）を `crate::typeset::boxes::Align` に対応付ける
-fn alignment_to_align(alignment: Alignment) -> Align {
+/// `crate::style::MathAlignment`（数式本体の揃え）を `crate::typeset::boxes::Align` に対応付ける
+fn alignment_to_align(alignment: MathAlignment) -> Align {
   return match alignment {
-    Alignment::Center => Align::Center,
-    Alignment::Left => Align::Left,
-    Alignment::Right => Align::Right,
+    MathAlignment::Center => Align::Center,
+    MathAlignment::Left => Align::Left,
+    MathAlignment::Right => Align::Right,
   };
 }
 
