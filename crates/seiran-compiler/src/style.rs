@@ -47,7 +47,7 @@ pub(crate) use crate::style::{
   list::NestedOrderedFormat,
   math::{MathAlignment, MathScriptStyle, NumberSide},
   number_style::NumberStyle,
-  page_numbering::PageNumbering,
+  page_numbering::PageNumberingStyle,
   running::RunningContentStyle,
   template::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
@@ -114,7 +114,7 @@ pub(crate) struct Style {
   pub theorems: TheoremStyles,
   /// ページ番号のスタイル（前付け＝ローマ数字 / 本文＝算用数字）
   #[garde(dive)]
-  pub page_numbering: PageNumbering,
+  pub page_numbering: PageNumberingStyle,
   /// ヘッダー（ページ上端の走り文）のスタイル
   #[garde(dive)]
   pub header: RunningContentStyle,

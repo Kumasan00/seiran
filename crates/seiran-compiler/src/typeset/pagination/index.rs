@@ -344,7 +344,7 @@ mod tests {
   use super::{IndexPageItem, IndexPageRef, build_index_spec, collect_index_entries, group_page_items};
   use crate::{
     length::Length,
-    style::{PageNumbering, Style},
+    style::{PageNumberingStyle, Style},
     typeset::{
       boxes::{AnchorId, IndexTerm, Page},
       pagination::page_values::BodyPageValues,
@@ -462,7 +462,7 @@ mod tests {
       page_with_index_entries(vec![]),
       page_with_index_entries(vec![]),
     ];
-    let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
+    let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumberingStyle::default());
 
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
@@ -476,7 +476,7 @@ mod tests {
       page_with_index_entries(vec![("犬", None), ("猫", None)]),
       page_with_index_entries(vec![("犬", None)]),
     ];
-    let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
+    let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumberingStyle::default());
 
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
@@ -493,7 +493,7 @@ mod tests {
       page_with_index_entries(vec![("犬", None), ("猫", Some("びょう"))]),
       page_with_index_entries(vec![("犬", None), ("猫", Some("ねこ"))]),
     ];
-    let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
+    let body_page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumberingStyle::default());
 
     let entries = collect_index_entries(&mut body_pages, &body_page_values);
 
