@@ -31,7 +31,7 @@ pub(crate) struct SourceEntry {
 /// `miette::Diagnostic` は実装しない — 診断（`code` / 役割とパスを含むメッセージ）は入力読込側が組み立て、
 /// `project` はどのパスがどう失敗したかだけを返す。
 #[derive(Debug)]
-pub(crate) struct SourceSetReadError {
+pub(crate) struct ReadSourceError {
   /// 読込に失敗した表示用パス
   pub(crate) path: String,
   /// seam から返った元エラー
@@ -77,12 +77,12 @@ impl SourceSet {
   pub(crate) fn read(
     source: &dyn ProjectSource,
     sources: &[ProjectPath],
-  ) -> Result<SourceSet, Failures<SourceSetReadError>> {
-    let results: Vec<Result<(String, Arc<str>), SourceSetReadError>> = sources
+  ) -> Result<SourceSet, Failures<ReadSourceError>> {
+    let results: Vec<Result<(String, Arc<str>), ReadSourceError>> = sources
       .iter()
       .map(|source_path| {
         let content = source.read_text(source_path).map_err(|error| {
-          return SourceSetReadError {
+          return ReadSourceError {
             path: source_path.to_string(),
             source: error,
           };
