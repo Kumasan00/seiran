@@ -20,7 +20,7 @@ pub(super) enum TagError {
 ///
 /// case は正規化せずユーザ指定をそのまま保持します（例: `"latn"` / `"Latn"` / `"LATN"` は
 /// それぞれ異なるバイト列になります）。
-pub(crate) fn parse_script(value: &str) -> Result<[u8; 4], TagError> {
+pub(super) fn parse_script(value: &str) -> Result<[u8; 4], TagError> {
   if value.len() == 4 && value.bytes().all(|b| return b.is_ascii_alphabetic()) {
     return Ok(to_array(value));
   }
@@ -31,7 +31,7 @@ pub(crate) fn parse_script(value: &str) -> Result<[u8; 4], TagError> {
 ///
 /// OpenType 言語システムタグの慣習に従い、大文字化したうえで 4 バイト未満は末尾を空白で
 /// パディングします（例: `"JAN"` → `b"JAN "`、`"eng"` → `b"ENG "`）。
-pub(crate) fn parse_ot_language(value: &str) -> Result<[u8; 4], TagError> {
+pub(super) fn parse_ot_language(value: &str) -> Result<[u8; 4], TagError> {
   if (3..=4).contains(&value.len()) && value.bytes().all(|b| return b.is_ascii_alphanumeric()) {
     let mut bytes = [b' '; 4];
     for (i, b) in value.bytes().enumerate() {
@@ -46,7 +46,7 @@ pub(crate) fn parse_ot_language(value: &str) -> Result<[u8; 4], TagError> {
 ///
 /// アルファベットに限定せず ASCII 全般を許可します（例: `"ss01"` のような数字を含む
 /// ストイリスティックセットタグも有効）。case は保持します。
-pub(crate) fn parse_feature_or_axis(value: &str) -> Result<[u8; 4], TagError> {
+pub(super) fn parse_feature_or_axis(value: &str) -> Result<[u8; 4], TagError> {
   if value.len() == 4 && value.is_ascii() {
     return Ok(to_array(value));
   }

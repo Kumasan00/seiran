@@ -357,7 +357,7 @@ impl Default for RawImageConfig {
 }
 
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
-pub(crate) fn validate_font_language_constraints(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
+pub(super) fn validate_font_language_constraints(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   for &font_type in FontType::ALL {
     let cfg = &value[font_type];
     if cfg.ot_language.is_some() && cfg.script.is_none() {
