@@ -351,7 +351,7 @@ fn parse_font_values(
 
   let script = match raw_font_config.script.as_deref() {
     None => None,
-    Some(value) => match tag::parse_script_tag(value) {
+    Some(value) => match tag::parse_script(value) {
       Ok(bytes) => Some(bytes),
       Err(error) => {
         errors.push(field_error(font_type, "script", error));
@@ -362,7 +362,7 @@ fn parse_font_values(
 
   let ot_language_tag = match raw_font_config.ot_language.as_deref() {
     None => None,
-    Some(value) => match tag::parse_ot_language_tag(value) {
+    Some(value) => match tag::parse_ot_language(value) {
       Ok(bytes) => Some(bytes),
       Err(error) => {
         errors.push(field_error(font_type, "ot_language", error));
@@ -385,7 +385,7 @@ fn parse_font_values(
   let variation_axes = raw_font_config.variation_axes.as_deref().map(|axes| {
     return axes
       .iter()
-      .filter_map(|axis| match tag::parse_opentype_tag(&axis.name) {
+      .filter_map(|axis| match tag::parse_feature_or_axis(&axis.name) {
         Ok(name) => {
           return Some(VariationAxis {
             name,
@@ -403,7 +403,7 @@ fn parse_font_values(
   let features = raw_font_config.features.as_deref().and_then(|feats| {
     let converted: Vec<Feature> = feats
       .iter()
-      .filter_map(|feature| match tag::parse_opentype_tag(&feature.tag) {
+      .filter_map(|feature| match tag::parse_feature_or_axis(&feature.tag) {
         Ok(tag) => {
           return Some(Feature {
             tag,
@@ -836,6 +836,26 @@ mod tests {
       ConfigValidationError::Field { path, message }
         if path == "font_configs.serif" && message.contains("ot_language") && message.contains("script")
     )));
+  }
+
+  #[test]
+  fn validate_values_rejects_invalid_feature_and_axis_tags() {
+    let errors = run_validate_with_serif_extra(
+      "features = [{ tag = \"lig\", value = 1 }]\nvariation_axes = [{ name = \"wg\", value = 400.0 }]",
+    )
+    .unwrap_err();
+
+    for field in ["features", "variation_axes"] {
+      assert!(
+        errors.iter().any(|error| matches!(
+          error,
+          ConfigValidationError::Field { path, message }
+            if *path == format!("font_configs.serif.{field}")
+              && message == "OpenType タグは 4 文字の ASCII である必要があります"
+        )),
+        "{field}: {errors:?}"
+      );
+    }
   }
 
   #[test]
