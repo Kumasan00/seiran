@@ -262,7 +262,7 @@ pub(super) struct RawFontConfig {
   /// BCP 47 言語タグ（例: `"ja"`, `"en-US"`, `"zh-Hant"`）
   ///
   /// `-x-hbsc` / `-x-hbot` 予約サブタグの直接記述は禁止。
-  #[garde(custom(validate_bcp47_language))]
+  #[garde(custom(validate_font_language))]
   pub language: Option<String>,
   /// OpenType / ISO 15924 script タグ（4 文字 ASCII アルファベット、例: `"latn"`, `"Latn"`, `"kana"`）
   pub script: Option<String>,
@@ -276,13 +276,13 @@ pub(super) struct RawFontConfig {
   pub features: Option<Vec<RawFontFeature>>,
 }
 
-/// BCP 47 言語タグを検証します（`unic-langid` による構造的パース）。
+/// フォント設定の言語タグを検証します（予約サブタグ `-x-hbsc` / `-x-hbot` の拒否と BCP 47 構造的妥当性）。
 #[expect(
   clippy::ref_option,
   clippy::trivially_copy_pass_by_ref,
   reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
 )]
-fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
+fn validate_font_language(value: &Option<String>, _: &()) -> garde::Result {
   let Some(language) = value else {
     return Ok(());
   };
