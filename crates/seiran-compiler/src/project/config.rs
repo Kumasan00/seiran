@@ -79,7 +79,7 @@ pub(crate) fn load(
     Ok(raw_config) => raw_config,
     Err(failures) => return (Err(failures), Vec::new()),
   };
-  let (config, warnings) = resolve(raw_config, source, resolver);
+  let (config, warnings) = validate_and_build(raw_config, source, resolver);
   let config = config.map_err(|failures| {
     return failures.map(|error| return ReadConfigError::from(InFile::new(config_path.to_string(), error)));
   });
@@ -121,12 +121,12 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
   );
 }
 
-/// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
+/// [`RawConfig`] の値を検証し、パスを解決して存在を確かめ、[`ProjectConfig`] を組み立てます。
 ///
-/// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、パスを
+/// 値検証とパス解決（存在確認を含む）の違反を集約します。出力ディレクトリの作成は行わず、パスを
 /// 組み立てるだけです。警告はパス解決の時点で確定するので、構築の成否と独立に返します。
 /// 違反にはファイルのパスを添えません。
-fn resolve(
+fn validate_and_build(
   raw: RawConfig,
   source: &dyn ProjectSource,
   resolver: &PathResolver,
@@ -481,9 +481,7 @@ mod tests {
   };
   use crate::project::{
     FilesystemProjectSource, FontType, MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, SourceReadError,
-    config::test_support::{
-      font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
-    },
+    config::test_support::{font_sections, font_sections_with_serif_extra, valid_output_section, valid_pdf_section},
   };
 
   /// `parse_config` 用のダミーパス。
@@ -520,7 +518,7 @@ mod tests {
       "sources = [\"a.sei\"]\nstyle_path = \"style.toml\"\nreferences_path = \"references.toml\"\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("fonts/dummy.ttf"),
+      font_sections("fonts/dummy.ttf"),
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
     let source = MemoryProjectSource::new();
@@ -548,7 +546,7 @@ mod tests {
       "style_path = \"style.toml\"\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("fonts/dummy.ttf"),
+      font_sections("fonts/dummy.ttf"),
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
     let source = MemoryProjectSource::new()
@@ -569,7 +567,7 @@ mod tests {
       "sources = []\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("fonts/dummy.ttf").replacen(
+      font_sections("fonts/dummy.ttf").replacen(
         "font_path = \"fonts/dummy.ttf\"",
         "font_path = \"fonts/./dummy.ttf\"",
         1
@@ -601,7 +599,7 @@ mod tests {
       "sources = [\"a.sei\"]\n\n{}{}{}",
       valid_output_section("test", output_dir.to_str().unwrap()),
       valid_pdf_section(),
-      make_font_sections("fonts/dummy.ttf"),
+      font_sections("fonts/dummy.ttf"),
     );
     let source = MemoryProjectSource::new()
       .with_text("/project/config.toml", &toml)
@@ -640,7 +638,7 @@ mod tests {
     let toml = format!(
       "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\nmargin_top = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
-      make_font_sections("dummy.ttf"),
+      font_sections("dummy.ttf"),
     );
     let failures = parse_config(&toml, dummy_source()).unwrap_err();
     let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
@@ -668,10 +666,8 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_legacy_top_level_name() {
-    let toml = format!(
-      "name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n{}",
-      make_font_sections("dummy.ttf"),
-    );
+    let toml =
+      format!("name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n{}", font_sections("dummy.ttf"));
     let result = parse_config(&toml, dummy_source());
     assert!(matches!(
       result.as_ref().map_err(|failures| return failures.first()),
@@ -681,8 +677,7 @@ mod tests {
 
   #[test]
   fn validate_values_fails_on_omitted_sources() {
-    let toml =
-      format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
+    let toml = format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), font_sections("dummy.ttf"));
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
     let errors = validate_values(&raw).unwrap_err();
@@ -695,8 +690,7 @@ mod tests {
 
   #[test]
   fn validate_values_fails_on_empty_output_dir() {
-    let toml =
-      format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), make_font_sections("dummy.ttf"));
+    let toml = format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), font_sections("dummy.ttf"));
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
     let errors = validate_values(&raw).unwrap_err();
@@ -708,12 +702,39 @@ mod tests {
   }
 
   #[test]
+  fn validate_values_reports_invalid_output_name_as_output_file_name() {
+    let cases = [
+      ("", "出力ファイル名は空にできません"),
+      ("a/b", "出力ファイル名にパスセパレータ ('/' または '\\\\') を含めることはできません"),
+      ("..", "出力ファイル名を '.' または '..' にすることはできません"),
+    ];
+    for (name, expected) in cases {
+      let toml = format!("{}{}{}", valid_output_section(name, "out"), valid_pdf_section(), font_sections("dummy.ttf"));
+      let raw = parse_config(&toml, dummy_source()).unwrap();
+
+      let errors = validate_values(&raw).unwrap_err();
+
+      // sources 省略の違反も同時に出るので、output.name の違反だけを取り出して比べる
+      let messages: Vec<&str> = errors
+        .iter()
+        .filter_map(|error| {
+          return match error {
+            ConfigValidationError::Field { path, message } if path == "output.name" => Some(message.as_str()),
+            _ => None,
+          };
+        })
+        .collect();
+      assert_eq!(messages, [expected], "name = {name:?}");
+    }
+  }
+
+  #[test]
   fn validate_values_fails_on_out_of_range_max_dpi() {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("dummy.ttf"),
+      font_sections("dummy.ttf"),
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
@@ -866,7 +887,7 @@ mod tests {
       "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"!!\"\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("dummy.ttf"),
+      font_sections("dummy.ttf"),
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
@@ -884,7 +905,7 @@ mod tests {
       "sources = [\"dummy.sei\"]\n\n[document]\nkeywords = [\"foo\", \"\", \"bar\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("dummy.ttf"),
+      font_sections("dummy.ttf"),
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
@@ -903,7 +924,7 @@ mod tests {
         "sources = [\"{source_path}\"]\n\n[document]\ntitle = \"Test Doc\"\n\n{}{}{}",
         valid_output_section("test_doc", output_dir),
         valid_pdf_section(),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
 
@@ -927,7 +948,7 @@ mod tests {
         "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
         valid_output_section("test", output_dir),
         valid_pdf_section(),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
 
@@ -947,7 +968,7 @@ mod tests {
         "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
          show_bookmarks = false\n\n{}",
         valid_output_section("test", output_dir),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
 
@@ -966,7 +987,7 @@ mod tests {
       "sources = [\"missing.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      make_font_sections("fonts/dummy.ttf"),
+      font_sections("fonts/dummy.ttf"),
     );
     let source = MemoryProjectSource::new()
       .with_text("/project/settings/custom.toml", &toml)
@@ -1000,7 +1021,7 @@ mod tests {
       return format!(
         "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
         valid_pdf_section(),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
     let source = FilesystemProjectSource;
@@ -1063,7 +1084,7 @@ mod tests {
         "sources = [\"{source_path}\"]\n\n[document]\nlanguage = \"ja\"\nkeywords = [\"組版\", \"PDF\"]\n\n{}{}{}",
         valid_output_section("test_doc", output_dir),
         valid_pdf_section(),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
 
@@ -1121,7 +1142,7 @@ mod tests {
         md.display(),
         valid_output_section("test_doc", output_dir),
         valid_pdf_section(),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
 
@@ -1148,7 +1169,7 @@ mod tests {
       "sources = [\"missing.txt\"]\n\n{}{}{}",
       valid_output_section("test", "/project/out"),
       valid_pdf_section(),
-      make_font_sections("fonts/dummy.ttf"),
+      font_sections("fonts/dummy.ttf"),
     );
     let source = MemoryProjectSource::new()
       .with_text("/project/config.toml", &toml)

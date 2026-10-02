@@ -121,7 +121,7 @@ fn missing_sources_are_reported_in_declaration_order_on_every_run() {
     "sources = [\"/project/z.sei\", \"/project/a.sei\"]\n\n{}{}{}",
     seiran_compiler::test_support::valid_pdf_section(),
     seiran_compiler::test_support::valid_output_section("out", "/project/out"),
-    seiran_compiler::test_support::make_font_sections("/project/font.ttf"),
+    seiran_compiler::test_support::font_sections("/project/font.ttf"),
   );
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", config)

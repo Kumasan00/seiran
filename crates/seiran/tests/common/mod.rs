@@ -48,7 +48,7 @@ pub(crate) fn write_project(dir: &Path, source_name: &str, body: &str, output_di
     "sources = [\"{source_name}\"]\n\n{}{}{}",
     test_support::valid_output_section("doc", output_dir),
     test_support::valid_pdf_section(),
-    test_support::make_font_sections(font.to_str().expect("テストフォントのパスは UTF-8 のはず")),
+    test_support::font_sections(font.to_str().expect("テストフォントのパスは UTF-8 のはず")),
   );
   fs::write(dir.join("config.toml"), config).expect("config.toml を書けるはず");
   fs::write(dir.join(source_name), body).expect("本文を書けるはず");

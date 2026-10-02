@@ -287,7 +287,7 @@ mod tests {
     FilesystemProjectSource, PathResolver, ProjectPath,
     config::{
       self,
-      test_support::{make_font_sections, valid_output_section, valid_pdf_section},
+      test_support::{font_sections, valid_output_section, valid_pdf_section},
     },
   };
 
@@ -312,7 +312,7 @@ mod tests {
         "sources = [\"{source_path}\"]\n\n{}{}{}",
         valid_output_section("test", output_dir),
         valid_pdf_section(),
-        make_font_sections(font_path),
+        font_sections(font_path),
       );
     });
     let source = FilesystemProjectSource;

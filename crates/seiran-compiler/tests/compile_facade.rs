@@ -415,7 +415,7 @@ fn compile_reads_an_image_once_when_it_is_spelled_two_ways() {
 #[test]
 fn compile_reads_a_font_once_when_it_is_spelled_two_ways() {
   // 1 種別だけ `fonts/./font.ttf`、残り 18 種別は `fonts/font.ttf` を指す
-  let font_sections = test_support::make_font_sections("fonts/font.ttf").replacen(
+  let font_sections = test_support::font_sections("fonts/font.ttf").replacen(
     "font_path = \"fonts/font.ttf\"",
     "font_path = \"fonts/./font.ttf\"",
     1,
