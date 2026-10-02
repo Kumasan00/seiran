@@ -79,7 +79,7 @@ pub(crate) fn load(
     Ok(raw_config) => raw_config,
     Err(failures) => return (Err(failures), Vec::new()),
   };
-  let (config, warnings) = resolve(raw_config, source, resolver);
+  let (config, warnings) = validate_and_build(raw_config, source, resolver);
   let config = config.map_err(|failures| {
     return failures.map(|error| return ReadConfigError::from(InFile::new(config_path.to_string(), error)));
   });
@@ -121,12 +121,12 @@ fn parse_config(content: &str, source_path: &Path) -> Result<RawConfig, Failures
   );
 }
 
-/// [`RawConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
+/// [`RawConfig`] の値を検証し、パスを解決して存在を確かめ、[`ProjectConfig`] を組み立てます。
 ///
-/// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、パスを
+/// 値検証とパス解決（存在確認を含む）の違反を集約します。出力ディレクトリの作成は行わず、パスを
 /// 組み立てるだけです。警告はパス解決の時点で確定するので、構築の成否と独立に返します。
 /// 違反にはファイルのパスを添えません。
-fn resolve(
+fn validate_and_build(
   raw: RawConfig,
   source: &dyn ProjectSource,
   resolver: &PathResolver,
