@@ -4,7 +4,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  project::{FontReadError, SourceReadError, config::ReadConfigError},
+  project::{FontReadError, ProjectSourceError, config::ReadConfigError},
   semantics::ReadReferencesError,
   style::ReadStyleError,
   typeset::LayoutValidationError,
@@ -14,7 +14,7 @@ use crate::{
 ///
 /// **段の名前を足す wrapper にはしない** — 内側が独立した診断（`Diagnostic`）を持つものは
 /// `transparent` でそのまま委譲し、ユーザーが最初に読むメッセージが常に修正可能な leaf に
-/// なるようにする。自前のバリアントを持つのは、内側が `SourceReadError` で診断を持たず、
+/// なるようにする。自前のバリアントを持つのは、内側が `ProjectSourceError` で診断を持たず、
 /// パス入りのメッセージと help をこの型自身が与える `ReadTextFile` 1 つだけ。
 #[derive(Debug, Error, Diagnostic)]
 pub(in crate::compiler) enum InputError {
@@ -31,7 +31,7 @@ pub(in crate::compiler) enum InputError {
     path: String,
     /// 元の読込エラー（低水準 cause）
     #[source]
-    source: SourceReadError,
+    source: ProjectSourceError,
   },
 
   /// config.toml の読込・検証エラー

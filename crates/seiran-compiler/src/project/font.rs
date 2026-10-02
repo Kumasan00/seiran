@@ -21,7 +21,7 @@ use thiserror::Error;
 
 use crate::{
   failures::{self, Failures},
-  project::{ProjectPath, ProjectSource, SourceReadError},
+  project::{ProjectPath, ProjectSource, ProjectSourceError},
 };
 
 /// フォントファイルを読み込めないときのエラー。
@@ -37,7 +37,7 @@ pub(crate) enum FontReadError {
     path: String,
     /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: SourceReadError,
+    source: ProjectSourceError,
   },
 }
 

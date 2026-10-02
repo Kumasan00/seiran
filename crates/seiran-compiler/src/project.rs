@@ -89,7 +89,7 @@ impl AsRef<Path> for ProjectPath {
 /// 役割とパスを含む leaf diagnostic は所有段が作り、この型はその `#[source]` に入って
 /// 「何が起きたか」だけを伝える。
 #[derive(Debug, Error)]
-pub enum SourceReadError {
+pub enum ProjectSourceError {
   /// ファイルの読み込みに失敗した（`ErrorKind` で not found / permission denied を区別できる）。
   #[error(transparent)]
   Io(#[from] std::io::Error),
@@ -115,14 +115,14 @@ pub trait ProjectSource: Send + Sync {
   /// # Errors
   ///
   /// 読み込みに失敗した場合、または UTF-8 として解釈できない場合にエラーを返す。
-  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError>;
+  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, ProjectSourceError>;
 
   /// バイト列として読み込む（フォント・画像用）。
   ///
   /// # Errors
   ///
   /// 読み込みに失敗した場合にエラーを返す。
-  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError>;
+  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, ProjectSourceError>;
 
   /// パスが存在するかどうかを返す。
   fn exists(&self, path: &ProjectPath) -> bool;

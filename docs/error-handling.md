@@ -19,12 +19,12 @@ warning と tracing の分担・内部不変条件違反の扱い・garde バリ
   利用者から見える出力が 1 段深くなる。`#[diagnostic_source]` を使うのは、内側のエラー自身が独立した
   診断として読ませる価値がある場合（`#[label]` / `#[source_code]` を持つパース系エラー等）に限る
 - **低水準 cause は `Diagnostic` を実装せず、そのまま `#[source]` で連鎖させる**（#377。`io::Error` へ
-  平坦化する変換は持たない）。資源取得の `project::SourceReadError` は
+  平坦化する変換は持たない）。資源取得の `project::ProjectSourceError` は
   `thiserror::Error` だけを実装し、「どの資源を読もうとしたか」を知らない。役割（設定 / スタイル /
   文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic は所有段が作り、seam のエラーは
   その `#[source]` に入って「何が起きたか」（not found / permission denied / 不正な UTF-8）だけを
   伝える。`Diagnostic` を実装しないので入れ子の診断ブロックは生まれず、cause chain と元の
-  `io::ErrorKind` は変換後も残る。`SourceReadError::Io` は `#[error(transparent)]` なので、
+  `io::ErrorKind` は変換後も残る。`ProjectSourceError::Io` は `#[error(transparent)]` なので、
   最頻ケースの表示は所有段のメッセージ + 元の I/O エラー 1 行のまま変わらない
 
 ## 診断 `code` の規約

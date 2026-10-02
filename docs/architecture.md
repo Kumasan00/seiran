@@ -166,7 +166,7 @@ TOML 解析部品 `toml_error_parts` は crate 内の他 module に依存しな�
   持つので `BTreeSet` による決定的な重複除去・昇順ソートに使える。`base_dir` の前置は deserialize では
   なく `load` 側
 - `canonicalize` を採用しない（理由は `path_resolver` の `//!`）
-- `SourceReadError` は **`miette::Diagnostic` を実装しない低水準 cause**。「どの資源を読もうとしたか」を
+- `ProjectSourceError` は **`miette::Diagnostic` を実装しない低水準 cause**。「どの資源を読もうとしたか」を
   知らず単独では描画されない。役割とパスを含む leaf diagnostic は所有段が作り、seam のエラーはその
   `#[source]` に入って「何が起きたか」だけを伝える。パスをどのバリアントにも持たせず、`io::Error` へ
   平坦化して kind と cause chain を捨てる変換は持たない
@@ -1033,7 +1033,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 段の呼び出し順序・中間型（`LaidOutDocument` / フォント資源 / 画像資源等）は一切公開しない。`lib.rs` が
 crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `Warnings`）・
 失敗型 `CompileFailure`・`Publication` とそこから到達できる leaf 値型・`ProjectSource` 系（trait・2 実装・
-`ProjectPath` / `SourceReadError`）・`Length` / `Color` とその `FromStr` エラー型・`#[doc(hidden)]` の
+`ProjectPath` / `ProjectSourceError`）・`Length` / `Color` とその `FromStr` エラー型・`#[doc(hidden)]` の
 `test_support` のみ。PDF バイト列の生成と保存は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
 呼び出し元（`seiran`）の責務。
 

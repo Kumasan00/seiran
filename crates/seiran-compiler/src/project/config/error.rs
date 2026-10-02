@@ -3,7 +3,7 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-use crate::project::{FontType, InFile, SourceReadError};
+use crate::project::{FontType, InFile, ProjectSourceError};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -16,7 +16,7 @@ pub(crate) enum ReadConfigError {
     path: String,
     #[source]
     /// 元の読み込みエラー（低水準 cause）
-    source: SourceReadError,
+    source: ProjectSourceError,
   },
   /// TOML 解析失敗
   #[error("設定ファイルの TOML 解析に失敗しました")]

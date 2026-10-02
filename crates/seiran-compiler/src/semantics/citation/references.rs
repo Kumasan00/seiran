@@ -105,7 +105,7 @@ mod tests {
   use super::{
     ReadReferencesError, date::Season, name::Name, parse_references, read_references, reference::NumberOrString,
   };
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, SourceReadError};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSourceError};
 
   /// `parse_references` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
@@ -297,7 +297,7 @@ mod tests {
     let Err(ReadReferencesError::ReadFile { source, .. }) = result else {
       panic!("ReadFile を期待, got {result:?}");
     };
-    assert!(matches!(source, SourceReadError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
+    assert!(matches!(source, ProjectSourceError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
   }
 
   #[test]

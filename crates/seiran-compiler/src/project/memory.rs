@@ -7,7 +7,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use crate::project::{ProjectPath, ProjectSource, SourceReadError};
+use crate::project::{ProjectPath, ProjectSource, ProjectSourceError};
 
 /// メモリ上に事前登録したファイルだけを読む `ProjectSource`。
 ///
@@ -77,14 +77,14 @@ impl Default for MemoryProjectSource {
 }
 
 impl ProjectSource for MemoryProjectSource {
-  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
+  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, ProjectSourceError> {
     self.record_read(path);
-    return self.files.get(path).cloned().ok_or(SourceReadError::NotFound);
+    return self.files.get(path).cloned().ok_or(ProjectSourceError::NotFound);
   }
 
-  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError> {
+  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, ProjectSourceError> {
     let bytes = self.read_bytes(path)?;
-    let text = std::str::from_utf8(&bytes).map_err(SourceReadError::InvalidUtf8)?;
+    let text = std::str::from_utf8(&bytes).map_err(ProjectSourceError::InvalidUtf8)?;
     return Ok(Arc::from(text));
   }
 
@@ -99,7 +99,7 @@ mod tests {
   fn read_bytes_reports_not_found_for_unregistered_path() {
     let source = MemoryProjectSource::new();
     let result = source.read_bytes(&ProjectPath::new("missing.ttf"));
-    assert!(matches!(result, Err(SourceReadError::NotFound)));
+    assert!(matches!(result, Err(ProjectSourceError::NotFound)));
   }
 
   #[test]
