@@ -112,6 +112,8 @@ impl FontData {
 
 #[cfg(test)]
 mod tests {
+  use miette::Diagnostic;
+
   use super::{FontConfig, FontConfigs, FontData, FontReadError, FontType};
   use crate::project::{MemoryProjectSource, ProjectPath};
 
@@ -175,6 +177,10 @@ mod tests {
       failures.first().to_string().starts_with("serif のフォントファイル"),
       "種別は config.toml のキーで出るはず: {}",
       failures.first()
+    );
+    assert_eq!(
+      failures.first().help().map(|help| return help.to_string()),
+      Some("フォントファイルのパスと読み取り権限を確認してください。".to_string())
     );
   }
 }
