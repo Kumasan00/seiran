@@ -50,7 +50,7 @@ fn read_japanese_test_font() -> Vec<u8> {
 ///
 /// `wght` 軸の指定が要る（軸を持つフォントで未指定だと検証が `MissingVariationAxes` で落ちる）。
 fn japanese_config_toml() -> String {
-  let sections = test_support::make_font_sections("/project/font.ttf").replace(
+  let sections = test_support::font_sections("/project/font.ttf").replace(
     "font_path = \"/project/font.ttf\"\n",
     "font_path = \"/project/font.ttf\"\nvariation_axes = [{ name = \"wght\", value = 400.0 }]\n",
   );

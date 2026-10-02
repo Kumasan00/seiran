@@ -29,5 +29,5 @@ pub(crate) fn config_toml_with_font_sections(source_path: &str, extra_top_level:
 
 /// 19 フォント種別すべてが同じフォントファイルを指す、最小の妥当な `config.toml` を組む。
 pub(crate) fn minimal_config_toml(source_path: &str) -> String {
-  return config_toml_with_font_sections(source_path, "", &test_support::make_font_sections("/project/font.ttf"));
+  return config_toml_with_font_sections(source_path, "", &test_support::font_sections("/project/font.ttf"));
 }

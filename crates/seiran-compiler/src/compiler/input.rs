@@ -183,7 +183,7 @@ mod tests {
   use super::{InputError, load, read_sources};
   use crate::project::{
     MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, SourceReadError,
-    config::test_support::{make_font_sections, valid_output_section, valid_pdf_section},
+    config::test_support::{font_sections, valid_output_section, valid_pdf_section},
   };
 
   #[test]
@@ -277,11 +277,8 @@ mod tests {
   ///
   /// `style_path` を渡すと `style_path = "..."` を足す。
   fn config_toml(style_path: Option<&str>) -> String {
-    let fonts = make_font_sections("fonts/ok.ttf").replacen(
-      "font_path = \"fonts/ok.ttf\"",
-      "font_path = \"fonts/broken.ttf\"",
-      1,
-    );
+    let fonts =
+      font_sections("fonts/ok.ttf").replacen("font_path = \"fonts/ok.ttf\"", "font_path = \"fonts/broken.ttf\"", 1);
     let style = style_path.map_or_else(String::new, |path| return format!("style_path = \"{path}\"\n"));
     return format!(
       "sources = [\"a.sei\", \"broken.sei\"]\nreferences_path = \"refs.toml\"\n{style}\n{}{}{fonts}",
