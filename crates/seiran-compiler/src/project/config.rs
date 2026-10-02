@@ -708,6 +708,34 @@ mod tests {
   }
 
   #[test]
+  fn validate_values_reports_invalid_output_name_as_output_file_name() {
+    let cases = [
+      ("", "出力ファイル名は空にできません"),
+      ("a/b", "出力ファイル名にパスセパレータ ('/' または '\\\\') を含めることはできません"),
+      ("..", "出力ファイル名を '.' または '..' にすることはできません"),
+    ];
+    for (name, expected) in cases {
+      let toml =
+        format!("{}{}{}", valid_output_section(name, "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
+      let raw = parse_config(&toml, dummy_source()).unwrap();
+
+      let errors = validate_values(&raw).unwrap_err();
+
+      // sources 省略の違反も同時に出るので、output.name の違反だけを取り出して比べる
+      let messages: Vec<&str> = errors
+        .iter()
+        .filter_map(|error| {
+          return match error {
+            ConfigValidationError::Field { path, message } if path == "output.name" => Some(message.as_str()),
+            _ => None,
+          };
+        })
+        .collect();
+      assert_eq!(messages, [expected], "name = {name:?}");
+    }
+  }
+
+  #[test]
   fn validate_values_fails_on_out_of_range_max_dpi() {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",

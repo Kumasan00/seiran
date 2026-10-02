@@ -103,7 +103,7 @@ fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
 #[derive(Deserialize, Debug, Validate)]
 pub(super) struct RawOutputConfig {
   /// 出力ファイル名の基盤（拡張子なし。PDF ファイル名は `{name}.pdf`）
-  #[garde(custom(validate_document_name))]
+  #[garde(custom(validate_output_name))]
   pub name: String,
   /// 出力ディレクトリ（PDF ファイルの保存先）。
   #[garde(custom(validate_output_dir))]
@@ -139,20 +139,20 @@ fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
   return Ok(());
 }
 
-/// ドキュメント名を検証します。
+/// `[output].name`（出力ファイル名の基盤）を検証します。
 #[expect(
   clippy::trivially_copy_pass_by_ref,
   reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
 )]
-fn validate_document_name(value: &str, _: &()) -> garde::Result {
+fn validate_output_name(value: &str, _: &()) -> garde::Result {
   if value.is_empty() {
-    return Err(garde::Error::new("ドキュメント名は空にできません"));
+    return Err(garde::Error::new("出力ファイル名は空にできません"));
   }
   if value.contains('/') || value.contains('\\') {
-    return Err(garde::Error::new("ドキュメント名にパスセパレータ ('/' または '\\\\') を含めることはできません"));
+    return Err(garde::Error::new("出力ファイル名にパスセパレータ ('/' または '\\\\') を含めることはできません"));
   }
   if value == "." || value == ".." {
-    return Err(garde::Error::new("ドキュメント名を '.' または '..' にすることはできません"));
+    return Err(garde::Error::new("出力ファイル名を '.' または '..' にすることはできません"));
   }
   return Ok(());
 }
