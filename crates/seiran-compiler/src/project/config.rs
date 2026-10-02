@@ -839,6 +839,26 @@ mod tests {
   }
 
   #[test]
+  fn validate_values_rejects_invalid_feature_and_axis_tags() {
+    let errors = run_validate_with_serif_extra(
+      "features = [{ tag = \"lig\", value = 1 }]\nvariation_axes = [{ name = \"wg\", value = 400.0 }]",
+    )
+    .unwrap_err();
+
+    for field in ["features", "variation_axes"] {
+      assert!(
+        errors.iter().any(|error| matches!(
+          error,
+          ConfigValidationError::Field { path, message }
+            if *path == format!("font_configs.serif.{field}")
+              && message == "OpenType タグは 4 文字の ASCII である必要があります"
+        )),
+        "{field}: {errors:?}"
+      );
+    }
+  }
+
+  #[test]
   fn build_language_string_handles_all_combinations() {
     assert_eq!(build_language_string(None, None), None);
     assert_eq!(build_language_string(Some("ja"), None), Some("ja".to_string()));
