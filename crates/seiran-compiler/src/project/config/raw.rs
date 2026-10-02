@@ -149,7 +149,7 @@ fn validate_output_name(value: &str, _: &()) -> garde::Result {
     return Err(garde::Error::new("出力ファイル名は空にできません"));
   }
   if value.contains('/') || value.contains('\\') {
-    return Err(garde::Error::new("出力ファイル名にパスセパレータ ('/' または '\\\\') を含めることはできません"));
+    return Err(garde::Error::new("出力ファイル名にパスセパレータ ('/' または '\\') を含めることはできません"));
   }
   if value == "." || value == ".." {
     return Err(garde::Error::new("出力ファイル名を '.' または '..' にすることはできません"));

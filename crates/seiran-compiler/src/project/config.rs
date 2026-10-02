@@ -705,7 +705,7 @@ mod tests {
   fn validate_values_reports_invalid_output_name_as_output_file_name() {
     let cases = [
       ("", "出力ファイル名は空にできません"),
-      ("a/b", "出力ファイル名にパスセパレータ ('/' または '\\\\') を含めることはできません"),
+      ("a/b", "出力ファイル名にパスセパレータ ('/' または '\\') を含めることはできません"),
       ("..", "出力ファイル名を '.' または '..' にすることはできません"),
     ];
     for (name, expected) in cases {
