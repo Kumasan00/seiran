@@ -4,7 +4,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  project::{FontReadError, ProjectSourceError, config::ReadConfigError},
+  project::{ProjectSourceError, ReadFontError, config::ReadConfigError},
   semantics::ReadReferencesError,
   style::ReadStyleError,
   typeset::LayoutValidationError,
@@ -57,5 +57,5 @@ pub(in crate::compiler) enum InputError {
   /// フォントファイルの読込エラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Font(#[from] FontReadError),
+  Font(#[from] ReadFontError),
 }

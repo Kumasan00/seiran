@@ -42,7 +42,7 @@ use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
 pub use font::FontType;
 pub(crate) use font::{
-  Feature, FontConfig, FontConfigs, FontData, FontMap, FontReadError, TextDirection, VariationAxis,
+  Feature, FontConfig, FontConfigs, FontData, FontMap, ReadFontError, TextDirection, VariationAxis,
 };
 pub(crate) use in_file::InFile;
 pub use memory::MemoryProjectSource;
