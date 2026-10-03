@@ -181,9 +181,9 @@ mod tests {
     assert!(!table.rows[0].rule_above);
     assert!(table.rows[1].rule_above);
     assert_eq!(table.rows[1].cells.len(), 2);
-    assert_eq!(table.rows[1].cells[0].span, 2);
+    assert_eq!(table.rows[1].cells[0].column_span, 2);
     assert_eq!(hir_inlines_to_plain_text(&table.rows[1].cells[0].content), "合計");
-    assert_eq!(table.rows[1].cells[1].span, 1);
+    assert_eq!(table.rows[1].cells[1].column_span, 1);
     assert_eq!(hir_inlines_to_plain_text(&table.rows[1].cells[1].content), "180");
   }
 

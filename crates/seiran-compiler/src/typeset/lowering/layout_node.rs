@@ -196,8 +196,8 @@ pub(in crate::typeset) struct TableRowLayout {
 pub(in crate::typeset) struct TableCellLayout {
   /// セル内容（スタイル付与済みのインライン列）
   pub content: Vec<InlineNode>,
-  /// 列方向の結合数（colspan、1 以上）
-  pub span: u32,
+  /// 列方向の結合数（1 以上）
+  pub column_span: u32,
 }
 
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現

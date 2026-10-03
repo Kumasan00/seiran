@@ -50,8 +50,8 @@ pub(in crate::typeset) struct TableCellBox {
   /// セル内容のアイテム列（`Box` / `Kern` / `Glue` が主だが、`\ref`/`\url`/`\href` を
   /// 含む場合は `LinkStart`/`LinkEnd` も現れる。行分割・ページ分割はセル内では無効）
   pub items: Vec<HItem>,
-  /// 列方向の結合数（colspan、1 以上）
-  pub span: u32,
+  /// 列方向の結合数（1 以上）
+  pub column_span: u32,
 }
 
 /// アイテム列の自然幅を返す
@@ -106,8 +106,8 @@ pub(crate) fn table_row_height(row: &TableRowBox, default_font_size: Length, lin
 
 /// 列幅を解決する
 ///
-/// 1. `span = 1` のセルの自然幅（内容実測 + 左右 padding）で各列の自然幅を求める
-/// 2. `span > 1` のセルは、跨ぐ列の自然幅合計が不足する場合に均等に加算する
+/// 1. `column_span = 1` のセルの自然幅（内容実測 + 左右 padding）で各列の自然幅を求める
+/// 2. `column_span > 1` のセルは、跨ぐ列の自然幅合計が不足する場合に均等に加算する
 /// 3. 列指定を適用する: `Fixed` は指定値、`Ratio` は本文幅比、`Auto` は自然幅、
 ///    `Flex`（`*`）は残り幅の等分（自然幅を下回る場合は自然幅）
 ///
@@ -120,30 +120,30 @@ pub(crate) fn resolve_column_widths(table: &TableBox, available: Length, padding
   for row in table.head.iter().chain(table.rows.iter()) {
     let mut column_index = 0usize;
     for cell in &row.cells {
-      let span = cell.span as usize;
-      if span == 1 && column_index < column_count {
+      let column_span = cell.column_span as usize;
+      if column_span == 1 && column_index < column_count {
         let width = measure_items_width(&cell.items) + padding * 2;
         naturals[column_index] = naturals[column_index].max(width);
       }
-      column_index += span;
+      column_index += column_span;
     }
   }
   for row in table.head.iter().chain(table.rows.iter()) {
     let mut column_index = 0usize;
     for cell in &row.cells {
-      let span = cell.span as usize;
-      if span > 1 && column_index + span <= column_count {
+      let column_span = cell.column_span as usize;
+      if column_span > 1 && column_index + column_span <= column_count {
         let width = measure_items_width(&cell.items) + padding * 2;
-        let current: Length = naturals[column_index..column_index + span].iter().sum();
+        let current: Length = naturals[column_index..column_index + column_span].iter().sum();
         if width > current {
-          #[expect(clippy::cast_precision_loss, reason = "`span` は列数で、f32 の仮数部に収まる小さな整数")]
-          let extra = (width - current) / span as f32;
-          for natural in &mut naturals[column_index..column_index + span] {
+          #[expect(clippy::cast_precision_loss, reason = "`column_span` は列数で、f32 の仮数部に収まる小さな整数")]
+          let extra = (width - current) / column_span as f32;
+          for natural in &mut naturals[column_index..column_index + column_span] {
             *natural += extra;
           }
         }
       }
-      column_index += span;
+      column_index += column_span;
     }
   }
 
@@ -199,8 +199,8 @@ fn layout_row_cells<'a>(
   let mut cell_x = Length::ZERO;
   let mut placements = Vec::with_capacity(row.cells.len());
   for cell in &row.cells {
-    let span = (cell.span as usize).min(col_widths.len().saturating_sub(column_index));
-    let band_width: Length = col_widths[column_index..column_index + span].iter().copied().sum();
+    let column_span = (cell.column_span as usize).min(col_widths.len().saturating_sub(column_index));
+    let band_width: Length = col_widths[column_index..column_index + column_span].iter().copied().sum();
     let content_width = measure_items_width(&cell.items);
     let align = columns.get(column_index).map_or(ColumnAlign::Left, |c| return c.align);
     let content_x = match align {
@@ -210,7 +210,7 @@ fn layout_row_cells<'a>(
     };
     placements.push(CellPlacement { cell, content_x });
     cell_x += band_width;
-    column_index += span;
+    column_index += column_span;
   }
   return placements;
 }
@@ -341,8 +341,13 @@ mod tests {
     });
   }
 
-  /// `span=1` のセルを作る
-  fn cell(items: Vec<HItem>) -> TableCellBox { return TableCellBox { items, span: 1 }; }
+  /// `column_span = 1` のセルを作る
+  fn cell(items: Vec<HItem>) -> TableCellBox {
+    return TableCellBox {
+      items,
+      column_span: 1,
+    };
+  }
 
   /// `rule_above = false` の行を作る
   fn row(cells: Vec<TableCellBox>) -> TableRowBox {
@@ -642,7 +647,7 @@ mod tests {
           cell(vec![text_free_box(5.0)]),
           TableCellBox {
             items: vec![text_free_box(50.0)],
-            span: 2,
+            column_span: 2,
           },
         ]),
       ],
@@ -675,7 +680,7 @@ mod tests {
           cell(vec![text_free_box(5.0)]),
           TableCellBox {
             items: vec![text_free_box(20.0)],
-            span: 2,
+            column_span: 2,
           },
         ]),
       ],
@@ -695,7 +700,7 @@ mod tests {
     let row = row(vec![
       TableCellBox {
         items: vec![text_free_box(10.0)],
-        span: 2,
+        column_span: 2,
       },
       cell(vec![text_free_box(4.0)]),
     ]);
@@ -730,7 +735,7 @@ mod tests {
         text_free_box(10.0),
         HItem::LinkEnd,
       ],
-      span: 2,
+      column_span: 2,
     }]);
     let columns = vec![
       TableColumn {

@@ -67,7 +67,7 @@ pub(super) fn build_cell(
   return Ok(HirTableCell {
     id,
     content: trim_cell_content(content),
-    span: 1,
+    column_span: 1,
   });
 }
 
@@ -78,13 +78,17 @@ fn evaluate_cell_command(
   index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
   let opts = collect_command_opt_args(view, &[SPAN.decl()])?;
-  let span = opts.get(SPAN).unwrap_or(1);
+  let column_span = opts.get(SPAN).unwrap_or(1);
 
   let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let id = ctx.alloc(view.span());
   let content = trim_cell_content(evaluate_inline_children(view.source(), ctx, arg, index_policy)?);
-  return Ok(HirTableCell { id, content, span });
+  return Ok(HirTableCell {
+    id,
+    content,
+    column_span,
+  });
 }
 
 /// セル内容の前後の空白由来 `Text` ノードをトリムする
