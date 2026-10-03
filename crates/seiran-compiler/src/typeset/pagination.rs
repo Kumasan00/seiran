@@ -61,16 +61,16 @@ pub(super) fn paginate(
     pages: mut body_pages,
     headings,
     overflows: body_overflows,
-  } = body::typeset_body(ctx, document, &images)?;
+  } = body::paginate(ctx, document, &images)?;
 
   // phase 2: 本文のページ事実を確定する
   let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);
 
   // phase 3: 前付けを組版する
-  let (front_pages, front_overflows) = front_matter::typeset_front_matter(ctx, &facts, &images);
+  let (front_pages, front_overflows) = front_matter::paginate(ctx, &facts, &images);
 
   // phase 4: 後付けを組版する
-  let (back_pages, back_overflows) = back_matter::typeset_back_matter(ctx, &mut body_pages, &facts);
+  let (back_pages, back_overflows) = back_matter::paginate(ctx, &mut body_pages, &facts);
 
   // phase 5: 全ページラベルを確定して連結する
   let BodyPageFacts {

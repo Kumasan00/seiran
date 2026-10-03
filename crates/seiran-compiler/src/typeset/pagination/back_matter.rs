@@ -16,7 +16,7 @@ use crate::typeset::{
 /// 巻末索引を生成してページ分割する。
 ///
 /// `\index` が 1 個もなければ空ページ列を返す。
-pub(super) fn typeset_back_matter(
+pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
   facts: &BodyPageFacts,

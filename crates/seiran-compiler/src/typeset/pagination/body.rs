@@ -34,7 +34,7 @@ pub(super) struct BodyLayout {
 /// # Errors
 ///
 /// 脚注採番に失敗した場合にエラーを返す。
-pub(super) fn typeset_body(
+pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
   images: &ImageResources,
