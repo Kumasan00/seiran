@@ -20,7 +20,7 @@ use crate::{
 ///
 /// 必須引数が欠落 / 過剰、任意引数が指定された場合、または空のキーが含まれる場合に
 /// エラーを返します。
-pub(super) fn cite_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+pub(super) fn cite(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "引用キー")?;
 
@@ -55,7 +55,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return cite_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return cite(&view, ctx)).unwrap();
 
     let HirInlineKind::Cite { keys } = &result.kind else {
       panic!("Cite が期待されます");
@@ -70,7 +70,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return cite_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return cite(&view, ctx)).unwrap();
 
     let HirInlineKind::Cite { keys } = &result.kind else {
       panic!("Cite が期待されます");
@@ -83,7 +83,7 @@ mod tests {
     let arena = Bump::new();
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
-    let result = run_handler(|ctx| return cite_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return cite(&view, ctx)).unwrap();
     let HirInlineKind::Cite { keys } = result.kind else {
       panic!("Cite が期待されます");
     };
@@ -96,7 +96,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
     return matches!(
-      run_handler(|ctx| return cite_command(&view, ctx)),
+      run_handler(|ctx| return cite(&view, ctx)),
       Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite"
     );
   }
@@ -145,7 +145,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_handler(|ctx| return cite_command(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
+      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 
@@ -157,7 +157,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_handler(|ctx| return cite_command(&view, ctx)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
+      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 
@@ -169,7 +169,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_handler(|ctx| return cite_command(&view, ctx)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
+      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 
@@ -181,7 +181,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_handler(|ctx| return cite_command(&view, ctx)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
+      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
     );
   }
 }

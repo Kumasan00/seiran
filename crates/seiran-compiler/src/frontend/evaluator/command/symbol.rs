@@ -21,7 +21,7 @@ impl MathSymbol {
 }
 
 /// 記号コマンド名 → [`MathSymbol`] のパーフェクトハッシュマップ
-pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
+static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   // ギリシャ文字（大文字）
   "Alpha" => MathSymbol::new('\u{0391}', MathClass::Ord),
   "Beta" => MathSymbol::new('\u{0392}', MathClass::Ord),
@@ -333,35 +333,47 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "Vert" => MathSymbol::new('\u{2016}', MathClass::Ord),
 };
 
+/// 記号コマンド名から数式記号（文字 + 数式クラス）を引く。記号表に無ければ `None`
+#[must_use]
+pub(in crate::frontend::evaluator) fn lookup(name: &str) -> Option<MathSymbol> { return SYMBOLS.get(name).copied(); }
+
 #[cfg(test)]
 mod tests {
-  use super::SYMBOL_MAP;
-  use crate::{document::MathClass, frontend::evaluator::command::COMMAND_MAP};
+  use super::{SYMBOLS, lookup};
+  use crate::{document::MathClass, frontend::evaluator::command::COMMANDS};
 
   #[test]
   fn representative_symbols_have_expected_class() {
-    assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.class), Some(MathClass::Ord));
-    assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.class), Some(MathClass::Rel));
-    assert_eq!(SYMBOL_MAP.get("times").map(|s| return s.class), Some(MathClass::Bin));
-    assert_eq!(SYMBOL_MAP.get("sum").map(|s| return s.class), Some(MathClass::Op));
-    assert_eq!(SYMBOL_MAP.get("rightarrow").map(|s| return s.class), Some(MathClass::Rel));
-    assert_eq!(SYMBOL_MAP.get("langle").map(|s| return s.class), Some(MathClass::Open));
-    assert_eq!(SYMBOL_MAP.get("rangle").map(|s| return s.class), Some(MathClass::Close));
+    assert_eq!(lookup("alpha").map(|s| return s.class), Some(MathClass::Ord));
+    assert_eq!(lookup("leq").map(|s| return s.class), Some(MathClass::Rel));
+    assert_eq!(lookup("times").map(|s| return s.class), Some(MathClass::Bin));
+    assert_eq!(lookup("sum").map(|s| return s.class), Some(MathClass::Op));
+    assert_eq!(lookup("rightarrow").map(|s| return s.class), Some(MathClass::Rel));
+    assert_eq!(lookup("langle").map(|s| return s.class), Some(MathClass::Open));
+    assert_eq!(lookup("rangle").map(|s| return s.class), Some(MathClass::Close));
   }
 
   #[test]
   fn representative_symbols_map_to_expected_char() {
-    assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.ch), Some('\u{03B1}'));
-    assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.ch), Some('\u{2264}'));
-    assert_eq!(SYMBOL_MAP.get("geq").map(|s| return s.ch), Some('\u{2265}'));
-    assert_eq!(SYMBOL_MAP.get("subseteq").map(|s| return s.ch), Some('\u{2286}'));
-    assert_eq!(SYMBOL_MAP.get("Rightarrow").map(|s| return s.ch), Some('\u{21D2}'));
+    assert_eq!(lookup("alpha").map(|s| return s.ch), Some('\u{03B1}'));
+    assert_eq!(lookup("leq").map(|s| return s.ch), Some('\u{2264}'));
+    assert_eq!(lookup("geq").map(|s| return s.ch), Some('\u{2265}'));
+    assert_eq!(lookup("subseteq").map(|s| return s.ch), Some('\u{2286}'));
+    assert_eq!(lookup("Rightarrow").map(|s| return s.ch), Some('\u{21D2}'));
   }
 
   #[test]
-  fn no_key_collision_between_command_and_symbol_maps() {
-    for key in SYMBOL_MAP.keys() {
-      assert!(!COMMAND_MAP.contains_key(key), "COMMAND_MAP と SYMBOL_MAP にキーが重複しています: {key}");
+  fn lookup_returns_none_for_non_symbol_names() {
+    // 機能コマンド（bold）・数式の構文コマンド（frac）・未知の名前の 3 種
+    assert!(lookup("bold").is_none());
+    assert!(lookup("frac").is_none());
+    assert!(lookup("unknown").is_none());
+  }
+
+  #[test]
+  fn no_key_collision_between_commands_and_symbols() {
+    for key in SYMBOLS.keys() {
+      assert!(!COMMANDS.contains_key(key), "COMMANDS と SYMBOLS にキーが重複しています: {key}");
     }
   }
 }

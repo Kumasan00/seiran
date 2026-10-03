@@ -26,7 +26,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn url_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+pub(super) fn url(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "URI")?;
 
@@ -47,7 +47,7 @@ pub(super) fn url_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Resu
 /// # Errors
 ///
 /// 必須引数が 2 個でない場合、または任意引数が指定された場合にエラーを返します。
-pub(super) fn href_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+pub(super) fn href(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let (url_arg, display_arg) = arity::exactly_two_args(view, "2 個（リンク先 URI と表示テキスト）")?;
 
@@ -68,7 +68,7 @@ mod tests {
   fn url_link(source: &str) -> (String, String) {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    let result = run_handler(|ctx| return url_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return url(&view, ctx)).unwrap();
     let HirInlineKind::Link { url, children } = &result.kind else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -120,7 +120,7 @@ mod tests {
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
 
     assert!(
-      matches!(run_handler(|ctx| return url_command(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
+      matches!(run_handler(|ctx| return url(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
     );
   }
 
@@ -128,7 +128,7 @@ mod tests {
   fn href_link(source: &str) -> HirInline {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    return run_handler(|ctx| return href_command(&view, ctx)).unwrap();
+    return run_handler(|ctx| return href(&view, ctx)).unwrap();
   }
 
   /// `\href{...}{...}` を評価してリンク先だけを取り出す
@@ -144,7 +144,7 @@ mod tests {
   fn href_error(source: &str) -> EvalError {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    return run_handler(|ctx| return href_command(&view, ctx)).unwrap_err();
+    return run_handler(|ctx| return href(&view, ctx)).unwrap_err();
   }
 
   #[test]

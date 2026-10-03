@@ -1,6 +1,6 @@
 //! コマンドディスパッチ
 //!
-//! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
+//! 機能コマンドは [`COMMANDS`]、数式記号は `symbol` の記号表に登録する（検索は [`symbol::lookup`]）。
 
 mod cite;
 mod code;
@@ -18,7 +18,7 @@ use phf::phf_map;
 use crate::{
   document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, command::symbol::SYMBOL_MAP, inline::IndexPolicy, opt_args},
+    evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, opt_args},
     syntax::{ArgMode, view::CommandView},
   },
 };
@@ -159,24 +159,24 @@ impl CommandKind {
         return text_style::colored_text(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
-      Self::Ref => return ref_::ref_command(view, ctx).map(CommandResult::Inline),
+      Self::Ref => return ref_::ref_(view, ctx).map(CommandResult::Inline),
 
-      Self::Cite => return cite::cite_command(view, ctx).map(CommandResult::Inline),
+      Self::Cite => return cite::cite(view, ctx).map(CommandResult::Inline),
 
       Self::Footnote => {
-        return footnote::footnote_command(view, ctx, placement.index_policy()).map(CommandResult::Inline);
+        return footnote::footnote(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
       Self::Index => {
         placement.accept_index(view)?;
-        return index::index_command(view, ctx).map(CommandResult::Inline);
+        return index::index(view, ctx).map(CommandResult::Inline);
       },
 
-      Self::Code => return code::code_command(view, ctx).map(CommandResult::Inline),
+      Self::Code => return code::code(view, ctx).map(CommandResult::Inline),
 
-      Self::Url => return link::url_command(view, ctx).map(CommandResult::Inline),
+      Self::Url => return link::url(view, ctx).map(CommandResult::Inline),
 
-      Self::Href => return link::href_command(view, ctx).map(CommandResult::Inline),
+      Self::Href => return link::href(view, ctx).map(CommandResult::Inline),
     }
   }
 
@@ -216,7 +216,7 @@ fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Resul
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
-static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
+static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,
   "noindent" => CommandKind::NoIndent,
@@ -268,7 +268,7 @@ static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 /// 未登録のコマンド（記号コマンドを含む）・宣言の範囲を超えた位置は
 /// [`ArgMode::Inherit`]（外側文脈の継承）が既定。
 pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
-  let Some(kind) = COMMAND_MAP.get(name) else {
+  let Some(kind) = COMMANDS.get(name) else {
     return ArgMode::Inherit;
   };
   return kind.arg_modes().get(index).copied().unwrap_or(ArgMode::Inherit);
@@ -276,7 +276,7 @@ pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///
-/// レジストリ（[`COMMAND_MAP`]）→ 記号表（[`SYMBOL_MAP`]）→ 未知の順に引く、コマンド実行の
+/// レジストリ（[`COMMANDS`]）→ 記号表（[`symbol::lookup`]）→ 未知の順に引く、コマンド実行の
 /// 唯一の入口。
 ///
 /// # Errors
@@ -287,10 +287,10 @@ pub(super) fn evaluate_command(
   ctx: &EvalContext<'_>,
   placement: Placement,
 ) -> Result<CommandResult, EvalError> {
-  if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
+  if let Some(command_kind) = COMMANDS.get(view.name()).copied() {
     return command_kind.execute(view, ctx, placement);
   }
-  if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
+  if let Some(symbol) = symbol::lookup(view.name()) {
     return single_char(view, ctx, symbol.ch).map(CommandResult::Inline);
   }
   return Err(EvalError::UnknownCommand {
@@ -352,7 +352,7 @@ mod tests {
   fn lookup_arg_mode_defaults_to_inherit() {
     assert_eq!(lookup_arg_mode("bold", 0), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("unknown", 0), ArgMode::Inherit);
-    // 記号コマンドは `COMMAND_MAP` に無いので、引き当たらない側の既定を通る
+    // 記号コマンドは `COMMANDS` に無いので、引き当たらない側の既定を通る
     assert_eq!(lookup_arg_mode("alpha", 0), ArgMode::Inherit);
   }
 
@@ -434,8 +434,8 @@ mod tests {
     }
   }
 
-  /// `COMMAND_MAP` の全コマンド名を返す
-  fn all_command_names() -> Vec<&'static str> { return COMMAND_MAP.entries().map(|(name, _)| return *name).collect(); }
+  /// `COMMANDS` の全コマンド名を返す
+  fn all_command_names() -> Vec<&'static str> { return COMMANDS.entries().map(|(name, _)| return *name).collect(); }
 
   proptest! {
     #![proptest_config(ProptestConfig::with_cases(1500))]

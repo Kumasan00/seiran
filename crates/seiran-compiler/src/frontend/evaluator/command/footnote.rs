@@ -22,7 +22,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn footnote_command(
+pub(super) fn footnote(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
@@ -52,7 +52,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow)).unwrap();
 
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
@@ -68,7 +68,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow)).unwrap();
 
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
@@ -88,7 +88,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow));
 
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "footnote"));
   }
@@ -100,7 +100,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow));
 
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "footnote"));
   }
@@ -112,7 +112,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote_command(&view, ctx, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow));
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
