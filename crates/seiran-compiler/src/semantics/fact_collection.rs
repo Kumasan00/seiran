@@ -194,7 +194,7 @@ impl Checker<'_> {
         ),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
-        | HirInlineKind::InlineMath(_)
+        | HirInlineKind::Math(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
@@ -375,7 +375,7 @@ impl Walker<'_, '_> {
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
-        | HirInlineKind::InlineMath(_)
+        | HirInlineKind::Math(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent

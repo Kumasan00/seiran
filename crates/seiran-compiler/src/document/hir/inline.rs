@@ -53,7 +53,7 @@ pub(crate) enum HirInlineKind {
   Code(String),
 
   /// インライン数式（`$...$`）
-  InlineMath(Vec<HirMath>),
+  Math(Vec<HirMath>),
 
   /// 特殊文字・記号（`\alpha`, `\sum`, `\infty` 等）
   Symbol(char),

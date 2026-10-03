@@ -131,7 +131,7 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Vis
       | HirInlineKind::Colored { children, .. }
       | HirInlineKind::Link { children, .. }
       | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, out),
-      HirInlineKind::InlineMath(math) => walk_math(math, here, out),
+      HirInlineKind::Math(math) => walk_math(math, here, out),
       HirInlineKind::Text(_)
       | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
@@ -381,7 +381,7 @@ fn assert_unresolved_inlines(inlines: &[HirInline]) {
       // `Cite` は引用「箇所」だけを表し、表示は型として持てない（生成物は side table 側）
       HirInlineKind::Text(_)
       | HirInlineKind::Code(_)
-      | HirInlineKind::InlineMath(_)
+      | HirInlineKind::Math(_)
       | HirInlineKind::Symbol(_)
       | HirInlineKind::LineBreak
       | HirInlineKind::NoIndent

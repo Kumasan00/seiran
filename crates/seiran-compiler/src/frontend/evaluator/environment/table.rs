@@ -99,7 +99,7 @@ mod tests {
         | HirInlineKind::Colored { children, .. }
         | HirInlineKind::Link { children, .. } => out.push_str(&hir_inlines_to_plain_text(children)),
         HirInlineKind::Code(text) => out.push_str(text),
-        HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
+        HirInlineKind::Math(_) => out.push_str("[Math]"),
         HirInlineKind::Symbol(ch) => out.push(*ch),
         HirInlineKind::LineBreak => out.push('\n'),
         HirInlineKind::NoIndent
@@ -381,7 +381,7 @@ mod tests {
         ..
       }
     ));
-    assert!(matches!(&table.rows[0].cells[1].content[0].kind, HirInlineKind::InlineMath(_)));
+    assert!(matches!(&table.rows[0].cells[1].content[0].kind, HirInlineKind::Math(_)));
   }
 
   #[test]

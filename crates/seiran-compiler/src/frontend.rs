@@ -93,8 +93,8 @@ mod tests {
     let HirNodeKind::Paragraph(mut inlines) = result.swap_remove(0).kind else {
       panic!("Paragraph が期待されます: {source}");
     };
-    let HirInlineKind::InlineMath(math) = inlines.swap_remove(0).kind else {
-      panic!("InlineMath が期待されます: {source}");
+    let HirInlineKind::Math(math) = inlines.swap_remove(0).kind else {
+      panic!("Math が期待されます: {source}");
     };
     return math;
   }
@@ -201,12 +201,12 @@ mod tests {
       panic!("Paragraph が期待されます");
     };
     let math = inlines.iter().find_map(|n| {
-      if let HirInlineKind::InlineMath(m) = &n.kind {
+      if let HirInlineKind::Math(m) = &n.kind {
         return Some(m);
       }
       return None;
     });
-    let math = math.expect("InlineMath ノードが含まれるはず");
+    let math = math.expect("Math ノードが含まれるはず");
     let joined: String = math
       .iter()
       .filter_map(|n| {
@@ -357,7 +357,7 @@ mod tests {
     let result = evaluate_source("$x_{i}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 2);
         assert!(matches!(&math[0].kind, HirMathKind::Text(t) if t == "x"));
         assert!(matches!(&math[1].kind, HirMathKind::Subscript(_)));
@@ -368,7 +368,7 @@ mod tests {
           );
         }
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -380,7 +380,7 @@ mod tests {
     let result = evaluate_source("$x^{2}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 2);
         assert!(matches!(&math[1].kind, HirMathKind::Superscript(_)));
         if let HirMathKind::Superscript(inner) = &math[1].kind {
@@ -389,7 +389,7 @@ mod tests {
           );
         }
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -401,10 +401,10 @@ mod tests {
     let result = evaluate_source("$x_{ij}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert!(matches!(&math[1].kind, HirMathKind::Subscript(inner) if matches!(&inner.kind, HirMathKind::Group(_))));
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -416,13 +416,13 @@ mod tests {
     let result = evaluate_source("$a_{i}^{2}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 3);
         assert!(matches!(&math[0].kind, HirMathKind::Text(_)));
         assert!(matches!(&math[1].kind, HirMathKind::Subscript(_)));
         assert!(matches!(&math[2].kind, HirMathKind::Superscript(_)));
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -437,8 +437,8 @@ mod tests {
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
-      panic!("InlineMath が期待されます");
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("Math が期待されます");
     };
     assert_eq!(math.len(), 1);
     let HirMathKind::Styled { variant, children } = &math[0].kind else {
@@ -456,8 +456,8 @@ mod tests {
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
-      panic!("InlineMath が期待されます");
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("Math が期待されます");
     };
     let HirMathKind::Styled { variant, children } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
@@ -483,8 +483,8 @@ mod tests {
       let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
         panic!("Paragraph が期待されます: {name}");
       };
-      let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
-        panic!("InlineMath が期待されます: {name}");
+      let HirInlineKind::Math(math) = &inlines[0].kind else {
+        panic!("Math が期待されます: {name}");
       };
       let HirMathKind::Styled { variant, children } = &math[0].kind else {
         panic!("Styled が期待されます ({name}): {:?}", math[0]);
@@ -527,8 +527,8 @@ mod tests {
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
-      panic!("InlineMath が期待されます");
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("Math が期待されます");
     };
     let HirMathKind::Styled {
       variant: outer,
@@ -642,7 +642,7 @@ mod tests {
     let result = evaluate_source("$\\frac{a}{b}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
         assert!(matches!(&math[0].kind, HirMathKind::Frac { .. }));
         if let HirMathKind::Frac { numer, denom } = &math[0].kind {
@@ -650,7 +650,7 @@ mod tests {
           assert!(matches!(&denom.kind, HirMathKind::Text(t) if t == "b"));
         }
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -662,14 +662,14 @@ mod tests {
     let result = evaluate_source("$\\sqrt{x}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
         assert!(matches!(&math[0].kind, HirMathKind::Sqrt { index: None, .. }));
         if let HirMathKind::Sqrt { radicand, .. } = &math[0].kind {
           assert!(matches!(&radicand.kind, HirMathKind::Text(t) if t == "x"));
         }
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -681,7 +681,7 @@ mod tests {
     let result = evaluate_source("$\\sqrt[3]{x}$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
         if let HirMathKind::Sqrt { index, radicand } = &math[0].kind {
           assert!(index.is_some());
@@ -691,7 +691,7 @@ mod tests {
           panic!("Sqrt が期待されます");
         }
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -703,11 +703,11 @@ mod tests {
     let result = evaluate_source("$\\alpha$");
     assert_eq!(result.len(), 1);
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
-      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+      if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
         assert!(matches!(&math[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
       } else {
-        panic!("InlineMath が期待されます");
+        panic!("Math が期待されます");
       }
     } else {
       panic!("Paragraph が期待されます");
@@ -973,8 +973,8 @@ mod tests {
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
-      panic!("InlineMath が期待されます");
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("Math が期待されます");
     };
     let HirMathKind::Frac { numer, .. } = &math[0].kind else {
       panic!("Frac が期待されます: {:?}", math[0]);
