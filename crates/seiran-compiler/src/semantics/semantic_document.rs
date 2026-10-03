@@ -111,7 +111,9 @@ impl SemanticDocument {
 
   /// 引用箇所の表示インライン列を引く
   #[must_use]
-  pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] { return self.citations.display_at(site); }
+  pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] {
+    return self.citations.citation_display(site);
+  }
 
   /// 参考文献リスト（書誌）のエントリ列を返す（引用が無い・CSL が書誌を定義していない場合は `None`）
   #[must_use]

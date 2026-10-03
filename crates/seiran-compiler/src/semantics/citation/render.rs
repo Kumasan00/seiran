@@ -1,6 +1,6 @@
-//! hayagriva の `BibliographyDriver` を駆動し、引用ラベルと参考文献リスト（書誌）を生成する。
+//! hayagriva の `BibliographyDriver` を駆動し、引用表示と参考文献リスト（書誌）を生成する。
 //!
-//! cite サイトをドキュメント順に積み、引用ラベルと書誌を一括確定する。
+//! cite サイトをドキュメント順に積み、引用表示と書誌を一括確定する。
 
 use std::collections::HashMap;
 
@@ -18,13 +18,13 @@ use crate::{
 
 /// hayagriva による整形結果。
 pub(super) struct Rendered {
-  /// 各 cite サイトの整形済み引用ラベル（収集と同じドキュメント順）。
-  pub labels: Vec<Vec<GeneratedInline>>,
+  /// 各 cite サイトの整形済み表示インライン列（収集と同じドキュメント順）。
+  pub displays: Vec<Vec<GeneratedInline>>,
   /// 文末に追加する書誌のエントリ列。CSL が書誌を定義していない場合は `None`。
   pub bibliography: Option<Vec<BibliographyEntry>>,
 }
 
-/// cite サイト群を CSL 整形し、引用ラベルと書誌エントリ列を返す。
+/// cite サイト群を CSL 整形し、引用表示と書誌エントリ列を返す。
 pub(super) fn render<'a>(
   entries: &'a HashMap<CitationId, Item>,
   sites: &[&CitationSiteFacts],
@@ -47,7 +47,7 @@ pub(super) fn render<'a>(
 
   let result = driver.finish(style.bibliography_request());
 
-  let labels = result
+  let displays = result
     .citations
     .iter()
     .zip(sites)
@@ -56,7 +56,7 @@ pub(super) fn render<'a>(
   let bibliography = result.bibliography.as_ref().map(build_bibliography);
 
   return Rendered {
-    labels,
+    displays,
     bibliography,
   };
 }
