@@ -47,7 +47,7 @@ impl Format {
 /// - ファイルの読み込みに失敗した場合
 /// - 拡張子がサポートされていない場合
 /// - TOML / JSON のパースに失敗した場合（著者名の排他性違反・空 / 重複 ID・未知フィールドを含む）
-pub(crate) fn read_references(
+pub(crate) fn load_references(
   source: &dyn ProjectSource,
   path: Option<&ProjectPath>,
 ) -> Result<References, ReadReferencesError> {
@@ -103,7 +103,7 @@ mod tests {
   use std::path::Path;
 
   use super::{
-    ReadReferencesError, date::Season, name::Name, parse_references, read_references, reference::NumberOrString,
+    ReadReferencesError, date::Season, load_references, name::Name, parse_references, reference::NumberOrString,
   };
   use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSourceError};
 
@@ -146,9 +146,9 @@ mod tests {
   }
 
   #[test]
-  fn read_references_returns_empty_when_path_is_none() {
+  fn load_references_returns_empty_when_path_is_none() {
     let source = FilesystemProjectSource;
-    let result: super::References = read_references(&source, None).unwrap();
+    let result: super::References = load_references(&source, None).unwrap();
     assert!(result.is_empty());
   }
 
@@ -269,7 +269,7 @@ mod tests {
   }
 
   #[test]
-  fn read_references_reads_through_project_source() {
+  fn load_references_reads_through_project_source() {
     let source = MemoryProjectSource::new().with_text(
       "/project/references.toml",
       "[ref1]\n\
@@ -280,7 +280,7 @@ mod tests {
     );
     let path = ProjectPath::new("/project/references.toml");
 
-    let references = read_references(&source, Some(&path)).expect("有効な TOML は読み込めるはず");
+    let references = load_references(&source, Some(&path)).expect("有効な TOML は読み込めるはず");
 
     assert_eq!(references.len(), 1);
     assert!(references.contains_key("ref1"));
@@ -288,11 +288,11 @@ mod tests {
   }
 
   #[test]
-  fn read_references_reports_missing_file_via_source_read_error() {
+  fn load_references_reports_missing_file_via_source_read_error() {
     let source = MemoryProjectSource::new();
     let path = ProjectPath::new("/project/missing.toml");
 
-    let result = read_references(&source, Some(&path));
+    let result = load_references(&source, Some(&path));
 
     let Err(ReadReferencesError::ReadFile { source, .. }) = result else {
       panic!("ReadFile を期待, got {result:?}");
@@ -564,7 +564,7 @@ mod tests {
   }
 
   #[test]
-  fn read_references_parses_structured_date_in_json() {
+  fn load_references_parses_structured_date_in_json() {
     let source = FilesystemProjectSource;
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.json");
@@ -581,7 +581,7 @@ mod tests {
     );
     std::fs::write(&references_path, json).unwrap();
 
-    let result = read_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
+    let result = load_references(&source, Some(&ProjectPath::new(&references_path))).unwrap();
 
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
@@ -591,7 +591,7 @@ mod tests {
   }
 
   #[test]
-  fn read_references_accepts_number_variables_as_integers_and_strings_in_toml() {
+  fn load_references_accepts_number_variables_as_integers_and_strings_in_toml() {
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\

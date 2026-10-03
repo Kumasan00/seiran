@@ -458,7 +458,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 あるときだけ CSL スタイル・ロケールを読んで表示と書誌を生成し、3 つをまとめた `SemanticDocument` を返す。
 **文書木は読み取り専用で、書き戻しは一切行わない**。
 
-境界: `semantics` の外から呼ばれる操作は `analyze`、文献の読込 `read_references`（入力読込段が呼ぶ）、
+境界: `semantics` の外から呼ばれる操作は `analyze`、文献の読込 `load_references`（入力読込段が呼ぶ）、
 生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ（`#[cfg(test)]` の
 `analyze::test_support::analyze_for_test` を除く。実装は子 module に置き、facade は名前だけを出す）。module root が再エクスポートする他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
 引くための経路で外部の消費者はいない。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は

@@ -25,7 +25,7 @@ use crate::{
     FontData, PathResolver, ProjectPath, ProjectSource, SourceSet,
     config::{ConfigWarning, ProjectConfig},
   },
-  semantics::{References, read_references},
+  semantics::{References, load_references},
   style,
   style::Style,
   typeset::PreparedGeometry,
@@ -128,7 +128,7 @@ fn load_independent_inputs(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
 ) -> Result<(Arc<References>, FontData, SourceSet), Failures<InputError>> {
-  let references = read_references(source, config.references_path.as_ref()).map(Arc::new).map_err(single);
+  let references = load_references(source, config.references_path.as_ref()).map(Arc::new).map_err(single);
 
   let stage_start = Instant::now();
   let font_data = FontData::load(source, &config.font_configs).map_err(lift);
@@ -331,7 +331,7 @@ mod tests {
   }
 
   #[test]
-  fn load_does_not_read_references_fonts_or_sources_when_the_style_fails() {
+  fn load_skips_references_fonts_and_sources_when_the_style_fails() {
     // style.toml だけが TOML として壊れている
     let source = registered_project(&config_toml(Some("style.toml"))).with_text("/project/style.toml", "x = \n");
 

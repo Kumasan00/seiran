@@ -58,7 +58,7 @@ mod tests {
     frontend::test_support::parse_source_for_test,
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
-      AnalyzeError, CitationStyleError, read_references,
+      AnalyzeError, CitationStyleError, load_references,
       test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -93,7 +93,7 @@ mod tests {
   fn analyze_skips_csl_when_document_has_no_citation() {
     let source = MemoryProjectSource::new();
     let style = Style::default();
-    let references = read_references(&source, None).expect("空の参照定義を読めるはず");
+    let references = load_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
     let hir = parse_source_for_test("本文だけの段落。\n", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
@@ -117,7 +117,7 @@ mod tests {
     );
     let style = Style::default();
     let references =
-      read_references(&source, Some(&ProjectPath::new("/project/references.toml"))).expect("参照定義を読めるはず");
+      load_references(&source, Some(&ProjectPath::new("/project/references.toml"))).expect("参照定義を読めるはず");
     let source_id = SourceId::new(0);
     let hir = parse_source_for_test(r"\cite{ref1}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
@@ -131,7 +131,7 @@ mod tests {
   fn analyze_maps_resolve_error() {
     let source = MemoryProjectSource::new();
     let style = Style::default();
-    let references = read_references(&source, None).expect("空の参照定義を読めるはず");
+    let references = load_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
     let hir = parse_source_for_test(r"\ref{missing}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);

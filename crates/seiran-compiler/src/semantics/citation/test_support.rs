@@ -4,7 +4,7 @@ use std::{io::Write, path::Path};
 
 use crate::{
   project::{FilesystemProjectSource, ProjectPath},
-  semantics::{References, read_references},
+  semantics::{References, load_references},
 };
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
@@ -45,5 +45,5 @@ pub(crate) fn sample_references() -> References {
   let source = FilesystemProjectSource;
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-  return read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
+  return load_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
 }
