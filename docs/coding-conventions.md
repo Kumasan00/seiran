@@ -187,7 +187,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   `typeset::lowering::layout_node::AtomNode` は `typeset::boxing` と `typeset::lowering` が使うので
   `pub(in crate::typeset)`）。再輸出も利用に数える — 祖先が再輸出する孫以下の module・型は `pub(super)` では
   再輸出先まで届かない（E0364 / E0365）ので、再輸出先を含めた共通祖先で書く（例: `frontend::syntax::cst` の
-  `green` / `kind` / `view` は `pub(in crate::frontend)`。親が再輸出する直接の子は `pub(super)` で足りる）。
+  `kind` / `view` と `CstNode` / `CstElement` は `pub(in crate::frontend)`。親が再輸出する直接の子は `pub(super)` で足りる）。
   signature に現れる型は、その signature の幅が下限になる（`private_interfaces`）。最小幅は名前の grep
   （同名衝突で利用者を過大に数える）ではなく、無印にしてコンパイルエラーと lint が指す分だけ祖先側へ広げて求める。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を

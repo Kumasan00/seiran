@@ -7,8 +7,7 @@ use crate::{
   frontend::{
     evaluator::{EvalContext, EvalError},
     syntax::{
-      SyntaxKind,
-      green::GreenElement,
+      CstElement, SyntaxKind,
       view::{CommandView, extract_text_content},
     },
   },
@@ -41,14 +40,14 @@ pub(super) fn ensure_markers_at_row_end(
 
 /// 行末マーカー `\notag` / `\label{...}` を検出し、走査ローカル状態へ取り込む
 pub(super) fn try_take_row_marker(
-  child: &GreenElement<'_>,
+  child: &CstElement<'_>,
   source: &str,
   ctx: &EvalContext<'_>,
   row_markers_allowed: bool,
   current_notag: &mut Option<SourceSpan>,
   current_label: &mut Option<RowLabel>,
 ) -> Result<bool, EvalError> {
-  let GreenElement::Node(node) = *child else {
+  let CstElement::Node(node) = *child else {
     return Ok(false);
   };
   if node.kind != SyntaxKind::CommandCall {

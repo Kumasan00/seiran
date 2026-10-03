@@ -16,7 +16,7 @@ use crate::{
   frontend::{
     evaluator::EvalError,
     syntax::{
-      green::GreenNode,
+      CstNode,
       view::{CommandView, EnvironmentView, parse_key_value_options},
     },
   },
@@ -298,7 +298,7 @@ pub(super) fn no_environment_opt_args(view: &EnvironmentView<'_>) -> Result<(), 
 pub(super) fn collect_opt_args(
   source: &str,
   name: &str,
-  opt_arg: Option<&GreenNode<'_>>,
+  opt_arg: Option<&CstNode<'_>>,
   schema: &[OptDecl],
 ) -> Result<OptArgs, EvalError> {
   let Some(opt) = opt_arg else {
@@ -420,13 +420,13 @@ mod tests {
   use super::*;
   use crate::frontend::{
     evaluator::test_support,
-    syntax::{SyntaxKind, green::GreenElement},
+    syntax::{CstElement, SyntaxKind},
   };
 
   /// CST のルートから最初の `CommandCall` を取り出す
-  fn first_command_node<'a>(root: &'a GreenNode<'a>) -> &'a GreenNode<'a> {
+  fn first_command_node<'a>(root: &'a CstNode<'a>) -> &'a CstNode<'a> {
     for child in root.children {
-      if let GreenElement::Node(n) = child
+      if let CstElement::Node(n) = child
         && n.kind == SyntaxKind::CommandCall
       {
         return n;

@@ -4,7 +4,7 @@
 
 use crate::frontend::{
   evaluator::EvalError,
-  syntax::{SyntaxKind, green::GreenElement, token::TokenKind, view::CommandView},
+  syntax::{CstElement, SyntaxKind, token::TokenKind, view::CommandView},
 };
 
 /// 環境本体（あるいは引数）の直下にある `CommandCall` を許可リストで検証しながら収集する
@@ -25,7 +25,7 @@ use crate::frontend::{
 /// を返します。
 pub(super) fn strict_command_calls<'a, K: Copy>(
   source: &'a str,
-  children: &'a [GreenElement<'a>],
+  children: &'a [CstElement<'a>],
   env_name: &str,
   allowed: &[(&'static str, K)],
   expected: &str,
@@ -33,7 +33,7 @@ pub(super) fn strict_command_calls<'a, K: Copy>(
   let mut views = Vec::new();
   for child in children {
     match child {
-      GreenElement::Token(token) => match token.kind {
+      CstElement::Token(token) => match token.kind {
         TokenKind::Whitespace
         | TokenKind::Newline
         | TokenKind::ParagraphBreak
@@ -48,7 +48,7 @@ pub(super) fn strict_command_calls<'a, K: Copy>(
           });
         },
       },
-      GreenElement::Node(node) => {
+      CstElement::Node(node) => {
         if node.kind == SyntaxKind::CommandCall {
           let view = CommandView::new(node, source);
           let Some((_, kind)) = allowed.iter().find(|(name, _)| return *name == view.name()) else {
@@ -78,12 +78,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{evaluator::test_support, syntax::green::GreenNode};
+  use crate::frontend::{evaluator::test_support, syntax::CstNode};
 
   /// テスト用: ソース中の最初の Environment ノードの body を取得する
-  fn first_env_body<'a>(cst: &'a GreenNode<'a>) -> &'a GreenNode<'a> {
+  fn first_env_body<'a>(cst: &'a CstNode<'a>) -> &'a CstNode<'a> {
     let env = cst.children.iter().find_map(|c| match c {
-      GreenElement::Node(n) if n.kind == SyntaxKind::Environment => return Some(n),
+      CstElement::Node(n) if n.kind == SyntaxKind::Environment => return Some(n),
       _ => return None,
     });
     let env = env.expect("Environment ノードが期待されます");

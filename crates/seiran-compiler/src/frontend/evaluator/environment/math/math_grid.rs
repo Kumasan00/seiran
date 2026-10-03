@@ -14,11 +14,7 @@ use crate::{
   document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind, NodeId},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
-    syntax::{
-      green::{GreenElement, GreenNode},
-      token::TokenKind,
-      view::EnvironmentView,
-    },
+    syntax::{CstElement, CstNode, token::TokenKind, view::EnvironmentView},
   },
 };
 
@@ -71,19 +67,19 @@ pub(super) struct GridRow {
 pub(super) fn evaluate_grid(
   source: &str,
   ctx: &EvalContext<'_>,
-  body: &GreenNode<'_>,
+  body: &CstNode<'_>,
   spec: GridSpec,
   row_markers_allowed: bool,
 ) -> Result<Vec<GridRow>, EvalError> {
   let mut rows: Vec<GridRow> = Vec::new();
   let mut current_row: Vec<Vec<HirMath>> = Vec::new();
-  let mut current_cell: Vec<GreenElement<'_>> = Vec::new();
+  let mut current_cell: Vec<CstElement<'_>> = Vec::new();
   let mut current_notag: Option<SourceSpan> = None;
   let mut current_label: Option<RowLabel> = None;
   let mut current_row_id = ctx.alloc(body.span);
 
   for child in body.children {
-    if let GreenElement::Token(token) = child {
+    if let CstElement::Token(token) = child {
       match token.kind {
         TokenKind::Ampersand => {
           if !spec.allow_column_breaks {
@@ -211,10 +207,10 @@ fn is_blank_row(row: &[Vec<HirMath>]) -> bool {
 }
 
 /// 要素がトリビア（空白・改行・コメント・段落区切り）かどうかを判定する
-fn is_trivia_element(child: &GreenElement<'_>) -> bool {
+fn is_trivia_element(child: &CstElement<'_>) -> bool {
   return matches!(
     child,
-    GreenElement::Token(token)
+    CstElement::Token(token)
       if matches!(
         token.kind,
         TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comment | TokenKind::ParagraphBreak
@@ -232,15 +228,15 @@ mod tests {
     frontend::{
       evaluator::{self, mode_resolver, test_support},
       syntax,
-      syntax::{SyntaxKind, green::GreenElement, view::EnvironmentView},
+      syntax::{CstElement, SyntaxKind, view::EnvironmentView},
       test_support::eval_context_for_test,
     },
   };
 
   /// 緑ツリーを再帰的に走査して最初の `Environment` ノードを返す
-  fn find_env<'a>(node: &'a GreenNode<'a>) -> Option<&'a GreenNode<'a>> {
+  fn find_env<'a>(node: &'a CstNode<'a>) -> Option<&'a CstNode<'a>> {
     for child in node.children {
-      if let GreenElement::Node(n) = child {
+      if let CstElement::Node(n) = child {
         if n.kind == SyntaxKind::Environment {
           return Some(n);
         }
@@ -253,7 +249,7 @@ mod tests {
   }
 
   /// ソースをパースし、最初の数式環境の本体を返す
-  fn first_env_body<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
+  fn first_env_body<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> {
     let root = syntax::parse(source, arena, mode_resolver()).unwrap();
     let env = find_env(root).expect("Environment ノードが見つからない");
     return EnvironmentView::new(env, source).body().expect("環境本体あり");
