@@ -40,10 +40,8 @@ use std::{
 pub use config::test_support;
 use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
-pub use font::FontType;
-pub(crate) use font::{
-  FontConfig, FontConfigs, FontData, FontFeature, FontMap, ReadFontError, TextDirection, VariationAxis,
-};
+pub(crate) use font::{FontConfig, FontConfigs, FontData, FontFeature, FontMap, ReadFontError, TextDirection};
+pub use font::{FontType, VariationAxis};
 pub(crate) use in_file::InFile;
 pub use memory::MemoryProjectSource;
 pub(crate) use path_resolver::PathResolver;
