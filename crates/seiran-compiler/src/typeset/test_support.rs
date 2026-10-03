@@ -124,28 +124,13 @@ pub(crate) fn glyph_run(text: &str) -> GlyphRun {
   };
 }
 
-/// 内容 1 個だけを持つ行ブロックを作る内部ヘルパ
-fn single_box_line(
-  content: HBoxContent,
-  x: Length,
-  dy: Length,
-  baseline_y: Length,
-  metrics: LineMetrics,
-) -> PlacedBlock {
+/// 計測済みボックス 1 個だけを持つ行ブロックを作る内部ヘルパ（行の高さ・深さは箱と同じ）
+fn single_box_line(hbox: HBox, x: Length, dy: Length, baseline_y: Length) -> PlacedBlock {
   return PlacedBlock::Line {
     line: Line {
-      boxes: vec![PlacedHBox {
-        hbox: HBox {
-          content,
-          width: metrics.box_width,
-          height: metrics.height,
-          depth: metrics.depth,
-        },
-        dx: x,
-        dy,
-      }],
-      height: metrics.height,
-      depth: metrics.depth,
+      height: hbox.height,
+      depth: hbox.depth,
+      boxes: vec![PlacedHBox { hbox, dx: x, dy }],
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
@@ -156,17 +141,17 @@ fn single_box_line(
 
 /// グリフ列 1 個を置いた行ブロックを作る（既定の行寸法）
 pub(crate) fn glyph_line(run: GlyphRun, x: Length, dy: Length, baseline_y: Length) -> PlacedBlock {
-  return single_box_line(HBoxContent::Glyphs(run), x, dy, baseline_y, LineMetrics::default());
+  return single_box_line(metrics_glyph_box(run, LineMetrics::default()), x, dy, baseline_y);
 }
 
 /// グリフ列 1 個を置いた行ブロックを、行寸法を指定して作る
 pub(crate) fn glyph_line_with_metrics(run: GlyphRun, baseline_y: Length, metrics: LineMetrics) -> PlacedBlock {
-  return single_box_line(HBoxContent::Glyphs(run), Length::ZERO, Length::ZERO, baseline_y, metrics);
+  return single_box_line(metrics_glyph_box(run, metrics), Length::ZERO, Length::ZERO, baseline_y);
 }
 
 /// Atom（閉じた箱）1 個を置いた行ブロックを作る
 ///
-/// `children` は `(グリフ列, ボックス寸法, dx, dy)` の並び。Atom 自身の寸法は子から確定する。
+/// `children` は `(グリフ列, ボックス寸法, dx, dy)` の並び。Atom 自身と行の寸法は子から確定する。
 pub(crate) fn atom_line(
   children: Vec<(GlyphRun, BoxSize, Length, Length)>,
   x: Length,
@@ -183,7 +168,7 @@ pub(crate) fn atom_line(
       };
     })
     .collect();
-  return single_box_line(HBoxContent::Atom(placed), x, dy, baseline_y, LineMetrics::default());
+  return single_box_line(HBox::atom(placed), x, dy, baseline_y);
 }
 
 /// グリフ列を計測済みボックスに包む内部ヘルパ
@@ -194,6 +179,18 @@ fn glyph_box(run: GlyphRun, size: BoxSize) -> HBox {
     height: size.height,
     depth: size.depth,
   };
+}
+
+/// グリフ列を行寸法どおりの箱（幅 `box_width`、高さ・深さは行と同じ）に包む内部ヘルパ
+fn metrics_glyph_box(run: GlyphRun, metrics: LineMetrics) -> HBox {
+  return glyph_box(
+    run,
+    BoxSize {
+      width: metrics.box_width,
+      height: metrics.height,
+      depth: metrics.depth,
+    },
+  );
 }
 
 /// 罫線ブロック（塗りつぶし矩形）を作る
