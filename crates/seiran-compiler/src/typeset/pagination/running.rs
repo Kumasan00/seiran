@@ -86,7 +86,7 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }
-  let mut shaper = Shaper::new(ctx.resources);
+  let mut shaper = Shaper::new(ctx.fonts);
   for (index, page) in pages.iter_mut().enumerate() {
     if spec.skip_first && index == 0 {
       continue;

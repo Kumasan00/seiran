@@ -64,7 +64,7 @@ struct TocEntry {
 pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Block> {
   let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
   let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
-  let blocks = compose_blocks(&spec, &entries, ctx.resources);
+  let blocks = compose_blocks(&spec, &entries, ctx.fonts);
   if !blocks.is_empty() {
     debug!(toc_entry_count = entries.len(), "目次を生成");
   }
@@ -129,11 +129,11 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
 
 /// 目次エントリ列を計測済みのブロック列に変換する
 #[must_use]
-fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], resources: &FontSystem<'_>) -> Vec<Block> {
+fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut shaper = Shaper::new(resources);
+  let mut shaper = Shaper::new(fonts);
   let mut blocks: Vec<Block> = Vec::new();
 
   blocks.push(Block::ComposedLine {

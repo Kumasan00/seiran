@@ -71,7 +71,7 @@ fn fold_newlines(text: &str) -> Cow<'_, str> {
 /// [`build_blocks`] の入力 — 文書全体で固定の資源と設定。
 pub(super) struct BlockBuildInputs<'a> {
   /// シェイプ・メトリクス取得の窓口
-  pub(super) resources: &'a FontSystem<'a>,
+  pub(super) fonts: &'a FontSystem<'a>,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
   /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅）
@@ -92,7 +92,7 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
   let hyphenation = hyphenation::resolve(inputs.language);
   let mut builder = BlockBuilder {
     measurer: Measurer::new(
-      inputs.resources,
+      inputs.fonts,
       inputs.default_font_size,
       inputs.line_height_factor,
       hyphenation,
@@ -229,7 +229,7 @@ impl BlockBuilder<'_> {
 
 /// 段落構築のポリシーを持つ計測器
 struct Measurer<'a> {
-  /// シェーピングの部品（資源と再利用バッファ）
+  /// シェーピングの部品（[`FontSystem`] と再利用バッファ）
   shaper: Shaper<'a>,
   /// 既定のフォントサイズ
   default_font_size: Length,
@@ -242,16 +242,16 @@ struct Measurer<'a> {
 }
 
 impl<'a> Measurer<'a> {
-  /// シェーパーとポリシーから新しい `Measurer` を生成する
+  /// [`FontSystem`] とポリシーから新しい `Measurer` を生成する
   fn new(
-    resources: &'a FontSystem<'a>,
+    fonts: &'a FontSystem<'a>,
     default_font_size: Length,
     line_height_factor: f32,
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
   ) -> Self {
     return Measurer {
-      shaper: Shaper::new(resources),
+      shaper: Shaper::new(fonts),
       default_font_size,
       line_height_factor,
       hyphenation,

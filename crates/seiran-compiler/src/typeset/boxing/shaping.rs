@@ -170,19 +170,19 @@ impl ShapedRun {
   }
 }
 
-/// シェーピングだけを行う部品（資源と再利用バッファ）
+/// シェーピングだけを行う部品（[`FontSystem`] と再利用バッファ）
 pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
-  resources: &'a FontSystem<'a>,
+  fonts: &'a FontSystem<'a>,
   /// シェイピングに再利用する `harfrust` バッファ
   buffer: UnicodeBuffer,
 }
 
 impl<'a> Shaper<'a> {
-  /// シェーパーの窓口から新しい `Shaper` を作る
-  pub(in crate::typeset) fn new(resources: &'a FontSystem<'a>) -> Self {
+  /// [`FontSystem`] から新しい `Shaper` を作る
+  pub(in crate::typeset) fn new(fonts: &'a FontSystem<'a>) -> Self {
     return Shaper {
-      resources,
+      fonts,
       buffer: UnicodeBuffer::new(),
     };
   }
@@ -208,7 +208,7 @@ impl<'a> Shaper<'a> {
     color: Option<Color>,
   ) -> ShapedRun {
     let taken = std::mem::take(&mut self.buffer);
-    let result = self.resources.shape(font_type, taken, text, font_size.to_pt());
+    let result = self.fonts.shape(font_type, taken, text, font_size.to_pt());
     let glyph_infos = result.glyph_infos();
     let glyph_positions = result.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
@@ -247,7 +247,7 @@ impl<'a> Shaper<'a> {
         font_type,
         color,
       },
-      self.resources.metric(font_type),
+      self.fonts.metric(font_type),
     );
     trace!(
       font_type = ?font_type,

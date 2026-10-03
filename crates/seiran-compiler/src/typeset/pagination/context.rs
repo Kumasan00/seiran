@@ -16,7 +16,7 @@ pub(in crate::typeset) struct TypesetContext<'a> {
   /// 見た目の設定
   pub(super) style: &'a Style,
   /// シェイプ・メトリクス取得の窓口
-  pub(super) resources: &'a FontSystem<'a>,
+  pub(super) fonts: &'a FontSystem<'a>,
   /// 入力読込で検証済みの版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）
   pub(super) geometry: &'a PreparedGeometry,
   /// 全段が使う行分割アルゴリズム（段落全体最適の Knuth–Plass）
@@ -24,17 +24,17 @@ pub(in crate::typeset) struct TypesetContext<'a> {
 }
 
 impl<'a> TypesetContext<'a> {
-  /// 設定・検証済み版面・フォント資源を束ねる。
+  /// 設定・検証済み版面・[`FontSystem`] を束ねる。
   pub(crate) fn new(
     config: &'a ProjectConfig,
     style: &'a Style,
     geometry: &'a PreparedGeometry,
-    resources: &'a FontSystem<'a>,
+    fonts: &'a FontSystem<'a>,
   ) -> Self {
     return Self {
       config,
       style,
-      resources,
+      fonts,
       geometry,
       breaker: KnuthPlassBreaker,
     };

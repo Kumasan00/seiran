@@ -66,7 +66,7 @@ fn run_body_pass(
     build_blocks(
       body_layout_nodes,
       &BlockBuildInputs {
-        resources: ctx.resources,
+        fonts: ctx.fonts,
         images,
         column_width: ctx.geometry.body_column_width(),
         default_font_size: ctx.style.text.font_size,
