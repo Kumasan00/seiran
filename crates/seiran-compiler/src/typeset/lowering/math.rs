@@ -24,7 +24,8 @@ use crate::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{
-        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockCell, MathBlockLayout, MathBlockRow, TextStyle,
+        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout, MathBlockRowLayout,
+        TextStyle,
       },
       with_label_anchors,
     },
@@ -55,7 +56,7 @@ pub(super) fn lower_math_block(
       .iter()
       .enumerate()
       .map(|(col, cell)| {
-        return MathBlockCell {
+        return MathBlockCellLayout {
           content: lower_math_cell(cell, font_size, &ctx.style.math.script),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
@@ -64,7 +65,7 @@ pub(super) fn lower_math_block(
     let number = state.counter_value(row.id).map(|value| {
       return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size);
     });
-    layout_rows.push(MathBlockRow { cells, number });
+    layout_rows.push(MathBlockRowLayout { cells, number });
   }
 
   let env_number = state

@@ -282,7 +282,7 @@ pub(super) fn lower_sources_with_headings(
   let mut state = LoweringState::new(document);
   let mut result = Vec::new();
   for nodes in document.hir().source_nodes() {
-    result.extend(lower_nodes_inner(ctx, nodes, &mut state));
+    result.extend(lower_nodes(ctx, nodes, &mut state));
   }
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
@@ -312,21 +312,21 @@ pub(super) fn lower_sources_with_headings(
   return (result, headings);
 }
 
-/// `nodes` を順に [`lower_node_indexed`] へ渡す内部ウォーク（本体）
-pub(super) fn lower_nodes_inner(
+/// `nodes` を順に [`lower_node`] で変換し、結果を出現順に連結する
+pub(super) fn lower_nodes(
   ctx: &LoweringContext<'_>,
   nodes: &[HirNode],
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   for node in nodes {
-    result.extend(lower_node_indexed(ctx, node, state));
+    result.extend(lower_node(ctx, node, state));
   }
   return result;
 }
 
 /// 単一の `HirNode` をレイアウトノードに変換する
-fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
+fn lower_node(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading(heading) => {
       return heading::lower_hir_heading(ctx, node.id, heading, state);

@@ -8,7 +8,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState,
       layout_node::{InlineNode, LayoutNode, TextStyle},
-      lower_nodes_inner,
+      lower_nodes,
     },
   },
 };
@@ -56,7 +56,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
       item_nodes.push(LayoutNode::Inline(InlineNode::Text(format!("{marker_body} "), marker_style)));
     }
 
-    let content_nodes = lower_nodes_inner(&item_ctx, &item.body, state);
+    let content_nodes = lower_nodes(&item_ctx, &item.body, state);
     item_nodes.extend(content_nodes);
 
     result.push(LayoutNode::VBox {
