@@ -19,7 +19,7 @@ pub(crate) use analyze::test_support::analyze_for_test;
 #[cfg(test)]
 pub(crate) use citation::test_support;
 pub(crate) use citation::{
-  BibliographyEntry, CitationId, CitationSiteFacts, CitationStyleError, GeneratedCitations, GeneratedInline,
+  BibliographyEntry, CitationId, CitationSiteFacts, GeneratedCitations, GeneratedInline, ReadCitationStyleError,
   ReadReferencesError, References, generate_citations, generated_inlines_to_plain_text, load_citation_style,
   load_references,
 };

@@ -58,7 +58,7 @@ mod tests {
     frontend::test_support::parse_for_test,
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
-      AnalyzeError, CitationStyleError, load_references,
+      AnalyzeError, ReadCitationStyleError, load_references,
       test_support::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -123,7 +123,10 @@ mod tests {
 
     let error = analyze(&source, document, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
 
-    assert!(matches!(error, AnalyzeError::CitationStyle(CitationStyleError::MissingCslPath)), "got: {error:?}");
+    assert!(
+      matches!(error, AnalyzeError::CitationStyle(ReadCitationStyleError::MissingCslPath)),
+      "got: {error:?}"
+    );
   }
 
   #[test]
