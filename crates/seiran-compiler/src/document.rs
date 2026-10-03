@@ -6,7 +6,7 @@
 //! # 提供する interface
 //!
 //! - frontend が HIR を構築するための [`HirBuilder`] と HIR ノード型
-//! - 複数ソースを決定順序で束ねる組み立て（[`HirSource`] → [`HirGroup`] → [`HirDocument`]）
+//! - 複数ソースを決定順序で束ねる組み立て（[`HirSource`] → [`HirDocument`]）
 //! - `semantics` / `typeset` が authored 文書を網羅的に走査するための HIR enum。
 //!   網羅的 match は意図した interface で、新しい言語要素を足したときに意味解析と lowering の
 //!   更新漏れをコンパイラに検出させる
@@ -34,7 +34,7 @@ pub(crate) use caption::CaptionPosition;
 pub(crate) use font_kind::FontKind;
 pub(crate) use heading_level::HeadingLevel;
 pub(crate) use hir::{
-  HirBuilder, HirDocument, HirFigure, HirGroup, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
+  HirBuilder, HirDocument, HirFigure, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
   HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,
   HirTableCell, HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
 };

@@ -177,7 +177,7 @@ fn analyze_document(
     let document = parse_project(inputs, resolver)?;
     info!(
       source_count = document.groups().len(),
-      node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
+      node_count = document.groups().iter().map(Vec::len).sum::<usize>(),
       "ソースを構文解析"
     );
     phase.succeed();

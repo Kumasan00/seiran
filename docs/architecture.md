@@ -255,7 +255,7 @@ style 由来の表示文字列は `semantics` が別枠で持つ。
   （#259）— 文字列規約へ戻さない
 - **起源を配列インデックスへ戻さない**。合成書誌グループを「実ソース配列の範囲外インデックス」で表す
   暗黙の sentinel 方式は廃止済み（#259）。書誌は `semantics` の生成物として別枠で運び、実ソースの
-  `HirGroup` 列は起源として `SourceId` しか持てない
+  起源は位置表 `SourceSpans` の `SourceId` だけが持つ
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `Line` / `Page` 系は
   `typeset::boxes` の非公開型、`GlyphRun` / `Glyph` は `publication` の値型。判断基準: **複数 consumer の型
   でも、consumer が同一 crate 内 / 同一依存関係内にとどまるなら、共有置き場ではなくその内部へ置く**

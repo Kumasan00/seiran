@@ -44,7 +44,7 @@ pub(super) fn collect_facts(
       unknown_citations: &mut unknown_citations,
       duplicate_labels: &mut duplicate_labels,
     };
-    walker.nodes(&group.nodes);
+    walker.nodes(group);
   }
 
   let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
@@ -79,7 +79,7 @@ fn order_key(node: NodeId) -> OrderKey { return (node.source().index(), node.loc
 fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &SemanticPolicy) {
   let checker = Checker { facts, policy };
   for group in hir.groups() {
-    checker.nodes(&group.nodes);
+    checker.nodes(group);
   }
   return;
 }

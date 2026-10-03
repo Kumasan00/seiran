@@ -177,7 +177,7 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
 /// 1 ソース分の HIR を走査する
 fn visit_source(hir: &HirSource) -> Vec<Visited> {
   let mut visited = Vec::new();
-  walk_nodes(&hir.group.nodes, None, &mut visited);
+  walk_nodes(&hir.nodes, None, &mut visited);
   return visited;
 }
 
@@ -196,7 +196,8 @@ fn source_order_does_not_affect_ids_or_spans() {
   let source_a = "\\section{最初}\n\n本文 A です。";
   let source_b = "\\section{次}\n\n本文 B の $x^{2}$ です。";
 
-  let alone = parse_for_test(source_b, SourceId::new(1)).unwrap();
+  let alone_a = parse_for_test(source_a, SourceId::new(0)).unwrap();
+  let alone_b = parse_for_test(source_b, SourceId::new(1)).unwrap();
   let a_then_b = {
     let a = parse_for_test(source_a, SourceId::new(0)).unwrap();
     let b = parse_for_test(source_b, SourceId::new(1)).unwrap();
@@ -209,21 +210,17 @@ fn source_order_does_not_affect_ids_or_spans() {
   };
 
   for document in [&a_then_b, &b_then_a] {
-    let group = document.groups().iter().find(|g| return g.source_id == SourceId::new(1)).unwrap();
-    assert_eq!(group.nodes, alone.group.nodes, "B の HIR はパース順に依存しないはず");
-    for visited in visit_source(&alone) {
+    assert_eq!(document.groups()[0], alone_a.nodes, "位置 0 は SourceId 0 の A のノード列のはず");
+    assert_eq!(document.groups()[1], alone_b.nodes, "B の HIR はパース順に依存しないはず");
+    for visited in visit_source(&alone_b) {
       assert_eq!(
         document.locations().get(visited.id).map(|location| return location.span),
-        Some(alone.spans.span_of(visited.id)),
+        Some(alone_b.spans.span_of(visited.id)),
         "B の位置表はパース順に依存しないはず"
       );
     }
   }
-  assert_eq!(
-    a_then_b.groups().iter().map(|g| return g.source_id).collect::<Vec<_>>(),
-    b_then_a.groups().iter().map(|g| return g.source_id).collect::<Vec<_>>(),
-    "groups は SourceId の昇順に正規化されるはず"
-  );
+  assert_eq!(a_then_b, b_then_a, "ソースごとのノード列と位置表は SourceId の昇順に正規化されるはず");
 }
 
 #[test]
@@ -232,9 +229,9 @@ fn every_hir_node_has_location_inside_source() {
     let source_id = SourceId::new(0);
     let hir = parse_fixture(&name, &content, source_id);
     let document = HirDocument::assemble(vec![hir]);
-    let group = document.groups().first().unwrap();
+    let nodes = document.groups().first().unwrap();
     let mut visited = Vec::new();
-    walk_nodes(&group.nodes, None, &mut visited);
+    walk_nodes(nodes, None, &mut visited);
 
     for entry in &visited {
       let location = document.locations().get(entry.id).unwrap_or_else(|| {
@@ -296,7 +293,6 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
     let hir = parse_for_test(source, SourceId::new(0)).unwrap();
 
     let kinds: Vec<&str> = hir
-      .group
       .nodes
       .iter()
       .map(|node| {
@@ -308,7 +304,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
         };
       })
       .collect();
-    assert_eq!(kinds, expected, "{source:?}: ブロックの並びが変わらないはず（{:?}）", hir.group.nodes);
+    assert_eq!(kinds, expected, "{source:?}: ブロックの並びが変わらないはず（{:?}）", hir.nodes);
   }
 
   let source = "  本文です。  ";
@@ -328,7 +324,7 @@ fn hir_carries_no_resolved_facts() {
   for (name, content) in fixture_sources() {
     let hir = parse_fixture(&name, &content, SourceId::new(0));
 
-    assert_unresolved(&hir.group.nodes);
+    assert_unresolved(&hir.nodes);
   }
 }
 
