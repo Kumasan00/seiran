@@ -72,7 +72,7 @@ impl<'a> CommandView<'a> {
 
   /// 必須引数の数を返す
   #[must_use]
-  pub(crate) fn args_count(&self) -> usize { return self.args().count(); }
+  pub(crate) fn arg_count(&self) -> usize { return self.args().count(); }
 
   /// 最初の必須引数ノードを返す
   #[must_use]
@@ -80,9 +80,9 @@ impl<'a> CommandView<'a> {
     return self.node.first_child_of_kind(SyntaxKind::MandatoryArg);
   }
 
-  /// 必須引数が空かどうかを返す
+  /// 必須引数が 1 個以上あるかを返す
   #[must_use]
-  pub(crate) fn args_is_empty(&self) -> bool { return self.args_count() == 0; }
+  pub(crate) fn has_args(&self) -> bool { return self.first_arg().is_some(); }
 }
 
 /// 環境の型付きビュー
@@ -101,7 +101,7 @@ impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
   ///
   /// `\begin{...}` 側のノードと環境名は構築時に取り出して保持するので、[`EnvironmentView::name`] /
-  /// [`EnvironmentView::args_is_empty`] / [`EnvironmentView::opt_arg`] は無謬になる。
+  /// [`EnvironmentView::has_args`] / [`EnvironmentView::opt_arg`] は無謬になる。
   ///
   /// # Panics
   ///
@@ -151,12 +151,12 @@ impl<'a> EnvironmentView<'a> {
     return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody);
   }
 
-  /// 環境名以外の必須引数が無いかを返す（環境名の arg は除外）
+  /// 環境名以外の必須引数があるかを返す（環境名の arg は除外）
   ///
   /// 必須引数を取る環境は無いので、読むのは有無だけ。
   #[must_use]
-  pub(crate) fn args_is_empty(&self) -> bool {
-    return self.begin.children_of_kind(SyntaxKind::MandatoryArg).nth(1).is_none();
+  pub(crate) fn has_args(&self) -> bool {
+    return self.begin.children_of_kind(SyntaxKind::MandatoryArg).nth(1).is_some();
   }
 
   /// 環境の任意引数 `[...]` ノードを返す
@@ -321,9 +321,9 @@ mod tests {
 
     let view = CommandView::new(cmd_node, source);
     assert_eq!(view.name(), "bold");
-    assert_eq!(view.args_count(), 1);
+    assert_eq!(view.arg_count(), 1);
     assert!(view.opt_arg().is_none());
-    assert!(!view.args_is_empty());
+    assert!(view.has_args());
   }
 
   #[test]
@@ -341,7 +341,7 @@ mod tests {
 
     let view = CommandView::new(cmd_node, source);
     assert_eq!(view.name(), "alpha");
-    assert!(view.args_is_empty());
+    assert!(!view.has_args());
     assert!(view.opt_arg().is_none());
   }
 
@@ -403,7 +403,7 @@ mod tests {
     let view = EnvironmentView::new(env_node, source);
     assert_eq!(view.name(), "center");
     assert!(view.body().is_some());
-    assert!(view.args_is_empty());
+    assert!(!view.has_args());
     assert!(view.opt_arg().is_none());
   }
 

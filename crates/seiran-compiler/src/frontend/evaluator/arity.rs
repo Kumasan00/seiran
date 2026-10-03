@@ -18,8 +18,8 @@ use crate::frontend::{
 /// # Errors
 ///
 /// 必須引数が 1 個以上ある場合に [`EvalError::ExtraCommandArgument`] を返します。
-pub(super) fn no_args(view: &CommandView<'_>) -> Result<(), EvalError> {
-  if !view.args_is_empty() {
+pub(super) fn no_command_args(view: &CommandView<'_>) -> Result<(), EvalError> {
+  if view.has_args() {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
       span: view.span().into(),
@@ -44,7 +44,7 @@ pub(super) fn exactly_one_arg<'a>(view: &CommandView<'a>, expected: &str) -> Res
       span: view.span().into(),
     });
   };
-  if view.args_count() > 1 {
+  if view.arg_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
       span: view.span().into(),
@@ -73,7 +73,7 @@ pub(super) fn exactly_two_args<'a>(
       span: view.span().into(),
     });
   };
-  if view.args_count() > 2 {
+  if view.arg_count() > 2 {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
       span: view.span().into(),
@@ -91,7 +91,7 @@ pub(super) fn exactly_two_args<'a>(
 ///
 /// 必須引数が 1 個以上ある場合に [`EvalError::ExtraEnvironmentArgument`] を返します。
 pub(super) fn no_environment_args(view: &EnvironmentView<'_>) -> Result<(), EvalError> {
-  if !view.args_is_empty() {
+  if view.has_args() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
       span: view.span().into(),
@@ -175,13 +175,13 @@ mod tests {
   }
 
   #[test]
-  fn no_args_rejects_a_mandatory_argument() {
+  fn no_command_args_rejects_a_mandatory_argument() {
     let arena = Bump::new();
     let source = r"\pagebreak{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = no_args(&view);
+    let result = no_command_args(&view);
 
     assert!(
       matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"),

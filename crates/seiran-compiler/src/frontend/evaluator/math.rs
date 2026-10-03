@@ -255,7 +255,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
     },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;
-      arity::no_args(&view)?;
+      arity::no_command_args(&view)?;
       return Ok(ctx.leaf_math(
         view.span(),
         HirMathKind::Symbol {
