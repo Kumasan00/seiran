@@ -5,7 +5,7 @@ use crate::{
   length::Length,
   typeset::{
     boxes::Align,
-    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner},
+    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
   },
 };
 
@@ -23,7 +23,7 @@ pub(super) fn lower_quote(
     Length::pt(0.0)
   };
   let body_ctx = ctx.with_body_font_kind(style.font_kind).with_first_line_indent(first_line_indent);
-  let children = lower_nodes_inner(&body_ctx, &quote.body, state);
+  let children = lower_nodes(&body_ctx, &quote.body, state);
 
   return vec![
     LayoutNode::Vkern {

@@ -822,7 +822,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
-- **dispatcher は payload を取り出して渡すだけ**。`lower_node_indexed` は委譲する 9 種別（Heading /
+- **dispatcher は payload を取り出して渡すだけ**。`lower_node` は委譲する 9 種別（Heading /
   Paragraph / List / Theorem / Quote / CodeBlock / MathBlock / Figure / Table）について、`HirNodeKind` の
   payload を取り出して子 module へ渡す。各 lowering が受け取るのは実際に使うものだけで、引数の個数を
   揃えることは目的にしない — payload は常に、`NodeId` は事実を引く 5 種（Heading / Theorem / MathBlock /

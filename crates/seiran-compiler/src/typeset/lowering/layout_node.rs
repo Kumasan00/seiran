@@ -155,7 +155,7 @@ pub(in crate::typeset) struct MathBlockLayout {
   /// 本体グリッドを囲む左右の区切り括弧グリフ
   pub delimiters: DelimiterGlyphs,
   /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
-  pub rows: Vec<MathBlockRow>,
+  pub rows: Vec<MathBlockRowLayout>,
   /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み。ブロックの縦中央に置く）。
   /// 行ごと採番や無採番では `None`
   pub env_number: Option<Vec<AtomNode>>,
@@ -202,16 +202,16 @@ pub(in crate::typeset) struct TableCellLayout {
 
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathBlockRow {
+pub(in crate::typeset) struct MathBlockRowLayout {
   /// 列（lower 済みインライン数式と列内揃え）
-  pub cells: Vec<MathBlockCell>,
+  pub cells: Vec<MathBlockCellLayout>,
   /// 行番号ボックス（lower 済み、`None` は非採番）
   pub number: Option<Vec<AtomNode>>,
 }
 
 /// ディスプレイ数式環境の 1 セルの物理レイアウト表現
 #[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathBlockCell {
+pub(in crate::typeset) struct MathBlockCellLayout {
   /// セル内容（lower 済みインライン数式）
   pub content: Vec<AtomNode>,
   /// 列内での水平揃え

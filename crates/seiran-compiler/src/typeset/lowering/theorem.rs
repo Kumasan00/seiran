@@ -10,7 +10,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState, counter,
       layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
-      lower_nodes_inner, with_label_anchors,
+      lower_nodes, with_label_anchors,
     },
   },
 };
@@ -37,7 +37,7 @@ pub(super) fn lower_theorem(
   ];
 
   let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
-  let mut body_nodes = lower_nodes_inner(&body_ctx, &theorem.body, state);
+  let mut body_nodes = lower_nodes(&body_ctx, &theorem.body, state);
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
