@@ -85,8 +85,8 @@ pub(crate) struct FontFeature {
 }
 
 /// バリアブルフォント軸の設定値
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct VariationAxis {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VariationAxis {
   /// 軸名（4 バイトの OpenType 軸タグ）
   pub name: [u8; 4],
   /// 目標値（実数）

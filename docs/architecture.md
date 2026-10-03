@@ -1021,8 +1021,9 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
   生バイト列（`Arc<[u8]>` — seam が返す形のまま共有し、複製しない）+ 描画契約の値型、画像はパス・判定済み
   形式・生バイト列。krilla フォントの構築は render の責務で、`compile` の戻り値に backend の内部資源が
   漏れない
-- `PaintOp::DrawGlyphRun` は `GlyphRun` を**そのまま**載せる（同型の複製を作らない）。したがって `Length` /
-  `Color` / `FontType` / `GlyphRun` / `Glyph` も facade に載る
+- `PaintOp::DrawGlyphRun` は `GlyphRun` を、`FontFaceConfig` は `project::VariationAxis` を**そのまま**載せる
+  （同型の複製を作らない）。したがって `Length` / `Color` / `FontType` / `VariationAxis` / `GlyphRun` / `Glyph` も
+  facade に載る
 - `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（資源配列の添字）。添字である以上、
   資源の並びは決定的でなければならないので `emit` は**パス昇順**に並べてから配列を組む
 - 生バイト列を持つ型の `Debug` は手書きで、中身ではなく長さを出す（`assert_eq!` が失敗したときに数百 MB を

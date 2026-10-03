@@ -4,7 +4,7 @@
 //! ハンドルは含まず、フォント・画像は生バイト列と構築設定のまま持つ。
 //!
 //! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetric`]、フォント
-//! 構築設定 [`FontFaceConfig`] / [`VariationAxisConfig`]、判定済みの画像形式 [`ImageFormat`] — は
+//! 構築設定 [`FontFaceConfig`]、判定済みの画像形式 [`ImageFormat`] — は
 //! 子 module（`glyph` / `font` / `image_format`）が持つ。
 //!
 //! 文書を組み立てる型（[`Publication`] / [`PublicationPage`] / [`PublicationResources`]）と、
@@ -20,7 +20,7 @@ use std::{
   sync::Arc,
 };
 
-pub use font::{FontFaceConfig, FontMetric, VariationAxisConfig};
+pub use font::{FontFaceConfig, FontMetric};
 pub use glyph::{Glyph, GlyphRun};
 pub use image_format::ImageFormat;
 

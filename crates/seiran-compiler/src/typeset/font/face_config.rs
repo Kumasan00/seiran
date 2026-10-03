@@ -2,7 +2,7 @@
 
 use crate::{
   project::{FontConfigs, FontMap},
-  publication::{FontFaceConfig, VariationAxisConfig},
+  publication::FontFaceConfig,
 };
 
 /// 19 フォント種別すべての [`FontFaceConfig`]。
@@ -15,25 +15,15 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
     let font_config = &configs[font_type];
     return FontFaceConfig {
       font_index: font_config.font_index,
-      variation_axes: font_config.variation_axes.as_ref().map(|axes| {
-        return axes
-          .iter()
-          .map(|axis| {
-            return VariationAxisConfig {
-              name: axis.name,
-              value: axis.value,
-            };
-          })
-          .collect();
-      }),
+      variation_axes: font_config.variation_axes.clone(),
     };
   });
 }
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::project::{FontConfig, FontType, ProjectPath, VariationAxis};
+  use super::build_face_configs;
+  use crate::project::{FontConfig, FontConfigs, FontMap, FontType, ProjectPath, VariationAxis};
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {
@@ -67,19 +57,20 @@ mod tests {
         value: 400.0,
       },
       VariationAxis {
-        name: *b"ital",
-        value: 1.0,
+        name: *b"wdth",
+        value: 100.0,
       },
     ];
     let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(0, Some(axes.clone())));
 
     let face_configs = build_face_configs(&configs);
 
-    let face_config = &face_configs[FontType::ALL[0]];
-    let got_axes = face_config.variation_axes.as_ref().expect("variation_axes が Some のはず");
-    assert_eq!(got_axes.len(), 2, "軸の個数がそのまま複製されるはず");
-    assert_eq!(got_axes[0].name, *b"wght", "軸名がそのまま複製されるはず");
-    assert!((got_axes[0].value - 400.0).abs() < f64::EPSILON, "軸値がそのまま複製されるはず");
-    assert_eq!(got_axes[1].name, *b"ital", "2 個目の軸も複製されるはず");
+    for &font_type in FontType::ALL {
+      assert_eq!(
+        face_configs[font_type].variation_axes,
+        Some(axes.clone()),
+        "{font_type:?} の軸が並び・値ともそのまま渡るはず"
+      );
+    }
   }
 }
