@@ -7,7 +7,10 @@ use serde::Deserialize;
 use strum::{IntoStaticStr, VariantArray};
 use thiserror::Error;
 
-use crate::style::{CounterTemplate, RefTemplate, number_style::NumberStyle};
+use crate::{
+  document::HeadingLevel,
+  style::{CounterTemplate, RefTemplate, number_style::NumberStyle},
+};
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。
 ///
@@ -287,6 +290,21 @@ pub(crate) enum CounterName {
   Equation,
 }
 
+impl CounterName {
+  /// 見出しレベルの採番に使う見出しカウンタを返す（全見出しレベルが固定 9 種のうち同名の 1 つに対応する）
+  #[must_use]
+  pub(crate) fn for_heading(level: HeadingLevel) -> Self {
+    return match level {
+      HeadingLevel::Part => Self::Part,
+      HeadingLevel::Chapter => Self::Chapter,
+      HeadingLevel::Section => Self::Section,
+      HeadingLevel::Subsection => Self::Subsection,
+      HeadingLevel::Paragraph => Self::Paragraph,
+      HeadingLevel::Subparagraph => Self::Subparagraph,
+    };
+  }
+}
+
 /// [`CounterName`] の `FromStr` が受理しないカウンタ名を渡されたときのエラー。
 #[derive(Debug, Error)]
 #[error(
@@ -315,6 +333,7 @@ mod tests {
   use strum::VariantArray;
 
   use super::{CounterName, CounterStyle, CounterStyles, NumberStyle};
+  use crate::document::HeadingLevel;
 
   #[test]
   fn validate_rejects_empty_display_name() {
@@ -482,5 +501,12 @@ resets = [\"example\"]
     }
 
     assert!("foo".parse::<CounterName>().is_err());
+  }
+
+  #[test]
+  fn for_heading_maps_each_level() {
+    assert_eq!(CounterName::for_heading(HeadingLevel::Part), CounterName::Part);
+    assert_eq!(CounterName::for_heading(HeadingLevel::Chapter), CounterName::Chapter);
+    assert_eq!(CounterName::for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
   }
 }

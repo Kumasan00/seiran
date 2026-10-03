@@ -473,8 +473,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   戻さない（#349）。`ref_target` は `Option` ではなく `LabelId` を直接返す — `analyze` 成功後は
   「すべての参照は実在するラベルへ解決済み」が不変条件として成立しており、参照先が無い状態を型として
   表現しない
-- **表示側フィールドは走査が受け取れない**: 走査の入力は `SemanticPolicy`（各カウンタの `resets`、各定理
-  クラスの `counter` / `reset_by` / `unnumbered` だけを写した投影）で、`number_format` / `ref_format` /
+- **表示側フィールドは走査が受け取れない**: 走査の入力は `SemanticPolicy`（各カウンタの `resets` と
+  そのカウンタが進むと 0 に戻す定理の共有カウンタ名、各定理クラスの `counter` / `reset_by` / `unnumbered`
+  だけを写した投影）で、`number_format` / `ref_format` /
   `display_name` / `number_style` が型として存在しない。G3（内容は見た目から独立）はこれで型として保証
   される（規約や property test ではなく型で）。`analyze` 自身が `&Style` を取るのは CSL 整形に渡すためで、
   走査には渡らない
@@ -484,8 +485,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   この module の 1 箇所だけ**にある。祖先チェーンは「自分を `resets` に含み、かつカウンタ名の宣言順で
   自身より手前にあるカウンタのうち最も近いもの」を 1 段ずつ遡って決める（既定の `CounterStyles` は祖先の
   `resets` に子孫を平坦に列挙するため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。
-  定理クラスは `reset_by` が指す見出しカウンタを唯一の祖先とし、`TheoremReset` と見出しカウンタの
-  対応は `style::TheoremReset::counter_name`（とその逆写像 `for_counter`）1 箇所が持つ
+  定理クラスは `reset_by` が指す見出しカウンタを唯一の祖先とする。`TheoremReset` と見出しカウンタの
+  対応は `style::TheoremReset::counter_name` 1 箇所が持ち、`SemanticPolicy::from_style` がそれを適用して
+  `CounterName` へ写すので、走査は `TheoremReset` を読まない
 - 子 module に crate root の module と同名を付けない — 成果物は `semantic_document.rs`、CSL スタイルの読込は
   `citation/csl_style.rs`。`document.rs` / `style.rs` だと `semantics` 配下で `document::` / `style::` が
   crate root（HIR / style.toml）と自 module の 2 義になるため、この名前へ戻さない
