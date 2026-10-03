@@ -53,12 +53,12 @@ mod tests {
   fn build_face_configs_copies_variation_axes_verbatim() {
     let axes = vec![
       VariationAxis {
-        name: *b"wdth",
-        value: 100.0,
-      },
-      VariationAxis {
         name: *b"wght",
         value: 400.0,
+      },
+      VariationAxis {
+        name: *b"wdth",
+        value: 100.0,
       },
     ];
     let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(0, Some(axes.clone())));
