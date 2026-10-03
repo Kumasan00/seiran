@@ -505,6 +505,18 @@ mod tests {
   }
 
   #[test]
+  fn align_notag_with_argument_errors() {
+    let arena = Bump::new();
+    // 行末にあっても、引数付きの `\notag{x}` は行末マーカーとして受け付けない
+    let source = r"\begin{align}a &= b \notag{x}\end{align}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })), "{result:?}");
+  }
+
+  #[test]
   fn align_notag_with_numbered_false_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \notag \\ c &= d\end{align}";

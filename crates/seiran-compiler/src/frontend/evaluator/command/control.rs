@@ -39,7 +39,7 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Hir
 /// 任意引数や必須引数が指定されている場合にエラーを返します
 pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
   opt_args::no_command_opt_args(view)?;
-  arity::no_args(view)?;
+  arity::no_command_args(view)?;
   return Ok(());
 }
 
@@ -50,7 +50,7 @@ pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
 /// 任意引数や必須引数が指定されている場合にエラーを返します
 pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_command_opt_args(view)?;
-  arity::no_args(view)?;
+  arity::no_command_args(view)?;
   return Ok(ctx.leaf_node(view.span(), HirNodeKind::PageBreak));
 }
 
