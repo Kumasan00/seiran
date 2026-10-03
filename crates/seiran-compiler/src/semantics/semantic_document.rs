@@ -23,16 +23,16 @@ pub(crate) struct SemanticDocument {
   /// 意味解析が確定した事実
   facts: SemanticFacts,
   /// CSL 整形が生成した引用表示と書誌（引用が無ければ空）
-  citations: GeneratedCitations,
+  generated_citations: GeneratedCitations,
 }
 
 impl SemanticDocument {
   /// 構築子
-  pub(super) fn new(hir: HirDocument, facts: SemanticFacts, citations: GeneratedCitations) -> Self {
+  pub(super) fn new(hir: HirDocument, facts: SemanticFacts, generated_citations: GeneratedCitations) -> Self {
     return SemanticDocument {
       hir,
       facts,
-      citations,
+      generated_citations,
     };
   }
 
@@ -112,23 +112,23 @@ impl SemanticDocument {
   /// 引用箇所の表示インライン列を引く
   #[must_use]
   pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] {
-    return self.citations.citation_display(site);
+    return self.generated_citations.citation_display(site);
   }
 
   /// 参考文献リスト（書誌）のエントリ列を返す（引用が無い・CSL が書誌を定義していない場合は `None`）
   #[must_use]
-  pub(crate) fn bibliography(&self) -> Option<&[BibliographyEntry]> { return self.citations.bibliography(); }
+  pub(crate) fn bibliography(&self) -> Option<&[BibliographyEntry]> { return self.generated_citations.bibliography(); }
 
   /// CSL 生成物だけを差し替えたコピーを作る（テスト専用）
   #[cfg(test)]
   #[must_use]
-  pub(crate) fn with_citations_for_test(
+  pub(crate) fn with_generated_citations_for_test(
     self,
     displays: Vec<(NodeId, Vec<GeneratedInline>)>,
     bibliography: Option<Vec<BibliographyEntry>>,
   ) -> Self {
     return SemanticDocument {
-      citations: GeneratedCitations::for_test(displays, bibliography),
+      generated_citations: GeneratedCitations::for_test(displays, bibliography),
       ..self
     };
   }
