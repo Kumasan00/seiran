@@ -19,33 +19,36 @@ pub(crate) struct HirSource {
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirDocument {
   /// ソースごとのトップレベルのブロックノード列（`SourceId::index()` の昇順）
-  groups: Vec<Vec<HirNode>>,
+  source_nodes: Vec<Vec<HirNode>>,
   /// 全ノードのソース位置
-  locations: SourceMap,
+  source_map: SourceMap,
 }
 
 impl HirDocument {
   /// 全ソースのパース結果から文書木を組み立てる
   ///
   /// `sources` の並び順に依存せず `SourceId::index()` の昇順へ正規化するため、
-  /// パースの実行順が `groups` の順序にも `SourceMap` の内容にも影響しない。
+  /// パースの実行順が `source_nodes` の順序にも `source_map` の内容にも影響しない。
   pub(crate) fn assemble(sources: Vec<HirSource>) -> Self {
     let mut sorted = sources;
     sorted.sort_by_key(|source| return source.spans.source_id().index());
 
-    let mut groups = Vec::with_capacity(sorted.len());
-    let mut locations = SourceMap::default();
+    let mut source_nodes = Vec::with_capacity(sorted.len());
+    let mut source_map = SourceMap::default();
     for source in sorted {
-      locations.insert(source.spans);
-      groups.push(source.nodes);
+      source_map.insert(source.spans);
+      source_nodes.push(source.nodes);
     }
 
-    return HirDocument { groups, locations };
+    return HirDocument {
+      source_nodes,
+      source_map,
+    };
   }
 
   /// ソースごとのノード列を返す
-  pub(crate) fn groups(&self) -> &[Vec<HirNode>] { return &self.groups; }
+  pub(crate) fn source_nodes(&self) -> &[Vec<HirNode>] { return &self.source_nodes; }
 
   /// 位置表を返す
-  pub(crate) fn locations(&self) -> &SourceMap { return &self.locations; }
+  pub(crate) fn source_map(&self) -> &SourceMap { return &self.source_map; }
 }

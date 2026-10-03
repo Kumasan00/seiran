@@ -281,8 +281,8 @@ pub(super) fn lower_sources_with_headings(
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut state = LoweringState::new(document);
   let mut result = Vec::new();
-  for group in document.hir().groups() {
-    result.extend(lower_nodes_inner(ctx, group, &mut state));
+  for nodes in document.hir().source_nodes() {
+    result.extend(lower_nodes_inner(ctx, nodes, &mut state));
   }
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
@@ -306,7 +306,7 @@ pub(super) fn lower_sources_with_headings(
     .collect();
   headings.extend(bibliography_headings);
 
-  let input_node_count: usize = document.hir().groups().iter().map(Vec::len).sum::<usize>()
+  let input_node_count: usize = document.hir().source_nodes().iter().map(Vec::len).sum::<usize>()
     + document.bibliography().map_or(0, <[BibliographyEntry]>::len);
   debug!(input_node_count, layout_node_count = result.len(), "LayoutNode へ lowering");
   return (result, headings);
@@ -545,7 +545,7 @@ mod tests {
   }
 
   #[test]
-  fn footnote_indices_continue_across_source_groups() {
+  fn footnote_indices_continue_across_sources() {
     let style = ReadStyle::default();
     let analyzed = analyzed_sources(&["one \\footnote{a}\n", "two \\footnote{b}\n"]);
 
@@ -558,7 +558,7 @@ mod tests {
         _ => return None,
       })
       .collect();
-    assert_eq!(indices, vec![0, 1], "脚注の出現 index はグループを跨いで通し番号: {layout:?}");
+    assert_eq!(indices, vec![0, 1], "脚注の出現 index はソースを跨いで通し番号: {layout:?}");
   }
 
   #[test]
@@ -624,8 +624,8 @@ mod tests {
     let (_layout, headings) = lower_body(&style, &analyzed);
 
     assert_eq!(headings.len(), 2, "{headings:?}");
-    assert_eq!(headings[0].number, "1", "1 グループ目の chapter は 1");
-    assert_eq!(headings[1].number, "2", "2 グループ目の chapter は連番の 2: {headings:?}");
+    assert_eq!(headings[0].number, "1", "1 ソース目の chapter は 1");
+    assert_eq!(headings[1].number, "2", "2 ソース目の chapter は連番の 2: {headings:?}");
   }
 
   #[test]

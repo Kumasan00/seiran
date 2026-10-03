@@ -176,8 +176,8 @@ fn analyze_document(
     let phase = Phase::enter(info_span!("frontend"));
     let document = parse_project(inputs, resolver)?;
     info!(
-      source_count = document.groups().len(),
-      node_count = document.groups().iter().map(Vec::len).sum::<usize>(),
+      source_count = document.source_nodes().len(),
+      node_count = document.source_nodes().iter().map(Vec::len).sum::<usize>(),
       "ソースを構文解析"
     );
     phase.succeed();
