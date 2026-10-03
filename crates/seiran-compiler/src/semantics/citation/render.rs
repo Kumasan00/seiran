@@ -166,12 +166,12 @@ fn formatted_to_inline(formatted: &Formatted) -> Option<GeneratedInline> {
     return None;
   }
   let text = GeneratedInline::Text(formatted.text.clone());
-  let kind = formatting_to_font_kind(formatted.formatting);
-  if kind == FontKind::Serif {
+  let font = formatting_to_font_kind(formatted.formatting);
+  if font == FontKind::Serif {
     return Some(text);
   }
   return Some(GeneratedInline::Styled {
-    kind,
+    font,
     children: vec![text],
   });
 }

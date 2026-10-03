@@ -222,7 +222,7 @@ pub(crate) fn evaluate_inline_elements(
         SyntaxKind::InlineMath => {
           let id = ctx.alloc(child_node.span);
           let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
-          sink.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
+          sink.push(HirInline::new(id, HirInlineKind::Math(math_nodes)));
         },
         SyntaxKind::Environment => {
           let view = EnvironmentView::new(child_node, source);
@@ -353,7 +353,7 @@ mod tests {
     assert!(matches!(
       &inlines[0].kind,
       HirInlineKind::Styled {
-        kind: FontKind::SerifBold,
+        font: FontKind::SerifBold,
         ..
       }
     ));
@@ -441,8 +441,8 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
     let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
-    let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::InlineMath(_)));
-    assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
+    let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::Math(_)));
+    assert!(has_math, "Math ノードが含まれるべき: {inlines:?}");
   }
 
   #[test]

@@ -136,7 +136,7 @@ pub(super) fn contains_line_break(nodes: &[HirInline]) -> bool {
     // セル本文とは別のスコープなので、そこに `\\` があってもセルの改行としては数えない。
     HirInlineKind::Text(_)
     | HirInlineKind::Code(_)
-    | HirInlineKind::InlineMath(_)
+    | HirInlineKind::Math(_)
     | HirInlineKind::Symbol(_)
     | HirInlineKind::NoIndent
     | HirInlineKind::Ref { .. }

@@ -164,7 +164,7 @@ impl Checker<'_> {
       },
       HirNodeKind::List(list) => {
         for item in &list.items {
-          self.nodes(&item.content);
+          self.nodes(&item.body);
         }
       },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
@@ -194,7 +194,7 @@ impl Checker<'_> {
         ),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
-        | HirInlineKind::InlineMath(_)
+        | HirInlineKind::Math(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
@@ -359,7 +359,7 @@ impl Walker<'_, '_> {
   }
 
   /// リストアイテムの内容（ネストしたブロックノード列）を走査する
-  fn list_item(&mut self, item: &HirListItem) { return self.nodes(&item.content); }
+  fn list_item(&mut self, item: &HirListItem) { return self.nodes(&item.body); }
 
   /// インラインノード列を走査し、参照箇所（`\ref`）を記録する
   ///
@@ -375,7 +375,7 @@ impl Walker<'_, '_> {
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
-        | HirInlineKind::InlineMath(_)
+        | HirInlineKind::Math(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent

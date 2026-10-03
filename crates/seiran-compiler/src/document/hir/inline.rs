@@ -33,7 +33,7 @@ pub(crate) enum HirInlineKind {
   /// 書体指定テキスト（`\bold{...}` 等の 12 コマンド）
   Styled {
     /// 適用する書体
-    kind: FontKind,
+    font: FontKind,
     /// 装飾対象のインライン要素
     children: Vec<HirInline>,
   },
@@ -53,7 +53,7 @@ pub(crate) enum HirInlineKind {
   Code(String),
 
   /// インライン数式（`$...$`）
-  InlineMath(Vec<HirMath>),
+  Math(Vec<HirMath>),
 
   /// 特殊文字・記号（`\alpha`, `\sum`, `\infty` 等）
   Symbol(char),

@@ -84,10 +84,10 @@ fn lower_generated_inline(
 ) -> Vec<InlineNode> {
   match inline {
     GeneratedInline::Text(text) => return vec![InlineNode::Text(text.clone(), parent_style)],
-    GeneratedInline::Styled { kind, children } => {
+    GeneratedInline::Styled { font, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
-        font_kind: *kind,
+        font_kind: *font,
         color: parent_style.color,
       };
       return lower_generated_inlines(ctx, children, styled);
@@ -121,7 +121,7 @@ mod tests {
       body: vec![
         GeneratedInline::Text("K. Kwan, ".to_string()),
         GeneratedInline::Styled {
-          kind: FontKind::SerifItalic,
+          font: FontKind::SerifItalic,
           children: vec![GeneratedInline::Text("Crazy Rich Asians".to_string())],
         },
       ],

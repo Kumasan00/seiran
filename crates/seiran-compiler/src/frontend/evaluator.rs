@@ -106,7 +106,7 @@ pub(crate) fn evaluate_children(
           paragraph.reserve(ctx, child_node.span);
           let id = ctx.alloc(child_node.span);
           let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
-          paragraph.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
+          paragraph.push(HirInline::new(id, HirInlineKind::Math(math_nodes)));
         },
         SyntaxKind::Root
         | SyntaxKind::EnvironmentBegin
@@ -205,7 +205,7 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
     HirInlineKind::Styled { .. }
     | HirInlineKind::Colored { .. }
     | HirInlineKind::Code(_)
-    | HirInlineKind::InlineMath(_)
+    | HirInlineKind::Math(_)
     | HirInlineKind::Symbol(_)
     | HirInlineKind::LineBreak
     | HirInlineKind::NoIndent

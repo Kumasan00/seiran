@@ -40,10 +40,10 @@ pub(super) fn lower_inline(
     HirInlineKind::Text(text) => {
       return vec![InlineNode::Text(text.clone(), parent_style)];
     },
-    HirInlineKind::Styled { kind, children } => {
+    HirInlineKind::Styled { font, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
-        font_kind: *kind,
+        font_kind: *font,
         color: parent_style.color,
       };
       return lower_inlines(ctx, children, styled, state);
@@ -59,7 +59,7 @@ pub(super) fn lower_inline(
     HirInlineKind::Code(text) => {
       return code::lower_inline_code(text, parent_style);
     },
-    HirInlineKind::InlineMath(math_nodes) => {
+    HirInlineKind::Math(math_nodes) => {
       return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script);
     },
     HirInlineKind::Symbol(ch) => {

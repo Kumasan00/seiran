@@ -197,7 +197,7 @@ mod tests {
     for inline in inlines {
       match inline {
         GeneratedInline::Styled {
-          kind: FontKind::SerifItalic | FontKind::SerifBoldItalic,
+          font: FontKind::SerifItalic | FontKind::SerifBoldItalic,
           children,
         } => out.push(children.iter().map(GeneratedInline::to_plain_text).collect()),
         GeneratedInline::Styled { children, .. } | GeneratedInline::InternalLink { children, .. } => {

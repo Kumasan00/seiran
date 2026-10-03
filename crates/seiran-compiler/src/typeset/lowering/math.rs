@@ -338,10 +338,10 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
     HirMathKind::Styled {
       variant: inner_variant,
-      body,
+      children,
     } => {
       let styled = ctx.with_variant(*inner_variant);
-      for child in body {
+      for child in children {
         push_math_items(child, &styled, items);
       }
     },
