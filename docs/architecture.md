@@ -324,14 +324,14 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 
 ### `frontend`
 
-テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
-`EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
-`ParseSourceError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、自分の
+テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse` と
+`EvalError` / `ParseError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
+`ParseError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、自分の
 message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため）。`SourceId` も
 本文も持たず、帰属は呼び出し元（`compiler`）が添える。生成物は HIR のみで、他の文書木表現へ落とす adapter は
 持たない。
 
-`parse_source` は 1 ソース分の `document::HirSource` を返す。`PathResolver` は `\image{...}` の字面を
+`parse` は 1 ソース分の `document::HirSource` を返す。`PathResolver` は `\image{...}` の字面を
 `ProjectPath` へ解決するために評価 context へ渡すだけで、`compile` facade が 1 回だけ構築した値をそのまま
 運ぶ。`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
 atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落はインラインを
@@ -423,8 +423,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 #### テスト用子 module
 
 - `frontend::test_support`（`pub(crate)`）: `frontend` 配下と後段（`semantics` / `typeset`）の test module が
-  共有する、resolver 注入済みの入口（`base_dir` が空パスの resolver で `parse_source` を呼ぶ）。パス解決
-  そのものを検証するテストは resolver を明示して `frontend::parse_source` を直接呼ぶ
+  共有する、resolver 注入済みの入口（`base_dir` が空パスの resolver で `parse` を呼ぶ）。パス解決
+  そのものを検証するテストは resolver を明示して `frontend::parse` を直接呼ぶ
 - `evaluator::test_support`（非公開 `mod`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
   配下の test module だけが使う（子孫は親の非公開項目に到達できるので、`evaluator` の外へ幅を広げない）
 
@@ -1113,7 +1113,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   分類手段は安定した診断 `code`。失敗するまでに確定した警告を `warnings()` で別に返し、`Diagnostic` 実装
   （`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で変わらない）
 - `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
-  持つ leaf 診断（`frontend::ParseSourceError` / `semantics::SemanticError`）へ `SourceSet` から引いた
+  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError`）へ `SourceSet` から引いた
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。

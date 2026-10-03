@@ -43,9 +43,9 @@ warning と tracing の分担・内部不変条件違反の扱い・garde バリ
 | `cli` | `seiran`（PDF 出力の書き込み・サブコマンド） |
 
 **第 2 階層以降は規定しない** — 著者が選ぶ意味的カテゴリで、module パスと一致していなくてよい
-（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation`、
-`frontend::parse::unexpected_token` の `parse` はいずれも module 名ではない）。`#[cfg(test)]` の
-フィクスチャ診断だけは第 1 階層に `test` を名乗り、本体コードには現れない。
+（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation` は
+いずれも module 名ではない）。`#[cfg(test)]` のフィクスチャ診断だけは第 1 階層に `test` を名乗り、
+本体コードには現れない。
 
 crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code の約 9 割に付いて情報量がゼロ
 （ユーザから見ればバイナリは 1 つ）であり、かつ第 2 階層以降が野放しになるので
@@ -59,7 +59,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 **`code` は leaf diagnostic にだけ付ける**（#375）。段名や集約の都合しか表さない wrapper に
 独自の message / `code` / help を与えてユーザー表示へ出さない — ユーザーが最初に読むメッセージは常に
 「修正できる leaf」であるべきで、「複数のエラーが発生しました」「◯◯段に失敗しました」を先頭に置かない。
-`?` で運ぶための union（例: `frontend::ParseSourceError`）は `#[error(transparent)]` +
+`?` で運ぶための union（例: `frontend::ParseError`）は `#[error(transparent)]` +
 `#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError`）は
 `Diagnostic` を実装しない、が既定形。
 
@@ -76,7 +76,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `TomlErrorParts` を受け取り、toml の自前スニペット（`TOML parse error at line …`）を抑止して位置をラベル
   1 回に揃える（#647）。
   一方、ソース本文を持たない下位 module（本文は `project::SourceSet` が一元管理する。例:
-  `frontend::ParseSourceError` の内側の `ParserError` / `EvalError`、`semantics::SemanticError`）は、
+  `frontend::ParseError` の内側の `SyntaxError` / `EvalError`、`semantics::SemanticError`）は、
   `#[source_code]` を持たず span だけ（複数ソースにまたがる `semantics` は `SourceId` も。発行元が単一の
   識別子で、生の `usize` や array index を独自に採番しない）を運ぶ。本文の添付は **compiler seam の汎用 adapter
   `compiler::source_diagnostic::SourceDiagnostic<E>` 1 つ**が行う（段ごとの attribution wrapper を
@@ -205,7 +205,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 ## シグネチャの原則
 
 - 関数のシグネチャは **常に具体的なエラー型を返す**（例: `Result<Style, Failures<ReadStyleError>>`,
-  `Result<HirSource, ParseSourceError>`, `Result<Compilation, CompileFailure>`）。**production の内部
+  `Result<HirSource, ParseError>`, `Result<Compilation, CompileFailure>`）。**production の内部
   pipeline で `miette::Result<T>` を使わない**（#375）— error の `miette::Report` への型消去は
   CLI 入口（`main` / サブコマンド）でだけ行い、そこまでは段の error 型を保つ。`Report` は
   `Diagnostic` を実装しないので、早期に型消去すると `#[related]` にも `CompileFailure` にも
