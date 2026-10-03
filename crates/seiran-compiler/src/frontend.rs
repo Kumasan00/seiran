@@ -15,21 +15,21 @@ use tracing::debug;
 
 use crate::{
   document::HirSource,
-  frontend::{evaluator::EvalContext, syntax::ParserError},
+  frontend::{evaluator::EvalContext, syntax::SyntaxError},
   project::PathResolver,
   source::SourceId,
 };
 
 /// `parse_source` が返すエラー型
 ///
-/// 内側の `ParserError` / `EvalError` の 2 種類の leaf を `?` で運ぶための union で、この型自身は
+/// 内側の `SyntaxError` / `EvalError` の 2 種類の leaf を `?` で運ぶための union で、この型自身は
 /// message / `code` / help を持たない。ソース本文も `SourceId` も持たず、帰属は呼び出し元が添える。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum ParseSourceError {
-  /// 構文解析（`crate::frontend::syntax::parse`）で発生したエラー
+  /// 構文解析（`crate::frontend::syntax::parse_cst`）で発生したエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Syntax(#[from] ParserError),
+  Syntax(#[from] SyntaxError),
 
   /// 評価（CST → HIR 変換）で発生したエラー
   #[error(transparent)]
@@ -53,7 +53,7 @@ pub(crate) fn parse_source(
   resolver: &PathResolver,
 ) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
-  let cst = syntax::parse(source, &arena, evaluator::mode_resolver())?;
+  let cst = syntax::parse_cst(source, &arena, evaluator::mode_resolver())?;
 
   let ctx = EvalContext::new(source_id, resolver);
   let nodes = evaluator::evaluate_children(source, &ctx, cst)?;

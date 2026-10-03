@@ -87,7 +87,7 @@ mod tests {
   fn itemize_rejects_unknown_opt_arg_key() {
     let arena = Bump::new();
     let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -98,7 +98,7 @@ mod tests {
   fn enumerate_start_option_sets_list_start() {
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=5]\item{A}\end{enumerate}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -112,7 +112,7 @@ mod tests {
   fn itemize_rejects_start_opt_arg_key() {
     let arena = Bump::new();
     let source = r"\begin{itemize}[start=5]\item{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -123,7 +123,7 @@ mod tests {
   fn enumerate_start_zero_is_invalid() {
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=0]\item{A}\end{enumerate}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -134,7 +134,7 @@ mod tests {
   fn item_marker_option_sets_list_item_marker() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=☆]{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -148,7 +148,7 @@ mod tests {
   fn item_marker_option_accepts_empty_string() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=]{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -162,7 +162,7 @@ mod tests {
   fn item_rejects_unknown_opt_arg_key_other_than_marker() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[foo=bar]{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -173,7 +173,7 @@ mod tests {
   fn itemize_item_gap_option_sets_list_item_gap() {
     let arena = Bump::new();
     let source = r"\begin{itemize}[item_gap=0pt]\item{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -187,7 +187,7 @@ mod tests {
   fn enumerate_item_gap_option_combines_with_start() {
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=2, item_gap=8mm]\item{A}\end{enumerate}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -202,7 +202,7 @@ mod tests {
   fn item_gap_option_accepts_negative_value() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[item_gap=-1mm]{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 

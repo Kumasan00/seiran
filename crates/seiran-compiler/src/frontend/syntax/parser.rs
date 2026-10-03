@@ -5,7 +5,7 @@
 mod error;
 
 use bumpalo::Bump;
-pub(crate) use error::ParserError;
+pub(crate) use error::SyntaxError;
 use tracing::debug;
 
 use crate::{
@@ -162,7 +162,7 @@ impl<'a> Parser<'a> {
   }
 
   /// ドキュメント全体をパースして CST ルートノードを返す
-  fn parse_root(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_root(&mut self) -> Result<&'a CstNode<'a>, SyntaxError> {
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     let start = 0;
 
@@ -188,12 +188,12 @@ impl<'a> Parser<'a> {
   /// 自衛しない。その代わり必ず 1 トークン以上消費するので、呼び出し元のループは毎周進む。
   ///
   /// 終端は知らない — 各ループは終端を判定してからこの関数を呼ぶので、ここに届いた `}` / `]` はどの区間の
-  /// 終端でもなく、常に [`ParserError::UnexpectedToken`] になる。
+  /// 終端でもなく、常に [`SyntaxError::UnexpectedToken`] になる。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
     mode: ParseMode,
-  ) -> Result<(), ParserError> {
+  ) -> Result<(), SyntaxError> {
     let Some(kind) = self.peek_kind() else {
       unreachable!(
         "各ループ（parse_root / parse_tokenized_body / parse_delimited / parse_inline_math / parse_math_group）は \
@@ -210,7 +210,7 @@ impl<'a> Parser<'a> {
           let env_node = self.parse_environment(token)?;
           children.push(CstElement::Node(env_node));
         } else if name == "end" {
-          return Err(ParserError::StrayEnd {
+          return Err(SyntaxError::StrayEnd {
             span: token.span.into(),
           });
         } else {
@@ -222,7 +222,7 @@ impl<'a> Parser<'a> {
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
           let second_dollar = self.take_peeked();
-          return Err(ParserError::DollarDollarNotSupported {
+          return Err(SyntaxError::DollarDollarNotSupported {
             span: first_dollar.span.merge(second_dollar.span).into(),
           });
         }
@@ -232,7 +232,7 @@ impl<'a> Parser<'a> {
       },
       TokenKind::Dollar => {
         let token = self.take_peeked();
-        return Err(ParserError::DollarInMathMode {
+        return Err(SyntaxError::DollarInMathMode {
           span: token.span.into(),
         });
       },
@@ -250,26 +250,26 @@ impl<'a> Parser<'a> {
       },
       TokenKind::LBrace => {
         let token = self.take_peeked();
-        return Err(ParserError::BareGroup {
+        return Err(SyntaxError::BareGroup {
           span: token.span.into(),
         });
       },
       TokenKind::LBracket => {
         let token = self.take_peeked();
-        return Err(ParserError::BareBracket {
+        return Err(SyntaxError::BareBracket {
           span: token.span.into(),
         });
       },
       TokenKind::RBrace | TokenKind::RBracket => {
         let token = self.take_peeked();
-        return Err(ParserError::UnexpectedToken {
+        return Err(SyntaxError::UnexpectedToken {
           kind: token.kind,
           span: token.span.into(),
         });
       },
       TokenKind::Unknown => {
         let token = self.take_peeked();
-        return Err(ParserError::InvalidBackslash {
+        return Err(SyntaxError::InvalidBackslash {
           span: token.span.into(),
         });
       },
@@ -307,7 +307,7 @@ impl<'a> Parser<'a> {
   /// 本体の読み取り方（[`BodyMode`]）は環境名が確定した時点でレジストリから引き、`\begin` 側の引数の
   /// 読み方もそれで決まる。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の
   /// 余分な引数は評価器が診断する）。
-  fn parse_environment(&mut self, begin_token: Token) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_environment(&mut self, begin_token: Token) -> Result<&'a CstNode<'a>, SyntaxError> {
     let start_span = begin_token.span;
     let mut env_children = bumpalo::collections::Vec::new_in(self.arena);
 
@@ -363,7 +363,7 @@ impl<'a> Parser<'a> {
     env_children.push(CstElement::Node(body_node));
 
     if self.peek_kind() != Some(TokenKind::Command) {
-      return Err(ParserError::UnclosedEnvironment {
+      return Err(SyntaxError::UnclosedEnvironment {
         name: env_name,
         span: start_span.into(),
       });
@@ -385,7 +385,7 @@ impl<'a> Parser<'a> {
     let end_env_name = self.extract_text_from_arg(end_name_arg);
 
     if env_name != end_env_name {
-      return Err(ParserError::MismatchedEnvironment {
+      return Err(SyntaxError::MismatchedEnvironment {
         expected: env_name,
         found: end_env_name,
         span: end_token.span.merge(self.last_span).into(),
@@ -405,7 +405,7 @@ impl<'a> Parser<'a> {
   /// 環境本体をトークン化して読む: `\end` の直前まで
   ///
   /// `\end` 自体は消費しない。
-  fn parse_tokenized_body(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_tokenized_body(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, SyntaxError> {
     let last_span_end = self.last_span.end;
     let body_start = self.peek_token().map_or(last_span_end, |t| return t.span.start);
     let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
@@ -438,12 +438,12 @@ impl<'a> Parser<'a> {
   /// 本体は 1 個の [`TokenKind::VerbatimText`] になる。本体内の `\begin{<環境名>}` は計数しない
   /// （最初の `\end{<環境名>}` で終端）。本体が空でもトークンを 1 個積み、「本体の子はちょうど 1 個」を
   /// 利用側の不変条件にする。
-  fn parse_verbatim_body(&mut self, env_name: &str, begin_span: Span) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_verbatim_body(&mut self, env_name: &str, begin_span: Span) -> Result<&'a CstNode<'a>, SyntaxError> {
     self.rewind_peeked();
 
     let marker = format!("\\end{{{env_name}}}");
     let Some(body_span) = self.lexer.scan_verbatim_until(&marker) else {
-      return Err(ParserError::UnclosedEnvironment {
+      return Err(SyntaxError::UnclosedEnvironment {
         name: env_name.to_string(),
         span: begin_span.into(),
       });
@@ -479,7 +479,7 @@ impl<'a> Parser<'a> {
     cmd_token: Token,
     mode: ParseMode,
     out: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
-  ) -> Result<(), ParserError> {
+  ) -> Result<(), SyntaxError> {
     let start_span = cmd_token.span;
     let command_name = cmd_token.command_name(self.source);
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -519,14 +519,14 @@ impl<'a> Parser<'a> {
   /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
   ///
   /// 終端 `close_kind` の判定はこのループだけが持つ（[`Self::parse_element`] は終端を受け取らない）。
-  /// 閉じないまま入力が尽きたら [`ParserError::UnclosedDelimiter`] を返す。
+  /// 閉じないまま入力が尽きたら [`SyntaxError::UnclosedDelimiter`] を返す。
   fn parse_delimited(
     &mut self,
     open_kind: TokenKind,
     close_kind: TokenKind,
     node_kind: SyntaxKind,
     mode: ParseMode,
-  ) -> Result<&'a CstNode<'a>, ParserError> {
+  ) -> Result<&'a CstNode<'a>, SyntaxError> {
     let open = self.expect(open_kind)?;
     let start_span = open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -537,7 +537,7 @@ impl<'a> Parser<'a> {
       match self.peek_kind() {
         Some(k) if k == close_kind => break,
         None => {
-          return Err(ParserError::UnclosedDelimiter {
+          return Err(SyntaxError::UnclosedDelimiter {
             open_kind,
             span: start_span.into(),
           });
@@ -556,21 +556,21 @@ impl<'a> Parser<'a> {
   /// 任意引数をパース: `[...]`
   ///
   /// key=value / インデックス指定のため常にテキストモードでパースする。
-  fn parse_opt_arg(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_opt_arg(&mut self) -> Result<&'a CstNode<'a>, SyntaxError> {
     return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg, ParseMode::Text);
   }
 
   /// 任意引数を高々 1 組読んで `children` へ積む（P3: コマンド名／環境名の直後に 1 組だけ）
   ///
   /// 読んだ後のトリビアも `children` へ積み、続きが `[` なら 2 組目を読み切ってから
-  /// [`ParserError::MultipleOptArgs`] にする（ラベルが 2 組目の `[...]` 全体を指すようにするため。
-  /// 2 組目が閉じていなければ読み切りの途中で [`ParserError::UnclosedDelimiter`] が先に出る）。
+  /// [`SyntaxError::MultipleOptArgs`] にする（ラベルが 2 組目の `[...]` 全体を指すようにするため。
+  /// 2 組目が閉じていなければ読み切りの途中で [`SyntaxError::UnclosedDelimiter`] が先に出る）。
   /// 通常のコマンド・環境はトリビアを跨いで引数を探すので、空白・改行を挟んだ `[` も 2 組目として
-  /// 扱う（`[` は本文に書けず、裸なら [`ParserError::BareBracket`] になる文字なので、意味の衝突はない）。
+  /// 扱う（`[` は本文に書けず、裸なら [`SyntaxError::BareBracket`] になる文字なので、意味の衝突はない）。
   fn parse_single_opt_arg(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
-  ) -> Result<(), ParserError> {
+  ) -> Result<(), SyntaxError> {
     if self.peek_kind() != Some(TokenKind::LBracket) {
       return Ok(());
     }
@@ -580,7 +580,7 @@ impl<'a> Parser<'a> {
 
     if self.peek_kind() == Some(TokenKind::LBracket) {
       let second = self.parse_opt_arg()?;
-      return Err(ParserError::MultipleOptArgs {
+      return Err(SyntaxError::MultipleOptArgs {
         span: second.span.into(),
       });
     }
@@ -588,7 +588,7 @@ impl<'a> Parser<'a> {
   }
 
   /// 必須引数をパース: `{...}`
-  fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, SyntaxError> {
     return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg, mode);
   }
 
@@ -596,7 +596,7 @@ impl<'a> Parser<'a> {
   ///
   /// ノード種別が [`SyntaxKind::MandatoryArg`] のままなのは、ブレースバランス走査が `{}` の意味 1
   /// 「引数境界」の解釈であって第 3 の意味を作らないため（P4）。
-  fn parse_verbatim_arg(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
+  fn parse_verbatim_arg(&mut self) -> Result<&'a CstNode<'a>, SyntaxError> {
     let open = self.expect(TokenKind::LBrace)?;
     debug_assert!(
       self.peeked_token.is_none(),
@@ -607,7 +607,7 @@ impl<'a> Parser<'a> {
     children.push(CstElement::Token(open));
 
     let Some(body_span) = self.lexer.scan_verbatim_balanced() else {
-      return Err(ParserError::UnclosedDelimiter {
+      return Err(SyntaxError::UnclosedDelimiter {
         open_kind: TokenKind::LBrace,
         span: open.span.into(),
       });
@@ -624,8 +624,8 @@ impl<'a> Parser<'a> {
 
   /// インライン数式をパース: `$...$`
   ///
-  /// `$` の前で入力が尽きた場合は [`ParserError::UnclosedInlineMath`] を返す。
-  fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a CstNode<'a>, ParserError> {
+  /// `$` の前で入力が尽きた場合は [`SyntaxError::UnclosedInlineMath`] を返す。
+  fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a CstNode<'a>, SyntaxError> {
     let start_span = dollar_open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(CstElement::Token(dollar_open));
@@ -641,7 +641,7 @@ impl<'a> Parser<'a> {
           break;
         },
         None => {
-          return Err(ParserError::UnclosedInlineMath {
+          return Err(SyntaxError::UnclosedInlineMath {
             span: start_span.into(),
           });
         },
@@ -655,8 +655,8 @@ impl<'a> Parser<'a> {
 
   /// 数式モード内のグループをパース: `{...}`
   ///
-  /// `$` または EOF で閉じられないまま終わった場合は [`ParserError::UnclosedMathGroup`] を返す。
-  fn parse_math_group(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
+  /// `$` または EOF で閉じられないまま終わった場合は [`SyntaxError::UnclosedMathGroup`] を返す。
+  fn parse_math_group(&mut self) -> Result<&'a CstNode<'a>, SyntaxError> {
     let lbrace = self.expect(TokenKind::LBrace)?;
     let start_span = lbrace.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -673,7 +673,7 @@ impl<'a> Parser<'a> {
           break;
         },
         Some(TokenKind::Dollar) | None => {
-          return Err(ParserError::UnclosedMathGroup {
+          return Err(SyntaxError::UnclosedMathGroup {
             span: start_span.into(),
           });
         },
@@ -688,8 +688,8 @@ impl<'a> Parser<'a> {
   /// 数式内の上付き・下付きスクリプトをパースする: `_{...}`, `^{...}`
   ///
   /// 内容は `{...}` グループのみを受け付ける。`$x^2$` のような裸の 1 トークンも
-  /// `$x^\alpha$` のような裸のコマンドも [`ParserError::ScriptRequiresGroup`] にする。
-  fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a CstNode<'a>, ParserError> {
+  /// `$x^\alpha$` のような裸のコマンドも [`SyntaxError::ScriptRequiresGroup`] にする。
+  fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a CstNode<'a>, SyntaxError> {
     let script_token = self.take_peeked();
     let start_span = script_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -706,17 +706,17 @@ impl<'a> Parser<'a> {
       // 数式内の他の位置と同じ診断にする（`$x^{\ }$` と書いても直らないため）。
       Some(TokenKind::Unknown) => {
         let token = self.take_peeked();
-        return Err(ParserError::InvalidBackslash {
+        return Err(SyntaxError::InvalidBackslash {
           span: token.span.into(),
         });
       },
       Some(_) => {
-        return Err(ParserError::ScriptRequiresGroup {
+        return Err(SyntaxError::ScriptRequiresGroup {
           span: start_span.into(),
         });
       },
       None => {
-        return Err(ParserError::UnexpectedEof {
+        return Err(SyntaxError::UnexpectedEof {
           span: self.last_span.into(),
         });
       },
@@ -727,7 +727,7 @@ impl<'a> Parser<'a> {
   }
 
   /// 期待されるトークンを消費する
-  fn expect(&mut self, expected: TokenKind) -> Result<Token, ParserError> {
+  fn expect(&mut self, expected: TokenKind) -> Result<Token, SyntaxError> {
     match self.peek_kind() {
       Some(kind) if kind == expected => {
         let token = self.take_peeked();
@@ -735,13 +735,13 @@ impl<'a> Parser<'a> {
       },
       Some(kind) => {
         let span = self.peeked().span;
-        return Err(ParserError::UnexpectedToken {
+        return Err(SyntaxError::UnexpectedToken {
           kind,
           span: span.into(),
         });
       },
       None => {
-        return Err(ParserError::UnexpectedEof {
+        return Err(SyntaxError::UnexpectedEof {
           span: self.last_span.into(),
         });
       },
@@ -782,7 +782,11 @@ impl<'a> Parser<'a> {
 /// # Errors
 ///
 /// 構文エラーが発生した場合
-pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump, modes: ModeResolver) -> Result<&'a CstNode<'a>, ParserError> {
+pub(crate) fn parse_cst<'a>(
+  source: &'a str,
+  arena: &'a Bump,
+  modes: ModeResolver,
+) -> Result<&'a CstNode<'a>, SyntaxError> {
   let lexer = Lexer::new(source);
   let mut parser = Parser::new(source, lexer, arena, modes);
   let root = parser.parse_root()?;
@@ -835,17 +839,17 @@ mod tests {
     };
   }
 
-  /// テスト用の `parse` ラッパ
-  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, ParserError> {
-    return super::parse(source, arena, test_modes());
+  /// テスト用の `parse_cst` ラッパ
+  fn parse_cst<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, SyntaxError> {
+    return super::parse_cst(source, arena, test_modes());
   }
 
-  fn parse_source<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> { return parse(source, arena).unwrap(); }
+  fn parse_cst_ok<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> { return parse_cst(source, arena).unwrap(); }
 
   #[test]
   fn empty_input_returns_root() {
     let arena = Bump::new();
-    let cst = parse_source("", &arena);
+    let cst = parse_cst_ok("", &arena);
     assert_eq!(cst.kind, SyntaxKind::Root);
     assert_eq!(cst.children, []);
   }
@@ -853,7 +857,7 @@ mod tests {
   #[test]
   fn plain_text() {
     let arena = Bump::new();
-    let cst = parse_source("hello world", &arena);
+    let cst = parse_cst_ok("hello world", &arena);
     assert_eq!(cst.kind, SyntaxKind::Root);
     assert_eq!(cst.children.len(), 3);
     assert!(matches!(&cst.children[0], CstElement::Token(t) if t.kind == TokenKind::Text));
@@ -864,7 +868,7 @@ mod tests {
   #[test]
   fn paragraph_break() {
     let arena = Bump::new();
-    let cst = parse_source("first\n\nsecond", &arena);
+    let cst = parse_cst_ok("first\n\nsecond", &arena);
     assert_eq!(cst.children.len(), 3);
     assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::ParagraphBreak));
   }
@@ -872,7 +876,7 @@ mod tests {
   #[test]
   fn line_break_token() {
     let arena = Bump::new();
-    let cst = parse_source("hello\\\\world", &arena);
+    let cst = parse_cst_ok("hello\\\\world", &arena);
     assert_eq!(cst.children.len(), 3);
     assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::LineBreak));
   }
@@ -880,7 +884,7 @@ mod tests {
   #[test]
   fn escaped_char_is_token() {
     let arena = Bump::new();
-    let cst = parse_source("\\{", &arena);
+    let cst = parse_cst_ok("\\{", &arena);
     assert_eq!(cst.children.len(), 1);
     assert!(matches!(&cst.children[0], CstElement::Token(t) if t.kind == TokenKind::Escaped));
   }
@@ -888,7 +892,7 @@ mod tests {
   #[test]
   fn comments_are_preserved_in_cst() {
     let arena = Bump::new();
-    let cst = parse_source("// comment\nhello", &arena);
+    let cst = parse_cst_ok("// comment\nhello", &arena);
     let has_comment = cst.children.iter().any(|e| matches!(e, CstElement::Token(t) if t.kind == TokenKind::Comment));
     let has_text = cst.children.iter().any(|e| matches!(e, CstElement::Token(t) if t.kind == TokenKind::Text));
     assert!(has_comment);
@@ -898,7 +902,7 @@ mod tests {
   #[test]
   fn command_without_args() {
     let arena = Bump::new();
-    let cst = parse_source("\\foo", &arena);
+    let cst = parse_cst_ok("\\foo", &arena);
     assert_eq!(cst.children.len(), 1);
     if let CstElement::Node(n) = &cst.children[0] {
       assert_eq!(n.kind, SyntaxKind::CommandCall);
@@ -911,7 +915,7 @@ mod tests {
   #[test]
   fn command_with_one_required_arg() {
     let arena = Bump::new();
-    let cst = parse_source("\\bold{hello}", &arena);
+    let cst = parse_cst_ok("\\bold{hello}", &arena);
     assert_eq!(cst.children.len(), 1);
     if let CstElement::Node(cmd) = &cst.children[0] {
       assert_eq!(cmd.kind, SyntaxKind::CommandCall);
@@ -925,7 +929,7 @@ mod tests {
   #[test]
   fn command_with_optional_and_required_args() {
     let arena = Bump::new();
-    let cst = parse_source("\\cmd[opt]{arg}", &arena);
+    let cst = parse_cst_ok("\\cmd[opt]{arg}", &arena);
     if let CstElement::Node(cmd) = &cst.children[0] {
       let opt_args: Vec<_> = cmd.children_of_kind(SyntaxKind::OptArg).collect();
       let req_args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
@@ -939,7 +943,7 @@ mod tests {
   #[test]
   fn simple_environment() {
     let arena = Bump::new();
-    let cst = parse_source("\\begin{center}hello\\end{center}", &arena);
+    let cst = parse_cst_ok("\\begin{center}hello\\end{center}", &arena);
     assert_eq!(cst.children.len(), 1);
     if let CstElement::Node(env) = &cst.children[0] {
       assert_eq!(env.kind, SyntaxKind::Environment);
@@ -954,7 +958,7 @@ mod tests {
   #[test]
   fn nested_environments() {
     let arena = Bump::new();
-    let cst = parse_source("\\begin{outer}\\begin{inner}text\\end{inner}\\end{outer}", &arena);
+    let cst = parse_cst_ok("\\begin{outer}\\begin{inner}text\\end{inner}\\end{outer}", &arena);
     if let CstElement::Node(env) = &cst.children[0] {
       let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
       let inner_env: Vec<_> = body.children_of_kind(SyntaxKind::Environment).collect();
@@ -967,14 +971,14 @@ mod tests {
   #[test]
   fn environment_mismatched_end_is_error() {
     let arena = Bump::new();
-    let result = parse("\\begin{foo}content\\end{bar}", &arena);
-    assert!(matches!(result, Err(ParserError::MismatchedEnvironment { .. })));
+    let result = parse_cst("\\begin{foo}content\\end{bar}", &arena);
+    assert!(matches!(result, Err(SyntaxError::MismatchedEnvironment { .. })));
   }
 
   #[test]
   fn simple_inline_math() {
     let arena = Bump::new();
-    let cst = parse_source("$x$", &arena);
+    let cst = parse_cst_ok("$x$", &arena);
     assert_eq!(cst.children.len(), 1);
     if let CstElement::Node(math) = &cst.children[0] {
       assert_eq!(math.kind, SyntaxKind::InlineMath);
@@ -986,7 +990,7 @@ mod tests {
   #[test]
   fn inline_math_with_group() {
     let arena = Bump::new();
-    let cst = parse_source("${x}$", &arena);
+    let cst = parse_cst_ok("${x}$", &arena);
     if let CstElement::Node(math) = &cst.children[0] {
       let groups: Vec<_> = math.children_of_kind(SyntaxKind::MathGroup).collect();
       assert_eq!(groups.len(), 1);
@@ -998,15 +1002,15 @@ mod tests {
   #[test]
   fn bare_group_at_top_level_is_error() {
     let arena = Bump::new();
-    let result = parse("{hello}", &arena);
-    assert!(matches!(result, Err(ParserError::BareGroup { .. })));
+    let result = parse_cst("{hello}", &arena);
+    assert!(matches!(result, Err(SyntaxError::BareGroup { .. })));
   }
 
   #[test]
   fn bare_group_in_paragraph_is_error() {
     let arena = Bump::new();
-    let result = parse("hello {world}", &arena);
-    assert!(matches!(result, Err(ParserError::BareGroup { .. })));
+    let result = parse_cst("hello {world}", &arena);
+    assert!(matches!(result, Err(SyntaxError::BareGroup { .. })));
   }
 
   #[test]
@@ -1014,17 +1018,17 @@ mod tests {
     // 注意: `\begin{env}{x}\end{env}` の `{x}` は \begin の追加 mandatory arg として
     // 解釈されるため、本体内 bare group のテストには `text{bare}` のように先頭にテキストを置く。
     let arena = Bump::new();
-    let result = parse(r"\begin{env}text{bare}\end{env}", &arena);
-    assert!(matches!(result, Err(ParserError::BareGroup { .. })));
+    let result = parse_cst(r"\begin{env}text{bare}\end{env}", &arena);
+    assert!(matches!(result, Err(SyntaxError::BareGroup { .. })));
   }
 
   #[test]
   fn unexpected_rbrace_at_top_level() {
     let arena = Bump::new();
-    let result = parse("}", &arena);
+    let result = parse_cst("}", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnexpectedToken {
+      Err(SyntaxError::UnexpectedToken {
         kind: TokenKind::RBrace,
         ..
       })
@@ -1034,10 +1038,10 @@ mod tests {
   #[test]
   fn unexpected_rbracket_at_top_level() {
     let arena = Bump::new();
-    let result = parse("]", &arena);
+    let result = parse_cst("]", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnexpectedToken {
+      Err(SyntaxError::UnexpectedToken {
         kind: TokenKind::RBracket,
         ..
       })
@@ -1047,10 +1051,10 @@ mod tests {
   #[test]
   fn stray_rbrace_in_environment_body_is_error_not_hang() {
     let arena = Bump::new();
-    let result = parse(r"\begin{env}}\end{env}", &arena);
+    let result = parse_cst(r"\begin{env}}\end{env}", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnexpectedToken {
+      Err(SyntaxError::UnexpectedToken {
         kind: TokenKind::RBrace,
         ..
       })
@@ -1061,7 +1065,7 @@ mod tests {
   fn trivia_only_source_is_root_of_trivia_tokens() {
     // トリビアだけのソースは parse_root のループが積み切って EOF で抜け、parse_element を呼ばない
     let arena = Bump::new();
-    let cst = parse_source("  // c", &arena);
+    let cst = parse_cst_ok("  // c", &arena);
     let kinds: Vec<TokenKind> = cst
       .children
       .iter()
@@ -1078,8 +1082,8 @@ mod tests {
   #[test]
   fn environment_body_ending_in_trivia_without_end_is_error() {
     let arena = Bump::new();
-    let result = parse("\\begin{env}body \n", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
+    let result = parse_cst("\\begin{env}body \n", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedEnvironment { .. })));
   }
 
   #[test]
@@ -1105,10 +1109,10 @@ mod tests {
   #[test]
   fn stray_rbracket_in_mandatory_arg_is_error_not_hang() {
     let arena = Bump::new();
-    let result = parse(r"\cmd{abc]def}", &arena);
+    let result = parse_cst(r"\cmd{abc]def}", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnexpectedToken {
+      Err(SyntaxError::UnexpectedToken {
         kind: TokenKind::RBracket,
         ..
       })
@@ -1118,10 +1122,10 @@ mod tests {
   #[test]
   fn stray_rbrace_in_opt_arg_is_error_not_hang() {
     let arena = Bump::new();
-    let result = parse(r"\cmd[abc}def]{x}", &arena);
+    let result = parse_cst(r"\cmd[abc}def]{x}", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnexpectedToken {
+      Err(SyntaxError::UnexpectedToken {
         kind: TokenKind::RBrace,
         ..
       })
@@ -1131,10 +1135,10 @@ mod tests {
   #[test]
   fn unclosed_brace_in_command_arg_returns_unclosed_delimiter() {
     let arena = Bump::new();
-    let result = parse(r"\cmd{unclosed", &arena);
+    let result = parse_cst(r"\cmd{unclosed", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnclosedDelimiter {
+      Err(SyntaxError::UnclosedDelimiter {
         open_kind: TokenKind::LBrace,
         ..
       })
@@ -1144,10 +1148,10 @@ mod tests {
   #[test]
   fn unclosed_bracket_in_opt_arg_returns_unclosed_delimiter() {
     let arena = Bump::new();
-    let result = parse(r"\cmd[opt", &arena);
+    let result = parse_cst(r"\cmd[opt", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnclosedDelimiter {
+      Err(SyntaxError::UnclosedDelimiter {
         open_kind: TokenKind::LBracket,
         ..
       })
@@ -1160,7 +1164,7 @@ mod tests {
   fn nested_closers_in_math_arg_are_consumed_by_their_own_loops() {
     // `{{a}}` の内側の `}` は数式グループのループが、外側の `}` は引数のループが消費する。
     let arena = Bump::new();
-    let cst = parse_source(r"$\vfrac{{a}}{b}$", &arena);
+    let cst = parse_cst_ok(r"$\vfrac{{a}}{b}$", &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1178,7 +1182,7 @@ mod tests {
   fn trivia_before_closer_stays_inside_the_arg() {
     // 終端の直前のトリビアはループが終端判定より先に積むので、引数の子として `}` の手前に残る。
     let arena = Bump::new();
-    let cst = parse_source(r"\cmd{x }", &arena);
+    let cst = parse_cst_ok(r"\cmd{x }", &arena);
     let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
     let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).expect("MandatoryArg ノードが期待されます");
     let kinds: Vec<TokenKind> = arg
@@ -1205,14 +1209,14 @@ mod tests {
   #[test]
   fn top_level_end_is_stray_end_error() {
     let arena = Bump::new();
-    let result = parse(r"\end{foo}", &arena);
-    assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
+    let result = parse_cst(r"\end{foo}", &arena);
+    assert!(matches!(result, Err(SyntaxError::StrayEnd { .. })));
   }
 
   #[test]
   fn unexpected_token_error_message_uses_display() {
     let arena = Bump::new();
-    let err = parse("}", &arena).unwrap_err();
+    let err = parse_cst("}", &arena).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains('}'), "メッセージに '}}' が含まれるべき: {msg}");
     assert!(!msg.contains("RBrace"), "Debug 由来の識別子が漏れている: {msg}");
@@ -1221,49 +1225,49 @@ mod tests {
   #[test]
   fn lone_backslash_at_eof_is_error() {
     let arena = Bump::new();
-    let result = parse(r"\", &arena);
-    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
+    let result = parse_cst(r"\", &arena);
+    assert!(matches!(result, Err(SyntaxError::InvalidBackslash { .. })));
   }
 
   #[test]
   fn invalid_backslash_in_math_is_error() {
     let arena = Bump::new();
-    let result = parse(r"$x \ y$", &arena);
-    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
+    let result = parse_cst(r"$x \ y$", &arena);
+    assert!(matches!(result, Err(SyntaxError::InvalidBackslash { .. })));
   }
 
   #[test]
   fn environment_without_end_is_error() {
     let arena = Bump::new();
-    let result = parse(r"\begin{env}body without end", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
+    let result = parse_cst(r"\begin{env}body without end", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedEnvironment { .. })));
   }
 
   #[test]
   fn environment_without_end_after_args_is_error() {
     let arena = Bump::new();
-    let result = parse(r"\begin{env}[opt]body", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
+    let result = parse_cst(r"\begin{env}[opt]body", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedEnvironment { .. })));
   }
 
   #[test]
   fn math_group_unclosed_by_dollar_is_error() {
     let arena = Bump::new();
-    let result = parse("${x$", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
+    let result = parse_cst("${x$", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedMathGroup { .. })));
   }
 
   #[test]
   fn math_group_unclosed_by_eof_is_error() {
     let arena = Bump::new();
-    let result = parse("${x", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
+    let result = parse_cst("${x", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedMathGroup { .. })));
   }
 
   #[test]
   fn environment_directly_in_inline_math_is_environment_node() {
     let arena = Bump::new();
-    let cst = parse_source(r"$\begin{foo}a\end{foo}$", &arena);
+    let cst = parse_cst_ok(r"$\begin{foo}a\end{foo}$", &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1275,7 +1279,7 @@ mod tests {
   #[test]
   fn environment_directly_in_math_group_is_environment_node() {
     let arena = Bump::new();
-    let cst = parse_source(r"${\begin{foo}a\end{foo}}$", &arena);
+    let cst = parse_cst_ok(r"${\begin{foo}a\end{foo}}$", &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1287,22 +1291,22 @@ mod tests {
   #[test]
   fn end_directly_in_inline_math_is_stray_end_error() {
     let arena = Bump::new();
-    let result = parse(r"$a\end{foo}$", &arena);
-    assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
+    let result = parse_cst(r"$a\end{foo}$", &arena);
+    assert!(matches!(result, Err(SyntaxError::StrayEnd { .. })));
   }
 
   #[test]
   fn end_directly_in_math_group_is_stray_end_error() {
     let arena = Bump::new();
-    let result = parse(r"${a\end{foo}}$", &arena);
-    assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
+    let result = parse_cst(r"${a\end{foo}}$", &arena);
+    assert!(matches!(result, Err(SyntaxError::StrayEnd { .. })));
   }
 
   #[test]
   fn trivia_before_closing_dollar_and_brace_stays_in_math() {
     // 終端の直前のトリビアは数式の子として残り、閉じ `$` / `}` を数式モード内の記号として弾かない
     let arena = Bump::new();
-    let cst = parse_source("$ { x } $", &arena);
+    let cst = parse_cst_ok("$ { x } $", &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1326,7 +1330,7 @@ mod tests {
   #[test]
   fn span_tracks_command_with_arg() {
     let arena = Bump::new();
-    let cst = parse_source("\\bold{text}", &arena);
+    let cst = parse_cst_ok("\\bold{text}", &arena);
     if let CstElement::Node(cmd) = &cst.children[0] {
       assert_eq!(cmd.span, Span::new(0, 11));
     }
@@ -1335,7 +1339,7 @@ mod tests {
   #[test]
   fn span_tracks_environment() {
     let arena = Bump::new();
-    let cst = parse_source("\\begin{env}body\\end{env}", &arena);
+    let cst = parse_cst_ok("\\begin{env}body\\end{env}", &arena);
     if let CstElement::Node(env) = &cst.children[0] {
       assert_eq!(env.span, Span::new(0, 24));
     }
@@ -1344,7 +1348,7 @@ mod tests {
   #[test]
   fn span_tracks_inline_math() {
     let arena = Bump::new();
-    let cst = parse_source("$x$", &arena);
+    let cst = parse_cst_ok("$x$", &arena);
     if let CstElement::Node(math) = &cst.children[0] {
       assert_eq!(math.span, Span::new(0, 3));
     }
@@ -1353,28 +1357,28 @@ mod tests {
   #[test]
   fn unclosed_inline_math_is_error() {
     let arena = Bump::new();
-    let result = parse("$x", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
+    let result = parse_cst("$x", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedInlineMath { .. })));
   }
 
   #[test]
   fn currency_dollar_without_escape_is_error() {
     let arena = Bump::new();
-    let result = parse("price is 100$", &arena);
-    assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
+    let result = parse_cst("price is 100$", &arena);
+    assert!(matches!(result, Err(SyntaxError::UnclosedInlineMath { .. })));
   }
 
   #[test]
   fn bare_lbracket_in_text_is_error() {
     let arena = Bump::new();
-    let result = parse("hello [world", &arena);
-    assert!(matches!(result, Err(ParserError::BareBracket { .. })));
+    let result = parse_cst("hello [world", &arena);
+    assert!(matches!(result, Err(SyntaxError::BareBracket { .. })));
   }
 
   #[test]
   fn escaped_bracket_in_text_is_ok() {
     let arena = Bump::new();
-    let cst = parse_source(r"hello \[0\]", &arena);
+    let cst = parse_cst_ok(r"hello \[0\]", &arena);
     let has_escaped = cst.children.iter().any(|e| matches!(e, CstElement::Token(t) if t.kind == TokenKind::Escaped));
     assert!(has_escaped);
   }
@@ -1382,15 +1386,15 @@ mod tests {
   #[test]
   fn bare_lbracket_in_inline_math_is_error() {
     let arena = Bump::new();
-    let result = parse("$[0,1]$", &arena);
-    assert!(matches!(result, Err(ParserError::BareBracket { .. })));
+    let result = parse_cst("$[0,1]$", &arena);
+    assert!(matches!(result, Err(SyntaxError::BareBracket { .. })));
   }
 
   #[test]
   fn command_call_ends_at_its_last_argument() {
     // 引数の後で見つからなかったトリビアはコマンド呼び出しに含めず、親の子として返す
     let arena = Bump::new();
-    let cst = parse_source(r"\bold{x} y", &arena);
+    let cst = parse_cst_ok(r"\bold{x} y", &arena);
 
     assert_eq!(cst.children.len(), 3);
     let CstElement::Node(command) = &cst.children[0] else {
@@ -1406,7 +1410,7 @@ mod tests {
   fn command_call_ends_at_its_last_argument_before_a_newline() {
     // 改行・コメントも同じ扱い（トリビアの種類で分岐しない）
     let arena = Bump::new();
-    let cst = parse_source("\\bold{x}\n// 註\ny", &arena);
+    let cst = parse_cst_ok("\\bold{x}\n// 註\ny", &arena);
 
     let CstElement::Node(command) = &cst.children[0] else {
       panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
@@ -1420,7 +1424,7 @@ mod tests {
   fn command_call_keeps_the_trivia_it_crossed_to_find_an_argument() {
     let arena = Bump::new();
     let source = r"\vhref{u} {t}";
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
 
     assert_eq!(cst.children.len(), 1);
     let CstElement::Node(command) = &cst.children[0] else {
@@ -1433,7 +1437,7 @@ mod tests {
   fn command_call_without_arguments_keeps_the_following_trivia() {
     let arena = Bump::new();
     let source = r"\cmd x";
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
 
     assert_eq!(cst.children.len(), 2);
     let CstElement::Node(command) = &cst.children[0] else {
@@ -1446,7 +1450,7 @@ mod tests {
   #[test]
   fn command_call_in_math_returns_the_following_trivia() {
     let arena = Bump::new();
-    let cst = parse_source(r"$\alpha{x} y$", &arena);
+    let cst = parse_cst_ok(r"$\alpha{x} y$", &arena);
 
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("先頭はインライン数式ノードである: {:?}", cst.children[0])
@@ -1466,36 +1470,36 @@ mod tests {
   fn command_rejects_second_opt_arg() {
     // P3: 任意引数はコマンド名の直後に 1 組だけ
     let arena = Bump::new();
-    let result = parse(r"\cmd[a=1][b=2]{x}", &arena);
-    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+    let result = parse_cst(r"\cmd[a=1][b=2]{x}", &arena);
+    assert!(matches!(result, Err(SyntaxError::MultipleOptArgs { .. })));
   }
 
   #[test]
   fn command_rejects_second_opt_arg_across_trivia() {
     let arena = Bump::new();
-    let result = parse(r"\cmd[a=1] [b=2]{x}", &arena);
-    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+    let result = parse_cst(r"\cmd[a=1] [b=2]{x}", &arena);
+    assert!(matches!(result, Err(SyntaxError::MultipleOptArgs { .. })));
   }
 
   #[test]
   fn text_environment_rejects_second_opt_arg() {
     let arena = Bump::new();
-    let result = parse("\\begin{theorem}[title=A][label=b]\nx\n\\end{theorem}", &arena);
-    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+    let result = parse_cst("\\begin{theorem}[title=A][label=b]\nx\n\\end{theorem}", &arena);
+    assert!(matches!(result, Err(SyntaxError::MultipleOptArgs { .. })));
   }
 
   #[test]
   fn math_environment_rejects_second_opt_arg() {
     let arena = Bump::new();
-    let result = parse("\\begin{equation}[numbered=false][label=e]\nx\n\\end{equation}", &arena);
-    assert!(matches!(result, Err(ParserError::MultipleOptArgs { .. })));
+    let result = parse_cst("\\begin{equation}[numbered=false][label=e]\nx\n\\end{equation}", &arena);
+    assert!(matches!(result, Err(SyntaxError::MultipleOptArgs { .. })));
   }
 
   #[test]
   fn second_opt_arg_span_covers_whole_group() {
     let arena = Bump::new();
     let source = r"\cmd[a=1][b=2]{x}";
-    let Err(ParserError::MultipleOptArgs { span }) = parse(source, &arena) else {
+    let Err(SyntaxError::MultipleOptArgs { span }) = parse_cst(source, &arena) else {
       panic!("MultipleOptArgs が期待されます");
     };
     assert_eq!(span.offset(), source.find("[b=2]").unwrap());
@@ -1505,10 +1509,10 @@ mod tests {
   #[test]
   fn stray_rbrace_in_inline_math_is_error() {
     let arena = Bump::new();
-    let result = parse("$x}$", &arena);
+    let result = parse_cst("$x}$", &arena);
     assert!(matches!(
       result,
-      Err(ParserError::UnexpectedToken {
+      Err(SyntaxError::UnexpectedToken {
         kind: TokenKind::RBrace,
         ..
       })
@@ -1518,35 +1522,35 @@ mod tests {
   #[test]
   fn dollar_in_math_environment_is_error() {
     let arena = Bump::new();
-    let result = parse(r"\begin{equation}$x$\end{equation}", &arena);
-    assert!(matches!(result, Err(ParserError::DollarInMathMode { .. })));
+    let result = parse_cst(r"\begin{equation}$x$\end{equation}", &arena);
+    assert!(matches!(result, Err(SyntaxError::DollarInMathMode { .. })));
   }
 
   #[test]
   fn math_script_without_content_before_dollar_is_error() {
     let arena = Bump::new();
-    let result = parse("$x^$", &arena);
-    assert!(matches!(result, Err(ParserError::ScriptRequiresGroup { .. })));
+    let result = parse_cst("$x^$", &arena);
+    assert!(matches!(result, Err(SyntaxError::ScriptRequiresGroup { .. })));
   }
 
   #[test]
   fn math_script_with_bare_token_content_is_error() {
     let arena = Bump::new();
-    let result = parse("$x^2$", &arena);
-    assert!(matches!(result, Err(ParserError::ScriptRequiresGroup { .. })), "裸の 1 トークンは内容にできない");
+    let result = parse_cst("$x^2$", &arena);
+    assert!(matches!(result, Err(SyntaxError::ScriptRequiresGroup { .. })), "裸の 1 トークンは内容にできない");
   }
 
   #[test]
   fn math_script_with_bare_command_content_is_error() {
     let arena = Bump::new();
-    let result = parse(r"$x^\alpha$", &arena);
-    assert!(matches!(result, Err(ParserError::ScriptRequiresGroup { .. })), "裸のコマンドも内容にできない");
+    let result = parse_cst(r"$x^\alpha$", &arena);
+    assert!(matches!(result, Err(SyntaxError::ScriptRequiresGroup { .. })), "裸のコマンドも内容にできない");
   }
 
   #[test]
   fn math_script_skips_whitespace_before_content() {
     let arena = Bump::new();
-    let cst = parse_source("$x^ {2}$", &arena);
+    let cst = parse_cst_ok("$x^ {2}$", &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1560,28 +1564,28 @@ mod tests {
   #[test]
   fn math_script_invalid_backslash_content_is_error() {
     let arena = Bump::new();
-    let result = parse("$x^\\ $", &arena);
-    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
+    let result = parse_cst("$x^\\ $", &arena);
+    assert!(matches!(result, Err(SyntaxError::InvalidBackslash { .. })));
   }
 
   #[test]
   fn dollar_dollar_returns_error() {
     let arena = Bump::new();
-    let result = parse("$$", &arena);
-    assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
+    let result = parse_cst("$$", &arena);
+    assert!(matches!(result, Err(SyntaxError::DollarDollarNotSupported { .. })));
   }
 
   #[test]
   fn dollar_dollar_in_paragraph_returns_error() {
     let arena = Bump::new();
-    let result = parse("hello $$ world", &arena);
-    assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
+    let result = parse_cst("hello $$ world", &arena);
+    assert!(matches!(result, Err(SyntaxError::DollarDollarNotSupported { .. })));
   }
 
   #[test]
   fn underscore_outside_math_is_raw_token() {
     let arena = Bump::new();
-    let cst = parse_source("hello_world", &arena);
+    let cst = parse_cst_ok("hello_world", &arena);
     let kinds: Vec<_> = cst
       .children
       .iter()
@@ -1598,7 +1602,7 @@ mod tests {
   #[test]
   fn caret_outside_math_is_raw_token() {
     let arena = Bump::new();
-    let cst = parse_source("a^b", &arena);
+    let cst = parse_cst_ok("a^b", &arena);
     let kinds: Vec<_> = cst
       .children
       .iter()
@@ -1615,7 +1619,7 @@ mod tests {
   #[test]
   fn superscript_in_math_creates_node() {
     let arena = Bump::new();
-    let cst = parse_source("$x^{2}$", &arena);
+    let cst = parse_cst_ok("$x^{2}$", &arena);
     if let CstElement::Node(math) = &cst.children[0] {
       let sup: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
       assert_eq!(sup.len(), 1);
@@ -1627,7 +1631,7 @@ mod tests {
   #[test]
   fn subscript_with_multiple_characters_in_math() {
     let arena = Bump::new();
-    let cst = parse_source("$x_{ij}$", &arena);
+    let cst = parse_cst_ok("$x_{ij}$", &arena);
     if let CstElement::Node(math) = &cst.children[0] {
       let subs: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
       assert_eq!(subs.len(), 1);
@@ -1641,7 +1645,7 @@ mod tests {
   #[test]
   fn subscript_and_superscript_combined() {
     let arena = Bump::new();
-    let cst = parse_source("$a_{i}^{2}$", &arena);
+    let cst = parse_cst_ok("$a_{i}^{2}$", &arena);
     if let CstElement::Node(math) = &cst.children[0] {
       let subs: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
       let sups: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
@@ -1655,7 +1659,7 @@ mod tests {
   #[test]
   fn equation_env_body_is_parsed_in_math_mode() {
     let arena = Bump::new();
-    let cst = parse_source(r"\begin{equation}x^{ij}\end{equation}", &arena);
+    let cst = parse_cst_ok(r"\begin{equation}x^{ij}\end{equation}", &arena);
     let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1670,7 +1674,7 @@ mod tests {
   #[test]
   fn non_math_env_body_keeps_caret_as_raw_token() {
     let arena = Bump::new();
-    let cst = parse_source(r"\begin{itemize}a^b\end{itemize}", &arena);
+    let cst = parse_cst_ok(r"\begin{itemize}a^b\end{itemize}", &arena);
     let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1689,7 +1693,7 @@ mod tests {
       r"\begin{equation}[label=x]{a}+b\end{equation}",
     ] {
       let arena = Bump::new();
-      let cst = parse_source(source, &arena);
+      let cst = parse_cst_ok(source, &arena);
       let CstElement::Node(env) = &cst.children[0] else {
         panic!("Environment ノードが期待されます: {source}");
       };
@@ -1704,7 +1708,7 @@ mod tests {
   #[test]
   fn text_env_reads_following_braces_as_arguments() {
     let arena = Bump::new();
-    let cst = parse_source("\\begin{itemize}{x}\n{y}\\end{itemize}", &arena);
+    let cst = parse_cst_ok("\\begin{itemize}{x}\n{y}\\end{itemize}", &arena);
     let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1716,7 +1720,7 @@ mod tests {
 
   /// verbatim 環境の本体テキストを取り出す（本体はちょうど 1 個の `VerbatimText`）
   fn verbatim_body<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
-    let cst = parse_source(source, arena);
+    let cst = parse_cst_ok(source, arena);
     let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1731,7 +1735,7 @@ mod tests {
 
   /// verbatim コマンド引数の本体テキストを取り出す（`{` / 本体 / `}` の 3 子）
   fn verbatim_arg<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
-    let cst = parse_source(source, arena);
+    let cst = parse_cst_ok(source, arena);
     let CstElement::Node(cmd) = &cst.children[0] else {
       panic!("CommandCall ノードが期待されます");
     };
@@ -1788,7 +1792,7 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{code}[lang=rust]\nfoo\n\\end{code}";
 
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1805,7 +1809,7 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{code} [x]\\end{code}";
 
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1820,9 +1824,9 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{code}\nfoo\n";
 
-    let result = parse(source, &arena);
+    let result = parse_cst(source, &arena);
 
-    let Err(ParserError::UnclosedEnvironment { name, span }) = result else {
+    let Err(SyntaxError::UnclosedEnvironment { name, span }) = result else {
       panic!("UnclosedEnvironment が期待されます");
     };
     assert_eq!(name, "code");
@@ -1835,7 +1839,7 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{quote}\\begin{code}a$b//c\\end{code}\\end{quote}";
 
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(outer) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
@@ -1876,12 +1880,12 @@ mod tests {
     let arena = Bump::new();
     let unterminated_arena = Bump::new();
 
-    let unterminated = parse(r"\vurl{a\{b}", &unterminated_arena);
+    let unterminated = parse_cst(r"\vurl{a\{b}", &unterminated_arena);
     let terminated = verbatim_arg(r"\vurl{a\}b", &arena);
 
     assert!(matches!(
       unterminated,
-      Err(ParserError::UnclosedDelimiter {
+      Err(SyntaxError::UnclosedDelimiter {
         open_kind: TokenKind::LBrace,
         ..
       })
@@ -1895,9 +1899,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\vurl{https://example.com";
 
-    let result = parse(source, &arena);
+    let result = parse_cst(source, &arena);
 
-    let Err(ParserError::UnclosedDelimiter { open_kind, span }) = result else {
+    let Err(SyntaxError::UnclosedDelimiter { open_kind, span }) = result else {
       panic!("UnclosedDelimiter が期待されます");
     };
     assert_eq!(open_kind, TokenKind::LBrace);
@@ -1910,7 +1914,7 @@ mod tests {
     let arena = Bump::new();
     let source = "$\\vurl{a//b}$";
 
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1929,7 +1933,7 @@ mod tests {
   fn non_verbatim_command_arg_still_inherits_outer_mode() {
     let arena = Bump::new();
 
-    let cst = parse_source("$\\frac{x^{2}}{y}$", &arena);
+    let cst = parse_cst_ok("$\\frac{x^{2}}{y}$", &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -1945,7 +1949,7 @@ mod tests {
     let arena = Bump::new();
     let source = "\\vhref{https://example.com}{\\bold{強調}}";
 
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(cmd) = &cst.children[0] else {
       panic!("CommandCall ノードが期待されます");
     };
@@ -1964,7 +1968,7 @@ mod tests {
   /// インライン数式 `$...$` 1 個だけのソースを読み、その直下の子ノードの種類とコマンド呼び出しの必須引数の個数を返す
   fn inline_math_shape(source: &str) -> Vec<(SyntaxKind, usize)> {
     let arena = Bump::new();
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます: {source}");
     };
@@ -1999,7 +2003,7 @@ mod tests {
   fn trivia_after_last_math_arg_is_returned_outside_the_command() {
     let arena = Bump::new();
     let source = r"$\vfrac{a}{b} {c}$";
-    let cst = parse_source(source, &arena);
+    let cst = parse_cst_ok(source, &arena);
     let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
@@ -2022,7 +2026,7 @@ mod tests {
   fn math_arg_count_does_not_apply_in_text() {
     // テキスト内では裸の `{` を書けない（P4）ので、後ろの `{...}` はすべて引数として読み、余分は評価器が診断する
     let arena = Bump::new();
-    let cst = parse_source(r"\vfrac{a}{b}{c}", &arena);
+    let cst = parse_cst_ok(r"\vfrac{a}{b}{c}", &arena);
     let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
     assert_eq!(cmd.children_of_kind(SyntaxKind::MandatoryArg).count(), 3);
   }

@@ -7,11 +7,11 @@ use crate::frontend::syntax::token::TokenKind;
 
 /// パーサーのエラー型
 #[derive(Debug, Error, Diagnostic)]
-pub(crate) enum ParserError {
+pub(crate) enum SyntaxError {
   /// 入力が途中で終了した場合（閉じ括弧の不足など）
   #[error("入力が予期せず終了しました")]
   #[diagnostic(
-    code(frontend::parse::unexpected_eof),
+    code(frontend::syntax::unexpected_eof),
     help("閉じ括弧 '}}' や ']' が不足していないか確認してください")
   )]
   UnexpectedEof {
@@ -23,7 +23,7 @@ pub(crate) enum ParserError {
   /// 構文的に不正なトークンが出現した場合
   #[error("予期しないトークンです: {kind}")]
   #[diagnostic(
-    code(frontend::parse::unexpected_token),
+    code(frontend::syntax::unexpected_token),
     help("対応する開き括弧なしに閉じ括弧が出現しているか、構文に誤りがないか確認してください")
   )]
   UnexpectedToken {
@@ -37,7 +37,7 @@ pub(crate) enum ParserError {
   /// 開き括弧 `{` または `[` に対する閉じ括弧が見つからないまま EOF に達した場合
   #[error("'{open_kind}' に対応する閉じ括弧が見つかりません")]
   #[diagnostic(
-    code(frontend::parse::unclosed_delimiter),
+    code(frontend::syntax::unclosed_delimiter),
     help("開き括弧 '{open_kind}' に対応する閉じ括弧を追加してください")
   )]
   UnclosedDelimiter {
@@ -50,7 +50,7 @@ pub(crate) enum ParserError {
 
   /// 対応する `\begin` のない `\end` がトップレベルや環境本体外に出現した場合
   #[error("対応する \\begin のない \\end です")]
-  #[diagnostic(code(frontend::parse::stray_end), help("\\end は対応する \\begin{{...}} の後にのみ書けます"))]
+  #[diagnostic(code(frontend::syntax::stray_end), help("\\end は対応する \\begin{{...}} の後にのみ書けます"))]
   StrayEnd {
     /// `\end` トークンのソース位置
     #[label("対応する \\begin がありません")]
@@ -60,7 +60,7 @@ pub(crate) enum ParserError {
   /// `\begin{{name}}` と `\end{{name}}` の環境名が一致しない場合
   #[error("環境名が一致しません: \\begin{{{expected}}} に対して \\end{{{found}}}")]
   #[diagnostic(
-    code(frontend::parse::mismatched_environment),
+    code(frontend::syntax::mismatched_environment),
     help("\\begin と \\end の環境名が一致しているか確認してください")
   )]
   MismatchedEnvironment {
@@ -76,7 +76,7 @@ pub(crate) enum ParserError {
   /// `\begin{{name}}` に対応する `\end{{name}}` が見つからずに入力が終了した場合
   #[error("環境 '{name}' に対応する \\end が見つかりません")]
   #[diagnostic(
-    code(frontend::parse::unclosed_environment),
+    code(frontend::syntax::unclosed_environment),
     help("\\begin{{{name}}} に対応する \\end{{{name}}} を追加してください")
   )]
   UnclosedEnvironment {
@@ -89,7 +89,7 @@ pub(crate) enum ParserError {
 
   /// インライン数式内のグループが閉じられないまま `$` または EOF で終わる場合
   #[error("数式内のグループが閉じられていません")]
-  #[diagnostic(code(frontend::parse::unclosed_math_group), help("数式内の {{ に対応する }} を追加してください"))]
+  #[diagnostic(code(frontend::syntax::unclosed_math_group), help("数式内の {{ に対応する }} を追加してください"))]
   UnclosedMathGroup {
     /// `{` のソース位置
     #[label("ここで始まった数式内グループが閉じられていません")]
@@ -99,7 +99,7 @@ pub(crate) enum ParserError {
   /// バックスラッシュの後に有効な文字がない場合（`\<空白>` や入力末尾の `\` など）
   #[error("不正なバックスラッシュです")]
   #[diagnostic(
-    code(frontend::parse::invalid_backslash),
+    code(frontend::syntax::invalid_backslash),
     help("コマンドは \\name の形式、エスケープは \\{{ \\}} \\$ などで記述してください")
   )]
   InvalidBackslash {
@@ -111,7 +111,7 @@ pub(crate) enum ParserError {
   /// 裸の `{...}` グループ（コマンド引数でも数式内グループでもないもの）が出現した場合
   #[error("裸の {{...}} は構文エラーです")]
   #[diagnostic(
-    code(frontend::parse::bare_group),
+    code(frontend::syntax::bare_group),
     help(
       "`{{...}}` はコマンドの引数または数式内グループでのみ使用できます。装飾は \\bold{{...}} などの引数型コマンド、または \\begin{{...}}\\end{{...}} 環境を使ってください"
     )
@@ -125,7 +125,7 @@ pub(crate) enum ParserError {
   /// `$$` または連続する `$` が出現した場合
   #[error("$$ は不採用です。ディスプレイ数式は \\begin{{equation}} を使ってください")]
   #[diagnostic(
-    code(frontend::parse::dollar_dollar_not_supported),
+    code(frontend::syntax::dollar_dollar_not_supported),
     help(
       "インライン数式は $...$ のみ、ディスプレイ数式は \\begin{{equation}}...\\end{{equation}} を使用します。$$ の代替は \\begin{{equation}} です"
     )
@@ -139,7 +139,7 @@ pub(crate) enum ParserError {
   /// インライン数式 `$...$` が閉じられないまま入力が終了した場合
   #[error("インライン数式が閉じられていません")]
   #[diagnostic(
-    code(frontend::parse::unclosed_inline_math),
+    code(frontend::syntax::unclosed_inline_math),
     help("数式の開始 $ に対応する閉じ $ を追加してください")
   )]
   UnclosedInlineMath {
@@ -151,7 +151,7 @@ pub(crate) enum ParserError {
   /// 任意引数の開始位置以外に裸の `[` が出現した場合
   #[error("裸の '[' は構文エラーです")]
   #[diagnostic(
-    code(frontend::parse::bare_bracket),
+    code(frontend::syntax::bare_bracket),
     help(
       "'[' はコマンドや環境の任意引数の開始でのみ使用できます。文字として '[' を書く場合は \\[ とエスケープしてください"
     )
@@ -165,7 +165,7 @@ pub(crate) enum ParserError {
   /// コマンド・環境の任意引数 `[...]` が 2 組以上書かれた場合（P3: コマンド名／環境名の直後に 1 組だけ）
   #[error("任意引数 [...] は 1 組だけ書けます")]
   #[diagnostic(
-    code(frontend::parse::multiple_opt_args),
+    code(frontend::syntax::multiple_opt_args),
     help(
       "複数のキーは `[label=a, numbered=false]` のように 1 組の中に `,` 区切りで並べてください。文字として `[` を書く場合は \\[ とエスケープしてください"
     )
@@ -179,7 +179,7 @@ pub(crate) enum ParserError {
   /// 上付き `^` / 下付き `_` の内容が `{...}` グループでない場合
   #[error("上付き・下付きの内容は {{...}} で囲む必要があります")]
   #[diagnostic(
-    code(frontend::parse::script_requires_group),
+    code(frontend::syntax::script_requires_group),
     help(
       "$x^2$ ではなく $x^{{2}}$ と書きます。1 文字でもコマンド 1 個でも囲みが必要です（$x_{{i}}$ / $x^{{\\alpha}}$）"
     )
@@ -193,7 +193,7 @@ pub(crate) enum ParserError {
   /// 数式モードの内側（数式環境の本体や数式コマンドの引数）に `$` が出現した場合
   #[error("数式の中で $ は使用できません")]
   #[diagnostic(
-    code(frontend::parse::dollar_in_math_mode),
+    code(frontend::syntax::dollar_in_math_mode),
     help("数式の中に $...$ を入れ子にすることはできません。文字として $ を書く場合は \\$ とエスケープしてください")
   )]
   DollarInMathMode {

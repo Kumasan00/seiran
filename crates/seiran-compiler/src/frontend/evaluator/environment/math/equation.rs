@@ -100,7 +100,7 @@ mod tests {
   fn equation_produces_math_block() {
     let arena = Bump::new();
     let source = r"\begin{equation}x^{2} = y\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -120,7 +120,7 @@ mod tests {
   fn equation_with_label_captures_label() {
     let arena = Bump::new();
     let source = r"\begin{equation}[label=eq:pythag]a^{2}+b^{2}=c^{2}\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -134,7 +134,7 @@ mod tests {
   fn equation_rejects_column_break() {
     let arena = Bump::new();
     let source = r"\begin{equation}a & b\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -145,7 +145,7 @@ mod tests {
   fn equation_rejects_row_break() {
     let arena = Bump::new();
     let source = r"\begin{equation}a \\ b\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -156,7 +156,7 @@ mod tests {
   fn equation_rejects_unknown_opt_key() {
     let arena = Bump::new();
     let source = r"\begin{equation}[foo=1]x\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -167,7 +167,7 @@ mod tests {
   fn equation_numbered_false_suppresses_numbering() {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false]x\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -180,7 +180,7 @@ mod tests {
   fn equation_numbered_false_with_label_errors() {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false, label=eq:x]a\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -191,7 +191,7 @@ mod tests {
   fn equation_rejects_notag() {
     let arena = Bump::new();
     let source = r"\begin{equation}a \notag\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -202,7 +202,7 @@ mod tests {
   fn equation_rejects_row_label_marker() {
     let arena = Bump::new();
     let source = r"\begin{equation}a \label{eq:x}\end{equation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

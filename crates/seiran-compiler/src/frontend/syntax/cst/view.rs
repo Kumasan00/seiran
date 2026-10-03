@@ -457,7 +457,7 @@ mod tests {
   fn parse_key_value_options_env_optarg_basic() {
     let arena = bumpalo::Bump::new();
     let source = r"\begin{figure}[label=fig:foo, position = h]body\end{figure}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::Environment);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -475,7 +475,7 @@ mod tests {
   fn parse_key_value_options_treats_bare_key_as_boolean_true() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[draft, key=val]{x}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -493,7 +493,7 @@ mod tests {
   fn parse_key_value_options_skips_empty_entries() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[ , draft , ,key=val]{x}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -511,7 +511,7 @@ mod tests {
   fn extract_text_content_preserves_comma_and_equals() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[a=1, b=2]{x}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let text = extract_text_content(source, opt_arg);
@@ -523,7 +523,7 @@ mod tests {
   fn parse_key_value_options_empty_optarg() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[]{x}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -534,7 +534,7 @@ mod tests {
   /// `source` の最初のコマンドの任意引数を key=value の列にする
   fn command_pairs(source: &str) -> Vec<(String, String)> {
     let arena = bumpalo::Bump::new();
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     return parse_key_value_options(source, first_opt_arg(cst, SyntaxKind::CommandCall));
   }
 
@@ -616,7 +616,7 @@ mod tests {
   fn extract_text_content_still_flattens_escaped_comma() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd{a\,b, c}";
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let command = cst
       .children
       .iter()
@@ -637,7 +637,7 @@ mod tests {
   /// `source` の最初のコマンドの最初の必須引数を、構造 `,` で割ったテキスト列にする
   fn first_arg_segments(source: &str) -> Vec<String> {
     let arena = bumpalo::Bump::new();
-    let cst = syntax::parse(source, &arena, text_modes()).unwrap();
+    let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let command = cst
       .children
       .iter()

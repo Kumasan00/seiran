@@ -182,7 +182,7 @@ fn diagnostic_multiple_source_errors() {
     codes(&failure),
     vec![
       "frontend::eval::unknown_command".to_string(),
-      "frontend::parse::bare_group".to_string()
+      "frontend::syntax::bare_group".to_string()
     ]
   );
   assert_matches_golden("multiple_source_errors", &render_failure(failure));

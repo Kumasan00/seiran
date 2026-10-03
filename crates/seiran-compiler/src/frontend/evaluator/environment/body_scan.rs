@@ -94,7 +94,7 @@ mod tests {
   fn strict_scan_collects_allowed_commands() {
     let arena = Bump::new();
     let source = "\\begin{itemize}\n\\item{A}\n\\item{B}\n\\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
     let views = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item").unwrap();
@@ -107,7 +107,7 @@ mod tests {
   fn strict_scan_rejects_stray_text() {
     let arena = Bump::new();
     let source = r"\begin{itemize}some text\item{A}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
     let result = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item");
@@ -119,7 +119,7 @@ mod tests {
   fn strict_scan_rejects_disallowed_command() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\bold{x}\end{itemize}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
     let result = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item");

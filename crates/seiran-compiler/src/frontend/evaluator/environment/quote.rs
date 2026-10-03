@@ -37,7 +37,7 @@ mod tests {
   fn quote_carries_kind_and_body() {
     let arena = Bump::new();
     let source = r"\begin{quote}引用本文\end{quote}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -54,7 +54,7 @@ mod tests {
   fn quotation_resolves_to_quotation_kind() {
     let arena = Bump::new();
     let source = r"\begin{quotation}引用本文\end{quotation}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -68,7 +68,7 @@ mod tests {
   fn quote_body_can_contain_multiple_paragraphs() {
     let arena = Bump::new();
     let source = "\\begin{quote}第一段落\n\n第二段落\\end{quote}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -83,7 +83,7 @@ mod tests {
   fn quote_rejects_extra_argument() {
     let arena = Bump::new();
     let source = r"\begin{quote}{余分}本文\end{quote}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -94,7 +94,7 @@ mod tests {
   fn quote_rejects_unknown_opt_key() {
     let arena = Bump::new();
     let source = r"\begin{quote}[foo=1]本文\end{quote}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

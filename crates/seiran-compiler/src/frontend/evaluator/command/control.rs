@@ -154,7 +154,7 @@ mod tests {
   fn pagebreak_splits_surrounding_paragraph() {
     let arena = Bump::new();
     let source = r"前\pagebreak 後";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 

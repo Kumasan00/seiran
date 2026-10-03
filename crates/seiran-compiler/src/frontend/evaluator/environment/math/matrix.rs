@@ -97,7 +97,7 @@ mod tests {
   fn matrix_splits_grid_default_delimiter_none_unnumbered() {
     let arena = Bump::new();
     let source = r"\begin{matrix}a & b \\ c & d\end{matrix}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -113,7 +113,7 @@ mod tests {
   fn matrix_parses_delimiter_option() {
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=bracket]a & b \\ c & d\end{matrix}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -125,7 +125,7 @@ mod tests {
   fn matrix_rejects_unknown_delimiter_value() {
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=angle]a & b\end{matrix}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -136,7 +136,7 @@ mod tests {
   fn matrix_rejects_unknown_opt_key() {
     let arena = Bump::new();
     let source = r"\begin{matrix}[numbered=true]a & b\end{matrix}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

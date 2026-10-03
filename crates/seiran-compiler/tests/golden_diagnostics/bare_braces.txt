@@ -1,4 +1,4 @@
-frontend::parse::bare_group
+frontend::syntax::bare_group
 
   × 裸の {...} は構文エラーです
    ╭─[tests/text/diagnostics/bare_braces.sei:3:14]
