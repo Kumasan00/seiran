@@ -23,7 +23,7 @@ impl PageIndex {
   pub(super) fn get(self) -> usize { return self.0; }
 }
 
-/// 区画ごとに 1 から振り直す、文字列化前の論理ページ値。
+/// 前付けと本文でそれぞれ 1 から振り直す（後付けは本文の通し番号を継続する）、文字列化前の論理ページ値。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct PageValue(u32);
 
