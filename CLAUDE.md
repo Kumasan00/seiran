@@ -158,7 +158,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |
 | `semantics` | 意味解析 `analyze`（採番・`\ref`・引用キー検証）+ CSL 読込・書誌生成 → `SemanticDocument` |
 | `typeset` | 組版。入口は `compose` 1 操作（`SemanticDocument` + 設定 + フォントバイト列 → `Publication` + 警告 + 画像依存パス。意図した例外は入力読込が呼ぶ版面の構築 `PreparedGeometry::prepare`）。出口 `emit` まで内側に閉じる |
-| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画契約の値型 `GlyphRun` / `FontMetric` / `ImageFormat` 等）と検証付きコンストラクタ。krilla も `typeset` も知らない純データ |
+| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画契約の値型 `GlyphRun` / `FontMetrics` / `ImageFormat` 等）と検証付きコンストラクタ。krilla も `typeset` も知らない純データ |
 | `compiler` | compile facade。全体の phase 順序だけを持ち、組版中間型・フォント資源を保持しない |
 
 ## コーディング規約

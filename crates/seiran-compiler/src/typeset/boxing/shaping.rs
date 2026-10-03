@@ -13,7 +13,7 @@ use crate::{
   color::Color,
   length::Length,
   project::FontType,
-  publication::{FontMetric, Glyph, GlyphRun},
+  publication::{FontMetrics, Glyph, GlyphRun},
   typeset::{
     boxes::{HBox, HBoxContent},
     boxing::{self, script, yakumono},
@@ -45,7 +45,7 @@ pub(super) struct ShapedRun {
   /// シェーピング結果のグリフ列
   run: GlyphRun,
   /// `run` を出したフォントの基本メトリクス（部分 run の幅もこれで出す）
-  metric: FontMetric,
+  metrics: FontMetrics,
   /// 全グリフの送り幅の合計
   width: Length,
   /// ベースラインから上の高さ（フォントの ascender 由来）
@@ -56,14 +56,14 @@ pub(super) struct ShapedRun {
 
 impl ShapedRun {
   /// グリフ列とメトリクスから寸法を確定する
-  pub(super) fn measure(run: GlyphRun, metric: FontMetric) -> Self {
+  pub(super) fn measure(run: GlyphRun, metrics: FontMetrics) -> Self {
     let advance_units: i64 = run.glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
-    let width = units_to_length(advance_units, run.font_size, metric.upem);
-    let height = units_to_length(design_units(metric.ascender), run.font_size, metric.upem);
-    let depth = units_to_length(design_units(metric.descender.abs()), run.font_size, metric.upem);
+    let width = units_to_length(advance_units, run.font_size, metrics.upem);
+    let height = units_to_length(design_units(metrics.ascender), run.font_size, metrics.upem);
+    let depth = units_to_length(design_units(metrics.descender.abs()), run.font_size, metrics.upem);
     return ShapedRun {
       run,
-      metric,
+      metrics,
       width,
       height,
       depth,
@@ -90,7 +90,7 @@ impl ShapedRun {
 
   /// グリフ 1 つの送り幅
   pub(super) fn advance_of(&self, glyph_index: usize) -> Length {
-    return units_to_length(i64::from(self.run.glyphs[glyph_index].x_advance), self.run.font_size, self.metric.upem);
+    return units_to_length(i64::from(self.run.glyphs[glyph_index].x_advance), self.run.font_size, self.metrics.upem);
   }
 
   /// run 全体を計測済みの箱にする
@@ -133,7 +133,7 @@ impl ShapedRun {
         font_type: self.run.font_type,
         color: self.run.color,
       }),
-      width: units_to_length(advance_units, self.run.font_size, self.metric.upem),
+      width: units_to_length(advance_units, self.run.font_size, self.metrics.upem),
       height: self.height,
       depth: self.depth,
     });
@@ -146,7 +146,7 @@ impl ShapedRun {
       clippy::cast_possible_truncation,
       reason = "`shift_em` は約物アキの em 比で、font unit 空間での端数切り捨ては視覚的に無意味な精度"
     )]
-    let shift_units = (normalize.shift_em * self.metric.upem) as i32;
+    let shift_units = (normalize.shift_em * self.metrics.upem) as i32;
     let glyph = Glyph {
       gid: src.gid,
       range: 0..(src.range.end - src.range.start),
@@ -247,7 +247,7 @@ impl<'a> Shaper<'a> {
         font_type,
         color,
       },
-      self.fonts.metric(font_type),
+      self.fonts.metrics(font_type),
     );
     trace!(
       font_type = ?font_type,
@@ -267,12 +267,12 @@ mod tests {
   use crate::{
     length::Length,
     project::FontType,
-    publication::{FontMetric, Glyph, GlyphRun},
+    publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{boxes::HBoxContent, boxing::yakumono},
   };
 
   /// upem 1000・ascender 800.5・descender -200.5 の仮想フォント（端数は切り捨てを見るために置く）
-  const METRIC: FontMetric = FontMetric {
+  const METRICS: FontMetrics = FontMetrics {
     upem: 1000.0,
     ascender: 800.5,
     descender: -200.5,
@@ -303,7 +303,7 @@ mod tests {
 
   #[test]
   fn measure_sums_advances_and_takes_extent_from_metrics() {
-    let shaped = ShapedRun::measure(ascii_run("ab"), METRIC);
+    let shaped = ShapedRun::measure(ascii_run("ab"), METRICS);
 
     assert_eq!(shaped.width(), Length::pt(10.0), "送り幅 500 単位 × 2 = 1em = 10pt");
     assert_eq!(shaped.height(), Length::pt(8.0), "ascender 800.5 は設計単位へ切り捨てて 800");
@@ -312,7 +312,7 @@ mod tests {
 
   #[test]
   fn sub_box_rebases_glyph_ranges_and_copies_parent_extent() {
-    let shaped = ShapedRun::measure(ascii_run("abcd"), METRIC);
+    let shaped = ShapedRun::measure(ascii_run("abcd"), METRICS);
     let hbox = shaped.sub_box(1..3, 1..3).expect("空でない範囲は箱になるはず");
 
     let HBoxContent::Glyphs(run) = &hbox.content else {
@@ -327,7 +327,7 @@ mod tests {
 
   #[test]
   fn sub_box_of_empty_range_is_none() {
-    let shaped = ShapedRun::measure(ascii_run("ab"), METRIC);
+    let shaped = ShapedRun::measure(ascii_run("ab"), METRICS);
 
     assert!(shaped.sub_box(1..1, 1..1).is_none(), "空範囲は箱を作らない");
   }
@@ -337,7 +337,7 @@ mod tests {
     let mut source = ascii_run("abcd");
     source.glyphs[1].x_offset = 20;
     source.glyphs[1].y_offset = 3;
-    let shaped = ShapedRun::measure(source, METRIC);
+    let shaped = ShapedRun::measure(source, METRICS);
     let normalize = yakumono::Normalize {
       trim_em: 0.25,
       shift_em: 0.1,

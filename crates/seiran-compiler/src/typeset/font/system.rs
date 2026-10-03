@@ -1,6 +1,6 @@
 //! フォント資源の構築順序を隠蔽する窓口モジュール
 //!
-//! `FontData` → `FontRefs` → `FontMetrics` → 検証 → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers`
+//! `FontData` → `FontRefs` → `FontMap<FontMetrics>` → 検証 → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers`
 //! という構築順序と寿命関係をここに閉じ込め、呼び出し側には構築の入口として [`FontResources::load`] と
 //! [`FontResources::system`] の 2 段呼び出しだけを公開する。
 
@@ -12,10 +12,10 @@ use tracing::debug;
 
 use crate::{
   failures::Failures,
-  project::{FontConfigs, FontData, FontType},
-  publication::FontMetric,
+  project::{FontConfigs, FontData, FontMap, FontType},
+  publication::FontMetrics,
   typeset::font::{
-    FontLoadError, FontMetrics, FontRefs, build_font_metrics, build_font_refs,
+    FontLoadError, FontRefs, build_font_metrics, build_font_refs,
     face_config::{FontFaceConfigs, build_face_configs},
     shaper::{self, HarfRustShapers, ShaperDatas, ShaperError, ShaperInstances, UnicodeBuffer},
     validation::{self, FontValidationFailure, FontWarning},
@@ -55,7 +55,7 @@ pub(in crate::typeset) struct FontResources<'a> {
   /// バリエーション軸インスタンス（所有）
   shaper_instances: ShaperInstances,
   /// 基本メトリクス（所有）
-  metrics: FontMetrics,
+  metrics: FontMap<FontMetrics>,
 }
 
 impl<'a> FontResources<'a> {
@@ -98,9 +98,9 @@ impl<'a> FontResources<'a> {
     );
   }
 
-  /// `FontMetrics` アクセサ。
+  /// 全フォント種別の基本メトリクス。
   #[must_use]
-  pub(crate) fn metrics(&self) -> &FontMetrics { return &self.metrics; }
+  pub(crate) fn metrics(&self) -> &FontMap<FontMetrics> { return &self.metrics; }
 
   /// [`FontFaceConfigs`] を構築して返す。
   #[must_use]
@@ -134,7 +134,7 @@ impl<'a> FontResources<'a> {
 fn build_refs_and_metrics<'a>(
   configs: &'a FontConfigs,
   font_data: &'a FontData,
-) -> Result<(FontRefs<'a>, FontMetrics), Failures<FontSystemError>> {
+) -> Result<(FontRefs<'a>, FontMap<FontMetrics>), Failures<FontSystemError>> {
   let font_refs = build_font_refs(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
   let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
   return Ok((font_refs, metrics));
@@ -145,7 +145,7 @@ pub(in crate::typeset) struct FontSystem<'a> {
   /// 19 種別ぶんのシェーパー
   shapers: HarfRustShapers<'a>,
   /// フォントメトリクス（[`FontResources`] を借用）
-  metrics: &'a FontMetrics,
+  metrics: &'a FontMap<FontMetrics>,
 }
 
 impl FontSystem<'_> {
@@ -163,5 +163,5 @@ impl FontSystem<'_> {
 
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
-  pub(crate) fn metric(&self, font_type: FontType) -> FontMetric { return self.metrics[font_type]; }
+  pub(crate) fn metrics(&self, font_type: FontType) -> FontMetrics { return self.metrics[font_type]; }
 }

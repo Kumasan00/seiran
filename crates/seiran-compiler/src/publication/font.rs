@@ -1,4 +1,4 @@
-//! フォントの描画契約 — krilla フォント構築設定 [`FontFaceConfig`] と基本メトリクス [`FontMetric`]。
+//! フォントの描画契約 — krilla フォント構築設定 [`FontFaceConfig`] と基本メトリクス [`FontMetrics`]。
 
 use crate::project::VariationAxis;
 
@@ -13,7 +13,7 @@ pub struct FontFaceConfig {
 
 /// 1 フォントの基本メトリクス。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FontMetric {
+pub struct FontMetrics {
   /// units-per-em（`head` テーブル由来）
   pub upem: f32,
   /// アセンダ（`hhea` テーブル由来、フォントユニット）

@@ -3,7 +3,7 @@
 //! 座標は pt 単位の `f32`、描画順は配列順で確定している。描画バックエンド（`seiran-pdf` / krilla）の
 //! ハンドルは含まず、フォント・画像は生バイト列と構築設定のまま持つ。
 //!
-//! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetric`]、フォント
+//! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetrics`]、フォント
 //! 構築設定 [`FontFaceConfig`]、判定済みの画像形式 [`ImageFormat`] — は
 //! 子 module（`glyph` / `font` / `image_format`）が持つ。
 //!
@@ -20,7 +20,7 @@ use std::{
   sync::Arc,
 };
 
-pub use font::{FontFaceConfig, FontMetric};
+pub use font::{FontFaceConfig, FontMetrics};
 pub use glyph::{Glyph, GlyphRun};
 pub use image_format::ImageFormat;
 
@@ -169,7 +169,7 @@ pub struct PublicationFont {
   /// krilla フォント構築に必要な設定（TTC インデックス・バリアブルフォント軸）
   pub face: FontFaceConfig,
   /// 基本メトリクス（フォントユニット系）
-  pub metric: FontMetric,
+  pub metrics: FontMetrics,
 }
 
 impl Debug for PublicationFont {
@@ -178,7 +178,7 @@ impl Debug for PublicationFont {
       .debug_struct("PublicationFont")
       .field("bytes_len", &self.bytes.len())
       .field("face", &self.face)
-      .field("metric", &self.metric)
+      .field("metrics", &self.metrics)
       .finish();
   }
 }
@@ -387,7 +387,7 @@ pub struct PublicationOutlineEntry {
 pub(crate) mod test_support {
   use std::sync::Arc;
 
-  use super::{FontFaceConfig, FontMetric, PublicationFont, PublicationImage, PublicationResources};
+  use super::{FontFaceConfig, FontMetrics, PublicationFont, PublicationImage, PublicationResources};
   use crate::project::FontMap;
 
   /// 指定した画像だけを持つ描画資源を返す（フォントは全種別ダミーのバイト列 0 個）。
@@ -398,7 +398,7 @@ pub(crate) mod test_support {
         font_index: 0,
         variation_axes: None,
       },
-      metric: FontMetric {
+      metrics: FontMetrics {
         upem: 1000.0,
         ascender: 800.0,
         descender: -200.0,
