@@ -69,7 +69,7 @@ pub(super) fn build_index_blocks(
 ) -> Vec<Block> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
   let spec = build_index_spec(ctx.style);
-  return compose_blocks(&spec, &entries, ctx.resources);
+  return compose_blocks(&spec, &entries, ctx.fonts);
 }
 
 /// 本文の索引語を集約し、ソート済みの索引エントリを返す。
@@ -189,11 +189,11 @@ fn build_index_spec(style: &Style) -> IndexSpec {
 
 /// 索引エントリ列を計測済みのブロック列に変換する
 #[must_use]
-fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], resources: &FontSystem<'_>) -> Vec<Block> {
+fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], fonts: &FontSystem<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut shaper = Shaper::new(resources);
+  let mut shaper = Shaper::new(fonts);
   let mut blocks: Vec<Block> = Vec::new();
 
   blocks.push(Block::ComposedLine {

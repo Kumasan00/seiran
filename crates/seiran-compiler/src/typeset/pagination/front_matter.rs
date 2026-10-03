@@ -41,7 +41,7 @@ pub(super) fn typeset_front_matter(
       front_blocks.extend(build_blocks(
         title_nodes,
         &BlockBuildInputs {
-          resources: ctx.resources,
+          fonts: ctx.fonts,
           images,
           column_width: ctx.geometry.text_width(),
           default_font_size: ctx.style.text.font_size,
