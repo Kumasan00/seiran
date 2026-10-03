@@ -37,7 +37,7 @@ pub(super) fn typeset_front_matter(
     };
     let title_nodes = lower_title_page(&title_metadata, &ctx.style.title_page);
     if !title_nodes.is_empty() {
-      let _span = debug_span!("build_blocks", region = "title").entered();
+      let _span = debug_span!("build_blocks", matter = "title").entered();
       front_blocks.extend(build_blocks(
         title_nodes,
         &BlockBuildInputs {
@@ -64,7 +64,7 @@ pub(super) fn typeset_front_matter(
   }
 
   let (pages, overflows) = {
-    let _span = debug_span!("break_pages", region = "front").entered();
+    let _span = debug_span!("break_pages", matter = "front").entered();
     break_pages(
       front_blocks,
       ctx.geometry.text_width(),

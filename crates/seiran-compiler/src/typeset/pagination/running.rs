@@ -36,7 +36,7 @@ struct RunningContentSpec {
   skip_first: bool,
 }
 
-/// 1 リージョン（ヘッダーまたはフッター）のスロットと見た目
+/// ヘッダーまたはフッター 1 つ分のスロットと見た目
 #[derive(Debug, Clone)]
 struct RunningSlots {
   /// 左スロットのテンプレート
@@ -95,10 +95,10 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
       unreachable!("ページ番号ラベル列は paginate がページ列から作るので、長さはページ数と一致する")
     };
     if let Some(slots) = &spec.header {
-      page.header = build_region(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
+      page.header = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
     if let Some(slots) = &spec.footer {
-      page.footer = build_region(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
+      page.footer = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
   }
   debug!(page_count = pages.len(), "ヘッダー・フッターを配置");
@@ -147,8 +147,8 @@ fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bo
   });
 }
 
-/// 1 リージョン分の配置済みブロック（行＋任意の区切り線）を組み立てる
-fn build_region(
+/// ヘッダーまたはフッター 1 つ分の配置済みブロック（行＋任意の区切り線）を組み立てる
+fn build_running_blocks(
   shaper: &mut Shaper<'_>,
   slots: &RunningSlots,
   text_width: Length,

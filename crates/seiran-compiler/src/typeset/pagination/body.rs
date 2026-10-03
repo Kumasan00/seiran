@@ -62,7 +62,7 @@ fn run_body_pass(
   let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document);
 
   let body_blocks = {
-    let _span = debug_span!("build_blocks", region = "body").entered();
+    let _span = debug_span!("build_blocks", matter = "body").entered();
     build_blocks(
       body_layout_nodes,
       &BlockBuildInputs {
@@ -78,7 +78,7 @@ fn run_body_pass(
   };
 
   let (pages, overflows) = {
-    let _span = debug_span!("break_pages", region = "body").entered();
+    let _span = debug_span!("break_pages", matter = "body").entered();
     break_pages(
       body_blocks,
       ctx.geometry.text_width(),

@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
-/// 連結する前のリージョン内）における位置を表す。
+/// 連結する前の区画内）における位置を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct PageIndex(usize);
 
@@ -23,7 +23,7 @@ impl PageIndex {
   pub(super) fn get(self) -> usize { return self.0; }
 }
 
-/// 領域ごとに 1 から振り直す、文字列化前の論理ページ値。
+/// 前付けと本文でそれぞれ 1 から振り直す（後付けは本文の通し番号を継続する）、文字列化前の論理ページ値。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct PageValue(u32);
 
@@ -197,7 +197,7 @@ mod tests {
 
     let labels = page_values.finalize(&front_pages).into_vec();
 
-    // 前付けは i, ii（総数 ii）、本文は 1..3（総数 3）でリージョン別に振り直す
+    // 前付けは i, ii（総数 ii）、本文は 1..3（総数 3）で区画別に振り直す
     assert_eq!(labels[0], ("i".to_string(), "ii".to_string()));
     assert_eq!(labels[1], ("ii".to_string(), "ii".to_string()));
     assert_eq!(labels[2], ("1".to_string(), "3".to_string()));
@@ -205,7 +205,7 @@ mod tests {
   }
 
   #[test]
-  fn with_back_matter_extends_body_region_numbering() {
+  fn with_back_matter_extends_body_numbering() {
     let front_pages = vec![page_with_anchors(vec![])];
     let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let back_pages = vec![page_with_anchors(vec![])];

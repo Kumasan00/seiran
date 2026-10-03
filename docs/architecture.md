@@ -1362,7 +1362,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 
   | 項目 | 規約 |
   | --- | --- |
-  | 件数 | `<名詞>_count`。同じ概念に 1 名 — ページ数は区画によらず `page_count` で、区画は span の `region` が示す |
+  | 件数 | `<名詞>_count`。同じ概念に 1 名 — ページ数は区画によらず `page_count` で、区画は span の `matter` が示す |
   | 添字・識別子 | `<名詞>_index`（0 始まり）/ `<名詞>_id`。略語にしない（`gid` ではなく `glyph_id`） |
   | 単位 | suffix で字面に出す — `_pt` / `_em`、font design unit は `_units`。無次元は suffix なし |
   | 所要時間 | `elapsed = ?Duration` の 1 形式。整数 `_ms` フィールドは使わない |

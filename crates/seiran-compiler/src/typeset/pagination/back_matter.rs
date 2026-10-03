@@ -26,7 +26,7 @@ pub(super) fn typeset_back_matter(
     return (Vec::new(), Vec::new());
   }
   let (pages, overflows) = {
-    let _span = debug_span!("break_pages", region = "back").entered();
+    let _span = debug_span!("break_pages", matter = "back").entered();
     break_pages(
       back_blocks,
       ctx.geometry.text_width(),
