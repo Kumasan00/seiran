@@ -368,7 +368,7 @@ mod tests {
     style.hyperref.cite_color = Some(blue);
     let analyzed = analyzed("\\cite{kwan2014}\n");
     let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
-    let document = analyzed.with_citations_for_test(
+    let document = analyzed.with_generated_citations_for_test(
       vec![(
         site,
         vec![GeneratedInline::InternalLink {
