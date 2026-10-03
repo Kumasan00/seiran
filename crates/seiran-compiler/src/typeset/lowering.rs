@@ -282,7 +282,7 @@ pub(super) fn lower_sources_with_headings(
   let mut state = LoweringState::new(document);
   let mut result = Vec::new();
   for group in document.hir().groups() {
-    result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
+    result.extend(lower_nodes_inner(ctx, group, &mut state));
   }
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
@@ -306,7 +306,7 @@ pub(super) fn lower_sources_with_headings(
     .collect();
   headings.extend(bibliography_headings);
 
-  let input_node_count: usize = document.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>()
+  let input_node_count: usize = document.hir().groups().iter().map(Vec::len).sum::<usize>()
     + document.bibliography().map_or(0, <[BibliographyEntry]>::len);
   debug!(input_node_count, layout_node_count = result.len(), "LayoutNode へ lowering");
   return (result, headings);

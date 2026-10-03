@@ -3,9 +3,7 @@
 use std::path::Path;
 
 use crate::{
-  document::{
-    HirBuilder, HirGroup, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId,
-  },
+  document::{HirBuilder, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   project::{PathResolver, ProjectPath},
   source::{SourceId, Span},
 };
@@ -64,11 +62,9 @@ impl<'a> EvalContext<'a> {
 
   /// 評価し終えたノード列と位置表を 1 ソース分の [`HirSource`] にまとめて context を終える
   pub(crate) fn finish(self, nodes: Vec<HirNode>) -> HirSource {
-    let spans = self.builder.finish();
-    let source_id = spans.source_id();
     return HirSource {
-      group: HirGroup { source_id, nodes },
-      spans,
+      nodes,
+      spans: self.builder.finish(),
     };
   }
 }
@@ -86,8 +82,8 @@ mod tests {
     let id = node.id;
     let hir = ctx.finish(vec![node]);
 
-    assert_eq!(hir.group.source_id, SourceId::new(3));
-    assert_eq!(hir.group.nodes.len(), 1);
+    assert_eq!(hir.spans.source_id(), SourceId::new(3));
+    assert_eq!(hir.nodes.len(), 1);
     assert_eq!(hir.spans.span_of(id), Span::new(0, 4));
   }
 }

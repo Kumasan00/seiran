@@ -11,7 +11,7 @@ use crate::{
 pub(crate) fn collect_image_paths(document: &HirDocument) -> Vec<ProjectPath> {
   let mut paths: BTreeSet<ProjectPath> = BTreeSet::new();
   for group in document.groups() {
-    walk_nodes(&group.nodes, &mut paths);
+    walk_nodes(group, &mut paths);
   }
   return paths.into_iter().collect();
 }

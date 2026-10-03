@@ -76,7 +76,7 @@ mod tests {
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
   fn evaluate_source(source: &str) -> Vec<HirNode> {
     let hir = test_support::parse_for_test(source, SourceId::new(0)).unwrap();
-    return hir.group.nodes;
+    return hir.nodes;
   }
 
   /// ソースを評価して `EvalError` を取り出すテストヘルパ
@@ -1270,8 +1270,8 @@ mod tests {
     let hir = parse(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     // HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
-    let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
-      panic!("Figure ノードのはず: {:?}", hir.group.nodes[0].kind);
+    let HirNodeKind::Figure(figure) = &hir.nodes[0].kind else {
+      panic!("Figure ノードのはず: {:?}", hir.nodes[0].kind);
     };
     assert_eq!(figure.image_path, ProjectPath::new("/project/fig/a.png"));
   }
@@ -1283,7 +1283,7 @@ mod tests {
 
     let hir = parse(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
-    let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
+    let HirNodeKind::Figure(figure) = &hir.nodes[0].kind else {
       panic!("Figure ノードのはず");
     };
     assert_eq!(figure.image_path, ProjectPath::new("/elsewhere/a.png"));

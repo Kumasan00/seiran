@@ -21,4 +21,4 @@ pub(crate) use node::{
 };
 pub(crate) use node_map::NodeMap;
 pub(crate) use source_map::{SourceLocation, SourceMap, SourceSpans};
-pub(crate) use tree::{HirDocument, HirGroup, HirSource};
+pub(crate) use tree::{HirDocument, HirSource};
