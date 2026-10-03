@@ -3,7 +3,7 @@
 //! 各行を最大 2 セルに分割する非採番の数式環境。
 
 use crate::{
-  document::{HirMathBlock, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirMathBlock, HirNode, HirNodeKind, MathBlockKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -52,7 +52,7 @@ pub(in crate::frontend::evaluator::environment) fn cases(
   return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock(HirMathBlock {
-      kind: MathEnvKind::Cases,
+      kind: MathBlockKind::Cases,
       rows,
       numbered: false,
       label: None,
@@ -66,7 +66,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{HirMathRow, MathEnvKind},
+    document::{HirMathRow, MathBlockKind},
     frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
 
@@ -74,7 +74,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Cases, "cases は MathEnvKind::Cases");
+    assert_eq!(math.kind, MathBlockKind::Cases, "cases は MathBlockKind::Cases");
     assert!(!math.numbered, "cases は非採番（環境番号なし）");
     return &math.rows;
   }

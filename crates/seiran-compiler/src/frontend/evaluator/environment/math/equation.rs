@@ -3,7 +3,7 @@
 //! 1 行 1 セルとして評価し、行単位で採番する。
 
 use crate::{
-  document::{HirMathBlock, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
+  document::{HirMathBlock, HirMathRow, HirNode, HirNodeKind, MathBlockKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -68,7 +68,7 @@ pub(in crate::frontend::evaluator::environment) fn equation(
   return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock(HirMathBlock {
-      kind: MathEnvKind::Equation,
+      kind: MathBlockKind::Equation,
       rows: vec![row],
       numbered: false,
       label: None,
@@ -82,7 +82,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{HirMathKind, HirMathRow, MathEnvKind},
+    document::{HirMathKind, HirMathRow, MathBlockKind},
     frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
 
@@ -91,7 +91,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Equation, "equation は MathEnvKind::Equation");
+    assert_eq!(math.kind, MathBlockKind::Equation, "equation は MathBlockKind::Equation");
     assert_eq!(math.rows.len(), 1, "equation は 1 行: {:?}", math.rows);
     return &math.rows[0];
   }

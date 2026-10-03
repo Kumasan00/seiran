@@ -839,7 +839,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   型の側で不要にしている。レイアウト側の対応物（`LayoutNode::Table(TableLayout)` /
   `MathBlock(MathBlockLayout)`）とも形が揃う
 - **数式ブロックの体裁（セルの列内揃え・区切り括弧のグリフ）は lowering が解決する**（#674）。
-  `MathBlockLayout` は環境種別（`document::MathEnvKind`）を持たず、セルごとの `Align` と
+  `MathBlockLayout` は環境種別（`document::MathBlockKind`）を持たず、セルごとの `Align` と
   解決済みの `DelimiterGlyphs` を載せる。`boxing` は計測と配置だけを行い、HIR の数式語彙を
   import しない。**組版内の揃えの型は `boxes::Align` 1 つ**で、`style::MathAlignment` → `Align` の
   変換だけが lowering に残る（#334 の設計どおり）

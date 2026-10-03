@@ -11,7 +11,7 @@ pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
 use numbering::{assign_numbering, collect_math_env_opts, trim_trailing_blank_marker_rows};
 
 use crate::{
-  document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind, NodeId},
+  document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathBlockKind, NodeId},
   frontend::{
     evaluator::{EvalContext, EvalError, math::evaluate_math_elements},
     syntax::{CstElement, CstNode, token::TokenKind, view::EnvironmentView},
@@ -172,7 +172,7 @@ pub(in crate::frontend::evaluator::environment) fn evaluate_math_env(
   return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock(HirMathBlock {
-      kind: MathEnvKind::Grid(layout),
+      kind: MathBlockKind::Grid(layout),
       rows,
       numbered: env_numbered,
       label: block_label,
@@ -328,7 +328,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Aligned), "align は Grid(Aligned)");
+    assert_eq!(math.kind, MathBlockKind::Grid(GridLayout::Aligned), "align は Grid(Aligned)");
     return &math.rows;
   }
 
@@ -531,7 +531,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Centered), "gather は Grid(Centered)");
+    assert_eq!(math.kind, MathBlockKind::Grid(GridLayout::Centered), "gather は Grid(Centered)");
     return &math.rows;
   }
 
@@ -576,7 +576,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Aligned), "split は Grid(Aligned)");
+    assert_eq!(math.kind, MathBlockKind::Grid(GridLayout::Aligned), "split は Grid(Aligned)");
     return (&math.rows, math.numbered);
   }
 
@@ -649,7 +649,7 @@ mod tests {
     let HirNodeKind::MathBlock(math) = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
-    assert_eq!(math.kind, MathEnvKind::Grid(GridLayout::Staircase), "multiline は Grid(Staircase)");
+    assert_eq!(math.kind, MathBlockKind::Grid(GridLayout::Staircase), "multiline は Grid(Staircase)");
     return (&math.rows, math.numbered);
   }
 
