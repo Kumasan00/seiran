@@ -33,7 +33,7 @@ impl GeneratedCitations {
   ///
   /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは [`generate_citations`] が
   /// 保証している）。
-  pub(crate) fn display_at(&self, site: NodeId) -> &[GeneratedInline] {
+  pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] {
     let Some(display) = self.displays.get(site) else {
       unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
     };
@@ -86,7 +86,7 @@ pub(crate) fn generate_citations(
   let rendered = render::render(&entries, &sites_in_order, style);
 
   let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
-  for ((site, _), display) in sites.iter().zip(rendered.labels) {
+  for ((site, _), display) in sites.iter().zip(rendered.displays) {
     displays.insert(site, display);
   }
 
@@ -160,7 +160,7 @@ mod tests {
     let generated = generate_citations(&analyzed.citations, &references, &compiled);
 
     for (site, _) in analyzed.citations.iter() {
-      let text: String = generated.display_at(site).iter().map(GeneratedInline::to_plain_text).collect();
+      let text: String = generated.citation_display(site).iter().map(GeneratedInline::to_plain_text).collect();
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
     }
 
@@ -182,7 +182,7 @@ mod tests {
 
     let (site, _) = analyzed.citations.iter().next().expect("1 箇所あるはず");
     let targets: Vec<&str> = generated
-      .display_at(site)
+      .citation_display(site)
       .iter()
       .filter_map(|node| match node {
         GeneratedInline::InternalLink { target, .. } => return Some(target.as_str()),
