@@ -336,8 +336,8 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "compiler::citation::style",
     "compiler::citation::format",
     "compiler::layout",
-    "frontend::parse_source::eval",
-    "frontend::parse_source::syntax",
+    "frontend::parse::eval",
+    "frontend::parse::syntax",
     // 集約 wrapper。集約自身は表示単位ではないので code を持たない
     "project::config::multiple_validation_errors",
     "style::multiple_validation_errors",

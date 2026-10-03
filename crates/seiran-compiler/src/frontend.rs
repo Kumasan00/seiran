@@ -20,12 +20,12 @@ use crate::{
   source::SourceId,
 };
 
-/// `parse_source` が返すエラー型
+/// `parse` が返すエラー型
 ///
 /// 内側の `SyntaxError` / `EvalError` の 2 種類の leaf を `?` で運ぶための union で、この型自身は
 /// message / `code` / help を持たない。ソース本文も `SourceId` も持たず、帰属は呼び出し元が添える。
 #[derive(Debug, Error, Diagnostic)]
-pub(crate) enum ParseSourceError {
+pub(crate) enum ParseError {
   /// 構文解析（`crate::frontend::syntax::parse_cst`）で発生したエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
@@ -47,11 +47,7 @@ pub(crate) enum ParseSourceError {
 /// # Errors
 ///
 /// 構文エラーまたは評価エラーを返す。
-pub(crate) fn parse_source(
-  source: &str,
-  source_id: SourceId,
-  resolver: &PathResolver,
-) -> Result<HirSource, ParseSourceError> {
+pub(crate) fn parse(source: &str, source_id: SourceId, resolver: &PathResolver) -> Result<HirSource, ParseError> {
   let arena = Bump::new();
   let cst = syntax::parse_cst(source, &arena, evaluator::mode_resolver())?;
 
@@ -67,7 +63,7 @@ pub(crate) fn parse_source(
 mod tests {
   use std::path::Path;
 
-  use super::{EvalError, ParseSourceError, parse_source};
+  use super::{EvalError, ParseError, parse};
   use crate::{
     document::{
       FontKind, HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant,
@@ -79,14 +75,14 @@ mod tests {
 
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
   fn evaluate_source(source: &str) -> Vec<HirNode> {
-    let hir = test_support::parse_source_for_test(source, SourceId::new(0)).unwrap();
+    let hir = test_support::parse_for_test(source, SourceId::new(0)).unwrap();
     return hir.group.nodes;
   }
 
   /// ソースを評価して `EvalError` を取り出すテストヘルパ
   fn evaluate_error(source: &str) -> EvalError {
-    match test_support::parse_source_for_test(source, SourceId::new(0)) {
-      Err(ParseSourceError::Eval(error)) => return error,
+    match test_support::parse_for_test(source, SourceId::new(0)) {
+      Err(ParseError::Eval(error)) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }
   }
@@ -1271,7 +1267,7 @@ mod tests {
     let source = "\\begin{figure}\n\\image{fig/./a.png}\n\\caption{c}\n\\end{figure}\n";
     let resolver = PathResolver::new(Path::new("/project"));
 
-    let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
+    let hir = parse(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     // HIR へ格納する時点で解決済み（後段が base_dir を知らなくてよい）
     let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
@@ -1285,7 +1281,7 @@ mod tests {
     let source = "\\begin{figure}\n\\image{/elsewhere/a.png}\n\\caption{c}\n\\end{figure}\n";
     let resolver = PathResolver::new(Path::new("/project"));
 
-    let hir = parse_source(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
+    let hir = parse(source, SourceId::new(0), &resolver).expect("figure はパースできるはず");
 
     let HirNodeKind::Figure(figure) = &hir.group.nodes[0].kind else {
       panic!("Figure ノードのはず");

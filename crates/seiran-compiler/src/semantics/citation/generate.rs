@@ -106,7 +106,7 @@ mod tests {
   use super::{GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     document::{FontKind, HirDocument},
-    frontend::test_support::parse_source_for_test,
+    frontend::test_support::parse_for_test,
     project::{FilesystemProjectSource, ProjectPath},
     semantics::{
       References, SemanticPolicy,
@@ -121,7 +121,7 @@ mod tests {
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir = parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = parse_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 
