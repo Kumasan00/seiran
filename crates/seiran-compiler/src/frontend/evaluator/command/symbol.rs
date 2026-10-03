@@ -364,7 +364,7 @@ mod tests {
 
   #[test]
   fn lookup_returns_none_for_non_symbol_names() {
-    // 機能コマンド名も記号表では引き当たらない（引く順は evaluate_command が決める）
+    // 機能コマンド（bold）・数式の構文コマンド（frac）・未知の名前の 3 種
     assert!(lookup("bold").is_none());
     assert!(lookup("frac").is_none());
     assert!(lookup("unknown").is_none());
