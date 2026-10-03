@@ -14,7 +14,7 @@ use crate::{
       math,
     },
     syntax::{
-      green::{GreenElement, GreenNode},
+      CstElement, CstNode,
       kind::SyntaxKind,
       token::{Token, TokenKind},
       view::{CommandView, EnvironmentView},
@@ -179,7 +179,7 @@ impl InlineSink {
   }
 }
 
-/// `GreenNode` の子要素から [`HirInline`] のリストを構築する
+/// `CstNode` の子要素から [`HirInline`] のリストを構築する
 ///
 /// # Errors
 ///
@@ -188,7 +188,7 @@ impl InlineSink {
 pub(crate) fn evaluate_inline_children(
   source: &str,
   ctx: &EvalContext<'_>,
-  node: &GreenNode<'_>,
+  node: &CstNode<'_>,
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   return evaluate_inline_elements(source, ctx, node.children, index_policy);
@@ -204,13 +204,13 @@ pub(crate) fn evaluate_inline_children(
 pub(crate) fn evaluate_inline_elements(
   source: &str,
   ctx: &EvalContext<'_>,
-  elements: &[GreenElement<'_>],
+  elements: &[CstElement<'_>],
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   let mut sink = InlineSink::default();
   for child in elements {
     match child {
-      GreenElement::Token(token) => match inline_from_token(source, token) {
+      CstElement::Token(token) => match inline_from_token(source, token) {
         Some(TokenInline::MergeableText(text)) => sink.push_text_token(ctx, token.span, text),
         Some(TokenInline::Leaf(kind)) => sink.push(ctx.leaf_inline(token.span, kind)),
         // 引数・セルの中では空行で段落を切れない（区切りの受け手がいない）。
@@ -221,7 +221,7 @@ pub(crate) fn evaluate_inline_elements(
         },
         None => {},
       },
-      GreenElement::Node(child_node) => match child_node.kind {
+      CstElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           let view = CommandView::new(child_node, source);
           sink.push_inline_result(child_node.span, command::evaluate_inline_command(&view, ctx, index_policy)?);

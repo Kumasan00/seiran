@@ -14,7 +14,7 @@ use crate::{
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::{
-      green::GreenElement,
+      CstElement,
       token::TokenKind,
       view::{CommandView, EnvironmentView},
     },
@@ -146,11 +146,11 @@ fn evaluate_row(
   let source = view.source();
   let id = ctx.alloc(view.span());
   let mut cells: Vec<HirTableCell> = Vec::new();
-  let mut segment: Vec<GreenElement<'_>> = Vec::new();
+  let mut segment: Vec<CstElement<'_>> = Vec::new();
   // 空セルには覆う要素がないので、直前の区切り位置を 0 幅の位置として使う
   let mut empty_cell_span = Span::new(arg.span.start, arg.span.start);
   for child in arg.children {
-    if let GreenElement::Token(token) = child
+    if let CstElement::Token(token) = child
       && token.kind == TokenKind::Ampersand
     {
       cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy)?);

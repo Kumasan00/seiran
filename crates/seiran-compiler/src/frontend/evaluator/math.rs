@@ -12,8 +12,7 @@ use crate::{
       EvalContext, EvalError, arity, command::symbol::MathSymbol, inline::resolve_math_symbol_command, opt_args,
     },
     syntax::{
-      SyntaxKind,
-      green::{GreenElement, GreenNode},
+      CstElement, CstNode, SyntaxKind,
       token::TokenKind,
       view::{CommandView, EnvironmentView},
     },
@@ -28,7 +27,7 @@ use crate::{
 pub(super) fn evaluate_math_children(
   source: &str,
   ctx: &EvalContext<'_>,
-  node: &GreenNode<'_>,
+  node: &CstNode<'_>,
 ) -> Result<Vec<HirMath>, EvalError> {
   return evaluate_math_elements(source, ctx, node.children);
 }
@@ -37,12 +36,12 @@ pub(super) fn evaluate_math_children(
 pub(crate) fn evaluate_math_elements(
   source: &str,
   ctx: &EvalContext<'_>,
-  elements: &[GreenElement<'_>],
+  elements: &[CstElement<'_>],
 ) -> Result<Vec<HirMath>, EvalError> {
   let mut nodes = Vec::new();
   for child in elements {
     match child {
-      GreenElement::Token(token) => match token.kind {
+      CstElement::Token(token) => match token.kind {
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする。
         TokenKind::Text
         | TokenKind::VerbatimText
@@ -82,7 +81,7 @@ pub(crate) fn evaluate_math_elements(
         | TokenKind::Comment
         | TokenKind::Unknown => {},
       },
-      GreenElement::Node(child_node) => match child_node.kind {
+      CstElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           let math_node = evaluate_math_command(source, ctx, child_node)?;
           nodes.push(math_node);
@@ -131,12 +130,12 @@ pub(crate) fn evaluate_math_elements(
 fn evaluate_math_script_content(
   source: &str,
   ctx: &EvalContext<'_>,
-  script_node: &GreenNode<'_>,
+  script_node: &CstNode<'_>,
 ) -> Result<HirMath, EvalError> {
   let group_node = script_node.children.iter().find_map(|child| {
     return match child {
-      GreenElement::Node(node) if node.kind == SyntaxKind::MathGroup => Some(node),
-      GreenElement::Node(_) | GreenElement::Token(_) => None,
+      CstElement::Node(node) if node.kind == SyntaxKind::MathGroup => Some(node),
+      CstElement::Node(_) | CstElement::Token(_) => None,
     };
   });
   let Some(group_node) = group_node else {
@@ -215,7 +214,7 @@ pub(super) fn lookup_math_arg_count(name: &str) -> Option<usize> {
 ///
 /// 数式内ではパーサーが [`MathCommandKind::arg_count`] 個で引数の読みを打ち切るので、
 /// 各 arm の `arity` 検査で実際に起きうるのは不足だけになる。
-fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
+fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode<'_>) -> Result<HirMath, EvalError> {
   let view = CommandView::new(cmd_node, source);
   let Some(kind) = MathCommandKind::from_name(view.name()) else {
     return Err(EvalError::UnknownCommand {
@@ -269,7 +268,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &GreenNo
 }
 
 /// 数式引数ノードを単一の [`HirMath`] に変換するヘルパー
-fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
+fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>) -> Result<HirMath, EvalError> {
   let group_id = ctx.alloc(arg_node.span);
   let nodes = evaluate_math_children(source, ctx, arg_node)?;
   return Ok(collapse_single(group_id, nodes));

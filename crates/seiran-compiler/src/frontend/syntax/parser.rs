@@ -10,10 +10,7 @@ use tracing::debug;
 
 use crate::{
   frontend::syntax::{
-    cst::{
-      green::{GreenElement, GreenNode},
-      kind::SyntaxKind,
-    },
+    cst::{CstElement, CstNode, kind::SyntaxKind},
     lexer::Lexer,
     token::{Token, TokenKind},
   },
@@ -157,15 +154,15 @@ impl<'a> Parser<'a> {
   /// トリビア（空白・改行・コメント）をスキップして次の意味のあるトークンまで進む
   ///
   /// スキップしたトークンは CST に保持するため `children` に蓄積します。
-  fn skip_trivia(&mut self, children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>) {
+  fn skip_trivia(&mut self, children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>) {
     while matches!(self.peek_kind(), Some(TokenKind::Comment | TokenKind::Whitespace | TokenKind::Newline)) {
       let token = self.take_peeked();
-      children.push(GreenElement::Token(token));
+      children.push(CstElement::Token(token));
     }
   }
 
   /// ドキュメント全体をパースして CST ルートノードを返す
-  fn parse_root(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_root(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     let start = 0;
 
@@ -194,7 +191,7 @@ impl<'a> Parser<'a> {
   /// 終端でもなく、常に [`ParserError::UnexpectedToken`] になる。
   fn parse_element(
     &mut self,
-    children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
+    children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
     mode: ParseMode,
   ) -> Result<(), ParserError> {
     let Some(kind) = self.peek_kind() else {
@@ -211,7 +208,7 @@ impl<'a> Parser<'a> {
 
         if name == "begin" {
           let env_node = self.parse_environment(token)?;
-          children.push(GreenElement::Node(env_node));
+          children.push(CstElement::Node(env_node));
         } else if name == "end" {
           return Err(ParserError::StrayEnd {
             span: token.span.into(),
@@ -231,7 +228,7 @@ impl<'a> Parser<'a> {
         }
 
         let math_node = self.parse_inline_math(first_dollar)?;
-        children.push(GreenElement::Node(math_node));
+        children.push(CstElement::Node(math_node));
       },
       TokenKind::Dollar => {
         let token = self.take_peeked();
@@ -241,15 +238,15 @@ impl<'a> Parser<'a> {
       },
       TokenKind::LBrace if mode == ParseMode::Math => {
         let group_node = self.parse_math_group()?;
-        children.push(GreenElement::Node(group_node));
+        children.push(CstElement::Node(group_node));
       },
       TokenKind::Underscore if mode == ParseMode::Math => {
         let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
-        children.push(GreenElement::Node(sub_node));
+        children.push(CstElement::Node(sub_node));
       },
       TokenKind::Caret if mode == ParseMode::Math => {
         let sup_node = self.parse_math_script(SyntaxKind::MathSuperscript)?;
-        children.push(GreenElement::Node(sup_node));
+        children.push(CstElement::Node(sup_node));
       },
       TokenKind::LBrace => {
         let token = self.take_peeked();
@@ -288,7 +285,7 @@ impl<'a> Parser<'a> {
       | TokenKind::LineBreak
       | TokenKind::ParagraphBreak => {
         let token = self.take_peeked();
-        children.push(GreenElement::Token(token));
+        children.push(CstElement::Token(token));
       },
       TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comment => {
         unreachable!("各ループは skip_trivia でトリビアを積み終えてから呼ぶので、先読みがトリビアであることはない")
@@ -310,16 +307,16 @@ impl<'a> Parser<'a> {
   /// 本体の読み取り方（[`BodyMode`]）は環境名が確定した時点でレジストリから引き、`\begin` 側の引数の
   /// 読み方もそれで決まる。必須引数を取る環境は無いので、個数はパーサーが持たない（テキスト本体の
   /// 余分な引数は評価器が診断する）。
-  fn parse_environment(&mut self, begin_token: Token) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_environment(&mut self, begin_token: Token) -> Result<&'a CstNode<'a>, ParserError> {
     let start_span = begin_token.span;
     let mut env_children = bumpalo::collections::Vec::new_in(self.arena);
 
     let mut begin_children = bumpalo::collections::Vec::new_in(self.arena);
-    begin_children.push(GreenElement::Token(begin_token));
+    begin_children.push(CstElement::Token(begin_token));
 
     let name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
     let env_name = self.extract_text_from_arg(name_arg);
-    begin_children.push(GreenElement::Node(name_arg));
+    begin_children.push(CstElement::Node(name_arg));
 
     // verbatim では `\begin{...}` の直後から本体のバイトが始まるので、ここより後ろでトリビアや引数を
     // トークン化すると内容が壊れる。
@@ -331,7 +328,7 @@ impl<'a> Parser<'a> {
         // （P3 の「環境名の直後に 1 組」）。それ以外はすべて本体のバイトになる。
         if self.peek_kind() == Some(TokenKind::LBracket) {
           let opt = self.parse_opt_arg()?;
-          begin_children.push(GreenElement::Node(opt));
+          begin_children.push(CstElement::Node(opt));
         }
       },
       BodyMode::Math => {
@@ -348,7 +345,7 @@ impl<'a> Parser<'a> {
         // 個数は評価器（`arity::no_environment_args`）が環境名つきの診断で検査する。
         while let Some(TokenKind::LBrace) = self.peek_kind() {
           let arg = self.parse_mandatory_arg(ParseMode::Text)?;
-          begin_children.push(GreenElement::Node(arg));
+          begin_children.push(CstElement::Node(arg));
           self.skip_trivia(&mut begin_children);
         }
       },
@@ -356,14 +353,14 @@ impl<'a> Parser<'a> {
 
     let begin_span = start_span.merge(self.last_span);
     let begin_node = self.alloc_node(SyntaxKind::EnvironmentBegin, begin_span, begin_children);
-    env_children.push(GreenElement::Node(begin_node));
+    env_children.push(CstElement::Node(begin_node));
 
     let body_node = match body_mode {
       BodyMode::Verbatim => self.parse_verbatim_body(env_name.as_str(), start_span)?,
       BodyMode::Text => self.parse_tokenized_body(ParseMode::Text)?,
       BodyMode::Math => self.parse_tokenized_body(ParseMode::Math)?,
     };
-    env_children.push(GreenElement::Node(body_node));
+    env_children.push(CstElement::Node(body_node));
 
     if self.peek_kind() != Some(TokenKind::Command) {
       return Err(ParserError::UnclosedEnvironment {
@@ -382,7 +379,7 @@ impl<'a> Parser<'a> {
     }
 
     let mut end_node_children = bumpalo::collections::Vec::new_in(self.arena);
-    end_node_children.push(GreenElement::Token(end_token));
+    end_node_children.push(CstElement::Token(end_token));
 
     let end_name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
     let end_env_name = self.extract_text_from_arg(end_name_arg);
@@ -395,11 +392,11 @@ impl<'a> Parser<'a> {
       });
     }
 
-    end_node_children.push(GreenElement::Node(end_name_arg));
+    end_node_children.push(CstElement::Node(end_name_arg));
 
     let end_span = end_token.span.merge(self.last_span);
     let end_node = self.alloc_node(SyntaxKind::EnvironmentEnd, end_span, end_node_children);
-    env_children.push(GreenElement::Node(end_node));
+    env_children.push(CstElement::Node(end_node));
 
     let env_span = start_span.merge(self.last_span);
     return Ok(self.alloc_node(SyntaxKind::Environment, env_span, env_children));
@@ -408,7 +405,7 @@ impl<'a> Parser<'a> {
   /// 環境本体をトークン化して読む: `\end` の直前まで
   ///
   /// `\end` 自体は消費しない。
-  fn parse_tokenized_body(&mut self, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_tokenized_body(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, ParserError> {
     let last_span_end = self.last_span.end;
     let body_start = self.peek_token().map_or(last_span_end, |t| return t.span.start);
     let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
@@ -441,7 +438,7 @@ impl<'a> Parser<'a> {
   /// 本体は 1 個の [`TokenKind::VerbatimText`] になる。本体内の `\begin{<環境名>}` は計数しない
   /// （最初の `\end{<環境名>}` で終端）。本体が空でもトークンを 1 個積み、「本体の子はちょうど 1 個」を
   /// 利用側の不変条件にする。
-  fn parse_verbatim_body(&mut self, env_name: &str, begin_span: Span) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_verbatim_body(&mut self, env_name: &str, begin_span: Span) -> Result<&'a CstNode<'a>, ParserError> {
     self.rewind_peeked();
 
     let marker = format!("\\end{{{env_name}}}");
@@ -454,7 +451,7 @@ impl<'a> Parser<'a> {
     self.last_span = body_span;
 
     let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
-    body_children.push(GreenElement::Token(Token::new(TokenKind::VerbatimText, body_span)));
+    body_children.push(CstElement::Token(Token::new(TokenKind::VerbatimText, body_span)));
     return Ok(self.alloc_node(SyntaxKind::EnvironmentBody, body_span, body_children));
   }
 
@@ -481,12 +478,12 @@ impl<'a> Parser<'a> {
     &mut self,
     cmd_token: Token,
     mode: ParseMode,
-    out: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
+    out: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
   ) -> Result<(), ParserError> {
     let start_span = cmd_token.span;
     let command_name = cmd_token.command_name(self.source);
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(cmd_token));
+    children.push(CstElement::Token(cmd_token));
 
     self.skip_trivia(&mut children);
     self.parse_single_opt_arg(&mut children)?;
@@ -510,11 +507,11 @@ impl<'a> Parser<'a> {
       };
       arg_index += 1;
       end = arg_node.span;
-      children.push(GreenElement::Node(arg_node));
+      children.push(CstElement::Node(arg_node));
       self.skip_trivia(&mut pending);
     }
 
-    out.push(GreenElement::Node(self.alloc_node(SyntaxKind::CommandCall, start_span.merge(end), children)));
+    out.push(CstElement::Node(self.alloc_node(SyntaxKind::CommandCall, start_span.merge(end), children)));
     out.append(&mut pending);
     return Ok(());
   }
@@ -529,11 +526,11 @@ impl<'a> Parser<'a> {
     close_kind: TokenKind,
     node_kind: SyntaxKind,
     mode: ParseMode,
-  ) -> Result<&'a GreenNode<'a>, ParserError> {
+  ) -> Result<&'a CstNode<'a>, ParserError> {
     let open = self.expect(open_kind)?;
     let start_span = open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(open));
+    children.push(CstElement::Token(open));
 
     loop {
       self.skip_trivia(&mut children);
@@ -551,7 +548,7 @@ impl<'a> Parser<'a> {
     }
 
     let close = self.take_peeked();
-    children.push(GreenElement::Token(close));
+    children.push(CstElement::Token(close));
 
     return Ok(self.alloc_node(node_kind, start_span.merge(self.last_span), children));
   }
@@ -559,7 +556,7 @@ impl<'a> Parser<'a> {
   /// 任意引数をパース: `[...]`
   ///
   /// key=value / インデックス指定のため常にテキストモードでパースする。
-  fn parse_opt_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_opt_arg(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
     return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg, ParseMode::Text);
   }
 
@@ -572,13 +569,13 @@ impl<'a> Parser<'a> {
   /// 扱う（`[` は本文に書けず、裸なら [`ParserError::BareBracket`] になる文字なので、意味の衝突はない）。
   fn parse_single_opt_arg(
     &mut self,
-    children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
+    children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
   ) -> Result<(), ParserError> {
     if self.peek_kind() != Some(TokenKind::LBracket) {
       return Ok(());
     }
     let opt_node = self.parse_opt_arg()?;
-    children.push(GreenElement::Node(opt_node));
+    children.push(CstElement::Node(opt_node));
     self.skip_trivia(children);
 
     if self.peek_kind() == Some(TokenKind::LBracket) {
@@ -591,7 +588,7 @@ impl<'a> Parser<'a> {
   }
 
   /// 必須引数をパース: `{...}`
-  fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, ParserError> {
     return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg, mode);
   }
 
@@ -599,7 +596,7 @@ impl<'a> Parser<'a> {
   ///
   /// ノード種別が [`SyntaxKind::MandatoryArg`] のままなのは、ブレースバランス走査が `{}` の意味 1
   /// 「引数境界」の解釈であって第 3 の意味を作らないため（P4）。
-  fn parse_verbatim_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_verbatim_arg(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
     let open = self.expect(TokenKind::LBrace)?;
     debug_assert!(
       self.peeked_token.is_none(),
@@ -607,7 +604,7 @@ impl<'a> Parser<'a> {
        ＝レキサーのカーソルが開き `{{` の直後にある"
     );
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(open));
+    children.push(CstElement::Token(open));
 
     let Some(body_span) = self.lexer.scan_verbatim_balanced() else {
       return Err(ParserError::UnclosedDelimiter {
@@ -617,10 +614,10 @@ impl<'a> Parser<'a> {
     };
     self.last_span = body_span;
     // 本体が空でもトークンを 1 個積み、「引数の子は `{` / 本体 / `}` の 3 個」を利用側の不変条件にする。
-    children.push(GreenElement::Token(Token::new(TokenKind::VerbatimText, body_span)));
+    children.push(CstElement::Token(Token::new(TokenKind::VerbatimText, body_span)));
 
     let close = self.expect(TokenKind::RBrace)?;
-    children.push(GreenElement::Token(close));
+    children.push(CstElement::Token(close));
 
     return Ok(self.alloc_node(SyntaxKind::MandatoryArg, open.span.merge(self.last_span), children));
   }
@@ -628,10 +625,10 @@ impl<'a> Parser<'a> {
   /// インライン数式をパース: `$...$`
   ///
   /// `$` の前で入力が尽きた場合は [`ParserError::UnclosedInlineMath`] を返す。
-  fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a CstNode<'a>, ParserError> {
     let start_span = dollar_open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(dollar_open));
+    children.push(CstElement::Token(dollar_open));
 
     loop {
       // 終端の判定より先にトリビアを積む。先読みがトリビアのままでは閉じ `$` を見落とし、
@@ -640,7 +637,7 @@ impl<'a> Parser<'a> {
       match self.peek_kind() {
         Some(TokenKind::Dollar) => {
           let dollar_close = self.take_peeked();
-          children.push(GreenElement::Token(dollar_close));
+          children.push(CstElement::Token(dollar_close));
           break;
         },
         None => {
@@ -659,11 +656,11 @@ impl<'a> Parser<'a> {
   /// 数式モード内のグループをパース: `{...}`
   ///
   /// `$` または EOF で閉じられないまま終わった場合は [`ParserError::UnclosedMathGroup`] を返す。
-  fn parse_math_group(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_math_group(&mut self) -> Result<&'a CstNode<'a>, ParserError> {
     let lbrace = self.expect(TokenKind::LBrace)?;
     let start_span = lbrace.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(lbrace));
+    children.push(CstElement::Token(lbrace));
 
     loop {
       // 終端の判定より先にトリビアを積む。先読みがトリビアのままでは `}` や閉じていないグループの `$` を
@@ -672,7 +669,7 @@ impl<'a> Parser<'a> {
       match self.peek_kind() {
         Some(TokenKind::RBrace) => {
           let rbrace = self.take_peeked();
-          children.push(GreenElement::Token(rbrace));
+          children.push(CstElement::Token(rbrace));
           break;
         },
         Some(TokenKind::Dollar) | None => {
@@ -692,18 +689,18 @@ impl<'a> Parser<'a> {
   ///
   /// 内容は `{...}` グループのみを受け付ける。`$x^2$` のような裸の 1 トークンも
   /// `$x^\alpha$` のような裸のコマンドも [`ParserError::ScriptRequiresGroup`] にする。
-  fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a CstNode<'a>, ParserError> {
     let script_token = self.take_peeked();
     let start_span = script_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(script_token));
+    children.push(CstElement::Token(script_token));
 
     self.skip_trivia(&mut children);
 
     match self.peek_kind() {
       Some(TokenKind::LBrace) => {
         let group = self.parse_math_group()?;
-        children.push(GreenElement::Node(group));
+        children.push(CstElement::Node(group));
       },
       // 字句として不正な `\`（`\<空白>` や入力末尾の `\`）は「囲みが足りない」ではないので、
       // 数式内の他の位置と同じ診断にする（`$x^{\ }$` と書いても直らないため）。
@@ -752,10 +749,10 @@ impl<'a> Parser<'a> {
   }
 
   /// `MandatoryArg` ノードからテキスト内容を抽出する（環境名取得用）
-  fn extract_text_from_arg(&self, arg_node: &GreenNode<'a>) -> String {
+  fn extract_text_from_arg(&self, arg_node: &CstNode<'a>) -> String {
     let mut text = String::new();
     for child in arg_node.children {
-      if let GreenElement::Token(t) = child
+      if let CstElement::Token(t) = child
         && t.kind == TokenKind::Text
       {
         text.push_str(t.text(self.source));
@@ -764,15 +761,15 @@ impl<'a> Parser<'a> {
     return text;
   }
 
-  /// `GreenNode` をアリーナに確保するヘルパー
+  /// `CstNode` をアリーナに確保するヘルパー
   fn alloc_node(
     &self,
     kind: SyntaxKind,
     span: Span,
-    children: bumpalo::collections::Vec<'a, GreenElement<'a>>,
-  ) -> &'a GreenNode<'a> {
+    children: bumpalo::collections::Vec<'a, CstElement<'a>>,
+  ) -> &'a CstNode<'a> {
     let children_slice = children.into_bump_slice();
-    return self.arena.alloc(GreenNode {
+    return self.arena.alloc(CstNode {
       kind,
       span,
       children: children_slice,
@@ -785,11 +782,7 @@ impl<'a> Parser<'a> {
 /// # Errors
 ///
 /// 構文エラーが発生した場合
-pub(crate) fn parse<'a>(
-  source: &'a str,
-  arena: &'a Bump,
-  modes: ModeResolver,
-) -> Result<&'a GreenNode<'a>, ParserError> {
+pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump, modes: ModeResolver) -> Result<&'a CstNode<'a>, ParserError> {
   let lexer = Lexer::new(source);
   let mut parser = Parser::new(source, lexer, arena, modes);
   let root = parser.parse_root()?;
@@ -843,11 +836,11 @@ mod tests {
   }
 
   /// テスト用の `parse` ラッパ
-  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, ParserError> {
     return super::parse(source, arena, test_modes());
   }
 
-  fn parse_source<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> { return parse(source, arena).unwrap(); }
+  fn parse_source<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> { return parse(source, arena).unwrap(); }
 
   #[test]
   fn empty_input_returns_root() {
@@ -863,9 +856,9 @@ mod tests {
     let cst = parse_source("hello world", &arena);
     assert_eq!(cst.kind, SyntaxKind::Root);
     assert_eq!(cst.children.len(), 3);
-    assert!(matches!(&cst.children[0], GreenElement::Token(t) if t.kind == TokenKind::Text));
-    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Whitespace));
-    assert!(matches!(&cst.children[2], GreenElement::Token(t) if t.kind == TokenKind::Text));
+    assert!(matches!(&cst.children[0], CstElement::Token(t) if t.kind == TokenKind::Text));
+    assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::Whitespace));
+    assert!(matches!(&cst.children[2], CstElement::Token(t) if t.kind == TokenKind::Text));
   }
 
   #[test]
@@ -873,7 +866,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("first\n\nsecond", &arena);
     assert_eq!(cst.children.len(), 3);
-    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::ParagraphBreak));
+    assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::ParagraphBreak));
   }
 
   #[test]
@@ -881,7 +874,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("hello\\\\world", &arena);
     assert_eq!(cst.children.len(), 3);
-    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::LineBreak));
+    assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::LineBreak));
   }
 
   #[test]
@@ -889,15 +882,15 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("\\{", &arena);
     assert_eq!(cst.children.len(), 1);
-    assert!(matches!(&cst.children[0], GreenElement::Token(t) if t.kind == TokenKind::Escaped));
+    assert!(matches!(&cst.children[0], CstElement::Token(t) if t.kind == TokenKind::Escaped));
   }
 
   #[test]
   fn comments_are_preserved_in_cst() {
     let arena = Bump::new();
     let cst = parse_source("// comment\nhello", &arena);
-    let has_comment = cst.children.iter().any(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Comment));
-    let has_text = cst.children.iter().any(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Text));
+    let has_comment = cst.children.iter().any(|e| matches!(e, CstElement::Token(t) if t.kind == TokenKind::Comment));
+    let has_text = cst.children.iter().any(|e| matches!(e, CstElement::Token(t) if t.kind == TokenKind::Text));
     assert!(has_comment);
     assert!(has_text);
   }
@@ -907,7 +900,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("\\foo", &arena);
     assert_eq!(cst.children.len(), 1);
-    if let GreenElement::Node(n) = &cst.children[0] {
+    if let CstElement::Node(n) = &cst.children[0] {
       assert_eq!(n.kind, SyntaxKind::CommandCall);
       assert_eq!(n.children.len(), 1);
     } else {
@@ -920,7 +913,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("\\bold{hello}", &arena);
     assert_eq!(cst.children.len(), 1);
-    if let GreenElement::Node(cmd) = &cst.children[0] {
+    if let CstElement::Node(cmd) = &cst.children[0] {
       assert_eq!(cmd.kind, SyntaxKind::CommandCall);
       let args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
       assert_eq!(args.len(), 1);
@@ -933,7 +926,7 @@ mod tests {
   fn command_with_optional_and_required_args() {
     let arena = Bump::new();
     let cst = parse_source("\\cmd[opt]{arg}", &arena);
-    if let GreenElement::Node(cmd) = &cst.children[0] {
+    if let CstElement::Node(cmd) = &cst.children[0] {
       let opt_args: Vec<_> = cmd.children_of_kind(SyntaxKind::OptArg).collect();
       let req_args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
       assert_eq!(opt_args.len(), 1);
@@ -948,7 +941,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("\\begin{center}hello\\end{center}", &arena);
     assert_eq!(cst.children.len(), 1);
-    if let GreenElement::Node(env) = &cst.children[0] {
+    if let CstElement::Node(env) = &cst.children[0] {
       assert_eq!(env.kind, SyntaxKind::Environment);
       assert!(env.first_child_of_kind(SyntaxKind::EnvironmentBegin).is_some());
       assert!(env.first_child_of_kind(SyntaxKind::EnvironmentBody).is_some());
@@ -962,7 +955,7 @@ mod tests {
   fn nested_environments() {
     let arena = Bump::new();
     let cst = parse_source("\\begin{outer}\\begin{inner}text\\end{inner}\\end{outer}", &arena);
-    if let GreenElement::Node(env) = &cst.children[0] {
+    if let CstElement::Node(env) = &cst.children[0] {
       let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
       let inner_env: Vec<_> = body.children_of_kind(SyntaxKind::Environment).collect();
       assert_eq!(inner_env.len(), 1);
@@ -983,7 +976,7 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("$x$", &arena);
     assert_eq!(cst.children.len(), 1);
-    if let GreenElement::Node(math) = &cst.children[0] {
+    if let CstElement::Node(math) = &cst.children[0] {
       assert_eq!(math.kind, SyntaxKind::InlineMath);
     } else {
       panic!("InlineMath ノードが期待されます");
@@ -994,7 +987,7 @@ mod tests {
   fn inline_math_with_group() {
     let arena = Bump::new();
     let cst = parse_source("${x}$", &arena);
-    if let GreenElement::Node(math) = &cst.children[0] {
+    if let CstElement::Node(math) = &cst.children[0] {
       let groups: Vec<_> = math.children_of_kind(SyntaxKind::MathGroup).collect();
       assert_eq!(groups.len(), 1);
     } else {
@@ -1074,8 +1067,8 @@ mod tests {
       .iter()
       .map(|element| {
         return match element {
-          GreenElement::Token(token) => token.kind,
-          GreenElement::Node(node) => panic!("トリビアだけのソースにノード {:?} は出ない", node.kind),
+          CstElement::Token(token) => token.kind,
+          CstElement::Node(node) => panic!("トリビアだけのソースにノード {:?} は出ない", node.kind),
         };
       })
       .collect();
@@ -1168,7 +1161,7 @@ mod tests {
     // `{{a}}` の内側の `}` は数式グループのループが、外側の `}` は引数のループが消費する。
     let arena = Bump::new();
     let cst = parse_source(r"$\vfrac{{a}}{b}$", &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
@@ -1193,8 +1186,8 @@ mod tests {
       .iter()
       .filter_map(|element| {
         return match element {
-          GreenElement::Token(token) => Some(token.kind),
-          GreenElement::Node(_) => None,
+          CstElement::Token(token) => Some(token.kind),
+          CstElement::Node(_) => None,
         };
       })
       .collect();
@@ -1271,7 +1264,7 @@ mod tests {
   fn environment_directly_in_inline_math_is_environment_node() {
     let arena = Bump::new();
     let cst = parse_source(r"$\begin{foo}a\end{foo}$", &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     assert_eq!(math.kind, SyntaxKind::InlineMath);
@@ -1283,7 +1276,7 @@ mod tests {
   fn environment_directly_in_math_group_is_environment_node() {
     let arena = Bump::new();
     let cst = parse_source(r"${\begin{foo}a\end{foo}}$", &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let group = math.first_child_of_kind(SyntaxKind::MathGroup).expect("MathGroup ノードが期待されます");
@@ -1310,17 +1303,17 @@ mod tests {
     // 終端の直前のトリビアは数式の子として残り、閉じ `$` / `}` を数式モード内の記号として弾かない
     let arena = Bump::new();
     let cst = parse_source("$ { x } $", &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
-    let kinds = |node: &GreenNode<'_>| -> Vec<String> {
+    let kinds = |node: &CstNode<'_>| -> Vec<String> {
       return node
         .children
         .iter()
         .map(|child| {
           return match child {
-            GreenElement::Token(token) => format!("{:?}", token.kind),
-            GreenElement::Node(node) => format!("{:?}", node.kind),
+            CstElement::Token(token) => format!("{:?}", token.kind),
+            CstElement::Node(node) => format!("{:?}", node.kind),
           };
         })
         .collect();
@@ -1334,7 +1327,7 @@ mod tests {
   fn span_tracks_command_with_arg() {
     let arena = Bump::new();
     let cst = parse_source("\\bold{text}", &arena);
-    if let GreenElement::Node(cmd) = &cst.children[0] {
+    if let CstElement::Node(cmd) = &cst.children[0] {
       assert_eq!(cmd.span, Span::new(0, 11));
     }
   }
@@ -1343,7 +1336,7 @@ mod tests {
   fn span_tracks_environment() {
     let arena = Bump::new();
     let cst = parse_source("\\begin{env}body\\end{env}", &arena);
-    if let GreenElement::Node(env) = &cst.children[0] {
+    if let CstElement::Node(env) = &cst.children[0] {
       assert_eq!(env.span, Span::new(0, 24));
     }
   }
@@ -1352,7 +1345,7 @@ mod tests {
   fn span_tracks_inline_math() {
     let arena = Bump::new();
     let cst = parse_source("$x$", &arena);
-    if let GreenElement::Node(math) = &cst.children[0] {
+    if let CstElement::Node(math) = &cst.children[0] {
       assert_eq!(math.span, Span::new(0, 3));
     }
   }
@@ -1382,7 +1375,7 @@ mod tests {
   fn escaped_bracket_in_text_is_ok() {
     let arena = Bump::new();
     let cst = parse_source(r"hello \[0\]", &arena);
-    let has_escaped = cst.children.iter().any(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Escaped));
+    let has_escaped = cst.children.iter().any(|e| matches!(e, CstElement::Token(t) if t.kind == TokenKind::Escaped));
     assert!(has_escaped);
   }
 
@@ -1400,13 +1393,13 @@ mod tests {
     let cst = parse_source(r"\bold{x} y", &arena);
 
     assert_eq!(cst.children.len(), 3);
-    let GreenElement::Node(command) = &cst.children[0] else {
+    let CstElement::Node(command) = &cst.children[0] else {
       panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
     };
     assert_eq!(command.kind, SyntaxKind::CommandCall);
     assert_eq!(&r"\bold{x} y"[command.span.start as usize..command.span.end as usize], r"\bold{x}");
-    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Whitespace));
-    assert!(matches!(&cst.children[2], GreenElement::Token(t) if t.kind == TokenKind::Text));
+    assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::Whitespace));
+    assert!(matches!(&cst.children[2], CstElement::Token(t) if t.kind == TokenKind::Text));
   }
 
   #[test]
@@ -1415,12 +1408,12 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("\\bold{x}\n// 註\ny", &arena);
 
-    let GreenElement::Node(command) = &cst.children[0] else {
+    let CstElement::Node(command) = &cst.children[0] else {
       panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
     };
     assert_eq!(command.span.end as usize, r"\bold{x}".len());
-    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Newline));
-    assert!(matches!(&cst.children[2], GreenElement::Token(t) if t.kind == TokenKind::Comment));
+    assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::Newline));
+    assert!(matches!(&cst.children[2], CstElement::Token(t) if t.kind == TokenKind::Comment));
   }
 
   #[test]
@@ -1430,7 +1423,7 @@ mod tests {
     let cst = parse_source(source, &arena);
 
     assert_eq!(cst.children.len(), 1);
-    let GreenElement::Node(command) = &cst.children[0] else {
+    let CstElement::Node(command) = &cst.children[0] else {
       panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
     };
     assert_eq!(&source[command.span.start as usize..command.span.end as usize], source);
@@ -1443,11 +1436,11 @@ mod tests {
     let cst = parse_source(source, &arena);
 
     assert_eq!(cst.children.len(), 2);
-    let GreenElement::Node(command) = &cst.children[0] else {
+    let CstElement::Node(command) = &cst.children[0] else {
       panic!("先頭はコマンド呼び出しノードである: {:?}", cst.children[0])
     };
     assert_eq!(&source[command.span.start as usize..command.span.end as usize], r"\cmd ");
-    assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Text));
+    assert!(matches!(&cst.children[1], CstElement::Token(t) if t.kind == TokenKind::Text));
   }
 
   #[test]
@@ -1455,15 +1448,15 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source(r"$\alpha{x} y$", &arena);
 
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("先頭はインライン数式ノードである: {:?}", cst.children[0])
     };
     assert_eq!(math.kind, SyntaxKind::InlineMath);
-    let trivia_after_command = math.children.iter().skip_while(|child| return !matches!(child, GreenElement::Node(_)));
+    let trivia_after_command = math.children.iter().skip_while(|child| return !matches!(child, CstElement::Node(_)));
     assert!(
       trivia_after_command
         .skip(1)
-        .any(|child| matches!(child, GreenElement::Token(t) if t.kind == TokenKind::Whitespace)),
+        .any(|child| matches!(child, CstElement::Token(t) if t.kind == TokenKind::Whitespace)),
       "コマンド呼び出しの後の空白が数式ノードの子として残る: {:?}",
       math.children
     );
@@ -1554,15 +1547,13 @@ mod tests {
   fn math_script_skips_whitespace_before_content() {
     let arena = Bump::new();
     let cst = parse_source("$x^ {2}$", &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let sups: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
     assert_eq!(sups.len(), 1);
-    let has_group = sups[0]
-      .children
-      .iter()
-      .any(|c| matches!(c, GreenElement::Node(n) if n.kind == SyntaxKind::MathGroup));
+    let has_group =
+      sups[0].children.iter().any(|c| matches!(c, CstElement::Node(n) if n.kind == SyntaxKind::MathGroup));
     assert!(has_group, "スクリプト内容は MathGroup ノードであるべき");
   }
 
@@ -1595,7 +1586,7 @@ mod tests {
       .children
       .iter()
       .filter_map(|e| {
-        if let GreenElement::Token(t) = e {
+        if let CstElement::Token(t) = e {
           return Some(t.kind);
         }
         return None;
@@ -1612,7 +1603,7 @@ mod tests {
       .children
       .iter()
       .filter_map(|e| {
-        if let GreenElement::Token(t) = e {
+        if let CstElement::Token(t) = e {
           return Some(t.kind);
         }
         return None;
@@ -1625,7 +1616,7 @@ mod tests {
   fn superscript_in_math_creates_node() {
     let arena = Bump::new();
     let cst = parse_source("$x^{2}$", &arena);
-    if let GreenElement::Node(math) = &cst.children[0] {
+    if let CstElement::Node(math) = &cst.children[0] {
       let sup: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
       assert_eq!(sup.len(), 1);
     } else {
@@ -1637,7 +1628,7 @@ mod tests {
   fn subscript_with_multiple_characters_in_math() {
     let arena = Bump::new();
     let cst = parse_source("$x_{ij}$", &arena);
-    if let GreenElement::Node(math) = &cst.children[0] {
+    if let CstElement::Node(math) = &cst.children[0] {
       let subs: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
       assert_eq!(subs.len(), 1);
       let groups: Vec<_> = subs[0].children_of_kind(SyntaxKind::MathGroup).collect();
@@ -1651,7 +1642,7 @@ mod tests {
   fn subscript_and_superscript_combined() {
     let arena = Bump::new();
     let cst = parse_source("$a_{i}^{2}$", &arena);
-    if let GreenElement::Node(math) = &cst.children[0] {
+    if let CstElement::Node(math) = &cst.children[0] {
       let subs: Vec<_> = math.children_of_kind(SyntaxKind::MathSubscript).collect();
       let sups: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
       assert_eq!(subs.len(), 1);
@@ -1665,7 +1656,7 @@ mod tests {
   fn equation_env_body_is_parsed_in_math_mode() {
     let arena = Bump::new();
     let cst = parse_source(r"\begin{equation}x^{ij}\end{equation}", &arena);
-    let GreenElement::Node(env) = &cst.children[0] else {
+    let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     assert_eq!(env.kind, SyntaxKind::Environment);
@@ -1680,13 +1671,13 @@ mod tests {
   fn non_math_env_body_keeps_caret_as_raw_token() {
     let arena = Bump::new();
     let cst = parse_source(r"\begin{itemize}a^b\end{itemize}", &arena);
-    let GreenElement::Node(env) = &cst.children[0] else {
+    let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
     let sups: Vec<_> = body.children_of_kind(SyntaxKind::MathSuperscript).collect();
     assert_eq!(sups.len(), 0, "Text モードでは MathSuperscript 化されない");
-    let has_caret = body.children.iter().any(|c| matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Caret));
+    let has_caret = body.children.iter().any(|c| matches!(c, CstElement::Token(t) if t.kind == TokenKind::Caret));
     assert!(has_caret, "raw Caret トークンとして残っているはず");
   }
 
@@ -1699,7 +1690,7 @@ mod tests {
     ] {
       let arena = Bump::new();
       let cst = parse_source(source, &arena);
-      let GreenElement::Node(env) = &cst.children[0] else {
+      let CstElement::Node(env) = &cst.children[0] else {
         panic!("Environment ノードが期待されます: {source}");
       };
       let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
@@ -1714,7 +1705,7 @@ mod tests {
   fn text_env_reads_following_braces_as_arguments() {
     let arena = Bump::new();
     let cst = parse_source("\\begin{itemize}{x}\n{y}\\end{itemize}", &arena);
-    let GreenElement::Node(env) = &cst.children[0] else {
+    let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
@@ -1726,12 +1717,12 @@ mod tests {
   /// verbatim 環境の本体テキストを取り出す（本体はちょうど 1 個の `VerbatimText`）
   fn verbatim_body<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
     let cst = parse_source(source, arena);
-    let GreenElement::Node(env) = &cst.children[0] else {
+    let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
     assert_eq!(body.children.len(), 1, "verbatim 本体の子はちょうど 1 個");
-    let GreenElement::Token(token) = &body.children[0] else {
+    let CstElement::Token(token) = &body.children[0] else {
       panic!("VerbatimText トークンが期待されます");
     };
     assert_eq!(token.kind, TokenKind::VerbatimText);
@@ -1741,12 +1732,12 @@ mod tests {
   /// verbatim コマンド引数の本体テキストを取り出す（`{` / 本体 / `}` の 3 子）
   fn verbatim_arg<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
     let cst = parse_source(source, arena);
-    let GreenElement::Node(cmd) = &cst.children[0] else {
+    let CstElement::Node(cmd) = &cst.children[0] else {
       panic!("CommandCall ノードが期待されます");
     };
     let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
     assert_eq!(arg.children.len(), 3, "verbatim 引数の子は `{{` / 本体 / `}}` の 3 個");
-    let GreenElement::Token(token) = &arg.children[1] else {
+    let CstElement::Token(token) = &arg.children[1] else {
       panic!("VerbatimText トークンが期待されます");
     };
     assert_eq!(token.kind, TokenKind::VerbatimText);
@@ -1798,7 +1789,7 @@ mod tests {
     let source = "\\begin{code}[lang=rust]\nfoo\n\\end{code}";
 
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(env) = &cst.children[0] else {
+    let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
@@ -1815,7 +1806,7 @@ mod tests {
     let source = "\\begin{code} [x]\\end{code}";
 
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(env) = &cst.children[0] else {
+    let CstElement::Node(env) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
@@ -1845,7 +1836,7 @@ mod tests {
     let source = "\\begin{quote}\\begin{code}a$b//c\\end{code}\\end{quote}";
 
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(outer) = &cst.children[0] else {
+    let CstElement::Node(outer) = &cst.children[0] else {
       panic!("Environment ノードが期待されます");
     };
     let outer_body = outer.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
@@ -1853,7 +1844,7 @@ mod tests {
     let inner_body = inner.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
 
     assert_eq!(inner_body.children.len(), 1);
-    let GreenElement::Token(token) = &inner_body.children[0] else {
+    let CstElement::Token(token) = &inner_body.children[0] else {
       panic!("VerbatimText トークンが期待されます");
     };
     assert_eq!(token.kind, TokenKind::VerbatimText);
@@ -1920,14 +1911,14 @@ mod tests {
     let source = "$\\vurl{a//b}$";
 
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
     let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
 
     assert_eq!(arg.children.len(), 3);
-    let GreenElement::Token(token) = &arg.children[1] else {
+    let CstElement::Token(token) = &arg.children[1] else {
       panic!("VerbatimText トークンが期待されます");
     };
     assert_eq!(token.kind, TokenKind::VerbatimText);
@@ -1939,7 +1930,7 @@ mod tests {
     let arena = Bump::new();
 
     let cst = parse_source("$\\frac{x^{2}}{y}$", &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
@@ -1955,14 +1946,14 @@ mod tests {
     let source = "\\vhref{https://example.com}{\\bold{強調}}";
 
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(cmd) = &cst.children[0] else {
+    let CstElement::Node(cmd) = &cst.children[0] else {
       panic!("CommandCall ノードが期待されます");
     };
     let args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
 
     // 第 1 引数は生読みした 1 個の塊、第 2 引数は通常のトークン化を通る
     assert_eq!(args.len(), 2);
-    let GreenElement::Token(url_token) = &args[0].children[1] else {
+    let CstElement::Token(url_token) = &args[0].children[1] else {
       panic!("VerbatimText トークンが期待されます");
     };
     assert_eq!(url_token.kind, TokenKind::VerbatimText);
@@ -1974,7 +1965,7 @@ mod tests {
   fn inline_math_shape(source: &str) -> Vec<(SyntaxKind, usize)> {
     let arena = Bump::new();
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます: {source}");
     };
     return math
@@ -2009,7 +2000,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"$\vfrac{a}{b} {c}$";
     let cst = parse_source(source, &arena);
-    let GreenElement::Node(math) = &cst.children[0] else {
+    let CstElement::Node(math) = &cst.children[0] else {
       panic!("InlineMath ノードが期待されます");
     };
     let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
@@ -2017,7 +2008,7 @@ mod tests {
     let has_outer_space = math
       .children
       .iter()
-      .any(|c| return matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Whitespace));
+      .any(|c| return matches!(c, CstElement::Token(t) if t.kind == TokenKind::Whitespace));
     assert!(has_outer_space, "`}}` と `{{c}}` の間の空白は数式本体の子のはず");
   }
 

@@ -8,7 +8,7 @@
 use crate::frontend::{
   evaluator::EvalError,
   syntax::{
-    green::GreenNode,
+    CstNode,
     view::{CommandView, EnvironmentView},
   },
 };
@@ -36,7 +36,7 @@ pub(super) fn no_args(view: &CommandView<'_>) -> Result<(), EvalError> {
 ///
 /// 必須引数が無い場合に [`EvalError::MissingCommandArgument`]、2 個以上ある場合に
 /// [`EvalError::ExtraCommandArgument`] を返します。
-pub(super) fn exactly_one_arg<'a>(view: &CommandView<'a>, expected: &str) -> Result<&'a GreenNode<'a>, EvalError> {
+pub(super) fn exactly_one_arg<'a>(view: &CommandView<'a>, expected: &str) -> Result<&'a CstNode<'a>, EvalError> {
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: view.name().to_string(),
@@ -64,7 +64,7 @@ pub(super) fn exactly_one_arg<'a>(view: &CommandView<'a>, expected: &str) -> Res
 pub(super) fn exactly_two_args<'a>(
   view: &CommandView<'a>,
   expected: &str,
-) -> Result<(&'a GreenNode<'a>, &'a GreenNode<'a>), EvalError> {
+) -> Result<(&'a CstNode<'a>, &'a CstNode<'a>), EvalError> {
   let mut args = view.args();
   let (Some(first), Some(second)) = (args.next(), args.next()) else {
     return Err(EvalError::MissingCommandArgument {

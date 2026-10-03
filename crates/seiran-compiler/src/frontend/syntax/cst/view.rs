@@ -1,13 +1,10 @@
 //! CST 上の型付きビュー
 //!
-//! 独立した AST は構築せず、[`GreenNode`] を直接参照する。
+//! 独立した AST は構築せず、[`CstNode`] を直接参照する。
 
 use crate::{
   frontend::syntax::{
-    cst::{
-      green::{GreenElement, GreenNode},
-      kind::SyntaxKind,
-    },
+    cst::{CstElement, CstNode, kind::SyntaxKind},
     token::TokenKind,
   },
   source::Span,
@@ -16,7 +13,7 @@ use crate::{
 /// コマンド呼び出しの型付きビュー
 pub(in crate::frontend) struct CommandView<'a> {
   /// 内部の CST ノード
-  node: &'a GreenNode<'a>,
+  node: &'a CstNode<'a>,
   /// 元のソーステキスト
   source: &'a str,
   /// コマンド名（先頭の `\` を除いた名前）。構築時に取り出して保持する
@@ -33,7 +30,7 @@ impl<'a> CommandView<'a> {
   /// `node` が `CommandCall` でない場合（＝コマンドトークンを持たない場合）にパニックします。
   /// 呼び出し元が `kind` を確認してから構築するため、通常は起こりません。
   #[must_use]
-  pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
+  pub(crate) fn new(node: &'a CstNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(
       node.kind,
       SyntaxKind::CommandCall,
@@ -62,7 +59,7 @@ impl<'a> CommandView<'a> {
   pub(crate) fn span(&self) -> Span { return self.node.span; }
 
   /// 必須引数 `{...}` ノードをイテレートする
-  pub(crate) fn args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+  pub(crate) fn args(&self) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
     return self.node.children_of_kind(SyntaxKind::MandatoryArg);
   }
 
@@ -71,9 +68,7 @@ impl<'a> CommandView<'a> {
   /// 任意引数はコマンド名の直後に高々 1 組（P3）。parser が 2 組目を構文エラーにするので、
   /// 「1 組目」ではなく「その 1 組」を返す。
   #[must_use]
-  pub(crate) fn opt_arg(&self) -> Option<&'a GreenNode<'a>> {
-    return self.node.first_child_of_kind(SyntaxKind::OptArg);
-  }
+  pub(crate) fn opt_arg(&self) -> Option<&'a CstNode<'a>> { return self.node.first_child_of_kind(SyntaxKind::OptArg); }
 
   /// 必須引数の数を返す
   #[must_use]
@@ -81,7 +76,7 @@ impl<'a> CommandView<'a> {
 
   /// 最初の必須引数ノードを返す
   #[must_use]
-  pub(crate) fn first_arg(&self) -> Option<&'a GreenNode<'a>> {
+  pub(crate) fn first_arg(&self) -> Option<&'a CstNode<'a>> {
     return self.node.first_child_of_kind(SyntaxKind::MandatoryArg);
   }
 
@@ -93,11 +88,11 @@ impl<'a> CommandView<'a> {
 /// 環境の型付きビュー
 pub(in crate::frontend) struct EnvironmentView<'a> {
   /// 内部の CST ノード
-  node: &'a GreenNode<'a>,
+  node: &'a CstNode<'a>,
   /// 元のソーステキスト
   source: &'a str,
   /// `\begin{...}` 側のノード（環境名・引数の取り出し元）。構築時に取り出して保持する
-  begin: &'a GreenNode<'a>,
+  begin: &'a CstNode<'a>,
   /// 環境名。構築時に取り出して保持する
   name: &'a str,
 }
@@ -113,7 +108,7 @@ impl<'a> EnvironmentView<'a> {
   /// `node` が `Environment` でない場合（＝`EnvironmentBegin` とその中の環境名引数を持たない場合）に
   /// パニックします。呼び出し元が `kind` を確認してから構築するため、通常は起こりません。
   #[must_use]
-  pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
+  pub(crate) fn new(node: &'a CstNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(
       node.kind,
       SyntaxKind::Environment,
@@ -152,7 +147,7 @@ impl<'a> EnvironmentView<'a> {
 
   /// 環境の本体ノードを返す
   #[must_use]
-  pub(crate) fn body(&self) -> Option<&'a GreenNode<'a>> {
+  pub(crate) fn body(&self) -> Option<&'a CstNode<'a>> {
     return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody);
   }
 
@@ -169,21 +164,19 @@ impl<'a> EnvironmentView<'a> {
   /// 任意引数は環境名の直後に高々 1 組（P3）。parser が 2 組目を構文エラーにするので、
   /// 「1 組目」ではなく「その 1 組」を返す。
   #[must_use]
-  pub(crate) fn opt_arg(&self) -> Option<&'a GreenNode<'a>> {
-    return self.begin.first_child_of_kind(SyntaxKind::OptArg);
-  }
+  pub(crate) fn opt_arg(&self) -> Option<&'a CstNode<'a>> { return self.begin.first_child_of_kind(SyntaxKind::OptArg); }
 }
 
-/// `GreenNode` の子要素からテキスト内容を抽出する
+/// `CstNode` の子要素からテキスト内容を抽出する
 ///
 /// 構造トークンとコメントを除いて連結する。
 #[must_use]
-pub(crate) fn extract_text_content(source: &str, node: &GreenNode<'_>) -> String {
+pub(crate) fn extract_text_content(source: &str, node: &CstNode<'_>) -> String {
   return elements_text(source, node.children);
 }
 
 /// 要素列のテキストを連結する（[`extract_text_content`] と同じ規則）
-fn elements_text(source: &str, elements: &[GreenElement<'_>]) -> String {
+fn elements_text(source: &str, elements: &[CstElement<'_>]) -> String {
   let mut text = String::new();
   for element in elements {
     push_element_text(source, element, &mut text);
@@ -192,9 +185,9 @@ fn elements_text(source: &str, elements: &[GreenElement<'_>]) -> String {
 }
 
 /// 1 要素ぶんのテキストを `text` へ追記する
-fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String) {
+fn push_element_text(source: &str, element: &CstElement<'_>, text: &mut String) {
   match element {
-    GreenElement::Token(token) => match token.kind {
+    CstElement::Token(token) => match token.kind {
       // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのまま連結する
       TokenKind::Text
       | TokenKind::VerbatimText
@@ -222,7 +215,7 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
       | TokenKind::Comment
       | TokenKind::Unknown => {},
     },
-    GreenElement::Node(child_node) => {
+    CstElement::Node(child_node) => {
       text.push_str(&extract_text_content(source, child_node));
     },
   }
@@ -235,7 +228,7 @@ fn push_element_text(source: &str, element: &GreenElement<'_>, text: &mut String
 /// （空白・空の区間の扱いは利用者が決める）。平坦化した文字列を `,` で割るとエスケープの区別が消えるので、
 /// 区切りを持つ引数はこの関数で割る。
 #[must_use]
-pub(crate) fn split_text_on_commas(source: &str, node: &GreenNode<'_>) -> Vec<String> {
+pub(crate) fn split_text_on_commas(source: &str, node: &CstNode<'_>) -> Vec<String> {
   return node
     .children
     .split(|element| return is_token(element, TokenKind::Comma))
@@ -250,7 +243,7 @@ pub(crate) fn split_text_on_commas(source: &str, node: &GreenNode<'_>) -> Vec<St
 /// 値の文字になる。引用符 `"` は値の境界ではない。`=` を含まないエントリは boolean フラグとして扱い
 /// `("key", "true")` を生成する（例: `[draft]`）。空のエントリは読み飛ばす。
 #[must_use]
-pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode<'_>) -> Vec<(String, String)> {
+pub(crate) fn parse_key_value_options(source: &str, opt_arg: &CstNode<'_>) -> Vec<(String, String)> {
   debug_assert_eq!(
     opt_arg.kind,
     SyntaxKind::OptArg,
@@ -281,8 +274,8 @@ pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode<'_>) -> 
 }
 
 /// 要素が指定種別の構造トークンか
-fn is_token(element: &GreenElement<'_>, kind: TokenKind) -> bool {
-  return matches!(element, GreenElement::Token(token) if token.kind == kind);
+fn is_token(element: &CstElement<'_>, kind: TokenKind) -> bool {
+  return matches!(element, CstElement::Token(token) if token.kind == kind);
 }
 
 #[cfg(test)]
@@ -309,18 +302,18 @@ mod tests {
     let rbrace = Token::new(TokenKind::RBrace, Span::new(11, 12));
 
     let arg_children = arena.alloc_slice_copy(&[
-      GreenElement::Token(lbrace),
-      GreenElement::Token(text_token),
-      GreenElement::Token(rbrace),
+      CstElement::Token(lbrace),
+      CstElement::Token(text_token),
+      CstElement::Token(rbrace),
     ]);
-    let arg_node = arena.alloc(GreenNode {
+    let arg_node = arena.alloc(CstNode {
       kind: SyntaxKind::MandatoryArg,
       span: Span::new(5, 12),
       children: arg_children,
     });
 
-    let cmd_children = arena.alloc_slice_copy(&[GreenElement::Token(cmd_token), GreenElement::Node(arg_node)]);
-    let cmd_node = arena.alloc(GreenNode {
+    let cmd_children = arena.alloc_slice_copy(&[CstElement::Token(cmd_token), CstElement::Node(arg_node)]);
+    let cmd_node = arena.alloc(CstNode {
       kind: SyntaxKind::CommandCall,
       span: Span::new(0, 12),
       children: cmd_children,
@@ -339,8 +332,8 @@ mod tests {
     let source = "\\alpha";
     let cmd_token = Token::new(TokenKind::Command, Span::new(0, 6));
 
-    let cmd_children = arena.alloc_slice_copy(&[GreenElement::Token(cmd_token)]);
-    let cmd_node = arena.alloc(GreenNode {
+    let cmd_children = arena.alloc_slice_copy(&[CstElement::Token(cmd_token)]);
+    let cmd_node = arena.alloc(CstNode {
       kind: SyntaxKind::CommandCall,
       span: Span::new(0, 6),
       children: cmd_children,
@@ -363,48 +356,45 @@ mod tests {
     let rbrace = Token::new(TokenKind::RBrace, Span::new(13, 14));
 
     let name_arg_children = arena.alloc_slice_copy(&[
-      GreenElement::Token(lbrace),
-      GreenElement::Token(name_text),
-      GreenElement::Token(rbrace),
+      CstElement::Token(lbrace),
+      CstElement::Token(name_text),
+      CstElement::Token(rbrace),
     ]);
-    let name_arg = arena.alloc(GreenNode {
+    let name_arg = arena.alloc(CstNode {
       kind: SyntaxKind::MandatoryArg,
       span: Span::new(6, 14),
       children: name_arg_children,
     });
 
-    let begin_children = arena.alloc_slice_copy(&[
-      GreenElement::Token(begin_token),
-      GreenElement::Node(name_arg),
-    ]);
-    let begin_node = arena.alloc(GreenNode {
+    let begin_children = arena.alloc_slice_copy(&[CstElement::Token(begin_token), CstElement::Node(name_arg)]);
+    let begin_node = arena.alloc(CstNode {
       kind: SyntaxKind::EnvironmentBegin,
       span: Span::new(0, 14),
       children: begin_children,
     });
 
     let body_text = Token::new(TokenKind::Text, Span::new(14, 18));
-    let body_children = arena.alloc_slice_copy(&[GreenElement::Token(body_text)]);
-    let body_node = arena.alloc(GreenNode {
+    let body_children = arena.alloc_slice_copy(&[CstElement::Token(body_text)]);
+    let body_node = arena.alloc(CstNode {
       kind: SyntaxKind::EnvironmentBody,
       span: Span::new(14, 18),
       children: body_children,
     });
 
     let end_token = Token::new(TokenKind::Command, Span::new(18, 22));
-    let end_children = arena.alloc_slice_copy(&[GreenElement::Token(end_token)]);
-    let end_node = arena.alloc(GreenNode {
+    let end_children = arena.alloc_slice_copy(&[CstElement::Token(end_token)]);
+    let end_node = arena.alloc(CstNode {
       kind: SyntaxKind::EnvironmentEnd,
       span: Span::new(18, 30),
       children: end_children,
     });
 
     let env_children = arena.alloc_slice_copy(&[
-      GreenElement::Node(begin_node),
-      GreenElement::Node(body_node),
-      GreenElement::Node(end_node),
+      CstElement::Node(begin_node),
+      CstElement::Node(body_node),
+      CstElement::Node(end_node),
     ]);
-    let env_node = arena.alloc(GreenNode {
+    let env_node = arena.alloc(CstNode {
       kind: SyntaxKind::Environment,
       span: Span::new(0, 30),
       children: env_children,
@@ -426,11 +416,11 @@ mod tests {
     let rbrace = Token::new(TokenKind::RBrace, Span::new(12, 13));
 
     let children = arena.alloc_slice_copy(&[
-      GreenElement::Token(lbrace),
-      GreenElement::Token(text),
-      GreenElement::Token(rbrace),
+      CstElement::Token(lbrace),
+      CstElement::Token(text),
+      CstElement::Token(rbrace),
     ]);
-    let node = GreenNode {
+    let node = CstNode {
       kind: SyntaxKind::MandatoryArg,
       span: Span::new(0, 13),
       children,
@@ -439,8 +429,8 @@ mod tests {
     assert_eq!(extract_text_content(source, &node), "hello world");
   }
 
-  fn first_opt_arg<'a>(root: &'a GreenNode<'a>, container_kind: SyntaxKind) -> &'a GreenNode<'a> {
-    fn find<'a>(node: &'a GreenNode<'a>, container_kind: SyntaxKind) -> Option<&'a GreenNode<'a>> {
+  fn first_opt_arg<'a>(root: &'a CstNode<'a>, container_kind: SyntaxKind) -> &'a CstNode<'a> {
+    fn find<'a>(node: &'a CstNode<'a>, container_kind: SyntaxKind) -> Option<&'a CstNode<'a>> {
       if node.kind == container_kind {
         if let Some(opt) = node.first_child_of_kind(SyntaxKind::OptArg) {
           return Some(opt);
@@ -452,7 +442,7 @@ mod tests {
         }
       }
       for child in node.children {
-        if let GreenElement::Node(n) = child
+        if let CstElement::Node(n) = child
           && let Some(found) = find(n, container_kind)
         {
           return Some(found);
@@ -631,7 +621,7 @@ mod tests {
       .children
       .iter()
       .find_map(|element| {
-        if let GreenElement::Node(node) = element
+        if let CstElement::Node(node) = element
           && node.kind == SyntaxKind::CommandCall
         {
           return Some(*node);
@@ -652,7 +642,7 @@ mod tests {
       .children
       .iter()
       .find_map(|element| {
-        if let GreenElement::Node(node) = element
+        if let CstElement::Node(node) = element
           && node.kind == SyntaxKind::CommandCall
         {
           return Some(*node);

@@ -25,8 +25,7 @@ use crate::{
       inline::{InlineSink, TokenInline},
     },
     syntax::{
-      ModeResolver, SyntaxKind,
-      green::{GreenElement, GreenNode},
+      CstElement, CstNode, ModeResolver, SyntaxKind,
       view::{CommandView, EnvironmentView},
     },
   },
@@ -52,14 +51,14 @@ pub(crate) fn mode_resolver() -> ModeResolver {
 pub(crate) fn evaluate_children(
   source: &str,
   ctx: &EvalContext<'_>,
-  node: &GreenNode<'_>,
+  node: &CstNode<'_>,
 ) -> Result<Vec<HirNode>, EvalError> {
   let mut hir_nodes: Vec<HirNode> = Vec::new();
   let mut paragraph = ParagraphBuffer::default();
 
   for child in node.children {
     match child {
-      GreenElement::Token(token) => match inline::inline_from_token(source, token) {
+      CstElement::Token(token) => match inline::inline_from_token(source, token) {
         Some(TokenInline::MergeableText(text)) => {
           paragraph.reserve(ctx, token.span);
           paragraph.push_text_token(ctx, token.span, text);
@@ -71,7 +70,7 @@ pub(crate) fn evaluate_children(
         Some(TokenInline::ParagraphBreak) => paragraph.flush(ctx, &mut hir_nodes),
         None => {},
       },
-      GreenElement::Node(child_node) => match child_node.kind {
+      CstElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           // コマンドがインラインを返すかブロックを返すかは実行するまで確定しないので、
           // 先に段落 ID を予約しておく。
@@ -227,10 +226,7 @@ mod test_support {
   use crate::{
     document::{HirInline, HirNode},
     frontend::{
-      syntax::{
-        self, ParserError, SyntaxKind,
-        green::{GreenElement, GreenNode},
-      },
+      syntax::{self, CstElement, CstNode, ParserError, SyntaxKind},
       test_support::eval_context_for_test,
     },
   };
@@ -239,7 +235,7 @@ mod test_support {
   ///
   /// テストは `&node.kind` を match して検証する
   /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
-  pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
+  pub(crate) fn evaluate_children_to_hir(source: &str, node: &CstNode<'_>) -> Result<Vec<HirNode>, EvalError> {
     let ctx = eval_context_for_test();
     return evaluate_children(source, &ctx, node);
   }
@@ -247,7 +243,7 @@ mod test_support {
   /// インライン評価結果を変換なしで `Vec<HirInline>` として返す
   pub(crate) fn evaluate_inline_children_to_hir(
     source: &str,
-    node: &GreenNode<'_>,
+    node: &CstNode<'_>,
     index_policy: inline::IndexPolicy,
   ) -> Result<Vec<HirInline>, EvalError> {
     let ctx = eval_context_for_test();
@@ -267,7 +263,7 @@ mod test_support {
   /// # Errors
   ///
   /// 構文解析に失敗した場合にエラーを返します。
-  pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
+  pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, ParserError> {
     return syntax::parse(source, arena, mode_resolver());
   }
 
@@ -276,10 +272,10 @@ mod test_support {
   /// # Panics
   ///
   /// 構文解析に失敗した場合、または `CommandCall` ノードが 1 つも無い場合に panic します。
-  pub(crate) fn command_call_node<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
+  pub(crate) fn command_call_node<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> {
     let cst = parse(source, arena).unwrap();
     for child in cst.children {
-      if let GreenElement::Node(node) = child
+      if let CstElement::Node(node) = child
         && node.kind == SyntaxKind::CommandCall
       {
         return node;

@@ -8,7 +8,7 @@ use crate::{
       inline::{IndexPolicy, evaluate_inline_children, evaluate_inline_elements},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
-    syntax::{SyntaxKind, green::GreenElement, token::TokenKind, view::CommandView},
+    syntax::{CstElement, SyntaxKind, token::TokenKind, view::CommandView},
   },
   source::Span,
 };
@@ -20,7 +20,7 @@ const SPAN: OptKey<u32> = opt_args::positive_int("span");
 pub(super) fn build_cell(
   source: &str,
   ctx: &EvalContext<'_>,
-  elements: &[GreenElement<'_>],
+  elements: &[CstElement<'_>],
   empty_span: Span,
   index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
@@ -28,11 +28,11 @@ pub(super) fn build_cell(
   let mut has_other_content = false;
   for element in elements {
     match element {
-      GreenElement::Token(token) => match token.kind {
+      CstElement::Token(token) => match token.kind {
         TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comment | TokenKind::LBrace | TokenKind::RBrace => {},
         _ => has_other_content = true,
       },
-      GreenElement::Node(node) => {
+      CstElement::Node(node) => {
         if node.kind == SyntaxKind::CommandCall {
           let candidate = CommandView::new(node, source);
           if candidate.name() == "cell" {
@@ -109,12 +109,12 @@ fn trim_cell_content(mut content: Vec<HirInline>) -> Vec<HirInline> {
 /// `&` 分割後の区画全体を覆うソース位置を返す
 ///
 /// 区画が空（`a & & b` の中央など）なら、呼び出し元が渡した直前の区切り位置を使う。
-fn segment_span(elements: &[GreenElement<'_>], empty_span: Span) -> Span {
+fn segment_span(elements: &[CstElement<'_>], empty_span: Span) -> Span {
   let mut span: Option<Span> = None;
   for element in elements {
     let element_span = match element {
-      GreenElement::Token(token) => token.span,
-      GreenElement::Node(node) => node.span,
+      CstElement::Token(token) => token.span,
+      CstElement::Node(node) => node.span,
     };
     span = Some(span.map_or(element_span, |current| return current.merge(element_span)));
   }
