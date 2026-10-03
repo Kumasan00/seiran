@@ -4,7 +4,7 @@
 mod csl_json;
 mod csl_style;
 mod generate;
-mod generated;
+mod output;
 mod references;
 mod render;
 mod site;
@@ -13,6 +13,6 @@ pub(crate) mod test_support;
 
 pub(crate) use csl_style::{ReadCitationStyleError, load_citation_style};
 pub(crate) use generate::{GeneratedCitations, generate_citations};
-pub(crate) use generated::{BibliographyEntry, GeneratedInline, generated_inlines_to_plain_text};
+pub(crate) use output::{BibliographyEntry, GeneratedInline, generated_inlines_to_plain_text};
 pub(crate) use references::{ReadReferencesError, Reference, References, load_references};
 pub(crate) use site::{CitationId, CitationSiteFacts};
