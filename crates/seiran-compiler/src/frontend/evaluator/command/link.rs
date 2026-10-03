@@ -14,7 +14,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes},
+      inline::{IndexPolicy, evaluate_inline_children},
       opt_args,
     },
     syntax::view::{CommandView, extract_text_content},
@@ -53,7 +53,7 @@ pub(super) fn href_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Res
 
   let url = extract_text_content(view.source(), url_arg).trim().to_string();
   let id = ctx.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), ctx, display_arg, IndexPolicy::Reject)?;
+  let children = evaluate_inline_children(view.source(), ctx, display_arg, IndexPolicy::Reject)?;
   return Ok(HirInline::new(id, HirInlineKind::Link { url, children }));
 }
 

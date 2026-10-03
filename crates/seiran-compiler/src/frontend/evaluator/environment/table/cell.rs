@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes, extract_inline_nodes_from_elements},
+      inline::{IndexPolicy, evaluate_inline_children, evaluate_inline_elements},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::{SyntaxKind, green::GreenElement, token::TokenKind, view::CommandView},
@@ -63,7 +63,7 @@ pub(super) fn build_cell(
   }
 
   let id = ctx.alloc(segment_span(elements, empty_span));
-  let content = extract_inline_nodes_from_elements(source, ctx, elements, index_policy)?;
+  let content = evaluate_inline_elements(source, ctx, elements, index_policy)?;
   return Ok(HirTableCell {
     id,
     content: trim_cell_content(content),
@@ -83,7 +83,7 @@ fn extract_cell_command(
   let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let id = ctx.alloc(view.span());
-  let content = trim_cell_content(extract_inline_nodes(view.source(), ctx, arg, index_policy)?);
+  let content = trim_cell_content(evaluate_inline_children(view.source(), ctx, arg, index_policy)?);
   return Ok(HirTableCell { id, content, span });
 }
 

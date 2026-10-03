@@ -1,4 +1,4 @@
-//! インライン要素抽出のヘルパー
+//! インライン要素評価のヘルパー
 
 use std::mem;
 
@@ -185,13 +185,13 @@ impl InlineSink {
 ///
 /// 空行で [`EvalError::ParagraphBreakInArgument`]、環境で [`EvalError::BlockInInline`] を返します。
 /// インラインコマンド・インライン数式の評価エラーはそのまま伝播します。
-pub(crate) fn extract_inline_nodes(
+pub(crate) fn evaluate_inline_children(
   source: &str,
   ctx: &EvalContext<'_>,
   node: &GreenNode<'_>,
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  return extract_inline_nodes_from_elements(source, ctx, node.children, index_policy);
+  return evaluate_inline_elements(source, ctx, node.children, index_policy);
 }
 
 /// CST 要素のスライスから [`HirInline`] のリストを構築する
@@ -200,15 +200,15 @@ pub(crate) fn extract_inline_nodes(
 ///
 /// # Errors
 ///
-/// [`extract_inline_nodes`] と同じ条件でエラーを返します。
-pub(crate) fn extract_inline_nodes_from_elements(
+/// [`evaluate_inline_children`] と同じ条件でエラーを返します。
+pub(crate) fn evaluate_inline_elements(
   source: &str,
   ctx: &EvalContext<'_>,
-  children: &[GreenElement<'_>],
+  elements: &[GreenElement<'_>],
   index_policy: IndexPolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   let mut sink = InlineSink::default();
-  for child in children {
+  for child in elements {
     match child {
       GreenElement::Token(token) => match inline_from_token(source, token) {
         Some(TokenInline::MergeableText(text)) => sink.push_text_token(ctx, token.span, text),
@@ -267,7 +267,7 @@ mod tests {
   use crate::{
     document::{FontKind, HirInlineKind},
     frontend::{
-      evaluator::{extract_inline_nodes_to_hir, test_support},
+      evaluator::{evaluate_inline_children_to_hir, test_support},
       syntax::token::Token,
     },
   };
@@ -352,14 +352,14 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_with_bold() {
+  fn evaluate_inline_children_with_bold() {
     let arena = Bump::new();
     let source = "\\section{\\bold{太字タイトル}}";
     let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(
       &inlines[0].kind,
@@ -371,20 +371,20 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_with_symbol_command() {
+  fn evaluate_inline_children_with_symbol_command() {
     let arena = Bump::new();
     let source = "\\section{\\alpha}";
     let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol('α')));
   }
 
   #[test]
-  fn extract_inline_nodes_rejects_unknown_command() {
+  fn evaluate_inline_children_rejects_unknown_command() {
     let arena = Bump::new();
     let source = "\\section{\\nonexistent}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -392,13 +392,13 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow);
+    let result = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow);
 
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
   }
 
   #[test]
-  fn extract_inline_nodes_rejects_index_under_reject_policy() {
+  fn evaluate_inline_children_rejects_index_under_reject_policy() {
     let arena = Bump::new();
     let source = r"\section{\index{語}}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -406,13 +406,13 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Reject);
+    let result = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Reject);
 
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
   }
 
   #[test]
-  fn extract_inline_nodes_accepts_index_under_allow_policy() {
+  fn evaluate_inline_children_accepts_index_under_allow_policy() {
     let arena = Bump::new();
     let source = r"\section{\index{語}}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -420,7 +420,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert!(
       matches!(&inlines[0].kind, HirInlineKind::Index { word, reading } if word == "語" && reading.is_none()),
@@ -430,7 +430,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_propagates_reject_policy_into_styled_text() {
+  fn evaluate_inline_children_propagates_reject_policy_into_styled_text() {
     let arena = Bump::new();
     let source = r"\section{\bold{重要\index{重要}}}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -438,26 +438,26 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let result = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Reject);
+    let result = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Reject);
 
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
   }
 
   #[test]
-  fn extract_inline_nodes_with_inline_math() {
+  fn evaluate_inline_children_with_inline_math() {
     let arena = Bump::new();
     let source = "\\section{数式 $x^{2}$ です}";
     let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
     let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::InlineMath(_)));
     assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
   }
 
   #[test]
-  fn extract_inline_nodes_merges_text_across_an_index_marker() {
+  fn evaluate_inline_children_merges_text_across_an_index_marker() {
     let arena = Bump::new();
     let source = "\\section{A\\index{k}V}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -465,7 +465,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 2, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "AV"), "{inlines:?}");
@@ -473,7 +473,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_keeps_text_split_when_the_marker_sits_next_to_a_comma() {
+  fn evaluate_inline_children_keeps_text_split_when_the_marker_sits_next_to_a_comma() {
     let arena = Bump::new();
     let source = "\\section{a\\index{k},b}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -481,7 +481,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 4, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
@@ -491,7 +491,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_keeps_the_space_after_a_command_call() {
+  fn evaluate_inline_children_keeps_the_space_after_a_command_call() {
     let arena = Bump::new();
     let source = "\\section{ab \\bold{cd} ef}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -499,7 +499,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 5, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "ab"), "{inlines:?}");
@@ -510,7 +510,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_keeps_the_space_after_a_command_with_an_opt_arg() {
+  fn evaluate_inline_children_keeps_the_space_after_a_command_with_an_opt_arg() {
     let arena = Bump::new();
     let source = "\\section{\\color[color=#ff8800]{orange words} inline.}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -518,7 +518,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 3, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Colored { .. }), "{inlines:?}");
@@ -527,7 +527,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_keeps_the_space_after_a_command_with_two_args() {
+  fn evaluate_inline_children_keeps_the_space_after_a_command_with_two_args() {
     let arena = Bump::new();
     let source = "\\section{\\href{https://example.com}{link} after}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -535,7 +535,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 3, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Link { .. }), "{inlines:?}");
@@ -544,7 +544,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_keeps_the_space_after_a_command_call_in_japanese() {
+  fn evaluate_inline_children_keeps_the_space_after_a_command_call_in_japanese() {
     let arena = Bump::new();
     let source = "\\section{文中に \\bold{強調} を置く}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -552,7 +552,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 5, "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
@@ -560,7 +560,7 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_keeps_text_split_when_a_space_follows_the_marker() {
+  fn evaluate_inline_children_keeps_text_split_when_a_space_follows_the_marker() {
     let arena = Bump::new();
     let source = "\\section{A\\index{k} V}";
     let cst = test_support::parse(source, &arena).unwrap();
@@ -568,7 +568,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = extract_inline_nodes_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 4, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "A"), "{inlines:?}");

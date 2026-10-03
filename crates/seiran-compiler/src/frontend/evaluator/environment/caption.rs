@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes},
+      inline::{IndexPolicy, evaluate_inline_children},
       opt_args,
     },
     syntax::view::CommandView,
@@ -22,5 +22,5 @@ use crate::{
 pub(super) fn extract_caption(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "キャプション本文")?;
-  return extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Allow);
+  return evaluate_inline_children(view.source(), ctx, first_arg, IndexPolicy::Allow);
 }

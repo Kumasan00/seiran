@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes},
+      inline::{IndexPolicy, evaluate_inline_children},
       opt_args,
     },
     syntax::view::CommandView,
@@ -31,7 +31,7 @@ pub(super) fn footnote_command(
   let first_arg = arity::exactly_one_arg(view, "脚注本体")?;
 
   let id = ctx.alloc(view.span());
-  let body = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
+  let body = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Footnote { body }));
 }
 
