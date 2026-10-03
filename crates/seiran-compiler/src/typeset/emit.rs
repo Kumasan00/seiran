@@ -9,8 +9,9 @@ use crate::{
   length::Length,
   project::{FontData, FontMap, ProjectPath, config::ProjectConfig},
   publication::{
-    Destination, PaintOp, Point, Publication, PublicationFont, PublicationImage, PublicationLink,
-    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
+    PaintOp, Publication, PublicationDestination, PublicationFont, PublicationImage, PublicationLink,
+    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationPoint,
+    PublicationRect, PublicationResources,
   },
   typeset::{
     LaidOutDocument,
@@ -123,7 +124,7 @@ fn build_publication(
 fn build_page(
   config: &ProjectConfig,
   page: Page,
-  dest_by_id: &HashMap<AnchorId, Destination>,
+  dest_by_id: &HashMap<AnchorId, PublicationDestination>,
   resources: &PublicationResources,
 ) -> PublicationPage {
   let origin_x = page.content_origin_x;
@@ -173,14 +174,14 @@ fn build_page(
   return publication_page;
 }
 
-/// 検証済みの [`Rect`] を作る。
+/// 検証済みの [`PublicationRect`] を作る。
 ///
-/// [`Rect::new`] が `None` を返すのは幅・高さが負か座標が非有限のときだけで、`Publication` へ載る
+/// [`PublicationRect::new`] が `None` を返すのは幅・高さが負か座標が非有限のときだけで、`Publication` へ載る
 /// 値ではどちらも起こらない — `Length` は sp の `i64` なので非有限を表現できず、幅・高さは
 /// style.toml 側の garde（`non_negative`）・`typeset::geometry::PreparedGeometry::prepare`（段幅は正）・
 /// 罫線生成時の `is_positive()` ゲート・リンク収集時の `x1 <= x0` スキップが非負を保証している。
-fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
-  let Some(rect) = Rect::new(x, y, width, height) else {
+fn rect(x: f32, y: f32, width: f32, height: f32) -> PublicationRect {
+  let Some(rect) = PublicationRect::new(x, y, width, height) else {
     unreachable!(
       "描画矩形の幅・高さは style の garde（non_negative）・PreparedGeometry::prepare・罫線の is_positive ゲート・\
        リンクの x1 <= x0 スキップが非負を保証する: x={x} y={y} width={width} height={height}"
@@ -192,14 +193,14 @@ fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
 /// 全ページのアンカーからリンク索引と文書順の見出し到達先を構築する。
 ///
 /// 内部リンクの前方参照に対応するため、描画命令より先に全ページを走査する。
-fn build_destination_index(pages: &[Page]) -> (HashMap<AnchorId, Destination>, Vec<Destination>) {
-  let mut dest_by_id: HashMap<AnchorId, Destination> = HashMap::new();
-  let mut heading_dests: Vec<Destination> = Vec::new();
+fn build_destination_index(pages: &[Page]) -> (HashMap<AnchorId, PublicationDestination>, Vec<PublicationDestination>) {
+  let mut dest_by_id: HashMap<AnchorId, PublicationDestination> = HashMap::new();
+  let mut heading_dests: Vec<PublicationDestination> = Vec::new();
   for (page_index, page) in pages.iter().enumerate() {
     for anchor in &page.anchors {
-      let dest = Destination {
+      let dest = PublicationDestination {
         page_index,
-        point: Point {
+        point: PublicationPoint {
           x: add_origin_x(page.content_origin_x, anchor.x),
           y: anchor.y.to_pt(),
         },
@@ -285,7 +286,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
   match content {
     HBoxContent::Glyphs(run) => {
       ops.push(PaintOp::DrawGlyphRun {
-        origin: Point { x, y: baseline_y },
+        origin: PublicationPoint { x, y: baseline_y },
         run,
       });
     },
@@ -324,8 +325,8 @@ mod tests {
       config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
-      ImageFormat, PaintOp, Point, Publication, PublicationImage, PublicationLinkTarget, PublicationResources, Rect,
-      test_support::resources,
+      ImageFormat, PaintOp, Publication, PublicationImage, PublicationLinkTarget, PublicationPoint, PublicationRect,
+      PublicationResources, test_support::resources,
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
@@ -443,7 +444,7 @@ mod tests {
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
-        origin: Point {
+        origin: PublicationPoint {
           x: ORIGIN_X_PT + 5.0,
           y: 100.0
         },
@@ -472,7 +473,7 @@ mod tests {
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
-        origin: Point {
+        origin: PublicationPoint {
           x: ORIGIN_X_PT + 10.0,
           y: 97.0
         },
@@ -482,7 +483,7 @@ mod tests {
     assert_eq!(
       ops[1],
       PaintOp::DrawGlyphRun {
-        origin: Point {
+        origin: PublicationPoint {
           x: ORIGIN_X_PT + 15.0,
           y: 100.0
         },
@@ -506,7 +507,7 @@ mod tests {
     assert_eq!(
       ops[0],
       PaintOp::FillRect {
-        rect: Rect::new(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt()).unwrap(),
+        rect: PublicationRect::new(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt()).unwrap(),
         color: Some([200, 200, 200]),
       }
     );
@@ -533,7 +534,7 @@ mod tests {
       publication.pages()[0].ops()[0],
       PaintOp::DrawImage {
         image,
-        rect: Rect::new(ORIGIN_X_PT + 10.0, 20.0, 100.0, 50.0).unwrap(),
+        rect: PublicationRect::new(ORIGIN_X_PT + 10.0, 20.0, 100.0, 50.0).unwrap(),
         target_dpi: Some(300),
       }
     );
@@ -560,7 +561,7 @@ mod tests {
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
-        origin: Point {
+        origin: PublicationPoint {
           x: ORIGIN_X_PT + 10.0,
           y: 200.0
         },
@@ -570,7 +571,7 @@ mod tests {
     assert_eq!(
       ops[1],
       PaintOp::DrawGlyphRun {
-        origin: Point {
+        origin: PublicationPoint {
           x: ORIGIN_X_PT + 300.0,
           y: 200.0
         },

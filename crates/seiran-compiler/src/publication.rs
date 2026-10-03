@@ -8,7 +8,7 @@
 //! 子 module（`glyph` / `font` / `image_format`）が持つ。
 //!
 //! 文書を組み立てる型（[`Publication`] / [`PublicationPage`] / [`PublicationResources`]）と、
-//! 不変条件を持つ値（[`Rect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を検証付きの `pub(crate)`
+//! 不変条件を持つ値（[`PublicationRect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を検証付きの `pub(crate)`
 //! コンストラクタへ限定してある。
 
 mod font;
@@ -204,7 +204,7 @@ pub struct PublicationMetadata {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublicationPage {
   /// ページ全体の矩形（左上原点）
-  page_box: Rect,
+  page_box: PublicationRect,
   /// 背面から前面への描画順（配列順がそのまま描画順）
   ops: Vec<PaintOp>,
   /// このページのクリック可能なリンク領域（解決済み。到達先の見つからない内部リンクは含まない）
@@ -215,11 +215,11 @@ impl PublicationPage {
   /// ページ矩形・描画命令・リンク領域から [`PublicationPage`] を構築する。
   ///
   /// 次のいずれかを満たさない場合は `None` を返す（krilla が `Size::from_wh` で 0 も拒否するため、
-  /// [`Rect`] の非負より強い「正」をここで要求する）:
+  /// [`PublicationRect`] の非負より強い「正」をここで要求する）:
   ///
   /// - ページ矩形の幅・高さが正
   /// - [`PaintOp::DrawImage`] の描画矩形の幅・高さが正
-  pub(crate) fn new(page_box: Rect, ops: Vec<PaintOp>, links: Vec<PublicationLink>) -> Option<Self> {
+  pub(crate) fn new(page_box: PublicationRect, ops: Vec<PaintOp>, links: Vec<PublicationLink>) -> Option<Self> {
     if !is_positive_size(page_box) {
       return None;
     }
@@ -241,7 +241,7 @@ impl PublicationPage {
 
   /// ページ全体の矩形（左上原点）を返す。
   #[must_use]
-  pub fn page_box(&self) -> Rect { return self.page_box; }
+  pub fn page_box(&self) -> PublicationRect { return self.page_box; }
 
   /// 背面から前面への描画命令列を返す。
   #[must_use]
@@ -253,7 +253,7 @@ impl PublicationPage {
 }
 
 /// 矩形の幅・高さがともに正かを返す（krilla の `Size::from_wh` の受け入れ条件）。
-fn is_positive_size(rect: Rect) -> bool { return rect.width > 0.0 && rect.height > 0.0; }
+fn is_positive_size(rect: PublicationRect) -> bool { return rect.width > 0.0 && rect.height > 0.0; }
 
 /// 描画命令。
 #[derive(Debug, Clone, PartialEq)]
@@ -261,7 +261,7 @@ pub enum PaintOp {
   /// シェーピング済みグリフ列の描画
   DrawGlyphRun {
     /// 描画原点（ページ左上基準、ベースライン位置）
-    origin: Point,
+    origin: PublicationPoint,
     /// シェーピング結果
     run: GlyphRun,
   },
@@ -270,14 +270,14 @@ pub enum PaintOp {
     /// 描画する画像（[`PublicationResources`] の画像を指す）
     image: ImageRef,
     /// 描画矩形（幅・高さは正）
-    rect: Rect,
+    rect: PublicationRect,
     /// ラスタ画像のダウンサンプリング上限 DPI（`None` はリサイズなし）
     target_dpi: Option<u32>,
   },
   /// 塗りつぶし矩形（罫線・背景の両方をこれで表す）
   FillRect {
     /// 矩形
-    rect: Rect,
+    rect: PublicationRect,
     /// 塗り色（RGB）。`None` は既定色（黒）
     color: Option<[u8; 3]>,
   },
@@ -285,7 +285,7 @@ pub enum PaintOp {
 
 /// ページ左上原点、右向き・下向きを正とする点（単位: pt）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Point {
+pub struct PublicationPoint {
   /// 水平座標（pt）
   pub x: f32,
   /// 垂直座標（pt）
@@ -297,7 +297,7 @@ pub struct Point {
 /// 座標が有限で、幅・高さが非負の有限値であることが構築時に保証される（krilla の `Rect::from_xywh` の
 /// 受け入れ条件と同じ）。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Rect {
+pub struct PublicationRect {
   /// 左端の水平座標（pt）
   x: f32,
   /// 上端の垂直座標（pt）
@@ -308,8 +308,8 @@ pub struct Rect {
   height: f32,
 }
 
-impl Rect {
-  /// 左上角・幅・高さから [`Rect`] を構築する。
+impl PublicationRect {
+  /// 左上角・幅・高さから [`PublicationRect`] を構築する。
   ///
   /// 座標が非有限、または幅・高さが負の場合は `None` を返す。
   pub(crate) fn new(x: f32, y: f32, width: f32, height: f32) -> Option<Self> {
@@ -319,7 +319,7 @@ impl Rect {
     if width < 0.0 || height < 0.0 {
       return None;
     }
-    return Some(Rect {
+    return Some(PublicationRect {
       x,
       y,
       width,
@@ -350,25 +350,25 @@ pub struct PublicationLink {
   /// リンクの行き先
   pub target: PublicationLinkTarget,
   /// クリック可能な矩形
-  pub rect: Rect,
+  pub rect: PublicationRect,
 }
 
 /// 解決済みのリンク行き先
 #[derive(Debug, Clone, PartialEq)]
 pub enum PublicationLinkTarget {
   /// 文書内到達先（ページ index + 座標まで解決済み）
-  Internal(Destination),
+  Internal(PublicationDestination),
   /// 外部 URI
   External(String),
 }
 
 /// 文書内到達先（ページ index + 点）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Destination {
+pub struct PublicationDestination {
   /// 0 起点のページ index
   pub page_index: usize,
   /// ページ内の到達先座標
-  pub point: Point,
+  pub point: PublicationPoint,
 }
 
 /// PDF しおりのフラットなエントリ。
@@ -379,7 +379,7 @@ pub struct PublicationOutlineEntry {
   /// しおりに表示するテキスト
   pub text: String,
   /// ジャンプ先
-  pub dest: Destination,
+  pub dest: PublicationDestination,
 }
 
 /// テストが描画資源を組み立てるための fixture。
@@ -412,9 +412,9 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
   use super::{
-    Destination, ImageFormat, ImageRef, PaintOp, Point, Publication, PublicationImage, PublicationLink,
-    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect,
-    test_support::resources,
+    ImageFormat, ImageRef, PaintOp, Publication, PublicationDestination, PublicationImage, PublicationLink,
+    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationPoint,
+    PublicationRect, test_support::resources,
   };
 
   /// 検証用の最小メタデータを返す。
@@ -429,31 +429,31 @@ mod tests {
   }
 
   /// A4 相当の正しいページ矩形を返す。
-  fn page_box() -> Rect { return Rect::new(0.0, 0.0, 595.0, 842.0).unwrap(); }
+  fn page_box() -> PublicationRect { return PublicationRect::new(0.0, 0.0, 595.0, 842.0).unwrap(); }
 
   #[test]
   fn rect_new_accepts_only_finite_non_negative_values() {
-    assert!(Rect::new(0.0, 0.0, -1.0, 10.0).is_none(), "負の幅は構築できないはず");
-    assert!(Rect::new(0.0, 0.0, 10.0, -1.0).is_none(), "負の高さは構築できないはず");
-    assert!(Rect::new(f32::NAN, 0.0, 1.0, 1.0).is_none(), "NaN 座標は構築できないはず");
-    assert!(Rect::new(0.0, 0.0, f32::INFINITY, 1.0).is_none(), "無限大の幅は構築できないはず");
+    assert!(PublicationRect::new(0.0, 0.0, -1.0, 10.0).is_none(), "負の幅は構築できないはず");
+    assert!(PublicationRect::new(0.0, 0.0, 10.0, -1.0).is_none(), "負の高さは構築できないはず");
+    assert!(PublicationRect::new(f32::NAN, 0.0, 1.0, 1.0).is_none(), "NaN 座標は構築できないはず");
+    assert!(PublicationRect::new(0.0, 0.0, f32::INFINITY, 1.0).is_none(), "無限大の幅は構築できないはず");
     assert!(
-      Rect::new(0.0, 0.0, 0.0, 0.0).is_some(),
+      PublicationRect::new(0.0, 0.0, 0.0, 0.0).is_some(),
       "0 は krilla の Rect::from_xywh が受け付けるので構築できるはず"
     );
   }
 
   #[test]
   fn page_new_requires_positive_size_only_for_page_box_and_image_rect() {
-    let zero_width_page_box = Rect::new(0.0, 0.0, 0.0, 842.0).unwrap();
+    let zero_width_page_box = PublicationRect::new(0.0, 0.0, 0.0, 842.0).unwrap();
     let zero_height_image = vec![PaintOp::DrawImage {
       image: ImageRef(0),
-      rect: Rect::new(0.0, 0.0, 10.0, 0.0).unwrap(),
+      rect: PublicationRect::new(0.0, 0.0, 10.0, 0.0).unwrap(),
       target_dpi: None,
     }];
     // 太さ 0 の罫線（style.toml が非負を許す）は描画されないだけで不正ではない
     let zero_height_fill = vec![PaintOp::FillRect {
-      rect: Rect::new(10.0, 10.0, 100.0, 0.0).unwrap(),
+      rect: PublicationRect::new(10.0, 10.0, 100.0, 0.0).unwrap(),
       color: None,
     }];
 
@@ -469,14 +469,14 @@ mod tests {
   #[test]
   fn publication_new_rejects_destination_to_missing_page() {
     let missing_page = |page_index| {
-      return Destination {
+      return PublicationDestination {
         page_index,
-        point: Point { x: 0.0, y: 0.0 },
+        point: PublicationPoint { x: 0.0, y: 0.0 },
       };
     };
     let link = PublicationLink {
       target: PublicationLinkTarget::Internal(missing_page(1)),
-      rect: Rect::new(0.0, 0.0, 10.0, 10.0).unwrap(),
+      rect: PublicationRect::new(0.0, 0.0, 10.0, 10.0).unwrap(),
     };
     let linked_pages = vec![PublicationPage::new(page_box(), Vec::new(), vec![link]).unwrap()];
     let plain_pages = vec![PublicationPage::new(page_box(), Vec::new(), Vec::new()).unwrap()];

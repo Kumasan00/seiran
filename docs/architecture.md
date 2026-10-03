@@ -1000,12 +1000,12 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 #### 外部から不正状態を作れないこと
 
 文書を組み立てる型（`Publication` / `PublicationPage` / `PublicationResources`）と不変条件を持つ値
-（`Rect` / `ImageRef`）は**フィールドが非公開**で、構築経路は検証を通った値だけを返す `pub(crate)` の
+（`PublicationRect` / `ImageRef`）は**フィールドが非公開**で、構築経路は検証を通った値だけを返す `pub(crate)` の
 コンストラクタに限られ、読み取りはアクセサ経由だけ。
 
 | 型 | コンストラクタが保証すること |
 | --- | --- |
-| `Rect` | 座標が有限で、幅・高さが非負の有限値（krilla が受け付ける範囲そのもの） |
+| `PublicationRect` | 座標が有限で、幅・高さが非負の有限値（krilla が受け付ける範囲そのもの） |
 | `PublicationPage` | ページ矩形と画像の描画矩形の幅・高さが正（太さ 0 の罫線を描く塗りつぶし矩形は 0 サイズを許す） |
 | `Publication` | 内部リンクとしおりの到達先ページが実在する |
 | `PublicationResources` | `ImageRef` の発行経路は crate 内非公開の 1 つだけなので、資源に無い画像を指す描画命令を型として作れない |

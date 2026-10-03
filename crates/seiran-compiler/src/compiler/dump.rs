@@ -151,8 +151,8 @@ mod tests {
     length::Length,
     project::FontType,
     publication::{
-      Destination, GlyphRun, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect,
-      test_support::resources,
+      GlyphRun, PaintOp, PublicationDestination, PublicationLink, PublicationLinkTarget, PublicationMetadata,
+      PublicationPoint, PublicationRect, test_support::resources,
     },
   };
 
@@ -207,7 +207,7 @@ mod tests {
       color: None,
     };
     let op = PaintOp::DrawGlyphRun {
-      origin: Point { x: 10.0, y: 20.0 },
+      origin: PublicationPoint { x: 10.0, y: 20.0 },
       run,
     };
     let mut out = String::new();
@@ -221,11 +221,11 @@ mod tests {
   #[test]
   fn dump_publication_link_writes_internal_target_with_destination() {
     let link = PublicationLink {
-      target: PublicationLinkTarget::Internal(Destination {
+      target: PublicationLinkTarget::Internal(PublicationDestination {
         page_index: 0,
-        point: Point { x: 0.0, y: 0.0 },
+        point: PublicationPoint { x: 0.0, y: 0.0 },
       }),
-      rect: Rect::new(10.0, 20.0, 30.0, 12.0).unwrap(),
+      rect: PublicationRect::new(10.0, 20.0, 30.0, 12.0).unwrap(),
     };
     let mut out = String::new();
 
@@ -239,7 +239,7 @@ mod tests {
   fn dump_publication_link_writes_external_target() {
     let link = PublicationLink {
       target: PublicationLinkTarget::External("https://example.com".to_string()),
-      rect: Rect::new(0.0, 0.0, 30.0, 12.0).unwrap(),
+      rect: PublicationRect::new(0.0, 0.0, 30.0, 12.0).unwrap(),
     };
     let mut out = String::new();
 
