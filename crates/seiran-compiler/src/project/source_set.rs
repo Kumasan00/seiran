@@ -74,7 +74,7 @@ impl SourceSet {
   /// # Errors
   ///
   /// いずれかのファイルの読込に失敗した場合、失敗した全件を宣言順に返す。
-  pub(crate) fn read(
+  pub(crate) fn load(
     source: &dyn ProjectSource,
     sources: &[ProjectPath],
   ) -> Result<SourceSet, Failures<ReadSourceError>> {
@@ -133,13 +133,13 @@ mod tests {
   }
 
   #[test]
-  fn read_fails_fast_on_missing_file_without_aggregating() {
+  fn load_reports_missing_file_path_with_io_cause() {
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let existing = write_source(&dir, "text.sei", "本文");
     let missing = ProjectPath::new(dir.path().join("__does_not_exist__.sei"));
     let source = FilesystemProjectSource;
 
-    let result = SourceSet::read(&source, &[existing, missing.clone()]);
+    let result = SourceSet::load(&source, &[existing, missing.clone()]);
 
     let Err(failures) = result else {
       panic!("読込エラーを期待");
@@ -153,7 +153,7 @@ mod tests {
   }
 
   #[test]
-  fn read_reads_through_project_source_without_touching_disk() {
+  fn load_reads_through_project_source_without_touching_disk() {
     let source = MemoryProjectSource::new()
       .with_text("/project/a.sei", "content-a")
       .with_text("/project/b.sei", "content-b");
@@ -162,7 +162,7 @@ mod tests {
       ProjectPath::new("/project/b.sei"),
     ];
 
-    let source_set = SourceSet::read(&source, &sources).expect("メモリ上の fixture を読めるはず");
+    let source_set = SourceSet::load(&source, &sources).expect("メモリ上の fixture を読めるはず");
 
     // 登録順（＝ sources の並び順）が SourceId のインデックスに一致する
     let entries: Vec<_> = source_set.iter().collect();
@@ -176,14 +176,14 @@ mod tests {
   }
 
   #[test]
-  fn read_keeps_the_text_allocation_returned_by_the_seam() {
+  fn load_keeps_the_text_allocation_returned_by_the_seam() {
     let text: Arc<str> = Arc::from("本文");
     let source = SharedTextSource {
       text: Arc::clone(&text),
     };
 
     let source_set =
-      SourceSet::read(&source, &[ProjectPath::new("/project/a.sei")]).expect("SharedTextSource は常に読めるはず");
+      SourceSet::load(&source, &[ProjectPath::new("/project/a.sei")]).expect("SharedTextSource は常に読めるはず");
 
     let (_, entry) = source_set.iter().next().expect("1 件登録したはず");
     assert!(Arc::ptr_eq(&entry.content, &text));

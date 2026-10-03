@@ -113,7 +113,7 @@ mod tests {
   #[test]
   fn supplies_only_source_code_and_delegates_the_rest() {
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
-    let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
+    let sources = SourceSet::load(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, _entry) = sources.iter().next().expect("1 件登録されているはず");
     let inner = LeafError {
       span: miette::SourceSpan::from((0usize, 3usize)),
@@ -131,7 +131,7 @@ mod tests {
   #[test]
   fn diagnostics_on_the_same_source_share_one_copy_of_the_text() {
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
-    let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
+    let sources = SourceSet::load(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, entry) = sources.iter().next().expect("1 件登録されているはず");
     let leaf = || {
       return LeafError {
@@ -152,7 +152,7 @@ mod tests {
     let source = MemoryProjectSource::new()
       .with_text("/project/a.sei", "本文 A")
       .with_text("/project/b.sei", "本文 B");
-    let sources = SourceSet::read(
+    let sources = SourceSet::load(
       &source,
       &[
         ProjectPath::new("/project/a.sei"),
@@ -182,7 +182,7 @@ mod tests {
   #[test]
   fn display_passes_formatting_parameters_through_to_the_inner_diagnostic() {
     let source = MemoryProjectSource::new().with_text("/project/chapter.sei", "本文です。");
-    let sources = SourceSet::read(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
+    let sources = SourceSet::load(&source, &[ProjectPath::new("/project/chapter.sei")]).expect("読み込めるはず");
     let (source_id, _entry) = sources.iter().next().expect("1 件登録されているはず");
 
     let attributed = SourceDiagnostic::attach(&sources, source_id, "a");

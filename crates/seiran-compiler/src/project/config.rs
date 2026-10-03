@@ -590,7 +590,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_does_not_create_the_output_directory() {
+  fn load_does_not_create_the_output_directory() {
     // output_dir は実ディスク上の tempdir 配下の絶対パスにする（絶対パスはそのまま
     // 使われるので MemoryProjectSource と矛盾しない）。ディレクトリを作る実装なら実際に作られるので、
     // 「存在しないパスを検証する」だけの空振りテストにならない。
@@ -939,7 +939,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_succeeds_with_valid_config() {
+  fn load_succeeds_with_valid_config() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n[document]\ntitle = \"Test Doc\"\n\n{}{}{}",
@@ -963,7 +963,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_reads_image_overrides() {
+  fn load_reads_image_overrides() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
@@ -983,7 +983,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_respects_show_bookmarks_false() {
+  fn load_respects_show_bookmarks_false() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
@@ -1037,7 +1037,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_uses_base_dir_when_output_dir_omitted() {
+  fn load_uses_base_dir_when_output_dir_omitted() {
     let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
@@ -1055,7 +1055,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_builds_language_string_with_ot_language_suffix() {
+  fn load_builds_language_string_with_ot_language_suffix() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
       return format!(
@@ -1078,7 +1078,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_preserves_user_direction() {
+  fn load_preserves_user_direction() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       let extra = "direction = \"right-to-left\"";
       return format!(
@@ -1099,7 +1099,7 @@ mod tests {
   }
 
   #[test]
-  fn read_config_preserves_document_language_and_keywords() {
+  fn load_preserves_document_language_and_keywords() {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n[document]\nlanguage = \"ja\"\nkeywords = [\"組版\", \"PDF\"]\n\n{}{}{}",

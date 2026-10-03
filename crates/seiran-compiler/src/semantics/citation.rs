@@ -14,5 +14,5 @@ pub(crate) mod test_support;
 pub(crate) use csl_style::{CitationStyleError, load_citation_style};
 pub(crate) use generate::{GeneratedCitations, generate_citations};
 pub(crate) use generated::{BibliographyEntry, GeneratedInline, generated_inlines_to_plain_text};
-pub(crate) use references::{ReadReferencesError, Reference, References, read_references};
+pub(crate) use references::{ReadReferencesError, Reference, References, load_references};
 pub(crate) use site::{CitationId, CitationSiteFacts};

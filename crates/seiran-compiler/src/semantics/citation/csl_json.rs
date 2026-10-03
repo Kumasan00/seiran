@@ -79,7 +79,7 @@ mod tests {
   use super::{sanitize_value, to_item};
   use crate::{
     project::{FilesystemProjectSource, ProjectPath},
-    semantics::{References, read_references, test_support::sample_references},
+    semantics::{References, load_references, test_support::sample_references},
   };
 
   #[test]
@@ -112,7 +112,7 @@ mod tests {
     let source = FilesystemProjectSource;
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    return read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
+    return load_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
   }
 
   #[test]
@@ -227,7 +227,7 @@ mod tests {
       )
       .expect("一時ファイルへ書き込めるはず");
     let references =
-      read_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
+      load_references(&source, Some(&ProjectPath::new(file.path()))).expect("references を読み込めるはず");
     let reference = references.get("r1").expect("r1 があるはず");
 
     let item = to_item("r1", reference);
