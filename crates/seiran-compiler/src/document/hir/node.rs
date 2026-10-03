@@ -2,7 +2,7 @@
 
 use crate::{
   document::{
-    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathEnvKind, QuoteKind, TheoremClass,
+    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathBlockKind, QuoteKind, TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
   length::Length,
@@ -97,7 +97,7 @@ pub(crate) struct HirList {
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirMathBlock {
   /// 環境種別
-  pub(crate) kind: MathEnvKind,
+  pub(crate) kind: MathBlockKind,
   /// 行（各行は `&` 区切りの列を持つ）
   pub(crate) rows: Vec<HirMathRow>,
   /// 環境全体で 1 つ採番するか（`split` / `multiline` 用）

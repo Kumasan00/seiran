@@ -3,7 +3,7 @@
 //! 行と列に分割する非採番の数式環境。
 
 use crate::{
-  document::{HirMathBlock, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
+  document::{HirMathBlock, HirNode, HirNodeKind, MathBlockKind, MathDelimiter},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -63,7 +63,7 @@ pub(in crate::frontend::evaluator::environment) fn matrix(
   return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock(HirMathBlock {
-      kind: MathEnvKind::Matrix { delimiter },
+      kind: MathBlockKind::Matrix { delimiter },
       rows,
       numbered: false,
       label: None,
@@ -77,7 +77,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{HirMathRow, MathDelimiter, MathEnvKind},
+    document::{HirMathRow, MathBlockKind, MathDelimiter},
     frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
 
@@ -87,8 +87,8 @@ mod tests {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert!(!math.numbered, "matrix は非採番（環境番号なし）");
-    let MathEnvKind::Matrix { delimiter } = math.kind else {
-      panic!("matrix は MathEnvKind::Matrix: {:?}", math.kind);
+    let MathBlockKind::Matrix { delimiter } = math.kind else {
+      panic!("matrix は MathBlockKind::Matrix: {:?}", math.kind);
     };
     return (delimiter, &math.rows);
   }

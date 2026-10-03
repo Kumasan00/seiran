@@ -1,4 +1,4 @@
-//! 数式環境の種別 [`MathEnvKind`]・グリッド環境のセル配置 [`GridLayout`]・区切り括弧 [`MathDelimiter`]。
+//! 数式環境の種別 [`MathBlockKind`]・グリッド環境のセル配置 [`GridLayout`]・区切り括弧 [`MathDelimiter`]。
 
 use std::str::FromStr;
 
@@ -9,7 +9,7 @@ use thiserror::Error;
 /// 採番（行ごとか環境全体に 1 つか）は種別に含めず、`HirMathRow::numbered` /
 /// `HirMathBlock::numbered` がデータとして運ぶ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MathEnvKind {
+pub(crate) enum MathBlockKind {
   /// `equation` — 単一行・単一セル
   Equation,
   /// 行・列に分割する数式環境

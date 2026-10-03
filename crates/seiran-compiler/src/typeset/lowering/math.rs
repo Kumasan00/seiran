@@ -1,6 +1,6 @@
 //! 数式（インライン / ディスプレイ）の lowering
 //!
-//! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathEnvKind`）から決まるセルの列内
+//! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathBlockKind`）から決まるセルの列内
 //! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。
 
 mod alphanumeric;
@@ -12,7 +12,7 @@ use alphanumeric::push_math_char;
 
 use crate::{
   document::{
-    FontKind, GridLayout, HirMath, HirMathBlock, HirMathKind, MathClass, MathDelimiter, MathEnvKind, MathVariant,
+    FontKind, GridLayout, HirMath, HirMathBlock, HirMathKind, MathBlockKind, MathClass, MathDelimiter, MathVariant,
     NodeId,
   },
   length::Length,
@@ -127,16 +127,16 @@ fn alignment_to_align(alignment: MathAlignment) -> Align {
 ///
 /// `Grid(Aligned)`（`align` / `split`）は `&` 区切りの偶数列を右・奇数列を左へ寄せ、`Grid(Staircase)`
 /// （`multiline`）は先頭行を左・末尾行を右・中間行を中央に置く階段配置にする。
-fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> Align {
+fn cell_align(kind: MathBlockKind, row_idx: usize, n_rows: usize, col: usize) -> Align {
   return match kind {
-    MathEnvKind::Grid(GridLayout::Aligned) => {
+    MathBlockKind::Grid(GridLayout::Aligned) => {
       if col.is_multiple_of(2) {
         Align::Right
       } else {
         Align::Left
       }
     },
-    MathEnvKind::Grid(GridLayout::Staircase) => {
+    MathBlockKind::Grid(GridLayout::Staircase) => {
       if n_rows <= 1 || (row_idx > 0 && row_idx < n_rows - 1) {
         Align::Center
       } else if row_idx == 0 {
@@ -145,19 +145,19 @@ fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> A
         Align::Right
       }
     },
-    MathEnvKind::Grid(GridLayout::Centered) | MathEnvKind::Matrix { .. } => Align::Center,
-    MathEnvKind::Equation | MathEnvKind::Cases => Align::Left,
+    MathBlockKind::Grid(GridLayout::Centered) | MathBlockKind::Matrix { .. } => Align::Center,
+    MathBlockKind::Equation | MathBlockKind::Cases => Align::Left,
   };
 }
 
 /// 環境種別から本体グリッドを囲む左右の区切り括弧グリフを決める
-fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
+fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
   return match kind {
-    MathEnvKind::Cases => DelimiterGlyphs {
+    MathBlockKind::Cases => DelimiterGlyphs {
       left: Some("{"),
       right: None,
     },
-    MathEnvKind::Matrix { delimiter } => match delimiter {
+    MathBlockKind::Matrix { delimiter } => match delimiter {
       MathDelimiter::None => DelimiterGlyphs::default(),
       MathDelimiter::Paren => DelimiterGlyphs {
         left: Some("("),
@@ -180,7 +180,8 @@ fn delimiter_glyphs(kind: MathEnvKind) -> DelimiterGlyphs {
         right: Some("\u{2016}"),
       },
     },
-    MathEnvKind::Equation | MathEnvKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
+    MathBlockKind::Equation
+    | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
       DelimiterGlyphs::default()
     },
   };
@@ -727,7 +728,7 @@ mod tests {
 
   #[test]
   fn cell_align_aligned_alternates_right_left_by_column() {
-    let kind = MathEnvKind::Grid(GridLayout::Aligned);
+    let kind = MathBlockKind::Grid(GridLayout::Aligned);
     assert_eq!(cell_align(kind, 0, 1, 0), Align::Right, "列 0 は右");
     assert_eq!(cell_align(kind, 0, 1, 1), Align::Left, "列 1 は左");
     assert_eq!(cell_align(kind, 0, 1, 2), Align::Right, "列 2 は右");
@@ -735,14 +736,14 @@ mod tests {
 
   #[test]
   fn cell_align_staircase_single_row_is_center() {
-    assert_eq!(cell_align(MathEnvKind::Grid(GridLayout::Staircase), 0, 1, 0), Align::Center);
+    assert_eq!(cell_align(MathBlockKind::Grid(GridLayout::Staircase), 0, 1, 0), Align::Center);
   }
 
   #[test]
   fn cell_align_matrix_center_equation_and_cases_left() {
     assert_eq!(
       cell_align(
-        MathEnvKind::Matrix {
+        MathBlockKind::Matrix {
           delimiter: MathDelimiter::None
         },
         0,
@@ -751,14 +752,14 @@ mod tests {
       ),
       Align::Center
     );
-    assert_eq!(cell_align(MathEnvKind::Equation, 0, 1, 0), Align::Left);
-    assert_eq!(cell_align(MathEnvKind::Cases, 0, 2, 0), Align::Left);
+    assert_eq!(cell_align(MathBlockKind::Equation, 0, 1, 0), Align::Left);
+    assert_eq!(cell_align(MathBlockKind::Cases, 0, 2, 0), Align::Left);
   }
 
   #[test]
   fn delimiter_glyphs_maps_cases_and_matrix() {
     assert_eq!(
-      delimiter_glyphs(MathEnvKind::Cases),
+      delimiter_glyphs(MathBlockKind::Cases),
       DelimiterGlyphs {
         left: Some("{"),
         right: None
@@ -801,20 +802,20 @@ mod tests {
         },
       ),
     ] {
-      assert_eq!(delimiter_glyphs(MathEnvKind::Matrix { delimiter }), expected, "matrix の {delimiter:?}");
+      assert_eq!(delimiter_glyphs(MathBlockKind::Matrix { delimiter }), expected, "matrix の {delimiter:?}");
     }
   }
 
   #[test]
   fn delimiter_glyphs_absent_for_none_and_other_envs() {
     for kind in [
-      MathEnvKind::Matrix {
+      MathBlockKind::Matrix {
         delimiter: MathDelimiter::None,
       },
-      MathEnvKind::Equation,
-      MathEnvKind::Grid(GridLayout::Aligned),
-      MathEnvKind::Grid(GridLayout::Centered),
-      MathEnvKind::Grid(GridLayout::Staircase),
+      MathBlockKind::Equation,
+      MathBlockKind::Grid(GridLayout::Aligned),
+      MathBlockKind::Grid(GridLayout::Centered),
+      MathBlockKind::Grid(GridLayout::Staircase),
     ] {
       assert!(!delimiter_glyphs(kind).is_present(), "括弧なし: {kind:?}");
     }
