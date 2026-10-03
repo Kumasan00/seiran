@@ -5,7 +5,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::project::SourceReadError;
+use crate::project::ProjectSourceError;
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
@@ -42,7 +42,7 @@ pub(crate) enum TypesetError {
     path: String,
     /// 元の読込エラー（低水準 cause）。
     #[source]
-    source: SourceReadError,
+    source: ProjectSourceError,
   },
 
   /// 画像ファイルの拡張子が未対応です。

@@ -142,7 +142,7 @@ mod tests {
   use std::path::Path;
 
   use super::*;
-  use crate::project::{MemoryProjectSource, SourceReadError};
+  use crate::project::{MemoryProjectSource, ProjectSourceError};
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
@@ -190,7 +190,7 @@ mod tests {
     let TypesetError::ReadImage { source, .. } = failures.first() else {
       panic!("ReadImage を期待");
     };
-    assert!(matches!(source, SourceReadError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
+    assert!(matches!(source, ProjectSourceError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
   }
 
   #[test]

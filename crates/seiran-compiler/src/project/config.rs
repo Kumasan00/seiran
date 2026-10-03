@@ -480,7 +480,8 @@ mod tests {
     parse_config, resolve_output_dir_path, resolve_paths, validate_values,
   };
   use crate::project::{
-    FilesystemProjectSource, FontType, MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, SourceReadError,
+    FilesystemProjectSource, FontType, MemoryProjectSource, PathResolver, ProjectPath, ProjectSource,
+    ProjectSourceError,
     config::test_support::{font_sections, font_sections_with_serif_extra, valid_output_section, valid_pdf_section},
   };
 
@@ -1130,7 +1131,7 @@ mod tests {
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
       panic!("ReadFile を期待");
     };
-    let SourceReadError::Io(io_error) = source else {
+    let ProjectSourceError::Io(io_error) = source else {
       panic!("filesystem adapter は Io を返すはず: {source:?}");
     };
     assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound, "not found を変換後も識別できるはず");
@@ -1145,7 +1146,7 @@ mod tests {
     let ReadConfigError::ReadFile { source, .. } = failures.first() else {
       panic!("ReadFile を期待");
     };
-    assert!(matches!(source, SourceReadError::InvalidUtf8(_)), "UTF-8 エラーを識別できるはず: {source:?}");
+    assert!(matches!(source, ProjectSourceError::InvalidUtf8(_)), "UTF-8 エラーを識別できるはず: {source:?}");
   }
 
   #[test]

@@ -11,7 +11,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  project::{ProjectSource, SourceReadError},
+  project::{ProjectSource, ProjectSourceError},
   style::Style,
 };
 
@@ -37,7 +37,7 @@ pub(crate) enum CitationStyleError {
     path: String,
     /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: SourceReadError,
+    source: ProjectSourceError,
   },
 
   /// CSL スタイル（`.csl`）の解析に失敗した場合。
@@ -65,7 +65,7 @@ pub(crate) enum CitationStyleError {
     path: String,
     /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: SourceReadError,
+    source: ProjectSourceError,
   },
 
   /// CSL ロケール（`.xml`）の解析に失敗した場合。

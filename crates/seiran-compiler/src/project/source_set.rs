@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
   failures::{self, Failures},
-  project::{ProjectPath, ProjectSource, SourceReadError},
+  project::{ProjectPath, ProjectSource, ProjectSourceError},
   source::SourceId,
 };
 
@@ -31,11 +31,11 @@ pub(crate) struct SourceEntry {
 /// `miette::Diagnostic` は実装しない — 診断（`code` / 役割とパスを含むメッセージ）は入力読込側が組み立て、
 /// `project` はどのパスがどう失敗したかだけを返す。
 #[derive(Debug)]
-pub(crate) struct SourceSetReadError {
+pub(crate) struct ReadSourceError {
   /// 読込に失敗した表示用パス
   pub(crate) path: String,
   /// seam から返った元エラー
-  pub(crate) source: SourceReadError,
+  pub(crate) source: ProjectSourceError,
 }
 
 impl SourceSet {
@@ -77,12 +77,12 @@ impl SourceSet {
   pub(crate) fn read(
     source: &dyn ProjectSource,
     sources: &[ProjectPath],
-  ) -> Result<SourceSet, Failures<SourceSetReadError>> {
-    let results: Vec<Result<(String, Arc<str>), SourceSetReadError>> = sources
+  ) -> Result<SourceSet, Failures<ReadSourceError>> {
+    let results: Vec<Result<(String, Arc<str>), ReadSourceError>> = sources
       .iter()
       .map(|source_path| {
         let content = source.read_text(source_path).map_err(|error| {
-          return SourceSetReadError {
+          return ReadSourceError {
             path: source_path.to_string(),
             source: error,
           };
@@ -104,7 +104,7 @@ mod tests {
   use std::sync::Arc;
 
   use super::SourceSet;
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, ProjectSourceError};
 
   /// 一時ディレクトリに 1 つソースファイルを書き出し、その `ProjectPath` を返す（テストを
   /// カレントディレクトリと repo のディレクトリ構成に依存させない）。
@@ -121,10 +121,12 @@ mod tests {
   }
 
   impl ProjectSource for SharedTextSource {
-    fn read_text(&self, _path: &ProjectPath) -> Result<Arc<str>, SourceReadError> { return Ok(Arc::clone(&self.text)); }
+    fn read_text(&self, _path: &ProjectPath) -> Result<Arc<str>, ProjectSourceError> {
+      return Ok(Arc::clone(&self.text));
+    }
 
-    fn read_bytes(&self, _path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
-      return Err(SourceReadError::NotFound);
+    fn read_bytes(&self, _path: &ProjectPath) -> Result<Arc<[u8]>, ProjectSourceError> {
+      return Err(ProjectSourceError::NotFound);
     }
 
     fn exists(&self, _path: &ProjectPath) -> bool { return true; }
@@ -144,7 +146,7 @@ mod tests {
     };
     let error = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
     assert_eq!(error.path, missing.to_string(), "失敗したパスを持つはず");
-    let SourceReadError::Io(io_error) = &error.source else {
+    let ProjectSourceError::Io(io_error) = &error.source else {
       panic!("filesystem adapter は Io を返すはず: {:?}", error.source);
     };
     assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);

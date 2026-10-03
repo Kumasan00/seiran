@@ -160,7 +160,7 @@ fn lift<E: Into<InputError>>(failures: Failures<E>) -> Failures<InputError> { re
 /// `config.sources` を読み込み、失敗を位置付き診断へ組み替える。
 ///
 /// `project::SourceSet` はどのパスがどう失敗したかだけを返し、役割（テキストファイル）と
-/// パスを含む leaf diagnostic を組み立てるのはここ。seam の `SourceReadError` は
+/// パスを含む leaf diagnostic を組み立てるのはここ。seam の `ProjectSourceError` は
 /// `Diagnostic` を実装しない低水準 cause なので、そのまま `#[source]` に載せても
 /// 入れ子の診断ブロックにはならない。
 fn read_sources(source: &dyn ProjectSource, sources: &[ProjectPath]) -> Result<SourceSet, Failures<InputError>> {
@@ -182,7 +182,7 @@ mod tests {
 
   use super::{InputError, load, read_sources};
   use crate::project::{
-    MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, SourceReadError,
+    MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, ProjectSourceError,
     config::test_support::{font_sections, valid_output_section, valid_pdf_section},
   };
 
@@ -208,7 +208,7 @@ mod tests {
     };
     assert_eq!(path, "/project/missing.sei");
     assert!(
-      matches!(read_error, SourceReadError::NotFound),
+      matches!(read_error, ProjectSourceError::NotFound),
       "seam のエラーは cause として保たれるはず: {read_error:?}"
     );
   }
@@ -251,21 +251,21 @@ mod tests {
 
   impl UnreadablePaths {
     /// `path` が読めないパスなら権限エラーを返す。
-    fn check(&self, path: &ProjectPath) -> Result<(), SourceReadError> {
+    fn check(&self, path: &ProjectPath) -> Result<(), ProjectSourceError> {
       if self.unreadable.contains(path) {
-        return Err(SourceReadError::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)));
+        return Err(ProjectSourceError::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)));
       }
       return Ok(());
     }
   }
 
   impl ProjectSource for UnreadablePaths {
-    fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError> {
+    fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, ProjectSourceError> {
       self.check(path)?;
       return self.inner.read_text(path);
     }
 
-    fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
+    fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, ProjectSourceError> {
       self.check(path)?;
       return self.inner.read_bytes(path);
     }

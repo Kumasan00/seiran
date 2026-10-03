@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::project::{ProjectPath, ProjectSource, SourceReadError};
+use crate::project::{ProjectPath, ProjectSource, ProjectSourceError};
 
 /// 実ファイルシステムから読み込む `ProjectSource`。
 ///
@@ -11,13 +11,13 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 pub struct FilesystemProjectSource;
 
 impl ProjectSource for FilesystemProjectSource {
-  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
-    return Ok(std::fs::read(path).map_err(SourceReadError::Io)?.into());
+  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, ProjectSourceError> {
+    return Ok(std::fs::read(path).map_err(ProjectSourceError::Io)?.into());
   }
 
-  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError> {
-    let bytes = std::fs::read(path).map_err(SourceReadError::Io)?;
-    let text = String::from_utf8(bytes).map_err(|error| return SourceReadError::InvalidUtf8(error.utf8_error()))?;
+  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, ProjectSourceError> {
+    let bytes = std::fs::read(path).map_err(ProjectSourceError::Io)?;
+    let text = String::from_utf8(bytes).map_err(|error| return ProjectSourceError::InvalidUtf8(error.utf8_error()))?;
     return Ok(Arc::from(text));
   }
 
@@ -53,7 +53,7 @@ mod tests {
 
     let result = source.read_text(&path);
 
-    assert!(matches!(result, Err(SourceReadError::InvalidUtf8(_))));
+    assert!(matches!(result, Err(ProjectSourceError::InvalidUtf8(_))));
   }
 
   #[test]

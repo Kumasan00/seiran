@@ -21,24 +21,21 @@ use thiserror::Error;
 
 use crate::{
   failures::{self, Failures},
-  project::{ProjectPath, ProjectSource, SourceReadError},
+  project::{ProjectPath, ProjectSource, ProjectSourceError},
 };
 
 /// フォントファイルを読み込めないときのエラー。
 #[derive(Debug, Error, Diagnostic)]
-pub(crate) enum FontReadError {
-  /// フォントファイルを読み込めない。
-  #[error("{} のフォントファイルの読み込みに失敗しました: {path}", .font_type.as_toml_key())]
-  #[diagnostic(code(project::font::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
-  ReadFont {
-    /// フォント種別
-    font_type: FontType,
-    /// ファイルパス
-    path: String,
-    /// 元の読み込みエラー（低水準 cause）
-    #[source]
-    source: SourceReadError,
-  },
+#[error("{} のフォントファイルの読み込みに失敗しました: {path}", .font_type.as_toml_key())]
+#[diagnostic(code(project::font::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
+pub(crate) struct ReadFontError {
+  /// フォント種別
+  font_type: FontType,
+  /// ファイルパス
+  path: String,
+  /// 元の読み込みエラー（低水準 cause）
+  #[source]
+  source: ProjectSourceError,
 }
 
 /// 全フォント種別のバイナリデータ。
@@ -68,8 +65,8 @@ impl FontData {
   ///
   /// # Errors
   ///
-  /// いずれかのファイルを読み込めない場合に [`FontReadError::ReadFont`] をパス昇順で返す。
-  pub(crate) fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<FontReadError>> {
+  /// いずれかのファイルを読み込めない場合に [`ReadFontError`] をパス昇順で返す。
+  pub(crate) fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<ReadFontError>> {
     let mut unique_paths: Vec<ProjectPath> =
       FontType::ALL.iter().map(|&ft| return font_configs[ft].font_path.clone()).collect();
     unique_paths.sort();
@@ -84,7 +81,7 @@ impl FontData {
             .find(|&&ft| return &font_configs[ft].font_path == path)
             .copied()
             .expect("unique_paths は font_configs から集めた値のはず");
-          return FontReadError::ReadFont {
+          return ReadFontError {
             font_type,
             path: path.to_string(),
             source,
@@ -92,7 +89,7 @@ impl FontData {
         })?;
         return Ok((path.clone(), bytes));
       })
-      .collect::<Vec<Result<(ProjectPath, Arc<[u8]>), FontReadError>>>();
+      .collect::<Vec<Result<(ProjectPath, Arc<[u8]>), ReadFontError>>>();
     let loaded: HashMap<ProjectPath, Arc<[u8]>> = failures::collect_in_input_order(results)?.into_iter().collect();
 
     return Ok(FontData(FontMap::from_fn(|font_type| {
@@ -112,7 +109,9 @@ impl FontData {
 
 #[cfg(test)]
 mod tests {
-  use super::{FontConfig, FontConfigs, FontData, FontReadError, FontType};
+  use miette::Diagnostic;
+
+  use super::{FontConfig, FontConfigs, FontData, FontType};
   use crate::project::{MemoryProjectSource, ProjectPath};
 
   /// 全 19 種別が同じ `shared_path` を指す `FontConfigs` fixture を作る。
@@ -167,14 +166,17 @@ mod tests {
     let result = FontData::load(&source, &font_configs);
 
     let Err(failures) = result else {
-      panic!("ReadFont を期待");
+      panic!("フォントの読込エラーを期待");
     };
-    let FontReadError::ReadFont { font_type, .. } = failures.first();
-    assert_eq!(*font_type, FontType::ALL[0], "唯一のフォント種別が報告されるはず");
+    assert_eq!(failures.first().font_type, FontType::ALL[0], "唯一のフォント種別が報告されるはず");
     assert!(
       failures.first().to_string().starts_with("serif のフォントファイル"),
       "種別は config.toml のキーで出るはず: {}",
       failures.first()
+    );
+    assert_eq!(
+      failures.first().help().map(|help| return help.to_string()),
+      Some("フォントファイルのパスと読み取り権限を確認してください。".to_string())
     );
   }
 }
