@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use strum::VariantArray;
 
 use crate::{
-  document::{HeadingLevel, TheoremClass},
+  document::TheoremClass,
   style::{CounterName, Style, TheoremReset},
 };
 
@@ -93,28 +93,12 @@ impl SemanticPolicy {
       .filter(move |policy| return policy.reset_by == level)
       .map(|policy| return policy.counter.as_str());
   }
-
-  /// 見出しレベルに対応するカウンタ名を返す
-  #[must_use]
-  pub(super) fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
-    return match level {
-      HeadingLevel::Part => CounterName::Part,
-      HeadingLevel::Chapter => CounterName::Chapter,
-      HeadingLevel::Section => CounterName::Section,
-      HeadingLevel::Subsection => CounterName::Subsection,
-      HeadingLevel::Paragraph => CounterName::Paragraph,
-      HeadingLevel::Subparagraph => CounterName::Subparagraph,
-    };
-  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::SemanticPolicy;
-  use crate::{
-    document::HeadingLevel,
-    style::{CounterName, CounterTemplate, NumberStyle, RefTemplate, Style},
-  };
+  use crate::style::{CounterName, CounterTemplate, NumberStyle, RefTemplate, Style};
 
   #[test]
   fn document_policy_ignores_display_only_style_fields() {
@@ -142,12 +126,5 @@ mod tests {
 
     assert_ne!(base_policy, variant_policy, "resets は値側フィールドなので SemanticPolicy に写るはず");
     assert_eq!(variant_policy.counter(CounterName::Chapter).resets, []);
-  }
-
-  #[test]
-  fn counter_name_for_heading_maps_each_level() {
-    assert_eq!(SemanticPolicy::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
-    assert_eq!(SemanticPolicy::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
-    assert_eq!(SemanticPolicy::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
   }
 }

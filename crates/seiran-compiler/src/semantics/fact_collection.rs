@@ -308,7 +308,7 @@ impl Walker<'_, '_> {
       HirNodeKind::Heading(heading) => {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
-        let counter = SemanticPolicy::counter_name_for_heading(heading.level);
+        let counter = CounterName::for_heading(heading.level);
         self.number_and_declare(CounterKind::Counter(counter), node.id, heading.label.as_deref(), node.id);
         self.facts.headings.insert(node.id, heading.level);
         self.inlines(&heading.title);
