@@ -177,9 +177,11 @@ pub(crate) enum HBoxContent {
 
 /// 親（行・表行・Atom）の中に置いた計測済みボックス
 ///
-/// `dx` / `dy` の基準点は持ち主で決まり、[`Line::boxes`](crate::typeset::boxes::Line::boxes) なら行頭
-/// （着地する段の左端）とベースライン、表行（[`PlacedTableRow::boxes`](crate::typeset::boxes::PlacedTableRow::boxes)）
-/// なら本文左端と行のベースライン、[`HBoxContent::Atom`] なら Atom の左端とベースライン。
+/// `dy` の基準は持ち主のベースライン。`dx` の基準点は持ち主で決まり、
+/// [`Line::boxes`](crate::typeset::boxes::Line::boxes) なら行の水平基準（行分割直後は行頭で、
+/// [`Line::shift_x`](crate::typeset::boxes::Line::shift_x) が着地位置まで動かす。ページに置いた後は本文左端）、
+/// 表行（[`PlacedTableRow::boxes`](crate::typeset::boxes::PlacedTableRow::boxes)）なら本文左端、
+/// [`HBoxContent::Atom`] なら Atom の左端。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedHBox {
   /// 置くボックス
