@@ -159,24 +159,24 @@ impl CommandKind {
         return text_style::colored_text(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
-      Self::Ref => return ref_::ref_command(view, ctx).map(CommandResult::Inline),
+      Self::Ref => return ref_::ref_(view, ctx).map(CommandResult::Inline),
 
-      Self::Cite => return cite::cite_command(view, ctx).map(CommandResult::Inline),
+      Self::Cite => return cite::cite(view, ctx).map(CommandResult::Inline),
 
       Self::Footnote => {
-        return footnote::footnote_command(view, ctx, placement.index_policy()).map(CommandResult::Inline);
+        return footnote::footnote(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
       Self::Index => {
         placement.accept_index(view)?;
-        return index::index_command(view, ctx).map(CommandResult::Inline);
+        return index::index(view, ctx).map(CommandResult::Inline);
       },
 
-      Self::Code => return code::code_command(view, ctx).map(CommandResult::Inline),
+      Self::Code => return code::code(view, ctx).map(CommandResult::Inline),
 
-      Self::Url => return link::url_command(view, ctx).map(CommandResult::Inline),
+      Self::Url => return link::url(view, ctx).map(CommandResult::Inline),
 
-      Self::Href => return link::href_command(view, ctx).map(CommandResult::Inline),
+      Self::Href => return link::href(view, ctx).map(CommandResult::Inline),
     }
   }
 

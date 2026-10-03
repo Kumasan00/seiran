@@ -21,7 +21,7 @@ const READING: OptKey<String> = opt_args::string("reading");
 ///
 /// 必須引数の欠落・過剰、未知の任意引数キー、語が非プレーンテキスト（インライン装飾・数式・
 /// コマンドを含む）または空文字列の場合にエラーを返します。
-pub(super) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+pub(super) fn index(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   let opts = collect_command_opt_args(view, &[READING.decl()])?;
   let reading = opts.get(READING);
 
@@ -71,7 +71,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return index(&view, ctx)).unwrap();
 
     let HirInlineKind::Index { word, reading } = &result.kind else {
       panic!("Index が期待されます");
@@ -87,7 +87,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return index(&view, ctx)).unwrap();
 
     let HirInlineKind::Index { reading, .. } = &result.kind else {
       panic!("Index が期待されます");
@@ -102,7 +102,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx));
+    let result = run_handler(|ctx| return index(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
@@ -114,7 +114,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx));
+    let result = run_handler(|ctx| return index(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "index"));
   }
@@ -126,7 +126,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx));
+    let result = run_handler(|ctx| return index(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "index"));
   }
@@ -138,7 +138,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx));
+    let result = run_handler(|ctx| return index(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
@@ -150,7 +150,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx));
+    let result = run_handler(|ctx| return index(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
   }
@@ -162,7 +162,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return index_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return index(&view, ctx)).unwrap();
 
     let HirInlineKind::Index { word, reading } = &result.kind else {
       panic!("Index が期待されます");

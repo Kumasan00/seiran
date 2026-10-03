@@ -13,7 +13,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn ref_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+pub(super) fn ref_(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "ラベル名")?;
 
@@ -35,7 +35,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return ref_command(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return ref_(&view, ctx)).unwrap();
 
     let HirInlineKind::Ref { label } = &result.kind else {
       panic!("Ref が期待されます");
@@ -50,7 +50,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return ref_command(&view, ctx));
+    let result = run_handler(|ctx| return ref_(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "ref"));
   }
@@ -62,7 +62,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return ref_command(&view, ctx));
+    let result = run_handler(|ctx| return ref_(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"));
   }
@@ -74,7 +74,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return ref_command(&view, ctx));
+    let result = run_handler(|ctx| return ref_(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }

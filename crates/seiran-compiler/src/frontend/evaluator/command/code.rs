@@ -19,7 +19,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn code_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+pub(super) fn code(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "コード断片")?;
 
