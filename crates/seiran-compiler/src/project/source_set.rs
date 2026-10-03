@@ -133,7 +133,7 @@ mod tests {
   }
 
   #[test]
-  fn read_fails_fast_on_missing_file_without_aggregating() {
+  fn load_reports_missing_file_path_with_io_cause() {
     let dir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let existing = write_source(&dir, "text.sei", "本文");
     let missing = ProjectPath::new(dir.path().join("__does_not_exist__.sei"));
@@ -153,7 +153,7 @@ mod tests {
   }
 
   #[test]
-  fn read_reads_through_project_source_without_touching_disk() {
+  fn load_reads_through_project_source_without_touching_disk() {
     let source = MemoryProjectSource::new()
       .with_text("/project/a.sei", "content-a")
       .with_text("/project/b.sei", "content-b");
@@ -176,7 +176,7 @@ mod tests {
   }
 
   #[test]
-  fn read_keeps_the_text_allocation_returned_by_the_seam() {
+  fn load_keeps_the_text_allocation_returned_by_the_seam() {
     let text: Arc<str> = Arc::from("本文");
     let source = SharedTextSource {
       text: Arc::clone(&text),
