@@ -3,7 +3,7 @@
 use crate::{
   length::Length,
   typeset::boxes::{
-    hitem::{HBoxContent, IndexTerm, MeasuredFootnote},
+    hitem::{IndexTerm, MeasuredFootnote, PlacedHBox},
     link::LinkTarget,
     page::PlacedLink,
   },
@@ -15,7 +15,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
   /// 行内の配置済みボックス（左から順）
-  pub boxes: Vec<PositionedBox>,
+  pub boxes: Vec<PlacedHBox>,
   /// ベースラインから上の高さ
   pub height: Length,
   /// ベースラインから下の深さ（正値）
@@ -37,20 +37,20 @@ impl Line {
   /// 右端の最大値を取る。
   #[must_use]
   pub(crate) fn width(&self) -> Length {
-    return self.boxes.iter().map(|placed| return placed.x + placed.width).fold(Length::ZERO, Length::max);
+    return self.boxes.iter().map(|placed| return placed.dx + placed.hbox.width).fold(Length::ZERO, Length::max);
   }
 
   /// 行内の水平位置（ボックスとクリック矩形）をまとめて `dx` だけ右へずらす
   ///
-  /// `Line` の x はすべて行頭（段左端）からの相対値なので、インデント・揃えオフセット・
+  /// `Line` の水平位置はすべて行頭（段左端）からの相対値なので、インデント・揃えオフセット・
   /// 段オフセットのように「行の着地位置が決まってから足す量」はこのメソッドで一括して加える。
-  /// x を持つのは `boxes` と `links` の 2 つだけで、`index_marks` / `footnotes` は座標を持たない。
+  /// 水平位置を持つのは `boxes`（`dx`）と `links`（`x0` / `x1`）の 2 つだけで、`index_marks` / `footnotes` は座標を持たない。
   pub(crate) fn shift_x(&mut self, dx: Length) {
     if dx == Length::ZERO {
       return;
     }
-    for positioned in &mut self.boxes {
-      positioned.x += dx;
+    for placed in &mut self.boxes {
+      placed.dx += dx;
     }
     for link in &mut self.links {
       link.x0 += dx;
@@ -61,8 +61,9 @@ impl Line {
 
 /// 水平 1 行内のリンク領域（クリック矩形の水平範囲）
 ///
-/// `x0` / `x1` は基準点からの水平オフセット。基準点は持ち主で決まり、[`Line::links`] なら行頭
-/// （着地する段の左端）、表行（`collect_row_links` の戻り値）なら表の左端。縦範囲は持たず、
+/// `x0` / `x1` は基準点からの水平オフセット。基準点は持ち主で決まり、[`Line::links`] なら行の水平基準
+/// （行分割直後は行頭で、[`Line::shift_x`] が着地位置まで動かす。ページに置いた後は本文左端）、
+/// 表行（`collect_row_links` の戻り値）なら表の左端。縦範囲は持たず、
 /// 確定座標への展開時（[`LineLink::place`]）に呼び出し側が与える。
 #[derive(Debug, Clone)]
 pub(crate) struct LineLink {
@@ -91,17 +92,4 @@ impl LineLink {
       height,
     });
   }
-}
-
-/// 行内に配置されたボックス
-#[derive(Debug, Clone)]
-pub(crate) struct PositionedBox {
-  /// ボックスの内容
-  pub content: HBoxContent,
-  /// 行頭からの水平オフセット
-  pub x: Length,
-  /// ベースラインからの縦オフセット（正で上方向）
-  pub dy: Length,
-  /// 幅
-  pub width: Length,
 }

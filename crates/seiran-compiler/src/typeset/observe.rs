@@ -3,7 +3,7 @@
 //! ここの関数は `trace!` のフィールド値として呼ぶ。`tracing` のフィールド値は callsite が有効な
 //! ときだけ評価されるので、TRACE 無効時は文字列を作らない。
 
-use crate::typeset::boxes::{HBoxContent, Line, PlacedHItem};
+use crate::typeset::boxes::{HBoxContent, Line};
 
 /// TRACE に載せるテキストの最大文字数
 const SUMMARY_MAX_CHARS: usize = 40;
@@ -25,7 +25,7 @@ pub(super) fn summarize_text(text: &str) -> String {
 pub(super) fn summarize_line(line: &Line) -> String {
   let mut text = String::new();
   for placed in &line.boxes {
-    push_content_text(&mut text, &placed.content);
+    push_content_text(&mut text, &placed.hbox.content);
   }
   return summarize_text(&text);
 }
@@ -36,8 +36,7 @@ fn push_content_text(out: &mut String, content: &HBoxContent) {
     HBoxContent::Glyphs(run) => out.push_str(&run.text),
     HBoxContent::Atom(children) => {
       for child in children {
-        let PlacedHItem { item, .. } = child;
-        push_content_text(out, &item.content);
+        push_content_text(out, &child.hbox.content);
       }
     },
   }
@@ -49,38 +48,46 @@ mod tests {
   use crate::{
     length::Length,
     typeset::{
-      boxes::{HBox, HBoxContent, Line, PlacedHItem, PositionedBox},
+      boxes::{HBox, HBoxContent, Line, PlacedHBox},
       test_support,
     },
   };
 
   /// グリフ列を内容に持つ配置済みボックスを作る
-  fn glyph_box(text: &str) -> PositionedBox {
-    return PositionedBox {
-      content: HBoxContent::Glyphs(test_support::glyph_run(text)),
-      x: Length::ZERO,
-      dy: Length::ZERO,
-      width: Length::ZERO,
-    };
-  }
-
-  /// グリフ列 1 つを子に持つ閉じた箱（数式相当）の配置済みボックスを作る
-  fn atom_box(text: &str) -> PositionedBox {
-    let child = PlacedHItem {
-      item: HBox {
+  fn glyph_box(text: &str) -> PlacedHBox {
+    return PlacedHBox {
+      hbox: HBox {
         content: HBoxContent::Glyphs(test_support::glyph_run(text)),
         width: Length::ZERO,
         height: Length::ZERO,
         depth: Length::ZERO,
       },
-      dy: Length::ZERO,
       dx: Length::ZERO,
-    };
-    return PositionedBox {
-      content: HBoxContent::Atom(vec![child]),
-      x: Length::ZERO,
       dy: Length::ZERO,
-      width: Length::ZERO,
+    };
+  }
+
+  /// グリフ列 1 つを子に持つ閉じた箱（数式相当）の配置済みボックスを作る
+  fn atom_box(text: &str) -> PlacedHBox {
+    let child = PlacedHBox {
+      hbox: HBox {
+        content: HBoxContent::Glyphs(test_support::glyph_run(text)),
+        width: Length::ZERO,
+        height: Length::ZERO,
+        depth: Length::ZERO,
+      },
+      dx: Length::ZERO,
+      dy: Length::ZERO,
+    };
+    return PlacedHBox {
+      hbox: HBox {
+        content: HBoxContent::Atom(vec![child]),
+        width: Length::ZERO,
+        height: Length::ZERO,
+        depth: Length::ZERO,
+      },
+      dx: Length::ZERO,
+      dy: Length::ZERO,
     };
   }
 

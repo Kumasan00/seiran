@@ -8,7 +8,7 @@ use crate::{
   color::Color,
   length::Length,
   typeset::boxes::{
-    AnchorId, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox,
+    AnchorId, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedHBox, PlacedMathNumber, PlacedTableRow,
   },
 };
 
@@ -131,8 +131,8 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
 /// テキスト行を書き出す（ベースライン位置 + 行高 + 各配置ボックス + リンク矩形）。
 fn dump_line(out: &mut String, line: &Line, baseline_y: Length) {
   let _ = writeln!(out, "  line baseline_y={} height={} depth={}", f2(baseline_y), f2(line.height), f2(line.depth));
-  for pbox in &line.boxes {
-    dump_positioned_box(out, pbox);
+  for placed in &line.boxes {
+    dump_placed_box(out, placed);
   }
   for link in &line.links {
     let _ =
@@ -141,16 +141,16 @@ fn dump_line(out: &mut String, line: &Line, baseline_y: Length) {
 }
 
 /// 行内の配置済みボックスを書き出す（インデント 4）。Atom は子要素を再帰的に展開する。
-fn dump_positioned_box(out: &mut String, pbox: &PositionedBox) {
+fn dump_placed_box(out: &mut String, placed: &PlacedHBox) {
   let _ = writeln!(
     out,
     "    box x={} dy={} w={} {}",
-    f2(pbox.x),
-    f2(pbox.dy),
-    f2(pbox.width),
-    content_summary(&pbox.content)
+    f2(placed.dx),
+    f2(placed.dy),
+    f2(placed.hbox.width),
+    content_summary(&placed.hbox.content)
   );
-  dump_content_children(out, &pbox.content, 6);
+  dump_content_children(out, &placed.hbox.content, 6);
 }
 
 /// 数式行番号を書き出す（インデント 4）。
@@ -187,8 +187,8 @@ fn dump_table_row(out: &mut String, row: &PlacedTableRow) {
       color_desc(rule.color)
     );
   }
-  for positioned in &row.boxes {
-    dump_positioned_box(out, positioned);
+  for placed in &row.boxes {
+    dump_placed_box(out, placed);
   }
 }
 
@@ -204,12 +204,12 @@ fn dump_content_children(out: &mut String, content: &HBoxContent, indent: usize)
       "{pad}child dx={} dy={} w={} h={} d={} {}",
       f2(child.dx),
       f2(child.dy),
-      f2(child.item.width),
-      f2(child.item.height),
-      f2(child.item.depth),
-      content_summary(&child.item.content)
+      f2(child.hbox.width),
+      f2(child.hbox.height),
+      f2(child.hbox.depth),
+      content_summary(&child.hbox.content)
     );
-    dump_content_children(out, &child.item.content, indent + 2);
+    dump_content_children(out, &child.hbox.content, indent + 2);
   }
 }
 

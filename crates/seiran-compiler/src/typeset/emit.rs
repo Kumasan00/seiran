@@ -225,13 +225,8 @@ fn add_origin_x(origin_x: Length, x: Length) -> f32 { return origin_x.to_pt() + 
 fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlock, resources: &PublicationResources) {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
-      for positioned in line.boxes {
-        push_box_content_ops(
-          ops,
-          origin_x + positioned.x.to_pt(),
-          (baseline_y - positioned.dy).to_pt(),
-          positioned.content,
-        );
+      for placed in line.boxes {
+        push_box_content_ops(ops, origin_x + placed.dx.to_pt(), (baseline_y - placed.dy).to_pt(), placed.hbox.content);
       }
     },
     PlacedBlock::Table { rows } => {
@@ -296,7 +291,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
     },
     HBoxContent::Atom(children) => {
       for child in children {
-        push_box_content_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), child.item.content);
+        push_box_content_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), child.hbox.content);
       }
     },
   }
@@ -311,13 +306,8 @@ fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: PlacedTableRow, origin
     });
   }
   let baseline_y = placed_row.baseline_y;
-  for positioned in placed_row.boxes {
-    push_box_content_ops(
-      ops,
-      origin_x + positioned.x.to_pt(),
-      (baseline_y - positioned.dy).to_pt(),
-      positioned.content,
-    );
+  for placed in placed_row.boxes {
+    push_box_content_ops(ops, origin_x + placed.dx.to_pt(), (baseline_y - placed.dy).to_pt(), placed.hbox.content);
   }
 }
 

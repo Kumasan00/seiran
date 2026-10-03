@@ -842,7 +842,7 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
-        MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedLink, PositionedBox, TableBox,
+        MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, TableBox,
         TableCellBox, TableColumn, TableRowBox,
       },
       breaking::break_lines::GreedyBreaker,
@@ -1948,8 +1948,8 @@ mod tests {
     for block in &page.blocks {
       if let PlacedBlock::Table { rows, .. } = block
         && let Some(first) = rows.first()
-        && let Some(positioned) = first.boxes.first()
-        && let HBoxContent::Glyphs(run) = &positioned.content
+        && let Some(placed) = first.boxes.first()
+        && let HBoxContent::Glyphs(run) = &placed.hbox.content
       {
         return Some(run.text.clone());
       }
@@ -2125,7 +2125,7 @@ mod tests {
     else {
       unreachable!("直前の matches! で確認済み");
     };
-    assert_eq!(rows[0].boxes[0].x, Length::pt(3.0), "padding はセル内容の確定 x に反映されるはず");
+    assert_eq!(rows[0].boxes[0].dx, Length::pt(3.0), "padding はセル内容の確定 x に反映されるはず");
     let rule = rows[0].rule.expect("rule_above=true なので確定罫線を持つはず");
     assert_eq!(rule.height, Length::pt(1.5));
     assert_eq!(rule.color, Some([9, 9, 9]));
@@ -2280,12 +2280,12 @@ mod tests {
     assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
     for line in &lines {
       let first = line.boxes.first().expect("各行にボックスがあるはず");
-      assert!(first.x.to_pt() >= 10.0 - f32::EPSILON, "先頭ボックス x={} は indent(10) 以上", first.x.to_pt());
-      for positioned in &line.boxes {
+      assert!(first.dx.to_pt() >= 10.0 - f32::EPSILON, "先頭ボックス x={} は indent(10) 以上", first.dx.to_pt());
+      for placed in &line.boxes {
         assert!(
-          (positioned.x + positioned.width).to_pt() <= 50.0 + f32::EPSILON,
+          (placed.dx + placed.hbox.width).to_pt() <= 50.0 + f32::EPSILON,
           "x+width={} <= text_width - right_indent = 50",
-          (positioned.x + positioned.width).to_pt()
+          (placed.dx + placed.hbox.width).to_pt()
         );
       }
     }
@@ -2338,7 +2338,7 @@ mod tests {
         _ => return None,
       })
       .expect("行があるはず");
-    assert!(close(line.boxes[0].x, 90.0), "box.x={}", line.boxes[0].x.to_pt());
+    assert!(close(line.boxes[0].dx, 90.0), "box.x={}", line.boxes[0].dx.to_pt());
   }
 
   /// テスト用の伸縮能力付き breakable glue（幅 5・伸長 2.5・収縮 5/3 = 単語間スペース相当）
@@ -2383,7 +2383,7 @@ mod tests {
         _ => return None,
       })
       .expect("行があるはず");
-    assert!(close(line.boxes[1].x + line.boxes[1].width, 27.0), "{:?}", line.boxes);
+    assert!(close(line.boxes[1].dx + line.boxes[1].hbox.width, 27.0), "{:?}", line.boxes);
   }
 
   #[test]
@@ -2401,8 +2401,8 @@ mod tests {
         _ => return None,
       })
       .expect("行があるはず");
-    assert!(close(line.boxes[0].x, 1.0), "{:?}", line.boxes);
-    assert!(close(line.boxes[1].x - line.boxes[0].x, 15.0), "glue は自然幅のまま: {:?}", line.boxes);
+    assert!(close(line.boxes[0].dx, 1.0), "{:?}", line.boxes);
+    assert!(close(line.boxes[1].dx - line.boxes[0].dx, 15.0), "glue は自然幅のまま: {:?}", line.boxes);
   }
 
   #[test]
@@ -2432,7 +2432,7 @@ mod tests {
         _ => return None,
       })
       .expect("行があるはず");
-    assert!(close(line.boxes[0].x, 0.0), "box.x={}", line.boxes[0].x.to_pt());
+    assert!(close(line.boxes[0].dx, 0.0), "box.x={}", line.boxes[0].dx.to_pt());
   }
 
   #[test]
@@ -2474,8 +2474,8 @@ mod tests {
       })
       .collect();
     assert_eq!(lines.len(), 2, "text_width=35 で 2 行に折り返すはず: {} 行", lines.len());
-    assert!(close(lines[0].boxes[0].x, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].x.to_pt());
-    assert!(close(lines[1].boxes[0].x, 12.5), "2 行目先頭 x={}", lines[1].boxes[0].x.to_pt());
+    assert!(close(lines[0].boxes[0].dx, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].dx.to_pt());
+    assert!(close(lines[1].boxes[0].dx, 12.5), "2 行目先頭 x={}", lines[1].boxes[0].dx.to_pt());
   }
 
   /// ページ内の最初の `PlacedBlock::Image` を取り出すヘルパ
@@ -2545,7 +2545,7 @@ mod tests {
     else {
       unreachable!()
     };
-    assert!(close(rows[0].boxes[0].x, 40.0), "cell.x={}", rows[0].boxes[0].x.to_pt());
+    assert!(close(rows[0].boxes[0].dx, 40.0), "cell.x={}", rows[0].boxes[0].dx.to_pt());
   }
 
   #[test]
@@ -2572,7 +2572,7 @@ mod tests {
     else {
       unreachable!()
     };
-    assert!(close(rows[0].boxes[0].x, 2.0), "cell.x={}", rows[0].boxes[0].x.to_pt());
+    assert!(close(rows[0].boxes[0].dx, 2.0), "cell.x={}", rows[0].boxes[0].dx.to_pt());
   }
 
   #[test]
@@ -2612,11 +2612,15 @@ mod tests {
     });
     return Block::ComposedLine {
       line: Line {
-        boxes: vec![PositionedBox {
-          content: HBoxContent::Atom(Vec::new()),
-          x: Length::ZERO,
+        boxes: vec![PlacedHBox {
+          hbox: HBox {
+            content: HBoxContent::Atom(Vec::new()),
+            width,
+            height,
+            depth,
+          },
+          dx: Length::ZERO,
           dy: Length::ZERO,
-          width,
         }],
         height,
         depth,
@@ -2696,7 +2700,7 @@ mod tests {
         .blocks
         .iter()
         .filter_map(|b| match b {
-          PlacedBlock::Line { line, baseline_y } => return Some(((*baseline_y).to_pt(), line.boxes[0].x.to_pt())),
+          PlacedBlock::Line { line, baseline_y } => return Some(((*baseline_y).to_pt(), line.boxes[0].dx.to_pt())),
           _ => return None,
         })
         .collect();
@@ -2773,7 +2777,7 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Table { rows } => return rows.first()?.boxes.first().map(|positioned| return positioned.x),
+        PlacedBlock::Table { rows } => return rows.first()?.boxes.first().map(|placed| return placed.dx),
         _ => return None,
       })
       .collect();
@@ -2834,7 +2838,7 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return line.boxes.first().map(|positioned| return positioned.x),
+        PlacedBlock::Line { line, .. } => return line.boxes.first().map(|placed| return placed.dx),
         _ => return None,
       })
       .collect();
@@ -3466,7 +3470,7 @@ mod tests {
     else {
       unreachable!("直前の matches! で確認済み");
     };
-    assert!(close(rows[0].boxes[0].x, 57.0), "先頭行は右段（55 + padding 2）: {:?}", rows[0].boxes[0]);
+    assert!(close(rows[0].boxes[0].dx, 57.0), "先頭行は右段（55 + padding 2）: {:?}", rows[0].boxes[0]);
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
     assert!(close(pages[0].anchors[0].x, 55.0), "右段のオフセット: {:?}", pages[0].anchors[0]);
     assert!(close(pages[0].anchors[0].y, 10.0), "右段の先頭: {:?}", pages[0].anchors[0]);

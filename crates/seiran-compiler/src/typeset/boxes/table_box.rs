@@ -7,8 +7,8 @@ use crate::{
   document::{ColumnAlign, ColumnWidth},
   length::Length,
   typeset::boxes::{
-    hitem::{HBoxContent, HItem},
-    line::{LineLink, PositionedBox},
+    hitem::{HBoxContent, HItem, PlacedHBox},
+    line::LineLink,
     link::LinkTarget,
   },
 };
@@ -87,7 +87,7 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
     HBoxContent::Glyphs(run) => Some(run.font_size),
     HBoxContent::Atom(children) => children
       .iter()
-      .filter_map(|child| return max_font_size_in_content(&child.item.content))
+      .filter_map(|child| return max_font_size_in_content(&child.hbox.content))
       .reduce(Length::max),
   };
 }
@@ -225,18 +225,17 @@ pub(crate) fn position_table_row_boxes(
   columns: &[TableColumn],
   col_widths: &[Length],
   padding: Length,
-) -> Vec<PositionedBox> {
+) -> Vec<PlacedHBox> {
   let mut boxes = Vec::new();
   for placement in layout_row_cells(row, columns, col_widths, padding) {
     let mut cursor = placement.content_x;
     for item in &placement.cell.items {
       match item {
         HItem::Box(hbox) => {
-          boxes.push(PositionedBox {
-            content: hbox.content.clone(),
-            x: cursor,
+          boxes.push(PlacedHBox {
+            hbox: hbox.clone(),
+            dx: cursor,
             dy: Length::ZERO,
-            width: hbox.width,
           });
           cursor += hbox.width;
         },
@@ -304,7 +303,7 @@ mod tests {
     publication::GlyphRun,
     semantics::LabelId,
     typeset::boxes::{
-      hitem::{HBox, HBoxContent, HItem, PlacedHItem},
+      hitem::{HBox, HBoxContent, HItem, PlacedHBox},
       link::{AnchorId, LinkTarget},
     },
   };
@@ -404,10 +403,10 @@ mod tests {
       height: pt(20.0),
       depth: Length::ZERO,
     };
-    let atom = HBox::atom(vec![PlacedHItem {
-      item: inner,
-      dy: Length::ZERO,
+    let atom = HBox::atom(vec![PlacedHBox {
+      hbox: inner,
       dx: Length::ZERO,
+      dy: Length::ZERO,
     }]);
 
     assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(pt(20.0)));
@@ -557,8 +556,8 @@ mod tests {
     let boxes = position_table_row_boxes(&row, &columns, &[pt(30.0)], pt(2.0));
 
     assert_eq!(boxes.len(), 2);
-    assert!(close(boxes[0].x, 14.0), "右揃えの先頭 x: {boxes:?}");
-    assert!(close(boxes[1].x, 24.0), "box + kern + glue 後の x: {boxes:?}");
+    assert!(close(boxes[0].dx, 14.0), "右揃えの先頭 x: {boxes:?}");
+    assert!(close(boxes[1].dx, 24.0), "box + kern + glue 後の x: {boxes:?}");
   }
 
   #[test]
@@ -722,8 +721,8 @@ mod tests {
     let boxes = position_table_row_boxes(&row, &columns, &[pt(20.0), pt(30.0), pt(25.0)], pt(2.0));
 
     assert_eq!(boxes.len(), 2);
-    assert!(close(boxes[0].x, 20.0), "帯幅 50 の中央: {boxes:?}");
-    assert!(close(boxes[1].x, 69.0), "後続セルは帯の右端 50 から始まる: {boxes:?}");
+    assert!(close(boxes[0].dx, 20.0), "帯幅 50 の中央: {boxes:?}");
+    assert!(close(boxes[1].dx, 69.0), "後続セルは帯の右端 50 から始まる: {boxes:?}");
   }
 
   #[test]

@@ -37,7 +37,7 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{
-      Align, Block, HBox, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox,
+      Align, Block, HBox, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox, TableBox, TableCellBox,
       TableRowBox, max_font_size_in_items,
     },
     font::FontSystem,
@@ -336,24 +336,20 @@ impl<'a> Measurer<'a> {
 
   /// `Raise` ツリーを絶対配置（`dx` / `dy`）の Atom に畳む
   fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
-    let mut placed: Vec<PlacedHItem> = Vec::new();
+    let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     self.place_atom_children(children, offset, &mut dx, &mut placed);
     return HBox::atom(placed);
   }
 
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  fn place_atom_children(&mut self, nodes: Vec<AtomNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
+  fn place_atom_children(&mut self, nodes: Vec<AtomNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     for node in nodes {
       match node {
         AtomNode::Text(text, style) => {
           for hbox in self.shaper.shape_text(&text, style) {
             let width = hbox.width;
-            out.push(PlacedHItem {
-              item: hbox,
-              dy,
-              dx: *dx,
-            });
+            out.push(PlacedHBox { hbox, dx: *dx, dy });
             *dx += width;
           }
         },

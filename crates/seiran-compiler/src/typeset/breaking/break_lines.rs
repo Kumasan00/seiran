@@ -9,7 +9,7 @@ pub(crate) use knuth_plass::KnuthPlassBreaker;
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PositionedBox},
+  typeset::boxes::{HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
 };
 
 /// 行分割アルゴリズムの抽象
@@ -128,7 +128,7 @@ pub(super) fn build_line(
     open.x0 = Length::ZERO;
   }
 
-  let mut boxes: Vec<PositionedBox> = Vec::new();
+  let mut boxes: Vec<PlacedHBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
   let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
   let mut index_marks: Vec<IndexTerm> = Vec::new();
@@ -138,11 +138,10 @@ pub(super) fn build_line(
   for item in items {
     match item {
       HItem::Box(hbox) => {
-        boxes.push(PositionedBox {
-          content: hbox.content.clone(),
-          x,
+        boxes.push(PlacedHBox {
+          hbox: hbox.clone(),
+          dx: x,
           dy: Length::ZERO,
-          width: hbox.width,
         });
         x += hbox.width;
         height = height.max(hbox.height);
@@ -168,11 +167,10 @@ pub(super) fn build_line(
       // 右寄せ末尾ボックス: 行内累積 x を無視し、本文幅の右端へ寄せる
       HItem::FlushRight(hbox) => {
         let flush_x = (available - hbox.width).max(Length::ZERO);
-        boxes.push(PositionedBox {
-          content: hbox.content.clone(),
-          x: flush_x,
+        boxes.push(PlacedHBox {
+          hbox: hbox.clone(),
+          dx: flush_x,
           dy: Length::ZERO,
-          width: hbox.width,
         });
         height = height.max(hbox.height);
         depth = depth.max(hbox.depth);
@@ -200,11 +198,10 @@ pub(super) fn build_line(
   }
   // 語中で折り返した行は、行内アイテムの直後（両端揃えでは伸縮後の右端）にハイフンを置く
   if let Some(hyphen) = trailing_hyphen {
-    boxes.push(PositionedBox {
-      content: hyphen.content.clone(),
-      x,
+    boxes.push(PlacedHBox {
+      hbox: hyphen.clone(),
+      dx: x,
       dy: Length::ZERO,
-      width: hyphen.width,
     });
     x += hyphen.width;
     height = height.max(hyphen.height);

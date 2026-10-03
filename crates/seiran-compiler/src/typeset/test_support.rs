@@ -2,7 +2,7 @@
 //! （`#[cfg(test)]` 限定）
 //!
 //! **不変条件**: `pub(crate)` の関数・メソッドは引数型にも返り値型にも、`typeset` root が `#[cfg(test)]` でも
-//! 再エクスポートしない組版中間型（`HBox` / `Line` / `PositionedBox` / `PlacedBlock` 以外の `Placed*` /
+//! 再エクスポートしない組版中間型（`HBox` / `Line` / `PlacedHBox` / `PlacedBlock` 以外の `Placed*` /
 //! `TableRowBox` / `TableCellBox` / `OutlineEntry`）を現さない。
 
 use std::collections::HashMap;
@@ -20,8 +20,8 @@ use crate::{
     PreparedGeometry, TypesetError,
     boxes::{
       AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-      PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox, TableCellBox,
-      TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
+      PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableCellBox, TableColumn,
+      TableRowBox, max_font_size_in_items, position_table_row_boxes,
     },
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -124,24 +124,13 @@ pub(crate) fn glyph_run(text: &str) -> GlyphRun {
   };
 }
 
-/// 内容 1 個だけを持つ行ブロックを作る内部ヘルパ
-fn single_box_line(
-  content: HBoxContent,
-  x: Length,
-  dy: Length,
-  baseline_y: Length,
-  metrics: LineMetrics,
-) -> PlacedBlock {
+/// 計測済みボックス 1 個だけを持つ行ブロックを作る内部ヘルパ（行の高さ・深さは箱と同じ）
+fn single_box_line(hbox: HBox, x: Length, dy: Length, baseline_y: Length) -> PlacedBlock {
   return PlacedBlock::Line {
     line: Line {
-      boxes: vec![PositionedBox {
-        content,
-        x,
-        dy,
-        width: metrics.box_width,
-      }],
-      height: metrics.height,
-      depth: metrics.depth,
+      height: hbox.height,
+      depth: hbox.depth,
+      boxes: vec![PlacedHBox { hbox, dx: x, dy }],
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
@@ -152,34 +141,34 @@ fn single_box_line(
 
 /// グリフ列 1 個を置いた行ブロックを作る（既定の行寸法）
 pub(crate) fn glyph_line(run: GlyphRun, x: Length, dy: Length, baseline_y: Length) -> PlacedBlock {
-  return single_box_line(HBoxContent::Glyphs(run), x, dy, baseline_y, LineMetrics::default());
+  return single_box_line(metrics_glyph_box(run, LineMetrics::default()), x, dy, baseline_y);
 }
 
 /// グリフ列 1 個を置いた行ブロックを、行寸法を指定して作る
 pub(crate) fn glyph_line_with_metrics(run: GlyphRun, baseline_y: Length, metrics: LineMetrics) -> PlacedBlock {
-  return single_box_line(HBoxContent::Glyphs(run), Length::ZERO, Length::ZERO, baseline_y, metrics);
+  return single_box_line(metrics_glyph_box(run, metrics), Length::ZERO, Length::ZERO, baseline_y);
 }
 
 /// Atom（閉じた箱）1 個を置いた行ブロックを作る
 ///
-/// `children` は `(グリフ列, ボックス寸法, dx, dy)` の並び。Atom 自身の寸法は子から確定する。
+/// `children` は `(グリフ列, ボックス寸法, dx, dy)` の並び。Atom 自身と行の寸法は子から確定する。
 pub(crate) fn atom_line(
   children: Vec<(GlyphRun, BoxSize, Length, Length)>,
   x: Length,
   dy: Length,
   baseline_y: Length,
 ) -> PlacedBlock {
-  let placed: Vec<PlacedHItem> = children
+  let placed: Vec<PlacedHBox> = children
     .into_iter()
     .map(|(run, size, child_dx, child_dy)| {
-      return PlacedHItem {
-        item: glyph_box(run, size),
+      return PlacedHBox {
+        hbox: glyph_box(run, size),
         dx: child_dx,
         dy: child_dy,
       };
     })
     .collect();
-  return single_box_line(HBoxContent::Atom(placed), x, dy, baseline_y, LineMetrics::default());
+  return single_box_line(HBox::atom(placed), x, dy, baseline_y);
 }
 
 /// グリフ列を計測済みボックスに包む内部ヘルパ
@@ -190,6 +179,18 @@ fn glyph_box(run: GlyphRun, size: BoxSize) -> HBox {
     height: size.height,
     depth: size.depth,
   };
+}
+
+/// グリフ列を行寸法どおりの箱（幅 `box_width`、高さ・深さは行と同じ）に包む内部ヘルパ
+fn metrics_glyph_box(run: GlyphRun, metrics: LineMetrics) -> HBox {
+  return glyph_box(
+    run,
+    BoxSize {
+      width: metrics.box_width,
+      height: metrics.height,
+      depth: metrics.depth,
+    },
+  );
 }
 
 /// 罫線ブロック（塗りつぶし矩形）を作る
@@ -291,8 +292,8 @@ pub(crate) fn table_block(
         .reduce(Length::max)
         .unwrap_or(spec.height);
       let mut boxes = position_table_row_boxes(&row, &columns, col_widths, cell_padding);
-      for positioned in &mut boxes {
-        positioned.x += x;
+      for placed in &mut boxes {
+        placed.dx += x;
       }
       let rule = row.rule_above.then_some(PlacedTableRule {
         x,

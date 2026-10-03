@@ -224,8 +224,8 @@ impl PageDraft {
     let mut placed_rows = Vec::with_capacity(rows.len());
     for pending in rows {
       let mut boxes = position_table_row_boxes(&pending.row, frame.columns, frame.col_widths, frame.cell_padding);
-      for positioned in &mut boxes {
-        positioned.x += x;
+      for placed in &mut boxes {
+        placed.dx += x;
       }
       links.extend(
         collect_row_links(&pending.row, frame.columns, frame.col_widths, frame.cell_padding)
@@ -939,7 +939,7 @@ mod tests {
     let PlacedBlock::Table { rows } = &page.blocks[0] else {
       unreachable!("place_table_fragment は Table block を積む");
     };
-    assert_eq!(rows[0].boxes[0].x, pt(62.0), "セル x は段オフセット + 揃えオフセット + padding");
+    assert_eq!(rows[0].boxes[0].dx, pt(62.0), "セル x は段オフセット + 揃えオフセット + padding");
   }
 
   #[test]
