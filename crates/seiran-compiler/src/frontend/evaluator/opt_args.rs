@@ -440,7 +440,7 @@ mod tests {
     const LABEL: OptKey<String> = string("label");
     let arena = Bump::new();
     let source = r"\bold{x}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[]).unwrap();
@@ -453,7 +453,7 @@ mod tests {
     const TITLE: OptKey<String> = string("title");
     let arena = Bump::new();
     let source = r#"\section[title="x"]{Title}"#;
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[TITLE.decl()]).unwrap();
@@ -466,7 +466,7 @@ mod tests {
     const TITLE: OptKey<String> = string("title");
     let arena = Bump::new();
     let source = r#"\section[title="a, b"]{Title}"#;
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[TITLE.decl()]);
@@ -478,7 +478,7 @@ mod tests {
   fn collect_returns_error_for_unknown_key() {
     let arena = Bump::new();
     let source = r"\section[unknown=v]{Title}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[]);
@@ -490,7 +490,7 @@ mod tests {
   fn collect_returns_error_for_unknown_boolean_shorthand() {
     let arena = Bump::new();
     let source = r"\section[draft]{Title}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[]);
@@ -503,7 +503,7 @@ mod tests {
     const LABEL: OptKey<String> = string("label");
     let arena = Bump::new();
     let source = r"\section[label=x, label=y]{Title}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[LABEL.decl()]);
@@ -517,7 +517,7 @@ mod tests {
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft, draft=false]{Title}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
@@ -530,7 +530,7 @@ mod tests {
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
@@ -543,7 +543,7 @@ mod tests {
     const WIDTH: OptKey<Length> = length("width");
     let arena = Bump::new();
     let source = r"\section[width=10pt]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
@@ -556,7 +556,7 @@ mod tests {
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
@@ -569,7 +569,7 @@ mod tests {
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft=false]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
@@ -582,7 +582,7 @@ mod tests {
     const DRAFT: OptKey<bool> = boolean("draft");
     let arena = Bump::new();
     let source = r"\section[draft=true]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
@@ -596,7 +596,7 @@ mod tests {
     for value in ["True", "TRUE", "False", "FALSE"] {
       let arena = Bump::new();
       let source = format!(r"\section[draft={value}]{{T}}");
-      let cst = test_support::parse(&source, &arena).unwrap();
+      let cst = test_support::parse_cst(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
 
       let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
@@ -613,7 +613,7 @@ mod tests {
     const DRAFT: OptKey<u32> = positive_int("draft");
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // bare key は `"true"` になるので整数としては読めない
@@ -640,7 +640,7 @@ mod tests {
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
     let source = r"\section[width=0mm]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
@@ -656,7 +656,7 @@ mod tests {
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
     let source = r"\section[width=-5mm]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
@@ -669,7 +669,7 @@ mod tests {
     const START: OptKey<u32> = positive_int("start");
     let arena = Bump::new();
     let source = r"\section[start=5]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[START.decl()]).unwrap();
@@ -692,7 +692,7 @@ mod tests {
       "foo",
     ] {
       let source = format!(r"\section[start={raw}]{{T}}");
-      let cst = test_support::parse(&source, &arena).unwrap();
+      let cst = test_support::parse_cst(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
 
       let result = collect_command_opt_args(&view, &[START.decl()]);
@@ -726,7 +726,7 @@ mod tests {
     const WIDTH: OptKey<Length> = positive_length("width");
     let arena = Bump::new();
     let source = r"\section[label=foo, width=5cm]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[LABEL.decl(), WIDTH.decl()]).unwrap();
@@ -741,7 +741,7 @@ mod tests {
     const NUMBERED: OptKey<bool> = boolean("numbered");
     let arena = Bump::new();
     let source = r"\section[label=foo]{T}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     let opts = collect_command_opt_args(&view, &[LABEL.decl(), NUMBERED.decl()]).unwrap();

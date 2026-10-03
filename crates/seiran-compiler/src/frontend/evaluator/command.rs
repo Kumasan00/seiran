@@ -333,7 +333,7 @@ mod tests {
   fn single_char_rejects_unknown_opt_arg_key() {
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -455,7 +455,7 @@ mod tests {
       let args = "{a}".repeat(arg_count);
       let source = format!("\\{name}{args}");
 
-      let cst = test_support::parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
+      let cst = test_support::parse_cst(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
       let result = evaluator::evaluate_children_to_hir(&source, cst);
 
       let is_known_outcome = matches!(

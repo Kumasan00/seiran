@@ -1,4 +1,4 @@
-frontend::parse::multiple_opt_args
+frontend::syntax::multiple_opt_args
 
   × 任意引数 [...] は 1 組だけ書けます
    ╭─[tests/text/diagnostics/multiple_opt_args.sei:1:25]

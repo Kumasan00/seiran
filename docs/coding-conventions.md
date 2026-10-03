@@ -204,7 +204,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   （`typeset::boxing` と子 `math` / `text_run` は分かれたままでよい）。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで
   `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを
-  既定とする（例: `parser.rs` で `pub(crate) use error::ParserError;`）。ただし新しいモジュールパスを公開した
+  既定とする（例: `parser.rs` で `pub(crate) use error::SyntaxError;`）。ただし新しいモジュールパスを公開した
   ほうが利用側にとって分かりやすい場合は、API を変更してよい。
 
 ## 値と型の書き方

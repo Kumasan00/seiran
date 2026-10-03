@@ -1,12 +1,12 @@
 //! HIR の不変条件テスト
 //!
-//! `parse_source` の出力（frontend が返す HIR）が満たすべき性質をまとめて固定する。
+//! `parse` の出力（frontend が返す HIR）が満たすべき性質をまとめて固定する。
 
 use std::{collections::HashSet, fs, path::PathBuf};
 
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
-  frontend::test_support::parse_source_for_test,
+  frontend::test_support::parse_for_test,
   source::{SourceId, Span},
 };
 
@@ -39,7 +39,7 @@ fn fixture_sources() -> Vec<(String, String)> {
 
 /// フィクスチャをパースする
 fn parse_fixture(name: &str, content: &str, source_id: SourceId) -> HirSource {
-  return parse_source_for_test(content, source_id).unwrap_or_else(|e| panic!("{name} のパースに成功するはず: {e:?}"));
+  return parse_for_test(content, source_id).unwrap_or_else(|e| panic!("{name} のパースに成功するはず: {e:?}"));
 }
 
 /// HIR を親子関係つきで走査する（親は必ず子より先に訪れる）
@@ -196,15 +196,15 @@ fn source_order_does_not_affect_ids_or_spans() {
   let source_a = "\\section{最初}\n\n本文 A です。";
   let source_b = "\\section{次}\n\n本文 B の $x^{2}$ です。";
 
-  let alone = parse_source_for_test(source_b, SourceId::new(1)).unwrap();
+  let alone = parse_for_test(source_b, SourceId::new(1)).unwrap();
   let a_then_b = {
-    let a = parse_source_for_test(source_a, SourceId::new(0)).unwrap();
-    let b = parse_source_for_test(source_b, SourceId::new(1)).unwrap();
+    let a = parse_for_test(source_a, SourceId::new(0)).unwrap();
+    let b = parse_for_test(source_b, SourceId::new(1)).unwrap();
     HirDocument::assemble(vec![a, b])
   };
   let b_then_a = {
-    let b = parse_source_for_test(source_b, SourceId::new(1)).unwrap();
-    let a = parse_source_for_test(source_a, SourceId::new(0)).unwrap();
+    let b = parse_for_test(source_b, SourceId::new(1)).unwrap();
+    let a = parse_for_test(source_a, SourceId::new(0)).unwrap();
     HirDocument::assemble(vec![b, a])
   };
 
@@ -293,7 +293,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
   ];
 
   for (source, expected) in cases {
-    let hir = parse_source_for_test(source, SourceId::new(0)).unwrap();
+    let hir = parse_for_test(source, SourceId::new(0)).unwrap();
 
     let kinds: Vec<&str> = hir
       .group
@@ -312,7 +312,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
   }
 
   let source = "  本文です。  ";
-  let hir = parse_source_for_test(source, SourceId::new(0)).unwrap();
+  let hir = parse_for_test(source, SourceId::new(0)).unwrap();
   let visited = visit_source(&hir);
   let paragraph = visited.first().expect("段落ノードがあるはず");
   let span = hir.spans.span_of(paragraph.id);

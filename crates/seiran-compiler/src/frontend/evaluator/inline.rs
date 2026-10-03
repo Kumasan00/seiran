@@ -355,7 +355,7 @@ mod tests {
   fn evaluate_inline_children_with_bold() {
     let arena = Bump::new();
     let source = "\\section{\\bold{太字タイトル}}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -374,7 +374,7 @@ mod tests {
   fn evaluate_inline_children_with_symbol_command() {
     let arena = Bump::new();
     let source = "\\section{\\alpha}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -387,7 +387,7 @@ mod tests {
   fn evaluate_inline_children_rejects_unknown_command() {
     let arena = Bump::new();
     let source = "\\section{\\nonexistent}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -401,7 +401,7 @@ mod tests {
   fn evaluate_inline_children_rejects_index_under_reject_policy() {
     let arena = Bump::new();
     let source = r"\section{\index{語}}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -415,7 +415,7 @@ mod tests {
   fn evaluate_inline_children_accepts_index_under_allow_policy() {
     let arena = Bump::new();
     let source = r"\section{\index{語}}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -433,7 +433,7 @@ mod tests {
   fn evaluate_inline_children_propagates_reject_policy_into_styled_text() {
     let arena = Bump::new();
     let source = r"\section{\bold{重要\index{重要}}}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -447,7 +447,7 @@ mod tests {
   fn evaluate_inline_children_with_inline_math() {
     let arena = Bump::new();
     let source = "\\section{数式 $x^{2}$ です}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -460,7 +460,7 @@ mod tests {
   fn evaluate_inline_children_merges_text_across_an_index_marker() {
     let arena = Bump::new();
     let source = "\\section{A\\index{k}V}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -476,7 +476,7 @@ mod tests {
   fn evaluate_inline_children_keeps_text_split_when_the_marker_sits_next_to_a_comma() {
     let arena = Bump::new();
     let source = "\\section{a\\index{k},b}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -494,7 +494,7 @@ mod tests {
   fn evaluate_inline_children_keeps_the_space_after_a_command_call() {
     let arena = Bump::new();
     let source = "\\section{ab \\bold{cd} ef}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -513,7 +513,7 @@ mod tests {
   fn evaluate_inline_children_keeps_the_space_after_a_command_with_an_opt_arg() {
     let arena = Bump::new();
     let source = "\\section{\\color[color=#ff8800]{orange words} inline.}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -530,7 +530,7 @@ mod tests {
   fn evaluate_inline_children_keeps_the_space_after_a_command_with_two_args() {
     let arena = Bump::new();
     let source = "\\section{\\href{https://example.com}{link} after}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -547,7 +547,7 @@ mod tests {
   fn evaluate_inline_children_keeps_the_space_after_a_command_call_in_japanese() {
     let arena = Bump::new();
     let source = "\\section{文中に \\bold{強調} を置く}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -563,7 +563,7 @@ mod tests {
   fn evaluate_inline_children_keeps_text_split_when_a_space_follows_the_marker() {
     let arena = Bump::new();
     let source = "\\section{A\\index{k} V}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();

@@ -55,7 +55,7 @@ mod tests {
   use super::analyze;
   use crate::{
     document::HirDocument,
-    frontend::test_support::parse_source_for_test,
+    frontend::test_support::parse_for_test,
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::{
       AnalyzeError, CitationStyleError, load_references,
@@ -72,8 +72,7 @@ mod tests {
     let mut style = Style::default();
     style.reference.csl_path = Some(ieee_csl_path());
     let source_id = SourceId::new(0);
-    let hir =
-      parse_source_for_test(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
+    let hir = parse_for_test(r"本文 \cite{kwan2014} と \cite{doe2020}", source_id).expect("パースに成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     let semantics = analyze(&source, document, &references, &style).expect("走査 → CSL 整形の連携は成功するはず");
@@ -95,7 +94,7 @@ mod tests {
     let style = Style::default();
     let references = load_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source_for_test("本文だけの段落。\n", source_id).expect("パースは成功するはず");
+    let hir = parse_for_test("本文だけの段落。\n", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     let semantics = analyze(&source, document, &references, &style).expect("引用が無ければ CSL を読まないはず");
@@ -119,7 +118,7 @@ mod tests {
     let references =
       load_references(&source, Some(&ProjectPath::new("/project/references.toml"))).expect("参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source_for_test(r"\cite{ref1}", source_id).expect("パースは成功するはず");
+    let hir = parse_for_test(r"\cite{ref1}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     let error = analyze(&source, document, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
@@ -133,7 +132,7 @@ mod tests {
     let style = Style::default();
     let references = load_references(&source, None).expect("空の参照定義を読めるはず");
     let source_id = SourceId::new(0);
-    let hir = parse_source_for_test(r"\ref{missing}", source_id).expect("パースは成功するはず");
+    let hir = parse_for_test(r"\ref{missing}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
 
     let error = analyze(&source, document, &references, &style).expect_err("未定義ラベル参照はエラーになるはず");

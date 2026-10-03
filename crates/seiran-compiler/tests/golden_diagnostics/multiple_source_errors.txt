@@ -10,7 +10,7 @@ frontend::eval::unknown_command
   help: コマンド名 \nonexistentcommand のスペルを確認してください。利用可能なコマンド一覧はドキュ
         メントを参照してください
 
-Error: frontend::parse::bare_group
+Error: frontend::syntax::bare_group
 
   × 裸の {...} は構文エラーです
    ╭─[tests/text/diagnostics/bare_braces.sei:3:14]

@@ -212,7 +212,7 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
   let results = sources
     .iter()
     .map(|(source_id, entry)| {
-      return frontend::parse_source(&entry.content, source_id, resolver)
+      return frontend::parse(&entry.content, source_id, resolver)
         .map_err(|error| return SourceDiagnostic::attach(sources, source_id, error));
     })
     .collect();

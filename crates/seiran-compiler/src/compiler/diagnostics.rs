@@ -182,7 +182,7 @@ fn diagnostic_multiple_source_errors() {
     codes(&failure),
     vec![
       "frontend::eval::unknown_command".to_string(),
-      "frontend::parse::bare_group".to_string()
+      "frontend::syntax::bare_group".to_string()
     ]
   );
   assert_matches_golden("multiple_source_errors", &render_failure(failure));
@@ -336,8 +336,8 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "compiler::citation::style",
     "compiler::citation::format",
     "compiler::layout",
-    "frontend::parse_source::eval",
-    "frontend::parse_source::syntax",
+    "frontend::parse::eval",
+    "frontend::parse::syntax",
     // 集約 wrapper。集約自身は表示単位ではないので code を持たない
     "project::config::multiple_validation_errors",
     "style::multiple_validation_errors",

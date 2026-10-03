@@ -32,7 +32,7 @@ use crate::{
   source::Span,
 };
 
-/// `crate::frontend::syntax::parse` へ渡すレジストリ解決器を組む
+/// `crate::frontend::syntax::parse_cst` へ渡すレジストリ解決器を組む
 pub(crate) fn mode_resolver() -> ModeResolver {
   return ModeResolver {
     env_body: environment::lookup_body_mode,
@@ -226,7 +226,7 @@ mod test_support {
   use crate::{
     document::{HirInline, HirNode},
     frontend::{
-      syntax::{self, CstElement, CstNode, ParserError, SyntaxKind},
+      syntax::{self, CstElement, CstNode, SyntaxError, SyntaxKind},
       test_support::eval_context_for_test,
     },
   };
@@ -258,22 +258,22 @@ mod test_support {
     return handler(&ctx);
   }
 
-  /// `.sei` スニペットを本番のレジストリ付きで parse する
+  /// `.sei` スニペットを本番のレジストリ付きで CST へ構文解析する
   ///
   /// # Errors
   ///
   /// 構文解析に失敗した場合にエラーを返します。
-  pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, ParserError> {
-    return syntax::parse(source, arena, mode_resolver());
+  pub(crate) fn parse_cst<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, SyntaxError> {
+    return syntax::parse_cst(source, arena, mode_resolver());
   }
 
-  /// スニペットを parse して最初の `CommandCall` ノードを取り出す
+  /// スニペットを CST へ構文解析し、最初の `CommandCall` ノードを取り出す
   ///
   /// # Panics
   ///
   /// 構文解析に失敗した場合、または `CommandCall` ノードが 1 つも無い場合に panic します。
   pub(crate) fn command_call_node<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> {
-    let cst = parse(source, arena).unwrap();
+    let cst = parse_cst(source, arena).unwrap();
     for child in cst.children {
       if let CstElement::Node(node) = child
         && node.kind == SyntaxKind::CommandCall
@@ -306,7 +306,7 @@ mod tests {
   fn paragraph_keeps_the_space_after_an_inline_command() {
     let arena = Bump::new();
     let source = r"ab \bold{cd} ef";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -321,7 +321,7 @@ mod tests {
   fn paragraph_drops_the_newline_after_a_block_command() {
     let arena = Bump::new();
     let source = "\\section{見出し}\n本文";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -338,7 +338,7 @@ mod tests {
   fn paragraph_keeps_the_space_swallowed_by_a_command_without_arguments() {
     let arena = Bump::new();
     let source = r"\noindent 本文";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -353,7 +353,7 @@ mod tests {
   fn noindent_in_the_middle_of_a_paragraph_points_at_the_command_itself() {
     let arena = Bump::new();
     let source = r"本文\noindent";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

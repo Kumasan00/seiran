@@ -219,7 +219,7 @@ mod tests {
     // 数式評価器の語彙に `\href` は無い
     let arena = Bump::new();
     let source = r"$\href{https://example.com}{ここ}$";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

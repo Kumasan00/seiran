@@ -48,13 +48,11 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
 #[cfg(test)]
 mod tests {
   use super::collect_image_paths;
-  use crate::{
-    document::HirDocument, frontend::test_support::parse_source_for_test, project::ProjectPath, source::SourceId,
-  };
+  use crate::{document::HirDocument, frontend::test_support::parse_for_test, project::ProjectPath, source::SourceId};
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir = parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = parse_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 

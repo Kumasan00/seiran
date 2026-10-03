@@ -428,7 +428,7 @@ mod tests {
   use super::collect_facts;
   use crate::{
     document::HirDocument,
-    frontend::test_support::parse_source_for_test,
+    frontend::test_support::parse_for_test,
     semantics::{
       CitationId, GeneratedCitations, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
       SemanticPolicy, test_support::sample_references,
@@ -452,7 +452,7 @@ mod tests {
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir = parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = parse_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 
@@ -508,9 +508,8 @@ mod tests {
 
   #[test]
   fn analyze_resolves_ref_across_source_groups() {
-    let a =
-      parse_source_for_test("\\chapter[label=ch:intro]{Intro}\n", SourceId::new(0)).expect("パースに成功するはず");
-    let b = parse_source_for_test(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
+    let a = parse_for_test("\\chapter[label=ch:intro]{Intro}\n", SourceId::new(0)).expect("パースに成功するはず");
+    let b = parse_for_test(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -574,9 +573,8 @@ mod tests {
 
   #[test]
   fn analyze_resolves_forward_ref_across_source_groups() {
-    let a = parse_source_for_test(r"\ref{ch:later}", SourceId::new(0)).expect("パースに成功するはず");
-    let b =
-      parse_source_for_test("\\chapter[label=ch:later]{Later}\n", SourceId::new(1)).expect("パースに成功するはず");
+    let a = parse_for_test(r"\ref{ch:later}", SourceId::new(0)).expect("パースに成功するはず");
+    let b = parse_for_test("\\chapter[label=ch:later]{Later}\n", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -669,8 +667,8 @@ mod tests {
 
   #[test]
   fn escaped_comma_hint_is_decided_per_source() {
-    let a = parse_source_for_test(r"\cite{missing} と \cite{x\,y}", SourceId::new(0)).expect("パースに成功するはず");
-    let b = parse_source_for_test(r"\cite{other}", SourceId::new(1)).expect("パースに成功するはず");
+    let a = parse_for_test(r"\cite{missing} と \cite{x\,y}", SourceId::new(0)).expect("パースに成功するはず");
+    let b = parse_for_test(r"\cite{other}", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -710,9 +708,8 @@ mod tests {
 
   #[test]
   fn duplicate_label_across_sources_points_to_the_first_definition_in_the_other_source() {
-    let first = parse_source_for_test("\\chapter[label=dup]{A}\n", SourceId::new(0)).expect("パースに成功するはず");
-    let second =
-      parse_source_for_test("本文。\n\n\\chapter[label=dup]{B}\n", SourceId::new(1)).expect("パースに成功するはず");
+    let first = parse_for_test("\\chapter[label=dup]{A}\n", SourceId::new(0)).expect("パースに成功するはず");
+    let second = parse_for_test("本文。\n\n\\chapter[label=dup]{B}\n", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![first, second]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
@@ -798,7 +795,7 @@ mod completeness_tests {
   use super::collect_facts;
   use crate::{
     document::HirDocument,
-    frontend::test_support::parse_source_for_test,
+    frontend::test_support::parse_for_test,
     semantics::{GeneratedCitations, LabelId, SemanticDocument, SemanticPolicy, test_support::sample_references},
     source::SourceId,
     style::Style,
@@ -841,7 +838,7 @@ mod completeness_tests {
         source.push_str(&element.replace("%I%", &index.to_string()));
         source.push('\n');
       }
-      let hir = parse_source_for_test(&source, SourceId::new(0)).expect("パースに成功するはず");
+      let hir = parse_for_test(&source, SourceId::new(0)).expect("パースに成功するはず");
       let document = HirDocument::assemble(vec![hir]);
       let policy = SemanticPolicy::from_style(&Style::default());
 

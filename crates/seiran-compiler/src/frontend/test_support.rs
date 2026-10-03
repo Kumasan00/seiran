@@ -5,7 +5,7 @@ use std::{path::Path, sync::LazyLock};
 
 use crate::{
   document::HirSource,
-  frontend::{self, ParseSourceError, evaluator::EvalContext},
+  frontend::{self, ParseError, evaluator::EvalContext},
   project::PathResolver,
   source::SourceId,
 };
@@ -16,13 +16,13 @@ use crate::{
 /// 借用するので、context を値で返せるよう `'static` に置く。
 static UNBASED_RESOLVER: LazyLock<PathResolver> = LazyLock::new(|| return PathResolver::new(Path::new("")));
 
-/// [`frontend::parse_source`] を空の `base_dir` で呼ぶ。
+/// [`frontend::parse`] を空の `base_dir` で呼ぶ。
 ///
 /// # Errors
 ///
 /// 構文エラーまたは評価エラーをそのまま返す。
-pub(crate) fn parse_source_for_test(source: &str, source_id: SourceId) -> Result<HirSource, ParseSourceError> {
-  return frontend::parse_source(source, source_id, &UNBASED_RESOLVER);
+pub(crate) fn parse_for_test(source: &str, source_id: SourceId) -> Result<HirSource, ParseError> {
+  return frontend::parse(source, source_id, &UNBASED_RESOLVER);
 }
 
 /// `SourceId(0)` と空の `base_dir` の評価 context。ハンドラを直接呼ぶテスト用。

@@ -141,7 +141,7 @@ pub(super) mod test_support {
   use super::{InlineNode, LayoutNode, LoweringContext, TextStyle, lower_sources_with_headings};
   use crate::{
     document::HirDocument,
-    frontend::test_support::parse_source_for_test,
+    frontend::test_support::parse_for_test,
     project::config::ImageConfig,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
@@ -152,8 +152,7 @@ pub(super) mod test_support {
   ///
   /// 参照定義は文献フィクスチャ（`kwan2014` / `doe2020`）で、引用の表示・書誌は持たない。
   pub(crate) fn analyzed(source: &str) -> SemanticDocument {
-    let hir =
-      HirDocument::assemble(vec![parse_source_for_test(source, SourceId::new(0)).expect("パースに成功するはず")]);
+    let hir = HirDocument::assemble(vec![parse_for_test(source, SourceId::new(0)).expect("パースに成功するはず")]);
     return analyze_for_test(hir, &SemanticPolicy::from_style(&Style::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
@@ -388,7 +387,7 @@ mod tests {
   };
   use crate::{
     document::HirDocument,
-    frontend::test_support::parse_source_for_test,
+    frontend::test_support::parse_for_test,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
     typeset::boxes::{AnchorId, LinkTarget},
@@ -401,7 +400,7 @@ mod tests {
         .iter()
         .enumerate()
         .map(|(index, source)| {
-          return parse_source_for_test(source, SourceId::new(index)).expect("パースに成功するはず");
+          return parse_for_test(source, SourceId::new(index)).expect("パースに成功するはず");
         })
         .collect(),
     );

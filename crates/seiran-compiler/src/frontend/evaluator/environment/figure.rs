@@ -179,7 +179,7 @@ mod tests {
   fn figure_extracts_image_and_caption() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{./images/seiran.jpg}\caption{タイトル}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -203,7 +203,7 @@ mod tests {
   fn figure_caption_before_image_yields_top_position() {
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -217,7 +217,7 @@ mod tests {
   fn figure_captures_label() {
     let arena = Bump::new();
     let source = r"\begin{figure}[label=fig:foo]\image[width=10mm, height=10mm]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -232,7 +232,7 @@ mod tests {
   fn figure_rejects_missing_image() {
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{c}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -243,7 +243,7 @@ mod tests {
   fn figure_accepts_image_without_size() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -260,7 +260,7 @@ mod tests {
   fn figure_accepts_image_with_only_width() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -275,7 +275,7 @@ mod tests {
   fn figure_rejects_unknown_opt_key() {
     let arena = Bump::new();
     let source = r"\begin{figure}[foo=1]\image[width=1mm, height=1mm]{a}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -286,7 +286,7 @@ mod tests {
   fn image_captures_dpi_and_downsample() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -301,7 +301,7 @@ mod tests {
   fn image_rejects_zero_dpi() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -313,7 +313,7 @@ mod tests {
     // 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=0mm]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -324,7 +324,7 @@ mod tests {
   fn image_rejects_negative_height() {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[height=-5mm]{a.png}\end{figure}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

@@ -83,7 +83,7 @@ mod tests {
   )]
   fn eval_table(source: &str) -> Result<Vec<HirNode>, EvalError> {
     let arena = Bump::new();
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     return evaluate_children_to_hir(source, cst);
   }
 
@@ -321,7 +321,7 @@ mod tests {
     // `\head` の中は共通の本体走査を通るので、許可外コマンドは \row と同じ診断になる
     let arena = Bump::new();
     let source = "\\begin{table}\\head{\\bold{x}}\\row{a}\\end{table}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

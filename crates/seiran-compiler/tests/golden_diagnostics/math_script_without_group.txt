@@ -1,4 +1,4 @@
-frontend::parse::script_requires_group
+frontend::syntax::script_requires_group
 
   × 上付き・下付きの内容は {...} で囲む必要があります
    ╭─[tests/text/diagnostics/math_script_without_group.sei:3:25]

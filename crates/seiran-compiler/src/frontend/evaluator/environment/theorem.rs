@@ -82,7 +82,7 @@ mod tests {
   fn theorem_carries_class_and_body_with_no_number() {
     let arena = Bump::new();
     let source = r"\begin{theorem}本文\end{theorem}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -102,7 +102,7 @@ mod tests {
   fn proof_class_is_structured() {
     let arena = Bump::new();
     let source = r"\begin{proof}証明本文\end{proof}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -116,7 +116,7 @@ mod tests {
   fn theorem_captures_title() {
     let arena = Bump::new();
     let source = "\\begin{theorem}[title=ピタゴラスの定理]本文\\end{theorem}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -130,7 +130,7 @@ mod tests {
   fn theorem_title_accepts_escaped_comma() {
     let arena = Bump::new();
     let source = r"\begin{theorem}[title=a\, b]本文\end{theorem}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -144,7 +144,7 @@ mod tests {
   fn theorem_captures_label_without_resolving() {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\ref{thm:p}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -164,7 +164,7 @@ mod tests {
   fn proof_of_captures_target_label_without_resolving() {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\begin{proof}[of=thm:p]証明\end{proof}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -179,7 +179,7 @@ mod tests {
   fn theorem_rejects_of_key() {
     let arena = Bump::new();
     let source = r"\begin{theorem}[of=thm:p]本文\end{theorem}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -190,7 +190,7 @@ mod tests {
   fn proof_rejects_label_key() {
     let arena = Bump::new();
     let source = r"\begin{proof}[label=pf:1]証明\end{proof}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -201,7 +201,7 @@ mod tests {
   fn duplicate_theorem_label_is_structured_without_error() {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=dup]A\end{theorem}\begin{lemma}[label=dup]B\end{lemma}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 

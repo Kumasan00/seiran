@@ -40,7 +40,7 @@ mod tests {
   /// `.sei` ソースを評価して、最初の段落の先頭インライン（`\code`）の本文を取り出す
   fn code_text(source: &str) -> String {
     let arena = Bump::new();
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let result = evaluate_children_to_hir(source, cst).unwrap();
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {:?}", result[0]);
@@ -83,7 +83,7 @@ mod tests {
   fn inline_code_rejects_second_argument() {
     let arena = Bump::new();
     let source = r"\code{a}{b}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -97,7 +97,7 @@ mod tests {
   fn inline_code_requires_an_argument() {
     let arena = Bump::new();
     let source = r"\code";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -113,7 +113,7 @@ mod tests {
     // 数式評価器の語彙に `\code` は無い
     let arena = Bump::new();
     let source = r"$\code{a // b}$";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -124,7 +124,7 @@ mod tests {
   fn inline_code_rejects_opt_arg() {
     let arena = Bump::new();
     let source = r"\code[language=rust]{a}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

@@ -83,7 +83,7 @@ mod tests {
   fn cases_splits_rows_and_two_columns_unnumbered() {
     let arena = Bump::new();
     let source = r"\begin{cases}a & x > 0 \\ b & x < 0\end{cases}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst).unwrap();
 
@@ -98,7 +98,7 @@ mod tests {
   fn cases_rejects_three_columns() {
     let arena = Bump::new();
     let source = r"\begin{cases}a & b & c\end{cases}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -109,7 +109,7 @@ mod tests {
   fn cases_rejects_unknown_opt_key() {
     let arena = Bump::new();
     let source = r"\begin{cases}[foo=1]a & b\end{cases}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
@@ -120,7 +120,7 @@ mod tests {
   fn cases_rejects_notag() {
     let arena = Bump::new();
     let source = r"\begin{cases}a & b \notag\end{cases}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 

@@ -250,7 +250,7 @@ mod tests {
 
   /// ソースをパースし、最初の数式環境の本体を返す
   fn first_env_body<'a>(source: &'a str, arena: &'a Bump) -> &'a CstNode<'a> {
-    let root = syntax::parse(source, arena, mode_resolver()).unwrap();
+    let root = syntax::parse_cst(source, arena, mode_resolver()).unwrap();
     let env = find_env(root).expect("Environment ノードが見つからない");
     return EnvironmentView::new(env, source).body().expect("環境本体あり");
   }
@@ -336,7 +336,7 @@ mod tests {
   fn align_splits_rows_and_columns_and_numbers_each_row() {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \\ c &= d\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -353,7 +353,7 @@ mod tests {
   fn align_single_row_is_numbered() {
     let arena = Bump::new();
     let source = r"\begin{align}x &= y\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -367,7 +367,7 @@ mod tests {
   fn align_drops_trailing_blank_row_from_trailing_break() {
     let arena = Bump::new();
     let source = "\\begin{align}a &= b \\\\\n\\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -380,7 +380,7 @@ mod tests {
   fn align_numbered_false_suppresses_numbering() {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \\ c &= d\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -393,7 +393,7 @@ mod tests {
   fn align_cell_content_is_evaluated() {
     let arena = Bump::new();
     let source = r"\begin{align}x^{2} &= y\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -409,7 +409,7 @@ mod tests {
   fn align_rejects_env_level_label_opt_arg() {
     let arena = Bump::new();
     let source = r"\begin{align}[label=eq:foo]a &= b\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -420,7 +420,7 @@ mod tests {
   fn align_row_label_captures_label_and_keeps_numbering() {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \label{eq:foo} \\ c &= d\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -436,7 +436,7 @@ mod tests {
   fn align_row_label_on_notag_row_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \notag \label{eq:x}\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -447,7 +447,7 @@ mod tests {
   fn align_row_label_with_numbered_false_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \label{eq:x}\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -458,7 +458,7 @@ mod tests {
   fn align_row_label_not_at_row_end_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}a \label{eq:x} &= b\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -469,7 +469,7 @@ mod tests {
   fn align_duplicate_row_label_is_structured_without_error() {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \label{eq:x} \\ c &= d \label{eq:x}\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -482,7 +482,7 @@ mod tests {
   fn align_notag_suppresses_single_row() {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \\ c &= d \notag \\ e &= f\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -497,7 +497,7 @@ mod tests {
   fn align_notag_not_at_row_end_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}a \notag &= b\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -508,7 +508,7 @@ mod tests {
   fn align_notag_with_numbered_false_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \notag \\ c &= d\end{align}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -527,7 +527,7 @@ mod tests {
   fn gather_splits_rows_each_single_cell_and_numbers_each_row() {
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d\end{gather}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -541,7 +541,7 @@ mod tests {
   fn gather_rejects_column_break() {
     let arena = Bump::new();
     let source = r"\begin{gather}a & b\end{gather}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -552,7 +552,7 @@ mod tests {
   fn gather_notag_not_at_row_end_errors() {
     let arena = Bump::new();
     let source = r"\begin{gather}a \notag = b\end{gather}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -572,7 +572,7 @@ mod tests {
   fn split_aligns_columns_and_numbers_whole_env_once() {
     let arena = Bump::new();
     let source = r"\begin{split}a &= b \\ &= c\end{split}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -586,7 +586,7 @@ mod tests {
   fn split_numbered_false_suppresses_numbering() {
     let arena = Bump::new();
     let source = r"\begin{split}[numbered=false]a &= b \\ &= c\end{split}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -599,7 +599,7 @@ mod tests {
   fn split_with_label_captures_block_label() {
     let arena = Bump::new();
     let source = r"\begin{split}[label=eq:s]a &= b \\ &= c\end{split}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -615,7 +615,7 @@ mod tests {
   fn split_numbered_false_with_label_errors() {
     let arena = Bump::new();
     let source = r"\begin{split}[numbered=false, label=eq:s]a &= b\end{split}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -626,7 +626,7 @@ mod tests {
   fn split_rejects_row_label_marker() {
     let arena = Bump::new();
     let source = r"\begin{split}a &= b \label{eq:s}\end{split}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
@@ -645,7 +645,7 @@ mod tests {
   fn multiline_splits_rows_single_cell_and_numbers_whole_env_once() {
     let arena = Bump::new();
     let source = r"\begin{multiline}a + b \\ + c + d \\ + e\end{multiline}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
 
@@ -660,7 +660,7 @@ mod tests {
   fn multiline_rejects_column_break() {
     let arena = Bump::new();
     let source = r"\begin{multiline}a & b\end{multiline}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluator::evaluate_children_to_hir(source, cst);
 

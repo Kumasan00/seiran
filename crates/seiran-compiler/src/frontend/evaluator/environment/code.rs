@@ -51,7 +51,7 @@ mod tests {
   /// `.sei` ソースを評価して最初の [`HirNodeKind::CodeBlock`] の本文を取り出す
   fn code_text(source: &str) -> String {
     let arena = Bump::new();
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
     let result = evaluate_children_to_hir(source, cst).unwrap();
     let HirNodeKind::CodeBlock(text) = &result[0].kind else {
       panic!("CodeBlock が期待されます: {:?}", result[0]);
@@ -98,7 +98,7 @@ mod tests {
   fn code_block_rejects_language_option() {
     let arena = Bump::new();
     let source = "\\begin{code}[language=rust]\nbody\n\\end{code}";
-    let cst = test_support::parse(source, &arena).unwrap();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
 
     let result = evaluate_children_to_hir(source, cst);
 
