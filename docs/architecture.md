@@ -632,7 +632,7 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 
 フォントの OpenType 解析・検証・メトリクス取得・シェイピング。入力（19 種別の分類・検証済み設定・読込済み
 バイト列）は `project::font` の所有で、この module は**処理だけ**を持つ。サブセット化は行わない（krilla が
-PDF 生成時に実施する）。描画契約の値型（`FontMetric` / `FontFaceConfig`）は `publication` の所有で、ここは
+PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontFaceConfig`）は `publication` の所有で、ここは
 `project::FontConfig` と OpenType テーブルからそれらを組み立てる側（`GlyphRun` は `boxing` が組む）。
 
 - **`FontResources`（所有）と `FontSystem`（借用ビュー）の 2 段**（1 つの構造体にまとめると自己参照になる）。
