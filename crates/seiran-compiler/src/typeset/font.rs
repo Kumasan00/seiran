@@ -70,7 +70,7 @@ fn build_font_refs<'a>(
   font_data: &'a FontData,
 ) -> Result<FontRefs<'a>, Failures<FontLoadError>> {
   return FontMap::par_try_from_fn(|font_type| {
-    let font_data = font_data.get(font_type);
+    let font_data = font_data.bytes(font_type);
     let font_config = &config[font_type];
     let index = font_config.font_index;
     return FontRef::from_index(font_data, index).map_err(|source| {

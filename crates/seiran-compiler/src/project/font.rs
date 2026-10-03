@@ -16,7 +16,7 @@ pub use kind::FontType;
 pub(crate) use map::FontMap;
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-pub(crate) use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
+pub(crate) use settings::{FontConfig, FontConfigs, FontFeature, TextDirection, VariationAxis};
 use thiserror::Error;
 
 use crate::{
@@ -100,7 +100,7 @@ impl FontData {
 
   /// 指定されたフォント種別のバイト列を返す。
   #[must_use]
-  pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return &self.0[font_type]; }
+  pub(crate) fn bytes(&self, font_type: FontType) -> &[u8] { return &self.0[font_type]; }
 
   /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
   #[must_use]
@@ -139,7 +139,7 @@ mod tests {
 
     assert_eq!(source.read_count("/fonts/shared.ttf"), 1, "共有パスは 1 回しか読まれないはず");
     for &font_type in FontType::ALL {
-      assert_eq!(font_data.get(font_type), b"FAKE");
+      assert_eq!(font_data.bytes(font_type), b"FAKE");
     }
   }
 
