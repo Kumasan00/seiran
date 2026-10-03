@@ -7,7 +7,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError, arity,
-      environment::math::math_grid::{GridRow, is_blank_row},
+      environment::math::grid::{GridRow, is_blank_row},
       opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
     },
     syntax::view::EnvironmentView,
@@ -32,14 +32,14 @@ pub(in crate::frontend::evaluator::environment) enum NumberingMode {
   SingleEnv,
 }
 
-/// 数式環境の任意引数 `[numbered]` / `[label=...]` を解析・検証する
+/// 数式環境の任意引数 `[numbered]` / `[label=...]` を収集・検証する
 ///
 /// # Errors
 ///
 /// 未知の任意引数キー・不正な値、無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）で
 /// エラーを返す。数式本体の環境は parser が `{...}` を必須引数として読まないので、
 /// [`EvalError::ExtraEnvironmentArgument`] はここでは起きない。
-pub(super) fn parse_math_env_opts(
+pub(super) fn collect_math_env_opts(
   view: &EnvironmentView<'_>,
   mode: NumberingMode,
 ) -> Result<(bool, Option<String>), EvalError> {

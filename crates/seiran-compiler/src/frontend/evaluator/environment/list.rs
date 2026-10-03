@@ -48,7 +48,7 @@ pub(super) fn list(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: b
 
   if let Some(body) = view.body() {
     for ((), cmd_view) in
-      body_scan::strict_command_calls(source, body.children, view.name(), &[("item", ())], "\\item{...}")?
+      body_scan::collect_allowed_commands(source, body.children, view.name(), &[("item", ())], "\\item{...}")?
     {
       let item_opts = collect_command_opt_args(&cmd_view, &[MARKER.decl(), ITEM_GAP.decl()])?;
       let marker = item_opts.get(MARKER);

@@ -746,7 +746,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_math_grid_env_body_starting_with_group() {
+  fn evaluate_grid_env_body_starting_with_group() {
     // equation 以外の数式本体の環境も同じ規則（行・セルに分割する環境）
     for source in [
       r"\begin{align}{a}&=b\end{align}",

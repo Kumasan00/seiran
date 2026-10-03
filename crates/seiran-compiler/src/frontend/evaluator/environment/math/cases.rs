@@ -7,7 +7,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
+      environment::math::grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
       opt_args,
     },
     syntax::view::EnvironmentView,

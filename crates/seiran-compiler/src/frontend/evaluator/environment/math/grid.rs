@@ -8,7 +8,7 @@ mod numbering;
 use markers::{RowLabel, ensure_markers_at_row_end, try_take_row_marker};
 use miette::SourceSpan;
 pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
-use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
+use numbering::{assign_numbering, collect_math_env_opts, trim_trailing_blank_marker_rows};
 
 use crate::{
   document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind, NodeId},
@@ -150,7 +150,7 @@ pub(in crate::frontend::evaluator::environment) fn evaluate_math_env(
   layout: GridLayout,
   mode: NumberingMode,
 ) -> Result<HirNode, EvalError> {
-  let (numbered, env_label) = parse_math_env_opts(view, mode)?;
+  let (numbered, env_label) = collect_math_env_opts(view, mode)?;
 
   let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
   let id = ctx.alloc(view.span());

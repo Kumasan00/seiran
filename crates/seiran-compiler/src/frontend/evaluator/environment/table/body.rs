@@ -65,9 +65,13 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for (command, cmd_view) in
-      body_scan::strict_command_calls(source, body.children, "table", TABLE_COMMANDS, "\\head と \\row と \\caption")?
-    {
+    for (command, cmd_view) in body_scan::collect_allowed_commands(
+      source,
+      body.children,
+      "table",
+      TABLE_COMMANDS,
+      "\\head と \\row と \\caption",
+    )? {
       match command {
         TableCommand::Head => {
           if !head.is_empty() {
@@ -118,7 +122,7 @@ fn evaluate_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<Hi
   let source = view.source();
   let mut rows = Vec::new();
   for ((), row_view) in
-    body_scan::strict_command_calls(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
+    body_scan::collect_allowed_commands(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
   {
     rows.push(evaluate_row(&row_view, ctx, IndexPolicy::Reject)?);
   }
