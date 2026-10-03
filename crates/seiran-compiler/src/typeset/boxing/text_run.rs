@@ -15,7 +15,7 @@ use crate::{
     boxes::{HBox, HItem},
     boxing::{
       self, Glue, Measurer,
-      break_opportunities::{self, BreakKind, BreakPoint},
+      break_opportunities::{self, BreakKind, BreakOpportunity},
       script,
       shaping::ShapedRun,
       yakumono,
@@ -97,7 +97,7 @@ impl Measurer<'_> {
     let mut breaks = break_opportunities::break_opportunities(run.text(), hyphenation_lang);
     // セグメント末尾のスペースは（次の Text ノードとの境界として）glue に変換する
     if run.text().ends_with(' ') {
-      breaks.push(BreakPoint {
+      breaks.push(BreakOpportunity {
         byte: run.text().len(),
         kind: BreakKind::Glue,
       });
@@ -110,8 +110,8 @@ impl Measurer<'_> {
     let mut seg_glyph_start = 0usize;
     let mut seg_byte_start = 0usize;
 
-    for break_point in breaks {
-      let Some(cut) = plan_cut(&run, break_point, seg_glyph_start, is_japanese, hyphen) else {
+    for opportunity in breaks {
+      let Some(cut) = plan_cut(&run, opportunity, seg_glyph_start, is_japanese, hyphen) else {
         continue;
       };
       push_sub_run(&run, seg_glyph_start..cut.keep_glyph_end, seg_byte_start..cut.keep_byte_end, out);
@@ -237,7 +237,7 @@ struct Cut {
 /// クラスタを成している場合は分割を抑制する。
 fn plan_cut(
   run: &ShapedRun,
-  point: BreakPoint,
+  point: BreakOpportunity,
   glyph_start: usize,
   is_japanese: bool,
   hyphen: Option<&HBox>,
@@ -318,7 +318,7 @@ mod tests {
     publication::{FontMetric, Glyph, GlyphRun},
     typeset::{
       boxes::{HBox, HBoxContent, HItem},
-      boxing::break_opportunities::{BreakKind, BreakPoint},
+      boxing::break_opportunities::{BreakKind, BreakOpportunity},
     },
   };
 
@@ -368,7 +368,7 @@ mod tests {
   #[test]
   fn glue_cut_drops_the_space_glyph_and_resumes_after_it() {
     let run = ascii_shaped("ab cd");
-    let point = BreakPoint {
+    let point = BreakOpportunity {
       byte: 3,
       kind: BreakKind::Glue,
     };
@@ -389,7 +389,7 @@ mod tests {
   #[test]
   fn penalty_cut_uses_cjk_glue_for_japanese_and_penalty_otherwise() {
     let run = ascii_shaped("abcd");
-    let point = BreakPoint {
+    let point = BreakOpportunity {
       byte: 2,
       kind: BreakKind::Penalty,
     };
@@ -405,7 +405,7 @@ mod tests {
   #[test]
   fn hyphen_cut_is_skipped_without_a_measured_hyphen_box() {
     let run = ascii_shaped("abcd");
-    let point = BreakPoint {
+    let point = BreakOpportunity {
       byte: 2,
       kind: BreakKind::Hyphen,
     };
@@ -456,7 +456,7 @@ mod tests {
   #[test]
   fn cut_is_skipped_inside_a_cluster() {
     let run = clustered_run();
-    let inside_cluster = BreakPoint {
+    let inside_cluster = BreakOpportunity {
       byte: 1,
       kind: BreakKind::Penalty,
     };
@@ -467,7 +467,7 @@ mod tests {
   #[test]
   fn cut_is_skipped_at_or_before_the_cursor() {
     let run = ascii_shaped("abcd");
-    let behind_cursor = BreakPoint {
+    let behind_cursor = BreakOpportunity {
       byte: 2,
       kind: BreakKind::Penalty,
     };

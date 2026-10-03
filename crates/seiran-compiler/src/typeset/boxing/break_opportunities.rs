@@ -17,7 +17,7 @@ pub(super) enum BreakKind {
 
 /// テキスト内の 1 つの分割可能点
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct BreakPoint {
+pub(super) struct BreakOpportunity {
   /// 分割位置（バイトオフセット）。この位置の直前で行を折り返せる
   pub byte: usize,
   /// 分割可能点の種類
@@ -26,9 +26,9 @@ pub(super) struct BreakPoint {
 
 /// テキストの分割可能点を列挙する
 #[must_use]
-pub(crate) fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<BreakPoint> {
+pub(crate) fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<BreakOpportunity> {
   let segmenter = LineSegmenter::new_auto(LineBreakOptions::default());
-  let mut breaks: Vec<BreakPoint> = segmenter
+  let mut breaks: Vec<BreakOpportunity> = segmenter
     .segment_str(text)
     .filter(|&byte| return byte > 0 && byte < text.len())
     .map(|byte| {
@@ -37,21 +37,21 @@ pub(crate) fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) ->
       } else {
         BreakKind::Penalty
       };
-      return BreakPoint { byte, kind };
+      return BreakOpportunity { byte, kind };
     })
     .collect();
 
   if let Some(lang) = hyphenation_lang {
-    let occupied: Vec<usize> = breaks.iter().map(|break_point| return break_point.byte).collect();
+    let occupied: Vec<usize> = breaks.iter().map(|opportunity| return opportunity.byte).collect();
     for byte in hyphenation::hyphenation_points(text, lang) {
       if !occupied.contains(&byte) {
-        breaks.push(BreakPoint {
+        breaks.push(BreakOpportunity {
           byte,
           kind: BreakKind::Hyphen,
         });
       }
     }
-    breaks.sort_by_key(|break_point| return break_point.byte);
+    breaks.sort_by_key(|opportunity| return opportunity.byte);
   }
 
   return breaks;
@@ -59,7 +59,7 @@ pub(crate) fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) ->
 
 #[cfg(test)]
 mod tests {
-  use super::{BreakKind, BreakPoint, Lang, break_opportunities};
+  use super::{BreakKind, BreakOpportunity, Lang, break_opportunities};
 
   #[test]
   fn latin_spaces_become_glue_breaks() {
@@ -67,7 +67,7 @@ mod tests {
 
     assert_eq!(
       breaks,
-      vec![BreakPoint {
+      vec![BreakOpportunity {
         byte: 6,
         kind: BreakKind::Glue
       }]
@@ -79,9 +79,9 @@ mod tests {
     let breaks = break_opportunities("日本語の文章", None);
 
     assert_eq!(breaks.len(), 5, "{breaks:?}");
-    for (i, break_point) in breaks.iter().enumerate() {
-      assert_eq!(break_point.byte, (i + 1) * 3);
-      assert_eq!(break_point.kind, BreakKind::Penalty);
+    for (i, opportunity) in breaks.iter().enumerate() {
+      assert_eq!(opportunity.byte, (i + 1) * 3);
+      assert_eq!(opportunity.kind, BreakKind::Penalty);
     }
   }
 
@@ -103,15 +103,15 @@ mod tests {
     assert_eq!(
       breaks,
       vec![
-        BreakPoint {
+        BreakOpportunity {
           byte: 4,
           kind: BreakKind::Glue
         },
-        BreakPoint {
+        BreakOpportunity {
           byte: 6,
           kind: BreakKind::Hyphen
         },
-        BreakPoint {
+        BreakOpportunity {
           byte: 10,
           kind: BreakKind::Hyphen
         },
