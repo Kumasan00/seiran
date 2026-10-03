@@ -258,7 +258,7 @@ mod test_support {
     return handler(&ctx);
   }
 
-  /// `.sei` スニペットを本番のレジストリ付きで parse する
+  /// `.sei` スニペットを本番のレジストリ付きで CST へ構文解析する
   ///
   /// # Errors
   ///
@@ -267,7 +267,7 @@ mod test_support {
     return syntax::parse_cst(source, arena, mode_resolver());
   }
 
-  /// スニペットを parse して最初の `CommandCall` ノードを取り出す
+  /// スニペットを CST へ構文解析し、最初の `CommandCall` ノードを取り出す
   ///
   /// # Panics
   ///
