@@ -24,7 +24,7 @@ pub(crate) use citation::{
   load_references,
 };
 #[cfg(test)]
-pub(crate) use counter::CounterPart;
+pub(crate) use counter::CounterAncestor;
 pub(crate) use counter::{CounterKind, CounterValue};
 pub(crate) use error::{AnalyzeError, SemanticError, SemanticFailures};
 pub(crate) use ids::{HeadingKey, LabelId};
