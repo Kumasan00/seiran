@@ -52,8 +52,8 @@ pub(crate) enum HirMathKind {
   Styled {
     /// 適用する字形 variant
     variant: MathVariant,
-    /// 本体
-    body: Vec<HirMath>,
+    /// 装飾対象の数式要素
+    children: Vec<HirMath>,
   },
 }
 

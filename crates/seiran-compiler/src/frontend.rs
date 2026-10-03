@@ -441,12 +441,12 @@ mod tests {
       panic!("InlineMath が期待されます");
     };
     assert_eq!(math.len(), 1);
-    let HirMathKind::Styled { variant, body } = &math[0].kind else {
+    let HirMathKind::Styled { variant, children } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
     assert_eq!(*variant, MathVariant::Bold);
-    assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0].kind, HirMathKind::Text(t) if t == "x"));
+    assert_eq!(children.len(), 1);
+    assert!(matches!(&children[0].kind, HirMathKind::Text(t) if t == "x"));
   }
 
   #[test]
@@ -459,11 +459,11 @@ mod tests {
     let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
-    let HirMathKind::Styled { variant, body } = &math[0].kind else {
+    let HirMathKind::Styled { variant, children } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
     assert_eq!(*variant, MathVariant::SansBoldItalic);
-    assert!(matches!(&body[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
+    assert!(matches!(&children[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
   }
 
   #[test]
@@ -486,11 +486,11 @@ mod tests {
       let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
         panic!("InlineMath が期待されます: {name}");
       };
-      let HirMathKind::Styled { variant, body } = &math[0].kind else {
+      let HirMathKind::Styled { variant, children } = &math[0].kind else {
         panic!("Styled が期待されます ({name}): {:?}", math[0]);
       };
       assert_eq!(*variant, expected, "{name} は {expected:?} に解決されるべき");
-      assert!(matches!(&body[0].kind, HirMathKind::Text(t) if t == "R"), "body は Text(\"R\"): {name}");
+      assert!(matches!(&children[0].kind, HirMathKind::Text(t) if t == "R"), "children は Text(\"R\"): {name}");
     }
   }
 
@@ -532,7 +532,7 @@ mod tests {
     };
     let HirMathKind::Styled {
       variant: outer,
-      body: outer_body,
+      children: outer_children,
     } = &math[0].kind
     else {
       panic!("外側 Styled が期待されます");
@@ -540,13 +540,13 @@ mod tests {
     assert_eq!(*outer, MathVariant::Bold);
     let HirMathKind::Styled {
       variant: inner,
-      body: inner_body,
-    } = &outer_body[0].kind
+      children: inner_children,
+    } = &outer_children[0].kind
     else {
-      panic!("内側 Styled が期待されます: {:?}", outer_body[0]);
+      panic!("内側 Styled が期待されます: {:?}", outer_children[0]);
     };
     assert_eq!(*inner, MathVariant::Italic);
-    assert!(matches!(&inner_body[0].kind, HirMathKind::Text(t) if t == "x"));
+    assert!(matches!(&inner_children[0].kind, HirMathKind::Text(t) if t == "x"));
   }
 
   #[test]

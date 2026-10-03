@@ -154,7 +154,7 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
     });
     let here = Some(node.id);
     match &node.kind {
-      HirMathKind::Group(children) | HirMathKind::Styled { body: children, .. } => walk_math(children, here, out),
+      HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => walk_math(children, here, out),
       HirMathKind::Superscript(child) | HirMathKind::Subscript(child) => {
         walk_math(std::slice::from_ref(child.as_ref()), here, out);
       },

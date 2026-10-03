@@ -230,8 +230,8 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       opt_args::no_command_opt_args(&view)?;
       let first_arg = arity::exactly_one_arg(&view, "1 個（数式本体）")?;
       let id = ctx.alloc(view.span());
-      let body = evaluate_math_children(source, ctx, first_arg)?;
-      return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
+      let children = evaluate_math_children(source, ctx, first_arg)?;
+      return Ok(HirMath::new(id, HirMathKind::Styled { variant, children }));
     },
     MathCommandKind::Frac => {
       opt_args::no_command_opt_args(&view)?;
