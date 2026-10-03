@@ -38,7 +38,7 @@ pub(crate) struct FontConfig {
   pub direction: Option<TextDirection>,
   /// OpenType フィーチャー設定（4 バイトタグ + 値）
   /// 例："liga"（ligatures）、"smcp"（small capitals）
-  pub features: Option<Vec<Feature>>,
+  pub features: Option<Vec<FontFeature>>,
 }
 
 /// 書字方向（`harfrust::Direction` の Invalid 以外にマップ）
@@ -77,7 +77,7 @@ impl FromStr for TextDirection {
 
 /// OpenType フィーチャーの設定（タグと値のペア）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Feature {
+pub(crate) struct FontFeature {
   /// OpenType フィーチャータグ（4 バイト）
   pub tag: [u8; 4],
   /// フィーチャーの値（通常は 0=無効、1=有効）

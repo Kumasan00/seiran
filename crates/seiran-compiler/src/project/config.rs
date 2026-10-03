@@ -23,7 +23,7 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{
-    self, Feature, FontConfig, FontMap, FontType, InFile, PathResolver, ProjectPath, ProjectSource, TextDirection,
+    self, FontConfig, FontFeature, FontMap, FontType, InFile, PathResolver, ProjectPath, ProjectSource, TextDirection,
     TomlErrorParts, VariationAxis,
   },
 };
@@ -55,7 +55,7 @@ struct FontValues {
   /// 書字方向
   direction: Option<TextDirection>,
   /// OpenType フィーチャー設定（タグ変換済み）
-  features: Option<Vec<Feature>>,
+  features: Option<Vec<FontFeature>>,
 }
 
 /// 指定パスから設定ファイルを読み込みます。
@@ -401,11 +401,11 @@ fn parse_font_values(
   });
 
   let features = raw_font_config.features.as_deref().and_then(|feats| {
-    let converted: Vec<Feature> = feats
+    let converted: Vec<FontFeature> = feats
       .iter()
       .filter_map(|feature| match tag::parse_feature_or_axis(&feature.tag) {
         Ok(tag) => {
-          return Some(Feature {
+          return Some(FontFeature {
             tag,
             value: feature.value,
           });

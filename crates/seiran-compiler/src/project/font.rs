@@ -16,7 +16,7 @@ pub use kind::FontType;
 pub(crate) use map::FontMap;
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-pub(crate) use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
+pub(crate) use settings::{FontConfig, FontConfigs, FontFeature, TextDirection, VariationAxis};
 use thiserror::Error;
 
 use crate::{
