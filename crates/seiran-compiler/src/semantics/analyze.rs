@@ -137,6 +137,6 @@ mod tests {
 
     let error = analyze(&source, document, &references, &style).expect_err("未定義ラベル参照はエラーになるはず");
 
-    assert!(matches!(error, AnalyzeError::Analyze(_)), "got: {error:?}");
+    assert!(matches!(error, AnalyzeError::Semantic(_)), "got: {error:?}");
   }
 }

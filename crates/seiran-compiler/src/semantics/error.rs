@@ -29,7 +29,7 @@ pub(crate) enum AnalyzeError {
   CitationStyle(#[from] CitationStyleError),
   /// ラベル・`\ref`・カウンタ・引用キーの意味解析エラー
   #[error(transparent)]
-  Analyze(#[from] SemanticFailures),
+  Semantic(#[from] SemanticFailures),
 }
 
 /// 表示単位（1 診断 = 1 ソース）に分けた意味解析エラーの非空集合。
