@@ -172,8 +172,8 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
     assert_eq!(lines[1].boxes.len(), 1);
-    assert!(close(lines[1].boxes[0].x, 0.0));
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
+    assert!(close(lines[1].boxes[0].dx, 0.0));
+    assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -197,7 +197,7 @@ mod tests {
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2, "index_mark はボックスとして描画されない");
-    assert!(close(lines[0].boxes[1].x, 10.0), "index_mark を挟んでも 2 つ目の box の x は不変: {lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 10.0), "index_mark を挟んでも 2 つ目の box の x は不変: {lines:?}");
     assert_eq!(lines[0].index_marks.len(), 1);
     assert_eq!(lines[0].index_marks[0].word, "語");
     assert_eq!(lines[0].index_marks[0].reading, None);
@@ -252,8 +252,8 @@ mod tests {
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED box の 2 つ: {lines:?}");
-    assert!(close(lines[0].boxes[0].x, 0.0));
-    assert!(close(lines[0].boxes[1].x, 42.0), "QED は右端寄せ: {lines:?}");
+    assert!(close(lines[0].boxes[0].dx, 0.0));
+    assert!(close(lines[0].boxes[1].dx, 42.0), "QED は右端寄せ: {lines:?}");
   }
 
   #[test]
@@ -268,9 +268,9 @@ mod tests {
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
-    assert!(close(lines[0].boxes[0].x, 0.0));
+    assert!(close(lines[0].boxes[0].dx, 0.0));
     assert_eq!(lines[1].boxes.len(), 1, "2 行目は QED box のみ: {lines:?}");
-    assert!(close(lines[1].boxes[0].x, 6.0), "QED は右端寄せ: {lines:?}");
+    assert!(close(lines[1].boxes[0].dx, 6.0), "QED は右端寄せ: {lines:?}");
   }
 
   #[test]
@@ -306,8 +306,8 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 17.0), "{lines:?}");
-    let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
+    assert!(close(lines[0].boxes[1].dx, 17.0), "{lines:?}");
+    let right_edge = lines[0].boxes[1].dx + lines[0].boxes[1].hbox.width;
     assert!(close(right_edge, 27.0), "非最終行の右端は版面右端に一致: {lines:?}");
   }
 
@@ -318,7 +318,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1);
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -334,7 +334,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -350,7 +350,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 17.5), "伸長は能力の上限で止まる: {lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 17.5), "伸長は能力の上限で止まる: {lines:?}");
   }
 
   #[test]
@@ -366,7 +366,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(24.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 14.0), "{lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 14.0), "{lines:?}");
   }
 
   #[test]
@@ -382,7 +382,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(23.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 15.0 - 5.0 / 3.0), "収縮は能力の下限で止まる: {lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 15.0 - 5.0 / 3.0), "収縮は能力の下限で止まる: {lines:?}");
   }
 
   #[test]
@@ -398,7 +398,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(26.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -434,7 +434,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -451,9 +451,9 @@ mod tests {
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 2 つ + 行末ハイフン: {lines:?}");
-    assert!(close(lines[0].boxes[2].x, 20.0), "{lines:?}");
-    assert!(close(lines[0].boxes[2].width, 3.0), "{lines:?}");
-    let right_edge = lines[0].boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max).to_pt();
+    assert!(close(lines[0].boxes[2].dx, 20.0), "{lines:?}");
+    assert!(close(lines[0].boxes[2].hbox.width, 3.0), "{lines:?}");
+    let right_edge = lines[0].boxes.iter().map(|b| return b.dx + b.hbox.width).fold(Length::ZERO, Length::max).to_pt();
     assert!(right_edge <= 25.0 + f32::EPSILON, "ハイフン込みで右端超過なし: {right_edge}");
     assert_eq!(lines[1].boxes.len(), 1);
   }
@@ -482,7 +482,7 @@ mod tests {
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "box1 + ハイフン: {lines:?}");
-    assert!(close(lines[0].boxes[1].width, 1.0), "使われたのは disc1 のハイフン: {lines:?}");
+    assert!(close(lines[0].boxes[1].hbox.width, 1.0), "使われたのは disc1 のハイフン: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
   }
 
@@ -499,8 +499,8 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(29.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 16.0), "glue 伸長後の box2: {lines:?}");
-    let right_edge = lines[0].boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
+    assert!(close(lines[0].boxes[1].dx, 16.0), "glue 伸長後の box2: {lines:?}");
+    let right_edge = lines[0].boxes.iter().map(|b| return b.dx + b.hbox.width).fold(Length::ZERO, Length::max);
     assert!(close(right_edge, 29.0), "ハイフン込みで右端に揃う: {}", right_edge.to_pt());
   }
 
@@ -522,7 +522,7 @@ mod tests {
     for (penalty_line, glue_line) in penalty_lines.iter().zip(&glue_lines) {
       assert_eq!(penalty_line.boxes.len(), glue_line.boxes.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
       for (penalty_box, glue_box) in penalty_line.boxes.iter().zip(&glue_line.boxes) {
-        assert!(close_l(penalty_box.x, glue_box.x), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
+        assert!(close_l(penalty_box.dx, glue_box.dx), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
       }
     }
   }
@@ -536,7 +536,7 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "{lines:?}");
     assert_eq!(lines[1].boxes.len(), 1, "{lines:?}");
-    assert_eq!(lines[1].boxes[0].x, Length::ZERO, "演算子後のアキは次行の行頭に残らない: {lines:?}");
+    assert_eq!(lines[1].boxes[0].dx, Length::ZERO, "演算子後のアキは次行の行頭に残らない: {lines:?}");
   }
 
   #[test]
@@ -554,7 +554,7 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "空白で折る: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
-    assert_eq!(lines[1].boxes[1].x, Length::pt(13.0), "折らなかった分割点はアキとして残る: {lines:?}");
+    assert_eq!(lines[1].boxes[1].dx, Length::pt(13.0), "折らなかった分割点はアキとして残る: {lines:?}");
   }
 
   #[test]

@@ -2,7 +2,7 @@
 //! （`#[cfg(test)]` 限定）
 //!
 //! **不変条件**: `pub(crate)` の関数・メソッドは引数型にも返り値型にも、`typeset` root が `#[cfg(test)]` でも
-//! 再エクスポートしない組版中間型（`HBox` / `Line` / `PositionedBox` / `PlacedBlock` 以外の `Placed*` /
+//! 再エクスポートしない組版中間型（`HBox` / `Line` / `PlacedHBox` / `PlacedBlock` 以外の `Placed*` /
 //! `TableRowBox` / `TableCellBox` / `OutlineEntry`）を現さない。
 
 use std::collections::HashMap;
@@ -20,8 +20,8 @@ use crate::{
     PreparedGeometry, TypesetError,
     boxes::{
       AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-      PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox, TableCellBox,
-      TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
+      PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableCellBox, TableColumn,
+      TableRowBox, max_font_size_in_items, position_table_row_boxes,
     },
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -134,11 +134,15 @@ fn single_box_line(
 ) -> PlacedBlock {
   return PlacedBlock::Line {
     line: Line {
-      boxes: vec![PositionedBox {
-        content,
-        x,
+      boxes: vec![PlacedHBox {
+        hbox: HBox {
+          content,
+          width: metrics.box_width,
+          height: metrics.height,
+          depth: metrics.depth,
+        },
+        dx: x,
         dy,
-        width: metrics.box_width,
       }],
       height: metrics.height,
       depth: metrics.depth,
@@ -169,11 +173,11 @@ pub(crate) fn atom_line(
   dy: Length,
   baseline_y: Length,
 ) -> PlacedBlock {
-  let placed: Vec<PlacedHItem> = children
+  let placed: Vec<PlacedHBox> = children
     .into_iter()
     .map(|(run, size, child_dx, child_dy)| {
-      return PlacedHItem {
-        item: glyph_box(run, size),
+      return PlacedHBox {
+        hbox: glyph_box(run, size),
         dx: child_dx,
         dy: child_dy,
       };
@@ -291,8 +295,8 @@ pub(crate) fn table_block(
         .reduce(Length::max)
         .unwrap_or(spec.height);
       let mut boxes = position_table_row_boxes(&row, &columns, col_widths, cell_padding);
-      for positioned in &mut boxes {
-        positioned.x += x;
+      for placed in &mut boxes {
+        placed.dx += x;
       }
       let rule = row.rule_above.then_some(PlacedTableRule {
         x,

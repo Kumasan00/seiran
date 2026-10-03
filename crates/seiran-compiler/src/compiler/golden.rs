@@ -266,7 +266,7 @@ fn index_group_heading_label(block: &PlacedBlock) -> Option<String> {
   let [single] = line.boxes.as_slice() else {
     return None;
   };
-  let HBoxContent::Glyphs(run) = &single.content else {
+  let HBoxContent::Glyphs(run) = &single.hbox.content else {
     return None;
   };
   return LABELS.contains(&run.text.as_str()).then(|| return run.text.clone());
@@ -420,12 +420,12 @@ fn footnote_marker_number(blocks: &[PlacedBlock]) -> u32 {
       _ => return None,
     })
     .expect("脚注本体は先頭行にマーカーを持つはず");
-  let HBoxContent::Atom(children) = &marker.content else {
+  let HBoxContent::Atom(children) = &marker.hbox.content else {
     panic!("脚注マーカーは上付きの閉じた箱のはず: {marker:?}");
   };
   let text: String = children
     .iter()
-    .filter_map(|child| match &child.item.content {
+    .filter_map(|child| match &child.hbox.content {
       HBoxContent::Glyphs(run) => return Some(run.text.as_str()),
       HBoxContent::Atom(_) => return None,
     })

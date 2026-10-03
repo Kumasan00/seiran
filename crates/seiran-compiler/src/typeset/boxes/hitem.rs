@@ -150,10 +150,10 @@ pub(crate) struct HBox {
 impl HBox {
   /// 子要素の絶対配置（`dx` / `dy`）から寸法を確定した Atom ボックスを構築する
   #[must_use]
-  pub(crate) fn atom(children: Vec<PlacedHItem>) -> Self {
-    let width = children.iter().map(|c| return c.dx + c.item.width).fold(Length::ZERO, Length::max);
-    let height = children.iter().map(|c| return c.dy + c.item.height).fold(Length::ZERO, Length::max);
-    let depth = children.iter().map(|c| return c.item.depth - c.dy).fold(Length::ZERO, Length::max);
+  pub(crate) fn atom(children: Vec<PlacedHBox>) -> Self {
+    let width = children.iter().map(|c| return c.dx + c.hbox.width).fold(Length::ZERO, Length::max);
+    let height = children.iter().map(|c| return c.dy + c.hbox.height).fold(Length::ZERO, Length::max);
+    let depth = children.iter().map(|c| return c.hbox.depth - c.dy).fold(Length::ZERO, Length::max);
     return HBox {
       content: HBoxContent::Atom(children),
       width,
@@ -172,23 +172,27 @@ pub(crate) enum HBoxContent {
   ///
   /// インライン数式の上付き・下付き・分数・平方根など、行分割をまたがない
   /// 複合要素を絶対配置の子要素として保持する。
-  Atom(Vec<PlacedHItem>),
+  Atom(Vec<PlacedHBox>),
 }
 
-/// Atom 内の絶対配置済み要素
+/// 親（行・表行・Atom）の中に置いた計測済みボックス
+///
+/// `dx` / `dy` の基準点は持ち主で決まり、[`Line::boxes`](crate::typeset::boxes::Line::boxes) なら行頭
+/// （着地する段の左端）とベースライン、表行（[`PlacedTableRow::boxes`](crate::typeset::boxes::PlacedTableRow::boxes)）
+/// なら本文左端と行のベースライン、[`HBoxContent::Atom`] なら Atom の左端とベースライン。
 #[derive(Debug, Clone)]
-pub(crate) struct PlacedHItem {
-  /// 配置するボックス
-  pub item: HBox,
+pub(crate) struct PlacedHBox {
+  /// 置くボックス
+  pub hbox: HBox,
+  /// 基準点からの水平オフセット
+  pub dx: Length,
   /// ベースラインからの縦オフセット（正で上方向）
   pub dy: Length,
-  /// 親 Atom 内の水平オフセット
-  pub dx: Length,
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{HBox, HBoxContent, HItem, PlacedHItem};
+  use super::{HBox, HBoxContent, HItem, PlacedHBox};
   use crate::length::Length;
 
   /// pt 値から `Length` を作る
@@ -207,15 +211,15 @@ mod tests {
   #[test]
   fn atom_dimensions_from_superscript_like_children() {
     let children = vec![
-      PlacedHItem {
-        item: text_free_box(10.0, 8.0, 2.0),
-        dy: pt(0.0),
+      PlacedHBox {
+        hbox: text_free_box(10.0, 8.0, 2.0),
         dx: pt(0.0),
+        dy: pt(0.0),
       },
-      PlacedHItem {
-        item: text_free_box(5.0, 6.0, 1.0),
-        dy: pt(4.0),
+      PlacedHBox {
+        hbox: text_free_box(5.0, 6.0, 1.0),
         dx: pt(10.0),
+        dy: pt(4.0),
       },
     ];
     let atom = HBox::atom(children);
@@ -228,15 +232,15 @@ mod tests {
   #[test]
   fn atom_dimensions_from_subscript_like_children() {
     let children = vec![
-      PlacedHItem {
-        item: text_free_box(10.0, 8.0, 2.0),
-        dy: pt(0.0),
+      PlacedHBox {
+        hbox: text_free_box(10.0, 8.0, 2.0),
         dx: pt(0.0),
+        dy: pt(0.0),
       },
-      PlacedHItem {
-        item: text_free_box(5.0, 6.0, 1.0),
-        dy: pt(-3.0),
+      PlacedHBox {
+        hbox: text_free_box(5.0, 6.0, 1.0),
         dx: pt(10.0),
+        dy: pt(-3.0),
       },
     ];
     let atom = HBox::atom(children);

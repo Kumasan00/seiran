@@ -10,8 +10,8 @@ use crate::{
   length::Length,
   project::ProjectPath,
   typeset::boxes::{
-    hitem::{HBox, IndexTerm},
-    line::{Line, PositionedBox},
+    hitem::{HBox, IndexTerm, PlacedHBox},
+    line::Line,
     link::{AnchorId, LinkTarget},
   },
 };
@@ -165,7 +165,7 @@ pub(crate) struct PlacedTableRow {
   /// セル内容が共有するベースラインのページ上端からの距離
   pub baseline_y: Length,
   /// 本文左端からの絶対 x 座標へ配置済みのセル内容
-  pub boxes: Vec<PositionedBox>,
+  pub boxes: Vec<PlacedHBox>,
   /// 行の上罫線。`None` は罫線なし
   pub rule: Option<PlacedTableRule>,
 }

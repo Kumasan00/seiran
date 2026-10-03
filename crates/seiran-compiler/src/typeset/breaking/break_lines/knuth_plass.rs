@@ -400,11 +400,11 @@ mod tests {
 
   /// 行の右端（box 群の最大右端）
   fn right_edge(line: &Line) -> Length {
-    return line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
+    return line.boxes.iter().map(|b| return b.dx + b.hbox.width).fold(Length::ZERO, Length::max);
   }
 
   /// 行の box 幅を左から並べたもの（行末ハイフンを含む）
-  fn box_widths(line: &Line) -> Vec<Length> { return line.boxes.iter().map(|b| return b.width).collect(); }
+  fn box_widths(line: &Line) -> Vec<Length> { return line.boxes.iter().map(|b| return b.hbox.width).collect(); }
 
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
@@ -432,7 +432,7 @@ mod tests {
     for (kp_line, greedy_line) in kp.iter().zip(&greedy) {
       assert_eq!(kp_line.boxes.len(), greedy_line.boxes.len());
       for (a, b) in kp_line.boxes.iter().zip(&greedy_line.boxes) {
-        assert!(close_l(a.x, b.x), "kp: {kp:?}, greedy: {greedy:?}");
+        assert!(close_l(a.dx, b.dx), "kp: {kp:?}, greedy: {greedy:?}");
       }
     }
   }
@@ -491,7 +491,7 @@ mod tests {
 
     // glue は自然幅 5 のまま
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -528,7 +528,7 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 1, "2 行目は QED のみ: {lines:?}");
-    assert!(close(lines[1].boxes[0].x, 6.0), "QED は右端寄せ: {lines:?}");
+    assert!(close(lines[1].boxes[0].dx, 6.0), "QED は右端寄せ: {lines:?}");
   }
 
   #[test]
@@ -539,7 +539,7 @@ mod tests {
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED: {lines:?}");
-    assert!(close(lines[0].boxes[1].x, 42.0), "QED は右端寄せ: {lines:?}");
+    assert!(close(lines[0].boxes[1].dx, 42.0), "QED は右端寄せ: {lines:?}");
   }
 
   #[test]
@@ -581,7 +581,7 @@ mod tests {
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "行末にハイフンが付く: {lines:?}");
-    assert_eq!(lines[0].boxes[2].x, pt(22.0), "ハイフンは行内アイテムの直後に置く: {lines:?}");
+    assert_eq!(lines[0].boxes[2].dx, pt(22.0), "ハイフンは行内アイテムの直後に置く: {lines:?}");
     assert_eq!(box_widths(&lines[1]), vec![pt(10.0), pt(10.0)], "{lines:?}");
   }
 
@@ -758,7 +758,7 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "{lines:?}");
     assert_eq!(lines[1].boxes.len(), 1, "{lines:?}");
-    assert_eq!(lines[1].boxes[0].x, Length::ZERO, "演算子後のアキは次行の行頭に残らない: {lines:?}");
+    assert_eq!(lines[1].boxes[0].dx, Length::ZERO, "演算子後のアキは次行の行頭に残らない: {lines:?}");
   }
 
   #[test]
@@ -780,7 +780,7 @@ mod tests {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "2 つ目の空白で折る: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
-    assert_eq!(lines[1].boxes[1].x, Length::pt(15.0), "折らなかった分割点はアキとして残る: {lines:?}");
+    assert_eq!(lines[1].boxes[1].dx, Length::pt(15.0), "折らなかった分割点はアキとして残る: {lines:?}");
   }
 
   #[test]

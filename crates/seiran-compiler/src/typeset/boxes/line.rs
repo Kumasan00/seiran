@@ -3,7 +3,7 @@
 use crate::{
   length::Length,
   typeset::boxes::{
-    hitem::{HBoxContent, IndexTerm, MeasuredFootnote},
+    hitem::{IndexTerm, MeasuredFootnote, PlacedHBox},
     link::LinkTarget,
     page::PlacedLink,
   },
@@ -15,7 +15,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
   /// 行内の配置済みボックス（左から順）
-  pub boxes: Vec<PositionedBox>,
+  pub boxes: Vec<PlacedHBox>,
   /// ベースラインから上の高さ
   pub height: Length,
   /// ベースラインから下の深さ（正値）
@@ -37,7 +37,7 @@ impl Line {
   /// 右端の最大値を取る。
   #[must_use]
   pub(crate) fn width(&self) -> Length {
-    return self.boxes.iter().map(|placed| return placed.x + placed.width).fold(Length::ZERO, Length::max);
+    return self.boxes.iter().map(|placed| return placed.dx + placed.hbox.width).fold(Length::ZERO, Length::max);
   }
 
   /// 行内の水平位置（ボックスとクリック矩形）をまとめて `dx` だけ右へずらす
@@ -49,8 +49,8 @@ impl Line {
     if dx == Length::ZERO {
       return;
     }
-    for positioned in &mut self.boxes {
-      positioned.x += dx;
+    for placed in &mut self.boxes {
+      placed.dx += dx;
     }
     for link in &mut self.links {
       link.x0 += dx;
@@ -91,17 +91,4 @@ impl LineLink {
       height,
     });
   }
-}
-
-/// 行内に配置されたボックス
-#[derive(Debug, Clone)]
-pub(crate) struct PositionedBox {
-  /// ボックスの内容
-  pub content: HBoxContent,
-  /// 行頭からの水平オフセット
-  pub x: Length,
-  /// ベースラインからの縦オフセット（正で上方向）
-  pub dy: Length,
-  /// 幅
-  pub width: Length,
 }

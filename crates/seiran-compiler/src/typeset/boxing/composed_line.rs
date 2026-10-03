@@ -6,7 +6,7 @@
 use crate::{
   length::Length,
   typeset::{
-    boxes::{HBox, Line, LineLink, PositionedBox},
+    boxes::{HBox, Line, LineLink, PlacedHBox},
     boxing::Shaper,
     lowering::TextStyle,
   },
@@ -16,7 +16,7 @@ use crate::{
 #[derive(Debug, Default)]
 pub(in crate::typeset) struct LineAccum {
   /// 配置済みボックス列
-  boxes: Vec<PositionedBox>,
+  boxes: Vec<PlacedHBox>,
   /// 行の高さ（ベースラインより上）
   height: Length,
   /// 行の深さ（ベースラインより下）
@@ -30,13 +30,13 @@ impl LineAccum {
     for hbox in hboxes {
       self.height = self.height.max(hbox.height);
       self.depth = self.depth.max(hbox.depth);
-      self.boxes.push(PositionedBox {
-        content: hbox.content,
-        x,
+      let width = hbox.width;
+      self.boxes.push(PlacedHBox {
+        hbox,
+        dx: x,
         dy: Length::ZERO,
-        width: hbox.width,
       });
-      x += hbox.width;
+      x += width;
     }
     return x;
   }
@@ -104,7 +104,7 @@ mod tests {
     );
 
     let line = acc.into_line(Vec::new());
-    let xs: Vec<Length> = line.boxes.iter().map(|b| return b.x).collect();
+    let xs: Vec<Length> = line.boxes.iter().map(|b| return b.dx).collect();
     assert_eq!(xs, vec![Length::pt(100.0), Length::pt(110.0)]);
     assert_eq!(end_x, Length::pt(125.0), "戻り値は末尾ボックスの右端");
     assert_eq!(line.height, Length::pt(8.0));

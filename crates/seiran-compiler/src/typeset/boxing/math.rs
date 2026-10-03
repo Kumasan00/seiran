@@ -8,7 +8,7 @@ use crate::{
   length::Length,
   project::FontType,
   typeset::{
-    boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
+    boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
     boxing::Measurer,
     lowering::{DelimiterGlyphs, MathBlockLayout},
   },
@@ -75,7 +75,7 @@ impl Measurer<'_> {
       acc += col_widths[c] + column_gap;
     }
 
-    let mut placed: Vec<PlacedHItem> = Vec::new();
+    let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut numbers: Vec<MathRowNumber> = Vec::new();
     let mut baseline_dy = Length::ZERO;
     let mut prev_depth = Length::ZERO;
@@ -88,10 +88,10 @@ impl Measurer<'_> {
       for (c, cell) in row.cells.into_iter().enumerate() {
         // 列幅は列内のセル幅の最大値なので、`Align::offset` の 0 へのクランプは到達しない。
         let intra = cell.align.offset(col_widths[c], cell.content.width);
-        placed.push(PlacedHItem {
-          item: cell.content,
-          dy: baseline_dy,
+        placed.push(PlacedHBox {
+          hbox: cell.content,
           dx: col_x[c] + intra,
+          dy: baseline_dy,
         });
       }
       if let Some(number) = row.number {
@@ -151,32 +151,32 @@ impl Measurer<'_> {
     let body_center = (body_height - body_depth) / 2.0;
     let gap = self.default_font_size * 0.15;
 
-    let mut children: Vec<PlacedHItem> = Vec::new();
+    let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
       let width = delim.width;
-      children.push(PlacedHItem {
-        item: delim,
-        dy,
+      children.push(PlacedHBox {
+        hbox: delim,
         dx,
+        dy,
       });
       dx += width + gap;
     }
-    children.push(PlacedHItem {
-      item: body,
-      dy: Length::ZERO,
+    children.push(PlacedHBox {
+      hbox: body,
       dx,
+      dy: Length::ZERO,
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
-      children.push(PlacedHItem {
-        item: delim,
-        dy,
+      children.push(PlacedHBox {
+        hbox: delim,
         dx,
+        dy,
       });
     }
     return HBox::atom(children);

@@ -14,8 +14,8 @@ mod table_box;
 
 pub(super) use align::Align;
 pub(super) use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK};
-pub(crate) use hitem::{HBox, HBoxContent, HItem, IndexTerm, MeasuredFootnote, PlacedHItem};
-pub(super) use line::{Line, LineLink, PositionedBox};
+pub(crate) use hitem::{HBox, HBoxContent, HItem, IndexTerm, MeasuredFootnote, PlacedHBox};
+pub(super) use line::{Line, LineLink};
 pub(crate) use link::{AnchorId, FootnoteId, LinkTarget};
 pub(crate) use page::{
   Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
