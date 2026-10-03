@@ -59,7 +59,7 @@ pub(super) fn build_cell(
         span: cell_cmd.span().into(),
       });
     }
-    return extract_cell_command(&cell_cmd, ctx, index_policy);
+    return evaluate_cell_command(&cell_cmd, ctx, index_policy);
   }
 
   let id = ctx.alloc(segment_span(elements, empty_span));
@@ -72,7 +72,7 @@ pub(super) fn build_cell(
 }
 
 /// `\cell[span=N]{...}` を属性付きセルに変換する
-fn extract_cell_command(
+fn evaluate_cell_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
