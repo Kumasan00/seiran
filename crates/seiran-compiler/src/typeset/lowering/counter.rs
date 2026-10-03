@@ -86,7 +86,7 @@ fn render_named(style: &Style, value: &CounterValue, target: CounterName) -> Str
 mod tests {
   use super::*;
   use crate::{
-    semantics::CounterPart,
+    semantics::CounterAncestor,
     style::{CounterTemplate, NumberStyle, TheoremReset},
   };
 
@@ -94,7 +94,7 @@ mod tests {
   fn counter_value(name: CounterName, ancestors: &[(CounterName, u32)], own: u32) -> CounterValue {
     return CounterValue {
       kind: CounterKind::Counter(name),
-      ancestors: parts(ancestors),
+      ancestors: ancestor_chain(ancestors),
       own,
     };
   }
@@ -103,17 +103,17 @@ mod tests {
   fn theorem_value(class: TheoremClass, ancestors: &[(CounterName, u32)], own: u32) -> CounterValue {
     return CounterValue {
       kind: CounterKind::Theorem(class),
-      ancestors: parts(ancestors),
+      ancestors: ancestor_chain(ancestors),
       own,
     };
   }
 
   /// `(カウンタ名, 値)` の列を祖先チェーンに変換する
-  fn parts(ancestors: &[(CounterName, u32)]) -> Vec<CounterPart> {
+  fn ancestor_chain(ancestors: &[(CounterName, u32)]) -> Vec<CounterAncestor> {
     return ancestors
       .iter()
       .map(|(name, value)| {
-        return CounterPart {
+        return CounterAncestor {
           name: *name,
           value: *value,
         };

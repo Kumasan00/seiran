@@ -1,7 +1,7 @@
 //! カウンタの値（構造のみ）と、カウンタの現在値を保持するレジストリ
 //!
-//! 値の各要素は [`CounterPart`] として「どのカウンタの何番か」を名前付きで運ぶ。**祖先の決め方を
-//! 持つのは crate 内でこの module だけ**で、表示側は受け取った値を名前で引くだけになる。
+//! 祖先カウンタの値は [`CounterAncestor`] として「どのカウンタの何番か」を名前付きで運ぶ。**祖先の
+//! 決め方を持つのは crate 内でこの module だけ**で、表示側は受け取った値を名前で引くだけになる。
 
 use std::collections::HashMap;
 
@@ -19,12 +19,12 @@ pub(crate) enum CounterKind {
   Theorem(TheoremClass),
 }
 
-/// カウンタ値を構成する 1 要素 — どのカウンタの何番かの対
+/// 祖先カウンタ 1 つ分の値 — どのカウンタの何番かの対
 ///
 /// 名前は「どのカウンタか」という**構造**であって表示ではない（`display_name` /
 /// `number_style` は持たない）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterPart {
+pub(crate) struct CounterAncestor {
   /// この数がどのカウンタのものか
   pub name: CounterName,
   /// そのカウンタの値
@@ -37,7 +37,7 @@ pub(crate) struct CounterValue {
   /// このカウンタの種別
   pub kind: CounterKind,
   /// 祖先カウンタの値（最も遠い祖先から順・末尾が直近の親）
-  pub ancestors: Vec<CounterPart>,
+  pub ancestors: Vec<CounterAncestor>,
   /// このカウンタ自身の値
   pub own: u32,
 }
@@ -52,7 +52,11 @@ impl CounterValue {
     if self.kind == CounterKind::Counter(target) {
       return Some(self.own);
     }
-    return self.ancestors.iter().find(|part| return part.name == target).map(|part| return part.value);
+    return self
+      .ancestors
+      .iter()
+      .find(|ancestor| return ancestor.name == target)
+      .map(|ancestor| return ancestor.value);
   }
 }
 
@@ -122,7 +126,7 @@ impl<'p> CounterRegistry<'p> {
   /// 子孫を平坦に列挙する（例: `part.resets` は `chapter` を含む）ため、探索範囲を「自身より手前」に
   /// 限定して最も近い候補を選ぶ。これにより祖先の飛び越え（`part` が `section` の直接の
   /// 親と誤認されること）を防ぎ、かつ候補の添字が再帰のたびに単調に減るため必ず停止する
-  fn ancestor_values(&self, name: CounterName) -> Vec<CounterPart> {
+  fn ancestor_values(&self, name: CounterName) -> Vec<CounterAncestor> {
     let own_index = CounterName::VARIANTS
       .iter()
       .position(|candidate| return *candidate == name)
@@ -136,7 +140,7 @@ impl<'p> CounterRegistry<'p> {
       return Vec::new();
     };
     let mut chain = self.ancestor_values(parent);
-    chain.push(CounterPart {
+    chain.push(CounterAncestor {
       name: parent,
       value: self.value(parent),
     });
@@ -149,7 +153,7 @@ impl<'p> CounterRegistry<'p> {
     let def = self.policy.theorem(class);
     let own = *self.theorem_values.get(def.counter.as_str()).unwrap_or(&0);
     let ancestors = match def.reset_by {
-      Some(heading_counter) => vec![CounterPart {
+      Some(heading_counter) => vec![CounterAncestor {
         name: heading_counter,
         value: self.value(heading_counter),
       }],
@@ -173,7 +177,7 @@ mod tests {
 
   /// 祖先チェーンを `(カウンタ名, 値)` の列にしてアサートしやすくする
   fn ancestors(value: &CounterValue) -> Vec<(CounterName, u32)> {
-    return value.ancestors.iter().map(|part| return (part.name, part.value)).collect();
+    return value.ancestors.iter().map(|ancestor| return (ancestor.name, ancestor.value)).collect();
   }
 
   #[test]
