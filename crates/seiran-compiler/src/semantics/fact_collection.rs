@@ -16,7 +16,7 @@ use crate::{
 
 /// HIR 全体を文書順に走査し、意味の事実を確定する
 ///
-/// 走査（ラベル登録・採番・参照箇所の記録）を全グループぶん終えてから、まとめて参照の存在検証を
+/// 走査（ラベル登録・採番・参照箇所の記録）を全ソースぶん終えてから、まとめて参照の存在検証を
 /// 行う。前方参照（`proof` が後方で定義される定理を `[of=...]` で参照する等）とソース跨ぎの参照を
 /// 許すため、検証は走査中ではなく走査後に置く。
 ///
@@ -35,23 +35,23 @@ pub(super) fn collect_facts(
   // 重複ラベルは走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
   // 続けても後続のカウンタ値はずれない。
   let mut duplicate_labels: Vec<(NodeId, SemanticError)> = Vec::new();
-  for group in hir.groups() {
+  for nodes in hir.source_nodes() {
     let mut walker = Walker {
-      locations: hir.locations(),
+      source_map: hir.source_map(),
       references,
       registry: &mut registry,
       facts: &mut facts,
       unknown_citations: &mut unknown_citations,
       duplicate_labels: &mut duplicate_labels,
     };
-    walker.nodes(group);
+    walker.nodes(nodes);
   }
 
   let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
     .map(|(node, error)| return (order_key(node), error))
-    .chain(unresolved_refs(&facts, hir.locations()))
+    .chain(unresolved_refs(&facts, hir.source_map()))
     .collect();
   // 3 種はそれぞれ文書順に積まれているので、安定ソートで種別を跨いだ文書順になる。
   errors.sort_by_key(|(key, _)| return *key);
@@ -65,7 +65,7 @@ pub(super) fn collect_facts(
 
 /// 文書順の全順序を与えるソート鍵（ソースの宣言順 → ソース内の preorder 連番）
 ///
-/// `NodeId::local` はソース内の preorder 連番、`HirDocument::assemble` はグループを
+/// `NodeId::local` はソース内の preorder 連番、`HirDocument::assemble` はソースごとのノード列を
 /// `SourceId::index()` 昇順へ正規化するので、この鍵はパースの実行順に依存しない。
 type OrderKey = (usize, u32);
 
@@ -78,8 +78,8 @@ fn order_key(node: NodeId) -> OrderKey { return (node.source().index(), node.loc
 /// 入力由来のエラーはすべてこの検証より手前で診断として返している。
 fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &SemanticPolicy) {
   let checker = Checker { facts, policy };
-  for group in hir.groups() {
-    checker.nodes(group);
+  for nodes in hir.source_nodes() {
+    checker.nodes(nodes);
   }
   return;
 }
@@ -228,13 +228,13 @@ impl Checker<'_> {
 ///
 /// 参照先は先勝ちで記録された最初の定義（[`SemanticFacts::declare_label`]）なので、同名ラベルが
 /// 重複していても解決先は一意に決まる。重複の検出と同じ 1 つの表を引く。
-fn unresolved_refs(facts: &SemanticFacts, locations: &SourceMap) -> Vec<(OrderKey, SemanticError)> {
+fn unresolved_refs(facts: &SemanticFacts, source_map: &SourceMap) -> Vec<(OrderKey, SemanticError)> {
   return facts
     .refs
     .iter()
     .filter(|(_, label)| return facts.label_definition(label.as_str()).is_none())
     .map(|(site, label)| {
-      let location = locations.location(site);
+      let location = source_map.location(site);
       let error = SemanticError::UnresolvedRef {
         label: label.as_str().to_owned(),
         span: location.span.into(),
@@ -248,11 +248,11 @@ fn unresolved_refs(facts: &SemanticFacts, locations: &SourceMap) -> Vec<(OrderKe
 /// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の記録を 1 回の走査で行う
 struct Walker<'a, 'p> {
   /// `NodeId` → ソース位置の対応表
-  locations: &'a SourceMap,
+  source_map: &'a SourceMap,
   /// 引用キーの既知性を判定する参照定義
   references: &'a References,
   /// カウンタの採番状態。`'p`（レジストリが借りる `SemanticPolicy` の寿命）を `'a` と分けるのは、
-  /// `&mut` が中身の型について不変なので、1 本にするとグループごとの可変借用が全グループへ延びるため
+  /// `&mut` が中身の型について不変なので、1 本にするとソースごとの可変借用が全ソースへ延びるため
   registry: &'a mut CounterRegistry<'p>,
   /// 走査中に記録する事実の書き込み先
   facts: &'a mut SemanticFacts,
@@ -296,8 +296,8 @@ impl Walker<'_, '_> {
     let Err(first) = self.facts.declare_label(node, name, site) else {
       return;
     };
-    let duplicate = self.locations.location(site);
-    let error = SemanticError::duplicate_label(name, duplicate, self.locations.location(first.site));
+    let duplicate = self.source_map.location(site);
+    let error = SemanticError::duplicate_label(name, duplicate, self.source_map.location(first.site));
     self.duplicate_labels.push((site, error));
     return;
   }
@@ -402,7 +402,7 @@ impl Walker<'_, '_> {
     let missing: Vec<String> =
       keys.iter().filter(|key| return self.references.get(key.as_str()).is_none()).cloned().collect();
     if !missing.is_empty() {
-      let location = self.locations.location(site);
+      let location = self.source_map.location(site);
       self.unknown_citations.push(UnknownCitationSite {
         site,
         source_id: location.source_id,
@@ -507,7 +507,7 @@ mod tests {
   }
 
   #[test]
-  fn analyze_resolves_ref_across_source_groups() {
+  fn analyze_resolves_ref_across_sources() {
     let a = parse_for_test("\\chapter[label=ch:intro]{Intro}\n", SourceId::new(0)).expect("パースに成功するはず");
     let b = parse_for_test(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
@@ -572,7 +572,7 @@ mod tests {
   }
 
   #[test]
-  fn analyze_resolves_forward_ref_across_source_groups() {
+  fn analyze_resolves_forward_ref_across_sources() {
     let a = parse_for_test(r"\ref{ch:later}", SourceId::new(0)).expect("パースに成功するはず");
     let b = parse_for_test("\\chapter[label=ch:later]{Later}\n", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);

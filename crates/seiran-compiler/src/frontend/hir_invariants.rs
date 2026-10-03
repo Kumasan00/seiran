@@ -210,11 +210,11 @@ fn source_order_does_not_affect_ids_or_spans() {
   };
 
   for document in [&a_then_b, &b_then_a] {
-    assert_eq!(document.groups()[0], alone_a.nodes, "位置 0 は SourceId 0 の A のノード列のはず");
-    assert_eq!(document.groups()[1], alone_b.nodes, "B の HIR はパース順に依存しないはず");
+    assert_eq!(document.source_nodes()[0], alone_a.nodes, "位置 0 は SourceId 0 の A のノード列のはず");
+    assert_eq!(document.source_nodes()[1], alone_b.nodes, "B の HIR はパース順に依存しないはず");
     for visited in visit_source(&alone_b) {
       assert_eq!(
-        document.locations().get(visited.id).map(|location| return location.span),
+        document.source_map().get(visited.id).map(|location| return location.span),
         Some(alone_b.spans.span_of(visited.id)),
         "B の位置表はパース順に依存しないはず"
       );
@@ -229,12 +229,12 @@ fn every_hir_node_has_location_inside_source() {
     let source_id = SourceId::new(0);
     let hir = parse_fixture(&name, &content, source_id);
     let document = HirDocument::assemble(vec![hir]);
-    let nodes = document.groups().first().unwrap();
+    let nodes = document.source_nodes().first().unwrap();
     let mut visited = Vec::new();
     walk_nodes(nodes, None, &mut visited);
 
     for entry in &visited {
-      let location = document.locations().get(entry.id).unwrap_or_else(|| {
+      let location = document.source_map().get(entry.id).unwrap_or_else(|| {
         panic!("{name}: すべての HIR ノードは SourceMap から位置を引けるはず");
       });
       assert_eq!(location.source_id, source_id, "{name}: 位置は自分のソースに属するはず");

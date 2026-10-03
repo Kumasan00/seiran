@@ -10,8 +10,8 @@ use crate::{
 /// 文書木（HIR）を再帰的に走査し、画像パスを重複なく収集する（`ProjectPath` の昇順）。
 pub(crate) fn collect_image_paths(document: &HirDocument) -> Vec<ProjectPath> {
   let mut paths: BTreeSet<ProjectPath> = BTreeSet::new();
-  for group in document.groups() {
-    walk_nodes(group, &mut paths);
+  for nodes in document.source_nodes() {
+    walk_nodes(nodes, &mut paths);
   }
   return paths.into_iter().collect();
 }
