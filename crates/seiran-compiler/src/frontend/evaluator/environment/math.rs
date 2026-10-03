@@ -2,10 +2,10 @@
 
 mod cases;
 mod equation;
-mod math_grid;
+mod grid;
 mod matrix;
 
 pub(super) use cases::cases;
 pub(super) use equation::equation;
-pub(super) use math_grid::{NumberingMode, evaluate_math_env};
+pub(super) use grid::{NumberingMode, evaluate_math_env};
 pub(super) use matrix::matrix;
