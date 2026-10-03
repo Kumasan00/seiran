@@ -288,7 +288,7 @@ fn failed_phase_records_start_and_failed_end_without_the_diagnostic() {
 }
 
 #[test]
-fn debug_reports_each_step_once_under_its_region_span() {
+fn debug_reports_each_step_once_under_its_matter_span() {
   let log = compile_and_capture_log(DEBUG_ALL_FILTER);
 
   for line in log.lines() {
@@ -301,9 +301,9 @@ fn debug_reports_each_step_once_under_its_region_span() {
       line.contains("compile:typeset:break_pages:"),
       "callee の event が orchestrator の span の中で出るはず: {line:?}"
     );
-    assert!(line.contains("region=\""), "span のフィールドで前付け / 本文 / 後付けを区別できるはず: {line:?}");
+    assert!(line.contains("matter=\""), "span のフィールドで前付け / 本文 / 後付けを区別できるはず: {line:?}");
   }
-  assert!(page_break_lines.iter().any(|line| return line.contains("region=\"body\"")));
+  assert!(page_break_lines.iter().any(|line| return line.contains("matter=\"body\"")));
   assert_eq!(log.matches("前付け・本文・後付けのページを連結").count(), 1, "連結は 1 回の別事象のはず:\n{log}");
   for message in [
     "意味解析の成果物",
