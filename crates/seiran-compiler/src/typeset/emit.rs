@@ -48,7 +48,7 @@ fn build_resources(
     return PublicationFont {
       bytes: font_data.shared_bytes(font_type),
       face: face_configs[font_type].clone(),
-      metric: metrics[font_type],
+      metrics: metrics[font_type],
     };
   });
   let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();

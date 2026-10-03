@@ -16,7 +16,7 @@ pub(super) use validation::FontWarning;
 use crate::{
   failures::Failures,
   project::{FontConfigs, FontData, FontMap, FontType},
-  publication::FontMetric,
+  publication::FontMetrics,
 };
 
 /// フォントの解析エラー。
@@ -83,15 +83,12 @@ fn build_font_refs<'a>(
   });
 }
 
-/// 全フォント種別の基本メトリクス。
-type FontMetrics = FontMap<FontMetric>;
-
 /// 全フォントの `head` / `hhea` テーブルからメトリクスを取得する。
 ///
 /// # Errors
 ///
 /// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を `FontType::ALL` 順で返す。
-fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMetrics, Failures<FontLoadError>> {
+fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMap<FontMetrics>, Failures<FontLoadError>> {
   return FontMap::try_from_fn(|font_type| {
     let font_ref = &font_refs[font_type];
     let head = font_ref.head().map_err(|source| {
@@ -108,7 +105,7 @@ fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMetrics, Failures<
         source,
       };
     })?;
-    return Ok(FontMetric {
+    return Ok(FontMetrics {
       upem: f32::from(head.units_per_em()),
       ascender: f32::from(hhea.ascender().to_i16()),
       descender: f32::from(hhea.descender().to_i16()),

@@ -315,7 +315,7 @@ mod tests {
   use crate::{
     length::Length,
     project::FontType,
-    publication::{FontMetric, Glyph, GlyphRun},
+    publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{
       boxes::{HBox, HBoxContent, HItem},
       boxing::break_opportunities::{BreakKind, BreakOpportunity},
@@ -323,7 +323,7 @@ mod tests {
   };
 
   /// upem 1000・1em = 10pt の仮想フォント
-  const METRIC: FontMetric = FontMetric {
+  const METRICS: FontMetrics = FontMetrics {
     upem: 1000.0,
     ascender: 800.0,
     descender: -200.0,
@@ -351,7 +351,7 @@ mod tests {
         font_type: FontType::Serif,
         color: None,
       },
-      METRIC,
+      METRICS,
     );
   }
 
@@ -449,7 +449,7 @@ mod tests {
         font_type: FontType::Serif,
         color: None,
       },
-      METRIC,
+      METRICS,
     );
   }
 
