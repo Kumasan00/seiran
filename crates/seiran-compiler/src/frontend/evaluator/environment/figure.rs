@@ -65,7 +65,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
 
   if let Some(body) = view.body() {
     for (command, cmd_view) in
-      body_scan::strict_command_calls(source, body.children, "figure", FIGURE_COMMANDS, "\\image と \\caption")?
+      body_scan::collect_allowed_commands(source, body.children, "figure", FIGURE_COMMANDS, "\\image と \\caption")?
     {
       match command {
         FigureCommand::Image => {

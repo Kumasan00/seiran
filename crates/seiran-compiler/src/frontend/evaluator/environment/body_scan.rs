@@ -23,7 +23,7 @@ use crate::frontend::{
 /// 許可外のコマンドは [`EvalError::UnexpectedCommandInEnvironment`]、
 /// テキスト・入れ子環境などのコンテンツは [`EvalError::UnexpectedContentInEnvironment`]
 /// を返します。
-pub(super) fn strict_command_calls<'a, K: Copy>(
+pub(super) fn collect_allowed_commands<'a, K: Copy>(
   source: &'a str,
   children: &'a [CstElement<'a>],
   env_name: &str,
@@ -91,38 +91,38 @@ mod tests {
   }
 
   #[test]
-  fn strict_scan_collects_allowed_commands() {
+  fn collect_allowed_commands_collects_listed_commands() {
     let arena = Bump::new();
     let source = "\\begin{itemize}\n\\item{A}\n\\item{B}\n\\end{itemize}";
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    let views = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item").unwrap();
+    let views = collect_allowed_commands(source, body.children, "itemize", &[("item", ())], "\\item").unwrap();
 
     let names: Vec<&str> = views.iter().map(|((), view)| return view.name()).collect();
     assert_eq!(names, vec!["item", "item"]);
   }
 
   #[test]
-  fn strict_scan_rejects_stray_text() {
+  fn collect_allowed_commands_rejects_stray_text() {
     let arena = Bump::new();
     let source = r"\begin{itemize}some text\item{A}\end{itemize}";
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    let result = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item");
+    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", ())], "\\item");
 
     assert!(matches!(result, Err(EvalError::UnexpectedContentInEnvironment { ref env, .. }) if env == "itemize"));
   }
 
   #[test]
-  fn strict_scan_rejects_disallowed_command() {
+  fn collect_allowed_commands_rejects_disallowed_command() {
     let arena = Bump::new();
     let source = r"\begin{itemize}\bold{x}\end{itemize}";
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    let result = strict_command_calls(source, body.children, "itemize", &[("item", ())], "\\item");
+    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", ())], "\\item");
 
     assert!(matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, .. }) if name == "bold"));
   }
