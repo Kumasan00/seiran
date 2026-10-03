@@ -384,8 +384,9 @@ CST を走査して HIR へ評価変換する。各ハンドラは型付きビ�
 frontend 側に置くのは「評価中に持ち回る値」が frontend の関心だから（`HirBuilder` へ載せる形へ戻さない —
 signature の置換は全ハンドラで一様で、interface の凝集度で判断すると context 側が正しい）。
 
-- コマンドは `COMMAND_MAP`（引数の位置ごとの読み取りモードは値の `CommandKind` から導出する）、記号は
-  `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源としてディスパッチする。レジストリの値は
+- コマンドは `COMMANDS`（引数の位置ごとの読み取りモードは値の `CommandKind` から導出する）、記号は
+  `SYMBOLS`（検索は `command::symbol` の関数 1 つで、本文と数式の両方がそれを引く）、環境は `ENVIRONMENTS` の
+  phf レジストリを単一の真実源としてディスパッチする。レジストリの値は
   `EnvironmentKind` で、定理クラス・引用の種類・リストの順序付き / なし・数式グリッド環境のセル配置
   （`document::GridLayout`）と採番の粒度をデータとして持つ（環境名から種別を求め直す経路は無い）。
   セル配置と採番の粒度は独立の 2 軸でどの組み合わせも有効、区切りの許可は配置から導出するので、
@@ -417,7 +418,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   （固定 `Allow` にすると `\section{\bold{x\index{x}}}` が拒否をすり抜ける）
 - **トークンからインライン要素への変換も 1 実装**（`inline_from_token`）。`NodeId` を発行しない値を返し、
   段落 ID を子より先に予約する規約は呼び出し元（本文の流れ）が守る
-- どの引数・環境本体が verbatim かはレジストリ（`COMMAND_MAP` / `ENVIRONMENTS`）の値が持つ種別だけで決まる。
+- どの引数・環境本体が verbatim かはレジストリ（`COMMANDS` / `ENVIRONMENTS`）の値が持つ種別だけで決まる。
   任意引数値は宣言の対象外で常に通常のトークン化を通る
 
 #### テスト用子 module

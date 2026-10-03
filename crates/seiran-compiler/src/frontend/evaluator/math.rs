@@ -9,7 +9,9 @@ use crate::{
   document::{HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity, command::symbol::MathSymbol, inline::resolve_math_symbol_command, opt_args,
+      EvalContext, EvalError, arity,
+      command::symbol::{self, MathSymbol},
+      opt_args,
     },
     syntax::{
       CstElement, CstNode, SyntaxKind,
@@ -187,7 +189,7 @@ impl MathCommandKind {
     return match name {
       "frac" => Some(Self::Frac),
       "sqrt" => Some(Self::Sqrt),
-      _ => resolve_math_symbol_command(name).map(Self::Symbol),
+      _ => symbol::lookup(name).map(Self::Symbol),
     };
   }
 

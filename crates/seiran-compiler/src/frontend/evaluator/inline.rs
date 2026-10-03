@@ -5,14 +5,7 @@ use std::mem;
 use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
-    evaluator::{
-      EvalContext, EvalError,
-      command::{
-        self,
-        symbol::{MathSymbol, SYMBOL_MAP},
-      },
-      math,
-    },
+    evaluator::{EvalContext, EvalError, command, math},
     syntax::{
       CstElement, CstNode,
       kind::SyntaxKind,
@@ -254,10 +247,6 @@ pub(crate) fn evaluate_inline_elements(
   }
   return Ok(sink.take());
 }
-
-/// 記号コマンド名から数式記号（文字 + 数式クラス）を解決する
-#[must_use]
-pub(crate) fn resolve_math_symbol_command(name: &str) -> Option<MathSymbol> { return SYMBOL_MAP.get(name).copied(); }
 
 #[cfg(test)]
 mod tests {
