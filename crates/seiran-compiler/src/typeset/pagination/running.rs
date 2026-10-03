@@ -92,7 +92,7 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
       continue;
     }
     let Some((page_label, pages_label)) = spec.page_numbers.get(index) else {
-      unreachable!("ページ番号ラベル列は paginate がページ列から作るので、長さはページ数と一致する")
+      unreachable!("ページ番号ラベル列は pagination::paginate がページ列から作るので、長さはページ数と一致する")
     };
     if let Some(slots) = &spec.header {
       page.header = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);

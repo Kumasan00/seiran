@@ -22,7 +22,7 @@ use crate::typeset::{
 /// 未確定の寸法は作られない。区画の区切りはタイトルページ自身の末尾の強制改ページだけで、前付けは強制改ページを積まない
 /// （前付けの末尾に残っても強制改ページは冪等なので白紙ページを作らない）。積むブロックが無い
 /// （`title_page` / `toc` がともに無効、またはタイトルページの中身も目次エントリも無い）なら空ページ列を返す。
-pub(super) fn typeset_front_matter(
+pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   facts: &BodyPageFacts,
   images: &ImageResources,
