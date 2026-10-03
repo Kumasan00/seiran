@@ -204,8 +204,7 @@ pub(crate) enum TheoremReset {
 impl TheoremReset {
   /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
   ///
-  /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典で、逆写像
-  /// [`Self::for_counter`] もここから導く。
+  /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典。
   #[must_use]
   pub(crate) fn counter_name(self) -> Option<CounterName> {
     return match self {
@@ -215,12 +214,6 @@ impl TheoremReset {
       Self::Subsection => Some(CounterName::Subsection),
       Self::None => None,
     };
-  }
-
-  /// 見出しカウンタ `name` をリセット先に持つレベルを返す（[`Self::counter_name`] の逆写像）
-  #[must_use]
-  pub(crate) fn for_counter(name: CounterName) -> Option<Self> {
-    return Self::VARIANTS.iter().copied().find(|level| return level.counter_name() == Some(name));
   }
 }
 
@@ -667,30 +660,6 @@ font_knd = \"serif\"
     let result: Result<TheoremStylesWrapper, _> = toml::from_str(toml);
 
     assert!(result.is_err(), "ネストした未知のフィールド名は拒否されるべき: {result:?}");
-  }
-
-  #[test]
-  fn for_counter_maps_every_counter_name() {
-    let expected: [(CounterName, Option<TheoremReset>); 9] = [
-      (CounterName::Part, Some(TheoremReset::Part)),
-      (CounterName::Chapter, Some(TheoremReset::Chapter)),
-      (CounterName::Section, Some(TheoremReset::Section)),
-      (CounterName::Subsection, Some(TheoremReset::Subsection)),
-      (CounterName::Paragraph, None),
-      (CounterName::Subparagraph, None),
-      (CounterName::Table, None),
-      (CounterName::Figure, None),
-      (CounterName::Equation, None),
-    ];
-
-    for (name, want) in expected {
-      assert_eq!(TheoremReset::for_counter(name), want, "{name:?} に対応するリセットレベル");
-    }
-    assert_eq!(
-      expected.map(|(name, _)| return name),
-      CounterName::VARIANTS,
-      "固定 9 種のカウンタ名を宣言順ですべて覆う"
-    );
   }
 
   #[test]

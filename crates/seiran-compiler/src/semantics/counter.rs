@@ -7,11 +7,7 @@ use std::collections::HashMap;
 
 use strum::VariantArray;
 
-use crate::{
-  document::TheoremClass,
-  semantics::SemanticPolicy,
-  style::{CounterName, TheoremReset},
-};
+use crate::{document::TheoremClass, semantics::SemanticPolicy, style::CounterName};
 
 /// カウンタの種別。`CounterStyles`（見出し・図表・数式）と `TheoremStyles`（定理クラス）の
 /// 2 系統をひとつの型で表す
@@ -89,18 +85,11 @@ impl<'p> CounterRegistry<'p> {
     for &r in &self.policy.counter(name).resets {
       self.values.insert(r, 0);
     }
-    if let Some(level) = TheoremReset::for_counter(name) {
-      self.reset_theorems_for_level(level);
+    for counter in &self.policy.counter(name).theorem_resets {
+      self.theorem_values.insert(counter.as_str(), 0);
     }
 
     return self.counter_value(name);
-  }
-
-  /// 指定した見出しレベルを `reset_by` に持つ定理カウンタをすべて 0 に戻す
-  fn reset_theorems_for_level(&mut self, level: TheoremReset) {
-    for counter in self.policy.theorems_reset_by(level) {
-      self.theorem_values.insert(counter, 0);
-    }
   }
 
   /// 定理環境を採番し、構造値を返す（無採番クラス（`proof`）は `None`）
@@ -159,7 +148,7 @@ impl<'p> CounterRegistry<'p> {
   fn theorem_counter_value(&self, class: TheoremClass) -> CounterValue {
     let def = self.policy.theorem(class);
     let own = *self.theorem_values.get(def.counter.as_str()).unwrap_or(&0);
-    let ancestors = match def.reset_by.counter_name() {
+    let ancestors = match def.reset_by {
       Some(heading_counter) => vec![CounterPart {
         name: heading_counter,
         value: self.value(heading_counter),
