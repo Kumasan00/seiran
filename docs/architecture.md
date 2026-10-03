@@ -517,9 +517,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 
 #### エラー
 
-- 入口のエラー `AnalyzeError`（CSL スタイル / CSL 整形 / 走査の 3 つを transparent に運ぶ）は **`Diagnostic`
-  を実装しない** — `?` で処理順を書くための制御フロー型であって表示単位ではなく、compiler seam が必ず
-  全バリアントを分解する
+- 入口のエラー `AnalyzeError`（CSL スタイル読込 `CitationStyle` / 走査 `Semantic` の 2 つを transparent に
+  運ぶ）は **`Diagnostic` を実装しない** — `?` で処理順を書くための制御フロー型であって表示単位ではなく、
+  compiler seam が必ず全バリアントを分解する
 - 走査のエラー `SemanticError` は**必ず 1 つのソース位置に帰属する**（`source_id()` が `Option` ではなく
   `SourceId` を返す）ことを不変条件とし、`compiler` はそれに乗って本文付き診断を組み立てる。ソース位置を
   持たない CSL 由来のエラーを同じ enum に混ぜるとこの不変条件が壊れる — **2 層を 1 本に統合しない**。

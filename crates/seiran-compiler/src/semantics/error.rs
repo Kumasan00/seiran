@@ -14,7 +14,7 @@ use thiserror::Error;
 use crate::{
   document::{NodeId, SourceLocation},
   failures::Failures,
-  semantics::CitationStyleError,
+  semantics::ReadCitationStyleError,
   source::{SourceId, Span},
 };
 
@@ -26,10 +26,10 @@ use crate::{
 pub(crate) enum AnalyzeError {
   /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
   #[error(transparent)]
-  CitationStyle(#[from] CitationStyleError),
+  CitationStyle(#[from] ReadCitationStyleError),
   /// ラベル・`\ref`・カウンタ・引用キーの意味解析エラー
   #[error(transparent)]
-  Analyze(#[from] SemanticFailures),
+  Semantic(#[from] SemanticFailures),
 }
 
 /// 表示単位（1 診断 = 1 ソース）に分けた意味解析エラーの非空集合。

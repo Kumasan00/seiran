@@ -225,7 +225,7 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileFailure {
   return match error {
     AnalyzeError::CitationStyle(error) => CompileFailure::single(error),
-    AnalyzeError::Analyze(errors) => {
+    AnalyzeError::Semantic(errors) => {
       CompileFailure::from(errors.map(|error| return attach_semantic_error(sources, error)))
     },
   };

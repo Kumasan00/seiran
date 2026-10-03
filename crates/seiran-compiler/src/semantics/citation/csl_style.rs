@@ -17,7 +17,7 @@ use crate::{
 
 /// CSL スタイル・ロケールの読込・解析エラー。
 #[derive(Debug, Error, Diagnostic)]
-pub(crate) enum CitationStyleError {
+pub(crate) enum ReadCitationStyleError {
   /// 引用（`\cite`）があるのに CSL スタイルが設定されていない場合。
   #[error("引用がありますが CSL スタイルが設定されていません。")]
   #[diagnostic(
@@ -112,21 +112,21 @@ impl CompiledCitationStyle {
 /// # Errors
 ///
 /// `style.reference.csl_path` が未設定の場合、または CSL スタイル / ロケールファイルの読み込み・
-/// 解析に失敗した場合に [`CitationStyleError`] を返す。
+/// 解析に失敗した場合に [`ReadCitationStyleError`] を返す。
 pub(crate) fn load_citation_style(
   source: &dyn ProjectSource,
   style: &Style,
-) -> Result<CompiledCitationStyle, CitationStyleError> {
-  let csl_path = style.reference.csl_path.as_ref().ok_or(CitationStyleError::MissingCslPath)?;
+) -> Result<CompiledCitationStyle, ReadCitationStyleError> {
+  let csl_path = style.reference.csl_path.as_ref().ok_or(ReadCitationStyleError::MissingCslPath)?;
   let csl_path_str = csl_path.to_string();
   let style_xml = source.read_text(csl_path).map_err(|source| {
-    return CitationStyleError::ReadStyleFile {
+    return ReadCitationStyleError::ReadStyleFile {
       path: csl_path_str.clone(),
       source,
     };
   })?;
   let csl_style = IndependentStyle::from_xml(&style_xml).map_err(|source| {
-    return CitationStyleError::ParseStyle {
+    return ReadCitationStyleError::ParseStyle {
       path: csl_path_str,
       source,
     };
@@ -147,22 +147,22 @@ pub(crate) fn load_citation_style(
 ///
 /// # Errors
 ///
-/// ロケールファイルの読み込み・解析に失敗した場合に [`CitationStyleError`] を返す。
+/// ロケールファイルの読み込み・解析に失敗した場合に [`ReadCitationStyleError`] を返す。
 fn load_locales(
   style: &Style,
   csl_default_locale: Option<&LocaleCode>,
   source: &dyn ProjectSource,
-) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationStyleError> {
+) -> Result<(Vec<Locale>, Option<LocaleCode>), ReadCitationStyleError> {
   let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.to_string();
     let xml = source.read_text(path).map_err(|source| {
-      return CitationStyleError::ReadLocaleFile {
+      return ReadCitationStyleError::ReadLocaleFile {
         path: path_str.clone(),
         source,
       };
     })?;
     let locale_file = LocaleFile::from_xml(&xml).map_err(|source| {
-      return CitationStyleError::ParseLocale {
+      return ReadCitationStyleError::ParseLocale {
         path: path_str,
         source,
       };
@@ -241,7 +241,7 @@ mod tests {
 
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
 
-  use super::{CitationStyleError, load_citation_style, load_locales};
+  use super::{ReadCitationStyleError, load_citation_style, load_locales};
   use crate::{
     project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath},
     semantics::test_support::ieee_csl_path,
@@ -341,7 +341,7 @@ mod tests {
 
     let error = load_locales(&style, None, &source).expect_err("読み込み失敗するはず");
 
-    assert!(matches!(error, CitationStyleError::ReadLocaleFile { .. }), "got: {error:?}");
+    assert!(matches!(error, ReadCitationStyleError::ReadLocaleFile { .. }), "got: {error:?}");
   }
 
   #[test]
@@ -353,7 +353,7 @@ mod tests {
 
     let error = load_locales(&style, None, &source).expect_err("解析失敗するはず");
 
-    assert!(matches!(error, CitationStyleError::ParseLocale { .. }), "got: {error:?}");
+    assert!(matches!(error, ReadCitationStyleError::ParseLocale { .. }), "got: {error:?}");
   }
 
   #[test]
