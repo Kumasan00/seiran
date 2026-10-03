@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes},
+      inline::{IndexPolicy, evaluate_inline_children},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::view::CommandView,
@@ -27,7 +27,7 @@ pub(super) fn index_command(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Re
 
   let first_arg = arity::exactly_one_arg(view, "索引語")?;
 
-  let nodes = extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
+  let nodes = evaluate_inline_children(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
   let mut word = String::new();
   for node in &nodes {
     let HirInlineKind::Text(text) = &node.kind else {

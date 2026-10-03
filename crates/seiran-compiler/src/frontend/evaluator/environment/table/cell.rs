@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes, extract_inline_nodes_from_elements},
+      inline::{IndexPolicy, evaluate_inline_children, evaluate_inline_elements},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::{SyntaxKind, green::GreenElement, token::TokenKind, view::CommandView},
@@ -59,11 +59,11 @@ pub(super) fn build_cell(
         span: cell_cmd.span().into(),
       });
     }
-    return extract_cell_command(&cell_cmd, ctx, index_policy);
+    return evaluate_cell_command(&cell_cmd, ctx, index_policy);
   }
 
   let id = ctx.alloc(segment_span(elements, empty_span));
-  let content = extract_inline_nodes_from_elements(source, ctx, elements, index_policy)?;
+  let content = evaluate_inline_elements(source, ctx, elements, index_policy)?;
   return Ok(HirTableCell {
     id,
     content: trim_cell_content(content),
@@ -72,7 +72,7 @@ pub(super) fn build_cell(
 }
 
 /// `\cell[span=N]{...}` を属性付きセルに変換する
-fn extract_cell_command(
+fn evaluate_cell_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
@@ -83,7 +83,7 @@ fn extract_cell_command(
   let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let id = ctx.alloc(view.span());
-  let content = trim_cell_content(extract_inline_nodes(view.source(), ctx, arg, index_policy)?);
+  let content = trim_cell_content(evaluate_inline_children(view.source(), ctx, arg, index_policy)?);
   return Ok(HirTableCell { id, content, span });
 }
 

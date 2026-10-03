@@ -7,7 +7,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      environment::{body_scan, caption::extract_caption},
+      environment::{body_scan, caption::evaluate_caption},
       opt_args::{self, OptKey, collect_command_opt_args, collect_environment_opt_args},
     },
     syntax::view::{CommandView, EnvironmentView, extract_text_content},
@@ -94,7 +94,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           if image_path.is_none() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(extract_caption(&cmd_view, ctx)?);
+          caption = Some(evaluate_caption(&cmd_view, ctx)?);
         },
       }
     }

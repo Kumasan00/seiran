@@ -6,7 +6,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes},
+      inline::{IndexPolicy, evaluate_inline_children},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
     syntax::view::CommandView,
@@ -32,7 +32,7 @@ pub(super) fn styled_text(
   let first_arg = arity::exactly_one_arg(view, "テキスト")?;
 
   let id = ctx.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
+  let children = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Styled { kind, children }));
 }
 
@@ -60,7 +60,7 @@ pub(super) fn colored_text(
   let first_arg = arity::exactly_one_arg(view, "テキスト")?;
 
   let id = ctx.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), ctx, first_arg, index_policy)?;
+  let children = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Colored { color, children }));
 }
 

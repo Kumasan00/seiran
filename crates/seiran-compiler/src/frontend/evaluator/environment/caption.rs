@@ -1,11 +1,11 @@
-//! `\caption` コマンドの共通抽出処理
+//! `\caption` コマンドの共通評価処理
 
 use crate::{
   document::HirInline,
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
-      inline::{IndexPolicy, extract_inline_nodes},
+      inline::{IndexPolicy, evaluate_inline_children},
       opt_args,
     },
     syntax::view::CommandView,
@@ -19,8 +19,8 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰、未許可の任意引数がある場合にエラーを返します。
-pub(super) fn extract_caption(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
+pub(super) fn evaluate_caption(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "キャプション本文")?;
-  return extract_inline_nodes(view.source(), ctx, first_arg, IndexPolicy::Allow);
+  return evaluate_inline_children(view.source(), ctx, first_arg, IndexPolicy::Allow);
 }

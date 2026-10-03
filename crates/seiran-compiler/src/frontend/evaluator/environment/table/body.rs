@@ -7,7 +7,7 @@ use crate::{
       EvalContext, EvalError, arity,
       environment::{
         body_scan,
-        caption::extract_caption,
+        caption::evaluate_caption,
         table::cell::{build_cell, contains_line_break},
       },
       inline::IndexPolicy,
@@ -77,10 +77,10 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
               span: cmd_view.span().into(),
             });
           }
-          head = extract_head(&cmd_view, ctx)?;
+          head = evaluate_head(&cmd_view, ctx)?;
         },
         TableCommand::Row => {
-          rows.push(extract_row(&cmd_view, ctx, IndexPolicy::Allow)?);
+          rows.push(evaluate_row(&cmd_view, ctx, IndexPolicy::Allow)?);
         },
         TableCommand::Caption => {
           if caption.is_some() {
@@ -93,7 +93,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           if head.is_empty() && rows.is_empty() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(extract_caption(&cmd_view, ctx)?);
+          caption = Some(evaluate_caption(&cmd_view, ctx)?);
         },
       }
     }
@@ -107,11 +107,11 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
   });
 }
 
-/// `\head{\row{...} ...}` からヘッダ行を抽出する
+/// `\head{\row{...} ...}` をヘッダ行に変換する
 ///
 /// ヘッダ行は表が改ページするたび全ページへ再描画される複製文脈なので、出現ページが一意に
 /// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
-fn extract_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirTableRow>, EvalError> {
+fn evaluate_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirTableRow>, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let arg = arity::exactly_one_arg(view, "\\row コマンド")?;
 
@@ -120,7 +120,7 @@ fn extract_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<Hir
   for ((), row_view) in
     body_scan::strict_command_calls(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
   {
-    rows.push(extract_row(&row_view, ctx, IndexPolicy::Reject)?);
+    rows.push(evaluate_row(&row_view, ctx, IndexPolicy::Reject)?);
   }
   if rows.is_empty() {
     return Err(EvalError::MissingCommandArgument {
@@ -132,8 +132,8 @@ fn extract_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<Hir
   return Ok(rows);
 }
 
-/// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
-fn extract_row(
+/// `\row[rule_above]{A & B & \cell[span=2]{C}}` を 1 行に変換する
+fn evaluate_row(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,

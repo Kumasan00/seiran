@@ -15,7 +15,7 @@ mod opt_args;
 pub(crate) use context::EvalContext;
 pub(crate) use error::EvalError;
 #[cfg(test)]
-pub(crate) use test_support::{evaluate_children_to_hir, extract_inline_nodes_to_hir, run_handler};
+pub(crate) use test_support::{evaluate_children_to_hir, evaluate_inline_children_to_hir, run_handler};
 
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
@@ -244,14 +244,14 @@ mod test_support {
     return evaluate_children(source, &ctx, node);
   }
 
-  /// インライン抽出結果を変換なしで `Vec<HirInline>` として返す
-  pub(crate) fn extract_inline_nodes_to_hir(
+  /// インライン評価結果を変換なしで `Vec<HirInline>` として返す
+  pub(crate) fn evaluate_inline_children_to_hir(
     source: &str,
     node: &GreenNode<'_>,
     index_policy: inline::IndexPolicy,
   ) -> Result<Vec<HirInline>, EvalError> {
     let ctx = eval_context_for_test();
-    return inline::extract_inline_nodes(source, &ctx, node, index_policy);
+    return inline::evaluate_inline_children(source, &ctx, node, index_policy);
   }
 
   /// ハンドラを直接呼ぶテスト向けに、評価結果をそのまま返す
