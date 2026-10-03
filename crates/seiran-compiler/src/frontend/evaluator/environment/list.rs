@@ -55,10 +55,10 @@ pub(super) fn list(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: b
       let item_gap = item_opts.get(ITEM_GAP);
       let first_arg = arity::exactly_one_arg(&cmd_view, "項目の内容")?;
       let item_id = ctx.alloc(cmd_view.span());
-      let content = evaluator::evaluate_children(source, ctx, first_arg)?;
+      let item_body = evaluator::evaluate_children(source, ctx, first_arg)?;
       items.push(HirListItem {
         id: item_id,
-        content,
+        body: item_body,
         marker,
         item_gap,
       });

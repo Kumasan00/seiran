@@ -31,7 +31,7 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
       },
       HirNodeKind::List(list) => {
         for item in &list.items {
-          walk_nodes(&item.content, paths);
+          walk_nodes(&item.body, paths);
         }
       },
       HirNodeKind::Heading(_)

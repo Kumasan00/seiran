@@ -125,7 +125,7 @@ mod tests {
           && a.item_gap == b.item_gap
           && a.items.len() == b.items.len()
           && a.items.iter().zip(&b.items).all(|(x, y)| {
-            return x.marker == y.marker && x.item_gap == y.item_gap && same_shape(&x.content, &y.content);
+            return x.marker == y.marker && x.item_gap == y.item_gap && same_shape(&x.body, &y.body);
           })
       },
       (HirNodeKind::Paragraph(p1), HirNodeKind::Paragraph(p2)) => same_inlines_shape(p1, p2),

@@ -177,8 +177,8 @@ pub(crate) struct HirQuote {
 pub(crate) struct HirListItem {
   /// このアイテムの ID
   pub(crate) id: NodeId,
-  /// アイテムの内容（段落、ネストされたリスト等）
-  pub(crate) content: Vec<HirNode>,
+  /// 本体（段落・入れ子のリスト等を再帰評価したブロックノード列）
+  pub(crate) body: Vec<HirNode>,
   /// `\item[marker=...]` で指定された個別マーカー文字列
   ///
   /// `None` は自動生成マーカーを使うこと、`Some("")` はマーカーを表示しないことを表す。

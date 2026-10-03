@@ -59,7 +59,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
             id: item.id,
             parent: here,
           });
-          walk_nodes(&item.content, Some(item.id), out);
+          walk_nodes(&item.body, Some(item.id), out);
         }
       },
       HirNodeKind::MathBlock(math) => {
@@ -344,7 +344,7 @@ fn assert_unresolved(nodes: &[HirNode]) {
       HirNodeKind::Paragraph(inlines) => assert_unresolved_inlines(inlines),
       HirNodeKind::List(list) => {
         for item in &list.items {
-          assert_unresolved(&item.content);
+          assert_unresolved(&item.body);
         }
       },
       HirNodeKind::Theorem(theorem) => assert_unresolved(&theorem.body),
