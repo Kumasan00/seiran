@@ -103,7 +103,7 @@ fn load_after_config(
 ) -> Result<CompilationInputs, Failures<InputError>> {
   let style = style::load(source, config.style_path.as_ref(), resolver).map_err(lift)?;
   let geometry = PreparedGeometry::prepare(&config, &style).map_err(lift)?;
-  let (references, font_data, sources) = read_independent_inputs(source, &config)?;
+  let (references, font_data, sources) = load_independent_inputs(source, &config)?;
 
   return Ok(CompilationInputs {
     config,
@@ -124,7 +124,7 @@ fn load_after_config(
 /// # Errors
 ///
 /// 3 つのうち 1 つでも失敗すれば、失敗したもの全部の診断をこの順に返す。
-fn read_independent_inputs(
+fn load_independent_inputs(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
 ) -> Result<(Arc<References>, FontData, SourceSet), Failures<InputError>> {
@@ -136,7 +136,7 @@ fn read_independent_inputs(
     debug!(elapsed = ?stage_start.elapsed(), "フォントファイルを読込");
   }
 
-  let sources = read_sources(source, &config.sources);
+  let sources = load_sources(source, &config.sources);
 
   return match (references, font_data, sources) {
     (Ok(references), Ok(font_data), Ok(sources)) => Ok((references, font_data, sources)),
@@ -163,8 +163,8 @@ fn lift<E: Into<InputError>>(failures: Failures<E>) -> Failures<InputError> { re
 /// パスを含む leaf diagnostic を組み立てるのはここ。seam の `ProjectSourceError` は
 /// `Diagnostic` を実装しない低水準 cause なので、そのまま `#[source]` に載せても
 /// 入れ子の診断ブロックにはならない。
-fn read_sources(source: &dyn ProjectSource, sources: &[ProjectPath]) -> Result<SourceSet, Failures<InputError>> {
-  return SourceSet::read(source, sources).map_err(|failures| {
+fn load_sources(source: &dyn ProjectSource, sources: &[ProjectPath]) -> Result<SourceSet, Failures<InputError>> {
+  return SourceSet::load(source, sources).map_err(|failures| {
     return failures.map(|error| {
       return InputError::ReadTextFile {
         path: error.path,
@@ -180,21 +180,21 @@ mod tests {
 
   use miette::Diagnostic;
 
-  use super::{InputError, load, read_sources};
+  use super::{InputError, load, load_sources};
   use crate::project::{
     MemoryProjectSource, PathResolver, ProjectPath, ProjectSource, ProjectSourceError,
     config::test_support::{font_sections, valid_output_section, valid_pdf_section},
   };
 
   #[test]
-  fn read_sources_maps_missing_file_to_read_text_file_diagnostic() {
+  fn load_sources_maps_missing_file_to_read_text_file_diagnostic() {
     let source = MemoryProjectSource::new().with_text("/project/a.sei", "content-a");
     let sources = vec![
       ProjectPath::new("/project/a.sei"),
       ProjectPath::new("/project/missing.sei"),
     ];
 
-    let result = read_sources(&source, &sources);
+    let result = load_sources(&source, &sources);
 
     let Err(failures) = result else {
       panic!("ReadTextFile を期待");
@@ -214,7 +214,7 @@ mod tests {
   }
 
   #[test]
-  fn read_sources_reports_every_missing_file_in_declaration_order() {
+  fn load_sources_reports_every_missing_file_in_declaration_order() {
     // 2 つの欠落を宣言順とは逆のパス名で並べる（宣言順で報告されることを見る）
     let source = MemoryProjectSource::new();
     let sources = vec![
@@ -222,7 +222,7 @@ mod tests {
       ProjectPath::new("/project/a-missing.sei"),
     ];
 
-    let Err(failures) = read_sources(&source, &sources) else {
+    let Err(failures) = load_sources(&source, &sources) else {
       panic!("2 件とも失敗するはず");
     };
 
