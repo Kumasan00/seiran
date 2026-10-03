@@ -35,7 +35,7 @@ pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
 pub(crate) use dump::dump_pages;
 pub(crate) use error::TypesetError;
 use font::{FontResources, FontWarning};
-pub(crate) use geometry::{LayoutValidationError, PreparedGeometry};
+pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
 // `#[cfg(test)]` を付けない — 本体コード（`compose` / `lay_out`）もこの名前を使い、条件付きの
 // 再エクスポートと本体用の `use` を並べるとテストビルドで E0252（同名の重複定義）になる。
 pub(crate) use pagination::LaidOutDocument;
