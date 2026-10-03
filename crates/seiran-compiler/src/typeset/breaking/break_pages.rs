@@ -1937,7 +1937,7 @@ mod tests {
           height: Length::pt(10.0),
           depth: Length::pt(0.0),
         })],
-        span: 1,
+        column_span: 1,
       }],
       rule_above: false,
     };
@@ -2051,7 +2051,7 @@ mod tests {
             }),
             HItem::LinkEnd,
           ],
-          span: 1,
+          column_span: 1,
         }],
         rule_above: false,
       }],
@@ -2102,7 +2102,7 @@ mod tests {
       rows: vec![TableRowBox {
         cells: vec![TableCellBox {
           items: vec![test_box()],
-          span: 1,
+          column_span: 1,
         }],
         rule_above: true,
       }],

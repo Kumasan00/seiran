@@ -804,7 +804,7 @@ mod tests {
             reading: None,
           }),
         ],
-        span: 1,
+        column_span: 1,
       }],
       rule_above: false,
     };

@@ -205,8 +205,8 @@ pub(crate) struct HirTableCell {
   pub(crate) id: NodeId,
   /// セルの内容（インライン要素）
   pub(crate) content: Vec<HirInline>,
-  /// 列方向の結合数（colspan、1 以上）。ソース位置ではない
-  pub(crate) span: u32,
+  /// 列方向の結合数（1 以上）
+  pub(crate) column_span: u32,
 }
 
 /// `proof` 環境の `[of=label]` 参照（証明対象の定理）

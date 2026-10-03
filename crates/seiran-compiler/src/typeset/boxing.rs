@@ -392,7 +392,7 @@ impl<'a> Measurer<'a> {
         }
         cells.push(TableCellBox {
           items,
-          span: cell.span,
+          column_span: cell.column_span,
         });
       }
       result.push(TableRowBox {

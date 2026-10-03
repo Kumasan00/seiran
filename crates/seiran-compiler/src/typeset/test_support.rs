@@ -276,7 +276,7 @@ pub(crate) fn table_block(
         .map(|boxes| {
           return TableCellBox {
             items: boxes.into_iter().map(|(run, size)| return HItem::Box(glyph_box(run, size))).collect(),
-            span: 1,
+            column_span: 1,
           };
         })
         .collect();

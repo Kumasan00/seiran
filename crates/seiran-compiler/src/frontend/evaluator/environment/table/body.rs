@@ -181,7 +181,7 @@ fn evaluate_row(
   });
 }
 
-/// 列数を決定し、全行のセル数（`span` 合計）が一致するか検証する
+/// 列数を決定し、全行のセル数（`column_span` 合計）が一致するか検証する
 pub(super) fn resolve_column_count(
   columns_tokens: Option<&[ColumnAlign]>,
   widths_tokens: Option<&[ColumnWidth]>,
@@ -203,11 +203,11 @@ pub(super) fn resolve_column_count(
     },
     (Some(c), None) => c.len(),
     (None, Some(w)) => w.len(),
-    (None, None) => head.iter().chain(rows.iter()).map(row_span_sum).max().unwrap_or(0),
+    (None, None) => head.iter().chain(rows.iter()).map(row_column_span_sum).max().unwrap_or(0),
   };
 
   for row in head.iter().chain(rows.iter()) {
-    let actual = row_span_sum(row);
+    let actual = row_column_span_sum(row);
     if actual != column_count {
       return Err(EvalError::TableRowCellCountMismatch {
         expected: column_count,
@@ -220,5 +220,7 @@ pub(super) fn resolve_column_count(
   return Ok(column_count);
 }
 
-/// 行のセル数（`span` 合計）を返す
-fn row_span_sum(row: &HirTableRow) -> usize { return row.cells.iter().map(|cell| return cell.span as usize).sum(); }
+/// 行のセル数（`column_span` 合計）を返す
+fn row_column_span_sum(row: &HirTableRow) -> usize {
+  return row.cells.iter().map(|cell| return cell.column_span as usize).sum();
+}

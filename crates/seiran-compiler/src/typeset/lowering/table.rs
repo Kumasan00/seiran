@@ -26,7 +26,7 @@ fn lower_rows(
     for cell in &row.cells {
       cells.push(TableCellLayout {
         content: lower_inlines(ctx, &cell.content, cell_style, state),
-        span: cell.span,
+        column_span: cell.column_span,
       });
     }
     result.push(TableRowLayout {
