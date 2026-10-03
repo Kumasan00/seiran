@@ -14,8 +14,8 @@ use krilla::{
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
 use seiran_compiler::{
-  Color, Destination as PubDestination, GlyphRun, PaintOp, Point as PubPoint, Publication, PublicationImage,
-  PublicationLink, PublicationLinkTarget, PublicationOutlineEntry, PublicationResources, Rect as PubRect,
+  Color, GlyphRun, PaintOp, Publication, PublicationDestination, PublicationImage, PublicationLink,
+  PublicationLinkTarget, PublicationOutlineEntry, PublicationPoint, PublicationRect, PublicationResources,
 };
 
 use crate::{
@@ -25,23 +25,23 @@ use crate::{
 };
 
 /// Publication の点を Krilla の点へ渡す（すでに pt 単位の `f32` なので変換不要）。
-fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x, point.y); }
+fn to_krilla_point(point: PublicationPoint) -> Point { return Point::from_xy(point.x, point.y); }
 
 /// `Publication` の矩形を krilla の矩形へ渡す。
 ///
 /// # Panics
 ///
-/// `seiran_compiler::Rect` は幅・高さが非負の有限値であることを構築時に保証しており、これは
+/// `seiran_compiler::PublicationRect` は幅・高さが非負の有限値であることを構築時に保証しており、これは
 /// krilla の `Rect::from_xywh`（`left <= right` / `top <= bottom` / 有限）の受け入れ条件そのもの。
-fn to_krilla_rect(rect: PubRect) -> Rect {
+fn to_krilla_rect(rect: PublicationRect) -> Rect {
   let Some(converted) = Rect::from_xywh(rect.x(), rect.y(), rect.width(), rect.height()) else {
-    unreachable!("Publication の矩形は幅・高さが非負の有限値であることを Rect::new が保証する: {rect:?}");
+    unreachable!("Publication の矩形は幅・高さが非負の有限値であることを PublicationRect::new が保証する: {rect:?}");
   };
   return converted;
 }
 
 /// `Publication` の到達先を krilla の `XyzDestination` へ変換する
-fn to_xyz_destination(dest: PubDestination) -> XyzDestination {
+fn to_xyz_destination(dest: PublicationDestination) -> XyzDestination {
   return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
 }
 
@@ -118,7 +118,7 @@ fn draw_glyph_run(
   surface: &mut Surface<'_>,
   resources: &PublicationResources,
   fonts: &KrillaFonts,
-  origin: PubPoint,
+  origin: PublicationPoint,
   run: &GlyphRun,
 ) {
   let font = fonts.font(run.font_type);
@@ -199,7 +199,7 @@ pub(crate) fn render_pages(
 fn draw_image(
   surface: &mut Surface<'_>,
   image: &PublicationImage,
-  rect: PubRect,
+  rect: PublicationRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfRenderError> {
   let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
@@ -246,7 +246,7 @@ fn draw_image(
 ///
 /// krilla が受け入れる矩形（[`to_krilla_rect`]）1 個から作るパスは必ず構築できる
 /// （空でも move だけでもなく、点はすべて有限）。
-fn draw_filled_rect(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) {
+fn draw_filled_rect(surface: &mut Surface<'_>, rect: PublicationRect, color: Option<[u8; 3]>) {
   let mut path_builder = PathBuilder::new();
   path_builder.push_rect(to_krilla_rect(rect));
   let Some(path) = path_builder.finish() else {

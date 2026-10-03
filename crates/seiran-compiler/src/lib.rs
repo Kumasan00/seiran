@@ -31,7 +31,8 @@ pub use project::{
   FilesystemProjectSource, FontType, MemoryProjectSource, ProjectPath, ProjectSource, ProjectSourceError,
 };
 pub use publication::{
-  Destination, FontFaceConfig, FontMetric, Glyph, GlyphRun, ImageFormat, ImageRef, PaintOp, Point, Publication,
+  FontFaceConfig, FontMetric, Glyph, GlyphRun, ImageFormat, ImageRef, PaintOp, Publication, PublicationDestination,
   PublicationFont, PublicationImage, PublicationLink, PublicationLinkTarget, PublicationMetadata,
-  PublicationOutlineEntry, PublicationPage, PublicationResources, Rect, VariationAxisConfig,
+  PublicationOutlineEntry, PublicationPage, PublicationPoint, PublicationRect, PublicationResources,
+  VariationAxisConfig,
 };

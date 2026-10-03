@@ -187,7 +187,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 1. **型で不正状態を表現不能にする**（第一手）。公開する型はフィールドを非公開にし、構築経路を
    不変条件を検証する `pub(crate) fn new`（違反時は `None`）だけに限る。他所への参照は生の文字列や
    添字ではなく不透明ハンドルにして、発行経路を 1 箇所に閉じる。実例は `publication` module —
-   `Rect::new` が非負・有限の幅高さだけを通し、`Publication::new` がリンク・しおりの到達先ページの
+   `PublicationRect::new` が非負・有限の幅高さだけを通し、`Publication::new` がリンク・しおりの到達先ページの
    実在を確かめ、`ImageRef` は `PublicationResources::image_ref` からしか得られない。この閉鎖によって
    consumer 側（`seiran-pdf`）の防衛的な error variant を丸ごと削除できる
 2. **残った到達不能分岐は保証元付き `unreachable!`**。「上流のどの検証・構築が保証するか」を
