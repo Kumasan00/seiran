@@ -74,10 +74,10 @@ mod tests {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
-    let HirInlineKind::Styled { kind, children } = &body[0].kind else {
+    let HirInlineKind::Styled { font, children } = &body[0].kind else {
       panic!("Styled が期待されます: {body:?}");
     };
-    assert_eq!(*kind, FontKind::SerifBold);
+    assert_eq!(*font, FontKind::SerifBold);
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
 

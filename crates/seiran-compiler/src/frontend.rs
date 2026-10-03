@@ -558,7 +558,7 @@ mod tests {
       assert!(matches!(
         &inlines[2].kind,
         HirInlineKind::Styled {
-          kind: FontKind::SerifBold,
+          font: FontKind::SerifBold,
           ..
         }
       ));
@@ -576,7 +576,7 @@ mod tests {
       assert!(matches!(
         &inlines[0].kind,
         HirInlineKind::Styled {
-          kind: FontKind::SerifItalic,
+          font: FontKind::SerifItalic,
           ..
         }
       ));
@@ -606,10 +606,10 @@ mod tests {
       let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
         panic!("Paragraph が期待されます: \\{name}");
       };
-      let HirInlineKind::Styled { kind, .. } = &inlines[0].kind else {
+      let HirInlineKind::Styled { font, .. } = &inlines[0].kind else {
         panic!("Styled が期待されます: \\{name} → {:?}", inlines[0]);
       };
-      assert_eq!(*kind, expected, "\\{name} の FontKind");
+      assert_eq!(*font, expected, "\\{name} の FontKind");
     }
   }
 

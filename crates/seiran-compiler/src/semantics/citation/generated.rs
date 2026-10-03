@@ -23,10 +23,10 @@ pub(crate) enum GeneratedInline {
 
   /// 書体指定テキスト（CSL 整形が太字・斜体を表現する際に使う）
   ///
-  /// ネスト時は内側の `kind` が完全に上書きする（親スタイルとの合成はしない）。
+  /// ネスト時は内側の `font` が完全に上書きする（親スタイルとの合成はしない）。
   Styled {
     /// 適用する書体
-    kind: FontKind,
+    font: FontKind,
     /// 装飾対象のインライン要素
     children: Vec<GeneratedInline>,
   },
@@ -75,11 +75,11 @@ mod tests {
   #[test]
   fn generated_nested_to_plain_text() {
     let node = GeneratedInline::Styled {
-      kind: FontKind::SerifBold,
+      font: FontKind::SerifBold,
       children: vec![
         GeneratedInline::Text("bold ".to_string()),
         GeneratedInline::Styled {
-          kind: FontKind::SerifItalic,
+          font: FontKind::SerifItalic,
           children: vec![GeneratedInline::Text("and italic".to_string())],
         },
       ],

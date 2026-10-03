@@ -353,7 +353,7 @@ mod tests {
     assert!(matches!(
       &inlines[0].kind,
       HirInlineKind::Styled {
-        kind: FontKind::SerifBold,
+        font: FontKind::SerifBold,
         ..
       }
     ));

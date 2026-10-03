@@ -25,7 +25,7 @@ const COLOR: OptKey<Color> = opt_args::color("color");
 pub(super) fn styled_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
-  kind: FontKind,
+  font: FontKind,
   index_policy: IndexPolicy,
 ) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
@@ -33,7 +33,7 @@ pub(super) fn styled_text(
 
   let id = ctx.alloc(view.span());
   let children = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
-  return Ok(HirInline::new(id, HirInlineKind::Styled { kind, children }));
+  return Ok(HirInline::new(id, HirInlineKind::Styled { font, children }));
 }
 
 /// `\color[color=#rrggbb]{...}` を評価し、子要素を `HirInlineKind::Colored` でラップする
@@ -81,8 +81,8 @@ mod tests {
     let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
 
     match &result.kind {
-      HirInlineKind::Styled { kind, children } => {
-        assert_eq!(*kind, FontKind::SerifBold);
+      HirInlineKind::Styled { font, children } => {
+        assert_eq!(*font, FontKind::SerifBold);
         assert_eq!(children.len(), 1);
         assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "hello"));
       },
@@ -91,7 +91,7 @@ mod tests {
   }
 
   #[test]
-  fn nested_styled_commands_keep_inner_kind() {
+  fn nested_styled_commands_keep_inner_font() {
     let arena = Bump::new();
     let source = r"\bold{\italic{x}}";
     let node = test_support::command_call_node(source, &arena);
@@ -99,17 +99,17 @@ mod tests {
 
     let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
 
-    let HirInlineKind::Styled { kind, children } = &result.kind else {
+    let HirInlineKind::Styled { font, children } = &result.kind else {
       panic!("Styled が期待されます");
     };
-    assert_eq!(*kind, FontKind::SerifBold);
+    assert_eq!(*font, FontKind::SerifBold);
     let HirInlineKind::Styled {
-      kind: inner_kind, ..
+      font: inner_font, ..
     } = &children[0].kind
     else {
       panic!("内側も Styled が期待されます: {children:?}");
     };
-    assert_eq!(*inner_kind, FontKind::SerifItalic);
+    assert_eq!(*inner_font, FontKind::SerifItalic);
   }
 
   #[test]
@@ -218,9 +218,9 @@ mod tests {
       panic!("Colored が期待されます: {result:?}");
     };
     assert_eq!(*color, Color::new(0x00, 0x00, 0xff));
-    let HirInlineKind::Styled { kind, .. } = &children[0].kind else {
+    let HirInlineKind::Styled { font, .. } = &children[0].kind else {
       panic!("内側は Styled が期待されます: {children:?}");
     };
-    assert_eq!(*kind, FontKind::SerifBold);
+    assert_eq!(*font, FontKind::SerifBold);
   }
 }

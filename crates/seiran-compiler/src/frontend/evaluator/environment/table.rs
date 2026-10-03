@@ -377,7 +377,7 @@ mod tests {
     assert!(matches!(
       &table.rows[0].cells[0].content[0].kind,
       HirInlineKind::Styled {
-        kind: FontKind::SerifBold,
+        font: FontKind::SerifBold,
         ..
       }
     ));
