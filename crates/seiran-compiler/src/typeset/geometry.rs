@@ -9,7 +9,7 @@ use crate::{color::Color, failures::Failures, length::Length, project::config::P
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub(crate) enum LayoutValidationError {
+pub(crate) enum GeometryValidationError {
   /// 上下余白の合計が用紙高以上で、本文の高さが残らない場合
   #[error(
     "上下余白の合計 {total:.1}pt が用紙高 {page_height:.1}pt 以上で、本文の高さが残りません（上 {margin_top:.1}pt / 下 {margin_bottom:.1}pt）。"
@@ -167,13 +167,13 @@ impl PreparedGeometry {
   ///
   /// # Errors
   ///
-  /// 上記のいずれかに違反した場合、違反ぶんの [`LayoutValidationError`] を持つ非空集合を返します。
-  pub(crate) fn prepare(config: &ProjectConfig, style: &Style) -> Result<Self, Failures<LayoutValidationError>> {
-    let mut errors: Vec<LayoutValidationError> = Vec::new();
+  /// 上記のいずれかに違反した場合、違反ぶんの [`GeometryValidationError`] を持つ非空集合を返します。
+  pub(crate) fn prepare(config: &ProjectConfig, style: &Style) -> Result<Self, Failures<GeometryValidationError>> {
+    let mut errors: Vec<GeometryValidationError> = Vec::new();
 
     let vertical = style.page.margin_top + style.page.margin_bottom;
     if vertical >= config.pdf.height {
-      errors.push(LayoutValidationError::VerticalMarginsExceedPageHeight {
+      errors.push(GeometryValidationError::VerticalMarginsExceedPageHeight {
         margin_top: style.page.margin_top.to_pt(),
         margin_bottom: style.page.margin_bottom.to_pt(),
         total: vertical.to_pt(),
@@ -187,14 +187,14 @@ impl PreparedGeometry {
     let column_gap = style.columns.gap;
     let body_column_width = column_width(text_width, num_columns, column_gap);
     if horizontal >= config.pdf.width {
-      errors.push(LayoutValidationError::HorizontalMarginsExceedPageWidth {
+      errors.push(GeometryValidationError::HorizontalMarginsExceedPageWidth {
         margin_left: style.page.margin_left.to_pt(),
         margin_right: style.page.margin_right.to_pt(),
         total: horizontal.to_pt(),
         page_width: config.pdf.width.to_pt(),
       });
     } else if !body_column_width.is_positive() {
-      errors.push(LayoutValidationError::InvalidColumnWidth {
+      errors.push(GeometryValidationError::InvalidColumnWidth {
         text_width: text_width.to_pt(),
         num_columns,
         column_gap: column_gap.to_pt(),
@@ -282,7 +282,7 @@ fn build_page_geometries(
 mod tests {
   use std::path::PathBuf;
 
-  use super::{LayoutValidationError, Length, PreparedGeometry, ProjectConfig, Style, column_width};
+  use super::{GeometryValidationError, Length, PreparedGeometry, ProjectConfig, Style, column_width};
   use crate::project::{
     FilesystemProjectSource, PathResolver, ProjectPath,
     config::{
@@ -353,7 +353,7 @@ mod tests {
 
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
-    assert!(matches!(first, LayoutValidationError::InvalidColumnWidth { num_columns: 2, .. }));
+    assert!(matches!(first, GeometryValidationError::InvalidColumnWidth { num_columns: 2, .. }));
   }
 
   #[test]
@@ -366,7 +366,7 @@ mod tests {
 
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
-    assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
+    assert!(matches!(first, GeometryValidationError::VerticalMarginsExceedPageHeight { .. }));
   }
 
   #[test]
@@ -379,7 +379,7 @@ mod tests {
 
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty(), "段幅エラーを重ねないはず: {rest:?}");
-    assert!(matches!(first, LayoutValidationError::HorizontalMarginsExceedPageWidth { .. }));
+    assert!(matches!(first, GeometryValidationError::HorizontalMarginsExceedPageWidth { .. }));
   }
 
   #[test]
@@ -390,9 +390,9 @@ mod tests {
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
     let (first, rest) = failures.into_parts();
-    assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
+    assert!(matches!(first, GeometryValidationError::VerticalMarginsExceedPageHeight { .. }));
     assert_eq!(rest.len(), 1);
-    assert!(matches!(rest[0], LayoutValidationError::HorizontalMarginsExceedPageWidth { .. }));
+    assert!(matches!(rest[0], GeometryValidationError::HorizontalMarginsExceedPageWidth { .. }));
   }
 
   #[test]

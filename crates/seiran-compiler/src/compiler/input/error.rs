@@ -7,7 +7,7 @@ use crate::{
   project::{ProjectSourceError, ReadFontError, config::ReadConfigError},
   semantics::ReadReferencesError,
   style::ReadStyleError,
-  typeset::LayoutValidationError,
+  typeset::GeometryValidationError,
 };
 
 /// `compile` の入力読込（設定・スタイル・横断検証・文献・フォント・ソース）で起きるエラー型。
@@ -47,7 +47,7 @@ pub(in crate::compiler) enum InputError {
   /// config と style の横断バリデーションエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Layout(#[from] LayoutValidationError),
+  Geometry(#[from] GeometryValidationError),
 
   /// 文献データ（references.toml / .json）の読込エラー
   #[error(transparent)]
