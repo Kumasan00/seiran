@@ -369,7 +369,7 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
-  /// 表の行のセル数（span 合計）が列数と一致しない場合
+  /// 表の行のセル数（`column_span` 合計）が列数と一致しない場合
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(
     code(frontend::eval::table_row_cell_count_mismatch),
@@ -378,7 +378,7 @@ pub(crate) enum EvalError {
   TableRowCellCountMismatch {
     /// 期待される列数
     expected: usize,
-    /// 実際のセル数（span 合計）
+    /// 実際のセル数（`column_span` 合計）
     actual: usize,
     /// 行（`\row`）のソース位置
     #[label("この行のセル数が一致しません")]
