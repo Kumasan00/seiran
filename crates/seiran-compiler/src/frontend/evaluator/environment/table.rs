@@ -4,10 +4,10 @@
 
 mod body;
 mod cell;
-mod opts;
+mod opt_args;
 
 use body::{resolve_column_count, scan_table_body};
-use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
+use opt_args::{collect_table_opt_args, parse_columns_spec, parse_widths_spec};
 
 use crate::{
   document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind, HirTable},
@@ -26,7 +26,7 @@ use crate::{
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
 pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
-  let opts = collect_table_opts(view)?;
+  let opts = collect_table_opt_args(view)?;
 
   arity::no_environment_args(view)?;
 

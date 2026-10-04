@@ -22,7 +22,7 @@ const LABEL: OptKey<String> = opt_args::string("label");
 const BREAKABLE: OptKey<bool> = opt_args::boolean("breakable");
 
 /// `table` 環境の任意引数を集約した構造体
-pub(super) struct TableOpts {
+pub(super) struct TableOptArgs {
   /// `columns` オプションの生文字列（未指定なら `None`）
   pub(super) columns_spec: Option<String>,
   /// `widths` オプションの生文字列（未指定なら `None`）
@@ -34,7 +34,7 @@ pub(super) struct TableOpts {
 }
 
 /// `table` の任意引数（`columns` / `widths` / `label` / `breakable`）を収集してスカラー化する
-pub(super) fn collect_table_opts(view: &EnvironmentView<'_>) -> Result<TableOpts, EvalError> {
+pub(super) fn collect_table_opt_args(view: &EnvironmentView<'_>) -> Result<TableOptArgs, EvalError> {
   let opts = collect_environment_opt_args(
     view,
     &[
@@ -45,7 +45,7 @@ pub(super) fn collect_table_opts(view: &EnvironmentView<'_>) -> Result<TableOpts
     ],
   )?;
 
-  return Ok(TableOpts {
+  return Ok(TableOptArgs {
     columns_spec: opts.get(COLUMNS),
     widths_spec: opts.get(WIDTHS),
     label: opts.get(LABEL),
