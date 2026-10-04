@@ -301,7 +301,7 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   の順に重畳。`[heading]` / `[theorems]` 直下にスカラーは書けない
 - **段落の揃え**: `[text].alignment` は両端揃えの有無と寄せる向きを 4 値 1 キー（`justify` / `left` / `center` / `right`）で
   持つ。`[heading.<level>].alignment` は `Option` で、未指定は外側の縦リストの揃え（既定では `[text].alignment`）を継ぐ単純継承。
-  継承は読込時に解決せず、組版の `LayoutNode::VBox` の `None` で解く（範囲ごとに揃えを置き換える環境が同じ仕組みに乗る）。
+  継承は読込時に解決せず、組版の `LayoutNode::VBox` の `None` で解く（寄せ環境 `flushleft` / `center` / `flushright` は本体を `Some(<向き>)` の `VBox` で包み、本体が継ぐ揃えだけを置き換える）。
   脚注本体・コードブロック・図表・タイトルページ・数式ブロック・表のセル・柱・目次・索引は従わない
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
@@ -391,7 +391,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - コマンドは `COMMANDS`（引数の位置ごとの読み取りモードは値の `CommandKind` から導出する）、記号は
   `SYMBOLS`（検索は `command::symbol` の関数 1 つで、本文と数式の両方がそれを引く）、環境は `ENVIRONMENTS` の
   phf レジストリを単一の真実源としてディスパッチする。レジストリの値は
-  `EnvironmentKind` で、定理クラス・引用の種類・リストの順序付き / なし・数式グリッド環境のセル配置
+  `EnvironmentKind` で、定理クラス・引用の種類・寄せる向き（`document::FlushDirection`）・リストの順序付き / なし・数式グリッド環境のセル配置
   （`document::GridLayout`）と採番の粒度をデータとして持つ（環境名から種別を求め直す経路は無い）。
   セル配置と採番の粒度は独立の 2 軸でどの組み合わせも有効、区切りの許可は配置から導出するので、
   種別と採番・区切りの食い違いは型で書けない（#704）。本体の読み取り方（`BodyMode`）も
@@ -826,11 +826,11 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
-- **dispatcher は payload を取り出して渡すだけ**。`lower_node` は委譲する 9 種別（Heading /
-  Paragraph / List / Theorem / Quote / CodeBlock / MathBlock / Figure / Table）について、`HirNodeKind` の
+- **dispatcher は payload を取り出して渡すだけ**。`lower_node` は委譲する 10 種別（Heading /
+  Paragraph / List / Theorem / Quote / Flush / CodeBlock / MathBlock / Figure / Table）について、`HirNodeKind` の
   payload を取り出して子 module へ渡す。各 lowering が受け取るのは実際に使うものだけで、引数の個数を
   揃えることは目的にしない — payload は常に、`NodeId` は事実を引く 5 種（Heading / Theorem / MathBlock /
-  Figure / Table）だけ、`state` は `CodeBlock` を除く 8 種だけ（`MathBlock` は不変借用）。`PageBreak` / `Space` は委譲せず
+  Figure / Table）だけ、`state` は `CodeBlock` を除く 9 種だけ（`MathBlock` は不変借用）。`PageBreak` / `Space` は委譲せず
   dispatcher がその場でノードを組む。採番値・宣言ラベル・参照先は各 lowering が `NodeId` で
   `LoweringState` から引く（dispatcher は事実を先読みしない）。図と表は「番号 → 本体 → キャプション →
   包み → ラベルアンカー」が同形なので `lowering/float.rs` の共通経路 1 本に寄せ、本体ノードの作り方だけを
@@ -839,7 +839,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 - **HIR のブロック variant は payload struct**（#711 で解消。見送りのトリガーだった「payload struct にする
   issue に着手するとき」が発火した）。`HirNodeKind` の variant の形は値の個数で決まる — 2 つ以上なら
   payload struct（`HirHeading` / `HirList` / `HirMathBlock` / `HirFigure` / `HirTable` / `HirTheorem` /
-  `HirQuote`）、1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
+  `HirQuote` / `HirFlush`）、1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
   インラインのフィールドを持つ variant は
   作らない — lowering の各入口が payload 型を引数で受け取れることが、入口ごとの `unreachable!` 付き分配束縛を
   型の側で不要にしている。レイアウト側の対応物（`LayoutNode::Table(TableLayout)` /
