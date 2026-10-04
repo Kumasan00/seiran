@@ -2,6 +2,8 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
+use strum::VariantArray;
+
 use crate::{
   compiler::input::CompilationInputs,
   project::{FontType, ProjectPath},
@@ -34,7 +36,7 @@ pub struct DependencyManifest {
 impl DependencyManifest {
   /// 解決済み設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
   pub(super) fn collect(config_path: &ProjectPath, inputs: &CompilationInputs, image_paths: &[ProjectPath]) -> Self {
-    let font_paths: BTreeSet<PathBuf> = FontType::ALL
+    let font_paths: BTreeSet<PathBuf> = FontType::VARIANTS
       .iter()
       .map(|font_type| return to_path_buf(&inputs.config().font_configs[*font_type].font_path))
       .collect();

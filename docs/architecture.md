@@ -650,7 +650,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   走り文）が使うシェーピングの部品 `Shaper`）と (e) 描画だけ（`emit` は描画資源へ載せる face 設定・
   メトリクスを借りるだけで計測しない）。box は (a) で width / height / depth を 1 回計測して保持し、
   `breaking` はフォントに触れない
-- **段の中では 19 種すべてを検査して違反を `FontType::ALL` 順に全件返す**。段の間（parse → metrics →
+- **段の中では 19 種すべてを検査して違反を `FontType` の宣言順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
   `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする — 19 種のフォント種別については
   これは `FontMap::par_try_from_fn` / `FontMap::try_from_fn` の内側で行われ、呼び出し側が
@@ -1194,7 +1194,7 @@ compiler 側の責務で、こちらへ戻さない。
 
 - `font`: krilla フォントの構築（軸の指定を渡すだけで、フォントを自分でパースしない — `fvar` との整合は
   compiler の検証が保証する）とグリフの変換。フォントバイト列は `Publication` の `Arc<[u8]>` を
-  `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は複製されない。構築は `FontType::ALL` の
+  `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は複製されない。構築は `FontType` の
   宣言順で行う — `HashMap` の反復順に任せると、複数フォントが同時に不正なときに返るエラーが実行のたびに変わる
 - `render`: `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の `font_size`（`Length`）→ pt と
   `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、

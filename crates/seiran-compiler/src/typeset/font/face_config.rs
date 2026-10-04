@@ -22,6 +22,8 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
 
 #[cfg(test)]
 mod tests {
+  use strum::VariantArray;
+
   use super::build_face_configs;
   use crate::project::{FontConfig, FontConfigs, FontMap, FontType, ProjectPath, VariationAxis};
 
@@ -42,7 +44,7 @@ mod tests {
   fn build_face_configs_copies_only_the_two_convertible_fields() {
     let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(3, None));
     let face_configs = build_face_configs(&configs);
-    for &font_type in FontType::ALL {
+    for &font_type in FontType::VARIANTS {
       let face_config = &face_configs[font_type];
       assert_eq!(face_config.font_index, 3, "font_index がそのまま複製されるはず");
       assert!(face_config.variation_axes.is_none(), "variation_axes が None ならそのまま None のはず");
@@ -65,7 +67,7 @@ mod tests {
 
     let face_configs = build_face_configs(&configs);
 
-    for &font_type in FontType::ALL {
+    for &font_type in FontType::VARIANTS {
       assert_eq!(
         face_configs[font_type].variation_axes,
         Some(axes.clone()),

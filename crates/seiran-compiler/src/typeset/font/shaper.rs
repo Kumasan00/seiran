@@ -80,7 +80,7 @@ pub(super) type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
 ///
 /// # Errors
 ///
-/// 言語タグを解析できない場合に [`ShaperError`] を `FontType::ALL` 順で返す。
+/// 言語タグを解析できない場合に [`ShaperError`] を `FontType` の宣言順で返す。
 pub(super) fn build_harfrust_shapers<'a>(
   configs: &FontConfigs,
   font_refs: &'a FontRefs<'_>,

@@ -22,7 +22,7 @@ type DiagnosticIter<'a> = Map<slice::Iter<'a, BoxedDiagnostic>, fn(&BoxedDiagnos
 /// [`Default`] で空を構築できる。
 ///
 /// 順序は検出順ではなく**入力の論理順**を `compile` が組み立てる
-/// （config の警告は `sources` の宣言順、フォントの警告は `FontType::ALL` 順、組版の警告は物理ページの昇順）。
+/// （config の警告は `sources` の宣言順、フォントの警告は `FontType` の宣言順、組版の警告は物理ページの昇順）。
 #[derive(Debug, Default)]
 pub struct Warnings {
   /// 保持する警告（先頭から入力の論理順）

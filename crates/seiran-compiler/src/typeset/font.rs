@@ -64,7 +64,7 @@ type FontRefs<'a> = FontMap<FontRef<'a>>;
 /// # Errors
 ///
 /// フォントを解析できない場合、または TTC のインデックスが範囲外の場合に
-/// [`FontLoadError::ParseFont`] を `FontType::ALL` 順で返す。
+/// [`FontLoadError::ParseFont`] を `FontType` の宣言順で返す。
 fn build_font_refs<'a>(
   config: &'a FontConfigs,
   font_data: &'a FontData,
@@ -87,7 +87,7 @@ fn build_font_refs<'a>(
 ///
 /// # Errors
 ///
-/// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を `FontType::ALL` 順で返す。
+/// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を `FontType` の宣言順で返す。
 fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMap<FontMetrics>, Failures<FontLoadError>> {
   return FontMap::try_from_fn(|font_type| {
     let font_ref = &font_refs[font_type];

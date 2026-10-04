@@ -47,11 +47,6 @@ pub enum FontType {
 }
 
 impl FontType {
-  /// 全フォント種別を宣言順に並べたスライス
-  ///
-  /// derive が全 variant を宣言順に生成するので、variant を足しても追記漏れは起きない。
-  pub const ALL: &'static [FontType] = <Self as VariantArray>::VARIANTS;
-
   /// TOML でこのフォント種別を指す `snake_case` のキーを返す
   ///
   /// `[font_configs.<key>]` セクションのキーと一致する。診断で設定パスを示すときはこちらを使う

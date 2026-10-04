@@ -12,6 +12,7 @@ use read_fonts::{
   FontRef, ReadError, TableProvider, TopLevelTable,
   tables::{fvar::Fvar, layout::ScriptList},
 };
+use strum::VariantArray;
 use thiserror::Error;
 use tracing::debug;
 
@@ -234,7 +235,7 @@ pub(crate) enum FontWarning {
   },
 }
 
-/// 全フォント種別を検証し、違反を `FontType::ALL` 順に**全件**集める。
+/// 全フォント種別を検証し、違反を `FontType` の宣言順に**全件**集める。
 ///
 /// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
 /// 違反と独立に確定するため。
@@ -248,7 +249,7 @@ pub(super) fn validate_fonts(
 ) -> (Result<(), Failures<FontValidationFailure>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
-  for &font_type in FontType::ALL {
+  for &font_type in FontType::VARIANTS {
     let config = &font_configs[font_type];
     let font_ref = &font_refs[font_type];
     all_errors.extend(
