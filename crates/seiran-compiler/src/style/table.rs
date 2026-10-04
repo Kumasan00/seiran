@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   color::Color,
-  document::FontKind,
+  document::Typeface,
   length::{Length, non_negative},
   style::{NumberTitleTemplate, caption::CaptionStyle},
 };
@@ -36,7 +36,7 @@ pub(crate) struct TableStyle {
   #[garde(custom(non_negative))]
   pub cell_padding: Length,
   /// ヘッダ行（`\head{}`）セルの書体
-  pub head_font_kind: FontKind,
+  pub head_typeface: Typeface,
 }
 
 impl Default for TableStyle {
@@ -52,7 +52,7 @@ impl Default for TableStyle {
       rule_thickness: Length::pt(0.5),
       rule_color: None,
       cell_padding: Length::pt(4.0),
-      head_font_kind: FontKind::SerifBold,
+      head_typeface: Typeface::SerifBold,
     };
   }
 }
@@ -60,21 +60,21 @@ impl Default for TableStyle {
 #[cfg(test)]
 mod tests {
   use super::TableStyle;
-  use crate::document::FontKind;
+  use crate::document::Typeface;
 
   #[test]
-  fn head_font_kind_defaults_to_serif_bold() {
+  fn head_typeface_defaults_to_serif_bold() {
     let style = TableStyle::default();
 
-    assert_eq!(style.head_font_kind, FontKind::SerifBold);
+    assert_eq!(style.head_typeface, Typeface::SerifBold);
   }
 
   #[test]
-  fn deserialize_overrides_head_font_kind() {
+  fn deserialize_overrides_head_typeface() {
     let toml = "
-head_font_kind = \"sans_serif_bold\"
+head_typeface = \"sans_serif_bold\"
 ";
     let style: TableStyle = toml::from_str(toml).expect("`[table]` の本体として読めるはず");
-    assert_eq!(style.head_font_kind, FontKind::SansSerifBold);
+    assert_eq!(style.head_typeface, Typeface::SansSerifBold);
   }
 }

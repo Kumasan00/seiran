@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::FontKind,
+  document::Typeface,
   length::Length,
   project::ProjectPath,
   typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
@@ -238,8 +238,8 @@ impl DelimiterGlyphs {
 pub(in crate::typeset) struct TextStyle {
   /// フォントサイズ
   pub font_size: Length,
-  /// フォント種別（書体 + 太字 / イタリック等の組み合わせ）
-  pub font_kind: FontKind,
+  /// 書体（ファミリと太字 / イタリックの組み合わせ）
+  pub typeface: Typeface,
   /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
   pub color: Option<Color>,
 }
@@ -290,20 +290,20 @@ pub(super) fn merge_adjacent_atom_text(nodes: Vec<AtomNode>) -> Vec<AtomNode> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::document::FontKind;
+  use crate::document::Typeface;
 
-  fn style(font_kind: FontKind) -> TextStyle {
+  fn style(typeface: Typeface) -> TextStyle {
     return TextStyle {
       font_size: Length::pt(10.0),
-      font_kind,
+      typeface,
       color: None,
     };
   }
 
   #[test]
   fn different_style_text_is_not_merged() {
-    let s1 = style(FontKind::Serif);
-    let s2 = style(FontKind::SerifBold);
+    let s1 = style(Typeface::Serif);
+    let s2 = style(Typeface::SerifBold);
     let nodes = vec![
       InlineNode::Text("A".to_string(), s1),
       InlineNode::Text("B".to_string(), s1),
@@ -320,7 +320,7 @@ mod tests {
 
   #[test]
   fn non_text_node_breaks_merging() {
-    let s1 = style(FontKind::Serif);
+    let s1 = style(Typeface::Serif);
     let nodes = vec![
       InlineNode::Text("A".to_string(), s1),
       InlineNode::LineBreak,
@@ -334,7 +334,7 @@ mod tests {
 
   #[test]
   fn index_mark_does_not_break_merging() {
-    let s1 = style(FontKind::Serif);
+    let s1 = style(Typeface::Serif);
     let nodes = vec![
       InlineNode::Text("foo".to_string(), s1),
       InlineNode::IndexMark(IndexTerm {
@@ -353,8 +353,8 @@ mod tests {
 
   #[test]
   fn index_mark_keeps_its_place_when_styles_differ() {
-    let s1 = style(FontKind::Serif);
-    let s2 = style(FontKind::SerifBold);
+    let s1 = style(Typeface::Serif);
+    let s2 = style(Typeface::SerifBold);
     let nodes = vec![
       InlineNode::Text("foo".to_string(), s1),
       InlineNode::IndexMark(IndexTerm {
@@ -374,8 +374,8 @@ mod tests {
   #[test]
   fn merge_adjacent_atom_text_joins_same_style_runs() {
     let nodes = vec![
-      AtomNode::Text("a".to_string(), style(FontKind::Math)),
-      AtomNode::Text("b".to_string(), style(FontKind::Math)),
+      AtomNode::Text("a".to_string(), style(Typeface::Math)),
+      AtomNode::Text("b".to_string(), style(Typeface::Math)),
     ];
 
     let merged = merge_adjacent_atom_text(nodes);
@@ -387,11 +387,11 @@ mod tests {
   #[test]
   fn merge_adjacent_atom_text_keeps_runs_separated_by_kern() {
     let nodes = vec![
-      AtomNode::Text("a".to_string(), style(FontKind::Math)),
+      AtomNode::Text("a".to_string(), style(Typeface::Math)),
       AtomNode::Kern {
         length: Length::pt(2.0),
       },
-      AtomNode::Text("b".to_string(), style(FontKind::Math)),
+      AtomNode::Text("b".to_string(), style(Typeface::Math)),
     ];
 
     let merged = merge_adjacent_atom_text(nodes);

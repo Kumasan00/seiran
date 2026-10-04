@@ -105,7 +105,7 @@ pub(crate) fn generate_citations(
 mod tests {
   use super::{GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
-    document::{FontKind, HirDocument},
+    document::{HirDocument, Typeface},
     frontend::test_support::parse_for_test,
     project::{FilesystemProjectSource, ProjectPath},
     semantics::{
@@ -197,7 +197,7 @@ mod tests {
     for inline in inlines {
       match inline {
         GeneratedInline::Styled {
-          font: FontKind::SerifItalic | FontKind::SerifBoldItalic,
+          font: Typeface::SerifItalic | Typeface::SerifBoldItalic,
           children,
         } => out.push(children.iter().map(GeneratedInline::to_plain_text).collect()),
         GeneratedInline::Styled { children, .. } | GeneratedInline::InternalLink { children, .. } => {

@@ -87,7 +87,7 @@ fn lower_generated_inline(
     GeneratedInline::Styled { font, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
-        font_kind: *font,
+        typeface: *font,
         color: parent_style.color,
       };
       return lower_generated_inlines(ctx, children, styled);
@@ -105,7 +105,7 @@ fn lower_generated_inline(
 mod tests {
   use super::*;
   use crate::{
-    document::FontKind,
+    document::Typeface,
     semantics::CitationId,
     style::Style as ReadStyle,
     typeset::lowering::{
@@ -121,7 +121,7 @@ mod tests {
       body: vec![
         GeneratedInline::Text("K. Kwan, ".to_string()),
         GeneratedInline::Styled {
-          font: FontKind::SerifItalic,
+          font: Typeface::SerifItalic,
           children: vec![GeneratedInline::Text("Crazy Rich Asians".to_string())],
         },
       ],
@@ -167,7 +167,7 @@ mod tests {
       LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,
     });
-    assert_eq!(italic.map(|s| return s.font_kind), Some(FontKind::SerifItalic), "{layout:?}");
+    assert_eq!(italic.map(|s| return s.typeface), Some(Typeface::SerifItalic), "{layout:?}");
   }
 
   #[test]

@@ -66,7 +66,7 @@ mod tests {
   use super::{EvalError, ParseError, parse};
   use crate::{
     document::{
-      FontKind, HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant,
+      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, Typeface,
     },
     frontend::{evaluator, test_support},
     project::{PathResolver, ProjectPath},
@@ -558,7 +558,7 @@ mod tests {
       assert!(matches!(
         &inlines[2].kind,
         HirInlineKind::Styled {
-          font: FontKind::SerifBold,
+          font: Typeface::SerifBold,
           ..
         }
       ));
@@ -576,7 +576,7 @@ mod tests {
       assert!(matches!(
         &inlines[0].kind,
         HirInlineKind::Styled {
-          font: FontKind::SerifItalic,
+          font: Typeface::SerifItalic,
           ..
         }
       ));
@@ -587,19 +587,19 @@ mod tests {
 
   #[test]
   fn evaluate_all_twelve_styled_commands_resolve() {
-    let cases: [(&str, FontKind); 12] = [
-      ("serif", FontKind::Serif),
-      ("bold", FontKind::SerifBold),
-      ("italic", FontKind::SerifItalic),
-      ("bolditalic", FontKind::SerifBoldItalic),
-      ("sans", FontKind::SansSerif),
-      ("sansbold", FontKind::SansSerifBold),
-      ("sansitalic", FontKind::SansSerifItalic),
-      ("sansbolditalic", FontKind::SansSerifBoldItalic),
-      ("mono", FontKind::Monospace),
-      ("monobold", FontKind::MonospaceBold),
-      ("monoitalic", FontKind::MonospaceItalic),
-      ("monobolditalic", FontKind::MonospaceBoldItalic),
+    let cases: [(&str, Typeface); 12] = [
+      ("serif", Typeface::Serif),
+      ("bold", Typeface::SerifBold),
+      ("italic", Typeface::SerifItalic),
+      ("bolditalic", Typeface::SerifBoldItalic),
+      ("sans", Typeface::SansSerif),
+      ("sansbold", Typeface::SansSerifBold),
+      ("sansitalic", Typeface::SansSerifItalic),
+      ("sansbolditalic", Typeface::SansSerifBoldItalic),
+      ("mono", Typeface::Monospace),
+      ("monobold", Typeface::MonospaceBold),
+      ("monoitalic", Typeface::MonospaceItalic),
+      ("monobolditalic", Typeface::MonospaceBoldItalic),
     ];
     for (name, expected) in cases {
       let result = evaluate_source(&format!("\\{name}{{x}}"));
@@ -609,7 +609,7 @@ mod tests {
       let HirInlineKind::Styled { font, .. } = &inlines[0].kind else {
         panic!("Styled が期待されます: \\{name} → {:?}", inlines[0]);
       };
-      assert_eq!(*font, expected, "\\{name} の FontKind");
+      assert_eq!(*font, expected, "\\{name} の Typeface");
     }
   }
 

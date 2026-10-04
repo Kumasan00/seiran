@@ -6,7 +6,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  document::{FontKind, HeadingLevel},
+  document::{HeadingLevel, Typeface},
   length::{Length, non_negative, positive},
   style::NumberTitleTemplate,
 };
@@ -112,8 +112,8 @@ pub(crate) struct HeadingStyle {
   pub page_break_before: bool,
   /// 見出しの直後で改ページするか
   pub page_break_after: bool,
-  /// 見出しテキストのフォント種別
-  pub font_kind: FontKind,
+  /// 見出しテキストの書体
+  pub typeface: Typeface,
 }
 
 /// レベル別既定（[`HeadingStyles::default`]）が共通に使う基底。
@@ -125,7 +125,7 @@ impl Default for HeadingStyle {
       bottom_margin: Length::pt(10.0),
       page_break_before: false,
       page_break_after: false,
-      font_kind: FontKind::SerifBold,
+      typeface: Typeface::SerifBold,
     };
   }
 }
@@ -178,8 +178,8 @@ struct HeadingStyleOverride {
   page_break_before: Option<bool>,
   /// 見出しの直後で改ページするか
   page_break_after: Option<bool>,
-  /// 見出しテキストのフォント種別
-  font_kind: Option<FontKind>,
+  /// 見出しテキストの書体
+  typeface: Option<Typeface>,
 }
 
 impl HeadingStyleOverride {
@@ -194,7 +194,7 @@ impl HeadingStyleOverride {
       bottom_margin,
       page_break_before,
       page_break_after,
-      font_kind,
+      typeface,
     } = self;
     return HeadingStyle {
       format: format.unwrap_or(base.format),
@@ -202,7 +202,7 @@ impl HeadingStyleOverride {
       bottom_margin: bottom_margin.unwrap_or(base.bottom_margin),
       page_break_before: page_break_before.unwrap_or(base.page_break_before),
       page_break_after: page_break_after.unwrap_or(base.page_break_after),
-      font_kind: font_kind.unwrap_or(base.font_kind),
+      typeface: typeface.unwrap_or(base.typeface),
     };
   }
 }
@@ -213,7 +213,7 @@ mod tests {
 
   use super::{HeadingStyle, HeadingStyles};
   use crate::{
-    document::{FontKind, HeadingLevel},
+    document::{HeadingLevel, Typeface},
     length::Length,
   };
 
@@ -263,7 +263,7 @@ mod tests {
       assert!((style.bottom_margin.to_pt() - bottom_margin).abs() < f32::EPSILON, "{level:?} の下余白");
       assert_eq!(style.page_break_before, before, "{level:?} の前改ページ");
       assert_eq!(style.page_break_after, after, "{level:?} の後改ページ");
-      assert_eq!(style.font_kind, FontKind::SerifBold, "{level:?} の書体");
+      assert_eq!(style.typeface, Typeface::SerifBold, "{level:?} の書体");
     }
   }
 
@@ -281,7 +281,7 @@ font_size = \"12pt\"
   fn heading_styles_rejects_base_scalar_keys() {
     let toml = "
 [heading]
-font_kind = \"sans_serif_bold\"
+typeface = \"sans_serif_bold\"
 ";
     let result: Result<HeadingWrapper, _> = toml::from_str(toml);
     assert!(result.is_err(), "[heading] 直下のスカラー指定は拒否されるべき: {result:?}");
@@ -300,7 +300,7 @@ format = \"§ {number} {title}\"
     assert_eq!(styles[HeadingLevel::Section].format.as_str(), "§ {number} {title}");
     assert!((styles[HeadingLevel::Section].font_size.to_pt() - 20.0).abs() < f32::EPSILON);
     assert!(styles[HeadingLevel::Part].page_break_after);
-    assert_eq!(styles[HeadingLevel::Part].font_kind, FontKind::SerifBold);
+    assert_eq!(styles[HeadingLevel::Part].typeface, Typeface::SerifBold);
   }
 
   #[test]
@@ -314,7 +314,7 @@ font_size = \"13pt\"
 bottom_margin = \"4pt\"
 page_break_before = false
 page_break_after = true
-font_kind = \"sans_serif_bold\"
+typeface = \"sans_serif_bold\"
 ";
 
     let wrapper: HeadingWrapper = toml::from_str(toml).unwrap();
@@ -325,6 +325,6 @@ font_kind = \"sans_serif_bold\"
     assert_eq!(chapter.bottom_margin, Length::pt(4.0));
     assert!(!chapter.page_break_before);
     assert!(chapter.page_break_after);
-    assert_eq!(chapter.font_kind, FontKind::SansSerifBold);
+    assert_eq!(chapter.typeface, Typeface::SansSerifBold);
   }
 }

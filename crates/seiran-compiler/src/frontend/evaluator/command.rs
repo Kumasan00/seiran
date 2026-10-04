@@ -16,7 +16,7 @@ mod text_style;
 use phf::phf_map;
 
 use crate::{
-  document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirNode},
+  document::{HeadingLevel, HirInline, HirInlineKind, HirNode, Typeface},
   frontend::{
     evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, opt_args},
     syntax::{ArgMode, view::CommandView},
@@ -99,7 +99,7 @@ enum CommandKind {
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
   Heading(HeadingLevel),
   /// 引数 1 つを取り書体を適用するコマンド（`\bold`, `\sansitalic` 等の 12 種）
-  StyledText(FontKind),
+  StyledText(Typeface),
   /// 引数 1 つを取りテキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
   ColoredText,
   /// `\ref{label}` — 相互参照のスタブを生成する（解決はしない）
@@ -237,20 +237,20 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）
-  "serif" => CommandKind::StyledText(FontKind::Serif),
-  "bold" => CommandKind::StyledText(FontKind::SerifBold),
-  "italic" => CommandKind::StyledText(FontKind::SerifItalic),
-  "bolditalic" => CommandKind::StyledText(FontKind::SerifBoldItalic),
+  "serif" => CommandKind::StyledText(Typeface::Serif),
+  "bold" => CommandKind::StyledText(Typeface::SerifBold),
+  "italic" => CommandKind::StyledText(Typeface::SerifItalic),
+  "bolditalic" => CommandKind::StyledText(Typeface::SerifBoldItalic),
   // サンセリフ
-  "sans" => CommandKind::StyledText(FontKind::SansSerif),
-  "sansbold" => CommandKind::StyledText(FontKind::SansSerifBold),
-  "sansitalic" => CommandKind::StyledText(FontKind::SansSerifItalic),
-  "sansbolditalic" => CommandKind::StyledText(FontKind::SansSerifBoldItalic),
+  "sans" => CommandKind::StyledText(Typeface::SansSerif),
+  "sansbold" => CommandKind::StyledText(Typeface::SansSerifBold),
+  "sansitalic" => CommandKind::StyledText(Typeface::SansSerifItalic),
+  "sansbolditalic" => CommandKind::StyledText(Typeface::SansSerifBoldItalic),
   // 等幅
-  "mono" => CommandKind::StyledText(FontKind::Monospace),
-  "monobold" => CommandKind::StyledText(FontKind::MonospaceBold),
-  "monoitalic" => CommandKind::StyledText(FontKind::MonospaceItalic),
-  "monobolditalic" => CommandKind::StyledText(FontKind::MonospaceBoldItalic),
+  "mono" => CommandKind::StyledText(Typeface::Monospace),
+  "monobold" => CommandKind::StyledText(Typeface::MonospaceBold),
+  "monoitalic" => CommandKind::StyledText(Typeface::MonospaceItalic),
+  "monobolditalic" => CommandKind::StyledText(Typeface::MonospaceBoldItalic),
 
   "color" => CommandKind::ColoredText,
 

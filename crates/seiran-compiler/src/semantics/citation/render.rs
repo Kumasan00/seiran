@@ -10,7 +10,7 @@ use hayagriva::{
 };
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   semantics::citation::{
     BibliographyEntry, CitationId, CitationSiteFacts, GeneratedInline, csl_style::CompiledCitationStyle,
   },
@@ -166,8 +166,8 @@ fn formatted_to_inline(formatted: &Formatted) -> Option<GeneratedInline> {
     return None;
   }
   let text = GeneratedInline::Text(formatted.text.clone());
-  let font = formatting_to_font_kind(formatted.formatting);
-  if font == FontKind::Serif {
+  let font = formatting_to_typeface(formatted.formatting);
+  if font == Typeface::Serif {
     return Some(text);
   }
   return Some(GeneratedInline::Styled {
@@ -176,18 +176,18 @@ fn formatted_to_inline(formatted: &Formatted) -> Option<GeneratedInline> {
   });
 }
 
-/// 実効 `Formatting` を本文系 serif の `FontKind`（normal / bold / italic / bolditalic）に落とす。
+/// 実効 `Formatting` を本文系 serif の `Typeface`（normal / bold / italic / bolditalic）に落とす。
 ///
 /// `font_weight == Bold` を太字、`font_style == Italic` を斜体とみなす（`FontWeight::Light` は
 /// 対応する書体が無いため normal 扱い）。スモールキャップス（`font_variant`）・下線（`text_decoration`）・
 /// 上付き下付き（`vertical_align`）は `GeneratedInline` に表現が無いため無視する（近似）。
-fn formatting_to_font_kind(formatting: Formatting) -> FontKind {
+fn formatting_to_typeface(formatting: Formatting) -> Typeface {
   let bold = matches!(formatting.font_weight, FontWeight::Bold);
   let italic = matches!(formatting.font_style, FontStyle::Italic);
   return match (bold, italic) {
-    (false, false) => FontKind::Serif,
-    (true, false) => FontKind::SerifBold,
-    (false, true) => FontKind::SerifItalic,
-    (true, true) => FontKind::SerifBoldItalic,
+    (false, false) => Typeface::Serif,
+    (true, false) => Typeface::SerifBold,
+    (false, true) => Typeface::SerifItalic,
+    (true, true) => Typeface::SerifBoldItalic,
   };
 }

@@ -6,13 +6,13 @@
 //! TOML に対応する未検証型（`RawFontConfig` 等）とそこから検証済み値を構築する処理は
 //! 兄弟 module `project::config` が持つ。
 
-mod kind;
+mod font_type;
 mod map;
 mod settings;
 
 use std::{collections::HashMap, fmt, sync::Arc};
 
-pub use kind::FontType;
+pub use font_type::FontType;
 pub(crate) use map::FontMap;
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};

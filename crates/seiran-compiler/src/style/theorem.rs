@@ -7,7 +7,7 @@ use serde::Deserialize;
 use strum::VariantArray;
 
 use crate::{
-  document::{FontKind, TheoremClass},
+  document::{TheoremClass, Typeface},
   length::{Length, non_negative},
   style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
 };
@@ -74,7 +74,7 @@ impl Default for TheoremStyles {
         display_name: "Definition".to_string(),
         counter: "definition".to_string(),
         style: TheoremPresentation {
-          font_kind: FontKind::Serif,
+          typeface: Typeface::Serif,
           ..TheoremPresentation::default()
         },
         ..TheoremStyle::default()
@@ -88,7 +88,7 @@ impl Default for TheoremStyles {
         display_name: "Example".to_string(),
         counter: "example".to_string(),
         style: TheoremPresentation {
-          font_kind: FontKind::Serif,
+          typeface: Typeface::Serif,
           ..TheoremPresentation::default()
         },
         ..TheoremStyle::default()
@@ -97,7 +97,7 @@ impl Default for TheoremStyles {
         display_name: "Remark".to_string(),
         counter: "remark".to_string(),
         style: TheoremPresentation {
-          font_kind: FontKind::Serif,
+          typeface: Typeface::Serif,
           ..TheoremPresentation::default()
         },
         ..TheoremStyle::default()
@@ -112,7 +112,7 @@ impl Default for TheoremStyles {
         unnumbered: true,
         qed_mark: Some("□".to_string()),
         style: TheoremPresentation {
-          font_kind: FontKind::Serif,
+          typeface: Typeface::Serif,
           heading_format: TheoremHeadingTemplate::parse("{display_name}"),
           heading_with_title: TheoremHeadingTemplate::parse("{display_name} ({title})"),
           ..TheoremPresentation::default()
@@ -236,10 +236,10 @@ pub(crate) struct TheoremPresentation {
   /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
   #[garde(dive)]
   pub heading_with_of_and_title: TheoremHeadingTemplate,
-  /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
-  pub font_kind: FontKind,
-  /// 見出しのフォント種別（既定は太字セリフ）
-  pub heading_font_kind: FontKind,
+  /// 本文の書体（定理は斜体、証明・定義系はローマン）
+  pub typeface: Typeface,
+  /// 見出しの書体（既定は太字セリフ）
+  pub heading_typeface: Typeface,
   /// 定理ブロックの上余白
   #[garde(custom(non_negative))]
   pub top_margin: Length,
@@ -255,8 +255,8 @@ impl Default for TheoremPresentation {
       heading_with_title: TheoremHeadingTemplate::parse("{display_name} {number} ({title})"),
       heading_with_of: TheoremHeadingTemplate::parse("{display_name} of {of}"),
       heading_with_of_and_title: TheoremHeadingTemplate::parse("{display_name} of {of} ({title})"),
-      font_kind: FontKind::SerifItalic,
-      heading_font_kind: FontKind::SerifBold,
+      typeface: Typeface::SerifItalic,
+      heading_typeface: Typeface::SerifBold,
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
     };
@@ -370,10 +370,10 @@ struct TheoremPresentationOverride {
   heading_with_of: Option<TheoremHeadingTemplate>,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式
   heading_with_of_and_title: Option<TheoremHeadingTemplate>,
-  /// 本文のフォント種別
-  font_kind: Option<FontKind>,
-  /// 見出しのフォント種別
-  heading_font_kind: Option<FontKind>,
+  /// 本文の書体
+  typeface: Option<Typeface>,
+  /// 見出しの書体
+  heading_typeface: Option<Typeface>,
   /// 上余白
   top_margin: Option<Length>,
   /// 下余白
@@ -391,8 +391,8 @@ impl TheoremPresentationOverride {
       heading_with_title,
       heading_with_of,
       heading_with_of_and_title,
-      font_kind,
-      heading_font_kind,
+      typeface,
+      heading_typeface,
       top_margin,
       bottom_margin,
     } = self;
@@ -401,8 +401,8 @@ impl TheoremPresentationOverride {
       heading_with_title: heading_with_title.unwrap_or(base.heading_with_title),
       heading_with_of: heading_with_of.unwrap_or(base.heading_with_of),
       heading_with_of_and_title: heading_with_of_and_title.unwrap_or(base.heading_with_of_and_title),
-      font_kind: font_kind.unwrap_or(base.font_kind),
-      heading_font_kind: heading_font_kind.unwrap_or(base.heading_font_kind),
+      typeface: typeface.unwrap_or(base.typeface),
+      heading_typeface: heading_typeface.unwrap_or(base.heading_typeface),
       top_margin: top_margin.unwrap_or(base.top_margin),
       bottom_margin: bottom_margin.unwrap_or(base.bottom_margin),
     };
@@ -416,7 +416,7 @@ mod tests {
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, TheoremStyles};
   use crate::{
-    document::FontKind,
+    document::Typeface,
     length::Length,
     style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
   };
@@ -462,7 +462,7 @@ mod tests {
 
     assert!(proof.unnumbered);
     assert_eq!(proof.qed_mark.as_deref(), Some("□"));
-    assert_eq!(proof.style.font_kind, FontKind::Serif);
+    assert_eq!(proof.style.typeface, Typeface::Serif);
     assert_eq!(proof.style.heading_format.as_str(), "{display_name}");
   }
 
@@ -479,7 +479,7 @@ mod tests {
     ] {
       let style = &theorems[class];
       assert_eq!(style.counter, "theorem", "{class} should share theorem counter");
-      assert_eq!(style.style.font_kind, FontKind::SerifItalic);
+      assert_eq!(style.style.typeface, Typeface::SerifItalic);
       assert!(!style.unnumbered);
     }
   }
@@ -490,7 +490,7 @@ mod tests {
     let remark = &theorems[TheoremClass::Remark];
 
     assert_eq!(remark.counter, "remark");
-    assert_eq!(remark.style.font_kind, FontKind::Serif);
+    assert_eq!(remark.style.typeface, Typeface::Serif);
   }
 
   #[test]
@@ -527,7 +527,7 @@ display_name = \"補題\"
 
     assert_eq!(theorems.lemma.display_name, "補題");
     assert_eq!(theorems.lemma.counter, "theorem");
-    assert_eq!(theorems.lemma.style.font_kind, FontKind::SerifItalic);
+    assert_eq!(theorems.lemma.style.typeface, Typeface::SerifItalic);
     assert_eq!(theorems.theorem.display_name, "Theorem");
     assert!(theorems.proof.unnumbered);
   }
@@ -536,13 +536,13 @@ display_name = \"補題\"
   fn partial_override_nested_style_keeps_other_style_fields() {
     let toml = "
 [theorems.theorem.style]
-font_kind = \"sans_serif_bold\"
+typeface = \"sans_serif_bold\"
 ";
 
     let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
-    assert_eq!(theorem.style.font_kind, FontKind::SansSerifBold);
+    assert_eq!(theorem.style.typeface, Typeface::SansSerifBold);
     assert_eq!(theorem.style.heading_format.as_str(), "{display_name} {number}");
     assert!((theorem.style.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
   }
@@ -564,8 +564,8 @@ heading_format = \"{display_name}{number}\"
 heading_with_title = \"{display_name}{number}（{title}）\"
 heading_with_of = \"{of}の{display_name}\"
 heading_with_of_and_title = \"{of}の{display_name}（{title}）\"
-font_kind = \"serif\"
-heading_font_kind = \"sans_serif_bold\"
+typeface = \"serif\"
+heading_typeface = \"sans_serif_bold\"
 top_margin = \"6pt\"
 bottom_margin = \"8pt\"
 ";
@@ -583,8 +583,8 @@ bottom_margin = \"8pt\"
     assert_eq!(theorem.style.heading_with_title.as_str(), "{display_name}{number}（{title}）");
     assert_eq!(theorem.style.heading_with_of.as_str(), "{of}の{display_name}");
     assert_eq!(theorem.style.heading_with_of_and_title.as_str(), "{of}の{display_name}（{title}）");
-    assert_eq!(theorem.style.font_kind, FontKind::Serif);
-    assert_eq!(theorem.style.heading_font_kind, FontKind::SansSerifBold);
+    assert_eq!(theorem.style.typeface, Typeface::Serif);
+    assert_eq!(theorem.style.heading_typeface, Typeface::SansSerifBold);
     assert_eq!(theorem.style.top_margin, Length::pt(6.0));
     assert_eq!(theorem.style.bottom_margin, Length::pt(8.0));
   }

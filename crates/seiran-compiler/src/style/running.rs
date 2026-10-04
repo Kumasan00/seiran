@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::{
   color::Color,
-  document::FontKind,
+  document::Typeface,
   length::{Length, non_negative, positive},
   style::RunningTemplate,
 };
@@ -31,9 +31,9 @@ pub(crate) struct RunningContentStyle {
   /// 右スロットのテンプレート（既定は空 = 描画なし）
   #[garde(dive)]
   pub right: RunningTemplate,
-  /// フォント種別
+  /// 書体
   #[garde(skip)]
-  pub font_kind: FontKind,
+  pub typeface: Typeface,
   /// フォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -65,7 +65,7 @@ impl Default for RunningContentStyle {
       left: RunningTemplate::parse(""),
       center: RunningTemplate::parse(""),
       right: RunningTemplate::parse(""),
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       font_size: Length::pt(10.0),
       baseline_offset: Length::pt(28.0),
       rule_thickness: Length::pt(0.0),
@@ -80,14 +80,14 @@ mod tests {
   use garde::Validate;
 
   use super::RunningContentStyle;
-  use crate::{document::FontKind, length::Length, style::RunningTemplate};
+  use crate::{document::Typeface, length::Length, style::RunningTemplate};
 
   #[test]
   fn default_is_blank() {
     let style = RunningContentStyle::default();
 
     assert!(style.is_blank());
-    assert_eq!(style.font_kind, FontKind::Serif);
+    assert_eq!(style.typeface, Typeface::Serif);
     assert!((style.font_size.to_pt() - 10.0).abs() < f32::EPSILON);
   }
 

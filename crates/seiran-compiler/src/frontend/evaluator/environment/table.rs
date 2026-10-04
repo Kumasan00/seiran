@@ -71,7 +71,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{CaptionPosition, FontKind, HirInline, HirInlineKind, HirTableRow},
+    document::{CaptionPosition, HirInline, HirInlineKind, HirTableRow, Typeface},
     frontend::evaluator::{evaluate_children_to_hir, test_support},
     length::Length,
   };
@@ -377,7 +377,7 @@ mod tests {
     assert!(matches!(
       &table.rows[0].cells[0].content[0].kind,
       HirInlineKind::Styled {
-        font: FontKind::SerifBold,
+        font: Typeface::SerifBold,
         ..
       }
     ));

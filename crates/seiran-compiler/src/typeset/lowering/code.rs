@@ -6,7 +6,7 @@
 
 use crate::{
   color::Color,
-  document::FontKind,
+  document::Typeface,
   length::Length,
   typeset::lowering::{
     LoweringContext,
@@ -19,7 +19,7 @@ use crate::{
 fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
   return TextStyle {
     font_size,
-    font_kind: FontKind::Monospace,
+    typeface: Typeface::Monospace,
     color,
   };
 }
@@ -103,7 +103,7 @@ mod tests {
     let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = &nodes[0] else {
       panic!("先頭は TextAtom であるべき: {nodes:?}");
     };
-    assert_eq!(text_style.font_kind, FontKind::Monospace);
+    assert_eq!(text_style.typeface, Typeface::Monospace);
     assert!(
       !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
       "字下げ Kern は出ない: {nodes:?}"
@@ -125,7 +125,7 @@ mod tests {
     else {
       unreachable!("find が TextAtom だけを返す")
     };
-    assert_eq!(text_style.font_kind, FontKind::Monospace);
+    assert_eq!(text_style.typeface, Typeface::Monospace);
     assert_eq!(text_style.font_size, style.text.font_size, "サイズは周囲から継承する");
   }
 }

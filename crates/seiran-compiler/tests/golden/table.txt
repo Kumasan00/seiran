@@ -357,26 +357,24 @@ keywords=["test", "seiran"]
   glyphs x=788.07 y=721.22 font=JapaneseSerif size=12.00 text="の" glyph_count=1
   glyphs x=802.89 y=721.22 font=Serif size=12.00 text="head" glyph_count=4
   glyphs x=827.61 y=721.22 font=Serif size=12.00 text="_" glyph_count=1
-  glyphs x=833.76 y=721.22 font=Serif size=12.00 text="font" glyph_count=4
-  glyphs x=854.30 y=721.22 font=Serif size=12.00 text="_" glyph_count=1
-  glyphs x=860.44 y=721.22 font=Serif size=12.00 text="kind" glyph_count=4
-  glyphs x=886.57 y=721.22 font=JapaneseSerif size=12.00 text="の" glyph_count=1
-  glyphs x=898.57 y=721.22 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
-  glyphs x=910.57 y=721.22 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
-  glyphs x=922.57 y=721.22 font=JapaneseSerif size=12.00 text="変" glyph_count=1
-  glyphs x=934.57 y=721.22 font=JapaneseSerif size=12.00 text="わ" glyph_count=1
-  glyphs x=946.57 y=721.22 font=JapaneseSerif size=12.00 text="ら" glyph_count=1
-  glyphs x=958.57 y=721.22 font=JapaneseSerif size=12.00 text="な" glyph_count=1
-  glyphs x=970.57 y=721.22 font=JapaneseSerif size=12.00 text="い" glyph_count=1
-  glyphs x=982.57 y=721.22 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
-  glyphs x=994.57 y=721.22 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=1006.57 y=721.22 font=JapaneseSerif size=12.00 text="を" glyph_count=1
-  glyphs x=1018.57 y=721.22 font=JapaneseSerif size=12.00 text="確" glyph_count=1
-  glyphs x=1030.57 y=721.22 font=JapaneseSerif size=12.00 text="認" glyph_count=1
-  glyphs x=1042.57 y=721.22 font=JapaneseSerif size=12.00 text="し" glyph_count=1
-  glyphs x=1054.57 y=721.22 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
-  glyphs x=1066.57 y=721.22 font=JapaneseSerif size=12.00 text="す" glyph_count=1
-  glyphs x=1077.61 y=721.22 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=833.76 y=721.22 font=Serif size=12.00 text="typeface" glyph_count=8
+  glyphs x=878.53 y=721.22 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=890.53 y=721.22 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=902.53 y=721.22 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=914.53 y=721.22 font=JapaneseSerif size=12.00 text="変" glyph_count=1
+  glyphs x=926.53 y=721.22 font=JapaneseSerif size=12.00 text="わ" glyph_count=1
+  glyphs x=938.53 y=721.22 font=JapaneseSerif size=12.00 text="ら" glyph_count=1
+  glyphs x=950.53 y=721.22 font=JapaneseSerif size=12.00 text="な" glyph_count=1
+  glyphs x=962.53 y=721.22 font=JapaneseSerif size=12.00 text="い" glyph_count=1
+  glyphs x=974.53 y=721.22 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=986.53 y=721.22 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=998.53 y=721.22 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=1010.53 y=721.22 font=JapaneseSerif size=12.00 text="確" glyph_count=1
+  glyphs x=1022.53 y=721.22 font=JapaneseSerif size=12.00 text="認" glyph_count=1
+  glyphs x=1034.53 y=721.22 font=JapaneseSerif size=12.00 text="し" glyph_count=1
+  glyphs x=1046.53 y=721.22 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=1058.53 y=721.22 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=1069.57 y=721.22 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=240.94 y=757.82 font=SerifBold size=12.00 text="Theorem" glyph_count=7
   glyphs x=294.93 y=757.82 font=SerifBold size=12.00 text="1" glyph_count=1
   glyphs x=240.94 y=770.42 font=JapaneseSerif size=12.00 text="定" glyph_count=1

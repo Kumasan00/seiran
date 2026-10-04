@@ -1,7 +1,7 @@
 //! タイトルページ（`\maketitle` 相当）の lowering
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::Length,
   style::TitlePageStyle,
   typeset::{
@@ -29,15 +29,15 @@ pub(crate) struct TitlePageMetadata {
 pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec<LayoutNode> {
   let mut body: Vec<LayoutNode> = Vec::new();
 
-  let entries: [(Option<&str>, Length, FontKind, Length); 3] = [
-    (meta.title.as_deref(), style.title_font_size, style.title_font_kind, style.title_bottom_margin),
-    (meta.author.as_deref(), style.author_font_size, style.author_font_kind, style.author_bottom_margin),
-    (meta.date.as_deref(), style.date_font_size, style.date_font_kind, Length::pt(0.0)),
+  let entries: [(Option<&str>, Length, Typeface, Length); 3] = [
+    (meta.title.as_deref(), style.title_font_size, style.title_typeface, style.title_bottom_margin),
+    (meta.author.as_deref(), style.author_font_size, style.author_typeface, style.author_bottom_margin),
+    (meta.date.as_deref(), style.date_font_size, style.date_typeface, Length::pt(0.0)),
   ];
 
   // 直前に積んだ要素の下マージン。次の present な要素を積む直前に Vkern として挿入する。
   let mut pending_gap: Option<Length> = None;
-  for (text, font_size, font_kind, gap_after) in entries {
+  for (text, font_size, typeface, gap_after) in entries {
     let Some(text) = text.map(str::trim).filter(|trimmed| return !trimmed.is_empty()) else {
       continue;
     };
@@ -50,7 +50,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
       text.to_string(),
       TextStyle {
         font_size,
-        font_kind,
+        typeface,
         color: None,
       },
     )));
@@ -154,7 +154,7 @@ mod tests {
       })
       .expect("Text が見つからない");
     assert_eq!(text_style.font_size, Length::pt(40.0));
-    assert_eq!(text_style.font_kind, style.title_font_kind);
+    assert_eq!(text_style.typeface, style.title_typeface);
   }
 
   #[test]

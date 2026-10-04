@@ -12,8 +12,8 @@ use alphanumeric::push_math_char;
 
 use crate::{
   document::{
-    FontKind, GridLayout, HirMath, HirMathBlock, HirMathKind, MathBlockKind, MathClass, MathDelimiter, MathVariant,
-    NodeId,
+    GridLayout, HirMath, HirMathBlock, HirMathKind, MathBlockKind, MathClass, MathDelimiter, MathVariant, NodeId,
+    Typeface,
   },
   length::Length,
   semantics::LabelId,
@@ -109,7 +109,7 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
     text,
     TextStyle {
       font_size,
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       color: None,
     },
   )];
@@ -255,7 +255,7 @@ impl<'a> MathLowerCtx<'a> {
   fn text_style(&self) -> TextStyle {
     return TextStyle {
       font_size: self.font_size,
-      font_kind: FontKind::Math,
+      typeface: Typeface::Math,
       color: None,
     };
   }
@@ -460,7 +460,7 @@ mod tests {
 
     assert_eq!(concat_texts(&nodes), "\u{1D465}+1"); // U+1D44E + 23 (x - a)
     assert!(
-      math_text_styles(&nodes).all(|style| return style.font_kind == FontKind::Math),
+      math_text_styles(&nodes).all(|style| return style.typeface == Typeface::Math),
       "数式中の Text はすべて Math フォントになるはず: {nodes:?}"
     );
   }
@@ -507,7 +507,7 @@ mod tests {
     let LayoutNode::Inline(InlineNode::Text(_, style)) = &nodes[0] else {
       panic!("Math Text を期待: {nodes:?}");
     };
-    assert_eq!(style.font_kind, FontKind::Math);
+    assert_eq!(style.typeface, Typeface::Math);
   }
 
   #[test]
@@ -655,7 +655,7 @@ mod tests {
 
     let number = block.rows[0].number.as_ref().expect("番号あり");
     assert!(
-      matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
+      matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.typeface == Typeface::Serif),
       "(1) の Serif Text が番号ボックスに入るはず: {number:?}"
     );
   }

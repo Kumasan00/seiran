@@ -30,7 +30,7 @@ pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
 
 use crate::{
-  document::{FontKind, HeadingLevel, HirNode, HirNodeKind, NodeId, NodeMap},
+  document::{HeadingLevel, HirNode, HirNodeKind, NodeId, NodeMap, Typeface},
   length::Length,
   project::config::ImageConfig,
   semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
@@ -43,8 +43,8 @@ use crate::{
 pub(super) struct LoweringContext<'a> {
   /// スタイル設定への参照
   pub style: &'a ReadStyle,
-  /// 本文段落の既定フォント種別
-  pub body_font_kind: FontKind,
+  /// 本文段落の既定書体
+  pub body_typeface: Typeface,
   /// 段落先頭行の字下げ量
   pub first_line_indent: Length,
   /// ラスタ画像埋め込み時の最大 DPI（config `[image].max_dpi` 由来）
@@ -63,7 +63,7 @@ impl<'a> LoweringContext<'a> {
   pub(super) fn new(style: &'a ReadStyle, image: ImageConfig) -> Self {
     return LoweringContext {
       style,
-      body_font_kind: style.text.font_kind,
+      body_typeface: style.text.typeface,
       first_line_indent: style.text.first_line_indent,
       image_max_dpi: image.max_dpi,
       image_downsample: image.downsample,
@@ -81,11 +81,11 @@ impl<'a> LoweringContext<'a> {
     };
   }
 
-  /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
+  /// 本文段落の既定書体だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_body_font_kind(self, body_font_kind: FontKind) -> Self {
+  pub(super) fn with_body_typeface(self, body_typeface: Typeface) -> Self {
     return LoweringContext {
-      body_font_kind,
+      body_typeface,
       ..self
     };
   }

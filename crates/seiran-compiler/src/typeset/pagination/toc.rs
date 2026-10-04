@@ -3,7 +3,7 @@
 use tracing::debug;
 
 use crate::{
-  document::{FontKind, HeadingLevel},
+  document::{HeadingLevel, Typeface},
   length::Length,
   semantics::HeadingKey,
   style::{Style, TocStyle},
@@ -109,13 +109,13 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
     title: toc.title.clone(),
     title_style: TextStyle {
       font_size: title_heading.font_size,
-      font_kind: title_heading.font_kind,
+      typeface: title_heading.typeface,
       color: None,
     },
     title_bottom_margin: title_heading.bottom_margin,
     entry_style: TextStyle {
       font_size: toc.font_size,
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       color: None,
     },
     indent_per_level: toc.indent_per_level,
@@ -221,7 +221,7 @@ fn fill_leader(
 mod tests {
   use super::{BodyPageValues, HeadingRecord, build_toc_spec, collect_toc_entries};
   use crate::{
-    document::{FontKind, HeadingLevel},
+    document::{HeadingLevel, Typeface},
     length::Length,
     semantics::HeadingKey,
     style::{PageNumberingStyle, Style, TocStyle},
@@ -274,17 +274,17 @@ mod tests {
     style.text.line_height_factor = 1.5;
     style.heading.section.font_size = Length::pt(17.0);
     style.heading.section.bottom_margin = Length::pt(4.0);
-    style.heading.section.font_kind = FontKind::SansSerif;
+    style.heading.section.typeface = Typeface::SansSerif;
 
     let spec = build_toc_spec(&style, Length::pt(333.0));
 
     assert_eq!(spec.title, "もくじ");
     assert_eq!(spec.title_style.font_size, Length::pt(17.0));
-    assert_eq!(spec.title_style.font_kind, FontKind::SansSerif);
+    assert_eq!(spec.title_style.typeface, Typeface::SansSerif);
     assert!(spec.title_style.color.is_none());
     assert_eq!(spec.title_bottom_margin, Length::pt(4.0));
     assert_eq!(spec.entry_style.font_size, Length::pt(11.0));
-    assert_eq!(spec.entry_style.font_kind, FontKind::Serif);
+    assert_eq!(spec.entry_style.typeface, Typeface::Serif);
     assert!(spec.entry_style.color.is_none());
     assert_eq!(spec.indent_per_level, Length::pt(7.0));
     assert_eq!(spec.bottom_margin, Length::pt(3.0));

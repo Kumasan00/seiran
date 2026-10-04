@@ -1,7 +1,7 @@
 //! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
 use crate::{
-  document::{FontKind, HirNodeKind, HirTheorem, NodeId},
+  document::{HirNodeKind, HirTheorem, NodeId, Typeface},
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
@@ -36,7 +36,7 @@ pub(super) fn lower_theorem(
     build_heading(ctx, theorem_style, number.as_deref(), theorem.title.as_deref(), of_target, state),
   ];
 
-  let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
+  let body_ctx = ctx.with_body_typeface(pres.typeface).with_first_line_indent(Length::pt(0.0));
   let mut body_nodes = lower_nodes(&body_ctx, &theorem.body, state);
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
@@ -69,7 +69,7 @@ fn build_heading(
   let pres = &theorem_style.style;
   let base_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: pres.heading_font_kind,
+    typeface: pres.heading_typeface,
     color: None,
   };
 
@@ -109,7 +109,7 @@ fn build_heading(
 fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
   let qed_style = TextStyle {
     font_size,
-    font_kind: FontKind::Math,
+    typeface: Typeface::Math,
     color: None,
   };
   return LayoutNode::Inline(InlineNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]));
@@ -182,7 +182,7 @@ mod tests {
 
     let (heading, heading_style) = first_heading_text(&nodes);
     assert_eq!(heading, "Theorem 1");
-    assert_eq!(heading_style.font_kind, FontKind::SerifBold);
+    assert_eq!(heading_style.typeface, Typeface::SerifBold);
     let body = nodes
       .iter()
       .find_map(|n| match n {
@@ -190,7 +190,7 @@ mod tests {
         _ => return None,
       })
       .expect("本体 Text があるはず");
-    assert_eq!(body.font_kind, FontKind::SerifItalic);
+    assert_eq!(body.typeface, Typeface::SerifItalic);
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は bottom_margin Vkern: {nodes:?}");
     assert!(
@@ -224,7 +224,7 @@ mod tests {
         _ => return None,
       })
       .expect("本体 Text があるはず");
-    assert_eq!(body.font_kind, FontKind::Serif, "証明本体はローマン");
+    assert_eq!(body.typeface, Typeface::Serif, "証明本体はローマン");
     let qed_count = nodes.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_)))).count();
     assert_eq!(qed_count, 1, "QED が 1 つ: {nodes:?}");
   }

@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::{Length, non_negative},
   style::{NumberTemplate, number_style::NumberStyle},
 };
@@ -27,8 +27,8 @@ pub(crate) struct ListStyle {
   /// 後ろに自動で半角スペースが付与される。
   #[garde(dive)]
   pub ordered_marker_format: NumberTemplate,
-  /// マーカー描画に使用するフォント種別
-  pub marker_font_kind: FontKind,
+  /// マーカー描画に使用する書体
+  pub marker_typeface: Typeface,
   /// ネスト段（深さ 1 以上）の unordered マーカー系列。深さ `d`（≥1）は `(d - 1) % N` で循環的に引く
   /// （`N` は要素数）。最上位（深さ 0）の `unordered_marker` とは独立。
   #[garde(length(min = 1), inner(length(chars, min = 1)))]
@@ -46,7 +46,7 @@ impl Default for ListStyle {
       item_margin_bottom: Length::pt(4.0),
       unordered_marker: "•".to_string(),
       ordered_marker_format: NumberTemplate::parse("{number}."),
-      marker_font_kind: FontKind::Serif,
+      marker_typeface: Typeface::Serif,
       nested_unordered_markers: vec!["–".to_string(), "*".to_string(), "·".to_string()],
       nested_ordered_formats: vec![
         NestedOrderedFormat {
@@ -93,7 +93,7 @@ mod tests {
 
   use super::{ListStyle, NestedOrderedFormat};
   use crate::{
-    document::FontKind,
+    document::Typeface,
     length::Length,
     style::{NumberTemplate, number_style::NumberStyle},
   };
@@ -106,7 +106,7 @@ mod tests {
     assert!((style.item_margin_bottom.to_pt() - 4.0).abs() < f32::EPSILON);
     assert_eq!(style.unordered_marker, "•");
     assert_eq!(style.ordered_marker_format.as_str(), "{number}.");
-    assert_eq!(style.marker_font_kind, FontKind::Serif);
+    assert_eq!(style.marker_typeface, Typeface::Serif);
     assert_eq!(style.nested_unordered_markers, vec!["–", "*", "·"]);
     let formats: Vec<(NumberStyle, &str)> =
       style.nested_ordered_formats.iter().map(|f| return (f.number_style, f.format.as_str())).collect();
@@ -147,7 +147,7 @@ indent = \"20pt\"
 item_margin_bottom = \"4pt\"
 unordered_marker = \"•\"
 ordered_format = \"{number}.\"
-marker_font_kind = \"serif\"
+marker_typeface = \"serif\"
 ";
     let result: Result<ListStyle, _> = toml::from_str(toml);
 

@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{FontKind, HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind, Typeface},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -25,7 +25,7 @@ const COLOR: OptKey<Color> = opt_args::color("color");
 pub(super) fn styled_text(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
-  font: FontKind,
+  font: Typeface,
   index_policy: IndexPolicy,
 ) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
@@ -78,11 +78,11 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)).unwrap();
 
     match &result.kind {
       HirInlineKind::Styled { font, children } => {
-        assert_eq!(*font, FontKind::SerifBold);
+        assert_eq!(*font, Typeface::SerifBold);
         assert_eq!(children.len(), 1);
         assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "hello"));
       },
@@ -97,19 +97,19 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)).unwrap();
 
     let HirInlineKind::Styled { font, children } = &result.kind else {
       panic!("Styled が期待されます");
     };
-    assert_eq!(*font, FontKind::SerifBold);
+    assert_eq!(*font, Typeface::SerifBold);
     let HirInlineKind::Styled {
       font: inner_font, ..
     } = &children[0].kind
     else {
       panic!("内側も Styled が期待されます: {children:?}");
     };
-    assert_eq!(*inner_font, FontKind::SerifItalic);
+    assert_eq!(*inner_font, Typeface::SerifItalic);
   }
 
   #[test]
@@ -120,7 +120,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)),
+      run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -133,7 +133,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow)),
+      run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -145,7 +145,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return styled_text(&view, ctx, FontKind::SerifBold, IndexPolicy::Allow));
+    let result = run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow));
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
   }
@@ -221,6 +221,6 @@ mod tests {
     let HirInlineKind::Styled { font, .. } = &children[0].kind else {
       panic!("内側は Styled が期待されます: {children:?}");
     };
-    assert_eq!(*font, FontKind::SerifBold);
+    assert_eq!(*font, Typeface::SerifBold);
   }
 }
