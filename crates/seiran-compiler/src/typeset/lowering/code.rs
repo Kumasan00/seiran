@@ -8,6 +8,7 @@ use crate::{
   color::Color,
   document::Typeface,
   length::Length,
+  style::TextAlignment,
   typeset::lowering::{
     LoweringContext,
     layout_node::{InlineNode, LayoutNode, TextStyle},
@@ -28,6 +29,7 @@ fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
 ///
 /// 行が `Block::Paragraph` の行として出るので、長いコードブロックでも行単位でページ分割できる。
 /// 字下げ（`first_line_indent`）は抑止する — コードの 1 桁目はソースの 1 桁目でなければならない。
+/// 揃えは `[text].alignment` に従わず左に固定する — 行どうしの桁の相対位置が内容なので、行ごとに寄せると字下げが崩れる。
 pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<LayoutNode> {
   let style = code_text_style(ctx.default_font_size(), None);
   let mut content = Vec::new();
@@ -37,7 +39,13 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<Lay
     }
     content.push(InlineNode::TextAtom(line.to_string(), style));
   }
-  return paragraph::assemble_paragraph(ctx, content, true);
+  return vec![LayoutNode::VBox {
+    children: paragraph::assemble_paragraph(ctx, content, true),
+    margin_bottom: Length::pt(0.0),
+    indent: Length::pt(0.0),
+    right_indent: Length::pt(0.0),
+    alignment: Some(TextAlignment::Left),
+  }];
 }
 
 /// インラインコード（`\code{...}`）をインラインノードに変換する
@@ -55,9 +63,17 @@ pub(super) fn lower_inline_code(text: &str, parent_style: TextStyle) -> Vec<Inli
 mod tests {
   use super::*;
   use crate::{
-    style::Style as ReadStyle,
+    style::{Style as ReadStyle, TextAlignment},
     typeset::lowering::test_support::{analyzed, lower},
   };
+
+  /// コードブロックの `VBox` の子要素列を取り出す
+  fn code_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
+    let [LayoutNode::VBox { children, .. }] = nodes else {
+      panic!("コードブロックは VBox 1 個で出るはず: {nodes:?}");
+    };
+    return children;
+  }
 
   /// レイアウトノード列から `TextAtom` のテキストだけを並べる
   fn atom_texts(nodes: &[LayoutNode]) -> Vec<&str> {
@@ -77,8 +93,9 @@ mod tests {
 
     let nodes = lower(&style, &analyzed(source));
 
-    assert_eq!(atom_texts(&nodes), vec!["fn main() {", "    let x = 1;", "}"]);
-    let breaks = nodes.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))).count();
+    let children = code_children(&nodes);
+    assert_eq!(atom_texts(children), vec!["fn main() {", "    let x = 1;", "}"]);
+    let breaks = children.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))).count();
     assert_eq!(breaks, 2, "行の間だけに強制改行が入る: {nodes:?}");
   }
 
@@ -89,7 +106,7 @@ mod tests {
 
     let nodes = lower(&style, &analyzed(source));
 
-    assert_eq!(atom_texts(&nodes), vec!["a", "", "b"]);
+    assert_eq!(atom_texts(code_children(&nodes)), vec!["a", "", "b"]);
   }
 
   #[test]
@@ -100,14 +117,28 @@ mod tests {
 
     let nodes = lower(&style, &analyzed(source));
 
-    let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = &nodes[0] else {
+    let children = code_children(&nodes);
+    let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = &children[0] else {
       panic!("先頭は TextAtom であるべき: {nodes:?}");
     };
     assert_eq!(text_style.typeface, Typeface::Monospace);
     assert!(
-      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      !children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
       "字下げ Kern は出ない: {nodes:?}"
     );
+  }
+
+  #[test]
+  fn code_block_is_left_aligned_regardless_of_text_alignment() {
+    let mut style = ReadStyle::default();
+    style.text.alignment = TextAlignment::Center;
+
+    let nodes = lower(&style, &analyzed("\\begin{code}\nx\n\\end{code}\n"));
+
+    let [LayoutNode::VBox { alignment, .. }] = nodes.as_slice() else {
+      panic!("コードブロックは VBox 1 個で出るはず: {nodes:?}");
+    };
+    assert_eq!(*alignment, Some(TextAlignment::Left), "行どうしの桁の相対位置を保つため左固定");
   }
 
   #[test]
