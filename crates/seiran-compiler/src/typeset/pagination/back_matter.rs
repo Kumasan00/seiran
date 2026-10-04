@@ -27,13 +27,7 @@ pub(super) fn paginate(
   }
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "back").entered();
-    break_pages(
-      back_blocks,
-      ctx.geometry.text_width(),
-      ctx.geometry.back_geometry(),
-      &ctx.breaker,
-      ctx.style.text.alignment,
-    )
+    break_pages(back_blocks, ctx.geometry.text_width(), ctx.geometry.back_geometry(), &ctx.breaker)
   };
   return (pages, overflows);
 }

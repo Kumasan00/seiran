@@ -6,7 +6,7 @@ use crate::{
   semantics::{HeadingKey, LabelId, generated_inlines_to_plain_text},
   style::Style as ReadStyle,
   typeset::{
-    boxes::{Align, AnchorId},
+    boxes::AnchorId,
     lowering::{
       LoweringContext, LoweringState, counter, inline,
       layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
@@ -117,7 +117,7 @@ pub(super) fn lower_heading(
     margin_bottom: heading_style.bottom_margin,
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),
-    align: Align::Left,
+    alignment: heading_style.alignment,
   });
 
   // 見出し直後の改ページ制御。強制改ページ（page_break_after）と keep-with-next は排他:
@@ -137,7 +137,7 @@ mod tests {
   use super::*;
   use crate::{
     document::Typeface,
-    style::{NumberTitleTemplate, Style as ReadStyle},
+    style::{NumberTitleTemplate, Style as ReadStyle, TextAlignment},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::test_support::{analyzed, context, lower},
@@ -312,5 +312,43 @@ mod tests {
       .expect("解決済み \\ref は Link になるはず");
     assert_eq!(*link.0, LinkTarget::Internal(AnchorId::Label(LabelId::new("ch:other"))));
     assert!(matches!(&link.1[0], InlineNode::Text(t, _) if t == "Chapter 1"), "{:?}", link.1);
+  }
+
+  /// `nodes` から見出し `VBox` の揃えを取り出す
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "VBox が出ないのは lowering の不具合で、テストを失敗させるため panic が必要"
+  )]
+  fn heading_alignment(nodes: &[LayoutNode]) -> Option<TextAlignment> {
+    return nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { alignment, .. } => return Some(*alignment),
+        _ => return None,
+      })
+      .expect("VBox が出力されるはず");
+  }
+
+  #[test]
+  fn lower_heading_leaves_alignment_to_enclosing_list_by_default() {
+    let style = ReadStyle::default();
+    let ctx = context(&style);
+    let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
+
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
+
+    assert_eq!(heading_alignment(&nodes), None, "未指定なら外側の揃え（[text].alignment）に従う");
+  }
+
+  #[test]
+  fn lower_heading_uses_level_alignment() {
+    let mut style = ReadStyle::default();
+    style.heading.section.alignment = Some(TextAlignment::Right);
+    let ctx = context(&style);
+    let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
+
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
+
+    assert_eq!(heading_alignment(&nodes), Some(TextAlignment::Right));
   }
 }

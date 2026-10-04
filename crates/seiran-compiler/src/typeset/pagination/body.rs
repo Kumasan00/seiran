@@ -73,19 +73,14 @@ fn run_body_pass(
         line_height_factor: ctx.style.text.line_height_factor,
         language: ctx.config.document.language.as_deref(),
         punctuation_spacing: ctx.style.text.punctuation_spacing,
+        alignment: ctx.style.text.alignment,
       },
     )
   };
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "body").entered();
-    break_pages(
-      body_blocks,
-      ctx.geometry.text_width(),
-      ctx.geometry.body_geometry(),
-      &ctx.breaker,
-      ctx.style.text.alignment,
-    )
+    break_pages(body_blocks, ctx.geometry.text_width(), ctx.geometry.body_geometry(), &ctx.breaker)
   };
   return BodyLayout {
     pages,

@@ -3,10 +3,7 @@
 use crate::{
   document::HirQuote,
   length::Length,
-  typeset::{
-    boxes::Align,
-    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
-  },
+  typeset::lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
 };
 
 /// 引用ブロックをレイアウトノードに変換する
@@ -34,7 +31,7 @@ pub(super) fn lower_quote(
       margin_bottom: Length::pt(0.0),
       indent: style.indent,
       right_indent: style.indent,
-      align: Align::Left,
+      alignment: None,
     },
     LayoutNode::Vkern {
       length: style.bottom_margin,
@@ -130,5 +127,19 @@ mod tests {
       _ => return None,
     });
     assert_eq!(body_kind, Some(Typeface::SansSerif), "引用本文は [quote] の書体に従う");
+  }
+
+  #[test]
+  fn quote_body_inherits_enclosing_alignment() {
+    let nodes = lower_quote_source(&ReadStyle::default(), "quote");
+
+    let alignment = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { alignment, .. } => return Some(*alignment),
+        _ => return None,
+      })
+      .expect("本体 VBox があるはず");
+    assert_eq!(alignment, None, "引用は字下げを引いた幅の中で本文の揃えに従う");
   }
 }

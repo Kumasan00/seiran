@@ -5,13 +5,10 @@ use crate::{
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
-  typeset::{
-    boxes::Align,
-    lowering::{
-      LoweringContext, LoweringState, counter,
-      layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
-      lower_nodes, with_label_anchors,
-    },
+  typeset::lowering::{
+    LoweringContext, LoweringState, counter,
+    layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+    lower_nodes, with_label_anchors,
   },
 };
 
@@ -101,7 +98,7 @@ fn build_heading(
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),
-    align: Align::Left,
+    alignment: None,
   };
 }
 

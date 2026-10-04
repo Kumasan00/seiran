@@ -3,6 +3,7 @@
 use crate::{
   length::Length,
   project::ProjectPath,
+  style::TextAlignment,
   typeset::boxes::{
     align::Align,
     hitem::{HBox, HItem},
@@ -36,8 +37,8 @@ pub(in crate::typeset) enum Block {
     ///
     /// 全行（折り返し行を含む）の利用可能幅を縮める（行は左端 + `indent` から始まる）。通常の段落は 0。
     right_indent: Length,
-    /// 段落内の各行の水平揃え（既定は左揃え）
-    align: Align,
+    /// 段落の揃え（伸縮の有無と各行の水平ずらし）
+    alignment: TextAlignment,
   },
   /// 表（シェーピング済み）
   Table {

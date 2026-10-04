@@ -5,6 +5,7 @@ use crate::{
   document::Typeface,
   length::Length,
   project::ProjectPath,
+  style::TextAlignment,
   typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
 };
 
@@ -23,8 +24,8 @@ pub(in crate::typeset) enum LayoutNode {
     indent: Length,
     /// この `VBox` 配下の縦リストに加える右インデント（pt 換算で累積）
     right_indent: Length,
-    /// この `VBox` 配下の段落に適用する水平揃え（既定は左揃え）
-    align: Align,
+    /// この `VBox` 配下の段落の揃え。`None` は外側の縦リストの揃えを継ぐ（最上位は `[text].alignment`）
+    alignment: Option<TextAlignment>,
   },
   /// 画像（PNG / JPEG / SVG）
   Image {

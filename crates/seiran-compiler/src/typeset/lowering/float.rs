@@ -7,15 +7,12 @@
 use crate::{
   document::{CaptionPosition, HirInline, NodeId},
   length::Length,
-  style::CaptionStyle,
-  typeset::{
-    boxes::Align,
-    lowering::{
-      LoweringContext, LoweringState, counter,
-      inline::lower_inlines,
-      layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
-      with_label_anchors,
-    },
+  style::{CaptionStyle, TextAlignment},
+  typeset::lowering::{
+    LoweringContext, LoweringState, counter,
+    inline::lower_inlines,
+    layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+    with_label_anchors,
   },
 };
 
@@ -86,7 +83,7 @@ fn wrap_float(
       margin_bottom: margins.bottom,
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: Align::Center,
+      alignment: Some(TextAlignment::Center),
     },
   ];
 }
@@ -136,9 +133,9 @@ mod tests {
   use crate::{
     document::Typeface,
     semantics::LabelId,
-    style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
+    style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle, TextAlignment},
     typeset::{
-      boxes::{Align, AnchorId, LinkTarget},
+      boxes::{AnchorId, LinkTarget},
       lowering::test_support::{analyzed, lower},
     },
   };
@@ -200,14 +197,14 @@ mod tests {
     let LayoutNode::VBox {
       children,
       margin_bottom,
-      align,
+      alignment,
       ..
     } = &nodes[1]
     else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
-    assert_eq!(*align, Align::Center, "図表は既定で中央寄せ");
+    assert_eq!(*alignment, Some(TextAlignment::Center), "図表は中央寄せ固定");
     assert_eq!(children.len(), 3, "caption + Vkern + main: {children:?}");
     assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
     assert_vkern(&children[1], 3.0);

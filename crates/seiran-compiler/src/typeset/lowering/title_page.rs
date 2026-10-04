@@ -3,11 +3,8 @@
 use crate::{
   document::Typeface,
   length::Length,
-  style::TitlePageStyle,
-  typeset::{
-    boxes::Align,
-    lowering::layout_node::{InlineNode, LayoutNode, TextStyle},
-  },
+  style::{TextAlignment, TitlePageStyle},
+  typeset::lowering::layout_node::{InlineNode, LayoutNode, TextStyle},
 };
 
 /// タイトルページに載せる文書メタデータ。
@@ -73,7 +70,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
       margin_bottom: Length::pt(0.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: Align::Center,
+      alignment: Some(TextAlignment::Center),
     },
     LayoutNode::PageBreak,
   ];
@@ -84,21 +81,20 @@ mod tests {
   use super::{TitlePageMetadata, lower_title_page};
   use crate::{
     length::Length,
-    style::TitlePageStyle,
-    typeset::{
-      boxes::Align,
-      lowering::layout_node::{InlineNode, LayoutNode},
-    },
+    style::{TextAlignment, TitlePageStyle},
+    typeset::lowering::layout_node::{InlineNode, LayoutNode},
   };
 
   /// 中央寄せ `VBox` の子ノードを取り出すヘルパ
   fn title_vbox_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
     for node in nodes {
       if let LayoutNode::VBox {
-        children, align, ..
+        children,
+        alignment,
+        ..
       } = node
       {
-        assert_eq!(*align, Align::Center, "タイトルページの VBox は中央寄せ");
+        assert_eq!(*alignment, Some(TextAlignment::Center), "タイトルページの VBox は中央寄せ");
         return children;
       }
     }
