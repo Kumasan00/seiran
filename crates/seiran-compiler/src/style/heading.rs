@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::{
   document::{HeadingLevel, Typeface},
   length::{Length, non_negative, positive},
-  style::NumberTitleTemplate,
+  style::{NumberTitleTemplate, TextAlignment},
 };
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
@@ -114,6 +114,8 @@ pub(crate) struct HeadingStyle {
   pub page_break_after: bool,
   /// 見出しテキストの書体
   pub typeface: Typeface,
+  /// 見出し行の揃え。`None` は外側の縦リストの揃え（既定では `[text].alignment`）に従う
+  pub alignment: Option<TextAlignment>,
 }
 
 /// レベル別既定（[`HeadingStyles::default`]）が共通に使う基底。
@@ -126,6 +128,7 @@ impl Default for HeadingStyle {
       page_break_before: false,
       page_break_after: false,
       typeface: Typeface::SerifBold,
+      alignment: None,
     };
   }
 }
@@ -180,6 +183,8 @@ struct HeadingStyleOverride {
   page_break_after: Option<bool>,
   /// 見出しテキストの書体
   typeface: Option<Typeface>,
+  /// 見出し行の揃え
+  alignment: Option<TextAlignment>,
 }
 
 impl HeadingStyleOverride {
@@ -195,6 +200,7 @@ impl HeadingStyleOverride {
       page_break_before,
       page_break_after,
       typeface,
+      alignment,
     } = self;
     return HeadingStyle {
       format: format.unwrap_or(base.format),
@@ -203,6 +209,7 @@ impl HeadingStyleOverride {
       page_break_before: page_break_before.unwrap_or(base.page_break_before),
       page_break_after: page_break_after.unwrap_or(base.page_break_after),
       typeface: typeface.unwrap_or(base.typeface),
+      alignment: alignment.or(base.alignment),
     };
   }
 }
@@ -215,6 +222,7 @@ mod tests {
   use crate::{
     document::{HeadingLevel, Typeface},
     length::Length,
+    style::TextAlignment,
   };
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。
@@ -326,5 +334,30 @@ typeface = \"sans_serif_bold\"
     assert!(!chapter.page_break_before);
     assert!(chapter.page_break_after);
     assert_eq!(chapter.typeface, Typeface::SansSerifBold);
+  }
+
+  #[test]
+  fn heading_alignment_is_unspecified_for_every_level_by_default() {
+    let styles = HeadingStyles::default();
+    let levels = [
+      HeadingLevel::Part,
+      HeadingLevel::Chapter,
+      HeadingLevel::Section,
+      HeadingLevel::Subsection,
+      HeadingLevel::Paragraph,
+      HeadingLevel::Subparagraph,
+    ];
+
+    for level in levels {
+      assert_eq!(styles[level].alignment, None, "{level:?} の既定は未指定（外側の揃えに従う）");
+    }
+  }
+
+  #[test]
+  fn heading_alignment_overrides_only_the_given_level() {
+    let wrapper: HeadingWrapper = toml::from_str("[heading.section]\nalignment = \"center\"\n").unwrap();
+
+    assert_eq!(wrapper.heading.section.alignment, Some(TextAlignment::Center));
+    assert_eq!(wrapper.heading.subsection.alignment, None);
   }
 }

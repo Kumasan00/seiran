@@ -8,19 +8,27 @@ use crate::{
   length::{Length, non_negative, positive},
 };
 
-/// 本文段落の行末処理（両端揃え / 左揃え）。
+/// 段落の揃え（`[text].alignment` / `[heading.<level>].alignment`）。
 ///
-/// 行分割の分割点選択には影響せず、確定した行内の伸縮点（`stretch` / `shrink`
-/// 能力を持つ glue）の幅だけを変える。段落最終行・強制改行直前の行は
-/// 両端揃えでも伸縮しない。
+/// 両端揃えの有無と寄せる向きを 1 つの値で持つので、「両端揃え × 中央・右」は表現できない。
+/// `Justify` 以外の 3 値は分割点を同じ規則（左揃え）で選び、確定した行を伸縮させずに水平にずらすだけ。
+/// 行が利用可能幅を超えるときは寄せない。
+///
+/// 従わないもの（種類ごとに揃えが決まっている）: 脚注本体・コードブロック（左）、図表・タイトルページ（中央）、
+/// 数式ブロック（`[math.block].alignment`）、表のセル（`columns`）、柱（`[header]` / `[footer]`）、目次・索引。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TextAlignment {
-  /// 両端揃え（既定）。行の余り幅を伸縮点へ比例配分して行末を版面右端に揃える
+  /// 両端揃え（既定）。行の余り幅を伸縮点へ比例配分して行末を利用可能幅の右端に揃える。
+  /// 段落最終行・強制改行直前の行は伸縮せず左に寄せる
   #[default]
   Justify,
-  /// 左揃え（ragged-right）。伸縮点を使わず自然幅のまま並べる
-  RaggedRight,
+  /// 左揃え（ragged-right）。自然幅のまま左端から並べる
+  Left,
+  /// 中央揃え。自然幅のまま利用可能幅の中央に置く
+  Center,
+  /// 右揃え（ragged-left）。自然幅のまま利用可能幅の右端に揃える
+  Right,
 }
 
 /// 本文段落のスタイル設定
@@ -42,7 +50,7 @@ pub(crate) struct TextBlockStyle {
   pub first_line_indent: Length,
   /// 段落本文の書体
   pub typeface: Typeface,
-  /// 行末処理（両端揃え / 左揃え、既定は両端揃え）
+  /// 段落の揃え（既定は両端揃え）
   pub alignment: TextAlignment,
   /// 和文約物アキ調整（JIS X 4051、既定は有効）
   pub punctuation_spacing: bool,
@@ -69,18 +77,30 @@ mod tests {
   use super::{TextAlignment, TextBlockStyle};
   use crate::{document::Typeface, length::Length};
 
+  /// `alignment` 1 キーだけを読むためのラッパ
+  #[derive(Debug, serde::Deserialize)]
+  struct Wrapper {
+    alignment: TextAlignment,
+  }
+
   #[test]
-  fn text_alignment_deserializes_snake_case() {
-    #[derive(serde::Deserialize)]
-    struct Wrapper {
-      alignment: TextAlignment,
+  fn text_alignment_deserializes_four_values() {
+    let cases = [
+      ("justify", TextAlignment::Justify),
+      ("left", TextAlignment::Left),
+      ("center", TextAlignment::Center),
+      ("right", TextAlignment::Right),
+    ];
+
+    for (text, expected) in cases {
+      let wrapper: Wrapper = toml::from_str(&format!("alignment = \"{text}\"")).unwrap();
+      assert_eq!(wrapper.alignment, expected, "{text}");
     }
+  }
 
-    let justify: Wrapper = toml::from_str("alignment = \"justify\"").unwrap();
-    let ragged: Wrapper = toml::from_str("alignment = \"ragged_right\"").unwrap();
-
-    assert_eq!(justify.alignment, TextAlignment::Justify);
-    assert_eq!(ragged.alignment, TextAlignment::RaggedRight);
+  #[test]
+  fn text_alignment_rejects_retired_ragged_right() {
+    assert!(toml::from_str::<Wrapper>("alignment = \"ragged_right\"").is_err());
   }
 
   #[test]

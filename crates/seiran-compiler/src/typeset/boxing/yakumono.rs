@@ -33,7 +33,7 @@ pub(super) struct Normalize {
 /// 約物境界に挿入するアキ（1em に対する倍率）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Aki {
-  /// 標準アキ（em）。`ragged_right` でもこの幅で並ぶ
+  /// 標準アキ（em）。左揃え（`left`）でもこの幅で並ぶ
   pub(crate) natural_em: f32,
   /// 詰め可能量（em）。両端揃えの収縮点として字間より先に吸収される
   pub(crate) shrink_em: f32,
