@@ -43,6 +43,9 @@ use crate::{
 /// fixture の設定ファイル（ワークスペースルート相対）。
 const CONFIG_REL: &str = "crates/seiran-compiler/tests/config/config.toml";
 
+/// [`TestProjectBuilder::source_text`] のソースを登録するワークスペース相対パス（実在しないファイル名）
+const INLINE_SOURCE_REL: &str = "tests/text/inline.sei";
+
 /// `figure.sei` が参照する画像 fixture（`\image{...}` の字面と同じ、ワークスペース相対）。
 pub(super) const FIGURE_IMAGE_ASSETS: &[&str] = &[
   "./tests/image/testimage1.jpg",
@@ -166,6 +169,8 @@ pub(super) struct TestProjectBuilder {
   base_dir: PathBuf,
   /// `sources` の差し替え（`None` なら fixture config.toml の値をそのまま使う）
   sources: Option<Vec<String>>,
+  /// [`TestProjectBuilder::source_text`] で与えた本文（`None` ならソースはファイルから読む）
+  inline_source: Option<String>,
   /// config.toml の生テーブルへの上書き
   config_overrides: Vec<TomlOverride>,
   /// style.toml の生テーブルへの上書き
@@ -180,6 +185,7 @@ impl TestProjectBuilder {
     return TestProjectBuilder {
       base_dir: PathBuf::new(),
       sources: None,
+      inline_source: None,
       config_overrides: Vec::new(),
       style_overrides: Vec::new(),
       assets: Vec::new(),
@@ -195,6 +201,13 @@ impl TestProjectBuilder {
   /// `sources` を差し替える（ワークスペースルート相対で書く）。
   pub(super) fn sources(mut self, sources: &[&str]) -> Self {
     self.sources = Some(sources.iter().map(|source| return (*source).to_string()).collect());
+    return self;
+  }
+
+  /// ソースを本文 `text` 1 本に差し替える（ファイルを置かずに組む比較テスト用）。
+  pub(super) fn source_text(mut self, text: &str) -> Self {
+    self.sources = Some(vec![INLINE_SOURCE_REL.to_string()]);
+    self.inline_source = Some(text.to_string());
     return self;
   }
 
@@ -289,6 +302,9 @@ impl TestProjectBuilder {
       if let Ok(text) = fs::read_to_string(root.join(&source_rel)) {
         source = source.with_text(self.key(&source_rel), text);
       }
+    }
+    if let Some(text) = &self.inline_source {
+      source = source.with_text(self.key(INLINE_SOURCE_REL), text);
     }
 
     source = self.register_fonts(source, &root, &table);
@@ -412,6 +428,13 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
     "text_right" => {
       set(table, "text", "alignment", "right");
       set_heading(table, "section", "alignment", "center");
+    },
+    // 本文は既定の両端揃えのまま、寄せ環境の中で 1 レベルだけ見出しの揃えを指定した版面。行長を狭めて段落を
+    // 複数行に折り返させる
+    "flush" => {
+      set_heading(table, "paragraph", "alignment", "left");
+      set(table, "page", "margin_left", "250mm");
+      set(table, "page", "margin_right", "250mm");
     },
     _ => {},
   }
