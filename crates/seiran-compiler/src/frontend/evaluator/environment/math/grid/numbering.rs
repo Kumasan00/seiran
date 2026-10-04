@@ -32,14 +32,14 @@ pub(in crate::frontend::evaluator::environment) enum NumberingMode {
   SingleEnv,
 }
 
-/// 数式環境の任意引数 `[numbered]` / `[label=...]` を収集・検証する
+/// 複数行数式環境の任意引数 `[numbered]` / `[label=...]` を収集・検証する
 ///
 /// # Errors
 ///
 /// 未知の任意引数キー・不正な値、無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）で
 /// エラーを返す。数式本体の環境は parser が `{...}` を必須引数として読まないので、
 /// [`EvalError::ExtraEnvironmentArgument`] はここでは起きない。
-pub(super) fn collect_math_env_opts(
+pub(super) fn collect_math_grid_opt_args(
   view: &EnvironmentView<'_>,
   mode: NumberingMode,
 ) -> Result<(bool, Option<String>), EvalError> {

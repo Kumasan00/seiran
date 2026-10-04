@@ -8,7 +8,7 @@ mod numbering;
 use markers::{RowLabel, ensure_markers_at_row_end, try_take_row_marker};
 use miette::SourceSpan;
 pub(in crate::frontend::evaluator::environment) use numbering::NumberingMode;
-use numbering::{assign_numbering, collect_math_env_opts, trim_trailing_blank_marker_rows};
+use numbering::{assign_numbering, collect_math_grid_opt_args, trim_trailing_blank_marker_rows};
 
 use crate::{
   document::{GridLayout, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathBlockKind, NodeId},
@@ -144,13 +144,13 @@ pub(super) fn evaluate_grid(
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価や許可しない区切りトークンの出現、無採番への
 /// ラベル付与・重複ラベル時にエラーを返す。
-pub(in crate::frontend::evaluator::environment) fn evaluate_math_env(
+pub(in crate::frontend::evaluator::environment) fn evaluate_math_grid(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
   layout: GridLayout,
   mode: NumberingMode,
 ) -> Result<HirNode, EvalError> {
-  let (numbered, env_label) = collect_math_env_opts(view, mode)?;
+  let (numbered, env_label) = collect_math_grid_opt_args(view, mode)?;
 
   let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
   let id = ctx.alloc(view.span());
