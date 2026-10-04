@@ -547,7 +547,7 @@ mod tests {
   }
 
   #[test]
-  fn key_value_optarg_text_splits_into_tokens() {
+  fn key_value_opt_arg_text_splits_into_tokens() {
     let tokens = tokenize("key=value, key2=value2");
 
     assert_eq!(
