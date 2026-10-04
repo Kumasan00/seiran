@@ -2,7 +2,7 @@
 
 use crate::{
   document::{
-    CaptionPosition, ColumnAlign, ColumnWidth, FlushDirection, HeadingLevel, MathBlockKind, QuoteKind, TheoremClass,
+    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathBlockKind, QuoteKind, TextAlignment, TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
   length::Length,
@@ -178,8 +178,8 @@ pub(crate) struct HirQuote {
 /// 寄せ環境（`\begin{flushleft}` / `\begin{center}` / `\begin{flushright}`）の内容
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirFlush {
-  /// 本体の段落を寄せる向き
-  pub(crate) direction: FlushDirection,
+  /// 本体の段落の揃え（`flushleft` / `center` / `flushright` の順に `Left` / `Center` / `Right`）
+  pub(crate) alignment: TextAlignment,
   /// 本体（再帰評価されたブロックノード列）
   pub(crate) body: Vec<HirNode>,
 }

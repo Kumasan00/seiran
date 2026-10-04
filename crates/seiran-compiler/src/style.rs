@@ -53,7 +53,6 @@ pub(crate) use crate::style::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
     RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
   },
-  text::TextAlignment,
   theorem::{TheoremReset, TheoremStyle},
   title_page::TitlePageStyle,
   toc::TocStyle,

@@ -34,8 +34,8 @@ pub(super) use shaping::Shaper;
 use tracing::debug;
 
 use crate::{
+  document::TextAlignment,
   length::Length,
-  style::TextAlignment,
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox, TableBox, TableCellBox,

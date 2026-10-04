@@ -1,7 +1,7 @@
 //! 寄せ環境 — `flushleft` / `center` / `flushright`
 
 use crate::{
-  document::{FlushDirection, HirFlush, HirNode, HirNodeKind},
+  document::{HirFlush, HirNode, HirNodeKind, TextAlignment},
   frontend::{
     evaluator::{self, EvalContext, EvalError, arity, opt_args},
     syntax::view::EnvironmentView,
@@ -16,7 +16,7 @@ use crate::{
 pub(super) fn flush(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
-  direction: FlushDirection,
+  alignment: TextAlignment,
 ) -> Result<HirNode, EvalError> {
   opt_args::no_environment_opt_args(view)?;
   arity::no_environment_args(view)?;
@@ -27,7 +27,7 @@ pub(super) fn flush(
     None => Vec::new(),
   };
 
-  return Ok(HirNode::new(id, HirNodeKind::Flush(HirFlush { direction, body })));
+  return Ok(HirNode::new(id, HirNodeKind::Flush(HirFlush { alignment, body })));
 }
 
 #[cfg(test)]
@@ -44,11 +44,11 @@ mod tests {
   }
 
   #[test]
-  fn flush_environments_carry_direction_and_body() {
+  fn flush_environments_carry_alignment_and_body() {
     for (name, expected) in [
-      ("flushleft", FlushDirection::Left),
-      ("center", FlushDirection::Center),
-      ("flushright", FlushDirection::Right),
+      ("flushleft", TextAlignment::Left),
+      ("center", TextAlignment::Center),
+      ("flushright", TextAlignment::Right),
     ] {
       let result = evaluate(&format!("\\begin{{{name}}}本文\\end{{{name}}}")).unwrap();
 
@@ -56,7 +56,7 @@ mod tests {
       let HirNodeKind::Flush(flush) = &result[0].kind else {
         panic!("Flush が期待されます（{name}）: {:?}", result[0]);
       };
-      assert_eq!(flush.direction, expected, "{name}");
+      assert_eq!(flush.alignment, expected, "{name}");
       assert_eq!(flush.body.len(), 1, "{name}");
       assert!(matches!(&flush.body[0].kind, HirNodeKind::Paragraph(_)), "{name}");
     }
@@ -91,17 +91,17 @@ mod tests {
   }
 
   #[test]
-  fn nested_flush_keeps_each_direction() {
+  fn nested_flush_keeps_each_alignment() {
     let result = evaluate(r"\begin{flushright}\begin{center}内側\end{center}\end{flushright}").unwrap();
 
     let HirNodeKind::Flush(outer) = &result[0].kind else {
       panic!("Flush が期待されます: {:?}", result[0]);
     };
-    assert_eq!(outer.direction, FlushDirection::Right);
+    assert_eq!(outer.alignment, TextAlignment::Right);
     let HirNodeKind::Flush(inner) = &outer.body[0].kind else {
       panic!("入れ子の Flush が期待されます: {:?}", outer.body);
     };
-    assert_eq!(inner.direction, FlushDirection::Center);
+    assert_eq!(inner.alignment, TextAlignment::Center);
   }
 
   #[test]

@@ -232,8 +232,7 @@ style 由来の表示文字列は `semantics` が別枠で持つ。
   （言語判定前の書体の指定 `Typeface` だけがここの語彙）、`SourceId` / `Span` は `source` の所有
 - **識別子はここに持たない**: 意味解析が確定する `LabelId` / `HeadingKey` は `semantics`、引用キーと CSL
   生成物の語彙は `semantics::citation`、組版時に成立する `FootnoteId` / `AnchorId` / `LinkTarget` は
-  `typeset::boxes`、検証済み設定値 `TextAlignment` は `style::text` の所有。画像パスは HIR が
-  `project::ProjectPath` を直接持つ（画像専用の newtype を再導入しない）
+  `typeset::boxes` の所有。画像パスは HIR が `project::ProjectPath` を直接持つ（画像専用の newtype を再導入しない）
 
 不変条件・注意点:
 
@@ -391,7 +390,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - コマンドは `COMMANDS`（引数の位置ごとの読み取りモードは値の `CommandKind` から導出する）、記号は
   `SYMBOLS`（検索は `command::symbol` の関数 1 つで、本文と数式の両方がそれを引く）、環境は `ENVIRONMENTS` の
   phf レジストリを単一の真実源としてディスパッチする。レジストリの値は
-  `EnvironmentKind` で、定理クラス・引用の種類・寄せる向き（`document::FlushDirection`）・リストの順序付き / なし・数式グリッド環境のセル配置
+  `EnvironmentKind` で、定理クラス・引用の種類・寄せ環境の揃え（`document::TextAlignment`）・リストの順序付き / なし・数式グリッド環境のセル配置
   （`document::GridLayout`）と採番の粒度をデータとして持つ（環境名から種別を求め直す経路は無い）。
   セル配置と採番の粒度は独立の 2 軸でどの組み合わせも有効、区切りの許可は配置から導出するので、
   種別と採番・区切りの食い違いは型で書けない（#704）。本体の読み取り方（`BodyMode`）も
@@ -848,7 +847,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `MathBlockLayout` は環境種別（`document::MathBlockKind`）を持たず、セルごとの `Align` と
   解決済みの `DelimiterGlyphs` を載せる。`boxing` は計測と配置だけを行い、HIR の数式語彙を
   import しない。**ブロック（数式・画像・表）と数式セルの揃えの型は `boxes::Align` 1 つ**で、`style::MathAlignment` →
-  `Align` の変換だけが lowering に残る（#334 の設計どおり）。段落の揃えは `style::TextAlignment`（伸縮の有無を含む 4 値）
+  `Align` の変換だけが lowering に残る（#334 の設計どおり）。段落の揃えは `document::TextAlignment`（伸縮の有無を含む 4 値）
   のまま `VBox` / `Block::Paragraph` が運び、`Align` への変換は行分割（`build_line`）の水平ずらしだけが行う
 - **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）

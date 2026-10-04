@@ -1,6 +1,6 @@
 //! 水平方向の揃え [`Align`]。
 
-use crate::{length::Length, style::TextAlignment};
+use crate::{document::TextAlignment, length::Length};
 
 /// ブロック（画像・表・数式）と数式セルの水平方向の揃え。段落の行は [`TextAlignment`] から変換して使う。
 ///
@@ -42,7 +42,7 @@ impl From<TextAlignment> for Align {
 #[cfg(test)]
 mod tests {
   use super::Align;
-  use crate::{length::Length, style::TextAlignment};
+  use crate::{document::TextAlignment, length::Length};
 
   #[test]
   fn offset_left_is_always_zero() {

@@ -1,9 +1,8 @@
 //! 寄せ環境（`document::HirNodeKind::Flush`）の lowering
 
 use crate::{
-  document::{FlushDirection, HirFlush},
+  document::HirFlush,
   length::Length,
-  style::TextAlignment,
   typeset::lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
 };
 
@@ -16,17 +15,12 @@ pub(super) fn lower_flush(
   flush: &HirFlush,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
-  let alignment = match flush.direction {
-    FlushDirection::Left => TextAlignment::Left,
-    FlushDirection::Center => TextAlignment::Center,
-    FlushDirection::Right => TextAlignment::Right,
-  };
   return vec![LayoutNode::VBox {
     children: lower_nodes(ctx, &flush.body, state),
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),
-    alignment: Some(alignment),
+    alignment: Some(flush.alignment),
   }];
 }
 
@@ -34,6 +28,7 @@ pub(super) fn lower_flush(
 mod tests {
   use super::*;
   use crate::{
+    document::TextAlignment,
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,

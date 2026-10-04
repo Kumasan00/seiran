@@ -1,9 +1,9 @@
 //! タイトルページ（`\maketitle` 相当）の lowering
 
 use crate::{
-  document::Typeface,
+  document::{TextAlignment, Typeface},
   length::Length,
-  style::{TextAlignment, TitlePageStyle},
+  style::TitlePageStyle,
   typeset::lowering::layout_node::{InlineNode, LayoutNode, TextStyle},
 };
 
@@ -80,8 +80,9 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
 mod tests {
   use super::{TitlePageMetadata, lower_title_page};
   use crate::{
+    document::TextAlignment,
     length::Length,
-    style::{TextAlignment, TitlePageStyle},
+    style::TitlePageStyle,
     typeset::lowering::layout_node::{InlineNode, LayoutNode},
   };
 

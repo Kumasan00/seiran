@@ -5,9 +5,9 @@
 //! 体裁（[`FloatCaption`] / [`FloatMargins`]）だけを渡す。
 
 use crate::{
-  document::{CaptionPosition, HirInline, NodeId},
+  document::{CaptionPosition, HirInline, NodeId, TextAlignment},
   length::Length,
-  style::{CaptionStyle, TextAlignment},
+  style::CaptionStyle,
   typeset::lowering::{
     LoweringContext, LoweringState, counter,
     inline::lower_inlines,
@@ -131,9 +131,9 @@ pub(super) fn lower_numbered_float(
 mod tests {
   use super::*;
   use crate::{
-    document::Typeface,
+    document::{TextAlignment, Typeface},
     semantics::LabelId,
-    style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle, TextAlignment},
+    style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::test_support::{analyzed, lower},

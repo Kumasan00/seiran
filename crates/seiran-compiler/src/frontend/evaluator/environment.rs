@@ -1,7 +1,7 @@
 //! 環境ディスパッチ
 //!
 //! [`ENVIRONMENTS`] は環境名から [`EnvironmentKind`] を引く単一レジストリで、種別が
-//! 定理クラス・引用の種類・寄せる向き・リストの順序付き / なし・数式グリッド環境のセル配置と採番の粒度を
+//! 定理クラス・引用の種類・寄せ環境の揃え・リストの順序付き / なし・数式グリッド環境のセル配置と採番の粒度を
 //! 値として持つ。本体の読み取り方（[`BodyMode`]）は種別から導出する。
 
 mod body_scan;
@@ -18,7 +18,7 @@ mod theorem;
 use phf::phf_map;
 
 use crate::{
-  document::{FlushDirection, GridLayout, HirNode, QuoteKind, TheoremClass},
+  document::{GridLayout, HirNode, QuoteKind, TextAlignment, TheoremClass},
   frontend::{
     evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
     syntax::{BodyMode, view::EnvironmentView},
@@ -38,7 +38,7 @@ enum EnvironmentKind {
   /// 引用環境（`quote` / `quotation`）
   Quote(QuoteKind),
   /// 寄せ環境（`flushleft` / `center` / `flushright`）
-  Flush(FlushDirection),
+  Flush(TextAlignment),
   /// 図環境（`figure`）
   Figure,
   /// 表環境（`table`）
@@ -84,7 +84,7 @@ impl EnvironmentKind {
       Self::List { ordered } => list::list(view, ctx, ordered),
       Self::Theorem(class) => theorem::theorem(view, ctx, class),
       Self::Quote(kind) => quote::quote(view, ctx, kind),
-      Self::Flush(direction) => flush::flush(view, ctx, direction),
+      Self::Flush(alignment) => flush::flush(view, ctx, alignment),
       Self::Figure => figure::figure(view, ctx),
       Self::Table => table::table(view, ctx),
       Self::Code => code::code(view, ctx),
@@ -129,9 +129,9 @@ static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
   "quote"     => EnvironmentKind::Quote(QuoteKind::Quote),
   "quotation" => EnvironmentKind::Quote(QuoteKind::Quotation),
 
-  "flushleft"  => EnvironmentKind::Flush(FlushDirection::Left),
-  "center"     => EnvironmentKind::Flush(FlushDirection::Center),
-  "flushright" => EnvironmentKind::Flush(FlushDirection::Right),
+  "flushleft"  => EnvironmentKind::Flush(TextAlignment::Left),
+  "center"     => EnvironmentKind::Flush(TextAlignment::Center),
+  "flushright" => EnvironmentKind::Flush(TextAlignment::Right),
 };
 
 /// 環境名から本体の読み取り方を引く

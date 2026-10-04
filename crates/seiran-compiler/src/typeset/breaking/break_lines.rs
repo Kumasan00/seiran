@@ -7,8 +7,8 @@ pub(super) use greedy::GreedyBreaker;
 pub(crate) use knuth_plass::KnuthPlassBreaker;
 
 use crate::{
+  document::TextAlignment,
   length::Length,
-  style::TextAlignment,
   typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
 };
 

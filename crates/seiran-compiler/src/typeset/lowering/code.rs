@@ -6,9 +6,8 @@
 
 use crate::{
   color::Color,
-  document::Typeface,
+  document::{TextAlignment, Typeface},
   length::Length,
-  style::TextAlignment,
   typeset::lowering::{
     LoweringContext,
     layout_node::{InlineNode, LayoutNode, TextStyle},
@@ -63,7 +62,8 @@ pub(super) fn lower_inline_code(text: &str, parent_style: TextStyle) -> Vec<Inli
 mod tests {
   use super::*;
   use crate::{
-    style::{Style as ReadStyle, TextAlignment},
+    document::TextAlignment,
+    style::Style as ReadStyle,
     typeset::lowering::test_support::{analyzed, lower},
   };
 

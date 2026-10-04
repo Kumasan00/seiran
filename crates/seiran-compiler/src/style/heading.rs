@@ -6,9 +6,9 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  document::{HeadingLevel, Typeface},
+  document::{HeadingLevel, TextAlignment, Typeface},
   length::{Length, non_negative, positive},
-  style::{NumberTitleTemplate, TextAlignment},
+  style::NumberTitleTemplate,
 };
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
@@ -220,9 +220,8 @@ mod tests {
 
   use super::{HeadingStyle, HeadingStyles};
   use crate::{
-    document::{HeadingLevel, Typeface},
+    document::{HeadingLevel, TextAlignment, Typeface},
     length::Length,
-    style::TextAlignment,
   };
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。

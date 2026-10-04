@@ -136,8 +136,8 @@ pub(super) fn lower_heading(
 mod tests {
   use super::*;
   use crate::{
-    document::Typeface,
-    style::{NumberTitleTemplate, Style as ReadStyle, TextAlignment},
+    document::{TextAlignment, Typeface},
+    style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::test_support::{analyzed, context, lower},

@@ -2,10 +2,9 @@
 
 use crate::{
   color::Color,
-  document::Typeface,
+  document::{TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
-  style::TextAlignment,
   typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
 };
 
