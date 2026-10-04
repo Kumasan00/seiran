@@ -1,0 +1,37 @@
+\section{中央揃えのサンプル}
+
+本文段落を中央に寄せる組版確認用フィクスチャ。style.toml の text.alignment を center にすると、各行は
+自然幅のまま組まれ、利用可能幅の中央に置かれる。両端揃えの伸縮は起きない。複数回の折り返しを起こす
+ために十分な長さの文章を置き、各行が独立に寄ることを確かめる\footnote{脚注本体は本文の揃えに従わず左に寄る。}。
+
+\subsection{左に戻した見出し}
+
+この見出しのレベルだけ heading.subsection.alignment を left にしている。
+
+\begin{itemize}
+\item{リスト項目はマーカーごと中央に寄る。}
+\item{字下げを引いた幅の中で寄る。}
+\end{itemize}
+
+\begin{quote}
+引用の本体も、左右の字下げを引いた幅の中で中央に寄る。十分に長くして折り返しを起こし、各行が独立に
+寄ることを確認する。
+\end{quote}
+
+\begin{theorem}[title=中央揃え]
+定理の本体も本文の揃えに従う。
+\end{theorem}
+
+\begin{proof}
+QED マークは利用可能幅の右端に残り、本文はその手前の幅の中で寄る。
+\end{proof}
+
+\begin{equation}
+a + b = c
+\end{equation}
+
+\begin{code}
+fn main() {
+    let x = 1;
+}
+\end{code}

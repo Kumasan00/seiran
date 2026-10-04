@@ -73,6 +73,11 @@ pub(super) fn set(table: &mut toml::value::Table, section: &str, key: &str, valu
   section_mut(table, section).insert(key.to_string(), value.into());
 }
 
+/// style.toml の `[heading.<level>]` に `key` を設定する（無ければ作る）。
+fn set_heading(table: &mut toml::value::Table, level: &str, key: &str, value: impl Into<toml::Value>) {
+  section_mut(section_mut(table, "heading"), level).insert(key.to_string(), value.into());
+}
+
 /// `[section]` から `key` を取り除く（既定値へ戻す・任意項目を未設定にする）。
 pub(super) fn remove(table: &mut toml::value::Table, section: &str, key: &str) {
   section_mut(table, section).remove(key);
@@ -398,6 +403,16 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
     // 1 個の脚注が収まらず繰越が連鎖する版面（`footnote_split`）と、そこへ長い表を足して
     // ページ跨ぎも起こす版面（`index_split`、索引語の出現ページ帰属の検証用）
     "footnote_split" | "index_split" => set_page_margins(table, "15mm", "12mm"),
+    // 本文は中央、1 レベルだけ見出しを左へ戻した版面
+    "text_center" => {
+      set(table, "text", "alignment", "center");
+      set_heading(table, "subsection", "alignment", "left");
+    },
+    // 本文は右、節見出しだけ中央の版面
+    "text_right" => {
+      set(table, "text", "alignment", "right");
+      set_heading(table, "section", "alignment", "center");
+    },
     _ => {},
   }
 }
