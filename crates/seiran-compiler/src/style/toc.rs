@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::{
   document::HeadingLevel,
   length::{Length, non_negative, positive},
+  style::BlockAlignment,
 };
 
 /// 目次のスタイル設定
@@ -35,6 +36,9 @@ pub(crate) struct TocStyle {
   /// エントリ末尾とページ番号の間を埋めるリーダー文字列（`None` でリーダー無し）。
   /// 指定した単位文字列を残り幅いっぱいに反復する（例: `"."`）
   pub leader: Option<String>,
+  /// エントリ行の揃え（版面幅の中で、階層字下げを含む自然幅を寄せる）。題目行は `[heading.section]` の揃えに従う。
+  /// `"left"` 以外は `show_page_numbers = false` のときだけ受理する（ページ番号を出す行は右端まで伸びる）
+  pub alignment: BlockAlignment,
 }
 
 impl Default for TocStyle {
@@ -48,6 +52,7 @@ impl Default for TocStyle {
       bottom_margin: Length::pt(10.0),
       show_page_numbers: true,
       leader: Some(".".to_string()),
+      alignment: BlockAlignment::Left,
     };
   }
 }
@@ -64,6 +69,7 @@ mod tests {
   use garde::Validate;
 
   use super::TocStyle;
+  use crate::style::BlockAlignment;
 
   #[test]
   fn default_is_disabled_with_dot_leader() {
@@ -107,5 +113,24 @@ mod tests {
       ..TocStyle::default()
     };
     assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn alignment_defaults_to_left_and_accepts_three_values() {
+    assert_eq!(TocStyle::default().alignment, BlockAlignment::Left);
+    for (text, expected) in [
+      ("left", BlockAlignment::Left),
+      ("center", BlockAlignment::Center),
+      ("right", BlockAlignment::Right),
+    ] {
+      let style: TocStyle = toml::from_str(&format!("alignment = \"{text}\"\n")).unwrap();
+      assert_eq!(style.alignment, expected, "{text}");
+    }
+  }
+
+  #[test]
+  fn alignment_rejects_justify_and_unknown_case() {
+    assert!(toml::from_str::<TocStyle>("alignment = \"justify\"\n").is_err(), "1 行の目次に両端揃えは無い");
+    assert!(toml::from_str::<TocStyle>("alignment = \"Center\"\n").is_err(), "綴りは小文字のみ");
   }
 }

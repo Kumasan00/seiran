@@ -3,7 +3,10 @@
 use garde::Validate;
 use serde::Deserialize;
 
-use crate::length::{Length, non_negative, positive};
+use crate::{
+  length::{Length, non_negative, positive},
+  style::BlockAlignment,
+};
 
 /// 巻末索引のスタイル設定
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -18,6 +21,9 @@ pub(crate) struct IndexStyle {
   /// タイトルとエントリ列の間の下余白
   #[garde(custom(non_negative))]
   pub title_bottom_margin: Length,
+  /// タイトル行の揃え（1 段の幅の中で寄せる。段組み時は 1 段目の中）
+  #[garde(skip)]
+  pub title_alignment: BlockAlignment,
   /// エントリ（語 + ページ番号列）のフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -27,6 +33,9 @@ pub(crate) struct IndexStyle {
   /// 語とページ番号列の間の水平アキ
   #[garde(custom(non_negative))]
   pub entry_gap: Length,
+  /// エントリ行と区分見出し行の揃え（1 段の幅の中で寄せる）
+  #[garde(skip)]
+  pub alignment: BlockAlignment,
   /// 索引ブロック全体の下余白
   #[garde(custom(non_negative))]
   pub bottom_margin: Length,
@@ -58,9 +67,11 @@ impl Default for IndexStyle {
       title: "Index".to_string(),
       title_font_size: Length::pt(18.0),
       title_bottom_margin: Length::pt(12.0),
+      title_alignment: BlockAlignment::Left,
       font_size: Length::pt(10.0),
       column_count: 2,
       entry_gap: Length::pt(6.0),
+      alignment: BlockAlignment::Left,
       bottom_margin: Length::pt(10.0),
       collapse_page_ranges: false,
       group_headings: false,
@@ -77,7 +88,7 @@ mod tests {
   use garde::Validate;
 
   use super::IndexStyle;
-  use crate::length::Length;
+  use crate::{length::Length, style::BlockAlignment};
 
   #[test]
   fn default_has_no_enabled_flag_and_two_columns() {
@@ -179,5 +190,30 @@ mod tests {
       ..IndexStyle::default()
     };
     assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn alignments_default_to_left() {
+    let style = IndexStyle::default();
+
+    assert_eq!(style.alignment, BlockAlignment::Left);
+    assert_eq!(style.title_alignment, BlockAlignment::Left);
+  }
+
+  #[test]
+  fn partial_toml_sets_entry_and_title_alignment_independently() {
+    let style: IndexStyle = toml::from_str("alignment = \"right\"\ntitle_alignment = \"center\"\n").unwrap();
+
+    assert_eq!(style.alignment, BlockAlignment::Right);
+    assert_eq!(style.title_alignment, BlockAlignment::Center);
+    assert_eq!(style.column_count, 2, "他のフィールドは既定のまま残るはず");
+    assert!(style.validate().is_ok());
+  }
+
+  #[test]
+  fn alignments_reject_justify_and_unknown_case() {
+    assert!(toml::from_str::<IndexStyle>("alignment = \"justify\"\n").is_err());
+    assert!(toml::from_str::<IndexStyle>("title_alignment = \"justify\"\n").is_err());
+    assert!(toml::from_str::<IndexStyle>("alignment = \"Right\"\n").is_err());
   }
 }

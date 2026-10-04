@@ -534,6 +534,20 @@ mod parse_tests {
   }
 
   #[test]
+  fn parse_fails_on_justify_toc_and_index_alignment() {
+    for toml in [
+      "[toc]\nalignment = \"justify\"\n",
+      "[index]\ntitle_alignment = \"justify\"\n",
+    ] {
+      let result = parse(toml, dummy_source());
+      assert!(
+        matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
+        "{toml}"
+      );
+    }
+  }
+
+  #[test]
   fn load_fails_on_nonexistent_path() {
     let path = std::path::PathBuf::from("/nonexistent/style.toml");
     let source = FilesystemProjectSource;
