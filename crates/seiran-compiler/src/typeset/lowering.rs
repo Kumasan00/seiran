@@ -11,6 +11,7 @@ mod code;
 mod counter;
 mod figure;
 mod float;
+mod flush;
 mod generated;
 mod heading;
 mod inline;
@@ -342,6 +343,9 @@ fn lower_node(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringSta
     },
     HirNodeKind::Quote(quote) => {
       return quote::lower_quote(ctx, quote, state);
+    },
+    HirNodeKind::Flush(flush) => {
+      return flush::lower_flush(ctx, flush, state);
     },
     HirNodeKind::CodeBlock(text) => {
       return code::lower_code_block(ctx, text);

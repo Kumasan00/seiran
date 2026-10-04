@@ -168,6 +168,7 @@ impl FactCompletenessChecker<'_> {
         }
       },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
+      HirNodeKind::Flush(flush) => self.nodes(&flush.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
@@ -356,6 +357,7 @@ impl FactCollector<'_, '_> {
         self.nodes(&theorem.body);
       },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
+      HirNodeKind::Flush(flush) => self.nodes(&flush.body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
@@ -824,6 +826,7 @@ mod completeness_tests {
       Just("段落 \\ref{l0} と \\cite{kwan2014}。\n"),
       Just("\\begin{itemize}\n\\item{\\ref{l0}}\n\\end{itemize}\n"),
       Just("\\begin{quote}\n\\section{引用中の見出し}\n\\end{quote}\n"),
+      Just("\\begin{center}\n\\section{寄せ環境中の見出し}\n\\end{center}\n"),
       Just("本文\\footnote{脚注中の \\ref{l0}}\n"),
     ];
   }

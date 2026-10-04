@@ -15,7 +15,7 @@
 //! # 置く型
 //!
 //! HIR 木の型は子 module `hir`、HIR の variant が値として直接持つ閉じた語彙型
-//! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TheoremClass`] / [`MathBlockKind`] /
+//! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TextAlignment`] / [`TheoremClass`] / [`MathBlockKind`] /
 //! [`GridLayout`] / [`MathDelimiter`] / [`MathVariant`] / [`MathClass`] / [`ColumnAlign`] / [`ColumnWidth`] /
 //! [`Typeface`]）はこの module の直下。
 
@@ -27,13 +27,14 @@ mod math_class;
 mod math_variant;
 mod quote;
 mod table_column;
+mod text_alignment;
 mod theorem;
 mod typeface;
 
 pub(crate) use caption::CaptionPosition;
 pub(crate) use heading_level::HeadingLevel;
 pub(crate) use hir::{
-  HirBuilder, HirDocument, HirFigure, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
+  HirBuilder, HirDocument, HirFigure, HirFlush, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
   HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,
   HirTableCell, HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
 };
@@ -42,5 +43,6 @@ pub(crate) use math_class::MathClass;
 pub(crate) use math_variant::MathVariant;
 pub(crate) use quote::QuoteKind;
 pub(crate) use table_column::{ColumnAlign, ColumnWidth};
+pub(crate) use text_alignment::TextAlignment;
 pub(crate) use theorem::TheoremClass;
 pub(crate) use typeface::Typeface;

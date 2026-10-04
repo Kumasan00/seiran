@@ -3,8 +3,8 @@
 use tracing::trace;
 
 use crate::{
+  document::TextAlignment,
   length::Length,
-  style::TextAlignment,
   typeset::{
     boxes::{HItem, Line},
     breaking::break_lines::{LineBreaker, OpenLink, build_line},
@@ -140,8 +140,8 @@ fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
 mod tests {
   use super::{GreedyBreaker, LineBreaker};
   use crate::{
+    document::TextAlignment,
     length::Length,
-    style::TextAlignment,
     typeset::{
       boxes::HItem,
       breaking::break_lines::test_support::{

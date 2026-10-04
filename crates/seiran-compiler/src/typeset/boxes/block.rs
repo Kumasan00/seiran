@@ -1,9 +1,9 @@
 //! 文書の縦リスト要素 [`Block`]。
 
 use crate::{
+  document::TextAlignment,
   length::Length,
   project::ProjectPath,
-  style::TextAlignment,
   typeset::boxes::{
     align::Align,
     hitem::{HBox, HItem},

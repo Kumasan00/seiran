@@ -24,7 +24,10 @@
 //!   [`index_marks_are_invisible_to_layout`]・style 差分 2 種
 //!   [`layout_dump_changes_with_line_height`] / [`layout_dump_changes_with_punctuation_spacing`]・
 //!   [`blank_code_line_keeps_a_full_line_height`]・
-//!   [`text_alignment_leaves_kind_specific_alignment_untouched`]（本文の揃えを変えた組版と既定の組版の水平位置）
+//!   [`text_alignment_leaves_kind_specific_alignment_untouched`]（本文の揃えを変えた組版と既定の組版の水平位置）・
+//!   寄せ環境 3 種 [`flush_environment_matches_text_alignment_of_the_same_direction`] /
+//!   [`nested_flush_environment_uses_innermost_direction_and_reverts_after_it`] /
+//!   [`empty_flush_environment_adds_no_vertical_space`]（寄せ環境で包んだ組版と、包まない・`[text].alignment` を変えた組版）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -77,6 +80,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "code",
   "color",
   "equation",
+  "flush",
   "footnote",
   "footnote_columns",
   "footnote_per_page",
@@ -699,6 +703,100 @@ fn text_alignment_leaves_kind_specific_alignment_untouched() {
       "タイトルページ（{alignment}）"
     );
   }
+}
+
+/// 本文 `text` を組んだページのダンプを返す。`alignment` が `Some` なら `[text].alignment` をその値にする。
+///
+/// fixture の版面は行長が約 1200pt あり段落が 1 行に収まる（最終行は両端揃えでも伸びない）ので、左右の余白を
+/// 広げて段落を複数行に折り返させる。
+fn dump_source(text: &str, alignment: Option<&'static str>) -> String {
+  let mut builder = TestProject::builder().source_text(text).style_toml(|table| {
+    test_support::set(table, "page", "margin_left", "250mm");
+    test_support::set(table, "page", "margin_right", "250mm");
+  });
+  if let Some(alignment) = alignment {
+    builder = builder.style_toml(move |table| test_support::set(table, "text", "alignment", alignment));
+  }
+  return dump_pages(&builder.build().laid_out().pages);
+}
+
+/// 寄せ環境の等価テストの本文。`[text].alignment` に従う要素（複数行の段落・`\\`・揃え未指定の見出し・入れ子の
+/// リスト・引用・定理・証明の QED）と、種類で揃えが決まる要素（脚注本体・数式ブロック・コード・表）を並べる。
+const FLUSH_BODY: &str = "\\subsection{見出し}
+
+寄せ環境の本体は、style.toml の text.alignment を環境の向きに置き換えた文書と同じに組まれる。複数行に折り返す
+だけの長さを持たせ、各行が独立に寄ることと、両端揃えの伸縮が起きないことを確かめる\\footnote{脚注本体は左。}。\\\\
+強制改行の後の行も独立に寄る。
+
+\\begin{itemize}
+\\item{外側の項目。
+\\begin{enumerate}
+\\item{入れ子の項目。}
+\\end{enumerate}
+}
+\\end{itemize}
+
+\\begin{quote}
+引用の本体。
+\\end{quote}
+
+\\begin{theorem}
+定理の本体。
+\\end{theorem}
+
+\\begin{proof}
+証明の本体。
+\\end{proof}
+
+\\begin{equation}
+a + b = c
+\\end{equation}
+
+\\begin{code}
+let x = 1;
+\\end{code}
+
+\\begin{table}[columns=left right]
+\\row{左 & 右}
+\\end{table}
+";
+
+#[test]
+fn flush_environment_matches_text_alignment_of_the_same_direction() {
+  let justified = dump_source(FLUSH_BODY, None);
+
+  for (name, alignment) in [
+    ("flushleft", "left"),
+    ("center", "center"),
+    ("flushright", "right"),
+  ] {
+    let wrapped = dump_source(&format!("\\begin{{{name}}}\n{FLUSH_BODY}\\end{{{name}}}\n"), None);
+    let restyled = dump_source(FLUSH_BODY, Some(alignment));
+
+    assert_eq!(wrapped, restyled, "{name} の本体は [text].alignment = \"{alignment}\" の文書と同じに組まれるはず");
+    assert_ne!(wrapped, justified, "{name} は既定（両端揃え）の組版を変えるはず");
+  }
+}
+
+#[test]
+fn nested_flush_environment_uses_innermost_direction_and_reverts_after_it() {
+  let nested =
+    "\\begin{flushright}\n右の段落\n\n\\begin{center}\n中央の段落\n\\end{center}\n\n右へ戻る段落\n\\end{flushright}\n";
+  let flat = "\\begin{flushright}\n右の段落\n\\end{flushright}\n\n\\begin{center}\n中央の段落\n\\end{center}\n\n\
+              \\begin{flushright}\n右へ戻る段落\n\\end{flushright}\n";
+  let plain = "右の段落\n\n中央の段落\n\n右へ戻る段落\n";
+
+  let nested_dump = dump_source(nested, None);
+
+  assert_eq!(nested_dump, dump_source(flat, None), "内側の環境が閉じた後は外側の向きに戻るはず");
+  assert_ne!(nested_dump, dump_source(plain, None), "寄せ環境は組版を変えるはず");
+}
+
+#[test]
+fn empty_flush_environment_adds_no_vertical_space() {
+  let with_empty = dump_source("前の段落\n\n\\begin{center}\\end{center}\n\n後の段落\n", None);
+
+  assert_eq!(with_empty, dump_source("前の段落\n\n後の段落\n", None));
 }
 
 /// コードブロックの空行が 1 行ぶんの高さを保つことを確認する。

@@ -3,8 +3,8 @@
 use tracing::trace;
 
 use crate::{
+  document::TextAlignment,
   length::Length,
-  style::TextAlignment,
   typeset::{
     boxes::{HItem, Line},
     breaking::break_lines::{
@@ -388,8 +388,8 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool, math_penalty: Option<
 mod tests {
   use super::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, PathCost, break_subparagraph, demerits};
   use crate::{
+    document::TextAlignment,
     length::Length,
-    style::TextAlignment,
     typeset::{
       boxes::{HItem, Line},
       breaking::break_lines::test_support::{

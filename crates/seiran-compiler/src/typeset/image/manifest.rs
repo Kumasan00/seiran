@@ -29,6 +29,9 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
       HirNodeKind::Quote(quote) => {
         walk_nodes(&quote.body, paths);
       },
+      HirNodeKind::Flush(flush) => {
+        walk_nodes(&flush.body, paths);
+      },
       HirNodeKind::List(list) => {
         for item in &list.items {
           walk_nodes(&item.body, paths);
@@ -80,6 +83,13 @@ mod tests {
       format!("\\begin{{theorem}}\n\\begin{{quote}}\n{}\\end{{quote}}\n\\end{{theorem}}\n", figure("nested.png"));
     let paths = collect_image_paths(&document(&source));
     assert_eq!(paths, vec![ProjectPath::new("nested.png")]);
+  }
+
+  #[test]
+  fn collects_figure_paths_nested_in_flush_body() {
+    let source = format!("\\begin{{flushright}}\n{}\\end{{flushright}}\n", figure("flush.png"));
+    let paths = collect_image_paths(&document(&source));
+    assert_eq!(paths, vec![ProjectPath::new("flush.png")]);
   }
 
   #[test]

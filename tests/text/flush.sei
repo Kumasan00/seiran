@@ -1,0 +1,69 @@
+\section{寄せ環境のサンプル}
+
+寄せ環境の外の段落は既定の両端揃えのまま組まれる。複数行に折り返すだけの長さを持たせて、行末が利用可能幅の
+右端に揃うことを確かめる。寄せ環境の中の段落だけが、環境の向きに寄る。
+\begin{flushright}
+2026 年 10 月 4 日\\
+山田 太郎
+\end{flushright}
+直前の文は空行なしで環境に続くが、環境の後で新しい段落として始まる。
+
+\begin{flushleft}
+左寄せの段落は自然幅のまま左端から並び、両端揃えの伸縮は起きない。複数行に折り返すだけの長さを持たせて、
+各行の行末が揃わないことを確かめる。
+\end{flushleft}
+
+\begin{center}
+\subsection{揃えを指定しない見出し}
+
+この見出しは環境の向きに従って中央に寄る。中央寄せの段落も複数行に折り返し、各行が独立に寄る\footnote{脚注本体は寄せ環境の外で組まれるので左に寄る。}。
+
+\paragraph{揃えを指定した見出し}
+
+この見出しのレベルは style.toml で left を指定しているので、寄せ環境の中でも左に寄る。
+
+\begin{itemize}
+\item{リスト項目はマーカーごと中央に寄る。
+\begin{enumerate}
+\item{入れ子の項目も字下げを引いた幅の中で寄る。}
+\end{enumerate}
+}
+\end{itemize}
+
+\begin{quote}
+引用の本体も、左右の字下げを引いた幅の中で中央に寄る。
+\end{quote}
+
+\begin{theorem}[title=中央寄せ]
+定理の本体も環境の向きに従う。
+\end{theorem}
+
+\begin{equation}
+a + b = c
+\end{equation}
+
+\begin{code}
+fn main() {
+    let x = 1;
+}
+\end{code}
+
+\begin{table}[columns=left right]
+\row{左 & 右}
+\caption{表のセルは列指定のまま}
+\end{table}
+
+\begin{center}\end{center}
+\end{center}
+
+\begin{flushright}
+\begin{proof}
+QED マークは利用可能幅の右端に残り、本文はその手前の幅の中で右に寄る。
+\end{proof}
+
+\begin{center}
+入れ子にした内側の環境が効き、この段落は中央に寄る。
+\end{center}
+
+外側の環境へ戻ったこの段落は右に寄る。
+\end{flushright}

@@ -13,8 +13,8 @@ use region_cursor::RegionCursor;
 use tracing::debug;
 
 use crate::{
+  document::TextAlignment,
   length::Length,
-  style::TextAlignment,
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedBlock,
@@ -803,12 +803,11 @@ mod tests {
     is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
-    document::{ColumnAlign, ColumnWidth},
+    document::{ColumnAlign, ColumnWidth, TextAlignment},
     length::Length,
     project::{FontType, ProjectPath},
     publication::GlyphRun,
     semantics::{HeadingKey, LabelId},
-    style::TextAlignment,
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
