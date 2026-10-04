@@ -17,7 +17,7 @@ use crate::{
   },
   length::Length,
   semantics::LabelId,
-  style::{MathAlignment, MathScriptStyle, NumberSide, NumberTemplate},
+  style::{MathScriptStyle, NumberSide, NumberTemplate},
   typeset::{
     boxes::Align,
     lowering::{
@@ -80,7 +80,7 @@ pub(super) fn lower_math_block(
       delimiters: delimiter_glyphs(math.kind),
       rows: layout_rows,
       env_number,
-      align: alignment_to_align(block.alignment),
+      align: Align::from(block.alignment),
       numbers_on_right: matches!(block.number_side, NumberSide::Right),
       row_gap: block.row_gap,
       column_gap: block.column_gap,
@@ -113,15 +113,6 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
       color: None,
     },
   )];
-}
-
-/// `crate::style::MathAlignment`（数式本体の揃え）を `crate::typeset::boxes::Align` に対応付ける
-fn alignment_to_align(alignment: MathAlignment) -> Align {
-  return match alignment {
-    MathAlignment::Center => Align::Center,
-    MathAlignment::Left => Align::Left,
-    MathAlignment::Right => Align::Right,
-  };
 }
 
 /// 環境種別・行位置・列インデックスから、そのセルの列内での水平揃えを決める

@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
-  style::NumberTemplate,
+  style::{BlockAlignment, NumberTemplate},
 };
 
 /// 数式設定全体（`[math]` テーブル）。
@@ -64,7 +64,7 @@ pub(crate) struct MathBlockStyle {
   /// 数式番号の配置側
   pub number_side: NumberSide,
   /// 数式本体の揃え
-  pub alignment: MathAlignment,
+  pub alignment: BlockAlignment,
   /// 行間（隣り合う行のベースライン間に挿入する追加アキ）
   #[garde(custom(non_negative))]
   pub row_gap: Length,
@@ -84,7 +84,7 @@ impl Default for MathBlockStyle {
     return Self {
       tag_format: NumberTemplate::parse("({number})"),
       number_side: NumberSide::Right,
-      alignment: MathAlignment::Center,
+      alignment: BlockAlignment::Center,
       row_gap: Length::pt(3.0),
       column_gap: Length::pt(6.0),
       top_margin: Length::pt(8.0),
@@ -104,31 +104,19 @@ pub(crate) enum NumberSide {
   Left,
 }
 
-/// 数式本体の揃え
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
-#[serde(rename_all = "snake_case")]
-#[garde(allow_unvalidated)]
-pub(crate) enum MathAlignment {
-  /// 中央揃え
-  Center,
-  /// 左揃え
-  Left,
-  /// 右揃え
-  Right,
-}
-
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
-  use super::{MathAlignment, MathBlockStyle, MathScriptStyle, NumberSide};
+  use super::{MathBlockStyle, MathScriptStyle, NumberSide};
+  use crate::style::BlockAlignment;
 
   #[test]
   fn block_default_uses_right_number_and_center_body() {
     let block = MathBlockStyle::default();
 
     assert_eq!(block.number_side, NumberSide::Right);
-    assert_eq!(block.alignment, MathAlignment::Center);
+    assert_eq!(block.alignment, BlockAlignment::Center);
     assert_eq!(block.tag_format.as_str(), "({number})");
   }
 

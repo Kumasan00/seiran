@@ -4,6 +4,7 @@
 //! どちらか一方だけでは判定できない横断制約は [`crate::typeset::PreparedGeometry::prepare`] が持つ。
 //! CSL ファイル自体は読まず、`csl_path` / `locale_path` の解決と存在確認までで止める。
 
+mod block_alignment;
 mod caption;
 mod columns;
 mod counter;
@@ -41,11 +42,12 @@ pub(crate) use crate::style::error::ReadStyleError;
   )
 )]
 pub(crate) use crate::style::{
+  block_alignment::BlockAlignment,
   caption::CaptionStyle,
   counter::{CounterName, CounterStyles},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
-  math::{MathAlignment, MathScriptStyle, NumberSide},
+  math::{MathScriptStyle, NumberSide},
   number_style::NumberStyle,
   page_numbering::PageNumberingStyle,
   running::RunningContentStyle,

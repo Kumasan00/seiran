@@ -1,8 +1,9 @@
 //! 水平方向の揃え [`Align`]。
 
-use crate::{document::TextAlignment, length::Length};
+use crate::{document::TextAlignment, length::Length, style::BlockAlignment};
 
-/// ブロック（画像・表・数式）と数式セルの水平方向の揃え。段落の行は [`TextAlignment`] から変換して使う。
+/// ブロック（画像・表・数式）・数式セル・目次と索引の行の水平方向の揃え。
+/// 段落の行は [`TextAlignment`]、style の 3 値の揃えは [`BlockAlignment`] から変換して使う。
 ///
 /// 揃えは確定した内容を利用可能幅の中で水平にシフトするだけ。内容が利用可能幅を超える場合のシフト量は
 /// 0 にクランプされる（左端より左へはみ出さない）。
@@ -39,10 +40,21 @@ impl From<TextAlignment> for Align {
   }
 }
 
+/// 3 値の揃えをそのままの向きで写す。
+impl From<BlockAlignment> for Align {
+  fn from(alignment: BlockAlignment) -> Self {
+    return match alignment {
+      BlockAlignment::Left => Align::Left,
+      BlockAlignment::Center => Align::Center,
+      BlockAlignment::Right => Align::Right,
+    };
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::Align;
-  use crate::{document::TextAlignment, length::Length};
+  use crate::{document::TextAlignment, length::Length, style::BlockAlignment};
 
   #[test]
   fn offset_left_is_always_zero() {
@@ -71,5 +83,12 @@ mod tests {
     assert_eq!(Align::from(TextAlignment::Left), Align::Left);
     assert_eq!(Align::from(TextAlignment::Center), Align::Center);
     assert_eq!(Align::from(TextAlignment::Right), Align::Right);
+  }
+
+  #[test]
+  fn block_alignment_maps_to_the_same_direction() {
+    assert_eq!(Align::from(BlockAlignment::Left), Align::Left);
+    assert_eq!(Align::from(BlockAlignment::Center), Align::Center);
+    assert_eq!(Align::from(BlockAlignment::Right), Align::Right);
   }
 }
