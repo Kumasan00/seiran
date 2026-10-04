@@ -83,7 +83,7 @@ impl EnvironmentKind {
       Self::Table => table::table(view, ctx),
       Self::Code => code::code(view, ctx),
       Self::Equation => math::equation(view, ctx),
-      Self::MathGrid { layout, numbering } => math::evaluate_math_env(view, ctx, layout, numbering),
+      Self::MathGrid { layout, numbering } => math::evaluate_math_grid(view, ctx, layout, numbering),
       Self::Cases => math::cases(view, ctx),
       Self::Matrix => math::matrix(view, ctx),
     };
