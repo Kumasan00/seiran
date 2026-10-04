@@ -71,7 +71,7 @@ pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) 
   return blocks;
 }
 
-/// 見出しと本文内ページ index から目次エントリを組み立てる。
+/// 見出しと本文内ページ序数から目次エントリを組み立てる。
 ///
 /// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
 fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntry> {
@@ -88,11 +88,11 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
     .iter()
     .zip(heading_pages.iter().copied())
     .filter(|(info, _)| return u32::from(info.level.depth()) < toc.max_depth)
-    .map(|(info, page_index)| {
+    .map(|(info, page_ordinal)| {
       return TocEntry {
         level: info.level,
         label: info.label(),
-        page_label: page_values.body_page_label(page_index),
+        page_label: page_values.body_page_label(page_ordinal),
         link_key: HeadingKey::new(info.index),
       };
     })
