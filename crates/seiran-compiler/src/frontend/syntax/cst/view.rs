@@ -247,7 +247,7 @@ pub(crate) fn split_opt_arg_pairs(source: &str, opt_arg: &CstNode<'_>) -> Vec<(S
   debug_assert_eq!(
     opt_arg.kind,
     SyntaxKind::OptArg,
-    "key=value のパース対象は OptArg ノードだけ（呼び出し元が OptArg を選んで渡す）"
+    "key=value に分ける対象は OptArg ノードだけ（呼び出し元が OptArg を選んで渡す）"
   );
   let mut pairs = Vec::new();
   // 境界の `[` `]` はエントリの先頭・末尾に入るが、`push_element_text` が文字列に含めない
@@ -454,7 +454,7 @@ mod tests {
   }
 
   #[test]
-  fn split_opt_arg_pairs_env_optarg_basic() {
+  fn split_opt_arg_pairs_env_opt_arg_basic() {
     let arena = bumpalo::Bump::new();
     let source = r"\begin{figure}[label=fig:foo, position = h]body\end{figure}";
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
@@ -520,7 +520,7 @@ mod tests {
   }
 
   #[test]
-  fn split_opt_arg_pairs_empty_optarg() {
+  fn split_opt_arg_pairs_empty_opt_arg() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[]{x}";
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
