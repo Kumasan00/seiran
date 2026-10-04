@@ -17,7 +17,7 @@ use crate::{
     evaluator::EvalError,
     syntax::{
       CstNode,
-      view::{CommandView, EnvironmentView, parse_key_value_options},
+      view::{CommandView, EnvironmentView, split_opt_arg_pairs},
     },
   },
   length::Length,
@@ -305,7 +305,7 @@ pub(super) fn collect_opt_args(
     return Ok(OptArgs { pairs: Vec::new() });
   };
   let mut pairs: Vec<(String, OptValue)> = Vec::new();
-  for (key, value) in parse_key_value_options(source, opt) {
+  for (key, value) in split_opt_arg_pairs(source, opt) {
     let Some(expected) = schema.iter().find(|decl| return decl.name == key).map(|decl| return decl.ty) else {
       return Err(EvalError::UnknownOptArgKey {
         name: name.to_string(),
@@ -329,7 +329,7 @@ pub(super) fn collect_opt_args(
   return Ok(OptArgs { pairs });
 }
 
-/// `parse_key_value_options` から得た生の `(key, value)` を期待型で `OptValue` に変換する
+/// `split_opt_arg_pairs` から得た生の `(key, value)` を期待型で `OptValue` に変換する
 fn parse_value(
   key: &str,
   raw: &str,

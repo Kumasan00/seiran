@@ -236,14 +236,14 @@ pub(crate) fn split_text_on_commas(source: &str, node: &CstNode<'_>) -> Vec<Stri
     .collect();
 }
 
-/// `OptArg` ノードを `key=value` 形式としてパースする
+/// `OptArg` ノードを `key=value` のエントリに分ける
 ///
 /// 区切りは構造トークンだけで決まる: 直下の `Comma` がエントリの区切り、各エントリの最初の
 /// `Equals` が key と value の区切り。`\,` / `\=`（`Escaped`）・2 個目以降の `=`・入れ子のノードの中身は
 /// 値の文字になる。引用符 `"` は値の境界ではない。`=` を含まないエントリは boolean フラグとして扱い
 /// `("key", "true")` を生成する（例: `[draft]`）。空のエントリは読み飛ばす。
 #[must_use]
-pub(crate) fn parse_key_value_options(source: &str, opt_arg: &CstNode<'_>) -> Vec<(String, String)> {
+pub(crate) fn split_opt_arg_pairs(source: &str, opt_arg: &CstNode<'_>) -> Vec<(String, String)> {
   debug_assert_eq!(
     opt_arg.kind,
     SyntaxKind::OptArg,
@@ -454,13 +454,13 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_env_optarg_basic() {
+  fn split_opt_arg_pairs_env_optarg_basic() {
     let arena = bumpalo::Bump::new();
     let source = r"\begin{figure}[label=fig:foo, position = h]body\end{figure}";
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::Environment);
 
-    let pairs = parse_key_value_options(source, opt_arg);
+    let pairs = split_opt_arg_pairs(source, opt_arg);
 
     assert_eq!(
       pairs,
@@ -472,13 +472,13 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_treats_bare_key_as_boolean_true() {
+  fn split_opt_arg_pairs_treats_bare_key_as_boolean_true() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[draft, key=val]{x}";
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
-    let pairs = parse_key_value_options(source, opt_arg);
+    let pairs = split_opt_arg_pairs(source, opt_arg);
 
     assert_eq!(
       pairs,
@@ -490,13 +490,13 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_skips_empty_entries() {
+  fn split_opt_arg_pairs_skips_empty_entries() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[ , draft , ,key=val]{x}";
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
-    let pairs = parse_key_value_options(source, opt_arg);
+    let pairs = split_opt_arg_pairs(source, opt_arg);
 
     assert_eq!(
       pairs,
@@ -520,13 +520,13 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_empty_optarg() {
+  fn split_opt_arg_pairs_empty_optarg() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[]{x}";
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
-    let pairs = parse_key_value_options(source, opt_arg);
+    let pairs = split_opt_arg_pairs(source, opt_arg);
 
     assert_eq!(pairs, []);
   }
@@ -535,11 +535,11 @@ mod tests {
   fn command_pairs(source: &str) -> Vec<(String, String)> {
     let arena = bumpalo::Bump::new();
     let cst = syntax::parse_cst(source, &arena, text_modes()).unwrap();
-    return parse_key_value_options(source, first_opt_arg(cst, SyntaxKind::CommandCall));
+    return split_opt_arg_pairs(source, first_opt_arg(cst, SyntaxKind::CommandCall));
   }
 
   #[test]
-  fn parse_key_value_options_keeps_escaped_comma_in_value() {
+  fn split_opt_arg_pairs_keeps_escaped_comma_in_value() {
     let pairs = command_pairs(r"\cmd[title=a\, b, label=x]{y}");
 
     assert_eq!(
@@ -552,28 +552,28 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_keeps_escaped_equals_in_value() {
+  fn split_opt_arg_pairs_keeps_escaped_equals_in_value() {
     let pairs = command_pairs(r"\cmd[title=a\=b]{y}");
 
     assert_eq!(pairs, vec![("title".to_string(), "a=b".to_string())]);
   }
 
   #[test]
-  fn parse_key_value_options_keeps_later_equals_in_value() {
+  fn split_opt_arg_pairs_keeps_later_equals_in_value() {
     let pairs = command_pairs(r"\cmd[title=a=b]{y}");
 
     assert_eq!(pairs, vec![("title".to_string(), "a=b".to_string())]);
   }
 
   #[test]
-  fn parse_key_value_options_keeps_escaped_equals_in_key() {
+  fn split_opt_arg_pairs_keeps_escaped_equals_in_key() {
     let pairs = command_pairs(r"\cmd[a\=b=c]{y}");
 
     assert_eq!(pairs, vec![("a=b".to_string(), "c".to_string())]);
   }
 
   #[test]
-  fn parse_key_value_options_ignores_comma_nested_in_child_node() {
+  fn split_opt_arg_pairs_ignores_comma_nested_in_child_node() {
     let pairs = command_pairs(r"\cmd[title=\bold{a, b}, label=x]{y}");
 
     assert_eq!(
@@ -586,7 +586,7 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_treats_quote_as_plain_character() {
+  fn split_opt_arg_pairs_treats_quote_as_plain_character() {
     // `,` は引用符の内側でも区切りになる
     let pairs = command_pairs(r#"\cmd[title="a, b"]{y}"#);
 
@@ -600,7 +600,7 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_skips_consecutive_and_trailing_commas() {
+  fn split_opt_arg_pairs_skips_consecutive_and_trailing_commas() {
     let pairs = command_pairs(r"\cmd[a=1,, b=2,]{y}");
 
     assert_eq!(
