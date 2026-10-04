@@ -18,7 +18,7 @@ use crate::{
     FontLoadError, FontRefs, build_font_metrics, build_font_refs,
     face_config::{FontFaceConfigs, build_face_configs},
     shaper::{self, HarfRustShapers, ShaperDatas, ShaperError, ShaperInstances, UnicodeBuffer},
-    validation::{self, FontValidationFailure, FontWarning},
+    validation::{self, FontValidationError, FontWarning},
   },
 };
 
@@ -35,7 +35,7 @@ pub(crate) enum FontSystemError {
   /// フォント設定検証の失敗
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Validation(#[from] FontValidationFailure),
+  Validation(#[from] FontValidationError),
   /// シェーパー初期化の失敗
   #[error(transparent)]
   #[diagnostic(transparent)]

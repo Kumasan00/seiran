@@ -25,7 +25,7 @@ use crate::{
 /// 1 件のフォント検証違反を、どのフォント種別のものかを添えて表す leaf diagnostic。
 #[derive(Debug, Display)]
 #[display("{}: {kind}", font_type.as_toml_key())]
-pub(crate) struct FontValidationFailure {
+pub(crate) struct FontValidationError {
   /// 違反が見つかったフォント種別
   font_type: FontType,
   /// 違反の内容
@@ -34,11 +34,11 @@ pub(crate) struct FontValidationFailure {
 
 /// `kind` は cause ではなくこの診断自身の内容なので `#[source]` には載せない
 /// （載せると miette が `╰─▶` で同じ文言をもう一度描画する）。
-impl std::error::Error for FontValidationFailure {
+impl std::error::Error for FontValidationError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return std::error::Error::source(&self.kind); }
 }
 
-impl Diagnostic for FontValidationFailure {
+impl Diagnostic for FontValidationError {
   fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.kind.code(); }
 
   fn severity(&self) -> Option<miette::Severity> { return self.kind.severity(); }
@@ -56,7 +56,7 @@ impl Diagnostic for FontValidationFailure {
   fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.kind.diagnostic_source(); }
 }
 
-/// フォント設定の検証エラー。
+/// 1 件のフォント検証違反の内容。
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum FontValidationErrorKind {
   /// OpenType フォントを解析できない。
@@ -242,11 +242,11 @@ pub(crate) enum FontWarning {
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反がある場合に、組の第 1 要素がその全件を [`FontValidationFailure`] の非空集合として持つ。
+/// 1 つ以上の違反がある場合に、組の第 1 要素がその全件を [`FontValidationError`] の非空集合として持つ。
 pub(super) fn validate_fonts(
   font_configs: &FontConfigs,
   font_refs: &FontRefs<'_>,
-) -> (Result<(), Failures<FontValidationFailure>>, Vec<FontWarning>) {
+) -> (Result<(), Failures<FontValidationError>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
   for &font_type in FontType::VARIANTS {
@@ -255,7 +255,7 @@ pub(super) fn validate_fonts(
     all_errors.extend(
       validate_font(font_type, config, font_ref, &mut all_warnings)
         .into_iter()
-        .map(|kind| return FontValidationFailure { font_type, kind }),
+        .map(|kind| return FontValidationError { font_type, kind }),
     );
     debug!(font_type = ?font_type, font_path = %config.font_path, "フォントを検証");
   }
@@ -687,14 +687,14 @@ mod tests {
   }
 
   #[test]
-  fn failure_message_is_prefixed_with_the_toml_key_of_the_font_type() {
-    let failure = FontValidationFailure {
+  fn error_message_is_prefixed_with_the_toml_key_of_the_font_type() {
+    let error = FontValidationError {
       font_type: FontType::Serif,
       kind: FontValidationErrorKind::NotVariableFont,
     };
 
     assert_eq!(
-      failure.to_string(),
+      error.to_string(),
       "serif: このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。"
     );
   }
