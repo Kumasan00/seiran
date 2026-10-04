@@ -273,8 +273,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   「採用条件」（#767）。
 - 固定集合 enum の **全 variant の列挙と、case 変換だけで決まる文字列化は `strum`** に寄せる。全 variant を
   宣言順に並べた列挙は `VariantArray` の `VARIANTS` を直接使う（手書きの配列は variant を足しても追記漏れが
-  コンパイルを通る）。別名の定数は挟まない。例外は crate 外から列挙される公開型で、利用側に `strum` の
-  トレイトを import させないよう inherent の定数で包む（`FontType::ALL`）。
+  コンパイルを通る）。別名の定数は挟まない。
   snake_case の綴り（TOML キー・環境名）は `#[strum(serialize_all = "…")]` 付きの `IntoStaticStr` /
   `Display` から出す — 全 variant に一律で case 変換をかけるので、variant ごとの属性が無く書き忘れようがない
   （上の derive_more の問題に当たらない）。serde の `rename_all` と綴りを 2 箇所に持つことになるので、serde が
