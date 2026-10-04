@@ -7,7 +7,7 @@ use tracing::debug;
 
 use crate::{
   color::Color,
-  document::FontKind,
+  document::Typeface,
   length::Length,
   project::config::DocumentConfig,
   style::{RunningContentStyle, RunningTemplate, RunningValues, Style},
@@ -45,8 +45,8 @@ struct RunningSlots {
   center: RunningTemplate,
   /// 右スロットのテンプレート
   right: RunningTemplate,
-  /// フォント種別
-  font_kind: FontKind,
+  /// 書体
+  typeface: Typeface,
   /// フォントサイズ
   font_size: Length,
   /// ベースラインのページ上端からの距離（絶対座標。フッターは投影時に換算済み）
@@ -137,7 +137,7 @@ fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bo
     left: style.left.clone(),
     center: style.center.clone(),
     right: style.right.clone(),
-    font_kind: style.font_kind,
+    typeface: style.typeface,
     font_size: style.font_size,
     baseline_y,
     rule_below,
@@ -158,7 +158,7 @@ fn build_running_blocks(
 ) -> Vec<PlacedBlock> {
   let style = TextStyle {
     font_size: slots.font_size,
-    font_kind: slots.font_kind,
+    typeface: slots.typeface,
     color: None,
   };
   let left = shape_slot(shaper, &slots.left, page_label, pages_label, metadata, style);

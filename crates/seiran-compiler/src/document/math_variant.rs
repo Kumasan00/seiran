@@ -6,7 +6,7 @@
 /// Unicode Mathematical Alphanumeric Symbols（U+1D400–U+1D7FF）の
 /// 該当コードポイントへ ASCII 英字・数字・Greek 文字を変換する。
 ///
-/// `FontKind::Math` のままで字形を切り替える設計のため、
+/// `Typeface::Math` のままで字形を切り替える設計のため、
 /// 数式フォントが対応するグリフを持っている前提で動作する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathVariant {

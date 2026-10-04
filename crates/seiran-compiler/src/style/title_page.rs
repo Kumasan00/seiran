@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::{Length, non_negative, positive},
 };
 
@@ -21,27 +21,27 @@ pub(crate) struct TitlePageStyle {
   /// タイトルのフォントサイズ
   #[garde(custom(positive))]
   pub title_font_size: Length,
-  /// タイトルのフォント種別
+  /// タイトルの書体
   #[garde(skip)]
-  pub title_font_kind: FontKind,
+  pub title_typeface: Typeface,
   /// タイトルの下の縦アキ（タイトルと著者の間隔）
   #[garde(custom(non_negative))]
   pub title_bottom_margin: Length,
   /// 著者のフォントサイズ
   #[garde(custom(positive))]
   pub author_font_size: Length,
-  /// 著者のフォント種別
+  /// 著者の書体
   #[garde(skip)]
-  pub author_font_kind: FontKind,
+  pub author_typeface: Typeface,
   /// 著者の下の縦アキ（著者と日付の間隔）
   #[garde(custom(non_negative))]
   pub author_bottom_margin: Length,
   /// 日付のフォントサイズ
   #[garde(custom(positive))]
   pub date_font_size: Length,
-  /// 日付のフォント種別
+  /// 日付の書体
   #[garde(skip)]
-  pub date_font_kind: FontKind,
+  pub date_typeface: Typeface,
 }
 
 impl Default for TitlePageStyle {
@@ -50,13 +50,13 @@ impl Default for TitlePageStyle {
       enabled: false,
       top_margin: Length::pt(120.0),
       title_font_size: Length::pt(36.0),
-      title_font_kind: FontKind::SerifBold,
+      title_typeface: Typeface::SerifBold,
       title_bottom_margin: Length::pt(24.0),
       author_font_size: Length::pt(18.0),
-      author_font_kind: FontKind::Serif,
+      author_typeface: Typeface::Serif,
       author_bottom_margin: Length::pt(12.0),
       date_font_size: Length::pt(14.0),
-      date_font_kind: FontKind::Serif,
+      date_typeface: Typeface::Serif,
     };
   }
 }
@@ -66,14 +66,14 @@ mod tests {
   use garde::Validate;
 
   use super::TitlePageStyle;
-  use crate::{document::FontKind, length::Length};
+  use crate::{document::Typeface, length::Length};
 
   #[test]
   fn default_is_disabled() {
     let style = TitlePageStyle::default();
 
     assert!(!style.enabled);
-    assert_eq!(style.title_font_kind, FontKind::SerifBold);
+    assert_eq!(style.title_typeface, Typeface::SerifBold);
     assert!((style.title_font_size.to_pt() - 36.0).abs() < f32::EPSILON);
   }
 

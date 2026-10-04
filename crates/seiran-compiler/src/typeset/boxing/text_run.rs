@@ -8,7 +8,7 @@ use std::ops::Range;
 use tracing::trace;
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::Length,
   publication::Glyph,
   typeset::{
@@ -46,10 +46,10 @@ impl Measurer<'_> {
     let text = boxing::fold_newlines(text);
     // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキの境界判定に使う。
     let mut prev_boundary: Option<(script::ScriptCategory, char)> = None;
-    for segment in script::split_text_by_script(style.font_kind, &text) {
+    for segment in script::split_text_by_script(style.typeface, &text) {
       let is_japanese = segment.category == script::ScriptCategory::Japanese;
       // 和文↔欧文が直接隣接する（字・数字どうしの）境界に四分アキを挿む（JIS X 4051）。
-      if style.font_kind != FontKind::Math
+      if style.typeface != Typeface::Math
         && self.punctuation_spacing
         && let (Some((prev_category, prev_char)), Some(next_char)) = (prev_boundary, segment.text.chars().next())
         && boxing::is_ja_latin_letter_boundary(prev_category, prev_char, segment.category, next_char)
@@ -70,7 +70,7 @@ impl Measurer<'_> {
       prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
       let run = self.shaper.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
-      if style.font_kind == FontKind::Math {
+      if style.typeface == Typeface::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
         out.push(HItem::Box(run.into_hbox()));
         continue;

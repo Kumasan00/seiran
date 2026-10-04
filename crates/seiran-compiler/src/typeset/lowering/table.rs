@@ -48,12 +48,12 @@ pub(super) fn lower_table(
 
   let body_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.body_font_kind,
+    typeface: ctx.body_typeface,
     color: None,
   };
   let head_style = TextStyle {
     font_size: body_style.font_size,
-    font_kind: style.head_font_kind,
+    typeface: style.head_typeface,
     color: None,
   };
 
@@ -91,7 +91,7 @@ pub(super) fn lower_table(
 mod tests {
   use super::*;
   use crate::{
-    document::{ColumnAlign, ColumnWidth, FontKind},
+    document::{ColumnAlign, ColumnWidth, Typeface},
     length::Length,
     style::Style as ReadStyle,
     typeset::lowering::{
@@ -158,9 +158,9 @@ mod tests {
   }
 
   #[test]
-  fn lower_table_head_cells_follow_style_head_font_kind() {
+  fn lower_table_head_cells_follow_style_head_typeface() {
     let mut style = ReadStyle::default();
-    style.table.head_font_kind = FontKind::SansSerif;
+    style.table.head_typeface = Typeface::SansSerif;
 
     let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
 
@@ -168,16 +168,16 @@ mod tests {
     let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
-    assert_eq!(head_style.font_kind, FontKind::SansSerif);
+    assert_eq!(head_style.typeface, Typeface::SansSerif);
     let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
-    assert_eq!(body_style.font_kind, FontKind::Serif, "本体セルは文脈の本文書体（最上位なので [text]）のまま");
+    assert_eq!(body_style.typeface, Typeface::Serif, "本体セルは文脈の本文書体（最上位なので [text]）のまま");
   }
 
   #[test]
-  fn lower_table_in_theorem_body_cells_use_theorem_font_kind() {
-    // 既定 style で [theorems.theorem].font_kind は serif_italic
+  fn lower_table_in_theorem_body_cells_use_theorem_typeface() {
+    // 既定 style で [theorems.theorem].typeface は serif_italic
     let style = ReadStyle::default();
 
     let nodes = lower_source(
@@ -190,21 +190,21 @@ mod tests {
     let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
-    assert_eq!(body_style.font_kind, FontKind::SerifItalic, "本体セルは定理本体の書体に従う");
+    assert_eq!(body_style.typeface, Typeface::SerifItalic, "本体セルは定理本体の書体に従う");
     let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
     assert_eq!(
-      head_style.font_kind,
-      FontKind::SerifBold,
-      "ヘッダ行は [table].head_font_kind のままで、スコープ本文書体の影響を受けない"
+      head_style.typeface,
+      Typeface::SerifBold,
+      "ヘッダ行は [table].head_typeface のままで、スコープ本文書体の影響を受けない"
     );
   }
 
   #[test]
-  fn lower_table_in_quote_body_cells_use_quote_font_kind() {
+  fn lower_table_in_quote_body_cells_use_quote_typeface() {
     let mut style = ReadStyle::default();
-    style.quote.font_kind = FontKind::SansSerif;
+    style.quote.typeface = Typeface::SansSerif;
 
     let nodes = lower_source(&style, "\\begin{quote}\n\\begin{table}\n\\row{Alice}\n\\end{table}\n\\end{quote}\n");
 
@@ -212,7 +212,7 @@ mod tests {
     let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
-    assert_eq!(body_style.font_kind, FontKind::SansSerif, "本体セルは引用の書体に従う");
+    assert_eq!(body_style.typeface, Typeface::SansSerif, "本体セルは引用の書体に従う");
   }
 
   #[test]
@@ -252,11 +252,11 @@ mod tests {
   }
 
   #[test]
-  fn lower_table_caption_follows_style_caption_font_kind() {
+  fn lower_table_caption_follows_style_caption_typeface() {
     // 図とは別の書体を立て、表キャプションが `[table.caption]` の側だけを見ることを確かめる
     let mut style = ReadStyle::default();
-    style.table.caption.font_kind = FontKind::Monospace;
-    style.figure.caption.font_kind = FontKind::SansSerif;
+    style.table.caption.typeface = Typeface::Monospace;
+    style.figure.caption.typeface = Typeface::SansSerif;
 
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
@@ -269,7 +269,7 @@ mod tests {
         _ => return None,
       })
       .expect("キャプション Text あり");
-    assert_eq!(caption.font_kind, FontKind::Monospace);
+    assert_eq!(caption.typeface, Typeface::Monospace);
   }
 
   #[test]

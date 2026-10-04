@@ -254,7 +254,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{FontKind, HirInlineKind},
+    document::{HirInlineKind, Typeface},
     frontend::{
       evaluator::{evaluate_inline_children_to_hir, test_support},
       syntax::token::Token,
@@ -353,7 +353,7 @@ mod tests {
     assert!(matches!(
       &inlines[0].kind,
       HirInlineKind::Styled {
-        font: FontKind::SerifBold,
+        font: Typeface::SerifBold,
         ..
       }
     ));

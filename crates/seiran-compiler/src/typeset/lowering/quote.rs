@@ -22,7 +22,7 @@ pub(super) fn lower_quote(
   } else {
     Length::pt(0.0)
   };
-  let body_ctx = ctx.with_body_font_kind(style.font_kind).with_first_line_indent(first_line_indent);
+  let body_ctx = ctx.with_body_typeface(style.typeface).with_first_line_indent(first_line_indent);
   let children = lower_nodes(&body_ctx, &quote.body, state);
 
   return vec![
@@ -46,7 +46,7 @@ pub(super) fn lower_quote(
 mod tests {
   use super::*;
   use crate::{
-    document::FontKind,
+    document::Typeface,
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,
@@ -117,18 +117,18 @@ mod tests {
   }
 
   #[test]
-  fn quote_body_uses_quote_style_font_kind() {
-    // [text].font_kind の既定（Serif）と区別できる値にする
+  fn quote_body_uses_quote_style_typeface() {
+    // [text].typeface の既定（Serif）と区別できる値にする
     let mut style = ReadStyle::default();
-    style.quote.font_kind = FontKind::SansSerif;
+    style.quote.typeface = Typeface::SansSerif;
 
     let nodes = lower_quote_source(&style, "quote");
 
     let (_, _, children) = body_vbox(&nodes);
     let body_kind = children.iter().find_map(|n| match n {
-      LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(s.font_kind),
+      LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(s.typeface),
       _ => return None,
     });
-    assert_eq!(body_kind, Some(FontKind::SansSerif), "引用本文は [quote] の書体に従う");
+    assert_eq!(body_kind, Some(Typeface::SansSerif), "引用本文は [quote] の書体に従う");
   }
 }

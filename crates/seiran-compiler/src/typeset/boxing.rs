@@ -326,7 +326,7 @@ impl<'a> Measurer<'a> {
     let is_empty = text.is_empty();
     let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
     if is_empty {
-      let font_type = script::resolve_font_type(style.font_kind, script::ScriptCategory::Latin);
+      let font_type = script::resolve_font_type(style.typeface, script::ScriptCategory::Latin);
       let strut = self.shaper.shape_segment("", font_type, style.font_size, None);
       atom.height = strut.height();
       atom.depth = strut.depth();

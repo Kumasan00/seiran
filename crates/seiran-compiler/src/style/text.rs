@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::{Length, non_negative, positive},
 };
 
@@ -40,8 +40,8 @@ pub(crate) struct TextBlockStyle {
   /// 段落先頭行の字下げ量（既定 0pt = 字下げなし）
   #[garde(custom(non_negative))]
   pub first_line_indent: Length,
-  /// 段落本文のフォント種別
-  pub font_kind: FontKind,
+  /// 段落本文の書体
+  pub typeface: Typeface,
   /// 行末処理（両端揃え / 左揃え、既定は両端揃え）
   pub alignment: TextAlignment,
   /// 和文約物アキ調整（JIS X 4051、既定は有効）
@@ -55,7 +55,7 @@ impl Default for TextBlockStyle {
       line_height_factor: 1.2,
       paragraph_spacing: Length::pt(12.0),
       first_line_indent: Length::pt(0.0),
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       alignment: TextAlignment::Justify,
       punctuation_spacing: true,
     };
@@ -67,7 +67,7 @@ mod tests {
   use garde::Validate;
 
   use super::{TextAlignment, TextBlockStyle};
-  use crate::{document::FontKind, length::Length};
+  use crate::{document::Typeface, length::Length};
 
   #[test]
   fn text_alignment_deserializes_snake_case() {
@@ -91,7 +91,7 @@ mod tests {
     assert!((style.line_height_factor - 1.2).abs() < f32::EPSILON);
     assert!((style.paragraph_spacing.to_pt() - 12.0).abs() < f32::EPSILON);
     assert!((style.first_line_indent.to_pt() - 0.0).abs() < f32::EPSILON);
-    assert_eq!(style.font_kind, FontKind::Serif);
+    assert_eq!(style.typeface, Typeface::Serif);
     assert_eq!(style.alignment, TextAlignment::Justify, "alignment 未指定の既定は両端揃え");
     assert!(style.punctuation_spacing, "punctuation_spacing 未指定の既定は有効");
   }

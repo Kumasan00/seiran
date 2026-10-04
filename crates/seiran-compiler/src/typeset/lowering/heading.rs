@@ -19,7 +19,7 @@ pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> Tex
   let heading_style = &ctx.style.heading[level];
   return TextStyle {
     font_size: heading_style.font_size,
-    font_kind: heading_style.font_kind,
+    typeface: heading_style.typeface,
     color: None,
   };
 }
@@ -136,7 +136,7 @@ pub(super) fn lower_heading(
 mod tests {
   use super::*;
   use crate::{
-    document::FontKind,
+    document::Typeface,
     style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
@@ -192,7 +192,7 @@ mod tests {
         _ => return None,
       })
       .expect("イタリック部分の Text があるはず");
-    assert_eq!(italic.font_kind, FontKind::SerifItalic);
+    assert_eq!(italic.typeface, Typeface::SerifItalic);
     assert_eq!(italic.font_size, heading_size, "フォントサイズは見出しスタイルを継承する");
   }
 

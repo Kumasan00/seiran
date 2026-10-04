@@ -190,7 +190,7 @@ impl<'a> Shaper<'a> {
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
   pub(in crate::typeset) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
     let text = boxing::fold_newlines(text);
-    let segments = script::split_text_by_script(style.font_kind, &text);
+    let segments = script::split_text_by_script(style.typeface, &text);
     return segments
       .into_iter()
       .map(|segment| {

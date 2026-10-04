@@ -13,7 +13,7 @@ use crate::{
 pub(super) fn body_text_style(ctx: &LoweringContext<'_>) -> TextStyle {
   return TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.body_font_kind,
+    typeface: ctx.body_typeface,
     color: None,
   };
 }
@@ -105,7 +105,7 @@ mod tests {
       panic!("先頭は Text であるべき: {nodes:?}");
     };
     assert_eq!(text, "body");
-    assert_eq!(text_style.font_kind, style.text.font_kind);
+    assert_eq!(text_style.typeface, style.text.typeface);
     assert_eq!(text_style.font_size, style.text.font_size);
     assert!(
       !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),

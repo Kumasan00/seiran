@@ -423,13 +423,13 @@ fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{document::FontKind, typeset::lowering::layout_node::TextStyle};
+  use crate::{document::Typeface, typeset::lowering::layout_node::TextStyle};
 
   /// 12pt の Math テキストスタイル
   fn style() -> TextStyle {
     return TextStyle {
       font_size: Length::pt(12.0),
-      font_kind: FontKind::Math,
+      typeface: Typeface::Math,
       color: None,
     };
   }

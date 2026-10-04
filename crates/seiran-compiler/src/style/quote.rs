@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::{Length, non_negative},
 };
 
@@ -25,8 +25,8 @@ pub(crate) struct QuoteStyle {
   /// `quotation` のブロック内段落先頭行の字下げ量（`quote` では未使用）
   #[garde(custom(non_negative))]
   pub first_line_indent: Length,
-  /// ブロック本文の既定フォント種別
-  pub font_kind: FontKind,
+  /// ブロック本文の既定書体
+  pub typeface: Typeface,
 }
 
 impl Default for QuoteStyle {
@@ -36,7 +36,7 @@ impl Default for QuoteStyle {
       top_margin: Length::pt(6.0),
       bottom_margin: Length::pt(6.0),
       first_line_indent: Length::pt(15.0),
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
     };
   }
 }
@@ -46,7 +46,7 @@ mod tests {
   use garde::Validate;
 
   use super::QuoteStyle;
-  use crate::{document::FontKind, length::Length};
+  use crate::{document::Typeface, length::Length};
 
   #[test]
   fn default_matches_documented_values() {
@@ -56,7 +56,7 @@ mod tests {
     assert!((style.top_margin.to_pt() - 6.0).abs() < f32::EPSILON);
     assert!((style.bottom_margin.to_pt() - 6.0).abs() < f32::EPSILON);
     assert!((style.first_line_indent.to_pt() - 15.0).abs() < f32::EPSILON);
-    assert_eq!(style.font_kind, FontKind::Serif);
+    assert_eq!(style.typeface, Typeface::Serif);
   }
 
   #[test]

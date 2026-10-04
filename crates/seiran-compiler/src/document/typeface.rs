@@ -1,11 +1,13 @@
-//! 言語判定前のフォントスタイル分類 [`FontKind`]。
+//! 言語判定前の書体の指定 [`Typeface`]。
 
 use serde::Deserialize;
 
-/// 言語判定前のフォントスタイル分類
+/// 言語判定前の書体の指定
+///
+/// 組版時に文字のスクリプトと組み合わせて 19 種別の [`crate::project::FontType`] へ確定する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum FontKind {
+pub(crate) enum Typeface {
   /// Serif 標準フォント
   Serif,
   /// Serif 太字フォント

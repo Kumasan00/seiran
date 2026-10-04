@@ -29,7 +29,7 @@ fn build_caption(
 ) -> Vec<InlineNode> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,
-    font_kind: caption_style.font_kind,
+    typeface: caption_style.typeface,
     color: None,
   };
   let nodes = caption_style.format.expand(
@@ -138,7 +138,7 @@ pub(super) fn lower_numbered_float(
 mod tests {
   use super::*;
   use crate::{
-    document::FontKind,
+    document::Typeface,
     semantics::LabelId,
     style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
     typeset::{
@@ -169,7 +169,7 @@ mod tests {
       text.to_string(),
       TextStyle {
         font_size: Length::pt(11.0),
-        font_kind: FontKind::Serif,
+        typeface: Typeface::Serif,
         color: None,
       },
     );
@@ -254,7 +254,7 @@ mod tests {
   }
 
   #[test]
-  fn build_caption_expands_template_with_default_caption_font_kind() {
+  fn build_caption_expands_template_with_default_caption_typeface() {
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
       format: NumberTitleTemplate::parse("Fig {number}: {title}"),
@@ -274,13 +274,13 @@ mod tests {
       .expect("キャプション Text があるはず");
     assert_eq!(caption.0, "Fig 1.1: Overview");
     assert_eq!(caption.1.font_size, Length::pt(9.0));
-    assert_eq!(caption.1.font_kind, FontKind::Serif);
+    assert_eq!(caption.1.typeface, Typeface::Serif);
   }
 
   #[test]
-  fn build_caption_follows_style_caption_font_kind() {
+  fn build_caption_follows_style_caption_typeface() {
     let mut style = ReadStyle::default();
-    style.figure.caption.font_kind = FontKind::SansSerif;
+    style.figure.caption.typeface = Typeface::SansSerif;
 
     let nodes =
       lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
@@ -294,7 +294,7 @@ mod tests {
       .collect();
     assert_eq!(captions.len(), 1, "番号部分と本文部分は同じ書体なので 1 個の Text に併合される: {captions:?}");
     assert_eq!(captions[0].0, "Figure 1.1: Overview");
-    assert_eq!(captions[0].1.font_kind, FontKind::SansSerif);
+    assert_eq!(captions[0].1.typeface, Typeface::SansSerif);
   }
 
   #[test]

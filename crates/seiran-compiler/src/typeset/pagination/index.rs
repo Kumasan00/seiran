@@ -12,7 +12,7 @@ use std::{
 use grouping::{IndexGroupLabel, assign_index_groups, sort_index_entries};
 
 use crate::{
-  document::FontKind,
+  document::Typeface,
   length::Length,
   style::Style,
   typeset::{
@@ -157,18 +157,18 @@ fn build_index_spec(style: &Style) -> IndexSpec {
     title: index.title.clone(),
     title_style: TextStyle {
       font_size: index.title_font_size,
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       color: None,
     },
     title_bottom_margin: index.title_bottom_margin,
     entry_style: TextStyle {
       font_size: index.font_size,
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       color: None,
     },
     page_number_style: TextStyle {
       font_size: index.font_size,
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       color: style.hyperref.link_color,
     },
     entry_gap: index.entry_gap,
@@ -178,7 +178,7 @@ fn build_index_spec(style: &Style) -> IndexSpec {
     group_headings: index.group_headings,
     group_style: TextStyle {
       font_size: index.group_font_size,
-      font_kind: FontKind::Serif,
+      typeface: Typeface::Serif,
       color: None,
     },
     group_top_margin: index.group_top_margin,

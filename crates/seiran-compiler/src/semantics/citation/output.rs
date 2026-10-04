@@ -4,7 +4,7 @@
 //! ソース位置も持たない。[`GeneratedInline`] の variant は [`super::render`] が**実際に構築する
 //! ものだけ**に絞る。
 
-use crate::{document::FontKind, semantics::citation::CitationId};
+use crate::{document::Typeface, semantics::citation::CitationId};
 
 /// 書誌の 1 エントリ（引用キーと CSL 整形済みの本文）
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub(crate) enum GeneratedInline {
   /// ネスト時は内側の `font` が完全に上書きする（親スタイルとの合成はしない）。
   Styled {
     /// 適用する書体
-    font: FontKind,
+    font: Typeface,
     /// 装飾対象のインライン要素
     children: Vec<GeneratedInline>,
   },
@@ -70,16 +70,16 @@ pub(crate) fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> St
 #[cfg(test)]
 mod tests {
   use super::GeneratedInline;
-  use crate::document::FontKind;
+  use crate::document::Typeface;
 
   #[test]
   fn generated_nested_to_plain_text() {
     let node = GeneratedInline::Styled {
-      font: FontKind::SerifBold,
+      font: Typeface::SerifBold,
       children: vec![
         GeneratedInline::Text("bold ".to_string()),
         GeneratedInline::Styled {
-          font: FontKind::SerifItalic,
+          font: Typeface::SerifItalic,
           children: vec![GeneratedInline::Text("and italic".to_string())],
         },
       ],

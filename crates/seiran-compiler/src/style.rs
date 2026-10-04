@@ -363,6 +363,31 @@ mod tests {
     assert!(toml::from_str::<Style>("font_size = \"12pt\"\n").is_err());
     assert!(toml::from_str::<Style>("line_height_factor = 1.2\n").is_err());
   }
+
+  #[test]
+  fn rejects_keys_renamed_to_typeface() {
+    let cases = [
+      ("text", "font_kind"),
+      ("heading.section", "font_kind"),
+      ("list", "marker_font_kind"),
+      ("quote", "font_kind"),
+      ("table", "head_font_kind"),
+      ("table.caption", "font_kind"),
+      ("figure.caption", "font_kind"),
+      ("theorems.theorem.style", "font_kind"),
+      ("theorems.theorem.style", "heading_font_kind"),
+      ("header", "font_kind"),
+      ("footer", "font_kind"),
+      ("title_page", "title_font_kind"),
+      ("title_page", "author_font_kind"),
+      ("title_page", "date_font_kind"),
+    ];
+    for (table, key) in cases {
+      let toml = format!("[{table}]\n{key} = \"serif\"\n");
+      let message = toml::from_str::<Style>(&toml).unwrap_err().to_string();
+      assert!(message.contains(&format!("unknown field `{key}`")), "[{table}].{key}: {message}");
+    }
+  }
 }
 
 /// TOML パース系のテスト。
@@ -371,7 +396,7 @@ mod parse_tests {
   use super::{ReadStyleError, Style, StyleValidationError, load, parse};
   use crate::{
     color::Color,
-    document::{FontKind, HeadingLevel},
+    document::{HeadingLevel, Typeface},
     length::Length,
     project::{FilesystemProjectSource, PathResolver, ProjectPath},
   };
@@ -460,7 +485,7 @@ mod parse_tests {
       "[header]\n",
       "right = \"{page} / {pages}\"\n",
       "font_size = \"9pt\"\n",
-      "font_kind = \"sans_serif\"\n",
+      "typeface = \"sans_serif\"\n",
       "rule_thickness = \"0.5pt\"\n",
       "rule_color = \"#333333\"\n",
       "[footer]\n",
@@ -469,7 +494,7 @@ mod parse_tests {
     let style = parse(toml, dummy_source()).unwrap();
     assert_eq!(style.header.right.as_str(), "{page} / {pages}");
     assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
-    assert_eq!(style.header.font_kind, FontKind::SansSerif);
+    assert_eq!(style.header.typeface, Typeface::SansSerif);
     assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
     assert_eq!(style.header.rule_color.map(Color::rgb), Some([0x33, 0x33, 0x33]));
     assert_eq!(style.footer.center.as_str(), "{title}");

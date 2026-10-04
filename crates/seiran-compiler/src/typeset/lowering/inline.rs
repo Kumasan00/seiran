@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{FontKind, HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind, Typeface},
   length::Length,
   style::FootnoteStyle,
   typeset::{
@@ -43,7 +43,7 @@ pub(super) fn lower_inline(
     HirInlineKind::Styled { font, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
-        font_kind: *font,
+        typeface: *font,
         color: parent_style.color,
       };
       return lower_inlines(ctx, children, styled, state);
@@ -51,7 +51,7 @@ pub(super) fn lower_inline(
     HirInlineKind::Colored { color, children } => {
       let colored = TextStyle {
         font_size: parent_style.font_size,
-        font_kind: parent_style.font_kind,
+        typeface: parent_style.typeface,
         color: Some(*color),
       };
       return lower_inlines(ctx, children, colored, state);
@@ -120,7 +120,7 @@ pub(super) fn lower_inline(
 
       let body_style = TextStyle {
         font_size: footnote_style.font_size,
-        font_kind: parent_style.font_kind,
+        typeface: parent_style.typeface,
         color: parent_style.color,
       };
       let body_marker = footnote_marker_node(&marker_text, footnote_style.font_size, body_style, footnote_style);
@@ -159,7 +159,7 @@ fn footnote_marker_node(
 ) -> InlineNode {
   let marker_style = TextStyle {
     font_size: base_font_size * footnote_style.marker_size_factor,
-    font_kind: FontKind::Serif,
+    typeface: Typeface::Serif,
     color: base_style.color,
   };
   return InlineNode::Raise {
@@ -252,26 +252,26 @@ mod tests {
   #[test]
   fn lower_inline_styled_overrides_parent_kind() {
     let mut style = ReadStyle::default();
-    style.text.font_kind = FontKind::SerifBold;
+    style.text.typeface = Typeface::SerifBold;
 
     let nodes = lower_source(&style, "\\italic{x}\n");
 
     let (text, text_style) = first_text(&nodes);
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, FontKind::SerifItalic);
+    assert_eq!(text_style.typeface, Typeface::SerifItalic);
     assert_eq!(text_style.font_size, style.text.font_size);
   }
 
   #[test]
   fn lower_inline_colored_overrides_color_keeps_font() {
     let mut style = ReadStyle::default();
-    style.text.font_kind = FontKind::SansSerif;
+    style.text.typeface = Typeface::SansSerif;
 
     let nodes = lower_source(&style, "\\color[color=#ff0000]{x}\n");
 
     let (text, text_style) = first_text(&nodes);
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, FontKind::SansSerif);
+    assert_eq!(text_style.typeface, Typeface::SansSerif);
     assert_eq!(text_style.color, Some(Color::new(0xff, 0x00, 0x00)));
   }
 
@@ -282,7 +282,7 @@ mod tests {
     let nodes = lower_source(&style, "\\color[color=#008000]{\\bold{x}}\n");
 
     let (_, text_style) = first_text(&nodes);
-    assert_eq!(text_style.font_kind, FontKind::SerifBold);
+    assert_eq!(text_style.typeface, Typeface::SerifBold);
     assert_eq!(text_style.color, Some(Color::new(0x00, 0x80, 0x00)));
   }
 
@@ -483,7 +483,7 @@ mod tests {
       panic!("Text が期待されます: {body:?}");
     };
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, FontKind::SerifBold);
+    assert_eq!(text_style.typeface, Typeface::SerifBold);
   }
 
   #[test]

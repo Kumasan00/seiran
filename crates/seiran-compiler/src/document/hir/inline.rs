@@ -3,7 +3,7 @@
 use crate::{
   color::Color,
   document::{
-    FontKind,
+    Typeface,
     hir::{HirMath, NodeId},
   },
 };
@@ -33,7 +33,7 @@ pub(crate) enum HirInlineKind {
   /// 書体指定テキスト（`\bold{...}` 等の 12 コマンド）
   Styled {
     /// 適用する書体
-    font: FontKind,
+    font: Typeface,
     /// 装飾対象のインライン要素
     children: Vec<HirInline>,
   },

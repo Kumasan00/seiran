@@ -24,7 +24,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
 
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: list_style.marker_font_kind,
+    typeface: list_style.marker_typeface,
     color: None,
   };
 
@@ -75,7 +75,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
 mod tests {
   use super::*;
   use crate::{
-    document::FontKind,
+    document::Typeface,
     style::{NestedOrderedFormat, NumberStyle, NumberTemplate, Style as ReadStyle},
     typeset::lowering::test_support::{analyzed, inline_text, lower},
   };
@@ -185,8 +185,8 @@ mod tests {
     );
     assert!((indent.to_pt() - list_style.indent.to_pt()).abs() < f32::EPSILON);
     assert!((margin_bottom.to_pt() - list_style.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
-    assert_eq!(marker_style.font_kind, list_style.marker_font_kind);
-    assert_eq!(marker_style.font_kind, FontKind::Serif);
+    assert_eq!(marker_style.typeface, list_style.marker_typeface);
+    assert_eq!(marker_style.typeface, Typeface::Serif);
     assert_eq!(marker_style.font_size, style.text.font_size);
   }
 

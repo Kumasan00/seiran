@@ -6,7 +6,7 @@ use icu::properties::{
   script::ScriptWithExtensions,
 };
 
-use crate::{document::FontKind, project::FontType};
+use crate::{document::Typeface, project::FontType};
 
 /// テキストをスクリプトに基づいて分割したセグメント
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub(super) enum ScriptCategory {
 }
 
 /// テキストを Unicode スクリプトに基づいて分割し、各セグメントに適切なフォント種別を割り当てる
-pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextSegment> {
+pub(crate) fn split_text_by_script(typeface: Typeface, text: &str) -> Vec<TextSegment> {
   let script_data = CodePointMapData::<Script>::new();
   let east_asian_width_data = CodePointMapData::<EastAsianWidth>::new();
   let script_with_extensions_data = ScriptWithExtensions::new();
@@ -75,7 +75,7 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
           let segment_category = current_category.unwrap_or(ScriptCategory::Latin);
           segments.push(TextSegment {
             text: current_text,
-            font_type: resolve_font_type(font_kind, segment_category),
+            font_type: resolve_font_type(typeface, segment_category),
             category: segment_category,
           });
           current_text = String::new();
@@ -90,7 +90,7 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
     let segment_category = current_category.unwrap_or(ScriptCategory::Latin);
     segments.push(TextSegment {
       text: current_text,
-      font_type: resolve_font_type(font_kind, segment_category),
+      font_type: resolve_font_type(typeface, segment_category),
       category: segment_category,
     });
   }
@@ -98,47 +98,47 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
   return segments;
 }
 
-/// `FontKind` とスクリプトカテゴリから具体的な `FontType` を決定する
-pub(super) fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType {
+/// `Typeface` とスクリプトカテゴリから具体的な `FontType` を決定する
+pub(super) fn resolve_font_type(typeface: Typeface, category: ScriptCategory) -> FontType {
   return match category {
     #[expect(
       clippy::match_same_arms,
       reason = "和文に italic は無く、数式フォントに和文グリフも無いため、どちらも明朝体へ戻すのが正しい"
     )]
-    ScriptCategory::Japanese => match font_kind {
-      FontKind::Serif | FontKind::SerifItalic => FontType::JapaneseSerif,
-      FontKind::SerifBold | FontKind::SerifBoldItalic => FontType::JapaneseSerifBold,
-      FontKind::SansSerif | FontKind::SansSerifItalic => FontType::JapaneseSansSerif,
-      FontKind::SansSerifBold | FontKind::SansSerifBoldItalic => FontType::JapaneseSansSerifBold,
-      FontKind::Monospace | FontKind::MonospaceItalic => FontType::JapaneseMonospace,
-      FontKind::MonospaceBold | FontKind::MonospaceBoldItalic => FontType::JapaneseMonospaceBold,
-      FontKind::Math => FontType::JapaneseSerif,
+    ScriptCategory::Japanese => match typeface {
+      Typeface::Serif | Typeface::SerifItalic => FontType::JapaneseSerif,
+      Typeface::SerifBold | Typeface::SerifBoldItalic => FontType::JapaneseSerifBold,
+      Typeface::SansSerif | Typeface::SansSerifItalic => FontType::JapaneseSansSerif,
+      Typeface::SansSerifBold | Typeface::SansSerifBoldItalic => FontType::JapaneseSansSerifBold,
+      Typeface::Monospace | Typeface::MonospaceItalic => FontType::JapaneseMonospace,
+      Typeface::MonospaceBold | Typeface::MonospaceBoldItalic => FontType::JapaneseMonospaceBold,
+      Typeface::Math => FontType::JapaneseSerif,
     },
-    ScriptCategory::Latin => match font_kind {
-      FontKind::Serif => FontType::Serif,
-      FontKind::SerifBold => FontType::SerifBold,
-      FontKind::SerifItalic => FontType::SerifItalic,
-      FontKind::SerifBoldItalic => FontType::SerifBoldItalic,
-      FontKind::SansSerif => FontType::SansSerif,
-      FontKind::SansSerifBold => FontType::SansSerifBold,
-      FontKind::SansSerifItalic => FontType::SansSerifItalic,
-      FontKind::SansSerifBoldItalic => FontType::SansSerifBoldItalic,
-      FontKind::Monospace => FontType::Monospace,
-      FontKind::MonospaceBold => FontType::MonospaceBold,
-      FontKind::MonospaceItalic => FontType::MonospaceItalic,
-      FontKind::MonospaceBoldItalic => FontType::MonospaceBoldItalic,
-      FontKind::Math => FontType::Math,
+    ScriptCategory::Latin => match typeface {
+      Typeface::Serif => FontType::Serif,
+      Typeface::SerifBold => FontType::SerifBold,
+      Typeface::SerifItalic => FontType::SerifItalic,
+      Typeface::SerifBoldItalic => FontType::SerifBoldItalic,
+      Typeface::SansSerif => FontType::SansSerif,
+      Typeface::SansSerifBold => FontType::SansSerifBold,
+      Typeface::SansSerifItalic => FontType::SansSerifItalic,
+      Typeface::SansSerifBoldItalic => FontType::SansSerifBoldItalic,
+      Typeface::Monospace => FontType::Monospace,
+      Typeface::MonospaceBold => FontType::MonospaceBold,
+      Typeface::MonospaceItalic => FontType::MonospaceItalic,
+      Typeface::MonospaceBoldItalic => FontType::MonospaceBoldItalic,
+      Typeface::Math => FontType::Math,
     },
   };
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{FontKind, FontType, split_text_by_script};
+  use super::{FontType, Typeface, split_text_by_script};
 
   #[test]
   fn split_text_by_script_math_splits_latin_and_japanese() {
-    let segments = split_text_by_script(FontKind::Math, "x速度+1");
+    let segments = split_text_by_script(Typeface::Math, "x速度+1");
 
     let types: Vec<FontType> = segments.iter().map(|s| return s.font_type).collect();
     let texts: Vec<&str> = segments.iter().map(|s| return s.text.as_str()).collect();
