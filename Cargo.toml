@@ -103,8 +103,6 @@ multiple_unsafe_ops_per_block = "warn"
 panic = "warn"
 # 返り値の型で失敗を広告した関数の中で落ちない（診断エラーにして Err で返す）。
 panic_in_result_fn = "warn"
-# 必須ルール 6 — `panic_in_result_fn` の `unwrap` / `expect` 側の部分的な機械化（発火条件と書き方は同ルール）。
-unwrap_in_result = "warn"
 # テスト名に `test_` 接頭辞を付けない（何を検証するかだけを書く）。
 redundant_test_prefix = "warn"
 # SAFETY 族 — `unsafe {}` の直上に `// SAFETY:` を書かせる。`unsafe fn` 本体の `unsafe {}` は edition 2024
@@ -114,6 +112,8 @@ undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 # SAFETY 族 — unsafe を含まない項目に `# Safety` doc を書かせない（公開項目しか見ない部分的な機械化。Clippy 節）。
 unnecessary_safety_doc = "warn"
+# 必須ルール 6 — `panic_in_result_fn` の `unwrap` / `expect` 側の部分的な機械化（発火条件と書き方は同ルール）。
+unwrap_in_result = "warn"
 # 本体の `.unwrap()` を禁じ、panic しない根拠を `.expect()` のメッセージへ書かせる。
 unwrap_used = "warn"
 
@@ -175,10 +175,10 @@ unnecessary_self_imports = "warn"
 # 決定性 — 成果物のバイト再現性を壊すものを拒む
 # ---------------------------------------------------------------------------
 
-# 関数ポインタを数値へ落とすと ASLR 等で値が変わる。
-fn_to_numeric_cast_any = "warn"
 # 定数との float 比較は丸め方式に依存する（等価判定を書かない）。
 float_cmp_const = "warn"
+# 関数ポインタを数値へ落とすと ASLR 等で値が変わる。
+fn_to_numeric_cast_any = "warn"
 # `to_ne_bytes` / `from_ne_bytes` は実行環境のエンディアン依存（明示エンディアンの 2 種は対象外）。
 host_endian_bytes = "warn"
 # `HashMap` / `HashSet` の `for` 反復順はプロセスごとに変わる（`BTreeMap` か sort 済み `Vec` を使う）。
@@ -270,7 +270,6 @@ while_float = "warn"
 # 節見出しと置き場の規則は上の clippy テーブルと同じ（目的が空の節は置かない）。カタログ（`rustc -W help` の
 # allow-by-default 61 lint）全数の処分記録は #421（採用 / 恒久不採用 / 見送り）。
 [workspace.lints.rust]
-
 # ---------------------------------------------------------------------------
 # 規約の機械化 — 名指しの規約（必須ルール / use 規約 / モジュール構成 / テスト）を機械に守らせる
 # ---------------------------------------------------------------------------
@@ -346,7 +345,6 @@ unused_macro_rules = "warn"
 # CI が `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features` を回す（#474）。
 # warn 既定の 7 種（`broken_intra_doc_links` 等）は採用判断ではないので table に書かず、その `-D warnings` で効かせる。
 [workspace.lints.rustdoc]
-
 # ---------------------------------------------------------------------------
 # 有効化しないもの（既定 warn を個別に落とす）
 # ---------------------------------------------------------------------------
