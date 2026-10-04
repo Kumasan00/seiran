@@ -374,8 +374,8 @@ mod tests {
       ("table", "head_font_kind"),
       ("table.caption", "font_kind"),
       ("figure.caption", "font_kind"),
-      ("theorems.theorem.style", "font_kind"),
-      ("theorems.theorem.style", "heading_font_kind"),
+      ("theorems.theorem.presentation", "font_kind"),
+      ("theorems.theorem.presentation", "heading_font_kind"),
       ("header", "font_kind"),
       ("footer", "font_kind"),
       ("title_page", "title_font_kind"),
@@ -590,13 +590,13 @@ mod validate_tests {
   }
 
   #[test]
-  fn reports_nested_theorem_style_validation_error_with_path() {
-    let toml = "[theorems.theorem.style]\ntop_margin = \"-1pt\"\n";
+  fn reports_nested_theorem_presentation_validation_error_with_path() {
+    let toml = "[theorems.theorem.presentation]\ntop_margin = \"-1pt\"\n";
     let errors = expect_validation_errors(parse(toml, dummy_source()));
     let paths = paths(&errors);
     assert!(
-      paths.contains(&"theorems.theorem.style.top_margin"),
-      "expected theorems.theorem.style.top_margin in {paths:?}"
+      paths.contains(&"theorems.theorem.presentation.top_margin"),
+      "expected theorems.theorem.presentation.top_margin in {paths:?}"
     );
   }
 

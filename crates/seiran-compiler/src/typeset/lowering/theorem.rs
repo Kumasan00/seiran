@@ -24,7 +24,7 @@ pub(super) fn lower_theorem(
   let label = state.declared_label(id);
 
   let theorem_style = &ctx.style.theorems[theorem.class];
-  let pres = &theorem_style.style;
+  let pres = &theorem_style.presentation;
 
   let mut nodes = vec![
     LayoutNode::Vkern {
@@ -63,7 +63,7 @@ fn build_heading(
   of: Option<&LabelId>,
   state: &LoweringState<'_>,
 ) -> LayoutNode {
-  let pres = &theorem_style.style;
+  let pres = &theorem_style.presentation;
   let base_style = TextStyle {
     font_size: ctx.default_font_size(),
     typeface: pres.heading_typeface,
