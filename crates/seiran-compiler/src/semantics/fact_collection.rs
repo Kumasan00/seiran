@@ -36,7 +36,7 @@ pub(super) fn collect_facts(
   // 続けても後続のカウンタ値はずれない。
   let mut duplicate_labels: Vec<(NodeId, SemanticError)> = Vec::new();
   for nodes in hir.source_nodes() {
-    let mut walker = Walker {
+    let mut collector = FactCollector {
       source_map: hir.source_map(),
       references,
       registry: &mut registry,
@@ -44,7 +44,7 @@ pub(super) fn collect_facts(
       unknown_citations: &mut unknown_citations,
       duplicate_labels: &mut duplicate_labels,
     };
-    walker.nodes(nodes);
+    collector.nodes(nodes);
   }
 
   let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
@@ -77,7 +77,7 @@ fn order_key(node: NodeId) -> OrderKey { return (node.source().index(), node.loc
 /// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので `assert!` で落とす。
 /// 入力由来のエラーはすべてこの検証より手前で診断として返している。
 fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &SemanticPolicy) {
-  let checker = Checker { facts, policy };
+  let checker = FactCompletenessChecker { facts, policy };
   for nodes in hir.source_nodes() {
     checker.nodes(nodes);
   }
@@ -85,14 +85,14 @@ fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &Sema
 }
 
 /// 必須 fact の登録漏れを探す読み取り専用の検証走査
-struct Checker<'a> {
+struct FactCompletenessChecker<'a> {
   /// 検証対象の fact
   facts: &'a SemanticFacts,
   /// 定理クラスが無採番かを判定する投影
   policy: &'a SemanticPolicy,
 }
 
-impl Checker<'_> {
+impl FactCompletenessChecker<'_> {
   /// ブロックノード列を検証する
   fn nodes(&self, nodes: &[HirNode]) {
     for node in nodes {
@@ -108,7 +108,7 @@ impl Checker<'_> {
         self.require_counter(node.id, "Heading");
         assert!(
           self.facts.headings.get(node.id).is_some(),
-          "Walker が Heading の事実を登録し損ねている: {:?}",
+          "FactCollector が Heading の事実を登録し損ねている: {:?}",
           node.id
         );
         self.require_declared_label(node.id, heading.label.as_deref(), "Heading");
@@ -142,7 +142,7 @@ impl Checker<'_> {
         if let Some(target) = &theorem.of {
           assert!(
             self.facts.refs.get(target.id).is_some(),
-            "Walker が Theorem::of の参照先を登録し損ねている: {:?}",
+            "FactCollector が Theorem::of の参照先を登録し損ねている: {:?}",
             target.id
           );
         }
@@ -184,12 +184,12 @@ impl Checker<'_> {
         | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
         HirInlineKind::Ref { .. } => assert!(
           self.facts.refs.get(inline.id).is_some(),
-          "Walker が Ref の参照先を登録し損ねている: {:?}",
+          "FactCollector が Ref の参照先を登録し損ねている: {:?}",
           inline.id
         ),
         HirInlineKind::Cite { .. } => assert!(
           self.facts.citations.get(inline.id).is_some(),
-          "Walker が Cite の引用先を登録し損ねている: {:?}",
+          "FactCollector が Cite の引用先を登録し損ねている: {:?}",
           inline.id
         ),
         HirInlineKind::Text(_)
@@ -206,7 +206,10 @@ impl Checker<'_> {
 
   /// 採番対象ノードにカウンタ値が登録されていることを確かめる
   fn require_counter(&self, id: NodeId, variant: &str) {
-    assert!(self.facts.counters.get(id).is_some(), "Walker が {variant} のカウンタ値を登録し損ねている: {id:?}");
+    assert!(
+      self.facts.counters.get(id).is_some(),
+      "FactCollector が {variant} のカウンタ値を登録し損ねている: {id:?}"
+    );
     return;
   }
 
@@ -218,7 +221,7 @@ impl Checker<'_> {
     assert!(
       self.facts.declared_label(id).is_some()
         && self.facts.label_definition(name).map(|definition| return definition.node) == Some(id),
-      "Walker が {variant} のラベル宣言を登録し損ねている: {id:?} / {name}"
+      "FactCollector が {variant} のラベル宣言を登録し損ねている: {id:?} / {name}"
     );
     return;
   }
@@ -245,8 +248,9 @@ fn unresolved_refs(facts: &SemanticFacts, source_map: &SourceMap) -> Vec<(OrderK
     .collect();
 }
 
-/// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の記録を 1 回の走査で行う
-struct Walker<'a, 'p> {
+/// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の記録を 1 回の走査で行って
+/// `SemanticFacts` を書く
+struct FactCollector<'a, 'p> {
   /// `NodeId` → ソース位置の対応表
   source_map: &'a SourceMap,
   /// 引用キーの既知性を判定する参照定義
@@ -262,7 +266,7 @@ struct Walker<'a, 'p> {
   duplicate_labels: &'a mut Vec<(NodeId, SemanticError)>,
 }
 
-impl Walker<'_, '_> {
+impl FactCollector<'_, '_> {
   /// ブロックノード列を文書順に走査する
   fn nodes(&mut self, nodes: &[HirNode]) {
     for node in nodes {
