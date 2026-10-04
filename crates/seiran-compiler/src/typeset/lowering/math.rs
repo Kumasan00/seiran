@@ -196,20 +196,20 @@ pub(super) fn lower_inline_math(
   base_font_size: Length,
   math_style: &MathScriptStyle,
 ) -> Vec<InlineNode> {
-  let ctx = MathLowerCtx::new(base_font_size, math_style);
+  let ctx = MathLoweringContext::new(base_font_size, math_style);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size);
 }
 
 /// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（閉じた箱に畳むので行分割点を置かない）
 fn lower_math_cell(math_nodes: &[HirMath], base_font_size: Length, math_style: &MathScriptStyle) -> Vec<AtomNode> {
-  return lower_math_list(math_nodes, &MathLowerCtx::new(base_font_size, math_style));
+  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, math_style));
 }
 
 /// 数式 1 レベルぶんの lowering 文脈
 ///
 /// スクリプト（上付き / 下付き）へ潜るとフォントサイズが縮み、TeXbook の括弧付きセルのアキが
 /// 抑制される。
-struct MathLowerCtx<'a> {
+struct MathLoweringContext<'a> {
   /// このレベルのフォントサイズ
   font_size: Length,
   /// 継承中の字形 variant（`\mathbold` 等）
@@ -220,10 +220,10 @@ struct MathLowerCtx<'a> {
   in_script: bool,
 }
 
-impl<'a> MathLowerCtx<'a> {
+impl<'a> MathLoweringContext<'a> {
   /// 数式のトップレベル（text style・字形 variant なし）の文脈を作る
   fn new(font_size: Length, math_style: &'a MathScriptStyle) -> Self {
-    return MathLowerCtx {
+    return MathLoweringContext {
       font_size,
       variant: None,
       math_style,
@@ -233,7 +233,7 @@ impl<'a> MathLowerCtx<'a> {
 
   /// 上付き / 下付きの中身用に縮小した文脈を作る
   fn script(&self) -> Self {
-    return MathLowerCtx {
+    return MathLoweringContext {
       font_size: script_font_size(self.font_size, self.math_style),
       variant: self.variant,
       math_style: self.math_style,
@@ -243,7 +243,7 @@ impl<'a> MathLowerCtx<'a> {
 
   /// 字形 variant だけを差し替えた文脈を作る
   fn with_variant(&self, variant: MathVariant) -> Self {
-    return MathLowerCtx {
+    return MathLoweringContext {
       font_size: self.font_size,
       variant: Some(variant),
       math_style: self.math_style,
@@ -262,7 +262,7 @@ impl<'a> MathLowerCtx<'a> {
 }
 
 /// 数式ノード列をスペーシングのアイテム列へ展開する
-fn collect_items(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<spacing::MathItem> {
+fn collect_items(nodes: &[HirMath], ctx: &MathLoweringContext<'_>) -> Vec<spacing::MathItem> {
   let mut items = Vec::new();
   for node in nodes {
     push_math_items(node, ctx, &mut items);
@@ -271,14 +271,14 @@ fn collect_items(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<spacing::Math
 }
 
 /// 数式ノード列を、アトム間のアキを入れた `AtomNode` 列に変換する
-fn lower_math_list(nodes: &[HirMath], ctx: &MathLowerCtx<'_>) -> Vec<AtomNode> {
+fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext<'_>) -> Vec<AtomNode> {
   return spacing::assemble(collect_items(nodes, ctx), ctx.font_size, ctx.in_script);
 }
 
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
 ///
 /// `Group` / `Frac` / `Sqrt` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
-fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::MathItem>) {
+fn push_math_items(node: &HirMath, ctx: &MathLoweringContext<'_>, items: &mut Vec<spacing::MathItem>) {
   match &node.kind {
     HirMathKind::Text(text) => {
       push_text_items(text, ctx, items);
@@ -352,7 +352,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLowerCtx<'_>, items: &mut Vec<spaci
 /// 数式中のテキストを 1 文字ずつのアイテムへ展開する
 ///
 /// ソースに書かれた空白は組版に出さない（TeX と同じ）。
-fn push_text_items(text: &str, ctx: &MathLowerCtx<'_>, items: &mut Vec<spacing::MathItem>) {
+fn push_text_items(text: &str, ctx: &MathLoweringContext<'_>, items: &mut Vec<spacing::MathItem>) {
   for ch in text.chars() {
     if ch.is_whitespace() {
       continue;
