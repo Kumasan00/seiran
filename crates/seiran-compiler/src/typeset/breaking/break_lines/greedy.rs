@@ -167,7 +167,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
@@ -180,7 +180,7 @@ mod tests {
   fn fits_all_when_width_is_sufficient() {
     let items = vec![test_box(), space_glue(), test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2);
@@ -193,7 +193,7 @@ mod tests {
   fn index_mark_is_collected_without_affecting_width_or_breaks() {
     let items = vec![test_box(), index_mark("語", None), test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2, "index_mark はボックスとして描画されない");
@@ -213,7 +213,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
@@ -230,7 +230,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 1, "分割点がなければ overflow 許容: {lines:?}");
     assert_eq!(lines[0].boxes.len(), 3);
@@ -238,7 +238,7 @@ mod tests {
 
   #[test]
   fn empty_items_yield_single_empty_line() {
-    let lines = GreedyBreaker.break_lines(&[], Length::pt(100.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&[], Length::pt(100.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
@@ -248,7 +248,7 @@ mod tests {
   fn flush_right_box_sits_on_last_line_when_it_fits() {
     let items = vec![test_box(), space_glue(), flush_right_box(8.0)];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(50.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(50.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED box の 2 つ: {lines:?}");
@@ -264,7 +264,7 @@ mod tests {
       flush_right_box(8.0),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(14.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(14.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
@@ -283,7 +283,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(12.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(12.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "1 行目に継続中の矩形: {:?}", lines[0].links);
@@ -422,7 +422,7 @@ mod tests {
   }
 
   #[test]
-  fn ragged_right_ignores_stretch_capacity() {
+  fn left_ignores_stretch_capacity() {
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -431,7 +431,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
@@ -447,7 +447,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 2 つ + 行末ハイフン: {lines:?}");
@@ -462,7 +462,7 @@ mod tests {
   fn discretionary_not_used_when_word_fits() {
     let items = vec![test_box(), discretionary(3.0), test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "ハイフン箱は付かない: {lines:?}");
@@ -478,7 +478,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(22.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(22.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "box1 + ハイフン: {lines:?}");
@@ -515,8 +515,8 @@ mod tests {
     ];
     let glue_items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
 
-    let penalty_lines = GreedyBreaker.break_lines(&penalty_items, Length::pt(25.0), TextAlignment::RaggedRight);
-    let glue_lines = GreedyBreaker.break_lines(&glue_items, Length::pt(25.0), TextAlignment::RaggedRight);
+    let penalty_lines = GreedyBreaker.break_lines(&penalty_items, Length::pt(25.0), TextAlignment::Left);
+    let glue_lines = GreedyBreaker.break_lines(&glue_items, Length::pt(25.0), TextAlignment::Left);
 
     assert_eq!(penalty_lines.len(), glue_lines.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
     for (penalty_line, glue_line) in penalty_lines.iter().zip(&glue_lines) {
@@ -531,7 +531,7 @@ mod tests {
   fn breaks_at_math_break_when_no_other_breakpoint() {
     let items = vec![box_width(20.0), math_break(3.0, 500), box_width(20.0)];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "{lines:?}");
@@ -549,7 +549,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Left);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "空白で折る: {lines:?}");
@@ -568,7 +568,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::Left);
 
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 2], "{lines:?}");
@@ -585,9 +585,111 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::RaggedRight);
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(20.0), TextAlignment::Left);
 
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 1], "{lines:?}");
+  }
+
+  #[test]
+  fn center_puts_line_in_middle_of_available_width() {
+    let items = vec![box_width(20.0)];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Center);
+
+    assert!(close(lines[0].boxes[0].dx, 40.0), "{:?}", lines[0].boxes);
+  }
+
+  #[test]
+  fn right_shifts_each_line_to_right_edge_independently() {
+    // 幅 27: [箱 10・アキ 5・箱 10]（自然幅 25）/ [箱 10] の 2 行に割れる
+    let items = vec![
+      test_box(),
+      space_glue(),
+      test_box(),
+      space_glue(),
+      test_box(),
+    ];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Right);
+
+    assert_eq!(lines.len(), 2);
+    assert!(close(lines[0].boxes[0].dx, 2.0), "{:?}", lines[0].boxes);
+    assert!(close(lines[1].boxes[0].dx, 17.0), "{:?}", lines[1].boxes);
+  }
+
+  #[test]
+  fn center_and_right_do_not_stretch_glue() {
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    for alignment in [TextAlignment::Center, TextAlignment::Right] {
+      let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), alignment);
+
+      let first = &lines[0];
+      assert!(close(first.boxes[1].dx - first.boxes[0].dx, 15.0), "{alignment:?}: {:?}", first.boxes);
+    }
+  }
+
+  #[test]
+  fn overflowing_line_is_not_shifted_left_of_origin() {
+    let items = vec![box_width(50.0)];
+
+    for alignment in [TextAlignment::Center, TextAlignment::Right] {
+      let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), alignment);
+
+      assert_eq!(lines[0].boxes[0].dx, Length::ZERO, "{alignment:?}");
+    }
+  }
+
+  #[test]
+  fn leading_kern_is_shifted_with_line_content() {
+    // 字下げ 10 + 本文 20 = 30 を幅 100 の右端へ: 本文の箱は 70 + 10 = 80
+    let items = vec![HItem::Kern(Length::pt(10.0)), box_width(20.0)];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Right);
+
+    assert!(close(lines[0].boxes[0].dx, 80.0), "{:?}", lines[0].boxes);
+  }
+
+  #[test]
+  fn centered_line_with_qed_centers_body_left_of_mark() {
+    // 本文 20 + QED 10、幅 100: 本文は 0..90 の中央（35）、QED は右端（90）
+    let items = vec![box_width(20.0), flush_right_box(10.0)];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Center);
+
+    assert_eq!(lines.len(), 1);
+    assert!(close(lines[0].boxes[0].dx, 35.0), "{:?}", lines[0].boxes);
+    assert!(close(lines[0].boxes[1].dx, 90.0), "{:?}", lines[0].boxes);
+  }
+
+  #[test]
+  fn right_aligned_line_with_qed_ends_body_at_mark() {
+    let items = vec![box_width(20.0), flush_right_box(10.0)];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Right);
+
+    assert!(close(lines[0].boxes[0].dx, 70.0), "{:?}", lines[0].boxes);
+    assert!(close(lines[0].boxes[1].dx, 90.0), "{:?}", lines[0].boxes);
+  }
+
+  #[test]
+  fn link_rectangle_moves_with_centered_line() {
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      box_width(20.0),
+      HItem::LinkEnd,
+    ];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Center);
+
+    let link = &lines[0].links[0];
+    assert!(close(link.x0, 40.0) && close(link.x1, 60.0), "{link:?}");
   }
 }

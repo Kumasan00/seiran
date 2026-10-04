@@ -3,13 +3,10 @@
 use crate::{
   document::HirList,
   length::Length,
-  typeset::{
-    boxes::Align,
-    lowering::{
-      LoweringContext, LoweringState,
-      layout_node::{InlineNode, LayoutNode, TextStyle},
-      lower_nodes,
-    },
+  typeset::lowering::{
+    LoweringContext, LoweringState,
+    layout_node::{InlineNode, LayoutNode, TextStyle},
+    lower_nodes,
   },
 };
 
@@ -64,7 +61,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
       margin_bottom: item.item_gap.or(list.item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
       right_indent: Length::pt(0.0),
-      align: Align::Left,
+      alignment: None,
     });
   }
 
@@ -336,5 +333,19 @@ mod tests {
     let nodes = lower_source(&style, &nested_source(&[true, true, true]));
 
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "[I] ", "一、 "]);
+  }
+
+  #[test]
+  fn list_item_inherits_enclosing_alignment() {
+    let nodes = lower_source(&ReadStyle::default(), "\\begin{itemize}\n\\item{x}\n\\end{itemize}\n");
+
+    let alignment = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { alignment, .. } => return Some(*alignment),
+        _ => return None,
+      })
+      .expect("item の VBox があるはず");
+    assert_eq!(alignment, None, "リスト項目はマーカーごと本文の揃えに従う");
   }
 }

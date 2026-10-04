@@ -9,7 +9,7 @@ pub(crate) use knuth_plass::KnuthPlassBreaker;
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
+  typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
 };
 
 /// 行分割アルゴリズムの抽象
@@ -104,6 +104,10 @@ pub(super) fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
 }
 
 /// アイテム列から 1 行を組み立てる（位置確定）
+///
+/// `alignment` の水平ずらしまで済ませる。右寄せ末尾ボックス（`HItem::FlushRight`）はずらさず利用可能幅の
+/// 右端に置き、本文はその幅を除いた残りの中で寄せる。本文の幅は [`Line::width`] と同じ「箱の右端の最大」で測る
+/// （行末の Kern 等の空白は寄せる幅に含めない）。
 pub(super) fn build_line(
   items: &[&HItem],
   is_last: bool,
@@ -132,6 +136,7 @@ pub(super) fn build_line(
   let mut links: Vec<LineLink> = Vec::new();
   let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
   let mut index_marks: Vec<IndexTerm> = Vec::new();
+  let mut flush_right: Vec<&HBox> = Vec::new();
   let mut x = Length::ZERO;
   let mut height = Length::ZERO;
   let mut depth = Length::ZERO;
@@ -164,14 +169,9 @@ pub(super) fn build_line(
       // 行内に残った数式内分割点は、折り返さなかったのでアキとして幅を持つ
       // （折り返した点のアイテムは破断アイテムとして行から除かれ、ここへは来ない）
       HItem::MathBreak { spacing, .. } => x += *spacing,
-      // 右寄せ末尾ボックス: 行内累積 x を無視し、本文幅の右端へ寄せる
+      // 右寄せ末尾ボックス: 行内累積 x を無視し、揃えのずらしの後で利用可能幅の右端へ置く
       HItem::FlushRight(hbox) => {
-        let flush_x = (available - hbox.width).max(Length::ZERO);
-        boxes.push(PlacedHBox {
-          hbox: hbox.clone(),
-          dx: flush_x,
-          dy: Length::ZERO,
-        });
+        flush_right.push(hbox);
         height = height.max(hbox.height);
         depth = depth.max(hbox.depth);
       },
@@ -215,7 +215,7 @@ pub(super) fn build_line(
       x1: x,
     });
   }
-  return Line {
+  let mut line = Line {
     boxes,
     height,
     depth,
@@ -223,6 +223,17 @@ pub(super) fn build_line(
     footnotes,
     index_marks,
   };
+  let flush_width = flush_right.iter().map(|hbox| return hbox.width).fold(Length::ZERO, Length::max);
+  let body_width = line.width();
+  line.shift_x(Align::from(alignment).offset(available - flush_width, body_width));
+  for hbox in flush_right {
+    line.boxes.push(PlacedHBox {
+      hbox: hbox.clone(),
+      dx: (available - hbox.width).max(Length::ZERO),
+      dy: Length::ZERO,
+    });
+  }
+  return line;
 }
 
 /// 行分割テストの共有フィクスチャ

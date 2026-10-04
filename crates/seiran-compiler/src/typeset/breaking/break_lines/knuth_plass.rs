@@ -31,7 +31,7 @@ pub(crate) struct KnuthPlassBreaker;
 
 impl LineBreaker for KnuthPlassBreaker {
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line> {
-    // 左揃え（`RaggedRight`）は貪欲法で組む
+    // 両端揃え以外（左・中央・右）は貪欲法で組む
     if alignment != TextAlignment::Justify {
       return GreedyBreaker.break_lines(items, text_width, alignment);
     }
@@ -416,7 +416,7 @@ mod tests {
   fn close_l(a: Length, b: Length) -> bool { return (a - b).abs() <= Length::from_sp(1); }
 
   #[test]
-  fn ragged_right_delegates_to_greedy() {
+  fn non_justify_delegates_to_greedy() {
     let items = vec![
       test_box(),
       stretch_glue(),
@@ -425,8 +425,8 @@ mod tests {
       test_box(),
     ];
 
-    let kp = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
-    let greedy = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
+    let kp = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Left);
+    let greedy = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Left);
 
     assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
     for (kp_line, greedy_line) in kp.iter().zip(&greedy) {

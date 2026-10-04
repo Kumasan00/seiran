@@ -299,6 +299,10 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   スタイル側では指定しない
 - **見出し・定理（2 レイヤーマージ）**: Rust 側のレベル別 / クラス別既定 → `[heading.<level>]` / `[theorems.<class>]`
   の順に重畳。`[heading]` / `[theorems]` 直下にスカラーは書けない
+- **段落の揃え**: `[text].alignment` は両端揃えの有無と寄せる向きを 4 値 1 キー（`justify` / `left` / `center` / `right`）で
+  持つ。`[heading.<level>].alignment` は `Option` で、未指定は外側の縦リストの揃え（既定では `[text].alignment`）を継ぐ単純継承。
+  継承は読込時に解決せず、組版の `LayoutNode::VBox` の `None` で解く（範囲ごとに揃えを置き換える環境が同じ仕組みに乗る）。
+  脚注本体・コードブロック・図表・タイトルページ・数式ブロック・表のセル・柱・目次・索引は従わない
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と
@@ -843,8 +847,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 - **数式ブロックの体裁（セルの列内揃え・区切り括弧のグリフ）は lowering が解決する**（#674）。
   `MathBlockLayout` は環境種別（`document::MathBlockKind`）を持たず、セルごとの `Align` と
   解決済みの `DelimiterGlyphs` を載せる。`boxing` は計測と配置だけを行い、HIR の数式語彙を
-  import しない。**組版内の揃えの型は `boxes::Align` 1 つ**で、`style::MathAlignment` → `Align` の
-  変換だけが lowering に残る（#334 の設計どおり）
+  import しない。**ブロック（数式・画像・表）と数式セルの揃えの型は `boxes::Align` 1 つ**で、`style::MathAlignment` →
+  `Align` の変換だけが lowering に残る（#334 の設計どおり）。段落の揃えは `style::TextAlignment`（伸縮の有無を含む 4 値）
+  のまま `VBox` / `Block::Paragraph` が運び、`Align` への変換は行分割（`build_line`）の水平ずらしだけが行う
 - **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で

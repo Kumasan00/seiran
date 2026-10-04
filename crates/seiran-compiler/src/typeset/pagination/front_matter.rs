@@ -49,6 +49,7 @@ pub(super) fn paginate(
           // タイトルページはハイフネーションしない
           language: None,
           punctuation_spacing: ctx.style.text.punctuation_spacing,
+          alignment: ctx.style.text.alignment,
         },
       ));
       debug!("タイトルページを生成");
@@ -65,13 +66,7 @@ pub(super) fn paginate(
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "front").entered();
-    break_pages(
-      front_blocks,
-      ctx.geometry.text_width(),
-      ctx.geometry.front_geometry(),
-      &ctx.breaker,
-      ctx.style.text.alignment,
-    )
+    break_pages(front_blocks, ctx.geometry.text_width(), ctx.geometry.front_geometry(), &ctx.breaker)
   };
   return (pages, overflows);
 }

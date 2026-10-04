@@ -23,7 +23,8 @@
 //! - **2 つの `typeset::Page` ダンプをテスト内で直接比較**（`assert_eq!` / `assert_ne!`）:
 //!   [`index_marks_are_invisible_to_layout`]・style 差分 2 種
 //!   [`layout_dump_changes_with_line_height`] / [`layout_dump_changes_with_punctuation_spacing`]・
-//!   [`blank_code_line_keeps_a_full_line_height`]
+//!   [`blank_code_line_keeps_a_full_line_height`]・
+//!   [`text_alignment_leaves_kind_specific_alignment_untouched`]（本文の揃えを変えた組版と既定の組版の水平位置）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -101,6 +102,8 @@ const GOLDEN_INPUTS: &[&str] = &[
   "table",
   "table_break",
   "text",
+  "text_center",
+  "text_right",
   "theorem",
   "title_page",
   "toc",
@@ -646,6 +649,56 @@ fn layout_dump_changes_with_punctuation_spacing() {
   let disabled_dump = dump_pages(&disabled.laid_out().pages);
 
   assert_ne!(enabled_dump, disabled_dump);
+}
+
+/// fixture を組版した確定ページ列を返す。`alignment` が `Some` なら `[text].alignment` をその値にする。
+fn pages_with_text_alignment(name: &str, alignment: Option<&'static str>) -> Vec<Page> {
+  let mut builder = TestProject::builder().golden_fixture(name);
+  if let Some(alignment) = alignment {
+    builder = builder.style_toml(move |table| test_support::set(table, "text", "alignment", alignment));
+  }
+  return builder.build().laid_out().pages;
+}
+
+#[test]
+fn text_alignment_leaves_kind_specific_alignment_untouched() {
+  // 本文の行数が揃えで変わり縦位置はずれうるので、水平位置だけを比べる
+  let footnote_dx = |pages: &[Page]| {
+    return pages
+      .iter()
+      .flat_map(|page| return page.footnotes.iter())
+      .flat_map(|footnote| return footnote.blocks.iter())
+      .flat_map(|block| match block {
+        PlacedBlock::Line { line, .. } => return line.boxes.iter().map(|placed| return placed.dx).collect::<Vec<_>>(),
+        _ => return Vec::new(),
+      })
+      .collect::<Vec<Length>>();
+  };
+  let math_x = |pages: &[Page]| {
+    return pages
+      .iter()
+      .flat_map(|page| return page.blocks.iter())
+      .filter_map(|block| match block {
+        PlacedBlock::MathBlock { x, .. } => return Some(*x),
+        _ => return None,
+      })
+      .collect::<Vec<Length>>();
+  };
+
+  for alignment in ["center", "right"] {
+    let footnote = footnote_dx(&pages_with_text_alignment("footnote", Some(alignment)));
+    let equation = math_x(&pages_with_text_alignment("equation", Some(alignment)));
+    let title = pages_with_text_alignment("title_page", Some(alignment));
+    assert!(!footnote.is_empty() && !equation.is_empty(), "比較対象の脚注・数式ブロックがあるはず");
+
+    assert_eq!(footnote, footnote_dx(&pages_with_text_alignment("footnote", None)), "脚注本体（{alignment}）");
+    assert_eq!(equation, math_x(&pages_with_text_alignment("equation", None)), "数式ブロック（{alignment}）");
+    assert_eq!(
+      format!("{:?}", title[0].blocks),
+      format!("{:?}", pages_with_text_alignment("title_page", None)[0].blocks),
+      "タイトルページ（{alignment}）"
+    );
+  }
 }
 
 /// コードブロックの空行が 1 行ぶんの高さを保つことを確認する。

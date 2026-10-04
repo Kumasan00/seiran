@@ -523,6 +523,16 @@ mod parse_tests {
   }
 
   #[test]
+  fn parse_fails_on_retired_ragged_right_alignment() {
+    let toml = "[text]\nalignment = \"ragged_right\"\n";
+    let result = parse(toml, dummy_source());
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
+  }
+
+  #[test]
   fn load_fails_on_nonexistent_path() {
     let path = std::path::PathBuf::from("/nonexistent/style.toml");
     let source = FilesystemProjectSource;
