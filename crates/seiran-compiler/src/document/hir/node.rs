@@ -2,7 +2,7 @@
 
 use crate::{
   document::{
-    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathBlockKind, QuoteKind, TheoremClass,
+    CaptionPosition, ColumnAlign, ColumnWidth, FlushDirection, HeadingLevel, MathBlockKind, QuoteKind, TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
   length::Length,
@@ -61,6 +61,9 @@ pub(crate) enum HirNodeKind {
 
   /// 引用ブロック（`\begin{quote}` / `\begin{quotation}`）
   Quote(HirQuote),
+
+  /// 寄せ環境（`\begin{flushleft}` / `\begin{center}` / `\begin{flushright}`）
+  Flush(HirFlush),
 
   /// 改ページ
   PageBreak,
@@ -168,6 +171,15 @@ pub(crate) struct HirTheorem {
 pub(crate) struct HirQuote {
   /// 引用の種別（`quote` / `quotation`）
   pub(crate) kind: QuoteKind,
+  /// 本体（再帰評価されたブロックノード列）
+  pub(crate) body: Vec<HirNode>,
+}
+
+/// 寄せ環境（`\begin{flushleft}` / `\begin{center}` / `\begin{flushright}`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirFlush {
+  /// 本体の段落を寄せる向き
+  pub(crate) direction: FlushDirection,
   /// 本体（再帰評価されたブロックノード列）
   pub(crate) body: Vec<HirNode>,
 }

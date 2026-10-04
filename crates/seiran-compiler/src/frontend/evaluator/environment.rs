@@ -1,13 +1,14 @@
 //! 環境ディスパッチ
 //!
 //! [`ENVIRONMENTS`] は環境名から [`EnvironmentKind`] を引く単一レジストリで、種別が
-//! 定理クラス・引用の種類・リストの順序付き / なし・数式グリッド環境のセル配置と採番の粒度を
+//! 定理クラス・引用の種類・寄せる向き・リストの順序付き / なし・数式グリッド環境のセル配置と採番の粒度を
 //! 値として持つ。本体の読み取り方（[`BodyMode`]）は種別から導出する。
 
 mod body_scan;
 mod caption;
 mod code;
 mod figure;
+mod flush;
 mod list;
 mod math;
 mod quote;
@@ -17,7 +18,7 @@ mod theorem;
 use phf::phf_map;
 
 use crate::{
-  document::{GridLayout, HirNode, QuoteKind, TheoremClass},
+  document::{FlushDirection, GridLayout, HirNode, QuoteKind, TheoremClass},
   frontend::{
     evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
     syntax::{BodyMode, view::EnvironmentView},
@@ -36,6 +37,8 @@ enum EnvironmentKind {
   Theorem(TheoremClass),
   /// 引用環境（`quote` / `quotation`）
   Quote(QuoteKind),
+  /// 寄せ環境（`flushleft` / `center` / `flushright`）
+  Flush(FlushDirection),
   /// 図環境（`figure`）
   Figure,
   /// 表環境（`table`）
@@ -63,7 +66,9 @@ impl EnvironmentKind {
   /// 本体の読み取り方を種別から導出する
   fn body_mode(self) -> BodyMode {
     return match self {
-      Self::List { .. } | Self::Theorem(_) | Self::Quote(_) | Self::Figure | Self::Table => BodyMode::Text,
+      Self::List { .. } | Self::Theorem(_) | Self::Quote(_) | Self::Flush(_) | Self::Figure | Self::Table => {
+        BodyMode::Text
+      },
       Self::Code => BodyMode::Verbatim,
       Self::Equation | Self::MathGrid { .. } | Self::Cases | Self::Matrix => BodyMode::Math,
     };
@@ -79,6 +84,7 @@ impl EnvironmentKind {
       Self::List { ordered } => list::list(view, ctx, ordered),
       Self::Theorem(class) => theorem::theorem(view, ctx, class),
       Self::Quote(kind) => quote::quote(view, ctx, kind),
+      Self::Flush(direction) => flush::flush(view, ctx, direction),
       Self::Figure => figure::figure(view, ctx),
       Self::Table => table::table(view, ctx),
       Self::Code => code::code(view, ctx),
@@ -122,6 +128,10 @@ static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
   "code"      => EnvironmentKind::Code,
   "quote"     => EnvironmentKind::Quote(QuoteKind::Quote),
   "quotation" => EnvironmentKind::Quote(QuoteKind::Quotation),
+
+  "flushleft"  => EnvironmentKind::Flush(FlushDirection::Left),
+  "center"     => EnvironmentKind::Flush(FlushDirection::Center),
+  "flushright" => EnvironmentKind::Flush(FlushDirection::Right),
 };
 
 /// 環境名から本体の読み取り方を引く

@@ -15,11 +15,12 @@
 //! # 置く型
 //!
 //! HIR 木の型は子 module `hir`、HIR の variant が値として直接持つ閉じた語彙型
-//! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TheoremClass`] / [`MathBlockKind`] /
+//! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`FlushDirection`] / [`TheoremClass`] / [`MathBlockKind`] /
 //! [`GridLayout`] / [`MathDelimiter`] / [`MathVariant`] / [`MathClass`] / [`ColumnAlign`] / [`ColumnWidth`] /
 //! [`Typeface`]）はこの module の直下。
 
 mod caption;
+mod flush;
 mod heading_level;
 mod hir;
 mod math_block;
@@ -31,9 +32,10 @@ mod theorem;
 mod typeface;
 
 pub(crate) use caption::CaptionPosition;
+pub(crate) use flush::FlushDirection;
 pub(crate) use heading_level::HeadingLevel;
 pub(crate) use hir::{
-  HirBuilder, HirDocument, HirFigure, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
+  HirBuilder, HirDocument, HirFigure, HirFlush, HirHeading, HirInline, HirInlineKind, HirList, HirListItem, HirMath,
   HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,
   HirTableCell, HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
 };
