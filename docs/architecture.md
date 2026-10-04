@@ -229,7 +229,7 @@ style 由来の表示文字列は `semantics` が別枠で持つ。
 - **語彙型を置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由に
   ならない（語彙置き場を型の無制限な受け皿にしない）。値概念そのものである `Length` / `Color` は
   `length` / `color`、config.toml が宣言するフォント枠の `FontType` / `FontMap` は `project::font`
-  （言語判定前の分類 `FontKind` だけがここの語彙）、`SourceId` / `Span` は `source` の所有
+  （言語判定前の書体の指定 `Typeface` だけがここの語彙）、`SourceId` / `Span` は `source` の所有
 - **識別子はここに持たない**: 意味解析が確定する `LabelId` / `HeadingKey` は `semantics`、引用キーと CSL
   生成物の語彙は `semantics::citation`、組版時に成立する `FootnoteId` / `AnchorId` / `LinkTarget` は
   `typeset::boxes`、検証済み設定値 `TextAlignment` は `style::text` の所有。画像パスは HIR が
@@ -294,12 +294,12 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 - **番号 3 系統**: 表示数式の **tag**（式の横に出すもの。`[math.block].tag_format` / `number_side`）、
   **number**（`counters.equation.number_format`）、**ref**（`counters.equation.ref_format`）は別物。旧
   `[equation]` テーブルは `[math.block]` に統合済みで、**復活させない**
-- **キャプション**: figure / table は共通の `CaptionStyle` を持つ。`font_kind` は番号リテラルと本体の両方に
-  効き、`[text].font_kind` からの導出はしない。配置は図・表ともソース上の `\caption` の出現位置で決まり、
+- **キャプション**: figure / table は共通の `CaptionStyle` を持つ。`typeface` は番号リテラルと本体の両方に
+  効き、`[text].typeface` からの導出はしない。配置は図・表ともソース上の `\caption` の出現位置で決まり、
   スタイル側では指定しない
 - **見出し・定理（2 レイヤーマージ）**: Rust 側のレベル別 / クラス別既定 → `[heading.<level>]` / `[theorems.<class>]`
   の順に重畳。`[heading]` / `[theorems]` 直下にスカラーは書けない
-- **表**: ヘッダ行の書体 `head_font_kind` は指定された `FontKind` をそのまま使う（本文書体からの導出も
+- **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と
   同じ形。`resets` を書くと既定のリセット列を丸ごと置き換える）。`<name>` は固定 9 種のみで、未知のカウンタ名は
