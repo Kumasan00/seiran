@@ -73,7 +73,7 @@ impl Default for TheoremStyles {
       definition: TheoremStyle {
         display_name: "Definition".to_string(),
         counter: "definition".to_string(),
-        style: TheoremPresentation {
+        presentation: TheoremPresentation {
           typeface: Typeface::Serif,
           ..TheoremPresentation::default()
         },
@@ -87,7 +87,7 @@ impl Default for TheoremStyles {
       example: TheoremStyle {
         display_name: "Example".to_string(),
         counter: "example".to_string(),
-        style: TheoremPresentation {
+        presentation: TheoremPresentation {
           typeface: Typeface::Serif,
           ..TheoremPresentation::default()
         },
@@ -96,7 +96,7 @@ impl Default for TheoremStyles {
       remark: TheoremStyle {
         display_name: "Remark".to_string(),
         counter: "remark".to_string(),
-        style: TheoremPresentation {
+        presentation: TheoremPresentation {
           typeface: Typeface::Serif,
           ..TheoremPresentation::default()
         },
@@ -111,7 +111,7 @@ impl Default for TheoremStyles {
         counter: "proof".to_string(),
         unnumbered: true,
         qed_mark: Some("□".to_string()),
-        style: TheoremPresentation {
+        presentation: TheoremPresentation {
           typeface: Typeface::Serif,
           heading_format: TheoremHeadingTemplate::parse("{display_name}"),
           heading_with_title: TheoremHeadingTemplate::parse("{display_name} ({title})"),
@@ -168,7 +168,7 @@ pub(crate) struct TheoremStyle {
   pub qed_mark: Option<String>,
   /// 見出し書式・本文/見出しフォント・上下マージン
   #[garde(dive)]
-  pub style: TheoremPresentation,
+  pub presentation: TheoremPresentation,
 }
 
 impl Default for TheoremStyle {
@@ -180,7 +180,7 @@ impl Default for TheoremStyle {
       number_format: CounterTemplate::parse("{n}"),
       unnumbered: false,
       qed_mark: None,
-      style: TheoremPresentation::default(),
+      presentation: TheoremPresentation::default(),
     };
   }
 }
@@ -326,7 +326,7 @@ struct TheoremStyleOverride {
   /// QED マーク（TOML からは設定のみ可。`None` への解除は非対応）
   qed_mark: Option<String>,
   /// 見た目（ネストした差分）
-  style: TheoremPresentationOverride,
+  presentation: TheoremPresentationOverride,
 }
 
 impl TheoremStyleOverride {
@@ -342,7 +342,7 @@ impl TheoremStyleOverride {
       number_format,
       unnumbered,
       qed_mark,
-      style,
+      presentation,
     } = self;
     return TheoremStyle {
       display_name: display_name.unwrap_or(base.display_name),
@@ -351,12 +351,12 @@ impl TheoremStyleOverride {
       number_format: number_format.unwrap_or(base.number_format),
       unnumbered: unnumbered.unwrap_or(base.unnumbered),
       qed_mark: qed_mark.or(base.qed_mark),
-      style: style.apply(base.style),
+      presentation: presentation.apply(base.presentation),
     };
   }
 }
 
-/// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型（`[theorems.<class>.style]` の TOML スキーマ）。
+/// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型（`[theorems.<class>.presentation]` の TOML スキーマ）。
 ///
 /// `None` のフィールドはクラス別既定のまま残す。
 #[derive(Debug, Default, Deserialize)]
@@ -440,7 +440,7 @@ mod tests {
   #[test]
   fn validate_rejects_unknown_heading_placeholder() {
     let mut style = TheoremStyle::default();
-    style.style.heading_format = TheoremHeadingTemplate::parse("{page}");
+    style.presentation.heading_format = TheoremHeadingTemplate::parse("{page}");
 
     assert!(style.validate().is_err());
   }
@@ -462,8 +462,8 @@ mod tests {
 
     assert!(proof.unnumbered);
     assert_eq!(proof.qed_mark.as_deref(), Some("□"));
-    assert_eq!(proof.style.typeface, Typeface::Serif);
-    assert_eq!(proof.style.heading_format.as_str(), "{display_name}");
+    assert_eq!(proof.presentation.typeface, Typeface::Serif);
+    assert_eq!(proof.presentation.heading_format.as_str(), "{display_name}");
   }
 
   #[test]
@@ -479,7 +479,7 @@ mod tests {
     ] {
       let style = &theorems[class];
       assert_eq!(style.counter, "theorem", "{class} should share theorem counter");
-      assert_eq!(style.style.typeface, Typeface::SerifItalic);
+      assert_eq!(style.presentation.typeface, Typeface::SerifItalic);
       assert!(!style.unnumbered);
     }
   }
@@ -490,7 +490,7 @@ mod tests {
     let remark = &theorems[TheoremClass::Remark];
 
     assert_eq!(remark.counter, "remark");
-    assert_eq!(remark.style.typeface, Typeface::Serif);
+    assert_eq!(remark.presentation.typeface, Typeface::Serif);
   }
 
   #[test]
@@ -527,29 +527,29 @@ display_name = \"補題\"
 
     assert_eq!(theorems.lemma.display_name, "補題");
     assert_eq!(theorems.lemma.counter, "theorem");
-    assert_eq!(theorems.lemma.style.typeface, Typeface::SerifItalic);
+    assert_eq!(theorems.lemma.presentation.typeface, Typeface::SerifItalic);
     assert_eq!(theorems.theorem.display_name, "Theorem");
     assert!(theorems.proof.unnumbered);
   }
 
   #[test]
-  fn partial_override_nested_style_keeps_other_style_fields() {
+  fn partial_override_nested_presentation_keeps_other_presentation_fields() {
     let toml = "
-[theorems.theorem.style]
+[theorems.theorem.presentation]
 typeface = \"sans_serif_bold\"
 ";
 
     let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
-    assert_eq!(theorem.style.typeface, Typeface::SansSerifBold);
-    assert_eq!(theorem.style.heading_format.as_str(), "{display_name} {number}");
-    assert!((theorem.style.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
+    assert_eq!(theorem.presentation.typeface, Typeface::SansSerifBold);
+    assert_eq!(theorem.presentation.heading_format.as_str(), "{display_name} {number}");
+    assert!((theorem.presentation.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
   }
 
   #[test]
   fn full_override_replaces_every_field() {
-    // 6 キーとネスト `style` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
+    // 6 キーとネスト `presentation` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
     let toml = "
 [theorems.theorem]
 display_name = \"定理\"
@@ -559,7 +559,7 @@ number_format = \"{chapter}.{n}\"
 unnumbered = true
 qed_mark = \"■\"
 
-[theorems.theorem.style]
+[theorems.theorem.presentation]
 heading_format = \"{display_name}{number}\"
 heading_with_title = \"{display_name}{number}（{title}）\"
 heading_with_of = \"{of}の{display_name}\"
@@ -579,14 +579,14 @@ bottom_margin = \"8pt\"
     assert_eq!(theorem.number_format.as_str(), "{chapter}.{n}");
     assert!(theorem.unnumbered);
     assert_eq!(theorem.qed_mark.as_deref(), Some("■"));
-    assert_eq!(theorem.style.heading_format.as_str(), "{display_name}{number}");
-    assert_eq!(theorem.style.heading_with_title.as_str(), "{display_name}{number}（{title}）");
-    assert_eq!(theorem.style.heading_with_of.as_str(), "{of}の{display_name}");
-    assert_eq!(theorem.style.heading_with_of_and_title.as_str(), "{of}の{display_name}（{title}）");
-    assert_eq!(theorem.style.typeface, Typeface::Serif);
-    assert_eq!(theorem.style.heading_typeface, Typeface::SansSerifBold);
-    assert_eq!(theorem.style.top_margin, Length::pt(6.0));
-    assert_eq!(theorem.style.bottom_margin, Length::pt(8.0));
+    assert_eq!(theorem.presentation.heading_format.as_str(), "{display_name}{number}");
+    assert_eq!(theorem.presentation.heading_with_title.as_str(), "{display_name}{number}（{title}）");
+    assert_eq!(theorem.presentation.heading_with_of.as_str(), "{of}の{display_name}");
+    assert_eq!(theorem.presentation.heading_with_of_and_title.as_str(), "{of}の{display_name}（{title}）");
+    assert_eq!(theorem.presentation.typeface, Typeface::Serif);
+    assert_eq!(theorem.presentation.heading_typeface, Typeface::SansSerifBold);
+    assert_eq!(theorem.presentation.top_margin, Length::pt(6.0));
+    assert_eq!(theorem.presentation.bottom_margin, Length::pt(8.0));
   }
 
   #[test]
@@ -609,21 +609,24 @@ display_name = \"証明\"
     let theorems = TheoremStyles::default();
     let proof = &theorems[TheoremClass::Proof];
 
-    assert_eq!(proof.style.heading_with_of.as_str(), "{display_name} of {of}");
-    assert_eq!(proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
+    assert_eq!(proof.presentation.heading_with_of.as_str(), "{display_name} of {of}");
+    assert_eq!(proof.presentation.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
   }
 
   #[test]
   fn override_proof_of_template_localizes_prefix() {
     let toml = "
-[theorems.proof.style]
+[theorems.proof.presentation]
 heading_with_of = \"{display_name}（{of} の証明）\"
 ";
 
     let wrapper: TheoremStylesWrapper = toml::from_str(toml).unwrap();
 
-    assert_eq!(wrapper.theorems.proof.style.heading_with_of.as_str(), "{display_name}（{of} の証明）");
-    assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
+    assert_eq!(wrapper.theorems.proof.presentation.heading_with_of.as_str(), "{display_name}（{of} の証明）");
+    assert_eq!(
+      wrapper.theorems.proof.presentation.heading_with_of_and_title.as_str(),
+      "{display_name} of {of} ({title})"
+    );
   }
 
   #[test]
@@ -651,9 +654,24 @@ format = \"{section}.{n}\"
   }
 
   #[test]
-  fn rejects_unknown_nested_style_key() {
+  fn rejects_renamed_style_subtable() {
     let toml = "
 [theorems.theorem.style]
+typeface = \"serif\"
+";
+
+    let message = toml::from_str::<TheoremStylesWrapper>(toml).unwrap_err().to_string();
+
+    assert!(
+      message.contains("unknown field `style`"),
+      "旧サブテーブル `style` は未知フィールドとして拒否される: {message}"
+    );
+  }
+
+  #[test]
+  fn rejects_unknown_nested_presentation_key() {
+    let toml = "
+[theorems.theorem.presentation]
 font_knd = \"serif\"
 ";
 
