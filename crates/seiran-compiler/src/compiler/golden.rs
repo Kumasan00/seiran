@@ -111,6 +111,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "theorem",
   "title_page",
   "toc",
+  "toc_center",
   "yakumono",
 ];
 

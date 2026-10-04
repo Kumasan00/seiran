@@ -8,7 +8,7 @@ use crate::{
   semantics::HeadingKey,
   style::{Style, TocStyle},
   typeset::{
-    boxes::{AnchorId, Block, Line, LineLink, LinkTarget},
+    boxes::{Align, AnchorId, Block, Line, LineLink, LinkTarget},
     boxing::{LineAccum, Shaper, compose_left_line, row_width},
     font::FontSystem,
     lowering::{HeadingRecord, TextStyle},
@@ -28,15 +28,19 @@ struct TocSpec {
   title_style: TextStyle,
   /// 見出しとエントリ群の間の縦アキ
   title_bottom_margin: Length,
+  /// 見出し文字列の揃え（解決済みの `[heading.section]` の揃え）
+  title_align: Align,
   /// エントリ本文・ページ番号・リーダーの書体
   entry_style: TextStyle,
   /// 見出しレベルの深さ 1 段ごとに加える左インデント
   indent_per_level: Length,
+  /// エントリ行の揃え。字下げを含む行の自然幅を `text_width` の中で寄せる
+  entry_align: Align,
   /// リーダー単位文字列（`None` でリーダー無し）。残り幅いっぱいに反復する
   leader: Option<String>,
   /// ページ番号を表示するか
   show_page_numbers: bool,
-  /// 本文幅。ページ番号の右端揃えの基準
+  /// 本文幅。ページ番号の右端揃えと行の揃えの基準
   text_width: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
   line_height_factor: f32,
@@ -101,7 +105,8 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
 
 /// スタイルから目次生成用の [`TocSpec`] を組み立てる。
 ///
-/// 目次見出しの書体は文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
+/// 目次見出しの書体と揃えは文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
+/// 揃えが未指定なら見出しと同じく `[text].alignment` を継ぐ。
 fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = &style.heading[HeadingLevel::Section];
@@ -113,12 +118,14 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
       color: None,
     },
     title_bottom_margin: title_heading.bottom_margin,
+    title_align: Align::from(title_heading.alignment.unwrap_or(style.text.alignment)),
     entry_style: TextStyle {
       font_size: toc.font_size,
       typeface: Typeface::Serif,
       color: None,
     },
     indent_per_level: toc.indent_per_level,
+    entry_align: Align::from(toc.alignment),
     leader: toc.leader.clone(),
     show_page_numbers: toc.show_page_numbers,
     text_width,
@@ -136,8 +143,10 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem<'_>) 
   let mut shaper = Shaper::new(fonts);
   let mut blocks: Vec<Block> = Vec::new();
 
+  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
+  title.shift_x(spec.title_align.offset(spec.text_width, title.width()));
   blocks.push(Block::ComposedLine {
-    line: compose_left_line(&mut shaper, &spec.title, spec.title_style),
+    line: title,
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
   if spec.title_bottom_margin.is_positive() {
@@ -158,7 +167,7 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem<'_>) 
   return blocks;
 }
 
-/// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む
+/// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組み、`entry_align` で寄せる
 fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
 
@@ -183,7 +192,9 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry)
     x0: indent,
     x1: right_edge,
   }];
-  return acc.into_line(links);
+  let mut line = acc.into_line(links);
+  line.shift_x(spec.entry_align.offset(spec.text_width, line.width()));
+  return line;
 }
 
 /// `from_x` から `to_x` の間をリーダー単位文字列の反復で充填する（ページ番号側に右寄せ）
@@ -221,11 +232,11 @@ fn fill_leader(
 mod tests {
   use super::{BodyPageValues, HeadingRecord, build_toc_spec, collect_toc_entries};
   use crate::{
-    document::{HeadingLevel, Typeface},
+    document::{HeadingLevel, TextAlignment, Typeface},
     length::Length,
     semantics::HeadingKey,
-    style::{PageNumberingStyle, Style, TocStyle},
-    typeset::boxes::{AnchorId, Page, PlacedAnchor},
+    style::{BlockAlignment, PageNumberingStyle, Style, TocStyle},
+    typeset::boxes::{Align, AnchorId, Page, PlacedAnchor},
   };
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
@@ -317,5 +328,31 @@ mod tests {
     assert_eq!(entries[1].label, "1.1 Sec");
     assert_eq!(entries[1].page_label, "2");
     assert_eq!(entries[1].link_key, HeadingKey::new(1));
+  }
+
+  #[test]
+  fn build_toc_spec_resolves_title_align_from_section_heading() {
+    let spec_with = |text: TextAlignment, section: Option<TextAlignment>| {
+      let mut style = Style::default();
+      style.text.alignment = text;
+      style.heading.section.alignment = section;
+      return build_toc_spec(&style, Length::pt(300.0)).title_align;
+    };
+
+    assert_eq!(spec_with(TextAlignment::Justify, None), Align::Left, "既定は左（1 行の両端揃えは左寄せ）");
+    assert_eq!(spec_with(TextAlignment::Center, None), Align::Center, "section 未指定なら [text] を継ぐ");
+    assert_eq!(spec_with(TextAlignment::Center, Some(TextAlignment::Right)), Align::Right, "section の指定が優先");
+    assert_eq!(spec_with(TextAlignment::Right, Some(TextAlignment::Justify)), Align::Left);
+  }
+
+  #[test]
+  fn build_toc_spec_entry_align_follows_toc_not_text() {
+    let mut style = Style::default();
+    style.text.alignment = TextAlignment::Right;
+    assert_eq!(build_toc_spec(&style, Length::pt(300.0)).entry_align, Align::Left, "[text] に連動しない");
+
+    style.toc.alignment = BlockAlignment::Center;
+    style.toc.show_page_numbers = false;
+    assert_eq!(build_toc_spec(&style, Length::pt(300.0)).entry_align, Align::Center);
   }
 }

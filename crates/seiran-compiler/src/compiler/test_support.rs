@@ -400,6 +400,14 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "footer", "center", "{page}");
     },
     "toc" => set(table, "toc", "enabled", true),
+    // ページ番号なしの目次でエントリを中央、題目を節見出しの揃え（右）に寄せた版面。深さ 3 まで載せて字下げを出す
+    "toc_center" => {
+      set(table, "toc", "enabled", true);
+      set(table, "toc", "show_page_numbers", false);
+      set(table, "toc", "alignment", "center");
+      set(table, "toc", "max_depth", 4);
+      set_heading(table, "section", "alignment", "right");
+    },
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     "index_groups" => set(table, "index", "group_headings", true),
     "hyphenation" => {
