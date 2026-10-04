@@ -59,10 +59,10 @@ pub(crate) enum TextDirection {
 #[error(
   "direction は 'left-to-right' / 'right-to-left' / 'top-to-bottom' / 'bottom-to-top' のいずれかである必要があります"
 )]
-pub(crate) struct TextDirectionParseError;
+pub(crate) struct ParseTextDirectionError;
 
 impl FromStr for TextDirection {
-  type Err = TextDirectionParseError;
+  type Err = ParseTextDirectionError;
 
   fn from_str(value: &str) -> Result<Self, Self::Err> {
     return match value {
@@ -70,7 +70,7 @@ impl FromStr for TextDirection {
       "right-to-left" => Ok(Self::RightToLeft),
       "top-to-bottom" => Ok(Self::TopToBottom),
       "bottom-to-top" => Ok(Self::BottomToTop),
-      _ => Err(TextDirectionParseError),
+      _ => Err(ParseTextDirectionError),
     };
   }
 }
