@@ -213,12 +213,13 @@ fn validation_failures(path: &str, errors: Vec<StyleValidationError>) -> Option<
 
 /// [`Style`] の値検証を実行します（I/O なし）。
 ///
-/// 違反の並びは garde の走査順（`Style` のフィールド宣言順）、続いてキーどうしの組み合わせの違反。
-/// 組み合わせは「どの内容に対しても出力を変えない」ものだけを拒否する。
+/// 違反の並びは garde の走査順（`Style` のフィールド宣言順）。
 fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
-  let mut errors: Vec<StyleValidationError> = match style.validate() {
-    Ok(()) => Vec::new(),
-    Err(report) => report
+  let Err(report) = style.validate() else {
+    return Ok(());
+  };
+  return Err(
+    report
       .iter()
       .map(|(path, error)| {
         return StyleValidationError::Field {
@@ -227,14 +228,7 @@ fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
         };
       })
       .collect(),
-  };
-  if style.toc.show_page_numbers && style.toc.alignment != BlockAlignment::Left {
-    errors.push(StyleValidationError::TocAlignmentWithPageNumbers);
-  }
-  if errors.is_empty() {
-    return Ok(());
-  }
-  return Err(errors);
+  );
 }
 
 /// `style.reference` の CSL 関連パス（`csl_path` / `locale_path`）を `resolver` で解決し、
@@ -597,7 +591,6 @@ mod validate_tests {
         StyleValidationError::Field { path, .. }
         | StyleValidationError::CslFileNotFound { path, .. }
         | StyleValidationError::LocaleFileNotFound { path, .. } => return path.as_str(),
-        StyleValidationError::TocAlignmentWithPageNumbers => return "toc.alignment",
       })
       .collect();
   }
@@ -607,7 +600,8 @@ mod validate_tests {
     // show_page_numbers は既定 true
     let toml = "[toc]\nalignment = \"center\"\n";
     let errors = expect_validation_errors(parse(toml, dummy_source()));
-    assert!(matches!(errors.as_slice(), [StyleValidationError::TocAlignmentWithPageNumbers]), "{errors:?}");
+    assert_eq!(paths(&errors), vec!["toc.alignment"]);
+    assert!(errors[0].to_string().contains("show_page_numbers = false"), "{errors:?}");
   }
 
   #[test]

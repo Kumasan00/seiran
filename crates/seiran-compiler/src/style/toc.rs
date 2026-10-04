@@ -38,6 +38,7 @@ pub(crate) struct TocStyle {
   pub leader: Option<String>,
   /// エントリ行の揃え（版面幅の中で、階層字下げを含む自然幅を寄せる）。題目行は `[heading.section]` の揃えに従う。
   /// `"left"` 以外は `show_page_numbers = false` のときだけ受理する（ページ番号を出す行は右端まで伸びる）
+  #[garde(custom(left_unless_page_numbers_hidden(self.show_page_numbers)))]
   pub alignment: BlockAlignment,
 }
 
@@ -55,6 +56,21 @@ impl Default for TocStyle {
       alignment: BlockAlignment::Left,
     };
   }
+}
+
+/// `show_page_numbers` が `true` なら揃えを `Left` に限る検証器を返す。
+///
+/// ページ番号を出す目次の行は内容によらず版面の右端まで伸びるので、`Left` 以外の揃えはどの内容に対しても出力を変えない。
+fn left_unless_page_numbers_hidden(show_page_numbers: bool) -> impl FnOnce(&BlockAlignment, &()) -> garde::Result {
+  return move |alignment, _ctx| {
+    if show_page_numbers && *alignment != BlockAlignment::Left {
+      return Err(garde::Error::new(
+        "\"left\" 以外の揃えには show_page_numbers = false が必要です（ページ番号を出す目次の行は版面の右端まで伸びるため、\
+         揃えを変えても出力は変わりません）",
+      ));
+    }
+    return Ok(());
+  };
 }
 
 /// `TocStyle::max_depth` の上限リテラル（`garde` の `range` は const 式しか受け付けない）が
@@ -126,6 +142,26 @@ mod tests {
       let style: TocStyle = toml::from_str(&format!("alignment = \"{text}\"\n")).unwrap();
       assert_eq!(style.alignment, expected, "{text}");
     }
+  }
+
+  #[test]
+  fn validate_rejects_alignment_while_page_numbers_are_shown() {
+    let style = TocStyle {
+      alignment: BlockAlignment::Right,
+      ..TocStyle::default()
+    };
+    assert!(style.show_page_numbers, "既定はページ番号あり");
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_accepts_alignment_without_page_numbers() {
+    let style = TocStyle {
+      alignment: BlockAlignment::Center,
+      show_page_numbers: false,
+      ..TocStyle::default()
+    };
+    assert!(style.validate().is_ok());
   }
 
   #[test]

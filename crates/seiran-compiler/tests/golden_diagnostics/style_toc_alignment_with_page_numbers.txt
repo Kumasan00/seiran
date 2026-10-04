@@ -1,7 +1,5 @@
-style::validation::toc_alignment_with_page_numbers
+style::validation::field
 
-  × diagnostics/style.toml: [toc].alignment が "left" 以外のときは [toc].show_page_numbers = false
-  │ が必要です
-  help: ページ番号を出す目次の行は版面の右端まで伸びるため、揃えを変えても出力は変わりません。揃え
-        を使うなら show_page_numbers = false にし、ページ番号を出すなら alignment を外してくださ
-        い。
+  × diagnostics/style.toml: 'toc.alignment': "left" 以外の揃えには show_page_numbers = false が必
+  │ 要です（ページ番号を出す目次の行は版面の右端まで伸びるため、揃えを変えても出力は変わりません）
+  help: style.toml の該当フィールドの値を確認してください。
