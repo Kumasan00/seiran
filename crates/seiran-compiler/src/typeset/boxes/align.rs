@@ -1,12 +1,11 @@
 //! 水平方向の揃え [`Align`]。
 
-use crate::length::Length;
+use crate::{length::Length, style::TextAlignment};
 
-/// 段落・行の水平方向の揃え。
+/// ブロック（画像・表・数式）と数式セルの水平方向の揃え。段落の行は [`TextAlignment`] から変換して使う。
 ///
-/// 揃えは行折り返しには影響せず（折り返しは常に利用可能幅で行う）、確定した各行を
-/// 利用可能幅の中で水平にシフトするだけ。行が利用可能幅を超える場合のシフト量は
-/// 0 にクランプされる（行頭が本文左端より左へはみ出さない）。
+/// 揃えは確定した内容を利用可能幅の中で水平にシフトするだけ。内容が利用可能幅を超える場合のシフト量は
+/// 0 にクランプされる（左端より左へはみ出さない）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::typeset) enum Align {
   /// 左揃え（ragged-right）
@@ -29,10 +28,21 @@ impl Align {
   }
 }
 
+/// 段落の揃えから、確定した行を寄せる向きを取り出す（両端揃えの行は左端から組む）。
+impl From<TextAlignment> for Align {
+  fn from(alignment: TextAlignment) -> Self {
+    return match alignment {
+      TextAlignment::Justify | TextAlignment::Left => Align::Left,
+      TextAlignment::Center => Align::Center,
+      TextAlignment::Right => Align::Right,
+    };
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::Align;
-  use crate::length::Length;
+  use crate::{length::Length, style::TextAlignment};
 
   #[test]
   fn offset_left_is_always_zero() {
@@ -53,5 +63,13 @@ mod tests {
   fn offset_clamps_to_zero_when_content_overflows() {
     assert_eq!(Align::Center.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
     assert_eq!(Align::Right.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
+  }
+
+  #[test]
+  fn from_text_alignment_starts_justified_lines_at_left() {
+    assert_eq!(Align::from(TextAlignment::Justify), Align::Left);
+    assert_eq!(Align::from(TextAlignment::Left), Align::Left);
+    assert_eq!(Align::from(TextAlignment::Center), Align::Center);
+    assert_eq!(Align::from(TextAlignment::Right), Align::Right);
   }
 }
