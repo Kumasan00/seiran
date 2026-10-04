@@ -128,6 +128,7 @@ margin_right = "85pt"          # 右余白（既定 85pt）
 [text]
 font_size = "12pt"             # 本文フォントサイズ
 line_height_factor = 1.05      # 行間係数（> 0）
+# alignment = "justify"        # 段落の揃え: "justify"（既定） / "left" / "center" / "right"
 
 [heading.part]                 # 見出しレベルは part / chapter / section /
 format = "第{number}部 {title}" # subsection / paragraph / subparagraph の 6 種
@@ -143,6 +144,7 @@ bottom_margin = "15pt"
 format = "{number} {title}"
 font_size = "20pt"
 bottom_margin = "10pt"
+# alignment = "center"         # 見出し行の揃え（未指定なら [text].alignment に従う）
 ```
 
 ### 参照定義（`config/references.toml` または `.json`）
