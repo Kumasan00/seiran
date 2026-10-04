@@ -10,14 +10,14 @@ use crate::{
   typeset::boxes::{AnchorId, Page},
 };
 
-/// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
+/// 物理ページ序数（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
 /// 連結する前の区画内）における位置を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct PageIndex(usize);
+pub(super) struct PageOrdinal(usize);
 
-impl PageIndex {
-  /// 0 始まりの物理 index から構築する。
-  pub(super) fn new(index: usize) -> Self { return PageIndex(index); }
+impl PageOrdinal {
+  /// 0 始まりの物理序数から構築する。
+  pub(super) fn new(ordinal: usize) -> Self { return PageOrdinal(ordinal); }
 
   /// 内側の `usize` を返す。
   pub(super) fn get(self) -> usize { return self.0; }
@@ -28,9 +28,9 @@ impl PageIndex {
 struct PageValue(u32);
 
 impl PageValue {
-  /// 0 始まりの物理 index から 1 始まりの論理値を作る。
-  fn from_index(index: PageIndex) -> Self {
-    return PageValue(u32::try_from(index.get()).expect("ページ数は u32 に収まる前提") + 1);
+  /// 0 始まりの物理序数から 1 始まりの論理値を作る。
+  fn from_ordinal(ordinal: PageOrdinal) -> Self {
+    return PageValue(u32::try_from(ordinal.get()).expect("ページ数は u32 に収まる前提") + 1);
   }
 
   /// 総ページ数をそのまま論理値にする。
@@ -44,8 +44,8 @@ impl PageValue {
 
 /// 本文ページ分割後に確定する、目次生成用の値。
 pub(super) struct BodyPageValues {
-  /// 見出し → 本文内ページ index（文書順）
-  heading_pages: Vec<PageIndex>,
+  /// 見出し → 本文内ページ序数（文書順）
+  heading_pages: Vec<PageOrdinal>,
   /// 本文ページの総数
   body_page_count: usize,
   /// ページ番号のスタイル設定
@@ -59,7 +59,7 @@ impl BodyPageValues {
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
         if matches!(anchor.id, AnchorId::Heading(_)) {
-          heading_pages.push(PageIndex::new(page_index));
+          heading_pages.push(PageOrdinal::new(page_index));
         }
       }
     }
@@ -70,8 +70,8 @@ impl BodyPageValues {
     };
   }
 
-  /// 見出し → 本文内ページ index の列（文書順）を返す。
-  pub(super) fn heading_pages(&self) -> &[PageIndex] { return &self.heading_pages; }
+  /// 見出し → 本文内ページ序数の列（文書順）を返す。
+  pub(super) fn heading_pages(&self) -> &[PageOrdinal] { return &self.heading_pages; }
 
   /// 索引ページを本文領域の通し番号へ加算する。
   pub(super) fn with_back_matter(mut self, back_pages: &[Page]) -> Self {
@@ -79,9 +79,9 @@ impl BodyPageValues {
     return self;
   }
 
-  /// 本文内ページ index を本文の番号スタイルでレンダリングする。
-  pub(super) fn body_page_label(&self, body_page_index: PageIndex) -> String {
-    return self.numbering.body.render(PageValue::from_index(body_page_index).get());
+  /// 本文内ページ序数を本文の番号スタイルでレンダリングする。
+  pub(super) fn body_page_label(&self, body_page_ordinal: PageOrdinal) -> String {
+    return self.numbering.body.render(PageValue::from_ordinal(body_page_ordinal).get());
   }
 
   /// 物理ページ順の `({page}, {pages})` ラベル列を確定する。
@@ -93,14 +93,14 @@ impl BodyPageValues {
     let total = front_count + body_count;
     let mut labels = Vec::with_capacity(total);
     for raw_index in 0..total {
-      let index = PageIndex::new(raw_index);
+      let ordinal = PageOrdinal::new(raw_index);
       if raw_index < front_count {
-        let page = self.numbering.front_matter.render(PageValue::from_index(index).get());
+        let page = self.numbering.front_matter.render(PageValue::from_ordinal(ordinal).get());
         let pages = self.numbering.front_matter.render(PageValue::from_count(front_count).get());
         labels.push((page, pages));
       } else {
-        let body_index = PageIndex::new(raw_index - front_count);
-        let page = self.numbering.body.render(PageValue::from_index(body_index).get());
+        let body_ordinal = PageOrdinal::new(raw_index - front_count);
+        let page = self.numbering.body.render(PageValue::from_ordinal(body_ordinal).get());
         let pages = self.numbering.body.render(PageValue::from_count(body_count).get());
         labels.push((page, pages));
       }
@@ -132,7 +132,7 @@ impl PageLabels {
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, PageIndex};
+  use super::{BodyPageValues, PageOrdinal};
   use crate::{
     length::Length,
     semantics::{HeadingKey, LabelId},
@@ -174,14 +174,14 @@ mod tests {
       ]),
     ];
     let page_values = BodyPageValues::from_body_pages(&pages, &PageNumberingStyle::default());
-    assert_eq!(page_values.heading_pages(), &[PageIndex::new(0), PageIndex::new(1)]);
+    assert_eq!(page_values.heading_pages(), &[PageOrdinal::new(0), PageOrdinal::new(1)]);
   }
 
   #[test]
   fn body_page_label_renders_with_body_style() {
     // 既定は前付け=ローマ小文字 / 本文=算用数字
     let page_values = BodyPageValues::from_body_pages(&[], &PageNumberingStyle::default());
-    let label = page_values.body_page_label(PageIndex::new(0));
+    let label = page_values.body_page_label(PageOrdinal::new(0));
     assert_eq!(label, "1");
   }
 

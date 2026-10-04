@@ -22,7 +22,7 @@ use crate::{
     lowering::TextStyle,
     pagination::{
       context::{BodyPageFacts, TypesetContext},
-      page_values::{BodyPageValues, PageIndex},
+      page_values::{BodyPageValues, PageOrdinal},
     },
   },
 };
@@ -105,7 +105,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
           .into_iter()
           .map(|page_index| {
             return IndexPageRef {
-              label: body_page_values.body_page_label(PageIndex::new(page_index)),
+              label: body_page_values.body_page_label(PageOrdinal::new(page_index)),
               link_key: page_index,
             };
           })
