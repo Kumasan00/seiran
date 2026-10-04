@@ -91,6 +91,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "index",
   "index_groups",
   "index_ranges",
+  "index_right",
   "index_split",
   "itemize",
   "justify",

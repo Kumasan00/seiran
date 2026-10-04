@@ -16,7 +16,7 @@ use crate::{
   length::Length,
   style::Style,
   typeset::{
-    boxes::{AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
+    boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
     font::FontSystem,
     lowering::TextStyle,
@@ -68,7 +68,7 @@ pub(super) fn build_index_blocks(
   facts: &BodyPageFacts,
 ) -> Vec<Block> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
-  let spec = build_index_spec(ctx.style);
+  let spec = build_index_spec(ctx.style, ctx.geometry.back_column_width());
   return compose_blocks(&spec, &entries, ctx.fonts);
 }
 
@@ -126,12 +126,18 @@ struct IndexSpec {
   title_style: TextStyle,
   /// タイトルとエントリ群の間の縦アキ
   title_bottom_margin: Length,
+  /// タイトル行の揃え
+  title_align: Align,
   /// エントリの語部分の書体
   entry_style: TextStyle,
   /// ページ番号部分の書体（既存の参照リンク色を反映済み）
   page_number_style: TextStyle,
   /// 語とページ番号列の間の水平アキ
   entry_gap: Length,
+  /// エントリ行と区分見出し行の揃え
+  entry_align: Align,
+  /// 行を寄せる基準の幅（後付けの 1 段の幅）
+  column_width: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
   line_height_factor: f32,
   /// 索引ブロック全体の下余白
@@ -150,8 +156,8 @@ struct IndexSpec {
   group_other_label: String,
 }
 
-/// スタイルから索引生成用の [`IndexSpec`] を組み立てる。
-fn build_index_spec(style: &Style) -> IndexSpec {
+/// スタイルと後付けの 1 段の幅から索引生成用の [`IndexSpec`] を組み立てる。
+fn build_index_spec(style: &Style, column_width: Length) -> IndexSpec {
   let index = &style.index;
   return IndexSpec {
     title: index.title.clone(),
@@ -161,6 +167,7 @@ fn build_index_spec(style: &Style) -> IndexSpec {
       color: None,
     },
     title_bottom_margin: index.title_bottom_margin,
+    title_align: Align::from(index.title_alignment),
     entry_style: TextStyle {
       font_size: index.font_size,
       typeface: Typeface::Serif,
@@ -172,6 +179,8 @@ fn build_index_spec(style: &Style) -> IndexSpec {
       color: style.hyperref.link_color,
     },
     entry_gap: index.entry_gap,
+    entry_align: Align::from(index.alignment),
+    column_width,
     line_height_factor: style.text.line_height_factor,
     bottom_margin: index.bottom_margin,
     collapse_page_ranges: index.collapse_page_ranges,
@@ -196,8 +205,10 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], fonts: &FontSystem<'
   let mut shaper = Shaper::new(fonts);
   let mut blocks: Vec<Block> = Vec::new();
 
+  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
+  title.shift_x(spec.title_align.offset(spec.column_width, title.width()));
   blocks.push(Block::ComposedLine {
-    line: compose_left_line(&mut shaper, &spec.title, spec.title_style),
+    line: title,
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
   if spec.title_bottom_margin.is_positive() {
@@ -244,8 +255,10 @@ fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &I
     IndexGroupLabel::Fixed(label) => label,
     IndexGroupLabel::Other => spec.group_other_label.as_str(),
   };
+  let mut line = compose_left_line(shaper, text, spec.group_style);
+  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
   blocks.push(Block::ComposedLine {
-    line: compose_left_line(shaper, text, spec.group_style),
+    line,
     leading: spec.group_style.font_size * spec.line_height_factor,
   });
   blocks.push(Block::Penalty {
@@ -307,7 +320,7 @@ fn group_page_items(pages: &[IndexPageRef], collapse: bool) -> Vec<IndexPageItem
   return items;
 }
 
-/// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組む
+/// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組み、`entry_align` で寄せる
 fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) -> Line {
   let mut acc = LineAccum::default();
   let mut links = Vec::new();
@@ -336,17 +349,20 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEn
     });
   }
 
-  return acc.into_line(links);
+  let mut line = acc.into_line(links);
+  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
+  return line;
 }
 
 #[cfg(test)]
 mod tests {
   use super::{IndexPageItem, IndexPageRef, build_index_spec, collect_index_entries, group_page_items};
   use crate::{
+    document::TextAlignment,
     length::Length,
-    style::{PageNumberingStyle, Style},
+    style::{BlockAlignment, PageNumberingStyle, Style},
     typeset::{
-      boxes::{AnchorId, IndexTerm, Page},
+      boxes::{Align, AnchorId, IndexTerm, Page},
       pagination::page_values::BodyPageValues,
     },
   };
@@ -424,13 +440,37 @@ mod tests {
     style.index.group_bottom_margin = Length::pt(3.0);
     style.index.group_other_label = "その他".to_string();
 
-    let spec = build_index_spec(&style);
+    let spec = build_index_spec(&style, Length::pt(200.0));
 
     assert!(spec.group_headings);
     assert_eq!(spec.group_style.font_size, Length::pt(14.0));
     assert_eq!(spec.group_top_margin, Length::pt(9.0));
     assert_eq!(spec.group_bottom_margin, Length::pt(3.0));
     assert_eq!(spec.group_other_label, "その他");
+  }
+
+  #[test]
+  fn build_index_spec_projects_alignments_and_column_width() {
+    let mut style = Style::default();
+    style.index.alignment = BlockAlignment::Right;
+    style.index.title_alignment = BlockAlignment::Center;
+
+    let spec = build_index_spec(&style, Length::pt(180.0));
+
+    assert_eq!(spec.entry_align, Align::Right);
+    assert_eq!(spec.title_align, Align::Center);
+    assert_eq!(spec.column_width, Length::pt(180.0));
+  }
+
+  #[test]
+  fn build_index_spec_alignments_do_not_follow_text() {
+    let mut style = Style::default();
+    style.text.alignment = TextAlignment::Center;
+
+    let spec = build_index_spec(&style, Length::pt(180.0));
+
+    assert_eq!(spec.entry_align, Align::Left);
+    assert_eq!(spec.title_align, Align::Left);
   }
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ

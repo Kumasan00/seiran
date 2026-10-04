@@ -234,6 +234,12 @@ impl PreparedGeometry {
   /// 後付け（索引）のページジオメトリを返す。
   #[must_use]
   pub(super) fn back_geometry(&self) -> &PageGeometry { return &self.back_geometry; }
+
+  /// 後付け（索引）の 1 段あたりの幅を返す（`break_pages` が後付けの段を組む幅と同じ式）。
+  #[must_use]
+  pub(super) fn back_column_width(&self) -> Length {
+    return column_width(self.text_width, self.back_geometry.num_columns, self.back_geometry.column_gap);
+  }
 }
 
 /// 本文・前付け・後付けのページジオメトリを組み立てる。

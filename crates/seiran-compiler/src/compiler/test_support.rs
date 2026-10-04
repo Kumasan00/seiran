@@ -410,6 +410,14 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
     },
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     "index_groups" => set(table, "index", "group_headings", true),
+    // 区分見出しありの 2 段組み索引で、エントリと区分見出しを右、題目を中央に寄せた版面。本文高を約 62mm に縮めて
+    // 索引を 2 段目まで流す（各段の右端が基準になることを 2 段とも確かめる）
+    "index_right" => {
+      set(table, "index", "group_headings", true);
+      set(table, "index", "alignment", "right");
+      set(table, "index", "title_alignment", "center");
+      set_page_margins(table, "85mm", "390mm");
+    },
     "hyphenation" => {
       set(table, "page", "margin_left", "275mm");
       set(table, "page", "margin_right", "275mm");
