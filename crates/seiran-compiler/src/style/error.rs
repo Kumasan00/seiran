@@ -74,4 +74,17 @@ pub(crate) enum StyleValidationError {
     /// 見つからなかったパス
     path: String,
   },
+
+  /// `[toc].alignment` を `"left"` 以外にしたまま `[toc].show_page_numbers = true` にしている。
+  ///
+  /// ページ番号を出す目次の行は内容によらず版面の右端まで伸びるので、揃えはどの内容に対しても出力を変えない。
+  #[error("[toc].alignment が \"left\" 以外のときは [toc].show_page_numbers = false が必要です")]
+  #[diagnostic(
+    code(style::validation::toc_alignment_with_page_numbers),
+    help(
+      "ページ番号を出す目次の行は版面の右端まで伸びるため、揃えを変えても出力は変わりません。揃えを使うなら \
+       show_page_numbers = false にし、ページ番号を出すなら alignment を外してください。"
+    )
+  )]
+  TocAlignmentWithPageNumbers,
 }
