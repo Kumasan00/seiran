@@ -4,7 +4,7 @@ use crate::{
   document::{HirFigure, NodeId},
   typeset::lowering::{
     LoweringContext, LoweringState,
-    float::{FloatCaption, FloatSpec, lower_numbered_float},
+    float::{FloatCaption, FloatMargins, lower_numbered_float},
     layout_node::LayoutNode,
   },
 };
@@ -25,17 +25,17 @@ pub(super) fn lower_figure(
     None
   };
 
-  let spec = FloatSpec {
-    top_margin: style.top_margin,
-    bottom_margin: style.bottom_margin,
-    inner_margin: style.inner_margin,
+  let margins = FloatMargins {
+    top: style.top_margin,
+    bottom: style.bottom_margin,
+    inner: style.inner_margin,
   };
   let caption = FloatCaption {
     style: &style.caption,
     inlines: figure.caption.as_deref(),
     position: figure.caption_position,
   };
-  return lower_numbered_float(ctx, id, caption, &spec, state, |_state| {
+  return lower_numbered_float(ctx, id, caption, &margins, state, |_state| {
     // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
     return LayoutNode::Image {
       path: figure.image_path.clone(),

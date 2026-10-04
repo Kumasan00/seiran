@@ -6,7 +6,7 @@ use crate::{
     boxes::TableColumn,
     lowering::{
       LoweringContext, LoweringState,
-      float::{FloatCaption, FloatSpec, lower_numbered_float},
+      float::{FloatCaption, FloatMargins, lower_numbered_float},
       inline::lower_inlines,
       layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
     },
@@ -57,17 +57,17 @@ pub(super) fn lower_table(
     color: None,
   };
 
-  let spec = FloatSpec {
-    top_margin: style.top_margin,
-    bottom_margin: style.bottom_margin,
-    inner_margin: style.inner_margin,
+  let margins = FloatMargins {
+    top: style.top_margin,
+    bottom: style.bottom_margin,
+    inner: style.inner_margin,
   };
   let caption = FloatCaption {
     style: &style.caption,
     inlines: table.caption.as_deref(),
     position: table.caption_position,
   };
-  return lower_numbered_float(ctx, id, caption, &spec, state, |state| {
+  return lower_numbered_float(ctx, id, caption, &margins, state, |state| {
     return LayoutNode::Table(TableLayout {
       columns: table
         .columns
