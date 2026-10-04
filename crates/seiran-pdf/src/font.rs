@@ -7,6 +7,7 @@ use krilla::{
   text::{Font, GlyphId, KrillaGlyph, Tag},
 };
 use seiran_compiler::{FontType, Glyph, PublicationFont, PublicationResources};
+use strum::VariantArray;
 
 use crate::error::PdfRenderError;
 
@@ -21,11 +22,11 @@ impl KrillaFonts {
   ///
   /// # Panics
   ///
-  /// 構築経路は [`build_krilla_fonts`] 1 つで、そこが `FontType::ALL` を全件構築するため
+  /// 構築経路は [`build_krilla_fonts`] 1 つで、そこが `FontType::VARIANTS` を全件構築するため
   /// 欠落は起こらない。
   pub(crate) fn font(&self, font_type: FontType) -> &Font {
     let Some(font) = self.fonts.get(&font_type) else {
-      unreachable!("build_krilla_fonts が FontType::ALL を全件構築する: {font_type:?} が欠落している");
+      unreachable!("build_krilla_fonts が FontType::VARIANTS を全件構築する: {font_type:?} が欠落している");
     };
     return font;
   }
@@ -33,15 +34,15 @@ impl KrillaFonts {
 
 /// 描画資源のフォントバイト列と構築設定から krilla フォント集合を構築する。
 ///
-/// [`FontType::ALL`] の宣言順で構築するので、複数フォントが不正でも返る [`PdfRenderError`] は
+/// [`FontType`] の宣言順で構築するので、複数フォントが不正でも返る [`PdfRenderError`] は
 /// 実行ごとに同じ。
 ///
 /// # Errors
 ///
 /// krilla がフォントを生成できなかった場合に [`PdfRenderError`] を返す。
 pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<KrillaFonts, PdfRenderError> {
-  let mut fonts = HashMap::with_capacity(FontType::ALL.len());
-  for &font_type in FontType::ALL {
+  let mut fonts = HashMap::with_capacity(FontType::VARIANTS.len());
+  for &font_type in FontType::VARIANTS {
     fonts.insert(font_type, build_krilla_font(font_type, resources.font(font_type))?);
   }
   return Ok(KrillaFonts { fonts });

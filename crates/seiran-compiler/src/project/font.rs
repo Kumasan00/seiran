@@ -18,6 +18,7 @@ use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub use settings::VariationAxis;
 pub(crate) use settings::{FontConfig, FontConfigs, FontFeature, TextDirection};
+use strum::VariantArray;
 use thiserror::Error;
 
 use crate::{
@@ -69,7 +70,7 @@ impl FontData {
   /// いずれかのファイルを読み込めない場合に [`ReadFontError`] をパス昇順で返す。
   pub(crate) fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<ReadFontError>> {
     let mut unique_paths: Vec<ProjectPath> =
-      FontType::ALL.iter().map(|&ft| return font_configs[ft].font_path.clone()).collect();
+      FontType::VARIANTS.iter().map(|&ft| return font_configs[ft].font_path.clone()).collect();
     unique_paths.sort();
     unique_paths.dedup();
 
@@ -77,7 +78,7 @@ impl FontData {
       .par_iter()
       .map(|path| {
         let bytes = source.read_bytes(path).map_err(|source| {
-          let font_type = FontType::ALL
+          let font_type = FontType::VARIANTS
             .iter()
             .find(|&&ft| return &font_configs[ft].font_path == path)
             .copied()
@@ -111,6 +112,7 @@ impl FontData {
 #[cfg(test)]
 mod tests {
   use miette::Diagnostic;
+  use strum::VariantArray;
 
   use super::{FontConfig, FontConfigs, FontData, FontType};
   use crate::project::{MemoryProjectSource, ProjectPath};
@@ -139,7 +141,7 @@ mod tests {
     let font_data = FontData::load(&source, &font_configs).expect("読み込めるはず");
 
     assert_eq!(source.read_count("/fonts/shared.ttf"), 1, "共有パスは 1 回しか読まれないはず");
-    for &font_type in FontType::ALL {
+    for &font_type in FontType::VARIANTS {
       assert_eq!(font_data.bytes(font_type), b"FAKE");
     }
   }
@@ -169,7 +171,7 @@ mod tests {
     let Err(failures) = result else {
       panic!("フォントの読込エラーを期待");
     };
-    assert_eq!(failures.first().font_type, FontType::ALL[0], "唯一のフォント種別が報告されるはず");
+    assert_eq!(failures.first().font_type, FontType::VARIANTS[0], "唯一のフォント種別が報告されるはず");
     assert!(
       failures.first().to_string().starts_with("serif のフォントファイル"),
       "種別は config.toml のキーで出るはず: {}",

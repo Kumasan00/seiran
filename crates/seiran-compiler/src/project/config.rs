@@ -474,6 +474,7 @@ mod tests {
   };
 
   use miette::Diagnostic;
+  use strum::VariantArray;
 
   use super::{
     ConfigValidationError, ConfigWarning, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load,
@@ -582,7 +583,7 @@ mod tests {
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     let font_paths = resolved.font_paths.expect("全フォントパスが解決できるはず");
     assert!(
-      FontType::ALL
+      FontType::VARIANTS
         .iter()
         .all(|&font_type| return font_paths[font_type] == ProjectPath::new("/project/fonts/dummy.ttf")),
       "表記が違っても正規化後は同じ ProjectPath のはず: {font_paths:?}"

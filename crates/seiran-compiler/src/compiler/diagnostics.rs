@@ -299,7 +299,7 @@ fn diagnostic_unsupported_image_format() {
 #[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
   // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる。
-  // 宣言は Japanese Serif → Serif の順だが、報告は `FontType::ALL` の順（Serif が先）になるはず
+  // 宣言は Japanese Serif → Serif の順だが、報告は `FontType` の宣言順（Serif が先）になるはず
   let project = TestProject::builder()
     .config_toml(|table| {
       set_unknown_variation_axis(table, "japanese_serif");

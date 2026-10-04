@@ -2,13 +2,15 @@
 
 use std::fmt::Write as _;
 
+use strum::VariantArray;
+
 use crate::project::FontType;
 
 /// 19 フォント種別すべての `[font_configs.<key>]` セクションを生成します。
 #[must_use]
 pub fn font_sections(font_path: &str) -> String {
   let mut out = String::new();
-  for &font_type in FontType::ALL {
+  for &font_type in FontType::VARIANTS {
     let key = font_type.as_toml_key();
     write!(out, "[font_configs.{key}]\nfont_path = \"{font_path}\"\n\n")
       .expect("`String` への `write!` は `fmt::Error` を返さない");
