@@ -17,7 +17,6 @@ use crate::{
 /// フォント種別の数（[`FontMap`] のスロット数）
 const SLOTS: usize = FontType::VARIANTS.len();
 
-// `FontType::VARIANTS` が宣言順（＝判別子の昇順）に並んでいることをコンパイル時に確かめる。
 // `FontMap` は判別子をそのまま配列の添字に使うので、ここが破れると別の種別の値を返してしまう。
 const _: () = {
   let mut index = 0;
