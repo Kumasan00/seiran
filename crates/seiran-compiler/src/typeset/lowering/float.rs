@@ -40,7 +40,7 @@ fn build_caption(
   return merge_adjacent_text(nodes);
 }
 
-/// フロート 1 件の上下と内側の余白
+/// フロート 1 件の上下の余白と、本体・キャプション間の余白
 pub(super) struct FloatMargins {
   /// フロート全体の上マージン（VBox の前に Vkern として出力）
   pub top: Length,
