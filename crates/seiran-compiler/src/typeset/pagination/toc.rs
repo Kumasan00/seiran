@@ -71,7 +71,7 @@ pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) 
   return blocks;
 }
 
-/// 見出しと本文内ページ index から目次エントリを組み立てる。
+/// 見出しと本文内ページ序数から目次エントリを組み立てる。
 ///
 /// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
 fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntry> {
