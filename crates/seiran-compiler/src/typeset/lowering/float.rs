@@ -2,7 +2,7 @@
 //!
 //! 採番されるフロート（図・表）の「カウンタ値 → 番号文字列 → 本体 → キャプション → 上下マージン付き
 //! `VBox` → ラベルアンカー」を [`lower_numbered_float`] 1 本に持ち、図と表は本体ノードの作り方と
-//! 体裁（[`FloatCaption`] / [`FloatSpec`]）だけを渡す。
+//! 体裁（[`FloatCaption`] / [`FloatMargins`]）だけを渡す。
 
 use crate::{
   document::{CaptionPosition, HirInline, NodeId},
@@ -40,39 +40,35 @@ fn build_caption(
   return merge_adjacent_text(nodes);
 }
 
-/// フロートの余白の指定
-#[expect(
-  clippy::struct_field_names,
-  reason = "全フィールドが余白（`*_margin`）で、postfix は種類ではなく長さの用途を表す"
-)]
-pub(super) struct FloatSpec {
+/// フロート 1 件の上下の余白と、本体・キャプション間の余白
+pub(super) struct FloatMargins {
   /// フロート全体の上マージン（VBox の前に Vkern として出力）
-  pub top_margin: Length,
+  pub top: Length,
   /// フロート全体の下マージン（VBox の `margin_bottom`）
-  pub bottom_margin: Length,
+  pub bottom: Length,
   /// 本体とキャプションの間に入れる余白（`Vkern` として出力）
-  pub inner_margin: Length,
+  pub inner: Length,
 }
 
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
 fn wrap_float(
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<InlineNode>)>,
-  spec: &FloatSpec,
+  margins: &FloatMargins,
 ) -> Vec<LayoutNode> {
   let mut children = Vec::new();
   match caption {
     Some((CaptionPosition::Top, caption_nodes)) => {
       children.extend(caption_nodes.into_iter().map(LayoutNode::from));
       children.push(LayoutNode::Vkern {
-        length: spec.inner_margin,
+        length: margins.inner,
       });
       children.push(main);
     },
     Some((CaptionPosition::Bottom, caption_nodes)) => {
       children.push(main);
       children.push(LayoutNode::Vkern {
-        length: spec.inner_margin,
+        length: margins.inner,
       });
       children.extend(caption_nodes.into_iter().map(LayoutNode::from));
     },
@@ -83,11 +79,11 @@ fn wrap_float(
 
   return vec![
     LayoutNode::Vkern {
-      length: spec.top_margin,
+      length: margins.top,
     },
     LayoutNode::VBox {
       children,
-      margin_bottom: spec.bottom_margin,
+      margin_bottom: margins.bottom,
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
       align: Align::Center,
@@ -116,7 +112,7 @@ pub(super) fn lower_numbered_float(
   ctx: &LoweringContext<'_>,
   id: NodeId,
   caption: FloatCaption<'_>,
-  spec: &FloatSpec,
+  margins: &FloatMargins,
   state: &mut LoweringState<'_>,
   build_body: impl FnOnce(&mut LoweringState<'_>) -> LayoutNode,
 ) -> Vec<LayoutNode> {
@@ -131,7 +127,7 @@ pub(super) fn lower_numbered_float(
     .inlines
     .map(|inlines| return (caption.position, build_caption(ctx, caption.style, inlines, &number, state)));
 
-  return with_label_anchors(label, wrap_float(body, caption_nodes, spec));
+  return with_label_anchors(label, wrap_float(body, caption_nodes, margins));
 }
 
 #[cfg(test)]
@@ -191,13 +187,13 @@ mod tests {
 
   #[test]
   fn wrap_float_top_orders_caption_inner_kern_then_main() {
-    let spec = FloatSpec {
-      top_margin: Length::pt(5.0),
-      bottom_margin: Length::pt(7.0),
-      inner_margin: Length::pt(3.0),
+    let margins = FloatMargins {
+      top: Length::pt(5.0),
+      bottom: Length::pt(7.0),
+      inner: Length::pt(3.0),
     };
 
-    let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
+    let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &margins);
 
     assert_eq!(nodes.len(), 2);
     assert_vkern(&nodes[0], 5.0);
@@ -220,13 +216,13 @@ mod tests {
 
   #[test]
   fn wrap_float_bottom_orders_main_inner_kern_then_caption() {
-    let spec = FloatSpec {
-      top_margin: Length::pt(5.0),
-      bottom_margin: Length::pt(7.0),
-      inner_margin: Length::pt(3.0),
+    let margins = FloatMargins {
+      top: Length::pt(5.0),
+      bottom: Length::pt(7.0),
+      inner: Length::pt(3.0),
     };
 
-    let nodes = wrap_float(main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &spec);
+    let nodes = wrap_float(main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &margins);
 
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
@@ -238,13 +234,13 @@ mod tests {
 
   #[test]
   fn wrap_float_without_caption_contains_only_main() {
-    let spec = FloatSpec {
-      top_margin: Length::pt(5.0),
-      bottom_margin: Length::pt(7.0),
-      inner_margin: Length::pt(3.0),
+    let margins = FloatMargins {
+      top: Length::pt(5.0),
+      bottom: Length::pt(7.0),
+      inner: Length::pt(3.0),
     };
 
-    let nodes = wrap_float(main_node(), None, &spec);
+    let nodes = wrap_float(main_node(), None, &margins);
 
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
