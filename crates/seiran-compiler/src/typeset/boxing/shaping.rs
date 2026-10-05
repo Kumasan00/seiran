@@ -39,6 +39,24 @@ fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
 )]
 fn design_units(value: f32) -> i64 { return value as i64; }
 
+/// グリフごとのクラスタ開始位置 `clusters`（グリフ順）から、各グリフが対応する元テキストの範囲を出す。
+///
+/// 範囲はグリフが属するクラスタ全体 — 開始位置から、それより後ろで始まるクラスタの最小の開始位置
+/// （無ければ `text_len`）まで。グリフ順に依存しないので右から左（クラスタ降順）でも範囲は逆転しない。
+/// harfrust はクラスタ開始位置を文字の先頭バイトに置くので、範囲の両端は文字境界に乗る。
+fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
+  let mut starts = clusters.to_vec();
+  starts.sort_unstable();
+  starts.dedup();
+  return clusters
+    .iter()
+    .map(|&start| {
+      let end = starts.get(starts.partition_point(|&other| return other <= start)).copied().unwrap_or(text_len);
+      return start..end;
+    })
+    .collect();
+}
+
 /// シェーピング済みの 1 run — グリフ列と、そのフォントで確定した寸法
 #[derive(Debug)]
 pub(super) struct ShapedRun {
@@ -75,6 +93,14 @@ impl ShapedRun {
 
   /// シェーピング結果のグリフ列
   pub(super) fn glyphs(&self) -> &[Glyph] { return &self.run.glyphs; }
+
+  /// グリフ順が論理順（元テキストのバイト順）と一致するか
+  ///
+  /// 左から右・上から下ではクラスタ開始位置がグリフ順に非減少で並ぶ（harfrust の既定のクラスタレベル）。
+  /// 右から左では降順になる。
+  pub(super) fn is_in_logical_order(&self) -> bool {
+    return self.run.glyphs.windows(2).all(|pair| return pair[0].range.start <= pair[1].range.start);
+  }
 
   /// この run のフォントサイズ
   pub(super) fn font_size(&self) -> Length { return self.run.font_size; }
@@ -211,16 +237,18 @@ impl<'a> Shaper<'a> {
     let glyph_infos = self.buffer.glyph_infos();
     let glyph_positions = self.buffer.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
-    for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
-      let start = glyph_info.cluster as usize;
-      let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| return next_glyph_info.cluster as usize);
+    let clusters: Vec<usize> = glyph_infos.iter().map(|glyph_info| return glyph_info.cluster as usize).collect();
+    let ranges = cluster_ranges(&clusters, text.len());
+    for (i, ((glyph_info, glyph_position), range)) in
+      glyph_infos.iter().zip(glyph_positions.iter()).zip(ranges).enumerate()
+    {
       // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
       // 単独の量として取り出す経路は無いので、確定値をそのまま出す
       trace!(
         glyph_index = i,
         glyph_id = glyph_info.glyph_id,
-        range_start = start,
-        range_end = end,
+        range_start = range.start,
+        range_end = range.end,
         x_advance_units = glyph_position.x_advance,
         y_advance_units = glyph_position.y_advance,
         x_offset_units = glyph_position.x_offset,
@@ -229,7 +257,7 @@ impl<'a> Shaper<'a> {
       );
       glyphs.push(Glyph {
         gid: glyph_info.glyph_id,
-        range: start..end,
+        range,
         x_advance: glyph_position.x_advance,
         y_advance: glyph_position.y_advance,
         x_offset: glyph_position.x_offset,
@@ -261,7 +289,11 @@ impl<'a> Shaper<'a> {
 
 #[cfg(test)]
 mod tests {
-  use super::ShapedRun;
+  use std::{fs, ops::Range, path::Path};
+
+  use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
+
+  use super::{ShapedRun, cluster_ranges};
   use crate::{
     length::Length,
     project::FontType,
@@ -357,5 +389,98 @@ mod tests {
     assert_eq!(hbox.width, Length::pt(3.0), "幅は呼び出し側が渡した値のまま");
     assert_eq!(hbox.height, shaped.height(), "高さは親 run と同じ");
     assert_eq!(hbox.depth, shaped.depth(), "深さは親 run と同じ");
+  }
+
+  #[test]
+  fn logical_order_holds_only_for_non_decreasing_ranges() {
+    let ascending = ShapedRun::measure(ascii_run("abc"), METRICS);
+    let mut reversed = ascii_run("abc");
+    reversed.glyphs.reverse();
+    let reversed = ShapedRun::measure(reversed, METRICS);
+
+    assert!(ascending.is_in_logical_order(), "左から右のクラスタ昇順は論理順");
+    assert!(!reversed.is_in_logical_order(), "右から左のクラスタ降順は論理順ではない");
+  }
+
+  /// `vendor/fonts/<file_name>` を harfrust のフォントとして読む。
+  fn vendor_font(file_name: &str) -> Font {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts").join(file_name);
+    let bytes = fs::read(&path).expect("vendor/fonts のフォントを読めるはず（未取得なら tools/fetch-test-assets.sh）");
+    return Font::new(bytes, 0).expect("vendor/fonts のフォントは sfnt として読めるはず");
+  }
+
+  /// `text` を書字方向 `direction` でシェイプし、[`cluster_ranges`] でグリフごとの範囲を出す。
+  fn shaped_ranges(font: &Font, text: &str, direction: Direction) -> Vec<Range<usize>> {
+    let mut buffer = Buffer::new();
+    buffer.set_direction(direction);
+    buffer.push_str(text);
+    buffer.guess_segment_properties();
+    harfrust::shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new()).expect("シェイプは成功するはず");
+    let clusters: Vec<usize> = buffer.glyph_infos().iter().map(|info| return info.cluster as usize).collect();
+    return cluster_ranges(&clusters, text.len());
+  }
+
+  #[test]
+  fn cluster_ranges_keep_logical_ranges_for_right_to_left_order() {
+    assert_eq!(cluster_ranges(&[2, 1, 0], 3), vec![2..3, 1..2, 0..1], "表示順が降順でも範囲は逆転しない");
+  }
+
+  #[test]
+  fn cluster_ranges_give_every_glyph_of_a_cluster_the_whole_cluster() {
+    assert_eq!(cluster_ranges(&[0, 0, 5], 6), vec![0..5, 0..5, 5..6], "同じクラスタの 2 グリフは同じ範囲");
+    assert_eq!(cluster_ranges(&[5, 0, 0], 6), vec![5..6, 0..5, 0..5], "右から左でも同じクラスタは同じ範囲");
+  }
+
+  #[test]
+  fn cluster_ranges_of_a_many_to_one_cluster_span_all_its_chars() {
+    assert_eq!(
+      cluster_ranges(&[0, 6, 9], 12),
+      vec![0..6, 6..9, 9..12],
+      "2 文字を 1 グリフにしたクラスタは 2 文字ぶん"
+    );
+  }
+
+  #[test]
+  fn cluster_ranges_of_no_glyphs_is_empty() {
+    assert!(cluster_ranges(&[], 0).is_empty(), "グリフが無ければ範囲も無い");
+  }
+
+  #[test]
+  fn shaped_combining_marks_share_the_cluster_range_in_both_directions() {
+    let font = vendor_font("STIXTwoText[wght].ttf");
+    let text = "a\u{308}\u{301}b";
+
+    let left_to_right = shaped_ranges(&font, text, Direction::LeftToRight);
+    let right_to_left = shaped_ranges(&font, text, Direction::RightToLeft);
+
+    // STIX Two Text は a + U+0308 を合成済みの ä にし、U+0301 を別グリフで重ねる（2 グリフ・1 クラスタ）
+    assert_eq!(left_to_right, vec![0..5, 0..5, 5..6]);
+    assert_eq!(right_to_left, vec![5..6, 0..5, 0..5]);
+  }
+
+  #[test]
+  fn shaped_right_to_left_latin_keeps_one_char_per_glyph() {
+    let font = vendor_font("STIXTwoText[wght].ttf");
+
+    let ranges = shaped_ranges(&font, "abc", Direction::RightToLeft);
+
+    assert_eq!(ranges, vec![2..3, 1..2, 0..1], "表示順で c, b, a");
+  }
+
+  #[test]
+  fn shaped_composed_kana_covers_both_chars() {
+    let font = vendor_font("NotoSerifJP[wght].ttf");
+    let text = "か\u{3099}き」";
+
+    let ranges = shaped_ranges(&font, text, Direction::LeftToRight);
+
+    // Noto Serif JP は か + 結合濁点を 1 グリフ「が」に合成する（2 文字・1 グリフ）
+    assert_eq!(ranges, vec![0..6, 6..9, 9..12]);
+    assert!(
+      ranges
+        .iter()
+        .all(|range| return text.is_char_boundary(range.start) && text.is_char_boundary(range.end)),
+      "範囲の両端は文字境界に乗るはず"
+    );
   }
 }

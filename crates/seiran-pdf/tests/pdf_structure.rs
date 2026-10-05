@@ -6,11 +6,12 @@
 //! `seiran_compiler::compile` → [`seiran_pdf::render`] という本番の経路をそのまま通す。
 
 use std::{
+  collections::BTreeMap,
   fs,
   path::{Path, PathBuf},
 };
 
-use lopdf::{Document, Object, content::Content};
+use lopdf::{Document, Encoding, Object, content::Content};
 use seiran_compiler::{FilesystemProjectSource, ProjectPath};
 use tempfile::TempDir;
 
@@ -76,19 +77,125 @@ fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_with_backgrou
 
 /// 背景色の差分を style へ適用して PDF を生成する。
 fn build_pdf_bytes_with_background(name: &str, background: Option<&str>) -> Vec<u8> {
+  let dir = TempDir::new().expect("一時ディレクトリを作成できるはず");
+  let config_path = write_fixture_project(&dir, name, background);
+  return render_project(&config_path, name);
+}
+
+/// 本文 `body` 1 本を全フォント種別の書字方向 `direction` で組み、PDF を生成する。
+fn build_pdf_bytes_from_body(body: &str, direction: &str) -> Vec<u8> {
+  let dir = TempDir::new().expect("一時ディレクトリを作成できるはず");
+  let config_path = write_body_project(&dir, body, direction);
+  return render_project(&config_path, body);
+}
+
+/// 本番の経路（`compile` → `render`）でフルビルドし、PDF バイト列を返す。`label` は失敗時の表示用。
+fn render_project(config_path: &ProjectPath, label: &str) -> Vec<u8> {
   assert!(
     workspace_root().join("vendor/fonts").is_dir(),
     "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
-  let dir = TempDir::new().expect("一時ディレクトリを作成できるはず");
-  let config_path = write_fixture_project(&dir, name, background);
   #[expect(
     clippy::panic,
     reason = "失敗時に読みたいのは miette の整形出力（`into_report`）で、`expect` の Debug では代替できない"
   )]
-  let compilation = seiran_compiler::compile(&FilesystemProjectSource, &config_path, &workspace_root())
-    .unwrap_or_else(|failure| panic!("fixture {name} の compile は成功するはず: {:?}", failure.into_report()));
+  let compilation = seiran_compiler::compile(&FilesystemProjectSource, config_path, &workspace_root())
+    .unwrap_or_else(|failure| panic!("{label:?} の compile は成功するはず: {:?}", failure.into_report()));
   return seiran_pdf::render(&compilation.publication).expect("PDF の描画");
+}
+
+/// fixture の config / style を使い、本文を `body` 1 本に、全フォント種別の書字方向を `direction` に差し替える。
+///
+/// 戻り値は `compile` に渡す config.toml のパス（`TempDir` は呼び出し側が生存させる）。
+fn write_body_project(dir: &TempDir, body: &str, direction: &str) -> ProjectPath {
+  let fixture_dir = workspace_root().join("crates/seiran-compiler/tests/config");
+  let source_path = dir.path().join("body.sei");
+  fs::write(&source_path, body).expect("本文の書き出し");
+
+  let config_text = fs::read_to_string(fixture_dir.join("config.toml")).expect("fixture config.toml を読めるはず");
+  let config_text = replace_line(&config_text, "sources = ", &format!("sources = [\"{}\"]", source_path.display()));
+  let config_text = replace_line(
+    &config_text,
+    "style_path = ",
+    &format!("style_path = \"{}\"", fixture_dir.join("style.toml").display()),
+  );
+  let config_text = replace_line(&config_text, "direction = ", &format!("direction = \"{direction}\""));
+  let config_path = dir.path().join("config.toml");
+  fs::write(&config_path, config_text).expect("config.toml の書き出し");
+
+  return ProjectPath::new(&config_path);
+}
+
+/// `ActualText` を尊重してページ `page_number`（1 始まり）の文字列を取り出す。
+///
+/// `ActualText` の marked content（`/Span <</ActualText ...>> BDC` … `EMC`）の内側はグリフの `ToUnicode` を使わず
+/// `ActualText` を採る — `ActualText` に対応したビューアがコピーする文字列に相当する。krilla は複数グリフの
+/// クラスタを `ActualText` で包み、`ToUnicode` にはクラスタ先頭のグリフだけを載せる。
+fn extract_text_honoring_actual_text(document: &Document, page_number: u32) -> String {
+  let pages = document.get_pages();
+  let page_id = *pages.get(&page_number).expect("指定したページがあるはず");
+  let encodings: BTreeMap<Vec<u8>, Encoding<'_>> = document
+    .get_page_fonts(page_id)
+    .expect("ページのフォント辞書を読めるはず")
+    .into_iter()
+    .map(|(name, font)| {
+      return (name, font.get_font_encoding(document).expect("フォントのエンコーディングを読めるはず"));
+    })
+    .collect();
+  let content = Content::decode(&document.get_page_content(page_id)).expect("content stream のデコード");
+
+  let mut text = String::new();
+  let mut encoding = None;
+  // 開いている marked content ごとに、ActualText を持つかを積む
+  let mut marked_content: Vec<bool> = Vec::new();
+  for operation in &content.operations {
+    let in_actual_text = marked_content.contains(&true);
+    match operation.operator.as_str() {
+      "BDC" => {
+        let actual_text = operation
+          .operands
+          .get(1)
+          .and_then(|properties| return properties.as_dict().ok())
+          .and_then(|properties| return properties.get(b"ActualText").ok());
+        if let Some(actual_text) = actual_text
+          && !in_actual_text
+        {
+          text.push_str(&lopdf::decode_text_string(actual_text).expect("ActualText はテキスト文字列のはず"));
+        }
+        marked_content.push(actual_text.is_some());
+      },
+      "BMC" => marked_content.push(false),
+      "EMC" => {
+        marked_content.pop();
+      },
+      "Tf" => {
+        let name = operation.operands[0].as_name().expect("Tf の第 1 オペランドはフォント名");
+        encoding = encodings.get(name);
+      },
+      "Tj" | "TJ" if !in_actual_text => {
+        let encoding = encoding.expect("Tj / TJ の前に Tf があるはず");
+        let strings: Vec<&Object> = if operation.operator == "Tj" {
+          operation.operands.iter().collect()
+        } else {
+          operation.operands[0].as_array().expect("TJ のオペランドは配列").iter().collect()
+        };
+        for string in strings {
+          if let Object::String(bytes, _) = string {
+            text.push_str(&Document::decode_text(encoding, bytes).expect("ToUnicode でデコードできるはず"));
+          }
+        }
+      },
+      _ => {},
+    }
+  }
+  return text;
+}
+
+/// 空白を除いた文字を並べ替えて返す（文字の多重集合。表示順は書字方向で変わるので比べない）
+fn sorted_non_whitespace_chars(text: &str) -> Vec<char> {
+  let mut chars: Vec<char> = text.chars().filter(|character| return !character.is_whitespace()).collect();
+  chars.sort_unstable();
+  return chars;
 }
 
 /// 辞書オブジェクトの `/Type` または `/Subtype` を照合する。
@@ -226,4 +333,69 @@ fn pdf_structure_background_paints_before_body_content() {
   assert!(first_fill.is_some(), "背景の fill が content stream に現れるはず: {categories:?}");
   assert!(first_body.is_some(), "本文の描画（text/image）が現れるはず: {categories:?}");
   assert!(first_fill < first_body, "背景 fill は本文描画より前に来るはず: {categories:?}");
+}
+
+#[test]
+fn actual_text_extraction_reproduces_hyperref_text() {
+  // 抽出器自体の検証: ActualText を含まない既存 fixture で ToUnicode 経由の復元ができること
+  let bytes = build_pdf_bytes("hyperref");
+  let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
+
+  let extracted = extract_text_honoring_actual_text(&document, 1);
+
+  let stripped: String = extracted.chars().filter(|character| return !character.is_whitespace()).collect();
+  assert!(stripped.contains("はじめに"), "ToUnicode 経由で日本語テキストが復元されるはず: {stripped:?}");
+}
+
+#[test]
+fn pdf_text_keeps_each_char_of_combining_mark_clusters_once() {
+  let body = "x a\u{308}\u{301}b y";
+  let document = Document::load_mem(&build_pdf_bytes_from_body(body, "left-to-right")).expect("lopdf での PDF 読込");
+
+  let extracted = extract_text_honoring_actual_text(&document, 1);
+
+  assert_eq!(
+    sorted_non_whitespace_chars(&extracted),
+    sorted_non_whitespace_chars(body),
+    "結合文字のクラスタの文字は欠落も重複もしないはず: {extracted:?}"
+  );
+}
+
+#[test]
+fn pdf_text_keeps_each_char_of_right_to_left_runs_once() {
+  let body = "abc def a\u{308}\u{301}b";
+  let document = Document::load_mem(&build_pdf_bytes_from_body(body, "right-to-left")).expect("lopdf での PDF 読込");
+
+  let extracted = extract_text_honoring_actual_text(&document, 1);
+
+  assert_eq!(
+    sorted_non_whitespace_chars(&extracted),
+    sorted_non_whitespace_chars(body),
+    "右から左の run の文字は欠落も重複もしないはず: {extracted:?}"
+  );
+}
+
+#[test]
+fn pdf_text_keeps_each_char_of_reversed_runs_once() {
+  // 複数グリフのクラスタを含まない右から左の run は、krilla が /ReversedChars で包む経路を通る
+  let body = "abc def";
+  let document = Document::load_mem(&build_pdf_bytes_from_body(body, "right-to-left")).expect("lopdf での PDF 読込");
+
+  let extracted = extract_text_honoring_actual_text(&document, 1);
+
+  let (_, &page_id) = document.get_pages().iter().next().expect("少なくとも 1 ページあるはず");
+  let content = Content::decode(&document.get_page_content(page_id)).expect("content stream のデコード");
+  assert!(
+    content.operations.iter().any(|operation| {
+      return operation.operator == "BMC"
+        && operation.operands.first().and_then(|operand| return operand.as_name().ok())
+          == Some(b"ReversedChars".as_slice());
+    }),
+    "右から左の run は /ReversedChars で包まれるはず（テストが逆順の経路を通っていない）"
+  );
+  assert_eq!(
+    sorted_non_whitespace_chars(&extracted),
+    sorted_non_whitespace_chars(body),
+    "右から左の run の文字は欠落も重複もしないはず: {extracted:?}"
+  );
 }

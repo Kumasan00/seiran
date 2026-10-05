@@ -87,6 +87,11 @@ impl Measurer<'_> {
 
   /// シェーピング済みの run を分割可能位置で `HItem` 列に分割する
   fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut Vec<HItem>) {
+    // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）
+    if !run.is_in_logical_order() {
+      out.push(HItem::Box(run.into_hbox()));
+      return;
+    }
     // 約物境界は禁則で ICU 分割点に現れないため、break 駆動の下の経路では拾えない
     if is_japanese && self.punctuation_spacing {
       split_japanese_run(&run, out);
@@ -142,10 +147,17 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) {
   let char_of = |g: usize| -> char { return text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };
   // グリフ g が全角相当か（半角約物を積むフォントは正規化・アキ対象外にする）
   let is_fullwidth = |g: usize| -> bool { return run.advance_of(g) >= em * 0.75 };
-  // グリフ g の実効約物クラス（全角でない約物は通常文字として扱う）
+  // グリフ g が単独でクラスタを成すか（同じクラスタの複数グリフは同じ範囲を持つ）
+  let is_lone = |g: usize| -> bool {
+    let range = &glyphs[g].range;
+    return (g == 0 || glyphs[g - 1].range != *range)
+      && glyphs.get(g + 1).is_none_or(|next| return next.range != *range);
+  };
+  // グリフ g の実効約物クラス。全角の約物が単独グリフでクラスタを成すときだけ約物として扱う
+  // （約物の詰めはグリフ 1 つを差し替えるので、複数グリフのクラスタへ掛けると文字が重複する）
   let eff_class = |g: usize| -> yakumono::YakumonoClass {
     let class = yakumono::classify(char_of(g));
-    if class != yakumono::YakumonoClass::Normal && is_fullwidth(g) {
+    if class != yakumono::YakumonoClass::Normal && is_lone(g) && is_fullwidth(g) {
       return class;
     }
     return yakumono::YakumonoClass::Normal;
@@ -153,7 +165,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) {
   // グリフ g が単独 ASCII スペースか（欧文語間スペースと同じ扱いにする）
   let is_space = |g: usize| -> bool {
     let range = &glyphs[g].range;
-    return range.end - range.start == 1 && text.as_bytes()[range.start] == b' ';
+    return is_lone(g) && range.end - range.start == 1 && text.as_bytes()[range.start] == b' ';
   };
   let byte_at = |g: usize| -> usize { return glyphs.get(g).map_or(text.len(), |glyph| return glyph.range.start) };
 
@@ -166,7 +178,8 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) {
       continue;
     }
 
-    if i > 0 && !is_space(i - 1) {
+    // クラスタの途中（直前のグリフと同じクラスタ）には境界を置かない
+    if i > 0 && !is_space(i - 1) && glyphs[i - 1].range != glyphs[i].range {
       let breakable = break_bytes.contains(&byte_at(i));
       if let Some(glue) = boxing::boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
         push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out);
@@ -254,8 +267,11 @@ fn plan_cut(
         return None;
       }
       let space = &run.glyphs()[glyph_index - 1];
-      let is_single_space =
-        space.range.start == point.byte - 1 && space.range.end == point.byte && text.as_bytes()[point.byte - 1] == b' ';
+      // スペース 1 字が単独グリフでクラスタを成すときだけ切る（同じクラスタの複数グリフは同じ範囲を持つ）
+      let is_single_space = space.range.start == point.byte - 1
+        && space.range.end == point.byte
+        && text.as_bytes()[point.byte - 1] == b' '
+        && (glyph_index < 2 || run.glyphs()[glyph_index - 2].range != space.range);
       if !is_single_space {
         return None;
       }
@@ -311,7 +327,9 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-  use super::{ShapedRun, plan_cut};
+  use std::ops::Range;
+
+  use super::{ShapedRun, plan_cut, split_japanese_run};
   use crate::{
     length::Length,
     project::FontType,
@@ -473,5 +491,94 @@ mod tests {
     };
 
     assert!(plan_cut(&run, behind_cursor, 2, false, None).is_none(), "カーソル以前の位置は抑制");
+  }
+
+  #[test]
+  fn glue_cut_is_skipped_when_the_space_cluster_has_two_glyphs() {
+    // スペース 1 字（2..3）を 2 グリフで描くクラスタ。片方だけ前の箱へ残すと範囲が箱のテキストをはみ出す
+    let run = shaped_with_ranges(
+      "ab cd",
+      &[
+        (0..1, 500),
+        (1..2, 500),
+        (2..3, 250),
+        (2..3, 250),
+        (3..4, 500),
+        (4..5, 500),
+      ],
+    );
+    let point = BreakOpportunity {
+      byte: 3,
+      kind: BreakKind::Glue,
+    };
+
+    assert!(plan_cut(&run, point, 0, false, None).is_none(), "複数グリフのスペースクラスタでは分割しない");
+  }
+
+  /// グリフごとの（範囲, 送り幅）を指定して run を組む（同じ範囲を並べると複数グリフのクラスタになる）
+  fn shaped_with_ranges(text: &str, glyphs: &[(Range<usize>, i32)]) -> ShapedRun {
+    return ShapedRun::measure(
+      GlyphRun {
+        font_size: Length::pt(10.0),
+        text: text.to_string(),
+        glyphs: glyphs
+          .iter()
+          .map(|(range, x_advance)| {
+            return Glyph {
+              gid: 1,
+              range: range.clone(),
+              x_advance: *x_advance,
+              y_advance: 0,
+              x_offset: 0,
+              y_offset: 0,
+            };
+          })
+          .collect(),
+        font_type: FontType::JapaneseSerif,
+        color: None,
+      },
+      METRICS,
+    );
+  }
+
+  /// 分割で積んだ箱のテキストを順に返す（各グリフの範囲が箱のテキストに収まることも検査する）
+  fn box_texts(items: &[HItem]) -> Vec<String> {
+    return items
+      .iter()
+      .filter_map(|item| {
+        let HItem::Box(hbox) = item else {
+          return None;
+        };
+        let HBoxContent::Glyphs(run) = &hbox.content else {
+          return None;
+        };
+        for glyph in &run.glyphs {
+          assert!(
+            glyph.range.start < glyph.range.end && glyph.range.end <= run.text.len(),
+            "グリフ範囲 {:?} は箱のテキスト {:?} に収まるはず",
+            glyph.range,
+            run.text
+          );
+        }
+        return Some(run.text.clone());
+      })
+      .collect();
+  }
+
+  #[test]
+  fn japanese_split_keeps_a_multi_glyph_cluster_in_one_box() {
+    // 「」+ 異体字セレクタ」が 2 グリフで 1 クラスタを成す（2 グリフ目は送り幅 0）
+    let text = "あ」\u{FE00}い";
+    let run = shaped_with_ranges(text, &[(0..3, 1000), (3..9, 1000), (3..9, 0), (9..12, 1000)]);
+    let mut out = Vec::new();
+
+    split_japanese_run(&run, &mut out);
+
+    let texts = box_texts(&out);
+    assert_eq!(texts.concat(), text, "クラスタの文字は欠けも重複もせず箱へ配られるはず: {texts:?}");
+    assert!(
+      texts.iter().any(|box_text| return box_text.contains("」\u{FE00}")),
+      "クラスタは 1 つの箱に収まるはず: {texts:?}"
+    );
   }
 }
