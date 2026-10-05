@@ -417,6 +417,18 @@ fn diagnostic_style_validation_aggregate() {
 }
 
 #[test]
+fn diagnostic_style_toc_alignment_with_page_numbers() {
+  // show_page_numbers は既定 true のまま揃えだけを変える
+  let toml = "[toc]\nenabled = true\nalignment = \"center\"\n";
+
+  let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
+
+  assert_matches_golden("style_toc_alignment_with_page_numbers", &render_failure(CompileFailure::from(failures)));
+}
+
+#[test]
 fn diagnostic_style_parse_toml() {
   // 閉じ引用符の無い文字列（style.toml の TOML 構文エラー）
   let toml = "[page]\nmargin_top = \"10mm\n";

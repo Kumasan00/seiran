@@ -9,7 +9,8 @@ use serde::Deserialize;
 /// 行が利用可能幅を超えるときは寄せない。
 ///
 /// 従わないもの（種類ごとに揃えが決まっている）: 脚注本体・コードブロック（左）、図表・タイトルページ（中央）、
-/// 数式ブロック（`[math.block].alignment`）、表のセル（`columns`）、柱（`[header]` / `[footer]`）、目次・索引。
+/// 数式ブロック（`[math.block].alignment`）、表のセル（`columns`）、柱（`[header]` / `[footer]`）、
+/// 目次のエントリ行と索引（`[toc]` / `[index]` の 3 値の揃え）。目次の題目行は `[heading.section]` の揃えを通じて従う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TextAlignment {

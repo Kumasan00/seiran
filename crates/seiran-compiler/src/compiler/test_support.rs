@@ -400,8 +400,24 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "footer", "center", "{page}");
     },
     "toc" => set(table, "toc", "enabled", true),
+    // ページ番号なしの目次でエントリを中央、題目を節見出しの揃え（右）に寄せた版面。深さ 3 まで載せて字下げを出す
+    "toc_center" => {
+      set(table, "toc", "enabled", true);
+      set(table, "toc", "show_page_numbers", false);
+      set(table, "toc", "alignment", "center");
+      set(table, "toc", "max_depth", 4);
+      set_heading(table, "section", "alignment", "right");
+    },
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     "index_groups" => set(table, "index", "group_headings", true),
+    // 区分見出しありの 2 段組み索引で、エントリと区分見出しを右、題目を中央に寄せた版面。本文高を約 62mm に縮めて
+    // 索引を 2 段目まで流す（各段の右端が基準になることを 2 段とも確かめる）
+    "index_right" => {
+      set(table, "index", "group_headings", true);
+      set(table, "index", "alignment", "right");
+      set(table, "index", "title_alignment", "center");
+      set_page_margins(table, "85mm", "390mm");
+    },
     "hyphenation" => {
       set(table, "page", "margin_left", "275mm");
       set(table, "page", "margin_right", "275mm");

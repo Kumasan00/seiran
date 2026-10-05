@@ -114,7 +114,7 @@ pub(crate) struct HeadingStyle {
   pub page_break_after: bool,
   /// 見出しテキストの書体
   pub typeface: Typeface,
-  /// 見出し行の揃え。`None` は外側の縦リストの揃え（既定では `[text].alignment`）に従う
+  /// 見出し行の揃え。`None` は外側の縦リストの揃え（既定では `[text].alignment`）に従う。`section` の値は目次の題目行にも効く
   pub alignment: Option<TextAlignment>,
 }
 

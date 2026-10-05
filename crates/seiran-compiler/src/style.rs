@@ -4,6 +4,7 @@
 //! どちらか一方だけでは判定できない横断制約は [`crate::typeset::PreparedGeometry::prepare`] が持つ。
 //! CSL ファイル自体は読まず、`csl_path` / `locale_path` の解決と存在確認までで止める。
 
+mod block_alignment;
 mod caption;
 mod columns;
 mod counter;
@@ -41,11 +42,12 @@ pub(crate) use crate::style::error::ReadStyleError;
   )
 )]
 pub(crate) use crate::style::{
+  block_alignment::BlockAlignment,
   caption::CaptionStyle,
   counter::{CounterName, CounterStyles},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
-  math::{MathAlignment, MathScriptStyle, NumberSide},
+  math::{MathScriptStyle, NumberSide},
   number_style::NumberStyle,
   page_numbering::PageNumberingStyle,
   running::RunningContentStyle,
@@ -532,6 +534,20 @@ mod parse_tests {
   }
 
   #[test]
+  fn parse_fails_on_justify_toc_and_index_alignment() {
+    for toml in [
+      "[toc]\nalignment = \"justify\"\n",
+      "[index]\ntitle_alignment = \"justify\"\n",
+    ] {
+      let result = parse(toml, dummy_source());
+      assert!(
+        matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
+        "{toml}"
+      );
+    }
+  }
+
+  #[test]
   fn load_fails_on_nonexistent_path() {
     let path = std::path::PathBuf::from("/nonexistent/style.toml");
     let source = FilesystemProjectSource;
@@ -577,6 +593,35 @@ mod validate_tests {
         | StyleValidationError::LocaleFileNotFound { path, .. } => return path.as_str(),
       })
       .collect();
+  }
+
+  #[test]
+  fn parse_rejects_toc_alignment_with_page_numbers() {
+    // show_page_numbers は既定 true
+    let toml = "[toc]\nalignment = \"center\"\n";
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+    assert_eq!(paths(&errors), vec!["toc.alignment"]);
+    assert!(errors[0].to_string().contains("show_page_numbers = false"), "{errors:?}");
+  }
+
+  #[test]
+  fn parse_accepts_center_toc_alignment_without_page_numbers() {
+    // leader は既定 "." のまま（効かない leader の扱いは本検査の対象外）
+    let toml = "[toc]\nalignment = \"center\"\nshow_page_numbers = false\n";
+    assert!(parse(toml, dummy_source()).is_ok());
+  }
+
+  #[test]
+  fn parse_accepts_default_toc_alignment_with_page_numbers() {
+    assert!(parse("[toc]\nenabled = true\n", dummy_source()).is_ok());
+    assert!(parse("[toc]\nalignment = \"left\"\nshow_page_numbers = true\n", dummy_source()).is_ok());
+  }
+
+  #[test]
+  fn parse_reports_field_errors_and_toc_combination_together() {
+    let toml = "[text]\nfont_size = \"0pt\"\n\n[toc]\nalignment = \"right\"\n";
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+    assert_eq!(paths(&errors), vec!["text.font_size", "toc.alignment"]);
   }
 
   #[test]

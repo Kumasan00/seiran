@@ -1,0 +1,11 @@
+\section{Index Alignment}
+
+索引の揃えの組版確認用フィクスチャ。エントリ行と区分見出し行を右に、題目行を中央に寄せる。索引は 2 段組みで、
+寄せる基準は 1 段の幅になる。題目も 1 段目の中で中央に寄る。
+
+あさひ \index[reading=あさひ]{朝日}・いろは \index{いろは}・さくら \index{さくら}・たいよう \index[reading=たいよう]{太陽}・
+apple \index{apple}・Banana \index{Banana}・cherry \index{cherry}・記号始まり \index{!important}。
+
+\pagebreak
+
+2 ページ目にも あさひ \index[reading=あさひ]{朝日} と apple \index{apple} が出現する。
