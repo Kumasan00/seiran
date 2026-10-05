@@ -95,6 +95,14 @@ impl ShapedRun {
   /// シェーピング結果のグリフ列
   pub(super) fn glyphs(&self) -> &[Glyph] { return &self.run.glyphs; }
 
+  /// グリフ順が論理順（元テキストのバイト順）と一致するか
+  ///
+  /// 左から右・上から下ではクラスタ開始位置がグリフ順に非減少で並ぶ（harfrust の既定のクラスタレベル）。
+  /// 右から左では降順になる。
+  pub(super) fn is_in_logical_order(&self) -> bool {
+    return self.run.glyphs.windows(2).all(|pair| return pair[0].range.start <= pair[1].range.start);
+  }
+
   /// この run のフォントサイズ
   pub(super) fn font_size(&self) -> Length { return self.run.font_size; }
 
@@ -382,6 +390,17 @@ mod tests {
     assert_eq!(hbox.width, Length::pt(3.0), "幅は呼び出し側が渡した値のまま");
     assert_eq!(hbox.height, shaped.height(), "高さは親 run と同じ");
     assert_eq!(hbox.depth, shaped.depth(), "深さは親 run と同じ");
+  }
+
+  #[test]
+  fn logical_order_holds_only_for_non_decreasing_ranges() {
+    let ascending = ShapedRun::measure(ascii_run("abc"), METRICS);
+    let mut reversed = ascii_run("abc");
+    reversed.glyphs.reverse();
+    let reversed = ShapedRun::measure(reversed, METRICS);
+
+    assert!(ascending.is_in_logical_order(), "左から右のクラスタ昇順は論理順");
+    assert!(!reversed.is_in_logical_order(), "右から左のクラスタ降順は論理順ではない");
   }
 
   /// `vendor/fonts/<file_name>` を harfrust のフォントとして読む。
