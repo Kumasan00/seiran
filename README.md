@@ -111,6 +111,8 @@ features = [                   # OpenType フィーチャー（オプション�
 ]
 ```
 
+数式フォント（`[font_configs.math]`）には OpenType MATH テーブルを持つフォント（STIX Two Math / Latin Modern Math 等）が必要です。MATH テーブルを持たないフォントを指定すると、文書に数式が無くてもエラーになります。
+
 ### スタイル設定（`config/style.toml`）
 
 本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。キーの一覧と既定値は `crates/seiran-compiler/src/style.rs` と `style/` 配下の各構造体の doc コメントを参照してください。
