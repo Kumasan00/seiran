@@ -281,7 +281,6 @@ mod tests {
     style.toc.indent_per_level = Length::pt(7.0);
     style.toc.bottom_margin = Length::pt(3.0);
     style.toc.show_page_numbers = false;
-    style.toc.leader = None;
     style.text.line_height_factor = 1.5;
     style.heading.section.font_size = Length::pt(17.0);
     style.heading.section.bottom_margin = Length::pt(4.0);
@@ -300,7 +299,6 @@ mod tests {
     assert_eq!(spec.indent_per_level, Length::pt(7.0));
     assert_eq!(spec.bottom_margin, Length::pt(3.0));
     assert!(!spec.show_page_numbers);
-    assert!(spec.leader.is_none());
     assert_eq!(spec.text_width, Length::pt(333.0));
     assert!((spec.line_height_factor - 1.5).abs() < f32::EPSILON);
   }

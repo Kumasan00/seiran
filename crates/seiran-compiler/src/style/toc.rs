@@ -33,8 +33,9 @@ pub(crate) struct TocStyle {
   pub bottom_margin: Length,
   /// ページ番号を表示するか
   pub show_page_numbers: bool,
-  /// エントリ末尾とページ番号の間を埋めるリーダー文字列（`None` でリーダー無し）。
-  /// 指定した単位文字列を残り幅いっぱいに反復する（例: `"."`）
+  /// エントリ末尾とページ番号の間を埋めるリーダー文字列（`None` でリーダー無し。既定 `None`）。
+  /// 指定した単位文字列を残り幅いっぱいに反復する（例: `"."`）。指定は `show_page_numbers = true` のときだけ受理する
+  #[garde(inner(length(chars, min = 1)), custom(none_unless_page_numbers_shown(self.show_page_numbers)))]
   pub leader: Option<String>,
   /// エントリ行の揃え（版面幅の中で、階層字下げを含む自然幅を寄せる）。題目行は `[heading.section]` の揃えに従う。
   /// `"left"` 以外は `show_page_numbers = false` のときだけ受理する（ページ番号を出す行は右端まで伸びる）
@@ -52,7 +53,7 @@ impl Default for TocStyle {
       indent_per_level: Length::pt(12.0),
       bottom_margin: Length::pt(10.0),
       show_page_numbers: true,
-      leader: Some(".".to_string()),
+      leader: None,
       alignment: BlockAlignment::Left,
     };
   }
@@ -67,6 +68,20 @@ fn left_unless_page_numbers_hidden(show_page_numbers: bool) -> impl FnOnce(&Bloc
       return Err(garde::Error::new(
         "\"left\" 以外の揃えには show_page_numbers = false が必要です（ページ番号を出す目次の行は版面の右端まで伸びるため、\
          揃えを変えても出力は変わりません）",
+      ));
+    }
+    return Ok(());
+  };
+}
+
+/// `show_page_numbers` が `false` ならリーダーを `None` に限る検証器を返す。
+///
+/// リーダーはエントリ末尾とページ番号の間にだけ描くので、ページ番号を出さない目次ではどの内容に対しても出力を変えない。
+fn none_unless_page_numbers_shown(show_page_numbers: bool) -> impl FnOnce(&Option<String>, &()) -> garde::Result {
+  return move |leader, _ctx| {
+    if !show_page_numbers && leader.is_some() {
+      return Err(garde::Error::new(
+        "リーダーの指定には show_page_numbers = true が必要です（ページ番号を出さない目次ではリーダーは描かれません）",
       ));
     }
     return Ok(());
@@ -88,10 +103,10 @@ mod tests {
   use crate::style::BlockAlignment;
 
   #[test]
-  fn default_is_disabled_with_dot_leader() {
+  fn default_is_disabled_without_leader() {
     let style = TocStyle::default();
     assert!(!style.enabled);
-    assert_eq!(style.leader.as_deref(), Some("."));
+    assert!(style.leader.is_none());
   }
 
   #[test]
@@ -168,5 +183,43 @@ mod tests {
   fn alignment_rejects_justify_and_unknown_case() {
     assert!(toml::from_str::<TocStyle>("alignment = \"justify\"\n").is_err(), "1 行の目次に両端揃えは無い");
     assert!(toml::from_str::<TocStyle>("alignment = \"Center\"\n").is_err(), "綴りは小文字のみ");
+  }
+
+  #[test]
+  fn validate_rejects_empty_leader() {
+    let style = TocStyle {
+      leader: Some(String::new()),
+      ..TocStyle::default()
+    };
+    assert!(style.show_page_numbers, "既定はページ番号あり");
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_rejects_leader_without_page_numbers() {
+    let style = TocStyle {
+      leader: Some(".".to_string()),
+      show_page_numbers: false,
+      ..TocStyle::default()
+    };
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_accepts_leader_with_page_numbers() {
+    let style = TocStyle {
+      leader: Some(".".to_string()),
+      ..TocStyle::default()
+    };
+    assert!(style.validate().is_ok());
+  }
+
+  #[test]
+  fn validate_accepts_no_leader_without_page_numbers() {
+    let style = TocStyle {
+      show_page_numbers: false,
+      ..TocStyle::default()
+    };
+    assert!(style.validate().is_ok());
   }
 }
