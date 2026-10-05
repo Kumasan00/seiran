@@ -6,8 +6,8 @@ use serde::Deserialize;
 use crate::{
   color::Color,
   length::{Length, non_negative, positive},
+  project::{non_negative_finite, positive_finite},
   style::{NumberTemplate, number_style::NumberStyle},
-  validators::{non_negative_finite, positive_finite},
 };
 
 /// 脚注番号のリセット方式

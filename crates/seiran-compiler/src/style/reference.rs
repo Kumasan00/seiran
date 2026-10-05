@@ -5,8 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
-  project::ProjectPath,
-  validators::non_empty_text,
+  project::{ProjectPath, non_empty_text},
 };
 
 /// 参考文献セクションのスタイル設定

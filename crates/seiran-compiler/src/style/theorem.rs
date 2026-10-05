@@ -9,8 +9,8 @@ use strum::VariantArray;
 use crate::{
   document::{TheoremClass, Typeface},
   length::{Length, non_negative},
+  project::non_empty_text,
   style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
-  validators::non_empty_text,
 };
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。

@@ -5,8 +5,8 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
+  project::{non_negative_finite, positive_finite},
   style::{BlockAlignment, NumberTemplate},
-  validators::{non_negative_finite, positive_finite},
 };
 
 /// 数式設定全体（`[math]` テーブル）。

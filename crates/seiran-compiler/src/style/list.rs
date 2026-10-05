@@ -6,8 +6,8 @@ use serde::Deserialize;
 use crate::{
   document::Typeface,
   length::{Length, non_negative},
+  project::{non_empty_list, non_empty_text},
   style::{NumberTemplate, number_style::NumberStyle},
-  validators::{non_empty_list, non_empty_text},
 };
 
 /// リスト要素のスタイル設定

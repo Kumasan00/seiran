@@ -9,8 +9,8 @@ use thiserror::Error;
 
 use crate::{
   document::HeadingLevel,
+  project::non_empty_text,
   style::{CounterTemplate, RefTemplate, number_style::NumberStyle},
-  validators::non_empty_text,
 };
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。

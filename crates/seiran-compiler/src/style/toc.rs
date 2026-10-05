@@ -6,8 +6,8 @@ use serde::Deserialize;
 use crate::{
   document::HeadingLevel,
   length::{Length, non_negative, positive},
+  project::{in_range, non_empty_text},
   style::BlockAlignment,
-  validators::{in_range, non_empty_text},
 };
 
 /// 目次のスタイル設定

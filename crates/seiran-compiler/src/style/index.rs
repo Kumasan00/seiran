@@ -5,8 +5,8 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
+  project::{in_range, non_empty_text},
   style::BlockAlignment,
-  validators::{in_range, non_empty_text},
 };
 
 /// 巻末索引のスタイル設定

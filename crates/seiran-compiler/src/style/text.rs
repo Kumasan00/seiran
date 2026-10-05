@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::{
   document::{TextAlignment, Typeface},
   length::{Length, non_negative, positive},
-  validators::positive_finite,
+  project::positive_finite,
 };
 
 /// 本文段落のスタイル設定

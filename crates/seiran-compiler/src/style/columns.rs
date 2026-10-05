@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative},
-  validators::in_range,
+  project::in_range,
 };
 
 /// 段組みのスタイル設定

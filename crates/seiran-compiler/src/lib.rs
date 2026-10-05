@@ -21,7 +21,6 @@ mod semantics;
 mod source;
 mod style;
 mod typeset;
-mod validators;
 
 pub use color::{Color, ParseColorError};
 pub use compiler::{Compilation, CompileFailure, DependencyManifest, Warnings, compile};

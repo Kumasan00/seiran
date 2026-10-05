@@ -8,8 +8,7 @@ use strum::VariantArray;
 
 use crate::{
   length::{Length, positive},
-  project::{FontType, config::ConfigValidationError},
-  validators::in_range,
+  project::{FontType, config::ConfigValidationError, in_range},
 };
 
 /// TOML ファイル全体をデシリアライズした設定
