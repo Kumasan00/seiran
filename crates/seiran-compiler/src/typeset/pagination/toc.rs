@@ -136,7 +136,7 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
 
 /// 目次エントリ列を計測済みのブロック列に変換する
 #[must_use]
-fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem<'_>) -> Vec<Block> {
+fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }

@@ -72,7 +72,7 @@ fn fold_newlines(text: &str) -> Cow<'_, str> {
 /// [`build_blocks`] の入力 — 文書全体で固定の資源と設定。
 pub(super) struct BlockBuildInputs<'a> {
   /// シェイプ・メトリクス取得の窓口
-  pub(super) fonts: &'a FontSystem<'a>,
+  pub(super) fonts: &'a FontSystem,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
   /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅）
@@ -248,7 +248,7 @@ struct Measurer<'a> {
 impl<'a> Measurer<'a> {
   /// [`FontSystem`] とポリシーから新しい `Measurer` を生成する
   fn new(
-    fonts: &'a FontSystem<'a>,
+    fonts: &'a FontSystem,
     default_font_size: Length,
     line_height_factor: f32,
     hyphenation: Option<Lang>,

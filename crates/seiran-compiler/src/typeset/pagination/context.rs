@@ -16,7 +16,7 @@ pub(in crate::typeset) struct TypesetContext<'a> {
   /// 見た目の設定
   pub(super) style: &'a Style,
   /// シェイプ・メトリクス取得の窓口
-  pub(super) fonts: &'a FontSystem<'a>,
+  pub(super) fonts: &'a FontSystem,
   /// 入力読込で検証済みの版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）
   pub(super) geometry: &'a PreparedGeometry,
   /// 全段が使う行分割アルゴリズム（段落全体最適の Knuth–Plass）
@@ -29,7 +29,7 @@ impl<'a> TypesetContext<'a> {
     config: &'a ProjectConfig,
     style: &'a Style,
     geometry: &'a PreparedGeometry,
-    fonts: &'a FontSystem<'a>,
+    fonts: &'a FontSystem,
   ) -> Self {
     return Self {
       config,

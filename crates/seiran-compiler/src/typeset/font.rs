@@ -7,9 +7,13 @@ mod shaper;
 mod system;
 mod validation;
 
+use std::sync::Arc;
+
+use harfrust::Font;
 use read_fonts::{FontRef, TableProvider};
-pub(super) use shaper::UnicodeBuffer;
-pub(super) use system::{FontResources, FontSystem, FontSystemError};
+pub(super) use shaper::Buffer;
+use shaper::ShapingFonts;
+pub(super) use system::{FontSystem, FontSystemError};
 use thiserror::Error;
 pub(super) use validation::FontWarning;
 
@@ -59,28 +63,36 @@ pub(crate) enum FontLoadError {
 /// 全フォント種別の解析済み OpenType フォント参照。
 type FontRefs<'a> = FontMap<FontRef<'a>>;
 
-/// バイナリデータから設定されたフェースのフォント参照を生成する。
+/// バイナリデータから、設定されたフェースのフォント参照と、同じフェースのシェイピング用フォントを生成する。
+///
+/// フォント参照は解析の診断・メトリクス・検証に使い、シェイピング用フォントはバイト列を `FontData` と共有して持ち続ける。
 ///
 /// # Errors
 ///
 /// フォントを解析できない場合、または TTC のインデックスが範囲外の場合に
 /// [`FontLoadError::ParseFont`] を `FontType` の宣言順で返す。
-fn build_font_refs<'a>(
-  config: &'a FontConfigs,
+fn parse_fonts<'a>(
+  config: &FontConfigs,
   font_data: &'a FontData,
-) -> Result<FontRefs<'a>, Failures<FontLoadError>> {
-  return FontMap::par_try_from_fn(|font_type| {
-    let font_data = font_data.bytes(font_type);
+) -> Result<(FontRefs<'a>, ShapingFonts), Failures<FontLoadError>> {
+  let parsed = FontMap::par_try_from_fn(|font_type| {
     let font_config = &config[font_type];
     let index = font_config.font_index;
-    return FontRef::from_index(font_data, index).map_err(|source| {
+    let font_ref = FontRef::from_index(font_data.bytes(font_type), index).map_err(|source| {
       return FontLoadError::ParseFont {
         font_type,
         index,
         source,
       };
-    });
-  });
+    })?;
+    // `Arc<[u8]>` は既に unsized なので `dyn AsRef<[u8]>` へ直接は unsize できず、もう 1 段 `Arc` で包む
+    let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(font_data.shared_bytes(font_type));
+    let font = Font::new(blob, index).expect(
+      "直前の FontRef::from_index が同じバイト列・同じ index で成功しており、Font::new も同じ解析で sfnt と認める",
+    );
+    return Ok((font_ref, shaper::at_configured_location(font, font_config)));
+  })?;
+  return Ok(parsed.unzip());
 }
 
 /// 全フォントの `head` / `hhea` テーブルからメトリクスを取得する。

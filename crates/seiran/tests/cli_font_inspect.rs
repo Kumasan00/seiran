@@ -168,7 +168,7 @@ fn variation_axes_lists_axes_and_instances_of_a_variable_font() {
   let stdout = stdout_text(&output);
   assert!(
     stdout.starts_with(
-      "Axis: wght, Min: 100, Default: 400, Max: 900\nAxis: wdth, Min: 62.5, Default: 100, Max: 100\nThin: [100.0, 100.0]\n"
+      "Axis: wght, Min: 100, Default: 400, Max: 900\nAxis: wdth, Min: 62.5, Default: 100, Max: 100\nThin: [100, 100]\n"
     ),
     "軸 → インスタンスの順: {stdout}"
   );

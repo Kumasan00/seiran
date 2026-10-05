@@ -624,14 +624,14 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
   `pub(crate)` で、`compiler` 側の import は `#[cfg(test)]`
 - シェーピング結果 `GlyphRun` / `Glyph` は `publication` が所有する値型で、`typeset::boxing` が生成し
   `typeset::emit` がそのまま `PaintOp::DrawGlyphRun` へ渡す
-- フォント資源は `LaidOutDocument` に含めない — `compose` がフォントバイト列を借りて `FontResources` を組み、
+- フォント資源は `LaidOutDocument` に含めない — `compose` がフォントバイト列を共有する `FontSystem` を組み、
   確定レイアウトと**別の値**として組版と `emit` の両方へ貸す。借用期間は `compose` の中で閉じ、呼び出し元は
   資源の寿命を知らない
 
 #### `emit`
 
 組版の出口。`ProjectConfig`（用紙寸法・`show_bookmarks`・文書メタデータの出どころ）・`LaidOutDocument`・
-フォント資源（生バイト列 `FontData` と解析済み `FontResources` の 2 つ）を受け取り、描画資源の構築・確定座標の
+フォント資源（生バイト列 `FontData` と解析済み `FontSystem` の 2 つ）を受け取り、描画資源の構築・確定座標の
 `PaintOp` への写像・リンク到達先の解決を 1 操作に閉じる。`Style` に依存する判断は一切しない — 表のセル余白・
 罫線・ページ背景色は `breaking` が解決済みの値として `Page` / `PlacedBlock` に載せており、`emit` はそれを読むだけ。`ImageRef` は配列添字なので、画像は
 **パス昇順**に並べてから配列を組む。
@@ -652,13 +652,13 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontFaceConfig`）は `publication` の所有で、ここは
 `project::FontConfig` と OpenType テーブルからそれらを組み立てる側（`GlyphRun` は `boxing` が組む）。
 
-- **`FontResources`（所有）と `FontSystem`（借用ビュー）の 2 段**（1 つの構造体にまとめると自己参照になる）。
-  `FontResources::load` は検証済みの所有資源一式と検証で見つかった警告の組を返し（検証の違反で失敗しても
-  警告は返す。解析・メトリクス取得の失敗では空）、`compose` がそれを 1 度構築して組版と `emit` の両方へ
-  貸す（二重解析なし）。構築順序と寿命関係は `system` の `//!`
+- **`FontSystem::load` でシェイプ可能な資源一式を構築する**。シェーパーはフォントを所有し、
+  入力バイト列を `FontData` と共有する。メトリクスと描画用フェース設定も所有し、設定や入力の借用は残さない。
+  検証で見つかった警告は、検証・シェーパー初期化の失敗時も返す（解析・メトリクス取得の失敗では空）。
+  `compose` が 1 度構築して組版と `emit` の両方へ貸す。構築順序は `system` の `//!`
 - GSUB / GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく **severity(Warning) の
   `FontWarning`**（`code(typeset::font::script::*)`）として集め、`compose` の戻り値に載る
-- 3 型（`FontResources` / `FontSystem` / エラー型）は `typeset` 内に留める — フォント資源を保持するのは
+- `FontSystem` とエラー型は `typeset` 内に留める — フォント資源を保持するのは
   `compose` の内部だけで、`compiler` はこの型を名指ししないことが facade の狭さで保証される
 
 不変条件:
@@ -1090,7 +1090,7 @@ resolve_config_path（PathResolver を 1 回構築・config_path を解決）
   `Result<_, CompileFailure>` を返す
 - `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
   （出力形式か保存先が複数になった時点で改めて設計する）
-- フォント資源の構築を `compiler` 側へ引き上げる形へ戻さない — `FontResources` は `typeset::compose` の外へ
+- フォント資源の構築を `compiler` 側へ引き上げる形へ戻さない — `FontSystem` は `typeset::compose` の外へ
   一切出ず、本体ビルドで `compiler.rs` が `typeset` から名指しするのは入口 `compose` と成果物の型だけ
   （`LaidOutDocument` と `layout_for_test` は `#[cfg(test)]` の出口）
 
