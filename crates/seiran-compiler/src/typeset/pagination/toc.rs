@@ -91,7 +91,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
   return headings
     .iter()
     .zip(heading_pages.iter().copied())
-    .filter(|(info, _)| return u32::from(info.level.depth()) < toc.max_depth)
+    .filter(|(info, _)| return usize::from(info.level.depth()) < toc.max_depth)
     .map(|(info, page_ordinal)| {
       return TocEntry {
         level: info.level,

@@ -21,8 +21,8 @@ pub(crate) struct TocStyle {
   #[garde(custom(non_empty_text))]
   pub title: String,
   /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
-  #[garde(custom(in_range(1, 6)))]
-  pub max_depth: u32,
+  #[garde(custom(in_range(1, HeadingLevel::COUNT)))]
+  pub max_depth: usize,
   /// 目次エントリのフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -89,19 +89,12 @@ fn none_unless_page_numbers_shown(show_page_numbers: bool) -> impl FnOnce(&Optio
   };
 }
 
-/// `TocStyle::max_depth` の上限リテラル（`in_range(1, 6)`。`max_depth` は `u32`、`HeadingLevel::COUNT` は
-/// `usize` なので直接は渡せない）が `HeadingLevel::COUNT` と一致することの静的検査
-const _: () = assert!(
-  HeadingLevel::COUNT == 6,
-  "in_range の上限リテラル 6 と HeadingLevel::COUNT がずれている（HeadingLevel を増減したら上限も更新する）"
-);
-
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
   use super::TocStyle;
-  use crate::style::BlockAlignment;
+  use crate::{document::HeadingLevel, style::BlockAlignment};
 
   #[test]
   fn default_is_disabled_without_leader() {
@@ -139,9 +132,18 @@ mod tests {
   }
 
   #[test]
+  fn validate_accepts_max_depth_up_to_heading_level_count() {
+    let style = TocStyle {
+      max_depth: HeadingLevel::COUNT,
+      ..TocStyle::default()
+    };
+    assert!(style.validate().is_ok());
+  }
+
+  #[test]
   fn validate_rejects_too_large_max_depth() {
     let style = TocStyle {
-      max_depth: 7,
+      max_depth: HeadingLevel::COUNT + 1,
       ..TocStyle::default()
     };
     assert!(style.validate().is_err());
