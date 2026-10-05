@@ -399,7 +399,11 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "header", "right", "{page} / {pages}");
       set(table, "footer", "center", "{page}");
     },
-    "toc" => set(table, "toc", "enabled", true),
+    // 既定はリーダー無しなので、リーダーの充填を golden で見るためにドットを明示する
+    "toc" => {
+      set(table, "toc", "enabled", true);
+      set(table, "toc", "leader", ".");
+    },
     // ページ番号なしの目次でエントリを中央、題目を節見出しの揃え（右）に寄せた版面。深さ 3 まで載せて字下げを出す
     "toc_center" => {
       set(table, "toc", "enabled", true);

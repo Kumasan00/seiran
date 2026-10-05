@@ -274,14 +274,14 @@ mod tests {
 
   #[test]
   fn build_toc_spec_projects_style_fields() {
-    // すべて既定でない値を入れる（style.toml の差し替えだけで反映されること）
+    // leader 以外はすべて既定でない値を入れる（style.toml の差し替えだけで反映されること）。
+    // 既定でない leader は show_page_numbers = false と両立しないので build_toc_spec_projects_leader が見る
     let mut style = Style::default();
     style.toc.title = "もくじ".to_string();
     style.toc.font_size = Length::pt(11.0);
     style.toc.indent_per_level = Length::pt(7.0);
     style.toc.bottom_margin = Length::pt(3.0);
     style.toc.show_page_numbers = false;
-    style.toc.leader = None;
     style.text.line_height_factor = 1.5;
     style.heading.section.font_size = Length::pt(17.0);
     style.heading.section.bottom_margin = Length::pt(4.0);
@@ -300,9 +300,19 @@ mod tests {
     assert_eq!(spec.indent_per_level, Length::pt(7.0));
     assert_eq!(spec.bottom_margin, Length::pt(3.0));
     assert!(!spec.show_page_numbers);
-    assert!(spec.leader.is_none());
     assert_eq!(spec.text_width, Length::pt(333.0));
     assert!((spec.line_height_factor - 1.5).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn build_toc_spec_projects_leader() {
+    let mut style = Style::default();
+    style.toc.leader = Some("…".to_string());
+
+    let spec = build_toc_spec(&style, Length::pt(333.0));
+
+    assert!(spec.show_page_numbers);
+    assert_eq!(spec.leader.as_deref(), Some("…"));
   }
 
   #[test]

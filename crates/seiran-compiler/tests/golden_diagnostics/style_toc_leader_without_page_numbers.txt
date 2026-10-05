@@ -1,0 +1,5 @@
+style::validation::field
+
+  × diagnostics/style.toml: 'toc.leader': リーダーの指定には show_page_numbers = true が必要です
+  │ （ページ番号を出さない目次ではリーダーは描かれません）
+  help: style.toml の該当フィールドの値を確認してください。

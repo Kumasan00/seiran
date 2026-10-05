@@ -306,7 +306,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   `[math.block].alignment` と共有する 3 値 `BlockAlignment`（両端揃えは型に無い）。目次の題目行は `[toc]` にキーを持たず、
   解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う。`[toc].alignment` が `left` 以外 ×
   `show_page_numbers = true` は `alignment` の garde `custom` 検証で拒否する（ページ番号を出す行は右端まで伸び、揃えが効かない。
-  キーどうしの制約も専用の variant を作らず `Field` の診断に載せる）
+  キーどうしの制約も専用の variant を作らず `Field` の診断に載せる）。同じ基準（どの内容に対しても効かない組み合わせの拒否）で `[toc].leader` は既定 `None`（リーダー無し）とし、
+  `Some` × `show_page_numbers = false` を `leader` の garde `custom` で、空文字列を `inner(length)` で拒否する（リーダーはページ番号との
+  間にだけ描く）
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と

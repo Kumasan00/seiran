@@ -606,7 +606,7 @@ mod validate_tests {
 
   #[test]
   fn parse_accepts_center_toc_alignment_without_page_numbers() {
-    // leader は既定 "." のまま（効かない leader の扱いは本検査の対象外）
+    // leader を書かない（既定はリーダー無し）ので、ページ番号なしの目次はリーダーについて何も書かずに通る
     let toml = "[toc]\nalignment = \"center\"\nshow_page_numbers = false\n";
     assert!(parse(toml, dummy_source()).is_ok());
   }
@@ -615,6 +615,25 @@ mod validate_tests {
   fn parse_accepts_default_toc_alignment_with_page_numbers() {
     assert!(parse("[toc]\nenabled = true\n", dummy_source()).is_ok());
     assert!(parse("[toc]\nalignment = \"left\"\nshow_page_numbers = true\n", dummy_source()).is_ok());
+  }
+
+  #[test]
+  fn parse_rejects_toc_leader_without_page_numbers() {
+    let toml = "[toc]\nshow_page_numbers = false\nleader = \".\"\n";
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+    assert_eq!(paths(&errors), vec!["toc.leader"]);
+    assert!(errors[0].to_string().contains("show_page_numbers = true"), "{errors:?}");
+  }
+
+  #[test]
+  fn parse_rejects_empty_toc_leader() {
+    let errors = expect_validation_errors(parse("[toc]\nleader = \"\"\n", dummy_source()));
+    assert_eq!(paths(&errors), vec!["toc.leader"]);
+  }
+
+  #[test]
+  fn parse_accepts_toc_leader_with_page_numbers() {
+    assert!(parse("[toc]\nenabled = true\nleader = \".\"\n", dummy_source()).is_ok());
   }
 
   #[test]

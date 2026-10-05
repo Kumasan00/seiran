@@ -429,6 +429,18 @@ fn diagnostic_style_toc_alignment_with_page_numbers() {
 }
 
 #[test]
+fn diagnostic_style_toc_leader_without_page_numbers() {
+  // ページ番号を消した目次にリーダーを指定する
+  let toml = "[toc]\nenabled = true\nshow_page_numbers = false\nleader = \".\"\n";
+
+  let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
+
+  assert_matches_golden("style_toc_leader_without_page_numbers", &render_failure(CompileFailure::from(failures)));
+}
+
+#[test]
 fn diagnostic_style_parse_toml() {
   // 閉じ引用符の無い文字列（style.toml の TOML 構文エラー）
   let toml = "[page]\nmargin_top = \"10mm\n";
