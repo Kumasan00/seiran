@@ -41,8 +41,8 @@
 対象である。
 
 節順は **leaf 値型 → 入力 → 文書と設定 → パイプライン段 → 成果物 → facade**
-（`length` / `color` → `failures` → `phase` → `source` → `project` → `document` → `style` → `frontend` →
-`semantics` → `typeset` → `publication` → `compiler`）で固定し、CLAUDE.md の module 表もこの順に揃える。
+（`length` / `color` → `validators` → `failures` → `phase` → `source` → `project` → `document` → `style` →
+`frontend` → `semantics` → `typeset` → `publication` → `compiler`）で固定し、CLAUDE.md の module 表もこの順に揃える。
 
 ### `length` / `color`
 
@@ -63,6 +63,17 @@
   属性には裸の識別子を書く（derive が通常の関数呼び出しへ展開するので、module を動かしても `use` 側の
   名前解決で捕まる）
 - leaf の値概念は 1 module 1 概念で持つ。**包括的な `model` / `common` 置き場を再導入しない**
+
+### `validators`
+
+garde の `custom` に渡す、`Length` 以外（文字列・配列・`f32`・整数）の設定値検証器を持つ crate root 直下の leaf
+module。crate 内の他 module へ依存しない。利用者は `style` と `project::config` の両方で、依存の向きは
+`style → project` だけなので、どちらの module にも置けない。
+
+- 違反文言は日本語で、数値の違反には受け取った値を載せる。garde 組込の値ルール（`length` / `range` 等）は使わない
+  （規約は `docs/error-handling.md`「バリデーション（garde）」）
+- `f32` の検証器は有限値だけを受理する（NaN はどの大小比較も偽になるので、上下限の比較だけでは素通りする）
+- 利用側は `length` の検証器と同じく `use` で持ち込み、属性には裸の識別子か呼び出し式（`in_range(1, 6)`）を書く
 
 ### `failures`
 
@@ -307,7 +318,7 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う。`[toc].alignment` が `left` 以外 ×
   `show_page_numbers = true` は `alignment` の garde `custom` 検証で拒否する（ページ番号を出す行は右端まで伸び、揃えが効かない。
   キーどうしの制約も専用の variant を作らず `Field` の診断に載せる）。同じ基準（どの内容に対しても効かない組み合わせの拒否）で `[toc].leader` は既定 `None`（リーダー無し）とし、
-  `Some` × `show_page_numbers = false` を `leader` の garde `custom` で、空文字列を `inner(length)` で拒否する（リーダーはページ番号との
+  `Some` × `show_page_numbers = false` を `leader` の garde `custom` で、空文字列を `inner(custom(non_empty_text))` で拒否する（リーダーはページ番号との
   間にだけ描く）
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない

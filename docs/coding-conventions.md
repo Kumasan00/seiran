@@ -172,7 +172,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が
   名前空間として意味を持つ場合のみ（例: `project::config` は入口を `project::config::load` と読ませて
   `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタム
-  バリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない —
+  バリデータを持つ `length` / `validators` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない —
   名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`。`Error` という
   素の名前を禁じる `error_impl_error` がこの片側を機械化する）。root facade へ
   載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない
