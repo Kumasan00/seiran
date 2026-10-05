@@ -18,7 +18,7 @@
 //!
 //! 残りのテストは golden ファイルを一切読み書きせず、`Publication` へ変換すると失われる情報
 //! （anchor・索引語のページ帰属・脚注 fragment の繰越と番号・`PlacedBlock` の幾何）を見るため
-//! `TestProject::layout` を使う。
+//! `TestProject::layout` を使うか、`Publication` のグリフ列を直接見る。
 //!
 //! - **2 つの `typeset::Page` ダンプをテスト内で直接比較**（`assert_eq!` / `assert_ne!`）:
 //!   [`index_marks_are_invisible_to_layout`]・style 差分 2 種
@@ -39,6 +39,10 @@
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
 //!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）
+//! - **`Publication` のグリフ列へ直接アサート**（`compile` を通す。グリフ範囲はダンプに出ない）:
+//!   クラスタ範囲がテキストを過不足なく覆うことの検査 3 種 [`glyph_ranges_tile_text_with_combining_marks`] /
+//!   [`glyph_ranges_tile_text_in_right_to_left_runs`] / [`glyph_ranges_tile_text_in_japanese_clusters`]
+//!   （共通ヘルパ [`assert_ranges_tile_text`] 経由）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -60,6 +64,7 @@
 
 use std::{
   fs,
+  ops::Range,
   path::{Path, PathBuf},
 };
 
@@ -69,6 +74,7 @@ use crate::{
     test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
   },
   length::Length,
+  publication::{GlyphRun, PaintOp},
   typeset::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
 
@@ -852,4 +858,101 @@ fn front_matter_adds_no_blank_pages() {
   assert_eq!(both, toc_only + 1, "両方ならタイトルページ 1 + 目次のページ数");
   assert_eq!(empty_title_only, body_only, "中身の無いタイトルページは白紙ページを作らない");
   assert_eq!(empty_title_and_toc, toc_only, "中身の無いタイトルページは目次の前に白紙ページを作らない");
+}
+
+/// 本文 `text` 1 本を serif の書字方向 `direction` で compile し、全ページの `DrawGlyphRun` のグリフ列を返す。
+fn glyph_runs_of(text: &str, direction: &'static str) -> Vec<GlyphRun> {
+  let compilation = TestProject::builder()
+    .source_text(text)
+    .config_toml(move |table| {
+      let serif = table
+        .get_mut("font_configs")
+        .and_then(|font_configs| return font_configs.as_table_mut())
+        .and_then(|font_configs| return font_configs.get_mut("serif"))
+        .and_then(|serif| return serif.as_table_mut())
+        .expect("fixture config.toml は [font_configs.serif] を持つはず");
+      serif.insert("direction".to_string(), toml::Value::from(direction));
+    })
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("本文 {text:?} の compile は成功するはず: {:?}", failure.into_report()));
+  return compilation
+    .publication
+    .pages()
+    .iter()
+    .flat_map(|page| return page.ops())
+    .filter_map(|op| {
+      let PaintOp::DrawGlyphRun { run, .. } = op else {
+        return None;
+      };
+      return Some(run.clone());
+    })
+    .collect();
+}
+
+/// `run` のグリフ範囲がクラスタ単位で元テキストを過不足なく覆うことを検査する。
+///
+/// 各範囲は空でなく文字境界に乗り、同じ範囲（同じクラスタのグリフ）を除いて重ならず、和がテキスト全体になる。
+fn assert_ranges_tile_text(run: &GlyphRun) {
+  let mut ranges: Vec<Range<usize>> = run.glyphs.iter().map(|glyph| return glyph.range.clone()).collect();
+  for range in &ranges {
+    assert!(
+      range.start < range.end && range.end <= run.text.len(),
+      "範囲 {range:?} はテキスト {:?} の中の空でない範囲のはず",
+      run.text
+    );
+    assert!(
+      run.text.is_char_boundary(range.start) && run.text.is_char_boundary(range.end),
+      "範囲 {range:?} の両端はテキスト {:?} の文字境界のはず",
+      run.text
+    );
+  }
+  ranges.sort_by_key(|range| return (range.start, range.end));
+  ranges.dedup();
+  let mut covered = 0;
+  for range in &ranges {
+    assert_eq!(range.start, covered, "クラスタ範囲は隙間も重なりもなく並ぶはず: {ranges:?} / {:?}", run.text);
+    covered = range.end;
+  }
+  assert_eq!(covered, run.text.len(), "クラスタ範囲はテキスト全体を覆うはず: {ranges:?} / {:?}", run.text);
+}
+
+#[test]
+fn glyph_ranges_tile_text_with_combining_marks() {
+  let runs = glyph_runs_of("x a\u{308}\u{301}b y e\u{301}\u{200D}f", "left-to-right");
+
+  for run in &runs {
+    assert_ranges_tile_text(run);
+  }
+  assert!(
+    runs
+      .iter()
+      .any(|run| return run.glyphs.windows(2).any(|pair| return pair[0].range == pair[1].range)),
+    "結合文字のクラスタは複数グリフで組まれるはず（テストが複数グリフのクラスタを通っていない）"
+  );
+}
+
+#[test]
+fn glyph_ranges_tile_text_in_right_to_left_runs() {
+  // 行幅を超える長さにし、切らずに 1 箱で積む経路でも compile が通ることを見る
+  let runs = glyph_runs_of(&"abc def a\u{308}\u{301}b ".repeat(60), "right-to-left");
+
+  for run in &runs {
+    assert_ranges_tile_text(run);
+  }
+  assert!(
+    runs
+      .iter()
+      .any(|run| return run.glyphs.windows(2).any(|pair| return pair[0].range.start > pair[1].range.start)),
+    "右から左の run はクラスタ降順で組まれるはず（テストが RTL を通っていない）"
+  );
+}
+
+#[test]
+fn glyph_ranges_tile_text_in_japanese_clusters() {
+  let runs = glyph_runs_of("あ」\u{FE00}い。か\u{3099}き「漢\u{E0100}字」", "left-to-right");
+
+  for run in &runs {
+    assert_ranges_tile_text(run);
+  }
 }
