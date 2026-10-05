@@ -35,25 +35,34 @@ const SOURCE: &str =
 ///
 /// 約物の正規化・約物境界のアキは全角約物を持つフォントでしか働かない（半角約物を積むフォントは
 /// 対象外と判定される）ため、共有ヘルパの数式フォントではなく和文フォントを使う。
-fn read_japanese_test_font() -> Vec<u8> {
+fn read_japanese_test_font() -> Vec<u8> { return read_vendor_font("NotoSerifJP[wght].ttf"); }
+
+/// `vendor/fonts/` のフォント `file_name` を読む（初回は `tools/fetch-test-assets.sh` の実行が必要）。
+fn read_vendor_font(file_name: &str) -> Vec<u8> {
   let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
     .nth(2)
     .expect("crates/seiran-compiler の 2 階層上がワークスペースルート");
-  let path = workspace_root.join("vendor/fonts/NotoSerifJP[wght].ttf");
-  return std::fs::read(&path).expect(
-    "vendor/fonts/NotoSerifJP[wght].ttf を読めるはず（tools/fetch-test-assets.sh の実行が必要な場合があります）",
-  );
+  let path = workspace_root.join("vendor/fonts").join(file_name);
+  return std::fs::read(&path)
+    .expect("vendor/fonts のフォントを読めるはず（tools/fetch-test-assets.sh の実行が必要な場合があります）");
 }
 
-/// 和文フォント（バリアブルフォント）を 19 種別すべてに割り当てた `config.toml` を組む。
+/// 和文フォント（バリアブルフォント）を数式以外の 18 種別に、MATH を持つ数式フォントを数式種別に割り当てた
+/// `config.toml` を組む。
 ///
-/// `wght` 軸の指定が要る（軸を持つフォントで未指定だと検証が `MissingVariationAxes` で落ちる）。
+/// 和文フォントには `wght` 軸の指定が要る（軸を持つフォントで未指定だと検証が `MissingVariationAxes` で落ちる）。
+/// 数式フォントは MATH テーブルが必須なので和文フォントを使えない。
 fn japanese_config_toml() -> String {
-  let sections = test_support::font_sections("/project/font.ttf").replace(
-    "font_path = \"/project/font.ttf\"\n",
-    "font_path = \"/project/font.ttf\"\nvariation_axes = [{ name = \"wght\", value = 400.0 }]\n",
-  );
+  let sections = test_support::font_sections("/project/font.ttf")
+    .replace(
+      "font_path = \"/project/font.ttf\"\n",
+      "font_path = \"/project/font.ttf\"\nvariation_axes = [{ name = \"wght\", value = 400.0 }]\n",
+    )
+    .replace(
+      "[font_configs.math]\nfont_path = \"/project/font.ttf\"\nvariation_axes = [{ name = \"wght\", value = 400.0 }]\n",
+      "[font_configs.math]\nfont_path = \"/project/math.ttf\"\n",
+    );
   return format!(
     "sources = [\"/project/text.sei\"]\n\n{}{}{sections}",
     test_support::valid_pdf_section(),
@@ -118,7 +127,8 @@ fn capture_compile_log(filter: &str, text: &str) -> (String, Result<Compilation,
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", japanese_config_toml())
     .with_text("/project/text.sei", text)
-    .with_bytes("/project/font.ttf", read_japanese_test_font());
+    .with_bytes("/project/font.ttf", read_japanese_test_font())
+    .with_bytes("/project/math.ttf", read_vendor_font("STIXTwoMath-Regular.ttf"));
   let config_path = ProjectPath::new("/project/config.toml");
   let result = seiran_compiler::compile(&source, &config_path, Path::new("/project"));
 
