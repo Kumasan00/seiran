@@ -10,8 +10,7 @@ use crate::project::ProjectSourceError;
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TypesetError {
-  /// フォント資源の構築（`font::FontResources::load`）とシェーパー構築
-  /// （`font::FontResources::system`）の失敗。
+  /// フォント資源の構築（`font::FontSystem::load`）の失敗。
   ///
   /// `transparent` でメッセージ・code・help・label・related をすべて内側へ委譲し、
   /// 診断の出方を変えない。

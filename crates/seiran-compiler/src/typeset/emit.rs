@@ -16,7 +16,7 @@ use crate::{
   typeset::{
     LaidOutDocument,
     boxes::{AnchorId, HBoxContent, LinkTarget as TypesetLinkTarget, Page, PlacedBlock, PlacedTableRow},
-    font::FontResources,
+    font::FontSystem,
     image::ImageAsset,
   },
 };
@@ -25,7 +25,7 @@ use crate::{
 pub(crate) fn emit(
   config: &ProjectConfig,
   font_data: &FontData,
-  font_resources: &FontResources<'_>,
+  font_resources: &FontSystem,
   mut laid_out: LaidOutDocument,
 ) -> Publication {
   let images = mem::take(&mut laid_out.images);
@@ -39,16 +39,15 @@ pub(crate) fn emit(
 /// 同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
 fn build_resources(
   font_data: &FontData,
-  font_resources: &FontResources<'_>,
+  font_resources: &FontSystem,
   images: HashMap<ProjectPath, ImageAsset>,
 ) -> PublicationResources {
   let face_configs = font_resources.face_configs();
-  let metrics = font_resources.metrics();
   let fonts = FontMap::from_fn(|font_type| {
     return PublicationFont {
       bytes: font_data.shared_bytes(font_type),
       face: face_configs[font_type].clone(),
-      metrics: metrics[font_type],
+      metrics: font_resources.metrics(font_type),
     };
   });
   let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();

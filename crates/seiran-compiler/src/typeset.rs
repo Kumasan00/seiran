@@ -34,7 +34,7 @@ pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 pub(crate) use error::TypesetError;
-use font::{FontResources, FontWarning};
+use font::{FontSystem, FontWarning};
 pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
 // `#[cfg(test)]` を付けない — 本体コード（`compose` / `lay_out`）もこの名前を使い、条件付きの
 // 再エクスポートと本体用の `use` を並べるとテストビルドで E0252（同名の重複定義）になる。
@@ -119,14 +119,14 @@ pub(crate) fn compose(
 ///
 /// # Errors
 ///
-/// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、組の第 1 要素が、その段で見つかった
+/// フォント解析・メトリクス取得・設定検証・シェーパー初期化のいずれかに失敗した場合に、組の第 1 要素が、その段で見つかった
 /// 違反を [`TypesetError::Font`] の非空集合として持つ。
-fn load_fonts<'a>(
-  config: &'a ProjectConfig,
-  font_data: &'a FontData,
-) -> (Result<FontResources<'a>, Failures<TypesetError>>, Vec<FontWarning>) {
+fn load_fonts(
+  config: &ProjectConfig,
+  font_data: &FontData,
+) -> (Result<FontSystem, Failures<TypesetError>>, Vec<FontWarning>) {
   let phase = Phase::enter(info_span!("font"));
-  let (font_resources, font_warnings) = FontResources::load(&config.font_configs, font_data);
+  let (font_resources, font_warnings) = FontSystem::load(&config.font_configs, font_data);
   let font_resources = font_resources.map_err(|failures| return failures.map(TypesetError::from));
   if font_resources.is_ok() {
     info!(warning_count = font_warnings.len(), "フォント資源を構築");
@@ -139,19 +139,18 @@ fn load_fonts<'a>(
 ///
 /// # Errors
 ///
-/// シェーパーの構築、画像の読込・デコード・自然寸法の検証、または脚注のページ単位採番の収束に
+/// 画像の読込・デコード・自然寸法の検証、または脚注のページ単位採番の収束に
 /// 失敗した場合に、その段で見つかった失敗を非空集合で返す。
 fn lay_out(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
   style: &Style,
   geometry: &PreparedGeometry,
-  font_resources: &FontResources<'_>,
+  font_resources: &FontSystem,
   document: &SemanticDocument,
 ) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>> {
-  let font_system = font_resources.system().map_err(|failures| return failures.map(TypesetError::from))?;
   let image_paths = image::collect_image_paths(document.hir());
   let images = image::load_image_resources(source, &image_paths)?;
-  let ctx = pagination::TypesetContext::new(config, style, geometry, &font_system);
+  let ctx = pagination::TypesetContext::new(config, style, geometry, font_resources);
   return pagination::paginate(&ctx, document, images, image_paths).map_err(Failures::single);
 }

@@ -13,7 +13,7 @@ use harfrust::Font;
 use read_fonts::{FontRef, TableProvider};
 pub(super) use shaper::Buffer;
 use shaper::ShapingFonts;
-pub(super) use system::{FontResources, FontSystem, FontSystemError};
+pub(super) use system::{FontSystem, FontSystemError};
 use thiserror::Error;
 pub(super) use validation::FontWarning;
 
@@ -72,7 +72,7 @@ type FontRefs<'a> = FontMap<FontRef<'a>>;
 /// フォントを解析できない場合、または TTC のインデックスが範囲外の場合に
 /// [`FontLoadError::ParseFont`] を `FontType` の宣言順で返す。
 fn parse_fonts<'a>(
-  config: &'a FontConfigs,
+  config: &FontConfigs,
   font_data: &'a FontData,
 ) -> Result<(FontRefs<'a>, ShapingFonts), Failures<FontLoadError>> {
   let parsed = FontMap::par_try_from_fn(|font_type| {

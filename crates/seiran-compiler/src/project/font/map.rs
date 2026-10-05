@@ -6,7 +6,7 @@ use std::{
   ops::Index,
 };
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use strum::VariantArray;
 
 use crate::{
@@ -74,6 +74,31 @@ impl<T> FontMap<T> {
       .map(|&font_type| return value_of(font_type))
       .collect::<Vec<Result<T, E>>>();
     return Self::from_complete_results(results);
+  }
+
+  /// 各種別の値を消費して並列に変換し、失敗は種別の宣言順に全件返す。
+  ///
+  /// # Errors
+  ///
+  /// `convert` が `Err` を返した種別の失敗を全件返す。
+  pub(crate) fn par_try_map<U, E>(
+    self,
+    convert: impl Fn(FontType, T) -> Result<U, E> + Sync + Send,
+  ) -> Result<FontMap<U>, Failures<E>>
+  where
+    T: Send,
+    U: Send,
+    E: Send,
+  {
+    let results = self
+      .values
+      .into_par_iter()
+      .enumerate()
+      .map(|(index, value)| {
+        return convert(FontType::VARIANTS[index], value);
+      })
+      .collect();
+    return FontMap::from_complete_results(results);
   }
 
   /// 2 つの表の同じ種別の値どうしを `combine` で合わせた表を作る。
@@ -174,6 +199,30 @@ mod tests {
   #[test]
   fn par_try_from_fn_reports_every_failure_in_font_type_order() {
     let result = FontMap::par_try_from_fn(fail_serif_and_math);
+
+    let failures: Vec<FontType> = result.expect_err("2 種別が失敗するはず").into_iter().collect();
+    assert_eq!(failures, vec![FontType::Serif, FontType::Math]);
+  }
+
+  #[test]
+  fn par_try_map_moves_values_under_the_same_font_type() {
+    let map = FontMap::from_fn(|font_type| return font_type.as_toml_key().to_string());
+
+    let mapped = map
+      .par_try_map(|font_type, value| return Ok::<_, ()>((font_type, value)))
+      .expect("全種別の変換が成功するはず");
+
+    for &font_type in FontType::VARIANTS {
+      assert_eq!(mapped[font_type].0, font_type);
+      assert_eq!(mapped[font_type].1, font_type.as_toml_key());
+    }
+  }
+
+  #[test]
+  fn par_try_map_reports_every_failure_in_font_type_order() {
+    let map = FontMap::from_fn(|font_type| return font_type.as_toml_key().to_string());
+
+    let result = map.par_try_map(|font_type, _value| return fail_serif_and_math(font_type));
 
     let failures: Vec<FontType> = result.expect_err("2 種別が失敗するはず").into_iter().collect();
     assert_eq!(failures, vec![FontType::Serif, FontType::Math]);

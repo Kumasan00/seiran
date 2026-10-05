@@ -173,14 +173,14 @@ impl ShapedRun {
 /// シェーピングだけを行う部品（[`FontSystem`] と再利用バッファ）
 pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
-  fonts: &'a FontSystem<'a>,
+  fonts: &'a FontSystem,
   /// シェイピングに再利用する `harfrust` バッファ
   buffer: Buffer,
 }
 
 impl<'a> Shaper<'a> {
   /// [`FontSystem`] から新しい `Shaper` を作る
-  pub(in crate::typeset) fn new(fonts: &'a FontSystem<'a>) -> Self {
+  pub(in crate::typeset) fn new(fonts: &'a FontSystem) -> Self {
     return Shaper {
       fonts,
       buffer: Buffer::new(),
