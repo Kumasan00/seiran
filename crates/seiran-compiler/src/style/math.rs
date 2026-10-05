@@ -5,43 +5,17 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative},
-  project::non_negative_finite,
   style::{BlockAlignment, NumberTemplate},
 };
 
-/// 数式設定全体（`[math]` テーブル）。
+/// 数式設定全体（`[math]` テーブル）。上付き・下付きの縮小率・シフト量は数式フォントの MATH の値で、ここには置かない。
 #[derive(Debug, Clone, Default, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathStyle {
-  /// 上付き / 下付きスクリプトのスタイル（`[math.script]`）。インライン数式にも効く。
-  #[garde(dive)]
-  pub script: MathScriptStyle,
   /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）。全表示数式環境が共有する。
   #[garde(dive)]
   pub block: MathBlockStyle,
-}
-
-/// スクリプト（上付き / 下付き）のシフト量の設定（`[math.script]`）
-#[derive(Debug, Clone, Deserialize, Validate)]
-#[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields, default)]
-pub(crate) struct MathScriptStyle {
-  /// 上付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で上方向）
-  #[garde(custom(non_negative_finite))]
-  pub superscript_raise_factor: f32,
-  /// 下付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で下方向）
-  #[garde(custom(non_negative_finite))]
-  pub subscript_drop_factor: f32,
-}
-
-impl Default for MathScriptStyle {
-  fn default() -> Self {
-    return Self {
-      superscript_raise_factor: 0.4,
-      subscript_drop_factor: 0.2,
-    };
-  }
 }
 
 /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）
@@ -99,9 +73,7 @@ pub(crate) enum NumberSide {
 
 #[cfg(test)]
 mod tests {
-  use garde::Validate;
-
-  use super::{MathBlockStyle, MathScriptStyle, NumberSide};
+  use super::{MathBlockStyle, MathStyle, NumberSide};
   use crate::style::BlockAlignment;
 
   #[test]
@@ -114,27 +86,13 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_negative_raise_factor() {
-    let style = MathScriptStyle {
-      superscript_raise_factor: -0.1,
-      ..MathScriptStyle::default()
-    };
-
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_accepts_zero_raise_factor() {
-    let style = MathScriptStyle {
-      superscript_raise_factor: 0.0,
-      ..MathScriptStyle::default()
-    };
-
-    assert!(style.validate().is_ok());
-  }
-
-  #[test]
   fn rejects_renamed_equation_table_keys() {
     assert!(toml::from_str::<MathBlockStyle>("number_format = \"({number})\"\n").is_err());
+  }
+
+  #[test]
+  fn rejects_removed_script_table() {
+    // 上付き・下付きの縮小率・シフト量は数式フォントの MATH の値なので、style.toml には書けない
+    assert!(toml::from_str::<MathStyle>("[script]\nsuperscript_raise_factor = 0.4\n").is_err());
   }
 }

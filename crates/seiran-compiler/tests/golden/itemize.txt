@@ -175,19 +175,19 @@ keywords=["test", "seiran"]
   glyphs x=328.89 y=439.27 font=JapaneseSerif size=12.00 text="数" glyph_count=1
   glyphs x=340.89 y=439.27 font=JapaneseSerif size=12.00 text="式" glyph_count=1
   glyphs x=355.71 y=439.27 font=Math size=12.00 text="𝑥" glyph_count=1
-  glyphs x=362.42 y=434.47 font=Math size=8.40 text="2" glyph_count=1
-  glyphs x=369.49 y=439.27 font=Math size=12.00 text="+" glyph_count=1
-  glyphs x=380.79 y=439.27 font=Math size=12.00 text="𝑦" glyph_count=1
-  glyphs x=386.91 y=434.47 font=Math size=8.40 text="2" glyph_count=1
-  glyphs x=394.65 y=439.27 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=406.62 y=439.27 font=Math size=12.00 text="𝑧" glyph_count=1
-  glyphs x=412.54 y=434.47 font=Math size=8.40 text="2" glyph_count=1
-  glyphs x=419.76 y=439.27 font=JapaneseSerif size=12.00 text="を" glyph_count=1
-  glyphs x=431.76 y=439.27 font=JapaneseSerif size=12.00 text="含" glyph_count=1
-  glyphs x=443.76 y=439.27 font=JapaneseSerif size=12.00 text="む" glyph_count=1
-  glyphs x=455.76 y=439.27 font=JapaneseSerif size=12.00 text="項" glyph_count=1
-  glyphs x=467.76 y=439.27 font=JapaneseSerif size=12.00 text="目" glyph_count=1
-  glyphs x=479.76 y=439.27 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=362.42 y=434.95 font=Math size=8.40 text="2" glyph_count=1
+  glyphs x=369.97 y=439.27 font=Math size=12.00 text="+" glyph_count=1
+  glyphs x=381.27 y=439.27 font=Math size=12.00 text="𝑦" glyph_count=1
+  glyphs x=387.39 y=434.95 font=Math size=8.40 text="2" glyph_count=1
+  glyphs x=395.61 y=439.27 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=407.58 y=439.27 font=Math size=12.00 text="𝑧" glyph_count=1
+  glyphs x=413.50 y=434.95 font=Math size=8.40 text="2" glyph_count=1
+  glyphs x=421.20 y=439.27 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=433.20 y=439.27 font=JapaneseSerif size=12.00 text="含" glyph_count=1
+  glyphs x=445.20 y=439.27 font=JapaneseSerif size=12.00 text="む" glyph_count=1
+  glyphs x=457.20 y=439.27 font=JapaneseSerif size=12.00 text="項" glyph_count=1
+  glyphs x=469.20 y=439.27 font=JapaneseSerif size=12.00 text="目" glyph_count=1
+  glyphs x=481.20 y=439.27 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=240.94 y=467.87 font=JapaneseSerif size=12.00 text="リ" glyph_count=1
   glyphs x=252.70 y=467.87 font=JapaneseSerif size=12.00 text="ス" glyph_count=1
   glyphs x=264.70 y=467.87 font=JapaneseSerif size=12.00 text="ト" glyph_count=1

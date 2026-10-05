@@ -62,7 +62,7 @@ pub(super) fn lower_inline(
       return code::lower_inline_code(text, parent_style);
     },
     HirInlineKind::Math(math_nodes) => {
-      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script, ctx.script_scale);
+      return lower_inline_math(math_nodes, parent_style.font_size, ctx.script_scale);
     },
     HirInlineKind::Symbol(ch) => {
       return vec![InlineNode::Text(ch.to_string(), parent_style)];

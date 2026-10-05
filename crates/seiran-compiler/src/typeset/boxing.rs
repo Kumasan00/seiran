@@ -8,7 +8,7 @@
 //! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入）と
-//! `math`（ディスプレイ数式）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
+//! `math`（ディスプレイ数式と、数式の上付き・下付きの配置）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
 //! `ShapedRun`（グリフ列 + 確定寸法）を持ち、**箱の寸法を求める処理はここ 1 箇所**。`script`（スクリプト分類と
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
@@ -282,6 +282,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Raise { offset, children } => {
         out.push(HItem::Box(self.build_atom(offset, children)));
       },
+      InlineNode::Scripts(scripts) => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Scripts(scripts)])));
+      },
       InlineNode::MathBreak { spacing, penalty } => {
         out.push(HItem::MathBreak { spacing, penalty });
       },
@@ -338,12 +341,17 @@ impl<'a> Measurer<'a> {
     return atom;
   }
 
-  /// `Raise` ツリーを絶対配置（`dx` / `dy`）の Atom に畳む
+  /// `AtomNode` 列を絶対配置（`dx` / `dy`）の Atom に畳む
+  ///
+  /// 幅は送り幅を下限にする — 末尾のアキ（スクリプト後の `SpaceAfterScript`）は子の箱を持たないので、
+  /// 子の範囲だけでは落ちる。
   fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     self.place_atom_children(children, offset, &mut dx, &mut placed);
-    return HBox::atom(placed);
+    let mut atom = HBox::atom(placed);
+    atom.width = atom.width.max(dx);
+    return atom;
   }
 
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
@@ -360,11 +368,8 @@ impl<'a> Measurer<'a> {
         AtomNode::Kern { length } => {
           *dx += length;
         },
-        AtomNode::Raise {
-          offset,
-          children: nested,
-        } => {
-          self.place_atom_children(nested, dy + offset, dx, out);
+        AtomNode::Scripts(scripts) => {
+          self.place_scripts(scripts, dy, dx, out);
         },
       }
     }

@@ -8,7 +8,9 @@ use std::time::Instant;
 use miette::Diagnostic;
 use read_fonts::{
   TableProvider,
+  model::metrics::GlyphExtents,
   tables::math::{MathConstant, MathConstants},
+  types::GlyphId,
 };
 use thiserror::Error;
 use tracing::debug;
@@ -132,6 +134,14 @@ impl FontSystem {
       constants.constant(MathConstant::ScriptPercentScaleDown),
       constants.constant(MathConstant::ScriptScriptPercentScaleDown),
     );
+  }
+
+  /// 指定フォント種別のグリフ `gid` のインク（墨）の範囲（フォント単位・シェーパーと同じバリエーション軸の位置）。
+  ///
+  /// `y_bearing` がベースラインからインクの上端まで、`height` が上端から下向きの高さ。グリフを読めなければ `None`。
+  #[must_use]
+  pub(crate) fn glyph_extents(&self, font_type: FontType, gid: u32) -> Option<GlyphExtents<f32>> {
+    return self.shapers[font_type].font().glyph_metrics().extents(GlyphId::new(gid));
   }
 
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。

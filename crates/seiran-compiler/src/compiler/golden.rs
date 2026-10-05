@@ -44,6 +44,10 @@
 //!   [`glyph_ranges_tile_text_in_right_to_left_runs`] / [`glyph_ranges_tile_text_in_japanese_clusters`]
 //!   （共通ヘルパ [`assert_ranges_tile_text`] 経由）
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
+//! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
+//!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
+//!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_share_a_column_in_either_order`] /
+//!   [`space_after_script_follows_the_scripts`] / [`script_in_a_non_math_font_is_placed_by_its_ink`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -77,6 +81,7 @@ use crate::{
     test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
   },
   length::Length,
+  project::FontType,
   publication::{GlyphRun, PaintOp},
   typeset::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
@@ -1108,7 +1113,6 @@ fn script_levels_use_math_scale_down_and_ssty_glyphs() {
   let [base, script, script_script] = twos.as_slice() else {
     panic!("2 が 3 段ぶん並ぶはず: {} 本", twos.len());
   };
-  assert_eq!(run_with_text(&runs, "2").dx, base.dx, "最初の 2 が本体");
   assert!(script.dx >= base.dx + base.width, "上付きは本体の右に置かれる");
   assert!(script.dy > base.dy, "上付きは本体より上に上がる");
   assert!(script_script.dy > base.dy, "さらに内側の上付きも本体より上にある");
@@ -1120,4 +1124,93 @@ fn script_levels_use_math_scale_down_and_ssty_glyphs() {
     glyphs[0] != glyphs[1] && glyphs[1] != glyphs[2] && glyphs[0] != glyphs[2],
     "段ごとに ssty の別の字形のはず: {glyphs:?}"
   );
+}
+
+/// 数学用イタリックの 𝑥（U+1D465）
+const MATH_X: &str = "\u{1D465}";
+
+/// 数学用イタリックの 𝑖（U+1D456）
+const MATH_I: &str = "\u{1D456}";
+
+#[test]
+fn superscript_on_a_short_base_sits_at_the_font_shift() {
+  let runs = first_line_runs("$x^{2}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "2");
+  // 𝑥 のインクの高さ − SuperscriptBaselineDropMax も、上付きの底の下限も SuperscriptShiftUp に届かない
+  // （箱の高さ＝ascender を使うと 762 − 230 で必ず上回るので、この一致はインクで測っていることも確かめる）
+  assert_eq!(sup.dy - base.dy, stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
+  assert_eq!(sup.dx, base.dx + base.width, "上付きは基底の右端から始まる");
+}
+
+#[test]
+fn subscript_on_a_short_base_sits_at_the_font_shift() {
+  let runs = first_line_runs("$x_{i}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sub = run_with_text(&runs, MATH_I);
+  assert_eq!(base.dy - sub.dy, stix_math_length(MathConstant::SubscriptShiftDown, base.run.font_size));
+}
+
+#[test]
+fn tall_base_pushes_the_superscript_up() {
+  let runs = first_line_runs("$(a)^{2}$\n");
+
+  let paren = run_with_text(&runs, ")");
+  let sup = run_with_text(&runs, "2");
+  assert!(
+    sup.dy - paren.dy > stix_math_length(MathConstant::SuperscriptShiftUp, paren.run.font_size),
+    "背の高い基底では 基底の高さ − SuperscriptBaselineDropMax が標準のシフトを上回る: dy={}",
+    sup.dy
+  );
+}
+
+#[test]
+fn stacked_scripts_share_a_column_in_either_order() {
+  let placements = |source: &str| {
+    let runs = first_line_runs(source);
+    let sup = run_with_text(&runs, "2");
+    let sub = run_with_text(&runs, MATH_I);
+    return (sup.dx, sup.dy, sub.dx, sub.dy, run_with_text(&runs, MATH_X).run.font_size);
+  };
+
+  let sub_first = placements("$x_{i}^{2}$\n");
+  let sup_first = placements("$x^{2}_{i}$\n");
+
+  assert_eq!(sub_first, sup_first, "書く順序によらず同じ配置");
+  let (sup_dx, sup_dy, sub_dx, sub_dy, size) = sub_first;
+  assert_eq!(sup_dx, sub_dx, "上付きと下付きは同じ列に重なる");
+  // STIX Two Math では上付きの底と下付きの頂のギャップが SubSuperscriptGapMin に足りず、両方が離れる
+  assert!(sup_dy > stix_math_length(MathConstant::SuperscriptShiftUp, size), "上付きが上がる: {sup_dy}");
+  assert!(-sub_dy > stix_math_length(MathConstant::SubscriptShiftDown, size), "下付きが下がる: {sub_dy}");
+}
+
+#[test]
+fn space_after_script_follows_the_scripts() {
+  let runs = first_line_runs("$x^{2}y$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "2");
+  let next = run_with_text(&runs, "\u{1D466}");
+  assert_eq!(
+    next.dx - (sup.dx + sup.width),
+    stix_math_length(MathConstant::SpaceAfterScript, base.run.font_size),
+    "スクリプトの後ろに SpaceAfterScript が空き、Atom の幅に残る"
+  );
+}
+
+#[test]
+fn script_in_a_non_math_font_is_placed_by_its_ink() {
+  let runs = first_line_runs("$x^{あ}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "あ");
+  assert_eq!(
+    sup.run.font_type,
+    FontType::JapaneseSerif,
+    "和文は数式フォントではなく和文フォントで組まれる（テストが別フォントの経路を通っている）"
+  );
+  assert!(sup.dy - base.dy >= stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
+  assert_eq!(sup.dx, base.dx + base.width);
 }

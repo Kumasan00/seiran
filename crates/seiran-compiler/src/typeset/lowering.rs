@@ -25,7 +25,8 @@ mod theorem;
 mod title_page;
 
 pub(super) use layout_node::{
-  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
+  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockLayout, MathScripts, TableLayout, TableRowLayout,
+  TextStyle,
 };
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
@@ -449,7 +450,7 @@ mod tests {
     });
   }
 
-  /// [`contains_line_break`] のインライン列側（`Raise` の子は `AtomNode` で `LineBreak` を持てない）
+  /// [`contains_line_break`] のインライン列側（`Raise` / `Scripts` の中身は `AtomNode` で `LineBreak` を持てない）
   fn contains_line_break_inline(nodes: &[InlineNode]) -> bool {
     return nodes.iter().any(|n| match n {
       InlineNode::LineBreak => return true,

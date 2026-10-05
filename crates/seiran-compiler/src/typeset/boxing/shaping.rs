@@ -16,7 +16,7 @@ use crate::{
   project::FontType,
   publication::{FontMetrics, Glyph, GlyphRun},
   typeset::{
-    boxes::{HBox, HBoxContent},
+    boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
     font::{Buffer, FontSystem, ScriptLevel},
     lowering::TextStyle,
@@ -292,10 +292,46 @@ impl<'a> Shaper<'a> {
     return shaped;
   }
 
-  /// 数式フォントの数式軸（MATH の `AxisHeight`）の、フォントサイズ `font_size` でのベースラインからの高さ。
-  pub(super) fn math_axis_height(&self, font_size: Length) -> Length {
-    let axis_units = self.fonts.math_constants().constant(MathConstant::AxisHeight);
-    return units_to_length(i64::from(axis_units), font_size, self.fonts.metrics(FontType::Math).upem);
+  /// 数式フォントの MATH 定数（長さの値）の、フォントサイズ `font_size` での長さ。
+  pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {
+    let units = self.fonts.math_constants().constant(constant);
+    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+  }
+
+  /// 配置済みの箱の列のインク（グリフの形の範囲）が、ベースラインより上・下へ出た量（高さ, 深さ）。
+  ///
+  /// どちらも 0 以上で、グリフが無ければ 0。箱の高さ・深さはフォント全体の ascender / descender なので、
+  /// 数式のスクリプト配置が基底・スクリプトの実際の大きさを見るのにはこちらを使う。
+  pub(super) fn ink_extent(&self, boxes: &[PlacedHBox]) -> (Length, Length) {
+    let mut height = Length::ZERO;
+    let mut depth = Length::ZERO;
+    for placed in boxes {
+      let (box_height, box_depth) = match &placed.hbox.content {
+        HBoxContent::Glyphs(run) => self.glyph_run_ink(run),
+        HBoxContent::Atom(children) => self.ink_extent(children),
+      };
+      height = height.max(box_height + placed.dy);
+      depth = depth.max(box_depth - placed.dy);
+    }
+    return (height, depth);
+  }
+
+  /// グリフ列 1 本のインクの高さと深さ（[`Shaper::ink_extent`] の 1 箱ぶん。読めないグリフはインクを持たない扱い）
+  fn glyph_run_ink(&self, run: &GlyphRun) -> (Length, Length) {
+    let upem = f64::from(self.fonts.metrics(run.font_type).upem);
+    let to_length = |units: f64| return run.font_size.scale(units / upem);
+    let mut height = Length::ZERO;
+    let mut depth = Length::ZERO;
+    for glyph in &run.glyphs {
+      let Some(extents) = self.fonts.glyph_extents(run.font_type, glyph.gid) else {
+        continue;
+      };
+      let top = f64::from(extents.y_bearing) + f64::from(glyph.y_offset);
+      let bottom = top - f64::from(extents.height);
+      height = height.max(to_length(top));
+      depth = depth.max(-to_length(bottom));
+    }
+    return (height, depth);
   }
 }
 

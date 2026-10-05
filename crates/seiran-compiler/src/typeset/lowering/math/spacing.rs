@@ -7,10 +7,12 @@
 //!
 //! 単位は TeX と同じ mu（1mu = 1/18 em）で、em はそのレベルのフォントサイズ。
 
+use std::mem;
+
 use crate::{
   document::MathClass,
   length::Length,
-  typeset::lowering::layout_node::{AtomNode, InlineNode, merge_adjacent_atom_text},
+  typeset::lowering::layout_node::{AtomNode, InlineNode, MathScripts, merge_adjacent_atom_text},
 };
 
 /// アイテムが開き・閉じ区切りとして働くかどうか
@@ -33,8 +35,8 @@ pub(super) struct MathItem {
   class: MathClass,
   /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
-  /// このアイテムが生む Atom ノード列
-  nodes: Vec<AtomNode>,
+  /// このアイテムの中身
+  body: ItemBody,
 }
 
 impl MathItem {
@@ -43,7 +45,45 @@ impl MathItem {
     return MathItem {
       class,
       fence,
-      nodes,
+      body: ItemBody::Plain(nodes),
+    };
+  }
+}
+
+/// アイテムの中身
+#[derive(Debug)]
+enum ItemBody {
+  /// スクリプトの付かない Atom ノード列
+  Plain(Vec<AtomNode>),
+  /// 核（基底）に上付き・下付きを付けたもの
+  Scripted(MathScripts),
+}
+
+impl ItemBody {
+  /// Atom ノード列へ畳む
+  fn into_nodes(self) -> Vec<AtomNode> {
+    return match self {
+      ItemBody::Plain(nodes) => nodes,
+      ItemBody::Scripted(scripts) => vec![AtomNode::Scripts(scripts)],
+    };
+  }
+}
+
+/// スクリプトを付ける側
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ScriptSide {
+  /// 上付き
+  Superscript,
+  /// 下付き
+  Subscript,
+}
+
+impl ScriptSide {
+  /// `scripts` のこの側の欄
+  fn slot(self, scripts: &mut MathScripts) -> &mut Option<Vec<AtomNode>> {
+    return match self {
+      ScriptSide::Superscript => &mut scripts.superscript,
+      ScriptSide::Subscript => &mut scripts.subscript,
     };
   }
 }
@@ -281,16 +321,60 @@ pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
   };
 }
 
-/// 上付き・下付きを直前のアイテムへ付ける
+/// 上付き・下付き `content` を直前のアイテムへ付ける
 ///
 /// スクリプトは核となるアトムの一部なので、間にアキを入れず、クラスも核のものを保つ
-/// （`$x^{2}+y$` の `+` は `x` ではなく「`x^{2}` というアトム」との間でアキが決まる）。
-/// 直前のアイテムが無ければ（`$^{2}$` のような並び）Ord の独立したアイテムにする。
-pub(super) fn push_attachment(items: &mut Vec<MathItem>, nodes: Vec<AtomNode>) {
-  match items.last_mut() {
-    Some(last) => last.nodes.extend(nodes),
-    None => items.push(MathItem::new(MathClass::Ord, None, nodes)),
+/// （`$x^{2}+y$` の `+` は `x` ではなく「`x^{2}` というアトム」との間でアキが決まる）。直前のアイテムが反対側の
+/// スクリプトだけを持つなら同じ基底へ重ね（`x_{i}^{2}` と `x^{2}_{i}` は同じ形）、同じ側を既に持つなら
+/// スクリプト付きのアイテム全体を新しい基底にする（`x^{a}^{b}` は `{x^{a}}^{b}`）。グループは
+/// [`ItemBody::Plain`] なので、中のスクリプトへ重ねずグループ全体が基底になる。直前のアイテムが無ければ
+/// （`$^{2}$` のような並び）空の基底を持つ Ord のアイテムにする。`font_size` / `cramped` は基底の段のもの。
+pub(super) fn push_script(
+  items: &mut Vec<MathItem>,
+  side: ScriptSide,
+  content: Vec<AtomNode>,
+  font_size: Length,
+  cramped: bool,
+) {
+  let Some(last) = items.last_mut() else {
+    items.push(MathItem {
+      class: MathClass::Ord,
+      fence: None,
+      body: ItemBody::Scripted(attach(Vec::new(), side, content, font_size, cramped)),
+    });
+    return;
+  };
+  if let ItemBody::Scripted(scripts) = &mut last.body {
+    let slot = side.slot(scripts);
+    if slot.is_none() {
+      *slot = Some(content);
+      return;
+    }
   }
+  let base = mem::replace(&mut last.body, ItemBody::Plain(Vec::new())).into_nodes();
+  last.body = ItemBody::Scripted(attach(base, side, content, font_size, cramped));
+}
+
+/// 基底 `base` の `side` 側に `content` を付ける
+///
+/// 基底の隣り合う同じスタイルのテキストは 1 本のグリフランに畳む（分数・根号の核は複数の `Text` を持ち、
+/// スクリプトの基底へ移すと外側の [`assemble`] の結合から外れるため）。
+fn attach(
+  base: Vec<AtomNode>,
+  side: ScriptSide,
+  content: Vec<AtomNode>,
+  font_size: Length,
+  cramped: bool,
+) -> MathScripts {
+  let mut scripts = MathScripts {
+    base: merge_adjacent_atom_text(base),
+    superscript: None,
+    subscript: None,
+    font_size,
+    cramped,
+  };
+  *side.slot(&mut scripts) = Some(content);
+  return scripts;
 }
 
 /// 隣り合う 2 アイテムの境界
@@ -333,7 +417,7 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<
     out.push(Spaced {
       gap,
       fence: item.fence,
-      nodes: item.nodes,
+      nodes: item.body.into_nodes(),
     });
     prev = Some(class);
   }
@@ -396,7 +480,7 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
 
 /// 溜めた Atom ノード列をグリフランへ畳み、段落の語彙へ持ち上げて `out` へ移す
 fn flush_run(run: &mut Vec<AtomNode>, out: &mut Vec<InlineNode>) {
-  out.extend(merge_adjacent_atom_text(std::mem::take(run)).into_iter().map(InlineNode::from));
+  out.extend(merge_adjacent_atom_text(mem::take(run)).into_iter().map(InlineNode::from));
 }
 
 /// 境界 `gap` が行分割点になるなら、そのペナルティを返す
@@ -453,6 +537,17 @@ mod tests {
 
   /// 1 文字ずつのアイテム列を作る
   fn items(text: &str) -> Vec<MathItem> { return text.chars().map(item).collect(); }
+
+  /// スクリプトの中身にする 1 文字
+  fn script(ch: char) -> Vec<AtomNode> { return vec![AtomNode::Text(ch.to_string(), style())]; }
+
+  /// スクリプト付きのアイテムの上付き・下付きを借りる
+  fn scripts_of(item: &MathItem) -> &MathScripts {
+    let ItemBody::Scripted(scripts) = &item.body else {
+      panic!("スクリプト付きのアイテムのはず: {item:?}");
+    };
+    return scripts;
+  }
 
   /// ノード列に置かれた行分割点を（アキ, ペナルティ）で出現順に返す
   fn breaks(nodes: &[InlineNode]) -> Vec<(Length, i32)> {
@@ -546,21 +641,49 @@ mod tests {
   }
 
   #[test]
-  fn push_attachment_extends_the_preceding_item() {
+  fn push_script_makes_the_preceding_item_its_base() {
     let mut items = vec![item('x')];
-    push_attachment(&mut items, vec![AtomNode::Text("2".to_string(), style())]);
+    push_script(&mut items, ScriptSide::Superscript, script('2'), Length::pt(12.0), false);
 
     assert_eq!(items.len(), 1, "スクリプトは新しいアトムを作らない");
-    assert_eq!(items[0].nodes.len(), 2);
+    let scripts = scripts_of(&items[0]);
+    assert!(matches!(scripts.base.as_slice(), [AtomNode::Text(text, _)] if text == "x"), "{scripts:?}");
+    assert!(scripts.superscript.is_some() && scripts.subscript.is_none());
   }
 
   #[test]
-  fn push_attachment_without_nucleus_creates_an_ordinary_item() {
+  fn push_script_without_nucleus_creates_an_ordinary_item_with_an_empty_base() {
     let mut items: Vec<MathItem> = Vec::new();
-    push_attachment(&mut items, vec![AtomNode::Text("2".to_string(), style())]);
+    push_script(&mut items, ScriptSide::Subscript, script('i'), Length::pt(12.0), false);
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].class, MathClass::Ord);
+    assert!(scripts_of(&items[0]).base.is_empty());
+  }
+
+  #[test]
+  fn push_script_stacks_the_other_side_on_the_same_base() {
+    let mut items = vec![item('x')];
+    push_script(&mut items, ScriptSide::Subscript, script('i'), Length::pt(12.0), false);
+    push_script(&mut items, ScriptSide::Superscript, script('2'), Length::pt(12.0), false);
+
+    let scripts = scripts_of(&items[0]);
+    assert!(matches!(scripts.base.as_slice(), [AtomNode::Text(text, _)] if text == "x"), "{scripts:?}");
+    assert!(scripts.superscript.is_some() && scripts.subscript.is_some());
+  }
+
+  #[test]
+  fn push_script_on_a_filled_side_takes_the_scripted_item_as_its_base() {
+    let mut items = vec![item('x')];
+    push_script(&mut items, ScriptSide::Superscript, script('a'), Length::pt(12.0), false);
+    push_script(&mut items, ScriptSide::Superscript, script('b'), Length::pt(12.0), false);
+
+    let outer = scripts_of(&items[0]);
+    assert!(
+      matches!(outer.base.as_slice(), [AtomNode::Scripts(inner)] if inner.superscript.is_some()),
+      "前のスクリプトを上書きせず、スクリプト付きの x 全体を基底にする: {outer:?}"
+    );
+    assert!(outer.superscript.is_some());
   }
 
   #[test]
