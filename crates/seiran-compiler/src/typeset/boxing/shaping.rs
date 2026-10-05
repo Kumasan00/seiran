@@ -303,35 +303,53 @@ impl<'a> Shaper<'a> {
   /// どちらも 0 以上で、グリフが無ければ 0。箱の高さ・深さはフォント全体の ascender / descender なので、
   /// 数式のスクリプト配置が基底・スクリプトの実際の大きさを見るのにはこちらを使う。
   pub(super) fn ink_extent(&self, boxes: &[PlacedHBox]) -> (Length, Length) {
-    let mut height = Length::ZERO;
-    let mut depth = Length::ZERO;
-    for placed in boxes {
-      let (box_height, box_depth) = match &placed.hbox.content {
-        HBoxContent::Glyphs(run) => self.glyph_run_ink(run),
-        HBoxContent::Atom(children) => self.ink_extent(children),
-      };
-      height = height.max(box_height + placed.dy);
-      depth = depth.max(box_depth - placed.dy);
-    }
-    return (height, depth);
+    let Some((top, bottom)) = self.signed_ink(boxes) else {
+      return (Length::ZERO, Length::ZERO);
+    };
+    return (top.max(Length::ZERO), (-bottom).max(Length::ZERO));
   }
 
-  /// グリフ列 1 本のインクの高さと深さ（[`Shaper::ink_extent`] の 1 箱ぶん。読めないグリフはインクを持たない扱い）
-  fn glyph_run_ink(&self, run: &GlyphRun) -> (Length, Length) {
+  /// 配置済みの箱の列のインクの上端と下端（ベースライン基準・上が正。符号は丸めない）。グリフが無ければ `None`
+  ///
+  /// 入れ子の箱は `dy` を足してから合流させる。0 へ丸めるのは最終結果だけにしないと、
+  /// 自身のベースラインより上にしかインクの無い箱が、下へずらされたときに深さを過大に測る。
+  fn signed_ink(&self, boxes: &[PlacedHBox]) -> Option<(Length, Length)> {
+    let mut extent: Option<(Length, Length)> = None;
+    for placed in boxes {
+      let inner = match &placed.hbox.content {
+        HBoxContent::Glyphs(run) => self.glyph_run_signed_ink(run),
+        HBoxContent::Atom(children) => self.signed_ink(children),
+      };
+      let Some((top, bottom)) = inner else {
+        continue;
+      };
+      let (top, bottom) = (top + placed.dy, bottom + placed.dy);
+      extent = Some(match extent {
+        Some((max_top, min_bottom)) => (max_top.max(top), min_bottom.min(bottom)),
+        None => (top, bottom),
+      });
+    }
+    return extent;
+  }
+
+  /// グリフ列 1 本のインクの上端と下端（符号付き。読めないグリフはインクを持たない扱い）
+  fn glyph_run_signed_ink(&self, run: &GlyphRun) -> Option<(Length, Length)> {
     let upem = f64::from(self.fonts.metrics(run.font_type).upem);
     let to_length = |units: f64| return run.font_size.scale(units / upem);
-    let mut height = Length::ZERO;
-    let mut depth = Length::ZERO;
+    let mut extent: Option<(Length, Length)> = None;
     for glyph in &run.glyphs {
       let Some(extents) = self.fonts.glyph_extents(run.font_type, glyph.gid) else {
         continue;
       };
       let top = f64::from(extents.y_bearing) + f64::from(glyph.y_offset);
       let bottom = top - f64::from(extents.height);
-      height = height.max(to_length(top));
-      depth = depth.max(-to_length(bottom));
+      let (top, bottom) = (to_length(top), to_length(bottom));
+      extent = Some(match extent {
+        Some((max_top, min_bottom)) => (max_top.max(top), min_bottom.min(bottom)),
+        None => (top, bottom),
+      });
     }
-    return (height, depth);
+    return extent;
   }
 }
 

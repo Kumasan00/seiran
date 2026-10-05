@@ -939,7 +939,8 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   括弧の数式軸を、数式フォントの MATH `AxisHeight` に揃える（箱の幾何中点や括弧箱の ascender / descender は
   使わない）。環境単位の式番号は本体の縦中央に揃える別規則
 - **上付き・下付き**（`MathScripts`）は、基底と上付き・下付きを原点から仮に配置してインク（グリフの形の範囲。
-  `FontSystem::glyph_extents`）を測り、MATH 定数から MathML Core と同じ規則でシフト量を決める — 箱の高さ・
+  `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
+  `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・
   深さ（フォント全体の ascender / descender）は使わない。上付き・下付きは基底の右端から同じ列に置き、上下付き
   同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
   超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（Atom の幅は

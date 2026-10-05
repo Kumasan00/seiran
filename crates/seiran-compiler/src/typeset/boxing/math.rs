@@ -5,7 +5,8 @@
 //! だけを行う。HIR の数式語彙（`document::MathBlockKind`）はここまで届かない。
 //!
 //! 上付き・下付き（`MathScripts`）のシフト量は、基底とスクリプトのインク（グリフの形の範囲）と数式フォントの
-//! MATH 定数から、OpenType MATH の標準規則（MathML Core のスクリプト配置）で決める。箱の高さ・深さはフォント
+//! MATH 定数から決める。片側だけのシフトは `MathML Core` のスクリプト配置の規則に、上下付き同時のギャップは OpenType MATH の
+//! `SuperscriptBottomMaxWithSubscript` の定義（先に上付きを上げ、残りを下付きを下げて埋める）に従う。箱の高さ・深さはフォント
 //! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
 
 use read_fonts::tables::math::MathConstant;
@@ -322,7 +323,9 @@ impl Measurer<'_> {
       ),
       (Some(sup), None) => (constants.superscript_shift(base.ink_height, sup.ink_depth, cramped), Length::ZERO),
       (None, Some(sub)) => (Length::ZERO, constants.subscript_shift(base.ink_depth, sub.ink_height)),
-      (None, None) => (Length::ZERO, Length::ZERO),
+      (None, None) => unreachable!(
+        "MathScripts を作るのは spacing::attach（片側を必ず埋める）と根号の指数（上付きを持つ）だけで、少なくとも一方は Some"
+      ),
     };
 
     let script_x = *dx + base.width;

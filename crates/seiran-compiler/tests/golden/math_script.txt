@@ -305,6 +305,19 @@ keywords=["test", "seiran"]
   glyphs x=1188.01 y=434.70 font=Math size=6.60 text="3" glyph_count=1
   glyphs x=1192.19 y=439.02 font=Math size=12.00 text="√𝑥" glyph_count=2
   glyphs x=1208.43 y=439.02 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=1217.25 y=439.02 font=JapaneseSerif size=12.00 text="被" glyph_count=1
+  glyphs x=1229.25 y=439.02 font=JapaneseSerif size=12.00 text="根" glyph_count=1
+  glyphs x=1241.25 y=439.02 font=JapaneseSerif size=12.00 text="号" glyph_count=1
+  glyphs x=1253.25 y=439.02 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=1265.25 y=439.02 font=JapaneseSerif size=12.00 text="上" glyph_count=1
+  glyphs x=1277.25 y=439.02 font=JapaneseSerif size=12.00 text="付" glyph_count=1
+  glyphs x=1289.25 y=439.02 font=JapaneseSerif size=12.00 text="き" glyph_count=1
+  glyphs x=1301.25 y=439.02 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=1316.07 y=439.02 font=Serif size=12.00 text="cramped:" glyph_count=8
+  glyphs x=1366.02 y=439.02 font=Math size=12.00 text="√" glyph_count=1
+  glyphs x=1375.55 y=439.02 font=Math size=12.00 text="𝑥" glyph_count=1
+  glyphs x=1382.26 y=436.00 font=Math size=8.40 text="2" glyph_count=1
+  glyphs x=1387.14 y=439.02 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 outline:
   depth=2 text=".1 スクリプトの範囲" page=0 x=240.94 y=257.61
   depth=2 text=".2 スクリプトの段と配置" page=0 x=240.94 y=385.00

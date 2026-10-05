@@ -236,7 +236,7 @@ impl DelimiterGlyphs {
 /// 基底に付けた上付き・下付き
 ///
 /// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。上付き・下付きは
-/// どちらも基底の右端から始まる。
+/// どちらも基底の右端から始まる。上付き・下付きの少なくとも一方は `Some`（`spacing::attach` と根号の指数だけが作る）。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathScripts {
   /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループや根号の指数）
