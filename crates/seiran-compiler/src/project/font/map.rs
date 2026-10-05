@@ -59,15 +59,6 @@ impl<T> FontMap<T> {
     );
   }
 
-  /// [`FontMap::from_fn`] の並列版。
-  pub(crate) fn par_from_fn(value_of: impl Fn(FontType) -> T + Sync) -> Self
-  where
-    T: Send,
-  {
-    let values = FontType::VARIANTS.par_iter().map(|&font_type| return value_of(font_type)).collect::<Vec<T>>();
-    return Self::from_complete(values);
-  }
-
   /// [`FontMap::try_from_fn`] の並列版。
   ///
   /// # Errors
@@ -114,6 +105,14 @@ impl<T> FontMap<T> {
   }
 }
 
+impl<U, V> FontMap<(U, V)> {
+  /// 組の表を、同じ種別に組の第 1 要素を置いた表と第 2 要素を置いた表に分ける。
+  pub(crate) fn unzip(self) -> (FontMap<U>, FontMap<V>) {
+    let (firsts, seconds) = self.values.into_iter().unzip::<U, V, Vec<U>, Vec<V>>();
+    return (FontMap::from_complete(firsts), FontMap::from_complete(seconds));
+  }
+}
+
 impl<T> Index<FontType> for FontMap<T> {
   type Output = T;
 
@@ -144,21 +143,24 @@ mod tests {
   }
 
   #[test]
+  fn unzip_keeps_each_half_under_the_same_font_type() {
+    let map = FontMap::from_fn(|font_type| return (font_type, font_type.as_toml_key()));
+
+    let (font_types, keys) = map.unzip();
+
+    for &font_type in FontType::VARIANTS {
+      assert_eq!(font_types[font_type], font_type);
+      assert_eq!(keys[font_type], font_type.as_toml_key());
+    }
+  }
+
+  #[test]
   fn from_fn_stores_each_value_under_its_font_type() {
     let map = FontMap::from_fn(|font_type| return font_type.as_toml_key());
 
     for &font_type in FontType::VARIANTS {
       assert_eq!(map[font_type], font_type.as_toml_key());
     }
-  }
-
-  #[test]
-  fn par_from_fn_builds_the_same_map_as_from_fn() {
-    let sequential = FontMap::from_fn(|font_type| return font_type.as_toml_key());
-
-    let parallel = FontMap::par_from_fn(|font_type| return font_type.as_toml_key());
-
-    assert_eq!(parallel, sequential);
   }
 
   #[test]

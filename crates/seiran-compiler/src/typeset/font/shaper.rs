@@ -3,7 +3,7 @@
 //! `HarfRust` を使い、フォント設定の書字方向・スクリプト・言語・OpenType
 //! フィーチャー・バリエーション軸を反映して文字列をグリフ列へ変換する。
 
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 pub(in crate::typeset) use harfrust::Buffer;
 use harfrust::{Direction, Feature, Font, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::{
   failures::Failures,
-  project::{FontConfig, FontConfigs, FontData, FontMap, TextDirection},
+  project::{FontConfig, FontConfigs, FontMap, TextDirection},
 };
 
 /// テキストシェイピングの初期化エラー。
@@ -35,23 +35,8 @@ pub(crate) enum ShaperError {
 /// 全フォント種別のシェイピング用フォント（設定のバリエーション軸の位置へ移したもの）。
 pub(super) type ShapingFonts = FontMap<Font>;
 
-/// 全フォント種別のシェイピング用フォントを並列に生成する。
-///
-/// 同じ `configs` / `font_data` で `build_font_refs` が解析に成功していることが前提（[`build_shaping_font`] の
-/// `expect` の根拠）。
-pub(super) fn build_shaping_fonts(configs: &FontConfigs, font_data: &FontData) -> ShapingFonts {
-  return ShapingFonts::par_from_fn(|font_type| {
-    return build_shaping_font(&configs[font_type], font_data.shared_bytes(font_type));
-  });
-}
-
-/// 1 種別のシェイピング用フォントを生成する。バリエーション軸の設定があればその位置のインスタンスにする。
-fn build_shaping_font(config: &FontConfig, bytes: Arc<[u8]>) -> Font {
-  // `Arc<[u8]>` は既に unsized なので `dyn AsRef<[u8]>` へ直接は unsize できず、もう 1 段 `Arc` で包む
-  let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(bytes);
-  let font = Font::new(blob, config.font_index).expect(
-    "同じバイト列と font_index は build_font_refs の FontRef::from_index で解析済みで、Font::new も同じ解析で sfnt と認める",
-  );
+/// `font` を設定のバリエーション軸の位置のインスタンスにする。軸の設定が無ければそのまま返す。
+pub(super) fn at_configured_location(font: Font, config: &FontConfig) -> Font {
   let Some(axes) = config.variation_axes.as_ref() else {
     return font;
   };
@@ -184,17 +169,19 @@ impl<'a> HarfRustShaper<'a> {
 
 #[cfg(test)]
 mod tests {
-  use std::{fs, path::Path, sync::Arc};
+  use std::{fs, path::Path};
 
-  use super::build_shaping_font;
+  use harfrust::Font;
+
+  use super::at_configured_location;
   use crate::project::{FontConfig, ProjectPath, VariationAxis};
 
-  /// 軸 `wght`（既定 400）を持つ STIX Two Text のバイト列を読む。
-  fn stix_two_text_bytes() -> Arc<[u8]> {
+  /// 軸 `wght`（既定 400）を持つ STIX Two Text を既定位置で読む。
+  fn stix_two_text() -> Font {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoText[wght].ttf");
-    return fs::read(&path)
-      .expect("vendor/fonts の STIX Two Text を読めるはず（未取得なら tools/fetch-test-assets.sh）")
-      .into();
+    let bytes =
+      fs::read(&path).expect("vendor/fonts の STIX Two Text を読めるはず（未取得なら tools/fetch-test-assets.sh）");
+    return Font::new(bytes, 0).expect("STIX Two Text は sfnt として読めるはず");
   }
 
   /// `variation_axes` だけを差し替えた STIX Two Text の設定を作る。
@@ -215,7 +202,7 @@ mod tests {
   fn shaping_font_without_axes_stays_at_default_location() {
     let config = stix_two_text_config(None);
 
-    let font = build_shaping_font(&config, stix_two_text_bytes());
+    let font = at_configured_location(stix_two_text(), &config);
 
     assert!(font.normalized_coords().is_empty(), "軸の設定が無ければ既定位置のまま");
   }
@@ -227,7 +214,7 @@ mod tests {
       value: 700.0,
     }]));
 
-    let font = build_shaping_font(&config, stix_two_text_bytes());
+    let font = at_configured_location(stix_two_text(), &config);
 
     assert!(
       font.normalized_coords().iter().any(|coord| return coord.to_f32() > 0.0),

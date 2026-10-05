@@ -1,6 +1,6 @@
 //! フォント資源の構築順序を隠蔽する窓口モジュール
 //!
-//! `FontData` → `FontRefs` → `FontMap<FontMetrics>` → 検証 → `ShapingFonts` → `HarfRustShapers`
+//! `FontData` → `FontRefs` / `ShapingFonts` → `FontMap<FontMetrics>` → 検証 → `HarfRustShapers`
 //! という構築順序と寿命関係をここに閉じ込め、呼び出し側には構築の入口として [`FontResources::load`] と
 //! [`FontResources::system`] の 2 段呼び出しだけを公開する。
 
@@ -15,8 +15,9 @@ use crate::{
   project::{FontConfigs, FontData, FontMap, FontType},
   publication::FontMetrics,
   typeset::font::{
-    FontLoadError, FontRefs, build_font_metrics, build_font_refs,
+    FontLoadError, FontRefs, build_font_metrics,
     face_config::{FontFaceConfigs, build_face_configs},
+    parse_fonts,
     shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
     validation::{self, FontValidationError, FontWarning},
   },
@@ -68,7 +69,7 @@ impl<'a> FontResources<'a> {
     configs: &'a FontConfigs,
     font_data: &'a FontData,
   ) -> (Result<Self, Failures<FontSystemError>>, Vec<FontWarning>) {
-    let (font_refs, metrics) = match build_refs_and_metrics(configs, font_data) {
+    let (font_refs, shaping_fonts, metrics) = match parse_and_measure(configs, font_data) {
       Ok(built) => built,
       Err(failures) => return (Err(failures), Vec::new()),
     };
@@ -80,7 +81,6 @@ impl<'a> FontResources<'a> {
     }
     debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");
 
-    let shaping_fonts = shaper::build_shaping_fonts(configs, font_data);
     return (
       Ok(Self {
         configs,
@@ -118,18 +118,19 @@ impl<'a> FontResources<'a> {
   }
 }
 
-/// フォント参照の解析とメトリクスの取得を行う（検証の前の 2 段）。
+/// フォントの解析とメトリクスの取得を行う（検証の前の 2 段）。
 ///
 /// # Errors
 ///
 /// いずれかのフォントを解析できない、またはメトリクスを取得できない場合に、その段の違反を全件返す。
-fn build_refs_and_metrics<'a>(
+fn parse_and_measure<'a>(
   configs: &'a FontConfigs,
   font_data: &'a FontData,
-) -> Result<(FontRefs<'a>, FontMap<FontMetrics>), Failures<FontSystemError>> {
-  let font_refs = build_font_refs(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
+) -> Result<(FontRefs<'a>, ShapingFonts, FontMap<FontMetrics>), Failures<FontSystemError>> {
+  let (font_refs, shaping_fonts) =
+    parse_fonts(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
   let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
-  return Ok((font_refs, metrics));
+  return Ok((font_refs, shaping_fonts, metrics));
 }
 
 /// シェイプ・メトリクス取得だけを公開するビュー。
