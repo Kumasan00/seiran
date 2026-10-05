@@ -87,8 +87,7 @@ impl Measurer<'_> {
 
   /// シェーピング済みの run を分割可能位置で `HItem` 列に分割する
   fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut Vec<HItem>) {
-    // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）。
-    // 論理順でない run（右から左）は切らずに 1 箱で積む
+    // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）
     if !run.is_in_logical_order() {
       out.push(HItem::Box(run.into_hbox()));
       return;
@@ -268,8 +267,11 @@ fn plan_cut(
         return None;
       }
       let space = &run.glyphs()[glyph_index - 1];
-      let is_single_space =
-        space.range.start == point.byte - 1 && space.range.end == point.byte && text.as_bytes()[point.byte - 1] == b' ';
+      // スペース 1 字が単独グリフでクラスタを成すときだけ切る（同じクラスタの複数グリフは同じ範囲を持つ）
+      let is_single_space = space.range.start == point.byte - 1
+        && space.range.end == point.byte
+        && text.as_bytes()[point.byte - 1] == b' '
+        && (glyph_index < 2 || run.glyphs()[glyph_index - 2].range != space.range);
       if !is_single_space {
         return None;
       }
@@ -489,6 +491,28 @@ mod tests {
     };
 
     assert!(plan_cut(&run, behind_cursor, 2, false, None).is_none(), "カーソル以前の位置は抑制");
+  }
+
+  #[test]
+  fn glue_cut_is_skipped_when_the_space_cluster_has_two_glyphs() {
+    // スペース 1 字（2..3）を 2 グリフで描くクラスタ。片方だけ前の箱へ残すと範囲が箱のテキストをはみ出す
+    let run = shaped_with_ranges(
+      "ab cd",
+      &[
+        (0..1, 500),
+        (1..2, 500),
+        (2..3, 250),
+        (2..3, 250),
+        (3..4, 500),
+        (4..5, 500),
+      ],
+    );
+    let point = BreakOpportunity {
+      byte: 3,
+      kind: BreakKind::Glue,
+    };
+
+    assert!(plan_cut(&run, point, 0, false, None).is_none(), "複数グリフのスペースクラスタでは分割しない");
   }
 
   /// グリフごとの（範囲, 送り幅）を指定して run を組む（同じ範囲を並べると複数グリフのクラスタになる）

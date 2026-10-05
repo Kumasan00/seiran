@@ -42,9 +42,8 @@ fn design_units(value: f32) -> i64 { return value as i64; }
 /// グリフごとのクラスタ開始位置 `clusters`（グリフ順）から、各グリフが対応する元テキストの範囲を出す。
 ///
 /// 範囲はグリフが属するクラスタ全体 — 開始位置から、それより後ろで始まるクラスタの最小の開始位置
-/// （無ければ `text_len`）まで。同じクラスタの複数グリフは同じ範囲になり、krilla はこの一致で
-/// クラスタを認識して `ActualText` にまとめる。グリフ順に依存しないので右から左（クラスタ降順）でも
-/// 範囲は逆転しない。harfrust はクラスタ開始位置を文字の先頭バイトに置くので、範囲の両端は文字境界に乗る。
+/// （無ければ `text_len`）まで。グリフ順に依存しないので右から左（クラスタ降順）でも範囲は逆転しない。
+/// harfrust はクラスタ開始位置を文字の先頭バイトに置くので、範囲の両端は文字境界に乗る。
 fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
   let mut starts = clusters.to_vec();
   starts.sort_unstable();
@@ -290,7 +289,7 @@ impl<'a> Shaper<'a> {
 
 #[cfg(test)]
 mod tests {
-  use std::{fs, path::Path};
+  use std::{fs, ops::Range, path::Path};
 
   use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
 
@@ -411,7 +410,7 @@ mod tests {
   }
 
   /// `text` を書字方向 `direction` でシェイプし、[`cluster_ranges`] でグリフごとの範囲を出す。
-  fn shaped_ranges(font: &Font, text: &str, direction: Direction) -> Vec<std::ops::Range<usize>> {
+  fn shaped_ranges(font: &Font, text: &str, direction: Direction) -> Vec<Range<usize>> {
     let mut buffer = Buffer::new();
     buffer.set_direction(direction);
     buffer.push_str(text);

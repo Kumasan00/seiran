@@ -11,7 +11,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use lopdf::{Document, Encoding, Object, content::Content, decode_text_string};
+use lopdf::{Document, Encoding, Object, content::Content};
 use seiran_compiler::{FilesystemProjectSource, ProjectPath};
 use tempfile::TempDir;
 
@@ -160,7 +160,7 @@ fn extract_text_honoring_actual_text(document: &Document, page_number: u32) -> S
         if let Some(actual_text) = actual_text
           && !in_actual_text
         {
-          text.push_str(&decode_text_string(actual_text).expect("ActualText はテキスト文字列のはず"));
+          text.push_str(&lopdf::decode_text_string(actual_text).expect("ActualText はテキスト文字列のはず"));
         }
         marked_content.push(actual_text.is_some());
       },
@@ -368,6 +368,31 @@ fn pdf_text_keeps_each_char_of_right_to_left_runs_once() {
 
   let extracted = extract_text_honoring_actual_text(&document, 1);
 
+  assert_eq!(
+    sorted_non_whitespace_chars(&extracted),
+    sorted_non_whitespace_chars(body),
+    "右から左の run の文字は欠落も重複もしないはず: {extracted:?}"
+  );
+}
+
+#[test]
+fn pdf_text_keeps_each_char_of_reversed_runs_once() {
+  // 複数グリフのクラスタを含まない右から左の run は、krilla が /ReversedChars で包む経路を通る
+  let body = "abc def";
+  let document = Document::load_mem(&build_pdf_bytes_from_body(body, "right-to-left")).expect("lopdf での PDF 読込");
+
+  let extracted = extract_text_honoring_actual_text(&document, 1);
+
+  let (_, &page_id) = document.get_pages().iter().next().expect("少なくとも 1 ページあるはず");
+  let content = Content::decode(&document.get_page_content(page_id)).expect("content stream のデコード");
+  assert!(
+    content.operations.iter().any(|operation| {
+      return operation.operator == "BMC"
+        && operation.operands.first().and_then(|operand| return operand.as_name().ok())
+          == Some(b"ReversedChars".as_slice());
+    }),
+    "右から左の run は /ReversedChars で包まれるはず（テストが逆順の経路を通っていない）"
+  );
   assert_eq!(
     sorted_non_whitespace_chars(&extracted),
     sorted_non_whitespace_chars(body),
