@@ -67,8 +67,9 @@
 ### `validators`
 
 garde の `custom` に渡す、`Length` 以外（文字列・配列・`f32`・整数）の設定値検証器を持つ crate root 直下の leaf
-module。crate 内の他 module へ依存しない。利用者は `style` と `project::config` の両方で、依存の向きは
-`style → project` だけなので、どちらの module にも置けない。
+module。crate 内の他 module へ依存しない。利用者は `style` と `project::config` の両方で、`project` から
+`style` への依存は無いので `style` には置けず、`project` は物理的な入力（資源取得 seam・config.toml・フォント）
+を持つ module で、値の汎用検証器はその責務に属さない。
 
 - 違反文言は日本語で、数値の違反には受け取った値を載せる。garde 組込の値ルール（`length` / `range` 等）は使わない
   （規約は `docs/error-handling.md`「バリデーション（garde）」）
