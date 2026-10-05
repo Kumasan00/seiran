@@ -9,6 +9,7 @@ use strum::VariantArray;
 use crate::{
   document::{TheoremClass, Typeface},
   length::{Length, non_negative},
+  project::non_empty_text,
   style::{CounterName, CounterTemplate, TheoremHeadingTemplate},
 };
 
@@ -149,11 +150,11 @@ impl Index<TheoremClass> for TheoremStyles {
 #[garde(allow_unvalidated)]
 pub(crate) struct TheoremStyle {
   /// 表示名（例: `"Theorem"`、`"定理"`）。見出し書式の `{display_name}` から参照される
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub display_name: String,
   /// 共有カウンタ名。同じ名前を指定したクラスは 1 つのカウンタを共有する
   /// （LaTeX の `\newtheorem{lemma}[theorem]{...}` 第 2 引数の明示化）
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub counter: String,
   /// このクラスのカウンタのリセット先（見出しレベル or なし）
   pub reset_by: TheoremReset,
@@ -164,7 +165,7 @@ pub(crate) struct TheoremStyle {
   /// 採番しない（`proof` 等）
   pub unnumbered: bool,
   /// QED マーク（`proof` 末尾に配置する記号）。`None` のときマークなし
-  #[garde(inner(length(chars, min = 1)))]
+  #[garde(inner(custom(non_empty_text)))]
   pub qed_mark: Option<String>,
   /// 見出し書式・本文/見出しフォント・上下マージン
   #[garde(dive)]

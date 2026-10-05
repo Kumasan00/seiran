@@ -238,6 +238,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 - `compile` の失敗型は不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic
 - 診断 `code` の第 1 階層は段の固定列挙（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli`）、第 2 階層以降は意味的カテゴリ（module パスではない）
 - 設定値検証は `garde`、違反は `Failures<E>` に集めて 1 度に報告。集約するかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決め、表示順は入力の論理順。集約自身に `code` を付けない（`Failures<E>` は `Diagnostic` 非実装で型保証）
+- garde 組込の値ルール（`length` / `range` 等）は文言が英語で受け取った値も載らないので使わない。`custom` に `project` の `validators` か `length` の検証器を渡す（lint は属性の中を見ないので人が守る）
 - 外部資源の read error は低水準 cause として leaf diagnostic の `#[source]` へ。warning は error と公開型を共用せず（`Warnings`）、同じ問題を診断と tracing の両方で出さない
 - `map_err(|_| ...)` で元のエラーを捨てない（`map_err_ignore`）。`Result` を `.ok()` で捨てず `let _ = f();` と書く（`unused_result_ok`）
 - ライブラリ 2 crate で `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`。CLI の crate root だけ `print_stderr` を `#![expect]`。stdout の一覧出力も `println!` ではなく `subcommand::listing` の書き出し 1 箇所）

@@ -1,0 +1,30 @@
+style::validation::field
+
+  × diagnostics/style.toml: 'list.nested_ordered_formats': 空の配列は指定できません
+  help: style.toml の該当フィールドの値を確認してください。
+
+Error: style::validation::field
+
+  × diagnostics/style.toml: 'list.nested_unordered_markers[0]': 空文字列は指定できません
+  help: style.toml の該当フィールドの値を確認してください。
+
+Error: style::validation::field
+
+  × diagnostics/style.toml: 'text.line_height_factor': 正の有限値である必要があります（受け取った
+  │ 値: NaN）
+  help: style.toml の該当フィールドの値を確認してください。
+
+Error: style::validation::field
+
+  × diagnostics/style.toml: 'toc.leader': 空文字列は指定できません
+  help: style.toml の該当フィールドの値を確認してください。
+
+Error: style::validation::field
+
+  × diagnostics/style.toml: 'toc.max_depth': 1 以上 6 以下である必要があります（受け取った値: 7）
+  help: style.toml の該当フィールドの値を確認してください。
+
+Error: style::validation::field
+
+  × diagnostics/style.toml: 'toc.title': 空文字列は指定できません
+  help: style.toml の該当フィールドの値を確認してください。

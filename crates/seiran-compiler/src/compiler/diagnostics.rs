@@ -417,6 +417,22 @@ fn diagnostic_style_validation_aggregate() {
 }
 
 #[test]
+fn diagnostic_style_validation_bounds_and_empty() {
+  // 空文字列・空配列・配列要素の空文字列・Option 内の空文字列・整数の範囲外・f32 の NaN を同時に不正にする
+  let toml = concat!(
+    "[text]\nline_height_factor = nan\n\n",
+    "[list]\nnested_unordered_markers = [\"\"]\nnested_ordered_formats = []\n\n",
+    "[toc]\ntitle = \"\"\nmax_depth = 7\nleader = \"\"\n",
+  );
+
+  let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
+
+  assert_matches_golden("style_validation_bounds_and_empty", &render_failure(CompileFailure::from(failures)));
+}
+
+#[test]
 fn diagnostic_style_toc_alignment_with_page_numbers() {
   // show_page_numbers は既定 true のまま揃えだけを変える
   let toml = "[toc]\nenabled = true\nalignment = \"center\"\n";

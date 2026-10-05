@@ -644,6 +644,14 @@ mod validate_tests {
   }
 
   #[test]
+  fn parse_rejects_nan_line_height_factor() {
+    // NaN はどの大小比較も偽になるので、上下限の比較だけでは素通りする
+    let toml = "[text]\nline_height_factor = nan\n";
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+    assert_eq!(paths(&errors), vec!["text.line_height_factor"]);
+  }
+
+  #[test]
   fn parse_collects_multiple_validation_errors() {
     let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
     let errors = expect_validation_errors(parse(toml, dummy_source()));

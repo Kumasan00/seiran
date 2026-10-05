@@ -14,13 +14,14 @@
 //!
 //! TOML 設定ファイル（config.toml / style.toml）の解析そのものと、解析エラーを leaf diagnostic の部品へ
 //! 分解する規則は子 module `toml_error_parts` の [`parse_toml`] + [`TomlErrorParts`] に閉じ、config / style は
-//! `toml::from_str` を直接呼ばずこれを使う。
+//! `toml::from_str` を直接呼ばずこれを使う。値検証で garde の `custom` に渡す文字列・配列・数値の検証器も
+//! 子 module `validators` に置き、config / style が共用する。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory` / `path_resolver`）と `in_file` /
-//! `toml_error_parts` は crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、`config` が
-//! seam / `in_file` / `toml_error_parts` / `font` / `length` / `failures` を、`font` が seam（[`ProjectSource`] /
-//! [`ProjectPath`]）と `failures` を、`source_set` が `source` / `failures` を参照する。`config` → `font` → seam は
-//! 一方向に閉じる。
+//! `toml_error_parts` / `validators` は crate 内の他 module に依存しない。crate 内依存を持つのは残る子 module だけで、
+//! `config` が seam / `in_file` / `toml_error_parts` / `validators` / `font` / `length` / `failures` を、`font` が
+//! seam（[`ProjectSource`] / [`ProjectPath`]）と `failures` を、`source_set` が `source` / `failures` を参照する。
+//! `config` → `font` → seam は一方向に閉じる。
 
 pub(crate) mod config;
 mod filesystem;
@@ -30,6 +31,7 @@ mod memory;
 mod path_resolver;
 mod source_set;
 mod toml_error_parts;
+mod validators;
 
 use std::{
   path::{Path, PathBuf},
@@ -49,6 +51,7 @@ use serde::Deserialize;
 pub(crate) use source_set::SourceSet;
 use thiserror::Error;
 pub(crate) use toml_error_parts::{TomlErrorParts, parse_toml};
+pub(crate) use validators::{in_range, non_empty_list, non_empty_text, non_negative_finite, positive_finite};
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ
 /// （シンボリックリンク解決はしない。存在確認は [`ProjectSource::exists`] が担う）。

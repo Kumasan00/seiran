@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
+  project::{in_range, non_empty_text},
   style::BlockAlignment,
 };
 
@@ -13,7 +14,7 @@ use crate::{
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct IndexStyle {
   /// 索引ページのタイトル文字列
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub title: String,
   /// タイトルのフォントサイズ
   #[garde(custom(positive))]
@@ -28,7 +29,7 @@ pub(crate) struct IndexStyle {
   #[garde(custom(positive))]
   pub font_size: Length,
   /// 索引ページの段組み数（1 = 単段）
-  #[garde(range(min = 1, max = 3))]
+  #[garde(custom(in_range(1, 3)))]
   pub column_count: u8,
   /// 語とページ番号列の間の水平アキ
   #[garde(custom(non_negative))]
@@ -57,7 +58,7 @@ pub(crate) struct IndexStyle {
   /// どの区分にも入らないエントリ（数字・記号始まり・かなより後に照合される語）の区分見出し
   ///
   /// 行ラベル（「あ」「か」…）と A–Z は固定表で差し替えられず、この受け皿だけ文字列を選べる。
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub group_other_label: String,
 }
 

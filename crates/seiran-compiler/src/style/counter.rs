@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::{
   document::HeadingLevel,
+  project::non_empty_text,
   style::{CounterTemplate, RefTemplate, number_style::NumberStyle},
 };
 
@@ -143,7 +144,7 @@ impl Index<CounterName> for CounterStyles {
 #[garde(allow_unvalidated)]
 pub(crate) struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub display_name: String,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   ///

@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::{
   document::Typeface,
   length::{Length, non_negative},
+  project::{non_empty_list, non_empty_text},
   style::{NumberTemplate, number_style::NumberStyle},
 };
 
@@ -21,7 +22,7 @@ pub(crate) struct ListStyle {
   #[garde(custom(non_negative))]
   pub item_margin_bottom: Length,
   /// 順序なしリストのマーカー文字列（例: `"•"`）。後ろに自動で半角スペースが付与される。
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub unordered_marker: String,
   /// 順序付きリストのマーカー書式（例: `"{number}."`）。`{number}` は 1 始まりの項目番号で置換される。
   /// 後ろに自動で半角スペースが付与される。
@@ -31,11 +32,11 @@ pub(crate) struct ListStyle {
   pub marker_typeface: Typeface,
   /// ネスト段（深さ 1 以上）の unordered マーカー系列。深さ `d`（≥1）は `(d - 1) % N` で循環的に引く
   /// （`N` は要素数）。最上位（深さ 0）の `unordered_marker` とは独立。
-  #[garde(length(min = 1), inner(length(chars, min = 1)))]
+  #[garde(custom(non_empty_list), inner(custom(non_empty_text)))]
   pub nested_unordered_markers: Vec<String>,
   /// ネスト段（深さ 1 以上）の ordered マーカー系列。循環規則は [`Self::nested_unordered_markers`] と同じ。
   /// 最上位（深さ 0）の `ordered_marker_format` とは独立。
-  #[garde(length(min = 1), dive)]
+  #[garde(custom(non_empty_list), dive)]
   pub nested_ordered_formats: Vec<NestedOrderedFormat>,
 }
 

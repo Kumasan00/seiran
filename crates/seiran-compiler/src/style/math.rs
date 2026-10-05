@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   length::{Length, non_negative, positive},
+  project::{non_negative_finite, positive_finite},
   style::{BlockAlignment, NumberTemplate},
 };
 
@@ -27,13 +28,13 @@ pub(crate) struct MathStyle {
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathScriptStyle {
   /// 上付き / 下付きスクリプトのフォントサイズ倍率（親フォントサイズに対する比）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
+  #[garde(custom(positive_finite))]
   pub script_size_factor: f32,
   /// 上付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で上方向）
-  #[garde(range(min = 0.0, max = f32::MAX))]
+  #[garde(custom(non_negative_finite))]
   pub superscript_raise_factor: f32,
   /// 下付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で下方向）
-  #[garde(range(min = 0.0, max = f32::MAX))]
+  #[garde(custom(non_negative_finite))]
   pub subscript_drop_factor: f32,
   /// スクリプトフォントサイズの下限。極端な縮小を防ぐためのクランプ値
   #[garde(custom(positive))]

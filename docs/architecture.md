@@ -114,10 +114,11 @@
 
 ### `project`
 
-プロジェクトの**物理的な入力**を所有する module。所有物は 7 つ — 外部資源取得の seam（`ProjectSource` trait +
+プロジェクトの**物理的な入力**を所有する module。所有物は 8 つ — 外部資源取得の seam（`ProjectSource` trait +
 `ProjectPath`）・`config.toml`（子 module `config`）・読込済みソース集合 `SourceSet`・config.toml が宣言する
 フォント資源（子 module `font`）・入力パスの解決規則 `PathResolver`・帰属 adapter `InFile<E>`・TOML 解析
-そのものと解析エラーの診断部品 `TomlErrorParts`（`parse_toml` が入口）。各所有物の
+そのものと解析エラーの診断部品 `TomlErrorParts`（`parse_toml` が入口）・値検証で garde の `custom` に渡す検証器
+（子 module `validators`）。各所有物の
 中身は `//!` が持ち、ここには境界だけを置く。
 
 - seam: compiler は `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
@@ -139,14 +140,20 @@
   code / help は役割ごとに違うので variant（`ParseToml`）は各所有者が持ち、`parse_toml` は部品（`NamedSource` /
   `SourceSpan` / input を消した `toml::de::Error`）だけを返す。references の `ParseToml` は toml の自前
   スニペットで位置を示す別方式で（`docs/error-handling.md` の references 例外）、これを使わない
+- `validators`（文字列の非空・配列の非空・整数の範囲・`f32` の正 / 非負の有限値）も config と style が共用する。違反文言は
+  日本語で、数値の違反には受け取った値を載せる。garde 組込の値ルール（`length` / `range` 等）は使わない（規約は
+  `docs/error-handling.md`「バリデーション（garde）」）。`f32` の検証器は有限値だけを受理する（NaN はどの大小比較も
+  偽になるので、上下限の比較だけでは素通りする）。利用側は `length` の検証器と同じく `use` で持ち込み、境界は実行時の
+  式なので、由来の定数があればリテラルへ複製せず直接渡す（`in_range(1, HeadingLevel::COUNT)`）。`Length` の検証器は
+  値概念に付くので `length` が持つ
 
 見た目を決める `style.toml` は `style` module の所有で、言語設計原則 P10 が区別する 2 概念（物理・実体・
 メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは判定できない横断制約は
 `typeset::geometry` が持つ。
 
 依存の不変条件: **seam 部（module 直下 + `filesystem` / `memory` / `path_resolver`）と帰属 adapter `in_file`・
-TOML 解析部品 `toml_error_parts` は crate 内の他 module に依存しない**。crate 内依存を持つのは残る子 module だけで、
-`config` が seam / `in_file` / `toml_error_parts` / `font` / `length` / `failures` を、`font` が seam と `failures` を、
+TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の他 module に依存しない**。crate 内依存を持つのは残る子 module だけで、
+`config` が seam / `in_file` / `toml_error_parts` / `validators` / `font` / `length` / `failures` を、`font` が seam と `failures` を、
 `source_set` が `source` / `failures` を参照し、
 `project::config → project::font → seam` の一方向に閉じる。seam を `config` の子に置かない（`font → config` という役割に合わない依存が生まれる）。
 「`project` 全体が crate 内依存を持たない」形へは戻さない。
@@ -307,7 +314,7 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う。`[toc].alignment` が `left` 以外 ×
   `show_page_numbers = true` は `alignment` の garde `custom` 検証で拒否する（ページ番号を出す行は右端まで伸び、揃えが効かない。
   キーどうしの制約も専用の variant を作らず `Field` の診断に載せる）。同じ基準（どの内容に対しても効かない組み合わせの拒否）で `[toc].leader` は既定 `None`（リーダー無し）とし、
-  `Some` × `show_page_numbers = false` を `leader` の garde `custom` で、空文字列を `inner(length)` で拒否する（リーダーはページ番号との
+  `Some` × `show_page_numbers = false` を `leader` の garde `custom` で、空文字列を `inner(custom(non_empty_text))` で拒否する（リーダーはページ番号との
   間にだけ描く）
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
