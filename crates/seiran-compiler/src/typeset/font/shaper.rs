@@ -133,6 +133,9 @@ impl HarfRustShaper {
     });
   }
 
+  /// シェイピング用フォント（OpenType テーブルの参照元を兼ねる）。
+  pub(super) fn font(&self) -> &Font { return &self.font; }
+
   /// [`TextDirection`] を `harfrust::Direction` に変換します。
   fn to_harfrust_direction(direction: TextDirection) -> Direction {
     return match direction {

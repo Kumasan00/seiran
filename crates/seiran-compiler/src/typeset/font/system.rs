@@ -6,6 +6,7 @@
 use std::time::Instant;
 
 use miette::Diagnostic;
+use read_fonts::{TableProvider, tables::math::MathConstants};
 use thiserror::Error;
 use tracing::debug;
 
@@ -74,7 +75,7 @@ impl FontSystem {
     };
 
     let stage_start = Instant::now();
-    let (validated, warnings) = validation::validate_fonts(configs, &font_refs);
+    let (validated, warnings) = validation::validate_fonts(configs, &font_refs, &shaping_fonts);
     if let Err(failures) = validated {
       return (Err(failures.map(Into::into)), warnings);
     }
@@ -104,6 +105,14 @@ impl FontSystem {
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
   pub(crate) fn metrics(&self, font_type: FontType) -> FontMetrics { return self.metrics[font_type]; }
+
+  /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。
+  #[must_use]
+  pub(crate) fn math_constants(&self) -> MathConstants<'_> {
+    return self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_constants()).expect(
+      "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathConstants を読めることを確認済み",
+    );
+  }
 
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。
   #[must_use]

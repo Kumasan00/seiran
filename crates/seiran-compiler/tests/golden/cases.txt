@@ -59,14 +59,14 @@ keywords=["test", "seiran"]
   glyphs x=843.12 y=311.63 font=JapaneseSerif size=12.00 text="い" glyph_count=1
   glyphs x=855.12 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=815.38 y=366.63 font=Math size=29.40 text="{" glyph_count=1
-  glyphs x=826.79 y=354.57 font=Math size=12.00 text="𝑥" glyph_count=1
-  glyphs x=843.28 y=354.57 font=Math size=12.00 text="𝑥" glyph_count=1
-  glyphs x=853.32 y=354.57 font=Math size=12.00 text=">" glyph_count=1
-  glyphs x=865.30 y=354.57 font=Math size=12.00 text="0" glyph_count=1
-  glyphs x=826.79 y=369.57 font=Math size=12.00 text="-𝑥" glyph_count=2
-  glyphs x=843.28 y=369.57 font=Math size=12.00 text="𝑥" glyph_count=1
-  glyphs x=853.32 y=369.57 font=Math size=12.00 text="<" glyph_count=1
-  glyphs x=865.30 y=369.57 font=Math size=12.00 text="0" glyph_count=1
+  glyphs x=826.79 y=354.69 font=Math size=12.00 text="𝑥" glyph_count=1
+  glyphs x=843.28 y=354.69 font=Math size=12.00 text="𝑥" glyph_count=1
+  glyphs x=853.32 y=354.69 font=Math size=12.00 text=">" glyph_count=1
+  glyphs x=865.30 y=354.69 font=Math size=12.00 text="0" glyph_count=1
+  glyphs x=826.79 y=369.69 font=Math size=12.00 text="-𝑥" glyph_count=2
+  glyphs x=843.28 y=369.69 font=Math size=12.00 text="𝑥" glyph_count=1
+  glyphs x=853.32 y=369.69 font=Math size=12.00 text="<" glyph_count=1
+  glyphs x=865.30 y=369.69 font=Math size=12.00 text="0" glyph_count=1
   glyphs x=240.94 y=404.65 font=SerifBold size=20.00 text=".2" glyph_count=2
   glyphs x=261.06 y=404.65 font=SerifBold size=20.00 text="3" glyph_count=1
   glyphs x=275.66 y=404.65 font=JapaneseSerifBold size=20.00 text="行" glyph_count=1
@@ -104,20 +104,20 @@ keywords=["test", "seiran"]
   glyphs x=600.46 y=435.65 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=612.46 y=435.65 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=804.71 y=502.08 font=Math size=44.40 text="{" glyph_count=1
-  glyphs x=821.03 y=478.59 font=Math size=12.00 text="1" glyph_count=1
-  glyphs x=853.88 y=478.59 font=Math size=12.00 text="𝑛" glyph_count=1
-  glyphs x=863.99 y=478.59 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=875.96 y=478.59 font=Math size=12.00 text="0" glyph_count=1
-  glyphs x=821.03 y=493.59 font=Math size=12.00 text="𝑛" glyph_count=1
-  glyphs x=853.88 y=493.59 font=Math size=12.00 text="𝑛" glyph_count=1
-  glyphs x=863.99 y=493.59 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=875.96 y=493.59 font=Math size=12.00 text="1" glyph_count=1
-  glyphs x=821.03 y=508.59 font=Math size=12.00 text="𝑎" glyph_count=1
-  glyphs x=830.36 y=508.59 font=Math size=12.00 text="+" glyph_count=1
-  glyphs x=841.66 y=508.59 font=Math size=12.00 text="𝑏" glyph_count=1
-  glyphs x=853.88 y=508.59 font=Math size=12.00 text="𝑛" glyph_count=1
-  glyphs x=863.99 y=508.59 font=Math size=12.00 text=">" glyph_count=1
-  glyphs x=875.96 y=508.59 font=Math size=12.00 text="1" glyph_count=1
+  glyphs x=821.03 y=478.77 font=Math size=12.00 text="1" glyph_count=1
+  glyphs x=853.88 y=478.77 font=Math size=12.00 text="𝑛" glyph_count=1
+  glyphs x=863.99 y=478.77 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=875.96 y=478.77 font=Math size=12.00 text="0" glyph_count=1
+  glyphs x=821.03 y=493.77 font=Math size=12.00 text="𝑛" glyph_count=1
+  glyphs x=853.88 y=493.77 font=Math size=12.00 text="𝑛" glyph_count=1
+  glyphs x=863.99 y=493.77 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=875.96 y=493.77 font=Math size=12.00 text="1" glyph_count=1
+  glyphs x=821.03 y=508.77 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=830.36 y=508.77 font=Math size=12.00 text="+" glyph_count=1
+  glyphs x=841.66 y=508.77 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=853.88 y=508.77 font=Math size=12.00 text="𝑛" glyph_count=1
+  glyphs x=863.99 y=508.77 font=Math size=12.00 text=">" glyph_count=1
+  glyphs x=875.96 y=508.77 font=Math size=12.00 text="1" glyph_count=1
 outline:
   depth=2 text=".1 場合分け (cases)" page=0 x=240.94 y=257.61
   depth=2 text=".2 3 行の cases" page=0 x=240.94 y=381.63

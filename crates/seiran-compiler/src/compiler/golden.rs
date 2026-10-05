@@ -68,6 +68,8 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use read_fonts::{FontRef, TableProvider, tables::math::MathConstant};
+
 use crate::{
   compiler::{
     dump,
@@ -954,5 +956,77 @@ fn glyph_ranges_tile_text_in_japanese_clusters() {
 
   for run in &runs {
     assert_ranges_tile_text(run);
+  }
+}
+
+/// `vendor/fonts/STIXTwoMath-Regular.ttf`（golden の数式フォント）の数式軸の、`font_size` での高さ。
+///
+/// 組版側と独立に MATH を読み、同じ換算（`font_size × AxisHeight / upem`）をする。
+fn stix_math_axis_height(font_size: Length) -> Length {
+  let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
+  let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
+  let font = FontRef::new(&bytes).expect("STIX Two Math を解析できるはず");
+  let upem = font.head().expect("head を読めるはず").units_per_em();
+  let axis = font
+    .math()
+    .and_then(|math| return math.math_constants())
+    .expect("MathConstants を読めるはず")
+    .constant(MathConstant::AxisHeight);
+  return font_size.scale(f64::from(axis) / f64::from(upem));
+}
+
+/// 箱の中を先頭から辿り、最初のグリフ列を返す。
+fn first_glyph_run(content: &HBoxContent) -> Option<&GlyphRun> {
+  return match content {
+    HBoxContent::Glyphs(run) => Some(run),
+    HBoxContent::Atom(children) => children.iter().find_map(|child| return first_glyph_run(&child.hbox.content)),
+  };
+}
+
+#[test]
+fn delimiters_and_grid_center_on_the_math_axis() {
+  // 左右の括弧を持つ行列と、左の括弧だけを持つ cases
+  for (source, delimiter_count) in [
+    ("\\begin{matrix}[delimiter=paren]\na & b \\\\\nc & d\n\\end{matrix}\n", 2),
+    ("\\begin{cases}\nx & x > 0 \\\\\n-x & x < 0\n\\end{cases}\n", 1),
+  ] {
+    let laid_out = TestProject::builder().source_text(source).build().laid_out();
+    let body = laid_out
+      .pages
+      .iter()
+      .flat_map(|page| return page.blocks.iter())
+      .find_map(|block| match block {
+        PlacedBlock::MathBlock { body, .. } => return Some(body),
+        _ => return None,
+      })
+      .expect("表示数式ブロックが 1 つあるはず");
+    let HBoxContent::Atom(children) = &body.content else {
+      panic!("区切り括弧で包んだ本体は Atom のはず");
+    };
+
+    // 子は [左括弧, グリッド, 右括弧（あれば）] の順
+    let grid = &children[1];
+    let base_size = first_glyph_run(&grid.hbox.content).expect("グリッドにはセルのグリフがあるはず").font_size;
+    let axis = stix_math_axis_height(base_size);
+    assert_eq!(
+      grid.dy + (grid.hbox.height - grid.hbox.depth) / 2.0,
+      axis,
+      "グリッドの縦中央が数式軸に載るはず: {source}"
+    );
+    let delimiters: Vec<_> = children
+      .iter()
+      .enumerate()
+      .filter(|&(index, _)| return index != 1)
+      .map(|(_, child)| return child)
+      .collect();
+    assert_eq!(delimiters.len(), delimiter_count, "{source}");
+    for delimiter in delimiters {
+      let run = first_glyph_run(&delimiter.hbox.content).expect("区切り括弧はグリフ列のはず");
+      assert_eq!(
+        delimiter.dy + stix_math_axis_height(run.font_size),
+        axis,
+        "拡大した括弧の数式軸が本体の数式軸に一致するはず: {source}"
+      );
+    }
   }
 }

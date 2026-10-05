@@ -306,10 +306,49 @@ fn compile_rejects_an_fvar_record_whose_length_runs_past_the_file() {
   let failure = seiran_compiler::compile(&source, &config_path, project_base_dir())
     .expect_err("範囲外を指す fvar は静的フォントとして通さない");
 
-  // 1 件目で打ち切らず、全種別ぶん fvar の破損を指す
+  // 1 件目で打ち切らず、全種別ぶん fvar の破損を指す。数式種別は MATH が無いことも続けて報告する
   let codes = diagnostic_codes(&failure);
-  assert_eq!(codes.len(), 19, "19 フォント種別すべてが違反: {codes:?}");
-  assert!(codes.iter().all(|code| return code == "typeset::font::validation::fvar_range"), "{codes:?}");
+  assert_eq!(codes.len(), 20, "19 フォント種別の fvar 破損 + 数式フォントの MATH 欠落: {codes:?}");
+  let table_range = codes.iter().filter(|code| return *code == "typeset::font::validation::table_range").count();
+  assert_eq!(table_range, 19, "{codes:?}");
+  assert!(codes.iter().any(|code| return code == "typeset::font::validation::missing_math_table"), "{codes:?}");
+}
+
+#[test]
+fn compile_rejects_a_math_font_without_math_table_even_without_math() {
+  // 数式フォントだけを MATH を持たない可変フォントへ差し替え、軸も指定しない。本文に数式は無い
+  let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+    .ancestors()
+    .nth(2)
+    .expect("crates/seiran-compiler の 2 階層上がワークスペースルート");
+  let text_font = std::fs::read(workspace_root.join("vendor/fonts/STIXTwoText[wght].ttf")).expect(
+    "vendor/fonts/STIXTwoText[wght].ttf を読めるはず（tools/fetch-test-assets.sh の実行が必要な場合があります）",
+  );
+  let font_sections = test_support::font_sections("/project/font.ttf").replace(
+    "[font_configs.math]\nfont_path = \"/project/font.ttf\"",
+    "[font_configs.math]\nfont_path = \"/project/text.ttf\"",
+  );
+  let config = common::config_toml_with_font_sections("/project/text.sei", "", &font_sections);
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/text.sei", "Hello, Seiran!")
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes("/project/text.ttf", text_font);
+  let config_path = ProjectPath::new("/project/config.toml");
+
+  let failure = seiran_compiler::compile(&source, &config_path, project_base_dir())
+    .expect_err("MATH を持たない数式フォントは数式の有無に関わらず拒否する");
+
+  // 同じ数式フォントの軸指定漏れと MATH 欠落を、打ち切らずに宣言順で報告する
+  assert_eq!(
+    diagnostic_codes(&failure),
+    [
+      "typeset::font::validation::missing_variation_axes",
+      "typeset::font::validation::missing_math_table",
+    ]
+  );
+  let primary = failure.diagnostics().next().expect("主診断があるはず").to_string();
+  assert!(primary.starts_with("math: "), "数式フォントの違反として帰属する: {primary}");
 }
 
 #[test]

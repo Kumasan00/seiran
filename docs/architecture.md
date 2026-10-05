@@ -324,7 +324,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   祖先チェーンの決定）だけ — `typeset::lowering` はカウンタ値に載った名前を引くので `resets` を読まない
   （祖先の決め方は `semantics` 節）
 - **数式**: `[math.script]`（上付き / 下付きの倍率・シフト。インライン数式にも効く。本来は OpenType MATH
-  テーブル由来の値で、MATH 対応後は非対応フォント用フォールバックに退く）と `[math.block]`（全表示数式
+  テーブル由来の値で、MATH 由来の値へ置き換えて削除する — 非対応フォント用フォールバックとしても残さない。
+  `docs/language-design.md`「数式レイアウト定数はフォント実体」）と `[math.block]`（全表示数式
   環境が共有するブロックのレイアウト）
 - **ページ**: `[page]` は本文領域の余白と組版挙動フラグ（段組みは別テーブル `[columns]`）。余白単体の不正
   （負値）はここで弾き、用紙寸法と突き合わせないと判定できない制約は `typeset::geometry` が持つ
@@ -678,6 +679,13 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   載せない（載せると miette が同じ文言を再描画する）
 - フォントの構築は**画像読込より前**。フォントと画像の両方が失敗する入力ではフォント側のエラーを報告する
   （順序を入れ替えると診断が変わる）
+- **数式フォントは OpenType MATH テーブル必須**。`validation` が構築時に全サブテーブルのオフセットと件数どおりの
+  配列の長さまで辿り、無い・読めないものを `typeset::font::validation::{missing_math_table, table_range,
+  unsorted_table_directory, unreadable_math_table}` で拒否する（数式の有無に依存しない）。read-fonts のグリフ
+  単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
+  意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
+  （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
+  引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう
 
 #### `error`
 
@@ -914,6 +922,9 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   任意の位置に置けるため、分割すると Knuth–Plass の行分割結果が変わる（受け入れ条件は「`\index` を取り
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
+- **区切り括弧付きのディスプレイ数式**（`matrix[delimiter=…]` / `cases`）は、本体グリッドの縦中央と拡大した
+  括弧の数式軸を、数式フォントの MATH `AxisHeight` に揃える（箱の幾何中点や括弧箱の ascender / descender は
+  使わない）。環境単位の式番号は本体の縦中央に揃える別規則
 - 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
 
 (b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。
