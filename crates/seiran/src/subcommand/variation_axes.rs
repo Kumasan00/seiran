@@ -2,6 +2,7 @@
 
 use std::{io::Write, path::Path};
 
+use itertools::Itertools;
 use miette::Diagnostic;
 use read_fonts::{
   FontRef, ReadError, TableProvider, TopLevelTable,
@@ -163,12 +164,7 @@ fn listing_lines(font_ref: &FontRef<'_>, font_path: &Path) -> Result<Vec<String>
   }
   for instance in &records.instances {
     let instance_name = subfamily_name(&name, instance.subfamily_name_id);
-    let coordinates = instance
-      .coordinates
-      .iter()
-      .map(|coordinate| return coordinate.get().to_string())
-      .collect::<Vec<String>>()
-      .join(", ");
+    let coordinates = instance.coordinates.iter().join(", ");
     lines.push(format!("{instance_name}: [{coordinates}]"));
   }
   return Ok(lines);

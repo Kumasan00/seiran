@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 clap.workspace = true
+itertools.workspace = true
 miette.workspace = true
 read-fonts.workspace = true
 seiran-compiler.workspace = true

@@ -5,7 +5,7 @@
 
 use std::{str::FromStr, sync::Arc};
 
-pub(crate) use harfrust::Buffer;
+pub(in crate::typeset) use harfrust::Buffer;
 use harfrust::{Direction, Feature, Font, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
 use miette::Diagnostic;
 use thiserror::Error;
@@ -85,10 +85,7 @@ pub(super) fn build_harfrust_shapers<'a>(
 
 /// 単一フォントの `HarfRust` シェイパー。
 pub(super) struct HarfRustShaper<'a> {
-  /// シェイピング用フォント。
-  ///
-  /// `ShaperFont` はレイアウト表の解析結果を `Font` 側のキャッシュから借りる軽い窓口なので、保持せず
-  /// シェイプごとに作る（保持すると内部の `Once` で `'a` について不変になり、`FontSystem` の借用を縮められない）。
+  /// シェイピング用フォント（`ShaperFont` はシェイプごとにここから作る）
   font: &'a Font,
   /// 書字方向とスクリプトを明示した場合だけ再利用できるシェイピングプラン。
   ///
