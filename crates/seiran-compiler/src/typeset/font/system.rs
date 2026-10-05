@@ -6,6 +6,7 @@
 use std::time::Instant;
 
 use miette::Diagnostic;
+use read_fonts::{TableProvider, tables::math::MathConstants};
 use thiserror::Error;
 use tracing::debug;
 
@@ -104,6 +105,14 @@ impl FontSystem {
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
   pub(crate) fn metrics(&self, font_type: FontType) -> FontMetrics { return self.metrics[font_type]; }
+
+  /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。
+  #[must_use]
+  pub(crate) fn math_constants(&self) -> MathConstants<'_> {
+    return self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_constants()).expect(
+      "load の検証（validation::check_math_table）が、同じバイト列・同じ index の数式フォントで MATH と MathConstants を読めることを確認済み",
+    );
+  }
 
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。
   #[must_use]

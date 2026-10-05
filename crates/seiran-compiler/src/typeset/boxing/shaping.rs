@@ -7,6 +7,7 @@
 
 use std::ops::Range;
 
+use read_fonts::tables::math::MathConstant;
 use tracing::trace;
 
 use crate::{
@@ -284,6 +285,12 @@ impl<'a> Shaper<'a> {
       "テキスト run をシェーピング"
     );
     return shaped;
+  }
+
+  /// 数式フォントの数式軸（MATH の `AxisHeight`）の、フォントサイズ `font_size` でのベースラインからの高さ。
+  pub(super) fn math_axis_height(&self, font_size: Length) -> Length {
+    let axis_units = self.fonts.math_constants().constant(MathConstant::AxisHeight);
+    return units_to_length(i64::from(axis_units), font_size, self.fonts.metrics(FontType::Math).upem);
   }
 }
 

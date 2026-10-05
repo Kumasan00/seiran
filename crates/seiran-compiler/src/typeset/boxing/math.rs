@@ -1,7 +1,7 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
 //!
 //! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
-//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の拡大）
+//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の拡大と数式軸への配置）
 //! だけを行う。HIR の数式語彙（`document::MathBlockKind`）はここまで届かない。
 
 use crate::{
@@ -116,7 +116,13 @@ impl Measurer<'_> {
     }
 
     if delimiters.is_present() {
-      body = self.wrap_with_delimiters(body, delimiters);
+      // グリッドの縦中央を数式軸に載せる。行番号の `dy` は本体のベースライン基準なので、グリッドと同じだけ動かす
+      let axis = self.shaper.math_axis_height(self.default_font_size);
+      let grid_dy = axis - (body.height - body.depth) / 2.0;
+      for number in &mut numbers {
+        number.dy += grid_dy;
+      }
+      body = self.wrap_with_delimiters(body, grid_dy, axis, delimiters);
     }
 
     return Block::Math {
@@ -127,8 +133,8 @@ impl Measurer<'_> {
     };
   }
 
-  /// 区切り括弧グリフを本体グリッドの高さ・深さに合わせて拡大した閉じたボックスにして返す
-  fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> HBox {
+  /// 区切り括弧グリフを本体グリッドの高さ・深さに合わせて拡大し、拡大後の箱と、その大きさでの数式軸の高さを返す
+  fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> (HBox, Length) {
     let base = self.default_font_size;
     let natural = self.shaper.shape_segment(ch, FontType::Math, base, None);
     let natural_total = natural.height() + natural.depth();
@@ -140,43 +146,44 @@ impl Measurer<'_> {
     } else {
       1.0
     };
-    return self.shaper.shape_segment(ch, FontType::Math, base.scale(scale), None).into_hbox();
+    let size = base.scale(scale);
+    let delimiter = self.shaper.shape_segment(ch, FontType::Math, size, None).into_hbox();
+    return (delimiter, self.shaper.math_axis_height(size));
   }
 
-  /// 本体 Atom を左右の区切り括弧で挟んで包み直す
-  fn wrap_with_delimiters(&mut self, body: HBox, delimiters: DelimiterGlyphs) -> HBox {
+  /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
+  ///
+  /// 括弧は数式軸を中心に設計されたグリフなので、拡大後の数式軸を本体の数式軸 `axis` に合わせる。
+  fn wrap_with_delimiters(&mut self, body: HBox, grid_dy: Length, axis: Length, delimiters: DelimiterGlyphs) -> HBox {
     let body_height = body.height;
     let body_depth = body.depth;
     let body_width = body.width;
-    let body_center = (body_height - body_depth) / 2.0;
     let gap = self.default_font_size * 0.15;
 
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let delim = self.shape_delimiter(ch, body_height, body_depth);
-      let dy = body_center - (delim.height - delim.depth) / 2.0;
+      let (delim, delim_axis) = self.shape_delimiter(ch, body_height, body_depth);
       let width = delim.width;
       children.push(PlacedHBox {
         hbox: delim,
         dx,
-        dy,
+        dy: axis - delim_axis,
       });
       dx += width + gap;
     }
     children.push(PlacedHBox {
       hbox: body,
       dx,
-      dy: Length::ZERO,
+      dy: grid_dy,
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let delim = self.shape_delimiter(ch, body_height, body_depth);
-      let dy = body_center - (delim.height - delim.depth) / 2.0;
+      let (delim, delim_axis) = self.shape_delimiter(ch, body_height, body_depth);
       children.push(PlacedHBox {
         hbox: delim,
         dx,
-        dy,
+        dy: axis - delim_axis,
       });
     }
     return HBox::atom(children);
