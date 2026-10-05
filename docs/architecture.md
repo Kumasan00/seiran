@@ -680,11 +680,12 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - フォントの構築は**画像読込より前**。フォントと画像の両方が失敗する入力ではフォント側のエラーを報告する
   （順序を入れ替えると診断が変わる）
 - **数式フォントは OpenType MATH テーブル必須**。`validation` が構築時に全サブテーブルのオフセットと件数どおりの
-  配列の長さまで辿り、無い・読めないものを `typeset::font::validation::{missing_math_table,
-  unreadable_math_table}` で拒否する（数式の有無に依存しない）。read-fonts のグリフ単位の参照は読み込み
-  エラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを意味する。値は
-  `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない（device table
-  は使わない）
+  配列の長さまで辿り、無い・読めないものを `typeset::font::validation::{missing_math_table, table_range,
+  unsorted_table_directory, unreadable_math_table}` で拒否する（数式の有無に依存しない）。read-fonts のグリフ
+  単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
+  意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
+  （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
+  引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう
 
 #### `error`
 

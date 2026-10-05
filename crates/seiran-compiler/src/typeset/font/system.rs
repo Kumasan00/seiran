@@ -75,7 +75,7 @@ impl FontSystem {
     };
 
     let stage_start = Instant::now();
-    let (validated, warnings) = validation::validate_fonts(configs, &font_refs);
+    let (validated, warnings) = validation::validate_fonts(configs, &font_refs, &shaping_fonts);
     if let Err(failures) = validated {
       return (Err(failures.map(Into::into)), warnings);
     }
@@ -110,7 +110,7 @@ impl FontSystem {
   #[must_use]
   pub(crate) fn math_constants(&self) -> MathConstants<'_> {
     return self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_constants()).expect(
-      "load の検証（validation::check_math_table）が、同じバイト列・同じ index の数式フォントで MATH と MathConstants を読めることを確認済み",
+      "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathConstants を読めることを確認済み",
     );
   }
 

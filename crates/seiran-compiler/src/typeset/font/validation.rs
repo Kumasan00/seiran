@@ -8,6 +8,7 @@
 
 use derive_more::Display;
 use font_types::{Fixed, Tag};
+use harfrust::Font;
 use miette::Diagnostic;
 use read_fonts::{
   FontRef, MinByteRange, ReadError, TableProvider, TopLevelTable,
@@ -20,7 +21,7 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{FontConfig, FontConfigs, FontType, ProjectPath, VariationAxis},
-  typeset::font::FontRefs,
+  typeset::font::{FontRefs, shaper::ShapingFonts},
 };
 
 /// 1 件のフォント検証違反を、どのフォント種別のものかを添えて表す leaf diagnostic。
@@ -132,6 +133,17 @@ pub(super) enum FontValidationErrorKind {
     min: Fixed,
     /// 最大値
     max: Fixed,
+  },
+  /// テーブルディレクトリのレコードがタグの昇順に並んでいないため、組版が使うシェイピング用フォント
+  /// （レコードを二分探索する）からテーブルを引けない。
+  #[error("テーブルディレクトリがタグの昇順に並んでいないため、{table} テーブルを参照できません。")]
+  #[diagnostic(
+    code(typeset::font::validation::unsorted_table_directory),
+    help("OpenType 仕様どおりテーブルレコードをタグ順に並べ直したフォントファイルを使ってください。")
+  )]
+  UnsortedTableDirectory {
+    /// 参照できなかったテーブルのタグ
+    table: Tag,
   },
   /// 数式フォントに OpenType MATH テーブルが無い。
   #[error("数式フォントに OpenType MATH テーブルがありません。")]
@@ -274,6 +286,7 @@ pub(crate) enum FontWarning {
 pub(super) fn validate_fonts(
   font_configs: &FontConfigs,
   font_refs: &FontRefs<'_>,
+  shaping_fonts: &ShapingFonts,
 ) -> (Result<(), Failures<FontValidationError>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
@@ -281,7 +294,7 @@ pub(super) fn validate_fonts(
     let config = &font_configs[font_type];
     let font_ref = &font_refs[font_type];
     all_errors.extend(
-      validate_font(font_type, config, font_ref, &mut all_warnings)
+      validate_font(font_type, config, font_ref, &shaping_fonts[font_type], &mut all_warnings)
         .into_iter()
         .map(|kind| return FontValidationError { font_type, kind }),
     );
@@ -300,6 +313,7 @@ pub(super) fn validate_font(
   font_type: FontType,
   config: &FontConfig,
   font_ref: &FontRef<'_>,
+  shaping_font: &Font,
   warnings: &mut Vec<FontWarning>,
 ) -> Vec<FontValidationErrorKind> {
   let mut errors = Vec::new();
@@ -311,7 +325,7 @@ pub(super) fn validate_font(
     (Err(error), _) => errors.push(error),
   }
   if font_type == FontType::Math
-    && let Err(error) = check_math_table(font_ref)
+    && let Err(error) = check_math_table(font_ref, &shaping_font.tables())
   {
     errors.push(error);
   }
@@ -346,6 +360,10 @@ fn has_table_record(font_ref: &FontRef<'_>, tag: Tag) -> bool {
 
 /// 数式フォントの MATH テーブルを、全サブテーブルのオフセットと件数どおりの配列の長さまで辿って検証する。
 ///
+/// MATH は組版が値を読むのと同じシェイピング用フォントのテーブル（`tables`）から読む。`FontRef` は
+/// タグ順でないテーブルディレクトリを線形探索で引くが、シェイピング用フォントは二分探索しかしないので、
+/// `FontRef` で読めても組版からは読めないことがある。
+///
 /// read-fonts のグリフ単位の参照（`MathItalicsCorrectionInfo::correction` / `MathKernInfo::kern` /
 /// `MathVariants::glyph_construction` 等）は読み込みエラーを `None` へ畳み、件数で長さが決まる配列は
 /// テーブルに収まらなければ空へ畳む。ここを通ったフォントでは、それらの `None` は「そのグリフを扱わない」
@@ -354,16 +372,24 @@ fn has_table_record(font_ref: &FontRef<'_>, tag: Tag) -> bool {
 /// # Errors
 ///
 /// MATH が無ければ [`FontValidationErrorKind::MissingMathTable`]、レコードがファイル範囲外を指せば
-/// [`FontValidationErrorKind::TableRecordOutOfRange`]、いずれかのサブテーブルを読めなければ最初に見つけた
+/// [`FontValidationErrorKind::TableRecordOutOfRange`]、ディレクトリがタグ順でなければ
+/// [`FontValidationErrorKind::UnsortedTableDirectory`]、いずれかのサブテーブルを読めなければ最初に見つけた
 /// 1 件を [`FontValidationErrorKind::UnreadableMathTable`] で返す。
-fn check_math_table(font_ref: &FontRef<'_>) -> Result<(), FontValidationErrorKind> {
+fn check_math_table<'a>(
+  font_ref: &FontRef<'_>,
+  tables: &impl TableProvider<'a>,
+) -> Result<(), FontValidationErrorKind> {
   if !has_table_record(font_ref, Math::TAG) {
     return Err(FontValidationErrorKind::MissingMathTable);
   }
-  let math = match font_ref.math() {
-    // レコードがあるのに `TableIsMissing` なのは、レコードの範囲がファイルに収まっていないときだけ
+  let math = match tables.math() {
+    // レコードがあるのに `TableIsMissing` なのは、レコードの範囲がファイルに収まっていないか、二分探索で
+    // レコードに届かない（ディレクトリがタグ順でない）かのどちらか。後者なら線形探索の `FontRef` は引ける
     Err(ReadError::TableIsMissing(_)) => {
-      return Err(FontValidationErrorKind::TableRecordOutOfRange { table: Math::TAG });
+      return Err(match font_ref.math() {
+        Err(ReadError::TableIsMissing(_)) => FontValidationErrorKind::TableRecordOutOfRange { table: Math::TAG },
+        _ => FontValidationErrorKind::UnsortedTableDirectory { table: Math::TAG },
+      });
     },
     read => complete("MATH", read)?,
   };
@@ -689,6 +715,12 @@ mod tests {
     assert_eq!(*language, Tag::new(b"JAN "));
   }
 
+  /// `bytes` から、組版と同じ経路（`harfrust::Font`）のシェイピング用フォントを作る。
+  fn shaping_font(bytes: &[u8]) -> Font {
+    let blob: std::sync::Arc<dyn AsRef<[u8]> + Send + Sync> = std::sync::Arc::new(bytes.to_vec());
+    return Font::new(blob, 0).expect("FontRef と同じ解析で sfnt と認める");
+  }
+
   /// sfnt のヘッダ 12 バイト（sfntVersion / numTables / searchRange 等）を組む。
   fn sfnt_header(table_count: u16) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -744,7 +776,8 @@ mod tests {
     let bytes = sfnt_with_table(*b"fvar", &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
       "壊れた fvar を静的フォントとして通さない: {errors:?}"
@@ -756,7 +789,13 @@ mod tests {
     let bytes = sfnt_header(0);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(Some(wght_axis())), &font_ref, &mut warnings);
+    let errors = validate_font(
+      FontType::Serif,
+      &config_with_axes(Some(wght_axis())),
+      &font_ref,
+      &shaping_font(&bytes),
+      &mut warnings,
+    );
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::NotVariableFont]), "{errors:?}");
   }
 
@@ -765,7 +804,8 @@ mod tests {
     let bytes = sfnt_header(0);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(errors.is_empty(), "{errors:?}");
   }
 
@@ -774,7 +814,8 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"fvar", 28, 0xffff_fff0, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::TableRecordOutOfRange { table }] if *table == Fvar::TAG),
       "範囲外を指す fvar を静的フォントとして通さない: {errors:?}"
@@ -787,7 +828,8 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"fvar", 0, 1, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::TableRecordOutOfRange { table }] if *table == Fvar::TAG),
       "{errors:?}"
@@ -800,7 +842,8 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"fvar", 28, 0, &[]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]), "{errors:?}");
   }
 
@@ -847,7 +890,7 @@ mod tests {
     let bytes = sfnt_with_table(*b"MATH", math);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    return validate_font(FontType::Math, &config_with_axes(None), &font_ref, &mut warnings);
+    return validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
   }
 
   /// 違反が `UnreadableMathTable` 1 件だけで、読めなかったサブテーブルが `expected` であることを確かめる。
@@ -870,7 +913,8 @@ mod tests {
     let bytes = std::fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
     let font_ref = FontRef::new(&bytes).expect("STIX Two Math を解析できるはず");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Math, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(errors.is_empty(), "全サブテーブルを辿っても破損は無いはず: {errors:?}");
   }
 
@@ -879,7 +923,8 @@ mod tests {
     let bytes = sfnt_header(0);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Math, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::MissingMathTable]), "{errors:?}");
   }
 
@@ -889,7 +934,7 @@ mod tests {
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     for &font_type in FontType::VARIANTS.iter().filter(|&&font_type| return font_type != FontType::Math) {
       let mut warnings = Vec::new();
-      let errors = validate_font(font_type, &config_with_axes(None), &font_ref, &mut warnings);
+      let errors = validate_font(font_type, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
       assert!(errors.is_empty(), "{font_type:?}: {errors:?}");
     }
   }
@@ -899,7 +944,8 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"MATH", 28, 0xffff_fff0, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors = validate_font(FontType::Math, &config_with_axes(None), &font_ref, &mut warnings);
+    let errors =
+      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::TableRecordOutOfRange { table }] if *table == Tag::new(b"MATH")),
       "範囲外を指す MATH を「無い」と報告しない: {errors:?}"
@@ -941,5 +987,31 @@ mod tests {
       0, 1, 0, 0, // Coverage format 1・0 件
     ];
     assert_unreadable_math(&validate_math_font(&math_table(&glyph_info, &EMPTY_VARIANTS)), "MathKern");
+  }
+
+  #[test]
+  fn math_in_an_unsorted_table_directory_is_rejected() {
+    // レコードが MATH → AAAA の順（タグ昇順でない）。FontRef は線形探索で MATH を見つけるが、
+    // 組版が MATH を読むシェイピング用フォントは二分探索なので見つけられない
+    let math = math_table(&EMPTY_GLYPH_INFO, &EMPTY_VARIANTS);
+    let math_len = u32::try_from(math.len()).unwrap();
+    let mut bytes = sfnt_header(2);
+    for (tag, offset, length) in [(b"MATH", 44, math_len), (b"AAAA", 44 + math_len, 0)] {
+      bytes.extend_from_slice(tag);
+      bytes.extend_from_slice(&0u32.to_be_bytes()); // checksum
+      bytes.extend_from_slice(&u32::to_be_bytes(offset));
+      bytes.extend_from_slice(&length.to_be_bytes());
+    }
+    bytes.extend_from_slice(&math);
+    let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
+    let mut warnings = Vec::new();
+
+    let errors =
+      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+
+    assert!(
+      matches!(errors.as_slice(), [FontValidationErrorKind::UnsortedTableDirectory { table }] if *table == Tag::new(b"MATH")),
+      "組版から読めない MATH を検証で通さない: {errors:?}"
+    );
   }
 }
