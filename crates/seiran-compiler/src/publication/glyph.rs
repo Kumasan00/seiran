@@ -25,7 +25,8 @@ pub struct GlyphRun {
 pub struct Glyph {
   /// グリフ ID
   pub gid: u32,
-  /// グリフのテキスト範囲（元のテキストに対するバイトインデックスの範囲）
+  /// グリフが属するクラスタの元テキスト範囲（[`GlyphRun::text`] に対するバイト位置。両端は文字境界）。
+  /// 同じクラスタの複数グリフは同じ範囲を持つ — krilla はこの一致でクラスタを認識し `ActualText` にまとめる
   pub range: Range<usize>,
   /// x 方向の送り幅（フォントユニット）
   pub x_advance: i32,
