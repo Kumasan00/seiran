@@ -163,8 +163,13 @@ fn listing_lines(font_ref: &FontRef<'_>, font_path: &Path) -> Result<Vec<String>
   }
   for instance in &records.instances {
     let instance_name = subfamily_name(&name, instance.subfamily_name_id);
-    let coordinates = instance.coordinates;
-    lines.push(format!("{instance_name}: {coordinates:?}"));
+    let coordinates = instance
+      .coordinates
+      .iter()
+      .map(|coordinate| return coordinate.get().to_string())
+      .collect::<Vec<String>>()
+      .join(", ");
+    lines.push(format!("{instance_name}: [{coordinates}]"));
   }
   return Ok(lines);
 }

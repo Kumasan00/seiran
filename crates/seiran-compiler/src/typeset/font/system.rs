@@ -1,6 +1,6 @@
 //! フォント資源の構築順序を隠蔽する窓口モジュール
 //!
-//! `FontData` → `FontRefs` → `FontMap<FontMetrics>` → 検証 → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers`
+//! `FontData` → `FontRefs` → `FontMap<FontMetrics>` → 検証 → `ShapingFonts` → `HarfRustShapers`
 //! という構築順序と寿命関係をここに閉じ込め、呼び出し側には構築の入口として [`FontResources::load`] と
 //! [`FontResources::system`] の 2 段呼び出しだけを公開する。
 
@@ -17,7 +17,7 @@ use crate::{
   typeset::font::{
     FontLoadError, FontRefs, build_font_metrics, build_font_refs,
     face_config::{FontFaceConfigs, build_face_configs},
-    shaper::{self, HarfRustShapers, ShaperDatas, ShaperError, ShaperInstances, UnicodeBuffer},
+    shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
     validation::{self, FontValidationError, FontWarning},
   },
 };
@@ -42,18 +42,14 @@ pub(crate) enum FontSystemError {
   Shaper(#[from] ShaperError),
 }
 
-/// `FontData` を借用し、フォント資源の「所有される」部分をまとめる。
+/// フォント資源のうち、シェーパーを組む前に確定する部分をまとめる。
 ///
-/// フィールドは互いを借用しない（`font_refs` だけが外部の `FontData` を借用する）。
+/// 借用するのは設定だけで、フォントのバイト列は `shaping_fonts` が `FontData` と共有して持つ。
 pub(in crate::typeset) struct FontResources<'a> {
   /// `load` に渡された設定
   configs: &'a FontConfigs,
-  /// 解析済み OpenType フォント参照（`FontData` を借用）
-  font_refs: FontRefs<'a>,
-  /// シェイピング用の解析データ（所有）
-  shaper_datas: ShaperDatas,
-  /// バリエーション軸インスタンス（所有）
-  shaper_instances: ShaperInstances,
+  /// 検証済みのシェイピング用フォント（バリエーション軸の位置を適用済み）
+  shaping_fonts: ShapingFonts,
   /// 基本メトリクス（所有）
   metrics: FontMap<FontMetrics>,
 }
@@ -84,14 +80,11 @@ impl<'a> FontResources<'a> {
     }
     debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");
 
-    let shaper_datas = shaper::build_shaper_datas(&font_refs);
-    let shaper_instances = shaper::build_shaper_instances(configs, &font_refs);
+    let shaping_fonts = shaper::build_shaping_fonts(configs, font_data);
     return (
       Ok(Self {
         configs,
-        font_refs,
-        shaper_datas,
-        shaper_instances,
+        shaping_fonts,
         metrics,
       }),
       warnings,
@@ -108,16 +101,15 @@ impl<'a> FontResources<'a> {
 
   /// シェーパー一式を構築し、シェイプ操作だけを公開する [`FontSystem`] を返す。
   ///
-  /// `load` に渡されたのと同じ設定（`self.configs`）を使うので、フォント参照・バリエーション軸と
+  /// `load` に渡されたのと同じ設定（`self.configs`）を使うので、シェイピング用フォント・バリエーション軸と
   /// 食い違うシェーパーは組めない。
   ///
   /// # Errors
   ///
   /// 言語タグの解析に失敗した場合に [`FontSystemError`] の非空集合を返す。
   pub(crate) fn system(&self) -> Result<FontSystem<'_>, Failures<FontSystemError>> {
-    let shapers =
-      shaper::build_harfrust_shapers(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)
-        .map_err(|failures| return failures.map(Into::into))?;
+    let shapers = shaper::build_harfrust_shapers(self.configs, &self.shaping_fonts)
+      .map_err(|failures| return failures.map(Into::into))?;
     debug!("シェーパーを初期化");
     return Ok(FontSystem {
       shapers,
@@ -149,16 +141,9 @@ pub(in crate::typeset) struct FontSystem<'a> {
 }
 
 impl FontSystem<'_> {
-  /// 指定フォント種別でテキストをシェイプする。
-  #[must_use]
-  pub(crate) fn shape(
-    &self,
-    font_type: FontType,
-    buffer: UnicodeBuffer,
-    text: &str,
-    point_size: f32,
-  ) -> harfrust::GlyphBuffer {
-    return self.shapers[font_type].shape(buffer, text, point_size);
+  /// 指定フォント種別でテキストをシェイプし、結果のグリフ列を `buffer` に残す。
+  pub(crate) fn shape(&self, font_type: FontType, buffer: &mut Buffer, text: &str, point_size: f32) {
+    self.shapers[font_type].shape(buffer, text, point_size);
   }
 
   /// 指定フォント種別の基本メトリクスを返す。

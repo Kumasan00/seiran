@@ -22,7 +22,7 @@ clap = { version = "4.6.1", features = ["derive"] }
 derive_more = { version = "2.1.1", features = ["add", "add_assign", "display", "not"] }
 font-types = "0.12.1"
 garde = { version = "0.23.0", features = ["derive"] }
-harfrust = "0.13.0"
+harfrust = "0.14.0"
 hayagriva = { version = "0.10.1", default-features = false, features = ["archive", "csl-json"] }
 hypher = { version = "0.1.7", default-features = false, features = ["alloc", "dutch", "english", "french", "german", "italian", "portuguese", "spanish"] }
 icu = { version = "2.2.0", features = ["compiled_data"] }
@@ -36,7 +36,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 phf = { version = "0.14.0", features = ["macros"] }
 proptest = "1.11.0"
 rayon = "1.12.0"
-read-fonts = "0.43.0"
+read-fonts = "0.45.0"
 seiran-compiler = { path = "crates/seiran-compiler" }
 seiran-pdf = { path = "crates/seiran-pdf" }
 serde = { version = "1.0.228", features = ["derive"] }

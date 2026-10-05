@@ -17,7 +17,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent},
     boxing::{self, script, yakumono},
-    font::{FontSystem, UnicodeBuffer},
+    font::{Buffer, FontSystem},
     lowering::TextStyle,
     observe,
   },
@@ -175,7 +175,7 @@ pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
   fonts: &'a FontSystem<'a>,
   /// シェイピングに再利用する `harfrust` バッファ
-  buffer: UnicodeBuffer,
+  buffer: Buffer,
 }
 
 impl<'a> Shaper<'a> {
@@ -183,7 +183,7 @@ impl<'a> Shaper<'a> {
   pub(in crate::typeset) fn new(fonts: &'a FontSystem<'a>) -> Self {
     return Shaper {
       fonts,
-      buffer: UnicodeBuffer::new(),
+      buffer: Buffer::new(),
     };
   }
 
@@ -207,10 +207,9 @@ impl<'a> Shaper<'a> {
     font_size: Length,
     color: Option<Color>,
   ) -> ShapedRun {
-    let taken = std::mem::take(&mut self.buffer);
-    let result = self.fonts.shape(font_type, taken, text, font_size.to_pt());
-    let glyph_infos = result.glyph_infos();
-    let glyph_positions = result.glyph_positions();
+    self.fonts.shape(font_type, &mut self.buffer, text, font_size.to_pt());
+    let glyph_infos = self.buffer.glyph_infos();
+    let glyph_positions = self.buffer.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
     for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
       let start = glyph_info.cluster as usize;
@@ -237,7 +236,6 @@ impl<'a> Shaper<'a> {
         y_offset: glyph_position.y_offset,
       });
     }
-    self.buffer = result.clear();
 
     let shaped = ShapedRun::measure(
       GlyphRun {

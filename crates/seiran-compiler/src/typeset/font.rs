@@ -8,7 +8,7 @@ mod system;
 mod validation;
 
 use read_fonts::{FontRef, TableProvider};
-pub(super) use shaper::UnicodeBuffer;
+pub(super) use shaper::Buffer;
 pub(super) use system::{FontResources, FontSystem, FontSystemError};
 use thiserror::Error;
 pub(super) use validation::FontWarning;
