@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::{
   length::{Length, non_negative, positive},
   project::ProjectPath,
+  validators::non_empty_text,
 };
 
 /// 参考文献セクションのスタイル設定
@@ -13,7 +14,7 @@ use crate::{
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ReferenceStyle {
   /// 参考文献セクションのタイトル文字列
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub title: String,
   /// セクションのフォントサイズ
   #[garde(custom(positive))]

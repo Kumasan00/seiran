@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::{
   document::{TextAlignment, Typeface},
   length::{Length, non_negative, positive},
+  validators::positive_finite,
 };
 
 /// 本文段落のスタイル設定
@@ -17,7 +18,7 @@ pub(crate) struct TextBlockStyle {
   #[garde(custom(positive))]
   pub font_size: Length,
   /// 行高（フォントサイズに対する倍率）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
+  #[garde(custom(positive_finite))]
   pub line_height_factor: f32,
   /// 段落末に挿入するスペース
   #[garde(custom(non_negative))]

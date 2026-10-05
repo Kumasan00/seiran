@@ -9,6 +9,7 @@ use strum::VariantArray;
 use crate::{
   length::{Length, positive},
   project::{FontType, config::ConfigValidationError},
+  validators::in_range,
 };
 
 /// TOML ファイル全体をデシリアライズした設定
@@ -341,7 +342,7 @@ fn default_show_bookmarks() -> bool { return true; }
 pub(super) struct RawImageConfig {
   /// ラスタ画像埋め込み時の最大 DPI（1〜2400）。表示物理サイズと本値から必要ピクセル数を計算し、
   /// 元画像がそれを超える場合に限り縮小する。
-  #[garde(range(min = 1, max = 2400))]
+  #[garde(custom(in_range(1, 2400)))]
   pub max_dpi: u32,
   /// ラスタ画像のダウンサンプリングを行うか。`false` なら `max_dpi` によらず全画像を原寸で埋め込む。
   #[garde(skip)]

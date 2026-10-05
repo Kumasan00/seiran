@@ -7,6 +7,7 @@ use crate::{
   color::Color,
   length::{Length, non_negative, positive},
   style::{NumberTemplate, number_style::NumberStyle},
+  validators::{non_negative_finite, positive_finite},
 };
 
 /// 脚注番号のリセット方式
@@ -41,10 +42,10 @@ pub(crate) struct FootnoteStyle {
   #[garde(dive)]
   pub marker_format: NumberTemplate,
   /// マーカーの縮小率（基準フォントサイズに対する比）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
+  #[garde(custom(positive_finite))]
   pub marker_size_factor: f32,
   /// マーカーの上付きシフト量（基準フォントサイズに対する比、正で上方向）
-  #[garde(range(min = 0.0, max = f32::MAX))]
+  #[garde(custom(non_negative_finite))]
   pub marker_raise_factor: f32,
   /// 本文と区切り罫線の間隔
   #[garde(custom(non_negative))]

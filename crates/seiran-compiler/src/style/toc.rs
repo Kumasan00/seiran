@@ -7,6 +7,7 @@ use crate::{
   document::HeadingLevel,
   length::{Length, non_negative, positive},
   style::BlockAlignment,
+  validators::{in_range, non_empty_text},
 };
 
 /// 目次のスタイル設定
@@ -17,10 +18,10 @@ pub(crate) struct TocStyle {
   /// 目次を生成するか（既定 `false`）
   pub enabled: bool,
   /// 目次のタイトル文字列
-  #[garde(length(chars, min = 1))]
+  #[garde(custom(non_empty_text))]
   pub title: String,
   /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
-  #[garde(range(min = 1, max = 6))]
+  #[garde(custom(in_range(1, 6)))]
   pub max_depth: u32,
   /// 目次エントリのフォントサイズ
   #[garde(custom(positive))]
@@ -35,7 +36,7 @@ pub(crate) struct TocStyle {
   pub show_page_numbers: bool,
   /// エントリ末尾とページ番号の間を埋めるリーダー文字列（`None` でリーダー無し。既定 `None`）。
   /// 指定した単位文字列を残り幅いっぱいに反復する（例: `"."`）。指定は `show_page_numbers = true` のときだけ受理する
-  #[garde(inner(length(chars, min = 1)), custom(none_unless_page_numbers_shown(self.show_page_numbers)))]
+  #[garde(inner(custom(non_empty_text)), custom(none_unless_page_numbers_shown(self.show_page_numbers)))]
   pub leader: Option<String>,
   /// エントリ行の揃え（版面幅の中で、階層字下げを含む自然幅を寄せる）。題目行は `[heading.section]` の揃えに従う。
   /// `"left"` 以外は `show_page_numbers = false` のときだけ受理する（ページ番号を出す行は右端まで伸びる）
@@ -88,11 +89,11 @@ fn none_unless_page_numbers_shown(show_page_numbers: bool) -> impl FnOnce(&Optio
   };
 }
 
-/// `TocStyle::max_depth` の上限リテラル（`garde` の `range` は const 式しか受け付けない）が
-/// `HeadingLevel::COUNT` と一致することの静的検査
+/// `TocStyle::max_depth` の上限リテラル（`in_range(1, 6)`。`max_depth` は `u32`、`HeadingLevel::COUNT` は
+/// `usize` なので直接は渡せない）が `HeadingLevel::COUNT` と一致することの静的検査
 const _: () = assert!(
   HeadingLevel::COUNT == 6,
-  "garde の range 上限リテラル 6 と HeadingLevel::COUNT がずれている（HeadingLevel を増減したら上限も更新する）"
+  "in_range の上限リテラル 6 と HeadingLevel::COUNT がずれている（HeadingLevel を増減したら上限も更新する）"
 );
 
 #[cfg(test)]

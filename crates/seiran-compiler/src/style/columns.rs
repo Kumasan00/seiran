@@ -3,7 +3,10 @@
 use garde::Validate;
 use serde::Deserialize;
 
-use crate::length::{Length, non_negative};
+use crate::{
+  length::{Length, non_negative},
+  validators::in_range,
+};
 
 /// 段組みのスタイル設定
 ///
@@ -13,7 +16,7 @@ use crate::length::{Length, non_negative};
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ColumnsStyle {
   /// 段数（1 = 単段、2 = 2 段組）
-  #[garde(range(min = 1, max = 2))]
+  #[garde(custom(in_range(1, 2)))]
   pub count: u8,
   /// 段間（gutter）
   #[garde(custom(non_negative))]

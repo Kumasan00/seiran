@@ -1,4 +1,5 @@
 project::config::validation::field
 
-  × crates/seiran-compiler/tests/config/config.toml: 'image.max_dpi': greater than 2400
+  × crates/seiran-compiler/tests/config/config.toml: 'image.max_dpi': 1 以上 2400 以下である必要が
+  │ あります（受け取った値: 9999）
   help: config.toml の該当フィールドの値を確認してください。
