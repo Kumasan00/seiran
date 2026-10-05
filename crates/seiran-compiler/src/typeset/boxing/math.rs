@@ -136,7 +136,7 @@ impl Measurer<'_> {
   /// 区切り括弧グリフを本体グリッドの高さ・深さに合わせて拡大し、拡大後の箱と、その大きさでの数式軸の高さを返す
   fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> (HBox, Length) {
     let base = self.default_font_size;
-    let natural = self.shaper.shape_segment(ch, FontType::Math, base, None);
+    let natural = self.shaper.shape_segment(ch, FontType::Math, base, None, None);
     let natural_total = natural.height() + natural.depth();
     let pad = base * 0.1;
     let target_total = target_height + target_depth + pad * 2;
@@ -147,7 +147,7 @@ impl Measurer<'_> {
       1.0
     };
     let size = base.scale(scale);
-    let delimiter = self.shaper.shape_segment(ch, FontType::Math, size, None).into_hbox();
+    let delimiter = self.shaper.shape_segment(ch, FontType::Math, size, None, None).into_hbox();
     return (delimiter, self.shaper.math_axis_height(size));
   }
 

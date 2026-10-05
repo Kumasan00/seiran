@@ -15,6 +15,7 @@ pub(super) fn body_text_style(ctx: &LoweringContext<'_>) -> TextStyle {
     font_size: ctx.default_font_size(),
     typeface: ctx.body_typeface,
     color: None,
+    script_level: None,
   };
 }
 

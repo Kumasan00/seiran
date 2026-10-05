@@ -23,6 +23,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
     font_size: ctx.default_font_size(),
     typeface: list_style.marker_typeface,
     color: None,
+    script_level: None,
   };
 
   for (i, item) in list.items.iter().enumerate() {

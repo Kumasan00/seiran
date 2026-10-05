@@ -3,6 +3,7 @@
 //! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる。
 
 mod face_config;
+mod math_script;
 mod shaper;
 mod system;
 mod validation;
@@ -10,6 +11,7 @@ mod validation;
 use std::sync::Arc;
 
 use harfrust::Font;
+pub(super) use math_script::{ScriptLevel, ScriptScale};
 use read_fonts::{FontRef, TableProvider};
 pub(super) use shaper::Buffer;
 use shaper::ShapingFonts;

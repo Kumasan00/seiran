@@ -18,7 +18,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem},
+    font::{Buffer, FontSystem, ScriptLevel},
     lowering::TextStyle,
     observe,
   },
@@ -221,20 +221,25 @@ impl<'a> Shaper<'a> {
     return segments
       .into_iter()
       .map(|segment| {
-        return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color).into_hbox();
+        return self
+          .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
+          .into_hbox();
       })
       .collect();
   }
 
   /// 1 セグメントをシェーピングして計測済みの [`ShapedRun`] を返す
+  ///
+  /// `script_level` は数式のスクリプト段（小サイズ用の字形を選ぶ）。数式のスクリプト以外は `None`。
   pub(super) fn shape_segment(
     &mut self,
     text: &str,
     font_type: FontType,
     font_size: Length,
     color: Option<Color>,
+    script_level: Option<ScriptLevel>,
   ) -> ShapedRun {
-    self.fonts.shape(font_type, &mut self.buffer, text, font_size.to_pt());
+    self.fonts.shape(font_type, &mut self.buffer, text, font_size.to_pt(), script_level);
     let glyph_infos = self.buffer.glyph_infos();
     let glyph_positions = self.buffer.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());

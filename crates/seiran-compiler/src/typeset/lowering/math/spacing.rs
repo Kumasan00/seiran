@@ -431,6 +431,7 @@ mod tests {
       font_size: Length::pt(12.0),
       typeface: Typeface::Math,
       color: None,
+      script_level: None,
     };
   }
 

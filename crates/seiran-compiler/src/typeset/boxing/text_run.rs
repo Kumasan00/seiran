@@ -69,7 +69,10 @@ impl Measurer<'_> {
       }
       prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
-      let run = self.shaper.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
+      let run =
+        self
+          .shaper
+          .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
       if style.typeface == Typeface::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
         out.push(HItem::Box(run.into_hbox()));
@@ -77,7 +80,12 @@ impl Measurer<'_> {
       }
       // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
       let hyphen = if !is_japanese && self.hyphenation.is_some() {
-        Some(self.shaper.shape_segment("-", segment.font_type, style.font_size, style.color).into_hbox())
+        Some(
+          self
+            .shaper
+            .shape_segment("-", segment.font_type, style.font_size, style.color, style.script_level)
+            .into_hbox(),
+        )
       } else {
         None
       };

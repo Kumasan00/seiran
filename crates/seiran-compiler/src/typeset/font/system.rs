@@ -6,7 +6,10 @@
 use std::time::Instant;
 
 use miette::Diagnostic;
-use read_fonts::{TableProvider, tables::math::MathConstants};
+use read_fonts::{
+  TableProvider,
+  tables::math::{MathConstant, MathConstants},
+};
 use thiserror::Error;
 use tracing::debug;
 
@@ -15,7 +18,7 @@ use crate::{
   project::{FontConfigs, FontData, FontMap, FontType},
   publication::FontMetrics,
   typeset::font::{
-    FontLoadError, FontRefs, build_font_metrics,
+    FontLoadError, FontRefs, ScriptLevel, ScriptScale, build_font_metrics,
     face_config::{FontFaceConfigs, build_face_configs},
     parse_fonts,
     shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
@@ -97,9 +100,16 @@ impl FontSystem {
     );
   }
 
-  /// 指定フォント種別でテキストをシェイプし、結果のグリフ列を `buffer` に残す。
-  pub(crate) fn shape(&self, font_type: FontType, buffer: &mut Buffer, text: &str, point_size: f32) {
-    self.shapers[font_type].shape(buffer, text, point_size);
+  /// 指定フォント種別でテキストをシェイプし、結果のグリフ列を `buffer` に残す（`script_level` は数式のスクリプト段）。
+  pub(crate) fn shape(
+    &self,
+    font_type: FontType,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    self.shapers[font_type].shape(buffer, text, point_size, script_level);
   }
 
   /// 指定フォント種別の基本メトリクスを返す。
@@ -111,6 +121,16 @@ impl FontSystem {
   pub(crate) fn math_constants(&self) -> MathConstants<'_> {
     return self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_constants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathConstants を読めることを確認済み",
+    );
+  }
+
+  /// 数式フォントの MATH が定めるスクリプト段の縮小率。
+  #[must_use]
+  pub(crate) fn script_scale(&self) -> ScriptScale {
+    let constants = self.math_constants();
+    return ScriptScale::from_percents(
+      constants.constant(MathConstant::ScriptPercentScaleDown),
+      constants.constant(MathConstant::ScriptScriptPercentScaleDown),
     );
   }
 

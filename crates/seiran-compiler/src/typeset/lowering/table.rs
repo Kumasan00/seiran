@@ -50,11 +50,13 @@ pub(super) fn lower_table(
     font_size: ctx.default_font_size(),
     typeface: ctx.body_typeface,
     color: None,
+    script_level: None,
   };
   let head_style = TextStyle {
     font_size: body_style.font_size,
     typeface: style.head_typeface,
     color: None,
+    script_level: None,
   };
 
   let margins = FloatMargins {

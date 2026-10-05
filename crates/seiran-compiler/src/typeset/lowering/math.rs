@@ -20,6 +20,7 @@ use crate::{
   style::{MathScriptStyle, NumberSide, NumberTemplate},
   typeset::{
     boxes::Align,
+    font::{ScriptLevel, ScriptScale},
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
@@ -31,11 +32,6 @@ use crate::{
     },
   },
 };
-
-/// スクリプト（上付き / 下付き）のフォントサイズを計算する
-fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
-  return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
-}
 
 /// `document::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
 /// `cases` / `matrix`）をレイアウトノード列（上下の `Vkern` + `LayoutNode::MathBlock`）に変換する
@@ -57,7 +53,7 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(cell, font_size, &ctx.style.math.script),
+          content: lower_math_cell(cell, font_size, &ctx.style.math.script, ctx.script_scale),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -111,6 +107,7 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
       font_size,
       typeface: Typeface::Serif,
       color: None,
+      script_level: None,
     },
   )];
 }
@@ -181,73 +178,124 @@ fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
 
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
-/// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
+/// 本体は text 段で組む。トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   math_style: &MathScriptStyle,
+  script_scale: ScriptScale,
 ) -> Vec<InlineNode> {
-  let ctx = MathLoweringContext::new(base_font_size, math_style);
-  return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size);
+  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, math_style);
+  return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
-/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（閉じた箱に畳むので行分割点を置かない）
-fn lower_math_cell(math_nodes: &[HirMath], base_font_size: Length, math_style: &MathScriptStyle) -> Vec<AtomNode> {
-  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, math_style));
+/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（display 段で組み、閉じた箱に畳むので行分割点を置かない）
+fn lower_math_cell(
+  math_nodes: &[HirMath],
+  base_font_size: Length,
+  math_style: &MathScriptStyle,
+  script_scale: ScriptScale,
+) -> Vec<AtomNode> {
+  return lower_math_list(
+    math_nodes,
+    &MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Display, math_style),
+  );
+}
+
+/// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StyleLevel {
+  /// display 段（表示数式環境の本体）
+  Display,
+  /// text 段（インライン数式の本体）
+  Text,
+  /// script 段（上付き・下付きの中身）
+  Script,
+  /// scriptscript 段（スクリプトのスクリプトと根号の指数。これより下へは縮めない）
+  ScriptScript,
+}
+
+impl StyleLevel {
+  /// 上付き・下付きの中身の段（1 段下。scriptscript より下へは下がらない）
+  const fn script(self) -> Self {
+    return match self {
+      StyleLevel::Display | StyleLevel::Text => StyleLevel::Script,
+      StyleLevel::Script | StyleLevel::ScriptScript => StyleLevel::ScriptScript,
+    };
+  }
+
+  /// フォントサイズと字形を決めるスクリプト段（display / text 段は数式本体の大きさと字形なので `None`）
+  const fn script_level(self) -> Option<ScriptLevel> {
+    return match self {
+      StyleLevel::Display | StyleLevel::Text => None,
+      StyleLevel::Script => Some(ScriptLevel::Script),
+      StyleLevel::ScriptScript => Some(ScriptLevel::ScriptScript),
+    };
+  }
 }
 
 /// 数式 1 レベルぶんの lowering 文脈
 ///
-/// スクリプト（上付き / 下付き）へ潜るとフォントサイズが縮み、TeXbook の括弧付きセルのアキが
+/// スクリプト（上付き / 下付き）へ潜ると段が下がり、フォントサイズが縮んで `TeXbook` の括弧付きセルのアキが
 /// 抑制される。
+#[derive(Debug, Clone, Copy)]
 struct MathLoweringContext<'a> {
-  /// このレベルのフォントサイズ
-  font_size: Length,
+  /// 数式本体（display / text 段）のフォントサイズ
+  base_font_size: Length,
+  /// スクリプト段の縮小率（数式フォントの MATH 由来）
+  script_scale: ScriptScale,
+  /// このレベルの段
+  level: StyleLevel,
   /// 継承中の字形 variant（`\mathbold` 等）
   variant: Option<MathVariant>,
-  /// スクリプトの寸法設定
+  /// スクリプトのシフト量の設定
   math_style: &'a MathScriptStyle,
-  /// script style（上付き / 下付きの中身）かどうか
-  in_script: bool,
 }
 
 impl<'a> MathLoweringContext<'a> {
-  /// 数式のトップレベル（text style・字形 variant なし）の文脈を作る
-  fn new(font_size: Length, math_style: &'a MathScriptStyle) -> Self {
+  /// 数式本体（段 `level`・字形 variant なし）の文脈を作る
+  fn new(
+    base_font_size: Length,
+    script_scale: ScriptScale,
+    level: StyleLevel,
+    math_style: &'a MathScriptStyle,
+  ) -> Self {
     return MathLoweringContext {
-      font_size,
+      base_font_size,
+      script_scale,
+      level,
       variant: None,
       math_style,
-      in_script: false,
     };
   }
 
-  /// 上付き / 下付きの中身用に縮小した文脈を作る
-  fn script(&self) -> Self {
-    return MathLoweringContext {
-      font_size: script_font_size(self.font_size, self.math_style),
-      variant: self.variant,
-      math_style: self.math_style,
-      in_script: true,
-    };
-  }
+  /// 段だけを差し替えた文脈を作る
+  fn at_level(&self, level: StyleLevel) -> Self { return MathLoweringContext { level, ..*self }; }
+
+  /// 上付き / 下付きの中身用に 1 段下げた文脈を作る
+  fn script(&self) -> Self { return self.at_level(self.level.script()); }
 
   /// 字形 variant だけを差し替えた文脈を作る
   fn with_variant(&self, variant: MathVariant) -> Self {
     return MathLoweringContext {
-      font_size: self.font_size,
       variant: Some(variant),
-      math_style: self.math_style,
-      in_script: self.in_script,
+      ..*self
     };
   }
 
-  /// このレベルのテキストスタイル（数式フォント・既定色）
+  /// このレベルのフォントサイズ
+  fn font_size(&self) -> Length { return self.script_scale.font_size(self.base_font_size, self.level.script_level()); }
+
+  /// script 段以下（TeXbook の括弧付きセルのアキを抑制する段）か
+  fn in_script(&self) -> bool { return self.level.script_level().is_some(); }
+
+  /// このレベルのテキストスタイル（数式フォント・既定色・段の字形）
   fn text_style(&self) -> TextStyle {
     return TextStyle {
-      font_size: self.font_size,
+      font_size: self.font_size(),
       typeface: Typeface::Math,
       color: None,
+      script_level: self.level.script_level(),
     };
   }
 }
@@ -263,7 +311,7 @@ fn collect_items(nodes: &[HirMath], ctx: &MathLoweringContext<'_>) -> Vec<spacin
 
 /// 数式ノード列を、アトム間のアキを入れた `AtomNode` 列に変換する
 fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext<'_>) -> Vec<AtomNode> {
-  return spacing::assemble(collect_items(nodes, ctx), ctx.font_size, ctx.in_script);
+  return spacing::assemble(collect_items(nodes, ctx), ctx.font_size(), ctx.in_script());
 }
 
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
@@ -291,7 +339,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext<'_>, items: &mut Ve
       spacing::push_attachment(
         items,
         vec![AtomNode::Raise {
-          offset: ctx.font_size * ctx.math_style.superscript_raise_factor,
+          offset: ctx.font_size() * ctx.math_style.superscript_raise_factor,
           children,
         }],
       );
@@ -301,7 +349,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext<'_>, items: &mut Ve
       spacing::push_attachment(
         items,
         vec![AtomNode::Raise {
-          offset: -ctx.font_size * ctx.math_style.subscript_drop_factor,
+          offset: -ctx.font_size() * ctx.math_style.subscript_drop_factor,
           children,
         }],
       );
@@ -316,10 +364,9 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext<'_>, items: &mut Ve
     HirMathKind::Sqrt { index, radicand } => {
       let mut nodes = Vec::new();
       if let Some(idx) = index {
-        let script_ctx = ctx.script();
         nodes.push(AtomNode::Raise {
-          offset: ctx.font_size * ctx.math_style.superscript_raise_factor,
-          children: lower_math_list(slice::from_ref(idx.as_ref()), &script_ctx),
+          offset: ctx.font_size() * ctx.math_style.superscript_raise_factor,
+          children: lower_math_list(slice::from_ref(idx.as_ref()), &ctx.at_level(StyleLevel::ScriptScript)),
         });
       }
       nodes.push(AtomNode::Text("√".to_string(), ctx.text_style()));
@@ -364,38 +411,51 @@ mod tests {
   use crate::{
     length::Length,
     style::{CounterTemplate, Style as ReadStyle},
-    typeset::lowering::test_support::{analyzed, lower},
+    typeset::{
+      font::ScriptLevel,
+      lowering::test_support::{analyzed, lower, stix_script_scale},
+    },
   };
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
   fn lower_math_source(source: &str) -> Vec<LayoutNode> { return lower(&ReadStyle::default(), &analyzed(source)); }
 
-  /// レイアウトノード列に含まれる `Text` を出現順に連結する（`Raise` の中身も含む）
-  fn concat_texts(nodes: &[LayoutNode]) -> String {
-    let mut out = String::new();
+  /// Atom ノード列の `Text` を（テキスト, スタイル）で出現順に返す（`Raise` の中も辿る）
+  fn atom_texts(nodes: &[AtomNode]) -> Vec<(String, TextStyle)> {
+    let mut out = Vec::new();
     for node in nodes {
       match node {
-        LayoutNode::Inline(InlineNode::Text(text, _)) => out.push_str(text),
-        LayoutNode::Inline(InlineNode::Raise { children, .. }) => out.push_str(&concat_atom_texts(children)),
-        // 数式の前後に段落 lowering が足すノード（`Vkern` 等）は表示文字列を持たない。
+        AtomNode::Text(text, style) => out.push((text.clone(), *style)),
+        // アキは表示文字列を持たない
+        AtomNode::Kern { .. } => {},
+        AtomNode::Raise { children, .. } => out.extend(atom_texts(children)),
+      }
+    }
+    return out;
+  }
+
+  /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（`Raise` の中も辿る）
+  fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
+    let mut out = Vec::new();
+    for node in nodes {
+      match node {
+        LayoutNode::Inline(InlineNode::Text(text, style)) => out.push((text.clone(), *style)),
+        LayoutNode::Inline(InlineNode::Raise { children, .. }) => out.extend(atom_texts(children)),
+        // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
     }
     return out;
   }
 
+  /// レイアウトノード列に含まれる `Text` を出現順に連結する（スクリプトの中も含む）
+  fn concat_texts(nodes: &[LayoutNode]) -> String {
+    return math_texts(nodes).into_iter().map(|(text, _)| return text).collect();
+  }
+
   /// Atom ノード列に含まれる `Text` を出現順に連結する（`concat_texts` の `AtomNode` 版）
   fn concat_atom_texts(nodes: &[AtomNode]) -> String {
-    let mut out = String::new();
-    for node in nodes {
-      match node {
-        AtomNode::Text(text, _) => out.push_str(text),
-        // アキは表示文字列を持たない
-        AtomNode::Kern { .. } => {},
-        AtomNode::Raise { children, .. } => out.push_str(&concat_atom_texts(children)),
-      }
-    }
-    return out;
+    return atom_texts(nodes).into_iter().map(|(text, _)| return text).collect();
   }
 
   /// レイアウトノード列に含まれる `Text` のスタイルを出現順に返すヘルパ
@@ -459,9 +519,50 @@ mod tests {
   #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
-    let nodes = lower_inline_math(&[], Length::pt(12.0), &ReadStyle::default().math.script);
+    let nodes = lower_inline_math(&[], Length::pt(12.0), &ReadStyle::default().math.script, stix_script_scale());
 
     assert!(nodes.is_empty(), "ノードが無ければ空のノード列を返すはず: {nodes:?}");
+  }
+
+  #[test]
+  fn script_levels_shrink_by_math_scale_down_and_stop_at_scriptscript() {
+    let nodes = lower_math_source("$x^{y^{z^{w}}}$\n");
+
+    let base = ReadStyle::default().text.font_size;
+    let levels: Vec<(String, Length, Option<ScriptLevel>)> = math_texts(&nodes)
+      .into_iter()
+      .map(|(text, style)| return (text, style.font_size, style.script_level))
+      .collect();
+    assert_eq!(
+      levels,
+      vec![
+        ("\u{1D465}".to_string(), base, None),
+        ("\u{1D466}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
+        ("\u{1D467}".to_string(), base.scale(0.55), Some(ScriptLevel::ScriptScript)),
+        ("\u{1D464}".to_string(), base.scale(0.55), Some(ScriptLevel::ScriptScript)),
+      ],
+      "scriptscript は数式本体のサイズ基準で、それより下へは縮めない"
+    );
+  }
+
+  #[test]
+  fn display_math_scripts_start_from_the_display_level() {
+    let block = math_block_of("\\begin{equation}\na^{2}\n\\end{equation}\n");
+
+    let texts = atom_texts(&block.rows[0].cells[0].content);
+    let (_, script) = texts.iter().find(|(text, _)| return text == "2").expect("上付きの 2 があるはず");
+    assert_eq!(script.font_size, ReadStyle::default().text.font_size.scale(0.7), "display 段の上付きは script 段");
+    assert_eq!(script.script_level, Some(ScriptLevel::Script));
+  }
+
+  #[test]
+  fn radical_degree_uses_the_scriptscript_level() {
+    let nodes = lower_math_source("$\\sqrt[3]{x}$\n");
+
+    let texts = math_texts(&nodes);
+    let (_, degree) = texts.iter().find(|(text, _)| return text == "3").expect("指数の 3 があるはず");
+    assert_eq!(degree.font_size, ReadStyle::default().text.font_size.scale(0.55));
+    assert_eq!(degree.script_level, Some(ScriptLevel::ScriptScript));
   }
 
   #[test]

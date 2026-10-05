@@ -5,7 +5,10 @@ use crate::{
   document::{TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
-  typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
+  typeset::{
+    boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
+    font::ScriptLevel,
+  },
 };
 
 /// レイアウトエンジンが処理する最小単位
@@ -242,6 +245,8 @@ pub(in crate::typeset) struct TextStyle {
   pub typeface: Typeface,
   /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
   pub color: Option<Color>,
+  /// 数式のスクリプト段（小サイズ用の字形を選ぶ）。数式のスクリプトの中身だけが `Some` で、本文と数式本体は `None`
+  pub script_level: Option<ScriptLevel>,
 }
 
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
@@ -297,6 +302,7 @@ mod tests {
       font_size: Length::pt(10.0),
       typeface,
       color: None,
+      script_level: None,
     };
   }
 

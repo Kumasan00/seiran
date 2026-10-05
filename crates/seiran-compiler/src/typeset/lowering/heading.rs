@@ -21,6 +21,7 @@ pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> Tex
     font_size: heading_style.font_size,
     typeface: heading_style.typeface,
     color: None,
+    script_level: None,
   };
 }
 
