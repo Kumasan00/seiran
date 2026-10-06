@@ -3,7 +3,7 @@
 //! `HarfRust` を使い、フォント設定の書字方向・スクリプト・言語・OpenType
 //! フィーチャー・バリエーション軸を反映して文字列をグリフ列へ変換する。
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::OnceLock};
 
 pub(in crate::typeset) use harfrust::Buffer;
 use harfrust::{Direction, Feature, Font, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
@@ -13,6 +13,7 @@ use thiserror::Error;
 use crate::{
   failures::Failures,
   project::{FontConfig, FontConfigs, FontMap, TextDirection},
+  typeset::font::ScriptLevel,
 };
 
 /// テキストシェイピングの初期化エラー。
@@ -31,6 +32,9 @@ pub(crate) enum ShaperError {
     error_message: String,
   },
 }
+
+/// OpenType の `ssty`（数式のスクリプト段で小サイズ用の字形を選ぶフィーチャ）のタグ
+const SSTY: Tag = Tag::new(b"ssty");
 
 /// 全フォント種別のシェイピング用フォント（設定のバリエーション軸の位置へ移したもの）。
 pub(super) type ShapingFonts = FontMap<Font>;
@@ -68,6 +72,26 @@ pub(super) fn build_harfrust_shapers(
   });
 }
 
+/// スクリプト段 1 つぶんの、`ssty` を足したシェイピング設定
+struct ScriptShaping {
+  /// 設定のフィーチャーの後ろに、その段の `ssty` を足したもの
+  features: Vec<Feature>,
+  /// `features` で作るシェイピングプラン（`HarfRustShaper::shape_plan` と同じ条件で、その段を初めて組むときに作る）
+  plan: OnceLock<ShapePlan>,
+}
+
+impl ScriptShaping {
+  /// 設定のフィーチャー `features` に段 `level` の `ssty` を足す
+  fn new(features: &[Feature], level: ScriptLevel) -> Self {
+    let mut with_ssty = features.to_vec();
+    with_ssty.push(Feature::new(SSTY, level.ssty(), 0..usize::MAX));
+    return ScriptShaping {
+      features: with_ssty,
+      plan: OnceLock::new(),
+    };
+  }
+}
+
 /// 単一フォントの `HarfRust` シェイパー。
 pub(super) struct HarfRustShaper {
   /// シェイピング用フォント（`ShaperFont` はシェイプごとにここから作る）
@@ -84,6 +108,10 @@ pub(super) struct HarfRustShaper {
   language: Option<Language>,
   /// 適用するシェイピング機能（フィーチャー）の一覧
   features: Vec<Feature>,
+  /// script 段（`ssty` = 1）のシェイピング設定
+  ssty_script: ScriptShaping,
+  /// scriptscript 段（`ssty` = 2）のシェイピング設定
+  ssty_script_script: ScriptShaping,
 }
 
 impl HarfRustShaper {
@@ -123,6 +151,9 @@ impl HarfRustShaper {
       _ => None,
     };
 
+    let ssty_script = ScriptShaping::new(&features, ScriptLevel::Script);
+    let ssty_script_script = ScriptShaping::new(&features, ScriptLevel::ScriptScript);
+
     return Ok(Self {
       font,
       shape_plan,
@@ -130,6 +161,8 @@ impl HarfRustShaper {
       script,
       language,
       features,
+      ssty_script,
+      ssty_script_script,
     });
   }
 
@@ -148,9 +181,10 @@ impl HarfRustShaper {
 
   /// `buffer` を空にしてテキストを詰め、グリフ列と位置情報へシェイピングする。
   ///
-  /// 結果は `buffer` の `glyph_infos` / `glyph_positions` に残る。`point_size` は AAT `trak`
+  /// `script_level` が `Some` なら、その段の `ssty` を足して小サイズ用の字形を選ぶ（フォントが `ssty` を持たなければ
+  /// 字形はそのまま）。結果は `buffer` の `glyph_infos` / `glyph_positions` に残る。`point_size` は AAT `trak`
   /// テーブルのサイズ依存トラッキングに使われ、0 以下なら `harfrust` の既定値 12pt になる。
-  pub(super) fn shape(&self, buffer: &mut Buffer, text: &str, point_size: f32) {
+  pub(super) fn shape(&self, buffer: &mut Buffer, text: &str, point_size: f32, script_level: Option<ScriptLevel>) {
     buffer.clear();
     if let Some(direction) = self.direction {
       buffer.set_direction(direction);
@@ -159,14 +193,31 @@ impl HarfRustShaper {
     buffer.set_language(self.language.clone());
     buffer.push_str(text);
     buffer.guess_segment_properties();
-    let options = ShapeOptions::new()
-      .plan(self.shape_plan.as_ref())
-      .point_size(Some(point_size))
-      .features(self.features.as_ref());
+    let (features, plan) = match script_level {
+      None => (self.features.as_slice(), self.shape_plan.as_ref()),
+      Some(level) => {
+        let shaping = match level {
+          ScriptLevel::Script => &self.ssty_script,
+          ScriptLevel::ScriptScript => &self.ssty_script_script,
+        };
+        (shaping.features.as_slice(), self.script_plan(shaping))
+      },
+    };
+    let options = ShapeOptions::new().plan(plan).point_size(Some(point_size)).features(features);
     harfrust::shape(&ShaperFont::new(&self.font), buffer, options).expect(
       "冒頭の clear で未シェイプ、guess_segment_properties で書字方向は決まり、プランは書字方向とスクリプトを両方明示した \
        ときだけ作られ同じ値を buffer に設定済みなので、ShapeError のどの場合にも当たらない",
     );
+  }
+
+  /// スクリプト段 `shaping` のプラン（`shape_plan` と同じく、書字方向とスクリプトを両方明示したときだけ作る）
+  fn script_plan<'s>(&'s self, shaping: &'s ScriptShaping) -> Option<&'s ShapePlan> {
+    let (Some(direction), Some(_)) = (self.direction, self.script) else {
+      return None;
+    };
+    return Some(shaping.plan.get_or_init(|| {
+      return ShapePlan::new(&self.font, direction, self.script, self.language.as_ref(), &shaping.features);
+    }));
   }
 }
 
@@ -176,7 +227,7 @@ mod tests {
 
   use harfrust::{Buffer, Font};
 
-  use super::{HarfRustShaper, at_configured_location};
+  use super::{HarfRustShaper, ScriptLevel, at_configured_location};
   use crate::project::{FontConfig, ProjectPath, TextDirection, VariationAxis};
 
   /// 軸 `wght`（既定 400）を持つ STIX Two Text を既定位置で読む。
@@ -199,6 +250,14 @@ mod tests {
       direction: None,
       features: None,
     };
+  }
+
+  /// MATH と `ssty` を持つ STIX Two Math を読む。
+  fn stix_two_math() -> Font {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
+    let bytes =
+      fs::read(&path).expect("vendor/fonts の STIX Two Math を読めるはず（未取得なら tools/fetch-test-assets.sh）");
+    return Font::new(bytes, 0).expect("STIX Two Math は sfnt として読めるはず");
   }
 
   /// 公開されたグリフ情報・位置と区間属性を、新規バッファの結果と比較する。
@@ -241,8 +300,8 @@ mod tests {
       (&explicit, "Привет"),
     ] {
       let mut fresh = Buffer::new();
-      shaper.shape(&mut reused, text, 12.0);
-      shaper.shape(&mut fresh, text, 12.0);
+      shaper.shape(&mut reused, text, 12.0, None);
+      shaper.shape(&mut fresh, text, 12.0, None);
 
       assert!(!fresh.glyph_infos().is_empty(), "比較対象の文字列はグリフを持つ");
       assert_same_shaping(&reused, &fresh);
@@ -257,8 +316,8 @@ mod tests {
 
     for text in ["office", "", "", "a\u{308}\u{301}b"] {
       let mut fresh = Buffer::new();
-      shaper.shape(&mut reused, text, 12.0);
-      shaper.shape(&mut fresh, text, 12.0);
+      shaper.shape(&mut reused, text, 12.0, None);
+      shaper.shape(&mut fresh, text, 12.0, None);
 
       assert_eq!(reused.glyph_infos().is_empty(), text.is_empty());
       assert_same_shaping(&reused, &fresh);
@@ -278,8 +337,8 @@ mod tests {
     let mut default_buffer = Buffer::new();
     let mut bold_buffer = Buffer::new();
 
-    default.shape(&mut default_buffer, "Hamburgefonts", 12.0);
-    bold.shape(&mut bold_buffer, "Hamburgefonts", 12.0);
+    default.shape(&mut default_buffer, "Hamburgefonts", 12.0, None);
+    bold.shape(&mut bold_buffer, "Hamburgefonts", 12.0, None);
 
     let advance = |buffer: &Buffer| -> i64 {
       return buffer.glyph_positions().iter().map(|position| return i64::from(position.x_advance)).sum();
@@ -312,5 +371,39 @@ mod tests {
       "wght 700 は既定 400 より太い側へ正規化される: {:?}",
       font.normalized_coords()
     );
+  }
+
+  #[test]
+  fn script_levels_select_ssty_glyphs_with_and_without_a_cached_plan() {
+    // 数式フォントの config と同じ書字方向・スクリプトの明示指定（プランをキャッシュする経路）と、書字方向を
+    // 自動判定に委ねる指定（毎回プランを作る経路）。`ssty` はこのフォントでは `math` スクリプトの下にだけある
+    // ので、どちらもスクリプトは明示する。
+    let explicit = FontConfig {
+      font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
+      direction: Some(TextDirection::LeftToRight),
+      script: Some(*b"math"),
+      ..stix_two_text_config(None)
+    };
+    let automatic = FontConfig {
+      direction: None,
+      ..explicit.clone()
+    };
+    for config in [explicit, automatic] {
+      let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+      let glyph_of_two = |level: Option<ScriptLevel>| {
+        let mut buffer = Buffer::new();
+        shaper.shape(&mut buffer, "2", 12.0, level);
+        return buffer.glyph_infos()[0].glyph_id;
+      };
+
+      let plain = glyph_of_two(None);
+      let script = glyph_of_two(Some(ScriptLevel::Script));
+      let script_script = glyph_of_two(Some(ScriptLevel::ScriptScript));
+
+      assert_ne!(plain, script, "script 段は ssty=1 の字形（two.ssty）");
+      assert_ne!(script, script_script, "scriptscript 段は ssty=2 の字形（two.ssty2）");
+      assert_ne!(plain, script_script);
+      assert_eq!(glyph_of_two(None), plain, "段の無いシェイプは元の字形に戻る");
+    }
   }
 }

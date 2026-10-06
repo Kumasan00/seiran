@@ -323,10 +323,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番と
   祖先チェーンの決定）だけ — `typeset::lowering` はカウンタ値に載った名前を引くので `resets` を読まない
   （祖先の決め方は `semantics` 節）
-- **数式**: `[math.script]`（上付き / 下付きの倍率・シフト。インライン数式にも効く。本来は OpenType MATH
-  テーブル由来の値で、MATH 由来の値へ置き換えて削除する — 非対応フォント用フォールバックとしても残さない。
-  `docs/language-design.md`「数式レイアウト定数はフォント実体」）と `[math.block]`（全表示数式
-  環境が共有するブロックのレイアウト）
+- **数式**: `[math.block]`（全表示数式環境が共有するブロックのレイアウト）だけ。上付き・下付きの縮小率・
+  シフト量は数式フォントの OpenType MATH の値で、style.toml には置かない（`[math.script]` は書けば未知キーの
+  診断エラー。`docs/language-design.md`「数式レイアウト定数はフォント実体」）
 - **ページ**: `[page]` は本文領域の余白と組版挙動フラグ（段組みは別テーブル `[columns]`）。余白単体の不正
   （負値）はここで弾き、用紙寸法と突き合わせないと判定できない制約は `typeset::geometry` が持つ
 - **文献**: `[reference]` は `semantics::citation` が参照。`csl_path` / `locale_path` は `ProjectPath` で、
@@ -667,7 +666,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - フォントに触れてよいのは (a) `boxing`（本文の計測・シェーピングと、生成コンテンツ（目次・索引・
   走り文）が使うシェーピングの部品 `Shaper`）と (e) 描画だけ（`emit` は描画資源へ載せる face 設定・
   メトリクスを借りるだけで計測しない）。box は (a) で width / height / depth を 1 回計測して保持し、
-  `breaking` はフォントに触れない
+  `breaking` はフォントに触れない。例外は本文パスが lowering へ渡す数式の縮小率（`FontSystem::script_scale`）を
+  読むことだけで、値を読むだけで計測はしない
 - **段の中では 19 種すべてを検査して違反を `FontType` の宣言順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
   `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする — 19 種のフォント種別については
@@ -681,11 +681,16 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   （順序を入れ替えると診断が変わる）
 - **数式フォントは OpenType MATH テーブル必須**。`validation` が構築時に全サブテーブルのオフセットと件数どおりの
   配列の長さまで辿り、無い・読めないものを `typeset::font::validation::{missing_math_table, table_range,
-  unsorted_table_directory, unreadable_math_table}` で拒否する（数式の有無に依存しない）。read-fonts のグリフ
-  単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
+  unsorted_table_directory, unreadable_math_table, non_positive_scale_down}` で拒否する（数式の有無に依存しない）。
+  スクリプトの縮小率（`ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`）が正であることも検証する。
+  read-fonts のグリフ単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
   意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
   （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
   引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう
+- **数式のスクリプト段の字形（`ssty`）**: シェーパーは script / scriptscript 段ごとに、設定のフィーチャーへ
+  `ssty`（1 / 2）を足したフィーチャーとプランを持つ（プランはその段を初めて組むときに作る）。harfrust の
+  プランはユーザ指定フィーチャを構築時にコンパイルするので、キャッシュしたプランへ実行時にだけ `ssty` を
+  渡しても効かない。段は `TextStyle::script_level` が運ぶ。`ssty` を持たないフォントは字形がそのまま
 
 #### `error`
 
@@ -817,7 +822,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 
 #### `lowering`
 
-`SemanticDocument` → `LayoutNode` への変換。フォント・シェーピング非依存で、意味解析を行わないため失敗しない
+`SemanticDocument` → `LayoutNode` への変換。フォント・シェーピング非依存（数式のスクリプト段の縮小率だけは、本文パスが数式フォントから読んだ値 `ScriptScale` を `LoweringContext` が運ぶ。lowering は `FontSystem` に触れない）で、意味解析を行わないため失敗しない
 （`Result` を返す公開関数が無い）。
 
 - 本文の入口は前段の深い型 `SemanticDocument` 1 つだけを借用する（タイトルページだけは config 由来の
@@ -843,6 +848,14 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt`
   は 1 個の Ord なので `$a{+}b$` でアキを殺せる
+- **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
+  持つ（TeX・MathML Core と同じ）。表示数式環境のセルは display、インライン数式は text で始まり、上付き・
+  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。下付きの中身と被根号は
+  cramped で、cramped は中身へ継承され解除されない（上付きの中身は親を継承）。段のフォントサイズは数式本体の
+  サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
+  基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
+  付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
+  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped）として boxing へ渡す
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
@@ -877,12 +890,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
   閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
-  数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
+  上付き下付きの付いた基底・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
   キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
   （`VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）に加えて
   包み variant `Inline(InlineNode)` を 1 つ持ち、`boxing` の縦リスト走査はその 1 arm でインラインへ
   振り分ける（インライン側に縦リスト用の `unreachable!` が無い。#672）。`Atom` に畳める要素
-  （テキスト・kern・入れ子の raise）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
+  （テキスト・kern・上付き下付きの付いた基底）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
   なしで閉じる。持ち上げは `From` の片方向のみ（逆向きの変換は作らない）
 - **段落は明示ノードにしていない**（見送り。#672 のスコープ外）。段落の境界は「インラインを溜め、
   縦リスト用ノードが来たら `flush_paragraph` する」という `boxing` 側の暗黙の表現で、`lowering/list.rs` は
@@ -925,6 +938,13 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
 - **区切り括弧付きのディスプレイ数式**（`matrix[delimiter=…]` / `cases`）は、本体グリッドの縦中央と拡大した
   括弧の数式軸を、数式フォントの MATH `AxisHeight` に揃える（箱の幾何中点や括弧箱の ascender / descender は
   使わない）。環境単位の式番号は本体の縦中央に揃える別規則
+- **上付き・下付き**（`MathScripts`）は、基底と上付き・下付きを原点から仮に配置してインク（グリフの形の範囲。
+  `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
+  `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・
+  深さ（フォント全体の ascender / descender）は使わない。上付き・下付きは基底の右端から同じ列に置き、上下付き
+  同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
+  超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（Atom の幅は
+  末尾のアキを含む送り幅を下限にする）。根号の指数は空の基底の上付きとして同じ規則で置く
 - 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
 
 (b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。

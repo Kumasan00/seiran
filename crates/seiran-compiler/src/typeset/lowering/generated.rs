@@ -89,6 +89,7 @@ fn lower_generated_inline(
         font_size: parent_style.font_size,
         typeface: *font,
         color: parent_style.color,
+        script_level: None,
       };
       return lower_generated_inlines(ctx, children, styled);
     },

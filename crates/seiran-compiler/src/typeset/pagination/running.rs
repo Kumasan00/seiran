@@ -160,6 +160,7 @@ fn build_running_blocks(
     font_size: slots.font_size,
     typeface: slots.typeface,
     color: None,
+    script_level: None,
   };
   let left = shape_slot(shaper, &slots.left, page_label, pages_label, metadata, style);
   let center = shape_slot(shaper, &slots.center, page_label, pages_label, metadata, style);

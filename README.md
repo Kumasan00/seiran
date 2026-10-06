@@ -111,7 +111,7 @@ features = [                   # OpenType フィーチャー（オプション�
 ]
 ```
 
-数式フォント（`[font_configs.math]`）には OpenType MATH テーブルを持つフォント（STIX Two Math / Latin Modern Math 等）が必要です。MATH テーブルを持たないフォントを指定すると、文書に数式が無くてもエラーになります。
+数式フォント（`[font_configs.math]`）には OpenType MATH テーブルを持つフォント（STIX Two Math / Latin Modern Math 等）が必要です。MATH テーブルを持たないフォントを指定すると、文書に数式が無くてもエラーになります。また、`[font_configs.math]` には `script = "math"` と `direction = "left-to-right"` を指定してください（STIX Two Math は `ssty`（スクリプト段用の小サイズ字形）を `math` スクリプトにだけ登録しているため、無指定だと上付き・下付きに小サイズ字形が適用されません）。
 
 ### スタイル設定（`config/style.toml`）
 

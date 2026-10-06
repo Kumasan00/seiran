@@ -1,16 +1,23 @@
-//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
+//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）と、数式の上付き・下付きの配置
 //!
 //! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
 //! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の拡大と数式軸への配置）
 //! だけを行う。HIR の数式語彙（`document::MathBlockKind`）はここまで届かない。
+//!
+//! 上付き・下付き（`MathScripts`）のシフト量は、基底とスクリプトのインク（グリフの形の範囲）と数式フォントの
+//! MATH 定数から決める。片側だけのシフトは `MathML Core` のスクリプト配置の規則に、上下付き同時のギャップは OpenType MATH の
+//! `SuperscriptBottomMaxWithSubscript` の定義（先に上付きを上げ、残りを下付きを下げて埋める）に従う。箱の高さ・深さはフォント
+//! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
+
+use read_fonts::tables::math::MathConstant;
 
 use crate::{
   length::Length,
   project::FontType,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
-    boxing::Measurer,
-    lowering::{DelimiterGlyphs, MathBlockLayout},
+    boxing::{Measurer, Shaper},
+    lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathScripts},
   },
 };
 
@@ -28,6 +35,108 @@ struct MeasuredCell {
   content: HBox,
   /// 列内での水平揃え（lowering が解決済み）
   align: Align,
+}
+
+/// 原点（`dx` = 0・`dy` = 0）から仮に配置した数式の断片（基底・上付き・下付き）とその寸法
+struct Detached {
+  /// 原点基準で配置した箱
+  boxes: Vec<PlacedHBox>,
+  /// 送り幅（末尾のアキを含む）
+  width: Length,
+  /// インクのベースラインより上の高さ（0 以上）
+  ink_height: Length,
+  /// インクのベースラインより下の深さ（0 以上）
+  ink_depth: Length,
+}
+
+/// 上付き・下付きの配置に使う MATH 定数（基底の段のフォントサイズで長さへ換算済み）
+#[derive(Debug, Clone, Copy)]
+struct ScriptConstants {
+  /// `SuperscriptShiftUp`
+  superscript_shift_up: Length,
+  /// `SuperscriptShiftUpCramped`
+  superscript_shift_up_cramped: Length,
+  /// `SubscriptShiftDown`
+  subscript_shift_down: Length,
+  /// `SuperscriptBaselineDropMax`
+  superscript_baseline_drop_max: Length,
+  /// `SubscriptBaselineDropMin`
+  subscript_baseline_drop_min: Length,
+  /// `SuperscriptBottomMin`
+  superscript_bottom_min: Length,
+  /// `SubscriptTopMax`
+  subscript_top_max: Length,
+  /// `SubSuperscriptGapMin`
+  sub_superscript_gap_min: Length,
+  /// `SuperscriptBottomMaxWithSubscript`
+  superscript_bottom_max_with_subscript: Length,
+  /// `SpaceAfterScript`
+  space_after_script: Length,
+}
+
+impl ScriptConstants {
+  /// 数式フォントの MATH 定数を `font_size` で長さへ換算する
+  fn new(shaper: &Shaper<'_>, font_size: Length) -> Self {
+    let at = |constant: MathConstant| return shaper.math_constant(constant, font_size);
+    return ScriptConstants {
+      superscript_shift_up: at(MathConstant::SuperscriptShiftUp),
+      superscript_shift_up_cramped: at(MathConstant::SuperscriptShiftUpCramped),
+      subscript_shift_down: at(MathConstant::SubscriptShiftDown),
+      superscript_baseline_drop_max: at(MathConstant::SuperscriptBaselineDropMax),
+      subscript_baseline_drop_min: at(MathConstant::SubscriptBaselineDropMin),
+      superscript_bottom_min: at(MathConstant::SuperscriptBottomMin),
+      subscript_top_max: at(MathConstant::SubscriptTopMax),
+      sub_superscript_gap_min: at(MathConstant::SubSuperscriptGapMin),
+      superscript_bottom_max_with_subscript: at(MathConstant::SuperscriptBottomMaxWithSubscript),
+      space_after_script: at(MathConstant::SpaceAfterScript),
+    };
+  }
+
+  /// 上付きを基底のベースラインから上げる量
+  ///
+  /// 標準のシフト（cramped なら低い方）・背の高い基底からの降下・上付きの底の下限のうち最大。
+  fn superscript_shift(&self, base_ink_height: Length, sup_ink_depth: Length, cramped: bool) -> Length {
+    let standard = if cramped {
+      self.superscript_shift_up_cramped
+    } else {
+      self.superscript_shift_up
+    };
+    return standard
+      .max(base_ink_height - self.superscript_baseline_drop_max)
+      .max(self.superscript_bottom_min + sup_ink_depth);
+  }
+
+  /// 下付きを基底のベースラインから下げる量
+  ///
+  /// 標準のシフト・深い基底からの降下・下付きの頂の上限のうち最大。
+  fn subscript_shift(&self, base_ink_depth: Length, sub_ink_height: Length) -> Length {
+    return self
+      .subscript_shift_down
+      .max(base_ink_depth + self.subscript_baseline_drop_min)
+      .max(sub_ink_height - self.subscript_top_max);
+  }
+
+  /// 上下付き同時のとき、上付きの底と下付きの頂の間を `SubSuperscriptGapMin` 以上に広げたシフト量の組
+  /// （上付き, 下付き）を返す
+  ///
+  /// 足りない分は、まず上付きの底が `SuperscriptBottomMaxWithSubscript` を超えない範囲で上付きを上げ、残りを
+  /// 下付きを下げて埋める。
+  fn separate(
+    &self,
+    sup_shift: Length,
+    sup_ink_depth: Length,
+    sub_shift: Length,
+    sub_ink_height: Length,
+  ) -> (Length, Length) {
+    let sup_bottom = sup_shift - sup_ink_depth;
+    let deficit = self.sub_superscript_gap_min - (sup_bottom - (sub_ink_height - sub_shift));
+    if !deficit.is_positive() {
+      return (sup_shift, sub_shift);
+    }
+    let room = (self.superscript_bottom_max_with_subscript - sup_bottom).max(Length::ZERO);
+    let raise = deficit.min(room);
+    return (sup_shift + raise, sub_shift + deficit - raise);
+  }
 }
 
 impl Measurer<'_> {
@@ -117,7 +226,7 @@ impl Measurer<'_> {
 
     if delimiters.is_present() {
       // グリッドの縦中央を数式軸に載せる。行番号の `dy` は本体のベースライン基準なので、グリッドと同じだけ動かす
-      let axis = self.shaper.math_axis_height(self.default_font_size);
+      let axis = self.shaper.math_constant(MathConstant::AxisHeight, self.default_font_size);
       let grid_dy = axis - (body.height - body.depth) / 2.0;
       for number in &mut numbers {
         number.dy += grid_dy;
@@ -136,7 +245,7 @@ impl Measurer<'_> {
   /// 区切り括弧グリフを本体グリッドの高さ・深さに合わせて拡大し、拡大後の箱と、その大きさでの数式軸の高さを返す
   fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> (HBox, Length) {
     let base = self.default_font_size;
-    let natural = self.shaper.shape_segment(ch, FontType::Math, base, None);
+    let natural = self.shaper.shape_segment(ch, FontType::Math, base, None, None);
     let natural_total = natural.height() + natural.depth();
     let pad = base * 0.1;
     let target_total = target_height + target_depth + pad * 2;
@@ -147,8 +256,8 @@ impl Measurer<'_> {
       1.0
     };
     let size = base.scale(scale);
-    let delimiter = self.shaper.shape_segment(ch, FontType::Math, size, None).into_hbox();
-    return (delimiter, self.shaper.math_axis_height(size));
+    let delimiter = self.shaper.shape_segment(ch, FontType::Math, size, None, None).into_hbox();
+    return (delimiter, self.shaper.math_constant(MathConstant::AxisHeight, size));
   }
 
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
@@ -187,5 +296,162 @@ impl Measurer<'_> {
       });
     }
     return HBox::atom(children);
+  }
+
+  /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
+  ///
+  /// 上付き・下付きは基底の右端から始め（横の補正は行わない）、後ろに `SpaceAfterScript` のアキを空ける。
+  pub(super) fn place_scripts(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+    let MathScripts {
+      base,
+      superscript,
+      subscript,
+      font_size,
+      cramped,
+    } = scripts;
+    let constants = ScriptConstants::new(&self.shaper, font_size);
+    let base = self.detach(base);
+    let superscript = superscript.map(|nodes| return self.detach(nodes));
+    let subscript = subscript.map(|nodes| return self.detach(nodes));
+
+    let (sup_shift, sub_shift) = match (&superscript, &subscript) {
+      (Some(sup), Some(sub)) => constants.separate(
+        constants.superscript_shift(base.ink_height, sup.ink_depth, cramped),
+        sup.ink_depth,
+        constants.subscript_shift(base.ink_depth, sub.ink_height),
+        sub.ink_height,
+      ),
+      (Some(sup), None) => (constants.superscript_shift(base.ink_height, sup.ink_depth, cramped), Length::ZERO),
+      (None, Some(sub)) => (Length::ZERO, constants.subscript_shift(base.ink_depth, sub.ink_height)),
+      (None, None) => unreachable!(
+        "MathScripts を作るのは spacing::attach（片側を必ず埋める）と根号の指数（上付きを持つ）だけで、少なくとも一方は Some"
+      ),
+    };
+
+    let script_x = *dx + base.width;
+    translate_into(out, base.boxes, *dx, dy);
+    let mut script_width = Length::ZERO;
+    if let Some(sup) = superscript {
+      script_width = script_width.max(sup.width);
+      translate_into(out, sup.boxes, script_x, dy + sup_shift);
+    }
+    if let Some(sub) = subscript {
+      script_width = script_width.max(sub.width);
+      translate_into(out, sub.boxes, script_x, dy - sub_shift);
+    }
+    *dx = script_x + script_width + constants.space_after_script;
+  }
+
+  /// ノード列を原点から仮に配置し、送り幅とインクの寸法を測る
+  fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
+    let mut boxes = Vec::new();
+    let mut width = Length::ZERO;
+    self.place_atom_children(nodes, Length::ZERO, &mut width, &mut boxes);
+    let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes);
+    return Detached {
+      boxes,
+      width,
+      ink_height,
+      ink_depth,
+    };
+  }
+}
+
+/// 原点基準で配置した箱を (`dx`, `dy`) だけずらして `out` へ移す
+fn translate_into(out: &mut Vec<PlacedHBox>, boxes: Vec<PlacedHBox>, dx: Length, dy: Length) {
+  out.extend(boxes.into_iter().map(|placed| {
+    return PlacedHBox {
+      hbox: placed.hbox,
+      dx: placed.dx + dx,
+      dy: placed.dy + dy,
+    };
+  }));
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// STIX Two Math の値をフォント単位 1 = 1pt で写した定数（基底 1000pt 相当）
+  fn constants() -> ScriptConstants {
+    return ScriptConstants {
+      superscript_shift_up: Length::pt(360.0),
+      superscript_shift_up_cramped: Length::pt(252.0),
+      subscript_shift_down: Length::pt(210.0),
+      superscript_baseline_drop_max: Length::pt(230.0),
+      subscript_baseline_drop_min: Length::pt(160.0),
+      superscript_bottom_min: Length::pt(120.0),
+      subscript_top_max: Length::pt(368.0),
+      sub_superscript_gap_min: Length::pt(150.0),
+      superscript_bottom_max_with_subscript: Length::pt(380.0),
+      space_after_script: Length::pt(40.0),
+    };
+  }
+
+  #[test]
+  fn superscript_shift_takes_the_largest_of_the_three_rules() {
+    let c = constants();
+
+    assert_eq!(
+      c.superscript_shift(Length::pt(479.0), Length::ZERO, false),
+      Length::pt(360.0),
+      "短い基底は標準のシフト"
+    );
+    assert_eq!(
+      c.superscript_shift(Length::pt(479.0), Length::ZERO, true),
+      Length::pt(252.0),
+      "cramped は低いシフト"
+    );
+    assert_eq!(
+      c.superscript_shift(Length::pt(736.0), Length::ZERO, false),
+      Length::pt(506.0),
+      "背の高い基底は 基底の高さ − 降下の上限"
+    );
+    assert_eq!(
+      c.superscript_shift(Length::ZERO, Length::pt(300.0), false),
+      Length::pt(420.0),
+      "深い上付きは底を下限に揃える"
+    );
+  }
+
+  #[test]
+  fn subscript_shift_takes_the_largest_of_the_three_rules() {
+    let c = constants();
+
+    assert_eq!(c.subscript_shift(Length::pt(10.0), Length::pt(400.0)), Length::pt(210.0), "短い基底は標準のシフト");
+    assert_eq!(
+      c.subscript_shift(Length::pt(196.0), Length::ZERO),
+      Length::pt(356.0),
+      "深い基底は 基底の深さ + 降下の下限"
+    );
+    assert_eq!(
+      c.subscript_shift(Length::ZERO, Length::pt(700.0)),
+      Length::pt(332.0),
+      "背の高い下付きは頂を上限に揃える"
+    );
+  }
+
+  #[test]
+  fn separate_keeps_shifts_with_enough_gap() {
+    // 上付きの底 360・下付きの頂 200 − 210 = −10 → ギャップ 370
+    let shifts = constants().separate(Length::pt(360.0), Length::ZERO, Length::pt(210.0), Length::pt(200.0));
+
+    assert_eq!(shifts, (Length::pt(360.0), Length::pt(210.0)));
+  }
+
+  #[test]
+  fn separate_raises_superscript_up_to_its_limit_then_lowers_subscript() {
+    // 上付きの底 360・下付きの頂 503 − 210 = 293 → ギャップ 67・不足 83。上付きは底 380 までの 20、残り 63 は下付き
+    let shifts = constants().separate(Length::pt(360.0), Length::ZERO, Length::pt(210.0), Length::pt(503.0));
+
+    assert_eq!(shifts, (Length::pt(380.0), Length::pt(273.0)));
+  }
+
+  #[test]
+  fn separate_lowers_only_subscript_when_superscript_is_above_its_limit() {
+    // 上付きの底 400 は上限 380 より上なので上付きは動かさず、不足 43 をすべて下付きへ
+    let shifts = constants().separate(Length::pt(400.0), Length::ZERO, Length::pt(210.0), Length::pt(503.0));
+
+    assert_eq!(shifts, (Length::pt(400.0), Length::pt(253.0)));
   }
 }

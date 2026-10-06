@@ -5,7 +5,10 @@ use crate::{
   document::{TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
-  typeset::boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
+  typeset::{
+    boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
+    font::ScriptLevel,
+  },
 };
 
 /// レイアウトエンジンが処理する最小単位
@@ -81,6 +84,8 @@ pub(in crate::typeset) enum InlineNode {
     /// ずらす対象の子ノード列
     children: Vec<AtomNode>,
   },
+  /// 上付き・下付きの付いた基底（インライン数式のトップレベル）
+  Scripts(MathScripts),
   /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
   ///
   /// 折り返さなければ `spacing` 幅のアキ、折り返せば何も出さない。
@@ -114,7 +119,7 @@ pub(in crate::typeset) enum InlineNode {
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
-/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・入れ子の `Raise` だけを持つ。
+/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -124,13 +129,8 @@ pub(in crate::typeset) enum AtomNode {
     /// カーンの幅
     length: Length,
   },
-  /// ベースラインから子要素を垂直方向にずらすコンテナ（上付き / 下付き / 根号指数）
-  Raise {
-    /// ベースラインからの垂直オフセット（正で上方向）
-    offset: Length,
-    /// ずらす対象の子ノード列
-    children: Vec<AtomNode>,
-  },
+  /// 上付き・下付きの付いた基底
+  Scripts(MathScripts),
 }
 
 impl From<AtomNode> for InlineNode {
@@ -139,7 +139,7 @@ impl From<AtomNode> for InlineNode {
     return match node {
       AtomNode::Text(text, style) => InlineNode::Text(text, style),
       AtomNode::Kern { length } => InlineNode::Kern { length },
-      AtomNode::Raise { offset, children } => InlineNode::Raise { offset, children },
+      AtomNode::Scripts(scripts) => InlineNode::Scripts(scripts),
     };
   }
 }
@@ -233,6 +233,24 @@ impl DelimiterGlyphs {
   pub(in crate::typeset) fn is_present(self) -> bool { return self.left.is_some() || self.right.is_some(); }
 }
 
+/// 基底に付けた上付き・下付き
+///
+/// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。上付き・下付きは
+/// どちらも基底の右端から始まる。上付き・下付きの少なくとも一方は `Some`（`spacing::attach` と根号の指数だけが作る）。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathScripts {
+  /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループや根号の指数）
+  pub base: Vec<AtomNode>,
+  /// 上付きの中身（`None` は上付きなし）
+  pub superscript: Option<Vec<AtomNode>>,
+  /// 下付きの中身（`None` は下付きなし）
+  pub subscript: Option<Vec<AtomNode>>,
+  /// 基底の段のフォントサイズ（MATH 定数を長さへ換算する大きさ）
+  pub font_size: Length,
+  /// 基底の数式スタイルが cramped か（上付きのシフトに `SuperscriptShiftUpCramped` を使う）
+  pub cramped: bool,
+}
+
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::typeset) struct TextStyle {
@@ -242,6 +260,8 @@ pub(in crate::typeset) struct TextStyle {
   pub typeface: Typeface,
   /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
   pub color: Option<Color>,
+  /// 数式のスクリプト段（小サイズ用の字形を選ぶ）。数式のスクリプトの中身だけが `Some` で、本文と数式本体は `None`
+  pub script_level: Option<ScriptLevel>,
 }
 
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
@@ -297,6 +317,7 @@ mod tests {
       font_size: Length::pt(10.0),
       typeface,
       color: None,
+      script_level: None,
     };
   }
 

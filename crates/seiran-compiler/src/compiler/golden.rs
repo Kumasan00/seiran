@@ -43,6 +43,11 @@
 //!   クラスタ範囲がテキストを過不足なく覆うことの検査 3 種 [`glyph_ranges_tile_text_with_combining_marks`] /
 //!   [`glyph_ranges_tile_text_in_right_to_left_runs`] / [`glyph_ranges_tile_text_in_japanese_clusters`]
 //!   （共通ヘルパ [`assert_ranges_tile_text`] 経由）
+//! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
+//! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
+//!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
+//!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_share_a_column_in_either_order`] /
+//!   [`space_after_script_follows_the_scripts`] / [`script_in_a_non_math_font_is_placed_by_its_ink`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -76,6 +81,7 @@ use crate::{
     test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
   },
   length::Length,
+  project::FontType,
   publication::{GlyphRun, PaintOp},
   typeset::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
@@ -959,20 +965,32 @@ fn glyph_ranges_tile_text_in_japanese_clusters() {
   }
 }
 
-/// `vendor/fonts/STIXTwoMath-Regular.ttf`（golden の数式フォント）の数式軸の、`font_size` での高さ。
+/// `vendor/fonts/STIXTwoMath-Regular.ttf`（golden の数式フォント）の MATH 定数の生の値と upem。
 ///
-/// 組版側と独立に MATH を読み、同じ換算（`font_size × AxisHeight / upem`）をする。
-fn stix_math_axis_height(font_size: Length) -> Length {
+/// 組版側と独立に MATH を読む。
+fn stix_math_constant(constant: MathConstant) -> (i32, u16) {
   let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
   let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
   let font = FontRef::new(&bytes).expect("STIX Two Math を解析できるはず");
   let upem = font.head().expect("head を読めるはず").units_per_em();
-  let axis = font
+  let value = font
     .math()
     .and_then(|math| return math.math_constants())
     .expect("MathConstants を読めるはず")
-    .constant(MathConstant::AxisHeight);
-  return font_size.scale(f64::from(axis) / f64::from(upem));
+    .constant(constant);
+  return (value, upem);
+}
+
+/// 長さの MATH 定数の、`font_size` での長さ（組版側と同じ換算 `font_size × 値 / upem`）。
+fn stix_math_length(constant: MathConstant, font_size: Length) -> Length {
+  let (value, upem) = stix_math_constant(constant);
+  return font_size.scale(f64::from(value) / f64::from(upem));
+}
+
+/// 縮小率の MATH 定数（百分率）を `base` に掛けたフォントサイズ（組版側と同じ換算）。
+fn stix_scaled_size(constant: MathConstant, base: Length) -> Length {
+  let (percent, _) = stix_math_constant(constant);
+  return base.scale(f64::from(percent) / 100.0);
 }
 
 /// 箱の中を先頭から辿り、最初のグリフ列を返す。
@@ -1007,7 +1025,7 @@ fn delimiters_and_grid_center_on_the_math_axis() {
     // 子は [左括弧, グリッド, 右括弧（あれば）] の順
     let grid = &children[1];
     let base_size = first_glyph_run(&grid.hbox.content).expect("グリッドにはセルのグリフがあるはず").font_size;
-    let axis = stix_math_axis_height(base_size);
+    let axis = stix_math_length(MathConstant::AxisHeight, base_size);
     assert_eq!(
       grid.dy + (grid.hbox.height - grid.hbox.depth) / 2.0,
       axis,
@@ -1023,10 +1041,176 @@ fn delimiters_and_grid_center_on_the_math_axis() {
     for delimiter in delimiters {
       let run = first_glyph_run(&delimiter.hbox.content).expect("区切り括弧はグリフ列のはず");
       assert_eq!(
-        delimiter.dy + stix_math_axis_height(run.font_size),
+        delimiter.dy + stix_math_length(MathConstant::AxisHeight, run.font_size),
         axis,
         "拡大した括弧の数式軸が本体の数式軸に一致するはず: {source}"
       );
     }
   }
+}
+
+/// 行の中のグリフ列 1 本と、その位置（入れ子の Atom を辿って足した値）
+struct LineRun {
+  /// 行頭からの水平位置
+  dx: Length,
+  /// ベースラインからの縦位置（正で上）
+  dy: Length,
+  /// 送り幅
+  width: Length,
+  /// グリフ列
+  run: GlyphRun,
+}
+
+/// 箱の中身を辿り、グリフ列を (`dx`, `dy`) だけずらした位置で `out` へ出現順に積む。
+fn collect_line_runs(content: &HBoxContent, width: Length, dx: Length, dy: Length, out: &mut Vec<LineRun>) {
+  match content {
+    HBoxContent::Glyphs(run) => out.push(LineRun {
+      dx,
+      dy,
+      width,
+      run: run.clone(),
+    }),
+    HBoxContent::Atom(children) => {
+      for child in children {
+        collect_line_runs(&child.hbox.content, child.hbox.width, dx + child.dx, dy + child.dy, out);
+      }
+    },
+  }
+}
+
+/// 本文 `source` を組版し、最初の行のグリフ列を出現順に返す。
+fn first_line_runs(source: &str) -> Vec<LineRun> {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  let line = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .find_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return Some(line),
+      _ => return None,
+    })
+    .expect("本文の行が 1 つはあるはず");
+  let mut runs = Vec::new();
+  for placed in &line.boxes {
+    collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+  }
+  return runs;
+}
+
+/// `runs` からテキストが `text` の最初のグリフ列を返す。
+fn run_with_text<'a>(runs: &'a [LineRun], text: &str) -> &'a LineRun {
+  return runs
+    .iter()
+    .find(|line_run| return line_run.run.text == text)
+    .unwrap_or_else(|| panic!("テキスト {text:?} のグリフ列があるはず"));
+}
+
+#[test]
+fn script_levels_use_math_scale_down_and_ssty_glyphs() {
+  let runs = first_line_runs("$2^{2^{2}}$\n");
+
+  let twos: Vec<&LineRun> = runs.iter().filter(|line_run| return line_run.run.text == "2").collect();
+  let [base, script, script_script] = twos.as_slice() else {
+    panic!("2 が 3 段ぶん並ぶはず: {} 本", twos.len());
+  };
+  assert!(script.dx >= base.dx + base.width, "上付きは本体の右に置かれる");
+  assert!(script.dy > base.dy, "上付きは本体より上に上がる");
+  assert!(script_script.dy > base.dy, "さらに内側の上付きも本体より上にある");
+  let size = base.run.font_size;
+  assert_eq!(script.run.font_size, stix_scaled_size(MathConstant::ScriptPercentScaleDown, size));
+  assert_eq!(script_script.run.font_size, stix_scaled_size(MathConstant::ScriptScriptPercentScaleDown, size));
+  let glyphs: Vec<u32> = twos.iter().map(|line_run| return line_run.run.glyphs[0].gid).collect();
+  assert!(
+    glyphs[0] != glyphs[1] && glyphs[1] != glyphs[2] && glyphs[0] != glyphs[2],
+    "段ごとに ssty の別の字形のはず: {glyphs:?}"
+  );
+}
+
+/// 数学用イタリックの 𝑥（U+1D465）
+const MATH_X: &str = "\u{1D465}";
+
+/// 数学用イタリックの 𝑖（U+1D456）
+const MATH_I: &str = "\u{1D456}";
+
+#[test]
+fn superscript_on_a_short_base_sits_at_the_font_shift() {
+  let runs = first_line_runs("$x^{2}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "2");
+  // 𝑥 のインクの高さ − SuperscriptBaselineDropMax も、上付きの底の下限も SuperscriptShiftUp に届かない
+  // （箱の高さ＝ascender を使うと 762 − 230 で必ず上回るので、この一致はインクで測っていることも確かめる）
+  assert_eq!(sup.dy - base.dy, stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
+  assert_eq!(sup.dx, base.dx + base.width, "上付きは基底の右端から始まる");
+}
+
+#[test]
+fn subscript_on_a_short_base_sits_at_the_font_shift() {
+  let runs = first_line_runs("$x_{i}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sub = run_with_text(&runs, MATH_I);
+  assert_eq!(base.dy - sub.dy, stix_math_length(MathConstant::SubscriptShiftDown, base.run.font_size));
+}
+
+#[test]
+fn tall_base_pushes_the_superscript_up() {
+  let runs = first_line_runs("$(a)^{2}$\n");
+
+  let paren = run_with_text(&runs, ")");
+  let sup = run_with_text(&runs, "2");
+  assert!(
+    sup.dy - paren.dy > stix_math_length(MathConstant::SuperscriptShiftUp, paren.run.font_size),
+    "背の高い基底では 基底の高さ − SuperscriptBaselineDropMax が標準のシフトを上回る: dy={}",
+    sup.dy
+  );
+}
+
+#[test]
+fn stacked_scripts_share_a_column_in_either_order() {
+  let placements = |source: &str| {
+    let runs = first_line_runs(source);
+    let sup = run_with_text(&runs, "2");
+    let sub = run_with_text(&runs, MATH_I);
+    return (sup.dx, sup.dy, sub.dx, sub.dy, run_with_text(&runs, MATH_X).run.font_size);
+  };
+
+  let sub_first = placements("$x_{i}^{2}$\n");
+  let sup_first = placements("$x^{2}_{i}$\n");
+
+  assert_eq!(sub_first, sup_first, "書く順序によらず同じ配置");
+  let (sup_dx, sup_dy, sub_dx, sub_dy, size) = sub_first;
+  assert_eq!(sup_dx, sub_dx, "上付きと下付きは同じ列に重なる");
+  // STIX Two Math では上付きの底と下付きの頂のギャップが SubSuperscriptGapMin に足りず、両方が離れる
+  assert!(sup_dy > stix_math_length(MathConstant::SuperscriptShiftUp, size), "上付きが上がる: {sup_dy}");
+  assert!(-sub_dy > stix_math_length(MathConstant::SubscriptShiftDown, size), "下付きが下がる: {sub_dy}");
+}
+
+#[test]
+fn space_after_script_follows_the_scripts() {
+  let runs = first_line_runs("$x^{2}y$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "2");
+  let next = run_with_text(&runs, "\u{1D466}");
+  assert_eq!(
+    next.dx - (sup.dx + sup.width),
+    stix_math_length(MathConstant::SpaceAfterScript, base.run.font_size),
+    "スクリプトの後ろに SpaceAfterScript が空き、Atom の幅に残る"
+  );
+}
+
+#[test]
+fn script_in_a_non_math_font_is_placed_by_its_ink() {
+  let runs = first_line_runs("$x^{あ}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "あ");
+  assert_eq!(
+    sup.run.font_type,
+    FontType::JapaneseSerif,
+    "和文は数式フォントではなく和文フォントで組まれる（テストが別フォントの経路を通っている）"
+  );
+  assert!(sup.dy - base.dy >= stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
+  assert_eq!(sup.dx, base.dx + base.width);
 }

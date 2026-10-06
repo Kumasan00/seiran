@@ -266,7 +266,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   match なら網羅性検査が variant 追加を弾く（enum match の wildcard 判定で Yes になる「意味的な対応表」と
   同じ理由で、対応表は match に残す）。使う derive は Cargo.toml の features で必要なものだけに絞る。
 - `Default` も同じ線引き — **全フィールドがそのフィールド型の `default()` / `None` だけなら `#[derive(Default)]`**、
-  手書き `impl Default` は「非既定値のリテラルを持つ型」の印として残す（`MathScriptStyle` の `script_size_factor: 0.7`
+  手書き `impl Default` は「非既定値のリテラルを持つ型」の印として残す（`MathBlockStyle` の `row_gap: Length::pt(3.0)`
   等）。読む側は derive か手書きかで「非既定値があるか」を全行見ずに判別できる。例外は型引数を持つ型で、derive は
   `T: Default` 境界を足してしまうので、フィールドが全部既定値でも手書きのまま（`NodeMap<T>`。`derivable_impls` も
   同じ理由で型引数のある型を対象外にする）。この形を `derivable_impls` が検出できない理由は「Clippy」節の

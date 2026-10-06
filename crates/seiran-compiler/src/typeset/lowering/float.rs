@@ -28,6 +28,7 @@ fn build_caption(
     font_size: caption_style.font_size,
     typeface: caption_style.typeface,
     color: None,
+    script_level: None,
   };
   let nodes = caption_style.format.expand(
     number,
@@ -164,6 +165,7 @@ mod tests {
         font_size: Length::pt(11.0),
         typeface: Typeface::Serif,
         color: None,
+        script_level: None,
       },
     );
   }

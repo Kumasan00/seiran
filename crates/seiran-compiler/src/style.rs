@@ -47,7 +47,7 @@ pub(crate) use crate::style::{
   counter::{CounterName, CounterStyles},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
-  math::{MathScriptStyle, NumberSide},
+  math::NumberSide,
   number_style::NumberStyle,
   page_numbering::PageNumberingStyle,
   running::RunningContentStyle,
@@ -104,7 +104,7 @@ pub(crate) struct Style {
   /// 脚注のスタイル
   #[garde(dive)]
   pub footnote: FootnoteStyle,
-  /// 数式のスタイル（`[math.script]` スクリプト / `[math.block]` 表示数式ブロックのレイアウト）
+  /// 数式のスタイル（`[math.block]` 表示数式ブロックのレイアウト）
   #[garde(dive)]
   pub math: MathStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）

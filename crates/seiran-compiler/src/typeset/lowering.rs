@@ -25,7 +25,8 @@ mod theorem;
 mod title_page;
 
 pub(super) use layout_node::{
-  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockLayout, TableLayout, TableRowLayout, TextStyle,
+  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockLayout, MathScripts, TableLayout, TableRowLayout,
+  TextStyle,
 };
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
@@ -36,7 +37,7 @@ use crate::{
   project::config::ImageConfig,
   semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
   style::Style as ReadStyle,
-  typeset::boxes::AnchorId,
+  typeset::{boxes::AnchorId, font::ScriptScale},
 };
 
 /// Lowering のコンテキスト
@@ -56,12 +57,14 @@ pub(super) struct LoweringContext<'a> {
   pub list_depth: usize,
   /// 脚注の表示番号の上書きマップ（出現 index 引き）。`None` は文書通しの連番
   pub footnote_numbers: Option<&'a [u32]>,
+  /// 数式のスクリプト段の縮小率（数式フォントの MATH の値。lowering はフォント資源に触れず値だけを受け取る）
+  pub script_scale: ScriptScale,
 }
 
 impl<'a> LoweringContext<'a> {
-  /// スタイルと検証済みの画像設定（config `[image]`）から文脈を生成する
+  /// スタイル・検証済みの画像設定（config `[image]`）・数式フォントの縮小率から文脈を生成する
   #[must_use]
-  pub(super) fn new(style: &'a ReadStyle, image: ImageConfig) -> Self {
+  pub(super) fn new(style: &'a ReadStyle, image: ImageConfig, script_scale: ScriptScale) -> Self {
     return LoweringContext {
       style,
       body_typeface: style.text.typeface,
@@ -70,6 +73,7 @@ impl<'a> LoweringContext<'a> {
       image_downsample: image.downsample,
       list_depth: 0,
       footnote_numbers: None,
+      script_scale,
     };
   }
 
@@ -147,6 +151,7 @@ pub(super) mod test_support {
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
     style::Style,
+    typeset::font::ScriptScale,
   };
 
   /// `.sei` スニペットを parse → analyze して意味解析済みドキュメントを作る
@@ -158,6 +163,9 @@ pub(super) mod test_support {
       .expect("解析できる入力のはず");
   }
 
+  /// テストの数式フォント（STIX Two Math）の縮小率（`ScriptPercentScaleDown` 70 / `ScriptScriptPercentScaleDown` 55）
+  pub(super) fn stix_script_scale() -> ScriptScale { return ScriptScale::from_percents(70, 55); }
+
   /// テスト既定の画像設定で lowering の文脈を作る
   ///
   /// 値は config.toml の `[image]` 未指定時の既定（`RawImageConfig::default()`）と同じ。
@@ -168,6 +176,7 @@ pub(super) mod test_support {
         max_dpi: 300,
         downsample: true,
       },
+      stix_script_scale(),
     );
   }
 
@@ -441,7 +450,7 @@ mod tests {
     });
   }
 
-  /// [`contains_line_break`] のインライン列側（`Raise` の子は `AtomNode` で `LineBreak` を持てない）
+  /// [`contains_line_break`] のインライン列側（`Raise` / `Scripts` の中身は `AtomNode` で `LineBreak` を持てない）
   fn contains_line_break_inline(nodes: &[InlineNode]) -> bool {
     return nodes.iter().any(|n| match n {
       InlineNode::LineBreak => return true,

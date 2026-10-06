@@ -12,7 +12,11 @@ use harfrust::Font;
 use miette::Diagnostic;
 use read_fonts::{
   FontRef, MinByteRange, ReadError, TableProvider, TopLevelTable,
-  tables::{fvar::Fvar, layout::ScriptList, math::Math},
+  tables::{
+    fvar::Fvar,
+    layout::ScriptList,
+    math::{Math, MathConstant},
+  },
 };
 use strum::VariantArray;
 use thiserror::Error;
@@ -168,6 +172,20 @@ pub(super) enum FontValidationErrorKind {
     /// 元の読み込みエラー
     #[source]
     source: ReadError,
+  },
+  /// MATH のスクリプトの縮小率（`ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`）が正でない。
+  #[error("MATH テーブルの {constant} が {value} です。スクリプトの縮小率は正の値である必要があります。")]
+  #[diagnostic(
+    code(typeset::font::validation::non_positive_scale_down),
+    help(
+      "フォントファイルが破損していないか確認してください。MATH テーブルを持つ数式フォント（STIX Two Math / Latin Modern Math 等）を指定してください。"
+    )
+  )]
+  NonPositiveScaleDown {
+    /// 違反した定数の OpenType 仕様上の名前
+    constant: &'static str,
+    /// フォントに書かれた値（百分率）
+    value: i32,
   },
 }
 
@@ -374,7 +392,8 @@ fn has_table_record(font_ref: &FontRef<'_>, tag: Tag) -> bool {
 /// MATH が無ければ [`FontValidationErrorKind::MissingMathTable`]、レコードがファイル範囲外を指せば
 /// [`FontValidationErrorKind::TableRecordOutOfRange`]、ディレクトリがタグ順でなければ
 /// [`FontValidationErrorKind::UnsortedTableDirectory`]、いずれかのサブテーブルを読めなければ最初に見つけた
-/// 1 件を [`FontValidationErrorKind::UnreadableMathTable`] で返す。
+/// 1 件を [`FontValidationErrorKind::UnreadableMathTable`] で返す。スクリプトの縮小率が正でなければ
+/// [`FontValidationErrorKind::NonPositiveScaleDown`]。
 fn check_math_table<'a>(
   font_ref: &FontRef<'_>,
   tables: &impl TableProvider<'a>,
@@ -393,7 +412,19 @@ fn check_math_table<'a>(
     },
     read => complete("MATH", read)?,
   };
-  complete("MathConstants", math.math_constants())?;
+  let constants = complete("MathConstants", math.math_constants())?;
+  for (name, constant) in [
+    ("ScriptPercentScaleDown", MathConstant::ScriptPercentScaleDown),
+    ("ScriptScriptPercentScaleDown", MathConstant::ScriptScriptPercentScaleDown),
+  ] {
+    let value = constants.constant(constant);
+    if value <= 0 {
+      return Err(FontValidationErrorKind::NonPositiveScaleDown {
+        constant: name,
+        value,
+      });
+    }
+  }
 
   let glyph_info = complete("MathGlyphInfo", math.math_glyph_info())?;
   if let Some(italics) = complete_nullable("MathItalicsCorrectionInfo", glyph_info.math_italics_correction_info())? {
@@ -860,7 +891,7 @@ mod tests {
     );
   }
 
-  /// 中身がすべて 0 の `MathConstants` の長さ（整数 4 個 + `MathValueRecord` 51 個 + 整数 1 個）。
+  /// `MathConstants` の長さ（整数 4 個 + `MathValueRecord` 51 個 + 整数 1 個）。
   const MATH_CONSTANTS_LEN: usize = 214;
 
   /// サブテーブルを持たない `MathGlyphInfo`（4 つのオフセットがすべて NULL）。
@@ -869,20 +900,29 @@ mod tests {
   /// 伸縮グリフを持たない `MathVariants`（`minConnectorOverlap`・NULL の Coverage オフセット 2 つ・件数 0 が 2 つ）。
   const EMPTY_VARIANTS: [u8; 10] = [0; 10];
 
-  /// MATH テーブル（ヘッダ・`MathConstants`・`glyph_info`・`variants` をこの順に詰めたもの）のバイト列を組む。
-  fn math_table(glyph_info: &[u8], variants: &[u8]) -> Vec<u8> {
+  /// 縮小率（`MathConstants` の先頭 2 個）だけを指定し、残りの定数を 0 にした MATH テーブル（ヘッダ・
+  /// `MathConstants`・`glyph_info`・`variants` をこの順に詰めたもの）のバイト列を組む。
+  fn math_table_with_scale_down(script: i16, script_script: i16, glyph_info: &[u8], variants: &[u8]) -> Vec<u8> {
     let constants_offset = 10u16;
     let glyph_info_offset = constants_offset + u16::try_from(MATH_CONSTANTS_LEN).unwrap();
     let variants_offset = glyph_info_offset + u16::try_from(glyph_info.len()).unwrap();
+    let mut constants = [0u8; MATH_CONSTANTS_LEN];
+    constants[0..2].copy_from_slice(&script.to_be_bytes());
+    constants[2..4].copy_from_slice(&script_script.to_be_bytes());
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&0x0001_0000u32.to_be_bytes()); // version
     bytes.extend_from_slice(&constants_offset.to_be_bytes());
     bytes.extend_from_slice(&glyph_info_offset.to_be_bytes());
     bytes.extend_from_slice(&variants_offset.to_be_bytes());
-    bytes.extend_from_slice(&[0; MATH_CONSTANTS_LEN]);
+    bytes.extend_from_slice(&constants);
     bytes.extend_from_slice(glyph_info);
     bytes.extend_from_slice(variants);
     return bytes;
+  }
+
+  /// 縮小率が STIX Two Math と同じ（70 / 55）MATH テーブルのバイト列を組む。
+  fn math_table(glyph_info: &[u8], variants: &[u8]) -> Vec<u8> {
+    return math_table_with_scale_down(70, 55, glyph_info, variants);
   }
 
   /// `math` を MATH テーブルとして持つ sfnt を数式フォントとして検証し、違反を返す。
@@ -916,6 +956,22 @@ mod tests {
     let errors =
       validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(errors.is_empty(), "全サブテーブルを辿っても破損は無いはず: {errors:?}");
+  }
+
+  #[test]
+  fn non_positive_script_scale_down_is_rejected() {
+    for (script, script_script, expected) in [
+      (0, 55, "ScriptPercentScaleDown"),
+      (70, -1, "ScriptScriptPercentScaleDown"),
+    ] {
+      let errors =
+        validate_math_font(&math_table_with_scale_down(script, script_script, &EMPTY_GLYPH_INFO, &EMPTY_VARIANTS));
+
+      let [FontValidationErrorKind::NonPositiveScaleDown { constant, .. }] = errors.as_slice() else {
+        panic!("NonPositiveScaleDown が 1 件だけ出るはず: {errors:?}");
+      };
+      assert_eq!(*constant, expected);
+    }
   }
 
   #[test]
