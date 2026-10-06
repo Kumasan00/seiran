@@ -65,9 +65,10 @@ mod tests {
     io::{self, Write},
     panic::{self, AssertUnwindSafe},
     sync::{Arc, Mutex},
+    thread,
   };
 
-  use tracing::info_span;
+  use tracing::{Dispatch, Span, info_span, subscriber::NoSubscriber};
   use tracing_subscriber::fmt::MakeWriter;
 
   use super::Phase;
@@ -96,6 +97,8 @@ mod tests {
   }
 
   /// `fmt` subscriber を thread-local（`set_default`）で張り、その中で `run` を実行して、捕捉したログを返す。
+  ///
+  /// subscriber の無い別スレッドが同じ callsite を先に通っても、`run` の event は捕捉される。
   fn capture_probe_log(run: impl FnOnce()) -> String {
     let buffer = SharedBuffer(Arc::new(Mutex::new(Vec::new())));
     let subscriber = tracing_subscriber::fmt()
@@ -106,9 +109,17 @@ mod tests {
       .without_time()
       .finish();
 
+    // tracing-core は登録済みの dispatcher が 1 つだけのとき、callsite の interest を「その callsite を最初に
+    // 通ったスレッドの thread-local default」だけで決めて固定する（`tokio-rs/tracing#3611`）。subscriber の無い
+    // スレッドが先に通ると `never` が固定され、このスレッドの event も捨てられる。どこにも張らない dispatcher を
+    // 捕捉の間生かして 2 つ以上にしておくと、interest は生きている全 dispatcher の合成（食い違えば `sometimes`）に
+    // なり、event ごとに各スレッドの default へ `enabled` が問われる。捕捉用の登録が最大レベルを上げる（＝他の
+    // スレッドが callsite を登録し始める）時点で既に 2 つになっているよう、先に登録する。
+    let peer = Dispatch::new(NoSubscriber::default());
     let guard = tracing::subscriber::set_default(subscriber);
     run();
     drop(guard);
+    drop(peer);
 
     let written = buffer.0.lock().expect("テスト内でロックが毒されることはない").clone();
     return String::from_utf8(written).expect("UTF-8 のはず");
@@ -120,6 +131,14 @@ mod tests {
     // プロセス全体で共有されるグローバル状態なので、他のテストを壊さないよう変更しない）。cargo test の
     // 既定の出力捕捉により、このテストが失敗しない限り表示されない。
     let log = capture_probe_log(|| {
+      // 並列に走る他のテストのスレッド（subscriber なし）が `Phase` の callsite を先に通る状況を、
+      // 捕捉の開始後（最大レベルが上がり callsite が登録されうる時点）に必ず起こす
+      thread::spawn(|| {
+        drop(Phase::enter(Span::none()));
+      })
+      .join()
+      .expect("subscriber の無いスレッドで工程を開始・終了しても panic しないはず");
+
       let unwound = panic::catch_unwind(AssertUnwindSafe(|| {
         let _phase = Phase::enter(info_span!("probe"));
         panic!("わざと落として Phase の Drop 経路を確かめる");
