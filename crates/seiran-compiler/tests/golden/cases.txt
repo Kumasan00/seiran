@@ -63,7 +63,8 @@ keywords=["test", "seiran"]
   glyphs x=841.22 y=354.18 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=851.26 y=354.18 font=Math size=12.00 text=">" glyph_count=1
   glyphs x=863.24 y=354.18 font=Math size=12.00 text="0" glyph_count=1
-  glyphs x=824.73 y=369.18 font=Math size=12.00 text="-𝑥" glyph_count=2
+  glyphs x=824.73 y=369.18 font=Math size=12.00 text="-" glyph_count=1
+  glyphs x=828.51 y=369.18 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=841.22 y=369.18 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=851.26 y=369.18 font=Math size=12.00 text="<" glyph_count=1
   glyphs x=863.24 y=369.18 font=Math size=12.00 text="0" glyph_count=1

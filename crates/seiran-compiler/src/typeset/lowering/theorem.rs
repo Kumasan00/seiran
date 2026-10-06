@@ -69,6 +69,7 @@ fn build_heading(
     typeface: pres.heading_typeface,
     color: None,
     script_level: None,
+    math_operator: false,
   };
 
   let template = match (of.is_some(), title.is_some()) {
@@ -110,6 +111,7 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
     typeface: Typeface::Math,
     color: None,
     script_level: None,
+    math_operator: false,
   };
   return LayoutNode::Inline(InlineNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]));
 }

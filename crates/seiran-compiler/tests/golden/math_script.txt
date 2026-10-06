@@ -75,7 +75,9 @@ keywords=["test", "seiran"]
   glyphs x=933.07 y=311.63 font=JapaneseSerif size=12.00 text="と" glyph_count=1
   glyphs x=947.89 y=311.63 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=954.60 y=314.15 font=Math size=8.40 text="𝑖" glyph_count=1
-  glyphs x=957.82 y=311.63 font=Math size=12.00 text="(𝑗)" glyph_count=3
+  glyphs x=957.82 y=311.63 font=Math size=12.00 text="(" glyph_count=1
+  glyphs x=962.10 y=311.63 font=Math size=12.00 text="𝑗" glyph_count=1
+  glyphs x=967.27 y=311.63 font=Math size=12.00 text=")" glyph_count=1
   glyphs x=974.38 y=311.63 font=JapaneseSerif size=12.00 text="と" glyph_count=1
   glyphs x=989.20 y=311.63 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=995.90 y=307.31 font=Math size=8.40 text="𝑎" glyph_count=1
@@ -287,7 +289,8 @@ keywords=["test", "seiran"]
   glyphs x=1000.16 y=439.02 font=JapaneseSerif size=12.00 text="基" glyph_count=1
   glyphs x=1012.16 y=439.02 font=JapaneseSerif size=12.00 text="底" glyph_count=1
   glyphs x=1024.16 y=439.02 font=Serif size=12.00 text=":" glyph_count=1
-  glyphs x=1029.92 y=439.02 font=Math size=12.00 text="(𝑎" glyph_count=2
+  glyphs x=1029.92 y=439.02 font=Math size=12.00 text="(" glyph_count=1
+  glyphs x=1034.20 y=439.02 font=Math size=12.00 text="𝑎" glyph_count=1
   glyphs x=1043.53 y=439.02 font=Math size=12.00 text="+" glyph_count=1
   glyphs x=1054.84 y=439.02 font=Math size=12.00 text="𝑏" glyph_count=1
   glyphs x=1061.05 y=439.02 font=Math size=12.00 text=")" glyph_count=1

@@ -516,6 +516,7 @@ mod tests {
       typeface: Typeface::Math,
       color: None,
       script_level: None,
+      math_operator: false,
     };
   }
 

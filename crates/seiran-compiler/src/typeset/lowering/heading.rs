@@ -22,6 +22,7 @@ pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> Tex
     typeface: heading_style.typeface,
     color: None,
     script_level: None,
+    math_operator: false,
   };
 }
 
