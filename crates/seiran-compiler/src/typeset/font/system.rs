@@ -9,7 +9,7 @@ use miette::Diagnostic;
 use read_fonts::{
   TableProvider,
   model::metrics::GlyphExtents,
-  tables::math::{MathConstant, MathConstants, MathGlyphInfo, StretchAxis},
+  tables::math::{MathConstant, MathConstants, MathGlyphInfo, MathKernCorner, StretchAxis},
   types::GlyphId,
 };
 use thiserror::Error;
@@ -143,6 +143,18 @@ impl FontSystem {
         "load の検証（validation::check_math_table）が MathItalicsCorrectionInfo を Coverage まで読めることを確認済み",
       );
       return italics.correction(GlyphId::new(gid)).unwrap_or(0);
+    });
+  }
+
+  /// 数式フォントのグリフ `gid` の隅 `corner` の math kern の、ベースラインからの高さ `height`（フォント単位）での値
+  /// （フォント単位）。`MathKernInfo` が無いか、そのグリフ・隅に表が無ければ 0（MATH の規定の既定値）。
+  #[must_use]
+  pub(crate) fn math_kern(&self, gid: u32, corner: MathKernCorner, height: i32) -> i32 {
+    return self.math_glyph_info().math_kern_info().map_or(0, |kern_info| {
+      let kern_info = kern_info.expect(
+        "load の検証（validation::check_math_table）が MathKernInfo を Coverage と全 MathKern まで読めることを確認済み",
+      );
+      return kern_info.kern(GlyphId::new(gid), corner).and_then(|kern| return kern.kerning(height)).unwrap_or(0);
     });
   }
 

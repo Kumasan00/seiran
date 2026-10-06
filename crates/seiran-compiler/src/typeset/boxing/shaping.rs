@@ -7,7 +7,7 @@
 
 use std::ops::Range;
 
-use read_fonts::tables::math::MathConstant;
+use read_fonts::tables::math::{MathConstant, MathKernCorner};
 use tracing::trace;
 
 use crate::{
@@ -330,6 +330,19 @@ impl<'a> Shaper<'a> {
   pub(super) fn italic_correction(&self, gid: u32, font_size: Length) -> Length {
     let units = self.fonts.math_italics_correction(gid);
     return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+  }
+
+  /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）の隅 `corner` の、ベースラインからの高さ `height` での
+  /// math kern の長さ（表が無ければ 0）
+  pub(super) fn math_kern(&self, gid: u32, font_size: Length, corner: MathKernCorner, height: Length) -> Length {
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    #[expect(
+      clippy::cast_possible_truncation,
+      reason = "数式 1 つの高さのフォント単位で i32 に収まり、帯の境界との比較に端数は意味を持たない"
+    )]
+    let height_units = (height.ratio(font_size) * f64::from(upem)).round() as i32;
+    let units = self.fonts.math_kern(gid, corner, height_units);
+    return units_to_length(i64::from(units), font_size, upem);
   }
 
   /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いた字形へイタリック補正を足して

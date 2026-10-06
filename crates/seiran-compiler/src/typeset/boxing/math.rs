@@ -10,8 +10,10 @@
 //! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
 //! 横位置は基底の末尾グリフのイタリック補正で決める（上付きは基底の右端、下付きは補正ぶん戻す — 演算子でない基底は補正が
 //! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
+//! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
+//! 足した小さい方）でさらに寄せる。
 
-use read_fonts::tables::math::MathConstant;
+use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
 use crate::{
   length::Length,
@@ -53,6 +55,9 @@ struct Detached {
   /// 末尾のノードがテキストで、その最後の箱が数式フォントのグリフ列のとき、その最後のグリフ（gid と run の
   /// フォントサイズ）。空・末尾がアキやスクリプト・数式フォント以外は `None`（補正も math kern も 0）
   trailing_glyph: Option<(u32, Length)>,
+  /// 先頭のノードがテキストで、その最初の箱が数式フォントのグリフ列のとき、その最初のグリフ（gid と run の
+  /// フォントサイズ）。それ以外は `None`（math kern 0）
+  leading_glyph: Option<(u32, Length)>,
 }
 
 /// 上付き・下付きの配置に使う MATH 定数（基底の段のフォントサイズで長さへ換算済み）
@@ -326,11 +331,30 @@ impl Measurer<'_> {
     translate_into(out, base.boxes, *dx, dy);
     let mut end = base_end;
     if let Some(sup) = superscript {
-      end = end.max(base_end + sup.width);
-      translate_into(out, sup.boxes, base_end, dy + sup_shift);
+      // 補正の高さは上付きのインクの底と基底のインクの頂（基底のベースライン基準）
+      let kern = self.cut_in(
+        base.trailing_glyph,
+        MathKernCorner::TopRight,
+        sup.leading_glyph,
+        MathKernCorner::BottomLeft,
+        sup_shift,
+        [sup_shift - sup.ink_depth, base.ink_height],
+      );
+      let sup_x = base_end + kern;
+      end = end.max(sup_x + sup.width);
+      translate_into(out, sup.boxes, sup_x, dy + sup_shift);
     }
     if let Some(sub) = subscript {
-      let sub_x = base_end - correction;
+      // 補正の高さは下付きのインクの頂と基底のインクの底（基底のベースライン基準）
+      let kern = self.cut_in(
+        base.trailing_glyph,
+        MathKernCorner::BottomRight,
+        sub.leading_glyph,
+        MathKernCorner::TopLeft,
+        -sub_shift,
+        [sub.ink_height - sub_shift, -base.ink_depth],
+      );
+      let sub_x = base_end - correction + kern;
       end = end.max(sub_x + sub.width);
       translate_into(out, sub.boxes, sub_x, dy - sub_shift);
     }
@@ -339,6 +363,7 @@ impl Measurer<'_> {
 
   /// ノード列を原点から仮に配置し、送り幅とインクの寸法、末尾の数式フォントのグリフを測る
   fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
+    let starts_with_text = matches!(nodes.first(), Some(AtomNode::Text(..)));
     let ends_with_text = matches!(nodes.last(), Some(AtomNode::Text(..)));
     let mut boxes = Vec::new();
     let mut width = Length::ZERO;
@@ -350,13 +375,44 @@ impl Measurer<'_> {
     } else {
       None
     };
+    // 先頭の Text ノードの箱は place_atom_children が最初に積むので、boxes の最初がその最初の run
+    let leading_glyph = if starts_with_text {
+      boxes.first().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::first))
+    } else {
+      None
+    };
     return Detached {
       boxes,
       width,
       ink_height,
       ink_depth,
       trailing_glyph,
+      leading_glyph,
     };
+  }
+
+  /// 基底の末尾グリフとスクリプトの先頭グリフの math kern（OpenType MATH の算法）
+  ///
+  /// `heights`（基底のベースライン基準）それぞれで、基底の隅 `base_corner` とスクリプトの隅 `script_corner`（スクリプトの
+  /// ベースラインは基底のベースラインから `script_baseline` 上）の kern を足し、小さい方を返す。どちらかのグリフが無い
+  /// （箱・空・数式フォント以外）ときは 0。
+  fn cut_in(
+    &self,
+    base_glyph: Option<(u32, Length)>,
+    base_corner: MathKernCorner,
+    script_glyph: Option<(u32, Length)>,
+    script_corner: MathKernCorner,
+    script_baseline: Length,
+    heights: [Length; 2],
+  ) -> Length {
+    let (Some((base_gid, base_size)), Some((script_gid, script_size))) = (base_glyph, script_glyph) else {
+      return Length::ZERO;
+    };
+    let [first, second] = heights.map(|height| {
+      return self.shaper.math_kern(base_gid, base_size, base_corner, height)
+        + self.shaper.math_kern(script_gid, script_size, script_corner, height - script_baseline);
+    });
+    return first.min(second);
   }
 }
 

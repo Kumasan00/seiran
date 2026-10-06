@@ -79,7 +79,11 @@ use std::{
 };
 
 use harfrust::Font;
-use read_fonts::{FontRef, TableProvider, tables::math::MathConstant, types::GlyphId};
+use read_fonts::{
+  FontRef, TableProvider,
+  tables::math::{MathConstant, MathKernCorner},
+  types::GlyphId,
+};
 
 use crate::{
   compiler::{
@@ -1166,6 +1170,32 @@ fn stix_units(units: i32, font_size: Length) -> Length {
   return font_size.scale(f64::from(units) / f64::from(upem));
 }
 
+/// STIX Two Math のグリフ `gid` の `corner` の math kern の、フォント単位の高さ `height` での値（表が無ければ 0）。
+fn stix_math_kern(gid: u32, corner: MathKernCorner, height: i32) -> i32 {
+  let font = stix_math_font();
+  let info = font
+    .tables()
+    .math()
+    .and_then(|math| return math.math_glyph_info())
+    .expect("MathGlyphInfo を読めるはず");
+  let Some(kern_info) = info.math_kern_info() else {
+    return 0;
+  };
+  return kern_info
+    .expect("MathKernInfo を読めるはず")
+    .kern(GlyphId::new(gid), corner)
+    .and_then(|kern| return kern.kerning(height))
+    .unwrap_or(0);
+}
+
+/// 長さ `length` の、`font_size` でのフォント単位（組版側と同じ四捨五入）。
+fn stix_height_units(length: Length, font_size: Length) -> i32 {
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  #[expect(clippy::cast_possible_truncation, reason = "数式 1 つの高さのフォント単位で i32 に収まる")]
+  let units = (length.ratio(font_size) * f64::from(upem)).round() as i32;
+  return units;
+}
+
 /// 1 グリフのグリフ列の、そのグリフの (gid, 送り幅)。
 fn sole_glyph(line_run: &LineRun) -> (u32, i32) {
   let [glyph] = line_run.run.glyphs.as_slice() else {
@@ -1612,4 +1642,48 @@ fn cursor_after_scripts_follows_the_farther_script() {
   let space = stix_math_length(MathConstant::SpaceAfterScript, base.run.font_size);
   // ∫ の後ろの y との間には細アキ（Op–Ord）が入るので、SpaceAfterScript 以上離れる
   assert!(next.dx >= script_end + space, "後続は遠い方のスクリプトの右端 + SpaceAfterScript より後ろ");
+}
+
+#[test]
+fn subscript_cuts_in_under_a_base_with_a_bottom_right_kern() {
+  let runs = first_line_runs("$f_{n}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let sub = run_with_text(&runs, "\u{1D45B}");
+  let (gid, _) = sole_glyph(base);
+  let size = base.run.font_size;
+  // 2 つの補正の高さ: 下付きのインクの頂・基底のインクの底（基底のベースライン基準）。𝑛 は TopLeft の表を持たない
+  let sub_top = stix_run_ink(&sub.run).0 + (sub.dy - base.dy);
+  let base_bottom = stix_run_ink(&base.run).1;
+  let kern = [sub_top, base_bottom]
+    .map(|height| return stix_math_kern(gid, MathKernCorner::BottomRight, stix_height_units(height, size)))
+    .into_iter()
+    .min()
+    .expect("高さは 2 つある");
+  assert!(kern < 0, "𝑓 の右下は下付きを潜り込ませる（テストの前提）: {kern}");
+  assert_eq!(
+    sub.dx,
+    base.dx + base.width - stix_units(stix_italics_correction(gid), size) + stix_units(kern, size),
+    "下付きは補正を除いた位置から math kern ぶんカットインする"
+  );
+}
+
+#[test]
+fn superscript_moves_by_the_top_right_kern_of_the_base() {
+  let runs = first_line_runs("$W^{2}$\n");
+
+  let base = run_with_text(&runs, "\u{1D44A}");
+  let sup = run_with_text(&runs, "2");
+  let (gid, _) = sole_glyph(base);
+  let size = base.run.font_size;
+  // 2 つの補正の高さ: 上付きのインクの底・基底のインクの頂。2 は BottomLeft の表を持たない
+  let sup_bottom = stix_run_ink(&sup.run).1 + (sup.dy - base.dy);
+  let base_top = stix_run_ink(&base.run).0;
+  let kern = [sup_bottom, base_top]
+    .map(|height| return stix_math_kern(gid, MathKernCorner::TopRight, stix_height_units(height, size)))
+    .into_iter()
+    .min()
+    .expect("高さは 2 つある");
+  assert_ne!(kern, 0, "𝑊 の右上は kern を持つ（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width + stix_units(kern, size), "上付きは基底の右端から math kern ぶん動く");
 }
