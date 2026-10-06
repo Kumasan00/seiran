@@ -256,10 +256,10 @@ keywords=["test", "seiran"]
   glyphs x=917.84 y=418.51 font=Math size=8.40 text="𝑏" glyph_count=1
   glyphs x=926.11 y=422.83 font=JapaneseSerif size=12.00 text="と" glyph_count=1
   glyphs x=940.93 y=422.83 font=Math size=12.00 text="𝑥" glyph_count=1
-  glyphs x=947.76 y=425.35 font=Math size=8.40 text="𝑖" glyph_count=1
-  glyphs x=950.67 y=425.35 font=Math size=8.40 text="=" glyph_count=1
-  glyphs x=957.15 y=425.35 font=Math size=8.40 text="1" glyph_count=1
-  glyphs x=961.91 y=422.83 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=947.64 y=425.35 font=Math size=8.40 text="𝑖" glyph_count=1
+  glyphs x=950.55 y=425.35 font=Math size=8.40 text="=" glyph_count=1
+  glyphs x=957.03 y=425.35 font=Math size=8.40 text="1" glyph_count=1
+  glyphs x=961.79 y=422.83 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=240.94 y=447.43 font=SerifBold size=20.00 text=".4" glyph_count=2
   glyphs x=261.06 y=447.43 font=JapaneseSerifBold size=20.00 text="記" glyph_count=1
   glyphs x=281.06 y=447.43 font=JapaneseSerifBold size=20.00 text="号" glyph_count=1

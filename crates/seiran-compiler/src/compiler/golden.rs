@@ -51,7 +51,7 @@
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
-//!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_share_a_column_in_either_order`] /
+//!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_differ_by_the_italic_correction_in_either_order`] /
 //!   [`space_after_script_follows_the_scripts`] / [`script_in_a_non_math_font_is_placed_by_its_ink`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
@@ -1425,20 +1425,25 @@ fn tall_base_pushes_the_superscript_up() {
 }
 
 #[test]
-fn stacked_scripts_share_a_column_in_either_order() {
+fn stacked_scripts_differ_by_the_italic_correction_in_either_order() {
   let placements = |source: &str| {
     let runs = first_line_runs(source);
     let sup = run_with_text(&runs, "2");
     let sub = run_with_text(&runs, MATH_I);
-    return (sup.dx, sup.dy, sub.dx, sub.dy, run_with_text(&runs, MATH_X).run.font_size);
+    let base = run_with_text(&runs, MATH_X);
+    return (sup.dx, sup.dy, sub.dx, sub.dy, base.run.font_size, base.run.glyphs[0].gid);
   };
 
   let sub_first = placements("$x_{i}^{2}$\n");
   let sup_first = placements("$x^{2}_{i}$\n");
 
   assert_eq!(sub_first, sup_first, "書く順序によらず同じ配置");
-  let (sup_dx, sup_dy, sub_dx, sub_dy, size) = sub_first;
-  assert_eq!(sup_dx, sub_dx, "上付きと下付きは同じ列に重なる");
+  let (sup_dx, sup_dy, sub_dx, sub_dy, size, gid) = sub_first;
+  assert_eq!(
+    sup_dx - sub_dx,
+    stix_units(stix_italics_correction(gid), size),
+    "上付きは下付きより基底の補正ぶん右（傾いた基底）"
+  );
   // STIX Two Math では上付きの底と下付きの頂のギャップが SubSuperscriptGapMin に足りず、両方が離れる
   assert!(sup_dy > stix_math_length(MathConstant::SuperscriptShiftUp, size), "上付きが上がる: {sup_dy}");
   assert!(-sub_dy > stix_math_length(MathConstant::SubscriptShiftDown, size), "下付きが下がる: {sub_dy}");
@@ -1523,4 +1528,88 @@ fn script_content_gets_italic_correction_through_the_atom_path() {
   let (gid, advance) = sole_glyph(sup);
   assert_eq!(advance, stix_advance(gid) + stix_italics_correction(gid), "上付きの中身の 𝑥 も末尾の補正を受ける");
   assert_eq!(sup.width, stix_units(advance, sup.run.font_size), "長さはスクリプト段のフォントサイズで縮む");
+}
+
+#[test]
+fn subscript_on_a_slanted_base_sits_at_its_advance() {
+  let runs = first_line_runs("$x_{2}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sub = run_with_text(&runs, "2");
+  let (gid, _) = sole_glyph(base);
+  // 補正入りの幅と補正を別々に sp へ丸めるので 1sp までずれうる
+  let expected = base.dx + stix_units(stix_advance(gid), base.run.font_size);
+  assert!(
+    (sub.dx - expected).abs().sp() <= 1,
+    "下付きは補正を除いた基底の送り幅の位置: {} vs {expected}",
+    sub.dx
+  );
+}
+
+#[test]
+fn large_operator_pulls_its_subscript_back_by_the_italic_correction() {
+  let runs = first_line_runs("$\\int_{a}^{n}$\n");
+
+  let base = run_with_text(&runs, "\u{222B}");
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, MATH_A);
+  let (gid, _) = sole_glyph(base);
+  let correction = stix_units(stix_italics_correction(gid), base.run.font_size);
+  assert_eq!(sup.dx, base.dx + base.width, "大型演算子の上付きは基底の右端");
+  assert_eq!(sub.dx, base.dx + base.width - correction, "大型演算子の下付きは補正ぶん手前");
+}
+
+#[test]
+fn scripts_on_an_upright_base_share_a_column() {
+  let runs = first_line_runs("$a_{n}^{2}$\n");
+
+  let base = run_with_text(&runs, MATH_A);
+  let sup = run_with_text(&runs, "2");
+  let sub = run_with_text(&runs, "\u{1D45B}");
+  assert_eq!(sup.dx, base.dx + base.width);
+  assert_eq!(sub.dx, sup.dx, "補正の登録が無い基底では上下付きが同じ列");
+}
+
+#[test]
+fn scripts_on_an_empty_base_share_a_column() {
+  let runs = first_line_runs("${}_{2}^{3}$\n");
+
+  assert_eq!(run_with_text(&runs, "2").dx, run_with_text(&runs, "3").dx, "空の基底は補正 0");
+}
+
+#[test]
+fn scripts_on_a_non_math_base_share_a_column() {
+  let runs = first_line_runs("$あ_{2}^{3}$\n");
+
+  assert_eq!(
+    run_with_text(&runs, "あ").run.font_type,
+    FontType::JapaneseSerif,
+    "基底は和文フォント（テストの前提）"
+  );
+  assert_eq!(run_with_text(&runs, "2").dx, run_with_text(&runs, "3").dx, "数式フォント以外の基底は補正 0");
+}
+
+#[test]
+fn base_ending_with_scripts_takes_no_italic_correction() {
+  let runs = first_line_runs("${x^{2}}_{3}^{4}$\n");
+
+  assert_eq!(
+    run_with_text(&runs, "3").dx,
+    run_with_text(&runs, "4").dx,
+    "末尾がスクリプトの基底は、内側の字形の補正を外側の下付きに使わない"
+  );
+}
+
+#[test]
+fn cursor_after_scripts_follows_the_farther_script() {
+  let runs = first_line_runs("$\\int_{a}^{n}y$\n");
+
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, MATH_A);
+  let next = run_with_text(&runs, MATH_Y);
+  let base = run_with_text(&runs, "\u{222B}");
+  let script_end = (sup.dx + sup.width).max(sub.dx + sub.width);
+  let space = stix_math_length(MathConstant::SpaceAfterScript, base.run.font_size);
+  // ∫ の後ろの y との間には細アキ（Op–Ord）が入るので、SpaceAfterScript 以上離れる
+  assert!(next.dx >= script_end + space, "後続は遠い方のスクリプトの右端 + SpaceAfterScript より後ろ");
 }

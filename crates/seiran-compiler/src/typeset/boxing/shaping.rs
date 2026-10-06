@@ -327,7 +327,6 @@ impl<'a> Shaper<'a> {
   }
 
   /// 数式フォントのグリフ `gid` のイタリック補正の、フォントサイズ `font_size` での長さ（登録が無ければ 0）
-  #[expect(dead_code, reason = "下付きの引き戻し（Measurer::place_scripts）が使うまで本体からの呼び出しが無い")]
   pub(super) fn italic_correction(&self, gid: u32, font_size: Length) -> Length {
     let units = self.fonts.math_italics_correction(gid);
     return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);

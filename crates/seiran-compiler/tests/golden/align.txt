@@ -127,19 +127,19 @@ keywords=["test", "seiran"]
   glyphs x=468.94 y=554.87 font=JapaneseSerif size=12.00 text="れ" glyph_count=1
   glyphs x=480.94 y=554.87 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=492.94 y=554.87 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=815.62 y=598.19 font=Math size=12.00 text="𝐸" glyph_count=1
-  glyphs x=829.35 y=598.19 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=841.32 y=598.19 font=Math size=12.00 text="𝑚" glyph_count=1
-  glyphs x=851.28 y=598.19 font=Math size=12.00 text="𝑐" glyph_count=1
-  glyphs x=856.25 y=593.87 font=Math size=8.40 text="2" glyph_count=1
-  glyphs x=813.30 y=613.19 font=Math size=12.00 text="𝑎" glyph_count=1
-  glyphs x=819.96 y=615.71 font=Math size=8.40 text="𝑖" glyph_count=1
-  glyphs x=829.35 y=613.19 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=841.32 y=613.19 font=Math size=12.00 text="𝑏" glyph_count=1
-  glyphs x=847.60 y=615.71 font=Math size=8.40 text="𝑖" glyph_count=1
-  glyphs x=853.65 y=613.19 font=Math size=12.00 text="+" glyph_count=1
-  glyphs x=864.96 y=613.19 font=Math size=12.00 text="𝑐" glyph_count=1
-  glyphs x=869.93 y=615.71 font=Math size=8.40 text="𝑖" glyph_count=1
+  glyphs x=815.65 y=598.19 font=Math size=12.00 text="𝐸" glyph_count=1
+  glyphs x=829.38 y=598.19 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=841.35 y=598.19 font=Math size=12.00 text="𝑚" glyph_count=1
+  glyphs x=851.31 y=598.19 font=Math size=12.00 text="𝑐" glyph_count=1
+  glyphs x=856.28 y=593.87 font=Math size=8.40 text="2" glyph_count=1
+  glyphs x=813.33 y=613.19 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=819.99 y=615.71 font=Math size=8.40 text="𝑖" glyph_count=1
+  glyphs x=829.38 y=613.19 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=841.35 y=613.19 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=847.57 y=615.71 font=Math size=8.40 text="𝑖" glyph_count=1
+  glyphs x=853.62 y=613.19 font=Math size=12.00 text="+" glyph_count=1
+  glyphs x=864.93 y=613.19 font=Math size=12.00 text="𝑐" glyph_count=1
+  glyphs x=869.90 y=615.71 font=Math size=8.40 text="𝑖" glyph_count=1
   glyphs x=1428.56 y=598.19 font=Serif size=12.00 text="(.5)" glyph_count=4
   glyphs x=1428.56 y=613.19 font=Serif size=12.00 text="(.6)" glyph_count=4
   glyphs x=240.94 y=648.73 font=SerifBold size=20.00 text=".4" glyph_count=2
