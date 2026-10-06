@@ -21,3 +21,35 @@ delimiter=bracket で角括弧、delimiter=paren で丸括弧を付けられる�
 x & y & z \\
 u & v & w
 \end{matrix}
+
+\section{波括弧・縦棒・二重縦棒の行列}
+
+delimiter=brace で波括弧、delimiter=bar で縦棒、delimiter=dbar で二重縦棒を付けられる。
+
+\begin{matrix}[delimiter=brace]
+a & b \\
+c & d
+\end{matrix}
+
+\begin{matrix}[delimiter=bar]
+a & b \\
+c & d
+\end{matrix}
+
+\begin{matrix}[delimiter=dbar]
+a & b \\
+c & d
+\end{matrix}
+
+\section{行数の多い行列}
+
+行数が増えても括弧はフォントサイズを変えずに縦にだけ伸びる。
+
+\begin{matrix}[delimiter=paren]
+1 & 0 & 0 \\
+0 & 1 & 0 \\
+0 & 0 & 1 \\
+1 & 1 & 0 \\
+0 & 1 & 1 \\
+1 & 0 & 1
+\end{matrix}

@@ -5,6 +5,7 @@
 mod face_config;
 mod math_script;
 mod shaper;
+mod stretch;
 mod system;
 mod validation;
 
@@ -15,6 +16,7 @@ pub(super) use math_script::{ScriptLevel, ScriptScale};
 use read_fonts::{FontRef, TableProvider};
 pub(super) use shaper::Buffer;
 use shaper::ShapingFonts;
+pub(super) use stretch::VerticalStretch;
 pub(super) use system::{FontSystem, FontSystemError};
 use thiserror::Error;
 pub(super) use validation::FontWarning;

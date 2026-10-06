@@ -43,6 +43,11 @@
 //!   クラスタ範囲がテキストを過不足なく覆うことの検査 3 種 [`glyph_ranges_tile_text_with_combining_marks`] /
 //!   [`glyph_ranges_tile_text_in_right_to_left_runs`] / [`glyph_ranges_tile_text_in_japanese_clusters`]
 //!   （共通ヘルパ [`assert_ranges_tile_text`] 経由）
+//! - **区切り括弧の伸縮**（フォントサイズを変えず MATH の size variant / glyph assembly で縦にだけ伸ばし、インクの縦中央を
+//!   数式軸へ）: [`delimiters_center_on_the_math_axis_at_the_body_font_size`] /
+//!   [`delimiters_cover_the_grid_and_stay_inside_the_block`] / [`tall_delimiters_grow_only_vertically`] /
+//!   [`assembled_delimiter_is_one_character_of_text`] /
+//!   [`assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part`]（共通ヘルパ [`measure_delimited_block`]・[`stix_run_ink`] 経由）
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
@@ -68,12 +73,13 @@
 //! 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存するため除外）。
 
 use std::{
-  fs,
+  fs, iter,
   ops::Range,
   path::{Path, PathBuf},
 };
 
-use read_fonts::{FontRef, TableProvider, tables::math::MathConstant};
+use harfrust::Font;
+use read_fonts::{FontRef, TableProvider, tables::math::MathConstant, types::GlyphId};
 
 use crate::{
   compiler::{
@@ -1001,50 +1007,249 @@ fn first_glyph_run(content: &HBoxContent) -> Option<&GlyphRun> {
   };
 }
 
-#[test]
-fn delimiters_and_grid_center_on_the_math_axis() {
-  // 左右の括弧を持つ行列と、左の括弧だけを持つ cases
-  for (source, delimiter_count) in [
-    ("\\begin{matrix}[delimiter=paren]\na & b \\\\\nc & d\n\\end{matrix}\n", 2),
-    ("\\begin{cases}\nx & x > 0 \\\\\n-x & x < 0\n\\end{cases}\n", 1),
-  ] {
-    let laid_out = TestProject::builder().source_text(source).build().laid_out();
-    let body = laid_out
-      .pages
-      .iter()
-      .flat_map(|page| return page.blocks.iter())
-      .find_map(|block| match block {
-        PlacedBlock::MathBlock { body, .. } => return Some(body),
-        _ => return None,
-      })
-      .expect("表示数式ブロックが 1 つあるはず");
-    let HBoxContent::Atom(children) = &body.content else {
-      panic!("区切り括弧で包んだ本体は Atom のはず");
-    };
+/// 括弧の種類すべて（matrix の `delimiter` の 5 種と、`None` は cases）
+const DELIMITERS: [Option<&str>; 6] = [
+  Some("paren"),
+  Some("bracket"),
+  Some("brace"),
+  Some("bar"),
+  Some("dbar"),
+  None,
+];
 
-    // 子は [左括弧, グリッド, 右括弧（あれば）] の順
-    let grid = &children[1];
-    let base_size = first_glyph_run(&grid.hbox.content).expect("グリッドにはセルのグリフがあるはず").font_size;
-    let axis = stix_math_length(MathConstant::AxisHeight, base_size);
-    assert_eq!(
-      grid.dy + (grid.hbox.height - grid.hbox.depth) / 2.0,
-      axis,
-      "グリッドの縦中央が数式軸に載るはず: {source}"
-    );
-    let delimiters: Vec<_> = children
-      .iter()
-      .enumerate()
-      .filter(|&(index, _)| return index != 1)
-      .map(|(_, child)| return child)
-      .collect();
-    assert_eq!(delimiters.len(), delimiter_count, "{source}");
-    for delimiter in delimiters {
-      let run = first_glyph_run(&delimiter.hbox.content).expect("区切り括弧はグリフ列のはず");
+/// `rows` 行の表示数式の本文。`delimiter` は matrix の `delimiter` の値で、`None` は cases（左の波括弧だけ）。
+fn delimited_source(delimiter: Option<&str>, rows: usize) -> String {
+  let body = iter::repeat_n("a & b", rows).collect::<Vec<_>>().join(" \\\\\n");
+  return match delimiter {
+    Some(delimiter) => format!("\\begin{{matrix}}[delimiter={delimiter}]\n{body}\n\\end{{matrix}}\n"),
+    None => format!("\\begin{{cases}}\n{body}\n\\end{{cases}}\n"),
+  };
+}
+
+/// 区切り括弧で包んだ表示数式の、本体グリッドの位置と寸法
+struct DelimitedGrid {
+  /// ベースラインからの縦位置（正で上）
+  dy: Length,
+  /// 高さ
+  height: Length,
+  /// 深さ
+  depth: Length,
+  /// セルのフォントサイズ（数式本体のフォントサイズ）
+  font_size: Length,
+}
+
+/// 区切り括弧 1 つの位置・幅とグリフ列
+struct PlacedDelimiter {
+  /// ベースラインからの縦位置（正で上）
+  dy: Length,
+  /// 送り幅
+  width: Length,
+  /// グリフ列
+  run: GlyphRun,
+}
+
+/// 区切り括弧で包んだ表示数式 1 つの測定値
+struct DelimitedBlock {
+  /// 包み直した全体の高さ
+  height: Length,
+  /// 包み直した全体の深さ
+  depth: Length,
+  /// 本体グリッド
+  grid: DelimitedGrid,
+  /// 区切り括弧（左から順）
+  delimiters: Vec<PlacedDelimiter>,
+}
+
+/// 本文 `source` を組版し、最初の表示数式ブロックを測る。
+fn measure_delimited_block(source: &str) -> DelimitedBlock {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  let body = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .find_map(|block| match block {
+      PlacedBlock::MathBlock { body, .. } => return Some(body),
+      _ => return None,
+    })
+    .expect("表示数式ブロックが 1 つあるはず");
+  let HBoxContent::Atom(children) = &body.content else {
+    panic!("区切り括弧で包んだ本体は Atom のはず");
+  };
+  // 子は [左括弧, グリッド, 右括弧（あれば）] の順
+  let grid = &children[1];
+  let delimiters = children
+    .iter()
+    .enumerate()
+    .filter(|&(index, _)| return index != 1)
+    .map(|(_, child)| {
+      let HBoxContent::Glyphs(run) = &child.hbox.content else {
+        panic!("区切り括弧はグリフ列 1 本のはず");
+      };
+      return PlacedDelimiter {
+        dy: child.dy,
+        width: child.hbox.width,
+        run: run.clone(),
+      };
+    })
+    .collect();
+  return DelimitedBlock {
+    height: body.height,
+    depth: body.depth,
+    grid: DelimitedGrid {
+      dy: grid.dy,
+      height: grid.hbox.height,
+      depth: grid.hbox.depth,
+      font_size: first_glyph_run(&grid.hbox.content).expect("グリッドにはセルのグリフがあるはず").font_size,
+    },
+    delimiters,
+  };
+}
+
+/// STIX Two Math のグリフのインクの上端（ベースライン基準・上が正）と高さを、フォント単位で組版側と独立に読む。
+fn stix_glyph_ink(gid: u32) -> (f64, f64) {
+  let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
+  let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
+  let font = Font::new(bytes, 0).expect("STIX Two Math は sfnt として読めるはず");
+  let extents = font.glyph_metrics().extents(GlyphId::new(gid)).expect("STIX の括弧のグリフはインクを読めるはず");
+  return (f64::from(extents.y_bearing), f64::from(extents.height));
+}
+
+/// グリフ列のインクの上端と下端（グリフ列のベースライン基準・上が正）を、組版側と独立に STIX Two Math から測る。
+fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  let to_length = |units: f64| return run.font_size.scale(units / f64::from(upem));
+  return run
+    .glyphs
+    .iter()
+    .map(|glyph| {
+      let (y_bearing, height) = stix_glyph_ink(glyph.gid);
+      let top = y_bearing + f64::from(glyph.y_offset);
+      return (to_length(top), to_length(top - height));
+    })
+    .reduce(|(top, bottom), (other_top, other_bottom)| return (top.max(other_top), bottom.min(other_bottom)))
+    .expect("区切り括弧は 1 つ以上のグリフを持つはず");
+}
+
+#[test]
+fn delimiters_center_on_the_math_axis_at_the_body_font_size() {
+  for delimiter in DELIMITERS {
+    for rows in [1, 2, 6] {
+      let source = delimited_source(delimiter, rows);
+      let block = measure_delimited_block(&source);
+
+      let axis = stix_math_length(MathConstant::AxisHeight, block.grid.font_size);
       assert_eq!(
-        delimiter.dy + stix_math_length(MathConstant::AxisHeight, run.font_size),
+        block.grid.dy + (block.grid.height - block.grid.depth) / 2.0,
         axis,
-        "拡大した括弧の数式軸が本体の数式軸に一致するはず: {source}"
+        "グリッドの縦中央が数式軸に載るはず: {source}"
       );
+      assert_eq!(block.delimiters.len(), if delimiter.is_some() { 2 } else { 1 }, "{source}");
+      for placed in &block.delimiters {
+        assert_eq!(placed.run.font_size, block.grid.font_size, "括弧はフォントサイズを変えずに伸ばすはず: {source}");
+        let (top, bottom) = stix_run_ink(&placed.run);
+        let center = placed.dy + (top + bottom) / 2.0;
+        assert!(
+          (center - axis).abs() <= Length::from_sp(1),
+          "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
+        );
+      }
+    }
+  }
+}
+
+#[test]
+fn delimiters_cover_the_grid_and_stay_inside_the_block() {
+  for delimiter in DELIMITERS {
+    for rows in [1, 2, 3, 6, 30] {
+      let source = delimited_source(delimiter, rows);
+      let block = measure_delimited_block(&source);
+
+      let grid_total = block.grid.height + block.grid.depth;
+      for placed in &block.delimiters {
+        let (top, bottom) = stix_run_ink(&placed.run);
+        // size variant は advanceMeasurement で選ぶので、インクの高さはそれより 0.01em 未満だけ短いことがある
+        assert!(
+          top - bottom + block.grid.font_size.scale(0.01) >= grid_total,
+          "括弧のインクの高さ {:?} がグリッドの高さ + 深さ {grid_total:?} を覆うはず: {source}",
+          top - bottom
+        );
+        assert!(
+          block.height + Length::from_sp(1) >= placed.dy + top,
+          "包み直した箱の高さは括弧のインクの上端を含むはず: {source}"
+        );
+        assert!(
+          block.depth + Length::from_sp(1) >= -(placed.dy + bottom),
+          "包み直した箱の深さは括弧のインクの下端を含むはず: {source}"
+        );
+      }
+    }
+  }
+}
+
+#[test]
+fn tall_delimiters_grow_only_vertically() {
+  for delimiter in DELIMITERS {
+    let short = measure_delimited_block(&delimited_source(delimiter, 6));
+    let tall = measure_delimited_block(&delimited_source(delimiter, 12));
+
+    for (short, tall) in short.delimiters.iter().zip(&tall.delimiters) {
+      assert!(
+        short.run.glyphs.len() > 1 && tall.run.glyphs.len() > 1,
+        "6 行・12 行は STIX の最大の size variant を超え、glyph assembly で組むはず: {delimiter:?}"
+      );
+      assert_eq!(short.width, tall.width, "括弧の幅は行数で変わらないはず: {delimiter:?}");
+      let (short_top, short_bottom) = stix_run_ink(&short.run);
+      let (tall_top, tall_bottom) = stix_run_ink(&tall.run);
+      assert!(tall_top - tall_bottom > short_top - short_bottom, "括弧は縦には伸びるはず: {delimiter:?}");
+    }
+  }
+}
+
+#[test]
+fn assembled_delimiter_is_one_character_of_text() {
+  for delimiter in DELIMITERS {
+    let block = measure_delimited_block(&delimited_source(delimiter, 6));
+
+    for placed in &block.delimiters {
+      let whole = 0..placed.run.text.len();
+      assert_eq!(placed.run.text.chars().count(), 1, "括弧のグリフ列のテキストは括弧 1 字のはず");
+      assert!(
+        placed.run.glyphs.iter().all(|glyph| return glyph.range == whole),
+        "glyph assembly の全パーツは括弧 1 字のクラスタに属し、PDF のテキストとしては 1 字になるはず: {:?}",
+        placed.run.text
+      );
+    }
+  }
+}
+
+#[test]
+fn assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part() {
+  for delimiter in DELIMITERS {
+    let block = measure_delimited_block(&delimited_source(delimiter, 6));
+
+    for placed in &block.delimiters {
+      let glyphs = &placed.run.glyphs;
+      assert!(glyphs.len() > 1, "6 行は glyph assembly で組むはず: {delimiter:?}");
+      // 各パーツのインクの下端と上端（フォント単位）
+      let inks: Vec<(f64, f64)> = glyphs
+        .iter()
+        .map(|glyph| {
+          let (y_bearing, height) = stix_glyph_ink(glyph.gid);
+          let top = y_bearing + f64::from(glyph.y_offset);
+          return (top - height, top);
+        })
+        .collect();
+      for (index, pair) in inks.windows(2).enumerate() {
+        let ((bottom, top), (next_bottom, _)) = (pair[0], pair[1]);
+        assert!(next_bottom > bottom, "パーツは下から上へ積むはず（{index} 番目の次）: {delimiter:?}");
+        assert!(next_bottom < top, "隣り合うパーツのインクは重なるはず（{index} 番目の次）: {delimiter:?}");
+      }
+      let (last, rest) = glyphs.split_last().expect("1 つ以上のグリフがあるはず");
+      assert!(
+        rest.iter().all(|glyph| return glyph.x_advance == 0),
+        "最後以外のパーツは送り幅を持たないはず: {delimiter:?}"
+      );
+      assert!(last.x_advance > 0, "括弧の幅は最後のパーツが持つはず: {delimiter:?}");
     }
   }
 }

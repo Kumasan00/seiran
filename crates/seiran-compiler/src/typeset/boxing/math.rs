@@ -1,7 +1,7 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）と、数式の上付き・下付きの配置
 //!
 //! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
-//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の拡大と数式軸への配置）
+//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の伸縮と数式軸への配置）
 //! だけを行う。HIR の数式語彙（`document::MathBlockKind`）はここまで届かない。
 //!
 //! 上付き・下付き（`MathScripts`）のシフト量は、基底とスクリプトのインク（グリフの形の範囲）と数式フォントの
@@ -13,7 +13,6 @@ use read_fonts::tables::math::MathConstant;
 
 use crate::{
   length::Length,
-  project::FontType,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
     boxing::{Measurer, Shaper},
@@ -242,42 +241,24 @@ impl Measurer<'_> {
     };
   }
 
-  /// 区切り括弧グリフを本体グリッドの高さ・深さに合わせて拡大し、拡大後の箱と、その大きさでの数式軸の高さを返す
-  fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> (HBox, Length) {
-    let base = self.default_font_size;
-    let natural = self.shaper.shape_segment(ch, FontType::Math, base, None, None);
-    let natural_total = natural.height() + natural.depth();
-    let pad = base * 0.1;
-    let target_total = target_height + target_depth + pad * 2;
-    // 小さなグリッドでも括弧は通常字より縮めない
-    let scale = if natural_total.is_positive() {
-      target_total.ratio(natural_total).max(1.0)
-    } else {
-      1.0
-    };
-    let size = base.scale(scale);
-    let delimiter = self.shaper.shape_segment(ch, FontType::Math, size, None, None).into_hbox();
-    return (delimiter, self.shaper.math_constant(MathConstant::AxisHeight, size));
-  }
-
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
   ///
-  /// 括弧は数式軸を中心に設計されたグリフなので、拡大後の数式軸を本体の数式軸 `axis` に合わせる。
+  /// 本体は縦中央が数式軸 `axis` に載る位置にあるので、括弧は本体の高さ + 深さ以上へ縦に伸ばし、インクの縦中央を
+  /// `axis` に合わせる（MathML Core の対称な伸縮）。
   fn wrap_with_delimiters(&mut self, body: HBox, grid_dy: Length, axis: Length, delimiters: DelimiterGlyphs) -> HBox {
-    let body_height = body.height;
-    let body_depth = body.depth;
+    let target = body.height + body.depth;
     let body_width = body.width;
     let gap = self.default_font_size * 0.15;
 
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, delim_axis) = self.shape_delimiter(ch, body_height, body_depth);
+      let (delim, center) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
       let width = delim.width;
       children.push(PlacedHBox {
         hbox: delim,
         dx,
-        dy: axis - delim_axis,
+        dy: axis - center,
       });
       dx += width + gap;
     }
@@ -288,11 +269,11 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, delim_axis) = self.shape_delimiter(ch, body_height, body_depth);
+      let (delim, center) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
       children.push(PlacedHBox {
         hbox: delim,
         dx,
-        dy: axis - delim_axis,
+        dy: axis - center,
       });
     }
     return HBox::atom(children);

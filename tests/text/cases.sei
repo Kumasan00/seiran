@@ -10,10 +10,23 @@ x & x > 0 \\
 
 \section{3 行の cases}
 
-行数が増えても左波括弧がグリッド全体の高さに合わせて拡大される。
+行数が増えても左波括弧はフォントサイズを変えずに、グリッド全体の高さに合わせて縦に伸びる。
 
 \begin{cases}
 1 & n = 0 \\
 n & n = 1 \\
 a + b & n > 1
+\end{cases}
+
+\section{6 行の cases}
+
+フォントの最大の size variant を超える高さは、波括弧の部品（glyph assembly）を継いで組む。
+
+\begin{cases}
+1 & n = 0 \\
+2 & n = 1 \\
+3 & n = 2 \\
+4 & n = 3 \\
+5 & n = 4 \\
+a + b & n > 4
 \end{cases}
