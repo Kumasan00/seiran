@@ -293,10 +293,11 @@ impl Measurer<'_> {
 
   /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
   ///
-  /// 上付きは基底の右端、下付きは基底の右端から基底の末尾グリフのイタリック補正ぶん戻した位置に置く。演算子で
-  /// ない基底は補正が送り幅に入っている（`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則
-  /// （演算子でない基底は上付きを補正ぶん前へ、大型演算子は下付きを補正ぶん手前へ）と同じ位置になる。後ろの
-  /// カーソルは基底の右端と各スクリプトの右端のうち最も右から `SpaceAfterScript` のアキを空ける。
+  /// 上付きは基底の右端、下付きは基底の右端から基底の末尾グリフのイタリック補正ぶん戻した位置に置き、
+  /// どちらも math kern（`cut_in`）ぶん寄せる。演算子でない基底は補正が送り幅に入っている
+  /// （`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則（演算子でない基底は上付きを補正ぶん前へ、
+  /// 演算子は下付きを補正ぶん手前へ。補正を持つ演算子はすべて `MathML Core` の大型演算子と同じに扱う）と同じ位置に
+  /// なる。後ろのカーソルは基底の右端と各スクリプトの右端のうち最も右から `SpaceAfterScript` のアキを空ける。
   pub(super) fn place_scripts(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathScripts {
       base,

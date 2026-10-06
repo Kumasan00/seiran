@@ -53,6 +53,18 @@
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
 //!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_differ_by_the_italic_correction_in_either_order`] /
 //!   [`space_after_script_follows_the_scripts`] / [`script_in_a_non_math_font_is_placed_by_its_ink`]
+//! - **数式のスクリプトの横位置**（イタリック補正・math kern）:
+//!   送り幅への補正 [`slanted_glyph_before_an_operator_gets_its_italic_correction`] /
+//!   [`italic_correction_is_added_only_before_an_upright_glyph`] / [`glyph_without_italic_correction_keeps_its_advance`] /
+//!   [`operator_keeps_its_advance_despite_its_italic_correction`] /
+//!   [`script_content_gets_italic_correction_through_the_atom_path`]・
+//!   スクリプトの位置 [`subscript_on_a_slanted_base_sits_at_its_advance`] /
+//!   [`large_operator_pulls_its_subscript_back_by_the_italic_correction`] /
+//!   [`scripts_on_an_upright_base_share_a_column`] / [`scripts_on_an_empty_base_share_a_column`] /
+//!   [`scripts_on_a_non_math_base_share_a_column`] / [`base_ending_with_scripts_takes_no_italic_correction`] /
+//!   [`cursor_after_scripts_follows_the_farther_script`]・
+//!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
+//!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -1632,16 +1644,22 @@ fn base_ending_with_scripts_takes_no_italic_correction() {
 
 #[test]
 fn cursor_after_scripts_follows_the_farther_script() {
-  let runs = first_line_runs("$\\int_{a}^{n}y$\n");
+  let runs = first_line_runs("$\\int_{abc}^{n}y$\n");
 
-  let sup = run_with_text(&runs, "\u{1D45B}");
-  let sub = run_with_text(&runs, MATH_A);
-  let next = run_with_text(&runs, MATH_Y);
   let base = run_with_text(&runs, "\u{222B}");
-  let script_end = (sup.dx + sup.width).max(sub.dx + sub.width);
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, "\u{1D44E}\u{1D44F}\u{1D450}");
+  let next = run_with_text(&runs, MATH_Y);
+  let sup_end = sup.dx + sup.width;
+  let sub_end = sub.dx + sub.width;
+  assert!(
+    sub_end > sup_end && sub_end > base.dx + base.width,
+    "下付きの右端が基底・上付きより遠い（テストの前提）: {sub_end:?} / {sup_end:?}"
+  );
   let space = stix_math_length(MathConstant::SpaceAfterScript, base.run.font_size);
-  // ∫ の後ろの y との間には細アキ（Op–Ord）が入るので、SpaceAfterScript 以上離れる
-  assert!(next.dx >= script_end + space, "後続は遠い方のスクリプトの右端 + SpaceAfterScript より後ろ");
+  // ∫ は Op、y は Ord なので間に細アキ（3mu = 本文サイズの 3/18）が入る
+  let thin_space = (base.run.font_size * 3) / 18.0f64;
+  assert_eq!(next.dx, sub_end + space + thin_space, "後続は最も遠いスクリプトの右端 + SpaceAfterScript + 細アキ");
 }
 
 #[test]
@@ -1686,4 +1704,40 @@ fn superscript_moves_by_the_top_right_kern_of_the_base() {
     .expect("高さは 2 つある");
   assert_ne!(kern, 0, "𝑊 の右上は kern を持つ（テストの前提）");
   assert_eq!(sup.dx, base.dx + base.width + stix_units(kern, size), "上付きは基底の右端から math kern ぶん動く");
+}
+
+#[test]
+fn subscript_kern_uses_the_top_left_table_of_the_script_glyph() {
+  let runs = first_line_runs("$f_{x}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let sub = run_with_text(&runs, "\u{1D465}");
+  let (base_gid, _) = sole_glyph(base);
+  let (sub_gid, _) = sole_glyph(sub);
+  let base_size = base.run.font_size;
+  let sub_size = sub.run.font_size;
+  // 下付きのベースラインは基底のベースラインから sub_shift_down 下
+  let sub_shift_down = base.dy - sub.dy;
+  let sub_top = stix_run_ink(&sub.run).0 + (sub.dy - base.dy);
+  let base_bottom = stix_run_ink(&base.run).1;
+  let kerns = [sub_top, base_bottom].map(|height| {
+    let base_kern = stix_math_kern(base_gid, MathKernCorner::BottomRight, stix_height_units(height, base_size));
+    let sub_kern =
+      stix_math_kern(sub_gid, MathKernCorner::TopLeft, stix_height_units(height + sub_shift_down, sub_size));
+    return (stix_units(base_kern, base_size), stix_units(sub_kern, sub_size));
+  });
+  assert!(
+    kerns.iter().any(|(_, sub_kern)| return *sub_kern != Length::ZERO),
+    "script 段の 𝑥 の左上は評価する高さのどれかで kern を持つ（テストの前提）: {kerns:?}"
+  );
+  let kern = kerns
+    .iter()
+    .map(|(base_kern, sub_kern)| return *base_kern + *sub_kern)
+    .min()
+    .expect("高さは 2 つある");
+  assert_eq!(
+    sub.dx,
+    base.dx + base.width - stix_units(stix_italics_correction(base_gid), base_size) + kern,
+    "下付きの kern は基底の右下と下付きの左上の和（それぞれのグリフの大きさで換算）の小さい方"
+  );
 }
