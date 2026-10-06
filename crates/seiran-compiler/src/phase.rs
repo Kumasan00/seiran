@@ -68,8 +68,8 @@ mod tests {
     thread,
   };
 
-  use tracing::{Dispatch, Span, info_span, subscriber::NoSubscriber};
-  use tracing_subscriber::fmt::MakeWriter;
+  use tracing::{Dispatch, Span, Subscriber, info_span, subscriber::NoSubscriber};
+  use tracing_subscriber::{Layer, filter::LevelFilter, fmt::MakeWriter};
 
   use super::Phase;
 
@@ -111,11 +111,14 @@ mod tests {
 
     // tracing-core は登録済みの dispatcher が 1 つだけのとき、callsite の interest を「その callsite を最初に
     // 通ったスレッドの thread-local default」だけで決めて固定する（`tokio-rs/tracing#3611`）。subscriber の無い
-    // スレッドが先に通ると `never` が固定され、このスレッドの event も捨てられる。どこにも張らない dispatcher を
+    // スレッドが先に通ると `never` が固定され、このスレッドの event も捨てられる。どこにも張らない dispatcher（peer）を
     // 捕捉の間生かして 2 つ以上にしておくと、interest は生きている全 dispatcher の合成（食い違えば `sometimes`）に
-    // なり、event ごとに各スレッドの default へ `enabled` が問われる。捕捉用の登録が最大レベルを上げる（＝他の
-    // スレッドが callsite を登録し始める）時点で既に 2 つになっているよう、先に登録する。
-    let peer = Dispatch::new(NoSubscriber::default());
+    // なり、event ごとに各スレッドの default へ `enabled` が問われる。peer の最大レベルを OFF にして先に登録し、
+    // 最大レベルを上げる（＝他のスレッドが callsite を登録し始める）のを捕捉用の登録だけにする — その登録の時点で
+    // dispatcher は既に 2 つある。
+    let peer = LevelFilter::OFF.with_subscriber(NoSubscriber::default());
+    assert_eq!(peer.max_level_hint(), Some(LevelFilter::OFF), "peer は最大レベルを上げないはず");
+    let peer = Dispatch::new(peer);
     let guard = tracing::subscriber::set_default(subscriber);
     run();
     drop(guard);
