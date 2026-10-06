@@ -4,6 +4,8 @@
 //! 整数で扱う。glyph assembly の有効条件と重なりの上限には、継ぎ目に実際に参加する connector だけを使う（最初のパーツが
 //! extender でなければその start、最後のパーツが extender でなければその end は継ぎ目を持たない）。OpenType の規定で
 //! start は伸縮の始点側（縦なら下端）、end は終点側で、継ぎ目は「下のパーツの end と上のパーツの start」の重なり。
+//! この connector の扱いは `MathML Core` §5.3.1 の字面（最後の start と最初の end を除き、全 connector が `MinConnectorOverlap` 以上）と
+//! 意図して異なる — 字面だと最下のパーツの start が 0 の STIX の `{` などを無効にしてしまう。
 
 use read_fonts::tables::math::{GlyphPartRecord, MathGlyphVariantRecord, PartFlags};
 

@@ -52,7 +52,7 @@ fn length_to_units(length: Length, font_size: Length, upem: f32) -> i64 {
 /// フォント単位の量を [`Glyph`] の送り幅・オフセットの型にする。
 fn glyph_units(units: i64) -> i32 {
   return i32::try_from(units).expect(
-    "括弧の送り幅と組み上がりの位置は表示数式 1 つの高さのフォント単位で、i32（upem 1000 で約 200 万 em）に収まる",
+    "括弧の送り幅と組み上がりの位置は表示数式ブロックの高さに比例する。高さが約 200 万 em（upem 1000 で i32 の上限）を超えるブロックは扱えない",
   );
 }
 

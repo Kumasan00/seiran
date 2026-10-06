@@ -686,9 +686,11 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   read-fonts のグリフ単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
   意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
   （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
-  引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう。検証は `MathVariants` の構造（オフセットと配列の長さ）までで、MathML Core が glyph assembly に課す意味の条件
+  引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう。検証は
+  `MathVariants` の構造（オフセットと配列の長さ）までで、MathML Core が glyph assembly に課す意味の条件
   （extender があり、繰り返すと伸び、継ぎ目の connector が `MinConnectorOverlap` 以上）は見ない — 満たさない
-  assembly は `typeset::font::stretch` が「無いもの」として扱い、最大の size variant で組む
+  assembly は `typeset::font::stretch` が「無いもの」として扱い、最後に試した字形（最大の size variant、無ければ
+  元の字形）で組む
 - **数式のスクリプト段の字形（`ssty`）**: シェーパーは script / scriptscript 段ごとに、設定のフィーチャーへ
   `ssty`（1 / 2）を足したフィーチャーとプランを持つ（プランはその段を初めて組むときに作る）。harfrust の
   プランはユーザ指定フィーチャを構築時にコンパイルするので、キャッシュしたプランへ実行時にだけ `ssty` を

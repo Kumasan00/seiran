@@ -46,7 +46,8 @@
 //! - **区切り括弧の伸縮**（フォントサイズを変えず MATH の size variant / glyph assembly で縦にだけ伸ばし、インクの縦中央を
 //!   数式軸へ）: [`delimiters_center_on_the_math_axis_at_the_body_font_size`] /
 //!   [`delimiters_cover_the_grid_and_stay_inside_the_block`] / [`tall_delimiters_grow_only_vertically`] /
-//!   [`assembled_delimiter_is_one_character_of_text`]（共通ヘルパ [`measure_delimited_block`]・[`stix_run_ink`] 経由）
+//!   [`assembled_delimiter_is_one_character_of_text`] /
+//!   [`assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part`]（共通ヘルパ [`measure_delimited_block`]・[`stix_run_ink`] 経由）
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
@@ -1104,21 +1105,26 @@ fn measure_delimited_block(source: &str) -> DelimitedBlock {
   };
 }
 
-/// グリフ列のインクの上端と下端（グリフ列のベースライン基準・上が正）を、組版側と独立に STIX Two Math から測る。
-fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
+/// STIX Two Math のグリフのインクの上端（ベースライン基準・上が正）と高さを、フォント単位で組版側と独立に読む。
+fn stix_glyph_ink(gid: u32) -> (f64, f64) {
   let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
   let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
   let font = Font::new(bytes, 0).expect("STIX Two Math は sfnt として読めるはず");
-  let metrics = font.glyph_metrics();
+  let extents = font.glyph_metrics().extents(GlyphId::new(gid)).expect("STIX の括弧のグリフはインクを読めるはず");
+  return (f64::from(extents.y_bearing), f64::from(extents.height));
+}
+
+/// グリフ列のインクの上端と下端（グリフ列のベースライン基準・上が正）を、組版側と独立に STIX Two Math から測る。
+fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
   let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
   let to_length = |units: f64| return run.font_size.scale(units / f64::from(upem));
   return run
     .glyphs
     .iter()
     .map(|glyph| {
-      let extents = metrics.extents(GlyphId::new(glyph.gid)).expect("STIX の括弧のグリフはインクを読めるはず");
-      let top = f64::from(extents.y_bearing) + f64::from(glyph.y_offset);
-      return (to_length(top), to_length(top - f64::from(extents.height)));
+      let (y_bearing, height) = stix_glyph_ink(glyph.gid);
+      let top = y_bearing + f64::from(glyph.y_offset);
+      return (to_length(top), to_length(top - height));
     })
     .reduce(|(top, bottom), (other_top, other_bottom)| return (top.max(other_top), bottom.min(other_bottom)))
     .expect("区切り括弧は 1 つ以上のグリフを持つはず");
@@ -1212,6 +1218,38 @@ fn assembled_delimiter_is_one_character_of_text() {
         "glyph assembly の全パーツは括弧 1 字のクラスタに属し、PDF のテキストとしては 1 字になるはず: {:?}",
         placed.run.text
       );
+    }
+  }
+}
+
+#[test]
+fn assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part() {
+  for delimiter in DELIMITERS {
+    let block = measure_delimited_block(&delimited_source(delimiter, 6));
+
+    for placed in &block.delimiters {
+      let glyphs = &placed.run.glyphs;
+      assert!(glyphs.len() > 1, "6 行は glyph assembly で組むはず: {delimiter:?}");
+      // 各パーツのインクの下端と上端（フォント単位）
+      let inks: Vec<(f64, f64)> = glyphs
+        .iter()
+        .map(|glyph| {
+          let (y_bearing, height) = stix_glyph_ink(glyph.gid);
+          let top = y_bearing + f64::from(glyph.y_offset);
+          return (top - height, top);
+        })
+        .collect();
+      for (index, pair) in inks.windows(2).enumerate() {
+        let ((bottom, top), (next_bottom, _)) = (pair[0], pair[1]);
+        assert!(next_bottom > bottom, "パーツは下から上へ積むはず（{index} 番目の次）: {delimiter:?}");
+        assert!(next_bottom < top, "隣り合うパーツのインクは重なるはず（{index} 番目の次）: {delimiter:?}");
+      }
+      let (last, rest) = glyphs.split_last().expect("1 つ以上のグリフがあるはず");
+      assert!(
+        rest.iter().all(|glyph| return glyph.x_advance == 0),
+        "最後以外のパーツは送り幅を持たないはず: {delimiter:?}"
+      );
+      assert!(last.x_advance > 0, "括弧の幅は最後のパーツが持つはず: {delimiter:?}");
     }
   }
 }
