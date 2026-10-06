@@ -686,7 +686,9 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   read-fonts のグリフ単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
   意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
   （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
-  引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう
+  引くがシェイピング用フォントは二分探索なので、`FontRef` で検証すると組版で読めない MATH を通してしまう。検証は `MathVariants` の構造（オフセットと配列の長さ）までで、MathML Core が glyph assembly に課す意味の条件
+  （extender があり、繰り返すと伸び、継ぎ目の connector が `MinConnectorOverlap` 以上）は見ない — 満たさない
+  assembly は `typeset::font::stretch` が「無いもの」として扱い、最大の size variant で組む
 - **数式のスクリプト段の字形（`ssty`）**: シェーパーは script / scriptscript 段ごとに、設定のフィーチャーへ
   `ssty`（1 / 2）を足したフィーチャーとプランを持つ（プランはその段を初めて組むときに作る）。harfrust の
   プランはユーザ指定フィーチャを構築時にコンパイルするので、キャッシュしたプランへ実行時にだけ `ssty` を
@@ -935,9 +937,13 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   任意の位置に置けるため、分割すると Knuth–Plass の行分割結果が変わる（受け入れ条件は「`\index` を取り
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
-- **区切り括弧付きのディスプレイ数式**（`matrix[delimiter=…]` / `cases`）は、本体グリッドの縦中央と拡大した
-  括弧の数式軸を、数式フォントの MATH `AxisHeight` に揃える（箱の幾何中点や括弧箱の ascender / descender は
-  使わない）。環境単位の式番号は本体の縦中央に揃える別規則
+- **区切り括弧付きのディスプレイ数式**（`matrix[delimiter=…]` / `cases`）は、本体グリッドの縦中央を数式フォントの
+  MATH `AxisHeight`（数式軸）に載せる。括弧はフォントサイズを変えずに MATH の伸縮グリフで縦にだけ伸ばし
+  （本体の高さ + 深さ以上で最小の size variant、足りなければ glyph assembly。選択は `typeset::font::stretch` が
+  MathML Core の算法で行う）、インクの縦中央を数式軸に合わせる。括弧の箱の高さ・深さはインクの範囲で、
+  glyph assembly のパーツは 1 本のグリフ列に `y_offset` で積み、全パーツを括弧 1 字のクラスタに属させる
+  （PDF のテキストは括弧 1 字）。箱の幾何中点や括弧箱の ascender / descender は使わない。環境単位の式番号は
+  本体の縦中央に揃える別規則
 - **上付き・下付き**（`MathScripts`）は、基底と上付き・下付きを原点から仮に配置してインク（グリフの形の範囲。
   `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
   `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・
