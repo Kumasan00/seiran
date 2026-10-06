@@ -18,7 +18,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem, ScriptLevel},
+    font::{Buffer, FontSystem, ScriptLevel, VerticalStretch},
     lowering::TextStyle,
     observe,
   },
@@ -33,12 +33,28 @@ fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
   return font_size.scale(units as f64 / f64::from(upem));
 }
 
-/// メトリクスの設計単位（f32）を整数の設計単位にする。
+/// フォント単位の計量（f32）を整数の設計単位にする。
 #[expect(
   clippy::cast_possible_truncation,
-  reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
+  reason = "フォント単位の計量で、sub-unit の切り捨ては視覚的に無意味な精度"
 )]
 fn design_units(value: f32) -> i64 { return value as i64; }
+
+/// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`units_to_length`] の逆）。
+#[expect(
+  clippy::cast_possible_truncation,
+  reason = "表示数式 1 つの高さのフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
+)]
+fn length_to_units(length: Length, font_size: Length, upem: f32) -> i64 {
+  return (length.ratio(font_size) * f64::from(upem)).ceil() as i64;
+}
+
+/// フォント単位の量を [`Glyph`] の送り幅・オフセットの型にする。
+fn glyph_units(units: i64) -> i32 {
+  return i32::try_from(units).expect(
+    "括弧の送り幅と組み上がりの位置は表示数式 1 つの高さのフォント単位で、i32（upem 1000 で約 200 万 em）に収まる",
+  );
+}
 
 /// グリフごとのクラスタ開始位置 `clusters`（グリフ順）から、各グリフが対応する元テキストの範囲を出す。
 ///
@@ -296,6 +312,80 @@ impl<'a> Shaper<'a> {
   pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {
     let units = self.fonts.math_constants().constant(constant);
     return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+  }
+
+  /// 区切り括弧 1 字 `text` を数式フォントで縦に `target` 以上へ伸ばした箱と、そのインクの縦中央（箱のベースライン
+  /// 基準・上が正）を返す。
+  ///
+  /// フォントサイズは `font_size` のまま、字形を MATH の size variant か glyph assembly に替えて縦にだけ伸ばす。箱の
+  /// 高さ・深さはインクの範囲（ベースラインの反対側へ出ない側は 0）で、フォント全体の ascender / descender ではない。
+  /// glyph assembly の全パーツは `text` 全体を範囲に持つ 1 つのクラスタで、PDF のテキストとしては `text` 1 字になる。
+  /// シェイプで 1 グリフにならない `text` は伸ばさずにそのまま置く。
+  pub(super) fn shape_vertical_delimiter(&mut self, text: &str, font_size: Length, target: Length) -> (HBox, Length) {
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
+    let glyphs = match shaped.glyphs() {
+      [glyph] => self.stretched_glyphs(glyph.gid, text.len(), length_to_units(target, font_size, upem)),
+      glyphs => glyphs.to_vec(),
+    };
+    let advance: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
+    let run = GlyphRun {
+      font_size,
+      text: text.to_string(),
+      glyphs,
+      font_type: FontType::Math,
+      color: None,
+    };
+    // インクを読めないグリフは墨を持たない扱い（`glyph_run_signed_ink` と同じ）で、ベースライン上に置く
+    let (top, bottom) = self.glyph_run_signed_ink(&run).unwrap_or((Length::ZERO, Length::ZERO));
+    let hbox = HBox {
+      content: HBoxContent::Glyphs(run),
+      width: units_to_length(advance, font_size, upem),
+      height: top.max(Length::ZERO),
+      depth: (-bottom).max(Length::ZERO),
+    };
+    return (hbox, (top + bottom) / 2.0);
+  }
+
+  /// 数式フォントのグリフ `gid` を縦に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）
+  ///
+  /// glyph assembly のパーツは同じ x に下から積む — 送り幅は最後のパーツだけが組み上がりの幅（パーツの送り幅の最大）を
+  /// 持ち、`y_offset` はパーツのインクの下端を組み上がりの位置へ合わせる。
+  fn stretched_glyphs(&self, gid: u32, text_len: usize, target: i64) -> Vec<Glyph> {
+    let glyph = |gid: u32, x_advance: i32, y_offset: i32| {
+      return Glyph {
+        gid,
+        range: 0..text_len,
+        x_advance,
+        y_advance: 0,
+        x_offset: 0,
+        y_offset,
+      };
+    };
+    let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, gid)));
+    return match self.fonts.stretch_math_glyph_vertically(gid, target) {
+      VerticalStretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
+      VerticalStretch::Assembly(parts) => {
+        let width = parts
+          .iter()
+          .map(|&(gid, _)| return advance(gid))
+          .max()
+          .expect("VerticalStretch::Assembly は空にならない");
+        let last = parts.len() - 1;
+        parts
+          .iter()
+          .enumerate()
+          .map(|(index, &(gid, bottom))| {
+            let ink_bottom = self
+              .fonts
+              .glyph_extents(FontType::Math, gid)
+              .map_or(0, |extents| return design_units(extents.y_bearing - extents.height));
+            let x_advance = if index == last { width } else { 0 };
+            return glyph(gid, x_advance, glyph_units(bottom - ink_bottom));
+          })
+          .collect()
+      },
+    };
   }
 
   /// 配置済みの箱の列のインク（グリフの形の範囲）が、ベースラインより上・下へ出た量（高さ, 深さ）。

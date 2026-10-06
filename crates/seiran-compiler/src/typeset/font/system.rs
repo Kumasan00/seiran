@@ -9,7 +9,7 @@ use miette::Diagnostic;
 use read_fonts::{
   TableProvider,
   model::metrics::GlyphExtents,
-  tables::math::{MathConstant, MathConstants},
+  tables::math::{MathConstant, MathConstants, StretchAxis},
   types::GlyphId,
 };
 use thiserror::Error;
@@ -24,6 +24,7 @@ use crate::{
     face_config::{FontFaceConfigs, build_face_configs},
     parse_fonts,
     shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
+    stretch::{self, VerticalStretch},
     validation::{self, FontValidationError, FontWarning},
   },
 };
@@ -144,6 +145,38 @@ impl FontSystem {
     return self.shapers[font_type].font().glyph_metrics().extents(GlyphId::new(gid));
   }
 
+  /// 数式フォントのグリフ `gid` を縦に `target`（フォント単位）以上へ伸ばす字形を、MATH の size variant と glyph assembly
+  /// から選ぶ（元の字形の高さはインクの高さ）。
+  #[must_use]
+  pub(crate) fn stretch_math_glyph_vertically(&self, gid: u32, target: i64) -> VerticalStretch {
+    let variants = self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_variants()).expect(
+      "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathVariants を読めることを確認済み",
+    );
+    let base_height = self.glyph_extents(FontType::Math, gid).map_or(0, |extents| return units(extents.height));
+    let construction = variants.glyph_construction(GlyphId::new(gid), StretchAxis::Vertical);
+    let assembly = construction.as_ref().and_then(|construction| {
+      return construction.glyph_assembly().map(|assembly| {
+        return assembly.expect(
+          "load の検証（validation::check_math_table）が、Coverage に載る全グリフの GlyphAssembly を配列の長さまで読めることを確認済み",
+        );
+      });
+    });
+    return stretch::stretch_vertically(
+      gid,
+      base_height,
+      construction.as_ref().map_or(&[], |construction| return construction.math_glyph_variant_records()),
+      assembly.as_ref().map(|assembly| return assembly.part_records()),
+      variants.min_connector_overlap().to_u16(),
+      target,
+    );
+  }
+
+  /// 指定フォント種別のグリフ `gid` の横の送り幅（フォント単位・シェーパーと同じバリエーション軸の位置）。
+  #[must_use]
+  pub(crate) fn glyph_advance(&self, font_type: FontType, gid: u32) -> f32 {
+    return self.shapers[font_type].font().glyph_metrics().h_advance(GlyphId::new(gid));
+  }
+
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。
   #[must_use]
   pub(crate) fn face_configs(&self) -> &FontFaceConfigs { return &self.face_configs; }
@@ -163,3 +196,10 @@ fn parse_and_measure<'a>(
   let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
   return Ok((font_refs, shaping_fonts, metrics));
 }
+
+/// グリフの計量（フォント単位の `f32`）を整数のフォント単位へ丸める。
+#[expect(
+  clippy::cast_possible_truncation,
+  reason = "グリフのインクの高さはフォント単位で i64 に収まり、端数の丸めは視覚的に無意味な精度"
+)]
+fn units(value: f32) -> i64 { return value.round() as i64; }
