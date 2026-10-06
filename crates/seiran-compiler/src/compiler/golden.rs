@@ -51,8 +51,20 @@
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
-//!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_share_a_column_in_either_order`] /
+//!   [`tall_base_pushes_the_superscript_up`] / [`stacked_scripts_differ_by_the_italic_correction_in_either_order`] /
 //!   [`space_after_script_follows_the_scripts`] / [`script_in_a_non_math_font_is_placed_by_its_ink`]
+//! - **数式のスクリプトの横位置**（イタリック補正・math kern）:
+//!   送り幅への補正 [`slanted_glyph_before_an_operator_gets_its_italic_correction`] /
+//!   [`italic_correction_is_added_only_before_an_upright_glyph`] / [`glyph_without_italic_correction_keeps_its_advance`] /
+//!   [`operator_keeps_its_advance_despite_its_italic_correction`] /
+//!   [`script_content_gets_italic_correction_through_the_atom_path`]・
+//!   スクリプトの位置 [`subscript_on_a_slanted_base_sits_at_its_advance`] /
+//!   [`large_operator_pulls_its_subscript_back_by_the_italic_correction`] /
+//!   [`scripts_on_an_upright_base_share_a_column`] / [`scripts_on_an_empty_base_share_a_column`] /
+//!   [`scripts_on_a_non_math_base_share_a_column`] / [`base_ending_with_scripts_takes_no_italic_correction`] /
+//!   [`cursor_after_scripts_follows_the_farther_script`]・
+//!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
+//!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -79,7 +91,11 @@ use std::{
 };
 
 use harfrust::Font;
-use read_fonts::{FontRef, TableProvider, tables::math::MathConstant, types::GlyphId};
+use read_fonts::{
+  FontRef, TableProvider,
+  tables::math::{MathConstant, MathKernCorner},
+  types::GlyphId,
+};
 
 use crate::{
   compiler::{
@@ -1130,6 +1146,85 @@ fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
     .expect("区切り括弧は 1 つ以上のグリフを持つはず");
 }
 
+/// `vendor/fonts/STIXTwoMath-Regular.ttf` を組版側と独立に開く。
+fn stix_math_font() -> Font {
+  let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
+  let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
+  return Font::new(bytes, 0).expect("STIX Two Math は sfnt として読めるはず");
+}
+
+/// STIX Two Math のグリフ `gid` の送り幅（フォント単位）。
+fn stix_advance(gid: u32) -> i32 {
+  #[expect(clippy::cast_possible_truncation, reason = "STIX Two Math の送り幅は整数のフォント単位")]
+  let advance = stix_math_font().glyph_metrics().h_advance(GlyphId::new(gid)) as i32;
+  return advance;
+}
+
+/// STIX Two Math のグリフ `gid` のイタリック補正（フォント単位。登録が無ければ 0）。
+fn stix_italics_correction(gid: u32) -> i32 {
+  let font = stix_math_font();
+  let info = font
+    .tables()
+    .math()
+    .and_then(|math| return math.math_glyph_info())
+    .expect("MathGlyphInfo を読めるはず");
+  return info
+    .math_italics_correction_info()
+    .expect("STIX Two Math は MathItalicsCorrectionInfo を持つはず")
+    .expect("MathItalicsCorrectionInfo を読めるはず")
+    .correction(GlyphId::new(gid))
+    .unwrap_or(0);
+}
+
+/// STIX Two Math のフォント単位 `units` の、`font_size` での長さ（組版側と同じ換算）。
+fn stix_units(units: i32, font_size: Length) -> Length {
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  return font_size.scale(f64::from(units) / f64::from(upem));
+}
+
+/// STIX Two Math のグリフ `gid` の `corner` の math kern の、フォント単位の高さ `height` での値（表が無ければ 0）。
+fn stix_math_kern(gid: u32, corner: MathKernCorner, height: i32) -> i32 {
+  let font = stix_math_font();
+  let info = font
+    .tables()
+    .math()
+    .and_then(|math| return math.math_glyph_info())
+    .expect("MathGlyphInfo を読めるはず");
+  let Some(kern_info) = info.math_kern_info() else {
+    return 0;
+  };
+  return kern_info
+    .expect("MathKernInfo を読めるはず")
+    .kern(GlyphId::new(gid), corner)
+    .and_then(|kern| return kern.kerning(height))
+    .unwrap_or(0);
+}
+
+/// 長さ `length` の、`font_size` でのフォント単位（組版側と同じ四捨五入）。
+fn stix_height_units(length: Length, font_size: Length) -> i32 {
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  #[expect(clippy::cast_possible_truncation, reason = "数式 1 つの高さのフォント単位で i32 に収まる")]
+  let units = (length.ratio(font_size) * f64::from(upem)).round() as i32;
+  return units;
+}
+
+/// 1 グリフのグリフ列の、そのグリフの (gid, 送り幅)。
+fn sole_glyph(line_run: &LineRun) -> (u32, i32) {
+  let [glyph] = line_run.run.glyphs.as_slice() else {
+    panic!("{:?} は 1 グリフのはず", line_run.run.text);
+  };
+  return (glyph.gid, glyph.x_advance);
+}
+
+/// 数学用イタリックの 𝑓（U+1D453）
+const MATH_F: &str = "\u{1D453}";
+
+/// 数学用イタリックの 𝑦（U+1D466）
+const MATH_Y: &str = "\u{1D466}";
+
+/// 数学用イタリックの 𝑎（U+1D44E）
+const MATH_A: &str = "\u{1D44E}";
+
 #[test]
 fn delimiters_center_on_the_math_axis_at_the_body_font_size() {
   for delimiter in DELIMITERS {
@@ -1372,20 +1467,25 @@ fn tall_base_pushes_the_superscript_up() {
 }
 
 #[test]
-fn stacked_scripts_share_a_column_in_either_order() {
+fn stacked_scripts_differ_by_the_italic_correction_in_either_order() {
   let placements = |source: &str| {
     let runs = first_line_runs(source);
     let sup = run_with_text(&runs, "2");
     let sub = run_with_text(&runs, MATH_I);
-    return (sup.dx, sup.dy, sub.dx, sub.dy, run_with_text(&runs, MATH_X).run.font_size);
+    let base = run_with_text(&runs, MATH_X);
+    return (sup.dx, sup.dy, sub.dx, sub.dy, base.run.font_size, base.run.glyphs[0].gid);
   };
 
   let sub_first = placements("$x_{i}^{2}$\n");
   let sup_first = placements("$x^{2}_{i}$\n");
 
   assert_eq!(sub_first, sup_first, "書く順序によらず同じ配置");
-  let (sup_dx, sup_dy, sub_dx, sub_dy, size) = sub_first;
-  assert_eq!(sup_dx, sub_dx, "上付きと下付きは同じ列に重なる");
+  let (sup_dx, sup_dy, sub_dx, sub_dy, size, gid) = sub_first;
+  assert_eq!(
+    sup_dx - sub_dx,
+    stix_units(stix_italics_correction(gid), size),
+    "上付きは下付きより基底の補正ぶん右（傾いた基底）"
+  );
   // STIX Two Math では上付きの底と下付きの頂のギャップが SubSuperscriptGapMin に足りず、両方が離れる
   assert!(sup_dy > stix_math_length(MathConstant::SuperscriptShiftUp, size), "上付きが上がる: {sup_dy}");
   assert!(-sub_dy > stix_math_length(MathConstant::SubscriptShiftDown, size), "下付きが下がる: {sub_dy}");
@@ -1418,4 +1518,226 @@ fn script_in_a_non_math_font_is_placed_by_its_ink() {
   );
   assert!(sup.dy - base.dy >= stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
   assert_eq!(sup.dx, base.dx + base.width);
+}
+
+#[test]
+fn slanted_glyph_before_an_operator_gets_its_italic_correction() {
+  let runs = first_line_runs("$f(x)$\n");
+
+  let (gid, advance) = sole_glyph(run_with_text(&runs, MATH_F));
+  assert!(stix_italics_correction(gid) > 0, "𝑓 は補正を持つ（テストの前提）");
+  assert_eq!(advance, stix_advance(gid) + stix_italics_correction(gid), "直立の ( の前で 𝑓 の補正が送りに入る");
+}
+
+#[test]
+fn italic_correction_is_added_only_before_an_upright_glyph() {
+  // 𝑥𝑦𝑎 は通常記号の並びで 1 本のグリフ列になる。𝑥 の次の 𝑦 は傾いた字形、𝑦 の次の 𝑎 は補正の登録が無い（直立扱い）
+  let runs = first_line_runs("$xya$\n");
+
+  let glyphs = &run_with_text(&runs, &format!("{MATH_X}{MATH_Y}{MATH_A}")).run.glyphs;
+  let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+  let expected: Vec<i32> = vec![
+    stix_advance(glyphs[0].gid),
+    stix_advance(glyphs[1].gid) + stix_italics_correction(glyphs[1].gid),
+    stix_advance(glyphs[2].gid),
+  ];
+  assert_eq!(advances, expected, "傾いた字形どうしの間は詰まり、直立の前と末尾だけ補正が入る");
+}
+
+#[test]
+fn glyph_without_italic_correction_keeps_its_advance() {
+  let runs = first_line_runs("$a+1$\n");
+
+  let (gid, advance) = sole_glyph(run_with_text(&runs, MATH_A));
+  assert_eq!(stix_italics_correction(gid), 0, "𝑎 は補正の登録が無い（テストの前提）");
+  assert_eq!(advance, stix_advance(gid), "登録の無い字形は補正 0");
+}
+
+#[test]
+fn operator_keeps_its_advance_despite_its_italic_correction() {
+  let runs = first_line_runs("$\\int x$\n");
+
+  let (gid, advance) = sole_glyph(run_with_text(&runs, "\u{222B}"));
+  assert!(stix_italics_correction(gid) > 0, "∫ は補正を持つ（テストの前提）");
+  assert_eq!(advance, stix_advance(gid), "演算子は傾いた字形として扱わず、補正を送りに足さない");
+}
+
+#[test]
+fn script_content_gets_italic_correction_through_the_atom_path() {
+  let runs = first_line_runs("$a^{x}$\n");
+
+  let sup = run_with_text(&runs, MATH_X);
+  let (gid, advance) = sole_glyph(sup);
+  assert_eq!(advance, stix_advance(gid) + stix_italics_correction(gid), "上付きの中身の 𝑥 も末尾の補正を受ける");
+  assert_eq!(sup.width, stix_units(advance, sup.run.font_size), "長さはスクリプト段のフォントサイズで縮む");
+}
+
+#[test]
+fn subscript_on_a_slanted_base_sits_at_its_advance() {
+  let runs = first_line_runs("$x_{2}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let sub = run_with_text(&runs, "2");
+  let (gid, _) = sole_glyph(base);
+  // 補正入りの幅と補正を別々に sp へ丸めるので 1sp までずれうる
+  let expected = base.dx + stix_units(stix_advance(gid), base.run.font_size);
+  assert!(
+    (sub.dx - expected).abs().sp() <= 1,
+    "下付きは補正を除いた基底の送り幅の位置: {} vs {expected}",
+    sub.dx
+  );
+}
+
+#[test]
+fn large_operator_pulls_its_subscript_back_by_the_italic_correction() {
+  let runs = first_line_runs("$\\int_{a}^{n}$\n");
+
+  let base = run_with_text(&runs, "\u{222B}");
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, MATH_A);
+  let (gid, _) = sole_glyph(base);
+  let correction = stix_units(stix_italics_correction(gid), base.run.font_size);
+  assert_eq!(sup.dx, base.dx + base.width, "大型演算子の上付きは基底の右端");
+  assert_eq!(sub.dx, base.dx + base.width - correction, "大型演算子の下付きは補正ぶん手前");
+}
+
+#[test]
+fn scripts_on_an_upright_base_share_a_column() {
+  let runs = first_line_runs("$a_{n}^{2}$\n");
+
+  let base = run_with_text(&runs, MATH_A);
+  let sup = run_with_text(&runs, "2");
+  let sub = run_with_text(&runs, "\u{1D45B}");
+  assert_eq!(sup.dx, base.dx + base.width);
+  assert_eq!(sub.dx, sup.dx, "補正の登録が無い基底では上下付きが同じ列");
+}
+
+#[test]
+fn scripts_on_an_empty_base_share_a_column() {
+  let runs = first_line_runs("${}_{2}^{3}$\n");
+
+  assert_eq!(run_with_text(&runs, "2").dx, run_with_text(&runs, "3").dx, "空の基底は補正 0");
+}
+
+#[test]
+fn scripts_on_a_non_math_base_share_a_column() {
+  let runs = first_line_runs("$あ_{2}^{3}$\n");
+
+  assert_eq!(
+    run_with_text(&runs, "あ").run.font_type,
+    FontType::JapaneseSerif,
+    "基底は和文フォント（テストの前提）"
+  );
+  assert_eq!(run_with_text(&runs, "2").dx, run_with_text(&runs, "3").dx, "数式フォント以外の基底は補正 0");
+}
+
+#[test]
+fn base_ending_with_scripts_takes_no_italic_correction() {
+  let runs = first_line_runs("${x^{2}}_{3}^{4}$\n");
+
+  assert_eq!(
+    run_with_text(&runs, "3").dx,
+    run_with_text(&runs, "4").dx,
+    "末尾がスクリプトの基底は、内側の字形の補正を外側の下付きに使わない"
+  );
+}
+
+#[test]
+fn cursor_after_scripts_follows_the_farther_script() {
+  let runs = first_line_runs("$\\int_{abc}^{n}y$\n");
+
+  let base = run_with_text(&runs, "\u{222B}");
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, "\u{1D44E}\u{1D44F}\u{1D450}");
+  let next = run_with_text(&runs, MATH_Y);
+  let sup_end = sup.dx + sup.width;
+  let sub_end = sub.dx + sub.width;
+  assert!(
+    sub_end > sup_end && sub_end > base.dx + base.width,
+    "下付きの右端が基底・上付きより遠い（テストの前提）: {sub_end:?} / {sup_end:?}"
+  );
+  let space = stix_math_length(MathConstant::SpaceAfterScript, base.run.font_size);
+  // ∫ は Op、y は Ord なので間に細アキ（3mu = 本文サイズの 3/18）が入る
+  let thin_space = (base.run.font_size * 3) / 18.0f64;
+  assert_eq!(next.dx, sub_end + space + thin_space, "後続は最も遠いスクリプトの右端 + SpaceAfterScript + 細アキ");
+}
+
+#[test]
+fn subscript_cuts_in_under_a_base_with_a_bottom_right_kern() {
+  let runs = first_line_runs("$f_{n}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let sub = run_with_text(&runs, "\u{1D45B}");
+  let (gid, _) = sole_glyph(base);
+  let size = base.run.font_size;
+  // 2 つの補正の高さ: 下付きのインクの頂・基底のインクの底（基底のベースライン基準）。𝑛 は TopLeft の表を持たない
+  let sub_top = stix_run_ink(&sub.run).0 + (sub.dy - base.dy);
+  let base_bottom = stix_run_ink(&base.run).1;
+  let kern = [sub_top, base_bottom]
+    .map(|height| return stix_math_kern(gid, MathKernCorner::BottomRight, stix_height_units(height, size)))
+    .into_iter()
+    .min()
+    .expect("高さは 2 つある");
+  assert!(kern < 0, "𝑓 の右下は下付きを潜り込ませる（テストの前提）: {kern}");
+  assert_eq!(
+    sub.dx,
+    base.dx + base.width - stix_units(stix_italics_correction(gid), size) + stix_units(kern, size),
+    "下付きは補正を除いた位置から math kern ぶんカットインする"
+  );
+}
+
+#[test]
+fn superscript_moves_by_the_top_right_kern_of_the_base() {
+  let runs = first_line_runs("$W^{2}$\n");
+
+  let base = run_with_text(&runs, "\u{1D44A}");
+  let sup = run_with_text(&runs, "2");
+  let (gid, _) = sole_glyph(base);
+  let size = base.run.font_size;
+  // 2 つの補正の高さ: 上付きのインクの底・基底のインクの頂。2 は BottomLeft の表を持たない
+  let sup_bottom = stix_run_ink(&sup.run).1 + (sup.dy - base.dy);
+  let base_top = stix_run_ink(&base.run).0;
+  let kern = [sup_bottom, base_top]
+    .map(|height| return stix_math_kern(gid, MathKernCorner::TopRight, stix_height_units(height, size)))
+    .into_iter()
+    .min()
+    .expect("高さは 2 つある");
+  assert_ne!(kern, 0, "𝑊 の右上は kern を持つ（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width + stix_units(kern, size), "上付きは基底の右端から math kern ぶん動く");
+}
+
+#[test]
+fn subscript_kern_uses_the_top_left_table_of_the_script_glyph() {
+  let runs = first_line_runs("$f_{x}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let sub = run_with_text(&runs, "\u{1D465}");
+  let (base_gid, _) = sole_glyph(base);
+  let (sub_gid, _) = sole_glyph(sub);
+  let base_size = base.run.font_size;
+  let sub_size = sub.run.font_size;
+  // 下付きのベースラインは基底のベースラインから sub_shift_down 下
+  let sub_shift_down = base.dy - sub.dy;
+  let sub_top = stix_run_ink(&sub.run).0 + (sub.dy - base.dy);
+  let base_bottom = stix_run_ink(&base.run).1;
+  let kerns = [sub_top, base_bottom].map(|height| {
+    let base_kern = stix_math_kern(base_gid, MathKernCorner::BottomRight, stix_height_units(height, base_size));
+    let sub_kern =
+      stix_math_kern(sub_gid, MathKernCorner::TopLeft, stix_height_units(height + sub_shift_down, sub_size));
+    return (stix_units(base_kern, base_size), stix_units(sub_kern, sub_size));
+  });
+  assert!(
+    kerns.iter().any(|(_, sub_kern)| return *sub_kern != Length::ZERO),
+    "script 段の 𝑥 の左上は評価する高さのどれかで kern を持つ（テストの前提）: {kerns:?}"
+  );
+  let kern = kerns
+    .iter()
+    .map(|(base_kern, sub_kern)| return *base_kern + *sub_kern)
+    .min()
+    .expect("高さは 2 つある");
+  assert_eq!(
+    sub.dx,
+    base.dx + base.width - stix_units(stix_italics_correction(base_gid), base_size) + kern,
+    "下付きの kern は基底の右下と下付きの左上の和（それぞれのグリフの大きさで換算）の小さい方"
+  );
 }

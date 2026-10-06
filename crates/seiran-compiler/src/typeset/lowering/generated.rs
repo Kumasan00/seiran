@@ -90,6 +90,7 @@ fn lower_generated_inline(
         typeface: *font,
         color: parent_style.color,
         script_level: None,
+        math_operator: false,
       };
       return lower_generated_inlines(ctx, children, styled);
     },

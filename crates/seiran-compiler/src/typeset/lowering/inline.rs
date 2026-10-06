@@ -46,6 +46,7 @@ pub(super) fn lower_inline(
         typeface: *font,
         color: parent_style.color,
         script_level: None,
+        math_operator: false,
       };
       return lower_inlines(ctx, children, styled, state);
     },
@@ -55,6 +56,7 @@ pub(super) fn lower_inline(
         typeface: parent_style.typeface,
         color: Some(*color),
         script_level: None,
+        math_operator: false,
       };
       return lower_inlines(ctx, children, colored, state);
     },
@@ -125,6 +127,7 @@ pub(super) fn lower_inline(
         typeface: parent_style.typeface,
         color: parent_style.color,
         script_level: None,
+        math_operator: false,
       };
       let body_marker = footnote_marker_node(&marker_text, footnote_style.font_size, body_style, footnote_style);
       let mut lowered_body = vec![body_marker];
@@ -165,6 +168,7 @@ fn footnote_marker_node(
     typeface: Typeface::Serif,
     color: base_style.color,
     script_level: None,
+    math_operator: false,
   };
   return InlineNode::Raise {
     offset: base_font_size * footnote_style.marker_raise_factor,

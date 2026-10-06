@@ -109,6 +109,7 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
       typeface: Typeface::Serif,
       color: None,
       script_level: None,
+      math_operator: false,
     },
   )];
 }
@@ -320,13 +321,14 @@ impl MathLoweringContext {
   /// script 段以下（TeXbook の括弧付きセルのアキを抑制する段）か
   fn in_script(&self) -> bool { return self.style.level.script_level().is_some(); }
 
-  /// このレベルのテキストスタイル（数式フォント・既定色・段の字形）
-  fn text_style(&self) -> TextStyle {
+  /// 数式本体のテキストのスタイル（`class` は記号のクラス。Ord 以外は演算子として印す）
+  fn text_style(&self, class: MathClass) -> TextStyle {
     return TextStyle {
       font_size: self.font_size(),
       typeface: Typeface::Math,
       color: None,
       script_level: self.style.level.script_level(),
+      math_operator: class != MathClass::Ord,
     };
   }
 }
@@ -359,7 +361,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       items.push(spacing::MathItem::new(
         *class,
         spacing::symbol_fence(*class),
-        vec![AtomNode::Text(translated, ctx.text_style())],
+        vec![AtomNode::Text(translated, ctx.text_style(*class))],
       ));
     },
     HirMathKind::Group(children) => {
@@ -376,7 +378,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Frac { numer, denom } => {
       // 縦組みの分数は組まず、インライン・ディスプレイとも `a / b` の形式で代替する
       let mut nodes = lower_math_list(slice::from_ref(numer.as_ref()), ctx);
-      nodes.push(AtomNode::Text("/".to_string(), ctx.text_style()));
+      nodes.push(AtomNode::Text("/".to_string(), ctx.text_style(MathClass::Ord)));
       nodes.extend(lower_math_list(slice::from_ref(denom.as_ref()), ctx));
       items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
     },
@@ -395,7 +397,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
           cramped: ctx.style.cramped,
         }));
       }
-      nodes.push(AtomNode::Text("√".to_string(), ctx.text_style()));
+      nodes.push(AtomNode::Text("√".to_string(), ctx.text_style(MathClass::Ord)));
       nodes.extend(lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.radicand())));
       items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
     },
@@ -423,10 +425,11 @@ fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacin
     }
     let mut translated = String::new();
     push_math_char(&mut translated, ch, ctx.variant);
+    let class = spacing::char_class(ch);
     items.push(spacing::MathItem::new(
-      spacing::char_class(ch),
+      class,
       spacing::char_fence(ch),
-      vec![AtomNode::Text(translated, ctx.text_style())],
+      vec![AtomNode::Text(translated, ctx.text_style(class))],
     ));
   }
 }
@@ -817,6 +820,27 @@ mod tests {
     let nodes = lower_math_source("$a\\sum b$\n");
 
     assert_eq!(spacings(&nodes), vec![mu(3); 2], "大型演算子の前後は細アキ: {nodes:?}");
+  }
+
+  #[test]
+  fn operator_texts_are_marked_and_ordinaries_are_not() {
+    let nodes = lower_math_source("$f(x)+\\int y$\n");
+
+    let marks: Vec<(String, bool)> =
+      math_texts(&nodes).into_iter().map(|(text, style)| return (text, style.math_operator)).collect();
+    assert_eq!(
+      marks,
+      vec![
+        ("\u{1D453}".to_string(), false),
+        ("(".to_string(), true),
+        ("\u{1D465}".to_string(), false),
+        (")".to_string(), true),
+        ("+".to_string(), true),
+        ("\u{222B}".to_string(), true),
+        ("\u{1D466}".to_string(), false),
+      ],
+      "Ord 以外のクラスの記号だけが演算子で、演算子は隣の Ord と同じ run に結合しない"
+    );
   }
 
   /// equation カウンタの `number_format` を `"{n}"` に縮約した Style

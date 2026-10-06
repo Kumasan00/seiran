@@ -8,13 +8,19 @@
 //! MATH 定数から決める。片側だけのシフトは `MathML Core` のスクリプト配置の規則に、上下付き同時のギャップは OpenType MATH の
 //! `SuperscriptBottomMaxWithSubscript` の定義（先に上付きを上げ、残りを下付きを下げて埋める）に従う。箱の高さ・深さはフォント
 //! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
+//! 横位置は基底の末尾グリフのイタリック補正で決める（上付きは基底の右端、下付きは補正ぶん戻す — 演算子でない基底は補正が
+//! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
+//! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
+//! 足した小さい方）でさらに寄せる。
 
-use read_fonts::tables::math::MathConstant;
+use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
 use crate::{
   length::Length,
+  project::FontType,
+  publication::Glyph,
   typeset::{
-    boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
+    boxes::{Align, Block, HBox, HBoxContent, MathRowNumber, PlacedHBox},
     boxing::{Measurer, Shaper},
     lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathScripts},
   },
@@ -46,6 +52,12 @@ struct Detached {
   ink_height: Length,
   /// インクのベースラインより下の深さ（0 以上）
   ink_depth: Length,
+  /// 末尾のノードがテキストで、その最後の箱が数式フォントのグリフ列のとき、その最後のグリフ（gid と run の
+  /// フォントサイズ）。空・末尾がアキやスクリプト・数式フォント以外は `None`（補正も math kern も 0）
+  trailing_glyph: Option<(u32, Length)>,
+  /// 先頭のノードがテキストで、その最初の箱が数式フォントのグリフ列のとき、その最初のグリフ（gid と run の
+  /// フォントサイズ）。それ以外は `None`（math kern 0）
+  leading_glyph: Option<(u32, Length)>,
 }
 
 /// 上付き・下付きの配置に使う MATH 定数（基底の段のフォントサイズで長さへ換算済み）
@@ -281,7 +293,11 @@ impl Measurer<'_> {
 
   /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
   ///
-  /// 上付き・下付きは基底の右端から始め（横の補正は行わない）、後ろに `SpaceAfterScript` のアキを空ける。
+  /// 上付きは基底の右端、下付きは基底の右端から基底の末尾グリフのイタリック補正ぶん戻した位置に置き、
+  /// どちらも math kern（`cut_in`）ぶん寄せる。演算子でない基底は補正が送り幅に入っている
+  /// （`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則（演算子でない基底は上付きを補正ぶん前へ、
+  /// 演算子は下付きを補正ぶん手前へ。補正を持つ演算子はすべて `MathML Core` の大型演算子と同じに扱う）と同じ位置に
+  /// なる。後ろのカーソルは基底の右端と各スクリプトの右端のうち最も右から `SpaceAfterScript` のアキを空ける。
   pub(super) fn place_scripts(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathScripts {
       base,
@@ -309,32 +325,95 @@ impl Measurer<'_> {
       ),
     };
 
-    let script_x = *dx + base.width;
+    let correction = base
+      .trailing_glyph
+      .map_or(Length::ZERO, |(gid, size)| return self.shaper.italic_correction(gid, size));
+    let base_end = *dx + base.width;
     translate_into(out, base.boxes, *dx, dy);
-    let mut script_width = Length::ZERO;
+    let mut end = base_end;
     if let Some(sup) = superscript {
-      script_width = script_width.max(sup.width);
-      translate_into(out, sup.boxes, script_x, dy + sup_shift);
+      // 補正の高さは上付きのインクの底と基底のインクの頂（基底のベースライン基準）
+      let kern = self.cut_in(
+        base.trailing_glyph,
+        MathKernCorner::TopRight,
+        sup.leading_glyph,
+        MathKernCorner::BottomLeft,
+        sup_shift,
+        [sup_shift - sup.ink_depth, base.ink_height],
+      );
+      let sup_x = base_end + kern;
+      end = end.max(sup_x + sup.width);
+      translate_into(out, sup.boxes, sup_x, dy + sup_shift);
     }
     if let Some(sub) = subscript {
-      script_width = script_width.max(sub.width);
-      translate_into(out, sub.boxes, script_x, dy - sub_shift);
+      // 補正の高さは下付きのインクの頂と基底のインクの底（基底のベースライン基準）
+      let kern = self.cut_in(
+        base.trailing_glyph,
+        MathKernCorner::BottomRight,
+        sub.leading_glyph,
+        MathKernCorner::TopLeft,
+        -sub_shift,
+        [sub.ink_height - sub_shift, -base.ink_depth],
+      );
+      let sub_x = base_end - correction + kern;
+      end = end.max(sub_x + sub.width);
+      translate_into(out, sub.boxes, sub_x, dy - sub_shift);
     }
-    *dx = script_x + script_width + constants.space_after_script;
+    *dx = end + constants.space_after_script;
   }
 
-  /// ノード列を原点から仮に配置し、送り幅とインクの寸法を測る
+  /// ノード列を原点から仮に配置し、送り幅とインクの寸法、末尾の数式フォントのグリフを測る
   fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
+    let starts_with_text = matches!(nodes.first(), Some(AtomNode::Text(..)));
+    let ends_with_text = matches!(nodes.last(), Some(AtomNode::Text(..)));
     let mut boxes = Vec::new();
     let mut width = Length::ZERO;
     self.place_atom_children(nodes, Length::ZERO, &mut width, &mut boxes);
     let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes);
+    // 末尾の Text ノードの箱は place_atom_children が最後に積むので、boxes の最後がその最後の run
+    let trailing_glyph = if ends_with_text {
+      boxes.last().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::last))
+    } else {
+      None
+    };
+    // 先頭の Text ノードの箱は place_atom_children が最初に積むので、boxes の最初がその最初の run
+    let leading_glyph = if starts_with_text {
+      boxes.first().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::first))
+    } else {
+      None
+    };
     return Detached {
       boxes,
       width,
       ink_height,
       ink_depth,
+      trailing_glyph,
+      leading_glyph,
     };
+  }
+
+  /// 基底の末尾グリフとスクリプトの先頭グリフの math kern（OpenType MATH の算法）
+  ///
+  /// `heights`（基底のベースライン基準）それぞれで、基底の隅 `base_corner` とスクリプトの隅 `script_corner`（スクリプトの
+  /// ベースラインは基底のベースラインから `script_baseline` 上）の kern を足し、小さい方を返す。どちらかのグリフが無い
+  /// （箱・空・数式フォント以外）ときは 0。
+  fn cut_in(
+    &self,
+    base_glyph: Option<(u32, Length)>,
+    base_corner: MathKernCorner,
+    script_glyph: Option<(u32, Length)>,
+    script_corner: MathKernCorner,
+    script_baseline: Length,
+    heights: [Length; 2],
+  ) -> Length {
+    let (Some((base_gid, base_size)), Some((script_gid, script_size))) = (base_glyph, script_glyph) else {
+      return Length::ZERO;
+    };
+    let [first, second] = heights.map(|height| {
+      return self.shaper.math_kern(base_gid, base_size, base_corner, height)
+        + self.shaper.math_kern(script_gid, script_size, script_corner, height - script_baseline);
+    });
+    return first.min(second);
   }
 }
 
@@ -347,6 +426,17 @@ fn translate_into(out: &mut Vec<PlacedHBox>, boxes: Vec<PlacedHBox>, dx: Length,
       dy: placed.dy + dy,
     };
   }));
+}
+
+/// 箱が数式フォントのグリフ列なら、`pick` が選ぶグリフの gid と run のフォントサイズ
+fn math_glyph(hbox: &HBox, pick: fn(&[Glyph]) -> Option<&Glyph>) -> Option<(u32, Length)> {
+  let HBoxContent::Glyphs(run) = &hbox.content else {
+    return None;
+  };
+  if run.font_type != FontType::Math {
+    return None;
+  }
+  return pick(&run.glyphs).map(|glyph| return (glyph.gid, run.font_size));
 }
 
 #[cfg(test)]

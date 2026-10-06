@@ -7,7 +7,7 @@
 
 use std::ops::Range;
 
-use read_fonts::tables::math::MathConstant;
+use read_fonts::tables::math::{MathConstant, MathKernCorner};
 use tracing::trace;
 
 use crate::{
@@ -72,6 +72,18 @@ fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
       return start..end;
     })
     .collect();
+}
+
+/// 傾いた字形（`correction(gid)` が 0 でない）の送り幅へ、次の字形が傾いていないときと末尾のときだけ、その補正
+/// （フォント単位）を足す（MathML Core の `mrow`: 傾いた子の補正は次の子が傾いていないときに送る）。
+fn add_italic_corrections_to(glyphs: &mut [Glyph], correction: impl Fn(u32) -> i32) {
+  let corrections: Vec<i32> = glyphs.iter().map(|glyph| return correction(glyph.gid)).collect();
+  for (index, glyph) in glyphs.iter_mut().enumerate() {
+    let next_is_slanted = corrections.get(index + 1).is_some_and(|&next| return next != 0);
+    if !next_is_slanted {
+      glyph.x_advance += corrections[index];
+    }
+  }
 }
 
 /// シェーピング済みの 1 run — グリフ列と、そのフォントで確定した寸法
@@ -237,9 +249,9 @@ impl<'a> Shaper<'a> {
     return segments
       .into_iter()
       .map(|segment| {
-        return self
-          .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
-          .into_hbox();
+        let shaped =
+          self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
+        return self.add_italic_corrections(shaped, style).into_hbox();
       })
       .collect();
   }
@@ -312,6 +324,42 @@ impl<'a> Shaper<'a> {
   pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {
     let units = self.fonts.math_constants().constant(constant);
     return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+  }
+
+  /// 数式フォントのグリフ `gid` のイタリック補正の、フォントサイズ `font_size` での長さ（登録が無ければ 0）
+  pub(super) fn italic_correction(&self, gid: u32, font_size: Length) -> Length {
+    let units = self.fonts.math_italics_correction(gid);
+    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+  }
+
+  /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）の隅 `corner` の、ベースラインからの高さ `height` での
+  /// math kern の長さ（表が無ければ 0）
+  pub(super) fn math_kern(&self, gid: u32, font_size: Length, corner: MathKernCorner, height: Length) -> Length {
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    #[expect(
+      clippy::cast_possible_truncation,
+      reason = "数式 1 つの高さのフォント単位で i32 に収まり、帯の境界との比較に端数は意味を持たない"
+    )]
+    let height_units = (height.ratio(font_size) * f64::from(upem)).round() as i32;
+    let units = self.fonts.math_kern(gid, corner, height_units);
+    return units_to_length(i64::from(units), font_size, upem);
+  }
+
+  /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いた字形へイタリック補正を足して
+  /// 計測し直す。数式フォント以外の run と演算子の run はそのまま返す
+  ///
+  /// run の末尾の字形の後ろはアキ・演算子・スクリプト付きの基底・別スタイルの run のどれかで、MathML Core ではどれも
+  /// 傾いた子ではないので、末尾の傾いた字形には常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
+  /// `Measurer::place_scripts` が引き戻す。
+  pub(super) fn add_italic_corrections(&self, shaped: ShapedRun, style: TextStyle) -> ShapedRun {
+    if shaped.run.font_type != FontType::Math || style.math_operator {
+      return shaped;
+    }
+    let ShapedRun {
+      mut run, metrics, ..
+    } = shaped;
+    add_italic_corrections_to(&mut run.glyphs, |gid| return self.fonts.math_italics_correction(gid));
+    return ShapedRun::measure(run, metrics);
   }
 
   /// 区切り括弧 1 字 `text` を数式フォントで縦に `target` 以上へ伸ばした箱と、そのインクの縦中央（箱のベースライン
@@ -449,7 +497,7 @@ mod tests {
 
   use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
 
-  use super::{ShapedRun, cluster_ranges};
+  use super::{ShapedRun, add_italic_corrections_to, cluster_ranges};
   use crate::{
     length::Length,
     project::FontType,
@@ -638,5 +686,61 @@ mod tests {
         .all(|range| return text.is_char_boundary(range.start) && text.is_char_boundary(range.end)),
       "範囲の両端は文字境界に乗るはず"
     );
+  }
+
+  /// 送り幅 500 のグリフを `gids` の順に並べる
+  fn glyphs_of(gids: &[u32]) -> Vec<Glyph> {
+    return gids
+      .iter()
+      .enumerate()
+      .map(|(index, &gid)| {
+        return Glyph {
+          gid,
+          range: index..index + 1,
+          x_advance: 500,
+          y_advance: 0,
+          x_offset: 0,
+          y_offset: 0,
+        };
+      })
+      .collect();
+  }
+
+  /// gid 1 は補正 30・gid 2 は補正 20 の傾いた字形、それ以外は補正 0
+  fn correction(gid: u32) -> i32 {
+    return match gid {
+      1 => 30,
+      2 => 20,
+      _ => 0,
+    };
+  }
+
+  #[test]
+  fn italic_correction_goes_before_an_upright_glyph_and_at_the_end() {
+    let mut glyphs = glyphs_of(&[1, 9, 2]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+    assert_eq!(advances, vec![530, 500, 520], "傾いた字形の次が直立なら補正を足し、末尾の傾いた字形にも足す");
+  }
+
+  #[test]
+  fn no_italic_correction_between_slanted_glyphs() {
+    let mut glyphs = glyphs_of(&[1, 2]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+    assert_eq!(advances, vec![500, 520], "傾いた字形どうしの間には補正を足さない（MathML Core の mrow）");
+  }
+
+  #[test]
+  fn glyphs_without_italic_correction_keep_their_advance() {
+    let mut glyphs = glyphs_of(&[7, 8]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    assert!(glyphs.iter().all(|glyph| return glyph.x_advance == 500), "補正 0 の字形は送り幅が変わらない");
   }
 }

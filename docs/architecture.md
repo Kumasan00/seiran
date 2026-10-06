@@ -694,7 +694,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - **数式のスクリプト段の字形（`ssty`）**: シェーパーは script / scriptscript 段ごとに、設定のフィーチャーへ
   `ssty`（1 / 2）を足したフィーチャーとプランを持つ（プランはその段を初めて組むときに作る）。harfrust の
   プランはユーザ指定フィーチャを構築時にコンパイルするので、キャッシュしたプランへ実行時にだけ `ssty` を
-  渡しても効かない。段は `TextStyle::script_level` が運ぶ。`ssty` を持たないフォントは字形がそのまま
+  渡しても効かない。段は `TextStyle::script_level` が運ぶ。`ssty` を持たないフォントは字形がそのまま。
 
 #### `error`
 
@@ -949,7 +949,13 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
 - **上付き・下付き**（`MathScripts`）は、基底と上付き・下付きを原点から仮に配置してインク（グリフの形の範囲。
   `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
   `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・
-  深さ（フォント全体の ascender / descender）は使わない。上付き・下付きは基底の右端から同じ列に置き、上下付き
+  深さ（フォント全体の ascender / descender）は使わない。横位置は基底の末尾グリフ（数式フォントのとき）の MATH のイタリック補正で決め、上付きは基底の右端、下付きはそこから
+  補正ぶん戻した位置に置く。演算子でない数式フォントの run は、傾いた字形（補正が 0 でない）の補正を次の字形が傾いて
+  いないときと run の末尾で送り幅へ足してある（MathML Core の `mrow`。演算子は `TextStyle::math_operator` で除く）ので、
+  これは MathML Core の `msub` / `msup`（演算子でない基底は上付きを補正ぶん前へ、演算子は下付きを補正ぶん手前へ。
+  補正を持つ演算子はすべて MathML Core の大型演算子と同じに扱う）と同じ位置になる。基底の末尾とスクリプトの先頭がともに数式フォントのグリフなら、OpenType MATH の math kern（上付きは基底の右上と上付きの
+  左下を「上付きのインクの底」「基底のインクの頂」の 2 つの高さで、下付きは基底の右下と下付きの左上を「下付きのインクの頂」
+  「基底のインクの底」で足し、小さい方）だけ寄せる。上下付き
   同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
   超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（Atom の幅は
   末尾のアキを含む送り幅を下限にする）。根号の指数は空の基底の上付きとして同じ規則で置く
