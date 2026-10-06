@@ -317,11 +317,11 @@ keywords=["test", "seiran"]
   glyphs x=1416.49 y=584.47 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=1428.49 y=584.47 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=1434.49 y=584.47 font=Math size=12.00 text="□" glyph_count=1
-  glyphs x=819.75 y=638.22 font=Math size=12.00 text="𝑎" glyph_count=1
-  glyphs x=829.07 y=638.22 font=Math size=12.00 text="+" glyph_count=1
-  glyphs x=840.38 y=638.22 font=Math size=12.00 text="𝑏" glyph_count=1
-  glyphs x=849.93 y=638.22 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=861.90 y=638.22 font=Math size=12.00 text="𝑐" glyph_count=1
+  glyphs x=819.72 y=638.22 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=829.04 y=638.22 font=Math size=12.00 text="+" glyph_count=1
+  glyphs x=840.35 y=638.22 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=849.96 y=638.22 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=861.93 y=638.22 font=Math size=12.00 text="𝑐" glyph_count=1
   glyphs x=1428.56 y=638.22 font=Serif size=12.00 text="(.1)" glyph_count=4
   glyphs x=240.94 y=661.31 font=Monospace size=12.00 text="fn main() {" glyph_count=11
   glyphs x=240.94 y=677.15 font=Monospace size=12.00 text="    let x = 1;" glyph_count=14

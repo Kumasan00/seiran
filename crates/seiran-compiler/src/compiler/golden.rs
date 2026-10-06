@@ -1130,6 +1130,59 @@ fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
     .expect("区切り括弧は 1 つ以上のグリフを持つはず");
 }
 
+/// `vendor/fonts/STIXTwoMath-Regular.ttf` を組版側と独立に開く。
+fn stix_math_font() -> Font {
+  let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
+  let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
+  return Font::new(bytes, 0).expect("STIX Two Math は sfnt として読めるはず");
+}
+
+/// STIX Two Math のグリフ `gid` の送り幅（フォント単位）。
+fn stix_advance(gid: u32) -> i32 {
+  #[expect(clippy::cast_possible_truncation, reason = "STIX Two Math の送り幅は整数のフォント単位")]
+  let advance = stix_math_font().glyph_metrics().h_advance(GlyphId::new(gid)) as i32;
+  return advance;
+}
+
+/// STIX Two Math のグリフ `gid` のイタリック補正（フォント単位。登録が無ければ 0）。
+fn stix_italics_correction(gid: u32) -> i32 {
+  let font = stix_math_font();
+  let info = font
+    .tables()
+    .math()
+    .and_then(|math| return math.math_glyph_info())
+    .expect("MathGlyphInfo を読めるはず");
+  return info
+    .math_italics_correction_info()
+    .expect("STIX Two Math は MathItalicsCorrectionInfo を持つはず")
+    .expect("MathItalicsCorrectionInfo を読めるはず")
+    .correction(GlyphId::new(gid))
+    .unwrap_or(0);
+}
+
+/// STIX Two Math のフォント単位 `units` の、`font_size` での長さ（組版側と同じ換算）。
+fn stix_units(units: i32, font_size: Length) -> Length {
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  return font_size.scale(f64::from(units) / f64::from(upem));
+}
+
+/// 1 グリフのグリフ列の、そのグリフの (gid, 送り幅)。
+fn sole_glyph(line_run: &LineRun) -> (u32, i32) {
+  let [glyph] = line_run.run.glyphs.as_slice() else {
+    panic!("{:?} は 1 グリフのはず", line_run.run.text);
+  };
+  return (glyph.gid, glyph.x_advance);
+}
+
+/// 数学用イタリックの 𝑓（U+1D453）
+const MATH_F: &str = "\u{1D453}";
+
+/// 数学用イタリックの 𝑦（U+1D466）
+const MATH_Y: &str = "\u{1D466}";
+
+/// 数学用イタリックの 𝑎（U+1D44E）
+const MATH_A: &str = "\u{1D44E}";
+
 #[test]
 fn delimiters_center_on_the_math_axis_at_the_body_font_size() {
   for delimiter in DELIMITERS {
@@ -1418,4 +1471,56 @@ fn script_in_a_non_math_font_is_placed_by_its_ink() {
   );
   assert!(sup.dy - base.dy >= stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
   assert_eq!(sup.dx, base.dx + base.width);
+}
+
+#[test]
+fn slanted_glyph_before_an_operator_gets_its_italic_correction() {
+  let runs = first_line_runs("$f(x)$\n");
+
+  let (gid, advance) = sole_glyph(run_with_text(&runs, MATH_F));
+  assert!(stix_italics_correction(gid) > 0, "𝑓 は補正を持つ（テストの前提）");
+  assert_eq!(advance, stix_advance(gid) + stix_italics_correction(gid), "直立の ( の前で 𝑓 の補正が送りに入る");
+}
+
+#[test]
+fn italic_correction_is_added_only_before_an_upright_glyph() {
+  // 𝑥𝑦𝑎 は通常記号の並びで 1 本のグリフ列になる。𝑥 の次の 𝑦 は傾いた字形、𝑦 の次の 𝑎 は補正の登録が無い（直立扱い）
+  let runs = first_line_runs("$xya$\n");
+
+  let glyphs = &run_with_text(&runs, &format!("{MATH_X}{MATH_Y}{MATH_A}")).run.glyphs;
+  let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+  let expected: Vec<i32> = vec![
+    stix_advance(glyphs[0].gid),
+    stix_advance(glyphs[1].gid) + stix_italics_correction(glyphs[1].gid),
+    stix_advance(glyphs[2].gid),
+  ];
+  assert_eq!(advances, expected, "傾いた字形どうしの間は詰まり、直立の前と末尾だけ補正が入る");
+}
+
+#[test]
+fn glyph_without_italic_correction_keeps_its_advance() {
+  let runs = first_line_runs("$a+1$\n");
+
+  let (gid, advance) = sole_glyph(run_with_text(&runs, MATH_A));
+  assert_eq!(stix_italics_correction(gid), 0, "𝑎 は補正の登録が無い（テストの前提）");
+  assert_eq!(advance, stix_advance(gid), "登録の無い字形は補正 0");
+}
+
+#[test]
+fn operator_keeps_its_advance_despite_its_italic_correction() {
+  let runs = first_line_runs("$\\int x$\n");
+
+  let (gid, advance) = sole_glyph(run_with_text(&runs, "\u{222B}"));
+  assert!(stix_italics_correction(gid) > 0, "∫ は補正を持つ（テストの前提）");
+  assert_eq!(advance, stix_advance(gid), "演算子は傾いた字形として扱わず、補正を送りに足さない");
+}
+
+#[test]
+fn script_content_gets_italic_correction_through_the_atom_path() {
+  let runs = first_line_runs("$a^{x}$\n");
+
+  let sup = run_with_text(&runs, MATH_X);
+  let (gid, advance) = sole_glyph(sup);
+  assert_eq!(advance, stix_advance(gid) + stix_italics_correction(gid), "上付きの中身の 𝑥 も末尾の補正を受ける");
+  assert_eq!(sup.width, stix_units(advance, sup.run.font_size), "長さはスクリプト段のフォントサイズで縮む");
 }

@@ -75,7 +75,7 @@ impl Measurer<'_> {
           .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
       if style.typeface == Typeface::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
-        out.push(HItem::Box(run.into_hbox()));
+        out.push(HItem::Box(self.shaper.add_italic_corrections(run, style).into_hbox()));
         continue;
       }
       // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
