@@ -681,8 +681,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   （順序を入れ替えると診断が変わる）
 - **数式フォントは OpenType MATH テーブル必須**。`validation` が構築時に全サブテーブルのオフセットと件数どおりの
   配列の長さまで辿り、無い・読めないものを `typeset::font::validation::{missing_math_table, table_range,
-  unsorted_table_directory, unreadable_math_table, non_positive_scale_down}` で拒否する（数式の有無に依存しない）。
-  スクリプトの縮小率（`ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`）が正であることも検証する。
+  unsorted_table_directory, unreadable_math_table, non_positive_scale_down, negative_rule_thickness}` で拒否する（数式の有無に依存しない）。
+  スクリプトの縮小率（`ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`）が正であること、および罫の太さ（`FractionRuleThickness` / `RadicalRuleThickness`）が 0 以上であることも検証する。
   read-fonts のグリフ単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
   意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
   （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
@@ -853,13 +853,17 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt`
   は 1 個の Ord なので `$a{+}b$` でアキを殺せる
 - **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
-  持つ（TeX・MathML Core と同じ）。表示数式環境のセルは display、インライン数式は text で始まり、上付き・
-  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。下付きの中身と被根号は
-  cramped で、cramped は中身へ継承され解除されない（上付きの中身は親を継承）。段のフォントサイズは数式本体の
+  持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
+  `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
+  `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。上付き・
+  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。分子・分母は分数の段の
+  1 段下（display → text、text → script、それより下は scriptscript）。下付きの中身・分母・被根号は
+  cramped で、cramped は中身へ継承され解除されない（上付きの中身と分子は親を継承）。段のフォントサイズは数式本体の
   サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
-  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped）として boxing へ渡す
+  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped）・`MathFraction`（分子・分母・分数の
+  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）として boxing へ渡す
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
@@ -958,7 +962,22 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   「基底のインクの底」で足し、小さい方）だけ寄せる。上下付き
   同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
   超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（Atom の幅は
-  末尾のアキを含む送り幅を下限にする）。根号の指数は空の基底の上付きとして同じ規則で置く
+  末尾のアキを含む送り幅を下限にする）
+- **分数**（`MathFraction`）は MathML Core §3.3.2.1 の規則で置く: 分子のシフトは `FractionNumeratorShiftUp` と
+  「`AxisHeight` + 罫の太さ/2 + `FractionNumeratorGapMin` + 分子のインクの深さ」の大きい方、分母のシフトは
+  `FractionDenominatorShiftDown` と「罫の太さ/2 + `FractionDenominatorGapMin` + 分母のインクの高さ − `AxisHeight`」の
+  大きい方（分数の段が display なら `*DisplayStyle*` の値。定数は分数の段のサイズで換算）。分子・分母は両者の送り幅の
+  最大の中で中央に置き、横罫（`HBoxContent::Rule`、太さ `FractionRuleThickness`）はその幅いっぱいに中心を数式軸に
+  合わせる。左右に 0.75pt ずつ空ける（MathML Core の UA スタイルシート `mfrac { padding-inline: 1px }`。隣り合う分数の
+  罫をつなげない）。分数は閉じた Atom 1 つ
+- **根号**（`MathRadical`）は MathML Core §3.3.3 の規則で置く: √ を「被根号のインクの高さ + 深さ + ギャップ
+  （`RadicalVerticalGap`、display なら `RadicalDisplayStyleVerticalGap`）+ `RadicalRuleThickness`」以上へ区切り括弧と
+  同じ伸縮で縦に伸ばし、インクの上端を横線（vinculum。`HBoxContent::Rule`）の上端に合わせる。伸ばした記号が目標より
+  高ければ余りの半分をギャップへ足す（TeX の Rule 11。MathML Core には無く、無いと size variant の段差ぶん記号が下へ
+  垂れる）。横線は記号の送り幅の位置から被根号の幅いっぱいに引き、上に `RadicalExtraAscender` を取る（Atom の高さに
+  含める）。指数は前に max(0, `RadicalKernBeforeDegree`)、後に max(−指数の幅, `RadicalKernAfterDegree`) の kern を置き、
+  インクの底を「根号の下端 + 根号の高さ × `RadicalDegreeBottomRaisePercent`」へ置く（根号の上端は横線の上端 +
+  `RadicalExtraAscender`、下端は被根号と記号のインクの深い方）。根号は閉じた Atom 1 つ
 - 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
 
 (b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。

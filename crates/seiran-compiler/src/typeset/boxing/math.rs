@@ -1,4 +1,4 @@
-//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）と、数式の上付き・下付きの配置
+//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）と、数式の上付き・下付き・分数・根号の配置
 //!
 //! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
 //! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の伸縮と数式軸への配置）
@@ -12,6 +12,12 @@
 //! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
+//!
+//! 分数（`MathFraction`）と根号（`MathRadical`）の配置は子 module `fraction` / `radical` が行い、
+//! どちらも閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
+
+mod fraction;
+mod radical;
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
@@ -265,7 +271,8 @@ impl Measurer<'_> {
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, center) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let center = (top + bottom) / 2.0;
       let width = delim.width;
       children.push(PlacedHBox {
         hbox: delim,
@@ -281,7 +288,8 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, center) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let center = (top + bottom) / 2.0;
       children.push(PlacedHBox {
         hbox: delim,
         dx,
@@ -321,7 +329,7 @@ impl Measurer<'_> {
       (Some(sup), None) => (constants.superscript_shift(base.ink_height, sup.ink_depth, cramped), Length::ZERO),
       (None, Some(sub)) => (Length::ZERO, constants.subscript_shift(base.ink_depth, sub.ink_height)),
       (None, None) => unreachable!(
-        "MathScripts を作るのは spacing::attach（片側を必ず埋める）と根号の指数（上付きを持つ）だけで、少なくとも一方は Some"
+        "MathScripts を作るのは spacing::attach だけで、attach は片側を必ず埋めるので少なくとも一方は Some"
       ),
     };
 

@@ -27,7 +27,7 @@ use crate::{
       counter::format_counter_value,
       layout_node::{
         AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout, MathBlockRowLayout,
-        MathScripts, TextStyle,
+        MathFraction, MathRadical, TextStyle,
       },
       with_label_anchors,
     },
@@ -54,7 +54,7 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(cell, font_size, ctx.script_scale),
+          content: lower_math_cell(cell, font_size, ctx.script_scale, cell_level(math.kind)),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -190,15 +190,32 @@ pub(super) fn lower_inline_math(
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
-/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（display 段で組み、閉じた箱に畳むので行分割点を置かない）
-fn lower_math_cell(math_nodes: &[HirMath], base_font_size: Length, script_scale: ScriptScale) -> Vec<AtomNode> {
-  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Display));
+/// 環境種別から、セルを組み始める数式スタイルの段を決める
+///
+/// `cases` / `matrix` のセルは text 段で始める（TeX の `\textstyle`、`MathML Core` の UA スタイルシートの
+/// `mtable { math-style: compact }`）。それ以外の表示数式環境は display 段。
+const fn cell_level(kind: MathBlockKind) -> StyleLevel {
+  return match kind {
+    MathBlockKind::Cases | MathBlockKind::Matrix { .. } => StyleLevel::Text,
+    MathBlockKind::Equation
+    | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => StyleLevel::Display,
+  };
+}
+
+/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない）
+fn lower_math_cell(
+  math_nodes: &[HirMath],
+  base_font_size: Length,
+  script_scale: ScriptScale,
+  level: StyleLevel,
+) -> Vec<AtomNode> {
+  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level));
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StyleLevel {
-  /// display 段（表示数式環境の本体）
+  /// display 段（`equation` / `align` 等の表示数式環境のセル）
   Display,
   /// text 段（インライン数式の本体）
   Text,
@@ -217,6 +234,15 @@ impl StyleLevel {
     };
   }
 
+  /// 分子・分母の段（display は text、text は script、それより下は scriptscript）
+  const fn fraction(self) -> Self {
+    return match self {
+      StyleLevel::Display => StyleLevel::Text,
+      StyleLevel::Text => StyleLevel::Script,
+      StyleLevel::Script | StyleLevel::ScriptScript => StyleLevel::ScriptScript,
+    };
+  }
+
   /// フォントサイズと字形を決めるスクリプト段（display / text 段は数式本体の大きさと字形なので `None`）
   const fn script_level(self) -> Option<ScriptLevel> {
     return match self {
@@ -229,7 +255,7 @@ impl StyleLevel {
 
 /// 数式スタイル（段と cramped の有無）
 ///
-/// cramped は上付きを低めに置く状態で、下付きの中身と被根号で始まり、中身へ継承されて解除されない。
+/// cramped は上付きを低めに置く状態で、下付きの中身・分母・被根号で始まり、中身へ継承されて解除されない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FormulaStyle {
   /// 段
@@ -251,6 +277,22 @@ impl FormulaStyle {
   const fn subscript(self) -> Self {
     return FormulaStyle {
       level: self.level.script(),
+      cramped: true,
+    };
+  }
+
+  /// 分子のスタイル（分数の段の 1 段下。cramped は親から継承）
+  const fn numerator(self) -> Self {
+    return FormulaStyle {
+      level: self.level.fraction(),
+      cramped: self.cramped,
+    };
+  }
+
+  /// 分母のスタイル（分数の段の 1 段下。cramped）
+  const fn denominator(self) -> Self {
+    return FormulaStyle {
+      level: self.level.fraction(),
       cramped: true,
     };
   }
@@ -376,30 +418,24 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       spacing::push_script(items, ScriptSide::Subscript, content, ctx.font_size(), ctx.style.cramped);
     },
     HirMathKind::Frac { numer, denom } => {
-      // 縦組みの分数は組まず、インライン・ディスプレイとも `a / b` の形式で代替する
-      let mut nodes = lower_math_list(slice::from_ref(numer.as_ref()), ctx);
-      nodes.push(AtomNode::Text("/".to_string(), ctx.text_style(MathClass::Ord)));
-      nodes.extend(lower_math_list(slice::from_ref(denom.as_ref()), ctx));
-      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
+      let fraction = MathFraction {
+        numerator: lower_math_list(slice::from_ref(numer.as_ref()), &ctx.with_style(ctx.style.numerator())),
+        denominator: lower_math_list(slice::from_ref(denom.as_ref()), &ctx.with_style(ctx.style.denominator())),
+        font_size: ctx.font_size(),
+        display: ctx.style.level == StyleLevel::Display,
+      };
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Fraction(fraction)]));
     },
     HirMathKind::Sqrt { index, radicand } => {
-      let mut nodes = Vec::new();
-      if let Some(idx) = index {
-        // 指数は空の基底に付けた上付きとして、上付きのシフト規則で置く（後ろに SpaceAfterScript も入る）
-        nodes.push(AtomNode::Scripts(MathScripts {
-          base: Vec::new(),
-          superscript: Some(lower_math_list(
-            slice::from_ref(idx.as_ref()),
-            &ctx.with_style(ctx.style.radical_degree()),
-          )),
-          subscript: None,
-          font_size: ctx.font_size(),
-          cramped: ctx.style.cramped,
-        }));
-      }
-      nodes.push(AtomNode::Text("√".to_string(), ctx.text_style(MathClass::Ord)));
-      nodes.extend(lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.radicand())));
-      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
+      let radical = MathRadical {
+        degree: index.as_ref().map(|degree| {
+          return lower_math_list(slice::from_ref(degree.as_ref()), &ctx.with_style(ctx.style.radical_degree()));
+        }),
+        radicand: lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.radicand())),
+        font_size: ctx.font_size(),
+        display: ctx.style.level == StyleLevel::Display,
+      };
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
     },
     // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
@@ -442,7 +478,10 @@ mod tests {
     style::{CounterTemplate, Style as ReadStyle},
     typeset::{
       font::ScriptLevel,
-      lowering::test_support::{analyzed, lower, stix_script_scale},
+      lowering::{
+        MathScripts,
+        test_support::{analyzed, lower, stix_script_scale},
+      },
     },
   };
 
@@ -458,6 +497,8 @@ mod tests {
         // アキは表示文字列を持たない
         AtomNode::Kern { .. } => {},
         AtomNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
+        AtomNode::Fraction(fraction) => out.extend(fraction_texts(fraction)),
+        AtomNode::Radical(radical) => out.extend(radical_texts(radical)),
       }
     }
     return out;
@@ -472,6 +513,31 @@ mod tests {
     return out;
   }
 
+  /// 分子・分母の順に `Text` を（テキスト, スタイル）で返す
+  fn fraction_texts(fraction: &MathFraction) -> Vec<(String, TextStyle)> {
+    let mut out = atom_texts(&fraction.numerator);
+    out.extend(atom_texts(&fraction.denominator));
+    return out;
+  }
+
+  /// 指数・被根号の順に `Text` を（テキスト, スタイル）で返す
+  fn radical_texts(radical: &MathRadical) -> Vec<(String, TextStyle)> {
+    let mut out = radical.degree.as_deref().map(atom_texts).unwrap_or_default();
+    out.extend(atom_texts(&radical.radicand));
+    return out;
+  }
+
+  /// レイアウトノード列から最初の根号を取り出すヘルパ
+  fn first_radical(nodes: &[LayoutNode]) -> &MathRadical {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Radical(radical)) => return Some(radical),
+        _ => return None,
+      })
+      .expect("根号が期待されます");
+  }
+
   /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（スクリプトの基底・中身も辿る）
   fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
     let mut out = Vec::new();
@@ -479,6 +545,8 @@ mod tests {
       match node {
         LayoutNode::Inline(InlineNode::Text(text, style)) => out.push((text.clone(), *style)),
         LayoutNode::Inline(InlineNode::Scripts(scripts)) => out.extend(scripts_texts(scripts)),
+        LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
+        LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
@@ -543,6 +611,28 @@ mod tests {
         _ => return None,
       })
       .expect("スクリプト付きの基底が期待されます");
+  }
+
+  /// レイアウトノード列から最初の分数を取り出すヘルパ
+  fn first_fraction(nodes: &[LayoutNode]) -> &MathFraction {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Fraction(fraction)) => return Some(fraction),
+        _ => return None,
+      })
+      .expect("分数が期待されます");
+  }
+
+  /// Atom ノード列から最初の分数を取り出すヘルパ（表示数式のセル・スクリプトの中身用）
+  fn atom_fraction(nodes: &[AtomNode]) -> &MathFraction {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        AtomNode::Fraction(fraction) => return Some(fraction),
+        _ => return None,
+      })
+      .expect("分数が期待されます");
   }
 
   /// スクリプトの欄の中身を連結した文字列（欄が無ければ `None`）
@@ -690,16 +780,19 @@ mod tests {
       "cramped は上付きの中身へ継承される"
     );
     let radicand = lower_math_source("$\\sqrt{y^{2}}$\n");
-    assert!(first_scripts(&radicand).cramped, "被根号は cramped");
+    let [AtomNode::Scripts(inner)] = first_radical(&radicand).radicand.as_slice() else {
+      panic!("被根号はスクリプト付きの基底 1 つのはず: {radicand:?}");
+    };
+    assert!(inner.cramped, "被根号は cramped");
   }
 
   #[test]
-  fn radical_degree_is_a_superscript_on_an_empty_base() {
+  fn radical_degree_is_carried_by_the_radical() {
     let nodes = lower_math_source("$\\sqrt[3]{x}$\n");
 
-    let scripts = first_scripts(&nodes);
-    assert!(scripts.base.is_empty(), "指数は空の基底に付く: {scripts:?}");
-    assert_eq!(slot_text(scripts.superscript.as_deref()).as_deref(), Some("3"));
+    let radical = first_radical(&nodes);
+    assert_eq!(radical.degree.as_deref().map(concat_atom_texts).as_deref(), Some("3"));
+    assert_eq!(concat_atom_texts(&radical.radicand), "\u{1D465}");
   }
 
   #[test]
@@ -714,17 +807,138 @@ mod tests {
   }
 
   #[test]
-  fn lower_math_frac_inlines_as_slash() {
+  fn lower_math_frac_keeps_numerator_and_denominator_apart() {
     let nodes = lower_math_source("$\\frac{a}{b}$\n");
 
-    assert_eq!(concat_texts(&nodes), "\u{1D44E}/\u{1D44F}", "分数は / 付きで描画されるはず: {nodes:?}");
+    let fraction = first_fraction(&nodes);
+    assert_eq!(concat_atom_texts(&fraction.numerator), "\u{1D44E}");
+    assert_eq!(concat_atom_texts(&fraction.denominator), "\u{1D44F}");
+    assert_eq!(fraction.font_size, ReadStyle::default().text.font_size, "MATH 定数は分数の段の大きさで換算する");
+    assert!(!fraction.display, "インライン数式の分数は text 段");
   }
 
   #[test]
-  fn lower_math_sqrt_emits_radical_sign() {
+  fn fraction_parts_step_down_from_display_to_text_and_from_text_to_script() {
+    let base = ReadStyle::default().text.font_size;
+    let inline = lower_math_source("$\\frac{a}{b}$\n");
+    let display = math_block_of("\\begin{equation}\n\\frac{a}{b}\n\\end{equation}\n");
+
+    let inline_levels: Vec<(Length, Option<ScriptLevel>)> = math_texts(&inline)
+      .into_iter()
+      .map(|(_, style)| return (style.font_size, style.script_level))
+      .collect();
+    assert_eq!(
+      inline_levels,
+      vec![(base.scale(0.7), Some(ScriptLevel::Script)); 2],
+      "text 段の分数の中身は script 段"
+    );
+    let cell = &display.rows[0].cells[0].content;
+    let display_levels: Vec<(Length, Option<ScriptLevel>)> = atom_texts(cell)
+      .into_iter()
+      .map(|(_, style)| return (style.font_size, style.script_level))
+      .collect();
+    assert_eq!(display_levels, vec![(base, None); 2], "display 段の分数の中身は text 段で縮めない");
+    assert!(atom_fraction(cell).display, "表示数式のトップレベルの分数は display 段");
+  }
+
+  #[test]
+  fn nested_fraction_parts_stop_at_scriptscript() {
+    let base = ReadStyle::default().text.font_size;
+    let nested = lower_math_source("$\\frac{\\frac{a}{b}}{c}$\n");
+    let in_script = lower_math_source("$x^{\\frac{a}{b}}$\n");
+
+    let sizes: Vec<(String, Length)> =
+      math_texts(&nested).into_iter().map(|(text, style)| return (text, style.font_size)).collect();
+    assert_eq!(
+      sizes,
+      vec![
+        ("\u{1D44E}".to_string(), base.scale(0.55)),
+        ("\u{1D44F}".to_string(), base.scale(0.55)),
+        ("\u{1D450}".to_string(), base.scale(0.7)),
+      ],
+      "分子の分数の中身は scriptscript、外側の分母は script"
+    );
+    let levels: Vec<Option<ScriptLevel>> =
+      math_texts(&in_script).into_iter().map(|(_, style)| return style.script_level).collect();
+    assert_eq!(
+      levels,
+      vec![
+        None,
+        Some(ScriptLevel::ScriptScript),
+        Some(ScriptLevel::ScriptScript)
+      ],
+      "上付き（script 段）の中の分数の中身は scriptscript"
+    );
+  }
+
+  #[test]
+  fn fraction_in_a_display_superscript_is_not_display() {
+    let block = math_block_of("\\begin{equation}\nx^{\\frac{a}{b}}\n\\end{equation}\n");
+
+    let [AtomNode::Scripts(scripts)] = block.rows[0].cells[0].content.as_slice() else {
+      panic!("セルはスクリプト付きの基底 1 つのはず: {:?}", block.rows[0].cells[0].content);
+    };
+    let fraction = atom_fraction(scripts.superscript.as_deref().expect("上付きの中身があるはず"));
+    assert!(!fraction.display, "上付きの中の分数は script 段で、display の定数を使わない");
+    assert_eq!(fraction.font_size, ReadStyle::default().text.font_size.scale(0.7));
+  }
+
+  #[test]
+  fn fraction_in_cases_and_matrix_cells_is_text_style() {
+    let base = ReadStyle::default().text.font_size;
+    let sources = [
+      "\\begin{cases}\n\\frac{a}{b} & x\n\\end{cases}\n",
+      "\\begin{matrix}\n\\frac{a}{b} & x\n\\end{matrix}\n",
+    ];
+    for source in sources {
+      let block = math_block_of(source);
+
+      let cell = &block.rows[0].cells[0].content;
+      assert!(!atom_fraction(cell).display, "cases / matrix のセルは text 段: {source}");
+      let levels: Vec<(String, Length, Option<ScriptLevel>)> = atom_texts(cell)
+        .into_iter()
+        .map(|(text, style)| return (text, style.font_size, style.script_level))
+        .collect();
+      assert_eq!(
+        levels,
+        vec![
+          ("\u{1D44E}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
+          ("\u{1D44F}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
+        ],
+        "{source}"
+      );
+    }
+  }
+
+  #[test]
+  fn denominator_is_cramped_but_numerator_inherits() {
+    let nodes = lower_math_source("$\\frac{x^{2}}{y^{2}}$\n");
+
+    let fraction = first_fraction(&nodes);
+    let [AtomNode::Scripts(numerator)] = fraction.numerator.as_slice() else {
+      panic!("分子はスクリプト付きの基底 1 つのはず: {fraction:?}");
+    };
+    let [AtomNode::Scripts(denominator)] = fraction.denominator.as_slice() else {
+      panic!("分母はスクリプト付きの基底 1 つのはず: {fraction:?}");
+    };
+    assert!(!numerator.cramped, "cramped でない親の分子は cramped でない");
+    assert!(denominator.cramped, "分母は cramped");
+  }
+
+  #[test]
+  fn lower_math_sqrt_keeps_the_radicand_in_a_radical() {
     let nodes = lower_math_source("$\\sqrt{x}$\n");
 
-    assert_eq!(concat_texts(&nodes), "√\u{1D465}", "√ 記号が含まれるはず: {nodes:?}");
+    let radical = first_radical(&nodes);
+    assert!(radical.degree.is_none());
+    assert_eq!(concat_atom_texts(&radical.radicand), "\u{1D465}", "根号記号は lowering では出さない");
+    assert_eq!(radical.font_size, ReadStyle::default().text.font_size);
+    assert!(!radical.display);
+    let block = math_block_of("\\begin{equation}\n\\sqrt{x}\n\\end{equation}\n");
+    let [AtomNode::Radical(display)] = block.rows[0].cells[0].content.as_slice() else {
+      panic!("セルは根号 1 つのはず: {:?}", block.rows[0].cells[0].content);
+    };
+    assert!(display.display, "表示数式のトップレベルの根号は display 段");
   }
 
   #[test]
@@ -905,7 +1119,7 @@ mod tests {
   fn lower_math_node_styled_propagates_into_frac_body() {
     let nodes = lower_math_source("$\\mathbold{\\frac{a}{b}}$\n");
 
-    assert_eq!(concat_texts(&nodes), "\u{1D41A}/\u{1D41B}");
+    assert_eq!(concat_texts(&nodes), "\u{1D41A}\u{1D41B}");
   }
 
   #[test]

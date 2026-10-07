@@ -65,6 +65,18 @@
 //!   [`cursor_after_scripts_follows_the_farther_script`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]
+//! - **分数**（MATH の `Fraction*` 定数とインクからのシフト量・数式軸上の横罫・段の遷移・左右のアキ）:
+//!   [`inline_fraction_stacks_script_size_parts_around_a_rule_on_the_math_axis`] /
+//!   [`display_fraction_uses_display_style_constants_and_text_size_parts`] /
+//!   [`fraction_in_a_display_superscript_uses_text_constants_at_script_size`] /
+//!   [`nested_fraction_draws_a_thinner_inner_rule`] / [`adjacent_fraction_rules_do_not_touch`] /
+//!   [`superscript_in_a_denominator_uses_the_cramped_shift`] / [`fraction_rule_is_painted_as_a_filled_rect`] /
+//!   [`empty_fraction_compiles_with_a_zero_width_rule`]（共通ヘルパ [`first_line_parts`]・[`display_parts`]・[`collect_rules`] 経由）
+//! - **根号**（根号記号の伸縮・横線・ギャップの調整・指数の kern と高さ）:
+//!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
+//!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
+//!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
+//!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -132,6 +144,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "itemize",
   "justify",
   "math_break",
+  "math_frac",
   "math_script",
   "math_spacing",
   "matrix",
@@ -472,7 +485,7 @@ fn footnote_marker_number(blocks: &[PlacedBlock]) -> u32 {
     .iter()
     .filter_map(|child| match &child.hbox.content {
       HBoxContent::Glyphs(run) => return Some(run.text.as_str()),
-      HBoxContent::Atom(_) => return None,
+      HBoxContent::Atom(_) | HBoxContent::Rule => return None,
     })
     .collect();
   return text.parse().unwrap_or_else(|_| panic!("マーカーは番号の数字だけのはず: {text:?}"));
@@ -1020,6 +1033,7 @@ fn first_glyph_run(content: &HBoxContent) -> Option<&GlyphRun> {
   return match content {
     HBoxContent::Glyphs(run) => Some(run),
     HBoxContent::Atom(children) => children.iter().find_map(|child| return first_glyph_run(&child.hbox.content)),
+    HBoxContent::Rule => None,
   };
 }
 
@@ -1225,6 +1239,15 @@ const MATH_Y: &str = "\u{1D466}";
 /// 数学用イタリックの 𝑎（U+1D44E）
 const MATH_A: &str = "\u{1D44E}";
 
+/// 数学用イタリックの 𝑏（U+1D44F）
+const MATH_B: &str = "\u{1D44F}";
+
+/// 数学用イタリックの 𝑑（U+1D451）
+const MATH_D: &str = "\u{1D451}";
+
+/// 分数の左右それぞれのアキ（組版側の `FRACTION_PADDING` と同じ 0.75pt）
+const FRACTION_PADDING: Length = Length::from_sp(49_152);
+
 #[test]
 fn delimiters_center_on_the_math_axis_at_the_body_font_size() {
   for delimiter in DELIMITERS {
@@ -1375,11 +1398,43 @@ fn collect_line_runs(content: &HBoxContent, width: Length, dx: Length, dy: Lengt
         collect_line_runs(&child.hbox.content, child.hbox.width, dx + child.dx, dy + child.dy, out);
       }
     },
+    HBoxContent::Rule => {},
   }
 }
 
-/// 本文 `source` を組版し、最初の行のグリフ列を出現順に返す。
-fn first_line_runs(source: &str) -> Vec<LineRun> {
+/// 行・数式ブロックの中の罫 1 本と、その位置（入れ子の Atom を辿って足した値）
+struct PlacedRule {
+  /// 左端の水平位置
+  dx: Length,
+  /// 下端の縦位置（ベースライン基準・上が正）
+  bottom: Length,
+  /// 上端の縦位置（ベースライン基準・上が正）
+  top: Length,
+  /// 幅
+  width: Length,
+}
+
+/// Atom の子を辿り、罫を (`dx`, `dy`) だけずらした位置で `out` へ出現順に積む。
+fn collect_rules(content: &HBoxContent, dx: Length, dy: Length, out: &mut Vec<PlacedRule>) {
+  let HBoxContent::Atom(children) = content else {
+    return;
+  };
+  for child in children {
+    let (x, y) = (dx + child.dx, dy + child.dy);
+    if matches!(child.hbox.content, HBoxContent::Rule) {
+      out.push(PlacedRule {
+        dx: x,
+        bottom: y - child.hbox.depth,
+        top: y + child.hbox.height,
+        width: child.hbox.width,
+      });
+    }
+    collect_rules(&child.hbox.content, x, y, out);
+  }
+}
+
+/// 本文 `source` を組版し、最初の行のグリフ列と罫を出現順に返す。
+fn first_line_parts(source: &str) -> (Vec<LineRun>, Vec<PlacedRule>) {
   let laid_out = TestProject::builder().source_text(source).build().laid_out();
   let line = laid_out
     .pages
@@ -1391,10 +1446,81 @@ fn first_line_runs(source: &str) -> Vec<LineRun> {
     })
     .expect("本文の行が 1 つはあるはず");
   let mut runs = Vec::new();
+  let mut rules = Vec::new();
   for placed in &line.boxes {
     collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+    collect_rules(&placed.hbox.content, placed.dx, placed.dy, &mut rules);
   }
-  return runs;
+  return (runs, rules);
+}
+
+/// 本文 `source` を組版し、最初の行のグリフ列を出現順に返す。
+fn first_line_runs(source: &str) -> Vec<LineRun> { return first_line_parts(source).0; }
+
+/// 本文 `source` を組版し、最初の表示数式ブロックの本体のグリフ列と罫を、本体のベースライン基準で出現順に返す。
+fn display_parts(source: &str) -> (Vec<LineRun>, Vec<PlacedRule>) {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  let body = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .find_map(|block| match block {
+      PlacedBlock::MathBlock { body, .. } => return Some(body),
+      _ => return None,
+    })
+    .expect("表示数式ブロックが 1 つあるはず");
+  let mut runs = Vec::new();
+  let mut rules = Vec::new();
+  collect_line_runs(&body.content, body.width, Length::ZERO, Length::ZERO, &mut runs);
+  collect_rules(&body.content, Length::ZERO, Length::ZERO, &mut rules);
+  return (runs, rules);
+}
+
+/// グリフ列のインクの高さと深さ（どちらも 0 以上。グリフ列のベースライン基準）。
+fn stix_ink_extent(line_run: &LineRun) -> (Length, Length) {
+  let (top, bottom) = stix_run_ink(&line_run.run);
+  return (top.max(Length::ZERO), (-bottom).max(Length::ZERO));
+}
+
+/// 分数の段のフォントサイズ `size` で、インクの深さ `depth` の分子を上げる量（MathML Core §3.3.2.1）。
+fn expected_numerator_shift(size: Length, display: bool, depth: Length) -> Length {
+  let (shift_up, gap_min) = if display {
+    (MathConstant::FractionNumeratorDisplayStyleShiftUp, MathConstant::FractionNumDisplayStyleGapMin)
+  } else {
+    (MathConstant::FractionNumeratorShiftUp, MathConstant::FractionNumeratorGapMin)
+  };
+  let thickness = stix_math_length(MathConstant::FractionRuleThickness, size);
+  return stix_math_length(shift_up, size)
+    .max(stix_math_length(MathConstant::AxisHeight, size) + thickness / 2.0 + stix_math_length(gap_min, size) + depth);
+}
+
+/// 基底の段のフォントサイズ `size` で、インクの高さ `base_height` の基底に付く、インクの深さ `sup_depth` の上付きを
+/// 上げる量（組版側の `ScriptConstants::superscript_shift` と同じ 3 規則の最大）。
+fn expected_superscript_shift(size: Length, cramped: bool, base_height: Length, sup_depth: Length) -> Length {
+  let standard = if cramped {
+    MathConstant::SuperscriptShiftUpCramped
+  } else {
+    MathConstant::SuperscriptShiftUp
+  };
+  return stix_math_length(standard, size)
+    .max(base_height - stix_math_length(MathConstant::SuperscriptBaselineDropMax, size))
+    .max(stix_math_length(MathConstant::SuperscriptBottomMin, size) + sup_depth);
+}
+
+/// 分数の段のフォントサイズ `size` で、インクの高さ `height` の分母を下げる量（MathML Core §3.3.2.1）。
+fn expected_denominator_shift(size: Length, display: bool, height: Length) -> Length {
+  let (shift_down, gap_min) = if display {
+    (
+      MathConstant::FractionDenominatorDisplayStyleShiftDown,
+      MathConstant::FractionDenomDisplayStyleGapMin,
+    )
+  } else {
+    (MathConstant::FractionDenominatorShiftDown, MathConstant::FractionDenominatorGapMin)
+  };
+  let thickness = stix_math_length(MathConstant::FractionRuleThickness, size);
+  return stix_math_length(shift_down, size).max(
+    thickness / 2.0 + stix_math_length(gap_min, size) + height - stix_math_length(MathConstant::AxisHeight, size),
+  );
 }
 
 /// `runs` からテキストが `text` の最初のグリフ列を返す。
@@ -1660,6 +1786,335 @@ fn cursor_after_scripts_follows_the_farther_script() {
   // ∫ は Op、y は Ord なので間に細アキ（3mu = 本文サイズの 3/18）が入る
   let thin_space = (base.run.font_size * 3) / 18.0f64;
   assert_eq!(next.dx, sub_end + space + thin_space, "後続は最も遠いスクリプトの右端 + SpaceAfterScript + 細アキ");
+}
+
+#[test]
+fn inline_fraction_stacks_script_size_parts_around_a_rule_on_the_math_axis() {
+  let (runs, rules) = first_line_parts("$y\\frac{a}{b}$\n");
+
+  let reference = run_with_text(&runs, MATH_Y);
+  let numerator = run_with_text(&runs, MATH_A);
+  let denominator = run_with_text(&runs, MATH_B);
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  let size = reference.run.font_size;
+  let thickness = stix_math_length(MathConstant::FractionRuleThickness, size);
+  assert_eq!(
+    numerator.run.font_size,
+    stix_scaled_size(MathConstant::ScriptPercentScaleDown, size),
+    "text 段の分子は script 段"
+  );
+  assert_eq!(denominator.run.font_size, numerator.run.font_size);
+  assert_eq!(rule.top - rule.bottom, thickness);
+  assert_eq!(
+    rule.bottom - reference.dy,
+    stix_math_length(MathConstant::AxisHeight, size) - thickness / 2.0,
+    "罫の中心は数式軸"
+  );
+  let (_, numerator_depth) = stix_ink_extent(numerator);
+  let (denominator_height, _) = stix_ink_extent(denominator);
+  assert_eq!(numerator.dy - reference.dy, expected_numerator_shift(size, false, numerator_depth));
+  assert_eq!(reference.dy - denominator.dy, expected_denominator_shift(size, false, denominator_height));
+  assert_eq!(rule.width, numerator.width.max(denominator.width), "罫は分子・分母の幅の最大");
+  assert_eq!(numerator.dx - rule.dx, ((rule.width - numerator.width) / 2.0f32).max(Length::ZERO), "分子は中央");
+  assert_eq!(
+    denominator.dx - rule.dx,
+    ((rule.width - denominator.width) / 2.0f32).max(Length::ZERO),
+    "分母は中央"
+  );
+  assert_eq!(rule.dx - (reference.dx + reference.width), FRACTION_PADDING, "罫の前に左のアキ");
+}
+
+#[test]
+fn display_fraction_uses_display_style_constants_and_text_size_parts() {
+  let (runs, rules) = display_parts("\\begin{equation}\nx\\frac{y}{d}\n\\end{equation}\n");
+
+  let reference = run_with_text(&runs, MATH_X);
+  let numerator = run_with_text(&runs, MATH_Y);
+  let denominator = run_with_text(&runs, MATH_D);
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  let size = reference.run.font_size;
+  assert_eq!(numerator.run.font_size, size, "display 段の分子は text 段で縮めない");
+  let (_, numerator_depth) = stix_ink_extent(numerator);
+  let gap_rule = stix_math_length(MathConstant::AxisHeight, size)
+    + stix_math_length(MathConstant::FractionRuleThickness, size) / 2.0
+    + stix_math_length(MathConstant::FractionNumDisplayStyleGapMin, size)
+    + numerator_depth;
+  assert!(
+    gap_rule > stix_math_length(MathConstant::FractionNumeratorDisplayStyleShiftUp, size),
+    "𝑦 の深いインクでは display のギャップの下限が標準のシフトを上回る（入力の前提）"
+  );
+  assert_eq!(numerator.dy - reference.dy, gap_rule);
+  let (denominator_height, _) = stix_ink_extent(denominator);
+  assert_eq!(reference.dy - denominator.dy, expected_denominator_shift(size, true, denominator_height));
+  assert_eq!(rule.top - rule.bottom, stix_math_length(MathConstant::FractionRuleThickness, size));
+}
+
+#[test]
+fn fraction_in_a_display_superscript_uses_text_constants_at_script_size() {
+  let (runs, rules) = display_parts("\\begin{equation}\nx^{\\frac{a}{b}}\n\\end{equation}\n");
+
+  let reference = run_with_text(&runs, MATH_X);
+  let numerator = run_with_text(&runs, MATH_A);
+  let denominator = run_with_text(&runs, MATH_B);
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  let size = reference.run.font_size;
+  let script = stix_scaled_size(MathConstant::ScriptPercentScaleDown, size);
+  assert_eq!(numerator.run.font_size, stix_scaled_size(MathConstant::ScriptScriptPercentScaleDown, size));
+  assert_eq!(
+    rule.top - rule.bottom,
+    stix_math_length(MathConstant::FractionRuleThickness, script),
+    "罫の太さは分数の段（script）の大きさ"
+  );
+  let (_, numerator_depth) = stix_ink_extent(numerator);
+  let (denominator_height, _) = stix_ink_extent(denominator);
+  assert_eq!(
+    numerator.dy - denominator.dy,
+    expected_numerator_shift(script, false, numerator_depth)
+      + expected_denominator_shift(script, false, denominator_height),
+    "上付きの中の分数は display の定数を使わない"
+  );
+}
+
+#[test]
+fn nested_fraction_draws_a_thinner_inner_rule() {
+  let (runs, rules) = first_line_parts("$y\\frac{\\frac{a}{b}}{c}$\n");
+
+  let size = run_with_text(&runs, MATH_Y).run.font_size;
+  // 収集は出現順で、外側の分数の子は 分子（内側の分数）→ 分母 → 罫 の順
+  let [inner, outer] = rules.as_slice() else {
+    panic!("罫は 2 本のはず: {} 本", rules.len());
+  };
+  let script = stix_scaled_size(MathConstant::ScriptPercentScaleDown, size);
+  assert_eq!(inner.top - inner.bottom, stix_math_length(MathConstant::FractionRuleThickness, script));
+  assert_eq!(outer.top - outer.bottom, stix_math_length(MathConstant::FractionRuleThickness, size));
+  let denominator = run_with_text(&runs, "\u{1D450}");
+  assert_eq!(
+    outer.width,
+    (inner.width + FRACTION_PADDING + FRACTION_PADDING).max(denominator.width),
+    "外側の罫は 内側の分数（両側のアキ込み）と分母 𝑐 の幅の最大"
+  );
+}
+
+#[test]
+fn adjacent_fraction_rules_do_not_touch() {
+  let (_, rules) = first_line_parts("$\\frac{a}{b}\\frac{c}{d}$\n");
+
+  let [first, second] = rules.as_slice() else {
+    panic!("罫は 2 本のはず: {} 本", rules.len());
+  };
+  assert_eq!(
+    second.dx - (first.dx + first.width),
+    FRACTION_PADDING + FRACTION_PADDING,
+    "左右のアキの和だけ離れる"
+  );
+}
+
+#[test]
+fn superscript_in_a_denominator_uses_the_cramped_shift() {
+  let runs = first_line_runs("$\\frac{x^{2}}{x^{2}}$\n");
+
+  let bases: Vec<&LineRun> = runs.iter().filter(|line_run| return line_run.run.text == MATH_X).collect();
+  let sups: Vec<&LineRun> = runs.iter().filter(|line_run| return line_run.run.text == "2").collect();
+  let ([numerator, denominator], [numerator_sup, denominator_sup]) = (bases.as_slice(), sups.as_slice()) else {
+    panic!("𝑥 と 2 が分子・分母に 1 つずつのはず");
+  };
+  let size = numerator.run.font_size;
+  // script 段の 𝑥 は ssty 字形（インク −10..517）。517 − SuperscriptBaselineDropMax 230 = 287 は cramped のシフト 252 と
+  // 標準のシフト 360 の間なので、cramped かどうかで結果が分かれる
+  let (base_height, _) = stix_ink_extent(numerator);
+  let (_, sup_depth) = stix_ink_extent(numerator_sup);
+  let normal = expected_superscript_shift(size, false, base_height, sup_depth);
+  let cramped = expected_superscript_shift(size, true, base_height, sup_depth);
+  assert_ne!(normal, cramped, "入力の前提: cramped かどうかでシフトが変わる");
+  assert_eq!(numerator_sup.dy - numerator.dy, normal, "分子は cramped でない");
+  assert_eq!(denominator_sup.dy - denominator.dy, cramped, "分母は cramped");
+}
+
+#[test]
+fn fraction_rule_is_painted_as_a_filled_rect() {
+  let compilation = TestProject::builder()
+    .source_text("$y\\frac{a}{b}$\n")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("分数の compile は成功するはず: {:?}", failure.into_report()));
+
+  let ops: Vec<&PaintOp> = compilation.publication.pages().iter().flat_map(|page| return page.ops()).collect();
+  let size = ops
+    .iter()
+    .find_map(|op| match op {
+      PaintOp::DrawGlyphRun { run, .. } if run.text == MATH_Y => return Some(run.font_size),
+      _ => return None,
+    })
+    .expect("𝑦 のグリフ列があるはず");
+  let heights: Vec<f32> = ops
+    .iter()
+    .filter_map(|op| match op {
+      PaintOp::FillRect { rect, color: None } => return Some(rect.height()),
+      _ => return None,
+    })
+    .collect();
+  assert!(
+    heights.contains(&stix_math_length(MathConstant::FractionRuleThickness, size).to_pt()),
+    "罫は太さ FractionRuleThickness の黒の塗りつぶし矩形になる: {heights:?}"
+  );
+}
+
+#[test]
+fn empty_fraction_compiles_with_a_zero_width_rule() {
+  let (_, rules) = first_line_parts("$\\frac{}{}$\n");
+
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  assert_eq!(rule.width, Length::ZERO);
+  TestProject::builder()
+    .source_text("$\\frac{}{}$\n")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("空の分数も描画矩形を作れて compile は成功するはず: {:?}", failure.into_report()));
+}
+
+/// 根号記号 √（U+221A）
+const RADICAL_SIGN: &str = "\u{221A}";
+
+#[test]
+fn radical_vinculum_continues_the_top_of_the_surd_over_the_radicand() {
+  let (runs, rules) = first_line_parts("$\\sqrt{x}$\n");
+
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let radicand = run_with_text(&runs, MATH_X);
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  let size = radicand.run.font_size;
+  let (surd_top, surd_bottom) = stix_run_ink(&surd.run);
+  let thickness = stix_math_length(MathConstant::RadicalRuleThickness, size);
+  assert_eq!(surd.run.font_size, size, "根号記号は被根号の段の大きさのまま縦にだけ伸ばす");
+  assert_eq!(rule.top, surd.dy + surd_top, "横線の上端は根号記号のインクの上端");
+  assert_eq!(rule.top - rule.bottom, thickness);
+  assert_eq!(rule.dx, surd.dx + surd.width, "横線は記号の送り幅の位置から");
+  assert_eq!(rule.width, radicand.width, "横線は被根号の幅");
+  assert_eq!(radicand.dx, rule.dx);
+  let (height, depth) = stix_ink_extent(radicand);
+  let gap = stix_math_length(MathConstant::RadicalVerticalGap, size);
+  let target = height + depth + gap + thickness;
+  let excess = ((surd_top - surd_bottom) - target).max(Length::ZERO);
+  assert!(excess.is_positive(), "元の √（1187 単位）は 𝑥 の目標を超える（入力の前提）");
+  assert_eq!(rule.bottom - radicand.dy, height + gap + excess / 2.0, "余りの半分をギャップへ足す");
+}
+
+#[test]
+fn tall_radicand_stretches_the_surd_to_cover_it() {
+  let (inline_runs, _) = first_line_parts("$\\sqrt{x}$\n");
+  let (runs, _) = display_parts("\\begin{equation}\n\\sqrt{\\frac{a}{b}}\n\\end{equation}\n");
+
+  let natural = run_with_text(&inline_runs, RADICAL_SIGN);
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let denominator = run_with_text(&runs, MATH_B);
+  assert_ne!(
+    surd.run.glyphs[0].gid, natural.run.glyphs[0].gid,
+    "表示数式の分数を覆うには元の字形では足りず size variant か glyph assembly になる"
+  );
+  let (_, surd_bottom) = stix_run_ink(&surd.run);
+  let (_, denominator_bottom) = stix_run_ink(&denominator.run);
+  assert!(
+    surd.dy + surd_bottom <= denominator.dy + denominator_bottom,
+    "伸ばした記号は分母のインクの底まで届く"
+  );
+}
+
+#[test]
+fn display_radical_uses_the_display_gap() {
+  let (runs, rules) = display_parts("\\begin{equation}\n\\sqrt{x}\n\\end{equation}\n");
+
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let radicand = run_with_text(&runs, MATH_X);
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  let size = radicand.run.font_size;
+  let (surd_top, surd_bottom) = stix_run_ink(&surd.run);
+  let (height, depth) = stix_ink_extent(radicand);
+  let gap = stix_math_length(MathConstant::RadicalDisplayStyleVerticalGap, size);
+  let target = height + depth + gap + stix_math_length(MathConstant::RadicalRuleThickness, size);
+  let excess = ((surd_top - surd_bottom) - target).max(Length::ZERO);
+  assert_eq!(rule.bottom - radicand.dy, height + gap + excess / 2.0);
+}
+
+#[test]
+fn narrow_degree_sits_right_above_the_surd() {
+  let runs = first_line_runs("$\\sqrt[3]{x}$\n");
+
+  let degree = run_with_text(&runs, "3");
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let size = run_with_text(&runs, MATH_X).run.font_size;
+  assert_eq!(
+    degree.run.font_size,
+    stix_scaled_size(MathConstant::ScriptScriptPercentScaleDown, size),
+    "指数は scriptscript 段"
+  );
+  assert!(
+    stix_math_length(MathConstant::RadicalKernAfterDegree, size) < -degree.width,
+    "STIX の後の kern（−335 単位）は 1 文字の指数の幅より負に大きい（入力の前提）"
+  );
+  assert_eq!(surd.dx, degree.dx, "後の kern は −指数の幅で止まり、記号は指数の左端から始まる");
+}
+
+#[test]
+fn wide_degree_pushes_the_surd_right_by_the_kerns() {
+  let runs = first_line_runs("$\\sqrt[100]{x}$\n");
+
+  let degree = run_with_text(&runs, "100");
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let size = run_with_text(&runs, MATH_X).run.font_size;
+  let after = stix_math_length(MathConstant::RadicalKernAfterDegree, size);
+  assert!(after > -degree.width, "3 文字の指数は後の kern より広い（入力の前提）");
+  assert_eq!(surd.dx - degree.dx, degree.width + after);
+}
+
+#[test]
+fn degree_bottom_rises_by_the_percent_of_the_radical_height() {
+  let (runs, rules) = first_line_parts("$\\sqrt[3]{x}$\n");
+
+  let degree = run_with_text(&runs, "3");
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let radicand = run_with_text(&runs, MATH_X);
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  let size = radicand.run.font_size;
+  let (_, surd_bottom) = stix_run_ink(&surd.run);
+  let (_, radicand_depth) = stix_ink_extent(radicand);
+  let (_, degree_depth) = stix_ink_extent(degree);
+  let ascent = rule.top - radicand.dy + stix_math_length(MathConstant::RadicalExtraAscender, size);
+  let descent = radicand_depth.max(-(surd_bottom + surd.dy - radicand.dy));
+  let (percent, _) = stix_math_constant(MathConstant::RadicalDegreeBottomRaisePercent);
+  assert_eq!(
+    degree.dy - radicand.dy,
+    -descent + (ascent + descent).scale(f64::from(percent) / 100.0) + degree_depth,
+    "指数のインクの底は 根号の下端 + 根号の高さ × RadicalDegreeBottomRaisePercent"
+  );
+}
+
+#[test]
+fn empty_radical_compiles_with_a_zero_width_vinculum() {
+  let (_, rules) = first_line_parts("$\\sqrt{}$\n");
+
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  assert_eq!(rule.width, Length::ZERO);
+  TestProject::builder()
+    .source_text("$\\sqrt{}$\n")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("空の根号も描画矩形を作れて compile は成功するはず: {:?}", failure.into_report()));
 }
 
 #[test]

@@ -187,6 +187,20 @@ pub(super) enum FontValidationErrorKind {
     /// フォントに書かれた値（百分率）
     value: i32,
   },
+  /// MATH の罫の太さ（`FractionRuleThickness` / `RadicalRuleThickness`）が負。
+  #[error("MATH テーブルの {constant} が {value} です。罫の太さは 0 以上である必要があります。")]
+  #[diagnostic(
+    code(typeset::font::validation::negative_rule_thickness),
+    help(
+      "フォントファイルが破損していないか確認してください。MATH テーブルを持つ数式フォント（STIX Two Math / Latin Modern Math 等）を指定してください。"
+    )
+  )]
+  NegativeRuleThickness {
+    /// 違反した定数の OpenType 仕様上の名前
+    constant: &'static str,
+    /// フォントに書かれた値（フォント単位）
+    value: i32,
+  },
 }
 
 /// フォント設定の警告（組版は続行できるが、ユーザーが設定かフォントを直したほうがよい問題）。
@@ -393,7 +407,7 @@ fn has_table_record(font_ref: &FontRef<'_>, tag: Tag) -> bool {
 /// [`FontValidationErrorKind::TableRecordOutOfRange`]、ディレクトリがタグ順でなければ
 /// [`FontValidationErrorKind::UnsortedTableDirectory`]、いずれかのサブテーブルを読めなければ最初に見つけた
 /// 1 件を [`FontValidationErrorKind::UnreadableMathTable`] で返す。スクリプトの縮小率が正でなければ
-/// [`FontValidationErrorKind::NonPositiveScaleDown`]。
+/// [`FontValidationErrorKind::NonPositiveScaleDown`]。罫の太さが負なら [`FontValidationErrorKind::NegativeRuleThickness`]。
 fn check_math_table<'a>(
   font_ref: &FontRef<'_>,
   tables: &impl TableProvider<'a>,
@@ -420,6 +434,19 @@ fn check_math_table<'a>(
     let value = constants.constant(constant);
     if value <= 0 {
       return Err(FontValidationErrorKind::NonPositiveScaleDown {
+        constant: name,
+        value,
+      });
+    }
+  }
+
+  for (name, constant) in [
+    ("FractionRuleThickness", MathConstant::FractionRuleThickness),
+    ("RadicalRuleThickness", MathConstant::RadicalRuleThickness),
+  ] {
+    let value = constants.constant(constant);
+    if value < 0 {
+      return Err(FontValidationErrorKind::NegativeRuleThickness {
         constant: name,
         value,
       });
@@ -925,6 +952,19 @@ mod tests {
     return math_table_with_scale_down(70, 55, glyph_info, variants);
   }
 
+  /// 罫の太さ（`FractionRuleThickness` / `RadicalRuleThickness`）だけを差し替えた MATH テーブルのバイト列を組む。
+  ///
+  /// `MathConstants` は MATH の先頭から 10 バイト目に始まり、int16 ×2 + uint16 ×2 の 8 バイトの後に `MathValueRecord`
+  /// （4 バイト）が仕様の順に並ぶ。`FractionRuleThickness` は 34 番目、`RadicalRuleThickness` は 47 番目（0 起点）。
+  fn math_table_with_rule_thickness(fraction: i16, radical: i16) -> Vec<u8> {
+    let mut bytes = math_table(&EMPTY_GLYPH_INFO, &EMPTY_VARIANTS);
+    for (index, value) in [(34usize, fraction), (47, radical)] {
+      let at = 10 + 8 + 4 * index;
+      bytes[at..at + 2].copy_from_slice(&value.to_be_bytes());
+    }
+    return bytes;
+  }
+
   /// `math` を MATH テーブルとして持つ sfnt を数式フォントとして検証し、違反を返す。
   fn validate_math_font(math: &[u8]) -> Vec<FontValidationErrorKind> {
     let bytes = sfnt_with_table(*b"MATH", math);
@@ -972,6 +1012,28 @@ mod tests {
       };
       assert_eq!(*constant, expected);
     }
+  }
+
+  #[test]
+  fn negative_rule_thickness_is_rejected() {
+    for (fraction, radical, expected) in [
+      (-1, 68, "FractionRuleThickness"),
+      (68, -1, "RadicalRuleThickness"),
+    ] {
+      let errors = validate_math_font(&math_table_with_rule_thickness(fraction, radical));
+
+      let [FontValidationErrorKind::NegativeRuleThickness { constant, .. }] = errors.as_slice() else {
+        panic!("NegativeRuleThickness が 1 件だけ出るはず: {errors:?}");
+      };
+      assert_eq!(*constant, expected);
+    }
+  }
+
+  #[test]
+  fn zero_rule_thickness_is_valid() {
+    let errors = validate_math_font(&math_table_with_rule_thickness(0, 0));
+
+    assert!(errors.is_empty(), "太さ 0 の罫は描かない罫として組めるので受理する: {errors:?}");
   }
 
   #[test]

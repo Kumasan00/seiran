@@ -89,6 +89,7 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
       .iter()
       .filter_map(|child| return max_font_size_in_content(&child.hbox.content))
       .reduce(Length::max),
+    HBoxContent::Rule => None,
   };
 }
 
