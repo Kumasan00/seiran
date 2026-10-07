@@ -400,11 +400,17 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Symbol { ch, class } => {
       let mut translated = String::new();
       push_math_char(&mut translated, *ch, ctx.variant);
-      items.push(spacing::MathItem::new(
-        *class,
-        spacing::symbol_fence(*class),
-        vec![AtomNode::Text(translated, ctx.text_style(*class))],
-      ));
+      // 記号表で Op クラスを持つのは大型演算子だけ。display の大きさの字形にするのは display 段だけで、text 段以下は
+      // 通常のテキスト（MathML Core の largeop は math-style が normal のときだけ効く）
+      let node = if *class == MathClass::Op && ctx.style.level == StyleLevel::Display {
+        AtomNode::LargeOperator {
+          symbol: translated,
+          font_size: ctx.font_size(),
+        }
+      } else {
+        AtomNode::Text(translated, ctx.text_style(*class))
+      };
+      items.push(spacing::MathItem::new(*class, spacing::symbol_fence(*class), vec![node]));
     },
     HirMathKind::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
@@ -499,6 +505,17 @@ mod tests {
         AtomNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
         AtomNode::Fraction(fraction) => out.extend(fraction_texts(fraction)),
         AtomNode::Radical(radical) => out.extend(radical_texts(radical)),
+        // 大型演算子は text 段以下で組んだときと同じ演算子のテキストとして数える
+        AtomNode::LargeOperator { symbol, font_size } => out.push((
+          symbol.clone(),
+          TextStyle {
+            font_size: *font_size,
+            typeface: Typeface::Math,
+            color: None,
+            script_level: None,
+            math_operator: true,
+          },
+        )),
       }
     }
     return out;
@@ -1270,6 +1287,44 @@ mod tests {
         right: Some("]")
       },
       "matrix の delimiter=bracket は角括弧で囲む"
+    );
+  }
+
+  #[test]
+  fn display_large_operator_is_lowered_for_the_display_size() {
+    let block = math_block_of("\\begin{equation}\n\\sum x\n\\end{equation}\n");
+
+    let cell = &block.rows[0].cells[0].content;
+    assert!(
+      matches!(
+        cell.first(),
+        Some(AtomNode::LargeOperator { symbol, font_size })
+          if symbol == "\u{2211}" && *font_size == ReadStyle::default().text.font_size
+      ),
+      "表示数式のトップレベルの Op は display 段の大型演算子: {cell:?}"
+    );
+  }
+
+  #[test]
+  fn large_operator_below_the_display_level_stays_text() {
+    let inline = math_texts(&lower_math_source("$\\sum x$\n"));
+    assert!(
+      matches!(inline.first(), Some((text, style)) if text == "\u{2211}" && style.math_operator),
+      "インライン数式の Op は演算子の Text のまま: {inline:?}"
+    );
+
+    let cases = math_block_of("\\begin{cases}\n\\sum x & y\n\\end{cases}\n");
+    assert!(
+      matches!(cases.rows[0].cells[0].content.first(), Some(AtomNode::Text(text, _)) if text == "\u{2211}"),
+      "cases のセルは text 段: {:?}",
+      cases.rows[0].cells[0].content
+    );
+
+    let fraction = math_block_of("\\begin{equation}\n\\frac{\\sum x}{2}\n\\end{equation}\n");
+    let numerator = &atom_fraction(&fraction.rows[0].cells[0].content).numerator;
+    assert!(
+      matches!(numerator.first(), Some(AtomNode::Text(text, _)) if text == "\u{2211}"),
+      "display の分子は text 段: {numerator:?}"
     );
   }
 }

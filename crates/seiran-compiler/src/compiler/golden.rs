@@ -77,6 +77,10 @@
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
 //!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
+//! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・text 段は不変）:
+//!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
+//!   [`inline_large_operator_keeps_the_text_glyph_on_the_baseline`] /
+//!   [`display_integral_pulls_its_subscript_back_by_the_display_glyph_correction`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -1786,6 +1790,64 @@ fn cursor_after_scripts_follows_the_farther_script() {
   // ∫ は Op、y は Ord なので間に細アキ（3mu = 本文サイズの 3/18）が入る
   let thin_space = (base.run.font_size * 3) / 18.0f64;
   assert_eq!(next.dx, sub_end + space + thin_space, "後続は最も遠いスクリプトの右端 + SpaceAfterScript + 細アキ");
+}
+
+/// N-ARY SUMMATION（U+2211）
+const SUM: &str = "\u{2211}";
+
+/// N-ARY INTERSECTION（U+22C2）
+const BIG_CAP: &str = "\u{22C2}";
+
+/// INTEGRAL（U+222B）
+const INTEGRAL: &str = "\u{222B}";
+
+/// 本文 `source` の最初の行で、テキストが `text` のグリフ列（1 グリフ）の gid。
+fn inline_gid(source: &str, text: &str) -> u32 { return sole_glyph(run_with_text(&first_line_runs(source), text)).0; }
+
+#[test]
+fn display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis() {
+  for (command, symbol) in [("sum", SUM), ("bigcap", BIG_CAP), ("int", INTEGRAL)] {
+    let (runs, _) = display_parts(&format!("\\begin{{equation}}\n\\{command} x\n\\end{{equation}}\n"));
+
+    let operator = run_with_text(&runs, symbol);
+    let (gid, _) = sole_glyph(operator);
+    let size = run_with_text(&runs, MATH_X).run.font_size;
+    assert_eq!(operator.run.font_size, size, "フォントサイズは変えずに字形を替える: {command}");
+    assert_ne!(gid, inline_gid(&format!("$\\{command}$\n"), symbol), "text 段の字形より大きい字形: {command}");
+    let (top, bottom) = stix_run_ink(&operator.run);
+    let center = operator.dy + (top + bottom) / 2.0;
+    let axis = stix_math_length(MathConstant::AxisHeight, size);
+    assert!(
+      (center - axis).abs() <= Length::from_sp(1),
+      "インクの縦中央 {center:?} が数式軸 {axis:?} に載る: {command}"
+    );
+  }
+}
+
+#[test]
+fn inline_large_operator_keeps_the_text_glyph_on_the_baseline() {
+  let runs = first_line_runs("$\\sum x$\n");
+
+  assert_eq!(
+    run_with_text(&runs, SUM).dy,
+    Length::ZERO,
+    "text 段の大型演算子は軸に合わせず本文のベースラインのまま"
+  );
+}
+
+#[test]
+fn display_integral_pulls_its_subscript_back_by_the_display_glyph_correction() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\int_{a}^{n} x\n\\end{equation}\n");
+
+  let base = run_with_text(&runs, INTEGRAL);
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, MATH_A);
+  let (gid, _) = sole_glyph(base);
+  assert_ne!(gid, inline_gid("$\\int$\n", INTEGRAL), "display 段の字形（テストの前提）");
+  let correction = stix_units(stix_italics_correction(gid), base.run.font_size);
+  assert!(correction > Length::ZERO, "display 段の ∫ は補正を持つ（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width, "上付きは基底の右端");
+  assert_eq!(sub.dx, base.dx + base.width - correction, "下付きは display の字形の補正ぶん手前");
 }
 
 #[test]
