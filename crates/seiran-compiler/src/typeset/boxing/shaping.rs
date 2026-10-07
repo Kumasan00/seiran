@@ -457,6 +457,8 @@ impl<'a> Shaper<'a> {
       let inner = match &placed.hbox.content {
         HBoxContent::Glyphs(run) => self.glyph_run_signed_ink(run),
         HBoxContent::Atom(children) => self.signed_ink(children),
+        // 罫は箱全体が墨
+        HBoxContent::Rule => Some((placed.hbox.height, -placed.hbox.depth)),
       };
       let Some((top, bottom)) = inner else {
         continue;

@@ -12,6 +12,10 @@
 //! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
+//!
+//! 分数（`MathFraction`）の配置は子 module `fraction` が行う。
+
+mod fraction;
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
