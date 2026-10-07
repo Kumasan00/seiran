@@ -10,13 +10,11 @@
 //! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
 //! 横位置は基底の末尾グリフのイタリック補正で決める（上付きは基底の右端、下付きは補正ぶん戻す — 演算子でない基底は補正が
 //! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
-//!
-//! 分数と根号の配置は子 module `fraction` / `radical` が持ち、どちらも閉じた Atom 1 つに組む（横罫・横線は
-//! `HBoxContent::Rule`）。
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
 //!
-//! 分数（`MathFraction`）の配置は子 module `fraction`、根号（`MathRadical`）の配置は子 module `radical` が行う。
+//! 分数（`MathFraction`）と根号（`MathRadical`）の配置は子 module `fraction` / `radical` が行い、
+//! どちらも閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
 
 mod fraction;
 mod radical;
