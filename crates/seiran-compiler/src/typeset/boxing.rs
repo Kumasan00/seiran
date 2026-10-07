@@ -378,7 +378,11 @@ impl<'a> Measurer<'a> {
           *dx += length;
         },
         AtomNode::Scripts(scripts) => {
-          self.place_scripts(scripts, dy, dx, out);
+          if scripts.limits {
+            self.place_limits(scripts, dy, dx, out);
+          } else {
+            self.place_scripts(scripts, dy, dx, out);
+          }
         },
         AtomNode::Fraction(fraction) => {
           self.place_fraction(fraction, dy, dx, out);

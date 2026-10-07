@@ -402,15 +402,15 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       push_math_char(&mut translated, *ch, ctx.variant);
       // 記号表で Op クラスを持つのは大型演算子だけ。display の大きさの字形にするのは display 段だけで、text 段以下は
       // 通常のテキスト（MathML Core の largeop は math-style が normal のときだけ効く）
-      let node = if *class == MathClass::Op && ctx.style.level == StyleLevel::Display {
-        AtomNode::LargeOperator {
-          symbol: translated,
-          font_size: ctx.font_size(),
-        }
+      if *class == MathClass::Op && ctx.style.level == StyleLevel::Display {
+        items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(*ch)));
       } else {
-        AtomNode::Text(translated, ctx.text_style(*class))
-      };
-      items.push(spacing::MathItem::new(*class, spacing::symbol_fence(*class), vec![node]));
+        items.push(spacing::MathItem::new(
+          *class,
+          spacing::symbol_fence(*class),
+          vec![AtomNode::Text(translated, ctx.text_style(*class))],
+        ));
+      }
     },
     HirMathKind::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
@@ -474,6 +474,14 @@ fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacin
       vec![AtomNode::Text(translated, ctx.text_style(class))],
     ));
   }
+}
+
+/// 大型演算子 `ch` が display 段で上付き・下付きを上下に積むか（`MathML Core` の演算子辞書の movablelimits）
+///
+/// 辞書で movablelimits を持たない大型演算子は積分記号（U+222B〜U+2233・U+2A0B〜U+2A1C）だけで、display 段でも肩・添字に
+/// 置く（TeX の `\int` の `\nolimits` と同じ）。
+const fn has_movable_limits(ch: char) -> bool {
+  return !matches!(ch, '\u{222B}'..='\u{2233}' | '\u{2A0B}'..='\u{2A1C}');
 }
 
 #[cfg(test)]
@@ -1288,6 +1296,50 @@ mod tests {
       },
       "matrix の delimiter=bracket は角括弧で囲む"
     );
+  }
+
+  /// 表示数式 1 セルの先頭のスクリプト付きの基底（Atom ノード列から）
+  fn first_atom_scripts(nodes: &[AtomNode]) -> &MathScripts {
+    let Some(AtomNode::Scripts(scripts)) = nodes.first() else {
+      panic!("先頭はスクリプト付きの基底のはず: {nodes:?}");
+    };
+    return scripts;
+  }
+
+  #[test]
+  fn display_operator_with_movable_limits_stacks_its_scripts() {
+    let block = math_block_of("\\begin{equation}\n\\sum_{x^{2}}^{y^{2}} z\n\\end{equation}\n");
+
+    let scripts = first_atom_scripts(&block.rows[0].cells[0].content);
+    assert!(scripts.limits, "{scripts:?}");
+    assert!(matches!(scripts.base.as_slice(), [AtomNode::LargeOperator { .. }]), "{scripts:?}");
+    // 上限・下限の中身は display 段の上付き・下付きと同じ段（script）。下限は cramped、上限は親を継承
+    let over = first_atom_scripts(scripts.superscript.as_deref().expect("上限があるはず"));
+    let under = first_atom_scripts(scripts.subscript.as_deref().expect("下限があるはず"));
+    assert!(!over.cramped, "上限の中は cramped でない");
+    assert!(under.cramped, "下限の中は cramped");
+    assert_eq!(over.font_size, ReadStyle::default().text.font_size.scale(0.7), "上限は script 段");
+  }
+
+  #[test]
+  fn operators_below_display_or_without_movable_limits_keep_scripts_at_the_shoulder() {
+    let sources = [
+      "\\begin{equation}\n\\int_{a}^{b} x\n\\end{equation}\n",
+      "\\begin{equation}\n{\\sum}_{i} x\n\\end{equation}\n",
+      "\\begin{cases}\n\\sum_{i}^{n} x & y\n\\end{cases}\n",
+    ];
+    for source in sources {
+      let block = math_block_of(source);
+
+      assert!(!first_atom_scripts(&block.rows[0].cells[0].content).limits, "肩・添字: {source}");
+    }
+
+    let fraction = math_block_of("\\begin{equation}\n\\frac{\\sum_{i}^{n}}{2}\n\\end{equation}\n");
+    let numerator = &atom_fraction(&fraction.rows[0].cells[0].content).numerator;
+    assert!(!first_atom_scripts(numerator).limits, "display の分子は text 段で肩・添字: {numerator:?}");
+
+    let inline = lower_math_source("$\\sum_{i}^{n}$\n");
+    assert!(!first_scripts(&inline).limits, "インライン数式は肩・添字");
   }
 
   #[test]

@@ -263,8 +263,9 @@ impl DelimiterGlyphs {
 
 /// 基底に付けた上付き・下付き
 ///
-/// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。上付き・下付きは
-/// どちらも基底の右端から始まる。上付き・下付きの少なくとも一方は `Some`（`spacing::attach` だけが作り、片側を必ず埋める）。
+/// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。`limits` が偽なら
+/// 上付き・下付きはどちらも基底の右端から始まり（肩・添字）、真なら基底の真上・真下に中央を揃えて積む。上付き・下付きの
+/// 少なくとも一方は `Some`（`spacing::attach` だけが作り、片側を必ず埋める）。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathScripts {
   /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループ）
@@ -277,6 +278,9 @@ pub(in crate::typeset) struct MathScripts {
   pub font_size: Length,
   /// 基底の数式スタイルが cramped か（上付きのシフトに `SuperscriptShiftUpCramped` を使う）
   pub cramped: bool,
+  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子 1 つのときだけ真。真なら
+  /// `cramped` は使わない）
+  pub limits: bool,
 }
 
 /// 分子と分母を横罫の上下に積む分数

@@ -13,11 +13,13 @@
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
 //!
-//! 分数（`MathFraction`）・根号（`MathRadical`）・display 段の大型演算子（`AtomNode::LargeOperator`）の配置は子 module
-//! `fraction` / `radical` / `large_operator` が行い、分数・根号は閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
+//! 分数（`MathFraction`）・根号（`MathRadical`）・display 段の大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・
+//! 下付き（`MathScripts` の `limits` が真）の配置は子 module `fraction` / `radical` / `large_operator` / `limits` が行い、
+//! 分数・根号は閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
 
 mod fraction;
 mod large_operator;
+mod limits;
 mod radical;
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
@@ -314,6 +316,8 @@ impl Measurer<'_> {
       subscript,
       font_size,
       cramped,
+      // 上下に積むものは place_atom_children が place_limits へ振り分け済み
+      limits: _,
     } = scripts;
     let constants = ScriptConstants::new(&self.shaper, font_size);
     let base = self.detach(base);
