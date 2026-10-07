@@ -371,6 +371,22 @@ mod tests {
   }
 
   #[test]
+  fn op_class_symbols_are_all_large_operators() {
+    // typeset の lowering は Op クラスの記号を display 段で大型演算子として伸ばし、範囲を上下に積む。Op を持てるのは
+    // MathML Core の演算子辞書で largeop を持つ文字（総和・積分・n 項の集合演算子の区画）だけ
+    let is_large_operator = |ch: char| return matches!(ch, '\u{220F}'..='\u{2211}' | '\u{222B}'..='\u{2233}' | '\u{22C0}'..='\u{22C3}' | '\u{2A00}'..='\u{2A1C}');
+    for (name, symbol) in &SYMBOLS {
+      if symbol.class == MathClass::Op {
+        assert!(
+          is_large_operator(symbol.ch),
+          "Op クラスの記号は大型演算子のはず: {name} (U+{:04X})",
+          u32::from(symbol.ch)
+        );
+      }
+    }
+  }
+
+  #[test]
   fn no_key_collision_between_commands_and_symbols() {
     for key in SYMBOLS.keys() {
       assert!(!COMMANDS.contains_key(key), "COMMANDS と SYMBOLS にキーが重複しています: {key}");
