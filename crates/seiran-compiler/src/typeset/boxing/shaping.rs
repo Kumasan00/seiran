@@ -326,6 +326,11 @@ impl<'a> Shaper<'a> {
     return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
   }
 
+  /// 数式フォントの百分率の MATH 定数（`RadicalDegreeBottomRaisePercent` 等）を比にした値
+  pub(super) fn math_ratio(&self, constant: MathConstant) -> f64 {
+    return f64::from(self.fonts.math_constants().constant(constant)) / 100.0;
+  }
+
   /// 数式フォントのグリフ `gid` のイタリック補正の、フォントサイズ `font_size` での長さ（登録が無ければ 0）
   pub(super) fn italic_correction(&self, gid: u32, font_size: Length) -> Length {
     let units = self.fonts.math_italics_correction(gid);
@@ -362,14 +367,19 @@ impl<'a> Shaper<'a> {
     return ShapedRun::measure(run, metrics);
   }
 
-  /// 区切り括弧 1 字 `text` を数式フォントで縦に `target` 以上へ伸ばした箱と、そのインクの縦中央（箱のベースライン
-  /// 基準・上が正）を返す。
+  /// 区切り括弧 1 字 `text` を数式フォントで縦に `target` 以上へ伸ばした箱と、そのインクの上端・下端（箱のベースライン
+  /// 基準・上が正・符号付き。インクを読めなければ 0, 0）を返す。
   ///
   /// フォントサイズは `font_size` のまま、字形を MATH の size variant か glyph assembly に替えて縦にだけ伸ばす。箱の
   /// 高さ・深さはインクの範囲（ベースラインの反対側へ出ない側は 0）で、フォント全体の ascender / descender ではない。
   /// glyph assembly の全パーツは `text` 全体を範囲に持つ 1 つのクラスタで、PDF のテキストとしては `text` 1 字になる。
   /// シェイプで 1 グリフにならない `text` は伸ばさずにそのまま置く。
-  pub(super) fn shape_vertical_delimiter(&mut self, text: &str, font_size: Length, target: Length) -> (HBox, Length) {
+  pub(super) fn shape_vertical_delimiter(
+    &mut self,
+    text: &str,
+    font_size: Length,
+    target: Length,
+  ) -> (HBox, (Length, Length)) {
     let upem = self.fonts.metrics(FontType::Math).upem;
     let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
     let glyphs = match shaped.glyphs() {
@@ -392,7 +402,7 @@ impl<'a> Shaper<'a> {
       height: top.max(Length::ZERO),
       depth: (-bottom).max(Length::ZERO),
     };
-    return (hbox, (top + bottom) / 2.0);
+    return (hbox, (top, bottom));
   }
 
   /// 数式フォントのグリフ `gid` を縦に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）

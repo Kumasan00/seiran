@@ -88,6 +88,8 @@ pub(in crate::typeset) enum InlineNode {
   Scripts(MathScripts),
   /// 分子と分母を横罫の上下に積んだ分数（インライン数式のトップレベル）
   Fraction(MathFraction),
+  /// 被根号に根号記号と横線を付けた根号（インライン数式のトップレベル）
+  Radical(MathRadical),
   /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
   ///
   /// 折り返さなければ `spacing` 幅のアキ、折り返せば何も出さない。
@@ -121,7 +123,7 @@ pub(in crate::typeset) enum InlineNode {
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
-/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数だけを持つ。
+/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -135,6 +137,8 @@ pub(in crate::typeset) enum AtomNode {
   Scripts(MathScripts),
   /// 分子と分母を横罫の上下に積んだ分数
   Fraction(MathFraction),
+  /// 被根号に根号記号と横線を付けた根号
+  Radical(MathRadical),
 }
 
 impl From<AtomNode> for InlineNode {
@@ -145,6 +149,7 @@ impl From<AtomNode> for InlineNode {
       AtomNode::Kern { length } => InlineNode::Kern { length },
       AtomNode::Scripts(scripts) => InlineNode::Scripts(scripts),
       AtomNode::Fraction(fraction) => InlineNode::Fraction(fraction),
+      AtomNode::Radical(radical) => InlineNode::Radical(radical),
     };
   }
 }
@@ -241,10 +246,10 @@ impl DelimiterGlyphs {
 /// 基底に付けた上付き・下付き
 ///
 /// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。上付き・下付きは
-/// どちらも基底の右端から始まる。上付き・下付きの少なくとも一方は `Some`（`spacing::attach` と根号の指数だけが作る）。
+/// どちらも基底の右端から始まる。上付き・下付きの少なくとも一方は `Some`（`spacing::attach` だけが作り、片側を必ず埋める）。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathScripts {
-  /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループや根号の指数）
+  /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループ）
   pub base: Vec<AtomNode>,
   /// 上付きの中身（`None` は上付きなし）
   pub superscript: Option<Vec<AtomNode>>,
@@ -268,6 +273,21 @@ pub(in crate::typeset) struct MathFraction {
   /// 分数の段のフォントサイズ（MATH 定数を長さへ換算する大きさ）
   pub font_size: Length,
   /// 分数の段が display か（MATH の `*DisplayStyle*` の定数を使う）
+  pub display: bool,
+}
+
+/// 被根号に根号記号と横線（vinculum）を付けた根号
+///
+/// 配置（根号記号の伸縮・横線の太さと位置・指数の位置）は計測寸法と数式フォントの MATH 定数から boxing が決める。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathRadical {
+  /// 指数（`\sqrt[n]{…}` の `n`。scriptscript 段で組んだもの。`None` は平方根）
+  pub degree: Option<Vec<AtomNode>>,
+  /// 被根号（根号の段・cramped で組んだもの）
+  pub radicand: Vec<AtomNode>,
+  /// 根号の段のフォントサイズ（MATH 定数の換算と根号記号のシェイプに使う大きさ）
+  pub font_size: Length,
+  /// 根号の段が display か（`RadicalDisplayStyleVerticalGap` を使う）
   pub display: bool,
 }
 

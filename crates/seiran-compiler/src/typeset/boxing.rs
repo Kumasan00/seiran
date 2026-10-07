@@ -288,6 +288,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Fraction(fraction) => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Fraction(fraction)])));
       },
+      InlineNode::Radical(radical) => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)])));
+      },
       InlineNode::MathBreak { spacing, penalty } => {
         out.push(HItem::MathBreak { spacing, penalty });
       },
@@ -376,6 +379,9 @@ impl<'a> Measurer<'a> {
         },
         AtomNode::Fraction(fraction) => {
           self.place_fraction(fraction, dy, dx, out);
+        },
+        AtomNode::Radical(radical) => {
+          self.place_radical(radical, dy, dx, out);
         },
       }
     }

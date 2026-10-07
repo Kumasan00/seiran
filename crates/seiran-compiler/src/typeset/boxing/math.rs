@@ -13,9 +13,10 @@
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
 //!
-//! 分数（`MathFraction`）の配置は子 module `fraction` が行う。
+//! 分数（`MathFraction`）の配置は子 module `fraction`、根号（`MathRadical`）の配置は子 module `radical` が行う。
 
 mod fraction;
+mod radical;
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
@@ -269,7 +270,8 @@ impl Measurer<'_> {
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, center) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let center = (top + bottom) / 2.0;
       let width = delim.width;
       children.push(PlacedHBox {
         hbox: delim,
@@ -285,7 +287,8 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, center) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let center = (top + bottom) / 2.0;
       children.push(PlacedHBox {
         hbox: delim,
         dx,
@@ -325,7 +328,7 @@ impl Measurer<'_> {
       (Some(sup), None) => (constants.superscript_shift(base.ink_height, sup.ink_depth, cramped), Length::ZERO),
       (None, Some(sub)) => (Length::ZERO, constants.subscript_shift(base.ink_depth, sub.ink_height)),
       (None, None) => unreachable!(
-        "MathScripts を作るのは spacing::attach（片側を必ず埋める）と根号の指数（上付きを持つ）だけで、少なくとも一方は Some"
+        "MathScripts を作るのは spacing::attach だけで、attach は片側を必ず埋めるので少なくとも一方は Some"
       ),
     };
 

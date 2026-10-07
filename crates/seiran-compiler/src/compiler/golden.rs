@@ -1967,6 +1967,143 @@ fn empty_fraction_compiles_with_a_zero_width_rule() {
     .unwrap_or_else(|failure| panic!("空の分数も描画矩形を作れて compile は成功するはず: {:?}", failure.into_report()));
 }
 
+/// 根号記号 √（U+221A）
+const RADICAL_SIGN: &str = "\u{221A}";
+
+#[test]
+fn radical_vinculum_continues_the_top_of_the_surd_over_the_radicand() {
+  let (runs, rules) = first_line_parts("$\\sqrt{x}$\n");
+
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let radicand = run_with_text(&runs, MATH_X);
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  let size = radicand.run.font_size;
+  let (surd_top, surd_bottom) = stix_run_ink(&surd.run);
+  let thickness = stix_math_length(MathConstant::RadicalRuleThickness, size);
+  assert_eq!(surd.run.font_size, size, "根号記号は被根号の段の大きさのまま縦にだけ伸ばす");
+  assert_eq!(rule.top, surd.dy + surd_top, "横線の上端は根号記号のインクの上端");
+  assert_eq!(rule.top - rule.bottom, thickness);
+  assert_eq!(rule.dx, surd.dx + surd.width, "横線は記号の送り幅の位置から");
+  assert_eq!(rule.width, radicand.width, "横線は被根号の幅");
+  assert_eq!(radicand.dx, rule.dx);
+  let (height, depth) = stix_ink_extent(radicand);
+  let gap = stix_math_length(MathConstant::RadicalVerticalGap, size);
+  let target = height + depth + gap + thickness;
+  let excess = ((surd_top - surd_bottom) - target).max(Length::ZERO);
+  assert!(excess.is_positive(), "元の √（1187 単位）は 𝑥 の目標を超える（入力の前提）");
+  assert_eq!(rule.bottom - radicand.dy, height + gap + excess / 2.0, "余りの半分をギャップへ足す");
+}
+
+#[test]
+fn tall_radicand_stretches_the_surd_to_cover_it() {
+  let (inline_runs, _) = first_line_parts("$\\sqrt{x}$\n");
+  let (runs, _) = display_parts("\\begin{equation}\n\\sqrt{\\frac{a}{b}}\n\\end{equation}\n");
+
+  let natural = run_with_text(&inline_runs, RADICAL_SIGN);
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let denominator = run_with_text(&runs, MATH_B);
+  assert_ne!(
+    surd.run.glyphs[0].gid, natural.run.glyphs[0].gid,
+    "表示数式の分数を覆うには元の字形では足りず size variant か glyph assembly になる"
+  );
+  let (_, surd_bottom) = stix_run_ink(&surd.run);
+  let (_, denominator_bottom) = stix_run_ink(&denominator.run);
+  assert!(
+    surd.dy + surd_bottom <= denominator.dy + denominator_bottom,
+    "伸ばした記号は分母のインクの底まで届く"
+  );
+}
+
+#[test]
+fn display_radical_uses_the_display_gap() {
+  let (runs, rules) = display_parts("\\begin{equation}\n\\sqrt{x}\n\\end{equation}\n");
+
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let radicand = run_with_text(&runs, MATH_X);
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  let size = radicand.run.font_size;
+  let (surd_top, surd_bottom) = stix_run_ink(&surd.run);
+  let (height, depth) = stix_ink_extent(radicand);
+  let gap = stix_math_length(MathConstant::RadicalDisplayStyleVerticalGap, size);
+  let target = height + depth + gap + stix_math_length(MathConstant::RadicalRuleThickness, size);
+  let excess = ((surd_top - surd_bottom) - target).max(Length::ZERO);
+  assert_eq!(rule.bottom - radicand.dy, height + gap + excess / 2.0);
+}
+
+#[test]
+fn narrow_degree_sits_right_above_the_surd() {
+  let runs = first_line_runs("$\\sqrt[3]{x}$\n");
+
+  let degree = run_with_text(&runs, "3");
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let size = run_with_text(&runs, MATH_X).run.font_size;
+  assert_eq!(
+    degree.run.font_size,
+    stix_scaled_size(MathConstant::ScriptScriptPercentScaleDown, size),
+    "指数は scriptscript 段"
+  );
+  assert!(
+    stix_math_length(MathConstant::RadicalKernAfterDegree, size) < -degree.width,
+    "STIX の後の kern（−335 単位）は 1 文字の指数の幅より負に大きい（入力の前提）"
+  );
+  assert_eq!(surd.dx, degree.dx, "後の kern は −指数の幅で止まり、記号は指数の左端から始まる");
+}
+
+#[test]
+fn wide_degree_pushes_the_surd_right_by_the_kerns() {
+  let runs = first_line_runs("$\\sqrt[100]{x}$\n");
+
+  let degree = run_with_text(&runs, "100");
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let size = run_with_text(&runs, MATH_X).run.font_size;
+  let after = stix_math_length(MathConstant::RadicalKernAfterDegree, size);
+  assert!(after > -degree.width, "3 文字の指数は後の kern より広い（入力の前提）");
+  assert_eq!(surd.dx - degree.dx, degree.width + after);
+}
+
+#[test]
+fn degree_bottom_rises_by_the_percent_of_the_radical_height() {
+  let (runs, rules) = first_line_parts("$\\sqrt[3]{x}$\n");
+
+  let degree = run_with_text(&runs, "3");
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let radicand = run_with_text(&runs, MATH_X);
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  let size = radicand.run.font_size;
+  let (_, surd_bottom) = stix_run_ink(&surd.run);
+  let (_, radicand_depth) = stix_ink_extent(radicand);
+  let (_, degree_depth) = stix_ink_extent(degree);
+  let ascent = rule.top - radicand.dy + stix_math_length(MathConstant::RadicalExtraAscender, size);
+  let descent = radicand_depth.max(-(surd_bottom + surd.dy - radicand.dy));
+  let (percent, _) = stix_math_constant(MathConstant::RadicalDegreeBottomRaisePercent);
+  assert_eq!(
+    degree.dy - radicand.dy,
+    -descent + (ascent + descent).scale(f64::from(percent) / 100.0) + degree_depth,
+    "指数のインクの底は 根号の下端 + 根号の高さ × RadicalDegreeBottomRaisePercent"
+  );
+}
+
+#[test]
+fn empty_radical_compiles_with_a_zero_width_vinculum() {
+  let (_, rules) = first_line_parts("$\\sqrt{}$\n");
+
+  let [rule] = rules.as_slice() else {
+    panic!("横線は 1 本のはず: {} 本", rules.len());
+  };
+  assert_eq!(rule.width, Length::ZERO);
+  TestProject::builder()
+    .source_text("$\\sqrt{}$\n")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("空の根号も描画矩形を作れて compile は成功するはず: {:?}", failure.into_report()));
+}
+
 #[test]
 fn subscript_cuts_in_under_a_base_with_a_bottom_right_kern() {
   let runs = first_line_runs("$f_{n}$\n");

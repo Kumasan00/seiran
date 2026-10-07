@@ -27,7 +27,7 @@ use crate::{
       counter::format_counter_value,
       layout_node::{
         AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout, MathBlockRowLayout,
-        MathFraction, MathScripts, TextStyle,
+        MathFraction, MathRadical, TextStyle,
       },
       with_label_anchors,
     },
@@ -427,23 +427,15 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Fraction(fraction)]));
     },
     HirMathKind::Sqrt { index, radicand } => {
-      let mut nodes = Vec::new();
-      if let Some(idx) = index {
-        // 指数は空の基底に付けた上付きとして、上付きのシフト規則で置く（後ろに SpaceAfterScript も入る）
-        nodes.push(AtomNode::Scripts(MathScripts {
-          base: Vec::new(),
-          superscript: Some(lower_math_list(
-            slice::from_ref(idx.as_ref()),
-            &ctx.with_style(ctx.style.radical_degree()),
-          )),
-          subscript: None,
-          font_size: ctx.font_size(),
-          cramped: ctx.style.cramped,
-        }));
-      }
-      nodes.push(AtomNode::Text("√".to_string(), ctx.text_style(MathClass::Ord)));
-      nodes.extend(lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.radicand())));
-      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
+      let radical = MathRadical {
+        degree: index.as_ref().map(|degree| {
+          return lower_math_list(slice::from_ref(degree.as_ref()), &ctx.with_style(ctx.style.radical_degree()));
+        }),
+        radicand: lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.radicand())),
+        font_size: ctx.font_size(),
+        display: ctx.style.level == StyleLevel::Display,
+      };
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
     },
     // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
@@ -486,7 +478,10 @@ mod tests {
     style::{CounterTemplate, Style as ReadStyle},
     typeset::{
       font::ScriptLevel,
-      lowering::test_support::{analyzed, lower, stix_script_scale},
+      lowering::{
+        MathScripts,
+        test_support::{analyzed, lower, stix_script_scale},
+      },
     },
   };
 
@@ -503,6 +498,7 @@ mod tests {
         AtomNode::Kern { .. } => {},
         AtomNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
         AtomNode::Fraction(fraction) => out.extend(fraction_texts(fraction)),
+        AtomNode::Radical(radical) => out.extend(radical_texts(radical)),
       }
     }
     return out;
@@ -524,6 +520,24 @@ mod tests {
     return out;
   }
 
+  /// 指数・被根号の順に `Text` を（テキスト, スタイル）で返す
+  fn radical_texts(radical: &MathRadical) -> Vec<(String, TextStyle)> {
+    let mut out = radical.degree.as_deref().map(atom_texts).unwrap_or_default();
+    out.extend(atom_texts(&radical.radicand));
+    return out;
+  }
+
+  /// レイアウトノード列から最初の根号を取り出すヘルパ
+  fn first_radical(nodes: &[LayoutNode]) -> &MathRadical {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Radical(radical)) => return Some(radical),
+        _ => return None,
+      })
+      .expect("根号が期待されます");
+  }
+
   /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（スクリプトの基底・中身も辿る）
   fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
     let mut out = Vec::new();
@@ -532,6 +546,7 @@ mod tests {
         LayoutNode::Inline(InlineNode::Text(text, style)) => out.push((text.clone(), *style)),
         LayoutNode::Inline(InlineNode::Scripts(scripts)) => out.extend(scripts_texts(scripts)),
         LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
+        LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
@@ -765,16 +780,19 @@ mod tests {
       "cramped は上付きの中身へ継承される"
     );
     let radicand = lower_math_source("$\\sqrt{y^{2}}$\n");
-    assert!(first_scripts(&radicand).cramped, "被根号は cramped");
+    let [AtomNode::Scripts(inner)] = first_radical(&radicand).radicand.as_slice() else {
+      panic!("被根号はスクリプト付きの基底 1 つのはず: {radicand:?}");
+    };
+    assert!(inner.cramped, "被根号は cramped");
   }
 
   #[test]
-  fn radical_degree_is_a_superscript_on_an_empty_base() {
+  fn radical_degree_is_carried_by_the_radical() {
     let nodes = lower_math_source("$\\sqrt[3]{x}$\n");
 
-    let scripts = first_scripts(&nodes);
-    assert!(scripts.base.is_empty(), "指数は空の基底に付く: {scripts:?}");
-    assert_eq!(slot_text(scripts.superscript.as_deref()).as_deref(), Some("3"));
+    let radical = first_radical(&nodes);
+    assert_eq!(radical.degree.as_deref().map(concat_atom_texts).as_deref(), Some("3"));
+    assert_eq!(concat_atom_texts(&radical.radicand), "\u{1D465}");
   }
 
   #[test]
@@ -908,10 +926,19 @@ mod tests {
   }
 
   #[test]
-  fn lower_math_sqrt_emits_radical_sign() {
+  fn lower_math_sqrt_keeps_the_radicand_in_a_radical() {
     let nodes = lower_math_source("$\\sqrt{x}$\n");
 
-    assert_eq!(concat_texts(&nodes), "√\u{1D465}", "√ 記号が含まれるはず: {nodes:?}");
+    let radical = first_radical(&nodes);
+    assert!(radical.degree.is_none());
+    assert_eq!(concat_atom_texts(&radical.radicand), "\u{1D465}", "根号記号は lowering では出さない");
+    assert_eq!(radical.font_size, ReadStyle::default().text.font_size);
+    assert!(!radical.display);
+    let block = math_block_of("\\begin{equation}\n\\sqrt{x}\n\\end{equation}\n");
+    let [AtomNode::Radical(display)] = block.rows[0].cells[0].content.as_slice() else {
+      panic!("セルは根号 1 つのはず: {:?}", block.rows[0].cells[0].content);
+    };
+    assert!(display.display, "表示数式のトップレベルの根号は display 段");
   }
 
   #[test]
