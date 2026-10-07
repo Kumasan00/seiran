@@ -54,7 +54,7 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(cell, font_size, ctx.script_scale),
+          content: lower_math_cell(cell, font_size, ctx.script_scale, cell_level(math.kind)),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -190,15 +190,32 @@ pub(super) fn lower_inline_math(
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
-/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（display 段で組み、閉じた箱に畳むので行分割点を置かない）
-fn lower_math_cell(math_nodes: &[HirMath], base_font_size: Length, script_scale: ScriptScale) -> Vec<AtomNode> {
-  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Display));
+/// 環境種別から、セルを組み始める数式スタイルの段を決める
+///
+/// `cases` / `matrix` のセルは text 段で始める（TeX の `\textstyle`、`MathML Core` の UA スタイルシートの
+/// `mtable { math-style: compact }`）。それ以外の表示数式環境は display 段。
+const fn cell_level(kind: MathBlockKind) -> StyleLevel {
+  return match kind {
+    MathBlockKind::Cases | MathBlockKind::Matrix { .. } => StyleLevel::Text,
+    MathBlockKind::Equation
+    | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => StyleLevel::Display,
+  };
+}
+
+/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない）
+fn lower_math_cell(
+  math_nodes: &[HirMath],
+  base_font_size: Length,
+  script_scale: ScriptScale,
+  level: StyleLevel,
+) -> Vec<AtomNode> {
+  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level));
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StyleLevel {
-  /// display 段（表示数式環境の本体）
+  /// display 段（`equation` / `align` 等の表示数式環境のセル）
   Display,
   /// text 段（インライン数式の本体）
   Text,
@@ -846,6 +863,33 @@ mod tests {
     let fraction = atom_fraction(scripts.superscript.as_deref().expect("上付きの中身があるはず"));
     assert!(!fraction.display, "上付きの中の分数は script 段で、display の定数を使わない");
     assert_eq!(fraction.font_size, ReadStyle::default().text.font_size.scale(0.7));
+  }
+
+  #[test]
+  fn fraction_in_cases_and_matrix_cells_is_text_style() {
+    let base = ReadStyle::default().text.font_size;
+    let sources = [
+      "\\begin{cases}\n\\frac{a}{b} & x\n\\end{cases}\n",
+      "\\begin{matrix}\n\\frac{a}{b} & x\n\\end{matrix}\n",
+    ];
+    for source in sources {
+      let block = math_block_of(source);
+
+      let cell = &block.rows[0].cells[0].content;
+      assert!(!atom_fraction(cell).display, "cases / matrix のセルは text 段: {source}");
+      let levels: Vec<(String, Length, Option<ScriptLevel>)> = atom_texts(cell)
+        .into_iter()
+        .map(|(text, style)| return (text, style.font_size, style.script_level))
+        .collect();
+      assert_eq!(
+        levels,
+        vec![
+          ("\u{1D44E}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
+          ("\u{1D44F}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
+        ],
+        "{source}"
+      );
+    }
   }
 
   #[test]
