@@ -65,6 +65,18 @@
 //!   [`cursor_after_scripts_follows_the_farther_script`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]
+//! - **分数**（MATH の `Fraction*` 定数とインクからのシフト量・数式軸上の横罫・段の遷移・左右のアキ）:
+//!   [`inline_fraction_stacks_script_size_parts_around_a_rule_on_the_math_axis`] /
+//!   [`display_fraction_uses_display_style_constants_and_text_size_parts`] /
+//!   [`fraction_in_a_display_superscript_uses_text_constants_at_script_size`] /
+//!   [`nested_fraction_draws_a_thinner_inner_rule`] / [`adjacent_fraction_rules_do_not_touch`] /
+//!   [`superscript_in_a_denominator_uses_the_cramped_shift`] / [`fraction_rule_is_painted_as_a_filled_rect`] /
+//!   [`empty_fraction_compiles_with_a_zero_width_rule`]（共通ヘルパ [`first_line_parts`]・[`display_parts`]・[`collect_rules`] 経由）
+//! - **根号**（根号記号の伸縮・横線・ギャップの調整・指数の kern と高さ）:
+//!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
+//!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
+//!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
+//!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -132,6 +144,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "itemize",
   "justify",
   "math_break",
+  "math_frac",
   "math_script",
   "math_spacing",
   "matrix",

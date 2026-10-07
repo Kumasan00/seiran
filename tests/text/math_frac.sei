@@ -1,0 +1,27 @@
+\section{分数}
+
+インライン数式の分数は分子・分母を 1 段縮め、数式軸上の横罫の上下に積む: $\frac{a}{b}$ と $\frac{x+1}{x-1}$。
+隣り合う分数の罫はつながらない: $y\frac{1}{2}\frac{3}{4}$。
+入れ子の分数は段ごとに縮む: $\frac{\frac{a}{b}}{c}$ と $\frac{1}{1+\frac{1}{x}}$。
+分母の上付きは cramped で低く、分子の上付きはそのまま: $\frac{x^{2}}{x^{2}}$。
+スクリプトの中の分数: $e^{\frac{a}{b}}$。
+
+\begin{equation}
+\frac{a+b}{c} = \frac{\frac{a}{b}}{\frac{c}{d}} + x^{\frac{1}{2}}
+\end{equation}
+
+cases のセルは text 段で始まるので、分数は 1 段縮む:
+
+\begin{cases}
+\frac{1}{2} & x > 0 \\
+0 & x < 0
+\end{cases}
+
+\section{根号}
+
+根号記号は被根号の高さへ伸び、横線が被根号を覆う: $\sqrt{x}$ と $\sqrt{x^{2}+y^{2}}$ と $\sqrt{\frac{a}{b}}$。
+指数は根号記号の左上に重なる: $\sqrt[3]{x}$ と $\sqrt[100]{x}$。
+
+\begin{equation}
+\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}} + \sqrt[n]{1+x}
+\end{equation}
