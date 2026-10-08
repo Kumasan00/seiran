@@ -291,6 +291,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Radical(radical) => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)])));
       },
+      InlineNode::LargeOperator { symbol, font_size } => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }])));
+      },
       InlineNode::MathBreak { spacing, penalty } => {
         out.push(HItem::MathBreak { spacing, penalty });
       },
@@ -375,13 +378,20 @@ impl<'a> Measurer<'a> {
           *dx += length;
         },
         AtomNode::Scripts(scripts) => {
-          self.place_scripts(scripts, dy, dx, out);
+          if scripts.limits {
+            self.place_limits(scripts, dy, dx, out);
+          } else {
+            self.place_scripts(scripts, dy, dx, out);
+          }
         },
         AtomNode::Fraction(fraction) => {
           self.place_fraction(fraction, dy, dx, out);
         },
         AtomNode::Radical(radical) => {
           self.place_radical(radical, dy, dx, out);
+        },
+        AtomNode::LargeOperator { symbol, font_size } => {
+          self.place_large_operator(&symbol, font_size, dy, dx, out);
         },
       }
     }

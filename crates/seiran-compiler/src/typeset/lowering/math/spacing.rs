@@ -37,15 +37,29 @@ pub(super) struct MathItem {
   fence: Option<Fence>,
   /// このアイテムの中身
   body: ItemBody,
+  /// このアイテムに付く上付き・下付きを上下に積むか（display 段の limits を取る大型演算子だけが真）
+  limits: bool,
 }
 
 impl MathItem {
-  /// クラス・区切り種別・ノード列からアイテムを作る
+  /// クラス・区切り種別・ノード列からアイテムを作る（付くスクリプトは肩・添字）
   pub(super) fn new(class: MathClass, fence: Option<Fence>, nodes: Vec<AtomNode>) -> Self {
     return MathItem {
       class,
       fence,
       body: ItemBody::Plain(nodes),
+      limits: false,
+    };
+  }
+
+  /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）のアイテムを作る（数式クラスは Op・区切りではない。
+  /// `limits` は付くスクリプトを上下に積むか）
+  pub(super) fn large_operator(symbol: String, font_size: Length, limits: bool) -> Self {
+    return MathItem {
+      class: MathClass::Op,
+      fence: None,
+      body: ItemBody::Plain(vec![AtomNode::LargeOperator { symbol, font_size }]),
+      limits,
     };
   }
 }
@@ -329,6 +343,8 @@ pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
 /// スクリプト付きのアイテム全体を新しい基底にする（`x^{a}^{b}` は `{x^{a}}^{b}`）。グループは
 /// [`ItemBody::Plain`] なので、中のスクリプトへ重ねずグループ全体が基底になる。直前のアイテムが無ければ
 /// （`$^{2}$` のような並び）空の基底を持つ Ord のアイテムにする。`font_size` / `cramped` は基底の段のもの。
+/// 直前のアイテムが limits を取る演算子で、まだスクリプトを持たないときだけ上下に積む（同じ側を重ねた外側の基底は範囲付きの
+/// 演算子全体で、演算子 1 つではないので肩・添字）。
 pub(super) fn push_script(
   items: &mut Vec<MathItem>,
   side: ScriptSide,
@@ -340,7 +356,8 @@ pub(super) fn push_script(
     items.push(MathItem {
       class: MathClass::Ord,
       fence: None,
-      body: ItemBody::Scripted(attach(Vec::new(), side, content, font_size, cramped)),
+      body: ItemBody::Scripted(attach(Vec::new(), side, content, font_size, cramped, false)),
+      limits: false,
     });
     return;
   };
@@ -351,11 +368,12 @@ pub(super) fn push_script(
       return;
     }
   }
+  let limits = last.limits && matches!(last.body, ItemBody::Plain(_));
   let base = mem::replace(&mut last.body, ItemBody::Plain(Vec::new())).into_nodes();
-  last.body = ItemBody::Scripted(attach(base, side, content, font_size, cramped));
+  last.body = ItemBody::Scripted(attach(base, side, content, font_size, cramped, limits));
 }
 
-/// 基底 `base` の `side` 側に `content` を付ける
+/// 基底 `base` の `side` 側に `content` を付ける（`limits` は上下に積むか）
 ///
 /// 基底の隣り合う同じスタイルのテキストは 1 本のグリフランに畳む（分数・根号の核は複数の `Text` を持ち、
 /// スクリプトの基底へ移すと外側の [`assemble`] の結合から外れるため）。
@@ -365,6 +383,7 @@ fn attach(
   content: Vec<AtomNode>,
   font_size: Length,
   cramped: bool,
+  limits: bool,
 ) -> MathScripts {
   let mut scripts = MathScripts {
     base: merge_adjacent_atom_text(base),
@@ -372,6 +391,7 @@ fn attach(
     subscript: None,
     font_size,
     cramped,
+    limits,
   };
   *side.slot(&mut scripts) = Some(content);
   return scripts;
@@ -685,6 +705,51 @@ mod tests {
       "前のスクリプトを上書きせず、スクリプト付きの x 全体を基底にする: {outer:?}"
     );
     assert!(outer.superscript.is_some());
+  }
+
+  /// display 段の大型演算子 1 つのアイテム（`limits` は付くスクリプトを上下に積むか）
+  fn operator(limits: bool) -> MathItem {
+    return MathItem::large_operator("\u{2211}".to_string(), Length::pt(12.0), limits);
+  }
+
+  #[test]
+  fn push_script_on_a_limits_operator_stacks_both_sides_as_limits() {
+    let mut items = vec![operator(true)];
+    push_script(&mut items, ScriptSide::Subscript, script('i'), Length::pt(12.0), false);
+    push_script(&mut items, ScriptSide::Superscript, script('n'), Length::pt(12.0), false);
+
+    let scripts = scripts_of(&items[0]);
+    assert!(scripts.limits, "反対側を埋めても上下に積むまま: {scripts:?}");
+    assert!(scripts.superscript.is_some() && scripts.subscript.is_some());
+    assert!(matches!(scripts.base.as_slice(), [AtomNode::LargeOperator { .. }]), "{scripts:?}");
+    assert_eq!(items[0].class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
+  }
+
+  #[test]
+  fn push_script_on_an_operator_without_limits_stays_at_the_shoulder() {
+    let mut items = vec![operator(false)];
+    push_script(&mut items, ScriptSide::Subscript, script('a'), Length::pt(12.0), false);
+
+    assert!(!scripts_of(&items[0]).limits);
+  }
+
+  #[test]
+  fn push_script_on_an_ordinary_item_is_not_limits() {
+    let mut items = vec![item('x')];
+    push_script(&mut items, ScriptSide::Superscript, script('2'), Length::pt(12.0), false);
+
+    assert!(!scripts_of(&items[0]).limits);
+  }
+
+  #[test]
+  fn push_script_on_a_filled_limit_takes_the_limits_as_a_shoulder_base() {
+    let mut items = vec![operator(true)];
+    push_script(&mut items, ScriptSide::Superscript, script('a'), Length::pt(12.0), false);
+    push_script(&mut items, ScriptSide::Superscript, script('b'), Length::pt(12.0), false);
+
+    let outer = scripts_of(&items[0]);
+    assert!(!outer.limits, "範囲付きの演算子全体は演算子 1 つではないので外側は肩・添字: {outer:?}");
+    assert!(matches!(outer.base.as_slice(), [AtomNode::Scripts(inner)] if inner.limits), "{outer:?}");
   }
 
   #[test]

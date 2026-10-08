@@ -1,0 +1,28 @@
+\section{大型演算子}
+
+インライン数式では範囲を肩・添字に置き、字形も本文の大きさのまま: $\sum_{i=1}^{n} a_{i}$ と $\prod_{k} x_{k}$ と $\int_{0}^{1} f$。
+
+表示数式では演算子を display の大きさへ伸ばして数式軸に揃え、範囲を真上・真下に中央寄せで積む:
+
+\begin{equation}
+\sum_{i=1}^{n} a_{i} = \prod_{k=1}^{m} b_{k} + \bigcup_{j} A_{j} + \bigcap_{j}^{m} B_{j}
+\end{equation}
+
+積分記号は表示数式でも範囲を肩・添字に置く:
+
+\begin{equation}
+\int_{0}^{1} f + \oint_{C} g + \iint_{D} h
+\end{equation}
+
+範囲の無い演算子・空の範囲・演算子より広い範囲:
+
+\begin{equation}
+\sum x + \sum_{}^{} y + \sum_{1 \leq i \leq n} z
+\end{equation}
+
+cases のセルと分数の分子は text 段なので肩・添字:
+
+\begin{cases}
+\sum_{i}^{n} x & x > 0 \\
+\frac{\sum_{i}^{n} y}{2} & x < 0
+\end{cases}

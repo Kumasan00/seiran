@@ -90,6 +90,14 @@ pub(in crate::typeset) enum InlineNode {
   Fraction(MathFraction),
   /// 被根号に根号記号と横線を付けた根号（インライン数式のトップレベル）
   Radical(MathRadical),
+  /// display 段の大型演算子（[`AtomNode::LargeOperator`] を段落の語彙へ持ち上げたもの。インライン数式は text 段で
+  /// 組むので作らないが、`AtomNode` ⊂ `InlineNode` の包含を保つために置く）
+  LargeOperator {
+    /// 演算子の文字（1 字）
+    symbol: String,
+    /// display 段のフォントサイズ
+    font_size: Length,
+  },
   /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
   ///
   /// 折り返さなければ `spacing` 幅のアキ、折り返せば何も出さない。
@@ -123,7 +131,8 @@ pub(in crate::typeset) enum InlineNode {
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
-/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号だけを持つ。
+/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号・
+/// 大型演算子だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -139,6 +148,14 @@ pub(in crate::typeset) enum AtomNode {
   Fraction(MathFraction),
   /// 被根号に根号記号と横線を付けた根号
   Radical(MathRadical),
+  /// display 段の大型演算子（boxing が `DisplayOperatorMinHeight` 以上の字形へ縦に伸ばし、インクの縦中央を数式軸に
+  /// 合わせて置く）
+  LargeOperator {
+    /// 演算子の文字（1 字）
+    symbol: String,
+    /// display 段のフォントサイズ
+    font_size: Length,
+  },
 }
 
 impl From<AtomNode> for InlineNode {
@@ -150,6 +167,7 @@ impl From<AtomNode> for InlineNode {
       AtomNode::Scripts(scripts) => InlineNode::Scripts(scripts),
       AtomNode::Fraction(fraction) => InlineNode::Fraction(fraction),
       AtomNode::Radical(radical) => InlineNode::Radical(radical),
+      AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
     };
   }
 }
@@ -245,8 +263,9 @@ impl DelimiterGlyphs {
 
 /// 基底に付けた上付き・下付き
 ///
-/// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。上付き・下付きは
-/// どちらも基底の右端から始まる。上付き・下付きの少なくとも一方は `Some`（`spacing::attach` だけが作り、片側を必ず埋める）。
+/// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。`limits` が偽なら
+/// 上付き・下付きはどちらも基底の右端から始まり（肩・添字）、真なら基底の真上・真下に中央を揃えて積む。上付き・下付きの
+/// 少なくとも一方は `Some`（`spacing::attach` だけが作り、片側を必ず埋める）。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathScripts {
   /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループ）
@@ -259,6 +278,9 @@ pub(in crate::typeset) struct MathScripts {
   pub font_size: Length,
   /// 基底の数式スタイルが cramped か（上付きのシフトに `SuperscriptShiftUpCramped` を使う）
   pub cramped: bool,
+  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子 1 つのときだけ真。真なら
+  /// `cramped` は使わない）
+  pub limits: bool,
 }
 
 /// 分子と分母を横罫の上下に積む分数

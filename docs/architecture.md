@@ -862,8 +862,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
-  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped）・`MathFraction`（分子・分母・分数の
-  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）として boxing へ渡す
+  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
+  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）として boxing へ渡す。
+  大型演算子（数式クラス Op の記号）は display 段でだけ `AtomNode::LargeOperator` にする（text 段以下は通常の演算子の
+  テキスト。MathML Core の largeop は math-style が normal のときだけ効く）。積分記号以外（MathML Core の演算子辞書の
+  movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
+  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
@@ -898,12 +902,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
   閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
-  上付き下付きの付いた基底・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
+  上付き下付きの付いた基底・分数・根号・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
   キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
   （`VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）に加えて
   包み variant `Inline(InlineNode)` を 1 つ持ち、`boxing` の縦リスト走査はその 1 arm でインラインへ
   振り分ける（インライン側に縦リスト用の `unreachable!` が無い。#672）。`Atom` に畳める要素
-  （テキスト・kern・上付き下付きの付いた基底）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
+  （テキスト・kern・上付き下付きの付いた基底・分数・根号・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
   なしで閉じる。持ち上げは `From` の片方向のみ（逆向きの変換は作らない）
 - **段落は明示ノードにしていない**（見送り。#672 のスコープ外）。段落の境界は「インラインを溜め、
   縦リスト用ノードが来たら `flush_paragraph` する」という `boxing` 側の暗黙の表現で、`lowering/list.rs` は
@@ -978,6 +982,14 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   含める）。指数は前に max(0, `RadicalKernBeforeDegree`)、後に max(−指数の幅, `RadicalKernAfterDegree`) の kern を置き、
   インクの底を「根号の下端 + 根号の高さ × `RadicalDegreeBottomRaisePercent`」へ置く（根号の上端は横線の上端 +
   `RadicalExtraAscender`、下端は被根号と記号のインクの深い方）。根号は閉じた Atom 1 つ
+- **大型演算子**（`AtomNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
+  `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
+  縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
+  `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして拾う。上下に積む上付き・下付き
+  （`MathScripts::limits`）は MathML Core §3.4.2 の largeop の規則で、上限のベースラインを基底のインクの頂から
+  max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
+  max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
+  イタリック補正の半分だけ右、下限を半分だけ左へずらす。幅は 3 つの広がりの和集合で、後ろにアキを置かない
 - 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
 
 (b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。

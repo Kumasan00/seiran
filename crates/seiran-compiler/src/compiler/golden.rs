@@ -77,6 +77,14 @@
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
 //!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
+//! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る演算子の
+//!   範囲を上下に積む・text 段は不変）:
+//!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
+//!   [`inline_large_operator_keeps_the_text_glyph_on_the_baseline`] /
+//!   [`display_integral_pulls_its_subscript_back_by_the_display_glyph_correction`] /
+//!   [`display_sum_stacks_its_limits_centered_above_and_below`] /
+//!   [`wide_lower_limit_widens_the_operator_and_pushes_the_next_atom`] /
+//!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -145,6 +153,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "justify",
   "math_break",
   "math_frac",
+  "math_limits",
   "math_script",
   "math_spacing",
   "matrix",
@@ -1786,6 +1795,130 @@ fn cursor_after_scripts_follows_the_farther_script() {
   // ∫ は Op、y は Ord なので間に細アキ（3mu = 本文サイズの 3/18）が入る
   let thin_space = (base.run.font_size * 3) / 18.0f64;
   assert_eq!(next.dx, sub_end + space + thin_space, "後続は最も遠いスクリプトの右端 + SpaceAfterScript + 細アキ");
+}
+
+/// N-ARY SUMMATION（U+2211）
+const SUM: &str = "\u{2211}";
+
+/// N-ARY INTERSECTION（U+22C2）
+const BIG_CAP: &str = "\u{22C2}";
+
+/// INTEGRAL（U+222B）
+const INTEGRAL: &str = "\u{222B}";
+
+/// 本文 `source` の最初の行で、テキストが `text` のグリフ列（1 グリフ）の gid。
+fn inline_gid(source: &str, text: &str) -> u32 { return sole_glyph(run_with_text(&first_line_runs(source), text)).0; }
+
+#[test]
+fn display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis() {
+  for (command, symbol) in [("sum", SUM), ("bigcap", BIG_CAP), ("int", INTEGRAL)] {
+    let (runs, _) = display_parts(&format!("\\begin{{equation}}\n\\{command} x\n\\end{{equation}}\n"));
+
+    let operator = run_with_text(&runs, symbol);
+    let (gid, _) = sole_glyph(operator);
+    let size = run_with_text(&runs, MATH_X).run.font_size;
+    assert_eq!(operator.run.font_size, size, "フォントサイズは変えずに字形を替える: {command}");
+    assert_ne!(gid, inline_gid(&format!("$\\{command}$\n"), symbol), "text 段の字形より大きい字形: {command}");
+    let (top, bottom) = stix_run_ink(&operator.run);
+    let center = operator.dy + (top + bottom) / 2.0;
+    let axis = stix_math_length(MathConstant::AxisHeight, size);
+    assert!(
+      (center - axis).abs() <= Length::from_sp(1),
+      "インクの縦中央 {center:?} が数式軸 {axis:?} に載る: {command}"
+    );
+  }
+}
+
+#[test]
+fn inline_large_operator_keeps_the_text_glyph_on_the_baseline() {
+  let runs = first_line_runs("$\\sum x$\n");
+
+  assert_eq!(
+    run_with_text(&runs, SUM).dy,
+    Length::ZERO,
+    "text 段の大型演算子は軸に合わせず本文のベースラインのまま"
+  );
+}
+
+#[test]
+fn display_integral_pulls_its_subscript_back_by_the_display_glyph_correction() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\int_{a}^{n} x\n\\end{equation}\n");
+
+  let base = run_with_text(&runs, INTEGRAL);
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, MATH_A);
+  let (gid, _) = sole_glyph(base);
+  assert_ne!(gid, inline_gid("$\\int$\n", INTEGRAL), "display 段の字形（テストの前提）");
+  let correction = stix_units(stix_italics_correction(gid), base.run.font_size);
+  assert!(correction > Length::ZERO, "display 段の ∫ は補正を持つ（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width, "上付きは基底の右端");
+  assert_eq!(sub.dx, base.dx + base.width - correction, "下付きは display の字形の補正ぶん手前");
+}
+
+#[test]
+fn display_sum_stacks_its_limits_centered_above_and_below() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\sum_{i}^{n} x\n\\end{equation}\n");
+
+  let operator = run_with_text(&runs, SUM);
+  let over = run_with_text(&runs, "\u{1D45B}");
+  let under = run_with_text(&runs, MATH_I);
+  let size = operator.run.font_size;
+  let (gid, _) = sole_glyph(operator);
+  assert_eq!(stix_italics_correction(gid), 0, "∑ は補正の登録が無い（テストの前提）");
+  let center = |line_run: &LineRun| return line_run.dx + line_run.width / 2.0;
+  // 半分の幅を別々に sp へ丸めるので 1sp までずれうる
+  assert!(
+    (center(over) - center(operator)).abs() <= Length::from_sp(1),
+    "補正の無い演算子の上限は演算子の中央"
+  );
+  assert!(
+    (center(under) - center(operator)).abs() <= Length::from_sp(1),
+    "補正の無い演算子の下限は演算子の中央"
+  );
+  let (top, bottom) = stix_run_ink(&operator.run);
+  let (_, over_depth) = stix_ink_extent(over);
+  let (under_height, _) = stix_ink_extent(under);
+  let rise = stix_math_length(MathConstant::UpperLimitBaselineRiseMin, size)
+    .max(stix_math_length(MathConstant::UpperLimitGapMin, size) + over_depth);
+  let drop = stix_math_length(MathConstant::LowerLimitBaselineDropMin, size)
+    .max(stix_math_length(MathConstant::LowerLimitGapMin, size) + under_height);
+  assert_eq!(over.dy, operator.dy + top + rise, "上限のベースラインは演算子のインクの頂から上げる");
+  assert_eq!(under.dy, operator.dy + bottom - drop, "下限のベースラインは演算子のインクの底から下げる");
+}
+
+#[test]
+fn wide_lower_limit_widens_the_operator_and_pushes_the_next_atom() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\sum_{abc} x\n\\end{equation}\n");
+
+  let operator = run_with_text(&runs, SUM);
+  let under = run_with_text(&runs, "\u{1D44E}\u{1D44F}\u{1D450}");
+  let next = run_with_text(&runs, MATH_X);
+  assert!(under.width > operator.width, "下限が演算子より広い（テストの前提）");
+  assert!(operator.dx > under.dx, "演算子は広い下限の中ほどに来る");
+  // ∑ は Op、x は Ord なので間に細アキ（3mu）が入る。limits の後ろに SpaceAfterScript は置かない
+  let thin_space = (operator.run.font_size * 3) / 18.0f64;
+  assert_eq!(next.dx, under.dx + under.width + thin_space, "後続は下限の右端 + 細アキ");
+}
+
+#[test]
+fn empty_limits_take_no_width_beyond_the_operator() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\sum_{}^{} x\n\\end{equation}\n");
+
+  let operator = run_with_text(&runs, SUM);
+  let next = run_with_text(&runs, MATH_X);
+  let thin_space = (operator.run.font_size * 3) / 18.0f64;
+  assert_eq!(next.dx, operator.dx + operator.width + thin_space, "空の範囲は幅を足さない");
+}
+
+#[test]
+fn inline_sum_keeps_its_limits_at_the_shoulder() {
+  let runs = first_line_runs("$\\sum_{i}^{n}$\n");
+
+  let base = run_with_text(&runs, SUM);
+  let sup = run_with_text(&runs, "\u{1D45B}");
+  let sub = run_with_text(&runs, MATH_I);
+  assert_eq!(sup.dx, base.dx + base.width, "インライン数式の上限は肩");
+  assert_eq!(sub.dx, sup.dx, "インライン数式の下限は添字（補正 0 なので上付きと同じ列）");
 }
 
 #[test]

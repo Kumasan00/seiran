@@ -13,10 +13,13 @@
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
 //!
-//! 分数（`MathFraction`）と根号（`MathRadical`）の配置は子 module `fraction` / `radical` が行い、
-//! どちらも閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
+//! 分数（`MathFraction`）・根号（`MathRadical`）・display 段の大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・
+//! 下付き（`MathScripts` の `limits` が真）の配置は子 module `fraction` / `radical` / `large_operator` / `limits` が行い、
+//! 分数・根号は閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
 
 mod fraction;
+mod large_operator;
+mod limits;
 mod radical;
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
@@ -58,10 +61,10 @@ struct Detached {
   ink_height: Length,
   /// インクのベースラインより下の深さ（0 以上）
   ink_depth: Length,
-  /// 末尾のノードがテキストで、その最後の箱が数式フォントのグリフ列のとき、その最後のグリフ（gid と run の
+  /// 末尾のノードがテキストか大型演算子で、その最後の箱が数式フォントのグリフ列のとき、その最後のグリフ（gid と run の
   /// フォントサイズ）。空・末尾がアキやスクリプト・数式フォント以外は `None`（補正も math kern も 0）
   trailing_glyph: Option<(u32, Length)>,
-  /// 先頭のノードがテキストで、その最初の箱が数式フォントのグリフ列のとき、その最初のグリフ（gid と run の
+  /// 先頭のノードがテキストか大型演算子で、その最初の箱が数式フォントのグリフ列のとき、その最初のグリフ（gid と run の
   /// フォントサイズ）。それ以外は `None`（math kern 0）
   leading_glyph: Option<(u32, Length)>,
 }
@@ -313,6 +316,8 @@ impl Measurer<'_> {
       subscript,
       font_size,
       cramped,
+      // 上下に積むものは place_atom_children が place_limits へ振り分け済み
+      limits: _,
     } = scripts;
     let constants = ScriptConstants::new(&self.shaper, font_size);
     let base = self.detach(base);
@@ -370,22 +375,24 @@ impl Measurer<'_> {
     *dx = end + constants.space_after_script;
   }
 
-  /// ノード列を原点から仮に配置し、送り幅とインクの寸法、末尾の数式フォントのグリフを測る
+  /// ノード列を原点から仮に配置し、送り幅とインクの寸法、両端の数式フォントのグリフを測る
   fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
-    let starts_with_text = matches!(nodes.first(), Some(AtomNode::Text(..)));
-    let ends_with_text = matches!(nodes.last(), Some(AtomNode::Text(..)));
+    let is_glyphs =
+      |node: Option<&AtomNode>| return matches!(node, Some(AtomNode::Text(..) | AtomNode::LargeOperator { .. }));
+    let starts_with_glyphs = is_glyphs(nodes.first());
+    let ends_with_glyphs = is_glyphs(nodes.last());
     let mut boxes = Vec::new();
     let mut width = Length::ZERO;
     self.place_atom_children(nodes, Length::ZERO, &mut width, &mut boxes);
     let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes);
-    // 末尾の Text ノードの箱は place_atom_children が最後に積むので、boxes の最後がその最後の run
-    let trailing_glyph = if ends_with_text {
+    // 末尾のテキスト・大型演算子のノードの箱は place_atom_children が最後に積むので、boxes の最後がその最後の run
+    let trailing_glyph = if ends_with_glyphs {
       boxes.last().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::last))
     } else {
       None
     };
-    // 先頭の Text ノードの箱は place_atom_children が最初に積むので、boxes の最初がその最初の run
-    let leading_glyph = if starts_with_text {
+    // 先頭のテキスト・大型演算子のノードの箱は place_atom_children が最初に積むので、boxes の最初がその最初の run
+    let leading_glyph = if starts_with_glyphs {
       boxes.first().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::first))
     } else {
       None
