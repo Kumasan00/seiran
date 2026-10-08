@@ -77,6 +77,15 @@
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
 //!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
+//! - **アクセント**（取付点による横位置・`AccentBaseHeight` による高さ・`flac`・スクリプトとの併用）:
+//!   [`accent_aligns_its_attachment_with_the_attachment_of_a_single_glyph_base`] /
+//!   [`base_without_an_attachment_takes_half_of_its_advance`] / [`accent_on_a_compound_base_centers_on_its_advance`] /
+//!   [`accent_over_a_base_taller_than_accent_base_height_rises_by_the_excess`] /
+//!   [`nested_accent_rises_over_the_inner_accent`] / [`accent_does_not_widen_its_base`] /
+//!   [`superscript_clears_the_accent`] / [`scripts_on_an_accent_start_at_the_base_advance`] /
+//!   [`accent_in_a_script_is_set_at_the_script_size`] / [`empty_accent_compiles`] /
+//!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`]（共通ヘルパ
+//!   [`expected_attachment`] 経由）
 //! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る演算子の
 //!   範囲を上下に積む・text 段は不変）:
 //!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
@@ -151,6 +160,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "index_split",
   "itemize",
   "justify",
+  "math_accent",
   "math_break",
   "math_frac",
   "math_limits",
