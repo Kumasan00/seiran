@@ -9,6 +9,8 @@
 //! アクセントを上げ、隙間は足さない（TeX の Rule 12 の x-height を `AccentBaseHeight` に置き換えたもの）。`MathML Core`
 //! §3.4.2.4 の本文は任意の要素を上付けにできる `MathML` 向けの一般化で、字形が隙間を持つことを前提にしないのでこれには
 //! 従わない（同節のノートが、フォントの規則はベースラインを揃えるものだと述べる）。
+//! 基底のインクの高さが `FlattenedAccentBaseHeight` を超えたら、アクセント記号を OpenType `flac` の平たい字形に替える
+//! （上げる量の規則は変えない）。
 //! Atom の幅は基底の送り幅で、アクセント記号の墨や原点のはみ出しは幅に数えない（TeX と同じ）。
 
 use read_fonts::tables::math::MathConstant;
@@ -46,7 +48,8 @@ impl Measurer<'_> {
     } = accent;
     let base = self.detach(base);
     let base_attachment = self.top_accent_attachment(&base.boxes, base.width);
-    let mark = self.shaper.shape_segment(&accent, FontType::Math, font_size, None, script_level).into_hbox();
+    let flattened = base.ink_height > self.shaper.math_constant(MathConstant::FlattenedAccentBaseHeight, font_size);
+    let mark = self.shaper.shape_accent(&accent, font_size, script_level, flattened);
     let mark_width = mark.width;
     let mark = vec![PlacedHBox {
       hbox: mark,

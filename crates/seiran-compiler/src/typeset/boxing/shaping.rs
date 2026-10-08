@@ -268,6 +268,11 @@ impl<'a> Shaper<'a> {
     script_level: Option<ScriptLevel>,
   ) -> ShapedRun {
     self.fonts.shape(font_type, &mut self.buffer, text, font_size.to_pt(), script_level);
+    return self.shaped_run(text, font_type, font_size, color);
+  }
+
+  /// 直前のシェイプが `buffer` に残したグリフ列を、`text` の計測済みの [`ShapedRun`] にする
+  fn shaped_run(&self, text: &str, font_type: FontType, font_size: Length, color: Option<Color>) -> ShapedRun {
     let glyph_infos = self.buffer.glyph_infos();
     let glyph_positions = self.buffer.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
@@ -375,6 +380,22 @@ impl<'a> Shaper<'a> {
     } = shaped;
     add_italic_corrections_to(&mut run.glyphs, |gid| return self.fonts.math_italics_correction(gid));
     return ShapedRun::measure(run, metrics);
+  }
+
+  /// 数式のアクセント記号 `text` を数式フォントの段 `script_level` で組んだ箱。`flattened` なら OpenType `flac` で
+  /// 平たい字形（背の高い基底に載せる字形）を選ぶ
+  pub(super) fn shape_accent(
+    &mut self,
+    text: &str,
+    font_size: Length,
+    script_level: Option<ScriptLevel>,
+    flattened: bool,
+  ) -> HBox {
+    if !flattened {
+      return self.shape_segment(text, FontType::Math, font_size, None, script_level).into_hbox();
+    }
+    self.fonts.shape_flattened_accent(&mut self.buffer, text, font_size.to_pt(), script_level);
+    return self.shaped_run(text, FontType::Math, font_size, None).into_hbox();
   }
 
   /// 伸縮グリフ 1 字 `text`（区切り括弧・根号記号・display 段の大型演算子）を数式フォントで縦に `target` 以上へ伸ばした

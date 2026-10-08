@@ -2513,3 +2513,31 @@ fn empty_accent_compiles() {
     .compile()
     .unwrap_or_else(|failure| panic!("空の基底のアクセントも compile は成功するはず: {:?}", failure.into_report()));
 }
+
+#[test]
+fn accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph() {
+  let natural = sole_glyph(run_with_text(&first_line_runs("$\\hat{x}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let medium = sole_glyph(run_with_text(&first_line_runs("$\\hat{t}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let runs = first_line_runs("$\\hat{f}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let size = base.run.font_size;
+  let (height, _) = stix_ink_extent(base);
+  assert!(
+    height > stix_math_length(MathConstant::FlattenedAccentBaseHeight, size),
+    "𝑓 のインクの高さ（711）は FlattenedAccentBaseHeight（656）を超える（テストの前提）"
+  );
+  assert_eq!(medium, natural, "FlattenedAccentBaseHeight 以下の 𝑡（593）は元の字形");
+  assert_ne!(sole_glyph(accent).0, natural, "超えた基底は平たい字形（flac）");
+  assert_eq!(
+    accent.dy - base.dy,
+    height - stix_math_length(MathConstant::AccentBaseHeight, size),
+    "上げる量は平たい字形でも同じ規則"
+  );
+  assert_eq!(
+    accent.dx + expected_attachment(accent),
+    base.dx + expected_attachment(base),
+    "平たい字形も自身の取付点で揃える"
+  );
+}

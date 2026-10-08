@@ -115,6 +115,18 @@ impl FontSystem {
     self.shapers[font_type].shape(buffer, text, point_size, script_level);
   }
 
+  /// 数式フォントでアクセント記号 `text` を OpenType `flac`（平たいアクセント字形）を足してシェイプし、結果のグリフ列を
+  /// `buffer` に残す（`script_level` は数式のスクリプト段）。
+  pub(crate) fn shape_flattened_accent(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    self.shapers[FontType::Math].shape_flattened(buffer, text, point_size, script_level);
+  }
+
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
   pub(crate) fn metrics(&self, font_type: FontType) -> FontMetrics { return self.metrics[font_type]; }

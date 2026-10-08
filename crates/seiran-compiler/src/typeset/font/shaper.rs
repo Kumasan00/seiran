@@ -36,6 +36,9 @@ pub(crate) enum ShaperError {
 /// OpenType の `ssty`（数式のスクリプト段で小サイズ用の字形を選ぶフィーチャ）のタグ
 const SSTY: Tag = Tag::new(b"ssty");
 
+/// OpenType の `flac`（背の高い基底に載せる平たいアクセント字形を選ぶフィーチャ）のタグ
+const FLAC: Tag = Tag::new(b"flac");
+
 /// 全フォント種別のシェイピング用フォント（設定のバリエーション軸の位置へ移したもの）。
 pub(super) type ShapingFonts = FontMap<Font>;
 
@@ -185,15 +188,30 @@ impl HarfRustShaper {
   /// 字形はそのまま）。結果は `buffer` の `glyph_infos` / `glyph_positions` に残る。`point_size` は AAT `trak`
   /// テーブルのサイズ依存トラッキングに使われ、0 以下なら `harfrust` の既定値 12pt になる。
   pub(super) fn shape(&self, buffer: &mut Buffer, text: &str, point_size: f32, script_level: Option<ScriptLevel>) {
-    buffer.clear();
-    if let Some(direction) = self.direction {
-      buffer.set_direction(direction);
-    }
-    buffer.set_script(self.script);
-    buffer.set_language(self.language.clone());
-    buffer.push_str(text);
-    buffer.guess_segment_properties();
-    let (features, plan) = match script_level {
+    let (features, plan) = self.level_shaping(script_level);
+    self.shape_with(buffer, text, point_size, features, plan);
+  }
+
+  /// [`Self::shape`] の段 `script_level` の設定に `flac` を足してシェイピングする（フォントが `flac` を持たなければ字形は
+  /// そのまま）。
+  ///
+  /// 背の高い基底のアクセントにしか使わないので、プランはキャッシュせず呼び出しごとに作る。
+  pub(super) fn shape_flattened(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    let (features, _) = self.level_shaping(script_level);
+    let mut with_flac = features.to_vec();
+    with_flac.push(Feature::new(FLAC, 1, 0..usize::MAX));
+    self.shape_with(buffer, text, point_size, &with_flac, None);
+  }
+
+  /// 段 `script_level` のフィーチャーとプラン（`None` は display / text 段で、設定のフィーチャーのまま）
+  fn level_shaping(&self, script_level: Option<ScriptLevel>) -> (&[Feature], Option<&ShapePlan>) {
+    return match script_level {
       None => (self.features.as_slice(), self.shape_plan.as_ref()),
       Some(level) => {
         let shaping = match level {
@@ -203,6 +221,26 @@ impl HarfRustShaper {
         (shaping.features.as_slice(), self.script_plan(shaping))
       },
     };
+  }
+
+  /// `buffer` を空にして `text` を詰め、`features` と `plan` でシェイピングする（`plan` が `None` なら harfrust が
+  /// 呼び出しごとに作る）
+  fn shape_with(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    features: &[Feature],
+    plan: Option<&ShapePlan>,
+  ) {
+    buffer.clear();
+    if let Some(direction) = self.direction {
+      buffer.set_direction(direction);
+    }
+    buffer.set_script(self.script);
+    buffer.set_language(self.language.clone());
+    buffer.push_str(text);
+    buffer.guess_segment_properties();
     let options = ShapeOptions::new().plan(plan).point_size(Some(point_size)).features(features);
     harfrust::shape(&ShaperFont::new(&self.font), buffer, options).expect(
       "冒頭の clear で未シェイプ、guess_segment_properties で書字方向は決まり、プランは書字方向とスクリプトを両方明示した \
@@ -405,5 +443,39 @@ mod tests {
       assert_ne!(plain, script_script);
       assert_eq!(glyph_of_two(None), plain, "段の無いシェイプは元の字形に戻る");
     }
+  }
+
+  #[test]
+  fn flattened_shaping_selects_flac_glyphs_at_every_level() {
+    let config = FontConfig {
+      font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
+      direction: Some(TextDirection::LeftToRight),
+      script: Some(*b"math"),
+      ..stix_two_text_config(None)
+    };
+    let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+    let glyph_of_hat = |level: Option<ScriptLevel>, flattened: bool| {
+      let mut buffer = Buffer::new();
+      if flattened {
+        shaper.shape_flattened(&mut buffer, "\u{0302}", 12.0, level);
+      } else {
+        shaper.shape(&mut buffer, "\u{0302}", 12.0, level);
+      }
+      return buffer.glyph_infos()[0].glyph_id;
+    };
+
+    let plain = glyph_of_hat(None, false);
+    for level in [
+      None,
+      Some(ScriptLevel::Script),
+      Some(ScriptLevel::ScriptScript),
+    ] {
+      assert_ne!(
+        glyph_of_hat(level, false),
+        glyph_of_hat(level, true),
+        "flac は平たい字形（uni0302.mathcap）: {level:?}"
+      );
+    }
+    assert_eq!(glyph_of_hat(None, false), plain, "flac のシェイプの後も、キャッシュ済みのプランは元の字形を選ぶ");
   }
 }
