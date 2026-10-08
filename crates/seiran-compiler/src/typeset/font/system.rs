@@ -158,6 +158,18 @@ impl FontSystem {
     });
   }
 
+  /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置。フォント単位）。
+  /// `MathTopAccentAttachment` が無いか、登録の無いグリフは `None`（既定値の送り幅の中央は呼び元が決める）。
+  #[must_use]
+  pub(crate) fn math_top_accent_attachment(&self, gid: u32) -> Option<i32> {
+    return self.math_glyph_info().math_top_accent_attachment().and_then(|attachment| {
+      let attachment = attachment.expect(
+        "load の検証（validation::check_math_table）が MathTopAccentAttachment を Coverage まで読めることを確認済み",
+      );
+      return attachment.attachment(GlyphId::new(gid));
+    });
+  }
+
   /// 数式フォントの MATH が定めるスクリプト段の縮小率。
   #[must_use]
   pub(crate) fn script_scale(&self) -> ScriptScale {

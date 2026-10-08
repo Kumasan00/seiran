@@ -291,6 +291,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Radical(radical) => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)])));
       },
+      InlineNode::Accent(accent) => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)])));
+      },
       InlineNode::LargeOperator { symbol, font_size } => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }])));
       },
@@ -389,6 +392,9 @@ impl<'a> Measurer<'a> {
         },
         AtomNode::Radical(radical) => {
           self.place_radical(radical, dy, dx, out);
+        },
+        AtomNode::Accent(accent) => {
+          self.place_accent(accent, dy, dx, out);
         },
         AtomNode::LargeOperator { symbol, font_size } => {
           self.place_large_operator(&symbol, font_size, dy, dx, out);

@@ -90,6 +90,8 @@ pub(in crate::typeset) enum InlineNode {
   Fraction(MathFraction),
   /// 被根号に根号記号と横線を付けた根号（インライン数式のトップレベル）
   Radical(MathRadical),
+  /// 基底の上にアクセント記号を重ねたアクセント（インライン数式のトップレベル）
+  Accent(MathAccent),
   /// display 段の大型演算子（[`AtomNode::LargeOperator`] を段落の語彙へ持ち上げたもの。インライン数式は text 段で
   /// 組むので作らないが、`AtomNode` ⊂ `InlineNode` の包含を保つために置く）
   LargeOperator {
@@ -132,7 +134,7 @@ pub(in crate::typeset) enum InlineNode {
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
 /// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号・
-/// 大型演算子だけを持つ。
+/// アクセント・大型演算子だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -148,6 +150,8 @@ pub(in crate::typeset) enum AtomNode {
   Fraction(MathFraction),
   /// 被根号に根号記号と横線を付けた根号
   Radical(MathRadical),
+  /// 基底の上にアクセント記号を重ねたアクセント
+  Accent(MathAccent),
   /// display 段の大型演算子（boxing が `DisplayOperatorMinHeight` 以上の字形へ縦に伸ばし、インクの縦中央を数式軸に
   /// 合わせて置く）
   LargeOperator {
@@ -167,6 +171,7 @@ impl From<AtomNode> for InlineNode {
       AtomNode::Scripts(scripts) => InlineNode::Scripts(scripts),
       AtomNode::Fraction(fraction) => InlineNode::Fraction(fraction),
       AtomNode::Radical(radical) => InlineNode::Radical(radical),
+      AtomNode::Accent(accent) => InlineNode::Accent(accent),
       AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
     };
   }
@@ -311,6 +316,21 @@ pub(in crate::typeset) struct MathRadical {
   pub font_size: Length,
   /// 根号の段が display か（`RadicalDisplayStyleVerticalGap` を使う）
   pub display: bool,
+}
+
+/// 基底の上にアクセント記号 1 字を重ねたアクセント
+///
+/// 配置（取付点による横位置・`AccentBaseHeight` による高さ）は計測寸法と数式フォントの MATH から boxing が決める。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathAccent {
+  /// 基底（アクセントの段・cramped で組んだもの）
+  pub base: Vec<AtomNode>,
+  /// アクセント記号（結合用ダイアクリティカルマーク 1 字。boxing が数式フォントで組む）
+  pub accent: String,
+  /// アクセントの段のフォントサイズ（アクセント記号の大きさと MATH 定数の換算に使う）
+  pub font_size: Length,
+  /// アクセントの段のスクリプト段（アクセント記号の `ssty`。display / text 段は `None`）
+  pub script_level: Option<ScriptLevel>,
 }
 
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報

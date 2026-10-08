@@ -350,6 +350,16 @@ impl<'a> Shaper<'a> {
     return units_to_length(i64::from(units), font_size, upem);
   }
 
+  /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置）の、フォントサイズ `font_size` での
+  /// 長さ。`MathTopAccentAttachment` に登録が無ければ送り幅の中央（MATH の規定の既定値）
+  pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Length {
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    return match self.fonts.math_top_accent_attachment(gid) {
+      Some(units) => units_to_length(i64::from(units), font_size, upem),
+      None => units_to_length(design_units(self.fonts.glyph_advance(FontType::Math, gid)), font_size, upem) / 2.0,
+    };
+  }
+
   /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いた字形へイタリック補正を足して
   /// 計測し直す。数式フォント以外の run と演算子の run はそのまま返す
   ///
