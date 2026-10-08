@@ -164,7 +164,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・アクセント・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -176,6 +176,8 @@ enum MathCommandKind {
   Frac,
   /// `\sqrt` — 必須引数 1 個（被開平数）。根指数は任意引数なので数えない
   Sqrt,
+  /// アクセント（`\hat` 等）— 必須引数 1 個（基底）。値は基底の上に置く結合用ダイアクリティカルマーク
+  Accent(char),
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -189,18 +191,38 @@ impl MathCommandKind {
     return match name {
       "frac" => Some(Self::Frac),
       "sqrt" => Some(Self::Sqrt),
-      _ => symbol::lookup(name).map(Self::Symbol),
+      _ => accent_mark(name).map(Self::Accent).or_else(|| return symbol::lookup(name).map(Self::Symbol)),
     };
   }
 
   /// 必須引数の個数
   fn arg_count(self) -> usize {
     return match self {
-      Self::Styled(_) | Self::Sqrt => 1,
+      Self::Styled(_) | Self::Sqrt | Self::Accent(_) => 1,
       Self::Frac => 2,
       Self::Symbol(_) => 0,
     };
   }
+}
+
+/// アクセントコマンド名から、基底の上に置く結合用ダイアクリティカルマークを引く（アクセントでなければ `None`）
+///
+/// 対応は unicode-math の `\mathaccent`（`unicode-math-table.tex`）と同じ。数式フォントの OpenType MATH は結合記号の側に
+/// `MathTopAccentAttachment` と `flac` の字形を持つ（スペーシング形の U+02C6 等は持たない）。
+fn accent_mark(name: &str) -> Option<char> {
+  return match name {
+    "hat" => Some('\u{0302}'),
+    "bar" => Some('\u{0304}'),
+    "vec" => Some('\u{20D7}'),
+    "dot" => Some('\u{0307}'),
+    "ddot" => Some('\u{0308}'),
+    "tilde" => Some('\u{0303}'),
+    "check" => Some('\u{030C}'),
+    "acute" => Some('\u{0301}'),
+    "grave" => Some('\u{0300}'),
+    "breve" => Some('\u{0306}'),
+    _ => None,
+  };
 }
 
 /// 数式内のコマンド名から必須引数の個数を引く
@@ -254,6 +276,13 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       };
       let radicand = Box::new(math_arg_to_node(source, ctx, radicand_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
+    },
+    MathCommandKind::Accent(accent) => {
+      opt_args::no_command_opt_args(&view)?;
+      let base_arg = arity::exactly_one_arg(&view, "1 個（アクセントを付ける数式）")?;
+      let id = ctx.alloc(view.span());
+      let base = Box::new(math_arg_to_node(source, ctx, base_arg)?);
+      return Ok(HirMath::new(id, HirMathKind::Accent { accent, base }));
     },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;

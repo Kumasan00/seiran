@@ -26,8 +26,8 @@ use crate::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{
-        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout, MathBlockRowLayout,
-        MathFraction, MathRadical, TextStyle,
+        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBlockCellLayout, MathBlockLayout,
+        MathBlockRowLayout, MathFraction, MathRadical, TextStyle,
       },
       with_label_anchors,
     },
@@ -255,7 +255,7 @@ impl StyleLevel {
 
 /// 数式スタイル（段と cramped の有無）
 ///
-/// cramped は上付きを低めに置く状態で、下付きの中身・分母・被根号で始まり、中身へ継承されて解除されない。
+/// cramped は上付きを低めに置く状態で、下付きの中身・分母・被根号・アクセントの基底で始まり、中身へ継承されて解除されない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FormulaStyle {
   /// 段
@@ -297,8 +297,8 @@ impl FormulaStyle {
     };
   }
 
-  /// 被根号のスタイル（同じ段。cramped）
-  const fn radicand(self) -> Self {
+  /// 同じ段のまま cramped にしたスタイル（被根号・アクセントの基底）
+  const fn cramped(self) -> Self {
     return FormulaStyle {
       level: self.level,
       cramped: true,
@@ -391,7 +391,7 @@ fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext) -> Vec<AtomNode
 
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
 ///
-/// `Group` / `Frac` / `Sqrt` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
+/// `Group` / `Frac` / `Sqrt` / `Accent` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
 fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
   match &node.kind {
     HirMathKind::Text(text) => {
@@ -437,11 +437,21 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         degree: index.as_ref().map(|degree| {
           return lower_math_list(slice::from_ref(degree.as_ref()), &ctx.with_style(ctx.style.radical_degree()));
         }),
-        radicand: lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.radicand())),
+        radicand: lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.cramped())),
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
+    },
+    // アクセント記号は段を下げない（MathML Core の accent の上付け）ので、基底と同じ段の大きさと `ssty` で組む
+    HirMathKind::Accent { accent: mark, base } => {
+      let accent = MathAccent {
+        base: lower_math_list(slice::from_ref(base.as_ref()), &ctx.with_style(ctx.style.cramped())),
+        accent: mark.to_string(),
+        font_size: ctx.font_size(),
+        script_level: ctx.style.level.script_level(),
+      };
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Accent(accent)]));
     },
     // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
@@ -493,7 +503,7 @@ mod tests {
     typeset::{
       font::ScriptLevel,
       lowering::{
-        MathScripts,
+        MathAccent, MathScripts,
         test_support::{analyzed, lower, stix_script_scale},
       },
     },
@@ -513,6 +523,8 @@ mod tests {
         AtomNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
         AtomNode::Fraction(fraction) => out.extend(fraction_texts(fraction)),
         AtomNode::Radical(radical) => out.extend(radical_texts(radical)),
+        // アクセント記号は boxing が組むのでテキストに数えない
+        AtomNode::Accent(accent) => out.extend(atom_texts(&accent.base)),
         // 大型演算子は text 段以下で組んだときと同じ演算子のテキストとして数える
         AtomNode::LargeOperator { symbol, font_size } => out.push((
           symbol.clone(),
@@ -563,6 +575,17 @@ mod tests {
       .expect("根号が期待されます");
   }
 
+  /// レイアウトノード列から最初のアクセントを取り出すヘルパ
+  fn first_accent(nodes: &[LayoutNode]) -> &MathAccent {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Accent(accent)) => return Some(accent),
+        _ => return None,
+      })
+      .expect("アクセントが期待されます");
+  }
+
   /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（スクリプトの基底・中身も辿る）
   fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
     let mut out = Vec::new();
@@ -572,6 +595,7 @@ mod tests {
         LayoutNode::Inline(InlineNode::Scripts(scripts)) => out.extend(scripts_texts(scripts)),
         LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
         LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
+        LayoutNode::Inline(InlineNode::Accent(accent)) => out.extend(atom_texts(&accent.base)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
@@ -818,6 +842,39 @@ mod tests {
     let radical = first_radical(&nodes);
     assert_eq!(radical.degree.as_deref().map(concat_atom_texts).as_deref(), Some("3"));
     assert_eq!(concat_atom_texts(&radical.radicand), "\u{1D465}");
+  }
+
+  #[test]
+  fn lower_math_accent_carries_the_mark_and_the_base() {
+    let nodes = lower_math_source("$\\hat{x}$\n");
+
+    let accent = first_accent(&nodes);
+    assert_eq!(accent.accent, "\u{0302}");
+    assert_eq!(concat_atom_texts(&accent.base), "\u{1D465}", "基底は数式用イタリックへ写す");
+    assert_eq!(accent.font_size, ReadStyle::default().text.font_size);
+    assert_eq!(accent.script_level, None, "インライン数式の本体は text 段");
+  }
+
+  #[test]
+  fn accent_in_a_script_takes_the_script_level() {
+    let nodes = lower_math_source("$y^{\\hat{x}}$\n");
+
+    let content = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
+    let [AtomNode::Accent(accent)] = content else {
+      panic!("上付きの中身はアクセント 1 つのはず: {content:?}");
+    };
+    assert_eq!(accent.font_size, ReadStyle::default().text.font_size.scale(0.7));
+    assert_eq!(accent.script_level, Some(ScriptLevel::Script), "アクセント記号は基底と同じ段（段を下げない）");
+  }
+
+  #[test]
+  fn accent_base_is_cramped() {
+    let nodes = lower_math_source("$\\hat{x^{2}}$\n");
+
+    let [AtomNode::Scripts(inner)] = first_accent(&nodes).base.as_slice() else {
+      panic!("基底はスクリプト付きの基底 1 つのはず: {nodes:?}");
+    };
+    assert!(inner.cramped, "アクセントの基底は cramped（TeX の Rule 12・MathML Core の accent）");
   }
 
   #[test]

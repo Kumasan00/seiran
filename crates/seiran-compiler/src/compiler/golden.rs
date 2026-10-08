@@ -77,6 +77,15 @@
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
 //!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
+//! - **アクセント**（取付点による横位置・`AccentBaseHeight` による高さ・`flac`・スクリプトとの併用）:
+//!   [`accent_aligns_its_attachment_with_the_attachment_of_a_single_glyph_base`] /
+//!   [`base_without_an_attachment_takes_half_of_its_advance`] / [`accent_on_a_compound_base_centers_on_its_advance`] /
+//!   [`accent_over_a_base_taller_than_accent_base_height_rises_by_the_excess`] /
+//!   [`nested_accent_rises_over_the_inner_accent`] / [`accent_does_not_widen_its_base`] /
+//!   [`superscript_clears_the_accent`] / [`scripts_on_an_accent_start_at_the_base_advance`] /
+//!   [`accent_in_a_script_is_set_at_the_script_size`] / [`empty_accent_compiles`] /
+//!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`] /
+//!   [`mark_without_an_attachment_centers_its_ink_on_the_base_attachment`]（共通ヘルパ [`expected_attachment`] 経由）
 //! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る演算子の
 //!   範囲を上下に積む・text 段は不変）:
 //!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
@@ -151,6 +160,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "index_split",
   "itemize",
   "justify",
+  "math_accent",
   "math_break",
   "math_frac",
   "math_limits",
@@ -2328,4 +2338,250 @@ fn subscript_kern_uses_the_top_left_table_of_the_script_glyph() {
     base.dx + base.width - stix_units(stix_italics_correction(base_gid), base_size) + kern,
     "下付きの kern は基底の右下と下付きの左上の和（それぞれのグリフの大きさで換算）の小さい方"
   );
+}
+
+/// 結合用サーカムフレックス（U+0302。`\hat` のアクセント記号）
+const COMBINING_CIRCUMFLEX: &str = "\u{0302}";
+
+/// STIX Two Math のグリフ `gid` の上付けアクセントの取付点（フォント単位。登録が無ければ `None`）。
+#[expect(
+  clippy::unwrap_in_result,
+  reason = "vendor の STIX Two Math が MathTopAccentAttachment を読める形で持つことはテストの前提で、崩れたら panic で知らせる必要がある"
+)]
+fn stix_top_accent_attachment(gid: u32) -> Option<i32> {
+  let font = stix_math_font();
+  let info = font
+    .tables()
+    .math()
+    .and_then(|math| return math.math_glyph_info())
+    .expect("MathGlyphInfo を読めるはず");
+  return info
+    .math_top_accent_attachment()
+    .expect("STIX Two Math は MathTopAccentAttachment を持つはず")
+    .expect("MathTopAccentAttachment を読めるはず")
+    .attachment(GlyphId::new(gid));
+}
+
+/// 1 グリフのグリフ列の、上付けアクセントの取付点（グリフ列の原点からの横位置。登録が無ければ基底の既定の送り幅の中央）。
+fn expected_attachment(line_run: &LineRun) -> Length {
+  let (gid, _) = sole_glyph(line_run);
+  let size = line_run.run.font_size;
+  return stix_top_accent_attachment(gid)
+    .map_or_else(|| return stix_units(stix_advance(gid), size) / 2.0, |units| return stix_units(units, size));
+}
+
+#[test]
+fn accent_aligns_its_attachment_with_the_attachment_of_a_single_glyph_base() {
+  let runs = first_line_runs("$\\hat{x}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let (base_gid, _) = sole_glyph(base);
+  let (accent_gid, _) = sole_glyph(accent);
+  assert!(stix_top_accent_attachment(base_gid).is_some(), "𝑥 は取付点を持つ（テストの前提）");
+  assert!(
+    stix_top_accent_attachment(accent_gid).is_some(),
+    "結合用サーカムフレックスは取付点を持つ（テストの前提）"
+  );
+  assert_eq!(accent.run.font_size, base.run.font_size, "アクセント記号は基底の段の大きさ");
+  assert_eq!(accent.dx + expected_attachment(accent), base.dx + expected_attachment(base), "取付点どうしを揃える");
+  assert_eq!(
+    accent.dy, base.dy,
+    "𝑥 のインクの高さ（479）は AccentBaseHeight（480）以下なのでベースラインを揃える"
+  );
+}
+
+#[test]
+fn base_without_an_attachment_takes_half_of_its_advance() {
+  let runs = first_line_runs("$\\hat{\\infty}$\n");
+
+  let base = run_with_text(&runs, "\u{221E}");
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let (base_gid, _) = sole_glyph(base);
+  assert!(stix_top_accent_attachment(base_gid).is_none(), "∞ は取付点を持たない（テストの前提）");
+  assert_eq!(
+    accent.dx + expected_attachment(accent),
+    base.dx + stix_units(stix_advance(base_gid), base.run.font_size) / 2.0,
+    "登録の無いグリフは送り幅の中央（MATH の規定の既定値）"
+  );
+}
+
+#[test]
+fn accent_on_a_compound_base_centers_on_its_advance() {
+  let runs = first_line_runs("$\\hat{xy}$\n");
+
+  // 隣り合う Ord のテキストは lowering（`merge_adjacent_atom_text`）が 1 本の run に畳むので、run の分かれ方に依らず
+  // アクセント以外のグリフ列の両端から基底の送り幅を測る
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let base_runs: Vec<&LineRun> =
+    runs.iter().filter(|line_run| return line_run.run.text != COMBINING_CIRCUMFLEX).collect();
+  let (Some(first), Some(last)) = (base_runs.first(), base_runs.last()) else {
+    panic!("基底のグリフ列があるはず");
+  };
+  assert_eq!(
+    base_runs.iter().map(|line_run| return line_run.run.glyphs.len()).sum::<usize>(),
+    2,
+    "基底は 𝑥𝑦 の 2 グリフ（テストの前提）"
+  );
+  let base_width = last.dx + last.width - first.dx;
+  assert_eq!(
+    accent.dx + expected_attachment(accent),
+    first.dx + base_width / 2.0,
+    "複数グリフの基底は送り幅の中央"
+  );
+}
+
+#[test]
+fn accent_over_a_base_taller_than_accent_base_height_rises_by_the_excess() {
+  let runs = first_line_runs("$\\hat{t}$\n");
+
+  let base = run_with_text(&runs, "\u{1D461}");
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let (height, _) = stix_ink_extent(base);
+  let excess = height - stix_math_length(MathConstant::AccentBaseHeight, base.run.font_size);
+  assert!(excess.is_positive(), "𝑡 のインクの高さ（593）は AccentBaseHeight（480）を超える（テストの前提）");
+  assert_eq!(accent.dy - base.dy, excess);
+}
+
+#[test]
+fn nested_accent_rises_over_the_inner_accent() {
+  let runs = first_line_runs("$\\hat{\\hat{x}}$\n");
+
+  let base = run_with_text(&runs, MATH_X);
+  let accents: Vec<&LineRun> =
+    runs.iter().filter(|line_run| return line_run.run.text == COMBINING_CIRCUMFLEX).collect();
+  let [inner, outer] = accents.as_slice() else {
+    panic!("アクセントは 2 つのはず: {} 個", accents.len());
+  };
+  let inner_top = stix_run_ink(&inner.run).0 + (inner.dy - base.dy);
+  assert_eq!(
+    outer.dy - base.dy,
+    inner_top - stix_math_length(MathConstant::AccentBaseHeight, base.run.font_size),
+    "外側は内側のアクセントの墨の頂を基底の高さとして上げる"
+  );
+}
+
+#[test]
+fn accent_does_not_widen_its_base() {
+  let runs = first_line_runs("$\\hat{x}y$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let y = run_with_text(&runs, MATH_Y);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  assert!(accent.dx > x.dx + x.width, "結合記号の原点は 𝑥 の送り幅より右（テストの前提）");
+  assert_eq!(y.dx, x.dx + x.width, "次のアトムは基底の送り幅の直後");
+}
+
+#[test]
+fn superscript_clears_the_accent() {
+  let runs = first_line_runs("$\\hat{x}^{2}$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let sup = run_with_text(&runs, "2");
+  let accent_top = stix_run_ink(&accent.run).0 + (accent.dy - x.dy);
+  let (_, sup_depth) = stix_ink_extent(sup);
+  assert_eq!(
+    sup.dy - x.dy,
+    expected_superscript_shift(x.run.font_size, false, accent_top, sup_depth),
+    "基底のインクの頂はアクセントの頂"
+  );
+}
+
+#[test]
+fn scripts_on_an_accent_start_at_the_base_advance() {
+  for source in ["$\\hat{x}^{2}$\n", "$\\hat{x}_{2}$\n"] {
+    let runs = first_line_runs(source);
+
+    let x = run_with_text(&runs, MATH_X);
+    let script = run_with_text(&runs, "2");
+    assert_eq!(
+      script.dx,
+      x.dx + x.width,
+      "アクセント付きの基底はグリフではないのでイタリック補正も math kern も 0: {source}"
+    );
+  }
+}
+
+#[test]
+fn accent_in_a_script_is_set_at_the_script_size() {
+  let runs = first_line_runs("$y^{\\hat{x}}$\n");
+
+  let y = run_with_text(&runs, MATH_Y);
+  let x = run_with_text(&runs, MATH_X);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  assert_eq!(x.run.font_size, stix_scaled_size(MathConstant::ScriptPercentScaleDown, y.run.font_size));
+  assert_eq!(accent.run.font_size, x.run.font_size, "アクセント記号は基底と同じ script 段の大きさ");
+  assert_eq!(accent.dx + expected_attachment(accent), x.dx + expected_attachment(x));
+}
+
+#[test]
+fn empty_accent_compiles() {
+  TestProject::builder()
+    .source_text("$\\hat{}$\n")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("空の基底のアクセントも compile は成功するはず: {:?}", failure.into_report()));
+}
+
+#[test]
+fn accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph() {
+  let natural = sole_glyph(run_with_text(&first_line_runs("$\\hat{x}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let medium = sole_glyph(run_with_text(&first_line_runs("$\\hat{t}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let runs = first_line_runs("$\\hat{f}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let size = base.run.font_size;
+  let (height, _) = stix_ink_extent(base);
+  assert!(
+    height > stix_math_length(MathConstant::FlattenedAccentBaseHeight, size),
+    "𝑓 のインクの高さ（711）は FlattenedAccentBaseHeight（656）を超える（テストの前提）"
+  );
+  assert_eq!(medium, natural, "FlattenedAccentBaseHeight 以下の 𝑡（593）は元の字形");
+  assert_ne!(sole_glyph(accent).0, natural, "超えた基底は平たい字形（flac）");
+  assert_eq!(
+    accent.dy - base.dy,
+    height - stix_math_length(MathConstant::AccentBaseHeight, size),
+    "上げる量は平たい字形でも同じ規則"
+  );
+  assert_eq!(
+    accent.dx + expected_attachment(accent),
+    base.dx + expected_attachment(base),
+    "平たい字形も自身の取付点で揃える"
+  );
+}
+
+/// STIX Two Math のグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、`font_size` での長さ（組版側と独立に読む）。
+fn stix_ink_center_x(gid: u32, font_size: Length) -> Length {
+  let extents = stix_math_font()
+    .glyph_metrics()
+    .extents(GlyphId::new(gid))
+    .expect("アクセント記号はインクを読めるはず");
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / f64::from(upem));
+}
+
+#[test]
+fn mark_without_an_attachment_centers_its_ink_on_the_base_attachment() {
+  // STIX の \vec は script / scriptscript 段で ssty の字形（uni20D7.ssty / .ssty2）に替わり、その字形だけ取付点を持たない
+  for source in ["$e^{\\vec{v}}$\n", "$e^{e^{\\vec{v}}}$\n"] {
+    let runs = first_line_runs(source);
+
+    let base = run_with_text(&runs, "\u{1D463}");
+    let arrow = run_with_text(&runs, "\u{20D7}");
+    let (base_gid, _) = sole_glyph(base);
+    let (arrow_gid, arrow_advance) = sole_glyph(arrow);
+    let base_attachment = stix_top_accent_attachment(base_gid).expect("𝑣 の ssty の字形は取付点を持つ（テストの前提）");
+    assert!(
+      stix_top_accent_attachment(arrow_gid).is_none(),
+      "ssty の矢印は取付点を持たない（テストの前提）: {source}"
+    );
+    assert_eq!(arrow_advance, 0, "結合記号は送り幅 0（テストの前提）: {source}");
+    assert_eq!(
+      arrow.dx + stix_ink_center_x(arrow_gid, arrow.run.font_size),
+      base.dx + stix_units(base_attachment, base.run.font_size),
+      "登録の無い記号は墨の中央を基底の取付点に揃える: {source}"
+    );
+  }
 }

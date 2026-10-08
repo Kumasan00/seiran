@@ -850,20 +850,22 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `InlineNode::MathBreak` として出す（ディスプレイ数式のセルは
   `AtomNode` で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
-  区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt`
-  は 1 個の Ord なので `$a{+}b$` でアキを殺せる
+  区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
+  `Accent` は 1 個の Ord なので `$a{+}b$` でアキを殺せる
 - **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
   持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
   `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
   `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。上付き・
-  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。分子・分母は分数の段の
-  1 段下（display → text、text → script、それより下は scriptscript）。下付きの中身・分母・被根号は
-  cramped で、cramped は中身へ継承され解除されない（上付きの中身と分子は親を継承）。段のフォントサイズは数式本体の
+  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
+  下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
+  1 段下（display → text、text → script、それより下は scriptscript）。下付きの中身・分母・被根号・
+  アクセントの基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身と分子は親を継承）。段のフォントサイズは数式本体の
   サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
-  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）として boxing へ渡す。
+  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）・`MathAccent`（基底・アクセント記号・
+  アクセントの段のサイズとスクリプト段）として boxing へ渡す。
   大型演算子（数式クラス Op の記号）は display 段でだけ `AtomNode::LargeOperator` にする（text 段以下は通常の演算子の
   テキスト。MathML Core の largeop は math-style が normal のときだけ効く）。積分記号以外（MathML Core の演算子辞書の
   movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
@@ -902,12 +904,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
   閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
-  上付き下付きの付いた基底・分数・根号・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
+  上付き下付きの付いた基底・分数・根号・アクセント・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
   キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
   （`VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）に加えて
   包み variant `Inline(InlineNode)` を 1 つ持ち、`boxing` の縦リスト走査はその 1 arm でインラインへ
   振り分ける（インライン側に縦リスト用の `unreachable!` が無い。#672）。`Atom` に畳める要素
-  （テキスト・kern・上付き下付きの付いた基底・分数・根号・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
+  （テキスト・kern・上付き下付きの付いた基底・分数・根号・アクセント・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
   なしで閉じる。持ち上げは `From` の片方向のみ（逆向きの変換は作らない）
 - **段落は明示ノードにしていない**（見送り。#672 のスコープ外）。段落の境界は「インラインを溜め、
   縦リスト用ノードが来たら `flush_paragraph` する」という `boxing` 側の暗黙の表現で、`lowering/list.rs` は
@@ -982,6 +984,18 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   含める）。指数は前に max(0, `RadicalKernBeforeDegree`)、後に max(−指数の幅, `RadicalKernAfterDegree`) の kern を置き、
   インクの底を「根号の下端 + 根号の高さ × `RadicalDegreeBottomRaisePercent`」へ置く（根号の上端は横線の上端 +
   `RadicalExtraAscender`、下端は被根号と記号のインクの深い方）。根号は閉じた Atom 1 つ
+- **アクセント**（`MathAccent`。`\hat` 等、unicode-math と同じ結合用ダイアクリティカルマーク 1 字）は、アクセント記号の
+  `MathTopAccentAttachment` を基底の取付点に揃える。基底が数式フォントの 1 グリフならそのグリフの登録値、それ以外の
+  基底（複数グリフ・スクリプト付き・分数等）は送り幅の中央、登録の無い基底のグリフも送り幅の中央（MATH の規定の既定値）。
+  登録の無いアクセント記号（STIX では script 段以下の `\vec` の ssty 字形）は墨の横の中央を取付点にする（結合記号は送り幅 0
+  なので、送り幅の中央は原点＝墨の端になる）。
+  縦は数式フォントの設計に従う: OpenType の `AccentBaseHeight`（アクセントを上げずに済む基底のインクの最大の高さ）以下の
+  基底にはベースラインを揃え、超えた分だけ上げる（TeX の Rule 12 の x-height を置き換えたもの）。アクセント字形は
+  ベースラインを揃えるとインクの底が `AccentBaseHeight` より上に来るように作られていて、基底との隙間は字形自身が持つので
+  足さない。MathML Core §3.4.2.4 の本文は任意の要素を上付けにする一般化で、字形の隙間を前提にしないので従わない（同節の
+  ノートが、フォントの規則はベースラインを揃えるものだと述べる）。基底のインクの高さが `FlattenedAccentBaseHeight` を超えたら
+  アクセント記号を `flac` の平たい字形に替える。Atom の幅は基底の送り幅（記号の墨のはみ出しは数えない。TeX と同じ）で、
+  アクセントは閉じた Atom 1 つ
 - **大型演算子**（`AtomNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、

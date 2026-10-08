@@ -1,0 +1,10 @@
+\section{アクセント}
+
+基底の上にアクセント記号を重ねる: $\hat{x}$ $\bar{x}$ $\vec{v}$ $\dot{x}$ $\ddot{x}$ $\tilde{a}$ $\check{x}$ $\acute{x}$ $\grave{x}$ $\breve{u}$。
+背の高い基底ではアクセントを上げ、さらに高ければ平たい字形に替える: $\hat{t}$ $\hat{\theta}$ $\tilde{A}$ $\bar{f}$ $\vec{F}$。
+複数文字の基底は中央に揃え、入れ子は内側のアクセントの上に置く: $\hat{xy}$ $\hat{\hat{x}}$ $\bar{x^{2}}$ $\hat{\infty}$。
+スクリプトと併用する: $\hat{x}^{2}$ $\hat{x}_{i}$ $\hat{x}_{i}^{2}$ $y^{\hat{x}}$ $e^{\vec{v}}$。
+
+\begin{equation}
+\dot{x} = \vec{v} + \hat{\theta} \ddot{y}
+\end{equation}

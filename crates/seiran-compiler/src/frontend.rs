@@ -876,6 +876,63 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_accents_wrap_the_base_with_a_combining_mark() {
+    let cases = [
+      ("hat", '\u{0302}'),
+      ("bar", '\u{0304}'),
+      ("vec", '\u{20D7}'),
+      ("dot", '\u{0307}'),
+      ("ddot", '\u{0308}'),
+      ("tilde", '\u{0303}'),
+      ("check", '\u{030C}'),
+      ("acute", '\u{0301}'),
+      ("grave", '\u{0300}'),
+      ("breve", '\u{0306}'),
+    ];
+    for (name, mark) in cases {
+      let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
+
+      assert_eq!(math.len(), 1, "\\{name}: {math:?}");
+      let HirMathKind::Accent { accent, base } = &math[0].kind else {
+        panic!("Accent が期待されます: \\{name} → {math:?}");
+      };
+      assert_eq!(*accent, mark, "\\{name} の結合文字（unicode-math の \\mathaccent と同じ）");
+      assert!(matches!(&base.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {base:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_accent_is_followed_by_group() {
+    // 必須引数 1 個を超えた位置の `{...}` は後ろに続く数式グループ
+    let math = inline_math_nodes(r"$\hat{x}{y}$");
+
+    assert_eq!(math.len(), 2, "{math:?}");
+    assert!(matches!(&math[0].kind, HirMathKind::Accent { .. }), "{math:?}");
+    assert!(is_group_of_text(&math[1], "y"), "{math:?}");
+  }
+
+  #[test]
+  fn evaluate_math_accent_missing_base_is_error() {
+    let error = evaluate_error(r"$\hat$");
+
+    assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "hat"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_accent_rejects_options() {
+    let error = evaluate_error(r"$\hat[size=2]{x}$");
+
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_accent_outside_math_is_unknown() {
+    let error = evaluate_error(r"\hat{x}");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "hat"), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_math_unknown_command_is_error() {
     let error = evaluate_error(r"$\nosuchmathcmd$");
     assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchmathcmd"));
