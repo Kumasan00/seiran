@@ -356,13 +356,27 @@ impl<'a> Shaper<'a> {
   }
 
   /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置）の、フォントサイズ `font_size` での
-  /// 長さ。`MathTopAccentAttachment` に登録が無ければ送り幅の中央（MATH の規定の既定値）
-  pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Length {
+  /// 長さ。`MathTopAccentAttachment` に登録が無ければ `None`
+  pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Option<Length> {
     let upem = self.fonts.metrics(FontType::Math).upem;
-    return match self.fonts.math_top_accent_attachment(gid) {
-      Some(units) => units_to_length(i64::from(units), font_size, upem),
-      None => units_to_length(design_units(self.fonts.glyph_advance(FontType::Math, gid)), font_size, upem) / 2.0,
-    };
+    return self.fonts.math_top_accent_attachment(gid).map(|units| {
+      return units_to_length(i64::from(units), font_size, upem);
+    });
+  }
+
+  /// 数式フォントのグリフ `gid` の送り幅の、フォントサイズ `font_size` での長さ
+  pub(super) fn math_glyph_advance(&self, gid: u32, font_size: Length) -> Length {
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    return units_to_length(design_units(self.fonts.glyph_advance(FontType::Math, gid)), font_size, upem);
+  }
+
+  /// 数式フォントのグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、フォントサイズ `font_size` での長さ。
+  /// インクを読めなければ原点（`glyph_run_signed_ink` と同じく墨を持たない扱い）
+  pub(super) fn math_ink_center(&self, gid: u32, font_size: Length) -> Length {
+    let upem = f64::from(self.fonts.metrics(FontType::Math).upem);
+    return self.fonts.glyph_extents(FontType::Math, gid).map_or(Length::ZERO, |extents| {
+      return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / upem);
+    });
   }
 
   /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いた字形へイタリック補正を足して

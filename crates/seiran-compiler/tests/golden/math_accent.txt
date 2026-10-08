@@ -161,7 +161,7 @@ keywords=["test", "seiran"]
   glyphs x=408.31 y=324.24 font=Math size=8.40 text="\u{302}" glyph_count=1
   glyphs x=411.82 y=328.87 font=Math size=12.00 text="𝑒" glyph_count=1
   glyphs x=416.90 y=324.55 font=Math size=8.40 text="𝑣" glyph_count=1
-  glyphs x=420.01 y=324.24 font=Math size=8.40 text="\u{20d7}" glyph_count=1
+  glyphs x=421.99 y=324.24 font=Math size=8.40 text="\u{20d7}" glyph_count=1
   glyphs x=422.40 y=328.87 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=815.91 y=373.40 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=822.81 y=373.40 font=Math size=12.00 text="\u{307}" glyph_count=1

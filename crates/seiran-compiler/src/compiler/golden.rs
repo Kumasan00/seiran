@@ -84,8 +84,8 @@
 //!   [`nested_accent_rises_over_the_inner_accent`] / [`accent_does_not_widen_its_base`] /
 //!   [`superscript_clears_the_accent`] / [`scripts_on_an_accent_start_at_the_base_advance`] /
 //!   [`accent_in_a_script_is_set_at_the_script_size`] / [`empty_accent_compiles`] /
-//!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`]（共通ヘルパ
-//!   [`expected_attachment`] 経由）
+//!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`] /
+//!   [`mark_without_an_attachment_centers_its_ink_on_the_base_attachment`]（共通ヘルパ [`expected_attachment`] 経由）
 //! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る演算子の
 //!   範囲を上下に積む・text 段は不変）:
 //!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
@@ -2362,7 +2362,7 @@ fn stix_top_accent_attachment(gid: u32) -> Option<i32> {
     .attachment(GlyphId::new(gid));
 }
 
-/// 1 グリフのグリフ列の、上付けアクセントの取付点（グリフ列の原点からの横位置。登録が無ければ送り幅の中央）。
+/// 1 グリフのグリフ列の、上付けアクセントの取付点（グリフ列の原点からの横位置。登録が無ければ基底の既定の送り幅の中央）。
 fn expected_attachment(line_run: &LineRun) -> Length {
   let (gid, _) = sole_glyph(line_run);
   let size = line_run.run.font_size;
@@ -2550,4 +2550,38 @@ fn accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph(
     base.dx + expected_attachment(base),
     "平たい字形も自身の取付点で揃える"
   );
+}
+
+/// STIX Two Math のグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、`font_size` での長さ（組版側と独立に読む）。
+fn stix_ink_center_x(gid: u32, font_size: Length) -> Length {
+  let extents = stix_math_font()
+    .glyph_metrics()
+    .extents(GlyphId::new(gid))
+    .expect("アクセント記号はインクを読めるはず");
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / f64::from(upem));
+}
+
+#[test]
+fn mark_without_an_attachment_centers_its_ink_on_the_base_attachment() {
+  // STIX の \vec は script / scriptscript 段で ssty の字形（uni20D7.ssty / .ssty2）に替わり、その字形だけ取付点を持たない
+  for source in ["$e^{\\vec{v}}$\n", "$e^{e^{\\vec{v}}}$\n"] {
+    let runs = first_line_runs(source);
+
+    let base = run_with_text(&runs, "\u{1D463}");
+    let arrow = run_with_text(&runs, "\u{20D7}");
+    let (base_gid, _) = sole_glyph(base);
+    let (arrow_gid, arrow_advance) = sole_glyph(arrow);
+    let base_attachment = stix_top_accent_attachment(base_gid).expect("𝑣 の ssty の字形は取付点を持つ（テストの前提）");
+    assert!(
+      stix_top_accent_attachment(arrow_gid).is_none(),
+      "ssty の矢印は取付点を持たない（テストの前提）: {source}"
+    );
+    assert_eq!(arrow_advance, 0, "結合記号は送り幅 0（テストの前提）: {source}");
+    assert_eq!(
+      arrow.dx + stix_ink_center_x(arrow_gid, arrow.run.font_size),
+      base.dx + stix_units(base_attachment, base.run.font_size),
+      "登録の無い記号は墨の中央を基底の取付点に揃える: {source}"
+    );
+  }
 }
