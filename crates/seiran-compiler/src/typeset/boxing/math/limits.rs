@@ -92,7 +92,10 @@ impl Measurer<'_> {
       superscript,
       subscript,
       font_size,
-      ..
+      // 上下に積むときは上付きのシフトを使わないので、cramped は配置に効かない
+      cramped: _,
+      // place_atom_children が limits の真のものだけをここへ振り分ける
+      limits: _,
     } = scripts;
     let constants = LimitConstants::new(&self.shaper, font_size);
     let base = self.detach(base);
@@ -108,15 +111,14 @@ impl Measurer<'_> {
       correction,
     );
 
-    let (base_ink_height, base_ink_depth) = (base.ink_height, base.ink_depth);
     math::translate_into(out, base.boxes, *dx + base_x, dy);
     // 上限・下限の位置は送り幅を渡した側だけ Some なので、zip は部品の有無と一致する
     if let Some((over, over_x)) = over.zip(over_x) {
-      let shift = constants.over_shift(base_ink_height, over.ink_depth);
+      let shift = constants.over_shift(base.ink_height, over.ink_depth);
       math::translate_into(out, over.boxes, *dx + over_x, dy + shift);
     }
     if let Some((under, under_x)) = under.zip(under_x) {
-      let shift = constants.under_shift(base_ink_depth, under.ink_height);
+      let shift = constants.under_shift(base.ink_depth, under.ink_height);
       math::translate_into(out, under.boxes, *dx + under_x, dy - shift);
     }
     *dx += width;
