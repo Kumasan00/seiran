@@ -1,0 +1,10 @@
+\section{伸縮括弧}
+
+中身の高さに合わせて縦に伸ばす: $\paren{\frac{a}{b}}$ $\bracket{\frac{a}{b}}$ $\brace{\frac{a}{b}}$ $\abs{\frac{a}{b}}$ $\norm{\frac{a}{b}}$。
+中身が低ければ伸ばさない: $\paren{x}$ $\abs{x}$ $\norm{v}$。
+入れ子・スクリプト・空: $\paren{\paren{\frac{a}{b}}}$ $\paren{x}^{2}$ $y^{\paren{\frac{a}{b}}}$ $\paren{}$。
+アキは裸の括弧と同じ: $\sum\paren{x}$ $a+\paren{b}$ $\paren{a}=b$。
+
+\begin{equation}
+f = \paren{\frac{a}{b}} + \abs{\frac{x}{y}} + \norm{\sum_{i}^{n} x_{i}}
+\end{equation}

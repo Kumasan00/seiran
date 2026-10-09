@@ -94,6 +94,12 @@
 //!   [`display_sum_stacks_its_limits_centered_above_and_below`] /
 //!   [`wide_lower_limit_widens_the_operator_and_pushes_the_next_atom`] /
 //!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`]
+//! - **伸縮括弧**（`\paren` 等。中身のインクを数式軸を中心に覆う高さへ縦にだけ伸ばし、インクの縦中央を数式軸へ・
+//!   中身との間にアキなし・スクリプトの段の大きさ）:
+//!   [`fence_covers_a_fraction_and_centers_on_the_math_axis`] / [`display_fence_grows_past_the_natural_delimiter`] /
+//!   [`short_fence_body_keeps_the_natural_delimiter`] / [`fence_body_sits_between_the_delimiters_without_gaps`] /
+//!   [`fence_in_a_superscript_is_set_at_the_script_size`] / [`nested_fence_is_at_least_as_tall_as_the_inner_fence`] /
+//!   [`empty_fence_compiles_with_the_delimiters_side_by_side`]（共通ヘルパ [`fence_pair`] 経由）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -162,6 +168,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "justify",
   "math_accent",
   "math_break",
+  "math_fenced",
   "math_frac",
   "math_limits",
   "math_script",
@@ -2584,4 +2591,134 @@ fn mark_without_an_attachment_centers_its_ink_on_the_base_attachment() {
       "登録の無い記号は墨の中央を基底の取付点に揃える: {source}"
     );
   }
+}
+
+/// 伸縮括弧のコマンドと、左右の括弧の字（cases / matrix の `delimiter` の括弧と同じ）
+const FENCES: [(&str, &str, &str); 5] = [
+  ("paren", "(", ")"),
+  ("bracket", "[", "]"),
+  ("brace", "{", "}"),
+  ("abs", "|", "|"),
+  ("norm", "\u{2016}", "\u{2016}"),
+];
+
+/// グリフ列のうち、左の括弧（テキストが `open` の最初のもの）と右の括弧（テキストが `close` の最後のもの）。
+///
+/// `\abs` / `\norm` は左右が同じ字なので出現順で分ける。
+fn fence_pair<'a>(runs: &'a [LineRun], open: &str, close: &str) -> (&'a LineRun, &'a LineRun) {
+  let left = runs.iter().find(|line_run| return line_run.run.text == open).expect("左の括弧があるはず");
+  let right = runs.iter().rev().find(|line_run| return line_run.run.text == close).expect("右の括弧があるはず");
+  return (left, right);
+}
+
+/// インライン数式の本体（text 段）のフォントサイズ
+fn inline_math_size() -> Length { return run_with_text(&first_line_runs("$x$\n"), MATH_X).run.font_size; }
+
+#[test]
+fn fence_covers_a_fraction_and_centers_on_the_math_axis() {
+  let text_size = inline_math_size();
+  for (command, open, close) in FENCES {
+    let source = format!("$\\{command}{{\\frac{{a}}{{b}}}}$\n");
+    let runs = first_line_runs(&source);
+
+    let numerator = run_with_text(&runs, MATH_A);
+    let denominator = run_with_text(&runs, MATH_B);
+    let body_top = numerator.dy + stix_ink_extent(numerator).0;
+    let body_bottom = denominator.dy - stix_ink_extent(denominator).1;
+    let (left, right) = fence_pair(&runs, open, close);
+    for delimiter in [left, right] {
+      let size = delimiter.run.font_size;
+      assert_eq!(size, text_size, "括弧はフォントサイズを変えずに伸ばすはず: {source}");
+      let (top, bottom) = stix_run_ink(&delimiter.run);
+      let axis = stix_math_length(MathConstant::AxisHeight, size);
+      let center = delimiter.dy + (top + bottom) / 2.0;
+      assert!(
+        (center - axis).abs() <= Length::from_sp(1),
+        "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
+      );
+      // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
+      let slack = size.scale(0.01);
+      assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず: {source}");
+      assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず: {source}");
+    }
+  }
+}
+
+#[test]
+fn display_fence_grows_past_the_natural_delimiter() {
+  for (command, open, close) in FENCES {
+    let natural = first_line_runs(&format!("$\\{command}{{x}}$\n"));
+    let (runs, _) =
+      display_parts(&format!("\\begin{{equation}}\n\\{command}{{\\frac{{a}}{{b}}}}\n\\end{{equation}}\n"));
+
+    let (natural_left, _) = fence_pair(&natural, open, close);
+    let (left, right) = fence_pair(&runs, open, close);
+    let (natural_top, natural_bottom) = stix_run_ink(&natural_left.run);
+    for delimiter in [left, right] {
+      let (top, bottom) = stix_run_ink(&delimiter.run);
+      assert!(
+        top - bottom > natural_top - natural_bottom,
+        "表示数式の分数を覆うには元の字形では足りず、縦に伸びるはず: \\{command}"
+      );
+      assert_eq!(
+        delimiter.run.font_size, natural_left.run.font_size,
+        "伸ばしてもフォントサイズは変えない: \\{command}"
+      );
+    }
+  }
+}
+
+#[test]
+fn short_fence_body_keeps_the_natural_delimiter() {
+  let fenced = first_line_runs("$\\paren{x}$\n");
+  let bare = first_line_runs("$(x)$\n");
+
+  let (left, right) = fence_pair(&fenced, "(", ")");
+  assert_eq!(left.run.glyphs, run_with_text(&bare, "(").run.glyphs, "𝑥 は元の ( で覆えるので字形を替えない");
+  assert_eq!(right.run.glyphs, run_with_text(&bare, ")").run.glyphs, "𝑥 は元の ) で覆えるので字形を替えない");
+}
+
+#[test]
+fn fence_body_sits_between_the_delimiters_without_gaps() {
+  let runs = first_line_runs("$\\paren{x}$\n");
+
+  let (left, right) = fence_pair(&runs, "(", ")");
+  let body = run_with_text(&runs, MATH_X);
+  assert_eq!(body.dx, left.dx + left.width, "中身は左の括弧の送り幅の直後から");
+  assert_eq!(right.dx, body.dx + body.width, "右の括弧は中身の送り幅の直後から");
+}
+
+#[test]
+fn fence_in_a_superscript_is_set_at_the_script_size() {
+  let runs = first_line_runs("$y^{\\paren{\\frac{a}{b}}}$\n");
+
+  let (left, right) = fence_pair(&runs, "(", ")");
+  let script_size = stix_scaled_size(MathConstant::ScriptPercentScaleDown, inline_math_size());
+  assert_eq!(left.run.font_size, script_size, "上付きの中の括弧は上付きの段の大きさ");
+  assert_eq!(right.run.font_size, script_size, "上付きの中の括弧は上付きの段の大きさ");
+}
+
+#[test]
+fn nested_fence_is_at_least_as_tall_as_the_inner_fence() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\paren{\\paren{\\frac{a}{b}}}\n\\end{equation}\n");
+
+  let opens: Vec<&LineRun> = runs.iter().filter(|line_run| return line_run.run.text == "(").collect();
+  let [outer, inner] = opens.as_slice() else {
+    panic!("左の括弧は外側と内側の 2 つのはず: {} 個", opens.len());
+  };
+  let (outer_top, outer_bottom) = stix_run_ink(&outer.run);
+  let (inner_top, inner_bottom) = stix_run_ink(&inner.run);
+  assert!(
+    outer.dy + outer_top + Length::from_sp(1) >= inner.dy + inner_top
+      && outer.dy + outer_bottom - Length::from_sp(1) <= inner.dy + inner_bottom,
+    "外側の括弧は内側の括弧のインクを覆うはず"
+  );
+}
+
+#[test]
+fn empty_fence_compiles_with_the_delimiters_side_by_side() {
+  let runs = first_line_runs("$\\paren{}$\n");
+
+  let (left, right) = fence_pair(&runs, "(", ")");
+  assert_eq!(right.dx, left.dx + left.width, "空の中身は幅 0");
 }
