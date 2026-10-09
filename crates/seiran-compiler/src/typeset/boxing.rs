@@ -294,6 +294,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Accent(accent) => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)])));
       },
+      InlineNode::Fenced(fenced) => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)])));
+      },
       InlineNode::LargeOperator { symbol, font_size } => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }])));
       },
@@ -395,6 +398,9 @@ impl<'a> Measurer<'a> {
         },
         AtomNode::Accent(accent) => {
           self.place_accent(accent, dy, dx, out);
+        },
+        AtomNode::Fenced(fenced) => {
+          self.place_fenced(fenced, dy, dx, out);
         },
         AtomNode::LargeOperator { symbol, font_size } => {
           self.place_large_operator(&symbol, font_size, dy, dx, out);

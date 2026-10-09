@@ -33,7 +33,7 @@ pub(super) enum Fence {
 pub(super) struct MathItem {
   /// 直前のアイテムと組むときのクラス（左端のクラス）
   left_class: MathClass,
-  /// 直後のアイテムと組むときのクラス（右端のクラス）
+  /// 直後のアイテムと組むときのクラス（右端のクラス。伸縮括弧だけが左端と異なる）
   right_class: MathClass,
   /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
@@ -64,6 +64,18 @@ impl MathItem {
       fence: None,
       body: ItemBody::Plain(vec![AtomNode::LargeOperator { symbol, font_size }]),
       limits,
+    };
+  }
+
+  /// 伸縮括弧のアイテムを作る（左端は Open・右端は Close として隣と組む。括弧は中身ごと閉じた 1 個のアイテムなので、
+  /// 開き・閉じ区切りとしては数えない）
+  pub(super) fn fenced(nodes: Vec<AtomNode>) -> Self {
+    return MathItem {
+      left_class: MathClass::Open,
+      right_class: MathClass::Close,
+      fence: None,
+      body: ItemBody::Plain(nodes),
+      limits: false,
     };
   }
 }
@@ -845,6 +857,17 @@ mod tests {
     let nodes = assemble_breakable(items(")a+b"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 1, "対応の無い閉じ括弧で深さを負にしない: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_count_a_fence_as_a_parenthesis() {
+    let mut sequence = items("a+");
+    sequence.push(MathItem::fenced(vec![AtomNode::Text("b".to_string(), style())]));
+    sequence.extend(items("+c"));
+
+    let nodes = assemble_breakable(sequence, Length::pt(12.0));
+
+    assert_eq!(breaks(&nodes).len(), 2, "伸縮括弧は中身ごと閉じているので深さを動かさない: {nodes:?}");
   }
 
   #[test]

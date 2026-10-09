@@ -27,7 +27,7 @@ use crate::{
       counter::format_counter_value,
       layout_node::{
         AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBlockCellLayout, MathBlockLayout,
-        MathBlockRowLayout, MathFraction, MathRadical, TextStyle,
+        MathBlockRowLayout, MathFenced, MathFraction, MathRadical, TextStyle,
       },
       with_label_anchors,
     },
@@ -392,6 +392,7 @@ fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext) -> Vec<AtomNode
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
 ///
 /// `Group` / `Frac` / `Sqrt` / `Accent` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
+/// `Fenced` は中身を組んだうえで、左端 Open・右端 Close の 1 個のアイテムにする。
 fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
   match &node.kind {
     HirMathKind::Text(text) => {
@@ -453,6 +454,16 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Accent(accent)]));
     },
+    // 中身は括弧と同じ数式スタイル（TeX の `\left` … `\right` の中身と同じ）
+    HirMathKind::Fenced { open, close, body } => {
+      let fenced = MathFenced {
+        body: lower_math_list(slice::from_ref(body.as_ref()), ctx),
+        open: open.to_string(),
+        close: close.to_string(),
+        font_size: ctx.font_size(),
+      };
+      items.push(spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]));
+    },
     // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
     HirMathKind::Styled {
@@ -503,7 +514,7 @@ mod tests {
     typeset::{
       font::ScriptLevel,
       lowering::{
-        MathAccent, MathScripts,
+        MathAccent, MathFenced, MathScripts,
         test_support::{analyzed, lower, stix_script_scale},
       },
     },
@@ -525,6 +536,8 @@ mod tests {
         AtomNode::Radical(radical) => out.extend(radical_texts(radical)),
         // アクセント記号は boxing が組むのでテキストに数えない
         AtomNode::Accent(accent) => out.extend(atom_texts(&accent.base)),
+        // 区切り括弧は boxing が組むのでテキストに数えない
+        AtomNode::Fenced(fenced) => out.extend(atom_texts(&fenced.body)),
         // 大型演算子は text 段以下で組んだときと同じ演算子のテキストとして数える
         AtomNode::LargeOperator { symbol, font_size } => out.push((
           symbol.clone(),
@@ -586,6 +599,17 @@ mod tests {
       .expect("アクセントが期待されます");
   }
 
+  /// レイアウトノード列から最初の伸縮括弧を取り出すヘルパ
+  fn first_fenced(nodes: &[LayoutNode]) -> &MathFenced {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Fenced(fenced)) => return Some(fenced),
+        _ => return None,
+      })
+      .expect("伸縮括弧が期待されます");
+  }
+
   /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（スクリプトの基底・中身も辿る）
   fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
     let mut out = Vec::new();
@@ -596,6 +620,7 @@ mod tests {
         LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
         LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
         LayoutNode::Inline(InlineNode::Accent(accent)) => out.extend(atom_texts(&accent.base)),
+        LayoutNode::Inline(InlineNode::Fenced(fenced)) => out.extend(atom_texts(&fenced.body)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
@@ -875,6 +900,74 @@ mod tests {
       panic!("基底はスクリプト付きの基底 1 つのはず: {nodes:?}");
     };
     assert!(inner.cramped, "アクセントの基底は cramped（TeX の Rule 12・MathML Core の accent）");
+  }
+
+  #[test]
+  fn lower_fence_carries_the_delimiters_and_the_body() {
+    let nodes = lower_math_source("$\\norm{x}$\n");
+
+    let fenced = first_fenced(&nodes);
+    assert_eq!((fenced.open.as_str(), fenced.close.as_str()), ("\u{2016}", "\u{2016}"));
+    assert_eq!(concat_atom_texts(&fenced.body), "\u{1D465}", "中身は数式用イタリックへ写す");
+    assert_eq!(fenced.font_size, ReadStyle::default().text.font_size, "インライン数式の本体は text 段");
+  }
+
+  #[test]
+  fn fence_in_a_script_takes_the_script_size() {
+    let nodes = lower_math_source("$y^{\\paren{x}}$\n");
+
+    let content = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
+    let [AtomNode::Fenced(fenced)] = content else {
+      panic!("上付きの中身は伸縮括弧 1 つのはず: {content:?}");
+    };
+    assert_eq!(fenced.font_size, ReadStyle::default().text.font_size.scale(0.7), "括弧も中身も上付きの段");
+  }
+
+  #[test]
+  fn scripts_attach_to_the_whole_fence() {
+    let nodes = lower_math_source("$\\paren{x}^{2}$\n");
+
+    let scripts = first_scripts(&nodes);
+    assert!(matches!(scripts.base.as_slice(), [AtomNode::Fenced(_)]), "基底は括弧全体: {scripts:?}");
+  }
+
+  #[test]
+  fn fence_spaces_like_bare_delimiters() {
+    // 左端は Open、右端は Close として隣と組む（`\sum` の後に Ord の細アキが入らない）
+    let pairs = [
+      ("$\\sum\\paren{x}$\n", "$\\sum(x)$\n"),
+      ("$a+\\paren{b}$\n", "$a+(b)$\n"),
+      ("$\\paren{a}+b$\n", "$(a)+b$\n"),
+      ("$\\paren{a}=b$\n", "$(a)=b$\n"),
+    ];
+    for (fenced, bare) in pairs {
+      assert_eq!(
+        spacings(&lower_math_source(fenced)),
+        spacings(&lower_math_source(bare)),
+        "{fenced} と {bare} のアキは同じはず"
+      );
+    }
+    // 伸縮括弧が素の Ord だったら入る細アキ（テストが区別できることの確認）
+    assert_eq!(spacings(&lower_math_source("$\\sum{x}$\n")), vec![mu(3)]);
+  }
+
+  #[test]
+  fn fence_keeps_breaks_outside_and_none_inside() {
+    let nodes = lower_math_source("$a+\\paren{b+c}=d$\n");
+
+    assert_eq!(math_break_count(&nodes), 2, "括弧の外の + と = の後だけ: {nodes:?}");
+  }
+
+  #[test]
+  fn fence_body_inherits_the_variant() {
+    let fenced = lower_math_source("$\\mathbold{\\paren{x}}$\n");
+    let plain = lower_math_source("$\\mathbold{x}$\n");
+
+    assert_eq!(
+      concat_atom_texts(&first_fenced(&fenced).body),
+      concat_texts(&plain),
+      "中身は外側の字形 variant を継承する"
+    );
   }
 
   #[test]
