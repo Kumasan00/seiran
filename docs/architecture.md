@@ -851,7 +851,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `AtomNode` で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
-  `Accent` は 1 個の Ord なので `$a{+}b$` でアキを殺せる
+  `Accent` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
+  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身ごと閉じた Atom なので内側では割らず、
+  括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）
 - **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
   持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
   `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
@@ -865,7 +867,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
   段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）・`MathAccent`（基底・アクセント記号・
-  アクセントの段のサイズとスクリプト段）として boxing へ渡す。
+  アクセントの段のサイズとスクリプト段）・`MathFenced`（中身・左右の括弧・括弧の段のサイズ。中身は括弧と同じ段で、cramped も継承）
+  として boxing へ渡す。
   大型演算子（数式クラス Op の記号）は display 段でだけ `AtomNode::LargeOperator` にする（text 段以下は通常の演算子の
   テキスト。MathML Core の largeop は math-style が normal のときだけ効く）。積分記号以外（MathML Core の演算子辞書の
   movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
@@ -904,12 +907,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
   閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
-  上付き下付きの付いた基底・分数・根号・アクセント・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
+  上付き下付きの付いた基底・分数・根号・アクセント・伸縮括弧・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
   キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
   （`VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）に加えて
   包み variant `Inline(InlineNode)` を 1 つ持ち、`boxing` の縦リスト走査はその 1 arm でインラインへ
   振り分ける（インライン側に縦リスト用の `unreachable!` が無い。#672）。`Atom` に畳める要素
-  （テキスト・kern・上付き下付きの付いた基底・分数・根号・アクセント・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
+  （テキスト・kern・上付き下付きの付いた基底・分数・根号・アクセント・伸縮括弧・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
   なしで閉じる。持ち上げは `From` の片方向のみ（逆向きの変換は作らない）
 - **段落は明示ノードにしていない**（見送り。#672 のスコープ外）。段落の境界は「インラインを溜め、
   縦リスト用ノードが来たら `flush_paragraph` する」という `boxing` 側の暗黙の表現で、`lowering/list.rs` は
@@ -996,6 +999,11 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   ノートが、フォントの規則はベースラインを揃えるものだと述べる）。基底のインクの高さが `FlattenedAccentBaseHeight` を超えたら
   アクセント記号を `flac` の平たい字形に替える。Atom の幅は基底の送り幅（記号の墨のはみ出しは数えない。TeX と同じ）で、
   アクセントは閉じた Atom 1 つ
+- **伸縮括弧**（`MathFenced`。`\paren` 等）は、括弧を中身のインクの高さ h・深さ d と数式軸 a（`AxisHeight`）から
+  `2 × max(h − a, d + a)` 以上へ、区切り括弧と同じ伸縮で縦にだけ伸ばし（MathML Core の対称伸縮）、インクの縦中央を
+  数式軸に合わせる。中身が軸の上下に非対称でも、括弧は軸を中心に上下対称に伸びて両側を覆う。TeX の
+  `\delimiterfactor` / `\delimitershortfall` 相当の係数・不足許容量は置かない。括弧・中身・括弧を隙間なく並べ
+  （cases / matrix の枠のアキは使わない）、閉じた Atom 1 つにする
 - **大型演算子**（`AtomNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
