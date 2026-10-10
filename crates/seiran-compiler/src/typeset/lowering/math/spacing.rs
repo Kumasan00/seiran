@@ -343,10 +343,10 @@ pub(super) fn char_fence(ch: char) -> Option<Fence> {
 
 /// 記号コマンド（`\langle` 等）の数式クラスから開き・閉じ区切りを導く
 ///
-/// frontend の記号テーブル（`SYMBOLS`）で `Open` / `Close` クラスを持つ記号は `\langle` /
-/// `\rangle`・`\lceil` / `\rceil`・`\lfloor` / `\rfloor` の 3 対のみで、いずれも対応する開き括弧を
-/// 持つ本物の区切りである（direct な文字の `!` `?` のような「クラスだけ `Close`」の例外は記号テーブルには
-/// 無い）。そのためクラスから直接 [`Fence`] を導いてよい。
+/// frontend の記号テーブル（`SYMBOLS`）で `Open` / `Close` クラスを持つ記号は、どれも対になる閉じ・開き括弧を
+/// 記号テーブルに持つ本物の区切りである（対の無い根号・長除法は Ord。対の存在は `command::symbol` のテストが保つ）。
+/// direct な文字の `!` `?` のような「クラスだけ `Close`」の例外は記号テーブルには無いので、クラスから直接 [`Fence`] を
+/// 導いてよい。
 pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
   return match class {
     MathClass::Open => Some(Fence::Open),

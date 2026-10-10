@@ -389,3 +389,19 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
   let nodes = evaluate_math_children(source, ctx, arg_node)?;
   return Ok(collapse_single(group_id, nodes));
 }
+
+#[cfg(test)]
+mod tests {
+  use super::{MathCommandKind, symbol};
+
+  #[test]
+  fn every_symbol_name_resolves_to_the_symbol_in_math() {
+    // 数式では字体・frac・sqrt・伸縮括弧・アクセント・上下線を記号表より先に引くので、同名の記号は数式でだけ隠れる
+    for name in symbol::names() {
+      assert!(
+        matches!(MathCommandKind::from_name(name), Some(MathCommandKind::Symbol(_))),
+        "数式の語彙が記号名を隠しています: {name}"
+      );
+    }
+  }
+}

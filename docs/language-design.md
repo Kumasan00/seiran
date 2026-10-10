@@ -297,6 +297,29 @@ TeX の `\left( … \right)` は対になるトークンで区間を区切る構
 - **見送り** 床・天井・山括弧（`\floor` `\ceil` と ⟨⟩）。再検討トリガーは具体要求。山括弧は `\angle`（∠）と衝突しない
   名前が要る
 
+#### 記号コマンドの名前は 1 字 1 名で、字を最も分かりやすく表す語にする（2026-10、#87）— P2, G1, P6
+
+記号コマンドは引数を取らず、名前だけが出す字と数式クラスを決める。名前はその字を数学で呼ぶ最も分かりやすい語にする。
+LaTeX（amssymb 等）の標準名があればそれを使い、unicode-math の名前は分かりやすいときだけ採る。暗号的な略記は語に
+展開する（`vysmwhtsquare` → `tinysquare`、`tona` → `nwnearrows`）。大きさは tiny / small / mediumsmall / medium /
+無印 / large、塗りは black を付け、白は付けない（無印の名前が使用済みか LaTeX の別コマンドと同じ綴りになるときだけ
+`white` — `whitediamond`、`whitecircle`）。`math` 接頭辞は字体コマンド（`\mathbold` 等）と紛れるので付けない
+（`\sterling` `\ratio`）。LaTeX の既存コマンドと同じ綴りは避ける（⧾ ⧿ は `\tiny` を避けて `\tplus` `\tminus`）。
+
+LaTeX と同じ綴りの名前は、unicode-math がその LaTeX 名に対応づける字を指す（偽の友を作らない。G1）。このため
+`\preceq` は ⪯（≼ は `\preccurlyeq`）、`\perp` は U+27C2、`\models` は ⊧（⊨ は `\vDash`）、`\blacktriangle` は ▴
+（▲ は `\bigblacktriangleup`）、`\epsilon` は ϵ、`\phi` は ϕ。
+
+同じ字・同じクラスに名前は 1 つ（`\land` を残し `\wedge` は持たない）。字が同じでもクラスが違えば出力のアキが違うので
+別名ではない（`\triangle` Ord と `\bigtriangleup` Bin）。直接入力で同じ字・同じクラスになる ASCII には名前を置かず、
+直接書けない `\`（`\\` は改行）と、直接入力とクラスが違う `:`（直接は Rel）だけ `\backslash` `\colon` を置く。
+
+- **恒久不採用** LaTeX / unicode-math の別名（`\ne` `\varnothing` `\hslash` 等）— 同じ結果への第 2 の書き方（G1）。
+  `\pagebreak` 事例の `\newpage` と同じ判定
+- **恒久不採用** ASCII の記号名（`\lparen` `\equal` 等）— 直接入力と同じ結果への第 2 の書き方
+- **見送り** unicode-math の mathalpha のうち字体コマンドで出せない字（ϝ Ϝ ϴ ℩ Å 𝚤 𝚥 ℽ ℾ ℿ）。再検討トリガーは
+  具体要求（𝚤 𝚥 は #942 のドット無し字形と合わせて判断する）
+
 ### P3 オプション引数は名前付きのみ
 
 #### 任意引数は 1 組・キー重複はエラー（2026-08、#488）— P3, P6, G1
