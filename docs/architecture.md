@@ -970,7 +970,8 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   これは MathML Core の `msub` / `msup`（演算子でない基底は上付きを補正ぶん前へ、演算子は下付きを補正ぶん手前へ。
   補正を持つ演算子はすべて MathML Core の大型演算子と同じに扱う）と同じ位置になる。基底の末尾とスクリプトの先頭がともに数式フォントのグリフなら、OpenType MATH の math kern（上付きは基底の右上と上付きの
   左下を「上付きのインクの底」「基底のインクの頂」の 2 つの高さで、下付きは基底の右下と下付きの左上を「下付きのインクの頂」
-  「基底のインクの底」で足し、小さい方）だけ寄せる。上下付き
+  「基底のインクの底」で足し、小さい方。表はそれぞれのグリフ自身のベースライン — 箱の `dy` にグリフの `y_offset` を足した
+  位置 — からの高さで引く）だけ寄せる。上下付き
   同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
   超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（Atom の幅は
   末尾のアキを含む送り幅を下限にする）
@@ -1022,7 +1023,7 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
 - **大型演算子**（`AtomNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
-  `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして拾う。上下に積む上付き・下付き
+  `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして、軸へ合わせたずれと一緒に拾う。上下に積む上付き・下付き
   （`MathScripts::limits`）は MathML Core §3.4.2 の largeop の規則で、上限のベースラインを基底のインクの頂から
   max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
   max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
