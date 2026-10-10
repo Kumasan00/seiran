@@ -84,14 +84,21 @@ fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
     .collect();
 }
 
-/// 傾いた字形（`correction(gid)` が 0 でない）の送り幅へ、次の字形が傾いていないときと末尾のときだけ、その補正
-/// （フォント単位）を足す（MathML Core の `mrow`: 傾いた子の補正は次の子が傾いていないときに送る）。
+/// 傾いたクラスタ（`correction(gid)` の和が 0 でない）の末尾の字形の送り幅へ、次のクラスタが傾いていないときと末尾の
+/// ときだけ、その補正（フォント単位）を足す（MathML Core の `mrow`: 傾いた子の補正は次の子が傾いていないときに送る）。
+///
+/// クラスタは `range` が等しい連続した字形（`cluster_ranges` が各字形へクラスタ全体の範囲を入れる）。基底と結合文字を
+/// 1 字として判定し末尾の字形へ足すので、送り幅 0 の結合文字の基底に対する位置は補正で動かない。
 fn add_italic_corrections_to(glyphs: &mut [Glyph], correction: impl Fn(u32) -> i32) {
-  let corrections: Vec<i32> = glyphs.iter().map(|glyph| return correction(glyph.gid)).collect();
-  for (index, glyph) in glyphs.iter_mut().enumerate() {
+  let same_cluster = |left: &Glyph, right: &Glyph| return left.range == right.range;
+  let corrections: Vec<i32> = glyphs
+    .chunk_by(same_cluster)
+    .map(|cluster| return cluster.iter().map(|glyph| return correction(glyph.gid)).sum())
+    .collect();
+  for (index, cluster) in glyphs.chunk_by_mut(same_cluster).enumerate() {
     let next_is_slanted = corrections.get(index + 1).is_some_and(|&next| return next != 0);
     if !next_is_slanted {
-      glyph.x_advance += corrections[index];
+      cluster.last_mut().expect("chunk_by_mut は空の塊を返さない").x_advance += corrections[index];
     }
   }
 }
@@ -845,6 +852,23 @@ mod tests {
       .collect();
   }
 
+  /// `(gid, 送り幅, クラスタ番号)` の順にグリフを並べる。クラスタ番号が等しいグリフは同じ範囲（同じクラスタ）を持つ
+  fn clustered_glyphs(specs: &[(u32, i32, usize)]) -> Vec<Glyph> {
+    return specs
+      .iter()
+      .map(|&(gid, x_advance, cluster)| {
+        return Glyph {
+          gid,
+          range: cluster..cluster + 1,
+          x_advance,
+          y_advance: 0,
+          x_offset: 0,
+          y_offset: 0,
+        };
+      })
+      .collect();
+  }
+
   /// gid 1 は補正 30・gid 2 は補正 20 の傾いた字形、それ以外は補正 0
   fn correction(gid: u32) -> i32 {
     return match gid {
@@ -881,5 +905,49 @@ mod tests {
     add_italic_corrections_to(&mut glyphs, correction);
 
     assert!(glyphs.iter().all(|glyph| return glyph.x_advance == 500), "補正 0 の字形は送り幅が変わらない");
+  }
+
+  #[test]
+  fn italic_correction_goes_after_the_mark_before_an_upright_glyph() {
+    let mut glyphs = clustered_glyphs(&[(1, 500, 0), (9, 0, 0), (7, 500, 1)]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+    assert_eq!(advances, vec![500, 30, 500], "補正は基底ではなくクラスタの末尾の結合文字の後ろに入る");
+  }
+
+  #[test]
+  fn italic_correction_goes_after_the_mark_at_the_end() {
+    let mut glyphs = clustered_glyphs(&[(1, 500, 0), (9, 0, 0)]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+    assert_eq!(advances, vec![500, 30], "末尾のクラスタの補正も結合文字の後ろに入る");
+  }
+
+  #[test]
+  fn mark_does_not_count_as_an_upright_next_glyph() {
+    let mut glyphs = clustered_glyphs(&[(1, 500, 0), (9, 0, 0), (2, 500, 1)]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+    assert_eq!(
+      advances,
+      vec![500, 0, 520],
+      "同じクラスタの結合文字は次の字形の判定に入らず、傾いたクラスタどうしは詰まる"
+    );
+  }
+
+  #[test]
+  fn cluster_correction_is_the_sum_of_its_glyphs() {
+    let mut glyphs = clustered_glyphs(&[(1, 500, 0), (2, 0, 0), (7, 500, 1)]);
+
+    add_italic_corrections_to(&mut glyphs, correction);
+
+    let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
+    assert_eq!(advances, vec![500, 50, 500], "クラスタの補正は構成字形の補正の和で、末尾の字形に 1 回だけ足す");
   }
 }
