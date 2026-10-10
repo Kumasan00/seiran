@@ -283,7 +283,7 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 
 `LSP` は position 指定（`filePath` + `line` + `character`）が必須でシンボル名だけでは引けないため、**grep / Glob で位置を特定 → LSP で辿る** の順で使う。
 
-上記はすべて本体スレッド限定 — **サブエージェントでは LSP / ToolSearch は使えない**（ToolSearch はセッション全体で subagent に無効、LSP は deferred tool なので subagent からスキーマを読めない）。シンボル追跡が要る調査は本体スレッドが LSP で行い、explore agent は「ここから先は LSP が必要」と報告で返す（報告規約は `.claude/agents/explore.md`）。agent 定義の `tools:` には実在するツール名だけを列挙する — 未知名を含めると許可リストのパース自体が壊れ、可視ツールが縮退する。
+上記はすべて本体スレッド限定 — **サブエージェントでは LSP / ToolSearch は使えない**（ToolSearch はセッション全体で subagent に無効、LSP は deferred tool なので subagent からスキーマを読めない）。シンボル追跡が要る調査は本体スレッドが LSP で行い、探索を任された subagent は grep の文字列一致で確定できない箇所（facade 越しの定義・参照の網羅）を推測で埋めず「ここから先は LSP が必要」と報告で返す。agent 定義の `tools:` には実在するツール名だけを列挙する — 未知名を含めると許可リストのパース自体が壊れ、可視ツールが縮退する。
 
 ## 設定ファイル
 
