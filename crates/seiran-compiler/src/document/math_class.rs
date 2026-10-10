@@ -7,7 +7,7 @@
 pub(crate) enum MathClass {
   /// 順序子（`\mathord`）— 変数・名前付き記号など（`\alpha` `\infty` `\hbar`）
   Ord,
-  /// 大型演算子（`\mathop`）— 総和・積分など（`\sum` `\int` `\prod`）
+  /// 演算子（`\mathop`）— 総和・積分などの大型演算子（`\sum` `\int` `\prod`）と、largeop を持たない演算子（`\bigslash`）
   Op,
   /// 二項演算子（`\mathbin`）— 中アキを伴う演算子（`\times` `\oplus` `\cup`）
   Bin,
