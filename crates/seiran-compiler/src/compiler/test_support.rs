@@ -177,6 +177,8 @@ pub(super) struct TestProjectBuilder {
   style_overrides: Vec<TomlOverride>,
   /// ワークスペース相対で書く資源（画像）。登録キーは他と同じく `base_dir` を前置する
   assets: Vec<PathBuf>,
+  /// フォントの実バイト列の差し替え（ワークスペース相対パスと中身）。fixture のフォントを登録したあとで上書きする
+  font_bytes: Vec<(PathBuf, Vec<u8>)>,
 }
 
 impl TestProjectBuilder {
@@ -189,6 +191,7 @@ impl TestProjectBuilder {
       config_overrides: Vec::new(),
       style_overrides: Vec::new(),
       assets: Vec::new(),
+      font_bytes: Vec::new(),
     };
   }
 
@@ -234,6 +237,12 @@ impl TestProjectBuilder {
     for path in paths {
       self = self.asset(path);
     }
+    return self;
+  }
+
+  /// fixture の config.toml が指すフォント `path`（ワークスペース相対）を、実ファイルではなく `bytes` で登録する。
+  pub(super) fn font_bytes(mut self, path: &str, bytes: Vec<u8>) -> Self {
+    self.font_bytes.push((PathBuf::from(path), bytes));
     return self;
   }
 
@@ -308,6 +317,10 @@ impl TestProjectBuilder {
     }
 
     source = self.register_fonts(source, &root, &table);
+    // `with_bytes` は同じキーを上書きするので、実ファイルを登録したあとで差し替える
+    for (path, bytes) in &self.font_bytes {
+      source = source.with_bytes(self.key(path), bytes.clone());
+    }
 
     let reference = style_table.get("reference").and_then(toml::Value::as_table);
     for key in ["csl_path", "locale_path"] {

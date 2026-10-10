@@ -3,8 +3,8 @@
 //! `MathML Core` §3.2.4.3（largeop を持ち math-style が normal の演算子）の規則で、演算子 1 字を区切り括弧と同じ伸縮
 //! （size variant → glyph assembly → 最大の size variant）で `DisplayOperatorMinHeight` 以上へ縦に伸ばし、インクの縦中央を
 //! 数式軸（`AxisHeight`）に合わせる（大型演算子は演算子辞書でどれも symmetric）。イタリック補正は選んだ字形のもので、
-//! `Measurer::detach` が末尾のグリフとして拾う。glyph assembly で組んだときは `GlyphAssembly` の補正ではなく最後のパーツの
-//! 補正になる。
+//! `Measurer::detach` が末尾のグリフとして、軸へ合わせたずれと一緒に拾う（math kern はそのグリフ自身のベースラインからの
+//! 高さで引く）。glyph assembly で組んだときは `GlyphAssembly` の補正ではなく最後のパーツの補正になる。
 
 use read_fonts::tables::math::MathConstant;
 

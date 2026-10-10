@@ -11,7 +11,7 @@
 //! 横位置は基底の末尾グリフのイタリック補正で決める（上付きは基底の右端、下付きは補正ぶん戻す — 演算子でない基底は補正が
 //! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
-//! 足した小さい方）でさらに寄せる。
+//! 足した小さい方。高さはそれぞれのグリフ自身のベースラインから測る）でさらに寄せる。
 //!
 //! 分数（`MathFraction`）・根号（`MathRadical`）・アクセント（`MathAccent`）・上下線（`MathBar`）・伸縮括弧（`MathFenced`）・
 //! display 段の大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・下付き（`MathScripts` の `limits` が真）の配置は
@@ -30,10 +30,9 @@ use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
 use crate::{
   length::Length,
-  project::FontType,
   publication::Glyph,
   typeset::{
-    boxes::{Align, Block, HBox, HBoxContent, MathRowNumber, PlacedHBox},
+    boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
     boxing::{Measurer, Shaper},
     lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathScripts},
   },
@@ -66,11 +65,14 @@ struct Detached {
   /// インクのベースラインより下の深さ（0 以上）
   ink_depth: Length,
   /// 末尾のノードがテキストか大型演算子で、そのノードが出した最後の箱が数式フォントのグリフ列のとき、その最後のグリフ
-  /// （gid と run のフォントサイズ）。空・末尾がアキやスクリプト・数式フォント以外は `None`（補正も math kern も 0）
-  trailing_glyph: Option<(u32, Length)>,
+  /// （gid・run のフォントサイズ・そのグリフのベースラインの高さ）。高さは原点のベースライン基準で、テキストは GPOS が
+  /// 縦にずらしたグリフ（結合文字など）の `y_offset`、それ以外は 0、display 段の大型演算子は数式軸へ合わせたずれ
+  /// （glyph assembly ならパーツの位置も足す）。空・末尾がアキや
+  /// スクリプト・数式フォント以外は `None`（補正も math kern も 0）
+  trailing_glyph: Option<(u32, Length, Length)>,
   /// 先頭のノードがテキストか大型演算子で、そのノードが出した最初の箱が数式フォントのグリフ列のとき、その最初のグリフ
-  /// （gid と run のフォントサイズ）。それ以外は `None`（math kern 0）
-  leading_glyph: Option<(u32, Length)>,
+  /// （`trailing_glyph` と同じ組）。それ以外は `None`（math kern 0）
+  leading_glyph: Option<(u32, Length, Length)>,
 }
 
 /// 上付き・下付きの配置に使う MATH 定数（基底の段のフォントサイズで長さへ換算済み）
@@ -344,7 +346,7 @@ impl Measurer<'_> {
 
     let correction = base
       .trailing_glyph
-      .map_or(Length::ZERO, |(gid, size)| return self.shaper.italic_correction(gid, size));
+      .map_or(Length::ZERO, |(gid, size, _)| return self.shaper.italic_correction(gid, size));
     let base_end = *dx + base.width;
     translate_into(out, base.boxes, *dx, dy);
     let mut end = base_end;
@@ -394,10 +396,10 @@ impl Measurer<'_> {
       let mut own = Vec::new();
       self.place_atom_node(node, Length::ZERO, &mut width, &mut own);
       if yields_glyphs && index == 0 {
-        leading_glyph = own.first().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::first));
+        leading_glyph = own.first().and_then(|placed| return self.shaper.placed_math_glyph(placed, <[Glyph]>::first));
       }
       if yields_glyphs && index == last {
-        trailing_glyph = own.last().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::last));
+        trailing_glyph = own.last().and_then(|placed| return self.shaper.placed_math_glyph(placed, <[Glyph]>::last));
       }
       boxes.append(&mut own);
     }
@@ -414,24 +416,30 @@ impl Measurer<'_> {
 
   /// 基底の末尾グリフとスクリプトの先頭グリフの math kern（OpenType MATH の算法）
   ///
-  /// `heights`（基底のベースライン基準）それぞれで、基底の隅 `base_corner` とスクリプトの隅 `script_corner`（スクリプトの
-  /// ベースラインは基底のベースラインから `script_baseline` 上）の kern を足し、小さい方を返す。どちらかのグリフが無い
+  /// `heights`（基底のベースライン基準）それぞれで、基底の隅 `base_corner` とスクリプトの隅 `script_corner` の kern を
+  /// 足し、小さい方を返す。kern はそれぞれのグリフ自身のベースラインからの高さで引く — 基底のグリフのベースラインは
+  /// 基底のベースラインから `Detached` の高さぶん、スクリプトのグリフのベースラインはスクリプトのベースライン
+  /// （基底のベースラインから `script_baseline` 上）からさらにその高さぶん上にある。どちらかのグリフが無い
   /// （箱・空・数式フォント以外）ときは 0。
   fn cut_in(
     &self,
-    base_glyph: Option<(u32, Length)>,
+    base_glyph: Option<(u32, Length, Length)>,
     base_corner: MathKernCorner,
-    script_glyph: Option<(u32, Length)>,
+    script_glyph: Option<(u32, Length, Length)>,
     script_corner: MathKernCorner,
     script_baseline: Length,
     heights: [Length; 2],
   ) -> Length {
-    let (Some((base_gid, base_size)), Some((script_gid, script_size))) = (base_glyph, script_glyph) else {
+    let (Some((base_gid, base_size, base_rise)), Some((script_gid, script_size, script_rise))) =
+      (base_glyph, script_glyph)
+    else {
       return Length::ZERO;
     };
     let [first, second] = heights.map(|height| {
-      return self.shaper.math_kern(base_gid, base_size, base_corner, height)
-        + self.shaper.math_kern(script_gid, script_size, script_corner, height - script_baseline);
+      return self.shaper.math_kern(base_gid, base_size, base_corner, height - base_rise)
+        + self
+          .shaper
+          .math_kern(script_gid, script_size, script_corner, height - script_baseline - script_rise);
     });
     return first.min(second);
   }
@@ -446,17 +454,6 @@ fn translate_into(out: &mut Vec<PlacedHBox>, boxes: Vec<PlacedHBox>, dx: Length,
       dy: placed.dy + dy,
     };
   }));
-}
-
-/// 箱が数式フォントのグリフ列なら、`pick` が選ぶグリフの gid と run のフォントサイズ
-fn math_glyph(hbox: &HBox, pick: fn(&[Glyph]) -> Option<&Glyph>) -> Option<(u32, Length)> {
-  let HBoxContent::Glyphs(run) = &hbox.content else {
-    return None;
-  };
-  if run.font_type != FontType::Math {
-    return None;
-  }
-  return pick(&run.glyphs).map(|glyph| return (glyph.gid, run.font_size));
 }
 
 #[cfg(test)]

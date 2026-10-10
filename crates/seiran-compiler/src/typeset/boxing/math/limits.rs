@@ -103,7 +103,7 @@ impl Measurer<'_> {
     let under = subscript.map(|nodes| return self.detach(nodes));
     let correction = base
       .trailing_glyph
-      .map_or(Length::ZERO, |(gid, size)| return self.shaper.italic_correction(gid, size));
+      .map_or(Length::ZERO, |(gid, size, _)| return self.shaper.italic_correction(gid, size));
     let (base_x, over_x, under_x, width) = limit_columns(
       base.width,
       over.as_ref().map(|part| return part.width),
