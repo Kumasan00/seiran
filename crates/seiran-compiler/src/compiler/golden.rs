@@ -65,7 +65,9 @@
 //!   [`base_ending_with_a_slanted_script_takes_no_italic_correction`] /
 //!   [`cursor_after_scripts_follows_the_farther_script`]・
 //!   結合文字付きの基底（共通ヘルパ [`script_offset`] 経由）[`combining_mark_keeps_its_place_on_a_scripted_base`] /
-//!   [`superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char`]・
+//!   [`superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char`] /
+//!   [`subscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char`] /
+//!   [`subscript_on_a_base_with_a_combining_mark_takes_the_math_kern_of_the_base_char`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`] /
 //!   [`display_operator_scripts_take_the_math_kern_from_the_operator_baseline`] /
@@ -1901,6 +1903,32 @@ fn superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char() {
     script_offset("$x\u{0302}^{2}$\n", &format!("{MATH_X}\u{0302}"), "2"),
     script_offset("$x^{2}$\n", MATH_X, "2"),
     "上付きの横位置は結合文字の有無で変わらない"
+  );
+}
+
+#[test]
+fn subscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char() {
+  let bare = script_offset("$x_{2}$\n", MATH_X, "2");
+
+  // 結合文字 1 つと、2 つ重ねたもの（U+0302 U+0303）
+  for marks in ["\u{0302}", "\u{0302}\u{0303}"] {
+    let source = format!("$x{marks}_{{2}}$\n");
+    assert_eq!(
+      script_offset(&source, &format!("{MATH_X}{marks}"), "2"),
+      bare,
+      "下付きは結合文字を含めた字の補正ぶん引き戻す: {source:?}"
+    );
+  }
+}
+
+#[test]
+fn subscript_on_a_base_with_a_combining_mark_takes_the_math_kern_of_the_base_char() {
+  // 𝑓 の右下の math kern は下付きを潜り込ませる（`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`）。
+  // STIX Two Math の U+0302 の字形は kern の表を持たないので、結合文字の字形で引くと潜り込まない
+  assert_eq!(
+    script_offset("$f\u{0302}_{n}$\n", &format!("{MATH_F}\u{0302}"), "\u{1D45B}"),
+    script_offset("$f_{n}$\n", MATH_F, "\u{1D45B}"),
+    "下付きの math kern は結合文字ではなく基底の字の字形の表で引く"
   );
 }
 

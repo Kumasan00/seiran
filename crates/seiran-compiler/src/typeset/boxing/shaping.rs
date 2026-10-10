@@ -84,16 +84,36 @@ fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
     .collect();
 }
 
-/// 傾いたクラスタ（`correction(gid)` の和が 0 でない）の末尾の字形の送り幅へ、次のクラスタが傾いていないときと末尾の
+/// 2 つの字形が同じクラスタに属するか（`cluster_ranges` が各字形へクラスタ全体の範囲を入れる）
+fn same_cluster(left: &Glyph, right: &Glyph) -> bool { return left.range == right.range; }
+
+/// 字形列（クラスタ 1 つなど）のイタリック補正（フォント単位）— 構成字形の `correction(gid)` の和
+fn summed_correction(glyphs: &[Glyph], correction: impl Fn(u32) -> i32) -> i32 {
+  return glyphs.iter().map(|glyph| return correction(glyph.gid)).sum();
+}
+
+/// 字形列の先頭のクラスタ（先頭の字形と `range` が等しい連続した字形）。字形が無ければ空
+pub(super) fn first_cluster(glyphs: &[Glyph]) -> &[Glyph] {
+  return glyphs.chunk_by(same_cluster).next().unwrap_or_default();
+}
+
+/// 字形列の末尾のクラスタ（末尾の字形と `range` が等しい連続した字形）。字形が無ければ空
+pub(super) fn last_cluster(glyphs: &[Glyph]) -> &[Glyph] {
+  return glyphs.chunk_by(same_cluster).next_back().unwrap_or_default();
+}
+
+/// 字形列の最後の字形 1 つ（同じクラスタの字形でも含めない）。字形が無ければ空
+pub(super) fn last_glyph(glyphs: &[Glyph]) -> &[Glyph] { return &glyphs[glyphs.len().saturating_sub(1)..]; }
+
+/// 傾いたクラスタ（[`summed_correction`] が 0 でない）の末尾の字形の送り幅へ、次のクラスタが傾いていないときと末尾の
 /// ときだけ、その補正（フォント単位）を足す（MathML Core の `mrow`: 傾いた子の補正は次の子が傾いていないときに送る）。
 ///
-/// クラスタは `range` が等しい連続した字形（`cluster_ranges` が各字形へクラスタ全体の範囲を入れる）。基底と結合文字を
-/// 1 字として判定し末尾の字形へ足すので、送り幅 0 の結合文字の基底に対する位置は補正で動かない。
+/// クラスタは [`same_cluster`] で区切る。基底と結合文字を 1 字として判定し末尾の字形へ足すので、送り幅 0 の結合文字の
+/// 基底に対する位置は補正で動かない。
 fn add_italic_corrections_to(glyphs: &mut [Glyph], correction: impl Fn(u32) -> i32) {
-  let same_cluster = |left: &Glyph, right: &Glyph| return left.range == right.range;
   let corrections: Vec<i32> = glyphs
     .chunk_by(same_cluster)
-    .map(|cluster| return cluster.iter().map(|glyph| return correction(glyph.gid)).sum())
+    .map(|cluster| return summed_correction(cluster, &correction))
     .collect();
   for (index, cluster) in glyphs.chunk_by_mut(same_cluster).enumerate() {
     let next_is_slanted = corrections.get(index + 1).is_some_and(|&next| return next != 0);
@@ -353,12 +373,6 @@ impl<'a> Shaper<'a> {
     return f64::from(self.fonts.math_constants().constant(constant)) / 100.0;
   }
 
-  /// 数式フォントのグリフ `gid` のイタリック補正の、フォントサイズ `font_size` での長さ（登録が無ければ 0）
-  pub(super) fn italic_correction(&self, gid: u32, font_size: Length) -> Length {
-    let units = self.fonts.math_italics_correction(gid);
-    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
-  }
-
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）の隅 `corner` の、ベースラインからの高さ `height` での
   /// math kern の長さ（表が無ければ 0）
   pub(super) fn math_kern(&self, gid: u32, font_size: Length, corner: MathKernCorner, height: Length) -> Length {
@@ -570,26 +584,29 @@ impl<'a> Shaper<'a> {
     };
   }
 
-  /// 配置済みの箱が数式フォントのグリフ列なら、`pick` が選ぶグリフの gid・run のフォントサイズ・そのグリフの
-  /// ベースラインの高さ（箱を置いた原点のベースライン基準）
+  /// 配置済みの箱が数式フォントのグリフ列なら、`unit` が選ぶ字（1 字ぶんの字形列）の先頭の字形の gid・run のフォント
+  /// サイズ・その字形のベースラインの高さ（箱を置いた原点のベースライン基準）と、字のイタリック補正
+  /// （[`summed_correction`] を run のフォントサイズで長さにしたもの）。字形列が空なら `None`
   ///
-  /// 高さは箱の `dy` にグリフの `y_offset` を足したもの — glyph assembly のパーツは同じ run の中で縦にずれている。
-  pub(super) fn placed_math_glyph(
+  /// 高さは箱の `dy` に字形の `y_offset` を足したもの — glyph assembly のパーツは同じ run の中で縦にずれている。
+  /// 字の先頭の字形は基底の字の字形（harfrust は左から右の run で基底の字形を結合文字より先に出す）。
+  pub(super) fn placed_math_char(
     &self,
     placed: &PlacedHBox,
-    pick: fn(&[Glyph]) -> Option<&Glyph>,
-  ) -> Option<(u32, Length, Length)> {
+    unit: fn(&[Glyph]) -> &[Glyph],
+  ) -> Option<((u32, Length, Length), Length)> {
     let HBoxContent::Glyphs(run) = &placed.hbox.content else {
       return None;
     };
     if run.font_type != FontType::Math {
       return None;
     }
+    let glyphs = unit(&run.glyphs);
+    let first = glyphs.first()?;
     let upem = self.fonts.metrics(FontType::Math).upem;
-    return pick(&run.glyphs).map(|glyph| {
-      let rise = placed.dy + units_to_length(i64::from(glyph.y_offset), run.font_size, upem);
-      return (glyph.gid, run.font_size, rise);
-    });
+    let rise = placed.dy + units_to_length(i64::from(first.y_offset), run.font_size, upem);
+    let correction = summed_correction(glyphs, |gid| return self.fonts.math_italics_correction(gid));
+    return Some(((first.gid, run.font_size, rise), units_to_length(i64::from(correction), run.font_size, upem)));
   }
 
   /// 配置済みの箱の列のインク（グリフの形の範囲）が、ベースラインより上・下へ出た量（高さ, 深さ）。
@@ -655,7 +672,10 @@ mod tests {
 
   use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
 
-  use super::{ShapedRun, add_italic_corrections_to, cluster_ranges, horizontal_assembly_advances};
+  use super::{
+    ShapedRun, add_italic_corrections_to, cluster_ranges, first_cluster, horizontal_assembly_advances, last_cluster,
+    last_glyph,
+  };
   use crate::{
     length::Length,
     project::FontType,
@@ -971,5 +991,17 @@ mod tests {
 
     let advances: Vec<i32> = glyphs.iter().map(|glyph| return glyph.x_advance).collect();
     assert_eq!(advances, vec![500, 50, 500], "クラスタの補正は構成字形の補正の和で、末尾の字形に 1 回だけ足す");
+  }
+
+  #[test]
+  fn char_units_take_the_cluster_or_the_final_glyph() {
+    // 直立の字・傾いた字と結合文字（同じクラスタ）の並び
+    let glyphs = clustered_glyphs(&[(7, 500, 0), (1, 500, 1), (9, 0, 1)]);
+    let gids = |unit: &[Glyph]| return unit.iter().map(|glyph| return glyph.gid).collect::<Vec<_>>();
+
+    assert_eq!(gids(first_cluster(&glyphs)), vec![7], "先頭の字");
+    assert_eq!(gids(last_cluster(&glyphs)), vec![1, 9], "末尾の字は基底と結合文字のクラスタ");
+    assert_eq!(gids(last_glyph(&glyphs)), vec![9], "最後の字形 1 つ（同じクラスタでも分ける）");
+    assert!(first_cluster(&[]).is_empty() && last_cluster(&[]).is_empty() && last_glyph(&[]).is_empty());
   }
 }
