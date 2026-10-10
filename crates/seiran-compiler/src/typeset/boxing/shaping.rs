@@ -396,11 +396,11 @@ impl<'a> Shaper<'a> {
     });
   }
 
-  /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いた字形へイタリック補正を足して
+  /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いたクラスタへイタリック補正を足して
   /// 計測し直す。数式フォント以外の run と演算子の run はそのまま返す
   ///
-  /// run の末尾の字形の後ろはアキ・演算子・スクリプト付きの基底・別スタイルの run のどれかで、MathML Core ではどれも
-  /// 傾いた子ではないので、末尾の傾いた字形には常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
+  /// run の末尾のクラスタの後ろはアキ・演算子・スクリプト付きの基底・別スタイルの run のどれかで、MathML Core ではどれも
+  /// 傾いた子ではないので、末尾の傾いたクラスタには常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
   /// `Measurer::place_scripts` が引き戻す。
   pub(super) fn add_italic_corrections(&self, shaped: ShapedRun, style: TextStyle) -> ShapedRun {
     if shaped.run.font_type != FontType::Math || style.math_operator {
