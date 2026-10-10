@@ -1,0 +1,20 @@
+\section{広幅アクセント}
+
+基底の幅へ横に伸ばす: $\widehat{x}$ $\widehat{xy}$ $\widehat{xyz}$ $\widetilde{AB}$ $\widecheck{ab}$。
+狭い基底は固定幅のアクセントと同じ字形: $\widehat{\vert}$ $\hat{\vert}$。
+覆いきれない広さでは最大の字形: $\widehat{abcdefgh}$。
+
+\section{上の矢印}
+
+有向線分: $\overrightarrow{AB}$ $\overleftarrow{AB}$ $\overleftrightarrow{AB}$ $\overrightarrow{x}$。
+長い基底は部品を継いで伸ばす: $\overrightarrow{abcdefgh}$ $\overleftrightarrow{P_{1}P_{2}P_{3}P_{4}}$。
+
+\section{上線と下線}
+
+線分と下線: $\overline{AB}$ $\overline{x}$ $\underline{g}$ $\overline{a+b}$ $\underline{x+y}$。
+入れ子と併用: $\overline{\overline{x}}$ $\hat{\overline{x}}$ $\overline{x}^{2}$ $\widehat{xy}^{2}$ $y^{\widehat{ab}}$ $\overline{x^{2}}$。
+空の基底: $\widehat{}$ $\overline{}$ $\underline{}$。
+
+\begin{equation}
+\overline{z} = \widehat{f}(\xi) + \overrightarrow{PQ} \cdot \underline{u}
+\end{equation}

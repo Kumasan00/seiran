@@ -94,6 +94,19 @@
 //!   [`display_sum_stacks_its_limits_centered_above_and_below`] /
 //!   [`wide_lower_limit_widens_the_operator_and_pushes_the_next_atom`] /
 //!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`]
+//! - **広幅アクセント**（横方向の size variant / glyph assembly で基底の送り幅を覆う・元の字形のままなら `\hat` と同じ字形・
+//!   配置はアクセントと同じ規則）: [`wide_accent_covers_the_base_with_the_smallest_horizontal_variant`] /
+//!   [`longer_base_stretches_the_arrow_only_horizontally`] / [`very_long_arrow_is_assembled_as_one_character`] /
+//!   [`widest_hat_falls_back_to_the_largest_variant`] / [`wide_accent_does_not_widen_its_base`] /
+//!   [`narrow_base_keeps_the_fixed_accent_glyph_with_flac`] / [`wide_accent_over_a_tall_base_rises_by_the_excess`] /
+//!   [`superscript_clears_the_wide_accent`] / [`wide_accent_in_a_script_is_set_at_the_script_size`] /
+//!   [`empty_wide_accents_compile`]（共通ヘルパ [`stix_horizontal_variants`]・[`base_span`] 経由）
+//! - **上線・下線**（MATH の `Overbar*` / `Underbar*` で引く罫・インクから測るギャップ・箱にだけ入る余白・基底の送り幅）:
+//!   [`overline_sits_the_vertical_gap_above_the_base_ink`] / [`underline_sits_the_vertical_gap_below_the_base_ink`] /
+//!   [`bars_reserve_the_extra_ascender_and_descender`] / [`nested_overline_measures_the_gap_from_the_inner_rule`] /
+//!   [`accent_over_an_overline_rises_over_the_rule`] / [`overline_spans_a_compound_base`] /
+//!   [`bars_do_not_widen_their_base`] / [`superscript_clears_the_overline`] /
+//!   [`empty_bars_compile_with_zero_width_rules`]（共通ヘルパ [`first_line_parts`]・[`first_line_box_extent`] 経由）
 //! - **伸縮括弧**（`\paren` 等。中身のインクを数式軸を中心に覆う高さへ縦にだけ伸ばし、インクの縦中央を数式軸へ・
 //!   中身との間にアキなし・スクリプトの段の大きさ）:
 //!   [`fence_covers_a_fraction_and_centers_on_the_math_axis`] / [`display_fence_grows_past_the_natural_delimiter`] /
@@ -173,6 +186,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "math_limits",
   "math_script",
   "math_spacing",
+  "math_wide_accent",
   "matrix",
   "multiline",
   "pagebreak",
