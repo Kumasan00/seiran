@@ -1,5 +1,5 @@
 page_count=1
-embedded_font_count=8
-link_annotation_count=5
+embedded_font_count=10
+link_annotation_count=8
 has_outline=true
 image_xobject_count=0

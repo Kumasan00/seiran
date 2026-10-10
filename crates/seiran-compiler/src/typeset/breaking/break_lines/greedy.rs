@@ -294,6 +294,26 @@ mod tests {
   }
 
   #[test]
+  fn link_spanning_a_math_break_splits_into_two_rects() {
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      test_box(),
+      math_break(3.0, 500),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(12.0), TextAlignment::Left);
+
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
+    assert!(close(lines[0].links[0].x1, 10.0), "折った演算子後のアキは矩形に入らない: {:?}", lines[0].links);
+    assert_eq!(lines[1].links.len(), 1, "{:?}", lines[1].links);
+    assert!(close(lines[1].links[0].x0, 0.0));
+    assert!(close(lines[1].links[0].x1, 10.0));
+  }
+
+  #[test]
   fn justify_stretches_glue_to_flush_right_edge() {
     let items = vec![
       test_box(),
