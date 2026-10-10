@@ -1721,6 +1721,55 @@ fn glyph_without_italic_correction_keeps_its_advance() {
 }
 
 #[test]
+fn italic_correction_goes_after_the_combining_mark() {
+  let runs = first_line_runs("$x\u{0302}$\n");
+
+  let glyphs = &run_with_text(&runs, &format!("{MATH_X}\u{0302}")).run.glyphs;
+  let [base, mark] = glyphs.as_slice() else {
+    panic!("𝑥 と結合文字の 2 グリフのはず: {glyphs:?}");
+  };
+  assert!(stix_italics_correction(base.gid) > 0, "𝑥 は補正を持つ（テストの前提）");
+  assert_eq!(base.range, mark.range, "𝑥 と結合文字は同じクラスタ（テストの前提）");
+  assert_eq!(base.x_advance, stix_advance(base.gid), "基底の送り幅に補正を入れないので結合文字の位置は動かない");
+  assert_eq!(mark.x_advance, stix_italics_correction(base.gid), "補正は結合文字の後ろ（run の末尾）に入る");
+}
+
+#[test]
+fn italic_correction_goes_after_the_combining_mark_before_an_upright_glyph() {
+  let runs = first_line_runs("$x\u{0302}a$\n");
+
+  let glyphs = &run_with_text(&runs, &format!("{MATH_X}\u{0302}{MATH_A}")).run.glyphs;
+  let [base, mark, next] = glyphs.as_slice() else {
+    panic!("𝑥・結合文字・𝑎 の 3 グリフのはず: {glyphs:?}");
+  };
+  assert_eq!(stix_italics_correction(next.gid), 0, "𝑎 は補正の登録が無い（テストの前提）");
+  let advances = [base.x_advance, mark.x_advance, next.x_advance];
+  let expected = [
+    stix_advance(base.gid),
+    stix_italics_correction(base.gid),
+    stix_advance(next.gid),
+  ];
+  assert_eq!(advances, expected, "補正は結合文字と直立の 𝑎 の間に入る");
+}
+
+#[test]
+fn combining_mark_does_not_make_the_next_glyph_upright() {
+  let runs = first_line_runs("$x\u{0302}y$\n");
+
+  let glyphs = &run_with_text(&runs, &format!("{MATH_X}\u{0302}{MATH_Y}")).run.glyphs;
+  let [base, mark, next] = glyphs.as_slice() else {
+    panic!("𝑥・結合文字・𝑦 の 3 グリフのはず: {glyphs:?}");
+  };
+  let advances = [base.x_advance, mark.x_advance, next.x_advance];
+  let expected = [
+    stix_advance(base.gid),
+    0,
+    stix_advance(next.gid) + stix_italics_correction(next.gid),
+  ];
+  assert_eq!(advances, expected, "傾いた 𝑥̂ と 𝑦 の間は詰まり、末尾の 𝑦 だけ補正が入る");
+}
+
+#[test]
 fn operator_keeps_its_advance_despite_its_italic_correction() {
   let runs = first_line_runs("$\\int x$\n");
 

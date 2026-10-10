@@ -964,8 +964,9 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
   `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・
   深さ（フォント全体の ascender / descender）は使わない。横位置は基底の末尾グリフ（数式フォントのとき）の MATH のイタリック補正で決め、上付きは基底の右端、下付きはそこから
-  補正ぶん戻した位置に置く。演算子でない数式フォントの run は、傾いた字形（補正が 0 でない）の補正を次の字形が傾いて
-  いないときと run の末尾で送り幅へ足してある（MathML Core の `mrow`。演算子は `TextStyle::math_operator` で除く）ので、
+  補正ぶん戻した位置に置く。演算子でない数式フォントの run は、傾いたクラスタ（基底と結合文字。補正の和が 0 でない）の
+  補正を次のクラスタが傾いていないときと run の末尾でクラスタの末尾の字形の送り幅へ足してある（MathML Core の `mrow`。
+  演算子は `TextStyle::math_operator` で除く）ので、
   これは MathML Core の `msub` / `msup`（演算子でない基底は上付きを補正ぶん前へ、演算子は下付きを補正ぶん手前へ。
   補正を持つ演算子はすべて MathML Core の大型演算子と同じに扱う）と同じ位置になる。基底の末尾とスクリプトの先頭がともに数式フォントのグリフなら、OpenType MATH の math kern（上付きは基底の右上と上付きの
   左下を「上付きのインクの底」「基底のインクの頂」の 2 つの高さで、下付きは基底の右下と下付きの左上を「下付きのインクの頂」
