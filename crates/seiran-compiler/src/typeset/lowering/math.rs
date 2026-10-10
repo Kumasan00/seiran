@@ -445,10 +445,15 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
     },
     // アクセント記号は段を下げない（MathML Core の accent の上付け）ので、基底と同じ段の大きさと `ssty` で組む
-    HirMathKind::Accent { accent: mark, base } => {
+    HirMathKind::Accent {
+      accent: mark,
+      wide,
+      base,
+    } => {
       let accent = MathAccent {
         base: lower_math_list(slice::from_ref(base.as_ref()), &ctx.with_style(ctx.style.cramped())),
         accent: mark.to_string(),
+        wide: *wide,
         font_size: ctx.font_size(),
         script_level: ctx.style.level.script_level(),
       };
@@ -878,6 +883,17 @@ mod tests {
     assert_eq!(concat_atom_texts(&accent.base), "\u{1D465}", "基底は数式用イタリックへ写す");
     assert_eq!(accent.font_size, ReadStyle::default().text.font_size);
     assert_eq!(accent.script_level, None, "インライン数式の本体は text 段");
+    assert!(!accent.wide, "\\hat は伸ばさない");
+  }
+
+  #[test]
+  fn lower_wide_accent_carries_the_wide_flag() {
+    let nodes = lower_math_source("$\\widehat{xy}$\n");
+
+    let accent = first_accent(&nodes);
+    assert_eq!(accent.accent, "\u{0302}");
+    assert!(accent.wide, "\\widehat は基底の幅へ伸ばす");
+    assert_eq!(concat_atom_texts(&accent.base), "\u{1D465}\u{1D466}");
   }
 
   #[test]

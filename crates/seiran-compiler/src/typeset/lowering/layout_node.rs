@@ -325,13 +325,16 @@ pub(in crate::typeset) struct MathRadical {
 
 /// 基底の上にアクセント記号 1 字を重ねたアクセント
 ///
-/// 配置（取付点による横位置・`AccentBaseHeight` による高さ）は計測寸法と数式フォントの MATH から boxing が決める。
+/// 配置（取付点による横位置・`AccentBaseHeight` による高さ）と、広幅アクセントの記号を伸ばす大きさ（基底の送り幅）は
+/// 計測寸法と数式フォントの MATH から boxing が決める。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathAccent {
   /// 基底（アクセントの段・cramped で組んだもの）
   pub base: Vec<AtomNode>,
   /// アクセント記号（結合用ダイアクリティカルマーク 1 字。boxing が数式フォントで組む）
   pub accent: String,
+  /// アクセント記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
+  pub wide: bool,
   /// アクセントの段のフォントサイズ（アクセント記号の大きさと MATH 定数の換算に使う）
   pub font_size: Length,
   /// アクセントの段のスクリプト段（アクセント記号の `ssty`。display / text 段は `None`）

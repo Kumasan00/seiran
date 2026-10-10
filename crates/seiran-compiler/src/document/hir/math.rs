@@ -48,10 +48,12 @@ pub(crate) enum HirMathKind {
     /// 被根号
     radicand: Box<HirMath>,
   },
-  /// アクセント（`\hat{x}` 等）
+  /// アクセント（`\hat{x}` / `\widehat{xy}` 等）
   Accent {
     /// 基底の上に置く結合用ダイアクリティカルマーク（`\hat` なら U+0302）
     accent: char,
+    /// アクセント記号を基底の送り幅へ横に伸ばすか（`\widehat` 等の広幅アクセントは `true`、`\hat` 等は `false`）
+    wide: bool,
     /// アクセントを付ける数式
     base: Box<HirMath>,
   },

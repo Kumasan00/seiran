@@ -183,8 +183,13 @@ enum MathCommandKind {
     /// 右の区切り括弧
     close: char,
   },
-  /// アクセント（`\hat` 等）— 必須引数 1 個（基底）。値は基底の上に置く結合用ダイアクリティカルマーク
-  Accent(char),
+  /// アクセント（`\hat` 等・`\widehat` 等）— 必須引数 1 個（基底）
+  Accent {
+    /// 基底の上に置く結合用ダイアクリティカルマーク
+    mark: char,
+    /// 記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
+    wide: bool,
+  },
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -200,7 +205,8 @@ impl MathCommandKind {
       "sqrt" => Some(Self::Sqrt),
       _ => fence_delimiters(name)
         .map(|(open, close)| return Self::Fenced { open, close })
-        .or_else(|| return accent_mark(name).map(Self::Accent))
+        .or_else(|| return accent_mark(name).map(|mark| return Self::Accent { mark, wide: false }))
+        .or_else(|| return wide_accent_mark(name).map(|mark| return Self::Accent { mark, wide: true }))
         .or_else(|| return symbol::lookup(name).map(Self::Symbol)),
     };
   }
@@ -208,7 +214,7 @@ impl MathCommandKind {
   /// 必須引数の個数
   fn arg_count(self) -> usize {
     return match self {
-      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent(_) => 1,
+      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } => 1,
       Self::Frac => 2,
       Self::Symbol(_) => 0,
     };
@@ -245,6 +251,23 @@ fn accent_mark(name: &str) -> Option<char> {
     "acute" => Some('\u{0301}'),
     "grave" => Some('\u{0300}'),
     "breve" => Some('\u{0306}'),
+    _ => None,
+  };
+}
+
+/// 広幅アクセントのコマンド名から、基底の上に置いて基底の送り幅へ横に伸ばす結合用ダイアクリティカルマークを引く
+/// （広幅アクセントでなければ `None`）
+///
+/// `\widehat` / `\widetilde` / `\widecheck` は unicode-math の `\mathaccentwide` と同じ字、矢印は結合用の矢印（上）。
+/// 数式フォントの OpenType MATH は結合記号の側に横方向の size variant と glyph assembly を持つ。
+fn wide_accent_mark(name: &str) -> Option<char> {
+  return match name {
+    "widehat" => Some('\u{0302}'),
+    "widetilde" => Some('\u{0303}'),
+    "widecheck" => Some('\u{030C}'),
+    "overrightarrow" => Some('\u{20D7}'),
+    "overleftarrow" => Some('\u{20D6}'),
+    "overleftrightarrow" => Some('\u{20E1}'),
     _ => None,
   };
 }
@@ -308,12 +331,19 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       let body = Box::new(math_arg_to_node(source, ctx, body_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Fenced { open, close, body }));
     },
-    MathCommandKind::Accent(accent) => {
+    MathCommandKind::Accent { mark, wide } => {
       opt_args::no_command_opt_args(&view)?;
       let base_arg = arity::exactly_one_arg(&view, "1 個（アクセントを付ける数式）")?;
       let id = ctx.alloc(view.span());
       let base = Box::new(math_arg_to_node(source, ctx, base_arg)?);
-      return Ok(HirMath::new(id, HirMathKind::Accent { accent, base }));
+      return Ok(HirMath::new(
+        id,
+        HirMathKind::Accent {
+          accent: mark,
+          wide,
+          base,
+        },
+      ));
     },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;

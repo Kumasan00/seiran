@@ -128,7 +128,7 @@ use std::{
 use harfrust::Font;
 use read_fonts::{
   FontRef, TableProvider,
-  tables::math::{MathConstant, MathKernCorner},
+  tables::math::{MathConstant, MathKernCorner, StretchAxis},
   types::GlyphId,
 };
 
@@ -2591,6 +2591,234 @@ fn mark_without_an_attachment_centers_its_ink_on_the_base_attachment() {
       "登録の無い記号は墨の中央を基底の取付点に揃える: {source}"
     );
   }
+}
+
+/// 右向きの結合矢印（U+20D7。`\overrightarrow` の記号）
+const COMBINING_RIGHT_ARROW: &str = "\u{20D7}";
+
+/// STIX Two Math のグリフ `gid` の横方向の size variant（グリフ ID, `advanceMeasurement`）を小さい順に、組版側と独立に読む。
+fn stix_horizontal_variants(gid: u32) -> Vec<(u32, i64)> {
+  let font = stix_math_font();
+  let variants = font
+    .tables()
+    .math()
+    .and_then(|math| return math.math_variants())
+    .expect("MathVariants を読めるはず");
+  let construction = variants
+    .glyph_construction(GlyphId::new(gid), StretchAxis::Horizontal)
+    .expect("横方向の伸縮を持つはず");
+  return construction
+    .math_glyph_variant_records()
+    .iter()
+    .map(|record| return (record.variant_glyph().to_u32(), i64::from(record.advance_measurement().to_u16())))
+    .collect();
+}
+
+/// STIX Two Math のグリフ `gid` のインクの幅（フォント単位）を組版側と独立に読む。
+fn stix_glyph_ink_width(gid: u32) -> i64 {
+  let extents = stix_math_font()
+    .glyph_metrics()
+    .extents(GlyphId::new(gid))
+    .expect("記号のグリフはインクを読めるはず");
+  #[expect(clippy::cast_possible_truncation, reason = "STIX Two Math のインクの幅は整数のフォント単位")]
+  let width = extents.width.round() as i64;
+  return width;
+}
+
+/// 長さ `length` の、`font_size` でのフォント単位（組版側と同じ切り上げ。伸ばす目標の換算）。
+fn stix_ceil_units(length: Length, font_size: Length) -> i64 {
+  let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
+  #[expect(clippy::cast_possible_truncation, reason = "数式 1 つの幅のフォント単位で i64 に収まる")]
+  let units = (length.ratio(font_size) * f64::from(upem)).ceil() as i64;
+  return units;
+}
+
+/// `runs` のうちテキストが `excluded` のどれでもないグリフ列（アクセント・上下線の基底）の、左端の位置と送り幅。
+///
+/// 隣り合う Ord のテキストは lowering が 1 本の run に畳むので、run の分かれ方に依らず両端から測る。
+fn base_span(runs: &[LineRun], excluded: &[&str]) -> (Length, Length) {
+  let base_runs: Vec<&LineRun> =
+    runs.iter().filter(|line_run| return !excluded.contains(&line_run.run.text.as_str())).collect();
+  let (Some(first), Some(last)) = (base_runs.first(), base_runs.last()) else {
+    panic!("基底のグリフ列があるはず");
+  };
+  return (first.dx, last.dx + last.width - first.dx);
+}
+
+#[test]
+fn wide_accent_covers_the_base_with_the_smallest_horizontal_variant() {
+  let natural = sole_glyph(run_with_text(&first_line_runs("$\\hat{x}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let runs = first_line_runs("$\\widehat{xyz}$\n");
+
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let (base_x, base_width) = base_span(&runs, &[COMBINING_CIRCUMFLEX]);
+  let size = accent.run.font_size;
+  let target = stix_ceil_units(base_width, size);
+  let (expected, _) = stix_horizontal_variants(natural)
+    .into_iter()
+    .find(|&(_, measurement)| return measurement >= target)
+    .expect("𝑥𝑦𝑧 の送り幅を覆う size variant があるはず（テストの前提）");
+  let (gid, _) = sole_glyph(accent);
+  assert!(stix_glyph_ink_width(natural) < target, "元の字形のインクの幅では 𝑥𝑦𝑧 を覆えない（テストの前提）");
+  assert_eq!(gid, expected, "目標を覆う最小の size variant");
+  assert_eq!(size, run_with_text(&first_line_runs("$x$\n"), MATH_X).run.font_size, "フォントサイズは変えない");
+  assert_eq!(
+    accent.dx + stix_ink_center_x(gid, size),
+    base_x + base_width / 2.0,
+    "取付点の無い variant は墨の中央を、複数グリフの基底の送り幅の中央に揃える"
+  );
+}
+
+#[test]
+fn longer_base_stretches_the_arrow_only_horizontally() {
+  let short = first_line_runs("$\\overrightarrow{ab}$\n");
+  let long = first_line_runs("$\\overrightarrow{abab}$\n");
+
+  let short_arrow = run_with_text(&short, COMBINING_RIGHT_ARROW);
+  let long_arrow = run_with_text(&long, COMBINING_RIGHT_ARROW);
+  assert_eq!(short_arrow.run.glyphs.len(), 1, "𝑎𝑏 は size variant で覆う（テストの前提）");
+  assert_eq!(long_arrow.run.glyphs.len(), 1, "𝑎𝑏𝑎𝑏 も size variant で覆う（テストの前提）");
+  assert!(long_arrow.width > short_arrow.width, "長い基底では矢印が広い");
+  assert_eq!(long_arrow.run.font_size, short_arrow.run.font_size, "フォントサイズは変えない");
+  assert_eq!(stix_run_ink(&long_arrow.run), stix_run_ink(&short_arrow.run), "インクの上端・下端は変わらない");
+  assert_eq!(long_arrow.dy, short_arrow.dy, "同じ高さの基底なので縦の位置も同じ");
+}
+
+#[test]
+fn very_long_arrow_is_assembled_as_one_character() {
+  let natural = sole_glyph(run_with_text(&first_line_runs("$\\vec{x}$\n"), COMBINING_RIGHT_ARROW)).0;
+  let runs = first_line_runs("$\\overrightarrow{abcdefgh}$\n");
+
+  let arrow = run_with_text(&runs, COMBINING_RIGHT_ARROW);
+  let (base_x, base_width) = base_span(&runs, &[COMBINING_RIGHT_ARROW]);
+  let (_, largest) = *stix_horizontal_variants(natural).last().expect("size variant があるはず（テストの前提）");
+  assert!(
+    stix_ceil_units(base_width, arrow.run.font_size) > largest,
+    "基底は最大の size variant より広い（テストの前提）"
+  );
+  assert!(arrow.run.glyphs.len() > 1, "glyph assembly で組む");
+  for glyph in &arrow.run.glyphs {
+    assert_eq!(glyph.range, 0..COMBINING_RIGHT_ARROW.len(), "全パーツが 1 字のクラスタ");
+    assert_eq!((glyph.x_offset, glyph.y_offset), (0, 0), "パーツは送り幅で横に並べる");
+  }
+  assert!(arrow.width >= base_width, "組み上がりは基底の送り幅を覆う");
+  assert_eq!(
+    arrow.dx + arrow.width / 2.0,
+    base_x + base_width / 2.0,
+    "組み上がりの送り幅の中央を基底の中央に揃える"
+  );
+}
+
+#[test]
+fn widest_hat_falls_back_to_the_largest_variant() {
+  let natural = sole_glyph(run_with_text(&first_line_runs("$\\hat{x}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let runs = first_line_runs("$\\widehat{abcdefgh}$\n");
+
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let (_, base_width) = base_span(&runs, &[COMBINING_CIRCUMFLEX]);
+  let (largest, measurement) = *stix_horizontal_variants(natural).last().expect("size variant があるはず");
+  assert!(
+    stix_ceil_units(base_width, accent.run.font_size) > measurement,
+    "基底は最大の size variant より広い（テストの前提）"
+  );
+  assert_eq!(
+    sole_glyph(accent).0,
+    largest,
+    "glyph assembly を持たない記号（検証フォントのサーカムフレックス。テストの前提）は最大の size variant"
+  );
+}
+
+#[test]
+fn wide_accent_does_not_widen_its_base() {
+  let runs = first_line_runs("$\\overrightarrow{x}y$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let y = run_with_text(&runs, MATH_Y);
+  let arrow = run_with_text(&runs, COMBINING_RIGHT_ARROW);
+  assert!(arrow.width > x.width, "矢印は 𝑥 より広い（テストの前提）");
+  assert_eq!(y.dx, x.dx + x.width, "次のアトムは基底の送り幅の直後");
+}
+
+#[test]
+fn narrow_base_keeps_the_fixed_accent_glyph_with_flac() {
+  let natural = sole_glyph(run_with_text(&first_line_runs("$\\hat{x}$\n"), COMBINING_CIRCUMFLEX)).0;
+  let fixed = first_line_runs("$\\hat{\\vert}$\n");
+  let wide = first_line_runs("$\\widehat{\\vert}$\n");
+
+  let base = run_with_text(&wide, "|");
+  let size = base.run.font_size;
+  let (height, _) = stix_ink_extent(base);
+  assert!(
+    stix_ceil_units(base.width, size) <= stix_glyph_ink_width(natural),
+    "｜の送り幅は元の字形のインクの幅以下（テストの前提）"
+  );
+  assert!(
+    height > stix_math_length(MathConstant::FlattenedAccentBaseHeight, size),
+    "｜のインクの高さは FlattenedAccentBaseHeight を超える（テストの前提）"
+  );
+  let fixed_accent = run_with_text(&fixed, COMBINING_CIRCUMFLEX);
+  let wide_accent = run_with_text(&wide, COMBINING_CIRCUMFLEX);
+  assert_ne!(
+    sole_glyph(wide_accent).0,
+    natural,
+    "検証フォントは flac を持つので、背の高い基底では平たい字形（テストの前提）"
+  );
+  assert_eq!(sole_glyph(wide_accent).0, sole_glyph(fixed_accent).0, "狭い基底では \\hat と同じ字形");
+  assert_eq!((wide_accent.dx, wide_accent.dy), (fixed_accent.dx, fixed_accent.dy), "位置も \\hat と同じ");
+}
+
+#[test]
+fn wide_accent_over_a_tall_base_rises_by_the_excess() {
+  let runs = first_line_runs("$\\widehat{tt}$\n");
+
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let base = runs
+    .iter()
+    .find(|line_run| return line_run.run.text != COMBINING_CIRCUMFLEX)
+    .expect("基底のグリフ列があるはず");
+  let (height, _) = stix_ink_extent(base);
+  assert_eq!(
+    accent.dy - base.dy,
+    height - stix_math_length(MathConstant::AccentBaseHeight, base.run.font_size),
+    "AccentBaseHeight を超えた分だけ上げる（\\hat と同じ規則）"
+  );
+}
+
+#[test]
+fn superscript_clears_the_wide_accent() {
+  let runs = first_line_runs("$\\widehat{xy}^{2}$\n");
+
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let base = runs
+    .iter()
+    .find(|line_run| return line_run.run.text.starts_with(MATH_X))
+    .expect("基底のグリフ列があるはず");
+  let sup = run_with_text(&runs, "2");
+  let accent_top = stix_run_ink(&accent.run).0 + (accent.dy - base.dy);
+  let (_, sup_depth) = stix_ink_extent(sup);
+  assert_eq!(
+    sup.dy - base.dy,
+    expected_superscript_shift(base.run.font_size, false, accent_top, sup_depth),
+    "上付きは全体に付き、基底のインクの頂はアクセントの頂"
+  );
+}
+
+#[test]
+fn wide_accent_in_a_script_is_set_at_the_script_size() {
+  let runs = first_line_runs("$y^{\\widehat{ab}}$\n");
+
+  let y = run_with_text(&runs, MATH_Y);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  assert_eq!(accent.run.font_size, stix_scaled_size(MathConstant::ScriptPercentScaleDown, y.run.font_size));
+}
+
+#[test]
+fn empty_wide_accents_compile() {
+  TestProject::builder()
+    .source_text("$\\widehat{}\\overrightarrow{}$\n")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("空の基底の広幅アクセントも compile は成功するはず: {:?}", failure.into_report()));
 }
 
 /// 伸縮括弧のコマンドと、左右の括弧の字（cases / matrix の `delimiter` の括弧と同じ）
