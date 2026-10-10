@@ -53,8 +53,8 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "beta" => MathSymbol::new('\u{03B2}', MathClass::Ord),
   "gamma" => MathSymbol::new('\u{03B3}', MathClass::Ord),
   "delta" => MathSymbol::new('\u{03B4}', MathClass::Ord),
-  "epsilon" => MathSymbol::new('\u{03B5}', MathClass::Ord),
-  "varepsilon" => MathSymbol::new('\u{03F5}', MathClass::Ord),
+  "epsilon" => MathSymbol::new('\u{03F5}', MathClass::Ord),
+  "varepsilon" => MathSymbol::new('\u{03B5}', MathClass::Ord),
   "zeta" => MathSymbol::new('\u{03B6}', MathClass::Ord),
   "eta" => MathSymbol::new('\u{03B7}', MathClass::Ord),
   "theta" => MathSymbol::new('\u{03B8}', MathClass::Ord),
@@ -75,8 +75,8 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "varsigma" => MathSymbol::new('\u{03C2}', MathClass::Ord),
   "tau" => MathSymbol::new('\u{03C4}', MathClass::Ord),
   "upsilon" => MathSymbol::new('\u{03C5}', MathClass::Ord),
-  "phi" => MathSymbol::new('\u{03C6}', MathClass::Ord),
-  "varphi" => MathSymbol::new('\u{03D5}', MathClass::Ord),
+  "phi" => MathSymbol::new('\u{03D5}', MathClass::Ord),
+  "varphi" => MathSymbol::new('\u{03C6}', MathClass::Ord),
   "chi" => MathSymbol::new('\u{03C7}', MathClass::Ord),
   "psi" => MathSymbol::new('\u{03C8}', MathClass::Ord),
   "omega" => MathSymbol::new('\u{03C9}', MathClass::Ord),
@@ -118,15 +118,17 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "top" => MathSymbol::new('\u{22A4}', MathClass::Ord),
   "bot" => MathSymbol::new('\u{22A5}', MathClass::Ord),
   "triangle" => MathSymbol::new('\u{25B3}', MathClass::Ord),
-  "blacktriangle" => MathSymbol::new('\u{25B2}', MathClass::Ord),
-  "blacktriangledown" => MathSymbol::new('\u{25BC}', MathClass::Ord),
+  "blacktriangle" => MathSymbol::new('\u{25B4}', MathClass::Ord),
+  "bigblacktriangleup" => MathSymbol::new('\u{25B2}', MathClass::Ord),
+  "blacktriangledown" => MathSymbol::new('\u{25BE}', MathClass::Ord),
+  "bigblacktriangledown" => MathSymbol::new('\u{25BC}', MathClass::Ord),
   "square" => MathSymbol::new('\u{25A1}', MathClass::Ord),
   "blacksquare" => MathSymbol::new('\u{25A0}', MathClass::Ord),
   "lozenge" => MathSymbol::new('\u{25CA}', MathClass::Ord),
   "blacklozenge" => MathSymbol::new('\u{29EB}', MathClass::Ord),
   "bigstar" => MathSymbol::new('\u{2605}', MathClass::Ord),
-  "diagup" => MathSymbol::new('\u{2571}', MathClass::Ord),
-  "diagdown" => MathSymbol::new('\u{2572}', MathClass::Ord),
+  "diagup" => MathSymbol::new('\u{27CB}', MathClass::Ord),
+  "diagdown" => MathSymbol::new('\u{27CD}', MathClass::Ord),
   "sharp" => MathSymbol::new('\u{266F}', MathClass::Ord),
   "flat" => MathSymbol::new('\u{266D}', MathClass::Ord),
   "natural" => MathSymbol::new('\u{266E}', MathClass::Ord),
@@ -180,8 +182,6 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "setminus" => MathSymbol::new('\u{2216}', MathClass::Bin),
   "land" => MathSymbol::new('\u{2227}', MathClass::Bin),
   "lor" => MathSymbol::new('\u{2228}', MathClass::Bin),
-  "wedge" => MathSymbol::new('\u{2227}', MathClass::Bin),
-  "vee" => MathSymbol::new('\u{2228}', MathClass::Bin),
   "cap" => MathSymbol::new('\u{2229}', MathClass::Bin),
   "cup" => MathSymbol::new('\u{222A}', MathClass::Bin),
   "sqcap" => MathSymbol::new('\u{2293}', MathClass::Bin),
@@ -249,8 +249,10 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "gtrless" => MathSymbol::new('\u{2277}', MathClass::Rel),
   "prec" => MathSymbol::new('\u{227A}', MathClass::Rel),
   "succ" => MathSymbol::new('\u{227B}', MathClass::Rel),
-  "preceq" => MathSymbol::new('\u{227C}', MathClass::Rel),
-  "succeq" => MathSymbol::new('\u{227D}', MathClass::Rel),
+  "preceq" => MathSymbol::new('\u{2AAF}', MathClass::Rel),
+  "preccurlyeq" => MathSymbol::new('\u{227C}', MathClass::Rel),
+  "succeq" => MathSymbol::new('\u{2AB0}', MathClass::Rel),
+  "succcurlyeq" => MathSymbol::new('\u{227D}', MathClass::Rel),
   "nprec" => MathSymbol::new('\u{2280}', MathClass::Rel),
   "nsucc" => MathSymbol::new('\u{2281}', MathClass::Rel),
   "subset" => MathSymbol::new('\u{2282}', MathClass::Rel),
@@ -267,8 +269,9 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "sqsupseteq" => MathSymbol::new('\u{2292}', MathClass::Rel),
   "vdash" => MathSymbol::new('\u{22A2}', MathClass::Rel),
   "dashv" => MathSymbol::new('\u{22A3}', MathClass::Rel),
-  "perp" => MathSymbol::new('\u{22A5}', MathClass::Rel),
-  "models" => MathSymbol::new('\u{22A8}', MathClass::Rel),
+  "perp" => MathSymbol::new('\u{27C2}', MathClass::Rel),
+  "models" => MathSymbol::new('\u{22A7}', MathClass::Rel),
+  "vDash" => MathSymbol::new('\u{22A8}', MathClass::Rel),
   "nvdash" => MathSymbol::new('\u{22AC}', MathClass::Rel),
 
   // 矢印
@@ -339,8 +342,56 @@ pub(in crate::frontend::evaluator) fn lookup(name: &str) -> Option<MathSymbol> {
 
 #[cfg(test)]
 mod tests {
+  use std::collections::BTreeMap;
+
   use super::{SYMBOLS, lookup};
   use crate::{document::MathClass, frontend::evaluator::command::COMMANDS};
+
+  /// `MathClass` は `Ord` を持たないので、`BTreeMap` のキーにするため序数へ写す
+  fn class_ordinal(class: MathClass) -> u8 {
+    return match class {
+      MathClass::Ord => 0,
+      MathClass::Op => 1,
+      MathClass::Bin => 2,
+      MathClass::Rel => 3,
+      MathClass::Open => 4,
+      MathClass::Close => 5,
+      MathClass::Punct => 6,
+    };
+  }
+
+  #[test]
+  fn latex_spelled_names_point_to_the_unicode_math_character() {
+    // LaTeX と同じ綴りの名前は unicode-math がその名前に対応づける字を指す
+    assert_eq!(lookup("preceq").map(|s| return s.ch), Some('\u{2AAF}'));
+    assert_eq!(lookup("succeq").map(|s| return s.ch), Some('\u{2AB0}'));
+    assert_eq!(lookup("preccurlyeq").map(|s| return s.ch), Some('\u{227C}'));
+    assert_eq!(lookup("succcurlyeq").map(|s| return s.ch), Some('\u{227D}'));
+    assert_eq!(lookup("perp").map(|s| return s.ch), Some('\u{27C2}'));
+    assert_eq!(lookup("models").map(|s| return s.ch), Some('\u{22A7}'));
+    assert_eq!(lookup("vDash").map(|s| return s.ch), Some('\u{22A8}'));
+    assert_eq!(lookup("blacktriangle").map(|s| return s.ch), Some('\u{25B4}'));
+    assert_eq!(lookup("bigblacktriangleup").map(|s| return s.ch), Some('\u{25B2}'));
+    assert_eq!(lookup("blacktriangledown").map(|s| return s.ch), Some('\u{25BE}'));
+    assert_eq!(lookup("bigblacktriangledown").map(|s| return s.ch), Some('\u{25BC}'));
+    assert_eq!(lookup("diagup").map(|s| return s.ch), Some('\u{27CB}'));
+    assert_eq!(lookup("diagdown").map(|s| return s.ch), Some('\u{27CD}'));
+    assert_eq!(lookup("epsilon").map(|s| return s.ch), Some('\u{03F5}'));
+    assert_eq!(lookup("varepsilon").map(|s| return s.ch), Some('\u{03B5}'));
+    assert_eq!(lookup("phi").map(|s| return s.ch), Some('\u{03D5}'));
+    assert_eq!(lookup("varphi").map(|s| return s.ch), Some('\u{03C6}'));
+  }
+
+  #[test]
+  fn one_name_per_character_and_class() {
+    let mut seen = BTreeMap::new();
+    for (name, symbol) in &SYMBOLS {
+      let key = (symbol.ch, class_ordinal(symbol.class));
+      if let Some(other) = seen.insert(key, *name) {
+        panic!("同じ字・同じクラスに名前が 2 つあります: {other} と {name} (U+{:04X})", u32::from(symbol.ch));
+      }
+    }
+  }
 
   #[test]
   fn representative_symbols_have_expected_class() {
