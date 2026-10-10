@@ -92,6 +92,8 @@ pub(in crate::typeset) enum InlineNode {
   Radical(MathRadical),
   /// 基底の上にアクセント記号を重ねたアクセント（インライン数式のトップレベル）
   Accent(MathAccent),
+  /// 中身を左右の区切り括弧で挟み、括弧を中身の高さへ伸ばした伸縮括弧（インライン数式のトップレベル）
+  Fenced(MathFenced),
   /// display 段の大型演算子（[`AtomNode::LargeOperator`] を段落の語彙へ持ち上げたもの。インライン数式は text 段で
   /// 組むので作らないが、`AtomNode` ⊂ `InlineNode` の包含を保つために置く）
   LargeOperator {
@@ -134,7 +136,7 @@ pub(in crate::typeset) enum InlineNode {
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
 /// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号・
-/// アクセント・大型演算子だけを持つ。
+/// アクセント・伸縮括弧・大型演算子だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -152,6 +154,8 @@ pub(in crate::typeset) enum AtomNode {
   Radical(MathRadical),
   /// 基底の上にアクセント記号を重ねたアクセント
   Accent(MathAccent),
+  /// 中身を左右の区切り括弧で挟み、括弧を中身の高さへ伸ばした伸縮括弧
+  Fenced(MathFenced),
   /// display 段の大型演算子（boxing が `DisplayOperatorMinHeight` 以上の字形へ縦に伸ばし、インクの縦中央を数式軸に
   /// 合わせて置く）
   LargeOperator {
@@ -172,6 +176,7 @@ impl From<AtomNode> for InlineNode {
       AtomNode::Fraction(fraction) => InlineNode::Fraction(fraction),
       AtomNode::Radical(radical) => InlineNode::Radical(radical),
       AtomNode::Accent(accent) => InlineNode::Accent(accent),
+      AtomNode::Fenced(fenced) => InlineNode::Fenced(fenced),
       AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
     };
   }
@@ -331,6 +336,21 @@ pub(in crate::typeset) struct MathAccent {
   pub font_size: Length,
   /// アクセントの段のスクリプト段（アクセント記号の `ssty`。display / text 段は `None`）
   pub script_level: Option<ScriptLevel>,
+}
+
+/// 中身を左右の区切り括弧で挟んだ伸縮括弧
+///
+/// 括弧の大きさ（数式軸を中心に中身のインクを覆う高さ）と位置は計測寸法と数式フォントの MATH から boxing が決める。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathFenced {
+  /// 中身（括弧と同じ数式スタイルで組んだもの）
+  pub body: Vec<AtomNode>,
+  /// 左の区切り括弧（1 字。boxing が数式フォントで組む）
+  pub open: String,
+  /// 右の区切り括弧（1 字。boxing が数式フォントで組む）
+  pub close: String,
+  /// 括弧の段のフォントサイズ（括弧の大きさと MATH 定数の換算に使う）
+  pub font_size: Length,
 }
 
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報

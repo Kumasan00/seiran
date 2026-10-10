@@ -31,8 +31,10 @@ pub(super) enum Fence {
 /// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは 1 文字ぶん）
 #[derive(Debug)]
 pub(super) struct MathItem {
-  /// このアイテムの数式クラス
-  class: MathClass,
+  /// 直前のアイテムと組むときのクラス（左端のクラス）
+  left_class: MathClass,
+  /// 直後のアイテムと組むときのクラス（右端のクラス。伸縮括弧だけが左端と異なる）
+  right_class: MathClass,
   /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
   /// このアイテムの中身
@@ -42,10 +44,11 @@ pub(super) struct MathItem {
 }
 
 impl MathItem {
-  /// クラス・区切り種別・ノード列からアイテムを作る（付くスクリプトは肩・添字）
+  /// クラス（左端・右端とも `class`）・区切り種別・ノード列からアイテムを作る（付くスクリプトは肩・添字）
   pub(super) fn new(class: MathClass, fence: Option<Fence>, nodes: Vec<AtomNode>) -> Self {
     return MathItem {
-      class,
+      left_class: class,
+      right_class: class,
       fence,
       body: ItemBody::Plain(nodes),
       limits: false,
@@ -56,10 +59,23 @@ impl MathItem {
   /// `limits` は付くスクリプトを上下に積むか）
   pub(super) fn large_operator(symbol: String, font_size: Length, limits: bool) -> Self {
     return MathItem {
-      class: MathClass::Op,
+      left_class: MathClass::Op,
+      right_class: MathClass::Op,
       fence: None,
       body: ItemBody::Plain(vec![AtomNode::LargeOperator { symbol, font_size }]),
       limits,
+    };
+  }
+
+  /// 伸縮括弧のアイテムを作る（左端は Open・右端は Close として隣と組む。括弧は中身ごと閉じた 1 個のアイテムなので、
+  /// 開き・閉じ区切りとしては数えない）
+  pub(super) fn fenced(nodes: Vec<AtomNode>) -> Self {
+    return MathItem {
+      left_class: MathClass::Open,
+      right_class: MathClass::Close,
+      fence: None,
+      body: ItemBody::Plain(nodes),
+      limits: false,
     };
   }
 }
@@ -264,8 +280,8 @@ fn space_between(left: MathClass, right: MathClass, font_size: Length, in_script
         space
       }
     },
-    // rule 5 が「先頭・または Bin/Op/Rel/Open/Punct の直後の Bin」を Ord へ落とすので Bin の列は
-    // 左が Ord / Close のときしか残らず、rule 6 が「Rel/Close/Punct の直前の Bin」を Ord へ落とすので
+    // rule 5 が「先頭・または右端が Bin/Op/Rel/Open/Punct のアイテムの直後の Bin」を Ord へ落とすので Bin の列は
+    // 左が Ord / Close のときしか残らず、rule 6 が「左端が Rel/Close/Punct のアイテムの直前の Bin」を Ord へ落とすので
     // Bin の行は右が Ord / Op / Open のときしか残らない（`resolve_bin_classes` が両方を保証する）。
     Cell::Impossible => unreachable!("Bin→Ord 変換の後に残らない組み合わせ: {left:?} と {right:?}"),
   };
@@ -274,26 +290,30 @@ fn space_between(left: MathClass, right: MathClass, font_size: Length, in_script
 
 /// `TeXbook` の rule 5 / rule 6 による Bin→Ord 変換を前方 1 パスで適用する
 ///
-/// rule 5 は「先頭、または直前が Bin / Op / Rel / Open / Punct の Bin」を Ord へ落とす
-/// （`$-x$` の `-` に前後のアキが入らない理由）。rule 6 は「Rel / Close / Punct の直前の Bin」を
-/// Ord へ落とす。2 つの分岐は現在のクラスで排他なので、後戻りなしの 1 パスで確定する。
-fn resolve_bin_classes(classes: &mut [MathClass]) {
+/// `classes` の各要素はアイテムの（左端, 右端）のクラス。rule 5 は「先頭、または直前のアイテムの右端が Bin / Op / Rel /
+/// Open / Punct の Bin」を Ord へ落とす（`$-x$` の `-` に前後のアキが入らない理由）。rule 6 は「左端が Rel / Close /
+/// Punct のアイテムの直前の Bin」を Ord へ落とす。Bin のアイテムは左端と右端が同じクラスなので、落とすときは両端を
+/// Ord にする。2 つの分岐は現在の左端のクラスで排他なので、後戻りなしの 1 パスで確定する。
+fn resolve_bin_classes(classes: &mut [(MathClass, MathClass)]) {
   for i in 0..classes.len() {
-    if classes[i] == MathClass::Bin {
+    if classes[i].0 == MathClass::Bin {
       let demote = match i.checked_sub(1) {
         None => true,
         Some(prev) => {
-          matches!(classes[prev], MathClass::Bin | MathClass::Op | MathClass::Rel | MathClass::Open | MathClass::Punct)
+          matches!(
+            classes[prev].1,
+            MathClass::Bin | MathClass::Op | MathClass::Rel | MathClass::Open | MathClass::Punct
+          )
         },
       };
       if demote {
-        classes[i] = MathClass::Ord;
+        classes[i] = (MathClass::Ord, MathClass::Ord);
       }
-    } else if matches!(classes[i], MathClass::Rel | MathClass::Close | MathClass::Punct)
+    } else if matches!(classes[i].0, MathClass::Rel | MathClass::Close | MathClass::Punct)
       && let Some(prev) = i.checked_sub(1)
-      && classes[prev] == MathClass::Bin
+      && classes[prev].1 == MathClass::Bin
     {
-      classes[prev] = MathClass::Ord;
+      classes[prev] = (MathClass::Ord, MathClass::Ord);
     }
   }
 }
@@ -354,7 +374,8 @@ pub(super) fn push_script(
 ) {
   let Some(last) = items.last_mut() else {
     items.push(MathItem {
-      class: MathClass::Ord,
+      left_class: MathClass::Ord,
+      right_class: MathClass::Ord,
       fence: None,
       body: ItemBody::Scripted(attach(Vec::new(), side, content, font_size, cramped, false)),
       limits: false,
@@ -400,9 +421,9 @@ fn attach(
 /// 隣り合う 2 アイテムの境界
 #[derive(Debug, Clone, Copy)]
 struct Gap {
-  /// 左のアイテムの（Bin→Ord 変換後の）クラス
+  /// 左のアイテムの右端の（Bin→Ord 変換後の）クラス
   left: MathClass,
-  /// 右のアイテムの（Bin→Ord 変換後の）クラス
+  /// 右のアイテムの左端の（Bin→Ord 変換後の）クラス
   right: MathClass,
   /// 間に入れるアキ
   space: Length,
@@ -421,17 +442,18 @@ struct Spaced {
 
 /// アイテム列にクラス変換を適用し、各アイテムの直前のアキを決める
 fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<Spaced> {
-  let mut classes: Vec<MathClass> = items.iter().map(|item| return item.class).collect();
+  let mut classes: Vec<(MathClass, MathClass)> =
+    items.iter().map(|item| return (item.left_class, item.right_class)).collect();
   resolve_bin_classes(&mut classes);
 
   let mut out: Vec<Spaced> = Vec::with_capacity(items.len());
   let mut prev: Option<MathClass> = None;
-  for (item, class) in items.into_iter().zip(classes) {
-    let gap = prev.map(|left| {
+  for (item, (left, right)) in items.into_iter().zip(classes) {
+    let gap = prev.map(|prev_right| {
       return Gap {
-        left,
-        right: class,
-        space: space_between(left, class, font_size, in_script),
+        left: prev_right,
+        right: left,
+        space: space_between(prev_right, left, font_size, in_script),
       };
     });
     out.push(Spaced {
@@ -439,7 +461,7 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<
       fence: item.fence,
       nodes: item.body.into_nodes(),
     });
-    prev = Some(class);
+    prev = Some(right);
   }
   return out;
 }
@@ -603,21 +625,57 @@ mod tests {
     assert_eq!(mu(0, Length::pt(12.0)), Length::ZERO);
   }
 
+  /// 左端と右端が同じクラスの組
+  fn same(class: MathClass) -> (MathClass, MathClass) { return (class, class); }
+
   #[test]
   fn resolve_bin_classes_demotes_binary_operator_before_relation() {
-    let mut classes = [MathClass::Ord, MathClass::Bin, MathClass::Rel];
+    let mut classes = [
+      same(MathClass::Ord),
+      same(MathClass::Bin),
+      same(MathClass::Rel),
+    ];
     resolve_bin_classes(&mut classes);
 
-    assert_eq!(classes, [MathClass::Ord, MathClass::Ord, MathClass::Rel], "関係子の直前の二項演算子も落ちる");
+    assert_eq!(
+      classes,
+      [
+        same(MathClass::Ord),
+        same(MathClass::Ord),
+        same(MathClass::Rel)
+      ],
+      "関係子の直前の二項演算子も落ちる"
+    );
   }
 
   #[test]
   fn resolve_bin_classes_does_not_cascade_to_the_next_operator() {
     // `$++a$`。先頭が Ord へ落ちても、2 つ目は「直前が Ord」なので Bin のまま
-    let mut classes = [MathClass::Bin, MathClass::Bin, MathClass::Ord];
+    let mut classes = [
+      same(MathClass::Bin),
+      same(MathClass::Bin),
+      same(MathClass::Ord),
+    ];
     resolve_bin_classes(&mut classes);
 
-    assert_eq!(classes, [MathClass::Ord, MathClass::Bin, MathClass::Ord]);
+    assert_eq!(
+      classes,
+      [
+        same(MathClass::Ord),
+        same(MathClass::Bin),
+        same(MathClass::Ord)
+      ]
+    );
+  }
+
+  #[test]
+  fn resolve_bin_classes_reads_the_right_edge_before_and_the_left_edge_after() {
+    // 左端 Open・右端 Close のアイテムに挟まれた Bin は、直前の右端（Close）でも直後の左端（Open）でも落ちない
+    let fence = (MathClass::Open, MathClass::Close);
+    let mut classes = [fence, same(MathClass::Bin), fence];
+    resolve_bin_classes(&mut classes);
+
+    assert_eq!(classes, [fence, same(MathClass::Bin), fence], "`(a)+(b)` と同じく + は二項演算子のまま");
   }
 
   #[test]
@@ -678,7 +736,7 @@ mod tests {
     push_script(&mut items, ScriptSide::Subscript, script('i'), Length::pt(12.0), false);
 
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].class, MathClass::Ord);
+    assert_eq!(items[0].left_class, MathClass::Ord);
     assert!(scripts_of(&items[0]).base.is_empty());
   }
 
@@ -722,7 +780,8 @@ mod tests {
     assert!(scripts.limits, "反対側を埋めても上下に積むまま: {scripts:?}");
     assert!(scripts.superscript.is_some() && scripts.subscript.is_some());
     assert!(matches!(scripts.base.as_slice(), [AtomNode::LargeOperator { .. }]), "{scripts:?}");
-    assert_eq!(items[0].class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
+    assert_eq!(items[0].left_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
+    assert_eq!(items[0].right_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
   }
 
   #[test]
@@ -798,6 +857,17 @@ mod tests {
     let nodes = assemble_breakable(items(")a+b"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 1, "対応の無い閉じ括弧で深さを負にしない: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_count_a_fence_as_a_parenthesis() {
+    let mut sequence = items("a+");
+    sequence.push(MathItem::fenced(vec![AtomNode::Text("b".to_string(), style())]));
+    sequence.extend(items("+c"));
+
+    let nodes = assemble_breakable(sequence, Length::pt(12.0));
+
+    assert_eq!(breaks(&nodes).len(), 2, "伸縮括弧は中身ごと閉じているので深さを動かさない: {nodes:?}");
   }
 
   #[test]

@@ -55,6 +55,15 @@ pub(crate) enum HirMathKind {
     /// アクセントを付ける数式
     base: Box<HirMath>,
   },
+  /// 伸縮括弧（`\paren{...}` 等）
+  Fenced {
+    /// 左の区切り括弧
+    open: char,
+    /// 右の区切り括弧
+    close: char,
+    /// 括弧で包む数式
+    body: Box<HirMath>,
+  },
   /// 数式の字形指定（`\mathbold` / `\mathitalic` 等）
   Styled {
     /// 適用する字形 variant

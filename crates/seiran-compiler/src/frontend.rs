@@ -933,6 +933,70 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_fences_wrap_the_body_with_delimiters() {
+    let cases = [
+      ("paren", '(', ')'),
+      ("bracket", '[', ']'),
+      ("brace", '{', '}'),
+      ("abs", '|', '|'),
+      ("norm", '\u{2016}', '\u{2016}'),
+    ];
+    for (name, expected_open, expected_close) in cases {
+      let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
+
+      assert_eq!(math.len(), 1, "\\{name}: {math:?}");
+      let HirMathKind::Fenced { open, close, body } = &math[0].kind else {
+        panic!("Fenced が期待されます: \\{name} → {math:?}");
+      };
+      assert_eq!(
+        (*open, *close),
+        (expected_open, expected_close),
+        "\\{name} の左右の括弧（matrix の delimiter と同じ字）"
+      );
+      assert!(matches!(&body.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {body:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_fence_is_followed_by_group() {
+    // 必須引数 1 個を超えた位置の `{...}` は後ろに続く数式グループ
+    let math = inline_math_nodes(r"$\paren{x}{y}$");
+
+    assert_eq!(math.len(), 2, "{math:?}");
+    assert!(matches!(&math[0].kind, HirMathKind::Fenced { .. }), "{math:?}");
+    assert!(is_group_of_text(&math[1], "y"), "{math:?}");
+  }
+
+  #[test]
+  fn evaluate_math_fence_missing_body_is_error() {
+    let error = evaluate_error(r"$\paren$");
+
+    assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "paren"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_fence_rejects_options() {
+    let error = evaluate_error(r"$\paren[size=2]{x}$");
+
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_fence_outside_math_is_unknown() {
+    let error = evaluate_error(r"\paren{x}");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "paren"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_deferred_fence_kind_is_unknown() {
+    // 床・天井は見送り中の種類で、数式の語彙に無い
+    let error = evaluate_error(r"$\floor{x}$");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "floor"), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_math_unknown_command_is_error() {
     let error = evaluate_error(r"$\nosuchmathcmd$");
     assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchmathcmd"));
