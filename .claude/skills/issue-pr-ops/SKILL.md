@@ -34,13 +34,22 @@ Seiran リポジトリの issue・PR・branch・commit・ラベルの運用規�
 - **child（sub-issue）と related（関連）の線引きは「完了条件」で決める**: epic を閉じるのに**必須の分解タスク**は sub-issue、独立に閉じられる隣接 issue は本文の「関連（sub-issue ではない）」節にテキストで列挙する（同じ issue を両方に書かない）
 - **受け入れ条件に入る既存 issue は related ではなく sub-issue にする**
 - **分割計画の書き方**: epic 本文に「分割計画」を残すのは可だが、**存在する issue は sub-issue へ紐付け、未作成の予定だけテキストで**書く（issue 化した時点で sub-issue に昇格）
-- **ラベル**: 親に `epic`、**親・子とも `tier-*` を付ける**（sub-issue だから tier 免除にはしない）
+- **ラベル**: 親に `epic`。種別ラベルと Tier は親・子とも「ラベル運用」節の規則どおりに付ける — 機能の epic と子は親・子とも `tier-*` を付け（sub-issue だから tier 免除にはしない）、refactor / bug / documentation の epic と子は Tier なし
+- **紐付けの手順**: `gh` に sub-issue のサブコマンドは無いので GraphQL の `addSubIssue` を使う（`GraphQL-Features: sub_issues` ヘッダが必須）。3 階層（root epic ← 系列 epic ← task）もこの手順で組める。sub-issue パネルの並びは実行した順になるので、「分割計画」の着手順に紐付ける
+
+  ```sh
+  EPIC_ID=$(gh issue view <epic#> --json id --jq .id); SID=$(gh issue view <child#> --json id --jq .id)
+  gh api graphql -H "GraphQL-Features: sub_issues" -f query="mutation { addSubIssue(input:{issueId:\"$EPIC_ID\", subIssueId:\"$SID\"}) { subIssue { number } } }"
+  # 確認: query { repository(owner:"Kumasan00", name:"seiran") { issue(number:N) { subIssues(first:10) { nodes { number title } } } } }
+  ```
+
+- **大量作成の検証**: 作成直後は `gh issue list --search "created:>=…"` が空を返すことがあるので、`gh issue view` で 1 件ずつ確かめる
 
 ## ラベル運用
 
 - **領域ラベルは作らない**: 領域はタイトル接頭辞が担う（二重管理を避ける）。ラベルはタイトルで表せない直交軸にだけ使う
 - **Tier**（実装ロードマップの優先順位軸）: `tier-1a`（既存スタブ完成＋全ジャンル必須）/ `tier-1b`（コア拡張）/ `tier-1c`（標準機能）/ `tier-2`（将来検討）
-- **種別**: `enhancement` / `bug` / `refactor`。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`・リファクタは `refactor`（どちらも Tier は付けない＝ロードマップ軸ではないため）
+- **種別**: `enhancement` / `bug` / `refactor`。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`・リファクタは `refactor`（どちらも Tier は付けない＝ロードマップ軸ではないため）。設計・基準だけを書いて実装を持たない issue は `documentation`（同じ理由で Tier なし）
 - **epic**: sub-issue の親に付ける（前節参照）
 - **PR には基本ラベルを付けない**: squash で `Closes #` 紐付けの issue 側が分類軸を持つ
 - Dependabot の `dependencies` 等の自動ラベルは放置でよい

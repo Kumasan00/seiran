@@ -525,6 +525,11 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   crate 外の統合テスト（`tests/`）も使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので
   `#[doc(hidden)] pub mod` として root facade に載せる（`project::config::test_support` →
   `seiran_compiler::test_support`）。
+- **入力読込系はパースと検証を I/O から切り離してテストする**: 設定・文献を読む module（`project::config` /
+  `style` / `semantics::citation::references`）の入口は資源取得の薄いラッパに保ち、パース（文字列 → 構造体。
+  `parse_config` / `style::parse` / `parse_references`）と検証（構造体 → `Result`。`validate_values`）を内部関数に
+  切り出して、テストはそちらへ当てる。入口を通すテストは `MemoryProjectSource` で実ファイルに触れずに書き、
+  `tempfile` は実ファイルシステムでしか起きない事象を確かめるときだけ使う。
 - test module も本体と同じ use 規約に従う（必須ルール 3）。親の被テスト項目を `use super::*` /
   `use super::Item` で取り込むのは許容だが、それ以外は `crate::` 起点で import する。
 - テストコードでは `unwrap` / `expect` / `panic!` を許容する（`unwrap_used` / `panic` は `clippy.toml` の
