@@ -570,6 +570,28 @@ impl<'a> Shaper<'a> {
     };
   }
 
+  /// 配置済みの箱が数式フォントのグリフ列なら、`pick` が選ぶグリフの gid・run のフォントサイズ・そのグリフの
+  /// ベースラインの高さ（箱を置いた原点のベースライン基準）
+  ///
+  /// 高さは箱の `dy` にグリフの `y_offset` を足したもの — glyph assembly のパーツは同じ run の中で縦にずれている。
+  pub(super) fn placed_math_glyph(
+    &self,
+    placed: &PlacedHBox,
+    pick: fn(&[Glyph]) -> Option<&Glyph>,
+  ) -> Option<(u32, Length, Length)> {
+    let HBoxContent::Glyphs(run) = &placed.hbox.content else {
+      return None;
+    };
+    if run.font_type != FontType::Math {
+      return None;
+    }
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    return pick(&run.glyphs).map(|glyph| {
+      let rise = placed.dy + units_to_length(i64::from(glyph.y_offset), run.font_size, upem);
+      return (glyph.gid, run.font_size, rise);
+    });
+  }
+
   /// 配置済みの箱の列のインク（グリフの形の範囲）が、ベースラインより上・下へ出た量（高さ, 深さ）。
   ///
   /// どちらも 0 以上で、グリフが無ければ 0。箱の高さ・深さはフォント全体の ascender / descender なので、
