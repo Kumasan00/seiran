@@ -6,7 +6,8 @@
 //! extender でなければその start、最後のパーツが extender でなければその end は継ぎ目を持たない）。OpenType の規定で
 //! start は伸縮の始点側（縦なら下端、横なら左端）、end は終点側で、継ぎ目は「始点側のパーツの end と終点側のパーツの start」
 //! の重なり。この connector の扱いは `MathML Core` §5.3.1 の字面（最後の start と最初の end を除き、全 connector が
-//! `MinConnectorOverlap` 以上）と意図して異なる — 字面だと最下のパーツの start が 0 の STIX の `{` などを無効にしてしまう。
+//! `MinConnectorOverlap` 以上）と意図して異なる — 継ぎ目を持たない端の connector（始点側の端のパーツの start・終点側の端の
+//! パーツの end）は長さ 0 で作られうるので、字面どおりに検査すると有効な assembly を無効にしてしまう。
 
 use read_fonts::tables::math::{GlyphPartRecord, MathGlyphVariantRecord, PartFlags};
 

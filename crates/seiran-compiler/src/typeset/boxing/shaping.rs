@@ -43,7 +43,7 @@ fn design_units(value: f32) -> i64 { return value as i64; }
 /// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`units_to_length`] の逆）。
 #[expect(
   clippy::cast_possible_truncation,
-  reason = "表示数式 1 つの高さのフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
+  reason = "伸ばす目標（表示数式 1 つの高さ・広幅アクセントの基底 1 つの幅）のフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
 )]
 fn length_to_units(length: Length, font_size: Length, upem: f32) -> i64 {
   return (length.ratio(font_size) * f64::from(upem)).ceil() as i64;
@@ -52,7 +52,7 @@ fn length_to_units(length: Length, font_size: Length, upem: f32) -> i64 {
 /// フォント単位の量を [`Glyph`] の送り幅・オフセットの型にする。
 fn glyph_units(units: i64) -> i32 {
   return i32::try_from(units).expect(
-    "括弧の送り幅と組み上がりの位置は表示数式ブロックの高さに比例する。高さが約 200 万 em（upem 1000 で i32 の上限）を超えるブロックは扱えない",
+    "伸縮グリフの送り幅と組み上がりの位置は、縦は表示数式ブロックの高さ、横は広幅アクセントの基底の幅に比例する。約 200 万 em（upem 1000 で i32 の上限）を超えるブロック・基底は扱えない",
   );
 }
 

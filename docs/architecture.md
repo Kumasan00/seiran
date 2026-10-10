@@ -1004,8 +1004,8 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   どおり文字の cmap グリフから決める。元の字形はインクの幅（結合記号の送り幅は 0 や字形と無関係な値になりうる）、variant は
   `advanceMeasurement` で比べる）。元の字形のままなら `ssty` / `flac` も固定幅と同じで、伸ばした字形は GSUB を通さない。
   glyph assembly のパーツは左から並べ、送り幅の和は組み上がりの幅（MathML Core の glyph assembly stretch size。hmtx の
-  送り幅は使わない）、全パーツが 1 字のクラスタ。配置規則は固定幅と同じ（size variant の取付点は登録値か墨の中央、assembly
-  は組み上がりの幅の中央）
+  送り幅は使わない）、全パーツが 1 字のクラスタ。配置規則は固定幅と同じ（size variant とパーツ 1 つの assembly の取付点は登録値か墨の
+  中央、複数パーツの assembly は組み上がりの幅の中央）
 - **上線・下線**（`MathBar`。`\overline` / `\underline`）は OpenType MATH の `Overbar*` / `Underbar*` で、基底の送り幅
   いっぱいの罫線（`HBoxContent::Rule`）を引く。上線は基底のインクの頂から `OverbarVerticalGap` 上に罫線の下端、太さ
   `OverbarRuleThickness`、罫線の上に `OverbarExtraAscender`。下線は基底のインクの底から `UnderbarVerticalGap` 下に罫線の

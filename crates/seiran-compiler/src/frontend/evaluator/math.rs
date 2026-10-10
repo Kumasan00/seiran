@@ -265,7 +265,8 @@ fn accent_mark(name: &str) -> Option<char> {
 /// （広幅アクセントでなければ `None`）
 ///
 /// `\widehat` / `\widetilde` / `\widecheck` は unicode-math の `\mathaccentwide` と同じ字、矢印は結合用の矢印（上）。
-/// 数式フォントの OpenType MATH は結合記号の側に横方向の size variant と glyph assembly を持つ。
+/// 横に伸ばす字形は数式フォントの OpenType MATH が結合記号の側に持つ横方向の size variant と glyph assembly で、持たない
+/// フォントでは元の字形のまま組む。
 fn wide_accent_mark(name: &str) -> Option<char> {
   return match name {
     "widehat" => Some('\u{0302}'),

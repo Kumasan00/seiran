@@ -2694,7 +2694,11 @@ fn longer_base_stretches_the_arrow_only_horizontally() {
   assert_eq!(long_arrow.run.glyphs.len(), 1, "𝑎𝑏𝑎𝑏 も size variant で覆う（テストの前提）");
   assert!(long_arrow.width > short_arrow.width, "長い基底では矢印が広い");
   assert_eq!(long_arrow.run.font_size, short_arrow.run.font_size, "フォントサイズは変えない");
-  assert_eq!(stix_run_ink(&long_arrow.run), stix_run_ink(&short_arrow.run), "インクの上端・下端は変わらない");
+  assert_eq!(
+    stix_run_ink(&long_arrow.run),
+    stix_run_ink(&short_arrow.run),
+    "検証フォントの矢印の size variant はどれも同じ縦の範囲なので、インクの上端・下端も同じ（テストの前提）"
+  );
   assert_eq!(long_arrow.dy, short_arrow.dy, "同じ高さの基底なので縦の位置も同じ");
 }
 

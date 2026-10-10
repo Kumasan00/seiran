@@ -16,8 +16,9 @@
 //! Atom の幅は基底の送り幅で、アクセント記号の墨や原点のはみ出しは幅に数えない（TeX と同じ）。
 //! 広幅アクセント（`wide`）は記号を基底の送り幅へ横にだけ伸ばす（元の字形 → 横方向の size variant → glyph assembly →
 //! 最大の size variant。元の字形のままなら `ssty` / `flac` も上と同じ）。横位置・縦位置・幅の規則は変えない。伸ばした
-//! size variant の取付点も上と同じ（登録値、無ければ墨の横の中央）で、glyph assembly は組み上がりの幅の中央
-//! （`MathML Core` の取付点の既定値）を取付点にする。
+//! size variant の取付点も上と同じ（登録値、無ければ墨の横の中央）。複数のパーツで組んだ glyph assembly は組み上がりの
+//! 幅の中央（`MathML Core` の取付点の既定値）を取付点にし、パーツ 1 つで足りた assembly は 1 字形として size variant と
+//! 同じに扱う。
 
 use read_fonts::tables::math::MathConstant;
 
