@@ -1,57 +1,64 @@
 //! MATH の伸縮グリフの選択 — 元の字形・size variant・glyph assembly のどれで目標の大きさを覆うか
 //!
-//! 算法は `MathML Core` §5.3（「shape a stretchy glyph」と `GlyphAssembly` の組み立て）に従い、値はすべてフォント単位の
-//! 整数で扱う。glyph assembly の有効条件と重なりの上限には、継ぎ目に実際に参加する connector だけを使う（最初のパーツが
+//! 算法は `MathML Core` §5.3（「shape a stretchy glyph」と `GlyphAssembly` の組み立て）に従い、縦（区切り括弧・根号記号・
+//! 大型演算子）と横（広幅アクセント）で同じ算法を使う。値はすべてフォント単位の整数で扱い、大きさは縦なら高さ、横なら幅。
+//! glyph assembly の有効条件と重なりの上限には、継ぎ目に実際に参加する connector だけを使う（最初のパーツが
 //! extender でなければその start、最後のパーツが extender でなければその end は継ぎ目を持たない）。OpenType の規定で
-//! start は伸縮の始点側（縦なら下端）、end は終点側で、継ぎ目は「下のパーツの end と上のパーツの start」の重なり。
-//! この connector の扱いは `MathML Core` §5.3.1 の字面（最後の start と最初の end を除き、全 connector が `MinConnectorOverlap` 以上）と
-//! 意図して異なる — 字面だと最下のパーツの start が 0 の STIX の `{` などを無効にしてしまう。
+//! start は伸縮の始点側（縦なら下端、横なら左端）、end は終点側で、継ぎ目は「始点側のパーツの end と終点側のパーツの start」
+//! の重なり。この connector の扱いは `MathML Core` §5.3.1 の字面（最後の start と最初の end を除き、全 connector が
+//! `MinConnectorOverlap` 以上）と意図して異なる — 字面だと最下のパーツの start が 0 の STIX の `{` などを無効にしてしまう。
 
 use read_fonts::tables::math::{GlyphPartRecord, MathGlyphVariantRecord, PartFlags};
 
-/// 縦に伸ばした字形の選択結果（グリフ ID・位置はフォント単位）
+/// 伸ばした字形の選択結果（グリフ ID・位置はフォント単位）
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::typeset) enum VerticalStretch {
+pub(in crate::typeset) enum Stretch {
   /// 1 字形で組む（元の字形か size variant）
   Glyph(u32),
-  /// glyph assembly で組む。パーツのグリフ ID と、そのインクの下端を置く位置（組み上がりの下端を 0 とする）を下から順に
-  /// 並べる。空にはならない
-  Assembly(Vec<(u32, i64)>),
+  /// glyph assembly で組む
+  Assembly {
+    /// パーツのグリフ ID と伸縮の向きの位置（組み上がりの始点側の端を 0 とし、パーツの full advance を重なりだけ詰めて
+    /// 積んだ値）を始点側から順に並べたもの。空にはならない
+    parts: Vec<(u32, i64)>,
+    /// 組み上がりの大きさ（最後のパーツの位置 + その full advance。`MathML Core` の glyph assembly stretch size）
+    size: i64,
+  },
 }
 
-/// 元の字形 `base`（インクの高さ `base_height`）を縦に `target` 以上へ伸ばす字形を選ぶ
+/// 元の字形 `base`（伸縮の向きのインクの大きさ `base_size`）を `target` 以上へ伸ばす字形を選ぶ
 ///
 /// 元の字形 → `variants` のうち `advanceMeasurement` が `target` 以上の最初のもの（MATH は小さい順に並べる）→ glyph
 /// assembly `assembly` の順に試し、どれも覆えなければ最後に試した字形（最大の size variant、無ければ元の字形）にする。
 /// 伸縮を持たない字形は `variants` が空・`assembly` が `None` で、元の字形のまま。
-pub(super) fn stretch_vertically(
+pub(super) fn stretch_glyph(
   base: u32,
-  base_height: i64,
+  base_size: i64,
   variants: &[MathGlyphVariantRecord],
   assembly: Option<&[GlyphPartRecord]>,
   min_overlap: u16,
   target: i64,
-) -> VerticalStretch {
-  if base_height >= target {
-    return VerticalStretch::Glyph(base);
+) -> Stretch {
+  if base_size >= target {
+    return Stretch::Glyph(base);
   }
   if let Some(record) = variants.iter().find(|record| return i64::from(record.advance_measurement().to_u16()) >= target)
   {
-    return VerticalStretch::Glyph(record.variant_glyph().to_u32());
+    return Stretch::Glyph(record.variant_glyph().to_u32());
   }
-  if let Some(parts) = assembly.and_then(|parts| return assemble(parts, i64::from(min_overlap), target)) {
-    return VerticalStretch::Assembly(parts);
+  if let Some((parts, size)) = assembly.and_then(|parts| return assemble(parts, i64::from(min_overlap), target)) {
+    return Stretch::Assembly { parts, size };
   }
-  return VerticalStretch::Glyph(variants.last().map_or(base, |record| return record.variant_glyph().to_u32()));
+  return Stretch::Glyph(variants.last().map_or(base, |record| return record.variant_glyph().to_u32()));
 }
 
-/// glyph assembly `parts`（下から順）で `target` 以上の高さを組み、パーツのグリフ ID とインクの下端の位置を下から並べる
+/// glyph assembly `parts`（始点側から順）で `target` 以上の大きさを組み、パーツのグリフ ID と伸縮の向きの位置を始点側から
+/// 並べた列と、組み上がりの大きさを返す
 ///
 /// 各 extender を同じ回数 r だけ繰り返し、すべての継ぎ目を同じ重なり o にする（MathML Core）。r は重なり
 /// `min_overlap` で `target` に届く最小の回数、o は組み上がりが `target` 以上のまま継ぎ目の connector を超えない
 /// 最大の値（端数は切り捨てて `target` 以上を保つ）。extender が無い・伸びない・継ぎ目の connector が `min_overlap`
 /// より短い・パーツが 1 つも残らない assembly は組めず `None`。
-fn assemble(parts: &[GlyphPartRecord], min_overlap: i64, target: i64) -> Option<Vec<(u32, i64)>> {
+fn assemble(parts: &[GlyphPartRecord], min_overlap: i64, target: i64) -> Option<(Vec<(u32, i64)>, i64)> {
   let is_extender = |part: &GlyphPartRecord| return part.part_flags().contains(PartFlags::EXTENDER_FLAG);
   let advance = |part: &GlyphPartRecord| return i64::from(part.full_advance().to_u16());
   let (mut extender_count, mut extender_advance, mut fixed_count, mut fixed_advance) = (0i64, 0i64, 0i64, 0i64);
@@ -100,15 +107,16 @@ fn assemble(parts: &[GlyphPartRecord], min_overlap: i64, target: i64) -> Option<
   };
 
   let mut assembled = Vec::new();
-  let mut bottom = 0;
+  let mut position = 0;
   for part in parts {
     let times = if is_extender(part) { repeats } else { 1 };
     for _ in 0..times {
-      assembled.push((part.glyph_id().to_u32(), bottom));
-      bottom += advance(part) - overlap;
+      assembled.push((part.glyph_id().to_u32(), position));
+      position += advance(part) - overlap;
     }
   }
-  return Some(assembled);
+  // 最後のパーツの後ろに足した重なりを戻すと、最後のパーツの位置 + その full advance
+  return Some((assembled, position + overlap));
 }
 
 #[cfg(test)]
@@ -118,7 +126,7 @@ mod tests {
     types::{GlyphId16, UfWord},
   };
 
-  use super::{VerticalStretch, assemble, stretch_vertically};
+  use super::{Stretch, assemble, stretch_glyph};
 
   /// STIX Two Math の `MinConnectorOverlap`
   const MIN_OVERLAP: u16 = 100;
@@ -170,24 +178,24 @@ mod tests {
 
   #[test]
   fn base_glyph_tall_enough_is_kept() {
-    let chosen = stretch_vertically(100, 1000, &paren_variants(), None, MIN_OVERLAP, 900);
+    let chosen = stretch_glyph(100, 1000, &paren_variants(), None, MIN_OVERLAP, 900);
 
-    assert_eq!(chosen, VerticalStretch::Glyph(100));
+    assert_eq!(chosen, Stretch::Glyph(100));
   }
 
   #[test]
   fn smallest_variant_covering_the_target_is_chosen() {
     let variants = paren_variants();
 
-    assert_eq!(stretch_vertically(100, 932, &variants, None, MIN_OVERLAP, 1000), VerticalStretch::Glyph(101));
+    assert_eq!(stretch_glyph(100, 932, &variants, None, MIN_OVERLAP, 1000), Stretch::Glyph(101));
     assert_eq!(
-      stretch_vertically(100, 932, &variants, None, MIN_OVERLAP, 1187),
-      VerticalStretch::Glyph(101),
+      stretch_glyph(100, 932, &variants, None, MIN_OVERLAP, 1187),
+      Stretch::Glyph(101),
       "ちょうど目標の高さの variant は目標を覆う"
     );
     assert_eq!(
-      stretch_vertically(100, 932, &variants, None, MIN_OVERLAP, 933),
-      VerticalStretch::Glyph(100),
+      stretch_glyph(100, 932, &variants, None, MIN_OVERLAP, 933),
+      Stretch::Glyph(100),
       "インクが 1 単位足りない元の字形も variant としては覆う"
     );
   }
@@ -196,32 +204,38 @@ mod tests {
   fn assembly_is_used_when_no_variant_covers_the_target() {
     let parts = brace_parts();
 
-    let chosen = stretch_vertically(100, 932, &paren_variants(), Some(&parts), MIN_OVERLAP, 4000);
+    let chosen = stretch_glyph(100, 932, &paren_variants(), Some(&parts), MIN_OVERLAP, 4000);
 
-    assert_eq!(chosen, VerticalStretch::Assembly(vec![(1, 0), (3, 1027), (4, 2726)]));
+    assert_eq!(
+      chosen,
+      Stretch::Assembly {
+        parts: vec![(1, 0), (3, 1027), (4, 2726)],
+        size: 4001
+      }
+    );
   }
 
   #[test]
   fn largest_variant_is_kept_when_no_assembly_exists() {
-    let chosen = stretch_vertically(100, 932, &paren_variants(), None, MIN_OVERLAP, 5000);
+    let chosen = stretch_glyph(100, 932, &paren_variants(), None, MIN_OVERLAP, 5000);
 
-    assert_eq!(chosen, VerticalStretch::Glyph(103), "最後に試した字形（最大の size variant）");
+    assert_eq!(chosen, Stretch::Glyph(103), "最後に試した字形（最大の size variant）");
   }
 
   #[test]
   fn largest_variant_is_kept_when_the_assembly_is_invalid() {
     let parts = vec![part(1, 0, 100, 1000, false), part(2, 100, 0, 1000, false)];
 
-    let chosen = stretch_vertically(100, 932, &paren_variants(), Some(&parts), MIN_OVERLAP, 5000);
+    let chosen = stretch_glyph(100, 932, &paren_variants(), Some(&parts), MIN_OVERLAP, 5000);
 
-    assert_eq!(chosen, VerticalStretch::Glyph(103));
+    assert_eq!(chosen, Stretch::Glyph(103));
   }
 
   #[test]
   fn glyph_without_construction_keeps_the_base() {
-    let chosen = stretch_vertically(100, 932, &[], None, MIN_OVERLAP, 5000);
+    let chosen = stretch_glyph(100, 932, &[], None, MIN_OVERLAP, 5000);
 
-    assert_eq!(chosen, VerticalStretch::Glyph(100), "伸縮を持たない字形は自然サイズのまま");
+    assert_eq!(chosen, Stretch::Glyph(100), "伸縮を持たない字形は自然サイズのまま");
   }
 
   #[test]
@@ -229,7 +243,7 @@ mod tests {
     // 非 extender だけで 4497 − 2 × 100 = 4297 ≥ 4000 なので繰り返し 0 回。重なりは (4497 − 4000) / 2 = 248（切り捨て）
     let assembled = assemble(&brace_parts(), 100, 4000);
 
-    assert_eq!(assembled, Some(vec![(1, 0), (3, 1027), (4, 2726)]), "組み上がりは 2726 + 1275 = 4001");
+    assert_eq!(assembled, Some((vec![(1, 0), (3, 1027), (4, 2726)], 4001)), "組み上がりは 2726 + 1275 = 4001");
   }
 
   #[test]
@@ -239,7 +253,7 @@ mod tests {
 
     assert_eq!(
       assembled,
-      Some(vec![(1, 0), (2, 1151), (3, 2028), (2, 3851), (4, 4728)]),
+      Some((vec![(1, 0), (2, 1151), (3, 2028), (2, 3851), (4, 4728)], 6003)),
       "組み上がりは 4728 + 1275 = 6003"
     );
   }
@@ -247,10 +261,11 @@ mod tests {
   #[test]
   fn brace_assembly_covers_a_very_tall_target() {
     // 繰り返しは ceil((100000 − 4297) / 1802) = 54 回。重なりは (4497 + 54 × 2002 − 100000) / 110 = 114
-    let assembled = assemble(&brace_parts(), 100, 100_000).expect("STIX の波括弧の assembly は有効");
+    let (assembled, size) = assemble(&brace_parts(), 100, 100_000).expect("STIX の波括弧の assembly は有効");
 
     assert_eq!(assembled.len(), 3 + 2 * 54);
     assert_eq!(assembled.last(), Some(&(4, 100_065 - 1275)), "組み上がりは 100065 で目標以上");
+    assert_eq!(size, 100_065, "組み上がりの大きさは最後のパーツの位置 + その full advance");
   }
 
   #[test]
@@ -261,7 +276,7 @@ mod tests {
       part(10, 800, 800, 927, false),
     ];
 
-    assert_eq!(assemble(&parts, 100, 1500), Some(vec![(10, 0), (10, 573)]));
+    assert_eq!(assemble(&parts, 100, 1500), Some((vec![(10, 0), (10, 573)], 1500)));
   }
 
   #[test]
@@ -272,7 +287,7 @@ mod tests {
       part(20, 100, 100, 927, false),
     ];
 
-    assert_eq!(assemble(&parts, 100, 1500), Some(vec![(20, 0), (20, 827)]), "組み上がりは 1754");
+    assert_eq!(assemble(&parts, 100, 1500), Some((vec![(20, 0), (20, 827)], 1754)), "組み上がりは 1754");
   }
 
   #[test]
@@ -311,5 +326,50 @@ mod tests {
     let parts = vec![part(1, 100, 100, 500, true)];
 
     assert_eq!(assemble(&parts, 100, 50), None);
+  }
+
+  /// 横方向の矢印の assembly（左に extender、右に矢じり。start / end は横の始点＝左・終点＝右）
+  fn arrow_parts() -> Vec<GlyphPartRecord> {
+    return vec![
+      part(30, 200, 200, 513, true),
+      part(31, 700, 200, 893, false),
+    ];
+  }
+
+  #[test]
+  fn arrow_assembly_lays_parts_from_the_start_side() {
+    // 繰り返しは ceil((2000 − 893) / (513 − 100)) = 3 回、重なりは (893 + 3 × 513 − 2000) / 3 = 144
+    let assembled = assemble(&arrow_parts(), 100, 2000);
+
+    assert_eq!(
+      assembled,
+      Some((vec![(30, 0), (30, 369), (30, 738), (31, 1107)], 2000)),
+      "始点側（横は左）から積み、組み上がりは 1107 + 893 = 2000"
+    );
+  }
+
+  #[test]
+  fn assembly_only_construction_keeps_a_wide_enough_base() {
+    // variant 列が空で assembly だけを持つ記号（元の字形は variant 列に入らない）
+    let parts = arrow_parts();
+
+    assert_eq!(
+      stretch_glyph(100, 349, &[], Some(&parts), 100, 300),
+      Stretch::Glyph(100),
+      "元の字形の大きさで足りれば元の字形"
+    );
+    assert!(
+      matches!(stretch_glyph(100, 349, &[], Some(&parts), 100, 2000), Stretch::Assembly { size: 2000, .. }),
+      "足りなければ variant を飛ばして assembly"
+    );
+  }
+
+  #[test]
+  fn base_size_is_compared_before_the_variants() {
+    // 元の字形を variant 列の先頭に置かないフォントでも、元の字形の大きさで足りれば最初の variant に替えない
+    let variants = vec![variant(101, 600), variant(102, 1000)];
+
+    assert_eq!(stretch_glyph(100, 450, &variants, None, 100, 400), Stretch::Glyph(100));
+    assert_eq!(stretch_glyph(100, 450, &variants, None, 100, 500), Stretch::Glyph(101));
   }
 }

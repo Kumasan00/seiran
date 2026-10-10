@@ -24,7 +24,7 @@ use crate::{
     face_config::{FontFaceConfigs, build_face_configs},
     parse_fonts,
     shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
-    stretch::{self, VerticalStretch},
+    stretch::{self, Stretch},
     validation::{self, FontValidationError, FontWarning},
   },
 };
@@ -200,15 +200,20 @@ impl FontSystem {
     return self.shapers[font_type].font().glyph_metrics().extents(GlyphId::new(gid));
   }
 
-  /// 数式フォントのグリフ `gid` を縦に `target`（フォント単位）以上へ伸ばす字形を、MATH の size variant と glyph assembly
-  /// から選ぶ（元の字形の高さはインクの高さ）。
+  /// 数式フォントのグリフ `gid` を軸 `axis` の向きに `target`（フォント単位）以上へ伸ばす字形を、MATH の size variant と
+  /// glyph assembly から選ぶ（元の字形の大きさは、縦はインクの高さ、横はインクの幅）。
   #[must_use]
-  pub(crate) fn stretch_math_glyph_vertically(&self, gid: u32, target: i64) -> VerticalStretch {
+  pub(crate) fn stretch_math_glyph(&self, gid: u32, axis: StretchAxis, target: i64) -> Stretch {
     let variants = self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_variants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathVariants を読めることを確認済み",
     );
-    let base_height = self.glyph_extents(FontType::Math, gid).map_or(0, |extents| return units(extents.height));
-    let construction = variants.glyph_construction(GlyphId::new(gid), StretchAxis::Vertical);
+    let base_size = self.glyph_extents(FontType::Math, gid).map_or(0, |extents| {
+      return units(match axis {
+        StretchAxis::Vertical => extents.height,
+        StretchAxis::Horizontal => extents.width,
+      });
+    });
+    let construction = variants.glyph_construction(GlyphId::new(gid), axis);
     let assembly = construction.as_ref().and_then(|construction| {
       return construction.glyph_assembly().map(|assembly| {
         return assembly.expect(
@@ -216,9 +221,9 @@ impl FontSystem {
         );
       });
     });
-    return stretch::stretch_vertically(
+    return stretch::stretch_glyph(
       gid,
-      base_height,
+      base_size,
       construction.as_ref().map_or(&[], |construction| return construction.math_glyph_variant_records()),
       assembly.as_ref().map(|assembly| return assembly.part_records()),
       variants.min_connector_overlap().to_u16(),

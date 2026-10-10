@@ -7,7 +7,7 @@
 
 use std::ops::Range;
 
-use read_fonts::tables::math::{MathConstant, MathKernCorner};
+use read_fonts::tables::math::{MathConstant, MathKernCorner, StretchAxis};
 use tracing::trace;
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem, ScriptLevel, VerticalStretch},
+    font::{Buffer, FontSystem, ScriptLevel, Stretch},
     lowering::TextStyle,
     observe,
   },
@@ -466,14 +466,11 @@ impl<'a> Shaper<'a> {
       };
     };
     let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, gid)));
-    return match self.fonts.stretch_math_glyph_vertically(gid, target) {
-      VerticalStretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
-      VerticalStretch::Assembly(parts) => {
-        let width = parts
-          .iter()
-          .map(|&(gid, _)| return advance(gid))
-          .max()
-          .expect("VerticalStretch::Assembly は空にならない");
+    return match self.fonts.stretch_math_glyph(gid, StretchAxis::Vertical, target) {
+      Stretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
+      // 縦の assembly の位置はパーツのインクの下端を置く高さで、組み上がりの大きさは使わない（幅はパーツの最大）
+      Stretch::Assembly { parts, .. } => {
+        let width = parts.iter().map(|&(gid, _)| return advance(gid)).max().expect("Stretch::Assembly は空にならない");
         let last = parts.len() - 1;
         parts
           .iter()
