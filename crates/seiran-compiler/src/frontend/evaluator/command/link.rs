@@ -5,7 +5,8 @@
 //! リンク先を受け取る引数は verbatim（生読み）なので、`//` もコメント開始にならず URL をそのまま
 //! 書ける — `\url{https://example.com}` / `\href{https://example.com}{表示}`。verbatim なのは
 //! `\url` の必須引数と `\href` の**第 1 引数だけ**で、`\href` の第 2 引数（表示テキスト）は
-//! 活性なので `\bold{...}` 等をネストできる。
+//! 活性なので `\bold{...}` 等をネストでき、インライン数式を置けば数式全体がリンクになる
+//! （数式の語彙に `\url` / `\href` は無く、`$...$` の中に書くと未知のコマンドになる）。
 //!
 //! verbatim 内では `\` も不活性なので、`\/` は URL に literal `\/` として残る。
 
@@ -193,6 +194,18 @@ mod tests {
   }
 
   #[test]
+  fn href_accepts_inline_math_as_display_text() {
+    // 数式全体をリンクにする書き方は、数式を `\href` の表示テキストに置く形だけ
+    let result = href_link(r"\href{https://example.com}{$x^{2}$}");
+
+    let HirInlineKind::Link { children, .. } = &result.kind else {
+      panic!("Link が期待されます: {result:?}");
+    };
+    assert_eq!(children.len(), 1, "表示は数式ノード 1 個: {children:?}");
+    assert!(matches!(&children[0].kind, HirInlineKind::Math(_)), "{children:?}");
+  }
+
+  #[test]
   fn href_rejects_the_old_opt_url_syntax() {
     let error = href_error(r"\href[url=https:\/\/example.com]{ここ}");
 
@@ -224,5 +237,17 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst);
 
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "href"), "{result:?}");
+  }
+
+  #[test]
+  fn url_inside_math_is_rejected_as_an_unknown_command() {
+    // verbatim 宣言が勝つので `//` はコメントにならず、数式評価器の語彙に `\url` が無いことが診断になる
+    let arena = Bump::new();
+    let source = r"$\url{https://example.com}$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "url"), "{result:?}");
   }
 }

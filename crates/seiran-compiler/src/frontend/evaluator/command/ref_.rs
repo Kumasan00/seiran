@@ -26,7 +26,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{run_handler, test_support};
+  use crate::frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support};
 
   #[test]
   fn ref_produces_inline_ref_stub() {
@@ -77,5 +77,16 @@ mod tests {
     let result = run_handler(|ctx| return ref_(&view, ctx));
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
+  }
+
+  #[test]
+  fn ref_inside_math_is_rejected_as_an_unknown_command() {
+    let arena = Bump::new();
+    let source = r"$\ref{eq:1}$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "ref"), "{result:?}");
   }
 }
