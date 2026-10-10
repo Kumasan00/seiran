@@ -1,0 +1,20 @@
+\section{関係子と矢印}
+
+記号は本文でも使える。本文の \sterling、\sectionsign、\euro、\differentiald。
+数式では $a \leqslant b$、$f \colon A \longrightarrow B$、
+$x \mapsfrom y$、$p \preceq q \preccurlyeq r$、$M \models \varphi$ と $\Gamma \vDash \varphi$、$\ell \perp m$。
+
+\section{二項演算子と順序子}
+
+$a \doubleplus b$、$x \circledast y$、$\diameter$、$\bigcirc$、$\tinysquare \smallsquare \square \largesquare$、
+$\blacktriangle \bigblacktriangleup$、$\backslash$、$\epsilon \varepsilon \phi \varphi$。
+
+\section{括弧}
+
+$\lBrack x \rBrack$ と $\lAngle y \rAngle$ と $\lbrackultick z \rbrackurtick$。
+
+\section{大型演算子}
+
+\begin{equation}
+\iiiint f \bigslash g \doublestrucksum h
+\end{equation}
