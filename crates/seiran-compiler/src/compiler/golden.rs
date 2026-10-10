@@ -64,6 +64,8 @@
 //!   [`scripts_on_a_non_math_base_share_a_column`] / [`base_ending_with_scripts_takes_no_italic_correction`] /
 //!   [`base_ending_with_a_slanted_script_takes_no_italic_correction`] /
 //!   [`cursor_after_scripts_follows_the_farther_script`]・
+//!   結合文字付きの基底（共通ヘルパ [`script_offset`] 経由）[`combining_mark_keeps_its_place_on_a_scripted_base`] /
+//!   [`superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`] /
 //!   [`display_operator_scripts_take_the_math_kern_from_the_operator_baseline`] /
@@ -1863,6 +1865,43 @@ fn combining_mark_does_not_make_the_next_glyph_upright() {
     stix_advance(next.gid) + stix_italics_correction(next.gid),
   ];
   assert_eq!(advances, expected, "傾いた 𝑥̂ と 𝑦 の間は詰まり、末尾の 𝑦 だけ補正が入る");
+}
+
+/// 本文 `source` の 1 行目で、テキスト `base` のグリフ列の左端から、テキスト `script` のグリフ列の左端までの距離
+fn script_offset(source: &str, base: &str, script: &str) -> Length {
+  let runs = first_line_runs(source);
+  return run_with_text(&runs, script).dx - run_with_text(&runs, base).dx;
+}
+
+#[test]
+fn combining_mark_keeps_its_place_on_a_scripted_base() {
+  let base = format!("{MATH_X}\u{0302}");
+  let placements = |source: &str| {
+    let runs = first_line_runs(source);
+    return run_with_text(&runs, &base)
+      .run
+      .glyphs
+      .iter()
+      .map(|glyph| return (glyph.gid, glyph.x_advance, glyph.x_offset, glyph.y_offset))
+      .collect::<Vec<_>>();
+  };
+
+  let bare = placements("$x\u{0302}$\n");
+
+  for source in ["$x\u{0302}_{2}$\n", "$x\u{0302}^{2}$\n"] {
+    assert_eq!(placements(source), bare, "𝑥 と結合文字は 1 本のグリフ列で、配置は `$x̂$` と同じ: {source:?}");
+  }
+}
+
+#[test]
+fn superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char() {
+  // 結合文字で基底のインクが高くなり上付きのシフトは変わるが、STIX Two Math の 𝑥 は右上の math kern を持たないので
+  // 横位置は高さに依らない
+  assert_eq!(
+    script_offset("$x\u{0302}^{2}$\n", &format!("{MATH_X}\u{0302}"), "2"),
+    script_offset("$x^{2}$\n", MATH_X, "2"),
+    "上付きの横位置は結合文字の有無で変わらない"
+  );
 }
 
 #[test]

@@ -9,6 +9,8 @@ mod spacing;
 use std::slice;
 
 use alphanumeric::push_math_char;
+use icu::segmenter::GraphemeClusterSegmenter;
+use itertools::Itertools;
 use spacing::ScriptSide;
 
 use crate::{
@@ -497,20 +499,25 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
   }
 }
 
-/// 数式中のテキストを 1 文字ずつのアイテムへ展開する
+/// 数式中のテキストを書記素クラスタ（基底の字と後ろに付く結合文字）ずつのアイテムへ展開する
 ///
-/// ソースに書かれた空白は組版に出さない（TeX と同じ）。
+/// 結合文字は基底の字の一部なので、アキとスクリプトの基底の単位は結合文字を含めた字になる。クラスと区切り種別は
+/// クラスタの最初の字で決める。ソースに書かれた空白は組版に出さない（TeX と同じ）— 空白の字を除き、残りの無い
+/// クラスタは捨てる。
 fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
-  for ch in text.chars() {
-    if ch.is_whitespace() {
+  for (start, end) in GraphemeClusterSegmenter::new().segment_str(text).tuple_windows() {
+    let chars: Vec<char> = text[start..end].chars().filter(|ch| return !ch.is_whitespace()).collect();
+    let Some(&first) = chars.first() else {
       continue;
-    }
+    };
     let mut translated = String::new();
-    push_math_char(&mut translated, ch, ctx.variant);
-    let class = spacing::char_class(ch);
+    for &ch in &chars {
+      push_math_char(&mut translated, ch, ctx.variant);
+    }
+    let class = spacing::char_class(first);
     items.push(spacing::MathItem::new(
       class,
-      spacing::char_fence(ch),
+      spacing::char_fence(first),
       vec![AtomNode::Text(translated, ctx.text_style(class))],
     ));
   }
@@ -863,6 +870,49 @@ mod tests {
       "グループは中のスクリプトごと 1 つの基底で、中の x^{{2}} へ下付きを重ねない: {scripts:?}"
     );
     assert!(scripts.subscript.is_some());
+  }
+
+  #[test]
+  fn script_base_includes_the_combining_mark_of_its_char() {
+    for source in ["$x\u{0302}_{2}$\n", "$x\u{0302}^{2}$\n"] {
+      let nodes = lower_math_source(source);
+
+      let scripts = first_scripts(&nodes);
+      assert_eq!(
+        concat_atom_texts(&scripts.base),
+        "\u{1D465}\u{0302}",
+        "結合文字は基底の字と一緒にスクリプトの基底になる: {source:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn math_variant_translates_the_base_char_and_keeps_its_combining_mark() {
+    let nodes = lower_math_source("$\\mathbold{x\u{0302}}_{2}$\n");
+
+    let scripts = first_scripts(&nodes);
+    assert_eq!(
+      concat_atom_texts(&scripts.base),
+      "\u{1D431}\u{0302}",
+      "字体は基底の字だけを替え、結合文字はそのまま付く"
+    );
+  }
+
+  #[test]
+  fn combining_mark_after_a_non_ascii_space_is_kept() {
+    // 全角空白は空白トークンにならずテキストに入り、後ろの結合文字と 1 つの書記素クラスタになる
+    let nodes = lower_math_source("$x\u{3000}\u{0302}$\n");
+
+    assert_eq!(concat_texts(&nodes), "\u{1D465}\u{0302}", "空白の字だけを除き、同じクラスタの結合文字は残す");
+  }
+
+  #[test]
+  fn combining_mark_after_a_symbol_command_is_kept() {
+    // 記号コマンドの後ろの結合文字は別のテキストノードに入るので、基底の字とクラスタを作らない。字は落とさない
+    let nodes = lower_math_source("$\\alpha\u{0302}_{2}$\n");
+
+    let texts = concat_texts(&nodes);
+    assert!(texts.contains('\u{0302}'), "結合文字は組版に残る: {texts:?}");
   }
 
   #[test]

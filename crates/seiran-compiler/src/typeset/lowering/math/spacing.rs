@@ -28,7 +28,7 @@ pub(super) enum Fence {
   Close,
 }
 
-/// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは 1 文字ぶん）
+/// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは書記素クラスタ 1 つぶん）
 #[derive(Debug)]
 pub(super) struct MathItem {
   /// 直前のアイテムと組むときのクラス（左端のクラス）
