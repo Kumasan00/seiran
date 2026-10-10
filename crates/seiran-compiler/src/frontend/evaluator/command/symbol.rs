@@ -1309,6 +1309,52 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "rceil" => MathSymbol::new('\u{2309}', MathClass::Close),
   "lfloor" => MathSymbol::new('\u{230A}', MathClass::Open),
   "rfloor" => MathSymbol::new('\u{230B}', MathClass::Close),
+  "ulcorner" => MathSymbol::new('\u{231C}', MathClass::Open),
+  "urcorner" => MathSymbol::new('\u{231D}', MathClass::Close),
+  "llcorner" => MathSymbol::new('\u{231E}', MathClass::Open),
+  "lrcorner" => MathSymbol::new('\u{231F}', MathClass::Close),
+  "lmoustache" => MathSymbol::new('\u{23B0}', MathClass::Open),
+  "rmoustache" => MathSymbol::new('\u{23B1}', MathClass::Close),
+  "ltortoise" => MathSymbol::new('\u{2772}', MathClass::Open),
+  "rtortoise" => MathSymbol::new('\u{2773}', MathClass::Close),
+  "lbag" => MathSymbol::new('\u{27C5}', MathClass::Open),
+  "rbag" => MathSymbol::new('\u{27C6}', MathClass::Close),
+  "lBrack" => MathSymbol::new('\u{27E6}', MathClass::Open),
+  "rBrack" => MathSymbol::new('\u{27E7}', MathClass::Close),
+  "lAngle" => MathSymbol::new('\u{27EA}', MathClass::Open),
+  "rAngle" => MathSymbol::new('\u{27EB}', MathClass::Close),
+  "lwhitetortoise" => MathSymbol::new('\u{27EC}', MathClass::Open),
+  "rwhitetortoise" => MathSymbol::new('\u{27ED}', MathClass::Close),
+  "lgroup" => MathSymbol::new('\u{27EE}', MathClass::Open),
+  "rgroup" => MathSymbol::new('\u{27EF}', MathClass::Close),
+  "lBrace" => MathSymbol::new('\u{2983}', MathClass::Open),
+  "rBrace" => MathSymbol::new('\u{2984}', MathClass::Close),
+  "lParen" => MathSymbol::new('\u{2985}', MathClass::Open),
+  "rParen" => MathSymbol::new('\u{2986}', MathClass::Close),
+  "llparenthesis" => MathSymbol::new('\u{2987}', MathClass::Open),
+  "rrparenthesis" => MathSymbol::new('\u{2988}', MathClass::Close),
+  "llangle" => MathSymbol::new('\u{2989}', MathClass::Open),
+  "rrangle" => MathSymbol::new('\u{298A}', MathClass::Close),
+  "lbrackubar" => MathSymbol::new('\u{298B}', MathClass::Open),
+  "rbrackubar" => MathSymbol::new('\u{298C}', MathClass::Close),
+  "lbrackultick" => MathSymbol::new('\u{298D}', MathClass::Open),
+  "rbracklrtick" => MathSymbol::new('\u{298E}', MathClass::Close),
+  "lbracklltick" => MathSymbol::new('\u{298F}', MathClass::Open),
+  "rbrackurtick" => MathSymbol::new('\u{2990}', MathClass::Close),
+  "langledot" => MathSymbol::new('\u{2991}', MathClass::Open),
+  "rangledot" => MathSymbol::new('\u{2992}', MathClass::Close),
+  "lparenless" => MathSymbol::new('\u{2993}', MathClass::Open),
+  "rparengtr" => MathSymbol::new('\u{2994}', MathClass::Close),
+  "Lparengtr" => MathSymbol::new('\u{2995}', MathClass::Open),
+  "Rparenless" => MathSymbol::new('\u{2996}', MathClass::Close),
+  "lblacktortoise" => MathSymbol::new('\u{2997}', MathClass::Open),
+  "rblacktortoise" => MathSymbol::new('\u{2998}', MathClass::Close),
+  "lvzigzag" => MathSymbol::new('\u{29D8}', MathClass::Open),
+  "rvzigzag" => MathSymbol::new('\u{29D9}', MathClass::Close),
+  "Lvzigzag" => MathSymbol::new('\u{29DA}', MathClass::Open),
+  "Rvzigzag" => MathSymbol::new('\u{29DB}', MathClass::Close),
+  "lcurvyangle" => MathSymbol::new('\u{29FC}', MathClass::Open),
+  "rcurvyangle" => MathSymbol::new('\u{29FD}', MathClass::Close),
   "vert" => MathSymbol::new('\u{007C}', MathClass::Ord),
   "Vert" => MathSymbol::new('\u{2016}', MathClass::Ord),
 };
@@ -1415,6 +1461,39 @@ mod tests {
     assert_eq!(op("bigslash"), Some(('\u{29F8}', MathClass::Op)));
     assert_eq!(op("doublestrucksum"), Some(('\u{2140}', MathClass::Op)));
     assert_eq!(op("Join"), Some(('\u{2A1D}', MathClass::Op)));
+  }
+
+  #[test]
+  fn every_open_symbol_has_its_closing_partner() {
+    // typeset はクラスから開き・閉じ区切りを導いてインライン数式の分割点を決める。閉じの無い Open は以降の分割点を消す。
+    // 対は Unicode の Bidi_Mirroring_Glyph（U+298D ⦍ ↔ U+2990 ⦐、U+298F ⦏ ↔ U+298E ⦎ 以外は次の符号位置）
+    let partner = |ch: char| -> char {
+      return match ch {
+        '\u{298D}' => '\u{2990}',
+        '\u{298F}' => '\u{298E}',
+        _ => char::from_u32(u32::from(ch) + 1).expect("Open の字の次の符号位置は文字"),
+      };
+    };
+    let closes: Vec<char> =
+      SYMBOLS.values().filter(|s| return s.class == MathClass::Close).map(|s| return s.ch).collect();
+    let opens: Vec<char> =
+      SYMBOLS.values().filter(|s| return s.class == MathClass::Open).map(|s| return s.ch).collect();
+    for open in &opens {
+      assert!(closes.contains(&partner(*open)), "U+{:04X} の対の閉じ括弧が記号表に無い", u32::from(*open));
+    }
+    assert_eq!(opens.len(), closes.len());
+  }
+
+  #[test]
+  fn added_delimiters_have_expected_char_and_class() {
+    let sym = |name: &str| return lookup(name).map(|s| return (s.ch, s.class));
+    assert_eq!(sym("lBrack"), Some(('\u{27E6}', MathClass::Open)));
+    assert_eq!(sym("rBrack"), Some(('\u{27E7}', MathClass::Close)));
+    assert_eq!(sym("lbrackultick"), Some(('\u{298D}', MathClass::Open)));
+    assert_eq!(sym("rbrackurtick"), Some(('\u{2990}', MathClass::Close)));
+    assert_eq!(sym("cuberoot"), Some(('\u{221B}', MathClass::Ord)), "対の無い根号は Ord");
+    assert_eq!(sym("longdivision"), Some(('\u{27CC}', MathClass::Ord)), "対の無い長除法は Ord");
+    assert_eq!(sym("Vvert"), Some(('\u{2980}', MathClass::Ord)), "unicode-math の fence は vert と同じ Ord");
   }
 
   #[test]
