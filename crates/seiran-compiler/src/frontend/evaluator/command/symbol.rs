@@ -340,6 +340,10 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
 #[must_use]
 pub(in crate::frontend::evaluator) fn lookup(name: &str) -> Option<MathSymbol> { return SYMBOLS.get(name).copied(); }
 
+/// 記号表の全コマンド名（テストが数式の語彙との衝突を調べるのに使う。静的表から切り離せないテスト専用アクセサ）
+#[cfg(test)]
+pub(in crate::frontend::evaluator) fn names() -> impl Iterator<Item = &'static str> { return SYMBOLS.keys().copied(); }
+
 #[cfg(test)]
 mod tests {
   use std::collections::BTreeMap;
