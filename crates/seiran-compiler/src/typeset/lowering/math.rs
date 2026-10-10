@@ -401,9 +401,9 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Symbol { ch, class } => {
       let mut translated = String::new();
       push_math_char(&mut translated, *ch, ctx.variant);
-      // 記号表で Op クラスを持つのは大型演算子だけ。display の大きさの字形にするのは display 段だけで、text 段以下は
-      // 通常のテキスト（MathML Core の largeop は math-style が normal のときだけ効く）
-      if *class == MathClass::Op && ctx.style.level == StyleLevel::Display {
+      // display の大きさの字形にするのは、MathML Core の largeop を持つ演算子が display 段にあるときだけ（largeop は
+      // math-style が normal のときだけ効く）。largeop を持たない Op は Op のアキを取る通常の字
+      if *class == MathClass::Op && ctx.style.level == StyleLevel::Display && is_large_operator(*ch) {
         items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(*ch)));
       } else {
         items.push(spacing::MathItem::new(
@@ -514,6 +514,14 @@ fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacin
       vec![AtomNode::Text(translated, ctx.text_style(class))],
     ));
   }
+}
+
+/// `MathML Core` の演算子辞書で largeop を持つ文字か（総和・積分・n 項の集合演算子・`⨝` `⨞` `⫼` `⫿`）
+const fn is_large_operator(ch: char) -> bool {
+  return matches!(
+    ch,
+    '\u{220F}'..='\u{2211}' | '\u{222B}'..='\u{2233}' | '\u{22C0}'..='\u{22C3}' | '\u{2A00}'..='\u{2A1E}' | '\u{2AFC}' | '\u{2AFF}'
+  );
 }
 
 /// 大型演算子 `ch` が display 段で上付き・下付きを上下に積むか（`MathML Core` の演算子辞書の movablelimits）
@@ -1598,6 +1606,28 @@ mod tests {
     assert!(
       matches!(numerator.first(), Some(AtomNode::Text(text, _)) if text == "\u{2211}"),
       "display の分子は text 段: {numerator:?}"
+    );
+  }
+
+  #[test]
+  fn display_op_symbol_without_largeop_stays_text() {
+    let block = math_block_of("\\begin{equation}\n\\bigslash x\n\\end{equation}\n");
+
+    let cell = &block.rows[0].cells[0].content;
+    assert!(
+      matches!(cell.first(), Some(AtomNode::Text(text, _)) if text == "\u{29F8}"),
+      "largeop を持たない Op は display 段でも Text のまま: {cell:?}"
+    );
+  }
+
+  #[test]
+  fn display_added_largeop_symbol_is_lowered_as_large_operator() {
+    let block = math_block_of("\\begin{equation}\n\\iiiint x\n\\end{equation}\n");
+
+    let cell = &block.rows[0].cells[0].content;
+    assert!(
+      matches!(cell.first(), Some(AtomNode::LargeOperator { symbol, .. }) if symbol == "\u{2A0C}"),
+      "largeop を持つ Op は display 段の大型演算子: {cell:?}"
     );
   }
 }

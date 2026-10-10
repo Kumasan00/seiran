@@ -489,6 +489,50 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "bigoplus" => MathSymbol::new('\u{2A01}', MathClass::Op),
   "bigotimes" => MathSymbol::new('\u{2A02}', MathClass::Op),
   "biguplus" => MathSymbol::new('\u{2A04}', MathClass::Op),
+  "doublestrucksum" => MathSymbol::new('\u{2140}', MathClass::Op),
+  "intclockwise" => MathSymbol::new('\u{2231}', MathClass::Op),
+  "ointclockwise" => MathSymbol::new('\u{2232}', MathClass::Op),
+  "ointcounterclockwise" => MathSymbol::new('\u{2233}', MathClass::Op),
+  "leftouterjoin" => MathSymbol::new('\u{27D5}', MathClass::Op),
+  "rightouterjoin" => MathSymbol::new('\u{27D6}', MathClass::Op),
+  "fullouterjoin" => MathSymbol::new('\u{27D7}', MathClass::Op),
+  "bigbot" => MathSymbol::new('\u{27D8}', MathClass::Op),
+  "bigtop" => MathSymbol::new('\u{27D9}', MathClass::Op),
+  "bigslash" => MathSymbol::new('\u{29F8}', MathClass::Op),
+  "bigbackslash" => MathSymbol::new('\u{29F9}', MathClass::Op),
+  "bigcupdot" => MathSymbol::new('\u{2A03}', MathClass::Op),
+  "bigsqcap" => MathSymbol::new('\u{2A05}', MathClass::Op),
+  "conjquant" => MathSymbol::new('\u{2A07}', MathClass::Op),
+  "disjquant" => MathSymbol::new('\u{2A08}', MathClass::Op),
+  "bigtimes" => MathSymbol::new('\u{2A09}', MathClass::Op),
+  "modtwosum" => MathSymbol::new('\u{2A0A}', MathClass::Op),
+  "sumint" => MathSymbol::new('\u{2A0B}', MathClass::Op),
+  "iiiint" => MathSymbol::new('\u{2A0C}', MathClass::Op),
+  "intbar" => MathSymbol::new('\u{2A0D}', MathClass::Op),
+  "intBar" => MathSymbol::new('\u{2A0E}', MathClass::Op),
+  "fint" => MathSymbol::new('\u{2A0F}', MathClass::Op),
+  "circulationint" => MathSymbol::new('\u{2A10}', MathClass::Op),
+  "awint" => MathSymbol::new('\u{2A11}', MathClass::Op),
+  "rppolint" => MathSymbol::new('\u{2A12}', MathClass::Op),
+  "scpolint" => MathSymbol::new('\u{2A13}', MathClass::Op),
+  "npolint" => MathSymbol::new('\u{2A14}', MathClass::Op),
+  "pointint" => MathSymbol::new('\u{2A15}', MathClass::Op),
+  "sqint" => MathSymbol::new('\u{2A16}', MathClass::Op),
+  "intlefthookarrow" => MathSymbol::new('\u{2A17}', MathClass::Op),
+  "inttimes" => MathSymbol::new('\u{2A18}', MathClass::Op),
+  "intcap" => MathSymbol::new('\u{2A19}', MathClass::Op),
+  "intcup" => MathSymbol::new('\u{2A1A}', MathClass::Op),
+  "upint" => MathSymbol::new('\u{2A1B}', MathClass::Op),
+  "lowint" => MathSymbol::new('\u{2A1C}', MathClass::Op),
+  "Join" => MathSymbol::new('\u{2A1D}', MathClass::Op),
+  "bigtriangleleft" => MathSymbol::new('\u{2A1E}', MathClass::Op),
+  "schemacompose" => MathSymbol::new('\u{2A1F}', MathClass::Op),
+  "schemapipe" => MathSymbol::new('\u{2A20}', MathClass::Op),
+  "schemaproject" => MathSymbol::new('\u{2A21}', MathClass::Op),
+  "biginterleave" => MathSymbol::new('\u{2AFC}', MathClass::Op),
+  "bigwhitevert" => MathSymbol::new('\u{2AFF}', MathClass::Op),
+  "arabicmaj" => MathSymbol::new('\u{1EEF0}', MathClass::Op),
+  "arabichad" => MathSymbol::new('\u{1EEF1}', MathClass::Op),
 
   // 二項演算子
   "minus" => MathSymbol::new('\u{2212}', MathClass::Bin),
@@ -1365,6 +1409,15 @@ mod tests {
   }
 
   #[test]
+  fn added_operators_have_expected_char_and_class() {
+    let op = |name: &str| return lookup(name).map(|s| return (s.ch, s.class));
+    assert_eq!(op("iiiint"), Some(('\u{2A0C}', MathClass::Op)));
+    assert_eq!(op("bigslash"), Some(('\u{29F8}', MathClass::Op)));
+    assert_eq!(op("doublestrucksum"), Some(('\u{2140}', MathClass::Op)));
+    assert_eq!(op("Join"), Some(('\u{2A1D}', MathClass::Op)));
+  }
+
+  #[test]
   fn one_name_per_character_and_class() {
     let mut seen = BTreeMap::new();
     for (name, symbol) in &SYMBOLS {
@@ -1401,22 +1454,6 @@ mod tests {
     assert!(lookup("bold").is_none());
     assert!(lookup("frac").is_none());
     assert!(lookup("unknown").is_none());
-  }
-
-  #[test]
-  fn op_class_symbols_are_all_large_operators() {
-    // typeset の lowering は Op クラスの記号を display 段で大型演算子として伸ばし、範囲を上下に積む。Op を持てるのは
-    // MathML Core の演算子辞書で largeop を持つ文字（総和・積分・n 項の集合演算子の区画）だけ
-    let is_large_operator = |ch: char| return matches!(ch, '\u{220F}'..='\u{2211}' | '\u{222B}'..='\u{2233}' | '\u{22C0}'..='\u{22C3}' | '\u{2A00}'..='\u{2A1C}');
-    for (name, symbol) in &SYMBOLS {
-      if symbol.class == MathClass::Op {
-        assert!(
-          is_large_operator(symbol.ch),
-          "Op クラスの記号は大型演算子のはず: {name} (U+{:04X})",
-          u32::from(symbol.ch)
-        );
-      }
-    }
   }
 
   #[test]
