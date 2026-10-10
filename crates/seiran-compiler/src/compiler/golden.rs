@@ -67,7 +67,8 @@
 //!   結合文字付きの基底（共通ヘルパ [`script_offset`] 経由）[`combining_mark_keeps_its_place_on_a_scripted_base`] /
 //!   [`superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char`] /
 //!   [`subscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char`] /
-//!   [`subscript_on_a_base_with_a_combining_mark_takes_the_math_kern_of_the_base_char`]・
+//!   [`subscript_on_a_base_with_a_combining_mark_takes_the_math_kern_of_the_base_char`] /
+//!   [`subscript_on_a_calligraphic_letter_sits_as_on_the_script_letter`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`] /
 //!   [`display_operator_scripts_take_the_math_kern_from_the_operator_baseline`] /
@@ -1929,6 +1930,17 @@ fn subscript_on_a_base_with_a_combining_mark_takes_the_math_kern_of_the_base_cha
     script_offset("$f\u{0302}_{n}$\n", &format!("{MATH_F}\u{0302}"), "\u{1D45B}"),
     script_offset("$f_{n}$\n", MATH_F, "\u{1D45B}"),
     "下付きの math kern は結合文字ではなく基底の字の字形の表で引く"
+  );
+}
+
+#[test]
+fn subscript_on_a_calligraphic_letter_sits_as_on_the_script_letter() {
+  // `\mathcalligraphic` の字は基底 + VS1（U+FE00）の 1 クラスタ。STIX Two Math は VS1 の字形を持たず、補正 0・kern 表なしの
+  // 別の字形で組むので、VS1 の字形で引くと補正も math kern も効かない
+  assert_eq!(
+    script_offset("$\\mathcalligraphic{F}_{2}$\n", "\u{2131}\u{FE00}", "2"),
+    script_offset("$\\mathscript{F}_{2}$\n", "\u{2131}", "2"),
+    "下付きは異体字セレクタを含めた字の補正と基底の字の kern で置く"
   );
 }
 
