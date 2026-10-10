@@ -66,6 +66,13 @@ pub(crate) enum HirMathKind {
     /// 括弧で包む数式
     body: Box<HirMath>,
   },
+  /// 上線・下線（`\overline{...}` / `\underline{...}`）
+  Bar {
+    /// 線を基底の上に引くか（上線は `true`、下線は `false`）
+    over: bool,
+    /// 線を引く数式
+    body: Box<HirMath>,
+  },
   /// 数式の字形指定（`\mathbold` / `\mathitalic` 等）
   Styled {
     /// 適用する字形 variant

@@ -2821,6 +2821,163 @@ fn empty_wide_accents_compile() {
     .unwrap_or_else(|failure| panic!("空の基底の広幅アクセントも compile は成功するはず: {:?}", failure.into_report()));
 }
 
+/// 数学用イタリックの 𝑔（U+1D454。深さを持つ基底）
+const MATH_G: &str = "\u{1D454}";
+
+/// 本文 `source` を組版し、最初の行の箱がベースラインより上・下へ出る最大の量（高さ, 深さ）を返す。
+fn first_line_box_extent(source: &str) -> (Length, Length) {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  let line = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .find_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return Some(line),
+      _ => return None,
+    })
+    .expect("本文の行が 1 つはあるはず");
+  let height = line
+    .boxes
+    .iter()
+    .map(|placed| return placed.dy + placed.hbox.height)
+    .fold(Length::ZERO, Length::max);
+  let depth = line.boxes.iter().map(|placed| return placed.hbox.depth - placed.dy).fold(Length::ZERO, Length::max);
+  return (height, depth);
+}
+
+#[test]
+fn overline_sits_the_vertical_gap_above_the_base_ink() {
+  let (runs, rules) = first_line_parts("$\\overline{x}$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let size = x.run.font_size;
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  let (height, _) = stix_ink_extent(x);
+  assert_eq!(rule.bottom - x.dy, height + stix_math_length(MathConstant::OverbarVerticalGap, size));
+  assert_eq!(rule.top - rule.bottom, stix_math_length(MathConstant::OverbarRuleThickness, size));
+  assert_eq!((rule.dx, rule.width), (x.dx, x.width), "罫は基底の送り幅いっぱい");
+}
+
+#[test]
+fn underline_sits_the_vertical_gap_below_the_base_ink() {
+  let (runs, rules) = first_line_parts("$\\underline{g}$\n");
+
+  let g = run_with_text(&runs, MATH_G);
+  let size = g.run.font_size;
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  let (_, depth) = stix_ink_extent(g);
+  assert!(depth.is_positive(), "𝑔 はベースラインより下にインクを持つ（テストの前提）");
+  assert_eq!(rule.top - g.dy, -(depth + stix_math_length(MathConstant::UnderbarVerticalGap, size)));
+  assert_eq!(rule.top - rule.bottom, stix_math_length(MathConstant::UnderbarRuleThickness, size));
+  assert_eq!((rule.dx, rule.width), (g.dx, g.width), "罫は基底の送り幅いっぱい");
+}
+
+#[test]
+fn bars_reserve_the_extra_ascender_and_descender() {
+  let size = run_with_text(&first_line_runs("$x$\n"), MATH_X).run.font_size;
+  let (over_runs, over_rules) = first_line_parts("$\\overline{x}$\n");
+  let (under_runs, under_rules) = first_line_parts("$\\underline{x}$\n");
+
+  let (over_height, _) = first_line_box_extent("$\\overline{x}$\n");
+  let (_, under_depth) = first_line_box_extent("$\\underline{x}$\n");
+  let over_x = run_with_text(&over_runs, MATH_X);
+  let under_x = run_with_text(&under_runs, MATH_X);
+  // 検証フォントでは罫線の上端 + 余白がフォントの ascender を、罫線の下端 + 余白が descender を超えるので、余白が箱に
+  // 入ったことが行の箱の高さ・深さに現れる（テストの前提）
+  assert_eq!(
+    over_height,
+    over_rules[0].top - over_x.dy + stix_math_length(MathConstant::OverbarExtraAscender, size),
+    "上線の上に OverbarExtraAscender"
+  );
+  assert_eq!(
+    under_depth,
+    -(under_rules[0].bottom - under_x.dy) + stix_math_length(MathConstant::UnderbarExtraDescender, size),
+    "下線の下に UnderbarExtraDescender"
+  );
+}
+
+#[test]
+fn nested_overline_measures_the_gap_from_the_inner_rule() {
+  let (runs, rules) = first_line_parts("$\\overline{\\overline{x}}$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let [inner, outer] = rules.as_slice() else {
+    panic!("罫は 2 本のはず: {} 本", rules.len());
+  };
+  assert_eq!(
+    outer.bottom - inner.top,
+    stix_math_length(MathConstant::OverbarVerticalGap, x.run.font_size),
+    "外側の罫は内側の罫の上端（墨）からギャップ上。余白は墨に数えない"
+  );
+}
+
+#[test]
+fn accent_over_an_overline_rises_over_the_rule() {
+  let (runs, rules) = first_line_parts("$\\hat{\\overline{x}}$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  assert_eq!(
+    accent.dy - x.dy,
+    (rule.top - x.dy) - stix_math_length(MathConstant::AccentBaseHeight, x.run.font_size),
+    "アクセントは罫の上端を基底のインクの頂として上げる"
+  );
+}
+
+#[test]
+fn overline_spans_a_compound_base() {
+  let (runs, rules) = first_line_parts("$\\overline{a+b}$\n");
+
+  let (base_x, base_width) = base_span(&runs, &[]);
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  assert_eq!((rule.dx, rule.width), (base_x, base_width), "罫は演算子のアキを含む基底の送り幅いっぱい");
+}
+
+#[test]
+fn bars_do_not_widen_their_base() {
+  for source in ["$\\overline{x}y$\n", "$\\underline{x}y$\n"] {
+    let runs = first_line_runs(source);
+
+    let x = run_with_text(&runs, MATH_X);
+    let y = run_with_text(&runs, MATH_Y);
+    assert_eq!(y.dx, x.dx + x.width, "{source}: 次のアトムは基底の送り幅の直後");
+  }
+}
+
+#[test]
+fn superscript_clears_the_overline() {
+  let (runs, rules) = first_line_parts("$\\overline{x}^{2}$\n");
+
+  let x = run_with_text(&runs, MATH_X);
+  let sup = run_with_text(&runs, "2");
+  let [rule] = rules.as_slice() else {
+    panic!("罫は 1 本のはず: {} 本", rules.len());
+  };
+  let (_, sup_depth) = stix_ink_extent(sup);
+  assert_eq!(
+    sup.dy - x.dy,
+    expected_superscript_shift(x.run.font_size, false, rule.top - x.dy, sup_depth),
+    "上付きは全体に付き、基底のインクの頂は罫の上端"
+  );
+}
+
+#[test]
+fn empty_bars_compile_with_zero_width_rules() {
+  let (_, rules) = first_line_parts("$\\overline{}\\underline{}$\n");
+
+  assert_eq!(rules.len(), 2, "罫は 2 本");
+  assert!(rules.iter().all(|rule| return rule.width == Length::ZERO), "空の基底の罫は幅 0");
+}
+
 /// 伸縮括弧のコマンドと、左右の括弧の字（cases / matrix の `delimiter` の括弧と同じ）
 const FENCES: [(&str, &str, &str); 5] = [
   ("paren", "(", ")"),

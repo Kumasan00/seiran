@@ -94,6 +94,8 @@ pub(in crate::typeset) enum InlineNode {
   Accent(MathAccent),
   /// 中身を左右の区切り括弧で挟み、括弧を中身の高さへ伸ばした伸縮括弧（インライン数式のトップレベル）
   Fenced(MathFenced),
+  /// 基底の上か下に罫線を引いた上線・下線（インライン数式のトップレベル）
+  Bar(MathBar),
   /// display 段の大型演算子（[`AtomNode::LargeOperator`] を段落の語彙へ持ち上げたもの。インライン数式は text 段で
   /// 組むので作らないが、`AtomNode` ⊂ `InlineNode` の包含を保つために置く）
   LargeOperator {
@@ -136,7 +138,7 @@ pub(in crate::typeset) enum InlineNode {
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
 /// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号・
-/// アクセント・伸縮括弧・大型演算子だけを持つ。
+/// アクセント・伸縮括弧・上下線・大型演算子だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -156,6 +158,8 @@ pub(in crate::typeset) enum AtomNode {
   Accent(MathAccent),
   /// 中身を左右の区切り括弧で挟み、括弧を中身の高さへ伸ばした伸縮括弧
   Fenced(MathFenced),
+  /// 基底の上か下に罫線を引いた上線・下線
+  Bar(MathBar),
   /// display 段の大型演算子（boxing が `DisplayOperatorMinHeight` 以上の字形へ縦に伸ばし、インクの縦中央を数式軸に
   /// 合わせて置く）
   LargeOperator {
@@ -177,6 +181,7 @@ impl From<AtomNode> for InlineNode {
       AtomNode::Radical(radical) => InlineNode::Radical(radical),
       AtomNode::Accent(accent) => InlineNode::Accent(accent),
       AtomNode::Fenced(fenced) => InlineNode::Fenced(fenced),
+      AtomNode::Bar(bar) => InlineNode::Bar(bar),
       AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
     };
   }
@@ -353,6 +358,19 @@ pub(in crate::typeset) struct MathFenced {
   /// 右の区切り括弧（1 字。boxing が数式フォントで組む）
   pub close: String,
   /// 括弧の段のフォントサイズ（括弧の大きさと MATH 定数の換算に使う）
+  pub font_size: Length,
+}
+
+/// 基底の上か下に罫線を引いた上線・下線
+///
+/// 罫線の位置・太さと上下の余白は計測寸法と数式フォントの MATH（`Overbar*` / `Underbar*`）から boxing が決める。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathBar {
+  /// 基底（上線は線の段・cramped、下線は線の段・外側の cramped を継承して組んだもの）
+  pub body: Vec<AtomNode>,
+  /// 罫線を基底の上に引くか（上線は `true`、下線は `false`）
+  pub over: bool,
+  /// 線の段のフォントサイズ（MATH 定数の換算に使う）
   pub font_size: Length,
 }
 

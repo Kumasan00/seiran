@@ -164,7 +164,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -190,6 +190,11 @@ enum MathCommandKind {
     /// 記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
     wide: bool,
   },
+  /// 上線・下線（`\overline` / `\underline`）— 必須引数 1 個（線を引く数式）
+  Bar {
+    /// 線を基底の上に引くか（上線は `true`、下線は `false`）
+    over: bool,
+  },
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -207,6 +212,7 @@ impl MathCommandKind {
         .map(|(open, close)| return Self::Fenced { open, close })
         .or_else(|| return accent_mark(name).map(|mark| return Self::Accent { mark, wide: false }))
         .or_else(|| return wide_accent_mark(name).map(|mark| return Self::Accent { mark, wide: true }))
+        .or_else(|| return bar_side(name).map(|over| return Self::Bar { over }))
         .or_else(|| return symbol::lookup(name).map(Self::Symbol)),
     };
   }
@@ -214,7 +220,7 @@ impl MathCommandKind {
   /// 必須引数の個数
   fn arg_count(self) -> usize {
     return match self {
-      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } => 1,
+      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } => 1,
       Self::Frac => 2,
       Self::Symbol(_) => 0,
     };
@@ -268,6 +274,16 @@ fn wide_accent_mark(name: &str) -> Option<char> {
     "overrightarrow" => Some('\u{20D7}'),
     "overleftarrow" => Some('\u{20D6}'),
     "overleftrightarrow" => Some('\u{20E1}'),
+    _ => None,
+  };
+}
+
+/// 上線・下線のコマンド名から、線を基底の上に引くか（`\overline` は `true`、`\underline` は `false`）を引く（上線・下線で
+/// なければ `None`）
+fn bar_side(name: &str) -> Option<bool> {
+  return match name {
+    "overline" => Some(true),
+    "underline" => Some(false),
     _ => None,
   };
 }
@@ -344,6 +360,13 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
           base,
         },
       ));
+    },
+    MathCommandKind::Bar { over } => {
+      opt_args::no_command_opt_args(&view)?;
+      let body_arg = arity::exactly_one_arg(&view, "1 個（線を引く数式）")?;
+      let id = ctx.alloc(view.span());
+      let body = Box::new(math_arg_to_node(source, ctx, body_arg)?);
+      return Ok(HirMath::new(id, HirMathKind::Bar { over, body }));
     },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;

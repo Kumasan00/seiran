@@ -989,6 +989,42 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_bars_draw_a_line_over_or_under_the_body() {
+    for (name, expected_over) in [("overline", true), ("underline", false)] {
+      let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
+
+      assert_eq!(math.len(), 1, "\\{name}: {math:?}");
+      let HirMathKind::Bar { over, body } = &math[0].kind else {
+        panic!("Bar が期待されます: \\{name} → {math:?}");
+      };
+      assert_eq!(*over, expected_over, "\\{name} の線の側");
+      assert!(matches!(&body.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {body:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_bar_needs_one_body_and_no_options() {
+    let missing = evaluate_error(r"$\overline$");
+    let with_option = evaluate_error(r"$\underline[thickness=1pt]{x}$");
+
+    assert!(
+      matches!(missing, EvalError::MissingCommandArgument { ref name, .. } if name == "overline"),
+      "{missing:?}"
+    );
+    assert!(
+      matches!(with_option, EvalError::UnknownOptArgKey { ref key, .. } if key == "thickness"),
+      "{with_option:?}"
+    );
+  }
+
+  #[test]
+  fn evaluate_bar_outside_math_is_unknown() {
+    let error = evaluate_error(r"\underline{x}");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "underline"), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_math_fences_wrap_the_body_with_delimiters() {
     let cases = [
       ("paren", '(', ')'),
