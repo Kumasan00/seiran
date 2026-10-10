@@ -62,6 +62,7 @@
 //!   [`large_operator_pulls_its_subscript_back_by_the_italic_correction`] /
 //!   [`scripts_on_an_upright_base_share_a_column`] / [`scripts_on_an_empty_base_share_a_column`] /
 //!   [`scripts_on_a_non_math_base_share_a_column`] / [`base_ending_with_scripts_takes_no_italic_correction`] /
+//!   [`base_ending_with_a_slanted_script_takes_no_italic_correction`] /
 //!   [`cursor_after_scripts_follows_the_farther_script`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]
@@ -1855,6 +1856,23 @@ fn base_ending_with_scripts_takes_no_italic_correction() {
     run_with_text(&runs, "3").dx,
     run_with_text(&runs, "4").dx,
     "末尾がスクリプトの基底は、内側の字形の補正を外側の下付きに使わない"
+  );
+}
+
+#[test]
+fn base_ending_with_a_slanted_script_takes_no_italic_correction() {
+  // 内側の上付き 𝑓 は補正を持つので、基底の末尾グリフと取り違えると外側の下付きだけが補正ぶん戻る
+  let runs = first_line_runs("${x^{f}}_{3}^{4}$\n");
+
+  assert_ne!(
+    stix_italics_correction(run_with_text(&runs, MATH_F).run.glyphs[0].gid),
+    0,
+    "内側の上付きは補正を持つ字形（テストの前提）"
+  );
+  assert_eq!(
+    run_with_text(&runs, "3").dx,
+    run_with_text(&runs, "4").dx,
+    "末尾がスクリプトの基底は、そのスクリプトの字形の補正を外側の下付きに使わない"
   );
 }
 

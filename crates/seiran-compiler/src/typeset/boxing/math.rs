@@ -65,11 +65,11 @@ struct Detached {
   ink_height: Length,
   /// インクのベースラインより下の深さ（0 以上）
   ink_depth: Length,
-  /// 末尾のノードがテキストか大型演算子で、その最後の箱が数式フォントのグリフ列のとき、その最後のグリフ（gid と run の
-  /// フォントサイズ）。空・末尾がアキやスクリプト・数式フォント以外は `None`（補正も math kern も 0）
+  /// 末尾のノードがテキストか大型演算子で、そのノードが出した最後の箱が数式フォントのグリフ列のとき、その最後のグリフ
+  /// （gid と run のフォントサイズ）。空・末尾がアキやスクリプト・数式フォント以外は `None`（補正も math kern も 0）
   trailing_glyph: Option<(u32, Length)>,
-  /// 先頭のノードがテキストか大型演算子で、その最初の箱が数式フォントのグリフ列のとき、その最初のグリフ（gid と run の
-  /// フォントサイズ）。それ以外は `None`（math kern 0）
+  /// 先頭のノードがテキストか大型演算子で、そのノードが出した最初の箱が数式フォントのグリフ列のとき、その最初のグリフ
+  /// （gid と run のフォントサイズ）。それ以外は `None`（math kern 0）
   leading_glyph: Option<(u32, Length)>,
 }
 
@@ -320,7 +320,7 @@ impl Measurer<'_> {
       subscript,
       font_size,
       cramped,
-      // 上下に積むものは place_atom_children が place_limits へ振り分け済み
+      // 上下に積むものは place_atom_node が place_limits へ振り分け済み
       limits: _,
     } = scripts;
     let constants = ScriptConstants::new(&self.shaper, font_size);
@@ -380,27 +380,28 @@ impl Measurer<'_> {
   }
 
   /// ノード列を原点から仮に配置し、送り幅とインクの寸法、両端の数式フォントのグリフを測る
+  ///
+  /// ノードはそれぞれ専用の `Vec` に配置し、端のグリフは端のノードが出した箱だけから取る。スクリプトのノードも
+  /// グリフ列の箱を出すが、それはスクリプトの字形で基底の端ではないので、テキストと大型演算子のノードに限る。
   fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
-    let is_glyphs =
-      |node: Option<&AtomNode>| return matches!(node, Some(AtomNode::Text(..) | AtomNode::LargeOperator { .. }));
-    let starts_with_glyphs = is_glyphs(nodes.first());
-    let ends_with_glyphs = is_glyphs(nodes.last());
+    let last = nodes.len().saturating_sub(1);
     let mut boxes = Vec::new();
     let mut width = Length::ZERO;
-    self.place_atom_children(nodes, Length::ZERO, &mut width, &mut boxes);
+    let mut leading_glyph = None;
+    let mut trailing_glyph = None;
+    for (index, node) in nodes.into_iter().enumerate() {
+      let yields_glyphs = matches!(node, AtomNode::Text(..) | AtomNode::LargeOperator { .. });
+      let mut own = Vec::new();
+      self.place_atom_node(node, Length::ZERO, &mut width, &mut own);
+      if yields_glyphs && index == 0 {
+        leading_glyph = own.first().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::first));
+      }
+      if yields_glyphs && index == last {
+        trailing_glyph = own.last().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::last));
+      }
+      boxes.append(&mut own);
+    }
     let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes);
-    // 末尾のテキスト・大型演算子のノードの箱は place_atom_children が最後に積むので、boxes の最後がその最後の run
-    let trailing_glyph = if ends_with_glyphs {
-      boxes.last().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::last))
-    } else {
-      None
-    };
-    // 先頭のテキスト・大型演算子のノードの箱は place_atom_children が最初に積むので、boxes の最初がその最初の run
-    let leading_glyph = if starts_with_glyphs {
-      boxes.first().and_then(|placed| return math_glyph(&placed.hbox, <[Glyph]>::first))
-    } else {
-      None
-    };
     return Detached {
       boxes,
       width,

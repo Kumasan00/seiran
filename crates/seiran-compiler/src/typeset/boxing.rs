@@ -366,52 +366,52 @@ impl<'a> Measurer<'a> {
   fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
-    self.place_atom_children(children, offset, &mut dx, &mut placed);
+    for child in children {
+      self.place_atom_node(child, offset, &mut dx, &mut placed);
+    }
     let mut atom = HBox::atom(placed);
     atom.width = atom.width.max(dx);
     return atom;
   }
 
-  /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  fn place_atom_children(&mut self, nodes: Vec<AtomNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
-    for node in nodes {
-      match node {
-        AtomNode::Text(text, style) => {
-          for hbox in self.shaper.shape_text(&text, style) {
-            let width = hbox.width;
-            out.push(PlacedHBox { hbox, dx: *dx, dy });
-            *dx += width;
-          }
-        },
-        AtomNode::Kern { length } => {
-          *dx += length;
-        },
-        AtomNode::Scripts(scripts) => {
-          if scripts.limits {
-            self.place_limits(scripts, dy, dx, out);
-          } else {
-            self.place_scripts(scripts, dy, dx, out);
-          }
-        },
-        AtomNode::Fraction(fraction) => {
-          self.place_fraction(fraction, dy, dx, out);
-        },
-        AtomNode::Radical(radical) => {
-          self.place_radical(radical, dy, dx, out);
-        },
-        AtomNode::Accent(accent) => {
-          self.place_accent(accent, dy, dx, out);
-        },
-        AtomNode::Fenced(fenced) => {
-          self.place_fenced(fenced, dy, dx, out);
-        },
-        AtomNode::Bar(bar) => {
-          self.place_bar(bar, dy, dx, out);
-        },
-        AtomNode::LargeOperator { symbol, font_size } => {
-          self.place_large_operator(&symbol, font_size, dy, dx, out);
-        },
-      }
+  /// Atom の子要素 1 つを水平カーソル `dx` と縦オフセット `dy` で絶対配置する
+  fn place_atom_node(&mut self, node: AtomNode, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+    match node {
+      AtomNode::Text(text, style) => {
+        for hbox in self.shaper.shape_text(&text, style) {
+          let width = hbox.width;
+          out.push(PlacedHBox { hbox, dx: *dx, dy });
+          *dx += width;
+        }
+      },
+      AtomNode::Kern { length } => {
+        *dx += length;
+      },
+      AtomNode::Scripts(scripts) => {
+        if scripts.limits {
+          self.place_limits(scripts, dy, dx, out);
+        } else {
+          self.place_scripts(scripts, dy, dx, out);
+        }
+      },
+      AtomNode::Fraction(fraction) => {
+        self.place_fraction(fraction, dy, dx, out);
+      },
+      AtomNode::Radical(radical) => {
+        self.place_radical(radical, dy, dx, out);
+      },
+      AtomNode::Accent(accent) => {
+        self.place_accent(accent, dy, dx, out);
+      },
+      AtomNode::Fenced(fenced) => {
+        self.place_fenced(fenced, dy, dx, out);
+      },
+      AtomNode::Bar(bar) => {
+        self.place_bar(bar, dy, dx, out);
+      },
+      AtomNode::LargeOperator { symbol, font_size } => {
+        self.place_large_operator(&symbol, font_size, dy, dx, out);
+      },
     }
   }
 

@@ -94,7 +94,7 @@ impl Measurer<'_> {
       font_size,
       // 上下に積むときは上付きのシフトを使わないので、cramped は配置に効かない
       cramped: _,
-      // place_atom_children が limits の真のものだけをここへ振り分ける
+      // place_atom_node が limits の真のものだけをここへ振り分ける
       limits: _,
     } = scripts;
     let constants = LimitConstants::new(&self.shaper, font_size);
