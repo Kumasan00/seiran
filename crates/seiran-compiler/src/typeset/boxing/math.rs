@@ -8,8 +8,8 @@
 //! MATH 定数から決める。片側だけのシフトは `MathML Core` のスクリプト配置の規則に、上下付き同時のギャップは OpenType MATH の
 //! `SuperscriptBottomMaxWithSubscript` の定義（先に上付きを上げ、残りを下付きを下げて埋める）に従う。箱の高さ・深さはフォント
 //! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
-//! 横位置は基底の末尾グリフのイタリック補正で決める（上付きは基底の右端、下付きは補正ぶん戻す — 演算子でない基底は補正が
-//! 送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
+//! 横位置は基底の末尾の字（テキストは基底と結合文字のクラスタ）のイタリック補正で決める（上付きは基底の右端、下付きは
+//! 補正ぶん戻す — 演算子でない基底は補正が送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方。高さはそれぞれのグリフ自身のベースラインから測る）でさらに寄せる。
 //!
@@ -33,7 +33,7 @@ use crate::{
   publication::Glyph,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
-    boxing::{Measurer, Shaper},
+    boxing::{Measurer, Shaper, shaping},
     lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathScripts},
   },
 };
@@ -64,14 +64,16 @@ struct Detached {
   ink_height: Length,
   /// インクのベースラインより下の深さ（0 以上）
   ink_depth: Length,
-  /// 末尾のノードがテキストか大型演算子で、そのノードが出した最後の箱が数式フォントのグリフ列のとき、その最後のグリフ
-  /// （gid・run のフォントサイズ・そのグリフのベースラインの高さ）。高さは原点のベースライン基準で、テキストは GPOS が
-  /// 縦にずらしたグリフ（結合文字など）の `y_offset`、それ以外は 0、display 段の大型演算子は数式軸へ合わせたずれ
-  /// （glyph assembly ならパーツの位置も足す）。空・末尾がアキや
+  /// 末尾のノードがテキストか大型演算子で、そのノードが出した最後の箱が数式フォントのグリフ列のとき、その末尾の字
+  /// （テキストは基底と結合文字のクラスタ、大型演算子は最後の字形）の先頭の字形（gid・run のフォントサイズ・その字形の
+  /// ベースラインの高さ）。高さは原点のベースライン基準で、テキストは GPOS が縦にずらした字形の `y_offset`、それ以外は 0、
+  /// display 段の大型演算子は数式軸へ合わせたずれ（glyph assembly ならパーツの位置も足す）。空・末尾がアキや
   /// スクリプト・数式フォント以外は `None`（補正も math kern も 0）
   trailing_glyph: Option<(u32, Length, Length)>,
-  /// 先頭のノードがテキストか大型演算子で、そのノードが出した最初の箱が数式フォントのグリフ列のとき、その最初のグリフ
-  /// （`trailing_glyph` と同じ組）。それ以外は `None`（math kern 0）
+  /// `trailing_glyph` と同じ末尾の字のイタリック補正（構成字形の補正の和）。`trailing_glyph` が `None` なら 0
+  trailing_correction: Length,
+  /// 先頭のノードがテキストか大型演算子で、そのノードが出した最初の箱が数式フォントのグリフ列のとき、その先頭の字
+  /// （先頭のクラスタ）の先頭の字形（`trailing_glyph` と同じ組）。それ以外は `None`（math kern 0）
   leading_glyph: Option<(u32, Length, Length)>,
 }
 
@@ -310,7 +312,7 @@ impl Measurer<'_> {
 
   /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
   ///
-  /// 上付きは基底の右端、下付きは基底の右端から基底の末尾グリフのイタリック補正ぶん戻した位置に置き、
+  /// 上付きは基底の右端、下付きは基底の右端から基底の末尾の字のイタリック補正ぶん戻した位置に置き、
   /// どちらも math kern（`cut_in`）ぶん寄せる。演算子でない基底は補正が送り幅に入っている
   /// （`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則（演算子でない基底は上付きを補正ぶん前へ、
   /// 演算子は下付きを補正ぶん手前へ。補正を持つ演算子はすべて `MathML Core` の大型演算子と同じに扱う）と同じ位置に
@@ -344,9 +346,7 @@ impl Measurer<'_> {
       ),
     };
 
-    let correction = base
-      .trailing_glyph
-      .map_or(Length::ZERO, |(gid, size, _)| return self.shaper.italic_correction(gid, size));
+    let correction = base.trailing_correction;
     let base_end = *dx + base.width;
     translate_into(out, base.boxes, *dx, dy);
     let mut end = base_end;
@@ -391,15 +391,31 @@ impl Measurer<'_> {
     let mut width = Length::ZERO;
     let mut leading_glyph = None;
     let mut trailing_glyph = None;
+    let mut trailing_correction = Length::ZERO;
     for (index, node) in nodes.into_iter().enumerate() {
       let yields_glyphs = matches!(node, AtomNode::Text(..) | AtomNode::LargeOperator { .. });
+      // 末尾の字: テキストは基底と結合文字のクラスタ（`Shaper::add_italic_corrections` が補正を足す単位）、大型演算子は
+      // 最後の字形（glyph assembly なら最上段のパーツ。パーツは全部が演算子 1 字のクラスタに属する）
+      let trailing_char: fn(&[Glyph]) -> &[Glyph] = if matches!(node, AtomNode::LargeOperator { .. }) {
+        shaping::last_glyph
+      } else {
+        shaping::last_cluster
+      };
       let mut own = Vec::new();
       self.place_atom_node(node, Length::ZERO, &mut width, &mut own);
       if yields_glyphs && index == 0 {
-        leading_glyph = own.first().and_then(|placed| return self.shaper.placed_math_glyph(placed, <[Glyph]>::first));
+        leading_glyph = own
+          .first()
+          .and_then(|placed| return self.shaper.placed_math_char(placed, shaping::first_cluster))
+          .map(|(glyph, _)| return glyph);
       }
-      if yields_glyphs && index == last {
-        trailing_glyph = own.last().and_then(|placed| return self.shaper.placed_math_glyph(placed, <[Glyph]>::last));
+      if yields_glyphs
+        && index == last
+        && let Some((glyph, correction)) =
+          own.last().and_then(|placed| return self.shaper.placed_math_char(placed, trailing_char))
+      {
+        trailing_glyph = Some(glyph);
+        trailing_correction = correction;
       }
       boxes.append(&mut own);
     }
@@ -410,11 +426,12 @@ impl Measurer<'_> {
       ink_height,
       ink_depth,
       trailing_glyph,
+      trailing_correction,
       leading_glyph,
     };
   }
 
-  /// 基底の末尾グリフとスクリプトの先頭グリフの math kern（OpenType MATH の算法）
+  /// 基底の末尾の字とスクリプトの先頭の字の、それぞれ先頭の字形の math kern（OpenType MATH の算法）
   ///
   /// `heights`（基底のベースライン基準）それぞれで、基底の隅 `base_corner` とスクリプトの隅 `script_corner` の kern を
   /// 足し、小さい方を返す。kern はそれぞれのグリフ自身のベースラインからの高さで引く — 基底のグリフのベースラインは
