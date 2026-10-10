@@ -682,7 +682,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - **数式フォントは OpenType MATH テーブル必須**。`validation` が構築時に全サブテーブルのオフセットと件数どおりの
   配列の長さまで辿り、無い・読めないものを `typeset::font::validation::{missing_math_table, table_range,
   unsorted_table_directory, unreadable_math_table, non_positive_scale_down, negative_rule_thickness}` で拒否する（数式の有無に依存しない）。
-  スクリプトの縮小率（`ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`）が正であること、および罫の太さ（`FractionRuleThickness` / `RadicalRuleThickness`）が 0 以上であることも検証する。
+  スクリプトの縮小率（`ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`）が正であること、および罫の太さ（`FractionRuleThickness` / `OverbarRuleThickness` / `UnderbarRuleThickness` / `RadicalRuleThickness`）が 0 以上であることも検証する。
   read-fonts のグリフ単位の参照は読み込みエラーを `None` へ畳むので、検証を通った後の `None` は「そのグリフを扱わない」だけを
   意味する。値は `FontSystem::math_constants` 等がシェーピング用フォントのテーブルから直接読み、別途保持しない
   （device table は使わない）。検証も同じテーブルから読む — `FontRef` はタグ順でないディレクトリを線形探索で
@@ -851,7 +851,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `AtomNode` で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
-  `Accent` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
+  `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
   右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身ごと閉じた Atom なので内側では割らず、
   括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）
 - **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
@@ -861,13 +861,13 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
   下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
   1 段下（display → text、text → script、それより下は scriptscript）。下付きの中身・分母・被根号・
-  アクセントの基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身と分子は親を継承）。段のフォントサイズは数式本体の
+  アクセントの基底・上線の基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身・分子・下線の基底は親を継承）。段のフォントサイズは数式本体の
   サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
   段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）・`MathAccent`（基底・アクセント記号・
-  アクセントの段のサイズとスクリプト段）・`MathFenced`（中身・左右の括弧・括弧の段のサイズ。中身は括弧と同じ段で、cramped も継承）
+  基底の幅へ伸ばすか・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズ。中身は括弧と同じ段で、cramped も継承）
   として boxing へ渡す。
   大型演算子（数式クラス Op の記号）は display 段でだけ `AtomNode::LargeOperator` にする（text 段以下は通常の演算子の
   テキスト。MathML Core の largeop は math-style が normal のときだけ効く）。積分記号以外（MathML Core の演算子辞書の
@@ -907,12 +907,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   段落内 `\\` と `code` 環境の行間の 2 由来のみ）
 - **レイアウトノードは 3 段の包含**（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）**で、下流の場合分けを型で
   閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
-  上付き下付きの付いた基底・分数・根号・アクセント・伸縮括弧・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
+  上付き下付きの付いた基底・分数・根号・アクセント・上下線・伸縮括弧・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
   キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
   （`VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）に加えて
   包み variant `Inline(InlineNode)` を 1 つ持ち、`boxing` の縦リスト走査はその 1 arm でインラインへ
   振り分ける（インライン側に縦リスト用の `unreachable!` が無い。#672）。`Atom` に畳める要素
-  （テキスト・kern・上付き下付きの付いた基底・分数・根号・アクセント・伸縮括弧・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
+  （テキスト・kern・上付き下付きの付いた基底・分数・根号・アクセント・上下線・伸縮括弧・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
   なしで閉じる。持ち上げは `From` の片方向のみ（逆向きの変換は作らない）
 - **段落は明示ノードにしていない**（見送り。#672 のスコープ外）。段落の境界は「インラインを溜め、
   縦リスト用ノードが来たら `flush_paragraph` する」という `boxing` 側の暗黙の表現で、`lowering/list.rs` は
@@ -998,7 +998,20 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   足さない。MathML Core §3.4.2.4 の本文は任意の要素を上付けにする一般化で、字形の隙間を前提にしないので従わない（同節の
   ノートが、フォントの規則はベースラインを揃えるものだと述べる）。基底のインクの高さが `FlattenedAccentBaseHeight` を超えたら
   アクセント記号を `flac` の平たい字形に替える。Atom の幅は基底の送り幅（記号の墨のはみ出しは数えない。TeX と同じ）で、
-  アクセントは閉じた Atom 1 つ
+  アクセントは閉じた Atom 1 つ。
+  広幅アクセント（`\widehat` 等・上の矢印。`MathAccent` の `wide`）は記号を基底の送り幅へ横にだけ伸ばす（元の字形 →
+  横方向の size variant → glyph assembly → 最大の size variant。縦の伸縮と同じ選択で、MathML Core の shape a stretchy glyph
+  どおり文字の cmap グリフから決める。元の字形はインクの幅（結合記号の送り幅は 0 や字形と無関係な値になりうる）、variant は
+  `advanceMeasurement` で比べる）。元の字形のままなら `ssty` / `flac` も固定幅と同じで、伸ばした字形は GSUB を通さない。
+  glyph assembly のパーツは左から並べ、送り幅の和は組み上がりの幅（MathML Core の glyph assembly stretch size。hmtx の
+  送り幅は使わない）、全パーツが 1 字のクラスタ。配置規則は固定幅と同じ（size variant とパーツ 1 つの assembly の取付点は登録値か墨の
+  中央、複数パーツの assembly は組み上がりの幅の中央）
+- **上線・下線**（`MathBar`。`\overline` / `\underline`）は OpenType MATH の `Overbar*` / `Underbar*` で、基底の送り幅
+  いっぱいの罫線（`HBoxContent::Rule`）を引く。上線は基底のインクの頂から `OverbarVerticalGap` 上に罫線の下端、太さ
+  `OverbarRuleThickness`、罫線の上に `OverbarExtraAscender`。下線は基底のインクの底から `UnderbarVerticalGap` 下に罫線の
+  上端、太さ `UnderbarRuleThickness`、罫線の下に `UnderbarExtraDescender`（TeX の Rule 9 / 10 の 3θ・θ をフォントの値に
+  置き換えたもの）。ギャップはインクで測り、余白は Atom の高さ・深さにだけ入れる（墨ではないので入れ子の外側の線・
+  アクセント・スクリプトは数えない）。Atom の幅は基底の送り幅で、上下線は閉じた Atom 1 つ
 - **伸縮括弧**（`MathFenced`。`\paren` 等）は、括弧を中身のインクの高さ h・深さ d と数式軸 a（`AxisHeight`）から
   `2 × max(h − a, d + a)` 以上へ、区切り括弧と同じ伸縮で縦にだけ伸ばし（MathML Core の対称伸縮）、インクの縦中央を
   数式軸に合わせる。中身が軸の上下に非対称でも、括弧は軸を中心に上下対称に伸びて両側を覆う。TeX の

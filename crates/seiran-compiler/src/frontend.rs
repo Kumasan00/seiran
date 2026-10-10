@@ -893,10 +893,11 @@ mod tests {
       let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
 
       assert_eq!(math.len(), 1, "\\{name}: {math:?}");
-      let HirMathKind::Accent { accent, base } = &math[0].kind else {
+      let HirMathKind::Accent { accent, wide, base } = &math[0].kind else {
         panic!("Accent が期待されます: \\{name} → {math:?}");
       };
       assert_eq!(*accent, mark, "\\{name} の結合文字（unicode-math の \\mathaccent と同じ）");
+      assert!(!*wide, "\\{name} は伸ばさない");
       assert!(matches!(&base.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {base:?}");
     }
   }
@@ -930,6 +931,97 @@ mod tests {
     let error = evaluate_error(r"\hat{x}");
 
     assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "hat"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_wide_accents_stretch_a_combining_mark() {
+    let cases = [
+      ("widehat", '\u{0302}'),
+      ("widetilde", '\u{0303}'),
+      ("widecheck", '\u{030C}'),
+      ("overrightarrow", '\u{20D7}'),
+      ("overleftarrow", '\u{20D6}'),
+      ("overleftrightarrow", '\u{20E1}'),
+    ];
+    for (name, mark) in cases {
+      let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
+
+      assert_eq!(math.len(), 1, "\\{name}: {math:?}");
+      let HirMathKind::Accent { accent, wide, base } = &math[0].kind else {
+        panic!("Accent が期待されます: \\{name} → {math:?}");
+      };
+      assert_eq!(*accent, mark, "\\{name} の結合文字");
+      assert!(*wide, "\\{name} は基底の幅へ伸ばす");
+      assert!(matches!(&base.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {base:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_wide_accent_needs_one_base_and_no_options() {
+    let missing = evaluate_error(r"$\widehat$");
+    let with_option = evaluate_error(r"$\overrightarrow[size=2]{x}$");
+
+    assert!(
+      matches!(missing, EvalError::MissingCommandArgument { ref name, .. } if name == "widehat"),
+      "{missing:?}"
+    );
+    assert!(
+      matches!(with_option, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"),
+      "{with_option:?}"
+    );
+  }
+
+  #[test]
+  fn evaluate_wide_accent_outside_math_is_unknown() {
+    let error = evaluate_error(r"\widehat{x}");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "widehat"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_under_arrows_are_unknown() {
+    // 下側の矢印は見送り（MATH に下付けの縦位置の定数が無い）なので、未知のコマンドとして拒否する
+    for command in ["underrightarrow", "underleftarrow", "underleftrightarrow"] {
+      let error = evaluate_error(&format!("$\\{command}{{x}}$"));
+
+      assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == command), "{error:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_bars_draw_a_line_over_or_under_the_body() {
+    for (name, expected_over) in [("overline", true), ("underline", false)] {
+      let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
+
+      assert_eq!(math.len(), 1, "\\{name}: {math:?}");
+      let HirMathKind::Bar { over, body } = &math[0].kind else {
+        panic!("Bar が期待されます: \\{name} → {math:?}");
+      };
+      assert_eq!(*over, expected_over, "\\{name} の線の側");
+      assert!(matches!(&body.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {body:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_bar_needs_one_body_and_no_options() {
+    let missing = evaluate_error(r"$\overline$");
+    let with_option = evaluate_error(r"$\underline[thickness=1pt]{x}$");
+
+    assert!(
+      matches!(missing, EvalError::MissingCommandArgument { ref name, .. } if name == "overline"),
+      "{missing:?}"
+    );
+    assert!(
+      matches!(with_option, EvalError::UnknownOptArgKey { ref key, .. } if key == "thickness"),
+      "{with_option:?}"
+    );
+  }
+
+  #[test]
+  fn evaluate_bar_outside_math_is_unknown() {
+    let error = evaluate_error(r"\underline{x}");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "underline"), "{error:?}");
   }
 
   #[test]

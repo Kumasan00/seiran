@@ -5,9 +5,9 @@
 //! 高さ・深さをそのまま写す — 同じフォント種別・同じフォントサイズなので、メトリクスから計算し直しても
 //! 同じ値になる。引数にメトリクスもフォントサイズも取らないので、計算し直す材料が呼び出し側に無い。
 
-use std::ops::Range;
+use std::{iter, ops::Range};
 
-use read_fonts::tables::math::{MathConstant, MathKernCorner};
+use read_fonts::tables::math::{MathConstant, MathKernCorner, StretchAxis};
 use tracing::trace;
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem, ScriptLevel, VerticalStretch},
+    font::{Buffer, FontSystem, ScriptLevel, Stretch},
     lowering::TextStyle,
     observe,
   },
@@ -43,7 +43,7 @@ fn design_units(value: f32) -> i64 { return value as i64; }
 /// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`units_to_length`] の逆）。
 #[expect(
   clippy::cast_possible_truncation,
-  reason = "表示数式 1 つの高さのフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
+  reason = "伸ばす目標（表示数式 1 つの高さ・広幅アクセントの基底 1 つの幅）のフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
 )]
 fn length_to_units(length: Length, font_size: Length, upem: f32) -> i64 {
   return (length.ratio(font_size) * f64::from(upem)).ceil() as i64;
@@ -52,8 +52,18 @@ fn length_to_units(length: Length, font_size: Length, upem: f32) -> i64 {
 /// フォント単位の量を [`Glyph`] の送り幅・オフセットの型にする。
 fn glyph_units(units: i64) -> i32 {
   return i32::try_from(units).expect(
-    "括弧の送り幅と組み上がりの位置は表示数式ブロックの高さに比例する。高さが約 200 万 em（upem 1000 で i32 の上限）を超えるブロックは扱えない",
+    "伸縮グリフの送り幅と組み上がりの位置は、縦は表示数式ブロックの高さ、横は広幅アクセントの基底の幅に比例する。約 200 万 em（upem 1000 で i32 の上限）を超えるブロック・基底は扱えない",
   );
+}
+
+/// 横の glyph assembly のパーツ `parts`（グリフ ID と左端からの位置。左から順）と組み上がりの幅 `size` から、各パーツの
+/// 送り幅（次のパーツの位置までの距離。最後のパーツは組み上がりの右端までの距離）を並べる
+///
+/// 送り幅の和は `size`（`MathML Core` の glyph assembly stretch size）になる。最後のパーツの hmtx の送り幅は
+/// `fullAdvance` と一致するとは限らないので使わない。
+fn horizontal_assembly_advances(parts: &[(u32, i64)], size: i64) -> Vec<(u32, i64)> {
+  let ends = parts.iter().skip(1).map(|&(_, position)| return position).chain(iter::once(size));
+  return parts.iter().zip(ends).map(|(&(gid, position), end)| return (gid, end - position)).collect();
 }
 
 /// グリフごとのクラスタ開始位置 `clusters`（グリフ順）から、各グリフが対応する元テキストの範囲を出す。
@@ -412,6 +422,71 @@ impl<'a> Shaper<'a> {
     return self.shaped_run(text, FontType::Math, font_size, None).into_hbox();
   }
 
+  /// 数式の広幅アクセントの記号 `text` を、数式フォントで横に `target` 以上へ伸ばして組んだ箱
+  ///
+  /// 元の字形（`ssty` / `flac` なしでシェイプした 1 グリフ）を MATH の横方向の size variant → glyph assembly で伸ばす
+  /// （元の字形の大きさはインクの幅）。元の字形のままで足りるときは [`Self::shape_accent`] と同じ字形（段の `ssty`、
+  /// `flattened` なら `flac`）にし、伸ばした字形は GSUB を通さない。フォントサイズは変えない。シェイプで 1 グリフに
+  /// ならない `text` は伸ばさない。
+  pub(super) fn shape_wide_accent(
+    &mut self,
+    text: &str,
+    font_size: Length,
+    script_level: Option<ScriptLevel>,
+    flattened: bool,
+    target: Length,
+  ) -> HBox {
+    let upem = self.fonts.metrics(FontType::Math).upem;
+    let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
+    let gid = match shaped.glyphs() {
+      [glyph] => glyph.gid,
+      _ => return self.shape_accent(text, font_size, script_level, flattened),
+    };
+    let Some(glyphs) = self.horizontally_stretched_glyphs(gid, text.len(), length_to_units(target, font_size, upem))
+    else {
+      return self.shape_accent(text, font_size, script_level, flattened);
+    };
+    let run = GlyphRun {
+      font_size,
+      text: text.to_string(),
+      glyphs,
+      font_type: FontType::Math,
+      color: None,
+    };
+    return ShapedRun::measure(run, self.fonts.metrics(FontType::Math)).into_hbox();
+  }
+
+  /// 数式フォントのグリフ `gid` を横に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）。
+  /// 元の字形のままで足りれば `None`
+  ///
+  /// size variant はその字形の送り幅、glyph assembly のパーツは [`horizontal_assembly_advances`] の送り幅で左から並べ、
+  /// 全パーツが 1 つのクラスタ（PDF のテキストとしては 1 字）。
+  fn horizontally_stretched_glyphs(&self, gid: u32, text_len: usize, target: i64) -> Option<Vec<Glyph>> {
+    let glyph = |gid: u32, x_advance: i32| {
+      return Glyph {
+        gid,
+        range: 0..text_len,
+        x_advance,
+        y_advance: 0,
+        x_offset: 0,
+        y_offset: 0,
+      };
+    };
+    return match self.fonts.stretch_math_glyph(gid, StretchAxis::Horizontal, target) {
+      Stretch::Glyph(chosen) if chosen == gid => None,
+      Stretch::Glyph(chosen) => Some(vec![glyph(
+        chosen,
+        glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, chosen))),
+      )]),
+      Stretch::Assembly { parts, size } => Some(
+        horizontal_assembly_advances(&parts, size)
+          .into_iter()
+          .map(|(part, advance)| return glyph(part, glyph_units(advance)))
+          .collect(),
+      ),
+    };
+  }
+
   /// 伸縮グリフ 1 字 `text`（区切り括弧・根号記号・display 段の大型演算子）を数式フォントで縦に `target` 以上へ伸ばした
   /// 箱と、そのインクの上端・下端（箱のベースライン基準・上が正・符号付き。インクを読めなければ 0, 0）を返す。
   ///
@@ -466,14 +541,11 @@ impl<'a> Shaper<'a> {
       };
     };
     let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, gid)));
-    return match self.fonts.stretch_math_glyph_vertically(gid, target) {
-      VerticalStretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
-      VerticalStretch::Assembly(parts) => {
-        let width = parts
-          .iter()
-          .map(|&(gid, _)| return advance(gid))
-          .max()
-          .expect("VerticalStretch::Assembly は空にならない");
+    return match self.fonts.stretch_math_glyph(gid, StretchAxis::Vertical, target) {
+      Stretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
+      // 縦の assembly の位置はパーツのインクの下端を置く高さで、組み上がりの大きさは使わない（幅はパーツの最大）
+      Stretch::Assembly { parts, .. } => {
+        let width = parts.iter().map(|&(gid, _)| return advance(gid)).max().expect("Stretch::Assembly は空にならない");
         let last = parts.len() - 1;
         parts
           .iter()
@@ -554,7 +626,7 @@ mod tests {
 
   use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
 
-  use super::{ShapedRun, add_italic_corrections_to, cluster_ranges};
+  use super::{ShapedRun, add_italic_corrections_to, cluster_ranges, horizontal_assembly_advances};
   use crate::{
     length::Length,
     project::FontType,
@@ -590,6 +662,16 @@ mod tests {
       font_type: FontType::Serif,
       color: None,
     };
+  }
+
+  #[test]
+  fn horizontal_assembly_parts_advance_to_the_next_part_and_the_last_to_the_assembled_width() {
+    assert_eq!(
+      horizontal_assembly_advances(&[(30, 0), (30, 369), (30, 738), (31, 1107)], 2000),
+      vec![(30, 369), (30, 369), (30, 369), (31, 893)],
+      "最後のパーツは組み上がりの右端まで"
+    );
+    assert_eq!(horizontal_assembly_advances(&[(5, 0)], 400), vec![(5, 400)], "パーツ 1 つは組み上がりの幅");
   }
 
   #[test]

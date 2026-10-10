@@ -13,12 +13,13 @@
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方）でさらに寄せる。
 //!
-//! 分数（`MathFraction`）・根号（`MathRadical`）・アクセント（`MathAccent`）・伸縮括弧（`MathFenced`）・display 段の
-//! 大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・下付き（`MathScripts` の `limits` が真）の配置は子 module
-//! `fraction` / `radical` / `accent` / `fenced` / `large_operator` / `limits` が行い、分数・根号・アクセント・伸縮括弧は
-//! 閉じた Atom 1 つに組む（罫・横線は `HBoxContent::Rule`）。
+//! 分数（`MathFraction`）・根号（`MathRadical`）・アクセント（`MathAccent`）・上下線（`MathBar`）・伸縮括弧（`MathFenced`）・
+//! display 段の大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・下付き（`MathScripts` の `limits` が真）の配置は
+//! 子 module `fraction` / `radical` / `accent` / `bar` / `fenced` / `large_operator` / `limits` が行い、分数・根号・
+//! アクセント・上下線・伸縮括弧は閉じた Atom 1 つに組む（罫・横線・上下線は `HBoxContent::Rule`）。
 
 mod accent;
+mod bar;
 mod fenced;
 mod fraction;
 mod large_operator;

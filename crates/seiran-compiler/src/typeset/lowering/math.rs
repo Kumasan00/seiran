@@ -26,7 +26,7 @@ use crate::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{
-        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBlockCellLayout, MathBlockLayout,
+        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBar, MathBlockCellLayout, MathBlockLayout,
         MathBlockRowLayout, MathFenced, MathFraction, MathRadical, TextStyle,
       },
       with_label_anchors,
@@ -391,7 +391,7 @@ fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext) -> Vec<AtomNode
 
 /// 単一の `HirMath` をスペーシングのアイテムへ展開する
 ///
-/// `Group` / `Frac` / `Sqrt` / `Accent` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
+/// `Group` / `Frac` / `Sqrt` / `Accent` / `Bar` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
 /// `Fenced` は中身を組んだうえで、左端 Open・右端 Close の 1 個のアイテムにする。
 fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
   match &node.kind {
@@ -445,10 +445,15 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
     },
     // アクセント記号は段を下げない（MathML Core の accent の上付け）ので、基底と同じ段の大きさと `ssty` で組む
-    HirMathKind::Accent { accent: mark, base } => {
+    HirMathKind::Accent {
+      accent: mark,
+      wide,
+      base,
+    } => {
       let accent = MathAccent {
         base: lower_math_list(slice::from_ref(base.as_ref()), &ctx.with_style(ctx.style.cramped())),
         accent: mark.to_string(),
+        wide: *wide,
         font_size: ctx.font_size(),
         script_level: ctx.style.level.script_level(),
       };
@@ -463,6 +468,20 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         font_size: ctx.font_size(),
       };
       items.push(spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]));
+    },
+    // 上線の基底は cramped（TeX の Rule 9）、下線の基底は外側のスタイルを継承する（TeX の Rule 10）
+    HirMathKind::Bar { over, body } => {
+      let body = slice::from_ref(body.as_ref());
+      let bar = MathBar {
+        body: if *over {
+          lower_math_list(body, &ctx.with_style(ctx.style.cramped()))
+        } else {
+          lower_math_list(body, ctx)
+        },
+        over: *over,
+        font_size: ctx.font_size(),
+      };
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Bar(bar)]));
     },
     // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
     // （`\mathbold{a+b}` の `+` にもアキが入る）。
@@ -514,7 +533,7 @@ mod tests {
     typeset::{
       font::ScriptLevel,
       lowering::{
-        MathAccent, MathFenced, MathScripts,
+        MathAccent, MathBar, MathFenced, MathScripts,
         test_support::{analyzed, lower, stix_script_scale},
       },
     },
@@ -538,6 +557,8 @@ mod tests {
         AtomNode::Accent(accent) => out.extend(atom_texts(&accent.base)),
         // 区切り括弧は boxing が組むのでテキストに数えない
         AtomNode::Fenced(fenced) => out.extend(atom_texts(&fenced.body)),
+        // 罫線はテキストを持たない
+        AtomNode::Bar(bar) => out.extend(atom_texts(&bar.body)),
         // 大型演算子は text 段以下で組んだときと同じ演算子のテキストとして数える
         AtomNode::LargeOperator { symbol, font_size } => out.push((
           symbol.clone(),
@@ -610,6 +631,17 @@ mod tests {
       .expect("伸縮括弧が期待されます");
   }
 
+  /// レイアウトノード列から最初の上線・下線を取り出すヘルパ
+  fn first_bar(nodes: &[LayoutNode]) -> &MathBar {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Bar(bar)) => return Some(bar),
+        _ => return None,
+      })
+      .expect("上線・下線が期待されます");
+  }
+
   /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（スクリプトの基底・中身も辿る）
   fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
     let mut out = Vec::new();
@@ -621,6 +653,7 @@ mod tests {
         LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
         LayoutNode::Inline(InlineNode::Accent(accent)) => out.extend(atom_texts(&accent.base)),
         LayoutNode::Inline(InlineNode::Fenced(fenced)) => out.extend(atom_texts(&fenced.body)),
+        LayoutNode::Inline(InlineNode::Bar(bar)) => out.extend(atom_texts(&bar.body)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
@@ -878,6 +911,17 @@ mod tests {
     assert_eq!(concat_atom_texts(&accent.base), "\u{1D465}", "基底は数式用イタリックへ写す");
     assert_eq!(accent.font_size, ReadStyle::default().text.font_size);
     assert_eq!(accent.script_level, None, "インライン数式の本体は text 段");
+    assert!(!accent.wide, "\\hat は伸ばさない");
+  }
+
+  #[test]
+  fn lower_wide_accent_carries_the_wide_flag() {
+    let nodes = lower_math_source("$\\widehat{xy}$\n");
+
+    let accent = first_accent(&nodes);
+    assert_eq!(accent.accent, "\u{0302}");
+    assert!(accent.wide, "\\widehat は基底の幅へ伸ばす");
+    assert_eq!(concat_atom_texts(&accent.base), "\u{1D465}\u{1D466}");
   }
 
   #[test]
@@ -900,6 +944,33 @@ mod tests {
       panic!("基底はスクリプト付きの基底 1 つのはず: {nodes:?}");
     };
     assert!(inner.cramped, "アクセントの基底は cramped（TeX の Rule 12・MathML Core の accent）");
+  }
+
+  #[test]
+  fn lower_bar_carries_the_side_and_the_body() {
+    let over = lower_math_source("$\\overline{x}$\n");
+    let under = lower_math_source("$\\underline{x}$\n");
+
+    let bar = first_bar(&over);
+    assert!(bar.over);
+    assert_eq!(concat_atom_texts(&bar.body), "\u{1D465}", "基底は数式用イタリックへ写す");
+    assert_eq!(bar.font_size, ReadStyle::default().text.font_size);
+    assert!(!first_bar(&under).over);
+  }
+
+  #[test]
+  fn overline_body_is_cramped_and_underline_body_is_not() {
+    let over = lower_math_source("$\\overline{x^{2}}$\n");
+    let under = lower_math_source("$\\underline{x^{2}}$\n");
+
+    let [AtomNode::Scripts(over_inner)] = first_bar(&over).body.as_slice() else {
+      panic!("上線の基底はスクリプト付きの基底 1 つのはず: {over:?}");
+    };
+    let [AtomNode::Scripts(under_inner)] = first_bar(&under).body.as_slice() else {
+      panic!("下線の基底はスクリプト付きの基底 1 つのはず: {under:?}");
+    };
+    assert!(over_inner.cramped, "上線の基底は cramped（TeX の Rule 9）");
+    assert!(!under_inner.cramped, "下線の基底は外側のスタイルを継承する（TeX の Rule 10）");
   }
 
   #[test]
