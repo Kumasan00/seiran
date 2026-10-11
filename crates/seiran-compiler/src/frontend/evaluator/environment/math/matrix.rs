@@ -133,6 +133,34 @@ mod tests {
   }
 
   #[test]
+  fn matrix_rejects_uppercase_delimiter_value() {
+    for value in ["PAREN", "Paren"] {
+      let arena = Bump::new();
+      let source = format!(r"\begin{{matrix}}[delimiter={value}]a & b\end{{matrix}}");
+      let cst = test_support::parse_cst(&source, &arena).unwrap();
+
+      let result = evaluate_children_to_hir(&source, cst);
+
+      assert!(
+        matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "delimiter"),
+        "{value} は delimiter の値不正になるはず: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn matrix_accepts_delimiter_value_with_surrounding_spaces() {
+    let arena = Bump::new();
+    let source = r"\begin{matrix}[delimiter= paren ]a & b\end{matrix}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst).unwrap();
+
+    let (delimiter, _) = matrix_of(&result);
+    assert_eq!(delimiter, MathDelimiter::Paren);
+  }
+
+  #[test]
   fn matrix_rejects_unknown_opt_key() {
     let arena = Bump::new();
     let source = r"\begin{matrix}[numbered=true]a & b\end{matrix}";

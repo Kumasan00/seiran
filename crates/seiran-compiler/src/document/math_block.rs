@@ -66,10 +66,10 @@ impl FromStr for MathDelimiter {
 
   /// `matrix` 環境の `[delimiter=...]` オプション値文字列を [`MathDelimiter`] に変換する
   ///
-  /// 受理する値は `none` / `paren` / `bracket` / `brace` / `bar` / `dbar`。前後の空白と大小文字は
-  /// 正規化してから照合する。
+  /// 受理する値は小文字の `none` / `paren` / `bracket` / `brace` / `bar` / `dbar` の完全一致だけ。
+  /// 大文字を含む綴りは同じ値への第 2 の綴りになるので受理しない。前後の空白は任意引数の値の取り出しが除く。
   fn from_str(value: &str) -> Result<Self, Self::Err> {
-    return match value.trim().to_ascii_lowercase().as_str() {
+    return match value {
       "none" => Ok(MathDelimiter::None),
       "paren" => Ok(MathDelimiter::Paren),
       "bracket" => Ok(MathDelimiter::Bracket),
@@ -86,12 +86,19 @@ mod tests {
   use super::MathDelimiter;
 
   #[test]
-  fn from_str_maps_known_values_case_insensitively() {
+  fn from_str_maps_lowercase_values() {
     assert_eq!("none".parse::<MathDelimiter>().ok(), Some(MathDelimiter::None));
     assert_eq!("paren".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Paren));
-    assert_eq!("BRACKET".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bracket));
-    assert_eq!(" brace ".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Brace));
+    assert_eq!("bracket".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bracket));
+    assert_eq!("brace".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Brace));
     assert_eq!("bar".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bar));
     assert_eq!("dbar".parse::<MathDelimiter>().ok(), Some(MathDelimiter::DoubleBar));
+  }
+
+  #[test]
+  fn from_str_rejects_uppercase_and_mixed_case() {
+    for value in ["PAREN", "Paren", "BRACKET", "Dbar", "NONE"] {
+      assert!(value.parse::<MathDelimiter>().is_err(), "{value} は第 2 の綴りなので拒否するはず");
+    }
   }
 }
