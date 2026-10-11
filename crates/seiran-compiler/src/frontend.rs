@@ -1531,4 +1531,29 @@ mod tests {
       "{nodes:?}"
     );
   }
+
+  #[test]
+  fn combining_mark_after_space_in_math_has_no_base() {
+    let error = evaluate_error("$x \u{0302}\u{0303}y$\n");
+
+    let EvalError::CombiningMarkWithoutBase { span } = error else {
+      panic!("基底の無い結合文字の診断のはず: {error:?}");
+    };
+    assert_eq!((span.offset(), span.len()), (3, 4), "空白の直後の結合文字 2 つを指す");
+  }
+
+  #[test]
+  fn combining_mark_after_newline_in_math_has_no_base() {
+    let error = evaluate_error("$x\n\u{0302}$\n");
+
+    assert!(matches!(error, EvalError::CombiningMarkWithoutBase { .. }), "{error:?}");
+  }
+
+  #[test]
+  fn combining_mark_after_space_in_text_is_accepted() {
+    // 本文では空白を基底に結合文字だけを見せる書き方として通す
+    let nodes = evaluate_source("a \u{0302}b\n");
+
+    assert_eq!(nodes.len(), 1, "{nodes:?}");
+  }
 }
