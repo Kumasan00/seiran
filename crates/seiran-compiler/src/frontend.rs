@@ -1501,4 +1501,34 @@ mod tests {
     };
     assert_eq!(figure.image_path, ProjectPath::new("/elsewhere/a.png"));
   }
+
+  #[test]
+  fn combining_mark_after_symbol_command_names_an_unknown_command() {
+    let error = evaluate_error("$\\alpha\u{0302}_{2}$\n");
+
+    assert!(
+      matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "alpha\u{0302}"),
+      "結合文字はコマンド名の最後の字に付く: {error:?}"
+    );
+  }
+
+  #[test]
+  fn decomposed_not_equal_is_one_text_in_math() {
+    let nodes = inline_math_nodes("$a=\u{0338}b$\n");
+
+    assert!(
+      matches!(nodes.as_slice(), [node] if matches!(&node.kind, HirMathKind::Text(t) if t == "a=\u{0338}b")),
+      "= と U+0338 は 1 字で、前後の字と同じテキスト: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn escaped_char_with_combining_mark_is_one_char() {
+    let nodes = inline_math_nodes("$\\%\u{0302}$\n");
+
+    assert!(
+      matches!(nodes.as_slice(), [node] if matches!(&node.kind, HirMathKind::Text(t) if t == "%\u{0302}")),
+      "{nodes:?}"
+    );
+  }
 }

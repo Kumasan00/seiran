@@ -81,6 +81,7 @@ pub(crate) fn evaluate_math_elements(
         | TokenKind::Caret
         | TokenKind::ParagraphBreak
         | TokenKind::Comment
+        | TokenKind::CombiningMarkOnSyntaxChar
         | TokenKind::Unknown => {},
       },
       CstElement::Node(child_node) => match child_node.kind {

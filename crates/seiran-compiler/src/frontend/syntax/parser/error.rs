@@ -108,6 +108,20 @@ pub(crate) enum SyntaxError {
     span: SourceSpan,
   },
 
+  /// 構文文字に結合文字が付いている場合（`{x}̂` の `}̂`・`\\̂` 等）
+  #[error("構文文字に結合文字が付いています")]
+  #[diagnostic(
+    code(frontend::syntax::combining_mark_on_syntax_char),
+    help(
+      "結合文字は直前の字に付くので、構文文字の直後には書けません。数式の記号やグループに付けるならアクセントコマンド（\\hat{{\\alpha}} \\hat{{x}}）を、構文文字を字として書いてそれに付けるならエスケープした字の直後（\\{{ の直後）に書いてください"
+    )
+  )]
+  CombiningMarkOnSyntaxChar {
+    /// 構文文字と結合文字のソース位置
+    #[label("この構文文字に結合文字が付いています")]
+    span: SourceSpan,
+  },
+
   /// 裸の `{...}` グループ（コマンド引数でも数式内グループでもないもの）が出現した場合
   #[error("裸の {{...}} は構文エラーです")]
   #[diagnostic(

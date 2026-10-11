@@ -77,6 +77,7 @@ pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<To
     | TokenKind::RBracket
     | TokenKind::Dollar
     | TokenKind::Comment
+    | TokenKind::CombiningMarkOnSyntaxChar
     | TokenKind::Unknown => None,
   };
 }
@@ -326,6 +327,7 @@ mod tests {
       TokenKind::RBracket,
       TokenKind::Dollar,
       TokenKind::Comment,
+      TokenKind::CombiningMarkOnSyntaxChar,
       TokenKind::Unknown,
     ];
 

@@ -273,6 +273,12 @@ impl<'a> Parser<'a> {
           span: token.span.into(),
         });
       },
+      TokenKind::CombiningMarkOnSyntaxChar => {
+        let token = self.take_peeked();
+        return Err(SyntaxError::CombiningMarkOnSyntaxChar {
+          span: token.span.into(),
+        });
+      },
       // 構造を作らず、そのまま CST のリーフとして保持するトークン。`Underscore` / `Caret` は
       // 数式モードのときだけ上の arm がスクリプトへ組み立てるので、テキストモード用にここへも要る。
       TokenKind::Underscore
@@ -707,6 +713,12 @@ impl<'a> Parser<'a> {
       Some(TokenKind::Unknown) => {
         let token = self.take_peeked();
         return Err(SyntaxError::InvalidBackslash {
+          span: token.span.into(),
+        });
+      },
+      Some(TokenKind::CombiningMarkOnSyntaxChar) => {
+        let token = self.take_peeked();
+        return Err(SyntaxError::CombiningMarkOnSyntaxChar {
           span: token.span.into(),
         });
       },
@@ -1234,6 +1246,30 @@ mod tests {
     let arena = Bump::new();
     let result = parse_cst(r"$x \ y$", &arena);
     assert!(matches!(result, Err(SyntaxError::InvalidBackslash { .. })));
+  }
+
+  #[test]
+  fn combining_mark_on_closing_brace_is_error() {
+    let arena = Bump::new();
+    let result = parse_cst("${x}\u{0302}_{2}$", &arena);
+    let Err(SyntaxError::CombiningMarkOnSyntaxChar { span }) = result else {
+      panic!("結合文字の付いた }} は構文エラーのはず: {result:?}");
+    };
+    assert_eq!((span.offset(), span.len()), (3, 3), "`}}` と U+0302 を指す");
+  }
+
+  #[test]
+  fn combining_mark_on_script_group_is_reported_as_such() {
+    let arena = Bump::new();
+    let result = parse_cst("$x^ {\u{0302}2}$", &arena);
+    assert!(matches!(result, Err(SyntaxError::CombiningMarkOnSyntaxChar { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn combining_mark_on_syntax_char_in_text_is_error() {
+    let arena = Bump::new();
+    let result = parse_cst("\\bold{x}\u{0302}", &arena);
+    assert!(matches!(result, Err(SyntaxError::CombiningMarkOnSyntaxChar { .. })), "{result:?}");
   }
 
   #[test]
