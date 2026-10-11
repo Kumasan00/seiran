@@ -14,11 +14,12 @@ use crate::{
       opt_args,
     },
     syntax::{
-      CstElement, CstNode, SyntaxKind,
-      token::TokenKind,
+      self, CstElement, CstNode, SyntaxKind,
+      token::{Token, TokenKind},
       view::{CommandView, EnvironmentView},
     },
   },
+  source::Span,
 };
 
 /// 数式モードで構造化された CST ノードの子要素を [`HirMath`] 列に変換する
@@ -44,13 +45,14 @@ pub(crate) fn evaluate_math_elements(
   for child in elements {
     match child {
       CstElement::Token(token) => match token.kind {
+        TokenKind::Text => {
+          if let Some(span) = leading_combining_span(source, token) {
+            return Err(EvalError::CombiningMarkWithoutBase { span: span.into() });
+          }
+          nodes.push(ctx.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
+        },
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする。
-        TokenKind::Text
-        | TokenKind::VerbatimText
-        | TokenKind::Comma
-        | TokenKind::Equals
-        | TokenKind::Whitespace
-        | TokenKind::Newline => {
+        TokenKind::VerbatimText | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
           nodes.push(ctx.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
@@ -81,6 +83,7 @@ pub(crate) fn evaluate_math_elements(
         | TokenKind::Caret
         | TokenKind::ParagraphBreak
         | TokenKind::Comment
+        | TokenKind::CombiningMarkOnSyntaxChar
         | TokenKind::Unknown => {},
       },
       CstElement::Node(child_node) => match child_node.kind {
@@ -123,6 +126,24 @@ pub(crate) fn evaluate_math_elements(
     }
   }
   return Ok(nodes);
+}
+
+/// テキストトークンの先頭に続く結合文字の範囲（先頭が結合文字でなければ `None`）
+///
+/// 結合文字は直前の字と同じトークンに入る（lexer）ので、テキストトークンが結合文字で始まるのは空白・改行の
+/// 直後だけである。数式はそれらを組版に出さないので、先頭の結合文字には付く字が無い。
+fn leading_combining_span(source: &str, token: &Token) -> Option<Span> {
+  let len: usize = token
+    .text(source)
+    .chars()
+    .take_while(|&ch| return syntax::is_combining(ch))
+    .map(char::len_utf8)
+    .sum();
+  if len == 0 {
+    return None;
+  }
+  let len = u32::try_from(len).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
+  return Some(Span::new(token.span.start, token.span.start + len));
 }
 
 /// 上付き・下付きスクリプトノードの中身を単一の [`HirMath`] に変換する

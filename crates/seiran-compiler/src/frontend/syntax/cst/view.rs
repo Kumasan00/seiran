@@ -213,6 +213,7 @@ fn push_element_text(source: &str, element: &CstElement<'_>, text: &mut String) 
       | TokenKind::LineBreak
       | TokenKind::ParagraphBreak
       | TokenKind::Comment
+      | TokenKind::CombiningMarkOnSyntaxChar
       | TokenKind::Unknown => {},
     },
     CstElement::Node(child_node) => {

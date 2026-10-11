@@ -229,6 +229,20 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// 数式で、結合文字の付く字が無い場合（空白・改行の直後の結合文字）
+  #[error("数式の結合文字に、付く字がありません")]
+  #[diagnostic(
+    code(frontend::eval::combining_mark_without_base),
+    help(
+      "数式は空白・改行を組版に出さないので、その直後の結合文字は付く字を持ちません。結合文字は付ける字の直後に空白を挟まず書いてください（x̂）"
+    )
+  )]
+  CombiningMarkWithoutBase {
+    /// 先頭の結合文字の連続のソース位置
+    #[label("この結合文字が付く字がありません")]
+    span: SourceSpan,
+  },
+
   /// `cases` 環境の 1 行が 3 列以上に分割された場合
   #[error("cases 環境の行は 2 列までです（{found} 列が指定されています）")]
   #[diagnostic(

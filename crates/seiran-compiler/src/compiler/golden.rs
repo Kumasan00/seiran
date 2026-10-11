@@ -1908,6 +1908,21 @@ fn superscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char() {
 }
 
 #[test]
+fn decomposed_not_equal_sits_as_the_neq_symbol() {
+  // `=` と U+0338 は 1 字の関係演算子で、U+0338 は `=` と同じグリフ列に入り（間にアキが無い）、左のアキは `\neq` と同じ
+  let offset = |source: &str, sign: &str| {
+    let runs = first_line_runs(source);
+    return run_with_text(&runs, sign).dx - run_with_text(&runs, MATH_A).dx;
+  };
+
+  assert_eq!(
+    offset("$a=\u{0338}b$\n", "=\u{0338}"),
+    offset("$a\\neq b$\n", "\u{2260}"),
+    "分解形の ≠ は \\neq と同じ位置"
+  );
+}
+
+#[test]
 fn subscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char() {
   let bare = script_offset("$x_{2}$\n", MATH_X, "2");
 

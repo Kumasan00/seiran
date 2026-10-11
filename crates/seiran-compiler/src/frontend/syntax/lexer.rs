@@ -1,5 +1,7 @@
 //! 字句解析 — ソーステキストを [`Token`] 列に分割する
 
+use icu::properties::{CodePointMapData, props::GraphemeClusterBreak};
+
 use crate::{
   frontend::syntax::token::{Token, TokenKind},
   source::Span,
@@ -49,6 +51,25 @@ impl<'a> Lexer<'a> {
   /// カーソル位置以降の残りのバイト列を返す
   fn remaining_bytes(&self) -> &[u8] { return &self.bytes[self.cursor..] }
 
+  /// カーソルから `offset` バイト先の字が結合文字か（`offset` は字の境界）
+  fn is_combining_at(&self, offset: usize) -> bool {
+    return self.input[self.cursor + offset..].chars().next().is_some_and(is_combining);
+  }
+
+  /// カーソル位置から続く結合文字をすべて読み進める
+  fn consume_combining(&mut self) {
+    while self.peek_char().is_some_and(is_combining) {
+      self.advance_char();
+    }
+  }
+
+  /// 結合文字が付いた 1 バイトの構文文字を、続く結合文字ごと読み取る
+  fn read_combining_mark_on_syntax_char(&mut self) -> TokenKind {
+    self.advance_bytes(1);
+    self.consume_combining();
+    return TokenKind::CombiningMarkOnSyntaxChar;
+  }
+
   /// 次のトークンを生成して返す
   fn next_token(&mut self) -> Option<Token> {
     if self.is_at_end() {
@@ -60,6 +81,12 @@ impl<'a> Lexer<'a> {
 
     let kind = match byte {
       b'\\' => self.read_backslash(),
+      // 結合文字は直前の字に属するので、結合文字が付いた構文文字はもう構文文字ではない。`=` `,` は任意引数の外では
+      // そのまま字なのでテキストとして読み、ほかは字にもならない（エスケープが要る）ので 1 個の不正なトークンにする。
+      b'=' | b',' if self.is_combining_at(1) => self.read_text()?,
+      b'{' | b'}' | b'[' | b']' | b'$' | b'_' | b'^' | b'&' if self.is_combining_at(1) => {
+        self.read_combining_mark_on_syntax_char()
+      },
       b'{' => {
         self.advance_bytes(1);
         TokenKind::LBrace
@@ -124,24 +151,32 @@ impl<'a> Lexer<'a> {
 
     match next_char {
       Some('\\') => {
+        if self.is_combining_at(1) {
+          return self.read_combining_mark_on_syntax_char();
+        }
         self.advance_bytes(1);
         return TokenKind::LineBreak;
+      },
+      Some(ch) if is_combining(ch) => {
+        self.consume_combining();
+        return TokenKind::CombiningMarkOnSyntaxChar;
       },
       Some(ch) if ch.is_ascii_alphanumeric() => return self.read_command(),
       Some(ch) if ch.is_whitespace() => return TokenKind::Unknown,
       Some(_ch) => {
         self.advance_char();
+        self.consume_combining();
         return TokenKind::Escaped;
       },
       None => return TokenKind::Unknown,
     }
   }
 
-  /// コマンド名（英数字の連続）を読み取る
+  /// コマンド名（英数字の連続。名前の字に付いた結合文字も名前に含める）を読み取る
   fn read_command(&mut self) -> TokenKind {
-    while let Some(&b) = self.bytes.get(self.cursor) {
-      if b.is_ascii_alphanumeric() {
-        self.cursor += 1;
+    while let Some(ch) = self.peek_char() {
+      if ch.is_ascii_alphanumeric() || is_combining(ch) {
+        self.advance_char();
       } else {
         break;
       }
@@ -167,6 +202,11 @@ impl<'a> Lexer<'a> {
       let b = self.bytes[self.cursor];
 
       if Self::is_structural_char(b) {
+        // 結合文字が付いた `=` `,` は字なので、テキストを切らない（`next_token` の同じ判定）
+        if matches!(b, b'=' | b',') && self.is_combining_at(1) {
+          self.cursor += 1;
+          continue;
+        }
         break;
       }
 
@@ -291,6 +331,20 @@ impl Iterator for Lexer<'_> {
 
   /// 次のトークンを返す
   fn next(&mut self) -> Option<Self::Item> { return self.next_token(); }
+}
+
+/// 結合文字か（直前の字と書記素クラスタを切らない字。UAX #29 の `Extend` / `SpacingMark` / `ZWJ`）
+///
+/// 結合文字は直前の字と同じトークンに入る。数式の lowering がアイテムを切る書記素クラスタと同じ基準なので、
+/// トークンの中の字はクラスタの境界でしか切れない。
+pub(in crate::frontend) fn is_combining(ch: char) -> bool {
+  let gcb = CodePointMapData::<GraphemeClusterBreak>::new().get(ch);
+  return [
+    GraphemeClusterBreak::Extend,
+    GraphemeClusterBreak::SpacingMark,
+    GraphemeClusterBreak::ZWJ,
+  ]
+  .contains(&gcb);
 }
 
 #[cfg(test)]
@@ -1161,5 +1215,122 @@ mod tests {
     lexer.rewind_to(first.span.start);
 
     assert_eq!(lexer.next(), Some(first));
+  }
+
+  #[test]
+  fn combining_marks_are_grapheme_extenders() {
+    assert!(is_combining('\u{0302}'), "U+0302 COMBINING CIRCUMFLEX ACCENT（Extend）");
+    assert!(is_combining('\u{0338}'), "U+0338 COMBINING LONG SOLIDUS OVERLAY（Extend）");
+    assert!(is_combining('\u{0903}'), "U+0903 DEVANAGARI SIGN VISARGA（SpacingMark）");
+    assert!(is_combining('\u{200D}'), "U+200D ZERO WIDTH JOINER（ZWJ）");
+    assert!(!is_combining('a'));
+    assert!(!is_combining(' '));
+    assert!(!is_combining('\u{2260}'), "合成済みの ≠ は結合文字ではない");
+  }
+
+  #[test]
+  fn combining_mark_stays_in_the_text_of_its_base() {
+    assert_eq!(tokenize_texts("x\u{0302}y"), vec![(TokenKind::Text, "x\u{0302}y")]);
+  }
+
+  #[test]
+  fn command_name_takes_combining_marks_and_following_alphanumerics() {
+    assert_eq!(
+      tokenize_texts("\\alpha\u{0302}_"),
+      vec![
+        (TokenKind::Command, "\\alpha\u{0302}"),
+        (TokenKind::Underscore, "_")
+      ]
+    );
+    assert_eq!(tokenize_texts("\\alpha\u{0302}bc"), vec![(TokenKind::Command, "\\alpha\u{0302}bc")]);
+  }
+
+  #[test]
+  fn escaped_char_takes_all_following_combining_marks() {
+    assert_eq!(
+      tokenize_texts("\\%\u{0302}\u{0303}x"),
+      vec![
+        (TokenKind::Escaped, "\\%\u{0302}\u{0303}"),
+        (TokenKind::Text, "x")
+      ]
+    );
+  }
+
+  #[test]
+  fn equals_and_comma_with_combining_mark_are_text() {
+    assert_eq!(tokenize_texts("a=\u{0338}b"), vec![(TokenKind::Text, "a=\u{0338}b")]);
+    assert_eq!(tokenize_texts("=\u{0338}b"), vec![(TokenKind::Text, "=\u{0338}b")]);
+    assert_eq!(tokenize_texts("k,\u{0338}v"), vec![(TokenKind::Text, "k,\u{0338}v")]);
+    assert_eq!(
+      tokenize_texts("k=v"),
+      vec![
+        (TokenKind::Text, "k"),
+        (TokenKind::Equals, "="),
+        (TokenKind::Text, "v")
+      ],
+      "結合文字の無い = は従来どおり構造トークン"
+    );
+  }
+
+  #[test]
+  fn syntax_chars_with_combining_mark_are_rejected_tokens() {
+    for syntax in ["{", "}", "[", "]", "$", "_", "^", "&"] {
+      let input = format!("{syntax}\u{0302}\u{0303}x");
+      assert_eq!(
+        tokenize_texts(&input),
+        vec![
+          (TokenKind::CombiningMarkOnSyntaxChar, &input[..syntax.len() + 4]),
+          (TokenKind::Text, "x")
+        ],
+        "{syntax:?} に付いた結合文字はすべて同じトークンに入る"
+      );
+    }
+  }
+
+  #[test]
+  fn backslash_with_combining_mark_is_combining_mark_on_syntax_char() {
+    assert_eq!(
+      tokenize_texts("\\\u{0302}x"),
+      vec![
+        (TokenKind::CombiningMarkOnSyntaxChar, "\\\u{0302}"),
+        (TokenKind::Text, "x")
+      ]
+    );
+  }
+
+  #[test]
+  fn line_break_with_combining_mark_is_combining_mark_on_syntax_char() {
+    assert_eq!(
+      tokenize_texts("\\\\\u{0302}x"),
+      vec![
+        (TokenKind::CombiningMarkOnSyntaxChar, "\\\\\u{0302}"),
+        (TokenKind::Text, "x")
+      ]
+    );
+  }
+
+  #[test]
+  fn combining_mark_after_whitespace_starts_the_next_text() {
+    assert_eq!(
+      tokenize_texts("a \u{0302}b"),
+      vec![
+        (TokenKind::Text, "a"),
+        (TokenKind::Whitespace, " "),
+        (TokenKind::Text, "\u{0302}b")
+      ]
+    );
+    assert_eq!(
+      tokenize_texts("a\n\u{0302}b"),
+      vec![
+        (TokenKind::Text, "a"),
+        (TokenKind::Newline, "\n"),
+        (TokenKind::Text, "\u{0302}b")
+      ]
+    );
+  }
+
+  #[test]
+  fn combining_mark_after_comment_slashes_stays_in_the_comment() {
+    assert_eq!(tokenize_texts("//\u{0302} x"), vec![(TokenKind::Comment, "//\u{0302} x")]);
   }
 }

@@ -907,15 +907,6 @@ mod tests {
   }
 
   #[test]
-  fn combining_mark_after_a_symbol_command_is_kept() {
-    // 記号コマンドの後ろの結合文字は別のテキストノードに入るので、基底の字とクラスタを作らない。字は落とさない
-    let nodes = lower_math_source("$\\alpha\u{0302}_{2}$\n");
-
-    let texts = concat_texts(&nodes);
-    assert!(texts.contains('\u{0302}'), "結合文字は組版に残る: {texts:?}");
-  }
-
-  #[test]
   fn subscript_and_radicand_are_cramped_but_superscript_inherits() {
     /// 最初のスクリプト付きの基底の、指定した欄の中にあるスクリプト付きの基底が cramped か
     fn inner_cramped(source: &str, slot: fn(&MathScripts) -> Option<&[AtomNode]>) -> bool {

@@ -6,4 +6,5 @@ mod parser;
 pub(super) mod token;
 
 pub(super) use cst::{CstElement, CstNode, kind, kind::SyntaxKind, view};
+pub(super) use lexer::is_combining;
 pub(super) use parser::{ArgMode, BodyMode, ModeResolver, SyntaxError, parse_cst};

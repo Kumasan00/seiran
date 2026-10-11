@@ -84,6 +84,11 @@ pub(crate) enum TokenKind {
   /// エスケープもコメントも解釈しない 1 個の塊で、レキサーの raw 走査だけが生成する
   /// （`Lexer` の `Iterator::next` は返さない）。
   VerbatimText,
+  /// 結合文字が付いた構文文字（`\` `{` `}` `[` `]` `$` `_` `^` `&` と `\\`。続く結合文字ごと 1 トークン）
+  ///
+  /// 結合文字は直前の字に属するので、字面はもう構文文字ではない。一方でエスケープしていないので字でもない
+  /// （P1）。パーサーが構文エラーにする。
+  CombiningMarkOnSyntaxChar,
   /// 不明なトークン
   Unknown,
 }
@@ -113,6 +118,7 @@ impl std::fmt::Display for TokenKind {
       TokenKind::Newline => "<改行>",
       TokenKind::Comment => "<コメント>",
       TokenKind::VerbatimText => "<verbatim テキスト>",
+      TokenKind::CombiningMarkOnSyntaxChar => "<構文文字に付いた結合文字>",
       TokenKind::Unknown => "<不正なトークン>",
     };
     return write!(f, "{s}");
@@ -171,6 +177,7 @@ mod tests {
       TokenKind::Newline,
       TokenKind::Comment,
       TokenKind::VerbatimText,
+      TokenKind::CombiningMarkOnSyntaxChar,
       TokenKind::Unknown,
     ];
     for kind in kinds {
