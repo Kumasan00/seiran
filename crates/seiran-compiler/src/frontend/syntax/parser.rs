@@ -745,6 +745,12 @@ impl<'a> Parser<'a> {
         let token = self.take_peeked();
         return Ok(token);
       },
+      Some(TokenKind::CombiningMarkOnSyntaxChar) => {
+        let token = self.take_peeked();
+        return Err(SyntaxError::CombiningMarkOnSyntaxChar {
+          span: token.span.into(),
+        });
+      },
       Some(kind) => {
         let span = self.peeked().span;
         return Err(SyntaxError::UnexpectedToken {
@@ -1270,6 +1276,19 @@ mod tests {
     let arena = Bump::new();
     let result = parse_cst("\\bold{x}\u{0302}", &arena);
     assert!(matches!(result, Err(SyntaxError::CombiningMarkOnSyntaxChar { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn combining_mark_on_expected_brace_is_reported_as_such() {
+    // 決まったトークンを待つ位置（verbatim 引数の閉じ括弧・環境名の開き括弧）でも、汎用の「予期しないトークン」にしない
+    for source in [
+      "\\code{a}\u{0302}",
+      "\\begin{\u{0302}itemize}\n\\end{itemize}",
+    ] {
+      let arena = Bump::new();
+      let result = parse_cst(source, &arena);
+      assert!(matches!(result, Err(SyntaxError::CombiningMarkOnSyntaxChar { .. })), "{source:?}: {result:?}");
+    }
   }
 
   #[test]
