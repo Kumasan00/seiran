@@ -63,6 +63,20 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// 数式専用のコマンドが数式の外で使用された場合
+  #[error("\\{name} は数式の中でだけ使えます")]
+  #[diagnostic(
+    code(frontend::eval::math_only_command),
+    help("\\{name} はインライン数式 `$...$` か数式環境の中に書いてください")
+  )]
+  MathOnlyCommand {
+    /// コマンド名
+    name: String,
+    /// コマンドのソース位置
+    #[label("数式の外では使えません")]
+    span: SourceSpan,
+  },
+
   /// 環境の必須引数が不足している場合
   #[error("環境 {name} の引数が不足しています（必要: {expected}）")]
   #[diagnostic(

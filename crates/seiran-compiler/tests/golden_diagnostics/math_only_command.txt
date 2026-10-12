@@ -1,0 +1,10 @@
+frontend::eval::math_only_command
+
+  × \quad は数式の中でだけ使えます
+   ╭─[tests/text/diagnostics/math_only_command.sei:3:11]
+ 2 │ 
+ 3 │ 本文に \quad を書いています。
+   ·        ───┬──
+   ·           ╰── 数式の外では使えません
+   ╰────
+  help: \quad はインライン数式 `$...$` か数式環境の中に書いてください

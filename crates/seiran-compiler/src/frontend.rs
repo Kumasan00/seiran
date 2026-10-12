@@ -975,10 +975,10 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_accent_outside_math_is_unknown() {
+  fn evaluate_accent_outside_math_is_math_only() {
     let error = evaluate_error(r"\hat{x}");
 
-    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "hat"), "{error:?}");
+    assert!(matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == "hat"), "{error:?}");
   }
 
   #[test]
@@ -1020,10 +1020,10 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_wide_accent_outside_math_is_unknown() {
+  fn evaluate_wide_accent_outside_math_is_math_only() {
     let error = evaluate_error(r"\widehat{x}");
 
-    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "widehat"), "{error:?}");
+    assert!(matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == "widehat"), "{error:?}");
   }
 
   #[test]
@@ -1066,10 +1066,10 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_bar_outside_math_is_unknown() {
+  fn evaluate_bar_outside_math_is_math_only() {
     let error = evaluate_error(r"\underline{x}");
 
-    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "underline"), "{error:?}");
+    assert!(matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == "underline"), "{error:?}");
   }
 
   #[test]
@@ -1122,10 +1122,51 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_fence_outside_math_is_unknown() {
+  fn evaluate_fence_outside_math_is_math_only() {
     let error = evaluate_error(r"\paren{x}");
 
-    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "paren"), "{error:?}");
+    assert!(matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == "paren"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_only_commands_outside_math_name_the_math_mode() {
+    let cases = [
+      ("quad", r"\quad"),
+      ("thinspace", r"本文\thinspace です"),
+      ("negthinspace", r"\negthinspace"),
+      ("frac", r"\frac{a}{b}"),
+      ("sqrt", r"\sqrt{x}"),
+      ("mathbold", r"\mathbold{x}"),
+    ];
+
+    for (expected, source) in cases {
+      let error = evaluate_error(source);
+
+      assert!(
+        matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == expected),
+        "{source}: {error:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn evaluate_text_command_inside_math_stays_unknown() {
+    let error = evaluate_error(r"$\bold{x}$");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "bold"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_symbol_command_outside_math_stays_a_character() {
+    let result = evaluate_source(r"\alpha");
+
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {result:?}");
+    };
+    assert!(
+      matches!(inlines.as_slice(), [inline] if inline.kind == HirInlineKind::Symbol('\u{03B1}')),
+      "記号コマンドは本文でも字: {inlines:?}"
+    );
   }
 
   #[test]
