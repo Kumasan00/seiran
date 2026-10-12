@@ -351,11 +351,20 @@ LaTeX と同じ綴りの名前は、unicode-math がその LaTeX 名に対応づ
 直接書けない `\`（`\\` は改行）と、直接入力とクラスが違う `:`（直接は Rel）だけ `\backslash` `\colon` を置く。
 非 ASCII の字は直接書いても同じ字の記号コマンドと同じ記号になる（#959）。
 
+数式用英数字（mathalpha）は字体コマンドが出し、記号名を置かない。字体コマンドで出せない字だけを記号コマンドにする
+（`\Digamma` `\digamma` `\varTheta` `\turnediota` `\angstrom` `\hyphen` `\imath` `\jmath`。#948）。`\varTheta` は
+unicode-math と同じ ϴ U+03F4（amsmath の斜体 Θ ではない）。`\angstrom` は Unicode の推奨形 Å U+00C5 で、U+212B は
+NFC で U+00C5 になる正準等価な字なので、どちらを直接書いても `\angstrom` と同じ記号になる（#959）。`\imath` `\jmath`
+はドット無しの字そのもので、アクセントの基底を `dtls` でドット無しにする #942 とは別の経路。Letterlike Symbols に
+散在する黒板太字のギリシャ文字（ℼ ℽ ℾ ℿ）と太字の digamma（𝟊 𝟋）は、字体コマンドが英字の穴と同じく写す
+（`\mathdoublestruck{\pi}` → ℼ、`\mathbold{\digamma}` → 𝟋）ので記号名を置かず、`\doublestruckpi` は持たない。
+⅀ は字ではなく演算子なので `\doublestrucksum`（Op）を置く。字形ではなく意味を名指す記号（`\Re` 実部・`\Im` 虚部）は、
+字体コマンドと同じ字（`\mathfraktur{R}` `\mathfraktur{I}`）になっても残す — 字体コマンドは見た目の指定、`\Re` は内容で、
+別の書き方ではない（G3）。
+
 - **恒久不採用** LaTeX / unicode-math の別名（`\ne` `\varnothing` `\hslash` 等）— 同じ結果への第 2 の書き方（G1）。
   `\pagebreak` 事例の `\newpage` と同じ判定
 - **恒久不採用** ASCII の記号名（`\lparen` `\equal` 等）— 直接入力と同じ結果への第 2 の書き方
-- **見送り** unicode-math の mathalpha のうち字体コマンドで出せない字（ϝ Ϝ ϴ ℩ Å 𝚤 𝚥 ℽ ℾ ℿ）。再検討トリガーは
-  具体要求（𝚤 𝚥 は #942 のドット無し字形と合わせて判断する）
 
 #### 数式に直接書いた記号は、同じ字の記号コマンドと同じ記号として組む（2026-10、#959）— G1, P2, P6
 

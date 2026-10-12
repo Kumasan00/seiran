@@ -18,3 +18,9 @@ $\lBrack x \rBrack$ と $\lAngle y \rAngle$ と $\lbrackultick z \rbrackurtick$�
 \begin{equation}
 \iiiint f \bigslash g \doublestrucksum h
 \end{equation}
+
+\section{字体コマンドで出せない字}
+
+本文の \Digamma、\digamma、\varTheta、\turnediota、\angstrom、\hyphen。
+数式では $\Digamma \digamma \varTheta \turnediota \angstrom \hyphen \imath \jmath$、$\hat{\imath} + \vec{\jmath}$、
+黒板太字のギリシャ文字 $\mathdoublestruck{\gamma \Gamma \Pi \pi \alpha}$、太字の digamma $\mathbold{\Digamma \digamma \varTheta}$。

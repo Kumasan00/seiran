@@ -22,8 +22,8 @@ fn math_alphanumeric(base: u32, offset: u32) -> char {
 
 /// 1 文字を `variant` に応じた Mathematical Alphanumeric コードポイントへ変換する
 pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> char {
-  // `hole` は連続ブロックではなく Letterlike Symbols ブロックに散在する文字
-  // （例: 黒板太字の ℝ=U+211D、italic の h=U+210E）を上書きするためのルックアップ。
+  // `hole` は連続ブロックの外にある字（Letterlike Symbols に散在する黒板太字の ℝ=U+211D・italic の h=U+210E・
+  // 黒板太字のギリシャ 4 字、ブロック末尾の太字 digamma）を上書きするためのルックアップ。範囲より先に引く。
   let map_ascii = |ch: char, upper_base: u32, lower_base: u32, hole: fn(char) -> Option<char>| -> char {
     if let Some(mapped) = hole(ch) {
       return mapped;
@@ -63,7 +63,7 @@ pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> cha
       return map_greek(ch, 0x1d6e2);
     },
     Some(MathVariant::Bold) => {
-      let mapped = map_ascii(ch, 0x1d400, 0x1d41a, no_hole);
+      let mapped = map_ascii(ch, 0x1d400, 0x1d41a, bold_hole);
       if mapped != ch {
         return mapped;
       }
@@ -116,7 +116,7 @@ pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> cha
       return map_digit(ch, 0x1d7f6);
     },
     Some(MathVariant::DoubleStruck) => {
-      // 黒板太字: 大文字に 7 個の穴（ℂ ℍ ℕ ℙ ℚ ℝ ℤ）。小文字・数字は連続。Greek は Unicode 未定義
+      // 黒板太字: 大文字に 7 個の穴（ℂ ℍ ℕ ℙ ℚ ℝ ℤ）。小文字・数字は連続。Greek は連続ブロックが無く、穴の 4 字（ℼ ℽ ℾ ℿ）だけ
       let mapped = map_ascii(ch, 0x1d538, 0x1d552, double_struck_hole);
       if mapped != ch {
         return mapped;
@@ -163,16 +163,29 @@ fn italic_hole(ch: char) -> Option<char> {
   };
 }
 
+/// Mathematical Bold の穴: digamma は太字 Greek ブロックの外（U+1D7CA / U+1D7CB）
+fn bold_hole(ch: char) -> Option<char> {
+  return match ch {
+    '\u{03DC}' => Some('\u{1D7CA}'), // 𝟊
+    '\u{03DD}' => Some('\u{1D7CB}'), // 𝟋
+    _ => None,
+  };
+}
+
 /// Mathematical Double-Struck（黒板太字）の穴
 fn double_struck_hole(ch: char) -> Option<char> {
   return match ch {
-    'C' => Some('\u{2102}'), // ℂ
-    'H' => Some('\u{210D}'), // ℍ
-    'N' => Some('\u{2115}'), // ℕ
-    'P' => Some('\u{2119}'), // ℙ
-    'Q' => Some('\u{211A}'), // ℚ
-    'R' => Some('\u{211D}'), // ℝ
-    'Z' => Some('\u{2124}'), // ℤ
+    'C' => Some('\u{2102}'),        // ℂ
+    'H' => Some('\u{210D}'),        // ℍ
+    'N' => Some('\u{2115}'),        // ℕ
+    'P' => Some('\u{2119}'),        // ℙ
+    'Q' => Some('\u{211A}'),        // ℚ
+    'R' => Some('\u{211D}'),        // ℝ
+    'Z' => Some('\u{2124}'),        // ℤ
+    '\u{03C0}' => Some('\u{213C}'), // ℼ
+    '\u{03B3}' => Some('\u{213D}'), // ℽ
+    '\u{0393}' => Some('\u{213E}'), // ℾ
+    '\u{03A0}' => Some('\u{213F}'), // ℿ
     _ => None,
   };
 }
@@ -309,6 +322,37 @@ mod tests {
   }
 
   #[test]
+  fn translate_double_struck_maps_four_greek_letters_only() {
+    let variant = Some(MathVariant::DoubleStruck);
+    assert_eq!(translate_math_char('γ', variant), '\u{213D}'); // ℽ
+    assert_eq!(translate_math_char('Γ', variant), '\u{213E}'); // ℾ
+    assert_eq!(translate_math_char('Π', variant), '\u{213F}'); // ℿ
+    assert_eq!(translate_math_char('π', variant), '\u{213C}'); // ℼ
+    assert_eq!(translate_math_char('Σ', variant), 'Σ', "⅀ は演算子の記号で、Σ の黒板太字ではない");
+    assert_eq!(
+      translate_math_char('γ', Some(MathVariant::Bold)),
+      '\u{1D6C4}',
+      "ほかの字体のギリシャ写像は変わらない"
+    );
+  }
+
+  #[test]
+  fn translate_digamma_maps_only_under_bold() {
+    assert_eq!(translate_math_char('\u{03DC}', Some(MathVariant::Bold)), '\u{1D7CA}'); // 𝟊
+    assert_eq!(translate_math_char('\u{03DD}', Some(MathVariant::Bold)), '\u{1D7CB}'); // 𝟋
+    assert_eq!(translate_math_char('\u{03F4}', Some(MathVariant::Bold)), '\u{1D6B9}'); // 𝚹（ϴ は連続ブロック内）
+    for variant in [
+      None,
+      Some(MathVariant::Italic),
+      Some(MathVariant::BoldItalic),
+      Some(MathVariant::SansBold),
+      Some(MathVariant::DoubleStruck),
+    ] {
+      assert_eq!(translate_math_char('\u{03DD}', variant), '\u{03DD}', "{variant:?} の digamma は素通し");
+    }
+  }
+
+  #[test]
   fn translate_italic_h_uses_planck_constant_exception() {
     assert_eq!(translate_math_char('h', Some(MathVariant::Italic)), '\u{210E}');
     assert_eq!(
@@ -355,7 +399,7 @@ mod tests {
     assert_eq!(translate_math_char('z', variant), '\u{1D56B}');
     assert_eq!(translate_math_char('0', variant), '\u{1D7D8}'); // 数字
     assert_eq!(translate_math_char('9', variant), '\u{1D7E1}');
-    assert_eq!(translate_math_char('α', variant), 'α', "黒板太字 Greek は Unicode 未定義のため素通し");
+    assert_eq!(translate_math_char('α', variant), 'α', "ℼ ℽ ℾ ℿ 以外の黒板太字 Greek は Unicode 未定義のため素通し");
   }
 
   #[test]

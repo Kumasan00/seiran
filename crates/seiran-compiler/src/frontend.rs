@@ -1560,6 +1560,52 @@ mod tests {
   }
 
   #[test]
+  fn mathalpha_symbol_commands_output_their_character_in_text_and_math() {
+    for (name, ch) in [
+      ("Digamma", '\u{03DC}'),
+      ("digamma", '\u{03DD}'),
+      ("varTheta", '\u{03F4}'),
+      ("turnediota", '\u{2129}'),
+      ("angstrom", '\u{00C5}'),
+      ("hyphen", '\u{2010}'),
+      ("imath", '\u{1D6A4}'),
+      ("jmath", '\u{1D6A5}'),
+    ] {
+      let text = evaluate_source(&format!("\\{name}"));
+      let math = math_kinds(&format!("$\\{name}$\n"));
+
+      let HirNodeKind::Paragraph(inlines) = &text[0].kind else {
+        panic!("Paragraph が期待されます: \\{name}");
+      };
+      assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol(c) if *c == ch), "\\{name}: {inlines:?}");
+      assert_eq!(math, vec![math_symbol(&ch.to_string(), MathClass::Ord)], "\\{name}");
+    }
+  }
+
+  #[test]
+  fn direct_mathalpha_characters_take_the_class_of_their_command() {
+    assert_eq!(math_kinds("$ϝ$\n"), vec![math_symbol("ϝ", MathClass::Ord)]);
+    // Å の 3 つの綴りは正準等価で、どれも \angstrom と同じ Ord の記号。字は書いたまま
+    for angstrom in ["\u{00C5}", "\u{212B}", "A\u{030A}"] {
+      assert_eq!(math_kinds(&format!("${angstrom}$\n")), vec![math_symbol(angstrom, MathClass::Ord)], "{angstrom:?}");
+    }
+    // 黒板太字の π は記号表に無い字なので、直接書けばテキスト
+    assert_eq!(math_kinds("$ℼ$\n"), vec![math_text("ℼ")]);
+  }
+
+  #[test]
+  fn doublestruck_pi_symbol_is_unknown() {
+    for source in [r"\doublestruckpi", r"$\doublestruckpi$"] {
+      let error = evaluate_error(source);
+
+      assert!(
+        matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "doublestruckpi"),
+        "{source}: {error:?}"
+      );
+    }
+  }
+
+  #[test]
   fn direct_triangle_takes_the_unicode_math_class() {
     assert_eq!(
       math_kinds("$a△b$\n"),
