@@ -282,7 +282,7 @@ impl Measurer<'_> {
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target);
       let center = (top + bottom) / 2.0;
       let width = delim.width;
       children.push(PlacedHBox {
@@ -299,7 +299,7 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target);
       let center = (top + bottom) / 2.0;
       children.push(PlacedHBox {
         hbox: delim,

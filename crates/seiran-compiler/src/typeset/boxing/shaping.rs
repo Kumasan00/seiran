@@ -511,21 +511,38 @@ impl<'a> Shaper<'a> {
   /// 伸縮グリフ 1 字 `text`（区切り括弧・根号記号・display 段の大型演算子）を数式フォントで縦に `target` 以上へ伸ばした
   /// 箱と、そのインクの上端・下端（箱のベースライン基準・上が正・符号付き。インクを読めなければ 0, 0）を返す。
   ///
-  /// フォントサイズは `font_size` のまま、字形を MATH の size variant か glyph assembly に替えて縦にだけ伸ばす。箱の
-  /// 高さ・深さはインクの範囲（ベースラインの反対側へ出ない側は 0）で、フォント全体の ascender / descender ではない。
-  /// glyph assembly の全パーツは `text` 全体を範囲に持つ 1 つのクラスタで、PDF のテキストとしては `text` 1 字になる。
-  /// シェイプで 1 グリフにならない `text` は伸ばさずにそのまま置く。
+  /// スクリプト段 `script_level` が `Some` で、その段の `ssty` でシェイプした 1 グリフのインクの高さが `target` 以上なら、
+  /// その字形のまま置く（同じ段の裸の文字と同じ字形）。そうでなければ `ssty` なしの元の字形から、フォントサイズは
+  /// `font_size` のまま字形を MATH の size variant か glyph assembly に替えて縦にだけ伸ばす（MathVariants の Coverage は
+  /// 元の字形を起点にする）。どちらの経路も、覆える構成がある限り選んだ字形は `target` を覆う。箱の高さ・深さはインクの
+  /// 範囲（ベースラインの反対側へ出ない側は 0）で、フォント全体の ascender / descender ではない。glyph assembly の全パーツは
+  /// `text` 全体を範囲に持つ 1 つのクラスタで、PDF のテキストとしては `text` 1 字になる。シェイプで 1 グリフにならない
+  /// `text` は伸ばさずにそのまま置く。
   pub(super) fn shape_vertical_delimiter(
     &mut self,
     text: &str,
     font_size: Length,
+    script_level: Option<ScriptLevel>,
     target: Length,
   ) -> (HBox, (Length, Length)) {
     let upem = self.fonts.metrics(FontType::Math).upem;
-    let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
-    let glyphs = match shaped.glyphs() {
-      [glyph] => self.stretched_glyphs(glyph.gid, text.len(), length_to_units(target, font_size, upem)),
-      glyphs => glyphs.to_vec(),
+    let target_units = length_to_units(target, font_size, upem);
+    let staged = script_level
+      .map(|level| return self.shape_segment(text, FontType::Math, font_size, None, Some(level)))
+      .filter(|shaped| {
+        return matches!(
+          shaped.glyphs(),
+          [glyph] if self.fonts.math_glyph_ink_size(glyph.gid, StretchAxis::Vertical) >= target_units
+        );
+      });
+    let glyphs = if let Some(shaped) = staged {
+      shaped.glyphs().to_vec()
+    } else {
+      let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
+      match shaped.glyphs() {
+        [glyph] => self.stretched_glyphs(glyph.gid, text.len(), target_units),
+        glyphs => glyphs.to_vec(),
+      }
     };
     let advance: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     let run = GlyphRun {

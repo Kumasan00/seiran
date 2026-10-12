@@ -443,6 +443,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         radicand: lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.cramped())),
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
+        script_level: ctx.style.level.script_level(),
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
     },
@@ -468,6 +469,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         open: open.to_string(),
         close: close.to_string(),
         font_size: ctx.font_size(),
+        script_level: ctx.style.level.script_level(),
       };
       items.push(spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]));
     },
@@ -1030,6 +1032,7 @@ mod tests {
     assert_eq!((fenced.open.as_str(), fenced.close.as_str()), ("\u{2016}", "\u{2016}"));
     assert_eq!(concat_atom_texts(&fenced.body), "\u{1D465}", "中身は数式用イタリックへ写す");
     assert_eq!(fenced.font_size, ReadStyle::default().text.font_size, "インライン数式の本体は text 段");
+    assert_eq!(fenced.script_level, None, "インライン数式の本体は text 段");
   }
 
   #[test]
@@ -1041,6 +1044,7 @@ mod tests {
       panic!("上付きの中身は伸縮括弧 1 つのはず: {content:?}");
     };
     assert_eq!(fenced.font_size, ReadStyle::default().text.font_size.scale(0.7), "括弧も中身も上付きの段");
+    assert_eq!(fenced.script_level, Some(ScriptLevel::Script), "括弧の字形も上付きの段の ssty で選ぶ");
   }
 
   #[test]
@@ -1229,11 +1233,24 @@ mod tests {
     assert_eq!(concat_atom_texts(&radical.radicand), "\u{1D465}", "根号記号は lowering では出さない");
     assert_eq!(radical.font_size, ReadStyle::default().text.font_size);
     assert!(!radical.display);
+    assert_eq!(radical.script_level, None, "インライン数式の本体は text 段");
     let block = math_block_of("\\begin{equation}\n\\sqrt{x}\n\\end{equation}\n");
     let [AtomNode::Radical(display)] = block.rows[0].cells[0].content.as_slice() else {
       panic!("セルは根号 1 つのはず: {:?}", block.rows[0].cells[0].content);
     };
     assert!(display.display, "表示数式のトップレベルの根号は display 段");
+  }
+
+  #[test]
+  fn radical_in_a_script_takes_the_script_level() {
+    let nodes = lower_math_source("$y^{\\sqrt{x}}$\n");
+
+    let content = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
+    let [AtomNode::Radical(radical)] = content else {
+      panic!("上付きの中身は根号 1 つのはず: {content:?}");
+    };
+    assert_eq!(radical.font_size, ReadStyle::default().text.font_size.scale(0.7));
+    assert_eq!(radical.script_level, Some(ScriptLevel::Script), "根号記号は上付きの段の ssty で選ぶ");
   }
 
   #[test]

@@ -200,6 +200,19 @@ impl FontSystem {
     return self.shapers[font_type].font().glyph_metrics().extents(GlyphId::new(gid));
   }
 
+  /// 数式フォントのグリフ `gid` の、軸 `axis` の向きのインクの大きさ（フォント単位。縦は高さ、横は幅。インクを読めなければ 0）
+  ///
+  /// 伸縮グリフが目標を覆うかの判定（[`Self::stretch_math_glyph`] の元の字形と、スクリプト段の `ssty` の字形）はこの値で比べる。
+  #[must_use]
+  pub(crate) fn math_glyph_ink_size(&self, gid: u32, axis: StretchAxis) -> i64 {
+    return self.glyph_extents(FontType::Math, gid).map_or(0, |extents| {
+      return units(match axis {
+        StretchAxis::Vertical => extents.height,
+        StretchAxis::Horizontal => extents.width,
+      });
+    });
+  }
+
   /// 数式フォントのグリフ `gid` を軸 `axis` の向きに `target`（フォント単位）以上へ伸ばす字形を、MATH の size variant と
   /// glyph assembly から選ぶ（元の字形の大きさは、縦はインクの高さ、横はインクの幅）。
   #[must_use]
@@ -207,12 +220,7 @@ impl FontSystem {
     let variants = self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_variants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathVariants を読めることを確認済み",
     );
-    let base_size = self.glyph_extents(FontType::Math, gid).map_or(0, |extents| {
-      return units(match axis {
-        StretchAxis::Vertical => extents.height,
-        StretchAxis::Horizontal => extents.width,
-      });
-    });
+    let base_size = self.math_glyph_ink_size(gid, axis);
     let construction = variants.glyph_construction(GlyphId::new(gid), axis);
     let assembly = construction.as_ref().and_then(|construction| {
       return construction.glyph_assembly().map(|assembly| {
