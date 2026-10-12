@@ -25,7 +25,7 @@ impl Measurer<'_> {
     out: &mut Vec<PlacedHBox>,
   ) {
     let target = self.shaper.math_constant(MathConstant::DisplayOperatorMinHeight, font_size);
-    let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, target);
+    let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, None, target);
     let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
     let advance = glyph.width;
     out.push(PlacedHBox {

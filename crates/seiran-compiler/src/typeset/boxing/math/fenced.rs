@@ -35,12 +35,13 @@ impl Measurer<'_> {
       open,
       close,
       font_size,
+      script_level,
     } = fenced;
     let body = self.detach(body);
     let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
     let target = symmetric_target(body.ink_height, body.ink_depth, axis);
-    let (open, open_ink) = self.shaper.shape_vertical_delimiter(&open, font_size, target);
-    let (close, close_ink) = self.shaper.shape_vertical_delimiter(&close, font_size, target);
+    let (open, open_ink) = self.shaper.shape_vertical_delimiter(&open, font_size, script_level, target);
+    let (close, close_ink) = self.shaper.shape_vertical_delimiter(&close, font_size, script_level, target);
     let on_axis = |(top, bottom): (Length, Length)| return axis - (top + bottom) / 2.0;
     let open_width = open.width;
     let close_x = open_width + body.width;

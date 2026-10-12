@@ -106,11 +106,13 @@ impl Measurer<'_> {
       radicand,
       font_size,
       display,
+      script_level,
     } = radical;
     let constants = RadicalConstants::new(&self.shaper, font_size, display);
     let radicand = self.detach(radicand);
     let target = constants.surd_target(radicand.ink_height, radicand.ink_depth);
-    let (surd, (surd_top, surd_bottom)) = self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, target);
+    let (surd, (surd_top, surd_bottom)) =
+      self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target);
     let vinculum_bottom = constants.vinculum_bottom(radicand.ink_height, radicand.ink_depth, surd_top - surd_bottom);
     let vinculum_top = vinculum_bottom + constants.rule_thickness;
     let surd_dy = vinculum_top - surd_top;

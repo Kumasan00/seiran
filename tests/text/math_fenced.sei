@@ -8,3 +8,5 @@
 \begin{equation}
 f = \paren{\frac{a}{b}} + \abs{\frac{x}{y}} + \norm{\sum_{i}^{n} x_{i}}
 \end{equation}
+
+スクリプトの中の括弧は裸の括弧と同じ字形: $y^{\paren{x}}$ $y^{(x)}$ $y^{y^{\paren{x}}}$ $y^{y^{(x)}}$。

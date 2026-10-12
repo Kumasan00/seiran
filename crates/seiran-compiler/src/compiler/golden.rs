@@ -84,7 +84,8 @@
 //!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
-//!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
+//!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`] /
+//!   [`short_radical_in_a_script_takes_the_glyph_of_a_bare_surd`] / [`tall_radicand_in_a_script_still_stretches_the_surd`]
 //! - **アクセント**（取付点による横位置・`AccentBaseHeight` による高さ・`flac`・スクリプトとの併用）:
 //!   [`accent_aligns_its_attachment_with_the_attachment_of_a_single_glyph_base`] /
 //!   [`base_without_an_attachment_takes_half_of_its_advance`] / [`accent_on_a_compound_base_centers_on_its_advance`] /
@@ -116,11 +117,13 @@
 //!   [`bars_do_not_widen_their_base`] / [`superscript_clears_the_overline`] /
 //!   [`empty_bars_compile_with_zero_width_rules`]（共通ヘルパ [`first_line_parts`]・[`first_line_box_extent`] 経由）
 //! - **伸縮括弧**（`\paren` 等。中身のインクを数式軸を中心に覆う高さへ縦にだけ伸ばし、インクの縦中央を数式軸へ・
-//!   中身との間にアキなし・スクリプトの段の大きさ）:
+//!   中身との間にアキなし・スクリプトの段の大きさ・伸ばさないときは段の `ssty` の字形）:
 //!   [`fence_covers_a_fraction_and_centers_on_the_math_axis`] / [`display_fence_grows_past_the_natural_delimiter`] /
 //!   [`short_fence_body_keeps_the_natural_delimiter`] / [`fence_body_sits_between_the_delimiters_without_gaps`] /
 //!   [`fence_in_a_superscript_is_set_at_the_script_size`] / [`nested_fence_is_at_least_as_tall_as_the_inner_fence`] /
-//!   [`empty_fence_compiles_with_the_delimiters_side_by_side`]（共通ヘルパ [`fence_pair`] 経由）
+//!   [`empty_fence_compiles_with_the_delimiters_side_by_side`] /
+//!   [`short_fence_in_a_script_takes_the_glyphs_of_bare_delimiters`] /
+//!   [`tall_fence_in_a_script_still_stretches_to_cover_the_body`]（共通ヘルパ [`fence_pair`] 経由）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -2650,6 +2653,49 @@ fn empty_radical_compiles_with_a_zero_width_vinculum() {
     .unwrap_or_else(|failure| panic!("空の根号も描画矩形を作れて compile は成功するはず: {:?}", failure.into_report()));
 }
 
+/// 上付きを `depth` 段（1 = script 段・2 = scriptscript 段）入れ子にした一番内側へ `inner` を置いた数式のソース
+fn in_scripts(inner: &str, depth: usize) -> String {
+  return format!("${}{inner}{}$\n", "y^{".repeat(depth), "}".repeat(depth));
+}
+
+/// `runs` のうちテキストが `text` の最初のグリフ列の、唯一のグリフの gid
+fn sole_gid(runs: &[LineRun], text: &str) -> u32 { return sole_glyph(run_with_text(runs, text)).0; }
+
+#[test]
+fn short_radical_in_a_script_takes_the_glyph_of_a_bare_surd() {
+  let text_level_surd = sole_gid(&first_line_runs("$\\surd$\n"), RADICAL_SIGN);
+  for depth in [1, 2] {
+    let bare = sole_gid(&first_line_runs(&in_scripts("\\surd", depth)), RADICAL_SIGN);
+    let radical = first_line_runs(&in_scripts("\\sqrt{x}", depth));
+
+    assert_ne!(bare, text_level_surd, "STIX の √ は段ごとに ssty の字形を持つ（テストの前提）: 深さ {depth}");
+    assert_eq!(
+      sole_gid(&radical, RADICAL_SIGN),
+      bare,
+      "𝑥 は段の字形で覆えるので、根号記号は裸の √ と同じ字形: 深さ {depth}"
+    );
+  }
+}
+
+#[test]
+fn tall_radicand_in_a_script_still_stretches_the_surd() {
+  let runs = first_line_runs("$y^{\\sqrt{\\frac{a}{b}}}$\n");
+  let script_surd = sole_gid(&first_line_runs(&in_scripts("\\surd", 1)), RADICAL_SIGN);
+
+  let surd = run_with_text(&runs, RADICAL_SIGN);
+  let denominator = run_with_text(&runs, MATH_B);
+  assert_ne!(
+    surd.run.glyphs[0].gid, script_surd,
+    "上付きの分数を覆うには √ の ssty の字形では足りず、size variant か glyph assembly になるはず"
+  );
+  let (_, surd_bottom) = stix_run_ink(&surd.run);
+  let (_, denominator_bottom) = stix_run_ink(&denominator.run);
+  assert!(
+    surd.dy + surd_bottom <= denominator.dy + denominator_bottom,
+    "伸ばした記号は分母のインクの底まで届く"
+  );
+}
+
 #[test]
 fn subscript_cuts_in_under_a_base_with_a_bottom_right_kern() {
   let runs = first_line_runs("$f_{n}$\n");
@@ -3493,4 +3539,65 @@ fn empty_fence_compiles_with_the_delimiters_side_by_side() {
 
   let (left, right) = fence_pair(&runs, "(", ")");
   assert_eq!(right.dx, left.dx + left.width, "空の中身は幅 0");
+}
+
+/// [`FENCES`] と同じ順の、左右の括弧を数式に裸で書く形（`[ ] { }` は構造文字なのでエスケープ、`|` と `‖` は記号コマンド）
+const BARE_FENCES: [(&str, &str); 5] = [
+  ("(", ")"),
+  ("\\[", "\\]"),
+  ("\\{", "\\}"),
+  ("\\vert", "\\vert"),
+  ("\\Vert", "\\Vert"),
+];
+
+#[test]
+fn short_fence_in_a_script_takes_the_glyphs_of_bare_delimiters() {
+  let text_level_paren = sole_gid(&first_line_runs("$(x)$\n"), "(");
+  for depth in [1, 2] {
+    let script_paren = sole_gid(&first_line_runs(&in_scripts("(", depth)), "(");
+    assert_ne!(
+      script_paren, text_level_paren,
+      "STIX の ( は段ごとに ssty の字形を持つ（テストの前提）: 深さ {depth}"
+    );
+    for ((command, open, close), (bare_open, bare_close)) in FENCES.into_iter().zip(BARE_FENCES) {
+      let fenced = first_line_runs(&in_scripts(&format!("\\{command}{{x}}"), depth));
+      let bare_left = first_line_runs(&in_scripts(bare_open, depth));
+      let bare_right = first_line_runs(&in_scripts(bare_close, depth));
+
+      let (left, right) = fence_pair(&fenced, open, close);
+      assert_eq!(
+        sole_glyph(left).0,
+        sole_gid(&bare_left, open),
+        "𝑥 は段の字形で覆えるので、左の括弧は裸の括弧と同じ字形: \\{command} 深さ {depth}"
+      );
+      assert_eq!(
+        sole_glyph(right).0,
+        sole_gid(&bare_right, close),
+        "𝑥 は段の字形で覆えるので、右の括弧は裸の括弧と同じ字形: \\{command} 深さ {depth}"
+      );
+    }
+  }
+}
+
+#[test]
+fn tall_fence_in_a_script_still_stretches_to_cover_the_body() {
+  let runs = first_line_runs("$y^{\\paren{\\frac{a}{b}}}$\n");
+  let script_paren = sole_gid(&first_line_runs(&in_scripts("(", 1)), "(");
+
+  let numerator = run_with_text(&runs, MATH_A);
+  let denominator = run_with_text(&runs, MATH_B);
+  let body_top = numerator.dy + stix_ink_extent(numerator).0;
+  let body_bottom = denominator.dy - stix_ink_extent(denominator).1;
+  let (left, right) = fence_pair(&runs, "(", ")");
+  assert_ne!(
+    left.run.glyphs[0].gid, script_paren,
+    "上付きの分数は ( の ssty の字形より高く、size variant か glyph assembly で伸ばすはず"
+  );
+  for delimiter in [left, right] {
+    let (top, bottom) = stix_run_ink(&delimiter.run);
+    // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
+    let slack = delimiter.run.font_size.scale(0.01);
+    assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず");
+    assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず");
+  }
 }

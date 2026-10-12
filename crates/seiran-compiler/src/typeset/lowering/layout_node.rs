@@ -326,6 +326,8 @@ pub(in crate::typeset) struct MathRadical {
   pub font_size: Length,
   /// 根号の段が display か（`RadicalDisplayStyleVerticalGap` を使う）
   pub display: bool,
+  /// 根号の段のスクリプト段（根号記号を伸ばさないときの `ssty`。display / text 段は `None`）
+  pub script_level: Option<ScriptLevel>,
 }
 
 /// 基底の上にアクセント記号 1 字を重ねたアクセント
@@ -359,6 +361,8 @@ pub(in crate::typeset) struct MathFenced {
   pub close: String,
   /// 括弧の段のフォントサイズ（括弧の大きさと MATH 定数の換算に使う）
   pub font_size: Length,
+  /// 括弧の段のスクリプト段（括弧を伸ばさないときの `ssty`。display / text 段は `None`）
+  pub script_level: Option<ScriptLevel>,
 }
 
 /// 基底の上か下に罫線を引いた上線・下線
