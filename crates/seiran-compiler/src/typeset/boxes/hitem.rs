@@ -1,6 +1,6 @@
 //! 水平リストの最小単位 [`HItem`] と計測済みボックス [`HBox`]。
 
-use crate::{length::Length, publication::GlyphRun, typeset::boxes::link::LinkTarget};
+use crate::{color::Color, length::Length, publication::GlyphRun, typeset::boxes::link::LinkTarget};
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]
@@ -162,11 +162,12 @@ impl HBox {
     };
   }
 
-  /// 幅 `width`・太さ `thickness` の罫（ベースラインから上へ `thickness` の高さを持ち、深さは 0）
+  /// 幅 `width`・太さ `thickness`・塗り色 `color`（`None` は既定色）の罫（ベースラインから上へ `thickness` の高さを
+  /// 持ち、深さは 0）
   #[must_use]
-  pub(in crate::typeset) fn rule(width: Length, thickness: Length) -> Self {
+  pub(in crate::typeset) fn rule(width: Length, thickness: Length, color: Option<Color>) -> Self {
     return HBox {
-      content: HBoxContent::Rule,
+      content: HBoxContent::Rule { color },
       width,
       height: thickness,
       depth: Length::ZERO,
@@ -184,10 +185,13 @@ pub(crate) enum HBoxContent {
   /// インライン数式の上付き・下付き・分数・平方根など、行分割をまたがない
   /// 複合要素を絶対配置の子要素として保持する。
   Atom(Vec<PlacedHBox>),
-  /// 罫（既定色の塗りつぶし矩形。寸法は持ち主の [`HBox`] の幅・高さ・深さ）
+  /// 罫（塗りつぶし矩形。寸法は持ち主の [`HBox`] の幅・高さ・深さ）
   ///
-  /// 数式の分数の横罫と根号の横線に使う。
-  Rule,
+  /// 数式の分数の横罫・根号の横線・上下線に使う。
+  Rule {
+    /// 塗り色（`None` は既定色）
+    color: Option<Color>,
+  },
 }
 
 /// 親（行・表行・Atom）の中に置いた計測済みボックス

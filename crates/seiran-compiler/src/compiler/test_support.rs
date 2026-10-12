@@ -439,6 +439,8 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "page", "margin_left", "275mm");
       set(table, "page", "margin_right", "275mm");
     },
+    // 外部リンクの中の数式がリンク色を継ぐことを見るため、リンク色を指定した版面
+    "math_color" => set(table, "hyperref", "url_color", "#0000ff"),
     // 本文 2 段組みで左段・右段の両方に脚注が着地する版面
     "footnote_columns" => {
       set(table, "columns", "count", 2);

@@ -25,7 +25,8 @@ impl Measurer<'_> {
     out: &mut Vec<PlacedHBox>,
   ) {
     let target = self.shaper.math_constant(MathConstant::DisplayOperatorMinHeight, font_size);
-    let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, None, target);
+    // display 段の大型演算子は表示数式のセルにしか現れず、表示数式は既定色
+    let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, None, target, None);
     let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
     let advance = glyph.width;
     out.push(PlacedHBox {

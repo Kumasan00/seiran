@@ -273,7 +273,7 @@ impl Measurer<'_> {
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
   ///
   /// 本体は縦中央が数式軸 `axis` に載る位置にあるので、括弧は本体の高さ + 深さ以上へ縦に伸ばし、インクの縦中央を
-  /// `axis` に合わせる（MathML Core の対称な伸縮）。
+  /// `axis` に合わせる（MathML Core の対称な伸縮）。枠は既定色（表示数式に文字色は効かない）。
   fn wrap_with_delimiters(&mut self, body: HBox, grid_dy: Length, axis: Length, delimiters: DelimiterGlyphs) -> HBox {
     let target = body.height + body.depth;
     let body_width = body.width;
@@ -282,7 +282,7 @@ impl Measurer<'_> {
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target, None);
       let center = (top + bottom) / 2.0;
       let width = delim.width;
       children.push(PlacedHBox {
@@ -299,7 +299,7 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target, None);
       let center = (top + bottom) / 2.0;
       children.push(PlacedHBox {
         hbox: delim,
