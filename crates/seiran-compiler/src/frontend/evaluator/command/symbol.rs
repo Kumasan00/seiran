@@ -1,8 +1,8 @@
 //! 数式記号テーブル
 //!
 //! 単一の Unicode 文字と、アトム間のアキを決める数式クラスを保持する。unicode-math の atom 系記号を、ASCII・
-//! 数式用英数字（字体コマンドが出す）・結合文字・字形組立の部品を除いて網羅する。名前の規則は
-//! `docs/language-design.md` の判断事例（#87）。
+//! 数式用英数字（字体コマンドが出す）・結合文字・字形組立の部品を除いて網羅し、mathalpha のうち字体コマンドで出せない
+//! 字も持つ。名前の規則は `docs/language-design.md` の判断事例（#87）。
 
 use phf::phf_map;
 
@@ -82,6 +82,16 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "chi" => MathSymbol::new('\u{03C7}', MathClass::Ord),
   "psi" => MathSymbol::new('\u{03C8}', MathClass::Ord),
   "omega" => MathSymbol::new('\u{03C9}', MathClass::Ord),
+
+  // 字体コマンドで出せない mathalpha の字
+  "Digamma" => MathSymbol::new('\u{03DC}', MathClass::Ord),
+  "digamma" => MathSymbol::new('\u{03DD}', MathClass::Ord),
+  "varTheta" => MathSymbol::new('\u{03F4}', MathClass::Ord),
+  "turnediota" => MathSymbol::new('\u{2129}', MathClass::Ord),
+  "angstrom" => MathSymbol::new('\u{00C5}', MathClass::Ord),
+  "hyphen" => MathSymbol::new('\u{2010}', MathClass::Ord),
+  "imath" => MathSymbol::new('\u{1D6A4}', MathClass::Ord),
+  "jmath" => MathSymbol::new('\u{1D6A5}', MathClass::Ord),
 
   // 名前付き記号・定数
   "forall" => MathSymbol::new('\u{2200}', MathClass::Ord),
@@ -168,7 +178,6 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "quadrupleprime" => MathSymbol::new('\u{2057}', MathClass::Ord),
   "euro" => MathSymbol::new('\u{20AC}', MathClass::Ord),
   "eulerconstant" => MathSymbol::new('\u{2107}', MathClass::Ord),
-  "doublestruckpi" => MathSymbol::new('\u{213C}', MathClass::Ord),
   "turnedsansL" => MathSymbol::new('\u{2142}', MathClass::Ord),
   "reversedsansL" => MathSymbol::new('\u{2143}', MathClass::Ord),
   "turnedsansY" => MathSymbol::new('\u{2144}', MathClass::Ord),
@@ -1482,6 +1491,27 @@ mod tests {
     assert_eq!(op("bigslash"), Some(('\u{29F8}', MathClass::Op)));
     assert_eq!(op("doublestrucksum"), Some(('\u{2140}', MathClass::Op)));
     assert_eq!(op("Join"), Some(('\u{2A1D}', MathClass::Op)));
+  }
+
+  #[test]
+  fn mathalpha_characters_outside_font_commands_are_ord_symbols() {
+    // \varTheta は unicode-math と同じ ϴ（amsmath の斜体 Θ ではない）。\angstrom は Unicode の推奨形 U+00C5（U+212B は
+    // NFC で U+00C5 になる）
+    let ord = |name: &str| return lookup(name).map(|s| return (s.ch, s.class));
+    assert_eq!(ord("Digamma"), Some(('\u{03DC}', MathClass::Ord)));
+    assert_eq!(ord("digamma"), Some(('\u{03DD}', MathClass::Ord)));
+    assert_eq!(ord("varTheta"), Some(('\u{03F4}', MathClass::Ord)));
+    assert_eq!(ord("turnediota"), Some(('\u{2129}', MathClass::Ord)));
+    assert_eq!(ord("angstrom"), Some(('\u{00C5}', MathClass::Ord)));
+    assert_eq!(ord("hyphen"), Some(('\u{2010}', MathClass::Ord)));
+    assert_eq!(ord("imath"), Some(('\u{1D6A4}', MathClass::Ord)));
+    assert_eq!(ord("jmath"), Some(('\u{1D6A5}', MathClass::Ord)));
+  }
+
+  #[test]
+  fn characters_from_font_commands_have_no_symbol_name() {
+    assert!(lookup("doublestruckpi").is_none());
+    assert_eq!(lookup("doublestrucksum").map(|s| return s.class), Some(MathClass::Op));
   }
 
   #[test]
