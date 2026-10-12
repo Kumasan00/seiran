@@ -1515,6 +1515,13 @@ mod tests {
   }
 
   #[test]
+  fn names_for_meaning_stay_even_when_a_font_command_gives_the_same_character() {
+    // \Re（実部）・\Im（虚部）は \mathfraktur{R} / \mathfraktur{I} と同じ字だが、字形ではなく意味を名指す
+    assert_eq!(lookup("Re").map(|s| return (s.ch, s.class)), Some(('\u{211C}', MathClass::Ord)));
+    assert_eq!(lookup("Im").map(|s| return (s.ch, s.class)), Some(('\u{2111}', MathClass::Ord)));
+  }
+
+  #[test]
   fn every_open_symbol_has_its_closing_partner() {
     // typeset はクラスから開き・閉じ区切りを導いてインライン数式の分割点を決める。閉じの無い Open は以降の分割点を消す。
     // 対は Unicode の Bidi_Mirroring_Glyph（U+298D ⦍ ↔ U+2990 ⦐、U+298F ⦏ ↔ U+298E ⦎ 以外は次の符号位置）

@@ -358,7 +358,9 @@ NFC で U+00C5 になる正準等価な字なので、どちらを直接書い�
 はドット無しの字そのもので、アクセントの基底を `dtls` でドット無しにする #942 とは別の経路。Letterlike Symbols に
 散在する黒板太字のギリシャ文字（ℼ ℽ ℾ ℿ）と太字の digamma（𝟊 𝟋）は、字体コマンドが英字の穴と同じく写す
 （`\mathdoublestruck{\pi}` → ℼ、`\mathbold{\digamma}` → 𝟋）ので記号名を置かず、`\doublestruckpi` は持たない。
-⅀ は字ではなく演算子なので `\doublestrucksum`（Op）を置く。
+⅀ は字ではなく演算子なので `\doublestrucksum`（Op）を置く。字形ではなく意味を名指す記号（`\Re` 実部・`\Im` 虚部）は、
+字体コマンドと同じ字（`\mathfraktur{R}` `\mathfraktur{I}`）になっても残す — 字体コマンドは見た目の指定、`\Re` は内容で、
+別の書き方ではない（G3）。
 
 - **恒久不採用** LaTeX / unicode-math の別名（`\ne` `\varnothing` `\hslash` 等）— 同じ結果への第 2 の書き方（G1）。
   `\pagebreak` 事例の `\newpage` と同じ判定
