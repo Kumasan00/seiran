@@ -879,6 +879,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
   基底の幅へ伸ばすか・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）
   として boxing へ渡す。
+  インライン数式は外側の文字色（`\color`・リンク色）を `MathLoweringContext` に持って全段へ継承し、テキストの
+  `TextStyle` と上の複合ノードの `color`（分数線・根号記号と横線・アクセント記号・区切り括弧・上下線の塗り色）に載せる。
+  表示数式は段落の外のブロックで文字色が効かないので既定色（`None`）。
   大型演算子（数式クラス Op の記号のうち MathML Core の演算子辞書で largeop を持つもの）は display 段でだけ
   `AtomNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の
   ときだけ効く）。largeop を持たない Op（`\bigslash` 等）は display 段でも Op のアキを取る通常の字。積分記号以外（MathML Core の演算子辞書の

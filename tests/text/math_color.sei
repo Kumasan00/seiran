@@ -1,0 +1,5 @@
+\color[color=#cc0000]{赤い文章の中の数式 $x^{2}+\frac{a}{b}+\sqrt{c}+\paren{\frac{d}{e}}+y^{\paren{z}}+\hat{f}+\widehat{ghk}+\overline{i}+\sum_{k} j$ も赤い。}
+
+外部リンクの中の数式 \href{https://example.com}{$\frac{a}{b}+\sqrt{c}+\paren{x}$} はリンクの色で描く。
+
+色を指定しない数式 $\frac{a}{b}+\sqrt{c}$ は既定色のまま。
