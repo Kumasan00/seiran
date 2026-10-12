@@ -700,6 +700,10 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   `ssty`（1 / 2）を足したフィーチャーとプランを持つ（プランはその段を初めて組むときに作る）。harfrust の
   プランはユーザ指定フィーチャを構築時にコンパイルするので、キャッシュしたプランへ実行時にだけ `ssty` を
   渡しても効かない。段は `TextStyle::script_level` が運ぶ。`ssty` を持たないフォントは字形がそのまま。
+  伸縮括弧（`MathFenced`）と根号記号（`MathRadical`）も段を運び、その段の `ssty` でシェイプした 1 グリフのインクの
+  高さが目標以上なら、その字形を伸ばさずに使う（同じ段の裸の文字と同じ字形）。足りなければ `ssty` なしの元の字形から
+  size variant → glyph assembly で伸ばす — MathVariants の Coverage は元の字形を起点にし、`ssty` の字形が元の字形より
+  低いフォントもあるので、元の字形で判定してから `ssty` に差し替える順では目標を覆えないことがある
 
 #### `error`
 
@@ -872,8 +876,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
-  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズ・display か）・`MathAccent`（基底・アクセント記号・
-  基底の幅へ伸ばすか・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズ。中身は括弧と同じ段で、cramped も継承）
+  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
+  基底の幅へ伸ばすか・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）
   として boxing へ渡す。
   大型演算子（数式クラス Op の記号のうち MathML Core の演算子辞書で largeop を持つもの）は display 段でだけ
   `AtomNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の

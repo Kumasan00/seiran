@@ -84,7 +84,8 @@
 //!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
-//!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`]
+//!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`] /
+//!   [`short_radical_in_a_script_takes_the_glyph_of_a_bare_surd`] / [`tall_radicand_in_a_script_still_stretches_the_surd`]
 //! - **アクセント**（取付点による横位置・`AccentBaseHeight` による高さ・`flac`・スクリプトとの併用）:
 //!   [`accent_aligns_its_attachment_with_the_attachment_of_a_single_glyph_base`] /
 //!   [`base_without_an_attachment_takes_half_of_its_advance`] / [`accent_on_a_compound_base_centers_on_its_advance`] /
@@ -116,11 +117,13 @@
 //!   [`bars_do_not_widen_their_base`] / [`superscript_clears_the_overline`] /
 //!   [`empty_bars_compile_with_zero_width_rules`]（共通ヘルパ [`first_line_parts`]・[`first_line_box_extent`] 経由）
 //! - **伸縮括弧**（`\paren` 等。中身のインクを数式軸を中心に覆う高さへ縦にだけ伸ばし、インクの縦中央を数式軸へ・
-//!   中身との間にアキなし・スクリプトの段の大きさ）:
+//!   中身との間にアキなし・スクリプトの段の大きさ・伸ばさないときは段の `ssty` の字形）:
 //!   [`fence_covers_a_fraction_and_centers_on_the_math_axis`] / [`display_fence_grows_past_the_natural_delimiter`] /
 //!   [`short_fence_body_keeps_the_natural_delimiter`] / [`fence_body_sits_between_the_delimiters_without_gaps`] /
 //!   [`fence_in_a_superscript_is_set_at_the_script_size`] / [`nested_fence_is_at_least_as_tall_as_the_inner_fence`] /
-//!   [`empty_fence_compiles_with_the_delimiters_side_by_side`]（共通ヘルパ [`fence_pair`] 経由）
+//!   [`empty_fence_compiles_with_the_delimiters_side_by_side`] /
+//!   [`short_fence_in_a_script_takes_the_glyphs_of_bare_delimiters`] /
+//!   [`tall_fence_in_a_script_still_stretches_to_cover_the_body`]（共通ヘルパ [`fence_pair`] 経由）
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!

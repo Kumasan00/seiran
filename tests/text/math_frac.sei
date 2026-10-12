@@ -25,3 +25,5 @@ cases のセルは text 段で始まるので、分数は 1 段縮む:
 \begin{equation}
 \sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}} + \sqrt[n]{1+x}
 \end{equation}
+
+スクリプトの中の根号記号は裸の √ と同じ字形: $e^{\sqrt{x}}$ $e^{\surd}$ $e^{e^{\sqrt{x}}}$ $e^{\sqrt{\frac{a}{b}}}$。
