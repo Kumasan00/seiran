@@ -107,12 +107,13 @@ impl Measurer<'_> {
       font_size,
       display,
       script_level,
+      color,
     } = radical;
     let constants = RadicalConstants::new(&self.shaper, font_size, display);
     let radicand = self.detach(radicand);
     let target = constants.surd_target(radicand.ink_height, radicand.ink_depth);
     let (surd, (surd_top, surd_bottom)) =
-      self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target);
+      self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target, color);
     let vinculum_bottom = constants.vinculum_bottom(radicand.ink_height, radicand.ink_depth, surd_top - surd_bottom);
     let vinculum_top = vinculum_bottom + constants.rule_thickness;
     let surd_dy = vinculum_top - surd_top;
@@ -137,7 +138,7 @@ impl Measurer<'_> {
     // 送り幅の和は負の送りを持つ字形で負になり得るので、横線の幅は 0 で止める（描画矩形の幅は非負）
     let radicand_width = radicand.width.max(Length::ZERO);
     children.push(PlacedHBox {
-      hbox: HBox::rule(radicand_width, constants.rule_thickness),
+      hbox: HBox::rule(radicand_width, constants.rule_thickness, color),
       dx: body_x,
       dy: vinculum_bottom,
     });

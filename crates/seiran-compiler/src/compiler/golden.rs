@@ -124,6 +124,8 @@
 //!   [`empty_fence_compiles_with_the_delimiters_side_by_side`] /
 //!   [`short_fence_in_a_script_takes_the_glyphs_of_bare_delimiters`] /
 //!   [`tall_fence_in_a_script_still_stretches_to_cover_the_body`]（共通ヘルパ [`fence_pair`] 経由）
+//! - **数式の色**（外側の `\color` の色で字・罫・伸縮括弧・根号記号・アクセント記号を塗る）:
+//!   [`colored_inline_math_paints_glyphs_and_rules_in_the_color`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
 //!
@@ -157,6 +159,7 @@ use read_fonts::{
 };
 
 use crate::{
+  color::Color,
   compiler::{
     dump,
     test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
@@ -537,7 +540,7 @@ fn footnote_marker_number(blocks: &[PlacedBlock]) -> u32 {
     .iter()
     .filter_map(|child| match &child.hbox.content {
       HBoxContent::Glyphs(run) => return Some(run.text.as_str()),
-      HBoxContent::Atom(_) | HBoxContent::Rule => return None,
+      HBoxContent::Atom(_) | HBoxContent::Rule { .. } => return None,
     })
     .collect();
   return text.parse().unwrap_or_else(|_| panic!("マーカーは番号の数字だけのはず: {text:?}"));
@@ -1085,7 +1088,7 @@ fn first_glyph_run(content: &HBoxContent) -> Option<&GlyphRun> {
   return match content {
     HBoxContent::Glyphs(run) => Some(run),
     HBoxContent::Atom(children) => children.iter().find_map(|child| return first_glyph_run(&child.hbox.content)),
-    HBoxContent::Rule => None,
+    HBoxContent::Rule { .. } => None,
   };
 }
 
@@ -1538,7 +1541,7 @@ fn collect_line_runs(content: &HBoxContent, width: Length, dx: Length, dy: Lengt
         collect_line_runs(&child.hbox.content, child.hbox.width, dx + child.dx, dy + child.dy, out);
       }
     },
-    HBoxContent::Rule => {},
+    HBoxContent::Rule { .. } => {},
   }
 }
 
@@ -1561,7 +1564,7 @@ fn collect_rules(content: &HBoxContent, dx: Length, dy: Length, out: &mut Vec<Pl
   };
   for child in children {
     let (x, y) = (dx + child.dx, dy + child.dy);
-    if matches!(child.hbox.content, HBoxContent::Rule) {
+    if matches!(child.hbox.content, HBoxContent::Rule { .. }) {
       out.push(PlacedRule {
         dx: x,
         bottom: y - child.hbox.depth,
@@ -2499,6 +2502,40 @@ fn fraction_rule_is_painted_as_a_filled_rect() {
     heights.contains(&stix_math_length(MathConstant::FractionRuleThickness, size).to_pt()),
     "罫は太さ FractionRuleThickness の黒の塗りつぶし矩形になる: {heights:?}"
   );
+}
+
+#[test]
+fn colored_inline_math_paints_glyphs_and_rules_in_the_color() {
+  let red = Color::new(0xcc, 0x00, 0x00);
+  let source = "\\color[color=#cc0000]{$x^{2}+\\frac{a}{b}+\\sqrt{c}+\\paren{\\frac{d}{e}}+y^{\\paren{z}}+\\hat{f}+\
+                \\widehat{g}+\\widehat{ghk}+\\overline{i}+\\sum j$}\n";
+
+  let compilation = TestProject::builder()
+    .source_text(source)
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("色付き数式の compile は成功するはず: {:?}", failure.into_report()));
+
+  let ops: Vec<&PaintOp> = compilation.publication.pages().iter().flat_map(|page| return page.ops()).collect();
+  let glyph_colors: Vec<Option<Color>> = ops
+    .iter()
+    .filter_map(|op| match op {
+      PaintOp::DrawGlyphRun { run, .. } if run.font_type == FontType::Math => return Some(run.color),
+      _ => return None,
+    })
+    .collect();
+  let rule_colors: Vec<Option<[u8; 3]>> = ops
+    .iter()
+    .filter_map(|op| match op {
+      PaintOp::FillRect { color, .. } => return Some(*color),
+      _ => return None,
+    })
+    .collect();
+  assert!(
+    !glyph_colors.is_empty() && glyph_colors.iter().all(|color| return *color == Some(red)),
+    "数式の字・伸縮括弧（伸ばす / 伸ばさない）・根号記号・アクセント記号（固定 / 広幅）・演算子は指定色: {glyph_colors:?}"
+  );
+  assert_eq!(rule_colors, vec![Some(red.rgb()); 4], "分数線 2 本・根号の横線・上線は指定色の矩形");
 }
 
 #[test]

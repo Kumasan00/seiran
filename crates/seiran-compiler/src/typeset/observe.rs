@@ -40,7 +40,7 @@ fn push_content_text(out: &mut String, content: &HBoxContent) {
       }
     },
     // 罫はテキストを持たない
-    HBoxContent::Rule => {},
+    HBoxContent::Rule { .. } => {},
   }
 }
 

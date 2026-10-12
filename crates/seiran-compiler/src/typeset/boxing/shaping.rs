@@ -428,19 +428,20 @@ impl<'a> Shaper<'a> {
   }
 
   /// 数式のアクセント記号 `text` を数式フォントの段 `script_level` で組んだ箱。`flattened` なら OpenType `flac` で
-  /// 平たい字形（背の高い基底に載せる字形）を選ぶ
+  /// 平たい字形（背の高い基底に載せる字形）を選ぶ。`color` は字形の塗り色（`None` は既定色）
   pub(super) fn shape_accent(
     &mut self,
     text: &str,
     font_size: Length,
     script_level: Option<ScriptLevel>,
     flattened: bool,
+    color: Option<Color>,
   ) -> HBox {
     if !flattened {
-      return self.shape_segment(text, FontType::Math, font_size, None, script_level).into_hbox();
+      return self.shape_segment(text, FontType::Math, font_size, color, script_level).into_hbox();
     }
     self.fonts.shape_flattened_accent(&mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, FontType::Math, font_size, None).into_hbox();
+    return self.shaped_run(text, FontType::Math, font_size, color).into_hbox();
   }
 
   /// 数式の広幅アクセントの記号 `text` を、数式フォントで横に `target` 以上へ伸ばして組んだ箱
@@ -448,7 +449,7 @@ impl<'a> Shaper<'a> {
   /// 元の字形（`ssty` / `flac` なしでシェイプした 1 グリフ）を MATH の横方向の size variant → glyph assembly で伸ばす
   /// （元の字形の大きさはインクの幅）。元の字形のままで足りるときは [`Self::shape_accent`] と同じ字形（段の `ssty`、
   /// `flattened` なら `flac`）にし、伸ばした字形は GSUB を通さない。フォントサイズは変えない。シェイプで 1 グリフに
-  /// ならない `text` は伸ばさない。
+  /// ならない `text` は伸ばさない。`color` は字形の塗り色（`None` は既定色）
   pub(super) fn shape_wide_accent(
     &mut self,
     text: &str,
@@ -456,23 +457,24 @@ impl<'a> Shaper<'a> {
     script_level: Option<ScriptLevel>,
     flattened: bool,
     target: Length,
+    color: Option<Color>,
   ) -> HBox {
     let upem = self.fonts.metrics(FontType::Math).upem;
     let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
     let gid = match shaped.glyphs() {
       [glyph] => glyph.gid,
-      _ => return self.shape_accent(text, font_size, script_level, flattened),
+      _ => return self.shape_accent(text, font_size, script_level, flattened, color),
     };
     let Some(glyphs) = self.horizontally_stretched_glyphs(gid, text.len(), length_to_units(target, font_size, upem))
     else {
-      return self.shape_accent(text, font_size, script_level, flattened);
+      return self.shape_accent(text, font_size, script_level, flattened, color);
     };
     let run = GlyphRun {
       font_size,
       text: text.to_string(),
       glyphs,
       font_type: FontType::Math,
-      color: None,
+      color,
     };
     return ShapedRun::measure(run, self.fonts.metrics(FontType::Math)).into_hbox();
   }
@@ -517,13 +519,14 @@ impl<'a> Shaper<'a> {
   /// 元の字形を起点にする）。どちらの経路も、覆える構成がある限り選んだ字形は `target` を覆う。箱の高さ・深さはインクの
   /// 範囲（ベースラインの反対側へ出ない側は 0）で、フォント全体の ascender / descender ではない。glyph assembly の全パーツは
   /// `text` 全体を範囲に持つ 1 つのクラスタで、PDF のテキストとしては `text` 1 字になる。シェイプで 1 グリフにならない
-  /// `text` は伸ばさずにそのまま置く。
+  /// `text` は伸ばさずにそのまま置く。`color` は字形の塗り色（`None` は既定色）
   pub(super) fn shape_vertical_delimiter(
     &mut self,
     text: &str,
     font_size: Length,
     script_level: Option<ScriptLevel>,
     target: Length,
+    color: Option<Color>,
   ) -> (HBox, (Length, Length)) {
     let upem = self.fonts.metrics(FontType::Math).upem;
     let target_units = length_to_units(target, font_size, upem);
@@ -550,7 +553,7 @@ impl<'a> Shaper<'a> {
       text: text.to_string(),
       glyphs,
       font_type: FontType::Math,
-      color: None,
+      color,
     };
     // インクを読めないグリフは墨を持たない扱い（`glyph_run_signed_ink` と同じ）で、ベースライン上に置く
     let (top, bottom) = self.glyph_run_signed_ink(&run).unwrap_or((Length::ZERO, Length::ZERO));
@@ -648,7 +651,7 @@ impl<'a> Shaper<'a> {
         HBoxContent::Glyphs(run) => self.glyph_run_signed_ink(run),
         HBoxContent::Atom(children) => self.signed_ink(children),
         // 罫は箱全体が墨
-        HBoxContent::Rule => Some((placed.hbox.height, -placed.hbox.depth)),
+        HBoxContent::Rule { .. } => Some((placed.hbox.height, -placed.hbox.depth)),
       };
       let Some((top, bottom)) = inner else {
         continue;

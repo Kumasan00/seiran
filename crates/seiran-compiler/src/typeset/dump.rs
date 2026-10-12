@@ -221,7 +221,10 @@ fn content_summary(content: &HBoxContent) -> String {
       format!("glyphs font={:?} size={} text={:?}{color}", run.font_type, f2(run.font_size), run.text)
     },
     HBoxContent::Atom(children) => format!("atom children={}", children.len()),
-    HBoxContent::Rule => "rule".to_string(),
+    HBoxContent::Rule { color } => {
+      let color = color.map_or_else(String::new, |c| format!(" color={c:?}"));
+      format!("rule{color}")
+    },
   };
 }
 

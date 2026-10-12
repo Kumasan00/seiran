@@ -64,7 +64,7 @@ pub(super) fn lower_inline(
       return code::lower_inline_code(text, parent_style);
     },
     HirInlineKind::Math(math_nodes) => {
-      return lower_inline_math(math_nodes, parent_style.font_size, ctx.script_scale);
+      return lower_inline_math(math_nodes, parent_style.font_size, ctx.script_scale, parent_style.color);
     },
     HirInlineKind::Symbol(ch) => {
       return vec![InlineNode::Text(ch.to_string(), parent_style)];
@@ -353,6 +353,37 @@ mod tests {
       panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(text_style.color, Some(blue));
+  }
+
+  #[test]
+  fn lower_math_in_external_link_applies_url_color() {
+    let blue = Color::new(0x00, 0x00, 0xff);
+    let mut style = ReadStyle::default();
+    style.hyperref.url_color = Some(blue);
+
+    let nodes = lower_source(&style, "\\href{https://example.com}{$x$}\n");
+
+    let (_, children) = first_link(&nodes);
+    let InlineNode::Text(_, text_style) = &children[0] else {
+      panic!("数式の Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.typeface, Typeface::Math);
+    assert_eq!(text_style.color, Some(blue));
+  }
+
+  #[test]
+  fn lower_explicit_color_overrides_url_color_for_math() {
+    let red = Color::new(0xff, 0x00, 0x00);
+    let mut style = ReadStyle::default();
+    style.hyperref.url_color = Some(Color::new(0x00, 0x00, 0xff));
+
+    let nodes = lower_source(&style, "\\color[color=#ff0000]{\\href{https://example.com}{$x$}}\n");
+
+    let (_, children) = first_link(&nodes);
+    let InlineNode::Text(_, text_style) = &children[0] else {
+      panic!("数式の Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, Some(red));
   }
 
   #[test]

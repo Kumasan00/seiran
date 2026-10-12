@@ -6,6 +6,7 @@
 use std::{collections::HashMap, mem};
 
 use crate::{
+  color::Color,
   length::Length,
   project::{FontData, FontMap, ProjectPath, config::ProjectConfig},
   publication::{
@@ -296,10 +297,10 @@ fn push_box_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, hbox: HBox) {
         push_box_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), child.hbox);
       }
     },
-    HBoxContent::Rule => {
+    HBoxContent::Rule { color } => {
       ops.push(PaintOp::FillRect {
         rect: rect(x, baseline_y - hbox.height.to_pt(), hbox.width.to_pt(), (hbox.height + hbox.depth).to_pt()),
-        color: None,
+        color: color.map(Color::rgb),
       });
     },
   }

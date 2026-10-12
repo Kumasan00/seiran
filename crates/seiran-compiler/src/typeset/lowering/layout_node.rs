@@ -311,6 +311,8 @@ pub(in crate::typeset) struct MathFraction {
   pub font_size: Length,
   /// 分数の段が display か（MATH の `*DisplayStyle*` の定数を使う）
   pub display: bool,
+  /// 横罫の色（外側の `\color`・リンク色。`None` は既定色）
+  pub color: Option<Color>,
 }
 
 /// 被根号に根号記号と横線（vinculum）を付けた根号
@@ -328,6 +330,8 @@ pub(in crate::typeset) struct MathRadical {
   pub display: bool,
   /// 根号の段のスクリプト段（根号記号を伸ばさないときの `ssty`。display / text 段は `None`）
   pub script_level: Option<ScriptLevel>,
+  /// 根号記号と横線の色（外側の `\color`・リンク色。`None` は既定色）
+  pub color: Option<Color>,
 }
 
 /// 基底の上にアクセント記号 1 字を重ねたアクセント
@@ -346,6 +350,8 @@ pub(in crate::typeset) struct MathAccent {
   pub font_size: Length,
   /// アクセントの段のスクリプト段（アクセント記号の `ssty`。display / text 段は `None`）
   pub script_level: Option<ScriptLevel>,
+  /// アクセント記号の色（外側の `\color`・リンク色。`None` は既定色）
+  pub color: Option<Color>,
 }
 
 /// 中身を左右の区切り括弧で挟んだ伸縮括弧
@@ -363,6 +369,8 @@ pub(in crate::typeset) struct MathFenced {
   pub font_size: Length,
   /// 括弧の段のスクリプト段（括弧を伸ばさないときの `ssty`。display / text 段は `None`）
   pub script_level: Option<ScriptLevel>,
+  /// 左右の区切り括弧の色（外側の `\color`・リンク色。`None` は既定色）
+  pub color: Option<Color>,
 }
 
 /// 基底の上か下に罫線を引いた上線・下線
@@ -376,6 +384,8 @@ pub(in crate::typeset) struct MathBar {
   pub over: bool,
   /// 線の段のフォントサイズ（MATH 定数の換算に使う）
   pub font_size: Length,
+  /// 罫線の色（外側の `\color`・リンク色。`None` は既定色）
+  pub color: Option<Color>,
 }
 
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報

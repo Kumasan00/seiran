@@ -42,6 +42,7 @@ impl Measurer<'_> {
       body,
       over,
       font_size,
+      color,
     } = bar;
     let at = |constant: MathConstant| return self.shaper.math_constant(constant, font_size);
     // 太さはフォント検証が 0 以上を保証する
@@ -65,7 +66,7 @@ impl Measurer<'_> {
     math::translate_into(&mut children, body.boxes, Length::ZERO, Length::ZERO);
     // 送り幅の和は負の送りを持つ字形で負になり得るので、罫線の幅は 0 で止める（描画矩形の幅は非負）
     children.push(PlacedHBox {
-      hbox: HBox::rule(body.width.max(Length::ZERO), thickness),
+      hbox: HBox::rule(body.width.max(Length::ZERO), thickness, color),
       dx: Length::ZERO,
       dy: bottom,
     });

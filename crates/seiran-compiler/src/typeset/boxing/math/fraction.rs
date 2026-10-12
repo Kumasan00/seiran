@@ -94,6 +94,7 @@ impl Measurer<'_> {
       denominator,
       font_size,
       display,
+      color,
     } = fraction;
     let constants = FractionConstants::new(&self.shaper, font_size, display);
     let numerator = self.detach(numerator);
@@ -115,7 +116,7 @@ impl Measurer<'_> {
       -constants.denominator_shift(denominator.ink_height),
     );
     children.push(PlacedHBox {
-      hbox: HBox::rule(width, constants.rule_thickness),
+      hbox: HBox::rule(width, constants.rule_thickness, color),
       dx: FRACTION_PADDING,
       dy: constants.axis_height - constants.rule_thickness / 2.0,
     });

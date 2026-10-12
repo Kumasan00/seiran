@@ -14,6 +14,7 @@ use itertools::Itertools;
 use spacing::ScriptSide;
 
 use crate::{
+  color::Color,
   document::{
     GridLayout, HirMath, HirMathBlock, HirMathKind, MathBlockKind, MathClass, MathDelimiter, MathVariant, NodeId,
     Typeface,
@@ -182,13 +183,15 @@ fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
 
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
-/// 本体は text 段で組む。トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
+/// 本体は text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮グリフを塗る。
+/// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
+  color: Option<Color>,
 ) -> Vec<InlineNode> {
-  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text);
+  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
@@ -211,7 +214,8 @@ fn lower_math_cell(
   script_scale: ScriptScale,
   level: StyleLevel,
 ) -> Vec<AtomNode> {
-  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level));
+  // 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色
+  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level, None));
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
@@ -330,11 +334,13 @@ struct MathLoweringContext {
   style: FormulaStyle,
   /// 継承中の字形 variant（`\mathbold` 等）
   variant: Option<MathVariant>,
+  /// 数式全体の文字色（外側の `\color`・リンク色。`None` は既定色）
+  color: Option<Color>,
 }
 
 impl MathLoweringContext {
-  /// 数式本体（段 `level`・cramped でない・字形 variant なし）の文脈を作る
-  fn new(base_font_size: Length, script_scale: ScriptScale, level: StyleLevel) -> Self {
+  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`）の文脈を作る
+  fn new(base_font_size: Length, script_scale: ScriptScale, level: StyleLevel, color: Option<Color>) -> Self {
     return MathLoweringContext {
       base_font_size,
       script_scale,
@@ -343,6 +349,7 @@ impl MathLoweringContext {
         cramped: false,
       },
       variant: None,
+      color,
     };
   }
 
@@ -370,7 +377,7 @@ impl MathLoweringContext {
     return TextStyle {
       font_size: self.font_size(),
       typeface: Typeface::Math,
-      color: None,
+      color: self.color,
       script_level: self.style.level.script_level(),
       math_operator: class != MathClass::Ord,
     };
@@ -432,6 +439,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         denominator: lower_math_list(slice::from_ref(denom.as_ref()), &ctx.with_style(ctx.style.denominator())),
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
+        color: ctx.color,
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Fraction(fraction)]));
     },
@@ -444,6 +452,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         script_level: ctx.style.level.script_level(),
+        color: ctx.color,
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
     },
@@ -459,6 +468,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         wide: *wide,
         font_size: ctx.font_size(),
         script_level: ctx.style.level.script_level(),
+        color: ctx.color,
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Accent(accent)]));
     },
@@ -470,6 +480,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         close: close.to_string(),
         font_size: ctx.font_size(),
         script_level: ctx.style.level.script_level(),
+        color: ctx.color,
       };
       items.push(spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]));
     },
@@ -484,6 +495,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         },
         over: *over,
         font_size: ctx.font_size(),
+        color: ctx.color,
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Bar(bar)]));
     },
@@ -545,6 +557,7 @@ const fn has_movable_limits(ch: char) -> bool {
 mod tests {
   use super::*;
   use crate::{
+    color::Color,
     length::Length,
     style::{CounterTemplate, Style as ReadStyle},
     typeset::{
@@ -778,7 +791,7 @@ mod tests {
   #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
-    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale());
+    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None);
 
     assert!(nodes.is_empty(), "ノードが無ければ空のノード列を返すはず: {nodes:?}");
   }
@@ -1022,6 +1035,41 @@ mod tests {
     };
     assert!(over_inner.cramped, "上線の基底は cramped（TeX の Rule 9）");
     assert!(!under_inner.cramped, "下線の基底は外側のスタイルを継承する（TeX の Rule 10）");
+  }
+
+  #[test]
+  fn colored_inline_math_carries_the_color_to_every_part() {
+    let red = Color::new(0xcc, 0x00, 0x00);
+
+    let nodes = lower_math_source(
+      "\\color[color=#cc0000]{$x^{2}+\\frac{a}{b}+\\sqrt{c}+\\paren{d}+\\hat{e}+\\overline{f}+\\sum g$}\n",
+    );
+
+    let colors: Vec<Option<Color>> = math_texts(&nodes).into_iter().map(|(_, style)| return style.color).collect();
+    assert!(
+      !colors.is_empty() && colors.iter().all(|color| return *color == Some(red)),
+      "数式の字（スクリプト・分子分母・被根号・括弧の中身・演算子を含む）はすべて指定色: {colors:?}"
+    );
+    assert_eq!(first_fraction(&nodes).color, Some(red), "分数線は指定色");
+    assert_eq!(first_radical(&nodes).color, Some(red), "根号記号と横線は指定色");
+    assert_eq!(first_fenced(&nodes).color, Some(red), "区切り括弧は指定色");
+    assert_eq!(first_accent(&nodes).color, Some(red), "アクセント記号は指定色");
+    assert_eq!(first_bar(&nodes).color, Some(red), "上線は指定色");
+  }
+
+  #[test]
+  fn uncolored_inline_math_keeps_the_default_color() {
+    let nodes = lower_math_source("$x^{2}+\\frac{a}{b}+\\sqrt{c}+\\paren{d}+\\hat{e}+\\overline{f}$\n");
+
+    assert!(
+      math_texts(&nodes).iter().all(|(_, style)| return style.color.is_none()),
+      "色を指定しない数式の字は既定色: {nodes:?}"
+    );
+    assert_eq!(first_fraction(&nodes).color, None);
+    assert_eq!(first_radical(&nodes).color, None);
+    assert_eq!(first_fenced(&nodes).color, None);
+    assert_eq!(first_accent(&nodes).color, None);
+    assert_eq!(first_bar(&nodes).color, None);
   }
 
   #[test]

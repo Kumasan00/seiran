@@ -65,6 +65,7 @@ impl Measurer<'_> {
       wide,
       font_size,
       script_level,
+      color,
     } = accent;
     let base = self.detach(base);
     let base_attachment = match sole_math_glyph(&base.boxes) {
@@ -79,9 +80,9 @@ impl Measurer<'_> {
     let mark = if wide {
       self
         .shaper
-        .shape_wide_accent(&accent, font_size, script_level, flattened, base.width.max(Length::ZERO))
+        .shape_wide_accent(&accent, font_size, script_level, flattened, base.width.max(Length::ZERO), color)
     } else {
-      self.shaper.shape_accent(&accent, font_size, script_level, flattened)
+      self.shaper.shape_accent(&accent, font_size, script_level, flattened, color)
     };
     let mark_width = mark.width;
     let mark = vec![PlacedHBox {
