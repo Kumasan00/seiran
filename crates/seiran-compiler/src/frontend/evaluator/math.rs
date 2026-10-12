@@ -396,7 +396,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       return Ok(ctx.leaf_math(
         view.span(),
         HirMathKind::Symbol {
-          ch: symbol.ch,
+          text: symbol.ch.to_string(),
           class: symbol.class,
         },
       ));

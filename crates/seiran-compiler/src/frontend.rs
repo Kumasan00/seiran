@@ -463,7 +463,7 @@ mod tests {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
     assert_eq!(*variant, MathVariant::SansBoldItalic);
-    assert!(matches!(&children[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
+    assert!(matches!(&children[0].kind, HirMathKind::Symbol { text, .. } if text == "α"));
   }
 
   #[test]
@@ -705,7 +705,7 @@ mod tests {
     if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       if let HirInlineKind::Math(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
-        assert!(matches!(&math[0].kind, HirMathKind::Symbol { ch: 'α', .. }));
+        assert!(matches!(&math[0].kind, HirMathKind::Symbol { text, .. } if text == "α"));
       } else {
         panic!("Math が期待されます");
       }
@@ -1107,7 +1107,7 @@ mod tests {
       let math = inline_math_nodes(source);
 
       assert_eq!(math.len(), 2, "{source}: {math:?}");
-      assert!(matches!(&math[0].kind, HirMathKind::Symbol { ch: 'α', .. }), "{source}: {math:?}");
+      assert!(matches!(&math[0].kind, HirMathKind::Symbol { text, .. } if text == "α"), "{source}: {math:?}");
       assert!(is_group_of_text(&math[1], "b"), "{source}: {math:?}");
     }
   }
@@ -1120,7 +1120,7 @@ mod tests {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     let cell = &math.rows[0].cells[0];
-    assert!(matches!(&cell[0].kind, HirMathKind::Symbol { ch: 'α', .. }), "{cell:?}");
+    assert!(matches!(&cell[0].kind, HirMathKind::Symbol { text, .. } if text == "α"), "{cell:?}");
     assert!(is_group_of_text(&cell[1], "b"), "{cell:?}");
 
     let result = evaluate_source(r"\begin{align}\frac{a}{b}{c}&=d\end{align}");

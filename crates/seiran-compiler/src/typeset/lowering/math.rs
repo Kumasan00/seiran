@@ -407,13 +407,19 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Text(text) => {
       push_text_items(text, ctx, items);
     },
-    HirMathKind::Symbol { ch, class } => {
+    HirMathKind::Symbol { text, class } => {
       let mut translated = String::new();
-      push_math_char(&mut translated, *ch, ctx.variant);
+      for ch in text.chars() {
+        push_math_char(&mut translated, ch, ctx.variant);
+      }
       // display の大きさの字形にするのは、MathML Core の largeop を持つ演算子が display 段にあるときだけ（largeop は
-      // math-style が normal のときだけ効く）。largeop を持たない Op は Op のアキを取る通常の字
-      if *class == MathClass::Op && ctx.style.level == StyleLevel::Display && is_large_operator(*ch) {
-        items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(*ch)));
+      // math-style が normal のときだけ効く）。largeop を持たない Op は Op のアキを取る通常の字。伸縮は 1 字の字形に
+      // 対して行うので、結合文字の付いた演算子も通常の字
+      let large_operator = sole_char(text).filter(|&ch| {
+        return *class == MathClass::Op && ctx.style.level == StyleLevel::Display && is_large_operator(ch);
+      });
+      if let Some(ch) = large_operator {
+        items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(ch)));
       } else {
         items.push(spacing::MathItem::new(
           *class,
@@ -551,6 +557,15 @@ const fn is_large_operator(ch: char) -> bool {
 /// 置く（TeX の `\int` の `\nolimits` と同じ）。
 const fn has_movable_limits(ch: char) -> bool {
   return !matches!(ch, '\u{222B}'..='\u{2233}' | '\u{2A0B}'..='\u{2A1C}');
+}
+
+/// `text` がちょうど 1 字ならその字
+fn sole_char(text: &str) -> Option<char> {
+  let mut chars = text.chars();
+  return match (chars.next(), chars.next()) {
+    (Some(ch), None) => Some(ch),
+    _ => None,
+  };
 }
 
 #[cfg(test)]
