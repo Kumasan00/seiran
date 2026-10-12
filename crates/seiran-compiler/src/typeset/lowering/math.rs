@@ -1460,6 +1460,52 @@ mod tests {
     return first_math_block(lower(&ReadStyle::default(), &analyzed(source)));
   }
 
+  /// 数式ソースを lower した結果の比較用の表現（`LayoutNode` は `PartialEq` を持たないので Debug 表現）
+  fn lowered(source: &str) -> String { return format!("{:?}", lower_math_source(source)); }
+
+  #[test]
+  fn direct_symbols_lower_as_their_symbol_commands() {
+    for (direct, command) in [
+      ("$a≠b$\n", "$a\\neq b$\n"),
+      ("$a≤b$\n", "$a\\leq b$\n"),
+      ("$a×b$\n", "$a\\times b$\n"),
+      ("$a△b$\n", "$a\\bigtriangleup b$\n"),
+      ("$∑x$\n", "$\\sum x$\n"),
+      ("$⟨a+b⟩+c$\n", "$\\langle a+b\\rangle+c$\n"),
+      ("$x^{≤}_{×}$\n", "$x^{\\leq}_{\\times}$\n"),
+      ("$\\mathbold{α≠β}$\n", "$\\mathbold{\\alpha\\neq\\beta}$\n"),
+    ] {
+      assert_eq!(lowered(direct), lowered(command), "{direct:?}");
+    }
+  }
+
+  #[test]
+  fn direct_symbols_in_display_cells_lower_as_their_symbol_commands() {
+    let cell = |source: &str| return format!("{:?}", math_block_of(source).rows[0].cells[0].content);
+
+    assert_eq!(
+      cell("\\begin{equation}\n∑_{i} x\n\\end{equation}\n"),
+      cell("\\begin{equation}\n\\sum_{i} x\n\\end{equation}\n"),
+      "display 段の直接入力の ∑ は \\sum と同じ大型演算子"
+    );
+    assert_eq!(
+      cell("\\begin{cases}\na≤b & c\n\\end{cases}\n"),
+      cell("\\begin{cases}\na\\leq b & c\n\\end{cases}\n"),
+      "cases のセルでも同じ"
+    );
+  }
+
+  #[test]
+  fn large_operator_with_a_combining_mark_stays_text_in_display() {
+    let block = math_block_of("\\begin{equation}\n\u{2211}\u{0302} x\n\\end{equation}\n");
+
+    let cell = &block.rows[0].cells[0].content;
+    assert!(
+      matches!(cell.first(), Some(AtomNode::Text(text, style)) if text == "\u{2211}\u{0302}" && style.math_operator),
+      "結合文字の付いた大型演算子は display 段でも本文の大きさの演算子: {cell:?}"
+    );
+  }
+
   #[test]
   fn lower_math_block_formats_number_with_template_and_serif_font() {
     let style = style_with_plain_equation_format();

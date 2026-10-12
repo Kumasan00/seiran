@@ -5,8 +5,13 @@
 //! コマンドの数式引数（[`math_arg_to_node`]）のように単一ノードへ畳まれて、先に確保したグループ用の ID が使われない場合は
 //! `NodeId` に穴が空くが、同じ入力なら常に同じ穴になるので決定性は保たれる。
 
+use std::iter;
+
+use icu::normalizer::ComposingNormalizerBorrowed;
+use itertools::Itertools;
+
 use crate::{
-  document::{HirMath, HirMathKind, MathVariant, NodeId},
+  document::{HirMath, HirMathKind, MathClass, MathVariant, NodeId},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -49,7 +54,7 @@ pub(crate) fn evaluate_math_elements(
           if let Some(span) = leading_combining_span(source, token) {
             return Err(EvalError::CombiningMarkWithoutBase { span: span.into() });
           }
-          nodes.push(ctx.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
+          push_math_text(ctx, token.text(source), token.span.start, &mut nodes);
         },
         // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする。
         TokenKind::VerbatimText | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
@@ -144,6 +149,65 @@ fn leading_combining_span(source: &str, token: &Token) -> Option<Span> {
   }
   let len = u32::try_from(len).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
   return Some(Span::new(token.span.start, token.span.start + len));
+}
+
+/// 数式のテキストトークンの中身 `text`（ソース上の開始位置 `start`）を HIR へ積む
+///
+/// 記号表の字の結合文字列は記号コマンドと同じ [`HirMathKind::Symbol`] にし（字は書いたまま、クラスは記号表から取る）、
+/// そのほかの字の並びは 1 個の [`HirMathKind::Text`] にまとめる。
+fn push_math_text(ctx: &EvalContext<'_>, text: &str, start: u32, nodes: &mut Vec<HirMath>) {
+  let span = |from: usize, to: usize| {
+    let at = |offset: usize| {
+      return start
+        + u32::try_from(offset).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
+    };
+    return Span::new(at(from), at(to));
+  };
+  let mut plain = 0;
+  for (from, to) in combining_sequences(text) {
+    let Some(class) = direct_symbol_class(&text[from..to]) else {
+      continue;
+    };
+    if plain < from {
+      nodes.push(ctx.leaf_math(span(plain, from), HirMathKind::Text(text[plain..from].to_string())));
+    }
+    nodes.push(ctx.leaf_math(
+      span(from, to),
+      HirMathKind::Symbol {
+        text: text[from..to].to_string(),
+        class,
+      },
+    ));
+    plain = to;
+  }
+  if plain < text.len() {
+    nodes.push(ctx.leaf_math(span(plain, text.len()), HirMathKind::Text(text[plain..].to_string())));
+  }
+  return;
+}
+
+/// テキストを結合文字列（基底の字と、後ろに続く結合文字）ごとの（開始, 終了）バイト位置に分ける
+///
+/// 結合文字の判定は lexer と同じ（[`syntax::is_combining`]）。先頭の結合文字は呼び元が拒否済みなので、最初の区間は 0 から始まる。
+fn combining_sequences(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+  return text
+    .char_indices()
+    .filter(|&(_, ch)| return !syntax::is_combining(ch))
+    .map(|(at, _)| return at)
+    .chain(iter::once(text.len()))
+    .tuple_windows();
+}
+
+/// 数式に直接書いた結合文字列 `sequence` が記号表の字ならそのクラス
+///
+/// NFC にした最初の字で引くので、正準等価な綴りは同じクラスになる（`=` + U+0338 は ≠ の Rel）。NFC で合成されない字
+/// （U+2ADC）は分解の基底で引くことになるが、記号表の否定形は基底と同じクラスを持つ（テストが記号表の全字で保つ）。
+fn direct_symbol_class(sequence: &str) -> Option<MathClass> {
+  return ComposingNormalizerBorrowed::new_nfc()
+    .normalize(sequence)
+    .chars()
+    .next()
+    .and_then(symbol::direct_input_class);
 }
 
 /// 上付き・下付きスクリプトノードの中身を単一の [`HirMath`] に変換する
@@ -413,7 +477,7 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
 
 #[cfg(test)]
 mod tests {
-  use super::{MathCommandKind, symbol};
+  use super::{MathCommandKind, direct_symbol_class, symbol};
 
   #[test]
   fn every_symbol_name_resolves_to_the_symbol_in_math() {
@@ -423,6 +487,16 @@ mod tests {
         matches!(MathCommandKind::from_name(name), Some(MathCommandKind::Symbol(_))),
         "数式の語彙が記号名を隠しています: {name}"
       );
+    }
+  }
+
+  #[test]
+  fn direct_input_of_each_table_character_takes_its_own_class() {
+    // クラスは NFC にした最初の字で引くが、記号表の字そのものを書けば（NFC で合成されない U+2ADC も）その字のクラス
+    for name in symbol::names() {
+      let ch = symbol::lookup(name).expect("記号表の名前は引ける").ch;
+
+      assert_eq!(direct_symbol_class(&ch.to_string()), symbol::direct_input_class(ch), "U+{:04X}", u32::from(ch));
     }
   }
 }

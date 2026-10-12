@@ -66,11 +66,12 @@ mod tests {
   use super::{EvalError, ParseError, parse};
   use crate::{
     document::{
-      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, Typeface,
+      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathVariant,
+      Typeface,
     },
     frontend::{evaluator, test_support},
     project::{PathResolver, ProjectPath},
-    source::SourceId,
+    source::{SourceId, Span},
   };
 
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
@@ -98,6 +99,22 @@ mod tests {
     };
     return math;
   }
+
+  /// 段落 1 個・インライン数式 1 個だけのソースを評価し、数式の要素の種別を返すテストヘルパ
+  fn math_kinds(source: &str) -> Vec<HirMathKind> {
+    return inline_math_nodes(source).into_iter().map(|node| return node.kind).collect();
+  }
+
+  /// 数式記号の種別（字とクラス）
+  fn math_symbol(text: &str, class: MathClass) -> HirMathKind {
+    return HirMathKind::Symbol {
+      text: text.to_string(),
+      class,
+    };
+  }
+
+  /// 数式テキストの種別
+  fn math_text(text: &str) -> HirMathKind { return HirMathKind::Text(text.to_string()); }
 
   /// 数式要素が `Text(text)` 1 個だけを持つグループか
   fn is_group_of_text(node: &HirMath, text: &str) -> bool {
@@ -1513,13 +1530,106 @@ mod tests {
   }
 
   #[test]
-  fn decomposed_not_equal_is_one_text_in_math() {
-    let nodes = inline_math_nodes("$a=\u{0338}b$\n");
-
-    assert!(
-      matches!(nodes.as_slice(), [node] if matches!(&node.kind, HirMathKind::Text(t) if t == "a=\u{0338}b")),
-      "= と U+0338 は 1 字で、前後の字と同じテキスト: {nodes:?}"
+  fn direct_symbols_take_the_class_of_their_command() {
+    assert_eq!(
+      math_kinds("$a≠b$\n"),
+      vec![
+        math_text("a"),
+        math_symbol("≠", MathClass::Rel),
+        math_text("b")
+      ]
     );
+    assert_eq!(
+      math_kinds("$a×b$\n"),
+      vec![
+        math_text("a"),
+        math_symbol("×", MathClass::Bin),
+        math_text("b")
+      ]
+    );
+    assert_eq!(math_kinds("$∑x$\n"), vec![math_symbol("∑", MathClass::Op), math_text("x")]);
+    assert_eq!(
+      math_kinds("$⟨x⟩$\n"),
+      vec![
+        math_symbol("⟨", MathClass::Open),
+        math_text("x"),
+        math_symbol("⟩", MathClass::Close)
+      ]
+    );
+    assert_eq!(math_kinds("$α$\n"), vec![math_symbol("α", MathClass::Ord)]);
+  }
+
+  #[test]
+  fn direct_triangle_takes_the_unicode_math_class() {
+    assert_eq!(
+      math_kinds("$a△b$\n"),
+      vec![
+        math_text("a"),
+        math_symbol("△", MathClass::Bin),
+        math_text("b")
+      ],
+      "△ は \\bigtriangleup と同じ Bin（\\triangle の Ord ではない）"
+    );
+  }
+
+  #[test]
+  fn canonically_equivalent_spellings_take_the_same_class() {
+    // 分解形の ≠ は ≠ と正準等価なので同じ Rel の記号で、字は書いたまま
+    assert_eq!(
+      math_kinds("$a=\u{0338}b$\n"),
+      vec![
+        math_text("a"),
+        math_symbol("=\u{0338}", MathClass::Rel),
+        math_text("b")
+      ]
+    );
+    // U+2ADC ⫝̸ は NFC で合成されない字だが、記号表どおりの Rel
+    assert_eq!(math_kinds("$\u{2ADC}$\n"), vec![math_symbol("\u{2ADC}", MathClass::Rel)]);
+    // U+0387 は U+00B7 と正準等価なので \middledot と同じ Bin
+    assert_eq!(
+      math_kinds("$a\u{0387}b$\n"),
+      vec![
+        math_text("a"),
+        math_symbol("\u{0387}", MathClass::Bin),
+        math_text("b")
+      ]
+    );
+  }
+
+  #[test]
+  fn symbol_with_a_remaining_mark_takes_the_class_of_its_base() {
+    // 異体字セレクタは結合文字で、NFC でも残る
+    assert_eq!(
+      math_kinds("$a⊊\u{FE00}b$\n"),
+      vec![
+        math_text("a"),
+        math_symbol("⊊\u{FE00}", MathClass::Rel),
+        math_text("b")
+      ]
+    );
+  }
+
+  #[test]
+  fn ascii_and_characters_outside_the_symbol_table_stay_text() {
+    let kinds = math_kinds("$a=b:c|d+速度＋e$\n");
+
+    assert!(kinds.iter().all(|kind| return matches!(kind, HirMathKind::Text(_))), "{kinds:?}");
+  }
+
+  #[test]
+  fn direct_symbol_and_the_text_around_it_keep_their_source_spans() {
+    let hir = test_support::parse_for_test("$a≠b$\n", SourceId::new(0)).unwrap();
+    let HirNodeKind::Paragraph(inlines) = &hir.nodes[0].kind else {
+      panic!("Paragraph が期待されます");
+    };
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("Math が期待されます");
+    };
+
+    let spans: Vec<Span> = math.iter().map(|node| return hir.spans.span_of(node.id)).collect();
+
+    // `$` が 0、a が 1、≠（UTF-8 で 3 バイト）が 2..5、b が 5
+    assert_eq!(spans, vec![Span::new(1, 2), Span::new(2, 5), Span::new(5, 6)]);
   }
 
   #[test]

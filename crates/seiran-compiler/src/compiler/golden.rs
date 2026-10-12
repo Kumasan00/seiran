@@ -1930,6 +1930,25 @@ fn decomposed_not_equal_sits_as_the_neq_symbol() {
 }
 
 #[test]
+fn direct_symbols_sit_as_their_symbol_commands() {
+  // 直接入力した記号は記号コマンドと同じクラスで組むので、記号と前後の字の位置がコマンドと同じ
+  let placements = |source: &str| {
+    return first_line_runs(source)
+      .iter()
+      .map(|line_run| return (line_run.run.text.clone(), line_run.dx, line_run.dy))
+      .collect::<Vec<_>>();
+  };
+
+  for (direct, command) in [
+    ("$a≠b$\n", "$a\\neq b$\n"),
+    ("$a≤b$\n", "$a\\leq b$\n"),
+    ("$a×b$\n", "$a\\times b$\n"),
+  ] {
+    assert_eq!(placements(direct), placements(command), "{direct:?}");
+  }
+}
+
+#[test]
 fn subscript_on_a_base_with_a_combining_mark_sits_as_on_the_bare_char() {
   let bare = script_offset("$x_{2}$\n", MATH_X, "2");
 
