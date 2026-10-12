@@ -11,7 +11,7 @@ use icu::normalizer::ComposingNormalizerBorrowed;
 use itertools::Itertools;
 
 use crate::{
-  document::{HirMath, HirMathKind, MathClass, MathVariant, NodeId},
+  document::{HirMath, HirMathKind, MathClass, MathSpace, MathVariant, NodeId},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -249,7 +249,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -280,6 +280,8 @@ enum MathCommandKind {
     /// 線を基底の上に引くか（上線は `true`、下線は `false`）
     over: bool,
   },
+  /// 明示アキ（`\thinspace` 等）— 必須引数なし
+  Space(MathSpace),
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -298,6 +300,7 @@ impl MathCommandKind {
         .or_else(|| return accent_mark(name).map(|mark| return Self::Accent { mark, wide: false }))
         .or_else(|| return wide_accent_mark(name).map(|mark| return Self::Accent { mark, wide: true }))
         .or_else(|| return bar_side(name).map(|over| return Self::Bar { over }))
+        .or_else(|| return math_space(name).map(Self::Space))
         .or_else(|| return symbol::lookup(name).map(Self::Symbol)),
     };
   }
@@ -307,7 +310,7 @@ impl MathCommandKind {
     return match self {
       Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } => 1,
       Self::Frac => 2,
-      Self::Symbol(_) => 0,
+      Self::Space(_) | Self::Symbol(_) => 0,
     };
   }
 }
@@ -370,6 +373,18 @@ fn bar_side(name: &str) -> Option<bool> {
   return match name {
     "overline" => Some(true),
     "underline" => Some(false),
+    _ => None,
+  };
+}
+
+/// 明示アキのコマンド名から、アキの種類を引く（明示アキでなければ `None`）
+fn math_space(name: &str) -> Option<MathSpace> {
+  return match name {
+    "thinspace" => Some(MathSpace::Thin),
+    "medspace" => Some(MathSpace::Medium),
+    "thickspace" => Some(MathSpace::Thick),
+    "quad" => Some(MathSpace::Quad),
+    "negthinspace" => Some(MathSpace::NegativeThin),
     _ => None,
   };
 }
@@ -453,6 +468,11 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       let id = ctx.alloc(view.span());
       let body = Box::new(math_arg_to_node(source, ctx, body_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Bar { over, body }));
+    },
+    MathCommandKind::Space(space) => {
+      opt_args::no_command_opt_args(&view)?;
+      arity::no_command_args(&view)?;
+      return Ok(ctx.leaf_math(view.span(), HirMathKind::Space(space)));
     },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;

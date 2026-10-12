@@ -66,8 +66,8 @@ mod tests {
   use super::{EvalError, ParseError, parse};
   use crate::{
     document::{
-      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathVariant,
-      Typeface,
+      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathSpace,
+      MathVariant, Typeface,
     },
     frontend::{evaluator, test_support},
     project::{PathResolver, ProjectPath},
@@ -941,6 +941,37 @@ mod tests {
     let error = evaluate_error(r"$\hat[size=2]{x}$");
 
     assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_spaces_name_their_kind() {
+    let cases = [
+      ("thinspace", MathSpace::Thin),
+      ("medspace", MathSpace::Medium),
+      ("thickspace", MathSpace::Thick),
+      ("quad", MathSpace::Quad),
+      ("negthinspace", MathSpace::NegativeThin),
+    ];
+
+    for (name, expected) in cases {
+      assert_eq!(math_kinds(&format!("$\\{name}$")), vec![HirMathKind::Space(expected)], "\\{name}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_space_rejects_options() {
+    let error = evaluate_error(r"$\quad[width=1pt]$");
+
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "width"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_space_leaves_a_following_brace_as_a_group() {
+    let math = inline_math_nodes(r"$\quad{x}$");
+
+    assert_eq!(math.len(), 2, "{math:?}");
+    assert_eq!(math[0].kind, HirMathKind::Space(MathSpace::Quad));
+    assert!(is_group_of_text(&math[1], "x"), "引数を取らないので {{x}} は後続の数式グループ: {math:?}");
   }
 
   #[test]

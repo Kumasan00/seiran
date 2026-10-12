@@ -428,6 +428,9 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         ));
       }
     },
+    HirMathKind::Space(space) => {
+      items.push(spacing::MathItem::explicit(*space, ctx.font_size()));
+    },
     HirMathKind::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
     },
@@ -1377,6 +1380,42 @@ mod tests {
       matches!(nodes.first(), Some(LayoutNode::Inline(InlineNode::Scripts(_)))),
       "核とスクリプトはアキ無しの 1 つのアトム: {nodes:?}"
     );
+  }
+
+  #[test]
+  fn lower_inline_math_adds_explicit_space_to_automatic_space() {
+    let nodes = lower_math_source("$a\\thinspace+b$\n");
+
+    assert_eq!(spacings(&nodes), vec![mu(4) + mu(3), mu(4)], "a と + の間は中アキ + 細アキ: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_inline_math_shrinks_explicit_space_inside_script_but_keeps_it() {
+    let nodes = lower_math_source("$x^{a\\thinspace b}$\n");
+
+    let superscript = first_scripts(&nodes).superscript.as_ref().expect("上付きが期待されます");
+    let kerns: Vec<Length> = superscript
+      .iter()
+      .filter_map(|node| match node {
+        AtomNode::Kern { length } => return Some(*length),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(kerns.len(), 1, "{superscript:?}");
+    assert!(kerns[0].is_positive() && kerns[0] < mu(3), "スクリプトの段で縮むが消えない: {kerns:?}");
+  }
+
+  #[test]
+  fn lower_inline_math_group_of_explicit_space_is_an_ordinary() {
+    let grouped = lower_math_source("${\\thinspace}+b$\n");
+    let bare = lower_math_source("$\\thinspace+b$\n");
+
+    assert_eq!(
+      spacings(&grouped),
+      vec![mu(3), mu(4), mu(4)],
+      "グループは Ord 1 個なので + は二項演算子: {grouped:?}"
+    );
+    assert_eq!(spacings(&bare), vec![mu(3)], "裸の明示アキは透過するので + は先頭のアトム: {bare:?}");
   }
 
   #[test]

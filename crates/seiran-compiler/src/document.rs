@@ -24,6 +24,7 @@ mod heading_level;
 mod hir;
 mod math_block;
 mod math_class;
+mod math_space;
 mod math_variant;
 mod quote;
 mod table_column;
@@ -40,6 +41,7 @@ pub(crate) use hir::{
 };
 pub(crate) use math_block::{GridLayout, MathBlockKind, MathDelimiter};
 pub(crate) use math_class::MathClass;
+pub(crate) use math_space::MathSpace;
 pub(crate) use math_variant::MathVariant;
 pub(crate) use quote::QuoteKind;
 pub(crate) use table_column::{ColumnAlign, ColumnWidth};

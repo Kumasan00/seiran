@@ -5,12 +5,15 @@
 //! 限り、括弧の外の二項演算子・関係子の直後のアキを行分割点 [`InlineNode::MathBreak`] として出す
 //! （[`assemble_breakable`]）。
 //!
+//! 明示アキ（`\thinspace` 等）はクラスを持たないアイテム [`MathItem::Space`] で、Bin→Ord 変換とアキ表の参照に透過し、
+//! 幅だけを次のアトムの前のアキへ足す。
+//!
 //! 単位は TeX と同じ mu（1mu = 1/18 em）で、em はそのレベルのフォントサイズ。
 
 use std::mem;
 
 use crate::{
-  document::MathClass,
+  document::{MathClass, MathSpace},
   length::Length,
   typeset::lowering::layout_node::{AtomNode, InlineNode, MathScripts, merge_adjacent_atom_text},
 };
@@ -30,7 +33,19 @@ pub(super) enum Fence {
 
 /// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは書記素クラスタ 1 つぶん）
 #[derive(Debug)]
-pub(super) struct MathItem {
+pub(super) enum MathItem {
+  /// クラスを持ち、隣のアトムとのアキを決めるアトム
+  Atom(MathAtom),
+  /// 明示アキ（`\thinspace` 等）の幅
+  ///
+  /// クラスを持たず、Bin→Ord 変換とアトム間のアキの決定に透過する。幅は次のアトムの前のアキへ足す。スクリプトの基底には
+  /// ならない。
+  Space(Length),
+}
+
+/// クラスを持つスペーシングの単位
+#[derive(Debug)]
+pub(super) struct MathAtom {
   /// 直前のアイテムと組むときのクラス（左端のクラス）
   left_class: MathClass,
   /// 直後のアイテムと組むときのクラス（右端のクラス。伸縮括弧だけが左端と異なる）
@@ -46,37 +61,42 @@ pub(super) struct MathItem {
 impl MathItem {
   /// クラス（左端・右端とも `class`）・区切り種別・ノード列からアイテムを作る（付くスクリプトは肩・添字）
   pub(super) fn new(class: MathClass, fence: Option<Fence>, nodes: Vec<AtomNode>) -> Self {
-    return MathItem {
+    return MathItem::Atom(MathAtom {
       left_class: class,
       right_class: class,
       fence,
       body: ItemBody::Plain(nodes),
       limits: false,
-    };
+    });
   }
 
   /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）のアイテムを作る（数式クラスは Op・区切りではない。
   /// `limits` は付くスクリプトを上下に積むか）
   pub(super) fn large_operator(symbol: String, font_size: Length, limits: bool) -> Self {
-    return MathItem {
+    return MathItem::Atom(MathAtom {
       left_class: MathClass::Op,
       right_class: MathClass::Op,
       fence: None,
       body: ItemBody::Plain(vec![AtomNode::LargeOperator { symbol, font_size }]),
       limits,
-    };
+    });
   }
 
   /// 伸縮括弧のアイテムを作る（左端は Open・右端は Close として隣と組む。括弧は中身ごと閉じた 1 個のアイテムなので、
   /// 開き・閉じ区切りとしては数えない）
   pub(super) fn fenced(nodes: Vec<AtomNode>) -> Self {
-    return MathItem {
+    return MathItem::Atom(MathAtom {
       left_class: MathClass::Open,
       right_class: MathClass::Close,
       fence: None,
       body: ItemBody::Plain(nodes),
       limits: false,
-    };
+    });
+  }
+
+  /// 明示アキ `space`（段のフォントサイズ `font_size`）のアイテムを作る
+  pub(super) fn explicit(space: MathSpace, font_size: Length) -> Self {
+    return MathItem::Space(mu(explicit_mu_count(space), font_size));
   }
 }
 
@@ -259,6 +279,22 @@ const fn class_index(class: MathClass) -> usize {
   };
 }
 
+/// 1em を mu で表した量（`\quad`）
+const QUAD_MU: i32 = 18;
+
+/// 明示アキの mu 単位の量
+///
+/// 細・中・太は自動アキの [`Space`] と同じ定数を引く（`\thinspace` は自動アキの細アキそのもの）。
+const fn explicit_mu_count(space: MathSpace) -> i32 {
+  return match space {
+    MathSpace::Thin => Space::Thin.mu_count(),
+    MathSpace::Medium => Space::Medium.mu_count(),
+    MathSpace::Thick => Space::Thick.mu_count(),
+    MathSpace::Quad => QUAD_MU,
+    MathSpace::NegativeThin => -Space::Thin.mu_count(),
+  };
+}
+
 /// mu 単位（1mu = `font_size` / 18）を長さへ直す
 fn mu(count: i32, font_size: Length) -> Length { return (font_size * count) / 18.0f64; }
 
@@ -362,8 +398,8 @@ pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
 /// （`$x^{2}+y$` の `+` は `x` ではなく「`x^{2}` というアトム」との間でアキが決まる）。直前のアイテムが反対側の
 /// スクリプトだけを持つなら同じ基底へ重ね（`x_{i}^{2}` と `x^{2}_{i}` は同じ形）、同じ側を既に持つなら
 /// スクリプト付きのアイテム全体を新しい基底にする（`x^{a}^{b}` は `{x^{a}}^{b}`）。グループは
-/// [`ItemBody::Plain`] なので、中のスクリプトへ重ねずグループ全体が基底になる。直前のアイテムが無ければ
-/// （`$^{2}$` のような並び）空の基底を持つ Ord のアイテムにする。`font_size` / `cramped` は基底の段のもの。
+/// [`ItemBody::Plain`] なので、中のスクリプトへ重ねずグループ全体が基底になる。直前のアイテムが無いか明示アキなら
+/// （`$^{2}$` や `$x\thinspace^{2}$` のような並び）空の基底を持つ Ord のアイテムにする。`font_size` / `cramped` は基底の段のもの。
 /// 直前のアイテムが limits を取る演算子で、まだスクリプトを持たないときだけ上下に積む（同じ側を重ねた外側の基底は範囲付きの
 /// 演算子全体で、演算子 1 つではないので肩・添字）。
 pub(super) fn push_script(
@@ -373,14 +409,14 @@ pub(super) fn push_script(
   font_size: Length,
   cramped: bool,
 ) {
-  let Some(last) = items.last_mut() else {
-    items.push(MathItem {
+  let Some(MathItem::Atom(last)) = items.last_mut() else {
+    items.push(MathItem::Atom(MathAtom {
       left_class: MathClass::Ord,
       right_class: MathClass::Ord,
       fence: None,
       body: ItemBody::Scripted(attach(Vec::new(), side, content, font_size, cramped, false)),
       limits: false,
-    });
+    }));
     return;
   };
   if let ItemBody::Scripted(scripts) = &mut last.body {
@@ -435,21 +471,48 @@ struct Gap {
 struct Spaced {
   /// 直前のアイテムとの境界（先頭のアイテムは `None`）
   gap: Option<Gap>,
+  /// 直前のアトム（先頭のアトムでは数式の始まり）との間にある明示アキの幅の和
+  explicit: Length,
   /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
   /// このアイテムが生む Atom ノード列
   nodes: Vec<AtomNode>,
 }
 
-/// アイテム列にクラス変換を適用し、各アイテムの直前のアキを決める
-fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<Spaced> {
-  let mut classes: Vec<(MathClass, MathClass)> =
-    items.iter().map(|item| return (item.left_class, item.right_class)).collect();
+impl Spaced {
+  /// このアイテムの前に入れるアキ（自動アキ + 明示アキ）
+  fn space_before(&self) -> Length { return self.gap.map_or(Length::ZERO, |gap| return gap.space) + self.explicit; }
+}
+
+/// アイテム列にクラス変換を適用し、各アトムの直前のアキを決める
+///
+/// 明示アキはクラス変換とアキ表の参照から外し、幅を次のアトムの [`Spaced::explicit`] へ足す。末尾のアトムより後ろの
+/// 明示アキの幅は 2 つ目の値で返す。
+fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> (Vec<Spaced>, Length) {
+  let mut classes: Vec<(MathClass, MathClass)> = items
+    .iter()
+    .filter_map(|item| {
+      return match item {
+        MathItem::Atom(atom) => Some((atom.left_class, atom.right_class)),
+        MathItem::Space(_) => None,
+      };
+    })
+    .collect();
   resolve_bin_classes(&mut classes);
 
-  let mut out: Vec<Spaced> = Vec::with_capacity(items.len());
+  let mut out: Vec<Spaced> = Vec::with_capacity(classes.len());
+  let mut classes = classes.into_iter();
   let mut prev: Option<MathClass> = None;
-  for (item, (left, right)) in items.into_iter().zip(classes) {
+  let mut explicit = Length::ZERO;
+  for item in items {
+    let atom = match item {
+      MathItem::Atom(atom) => atom,
+      MathItem::Space(length) => {
+        explicit += length;
+        continue;
+      },
+    };
+    let (left, right) = classes.next().expect("クラスはアトム 1 個につき 1 組を集めたので、アトムの数だけある");
     let gap = prev.map(|prev_right| {
       return Gap {
         left: prev_right,
@@ -459,30 +522,31 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<
     });
     out.push(Spaced {
       gap,
-      fence: item.fence,
-      nodes: item.body.into_nodes(),
+      explicit: mem::take(&mut explicit),
+      fence: atom.fence,
+      nodes: atom.body.into_nodes(),
     });
     prev = Some(right);
   }
-  return out;
+  return (out, explicit);
 }
 
-/// 正の幅のアキだけを [`AtomNode::Kern`] として積む
+/// 幅 0 でないアキを [`AtomNode::Kern`] として積む（明示アキを含むので負にもなる）
 fn push_space(out: &mut Vec<AtomNode>, length: Length) {
-  if length.is_positive() {
+  if length != Length::ZERO {
     out.push(AtomNode::Kern { length });
   }
 }
 
 /// アイテム列にクラス変換とアキを適用し、1 本の `AtomNode` 列へ畳む（行分割点を置かない）
 pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<AtomNode> {
-  let mut out: Vec<AtomNode> = Vec::with_capacity(items.len());
-  for spaced in space_items(items, font_size, in_script) {
-    if let Some(gap) = spaced.gap {
-      push_space(&mut out, gap.space);
-    }
+  let (atoms, trailing) = space_items(items, font_size, in_script);
+  let mut out: Vec<AtomNode> = Vec::with_capacity(atoms.len());
+  for spaced in atoms {
+    push_space(&mut out, spaced.space_before());
     out.extend(spaced.nodes);
   }
+  push_space(&mut out, trailing);
   return merge_adjacent_atom_text(out);
 }
 
@@ -490,6 +554,7 @@ pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool)
 ///
 /// 分割点は [`break_penalty`] が認めた境界だけで、そこでは演算子直後のアキを Kern ではなく
 /// [`InlineNode::MathBreak`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
+/// 分割点のアキにはその境界の明示アキも含める（折り返すと明示アキも行頭から消える）。
 /// ただし右のアイテムが空（`Group([])` 由来の中身の無い Ord 等）なら、割っても行頭に何も残らないので
 /// 分割点を置かず Kern のままにする。
 pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<InlineNode> {
@@ -497,18 +562,18 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
   let mut run: Vec<AtomNode> = Vec::new();
   // 開き括弧の入れ子の深さ。[`Fence`] だけで数え、対応の無い閉じ括弧で負にはしない。
   let mut depth = 0usize;
-  for spaced in space_items(items, font_size, false) {
-    if let Some(gap) = spaced.gap {
-      match break_penalty(gap, depth) {
-        Some(penalty) if !spaced.nodes.is_empty() => {
-          flush_run(&mut run, &mut out);
-          out.push(InlineNode::MathBreak {
-            spacing: gap.space,
-            penalty,
-          });
-        },
-        Some(_) | None => push_space(&mut run, gap.space),
-      }
+  let (atoms, trailing) = space_items(items, font_size, false);
+  for spaced in atoms {
+    let space = spaced.space_before();
+    match spaced.gap.and_then(|gap| return break_penalty(gap, depth)) {
+      Some(penalty) if !spaced.nodes.is_empty() => {
+        flush_run(&mut run, &mut out);
+        out.push(InlineNode::MathBreak {
+          spacing: space,
+          penalty,
+        });
+      },
+      Some(_) | None => push_space(&mut run, space),
     }
     depth = match spaced.fence {
       Some(Fence::Open) => depth + 1,
@@ -517,6 +582,7 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
     };
     run.extend(spaced.nodes);
   }
+  push_space(&mut run, trailing);
   flush_run(&mut run, &mut out);
   return out;
 }
@@ -550,7 +616,10 @@ fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{document::Typeface, typeset::lowering::layout_node::TextStyle};
+  use crate::{
+    document::{MathSpace, Typeface},
+    typeset::lowering::layout_node::TextStyle,
+  };
 
   /// 12pt の Math テキストスタイル
   fn style() -> TextStyle {
@@ -585,13 +654,24 @@ mod tests {
   /// スクリプトの中身にする 1 文字
   fn script(ch: char) -> Vec<AtomNode> { return vec![AtomNode::Text(ch.to_string(), style())]; }
 
+  /// アトムのアイテムを借りる
+  fn atom_of(item: &MathItem) -> &MathAtom {
+    let MathItem::Atom(atom) = item else {
+      panic!("アトムのはず: {item:?}");
+    };
+    return atom;
+  }
+
   /// スクリプト付きのアイテムの上付き・下付きを借りる
   fn scripts_of(item: &MathItem) -> &MathScripts {
-    let ItemBody::Scripted(scripts) = &item.body else {
+    let ItemBody::Scripted(scripts) = &atom_of(item).body else {
       panic!("スクリプト付きのアイテムのはず: {item:?}");
     };
     return scripts;
   }
+
+  /// 12pt の段の明示アキのアイテム
+  fn explicit(space: MathSpace) -> MathItem { return MathItem::explicit(space, Length::pt(12.0)); }
 
   /// ノード列に置かれた行分割点を（アキ, ペナルティ）で出現順に返す
   fn breaks(nodes: &[InlineNode]) -> Vec<(Length, i32)> {
@@ -737,7 +817,7 @@ mod tests {
     push_script(&mut items, ScriptSide::Subscript, script('i'), Length::pt(12.0), false);
 
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].left_class, MathClass::Ord);
+    assert_eq!(atom_of(&items[0]).left_class, MathClass::Ord);
     assert!(scripts_of(&items[0]).base.is_empty());
   }
 
@@ -781,8 +861,8 @@ mod tests {
     assert!(scripts.limits, "反対側を埋めても上下に積むまま: {scripts:?}");
     assert!(scripts.superscript.is_some() && scripts.subscript.is_some());
     assert!(matches!(scripts.base.as_slice(), [AtomNode::LargeOperator { .. }]), "{scripts:?}");
-    assert_eq!(items[0].left_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
-    assert_eq!(items[0].right_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
+    assert_eq!(atom_of(&items[0]).left_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
+    assert_eq!(atom_of(&items[0]).right_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
   }
 
   #[test]
@@ -917,5 +997,174 @@ mod tests {
     let nodes = assemble_breakable(items, Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "右が空アイテムなら分割点を置かず Kern のまま: {nodes:?}");
+  }
+
+  #[test]
+  fn explicit_spaces_take_the_automatic_space_constants() {
+    let font_size = Length::pt(12.0);
+    let cases = [
+      (MathSpace::Thin, Space::Thin.mu_count()),
+      (MathSpace::Medium, Space::Medium.mu_count()),
+      (MathSpace::Thick, Space::Thick.mu_count()),
+      (MathSpace::Quad, 18),
+      (MathSpace::NegativeThin, -Space::Thin.mu_count()),
+    ];
+
+    for (space, count) in cases {
+      let MathItem::Space(length) = MathItem::explicit(space, font_size) else {
+        panic!("明示アキのアイテムのはず: {space:?}");
+      };
+      assert_eq!(length, mu(count, font_size), "{space:?}");
+    }
+  }
+
+  #[test]
+  fn assemble_adds_explicit_space_to_automatic_space() {
+    let font_size = Length::pt(12.0);
+    let items = vec![item('a'), explicit(MathSpace::Thin), item('+'), item('b')];
+
+    let nodes = assemble(items, font_size, false);
+
+    assert_eq!(
+      kerns(&nodes),
+      vec![mu(4, font_size) + mu(3, font_size), mu(4, font_size)],
+      "明示アキはクラスに透過し、+ は二項演算子のまま: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn assemble_does_not_count_explicit_space_as_an_atom_for_unary_minus() {
+    let font_size = Length::pt(12.0);
+    let after = vec![item('-'), explicit(MathSpace::Thin), item('x')];
+    let before = vec![explicit(MathSpace::Thin), item('-'), item('x')];
+
+    let after = assemble(after, font_size, false);
+    let before = assemble(before, font_size, false);
+
+    assert_eq!(kerns(&after), vec![mu(3, font_size)], "先頭の - は単項のまま、明示アキだけ: {after:?}");
+    assert_eq!(kerns(&before), vec![mu(3, font_size)], "明示アキの後ろでも - は先頭のアトム: {before:?}");
+  }
+
+  #[test]
+  fn assemble_keeps_leading_trailing_and_sole_explicit_space() {
+    let font_size = Length::pt(12.0);
+
+    let leading = assemble(vec![explicit(MathSpace::Thin), item('a')], font_size, false);
+    let trailing = assemble(vec![item('a'), explicit(MathSpace::Quad)], font_size, false);
+    let sole = assemble(vec![explicit(MathSpace::Quad)], font_size, false);
+
+    assert!(
+      matches!(leading.as_slice(), [AtomNode::Kern { length }, AtomNode::Text(..)] if *length == mu(3, font_size)),
+      "{leading:?}"
+    );
+    assert!(
+      matches!(trailing.as_slice(), [AtomNode::Text(..), AtomNode::Kern { length }] if *length == mu(18, font_size)),
+      "{trailing:?}"
+    );
+    assert!(matches!(sole.as_slice(), [AtomNode::Kern { length }] if *length == mu(18, font_size)), "{sole:?}");
+  }
+
+  #[test]
+  fn assemble_cancels_opposite_explicit_spaces() {
+    let items = vec![
+      item('a'),
+      explicit(MathSpace::Thin),
+      explicit(MathSpace::NegativeThin),
+      item('b'),
+    ];
+
+    let nodes = assemble(items, Length::pt(12.0), false);
+
+    assert!(
+      matches!(nodes.as_slice(), [AtomNode::Text(text, _)] if text == "ab"),
+      "幅 0 のアキは Kern を出さず、`ab` と同じ 1 本のグリフランになる: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn assemble_emits_negative_explicit_space() {
+    let font_size = Length::pt(12.0);
+    let items = vec![item('a'), explicit(MathSpace::NegativeThin), item('b')];
+
+    let nodes = assemble(items, font_size, false);
+
+    assert_eq!(kerns(&nodes), vec![mu(-3, font_size)], "{nodes:?}");
+  }
+
+  #[test]
+  fn assemble_keeps_explicit_space_in_script_style() {
+    let font_size = Length::pt(12.0);
+    let items = vec![item('a'), explicit(MathSpace::Thin), item('+'), item('b')];
+
+    let nodes = assemble(items, font_size, true);
+
+    assert_eq!(
+      kerns(&nodes),
+      vec![mu(3, font_size)],
+      "スクリプトの中では括弧付きセルの中アキが消え、明示アキだけが残る: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn push_script_after_explicit_space_starts_an_empty_base() {
+    let mut items = vec![item('x'), explicit(MathSpace::Thin)];
+
+    push_script(&mut items, ScriptSide::Superscript, script('2'), Length::pt(12.0), false);
+
+    assert_eq!(items.len(), 3, "明示アキはスクリプトの基底にならない: {items:?}");
+    assert!(matches!(atom_of(&items[0]).body, ItemBody::Plain(_)), "x にスクリプトは付かない: {items:?}");
+    assert!(scripts_of(&items[2]).base.is_empty(), "{items:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_folds_explicit_space_after_operator_into_the_break() {
+    let font_size = Length::pt(12.0);
+    let items = vec![item('a'), item('+'), explicit(MathSpace::Thin), item('b')];
+
+    let nodes = assemble_breakable(items, font_size);
+
+    assert_eq!(breaks(&nodes), vec![(mu(4, font_size) + mu(3, font_size), BIN_BREAK_PENALTY)], "{nodes:?}");
+    assert!(
+      matches!(
+        nodes.as_slice(),
+        [
+          InlineNode::Text(..),
+          InlineNode::Kern { .. },
+          InlineNode::Text(..),
+          InlineNode::MathBreak { .. },
+          InlineNode::Text(..),
+        ]
+      ),
+      "分割点の後ろに Kern を残さない（折り返すと明示アキも行頭から消える）: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn assemble_breakable_does_not_break_at_explicit_space() {
+    let items = vec![item('a'), explicit(MathSpace::Quad), item('b')];
+
+    let nodes = assemble_breakable(items, Length::pt(12.0));
+
+    assert!(breaks(&nodes).is_empty(), "明示アキの位置は分割点にしない: {nodes:?}");
+  }
+
+  #[test]
+  fn assemble_breakable_keeps_a_negative_total_at_the_break() {
+    let font_size = Length::pt(12.0);
+    let items = vec![
+      item('a'),
+      item('+'),
+      explicit(MathSpace::NegativeThin),
+      explicit(MathSpace::NegativeThin),
+      item('b'),
+    ];
+
+    let nodes = assemble_breakable(items, font_size);
+
+    assert_eq!(
+      breaks(&nodes),
+      vec![(mu(4, font_size) + (mu(-3, font_size) + mu(-3, font_size)), BIN_BREAK_PENALTY)],
+      "{nodes:?}"
+    );
   }
 }
