@@ -407,13 +407,19 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Text(text) => {
       push_text_items(text, ctx, items);
     },
-    HirMathKind::Symbol { ch, class } => {
+    HirMathKind::Symbol { text, class } => {
       let mut translated = String::new();
-      push_math_char(&mut translated, *ch, ctx.variant);
+      for ch in text.chars() {
+        push_math_char(&mut translated, ch, ctx.variant);
+      }
       // display の大きさの字形にするのは、MathML Core の largeop を持つ演算子が display 段にあるときだけ（largeop は
-      // math-style が normal のときだけ効く）。largeop を持たない Op は Op のアキを取る通常の字
-      if *class == MathClass::Op && ctx.style.level == StyleLevel::Display && is_large_operator(*ch) {
-        items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(*ch)));
+      // math-style が normal のときだけ効く）。largeop を持たない Op は Op のアキを取る通常の字。伸縮は 1 字の字形に
+      // 対して行うので、結合文字の付いた演算子も通常の字
+      let large_operator = sole_char(text).filter(|&ch| {
+        return *class == MathClass::Op && ctx.style.level == StyleLevel::Display && is_large_operator(ch);
+      });
+      if let Some(ch) = large_operator {
+        items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(ch)));
       } else {
         items.push(spacing::MathItem::new(
           *class,
@@ -551,6 +557,15 @@ const fn is_large_operator(ch: char) -> bool {
 /// 置く（TeX の `\int` の `\nolimits` と同じ）。
 const fn has_movable_limits(ch: char) -> bool {
   return !matches!(ch, '\u{222B}'..='\u{2233}' | '\u{2A0B}'..='\u{2A1C}');
+}
+
+/// `text` がちょうど 1 字ならその字
+fn sole_char(text: &str) -> Option<char> {
+  let mut chars = text.chars();
+  return match (chars.next(), chars.next()) {
+    (Some(ch), None) => Some(ch),
+    _ => None,
+  };
 }
 
 #[cfg(test)]
@@ -1443,6 +1458,52 @@ mod tests {
   /// 数式環境のソースを既定 Style で lower し、`LayoutNode::MathBlock` の payload を取り出すヘルパ
   fn math_block_of(source: &str) -> MathBlockLayout {
     return first_math_block(lower(&ReadStyle::default(), &analyzed(source)));
+  }
+
+  /// 数式ソースを lower した結果の比較用の表現（`LayoutNode` は `PartialEq` を持たないので Debug 表現）
+  fn lowered(source: &str) -> String { return format!("{:?}", lower_math_source(source)); }
+
+  #[test]
+  fn direct_symbols_lower_as_their_symbol_commands() {
+    for (direct, command) in [
+      ("$a≠b$\n", "$a\\neq b$\n"),
+      ("$a≤b$\n", "$a\\leq b$\n"),
+      ("$a×b$\n", "$a\\times b$\n"),
+      ("$a△b$\n", "$a\\bigtriangleup b$\n"),
+      ("$∑x$\n", "$\\sum x$\n"),
+      ("$⟨a+b⟩+c$\n", "$\\langle a+b\\rangle+c$\n"),
+      ("$x^{≤}_{×}$\n", "$x^{\\leq}_{\\times}$\n"),
+      ("$\\mathbold{α≠β}$\n", "$\\mathbold{\\alpha\\neq\\beta}$\n"),
+    ] {
+      assert_eq!(lowered(direct), lowered(command), "{direct:?}");
+    }
+  }
+
+  #[test]
+  fn direct_symbols_in_display_cells_lower_as_their_symbol_commands() {
+    let cell = |source: &str| return format!("{:?}", math_block_of(source).rows[0].cells[0].content);
+
+    assert_eq!(
+      cell("\\begin{equation}\n∑_{i} x\n\\end{equation}\n"),
+      cell("\\begin{equation}\n\\sum_{i} x\n\\end{equation}\n"),
+      "display 段の直接入力の ∑ は \\sum と同じ大型演算子"
+    );
+    assert_eq!(
+      cell("\\begin{cases}\na≤b & c\n\\end{cases}\n"),
+      cell("\\begin{cases}\na\\leq b & c\n\\end{cases}\n"),
+      "cases のセルでも同じ"
+    );
+  }
+
+  #[test]
+  fn large_operator_with_a_combining_mark_stays_text_in_display() {
+    let block = math_block_of("\\begin{equation}\n\u{2211}\u{0302} x\n\\end{equation}\n");
+
+    let cell = &block.rows[0].cells[0].content;
+    assert!(
+      matches!(cell.first(), Some(AtomNode::Text(text, style)) if text == "\u{2211}\u{0302}" && style.math_operator),
+      "結合文字の付いた大型演算子は display 段でも本文の大きさの演算子: {cell:?}"
+    );
   }
 
   #[test]

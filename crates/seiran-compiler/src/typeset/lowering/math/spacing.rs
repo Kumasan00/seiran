@@ -320,7 +320,8 @@ fn resolve_bin_classes(classes: &mut [(MathClass, MathClass)]) {
 
 /// 直接入力された 1 文字の数式クラスを返す
 ///
-/// plain TeX の `\mathcode` 割り当てに合わせてある。表に無い文字（和文を含む）は Ord として扱う。
+/// plain TeX の `\mathcode` 割り当てに合わせてある。表に無い文字（和文を含む）は Ord として扱う。記号表の非 ASCII の字
+/// （正準等価な綴りを含む）は frontend が記号コマンドと同じ `HirMathKind::Symbol` にするので、ここへは来ない。
 pub(super) fn char_class(ch: char) -> MathClass {
   return match ch {
     '+' | '-' | '*' => MathClass::Bin,

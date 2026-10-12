@@ -1365,6 +1365,25 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
 #[must_use]
 pub(in crate::frontend::evaluator) fn lookup(name: &str) -> Option<MathSymbol> { return SYMBOLS.get(name).copied(); }
 
+/// 記号表で 2 つのクラスを持つ字を直接入力したときのクラス（unicode-math がその字に割り当てるクラス。U+25B3 △ は
+/// `\bigtriangleup` の Bin）
+const DIRECT_INPUT_CLASS_OVERRIDES: [(char, MathClass); 1] = [('\u{25B3}', MathClass::Bin)];
+
+/// 数式に直接書いた字 `ch` の数式クラス。記号表に無い字と ASCII（直接入力のクラスは typeset の mathcode が決める）は `None`
+///
+/// 2 つのクラスを持つ字は [`DIRECT_INPUT_CLASS_OVERRIDES`] が決める（全件が載ることは記号表のテストが保つ）ので、
+/// ほかの字は記号表に 1 クラスしか持たず、引いた順序に依らない。
+#[must_use]
+pub(in crate::frontend::evaluator) fn direct_input_class(ch: char) -> Option<MathClass> {
+  if ch.is_ascii() {
+    return None;
+  }
+  if let Some(&(_, class)) = DIRECT_INPUT_CLASS_OVERRIDES.iter().find(|&&(overridden, _)| return overridden == ch) {
+    return Some(class);
+  }
+  return SYMBOLS.values().find(|symbol| return symbol.ch == ch).map(|symbol| return symbol.class);
+}
+
 /// 記号表の全コマンド名（テストが数式の語彙との衝突を調べるのに使う。静的表から切り離せないテスト専用アクセサ）
 #[cfg(test)]
 pub(in crate::frontend::evaluator) fn names() -> impl Iterator<Item = &'static str> { return SYMBOLS.keys().copied(); }
@@ -1373,7 +1392,7 @@ pub(in crate::frontend::evaluator) fn names() -> impl Iterator<Item = &'static s
 mod tests {
   use std::collections::BTreeMap;
 
-  use super::{SYMBOLS, lookup};
+  use super::{DIRECT_INPUT_CLASS_OVERRIDES, SYMBOLS, direct_input_class, lookup};
   use crate::{document::MathClass, frontend::evaluator::command::COMMANDS};
 
   /// `MathClass` は `Ord` を持たないので、`BTreeMap` のキーにするため序数へ写す
@@ -1561,6 +1580,45 @@ mod tests {
   fn no_key_collision_between_commands_and_symbols() {
     for key in SYMBOLS.keys() {
       assert!(!COMMANDS.contains_key(key), "COMMANDS と SYMBOLS にキーが重複しています: {key}");
+    }
+  }
+
+  #[test]
+  fn direct_input_takes_the_class_of_the_symbol() {
+    assert_eq!(direct_input_class('\u{2260}'), Some(MathClass::Rel));
+    assert_eq!(direct_input_class('\u{00D7}'), Some(MathClass::Bin));
+    assert_eq!(direct_input_class('\u{2211}'), Some(MathClass::Op));
+    assert_eq!(direct_input_class('\u{27E8}'), Some(MathClass::Open));
+    assert_eq!(direct_input_class('\u{03B1}'), Some(MathClass::Ord));
+    assert_eq!(
+      direct_input_class('\u{25B3}'),
+      Some(MathClass::Bin),
+      "△ は unicode-math の割り当て（\\bigtriangleup）"
+    );
+    assert_eq!(direct_input_class(':'), None, "ASCII の直接入力のクラスは typeset の mathcode が決める");
+    assert_eq!(direct_input_class('|'), None);
+    assert_eq!(direct_input_class('速'), None, "記号表に無い字");
+  }
+
+  #[test]
+  fn every_character_with_two_classes_has_a_direct_input_class() {
+    let mut classes: BTreeMap<char, Vec<u8>> = BTreeMap::new();
+    for symbol in SYMBOLS.values() {
+      classes.entry(symbol.ch).or_default().push(class_ordinal(symbol.class));
+    }
+
+    for (ch, mut found) in classes {
+      found.sort_unstable();
+      found.dedup();
+      let overridden = DIRECT_INPUT_CLASS_OVERRIDES.iter().find(|&&(other, _)| return other == ch);
+      if found.len() > 1 {
+        let (_, class) = overridden.unwrap_or_else(|| {
+          panic!("U+{:04X} は記号表で 2 クラスを持つので、直接入力のクラスを上書き表に決めてください", u32::from(ch))
+        });
+        assert!(found.contains(&class_ordinal(*class)), "U+{:04X} の上書きは記号表のクラスのどれか", u32::from(ch));
+      } else {
+        assert!(overridden.is_none(), "U+{:04X} はクラスが 1 つなので上書きは要らない", u32::from(ch));
+      }
     }
   }
 }
