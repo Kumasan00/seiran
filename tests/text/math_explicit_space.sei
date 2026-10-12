@@ -1,0 +1,21 @@
+\section{明示アキの量}
+
+無しの $f(x)dx$ と細アキの $f(x)\thinspace dx$。
+$ab$、$a\thinspace b$、$a\medspace b$、$a\thickspace b$、$a\quad b$。
+
+\section{詰め}
+
+$ab$ と $a\negthinspace b$。打ち消し合う $a\thinspace\negthinspace b$ は $ab$ と同じ。
+
+\section{自動アキへの加算}
+
+$a+b$ と $a\thinspace+\thinspace b$。先頭の $-\thinspace x$ は単項のまま。
+グループの ${\thinspace}+b$ は通常記号として二項演算子のアキを取る。
+
+\section{スクリプト}
+
+$x^{ab}$ と $x^{a\thinspace b}$。$x\thinspace^{2}$ の肩は x に付かない。
+
+\begin{equation}
+f(x) = \int g(x)\thinspace dx \quad x > 0
+\end{equation}
