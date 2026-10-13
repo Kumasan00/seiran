@@ -9,6 +9,7 @@ mod spacing;
 use std::slice;
 
 use alphanumeric::push_math_char;
+pub(in crate::typeset) use alphanumeric::translate_math_char;
 use icu::segmenter::GraphemeClusterSegmenter;
 use itertools::Itertools;
 use spacing::ScriptSide;
@@ -145,7 +146,7 @@ fn cell_align(kind: MathBlockKind, row_idx: usize, n_rows: usize, col: usize) ->
 }
 
 /// 環境種別から本体グリッドを囲む左右の区切り括弧グリフを決める
-fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
+pub(in crate::typeset) fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
   return match kind {
     MathBlockKind::Cases => DelimiterGlyphs {
       left: Some("{"),
@@ -531,17 +532,23 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
   }
 }
 
+/// 数式中のテキストを、書記素クラスタ（基底の字と後ろに付く結合文字）ごとの字の列に分ける
+///
+/// ソースに書かれた空白は組版に出さない（TeX と同じ）— 空白の字を除き、残りの無いクラスタは捨てる。各クラスタは
+/// （先頭の字, 先頭の字を含むクラスタ全体）の組で返す。
+pub(in crate::typeset) fn math_text_clusters(text: &str) -> impl Iterator<Item = (char, Vec<char>)> + '_ {
+  return GraphemeClusterSegmenter::new().segment_str(text).tuple_windows().filter_map(move |(start, end)| {
+    let chars: Vec<char> = text[start..end].chars().filter(|ch| return !ch.is_whitespace()).collect();
+    return chars.first().copied().map(|first| return (first, chars));
+  });
+}
+
 /// 数式中のテキストを書記素クラスタ（基底の字と後ろに付く結合文字）ずつのアイテムへ展開する
 ///
 /// 結合文字は基底の字の一部なので、アキとスクリプトの基底の単位は結合文字を含めた字になる。クラスと区切り種別は
-/// クラスタの最初の字で決める。ソースに書かれた空白は組版に出さない（TeX と同じ）— 空白の字を除き、残りの無い
-/// クラスタは捨てる。
+/// クラスタの最初の字で決める。
 fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
-  for (start, end) in GraphemeClusterSegmenter::new().segment_str(text).tuple_windows() {
-    let chars: Vec<char> = text[start..end].chars().filter(|ch| return !ch.is_whitespace()).collect();
-    let Some(&first) = chars.first() else {
-      continue;
-    };
+  for (first, chars) in math_text_clusters(text) {
     let mut translated = String::new();
     for &ch in &chars {
       push_math_char(&mut translated, ch, ctx.variant);

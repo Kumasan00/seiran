@@ -10,14 +10,13 @@ use std::collections::HashMap;
 use super::{lay_out, load_fonts};
 use crate::{
   document::{ColumnAlign, ColumnWidth, HeadingLevel},
-  failures::Failures,
   length::Length,
   project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::GlyphRun,
   semantics::{HeadingKey, LabelId, SemanticDocument},
   style::Style,
   typeset::{
-    PreparedGeometry, TypesetError,
+    ComposeError, PreparedGeometry,
     boxes::{
       AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
       PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableCellBox, TableColumn,
@@ -42,9 +41,9 @@ pub(crate) fn layout_for_test(
   geometry: &PreparedGeometry,
   font_data: &FontData,
   document: &SemanticDocument,
-) -> Result<LaidOutDocument, Failures<TypesetError>> {
+) -> Result<LaidOutDocument, ComposeError> {
   let (font_resources, _font_warnings) = load_fonts(config, font_data);
-  let font_resources = font_resources?;
+  let font_resources = font_resources.map_err(ComposeError::Typeset)?;
   let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
   return Ok(laid_out);
 }

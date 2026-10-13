@@ -30,6 +30,8 @@ use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
 use hyphenation::Lang;
+pub(super) use math::RADICAL_SIGN;
+pub(super) use script::char_font_type;
 pub(super) use shaping::Shaper;
 use tracing::debug;
 

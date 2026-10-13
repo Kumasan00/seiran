@@ -1,11 +1,24 @@
-//! 組版パスのエラー型 [`TypesetError`]
+//! 組版パスのエラー型 [`TypesetError`] と [`ComposeError`]
 //!
-//! フォント資源の構築・画像資源の読込 / デコード / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗を持つ。
+//! フォント資源の構築・画像資源の読込 / デコード / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗
+//! [`TypesetError`] と、`compose` の失敗を運ぶ [`ComposeError`] を持つ。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::project::ProjectSourceError;
+use crate::{failures::Failures, project::ProjectSourceError, typeset::math_glyphs::MissingMathGlyph};
+
+/// [`compose`](fn@crate::typeset::compose) の失敗
+///
+/// ソース位置に帰属しない組版の失敗と、必ずソース位置に帰属する数式フォントの字の欠落（`source_id` を持つ）を分けて運ぶ
+/// 制御フロー型で、表示単位ではない（`miette::Diagnostic` を実装しない）。後者だけに `compiler` がソース本文を添える。
+#[derive(Debug)]
+pub(crate) enum ComposeError {
+  /// フォント資源の構築・画像資源・ページ単位脚注採番の失敗
+  Typeset(Failures<TypesetError>),
+  /// 数式フォントに基本の字形が無い字の使用（文書順）
+  MissingMathGlyphs(Failures<MissingMathGlyph>),
+}
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]

@@ -60,7 +60,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 独自の message / `code` / help を与えてユーザー表示へ出さない — ユーザーが最初に読むメッセージは常に
 「修正できる leaf」であるべきで、「複数のエラーが発生しました」「◯◯段に失敗しました」を先頭に置かない。
 `?` で運ぶための union（例: `frontend::ParseError`）は `#[error(transparent)]` +
-`#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError`）は
+`#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError` / `typeset::ComposeError`）は
 `Diagnostic` を実装しない、が既定形。
 
 `code` の変更はユーザから見える診断出力の変更なので、`crates/seiran-compiler/tests/golden_diagnostics/` の再生成
@@ -76,7 +76,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `TomlErrorParts` を受け取り、toml の自前スニペット（`TOML parse error at line …`）を抑止して位置をラベル
   1 回に揃える（#647）。
   一方、ソース本文を持たない下位 module（本文は `project::SourceSet` が一元管理する。例:
-  `frontend::ParseError` の内側の `SyntaxError` / `EvalError`、`semantics::SemanticError`）は、
+  `frontend::ParseError` の内側の `SyntaxError` / `EvalError`、`semantics::SemanticError`、`typeset` の
+  `MissingMathGlyph`）は、
   `#[source_code]` を持たず span だけ（複数ソースにまたがる `semantics` は `SourceId` も。発行元が単一の
   識別子で、生の `usize` や array index を独自に採番しない）を運ぶ。本文の添付は **compiler seam の汎用 adapter
   `compiler::source_diagnostic::SourceDiagnostic<E>` 1 つ**が行う（段ごとの attribution wrapper を
@@ -97,7 +98,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 - **集約する**: config.toml / style.toml の独立フィールド違反、設定に列挙された複数パスの読込失敗、
   source ごとの parse / eval error、文書全体の重複ラベル・未解決参照・未知引用キー、
-  19 フォント種別の各フォント検証、各画像の読込・デコード失敗、検証済み config・style の後の
+  19 フォント種別の各フォント検証、文書が数式で使った字の数式フォントでの欠落（使った箇所 × 字ごと・文書順）、
+  各画像の読込・デコード失敗、検証済み config・style の後の
   文献・フォント・ソースの読込（ファイル間の独立な失敗。`compiler::input::load` が文献 → フォント →
   ソースの順に連結する）
 - **早期 return する**: config.toml 自体を読めない、TOML を parse できない、style path を確定できない、

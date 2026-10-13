@@ -603,7 +603,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 警告は配置が成功したときにしか存在しない）。`compiler` が名指しする警告型は 1 つだけで、`typeset` の内部が
 フォント資源の構築と配置の 2 段に分かれていることは知らない。
 
-段順序（画像パス収集 → 画像読込・自然寸法の検証 → lowering → boxing（計測・画像寸法の確定）→ 改ページ →
+段順序（数式フォントの字の検査 → 画像パス収集 → 画像読込・自然寸法の検証 → lowering → boxing（計測・画像寸法の確定）→ 改ページ →
 前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
@@ -708,9 +708,11 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 #### `error`
 
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
-非収束）。`compose` の失敗型は
-`Failures<TypesetError>` で、画像は正規化済みパスの昇順に**全件**検査する。`compiler` の `InputError` を
-経由せず、`Failures<E>` の汎用 `From` で直接 `CompileFailure` へ平坦化される。
+非収束）。画像は正規化済みパスの昇順に**全件**検査する。`compose` の失敗型は制御フロー型 `ComposeError`
+（`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、必ずソース位置に
+帰属する `MissingMathGlyphs(Failures<MissingMathGlyph>)`（`math_glyphs` 項）の 2 腕を持つ（`semantics::AnalyzeError`
+と同じ形）。`compiler` は前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接 `CompileFailure` へ
+平坦化し、後者にだけ `SourceDiagnostic` で本文を添える。
 
 組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた `unreachable!` で
 顕在化する（内部バグ用のバリアント・`internal_bug` 系の code を再導入しない、#378）。採番・参照解決は
@@ -735,7 +737,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 **`prepare` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な組み合わせを弾く。
 確定した版面は `CompilationInputs` が保持し、`compose` の引数として組版へ戻る。`typeset` の外向きの操作を
 `compose` 1 つに保つ原則の意図した例外は `prepare` だけで、本体ビルドで facade に載る型は 2 操作のシグネチャに
-現れるもの（`TypesetOutput` / `TypesetWarning` / `TypesetError` / `PreparedGeometry` とそのエラー型）と
+現れるもの（`TypesetOutput` / `TypesetWarning` / `ComposeError` / `TypesetError` / `PreparedGeometry` とそのエラー型）と
 `LaidOutDocument`（`#[cfg(test)]` 出口 `layout_for_test` の戻り値型として無条件に再エクスポートするが、本体
 コードの消費者は `typeset` 自身だけ）に限る。テストビルドで加わる中間型の再エクスポートは `boxes` 項。
 
@@ -749,6 +751,19 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   分岐する（同じ判定を 2 回書くと両者が食い違いうる — renderer 側に未対応形式の診断を持たない根拠）
 - 自然寸法はラスタなら寸法ヘッダ、SVG なら `usvg` のサイズ。EXIF の Orientation は適用しない — 描画側
   （krilla）も寸法ヘッダの値を使うため、適用すると組版時と描画時の解釈がずれる
+
+#### `math_glyphs`
+
+文書が数式フォントで組む字を HIR から決め、数式フォントの cmap に基本の字形があるかを問う pre-pass。`lay_out` の
+先頭で 1 回だけ走り（脚注のページ単位採番の反復で再検査しない）、欠けた字を `MissingMathGlyph`（`SourceId` + span、
+code `typeset::math::missing_glyph`）として使った位置 × 字ごとに 1 件・文書順で集める。字の決め方は lowering / boxing
+と同じ関数（`translate_math_char`・`math_text_clusters`・`delimiter_glyphs`・`RADICAL_SIGN`・`char_font_type`）を
+使う — 写し方や振り分けを変えたらここが追従する。テキスト・記号は書記素クラスタの先頭の字だけを問い、和文として振り
+分ける字は除く。記号は display 段の大型演算子（boxing が振り分けを経ず数式フォントで組む）でも振り分ける側として扱う
+前提（大型演算子の字に和文の字は無い）。証明の末尾に数式フォントで組む style.toml の `qed_mark` も、テキストと同じ
+規則で証明の位置に問う。派生字形（`ssty`・`flac`・size variant・glyph assembly）は問わない。走査は
+フォントに触れず、字の有無は述語で受け取る（本番は `FontSystem::has_math_glyph`）。HIR の 3 語彙は全 variant を明示して
+match する。
 
 #### `pagination`
 
@@ -1222,9 +1237,10 @@ resolve_config_path（PathResolver を 1 回構築・config_path を解決）
   検査するテストは、同じ 2 関数を通ってから `#[cfg(test)]` の出口で `LaidOutDocument` を取り出す
 - **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、error の
   `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う。warning も型消去
-  せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ。各段は自分の失敗型（`Failures<E>` か leaf 診断）
-  を返し、facade がその段の出口で汎用 `From` により `CompileFailure` へ平坦化する — 段の内側に
-  `CompileFailure` は現れない。警告を生成し得る段（入力読込・組版）は `(Result<_, Failures<E>>, Vec<W>)` の組を
+  せず、`Warnings` が `Box<dyn Diagnostic>` の列として持つ。各段は自分の失敗型（`Failures<E>` か leaf 診断、
+  ソース本文を添える先を振り分ける段は制御フロー型 `semantics::AnalyzeError` / `typeset::ComposeError`）を返し、
+  facade がその段の出口で `CompileFailure` へ平坦化する — 段の内側に `CompileFailure` は現れない。警告を生成し得る段
+  （入力読込・組版）は `(Result<_, E>, Vec<W>)` の組（`E` は入力読込が `Failures<E>`、組版が `ComposeError`）を
   返し、警告は `Result` と別枠なので失敗時も落ちない。facade 自身の段呼び出し関数だけが
   `Result<_, CompileFailure>` を返す
 - `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
@@ -1276,7 +1292,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   分類手段は安定した診断 `code`。失敗するまでに確定した警告を `warnings()` で別に返し、`Diagnostic` 実装
   （`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で変わらない）
 - `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
-  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError`）へ `SourceSet` から引いた
+  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の `MissingMathGlyph`）へ `SourceSet` から引いた
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。
@@ -1284,7 +1300,8 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   問題を別ソースで示す関連診断（重複ラベルの最初の定義）はそのソースの本文を添えてから内側の `related` の
   後ろに連結する（miette は本文を持たない関連診断を主診断の本文で描くため）。`semantics` の `AnalyzeError`
   は CSL 由来（それ自身が leaf 診断）と意味解析由来（ソースごとに分割済み）に振り分け、後者だけに本文を
-  添える。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
+  添える。`typeset` の `ComposeError` も同じ形で、位置を持たない組版の失敗と数式フォントの字の欠落に振り分け、
+  後者だけに本文を添える。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
   （集約診断を先頭へ足さない）。`config.toml` / `style.toml` の TOML 構文エラーは各 `load` 自身が
   `NamedSource` を組み立てる
 - `warnings`: `compile` が成果物または失敗と一緒に返す warning severity の診断集合 `Warnings`

@@ -306,6 +306,19 @@ fn diagnostic_unsupported_image_format() {
 }
 
 #[test]
+fn diagnostic_missing_math_glyph() {
+  // 数式フォント（STIX Two Math）に無いタイ文字を 2 ソースの数式で使う。欠けた字は使った箇所ごとに、ソースの宣言順・
+  // ソース内の出現順で並ぶ。和文（速）は明朝体へ振り分けるので数式フォントに無くても診断しない
+  let failure = compile_err(&[
+    "tests/text/diagnostics/missing_math_glyph_a.sei",
+    "tests/text/diagnostics/missing_math_glyph_b.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["typeset::math::missing_glyph".to_string(); 3]);
+  assert_matches_golden("missing_math_glyph", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
   // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる。
   // 宣言は Japanese Serif → Serif の順だが、報告は `FontType` の宣言順（Serif が先）になるはず
