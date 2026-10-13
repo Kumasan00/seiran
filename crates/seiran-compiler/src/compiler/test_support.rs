@@ -146,7 +146,7 @@ impl TestProject {
       inputs.font_data(),
       &semantic_document,
     )
-    .map_err(CompileFailure::from);
+    .map_err(|error| return compiler::attribute_compose_error(error, inputs.sources()));
   }
 
   /// 組版に成功することを期待して `layout` を呼ぶ。

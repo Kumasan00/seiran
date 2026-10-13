@@ -1,7 +1,7 @@
 //! 組版 module — 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の [`Publication`]
 //! へ変換する。
 //!
-//! 段順序はフォント資源の構築（解析 → メトリクス → 検証 → シェーパー）→ 画像パス収集 → 画像読込 →
+//! 段順序はフォント資源の構築（解析 → メトリクス → 検証 → シェーパー）→ 数式フォントの字の検査 → 画像パス収集 → 画像読込 →
 //! lowering → 計測（画像の描画寸法もここで確定）→ 行分割・改ページ → 前付け・後付け → ページラベル →
 //! 走り文 → outline → 確定座標の描画命令への変換。
 //!
@@ -21,6 +21,7 @@ mod font;
 mod geometry;
 mod image;
 mod lowering;
+mod math_glyphs;
 mod observe;
 mod pagination;
 #[cfg(test)]
@@ -33,7 +34,7 @@ use std::mem;
 pub(crate) use boxes::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock};
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
-pub(crate) use error::TypesetError;
+pub(crate) use error::{ComposeError, TypesetError};
 use font::{FontSystem, FontWarning};
 pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
 // `#[cfg(test)]` を付けない — 本体コード（`compose` / `lay_out`）もこの名前を使い、条件付きの
@@ -47,7 +48,7 @@ pub(crate) use warning::TypesetWarning;
 use crate::{
   failures::Failures,
   phase::Phase,
-  project::{FontData, ProjectPath, ProjectSource, config::ProjectConfig},
+  project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::Publication,
   semantics::SemanticDocument,
   style::Style,
@@ -75,9 +76,10 @@ pub(crate) struct TypesetOutput {
 ///
 /// # Errors
 ///
-/// フォントの解析・メトリクス取得・設定検証・シェーパー構築、画像の読込・デコード・寸法確定、
-/// または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、その段で見つかった失敗を
-/// 非空集合で持つ（フォント・画像はそれぞれ独立に検査できるので段の中では全件、段の間は早期 return する）。
+/// フォントの解析・メトリクス取得・設定検証・シェーパー構築、文書が数式で使った字の数式フォントでの欠落、
+/// 画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、その段で
+/// 見つかった失敗を非空集合で持つ（フォント・数式の字・画像はそれぞれ独立に検査できるので段の中では全件、段の間は
+/// 早期 return する。数式の字の欠落だけがソース位置を持つので [`ComposeError`] の別の腕で運ぶ）。
 pub(crate) fn compose(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
@@ -85,18 +87,18 @@ pub(crate) fn compose(
   geometry: &PreparedGeometry,
   font_data: &FontData,
   document: &SemanticDocument,
-) -> (Result<TypesetOutput, Failures<TypesetError>>, Vec<TypesetWarning>) {
+) -> (Result<TypesetOutput, ComposeError>, Vec<TypesetWarning>) {
   let (font_resources, font_warnings) = load_fonts(config, font_data);
   let mut warnings: Vec<TypesetWarning> = font_warnings.into_iter().map(TypesetWarning::Font).collect();
   let font_resources = match font_resources {
     Ok(font_resources) => font_resources,
-    Err(failures) => return (Err(failures), warnings),
+    Err(failures) => return (Err(ComposeError::Typeset(failures)), warnings),
   };
 
   let phase = Phase::enter(info_span!("typeset"));
   let (mut laid_out, layout_warnings) = match lay_out(source, config, style, geometry, &font_resources, document) {
     Ok(laid_out) => laid_out,
-    Err(failures) => return (Err(failures), warnings),
+    Err(error) => return (Err(error), warnings),
   };
   let image_paths = mem::take(&mut laid_out.image_paths);
   let publication = emit::emit(config, font_data, &font_resources, laid_out);
@@ -139,8 +141,8 @@ fn load_fonts(
 ///
 /// # Errors
 ///
-/// 画像の読込・デコード・自然寸法の検証、または脚注のページ単位採番の収束に
-/// 失敗した場合に、その段で見つかった失敗を非空集合で返す。
+/// 数式フォントに無い字を文書が数式で使っていた場合はその全件を、画像の読込・デコード・自然寸法の検証、または脚注の
+/// ページ単位採番の収束に失敗した場合はその段で見つかった失敗を返す。
 fn lay_out(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
@@ -148,9 +150,16 @@ fn lay_out(
   geometry: &PreparedGeometry,
   font_resources: &FontSystem,
   document: &SemanticDocument,
-) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>> {
+) -> Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError> {
+  math_glyphs::check(
+    document.hir(),
+    &|ch| return font_resources.has_math_glyph(ch),
+    &config.font_configs[FontType::Math].font_path,
+  )
+  .map_err(ComposeError::MissingMathGlyphs)?;
   let image_paths = image::collect_image_paths(document.hir());
-  let images = image::load_image_resources(source, &image_paths)?;
+  let images = image::load_image_resources(source, &image_paths).map_err(ComposeError::Typeset)?;
   let ctx = pagination::TypesetContext::new(config, style, geometry, font_resources);
-  return pagination::paginate(&ctx, document, images, image_paths).map_err(Failures::single);
+  return pagination::paginate(&ctx, document, images, image_paths)
+    .map_err(|error| return ComposeError::Typeset(Failures::single(error)));
 }

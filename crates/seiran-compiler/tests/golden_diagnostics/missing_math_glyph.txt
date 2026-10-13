@@ -1,0 +1,36 @@
+typeset::math::missing_glyph
+
+  × 数式フォントに ก (U+0E01) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_math_glyph_a.sei:3:19]
+ 2 │ 
+ 3 │ 速さ $v_{速} = ก$ と、太字の $\mathbold{ข}$ を書く。
+   ·                ┬
+   ·                ╰── ここで使っています
+   ╰────
+  help: config.toml の `math` のフォント（vendor/fonts/STIXTwoMath-Regular.ttf）はこの字を持ってい
+        ません。この字を持つ数式フォントを指定してください。
+
+Error: typeset::math::missing_glyph
+
+  × 数式フォントに ข (U+0E02) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_math_glyph_a.sei:3:51]
+ 2 │ 
+ 3 │ 速さ $v_{速} = ก$ と、太字の $\mathbold{ข}$ を書く。
+   ·                                         ┬
+   ·                                         ╰── ここで使っています
+   ╰────
+  help: config.toml の `math` のフォント（vendor/fonts/STIXTwoMath-Regular.ttf）はこの字を持ってい
+        ません。この字を持つ数式フォントを指定してください。
+
+Error: typeset::math::missing_glyph
+
+  × 数式フォントに ก (U+0E01) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_math_glyph_b.sei:2:1]
+ 1 │ \begin{equation}
+ 2 │ ก + 1
+   · ┬
+   · ╰── ここで使っています
+ 3 │ \end{equation}
+   ╰────
+  help: config.toml の `math` のフォント（vendor/fonts/STIXTwoMath-Regular.ttf）はこの字を持ってい
+        ません。この字を持つ数式フォントを指定してください。

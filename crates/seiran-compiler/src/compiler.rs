@@ -35,7 +35,7 @@ use crate::{
   project::{PathResolver, ProjectPath, ProjectSource, SourceSet, config::ConfigWarning},
   publication::Publication,
   semantics::{self, AnalyzeError, SemanticDocument, SemanticError},
-  typeset::{self, TypesetOutput},
+  typeset::{self, ComposeError, TypesetOutput},
 };
 
 /// 型消去済みの診断 1 件（error・warning 共通の保持形）。
@@ -125,7 +125,7 @@ fn run_phases(
   let TypesetOutput {
     publication,
     image_paths,
-  } = typeset_output.map_err(CompileFailure::from)?;
+  } = typeset_output.map_err(|error| return attribute_compose_error(error, inputs.sources()))?;
 
   return Ok((
     publication,
@@ -217,6 +217,18 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
     })
     .collect();
   return failures::collect_in_input_order(results).map_err(CompileFailure::from);
+}
+
+/// `typeset::compose` の失敗を表示可能な診断の集合にする。
+///
+/// ソース位置を持つのは数式フォントの字の欠落だけなので、それにだけ帰属するソースの本文を添える。
+fn attribute_compose_error(error: ComposeError, sources: &SourceSet) -> CompileFailure {
+  return match error {
+    ComposeError::Typeset(failures) => CompileFailure::from(failures),
+    ComposeError::MissingMathGlyphs(failures) => {
+      CompileFailure::from(failures.map(|error| return SourceDiagnostic::attach(sources, error.source_id(), error)))
+    },
+  };
 }
 
 /// `semantics::analyze` のエラーへソース本文を添え、表示可能な診断の集合にする。
