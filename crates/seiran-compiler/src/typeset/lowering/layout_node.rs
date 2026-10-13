@@ -293,8 +293,8 @@ pub(in crate::typeset) struct MathScripts {
   pub font_size: Length,
   /// 基底の数式スタイルが cramped か（上付きのシフトに `SuperscriptShiftUpCramped` を使う）
   pub cramped: bool,
-  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子 1 つのときだけ真。真なら
-  /// `cramped` は使わない）
+  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子か演算子名 1 つのときだけ真。
+  /// 真なら `cramped` は使わない）
   pub limits: bool,
 }
 

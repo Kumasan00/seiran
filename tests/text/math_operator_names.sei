@@ -1,0 +1,30 @@
+\section{演算子名}
+
+インライン数式では範囲を添字に置く: $\lim_{n \rightarrow \infty} a_{n} = 0$ と $\max_{i} x_{i}$。
+
+演算子名と引数の間には細アキが入る: $\sin x + \cos^{2} y$、$\log(x)$、$\exp x$、$\Pr(A)$。
+
+表示数式では範囲を取る演算子名の範囲を真上・真下に中央寄せで積み、演算子名は拡大しない:
+
+\begin{equation}
+\lim_{n \rightarrow \infty} a_{n} = \sup_{k} b_{k} + \limsup_{n} c_{n} - \liminf_{n} d_{n}
+\end{equation}
+
+範囲を取らない演算子名は表示数式でも肩・添字:
+
+\begin{equation}
+\sin^{2} \theta + \cos^{2} \theta = 1, \quad \log_{2} n
+\end{equation}
+
+グループの演算子名・字体コマンドの中の演算子名:
+
+\begin{equation}
+{\lim}_{n} a_{n} + \mathbold{\sin x}
+\end{equation}
+
+cases のセルは text 段なので肩・添字:
+
+\begin{cases}
+\max_{i} x_{i} & x > 0 \\
+\min_{i} x_{i} & x < 0
+\end{cases}

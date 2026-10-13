@@ -1,6 +1,9 @@
-//! 上下に積む上付き・下付き（`MathScripts` の `limits` が真）の配置 — display 段の大型演算子の上限・下限
+//! 上下に積む上付き・下付き（`MathScripts` の `limits` が真）の配置 — display 段の大型演算子と、limits を取る演算子名の
+//! 上限・下限
 //!
-//! `MathML Core` §3.4.2（`munderover` の基底が largeop を持つ埋め込み演算子の場合）の規則で、上限のベースラインを基底の
+//! `TeX` の規則 13a は limits を取る Op を基底の種類（1 字の大型演算子か、演算子名の語か）によらず同じ定数で組み、
+//! OpenType MATH はその定数を `UpperLimit*` / `LowerLimit*` に持つ（`MathML Core` §3.4.2 の、`munderover` の基底が largeop を
+//! 持つ埋め込み演算子の場合も同じ定数）。上限のベースラインを基底の
 //! インクの頂から max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ) 上げ、下限のベースラインを基底の
 //! インクの底から max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 下げる（`OverExtraAscender` /
 //! `UnderExtraDescender` は 0）。横は基底・上限・下限の送り幅の中央を揃え、上限を基底のイタリック補正

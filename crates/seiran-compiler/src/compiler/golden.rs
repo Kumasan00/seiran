@@ -95,14 +95,17 @@
 //!   [`accent_in_a_script_is_set_at_the_script_size`] / [`empty_accent_compiles`] /
 //!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`] /
 //!   [`mark_without_an_attachment_centers_its_ink_on_the_base_attachment`]（共通ヘルパ [`expected_attachment`] 経由）
-//! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る演算子の
-//!   範囲を上下に積む・text 段は不変）:
+//! - **大型演算子と演算子名**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る
+//!   演算子と演算子名の範囲を上下に積む・演算子名は拡大しない・text 段は不変）:
 //!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
 //!   [`inline_large_operator_keeps_the_text_glyph_on_the_baseline`] /
 //!   [`display_integral_pulls_its_subscript_back_by_the_display_glyph_correction`] /
 //!   [`display_sum_stacks_its_limits_centered_above_and_below`] /
 //!   [`wide_lower_limit_widens_the_operator_and_pushes_the_next_atom`] /
-//!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`]
+//!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`] /
+//!   [`display_lim_stacks_its_limit_centered_below_without_growing`] / [`inline_lim_keeps_its_limit_at_the_subscript`] /
+//!   [`sin_is_upright_and_takes_a_thin_space_before_its_argument`] / [`display_sin_keeps_its_scripts_at_the_shoulder`] /
+//!   [`display_limsup_centers_its_limit_under_both_words`]
 //! - **広幅アクセント**（横方向の size variant / glyph assembly で基底の送り幅を覆う・元の字形のままなら `\hat` と同じ字形・
 //!   配置はアクセントと同じ規則）: [`wide_accent_covers_the_base_with_the_smallest_horizontal_variant`] /
 //!   [`longer_base_stretches_the_arrow_only_horizontally`] / [`very_long_arrow_is_assembled_as_one_character`] /
@@ -200,6 +203,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "math_fenced",
   "math_frac",
   "math_limits",
+  "math_operator_names",
   "math_script",
   "math_spacing",
   "math_symbols",
@@ -2346,6 +2350,88 @@ fn inline_sum_keeps_its_limits_at_the_shoulder() {
   let sub = run_with_text(&runs, MATH_I);
   assert_eq!(sup.dx, base.dx + base.width, "インライン数式の上限は肩");
   assert_eq!(sub.dx, sup.dx, "インライン数式の下限は添字（補正 0 なので上付きと同じ列）");
+}
+
+/// 数学用イタリックの 𝑛（U+1D45B）
+const MATH_N: &str = "\u{1D45B}";
+
+/// グリフ列の末尾のグリフ ID
+fn last_gid(line_run: &LineRun) -> u32 {
+  return line_run.run.glyphs.last().expect("グリフ列は 1 つ以上のグリフを持つはず").gid;
+}
+
+#[test]
+fn display_lim_stacks_its_limit_centered_below_without_growing() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\lim_{n} x\n\\end{equation}\n");
+
+  let operator = run_with_text(&runs, "lim");
+  let under = run_with_text(&runs, MATH_N);
+  let next = run_with_text(&runs, MATH_X);
+  let size = operator.run.font_size;
+  assert_eq!(stix_italics_correction(last_gid(operator)), 0, "立体の m は補正の登録が無い（テストの前提）");
+  assert_eq!(size, next.run.font_size, "演算子名は display 段でも拡大しない");
+  assert_eq!(operator.dy, next.dy, "演算子名は数式軸へ寄せずベースラインのまま");
+  let center = |line_run: &LineRun| return line_run.dx + line_run.width / 2.0;
+  // 半分の幅を別々に sp へ丸めるので 1sp までずれうる
+  assert!((center(under) - center(operator)).abs() <= Length::from_sp(1), "下限は lim の中央");
+  let (_, bottom) = stix_run_ink(&operator.run);
+  let (under_height, _) = stix_ink_extent(under);
+  let drop = stix_math_length(MathConstant::LowerLimitBaselineDropMin, size)
+    .max(stix_math_length(MathConstant::LowerLimitGapMin, size) + under_height);
+  assert_eq!(under.dy, operator.dy + bottom - drop, "下限は大型演算子と同じ定数で演算子のインクの底から下げる");
+}
+
+#[test]
+fn inline_lim_keeps_its_limit_at_the_subscript() {
+  let runs = first_line_runs("$\\lim_{i}$\n");
+
+  let base = run_with_text(&runs, "lim");
+  let sub = run_with_text(&runs, MATH_I);
+  let (sub_gid, _) = sole_glyph(sub);
+  assert_eq!(stix_italics_correction(last_gid(base)), 0, "立体の m は補正の登録が無い（テストの前提）");
+  // STIX の立体の m は BottomRight の math kern を高さによらず一定で持ち、𝑖 は TopLeft の kern を持たない（テストの前提）
+  assert_eq!(stix_math_kern(sub_gid, MathKernCorner::TopLeft, 0), 0);
+  let kern = stix_units(stix_math_kern(last_gid(base), MathKernCorner::BottomRight, 0), base.run.font_size);
+  assert_eq!(sub.dx, base.dx + base.width + kern, "インライン数式の下限は添字（末尾の字の math kern ぶん寄せる）");
+  assert!(sub.dy < base.dy, "添字はベースラインより下");
+}
+
+#[test]
+fn sin_is_upright_and_takes_a_thin_space_before_its_argument() {
+  let runs = first_line_runs("$\\sin x$\n");
+
+  let operator = run_with_text(&runs, "sin");
+  let argument = run_with_text(&runs, MATH_X);
+  let thin_space = (operator.run.font_size * 3) / 18.0f64;
+  assert_eq!(argument.dx, operator.dx + operator.width + thin_space, "sin と x の間に細アキ");
+}
+
+#[test]
+fn display_sin_keeps_its_scripts_at_the_shoulder() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\sin^{2} x\n\\end{equation}\n");
+
+  let base = run_with_text(&runs, "sin");
+  let sup = run_with_text(&runs, "2");
+  assert_eq!(stix_italics_correction(last_gid(base)), 0, "立体の n は補正の登録が無い（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width, "範囲を取らない演算子名は表示数式でも肩");
+  assert!(sup.dy > base.dy, "肩はベースラインより上");
+}
+
+#[test]
+fn display_limsup_centers_its_limit_under_both_words() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\limsup_{n} x\n\\end{equation}\n");
+
+  let lim = run_with_text(&runs, "lim");
+  let sup = run_with_text(&runs, "sup");
+  let under = run_with_text(&runs, MATH_N);
+  let thin_space = (lim.run.font_size * 3) / 18.0f64;
+  assert_eq!(sup.dx, lim.dx + lim.width + thin_space, "lim と sup の間に細アキ");
+  assert_eq!(stix_italics_correction(last_gid(sup)), 0, "立体の p は補正の登録が無い（テストの前提）");
+  let operator_center = (lim.dx + sup.dx + sup.width) / 2.0f64;
+  assert!(
+    (under.dx + under.width / 2.0 - operator_center).abs() <= Length::from_sp(1),
+    "下限は lim sup 全体の中央"
+  );
 }
 
 #[test]
