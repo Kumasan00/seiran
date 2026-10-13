@@ -21,7 +21,7 @@ fn math_alphanumeric(base: u32, offset: u32) -> char {
 }
 
 /// 1 文字を `variant` に応じた Mathematical Alphanumeric コードポイントへ変換する
-pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> char {
+pub(in crate::typeset) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> char {
   // `hole` は連続ブロックの外にある字（Letterlike Symbols に散在する黒板太字の ℝ=U+211D・italic の h=U+210E・
   // 黒板太字のギリシャ 4 字、ブロック末尾の太字 digamma）を上書きするためのルックアップ。範囲より先に引く。
   let map_ascii = |ch: char, upper_base: u32, lower_base: u32, hole: fn(char) -> Option<char>| -> char {

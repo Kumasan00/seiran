@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// 根号記号（U+221A SQUARE ROOT。`MathML Core` の radical glyph）
-const RADICAL_SIGN: &str = "\u{221A}";
+pub(in crate::typeset) const RADICAL_SIGN: &str = "\u{221A}";
 
 /// 根号の配置に使う MATH 定数（根号の段のフォントサイズで長さへ換算し、display 段の値を選択済み）
 #[derive(Debug, Clone, Copy)]

@@ -132,9 +132,18 @@ pub(super) fn resolve_font_type(typeface: Typeface, category: ScriptCategory) ->
   };
 }
 
+/// 書体 `typeface` の字 `ch` を単独で組むときのフォント種別（振り分けは [`split_text_by_script`] と同じ）
+pub(in crate::typeset) fn char_font_type(typeface: Typeface, ch: char) -> FontType {
+  let mut buffer = [0u8; 4];
+  let Some(segment) = split_text_by_script(typeface, ch.encode_utf8(&mut buffer)).pop() else {
+    unreachable!("空でない文字列は少なくとも 1 セグメントになる");
+  };
+  return segment.font_type;
+}
+
 #[cfg(test)]
 mod tests {
-  use super::{FontType, Typeface, split_text_by_script};
+  use super::{FontType, Typeface, char_font_type, split_text_by_script};
 
   #[test]
   fn split_text_by_script_math_splits_latin_and_japanese() {
@@ -144,5 +153,21 @@ mod tests {
     let texts: Vec<&str> = segments.iter().map(|s| return s.text.as_str()).collect();
     assert_eq!(texts, vec!["x", "速度", "+1"], "スクリプトごとに分割されるはず: {segments:?}");
     assert_eq!(types, vec![FontType::Math, FontType::JapaneseSerif, FontType::Math]);
+  }
+
+  #[test]
+  fn char_font_type_routes_a_single_char_like_split_text_by_script() {
+    let types = ['x', '\u{1D465}', '速', 'ア', '\u{0E01}'].map(|ch| return char_font_type(Typeface::Math, ch));
+
+    assert_eq!(
+      types,
+      [
+        FontType::Math,
+        FontType::Math,
+        FontType::JapaneseSerif,
+        FontType::JapaneseSerif,
+        FontType::Math
+      ]
+    );
   }
 }
