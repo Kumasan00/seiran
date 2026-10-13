@@ -890,7 +890,11 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `AtomNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の
   ときだけ効く）。largeop を持たない Op（`\bigslash` 等）は display 段でも Op のアキを取る通常の字。積分記号以外（MathML Core の演算子辞書の
   movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
-  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す
+  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す。
+  演算子名（`\lim` `\sin` 等。HIR は組む字と limits を取るかを `HirMathKind::OperatorName` に持つ）は Op の 1 アイテムで、
+  字は立体の ASCII のまま（字形 variant を読まない）、語の間（`\limsup`）は細アキの Kern。display 段でも
+  `AtomNode::LargeOperator` にせず拡大しないが、limits を取る名前は display 段でだけ大型演算子と同じく `MathScripts::limits`
+  を立てる
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
@@ -1042,7 +1046,8 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
   `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして、軸へ合わせたずれと一緒に拾う。上下に積む上付き・下付き
-  （`MathScripts::limits`）は MathML Core §3.4.2 の largeop の規則で、上限のベースラインを基底のインクの頂から
+  （`MathScripts::limits`。基底は大型演算子か演算子名）は TeX の規則 13a（limits を取る Op は基底の種類によらず同じ定数。
+  OpenType MATH の `UpperLimit*` / `LowerLimit*`）で、MathML Core §3.4.2 の largeop の基底の場合と同じく、上限のベースラインを基底のインクの頂から
   max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
   max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
   イタリック補正の半分だけ右、下限を半分だけ左へずらす。幅は 3 つの広がりの和集合で、後ろにアキを置かない
