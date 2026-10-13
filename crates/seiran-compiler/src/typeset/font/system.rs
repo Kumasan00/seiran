@@ -127,6 +127,10 @@ impl FontSystem {
     self.shapers[FontType::Math].shape_flattened(buffer, text, point_size, script_level);
   }
 
+  /// 数式フォントの cmap が `ch` の基本の字形を持つか（`ssty`・`flac`・size variant・glyph assembly は基本の字形から
+  /// 派生するので問わない）
+  pub(crate) fn has_math_glyph(&self, ch: char) -> bool { return self.shapers[FontType::Math].has_glyph(ch); }
+
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
   pub(crate) fn metrics(&self, font_type: FontType) -> FontMetrics { return self.metrics[font_type]; }

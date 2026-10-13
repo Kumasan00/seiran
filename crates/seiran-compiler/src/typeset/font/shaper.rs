@@ -6,7 +6,7 @@
 use std::{str::FromStr, sync::OnceLock};
 
 pub(in crate::typeset) use harfrust::Buffer;
-use harfrust::{Direction, Feature, Font, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
+use harfrust::{Direction, Feature, Font, GlyphId, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -171,6 +171,13 @@ impl HarfRustShaper {
 
   /// シェイピング用フォント（OpenType テーブルの参照元を兼ねる）。
   pub(super) fn font(&self) -> &Font { return &self.font; }
+
+  /// `ch` を cmap が基本の字形へ写すか（シェイピングと同じ nominal glyph の引き当て。.notdef へ写すものは持たない扱い）
+  pub(super) fn has_glyph(&self, ch: char) -> bool {
+    return ShaperFont::new(&self.font)
+      .nominal_glyph(u32::from(ch))
+      .is_some_and(|glyph| return glyph != GlyphId::NOTDEF);
+  }
 
   /// [`TextDirection`] を `harfrust::Direction` に変換します。
   fn to_harfrust_direction(direction: TextDirection) -> Direction {
@@ -477,5 +484,20 @@ mod tests {
       );
     }
     assert_eq!(glyph_of_hat(None, false), plain, "flac のシェイプの後も、キャッシュ済みのプランは元の字形を選ぶ");
+  }
+
+  #[test]
+  fn has_glyph_reports_whether_the_cmap_maps_the_char() {
+    let config = FontConfig {
+      font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
+      ..stix_two_text_config(None)
+    };
+    let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+
+    let present = ['√', '\u{0302}', '\u{1D465}', '{', '\u{2016}', '∑'].map(|ch| return shaper.has_glyph(ch));
+    let absent = ['\u{0E01}', '\u{0E02}'].map(|ch| return shaper.has_glyph(ch));
+
+    assert_eq!(present, [true; 6], "STIX Two Math は根号・アクセント・数式用イタリック・括弧・総和を持つ");
+    assert_eq!(absent, [false; 2], "STIX Two Math はタイ文字を持たない");
   }
 }
