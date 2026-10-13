@@ -22,7 +22,7 @@ fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
     typeface: Typeface::Monospace,
     color,
     script_level: None,
-    math_operator: false,
+    math_operator: None,
   };
 }
 

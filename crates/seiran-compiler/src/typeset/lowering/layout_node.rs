@@ -293,8 +293,8 @@ pub(in crate::typeset) struct MathScripts {
   pub font_size: Length,
   /// 基底の数式スタイルが cramped か（上付きのシフトに `SuperscriptShiftUpCramped` を使う）
   pub cramped: bool,
-  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子 1 つのときだけ真。真なら
-  /// `cramped` は使わない）
+  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子か演算子名 1 つのときだけ真。
+  /// 真なら `cramped` は使わない）
   pub limits: bool,
 }
 
@@ -399,9 +399,19 @@ pub(in crate::typeset) struct TextStyle {
   pub color: Option<Color>,
   /// 数式のスクリプト段（小サイズ用の字形を選ぶ）。数式のスクリプトの中身だけが `Some` で、本文と数式本体は `None`
   pub script_level: Option<ScriptLevel>,
-  /// 数式の演算子（Ord 以外のクラスの記号）のテキストか。演算子はイタリック補正を持っても傾いた字形として扱わない
-  /// （`MathML` Core の `mrow`）。数式以外と数式の Ord は `false`
-  pub math_operator: bool,
+  /// 数式の演算子のテキストならその種類（数式以外と数式の Ord は `None`）
+  pub math_operator: Option<MathOperator>,
+}
+
+/// 数式の演算子のテキストの種類（イタリック補正の扱いが分かれる）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::typeset) enum MathOperator {
+  /// Ord 以外のクラスの記号。イタリック補正を持っても傾いた字形として扱わず（`MathML` Core の `mrow`）、送り幅に足さない。
+  /// スクリプトの配置では補正を大型演算子と同じに使う
+  Symbol,
+  /// 演算子名（`\sin` 等）の語。最後の字の補正は Ord のテキストと同じく語の送り幅に足し、核は 1 字ではないので
+  /// スクリプト・上下に積む範囲の配置では補正を 0 とする（`TeX` の規則 13 の δ）
+  Name,
 }
 
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
@@ -458,7 +468,7 @@ mod tests {
       typeface,
       color: None,
       script_level: None,
-      math_operator: false,
+      math_operator: None,
     };
   }
 

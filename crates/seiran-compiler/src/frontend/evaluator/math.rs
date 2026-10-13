@@ -249,7 +249,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -282,6 +282,13 @@ enum MathCommandKind {
   },
   /// 明示アキ（`\thinspace` 等）— 必須引数なし
   Space(MathSpace),
+  /// 演算子名（`\lim` 等）— 必須引数なし
+  OperatorName {
+    /// 組む字（[`OPERATOR_NAMES`] の 2 列目）
+    text: &'static str,
+    /// display 段で付くスクリプトを上下に積むか
+    limits: bool,
+  },
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -301,6 +308,7 @@ impl MathCommandKind {
         .or_else(|| return wide_accent_mark(name).map(|mark| return Self::Accent { mark, wide: true }))
         .or_else(|| return bar_side(name).map(|over| return Self::Bar { over }))
         .or_else(|| return math_space(name).map(Self::Space))
+        .or_else(|| return operator_name(name).map(|(text, limits)| return Self::OperatorName { text, limits }))
         .or_else(|| return symbol::lookup(name).map(Self::Symbol)),
     };
   }
@@ -310,7 +318,7 @@ impl MathCommandKind {
     return match self {
       Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } => 1,
       Self::Frac => 2,
-      Self::Space(_) | Self::Symbol(_) => 0,
+      Self::Space(_) | Self::OperatorName { .. } | Self::Symbol(_) => 0,
     };
   }
 }
@@ -387,6 +395,53 @@ fn math_space(name: &str) -> Option<MathSpace> {
     "negthinspace" => Some(MathSpace::NegativeThin),
     _ => None,
   };
+}
+
+/// 演算子名の表（コマンド名, 組む字, display 段で付くスクリプトを上下に積むか）
+///
+/// LaTeX カーネルの演算子名と同じ 32 個で、上下に積むかも LaTeX と同じ（`\nolimits` の付かない 10 個）。組む字は ASCII 英字の語を
+/// 半角空白 1 個で区切った列で、空白は語の間の細アキ（LaTeX の `lim\,sup`）。
+const OPERATOR_NAMES: &[(&str, &str, bool)] = &[
+  ("arccos", "arccos", false),
+  ("arcsin", "arcsin", false),
+  ("arctan", "arctan", false),
+  ("arg", "arg", false),
+  ("cos", "cos", false),
+  ("cosh", "cosh", false),
+  ("cot", "cot", false),
+  ("coth", "coth", false),
+  ("csc", "csc", false),
+  ("deg", "deg", false),
+  ("det", "det", true),
+  ("dim", "dim", false),
+  ("exp", "exp", false),
+  ("gcd", "gcd", true),
+  ("hom", "hom", false),
+  ("inf", "inf", true),
+  ("ker", "ker", false),
+  ("lg", "lg", false),
+  ("lim", "lim", true),
+  ("liminf", "lim inf", true),
+  ("limsup", "lim sup", true),
+  ("ln", "ln", false),
+  ("log", "log", false),
+  ("max", "max", true),
+  ("min", "min", true),
+  ("Pr", "Pr", true),
+  ("sec", "sec", false),
+  ("sin", "sin", false),
+  ("sinh", "sinh", false),
+  ("sup", "sup", true),
+  ("tan", "tan", false),
+  ("tanh", "tanh", false),
+];
+
+/// 演算子名のコマンド名から、組む字と上下に積むかを引く（演算子名でなければ `None`）
+fn operator_name(name: &str) -> Option<(&'static str, bool)> {
+  return OPERATOR_NAMES
+    .iter()
+    .find(|&&(command, _, _)| return command == name)
+    .map(|&(_, text, limits)| return (text, limits));
 }
 
 /// 数式内のコマンド名から必須引数の個数を引く
@@ -474,6 +529,17 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       arity::no_command_args(&view)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Space(space)));
     },
+    MathCommandKind::OperatorName { text, limits } => {
+      opt_args::no_command_opt_args(&view)?;
+      arity::no_command_args(&view)?;
+      return Ok(ctx.leaf_math(
+        view.span(),
+        HirMathKind::OperatorName {
+          text: text.to_string(),
+          limits,
+        },
+      ));
+    },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;
       arity::no_command_args(&view)?;
@@ -497,7 +563,7 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
 
 #[cfg(test)]
 mod tests {
-  use super::{MathCommandKind, direct_symbol_class, symbol};
+  use super::{MathCommandKind, OPERATOR_NAMES, direct_symbol_class, symbol};
 
   #[test]
   fn every_symbol_name_resolves_to_the_symbol_in_math() {
@@ -506,6 +572,53 @@ mod tests {
       assert!(
         matches!(MathCommandKind::from_name(name), Some(MathCommandKind::Symbol(_))),
         "数式の語彙が記号名を隠しています: {name}"
+      );
+    }
+  }
+
+  #[test]
+  fn every_operator_name_resolves_to_its_operator_in_math() {
+    for &(name, text, limits) in OPERATOR_NAMES {
+      assert!(
+        matches!(
+          MathCommandKind::from_name(name),
+          Some(MathCommandKind::OperatorName { text: t, limits: l }) if t == text && l == limits
+        ),
+        "数式の語彙が演算子名を隠しているか、表と違う値を返しています: {name}"
+      );
+    }
+  }
+
+  #[test]
+  fn operator_names_are_the_thirty_two_latex_log_like_names() {
+    let limits: Vec<&str> = OPERATOR_NAMES.iter().filter(|entry| return entry.2).map(|entry| return entry.0).collect();
+    let shoulders: Vec<&str> =
+      OPERATOR_NAMES.iter().filter(|entry| return !entry.2).map(|entry| return entry.0).collect();
+
+    assert_eq!(
+      limits,
+      [
+        "det", "gcd", "inf", "lim", "liminf", "limsup", "max", "min", "Pr", "sup"
+      ]
+    );
+    assert_eq!(
+      shoulders,
+      [
+        "arccos", "arcsin", "arctan", "arg", "cos", "cosh", "cot", "coth", "csc", "deg", "dim", "exp", "hom", "ker",
+        "lg", "ln", "log", "sec", "sin", "sinh", "tan", "tanh"
+      ]
+    );
+  }
+
+  #[test]
+  fn operator_name_texts_are_ascii_words_separated_by_single_spaces() {
+    // lowering は空白 1 個を語の区切り（細アキ）として split する
+    for &(name, text, _) in OPERATOR_NAMES {
+      assert!(
+        text
+          .split(' ')
+          .all(|word| return !word.is_empty() && word.chars().all(|ch| return ch.is_ascii_alphabetic())),
+        "{name}: {text:?}"
       );
     }
   }

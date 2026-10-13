@@ -975,6 +975,57 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_operator_names_carry_their_text_and_limits() {
+    let cases = [
+      ("lim", "lim", true),
+      ("sin", "sin", false),
+      ("Pr", "Pr", true),
+      ("limsup", "lim sup", true),
+    ];
+
+    for (name, text, limits) in cases {
+      assert_eq!(
+        math_kinds(&format!("$\\{name}$")),
+        vec![HirMathKind::OperatorName {
+          text: text.to_string(),
+          limits
+        }],
+        "\\{name}"
+      );
+    }
+  }
+
+  #[test]
+  fn evaluate_operator_name_rejects_options() {
+    let error = evaluate_error(r"$\lim[limits=false]$");
+
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "limits"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_operator_name_leaves_a_following_brace_as_a_group() {
+    let math = inline_math_nodes(r"$\sin{x}$");
+
+    assert_eq!(math.len(), 2, "{math:?}");
+    assert!(matches!(&math[0].kind, HirMathKind::OperatorName { text, .. } if text == "sin"), "{math:?}");
+    assert!(is_group_of_text(&math[1], "x"), "引数を取らないので {{x}} は後続の数式グループ: {math:?}");
+  }
+
+  #[test]
+  fn evaluate_operator_name_outside_math_is_math_only() {
+    let error = evaluate_error(r"本文の \sin です");
+
+    assert!(matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == "sin"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_unknown_operator_name_is_an_unknown_command() {
+    let error = evaluate_error(r"$\argmax$");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "argmax"), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_accent_outside_math_is_math_only() {
     let error = evaluate_error(r"\hat{x}");
 
@@ -1137,6 +1188,7 @@ mod tests {
       ("frac", r"\frac{a}{b}"),
       ("sqrt", r"\sqrt{x}"),
       ("mathbold", r"\mathbold{x}"),
+      ("lim", r"\lim"),
     ];
 
     for (expected, source) in cases {

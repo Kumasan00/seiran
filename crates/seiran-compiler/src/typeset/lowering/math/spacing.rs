@@ -15,7 +15,7 @@ use std::mem;
 use crate::{
   document::{MathClass, MathSpace},
   length::Length,
-  typeset::lowering::layout_node::{AtomNode, InlineNode, MathScripts, merge_adjacent_atom_text},
+  typeset::lowering::layout_node::{AtomNode, InlineNode, MathScripts, TextStyle, merge_adjacent_atom_text},
 };
 
 /// アイテムが開き・閉じ区切りとして働くかどうか
@@ -54,7 +54,7 @@ pub(super) struct MathAtom {
   fence: Option<Fence>,
   /// このアイテムの中身
   body: ItemBody,
-  /// このアイテムに付く上付き・下付きを上下に積むか（display 段の limits を取る大型演算子だけが真）
+  /// このアイテムに付く上付き・下付きを上下に積むか（display 段の limits を取る大型演算子と演算子名だけが真）
   limits: bool,
 }
 
@@ -73,11 +73,32 @@ impl MathItem {
   /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）のアイテムを作る（数式クラスは Op・区切りではない。
   /// `limits` は付くスクリプトを上下に積むか）
   pub(super) fn large_operator(symbol: String, font_size: Length, limits: bool) -> Self {
+    return Self::operator(vec![AtomNode::LargeOperator { symbol, font_size }], limits);
+  }
+
+  /// 演算子名 `text` をスタイル `style` で組んだアイテムを作る（数式クラスは Op・区切りではない。`limits` は付くスクリプトを
+  /// 上下に積むか）
+  ///
+  /// `text` の半角空白 1 個は語の区切りで、語ごとのテキストの間に自動アキの細アキと同じ量の Kern を挟む。
+  pub(super) fn operator_name(text: &str, style: TextStyle, limits: bool) -> Self {
+    let thin = mu(Space::Thin.mu_count(), style.font_size);
+    let mut nodes = Vec::new();
+    for word in text.split(' ') {
+      if !nodes.is_empty() {
+        nodes.push(AtomNode::Kern { length: thin });
+      }
+      nodes.push(AtomNode::Text(word.to_string(), style));
+    }
+    return Self::operator(nodes, limits);
+  }
+
+  /// ノード列 `nodes` の Op のアイテムを作る（区切りではない。`limits` は付くスクリプトを上下に積むか）
+  fn operator(nodes: Vec<AtomNode>, limits: bool) -> Self {
     return MathItem::Atom(MathAtom {
       left_class: MathClass::Op,
       right_class: MathClass::Op,
       fence: None,
-      body: ItemBody::Plain(vec![AtomNode::LargeOperator { symbol, font_size }]),
+      body: ItemBody::Plain(nodes),
       limits,
     });
   }
@@ -616,10 +637,7 @@ fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    document::{MathSpace, Typeface},
-    typeset::lowering::layout_node::TextStyle,
-  };
+  use crate::document::{MathSpace, Typeface};
 
   /// 12pt の Math テキストスタイル
   fn style() -> TextStyle {
@@ -628,7 +646,7 @@ mod tests {
       typeface: Typeface::Math,
       color: None,
       script_level: None,
-      math_operator: false,
+      math_operator: None,
     };
   }
 
@@ -890,6 +908,36 @@ mod tests {
     let outer = scripts_of(&items[0]);
     assert!(!outer.limits, "範囲付きの演算子全体は演算子 1 つではないので外側は肩・添字: {outer:?}");
     assert!(matches!(outer.base.as_slice(), [AtomNode::Scripts(inner)] if inner.limits), "{outer:?}");
+  }
+
+  #[test]
+  fn operator_name_is_one_op_item_with_a_thin_space_between_words() {
+    let item = MathItem::operator_name("lim sup", style(), true);
+
+    let atom = atom_of(&item);
+    assert_eq!((atom.left_class, atom.right_class), (MathClass::Op, MathClass::Op));
+    assert!(atom.limits);
+    let ItemBody::Plain(nodes) = &atom.body else {
+      panic!("スクリプトの付かないアイテムのはず: {atom:?}");
+    };
+    assert!(
+      matches!(
+        nodes.as_slice(),
+        [AtomNode::Text(lim, _), AtomNode::Kern { length }, AtomNode::Text(sup, _)]
+          if lim == "lim" && sup == "sup" && *length == mu(Space::Thin.mu_count(), Length::pt(12.0))
+      ),
+      "語ごとのテキストの間に細アキ: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn push_script_on_a_limits_operator_name_stacks_its_scripts() {
+    let mut items = vec![MathItem::operator_name("lim", style(), true)];
+    push_script(&mut items, ScriptSide::Subscript, script('n'), Length::pt(12.0), false);
+
+    let scripts = scripts_of(&items[0]);
+    assert!(scripts.limits, "{scripts:?}");
+    assert!(matches!(scripts.base.as_slice(), [AtomNode::Text(text, _)] if text == "lim"), "{scripts:?}");
   }
 
   #[test]

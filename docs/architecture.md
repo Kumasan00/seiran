@@ -890,7 +890,11 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `AtomNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の
   ときだけ効く）。largeop を持たない Op（`\bigslash` 等）は display 段でも Op のアキを取る通常の字。積分記号以外（MathML Core の演算子辞書の
   movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
-  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す
+  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す。
+  演算子名（`\lim` `\sin` 等。HIR は組む字と limits を取るかを `HirMathKind::OperatorName` に持つ）は Op の 1 アイテムで、
+  字は立体の ASCII のまま（字形 variant を読まない）、語の間（`\limsup`）は細アキの Kern。display 段でも
+  `AtomNode::LargeOperator` にせず拡大しないが、limits を取る名前は display 段でだけ大型演算子と同じく `MathScripts::limits`
+  を立てる
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
@@ -983,9 +987,11 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   深さ（フォント全体の ascender / descender）は使わない。横位置は基底の末尾の字（数式フォントのとき。テキストは基底と結合文字のクラスタで補正は構成字形の和、大型演算子は最後の字形）の MATH のイタリック補正で決め、上付きは基底の右端、下付きはそこから
   補正ぶん戻した位置に置く。演算子でない数式フォントの run は、傾いたクラスタ（基底と結合文字。補正の和が 0 でない）の
   補正を次のクラスタが傾いていないときと run の末尾でクラスタの末尾の字形の送り幅へ足してある（MathML Core の `mrow`。
-  演算子は `TextStyle::math_operator` で除く）ので、
+  演算子の記号は `TextStyle::math_operator` の `MathOperator::Symbol` で除く）ので、
   これは MathML Core の `msub` / `msup`（演算子でない基底は上付きを補正ぶん前へ、演算子は下付きを補正ぶん手前へ。
-  補正を持つ演算子はすべて MathML Core の大型演算子と同じに扱う）と同じ位置になる。基底の末尾とスクリプトの先頭がともに数式フォントのグリフなら、それぞれの字の先頭の字形（結合文字ではなく基底の字）の
+  補正を持つ演算子はすべて MathML Core の大型演算子と同じに扱う）と同じ位置になる。演算子名の語（`MathOperator::Name`）は
+  最後の字の補正を Ord のテキストと同じく送り幅に足し、核が 1 字ではないので補正を 0 として配置する（TeX の規則 13 の δ。
+  上付き・下付きとも語の右端、上下に積む範囲は補正でずらさない）。基底の末尾とスクリプトの先頭がともに数式フォントのグリフなら、それぞれの字の先頭の字形（結合文字ではなく基底の字）の
   OpenType MATH の math kern（上付きは基底の右上と上付きの
   左下を「上付きのインクの底」「基底のインクの頂」の 2 つの高さで、下付きは基底の右下と下付きの左上を「下付きのインクの頂」
   「基底のインクの底」で足し、小さい方。表はそれぞれのグリフ自身のベースライン — 箱の `dy` にグリフの `y_offset` を足した
@@ -1042,7 +1048,8 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
   `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして、軸へ合わせたずれと一緒に拾う。上下に積む上付き・下付き
-  （`MathScripts::limits`）は MathML Core §3.4.2 の largeop の規則で、上限のベースラインを基底のインクの頂から
+  （`MathScripts::limits`。基底は大型演算子か演算子名）は TeX の規則 13a（limits を取る Op は基底の種類によらず同じ定数。
+  OpenType MATH の `UpperLimit*` / `LowerLimit*`）で、MathML Core §3.4.2 の largeop の基底の場合と同じく、上限のベースラインを基底のインクの頂から
   max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
   max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
   イタリック補正の半分だけ右、下限を半分だけ左へずらす。幅は 3 つの広がりの和集合で、後ろにアキを置かない

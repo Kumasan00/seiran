@@ -95,14 +95,20 @@
 //!   [`accent_in_a_script_is_set_at_the_script_size`] / [`empty_accent_compiles`] /
 //!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`] /
 //!   [`mark_without_an_attachment_centers_its_ink_on_the_base_attachment`]（共通ヘルパ [`expected_attachment`] 経由）
-//! - **大型演算子**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る演算子の
-//!   範囲を上下に積む・text 段は不変）:
+//! - **大型演算子と演算子名**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る
+//!   演算子と演算子名の範囲を上下に積む・演算子名は拡大しない・text 段は不変）:
 //!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
 //!   [`inline_large_operator_keeps_the_text_glyph_on_the_baseline`] /
 //!   [`display_integral_pulls_its_subscript_back_by_the_display_glyph_correction`] /
 //!   [`display_sum_stacks_its_limits_centered_above_and_below`] /
 //!   [`wide_lower_limit_widens_the_operator_and_pushes_the_next_atom`] /
-//!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`]
+//!   [`empty_limits_take_no_width_beyond_the_operator`] / [`inline_sum_keeps_its_limits_at_the_shoulder`] /
+//!   [`display_lim_stacks_its_limit_centered_below_without_growing`] / [`inline_lim_keeps_its_limit_at_the_subscript`] /
+//!   [`sin_is_upright_and_takes_a_thin_space_before_its_argument`] / [`display_sin_keeps_its_scripts_at_the_shoulder`] /
+//!   [`display_limsup_centers_its_limit_under_both_words`] /
+//!   演算子名の最後の字の補正（語の送り幅に入れ、配置では 0。最後の字に補正を持たせた STIX、
+//!   [`stix_with_italics_corrections`] 経由）[`operator_name_keeps_the_correction_of_its_last_letter_inside_its_width`] /
+//!   [`display_operator_name_centers_its_limits_without_shifting_by_the_correction`]
 //! - **広幅アクセント**（横方向の size variant / glyph assembly で基底の送り幅を覆う・元の字形のままなら `\hat` と同じ字形・
 //!   配置はアクセントと同じ規則）: [`wide_accent_covers_the_base_with_the_smallest_horizontal_variant`] /
 //!   [`longer_base_stretches_the_arrow_only_horizontally`] / [`very_long_arrow_is_assembled_as_one_character`] /
@@ -200,6 +206,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "math_fenced",
   "math_frac",
   "math_limits",
+  "math_operator_names",
   "math_script",
   "math_spacing",
   "math_symbols",
@@ -1283,35 +1290,59 @@ fn stix_math_bytes() -> Vec<u8> {
   return fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
 }
 
+/// `bytes` の位置 `at` から読んだビッグエンディアンの u16
+fn read_be16(bytes: &[u8], at: usize) -> usize { return usize::from(u16::from_be_bytes([bytes[at], bytes[at + 1]])); }
+
 /// STIX Two Math の MATH を書き換えたフォントのバイト列
 ///
 /// `MathKernInfo` を `kerns`（gid の昇順。各要素は gid・右上の表・右下の表）だけを持つ表に置き換え、
 /// `display_operator_min_height` が `Some` なら `DisplayOperatorMinHeight` も書き換える。表はどれも境目の高さ 1 つで
-/// 2 帯に分かれ、`[境目の高さ, 境目より下の kern, 境目から上の kern]`（フォント単位）で書く。新しい `MathKernInfo` は
-/// 元の MATH の末尾に足して `MathGlyphInfo` のオフセット（Offset16）をそこへ向け、新しい MATH はファイルの末尾に足して
-/// テーブルレコードの位置と長さだけを書き換える（読込側はチェックサムを検証しない）。
+/// 2 帯に分かれ、`[境目の高さ, 境目より下の kern, 境目から上の kern]`（フォント単位）で書く。
 fn stix_with_math_kerns(kerns: &[(u32, [i16; 3], [i16; 3])], display_operator_min_height: Option<u16>) -> Vec<u8> {
+  return stix_with_math(|math| {
+    if let Some(height) = display_operator_min_height {
+      // MathConstants の 4 番目（ScriptPercentScaleDown・ScriptScriptPercentScaleDown・DelimitedSubFormulaMinHeight の次）
+      let constants = read_be16(math, 4);
+      math[constants + 6..constants + 8].copy_from_slice(&height.to_be_bytes());
+    }
+    // MathGlyphInfo の 4 番目のオフセットが MathKernInfo
+    append_math_glyph_info_subtable(math, 6, &math_kern_info(kerns));
+  });
+}
+
+/// STIX Two Math の MATH の `MathItalicsCorrectionInfo` を `corrections`（gid の昇順。各要素は gid とフォント単位の補正）
+/// だけを持つ表に、`MathKernInfo` を空の表に置き換えたフォントのバイト列
+fn stix_with_italics_corrections(corrections: &[(u32, i16)]) -> Vec<u8> {
+  return stix_with_math(|math| {
+    // MathGlyphInfo の 1 番目のオフセットが MathItalicsCorrectionInfo、4 番目が MathKernInfo
+    append_math_glyph_info_subtable(math, 0, &math_italics_correction_info(corrections));
+    append_math_glyph_info_subtable(math, 6, &math_kern_info(&[]));
+  });
+}
+
+/// MATH `math` の末尾に `subtable` を足し、`MathGlyphInfo` の位置 `field` のオフセット（Offset16）をそこへ向ける
+fn append_math_glyph_info_subtable(math: &mut Vec<u8>, field: usize, subtable: &[u8]) {
+  let glyph_info = read_be16(math, 6);
+  let offset = u16::try_from(math.len() - glyph_info).expect("STIX の MATH の大きさなら Offset16 に収まるはず");
+  math[glyph_info + field..glyph_info + field + 2].copy_from_slice(&offset.to_be_bytes());
+  math.extend_from_slice(subtable);
+}
+
+/// STIX Two Math の MATH を `edit` で書き換えたフォントのバイト列
+///
+/// 新しい MATH はファイルの末尾に足してテーブルレコードの位置と長さだけを書き換える（読込側はチェックサムを検証しない）。
+fn stix_with_math(edit: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
   let mut font = stix_math_bytes();
-  let read16 = |bytes: &[u8], at: usize| return usize::from(u16::from_be_bytes([bytes[at], bytes[at + 1]]));
   let read32 = |bytes: &[u8], at: usize| {
     return usize::try_from(u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])).unwrap();
   };
-  let record = (0..read16(&font, 4))
+  let record = (0..read_be16(&font, 4))
     .map(|index| return 12 + 16 * index)
     .find(|&record| return &font[record..record + 4] == b"MATH")
     .expect("STIX Two Math は MATH を持つはず");
   let (offset, length) = (read32(&font, record + 8), read32(&font, record + 12));
   let mut math = font[offset..offset + length].to_vec();
-  if let Some(height) = display_operator_min_height {
-    // MathConstants の 4 番目（ScriptPercentScaleDown・ScriptScriptPercentScaleDown・DelimitedSubFormulaMinHeight の次）
-    let constants = read16(&math, 4);
-    math[constants + 6..constants + 8].copy_from_slice(&height.to_be_bytes());
-  }
-  // MathGlyphInfo の 4 番目のオフセットが MathKernInfo
-  let glyph_info = read16(&math, 6);
-  let kern_info = u16::try_from(math.len() - glyph_info).expect("STIX の MATH の大きさなら Offset16 に収まるはず");
-  math[glyph_info + 6..glyph_info + 8].copy_from_slice(&kern_info.to_be_bytes());
-  math.extend(math_kern_info(kerns));
+  edit(&mut math);
   while !font.len().is_multiple_of(4) {
     font.push(0);
   }
@@ -1355,6 +1386,27 @@ fn math_kern_info(kerns: &[(u32, [i16; 3], [i16; 3])]) -> Vec<u8> {
         bytes.extend(0u16.to_be_bytes());
       }
     }
+  }
+  return bytes;
+}
+
+/// `corrections`（gid の昇順）だけを持つ `MathItalicsCorrectionInfo` のバイト列
+fn math_italics_correction_info(corrections: &[(u32, i16)]) -> Vec<u8> {
+  let count = u16::try_from(corrections.len()).unwrap();
+  // ヘッダ 4 バイト・MathValueRecord 4 バイト × n の後に Coverage（format 1）
+  let coverage = u16::try_from(4 + 4 * corrections.len()).unwrap();
+  let mut bytes = Vec::new();
+  bytes.extend(coverage.to_be_bytes());
+  bytes.extend(count.to_be_bytes());
+  for (_, correction) in corrections {
+    bytes.extend(correction.to_be_bytes());
+    // Device テーブルなし
+    bytes.extend(0u16.to_be_bytes());
+  }
+  bytes.extend(1u16.to_be_bytes());
+  bytes.extend(count.to_be_bytes());
+  for (gid, _) in corrections {
+    bytes.extend(u16::try_from(*gid).unwrap().to_be_bytes());
   }
   return bytes;
 }
@@ -2346,6 +2398,139 @@ fn inline_sum_keeps_its_limits_at_the_shoulder() {
   let sub = run_with_text(&runs, MATH_I);
   assert_eq!(sup.dx, base.dx + base.width, "インライン数式の上限は肩");
   assert_eq!(sub.dx, sup.dx, "インライン数式の下限は添字（補正 0 なので上付きと同じ列）");
+}
+
+/// 数学用イタリックの 𝑛（U+1D45B）
+const MATH_N: &str = "\u{1D45B}";
+
+/// グリフ列の末尾のグリフ ID
+fn last_gid(line_run: &LineRun) -> u32 {
+  return line_run.run.glyphs.last().expect("グリフ列は 1 つ以上のグリフを持つはず").gid;
+}
+
+#[test]
+fn display_lim_stacks_its_limit_centered_below_without_growing() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\lim_{n} x\n\\end{equation}\n");
+
+  let operator = run_with_text(&runs, "lim");
+  let under = run_with_text(&runs, MATH_N);
+  let next = run_with_text(&runs, MATH_X);
+  let size = operator.run.font_size;
+  assert_eq!(stix_italics_correction(last_gid(operator)), 0, "立体の m は補正の登録が無い（テストの前提）");
+  assert_eq!(size, next.run.font_size, "演算子名は display 段でも拡大しない");
+  assert_eq!(operator.dy, next.dy, "演算子名は数式軸へ寄せずベースラインのまま");
+  let center = |line_run: &LineRun| return line_run.dx + line_run.width / 2.0;
+  // 半分の幅を別々に sp へ丸めるので 1sp までずれうる
+  assert!((center(under) - center(operator)).abs() <= Length::from_sp(1), "下限は lim の中央");
+  let (_, bottom) = stix_run_ink(&operator.run);
+  let (under_height, _) = stix_ink_extent(under);
+  let drop = stix_math_length(MathConstant::LowerLimitBaselineDropMin, size)
+    .max(stix_math_length(MathConstant::LowerLimitGapMin, size) + under_height);
+  assert_eq!(under.dy, operator.dy + bottom - drop, "下限は大型演算子と同じ定数で演算子のインクの底から下げる");
+}
+
+#[test]
+fn inline_lim_keeps_its_limit_at_the_subscript() {
+  let runs = first_line_runs("$\\lim_{i}$\n");
+
+  let base = run_with_text(&runs, "lim");
+  let sub = run_with_text(&runs, MATH_I);
+  let (sub_gid, _) = sole_glyph(sub);
+  assert_eq!(stix_italics_correction(last_gid(base)), 0, "立体の m は補正の登録が無い（テストの前提）");
+  // STIX の立体の m は BottomRight の math kern を高さによらず一定で持ち、𝑖 は TopLeft の kern を持たない（テストの前提）
+  assert_eq!(stix_math_kern(sub_gid, MathKernCorner::TopLeft, 0), 0);
+  let kern = stix_units(stix_math_kern(last_gid(base), MathKernCorner::BottomRight, 0), base.run.font_size);
+  assert_eq!(sub.dx, base.dx + base.width + kern, "インライン数式の下限は添字（末尾の字の math kern ぶん寄せる）");
+  assert!(sub.dy < base.dy, "添字はベースラインより下");
+}
+
+#[test]
+fn sin_is_upright_and_takes_a_thin_space_before_its_argument() {
+  let runs = first_line_runs("$\\sin x$\n");
+
+  let operator = run_with_text(&runs, "sin");
+  let argument = run_with_text(&runs, MATH_X);
+  let thin_space = (operator.run.font_size * 3) / 18.0f64;
+  assert_eq!(argument.dx, operator.dx + operator.width + thin_space, "sin と x の間に細アキ");
+}
+
+#[test]
+fn display_sin_keeps_its_scripts_at_the_shoulder() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\sin^{2} x\n\\end{equation}\n");
+
+  let base = run_with_text(&runs, "sin");
+  let sup = run_with_text(&runs, "2");
+  assert_eq!(stix_italics_correction(last_gid(base)), 0, "立体の n は補正の登録が無い（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width, "範囲を取らない演算子名は表示数式でも肩");
+  assert!(sup.dy > base.dy, "肩はベースラインより上");
+}
+
+#[test]
+fn display_limsup_centers_its_limit_under_both_words() {
+  let (runs, _) = display_parts("\\begin{equation}\n\\limsup_{n} x\n\\end{equation}\n");
+
+  let lim = run_with_text(&runs, "lim");
+  let sup = run_with_text(&runs, "sup");
+  let under = run_with_text(&runs, MATH_N);
+  let thin_space = (lim.run.font_size * 3) / 18.0f64;
+  assert_eq!(sup.dx, lim.dx + lim.width + thin_space, "lim と sup の間に細アキ");
+  assert_eq!(stix_italics_correction(last_gid(sup)), 0, "立体の p は補正の登録が無い（テストの前提）");
+  let operator_center = (lim.dx + sup.dx + sup.width) / 2.0f64;
+  assert!(
+    (under.dx + under.width / 2.0 - operator_center).abs() <= Length::from_sp(1),
+    "下限は lim sup 全体の中央"
+  );
+}
+
+/// 演算子名の最後の字に持たせるイタリック補正（フォント単位。STIX の立体の英字は補正を持たないので書き換えて足す）
+const LAST_LETTER_CORRECTION: i16 = 150;
+
+/// 表示数式 `source` を、演算子名 `word` の最後のグリフに [`LAST_LETTER_CORRECTION`] の補正を持たせ math kern を除いた
+/// STIX で組み、本体のグリフ列とそのグリフ ID を返す
+fn display_runs_with_last_letter_correction(source: &str, word: &str) -> (Vec<LineRun>, u32) {
+  let layout = |font: Vec<u8>| {
+    return display_parts_of(&TestProject::builder().source_text(source).font_bytes(STIX_MATH_PATH, font).build()).0;
+  };
+  let plain = layout(stix_with_math_kerns(&[], None));
+  let gid = last_gid(run_with_text(&plain, word));
+  return (layout(stix_with_italics_corrections(&[(gid, LAST_LETTER_CORRECTION)])), gid);
+}
+
+#[test]
+fn operator_name_keeps_the_correction_of_its_last_letter_inside_its_width() {
+  let (runs, gid) =
+    display_runs_with_last_letter_correction("\\begin{equation}\n\\log_{n}^{2} x\n\\end{equation}\n", "log");
+
+  let base = run_with_text(&runs, "log");
+  let sup = run_with_text(&runs, "2");
+  let sub = run_with_text(&runs, MATH_N);
+  let last = base.run.glyphs.last().expect("演算子名は 1 つ以上のグリフを持つ");
+  assert_eq!(
+    last.x_advance,
+    stix_advance(gid) + i32::from(LAST_LETTER_CORRECTION),
+    "最後の字の補正は語の送り幅に入る"
+  );
+  assert_eq!(sup.dx, base.dx + base.width, "上付きは補正の後ろ");
+  assert_eq!(sub.dx, base.dx + base.width, "演算子名は 1 字ではないので、下付きを補正ぶん引き戻さない");
+}
+
+#[test]
+fn display_operator_name_centers_its_limits_without_shifting_by_the_correction() {
+  let (runs, _) =
+    display_runs_with_last_letter_correction("\\begin{equation}\n\\inf_{n}^{m} x\n\\end{equation}\n", "inf");
+
+  let operator = run_with_text(&runs, "inf");
+  let over = run_with_text(&runs, "\u{1D45A}");
+  let under = run_with_text(&runs, MATH_N);
+  let center = |line_run: &LineRun| return line_run.dx + line_run.width / 2.0;
+  assert!(
+    (center(over) - center(operator)).abs() <= Length::from_sp(1),
+    "上限は補正込みの語の中央（補正の半分だけ右へずらさない）"
+  );
+  assert!(
+    (center(under) - center(operator)).abs() <= Length::from_sp(1),
+    "下限は補正込みの語の中央（補正の半分だけ左へずらさない）"
+  );
 }
 
 #[test]
