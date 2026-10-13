@@ -534,11 +534,12 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
 
 /// 数式中のテキストを、書記素クラスタ（基底の字と後ろに付く結合文字）ごとの字の列に分ける
 ///
-/// ソースに書かれた空白は組版に出さない（TeX と同じ）— 空白の字を除き、残りの無いクラスタは捨てる。返す列は空でない。
-pub(in crate::typeset) fn math_text_clusters(text: &str) -> impl Iterator<Item = Vec<char>> + '_ {
+/// ソースに書かれた空白は組版に出さない（TeX と同じ）— 空白の字を除き、残りの無いクラスタは捨てる。各クラスタは
+/// （先頭の字, 先頭の字を含むクラスタ全体）の組で返す。
+pub(in crate::typeset) fn math_text_clusters(text: &str) -> impl Iterator<Item = (char, Vec<char>)> + '_ {
   return GraphemeClusterSegmenter::new().segment_str(text).tuple_windows().filter_map(move |(start, end)| {
     let chars: Vec<char> = text[start..end].chars().filter(|ch| return !ch.is_whitespace()).collect();
-    return (!chars.is_empty()).then_some(chars);
+    return chars.first().copied().map(|first| return (first, chars));
   });
 }
 
@@ -547,10 +548,7 @@ pub(in crate::typeset) fn math_text_clusters(text: &str) -> impl Iterator<Item =
 /// 結合文字は基底の字の一部なので、アキとスクリプトの基底の単位は結合文字を含めた字になる。クラスと区切り種別は
 /// クラスタの最初の字で決める。
 fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
-  for chars in math_text_clusters(text) {
-    let Some(&first) = chars.first() else {
-      unreachable!("math_text_clusters は空のクラスタを返さない");
-    };
+  for (first, chars) in math_text_clusters(text) {
     let mut translated = String::new();
     for &ch in &chars {
       push_math_char(&mut translated, ch, ctx.variant);

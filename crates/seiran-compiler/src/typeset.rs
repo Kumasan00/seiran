@@ -153,6 +153,7 @@ fn lay_out(
 ) -> Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError> {
   math_glyphs::check(
     document.hir(),
+    style,
     &|ch| return font_resources.has_math_glyph(ch),
     &config.font_configs[FontType::Math].font_path,
   )

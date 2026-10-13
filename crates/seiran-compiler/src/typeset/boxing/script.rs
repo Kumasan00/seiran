@@ -136,7 +136,7 @@ pub(super) fn resolve_font_type(typeface: Typeface, category: ScriptCategory) ->
 pub(in crate::typeset) fn char_font_type(typeface: Typeface, ch: char) -> FontType {
   let mut buffer = [0u8; 4];
   let Some(segment) = split_text_by_script(typeface, ch.encode_utf8(&mut buffer)).pop() else {
-    unreachable!("空でない文字列は少なくとも 1 セグメントになる");
+    unreachable!("split_text_by_script は空でない入力の字を必ずどれかのセグメントへ積み、末尾で残りを押し出す");
   };
   return segment.font_type;
 }

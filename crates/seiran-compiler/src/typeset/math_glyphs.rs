@@ -4,10 +4,9 @@
 //! 先頭の字（数式用英数字は写した後の字）で、和文として振り分ける字は除く — 後続の結合文字・異体字セレクタは `HarfBuzz` が
 //! 基底の字と合成・分解するか無視するので要求しない。アクセント記号・伸縮括弧・根号記号・`cases` / `matrix` の区切り括弧は
 //! 振り分けを経ず数式フォントで組むので、そのまま要求する。`ssty`・`flac`・MATH の size variant・glyph assembly は基本の
-//! 字形から派生するので問わない。
-//!
-//! 記号は display 段の大型演算子でも振り分けを経る側として扱う（boxing は大型演算子を数式フォントで直接組むが、大型演算子の
-//! 字に和文へ振り分ける字は無いので結果は同じ）。
+//! 字形から派生するので問わない。証明の末尾に数式フォントで組む style.toml の `qed_mark` も、テキストと同じ規則で証明の位置に
+//! 要求する。display 段の大型演算子（boxing が振り分けを経ず組む）も記号として振り分ける側で問うが、
+//! 大型演算子の字に和文へ振り分ける字は無いので結果は同じ。
 
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
@@ -20,6 +19,7 @@ use crate::{
   failures::Failures,
   project::{FontType, ProjectPath},
   source::SourceId,
+  style::Style,
   typeset::{boxing, lowering},
 };
 
@@ -47,13 +47,8 @@ pub(crate) struct MissingMathGlyph {
 }
 
 impl MissingMathGlyph {
-  /// ソースの字 `written` を写した字 `glyph`（写していなければ同じ字）が `location` で欠けた診断を作る
-  fn new(location: SourceLocation, written: char, glyph: char, font_path: &ProjectPath) -> Self {
-    let label = if written == glyph {
-      "ここで使っています".to_string()
-    } else {
-      format!("`{written}` を {glyph} として組みます")
-    };
+  /// 字 `glyph` が `location` で欠けた診断を、ラベル `label` で作る
+  fn new(location: SourceLocation, glyph: char, label: String, font_path: &ProjectPath) -> Self {
     return MissingMathGlyph {
       glyph,
       span: location.span.into(),
@@ -70,17 +65,20 @@ impl MissingMathGlyph {
 
 /// 文書が数式フォントで組む字を文書順に `has_glyph` へ問い、偽を返した字を使った箇所ごとに集める
 ///
-/// 同じ位置で同じ字を何度使っても 1 件にする。`font_path` は診断に載せる数式フォントのパス。
+/// 同じ位置で同じ字を何度使っても 1 件にする。`style` は定理クラスの `qed_mark` を引くスタイル、`font_path` は診断に載せる
+/// 数式フォントのパス。
 ///
 /// # Errors
 ///
 /// 欠けた字が 1 つでもあれば、その全件を文書順（ソースの宣言順・ソース内の出現順）で返す。
 pub(super) fn check(
   document: &HirDocument,
+  style: &Style,
   has_glyph: &dyn Fn(char) -> bool,
   font_path: &ProjectPath,
 ) -> Result<(), Failures<MissingMathGlyph>> {
   let mut checker = Checker {
+    style,
     has_glyph,
     source_map: document.source_map(),
     font_path,
@@ -97,6 +95,8 @@ pub(super) fn check(
 
 /// HIR を文書順に走査し、欠けた字の診断を積む
 struct Checker<'a> {
+  /// 定理クラスの `qed_mark` を引くスタイル
+  style: &'a Style,
   /// 数式フォントが基本の字形を持つか
   has_glyph: &'a dyn Fn(char) -> bool,
   /// 診断位置を引く位置表
@@ -155,7 +155,18 @@ impl Checker<'_> {
           self.inlines(caption);
         }
       },
-      HirNodeKind::Theorem(theorem) => self.nodes(&theorem.body),
+      HirNodeKind::Theorem(theorem) => {
+        self.nodes(&theorem.body);
+        if let Some(qed_mark) = self.style.theorems[theorem.class].qed_mark.as_deref() {
+          for (glyph, _) in lowering::math_text_clusters(qed_mark) {
+            if boxing::char_font_type(Typeface::Math, glyph) == FontType::Math {
+              self.require(node.id, glyph, || {
+                return "証明の終わりに style.toml の `qed_mark` として組みます".to_string();
+              });
+            }
+          }
+        }
+      },
       HirNodeKind::Quote(quote) => self.nodes(&quote.body),
       HirNodeKind::Flush(flush) => self.nodes(&flush.body),
       HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
@@ -197,10 +208,7 @@ impl Checker<'_> {
   fn math(&mut self, node: &HirMath, variant: Option<MathVariant>) {
     match &node.kind {
       HirMathKind::Text(text) | HirMathKind::Symbol { text, .. } => {
-        for cluster in lowering::math_text_clusters(text) {
-          let Some(&written) = cluster.first() else {
-            unreachable!("math_text_clusters は空のクラスタを返さない");
-          };
+        for (written, _) in lowering::math_text_clusters(text) {
           self.routed(node.id, written, lowering::translate_math_char(written, variant));
         }
       },
@@ -225,13 +233,13 @@ impl Checker<'_> {
         self.math(radicand, variant);
       },
       HirMathKind::Accent { accent, base, .. } => {
-        self.require(node.id, *accent, *accent);
+        self.written(node.id, *accent, *accent);
         self.math(base, variant);
       },
       HirMathKind::Fenced { open, close, body } => {
-        self.require(node.id, *open, *open);
+        self.written(node.id, *open, *open);
         self.math(body, variant);
-        self.require(node.id, *close, *close);
+        self.written(node.id, *close, *close);
       },
       HirMathKind::Bar { body, .. } => self.math(body, variant),
       HirMathKind::Styled {
@@ -245,7 +253,7 @@ impl Checker<'_> {
   /// 振り分けを経ず数式フォントで組む字の列 `text` を、箇所 `site` で要求する
   fn direct(&mut self, site: NodeId, text: &str) {
     for glyph in text.chars() {
-      self.require(site, glyph, glyph);
+      self.written(site, glyph, glyph);
     }
     return;
   }
@@ -253,18 +261,29 @@ impl Checker<'_> {
   /// テキストとして組む字 `glyph`（ソースの字 `written` を写したもの）を、数式フォントへ振り分けるときだけ要求する
   fn routed(&mut self, site: NodeId, written: char, glyph: char) {
     if boxing::char_font_type(Typeface::Math, glyph) == FontType::Math {
-      self.require(site, written, glyph);
+      self.written(site, written, glyph);
     }
     return;
   }
 
-  /// 数式フォントで組む字 `glyph`（ソースの字 `written` を写したもの。写していなければ同じ字）の基本の字形を要求し、
-  /// 無ければ箇所 `site` の診断を積む（同じ位置・同じ字の診断は 1 件にする）
-  fn require(&mut self, site: NodeId, written: char, glyph: char) {
+  /// ソースの字 `written` を写した字 `glyph`（写していなければ同じ字）を箇所 `site` で要求する
+  fn written(&mut self, site: NodeId, written: char, glyph: char) {
+    self.require(site, glyph, || {
+      if written == glyph {
+        return "ここで使っています".to_string();
+      }
+      return format!("`{written}` を {glyph} として組みます");
+    });
+    return;
+  }
+
+  /// 数式フォントで組む字 `glyph` の基本の字形を要求し、無ければ箇所 `site` の診断をラベル `label` で積む（同じ位置・
+  /// 同じ字・同じラベルの診断は 1 件にする）
+  fn require(&mut self, site: NodeId, glyph: char, label: impl FnOnce() -> String) {
     if (self.has_glyph)(glyph) {
       return;
     }
-    let missing = MissingMathGlyph::new(self.source_map.location(site), written, glyph, self.font_path);
+    let missing = MissingMathGlyph::new(self.source_map.location(site), glyph, label(), self.font_path);
     if !self.missing.contains(&missing) {
       self.missing.push(missing);
     }
@@ -277,20 +296,21 @@ mod tests {
   use std::cell::RefCell;
 
   use super::check;
-  use crate::{document::HirDocument, frontend::test_support::parse_for_test, project::ProjectPath, source::SourceId};
+  use crate::{document::HirDocument, frontend::test_support, project::ProjectPath, source::SourceId, style::Style};
 
   /// 診断のパスに載せる数式フォント（テストでは実在しなくてよい）
   fn font_path() -> ProjectPath { return ProjectPath::new("fonts/math.otf"); }
 
   /// ソース 1 本をパースして文書にする
   fn document(source: &str) -> HirDocument {
-    let hir = parse_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = test_support::parse_for_test(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 
   /// `absent` の字だけを持たない数式フォントで検査し、診断を（字, 位置のソース文字列, ラベル）の文書順で返す
   fn missing(source: &str, absent: &[char]) -> Vec<(char, String, String)> {
-    let Err(failures) = check(&document(source), &|ch| return !absent.contains(&ch), &font_path()) else {
+    let Err(failures) = check(&document(source), &Style::default(), &|ch| return !absent.contains(&ch), &font_path())
+    else {
       return Vec::new();
     };
     return failures
@@ -307,6 +327,7 @@ mod tests {
     let asked = RefCell::new(Vec::new());
     let result = check(
       &document(source),
+      &Style::default(),
       &|ch| {
         asked.borrow_mut().push(ch);
         return true;
@@ -430,8 +451,21 @@ mod tests {
   }
 
   #[test]
+  fn qed_mark_is_reported_at_the_proof() {
+    let source = "\\begin{proof}\n本文\n\\end{proof}\n";
+
+    let found = missing(source, &['□']);
+
+    let sites: Vec<(char, bool, String)> = found
+      .into_iter()
+      .map(|(glyph, site, label)| return (glyph, site.starts_with("\\begin{proof}"), label))
+      .collect();
+    assert_eq!(sites, vec![('□', true, "証明の終わりに style.toml の `qed_mark` として組みます".to_string())]);
+  }
+
+  #[test]
   fn message_shows_the_glyph_and_its_code_point() {
-    let Err(failures) = check(&document("$x$"), &|_| return false, &font_path()) else {
+    let Err(failures) = check(&document("$x$"), &Style::default(), &|_| return false, &font_path()) else {
       panic!("字を持たないフォントなら失敗するはず");
     };
 
