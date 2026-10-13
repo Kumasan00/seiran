@@ -63,6 +63,9 @@ pub(crate) enum HirMathKind {
     accent: char,
     /// アクセント記号を基底の送り幅へ横に伸ばすか（`\widehat` 等の広幅アクセントは `true`、`\hat` 等は `false`）
     wide: bool,
+    /// 基底を OpenType `dtls` のドット無しの字形で組むかのソースの指定（`\hat[dotless=false]{i}`）。`None` は style.toml の
+    /// `[math].accent_dotless` に従う。広幅アクセントは任意引数を受け付けないので常に `None`
+    dotless: Option<bool>,
     /// アクセントを付ける数式
     base: Box<HirMath>,
   },

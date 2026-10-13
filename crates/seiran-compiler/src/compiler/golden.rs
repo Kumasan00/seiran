@@ -86,7 +86,8 @@
 //!   [`narrow_degree_sits_right_above_the_surd`] / [`wide_degree_pushes_the_surd_right_by_the_kerns`] /
 //!   [`degree_bottom_rises_by_the_percent_of_the_radical_height`] / [`empty_radical_compiles_with_a_zero_width_vinculum`] /
 //!   [`short_radical_in_a_script_takes_the_glyph_of_a_bare_surd`] / [`tall_radicand_in_a_script_still_stretches_the_surd`]
-//! - **アクセント**（取付点による横位置・`AccentBaseHeight` による高さ・`flac`・スクリプトとの併用）:
+//! - **アクセント**（取付点による横位置・`AccentBaseHeight` による高さ・`flac`・スクリプトとの併用・1 グリフの基底の
+//!   ドット無しの字形（`dtls`）と style.toml / オプションでの切り替え）:
 //!   [`accent_aligns_its_attachment_with_the_attachment_of_a_single_glyph_base`] /
 //!   [`base_without_an_attachment_takes_half_of_its_advance`] / [`accent_on_a_compound_base_centers_on_its_advance`] /
 //!   [`accent_over_a_base_taller_than_accent_base_height_rises_by_the_excess`] /
@@ -94,7 +95,14 @@
 //!   [`superscript_clears_the_accent`] / [`scripts_on_an_accent_start_at_the_base_advance`] /
 //!   [`accent_in_a_script_is_set_at_the_script_size`] / [`empty_accent_compiles`] /
 //!   [`accent_over_a_base_taller_than_the_flattened_height_uses_the_flattened_glyph`] /
-//!   [`mark_without_an_attachment_centers_its_ink_on_the_base_attachment`]（共通ヘルパ [`expected_attachment`] 経由）
+//!   [`mark_without_an_attachment_centers_its_ink_on_the_base_attachment`] /
+//!   [`accent_over_i_and_j_sits_on_the_dotless_glyph_at_the_baseline`] /
+//!   [`accent_over_a_dotless_base_aligns_with_the_dotless_attachment`] /
+//!   [`dotless_glyph_follows_the_math_variant_and_the_script_level`] / [`accent_dotless_false_keeps_the_dotted_glyph`] /
+//!   [`dotless_option_overrides_the_style_default`] /
+//!   [`dotless_option_on_a_base_without_a_dotless_glyph_changes_nothing`] /
+//!   [`i_and_j_outside_a_single_glyph_base_keep_their_dots`] / [`nested_accent_makes_only_the_inner_base_dotless`]
+//!   （共通ヘルパ [`expected_attachment`]・[`first_line_runs_with_accent_dotless`]・[`glyph_layout`] 経由）
 //! - **大型演算子と演算子名**（display 段で `DisplayOperatorMinHeight` 以上の字形へ伸ばして数式軸に合わせる・limits を取る
 //!   演算子と演算子名の範囲を上下に積む・演算子名は拡大しない・text 段は不変）:
 //!   [`display_large_operator_grows_past_the_text_glyph_and_centers_on_the_math_axis`] /
@@ -1632,7 +1640,12 @@ fn collect_rules(content: &HBoxContent, dx: Length, dy: Length, out: &mut Vec<Pl
 
 /// 本文 `source` を組版し、最初の行のグリフ列と罫を出現順に返す。
 fn first_line_parts(source: &str) -> (Vec<LineRun>, Vec<PlacedRule>) {
-  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  return first_line_parts_of(&TestProject::builder().source_text(source).build());
+}
+
+/// `project` を組版し、最初の行のグリフ列と罫を出現順に返す。
+fn first_line_parts_of(project: &TestProject) -> (Vec<LineRun>, Vec<PlacedRule>) {
+  let laid_out = project.laid_out();
   let line = laid_out
     .pages
     .iter()
@@ -3263,6 +3276,173 @@ fn mark_without_an_attachment_centers_its_ink_on_the_base_attachment() {
       "登録の無い記号は墨の中央を基底の取付点に揃える: {source}"
     );
   }
+}
+
+/// 数学用イタリックの 𝑗（U+1D457）
+const MATH_J: &str = "\u{1D457}";
+
+/// 数学用太字の 𝐢（U+1D422）
+const MATH_BOLD_I: &str = "\u{1D422}";
+
+/// 結合用ドット（U+0307。`\dot` のアクセント記号）
+const COMBINING_DOT: &str = "\u{0307}";
+
+/// style.toml の `[math].accent_dotless` を `accent_dotless` にして本文 `source` を組版し、最初の行のグリフ列を出現順に返す。
+fn first_line_runs_with_accent_dotless(source: &str, accent_dotless: bool) -> Vec<LineRun> {
+  let project = TestProject::builder()
+    .source_text(source)
+    .style_toml(move |table| test_support::set(table, "math", "accent_dotless", accent_dotless))
+    .build();
+  return first_line_parts_of(&project).0;
+}
+
+/// グリフ列の並び（位置とグリフの gid）。2 つの組版が同じ出力かを比べる
+fn glyph_layout(runs: &[LineRun]) -> Vec<(Length, Length, Vec<u32>)> {
+  return runs
+    .iter()
+    .map(|line_run| {
+      return (line_run.dx, line_run.dy, line_run.run.glyphs.iter().map(|glyph| return glyph.gid).collect());
+    })
+    .collect();
+}
+
+#[test]
+fn accent_over_i_and_j_sits_on_the_dotless_glyph_at_the_baseline() {
+  for (source, base_text, mark, plain_source) in [
+    ("$\\hat{i}$\n", MATH_I, COMBINING_CIRCUMFLEX, "$\\hat{x}$\n"),
+    ("$\\vec{j}$\n", MATH_J, COMBINING_RIGHT_ARROW, "$\\vec{x}$\n"),
+  ] {
+    let dotted = first_line_runs_with_accent_dotless(source, false);
+    let natural_mark = sole_gid(&first_line_runs(plain_source), mark);
+    let runs = first_line_runs(source);
+
+    let base = run_with_text(&runs, base_text);
+    let accent = run_with_text(&runs, mark);
+    let size = base.run.font_size;
+    let dotted_base = run_with_text(&dotted, base_text);
+    assert!(
+      stix_ink_extent(dotted_base).0 > stix_math_length(MathConstant::FlattenedAccentBaseHeight, size),
+      "ドット付きの字形の頂（665）は FlattenedAccentBaseHeight（656）を超える（テストの前提）: {source}"
+    );
+    assert_ne!(sole_glyph(base).0, sole_glyph(dotted_base).0, "既定ではドット無しの字形: {source}");
+    assert!(
+      stix_ink_extent(base).0 <= stix_math_length(MathConstant::AccentBaseHeight, size),
+      "ドット無しの字形の頂（476）は AccentBaseHeight（480）以下: {source}"
+    );
+    assert_eq!(accent.dy, base.dy, "ベースラインを揃える（持ち上げない）: {source}");
+    assert_eq!(sole_glyph(accent).0, natural_mark, "平たい字形（flac）にしない: {source}");
+    assert_eq!(base.run.text, base_text, "PDF のテキストは元の字のまま（字形だけを替える）: {source}");
+  }
+}
+
+#[test]
+fn accent_over_a_dotless_base_aligns_with_the_dotless_attachment() {
+  let dotted = first_line_runs_with_accent_dotless("$\\hat{i}$\n", false);
+  let runs = first_line_runs("$\\hat{i}$\n");
+
+  let base = run_with_text(&runs, MATH_I);
+  let accent = run_with_text(&runs, COMBINING_CIRCUMFLEX);
+  let dotless_gid = sole_glyph(base).0;
+  let dotted_gid = sole_glyph(run_with_text(&dotted, MATH_I)).0;
+  assert!(stix_top_accent_attachment(dotless_gid).is_some(), "ドット無しの 𝑖 は取付点を持つ（テストの前提）");
+  assert_ne!(
+    stix_top_accent_attachment(dotless_gid),
+    stix_top_accent_attachment(dotted_gid),
+    "ドット無しの 𝑖 の取付点（180）はドット付き（220）と違う（テストの前提）"
+  );
+  assert_eq!(
+    accent.dx + expected_attachment(accent),
+    base.dx + expected_attachment(base),
+    "ドット無しの字形の取付点に揃える"
+  );
+}
+
+#[test]
+fn dotless_glyph_follows_the_math_variant_and_the_script_level() {
+  let display_dotless = sole_gid(&first_line_runs("$\\hat{i}$\n"), MATH_I);
+  for (source, base_text) in [
+    ("$\\mathbold{\\hat{i}}$\n", MATH_BOLD_I),
+    ("$y^{\\hat{i}}$\n", MATH_I),
+  ] {
+    let dotted = first_line_runs_with_accent_dotless(source, false);
+    let runs = first_line_runs(source);
+
+    let dotless_gid = sole_gid(&runs, base_text);
+    assert_ne!(dotless_gid, sole_gid(&dotted, base_text), "その字体・段のドット無しの字形: {source}");
+    assert_ne!(dotless_gid, display_dotless, "数式用イタリックの text 段の字形とは別の字形: {source}");
+  }
+}
+
+#[test]
+fn accent_dotless_false_keeps_the_dotted_glyph() {
+  let bare = inline_gid("$i$\n", MATH_I);
+
+  let runs = first_line_runs_with_accent_dotless("$\\hat{i}$\n", false);
+
+  assert_eq!(sole_gid(&runs, MATH_I), bare, "style.toml で切ればアクセントの外の 𝑖 と同じ字形");
+}
+
+#[test]
+fn dotless_option_overrides_the_style_default() {
+  let bare = inline_gid("$i$\n", MATH_I);
+  let dotless = sole_gid(&first_line_runs("$\\hat{i}$\n"), MATH_I);
+
+  let kept = first_line_runs("$\\dot[dotless=false]{i}$\n");
+  let forced_bare_key = first_line_runs_with_accent_dotless("$\\hat[dotless]{i}$\n", false);
+  let forced_true = first_line_runs_with_accent_dotless("$\\hat[dotless=true]{i}$\n", false);
+
+  assert_eq!(sole_gid(&kept, MATH_I), bare, "\\dot[dotless=false]{{i}} はドット付き");
+  assert!(
+    run_with_text(&kept, COMBINING_DOT).dy > run_with_text(&kept, MATH_I).dy,
+    "ドット付きの頂の上へ上げる"
+  );
+  assert_eq!(sole_gid(&forced_bare_key, MATH_I), dotless, "裸のキーは style.toml が false でもドット無し");
+  assert_eq!(sole_gid(&forced_true, MATH_I), dotless, "dotless=true も style.toml が false でもドット無し");
+}
+
+#[test]
+fn dotless_option_on_a_base_without_a_dotless_glyph_changes_nothing() {
+  // style.toml で切った下で比べる（既定の true の下では書いても書かなくても同じ dotless なので比べる意味が無い）
+  for (with_option, without) in [
+    ("$\\hat[dotless]{x}$\n", "$\\hat{x}$\n"),
+    ("$\\hat[dotless]{ij}$\n", "$\\hat{ij}$\n"),
+    ("$\\hat[dotless]{x^{2}}$\n", "$\\hat{x^{2}}$\n"),
+    ("$\\hat[dotless]{\\infty}$\n", "$\\hat{\\infty}$\n"),
+  ] {
+    let with_runs = first_line_runs_with_accent_dotless(with_option, false);
+    let without_runs = first_line_runs_with_accent_dotless(without, false);
+
+    assert_eq!(glyph_layout(&with_runs), glyph_layout(&without_runs), "{with_option} は {without} と同じ出力");
+  }
+}
+
+#[test]
+fn i_and_j_outside_a_single_glyph_base_keep_their_dots() {
+  let bare_ij: Vec<u32> = first_line_runs("$ij$\n")
+    .iter()
+    .flat_map(|line_run| return line_run.run.glyphs.iter().map(|glyph| return glyph.gid))
+    .collect();
+  let bare_sub = sole_gid(&first_line_runs("$x_{i}$\n"), MATH_I);
+
+  let compound = first_line_runs("$\\hat{ij}$\n");
+  let scripted = first_line_runs("$\\hat{x}_{i}$\n");
+
+  let compound_gids: Vec<u32> = compound
+    .iter()
+    .filter(|line_run| return line_run.run.text != COMBINING_CIRCUMFLEX)
+    .flat_map(|line_run| return line_run.run.glyphs.iter().map(|glyph| return glyph.gid))
+    .collect();
+  assert_eq!(compound_gids, bare_ij, "複数グリフの基底の 𝑖𝑗 はドット付き");
+  assert_eq!(sole_gid(&scripted, MATH_I), bare_sub, "アクセントの外の下付きの 𝑖 はドット付き");
+}
+
+#[test]
+fn nested_accent_makes_only_the_inner_base_dotless() {
+  let dotless = sole_gid(&first_line_runs("$\\hat{i}$\n"), MATH_I);
+
+  let runs = first_line_runs("$\\hat{\\hat{i}}$\n");
+
+  assert_eq!(sole_gid(&runs, MATH_I), dotless, "内側の基底は 1 グリフなのでドット無し");
 }
 
 /// 右向きの結合矢印（U+20D7。`\overrightarrow` の記号）

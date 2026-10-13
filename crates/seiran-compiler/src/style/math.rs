@@ -9,13 +9,26 @@ use crate::{
 };
 
 /// 数式設定全体（`[math]` テーブル）。上付き・下付きの縮小率・シフト量は数式フォントの MATH の値で、ここには置かない。
-#[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct MathStyle {
   /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）。全表示数式環境が共有する。
   #[garde(dive)]
   pub block: MathBlockStyle,
+  /// アクセント（`\hat` 等。広幅アクセントは除く）の基底が数式フォントの 1 グリフのとき、そのグリフを OpenType `dtls` の
+  /// ドット無しの字形（i・j のドットを取った字形）で組むか（既定 `true`）。フォントの `dtls` に置換の無いグリフはそのまま。
+  /// アクセント 1 個ごとの上書きはソースのオプション `dotless`
+  pub accent_dotless: bool,
+}
+
+impl Default for MathStyle {
+  fn default() -> Self {
+    return Self {
+      block: MathBlockStyle::default(),
+      accent_dotless: true,
+    };
+  }
 }
 
 /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）
@@ -83,6 +96,19 @@ mod tests {
     assert_eq!(block.number_side, NumberSide::Right);
     assert_eq!(block.alignment, BlockAlignment::Center);
     assert_eq!(block.tag_format.as_str(), "({number})");
+  }
+
+  #[test]
+  fn accent_dotless_defaults_to_true() {
+    assert!(MathStyle::default().accent_dotless);
+  }
+
+  #[test]
+  fn accent_dotless_is_read_from_the_math_table() {
+    let style: MathStyle = toml::from_str("accent_dotless = false\n").expect("真偽値として読めるはず");
+
+    assert!(!style.accent_dotless);
+    assert_eq!(style.block.number_side, NumberSide::Right, "書かないキーは既定のまま");
   }
 
   #[test]

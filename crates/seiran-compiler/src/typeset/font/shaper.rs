@@ -39,6 +39,9 @@ const SSTY: Tag = Tag::new(b"ssty");
 /// OpenType の `flac`（背の高い基底に載せる平たいアクセント字形を選ぶフィーチャ）のタグ
 const FLAC: Tag = Tag::new(b"flac");
 
+/// OpenType の `dtls`（数式用英数字のドット無しの字形を選ぶフィーチャ）のタグ
+const DTLS: Tag = Tag::new(b"dtls");
+
 /// 全フォント種別のシェイピング用フォント（設定のバリエーション軸の位置へ移したもの）。
 pub(super) type ShapingFonts = FontMap<Font>;
 
@@ -201,8 +204,6 @@ impl HarfRustShaper {
 
   /// [`Self::shape`] の段 `script_level` の設定に `flac` を足してシェイピングする（フォントが `flac` を持たなければ字形は
   /// そのまま）。
-  ///
-  /// 背の高い基底のアクセントにしか使わないので、プランはキャッシュせず呼び出しごとに作る。
   pub(super) fn shape_flattened(
     &self,
     buffer: &mut Buffer,
@@ -210,10 +211,36 @@ impl HarfRustShaper {
     point_size: f32,
     script_level: Option<ScriptLevel>,
   ) {
+    self.shape_with_feature(buffer, text, point_size, script_level, FLAC);
+  }
+
+  /// [`Self::shape`] の段 `script_level` の設定に `dtls` を足してシェイピングする（フォントの `dtls` に置換の無い字形は
+  /// そのまま）。
+  pub(super) fn shape_dotless(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    self.shape_with_feature(buffer, text, point_size, script_level, DTLS);
+  }
+
+  /// [`Self::shape`] の段 `script_level` の設定にフィーチャ `tag` を値 1 で足してシェイピングする。
+  ///
+  /// アクセントの記号と基底にしか使わないので、プランはキャッシュせず呼び出しごとに作る。
+  fn shape_with_feature(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+    tag: Tag,
+  ) {
     let (features, _) = self.level_shaping(script_level);
-    let mut with_flac = features.to_vec();
-    with_flac.push(Feature::new(FLAC, 1, 0..usize::MAX));
-    self.shape_with(buffer, text, point_size, &with_flac, None);
+    let mut with_feature = features.to_vec();
+    with_feature.push(Feature::new(tag, 1, 0..usize::MAX));
+    self.shape_with(buffer, text, point_size, &with_feature, None);
   }
 
   /// 段 `script_level` のフィーチャーとプラン（`None` は display / text 段で、設定のフィーチャーのまま）
@@ -484,6 +511,53 @@ mod tests {
       );
     }
     assert_eq!(glyph_of_hat(None, false), plain, "flac のシェイプの後も、キャッシュ済みのプランは元の字形を選ぶ");
+  }
+
+  #[test]
+  fn dotless_shaping_selects_dtls_glyphs_at_every_level() {
+    let config = FontConfig {
+      font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
+      direction: Some(TextDirection::LeftToRight),
+      script: Some(*b"math"),
+      ..stix_two_text_config(None)
+    };
+    let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+    let glyph_of = |text: &str, level: Option<ScriptLevel>, dotless: bool| {
+      let mut buffer = Buffer::new();
+      if dotless {
+        shaper.shape_dotless(&mut buffer, text, 12.0, level);
+      } else {
+        shaper.shape(&mut buffer, text, 12.0, level);
+      }
+      return buffer.glyph_infos()[0].glyph_id;
+    };
+
+    let plain = glyph_of("\u{1D456}", None, false);
+    let mut dotless_glyphs = Vec::new();
+    for level in [
+      None,
+      Some(ScriptLevel::Script),
+      Some(ScriptLevel::ScriptScript),
+    ] {
+      let dotless = glyph_of("\u{1D456}", level, true);
+      assert_ne!(glyph_of("\u{1D456}", level, false), dotless, "dtls は 𝑖 をドット無しの字形にする: {level:?}");
+      assert_eq!(
+        glyph_of("\u{1D465}", level, true),
+        glyph_of("\u{1D465}", level, false),
+        "dtls に置換の無い 𝑥 はそのまま: {level:?}"
+      );
+      dotless_glyphs.push(dotless);
+    }
+    assert_ne!(
+      dotless_glyphs[0], dotless_glyphs[1],
+      "script 段は ssty も効いたドット無しの字形（u1D456.dotless.ssty）"
+    );
+    assert_ne!(dotless_glyphs[1], dotless_glyphs[2], "scriptscript 段も ssty=2 のドット無しの字形");
+    assert_eq!(
+      glyph_of("\u{1D456}", None, false),
+      plain,
+      "dtls のシェイプの後も、キャッシュ済みのプランは元の字形を選ぶ"
+    );
   }
 
   #[test]

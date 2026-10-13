@@ -346,6 +346,9 @@ pub(in crate::typeset) struct MathAccent {
   pub accent: String,
   /// アクセント記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
   pub wide: bool,
+  /// 基底が数式フォントの 1 グリフのとき、そのグリフを OpenType `dtls` のドット無しの字形で組むか（ソースのオプション、
+  /// 無ければ style.toml の `[math].accent_dotless`。広幅アクセントは常に `false`）
+  pub dotless: bool,
   /// アクセントの段のフォントサイズ（アクセント記号の大きさと MATH 定数の換算に使う）
   pub font_size: Length,
   /// アクセントの段のスクリプト段（アクセント記号の `ssty`。display / text 段は `None`）
