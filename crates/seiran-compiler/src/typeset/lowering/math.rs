@@ -30,7 +30,7 @@ use crate::{
       counter::format_counter_value,
       layout_node::{
         AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBar, MathBlockCellLayout, MathBlockLayout,
-        MathBlockRowLayout, MathFenced, MathFraction, MathRadical, TextStyle,
+        MathBlockRowLayout, MathFenced, MathFraction, MathOperator, MathRadical, TextStyle,
       },
       with_label_anchors,
     },
@@ -112,7 +112,7 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
       typeface: Typeface::Serif,
       color: None,
       script_level: None,
-      math_operator: false,
+      math_operator: None,
     },
   )];
 }
@@ -379,7 +379,7 @@ impl MathLoweringContext {
       typeface: Typeface::Math,
       color: self.color,
       script_level: self.style.level.script_level(),
-      math_operator: class != MathClass::Ord,
+      math_operator: (class != MathClass::Ord).then_some(MathOperator::Symbol),
     };
   }
 }
@@ -434,11 +434,11 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     // 字形 variant は読まない — 字体コマンドが写すのは数式用英数字で、演算子名は関数名という語なので立体の ASCII のまま
     // 組む。largeop ではないので display 段でも拡大しない
     HirMathKind::OperatorName { text, limits } => {
-      items.push(spacing::MathItem::operator_name(
-        text,
-        ctx.text_style(MathClass::Op),
-        *limits && ctx.style.level == StyleLevel::Display,
-      ));
+      let style = TextStyle {
+        math_operator: Some(MathOperator::Name),
+        ..ctx.text_style(MathClass::Op)
+      };
+      items.push(spacing::MathItem::operator_name(text, style, *limits && ctx.style.level == StyleLevel::Display));
     },
     HirMathKind::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
@@ -624,7 +624,7 @@ mod tests {
             typeface: Typeface::Math,
             color: None,
             script_level: None,
-            math_operator: true,
+            math_operator: Some(MathOperator::Symbol),
           },
         )),
       }
@@ -1463,8 +1463,10 @@ mod tests {
   fn operator_texts_are_marked_and_ordinaries_are_not() {
     let nodes = lower_math_source("$f(x)+\\int y$\n");
 
-    let marks: Vec<(String, bool)> =
-      math_texts(&nodes).into_iter().map(|(text, style)| return (text, style.math_operator)).collect();
+    let marks: Vec<(String, bool)> = math_texts(&nodes)
+      .into_iter()
+      .map(|(text, style)| return (text, style.math_operator.is_some()))
+      .collect();
     assert_eq!(
       marks,
       vec![
@@ -1549,7 +1551,7 @@ mod tests {
 
     let cell = &block.rows[0].cells[0].content;
     assert!(
-      matches!(cell.first(), Some(AtomNode::Text(text, style)) if text == "\u{2211}\u{0302}" && style.math_operator),
+      matches!(cell.first(), Some(AtomNode::Text(text, style)) if text == "\u{2211}\u{0302}" && style.math_operator.is_some()),
       "結合文字の付いた大型演算子は display 段でも本文の大きさの演算子: {cell:?}"
     );
   }
@@ -1805,7 +1807,7 @@ mod tests {
   fn large_operator_below_the_display_level_stays_text() {
     let inline = math_texts(&lower_math_source("$\\sum x$\n"));
     assert!(
-      matches!(inline.first(), Some((text, style)) if text == "\u{2211}" && style.math_operator),
+      matches!(inline.first(), Some((text, style)) if text == "\u{2211}" && style.math_operator.is_some()),
       "インライン数式の Op は演算子の Text のまま: {inline:?}"
     );
 
@@ -1828,8 +1830,10 @@ mod tests {
   fn operator_name_is_an_upright_operator_text_with_a_thin_space_after_it() {
     let nodes = lower_math_source("$\\sin x$\n");
 
-    let marks: Vec<(String, bool)> =
-      math_texts(&nodes).into_iter().map(|(text, style)| return (text, style.math_operator)).collect();
+    let marks: Vec<(String, bool)> = math_texts(&nodes)
+      .into_iter()
+      .map(|(text, style)| return (text, style.math_operator.is_some()))
+      .collect();
     assert_eq!(
       marks,
       vec![("sin".to_string(), true), ("\u{1D465}".to_string(), false)],
@@ -1870,7 +1874,7 @@ mod tests {
       matches!(
         cell.first(),
         Some(AtomNode::Text(text, style))
-          if text == "max" && style.math_operator && style.font_size == ReadStyle::default().text.font_size
+          if text == "max" && style.math_operator == Some(MathOperator::Name) && style.font_size == ReadStyle::default().text.font_size
       ),
       "演算子名は display 段でも拡大しない演算子のテキスト: {cell:?}"
     );

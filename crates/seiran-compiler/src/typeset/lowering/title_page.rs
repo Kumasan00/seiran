@@ -50,7 +50,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
         typeface,
         color: None,
         script_level: None,
-        math_operator: false,
+        math_operator: None,
       },
     )));
     pending_gap = Some(gap_after);

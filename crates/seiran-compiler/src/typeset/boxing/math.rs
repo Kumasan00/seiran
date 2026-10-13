@@ -9,7 +9,8 @@
 //! `SuperscriptBottomMaxWithSubscript` の定義（先に上付きを上げ、残りを下付きを下げて埋める）に従う。箱の高さ・深さはフォント
 //! 全体の ascender / descender なので、基底やスクリプトの大きさを見るのにはインクを使う。
 //! 横位置は基底の末尾の字（テキストは基底と結合文字のクラスタ）のイタリック補正で決める（上付きは基底の右端、下付きは
-//! 補正ぶん戻す — 演算子でない基底は補正が送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる）。
+//! 補正ぶん戻す — 演算子でない基底は補正が送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる。
+//! 演算子名の語は補正を送り幅に入れたうえで 0 として扱う）。
 //! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
 //! 足した小さい方。高さはそれぞれのグリフ自身のベースラインから測る）でさらに寄せる。
 //!
@@ -34,7 +35,7 @@ use crate::{
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
     boxing::{Measurer, Shaper, shaping},
-    lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathScripts},
+    lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathOperator, MathScripts},
   },
 };
 
@@ -401,6 +402,8 @@ impl Measurer<'_> {
       } else {
         shaping::last_cluster
       };
+      // 演算子名の語は最後の字の補正を送り幅に入れ済みで、核は 1 字ではないので補正を 0 とする（`MathOperator::Name`）
+      let operator_name = matches!(&node, AtomNode::Text(_, style) if style.math_operator == Some(MathOperator::Name));
       let mut own = Vec::new();
       self.place_atom_node(node, Length::ZERO, &mut width, &mut own);
       if yields_glyphs && index == 0 {
@@ -415,7 +418,11 @@ impl Measurer<'_> {
           own.last().and_then(|placed| return self.shaper.placed_math_char(placed, trailing_char))
       {
         trailing_glyph = Some(glyph);
-        trailing_correction = correction;
+        trailing_correction = if operator_name {
+          Length::ZERO
+        } else {
+          correction
+        };
       }
       boxes.append(&mut own);
     }

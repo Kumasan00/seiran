@@ -19,7 +19,7 @@ use crate::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
     font::{Buffer, FontSystem, ScriptLevel, Stretch},
-    lowering::TextStyle,
+    lowering::{MathOperator, TextStyle},
     observe,
   },
 };
@@ -410,14 +410,14 @@ impl<'a> Shaper<'a> {
     });
   }
 
-  /// 数式フォントの、演算子でないテキスト（`style.math_operator` が偽）の run の傾いたクラスタへイタリック補正を足して
-  /// 計測し直す。数式フォント以外の run と演算子の run はそのまま返す
+  /// 数式フォントの、演算子の記号でないテキスト（Ord と演算子名の語）の run の傾いたクラスタへイタリック補正を足して
+  /// 計測し直す。数式フォント以外の run と演算子の記号（`MathOperator::Symbol`）の run はそのまま返す
   ///
   /// run の末尾のクラスタの後ろはアキ・演算子・スクリプト付きの基底・別スタイルの run のどれかで、MathML Core ではどれも
   /// 傾いた子ではないので、末尾の傾いたクラスタには常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
   /// `Measurer::place_scripts` が引き戻す。
   pub(super) fn add_italic_corrections(&self, shaped: ShapedRun, style: TextStyle) -> ShapedRun {
-    if shaped.run.font_type != FontType::Math || style.math_operator {
+    if shaped.run.font_type != FontType::Math || style.math_operator == Some(MathOperator::Symbol) {
       return shaped;
     }
     let ShapedRun {
