@@ -127,6 +127,18 @@ impl FontSystem {
     self.shapers[FontType::Math].shape_flattened(buffer, text, point_size, script_level);
   }
 
+  /// 数式フォントでテキスト `text` を OpenType `dtls`（ドット無しの字形）を足してシェイプし、結果のグリフ列を `buffer` に
+  /// 残す（`script_level` は数式のスクリプト段）。
+  pub(in crate::typeset) fn shape_dotless_math(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    self.shapers[FontType::Math].shape_dotless(buffer, text, point_size, script_level);
+  }
+
   /// 数式フォントの cmap が `ch` の基本の字形を持つか（`ssty`・`flac`・size variant・glyph assembly は基本の字形から
   /// 派生するので問わない）
   pub(in crate::typeset) fn has_math_glyph(&self, ch: char) -> bool {

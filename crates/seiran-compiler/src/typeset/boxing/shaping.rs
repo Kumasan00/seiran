@@ -281,13 +281,31 @@ impl<'a> Shaper<'a> {
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
   pub(in crate::typeset) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+    return self.shape_text_with(text, style, false);
+  }
+
+  /// [`Self::shape_text`] と同じに組み、数式フォントのセグメントだけ OpenType `dtls` を足してドット無しの字形を選ぶ
+  /// （フォントの `dtls` に置換の無い字形はそのまま）
+  pub(super) fn shape_dotless_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+    return self.shape_text_with(text, style, true);
+  }
+
+  /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す。`dotless` なら数式フォントのセグメントに
+  /// `dtls` を足す
+  fn shape_text_with(&mut self, text: &str, style: TextStyle, dotless: bool) -> Vec<HBox> {
     let text = boxing::fold_newlines(text);
     let segments = script::split_text_by_script(style.typeface, &text);
     return segments
       .into_iter()
       .map(|segment| {
-        let shaped =
-          self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
+        let shaped = if dotless && segment.font_type == FontType::Math {
+          self
+            .fonts
+            .shape_dotless_math(&mut self.buffer, &segment.text, style.font_size.to_pt(), style.script_level);
+          self.shaped_run(&segment.text, FontType::Math, style.font_size, style.color)
+        } else {
+          self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
+        };
         return self.add_italic_corrections(shaped, style).into_hbox();
       })
       .collect();

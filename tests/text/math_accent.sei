@@ -4,6 +4,7 @@
 背の高い基底ではアクセントを上げ、さらに高ければ平たい字形に替える: $\hat{t}$ $\hat{\theta}$ $\tilde{A}$ $\bar{f}$ $\vec{F}$。
 複数文字の基底は中央に揃え、入れ子は内側のアクセントの上に置く: $\hat{xy}$ $\hat{\hat{x}}$ $\bar{x^{2}}$ $\hat{\infty}$。
 スクリプトと併用する: $\hat{x}^{2}$ $\hat{x}_{i}$ $\hat{x}_{i}^{2}$ $y^{\hat{x}}$ $e^{\vec{v}}$。
+i・j の基底はドット無しの字形で組み、オプションでドット付きにもできる: $\hat{i}$ $\vec{j}$ $\mathbold{\hat{i}}$ $y^{\hat{j}}$ $\dot[dotless=false]{i}$ $\hat{ij}$ $\hat[dotless]{x}$。
 
 \begin{equation}
 \dot{x} = \vec{v} + \hat{\theta} \ddot{y}

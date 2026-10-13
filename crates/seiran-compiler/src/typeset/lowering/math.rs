@@ -58,7 +58,13 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(cell, font_size, ctx.script_scale, cell_level(math.kind)),
+          content: lower_math_cell(
+            cell,
+            font_size,
+            ctx.script_scale,
+            cell_level(math.kind),
+            ctx.style.math.accent_dotless,
+          ),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -185,14 +191,16 @@ pub(in crate::typeset) fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyp
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
 /// 本体は text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮グリフを塗る。
+/// `accent_dotless` はアクセントの基底をドット無しの字形で組むかの既定（style.toml の `[math].accent_dotless`）。
 /// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   color: Option<Color>,
+  accent_dotless: bool,
 ) -> Vec<InlineNode> {
-  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color);
+  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, accent_dotless);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
@@ -208,15 +216,20 @@ const fn cell_level(kind: MathBlockKind) -> StyleLevel {
   };
 }
 
-/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない）
+/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない。
+/// `accent_dotless` は [`lower_inline_math`] と同じ）
 fn lower_math_cell(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   level: StyleLevel,
+  accent_dotless: bool,
 ) -> Vec<AtomNode> {
   // 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色
-  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level, None));
+  return lower_math_list(
+    math_nodes,
+    &MathLoweringContext::new(base_font_size, script_scale, level, None, accent_dotless),
+  );
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
@@ -337,11 +350,20 @@ struct MathLoweringContext {
   variant: Option<MathVariant>,
   /// 数式全体の文字色（外側の `\color`・リンク色。`None` は既定色）
   color: Option<Color>,
+  /// アクセントの基底をドット無しの字形で組むかの既定（style.toml の `[math].accent_dotless`）
+  accent_dotless: bool,
 }
 
 impl MathLoweringContext {
-  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`）の文脈を作る
-  fn new(base_font_size: Length, script_scale: ScriptScale, level: StyleLevel, color: Option<Color>) -> Self {
+  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・アクセントのドット無しの既定
+  /// `accent_dotless`）の文脈を作る
+  fn new(
+    base_font_size: Length,
+    script_scale: ScriptScale,
+    level: StyleLevel,
+    color: Option<Color>,
+    accent_dotless: bool,
+  ) -> Self {
     return MathLoweringContext {
       base_font_size,
       script_scale,
@@ -351,6 +373,7 @@ impl MathLoweringContext {
       },
       variant: None,
       color,
+      accent_dotless,
     };
   }
 
@@ -479,13 +502,16 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Accent {
       accent: mark,
       wide,
-      dotless: _,
+      dotless,
       base,
     } => {
       let accent = MathAccent {
         base: lower_math_list(slice::from_ref(base.as_ref()), &ctx.with_style(ctx.style.cramped())),
         accent: mark.to_string(),
         wide: *wide,
+        // 広幅アクセントは frontend が任意引数を受け付けず `dotless` は常に `None` なので、style の既定だけを見ないよう
+        // ここで外す
+        dotless: !*wide && dotless.unwrap_or(ctx.accent_dotless),
         font_size: ctx.font_size(),
         script_level: ctx.style.level.script_level(),
         color: ctx.color,
@@ -826,7 +852,7 @@ mod tests {
   #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
-    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None);
+    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, true);
 
     assert!(nodes.is_empty(), "ノードが無ければ空のノード列を返すはず: {nodes:?}");
   }
@@ -1021,6 +1047,65 @@ mod tests {
     assert_eq!(accent.accent, "\u{0302}");
     assert!(accent.wide, "\\widehat は基底の幅へ伸ばす");
     assert_eq!(concat_atom_texts(&accent.base), "\u{1D465}\u{1D466}");
+  }
+
+  /// `[math].accent_dotless` を `accent_dotless` にした Style で数式スニペットを lower するヘルパ
+  fn lower_math_source_with_accent_dotless(source: &str, accent_dotless: bool) -> Vec<LayoutNode> {
+    let mut style = ReadStyle::default();
+    style.math.accent_dotless = accent_dotless;
+    return lower(&style, &analyzed(source));
+  }
+
+  #[test]
+  fn accent_dotless_follows_the_style_default_unless_the_option_overrides_it() {
+    let cases = [
+      ("$\\hat{i}$\n", true, true),
+      ("$\\hat{i}$\n", false, false),
+      ("$\\dot[dotless=false]{i}$\n", true, false),
+      ("$\\hat[dotless]{i}$\n", false, true),
+      ("$\\hat[dotless=true]{i}$\n", false, true),
+    ];
+    for (source, style_default, expected) in cases {
+      let nodes = lower_math_source_with_accent_dotless(source, style_default);
+
+      assert_eq!(first_accent(&nodes).dotless, expected, "{source} / accent_dotless = {style_default}");
+    }
+  }
+
+  #[test]
+  fn display_accent_follows_the_style_default() {
+    let block =
+      first_math_block(lower_math_source_with_accent_dotless("\\begin{equation}\n\\hat{i}\n\\end{equation}\n", false));
+
+    let content = &block.rows[0].cells[0].content;
+    let [AtomNode::Accent(accent)] = content.as_slice() else {
+      panic!("セルはアクセント 1 つのはず: {content:?}");
+    };
+    assert!(!accent.dotless, "表示数式のセルも style.toml の既定に従う");
+  }
+
+  #[test]
+  fn wide_accent_is_never_dotless() {
+    let nodes = lower_math_source_with_accent_dotless("$\\widehat{i}$\n", true);
+
+    assert!(!first_accent(&nodes).dotless, "広幅アクセントは style.toml の既定の下でもドット無しを選ばない");
+  }
+
+  #[test]
+  fn accent_on_a_single_letter_lowers_its_base_to_one_text() {
+    // boxing はテキスト 1 塊の基底にだけ dtls を試すので、1 字の基底はアキの無い Text 1 つで渡す
+    for source in ["$\\hat{i}$\n", "$\\mathbold{\\hat{i}}$\n"] {
+      let nodes = lower_math_source(source);
+
+      let base = &first_accent(&nodes).base;
+      assert!(matches!(base.as_slice(), [AtomNode::Text(..)]), "{source}: {base:?}");
+    }
+    let nodes = lower_math_source("$y^{\\hat{j}}$\n");
+    let content = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
+    let [AtomNode::Accent(accent)] = content else {
+      panic!("上付きの中身はアクセント 1 つのはず: {content:?}");
+    };
+    assert!(matches!(accent.base.as_slice(), [AtomNode::Text(..)]), "スクリプト内: {:?}", accent.base);
   }
 
   #[test]

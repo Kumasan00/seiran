@@ -11,6 +11,10 @@
 //! アクセントを上げ、隙間は足さない（TeX の Rule 12 の x-height を `AccentBaseHeight` に置き換えたもの）。`MathML Core`
 //! §3.4.2.4 の本文は任意の要素を上付けにできる `MathML` 向けの一般化で、字形が隙間を持つことを前提にしないのでこれには
 //! 従わない（同節のノートが、フォントの規則はベースラインを揃えるものだと述べる）。
+//! ドット無し（`MathAccent` の `dotless`）なら、基底が数式フォントの 1 グリフのとき、そのグリフを OpenType `dtls` を足して
+//! 組み直した字形に替える（段の `ssty` と字体はそのまま。テキストは替えないので PDF の文字は元のまま）。替えるのは組み直しても
+//! 1 グリフで字形が替わったときだけで、`dtls` に置換の無いグリフと 1 グリフでない基底はそのまま組む。横位置・縦位置・
+//! `flac` の規則は、替えた字形の取付点とインクにそのまま効く。
 //! 基底のインクの高さが `FlattenedAccentBaseHeight` を超えたら、アクセント記号を OpenType `flac` の平たい字形に替える
 //! （上げる量の規則は変えない）。
 //! Atom の幅は基底の送り幅で、アクセント記号の墨や原点のはみ出しは幅に数えない（TeX と同じ）。
@@ -28,7 +32,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{Measurer, math},
-    lowering::MathAccent,
+    lowering::{AtomNode, MathAccent, TextStyle},
   },
 };
 
@@ -63,24 +67,40 @@ impl Measurer<'_> {
       base,
       accent,
       wide,
+      dotless,
       font_size,
       script_level,
       color,
     } = accent;
+    // ドット無しの字形を試すのはテキスト 1 塊の基底だけ（1 グリフに組むかは組んでから `dotless_glyph` が決める）
+    let dotless_text = match base.as_slice() {
+      [AtomNode::Text(text, style)] if dotless => Some((text.clone(), *style)),
+      _ => None,
+    };
     let base = self.detach(base);
-    let base_attachment = match sole_math_glyph(&base.boxes) {
+    let dotless_glyph = dotless_text.and_then(|(text, style)| return self.dotless_glyph(&base.boxes, &text, style));
+    let (base_boxes, base_width, base_ink_height) = match dotless_glyph {
+      Some(placed) => {
+        let width = placed.hbox.width;
+        let boxes = vec![placed];
+        let (ink_height, _) = self.shaper.ink_extent(&boxes);
+        (boxes, width, ink_height)
+      },
+      None => (base.boxes, base.width, base.ink_height),
+    };
+    let base_attachment = match sole_math_glyph(&base_boxes) {
       Some((x, gid, size)) => {
         x + self.shaper.top_accent_attachment(gid, size).unwrap_or_else(|| {
           return self.shaper.math_glyph_advance(gid, size) / 2.0;
         })
       },
-      None => base.width / 2.0,
+      None => base_width / 2.0,
     };
-    let flattened = base.ink_height > self.shaper.math_constant(MathConstant::FlattenedAccentBaseHeight, font_size);
+    let flattened = base_ink_height > self.shaper.math_constant(MathConstant::FlattenedAccentBaseHeight, font_size);
     let mark = if wide {
       self
         .shaper
-        .shape_wide_accent(&accent, font_size, script_level, flattened, base.width.max(Length::ZERO), color)
+        .shape_wide_accent(&accent, font_size, script_level, flattened, base_width.max(Length::ZERO), color)
     } else {
       self.shaper.shape_accent(&accent, font_size, script_level, flattened, color)
     };
@@ -101,20 +121,44 @@ impl Measurer<'_> {
       // で、組んだ列の送り幅の中央（MATH の取付点の既定値）に寄せる
       None => mark_width / 2.0,
     };
-    let raise = accent_raise(base.ink_height, self.shaper.math_constant(MathConstant::AccentBaseHeight, font_size));
+    let raise = accent_raise(base_ink_height, self.shaper.math_constant(MathConstant::AccentBaseHeight, font_size));
 
     let mut children = Vec::new();
-    math::translate_into(&mut children, base.boxes, Length::ZERO, Length::ZERO);
+    math::translate_into(&mut children, base_boxes, Length::ZERO, Length::ZERO);
     math::translate_into(&mut children, mark, base_attachment - mark_attachment, raise);
     let mut atom = HBox::atom(children);
     // 結合記号は送り幅 0 で、取付点によっては原点が基底の送り幅より右に来るので、幅は基底の送り幅に戻す
-    atom.width = base.width;
+    atom.width = base_width;
     out.push(PlacedHBox {
       hbox: atom,
       dx: *dx,
       dy,
     });
-    *dx += base.width;
+    *dx += base_width;
+  }
+
+  /// 数式フォントの 1 グリフに組んだ基底 `boxes`（テキスト `text` をスタイル `style` で組んだもの）を、OpenType `dtls` を
+  /// 足して組み直した字形の箱（原点に置いたもの）。組み直しても 1 グリフのままで字形が替わったときだけ返し、`boxes` が
+  /// 1 グリフでないときと `dtls` に置換の無い字形は `None`（基底をそのまま組む）
+  fn dotless_glyph(&mut self, boxes: &[PlacedHBox], text: &str, style: TextStyle) -> Option<PlacedHBox> {
+    let (_, gid, _) = sole_math_glyph(boxes)?;
+    let shaped: Vec<PlacedHBox> = self
+      .shaper
+      .shape_dotless_text(text, style)
+      .into_iter()
+      .map(|hbox| {
+        return PlacedHBox {
+          hbox,
+          dx: Length::ZERO,
+          dy: Length::ZERO,
+        };
+      })
+      .collect();
+    let (_, dotless_gid, _) = sole_math_glyph(&shaped)?;
+    if dotless_gid == gid {
+      return None;
+    }
+    return shaped.into_iter().next();
   }
 }
 
