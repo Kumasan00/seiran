@@ -479,6 +479,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Accent {
       accent: mark,
       wide,
+      dotless: _,
       base,
     } => {
       let accent = MathAccent {

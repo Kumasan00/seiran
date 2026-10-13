@@ -910,11 +910,18 @@ mod tests {
       let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
 
       assert_eq!(math.len(), 1, "\\{name}: {math:?}");
-      let HirMathKind::Accent { accent, wide, base } = &math[0].kind else {
+      let HirMathKind::Accent {
+        accent,
+        wide,
+        dotless,
+        base,
+      } = &math[0].kind
+      else {
         panic!("Accent が期待されます: \\{name} → {math:?}");
       };
       assert_eq!(*accent, mark, "\\{name} の結合文字（unicode-math の \\mathaccent と同じ）");
       assert!(!*wide, "\\{name} は伸ばさない");
+      assert_eq!(*dotless, None, "\\{name}: オプションを書かなければ style.toml の既定に従う");
       assert!(matches!(&base.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {base:?}");
     }
   }
@@ -937,10 +944,44 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_math_accent_rejects_options() {
-    let error = evaluate_error(r"$\hat[size=2]{x}$");
+  fn evaluate_math_accent_takes_only_the_dotless_option() {
+    let cases = [
+      (r"$\hat{i}$", None),
+      (r"$\hat[dotless]{i}$", Some(true)),
+      (r"$\hat[dotless=true]{i}$", Some(true)),
+      (r"$\dot[dotless=false]{i}$", Some(false)),
+      (r"$\breve[dotless]{xy}$", Some(true)),
+    ];
+    for (source, expected) in cases {
+      let math = inline_math_nodes(source);
 
-    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"), "{error:?}");
+      let HirMathKind::Accent { dotless, .. } = &math[0].kind else {
+        panic!("Accent が期待されます: {source} → {math:?}");
+      };
+      assert_eq!(*dotless, expected, "{source}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_accent_rejects_unknown_options() {
+    for (source, unknown) in [(r"$\hat[size=2]{x}$", "size"), (r"$\hat[foo=1]{x}$", "foo")] {
+      let error = evaluate_error(source);
+
+      assert!(
+        matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == unknown),
+        "{source}: {error:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn evaluate_math_accent_rejects_a_non_boolean_dotless() {
+    let error = evaluate_error(r"$\hat[dotless=yes]{i}$");
+
+    assert!(
+      matches!(error, EvalError::InvalidOptArgValue { ref name, ref key, .. } if name == "hat" && key == "dotless"),
+      "{error:?}"
+    );
   }
 
   #[test]
@@ -1046,11 +1087,18 @@ mod tests {
       let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
 
       assert_eq!(math.len(), 1, "\\{name}: {math:?}");
-      let HirMathKind::Accent { accent, wide, base } = &math[0].kind else {
+      let HirMathKind::Accent {
+        accent,
+        wide,
+        dotless,
+        base,
+      } = &math[0].kind
+      else {
         panic!("Accent が期待されます: \\{name} → {math:?}");
       };
       assert_eq!(*accent, mark, "\\{name} の結合文字");
       assert!(*wide, "\\{name} は基底の幅へ伸ばす");
+      assert_eq!(*dotless, None, "\\{name} はドット無しを選ばない");
       assert!(matches!(&base.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {base:?}");
     }
   }
@@ -1059,6 +1107,7 @@ mod tests {
   fn evaluate_math_wide_accent_needs_one_base_and_no_options() {
     let missing = evaluate_error(r"$\widehat$");
     let with_option = evaluate_error(r"$\overrightarrow[size=2]{x}$");
+    let with_dotless = evaluate_error(r"$\widehat[dotless]{i}$");
 
     assert!(
       matches!(missing, EvalError::MissingCommandArgument { ref name, .. } if name == "widehat"),
@@ -1067,6 +1116,10 @@ mod tests {
     assert!(
       matches!(with_option, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"),
       "{with_option:?}"
+    );
+    assert!(
+      matches!(with_dotless, EvalError::UnknownOptArgKey { ref key, .. } if key == "dotless"),
+      "広幅アクセントは dotless を持たない: {with_dotless:?}"
     );
   }
 

@@ -16,7 +16,7 @@ use crate::{
     evaluator::{
       EvalContext, EvalError, arity,
       command::symbol::{self, MathSymbol},
-      opt_args,
+      opt_args::{self, OptKey},
     },
     syntax::{
       self, CstElement, CstNode, SyntaxKind,
@@ -337,6 +337,9 @@ fn fence_delimiters(name: &str) -> Option<(char, char)> {
   };
 }
 
+/// アクセントの基底を OpenType `dtls` のドット無しの字形で組むかの上書き（`\hat[dotless=false]{i}`）
+const DOTLESS: OptKey<bool> = opt_args::boolean("dotless");
+
 /// アクセントコマンド名から、基底の上に置く結合用ダイアクリティカルマークを引く（アクセントでなければ `None`）
 ///
 /// 対応は unicode-math の `\mathaccent`（`unicode-math-table.tex`）と同じ。数式フォントの OpenType MATH は結合記号の側に
@@ -504,7 +507,12 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       return Ok(HirMath::new(id, HirMathKind::Fenced { open, close, body }));
     },
     MathCommandKind::Accent { mark, wide } => {
-      opt_args::no_command_opt_args(&view)?;
+      let dotless = if wide {
+        opt_args::no_command_opt_args(&view)?;
+        None
+      } else {
+        opt_args::collect_command_opt_args(&view, &[DOTLESS.decl()])?.get(DOTLESS)
+      };
       let base_arg = arity::exactly_one_arg(&view, "1 個（アクセントを付ける数式）")?;
       let id = ctx.alloc(view.span());
       let base = Box::new(math_arg_to_node(source, ctx, base_arg)?);
@@ -513,6 +521,7 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
         HirMathKind::Accent {
           accent: mark,
           wide,
+          dotless,
           base,
         },
       ));
