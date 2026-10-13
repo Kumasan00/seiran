@@ -432,7 +432,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       items.push(spacing::MathItem::explicit(*space, ctx.font_size()));
     },
     // 字形 variant は読まない — 字体コマンドが写すのは数式用英数字で、演算子名は関数名という語なので立体の ASCII のまま
-    // 組む。拡大はしない（largeop ではない）。上下に積むのは limits を取る名前が display 段にあるときだけ
+    // 組む。largeop ではないので display 段でも拡大しない
     HirMathKind::OperatorName { text, limits } => {
       items.push(spacing::MathItem::operator_name(
         text,
@@ -1879,6 +1879,7 @@ mod tests {
   #[test]
   fn limits_operator_name_stacks_its_scripts_only_at_the_display_level() {
     let block = math_block_of("\\begin{equation}\n\\lim_{n} x\n\\end{equation}\n");
+
     let scripts = first_atom_scripts(&block.rows[0].cells[0].content);
     assert!(scripts.limits, "display 段の limits を取る演算子名は上下に積む: {scripts:?}");
     assert_eq!(concat_atom_texts(&scripts.base), "lim");
