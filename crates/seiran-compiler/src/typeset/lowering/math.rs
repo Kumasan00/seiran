@@ -431,6 +431,15 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     HirMathKind::Space(space) => {
       items.push(spacing::MathItem::explicit(*space, ctx.font_size()));
     },
+    // 字形 variant は読まない — 字体コマンドが写すのは数式用英数字で、演算子名は関数名という語なので立体の ASCII のまま
+    // 組む。拡大はしない（largeop ではない）。上下に積むのは limits を取る名前が display 段にあるときだけ
+    HirMathKind::OperatorName { text, limits } => {
+      items.push(spacing::MathItem::operator_name(
+        text,
+        ctx.text_style(MathClass::Op),
+        *limits && ctx.style.level == StyleLevel::Display,
+      ));
+    },
     HirMathKind::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
     },
@@ -1812,6 +1821,96 @@ mod tests {
     assert!(
       matches!(numerator.first(), Some(AtomNode::Text(text, _)) if text == "\u{2211}"),
       "display の分子は text 段: {numerator:?}"
+    );
+  }
+
+  #[test]
+  fn operator_name_is_an_upright_operator_text_with_a_thin_space_after_it() {
+    let nodes = lower_math_source("$\\sin x$\n");
+
+    let marks: Vec<(String, bool)> =
+      math_texts(&nodes).into_iter().map(|(text, style)| return (text, style.math_operator)).collect();
+    assert_eq!(
+      marks,
+      vec![("sin".to_string(), true), ("\u{1D465}".to_string(), false)],
+      "演算子名は立体の ASCII の演算子テキスト"
+    );
+    assert_eq!(spacings(&nodes), vec![mu(3)], "Op と Ord の間は細アキ: {nodes:?}");
+  }
+
+  #[test]
+  fn operator_name_with_scripts_keeps_the_operator_spacing() {
+    let nodes = lower_math_source("$\\sin^{2} x$\n");
+
+    assert_eq!(concat_atom_texts(&first_scripts(&nodes).base), "sin");
+    assert_eq!(spacings(&nodes), vec![mu(3)], "スクリプト付きでも Op のまま後ろに細アキ: {nodes:?}");
+  }
+
+  #[test]
+  fn operator_name_ignores_the_enclosing_math_variant() {
+    let texts = concat_texts(&lower_math_source("$\\mathbold{\\sin x}$\n"));
+
+    assert_eq!(texts, "sin\u{1D431}", "演算子名は立体のまま、x だけが太字");
+  }
+
+  #[test]
+  fn two_word_operator_name_puts_a_thin_space_between_the_words() {
+    let nodes = lower_math_source("$\\limsup$\n");
+
+    assert_eq!(concat_texts(&nodes), "limsup");
+    assert_eq!(spacings(&nodes), vec![mu(3)], "lim と sup の間に細アキ: {nodes:?}");
+  }
+
+  #[test]
+  fn display_operator_name_is_not_a_large_operator() {
+    let block = math_block_of("\\begin{equation}\n\\max x\n\\end{equation}\n");
+
+    let cell = &block.rows[0].cells[0].content;
+    assert!(
+      matches!(
+        cell.first(),
+        Some(AtomNode::Text(text, style))
+          if text == "max" && style.math_operator && style.font_size == ReadStyle::default().text.font_size
+      ),
+      "演算子名は display 段でも拡大しない演算子のテキスト: {cell:?}"
+    );
+  }
+
+  #[test]
+  fn limits_operator_name_stacks_its_scripts_only_at_the_display_level() {
+    let block = math_block_of("\\begin{equation}\n\\lim_{n} x\n\\end{equation}\n");
+    let scripts = first_atom_scripts(&block.rows[0].cells[0].content);
+    assert!(scripts.limits, "display 段の limits を取る演算子名は上下に積む: {scripts:?}");
+    assert_eq!(concat_atom_texts(&scripts.base), "lim");
+
+    let shoulders = [
+      "\\begin{equation}\n\\sin_{n} x\n\\end{equation}\n",
+      "\\begin{equation}\n{\\lim}_{n} x\n\\end{equation}\n",
+      "\\begin{cases}\n\\lim_{n} x & y\n\\end{cases}\n",
+    ];
+    for source in shoulders {
+      let block = math_block_of(source);
+
+      assert!(!first_atom_scripts(&block.rows[0].cells[0].content).limits, "肩・添字: {source}");
+    }
+
+    let fraction = math_block_of("\\begin{equation}\n\\frac{\\max_{i}}{2}\n\\end{equation}\n");
+    let numerator = &atom_fraction(&fraction.rows[0].cells[0].content).numerator;
+    assert!(!first_atom_scripts(numerator).limits, "display の分子は text 段で肩・添字: {numerator:?}");
+
+    let inline = lower_math_source("$\\lim_{n}$\n");
+    assert!(!first_scripts(&inline).limits, "インライン数式は肩・添字");
+  }
+
+  #[test]
+  fn colored_operator_name_takes_the_inline_color() {
+    let nodes = lower_math_source("\\color[color=#cc0000]{$\\sin x$}\n");
+
+    assert!(
+      math_texts(&nodes)
+        .iter()
+        .any(|(text, style)| return text == "sin" && style.color == Some(Color::new(0xcc, 0x00, 0x00))),
+      "演算子名も外側の文字色を継承する: {nodes:?}"
     );
   }
 

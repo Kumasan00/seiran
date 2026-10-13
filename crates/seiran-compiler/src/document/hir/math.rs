@@ -30,6 +30,13 @@ pub(crate) enum HirMathKind {
   },
   /// 明示アキ（`\thinspace` 等）。クラスを持たず、アトム間のアキの決定に透過する
   Space(MathSpace),
+  /// 演算子名（`\lim` / `\sin` 等）
+  OperatorName {
+    /// 組む字（ASCII 英字の語を半角空白 1 個で区切った列。空白は語の間の細アキ）
+    text: String,
+    /// display 段で付く上付き・下付きを真上・真下に積む名前か
+    limits: bool,
+  },
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^{2}`）
