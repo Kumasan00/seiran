@@ -18,7 +18,7 @@ use phf::phf_map;
 use crate::{
   document::{HeadingLevel, HirInline, HirInlineKind, HirNode, Typeface},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, opt_args},
+    evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, math, opt_args},
     syntax::{ArgMode, view::CommandView},
   },
 };
@@ -276,12 +276,12 @@ pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///
-/// レジストリ（[`COMMANDS`]）→ 記号表（[`symbol::lookup`]）→ 未知の順に引く、コマンド実行の
+/// レジストリ（[`COMMANDS`]）→ 記号表（[`symbol::lookup`]）→ 数式の語彙（数式専用として拒否）→ 未知の順に引く、コマンド実行の
 /// 唯一の入口。
 ///
 /// # Errors
 ///
-/// 未知のコマンドやコマンド実行中のエラーが発生した場合
+/// 未知のコマンド・数式専用のコマンドやコマンド実行中のエラーが発生した場合
 pub(super) fn evaluate_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
@@ -292,6 +292,13 @@ pub(super) fn evaluate_command(
   }
   if let Some(symbol) = symbol::lookup(view.name()) {
     return single_char(view, ctx, symbol.ch).map(CommandResult::Inline);
+  }
+  // 記号コマンドは上で字として引けているので、ここで当たる数式の語彙は数式の中でしか意味を持たない
+  if math::lookup_math_arg_count(view.name()).is_some() {
+    return Err(EvalError::MathOnlyCommand {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
   }
   return Err(EvalError::UnknownCommand {
     name: view.name().to_string(),

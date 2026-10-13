@@ -1,6 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::document::{MathClass, MathVariant, hir::NodeId};
+use crate::document::{MathClass, MathSpace, MathVariant, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 #[derive(Debug, PartialEq)]
@@ -28,6 +28,8 @@ pub(crate) enum HirMathKind {
     /// 記号テーブルが記録した数式クラス（アトム間のアキ決定に使う）
     class: MathClass,
   },
+  /// 明示アキ（`\thinspace` 等）。クラスを持たず、アトム間のアキの決定に透過する
+  Space(MathSpace),
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^{2}`）

@@ -196,6 +196,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "math_accent",
   "math_break",
   "math_color",
+  "math_explicit_space",
   "math_fenced",
   "math_frac",
   "math_limits",

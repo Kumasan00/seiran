@@ -110,6 +110,15 @@ fn diagnostic_environment_in_inline_math() {
 }
 
 #[test]
+fn diagnostic_math_only_command() {
+  // 数式専用コマンドを本文に書くと、未知ではなく数式の中でだけ使えるという診断になる
+  let failure = compile_err(&["tests/text/diagnostics/math_only_command.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::math_only_command".to_string()]);
+  assert_matches_golden("math_only_command", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_opt_args() {
   // P3（任意引数はコマンド名／環境名の直後に 1 組だけ）
   let failure = compile_err(&["tests/text/diagnostics/multiple_opt_args.sei"]);
