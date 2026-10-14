@@ -2445,8 +2445,7 @@ fn display_operator_scripts_take_the_math_kern_from_the_operator_baseline() {
 #[test]
 fn assembled_operator_scripts_take_the_math_kern_from_the_last_part_baseline() {
   // STIX の ∫ の最大の size variant（2347 単位）より高く求めて glyph assembly で組ませる。最後のグリフは最上段の
-  // パーツで run の中で縦にずれているので、誤りは箱のずれだけで引くこと。下付きの補正の高さの一方も assembly 全体の
-  // 底ではなく、最上段のパーツ自身のインクの底
+  // パーツで run の中で縦にずれているので、誤りは箱のずれだけで引くこと
   assert_scripts_cut_in_at_the_operator_glyph_heights(
     "\\begin{equation}\n\\int_{a}^{n} x\n\\end{equation}\n",
     [INTEGRAL, "\u{1D45B}", MATH_A],
