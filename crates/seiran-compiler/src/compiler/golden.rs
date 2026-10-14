@@ -1277,7 +1277,10 @@ fn stix_glyph_ink(gid: u32) -> (f64, f64) {
   let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
   let bytes = fs::read(&path).expect("vendor の STIX Two Math を読めるはず（tools/fetch-test-assets.sh）");
   let font = Font::new(bytes, 0).expect("STIX Two Math は sfnt として読めるはず");
-  let extents = font.glyph_metrics().extents(GlyphId::new(gid)).expect("STIX の括弧のグリフはインクを読めるはず");
+  let extents = font
+    .glyph_metrics()
+    .extents(GlyphId::new(gid))
+    .expect("テストが測る STIX のグリフはインクを読めるはず");
   return (f64::from(extents.y_bearing), f64::from(extents.height));
 }
 
