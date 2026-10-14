@@ -1018,8 +1018,8 @@ glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディ
   「基底のインクの底」で足し、小さい方。表はそれぞれのグリフ自身のベースライン — 箱の `dy` にグリフの `y_offset` を足した
   位置 — からの高さで引く）だけ寄せる。上下付き
   同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
-  超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（Atom の幅は
-  末尾のアキを含む送り幅を下限にする）
+  超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（閉じた Atom の幅は
+  末尾のアキを含む送り幅そのもので、末尾が負の明示アキなら子の箱の右端より狭い）
 - **分数**（`MathFraction`）は MathML Core §3.3.2.1 の規則で置く: 分子のシフトは `FractionNumeratorShiftUp` と
   「`AxisHeight` + 罫の太さ/2 + `FractionNumeratorGapMin` + 分子のインクの深さ」の大きい方、分母のシフトは
   `FractionDenominatorShiftDown` と「罫の太さ/2 + `FractionDenominatorGapMin` + 分母のインクの高さ − `AxisHeight`」の

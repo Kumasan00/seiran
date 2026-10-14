@@ -19,3 +19,13 @@ $x^{ab}$ と $x^{a\thinspace b}$。$x\thinspace^{2}$ の肩は x に付かない
 \begin{equation}
 f(x) = \int g(x)\thinspace dx \quad x > 0
 \end{equation}
+
+\section{末尾}
+
+インライン末尾の $a\negthinspace$b とグループ末尾の ${a\negthinspace}b$。
+
+\begin{align}
+a &= b \\
+a\negthinspace &= b \\
+a\quad &= b
+\end{align}

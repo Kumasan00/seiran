@@ -159,8 +159,44 @@ keywords=["test", "seiran"]
   glyphs x=890.02 y=528.20 font=Math size=12.00 text=">" glyph_count=1
   glyphs x=902.00 y=528.20 font=Math size=12.00 text="0" glyph_count=1
   glyphs x=1428.56 y=528.20 font=Serif size=12.00 text="(.1)" glyph_count=4
+  glyphs x=240.94 y=570.20 font=SerifBold size=20.00 text=".5" glyph_count=2
+  glyphs x=261.06 y=570.20 font=JapaneseSerifBold size=20.00 text="末" glyph_count=1
+  glyphs x=281.06 y=570.20 font=JapaneseSerifBold size=20.00 text="尾" glyph_count=1
+  glyphs x=240.94 y=601.20 font=JapaneseSerif size=12.00 text="イ" glyph_count=1
+  glyphs x=252.94 y=601.20 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
+  glyphs x=264.94 y=601.20 font=JapaneseSerif size=12.00 text="ラ" glyph_count=1
+  glyphs x=276.58 y=601.20 font=JapaneseSerif size=12.00 text="イ" glyph_count=1
+  glyphs x=288.58 y=601.20 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
+  glyphs x=300.58 y=601.20 font=JapaneseSerif size=12.00 text="末" glyph_count=1
+  glyphs x=312.58 y=601.20 font=JapaneseSerif size=12.00 text="尾" glyph_count=1
+  glyphs x=324.58 y=601.20 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=339.40 y=601.20 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=344.06 y=601.20 font=Serif size=12.00 text="b" glyph_count=1
+  glyphs x=353.15 y=601.20 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=365.15 y=601.20 font=JapaneseSerif size=12.00 text="グ" glyph_count=1
+  glyphs x=376.79 y=601.20 font=JapaneseSerif size=12.00 text="ルー" glyph_count=2
+  glyphs x=400.19 y=601.20 font=JapaneseSerif size=12.00 text="プ" glyph_count=1
+  glyphs x=412.19 y=601.20 font=JapaneseSerif size=12.00 text="末" glyph_count=1
+  glyphs x=424.19 y=601.20 font=JapaneseSerif size=12.00 text="尾" glyph_count=1
+  glyphs x=436.19 y=601.20 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=451.01 y=601.20 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=455.67 y=601.20 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=461.94 y=601.20 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=833.85 y=642.95 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=846.51 y=642.95 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=858.49 y=642.95 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=835.85 y=657.95 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=846.51 y=657.95 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=858.49 y=657.95 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=821.85 y=672.95 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=846.51 y=672.95 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=858.49 y=672.95 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=1428.56 y=642.95 font=Serif size=12.00 text="(.2)" glyph_count=4
+  glyphs x=1428.56 y=657.95 font=Serif size=12.00 text="(.3)" glyph_count=4
+  glyphs x=1428.56 y=672.95 font=Serif size=12.00 text="(.4)" glyph_count=4
 outline:
   depth=2 text=".1 明示アキの量" page=0 x=240.94 y=257.61
   depth=2 text=".2 詰め" page=0 x=240.94 y=313.21
   depth=2 text=".3 自動アキへの加算" page=0 x=240.94 y=368.81
   depth=2 text=".4 スクリプト" page=0 x=240.94 y=424.41
+  depth=2 text=".5 末尾" page=0 x=240.94 y=547.18

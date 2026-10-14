@@ -363,8 +363,9 @@ impl<'a> Measurer<'a> {
 
   /// `AtomNode` 列を絶対配置（`dx` / `dy`）の Atom に畳む
   ///
-  /// 幅は送り幅を下限にする — 末尾のアキ（スクリプト後の `SpaceAfterScript`）は子の箱を持たないので、
-  /// 子の範囲だけでは落ちる。
+  /// 幅は末尾のアキを含む送り幅そのもの（`detach` と同じ。子の箱のはみ出しは数えない）— アキは子の箱を持たないので
+  /// 子の範囲では決まらない。送り幅が子の箱の右端を下回るのは、この列か子の部分リスト（スクリプト・伸縮括弧の中身・
+  /// 上下の範囲）の末尾に負の明示アキがあるときだけ。高さ・深さは子の箱から決める。
   fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
@@ -372,7 +373,7 @@ impl<'a> Measurer<'a> {
       self.place_atom_node(child, offset, &mut dx, &mut placed);
     }
     let mut atom = HBox::atom(placed);
-    atom.width = atom.width.max(dx);
+    atom.width = dx;
     return atom;
   }
 
