@@ -419,6 +419,16 @@ impl<'a> Shaper<'a> {
     return units_to_length(design_units(self.fonts.glyph_advance(FontType::Math, gid)), font_size, upem);
   }
 
+  /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）のインクの上端と下端（グリフ自身のベースライン基準・上が正。
+  /// 符号は丸めない）。インクを読めなければ `None`
+  pub(super) fn math_glyph_ink(&self, gid: u32, font_size: Length) -> Option<(Length, Length)> {
+    let upem = f64::from(self.fonts.metrics(FontType::Math).upem);
+    let extents = self.fonts.glyph_extents(FontType::Math, gid)?;
+    let top = f64::from(extents.y_bearing);
+    let bottom = top - f64::from(extents.height);
+    return Some((font_size.scale(top / upem), font_size.scale(bottom / upem)));
+  }
+
   /// 数式フォントのグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、フォントサイズ `font_size` での長さ。
   /// インクを読めなければ原点（`glyph_run_signed_ink` と同じく墨を持たない扱い）
   pub(super) fn math_ink_center(&self, gid: u32, font_size: Length) -> Length {

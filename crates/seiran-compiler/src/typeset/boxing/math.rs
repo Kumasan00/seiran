@@ -353,28 +353,24 @@ impl Measurer<'_> {
     translate_into(out, base.boxes, *dx, dy);
     let mut end = base_end;
     if let Some(sup) = superscript {
-      // 補正の高さは上付きのインクの底と基底のインクの頂（基底のベースライン基準）
       let kern = self.cut_in(
         base.trailing_glyph,
         MathKernCorner::TopRight,
         sup.leading_glyph,
         MathKernCorner::BottomLeft,
         sup_shift,
-        [sup_shift - sup.ink_depth, base.ink_height],
       );
       let sup_x = base_end + kern;
       end = end.max(sup_x + sup.width);
       translate_into(out, sup.boxes, sup_x, dy + sup_shift);
     }
     if let Some(sub) = subscript {
-      // 補正の高さは下付きのインクの頂と基底のインクの底（基底のベースライン基準）
       let kern = self.cut_in(
         base.trailing_glyph,
         MathKernCorner::BottomRight,
         sub.leading_glyph,
         MathKernCorner::TopLeft,
         -sub_shift,
-        [sub.ink_height - sub_shift, -base.ink_depth],
       );
       let sub_x = base_end - correction + kern;
       end = end.max(sub_x + sub.width);
@@ -441,11 +437,13 @@ impl Measurer<'_> {
 
   /// 基底の末尾の字とスクリプトの先頭の字の、それぞれ先頭の字形の math kern（OpenType MATH の算法）
   ///
-  /// `heights`（基底のベースライン基準）それぞれで、基底の隅 `base_corner` とスクリプトの隅 `script_corner` の kern を
-  /// 足し、小さい方を返す。kern はそれぞれのグリフ自身のベースラインからの高さで引く — 基底のグリフのベースラインは
-  /// 基底のベースラインから `Detached` の高さぶん、スクリプトのグリフのベースラインはスクリプトのベースライン
-  /// （基底のベースラインから `script_baseline` 上）からさらにその高さぶん上にある。どちらかのグリフが無い
-  /// （箱・空・数式フォント以外）ときは 0。
+  /// 補正の高さは 2 つ（基底のベースライン基準）— 基底の字形の隅 `base_corner` の側のインクの端と、スクリプトの字形の隅
+  /// `script_corner` の側のインクの端（[`corner_edge`]。右上・左上なら頂、右下・左下なら底）。端はそれぞれの字形 1 つの
+  /// インクで、ベースラインの反対側へ出ない端も 0 に切らない（MATH の定義はグリフのバウンディングボックス）。それぞれの
+  /// 高さで両方の隅の kern を足し、小さい方を返す。kern はそれぞれのグリフ自身のベースラインからの高さで引く — 基底の
+  /// グリフのベースラインは基底のベースラインから `Detached` の高さぶん、スクリプトのグリフのベースラインはスクリプトの
+  /// ベースライン（基底のベースラインから `script_baseline` 上）からさらにその高さぶん上にある。どちらかのグリフが無い
+  /// （箱・空・数式フォント以外）か、インクを読めないときは 0。
   fn cut_in(
     &self,
     base_glyph: Option<(u32, Length, Length)>,
@@ -453,13 +451,21 @@ impl Measurer<'_> {
     script_glyph: Option<(u32, Length, Length)>,
     script_corner: MathKernCorner,
     script_baseline: Length,
-    heights: [Length; 2],
   ) -> Length {
     let (Some((base_gid, base_size, base_rise)), Some((script_gid, script_size, script_rise))) =
       (base_glyph, script_glyph)
     else {
       return Length::ZERO;
     };
+    let (Some(base_ink), Some(script_ink)) =
+      (self.shaper.math_glyph_ink(base_gid, base_size), self.shaper.math_glyph_ink(script_gid, script_size))
+    else {
+      return Length::ZERO;
+    };
+    let heights = [
+      base_rise + corner_edge(base_ink, base_corner),
+      script_baseline + script_rise + corner_edge(script_ink, script_corner),
+    ];
     let [first, second] = heights.map(|height| {
       return self.shaper.math_kern(base_gid, base_size, base_corner, height - base_rise)
         + self
@@ -479,6 +485,14 @@ fn translate_into(out: &mut Vec<PlacedHBox>, boxes: Vec<PlacedHBox>, dx: Length,
       dy: placed.dy + dy,
     };
   }));
+}
+
+/// グリフのインクの上端と下端 `ink` のうち、math kern の隅 `corner` の側の端
+fn corner_edge((top, bottom): (Length, Length), corner: MathKernCorner) -> Length {
+  return match corner {
+    MathKernCorner::TopRight | MathKernCorner::TopLeft => top,
+    MathKernCorner::BottomRight | MathKernCorner::BottomLeft => bottom,
+  };
 }
 
 #[cfg(test)]
