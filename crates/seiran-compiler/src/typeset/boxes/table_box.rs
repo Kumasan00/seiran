@@ -80,11 +80,20 @@ impl TableRowBox {
     let (ascent, descent) = cells
       .iter()
       .flat_map(|cell| return cell.items.iter())
-      .filter_map(|item| {
-        let HItem::Box(hbox) = item else {
-          return None;
-        };
-        return Some(hbox);
+      .filter_map(|item| match item {
+        // `position_table_row_boxes` が描く箱だけを数える（描かないアイテムが行帯を広げない）
+        HItem::Box(hbox) => return Some(hbox),
+        HItem::Glue { .. }
+        | HItem::Kern(_)
+        | HItem::MathBreak { .. }
+        | HItem::Penalty { .. }
+        | HItem::Discretionary { .. }
+        | HItem::ForcedBreak
+        | HItem::LinkStart(_)
+        | HItem::LinkEnd
+        | HItem::FlushRight(_)
+        | HItem::Footnote(_)
+        | HItem::IndexMark(_) => return None,
       })
       .fold((Length::ZERO, Length::ZERO), |(ascent, descent), hbox| {
         return (ascent.max(hbox.height), descent.max(hbox.depth));
