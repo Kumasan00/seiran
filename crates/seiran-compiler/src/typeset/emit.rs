@@ -594,7 +594,6 @@ mod tests {
     let cell_run = glyph_run("cell");
     let row = TableRowSpec {
       top_y: Length::pt(40.0),
-      height: Length::pt(15.0),
       rule_above: true,
       cells: vec![vec![(cell_run, BoxSize::pt(30.0, 10.0, 0.0))]],
     };

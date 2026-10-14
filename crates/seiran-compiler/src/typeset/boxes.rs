@@ -22,5 +22,5 @@ pub(crate) use page::{
 };
 pub(super) use table_box::{
   TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,
-  position_table_row_boxes, resolve_column_widths, table_row_height,
+  position_table_row_boxes, resolve_column_widths,
 };

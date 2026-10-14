@@ -35,13 +35,17 @@ pub(in crate::typeset) struct TableBox {
   pub breakable: bool,
 }
 
-/// 表の 1 行（シェーピング済み）
+/// 表の 1 行（シェーピング済み）。行帯は [`TableRowBox::new`] が構築時に確定する
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableRowBox {
   /// 行内のセル
-  pub cells: Vec<TableCellBox>,
+  cells: Vec<TableCellBox>,
   /// この行の上に横罫線を引くか
-  pub rule_above: bool,
+  rule_above: bool,
+  /// 行帯の高さ
+  height: Length,
+  /// 行帯上端からセル内容が共有するベースラインまでの距離
+  baseline: Length,
 }
 
 /// 表の 1 セル（シェーピング済み）
@@ -52,6 +56,46 @@ pub(in crate::typeset) struct TableCellBox {
   pub items: Vec<HItem>,
   /// 列方向の結合数（1 以上）
   pub column_span: u32,
+}
+
+impl TableRowBox {
+  /// セル列から行を作り、行帯の高さとベースライン位置を確定する
+  ///
+  /// 行帯の高さは行内の最大フォントサイズ（テキストが無ければ `default_font_size`）× `line_height_factor`。
+  /// ベースラインは行帯上端から行内の最大フォントサイズの位置（テキストが無ければ行帯の下端）。
+  #[must_use]
+  pub(in crate::typeset) fn new(
+    cells: Vec<TableCellBox>,
+    rule_above: bool,
+    default_font_size: Length,
+    line_height_factor: f32,
+  ) -> Self {
+    let font_size = cells.iter().filter_map(|cell| return max_font_size_in_items(&cell.items)).reduce(Length::max);
+    let height = font_size.unwrap_or(default_font_size) * line_height_factor;
+    let baseline = font_size.unwrap_or(height);
+    return TableRowBox {
+      cells,
+      rule_above,
+      height,
+      baseline,
+    };
+  }
+
+  /// 行内のセル
+  #[must_use]
+  pub(in crate::typeset) fn cells(&self) -> &[TableCellBox] { return &self.cells; }
+
+  /// この行の上に横罫線を引くか
+  #[must_use]
+  pub(in crate::typeset) fn rule_above(&self) -> bool { return self.rule_above; }
+
+  /// 行帯の高さ
+  #[must_use]
+  pub(in crate::typeset) fn height(&self) -> Length { return self.height; }
+
+  /// 行帯上端からセル内容が共有するベースラインまでの距離
+  #[must_use]
+  pub(in crate::typeset) fn baseline(&self) -> Length { return self.baseline; }
 }
 
 /// アイテム列の自然幅を返す
@@ -91,18 +135,6 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
       .reduce(Length::max),
     HBoxContent::Rule { .. } => None,
   };
-}
-
-/// 行の高さ = 行内の最大フォントサイズ × 行高係数
-#[must_use]
-pub(crate) fn table_row_height(row: &TableRowBox, default_font_size: Length, line_height_factor: f32) -> Length {
-  let max_font = row
-    .cells
-    .iter()
-    .filter_map(|cell| return max_font_size_in_items(&cell.items))
-    .reduce(Length::max)
-    .unwrap_or(default_font_size);
-  return max_font * line_height_factor;
 }
 
 /// 列幅を解決する
@@ -295,7 +327,7 @@ pub(crate) fn collect_row_links(
 mod tests {
   use super::{
     TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
-    position_table_row_boxes, resolve_column_widths, table_row_height,
+    position_table_row_boxes, resolve_column_widths,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
@@ -349,13 +381,8 @@ mod tests {
     };
   }
 
-  /// `rule_above = false` の行を作る
-  fn row(cells: Vec<TableCellBox>) -> TableRowBox {
-    return TableRowBox {
-      cells,
-      rule_above: false,
-    };
-  }
+  /// `rule_above = false` の行を作る（既定フォントサイズ 10pt・行高係数 1）
+  fn row(cells: Vec<TableCellBox>) -> TableRowBox { return TableRowBox::new(cells, false, pt(10.0), 1.0); }
 
   #[test]
   fn measure_items_width_is_additive() {
@@ -414,20 +441,27 @@ mod tests {
   }
 
   #[test]
-  fn table_row_height_is_max_font_times_factor() {
-    let row = row(vec![
-      cell(vec![glyph_box(10.0, 10.0)]),
-      cell(vec![glyph_box(10.0, 12.0)]),
-    ]);
+  fn row_band_is_max_font_times_factor() {
+    let row = TableRowBox::new(
+      vec![
+        cell(vec![glyph_box(10.0, 10.0)]),
+        cell(vec![glyph_box(10.0, 12.0)]),
+      ],
+      false,
+      pt(9.0),
+      1.5,
+    );
 
-    assert!(close(table_row_height(&row, pt(9.0), 1.5), 18.0));
+    assert!(close(row.height(), 18.0), "{row:?}");
+    assert!(close(row.baseline(), 12.0), "{row:?}");
   }
 
   #[test]
-  fn table_row_height_falls_back_to_default_font() {
-    let row = row(vec![cell(vec![text_free_box(5.0)])]);
+  fn row_band_falls_back_to_default_font() {
+    let row = TableRowBox::new(vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
 
-    assert!(close(table_row_height(&row, pt(9.0), 2.0), 18.0));
+    assert!(close(row.height(), 18.0), "{row:?}");
+    assert!(close(row.baseline(), 18.0), "テキストの無い行のベースラインは行帯の下端: {row:?}");
   }
 
   #[test]

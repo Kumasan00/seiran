@@ -8,8 +8,7 @@ use crate::{
   typeset::{
     boxes::{
       AnchorId, FootnoteId, HItem, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
-      PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items,
-      position_table_row_boxes,
+      PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, position_table_row_boxes,
     },
     breaking::break_pages::PendingFootnote,
     geometry::PageGeometry,
@@ -109,12 +108,10 @@ pub(super) struct TableFrame<'a> {
 
 /// ページ内の着地段が確定するまで保持する表の 1 行
 pub(super) struct PendingTableRow {
-  /// シェーピング済みの行内容
+  /// シェーピング済みの行内容（行帯の高さ・ベースライン位置を含む）
   pub(super) row: TableRowBox,
   /// 行帯のページ上端からの距離
   pub(super) top_y: Length,
-  /// 行帯の高さ
-  pub(super) height: Length,
   /// `\head` 行か
   pub(super) is_head: bool,
 }
@@ -212,7 +209,7 @@ impl PageDraft {
     let x = column_x + frame.align_offset;
     let table_width: Length = frame.col_widths.iter().copied().sum();
     for pending in rows.iter().filter(|pending| return !pending.is_head) {
-      for cell in &pending.row.cells {
+      for cell in pending.row.cells() {
         for item in &cell.items {
           if let HItem::IndexMark(term) = item {
             self.push_index_entry(term);
@@ -230,16 +227,9 @@ impl PageDraft {
       links.extend(
         collect_row_links(&pending.row, frame.columns, frame.col_widths, frame.cell_padding)
           .iter()
-          .filter_map(|link| return link.place(x, pending.top_y, pending.height)),
+          .filter_map(|link| return link.place(x, pending.top_y, pending.row.height())),
       );
-      let baseline_offset = pending
-        .row
-        .cells
-        .iter()
-        .filter_map(|cell| return max_font_size_in_items(&cell.items))
-        .reduce(Length::max)
-        .unwrap_or(pending.height);
-      let rule = pending.row.rule_above.then_some(PlacedTableRule {
+      let rule = pending.row.rule_above().then_some(PlacedTableRule {
         x,
         y: pending.top_y,
         width: table_width,
@@ -248,8 +238,8 @@ impl PageDraft {
       });
       placed_rows.push(PlacedTableRow {
         top_y: pending.top_y,
-        height: pending.height,
-        baseline_y: pending.top_y + baseline_offset,
+        height: pending.row.height(),
+        baseline_y: pending.top_y + pending.row.baseline(),
         boxes,
         rule,
       });
@@ -533,8 +523,6 @@ mod tests {
       content_origin_x: Length::ZERO,
       margin_top: pt(10.0),
       page_limit: pt(50.0),
-      default_font_size: pt(10.0),
-      line_height_factor: 1.0,
       table_cell_padding: pt(2.0),
       num_columns: 1,
       column_gap: Length::ZERO,
@@ -784,30 +772,28 @@ mod tests {
 
   /// 1 列 1 セル、テキスト箱 1 つと索引語 `word` を持つ表の行を作る
   fn row_with_index(word: &str) -> TableRowBox {
-    return TableRowBox {
-      cells: vec![TableCellBox {
-        items: vec![
-          HItem::Box(HBox {
-            content: HBoxContent::Glyphs(GlyphRun {
-              font_size: pt(10.0),
-              text: "x".to_string(),
-              glyphs: Vec::new(),
-              font_type: FontType::Serif,
-              color: None,
-            }),
-            width: pt(20.0),
-            height: pt(10.0),
-            depth: Length::ZERO,
+    let cell = TableCellBox {
+      items: vec![
+        HItem::Box(HBox {
+          content: HBoxContent::Glyphs(GlyphRun {
+            font_size: pt(10.0),
+            text: "x".to_string(),
+            glyphs: Vec::new(),
+            font_type: FontType::Serif,
+            color: None,
           }),
-          HItem::IndexMark(IndexTerm {
-            word: word.to_string(),
-            reading: None,
-          }),
-        ],
-        column_span: 1,
-      }],
-      rule_above: false,
+          width: pt(20.0),
+          height: pt(10.0),
+          depth: Length::ZERO,
+        }),
+        HItem::IndexMark(IndexTerm {
+          word: word.to_string(),
+          reading: None,
+        }),
+      ],
+      column_span: 1,
     };
+    return TableRowBox::new(vec![cell], false, pt(10.0), 1.0);
   }
 
   #[test]
@@ -833,19 +819,16 @@ mod tests {
         PendingTableRow {
           row: row_with_index("ヘッダ語"),
           top_y: pt(22.0),
-          height: pt(10.0),
           is_head: true,
         },
         PendingTableRow {
           row: row_with_index("語"),
           top_y: pt(32.0),
-          height: pt(10.0),
           is_head: false,
         },
         PendingTableRow {
           row: row_with_index("表語"),
           top_y: pt(42.0),
-          height: pt(10.0),
           is_head: false,
         },
       ],
@@ -918,13 +901,11 @@ mod tests {
         PendingTableRow {
           row: row_with_index("R0"),
           top_y: pt(22.0),
-          height: pt(10.0),
           is_head: false,
         },
         PendingTableRow {
           row: row_with_index("R1"),
           top_y: pt(32.0),
-          height: pt(10.0),
           is_head: false,
         },
       ],

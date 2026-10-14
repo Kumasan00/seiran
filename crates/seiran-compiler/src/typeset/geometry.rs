@@ -101,10 +101,6 @@ pub(super) struct PageGeometry {
   pub margin_top: Length,
   /// 本文下限 = ページ高さ − 下マージン。超えると改ページ（または改段）
   pub page_limit: Length,
-  /// 既定フォントサイズ
-  pub default_font_size: Length,
-  /// 行高係数
-  pub line_height_factor: f32,
   /// 表セルの内側余白（左右各）
   pub table_cell_padding: Length,
   /// 段組み数（1 = 単段）。本文を左段 → 右段 → 次ページの順に流す段の本数
@@ -255,8 +251,6 @@ fn build_page_geometries(
     content_origin_x: style.page.margin_left,
     margin_top: style.page.margin_top,
     page_limit: config.pdf.height - style.page.margin_bottom,
-    default_font_size: style.text.font_size,
-    line_height_factor: style.text.line_height_factor,
     table_cell_padding: style.table.cell_padding,
     num_columns: body_columns,
     column_gap,

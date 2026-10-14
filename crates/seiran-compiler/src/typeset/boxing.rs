@@ -442,10 +442,7 @@ impl<'a> Measurer<'a> {
           column_span: cell.column_span,
         });
       }
-      result.push(TableRowBox {
-        cells,
-        rule_above: row.rule_above,
-      });
+      result.push(TableRowBox::new(cells, row.rule_above, self.default_font_size, self.line_height_factor));
     }
     return result;
   }

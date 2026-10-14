@@ -20,7 +20,7 @@ use crate::{
     boxes::{
       AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
       PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableCellBox, TableColumn,
-      TableRowBox, max_font_size_in_items, position_table_row_boxes,
+      TableRowBox, position_table_row_boxes,
     },
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -70,12 +70,10 @@ impl BoxSize {
   }
 }
 
-/// 表の 1 行の指定
+/// 表の 1 行の指定（行帯の高さ・ベースラインは本番と同じ `TableRowBox::new` が決める）
 pub(super) struct TableRowSpec {
   /// 行帯上端のページ上端からの距離
   pub(crate) top_y: Length,
-  /// 行帯の高さ
-  pub(crate) height: Length,
   /// この行の上に横罫線を引くか
   pub(crate) rule_above: bool,
   /// セルごとのグリフ列（内側 `Vec` が 1 セルの内容、各要素が 1 ボックス）
@@ -280,21 +278,13 @@ pub(crate) fn table_block(
           };
         })
         .collect();
-      let row = TableRowBox {
-        cells,
-        rule_above: spec.rule_above,
-      };
-      let baseline_offset = row
-        .cells
-        .iter()
-        .filter_map(|cell| return max_font_size_in_items(&cell.items))
-        .reduce(Length::max)
-        .unwrap_or(spec.height);
+      // 既定フォントサイズは `glyph_run` と同じ 10pt、行高係数 1
+      let row = TableRowBox::new(cells, spec.rule_above, Length::pt(10.0), 1.0);
       let mut boxes = position_table_row_boxes(&row, &columns, col_widths, cell_padding);
       for placed in &mut boxes {
         placed.dx += x;
       }
-      let rule = row.rule_above.then_some(PlacedTableRule {
+      let rule = row.rule_above().then_some(PlacedTableRule {
         x,
         y: spec.top_y,
         width: col_widths.iter().copied().sum(),
@@ -303,8 +293,8 @@ pub(crate) fn table_block(
       });
       return PlacedTableRow {
         top_y: spec.top_y,
-        height: spec.height,
-        baseline_y: spec.top_y + baseline_offset,
+        height: row.height(),
+        baseline_y: spec.top_y + row.baseline(),
         boxes,
         rule,
       };
