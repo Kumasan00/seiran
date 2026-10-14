@@ -18,7 +18,7 @@ use crate::{
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedBlock,
-      PlacedMathNumber, TableBox, TableRowBox, resolve_column_widths, table_row_height,
+      PlacedMathNumber, TableBox, TableRowBox, resolve_column_widths,
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
@@ -426,12 +426,11 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Atom
       };
     },
     Block::Table { table, .. } => {
-      let row_height = |row| return table_row_height(row, geom.default_font_size, geom.line_height_factor);
-      let total: Length = table.head.iter().chain(table.rows.iter()).map(row_height).sum();
+      let total: Length = table.head.iter().chain(table.rows.iter()).map(TableRowBox::height).sum();
       // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）が乗るかだけで決まる（`place_table` の行ループと同じ判定）
       let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
-        first.is_some_and(|row| return cursor.overflows(row_height(row), geom))
+        first.is_some_and(|row| return cursor.overflows(row.height(), geom))
       } else {
         cursor.defers_unbreakable(total, geom)
       };
@@ -733,18 +732,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
   // 揃えオフセットは段内のもの。段オフセットは着地段が決まる flush 時に断片ごとに足す
   let table_align_offset = align.offset(column_width, col_widths.iter().sum());
-  let head_heights: Vec<Length> = table
-    .head
-    .iter()
-    .map(|row| return table_row_height(row, geom.default_font_size, geom.line_height_factor))
-    .collect();
-  let row_heights: Vec<Length> = table
-    .rows
-    .iter()
-    .map(|row| return table_row_height(row, geom.default_font_size, geom.line_height_factor))
-    .collect();
-
-  let total_height: Length = head_heights.iter().chain(row_heights.iter()).sum();
+  let total_height: Length = table.head.iter().chain(table.rows.iter()).map(TableRowBox::height).sum();
   if !table.breakable && composer.cursor.defers_unbreakable(total_height, geom) {
     composer.advance_region(geom);
   }
@@ -758,40 +746,38 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
     align_offset: table_align_offset,
   };
   let mut pending_rows: Vec<PendingTableRow> = Vec::new();
-  let push_row =
-    |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, height: Length, is_head: bool| {
-      pending_rows.push(PendingTableRow {
-        row: row.clone(),
-        top_y,
-        height,
-        is_head,
-      });
-    };
+  let push_row = |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, is_head: bool| {
+    pending_rows.push(PendingTableRow {
+      row: row.clone(),
+      top_y,
+      is_head,
+    });
+  };
   // 断片の段オフセットは着地段のもの（flush は advance_region の前に呼ばれるので column は正しい）
   let flush = |composer: &mut PageComposer, pending_rows: &mut Vec<PendingTableRow>| {
     let column_x = composer.column_offset();
     composer.draft.place_table_fragment(std::mem::take(pending_rows), &frame, column_x);
   };
 
-  for (row, height) in table.head.iter().zip(&head_heights) {
-    if composer.cursor.overflows(*height, geom) {
+  for row in &table.head {
+    if composer.cursor.overflows(row.height(), geom) {
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
     }
-    push_row(&mut pending_rows, row, composer.cursor.y, *height, true);
-    composer.cursor.y += *height;
+    push_row(&mut pending_rows, row, composer.cursor.y, true);
+    composer.cursor.y += row.height();
   }
-  for (row, height) in table.rows.iter().zip(&row_heights) {
-    if composer.cursor.overflows(*height, geom) {
+  for row in &table.rows {
+    if composer.cursor.overflows(row.height(), geom) {
       flush(composer, &mut pending_rows);
       composer.advance_region(geom);
-      for (head_row, head_height) in table.head.iter().zip(&head_heights) {
-        push_row(&mut pending_rows, head_row, composer.cursor.y, *head_height, true);
-        composer.cursor.y += *head_height;
+      for head_row in &table.head {
+        push_row(&mut pending_rows, head_row, composer.cursor.y, true);
+        composer.cursor.y += head_row.height();
       }
     }
-    push_row(&mut pending_rows, row, composer.cursor.y, *height, false);
-    composer.cursor.y += *height;
+    push_row(&mut pending_rows, row, composer.cursor.y, false);
+    composer.cursor.y += row.height();
   }
   flush(composer, &mut pending_rows);
 }
@@ -845,8 +831,6 @@ mod tests {
       content_origin_x: Length::ZERO,
       margin_top: Length::pt(10.0),
       page_limit: Length::pt(50.0),
-      default_font_size: Length::pt(10.0),
-      line_height_factor: 1.0,
       table_cell_padding: Length::pt(2.0),
       num_columns: 1,
       column_gap: Length::pt(0.0),
@@ -1108,9 +1092,7 @@ mod tests {
 
   /// 1 列 1 行、セルが `text` の箱と索引マーカーだけの表の行を作る
   fn table_row_with_index(text: &str, word: &str) -> TableRowBox {
-    let mut row = table_row(text);
-    row.cells[0].items.push(index_mark_item(word, None));
-    return row;
+    return table_row_of(vec![table_text_box(text), index_mark_item(word, None)]);
   }
 
   #[test]
@@ -1888,25 +1870,77 @@ mod tests {
   }
 
   /// テキスト入り（フォント 10）の 1 セル行を作るヘルパ
-  fn table_row(text: &str) -> TableRowBox {
-    return TableRowBox {
-      cells: vec![TableCellBox {
-        items: vec![HItem::Box(HBox {
-          content: HBoxContent::Glyphs(GlyphRun {
-            font_size: pt(10.0),
-            text: text.to_string(),
-            glyphs: Vec::new(),
-            font_type: FontType::Serif,
-            color: None,
-          }),
-          width: Length::pt(20.0),
-          height: Length::pt(10.0),
-          depth: Length::pt(0.0),
-        })],
+  /// テキスト `text`（フォント 10・幅 20・高さ 10）の箱を作るヘルパ
+  fn table_text_box(text: &str) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: pt(10.0),
+        text: text.to_string(),
+        glyphs: Vec::new(),
+        font_type: FontType::Serif,
+        color: None,
+      }),
+      width: Length::pt(20.0),
+      height: Length::pt(10.0),
+      depth: Length::pt(0.0),
+    });
+  }
+
+  /// セル 1 つの内容が `items` の行を作るヘルパ（既定フォントサイズ 10・行高係数 1 は `test_geometry` の本文と同じ）
+  fn table_row_of(items: Vec<HItem>) -> TableRowBox {
+    return TableRowBox::new(
+      vec![TableCellBox {
+        items,
         column_span: 1,
       }],
-      rule_above: false,
+      false,
+      pt(10.0),
+      1.0,
+    );
+  }
+
+  /// テキスト入り（フォント 10）の 1 セル行を作るヘルパ
+  fn table_row(text: &str) -> TableRowBox { return table_row_of(vec![table_text_box(text)]); }
+
+  #[test]
+  fn table_rows_stack_by_their_content_band() {
+    // 2 行目のセルは高さ 12・深さ 6 の箱を持ち、行送り 10（フォント 10 × 係数 1）を超えて 18 を占める
+    let geom = test_geometry();
+    let tall = table_row_of(vec![HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: Length::pt(10.0),
+      height: Length::pt(12.0),
+      depth: Length::pt(6.0),
+    })]);
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![table_row("A"), tall, table_row("B")],
+      breakable: true,
     };
+
+    let (pages, _) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+    );
+
+    let Some(PlacedBlock::Table { rows }) = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. }))
+    else {
+      panic!("1 ページ目に表があるはず: {pages:?}");
+    };
+    assert!(close(rows[0].top_y, 10.0), "{:?}", rows[0]);
+    assert!(close(rows[1].top_y, 20.0), "{:?}", rows[1]);
+    assert!(close(rows[2].top_y, 38.0), "2 行目は中身の高さ + 深さ 18 を占める: {:?}", rows[2]);
+    assert!(close(rows[1].height, 18.0), "{:?}", rows[1]);
+    assert!(close(rows[1].baseline_y, 32.0), "余りが無いのでベースラインは上端 20 + 高さ 12: {:?}", rows[1]);
   }
 
   /// ページ内の最初の表ブロックの先頭行セルのテキストを取り出すヘルパ
@@ -1998,28 +2032,11 @@ mod tests {
         width: ColumnWidth::Auto,
       }],
       head: Vec::new(),
-      rows: vec![TableRowBox {
-        cells: vec![TableCellBox {
-          items: vec![
-            HItem::LinkStart(target),
-            HItem::Box(HBox {
-              content: HBoxContent::Glyphs(GlyphRun {
-                font_size: pt(10.0),
-                text: "リンク".to_string(),
-                glyphs: Vec::new(),
-                font_type: FontType::Serif,
-                color: None,
-              }),
-              width: Length::pt(20.0),
-              height: Length::pt(10.0),
-              depth: Length::ZERO,
-            }),
-            HItem::LinkEnd,
-          ],
-          column_span: 1,
-        }],
-        rule_above: false,
-      }],
+      rows: vec![table_row_of(vec![
+        HItem::LinkStart(target),
+        table_text_box("リンク"),
+        HItem::LinkEnd,
+      ])],
       breakable: true,
     };
   }
@@ -2063,13 +2080,15 @@ mod tests {
         width: ColumnWidth::Auto,
       }],
       head: Vec::new(),
-      rows: vec![TableRowBox {
-        cells: vec![TableCellBox {
+      rows: vec![TableRowBox::new(
+        vec![TableCellBox {
           items: vec![test_box()],
           column_span: 1,
         }],
-        rule_above: true,
-      }],
+        true,
+        pt(10.0),
+        1.0,
+      )],
       breakable: false,
     };
 
@@ -3317,12 +3336,12 @@ mod tests {
 
   /// 1 列 1 行、セルが「リンクで包んだ `text` の箱 + 索引マーカー」の表の行を作る
   fn table_row_with_link_and_index(text: &str, uri: &str, word: &str) -> TableRowBox {
-    let mut row = table_row(text);
-    let items = &mut row.cells[0].items;
-    items.insert(0, HItem::LinkStart(LinkTarget::External(uri.to_string())));
-    items.push(HItem::LinkEnd);
-    items.push(index_mark_item(word, None));
-    return row;
+    return table_row_of(vec![
+      HItem::LinkStart(LinkTarget::External(uri.to_string())),
+      table_text_box(text),
+      HItem::LinkEnd,
+      index_mark_item(word, None),
+    ]);
   }
 
   #[test]
