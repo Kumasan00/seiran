@@ -1,0 +1,20 @@
+\section{表の中の分数と根号}
+
+セルの分数・根号の分子・分母・横罫・根号記号が、自分の行の上端と下端の間に収まることを確認する表です。
+
+\begin{table}[columns=left left]
+\row{分数 & $\frac{a}{b}$}
+\row{次の行 & $x$}
+\row[rule_above]{$\frac{a}{b}$ & $\sqrt{\frac{a}{b}}$}
+\row[rule_above]{入れ子 & $\frac{\frac{a}{b}}{c}$}
+\row{最後の行 & $y$}
+\end{table}
+
+欧文だけの表です。
+
+\begin{table}[columns=left right]
+\row{Alpha & 1}
+\row{Beta & $\sqrt{x}$}
+\end{table}
+
+表の後の段落です。

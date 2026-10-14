@@ -38,6 +38,7 @@
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
+//!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品まで行帯に収まる）・
 //!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）
 //! - **`Publication` のグリフ列へ直接アサート**（`compile` を通す。グリフ範囲はダンプに出ない）:
 //!   クラスタ範囲がテキストを過不足なく覆うことの検査 3 種 [`glyph_ranges_tile_text_with_combining_marks`] /
@@ -227,6 +228,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "split",
   "table",
   "table_break",
+  "table_math",
   "text",
   "text_center",
   "text_right",
@@ -536,6 +538,61 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
     height.to_mm(),
     expected_height.to_mm()
   );
+}
+
+/// 表のセルの箱（分数・根号の部品まで）が自分の行帯に収まることを確認する。
+#[test]
+fn table_cell_boxes_stay_inside_their_row() {
+  let laid_out = TestProject::builder().golden_fixture("table_math").build().laid_out();
+
+  let rows: Vec<_> = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Table { rows } => return Some(rows),
+      _ => return None,
+    })
+    .flatten()
+    .collect();
+
+  assert!(rows.len() >= 7, "table_math.sei の表 2 つで 7 行あるはず: {} 行", rows.len());
+  for row in rows {
+    let bottom = row.top_y + row.height;
+    for placed in &row.boxes {
+      assert_inside_band(
+        placed.hbox.height,
+        placed.hbox.depth,
+        &placed.hbox.content,
+        row.baseline_y - placed.dy,
+        row.top_y,
+        bottom,
+      );
+    }
+  }
+}
+
+/// ベースライン `baseline_y`（ページ上端から下向き）に置いた高さ `height`・深さ `depth` の箱と、その Atom の子孫が
+/// 行帯 `[top, bottom]` に収まることを確認する。
+fn assert_inside_band(
+  height: Length,
+  depth: Length,
+  content: &HBoxContent,
+  baseline_y: Length,
+  top: Length,
+  bottom: Length,
+) {
+  let box_top = baseline_y - height;
+  let box_bottom = baseline_y + depth;
+  assert!(
+    top <= box_top && box_bottom <= bottom,
+    "箱 [{box_top}, {box_bottom}] が行帯 [{top}, {bottom}] からはみ出している"
+  );
+  if let HBoxContent::Atom(children) = content {
+    for child in children {
+      assert_inside_band(child.hbox.height, child.hbox.depth, &child.hbox.content, baseline_y - child.dy, top, bottom);
+    }
+  }
 }
 
 /// 脚注本体の先頭行の先頭ボックス（脚注エリア側の上付きマーカー）に描かれた番号を読む。

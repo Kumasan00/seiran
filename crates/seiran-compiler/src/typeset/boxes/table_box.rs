@@ -61,8 +61,10 @@ pub(in crate::typeset) struct TableCellBox {
 impl TableRowBox {
   /// セル列から行を作り、行帯の高さとベースライン位置を確定する
   ///
-  /// 行帯の高さは行内の最大フォントサイズ（テキストが無ければ `default_font_size`）× `line_height_factor`。
-  /// ベースラインは行帯上端から行内の最大フォントサイズの位置（テキストが無ければ行帯の下端）。
+  /// 行帯の高さは本文の行送りと同じ `max(F × line_height_factor, h + d)`。F は行内の最大フォントサイズ（テキストが
+  /// 無ければ `default_font_size`）、h / d は [`position_table_row_boxes`] が描く箱（`HItem::Box`）の高さ・深さの
+  /// 最大値。余り `高さ − (h + d)` は上下へ等分するので、ベースラインは行帯上端から `h + 余り / 2` にあり、描く箱は
+  /// 行帯の上端と下端の間に収まる。
   #[must_use]
   pub(in crate::typeset) fn new(
     cells: Vec<TableCellBox>,
@@ -70,9 +72,25 @@ impl TableRowBox {
     default_font_size: Length,
     line_height_factor: f32,
   ) -> Self {
-    let font_size = cells.iter().filter_map(|cell| return max_font_size_in_items(&cell.items)).reduce(Length::max);
-    let height = font_size.unwrap_or(default_font_size) * line_height_factor;
-    let baseline = font_size.unwrap_or(height);
+    let font_size = cells
+      .iter()
+      .filter_map(|cell| return max_font_size_in_items(&cell.items))
+      .reduce(Length::max)
+      .unwrap_or(default_font_size);
+    let (ascent, descent) = cells
+      .iter()
+      .flat_map(|cell| return cell.items.iter())
+      .filter_map(|item| {
+        let HItem::Box(hbox) = item else {
+          return None;
+        };
+        return Some(hbox);
+      })
+      .fold((Length::ZERO, Length::ZERO), |(ascent, descent), hbox| {
+        return (ascent.max(hbox.height), descent.max(hbox.depth));
+      });
+    let height = (font_size * line_height_factor).max(ascent + descent);
+    let baseline = ascent + (height - ascent - descent) / 2.0;
     return TableRowBox {
       cells,
       rule_above,
@@ -373,6 +391,16 @@ mod tests {
     });
   }
 
+  /// テキストを含まない、指定の高さ・深さのボックスを作る
+  fn extent_box(height: f32, depth: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: pt(5.0),
+      height: pt(height),
+      depth: pt(depth),
+    });
+  }
+
   /// `column_span = 1` のセルを作る
   fn cell(items: Vec<HItem>) -> TableCellBox {
     return TableCellBox {
@@ -441,11 +469,12 @@ mod tests {
   }
 
   #[test]
-  fn row_band_is_max_font_times_factor() {
+  fn row_band_keeps_the_leading_and_centers_short_content() {
+    // 中身は高さ 12・深さ 2 で計 14、行送り 12 × 1.5 = 18 に収まる。余り 4 を上下へ 2 ずつ
     let row = TableRowBox::new(
       vec![
-        cell(vec![glyph_box(10.0, 10.0)]),
         cell(vec![glyph_box(10.0, 12.0)]),
+        cell(vec![extent_box(3.0, 2.0)]),
       ],
       false,
       pt(9.0),
@@ -453,15 +482,33 @@ mod tests {
     );
 
     assert!(close(row.height(), 18.0), "{row:?}");
-    assert!(close(row.baseline(), 12.0), "{row:?}");
+    assert!(close(row.baseline(), 14.0), "{row:?}");
   }
 
   #[test]
-  fn row_band_falls_back_to_default_font() {
+  fn row_band_grows_to_the_content_extent() {
+    // 中身は高さ 14・深さ 7 で計 21、行送り 12 × 1.2 = 14.4 を超えるので行帯は中身に一致する
+    let row = TableRowBox::new(
+      vec![
+        cell(vec![glyph_box(10.0, 12.0)]),
+        cell(vec![extent_box(14.0, 7.0)]),
+      ],
+      false,
+      pt(9.0),
+      1.2,
+    );
+
+    assert!(close(row.height(), 21.0), "{row:?}");
+    assert!(close(row.baseline(), 14.0), "余りが無いのでベースラインは上端 + 高さ: {row:?}");
+  }
+
+  #[test]
+  fn row_band_without_text_uses_the_default_font_size() {
+    // テキストが無いので行送りは既定 9 × 2 = 18。中身は高さ 1 で、余り 17 を上下へ 8.5 ずつ
     let row = TableRowBox::new(vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
 
     assert!(close(row.height(), 18.0), "{row:?}");
-    assert!(close(row.baseline(), 18.0), "テキストの無い行のベースラインは行帯の下端: {row:?}");
+    assert!(close(row.baseline(), 9.5), "{row:?}");
   }
 
   #[test]

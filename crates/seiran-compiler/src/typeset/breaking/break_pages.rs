@@ -1902,6 +1902,47 @@ mod tests {
   /// テキスト入り（フォント 10）の 1 セル行を作るヘルパ
   fn table_row(text: &str) -> TableRowBox { return table_row_of(vec![table_text_box(text)]); }
 
+  #[test]
+  fn table_rows_stack_by_their_content_band() {
+    // 2 行目のセルは高さ 12・深さ 6 の箱を持ち、行送り 10（フォント 10 × 係数 1）を超えて 18 を占める
+    let geom = test_geometry();
+    let tall = table_row_of(vec![HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: Length::pt(10.0),
+      height: Length::pt(12.0),
+      depth: Length::pt(6.0),
+    })]);
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![table_row("A"), tall, table_row("B")],
+      breakable: true,
+    };
+
+    let (pages, _) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+    );
+
+    let Some(PlacedBlock::Table { rows }) = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. }))
+    else {
+      panic!("1 ページ目に表があるはず: {pages:?}");
+    };
+    assert!(close(rows[0].top_y, 10.0), "{:?}", rows[0]);
+    assert!(close(rows[1].top_y, 20.0), "{:?}", rows[1]);
+    assert!(close(rows[2].top_y, 38.0), "2 行目は中身の高さ + 深さ 18 を占める: {:?}", rows[2]);
+    assert!(close(rows[1].height, 18.0), "{:?}", rows[1]);
+    assert!(close(rows[1].baseline_y, 32.0), "余りが無いのでベースラインは上端 20 + 高さ 12: {:?}", rows[1]);
+  }
+
   /// ページ内の最初の表ブロックの先頭行セルのテキストを取り出すヘルパ
   fn first_table_row_text(page: &Page) -> Option<String> {
     for block in &page.blocks {
