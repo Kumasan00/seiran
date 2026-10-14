@@ -284,11 +284,17 @@ mod tests {
   use super::*;
   use crate::frontend::syntax::{self, ArgMode, BodyMode, ModeResolver, token::Token};
 
-  /// すべての環境本体・コマンド引数を通常のテキストモードで読むテスト用解決器
+  /// すべての環境本体を通常のテキストモードで読み、`\cmd` の必須引数を `,` 区切りの項目列として読むテスト用解決器
   fn text_modes() -> ModeResolver {
     return ModeResolver {
       env_body: |_| return BodyMode::Text,
-      command_arg: |_, _| return ArgMode::Inherit,
+      command_arg: |name, _| {
+        return if name == "cmd" {
+          ArgMode::CommaList
+        } else {
+          ArgMode::Inherit
+        };
+      },
       math_command_arg_count: |_| return None,
     };
   }

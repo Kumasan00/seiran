@@ -182,7 +182,7 @@ impl CommandKind {
 
   /// 必須引数の読み取り方を位置順に返す
   ///
-  /// どのコマンドのどの位置が verbatim かはこの種別が単一の真実源で、ユーザは変更できない
+  /// どのコマンドのどの位置が verbatim か・`,` 区切りの項目列かはこの種別が単一の真実源で、ユーザは変更できない
   /// （P1 ガード）。将来の `\define` もここへ宣言できない。
   ///
   /// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラ）。
@@ -190,12 +190,12 @@ impl CommandKind {
     return match self {
       Self::Code | Self::Url => &[ArgMode::Verbatim],
       Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
+      Self::Cite => &[ArgMode::CommaList],
       Self::Space
       | Self::Heading(_)
       | Self::StyledText(_)
       | Self::ColoredText
       | Self::Ref
-      | Self::Cite
       | Self::Footnote
       | Self::Index
       | Self::NoIndent
@@ -348,10 +348,11 @@ mod tests {
   }
 
   #[test]
-  fn verbatim_commands_declare_arg_modes_and_others_are_empty() {
+  fn commands_declare_arg_modes_and_others_are_empty() {
     assert_eq!(CommandKind::Code.arg_modes(), &[ArgMode::Verbatim]);
     assert_eq!(CommandKind::Url.arg_modes(), &[ArgMode::Verbatim]);
     assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
+    assert_eq!(CommandKind::Cite.arg_modes(), &[ArgMode::CommaList]);
     assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 

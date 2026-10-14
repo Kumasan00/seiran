@@ -119,6 +119,24 @@ fn diagnostic_math_only_command() {
 }
 
 #[test]
+fn diagnostic_needless_escape_in_math() {
+  // LaTeX の細アキ `\,` は数式でも字 `,` の第 2 の書き方なので、構文文字でも区切りでもない字のエスケープとして拒否する
+  let failure = compile_err(&["tests/text/diagnostics/needless_escape_math.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::syntax::needless_escape".to_string()]);
+  assert_matches_golden("needless_escape_math", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_needless_escape_in_text() {
+  // `%` は構文文字ではないので、本文でもエスケープせずに書く
+  let failure = compile_err(&["tests/text/diagnostics/needless_escape_text.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::syntax::needless_escape".to_string()]);
+  assert_matches_golden("needless_escape_text", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_multiple_opt_args() {
   // P3（任意引数はコマンド名／環境名の直後に 1 組だけ）
   let failure = compile_err(&["tests/text/diagnostics/multiple_opt_args.sei"]);
