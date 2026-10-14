@@ -17,6 +17,19 @@ use crate::{
   source::Span,
 };
 
+/// どの位置でもエスケープできる字
+///
+/// 字句解析が位置によらず構文として読む字と、コメント `//` を字として並べるための `/`。`\` 自身は `\\` が改行なので
+/// 入らない。`,` `=` は区切りを持つ区間の直下だけで構文になるので、区間ごとに [`OPT_ARG_SEPARATORS`] /
+/// [`COMMA_LIST_SEPARATORS`] として渡す。これら以外の字のエスケープは同じ字の第 2 の書き方なので拒否する。
+const ESCAPABLE_CHARS: [char; 9] = ['{', '}', '[', ']', '$', '_', '^', '&', '/'];
+
+/// 任意引数 `[...]` の直下で構文になる区切り（エントリの `,` と key / value の `=`）
+const OPT_ARG_SEPARATORS: [char; 2] = [',', '='];
+
+/// [`ArgMode::CommaList`] の引数の直下で構文になる区切り（項目の `,`）
+const COMMA_LIST_SEPARATORS: [char; 1] = [','];
+
 /// 入れ子要素をトークン化して読むときの語彙的解釈を示すモード
 ///
 /// 生読み（verbatim）はトークン化そのものを行わないのでここには入らない。環境本体の
@@ -48,6 +61,9 @@ pub(in crate::frontend) enum BodyMode {
 pub(in crate::frontend) enum ArgMode {
   /// 外側文脈の [`ParseMode`] を継承してトークン化する（既定）
   Inherit,
+  /// 外側文脈の [`ParseMode`] を継承してトークン化し、直下の構造トークン `,` を項目の区切りとして読む
+  /// （直下に限り `\,` で `,` を項目の字にできる）
+  CommaList,
   /// ブレースバランスで生読みする
   Verbatim,
 }
@@ -172,7 +188,7 @@ impl<'a> Parser<'a> {
         break;
       }
 
-      self.parse_element(&mut children, ParseMode::Text)?;
+      self.parse_element(&mut children, ParseMode::Text, &[])?;
     }
 
     let end = self.last_span.end;
@@ -189,10 +205,15 @@ impl<'a> Parser<'a> {
   ///
   /// 終端は知らない — 各ループは終端を判定してからこの関数を呼ぶので、ここに届いた `}` / `]` はどの区間の
   /// 終端でもなく、常に [`SyntaxError::UnexpectedToken`] になる。
+  ///
+  /// `separators` はこの要素が属する区間の直下でだけ構文になる区切りの字で、そのエスケープを受け付ける（区切りを持たない
+  /// 区間は空）。入れ子の引数・グループへは渡さない — 区切りで割るのは区間の直下の要素だけなので、入れ子の中の `,` `=`
+  /// は元から字であり、そこでのエスケープは第 2 の書き方になる。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
     mode: ParseMode,
+    separators: &[char],
   ) -> Result<(), SyntaxError> {
     let Some(kind) = self.peek_kind() else {
       unreachable!(
@@ -279,6 +300,18 @@ impl<'a> Parser<'a> {
           span: token.span.into(),
         });
       },
+      TokenKind::Escaped => {
+        let token = self.take_peeked();
+        // `Escaped` は 1 バイトの `\` で始まり、その後に字が 1 つ以上続く（`Lexer::read_backslash`）
+        let escaped = &token.text(self.source)[1..];
+        if !escaped.starts_with(|ch: char| return ESCAPABLE_CHARS.contains(&ch) || separators.contains(&ch)) {
+          return Err(SyntaxError::NeedlessEscape {
+            escaped: escaped.to_string(),
+            span: token.span.into(),
+          });
+        }
+        children.push(CstElement::Token(token));
+      },
       // 構造を作らず、そのまま CST のリーフとして保持するトークン。`Underscore` / `Caret` は
       // 数式モードのときだけ上の arm がスクリプトへ組み立てるので、テキストモード用にここへも要る。
       TokenKind::Underscore
@@ -286,7 +319,6 @@ impl<'a> Parser<'a> {
       | TokenKind::Ampersand
       | TokenKind::Comma
       | TokenKind::Equals
-      | TokenKind::Escaped
       | TokenKind::Text
       | TokenKind::LineBreak
       | TokenKind::ParagraphBreak => {
@@ -431,7 +463,7 @@ impl<'a> Parser<'a> {
         }
       }
 
-      self.parse_element(&mut body_children, mode)?;
+      self.parse_element(&mut body_children, mode, &[])?;
     }
 
     let last_span_end = self.last_span.end;
@@ -510,6 +542,13 @@ impl<'a> Parser<'a> {
       let arg_node = match (self.modes.command_arg)(command_name, arg_index) {
         ArgMode::Verbatim => self.parse_verbatim_arg()?,
         ArgMode::Inherit => self.parse_mandatory_arg(mode)?,
+        ArgMode::CommaList => self.parse_delimited(
+          TokenKind::LBrace,
+          TokenKind::RBrace,
+          SyntaxKind::MandatoryArg,
+          mode,
+          &COMMA_LIST_SEPARATORS,
+        )?,
       };
       arg_index += 1;
       end = arg_node.span;
@@ -525,13 +564,15 @@ impl<'a> Parser<'a> {
   /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
   ///
   /// 終端 `close_kind` の判定はこのループだけが持つ（[`Self::parse_element`] は終端を受け取らない）。
-  /// 閉じないまま入力が尽きたら [`SyntaxError::UnclosedDelimiter`] を返す。
+  /// 閉じないまま入力が尽きたら [`SyntaxError::UnclosedDelimiter`] を返す。`separators` は区間の直下でエスケープを
+  /// 受け付ける区切りの字（[`Self::parse_element`] へそのまま渡す）。
   fn parse_delimited(
     &mut self,
     open_kind: TokenKind,
     close_kind: TokenKind,
     node_kind: SyntaxKind,
     mode: ParseMode,
+    separators: &[char],
   ) -> Result<&'a CstNode<'a>, SyntaxError> {
     let open = self.expect(open_kind)?;
     let start_span = open.span;
@@ -550,7 +591,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, mode)?;
+      self.parse_element(&mut children, mode, separators)?;
     }
 
     let close = self.take_peeked();
@@ -563,7 +604,13 @@ impl<'a> Parser<'a> {
   ///
   /// key=value / インデックス指定のため常にテキストモードでパースする。
   fn parse_opt_arg(&mut self) -> Result<&'a CstNode<'a>, SyntaxError> {
-    return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg, ParseMode::Text);
+    return self.parse_delimited(
+      TokenKind::LBracket,
+      TokenKind::RBracket,
+      SyntaxKind::OptArg,
+      ParseMode::Text,
+      &OPT_ARG_SEPARATORS,
+    );
   }
 
   /// 任意引数を高々 1 組読んで `children` へ積む（P3: コマンド名／環境名の直後に 1 組だけ）
@@ -595,7 +642,7 @@ impl<'a> Parser<'a> {
 
   /// 必須引数をパース: `{...}`
   fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a CstNode<'a>, SyntaxError> {
-    return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg, mode);
+    return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg, mode, &[]);
   }
 
   /// 必須引数を生読みする: `{...}` をブレースバランスで
@@ -651,7 +698,7 @@ impl<'a> Parser<'a> {
             span: start_span.into(),
           });
         },
-        _ => self.parse_element(&mut children, ParseMode::Math)?,
+        _ => self.parse_element(&mut children, ParseMode::Math, &[])?,
       }
     }
 
@@ -683,7 +730,7 @@ impl<'a> Parser<'a> {
             span: start_span.into(),
           });
         },
-        _ => self.parse_element(&mut children, ParseMode::Math)?,
+        _ => self.parse_element(&mut children, ParseMode::Math, &[])?,
       }
     }
 
@@ -827,11 +874,12 @@ mod tests {
 
   /// テスト用の（コマンド名, 引数位置）→ [`ArgMode`] 解決関数
   ///
-  /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンドの
-  /// スタンドイン。
+  /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンド、`vcite` は必須引数が
+  /// `,` 区切りの項目列のコマンドのスタンドイン。
   fn test_command_arg(name: &str, index: usize) -> ArgMode {
     return match (name, index) {
       ("vurl", _) | ("vhref", 0) => ArgMode::Verbatim,
+      ("vcite", _) => ArgMode::CommaList,
       _ => ArgMode::Inherit,
     };
   }
@@ -1111,7 +1159,7 @@ mod tests {
     let source = " x";
     let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
     let mut children = bumpalo::collections::Vec::new_in(&arena);
-    let _ = parser.parse_element(&mut children, ParseMode::Text);
+    let _ = parser.parse_element(&mut children, ParseMode::Text, &[]);
   }
 
   #[test]
@@ -1121,7 +1169,7 @@ mod tests {
     let source = "";
     let mut parser = Parser::new(source, Lexer::new(source), &arena, test_modes());
     let mut children = bumpalo::collections::Vec::new_in(&arena);
-    let _ = parser.parse_element(&mut children, ParseMode::Text);
+    let _ = parser.parse_element(&mut children, ParseMode::Text, &[]);
   }
 
   #[test]
@@ -2084,5 +2132,123 @@ mod tests {
     let cst = parse_cst_ok(r"\vfrac{a}{b}{c}", &arena);
     let cmd = cst.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
     assert_eq!(cmd.children_of_kind(SyntaxKind::MandatoryArg).count(), 3);
+  }
+
+  /// 不要なエスケープの診断から、エスケープした字（`\` を除く）とソース位置を取り出す
+  fn needless_escape(source: &str) -> (String, usize, usize) {
+    let arena = Bump::new();
+    match parse_cst(source, &arena) {
+      Err(SyntaxError::NeedlessEscape { escaped, span }) => return (escaped, span.offset(), span.len()),
+      other => panic!("不要なエスケープの診断が期待されます: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn needless_escape_in_text_is_error() {
+    let result = needless_escape(r"50\% です");
+
+    assert_eq!(result, ("%".to_string(), 2, 2));
+  }
+
+  #[test]
+  fn latex_space_symbols_in_math_are_errors() {
+    for (source, ch) in [
+      (r"$f\,x$", ","),
+      (r"$f\:x$", ":"),
+      (r"$f\;x$", ";"),
+      (r"$f\!x$", "!"),
+    ] {
+      let result = needless_escape(source);
+
+      assert_eq!(result, (ch.to_string(), 2, 2), "{source}");
+    }
+  }
+
+  #[test]
+  fn syntax_chars_are_escapable_in_text_and_math() {
+    let arena = Bump::new();
+
+    for source in [
+      r"a \{ \} \[ \] \$ \_ \^ \& \/ b",
+      r"$a \{ \} \[ \] \$ \_ \^ \& \/ b$",
+    ] {
+      assert!(parse_cst(source, &arena).is_ok(), "{source}");
+    }
+  }
+
+  #[test]
+  fn non_ascii_escape_is_error() {
+    let result = needless_escape("\\★");
+
+    assert_eq!(result, ("★".to_string(), 0, 4));
+  }
+
+  #[test]
+  fn escape_with_combining_mark_is_judged_by_its_base() {
+    let arena = Bump::new();
+
+    let accepted = parse_cst("\\&\u{0302}", &arena);
+    let rejected = needless_escape("\\%\u{0302}");
+
+    assert!(accepted.is_ok(), "{accepted:?}");
+    assert_eq!(rejected, ("%\u{0302}".to_string(), 0, 4));
+  }
+
+  #[test]
+  fn escaped_comma_and_equals_directly_in_opt_arg_are_ok() {
+    let arena = Bump::new();
+
+    let result = parse_cst(r"\cmd[a\=b=c\,d, e=f]{y}", &arena);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn escaped_comma_nested_in_opt_arg_is_error() {
+    let result = needless_escape(r"\cmd[title=\bold{a\,b}]{y}");
+
+    assert_eq!(result, (",".to_string(), 18, 2));
+  }
+
+  #[test]
+  fn escaped_comma_in_opt_arg_of_math_command_is_ok() {
+    let arena = Bump::new();
+
+    let result = parse_cst(r"$\vfrac[a\,b]{x}{y}$", &arena);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn escaped_comma_in_plain_mandatory_arg_is_error() {
+    let result = needless_escape(r"\cmd{a\,b}");
+
+    assert_eq!(result, (",".to_string(), 6, 2));
+  }
+
+  #[test]
+  fn escaped_comma_directly_in_comma_list_arg_is_ok() {
+    let arena = Bump::new();
+
+    let result = parse_cst(r"\vcite{a\,b, c}", &arena);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn escaped_equals_in_comma_list_arg_is_error() {
+    // `,` 区切りの引数で区切りになるのは `,` だけなので、`=` のエスケープは第 2 の書き方
+    let result = needless_escape(r"\vcite{a\=b}");
+
+    assert_eq!(result, ("=".to_string(), 8, 2));
+  }
+
+  #[test]
+  fn escapes_inside_verbatim_are_not_judged() {
+    let arena = Bump::new();
+
+    for source in [r"\vurl{a\%b}", "\\begin{code}\\%\\,\\end{code}"] {
+      assert!(parse_cst(source, &arena).is_ok(), "{source}");
+    }
   }
 }

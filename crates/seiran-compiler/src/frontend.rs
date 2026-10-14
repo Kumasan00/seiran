@@ -1857,10 +1857,10 @@ mod tests {
 
   #[test]
   fn escaped_char_with_combining_mark_is_one_char() {
-    let nodes = inline_math_nodes("$\\%\u{0302}$\n");
+    let nodes = inline_math_nodes("$\\&\u{0302}$\n");
 
     assert!(
-      matches!(nodes.as_slice(), [node] if matches!(&node.kind, HirMathKind::Text(t) if t == "%\u{0302}")),
+      matches!(nodes.as_slice(), [node] if matches!(&node.kind, HirMathKind::Text(t) if t == "&\u{0302}")),
       "{nodes:?}"
     );
   }

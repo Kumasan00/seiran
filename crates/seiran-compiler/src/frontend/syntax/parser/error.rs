@@ -108,6 +108,22 @@ pub(crate) enum SyntaxError {
     span: SourceSpan,
   },
 
+  /// 構文文字でも、その位置の区切りでもない字をエスケープした場合（`\%`、任意引数の外の `\,` 等）
+  #[error("\\{escaped} はエスケープできません")]
+  #[diagnostic(
+    code(frontend::syntax::needless_escape),
+    help(
+      "{escaped} はエスケープせずにそのまま書いてください。エスケープできるのは構文文字 `{{` `}}` `[` `]` `$` `_` `^` `&` `/` と、任意引数 `[...]` の直下の `,` `=`・\\cite の引数の直下の `,` だけです"
+    )
+  )]
+  NeedlessEscape {
+    /// `\` に続く字（付いた結合文字を含む）
+    escaped: String,
+    /// エスケープ（`\` から結合文字まで）のソース位置
+    #[label("この字はエスケープ不要です")]
+    span: SourceSpan,
+  },
+
   /// 構文文字に結合文字が付いている場合（`{x}̂` の `}̂`・`\\̂` 等）
   #[error("構文文字に結合文字が付いています")]
   #[diagnostic(
