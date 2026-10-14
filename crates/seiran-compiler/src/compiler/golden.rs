@@ -141,7 +141,9 @@
 //!   [`tall_fence_in_a_script_still_stretches_to_cover_the_body`]（共通ヘルパ [`fence_pair`] 経由）
 //! - **数式の明示アキ**（閉じた箱の幅は末尾の明示アキを含む送り幅で、負のアキはセルを縮める）:
 //!   [`trailing_explicit_space_in_an_aligned_cell_changes_the_cell_width`] /
-//!   [`trailing_negative_space_narrows_a_cases_column`] / [`cell_of_only_a_negative_space_does_not_move_the_other_cells`]（共通ヘルパ [`runs_top_down`] 経由）
+//!   [`trailing_negative_space_narrows_a_cases_column`] / [`cell_of_only_a_negative_space_does_not_move_the_other_cells`] /
+//!   [`trailing_negative_space_in_an_inline_superscript_pulls_the_next_atom_back`] /
+//!   [`trailing_negative_space_in_a_fence_body_pulls_the_next_atom_back`]（共通ヘルパ [`runs_top_down`] 経由）
 //! - **数式の色**（外側の `\color` の色で字・罫・伸縮括弧・根号記号・アクセント記号を塗る）:
 //!   [`colored_inline_math_paints_glyphs_and_rules_in_the_color`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
@@ -4144,4 +4146,32 @@ fn cell_of_only_a_negative_space_does_not_move_the_other_cells() {
   };
 
   assert_eq!(second_eq.dx, first_eq.dx, "幅が負のセルでも列幅は 0 未満にならず、ほかの列は動かない");
+}
+
+#[test]
+fn trailing_negative_space_in_an_inline_superscript_pulls_the_next_atom_back() {
+  let next_and_script = |script: &str| {
+    let runs = first_line_runs(&format!("$x^{{{script}}}b$\n"));
+    return (run_with_text(&runs, MATH_B).dx, run_with_text(&runs, MATH_A).run.font_size);
+  };
+
+  let (plain, script_size) = next_and_script("a");
+  let (narrowed, _) = next_and_script("a\\negthinspace");
+
+  // 上付きの右端が基底より右にあるので、上付きの送り幅の縮みがそのまま後続の位置に出る（量は script 段の mu）
+  assert_eq!(narrowed, plain + (script_size * -3) / 18.0f64, "上付きの末尾の負の明示アキの分だけ後続が寄る");
+}
+
+#[test]
+fn trailing_negative_space_in_a_fence_body_pulls_the_next_atom_back() {
+  let next_and_size = |body: &str| {
+    let runs = first_line_runs(&format!("$\\paren{{{body}}}b$\n"));
+    return (run_with_text(&runs, MATH_B).dx, run_with_text(&runs, MATH_A).run.font_size);
+  };
+
+  let (plain, font_size) = next_and_size("a");
+  // 閉じ括弧の右端より中身の字の右端が右へ出るまで詰める
+  let (narrowed, _) = next_and_size("a\\negthinspace\\negthinspace\\negthinspace");
+
+  assert_eq!(narrowed, plain + (font_size * -9) / 18.0f64, "中身の末尾の負の明示アキの分だけ後続が寄る");
 }
