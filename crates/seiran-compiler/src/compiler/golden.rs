@@ -139,6 +139,9 @@
 //!   [`empty_fence_compiles_with_the_delimiters_side_by_side`] /
 //!   [`short_fence_in_a_script_takes_the_glyphs_of_bare_delimiters`] /
 //!   [`tall_fence_in_a_script_still_stretches_to_cover_the_body`]（共通ヘルパ [`fence_pair`] 経由）
+//! - **数式の明示アキ**（閉じた箱の幅は末尾の明示アキを含む送り幅で、負のアキはセルを縮める）:
+//!   [`trailing_explicit_space_in_an_aligned_cell_changes_the_cell_width`] /
+//!   [`trailing_negative_space_narrows_a_cases_column`] / [`cell_of_only_a_negative_space_does_not_move_the_other_cells`]（共通ヘルパ [`runs_top_down`] 経由）
 //! - **数式の色**（外側の `\color` の色で字・罫・伸縮括弧・根号記号・アクセント記号を塗る）:
 //!   [`colored_inline_math_paints_glyphs_and_rules_in_the_color`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
@@ -4080,4 +4083,65 @@ fn tall_fence_in_a_script_still_stretches_to_cover_the_body() {
     assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず");
     assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず");
   }
+}
+
+/// `runs` のうちテキストが `text` のグリフ列を、上の行（`dy` の大きい方）から順に返す。
+fn runs_top_down<'a>(runs: &'a [LineRun], text: &str) -> Vec<&'a LineRun> {
+  let mut found: Vec<&LineRun> = runs.iter().filter(|line_run| return line_run.run.text == text).collect();
+  found.sort_by_key(|line_run| return -line_run.dy);
+  return found;
+}
+
+#[test]
+fn trailing_explicit_space_in_an_aligned_cell_changes_the_cell_width() {
+  for (left, mu_count) in [
+    ("a\\negthinspace", -3),
+    ("{a\\negthinspace}", -3),
+    ("a\\quad", 18),
+  ] {
+    let (runs, _) = display_parts(&format!("\\begin{{align}}\na &= b \\\\\n{left} &= b\n\\end{{align}}\n"));
+
+    let letters = runs_top_down(&runs, MATH_A);
+    let [first_a, second_a] = letters.as_slice() else {
+      panic!("𝑎 は 2 行に 1 つずつのはず: {left}");
+    };
+    let relations = runs_top_down(&runs, "=");
+    let [first_eq, second_eq] = relations.as_slice() else {
+      panic!("= は 2 行に 1 つずつのはず: {left}");
+    };
+    // 明示アキの量はセルの段（display 段 = 本文の大きさ）の mu（1mu = font_size/18）
+    let space = (first_a.run.font_size * mu_count) / 18.0f64;
+    assert_eq!(
+      second_eq.dx - second_a.dx,
+      first_eq.dx - first_a.dx + space,
+      "左のセルの末尾の明示アキの分だけ 𝑎 と = の間が変わる: {left}"
+    );
+  }
+}
+
+#[test]
+fn trailing_negative_space_narrows_a_cases_column() {
+  let gap = |left: &str| {
+    let (runs, _) = display_parts(&format!("\\begin{{cases}}\n{left} & b\n\\end{{cases}}\n"));
+    let a = run_with_text(&runs, MATH_A);
+    return (run_with_text(&runs, MATH_B).dx - a.dx, a.run.font_size);
+  };
+
+  let (plain, font_size) = gap("a");
+  let (narrowed, _) = gap("a\\negthinspace");
+
+  // cases の列は左寄せなので、1 列目が縮んだ分だけ 2 列目が左へ寄る
+  assert_eq!(narrowed, plain + (font_size * -3) / 18.0f64, "1 列目の末尾の負の明示アキの分だけ列が縮む");
+}
+
+#[test]
+fn cell_of_only_a_negative_space_does_not_move_the_other_cells() {
+  let (runs, _) = display_parts("\\begin{align}\na &= b \\\\\n\\negthinspace &= b\n\\end{align}\n");
+
+  let relations = runs_top_down(&runs, "=");
+  let [first_eq, second_eq] = relations.as_slice() else {
+    panic!("= は 2 行に 1 つずつのはず");
+  };
+
+  assert_eq!(second_eq.dx, first_eq.dx, "幅が負のセルでも列幅は 0 未満にならず、ほかの列は動かない");
 }
