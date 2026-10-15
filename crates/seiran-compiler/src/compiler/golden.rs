@@ -72,8 +72,12 @@
 //!   [`subscript_on_a_calligraphic_letter_sits_as_on_the_script_letter`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]・
+//!   math kern は 1 字の基底だけ（グループは補正を引き継ぐ）[`multi_char_group_base_keeps_the_correction_without_the_math_kern`] /
+//!   [`multi_char_group_base_places_its_superscript_without_the_math_kern`] /
+//!   [`single_char_group_base_places_scripts_as_the_bare_char`] /
+//!   [`multi_node_group_keeps_the_correction_without_the_math_kern`]・
 //!   補正の高さ（端のグリフ 1 つの符号付きのインク）[`subscript_kern_is_measured_at_the_first_glyph_of_the_subscript`] /
-//!   [`superscript_kern_is_measured_at_the_last_glyph_of_the_base`] /
+//!   [`superscript_kern_is_measured_at_the_glyph_of_the_base_char`] /
 //!   [`superscript_kern_is_measured_at_the_ink_bottom_above_the_baseline`] /
 //!   [`display_operator_scripts_take_the_math_kern_from_the_operator_baseline`] /
 //!   [`assembled_operator_scripts_take_the_math_kern_from_the_last_part_baseline`]（MATH を書き換えた STIX、[`stix_with_math_kerns`] 経由）
@@ -120,7 +124,10 @@
 //!   [`display_limsup_centers_its_limit_under_both_words`] /
 //!   演算子名の最後の字の補正（語の送り幅に入れ、配置では 0。最後の字に補正を持たせた STIX、
 //!   [`stix_with_italics_corrections`] 経由）[`operator_name_keeps_the_correction_of_its_last_letter_inside_its_width`] /
-//!   [`display_operator_name_centers_its_limits_without_shifting_by_the_correction`]
+//!   [`display_operator_name_centers_its_limits_without_shifting_by_the_correction`]・
+//!   演算子名には最後の字の math kern も効かせない（補正と kern を持たせた STIX、[`stix_with_corrections_and_kerns`] 経由。
+//!   同じ字形 1 字の基底が対照）[`operator_name_places_its_scripts_at_its_end_without_the_last_letter_kern`] /
+//!   [`single_upright_letter_base_takes_its_correction_and_kerns`]
 //! - **広幅アクセント**（横方向の size variant / glyph assembly で基底の送り幅を覆う・元の字形のままなら `\hat` と同じ字形・
 //!   配置はアクセントと同じ規則）: [`wide_accent_covers_the_base_with_the_smallest_horizontal_variant`] /
 //!   [`longer_base_stretches_the_arrow_only_horizontally`] / [`very_long_arrow_is_assembled_as_one_character`] /
@@ -1413,10 +1420,16 @@ fn kern_table_splitting(heights: [i32; 2], kept: i32) -> [i16; 3] {
 /// STIX Two Math の MATH の `MathItalicsCorrectionInfo` を `corrections`（gid の昇順。各要素は gid とフォント単位の補正）
 /// だけを持つ表に、`MathKernInfo` を空の表に置き換えたフォントのバイト列
 fn stix_with_italics_corrections(corrections: &[(u32, i16)]) -> Vec<u8> {
+  return stix_with_corrections_and_kerns(corrections, &[]);
+}
+
+/// STIX Two Math の MATH の `MathItalicsCorrectionInfo` を `corrections` だけを持つ表に、`MathKernInfo` を `kerns` だけを
+/// 持つ表に置き換えたフォントのバイト列（表の書き方は [`stix_with_italics_corrections`] と [`stix_with_math_kerns`] と同じ）
+fn stix_with_corrections_and_kerns(corrections: &[(u32, i16)], kerns: &[(u32, [i16; 3], [i16; 3])]) -> Vec<u8> {
   return stix_with_math(|math| {
     // MathGlyphInfo の 1 番目のオフセットが MathItalicsCorrectionInfo、4 番目が MathKernInfo
     append_math_glyph_info_subtable(math, 0, &math_italics_correction_info(corrections));
-    append_math_glyph_info_subtable(math, 6, &math_kern_info(&[]));
+    append_math_glyph_info_subtable(math, 6, &math_kern_info(kerns));
   });
 }
 
@@ -2558,13 +2571,68 @@ fn inline_lim_keeps_its_limit_at_the_subscript() {
 
   let base = run_with_text(&runs, "lim");
   let sub = run_with_text(&runs, MATH_I);
-  let (sub_gid, _) = sole_glyph(sub);
   assert_eq!(stix_italics_correction(last_gid(base)), 0, "立体の m は補正の登録が無い（テストの前提）");
-  // STIX の立体の m は BottomRight の math kern を高さによらず一定で持ち、𝑖 は TopLeft の kern を持たない（テストの前提）
-  assert_eq!(stix_math_kern(sub_gid, MathKernCorner::TopLeft, 0), 0);
-  let kern = stix_units(stix_math_kern(last_gid(base), MathKernCorner::BottomRight, 0), base.run.font_size);
-  assert_eq!(sub.dx, base.dx + base.width + kern, "インライン数式の下限は添字（末尾の字の math kern ぶん寄せる）");
+  assert_ne!(
+    stix_math_kern(last_gid(base), MathKernCorner::BottomRight, 0),
+    0,
+    "STIX の立体の m は右下の math kern を持つ（テストの前提）"
+  );
+  assert_eq!(sub.dx, base.dx + base.width, "演算子名は 1 字ではないので、末尾の字の math kern で寄せない");
   assert!(sub.dy < base.dy, "添字はベースラインより下");
+}
+
+/// 立体の g に持たせる補正（フォント単位）
+const UPRIGHT_G_CORRECTION: i16 = 150;
+
+/// 立体の g に持たせる、高さによらない右上・右下の math kern（フォント単位。表の書式は [`stix_with_math_kerns`]）
+const UPRIGHT_G_KERN: [i16; 3] = [0, -80, -80];
+
+/// インライン数式 `source` を、立体の g に [`UPRIGHT_G_CORRECTION`] の補正と右上・右下の [`UPRIGHT_G_KERN`] だけを持たせた
+/// STIX で組み、最初の行のグリフ列と立体の g のグリフ ID を返す
+fn runs_with_upright_g_correction_and_kerns(source: &str) -> (Vec<LineRun>, u32) {
+  let gid = last_gid(run_with_text(&first_line_runs("$\\log x$\n"), "log"));
+  let font = stix_with_corrections_and_kerns(&[(gid, UPRIGHT_G_CORRECTION)], &[(gid, UPRIGHT_G_KERN, UPRIGHT_G_KERN)]);
+  return (first_line_runs_with_math_font(source, font), gid);
+}
+
+#[test]
+fn operator_name_places_its_scripts_at_its_end_without_the_last_letter_kern() {
+  let (runs, gid) = runs_with_upright_g_correction_and_kerns("$\\log_{n}^{2}$\n");
+
+  let base = run_with_text(&runs, "log");
+  let sup = run_with_text(&runs, "2");
+  let sub = run_with_text(&runs, MATH_N);
+  let last = base.run.glyphs.last().expect("演算子名は 1 つ以上のグリフを持つ");
+  assert_eq!(last.gid, gid, "log の最後の字は書き換えた立体の g（テストの前提）");
+  assert_eq!(
+    last.x_advance,
+    stix_advance(gid) + i32::from(UPRIGHT_G_CORRECTION),
+    "最後の字の補正は語の送り幅に入る"
+  );
+  assert_eq!(sup.dx, base.dx + base.width, "上付きは語の右端で、末尾の字の math kern で寄せない");
+  assert_eq!(sub.dx, base.dx + base.width, "下付きも語の右端で、補正で引き戻さず math kern でも寄せない");
+}
+
+#[test]
+fn single_upright_letter_base_takes_its_correction_and_kerns() {
+  // 演算子名のテストと同じフォント・同じ字形で、1 字の基底なら補正と math kern が効く（フォントの書き換えが効いている対照）
+  let (runs, gid) = runs_with_upright_g_correction_and_kerns("$\\mathserif{g}_{n}^{2}$\n");
+
+  let base = run_with_text(&runs, "g");
+  let sup = run_with_text(&runs, "2");
+  let sub = run_with_text(&runs, MATH_N);
+  assert_eq!(sole_glyph(base).0, gid, "\\mathserif{{g}} は演算子名の g と同じ字形（テストの前提）");
+  let size = base.run.font_size;
+  let kern = stix_units(i32::from(UPRIGHT_G_KERN[1]), size);
+  let correction = stix_units(i32::from(UPRIGHT_G_CORRECTION), size);
+  assert_eq!(sup.dx, base.dx + base.width + kern, "上付きは基底の右端から math kern ぶん寄せる");
+  // 補正入りの幅と補正を別々に sp へ丸めるので 1sp までずれうる
+  let expected = base.dx + base.width - correction + kern;
+  assert!(
+    (sub.dx - expected).abs().sp() <= 1,
+    "下付きは補正ぶん戻して math kern ぶん寄せる: {} vs {expected}",
+    sub.dx
+  );
 }
 
 #[test]
@@ -3086,11 +3154,97 @@ fn subscript_cuts_in_under_a_base_with_a_bottom_right_kern() {
   );
 }
 
+/// 数学用イタリックの 𝑊（U+1D44A）
+const MATH_W: &str = "\u{1D44A}";
+
+/// グリフ列 `line_run` の最後のグリフの、組版側と独立に測ったインクの上端と下端（グリフ列のベースライン基準）
+fn last_glyph_edges(line_run: &LineRun) -> (Length, Length) {
+  let glyph = line_run.run.glyphs.last().expect("グリフ列は 1 つ以上のグリフを持つはず");
+  let (top, bottom) = stix_glyph_edges(glyph.gid, line_run.run.font_size);
+  let rise = stix_units(glyph.y_offset, line_run.run.font_size);
+  return (top + rise, bottom + rise);
+}
+
+#[test]
+fn multi_char_group_base_keeps_the_correction_without_the_math_kern() {
+  let runs = first_line_runs("${xf}_{n}$\n");
+
+  let base = run_with_text(&runs, &format!("{MATH_X}{MATH_F}"));
+  let sub = run_with_text(&runs, MATH_N);
+  let gid = last_gid(base);
+  let size = base.run.font_size;
+  // 1 字の 𝑓 なら効く math kern（2 つの補正の高さ: 下付きのインクの頂・𝑓 のインクの底）が 0 でないことが前提
+  let sub_top = stix_run_ink(&sub.run).0 + (sub.dy - base.dy);
+  let kern = [sub_top, last_glyph_edges(base).1]
+    .map(|height| return stix_math_kern(gid, MathKernCorner::BottomRight, stix_height_units(height, size)))
+    .into_iter()
+    .min()
+    .expect("高さは 2 つある");
+  assert!(kern < 0, "𝑓 の右下は下付きを潜り込ませる（テストの前提）: {kern}");
+  // グループは mrow と同じく末尾の字の補正を引き継ぐ。補正入りの幅と補正を別々に sp へ丸めるので 1sp までずれうる
+  let expected = base.dx + base.width - stix_units(stix_italics_correction(gid), size);
+  assert!(
+    (sub.dx - expected).abs().sp() <= 1,
+    "下付きは補正ぶん戻すだけで、2 字の基底には math kern を効かせない: {} vs {expected}",
+    sub.dx
+  );
+}
+
+#[test]
+fn multi_char_group_base_places_its_superscript_without_the_math_kern() {
+  let runs = first_line_runs("${xW}^{2}$\n");
+
+  let base = run_with_text(&runs, &format!("{MATH_X}{MATH_W}"));
+  let sup = run_with_text(&runs, "2");
+  let gid = last_gid(base);
+  let size = base.run.font_size;
+  let sup_bottom = stix_run_ink(&sup.run).1 + (sup.dy - base.dy);
+  let kern = [sup_bottom, last_glyph_edges(base).0]
+    .map(|height| return stix_math_kern(gid, MathKernCorner::TopRight, stix_height_units(height, size)))
+    .into_iter()
+    .min()
+    .expect("高さは 2 つある");
+  assert_ne!(kern, 0, "𝑊 の右上は kern を持つ（テストの前提）");
+  assert_eq!(sup.dx, base.dx + base.width, "2 字の基底の上付きは右端で、末尾の字の math kern で寄せない");
+}
+
+#[test]
+fn single_char_group_base_places_scripts_as_the_bare_char() {
+  let placement = |source: &str| {
+    let runs = first_line_runs(source);
+    let base = run_with_text(&runs, MATH_F);
+    let sub = run_with_text(&runs, MATH_N);
+    let sup = run_with_text(&runs, "2");
+    return (sub.dx - base.dx, sub.dy - base.dy, sup.dx - base.dx, sup.dy - base.dy);
+  };
+
+  let bare = placement("$f_{n}^{2}$\n");
+
+  assert_eq!(placement("${f}_{n}^{2}$\n"), bare, "1 字のグループは 1 字の基底と同じ（補正も math kern も効く）");
+  assert_eq!(placement("${{f}}_{n}^{2}$\n"), bare, "入れ子のグループも中身が 1 字なら同じ");
+}
+
+#[test]
+fn multi_node_group_keeps_the_correction_without_the_math_kern() {
+  // 先頭の明示アキでノードが 2 つになる。補正は末尾の 𝑓 のもの（mrow）で、math kern は 1 字の核だけ
+  let runs = first_line_runs("${\\thinspace f}_{n}$\n");
+
+  let base = run_with_text(&runs, MATH_F);
+  let sub = run_with_text(&runs, MATH_N);
+  let (gid, _) = sole_glyph(base);
+  let expected = base.dx + base.width - stix_units(stix_italics_correction(gid), base.run.font_size);
+  assert!(
+    (sub.dx - expected).abs().sp() <= 1,
+    "下付きは 𝑓 の補正ぶん戻すだけで math kern で寄せない: {} vs {expected}",
+    sub.dx
+  );
+}
+
 #[test]
 fn superscript_moves_by_the_top_right_kern_of_the_base() {
   let runs = first_line_runs("$W^{2}$\n");
 
-  let base = run_with_text(&runs, "\u{1D44A}");
+  let base = run_with_text(&runs, MATH_W);
   let sup = run_with_text(&runs, "2");
   let (gid, _) = sole_glyph(base);
   let size = base.run.font_size;
@@ -3177,30 +3331,35 @@ fn subscript_kern_is_measured_at_the_first_glyph_of_the_subscript() {
 }
 
 #[test]
-fn superscript_kern_is_measured_at_the_last_glyph_of_the_base() {
-  // 補正の高さの一方は演算子名 sin の末尾のグリフ n のインクの頂で、i の点を含む語全体の頂ではない
-  let source = "$\\sin^{2}$\n";
+fn superscript_kern_is_measured_at_the_glyph_of_the_base_char() {
+  // 補正の高さの一方は基底の字 𝑥 の字形のインクの頂で、結合文字 U+0302 を含むクラスタ全体の頂ではない
+  let source = "$x\u{0302}^{2}$\n";
+  let text = format!("{MATH_X}\u{0302}");
   let plain = first_line_runs_with_math_font(source, stix_with_math_kerns(&[], None));
-  let base = run_with_text(&plain, "sin");
+  let base = run_with_text(&plain, &text);
   let sup = run_with_text(&plain, "2");
-  let gid = last_gid(base);
+  let gid = base.run.glyphs[0].gid;
   let size = base.run.font_size;
-  let last_top = stix_height_units(stix_glyph_edges(gid, size).0, size);
+  let char_top = stix_height_units(stix_glyph_edges(gid, size).0, size);
   let whole_top = stix_height_units(stix_run_ink(&base.run).0, size);
   let sup_bottom =
     stix_height_units(sup.dy - base.dy + stix_glyph_edges(sup.run.glyphs[0].gid, sup.run.font_size).1, size);
-  let font = stix_with_math_kerns(&[(gid, kern_table_splitting([last_top, whole_top], sup_bottom), [0, 0, 0])], None);
+  let font = stix_with_math_kerns(&[(gid, kern_table_splitting([char_top, whole_top], sup_bottom), [0, 0, 0])], None);
   let kern = |height: i32| return math_kern_in(&font, gid, MathKernCorner::TopRight, height);
-  let expected = kern(sup_bottom).min(kern(last_top));
-  assert_ne!(expected, kern(sup_bottom).min(kern(whole_top)), "語全体の頂で測ると kern が変わる（テストの前提）");
+  let expected = kern(sup_bottom).min(kern(char_top));
+  assert_ne!(
+    expected,
+    kern(sup_bottom).min(kern(whole_top)),
+    "クラスタ全体の頂で測ると kern が変わる（テストの前提）"
+  );
 
   let runs = first_line_runs_with_math_font(source, font);
 
-  let base = run_with_text(&runs, "sin");
+  let base = run_with_text(&runs, &text);
   assert_eq!(
     run_with_text(&runs, "2").dx,
     base.dx + base.width + stix_units(expected, size),
-    "上付きの補正の高さは基底の末尾のグリフのインクの頂"
+    "上付きの補正の高さは基底の字の字形のインクの頂"
   );
 }
 
