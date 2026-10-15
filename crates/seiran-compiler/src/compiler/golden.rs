@@ -72,8 +72,12 @@
 //!   [`subscript_on_a_calligraphic_letter_sits_as_on_the_script_letter`]・
 //!   math kern [`subscript_cuts_in_under_a_base_with_a_bottom_right_kern`] /
 //!   [`superscript_moves_by_the_top_right_kern_of_the_base`] / [`subscript_kern_uses_the_top_left_table_of_the_script_glyph`]・
+//!   math kern は 1 字の基底だけ（グループは補正を引き継ぐ）[`multi_char_group_base_keeps_the_correction_without_the_math_kern`] /
+//!   [`multi_char_group_base_places_its_superscript_without_the_math_kern`] /
+//!   [`single_char_group_base_places_scripts_as_the_bare_char`] /
+//!   [`multi_node_group_keeps_the_correction_without_the_math_kern`]・
 //!   補正の高さ（端のグリフ 1 つの符号付きのインク）[`subscript_kern_is_measured_at_the_first_glyph_of_the_subscript`] /
-//!   [`superscript_kern_is_measured_at_the_last_glyph_of_the_base`] /
+//!   [`superscript_kern_is_measured_at_the_glyph_of_the_base_char`] /
 //!   [`superscript_kern_is_measured_at_the_ink_bottom_above_the_baseline`] /
 //!   [`display_operator_scripts_take_the_math_kern_from_the_operator_baseline`] /
 //!   [`assembled_operator_scripts_take_the_math_kern_from_the_last_part_baseline`]（MATH を書き換えた STIX、[`stix_with_math_kerns`] 経由）
@@ -120,7 +124,10 @@
 //!   [`display_limsup_centers_its_limit_under_both_words`] /
 //!   演算子名の最後の字の補正（語の送り幅に入れ、配置では 0。最後の字に補正を持たせた STIX、
 //!   [`stix_with_italics_corrections`] 経由）[`operator_name_keeps_the_correction_of_its_last_letter_inside_its_width`] /
-//!   [`display_operator_name_centers_its_limits_without_shifting_by_the_correction`]
+//!   [`display_operator_name_centers_its_limits_without_shifting_by_the_correction`]・
+//!   演算子名には最後の字の math kern も効かせない（補正と kern を持たせた STIX、[`stix_with_corrections_and_kerns`] 経由。
+//!   同じ字形 1 字の基底が対照）[`operator_name_places_its_scripts_at_its_end_without_the_last_letter_kern`] /
+//!   [`single_upright_letter_base_takes_its_correction_and_kerns`]
 //! - **広幅アクセント**（横方向の size variant / glyph assembly で基底の送り幅を覆う・元の字形のままなら `\hat` と同じ字形・
 //!   配置はアクセントと同じ規則）: [`wide_accent_covers_the_base_with_the_smallest_horizontal_variant`] /
 //!   [`longer_base_stretches_the_arrow_only_horizontally`] / [`very_long_arrow_is_assembled_as_one_character`] /
