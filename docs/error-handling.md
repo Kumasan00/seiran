@@ -116,12 +116,13 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 - 空では構築できない（`single` / `from_vec`（空なら `None`）だけが構築経路で、`Default` は無い）
 - **`#[related] errors: Vec<...>` を持つ集約バリアントを新しく作らない。** `MultipleValidationErrors` /
   `MultipleFontValidationErrors` のような「複数のエラーがあります」「◯◯の検証に失敗しました」は
-  #376 ですべて削除した。`#[related]` を使ってよいのは、**同じ 1 つの問題を複数箇所で示す**場合
-  （`SemanticError::UnknownCitationKeys` が 1 ソース内の複数 `\cite` を `#[label(collection)]` で並べる形）、
-  および重複ラベルの最初の定義が別ソースにある場合（`SemanticError::first_definition_elsewhere` が返す
+  #376 ですべて削除した。**同じ 1 つの問題を複数箇所で示す**場合、同じソース内なら `#[label(collection)]` などの
+  ラベルで示す（`SemanticError::UnknownCitationKeys` の複数 `\cite`）。`related` を使ってよいのは、
+  重複ラベルの最初の定義が別ソースにある場合のように、別の本文を添える必要があるとき
+  （`SemanticError::first_definition_elsewhere` が返す
   code なし・severity `Advice` の関連診断を、`SourceDiagnostic::with_related_in` がそのソースの本文を
-  添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする）
-  に限る。異なる修正を要求する違反は集合の別要素にする
+  添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする）。
+  異なる修正を要求する違反は集合の別要素にする
 - **表示順は入力の論理順**であり、`HashMap` の反復順や並列処理の完了順に依存させない
   （source は `config.sources` の宣言順、フォントは読込がパスの昇順・解析 / 検証が `FontType` の宣言順、画像は
   正規化済み `ProjectPath` の昇順、意味解析は `NodeId` 由来の文書順）。rayon を使う箇所は `collect::<Result<Vec<_>, E>>()`

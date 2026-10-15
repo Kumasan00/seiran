@@ -123,8 +123,8 @@ miette 診断エラーにする（`docs/error-handling.md`）。本体コード�
   `missing_assert_message` が見る。**`unreachable!` には発火しない**ので必須ルール 5 と衝突しない
   （`-> Result` の中の `assert!` を捕まえるのは上の `panic_in_result_fn` の側）。テストは
   `allow-panic-in-tests` で対象外だが、`tests/` から使うヘルパは `#[cfg(test)]` の外なので発火する
-  （`unwrap_used` と同じ）。`#[cfg(test)]` の中でも発火するため、`?` のために `-> Result` を返すテスト関数
-  では `assert!` ではなく `unwrap` / `expect` で落とす。
+  （`unwrap_used` と同じ）。一方、上の `panic_in_result_fn` は `#[cfg(test)]` の中でも発火するため、
+  `?` のために `-> Result` を返すテスト関数では `assert!` ではなく `unwrap` / `expect` で落とす。
 - **`unwrap_in_result`**: その `unwrap` / `expect` の側はこの lint が見る — `Result` / `Option` を返す関数の
   中で**返り値と同じ型ファミリ**の `.unwrap()` / `.expect()` を書いたら、
   `#[expect(clippy::unwrap_in_result, reason = ...)]` を関数に付けて例外だと宣言する（この lint は
@@ -246,8 +246,9 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   変わるので、繰り返しそのものが目的のテスト（`tests/determinism.rs` の 32 回コンパイル）では意味が壊れる。
 - `PathBuf` は `clone()` してから `push()` せず `join()` で組み立てる（`pathbuf_init_then_push`）。2 文に
   割ると「間で分岐するのか」と読めるうえ、絶対パスを push したときの上書き（`path_buf_push_overwrite`）と
-  同じ形になる。拡張子だけは `set_extension` が確保し直さないので、
-  `let mut path = dir.join(name); path.set_extension("pdf");` の形を使う（`project::config::resolved`）。
+  同じ形になる。既存の拡張子を置き換えるときは `set_extension` を使う。
+  `project::config::resolved` の出力名は末尾のドット以降も名前の一部なので、
+  `output_dir.join(format!("{name}.pdf"))` で拡張子を追加する（`report-v1.2` → `report-v1.2.pdf`）。
 - イテレータ操作は **std で足りるなら std** で書く。std に同じ操作のメソッドがあるならそれを使い、`itertools` は
   std だと複数の操作の組み合わせ（中間コレクション・入れ子タプル・手書きの状態）で書くことになる操作に使う —
   `Itertools::join`（`collect::<Vec<_>>().join(..)`）や `izip!`（`((a, b), c)` の入れ子 `zip`）は、名前が操作の

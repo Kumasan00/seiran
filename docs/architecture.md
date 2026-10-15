@@ -165,7 +165,8 @@ TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の�
 - `ProjectSource` の 2 実装はどちらもキャッシュを持たず、要求のたびに読む。1 回の `compile` で同じ資源を
   2 回読まないことは資源を列挙する側の責務で、フォントは `FontData::load`（パスの sort + dedup）、画像は
   `typeset::image` の `collect_image_paths`（`BTreeSet`）の 1 箇所ずつにある。`sources` に同じファイルを
-  2 回書いた場合だけ読込が 2 回になる（出力は変わらない）。キャッシュは seam の契約ではなく、watch /
+  2 回書いた場合は、それぞれ別のソースとして読み込み・パースされ、本文も重複する（ラベルがあれば重複定義の
+  診断になる）。キャッシュは seam の契約ではなく、watch /
   インクリメンタルビルドで必要になったら無効化の規則と一緒に設計する。2 実装が同じ結果を返すことと共有
   フォントを 1 回しか読まないことは `compiler::project_source_equivalence` が回帰テストとして固定する
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**で、画像も同じ型で識別する。同じパスを表す
@@ -183,6 +184,9 @@ TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の�
 
 **生（raw）→ 検証 → 解決済み（resolved）の 2 型構成**。TOML をそのまま受ける `Raw*` は非公開で garde の
 検証をここに付け、後段は検証済み・パス解決済みの公開型（`ProjectConfig` 等）だけを見る。
+
+現行の未知キー拒否は `[pdf]` と個々のフォント設定に限られ、トップレベルや `[output]` などでは
+未知キーが無視される。これは言語設計原則 P6 の未達であり、未知キーを許容する設計判断ではない。
 
 - 入口 `load` は解決済みの `config_path` を受け取り、ここを再解決しない。config 内の相対パス（`sources` /
   `style_path` / `references_path` / フォントパス）は resolver で解決し、`style_path` / `references_path` は
@@ -221,7 +225,7 @@ TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の�
 提供する interface（`HirBuilder` と HIR ノード型・複数ソースの組み立て・網羅的走査のための HIR enum・
 `SourceMap` の query）と、HIR の variant が値として持つ語彙型の一覧は `//!` が持つ。
 
-境界: 外部依存は serde / thiserror のみで、miette にも I/O にも依存しない。crate 内では `length` /
+境界: 外部依存は serde / strum / thiserror のみで、miette にも I/O にも依存しない。crate 内では `length` /
 `color` / `source` / `project` に依存する（HIR が値として `Length` / `Color` / `SourceId` / `Span` /
 `ProjectPath` を持つため）。パスの**解決規則**は持たず、解決済みの値だけを受け取る。後段 module
 （`semantics` / `typeset` / `compiler`）への依存は持たない。
@@ -673,11 +677,11 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 不変条件:
 
-- フォントに触れてよいのは (a) `boxing`（本文の計測・シェーピングと、生成コンテンツ（目次・索引・
-  走り文）が使うシェーピングの部品 `Shaper`）と (e) 描画だけ（`emit` は描画資源へ載せる face 設定・
-  メトリクスを借りるだけで計測しない）。box は (a) で width / height / depth を 1 回計測して保持し、
-  `breaking` はフォントに触れない。例外は本文パスが lowering へ渡す数式の縮小率（`FontSystem::script_scale`）を
-  読むことだけで、値を読むだけで計測はしない
+- 計測・シェーピングは `boxing` に閉じる（生成コンテンツ（目次・索引・走り文）も、その部品 `Shaper` を使う）。
+  box はここで width / height / depth を 1 回計測して保持し、`breaking` はフォントに触れない。
+  計測を伴わない参照は、組版前の `math_glyphs` による字形の存在検査、本文パスが lowering へ渡す数式の縮小率
+  （`FontSystem::script_scale`）の取得、`emit` が描画資源へ載せる face 設定・メトリクスの取得に限る。
+  backend のフォント構築・サブセット化は `seiran-pdf` が持つ
 - **段の中では 19 種すべてを検査して違反を `FontType` の宣言順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
   `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする — 19 種のフォント種別については

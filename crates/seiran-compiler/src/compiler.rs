@@ -50,7 +50,7 @@ pub struct Compilation {
   pub publication: Publication,
   /// `compile` が読み取った外部資源のパス一覧
   pub dependencies: DependencyManifest,
-  /// 致命的ではない warning 診断（フォント・設定のうちユーザーが直せる非致命的な問題）
+  /// ユーザーが直せる非致命的な問題の診断（設定・フォント・組版の順）
   pub warnings: Warnings,
   /// 出力 PDF の保存先（組版の成果ではなく検証済み設定から決まる値）
   pub pdf_path: PathBuf,

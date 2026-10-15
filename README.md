@@ -28,6 +28,21 @@ cd seiran
 cargo build --release
 ```
 
+生成される実行ファイルは `target/release/seiran` です。`config/` と `fonts/` は Git 管理外のため、
+clone した直後は既定の `config/config.toml` がありません。
+
+まず動作を確認するには、リポジトリのルートでテスト用のフォント・CSL を取得し、付属の設定で実行します
+（取得には Bash と curl、SHA-256 の確認には `sha256sum` または `shasum` を使います）。
+
+```sh
+tools/fetch-test-assets.sh
+cargo run -- build -c crates/seiran-compiler/tests/config/config.toml
+```
+
+`target/test_document.pdf` に引用・画像を含む文書が生成されます。この設定はテスト用の用紙寸法です。
+自分の文書では、[付属の設定](crates/seiran-compiler/tests/config/config.toml)を参考に、入力・用紙寸法・
+フォント・保存先を設定してください。
+
 ## 使い方
 
 ### PDF の生成
@@ -38,9 +53,35 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 
 設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.sei", "chapter2.sei"]` のように複数ファイルを指定できます。
 
+`-c` / `--config-path` と、設定・ソース内の相対パスは、すべて **コマンドを実行したカレントディレクトリ基準**です。
+設定ファイルを置いたディレクトリ基準にはなりません。これは `sources`・フォント・style・文献・CSL・画像・
+`output_dir` に共通です。たとえばルートから `-c config/config.toml` を指定した場合、
+`sources = ["chapter1.sei"]` はルートの `chapter1.sei` を指します。
+
+### ソースの例
+
+入力は UTF-8 の `.sei` ファイルです。たとえば `chapter1.sei` に次のように書きます。
+
+```text
+// 行末までコメント
+\section{はじめに}
+本文に \bold{強調} や $x^{2} + y^{2}$ を書けます。
+
+空行で次の段落になります。
+```
+
+コマンドの必須引数と数式の上付き・下付きには `{...}` を使います。
+機能別の例は [tests/text/](tests/text/)、構文の原則は [言語設計](docs/language-design.md)を参照してください。
+
+### ログと診断
+
 `-v` / `-q` / `--log-file` は下記のフォント調査サブコマンドにも共通です。
 
-ログは標準エラー出力へ出ます。`-v` / `-vv` / `-vvv` で詳しくなり（工程 / 内部詳細 / 最大）、`-q` は端末への警告・ログ・サマリを止めます。`-v` では工程（compile とその子の input / frontend / semantics / font / typeset、render、write）ごとに「工程を開始」と「工程を終了」（`status=Succeeded` または `Failed` と所要時間 `elapsed`）が出るので、失敗・中断した実行でもどの工程で止まったかが分かります。各行には所属する工程が `compile:typeset:` のような prefix で付きます。target 単位で絞りたいときは環境変数 `RUST_LOG`（例: `RUST_LOG=seiran_compiler::typeset=trace`）を使います。`RUST_LOG` が有効なときは `-v` より優先され、両方を指定すると `-v` を無視した旨の警告が出ます（`RUST_LOG` を解釈できないときも警告し、`-v` の設定で続けます）。この警告は `RUST_LOG` の値に関わらず、`-q` でなければ端末に、`--log-file` 指定時はファイルに必ず出ます。
+ログは標準エラー出力へ出ます。`-v` / `-vv` / `-vvv` で詳しくなり（工程 / 内部詳細 / 最大）、`-q` は端末への警告・ログ・サマリを止めます。エラー診断とフォント調査の一覧（標準出力）は `-q` でも表示します。
+
+`-v` では工程（compile とその子の input / frontend / semantics / font / typeset、render、write）ごとに「工程を開始」と「工程を終了」（`status=Succeeded` または `Failed` と所要時間 `elapsed`）が出るので、どの工程まで進んだかが分かります。各行には所属する工程が `compile:typeset:` のような prefix で付きます。
+
+target 単位で絞りたいときは環境変数 `RUST_LOG`（例: `RUST_LOG=seiran_compiler::typeset=trace`）を使います。`RUST_LOG` が有効なときは `-v` より優先され、両方を指定すると `-v` を無視した旨の警告が出ます（`RUST_LOG` を解釈できないときも警告し、`-v` の設定で続けます）。この警告は `RUST_LOG` の値に関わらず、`-q` でなければ端末に、`--log-file` 指定時はファイルに必ず出ます。
 
 `--log-file <path>` を付けると、端末の表示はそのままに同じログをファイルへも残します。ファイルには時刻が付き、ANSI 装飾は入りません。実行ごとに新規作成され（既存のパスを指定するとエラーで止まり、そのファイルには触れません）、親ディレクトリが無ければ作られます。PDF の保存先と同じパスは保存前に拒否します。`-v` の工程行（「工程を開始」「工程を終了」等の INFO 以上）は書くたびにファイルへ flush されるので、ハングしたり `Ctrl-C` 等で中断したりした実行でも、そこまでの工程の開始・終了をファイルから読めます（`-vv` / `-vvv` が増やす内部詳細行はまとめて書かれ、実行が終わるかログの書き込みが確定した時点でファイルへ反映されます）。ログの書き込みに失敗した実行は、本処理が成功していても終了コード 1 で終わります（生成済みの PDF は残ります）。`-q` と `-v` は独立で、`-q -vv --log-file run.log` は端末を黙らせたままファイルへ内部詳細まで記録するので、静かに回して後から読み返せます。ビルドが失敗したときは、その診断も（`-q` でも）終了記録の直前に残ります。
 
@@ -71,6 +112,11 @@ PDF 生成の基本設定を行います。長さの値はすべて単位付き�
 用紙そのものの寸法はここ（物理設定）、用紙のどこを本文領域にするか＝ページ余白は見た目なので
 `style.toml` の `[page]` が持ちます。
 
+以下は設定の抜粋です。`font_configs` は使用する書体にかかわらず **19 種別すべての指定が必須**で、
+この例の `serif` だけではビルドできません。キー名と各項目は
+[設定構造体の doc コメント](crates/seiran-compiler/src/project/config/raw.rs)、全種別を含む例は
+[付属の設定](crates/seiran-compiler/tests/config/config.toml)を参照してください。
+
 ```toml
 sources = ["chapter1.sei", "chapter2.sei"]  # 入力テキストファイル
 style_path = "config/style.toml"            # スタイル設定ファイルパス（オプション）
@@ -85,7 +131,7 @@ language = "ja"                # 文書全体の言語（BCP 47。ハイフネ�
 # keywords = ["a", "b"]        # PDF メタデータの /Keywords
 
 [output]
-name = "document_name"         # 出力 PDF ファイル名
+name = "document_name"         # 拡張子なしの名前（document_name.pdf を出力）
 output_dir = "target/"         # 出力ディレクトリ（オプション。省略時は build を実行したカレントディレクトリ）
 
 [pdf]
@@ -115,7 +161,9 @@ features = [                   # OpenType フィーチャー（オプション�
 
 ### スタイル設定（`config/style.toml`）
 
-本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。キーの一覧と既定値は `crates/seiran-compiler/src/style.rs` と `style/` 配下の各構造体の doc コメントを参照してください。
+本文・見出し・図表・数式などの見た目をカスタマイズします。`style_path` を省略すると既定のスタイルを使います。
+部分指定した項目だけがデフォルト値に上書きマージされます。キーの一覧と既定値は
+[style.rs](crates/seiran-compiler/src/style.rs) と [style/](crates/seiran-compiler/src/style/) 配下の各構造体の doc コメントを参照してください。
 
 ```toml
 # background_color = "#ccb599"  # 背景色（"#rrggbb" 16 進文字列、オプション）
@@ -146,7 +194,7 @@ bottom_margin = "15pt"
 format = "{number} {title}"
 font_size = "20pt"
 bottom_margin = "10pt"
-# alignment = "center"         # 見出し行の揃え（未指定なら [text].alignment に従う）
+# alignment = "center"         # 未指定なら外側の段落の揃えを継ぐ（既定は [text].alignment）
 ```
 
 ### 参照定義（`config/references.toml` または `.json`）
@@ -155,6 +203,9 @@ CSL ベースの文献情報を定義します。TOML ではトップレベル�
 （`references.` 接頭辞は不要）。拡張子が `.json` のファイルは CSL-JSON として読みます。
 引用スタイル（`.csl`）の選択は見た目設定として `style.toml` の
 `[reference].csl_path` に置きます。
+
+`\cite{example}` を使う文書には、`references_path` と `[reference].csl_path` の両方を指定してください。
+引用がない場合は CSL 本体を読み込みません。
 
 ```toml
 [example]                      # テーブルキー = 参照 ID

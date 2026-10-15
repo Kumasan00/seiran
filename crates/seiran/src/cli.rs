@@ -12,7 +12,7 @@ pub(super) struct Cli {
   #[arg(short, long, global = true, action = clap::ArgAction::Count)]
   pub(super) verbose: u8,
 
-  /// 端末への warning・ログ・成功サマリを抑止する（エラー以外は無言、`RUST_LOG` より優先）。`--log-file` の内容は減らさない
+  /// 端末への warning・ログ・成功サマリを抑止する（エラー診断と標準出力の一覧は表示、`RUST_LOG` より優先）。`--log-file` の内容は減らさない
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
 
@@ -30,7 +30,7 @@ pub(super) struct Cli {
 pub(super) enum Command {
   /// 設定ファイルの `sources` 配列に列挙されたファイルから PDF を生成する
   Build {
-    /// 設定ファイルのパス（オプション、指定しない場合はデフォルトの `config.toml` を使用）
+    /// 設定ファイルのパス（省略時は `./config/config.toml`。相対パスはカレントディレクトリ基準）
     #[arg(short, long, value_name = "CONFIG", default_value = "./config/config.toml")]
     config_path: PathBuf,
   },
