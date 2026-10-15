@@ -11,9 +11,10 @@
 //! 横位置は基底の末尾の字（テキストは基底と結合文字のクラスタ）のイタリック補正で決める（上付きは基底の右端、下付きは
 //! 補正ぶん戻す — 演算子でない基底は補正が送り幅に入っているので `MathML Core` の `msub` / `msup` の規則と同じ位置になる。
 //! 演算子名の語は補正を送り幅に入れたうえで 0 として扱う）。
-//! 基底の末尾とスクリプトの先頭が数式フォントのグリフなら、OpenType MATH の math kern（2 つの補正の高さで隅の kern を
-//! 足した小さい方。補正の高さはその 2 つのグリフそれぞれ 1 つの、0 に切らないインクの端で、表はそれぞれのグリフ自身の
-//! ベースラインからの高さで引く）でさらに寄せる。
+//! 基底が 1 字（書記素クラスタ 1 つのテキストか大型演算子）で、その字とスクリプトの先頭が数式フォントのグリフなら、
+//! OpenType MATH の math kern（2 つの補正の高さで隅の kern を足した小さい方。補正の高さはその 2 つのグリフそれぞれ 1 つの、
+//! 0 に切らないインクの端で、表はそれぞれのグリフ自身のベースラインからの高さで引く）でさらに寄せる。複数の字・箱の基底には
+//! 効かせない（TeX / `LuaTeX` と同じく math kern は字の核の値）。
 //!
 //! 分数（`MathFraction`）・根号（`MathRadical`）・アクセント（`MathAccent`）・上下線（`MathBar`）・伸縮括弧（`MathFenced`）・
 //! display 段の大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・下付き（`MathScripts` の `limits` が真）の配置は
@@ -37,7 +38,7 @@ use crate::{
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
     boxing::{Measurer, Shaper, shaping},
-    lowering::{AtomNode, DelimiterGlyphs, MathBlockLayout, MathOperator, MathScripts},
+    lowering::{self, AtomNode, DelimiterGlyphs, MathBlockLayout, MathOperator, MathScripts},
   },
 };
 
@@ -67,13 +68,15 @@ struct Detached {
   ink_height: Length,
   /// インクのベースラインより下の深さ（0 以上）
   ink_depth: Length,
-  /// 末尾のノードがテキストか大型演算子で、そのノードが出した最後の箱が数式フォントのグリフ列のとき、その末尾の字
-  /// （テキストは基底と結合文字のクラスタ、大型演算子は最後の字形）の先頭の字形（gid・run のフォントサイズ・その字形の
-  /// ベースラインの高さ）。高さは原点のベースライン基準で、テキストは GPOS が縦にずらした字形の `y_offset`、それ以外は 0、
-  /// display 段の大型演算子は数式軸へ合わせたずれ（glyph assembly ならパーツの位置も足す）。空・末尾がアキや
-  /// スクリプト・数式フォント以外は `None`（補正も math kern も 0）
+  /// ノード列が 1 字（書記素クラスタ 1 つのテキストか大型演算子のノード 1 個）で、そのノードが出した最後の箱が数式フォントの
+  /// グリフ列のとき、その字（テキストは基底と結合文字のクラスタ、大型演算子は最後の字形）の先頭の字形（gid・run の
+  /// フォントサイズ・その字形のベースラインの高さ）。高さは原点のベースライン基準で、テキストは GPOS が縦にずらした字形の
+  /// `y_offset`、それ以外は 0、display 段の大型演算子は数式軸へ合わせたずれ（glyph assembly ならパーツの位置も足す）。
+  /// 1 字でない・空・数式フォント以外は `None`（math kern 0）
   trailing_glyph: Option<(u32, Length, Length)>,
-  /// `trailing_glyph` と同じ末尾の字のイタリック補正（構成字形の補正の和）。`trailing_glyph` が `None` なら 0
+  /// 末尾のノードがテキストか大型演算子で、そのノードが出した最後の箱が数式フォントのグリフ列のとき、その末尾の字の
+  /// イタリック補正（構成字形の補正の和。演算子名の語は 0）。それ以外は 0。ノード列が 1 字でなくても末尾の字の補正を
+  /// 引き継ぐ（MathML Core の `mrow`）
   trailing_correction: Length,
   /// 先頭のノードがテキストか大型演算子で、そのノードが出した最初の箱が数式フォントのグリフ列のとき、その先頭の字
   /// （先頭のクラスタ）の先頭の字形（`trailing_glyph` と同じ組）。それ以外は `None`（math kern 0）
@@ -316,7 +319,7 @@ impl Measurer<'_> {
   /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
   ///
   /// 上付きは基底の右端、下付きは基底の右端から基底の末尾の字のイタリック補正ぶん戻した位置に置き、
-  /// どちらも math kern（`cut_in`）ぶん寄せる。演算子でない基底は補正が送り幅に入っている
+  /// 基底が 1 字ならどちらも math kern（`cut_in`）ぶん寄せる。演算子でない基底は補正が送り幅に入っている
   /// （`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則（演算子でない基底は上付きを補正ぶん前へ、
   /// 演算子は下付きを補正ぶん手前へ。補正を持つ演算子はすべて `MathML Core` の大型演算子と同じに扱う）と同じ位置に
   /// なる。後ろのカーソルは基底の右端と各スクリプトの右端のうち最も右から `SpaceAfterScript` のアキを空ける。
@@ -386,6 +389,13 @@ impl Measurer<'_> {
   /// グリフ列の箱を出すが、それはスクリプトの字形で基底の端ではないので、テキストと大型演算子のノードに限る。
   fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
     let last = nodes.len().saturating_sub(1);
+    // math kern は 1 字の核にだけ効く（TeX / `LuaTeX` と同じく、複数の字・箱の核には効かせない）。1 字は書記素クラスタ
+    // 1 つのテキスト（lowering がアイテムに分ける単位）か大型演算子のノード 1 個
+    let sole_char = match nodes.as_slice() {
+      [AtomNode::Text(text, _)] => lowering::math_text_clusters(text).nth(1).is_none(),
+      [AtomNode::LargeOperator { .. }] => true,
+      _ => false,
+    };
     let mut boxes = Vec::new();
     let mut width = Length::ZERO;
     let mut leading_glyph = None;
@@ -430,7 +440,7 @@ impl Measurer<'_> {
       width,
       ink_height,
       ink_depth,
-      trailing_glyph,
+      trailing_glyph: trailing_glyph.filter(|_| return sole_char),
       trailing_correction,
       leading_glyph,
     };
@@ -444,7 +454,7 @@ impl Measurer<'_> {
   /// 高さで両方の隅の kern を足し、小さい方を返す。kern はそれぞれのグリフ自身のベースラインからの高さで引く — 基底の
   /// グリフのベースラインは基底のベースラインから `Detached` の高さぶん、スクリプトのグリフのベースラインはスクリプトの
   /// ベースライン（基底のベースラインから `script_baseline` 上）からさらにその高さぶん上にある。どちらかのグリフが無い
-  /// （箱・空・数式フォント以外）か、インクを読めないときは 0。
+  /// （基底が 1 字でない・箱・空・数式フォント以外）か、インクを読めないときは 0。
   fn cut_in(
     &self,
     base_glyph: Option<(u32, Length, Length)>,
