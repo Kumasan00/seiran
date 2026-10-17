@@ -1,7 +1,8 @@
 //! 数式（インライン / ディスプレイ）の lowering
 //!
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathBlockKind`）から決まるセルの列内
-//! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。
+//! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。数式の中に埋め込んだ
+//! 行列・場合分けも、同じ括弧グリフと列内揃えで閉じた 1 アトム（`MathArray`）に落とす。
 
 mod alphanumeric;
 mod spacing;
@@ -22,7 +23,7 @@ use crate::{
   },
   length::Length,
   semantics::LabelId,
-  style::{NumberSide, NumberTemplate},
+  style::{NumberSide, NumberTemplate, Style as ReadStyle},
   typeset::{
     boxes::Align,
     font::{ScriptLevel, ScriptScale},
@@ -30,8 +31,8 @@ use crate::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{
-        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBar, MathBlockCellLayout, MathBlockLayout,
-        MathBlockRowLayout, MathFenced, MathFraction, MathOperator, MathRadical, TextStyle,
+        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathArray, MathBar, MathBlockCellLayout,
+        MathBlockLayout, MathBlockRowLayout, MathFenced, MathFraction, MathOperator, MathRadical, TextStyle,
       },
       with_label_anchors,
     },
@@ -58,14 +59,7 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(
-            cell,
-            font_size,
-            ctx.script_scale,
-            cell_level(math.kind),
-            ctx.style.math.accent_dotless,
-            ctx.style.text.typeface,
-          ),
+          content: lower_math_cell(cell, font_size, ctx.script_scale, cell_level(math.kind), ctx.style),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -155,33 +149,8 @@ fn cell_align(kind: MathBlockKind, row_idx: usize, n_rows: usize, col: usize) ->
 /// 環境種別から本体グリッドを囲む左右の区切り括弧グリフを決める
 pub(in crate::typeset) fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
   return match kind {
-    MathBlockKind::Cases => DelimiterGlyphs {
-      left: Some("{"),
-      right: None,
-    },
-    MathBlockKind::Matrix { delimiter } => match delimiter {
-      MathDelimiter::None => DelimiterGlyphs::default(),
-      MathDelimiter::Paren => DelimiterGlyphs {
-        left: Some("("),
-        right: Some(")"),
-      },
-      MathDelimiter::Bracket => DelimiterGlyphs {
-        left: Some("["),
-        right: Some("]"),
-      },
-      MathDelimiter::Brace => DelimiterGlyphs {
-        left: Some("{"),
-        right: Some("}"),
-      },
-      MathDelimiter::Bar => DelimiterGlyphs {
-        left: Some("|"),
-        right: Some("|"),
-      },
-      MathDelimiter::DoubleBar => DelimiterGlyphs {
-        left: Some("\u{2016}"),
-        right: Some("\u{2016}"),
-      },
-    },
+    MathBlockKind::Cases => CASES_DELIMITERS,
+    MathBlockKind::Matrix { delimiter } => matrix_delimiter_glyphs(delimiter),
     MathBlockKind::Equation
     | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
       DelimiterGlyphs::default()
@@ -189,22 +158,56 @@ pub(in crate::typeset) fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyp
   };
 }
 
+/// 場合分け（`cases`）を囲む区切り括弧（左の波括弧だけ）
+pub(in crate::typeset) const CASES_DELIMITERS: DelimiterGlyphs = DelimiterGlyphs {
+  left: Some("{"),
+  right: None,
+};
+
+/// 行列（`matrix`）の `delimiter` の値から、本体を囲む左右の区切り括弧グリフを決める
+pub(in crate::typeset) const fn matrix_delimiter_glyphs(delimiter: MathDelimiter) -> DelimiterGlyphs {
+  return match delimiter {
+    MathDelimiter::None => DelimiterGlyphs {
+      left: None,
+      right: None,
+    },
+    MathDelimiter::Paren => DelimiterGlyphs {
+      left: Some("("),
+      right: Some(")"),
+    },
+    MathDelimiter::Bracket => DelimiterGlyphs {
+      left: Some("["),
+      right: Some("]"),
+    },
+    MathDelimiter::Brace => DelimiterGlyphs {
+      left: Some("{"),
+      right: Some("}"),
+    },
+    MathDelimiter::Bar => DelimiterGlyphs {
+      left: Some("|"),
+      right: Some("|"),
+    },
+    MathDelimiter::DoubleBar => DelimiterGlyphs {
+      left: Some("\u{2016}"),
+      right: Some("\u{2016}"),
+    },
+  };
+}
+
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
 /// 本体は text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮グリフを塗る。
-/// `accent_dotless` はアクセントの基底をドット無しの字形で組むかの既定（style.toml の `[math].accent_dotless`）。
-/// `prose_typeface` は数式内の文章を組む書体（style.toml の `[text].typeface`）。
+/// `style` から読むのは、アクセントの基底をドット無しの字形で組むかの既定（`[math].accent_dotless`）・埋め込んだ行列の
+/// 行間・列間（`[math.block]`）と、数式内の文章を組む書体（`[text].typeface`）。
 /// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   color: Option<Color>,
-  accent_dotless: bool,
-  prose_typeface: Typeface,
+  style: &ReadStyle,
 ) -> Vec<InlineNode> {
-  let ctx =
-    MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, accent_dotless, prose_typeface);
+  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, style);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
@@ -221,20 +224,16 @@ const fn cell_level(kind: MathBlockKind) -> StyleLevel {
 }
 
 /// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない。
-/// `accent_dotless`・`prose_typeface` は [`lower_inline_math`] と同じ）
+/// `style` は [`lower_inline_math`] と同じ）
 fn lower_math_cell(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   level: StyleLevel,
-  accent_dotless: bool,
-  prose_typeface: Typeface,
+  style: &ReadStyle,
 ) -> Vec<AtomNode> {
   // 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色
-  return lower_math_list(
-    math_nodes,
-    &MathLoweringContext::new(base_font_size, script_scale, level, None, accent_dotless, prose_typeface),
-  );
+  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level, None, style));
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
@@ -265,6 +264,16 @@ impl StyleLevel {
       StyleLevel::Display => StyleLevel::Text,
       StyleLevel::Text => StyleLevel::Script,
       StyleLevel::Script | StyleLevel::ScriptScript => StyleLevel::ScriptScript,
+    };
+  }
+
+  /// 埋め込んだ行列・場合分けのセルの段（display は text、それ以外は同じ段。TeX の `\textstyle` の行列と同じく、
+  /// 表示数式の中でも本文並みに詰め、添字の中では縮めたまま本文の大きさへ戻さない）
+  const fn array_cell(self) -> Self {
+    return match self {
+      StyleLevel::Display | StyleLevel::Text => StyleLevel::Text,
+      StyleLevel::Script => StyleLevel::Script,
+      StyleLevel::ScriptScript => StyleLevel::ScriptScript,
     };
   }
 
@@ -359,19 +368,24 @@ struct MathLoweringContext {
   accent_dotless: bool,
   /// 数式内の文章（`\text`）を組む書体（style.toml の `[text].typeface`）
   prose_typeface: Typeface,
+  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの行間（style.toml の `[math.block].row_gap` を本文の大きさ
+  /// `[text].font_size` 基準として数式本体の大きさへ比例させた値）
+  row_gap: Length,
+  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの列間（`row_gap` と同じ比例）
+  column_gap: Length,
 }
 
 impl MathLoweringContext {
-  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・アクセントのドット無しの既定
-  /// `accent_dotless`・文章の書体 `prose_typeface`）の文脈を作る
+  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・style.toml の値 `style`）の文脈を作る
   fn new(
     base_font_size: Length,
     script_scale: ScriptScale,
     level: StyleLevel,
     color: Option<Color>,
-    accent_dotless: bool,
-    prose_typeface: Typeface,
+    style: &ReadStyle,
   ) -> Self {
+    // `[math.block]` の行間・列間は本文の大きさで組む表示数式の値なので、見出し・脚注の中の数式ではその大きさへ比例させる
+    let scale = base_font_size.ratio(style.text.font_size);
     return MathLoweringContext {
       base_font_size,
       script_scale,
@@ -381,8 +395,10 @@ impl MathLoweringContext {
       },
       variant: None,
       color,
-      accent_dotless,
-      prose_typeface,
+      accent_dotless: style.math.accent_dotless,
+      prose_typeface: style.text.typeface,
+      row_gap: style.math.block.row_gap * scale,
+      column_gap: style.math.block.column_gap * scale,
     };
   }
 
@@ -583,7 +599,60 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         push_math_items(child, &styled, items);
       }
     },
+    HirMathKind::Matrix { delimiter, rows } => {
+      push_array(rows, matrix_delimiter_glyphs(*delimiter), Align::Center, ctx, items);
+    },
+    HirMathKind::Cases { rows } => {
+      push_array(rows, CASES_DELIMITERS, Align::Left, ctx, items);
+    },
   }
+}
+
+/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`）をアイテムへ展開する
+///
+/// セルは [`StyleLevel::array_cell`] の段で、cramped・字形 variant・文字色は外側から継ぐ。行間・列間は段の大きさに
+/// 比例させる。括弧を持つものは伸縮括弧と同じく左端 Open・右端 Close、括弧の無い行列は Ord の 1 個のアイテムにする。
+fn push_array(
+  rows: &[Vec<Vec<HirMath>>],
+  delimiters: DelimiterGlyphs,
+  align: Align,
+  ctx: &MathLoweringContext,
+  items: &mut Vec<spacing::MathItem>,
+) {
+  let cell_ctx = ctx.with_style(FormulaStyle {
+    level: ctx.style.level.array_cell(),
+    cramped: ctx.style.cramped,
+  });
+  let scale = ctx.font_size().ratio(ctx.base_font_size);
+  let array = MathArray {
+    rows: rows
+      .iter()
+      .map(|row| {
+        return row
+          .iter()
+          .map(|cell| {
+            return MathBlockCellLayout {
+              content: lower_math_list(cell, &cell_ctx),
+              align,
+            };
+          })
+          .collect();
+      })
+      .collect(),
+    delimiters,
+    font_size: ctx.font_size(),
+    script_level: ctx.style.level.script_level(),
+    color: ctx.color,
+    row_gap: ctx.row_gap * scale,
+    column_gap: ctx.column_gap * scale,
+  };
+  let nodes = vec![AtomNode::Array(array)];
+  items.push(if delimiters.is_present() {
+    spacing::MathItem::fenced(nodes)
+  } else {
+    spacing::MathItem::new(MathClass::Ord, None, nodes)
+  });
+  return;
 }
 
 /// 数式中のテキストを、書記素クラスタ（基底の字と後ろに付く結合文字）ごとの字の列に分ける
@@ -651,7 +720,7 @@ mod tests {
     typeset::{
       font::ScriptLevel,
       lowering::{
-        MathAccent, MathBar, MathFenced, MathScripts,
+        MathAccent, MathArray, MathBar, MathFenced, MathScripts,
         test_support::{analyzed, lower, stix_script_scale},
       },
     },
@@ -677,6 +746,8 @@ mod tests {
         AtomNode::Fenced(fenced) => out.extend(atom_texts(&fenced.body)),
         // 罫線はテキストを持たない
         AtomNode::Bar(bar) => out.extend(atom_texts(&bar.body)),
+        // 区切り括弧は boxing が組むのでテキストに数えない
+        AtomNode::Array(array) => out.extend(array_texts(array)),
         // 大型演算子は text 段以下で組んだときと同じ演算子のテキストとして数える
         AtomNode::LargeOperator { symbol, font_size } => out.push((
           symbol.clone(),
@@ -700,6 +771,33 @@ mod tests {
       out.extend(atom_texts(part));
     }
     return out;
+  }
+
+  /// 埋め込みの行列・場合分けのセルの `Text` を行順・列順に（テキスト, スタイル）で返す
+  fn array_texts(array: &MathArray) -> Vec<(String, TextStyle)> {
+    return array.rows.iter().flatten().flat_map(|cell| return atom_texts(&cell.content)).collect();
+  }
+
+  /// レイアウトノード列から最初の埋め込みの行列・場合分けを取り出すヘルパ
+  fn first_array(nodes: &[LayoutNode]) -> &MathArray {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        LayoutNode::Inline(InlineNode::Array(array)) => return Some(array),
+        _ => return None,
+      })
+      .expect("埋め込みの行列・場合分けが期待されます");
+  }
+
+  /// Atom ノード列から最初の埋め込みの行列・場合分けを取り出すヘルパ（表示数式のセル・スクリプトの中身用）
+  fn atom_array(nodes: &[AtomNode]) -> &MathArray {
+    return nodes
+      .iter()
+      .find_map(|node| match node {
+        AtomNode::Array(array) => return Some(array),
+        _ => return None,
+      })
+      .expect("埋め込みの行列・場合分けが期待されます");
   }
 
   /// 分子・分母の順に `Text` を（テキスト, スタイル）で返す
@@ -774,6 +872,7 @@ mod tests {
         LayoutNode::Inline(InlineNode::Accent(accent)) => out.extend(atom_texts(&accent.base)),
         LayoutNode::Inline(InlineNode::Fenced(fenced)) => out.extend(atom_texts(&fenced.body)),
         LayoutNode::Inline(InlineNode::Bar(bar)) => out.extend(atom_texts(&bar.body)),
+        LayoutNode::Inline(InlineNode::Array(array)) => out.extend(array_texts(array)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
         _ => {},
       }
@@ -881,7 +980,7 @@ mod tests {
   #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
-    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, true, Typeface::Serif);
+    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, &ReadStyle::default());
 
     assert!(nodes.is_empty(), "ノードが無ければ空のノード列を返すはず: {nodes:?}");
   }
@@ -2153,5 +2252,115 @@ mod tests {
     let texts = atom_texts(&block.rows[0].cells[1].content);
     let prose = texts.iter().find(|(text, _)| return text == "otherwise").expect("文章 otherwise があるはず");
     assert_eq!(prose.1.typeface, Typeface::Serif);
+  }
+
+  #[test]
+  fn display_array_cells_start_at_the_text_level() {
+    let style = ReadStyle::default();
+
+    let block = math_block_of("\\begin{equation}\nA = \\begin{matrix}\\frac{a}{b}\\end{matrix}\n\\end{equation}\n");
+
+    let array = atom_array(&block.rows[0].cells[0].content);
+    assert_eq!(array.font_size, style.text.font_size, "display 段の行列は数式本体の大きさ");
+    assert_eq!(array.script_level, None);
+    assert_eq!((array.row_gap, array.column_gap), (style.math.block.row_gap, style.math.block.column_gap));
+    assert!(!atom_fraction(&array.rows[0][0].content).display, "display 段からのセルは text 段");
+  }
+
+  #[test]
+  fn matrix_in_a_script_keeps_the_script_level_and_scales_gaps() {
+    let style = ReadStyle::default();
+    let script_size = style.text.font_size.scale(0.7);
+
+    let nodes = lower_math_source("$x^{\\begin{matrix}a \\\\ b\\end{matrix}}$\n");
+
+    let superscript = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
+    let array = atom_array(superscript);
+    assert_eq!(array.script_level, Some(ScriptLevel::Script), "添字の行列は script 段のまま");
+    assert_eq!(array.font_size, script_size);
+    let levels: Vec<Option<ScriptLevel>> =
+      array_texts(array).into_iter().map(|(_, style)| return style.script_level).collect();
+    assert_eq!(levels, vec![Some(ScriptLevel::Script); 2], "セルも script 段");
+    let ratio = script_size.ratio(style.text.font_size);
+    assert!(
+      (array.row_gap - style.math.block.row_gap * ratio).abs() <= Length::from_sp(1),
+      "行間は段の大きさに比例"
+    );
+    assert!(
+      (array.column_gap - style.math.block.column_gap * ratio).abs() <= Length::from_sp(1),
+      "列間は段の大きさに比例"
+    );
+  }
+
+  /// レイアウトノード列（`VBox` の中も辿る）から最初の埋め込みの行列・場合分けを取り出すヘルパ
+  fn nested_array(nodes: &[LayoutNode]) -> Option<&MathArray> {
+    return nodes.iter().find_map(|node| match node {
+      LayoutNode::Inline(InlineNode::Array(array)) => return Some(array),
+      LayoutNode::VBox { children, .. } => return nested_array(children),
+      _ => return None,
+    });
+  }
+
+  #[test]
+  fn array_gaps_follow_the_size_of_the_surrounding_text() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_math_source("\\section{$\\begin{matrix}a \\\\ b\\end{matrix}$}\n");
+
+    let array = nested_array(&nodes).expect("見出しの中に行列があるはず");
+    assert_ne!(array.font_size, style.text.font_size, "見出しは本文と違う大きさのはず");
+    let ratio = array.font_size.ratio(style.text.font_size);
+    assert!(
+      (array.row_gap - style.math.block.row_gap * ratio).abs() <= Length::from_sp(1),
+      "行間は本文の大きさ基準の値を見出しの大きさへ比例させる: {:?}",
+      array.row_gap
+    );
+    assert!((array.column_gap - style.math.block.column_gap * ratio).abs() <= Length::from_sp(1), "列間も同じ");
+  }
+
+  #[test]
+  fn inline_array_is_one_unbreakable_item() {
+    let nodes = lower_math_source("$a = \\begin{matrix}b + c \\\\ d\\end{matrix}$\n");
+
+    assert_eq!(math_break_count(&nodes), 1, "分割点は `=` の後だけ");
+  }
+
+  #[test]
+  fn delimited_array_spaces_like_a_fence_and_bare_matrix_like_an_ordinary() {
+    let pairs = [
+      ("$\\sin\\begin{matrix}[delimiter=paren]x\\end{matrix}$\n", "$\\sin\\paren{x}$\n"),
+      ("$\\sin\\begin{cases}x\\end{cases}$\n", "$\\sin\\paren{x}$\n"),
+      ("$\\sin\\begin{matrix}x\\end{matrix}$\n", "$\\sin{x}$\n"),
+    ];
+    for (array, reference) in pairs {
+      assert_eq!(
+        spacings(&lower_math_source(array)),
+        spacings(&lower_math_source(reference)),
+        "{array} と {reference} のアキは同じはず"
+      );
+    }
+  }
+
+  #[test]
+  fn colored_inline_array_carries_the_color_to_cells_and_delimiters() {
+    let red = Color::new(0xcc, 0x00, 0x00);
+
+    let nodes =
+      lower_math_source("\\color[color=#cc0000]{$\\begin{matrix}[delimiter=paren]a \\\\ \\frac{b}{c}\\end{matrix}$}\n");
+
+    let array = first_array(&nodes);
+    assert_eq!(array.color, Some(red), "区切り括弧は指定色");
+    let colors: Vec<Option<Color>> = array_texts(array).into_iter().map(|(_, style)| return style.color).collect();
+    assert!(
+      !colors.is_empty() && colors.iter().all(|color| return *color == Some(red)),
+      "セルの字はすべて指定色: {colors:?}"
+    );
+  }
+
+  #[test]
+  fn array_cells_inherit_the_variant() {
+    let nodes = lower_math_source("$\\mathbold{\\begin{matrix}x\\end{matrix}}$\n");
+
+    assert_eq!(concat_texts(&nodes), "\u{1D431}");
   }
 }

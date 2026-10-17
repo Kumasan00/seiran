@@ -3,7 +3,7 @@
 //! 各行を最大 2 セルに分割する非採番の数式環境。
 
 use crate::{
-  document::{HirMathBlock, HirNode, HirNodeKind, MathBlockKind},
+  document::{HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathBlockKind, NodeId},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -14,7 +14,7 @@ use crate::{
   },
 };
 
-/// `cases` 環境を評価する
+/// `cases` 環境を表示数式ブロックとして評価する
 ///
 /// # Errors
 ///
@@ -23,6 +23,40 @@ pub(in crate::frontend::evaluator::environment) fn cases(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
 ) -> Result<HirNode, EvalError> {
+  let (id, rows) = evaluate_cases(view, ctx)?;
+  return Ok(HirNode::new(
+    id,
+    HirNodeKind::MathBlock(HirMathBlock {
+      kind: MathBlockKind::Cases,
+      rows,
+      numbered: false,
+      label: None,
+    }),
+  ));
+}
+
+/// 数式の中に書いた `cases` 環境を、数式の 1 要素として評価する
+///
+/// # Errors
+///
+/// [`cases`] と同じ
+pub(in crate::frontend::evaluator::environment) fn embedded_cases(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<HirMath, EvalError> {
+  let (id, rows) = evaluate_cases(view, ctx)?;
+  return Ok(HirMath::new(
+    id,
+    HirMathKind::Cases {
+      rows: rows.into_iter().map(|row| return row.cells).collect(),
+    },
+  ));
+}
+
+/// `cases` 環境のオプションと本体を評価し、（環境の ID, 2 セル以下の行）を返す
+///
+/// 環境の ID はセルより先に確保する。行は非採番で、行末マーカーは受け付けない。
+fn evaluate_cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<(NodeId, Vec<HirMathRow>), EvalError> {
   opt_args::no_environment_opt_args(view)?;
   arity::no_environment_args(view)?;
 
@@ -48,16 +82,7 @@ pub(in crate::frontend::evaluator::environment) fn cases(
       span: view.span().into(),
     });
   }
-
-  return Ok(HirNode::new(
-    id,
-    HirNodeKind::MathBlock(HirMathBlock {
-      kind: MathBlockKind::Cases,
-      rows,
-      numbered: false,
-      label: None,
-    }),
-  ));
+  return Ok((id, rows));
 }
 
 #[cfg(test)]

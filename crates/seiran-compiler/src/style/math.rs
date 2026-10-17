@@ -45,10 +45,11 @@ pub(crate) struct MathBlockStyle {
   pub number_side: NumberSide,
   /// 数式本体の揃え
   pub alignment: BlockAlignment,
-  /// 行間（隣り合う行のベースライン間に挿入する追加アキ）
+  /// 行間（隣り合う行のベースライン間に挿入する追加アキ）。数式の中に埋め込んだ matrix / cases にも効き、そこでは
+  /// 本文の大きさ（`[text].font_size`）基準の値として、行列の段の大きさへ比例させる
   #[garde(custom(non_negative))]
   pub row_gap: Length,
-  /// 列間（`&` で分割した列の間隔）
+  /// 列間（`&` で分割した列の間隔）。数式の中に埋め込んだ matrix / cases にも、`row_gap` と同じ比例で効く
   #[garde(custom(non_negative))]
   pub column_gap: Length,
   /// 数式ブロックの上余白

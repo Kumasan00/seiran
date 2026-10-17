@@ -16,6 +16,7 @@ use crate::{
     evaluator::{
       EvalContext, EvalError, arity, command,
       command::symbol::{self, MathSymbol},
+      environment,
       inline::{self, TokenInline},
       opt_args::{self, OptKey},
     },
@@ -113,11 +114,7 @@ pub(crate) fn evaluate_math_elements(
           nodes.push(HirMath::new(id, HirMathKind::Superscript(Box::new(content))));
         },
         SyntaxKind::Environment => {
-          let view = EnvironmentView::new(child_node, source);
-          return Err(EvalError::UnsupportedInMath {
-            what: format!("環境 {}", view.name()),
-            span: child_node.span.into(),
-          });
+          nodes.push(environment::evaluate_in_math(&EnvironmentView::new(child_node, source), ctx)?);
         },
         // 引数・環境タグはそれぞれの評価経路が中身を取り出す。`InlineMath` は数式の入れ子で、
         // 数式本体の直下で出会っても数式ノードとしては扱わない。

@@ -302,6 +302,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Fenced(fenced) => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)])));
       },
+      InlineNode::Array(array) => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Array(array)])));
+      },
       InlineNode::Bar(bar) => {
         out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Bar(bar)])));
       },
@@ -417,6 +420,9 @@ impl<'a> Measurer<'a> {
       },
       AtomNode::Bar(bar) => {
         self.place_bar(bar, dy, dx, out);
+      },
+      AtomNode::Array(array) => {
+        self.place_array(array, dy, dx, out);
       },
       AtomNode::LargeOperator { symbol, font_size } => {
         self.place_large_operator(&symbol, font_size, dy, dx, out);

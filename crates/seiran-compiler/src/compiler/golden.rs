@@ -49,6 +49,9 @@
 //!   [`delimiters_cover_the_grid_and_stay_inside_the_block`] / [`tall_delimiters_grow_only_vertically`] /
 //!   [`assembled_delimiter_is_one_character_of_text`] /
 //!   [`assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part`]（共通ヘルパ [`measure_delimited_block`]・[`stix_run_ink`] 経由）
+//! - **数式内の行列・場合分け**（グリッドの縦中央を数式軸に載せた閉じた 1 アトム）:
+//!   [`embedded_matrix_centers_on_the_math_axis_beside_its_left_side`] /
+//!   [`embedded_matrix_delimiters_match_the_standalone_block`] / [`embedded_matrix_in_a_subscript_takes_the_script_size`]
 //! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）:
 //!   [`prose_keeps_spaces_at_their_natural_width`] / [`prose_puts_ja_latin_aki_by_punctuation_spacing`] /
 //!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`]
@@ -227,6 +230,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "itemize",
   "justify",
   "math_accent",
+  "math_array",
   "math_break",
   "math_color",
   "math_explicit_space",
@@ -1586,6 +1590,60 @@ fn delimiters_center_on_the_math_axis_at_the_body_font_size() {
         );
       }
     }
+  }
+}
+
+/// 数学用イタリックの 𝐴（U+1D434）
+const MATH_CAPITAL_A: &str = "\u{1D434}";
+
+#[test]
+fn embedded_matrix_centers_on_the_math_axis_beside_its_left_side() {
+  let (runs, _) =
+    display_parts("\\begin{equation}\nA = \\begin{matrix}[delimiter=paren]a \\\\ b\\end{matrix}\n\\end{equation}\n");
+
+  let left_side = run_with_text(&runs, MATH_CAPITAL_A);
+  assert_eq!(left_side.dy, Length::ZERO, "左辺は数式のベースラインに載る");
+  let size = left_side.run.font_size;
+  let axis = stix_math_length(MathConstant::AxisHeight, size);
+  for text in ["(", ")"] {
+    let delimiter = run_with_text(&runs, text);
+    assert_eq!(delimiter.run.font_size, size, "括弧はフォントサイズを変えずに伸ばすはず");
+    let (top, bottom) = stix_run_ink(&delimiter.run);
+    let center = delimiter.dy + (top + bottom) / 2.0;
+    assert!(
+      (center - axis).abs() <= Length::from_sp(1),
+      "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず"
+    );
+  }
+  let first_row = run_with_text(&runs, "\u{1D44E}");
+  let second_row = run_with_text(&runs, "\u{1D44F}");
+  assert!(first_row.dy > axis, "1 行目は数式軸より上: {:?}", first_row.dy);
+  assert!(second_row.dy < Length::ZERO, "2 行目はベースラインより下: {:?}", second_row.dy);
+}
+
+#[test]
+fn embedded_matrix_delimiters_match_the_standalone_block() {
+  let standalone = measure_delimited_block(&delimited_source(Some("paren"), 2));
+
+  let (runs, _) = display_parts(
+    "\\begin{equation}\n\\begin{matrix}[delimiter=paren]a & b \\\\ a & b\\end{matrix}\n\\end{equation}\n",
+  );
+
+  for (delimiter, text) in standalone.delimiters.iter().zip(["(", ")"]) {
+    let embedded = run_with_text(&runs, text);
+    let gids = |run: &GlyphRun| return run.glyphs.iter().map(|glyph| return glyph.gid).collect::<Vec<_>>();
+    assert_eq!(gids(&embedded.run), gids(&delimiter.run), "同じ中身なら独立ブロックと同じ字形に伸びるはず: {text}");
+  }
+}
+
+#[test]
+fn embedded_matrix_in_a_subscript_takes_the_script_size() {
+  let runs = first_line_runs("$x_{\\begin{matrix}[delimiter=paren]i \\\\ j\\end{matrix}}$\n");
+
+  let size = run_with_text(&runs, MATH_X).run.font_size;
+  let script = stix_scaled_size(MathConstant::ScriptPercentScaleDown, size);
+  for text in [MATH_I, "\u{1D457}", "(", ")"] {
+    assert_eq!(run_with_text(&runs, text).run.font_size, script, "添字の行列は script 段の大きさ: {text}");
   }
 }
 

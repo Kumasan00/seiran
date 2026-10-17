@@ -902,7 +902,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 - **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
   持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
   `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
-  `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。上付き・
+  `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。数式の中に埋め込んだ
+  `matrix` / `cases`（HIR の `HirMathKind::Matrix` / `Cases`）のセルは、display 段からは text 段、text 段以下では外側の段の
+  まま組み、添字の中で本文の大きさへ戻さない。cramped・字形 variant・文字色は外側から継ぐ。上付き・
   下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
   下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
   1 段下（display → text、text → script、それより下は scriptscript）。下付きの中身・分母・被根号・
@@ -913,8 +915,10 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
   段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
   基底の幅へ伸ばすか・基底をドット無しの字形で組むか（ソースの `dotless`、無ければ style.toml の `[math].accent_dotless`。
-  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）
-  として boxing へ渡す。
+  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
+  `MathArray`（セル・左右の括弧・行列の段のサイズとスクリプト段・行間・列間）として boxing へ渡す。埋め込んだ行列は閉じた
+  1 アトムで、括弧を持つもの（`delimiter` が none 以外の matrix と cases）は伸縮括弧と同じく左端 Open・右端 Close、括弧の
+  無い matrix は Ord として隣とアキを取る。行間・列間は `[math.block].row_gap` / `column_gap` を本文の大きさ（`[text].font_size`）基準として段のサイズに比例させた値。
   インライン数式は外側の文字色（`\color`・リンク色）を `MathLoweringContext` に持って全段へ継承し、テキストの
   `TextStyle` と上の複合ノードの `color`（分数線・根号記号と横線・アクセント記号・区切り括弧・上下線の塗り色）に載せる。
   表示数式は段落の外のブロックで文字色が効かないので既定色（`None`）。
@@ -1016,7 +1020,12 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   MathML Core の算法で行う）、インクの縦中央を数式軸に合わせる。括弧の箱の高さ・深さはインクの範囲で、
   glyph assembly のパーツは 1 本のグリフ列に `y_offset` で積み、全パーツを括弧 1 字のクラスタに属させる
   （PDF のテキストは括弧 1 字）。箱の幾何中点や括弧箱の ascender / descender は使わない。環境単位の式番号は
-  本体の縦中央に揃える別規則
+  本体の縦中央に揃える別規則。数式の中に埋め込んだ matrix / cases（`MathArray`）も同じグリッド組みと括弧の包み直しを
+  通る（`boxing::math` の `build_grid` / `wrap_with_delimiters`）が、括弧の有無によらずグリッドの縦中央を数式軸に載せ、
+  括弧はその段のフォントサイズ・スクリプト段（`ssty`）・文字色で組む。独立ブロックの matrix / cases は
+  `MathBlockKind::Matrix` / `Cases` のまま残し、「行列 1 個を持つ表示数式」へはまとめていない（まとめると括弧なしの
+  独立 matrix の基準線が数式軸へ移り、見た目は同じでもレイアウトダンプの座標が変わる。再検討トリガーはその変化を
+  受け入れる判断）
 - **上付き・下付き**（`MathScripts`）は、基底と上付き・下付きを原点から仮に配置してインク（グリフの形の範囲。
   `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
   `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・

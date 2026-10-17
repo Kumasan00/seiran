@@ -233,7 +233,7 @@ pub(crate) enum EvalError {
   #[error("数式内では使用できません: {what}")]
   #[diagnostic(
     code(frontend::eval::unsupported_in_math),
-    help("数式内で使用できるのは数式コマンド・グループ・上付き / 下付きのみです")
+    help("数式内で使用できるのは数式コマンド・グループ・上付き / 下付きと matrix / cases 環境のみです")
   )]
   UnsupportedInMath {
     /// 出現した要素の説明（例: `\\（強制改行）`、`環境 itemize`）

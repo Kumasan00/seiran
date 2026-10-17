@@ -1,0 +1,56 @@
+\section{数式内の行列}
+
+matrix 環境は数式の途中に書くと、左辺・等号と並ぶ 1 つの数式要素になる動作確認用フィクスチャ。
+行列の縦中央は数式軸に載り、括弧は中身の高さに合わせて伸びる。
+
+\begin{equation}[label=eq:matrix]
+A = \begin{matrix}[delimiter=paren]
+a & b \\
+c & d
+\end{matrix}
+\end{equation}
+
+式 \ref{eq:matrix} の番号は外側の equation に付き、内側の行列はカウンタを進めない。
+
+\section{数式内の場合分け}
+
+align の行の中の cases の行・列区切りは、外側の行・列を分けない。
+
+\begin{align}
+f(x) &= \begin{cases}
+x & x > 0 \\
+0 & x = 0 \\
+-x & x < 0
+\end{cases} \\
+g(x) &= x^{2}
+\end{align}
+
+\section{本文中の行列}
+
+インライン数式の中の行列 $v = \begin{matrix}[delimiter=paren]a \\ b\end{matrix}$ は本文の行に並ぶ。
+添字の中の行列 $x_{\begin{matrix}i \\ j\end{matrix}}$ は添字の大きさのまま組む。
+
+\color[color=#cc0000]{色付きの数式 $M = \begin{matrix}[delimiter=bracket]1 & 0 \\ 0 & 1\end{matrix}$ は括弧も赤い。}
+
+\section{行列の積と入れ子}
+
+\begin{equation}
+\begin{matrix}[delimiter=bracket]a & b \\ c & d\end{matrix}
+\begin{matrix}[delimiter=bracket]x \\ y\end{matrix}
+= \begin{matrix}[delimiter=bracket]ax + by \\ cx + dy\end{matrix}
+\end{equation}
+
+\begin{equation}
+\frac{\begin{matrix}[delimiter=paren]a \\ b\end{matrix}}{2}
++ \sqrt{\begin{matrix}[delimiter=bar]a & b \\ c & d\end{matrix}}
++ \paren{\begin{matrix}a & \begin{matrix}[delimiter=paren]b \\ c\end{matrix}\end{matrix}}
++ \begin{cases}\begin{matrix}[delimiter=brace]1 & 2\end{matrix} & n > 0 \\ 0 & n = 0\end{cases}
+\end{equation}
+
+\section{空の環境・空セル・列数の違う行}
+
+\begin{equation}
+E = \begin{matrix}[delimiter=paren]\end{matrix}, \quad
+F = \begin{matrix}[delimiter=paren]a & \\ & d\end{matrix}, \quad
+G = \begin{matrix}[delimiter=dbar]a & b & c \\ d\end{matrix}
+\end{equation}

@@ -25,10 +25,13 @@ mod theorem;
 mod title_page;
 
 pub(super) use layout_node::{
-  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathBar, MathBlockLayout, MathFenced, MathFraction,
-  MathOperator, MathRadical, MathScripts, TableLayout, TableRowLayout, TextStyle,
+  AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathArray, MathBar, MathBlockCellLayout,
+  MathBlockLayout, MathFenced, MathFraction, MathOperator, MathRadical, MathScripts, TableLayout, TableRowLayout,
+  TextStyle,
 };
-pub(super) use math::{delimiter_glyphs, math_text_clusters, translate_math_char};
+pub(super) use math::{
+  CASES_DELIMITERS, delimiter_glyphs, math_text_clusters, matrix_delimiter_glyphs, translate_math_char,
+};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
 

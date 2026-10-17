@@ -18,7 +18,7 @@ mod theorem;
 use phf::phf_map;
 
 use crate::{
-  document::{GridLayout, HirNode, QuoteKind, TextAlignment, TheoremClass},
+  document::{GridLayout, HirMath, HirNode, QuoteKind, TextAlignment, TheoremClass},
   frontend::{
     evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
     syntax::{BodyMode, view::EnvironmentView},
@@ -94,6 +94,29 @@ impl EnvironmentKind {
       Self::Matrix => math::matrix(view, ctx),
     };
   }
+
+  /// 数式の中に書いた環境を評価して `HirMath` を生成する
+  ///
+  /// 数式の一部として組めるのは行列と場合分けだけで、表示数式全体の環境・本文の環境は数式の中では使えない。
+  ///
+  /// # Errors
+  ///
+  /// 数式の中で使えない環境の場合と、ハンドラ実行中のエラーが発生した場合
+  fn evaluate_in_math(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirMath, EvalError> {
+    return match self {
+      Self::Cases => math::embedded_cases(view, ctx),
+      Self::Matrix => math::embedded_matrix(view, ctx),
+      Self::List { .. }
+      | Self::Theorem(_)
+      | Self::Quote(_)
+      | Self::Flush(_)
+      | Self::Figure
+      | Self::Table
+      | Self::Code
+      | Self::Equation
+      | Self::MathGrid { .. } => Err(unsupported_in_math(view)),
+    };
+  }
 }
 
 /// 環境名 → 種別 の単一レジストリ
@@ -153,6 +176,29 @@ pub(crate) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext
       name: view.name().to_string(),
       span: view.span().into(),
     }),
+  };
+}
+
+/// 数式の中に書いた環境を評価し、対応する `HirMath` を生成する
+///
+/// # Errors
+///
+/// 未知の環境・数式の中で使えない環境の場合と、ハンドラ実行中のエラーが発生した場合
+pub(in crate::frontend::evaluator) fn evaluate_in_math(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<HirMath, EvalError> {
+  return match ENVIRONMENTS.get(view.name()) {
+    Some(kind) => kind.evaluate_in_math(view, ctx),
+    None => Err(unsupported_in_math(view)),
+  };
+}
+
+/// 数式の中では使えない環境 `view` の診断
+fn unsupported_in_math(view: &EnvironmentView<'_>) -> EvalError {
+  return EvalError::UnsupportedInMath {
+    what: format!("環境 {}", view.name()),
+    span: view.span().into(),
   };
 }
 

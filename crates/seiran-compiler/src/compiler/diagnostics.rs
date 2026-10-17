@@ -103,10 +103,37 @@ fn diagnostic_math_script_without_group() {
 
 #[test]
 fn diagnostic_environment_in_inline_math() {
-  // 数式内の環境は、`$...$` の直下に書いても数式内で使えないという診断になる
+  // 表示数式全体の環境は、`$...$` の直下に書いても数式内で使えないという診断になる
   let failure = compile_err(&["tests/text/diagnostics/environment_in_inline_math.sei"]);
 
+  assert_eq!(codes(&failure), vec!["frontend::eval::unsupported_in_math".to_string()]);
   assert_matches_golden("environment_in_inline_math", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_embedded_matrix_rejects_label_option() {
+  // 数式内の行列は採番しないので、番号のラベルは未知のキーになる
+  let failure = compile_err(&["tests/text/diagnostics/math_array_label_option.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unknown_opt_arg_key".to_string()]);
+  assert_matches_golden("math_array_label_option", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_embedded_cases_rejects_row_marker() {
+  // 外側の align の行の中でも、内側の cases の `\notag` は内側の行末マーカーとして拒否する
+  let failure = compile_err(&["tests/text/diagnostics/math_array_row_marker.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::notag_not_supported".to_string()]);
+  assert_matches_golden("math_array_row_marker", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_embedded_cases_column_overflow() {
+  let failure = compile_err(&["tests/text/diagnostics/math_array_cases_overflow.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::cases_column_overflow".to_string()]);
+  assert_matches_golden("math_array_cases_overflow", &render_failure(failure));
 }
 
 #[test]
