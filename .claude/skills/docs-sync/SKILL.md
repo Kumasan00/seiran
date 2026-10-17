@@ -19,7 +19,7 @@ description: >-
 
 | 面 | 持つもの |
 | --- | --- |
-| `CLAUDE.md` | 文書地図（正典へのポインタ表）・言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・設定ファイル役割分担表と値の基本書式・コーディング規約の要約（正典は `docs/coding-conventions.md`、エラーハンドリングは `docs/error-handling.md`） |
+| `CLAUDE.md` | 文書地図（正典へのポインタ表）・言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・コマンド一覧（推測できないものだけ）・設定ファイル役割分担表と値の基本書式・コーディング規約の要約（正典は `docs/coding-conventions.md`、エラーハンドリングは `docs/error-handling.md`） |
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
 | `docs/coding-conventions.md` | コーディング規約の全文・根拠・lint との対応。CLAUDE.md の規約節の詳細版 |
 | `docs/error-handling.md` | エラー型・診断 `code`・ソース位置・集約・warning と tracing・内部不変条件違反・garde の規約。CLAUDE.md のエラーハンドリング節の詳細版 |

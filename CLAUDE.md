@@ -55,17 +55,11 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 ## コマンド
 
 ```sh
-cargo build                                                # デバッグビルド
-cargo build --release                                      # リリースビルド（LTO 有効）
 cargo run -- build [-c <config_path>]                      # 設定ファイルの sources から PDF を生成
 #   -v|-vv|-vvv（工程 / 内部詳細 / 最大）・-q（端末抑止。-v と直交）・--log-file <path> は全サブコマンド共通。意味は README「使い方」
-cargo run -- variation-axes <font> [-f <font_index>]       # バリアブルフォント軸情報を表示
-cargo run -- ttc-names <ttc_file>                          # TTC ファイル内のフォント名一覧を表示
-cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示
 cargo +nightly fmt                                         # フォーマット（nightly 必須）
 cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pre-commit と同じ形）
 cargo test --all-features                                  # テスト実行（doctest 込み。CI / pre-commit と同じ形）
-cargo test -p <crate_name>                                 # 特定クレートのテスト実行
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features   # doc ビルド（CI と同じ形）
 git config core.hooksPath .git-hooks                      # pre-commit（fmt / clippy / test）を有効化。clone 後に 1 回
 ```
@@ -140,26 +134,6 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 `seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型だけで、`ProjectConfig` /
 `Style` / `typeset::Page` は facade に出ていない — 「renderer は確定座標の描画のみ・レイアウト判断ゼロ」
 という防火壁は、この公開範囲の狭さが担っている。
-
-### `seiran-compiler` の module（すべて非公開、公開 API は `lib.rs` の `pub use` に一本化）
-
-並び順は `docs/architecture.md` の節順と同一（leaf 値型 → 入力 → 文書と設定 → パイプライン段 →
-成果物 → facade）。依存関係・不変条件は `docs/architecture.md` の各節、子 module 構成は各 module の `//!` が正典。
-
-| module | 責務 1 行 |
-| --- | --- |
-| `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 |
-| `failures` | 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能・`Diagnostic` 非実装） |
-| `phase` | 工程の開始・結果付き終了（`status` / `elapsed`）を INFO で記録する RAII ガード `Phase`（`compiler` facade と `typeset` が共用） |
-| `source` | ソースの同一性 `SourceId` と位置 `Span` |
-| `project` | プロジェクトの物理的な入力 — 外部資源取得 seam（`ProjectPath` / `ProjectSource`）+ 入力パスの解決規則（`PathResolver`）+ config.toml の読込・検証 + `SourceSet` + フォント資源（子 module `font`） |
-| `document` | authored HIR（`HirDocument` / `HirBuilder` / `SourceMap`）と HIR が値として持つ語彙型の所有者 |
-| `style` | style.toml（見た目）のデータモデル・既定値・読込・検証。CSL 本体は読まない |
-| `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |
-| `semantics` | 意味解析 `analyze`（採番・`\ref`・引用キー検証）+ CSL 読込・書誌生成 → `SemanticDocument` |
-| `typeset` | 組版。入口は `compose` 1 操作（`SemanticDocument` + 設定 + フォントバイト列 → `Publication` + 警告 + 画像依存パス。意図した例外は入力読込が呼ぶ版面の構築 `PreparedGeometry::prepare`）。出口 `emit` まで内側に閉じる |
-| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画契約の値型 `GlyphRun` / `FontMetrics` / `ImageFormat` 等）と検証付きコンストラクタ。krilla も `typeset` も知らない純データ |
-| `compiler` | compile facade。全体の phase 順序だけを持ち、組版中間型・フォント資源を保持しない |
 
 ## コーディング規約
 

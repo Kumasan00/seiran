@@ -42,7 +42,7 @@
 
 節順は **leaf 値型 → 入力 → 文書と設定 → パイプライン段 → 成果物 → facade**
 （`length` / `color` → `failures` → `phase` → `source` → `project` → `document` → `style` → `frontend` →
-`semantics` → `typeset` → `publication` → `compiler`）で固定し、CLAUDE.md の module 表もこの順に揃える。
+`semantics` → `typeset` → `publication` → `compiler`）で固定する。
 
 ### `length` / `color`
 
