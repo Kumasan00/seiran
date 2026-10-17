@@ -47,7 +47,7 @@ pub(crate) use crate::style::{
   counter::{CounterName, CounterStyles},
   footnote::{FootnoteNumbering, FootnoteStyle},
   list::NestedOrderedFormat,
-  math::{MathStyle, NumberSide},
+  math::NumberSide,
   number_style::NumberStyle,
   page_numbering::PageNumberingStyle,
   running::RunningContentStyle,
@@ -65,7 +65,7 @@ use crate::{
   project::{self, InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
   style::{
     columns::ColumnsStyle, error::StyleValidationError, figure::FigureStyle, heading::HeadingStyles,
-    hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, page::PageStyle, quote::QuoteStyle,
+    hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle, page::PageStyle, quote::QuoteStyle,
     reference::ReferenceStyle, table::TableStyle, text::TextBlockStyle, theorem::TheoremStyles,
   },
 };

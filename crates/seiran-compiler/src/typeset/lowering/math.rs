@@ -1,7 +1,8 @@
 //! 数式（インライン / ディスプレイ）の lowering
 //!
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathBlockKind`）から決まるセルの列内
-//! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。
+//! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。数式の中に埋め込んだ
+//! 行列・場合分けも、同じ括弧グリフと列内揃えで閉じた 1 アトム（`MathArray`）に落とす。
 
 mod alphanumeric;
 mod spacing;
@@ -22,7 +23,7 @@ use crate::{
   },
   length::Length,
   semantics::LabelId,
-  style::{MathStyle, NumberSide, NumberTemplate},
+  style::{NumberSide, NumberTemplate, Style as ReadStyle},
   typeset::{
     boxes::Align,
     font::{ScriptLevel, ScriptScale},
@@ -58,14 +59,7 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(
-            cell,
-            font_size,
-            ctx.script_scale,
-            cell_level(math.kind),
-            &ctx.style.math,
-            ctx.style.text.typeface,
-          ),
+          content: lower_math_cell(cell, font_size, ctx.script_scale, cell_level(math.kind), ctx.style),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -203,18 +197,17 @@ pub(in crate::typeset) const fn matrix_delimiter_glyphs(delimiter: MathDelimiter
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
 /// 本体は text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮グリフを塗る。
-/// `math` は style.toml の `[math]`（アクセントの基底をドット無しの字形で組むかの既定と、埋め込んだ行列の行間・列間）。
-/// `prose_typeface` は数式内の文章を組む書体（style.toml の `[text].typeface`）。
+/// `style` から読むのは、アクセントの基底をドット無しの字形で組むかの既定（`[math].accent_dotless`）・埋め込んだ行列の
+/// 行間・列間（`[math.block]`）と、数式内の文章を組む書体（`[text].typeface`）。
 /// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   color: Option<Color>,
-  math: &MathStyle,
-  prose_typeface: Typeface,
+  style: &ReadStyle,
 ) -> Vec<InlineNode> {
-  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, math, prose_typeface);
+  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, style);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
@@ -231,20 +224,16 @@ const fn cell_level(kind: MathBlockKind) -> StyleLevel {
 }
 
 /// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない。
-/// `math`・`prose_typeface` は [`lower_inline_math`] と同じ）
+/// `style` は [`lower_inline_math`] と同じ）
 fn lower_math_cell(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   level: StyleLevel,
-  math: &MathStyle,
-  prose_typeface: Typeface,
+  style: &ReadStyle,
 ) -> Vec<AtomNode> {
   // 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色
-  return lower_math_list(
-    math_nodes,
-    &MathLoweringContext::new(base_font_size, script_scale, level, None, math, prose_typeface),
-  );
+  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level, None, style));
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
@@ -379,23 +368,24 @@ struct MathLoweringContext {
   accent_dotless: bool,
   /// 数式内の文章（`\text`）を組む書体（style.toml の `[text].typeface`）
   prose_typeface: Typeface,
-  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの行間（style.toml の `[math.block].row_gap`）
+  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの行間（style.toml の `[math.block].row_gap` を本文の大きさ
+  /// `[text].font_size` 基準として数式本体の大きさへ比例させた値）
   row_gap: Length,
-  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの列間（style.toml の `[math.block].column_gap`）
+  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの列間（`row_gap` と同じ比例）
   column_gap: Length,
 }
 
 impl MathLoweringContext {
-  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・style.toml の `[math]` の値 `math`・
-  /// 文章の書体 `prose_typeface`）の文脈を作る
+  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・style.toml の値 `style`）の文脈を作る
   fn new(
     base_font_size: Length,
     script_scale: ScriptScale,
     level: StyleLevel,
     color: Option<Color>,
-    math: &MathStyle,
-    prose_typeface: Typeface,
+    style: &ReadStyle,
   ) -> Self {
+    // `[math.block]` の行間・列間は本文の大きさで組む表示数式の値なので、見出し・脚注の中の数式ではその大きさへ比例させる
+    let scale = base_font_size.ratio(style.text.font_size);
     return MathLoweringContext {
       base_font_size,
       script_scale,
@@ -405,10 +395,10 @@ impl MathLoweringContext {
       },
       variant: None,
       color,
-      accent_dotless: math.accent_dotless,
-      prose_typeface,
-      row_gap: math.block.row_gap,
-      column_gap: math.block.column_gap,
+      accent_dotless: style.math.accent_dotless,
+      prose_typeface: style.text.typeface,
+      row_gap: style.math.block.row_gap * scale,
+      column_gap: style.math.block.column_gap * scale,
     };
   }
 
@@ -990,8 +980,7 @@ mod tests {
   #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
-    let nodes =
-      lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, &ReadStyle::default().math, Typeface::Serif);
+    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, &ReadStyle::default());
 
     assert!(nodes.is_empty(), "ノードが無ければ空のノード列を返すはず: {nodes:?}");
   }
@@ -2301,6 +2290,32 @@ mod tests {
       (array.column_gap - style.math.block.column_gap * ratio).abs() <= Length::from_sp(1),
       "列間は段の大きさに比例"
     );
+  }
+
+  /// レイアウトノード列（`VBox` の中も辿る）から最初の埋め込みの行列・場合分けを取り出すヘルパ
+  fn nested_array(nodes: &[LayoutNode]) -> Option<&MathArray> {
+    return nodes.iter().find_map(|node| match node {
+      LayoutNode::Inline(InlineNode::Array(array)) => return Some(array),
+      LayoutNode::VBox { children, .. } => return nested_array(children),
+      _ => return None,
+    });
+  }
+
+  #[test]
+  fn array_gaps_follow_the_size_of_the_surrounding_text() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_math_source("\\section{$\\begin{matrix}a \\\\ b\\end{matrix}$}\n");
+
+    let array = nested_array(&nodes).expect("見出しの中に行列があるはず");
+    assert_ne!(array.font_size, style.text.font_size, "見出しは本文と違う大きさのはず");
+    let ratio = array.font_size.ratio(style.text.font_size);
+    assert!(
+      (array.row_gap - style.math.block.row_gap * ratio).abs() <= Length::from_sp(1),
+      "行間は本文の大きさ基準の値を見出しの大きさへ比例させる: {:?}",
+      array.row_gap
+    );
+    assert!((array.column_gap - style.math.block.column_gap * ratio).abs() <= Length::from_sp(1), "列間も同じ");
   }
 
   #[test]

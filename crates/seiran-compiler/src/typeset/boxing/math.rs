@@ -230,7 +230,7 @@ impl Measurer<'_> {
   ///
   /// 列幅は列内のセル幅の最大値、隣り合う行は前の行の深さ・`row_gap`・次の行の高さだけベースラインを離す。1 行目の
   /// ベースラインが Atom のベースラインで、返り値の 2 つ目は各行のベースラインの `dy`（上向き正。1 行目は 0）。
-  pub(in crate::typeset::boxing) fn build_grid(
+  fn build_grid(
     &mut self,
     rows: Vec<Vec<MathBlockCellLayout>>,
     row_gap: Length,
@@ -300,7 +300,7 @@ impl Measurer<'_> {
     clippy::too_many_arguments,
     reason = "括弧の字形を決める段の 3 値は呼び元（表示数式ブロック・数式内の行列）ごとに出どころが違い、束ねる型に依存するコードが無い"
   )]
-  pub(in crate::typeset::boxing) fn wrap_with_delimiters(
+  fn wrap_with_delimiters(
     &mut self,
     body: HBox,
     grid_dy: Length,
