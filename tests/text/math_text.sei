@@ -1,0 +1,29 @@
+\section{数式内の文章}
+
+条件の添字: $x_{\text{initial}}$ と $x_{\text{初期値}}$。
+
+語間の空白を保つ: $x\text{ if }x > 0$、$\text{初期値 initial value}$。
+
+和欧文の境界と約物: $\text{値x}$、$\text{（初期値）}$。
+
+分数と根号の中: $\frac{\text{分子}}{\text{denominator}}$、$\sqrt{\text{area}}$。
+
+字体コマンドは文章を変えない: $\mathbold{x\text{ if }y}$。
+
+文字色を継ぐ: \color[color=#cc0000]{$a\text{ and }b$}。
+
+エスケープと記号コマンド: $\text{\$5 \& \alpha は}$。
+
+コメントと単一改行は語間の空白 1 個: $\text{a // コメント
+b}$。
+
+空の文章: $a\text{}b$。
+
+\begin{equation}
+f(x) = x^{2} \quad \text{for all } x
+\end{equation}
+
+\begin{cases}
+x & x > 0 \\
+0 & \text{それ以外}
+\end{cases}

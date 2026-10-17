@@ -119,6 +119,15 @@ fn diagnostic_math_only_command() {
 }
 
 #[test]
+fn diagnostic_unsupported_in_math_text() {
+  // `\text` の引数は文章として読むので、装飾コマンドは数式の中でも文章の中でも書けないという診断になる
+  let failure = compile_err(&["tests/text/diagnostics/math_text_unsupported.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unsupported_in_math_text".to_string()]);
+  assert_matches_golden("math_text_unsupported", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_needless_escape_in_math() {
   // LaTeX の細アキ `\,` は数式でも字 `,` の第 2 の書き方なので、構文文字でも区切りでもない字のエスケープとして拒否する
   let failure = compile_err(&["tests/text/diagnostics/needless_escape_math.sei"]);
