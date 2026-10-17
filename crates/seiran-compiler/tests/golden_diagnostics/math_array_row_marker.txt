@@ -1,0 +1,12 @@
+frontend::eval::notag_not_supported
+
+  × \notag はこの数式環境では使用できません
+   ╭─[tests/text/diagnostics/math_array_row_marker.sei:4:21]
+ 3 │ \begin{align}
+ 4 │ f &= \begin{cases}a \notag\end{cases}
+   ·                     ───┬──
+   ·                        ╰── この環境では \notag を使えません
+ 5 │ \end{align}
+   ╰────
+  help: \notag は align / gather の行末でのみ使えます。equation を無採番にするには
+        [numbered=false] を使ってください。

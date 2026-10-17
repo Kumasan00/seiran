@@ -1,0 +1,11 @@
+frontend::eval::cases_column_overflow
+
+  × cases 環境の行は 2 列までです（3 列が指定されています）
+   ╭─[tests/text/diagnostics/math_array_cases_overflow.sei:3:15]
+ 2 │ 
+ 3 │ 場合分け $\begin{cases}a & b & c\end{cases}$ の列が多すぎます。
+   ·           ────────────────┬────────────────
+   ·                           ╰── この行の列が多すぎます
+   ╰────
+  help: cases の各行は `式 & 条件` の 2 列までです。3 列以上が必要なら matrix / align を使ってくだ
+        さい

@@ -1,0 +1,11 @@
+frontend::eval::unknown_opt_arg_key
+
+  × matrix の任意引数に不明なキー `label` が指定されています
+   ╭─[tests/text/diagnostics/math_array_label_option.sei:3:27]
+ 2 │ 
+ 3 │ 行列 $A = \begin{matrix}[label=eq:a]a\end{matrix}$ に番号のラベルを付けています。
+   ·                         ──────┬─────
+   ·                               ╰── このキーは許可されていません
+   ╰────
+  help: 許可されているキー: delimiter: string。値に `,` や `=` を含めるときは `\,` / `\=` と書きま
+        す
