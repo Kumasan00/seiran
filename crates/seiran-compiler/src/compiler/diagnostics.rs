@@ -545,3 +545,23 @@ fn diagnostic_config_removed_font_name() {
   assert!(rendered.contains("font_name"), "{rendered}");
   assert_matches_golden("config_removed_font_name", &rendered);
 }
+
+#[test]
+fn diagnostic_config_unknown_top_level_key() {
+  // トップレベルの未知キー（ファイル名・キー名・位置が診断から分かること）
+  let source = MemoryProjectSource::new()
+    .with_text("diagnostics/config.toml", "unknown_documentation_probe = true\nsources = [\"a.sei\"]\n");
+  let config_path = ProjectPath::new("diagnostics/config.toml");
+
+  let (result, _warnings) = project::config::load(&source, &config_path, &PathResolver::new(Path::new("diagnostics")));
+  let Err(failures) = result else {
+    panic!("このケースは失敗するはず");
+  };
+  let failure = CompileFailure::from(failures);
+
+  assert_eq!(codes(&failure), vec!["project::config::parse_toml".to_string()]);
+  let rendered = render_failure(failure);
+  assert!(rendered.contains("diagnostics/config.toml:1:1"), "{rendered}");
+  assert!(rendered.contains("unknown field `unknown_documentation_probe`"), "{rendered}");
+  assert_matches_golden("config_unknown_top_level_key", &rendered);
+}

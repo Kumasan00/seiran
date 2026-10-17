@@ -1,0 +1,14 @@
+project::config::parse_toml
+
+  × 設定ファイルの TOML 解析に失敗しました
+  ╰─▶ unknown field `unknown_documentation_probe`, expected one of `document`, `output`, `pdf`,
+      `image`, `font_configs`, `sources`, `style_path`, `references_path`
+      
+   ╭─[diagnostics/config.toml:1:1]
+ 1 │ unknown_documentation_probe = true
+   · ─────────────┬─────────────
+   ·              ╰── ここ
+ 2 │ sources = ["a.sei"]
+   ╰────
+  help: TOML の構文とキー名を確認してください。使えないキー（廃止されたキーを含む）は削除してくだ
+        さい。

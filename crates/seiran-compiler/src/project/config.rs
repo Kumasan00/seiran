@@ -1,6 +1,6 @@
 //! `config.toml`（物理・実体・メタデータ）のデータモデルと読込・検証
 //!
-//! [`load`] は TOML 解析・必須フィールドと値域の検証・フォント 19 種の完全性検証・
+//! [`load`] は TOML 解析（未知キーの拒否を含む）・必須フィールドと値域の検証・フォント 19 種の完全性検証・
 //! 各種パスの正規化までを終えた [`ProjectConfig`] を返す。`style.toml` や references の**内容は
 //! 解析しない** — 検証済みのパスを返すだけで、それぞれの読込は [`crate::style`] と
 //! `crate::semantics` が担う。
@@ -514,6 +514,44 @@ mod tests {
     return (tempdir, config_path);
   }
 
+  /// 各階層の回帰テストで足す未知キーの名前。
+  const UNKNOWN_KEY: &str = "unknown_documentation_probe";
+
+  /// 必須設定だけを持つ妥当な config.toml（任意キーはすべて省略）。
+  fn minimal_config_toml() -> String {
+    return format!(
+      "sources = [\"a.sei\"]\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections("dummy.ttf"),
+    );
+  }
+
+  /// [`minimal_config_toml`] の `[font_configs.serif]` に `extra_lines` を差し込んだ config.toml。
+  fn minimal_config_toml_with_serif_extra(extra_lines: &str) -> String {
+    return format!(
+      "sources = [\"a.sei\"]\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections_with_serif_extra("dummy.ttf", extra_lines),
+    );
+  }
+
+  /// `toml` が `key` を未知キーとして `ParseToml` で拒否し、ラベルがそのキーだけを指すことを確かめる。
+  ///
+  /// 位置は `toml` の中で最初に現れる `key` と照合する。
+  fn assert_rejects_unknown_key(toml: &str, key: &str) {
+    let failures = parse_config(toml, dummy_source()).expect_err("未知キーは拒否されるはず");
+
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    let ReadConfigError::ParseToml { span, source, .. } = first else {
+      panic!("未知キーは ParseToml になるはず: {first:?}");
+    };
+    assert!(source.to_string().contains(&format!("unknown field `{key}`")), "{source}");
+    assert_eq!(span.offset(), toml.find(key).expect("入力は未知キーを含むはず"));
+    assert_eq!(span.len(), key.len());
+  }
+
   #[test]
   fn resolve_paths_reports_missing_paths_without_touching_disk() {
     let toml = format!(
@@ -668,13 +706,135 @@ mod tests {
 
   #[test]
   fn parse_config_fails_on_legacy_top_level_name() {
-    let toml =
-      format!("name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n{}", font_sections("dummy.ttf"));
+    // `[output]` も `name` を持つので、トップレベルの行を先頭に置いて位置の照合を一意にする
+    let toml = format!("name = \"test\"\n{}", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, "name");
+  }
+
+  #[test]
+  fn parse_config_accepts_minimal_config() {
+    let toml = minimal_config_toml();
+
     let result = parse_config(&toml, dummy_source());
-    assert!(matches!(
-      result.as_ref().map_err(|failures| return failures.first()),
-      Err(ReadConfigError::ParseToml { .. })
+
+    result.expect("必須設定だけの config は解析できるはず");
+  }
+
+  #[test]
+  fn parse_config_accepts_every_known_key() {
+    let toml = format!(
+      "sources = [\"a.sei\"]\nstyle_path = \"style.toml\"\nreferences_path = \"references.toml\"\n\n[document]\ntitle = \
+       \"t\"\nauthor = \"a\"\ndate = \"d\"\nsubject = \"s\"\nlanguage = \"ja\"\nkeywords = [\"k\"]\n\n[output]\nname = \
+       \"test\"\noutput_dir = \"out\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\nshow_bookmarks = \
+       false\n\n[image]\nmax_dpi = 300\ndownsample = true\n\n{}",
+      font_sections_with_serif_extra(
+        "dummy.ttf",
+        "font_index = 0\nvariation_axes = [{ name = \"wght\", value = 400.0 }]\nlanguage = \"en\"\nscript = \
+         \"latn\"\not_language = \"ENG\"\ndirection = \"left-to-right\"\nfeatures = [{ tag = \"kern\", value = 1 }]",
+      ),
+    );
+
+    let result = parse_config(&toml, dummy_source());
+
+    result.expect("既知キーだけの config は解析できるはず");
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_top_level_key() {
+    let toml = format!("{UNKNOWN_KEY} = true\n{}", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_top_level_table() {
+    let toml = format!("{}[{UNKNOWN_KEY}]\nvalue = 1\n", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_document_key() {
+    let toml = format!("{}[document]\ntitle = \"t\"\n{UNKNOWN_KEY} = \"x\"\n", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_output_key() {
+    let toml = minimal_config_toml().replacen("[output]\n", &format!("[output]\n{UNKNOWN_KEY} = {{ a = 1 }}\n"), 1);
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_pdf_key() {
+    let toml = minimal_config_toml().replacen("[pdf]\n", &format!("[pdf]\n{UNKNOWN_KEY} = 1\n"), 1);
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_image_key_even_when_known_keys_are_omitted() {
+    // `[image]` は丸ごと省略可能（serde(default)）でも、書いたテーブルの未知キーは拒否する
+    let toml = format!("{}[image]\n{UNKNOWN_KEY} = [1, 2]\n", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_extra_font_type_alongside_all_known_types() {
+    // 既知の 19 種別はすべて揃っている
+    let toml = format!("{}[font_configs.{UNKNOWN_KEY}]\nfont_path = \"dummy.ttf\"\n", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_font_config_key() {
+    let toml = minimal_config_toml_with_serif_extra(&format!("{UNKNOWN_KEY} = 0"));
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_table_nested_in_font_config() {
+    let toml = format!("{}[font_configs.serif.{UNKNOWN_KEY}]\nx = 1\n", minimal_config_toml());
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_key_in_second_variation_axis() {
+    let toml = minimal_config_toml_with_serif_extra(&format!(
+      "variation_axes = [{{ name = \"wght\", value = 400.0 }}, {{ name = \"wdth\", value = 100.0, {UNKNOWN_KEY} = true }}]"
     ));
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_key_in_second_feature() {
+    let toml = minimal_config_toml_with_serif_extra(&format!(
+      "features = [{{ tag = \"liga\", value = 1 }}, {{ tag = \"kern\", value = 1, {UNKNOWN_KEY} = true }}]"
+    ));
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+  }
+
+  #[test]
+  fn parse_config_rejects_misspelled_known_key() {
+    let toml = minimal_config_toml().replacen("[pdf]\n", "[pdf]\nshow_bookmark = false\n", 1);
+
+    assert_rejects_unknown_key(&toml, "show_bookmark");
+  }
+
+  #[test]
+  fn parse_config_rejects_known_key_in_different_case() {
+    let toml = minimal_config_toml().replacen("[output]\n", "[output]\nName = \"x\"\n", 1);
+
+    assert_rejects_unknown_key(&toml, "Name");
   }
 
   #[test]
