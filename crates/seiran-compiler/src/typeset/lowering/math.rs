@@ -64,6 +64,7 @@ pub(super) fn lower_math_block(
             ctx.script_scale,
             cell_level(math.kind),
             ctx.style.math.accent_dotless,
+            ctx.style.text.typeface,
           ),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
@@ -192,6 +193,7 @@ pub(in crate::typeset) fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyp
 ///
 /// 本体は text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮グリフを塗る。
 /// `accent_dotless` はアクセントの基底をドット無しの字形で組むかの既定（style.toml の `[math].accent_dotless`）。
+/// `prose_typeface` は数式内の文章を組む書体（style.toml の `[text].typeface`）。
 /// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
@@ -199,8 +201,10 @@ pub(super) fn lower_inline_math(
   script_scale: ScriptScale,
   color: Option<Color>,
   accent_dotless: bool,
+  prose_typeface: Typeface,
 ) -> Vec<InlineNode> {
-  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, accent_dotless);
+  let ctx =
+    MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, accent_dotless, prose_typeface);
   return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
 }
 
@@ -217,18 +221,19 @@ const fn cell_level(kind: MathBlockKind) -> StyleLevel {
 }
 
 /// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない。
-/// `accent_dotless` は [`lower_inline_math`] と同じ）
+/// `accent_dotless`・`prose_typeface` は [`lower_inline_math`] と同じ）
 fn lower_math_cell(
   math_nodes: &[HirMath],
   base_font_size: Length,
   script_scale: ScriptScale,
   level: StyleLevel,
   accent_dotless: bool,
+  prose_typeface: Typeface,
 ) -> Vec<AtomNode> {
   // 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色
   return lower_math_list(
     math_nodes,
-    &MathLoweringContext::new(base_font_size, script_scale, level, None, accent_dotless),
+    &MathLoweringContext::new(base_font_size, script_scale, level, None, accent_dotless, prose_typeface),
   );
 }
 
@@ -352,17 +357,20 @@ struct MathLoweringContext {
   color: Option<Color>,
   /// アクセントの基底をドット無しの字形で組むかの既定（style.toml の `[math].accent_dotless`）
   accent_dotless: bool,
+  /// 数式内の文章（`\text`）を組む書体（style.toml の `[text].typeface`）
+  prose_typeface: Typeface,
 }
 
 impl MathLoweringContext {
   /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・アクセントのドット無しの既定
-  /// `accent_dotless`）の文脈を作る
+  /// `accent_dotless`・文章の書体 `prose_typeface`）の文脈を作る
   fn new(
     base_font_size: Length,
     script_scale: ScriptScale,
     level: StyleLevel,
     color: Option<Color>,
     accent_dotless: bool,
+    prose_typeface: Typeface,
   ) -> Self {
     return MathLoweringContext {
       base_font_size,
@@ -374,6 +382,7 @@ impl MathLoweringContext {
       variant: None,
       color,
       accent_dotless,
+      prose_typeface,
     };
   }
 
@@ -463,6 +472,24 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         ..ctx.text_style(MathClass::Op)
       };
       items.push(spacing::MathItem::operator_name(text, style, *limits && ctx.style.level == StyleLevel::Display));
+    },
+    // 文章は数式の字ではないので字形 variant を読まない。空の文章は空のグループと同じく中身の無い Ord
+    HirMathKind::Prose(text) => {
+      let nodes = if text.is_empty() {
+        Vec::new()
+      } else {
+        vec![AtomNode::Prose(
+          text.clone(),
+          TextStyle {
+            font_size: ctx.font_size(),
+            typeface: ctx.prose_typeface,
+            color: ctx.color,
+            script_level: None,
+            math_operator: None,
+          },
+        )]
+      };
+      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
     },
     HirMathKind::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
@@ -638,7 +665,7 @@ mod tests {
     let mut out = Vec::new();
     for node in nodes {
       match node {
-        AtomNode::Text(text, style) => out.push((text.clone(), *style)),
+        AtomNode::Text(text, style) | AtomNode::Prose(text, style) => out.push((text.clone(), *style)),
         // アキは表示文字列を持たない
         AtomNode::Kern { .. } => {},
         AtomNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
@@ -738,7 +765,9 @@ mod tests {
     let mut out = Vec::new();
     for node in nodes {
       match node {
-        LayoutNode::Inline(InlineNode::Text(text, style)) => out.push((text.clone(), *style)),
+        LayoutNode::Inline(InlineNode::Text(text, style) | InlineNode::Prose(text, style)) => {
+          out.push((text.clone(), *style));
+        },
         LayoutNode::Inline(InlineNode::Scripts(scripts)) => out.extend(scripts_texts(scripts)),
         LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
         LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
@@ -852,7 +881,7 @@ mod tests {
   #[test]
   fn lower_inline_math_empty_returns_no_nodes() {
     // 空の数式に対応するソース形はないので、直接ヘルパを呼ぶ
-    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, true);
+    let nodes = lower_inline_math(&[], Length::pt(12.0), stix_script_scale(), None, true, Typeface::Serif);
 
     assert!(nodes.is_empty(), "ノードが無ければ空のノード列を返すはず: {nodes:?}");
   }
@@ -2032,5 +2061,97 @@ mod tests {
       matches!(cell.first(), Some(AtomNode::LargeOperator { symbol, .. }) if symbol == "\u{2A0C}"),
       "largeop を持つ Op は display 段の大型演算子: {cell:?}"
     );
+  }
+
+  /// 数式テキストのうち、テキスト `text` のスタイル
+  fn style_of(nodes: &[LayoutNode], text: &str) -> TextStyle {
+    let Some((_, style)) = math_texts(nodes).into_iter().find(|(found, _)| return found == text) else {
+      panic!("テキスト {text:?} があるはず: {nodes:?}");
+    };
+    return style;
+  }
+
+  #[test]
+  fn prose_takes_the_body_typeface_and_the_size_of_its_level() {
+    let nodes = lower_math_source("$x_{i\\text{if}}$\n");
+
+    let index = style_of(&nodes, "\u{1D456}");
+    let prose = style_of(&nodes, "if");
+    assert_eq!(prose.typeface, Typeface::Serif, "本文の既定の書体（[text].typeface）");
+    assert_eq!(prose.font_size, index.font_size, "その位置の数式段の大きさ");
+    assert_eq!(prose.script_level, None, "ssty は数式フォントの字形の選択なので文章には付けない");
+    assert_eq!(prose.math_operator, None);
+  }
+
+  #[test]
+  fn prose_follows_the_body_typeface_setting() {
+    let mut style = ReadStyle::default();
+    style.text.typeface = Typeface::SansSerif;
+
+    let nodes = lower(&style, &analyzed("$\\text{if}$\n"));
+
+    assert_eq!(style_of(&nodes, "if").typeface, Typeface::SansSerif);
+  }
+
+  #[test]
+  fn prose_ignores_the_math_variant() {
+    let nodes = lower_math_source("$\\mathbold{x\\text{if}}$\n");
+
+    let texts: Vec<String> = math_texts(&nodes).into_iter().map(|(text, _)| return text).collect();
+    assert_eq!(texts, vec!["\u{1D431}".to_string(), "if".to_string()], "字体コマンドは数式の字だけを写す");
+  }
+
+  #[test]
+  fn prose_inherits_the_color_of_the_math() {
+    let red = Color::new(0xcc, 0x00, 0x00);
+
+    let nodes = lower_math_source("\\color[color=#cc0000]{$\\text{if}$}\n");
+
+    assert_eq!(style_of(&nodes, "if").color, Some(red));
+  }
+
+  #[test]
+  fn prose_is_one_unbreakable_node_at_the_top_level() {
+    let nodes = lower_math_source("$x\\text{ if }x>0$\n");
+
+    let prose: Vec<&LayoutNode> = nodes
+      .iter()
+      .filter(|node| return matches!(node, LayoutNode::Inline(InlineNode::Prose(..))))
+      .collect();
+    assert!(
+      matches!(prose.as_slice(), [LayoutNode::Inline(InlineNode::Prose(text, _))] if text == " if "),
+      "文章は空白ごと 1 個の閉じたノード: {nodes:?}"
+    );
+    assert_eq!(math_break_count(&nodes), 1, "分割点は > の後だけ: {nodes:?}");
+  }
+
+  #[test]
+  fn prose_spaces_as_an_ordinary() {
+    let prose = lower_math_source("$\\text{a}+\\text{b}=c$\n");
+    let letters = lower_math_source("$a+b=c$\n");
+
+    assert_eq!(spacings(&prose), spacings(&letters), "文章は Ord の 1 アトム");
+  }
+
+  #[test]
+  fn empty_prose_is_an_empty_ordinary_like_an_empty_group() {
+    let prose = lower_math_source("$a+\\text{}$\n");
+    let group = lower_math_source("$a+{}$\n");
+
+    assert_eq!(spacings(&prose), spacings(&group));
+    assert_eq!(math_break_count(&prose), math_break_count(&group));
+    assert!(
+      !prose.iter().any(|node| return matches!(node, LayoutNode::Inline(InlineNode::Prose(..)))),
+      "空の文章はノードを持たない: {prose:?}"
+    );
+  }
+
+  #[test]
+  fn prose_in_a_display_cell_takes_the_body_typeface() {
+    let block = first_math_block(lower_math_source("\\begin{cases}\nx & \\text{otherwise}\n\\end{cases}\n"));
+
+    let texts = atom_texts(&block.rows[0].cells[1].content);
+    let prose = texts.iter().find(|(text, _)| return text == "otherwise").expect("文章 otherwise があるはず");
+    assert_eq!(prose.1.typeface, Typeface::Serif);
   }
 }

@@ -243,6 +243,22 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// `\text` の引数に文章以外の要素が出現した場合
+  #[error("\\text の引数では使用できません: {what}")]
+  #[diagnostic(
+    code(frontend::eval::unsupported_in_math_text),
+    help(
+      "\\text の引数は数式ではなく文章として読みます。書けるのは字・空白・エスケープと記号コマンド（\\alpha 等）だけです"
+    )
+  )]
+  UnsupportedInMathText {
+    /// 出現した要素の説明（例: `\bold`、`\\（強制改行）`、`環境 itemize`、`インライン数式 $...$`）
+    what: String,
+    /// 要素のソース位置
+    #[label("この要素は \\text の中では使用できません")]
+    span: SourceSpan,
+  },
+
   /// 数式で、結合文字の付く字が無い場合（空白・改行の直後の結合文字）
   #[error("数式の結合文字に、付く字がありません")]
   #[diagnostic(

@@ -379,11 +379,12 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
   — `ModeResolver`（環境本体・コマンド引数・数式内の引数個数の 3 本の関数）経由で `evaluator` のレジストリが
   単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。引数モードは**引数の位置ごと**に引くので、同じ
   コマンドでも位置によってモードが違いうる。
-  環境本体のモード（`Text` / `Math` / `Verbatim`）と引数モード（`Inherit` / `CommaList` / `Verbatim`）は、トークン化して
+  環境本体のモード（`Text` / `Math` / `Verbatim`）と引数モード（`Inherit` / `CommaList` / `Verbatim` / `Text`）は、トークン化して
   読むときの `ParseMode`（`Text` / `Math`）とは別の型 — 生読みは「トークン化の際のモード」ではなく入口の
   分岐なので、`ParseMode` に `Verbatim` を足すと到達不能な分岐が生える。引数モードは外側文脈からの継承に
   優先するので、数式内でも verbatim 宣言が効く（数式の語彙に無いコマンドは下の個数の打ち切りを受けないので、
-  `$\code{...}$` も生読みされてから評価器が未知として拒否する）
+  `$\code{...}$` も生読みされてから評価器が未知として拒否する）。`Text` は外側が数式でもテキストモードで読む宣言で、
+  数式の語彙（`\text`）が持つ — `command_arg` は機能コマンドのレジストリに無い名前を数式の語彙の宣言で引く
 - **エスケープの可否は parser の `parse_element` 1 箇所で判定する** — どこでも構文文字 `{ } [ ] $ _ ^ &` と `/`、
   区切りを持つ区間（任意引数・`CommaList` の引数）の直下だけ `,` `=` / `,`。区切りは `parse_delimited` が直下の要素へ
   だけ渡す。字句解析は今どおり `\` + 非英数字をすべて `Escaped` にし、評価器・`view` の平坦化は `\` を外すだけ
@@ -892,7 +893,12 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
   `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
   右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身ごと閉じた Atom なので内側では割らず、
-  括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）
+  括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）。
+  数式内の文章（`\text`。HIR は空白をまとめ済みの文字列を `HirMathKind::Prose` に持つ）は Ord の 1 アイテムで、字形
+  variant を読まず `[text].typeface` で組む（大きさは段、色は外側から継ぐ）。`AtomNode::Prose` / `InlineNode::Prose` として
+  boxing へ渡り、boxing は本文の水平リスト生成（和欧文間アキ・約物アキは `[text].punctuation_spacing` に従う）を通して
+  glue を自然幅として 1 個の閉じた箱に並べる（インライン数式のトップレベルでも分割点を持たない）。空の文章は空のグループと
+  同じ中身の無い Ord
 - **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
   持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
   `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
@@ -976,7 +982,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 シェーピング・計測、break 注入、画像ブロックの描画寸法の確定、`Atom` 化を行う。
 `boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返し、
 `HItem` への変換は積む直前）を持ち、本文テキストのスクリプト分割・break 注入（分割点ごとの
-glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
+glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
 の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。シェーピングそのものは子 `shaping` の
 `Shaper` が行い、**フォントメトリクスから箱の寸法を出すのは `ShapedRun::measure` 1 箇所**（分割した断片・
 約物 1 字は親 run の高さ・深さを写す）。段落構築のポリシーを持つ `Measurer` と、持たない `Shaper` は型で

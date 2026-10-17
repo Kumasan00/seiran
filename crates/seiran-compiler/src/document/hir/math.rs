@@ -37,6 +37,8 @@ pub(crate) enum HirMathKind {
     /// display 段で付く上付き・下付きを真上・真下に積む名前か
     limits: bool,
   },
+  /// 数式内の文章（`\text{...}`）。空白・改行の連なりは語間の空白 1 個にまとめ済みで、引数の先頭・末尾の空白も残す
+  Prose(String),
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^{2}`）

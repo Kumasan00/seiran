@@ -1,0 +1,11 @@
+frontend::eval::unsupported_in_math_text
+
+  × \text の引数では使用できません: \bold
+   ╭─[tests/text/diagnostics/math_text_unsupported.sei:3:49]
+ 2 │ 
+ 3 │ 数式の文章に装飾は書けない: $\text{\bold{if}}$。
+   ·                                    ────┬────
+   ·                                        ╰── この要素は \text の中では使用できません
+   ╰────
+  help: \text の引数は数式ではなく文章として読みます。書けるのは字・空白・エスケープと記号コマンド
+        （\alpha 等）だけです

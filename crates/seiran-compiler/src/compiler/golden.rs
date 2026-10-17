@@ -49,6 +49,9 @@
 //!   [`delimiters_cover_the_grid_and_stay_inside_the_block`] / [`tall_delimiters_grow_only_vertically`] /
 //!   [`assembled_delimiter_is_one_character_of_text`] /
 //!   [`assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part`]（共通ヘルパ [`measure_delimited_block`]・[`stix_run_ink`] 経由）
+//! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）:
+//!   [`prose_keeps_spaces_at_their_natural_width`] / [`prose_puts_ja_latin_aki_by_punctuation_spacing`] /
+//!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`]
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
@@ -234,6 +237,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "math_script",
   "math_spacing",
   "math_symbols",
+  "math_text",
   "math_wide_accent",
   "matrix",
   "multiline",
@@ -1854,6 +1858,55 @@ fn run_with_text<'a>(runs: &'a [LineRun], text: &str) -> &'a LineRun {
     .iter()
     .find(|line_run| return line_run.run.text == text)
     .unwrap_or_else(|| panic!("テキスト {text:?} のグリフ列があるはず"));
+}
+
+/// `source` を組版した最初の行で、数式の 𝑦 のグリフ列の水平位置
+fn math_y_position(source: &str) -> Length { return run_with_text(&first_line_runs(source), "\u{1D466}").dx; }
+
+#[test]
+fn prose_keeps_spaces_at_their_natural_width() {
+  let tight = math_y_position("$x\\text{a}y$\n");
+  let leading = math_y_position("$x\\text{ a}y$\n");
+  let both = math_y_position("$x\\text{ a }y$\n");
+
+  let one_space = leading - tight;
+  assert!(one_space > Length::ZERO, "先頭の空白は本文の語間空白の幅を持つ");
+  assert!(
+    ((both - tight) - (one_space + one_space)).abs().sp() <= 1,
+    "先頭・末尾の空白はどちらも伸縮しない自然幅で残る: {} vs {one_space}",
+    both - tight
+  );
+}
+
+#[test]
+fn prose_puts_ja_latin_aki_by_punctuation_spacing() {
+  let gap = |punctuation_spacing: bool| {
+    let project = TestProject::builder()
+      .source_text("$\\text{値x}$\n")
+      .style_toml(move |table| test_support::set(table, "text", "punctuation_spacing", punctuation_spacing))
+      .build();
+    let runs = first_line_parts_of(&project).0;
+    let kanji = run_with_text(&runs, "値");
+    let latin = run_with_text(&runs, "x");
+    return latin.dx - (kanji.dx + kanji.width);
+  };
+
+  assert_eq!(gap(false), Length::ZERO, "アキ調整を切った文書では文章の中にも入れない");
+  assert!(
+    (gap(true) - Length::pt(3.0)).abs().sp() <= 1,
+    "本文と同じく四分アキ（12pt の 1/4）を自然幅で入れる: {}",
+    gap(true)
+  );
+}
+
+#[test]
+fn prose_in_a_subscript_takes_the_script_size_in_the_body_font() {
+  let runs = first_line_runs("$x_{i\\text{if}}$\n");
+
+  let index = run_with_text(&runs, "\u{1D456}");
+  let prose = run_with_text(&runs, "if");
+  assert_eq!(prose.run.font_type, FontType::Serif, "本文の欧文書体で組む");
+  assert_eq!(prose.run.font_size, index.run.font_size, "添字の段の大きさ");
 }
 
 #[test]

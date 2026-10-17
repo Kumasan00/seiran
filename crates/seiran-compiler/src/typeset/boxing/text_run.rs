@@ -1,7 +1,8 @@
 //! テキストラン分割 — シェーピング済みの run を計測済みの箱と break 注入済みの水平リストへ変換する
 //!
 //! この module が持つのは、run をどこで割り（ICU の分割機会・約物境界・ハイフネーション点）、各分割点に何
-//! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかだけ。
+//! （欧文スペースの伸縮 glue・和文字間 glue・`Penalty`・`Discretionary`）を積むかと、数式内の文章をその水平リストの
+//! 自然幅で（分割点を使わず）閉じた箱に並べる処理だけ。
 
 use std::ops::Range;
 
@@ -12,7 +13,7 @@ use crate::{
   length::Length,
   publication::Glyph,
   typeset::{
-    boxes::{HBox, HItem},
+    boxes::{HBox, HItem, PlacedHBox},
     boxing::{
       self, Glue, Measurer,
       break_opportunities::{self, BreakKind, BreakOpportunity},
@@ -91,6 +92,44 @@ impl Measurer<'_> {
       };
       self.split_run_into_items(run, is_japanese, hyphen.as_ref(), out);
     }
+  }
+
+  /// 数式内の文章を本文と同じ規則で組み、伸縮・分割しない自然幅で水平カーソル `dx`・縦オフセット `dy` に並べる
+  ///
+  /// [`Self::push_text_items`] の水平リスト（和欧文間アキ・約物アキは本文と同じく `punctuation_spacing` に従う）を、
+  /// 折り返さない 1 行として読む — glue は自然幅のアキ、分割制御は幅 0。
+  pub(super) fn place_prose(
+    &mut self,
+    text: &str,
+    style: TextStyle,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) {
+    let mut items = Vec::new();
+    self.push_text_items(text, style, &mut items);
+    for item in items {
+      match item {
+        HItem::Box(hbox) => {
+          let width = hbox.width;
+          out.push(PlacedHBox { hbox, dx: *dx, dy });
+          *dx += width;
+        },
+        HItem::Glue { natural, .. } => *dx += natural,
+        HItem::Kern(length) => *dx += length,
+        HItem::Penalty { .. } | HItem::Discretionary { .. } => {},
+        HItem::FlushRight(_)
+        | HItem::MathBreak { .. }
+        | HItem::ForcedBreak
+        | HItem::LinkStart(_)
+        | HItem::LinkEnd
+        | HItem::Footnote(_)
+        | HItem::IndexMark(_) => {
+          unreachable!("push_text_items が積むのは箱・glue・分割制御だけ")
+        },
+      }
+    }
+    return;
   }
 
   /// シェーピング済みの run を分割可能位置で `HItem` 列に分割する
