@@ -13,6 +13,7 @@ use crate::{
 
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RawConfig {
   /// 文書のメタデータ（`[document]`）
   #[serde(default)]
@@ -43,9 +44,22 @@ pub(super) struct RawConfig {
   pub references_path: Option<PathBuf>,
 }
 
+/// `sources` 配列が空でないことを検証します。
+#[expect(
+  clippy::ptr_arg,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため（`&Vec<PathBuf>` を `&[PathBuf]` へは変えられない）"
+)]
+fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
+  if value.is_empty() {
+    return Err(garde::Error::new("sources は最低 1 つのファイルを指定する必要があります"));
+  }
+  return Ok(());
+}
+
 /// `[document]` セクション: 文書のメタデータ（`date` 以外は PDF メタデータにも入る）
 #[derive(Deserialize, Debug, Default, Validate)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub(super) struct RawDocumentConfig {
   /// ドキュメントタイトル（PDF メタデータ）
   #[garde(skip)]
@@ -102,6 +116,7 @@ fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
 
 /// `[output]` セクション: 出力ファイル名・ディレクトリ
 #[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RawOutputConfig {
   /// 出力ファイル名の基盤（拡張子なし。PDF ファイル名は `{name}.pdf`）
   #[garde(custom(validate_output_name))]
@@ -109,35 +124,6 @@ pub(super) struct RawOutputConfig {
   /// 出力ディレクトリ（PDF ファイルの保存先）。
   #[garde(custom(validate_output_dir))]
   pub output_dir: Option<PathBuf>,
-}
-
-/// `sources` 配列が空でないことを検証します。
-#[expect(
-  clippy::ptr_arg,
-  clippy::trivially_copy_pass_by_ref,
-  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため（`&Vec<PathBuf>` を `&[PathBuf]` へは変えられない）"
-)]
-fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
-  if value.is_empty() {
-    return Err(garde::Error::new("sources は最低 1 つのファイルを指定する必要があります"));
-  }
-  return Ok(());
-}
-
-/// `output_dir` を検証します。
-#[expect(
-  clippy::ref_option,
-  clippy::trivially_copy_pass_by_ref,
-  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
-)]
-fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
-  let Some(path) = value else {
-    return Ok(());
-  };
-  if path.as_os_str().is_empty() {
-    return Err(garde::Error::new("出力ディレクトリは空にできません"));
-  }
-  return Ok(());
 }
 
 /// `[output].name`（出力ファイル名の基盤）を検証します。
@@ -158,8 +144,66 @@ fn validate_output_name(value: &str, _: &()) -> garde::Result {
   return Ok(());
 }
 
+/// `output_dir` を検証します。
+#[expect(
+  clippy::ref_option,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
+fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
+  let Some(path) = value else {
+    return Ok(());
+  };
+  if path.as_os_str().is_empty() {
+    return Err(garde::Error::new("出力ディレクトリは空にできません"));
+  }
+  return Ok(());
+}
+
+/// PDF ページの物理設定（用紙寸法と PDF 出力）の未検証の設定
+#[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPdfConfig {
+  /// ページの高さ（単位付き文字列、> 0）
+  #[garde(custom(positive))]
+  pub height: Length,
+  /// ページの幅（単位付き文字列、> 0）
+  #[garde(custom(positive))]
+  pub width: Length,
+  /// PDF のしおり（ブックマーク）を出力するか（省略時 true）
+  #[garde(skip)]
+  #[serde(default = "default_show_bookmarks")]
+  pub show_bookmarks: bool,
+}
+
+/// `[pdf].show_bookmarks` の既定値（true = しおりを出力）。
+fn default_show_bookmarks() -> bool { return true; }
+
+/// `[image]` セクション: ラスタ画像のダウンサンプリング設定
+#[derive(Deserialize, Debug, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct RawImageConfig {
+  /// ラスタ画像埋め込み時の最大 DPI（1〜2400）。表示物理サイズと本値から必要ピクセル数を計算し、
+  /// 元画像がそれを超える場合に限り縮小する。
+  #[garde(custom(in_range(1, 2400)))]
+  pub max_dpi: u32,
+  /// ラスタ画像のダウンサンプリングを行うか。`false` なら `max_dpi` によらず全画像を原寸で埋め込む。
+  #[garde(skip)]
+  pub downsample: bool,
+}
+
+impl Default for RawImageConfig {
+  fn default() -> Self {
+    return Self {
+      max_dpi: 300,
+      downsample: true,
+    };
+  }
+}
+
 /// 19 フォント種別すべての未検証のフォント設定
 #[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RawFontConfigs {
   /// Serif 標準フォント
   #[garde(dive)]
@@ -300,6 +344,7 @@ fn validate_font_language(value: &Option<String>, _: &()) -> garde::Result {
 
 /// バリアブルフォント軸の単一設定値
 #[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RawVariationAxis {
   /// 軸名（4 バイト ASCII の OpenType 軸タグ、例："wght"、"wdth"）
   pub name: String,
@@ -309,52 +354,12 @@ pub(super) struct RawVariationAxis {
 
 /// OpenType フィーチャータグと値のペア
 #[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RawFontFeature {
   /// フィーチャータグ（4 バイト ASCII、例："liga"、"smcp"、"dlig"）
   pub tag: String,
   /// フィーチャーの値（通常は 0=無効、1=有効）
   pub value: u32,
-}
-
-/// PDF ページの物理設定（用紙寸法と PDF 出力）の未検証の設定
-#[derive(Deserialize, Debug, Validate)]
-#[serde(deny_unknown_fields)]
-pub(super) struct RawPdfConfig {
-  /// ページの高さ（単位付き文字列、> 0）
-  #[garde(custom(positive))]
-  pub height: Length,
-  /// ページの幅（単位付き文字列、> 0）
-  #[garde(custom(positive))]
-  pub width: Length,
-  /// PDF のしおり（ブックマーク）を出力するか（省略時 true）
-  #[garde(skip)]
-  #[serde(default = "default_show_bookmarks")]
-  pub show_bookmarks: bool,
-}
-
-/// `[pdf].show_bookmarks` の既定値（true = しおりを出力）。
-fn default_show_bookmarks() -> bool { return true; }
-
-/// `[image]` セクション: ラスタ画像のダウンサンプリング設定
-#[derive(Deserialize, Debug, Validate)]
-#[serde(default)]
-pub(super) struct RawImageConfig {
-  /// ラスタ画像埋め込み時の最大 DPI（1〜2400）。表示物理サイズと本値から必要ピクセル数を計算し、
-  /// 元画像がそれを超える場合に限り縮小する。
-  #[garde(custom(in_range(1, 2400)))]
-  pub max_dpi: u32,
-  /// ラスタ画像のダウンサンプリングを行うか。`false` なら `max_dpi` によらず全画像を原寸で埋め込む。
-  #[garde(skip)]
-  pub downsample: bool,
-}
-
-impl Default for RawImageConfig {
-  fn default() -> Self {
-    return Self {
-      max_dpi: 300,
-      downsample: true,
-    };
-  }
 }
 
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
