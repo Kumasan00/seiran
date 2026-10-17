@@ -49,8 +49,9 @@
 //!   [`delimiters_cover_the_grid_and_stay_inside_the_block`] / [`tall_delimiters_grow_only_vertically`] /
 //!   [`assembled_delimiter_is_one_character_of_text`] /
 //!   [`assembled_delimiter_parts_stack_bottom_to_top_with_the_width_on_the_last_part`]（共通ヘルパ [`measure_delimited_block`]・[`stix_run_ink`] 経由）
-//! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）: [`prose_keeps_spaces_at_their_natural_width`] /
-//!   [`prose_puts_ja_latin_aki_by_punctuation_spacing`] / [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`]
+//! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）:
+//!   [`prose_keeps_spaces_at_their_natural_width`] / [`prose_puts_ja_latin_aki_by_punctuation_spacing`] /
+//!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`]
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /

@@ -473,8 +473,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       };
       items.push(spacing::MathItem::operator_name(text, style, *limits && ctx.style.level == StyleLevel::Display));
     },
-    // 文章は数式の字ではないので字形 variant を読まず、本文の既定の書体で組む。数式上は Ord の 1 アトムで、演算子名のアキも
-    // limits も付かない。空の文章は空のグループと同じく中身の無い Ord
+    // 文章は数式の字ではないので字形 variant を読まない。空の文章は空のグループと同じく中身の無い Ord
     HirMathKind::Prose(text) => {
       let nodes = if text.is_empty() {
         Vec::new()

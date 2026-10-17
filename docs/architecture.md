@@ -982,7 +982,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 シェーピング・計測、break 注入、画像ブロックの描画寸法の確定、`Atom` 化を行う。
 `boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返し、
 `HItem` への変換は積む直前）を持ち、本文テキストのスクリプト分割・break 注入（分割点ごとの
-glue・`Penalty`・`Discretionary` の生成）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
+glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
 の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。シェーピングそのものは子 `shaping` の
 `Shaper` が行い、**フォントメトリクスから箱の寸法を出すのは `ShapedRun::measure` 1 箇所**（分割した断片・
 約物 1 字は親 run の高さ・深さを写す）。段落構築のポリシーを持つ `Measurer` と、持たない `Shaper` は型で

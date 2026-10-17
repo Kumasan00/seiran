@@ -604,10 +604,9 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
   return Ok(collapse_single(group_id, nodes));
 }
 
-/// `\text` の引数を文章の文字列にする
+/// `\text` の引数を [`HirMathKind::Prose`] の文字列にする
 ///
 /// 引数は parser がテキストとして読んだ（`ArgMode::Text`）ので、トークンの読みは本文と同じ（[`inline::inline_from_token`]）。
-/// 空白・改行の連なりは語間の空白 1 個にまとめ、間のコメントは読み飛ばす。引数の先頭・末尾の空白も 1 個にして残す。
 fn prose_text(source: &str, arg: &CstNode<'_>) -> Result<String, EvalError> {
   let mut text = String::new();
   let mut pending_space = false;
