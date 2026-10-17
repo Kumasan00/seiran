@@ -185,8 +185,9 @@ TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の�
 **生（raw）→ 検証 → 解決済み（resolved）の 2 型構成**。TOML をそのまま受ける `Raw*` は非公開で garde の
 検証をここに付け、後段は検証済み・パス解決済みの公開型（`ProjectConfig` 等）だけを見る。
 
-現行の未知キー拒否は `[pdf]` と個々のフォント設定に限られ、トップレベルや `[output]` などでは
-未知キーが無視される。これは言語設計原則 P6 の未達であり、未知キーを許容する設計判断ではない。
+未知キーは全階層で拒否する（P6）。`Raw*` はすべて `#[serde(deny_unknown_fields)]` で、トップレベル・各テーブル・
+`[font_configs]` の種別名・`variation_axes` / `features` の配列要素の未知キーは TOML 解析の時点で
+`project::config::parse_toml`（ラベルがキーの位置を指す）になる。serde の検出は fail-fast なので、報告は最初の 1 件。
 
 - 入口 `load` は解決済みの `config_path` を受け取り、ここを再解決しない。config 内の相対パス（`sources` /
   `style_path` / `references_path` / フォントパス）は resolver で解決し、`style_path` / `references_path` は

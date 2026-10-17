@@ -116,6 +116,7 @@ PDF 生成の基本設定を行います。長さの値はすべて単位付き�
 この例の `serif` だけではビルドできません。キー名と各項目は
 [設定構造体の doc コメント](crates/seiran-compiler/src/project/config/raw.rs)、全種別を含む例は
 [付属の設定](crates/seiran-compiler/tests/config/config.toml)を参照してください。
+doc コメントに無いキー（綴りの誤り・廃止されたキーを含む）は、どの階層に書いても設定ファイルの位置付きのエラーになります。
 
 ```toml
 sources = ["chapter1.sei", "chapter2.sei"]  # 入力テキストファイル

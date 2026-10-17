@@ -1,4 +1,6 @@
 //! TOML の形をそのまま保持する未検証の設定構造体
+//!
+//! どの struct も `deny_unknown_fields` で、未知のキー・テーブル・フォント種別は解析の時点で拒否する（P6）。
 
 use std::{ops::Index, path::PathBuf};
 
