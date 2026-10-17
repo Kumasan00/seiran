@@ -1,10 +1,11 @@
 frontend::eval::unsupported_in_math
 
-  × 数式内では使用できません: 環境 matrix
+  × 数式内では使用できません: 環境 equation
    ╭─[tests/text/diagnostics/environment_in_inline_math.sei:3:24]
  2 │ 
- 3 │ インライン数式 $\begin{matrix}a\end{matrix}$ の中に環境を書いています。
-   ·                 ─────────────┬─────────────
-   ·                              ╰── この要素は数式内では使用できません
+ 3 │ インライン数式 $\begin{equation}a\end{equation}$ の中に環境を書いています。
+   ·                 ───────────────┬───────────────
+   ·                                ╰── この要素は数式内では使用できません
    ╰────
-  help: 数式内で使用できるのは数式コマンド・グループ・上付き / 下付きのみです
+  help: 数式内で使用できるのは数式コマンド・グループ・上付き / 下付きと matrix / cases 環境のみで
+        す

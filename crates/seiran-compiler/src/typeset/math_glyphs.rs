@@ -20,7 +20,7 @@ use crate::{
   project::{FontType, ProjectPath},
   source::SourceId,
   style::Style,
-  typeset::{boxing, lowering},
+  typeset::{boxing, lowering, lowering::DelimiterGlyphs},
 };
 
 /// 数式フォントに基本の字形が無い字を数式で使った箇所
@@ -243,10 +243,34 @@ impl Checker<'_> {
         self.written(node.id, *close, *close);
       },
       HirMathKind::Bar { body, .. } => self.math(body, variant),
+      HirMathKind::Matrix { delimiter, rows } => {
+        self.array(node.id, lowering::matrix_delimiter_glyphs(*delimiter), rows, variant);
+      },
+      HirMathKind::Cases { rows } => self.array(node.id, lowering::CASES_DELIMITERS, rows, variant),
       HirMathKind::Styled {
         variant: inner,
         children,
       } => self.math_list(children, Some(*inner)),
+    }
+    return;
+  }
+
+  /// 埋め込んだ行列・場合分け（箇所 `site`）の左の括弧・セル・右の括弧を、組む順に走査する
+  fn array(
+    &mut self,
+    site: NodeId,
+    delimiters: DelimiterGlyphs,
+    rows: &[Vec<Vec<HirMath>>],
+    variant: Option<MathVariant>,
+  ) {
+    if let Some(left) = delimiters.left {
+      self.direct(site, left);
+    }
+    for cell in rows.iter().flatten() {
+      self.math_list(cell, variant);
+    }
+    if let Some(right) = delimiters.right {
+      self.direct(site, right);
     }
     return;
   }

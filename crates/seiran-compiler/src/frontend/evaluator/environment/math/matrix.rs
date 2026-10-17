@@ -3,7 +3,9 @@
 //! 行と列に分割する非採番の数式環境。
 
 use crate::{
-  document::{HirMathBlock, HirNode, HirNodeKind, MathBlockKind, MathDelimiter},
+  document::{
+    HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathBlockKind, MathDelimiter, NodeId,
+  },
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -17,7 +19,7 @@ use crate::{
 /// `matrix[delimiter=...]`（両端の区切り記号）
 const DELIMITER: OptKey<String> = opt_args::string("delimiter");
 
-/// `matrix` 環境を評価する
+/// `matrix` 環境を表示数式ブロックとして評価する
 ///
 /// # Errors
 ///
@@ -26,6 +28,44 @@ pub(in crate::frontend::evaluator::environment) fn matrix(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
 ) -> Result<HirNode, EvalError> {
+  let (id, delimiter, rows) = evaluate_matrix(view, ctx)?;
+  return Ok(HirNode::new(
+    id,
+    HirNodeKind::MathBlock(HirMathBlock {
+      kind: MathBlockKind::Matrix { delimiter },
+      rows,
+      numbered: false,
+      label: None,
+    }),
+  ));
+}
+
+/// 数式の中に書いた `matrix` 環境を、数式の 1 要素として評価する
+///
+/// # Errors
+///
+/// [`matrix`] と同じ
+pub(in crate::frontend::evaluator::environment) fn embedded_matrix(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<HirMath, EvalError> {
+  let (id, delimiter, rows) = evaluate_matrix(view, ctx)?;
+  return Ok(HirMath::new(
+    id,
+    HirMathKind::Matrix {
+      delimiter,
+      rows: rows.into_iter().map(|row| return row.cells).collect(),
+    },
+  ));
+}
+
+/// `matrix` 環境のオプションと本体を評価し、（環境の ID, 区切り括弧, 行）を返す
+///
+/// 環境の ID はセルより先に確保する。行は非採番で、行末マーカーは受け付けない。
+fn evaluate_matrix(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<(NodeId, MathDelimiter, Vec<HirMathRow>), EvalError> {
   let opts = collect_environment_opt_args(view, &[DELIMITER.decl()])?;
   let delimiter = match opts.get(DELIMITER) {
     Some(value) => {
@@ -58,17 +98,7 @@ pub(in crate::frontend::evaluator::environment) fn matrix(
     )?,
     None => Vec::new(),
   };
-  let rows = into_unnumbered_rows(grid);
-
-  return Ok(HirNode::new(
-    id,
-    HirNodeKind::MathBlock(HirMathBlock {
-      kind: MathBlockKind::Matrix { delimiter },
-      rows,
-      numbered: false,
-      label: None,
-    }),
-  ));
+  return Ok((id, delimiter, into_unnumbered_rows(grid)));
 }
 
 #[cfg(test)]

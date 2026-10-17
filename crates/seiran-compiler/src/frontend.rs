@@ -66,8 +66,8 @@ mod tests {
   use super::{EvalError, ParseError, parse};
   use crate::{
     document::{
-      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathSpace,
-      MathVariant, Typeface,
+      HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathBlock, HirMathKind, HirNode, HirNodeKind, MathClass,
+      MathDelimiter, MathSpace, MathVariant, Typeface,
     },
     frontend::{evaluator, syntax::SyntaxError, test_support},
     project::{PathResolver, ProjectPath},
@@ -1378,16 +1378,17 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_environment_in_math_is_error_wherever_written() {
+  fn display_environment_in_math_is_error_wherever_written() {
     for source in [
-      r"$\begin{matrix}a\end{matrix}$",
-      r"${\begin{matrix}a\end{matrix}}$",
-      r"$\frac{\begin{matrix}a\end{matrix}}{2}$",
-      r"\begin{equation}{\begin{matrix}a\end{matrix}}\end{equation}",
+      r"$\begin{equation}a\end{equation}$",
+      r"${\begin{equation}a\end{equation}}$",
+      r"$\frac{\begin{equation}a\end{equation}}{2}$",
+      r"\begin{equation}{\begin{equation}a\end{equation}}\end{equation}",
+      r"$\begin{matrix}\begin{equation}a\end{equation}\end{matrix}$",
     ] {
       let error = evaluate_error(source);
       assert!(
-        matches!(error, EvalError::UnsupportedInMath { ref what, .. } if what == "環境 matrix"),
+        matches!(error, EvalError::UnsupportedInMath { ref what, .. } if what == "環境 equation"),
         "{source}: {error:?}"
       );
     }
@@ -2041,5 +2042,191 @@ mod tests {
       matches!(result, Err(ParseError::Syntax(SyntaxError::BareGroup { .. }))),
       "数式の中でも \\text の引数はテキストとして読む: {result:?}"
     );
+  }
+
+  /// 数式ノード列の中で、最初に見つかる埋め込みの行列・場合分けを深さ優先で探す
+  fn find_array(nodes: &[HirMath]) -> Option<&HirMathKind> {
+    return nodes.iter().find_map(|node| return find_array_in(node));
+  }
+
+  /// 数式ノード 1 つの中で、最初に見つかる埋め込みの行列・場合分けを深さ優先で探す
+  fn find_array_in(node: &HirMath) -> Option<&HirMathKind> {
+    return match &node.kind {
+      HirMathKind::Matrix { .. } | HirMathKind::Cases { .. } => Some(&node.kind),
+      HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => find_array(children),
+      HirMathKind::Superscript(child)
+      | HirMathKind::Subscript(child)
+      | HirMathKind::Accent { base: child, .. }
+      | HirMathKind::Fenced { body: child, .. }
+      | HirMathKind::Bar { body: child, .. } => find_array_in(child),
+      HirMathKind::Frac { numer, denom } => find_array_in(numer).or_else(|| return find_array_in(denom)),
+      HirMathKind::Sqrt { index, radicand } => {
+        index.as_deref().and_then(find_array_in).or_else(|| return find_array_in(radicand))
+      },
+      HirMathKind::Text(_)
+      | HirMathKind::Symbol { .. }
+      | HirMathKind::Space(_)
+      | HirMathKind::OperatorName { .. }
+      | HirMathKind::Prose(_) => None,
+    };
+  }
+
+  /// 埋め込みの行列・場合分けの行ごとのセル数
+  fn array_shape(kind: &HirMathKind) -> Vec<usize> {
+    let (HirMathKind::Matrix { rows, .. } | HirMathKind::Cases { rows }) = kind else {
+      panic!("Matrix / Cases が期待されます: {kind:?}");
+    };
+    return rows.iter().map(Vec::len).collect();
+  }
+
+  /// 最初の表示数式ブロックを返す
+  fn first_math_block(nodes: &[HirNode]) -> &HirMathBlock {
+    return nodes
+      .iter()
+      .find_map(|node| match &node.kind {
+        HirNodeKind::MathBlock(math) => return Some(math),
+        _ => return None,
+      })
+      .expect("表示数式ブロックがあるはず");
+  }
+
+  #[test]
+  fn matrix_embeds_in_inline_math() {
+    let math = inline_math_nodes(r"$v = \begin{matrix}[delimiter=paren]a \\ b\end{matrix}$");
+
+    let array = find_array(&math).expect("行列が埋め込まれるはず");
+    assert!(
+      matches!(
+        array,
+        HirMathKind::Matrix {
+          delimiter: MathDelimiter::Paren,
+          ..
+        }
+      ),
+      "{array:?}"
+    );
+    assert_eq!(array_shape(array), vec![1, 1]);
+  }
+
+  #[test]
+  fn cases_embeds_after_a_relation_in_equation() {
+    let nodes = evaluate_source(
+      r"\begin{equation}f(x) = \begin{cases}x & x > 0 \\ 0 & x = 0 \\ -x & x < 0\end{cases}\end{equation}",
+    );
+
+    let block = first_math_block(&nodes);
+    assert_eq!(block.rows.len(), 1);
+    assert_eq!(block.rows[0].cells.len(), 1, "equation は単一セル");
+    let array = find_array(&block.rows[0].cells[0]).expect("場合分けが埋め込まれるはず");
+    assert!(matches!(array, HirMathKind::Cases { .. }), "{array:?}");
+    assert_eq!(array_shape(array), vec![2, 2, 2]);
+  }
+
+  #[test]
+  fn inner_breaks_stay_inside_the_embedded_environment() {
+    let nodes = evaluate_source(r"\begin{align}f &= \begin{cases}x & y \\ z & w\end{cases} \\ g &= h\end{align}");
+
+    let block = first_math_block(&nodes);
+    assert_eq!(block.rows.len(), 2, "外側の align は 2 行");
+    assert_eq!(block.rows[0].cells.len(), 2, "外側の行 0 は 2 列");
+    assert!(block.rows.iter().all(|row| return row.numbered), "外側の行は採番される");
+    assert!(find_array(&block.rows[0].cells[0]).is_none(), "左セルには埋め込みが無い");
+    let array = find_array(&block.rows[0].cells[1]).expect("右セルに場合分けがあるはず");
+    assert_eq!(array_shape(array), vec![2, 2], "内側は 2 行 2 列");
+  }
+
+  #[test]
+  fn matrix_nests_in_matrix_cells_and_math_arguments() {
+    let sources = [
+      r"$\frac{\begin{matrix}a\end{matrix}}{b}$",
+      r"$\sqrt{\begin{cases}b\end{cases}}$",
+      r"$\paren{\begin{matrix}c\end{matrix}}$",
+      r"$x^{\begin{matrix}d\end{matrix}}$",
+      r"$\begin{cases}\begin{matrix}e\end{matrix} & f\end{cases}$",
+    ];
+    for source in sources {
+      let math = inline_math_nodes(source);
+
+      assert!(find_array(&math).is_some(), "埋め込みがあるはず: {source} → {math:?}");
+    }
+
+    let math = inline_math_nodes(r"$\begin{matrix}\begin{matrix}a & b\end{matrix} & c\end{matrix}$");
+    let HirMathKind::Matrix { rows, .. } = find_array(&math).expect("外側の行列") else {
+      panic!("Matrix が期待されます");
+    };
+    assert_eq!(rows[0].len(), 2, "外側は 2 列: {rows:?}");
+    let inner = find_array(&rows[0][0]).expect("1 列目に内側の行列");
+    assert_eq!(array_shape(inner), vec![2], "内側は 1 行 2 列");
+  }
+
+  #[test]
+  fn embedded_environment_keeps_the_standalone_option_rules() {
+    assert!(matches!(
+      evaluate_error(r"$\begin{matrix}[delimiter=angle]a\end{matrix}$"),
+      EvalError::InvalidOptArgValue { ref key, .. } if key == "delimiter"
+    ));
+    for source in [
+      r"$\begin{matrix}[numbered=true]a\end{matrix}$",
+      r"$\begin{matrix}[label=eq:x]a\end{matrix}$",
+      r"$\begin{cases}[foo=1]a\end{cases}$",
+    ] {
+      let error = evaluate_error(source);
+
+      assert!(matches!(error, EvalError::UnknownOptArgKey { .. }), "{source}: {error:?}");
+    }
+  }
+
+  #[test]
+  fn embedded_environment_rejects_row_markers() {
+    assert!(matches!(
+      evaluate_error(r"\begin{align}a &= \begin{cases}b \notag\end{cases}\end{align}"),
+      EvalError::NotagNotSupported { .. }
+    ));
+    assert!(matches!(
+      evaluate_error(r"$\begin{matrix}a \label{eq:x}\end{matrix}$"),
+      EvalError::RowLabelNotSupported { .. }
+    ));
+  }
+
+  #[test]
+  fn embedded_cases_rejects_three_columns() {
+    let error = evaluate_error(r"$\begin{cases}a & b & c\end{cases}$");
+
+    assert!(matches!(error, EvalError::CasesColumnOverflow { found: 3, .. }), "{error:?}");
+  }
+
+  #[test]
+  fn embedded_environment_keeps_the_standalone_row_rules() {
+    let cases: [(&str, Vec<usize>); 3] = [
+      (r"$\begin{matrix}\end{matrix}$", vec![]),
+      ("$\\begin{matrix}a \\\\ \\end{matrix}$", vec![1]),
+      (r"$\begin{matrix}a & b \\ c\end{matrix}$", vec![2, 1]),
+    ];
+    for (source, expected) in cases {
+      let math = inline_math_nodes(source);
+
+      let array = find_array(&math).expect("行列があるはず");
+      assert_eq!(array_shape(array), expected, "{source}");
+    }
+  }
+
+  #[test]
+  fn display_environments_stay_rejected_in_math() {
+    for name in [
+      "equation",
+      "align",
+      "gather",
+      "split",
+      "multiline",
+      "itemize",
+      "foo",
+    ] {
+      let error = evaluate_error(&format!("$\\begin{{{name}}}a\\end{{{name}}}$"));
+
+      assert!(
+        matches!(&error, EvalError::UnsupportedInMath { what, .. } if *what == format!("環境 {name}")),
+        "{name}: {error:?}"
+      );
+    }
   }
 }

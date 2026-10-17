@@ -1,6 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::document::{MathClass, MathSpace, MathVariant, hir::NodeId};
+use crate::document::{MathClass, MathDelimiter, MathSpace, MathVariant, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 #[derive(Debug, PartialEq)]
@@ -93,6 +93,18 @@ pub(crate) enum HirMathKind {
     variant: MathVariant,
     /// 装飾対象の数式要素
     children: Vec<HirMath>,
+  },
+  /// 数式に埋め込んだ行列（`matrix` 環境）
+  Matrix {
+    /// 区切り括弧の種別
+    delimiter: MathDelimiter,
+    /// 行 × 列のセル。各セルは数式ノード列（行ごとに列数が違ってよい）
+    rows: Vec<Vec<Vec<HirMath>>>,
+  },
+  /// 数式に埋め込んだ場合分け（`cases` 環境）
+  Cases {
+    /// 行 × 列のセル。各セルは数式ノード列で、各行は 2 セル以下（frontend が検査済み）
+    rows: Vec<Vec<Vec<HirMath>>>,
   },
 }
 

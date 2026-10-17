@@ -69,7 +69,7 @@ pub(super) fn lower_inline(
         parent_style.font_size,
         ctx.script_scale,
         parent_style.color,
-        ctx.style.math.accent_dotless,
+        &ctx.style.math,
         ctx.style.text.typeface,
       );
     },

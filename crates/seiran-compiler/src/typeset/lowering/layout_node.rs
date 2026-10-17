@@ -100,6 +100,8 @@ pub(in crate::typeset) enum InlineNode {
   Fenced(MathFenced),
   /// 基底の上か下に罫線を引いた上線・下線（インライン数式のトップレベル）
   Bar(MathBar),
+  /// 数式に埋め込んだ行列・場合分け（インライン数式のトップレベル）
+  Array(MathArray),
   /// display 段の大型演算子（[`AtomNode::LargeOperator`] を段落の語彙へ持ち上げたもの。インライン数式は text 段で
   /// 組むので作らないが、`AtomNode` ⊂ `InlineNode` の包含を保つために置く）
   LargeOperator {
@@ -142,7 +144,7 @@ pub(in crate::typeset) enum InlineNode {
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
 /// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・文章・カーン・上付き下付きの付いた基底・分数・根号・
-/// アクセント・伸縮括弧・上下線・大型演算子だけを持つ。
+/// アクセント・伸縮括弧・上下線・埋め込んだ行列と場合分け・大型演算子だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
@@ -166,6 +168,8 @@ pub(in crate::typeset) enum AtomNode {
   Fenced(MathFenced),
   /// 基底の上か下に罫線を引いた上線・下線
   Bar(MathBar),
+  /// セルのグリッドの縦中央を数式軸に載せ、括弧があれば中身の高さへ伸ばして挟んだ、数式に埋め込んだ行列・場合分け
+  Array(MathArray),
   /// display 段の大型演算子（boxing が `DisplayOperatorMinHeight` 以上の字形へ縦に伸ばし、インクの縦中央を数式軸に
   /// 合わせて置く）
   LargeOperator {
@@ -189,6 +193,7 @@ impl From<AtomNode> for InlineNode {
       AtomNode::Accent(accent) => InlineNode::Accent(accent),
       AtomNode::Fenced(fenced) => InlineNode::Fenced(fenced),
       AtomNode::Bar(bar) => InlineNode::Bar(bar),
+      AtomNode::Array(array) => InlineNode::Array(array),
       AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
     };
   }
@@ -381,6 +386,27 @@ pub(in crate::typeset) struct MathFenced {
   pub script_level: Option<ScriptLevel>,
   /// 左右の区切り括弧の色（外側の `\color`・リンク色。`None` は既定色）
   pub color: Option<Color>,
+}
+
+/// 数式に埋め込んだ行列・場合分け
+///
+/// セルの配置（列幅・行送り・数式軸への中央合わせ）と括弧の伸縮は計測寸法と数式フォントの MATH から boxing が決める。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathArray {
+  /// 行 × 列のセル（lower 済みの数式と列内揃え）
+  pub rows: Vec<Vec<MathBlockCellLayout>>,
+  /// グリッドを囲む左右の区切り括弧グリフ
+  pub delimiters: DelimiterGlyphs,
+  /// 行列の段のフォントサイズ（括弧の大きさ・括弧と中身のアキ・数式軸の換算に使う）
+  pub font_size: Length,
+  /// 行列の段のスクリプト段（括弧を伸ばさないときの `ssty`。display / text 段は `None`）
+  pub script_level: Option<ScriptLevel>,
+  /// 区切り括弧の色（外側の `\color`・リンク色。`None` は既定色）
+  pub color: Option<Color>,
+  /// 行間（段の大きさに比例させた値）
+  pub row_gap: Length,
+  /// 列間（段の大きさに比例させた値）
+  pub column_gap: Length,
 }
 
 /// 基底の上か下に罫線を引いた上線・下線

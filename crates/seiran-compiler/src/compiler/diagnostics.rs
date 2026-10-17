@@ -103,9 +103,10 @@ fn diagnostic_math_script_without_group() {
 
 #[test]
 fn diagnostic_environment_in_inline_math() {
-  // 数式内の環境は、`$...$` の直下に書いても数式内で使えないという診断になる
+  // 表示数式全体の環境は、`$...$` の直下に書いても数式内で使えないという診断になる
   let failure = compile_err(&["tests/text/diagnostics/environment_in_inline_math.sei"]);
 
+  assert_eq!(codes(&failure), vec!["frontend::eval::unsupported_in_math".to_string()]);
   assert_matches_golden("environment_in_inline_math", &render_failure(failure));
 }
 
