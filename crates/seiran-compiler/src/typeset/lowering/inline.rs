@@ -70,6 +70,7 @@ pub(super) fn lower_inline(
         ctx.script_scale,
         parent_style.color,
         ctx.style.math.accent_dotless,
+        ctx.style.text.typeface,
       );
     },
     HirInlineKind::Symbol(ch) => {

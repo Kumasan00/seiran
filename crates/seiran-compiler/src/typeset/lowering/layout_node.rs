@@ -70,6 +70,10 @@ pub(in crate::typeset) enum InlineNode {
   /// 1 つとして組む。コードは空白の個数と位置そのものが内容なので、行分割・行揃えで
   /// 幅が動いてはならない。
   TextAtom(String, TextStyle),
+  /// 数式内の文章（`\text{...}`）
+  ///
+  /// 本文と同じ規則（和欧文間アキ・約物アキ）で組み、行分割も伸縮もしない自然幅の閉じた箱 1 つにする。
+  Prose(String, TextStyle),
   /// 水平カーン（固定幅の空白）
   Kern {
     /// カーンの幅
@@ -137,12 +141,14 @@ pub(in crate::typeset) enum InlineNode {
 
 /// Atom（行分割をまたがない閉じた箱）の中身になれるノード
 ///
-/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・カーン・上付き下付きの付いた基底・分数・根号・
+/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・文章・カーン・上付き下付きの付いた基底・分数・根号・
 /// アクセント・伸縮括弧・上下線・大型演算子だけを持つ。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum AtomNode {
   /// スタイル付きテキスト
   Text(String, TextStyle),
+  /// 数式内の文章（`\text{...}`。[`InlineNode::Prose`] と同じ）
+  Prose(String, TextStyle),
   /// 水平カーン（固定幅のアキ。数式のアトム間スペーシングが出す）
   Kern {
     /// カーンの幅
@@ -175,6 +181,7 @@ impl From<AtomNode> for InlineNode {
   fn from(node: AtomNode) -> Self {
     return match node {
       AtomNode::Text(text, style) => InlineNode::Text(text, style),
+      AtomNode::Prose(text, style) => InlineNode::Prose(text, style),
       AtomNode::Kern { length } => InlineNode::Kern { length },
       AtomNode::Scripts(scripts) => InlineNode::Scripts(scripts),
       AtomNode::Fraction(fraction) => InlineNode::Fraction(fraction),

@@ -11,15 +11,16 @@ use icu::normalizer::ComposingNormalizerBorrowed;
 use itertools::Itertools;
 
 use crate::{
-  document::{HirMath, HirMathKind, MathClass, MathSpace, MathVariant, NodeId},
+  document::{HirInlineKind, HirMath, HirMathKind, MathClass, MathSpace, MathVariant, NodeId},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError, arity, command,
       command::symbol::{self, MathSymbol},
+      inline::{self, TokenInline},
       opt_args::{self, OptKey},
     },
     syntax::{
-      self, CstElement, CstNode, SyntaxKind,
+      self, ArgMode, CstElement, CstNode, SyntaxKind,
       token::{Token, TokenKind},
       view::{CommandView, EnvironmentView},
     },
@@ -249,7 +250,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -289,6 +290,8 @@ enum MathCommandKind {
     /// display 段で付くスクリプトを上下に積むか
     limits: bool,
   },
+  /// 文章（`\text`）— 必須引数 1 個（テキストとして読む文章）
+  Prose,
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -302,6 +305,7 @@ impl MathCommandKind {
     return match name {
       "frac" => Some(Self::Frac),
       "sqrt" => Some(Self::Sqrt),
+      "text" => Some(Self::Prose),
       _ => fence_delimiters(name)
         .map(|(open, close)| return Self::Fenced { open, close })
         .or_else(|| return accent_mark(name).map(|mark| return Self::Accent { mark, wide: false }))
@@ -316,9 +320,25 @@ impl MathCommandKind {
   /// 必須引数の個数
   fn arg_count(self) -> usize {
     return match self {
-      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } => 1,
+      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } | Self::Prose => 1,
       Self::Frac => 2,
       Self::Space(_) | Self::OperatorName { .. } | Self::Symbol(_) => 0,
+    };
+  }
+
+  /// 必須引数の読み取り方を位置順に返す（宣言の無い位置は外側文脈の継承）
+  fn arg_modes(self) -> &'static [ArgMode] {
+    return match self {
+      Self::Prose => &[ArgMode::Text],
+      Self::Styled(_)
+      | Self::Frac
+      | Self::Sqrt
+      | Self::Fenced { .. }
+      | Self::Accent { .. }
+      | Self::Bar { .. }
+      | Self::Space(_)
+      | Self::OperatorName { .. }
+      | Self::Symbol(_) => &[],
     };
   }
 }
@@ -456,6 +476,14 @@ pub(super) fn lookup_math_arg_count(name: &str) -> Option<usize> {
   return MathCommandKind::from_name(name).map(MathCommandKind::arg_count);
 }
 
+/// 数式内のコマンド名から必須引数の読み取り方を位置順に引く（数式の語彙に無いコマンドと宣言の無いコマンドは空）
+pub(super) fn lookup_math_arg_modes(name: &str) -> &'static [ArgMode] {
+  return match MathCommandKind::from_name(name) {
+    Some(kind) => kind.arg_modes(),
+    None => &[],
+  };
+}
+
 /// 数式内コマンドを [`HirMath`] に変換する
 ///
 /// 数式内ではパーサーが [`MathCommandKind::arg_count`] 個で引数の読みを打ち切るので、
@@ -549,6 +577,12 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
         },
       ));
     },
+    MathCommandKind::Prose => {
+      opt_args::no_command_opt_args(&view)?;
+      let arg = arity::exactly_one_arg(&view, "1 個（文章）")?;
+      let text = prose_text(source, arg)?;
+      return Ok(ctx.leaf_math(view.span(), HirMathKind::Prose(text)));
+    },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;
       arity::no_command_args(&view)?;
@@ -568,6 +602,99 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
   let group_id = ctx.alloc(arg_node.span);
   let nodes = evaluate_math_children(source, ctx, arg_node)?;
   return Ok(collapse_single(group_id, nodes));
+}
+
+/// `\text` の引数を文章の文字列にする
+///
+/// 引数は parser がテキストとして読んだ（`ArgMode::Text`）ので、トークンの読みは本文と同じ（[`inline::inline_from_token`]）。
+/// 空白・改行の連なりは語間の空白 1 個にまとめ、間のコメントは読み飛ばす。引数の先頭・末尾の空白も 1 個にして残す。
+fn prose_text(source: &str, arg: &CstNode<'_>) -> Result<String, EvalError> {
+  let mut text = String::new();
+  let mut pending_space = false;
+  for child in arg.children {
+    let piece = match child {
+      CstElement::Token(token) if matches!(token.kind, TokenKind::Whitespace | TokenKind::Newline) => {
+        pending_space = true;
+        continue;
+      },
+      CstElement::Token(token) => match inline::inline_from_token(source, token) {
+        Some(TokenInline::MergeableText(piece)) => piece.to_string(),
+        Some(TokenInline::Leaf(HirInlineKind::Text(piece))) => piece,
+        Some(TokenInline::Leaf(HirInlineKind::LineBreak)) => {
+          return Err(EvalError::UnsupportedInMathText {
+            what: r"\\（強制改行）".to_string(),
+            span: token.span.into(),
+          });
+        },
+        Some(TokenInline::Leaf(_)) => {
+          unreachable!("inline_from_token がトークンから作る葉は Text と LineBreak だけ")
+        },
+        Some(TokenInline::ParagraphBreak) => {
+          return Err(EvalError::ParagraphBreakInArgument {
+            span: token.span.into(),
+          });
+        },
+        None => continue,
+      },
+      CstElement::Node(node) => match node.kind {
+        SyntaxKind::CommandCall => prose_char(source, node)?.to_string(),
+        SyntaxKind::InlineMath => {
+          return Err(EvalError::UnsupportedInMathText {
+            what: "インライン数式 $...$".to_string(),
+            span: node.span.into(),
+          });
+        },
+        SyntaxKind::Environment => {
+          return Err(EvalError::UnsupportedInMathText {
+            what: format!("環境 {}", EnvironmentView::new(node, source).name()),
+            span: node.span.into(),
+          });
+        },
+        SyntaxKind::Root
+        | SyntaxKind::EnvironmentBegin
+        | SyntaxKind::EnvironmentEnd
+        | SyntaxKind::EnvironmentBody
+        | SyntaxKind::OptArg
+        | SyntaxKind::MandatoryArg
+        | SyntaxKind::MathGroup
+        | SyntaxKind::MathSubscript
+        | SyntaxKind::MathSuperscript => {
+          unreachable!(
+            "テキストとして読んだ引数の直下に parser が置くノードは、コマンド呼び出し・環境・インライン数式だけ"
+          )
+        },
+      },
+    };
+    if pending_space {
+      text.push(' ');
+      pending_space = false;
+    }
+    text.push_str(&piece);
+  }
+  if pending_space {
+    text.push(' ');
+  }
+  return Ok(text);
+}
+
+/// `\text` の引数の中のコマンドを字にする（受け付けるのは記号コマンドだけ）
+fn prose_char(source: &str, node: &CstNode<'_>) -> Result<char, EvalError> {
+  let view = CommandView::new(node, source);
+  if let Some(symbol) = symbol::lookup(view.name()) {
+    opt_args::no_command_opt_args(&view)?;
+    arity::no_command_args(&view)?;
+    return Ok(symbol.ch);
+  }
+  if command::is_registered(view.name()) || MathCommandKind::from_name(view.name()).is_some() {
+    return Err(EvalError::UnsupportedInMathText {
+      what: format!("\\{}", view.name()),
+      span: view.span().into(),
+    });
+  }
+  return Err(EvalError::UnknownCommand {
+    name: view.name().to_string(),
+    span: view.span().into(),
+  });
 }
 
 #[cfg(test)]

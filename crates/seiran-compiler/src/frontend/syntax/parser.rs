@@ -64,6 +64,8 @@ pub(in crate::frontend) enum ArgMode {
   /// 外側文脈の [`ParseMode`] を継承してトークン化し、直下の構造トークン `,` を項目の区切りとして読む
   /// （直下に限り `\,` で `,` を項目の字にできる）
   CommaList,
+  /// 外側文脈の [`ParseMode`] によらずテキストモードでトークン化する（数式の中でも `_` `^` は字、裸の `{...}` は構文エラー）
+  Text,
   /// ブレースバランスで生読みする
   Verbatim,
 }
@@ -542,6 +544,7 @@ impl<'a> Parser<'a> {
       let arg_node = match (self.modes.command_arg)(command_name, arg_index) {
         ArgMode::Verbatim => self.parse_verbatim_arg()?,
         ArgMode::Inherit => self.parse_mandatory_arg(mode)?,
+        ArgMode::Text => self.parse_mandatory_arg(ParseMode::Text)?,
         ArgMode::CommaList => self.parse_delimited(
           TokenKind::LBrace,
           TokenKind::RBrace,
@@ -875,22 +878,24 @@ mod tests {
   /// テスト用の（コマンド名, 引数位置）→ [`ArgMode`] 解決関数
   ///
   /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンド、`vcite` は必須引数が
-  /// `,` 区切りの項目列のコマンドのスタンドイン。
+  /// `,` 区切りの項目列のコマンド、`vtext` は必須引数をテキストとして読む数式コマンドのスタンドイン。
   fn test_command_arg(name: &str, index: usize) -> ArgMode {
     return match (name, index) {
       ("vurl", _) | ("vhref", 0) => ArgMode::Verbatim,
       ("vcite", _) => ArgMode::CommaList,
+      ("vtext", _) => ArgMode::Text,
       _ => ArgMode::Inherit,
     };
   }
 
   /// テスト用の数式内コマンド名 → 必須引数の個数の解決関数
   ///
-  /// `vfrac` は 2 個、`valpha` は 0 個の必須引数を取る数式コマンドのスタンドイン。それ以外は数式の語彙に
+  /// `vfrac` は 2 個、`valpha` は 0 個、`vtext` は 1 個の必須引数を取る数式コマンドのスタンドイン。それ以外は数式の語彙に
   /// 無い扱い（`None`）で、個数で打ち切らない。
   fn test_math_arg_count(name: &str) -> Option<usize> {
     return match name {
       "vfrac" => Some(2),
+      "vtext" => Some(1),
       "valpha" => Some(0),
       _ => None,
     };
@@ -2250,5 +2255,68 @@ mod tests {
     for source in [r"\vurl{a\%b}", "\\begin{code}\\%\\,\\end{code}"] {
       assert!(parse_cst(source, &arena).is_ok(), "{source}");
     }
+  }
+
+  /// 最初のインライン数式の最初のコマンド呼び出しの必須引数を返す
+  fn first_math_command_args<'a>(cst: &'a CstNode<'a>) -> Vec<&'a CstNode<'a>> {
+    let CstElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).expect("CommandCall ノードが期待されます");
+    return cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
+  }
+
+  #[test]
+  fn text_arg_inside_math_is_read_in_text_mode() {
+    let arena = Bump::new();
+
+    let cst = parse_cst("$\\vtext{a_b^c}$", &arena).unwrap();
+
+    let args = first_math_command_args(cst);
+    assert_eq!(args.len(), 1);
+    assert!(args[0].first_child_of_kind(SyntaxKind::MathSubscript).is_none(), "`_` は下付きにならない");
+    assert!(args[0].first_child_of_kind(SyntaxKind::MathSuperscript).is_none(), "`^` は上付きにならない");
+    assert!(
+      args[0]
+        .children
+        .iter()
+        .any(|child| return matches!(child, CstElement::Token(t) if t.kind == TokenKind::Underscore)),
+      "`_` はテキストモードのリーフとして残る"
+    );
+  }
+
+  #[test]
+  fn bare_group_in_text_arg_inside_math_is_error() {
+    let arena = Bump::new();
+
+    let result = parse_cst("$\\vtext{a{b}}$", &arena);
+
+    assert!(matches!(result, Err(SyntaxError::BareGroup { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn dollar_in_text_arg_opens_nested_inline_math() {
+    let arena = Bump::new();
+
+    let cst = parse_cst("$\\vtext{a $b$ c}$", &arena).unwrap();
+
+    let args = first_math_command_args(cst);
+    assert!(
+      args[0].first_child_of_kind(SyntaxKind::InlineMath).is_some(),
+      "入れ子の数式として読む（拒否は評価器）"
+    );
+  }
+
+  #[test]
+  fn group_after_text_arg_inside_math_is_math_group() {
+    let arena = Bump::new();
+
+    let cst = parse_cst("$\\vtext{a}{b}$", &arena).unwrap();
+
+    let CstElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    assert_eq!(first_math_command_args(cst).len(), 1, "宣言した 1 個で読みを打ち切る");
+    assert!(math.first_child_of_kind(SyntaxKind::MathGroup).is_some(), "`{{b}}` は数式グループ");
   }
 }

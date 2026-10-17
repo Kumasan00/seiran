@@ -265,14 +265,17 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
 /// コマンド名と必須引数の位置（0 始まり）から読み取り方を引く
 ///
-/// 未登録のコマンド（記号コマンドを含む）・宣言の範囲を超えた位置は
-/// [`ArgMode::Inherit`]（外側文脈の継承）が既定。
+/// 機能コマンドのレジストリ（[`COMMANDS`]）に無い名前は数式の語彙の宣言を引く（`\text` の文章）。どちらも宣言しない
+/// コマンド（記号コマンドを含む）・宣言の範囲を超えた位置は [`ArgMode::Inherit`]（外側文脈の継承）が既定。
 pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
-  let Some(kind) = COMMANDS.get(name) else {
-    return ArgMode::Inherit;
-  };
-  return kind.arg_modes().get(index).copied().unwrap_or(ArgMode::Inherit);
+  let modes = COMMANDS
+    .get(name)
+    .map_or_else(|| return math::lookup_math_arg_modes(name), |kind| return kind.arg_modes());
+  return modes.get(index).copied().unwrap_or(ArgMode::Inherit);
 }
+
+/// 名前が機能コマンドのレジストリ（[`COMMANDS`]）にあるか
+pub(super) fn is_registered(name: &str) -> bool { return COMMANDS.contains_key(name); }
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///
@@ -374,6 +377,13 @@ mod tests {
   fn lookup_arg_mode_beyond_declaration_is_inherit() {
     assert_eq!(lookup_arg_mode("url", 1), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("href", 2), ArgMode::Inherit);
+  }
+
+  #[test]
+  fn lookup_arg_mode_takes_the_declaration_of_the_math_vocabulary() {
+    assert_eq!(lookup_arg_mode("text", 0), ArgMode::Text);
+    assert_eq!(lookup_arg_mode("text", 1), ArgMode::Inherit, "宣言の範囲を超えた位置は継承");
+    assert_eq!(lookup_arg_mode("frac", 0), ArgMode::Inherit, "数式の語彙でも宣言の無いコマンドは継承");
   }
 
   #[test]

@@ -218,7 +218,8 @@ impl Checker<'_> {
           self.routed(node.id, written, written);
         }
       },
-      HirMathKind::Space(_) => {},
+      // 明示アキは字を持たず、文章は本文の書体で組むので、どちらも数式フォントの字を要求しない
+      HirMathKind::Space(_) | HirMathKind::Prose(_) => {},
       HirMathKind::Group(children) => self.math_list(children, variant),
       HirMathKind::Superscript(inner) | HirMathKind::Subscript(inner) => self.math(inner, variant),
       HirMathKind::Frac { numer, denom } => {

@@ -7,7 +7,7 @@
 //! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
 //! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //!
-//! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入）と
+//! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
 //! `math`（ディスプレイ数式と、数式の上付き・下付きの配置）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
 //! `ShapedRun`（グリフ列 + 確定寸法）を持ち、**箱の寸法を求める処理はここ 1 箇所**。`script`（スクリプト分類と
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
@@ -275,6 +275,9 @@ impl<'a> Measurer<'a> {
       InlineNode::TextAtom(text, style) => {
         out.push(HItem::Box(self.text_atom(text, style)));
       },
+      InlineNode::Prose(text, style) => {
+        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Prose(text, style)])));
+      },
       InlineNode::Kern { length } => {
         out.push(HItem::Kern(length));
       },
@@ -386,6 +389,9 @@ impl<'a> Measurer<'a> {
           out.push(PlacedHBox { hbox, dx: *dx, dy });
           *dx += width;
         }
+      },
+      AtomNode::Prose(text, style) => {
+        self.place_prose(&text, style, dy, dx, out);
       },
       AtomNode::Kern { length } => {
         *dx += length;

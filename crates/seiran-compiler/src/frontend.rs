@@ -69,7 +69,7 @@ mod tests {
       HeadingLevel, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathClass, MathSpace,
       MathVariant, Typeface,
     },
-    frontend::{evaluator, test_support},
+    frontend::{evaluator, syntax::SyntaxError, test_support},
     project::{PathResolver, ProjectPath},
     source::{SourceId, Span},
   };
@@ -115,6 +115,24 @@ mod tests {
 
   /// 数式テキストの種別
   fn math_text(text: &str) -> HirMathKind { return HirMathKind::Text(text.to_string()); }
+
+  /// 数式内の文章の種別
+  fn prose(text: &str) -> HirMathKind { return HirMathKind::Prose(text.to_string()); }
+
+  /// 段落 1 個・インライン数式 1 個だけのソースを評価し、数式に 1 個だけある文章を返すテストヘルパ
+  fn sole_prose(source: &str) -> String {
+    let texts: Vec<String> = inline_math_nodes(source)
+      .into_iter()
+      .filter_map(|node| match node.kind {
+        HirMathKind::Prose(text) => return Some(text),
+        _ => return None,
+      })
+      .collect();
+    let [text] = texts.as_slice() else {
+      panic!("文章が 1 個だけ期待されます: {source}: {texts:?}");
+    };
+    return text.clone();
+  }
 
   /// 数式要素が `Text(text)` 1 個だけを持つグループか
   fn is_group_of_text(node: &HirMath, text: &str) -> bool {
@@ -1242,6 +1260,7 @@ mod tests {
       ("sqrt", r"\sqrt{x}"),
       ("mathbold", r"\mathbold{x}"),
       ("lim", r"\lim"),
+      ("text", r"本文 \text{if} です"),
     ];
 
     for (expected, source) in cases {
@@ -1888,5 +1907,139 @@ mod tests {
     let nodes = evaluate_source("a \u{0302}b\n");
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");
+  }
+
+  #[test]
+  fn text_in_math_is_one_prose_node() {
+    assert_eq!(math_kinds(r"$x\text{ if }x$"), vec![math_text("x"), prose(" if "), math_text("x")]);
+  }
+
+  #[test]
+  fn text_collapses_spaces_newlines_and_comments_into_one_space() {
+    assert_eq!(sole_prose("$\\text{a   \n   b}$"), "a b");
+    assert_eq!(sole_prose("$\\text{a // コメント\n b}$"), "a b");
+    assert_eq!(sole_prose("$\\text{a//c\nb}$"), "a b");
+  }
+
+  #[test]
+  fn text_keeps_leading_and_trailing_spaces() {
+    assert_eq!(sole_prose("$\\text{  if  }$"), " if ");
+    assert_eq!(sole_prose("$\\text{\nif\n}$"), " if ");
+  }
+
+  #[test]
+  fn text_reads_escapes_and_structural_characters_as_in_the_body() {
+    assert_eq!(sole_prose(r"$\text{\$5 \& \{x\} a_b^c, d=e}$"), "$5 & {x} a_b^c, d=e");
+  }
+
+  #[test]
+  fn text_symbol_command_eats_the_following_space_as_in_the_body() {
+    // `\alpha` / `\leq` の直後の空白はコマンドが食い、`は` の後の空白は語間空白として残る
+    assert_eq!(sole_prose(r"$\text{\alpha は \leq b}$"), "αは ≤b");
+  }
+
+  #[test]
+  fn text_keeps_japanese_and_latin_as_written() {
+    assert_eq!(sole_prose(r"$\text{初期値 initial value}$"), "初期値 initial value");
+  }
+
+  #[test]
+  fn empty_text_is_empty_prose() {
+    assert_eq!(math_kinds(r"$\text{}$"), vec![prose("")]);
+  }
+
+  #[test]
+  fn text_takes_one_argument_and_the_next_group_is_math() {
+    let math = inline_math_nodes(r"$\text{a}{b}$");
+
+    assert_eq!(math[0].kind, prose("a"));
+    assert!(is_group_of_text(&math[1], "b"), "{math:?}");
+  }
+
+  #[test]
+  fn text_inside_math_variant_stays_prose() {
+    let math = inline_math_nodes(r"$\mathbold{\text{if}}$");
+
+    let HirMathKind::Styled { children, .. } = &math[0].kind else {
+      panic!("Styled が期待されます: {math:?}");
+    };
+    assert_eq!(children[0].kind, prose("if"));
+  }
+
+  #[test]
+  fn text_in_cases_cell_keeps_ampersand_as_a_character() {
+    let result = evaluate_source("\\begin{cases}\n0 & \\text{a & b}\n\\end{cases}");
+
+    let HirNodeKind::MathBlock(math) = &result[0].kind else {
+      panic!("MathBlock が期待されます: {result:?}");
+    };
+    let cells = &math.rows[0].cells;
+    assert_eq!(cells.len(), 2, "文章の中の & はセルを割らない");
+    let texts: Vec<&HirMathKind> = cells[1]
+      .iter()
+      .map(|node| return &node.kind)
+      .filter(|kind| return matches!(kind, HirMathKind::Prose(_)))
+      .collect();
+    assert_eq!(texts, vec![&prose("a & b")]);
+  }
+
+  #[test]
+  fn text_rejects_non_prose_content() {
+    let cases = [
+      (r"$\text{\bold{if}}$", r"\bold"),
+      (r"$\text{\ref{a}}$", r"\ref"),
+      (r"$\text{\footnote{a}}$", r"\footnote"),
+      (r"$\text{a\quad b}$", r"\quad"),
+      (r"$\text{\frac{a}{b}}$", r"\frac"),
+      (r"$\text{\text{x}}$", r"\text"),
+      (r"$\text{a\\b}$", r"\\（強制改行）"),
+      ("$\\text{if $x$}$", "インライン数式 $...$"),
+      (r"$\text{\begin{itemize}\item a\end{itemize}}$", "環境 itemize"),
+    ];
+
+    for (source, expected) in cases {
+      let error = evaluate_error(source);
+
+      assert!(
+        matches!(error, EvalError::UnsupportedInMathText { ref what, .. } if what == expected),
+        "{source}: {error:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn text_rejects_unknown_command_as_unknown() {
+    let error = evaluate_error(r"$\text{\foo}$");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "foo"), "{error:?}");
+  }
+
+  #[test]
+  fn text_rejects_blank_line() {
+    let error = evaluate_error("$\\text{a\n\nb}$");
+
+    assert!(matches!(error, EvalError::ParagraphBreakInArgument { .. }), "{error:?}");
+  }
+
+  #[test]
+  fn text_requires_one_argument_and_no_option() {
+    let missing = evaluate_error(r"$\text$");
+    let option = evaluate_error(r"$\text[a=b]{x}$");
+
+    assert!(
+      matches!(missing, EvalError::MissingCommandArgument { ref name, .. } if name == "text"),
+      "{missing:?}"
+    );
+    assert!(matches!(option, EvalError::UnknownOptArgKey { ref key, .. } if key == "a"), "{option:?}");
+  }
+
+  #[test]
+  fn bare_group_in_text_is_a_syntax_error() {
+    let result = test_support::parse_for_test(r"$\text{a{b}}$", SourceId::new(0));
+
+    assert!(
+      matches!(result, Err(ParseError::Syntax(SyntaxError::BareGroup { .. }))),
+      "数式の中でも \\text の引数はテキストとして読む: {result:?}"
+    );
   }
 }
