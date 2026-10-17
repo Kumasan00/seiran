@@ -202,10 +202,11 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   この lint の対象外（`clippy.toml` の `inherent-impl-lint-scope = "module"`。分けてよい境界は責務の境界で
   ある module で、ファイルはその物理的な代理にすぎない）なので、上の分割基準とは衝突しない
   （`typeset::boxing` と子 `math` / `text_run` は分かれたままでよい）。
-- **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで
-  `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを
-  既定とする（例: `parser.rs` で `pub(crate) use error::SyntaxError;`）。ただし新しいモジュールパスを公開した
-  ほうが利用側にとって分かりやすい場合は、API を変更してよい。
+- **ファイル分割は公開パスを動かす理由にならない**: ファイルは module の物理的な代理にすぎないので、
+  切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` /
+  `crate::module::Type` のパスはそのままにする（例: `parser.rs` で `pub(crate) use error::SyntaxError;`）。
+  パスを変えるのは新しいモジュールパスのほうが利用側にとって名前が明確になるときで、そのときは利用箇所を
+  書き換える（外部利用者はいないので、旧パスの温存は変更を見送る理由にならない）。
 
 ## 値と型の書き方
 
