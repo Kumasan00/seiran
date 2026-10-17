@@ -33,22 +33,16 @@ pub(in crate::typeset) use radical::RADICAL_SIGN;
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
 use crate::{
+  color::Color,
   length::Length,
   publication::Glyph,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
     boxing::{Measurer, Shaper, shaping},
-    lowering::{self, AtomNode, DelimiterGlyphs, MathBlockLayout, MathOperator, MathScripts},
+    font::ScriptLevel,
+    lowering::{self, AtomNode, DelimiterGlyphs, MathBlockCellLayout, MathBlockLayout, MathOperator, MathScripts},
   },
 };
-
-/// 行を measure したあとの中間表現
-struct MeasuredRow {
-  /// セルごとの計測結果
-  cells: Vec<MeasuredCell>,
-  /// 行番号ボックス（採番された行のみ）
-  number: Option<HBox>,
-}
 
 /// セルを measure したあとの中間表現
 struct MeasuredCell {
@@ -186,67 +180,20 @@ impl Measurer<'_> {
       delimiters,
     } = block;
 
-    let measured: Vec<MeasuredRow> = rows
+    let (cells, row_numbers): (Vec<_>, Vec<_>) = rows.into_iter().map(|row| return (row.cells, row.number)).unzip();
+    let (mut body, baselines) = self.build_grid(cells, row_gap, column_gap);
+    let mut numbers: Vec<MathRowNumber> = row_numbers
       .into_iter()
-      .map(|row| {
-        let cells = row
-          .cells
-          .into_iter()
-          .map(|cell| {
-            return MeasuredCell {
-              content: self.build_atom(Length::ZERO, cell.content),
-              align: cell.align,
-            };
-          })
-          .collect();
-        let number = row.number.map(|number| return self.build_atom(Length::ZERO, number));
-        return MeasuredRow { cells, number };
+      .zip(baselines)
+      .filter_map(|(number, dy)| {
+        return number.map(|number| {
+          return MathRowNumber {
+            content: self.build_atom(Length::ZERO, number),
+            dy,
+          };
+        });
       })
       .collect();
-
-    let ncols = measured.iter().map(|row| return row.cells.len()).max().unwrap_or(0);
-    let mut col_widths = vec![Length::ZERO; ncols];
-    for row in &measured {
-      for (c, cell) in row.cells.iter().enumerate() {
-        col_widths[c] = col_widths[c].max(cell.content.width);
-      }
-    }
-    let mut col_x = vec![Length::ZERO; ncols];
-    let mut acc = Length::ZERO;
-    for c in 0..ncols {
-      col_x[c] = acc;
-      acc += col_widths[c] + column_gap;
-    }
-
-    let mut placed: Vec<PlacedHBox> = Vec::new();
-    let mut numbers: Vec<MathRowNumber> = Vec::new();
-    let mut baseline_dy = Length::ZERO;
-    let mut prev_depth = Length::ZERO;
-    for (i, row) in measured.into_iter().enumerate() {
-      let row_height = row.cells.iter().map(|cell| return cell.content.height).fold(Length::ZERO, Length::max);
-      let row_depth = row.cells.iter().map(|cell| return cell.content.depth).fold(Length::ZERO, Length::max);
-      if i > 0 {
-        baseline_dy -= prev_depth + row_gap + row_height;
-      }
-      for (c, cell) in row.cells.into_iter().enumerate() {
-        // 列幅は列内のセル幅の最大値なので、`Align::offset` の 0 へのクランプは到達しない。
-        let intra = cell.align.offset(col_widths[c], cell.content.width);
-        placed.push(PlacedHBox {
-          hbox: cell.content,
-          dx: col_x[c] + intra,
-          dy: baseline_dy,
-        });
-      }
-      if let Some(number) = row.number {
-        numbers.push(MathRowNumber {
-          content: number,
-          dy: baseline_dy,
-        });
-      }
-      prev_depth = row_depth;
-    }
-
-    let mut body = HBox::atom(placed);
 
     // `dy` は上向きなので、番号の視覚中央を本体中央へ合わせる。
     if let Some(env_number) = env_number {
@@ -265,7 +212,7 @@ impl Measurer<'_> {
       for number in &mut numbers {
         number.dy += grid_dy;
       }
-      body = self.wrap_with_delimiters(body, grid_dy, axis, delimiters);
+      body = self.wrap_with_delimiters(body, grid_dy, axis, delimiters, self.default_font_size, None, None);
     }
 
     return Block::Math {
@@ -276,19 +223,98 @@ impl Measurer<'_> {
     };
   }
 
+  /// 行 × セルのグリッドを measure し、列幅・行送りを決めて閉じた Atom 1 つに組む
+  ///
+  /// 列幅は列内のセル幅の最大値、隣り合う行は前の行の深さ・`row_gap`・次の行の高さだけベースラインを離す。1 行目の
+  /// ベースラインが Atom のベースラインで、返り値の 2 つ目は各行のベースラインの `dy`（上向き正。1 行目は 0）。
+  pub(in crate::typeset::boxing) fn build_grid(
+    &mut self,
+    rows: Vec<Vec<MathBlockCellLayout>>,
+    row_gap: Length,
+    column_gap: Length,
+  ) -> (HBox, Vec<Length>) {
+    let measured: Vec<Vec<MeasuredCell>> = rows
+      .into_iter()
+      .map(|row| {
+        return row
+          .into_iter()
+          .map(|cell| {
+            return MeasuredCell {
+              content: self.build_atom(Length::ZERO, cell.content),
+              align: cell.align,
+            };
+          })
+          .collect();
+      })
+      .collect();
+
+    let ncols = measured.iter().map(Vec::len).max().unwrap_or(0);
+    let mut col_widths = vec![Length::ZERO; ncols];
+    for row in &measured {
+      for (c, cell) in row.iter().enumerate() {
+        col_widths[c] = col_widths[c].max(cell.content.width);
+      }
+    }
+    let mut col_x = vec![Length::ZERO; ncols];
+    let mut acc = Length::ZERO;
+    for c in 0..ncols {
+      col_x[c] = acc;
+      acc += col_widths[c] + column_gap;
+    }
+
+    let mut placed: Vec<PlacedHBox> = Vec::new();
+    let mut baselines: Vec<Length> = Vec::with_capacity(measured.len());
+    let mut baseline_dy = Length::ZERO;
+    let mut prev_depth = Length::ZERO;
+    for (i, row) in measured.into_iter().enumerate() {
+      let row_height = row.iter().map(|cell| return cell.content.height).fold(Length::ZERO, Length::max);
+      let row_depth = row.iter().map(|cell| return cell.content.depth).fold(Length::ZERO, Length::max);
+      if i > 0 {
+        baseline_dy -= prev_depth + row_gap + row_height;
+      }
+      for (c, cell) in row.into_iter().enumerate() {
+        // 列幅は列内のセル幅の最大値なので、`Align::offset` の 0 へのクランプは到達しない。
+        let intra = cell.align.offset(col_widths[c], cell.content.width);
+        placed.push(PlacedHBox {
+          hbox: cell.content,
+          dx: col_x[c] + intra,
+          dy: baseline_dy,
+        });
+      }
+      baselines.push(baseline_dy);
+      prev_depth = row_depth;
+    }
+
+    return (HBox::atom(placed), baselines);
+  }
+
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
   ///
   /// 本体は縦中央が数式軸 `axis` に載る位置にあるので、括弧は本体の高さ + 深さ以上へ縦に伸ばし、インクの縦中央を
-  /// `axis` に合わせる（MathML Core の対称な伸縮）。枠は既定色（表示数式に文字色は効かない）。
-  fn wrap_with_delimiters(&mut self, body: HBox, grid_dy: Length, axis: Length, delimiters: DelimiterGlyphs) -> HBox {
+  /// `axis` に合わせる（MathML Core の対称な伸縮）。括弧は段のフォントサイズ `font_size`・スクリプト段 `script_level`・
+  /// 塗り色 `color`（`None` は既定色）で組み、本体との間に `font_size` の 0.15 倍のアキを置く。
+  #[expect(
+    clippy::too_many_arguments,
+    reason = "括弧の字形を決める段の 3 値は呼び元（表示数式ブロック・数式内の行列）ごとに出どころが違い、束ねる型に依存するコードが無い"
+  )]
+  pub(in crate::typeset::boxing) fn wrap_with_delimiters(
+    &mut self,
+    body: HBox,
+    grid_dy: Length,
+    axis: Length,
+    delimiters: DelimiterGlyphs,
+    font_size: Length,
+    script_level: Option<ScriptLevel>,
+    color: Option<Color>,
+  ) -> HBox {
     let target = body.height + body.depth;
     let body_width = body.width;
-    let gap = self.default_font_size * 0.15;
+    let gap = font_size * 0.15;
 
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target, None);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color);
       let center = (top + bottom) / 2.0;
       let width = delim.width;
       children.push(PlacedHBox {
@@ -305,7 +331,7 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, self.default_font_size, None, target, None);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color);
       let center = (top + bottom) / 2.0;
       children.push(PlacedHBox {
         hbox: delim,

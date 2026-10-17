@@ -155,36 +155,47 @@ fn cell_align(kind: MathBlockKind, row_idx: usize, n_rows: usize, col: usize) ->
 /// 環境種別から本体グリッドを囲む左右の区切り括弧グリフを決める
 pub(in crate::typeset) fn delimiter_glyphs(kind: MathBlockKind) -> DelimiterGlyphs {
   return match kind {
-    MathBlockKind::Cases => DelimiterGlyphs {
-      left: Some("{"),
-      right: None,
-    },
-    MathBlockKind::Matrix { delimiter } => match delimiter {
-      MathDelimiter::None => DelimiterGlyphs::default(),
-      MathDelimiter::Paren => DelimiterGlyphs {
-        left: Some("("),
-        right: Some(")"),
-      },
-      MathDelimiter::Bracket => DelimiterGlyphs {
-        left: Some("["),
-        right: Some("]"),
-      },
-      MathDelimiter::Brace => DelimiterGlyphs {
-        left: Some("{"),
-        right: Some("}"),
-      },
-      MathDelimiter::Bar => DelimiterGlyphs {
-        left: Some("|"),
-        right: Some("|"),
-      },
-      MathDelimiter::DoubleBar => DelimiterGlyphs {
-        left: Some("\u{2016}"),
-        right: Some("\u{2016}"),
-      },
-    },
+    MathBlockKind::Cases => CASES_DELIMITERS,
+    MathBlockKind::Matrix { delimiter } => matrix_delimiter_glyphs(delimiter),
     MathBlockKind::Equation
     | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => {
       DelimiterGlyphs::default()
+    },
+  };
+}
+
+/// 場合分け（`cases`）を囲む区切り括弧（左の波括弧だけ）
+pub(in crate::typeset) const CASES_DELIMITERS: DelimiterGlyphs = DelimiterGlyphs {
+  left: Some("{"),
+  right: None,
+};
+
+/// 行列（`matrix`）の `delimiter` の値から、本体を囲む左右の区切り括弧グリフを決める
+pub(in crate::typeset) const fn matrix_delimiter_glyphs(delimiter: MathDelimiter) -> DelimiterGlyphs {
+  return match delimiter {
+    MathDelimiter::None => DelimiterGlyphs {
+      left: None,
+      right: None,
+    },
+    MathDelimiter::Paren => DelimiterGlyphs {
+      left: Some("("),
+      right: Some(")"),
+    },
+    MathDelimiter::Bracket => DelimiterGlyphs {
+      left: Some("["),
+      right: Some("]"),
+    },
+    MathDelimiter::Brace => DelimiterGlyphs {
+      left: Some("{"),
+      right: Some("}"),
+    },
+    MathDelimiter::Bar => DelimiterGlyphs {
+      left: Some("|"),
+      right: Some("|"),
+    },
+    MathDelimiter::DoubleBar => DelimiterGlyphs {
+      left: Some("\u{2016}"),
+      right: Some("\u{2016}"),
     },
   };
 }
