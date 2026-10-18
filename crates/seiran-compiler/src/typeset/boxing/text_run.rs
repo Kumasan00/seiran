@@ -77,7 +77,7 @@ impl Measurer<'_> {
           .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
       if style.typeface == Typeface::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
-        out.push_box(self.shaper.add_italic_corrections(run, style).into_hbox());
+        out.push_math_box(self.shaper.add_italic_corrections(run, style).into_hbox());
         continue;
       }
       // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
@@ -98,7 +98,8 @@ impl Measurer<'_> {
   /// 数式内の文章を本文と同じ規則で組み、伸縮・分割しない自然幅で水平カーソル `dx`・縦オフセット `dy` に並べる
   ///
   /// [`Self::push_text_items`] の水平リスト（和欧文間アキ・約物アキは本文と同じく `punctuation_spacing` に従う）を、
-  /// 折り返さない 1 行として読む — glue は自然幅のアキ、分割制御は幅 0。
+  /// 折り返さない 1 行として読む — glue は自然幅のアキ、分割制御は幅 0。文章の端の約物のアキは箱の外の相手が決めるので
+  /// ここでは入れない（トップレベルの文章は [`Self::prose_atom`] の端の性質で段落のリストが解決する）。
   pub(super) fn place_prose(
     &mut self,
     text: &str,
@@ -109,28 +110,21 @@ impl Measurer<'_> {
   ) {
     let mut list = HList::default();
     self.push_text_items(text, style, &mut list);
-    for item in list.finish(Edge::Absorb) {
-      match item {
-        HItem::Box(hbox) => {
-          let width = hbox.width;
-          out.push(PlacedHBox { hbox, dx: *dx, dy });
-          *dx += width;
-        },
-        HItem::Glue { natural, .. } => *dx += natural,
-        HItem::Kern(length) => *dx += length,
-        HItem::Penalty { .. } | HItem::Discretionary { .. } => {},
-        HItem::FlushRight(_)
-        | HItem::MathBreak { .. }
-        | HItem::ForcedBreak
-        | HItem::LinkStart(_)
-        | HItem::LinkEnd
-        | HItem::Footnote(_)
-        | HItem::IndexMark(_) => {
-          unreachable!("push_text_items が積むのは箱・glue・分割制御だけ")
-        },
-      }
-    }
+    place_prose_items(list.finish(Edge::Absorb), dy, dx, out);
     return;
+  }
+
+  /// 数式内の文章 1 つを閉じた箱にし、（左端, 右端）の約物アキの性質（インライン数式の中の端）と一緒に返す
+  pub(super) fn prose_atom(&mut self, text: &str, style: TextStyle) -> (HBox, Edge, Edge) {
+    let mut list = HList::default();
+    self.push_text_items(text, style, &mut list);
+    let (leading, trailing) = list.edges();
+    let mut placed = Vec::new();
+    let mut dx = Length::ZERO;
+    place_prose_items(list.finish(Edge::Absorb), Length::ZERO, &mut dx, &mut placed);
+    let mut atom = HBox::atom(placed);
+    atom.width = dx;
+    return (atom, leading.in_math(), trailing.in_math());
   }
 
   /// シェーピング済みの run を分割可能位置で `HItem` 列に分割し、両端の約物アキの性質を添えて `out` に積む
@@ -180,10 +174,35 @@ impl Measurer<'_> {
       if matches!(item, Some(HItem::Glue { .. })) {
         return Edge::Absorb;
       }
-      return Edge::Letter;
+      return Edge::Letter { math: false };
     };
     let (leading, trailing) = (edge_of(items.first()), edge_of(items.last()));
     out.push(leading, items, trailing);
+  }
+}
+
+/// 数式内の文章の水平リストを、折り返さない 1 行として水平カーソル `dx`・縦オフセット `dy` に並べる
+fn place_prose_items(items: Vec<HItem>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  for item in items {
+    match item {
+      HItem::Box(hbox) => {
+        let width = hbox.width;
+        out.push(PlacedHBox { hbox, dx: *dx, dy });
+        *dx += width;
+      },
+      HItem::Glue { natural, .. } => *dx += natural,
+      HItem::Kern(length) => *dx += length,
+      HItem::Penalty { .. } | HItem::Discretionary { .. } => {},
+      HItem::FlushRight(_)
+      | HItem::MathBreak { .. }
+      | HItem::ForcedBreak
+      | HItem::LinkStart(_)
+      | HItem::LinkEnd
+      | HItem::Footnote(_)
+      | HItem::IndexMark(_) => {
+        unreachable!("push_text_items が積むのは箱・glue・分割制御だけ")
+      },
+    }
   }
 }
 
@@ -669,16 +688,22 @@ mod tests {
       (
         Edge::Punct {
           class: YakumonoClass::Open,
-          em
+          em,
+          math: false
         },
         Edge::Punct {
           class: YakumonoClass::Close,
-          em
+          em,
+          math: false
         }
       ),
       "詰めた全角の約物は約物の端"
     );
-    assert_eq!(edges(&halfwidth), (Edge::Letter, Edge::Letter), "詰めない半角の約物は字の端");
-    assert_eq!(edges(&letters), (Edge::Letter, Edge::Letter));
+    assert_eq!(
+      edges(&halfwidth),
+      (Edge::Letter { math: false }, Edge::Letter { math: false }),
+      "詰めない半角の約物は字の端"
+    );
+    assert_eq!(edges(&letters), (Edge::Letter { math: false }, Edge::Letter { math: false }));
   }
 }

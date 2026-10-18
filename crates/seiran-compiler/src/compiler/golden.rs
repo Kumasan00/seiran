@@ -54,7 +54,8 @@
 //!   [`embedded_matrix_delimiters_match_the_standalone_block`] / [`embedded_matrix_in_a_subscript_takes_the_script_size`]
 //! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）:
 //!   [`prose_keeps_spaces_at_their_natural_width`] / [`prose_puts_ja_latin_aki_by_punctuation_spacing`] /
-//!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`]
+//!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`] / [`prose_edge_punctuation_gets_the_aki_next_to_math`] /
+//!   [`prose_edge_punctuation_meets_body_punctuation_like_inside_a_run`]
 //! - **約物アキの run をまたぐ境界**（数式・欧文・別スタイル・マーカーとの間。行端で落ちる。共通ヘルパ [`line_gaps`] 経由）:
 //!   [`punctuation_next_to_inline_math_gets_the_same_aki_as_next_to_kanji`] /
 //!   [`punctuation_aki_stays_off_without_punctuation_spacing`] /
@@ -2106,6 +2107,23 @@ fn punctuation_aki_at_a_run_boundary_vanishes_at_line_edges() {
       "行末の境界のアキは落ちて右端が版面にそろう: {width} vs {full}"
     );
   }
+}
+
+#[test]
+fn prose_edge_punctuation_gets_the_aki_next_to_math() {
+  let off = line_gaps("$x\\text{（定義）}x$\n", false);
+
+  assert_eq!(line_gaps("$x\\text{（定義）}x$\n", true), "𝑥 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 𝑥");
+  assert!(all_gaps_zero(&off), "アキ調整を切れば入れない: {off}");
+}
+
+#[test]
+fn prose_edge_punctuation_meets_body_punctuation_like_inside_a_run() {
+  assert_eq!(
+    line_gaps("値、$\\text{（初期値）}$。\n", true),
+    "値 [0.00] 、 [6.00] （ [0.00] 初 [0.00] 期 [0.00] 値 [0.00] ） [0.00] 。",
+    "数式の外の約物とは run の内側と同じく 、（ は二分 1 つ・）。 はベタ"
+  );
 }
 
 #[test]

@@ -278,8 +278,10 @@ impl<'a> Measurer<'a> {
       InlineNode::TextAtom(text, style) => {
         out.push_box(self.text_atom(text, style));
       },
+      // 文章の端の約物は箱の外の相手と解決する（数式の字となら数式の中の固定アキ、本文の約物となら本文と同じ規則）
       InlineNode::Prose(text, style) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Prose(text, style)]));
+        let (atom, leading, trailing) = self.prose_atom(&text, style);
+        out.push(leading, vec![HItem::Box(atom)], trailing);
       },
       InlineNode::Kern { length } => {
         out.push_absorbing(HItem::Kern(length));
@@ -292,28 +294,28 @@ impl<'a> Measurer<'a> {
         out.push_marker(HItem::Box(self.build_atom(offset, children)));
       },
       InlineNode::Scripts(scripts) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Scripts(scripts)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Scripts(scripts)]));
       },
       InlineNode::Fraction(fraction) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Fraction(fraction)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Fraction(fraction)]));
       },
       InlineNode::Radical(radical) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)]));
       },
       InlineNode::Accent(accent) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)]));
       },
       InlineNode::Fenced(fenced) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)]));
       },
       InlineNode::Array(array) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Array(array)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Array(array)]));
       },
       InlineNode::Bar(bar) => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::Bar(bar)]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Bar(bar)]));
       },
       InlineNode::LargeOperator { symbol, font_size } => {
-        out.push_box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }]));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }]));
       },
       InlineNode::MathBreak { spacing, penalty } => {
         out.push_absorbing(HItem::MathBreak { spacing, penalty });
