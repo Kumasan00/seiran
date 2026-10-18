@@ -52,6 +52,13 @@ pub(crate) enum HirMathKind {
     /// 分母
     denom: Box<HirMath>,
   },
+  /// 二項係数（`\binom{top}{bottom}`）
+  Binom {
+    /// 上段
+    top: Box<HirMath>,
+    /// 下段
+    bottom: Box<HirMath>,
+  },
   /// 平方根（`\sqrt[n]{x}`）
   Sqrt {
     /// 根のインデックス（`\sqrt[3]{x}` の `3`、省略時 `None`）

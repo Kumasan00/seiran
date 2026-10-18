@@ -163,9 +163,16 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
       | HirMathKind::Bar { body: child, .. } => {
         walk_math(std::slice::from_ref(child.as_ref()), here, out);
       },
-      HirMathKind::Frac { numer, denom } => {
-        walk_math(std::slice::from_ref(numer.as_ref()), here, out);
-        walk_math(std::slice::from_ref(denom.as_ref()), here, out);
+      HirMathKind::Frac {
+        numer: first,
+        denom: second,
+      }
+      | HirMathKind::Binom {
+        top: first,
+        bottom: second,
+      } => {
+        walk_math(std::slice::from_ref(first.as_ref()), here, out);
+        walk_math(std::slice::from_ref(second.as_ref()), here, out);
       },
       HirMathKind::Sqrt { index, radicand } => {
         if let Some(index) = index {

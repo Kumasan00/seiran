@@ -247,7 +247,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\binom`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -257,6 +257,8 @@ enum MathCommandKind {
   Styled(MathVariant),
   /// `\frac` — 必須引数 2 個（分子と分母）
   Frac,
+  /// `\binom` — 必須引数 2 個（上段と下段）
+  Binom,
   /// `\sqrt` — 必須引数 1 個（被開平数）。根指数は任意引数なので数えない
   Sqrt,
   /// 伸縮括弧（`\paren` 等）— 必須引数 1 個（括弧で包む数式）
@@ -301,6 +303,7 @@ impl MathCommandKind {
     }
     return match name {
       "frac" => Some(Self::Frac),
+      "binom" => Some(Self::Binom),
       "sqrt" => Some(Self::Sqrt),
       "text" => Some(Self::Prose),
       _ => fence_delimiters(name)
@@ -318,7 +321,7 @@ impl MathCommandKind {
   fn arg_count(self) -> usize {
     return match self {
       Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } | Self::Prose => 1,
-      Self::Frac => 2,
+      Self::Frac | Self::Binom => 2,
       Self::Space(_) | Self::OperatorName { .. } | Self::Symbol(_) => 0,
     };
   }
@@ -329,6 +332,7 @@ impl MathCommandKind {
       Self::Prose => &[ArgMode::Text],
       Self::Styled(_)
       | Self::Frac
+      | Self::Binom
       | Self::Sqrt
       | Self::Fenced { .. }
       | Self::Accent { .. }
@@ -509,6 +513,14 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       let numer = Box::new(math_arg_to_node(source, ctx, numer_arg)?);
       let denom = Box::new(math_arg_to_node(source, ctx, denom_arg)?);
       return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
+    },
+    MathCommandKind::Binom => {
+      opt_args::no_command_opt_args(&view)?;
+      let (top_arg, bottom_arg) = arity::exactly_two_args(&view, "2 個（上段と下段）")?;
+      let id = ctx.alloc(view.span());
+      let top = Box::new(math_arg_to_node(source, ctx, top_arg)?);
+      let bottom = Box::new(math_arg_to_node(source, ctx, bottom_arg)?);
+      return Ok(HirMath::new(id, HirMathKind::Binom { top, bottom }));
     },
     MathCommandKind::Sqrt => {
       // 根指数 `[n]` は任意引数を数式として読む（`no_command_opt_args` は呼ばない）。

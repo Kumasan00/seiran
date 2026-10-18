@@ -226,6 +226,12 @@ impl Checker<'_> {
         self.math(numer, variant);
         self.math(denom, variant);
       },
+      HirMathKind::Binom { top, bottom } => {
+        self.written(node.id, '(', '(');
+        self.math(top, variant);
+        self.math(bottom, variant);
+        self.written(node.id, ')', ')');
+      },
       HirMathKind::Sqrt { index, radicand } => {
         self.direct(node.id, boxing::RADICAL_SIGN);
         if let Some(index) = index {

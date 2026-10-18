@@ -892,7 +892,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
   `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
-  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身ごと閉じた Atom なので内側では割らず、
+  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。二項係数（`\binom`）も、横罫の無い
+  `MathFraction` を `MathFenced` の `(` `)` で包んだ伸縮括弧と同じ 1 個のアイテム。中身ごと閉じた Atom なので内側では割らず、
   括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）。
   数式内の文章（`\text`。HIR は空白をまとめ済みの文字列を `HirMathKind::Prose` に持つ）は Ord の 1 アイテムで、字形
   variant を読まず `[text].typeface` で組む（大きさは段、色は外側から継ぐ）。`AtomNode::Prose` / `InlineNode::Prose` として
@@ -907,13 +908,13 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   まま組み、添字の中で本文の大きさへ戻さない。cramped・字形 variant・文字色は外側から継ぐ。上付き・
   下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
   下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
-  1 段下（display → text、text → script、それより下は scriptscript）。下付きの中身・分母・被根号・
+  1 段下（display → text、text → script、それより下は scriptscript）。二項係数の上段・下段も分子・分母と同じ段と cramped。下付きの中身・分母・被根号・
   アクセントの基底・上線の基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身・分子・下線の基底は親を継承）。段のフォントサイズは数式本体の
   サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
-  段のサイズ・display か）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
+  段のサイズ・display か・横罫を引くか）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
   基底の幅へ伸ばすか・基底をドット無しの字形で組むか（ソースの `dotless`、無ければ style.toml の `[math].accent_dotless`。
   広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
   `MathArray`（セル・左右の括弧・行列の段のサイズとスクリプト段・行間・列間）として boxing へ渡す。埋め込んだ行列は閉じた
@@ -1056,6 +1057,12 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   最大の中で中央に置き、横罫（`HBoxContent::Rule`、太さ `FractionRuleThickness`）はその幅いっぱいに中心を数式軸に
   合わせる。左右に 0.75pt ずつ空ける（MathML Core の UA スタイルシート `mfrac { padding-inline: 1px }`。隣り合う分数の
   罫をつなげない）。分数は閉じた Atom 1 つ
+- **二項係数**（`\binom`。横罫の無い `MathFraction` を `MathFenced` の `(` `)` で包む）の積みは MathML Core §3.3.2.2 の
+  規則で置く: 上段のシフトは `StackTopShiftUp`、下段のシフトは `StackBottomShiftDown`、ギャップの下限は `StackGapMin`（積みの段が
+  display なら `StackTopDisplayStyleShiftUp` / `StackBottomDisplayStyleShiftDown` / `StackDisplayStyleGapMin`。定数は積みの段の
+  サイズで換算）。「(下段のシフト − 下段のインクの高さ) + (上段のシフト − 上段のインクの深さ)」が下限に足りなければ、不足分の半分を
+  上段のシフトへ、残りを下段のシフトへ足す。幅・中央揃え・左右 0.75pt ずつのアキは分数と同じで（UA スタイルシートのアキは線の
+  太さによらない）、横罫は置かない。括弧は伸縮括弧の規則で中身を覆い、全体は閉じた Atom 1 つ
 - **根号**（`MathRadical`）は MathML Core §3.3.3 の規則で置く: √ を「被根号のインクの高さ + 深さ + ギャップ
   （`RadicalVerticalGap`、display なら `RadicalDisplayStyleVerticalGap`）+ `RadicalRuleThickness`」以上へ区切り括弧と
   同じ伸縮で縦に伸ばし、インクの上端を横線（vinculum。`HBoxContent::Rule`）の上端に合わせる。伸ばした記号が目標より

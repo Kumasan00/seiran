@@ -94,6 +94,14 @@
 //!   [`nested_fraction_draws_a_thinner_inner_rule`] / [`adjacent_fraction_rules_do_not_touch`] /
 //!   [`superscript_in_a_denominator_uses_the_cramped_shift`] / [`fraction_rule_is_painted_as_a_filled_rect`] /
 //!   [`empty_fraction_compiles_with_a_zero_width_rule`]（共通ヘルパ [`first_line_parts`]・[`display_parts`]・[`collect_rules`] 経由）
+//! - **二項係数**（横罫の無い積みの `Stack*` 定数とインクからのシフト量・段の遷移・伸縮丸括弧の覆いと数式軸・伸縮括弧と
+//!   同じアキ・入れ子・空引数）: [`inline_binomial_stacks_script_size_parts_without_a_rule`] /
+//!   [`display_binomial_uses_display_stack_constants_and_text_size_parts`] /
+//!   [`binomial_parens_cover_the_stack_and_center_on_the_math_axis`] / [`long_top_part_centers_the_bottom_part`] /
+//!   [`binomial_takes_the_spacing_of_a_fence`] / [`binomial_in_a_superscript_is_set_at_the_script_size`] /
+//!   [`superscript_on_a_binomial_starts_after_the_close_paren`] /
+//!   [`nested_binomial_parts_keep_the_gap_and_the_outer_parens_cover_them`] /
+//!   [`empty_binomial_compiles_with_the_parens_around_the_padding`]（共通ヘルパ [`expected_stack_shifts`] 経由）
 //! - **根号**（根号記号の伸縮・横線・ギャップの調整・指数の kern と高さ）:
 //!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
@@ -231,6 +239,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "justify",
   "math_accent",
   "math_array",
+  "math_binom",
   "math_break",
   "math_color",
   "math_explicit_space",
@@ -3016,7 +3025,7 @@ fn fraction_rule_is_painted_as_a_filled_rect() {
 fn colored_inline_math_paints_glyphs_and_rules_in_the_color() {
   let red = Color::new(0xcc, 0x00, 0x00);
   let source = "\\color[color=#cc0000]{$x^{2}+\\frac{a}{b}+\\sqrt{c}+\\paren{\\frac{d}{e}}+y^{\\paren{z}}+\\hat{f}+\
-                \\widehat{g}+\\widehat{ghk}+\\overline{i}+\\sum j$}\n";
+                \\widehat{g}+\\widehat{ghk}+\\overline{i}+\\sum j+\\binom{m}{n}$}\n";
 
   let compilation = TestProject::builder()
     .source_text(source)
@@ -3041,9 +3050,13 @@ fn colored_inline_math_paints_glyphs_and_rules_in_the_color() {
     .collect();
   assert!(
     !glyph_colors.is_empty() && glyph_colors.iter().all(|color| return *color == Some(red)),
-    "数式の字・伸縮括弧（伸ばす / 伸ばさない）・根号記号・アクセント記号（固定 / 広幅）・演算子は指定色: {glyph_colors:?}"
+    "数式の字・伸縮括弧（伸ばす / 伸ばさない）・二項係数の括弧と上下・根号記号・アクセント記号（固定 / 広幅）・演算子は指定色: {glyph_colors:?}"
   );
-  assert_eq!(rule_colors, vec![Some(red.rgb()); 4], "分数線 2 本・根号の横線・上線は指定色の矩形");
+  assert_eq!(
+    rule_colors,
+    vec![Some(red.rgb()); 4],
+    "分数線 2 本・根号の横線・上線は指定色の矩形（二項係数は罫を足さない）"
+  );
 }
 
 #[test]
@@ -3059,6 +3072,197 @@ fn empty_fraction_compiles_with_a_zero_width_rule() {
     .build()
     .compile()
     .unwrap_or_else(|failure| panic!("空の分数も描画矩形を作れて compile は成功するはず: {:?}", failure.into_report()));
+}
+
+/// 数式イタリックの k（U+1D458）
+const MATH_K: &str = "\u{1D458}";
+
+/// 積みの段のフォントサイズ `size` で、インクの深さ `top_depth` の上段を上げる量と、インクの高さ `bottom_height` の下段を
+/// 下げる量（MathML Core §3.3.2.2。不足するギャップは上下に半分ずつ足す）。
+fn expected_stack_shifts(size: Length, display: bool, top_depth: Length, bottom_height: Length) -> (Length, Length) {
+  let (up, down, gap_min) = if display {
+    (
+      MathConstant::StackTopDisplayStyleShiftUp,
+      MathConstant::StackBottomDisplayStyleShiftDown,
+      MathConstant::StackDisplayStyleGapMin,
+    )
+  } else {
+    (MathConstant::StackTopShiftUp, MathConstant::StackBottomShiftDown, MathConstant::StackGapMin)
+  };
+  let (up, down) = (stix_math_length(up, size), stix_math_length(down, size));
+  let delta = stix_math_length(gap_min, size) - ((down - bottom_height) + (up - top_depth));
+  if delta <= Length::ZERO {
+    return (up, down);
+  }
+  let half = delta / 2.0;
+  return (up + half, down + (delta - half));
+}
+
+#[test]
+fn inline_binomial_stacks_script_size_parts_without_a_rule() {
+  let (runs, rules) = first_line_parts("$y\\binom{n}{k}$\n");
+
+  assert!(rules.is_empty(), "二項係数は罫を引かない");
+  let reference = run_with_text(&runs, MATH_Y);
+  let top = run_with_text(&runs, MATH_N);
+  let bottom = run_with_text(&runs, MATH_K);
+  let size = reference.run.font_size;
+  assert_eq!(
+    top.run.font_size,
+    stix_scaled_size(MathConstant::ScriptPercentScaleDown, size),
+    "text 段の上段は script 段"
+  );
+  assert_eq!(bottom.run.font_size, top.run.font_size);
+  let (up, down) = expected_stack_shifts(size, false, stix_ink_extent(top).1, stix_ink_extent(bottom).0);
+  assert_eq!(top.dy - reference.dy, up);
+  assert_eq!(reference.dy - bottom.dy, down);
+}
+
+#[test]
+fn display_binomial_uses_display_stack_constants_and_text_size_parts() {
+  let (runs, rules) = display_parts("\\begin{equation}\nx\\binom{n}{k}\n\\end{equation}\n");
+
+  assert!(rules.is_empty());
+  let reference = run_with_text(&runs, MATH_X);
+  let top = run_with_text(&runs, MATH_N);
+  let bottom = run_with_text(&runs, MATH_K);
+  let size = reference.run.font_size;
+  assert_eq!(top.run.font_size, size, "display 段の上段は text 段で縮めない");
+  let (up, down) = expected_stack_shifts(size, true, stix_ink_extent(top).1, stix_ink_extent(bottom).0);
+  assert_eq!(top.dy - reference.dy, up);
+  assert_eq!(reference.dy - bottom.dy, down);
+}
+
+#[test]
+fn binomial_parens_cover_the_stack_and_center_on_the_math_axis() {
+  let runs = first_line_runs("$\\binom{n}{k}$\n");
+
+  let top = run_with_text(&runs, MATH_N);
+  let bottom = run_with_text(&runs, MATH_K);
+  let stack_top = top.dy + stix_ink_extent(top).0;
+  let stack_bottom = bottom.dy - stix_ink_extent(bottom).1;
+  let (left, right) = fence_pair(&runs, "(", ")");
+  for delimiter in [left, right] {
+    let size = delimiter.run.font_size;
+    assert_eq!(size, inline_math_size(), "括弧はフォントサイズを変えずに伸ばす");
+    let (ink_top, ink_bottom) = stix_run_ink(&delimiter.run);
+    let axis = stix_math_length(MathConstant::AxisHeight, size);
+    let center = delimiter.dy + (ink_top + ink_bottom) / 2.0;
+    assert!(
+      (center - axis).abs() <= Length::from_sp(1),
+      "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず"
+    );
+    // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
+    let slack = size.scale(0.01);
+    assert!(delimiter.dy + ink_top + slack >= stack_top, "括弧は上段のインクの頂まで届くはず");
+    assert!(delimiter.dy + ink_bottom - slack <= stack_bottom, "括弧は下段のインクの底まで届くはず");
+  }
+}
+
+#[test]
+fn long_top_part_centers_the_bottom_part() {
+  let runs = first_line_runs("$\\binom{nnn}{k}$\n");
+
+  let top = run_with_text(&runs, &MATH_N.repeat(3));
+  let bottom = run_with_text(&runs, MATH_K);
+  let (left, _) = fence_pair(&runs, "(", ")");
+  assert_eq!(top.dx, left.dx + left.width + FRACTION_PADDING, "広い上段は左括弧の直後にアキを空けて始まる");
+  let top_center = top.dx + top.width / 2.0;
+  let bottom_center = bottom.dx + bottom.width / 2.0;
+  assert!(
+    (top_center - bottom_center).abs() <= Length::from_sp(1),
+    "下段は上段の幅の中央に置く: {top_center:?} / {bottom_center:?}"
+  );
+}
+
+#[test]
+fn binomial_takes_the_spacing_of_a_fence() {
+  let binomial = first_line_runs("$a+\\binom{n}{k}$\n");
+  let fenced = first_line_runs("$a+\\paren{n}$\n");
+
+  let gap = |runs: &[LineRun]| {
+    let plus = run_with_text(runs, "+");
+    let (left, _) = fence_pair(runs, "(", ")");
+    return left.dx - (plus.dx + plus.width);
+  };
+  assert_eq!(gap(&binomial), gap(&fenced), "二項係数は伸縮括弧と同じく左端 Open として隣とアキを取る");
+}
+
+#[test]
+fn binomial_in_a_superscript_is_set_at_the_script_size() {
+  let runs = first_line_runs("$x^{\\binom{n}{k}}$\n");
+
+  let (left, right) = fence_pair(&runs, "(", ")");
+  let size = inline_math_size();
+  let script = stix_scaled_size(MathConstant::ScriptPercentScaleDown, size);
+  assert_eq!(left.run.font_size, script, "上付きの中の括弧は上付きの段の大きさ");
+  assert_eq!(right.run.font_size, script, "上付きの中の括弧は上付きの段の大きさ");
+  assert_eq!(
+    run_with_text(&runs, MATH_N).run.font_size,
+    stix_scaled_size(MathConstant::ScriptScriptPercentScaleDown, size),
+    "script 段の上段は scriptscript 段"
+  );
+}
+
+#[test]
+fn superscript_on_a_binomial_starts_after_the_close_paren() {
+  let runs = first_line_runs("$\\binom{n}{k}^{2}$\n");
+
+  let (_, right) = fence_pair(&runs, "(", ")");
+  let two = run_with_text(&runs, "2");
+  assert!(two.dx >= right.dx + right.width, "上付きは右の括弧の後ろから始まる");
+  assert_eq!(two.run.font_size, stix_scaled_size(MathConstant::ScriptPercentScaleDown, inline_math_size()));
+}
+
+#[test]
+fn nested_binomial_parts_keep_the_gap_and_the_outer_parens_cover_them() {
+  let (runs, rules) = display_parts("\\begin{equation}\n\\binom{\\frac{a}{b}}{\\binom{n}{k}}\n\\end{equation}\n");
+
+  let [rule] = rules.as_slice() else {
+    panic!("罫は上段の分数の 1 本だけのはず: {} 本", rules.len());
+  };
+  let opens: Vec<&LineRun> = runs.iter().filter(|line_run| return line_run.run.text == "(").collect();
+  let [outer, inner] = opens.as_slice() else {
+    panic!("左の括弧は外側と内側の 2 つのはず: {} 個", opens.len());
+  };
+  let inner_close = runs.iter().rev().nth(1).expect("内側の右括弧があるはず");
+  assert_eq!(inner_close.run.text, ")", "末尾から 2 番目は内側の右括弧のはず");
+  let numerator = run_with_text(&runs, MATH_A);
+  let denominator = run_with_text(&runs, MATH_B);
+  let size = outer.run.font_size;
+  let top_part_bottom = (denominator.dy - stix_ink_extent(denominator).1).min(rule.bottom);
+  let bottom_part_top = [*inner, inner_close]
+    .into_iter()
+    .map(|delimiter| return delimiter.dy + stix_run_ink(&delimiter.run).0)
+    .chain([MATH_N, MATH_K].map(|text| {
+      let part = run_with_text(&runs, text);
+      return part.dy + stix_ink_extent(part).0;
+    }))
+    .fold(Length::ZERO, Length::max);
+  assert!(
+    top_part_bottom - bottom_part_top + Length::from_sp(1)
+      >= stix_math_length(MathConstant::StackDisplayStyleGapMin, size),
+    "上段と下段のインクの間は display のギャップの下限以上"
+  );
+  let (outer_top, outer_bottom) = stix_run_ink(&outer.run);
+  let slack = size.scale(0.01);
+  assert!(
+    outer.dy + outer_top + slack >= numerator.dy + stix_ink_extent(numerator).0,
+    "外側の括弧は上段の分子の頂まで届く"
+  );
+  assert!(
+    outer.dy + outer_bottom - slack <= inner.dy + stix_run_ink(&inner.run).1,
+    "外側の括弧は内側の括弧の底まで届く"
+  );
+}
+
+#[test]
+fn empty_binomial_compiles_with_the_parens_around_the_padding() {
+  let (runs, rules) = first_line_parts("$\\binom{}{}$\n");
+
+  assert!(rules.is_empty(), "空の二項係数も罫を引かない");
+  let (left, right) = fence_pair(&runs, "(", ")");
+  assert_eq!(right.dx, left.dx + left.width + FRACTION_PADDING + FRACTION_PADDING, "空の積みの幅は左右のアキだけ");
 }
 
 /// 根号記号 √（U+221A）

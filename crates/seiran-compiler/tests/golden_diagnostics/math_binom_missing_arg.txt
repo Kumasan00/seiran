@@ -1,0 +1,10 @@
+frontend::eval::missing_command_argument
+
+  × コマンド \binom の引数が不足しています（必要: 2 個（上段と下段））
+   ╭─[tests/text/diagnostics/math_binom_missing_arg.sei:3:30]
+ 2 │ 
+ 3 │ 下段の無い二項係数 $\binom{n}$ を書いています。
+   ·                     ────┬────
+   ·                         ╰── このコマンドの引数が不足しています
+   ╰────
+  help: コマンド \binom には 2 個（上段と下段） の引数が必要です
