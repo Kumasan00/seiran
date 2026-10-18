@@ -17,6 +17,7 @@ use crate::{
     boxing::{
       self, Glue, Measurer,
       break_opportunities::{self, BreakKind, BreakOpportunity},
+      hlist::{Edge, HList},
       script,
       shaping::ShapedRun,
       yakumono,
@@ -43,7 +44,7 @@ fn space_glue(natural: Length) -> Glue {
 
 impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
-  pub(super) fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
+  pub(super) fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut HList) {
     let text = boxing::fold_newlines(text);
     // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキの境界判定に使う。
     let mut prev_boundary: Option<(script::ScriptCategory, char)> = None;
@@ -66,7 +67,7 @@ impl Measurer<'_> {
           shrink_pt = %glue.shrink.to_pt(),
           "和欧文間アキを挿入"
         );
-        out.push(glue.into_item());
+        out.push_absorbing(glue.into_item());
       }
       prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
@@ -76,7 +77,7 @@ impl Measurer<'_> {
           .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
       if style.typeface == Typeface::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
-        out.push(HItem::Box(self.shaper.add_italic_corrections(run, style).into_hbox()));
+        out.push_box(self.shaper.add_italic_corrections(run, style).into_hbox());
         continue;
       }
       // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
@@ -106,9 +107,9 @@ impl Measurer<'_> {
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
   ) {
-    let mut items = Vec::new();
-    self.push_text_items(text, style, &mut items);
-    for item in items {
+    let mut list = HList::default();
+    self.push_text_items(text, style, &mut list);
+    for item in list.finish(Edge::Absorb) {
       match item {
         HItem::Box(hbox) => {
           let width = hbox.width;
@@ -132,16 +133,18 @@ impl Measurer<'_> {
     return;
   }
 
-  /// シェーピング済みの run を分割可能位置で `HItem` 列に分割する
-  fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut Vec<HItem>) {
+  /// シェーピング済みの run を分割可能位置で `HItem` 列に分割し、両端の約物アキの性質を添えて `out` に積む
+  fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut HList) {
     // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）
     if !run.is_in_logical_order() {
-      out.push(HItem::Box(run.into_hbox()));
+      out.push_box(run.into_hbox());
       return;
     }
+    let mut items = Vec::new();
     // 約物境界は禁則で ICU 分割点に現れないため、break 駆動の下の経路では拾えない
     if is_japanese && self.punctuation_spacing {
-      split_japanese_run(&run, out);
+      let (leading, trailing) = split_japanese_run(&run, &mut items);
+      out.push(leading, items, trailing);
       return;
     }
 
@@ -155,7 +158,7 @@ impl Measurer<'_> {
       });
     }
     if breaks.is_empty() {
-      out.push(HItem::Box(run.into_hbox()));
+      out.push_box(run.into_hbox());
       return;
     }
 
@@ -166,20 +169,32 @@ impl Measurer<'_> {
       let Some(cut) = plan_cut(&run, opportunity, seg_glyph_start, is_japanese, hyphen) else {
         continue;
       };
-      push_sub_run(&run, seg_glyph_start..cut.keep_glyph_end, seg_byte_start..cut.keep_byte_end, out);
-      out.push(cut.item);
+      push_sub_run(&run, seg_glyph_start..cut.keep_glyph_end, seg_byte_start..cut.keep_byte_end, &mut items);
+      items.push(cut.item);
       seg_glyph_start = cut.resume_glyph;
       seg_byte_start = cut.resume_byte;
     }
-    push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), out);
+    push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), &mut items);
+    // この経路は約物の箱を詰めないので、端は字か、空白の glue ならアキを打ち消す側
+    let edge_of = |item: Option<&HItem>| -> Edge {
+      if matches!(item, Some(HItem::Glue { .. })) {
+        return Edge::Absorb;
+      }
+      return Edge::Letter;
+    };
+    let (leading, trailing) = (edge_of(items.first()), edge_of(items.last()));
+    out.push(leading, items, trailing);
   }
 }
 
-/// 和文セグメントを約物アキ調整つきで `HItem` 列に分割する（隣接グリフ対を走査）
-fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) {
+/// 和文セグメントを約物アキ調整つきで `HItem` 列に分割し（隣接グリフ対を走査）、（先頭, 末尾）のグリフの端の性質を返す
+///
+/// 端の性質は箱を詰めたかどうかと同じ実効約物クラスから決める — 詰めていない約物（半角グリフ・複数グリフのクラスタ）の
+/// 外へはアキを戻さない。
+fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
   let glyphs = run.glyphs();
   if glyphs.is_empty() {
-    return;
+    return (Edge::Absorb, Edge::Absorb);
   }
   let text = run.text();
   let em = run.font_size();
@@ -253,6 +268,13 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) {
     }
   }
   push_sub_run(run, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out);
+  let edge_at = |g: usize| -> Edge {
+    if is_space(g) {
+      return Edge::Absorb;
+    }
+    return Edge::glyph(eff_class(g), em);
+  };
+  return (edge_at(0), edge_at(glyphs.len() - 1));
 }
 
 /// `run` の部分グリフ列を計測済みの箱として `out` に積む（空範囲なら何もしない）
@@ -383,7 +405,11 @@ mod tests {
     publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{
       boxes::{HBox, HBoxContent, HItem},
-      boxing::break_opportunities::{BreakKind, BreakOpportunity},
+      boxing::{
+        break_opportunities::{BreakKind, BreakOpportunity},
+        hlist::Edge,
+        yakumono::YakumonoClass,
+      },
     },
   };
 
@@ -627,5 +653,32 @@ mod tests {
       texts.iter().any(|box_text| return box_text.contains("」\u{FE00}")),
       "クラスタは 1 つの箱に収まるはず: {texts:?}"
     );
+  }
+
+  #[test]
+  fn japanese_split_reports_punctuation_edges_only_for_fullwidth_lone_glyphs() {
+    let em = Length::pt(10.0);
+    let fullwidth = shaped_with_ranges("（あ）", &[(0..3, 1000), (3..6, 1000), (6..9, 1000)]);
+    let halfwidth = shaped_with_ranges("（あ）", &[(0..3, 500), (3..6, 1000), (6..9, 500)]);
+    let letters = shaped_with_ranges("あい", &[(0..3, 1000), (3..6, 1000)]);
+
+    let edges = |run: &ShapedRun| return split_japanese_run(run, &mut Vec::new());
+
+    assert_eq!(
+      edges(&fullwidth),
+      (
+        Edge::Punct {
+          class: YakumonoClass::Open,
+          em
+        },
+        Edge::Punct {
+          class: YakumonoClass::Close,
+          em
+        }
+      ),
+      "詰めた全角の約物は約物の端"
+    );
+    assert_eq!(edges(&halfwidth), (Edge::Letter, Edge::Letter), "詰めない半角の約物は字の端");
+    assert_eq!(edges(&letters), (Edge::Letter, Edge::Letter));
   }
 }

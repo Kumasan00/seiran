@@ -1113,7 +1113,7 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
   max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
   イタリック補正の半分だけ右、下限を半分だけ左へずらす。幅は 3 つの広がりの和集合で、後ろにアキを置かない
-- 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる
+- 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる。run の内側の境界は `text_run` が隣接グリフ対で、run をまたぐ境界（数式・欧文・別スタイル・コード・別の和文 run との間）は子 `hlist` の `HList` がアイテム列の端の性質から、同じ `boundary_glue` で解決する。幅 0 の運搬マーカーと脚注マーカーは透明で左の字に付き、空白・明示アキ・分割制御・リストの端はアキを打ち消す。境界のアキは分割できる glue なので、行頭・行末では本文と同じく落ちる
 
 (b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。
 分割点は子 module `hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する。消費者は break 注入だけなので

@@ -106,16 +106,16 @@ keywords=["test", "seiran"]
   glyphs x=435.22 y=1161.11 font=JapaneseSerif size=12.00 text="・" glyph_count=1
   glyphs x=444.04 y=1161.11 font=Serif size=12.00 text="apple" glyph_count=5
   glyphs x=474.48 y=1161.11 font=JapaneseSerif size=12.00 text="・" glyph_count=1
-  glyphs x=480.48 y=1161.11 font=Serif size=12.00 text="Banana" glyph_count=6
-  glyphs x=521.82 y=1161.11 font=JapaneseSerif size=12.00 text="・" glyph_count=1
-  glyphs x=527.82 y=1161.11 font=Serif size=12.00 text="cherry" glyph_count=6
-  glyphs x=563.40 y=1161.11 font=JapaneseSerif size=12.00 text="・" glyph_count=1
-  glyphs x=572.40 y=1161.11 font=JapaneseSerif size=12.00 text="記" glyph_count=1
-  glyphs x=584.40 y=1161.11 font=JapaneseSerif size=12.00 text="号" glyph_count=1
-  glyphs x=596.40 y=1161.11 font=JapaneseSerif size=12.00 text="始" glyph_count=1
-  glyphs x=608.40 y=1161.11 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
-  glyphs x=620.40 y=1161.11 font=JapaneseSerif size=12.00 text="り" glyph_count=1
-  glyphs x=635.22 y=1161.11 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=483.48 y=1161.11 font=Serif size=12.00 text="Banana" glyph_count=6
+  glyphs x=524.82 y=1161.11 font=JapaneseSerif size=12.00 text="・" glyph_count=1
+  glyphs x=533.82 y=1161.11 font=Serif size=12.00 text="cherry" glyph_count=6
+  glyphs x=569.40 y=1161.11 font=JapaneseSerif size=12.00 text="・" glyph_count=1
+  glyphs x=578.40 y=1161.11 font=JapaneseSerif size=12.00 text="記" glyph_count=1
+  glyphs x=590.40 y=1161.11 font=JapaneseSerif size=12.00 text="号" glyph_count=1
+  glyphs x=602.40 y=1161.11 font=JapaneseSerif size=12.00 text="始" glyph_count=1
+  glyphs x=614.40 y=1161.11 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=626.40 y=1161.11 font=JapaneseSerif size=12.00 text="り" glyph_count=1
+  glyphs x=641.22 y=1161.11 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 === page 1 === box x=0.00 y=0.00 w=1686.61 h=2386.77
   glyphs x=240.94 y=1105.51 font=Serif size=12.00 text="2" glyph_count=1
   glyphs x=249.70 y=1105.51 font=JapaneseSerif size=12.00 text="ペー" glyph_count=2
