@@ -31,7 +31,7 @@ mod yakumono;
 use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
-use hlist::{Edge, HList};
+use hlist::{BOX_EDGE_CHAR, Edge, HList};
 use hyphenation::Lang;
 pub(super) use math::RADICAL_SIGN;
 pub(super) use script::char_font_type;
@@ -382,12 +382,46 @@ impl<'a> Measurer<'a> {
   fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
+    let mut edge = Edge::Absorb;
     for child in children {
-      self.place_atom_node(child, offset, &mut dx, &mut placed);
+      self.place_atom_child(child, offset, &mut dx, &mut placed, &mut edge);
     }
     let mut atom = HBox::atom(placed);
     atom.width = dx;
     return atom;
+  }
+
+  /// Atom の子の並びの 1 つを、直前の子の右端 `edge` との約物アキを足してから絶対配置し、`edge` を更新する
+  ///
+  /// 子の並びで約物の端を持つのは数式内の文章だけ — ほかの子は数式の字（明示アキはアキを打ち消す）として読む。
+  /// 並びの両端は外の相手を持たないのでアキを足さない。両側とも数式の中なので、アキは伸縮しない固定幅。
+  fn place_atom_child(
+    &mut self,
+    node: AtomNode,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+    edge: &mut Edge,
+  ) {
+    let aki_width = |left: Edge, right: Edge| -> Length {
+      return hlist::aki_between(left, right).map_or(Length::ZERO, |item| return item.natural_width());
+    };
+    if let AtomNode::Prose(text, style) = node {
+      let list = self.prose_list(&text, style);
+      let (leading, trailing) = list.edges();
+      *dx += aki_width(*edge, leading.in_math());
+      text_run::place_prose(list, dy, dx, out);
+      *edge = trailing.in_math();
+      return;
+    }
+    let next = if matches!(node, AtomNode::Kern { .. }) {
+      Edge::Absorb
+    } else {
+      Edge::letter(BOX_EDGE_CHAR).in_math()
+    };
+    *dx += aki_width(*edge, next);
+    *edge = next;
+    self.place_atom_node(node, dy, dx, out);
   }
 
   /// Atom の子要素 1 つを水平カーソル `dx` と縦オフセット `dy` で絶対配置する
@@ -400,8 +434,8 @@ impl<'a> Measurer<'a> {
           *dx += width;
         }
       },
-      AtomNode::Prose(text, style) => {
-        self.place_prose(&text, style, dy, dx, out);
+      AtomNode::Prose(..) => {
+        unreachable!("数式内の文章は place_atom_child が端の約物アキと一緒に置く");
       },
       AtomNode::Kern { length } => {
         *dx += length;

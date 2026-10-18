@@ -95,33 +95,22 @@ impl Measurer<'_> {
     }
   }
 
-  /// 数式内の文章を本文と同じ規則で組み、伸縮・分割しない自然幅で水平カーソル `dx`・縦オフセット `dy` に並べる
+  /// 数式内の文章を本文と同じ規則（和欧文間アキ・約物アキは `punctuation_spacing` に従う）で水平リストに組む
   ///
-  /// [`Self::push_text_items`] の水平リスト（和欧文間アキ・約物アキは本文と同じく `punctuation_spacing` に従う）を、
-  /// 折り返さない 1 行として読む — glue は自然幅のアキ、分割制御は幅 0。文章の端の約物のアキは箱の外の相手が決めるので
-  /// ここでは入れない（トップレベルの文章は [`Self::prose_atom`] の端の性質で段落のリストが解決する）。
-  pub(super) fn place_prose(
-    &mut self,
-    text: &str,
-    style: TextStyle,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  /// 文章の端の約物のアキは箱の外の相手が決めるので、リストの端は解決しないまま返す（[`HList::edges`] が端の性質）。
+  pub(super) fn prose_list(&mut self, text: &str, style: TextStyle) -> HList {
     let mut list = HList::default();
     self.push_text_items(text, style, &mut list);
-    place_prose_items(list.finish(Edge::Absorb), dy, dx, out);
-    return;
+    return list;
   }
 
-  /// 数式内の文章 1 つを閉じた箱にし、（左端, 右端）の約物アキの性質（インライン数式の中の端）と一緒に返す
+  /// 数式内の文章 1 つを閉じた箱にし、（左端, 右端）の約物アキの性質（数式の中の端）と一緒に返す
   pub(super) fn prose_atom(&mut self, text: &str, style: TextStyle) -> (HBox, Edge, Edge) {
-    let mut list = HList::default();
-    self.push_text_items(text, style, &mut list);
+    let list = self.prose_list(text, style);
     let (leading, trailing) = list.edges();
     let mut placed = Vec::new();
     let mut dx = Length::ZERO;
-    place_prose_items(list.finish(Edge::Absorb), Length::ZERO, &mut dx, &mut placed);
+    place_prose(list, Length::ZERO, &mut dx, &mut placed);
     let mut atom = HBox::atom(placed);
     atom.width = dx;
     return (atom, leading.in_math(), trailing.in_math());
@@ -130,8 +119,10 @@ impl Measurer<'_> {
   /// シェーピング済みの run を分割可能位置で `HItem` 列に分割し、両端の約物アキの性質を添えて `out` に積む
   fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut HList) {
     // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）
+    let text = run.text();
+    let (first_char, last_char) = (text.chars().next().unwrap_or(' '), text.chars().next_back().unwrap_or(' '));
     if !run.is_in_logical_order() {
-      out.push_box(run.into_hbox());
+      out.push(Edge::letter(first_char), vec![HItem::Box(run.into_hbox())], Edge::letter(last_char));
       return;
     }
     let mut items = Vec::new();
@@ -152,7 +143,7 @@ impl Measurer<'_> {
       });
     }
     if breaks.is_empty() {
-      out.push_box(run.into_hbox());
+      out.push(Edge::letter(first_char), vec![HItem::Box(run.into_hbox())], Edge::letter(last_char));
       return;
     }
 
@@ -170,20 +161,22 @@ impl Measurer<'_> {
     }
     push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), &mut items);
     // この経路は約物の箱を詰めないので、端は字か、空白の glue ならアキを打ち消す側
-    let edge_of = |item: Option<&HItem>| -> Edge {
+    let edge_of = |item: Option<&HItem>, ch: char| -> Edge {
       if matches!(item, Some(HItem::Glue { .. })) {
         return Edge::Absorb;
       }
-      return Edge::Letter { math: false };
+      return Edge::letter(ch);
     };
-    let (leading, trailing) = (edge_of(items.first()), edge_of(items.last()));
+    let (leading, trailing) = (edge_of(items.first(), first_char), edge_of(items.last(), last_char));
     out.push(leading, items, trailing);
   }
 }
 
-/// 数式内の文章の水平リストを、折り返さない 1 行として水平カーソル `dx`・縦オフセット `dy` に並べる
-fn place_prose_items(items: Vec<HItem>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
-  for item in items {
+/// 数式内の文章の水平リストを、伸縮・分割しない 1 行として水平カーソル `dx`・縦オフセット `dy` に並べる
+///
+/// glue は自然幅のアキ、分割制御は幅 0 として読む。
+pub(super) fn place_prose(list: HList, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  for item in list.finish(Edge::Absorb) {
     match item {
       HItem::Box(hbox) => {
         let width = hbox.width;
@@ -291,7 +284,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
     if is_space(g) {
       return Edge::Absorb;
     }
-    return Edge::glyph(eff_class(g), em);
+    return Edge::glyph(char_of(g), eff_class(g), em);
   };
   return (edge_at(0), edge_at(glyphs.len() - 1));
 }
@@ -427,7 +420,6 @@ mod tests {
       boxing::{
         break_opportunities::{BreakKind, BreakOpportunity},
         hlist::Edge,
-        yakumono::YakumonoClass,
       },
     },
   };
@@ -687,23 +679,19 @@ mod tests {
       edges(&fullwidth),
       (
         Edge::Punct {
-          class: YakumonoClass::Open,
+          ch: '（',
           em,
           math: false
         },
         Edge::Punct {
-          class: YakumonoClass::Close,
+          ch: '）',
           em,
           math: false
         }
       ),
       "詰めた全角の約物は約物の端"
     );
-    assert_eq!(
-      edges(&halfwidth),
-      (Edge::Letter { math: false }, Edge::Letter { math: false }),
-      "詰めない半角の約物は字の端"
-    );
-    assert_eq!(edges(&letters), (Edge::Letter { math: false }, Edge::Letter { math: false }));
+    assert_eq!(edges(&halfwidth), (Edge::letter('（'), Edge::letter('）')), "詰めない半角の約物は字の端");
+    assert_eq!(edges(&letters), (Edge::letter('あ'), Edge::letter('い')));
   }
 }

@@ -55,14 +55,15 @@
 //! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）:
 //!   [`prose_keeps_spaces_at_their_natural_width`] / [`prose_puts_ja_latin_aki_by_punctuation_spacing`] /
 //!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`] / [`prose_edge_punctuation_gets_the_aki_next_to_math`] /
-//!   [`prose_edge_punctuation_meets_body_punctuation_like_inside_a_run`]
+//!   [`prose_edge_punctuation_meets_body_punctuation_like_inside_a_run`] / [`display_prose_edge_punctuation_gets_the_aki_next_to_math`]
 //! - **約物アキの run をまたぐ境界**（数式・欧文・別スタイル・マーカーとの間。行端で落ちる。共通ヘルパ [`line_gaps`] 経由）:
 //!   [`punctuation_next_to_inline_math_gets_the_same_aki_as_next_to_kanji`] /
 //!   [`punctuation_aki_stays_off_without_punctuation_spacing`] /
 //!   [`punctuation_next_to_latin_text_and_other_styles_gets_the_aki`] /
 //!   [`consecutive_punctuation_across_runs_collapses_like_inside_a_run`] / [`space_after_punctuation_absorbs_the_aki`] /
 //!   [`index_mark_between_punctuation_and_math_keeps_the_aki`] / [`footnote_marker_after_punctuation_takes_the_aki`] /
-//!   [`punctuation_aki_at_a_run_boundary_vanishes_at_line_edges`]
+//!   [`punctuation_aki_at_a_run_boundary_vanishes_at_line_edges`] /
+//!   [`latin_closing_punctuation_after_a_run_boundary_never_starts_a_line`]
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
@@ -2115,6 +2116,48 @@ fn prose_edge_punctuation_gets_the_aki_next_to_math() {
 
   assert_eq!(line_gaps("$x\\text{（定義）}x$\n", true), "𝑥 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 𝑥");
   assert!(all_gaps_zero(&off), "アキ調整を切れば入れない: {off}");
+}
+
+/// 本文 `source` を組んだ最初のページの各行で、最初のグリフ列のテキスト
+fn line_start_texts(source: &str) -> Vec<String> {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  return laid_out.pages[0]
+    .blocks
+    .iter()
+    .filter_map(|block| match block {
+      PlacedBlock::Line { line, .. } => {
+        let mut runs = Vec::new();
+        for placed in &line.boxes {
+          collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+        }
+        return runs.first().map(|line_run| return line_run.run.text.clone());
+      },
+      _ => return None,
+    })
+    .collect();
+}
+
+#[test]
+fn latin_closing_punctuation_after_a_run_boundary_never_starts_a_line() {
+  // 行の切れ目が境界のどこにでも来るよう、前置きの長さを 1 字ずつずらす
+  for lead in 80..96 {
+    let source = format!("{}{}\n", "値".repeat(lead), "「値」, abc 「値」) abc ".repeat(6));
+
+    for text in &line_start_texts(&source)[1..] {
+      assert!(!text.starts_with([',', ')']), "欧文の閉じ約物は行頭に来ない（前置き {lead} 字）: {text:?}");
+    }
+  }
+}
+
+#[test]
+fn display_prose_edge_punctuation_gets_the_aki_next_to_math() {
+  let (runs, _) = display_parts("\\begin{equation}\nx\\text{（定義）}x\n\\end{equation}\n");
+  let gap = |left: usize| return runs[left + 1].dx - (runs[left].dx + runs[left].width);
+
+  let open = runs.iter().position(|line_run| return line_run.run.text == "（").expect("始め括弧があるはず");
+  let close = runs.iter().position(|line_run| return line_run.run.text == "）").expect("終わり括弧があるはず");
+  assert_eq!(gap(open - 1), Length::pt(6.0), "ディスプレイ数式でも 𝑥（ は二分");
+  assert_eq!(gap(close), Length::pt(6.0), "ディスプレイ数式でも ）𝑥 は二分");
 }
 
 #[test]
