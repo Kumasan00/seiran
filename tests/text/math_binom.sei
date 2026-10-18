@@ -1,0 +1,21 @@
+\section{二項係数}
+
+二項係数は上段・下段を横罫なしで積み、内容に合わせて伸びる丸括弧で包む: $\binom{n}{k}$。
+周囲の演算子とは伸縮括弧と同じアキを取る: $\binom{n+1}{k} = \binom{n}{k} + \binom{n}{k-1}$。
+スクリプトの中の二項係数は段ごとに縮む: $x^{\binom{n}{k}}$。
+全体に上付き・下付きを付けられる: $\binom{n}{k}^{2}_{i}$。
+
+\begin{equation}
+(a+b)^{n} = \sum_{k=0}^{n}\binom{n}{k}a^{k}b^{n-k}
+\end{equation}
+
+長い上段の中央に下段を置く: $\binom{n_{1}+n_{2}+\cdots+n_{m}}{k}$。
+入れ子でも上下と括弧が衝突しない: $\binom{\frac{a}{b}}{\binom{n}{k}}$ と $\binom{\sqrt{n}}{k}$。
+
+\begin{equation}
+\binom{\frac{a}{b}}{\binom{n}{k}}
+\end{equation}
+
+\color[color=#cc0000]{色の中の二項係数は括弧も上下も指定色: $\binom{n}{k}$。}
+字体コマンドは上下の字を写す: $\mathbold{\binom{n}{k}}$。
+空の引数は空の数式として組む: $\binom{}{}$。

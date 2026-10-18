@@ -146,6 +146,14 @@ fn diagnostic_math_only_command() {
 }
 
 #[test]
+fn diagnostic_binom_missing_argument() {
+  let failure = compile_err(&["tests/text/diagnostics/math_binom_missing_arg.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::missing_command_argument".to_string()]);
+  assert_matches_golden("math_binom_missing_arg", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_unsupported_in_math_text() {
   // `\text` の引数は文章として読むので、装飾コマンドは数式の中でも文章の中でも書けないという診断になる
   let failure = compile_err(&["tests/text/diagnostics/math_text_unsupported.sei"]);
