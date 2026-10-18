@@ -64,6 +64,12 @@
 //!   [`index_mark_between_punctuation_and_math_keeps_the_aki`] / [`footnote_marker_after_punctuation_takes_the_aki`] /
 //!   [`punctuation_aki_at_a_run_boundary_vanishes_at_line_edges`] /
 //!   [`latin_closing_punctuation_after_a_run_boundary_never_starts_a_line`]
+//! - **和欧文間アキの run をまたぐ境界**（文字色・書体指定・入れ子・空白・マーカー。箱と数式は対象外。共通ヘルパ [`line_gaps`] 経由）:
+//!   [`ja_latin_aki_across_color_and_bold_matches_plain_text`] /
+//!   [`ja_latin_aki_is_resolved_once_through_nested_and_adjacent_styles`] /
+//!   [`ja_latin_aki_stays_off_without_punctuation_spacing`] / [`ja_latin_aki_skips_code_and_math_boundaries`] /
+//!   [`ja_latin_aki_respects_spaces_markers_and_line_edges`] /
+//!   [`color_only_keeps_positions_and_line_breaks`]（色だけの差で各行のグリフ列の位置と改行位置が変わらない。[`line_run_layout`] 経由）
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
@@ -2120,20 +2126,9 @@ fn prose_edge_punctuation_gets_the_aki_next_to_math() {
 
 /// 本文 `source` を組んだ最初のページの各行で、最初のグリフ列のテキスト
 fn line_start_texts(source: &str) -> Vec<String> {
-  let laid_out = TestProject::builder().source_text(source).build().laid_out();
-  return laid_out.pages[0]
-    .blocks
-    .iter()
-    .filter_map(|block| match block {
-      PlacedBlock::Line { line, .. } => {
-        let mut runs = Vec::new();
-        for placed in &line.boxes {
-          collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
-        }
-        return runs.first().map(|line_run| return line_run.run.text.clone());
-      },
-      _ => return None,
-    })
+  return line_run_layout(source)
+    .into_iter()
+    .filter_map(|runs| return runs.into_iter().next().map(|(text, ..)| return text))
     .collect();
 }
 
@@ -2158,6 +2153,91 @@ fn display_prose_edge_punctuation_gets_the_aki_next_to_math() {
   let close = runs.iter().position(|line_run| return line_run.run.text == "）").expect("終わり括弧があるはず");
   assert_eq!(gap(open - 1), Length::pt(6.0), "ディスプレイ数式でも 𝑥（ は二分");
   assert_eq!(gap(close), Length::pt(6.0), "ディスプレイ数式でも ）𝑥 は二分");
+}
+
+#[test]
+fn ja_latin_aki_across_color_and_bold_matches_plain_text() {
+  let plain = line_gaps("日本ABC語\n", true);
+
+  assert_eq!(plain, "日 [0.00] 本 [3.00] ABC [3.00] 語", "1 ノード内は四分 1 つ（12pt の 1/4）");
+  assert_eq!(line_gaps("日本\\color[color=#cc0000]{ABC}語\n", true), plain);
+  assert_eq!(line_gaps("日本\\bold{ABC}語\n", true), plain);
+}
+
+#[test]
+fn ja_latin_aki_is_resolved_once_through_nested_and_adjacent_styles() {
+  assert_eq!(line_gaps("日本\\color[color=#cc0000]{\\bold{ABC}}語\n", true), "日 [0.00] 本 [3.00] ABC [3.00] 語");
+  assert_eq!(
+    line_gaps("日本\\bold{AB}\\color[color=#cc0000]{C}語\n", true),
+    "日 [0.00] 本 [3.00] AB [0.00] C [3.00] 語"
+  );
+  assert_eq!(line_gaps("日本\\bold{語}ABC\n", true), "日 [0.00] 本 [0.00] 語 [3.00] ABC");
+  assert_eq!(line_gaps("日本\\bold{}ABC語\n", true), line_gaps("日本ABC語\n", true), "空の装飾は境界を切らない");
+}
+
+#[test]
+fn ja_latin_aki_stays_off_without_punctuation_spacing() {
+  for source in [
+    "日本ABC語\n",
+    "日本\\color[color=#cc0000]{ABC}語\n",
+    "日本\\bold{ABC}語\n",
+  ] {
+    let gaps = line_gaps(source, false);
+
+    assert!(all_gaps_zero(&gaps), "どの境界にもアキを入れない: {gaps}");
+  }
+}
+
+#[test]
+fn ja_latin_aki_skips_code_and_math_boundaries() {
+  let code = line_gaps("値\\code{abc}値\n", true);
+  let math = line_gaps("値$x$値\n", true);
+
+  assert!(all_gaps_zero(&code), "コードの箱の端には入れない: {code}");
+  assert!(all_gaps_zero(&math), "数式の端には入れない: {math}");
+}
+
+#[test]
+fn ja_latin_aki_respects_spaces_markers_and_line_edges() {
+  let forced = body_line_edges("日本\\\\\\bold{ABC}語\n");
+
+  assert_eq!(gap_before("日本 \\bold{ABC}\n", "ABC"), gap_before("日本 ABC\n", "ABC"), "空白の幅だけ");
+  assert_eq!(line_gaps("値\\footnote{a}abc\n", true), "値 [0.00] 1 [3.00] abc", "アキは脚注番号の後ろ");
+  assert_eq!(line_gaps("値\\href{https://example.com}{abc}\n", true), "値 [3.00] abc");
+  assert_eq!(forced[1].0, Length::ZERO, "強制改行の後の行頭にアキは残らない");
+}
+
+/// 本文 `source` を組んだ最初のページの各行の、グリフ列の（テキスト, 水平位置, 縦位置, 送り幅）の並び
+fn line_run_layout(source: &str) -> Vec<Vec<(String, Length, Length, Length)>> {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  return laid_out.pages[0]
+    .blocks
+    .iter()
+    .filter_map(|block| match block {
+      PlacedBlock::Line { line, .. } => {
+        let mut runs = Vec::new();
+        for placed in &line.boxes {
+          collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+        }
+        return Some(
+          runs
+            .into_iter()
+            .map(|line_run| return (line_run.run.text, line_run.dx, line_run.dy, line_run.width))
+            .collect(),
+        );
+      },
+      _ => return None,
+    })
+    .collect();
+}
+
+#[test]
+fn color_only_keeps_positions_and_line_breaks() {
+  let plain = line_run_layout(&format!("{}\n", "日本ABC語".repeat(60)));
+  let colored = line_run_layout(&format!("{}\n", "日本\\color[color=#cc0000]{ABC}語".repeat(60)));
+
+  assert!(plain.len() >= 3, "複数行に折り返すはず");
+  assert_eq!(colored, plain, "色だけを変えても各行のグリフ列の位置と改行位置は変わらない");
 }
 
 #[test]

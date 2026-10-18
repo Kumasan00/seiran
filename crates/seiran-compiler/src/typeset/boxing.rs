@@ -274,7 +274,7 @@ impl<'a> Measurer<'a> {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
-      // コード: `build_atom` 経由なので空白は glue にならず、和欧文間アキも挿さらない
+      // コード: `build_atom` 経由なので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
       InlineNode::TextAtom(text, style) => {
         out.push_box(self.text_atom(text, style));
       },

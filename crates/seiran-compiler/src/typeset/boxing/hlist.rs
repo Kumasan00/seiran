@@ -9,12 +9,15 @@
 //! 約物の間）は、数式の中の他のアキと同じく分割せず伸縮もしない固定の `Kern` にする — インライン数式の分割点は演算子の
 //! 後の `MathBreak` だけ。
 
+use tracing::trace;
+
 use crate::{
   length::Length,
   typeset::{
     boxes::{HBox, HItem},
     boxing::{
       self, Glue, break_opportunities,
+      script::ScriptCategory,
       yakumono::{self, YakumonoClass},
     },
   },
@@ -37,6 +40,9 @@ pub(super) enum Edge {
     ch: char,
     /// 数式の中の字か
     math: bool,
+    /// 和欧文間アキを受ける本文テキストの字なら（スクリプト区分, その字の 1em）。文字を持たない箱・数式の中の字・
+    /// アキ調整を切った文書の字は `None`
+    script: Option<(ScriptCategory, Length)>,
   },
   /// 内蔵アキを切り詰めた和文約物
   Punct {
@@ -50,17 +56,34 @@ pub(super) enum Edge {
 }
 
 impl Edge {
-  /// 本文の字の端
+  /// 和欧文間アキを受けない本文の字の端（文字を持たない箱・アキ調整を切った文書の字）
   #[must_use]
-  pub(super) fn letter(ch: char) -> Edge { return Edge::Letter { ch, math: false }; }
+  pub(super) fn letter(ch: char) -> Edge {
+    return Edge::Letter {
+      ch,
+      math: false,
+      script: None,
+    };
+  }
 
-  /// 和文 run のグリフ `ch` とその実効約物クラス `class` から、本文の端の性質を作る（`Normal` は字の端）
+  /// 和欧文間アキを受ける本文テキストの字の端（`em` はその字の 1em）
+  #[must_use]
+  pub(super) fn text(ch: char, category: ScriptCategory, em: Length) -> Edge {
+    return Edge::Letter {
+      ch,
+      math: false,
+      script: Some((category, em)),
+    };
+  }
+
+  /// 和文 run のグリフ `ch` とその実効約物クラス `class` から、本文の端の性質を作る（`Normal` は和文の字の端）
   ///
   /// `class` は箱を詰めたかどうかを決めたクラス — 詰めていない約物（半角グリフ・複数グリフのクラスタ）は字の端になる。
+  /// 約物を詰める和文 run はアキ調整のある文書にしか無いので、字の端は和欧文間アキを受ける。
   #[must_use]
   pub(super) fn glyph(ch: char, class: YakumonoClass, em: Length) -> Edge {
     if class == YakumonoClass::Normal {
-      return Edge::letter(ch);
+      return Edge::text(ch, ScriptCategory::Japanese, em);
     }
     return Edge::Punct {
       ch,
@@ -69,12 +92,16 @@ impl Edge {
     };
   }
 
-  /// 数式の中の端にする（`Absorb` はそのまま）
+  /// 数式の中の端にする（`Absorb` はそのまま。数式の中の字は和欧文間アキを受けない）
   #[must_use]
   pub(super) fn in_math(self) -> Edge {
     return match self {
       Edge::Absorb => Edge::Absorb,
-      Edge::Letter { ch, .. } => Edge::Letter { ch, math: true },
+      Edge::Letter { ch, .. } => Edge::Letter {
+        ch,
+        math: true,
+        script: None,
+      },
       Edge::Punct { ch, em, .. } => Edge::Punct { ch, em, math: true },
     };
   }
@@ -153,11 +180,27 @@ impl HList {
   }
 }
 
-/// 端 `left` → `right` の境界に挟む約物アキを決める（約物が絡まない境界・`Absorb` が絡む境界は `None`）
+/// 端 `left` → `right` の境界に挟む約物アキ・和欧文間アキを決める（どちらも絡まない境界・`Absorb` が絡む境界は `None`）
 ///
-/// 1em は約物の側の字のもの、両側とも約物なら大きい方。分割できるのは境界の 2 字の間に UAX #14 の分割機会があるときだけ。
-/// 両側が数式の中なら、自然幅の固定 `Kern` にする。
+/// 約物アキの 1em は約物の側の字のもの、両側とも約物なら大きい方。分割できるのは境界の 2 字の間に UAX #14 の分割機会が
+/// あるときだけ。両側が数式の中なら、自然幅の固定 `Kern` にする。和欧文間アキは両側とも字の端のときだけで、約物の字は
+/// 英数字でないので約物アキと同じ境界には重ならない。
 pub(super) fn aki_between(left: Edge, right: Edge) -> Option<HItem> {
+  if let (
+    Edge::Letter {
+      ch: left_char,
+      script: Some((left_category, left_em)),
+      ..
+    },
+    Edge::Letter {
+      ch: right_char,
+      script: Some((right_category, right_em)),
+      ..
+    },
+  ) = (left, right)
+  {
+    return ja_latin_between((left_char, left_category, left_em), (right_char, right_category, right_em));
+  }
   let (left_ch, left_math, left_em) = edge_parts(left)?;
   let (right_ch, right_math, right_em) = edge_parts(right)?;
   let em = match (left_em, right_em) {
@@ -186,11 +229,40 @@ pub(super) fn aki_between(left: Edge, right: Edge) -> Option<HItem> {
   return Some(glue.into_item());
 }
 
+/// 本文テキストの字の端どうし（それぞれ（字, スクリプト区分, 1em））の境界に挟む和欧文間アキ
+///
+/// 和文字と欧文字（どちらも英数字）が接するときだけ、和文側の 1em の四分アキ（分割しない）を返す。
+fn ja_latin_between(
+  (left_char, left_category, left_em): (char, ScriptCategory, Length),
+  (right_char, right_category, right_em): (char, ScriptCategory, Length),
+) -> Option<HItem> {
+  if !boxing::is_ja_latin_letter_boundary(left_category, left_char, right_category, right_char) {
+    return None;
+  }
+  let em = if left_category == ScriptCategory::Japanese {
+    left_em
+  } else {
+    right_em
+  };
+  let glue = boxing::ja_latin_aki(em);
+  trace!(
+    left_char = ?left_char,
+    right_char = ?right_char,
+    left_category = ?left_category,
+    right_category = ?right_category,
+    natural_pt = %glue.natural.to_pt(),
+    stretch_pt = %glue.stretch.to_pt(),
+    shrink_pt = %glue.shrink.to_pt(),
+    "和欧文間アキを挿入"
+  );
+  return Some(glue.into_item());
+}
+
 /// 端の（字, 数式の中か, 約物ならその 1em）（`Absorb` は `None`）
 fn edge_parts(edge: Edge) -> Option<(char, bool, Option<Length>)> {
   return match edge {
     Edge::Absorb => None,
-    Edge::Letter { ch, math } => Some((ch, math, None)),
+    Edge::Letter { ch, math, .. } => Some((ch, math, None)),
     Edge::Punct { ch, em, math } => Some((ch, math, Some(em))),
   };
 }
@@ -202,7 +274,7 @@ mod tests {
     length::Length,
     typeset::{
       boxes::{HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
-      boxing::yakumono,
+      boxing::{script::ScriptCategory, yakumono},
     },
   };
 
@@ -223,6 +295,12 @@ mod tests {
 
   /// 本文の字 `ch` の端（約物なら詰めた約物の端）
   fn glyph(ch: char) -> Edge { return Edge::glyph(ch, yakumono::classify(ch), EM); }
+
+  /// 本文の和文字 `ch` の端
+  fn ja(ch: char) -> Edge { return Edge::text(ch, ScriptCategory::Japanese, EM); }
+
+  /// 本文の欧文字 `ch` の端
+  fn latin(ch: char) -> Edge { return Edge::text(ch, ScriptCategory::Latin, EM); }
 
   /// アイテム列を種類の名前で並べる（glue は自然幅と、分割できないとき `nobreak`）
   fn shape(items: &[HItem]) -> Vec<String> {
@@ -427,13 +505,68 @@ mod tests {
 
     assert_eq!(list.edges(), (Edge::Absorb, glyph('）')), "先頭の空白は Absorb、末尾は最後の列の右端");
     assert_eq!(HList::default().edges(), (Edge::Absorb, Edge::Absorb));
-    assert_eq!(Edge::glyph('（', yakumono::YakumonoClass::Normal, EM), Edge::letter('（'), "詰めない約物は字の端");
+    assert_eq!(Edge::glyph('（', yakumono::YakumonoClass::Normal, EM), ja('（'), "詰めない約物は和文の字の端");
     assert_eq!(
       Edge::letter(BOX_EDGE_CHAR).in_math(),
       Edge::Letter {
         ch: BOX_EDGE_CHAR,
-        math: true
+        math: true,
+        script: None
       }
     );
+    assert_eq!(
+      ja('本').in_math(),
+      Edge::Letter {
+        ch: '本',
+        math: true,
+        script: None
+      },
+      "数式の中の字は和欧文間アキを受けない"
+    );
+  }
+
+  #[test]
+  fn japanese_and_latin_letters_get_the_quarter_em_aki_once() {
+    let mut forward = HList::default();
+    push_glyph(&mut forward, ja('本'));
+    let mut backward = HList::default();
+    push_glyph(&mut backward, latin('C'));
+
+    push_glyph(&mut forward, latin('A'));
+    push_glyph(&mut backward, ja('語'));
+
+    assert_eq!(shape(&forward.into_items()), ["box", "glue 2.5pt nobreak", "box"], "本→A は四分・分割しない");
+    assert_eq!(shape(&backward.into_items()), ["box", "glue 2.5pt nobreak", "box"], "C→語 も四分");
+  }
+
+  #[test]
+  fn ja_latin_aki_takes_the_em_of_the_japanese_side() {
+    let mut list = HList::default();
+    push_glyph(&mut list, Edge::text('A', ScriptCategory::Latin, EM * 2.0));
+
+    push_glyph(&mut list, ja('語'));
+
+    assert_eq!(shape(&list.into_items()), ["box", "glue 2.5pt nobreak", "box"], "和文側の 1em（10pt）の四分");
+  }
+
+  #[test]
+  fn ja_latin_aki_needs_two_text_letters_of_different_scripts() {
+    // 箱（コード・数式）・数式の中の字・同じ区分・英数字でない字の境界には入れない
+    let cases = [
+      (ja('本'), Edge::letter(BOX_EDGE_CHAR)),
+      (ja('本'), Edge::letter(BOX_EDGE_CHAR).in_math()),
+      (ja('本').in_math(), latin('A')),
+      (ja('本'), ja('語')),
+      (latin('A'), latin('B')),
+      (ja('※'), latin('A')),
+    ];
+    for (left, right) in cases {
+      let mut list = HList::default();
+      push_glyph(&mut list, left);
+
+      push_glyph(&mut list, right);
+
+      assert_eq!(shape(&list.into_items()), ["box", "box"], "{left:?} → {right:?}");
+    }
   }
 }
