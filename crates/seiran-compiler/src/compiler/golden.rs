@@ -54,7 +54,16 @@
 //!   [`embedded_matrix_delimiters_match_the_standalone_block`] / [`embedded_matrix_in_a_subscript_takes_the_script_size`]
 //! - **数式内の文章**（`\text`。本文の水平リストを自然幅で閉じた箱に並べる）:
 //!   [`prose_keeps_spaces_at_their_natural_width`] / [`prose_puts_ja_latin_aki_by_punctuation_spacing`] /
-//!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`]
+//!   [`prose_in_a_subscript_takes_the_script_size_in_the_body_font`] / [`prose_edge_punctuation_gets_the_aki_next_to_math`] /
+//!   [`prose_edge_punctuation_meets_body_punctuation_like_inside_a_run`] / [`display_prose_edge_punctuation_gets_the_aki_next_to_math`]
+//! - **約物アキの run をまたぐ境界**（数式・欧文・別スタイル・マーカーとの間。行端で落ちる。共通ヘルパ [`line_gaps`] 経由）:
+//!   [`punctuation_next_to_inline_math_gets_the_same_aki_as_next_to_kanji`] /
+//!   [`punctuation_aki_stays_off_without_punctuation_spacing`] /
+//!   [`punctuation_next_to_latin_text_and_other_styles_gets_the_aki`] /
+//!   [`consecutive_punctuation_across_runs_collapses_like_inside_a_run`] / [`space_after_punctuation_absorbs_the_aki`] /
+//!   [`index_mark_between_punctuation_and_math_keeps_the_aki`] / [`footnote_marker_after_punctuation_takes_the_aki`] /
+//!   [`punctuation_aki_at_a_run_boundary_vanishes_at_line_edges`] /
+//!   [`latin_closing_punctuation_after_a_run_boundary_never_starts_a_line`]
 //! - **数式のスクリプト段**: [`script_levels_use_math_scale_down_and_ssty_glyphs`]（縮小率は MATH、字形は `ssty`）
 //! - **数式のスクリプト配置**（MATH 定数とインクからのシフト量・上下付きの列・スクリプト後のアキ）:
 //!   [`superscript_on_a_short_base_sits_at_the_font_shift`] / [`subscript_on_a_short_base_sits_at_the_font_shift`] /
@@ -1974,6 +1983,190 @@ fn prose_in_a_subscript_takes_the_script_size_in_the_body_font() {
   let prose = run_with_text(&runs, "if");
   assert_eq!(prose.run.font_type, FontType::Serif, "本文の欧文書体で組む");
   assert_eq!(prose.run.font_size, index.run.font_size, "添字の段の大きさ");
+}
+
+/// 本文 `source` を `punctuation_spacing` で組んだ最初の行のグリフ列を、テキストと隣どうしのアキ（pt・小数 2 桁）を
+/// 交互に並べた 1 行の文字列にする（例: `𝑥 [6.00] （`）
+fn line_gaps(source: &str, punctuation_spacing: bool) -> String {
+  let project = TestProject::builder()
+    .source_text(source)
+    .style_toml(move |table| test_support::set(table, "text", "punctuation_spacing", punctuation_spacing))
+    .build();
+  let runs = first_line_parts_of(&project).0;
+  let mut parts = Vec::new();
+  for (index, line_run) in runs.iter().enumerate() {
+    if let Some(previous) = index.checked_sub(1).map(|previous| return &runs[previous]) {
+      parts.push(format!("[{:.2}]", (line_run.dx - (previous.dx + previous.width)).to_pt()));
+    }
+    parts.push(line_run.run.text.clone());
+  }
+  return parts.join(" ");
+}
+
+/// 本文 `source` を既定のスタイルで組んだ最初の行で、テキストが `text` の最初のグリフ列とその直前のグリフ列の間のアキ
+fn gap_before(source: &str, text: &str) -> Length {
+  let runs = first_line_runs(source);
+  let index = runs
+    .iter()
+    .position(|line_run| return line_run.run.text == text)
+    .unwrap_or_else(|| panic!("テキスト {text:?} のグリフ列があるはず"));
+  let previous = &runs[index - 1];
+  return runs[index].dx - (previous.dx + previous.width);
+}
+
+/// 本文 `source` を組んだ最初のページの各行の（行頭の箱の水平位置, 行の実効幅）
+fn body_line_edges(source: &str) -> Vec<(Length, Length)> {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  return laid_out.pages[0]
+    .blocks
+    .iter()
+    .filter_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return Some((line.boxes[0].dx, line.width())),
+      _ => return None,
+    })
+    .collect();
+}
+
+/// アキ調整を切った組版の `line_gaps` で、どの境界のアキも 0 か
+fn all_gaps_zero(gaps: &str) -> bool { return gaps.split(" [").skip(1).all(|part| return part.starts_with("0.00]")); }
+
+#[test]
+fn punctuation_next_to_inline_math_gets_the_same_aki_as_next_to_kanji() {
+  assert_eq!(line_gaps("値（定義）値\n", true), "値 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 値");
+  assert_eq!(line_gaps("$x$（定義）$x$\n", true), "𝑥 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 𝑥");
+  assert_eq!(line_gaps("$x$、$y$\n", true), "𝑥 [0.00] 、 [6.00] 𝑦");
+  assert_eq!(line_gaps("$x$「$y$」\n", true), "𝑥 [6.00] 「 [0.00] 𝑦 [0.00] 」");
+}
+
+#[test]
+fn punctuation_aki_stays_off_without_punctuation_spacing() {
+  for source in [
+    "$x$（定義）$x$\n",
+    "$x$、$y$\n",
+    "$x$「$y$」\n",
+    "値（定義）abc\n",
+  ] {
+    let gaps = line_gaps(source, false);
+
+    assert!(all_gaps_zero(&gaps), "どの境界にもアキを入れない: {gaps}");
+  }
+}
+
+#[test]
+fn punctuation_next_to_latin_text_and_other_styles_gets_the_aki() {
+  assert_eq!(line_gaps("値（定義）abc\n", true), "値 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] abc");
+  assert_eq!(line_gaps("abc（定義）値\n", true), "abc [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 値");
+  assert_eq!(line_gaps("値\\bold{（定義）}値\n", true), "値 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 値");
+  assert_eq!(line_gaps("値、\\bold{値}\n", true), "値 [0.00] 、 [6.00] 値");
+}
+
+#[test]
+fn consecutive_punctuation_across_runs_collapses_like_inside_a_run() {
+  let close_open = line_gaps("「値」\\bold{「値」}\n", true);
+  let comma_close = line_gaps("値\\bold{値、}」\n", true);
+
+  assert!(close_open.contains("」 [6.00] 「"), "run をまたいでも 」「 は二分 1 つ: {close_open}");
+  assert!(comma_close.contains("、 [0.00] 」"), "run をまたいでも 、」 はベタ: {comma_close}");
+}
+
+#[test]
+fn space_after_punctuation_absorbs_the_aki() {
+  assert_eq!(gap_before("値、 abc\n", "abc"), gap_before("値 abc\n", "abc"), "空白の幅だけで二分アキを足さない");
+}
+
+#[test]
+fn index_mark_between_punctuation_and_math_keeps_the_aki() {
+  assert_eq!(line_gaps("$x$、\\index{k}$y$\n", true), line_gaps("$x$、$y$\n", true));
+}
+
+#[test]
+fn footnote_marker_after_punctuation_takes_the_aki() {
+  assert_eq!(
+    line_gaps("値）\\footnote{a}値\n", true),
+    "値 [0.00] ） [0.00] 1 [6.00] 値",
+    "番号は ） に付き、アキは番号の後ろ"
+  );
+  assert_eq!(
+    line_gaps("値\\footnote{a}（値\n", true),
+    "値 [0.00] 1 [6.00] （ [0.00] 値",
+    "番号の後ろの始め括弧にも前アキ"
+  );
+}
+
+#[test]
+fn punctuation_aki_at_a_run_boundary_vanishes_at_line_edges() {
+  let lines = body_line_edges(&format!("{}\n", "$x$（$y$）".repeat(120)));
+  let full = body_line_edges(&format!("{}\n", "値".repeat(400)))[0].1;
+
+  assert!(lines.len() >= 3, "複数行に折り返すはず");
+  for (first_dx, _) in &lines[1..] {
+    assert_eq!(*first_dx, Length::ZERO, "行頭に来た境界のアキは残らない");
+  }
+  for (_, width) in &lines[..lines.len() - 1] {
+    assert!(
+      (*width - full).abs() < Length::pt(0.01),
+      "行末の境界のアキは落ちて右端が版面にそろう: {width} vs {full}"
+    );
+  }
+}
+
+#[test]
+fn prose_edge_punctuation_gets_the_aki_next_to_math() {
+  let off = line_gaps("$x\\text{（定義）}x$\n", false);
+
+  assert_eq!(line_gaps("$x\\text{（定義）}x$\n", true), "𝑥 [6.00] （ [0.00] 定 [0.00] 義 [0.00] ） [6.00] 𝑥");
+  assert!(all_gaps_zero(&off), "アキ調整を切れば入れない: {off}");
+}
+
+/// 本文 `source` を組んだ最初のページの各行で、最初のグリフ列のテキスト
+fn line_start_texts(source: &str) -> Vec<String> {
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+  return laid_out.pages[0]
+    .blocks
+    .iter()
+    .filter_map(|block| match block {
+      PlacedBlock::Line { line, .. } => {
+        let mut runs = Vec::new();
+        for placed in &line.boxes {
+          collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+        }
+        return runs.first().map(|line_run| return line_run.run.text.clone());
+      },
+      _ => return None,
+    })
+    .collect();
+}
+
+#[test]
+fn latin_closing_punctuation_after_a_run_boundary_never_starts_a_line() {
+  // 行の切れ目が境界のどこにでも来るよう、前置きの長さを 1 字ずつずらす
+  for lead in 80..96 {
+    let source = format!("{}{}\n", "値".repeat(lead), "「値」, abc 「値」) abc ".repeat(6));
+
+    for text in &line_start_texts(&source)[1..] {
+      assert!(!text.starts_with([',', ')']), "欧文の閉じ約物は行頭に来ない（前置き {lead} 字）: {text:?}");
+    }
+  }
+}
+
+#[test]
+fn display_prose_edge_punctuation_gets_the_aki_next_to_math() {
+  let (runs, _) = display_parts("\\begin{equation}\nx\\text{（定義）}x\n\\end{equation}\n");
+  let gap = |left: usize| return runs[left + 1].dx - (runs[left].dx + runs[left].width);
+
+  let open = runs.iter().position(|line_run| return line_run.run.text == "（").expect("始め括弧があるはず");
+  let close = runs.iter().position(|line_run| return line_run.run.text == "）").expect("終わり括弧があるはず");
+  assert_eq!(gap(open - 1), Length::pt(6.0), "ディスプレイ数式でも 𝑥（ は二分");
+  assert_eq!(gap(close), Length::pt(6.0), "ディスプレイ数式でも ）𝑥 は二分");
+}
+
+#[test]
+fn prose_edge_punctuation_meets_body_punctuation_like_inside_a_run() {
+  assert_eq!(
+    line_gaps("値、$\\text{（初期値）}$。\n", true),
+    "値 [0.00] 、 [6.00] （ [0.00] 初 [0.00] 期 [0.00] 値 [0.00] ） [0.00] 。",
+    "数式の外の約物とは run の内側と同じく 、（ は二分 1 つ・）。 はベタ"
+  );
 }
 
 #[test]

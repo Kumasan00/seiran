@@ -13,12 +13,14 @@
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
-//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。この module 本体は縦リストの走査
+//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`hlist` は本文・脚注本文・表のセルの水平リストの積み場所で、
+//! run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の約物アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
 
 mod break_opportunities;
 mod composed_line;
+mod hlist;
 mod hyphenation;
 mod math;
 mod script;
@@ -29,6 +31,7 @@ mod yakumono;
 use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
+use hlist::{BOX_EDGE_CHAR, Edge, HList};
 use hyphenation::Lang;
 pub(super) use math::RADICAL_SIGN;
 pub(super) use script::char_font_type;
@@ -107,7 +110,7 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
     column_width: inputs.column_width,
   };
   let mut blocks: Vec<Block> = Vec::new();
-  let mut paragraph: Vec<HItem> = Vec::new();
+  let mut paragraph = HList::default();
   builder.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, inputs.alignment);
   builder.flush_paragraph(&mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, inputs.alignment);
   let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
@@ -131,7 +134,7 @@ impl BlockBuilder<'_> {
     &mut self,
     nodes: Vec<LayoutNode>,
     blocks: &mut Vec<Block>,
-    paragraph: &mut Vec<HItem>,
+    paragraph: &mut HList,
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
@@ -213,7 +216,7 @@ impl BlockBuilder<'_> {
   fn flush_paragraph(
     &self,
     blocks: &mut Vec<Block>,
-    paragraph: &mut Vec<HItem>,
+    paragraph: &mut HList,
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
@@ -221,7 +224,7 @@ impl BlockBuilder<'_> {
     if paragraph.is_empty() {
       return;
     }
-    let items = std::mem::take(paragraph);
+    let items = std::mem::take(paragraph).into_items();
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
     blocks.push(Block::Paragraph {
       items,
@@ -266,66 +269,69 @@ impl<'a> Measurer<'a> {
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する
-  fn collect_inline(&mut self, node: InlineNode, out: &mut Vec<HItem>) {
+  fn collect_inline(&mut self, node: InlineNode, out: &mut HList) {
     match node {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
       // コード: `build_atom` 経由なので空白は glue にならず、和欧文間アキも挿さらない
       InlineNode::TextAtom(text, style) => {
-        out.push(HItem::Box(self.text_atom(text, style)));
+        out.push_box(self.text_atom(text, style));
       },
+      // 文章の端の約物は箱の外の相手と解決する（数式の字となら数式の中の固定アキ、本文の約物となら本文と同じ規則）
       InlineNode::Prose(text, style) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Prose(text, style)])));
+        let (atom, leading, trailing) = self.prose_atom(&text, style);
+        out.push(leading, vec![HItem::Box(atom)], trailing);
       },
       InlineNode::Kern { length } => {
-        out.push(HItem::Kern(length));
+        out.push_absorbing(HItem::Kern(length));
       },
       InlineNode::LineBreak => {
-        out.push(HItem::ForcedBreak);
+        out.push_absorbing(HItem::ForcedBreak);
       },
+      // 脚注マーカーは直前の字に付ける — 約物アキはマーカーの後ろに入り、アキの分割点で字から離れない
       InlineNode::Raise { offset, children } => {
-        out.push(HItem::Box(self.build_atom(offset, children)));
+        out.push_marker(HItem::Box(self.build_atom(offset, children)));
       },
       InlineNode::Scripts(scripts) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Scripts(scripts)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Scripts(scripts)]));
       },
       InlineNode::Fraction(fraction) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Fraction(fraction)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Fraction(fraction)]));
       },
       InlineNode::Radical(radical) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)]));
       },
       InlineNode::Accent(accent) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)]));
       },
       InlineNode::Fenced(fenced) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)]));
       },
       InlineNode::Array(array) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Array(array)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Array(array)]));
       },
       InlineNode::Bar(bar) => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::Bar(bar)])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Bar(bar)]));
       },
       InlineNode::LargeOperator { symbol, font_size } => {
-        out.push(HItem::Box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }])));
+        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }]));
       },
       InlineNode::MathBreak { spacing, penalty } => {
-        out.push(HItem::MathBreak { spacing, penalty });
+        out.push_absorbing(HItem::MathBreak { spacing, penalty });
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
       InlineNode::FlushRight(children) => {
         let flush_box = self.build_atom(Length::ZERO, children);
-        out.push(HItem::Penalty { value: 0 });
-        out.push(HItem::FlushRight(flush_box));
+        out.push_absorbing(HItem::Penalty { value: 0 });
+        out.push_absorbing(HItem::FlushRight(flush_box));
       },
       InlineNode::Link { target, children } => {
-        out.push(HItem::LinkStart(target));
+        out.push_marker(HItem::LinkStart(target));
         for child in children {
           self.collect_inline(child, out);
         }
-        out.push(HItem::LinkEnd);
+        out.push_marker(HItem::LinkEnd);
       },
       // 本文中の上付きマーカーは lowering がこの variant の手前に別ノードとして発行済み
       InlineNode::Footnote {
@@ -333,12 +339,13 @@ impl<'a> Measurer<'a> {
         index,
         body,
       } => {
-        let mut items = Vec::new();
+        let mut body_list = HList::default();
         for child in body {
-          self.collect_inline(child, &mut items);
+          self.collect_inline(child, &mut body_list);
         }
+        let items = body_list.into_items();
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
-        out.push(HItem::Footnote(MeasuredFootnote {
+        out.push_marker(HItem::Footnote(MeasuredFootnote {
           number,
           index,
           items,
@@ -346,7 +353,7 @@ impl<'a> Measurer<'a> {
         }));
       },
       InlineNode::IndexMark(term) => {
-        out.push(HItem::IndexMark(term));
+        out.push_marker(HItem::IndexMark(term));
       },
     }
   }
@@ -375,12 +382,46 @@ impl<'a> Measurer<'a> {
   fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
+    let mut edge = Edge::Absorb;
     for child in children {
-      self.place_atom_node(child, offset, &mut dx, &mut placed);
+      self.place_atom_child(child, offset, &mut dx, &mut placed, &mut edge);
     }
     let mut atom = HBox::atom(placed);
     atom.width = dx;
     return atom;
+  }
+
+  /// Atom の子の並びの 1 つを、直前の子の右端 `edge` との約物アキを足してから絶対配置し、`edge` を更新する
+  ///
+  /// 子の並びで約物の端を持つのは数式内の文章だけ — ほかの子は数式の字（明示アキはアキを打ち消す）として読む。
+  /// 並びの両端は外の相手を持たないのでアキを足さない。両側とも数式の中なので、アキは伸縮しない固定幅。
+  fn place_atom_child(
+    &mut self,
+    node: AtomNode,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+    edge: &mut Edge,
+  ) {
+    let aki_width = |left: Edge, right: Edge| -> Length {
+      return hlist::aki_between(left, right).map_or(Length::ZERO, |item| return item.natural_width());
+    };
+    if let AtomNode::Prose(text, style) = node {
+      let list = self.prose_list(&text, style);
+      let (leading, trailing) = list.edges();
+      *dx += aki_width(*edge, leading.in_math());
+      text_run::place_prose(list, dy, dx, out);
+      *edge = trailing.in_math();
+      return;
+    }
+    let next = if matches!(node, AtomNode::Kern { .. }) {
+      Edge::Absorb
+    } else {
+      Edge::letter(BOX_EDGE_CHAR).in_math()
+    };
+    *dx += aki_width(*edge, next);
+    *edge = next;
+    self.place_atom_node(node, dy, dx, out);
   }
 
   /// Atom の子要素 1 つを水平カーソル `dx` と縦オフセット `dy` で絶対配置する
@@ -393,8 +434,8 @@ impl<'a> Measurer<'a> {
           *dx += width;
         }
       },
-      AtomNode::Prose(text, style) => {
-        self.place_prose(&text, style, dy, dx, out);
+      AtomNode::Prose(..) => {
+        unreachable!("数式内の文章は place_atom_child が端の約物アキと一緒に置く");
       },
       AtomNode::Kern { length } => {
         *dx += length;
@@ -446,12 +487,12 @@ impl<'a> Measurer<'a> {
     for row in rows {
       let mut cells = Vec::with_capacity(row.cells.len());
       for cell in row.cells {
-        let mut items: Vec<HItem> = Vec::new();
+        let mut list = HList::default();
         for node in cell.content {
-          self.collect_inline(node, &mut items);
+          self.collect_inline(node, &mut list);
         }
         cells.push(TableCellBox {
-          items,
+          items: list.into_items(),
           column_span: cell.column_span,
         });
       }

@@ -83,26 +83,26 @@ keywords=["test", "seiran"]
   glyphs x=318.90 y=391.83 font=Serif size=12.00 text="Something" glyph_count=9
   glyphs x=376.57 y=391.83 font=Serif size=12.00 text="Interesting" glyph_count=11
   glyphs x=431.72 y=391.83 font=JapaneseSerif size=12.00 text="」" glyph_count=1
-  glyphs x=437.72 y=391.83 font=Serif size=12.00 text="," glyph_count=1
-  glyphs x=443.48 y=391.83 font=SerifItalic size=12.00 text="Journal" glyph_count=7
-  glyphs x=484.39 y=391.83 font=SerifItalic size=12.00 text="of" glyph_count=2
-  glyphs x=496.77 y=391.83 font=SerifItalic size=12.00 text="Things" glyph_count=6
-  glyphs x=530.61 y=391.83 font=Serif size=12.00 text="," glyph_count=1
-  glyphs x=536.37 y=391.83 font=JapaneseSerif size=12.00 text="巻" glyph_count=1
-  glyphs x=551.19 y=391.83 font=Serif size=12.00 text="3" glyph_count=1
-  glyphs x=557.13 y=391.83 font=Serif size=12.00 text="," glyph_count=1
-  glyphs x=562.89 y=391.83 font=JapaneseSerif size=12.00 text="号" glyph_count=1
-  glyphs x=577.71 y=391.83 font=Serif size=12.00 text="1" glyph_count=1
-  glyphs x=583.65 y=391.83 font=Serif size=12.00 text="," glyph_count=1
-  glyphs x=589.41 y=391.83 font=JapaneseSerif size=12.00 text="ペー" glyph_count=2
-  glyphs x=613.17 y=391.83 font=JapaneseSerif size=12.00 text="ジ" glyph_count=1
-  glyphs x=627.99 y=391.83 font=Serif size=12.00 text="10–" glyph_count=3
-  glyphs x=645.87 y=391.83 font=Serif size=12.00 text="20" glyph_count=2
-  glyphs x=657.75 y=391.83 font=Serif size=12.00 text="," glyph_count=1
-  glyphs x=663.51 y=391.83 font=Serif size=12.00 text="5" glyph_count=1
-  glyphs x=672.45 y=391.83 font=JapaneseSerif size=12.00 text="月" glyph_count=1
-  glyphs x=687.27 y=391.83 font=Serif size=12.00 text="2020" glyph_count=4
-  glyphs x=711.03 y=391.83 font=Serif size=12.00 text="." glyph_count=1
+  glyphs x=443.72 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=449.48 y=391.83 font=SerifItalic size=12.00 text="Journal" glyph_count=7
+  glyphs x=490.39 y=391.83 font=SerifItalic size=12.00 text="of" glyph_count=2
+  glyphs x=502.77 y=391.83 font=SerifItalic size=12.00 text="Things" glyph_count=6
+  glyphs x=536.61 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=542.37 y=391.83 font=JapaneseSerif size=12.00 text="巻" glyph_count=1
+  glyphs x=557.19 y=391.83 font=Serif size=12.00 text="3" glyph_count=1
+  glyphs x=563.13 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=568.89 y=391.83 font=JapaneseSerif size=12.00 text="号" glyph_count=1
+  glyphs x=583.71 y=391.83 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=589.65 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=595.41 y=391.83 font=JapaneseSerif size=12.00 text="ペー" glyph_count=2
+  glyphs x=619.17 y=391.83 font=JapaneseSerif size=12.00 text="ジ" glyph_count=1
+  glyphs x=633.99 y=391.83 font=Serif size=12.00 text="10–" glyph_count=3
+  glyphs x=651.87 y=391.83 font=Serif size=12.00 text="20" glyph_count=2
+  glyphs x=663.75 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=669.51 y=391.83 font=Serif size=12.00 text="5" glyph_count=1
+  glyphs x=678.45 y=391.83 font=JapaneseSerif size=12.00 text="月" glyph_count=1
+  glyphs x=693.27 y=391.83 font=Serif size=12.00 text="2020" glyph_count=4
+  glyphs x=717.03 y=391.83 font=Serif size=12.00 text="." glyph_count=1
   link target=Internal(page=0, x=240.94, y=358.09) x=411.76 y=297.82 w=14.27 h=17.24
   link target=Internal(page=0, x=240.94, y=358.09) x=653.67 y=297.82 w=14.27 h=17.24
   link target=Internal(page=0, x=240.94, y=378.02) x=673.70 y=297.82 w=14.27 h=17.24

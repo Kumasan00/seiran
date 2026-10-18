@@ -41,7 +41,7 @@ use crate::{
   publication::Glyph,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
-    boxing::{Measurer, Shaper, shaping},
+    boxing::{Measurer, Shaper, hlist::Edge, shaping},
     font::ScriptLevel,
     lowering::{self, AtomNode, DelimiterGlyphs, MathBlockCellLayout, MathBlockLayout, MathOperator, MathScripts},
   },
@@ -430,6 +430,7 @@ impl Measurer<'_> {
     let mut leading_glyph = None;
     let mut trailing_glyph = None;
     let mut trailing_correction = Length::ZERO;
+    let mut edge = Edge::Absorb;
     for (index, node) in nodes.into_iter().enumerate() {
       let yields_glyphs = matches!(node, AtomNode::Text(..) | AtomNode::LargeOperator { .. });
       // 末尾の字: テキストは基底と結合文字のクラスタ（`Shaper::add_italic_corrections` が補正を足す単位）、大型演算子は
@@ -442,7 +443,7 @@ impl Measurer<'_> {
       // 演算子名の語は最後の字の補正を送り幅に入れ済みで、核は 1 字ではないので補正を 0 とする（`MathOperator::Name`）
       let operator_name = matches!(&node, AtomNode::Text(_, style) if style.math_operator == Some(MathOperator::Name));
       let mut own = Vec::new();
-      self.place_atom_node(node, Length::ZERO, &mut width, &mut own);
+      self.place_atom_child(node, Length::ZERO, &mut width, &mut own, &mut edge);
       if yields_glyphs && index == 0 {
         leading_glyph = own
           .first()
