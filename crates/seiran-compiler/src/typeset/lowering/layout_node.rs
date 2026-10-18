@@ -310,7 +310,7 @@ pub(in crate::typeset) struct MathScripts {
   pub limits: bool,
 }
 
-/// 分子と分母を横罫の上下に積む分数
+/// 分子と分母を横罫の上下に積む分数。横罫の無い積み（二項係数の中身）も兼ねる
 ///
 /// 配置（分子・分母のシフト量・横罫の太さと位置）は計測寸法と数式フォントの MATH 定数から boxing が決める。
 #[derive(Debug, Clone)]
@@ -323,6 +323,8 @@ pub(in crate::typeset) struct MathFraction {
   pub font_size: Length,
   /// 分数の段が display か（MATH の `*DisplayStyle*` の定数を使う）
   pub display: bool,
+  /// 分子と分母の間に横罫を引くか（`\frac` は真、`\binom` の積みは偽。偽なら `Stack*` 定数で積み、`color` は使わない）
+  pub ruled: bool,
   /// 横罫の色（外側の `\color`・リンク色。`None` は既定色）
   pub color: Option<Color>,
 }

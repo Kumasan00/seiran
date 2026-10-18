@@ -451,6 +451,7 @@ fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext) -> Vec<AtomNode
 ///
 /// `Group` / `Frac` / `Sqrt` / `Accent` / `Bar` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
 /// `Fenced` は中身を組んだうえで、左端 Open・右端 Close の 1 個のアイテムにする。
+/// `Binom` は横罫の無い分数を丸括弧で包み、伸縮括弧と同じく左端 Open・右端 Close の 1 個のアイテムにする。
 fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
   match &node.kind {
     HirMathKind::Text(text) => {
@@ -524,9 +525,22 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         denominator: lower_math_list(slice::from_ref(denom.as_ref()), &ctx.with_style(ctx.style.denominator())),
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
+        ruled: true,
         color: ctx.color,
       };
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Fraction(fraction)]));
+    },
+    // 上段・下段は分数の分子・分母と同じ段に組み、積み全体は括弧と同じ段（伸縮括弧の中身と同じ）
+    HirMathKind::Binom { top, bottom } => {
+      let stack = MathFraction {
+        numerator: lower_math_list(slice::from_ref(top.as_ref()), &ctx.with_style(ctx.style.numerator())),
+        denominator: lower_math_list(slice::from_ref(bottom.as_ref()), &ctx.with_style(ctx.style.denominator())),
+        font_size: ctx.font_size(),
+        display: ctx.style.level == StyleLevel::Display,
+        ruled: false,
+        color: ctx.color,
+      };
+      items.push(fenced_item(vec![AtomNode::Fraction(stack)], '(', ')', ctx));
     },
     HirMathKind::Sqrt { index, radicand } => {
       let radical = MathRadical {
@@ -563,15 +577,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
     },
     // 中身は括弧と同じ数式スタイル（TeX の `\left` … `\right` の中身と同じ）
     HirMathKind::Fenced { open, close, body } => {
-      let fenced = MathFenced {
-        body: lower_math_list(slice::from_ref(body.as_ref()), ctx),
-        open: open.to_string(),
-        close: close.to_string(),
-        font_size: ctx.font_size(),
-        script_level: ctx.style.level.script_level(),
-        color: ctx.color,
-      };
-      items.push(spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]));
+      items.push(fenced_item(lower_math_list(slice::from_ref(body.as_ref()), ctx), *open, *close, ctx));
     },
     // 上線の基底は cramped（TeX の Rule 9）、下線の基底は外側のスタイルを継承する（TeX の Rule 10）
     HirMathKind::Bar { over, body } => {
@@ -606,6 +612,21 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       push_array(rows, CASES_DELIMITERS, Align::Left, ctx, items);
     },
   }
+}
+
+/// 組み済みの中身 `body` を左右の区切り括弧 `open` / `close` で挟み、左端 Open・右端 Close の 1 個のアイテムにする
+///
+/// 括弧は `ctx` の段の大きさ・`ssty`・文字色で組む。
+fn fenced_item(body: Vec<AtomNode>, open: char, close: char, ctx: &MathLoweringContext) -> spacing::MathItem {
+  let fenced = MathFenced {
+    body,
+    open: open.to_string(),
+    close: close.to_string(),
+    font_size: ctx.font_size(),
+    script_level: ctx.style.level.script_level(),
+    color: ctx.color,
+  };
+  return spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]);
 }
 
 /// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`）をアイテムへ展開する
@@ -1387,6 +1408,39 @@ mod tests {
       concat_atom_texts(&first_fenced(&fenced).body),
       concat_texts(&plain),
       "中身は外側の字形 variant を継承する"
+    );
+  }
+
+  #[test]
+  fn binomial_lowers_to_a_ruleless_fraction_in_parens() {
+    let nodes = lower_math_source("$\\binom{n}{k}$\n");
+
+    let fenced = first_fenced(&nodes);
+    assert_eq!((fenced.open.as_str(), fenced.close.as_str()), ("(", ")"));
+    let [AtomNode::Fraction(stack)] = fenced.body.as_slice() else {
+      panic!("括弧の中身は積み 1 つのはず: {fenced:?}");
+    };
+    assert!(!stack.ruled, "二項係数の積みは横罫を引かない");
+    assert_eq!(stack.font_size, fenced.font_size, "積みは括弧と同じ段");
+    let fraction_nodes = lower_math_source("$\\frac{n}{k}$\n");
+    let fraction = first_fraction(&fraction_nodes);
+    assert!(fraction.ruled, "分数は横罫を引く");
+    assert_eq!(atom_texts(&stack.numerator), atom_texts(&fraction.numerator), "上段は分子と同じ段・スタイル");
+    assert_eq!(atom_texts(&stack.denominator), atom_texts(&fraction.denominator), "下段は分母と同じ段・スタイル");
+  }
+
+  #[test]
+  fn binomial_parts_inherit_the_math_variant() {
+    let binomial = lower_math_source("$\\mathbold{\\binom{n}{k}}$\n");
+    let plain = lower_math_source("$\\mathbold{n}\\mathbold{k}$\n");
+
+    let [AtomNode::Fraction(stack)] = first_fenced(&binomial).body.as_slice() else {
+      panic!("括弧の中身は積み 1 つのはず: {binomial:?}");
+    };
+    assert_eq!(
+      format!("{}{}", concat_atom_texts(&stack.numerator), concat_atom_texts(&stack.denominator)),
+      concat_texts(&plain),
+      "上段・下段の字は外側の字形 variant で写す"
     );
   }
 

@@ -4,6 +4,10 @@
 //! 分子・分母のインク（グリフの形の範囲）から決める。分子・分母は両者の送り幅の最大の中で中央に置き、横罫はその幅
 //! いっぱいに中心を数式軸（`AxisHeight`）に合わせる。左右には `MathML Core` の UA スタイルシート
 //! （`mfrac { padding-inline: 1px }`）のアキを置き、隣り合う分数の罫がつながらないようにする。
+//!
+//! 横罫を引かない積み（`ruled` が偽。二項係数の中身）は `MathML Core` §3.3.2.2（分数線の太さが 0 の分数）の規則で、
+//! `Stack*` 定数と上段のインクの深さ・下段のインクの高さから上下のシフトを決める。不足するギャップは上下に半分ずつ足す。
+//! 幅・中央揃え・左右のアキは分数と同じ（UA スタイルシートのアキは線の太さによらない）。
 
 use read_fonts::tables::math::MathConstant;
 
@@ -78,10 +82,49 @@ impl FractionConstants {
   }
 }
 
+/// 横罫の無い積みの配置に使う MATH 定数（積みの段のフォントサイズで長さへ換算し、display 段の値を選択済み）
+#[derive(Debug, Clone, Copy)]
+struct StackConstants {
+  /// `StackTopShiftUp`（display なら `StackTopDisplayStyleShiftUp`）
+  top_shift_up: Length,
+  /// `StackBottomShiftDown`（display なら `StackBottomDisplayStyleShiftDown`）
+  bottom_shift_down: Length,
+  /// `StackGapMin`（display なら `StackDisplayStyleGapMin`）
+  gap_min: Length,
+}
+
+impl StackConstants {
+  /// 数式フォントの MATH 定数を `font_size` で長さへ換算し、`display` なら display 段の値を選ぶ
+  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Self {
+    let pick = |display_constant: MathConstant, constant: MathConstant| {
+      return shaper.math_constant(if display { display_constant } else { constant }, font_size);
+    };
+    return StackConstants {
+      top_shift_up: pick(MathConstant::StackTopDisplayStyleShiftUp, MathConstant::StackTopShiftUp),
+      bottom_shift_down: pick(MathConstant::StackBottomDisplayStyleShiftDown, MathConstant::StackBottomShiftDown),
+      gap_min: pick(MathConstant::StackDisplayStyleGapMin, MathConstant::StackGapMin),
+    };
+  }
+
+  /// 上段のベースラインを上げる量と、下段のベースラインを下げる量（`MathML Core` §3.3.2.2）
+  ///
+  /// 上段のインクの底と下段のインクの頂の間が `gap_min` に足りなければ、不足分を上下に半分ずつ足す。
+  fn shifts(&self, top_ink_depth: Length, bottom_ink_height: Length) -> (Length, Length) {
+    let gap = (self.bottom_shift_down - bottom_ink_height) + (self.top_shift_up - top_ink_depth);
+    let delta = self.gap_min - gap;
+    if delta <= Length::ZERO {
+      return (self.top_shift_up, self.bottom_shift_down);
+    }
+    let half = delta / 2.0;
+    return (self.top_shift_up + half, self.bottom_shift_down + (delta - half));
+  }
+}
+
 impl Measurer<'_> {
   /// 分数を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを分数の幅だけ進める
   ///
   /// 分子・分母・横罫は Atom の左端から [`FRACTION_PADDING`] の位置に置き、Atom の幅は両側のアキを含む。
+  /// 横罫を引かない積み（`ruled` が偽）は [`StackConstants`] でシフトを決め、横罫を置かない。
   pub(in crate::typeset::boxing) fn place_fraction(
     &mut self,
     fraction: MathFraction,
@@ -94,32 +137,45 @@ impl Measurer<'_> {
       denominator,
       font_size,
       display,
+      ruled,
       color,
     } = fraction;
-    let constants = FractionConstants::new(&self.shaper, font_size, display);
     let numerator = self.detach(numerator);
     let denominator = self.detach(denominator);
     // 送り幅の和は負の送りを持つ字形で負になり得るので、罫の幅は 0 で止める（描画矩形の幅は非負）
     let width = numerator.width.max(denominator.width).max(Length::ZERO);
+    let (numerator_shift, denominator_shift, rule) = if ruled {
+      let constants = FractionConstants::new(&self.shaper, font_size, display);
+      let rule = PlacedHBox {
+        hbox: HBox::rule(width, constants.rule_thickness, color),
+        dx: FRACTION_PADDING,
+        dy: constants.axis_height - constants.rule_thickness / 2.0,
+      };
+      (
+        constants.numerator_shift(numerator.ink_depth),
+        constants.denominator_shift(denominator.ink_height),
+        Some(rule),
+      )
+    } else {
+      let (up, down) =
+        StackConstants::new(&self.shaper, font_size, display).shifts(numerator.ink_depth, denominator.ink_height);
+      (up, down, None)
+    };
 
     let mut children = Vec::new();
     math::translate_into(
       &mut children,
       numerator.boxes,
       FRACTION_PADDING + Align::Center.offset(width, numerator.width),
-      constants.numerator_shift(numerator.ink_depth),
+      numerator_shift,
     );
     math::translate_into(
       &mut children,
       denominator.boxes,
       FRACTION_PADDING + Align::Center.offset(width, denominator.width),
-      -constants.denominator_shift(denominator.ink_height),
+      -denominator_shift,
     );
-    children.push(PlacedHBox {
-      hbox: HBox::rule(width, constants.rule_thickness, color),
-      dx: FRACTION_PADDING,
-      dy: constants.axis_height - constants.rule_thickness / 2.0,
-    });
+    children.extend(rule);
     let mut atom = HBox::atom(children);
     atom.width = width + FRACTION_PADDING + FRACTION_PADDING;
     let advance = atom.width;
@@ -189,6 +245,52 @@ mod tests {
       c.denominator_shift(Length::pt(900.0)),
       Length::pt(744.0),
       "背の高い分母は 罫の半分 + ギャップ + 高さ − 軸"
+    );
+  }
+
+  /// STIX Two Math の text 段の `Stack*`
+  fn text_stack() -> StackConstants {
+    return StackConstants {
+      top_shift_up: Length::pt(470.0),
+      bottom_shift_down: Length::pt(385.0),
+      gap_min: Length::pt(150.0),
+    };
+  }
+
+  #[test]
+  fn stack_keeps_the_standard_shifts_when_the_gap_is_wide_enough() {
+    let c = text_stack();
+
+    assert_eq!(
+      c.shifts(Length::ZERO, Length::pt(300.0)),
+      (Length::pt(470.0), Length::pt(385.0)),
+      "(385 − 300) + (470 − 0) = 555 ≥ 150"
+    );
+  }
+
+  #[test]
+  fn stack_splits_the_missing_gap_between_top_and_bottom() {
+    let c = text_stack();
+
+    assert_eq!(
+      c.shifts(Length::pt(200.0), Length::pt(700.0)),
+      (Length::pt(567.5), Length::pt(482.5)),
+      "Gap = (385 − 700) + (470 − 200) = −45、Δ = 195 を半分ずつ"
+    );
+  }
+
+  #[test]
+  fn display_stack_uses_the_display_gap() {
+    let c = StackConstants {
+      top_shift_up: Length::pt(780.0),
+      bottom_shift_down: Length::pt(690.0),
+      gap_min: Length::pt(300.0),
+    };
+
+    assert_eq!(
+      c.shifts(Length::pt(400.0), Length::pt(800.0)),
+      (Length::pt(795.0), Length::pt(705.0)),
+      "Gap = (690 − 800) + (780 − 400) = 270、Δ = 30"
     );
   }
 }

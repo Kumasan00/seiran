@@ -1251,12 +1251,58 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_binom_holds_top_and_bottom() {
+    let math = inline_math_nodes(r"$\binom{n}{k}$");
+
+    assert_eq!(math.len(), 1, "{math:?}");
+    let HirMathKind::Binom { top, bottom } = &math[0].kind else {
+      panic!("Binom が期待されます: {math:?}");
+    };
+    assert!(matches!(&top.kind, HirMathKind::Text(t) if t == "n"), "{top:?}");
+    assert!(matches!(&bottom.kind, HirMathKind::Text(t) if t == "k"), "{bottom:?}");
+  }
+
+  #[test]
+  fn evaluate_math_binom_accepts_empty_arguments() {
+    let math = inline_math_nodes(r"$\binom{}{}$");
+
+    let HirMathKind::Binom { top, bottom } = &math[0].kind else {
+      panic!("Binom が期待されます: {math:?}");
+    };
+    assert!(matches!(&top.kind, HirMathKind::Group(children) if children.is_empty()), "{top:?}");
+    assert!(matches!(&bottom.kind, HirMathKind::Group(children) if children.is_empty()), "{bottom:?}");
+  }
+
+  #[test]
+  fn evaluate_math_binom_is_followed_by_group() {
+    let math = inline_math_nodes(r"$\binom{n}{k}{c}$");
+
+    assert!(matches!(&math[0].kind, HirMathKind::Binom { .. }), "{math:?}");
+    assert!(math.last().is_some_and(|last| return is_group_of_text(last, "c")), "{math:?}");
+  }
+
+  #[test]
+  fn evaluate_math_binom_missing_bottom_is_error() {
+    let error = evaluate_error(r"$\binom{n}$");
+
+    assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "binom"), "{error:?}");
+  }
+
+  #[test]
+  fn evaluate_math_binom_rejects_options() {
+    let error = evaluate_error(r"$\binom[size=2]{n}{k}$");
+
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_math_only_commands_outside_math_name_the_math_mode() {
     let cases = [
       ("quad", r"\quad"),
       ("thinspace", r"本文\thinspace です"),
       ("negthinspace", r"\negthinspace"),
       ("frac", r"\frac{a}{b}"),
+      ("binom", r"\binom{n}{k}"),
       ("sqrt", r"\sqrt{x}"),
       ("mathbold", r"\mathbold{x}"),
       ("lim", r"\lim"),
@@ -2059,7 +2105,14 @@ mod tests {
       | HirMathKind::Accent { base: child, .. }
       | HirMathKind::Fenced { body: child, .. }
       | HirMathKind::Bar { body: child, .. } => find_array_in(child),
-      HirMathKind::Frac { numer, denom } => find_array_in(numer).or_else(|| return find_array_in(denom)),
+      HirMathKind::Frac {
+        numer: first,
+        denom: second,
+      }
+      | HirMathKind::Binom {
+        top: first,
+        bottom: second,
+      } => find_array_in(first).or_else(|| return find_array_in(second)),
       HirMathKind::Sqrt { index, radicand } => {
         index.as_deref().and_then(find_array_in).or_else(|| return find_array_in(radicand))
       },
