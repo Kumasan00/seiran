@@ -4,7 +4,7 @@
 //! （和文 run の端の約物と、数式・欧文・別スタイルのテキスト・コード・別の和文 run との間）を同じ
 //! `boundary_glue` の規則で解決する。アキで分割できるかは run の内側と同じく、境界の 2 字を UAX #14 で読んで決める
 //! （欧文の閉じ約物の前・開き約物の後ろ・中点の前では分割しない）。幅 0 の運搬マーカーと脚注マーカーの箱は透明で、
-//! 左の字に付いたまま残る。境界のアキは右のアイテムの直前（末尾の `LinkStart` の連なりより前）に挟むので、アキの分割点で
+//! 左の字に付いたまま残る。境界のアキは右のアイテムの直前（後ろに続く透明マーカーに閉じていないリンクの `LinkStart` があればその前）に挟むので、アキの分割点で
 //! マーカーが左の字から離れず、リンク領域はアキを含まない。両側が数式の中の境界（数式の字・アトムと数式内の文章の端の
 //! 約物の間）は、数式の中の他のアキと同じく分割せず伸縮もしない固定の `Kern` にする — インライン数式の分割点は演算子の
 //! 後の `MathBreak` だけ。
@@ -85,6 +85,8 @@ impl Edge {
 pub(super) struct HList {
   /// 積んだアイテム
   items: Vec<HItem>,
+  /// 最後に積んだ不透明アイテムの直後の位置（ここから後ろは透明マーカーだけ）
+  opaque_end: usize,
   /// 最初に積んだ不透明アイテムの左端（まだ積んでいなければ `None`）
   leading: Option<Edge>,
   /// 最後に積んだ不透明アイテムの右端（まだ積んでいなければリストの外の相手）
@@ -100,6 +102,7 @@ impl HList {
     self.resolve(leading);
     self.leading.get_or_insert(leading);
     self.items.extend(items);
+    self.opaque_end = self.items.len();
     self.trailing = trailing;
   }
 
@@ -129,21 +132,24 @@ impl HList {
   #[must_use]
   pub(super) fn edges(&self) -> (Edge, Edge) { return (self.leading.unwrap_or(Edge::Absorb), self.trailing); }
 
-  /// リストの外の相手 `after` との境界を解決して、積んだアイテム列を返す
+  /// 積んだアイテム列を返す（リストの端はアキを打ち消すので、末尾の約物にアキは足さない）
   #[must_use]
-  pub(super) fn finish(mut self, after: Edge) -> Vec<HItem> {
-    self.resolve(after);
-    return self.items;
-  }
+  pub(super) fn into_items(self) -> Vec<HItem> { return self.items; }
 
   /// 最後の不透明アイテムの右端と `right` の境界に約物アキを挟む
   fn resolve(&mut self, right: Edge) {
     let Some(aki) = aki_between(self.trailing, right) else {
       return;
     };
-    // `LinkStart` は右の内容の側に属するので、アキはその連なりの前に置く
-    let link_starts = self.items.iter().rev().take_while(|item| return matches!(item, HItem::LinkStart(_))).count();
-    self.items.insert(self.items.len() - link_starts, aki);
+    // 後ろに続く透明マーカーのうち、閉じていないリンクの `LinkStart` は右の内容の側に属するので、アキはその前に置く
+    // （`LinkEnd` まで閉じたリンク — 脚注マーカーなど — は左の字に付く）
+    let tail = &self.items[self.opaque_end..];
+    let open_from = tail.iter().rposition(|item| return matches!(item, HItem::LinkEnd)).map_or(0, |end| return end + 1);
+    let at = tail[open_from..]
+      .iter()
+      .position(|item| return matches!(item, HItem::LinkStart(_)))
+      .map_or(self.items.len(), |offset| return self.opaque_end + open_from + offset);
+    self.items.insert(at, aki);
   }
 }
 
@@ -160,10 +166,14 @@ pub(super) fn aki_between(left: Edge, right: Edge) -> Option<HItem> {
     (None, None) => return None,
   };
   let class_of = |ch: char, em: Option<Length>| -> YakumonoClass {
-    if em.is_some() {
-      return yakumono::classify(ch);
+    if em.is_none() {
+      return YakumonoClass::Normal;
     }
-    return YakumonoClass::Normal;
+    let class = yakumono::classify(ch);
+    if class == YakumonoClass::Normal {
+      unreachable!("Edge::Punct は Edge::glyph が約物クラスの字にだけ作る（in_math も字を変えない）");
+    }
+    return class;
   };
   let pair = format!("{left_ch}{right_ch}");
   let breakable = break_opportunities::break_opportunities(&pair, None)
@@ -247,7 +257,7 @@ mod tests {
 
     push_glyph(&mut list, glyph('（'));
 
-    let items = list.finish(Edge::Absorb);
+    let items = list.into_items();
     assert_eq!(shape(&items), ["box", "glue 5pt", "box"]);
     let HItem::Glue {
       stretch, shrink, ..
@@ -265,7 +275,7 @@ mod tests {
 
     list.push_box(letter());
 
-    assert_eq!(shape(&list.finish(Edge::Absorb)), ["box", "glue 5pt", "box"]);
+    assert_eq!(shape(&list.into_items()), ["box", "glue 5pt", "box"]);
   }
 
   #[test]
@@ -281,8 +291,25 @@ mod tests {
     markers.push_box(letter());
     link.push_box(letter());
 
-    assert_eq!(shape(&markers.finish(Edge::Absorb)), ["box", "index", "link-end", "glue 5pt", "box"]);
-    assert_eq!(shape(&link.finish(Edge::Absorb)), ["box", "glue 5pt", "link-start", "box"]);
+    assert_eq!(shape(&markers.into_items()), ["box", "index", "link-end", "glue 5pt", "box"]);
+    assert_eq!(shape(&link.into_items()), ["box", "glue 5pt", "link-start", "box"]);
+  }
+
+  #[test]
+  fn glue_goes_before_a_link_start_followed_by_other_markers() {
+    let mut list = HList::default();
+    push_glyph(&mut list, glyph('、'));
+    list.push_marker(index_mark());
+    list.push_marker(HItem::LinkStart(LinkTarget::External("u".to_string())));
+    list.push_marker(index_mark());
+
+    list.push_box(letter());
+
+    assert_eq!(
+      shape(&list.into_items()),
+      ["box", "index", "glue 5pt", "link-start", "index", "box"],
+      "リンクの中のマーカーがあってもアキはリンク領域の外"
+    );
   }
 
   #[test]
@@ -293,7 +320,7 @@ mod tests {
 
     push_glyph(&mut list, glyph('（'));
 
-    assert_eq!(shape(&list.finish(Edge::Absorb)), ["box", "box", "glue 5pt", "box"]);
+    assert_eq!(shape(&list.into_items()), ["box", "box", "glue 5pt", "box"]);
   }
 
   #[test]
@@ -311,8 +338,8 @@ mod tests {
     spaced.push_box(letter());
     edges.push(glyph('（'), vec![HItem::Box(letter())], glyph('、'));
 
-    assert_eq!(shape(&spaced.finish(Edge::Absorb)), ["box", "glue 3pt", "box"], "空白はアキを打ち消す");
-    assert_eq!(shape(&edges.finish(Edge::Absorb)), ["box"], "リストの端にはアキを足さない");
+    assert_eq!(shape(&spaced.into_items()), ["box", "glue 3pt", "box"], "空白はアキを打ち消す");
+    assert_eq!(shape(&edges.into_items()), ["box"], "リストの端にはアキを足さない");
   }
 
   #[test]
@@ -322,7 +349,7 @@ mod tests {
 
     list.push(Edge::glyph('「', yakumono::classify('「'), EM * 2.0), vec![HItem::Box(letter())], glyph('値'));
 
-    assert_eq!(shape(&list.finish(Edge::Absorb)), ["box", "glue 10pt", "box"], "」「 は二分 1 つ・大きい方の 1em");
+    assert_eq!(shape(&list.into_items()), ["box", "glue 10pt", "box"], "」「 は二分 1 つ・大きい方の 1em");
   }
 
   #[test]
@@ -340,17 +367,17 @@ mod tests {
     push_glyph(&mut latin_open, glyph('「'));
 
     assert_eq!(
-      shape(&middle_dot.finish(Edge::Absorb)),
+      shape(&middle_dot.into_items()),
       ["box", "glue 2.5pt nobreak", "box", "glue 2.5pt", "box"],
       "中点の前では分割しない"
     );
     assert_eq!(
-      shape(&latin_close.finish(Edge::Absorb)),
+      shape(&latin_close.into_items()),
       ["box", "glue 5pt nobreak", "box"],
       "欧文の閉じ約物の前では分割しない"
     );
     assert_eq!(
-      shape(&latin_open.finish(Edge::Absorb)),
+      shape(&latin_open.into_items()),
       ["box", "glue 5pt nobreak", "box"],
       "欧文の開き約物の後ろでは分割しない"
     );
@@ -363,7 +390,7 @@ mod tests {
 
     list.push_box(letter());
 
-    assert_eq!(shape(&list.finish(Edge::Absorb)), ["box", "box"]);
+    assert_eq!(shape(&list.into_items()), ["box", "box"]);
   }
 
   #[test]
@@ -374,7 +401,7 @@ mod tests {
     list.push(Edge::Absorb, Vec::new(), Edge::Absorb);
     list.push_box(letter());
 
-    assert_eq!(shape(&list.finish(Edge::Absorb)), ["box", "glue 5pt", "box"]);
+    assert_eq!(shape(&list.into_items()), ["box", "glue 5pt", "box"]);
   }
 
   #[test]
@@ -387,8 +414,8 @@ mod tests {
     push_glyph(&mut inside, glyph('（').in_math());
     push_glyph(&mut boundary, glyph('（').in_math());
 
-    assert_eq!(shape(&inside.finish(Edge::Absorb)), ["box", "kern 5pt", "box"], "数式の中は分割も伸縮もしない");
-    assert_eq!(shape(&boundary.finish(Edge::Absorb)), ["box", "glue 5pt", "box"], "数式の境界は本文と同じ glue");
+    assert_eq!(shape(&inside.into_items()), ["box", "kern 5pt", "box"], "数式の中は分割も伸縮もしない");
+    assert_eq!(shape(&boundary.into_items()), ["box", "glue 5pt", "box"], "数式の境界は本文と同じ glue");
   }
 
   #[test]

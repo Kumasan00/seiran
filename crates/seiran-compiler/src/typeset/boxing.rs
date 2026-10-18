@@ -224,7 +224,7 @@ impl BlockBuilder<'_> {
     if paragraph.is_empty() {
       return;
     }
-    let items = std::mem::take(paragraph).finish(Edge::Absorb);
+    let items = std::mem::take(paragraph).into_items();
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
     blocks.push(Block::Paragraph {
       items,
@@ -343,7 +343,7 @@ impl<'a> Measurer<'a> {
         for child in body {
           self.collect_inline(child, &mut body_list);
         }
-        let items = body_list.finish(Edge::Absorb);
+        let items = body_list.into_items();
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
         out.push_marker(HItem::Footnote(MeasuredFootnote {
           number,
@@ -492,7 +492,7 @@ impl<'a> Measurer<'a> {
           self.collect_inline(node, &mut list);
         }
         cells.push(TableCellBox {
-          items: list.finish(Edge::Absorb),
+          items: list.into_items(),
           column_span: cell.column_span,
         });
       }

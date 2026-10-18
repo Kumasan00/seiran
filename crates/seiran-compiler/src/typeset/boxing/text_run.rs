@@ -176,7 +176,7 @@ impl Measurer<'_> {
 ///
 /// glue は自然幅のアキ、分割制御は幅 0 として読む。
 pub(super) fn place_prose(list: HList, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
-  for item in list.finish(Edge::Absorb) {
+  for item in list.into_items() {
     match item {
       HItem::Box(hbox) => {
         let width = hbox.width;
