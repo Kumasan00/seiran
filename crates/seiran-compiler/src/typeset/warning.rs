@@ -4,7 +4,10 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::typeset::font::FontWarning;
+use crate::{
+  length::Length,
+  typeset::{breaking::OverflowAxis, font::FontWarning},
+};
 
 /// 組版段の警告。
 #[derive(Debug, Error, Diagnostic)]
@@ -48,6 +51,26 @@ pub(crate) enum TypesetWarning {
     /// はみ出した脚注の表示番号
     number: u32,
   },
+
+  /// 行（分割できないコード・数式内の文章など）が段の幅か実効の本文下限を超えた
+  #[error("{page} ページの行「{excerpt}」が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
+  #[diagnostic(
+    code(typeset::overflow::line),
+    severity(Warning),
+    help(
+      "分割できない長いコードや数式内の文章（\\text）を短く分けるか、style.toml の文字サイズ・[page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+    )
+  )]
+  LineOverflow {
+    /// はみ出しが起きたページの印字ラベル
+    page: String,
+    /// 行の内容の要約
+    excerpt: String,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
 }
 
 /// 脚注番号の列を `1, 2` の形へ整形する
@@ -59,8 +82,9 @@ mod tests {
 
   use super::TypesetWarning;
   use crate::{
+    length::Length,
     project::{FontType, ProjectPath},
-    typeset::font::FontWarning,
+    typeset::{breaking::OverflowAxis, font::FontWarning},
   };
 
   #[test]
@@ -106,12 +130,33 @@ mod tests {
         page: "1".to_owned(),
         number: 1,
       },
+      TypesetWarning::LineOverflow {
+        page: "1".to_owned(),
+        excerpt: "x".to_owned(),
+        axis: OverflowAxis::Vertical,
+        excess: Length::pt(1.0),
+      },
     ];
 
     for warning in &warnings {
       assert_eq!(warning.severity(), Some(Severity::Warning), "警告 severity を宣言しているはず");
       let code = warning.code().expect("診断 code を持つはず").to_string();
-      assert!(code.starts_with("typeset::footnote::"), "検出段の code を名乗るはず: {code}");
+      assert!(
+        code.starts_with("typeset::footnote::") || code.starts_with("typeset::overflow::"),
+        "検出段の code を名乗るはず: {code}"
+      );
     }
+  }
+
+  #[test]
+  fn line_overflow_names_page_excerpt_axis_and_amount() {
+    let warning = TypesetWarning::LineOverflow {
+      page: "3".to_owned(),
+      excerpt: "abcdefghij…".to_owned(),
+      axis: OverflowAxis::Horizontal,
+      excess: Length::pt(1015.0),
+    };
+
+    assert_eq!(warning.to_string(), "3 ページの行「abcdefghij…」が横に 1015.0pt はみ出したまま配置しました");
   }
 }

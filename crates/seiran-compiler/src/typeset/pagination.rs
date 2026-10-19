@@ -126,6 +126,16 @@ fn overflow_warnings(page_labels: &PageLabels, sections: [(Vec<Overflow>, usize)
       warnings.push(match overflow.kind {
         OverflowKind::FootnoteLine { numbers } => TypesetWarning::FootnoteOverflow { page, numbers },
         OverflowKind::FootnoteSingleLine { number } => TypesetWarning::FootnoteLineOverflow { page, number },
+        OverflowKind::Line {
+          excerpt,
+          axis,
+          excess,
+        } => TypesetWarning::LineOverflow {
+          page,
+          excerpt,
+          axis,
+          excess,
+        },
       });
     }
   }

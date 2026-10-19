@@ -5,6 +5,8 @@ mod page_draft;
 mod paragraph_plan;
 mod region_cursor;
 
+use std::fmt;
+
 use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
 use itertools::izip;
 use page_draft::{PageDraft, PendingTableRow, TableFrame};
@@ -22,8 +24,14 @@ use crate::{
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
+    observe,
   },
 };
+
+/// はみ出しとみなす超過量の下限（0.1pt。TeX の `\hfuzz` / `\vfuzz` の既定値と同じ）。
+///
+/// 両端揃えの伸縮を箱ごとに sp へ丸めた誤差で、段幅ちょうどの行が数 sp 超えることがあるため。
+const OVERFLOW_TOLERANCE: Length = Length::from_sp(6554);
 
 /// 内容が配置先の段・ページに収まらないまま配置された事実。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +56,39 @@ pub(in crate::typeset) enum OverflowKind {
     /// はみ出した脚注の表示番号
     number: u32,
   },
+  /// 行（本文・合成行・脚注本体）が段の幅か実効の本文下限を超えた
+  Line {
+    /// 行の内容の要約（識別用）
+    excerpt: String,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
+}
+
+/// はみ出しの方向
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OverflowAxis {
+  /// 段の右端を超えた
+  Horizontal,
+  /// 実効の本文下限を超えた
+  Vertical,
+}
+
+impl fmt::Display for OverflowAxis {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    return f.write_str(match self {
+      OverflowAxis::Horizontal => "横",
+      OverflowAxis::Vertical => "縦",
+    });
+  }
+}
+
+/// `extent` が `limit` を [`OVERFLOW_TOLERANCE`] より大きく超えていれば、その超過量を返す
+fn excess(extent: Length, limit: Length) -> Option<Length> {
+  let over = extent - limit;
+  return (over > OVERFLOW_TOLERANCE).then_some(over);
 }
 
 /// 縦組版の内部状態（確定ページ列・カーソル・脚注の予約と繰越）
@@ -171,7 +212,7 @@ impl PageComposer {
     for (pending, &placed) in std::mem::take(&mut self.carry).into_iter().zip(&packing.splits) {
       let (head, tail) = split_pending(pending, placed);
       if let Some(head) = head {
-        self.region_footnotes.push(head);
+        self.push_region_footnote(head);
       }
       if let Some(tail) = tail {
         rest.push(tail);
@@ -224,6 +265,40 @@ impl PageComposer {
       page_index: self.pages.len(),
       kind,
     });
+  }
+
+  /// 段左端基準の行 `line` が段の幅を超えたか、行の下端 `bottom` が下限 `limit` を超えたかを、横 → 縦の順に記録する
+  fn record_line_overflow(&mut self, line: &Line, bottom: Length, limit: Length) {
+    let overflows = [
+      (OverflowAxis::Horizontal, excess(line.width(), self.column_width)),
+      (OverflowAxis::Vertical, excess(bottom, limit)),
+    ];
+    for (axis, over) in overflows {
+      if let Some(excess) = over {
+        self.record(OverflowKind::Line {
+          excerpt: observe::summarize_line(line),
+          axis,
+          excess,
+        });
+      }
+    }
+  }
+
+  /// 現在リージョンに置く脚注を積む。本体の各行が段の幅を超えていれば記録する
+  ///
+  /// 脚注の行は着地したリージョンでちょうど 1 回ここを通る（繰越の残りは次のリージョンで改めて積まれる）。
+  /// 縦のはみ出しは脚注の詰め込み（[`OverflowKind::FootnoteLine`] / [`OverflowKind::FootnoteSingleLine`]）が記録する。
+  fn push_region_footnote(&mut self, head: PendingFootnote) {
+    for line in &head.lines {
+      if let Some(excess) = excess(line.width(), self.column_width) {
+        self.record(OverflowKind::Line {
+          excerpt: observe::summarize_line(line),
+          axis: OverflowAxis::Horizontal,
+          excess,
+        });
+      }
+    }
+    self.region_footnotes.push(head);
   }
 
   /// 現在リージョン（段）を確定する。下端揃えの配分と脚注の確定座標化は `draft` が行う
@@ -639,12 +714,15 @@ fn place_paragraph(
       }
       let baseline = placement.baseline;
       last_baseline = baseline;
+      // 縦の下限はこの行自身の脚注予約を足す前のもの（行自身の脚注のはみ出しは `FootnoteLine` が記録する）
+      let limit = composer.cursor.region_limit(geom);
+      composer.record_line_overflow(&line, baseline + line.depth, limit);
       let col_off = composer.column_offset();
       line.shift_x(col_off);
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
         let (head, tail) = split_pending(footnote, placed);
         if let Some(head) = head {
-          composer.region_footnotes.push(head);
+          composer.push_region_footnote(head);
         }
         if let Some(tail) = tail {
           composer.carry.push(tail);
@@ -671,6 +749,8 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
     composer.advance_region(geom);
     baseline = geom.margin_top;
   }
+  let limit = composer.cursor.region_limit(geom);
+  composer.record_line_overflow(&line, baseline + line.depth, limit);
   let col_off = composer.column_offset();
   line.shift_x(col_off);
   composer.draft.place_line(line, baseline, col_off);
@@ -788,8 +868,8 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 #[cfg(test)]
 mod tests {
   use super::{
-    FootnoteCharges, FootnoteDemand, Overflow, OverflowKind, PageGeometry, RegionCursor, break_pages, is_content_block,
-    keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
+    FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor, break_pages,
+    is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth, TextAlignment},
@@ -3509,5 +3589,137 @@ mod tests {
     assert!(pages[0].anchors.is_empty(), "{:?}", pages[0].anchors);
     assert_eq!(pages[1].anchors.len(), 1, "{:?}", pages[1].anchors);
     assert!(close(pages[1].anchors[0].y, 2.0), "{:?}", pages[1].anchors[0]);
+  }
+
+  /// 幅 `width`・高さ `height`・深さ `depth` の、テキストを持たない箱
+  fn wide_box(width: f32, height: f32, depth: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: pt(width),
+      height: pt(height),
+      depth: pt(depth),
+    });
+  }
+
+  /// 箱 1 つだけの左揃え段落
+  fn one_box_paragraph(item: HItem) -> Block {
+    return Block::Paragraph {
+      items: vec![item],
+      leading: pt(12.0),
+      indent: pt(0.0),
+      right_indent: pt(0.0),
+      alignment: TextAlignment::Left,
+    };
+  }
+
+  /// 抜粋が空（テキストを持たない箱）の行のはみ出し記録
+  fn line_overflow(page_index: usize, axis: OverflowAxis, excess: f32) -> Overflow {
+    return Overflow {
+      page_index,
+      kind: OverflowKind::Line {
+        excerpt: String::new(),
+        axis,
+        excess: pt(excess),
+      },
+    };
+  }
+
+  #[test]
+  fn line_wider_than_column_is_recorded_once_with_its_excess() {
+    let blocks = vec![one_box_paragraph(wide_box(130.0, 8.0, 2.0))];
+
+    let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 30.0)]);
+  }
+
+  #[test]
+  fn overflow_within_tolerance_is_not_recorded() {
+    for width in [100.0, 100.05] {
+      let blocks = vec![one_box_paragraph(wide_box(width, 8.0, 2.0))];
+
+      let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+      assert!(overflows.is_empty(), "許容量 0.1pt 以下は記録しないはず: width={width} {overflows:?}");
+    }
+  }
+
+  #[test]
+  fn line_wider_than_its_column_is_recorded_in_two_columns() {
+    // 段幅 45。本文幅 100 には収まる
+    let blocks = vec![one_box_paragraph(wide_box(50.0, 8.0, 2.0))];
+
+    let (_, overflows) = break_pages(blocks, pt(100.0), &two_column_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 5.0)]);
+  }
+
+  #[test]
+  fn composed_line_wider_than_column_is_recorded() {
+    let line = Line {
+      boxes: vec![PlacedHBox {
+        hbox: HBox {
+          content: HBoxContent::Atom(Vec::new()),
+          width: pt(120.0),
+          height: pt(8.0),
+          depth: pt(2.0),
+        },
+        dx: Length::ZERO,
+        dy: Length::ZERO,
+      }],
+      ..test_line()
+    };
+    let blocks = vec![Block::ComposedLine {
+      line,
+      leading: pt(12.0),
+    }];
+
+    let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 20.0)]);
+  }
+
+  #[test]
+  fn line_deeper_than_region_is_recorded_as_vertical() {
+    // ベースライン 10 + 深さ 45 = 55 が page_limit 50 を超える。送っても改善しないのでその場に置く
+    let blocks = vec![one_box_paragraph(wide_box(10.0, 8.0, 45.0))];
+
+    let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Vertical, 5.0)]);
+  }
+
+  #[test]
+  fn footnote_line_wider_than_column_is_recorded_once_on_its_page() {
+    let footnote = footnote_item(1, vec![wide_box(130.0, 8.0, 2.0)], pt(12.0));
+    let blocks = vec![single_line_paragraph(vec![footnote])];
+
+    let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 30.0)]);
+  }
+
+  #[test]
+  fn carried_footnote_line_is_recorded_on_the_page_it_lands_on() {
+    // 4 行の脚注のうち 3 行が 1 ページ目、幅 130 の最終行が 2 ページ目へ繰り越される
+    let body = vec![
+      test_box(),
+      HItem::ForcedBreak,
+      test_box(),
+      HItem::ForcedBreak,
+      test_box(),
+      HItem::ForcedBreak,
+      wide_box(130.0, 8.0, 2.0),
+    ];
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_item(1, body, pt(12.0))]),
+      single_line_paragraph(vec![]),
+    ];
+
+    let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (1, vec![(1, true, 1)])], "{pages:?}");
+    assert_eq!(overflows, vec![line_overflow(1, OverflowAxis::Horizontal, 30.0)]);
   }
 }

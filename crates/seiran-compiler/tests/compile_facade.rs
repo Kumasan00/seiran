@@ -93,7 +93,10 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
     "config の警告とフォントの警告が組版の警告より前に並ぶはず: {codes:?}"
   );
   assert!(
-    codes[font_end..].iter().all(|code| return code.starts_with("typeset::footnote::")),
+    // 900pt の脚注は 1 字ごとの行が段の幅も超えるので、行のはみ出しも同じまとまりに並ぶ
+    codes[font_end..]
+      .iter()
+      .all(|code| return code.starts_with("typeset::footnote::") || code.starts_with("typeset::overflow::")),
     "組版の警告は末尾にまとまるはず: {codes:?}"
   );
   assert!(
@@ -125,7 +128,10 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
-  assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
+  // 900pt の脚注は 1 字ごとの行が段の幅も超える（行のはみ出しは別の code で数えない）
+  let footnote_codes: Vec<&String> =
+    codes.iter().filter(|code| return code.starts_with("typeset::footnote::")).collect();
+  assert_eq!(footnote_codes, vec!["typeset::footnote::overflow"], "{codes:?}");
   assert!(
     reports.iter().all(|report| return report.severity() == Some(miette::Severity::Warning)),
     "warning severity だけを持つはず"
@@ -157,7 +163,9 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
-  assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
+  let footnote_codes: Vec<&String> =
+    codes.iter().filter(|code| return code.starts_with("typeset::footnote::")).collect();
+  assert_eq!(footnote_codes, vec!["typeset::footnote::overflow"], "{codes:?}");
 }
 
 /// 警告の列から `code` を集める。

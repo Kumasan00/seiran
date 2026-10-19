@@ -1,6 +1,6 @@
-//! TRACE ログ用の要約ヘルパ
+//! TRACE ログと組版警告に載せる要約ヘルパ
 //!
-//! ここの関数は `trace!` のフィールド値として呼ぶ。`tracing` のフィールド値は callsite が有効な
+//! TRACE で使うときは `trace!` のフィールド値として呼ぶ。`tracing` のフィールド値は callsite が有効な
 //! ときだけ評価されるので、TRACE 無効時は文字列を作らない。
 
 use crate::typeset::boxes::{HBoxContent, Line};
