@@ -4784,13 +4784,16 @@ fn empty_bars_compile_with_zero_width_rules() {
   assert!(rules.iter().all(|rule| return rule.width == Length::ZERO), "空の基底の罫は幅 0");
 }
 
-/// 伸縮括弧のコマンドと、左右の括弧の字（cases / matrix の `delimiter` の括弧と同じ）
-const FENCES: [(&str, &str, &str); 5] = [
+/// 伸縮括弧のコマンドと、左右の括弧の字
+const FENCES: [(&str, &str, &str); 8] = [
   ("paren", "(", ")"),
   ("bracket", "[", "]"),
   ("brace", "{", "}"),
   ("abs", "|", "|"),
   ("norm", "\u{2016}", "\u{2016}"),
+  ("anglebracket", "\u{27E8}", "\u{27E9}"),
+  ("floor", "\u{230A}", "\u{230B}"),
+  ("ceil", "\u{2308}", "\u{2309}"),
 ];
 
 /// グリフ列のうち、左の括弧（テキストが `open` の最初のもの）と右の括弧（テキストが `close` の最後のもの）。
@@ -4861,12 +4864,30 @@ fn display_fence_grows_past_the_natural_delimiter() {
 
 #[test]
 fn short_fence_body_keeps_the_natural_delimiter() {
-  let fenced = first_line_runs("$\\paren{x}$\n");
-  let bare = first_line_runs("$(x)$\n");
+  for ((command, open, close), (bare_open, bare_close)) in FENCES.into_iter().zip(BARE_FENCES) {
+    let fenced = first_line_runs(&format!("$\\{command}{{x}}$\n"));
+    let bare = first_line_runs(&format!("${bare_open} x{bare_close}$\n"));
 
-  let (left, right) = fence_pair(&fenced, "(", ")");
-  assert_eq!(left.run.glyphs, run_with_text(&bare, "(").run.glyphs, "𝑥 は元の ( で覆えるので字形を替えない");
-  assert_eq!(right.run.glyphs, run_with_text(&bare, ")").run.glyphs, "𝑥 は元の ) で覆えるので字形を替えない");
+    let (left, right) = fence_pair(&fenced, open, close);
+    // 裸の `\{ x\}` は 1 本のグリフ列に組まれるので、裸の括弧は列の先頭・末尾のグリフで比べる
+    let bare_left =
+      bare.iter().find(|line_run| return line_run.run.text.starts_with(open)).expect("左の括弧があるはず");
+    let bare_right = bare
+      .iter()
+      .rev()
+      .find(|line_run| return line_run.run.text.ends_with(close))
+      .expect("右の括弧があるはず");
+    assert_eq!(
+      sole_glyph(left).0,
+      bare_left.run.glyphs.first().expect("左の括弧のグリフ").gid,
+      "𝑥 は元の左の括弧で覆えるので字形を替えない: \\{command}"
+    );
+    assert_eq!(
+      sole_glyph(right).0,
+      bare_right.run.glyphs.last().expect("右の括弧のグリフ").gid,
+      "𝑥 は元の右の括弧で覆えるので字形を替えない: \\{command}"
+    );
+  }
 }
 
 #[test]
@@ -4914,13 +4935,16 @@ fn empty_fence_compiles_with_the_delimiters_side_by_side() {
   assert_eq!(right.dx, left.dx + left.width, "空の中身は幅 0");
 }
 
-/// [`FENCES`] と同じ順の、左右の括弧を数式に裸で書く形（`[ ] { }` は構造文字なのでエスケープ、`|` と `‖` は記号コマンド）
-const BARE_FENCES: [(&str, &str); 5] = [
+/// [`FENCES`] と同じ順の、左右の括弧を数式に裸で書く形（`[ ] { }` は構造文字なのでエスケープ、`|` `‖` `⟨⟩` `⌊⌋` `⌈⌉` は記号コマンド）
+const BARE_FENCES: [(&str, &str); 8] = [
   ("(", ")"),
   ("\\[", "\\]"),
   ("\\{", "\\}"),
   ("\\vert", "\\vert"),
   ("\\Vert", "\\Vert"),
+  ("\\langle", "\\rangle"),
+  ("\\lfloor", "\\rfloor"),
+  ("\\lceil", "\\rceil"),
 ];
 
 #[test]
