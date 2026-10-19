@@ -101,18 +101,14 @@ pub(crate) fn split_text_by_script(typeface: Typeface, text: &str) -> Vec<TextSe
 /// `Typeface` とスクリプトカテゴリから具体的な `FontType` を決定する
 pub(super) fn resolve_font_type(typeface: Typeface, category: ScriptCategory) -> FontType {
   return match category {
-    #[expect(
-      clippy::match_same_arms,
-      reason = "和文に italic は無く、数式フォントに和文グリフも無いため、どちらも明朝体へ戻すのが正しい"
-    )]
     ScriptCategory::Japanese => match typeface {
-      Typeface::Serif | Typeface::SerifItalic => FontType::JapaneseSerif,
+      // 和文に italic は無く、数式フォントに和文グリフも無いため、どちらも明朝体へ戻す
+      Typeface::Serif | Typeface::SerifItalic | Typeface::Math => FontType::JapaneseSerif,
       Typeface::SerifBold | Typeface::SerifBoldItalic => FontType::JapaneseSerifBold,
       Typeface::SansSerif | Typeface::SansSerifItalic => FontType::JapaneseSansSerif,
       Typeface::SansSerifBold | Typeface::SansSerifBoldItalic => FontType::JapaneseSansSerifBold,
       Typeface::Monospace | Typeface::MonospaceItalic => FontType::JapaneseMonospace,
       Typeface::MonospaceBold | Typeface::MonospaceBoldItalic => FontType::JapaneseMonospaceBold,
-      Typeface::Math => FontType::JapaneseSerif,
     },
     ScriptCategory::Latin => match typeface {
       Typeface::Serif => FontType::Serif,
@@ -143,7 +139,7 @@ pub(in crate::typeset) fn char_font_type(typeface: Typeface, ch: char) -> FontTy
 
 #[cfg(test)]
 mod tests {
-  use super::{FontType, Typeface, char_font_type, split_text_by_script};
+  use super::{FontType, ScriptCategory, Typeface, char_font_type, resolve_font_type, split_text_by_script};
 
   #[test]
   fn split_text_by_script_math_splits_latin_and_japanese() {
@@ -169,5 +165,29 @@ mod tests {
         FontType::Math
       ]
     );
+  }
+
+  #[test]
+  fn resolve_font_type_maps_every_typeface_per_category() {
+    let cases = [
+      (Typeface::Serif, FontType::JapaneseSerif, FontType::Serif),
+      (Typeface::SerifBold, FontType::JapaneseSerifBold, FontType::SerifBold),
+      (Typeface::SerifItalic, FontType::JapaneseSerif, FontType::SerifItalic),
+      (Typeface::SerifBoldItalic, FontType::JapaneseSerifBold, FontType::SerifBoldItalic),
+      (Typeface::SansSerif, FontType::JapaneseSansSerif, FontType::SansSerif),
+      (Typeface::SansSerifBold, FontType::JapaneseSansSerifBold, FontType::SansSerifBold),
+      (Typeface::SansSerifItalic, FontType::JapaneseSansSerif, FontType::SansSerifItalic),
+      (Typeface::SansSerifBoldItalic, FontType::JapaneseSansSerifBold, FontType::SansSerifBoldItalic),
+      (Typeface::Monospace, FontType::JapaneseMonospace, FontType::Monospace),
+      (Typeface::MonospaceBold, FontType::JapaneseMonospaceBold, FontType::MonospaceBold),
+      (Typeface::MonospaceItalic, FontType::JapaneseMonospace, FontType::MonospaceItalic),
+      (Typeface::MonospaceBoldItalic, FontType::JapaneseMonospaceBold, FontType::MonospaceBoldItalic),
+      (Typeface::Math, FontType::JapaneseSerif, FontType::Math),
+    ];
+
+    for (typeface, japanese, latin) in cases {
+      assert_eq!(resolve_font_type(typeface, ScriptCategory::Japanese), japanese, "{typeface:?} の和文");
+      assert_eq!(resolve_font_type(typeface, ScriptCategory::Latin), latin, "{typeface:?} の欧文");
+    }
   }
 }
