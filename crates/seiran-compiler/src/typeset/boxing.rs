@@ -14,7 +14,7 @@
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
 //! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`hlist` は本文・脚注本文・表のセルの水平リストの積み場所で、
-//! run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の約物アキを解決する。この module 本体は縦リストの走査
+//! run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
 
@@ -274,7 +274,7 @@ impl<'a> Measurer<'a> {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
-      // コード: `build_atom` 経由なので空白は glue にならず、和欧文間アキも挿さらない
+      // コード: `build_atom` 経由なので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
       InlineNode::TextAtom(text, style) => {
         out.push_box(self.text_atom(text, style));
       },

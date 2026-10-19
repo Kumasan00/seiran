@@ -86,7 +86,7 @@ pub(super) fn inline_from_token<'s>(source: &'s str, token: &Token) -> Option<To
 ///
 /// lexer は空白と構造文字で [`TokenKind::Text`] を切るので、`A\index{k}V` は素朴に評価すると
 /// `Text("A")` / `Index` / `Text("V")` の 3 ノードになる。`crate::typeset::boxing` はテキストノード
-/// ごとに 1 つのシェーピング run を作るため、run 境界でカーニング・合字・和欧文間アキ・分割機会が
+/// ごとに 1 つのシェーピング run を作るため、run 境界でカーニング・合字・分割機会が
 /// 失われてしまう。マーカーを取り除いたソースと同じテキスト構造へ畳み直すことで、
 /// 「`\index` の有無でレイアウトが変わらない」という不変条件を構造として保つ。
 ///

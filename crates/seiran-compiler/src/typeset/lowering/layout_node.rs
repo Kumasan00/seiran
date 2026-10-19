@@ -456,7 +456,7 @@ pub(in crate::typeset) enum MathOperator {
 ///
 /// 幅 0 の索引マーカー（[`InlineNode::IndexMark`]）は結合を切らず、畳んだテキストの後ろへ回す。
 /// マーカーを取り除いたソースと同じテキスト構造にならないと、シェーピング run が割れて
-/// 和欧文間アキやカーニングが変わってしまうため。
+/// カーニングや分割機会が変わってしまうため。
 pub(super) fn merge_adjacent_text(nodes: Vec<InlineNode>) -> Vec<InlineNode> {
   let mut out: Vec<InlineNode> = Vec::with_capacity(nodes.len());
   let mut deferred_marks: Vec<InlineNode> = Vec::new();

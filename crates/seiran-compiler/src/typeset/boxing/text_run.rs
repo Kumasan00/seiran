@@ -46,31 +46,7 @@ impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   pub(super) fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut HList) {
     let text = boxing::fold_newlines(text);
-    // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキの境界判定に使う。
-    let mut prev_boundary: Option<(script::ScriptCategory, char)> = None;
     for segment in script::split_text_by_script(style.typeface, &text) {
-      let is_japanese = segment.category == script::ScriptCategory::Japanese;
-      // 和文↔欧文が直接隣接する（字・数字どうしの）境界に四分アキを挿む（JIS X 4051）。
-      if style.typeface != Typeface::Math
-        && self.punctuation_spacing
-        && let (Some((prev_category, prev_char)), Some(next_char)) = (prev_boundary, segment.text.chars().next())
-        && boxing::is_ja_latin_letter_boundary(prev_category, prev_char, segment.category, next_char)
-      {
-        let glue = boxing::ja_latin_aki(style.font_size);
-        trace!(
-          left_char = ?prev_char,
-          right_char = ?next_char,
-          left_category = ?prev_category,
-          right_category = ?segment.category,
-          natural_pt = %glue.natural.to_pt(),
-          stretch_pt = %glue.stretch.to_pt(),
-          shrink_pt = %glue.shrink.to_pt(),
-          "和欧文間アキを挿入"
-        );
-        out.push_absorbing(glue.into_item());
-      }
-      prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
-
       let run =
         self
           .shaper
@@ -81,7 +57,7 @@ impl Measurer<'_> {
         continue;
       }
       // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
-      let hyphen = if !is_japanese && self.hyphenation.is_some() {
+      let hyphen = if segment.category != script::ScriptCategory::Japanese && self.hyphenation.is_some() {
         Some(
           self
             .shaper
@@ -91,7 +67,7 @@ impl Measurer<'_> {
       } else {
         None
       };
-      self.split_run_into_items(run, is_japanese, hyphen.as_ref(), out);
+      self.split_run_into_items(run, segment.category, hyphen.as_ref(), out);
     }
   }
 
@@ -116,13 +92,29 @@ impl Measurer<'_> {
     return (atom, leading.in_math(), trailing.in_math());
   }
 
-  /// シェーピング済みの run を分割可能位置で `HItem` 列に分割し、両端の約物アキの性質を添えて `out` に積む
-  fn split_run_into_items(&self, run: ShapedRun, is_japanese: bool, hyphen: Option<&HBox>, out: &mut HList) {
+  /// スクリプト区分 `category` の run を分割可能位置で `HItem` 列に分割し、両端の約物アキ・和欧文間アキの性質を添えて
+  /// `out` に積む
+  fn split_run_into_items(
+    &self,
+    run: ShapedRun,
+    category: script::ScriptCategory,
+    hyphen: Option<&HBox>,
+    out: &mut HList,
+  ) {
+    let is_japanese = category == script::ScriptCategory::Japanese;
     // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）
     let text = run.text();
     let (first_char, last_char) = (text.chars().next().unwrap_or(' '), text.chars().next_back().unwrap_or(' '));
+    // 約物を詰めない経路の字の端。和欧文間アキはアキ調整のある文書でだけ受ける
+    let em = run.font_size();
+    let letter = |ch: char| -> Edge {
+      if self.punctuation_spacing {
+        return Edge::text(ch, category, em);
+      }
+      return Edge::letter(ch);
+    };
     if !run.is_in_logical_order() {
-      out.push(Edge::letter(first_char), vec![HItem::Box(run.into_hbox())], Edge::letter(last_char));
+      out.push(letter(first_char), vec![HItem::Box(run.into_hbox())], letter(last_char));
       return;
     }
     let mut items = Vec::new();
@@ -143,7 +135,7 @@ impl Measurer<'_> {
       });
     }
     if breaks.is_empty() {
-      out.push(Edge::letter(first_char), vec![HItem::Box(run.into_hbox())], Edge::letter(last_char));
+      out.push(letter(first_char), vec![HItem::Box(run.into_hbox())], letter(last_char));
       return;
     }
 
@@ -165,7 +157,7 @@ impl Measurer<'_> {
       if matches!(item, Some(HItem::Glue { .. })) {
         return Edge::Absorb;
       }
-      return Edge::letter(ch);
+      return letter(ch);
     };
     let (leading, trailing) = (edge_of(items.first(), first_char), edge_of(items.last(), last_char));
     out.push(leading, items, trailing);
@@ -420,6 +412,7 @@ mod tests {
       boxing::{
         break_opportunities::{BreakKind, BreakOpportunity},
         hlist::Edge,
+        script::ScriptCategory,
       },
     },
   };
@@ -691,7 +684,8 @@ mod tests {
       ),
       "詰めた全角の約物は約物の端"
     );
-    assert_eq!(edges(&halfwidth), (Edge::letter('（'), Edge::letter('）')), "詰めない半角の約物は字の端");
-    assert_eq!(edges(&letters), (Edge::letter('あ'), Edge::letter('い')));
+    let ja = |ch: char| return Edge::text(ch, ScriptCategory::Japanese, em);
+    assert_eq!(edges(&halfwidth), (ja('（'), ja('）')), "詰めない半角の約物は和文の字の端");
+    assert_eq!(edges(&letters), (ja('あ'), ja('い')));
   }
 }
