@@ -48,11 +48,10 @@ pub(super) struct RawConfig {
 
 /// `sources` 配列が空でないことを検証します。
 #[expect(
-  clippy::ptr_arg,
   clippy::trivially_copy_pass_by_ref,
-  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため（`&Vec<PathBuf>` を `&[PathBuf]` へは変えられない）"
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
 )]
-fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
+fn validate_non_empty_sources(value: &[PathBuf], _: &()) -> garde::Result {
   if value.is_empty() {
     return Err(garde::Error::new("sources は最低 1 つのファイルを指定する必要があります"));
   }

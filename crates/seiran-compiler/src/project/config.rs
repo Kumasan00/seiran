@@ -838,16 +838,35 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_fails_on_omitted_sources() {
-    let toml = format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), font_sections("dummy.ttf"));
-    let raw = parse_config(&toml, dummy_source()).unwrap();
+  fn validate_values_reports_sources_violation_only_when_empty() {
+    let cases: [(&str, &[&str]); 3] = [
+      ("", &["sources は最低 1 つのファイルを指定する必要があります"]),
+      ("sources = []\n\n", &["sources は最低 1 つのファイルを指定する必要があります"]),
+      ("sources = [\"a.sei\"]\n\n", &[]),
+    ];
+    for (sources_line, expected) in cases {
+      let toml = format!(
+        "{sources_line}{}{}{}",
+        valid_output_section("test", "out"),
+        valid_pdf_section(),
+        font_sections("dummy.ttf")
+      );
+      let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    let errors = validate_values(&raw).unwrap_err();
+      // 非空のケースでは他の違反が無く Ok になりうるので、エラー列は空として扱う
+      let errors = validate_values(&raw).err().unwrap_or_default();
 
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ConfigValidationError::Field { path, .. } if path == "sources"
-    )));
+      let messages: Vec<&str> = errors
+        .iter()
+        .filter_map(|error| {
+          return match error {
+            ConfigValidationError::Field { path, message } if path == "sources" => Some(message.as_str()),
+            _ => None,
+          };
+        })
+        .collect();
+      assert_eq!(messages, expected, "sources_line = {sources_line:?}");
+    }
   }
 
   #[test]
