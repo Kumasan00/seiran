@@ -9,11 +9,10 @@ warning と tracing の分担・内部不変条件違反の扱い・garde バリ
 
 - 各クレートの `lib.rs`（または該当モジュール）に `thiserror::Error` + `miette::Diagnostic` 派生のエラー列挙型を定義する。`#[derive(Debug, Error, Diagnostic)]` を常に併用する
 - バリアントごとに `#[error("...")]`（メッセージ、日本語）と `#[diagnostic(code(...), help("..."))]` を付与する。`code` の付け方は次節の規約に従う
-- `Diagnostic` を手書きするのは、`code` / help を variant ごとの静的な属性で書けないときだけ（derive の
-  `code(...)` は静的なパスしか書けない）。該当するのは内側の診断へ委譲して文脈を足す wrapper
-  （`typeset::font` の `FontValidationError`・`compiler::source_diagnostic::SourceDiagnostic`）。手書きが要ることは
-  `code` を選ぶキーに新しい型を足す根拠にならない — キーは既存エラー型のフィールドか既存 enum の値で持ち、新しい
-  enum は `docs/coding-conventions.md`「新しい型は不変条件を運ぶときだけ」を満たすときだけ足す
+- `Diagnostic` を手書きするのは derive（`transparent` / `forward(...)` による委譲を含む）で書けないときだけ
+  （derive が書けるのはメソッドごとに静的な属性か 1 フィールドへの転送で、複数の値は組み合わせられない）。例は内側の
+  `related` に別の診断を連結する `compiler::source_diagnostic::SourceDiagnostic` / `CompileFailure`。`code` を選ぶ
+  キーを専用の型にしてよいかは別の判定で、`docs/coding-conventions.md`「新しい型は不変条件を運ぶときだけ」に従う
 - 外部エラーを巻き取る場合は `#[source] source: ExternalError` フィールドで chain を形成し、`?` 演算子で伝播する。`map_err` でメッセージのコンテキスト（ファイルパス等）を付与する
 - **中間の seam エラーを `#[diagnostic_source]` で連鎖させない。** `code` / `help` を持つ Diagnostic を
   `#[diagnostic_source]` に載せると、miette がその変種ぶんの診断ブロックを入れ子で追加描画し、
