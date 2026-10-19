@@ -25,26 +25,26 @@ use crate::{
   },
 };
 
-/// 脚注がリージョンに収まらないまま配置された事実。
+/// 内容が配置先の段・ページに収まらないまま配置された事実。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::typeset) struct FootnoteOverflow {
+pub(in crate::typeset) struct Overflow {
   /// はみ出しが起きたページの 0 起点 index（この [`break_pages`] 呼び出しが返すページ列の中での位置。
   /// 前付け・後付けを連結した物理ページ番号ではない）
   pub page_index: usize,
   /// はみ出し方
-  pub kind: FootnoteOverflowKind,
+  pub kind: OverflowKind,
 }
 
-/// [`FootnoteOverflow`] のはみ出し方
+/// [`Overflow`] のはみ出し方
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::typeset) enum FootnoteOverflowKind {
+pub(in crate::typeset) enum OverflowKind {
   /// 1 行に付いた脚注群が、空のリージョンでもページ全高に収まらなかった（表示番号は出現順）
-  Line {
+  FootnoteLine {
     /// はみ出した脚注群の表示番号
     numbers: Vec<u32>,
   },
   /// 繰越脚注の先頭 1 行がページ全高を超えた
-  SingleLine {
+  FootnoteSingleLine {
     /// はみ出した脚注の表示番号
     number: u32,
   },
@@ -70,8 +70,8 @@ struct PageComposer {
   region_footnotes: Vec<PendingFootnote>,
   /// 次リージョンへ繰り越す脚注の残り（出現順）。
   carry: Vec<PendingFootnote>,
-  /// 収まらないまま配置した脚注の記録（検出順＝ページ順）
-  overflows: Vec<FootnoteOverflow>,
+  /// 収まらないまま配置した内容の記録（検出順＝ページ順）
+  overflows: Vec<Overflow>,
 }
 
 /// 現在リージョンに集約された脚注 1 個（行分割済み、未確定座標）
@@ -162,11 +162,8 @@ impl PageComposer {
     let packing = pack_footnotes(&demands, Length::ZERO, geom.page_limit - geom.margin_top, charges, false)
       .expect("繰越の詰め込みは先頭に最低 1 行を強制するので None にならない");
     if packing.overflowed {
-      self.overflows.push(FootnoteOverflow {
-        page_index: self.pages.len(),
-        kind: FootnoteOverflowKind::SingleLine {
-          number: leading_number,
-        },
+      self.record(OverflowKind::FootnoteSingleLine {
+        number: leading_number,
       });
     }
     self.cursor.footnote_reserved = packing.height;
@@ -198,8 +195,8 @@ impl PageComposer {
     self.col = 0;
   }
 
-  /// 全ブロックの配置後に最終ページを確定し、ページ列と脚注のはみ出し記録を返す
-  fn finish(mut self, geom: &PageGeometry) -> (Vec<Page>, Vec<FootnoteOverflow>) {
+  /// 全ブロックの配置後に最終ページを確定し、ページ列とはみ出し記録を返す
+  fn finish(mut self, geom: &PageGeometry) -> (Vec<Page>, Vec<Overflow>) {
     // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
     let x = self.column_offset();
     self.draft.land_anchors(x, self.cursor.y);
@@ -219,6 +216,16 @@ impl PageComposer {
     return (self.pages, self.overflows);
   }
 
+  /// はみ出しを現在ページの記録として積む。
+  ///
+  /// `page_index` は確定済みページ数なので、改リージョン後（着地ページが確定してから）呼ぶこと。
+  fn record(&mut self, kind: OverflowKind) {
+    self.overflows.push(Overflow {
+      page_index: self.pages.len(),
+      kind,
+    });
+  }
+
   /// 現在リージョン（段）を確定する。下端揃えの配分と脚注の確定座標化は `draft` が行う
   ///
   /// 脚注は `flush` を問わずリージョンが閉じるたびに確定する（強制改ページ・最終ページでも落とさない）。
@@ -235,14 +242,14 @@ impl PageComposer {
   }
 }
 
-/// ブロック列をページへ配置し、確定ページ列と脚注のはみ出し記録を返す。
+/// ブロック列をページへ配置し、確定ページ列とはみ出し記録を返す。
 #[must_use]
 pub(crate) fn break_pages(
   blocks: Vec<Block>,
   text_width: Length,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
-) -> (Vec<Page>, Vec<FootnoteOverflow>) {
+) -> (Vec<Page>, Vec<Overflow>) {
   let col_width = column_width(text_width, geom.num_columns, geom.column_gap);
   let mut composer = PageComposer::new(geom, col_width);
   let block_count = blocks.len();
@@ -625,13 +632,9 @@ fn place_paragraph(
       if placement.starts_region {
         composer.advance_region(geom);
       }
-      // `page_index` が正しいのは改リージョン後（この行が乗るページが確定してから）
       if placement.overflowed {
-        composer.overflows.push(FootnoteOverflow {
-          page_index: composer.pages.len(),
-          kind: FootnoteOverflowKind::Line {
-            numbers: footnotes.iter().map(|footnote| return footnote.number).collect(),
-          },
+        composer.record(OverflowKind::FootnoteLine {
+          numbers: footnotes.iter().map(|footnote| return footnote.number).collect(),
         });
       }
       let baseline = placement.baseline;
@@ -785,8 +788,8 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 #[cfg(test)]
 mod tests {
   use super::{
-    FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind, PageGeometry, RegionCursor, break_pages,
-    is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
+    FootnoteCharges, FootnoteDemand, Overflow, OverflowKind, PageGeometry, RegionCursor, break_pages, is_content_block,
+    keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth, TextAlignment},
@@ -1389,9 +1392,9 @@ mod tests {
     assert_eq!(pages.len(), 1, "はみ出しても配置は続くので 1 ページに収まる: {pages:?}");
     assert_eq!(
       overflows,
-      vec![FootnoteOverflow {
+      vec![Overflow {
         page_index: 0,
-        kind: FootnoteOverflowKind::Line {
+        kind: OverflowKind::FootnoteLine {
           numbers: vec![1, 2]
         },
       }],
@@ -1424,7 +1427,7 @@ mod tests {
     let recorded: Vec<(usize, Vec<u32>)> = overflows
       .iter()
       .map(|overflow| {
-        let FootnoteOverflowKind::Line { numbers } = &overflow.kind else {
+        let OverflowKind::FootnoteLine { numbers } = &overflow.kind else {
           panic!("行のはみ出しとして記録されるはず: {overflow:?}");
         };
         return (overflow.page_index, numbers.clone());
@@ -1460,13 +1463,13 @@ mod tests {
     assert_eq!(
       overflows,
       vec![
-        FootnoteOverflow {
+        Overflow {
           page_index: 1,
-          kind: FootnoteOverflowKind::SingleLine { number: 1 },
+          kind: OverflowKind::FootnoteSingleLine { number: 1 },
         },
-        FootnoteOverflow {
+        Overflow {
           page_index: 2,
-          kind: FootnoteOverflowKind::SingleLine { number: 1 },
+          kind: OverflowKind::FootnoteSingleLine { number: 1 },
         },
       ],
       "繰越が続く限りページごとに記録するはず"

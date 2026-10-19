@@ -7,7 +7,7 @@ use tracing::{debug, debug_span};
 use crate::typeset::{
   boxes::{Block, Page},
   boxing::{BlockBuildInputs, build_blocks},
-  breaking::{FootnoteOverflow, break_pages},
+  breaking::{Overflow, break_pages},
   image::ImageResources,
   lowering::{TitlePageMetadata, lower_title_page},
   pagination::{
@@ -26,7 +26,7 @@ pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   facts: &BodyPageFacts,
   images: &ImageResources,
-) -> (Vec<Page>, Vec<FootnoteOverflow>) {
+) -> (Vec<Page>, Vec<Overflow>) {
   let mut front_blocks: Vec<Block> = Vec::new();
 
   if ctx.style.title_page.enabled {
