@@ -4,7 +4,11 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::typeset::font::FontWarning;
+use crate::{
+  length::Length,
+  project::ProjectPath,
+  typeset::{breaking::OverflowAxis, font::FontWarning},
+};
 
 /// 組版段の警告。
 #[derive(Debug, Error, Diagnostic)]
@@ -48,6 +52,66 @@ pub(crate) enum TypesetWarning {
     /// はみ出した脚注の表示番号
     number: u32,
   },
+
+  /// 行（分割できないコード・数式内の文章など）が段の幅か実効の本文下限を超えた
+  #[error("{page} ページの行「{excerpt}」が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
+  #[diagnostic(
+    code(typeset::overflow::line),
+    severity(Warning),
+    help(
+      "分割できない長いコードや数式内の文章（\\text）を短く分けるか、style.toml の文字サイズ・[page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+    )
+  )]
+  LineOverflow {
+    /// はみ出しが起きたページの印字ラベル
+    page: String,
+    /// 行の内容の要約
+    excerpt: String,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
+
+  /// 画像が段の幅か実効の本文下限を超えた
+  #[error("{page} ページの画像 {path} が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
+  #[diagnostic(
+    code(typeset::overflow::image),
+    severity(Warning),
+    help(
+      "\\image の width / height を小さくするか、style.toml の [page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+    )
+  )]
+  ImageOverflow {
+    /// はみ出しが起きたページの印字ラベル
+    page: String,
+    /// 画像ファイルへのパス
+    path: ProjectPath,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
+
+  /// ディスプレイ数式の本体が段の幅か実効の本文下限を超えた
+  #[error("{page} ページのディスプレイ数式「{excerpt}」が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
+  #[diagnostic(
+    code(typeset::overflow::math),
+    severity(Warning),
+    help(
+      "数式を align などの複数行の環境で分けるか、style.toml の文字サイズ・[page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+    )
+  )]
+  MathOverflow {
+    /// はみ出しが起きたページの印字ラベル
+    page: String,
+    /// 数式本体の要約
+    excerpt: String,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
 }
 
 /// 脚注番号の列を `1, 2` の形へ整形する
@@ -59,8 +123,9 @@ mod tests {
 
   use super::TypesetWarning;
   use crate::{
+    length::Length,
     project::{FontType, ProjectPath},
-    typeset::font::FontWarning,
+    typeset::{breaking::OverflowAxis, font::FontWarning},
   };
 
   #[test]
@@ -106,12 +171,69 @@ mod tests {
         page: "1".to_owned(),
         number: 1,
       },
+      TypesetWarning::LineOverflow {
+        page: "1".to_owned(),
+        excerpt: "x".to_owned(),
+        axis: OverflowAxis::Vertical,
+        excess: Length::pt(1.0),
+      },
+      TypesetWarning::ImageOverflow {
+        page: "1".to_owned(),
+        path: ProjectPath::new("/project/fig.png"),
+        axis: OverflowAxis::Vertical,
+        excess: Length::pt(1.0),
+      },
+      TypesetWarning::MathOverflow {
+        page: "1".to_owned(),
+        excerpt: "x".to_owned(),
+        axis: OverflowAxis::Horizontal,
+        excess: Length::pt(1.0),
+      },
     ];
 
     for warning in &warnings {
       assert_eq!(warning.severity(), Some(Severity::Warning), "警告 severity を宣言しているはず");
       let code = warning.code().expect("診断 code を持つはず").to_string();
-      assert!(code.starts_with("typeset::footnote::"), "検出段の code を名乗るはず: {code}");
+      assert!(
+        code.starts_with("typeset::footnote::") || code.starts_with("typeset::overflow::"),
+        "検出段の code を名乗るはず: {code}"
+      );
     }
+  }
+
+  #[test]
+  fn line_overflow_names_page_excerpt_axis_and_amount() {
+    let warning = TypesetWarning::LineOverflow {
+      page: "3".to_owned(),
+      excerpt: "abcdefghij…".to_owned(),
+      axis: OverflowAxis::Horizontal,
+      excess: Length::pt(1015.0),
+    };
+
+    assert_eq!(warning.to_string(), "3 ページの行「abcdefghij…」が横に 1015.0pt はみ出したまま配置しました");
+  }
+
+  #[test]
+  fn image_overflow_names_page_path_axis_and_amount() {
+    let warning = TypesetWarning::ImageOverflow {
+      page: "1".to_owned(),
+      path: ProjectPath::new("/project/fig.png"),
+      axis: OverflowAxis::Vertical,
+      excess: Length::pt(368.0),
+    };
+
+    assert_eq!(warning.to_string(), "1 ページの画像 /project/fig.png が縦に 368.0pt はみ出したまま配置しました");
+  }
+
+  #[test]
+  fn math_overflow_names_page_excerpt_axis_and_amount() {
+    let warning = TypesetWarning::MathOverflow {
+      page: "ii".to_owned(),
+      excerpt: "x=1".to_owned(),
+      axis: OverflowAxis::Horizontal,
+      excess: Length::pt(12.34),
+    };
+
+    assert_eq!(warning.to_string(), "ii ページのディスプレイ数式「x=1」が横に 12.3pt はみ出したまま配置しました");
   }
 }

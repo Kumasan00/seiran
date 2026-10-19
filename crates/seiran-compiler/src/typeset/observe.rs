@@ -1,9 +1,9 @@
-//! TRACE ログ用の要約ヘルパ
+//! TRACE ログと組版警告に載せる要約ヘルパ
 //!
-//! ここの関数は `trace!` のフィールド値として呼ぶ。`tracing` のフィールド値は callsite が有効な
+//! TRACE で使うときは `trace!` のフィールド値として呼ぶ。`tracing` のフィールド値は callsite が有効な
 //! ときだけ評価されるので、TRACE 無効時は文字列を作らない。
 
-use crate::typeset::boxes::{HBoxContent, Line};
+use crate::typeset::boxes::{HBox, HBoxContent, Line};
 
 /// TRACE に載せるテキストの最大文字数
 const SUMMARY_MAX_CHARS: usize = 40;
@@ -27,6 +27,13 @@ pub(super) fn summarize_line(line: &Line) -> String {
   for placed in &line.boxes {
     push_content_text(&mut text, &placed.hbox.content);
   }
+  return summarize_text(&text);
+}
+
+/// 閉じた箱（ディスプレイ数式の本体など）の内容を、載っているグリフ列のテキストを繋いだ要約で返す。
+pub(super) fn summarize_box(hbox: &HBox) -> String {
+  let mut text = String::new();
+  push_content_text(&mut text, &hbox.content);
   return summarize_text(&text);
 }
 

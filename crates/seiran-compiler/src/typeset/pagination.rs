@@ -22,7 +22,7 @@ use crate::{
   semantics::SemanticDocument,
   typeset::{
     boxes::Page,
-    breaking::{FootnoteOverflow, FootnoteOverflowKind},
+    breaking::{Overflow, OverflowKind},
     error::TypesetError,
     image::{ImageAsset, ImageResources},
     pagination::{body::BodyLayout, context::BodyPageFacts, outline::collect_outline_entries, page_values::PageLabels},
@@ -44,7 +44,7 @@ pub(crate) struct LaidOutDocument {
 
 /// 不変な入力から描画直前の確定レイアウトを構築する。
 ///
-/// 組版を止めないがユーザーが直せる問題（脚注のはみ出し）は [`TypesetWarning`] として一緒に返す。
+/// 組版を止めないがユーザーが直せる問題（内容のはみ出し）は [`TypesetWarning`] として一緒に返す。
 ///
 /// # Errors
 ///
@@ -89,7 +89,7 @@ pub(super) fn paginate(
     )
   }
   // 前付け → 本文 → 後付けの順に並べるので、警告の表示順は物理ページの昇順で決定的になる
-  let warnings = footnote_overflow_warnings(
+  let warnings = overflow_warnings(
     &page_labels,
     [
       (front_overflows, 0),
@@ -118,17 +118,40 @@ pub(super) fn paginate(
 /// セクションごとのはみ出し記録を、物理ページの印字ラベル付きの警告診断へ写す。
 ///
 /// `sections` は（そのセクションの記録, 連結後の先頭物理ページ index）の組を文書順に並べたもの。
-fn footnote_overflow_warnings(
-  page_labels: &PageLabels,
-  sections: [(Vec<FootnoteOverflow>, usize); 3],
-) -> Vec<TypesetWarning> {
+fn overflow_warnings(page_labels: &PageLabels, sections: [(Vec<Overflow>, usize); 3]) -> Vec<TypesetWarning> {
   let mut warnings = Vec::new();
   for (overflows, offset) in sections {
     for overflow in overflows {
       let page = page_labels.page_label(offset + overflow.page_index).to_owned();
       warnings.push(match overflow.kind {
-        FootnoteOverflowKind::Line { numbers } => TypesetWarning::FootnoteOverflow { page, numbers },
-        FootnoteOverflowKind::SingleLine { number } => TypesetWarning::FootnoteLineOverflow { page, number },
+        OverflowKind::FootnoteLine { numbers } => TypesetWarning::FootnoteOverflow { page, numbers },
+        OverflowKind::FootnoteSingleLine { number } => TypesetWarning::FootnoteLineOverflow { page, number },
+        OverflowKind::Line {
+          excerpt,
+          axis,
+          excess,
+        } => TypesetWarning::LineOverflow {
+          page,
+          excerpt,
+          axis,
+          excess,
+        },
+        OverflowKind::Image { path, axis, excess } => TypesetWarning::ImageOverflow {
+          page,
+          path,
+          axis,
+          excess,
+        },
+        OverflowKind::Math {
+          excerpt,
+          axis,
+          excess,
+        } => TypesetWarning::MathOverflow {
+          page,
+          excerpt,
+          axis,
+          excess,
+        },
       });
     }
   }

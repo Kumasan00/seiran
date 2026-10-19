@@ -16,6 +16,9 @@ const WARNING_CODE: &str = "project::config::source_extension";
 /// 出力ディレクトリを作れないときの診断 code。
 const WRITE_ERROR_CODE: &str = "cli::create_output_dir";
 
+/// 段の幅を超える行の警告 code。
+const OVERFLOW_CODE: &str = "typeset::overflow::line";
+
 /// 出力ディレクトリの親に通常ファイルを置き、PDF の保存を必ず失敗させる出力先を返す。
 fn unwritable_output_dir(dir: &Path) -> &'static str {
   fs::write(dir.join("blocker"), "").expect("通常ファイルを書けるはず");
@@ -89,4 +92,23 @@ fn successful_build_reports_warnings_before_the_summary() {
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert_appears_before(&stderr, WARNING_CODE, "\u{2713}");
   assert!(dir.path().join("out/doc.pdf").is_file(), "PDF が保存されるはず");
+}
+
+#[test]
+fn overflow_warning_keeps_exit_code_zero_and_follows_quiet_and_log_file() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_project(dir.path(), "doc.sei", &format!("\\code{{{}}}", "abcdefghij".repeat(20)), "out");
+
+  let output = seiran(dir.path(), &["build", "-c", "config.toml"], None);
+  let quiet = seiran(dir.path(), &["build", "-c", "config.toml", "-q", "--log-file", "x.log"], None);
+
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "はみ出しは処理失敗ではない: {stderr}");
+  assert_appears_before(&stderr, OVERFLOW_CODE, "\u{2713}");
+  assert!(dir.path().join("out/doc.pdf").is_file(), "PDF が保存されるはず");
+  let quiet_stderr = stderr_text(&quiet);
+  assert_eq!(quiet.status.code(), Some(0), "{quiet_stderr}");
+  assert!(!quiet_stderr.contains(OVERFLOW_CODE), "-q では端末に警告を出さない: {quiet_stderr}");
+  let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
+  assert!(log.contains(OVERFLOW_CODE), "ログには警告が残るはず: {log}");
 }

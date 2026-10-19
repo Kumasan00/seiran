@@ -93,7 +93,10 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
     "config の警告とフォントの警告が組版の警告より前に並ぶはず: {codes:?}"
   );
   assert!(
-    codes[font_end..].iter().all(|code| return code.starts_with("typeset::footnote::")),
+    // 900pt の脚注は 1 字ごとの行が段の幅も超えるので、行のはみ出しも同じまとまりに並ぶ
+    codes[font_end..]
+      .iter()
+      .all(|code| return code.starts_with("typeset::footnote::") || code.starts_with("typeset::overflow::")),
     "組版の警告は末尾にまとまるはず: {codes:?}"
   );
   assert!(
@@ -125,7 +128,10 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
-  assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
+  // 900pt の脚注は 1 字ごとの行が段の幅も超える（行のはみ出しは別の code で数えない）
+  let footnote_codes: Vec<&String> =
+    codes.iter().filter(|code| return code.starts_with("typeset::footnote::")).collect();
+  assert_eq!(footnote_codes, vec!["typeset::footnote::overflow"], "{codes:?}");
   assert!(
     reports.iter().all(|report| return report.severity() == Some(miette::Severity::Warning)),
     "warning severity だけを持つはず"
@@ -157,7 +163,9 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
-  assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
+  let footnote_codes: Vec<&String> =
+    codes.iter().filter(|code| return code.starts_with("typeset::footnote::")).collect();
+  assert_eq!(footnote_codes, vec!["typeset::footnote::overflow"], "{codes:?}");
 }
 
 /// 警告の列から `code` を集める。
@@ -471,4 +479,84 @@ fn compile_reads_a_font_once_when_it_is_spelled_two_ways() {
 
   assert_eq!(compilation.dependencies.font_paths, vec![PathBuf::from("/project/fonts/font.ttf")]);
   assert_eq!(source.read_count("/project/fonts/font.ttf"), 1, "表記が違っても同じフォントは 1 回だけ読むはず");
+}
+
+/// `style.toml` と本文を与えて組版し、成果を返す（`image.png` は 1 枚登録しておく）。
+fn compile_with_style(style_toml: &str, body: &str) -> seiran_compiler::Compilation {
+  let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/style.toml", style_toml)
+    .with_text("/project/text.sei", body)
+    .with_bytes("/project/image.png", read_test_image())
+    .with_bytes("/project/font.ttf", read_test_font());
+  let config_path = ProjectPath::new("/project/config.toml");
+  return seiran_compiler::compile(&source, &config_path, project_base_dir()).expect("はみ出しは致命的ではないはず");
+}
+
+/// 段の幅を大きく超える 1 行のインラインコード。
+fn overflowing_code() -> String { return format!("\\code{{{}}}\n", "abcdefghij".repeat(20)); }
+
+/// 警告のうち `code` を持つものの本文。
+fn warning_messages(warnings: &seiran_compiler::Warnings, code: &str) -> Vec<String> {
+  return warnings
+    .iter()
+    .filter(|warning| return warning.code().is_some_and(|c| return c.to_string() == code))
+    .map(|warning| return warning.to_string())
+    .collect();
+}
+
+#[test]
+fn compile_warns_when_inline_code_overflows_the_line() {
+  let compilation = compile_with_style("", &overflowing_code());
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::line"]);
+  let message = &warning_messages(&compilation.warnings, "typeset::overflow::line")[0];
+  assert!(message.contains("1 ページ"), "印字ページ番号が出るはず: {message}");
+  assert!(message.contains("横に"), "超過方向が出るはず: {message}");
+  assert!(message.contains("abcdefghij"), "行の抜粋が出るはず: {message}");
+}
+
+#[test]
+fn compile_warns_when_text_in_math_overflows_the_line() {
+  let compilation = compile_with_style("", &format!("$\\text{{{}}}$\n", "long text ".repeat(30)));
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::line"]);
+  let message = &warning_messages(&compilation.warnings, "typeset::overflow::line")[0];
+  assert!(message.contains("横に"), "超過方向が出るはず: {message}");
+}
+
+#[test]
+fn compile_warns_when_an_image_is_taller_than_the_page() {
+  let body = "\\begin{figure}\n\\image[width=50pt,height=1000pt]{image.png}\n\\end{figure}\n";
+
+  let compilation = compile_with_style("", body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::image"]);
+  let message = &warning_messages(&compilation.warnings, "typeset::overflow::image")[0];
+  assert!(message.contains("image.png"), "画像のパスが出るはず: {message}");
+  assert!(message.contains("縦に"), "超過方向が出るはず: {message}");
+}
+
+#[test]
+fn compile_does_not_warn_when_content_fits_after_line_and_page_breaks() {
+  // 両端揃えで折り返す段落を改ページが起きる量だけ積み、収まる図を添える
+  let paragraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor. ".repeat(6);
+  let body = format!("{}{}", format!("{paragraph}\n\n").repeat(40), figure_source("image.png"));
+
+  let compilation = compile_with_style("", &body);
+
+  let codes = warning_codes(&compilation.warnings);
+  assert!(compilation.publication.pages().len() > 1, "改ページが起きる量のはず");
+  assert!(!codes.iter().any(|code| return code.starts_with("typeset::overflow::")), "{codes:?}");
+}
+
+#[test]
+fn per_page_footnote_numbering_does_not_duplicate_overflow_warnings() {
+  // ページ単位採番は本文パスを不動点まで反復する（同じ行を毎パス報告しない）
+  let body = format!("本文\\footnote{{脚注}}。\n\n{}", overflowing_code());
+
+  let compilation = compile_with_style("[footnote]\nnumbering = \"per_page\"\n", &body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::line"]);
 }

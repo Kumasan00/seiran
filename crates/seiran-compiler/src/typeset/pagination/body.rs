@@ -8,7 +8,7 @@ use crate::{
   typeset::{
     boxes::Page,
     boxing::{BlockBuildInputs, build_blocks},
-    breaking::{FootnoteOverflow, break_pages},
+    breaking::{Overflow, break_pages},
     error::TypesetError,
     image::ImageResources,
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
@@ -23,10 +23,10 @@ pub(super) struct BodyLayout {
   pub(super) pages: Vec<Page>,
   /// 目次・しおり用の見出し情報（文書順）
   pub(super) headings: Vec<HeadingRecord>,
-  /// このパスで収まらなかった脚注の記録（`pages` の中での page index 基準）。
+  /// このパスで収まらないまま配置した内容の記録（`pages` の中での page index 基準）。
   /// ページ単位採番の不動点反復では収束したパスの `BodyLayout` だけが返るので、
   /// 途中のパスで検出したぶんはここで自然に捨てられる（同じ警告が重複しない）
-  pub(super) overflows: Vec<FootnoteOverflow>,
+  pub(super) overflows: Vec<Overflow>,
 }
 
 /// 本文を組版し、確定ページ列と見出し記録を返す。

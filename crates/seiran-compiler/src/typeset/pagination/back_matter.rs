@@ -6,7 +6,7 @@ use tracing::debug_span;
 
 use crate::typeset::{
   boxes::Page,
-  breaking::{FootnoteOverflow, break_pages},
+  breaking::{Overflow, break_pages},
   pagination::{
     context::{BodyPageFacts, TypesetContext},
     index,
@@ -20,7 +20,7 @@ pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
-) -> (Vec<Page>, Vec<FootnoteOverflow>) {
+) -> (Vec<Page>, Vec<Overflow>) {
   let back_blocks = index::build_index_blocks(ctx, body_pages, facts);
   if back_blocks.is_empty() {
     return (Vec::new(), Vec::new());
