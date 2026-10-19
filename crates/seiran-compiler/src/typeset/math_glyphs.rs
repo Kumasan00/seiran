@@ -403,6 +403,22 @@ mod tests {
   }
 
   #[test]
+  fn fence_glyphs_are_reported_at_their_command() {
+    let source = "$\\anglebracket{2}$";
+
+    let found = missing(source, &['\u{27E8}', '\u{27E9}']);
+
+    let sites: Vec<(char, String)> = found.into_iter().map(|(glyph, site, _)| return (glyph, site)).collect();
+    assert_eq!(
+      sites,
+      vec![
+        ('\u{27E8}', "\\anglebracket{2}".to_string()),
+        ('\u{27E9}', "\\anglebracket{2}".to_string()),
+      ]
+    );
+  }
+
+  #[test]
   fn block_delimiters_are_reported_at_their_environment() {
     let source = "\\begin{cases}\n1 & 2\n\\end{cases}\n\n\\begin{matrix}[delimiter=paren]\n1\n\\end{matrix}\n";
 

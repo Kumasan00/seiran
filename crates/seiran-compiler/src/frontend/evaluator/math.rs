@@ -346,7 +346,8 @@ impl MathCommandKind {
 
 /// 伸縮括弧のコマンド名から、左右の区切り括弧を引く（伸縮括弧でなければ `None`）
 ///
-/// 字は cases / matrix の `delimiter` の括弧と同じ（`\abs` は U+007C、`\norm` は U+2016）。
+/// `\abs` は U+007C、`\norm` は U+2016。`\anglebracket` は `\langle` / `\rangle` と同じ U+27E8 / U+27E9
+/// （U+2329 / U+232A は NFC で CJK の U+3008 / U+3009 に写る）。
 fn fence_delimiters(name: &str) -> Option<(char, char)> {
   return match name {
     "paren" => Some(('(', ')')),
@@ -354,6 +355,9 @@ fn fence_delimiters(name: &str) -> Option<(char, char)> {
     "brace" => Some(('{', '}')),
     "abs" => Some(('|', '|')),
     "norm" => Some(('\u{2016}', '\u{2016}')),
+    "anglebracket" => Some(('\u{27E8}', '\u{27E9}')),
+    "floor" => Some(('\u{230A}', '\u{230B}')),
+    "ceil" => Some(('\u{2308}', '\u{2309}')),
     _ => None,
   };
 }

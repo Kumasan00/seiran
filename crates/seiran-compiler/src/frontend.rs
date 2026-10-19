@@ -1202,6 +1202,9 @@ mod tests {
       ("brace", '{', '}'),
       ("abs", '|', '|'),
       ("norm", '\u{2016}', '\u{2016}'),
+      ("anglebracket", '\u{27E8}', '\u{27E9}'),
+      ("floor", '\u{230A}', '\u{230B}'),
+      ("ceil", '\u{2308}', '\u{2309}'),
     ];
     for (name, expected_open, expected_close) in cases {
       let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
@@ -1210,11 +1213,7 @@ mod tests {
       let HirMathKind::Fenced { open, close, body } = &math[0].kind else {
         panic!("Fenced が期待されます: \\{name} → {math:?}");
       };
-      assert_eq!(
-        (*open, *close),
-        (expected_open, expected_close),
-        "\\{name} の左右の括弧（matrix の delimiter と同じ字）"
-      );
+      assert_eq!((*open, *close), (expected_open, expected_close), "\\{name} の左右の括弧");
       assert!(matches!(&body.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {body:?}");
     }
   }
@@ -1307,6 +1306,9 @@ mod tests {
       ("mathbold", r"\mathbold{x}"),
       ("lim", r"\lim"),
       ("text", r"本文 \text{if} です"),
+      ("anglebracket", r"\anglebracket{x}"),
+      ("floor", r"\floor{x}"),
+      ("ceil", r"\ceil{x}"),
     ];
 
     for (expected, source) in cases {
@@ -1337,14 +1339,6 @@ mod tests {
       matches!(inlines.as_slice(), [inline] if inline.kind == HirInlineKind::Symbol('\u{03B1}')),
       "記号コマンドは本文でも字: {inlines:?}"
     );
-  }
-
-  #[test]
-  fn evaluate_deferred_fence_kind_is_unknown() {
-    // 床・天井は見送り中の種類で、数式の語彙に無い
-    let error = evaluate_error(r"$\floor{x}$");
-
-    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "floor"), "{error:?}");
   }
 
   #[test]
