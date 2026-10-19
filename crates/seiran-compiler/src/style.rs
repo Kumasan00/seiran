@@ -33,32 +33,25 @@ use garde::Validate;
 use serde::Deserialize;
 use tracing::debug;
 
-pub(crate) use crate::style::error::ReadStyleError;
-#[cfg_attr(
-  not(test),
-  expect(
-    unused_imports,
-    reason = "`NestedOrderedFormat` / `NumberStyle` は利用側が `#[cfg(test)] mod tests` だけで、本体ビルドでは未使用に見える"
-  )
-)]
 pub(crate) use crate::style::{
   block_alignment::BlockAlignment,
   caption::CaptionStyle,
   counter::{CounterName, CounterStyles},
+  error::ReadStyleError,
   footnote::{FootnoteNumbering, FootnoteStyle},
-  list::NestedOrderedFormat,
   math::NumberSide,
-  number_style::NumberStyle,
   page_numbering::PageNumberingStyle,
   running::RunningContentStyle,
   template::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
     RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
   },
-  theorem::{TheoremReset, TheoremStyle},
+  theorem::TheoremStyle,
   title_page::TitlePageStyle,
   toc::TocStyle,
 };
+#[cfg(test)]
+pub(crate) use crate::style::{list::NestedOrderedFormat, number_style::NumberStyle, theorem::TheoremReset};
 use crate::{
   color::Color,
   failures::Failures,
