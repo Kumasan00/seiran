@@ -17,6 +17,7 @@ use tracing::debug;
 use crate::{
   document::TextAlignment,
   length::Length,
+  project::ProjectPath,
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedBlock,
@@ -59,6 +60,24 @@ pub(in crate::typeset) enum OverflowKind {
   /// 行（本文・合成行・脚注本体）が段の幅か実効の本文下限を超えた
   Line {
     /// 行の内容の要約（識別用）
+    excerpt: String,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
+  /// 画像が段の幅か実効の本文下限を超えた
+  Image {
+    /// 画像ファイルへのパス
+    path: ProjectPath,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
+  /// ディスプレイ数式の本体が段の幅か実効の本文下限を超えた（行番号は測らない）
+  Math {
+    /// 数式本体の要約（識別用）
     excerpt: String,
     /// はみ出した方向
     axis: OverflowAxis,
@@ -267,21 +286,35 @@ impl PageComposer {
     });
   }
 
-  /// 段左端基準の行 `line` が段の幅を超えたか、行の下端 `bottom` が下限 `limit` を超えたかを、横 → 縦の順に記録する
-  fn record_line_overflow(&mut self, line: &Line, bottom: Length, limit: Length) {
+  /// 段左端基準の右端 `right` が段の幅を、下端 `bottom` が下限 `limit` を超えていれば、横 → 縦の順に
+  /// `kind(方向, 超過量)` を記録する
+  fn record_extent_overflow(
+    &mut self,
+    right: Length,
+    bottom: Length,
+    limit: Length,
+    kind: impl Fn(OverflowAxis, Length) -> OverflowKind,
+  ) {
     let overflows = [
-      (OverflowAxis::Horizontal, excess(line.width(), self.column_width)),
+      (OverflowAxis::Horizontal, excess(right, self.column_width)),
       (OverflowAxis::Vertical, excess(bottom, limit)),
     ];
     for (axis, over) in overflows {
       if let Some(excess) = over {
-        self.record(OverflowKind::Line {
-          excerpt: observe::summarize_line(line),
-          axis,
-          excess,
-        });
+        self.record(kind(axis, excess));
       }
     }
+  }
+
+  /// 段左端基準の行 `line`（下端 `bottom`）のはみ出しを、下限 `limit` に対して記録する
+  fn record_line_overflow(&mut self, line: &Line, bottom: Length, limit: Length) {
+    self.record_extent_overflow(line.width(), bottom, limit, |axis, excess| {
+      return OverflowKind::Line {
+        excerpt: observe::summarize_line(line),
+        axis,
+        excess,
+      };
+    });
   }
 
   /// 現在リージョンに置く脚注を積む。本体の各行が段の幅を超えていれば記録する
@@ -392,6 +425,14 @@ pub(crate) fn break_pages(
         }
         let col_off = composer.column_offset();
         let y = composer.cursor.y;
+        let limit = composer.cursor.region_limit(geom);
+        composer.record_extent_overflow(align.offset(col_width, width) + width, y + height, limit, |axis, excess| {
+          return OverflowKind::Image {
+            path: path.clone(),
+            axis,
+            excess,
+          };
+        });
         composer.draft.place_block(
           PlacedBlock::Image {
             path,
@@ -773,8 +814,17 @@ fn place_math_block(
   }
   let col_off = composer.column_offset();
   let top = composer.cursor.y;
+  let limit = composer.cursor.region_limit(geom);
+  let body_offset = align.offset(column_width, body.width);
+  composer.record_extent_overflow(body_offset + body.width, top + total_height, limit, |axis, excess| {
+    return OverflowKind::Math {
+      excerpt: observe::summarize_box(&body),
+      axis,
+      excess,
+    };
+  });
 
-  let x = col_off + align.offset(column_width, body.width);
+  let x = col_off + body_offset;
   let baseline_y = top + body.height;
   let placed_numbers: Vec<PlacedMathNumber> = numbers
     .into_iter()
@@ -3721,5 +3771,115 @@ mod tests {
 
     assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (1, vec![(1, true, 1)])], "{pages:?}");
     assert_eq!(overflows, vec![line_overflow(1, OverflowAxis::Horizontal, 30.0)]);
+  }
+
+  /// 幅 `width`・高さ `height` の左揃え画像（`x.png`）
+  fn image_block(width: f32, height: f32) -> Block {
+    return Block::Image {
+      path: ProjectPath::new("x.png"),
+      width: pt(width),
+      height: pt(height),
+      target_dpi: None,
+      align: Align::Left,
+    };
+  }
+
+  /// `x.png` のはみ出し記録
+  fn image_overflow(page_index: usize, axis: OverflowAxis, excess: f32) -> Overflow {
+    return Overflow {
+      page_index,
+      kind: OverflowKind::Image {
+        path: ProjectPath::new("x.png"),
+        axis,
+        excess: pt(excess),
+      },
+    };
+  }
+
+  /// 本体が幅 `width`・高さ `height`・深さ `depth` の中央揃えディスプレイ数式（番号なし）
+  fn math_block(width: f32, height: f32, depth: f32) -> Block {
+    return Block::Math {
+      body: HBox {
+        content: HBoxContent::Atom(Vec::new()),
+        width: pt(width),
+        height: pt(height),
+        depth: pt(depth),
+      },
+      numbers: Vec::new(),
+      numbers_on_right: true,
+      align: Align::Center,
+    };
+  }
+
+  /// 抜粋が空（テキストを持たない本体）のディスプレイ数式のはみ出し記録
+  fn math_overflow(page_index: usize, axis: OverflowAxis, excess: f32) -> Overflow {
+    return Overflow {
+      page_index,
+      kind: OverflowKind::Math {
+        excerpt: String::new(),
+        axis,
+        excess: pt(excess),
+      },
+    };
+  }
+
+  #[test]
+  fn image_taller_than_region_is_recorded_once() {
+    // 先頭 y=10 に置かれ下端 70 が page_limit 50 を超える
+    let (pages, overflows) = break_pages(vec![image_block(20.0, 60.0)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Vertical, 20.0)]);
+  }
+
+  #[test]
+  fn image_overflowing_both_axes_is_recorded_horizontal_then_vertical() {
+    let (_, overflows) = break_pages(vec![image_block(130.0, 60.0)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(
+      overflows,
+      vec![
+        image_overflow(0, OverflowAxis::Horizontal, 30.0),
+        image_overflow(0, OverflowAxis::Vertical, 20.0)
+      ]
+    );
+  }
+
+  #[test]
+  fn image_wider_than_its_column_is_recorded_in_two_columns() {
+    // 段幅 45。本文幅 100 には収まる
+    let (_, overflows) = break_pages(vec![image_block(50.0, 20.0)], pt(100.0), &two_column_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 5.0)]);
+  }
+
+  #[test]
+  fn math_block_wider_than_column_is_recorded() {
+    let (_, overflows) = break_pages(vec![math_block(130.0, 8.0, 2.0)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![math_overflow(0, OverflowAxis::Horizontal, 30.0)]);
+  }
+
+  #[test]
+  fn math_block_taller_than_region_is_recorded() {
+    // 先頭 top=10 で下端 70。先頭からでも収まらないので送らずその場に置く
+    let (_, overflows) = break_pages(vec![math_block(20.0, 50.0, 10.0)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(overflows, vec![math_overflow(0, OverflowAxis::Vertical, 20.0)]);
+  }
+
+  #[test]
+  fn fitting_blocks_record_nothing() {
+    // 画像は次ページへ送られて収まり、数式は下端がちょうど page_limit に乗る
+    let blocks = vec![
+      paragraph_of_lines(3),
+      image_block(20.0, 30.0),
+      math_block(20.0, 8.0, 2.0),
+    ];
+
+    let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert!(overflows.is_empty(), "{overflows:?}");
   }
 }

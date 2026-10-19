@@ -136,6 +136,22 @@ fn overflow_warnings(page_labels: &PageLabels, sections: [(Vec<Overflow>, usize)
           axis,
           excess,
         },
+        OverflowKind::Image { path, axis, excess } => TypesetWarning::ImageOverflow {
+          page,
+          path,
+          axis,
+          excess,
+        },
+        OverflowKind::Math {
+          excerpt,
+          axis,
+          excess,
+        } => TypesetWarning::MathOverflow {
+          page,
+          excerpt,
+          axis,
+          excess,
+        },
       });
     }
   }
