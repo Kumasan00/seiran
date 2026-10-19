@@ -10,10 +10,7 @@ use read_fonts::{
 use thiserror::Error;
 use tracing::info;
 
-use crate::subcommand::{
-  font_file::{self, FaceInspection, Inspection},
-  listing,
-};
+use crate::subcommand::{font_file, listing};
 
 /// フォントの Script/Language System 解析エラー。
 #[derive(Error, Debug, Diagnostic)]
@@ -118,10 +115,10 @@ enum ScriptLangsError {
 /// ファイルの読み込み、フォントや GSUB/GPOS 内の各テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn script_langs(file_path: &Path, font_index: u32, out: &mut impl Write) -> miette::Result<()> {
-  let font_data = font_file::read(file_path, Inspection::SingleFace(FaceInspection::ScriptLangs))?;
+  let font_data = font_file::read(file_path)?;
   info!(font_path = %file_path.display(), font_index, "スクリプト・言語を調べるフォントファイルを読込");
 
-  let font_ref = font_file::select_face(&font_data, font_index, file_path, FaceInspection::ScriptLangs)?;
+  let font_ref = font_file::select_face(&font_data, font_index, file_path)?;
   let lines = listing_lines(&font_ref, file_path)?;
   listing::emit(&lines, out)?;
   return Ok(());

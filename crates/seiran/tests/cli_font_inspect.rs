@@ -94,20 +94,20 @@ fn ttc_names_survives_a_closed_reader() {
 }
 
 #[test]
-fn missing_file_is_reported_with_each_subcommand_code() {
+fn missing_file_is_reported_with_the_shared_code() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   let cases = [
-    ("ttc-names", "missing.ttc", "cli::ttc_names::read_file"),
-    ("variation-axes", "missing.ttf", "cli::variation_axes::read_file"),
-    ("script-langs", "missing.ttf", "cli::script_langs::read_file"),
+    ("ttc-names", "missing.ttc"),
+    ("variation-axes", "missing.ttf"),
+    ("script-langs", "missing.ttf"),
   ];
 
-  for (subcommand, file, code) in cases {
+  for (subcommand, file) in cases {
     let output = seiran(dir.path(), &[subcommand, file]);
 
     let stderr = stderr_text(&output);
     assert_eq!(output.status.code(), Some(1), "読めないファイルは処理失敗: {stderr}");
-    assert!(stderr.contains(code), "サブコマンドごとの読み込み失敗の診断: {stderr}");
+    assert!(stderr.contains("cli::font_file::read_file"), "前段共通の読み込み失敗の診断: {stderr}");
     assert!(stderr.contains(file), "対象パスが出る: {stderr}");
     assert_eq!(stderr.matches("os error 2").count(), 1, "OS エラー文は cause に 1 回だけ: {stderr}");
   }
@@ -221,7 +221,7 @@ fn variation_axes_rejects_a_font_index_outside_the_collection() {
 
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "範囲外のインデックスは処理失敗: {stderr}");
-  assert!(stderr.contains("cli::variation_axes::font_parse"), "face 選択失敗の診断: {stderr}");
+  assert!(stderr.contains("cli::font_file::font_parse"), "face 選択失敗の診断: {stderr}");
   assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
 }
 
@@ -234,7 +234,7 @@ fn script_langs_rejects_a_font_index_outside_the_collection() {
 
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(1), "範囲外のインデックスは処理失敗: {stderr}");
-  assert!(stderr.contains("cli::script_langs::font_parse_error"), "face 選択失敗の診断: {stderr}");
+  assert!(stderr.contains("cli::font_file::font_parse"), "face 選択失敗の診断: {stderr}");
   assert!(stdout_text(&output).is_empty(), "一覧は 1 行も出さない");
 }
 
