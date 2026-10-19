@@ -3885,4 +3885,23 @@ mod tests {
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert!(overflows.is_empty(), "{overflows:?}");
   }
+
+  #[test]
+  fn line_in_the_right_column_is_measured_against_its_column() {
+    // 左段を 4 行で埋め、箱 1 つの段落を右段（段オフセット 55・段幅 45）へ送る
+    for (width, expected) in [
+      (44.0, vec![]),
+      (50.0, vec![line_overflow(0, OverflowAxis::Horizontal, 5.0)]),
+    ] {
+      let blocks = vec![
+        paragraph_of_lines(4),
+        one_box_paragraph(wide_box(width, 8.0, 2.0)),
+      ];
+
+      let (pages, overflows) = break_pages(blocks, pt(100.0), &two_column_geometry(), &GreedyBreaker);
+
+      assert_eq!(pages.len(), 1, "{pages:?}");
+      assert_eq!(overflows, expected, "width={width}");
+    }
+  }
 }
