@@ -561,14 +561,39 @@ fn push_space(out: &mut Vec<AtomNode>, length: Length) {
 
 /// アイテム列にクラス変換とアキを適用し、1 本の `AtomNode` 列へ畳む（行分割点を置かない）
 pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<AtomNode> {
-  let (atoms, trailing) = space_items(items, font_size, in_script);
-  let mut out: Vec<AtomNode> = Vec::with_capacity(atoms.len());
-  for spaced in atoms {
-    push_space(&mut out, spaced.space_before());
-    out.extend(spaced.nodes);
+  return assemble_divided(vec![items], font_size, in_script).pop().expect("区画 1 個を渡したので 1 個返る");
+}
+
+/// 中間の区切りで分けた区画のアイテム列 `segments` を、区画の間に Rel の区切りを挟んだ 1 本の列としてクラス変換とアキを
+/// 決め、区画ごとの `AtomNode` 列へ分けて返す（行分割点を置かない。返す区画の数は入力と同じ）
+///
+/// 区切りの前のアキは前の区画の末尾、区切りの後ろのアキは次の区画の先頭、最後のアトムより後ろの明示アキは最後の区画の
+/// 末尾に入る。区切り自身はノードを持たない。
+pub(super) fn assemble_divided(segments: Vec<Vec<MathItem>>, font_size: Length, in_script: bool) -> Vec<Vec<AtomNode>> {
+  // 区切りは各区画（最初を除く）の前に置くアトムなので、区画 i の前の区切りはそれまでのアトム数 + i 番目のアトムになる
+  let mut dividers = Vec::with_capacity(segments.len().saturating_sub(1));
+  let mut items = Vec::new();
+  for (index, segment) in segments.into_iter().enumerate() {
+    if index > 0 {
+      dividers.push(items.iter().filter(|item| return matches!(item, MathItem::Atom(_))).count());
+      items.push(MathItem::new(MathClass::Rel, None, Vec::new()));
+    }
+    items.extend(segment);
   }
-  push_space(&mut out, trailing);
-  return merge_adjacent_atom_text(out);
+  let (atoms, trailing) = space_items(items, font_size, in_script);
+  let mut out: Vec<Vec<AtomNode>> = vec![Vec::new()];
+  let mut dividers = dividers.into_iter().peekable();
+  for (index, spaced) in atoms.into_iter().enumerate() {
+    let current = out.last_mut().expect("区画の列は 1 個から始め、減らさない");
+    push_space(current, spaced.space_before());
+    if dividers.next_if_eq(&index).is_some() {
+      out.push(Vec::new());
+      continue;
+    }
+    current.extend(spaced.nodes);
+  }
+  push_space(out.last_mut().expect("区画の列は 1 個から始め、減らさない"), trailing);
+  return out.into_iter().map(merge_adjacent_atom_text).collect();
 }
 
 /// インライン数式のトップレベルを組み、二項演算子・関係子の直後に行分割点を置く
@@ -799,6 +824,44 @@ mod tests {
     let nodes = assemble(items, font_size, false);
 
     assert_eq!(kerns(&nodes), vec![mu(4, font_size); 2]);
+  }
+
+  #[test]
+  fn assemble_divided_spaces_the_divider_as_a_relation() {
+    let font = Length::pt(12.0);
+
+    let segments = assemble_divided(vec![items("a"), items("b")], font, false);
+
+    assert_eq!(segments.len(), 2);
+    assert_eq!(kerns(&segments[0]), vec![mu(5, font)], "区切りの前の太アキは前の区画の末尾");
+    assert_eq!(kerns(&segments[1]), vec![mu(5, font)], "区切りの後の太アキは次の区画の先頭");
+  }
+
+  #[test]
+  fn assemble_divided_demotes_a_binary_operator_before_the_divider() {
+    let font = Length::pt(12.0);
+
+    let segments = assemble_divided(vec![items("a+"), items("b")], font, false);
+
+    assert_eq!(kerns(&segments[0]), vec![mu(5, font)], "Rel の前の + は Ord になりアキを持たない");
+  }
+
+  #[test]
+  fn assemble_divided_folds_explicit_space_into_the_kern_before_the_divider() {
+    let font = Length::pt(12.0);
+
+    let segments = assemble_divided(vec![vec![item('a'), explicit(MathSpace::Quad)], items("b")], font, false);
+
+    assert_eq!(kerns(&segments[0]), vec![mu(QUAD_MU, font) + mu(5, font)], "明示アキと自動アキは 1 つの Kern");
+    assert_eq!(kerns(&segments[1]), vec![mu(5, font)]);
+  }
+
+  #[test]
+  fn assemble_divided_puts_no_space_at_the_fence_edges_of_empty_segments() {
+    let segments = assemble_divided(vec![Vec::new(), Vec::new()], Length::pt(12.0), false);
+
+    assert_eq!(segments.len(), 2);
+    assert!(segments.iter().all(Vec::is_empty), "`(\\mid)` と同じく括弧の内側にアキを入れない: {segments:?}");
   }
 
   #[test]
