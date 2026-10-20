@@ -11,12 +11,12 @@ use crate::{
   },
 };
 
-/// レイアウトエンジンが処理する最小単位
+/// 計測前の縦リスト要素。インラインは段落などの内容にだけ入る
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum LayoutNode {
-  /// 段落の水平リストへ流れるインライン要素
-  Inline(InlineNode),
-  /// 垂直方向のコンテナ (段落、セクションなど)
+  /// 内容と段落後の固定アキが確定した段落
+  Paragraph(ParagraphLayout),
+  /// 子の縦リストへ字下げ・揃え・下マージンを与えるコンテナ
   VBox {
     /// 内包する子ノード列
     children: Vec<LayoutNode>,
@@ -57,9 +57,20 @@ pub(in crate::typeset) enum LayoutNode {
   KeepWithNext,
 }
 
+/// 段落の内容と、その直後に置く固定アキ。
+///
+/// 段落の境界はこの値で閉じ、後続の縦リスト要素から推測しない。
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct ParagraphLayout {
+  /// 同じ水平リストで計測するインライン列（先頭行の字下げも含む）
+  pub content: Vec<InlineNode>,
+  /// 内容が空でも残す段落後の固定アキ。0 はアキなし
+  pub spacing_after: Length,
+}
+
 /// 段落の水平リスト（`crate::typeset::boxes::HItem` 列）へ入れられるノード
 ///
-/// [`LayoutNode`] の部分集合（`AtomNode` ⊂ `InlineNode` ⊂ `LayoutNode`）。
+/// [`ParagraphLayout`] が保持する。縦リストへは段落としてまとめて入れる。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum InlineNode {
   /// スタイル付きテキスト
@@ -197,11 +208,6 @@ impl From<AtomNode> for InlineNode {
       AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
     };
   }
-}
-
-impl From<InlineNode> for LayoutNode {
-  /// インライン要素を縦リストの語彙へ持ち上げる
-  fn from(node: InlineNode) -> Self { return LayoutNode::Inline(node); }
 }
 
 /// ディスプレイ数式環境全体の物理レイアウト表現

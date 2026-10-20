@@ -6,6 +6,7 @@
 //! 著者が書いた本文は HIR（`document::hir`）を走査し、事実は `NodeId` をキーに [`LoweringState`] の
 //! query で引く。CSL 整形の生成物（書誌・引用表示）は `NodeId` を持たないので、別経路
 //! （子 module `generated`）で lower する。
+//! 段落の内容と段落後の固定アキは [`ParagraphLayout`] に閉じ、boxing へ明示した境界を渡す。
 
 mod code;
 mod counter;
@@ -24,10 +25,12 @@ mod table;
 mod theorem;
 mod title_page;
 
+use std::mem;
+
 pub(super) use layout_node::{
   AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathArray, MathBar, MathBlockCellLayout,
-  MathBlockLayout, MathFenced, MathFraction, MathOperator, MathRadical, MathScripts, TableLayout, TableRowLayout,
-  TextStyle,
+  MathBlockLayout, MathFenced, MathFraction, MathOperator, MathRadical, MathScripts, ParagraphLayout, TableLayout,
+  TableRowLayout, TextStyle,
 };
 pub(super) use math::{
   CASES_DELIMITERS, delimiter_glyphs, math_text_clusters, matrix_delimiter_glyphs, translate_math_char,
@@ -147,7 +150,7 @@ impl HeadingRecord {
 /// lowering のテスト入力を組み立てるヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
-  use super::{InlineNode, LayoutNode, LoweringContext, TextStyle, lower_sources_with_headings};
+  use super::{InlineNode, LayoutNode, LoweringContext, ParagraphLayout, TextStyle, lower_sources_with_headings};
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_for_test,
@@ -190,17 +193,25 @@ pub(super) mod test_support {
     return layout;
   }
 
-  /// レイアウトノードがインラインなら中身を借りる（縦リスト用ノードなら `None`）
-  pub(super) fn as_inline(node: &LayoutNode) -> Option<&InlineNode> {
-    return match node {
-      LayoutNode::Inline(inline) => Some(inline),
-      _ => None,
+  /// 段落ノードの内容と段落後のアキを取り出す
+  pub(super) fn paragraph_layout(node: &LayoutNode) -> &ParagraphLayout {
+    let LayoutNode::Paragraph(paragraph) = node else {
+      panic!("段落が期待されます: {node:?}");
     };
+    return paragraph;
   }
 
-  /// レイアウトノードがインラインの `Text` なら、その文字列とスタイルを借りる
-  pub(super) fn inline_text(node: &LayoutNode) -> Option<(&str, TextStyle)> {
-    return match as_inline(node)? {
+  /// 直下の段落のインライン列を出現順に辿る（VBox 内には降りない）
+  pub(super) fn inlines(nodes: &[LayoutNode]) -> impl DoubleEndedIterator<Item = &InlineNode> {
+    return nodes.iter().flat_map(|node| match node {
+      LayoutNode::Paragraph(paragraph) => return paragraph.content.as_slice(),
+      _ => return &[],
+    });
+  }
+
+  /// インラインの `Text` なら、その文字列とスタイルを借りる
+  pub(super) fn inline_text(node: &InlineNode) -> Option<(&str, TextStyle)> {
+    return match node {
       InlineNode::Text(text, style) => Some((text.as_str(), *style)),
       _ => None,
     };
@@ -294,10 +305,7 @@ pub(super) fn lower_sources_with_headings(
   document: &SemanticDocument,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut state = LoweringState::new(document);
-  let mut result = Vec::new();
-  for nodes in document.hir().source_nodes() {
-    result.extend(lower_nodes(ctx, nodes, &mut state));
-  }
+  let mut result = lower_nodes(ctx, document.hir().source_nodes().iter().flatten(), &mut state);
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
@@ -326,59 +334,56 @@ pub(super) fn lower_sources_with_headings(
   return (result, headings);
 }
 
-/// `nodes` を順に [`lower_node`] で変換し、結果を出現順に連結する
-pub(super) fn lower_nodes(
+/// HIR のブロック列を変換し、水平アキを後続段落の先頭へまとめる。
+///
+/// 水平アキの後に段落が来なければ、ブロック境界または列の末尾でアキだけの段落を閉じる。
+pub(super) fn lower_nodes<'a>(
   ctx: &LoweringContext<'_>,
-  nodes: &[HirNode],
+  nodes: impl IntoIterator<Item = &'a HirNode>,
   state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
+  let mut pending_space = Vec::new();
   for node in nodes {
-    result.extend(lower_node(ctx, node, state));
+    let lowered = match &node.kind {
+      HirNodeKind::Heading(heading) => heading::lower_hir_heading(ctx, node.id, heading, state),
+      HirNodeKind::Paragraph(inlines) => {
+        let mut paragraph = paragraph::lower_paragraph(ctx, inlines, state);
+        if !pending_space.is_empty() {
+          pending_space.append(&mut paragraph.content);
+          paragraph.content = mem::take(&mut pending_space);
+        }
+        vec![LayoutNode::Paragraph(paragraph)]
+      },
+      HirNodeKind::List(list) => list::lower_list(ctx, list, state),
+      HirNodeKind::Theorem(theorem) => theorem::lower_theorem(ctx, node.id, theorem, state),
+      HirNodeKind::Quote(quote) => quote::lower_quote(ctx, quote, state),
+      HirNodeKind::Flush(flush) => flush::lower_flush(ctx, flush, state),
+      HirNodeKind::CodeBlock(text) => code::lower_code_block(ctx, text),
+      HirNodeKind::PageBreak => vec![LayoutNode::PageBreak],
+      HirNodeKind::Space(length) => {
+        pending_space.push(InlineNode::Kern { length: *length });
+        continue;
+      },
+      HirNodeKind::MathBlock(math) => math::lower_math_block(ctx, node.id, math, &*state),
+      HirNodeKind::Figure(figure) => figure::lower_figure(ctx, node.id, figure, state),
+      HirNodeKind::Table(table) => table::lower_table(ctx, node.id, table, state),
+    };
+    if !lowered.is_empty() && !pending_space.is_empty() {
+      result.push(LayoutNode::Paragraph(ParagraphLayout {
+        content: mem::take(&mut pending_space),
+        spacing_after: Length::ZERO,
+      }));
+    }
+    result.extend(lowered);
+  }
+  if !pending_space.is_empty() {
+    result.push(LayoutNode::Paragraph(ParagraphLayout {
+      content: pending_space,
+      spacing_after: Length::ZERO,
+    }));
   }
   return result;
-}
-
-/// 単一の `HirNode` をレイアウトノードに変換する
-fn lower_node(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
-  match &node.kind {
-    HirNodeKind::Heading(heading) => {
-      return heading::lower_hir_heading(ctx, node.id, heading, state);
-    },
-    HirNodeKind::Paragraph(inlines) => {
-      return paragraph::lower_paragraph(ctx, inlines, state);
-    },
-    HirNodeKind::List(list) => {
-      return list::lower_list(ctx, list, state);
-    },
-    HirNodeKind::Theorem(theorem) => {
-      return theorem::lower_theorem(ctx, node.id, theorem, state);
-    },
-    HirNodeKind::Quote(quote) => {
-      return quote::lower_quote(ctx, quote, state);
-    },
-    HirNodeKind::Flush(flush) => {
-      return flush::lower_flush(ctx, flush, state);
-    },
-    HirNodeKind::CodeBlock(text) => {
-      return code::lower_code_block(ctx, text);
-    },
-    HirNodeKind::PageBreak => {
-      return vec![LayoutNode::PageBreak];
-    },
-    HirNodeKind::Space(length) => {
-      return vec![LayoutNode::Inline(InlineNode::Kern { length: *length })];
-    },
-    HirNodeKind::MathBlock(math) => {
-      return math::lower_math_block(ctx, node.id, math, &*state);
-    },
-    HirNodeKind::Figure(figure) => {
-      return figure::lower_figure(ctx, node.id, figure, state);
-    },
-    HirNodeKind::Table(table) => {
-      return table::lower_table(ctx, node.id, table, state);
-    },
-  }
 }
 
 /// ラベル付きブロック（図・表・定理・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
@@ -396,10 +401,8 @@ fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: 
 
 #[cfg(test)]
 mod tests {
-  use std::slice;
-
   use super::{
-    test_support::{analyzed, context},
+    test_support::{analyzed, context, inlines, paragraph_layout},
     *,
   };
   use crate::{
@@ -439,7 +442,7 @@ mod tests {
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
   fn contains_line_break(nodes: &[LayoutNode]) -> bool {
     return nodes.iter().any(|n| match n {
-      LayoutNode::Inline(inline) => return contains_line_break_inline(slice::from_ref(inline)),
+      LayoutNode::Paragraph(paragraph) => return contains_line_break_inline(&paragraph.content),
       LayoutNode::VBox { children, .. } => {
         return contains_line_break(children);
       },
@@ -468,14 +471,85 @@ mod tests {
 
     let result = lower_source(&style, r"\space{5pt}");
 
-    let kern = result
-      .iter()
+    let kern = inlines(&result)
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Kern { length }) => return Some(*length),
+        InlineNode::Kern { length } => return Some(*length),
         _ => return None,
       })
       .expect("Kern が出力されるはず");
     assert!((kern.to_pt() - 5.0).abs() < f32::EPSILON, "{result:?}");
+    assert_eq!(paragraph_layout(&result[0]).spacing_after, Length::ZERO);
+  }
+
+  #[test]
+  fn horizontal_spaces_precede_the_indent_of_the_following_paragraph() {
+    let mut style = ReadStyle::default();
+    style.text.first_line_indent = Length::pt(10.0);
+
+    let nodes = lower_source(&style, r"\space{5pt}\space{-2pt}body");
+
+    assert_eq!(nodes.len(), 1);
+    let paragraph = paragraph_layout(&nodes[0]);
+    let [
+      InlineNode::Kern { length: first },
+      InlineNode::Kern { length: second },
+      InlineNode::Kern { length: indent },
+      InlineNode::Text(text, _),
+    ] = paragraph.content.as_slice()
+    else {
+      panic!("水平アキ列・字下げ・本文の順に 1 段落へ入るはず: {nodes:?}");
+    };
+    assert_eq!((*first, *second, *indent), (Length::pt(5.0), Length::pt(-2.0), Length::pt(10.0)));
+    assert_eq!(text, "body");
+    assert_eq!(paragraph.spacing_after, style.text.paragraph_spacing);
+  }
+
+  #[test]
+  fn horizontal_space_continues_across_sources_and_empty_lists() {
+    let style = ReadStyle::default();
+    let document = analyzed_sources(&[r"\space{5pt}", r"\begin{itemize}\end{itemize}body"]);
+
+    let (nodes, _) = lower_body(&style, &document);
+
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(
+      paragraph_layout(&nodes[0]).content.as_slice(),
+      [InlineNode::Kern { length }, InlineNode::Text(text, _)] if *length == Length::pt(5.0) && text == "body"
+    ));
+  }
+
+  #[test]
+  fn horizontal_space_closes_before_a_vertical_block() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, r"\space{5pt}\pagebreak body");
+
+    assert!(matches!(
+      nodes.as_slice(),
+      [
+        LayoutNode::Paragraph(_),
+        LayoutNode::PageBreak,
+        LayoutNode::Paragraph(_)
+      ]
+    ));
+    let paragraph = paragraph_layout(&nodes[0]);
+    assert!(matches!(paragraph.content.as_slice(), [InlineNode::Kern { length }] if *length == Length::pt(5.0)));
+    assert_eq!(paragraph.spacing_after, Length::ZERO);
+  }
+
+  #[test]
+  fn zero_spacing_keeps_adjacent_paragraphs_separate() {
+    let mut style = ReadStyle::default();
+    style.text.paragraph_spacing = Length::ZERO;
+
+    let nodes = lower_source(&style, "first\n\nsecond");
+
+    assert_eq!(nodes.len(), 2);
+    for (node, expected) in nodes.iter().zip(["first", "second"]) {
+      let paragraph = paragraph_layout(node);
+      assert!(matches!(paragraph.content.as_slice(), [InlineNode::Text(text, _)] if text == expected));
+      assert_eq!(paragraph.spacing_after, Length::ZERO);
+    }
   }
 
   #[test]
@@ -498,10 +572,7 @@ mod tests {
     assert!(matches!(out.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {out:?}");
     assert!(matches!(out.get(1), Some(LayoutNode::MathBlock(_))), "中央は MathBlock であるべき: {out:?}");
     assert!(matches!(out.last(), Some(LayoutNode::Vkern { .. })), "末尾は Vkern であるべき: {out:?}");
-    assert!(
-      !out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))),
-      "LineBreak は出力されないはず: {out:?}"
-    );
+    assert!(!inlines(&out).any(|n| matches!(n, InlineNode::LineBreak)), "LineBreak は出力されないはず: {out:?}");
   }
 
   #[test]
@@ -512,10 +583,7 @@ mod tests {
 
     let vbox_count = out.iter().filter(|n| matches!(n, LayoutNode::VBox { .. })).count();
     assert!(vbox_count >= 2, "見出しとリスト項目で VBox が複数出る: {out:?}");
-    assert!(
-      out.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "P")),
-      "段落 Text が出る: {out:?}"
-    );
+    assert!(inlines(&out).any(|n| matches!(n, InlineNode::Text(t, _) if t == "P")), "段落 Text が出る: {out:?}");
     assert!(matches!(out.last(), Some(LayoutNode::PageBreak)), "末尾は PageBreak: {out:?}");
   }
 
@@ -568,10 +636,9 @@ mod tests {
 
     let (layout, _headings) = lower_body(&style, &analyzed);
 
-    let indices: Vec<u32> = layout
-      .iter()
+    let indices: Vec<u32> = inlines(&layout)
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Footnote { index, .. }) => return Some(*index),
+        InlineNode::Footnote { index, .. } => return Some(*index),
         _ => return None,
       })
       .collect();
@@ -627,7 +694,7 @@ mod tests {
 
     let out = lower_source(&style, "x\n");
 
-    let LayoutNode::Inline(InlineNode::Text(_, text_style)) = &out[0] else {
+    let InlineNode::Text(_, text_style) = &paragraph_layout(&out[0]).content[0] else {
       panic!("先頭は Text であるべき: {out:?}");
     };
     assert_eq!(text_style.font_size, Length::pt(18.0));
@@ -649,7 +716,7 @@ mod tests {
   fn ref_resolves_across_sources() {
     fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
       return nodes.iter().any(|n| match n {
-        LayoutNode::Inline(inline) => return contains_internal_link_inline(slice::from_ref(inline), target),
+        LayoutNode::Paragraph(paragraph) => return contains_internal_link_inline(&paragraph.content, target),
         LayoutNode::VBox { children, .. } => {
           return contains_internal_link(children, target);
         },

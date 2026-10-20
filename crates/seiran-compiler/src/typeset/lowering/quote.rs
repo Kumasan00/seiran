@@ -47,7 +47,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,
-      test_support::{analyzed, lower},
+      test_support::{analyzed, inlines, lower, paragraph_layout},
     },
   };
 
@@ -94,10 +94,10 @@ mod tests {
 
     let (_, _, children) = body_vbox(&nodes);
     assert!(
-      !children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      !inlines(children).any(|n| matches!(n, InlineNode::Kern { .. })),
       "quote に字下げ Kern は出ない: {children:?}"
     );
-    assert!(matches!(children.first(), Some(LayoutNode::Inline(InlineNode::Text(t, _))) if t == "body"));
+    assert!(matches!(inlines(children).next(), Some(InlineNode::Text(t, _)) if t == "body"));
   }
 
   #[test]
@@ -107,7 +107,7 @@ mod tests {
     let nodes = lower_quote_source(&style, "quotation");
 
     let (_, _, children) = body_vbox(&nodes);
-    let LayoutNode::Inline(InlineNode::Kern { length }) = &children[0] else {
+    let InlineNode::Kern { length } = &paragraph_layout(&children[0]).content[0] else {
       panic!("quotation の本体先頭は字下げ Kern であるべき: {children:?}");
     };
     assert!((length.to_pt() - style.quote.first_line_indent.to_pt()).abs() < f32::EPSILON);
@@ -122,8 +122,8 @@ mod tests {
     let nodes = lower_quote_source(&style, "quote");
 
     let (_, _, children) = body_vbox(&nodes);
-    let body_kind = children.iter().find_map(|n| match n {
-      LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(s.typeface),
+    let body_kind = inlines(children).find_map(|n| match n {
+      InlineNode::Text(t, s) if t == "body" => return Some(s.typeface),
       _ => return None,
     });
     assert_eq!(body_kind, Some(Typeface::SansSerif), "引用本文は [quote] の書体に従う");

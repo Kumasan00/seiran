@@ -751,7 +751,7 @@ mod tests {
       font::ScriptLevel,
       lowering::{
         MathAccent, MathArray, MathBar, MathFenced, MathScripts,
-        test_support::{analyzed, lower, stix_script_scale},
+        test_support::{analyzed, inlines, lower, paragraph_layout, stix_script_scale},
       },
     },
   };
@@ -810,10 +810,9 @@ mod tests {
 
   /// レイアウトノード列から最初の埋め込みの行列・場合分けを取り出すヘルパ
   fn first_array(nodes: &[LayoutNode]) -> &MathArray {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Array(array)) => return Some(array),
+        InlineNode::Array(array) => return Some(array),
         _ => return None,
       })
       .expect("埋め込みの行列・場合分けが期待されます");
@@ -846,10 +845,9 @@ mod tests {
 
   /// レイアウトノード列から最初の根号を取り出すヘルパ
   fn first_radical(nodes: &[LayoutNode]) -> &MathRadical {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Radical(radical)) => return Some(radical),
+        InlineNode::Radical(radical) => return Some(radical),
         _ => return None,
       })
       .expect("根号が期待されます");
@@ -857,10 +855,9 @@ mod tests {
 
   /// レイアウトノード列から最初のアクセントを取り出すヘルパ
   fn first_accent(nodes: &[LayoutNode]) -> &MathAccent {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Accent(accent)) => return Some(accent),
+        InlineNode::Accent(accent) => return Some(accent),
         _ => return None,
       })
       .expect("アクセントが期待されます");
@@ -868,10 +865,9 @@ mod tests {
 
   /// レイアウトノード列から最初の伸縮括弧を取り出すヘルパ
   fn first_fenced(nodes: &[LayoutNode]) -> &MathFenced {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Fenced(fenced)) => return Some(fenced),
+        InlineNode::Fenced(fenced) => return Some(fenced),
         _ => return None,
       })
       .expect("伸縮括弧が期待されます");
@@ -879,10 +875,9 @@ mod tests {
 
   /// レイアウトノード列から最初の上線・下線を取り出すヘルパ
   fn first_bar(nodes: &[LayoutNode]) -> &MathBar {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Bar(bar)) => return Some(bar),
+        InlineNode::Bar(bar) => return Some(bar),
         _ => return None,
       })
       .expect("上線・下線が期待されます");
@@ -891,21 +886,21 @@ mod tests {
   /// レイアウトノード列の数式テキストを（テキスト, スタイル）で出現順に返す（スクリプトの基底・中身も辿る）
   fn math_texts(nodes: &[LayoutNode]) -> Vec<(String, TextStyle)> {
     let mut out = Vec::new();
-    for node in nodes {
+    for node in inlines(nodes) {
       match node {
-        LayoutNode::Inline(InlineNode::Text(text, style) | InlineNode::Prose(text, style)) => {
+        InlineNode::Text(text, style) | InlineNode::Prose(text, style) => {
           out.push((text.clone(), *style));
         },
-        LayoutNode::Inline(InlineNode::Scripts(scripts)) => out.extend(scripts_texts(scripts)),
-        LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
-        LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
-        LayoutNode::Inline(InlineNode::Accent(accent)) => out.extend(atom_texts(&accent.base)),
-        LayoutNode::Inline(InlineNode::Fenced(fenced)) => {
+        InlineNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
+        InlineNode::Fraction(fraction) => out.extend(fraction_texts(fraction)),
+        InlineNode::Radical(radical) => out.extend(radical_texts(radical)),
+        InlineNode::Accent(accent) => out.extend(atom_texts(&accent.base)),
+        InlineNode::Fenced(fenced) => {
           out.extend(fenced.segments.iter().flat_map(|segment| return atom_texts(segment)));
         },
-        LayoutNode::Inline(InlineNode::Bar(bar)) => out.extend(atom_texts(&bar.body)),
-        LayoutNode::Inline(InlineNode::Array(array)) => out.extend(array_texts(array)),
-        // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
+        InlineNode::Bar(bar) => out.extend(atom_texts(&bar.body)),
+        InlineNode::Array(array) => out.extend(array_texts(array)),
+        // 数式のアキと分割点は表示文字列を持たない。
         _ => {},
       }
     }
@@ -924,8 +919,8 @@ mod tests {
 
   /// レイアウトノード列に含まれる `Text` のスタイルを出現順に返すヘルパ
   fn math_text_styles(nodes: &[LayoutNode]) -> impl Iterator<Item = TextStyle> {
-    return nodes.iter().filter_map(|node| match node {
-      LayoutNode::Inline(InlineNode::Text(_, style)) => return Some(*style),
+    return inlines(nodes).filter_map(|node| match node {
+      InlineNode::Text(_, style) => return Some(*style),
       _ => return None,
     });
   }
@@ -935,15 +930,12 @@ mod tests {
   /// インライン数式のアキは、段落の水平リストでは `InlineNode::Kern` か、行分割点
   /// `InlineNode::MathBreak`（折り返さないときに残るアキ）になる。
   fn spacings(nodes: &[LayoutNode]) -> Vec<Length> {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .filter_map(|node| match node {
-        LayoutNode::Inline(
-          InlineNode::Kern { length }
-          | InlineNode::MathBreak {
-            spacing: length, ..
-          },
-        ) => return Some(*length),
+        InlineNode::Kern { length }
+        | InlineNode::MathBreak {
+          spacing: length, ..
+        } => return Some(*length),
         _ => return None,
       })
       .collect();
@@ -951,10 +943,7 @@ mod tests {
 
   /// レイアウトノード列に含まれる行分割点の数を返すヘルパ
   fn math_break_count(nodes: &[LayoutNode]) -> usize {
-    return nodes
-      .iter()
-      .filter(|node| return matches!(node, LayoutNode::Inline(InlineNode::MathBreak { .. })))
-      .count();
+    return inlines(nodes).filter(|node| return matches!(node, InlineNode::MathBreak { .. })).count();
   }
 
   /// 既定の本文フォントサイズにおける mu 単位のアキ幅を返すヘルパ
@@ -962,10 +951,9 @@ mod tests {
 
   /// レイアウトノード列から最初のスクリプト付きの基底を取り出すヘルパ
   fn first_scripts(nodes: &[LayoutNode]) -> &MathScripts {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Scripts(scripts)) => return Some(scripts),
+        InlineNode::Scripts(scripts) => return Some(scripts),
         _ => return None,
       })
       .expect("スクリプト付きの基底が期待されます");
@@ -973,10 +961,9 @@ mod tests {
 
   /// レイアウトノード列から最初の分数を取り出すヘルパ
   fn first_fraction(nodes: &[LayoutNode]) -> &MathFraction {
-    return nodes
-      .iter()
+    return inlines(nodes)
       .find_map(|node| match node {
-        LayoutNode::Inline(InlineNode::Fraction(fraction)) => return Some(fraction),
+        InlineNode::Fraction(fraction) => return Some(fraction),
         _ => return None,
       })
       .expect("分数が期待されます");
@@ -1084,10 +1071,7 @@ mod tests {
     for source in ["$x_{i}^{2}$\n", "$x^{2}_{i}$\n"] {
       let nodes = lower_math_source(source);
 
-      let count = nodes
-        .iter()
-        .filter(|node| return matches!(node, LayoutNode::Inline(InlineNode::Scripts(_))))
-        .count();
+      let count = inlines(&nodes).filter(|node| return matches!(node, InlineNode::Scripts(_))).count();
       assert_eq!(count, 1, "上下付きは 1 つの基底に重なる: {source}");
       let scripts = first_scripts(&nodes);
       assert_eq!(concat_atom_texts(&scripts.base), "\u{1D465}", "{source}");
@@ -1455,7 +1439,7 @@ mod tests {
     let nodes = lower_math_source("$\\paren{a \\given b}$\n");
 
     assert!(
-      !nodes.iter().any(|node| return matches!(node, LayoutNode::Inline(InlineNode::MathBreak { .. }))),
+      !inlines(&nodes).any(|node| return matches!(node, InlineNode::MathBreak { .. })),
       "区切りは閉じた箱の内側なので行分割点にならない: {nodes:?}"
     );
   }
@@ -1517,7 +1501,7 @@ mod tests {
     let nodes = lower_math_source("$\\alpha$\n");
 
     assert_eq!(concat_texts(&nodes), "α");
-    let LayoutNode::Inline(InlineNode::Text(_, style)) = &nodes[0] else {
+    let InlineNode::Text(_, style) = &paragraph_layout(&nodes[0]).content[0] else {
       panic!("Math Text を期待: {nodes:?}");
     };
     assert_eq!(style.typeface, Typeface::Math);
@@ -1729,7 +1713,7 @@ mod tests {
 
     assert_eq!(spacings(&nodes), vec![mu(4); 2], "アキが入るのは + の前後だけ（上付きの前には入らない）: {nodes:?}");
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Inline(InlineNode::Scripts(_)))),
+      matches!(inlines(&nodes).next(), Some(InlineNode::Scripts(_))),
       "核とスクリプトはアキ無しの 1 つのアトム: {nodes:?}"
     );
   }
@@ -2335,12 +2319,9 @@ mod tests {
   fn prose_is_one_unbreakable_node_at_the_top_level() {
     let nodes = lower_math_source("$x\\text{ if }x>0$\n");
 
-    let prose: Vec<&LayoutNode> = nodes
-      .iter()
-      .filter(|node| return matches!(node, LayoutNode::Inline(InlineNode::Prose(..))))
-      .collect();
+    let prose: Vec<&InlineNode> = inlines(&nodes).filter(|node| return matches!(node, InlineNode::Prose(..))).collect();
     assert!(
-      matches!(prose.as_slice(), [LayoutNode::Inline(InlineNode::Prose(text, _))] if text == " if "),
+      matches!(prose.as_slice(), [InlineNode::Prose(text, _)] if text == " if "),
       "文章は空白ごと 1 個の閉じたノード: {nodes:?}"
     );
     assert_eq!(math_break_count(&nodes), 1, "分割点は > の後だけ: {nodes:?}");
@@ -2362,7 +2343,7 @@ mod tests {
     assert_eq!(spacings(&prose), spacings(&group));
     assert_eq!(math_break_count(&prose), math_break_count(&group));
     assert!(
-      !prose.iter().any(|node| return matches!(node, LayoutNode::Inline(InlineNode::Prose(..)))),
+      !inlines(&prose).any(|node| return matches!(node, InlineNode::Prose(..))),
       "空の文章はノードを持たない: {prose:?}"
     );
   }
@@ -2417,7 +2398,12 @@ mod tests {
   /// レイアウトノード列（`VBox` の中も辿る）から最初の埋め込みの行列・場合分けを取り出すヘルパ
   fn nested_array(nodes: &[LayoutNode]) -> Option<&MathArray> {
     return nodes.iter().find_map(|node| match node {
-      LayoutNode::Inline(InlineNode::Array(array)) => return Some(array),
+      LayoutNode::Paragraph(paragraph) => {
+        return paragraph.content.iter().find_map(|inline| match inline {
+          InlineNode::Array(array) => return Some(array),
+          _ => return None,
+        });
+      },
       LayoutNode::VBox { children, .. } => return nested_array(children),
       _ => return None,
     });

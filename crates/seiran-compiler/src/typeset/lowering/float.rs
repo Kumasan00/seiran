@@ -11,7 +11,7 @@ use crate::{
   typeset::lowering::{
     LoweringContext, LoweringState, counter,
     inline::lower_inlines,
-    layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+    layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
     with_label_anchors,
   },
 };
@@ -58,7 +58,10 @@ fn wrap_float(
   let mut children = Vec::new();
   match caption {
     Some((CaptionPosition::Top, caption_nodes)) => {
-      children.extend(caption_nodes.into_iter().map(LayoutNode::from));
+      children.push(LayoutNode::Paragraph(ParagraphLayout {
+        content: caption_nodes,
+        spacing_after: Length::ZERO,
+      }));
       children.push(LayoutNode::Vkern {
         length: margins.inner,
       });
@@ -69,7 +72,10 @@ fn wrap_float(
       children.push(LayoutNode::Vkern {
         length: margins.inner,
       });
-      children.extend(caption_nodes.into_iter().map(LayoutNode::from));
+      children.push(LayoutNode::Paragraph(ParagraphLayout {
+        content: caption_nodes,
+        spacing_after: Length::ZERO,
+      }));
     },
     None => {
       children.push(main);
@@ -138,7 +144,7 @@ mod tests {
     style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
-      lowering::test_support::{analyzed, lower},
+      lowering::test_support::{analyzed, inlines, lower, paragraph_layout},
     },
   };
 
@@ -173,7 +179,12 @@ mod tests {
   }
 
   /// 本体（main）として使う、キャプションと取り違えようのない固定文字列の Text を作る
-  fn main_node() -> LayoutNode { return LayoutNode::from(caption_node(MAIN_TEXT)); }
+  fn main_node() -> LayoutNode {
+    return LayoutNode::Paragraph(ParagraphLayout {
+      content: vec![caption_node(MAIN_TEXT)],
+      spacing_after: Length::ZERO,
+    });
+  }
 
   /// [`main_node`] が積む本文文字列（キャプションには現れない値）
   const MAIN_TEXT: &str = "MAIN";
@@ -210,9 +221,9 @@ mod tests {
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
     assert_eq!(*alignment, Some(TextAlignment::Center), "図表は中央寄せ固定");
     assert_eq!(children.len(), 3, "caption + Vkern + main: {children:?}");
-    assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
+    assert!(matches!(&paragraph_layout(&children[0]).content[0], InlineNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
-    assert!(matches!(&children[2], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
+    assert!(matches!(&paragraph_layout(&children[2]).content[0], InlineNode::Text(t, _) if t == MAIN_TEXT));
   }
 
   #[test]
@@ -228,9 +239,9 @@ mod tests {
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
-    assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
+    assert!(matches!(&paragraph_layout(&children[0]).content[0], InlineNode::Text(t, _) if t == MAIN_TEXT));
     assert_vkern(&children[1], 3.0);
-    assert!(matches!(&children[2], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "cap"));
+    assert!(matches!(&paragraph_layout(&children[2]).content[0], InlineNode::Text(t, _) if t == "cap"));
   }
 
   #[test]
@@ -247,7 +258,7 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert_eq!(children.len(), 1, "本体のみ: {children:?}");
-    assert!(matches!(&children[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == MAIN_TEXT));
+    assert!(matches!(&paragraph_layout(&children[0]).content[0], InlineNode::Text(t, _) if t == MAIN_TEXT));
   }
 
   #[test]
@@ -262,10 +273,9 @@ mod tests {
     let nodes =
       lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
 
-    let caption = float_body(&nodes)
-      .iter()
+    let caption = inlines(float_body(&nodes))
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(text, text_style)) => return Some((text.clone(), *text_style)),
+        InlineNode::Text(text, text_style) => return Some((text.clone(), *text_style)),
         _ => return None,
       })
       .expect("キャプション Text があるはず");
@@ -282,10 +292,9 @@ mod tests {
     let nodes =
       lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
 
-    let captions: Vec<(String, TextStyle)> = float_body(&nodes)
-      .iter()
+    let captions: Vec<(String, TextStyle)> = inlines(float_body(&nodes))
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(text, text_style)) => return Some((text.clone(), *text_style)),
+        InlineNode::Text(text, text_style) => return Some((text.clone(), *text_style)),
         _ => return None,
       })
       .collect();
@@ -309,10 +318,9 @@ mod tests {
        body\\footnote{in body}\n",
     );
 
-    let numbers: Vec<u32> = nodes
-      .iter()
+    let numbers: Vec<u32> = inlines(&nodes)
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
+        InlineNode::Footnote { number, .. } => return Some(*number),
         _ => return None,
       })
       .collect();
@@ -332,11 +340,11 @@ mod tests {
     let link = nodes
       .iter()
       .flat_map(|n| match n {
-        LayoutNode::VBox { children, .. } => return children.as_slice(),
-        _ => return &[],
+        LayoutNode::VBox { children, .. } => return inlines(children),
+        _ => return inlines(&[]),
       })
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Link { target, children }) => return Some((target, children)),
+        InlineNode::Link { target, children } => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");

@@ -24,6 +24,7 @@
 //!   [`index_marks_are_invisible_to_layout`]・style 差分 2 種
 //!   [`layout_dump_changes_with_line_height`] / [`layout_dump_changes_with_punctuation_spacing`]・
 //!   [`blank_code_line_keeps_a_full_line_height`]・
+//!   [`horizontal_space_closes_the_preceding_paragraph`]・
 //!   [`text_alignment_leaves_kind_specific_alignment_untouched`]（本文の揃えを変えた組版と既定の組版の水平位置）・
 //!   寄せ環境 3 種 [`flush_environment_matches_text_alignment_of_the_same_direction`] /
 //!   [`nested_flush_environment_uses_innermost_direction_and_reverts_after_it`] /
@@ -39,7 +40,10 @@
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
 //!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品まで行帯に収まる）・
-//!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）
+//!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）・
+//!   段落境界の回帰 [`horizontal_spaces_join_the_following_paragraph`] /
+//!   [`empty_noindent_paragraph_keeps_its_spacing`] / [`index_only_paragraph_keeps_its_marker`] /
+//!   [`zero_title_gaps_join_metadata_in_one_paragraph`]
 //! - **`Publication` のグリフ列へ直接アサート**（`compile` を通す。グリフ範囲はダンプに出ない）:
 //!   クラスタ範囲がテキストを過不足なく覆うことの検査 3 種 [`glyph_ranges_tile_text_with_combining_marks`] /
 //!   [`glyph_ranges_tile_text_in_right_to_left_runs`] / [`glyph_ranges_tile_text_in_japanese_clusters`]
@@ -1077,6 +1081,93 @@ fn front_matter_adds_no_blank_pages() {
   assert_eq!(both, toc_only + 1, "両方ならタイトルページ 1 + 目次のページ数");
   assert_eq!(empty_title_only, body_only, "中身の無いタイトルページは白紙ページを作らない");
   assert_eq!(empty_title_and_toc, toc_only, "中身の無いタイトルページは目次の前に白紙ページを作らない");
+}
+
+#[test]
+fn horizontal_spaces_join_the_following_paragraph() {
+  let plain = first_line_runs("body");
+  let shifted = first_line_runs(r"\space{5pt}\space{-2pt}body");
+
+  assert_eq!(shifted.len(), plain.len());
+  for (actual, expected) in shifted.iter().zip(&plain) {
+    assert_eq!(actual.run, expected.run);
+    assert_eq!(actual.dx, expected.dx + Length::pt(3.0));
+  }
+}
+
+#[test]
+fn horizontal_space_closes_the_preceding_paragraph() {
+  let inline = TestProject::builder().source_text(r"before\space{3pt}after").build();
+  let separated = TestProject::builder().source_text("before\n\n\\space{3pt}after").build();
+
+  let inline = dump_pages(&inline.laid_out().pages);
+  let separated = dump_pages(&separated.laid_out().pages);
+
+  assert_eq!(inline, separated);
+}
+
+#[test]
+fn empty_noindent_paragraph_keeps_its_spacing() {
+  let build = |source: &str| {
+    return TestProject::builder()
+      .source_text(source)
+      .style_toml(|table| test_support::set(table, "text", "paragraph_spacing", "7pt"))
+      .build()
+      .laid_out();
+  };
+  let baseline = |pages: &[Page]| {
+    return pages[0]
+      .blocks
+      .iter()
+      .find_map(|block| match block {
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
+      })
+      .expect("本文の行があるはず");
+  };
+
+  let plain = build("body");
+  let empty_first = build("\\noindent\n\nbody");
+
+  assert_eq!(baseline(&empty_first.pages), baseline(&plain.pages) + Length::pt(7.0));
+}
+
+#[test]
+fn index_only_paragraph_keeps_its_marker() {
+  let project = TestProject::builder().source_text(r"\noindent\index{term}").build();
+
+  let laid_out = project.laid_out();
+
+  let words: Vec<&str> = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.index_entries.iter().map(|entry| return entry.word.as_str()))
+    .collect();
+  assert_eq!(words, vec!["term"]);
+}
+
+#[test]
+fn zero_title_gaps_join_metadata_in_one_paragraph() {
+  let project = TestProject::builder()
+    .source_text("body")
+    .config_toml(|table| {
+      test_support::set(table, "document", "title", "T");
+      test_support::set(table, "document", "author", "A");
+      test_support::set(table, "document", "date", "D");
+    })
+    .style_toml(|table| {
+      test_support::set(table, "title_page", "enabled", true);
+      test_support::set(table, "title_page", "title_bottom_margin", "0pt");
+      test_support::set(table, "title_page", "author_bottom_margin", "0pt");
+    })
+    .build();
+
+  let laid_out = project.laid_out();
+  let lines = laid_out.pages[0].blocks.iter().filter(|block| matches!(block, PlacedBlock::Line { .. })).count();
+
+  assert_eq!(lines, 1);
+  let runs = first_line_parts_of(&project).0;
+  assert_eq!(runs.iter().map(|run| return run.run.text.as_str()).collect::<String>(), "TAD");
 }
 
 /// 本文 `text` 1 本を serif の書字方向 `direction` で compile し、全ページの `DrawGlyphRun` のグリフ列を返す。

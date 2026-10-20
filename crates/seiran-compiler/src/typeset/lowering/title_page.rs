@@ -4,7 +4,7 @@ use crate::{
   document::{TextAlignment, Typeface},
   length::Length,
   style::TitlePageStyle,
-  typeset::lowering::layout_node::{InlineNode, LayoutNode, TextStyle},
+  typeset::lowering::layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
 };
 
 /// タイトルページに載せる文書メタデータ。
@@ -32,18 +32,13 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
     (meta.date.as_deref(), style.date_font_size, style.date_typeface, Length::pt(0.0)),
   ];
 
-  // 直前に積んだ要素の下マージン。次の present な要素を積む直前に Vkern として挿入する。
-  let mut pending_gap: Option<Length> = None;
+  // 間隔 0 の隣接項目は同じ段落を共有する。最後の項目の下マージンは出力しない。
+  let mut pending_gap = Length::ZERO;
   for (text, font_size, typeface, gap_after) in entries {
     let Some(text) = text.map(str::trim).filter(|trimmed| return !trimmed.is_empty()) else {
       continue;
     };
-    if let Some(gap) = pending_gap.take()
-      && gap.is_positive()
-    {
-      body.push(LayoutNode::Vkern { length: gap });
-    }
-    body.push(LayoutNode::Inline(InlineNode::Text(
+    let inline = InlineNode::Text(
       text.to_string(),
       TextStyle {
         font_size,
@@ -52,8 +47,20 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
         script_level: None,
         math_operator: None,
       },
-    )));
-    pending_gap = Some(gap_after);
+    );
+    if let Some(LayoutNode::Paragraph(paragraph)) = body.last_mut() {
+      if !pending_gap.is_positive() {
+        paragraph.content.push(inline);
+        pending_gap = gap_after;
+        continue;
+      }
+      paragraph.spacing_after = pending_gap;
+    }
+    body.push(LayoutNode::Paragraph(ParagraphLayout {
+      content: vec![inline],
+      spacing_after: Length::ZERO,
+    }));
+    pending_gap = gap_after;
   }
 
   if body.is_empty() {
@@ -85,7 +92,10 @@ mod tests {
     document::TextAlignment,
     length::Length,
     style::TitlePageStyle,
-    typeset::lowering::layout_node::{InlineNode, LayoutNode},
+    typeset::lowering::{
+      layout_node::{InlineNode, LayoutNode},
+      test_support::{inlines, paragraph_layout},
+    },
   };
 
   /// 中央寄せ `VBox` の子ノードを取り出すヘルパ
@@ -106,10 +116,9 @@ mod tests {
 
   /// 子ノードから Text 文字列だけを文書順に集めるヘルパ
   fn texts(children: &[LayoutNode]) -> Vec<String> {
-    return children
-      .iter()
+    return inlines(children)
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(text, _)) => return Some(text.clone()),
+        InlineNode::Text(text, _) => return Some(text.clone()),
         _ => return None,
       })
       .collect();
@@ -145,10 +154,9 @@ mod tests {
     let nodes = lower_title_page(&meta, &style);
 
     let children = title_vbox_children(&nodes);
-    let text_style = children
-      .iter()
+    let text_style = inlines(children)
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "T" => return Some(*s),
+        InlineNode::Text(t, s) if t == "T" => return Some(*s),
         _ => return None,
       })
       .expect("Text が見つからない");
@@ -170,7 +178,9 @@ mod tests {
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["T", "D"]);
     let vkern_count = children.iter().filter(|n| matches!(n, LayoutNode::Vkern { .. })).count();
-    assert_eq!(vkern_count, 2, "top_margin と要素間アキで Vkern は 2 つ: {children:?}");
+    assert_eq!(vkern_count, 1, "top_margin だけが Vkern: {children:?}");
+    assert_eq!(paragraph_layout(&children[1]).spacing_after, style.title_bottom_margin);
+    assert_eq!(paragraph_layout(&children[2]).spacing_after, Length::ZERO);
   }
 
   #[test]

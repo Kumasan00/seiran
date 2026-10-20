@@ -5,7 +5,7 @@ use crate::{
   typeset::lowering::{
     LoweringContext, LoweringState,
     inline::lower_inline,
-    layout_node::{InlineNode, LayoutNode, TextStyle},
+    layout_node::{InlineNode, ParagraphLayout, TextStyle},
   },
 };
 
@@ -25,24 +25,22 @@ pub(super) fn assemble_paragraph(
   ctx: &LoweringContext<'_>,
   content: Vec<InlineNode>,
   suppress_indent: bool,
-) -> Vec<LayoutNode> {
-  let mut result = Vec::with_capacity(content.len() + 2);
+) -> ParagraphLayout {
+  let mut result = Vec::with_capacity(content.len() + 1);
 
   // 段落先頭行の字下げ。先頭に水平カーンを置くと、行分割が先頭行だけ右へずらして
   // 折り返し幅を狭める（2 行目以降には残らない）。
   if ctx.first_line_indent.to_pt() > 0.0 && !suppress_indent {
-    result.push(LayoutNode::Inline(InlineNode::Kern {
+    result.push(InlineNode::Kern {
       length: ctx.first_line_indent,
-    }));
+    });
   }
 
-  result.extend(content.into_iter().map(LayoutNode::from));
-
-  result.push(LayoutNode::Vkern {
-    length: ctx.style.text.paragraph_spacing,
-  });
-
-  return result;
+  result.extend(content);
+  return ParagraphLayout {
+    content: result,
+    spacing_after: ctx.style.text.paragraph_spacing,
+  };
 }
 
 /// 段落をレイアウトノードに変換する
@@ -50,7 +48,7 @@ pub(super) fn lower_paragraph(
   ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> ParagraphLayout {
   let default_style = body_text_style(ctx);
 
   // `\noindent` の位置は評価器（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
@@ -76,7 +74,10 @@ mod tests {
     style::Style as ReadStyle,
     typeset::{
       boxes::{AnchorId, LinkTarget},
-      lowering::test_support::{analyzed, lower},
+      lowering::{
+        LayoutNode,
+        test_support::{analyzed, inlines, lower, paragraph_layout},
+      },
     },
   };
 
@@ -84,17 +85,13 @@ mod tests {
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   #[test]
-  fn paragraph_appends_single_trailing_vkern_with_paragraph_spacing() {
+  fn paragraph_owns_its_spacing() {
     let style = ReadStyle::default();
 
     let nodes = lower_source(&style, "hello\n");
 
-    let LayoutNode::Vkern { length } = nodes.last().expect("末尾要素") else {
-      panic!("末尾は Vkern であるべき: {nodes:?}");
-    };
-    assert!((length.to_pt() - style.text.paragraph_spacing.to_pt()).abs() < f32::EPSILON);
-    let vkern_count = nodes.iter().filter(|n| matches!(n, LayoutNode::Vkern { .. })).count();
-    assert_eq!(vkern_count, 1, "段落末の Vkern は 1 つだけ: {nodes:?}");
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(paragraph_layout(&nodes[0]).spacing_after, style.text.paragraph_spacing);
   }
 
   #[test]
@@ -103,16 +100,13 @@ mod tests {
 
     let nodes = lower_source(&style, "body\n");
 
-    let LayoutNode::Inline(InlineNode::Text(text, text_style)) = &nodes[0] else {
+    let InlineNode::Text(text, text_style) = &paragraph_layout(&nodes[0]).content[0] else {
       panic!("先頭は Text であるべき: {nodes:?}");
     };
     assert_eq!(text, "body");
     assert_eq!(text_style.typeface, style.text.typeface);
     assert_eq!(text_style.font_size, style.text.font_size);
-    assert!(
-      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
-      "字下げ Kern は出ない: {nodes:?}"
-    );
+    assert!(!inlines(&nodes).any(|n| matches!(n, InlineNode::Kern { .. })), "字下げ Kern は出ない: {nodes:?}");
   }
 
   #[test]
@@ -122,11 +116,11 @@ mod tests {
 
     let nodes = lower_source(&style, "body\n");
 
-    let LayoutNode::Inline(InlineNode::Kern { length }) = &nodes[0] else {
+    let InlineNode::Kern { length } = &paragraph_layout(&nodes[0]).content[0] else {
       panic!("先頭は字下げ Kern であるべき: {nodes:?}");
     };
     assert!((length.to_pt() - 15.0).abs() < f32::EPSILON);
-    assert!(matches!(&nodes[1], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"));
+    assert!(matches!(&paragraph_layout(&nodes[0]).content[1], InlineNode::Text(t, _) if t == "body"));
   }
 
   #[test]
@@ -137,11 +131,11 @@ mod tests {
     let nodes = lower_source(&style, "\\noindent body\n");
 
     assert!(
-      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
+      !inlines(&nodes).any(|n| matches!(n, InlineNode::Kern { .. })),
       "字下げ Kern は抑止される: {nodes:?}"
     );
     assert!(
-      matches!(&nodes[0], LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body"),
+      matches!(&paragraph_layout(&nodes[0]).content[0], InlineNode::Text(t, _) if t == "body"),
       "先頭は本文 Text: {nodes:?}"
     );
   }
@@ -152,10 +146,9 @@ mod tests {
 
     let nodes = lower_source(&style, "\\italic{one}\\bold{two}\\mono{three}\n");
 
-    let texts: Vec<&str> = nodes
-      .iter()
+    let texts: Vec<&str> = inlines(&nodes)
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(t, _)) => return Some(t.as_str()),
+        InlineNode::Text(t, _) => return Some(t.as_str()),
         _ => return None,
       })
       .collect();
@@ -168,10 +161,9 @@ mod tests {
 
     let nodes = lower_source(&style, "\\chapter[label=ch:one]{Intro}\n\n\\ref{ch:one}\n");
 
-    let link = nodes
-      .iter()
+    let link = inlines(&nodes)
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Link { target, children }) => return Some((target, children)),
+        InlineNode::Link { target, children } => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");

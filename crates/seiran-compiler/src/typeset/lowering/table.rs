@@ -100,7 +100,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,
-      test_support::{analyzed, lower},
+      test_support::{analyzed, inlines, lower, paragraph_layout},
     },
   };
 
@@ -228,10 +228,12 @@ mod tests {
 
     let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
-    let caption_idx = children
-      .iter()
-      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "Table 1.1: 得点表"))
-      .expect("キャプション Text あり");
+    let caption_idx =
+      children.iter().position(|n| matches!(n, LayoutNode::Paragraph(_))).expect("キャプション段落あり");
+    assert!(matches!(
+      &paragraph_layout(&children[caption_idx]).content[0],
+      InlineNode::Text(text, _) if text == "Table 1.1: 得点表"
+    ));
     assert!(table_idx < caption_idx, "Bottom: table がキャプションの前");
     assert!(
       matches!(children.get(table_idx + 1), Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.table.inner_margin.to_pt()).abs() < f32::EPSILON),
@@ -248,10 +250,12 @@ mod tests {
 
     let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
-    let caption_idx = children
-      .iter()
-      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t.starts_with("Table 1.1")))
-      .expect("キャプション Text あり");
+    let caption_idx =
+      children.iter().position(|n| matches!(n, LayoutNode::Paragraph(_))).expect("キャプション段落あり");
+    assert!(matches!(
+      &paragraph_layout(&children[caption_idx]).content[0],
+      InlineNode::Text(text, _) if text.starts_with("Table 1.1")
+    ));
     assert!(caption_idx < table_idx, "Top: キャプションが table の前");
   }
 
@@ -264,10 +268,9 @@ mod tests {
 
     let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
-    let caption = table_children(&nodes)
-      .iter()
+    let caption = inlines(table_children(&nodes))
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(text, text_style)) if text.starts_with("Table 1.1") => {
+        InlineNode::Text(text, text_style) if text.starts_with("Table 1.1") => {
           return Some(*text_style);
         },
         _ => return None,
@@ -322,7 +325,7 @@ mod tests {
     let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
 
     let children = table_children(&nodes);
-    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))));
+    let has_text = inlines(children).any(|n| matches!(n, InlineNode::Text(_, _)));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
   }
 
@@ -356,10 +359,9 @@ mod tests {
       _ => return None,
     });
     assert_eq!(cell_number, Some(1), "セルの脚注が 1 番: {:?}", table.rows[0].cells[0].content);
-    let caption_numbers: Vec<u32> = table_children(&nodes)
-      .iter()
+    let caption_numbers: Vec<u32> = inlines(table_children(&nodes))
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Footnote { number, .. }) => return Some(*number),
+        InlineNode::Footnote { number, .. } => return Some(*number),
         _ => return None,
       })
       .collect();
