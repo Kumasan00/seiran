@@ -4548,8 +4548,8 @@ fn wide_accent_does_not_widen_its_base() {
 #[test]
 fn narrow_base_keeps_the_fixed_accent_glyph_with_flac() {
   let natural = sole_glyph(run_with_text(&first_line_runs("$\\hat{x}$\n"), COMBINING_CIRCUMFLEX)).0;
-  let fixed = first_line_runs("$\\hat{\\vert}$\n");
-  let wide = first_line_runs("$\\widehat{\\vert}$\n");
+  let fixed = first_line_runs("$\\hat{|}$\n");
+  let wide = first_line_runs("$\\widehat{|}$\n");
 
   let base = run_with_text(&wide, "|");
   let size = base.run.font_size;
@@ -5025,10 +5025,10 @@ fn nested_divider_stretches_to_its_innermost_fence() {
 }
 
 #[test]
-fn short_divider_takes_the_spacing_of_mid_and_the_glyph_of_bare_vert() {
+fn short_divider_takes_the_spacing_of_mid_and_the_glyph_of_bare_bar() {
   let given = first_line_runs("$\\paren{a \\given b}$\n");
   let mid = first_line_runs("$(a \\mid b)$\n");
-  let vert = first_line_runs("$\\vert$\n");
+  let bare = first_line_runs("$|$\n");
 
   // 𝑎 の右端 → 縦棒の左端、縦棒の右端 → 𝑏 の左端の間隔
   let gaps = |runs: &[LineRun], bar: &str| {
@@ -5045,17 +5045,17 @@ fn short_divider_takes_the_spacing_of_mid_and_the_glyph_of_bare_vert() {
   };
   assert_eq!(
     sole_glyph(divider).0,
-    sole_glyph(run_with_text(&vert, "|")).0,
-    "低い中身の縦棒は裸の \\vert と同じ字形"
+    sole_glyph(run_with_text(&bare, "|")).0,
+    "低い中身の縦棒は直接入力の | と同じ字形"
   );
 }
 
-/// [`FENCES`] と同じ順の、左右の括弧を数式に裸で書く形（`[ ] { }` は構造文字なのでエスケープ、`|` `‖` `⟨⟩` `⌊⌋` `⌈⌉` は記号コマンド）
+/// [`FENCES`] と同じ順の、左右の括弧を数式に裸で書く形（`[ ] { }` は構造文字なのでエスケープ、`‖` `⟨⟩` `⌊⌋` `⌈⌉` は記号コマンド。`|` は直接入力）
 const BARE_FENCES: [(&str, &str); 8] = [
   ("(", ")"),
   ("\\[", "\\]"),
   ("\\{", "\\}"),
-  ("\\vert", "\\vert"),
+  ("|", "|"),
   ("\\Vert", "\\Vert"),
   ("\\langle", "\\rangle"),
   ("\\lfloor", "\\rfloor"),

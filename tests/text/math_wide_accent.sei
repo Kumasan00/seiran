@@ -1,7 +1,7 @@
 \section{広幅アクセント}
 
 基底の幅へ横に伸ばす: $\widehat{x}$ $\widehat{xy}$ $\widehat{xyz}$ $\widetilde{AB}$ $\widecheck{ab}$。
-狭い基底は固定幅のアクセントと同じ字形: $\widehat{\vert}$ $\hat{\vert}$。
+狭い基底は固定幅のアクセントと同じ字形: $\widehat{|}$ $\hat{|}$。
 覆いきれない広さでは最大の字形: $\widehat{abcdefgh}$。
 
 \section{上の矢印}

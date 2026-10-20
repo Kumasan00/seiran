@@ -1366,7 +1366,6 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "Rvzigzag" => MathSymbol::new('\u{29DB}', MathClass::Close),
   "lcurvyangle" => MathSymbol::new('\u{29FC}', MathClass::Open),
   "rcurvyangle" => MathSymbol::new('\u{29FD}', MathClass::Close),
-  "vert" => MathSymbol::new('\u{007C}', MathClass::Ord),
   "Vert" => MathSymbol::new('\u{2016}', MathClass::Ord),
 };
 
@@ -1482,6 +1481,7 @@ mod tests {
     assert_eq!(lookup("colon").map(|s| return (s.ch, s.class)), Some((':', MathClass::Punct)));
     assert!(lookup("lparen").is_none());
     assert!(lookup("equal").is_none());
+    assert!(lookup("vert").is_none(), "直接入力の | と同じ字・同じクラス");
   }
 
   #[test]
@@ -1551,7 +1551,7 @@ mod tests {
     assert_eq!(sym("rbrackurtick"), Some(('\u{2990}', MathClass::Close)));
     assert_eq!(sym("cuberoot"), Some(('\u{221B}', MathClass::Ord)), "対の無い根号は Ord");
     assert_eq!(sym("longdivision"), Some(('\u{27CC}', MathClass::Ord)), "対の無い長除法は Ord");
-    assert_eq!(sym("Vvert"), Some(('\u{2980}', MathClass::Ord)), "unicode-math の fence は vert と同じ Ord");
+    assert_eq!(sym("Vvert"), Some(('\u{2980}', MathClass::Ord)), "unicode-math の fence は Vert と同じ Ord");
   }
 
   #[test]
