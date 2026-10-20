@@ -893,7 +893,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
   区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
   `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
-  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。二項係数（`\binom`）も、横罫の無い
+  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身の中間の区切り（`\given`）は区画の間に置く
+  Rel のアイテムとして中身全体の 1 本の列でアキを決め、そのあと区画ごとに分ける（`\paren{a \given b}` は `(a \mid b)` と同じアキ）。二項係数（`\binom`）も、横罫の無い
   `MathFraction` を `MathFenced` の `(` `)` で包んだ伸縮括弧と同じ 1 個のアイテム。中身ごと閉じた Atom なので内側では割らず、
   括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）。
   数式内の文章（`\text`。HIR は空白をまとめ済みの文字列を `HirMathKind::Prose` に持つ）は Ord の 1 アイテムで、字形
@@ -917,7 +918,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
   段のサイズ・display か・横罫を引くか）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
   基底の幅へ伸ばすか・基底をドット無しの字形で組むか（ソースの `dotless`、無ければ style.toml の `[math].accent_dotless`。
-  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
+  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身を中間の区切りで分けた区画・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
   `MathArray`（セル・左右の括弧・行列の段のサイズとスクリプト段・行間・列間）として boxing へ渡す。埋め込んだ行列は閉じた
   1 アトムで、括弧を持つもの（`delimiter` が none 以外の matrix と cases）は伸縮括弧と同じく左端 Open・右端 Close、括弧の
   無い matrix は Ord として隣とアキを取る。行間・列間は `[math.block].row_gap` / `column_gap` を本文の大きさ（`[text].font_size`）基準として段のサイズに比例させた値。
@@ -1103,7 +1104,8 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
 - **伸縮括弧**（`MathFenced`。`\paren` 等）は、括弧を中身のインクの高さ h・深さ d と数式軸 a（`AxisHeight`）から
   `2 × max(h − a, d + a)` 以上へ、区切り括弧と同じ伸縮で縦にだけ伸ばし（MathML Core の対称伸縮）、インクの縦中央を
   数式軸に合わせる。中身が軸の上下に非対称でも、括弧は軸を中心に上下対称に伸びて両側を覆う。TeX の
-  `\delimiterfactor` / `\delimitershortfall` 相当の係数・不足許容量は置かない。括弧・中身・括弧を隙間なく並べ
+  `\delimiterfactor` / `\delimitershortfall` 相当の係数・不足許容量は置かない。中間の区切り（区画の間の縦棒 U+007C）は
+  全区画のインクで決めた同じ目標・同じ軸合わせで伸ばし、目標には寄与しない。括弧・区画・縦棒・区画…・括弧を隙間なく並べ
   （cases / matrix の枠のアキは使わない）、閉じた Atom 1 つにする
 - **大型演算子**（`AtomNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの

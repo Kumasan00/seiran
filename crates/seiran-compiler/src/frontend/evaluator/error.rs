@@ -299,6 +299,20 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// `\given`（伸縮括弧の中間の区切り）が伸縮括弧の引数の直下以外に置かれた場合
+  #[error("\\given は伸縮括弧の引数の直下にのみ置けます")]
+  #[diagnostic(
+    code(frontend::eval::given_not_in_fence),
+    help(
+      "\\given は \\paren・\\brace などの伸縮括弧の引数の直下に置いてください。グループ・分数やスクリプトの引数・\\text・行列や場合分けのセルの中には置けません。"
+    )
+  )]
+  GivenNotInFence {
+    /// `\given` のソース位置
+    #[label("この \\given は伸縮括弧の引数の直下にありません")]
+    span: SourceSpan,
+  },
+
   /// `\notag` が行ごと採番でない数式環境に現れた場合
   #[error("\\notag はこの数式環境では使用できません")]
   #[diagnostic(

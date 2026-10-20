@@ -146,6 +146,15 @@ fn diagnostic_math_only_command() {
 }
 
 #[test]
+fn diagnostic_given_not_in_fence() {
+  // 伸縮括弧の外の `\given` は、伸縮括弧の引数の直下へ置くよう案内する
+  let failure = compile_err(&["tests/text/diagnostics/given_not_in_fence.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::given_not_in_fence".to_string()]);
+  assert_matches_golden("given_not_in_fence", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_binom_missing_argument() {
   let failure = compile_err(&["tests/text/diagnostics/math_binom_missing_arg.sei"]);
 

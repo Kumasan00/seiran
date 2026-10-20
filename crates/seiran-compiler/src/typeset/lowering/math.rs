@@ -540,7 +540,7 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
         ruled: false,
         color: ctx.color,
       };
-      items.push(fenced_item(vec![AtomNode::Fraction(stack)], '(', ')', ctx));
+      items.push(fenced_item(vec![vec![AtomNode::Fraction(stack)]], '(', ')', ctx));
     },
     HirMathKind::Sqrt { index, radicand } => {
       let radical = MathRadical {
@@ -576,8 +576,17 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Accent(accent)]));
     },
     // 中身は括弧と同じ数式スタイル（TeX の `\left` … `\right` の中身と同じ）
-    HirMathKind::Fenced { open, close, body } => {
-      items.push(fenced_item(lower_math_list(slice::from_ref(body.as_ref()), ctx), *open, *close, ctx));
+    HirMathKind::Fenced {
+      open,
+      close,
+      segments,
+    } => {
+      let segments = spacing::assemble_divided(
+        segments.iter().map(|segment| return collect_items(segment, ctx)).collect(),
+        ctx.font_size(),
+        ctx.in_script(),
+      );
+      items.push(fenced_item(segments, *open, *close, ctx));
     },
     // 上線の基底は cramped（TeX の Rule 9）、下線の基底は外側のスタイルを継承する（TeX の Rule 10）
     HirMathKind::Bar { over, body } => {
@@ -614,12 +623,12 @@ fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<sp
   }
 }
 
-/// 組み済みの中身 `body` を左右の区切り括弧 `open` / `close` で挟み、左端 Open・右端 Close の 1 個のアイテムにする
+/// 組み済みの中身の区画 `segments` を左右の区切り括弧 `open` / `close` で挟み、左端 Open・右端 Close の 1 個のアイテムにする
 ///
 /// 括弧は `ctx` の段の大きさ・`ssty`・文字色で組む。
-fn fenced_item(body: Vec<AtomNode>, open: char, close: char, ctx: &MathLoweringContext) -> spacing::MathItem {
+fn fenced_item(segments: Vec<Vec<AtomNode>>, open: char, close: char, ctx: &MathLoweringContext) -> spacing::MathItem {
   let fenced = MathFenced {
-    body,
+    segments,
     open: open.to_string(),
     close: close.to_string(),
     font_size: ctx.font_size(),
@@ -764,7 +773,7 @@ mod tests {
         // アクセント記号は boxing が組むのでテキストに数えない
         AtomNode::Accent(accent) => out.extend(atom_texts(&accent.base)),
         // 区切り括弧は boxing が組むのでテキストに数えない
-        AtomNode::Fenced(fenced) => out.extend(atom_texts(&fenced.body)),
+        AtomNode::Fenced(fenced) => out.extend(fenced.segments.iter().flat_map(|segment| return atom_texts(segment))),
         // 罫線はテキストを持たない
         AtomNode::Bar(bar) => out.extend(atom_texts(&bar.body)),
         // 区切り括弧は boxing が組むのでテキストに数えない
@@ -891,7 +900,9 @@ mod tests {
         LayoutNode::Inline(InlineNode::Fraction(fraction)) => out.extend(fraction_texts(fraction)),
         LayoutNode::Inline(InlineNode::Radical(radical)) => out.extend(radical_texts(radical)),
         LayoutNode::Inline(InlineNode::Accent(accent)) => out.extend(atom_texts(&accent.base)),
-        LayoutNode::Inline(InlineNode::Fenced(fenced)) => out.extend(atom_texts(&fenced.body)),
+        LayoutNode::Inline(InlineNode::Fenced(fenced)) => {
+          out.extend(fenced.segments.iter().flat_map(|segment| return atom_texts(segment)));
+        },
         LayoutNode::Inline(InlineNode::Bar(bar)) => out.extend(atom_texts(&bar.body)),
         LayoutNode::Inline(InlineNode::Array(array)) => out.extend(array_texts(array)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）と数式のアキは表示文字列を持たない。
@@ -1347,7 +1358,7 @@ mod tests {
 
     let fenced = first_fenced(&nodes);
     assert_eq!((fenced.open.as_str(), fenced.close.as_str()), ("\u{2016}", "\u{2016}"));
-    assert_eq!(concat_atom_texts(&fenced.body), "\u{1D465}", "中身は数式用イタリックへ写す");
+    assert_eq!(concat_atom_texts(&fenced.segments.concat()), "\u{1D465}", "中身は数式用イタリックへ写す");
     assert_eq!(fenced.font_size, ReadStyle::default().text.font_size, "インライン数式の本体は text 段");
     assert_eq!(fenced.script_level, None, "インライン数式の本体は text 段");
   }
@@ -1408,10 +1419,60 @@ mod tests {
     let plain = lower_math_source("$\\mathbold{x}$\n");
 
     assert_eq!(
-      concat_atom_texts(&first_fenced(&fenced).body),
+      concat_atom_texts(&first_fenced(&fenced).segments.concat()),
       concat_texts(&plain),
       "中身は外側の字形 variant を継承する"
     );
+  }
+
+  /// Atom ノード列のカーン幅を出現順に返す
+  fn atom_kerns(nodes: &[AtomNode]) -> Vec<Length> {
+    return nodes
+      .iter()
+      .filter_map(|node| match node {
+        AtomNode::Kern { length } => return Some(*length),
+        _ => return None,
+      })
+      .collect();
+  }
+
+  #[test]
+  fn fence_divider_takes_the_spacing_of_mid() {
+    let given = lower_math_source("$\\paren{a \\given b}$\n");
+    let mid = lower_math_source("$\\paren{a \\mid b}$\n");
+
+    let given = first_fenced(&given);
+    assert_eq!(given.segments.len(), 2, "\\given で 2 区画: {given:?}");
+    assert_eq!(
+      atom_kerns(&given.segments.concat()),
+      atom_kerns(&first_fenced(&mid).segments.concat()),
+      "区切りの前後は \\mid と同じ Rel のアキ"
+    );
+  }
+
+  #[test]
+  fn fence_divider_is_not_a_line_break() {
+    let nodes = lower_math_source("$\\paren{a \\given b}$\n");
+
+    assert!(
+      !nodes.iter().any(|node| return matches!(node, LayoutNode::Inline(InlineNode::MathBreak { .. }))),
+      "区切りは閉じた箱の内側なので行分割点にならない: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn script_after_the_divider_takes_an_empty_base() {
+    let nodes = lower_math_source("$\\paren{a \\given^{2} b}$\n");
+
+    let fenced = first_fenced(&nodes);
+    let [_, second] = fenced.segments.as_slice() else {
+      panic!("2 区画のはず: {fenced:?}");
+    };
+    let first_atom = second.iter().find(|node| return !matches!(node, AtomNode::Kern { .. }));
+    let Some(AtomNode::Scripts(scripts)) = first_atom else {
+      panic!("区切りの後ろの区画はスクリプトで始まるはず: {second:?}");
+    };
+    assert!(scripts.base.is_empty(), "区切りの直後のスクリプトは空の基底に付く: {scripts:?}");
   }
 
   #[test]
@@ -1420,7 +1481,10 @@ mod tests {
 
     let fenced = first_fenced(&nodes);
     assert_eq!((fenced.open.as_str(), fenced.close.as_str()), ("(", ")"));
-    let [AtomNode::Fraction(stack)] = fenced.body.as_slice() else {
+    let [segment] = fenced.segments.as_slice() else {
+      panic!("二項係数の括弧の中身は区画 1 つのはず: {fenced:?}");
+    };
+    let [AtomNode::Fraction(stack)] = segment.as_slice() else {
       panic!("括弧の中身は積み 1 つのはず: {fenced:?}");
     };
     assert!(!stack.ruled, "二項係数の積みは横罫を引かない");
@@ -1437,7 +1501,8 @@ mod tests {
     let binomial = lower_math_source("$\\mathbold{\\binom{n}{k}}$\n");
     let plain = lower_math_source("$\\mathbold{n}\\mathbold{k}$\n");
 
-    let [AtomNode::Fraction(stack)] = first_fenced(&binomial).body.as_slice() else {
+    let body = first_fenced(&binomial).segments.concat();
+    let [AtomNode::Fraction(stack)] = body.as_slice() else {
       panic!("括弧の中身は積み 1 つのはず: {binomial:?}");
     };
     assert_eq!(

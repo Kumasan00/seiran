@@ -159,9 +159,13 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
       HirMathKind::Superscript(child)
       | HirMathKind::Subscript(child)
       | HirMathKind::Accent { base: child, .. }
-      | HirMathKind::Fenced { body: child, .. }
       | HirMathKind::Bar { body: child, .. } => {
         walk_math(std::slice::from_ref(child.as_ref()), here, out);
+      },
+      HirMathKind::Fenced { segments, .. } => {
+        for segment in segments {
+          walk_math(segment, here, out);
+        }
       },
       HirMathKind::Frac {
         numer: first,

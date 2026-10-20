@@ -4935,6 +4935,121 @@ fn empty_fence_compiles_with_the_delimiters_side_by_side() {
   assert_eq!(right.dx, left.dx + left.width, "空の中身は幅 0");
 }
 
+/// 伸縮括弧 `left` / `right` の間にある中間の区切りの縦棒（テキストが `|` のグリフ列）を出現順に返す
+fn fence_dividers<'a>(runs: &'a [LineRun], left: &LineRun, right: &LineRun) -> Vec<&'a LineRun> {
+  return runs
+    .iter()
+    .filter(|line_run| return line_run.run.text == "|" && line_run.dx > left.dx && line_run.dx < right.dx)
+    .collect();
+}
+
+/// グリフ列の gid を出現順に返す
+fn glyph_ids(line_run: &LineRun) -> Vec<u32> {
+  return line_run.run.glyphs.iter().map(|glyph| return glyph.gid).collect();
+}
+
+#[test]
+fn fence_divider_covers_the_body_and_centers_on_the_math_axis() {
+  let text_size = inline_math_size();
+  for (command, open, close) in FENCES {
+    let source = format!("$\\{command}{{\\frac{{a}}{{b}} \\given d \\neq 0}}$\n");
+    let runs = first_line_runs(&source);
+
+    let numerator = run_with_text(&runs, MATH_A);
+    let denominator = run_with_text(&runs, MATH_B);
+    let body_top = numerator.dy + stix_ink_extent(numerator).0;
+    let body_bottom = denominator.dy - stix_ink_extent(denominator).1;
+    let (left, right) = fence_pair(&runs, open, close);
+    let runs_dividers = fence_dividers(&runs, left, right);
+    let [divider] = runs_dividers.as_slice() else {
+      panic!("括弧の間に縦棒が 1 本あるはず: {source}");
+    };
+    let size = divider.run.font_size;
+    assert_eq!(size, text_size, "縦棒はフォントサイズを変えずに伸ばすはず: {source}");
+    let (top, bottom) = stix_run_ink(&divider.run);
+    let axis = stix_math_length(MathConstant::AxisHeight, size);
+    let center = divider.dy + (top + bottom) / 2.0;
+    assert!(
+      (center - axis).abs() <= Length::from_sp(1),
+      "縦棒のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
+    );
+    // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
+    let slack = size.scale(0.01);
+    assert!(divider.dy + top + slack >= body_top, "縦棒は分子のインクの頂まで届くはず: {source}");
+    assert!(divider.dy + bottom - slack <= body_bottom, "縦棒は分母のインクの底まで届くはず: {source}");
+  }
+}
+
+#[test]
+fn two_dividers_in_one_fence_stretch_alike() {
+  let runs = first_line_runs("$\\paren{a \\given \\frac{b}{c} \\given d}$\n");
+
+  let (left, right) = fence_pair(&runs, "(", ")");
+  let runs_dividers = fence_dividers(&runs, left, right);
+  let [first, second] = runs_dividers.as_slice() else {
+    panic!("括弧の間に縦棒が 2 本あるはず");
+  };
+  assert_eq!(glyph_ids(first), glyph_ids(second), "同じ括弧の縦棒は同じ字形");
+  assert_eq!(first.dy, second.dy, "同じ括弧の縦棒は同じ高さに置く");
+}
+
+#[test]
+fn nested_divider_stretches_to_its_innermost_fence() {
+  let runs = first_line_runs("$\\paren{a \\given \\bracket{\\frac{b}{c} \\given d}}$\n");
+  let alone = first_line_runs("$\\bracket{\\frac{b}{c} \\given d}$\n");
+
+  let (left, right) = fence_pair(&runs, "(", ")");
+  let runs_dividers = fence_dividers(&runs, left, right);
+  let [outer, inner] = runs_dividers.as_slice() else {
+    panic!("外側と内側の縦棒が 1 本ずつあるはず");
+  };
+  let (inner_left, _) = fence_pair(&runs, "[", "]");
+  let (alone_left, alone_right) = fence_pair(&alone, "[", "]");
+  let alone_dividers = fence_dividers(&alone, alone_left, alone_right);
+  let [alone_divider] = alone_dividers.as_slice() else {
+    panic!("単独の内側の括弧に縦棒が 1 本あるはず");
+  };
+  assert_eq!(glyph_ids(inner), glyph_ids(alone_divider), "内側の縦棒は内側の括弧の高さで伸びる");
+  assert_eq!(
+    (inner.dx - inner_left.dx, inner.dy),
+    (alone_divider.dx - alone_left.dx, alone_divider.dy),
+    "内側の縦棒は内側の括弧を単独で組んだときと同じ位置"
+  );
+  let (outer_top, outer_bottom) = stix_run_ink(&outer.run);
+  let (inner_top, inner_bottom) = stix_run_ink(&inner_left.run);
+  assert!(
+    outer.dy + outer_top + Length::from_sp(1) >= inner_left.dy + inner_top
+      && outer.dy + outer_bottom - Length::from_sp(1) <= inner_left.dy + inner_bottom,
+    "外側の縦棒は内側の括弧のインクを覆う"
+  );
+}
+
+#[test]
+fn short_divider_takes_the_spacing_of_mid_and_the_glyph_of_bare_vert() {
+  let given = first_line_runs("$\\paren{a \\given b}$\n");
+  let mid = first_line_runs("$(a \\mid b)$\n");
+  let vert = first_line_runs("$\\vert$\n");
+
+  // 𝑎 の右端 → 縦棒の左端、縦棒の右端 → 𝑏 の左端の間隔
+  let gaps = |runs: &[LineRun], bar: &str| {
+    let a = runs.iter().find(|line_run| return line_run.run.text.contains(MATH_A)).expect("𝑎 があるはず");
+    let bar = run_with_text(runs, bar);
+    let b = runs.iter().find(|line_run| return line_run.run.text.starts_with(MATH_B)).expect("𝑏 があるはず");
+    return (bar.dx - (a.dx + a.width), b.dx - (bar.dx + bar.width));
+  };
+  assert_eq!(gaps(&given, "|"), gaps(&mid, "\u{2223}"), "区切りの前後は \\mid と同じアキ");
+  let (left, right) = fence_pair(&given, "(", ")");
+  let given_dividers = fence_dividers(&given, left, right);
+  let [divider] = given_dividers.as_slice() else {
+    panic!("括弧の間に縦棒が 1 本あるはず");
+  };
+  assert_eq!(
+    sole_glyph(divider).0,
+    sole_glyph(run_with_text(&vert, "|")).0,
+    "低い中身の縦棒は裸の \\vert と同じ字形"
+  );
+}
+
 /// [`FENCES`] と同じ順の、左右の括弧を数式に裸で書く形（`[ ] { }` は構造文字なのでエスケープ、`|` `‖` `⟨⟩` `⌊⌋` `⌈⌉` は記号コマンド）
 const BARE_FENCES: [(&str, &str); 8] = [
   ("(", ")"),

@@ -1,0 +1,11 @@
+frontend::eval::given_not_in_fence
+
+  × \given は伸縮括弧の引数の直下にのみ置けます
+   ╭─[tests/text/diagnostics/given_not_in_fence.sei:3:19]
+ 2 │ 
+ 3 │ 集合 $\brace{x} \given x > 0$ を書いています。
+   ·                 ───┬───
+   ·                    ╰── この \given は伸縮括弧の引数の直下にありません
+   ╰────
+  help: \given は \paren・\brace などの伸縮括弧の引数の直下に置いてください。グループ・分数やスク
+        リプトの引数・\text・行列や場合分けのセルの中には置けません。
