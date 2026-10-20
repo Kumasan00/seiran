@@ -1425,6 +1425,56 @@ mod tests {
     );
   }
 
+  /// Atom ノード列のカーン幅を出現順に返す
+  fn atom_kerns(nodes: &[AtomNode]) -> Vec<Length> {
+    return nodes
+      .iter()
+      .filter_map(|node| match node {
+        AtomNode::Kern { length } => return Some(*length),
+        _ => return None,
+      })
+      .collect();
+  }
+
+  #[test]
+  fn fence_divider_takes_the_spacing_of_mid() {
+    let given = lower_math_source("$\\paren{a \\given b}$\n");
+    let mid = lower_math_source("$\\paren{a \\mid b}$\n");
+
+    let given = first_fenced(&given);
+    assert_eq!(given.segments.len(), 2, "\\given で 2 区画: {given:?}");
+    assert_eq!(
+      atom_kerns(&given.segments.concat()),
+      atom_kerns(&first_fenced(&mid).segments.concat()),
+      "区切りの前後は \\mid と同じ Rel のアキ"
+    );
+  }
+
+  #[test]
+  fn fence_divider_is_not_a_line_break() {
+    let nodes = lower_math_source("$\\paren{a \\given b}$\n");
+
+    assert!(
+      !nodes.iter().any(|node| return matches!(node, LayoutNode::Inline(InlineNode::MathBreak { .. }))),
+      "区切りは閉じた箱の内側なので行分割点にならない: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn script_after_the_divider_takes_an_empty_base() {
+    let nodes = lower_math_source("$\\paren{a \\given^{2} b}$\n");
+
+    let fenced = first_fenced(&nodes);
+    let [_, second] = fenced.segments.as_slice() else {
+      panic!("2 区画のはず: {fenced:?}");
+    };
+    let first_atom = second.iter().find(|node| return !matches!(node, AtomNode::Kern { .. }));
+    let Some(AtomNode::Scripts(scripts)) = first_atom else {
+      panic!("区切りの後ろの区画はスクリプトで始まるはず: {second:?}");
+    };
+    assert!(scripts.base.is_empty(), "区切りの直後のスクリプトは空の基底に付く: {scripts:?}");
+  }
+
   #[test]
   fn binomial_lowers_to_a_ruleless_fraction_in_parens() {
     let nodes = lower_math_source("$\\binom{n}{k}$\n");

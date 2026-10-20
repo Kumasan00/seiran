@@ -428,6 +428,14 @@ mod tests {
   }
 
   #[test]
+  fn fence_divider_glyph_is_reported_at_its_fence() {
+    let found = missing("$\\paren{a \\given b}$", &['|']);
+
+    let sites: Vec<(char, String)> = found.into_iter().map(|(glyph, site, _)| return (glyph, site)).collect();
+    assert_eq!(sites, vec![('|', "\\paren{a \\given b}".to_string())]);
+  }
+
+  #[test]
   fn block_delimiters_are_reported_at_their_environment() {
     let source = "\\begin{cases}\n1 & 2\n\\end{cases}\n\n\\begin{matrix}[delimiter=paren]\n1\n\\end{matrix}\n";
 

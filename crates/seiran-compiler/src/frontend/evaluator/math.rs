@@ -247,7 +247,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 
 /// 数式内コマンドの種類
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\binom`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
+/// 数式の語彙（字形コマンド・`\frac`・`\binom`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・中間の区切り・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
 /// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
 /// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
 /// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
@@ -291,6 +291,8 @@ enum MathCommandKind {
   },
   /// 文章（`\text`）— 必須引数 1 個（テキストとして読む文章）
   Prose,
+  /// 中間の区切り（`\given`）— 必須引数なし。伸縮括弧の引数の直下でだけ有効
+  Given,
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
   Symbol(MathSymbol),
 }
@@ -306,6 +308,7 @@ impl MathCommandKind {
       "binom" => Some(Self::Binom),
       "sqrt" => Some(Self::Sqrt),
       "text" => Some(Self::Prose),
+      "given" => Some(Self::Given),
       _ => fence_delimiters(name)
         .map(|(open, close)| return Self::Fenced { open, close })
         .or_else(|| return accent_mark(name).map(|mark| return Self::Accent { mark, wide: false }))
@@ -322,7 +325,7 @@ impl MathCommandKind {
     return match self {
       Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } | Self::Prose => 1,
       Self::Frac | Self::Binom => 2,
-      Self::Space(_) | Self::OperatorName { .. } | Self::Symbol(_) => 0,
+      Self::Space(_) | Self::OperatorName { .. } | Self::Given | Self::Symbol(_) => 0,
     };
   }
 
@@ -339,6 +342,7 @@ impl MathCommandKind {
       | Self::Bar { .. }
       | Self::Space(_)
       | Self::OperatorName { .. }
+      | Self::Given
       | Self::Symbol(_) => &[],
     };
   }
@@ -603,6 +607,13 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       let text = prose_text(source, arg)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Prose(text)));
     },
+    // 伸縮括弧の直下の `\given` は `evaluate_fence_segments` が区切りとして取り除くので、ここへ来るのはそれ以外の位置
+    // （グループ・引数・スクリプト・セル・環境本体・伸縮括弧の外）の `\given` だけ
+    MathCommandKind::Given => {
+      return Err(EvalError::GivenNotInFence {
+        span: view.span().into(),
+      });
+    },
     MathCommandKind::Symbol(symbol) => {
       opt_args::no_command_opt_args(&view)?;
       arity::no_command_args(&view)?;
@@ -624,13 +635,33 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
   return Ok(collapse_single(group_id, nodes));
 }
 
-/// 伸縮括弧の引数ノード `body` を、括弧で包む数式の区画の列（[`HirMathKind::Fenced`] の `segments`）に変換する
+/// 伸縮括弧の引数ノード `body` を、直下の `\given` で区切った区画の列（[`HirMathKind::Fenced`] の `segments`）に変換する
 fn evaluate_fence_segments(
   source: &str,
   ctx: &EvalContext<'_>,
   body: &CstNode<'_>,
 ) -> Result<Vec<Vec<HirMath>>, EvalError> {
-  return Ok(vec![evaluate_math_elements(source, ctx, body.children)?]);
+  let is_given = |element: &CstElement<'_>| {
+    return match element {
+      CstElement::Node(node) if node.kind == SyntaxKind::CommandCall => {
+        matches!(MathCommandKind::from_name(CommandView::new(node, source).name()), Some(MathCommandKind::Given))
+      },
+      CstElement::Node(_) | CstElement::Token(_) => false,
+    };
+  };
+  for element in body.children.iter().filter(|element| return is_given(element)) {
+    let CstElement::Node(node) = element else {
+      unreachable!("`is_given` はコマンド呼び出しのノードだけを選ぶ")
+    };
+    let view = CommandView::new(node, source);
+    opt_args::no_command_opt_args(&view)?;
+    arity::no_command_args(&view)?;
+  }
+  return body
+    .children
+    .split(is_given)
+    .map(|segment| return evaluate_math_elements(source, ctx, segment))
+    .collect();
 }
 
 /// `\text` の引数を [`HirMathKind::Prose`] の文字列にする
@@ -712,6 +743,11 @@ fn prose_char(source: &str, node: &CstNode<'_>) -> Result<char, EvalError> {
     opt_args::no_command_opt_args(&view)?;
     arity::no_command_args(&view)?;
     return Ok(symbol.ch);
+  }
+  if matches!(MathCommandKind::from_name(view.name()), Some(MathCommandKind::Given)) {
+    return Err(EvalError::GivenNotInFence {
+      span: view.span().into(),
+    });
   }
   if command::is_registered(view.name()) || MathCommandKind::from_name(view.name()).is_some() {
     return Err(EvalError::UnsupportedInMathText {

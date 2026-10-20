@@ -1260,6 +1260,85 @@ mod tests {
     assert!(matches!(error, EvalError::MathOnlyCommand { ref name, .. } if name == "paren"), "{error:?}");
   }
 
+  /// 伸縮括弧の区画の字（テキストと記号の葉を出現順に連結し、前後の空白を除いたもの）
+  fn segment_text(segment: &[HirMath]) -> String {
+    let text: String = segment
+      .iter()
+      .filter_map(|node| match &node.kind {
+        HirMathKind::Text(text) | HirMathKind::Symbol { text, .. } => return Some(text.as_str()),
+        _ => return None,
+      })
+      .collect();
+    return text.trim().to_string();
+  }
+
+  /// 数式ノードが伸縮括弧なら、その区画の列
+  fn fence_segments(node: &HirMath) -> &[Vec<HirMath>] {
+    let HirMathKind::Fenced { segments, .. } = &node.kind else {
+      panic!("Fenced が期待されます: {node:?}");
+    };
+    return segments;
+  }
+
+  #[test]
+  fn evaluate_math_given_divides_the_fence_body() {
+    let math = inline_math_nodes(r"$\brace{x \given x > 0}$");
+
+    let texts: Vec<String> = fence_segments(&math[0]).iter().map(|segment| return segment_text(segment)).collect();
+    assert_eq!(texts, vec!["x", "x > 0"]);
+  }
+
+  #[test]
+  fn evaluate_math_given_twice_makes_three_segments() {
+    let math = inline_math_nodes(r"$\paren{a \given b \given c}$");
+
+    let texts: Vec<String> = fence_segments(&math[0]).iter().map(|segment| return segment_text(segment)).collect();
+    assert_eq!(texts, vec!["a", "b", "c"]);
+  }
+
+  #[test]
+  fn evaluate_math_given_belongs_to_the_innermost_fence() {
+    let math = inline_math_nodes(r"$\paren{a \given \bracket{\frac{b}{c} \given d}}$");
+
+    let outer = fence_segments(&math[0]);
+    assert_eq!(outer.len(), 2, "外側の括弧は自分の直下の \\given 1 個で 2 区画: {outer:?}");
+    let inner = outer[1]
+      .iter()
+      .find(|node| return matches!(node.kind, HirMathKind::Fenced { open: '[', .. }))
+      .expect("外側の 2 区画目に内側の括弧があるはず");
+    assert_eq!(fence_segments(inner).len(), 2, "内側の \\given は内側の括弧の区切り: {inner:?}");
+  }
+
+  #[test]
+  fn evaluate_math_given_outside_a_fence_body_is_rejected() {
+    let cases = [
+      r"$a \given b$",
+      r"$\paren{{a \given b}}$",
+      r"$\paren{\frac{a \given b}{c}}$",
+      r"$\paren{x^{a \given b}}$",
+      r"$\paren{\text{a \given b}}$",
+      r"$\paren{\mathbold{a \given b}}$",
+      r"$\paren{\sqrt[a \given b]{c}}$",
+      r"$\paren{\begin{matrix} a \given b \end{matrix}}$",
+      r"$\paren{\begin{cases} a \given b \end{cases}}$",
+      "\\begin{equation}\na \\given b\n\\end{equation}\n",
+      "\\begin{align}\na &= \\paren{b} \\given c\n\\end{align}\n",
+    ];
+
+    for source in cases {
+      let error = evaluate_error(source);
+
+      assert!(matches!(error, EvalError::GivenNotInFence { .. }), "{source}: {error:?}");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_given_rejects_options() {
+    let error = evaluate_error(r"$\paren{a \given[size=2] b}$");
+
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "size"), "{error:?}");
+  }
+
   #[test]
   fn evaluate_math_binom_holds_top_and_bottom() {
     let math = inline_math_nodes(r"$\binom{n}{k}$");
@@ -1320,6 +1399,7 @@ mod tests {
       ("anglebracket", r"\anglebracket{x}"),
       ("floor", r"\floor{x}"),
       ("ceil", r"\ceil{x}"),
+      ("given", r"\given"),
     ];
 
     for (expected, source) in cases {
