@@ -56,7 +56,7 @@ mod tests {
     typeset::lowering::{
       layout_node::InlineNode,
       lower_sources_with_headings,
-      test_support::{analyzed, context, stix_script_scale},
+      test_support::{analyzed, context, inlines, stix_script_scale},
     },
   };
 
@@ -109,8 +109,8 @@ mod tests {
     assert!((height.expect("height 指定あり").to_pt() - Length::mm(60.0).to_pt()).abs() < 0.01);
     assert_eq!(*target_dpi, Some(300));
 
-    let caption_text = children.iter().find_map(|n| match n {
-      LayoutNode::Inline(InlineNode::Text(text, _)) => return Some(text.as_str()),
+    let caption_text = inlines(children).find_map(|n| match n {
+      InlineNode::Text(text, _) => return Some(text.as_str()),
       _ => return None,
     });
     assert_eq!(caption_text, Some("Figure 1.1: せいらん"));
@@ -127,10 +127,7 @@ mod tests {
     );
 
     let children = figure_children(&nodes);
-    let first_text_idx = children
-      .iter()
-      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))))
-      .expect("Text あり");
+    let first_text_idx = children.iter().position(|n| matches!(n, LayoutNode::Paragraph(_))).expect("Text あり");
     let first_image_idx = children.iter().position(|n| matches!(n, LayoutNode::Image { .. })).expect("Image あり");
     assert!(first_text_idx < first_image_idx, "Top: caption が image の前");
   }
@@ -143,7 +140,7 @@ mod tests {
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n");
 
     let children = figure_children(&nodes);
-    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(_, _))));
+    let has_text = inlines(children).any(|n| matches!(n, InlineNode::Text(_, _)));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
     let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image { .. }));
     assert!(has_image, "画像は出力されている: {children:?}");

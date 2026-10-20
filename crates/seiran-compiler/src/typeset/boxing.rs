@@ -6,6 +6,7 @@
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
 //! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
 //! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
+//! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
 //! `math`（ディスプレイ数式と、数式の上付き・下付きの配置）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
@@ -48,7 +49,7 @@ use crate::{
     },
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
-    lowering::{AtomNode, InlineNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
+    lowering::{AtomNode, InlineNode, LayoutNode, ParagraphLayout, TableLayout, TableRowLayout, TextStyle},
   },
 };
 
@@ -110,9 +111,7 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
     column_width: inputs.column_width,
   };
   let mut blocks: Vec<Block> = Vec::new();
-  let mut paragraph = HList::default();
-  builder.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, inputs.alignment);
-  builder.flush_paragraph(&mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, inputs.alignment);
+  builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment);
   let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
   return blocks;
@@ -134,18 +133,22 @@ impl BlockBuilder<'_> {
     &mut self,
     nodes: Vec<LayoutNode>,
     blocks: &mut Vec<Block>,
-    paragraph: &mut HList,
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
   ) {
     for node in nodes {
       match node {
-        LayoutNode::Inline(inline) => {
-          self.measurer.collect_inline(inline, paragraph);
+        LayoutNode::Paragraph(paragraph) => {
+          let spacing = paragraph.spacing_after;
+          if let Some(block) = self.build_paragraph(paragraph, indent, right_indent, alignment) {
+            blocks.push(block);
+          }
+          if spacing != Length::ZERO {
+            blocks.push(Block::fixed_space(spacing));
+          }
         },
         LayoutNode::Anchor(id) => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           blocks.push(Block::Anchor(id));
         },
         LayoutNode::VBox {
@@ -156,17 +159,14 @@ impl BlockBuilder<'_> {
           alignment: vbox_alignment,
         } => {
           // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           let child_indent = indent + vbox_indent;
           let child_right_indent = right_indent + vbox_right_indent;
           let child_alignment = vbox_alignment.unwrap_or(alignment);
-          self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, child_alignment);
-          self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, child_alignment);
+          self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment);
           let natural = margin_bottom;
           blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
         },
         LayoutNode::Vkern { length } => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           blocks.push(Block::fixed_space(length));
         },
         LayoutNode::Image {
@@ -175,7 +175,6 @@ impl BlockBuilder<'_> {
           height,
           target_dpi,
         } => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           let (width, height) = resolve_image_size(self.images, &path, width, height, self.column_width);
           blocks.push(Block::Image {
             path,
@@ -186,24 +185,20 @@ impl BlockBuilder<'_> {
           });
         },
         LayoutNode::Table(table) => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           blocks.push(Block::Table {
             table: self.measurer.build_table_box(table),
             align: Align::from(alignment),
           });
         },
         LayoutNode::MathBlock(block) => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           let math_block = self.measurer.build_math_block(block);
           blocks.push(math_block);
         },
         LayoutNode::PageBreak => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           blocks.push(Block::force_break());
         },
         // keep-with-next（見出し直後の分割禁止）: 直前ブロックと直後ブロックの間の改ページを禁止する
         LayoutNode::KeepWithNext => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, alignment);
           blocks.push(Block::Penalty {
             value: PENALTY_FORBID_BREAK,
           });
@@ -212,21 +207,24 @@ impl BlockBuilder<'_> {
     }
   }
 
-  /// 溜めた段落アイテムを `Block::Paragraph` として確定する
-  fn flush_paragraph(
-    &self,
-    blocks: &mut Vec<Block>,
-    paragraph: &mut HList,
+  /// 段落を計測する。計測後の水平リストが空なら本文ブロックを作らない
+  fn build_paragraph(
+    &mut self,
+    paragraph: ParagraphLayout,
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
-  ) {
-    if paragraph.is_empty() {
-      return;
+  ) -> Option<Block> {
+    let mut list = HList::default();
+    for inline in paragraph.content {
+      self.measurer.collect_inline(inline, &mut list);
     }
-    let items = std::mem::take(paragraph).into_items();
+    if list.is_empty() {
+      return None;
+    }
+    let items = list.into_items();
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
-    blocks.push(Block::Paragraph {
+    return Some(Block::Paragraph {
       items,
       leading: dominant_font_size * self.measurer.line_height_factor,
       indent,

@@ -7,7 +7,7 @@ use crate::{
   style::{TheoremHeadingValues, TheoremStyle},
   typeset::lowering::{
     LoweringContext, LoweringState, counter,
-    layout_node::{AtomNode, InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+    layout_node::{AtomNode, InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
     lower_nodes, with_label_anchors,
   },
 };
@@ -38,11 +38,24 @@ pub(super) fn lower_theorem(
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
-    if matches!(theorem.body.last(), Some(last) if matches!(last.kind, HirNodeKind::Paragraph(_))) {
-      let insert_at = body_nodes.len().saturating_sub(1);
-      body_nodes.insert(insert_at, qed_node);
+    // 空リストは何も出力しない。末尾の本文段落には続け、空リストを挟んでも未完の水平アキ列には続ける。
+    let last_emitting = theorem
+      .body
+      .iter()
+      .rev()
+      .find(|node| return !matches!(&node.kind, HirNodeKind::List(list) if list.items.is_empty()));
+    let joins_body = matches!(theorem.body.last().map(|node| return &node.kind), Some(HirNodeKind::Paragraph(_)))
+      || matches!(last_emitting.map(|node| return &node.kind), Some(HirNodeKind::Space(_)));
+    if joins_body {
+      let Some(LayoutNode::Paragraph(paragraph)) = body_nodes.last_mut() else {
+        unreachable!("lower_nodes は末尾の本文段落と水平アキ列を Paragraph として出力する")
+      };
+      paragraph.content.push(qed_node);
     } else {
-      body_nodes.push(qed_node);
+      body_nodes.push(LayoutNode::Paragraph(ParagraphLayout {
+        content: vec![qed_node],
+        spacing_after: Length::ZERO,
+      }));
     }
   }
   nodes.extend(body_nodes);
@@ -93,7 +106,10 @@ fn build_heading(
   let children = template.expand(values, make_title, |literal| {
     return InlineNode::Text(literal.to_string(), base_style);
   });
-  let children: Vec<LayoutNode> = merge_adjacent_text(children).into_iter().map(LayoutNode::from).collect();
+  let children = vec![LayoutNode::Paragraph(ParagraphLayout {
+    content: merge_adjacent_text(children),
+    spacing_after: Length::ZERO,
+  })];
 
   return LayoutNode::VBox {
     children,
@@ -105,7 +121,7 @@ fn build_heading(
 }
 
 /// QED マークの右寄せノードを作る（既定サイズ・数式フォント）
-fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
+fn make_qed_node(qed_mark: &str, font_size: Length) -> InlineNode {
   let qed_style = TextStyle {
     font_size,
     typeface: Typeface::Math,
@@ -113,7 +129,7 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
     script_level: None,
     math_operator: None,
   };
-  return LayoutNode::Inline(InlineNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]));
+  return InlineNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]);
 }
 
 #[cfg(test)]
@@ -123,7 +139,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::{
       boxes::AnchorId,
-      lowering::test_support::{analyzed, lower},
+      lowering::test_support::{analyzed, inlines, lower, paragraph_layout},
     },
   };
 
@@ -139,8 +155,8 @@ mod tests {
         _ => return None,
       })
       .expect("見出し VBox があるはず");
-    return match &children[0] {
-      LayoutNode::Inline(InlineNode::Text(t, s)) => (t.clone(), *s),
+    return match &paragraph_layout(&children[0]).content[0] {
+      InlineNode::Text(t, s) => (t.clone(), *s),
       other => panic!("見出し先頭は Text であるべき: {other:?}"),
     };
   }
@@ -161,7 +177,7 @@ mod tests {
   /// レイアウトノードから表示テキストだけを取り出す
   fn flatten_text(node: &LayoutNode) -> String {
     return match node {
-      LayoutNode::Inline(inline) => flatten_text_inline(inline),
+      LayoutNode::Paragraph(paragraph) => paragraph.content.iter().map(flatten_text_inline).collect(),
       _ => String::new(),
     };
   }
@@ -184,10 +200,9 @@ mod tests {
     let (heading, heading_style) = first_heading_text(&nodes);
     assert_eq!(heading, "Theorem 1");
     assert_eq!(heading_style.typeface, Typeface::SerifBold);
-    let body = nodes
-      .iter()
+    let body = inlines(&nodes)
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "body" => return Some(*s),
+        InlineNode::Text(t, s) if t == "body" => return Some(*s),
         _ => return None,
       })
       .expect("本体 Text があるはず");
@@ -195,7 +210,7 @@ mod tests {
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は bottom_margin Vkern: {nodes:?}");
     assert!(
-      !nodes.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_)))),
+      !inlines(&nodes).any(|n| matches!(n, InlineNode::FlushRight(_))),
       "theorem に QED は出ない: {nodes:?}"
     );
   }
@@ -218,34 +233,29 @@ mod tests {
 
     let (heading, _) = first_heading_text(&nodes);
     assert_eq!(heading, "Proof");
-    let body = nodes
-      .iter()
+    let body = inlines(&nodes)
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "qed" => return Some(*s),
+        InlineNode::Text(t, s) if t == "qed" => return Some(*s),
         _ => return None,
       })
       .expect("本体 Text があるはず");
     assert_eq!(body.typeface, Typeface::Serif, "証明本体はローマン");
-    let qed_count = nodes.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_)))).count();
+    let qed_count = inlines(&nodes).filter(|n| matches!(n, InlineNode::FlushRight(_))).count();
     assert_eq!(qed_count, 1, "QED が 1 つ: {nodes:?}");
   }
 
   #[test]
-  fn proof_qed_sits_in_last_paragraph_before_trailing_vkern() {
+  fn proof_qed_sits_in_last_paragraph_before_its_spacing() {
     let style = ReadStyle::default();
 
     let nodes = lower_source(&style, "\\begin{proof}\nlast\n\\end{proof}\n");
 
-    let qed_idx = nodes
-      .iter()
-      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_))))
-      .expect("QED があるはず");
-    assert!(matches!(nodes.get(qed_idx + 1), Some(LayoutNode::Vkern { .. })), "QED の直後は Vkern: {nodes:?}");
-    let text_idx = nodes
-      .iter()
-      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "last"))
-      .unwrap();
-    assert!(text_idx < qed_idx, "本体テキストは QED より前: {nodes:?}");
+    let paragraph = paragraph_layout(&nodes[nodes.len() - 2]);
+    assert!(
+      matches!(paragraph.content.as_slice(), [InlineNode::Text(text, _), InlineNode::FlushRight(_)] if text == "last")
+    );
+    assert_eq!(paragraph.spacing_after, style.text.paragraph_spacing);
+    assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
   }
 
   #[test]
@@ -254,12 +264,37 @@ mod tests {
 
     let nodes = lower_source(&style, "\\begin{proof}\n\\begin{itemize}\n\\item{item}\n\\end{itemize}\n\\end{proof}\n");
 
-    let qed_idx = nodes
-      .iter()
-      .position(|n| matches!(n, LayoutNode::Inline(InlineNode::FlushRight(_))))
-      .expect("QED があるはず");
-    assert_eq!(qed_idx, nodes.len() - 2, "QED は bottom_margin Vkern の直前: {nodes:?}");
+    let paragraph = paragraph_layout(&nodes[nodes.len() - 2]);
+    assert!(matches!(paragraph.content.as_slice(), [InlineNode::FlushRight(_)]));
+    assert_eq!(paragraph.spacing_after, Length::ZERO);
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
+  }
+
+  #[test]
+  fn empty_list_after_body_paragraph_keeps_qed_on_its_own_line() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, r"\begin{proof}body\begin{itemize}\end{itemize}\end{proof}");
+
+    let body = paragraph_layout(&nodes[nodes.len() - 3]);
+    let qed = paragraph_layout(&nodes[nodes.len() - 2]);
+    assert!(matches!(body.content.as_slice(), [InlineNode::Text(text, _)] if text == "body"));
+    assert_eq!(body.spacing_after, style.text.paragraph_spacing);
+    assert!(matches!(qed.content.as_slice(), [InlineNode::FlushRight(_)]));
+    assert_eq!(qed.spacing_after, Length::ZERO);
+  }
+
+  #[test]
+  fn trailing_horizontal_space_shares_the_qed_line_through_an_empty_list() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, r"\begin{proof}\space{5pt}\begin{itemize}\end{itemize}\end{proof}");
+
+    let paragraph = paragraph_layout(&nodes[nodes.len() - 2]);
+    assert!(
+      matches!(paragraph.content.as_slice(), [InlineNode::Kern { length }, InlineNode::FlushRight(_)] if *length == Length::pt(5.0))
+    );
+    assert_eq!(paragraph.spacing_after, Length::ZERO);
   }
 
   #[test]

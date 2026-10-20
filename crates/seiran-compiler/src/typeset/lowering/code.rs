@@ -41,7 +41,9 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<Lay
     content.push(InlineNode::TextAtom(line.to_string(), style));
   }
   return vec![LayoutNode::VBox {
-    children: paragraph::assemble_paragraph(ctx, content, true),
+    children: vec![LayoutNode::Paragraph(paragraph::assemble_paragraph(
+      ctx, content, true,
+    ))],
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),
@@ -66,23 +68,24 @@ mod tests {
   use crate::{
     document::TextAlignment,
     style::Style as ReadStyle,
-    typeset::lowering::test_support::{analyzed, lower},
+    typeset::lowering::test_support::{analyzed, inlines, lower, paragraph_layout},
   };
 
-  /// コードブロックの `VBox` の子要素列を取り出す
-  fn code_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
+  /// コードブロックの `VBox` が持つ 1 段落の内容を取り出す
+  fn code_children(nodes: &[LayoutNode]) -> &[InlineNode] {
     let [LayoutNode::VBox { children, .. }] = nodes else {
       panic!("コードブロックは VBox 1 個で出るはず: {nodes:?}");
     };
-    return children;
+    assert_eq!(children.len(), 1, "コード全体を 1 段落に保持する");
+    return &paragraph_layout(&children[0]).content;
   }
 
-  /// レイアウトノード列から `TextAtom` のテキストだけを並べる
-  fn atom_texts(nodes: &[LayoutNode]) -> Vec<&str> {
+  /// インライン列から `TextAtom` のテキストだけを並べる
+  fn atom_texts(nodes: &[InlineNode]) -> Vec<&str> {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        LayoutNode::Inline(InlineNode::TextAtom(text, _)) => return Some(text.as_str()),
+        InlineNode::TextAtom(text, _) => return Some(text.as_str()),
         _ => return None,
       })
       .collect();
@@ -97,7 +100,7 @@ mod tests {
 
     let children = code_children(&nodes);
     assert_eq!(atom_texts(children), vec!["fn main() {", "    let x = 1;", "}"]);
-    let breaks = children.iter().filter(|n| matches!(n, LayoutNode::Inline(InlineNode::LineBreak))).count();
+    let breaks = children.iter().filter(|n| matches!(n, InlineNode::LineBreak)).count();
     assert_eq!(breaks, 2, "行の間だけに強制改行が入る: {nodes:?}");
   }
 
@@ -120,14 +123,11 @@ mod tests {
     let nodes = lower(&style, &analyzed(source));
 
     let children = code_children(&nodes);
-    let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = &children[0] else {
+    let InlineNode::TextAtom(_, text_style) = &children[0] else {
       panic!("先頭は TextAtom であるべき: {nodes:?}");
     };
     assert_eq!(text_style.typeface, Typeface::Monospace);
-    assert!(
-      !children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Kern { .. }))),
-      "字下げ Kern は出ない: {nodes:?}"
-    );
+    assert!(!children.iter().any(|n| matches!(n, InlineNode::Kern { .. })), "字下げ Kern は出ない: {nodes:?}");
   }
 
   #[test]
@@ -150,11 +150,9 @@ mod tests {
 
     let nodes = lower(&style, &analyzed(source));
 
-    assert_eq!(atom_texts(&nodes), vec!["if x { y }"]);
-    let LayoutNode::Inline(InlineNode::TextAtom(_, text_style)) = nodes
-      .iter()
-      .find(|n| matches!(n, LayoutNode::Inline(InlineNode::TextAtom(..))))
-      .expect("TextAtom があるはず")
+    assert_eq!(atom_texts(&paragraph_layout(&nodes[0]).content), vec!["if x { y }"]);
+    let InlineNode::TextAtom(_, text_style) =
+      inlines(&nodes).find(|n| matches!(n, InlineNode::TextAtom(..))).expect("TextAtom があるはず")
     else {
       unreachable!("find が TextAtom だけを返す")
     };

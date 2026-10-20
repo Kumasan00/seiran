@@ -57,7 +57,7 @@ pub(super) fn lower_bibliography(
   for entry in entries {
     layout.push(LayoutNode::Anchor(AnchorId::Citation(entry.key.clone())));
     let content = lower_generated_inlines(ctx, &entry.body, body_text_style(ctx));
-    layout.extend(assemble_paragraph(ctx, content, false));
+    layout.push(LayoutNode::Paragraph(assemble_paragraph(ctx, content, false)));
   }
 
   return (layout, headings);
@@ -112,7 +112,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::lowering::{
       lower_sources_with_headings,
-      test_support::{analyzed, context, lower},
+      test_support::{analyzed, context, inlines, lower, paragraph_layout},
     },
   };
 
@@ -165,8 +165,8 @@ mod tests {
         .any(|n| matches!(n, LayoutNode::Anchor(AnchorId::Citation(k)) if k.as_str() == "kwan2014")),
       "{layout:?}"
     );
-    let italic = layout.iter().find_map(|n| match n {
-      LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Crazy Rich Asians" => return Some(*s),
+    let italic = inlines(&layout).find_map(|n| match n {
+      InlineNode::Text(t, s) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,
     });
     assert_eq!(italic.map(|s| return s.typeface), Some(Typeface::SerifItalic), "{layout:?}");
@@ -190,7 +190,7 @@ mod tests {
 
     let layout = lower(&style, &document);
 
-    let LayoutNode::Inline(InlineNode::Link { target, children }) = &layout[0] else {
+    let InlineNode::Link { target, children } = &paragraph_layout(&layout[0]).content[0] else {
       panic!("Link が期待されます: {layout:?}");
     };
     assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(CitationId::new("kwan2014"))));

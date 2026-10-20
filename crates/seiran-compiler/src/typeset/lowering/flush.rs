@@ -32,7 +32,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::lowering::{
       layout_node::InlineNode,
-      test_support::{analyzed, lower},
+      test_support::{analyzed, inlines, lower},
     },
   };
 
@@ -80,7 +80,7 @@ mod tests {
 
       assert_eq!(alignment, Some(expected), "{name}");
       assert!(
-        children.iter().any(|n| matches!(n, LayoutNode::Inline(InlineNode::Text(t, _)) if t == "body")),
+        inlines(&children).any(|n| matches!(n, InlineNode::Text(t, _) if t == "body")),
         "本体の段落が子に入るはず（{name}）: {children:?}"
       );
     }
@@ -93,7 +93,7 @@ mod tests {
 
     let (_, children) = lower_single_flush(&style, "\\begin{center}\nbody\n\\end{center}\n");
 
-    let Some(LayoutNode::Inline(InlineNode::Kern { length })) = children.first() else {
+    let Some(InlineNode::Kern { length }) = inlines(&children).next() else {
       panic!("本体の段落は [text].first_line_indent の字下げで始まるはず: {children:?}");
     };
     assert_eq!(*length, Length::pt(10.0));

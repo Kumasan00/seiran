@@ -9,7 +9,7 @@ use crate::{
     boxes::AnchorId,
     lowering::{
       LoweringContext, LoweringState, counter, inline,
-      layout_node::{InlineNode, LayoutNode, TextStyle, merge_adjacent_text},
+      layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
     },
   },
 };
@@ -99,7 +99,10 @@ pub(super) fn lower_heading(
   let children = heading_style.format.expand(number, title, |literal| {
     return InlineNode::Text(literal.to_string(), style);
   });
-  let children: Vec<LayoutNode> = merge_adjacent_text(children).into_iter().map(LayoutNode::from).collect();
+  let children = vec![LayoutNode::Paragraph(ParagraphLayout {
+    content: merge_adjacent_text(children),
+    spacing_after: Length::ZERO,
+  })];
 
   let mut result = Vec::new();
 
@@ -142,7 +145,7 @@ mod tests {
     style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
-      lowering::test_support::{analyzed, context, lower},
+      lowering::test_support::{analyzed, context, inlines, lower, paragraph_layout},
     },
   };
 
@@ -151,12 +154,12 @@ mod tests {
     return vec![InlineNode::Text(text.to_string(), title_style(ctx, level))];
   }
 
-  /// `nodes` から見出し `VBox` の子要素列を取り出す
-  fn heading_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
+  /// `nodes` から見出し `VBox` の段落内容を取り出す
+  fn heading_children(nodes: &[LayoutNode]) -> &[InlineNode] {
     return nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } => return Some(children.as_slice()),
+        LayoutNode::VBox { children, .. } => return Some(paragraph_layout(&children[0]).content.as_slice()),
         _ => return None,
       })
       .expect("VBox が出力されるはず");
@@ -173,7 +176,7 @@ mod tests {
 
     let children = heading_children(&nodes);
     let text = match &children[0] {
-      LayoutNode::Inline(InlineNode::Text(text, _)) => text.clone(),
+      InlineNode::Text(text, _) => text.clone(),
       other => panic!("Text ノードが期待されます: {other:?}"),
     };
     assert_eq!(text, "[4.7] Custom Title");
@@ -190,7 +193,7 @@ mod tests {
     let italic = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Text(t, s)) if t == "Italic" => return Some(*s),
+        InlineNode::Text(t, s) if t == "Italic" => return Some(*s),
         _ => return None,
       })
       .expect("イタリック部分の Text があるはず");
@@ -260,12 +263,12 @@ mod tests {
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
   }
 
-  /// レイアウトノード列の最上位から脚注の (表示番号, 通し index) を文書順に集める
-  fn footnotes(nodes: &[LayoutNode]) -> Vec<(u32, u32)> {
+  /// インライン列から脚注の (表示番号, 通し index) を文書順に集める
+  fn footnotes<'a>(nodes: impl IntoIterator<Item = &'a InlineNode>) -> Vec<(u32, u32)> {
     return nodes
-      .iter()
+      .into_iter()
       .filter_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Footnote { number, index, .. }) => return Some((*number, *index)),
+        InlineNode::Footnote { number, index, .. } => return Some((*number, *index)),
         _ => return None,
       })
       .collect();
@@ -278,7 +281,7 @@ mod tests {
 
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"));
 
-    assert_eq!(footnotes(&nodes), vec![(1, 0)], "{nodes:?}");
+    assert_eq!(footnotes(inlines(&nodes)), vec![(1, 0)], "{nodes:?}");
   }
 
   #[test]
@@ -301,14 +304,14 @@ mod tests {
       .iter()
       .rev()
       .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } => return Some(children.as_slice()),
+        LayoutNode::VBox { children, .. } => return Some(paragraph_layout(&children[0]).content.as_slice()),
         _ => return None,
       })
       .expect("section の VBox があるはず");
     let link = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Inline(InlineNode::Link { target, children }) => return Some((target, children)),
+        InlineNode::Link { target, children } => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");

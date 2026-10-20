@@ -5,7 +5,7 @@ use crate::{
   length::Length,
   typeset::lowering::{
     LoweringContext, LoweringState,
-    layout_node::{InlineNode, LayoutNode, TextStyle},
+    layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
     lower_nodes,
   },
 };
@@ -50,13 +50,21 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
 
     // 左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
     // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。
-    let mut item_nodes = Vec::new();
+    let mut item_nodes = lower_nodes(&item_ctx, &item.body, state);
     if !marker_body.is_empty() {
-      item_nodes.push(LayoutNode::Inline(InlineNode::Text(format!("{marker_body} "), marker_style)));
+      let marker = InlineNode::Text(format!("{marker_body} "), marker_style);
+      if let Some(LayoutNode::Paragraph(paragraph)) = item_nodes.first_mut() {
+        paragraph.content.insert(0, marker);
+      } else {
+        item_nodes.insert(
+          0,
+          LayoutNode::Paragraph(ParagraphLayout {
+            content: vec![marker],
+            spacing_after: Length::ZERO,
+          }),
+        );
+      }
     }
-
-    let content_nodes = lower_nodes(&item_ctx, &item.body, state);
-    item_nodes.extend(content_nodes);
 
     result.push(LayoutNode::VBox {
       children: item_nodes,
@@ -76,7 +84,7 @@ mod tests {
   use crate::{
     document::Typeface,
     style::{NestedOrderedFormat, NumberStyle, NumberTemplate, Style as ReadStyle},
-    typeset::lowering::test_support::{analyzed, inline_text, lower},
+    typeset::lowering::test_support::{analyzed, inline_text, lower, paragraph_layout},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -96,7 +104,8 @@ mod tests {
     let LayoutNode::VBox { children, .. } = node else {
       panic!("item は VBox であるべき: {node:?}");
     };
-    return inline_text(&children[0]).unwrap_or_else(|| panic!("先頭はマーカー Text であるべき: {children:?}"));
+    return inline_text(&paragraph_layout(&children[0]).content[0])
+      .unwrap_or_else(|| panic!("先頭はマーカー Text であるべき: {children:?}"));
   }
 
   /// item `VBox` の子から、ネストしたリストの先頭項目 `VBox` を取り出す
@@ -129,6 +138,63 @@ mod tests {
     let nodes = lower_source(&style, "\\begin{itemize}\n\\end{itemize}\n");
 
     assert!(nodes.is_empty(), "{nodes:?}");
+  }
+
+  #[test]
+  fn empty_item_has_a_marker_paragraph_without_paragraph_spacing() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, r"\begin{itemize}\item{}\end{itemize}");
+
+    let LayoutNode::VBox { children, .. } = &nodes[0] else {
+      panic!("項目は VBox のはず: {nodes:?}");
+    };
+    assert_eq!(children.len(), 1);
+    let paragraph = paragraph_layout(&children[0]);
+    assert!(
+      matches!(paragraph.content.as_slice(), [InlineNode::Text(text, _)] if text == &format!("{} ", style.list.unordered_marker))
+    );
+    assert_eq!(paragraph.spacing_after, Length::ZERO);
+  }
+
+  #[test]
+  fn marker_does_not_enter_a_nested_vbox_paragraph() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, r"\begin{itemize}\item{\begin{center}body\end{center}}\end{itemize}");
+
+    let LayoutNode::VBox { children, .. } = &nodes[0] else {
+      panic!("項目は VBox のはず: {nodes:?}");
+    };
+    let [
+      LayoutNode::Paragraph(marker),
+      LayoutNode::VBox {
+        children: nested, ..
+      },
+    ] = children.as_slice()
+    else {
+      panic!("マーカー段落と内側の VBox が並ぶはず: {children:?}");
+    };
+    assert_eq!(marker.spacing_after, Length::ZERO);
+    assert!(matches!(paragraph_layout(&nested[0]).content.as_slice(), [InlineNode::Text(text, _)] if text == "body"));
+  }
+
+  #[test]
+  fn marker_and_first_body_text_share_the_same_paragraph() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, "\\begin{itemize}\\item{first\n\nsecond}\\end{itemize}");
+
+    let LayoutNode::VBox { children, .. } = &nodes[0] else {
+      panic!("項目は VBox のはず: {nodes:?}");
+    };
+    assert_eq!(children.len(), 2);
+    let first = paragraph_layout(&children[0]);
+    assert!(matches!(first.content.as_slice(), [InlineNode::Text(_, _), InlineNode::Text(text, _)] if text == "first"));
+    assert_eq!(first.spacing_after, style.text.paragraph_spacing);
+    assert!(
+      matches!(paragraph_layout(&children[1]).content.as_slice(), [InlineNode::Text(text, _)] if text == "second")
+    );
   }
 
   #[test]
@@ -179,7 +245,7 @@ mod tests {
       panic!("item は VBox");
     };
     assert!(
-      !matches!(children[0], LayoutNode::Inline(InlineNode::Kern { .. })),
+      !matches!(paragraph_layout(&children[0]).content[0], InlineNode::Kern { .. }),
       "先頭に Kern は出さない: {children:?}"
     );
     assert!((indent.to_pt() - list_style.indent.to_pt()).abs() < f32::EPSILON);
@@ -234,7 +300,7 @@ mod tests {
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
       panic!("item は VBox であるべき: {:?}", nodes[0]);
     };
-    let LayoutNode::Inline(InlineNode::Text(text, _)) = &children[0] else {
+    let InlineNode::Text(text, _) = &paragraph_layout(&children[0]).content[0] else {
       panic!("先頭は内容の Text であるべき: {children:?}");
     };
     assert_eq!(text, "x", "マーカー Text を挟まず内容の Text から始まるべき");
