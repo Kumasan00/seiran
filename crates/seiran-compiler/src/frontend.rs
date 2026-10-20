@@ -1439,6 +1439,13 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_vert_is_an_unknown_command() {
+    let error = evaluate_error(r"$\vert$");
+
+    assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "vert"), "{error:?}");
+  }
+
+  #[test]
   fn evaluate_math_unknown_command_with_args_is_error() {
     let error = evaluate_error(r"$\nosuchmathcmd{x}$");
     assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchmathcmd"));
