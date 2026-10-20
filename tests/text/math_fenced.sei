@@ -14,3 +14,9 @@ g = \anglebracket{\frac{x}{y}} + \floor{\frac{a}{b}} + \ceil{\sum_{i}^{n} x_{i}}
 \end{equation}
 
 スクリプトの中の括弧は裸の括弧と同じ字形: $y^{\paren{x}}$ $y^{(x)}$ $y^{y^{\paren{x}}}$ $y^{y^{(x)}}$。
+
+中間の区切り: $\brace{\frac{a}{b} \given b \neq 0}$ $P\paren{A \given B}$ $\paren{a \given b \given c}$ $\paren{a \given \bracket{\frac{b}{c} \given d}}$ $\abs{\frac{a}{b} \given c}$ $\paren{\given}$ $\paren{a \given^{2} b}$。
+
+\begin{equation}
+S = \brace{\frac{x}{y} \given \sum_{i}^{n} x_{i} > 0}
+\end{equation}
