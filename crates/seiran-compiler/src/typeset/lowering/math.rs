@@ -1380,6 +1380,9 @@ mod tests {
       ("$a+\\paren{b}$\n", "$a+(b)$\n"),
       ("$\\paren{a}+b$\n", "$(a)+b$\n"),
       ("$\\paren{a}=b$\n", "$(a)=b$\n"),
+      ("$\\sum\\anglebracket{x}$\n", "$\\sum\\langle x\\rangle$\n"),
+      ("$a+\\floor{b}$\n", "$a+\\lfloor b\\rfloor$\n"),
+      ("$\\ceil{a}=b$\n", "$\\lceil a\\rceil=b$\n"),
     ];
     for (fenced, bare) in pairs {
       assert_eq!(
