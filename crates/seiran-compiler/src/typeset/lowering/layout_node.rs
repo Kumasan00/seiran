@@ -373,11 +373,12 @@ pub(in crate::typeset) struct MathAccent {
 
 /// 中身を左右の区切り括弧で挟んだ伸縮括弧
 ///
-/// 括弧の大きさ（数式軸を中心に中身のインクを覆う高さ）と位置は計測寸法と数式フォントの MATH から boxing が決める。
+/// 括弧と中間の区切りの大きさ（数式軸を中心に中身のインクを覆う高さ）と位置は計測寸法と数式フォントの MATH から boxing が
+/// 決める。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathFenced {
-  /// 中身（括弧と同じ数式スタイルで組んだもの）
-  pub body: Vec<AtomNode>,
+  /// 中身を中間の区切りで分けた区画（1 個以上。括弧と同じ数式スタイルで組んだもの）。区画の間に boxing が縦棒を置く
+  pub segments: Vec<Vec<AtomNode>>,
   /// 左の区切り括弧（1 字。boxing が数式フォントで組む）
   pub open: String,
   /// 右の区切り括弧（1 字。boxing が数式フォントで組む）

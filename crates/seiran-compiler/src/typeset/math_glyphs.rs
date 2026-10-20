@@ -243,9 +243,18 @@ impl Checker<'_> {
         self.written(node.id, *accent, *accent);
         self.math(base, variant);
       },
-      HirMathKind::Fenced { open, close, body } => {
+      HirMathKind::Fenced {
+        open,
+        close,
+        segments,
+      } => {
         self.written(node.id, *open, *open);
-        self.math(body, variant);
+        for (index, segment) in segments.iter().enumerate() {
+          if index > 0 {
+            self.direct(node.id, boxing::FENCE_DIVIDER);
+          }
+          self.math_list(segment, variant);
+        }
         self.written(node.id, *close, *close);
       },
       HirMathKind::Bar { body, .. } => self.math(body, variant),

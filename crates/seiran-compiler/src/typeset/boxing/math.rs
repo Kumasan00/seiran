@@ -32,6 +32,7 @@ mod large_operator;
 mod limits;
 mod radical;
 
+pub(in crate::typeset) use fenced::FENCE_DIVIDER;
 pub(in crate::typeset) use radical::RADICAL_SIGN;
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
 

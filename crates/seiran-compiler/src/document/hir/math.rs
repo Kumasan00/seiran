@@ -84,8 +84,9 @@ pub(crate) enum HirMathKind {
     open: char,
     /// 右の区切り括弧
     close: char,
-    /// 括弧で包む数式
-    body: Box<HirMath>,
+    /// 括弧で包む数式を中間の区切り `\given` で分けた区画（1 個以上。区画の間に括弧と同じ高さの縦棒を置く）。各区画は
+    /// 数式ノード列
+    segments: Vec<Vec<HirMath>>,
   },
   /// 上線・下線（`\overline{...}` / `\underline{...}`）
   Bar {

@@ -544,8 +544,15 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       opt_args::no_command_opt_args(&view)?;
       let body_arg = arity::exactly_one_arg(&view, "1 個（括弧で包む数式）")?;
       let id = ctx.alloc(view.span());
-      let body = Box::new(math_arg_to_node(source, ctx, body_arg)?);
-      return Ok(HirMath::new(id, HirMathKind::Fenced { open, close, body }));
+      let segments = evaluate_fence_segments(source, ctx, body_arg)?;
+      return Ok(HirMath::new(
+        id,
+        HirMathKind::Fenced {
+          open,
+          close,
+          segments,
+        },
+      ));
     },
     MathCommandKind::Accent { mark, wide } => {
       let dotless = if wide {
@@ -615,6 +622,15 @@ fn math_arg_to_node(source: &str, ctx: &EvalContext<'_>, arg_node: &CstNode<'_>)
   let group_id = ctx.alloc(arg_node.span);
   let nodes = evaluate_math_children(source, ctx, arg_node)?;
   return Ok(collapse_single(group_id, nodes));
+}
+
+/// 伸縮括弧の引数ノード `body` を、括弧で包む数式の区画の列（[`HirMathKind::Fenced`] の `segments`）に変換する
+fn evaluate_fence_segments(
+  source: &str,
+  ctx: &EvalContext<'_>,
+  body: &CstNode<'_>,
+) -> Result<Vec<Vec<HirMath>>, EvalError> {
+  return Ok(vec![evaluate_math_elements(source, ctx, body.children)?]);
 }
 
 /// `\text` の引数を [`HirMathKind::Prose`] の文字列にする

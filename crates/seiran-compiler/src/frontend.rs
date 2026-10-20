@@ -1210,11 +1210,22 @@ mod tests {
       let math = inline_math_nodes(&format!("$\\{name}{{x}}$"));
 
       assert_eq!(math.len(), 1, "\\{name}: {math:?}");
-      let HirMathKind::Fenced { open, close, body } = &math[0].kind else {
+      let HirMathKind::Fenced {
+        open,
+        close,
+        segments,
+      } = &math[0].kind
+      else {
         panic!("Fenced が期待されます: \\{name} → {math:?}");
       };
       assert_eq!((*open, *close), (expected_open, expected_close), "\\{name} の左右の括弧");
-      assert!(matches!(&body.kind, HirMathKind::Text(t) if t == "x"), "\\{name}: {body:?}");
+      assert!(
+        matches!(
+          segments.as_slice(),
+          [segment] if matches!(segment.as_slice(), [HirMath { kind: HirMathKind::Text(t), .. }] if t == "x")
+        ),
+        "\\{name}: {segments:?}"
+      );
     }
   }
 
@@ -2097,8 +2108,8 @@ mod tests {
       HirMathKind::Superscript(child)
       | HirMathKind::Subscript(child)
       | HirMathKind::Accent { base: child, .. }
-      | HirMathKind::Fenced { body: child, .. }
       | HirMathKind::Bar { body: child, .. } => find_array_in(child),
+      HirMathKind::Fenced { segments, .. } => segments.iter().find_map(|segment| return find_array(segment)),
       HirMathKind::Frac {
         numer: first,
         denom: second,
