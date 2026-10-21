@@ -121,7 +121,13 @@ fn run_phases(
     inputs.font_data(),
     &semantic_document,
   );
-  warnings.extend(typeset_warnings);
+  // はみ出し警告はソース位置を持つので、帰属するソースの本文を添える（順序は組版が決めたまま）
+  for warning in typeset_warnings {
+    match warning.source_id() {
+      Some(source_id) => warnings.push(SourceDiagnostic::attach(inputs.sources(), source_id, warning)),
+      None => warnings.push(warning),
+    }
+  }
   let TypesetOutput {
     publication,
     image_paths,

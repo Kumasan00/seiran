@@ -1,0 +1,12 @@
+typeset::overflow::line
+
+  ⚠ 1 ページの行「aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…」が横に 235.3pt はみ出したまま配置しま
+  │ した
+   ╭─[tests/text/diagnostics/overflow_line_b.sei:3:1]
+ 2 │ 
+ 3 │ \code{aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+   · ▲
+   · ╰── この要素の行です
+   ╰────
+  help: 分割できない長いコードや数式内の文章（\text）を短く分けるか、style.toml の文字サイズ・
+        [page] の余白か config.toml の [pdf] の用紙サイズを見直してください。

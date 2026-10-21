@@ -55,6 +55,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let id = ctx.alloc(view.span());
   let source = view.source();
   let mut image_path: Option<String> = None;
+  let mut image_site = None;
   let mut width: Option<Length> = None;
   let mut height: Option<Length> = None;
   let mut dpi: Option<u32> = None;
@@ -77,6 +78,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
             });
           }
           let extracted = extract_image(&cmd_view)?;
+          image_site = Some(ctx.alloc(cmd_view.span()));
           image_path = Some(extracted.path);
           width = extracted.width;
           height = extracted.height;
@@ -100,7 +102,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     }
   }
 
-  let Some(image_path) = image_path else {
+  let (Some(image_path), Some(image_site)) = (image_path, image_site) else {
     return Err(EvalError::MissingEnvironmentArgument {
       name: "figure".to_string(),
       expected: "\\image コマンド".to_string(),
@@ -111,6 +113,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   return Ok(HirNode::new(
     id,
     HirNodeKind::Figure(HirFigure {
+      image_site,
       image_path: ctx.resolve_path(&image_path),
       width,
       height,
@@ -172,8 +175,27 @@ mod tests {
   use super::*;
   use crate::{
     document::HirInlineKind,
-    frontend::evaluator::{evaluate_children_to_hir, test_support},
+    frontend::{
+      self,
+      evaluator::{evaluate_children_to_hir, test_support},
+    },
+    source::{SourceId, Span},
   };
+
+  #[test]
+  fn image_site_spans_the_image_command() {
+    let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
+
+    let hir = frontend::test_support::parse_for_test(source, SourceId::new(0)).unwrap();
+
+    let HirNodeKind::Figure(figure) = &hir.nodes[0].kind else {
+      panic!("Figure が期待されます: {:?}", hir.nodes[0]);
+    };
+    let command = r"\image[width=80mm]{a.png}";
+    let start = u32::try_from(source.find(command).unwrap()).unwrap();
+    let end = start + u32::try_from(command.len()).unwrap();
+    assert_eq!(hir.spans.span_of(figure.image_site), Span::new(start, end));
+  }
 
   #[test]
   fn figure_extracts_image_and_caption() {

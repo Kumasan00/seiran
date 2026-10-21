@@ -216,6 +216,7 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], fonts: &FontSystem) 
   let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
   title.shift_x(spec.title_align.offset(spec.column_width, title.width()));
   blocks.push(Block::ComposedLine {
+    origin: None,
     line: title,
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
@@ -245,6 +246,7 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], fonts: &FontSystem) 
 /// 1 エントリ行のブロックを積む
 fn push_entry_line(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) {
   blocks.push(Block::ComposedLine {
+    origin: None,
     line: compose_entry_line(shaper, spec, entry),
     leading: spec.entry_style.font_size * spec.line_height_factor,
   });
@@ -266,6 +268,7 @@ fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &I
   let mut line = compose_left_line(shaper, text, spec.group_style);
   line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
   blocks.push(Block::ComposedLine {
+    origin: None,
     line,
     leading: spec.group_style.font_size * spec.line_height_factor,
   });

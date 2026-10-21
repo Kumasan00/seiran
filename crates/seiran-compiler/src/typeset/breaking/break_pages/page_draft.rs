@@ -499,11 +499,12 @@ fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
 mod tests {
   use super::{PageDraft, PendingTableRow, TableFrame};
   use crate::{
-    document::{ColumnAlign, ColumnWidth},
+    document::{ColumnAlign, ColumnWidth, NodeId},
     length::Length,
     project::{FontType, ProjectPath},
     publication::GlyphRun,
     semantics::LabelId,
+    source::SourceId,
     typeset::{
       boxes::{
         AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, TableCellBox,
@@ -583,6 +584,7 @@ mod tests {
   /// 1 行（リンク `uri` 付き）の脚注。`continued` で繰越断片にできる
   fn footnote(index: u32, uri: &str, continued: bool) -> PendingFootnote {
     return PendingFootnote {
+      origin: NodeId::for_test(SourceId::new(0), index),
       number: index + 1,
       index,
       continued,

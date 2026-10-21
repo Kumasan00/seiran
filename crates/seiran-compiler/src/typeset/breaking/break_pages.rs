@@ -15,7 +15,7 @@ use region_cursor::RegionCursor;
 use tracing::debug;
 
 use crate::{
-  document::TextAlignment,
+  document::{NodeId, TextAlignment},
   length::Length,
   project::ProjectPath,
   typeset::{
@@ -47,18 +47,22 @@ pub(in crate::typeset) struct Overflow {
 /// [`Overflow`] のはみ出し方
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::typeset) enum OverflowKind {
-  /// 1 行に付いた脚注群が、空のリージョンでもページ全高に収まらなかった（表示番号は出現順）
+  /// 1 行に付いた脚注群が、空のリージョンでもページ全高に収まらなかった（出現順）
   FootnoteLine {
-    /// はみ出した脚注群の表示番号
-    numbers: Vec<u32>,
+    /// はみ出した脚注群の表示番号と、それぞれが帰属する `\footnote` コマンド
+    footnotes: Vec<(u32, NodeId)>,
   },
   /// 繰越脚注の先頭 1 行がページ全高を超えた
   FootnoteSingleLine {
     /// はみ出した脚注の表示番号
     number: u32,
+    /// はみ出した脚注が帰属する `\footnote` コマンド
+    origin: NodeId,
   },
   /// 行（本文・合成行・脚注本体）が段の幅か実効の本文下限を超えた
   Line {
+    /// 行を含む要素（脚注本体の行は `\footnote` コマンド）。単一のソース要素に対応しない生成物は `None`
+    origin: Option<NodeId>,
     /// 行の内容の要約（識別用）
     excerpt: String,
     /// はみ出した方向
@@ -68,6 +72,8 @@ pub(in crate::typeset) enum OverflowKind {
   },
   /// 画像が段の幅か実効の本文下限を超えた
   Image {
+    /// `\image` コマンド
+    origin: NodeId,
     /// 画像ファイルへのパス
     path: ProjectPath,
     /// はみ出した方向
@@ -77,6 +83,8 @@ pub(in crate::typeset) enum OverflowKind {
   },
   /// ディスプレイ数式の本体が段の幅か実効の本文下限を超えた（行番号は測らない）
   Math {
+    /// 数式環境
+    origin: NodeId,
     /// 数式本体の要約（識別用）
     excerpt: String,
     /// はみ出した方向
@@ -136,6 +144,8 @@ struct PageComposer {
 
 /// 現在リージョンに集約された脚注 1 個（行分割済み、未確定座標）
 struct PendingFootnote {
+  /// 帰属する `\footnote` コマンド
+  origin: NodeId,
   /// 発番済みの表示番号
   number: u32,
   /// 出現順の識別子（0 起点）
@@ -215,15 +225,16 @@ impl PageComposer {
       .iter()
       .map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading))
       .collect();
-    // はみ出しの記録に使う繰越先頭の表示番号（`pack_footnotes` が `overflowed` を立てるのは
+    // はみ出しの記録に使う繰越先頭の表示番号と起源（`pack_footnotes` が `overflowed` を立てるのは
     // 先頭の脚注に限られる）
-    let leading_number = self.carry[0].number;
+    let (leading_number, leading_origin) = (self.carry[0].number, self.carry[0].origin);
     // 繰越は「そのページの自前の脚注より前」に置くので、常にエリア先頭（`base_reserved` = 0）から詰める
     let packing = pack_footnotes(&demands, Length::ZERO, geom.page_limit - geom.margin_top, charges, false)
       .expect("繰越の詰め込みは先頭に最低 1 行を強制するので None にならない");
     if packing.overflowed {
       self.record(OverflowKind::FootnoteSingleLine {
         number: leading_number,
+        origin: leading_origin,
       });
     }
     self.cursor.footnote_reserved = packing.height;
@@ -306,10 +317,11 @@ impl PageComposer {
     }
   }
 
-  /// 段左端基準の行 `line`（下端 `bottom`）のはみ出しを、下限 `limit` に対して記録する
-  fn record_line_overflow(&mut self, line: &Line, bottom: Length, limit: Length) {
+  /// `origin` に帰属する段左端基準の行 `line`（下端 `bottom`）のはみ出しを、下限 `limit` に対して記録する
+  fn record_line_overflow(&mut self, line: &Line, bottom: Length, limit: Length, origin: Option<NodeId>) {
     self.record_extent_overflow(line.width(), bottom, limit, |axis, excess| {
       return OverflowKind::Line {
+        origin,
         excerpt: observe::summarize_line(line),
         axis,
         excess,
@@ -325,6 +337,7 @@ impl PageComposer {
     for line in &head.lines {
       if let Some(excess) = excess(line.width(), self.column_width) {
         self.record(OverflowKind::Line {
+          origin: Some(head.origin),
           excerpt: observe::summarize_line(line),
           axis: OverflowAxis::Horizontal,
           excess,
@@ -391,16 +404,32 @@ pub(crate) fn break_pages(
     );
     match block {
       Block::Paragraph {
+        origin,
         items,
         leading,
         indent,
         right_indent,
         alignment,
       } => {
-        place_paragraph(&mut composer, geom, breaker, &items, leading, col_width, indent, right_indent, alignment);
+        place_paragraph(
+          &mut composer,
+          geom,
+          breaker,
+          &items,
+          leading,
+          col_width,
+          indent,
+          right_indent,
+          alignment,
+          origin,
+        );
       },
-      Block::ComposedLine { line, leading } => {
-        place_single_line(&mut composer, geom, line, leading);
+      Block::ComposedLine {
+        origin,
+        line,
+        leading,
+      } => {
+        place_single_line(&mut composer, geom, line, leading, origin);
       },
       // アキは cursor.at_edge を変えない
       Block::Glue { natural, stretch } => {
@@ -417,6 +446,7 @@ pub(crate) fn break_pages(
         ),
       },
       Block::Image {
+        origin,
         path,
         width,
         height,
@@ -431,6 +461,7 @@ pub(crate) fn break_pages(
         let limit = composer.cursor.region_limit(geom);
         composer.record_extent_overflow(align.offset(col_width, width) + width, y + height, limit, |axis, excess| {
           return OverflowKind::Image {
+            origin,
             path: path.clone(),
             axis,
             excess,
@@ -455,12 +486,13 @@ pub(crate) fn break_pages(
         composer.cursor.at_edge = true;
       },
       Block::Math {
+        origin,
         body,
         numbers,
         numbers_on_right,
         align,
       } => {
-        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width);
+        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width, origin);
       },
       // アンカーはゼロサイズで、次の実ブロックの確定座標で解決する
       Block::Anchor(id) => {
@@ -545,7 +577,7 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Atom
         cursor_after: cursor.below(height),
       };
     },
-    Block::ComposedLine { line, leading } => {
+    Block::ComposedLine { line, leading, .. } => {
       return AtomicPlacement {
         starts_region: cursor.line_overflows(line, geom),
         cursor_after: cursor.after_line(cursor.line_baseline(line), *leading),
@@ -597,6 +629,7 @@ fn keep_group_orphaned(
         indent,
         right_indent,
         alignment,
+        ..
       } => {
         let lines = break_paragraph(breaker, items, column_width, *indent, *right_indent, *alignment);
         let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width));
@@ -674,6 +707,7 @@ fn footnote_bodies(breaker: &dyn LineBreaker, lines: &[Line], column_width: Leng
         .iter()
         .map(|footnote| {
           return PendingFootnote {
+            origin: footnote.origin,
             number: footnote.number,
             index: footnote.index,
             continued: false,
@@ -714,6 +748,7 @@ fn place_paragraph(
   indent: Length,
   right_indent: Length,
   alignment: TextAlignment,
+  origin: Option<NodeId>,
 ) {
   let mut lines = break_paragraph(breaker, items, column_width, indent, right_indent, alignment);
   // 脚注の行分割と需要は widow/orphan の再フローや chunk の再計画で再計算しない
@@ -753,14 +788,14 @@ fn place_paragraph(
       }
       if placement.overflowed {
         composer.record(OverflowKind::FootnoteLine {
-          numbers: footnotes.iter().map(|footnote| return footnote.number).collect(),
+          footnotes: footnotes.iter().map(|footnote| return (footnote.number, footnote.origin)).collect(),
         });
       }
       let baseline = placement.baseline;
       last_baseline = baseline;
       // 縦の下限はこの行自身の脚注予約を足す前のもの（行自身の脚注のはみ出しは `FootnoteLine` が記録する）
       let limit = composer.cursor.region_limit(geom);
-      composer.record_line_overflow(&line, baseline + line.depth, limit);
+      composer.record_line_overflow(&line, baseline + line.depth, limit, origin);
       let col_off = composer.column_offset();
       line.shift_x(col_off);
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
@@ -787,14 +822,20 @@ fn place_paragraph(
 }
 
 /// 合成済みの単一行（[`Block::ComposedLine`]）を 1 行として配置する
-fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line: Line, leading: Length) {
+fn place_single_line(
+  composer: &mut PageComposer,
+  geom: &PageGeometry,
+  mut line: Line,
+  leading: Length,
+  origin: Option<NodeId>,
+) {
   let mut baseline = composer.cursor.line_baseline(&line);
   if composer.cursor.line_overflows(&line, geom) {
     composer.advance_region(geom);
     baseline = geom.margin_top;
   }
   let limit = composer.cursor.region_limit(geom);
-  composer.record_line_overflow(&line, baseline + line.depth, limit);
+  composer.record_line_overflow(&line, baseline + line.depth, limit, origin);
   let col_off = composer.column_offset();
   line.shift_x(col_off);
   composer.draft.place_line(line, baseline, col_off);
@@ -802,6 +843,10 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
 }
 
 /// ディスプレイ数式ブロックを配置する
+#[expect(
+  clippy::too_many_arguments,
+  reason = "数式本体・行番号・揃えの各値は Block::Math から分解した 1 ブロック分で、束ねる中間型を作っても呼び出し側の情報量は減らない"
+)]
 fn place_math_block(
   composer: &mut PageComposer,
   geom: &PageGeometry,
@@ -810,6 +855,7 @@ fn place_math_block(
   numbers_on_right: bool,
   align: Align,
   column_width: Length,
+  origin: NodeId,
 ) {
   let total_height = body.height + body.depth;
   if composer.cursor.defers_unbreakable(total_height, geom) {
@@ -821,6 +867,7 @@ fn place_math_block(
   let body_offset = align.offset(column_width, body.width);
   composer.record_extent_overflow(body_offset + body.width, top + total_height, limit, |axis, excess| {
     return OverflowKind::Math {
+      origin,
       excerpt: observe::summarize_box(&body),
       axis,
       excess,
@@ -925,11 +972,12 @@ mod tests {
     is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
-    document::{ColumnAlign, ColumnWidth, TextAlignment},
+    document::{ColumnAlign, ColumnWidth, NodeId, TextAlignment},
     length::Length,
     project::{FontType, ProjectPath},
     publication::GlyphRun,
     semantics::{HeadingKey, LabelId},
+    source::SourceId,
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
@@ -992,6 +1040,18 @@ mod tests {
     };
   }
 
+  /// テストの段落が帰属する HIR ノードの ID
+  fn paragraph_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 1); }
+
+  /// テストの画像（[`image_block`]）が帰属する `\image` コマンドの ID
+  fn image_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 2); }
+
+  /// テストのディスプレイ数式（[`math_block`]）が帰属する数式環境の ID
+  fn math_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 3); }
+
+  /// [`footnote_item`] が作る `number` 番の脚注が帰属する `\footnote` コマンドの ID
+  fn footnote_origin(number: u32) -> NodeId { return NodeId::for_test(SourceId::new(0), 100 + number); }
+
   /// テスト用ボックス（幅 10、高さ 8、深さ 2）
   fn test_box() -> HItem {
     return HItem::Box(HBox {
@@ -1012,6 +1072,7 @@ mod tests {
       items.push(test_box());
     }
     return Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -1023,6 +1084,7 @@ mod tests {
   /// 幅 0 の脚注マーカー（`HItem::Footnote`）を作るテストヘルパ
   fn footnote_item(number: u32, body: Vec<HItem>, leading: Length) -> HItem {
     return HItem::Footnote(MeasuredFootnote {
+      origin: footnote_origin(number),
       number,
       index: number - 1,
       items: body,
@@ -1039,6 +1101,7 @@ mod tests {
   fn single_line_paragraph(mut items: Vec<HItem>) -> Block {
     items.insert(0, test_box());
     return Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -1528,7 +1591,7 @@ mod tests {
       vec![Overflow {
         page_index: 0,
         kind: OverflowKind::FootnoteLine {
-          numbers: vec![1, 2]
+          footnotes: vec![(1, footnote_origin(1)), (2, footnote_origin(2))]
         },
       }],
       "1 行のはみ出しは 1 件で、その行の脚注番号を出現順に並べるはず"
@@ -1548,6 +1611,7 @@ mod tests {
       items.push(footnote_of_lines(number, 1));
     }
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items,
       leading: pt(12.0),
       indent: Length::ZERO,
@@ -1560,10 +1624,10 @@ mod tests {
     let recorded: Vec<(usize, Vec<u32>)> = overflows
       .iter()
       .map(|overflow| {
-        let OverflowKind::FootnoteLine { numbers } = &overflow.kind else {
+        let OverflowKind::FootnoteLine { footnotes } = &overflow.kind else {
           panic!("行のはみ出しとして記録されるはず: {overflow:?}");
         };
-        return (overflow.page_index, numbers.clone());
+        return (overflow.page_index, footnotes.iter().map(|(number, _)| return *number).collect());
       })
       .collect();
     assert_eq!(
@@ -1598,11 +1662,17 @@ mod tests {
       vec![
         Overflow {
           page_index: 1,
-          kind: OverflowKind::FootnoteSingleLine { number: 1 },
+          kind: OverflowKind::FootnoteSingleLine {
+            number: 1,
+            origin: footnote_origin(1),
+          },
         },
         Overflow {
           page_index: 2,
-          kind: OverflowKind::FootnoteSingleLine { number: 1 },
+          kind: OverflowKind::FootnoteSingleLine {
+            number: 1,
+            origin: footnote_origin(1),
+          },
         },
       ],
       "繰越が続く限りページごとに記録するはず"
@@ -1625,6 +1695,7 @@ mod tests {
       }
     }
     return Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -1960,6 +2031,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Image {
+        origin: image_origin(),
         path: ProjectPath::new("x.png"),
         width: pt(20.0),
         height: pt(15.0),
@@ -1988,6 +2060,7 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(3),
       Block::Image {
+        origin: image_origin(),
         path: ProjectPath::new("x.png"),
         width: pt(20.0),
         height: pt(30.0),
@@ -2344,6 +2417,7 @@ mod tests {
       HItem::LinkEnd,
     ];
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -2378,6 +2452,7 @@ mod tests {
       items.push(test_box());
     }
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(10.0),
@@ -2420,6 +2495,7 @@ mod tests {
       HItem::LinkEnd,
     ];
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(15.0),
@@ -2439,6 +2515,7 @@ mod tests {
   fn right_aligned_paragraph_shifts_line_to_right_edge() {
     let geom = test_geometry();
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items: vec![test_box()],
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -2472,6 +2549,7 @@ mod tests {
   /// 伸縮能力付き glue で折り返す 2 行の段落（1 行目自然幅 25）を作る
   fn stretchable_paragraph(alignment: TextAlignment) -> Block {
     return Block::Paragraph {
+      origin: None,
       items: vec![
         test_box(),
         stretch_glue(),
@@ -2533,6 +2611,7 @@ mod tests {
       depth: Length::pt(2.0),
     });
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items: vec![wide],
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -2574,6 +2653,7 @@ mod tests {
       test_box(),
     ];
     let blocks = vec![Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -2605,6 +2685,7 @@ mod tests {
   fn centered_image_shifts_x_to_horizontal_center() {
     let geom = test_geometry();
     let blocks = vec![Block::Image {
+      origin: image_origin(),
       path: ProjectPath::new("x.png"),
       width: pt(20.0),
       height: pt(15.0),
@@ -2624,6 +2705,7 @@ mod tests {
   fn right_aligned_image_shifts_x_to_right_edge() {
     let geom = test_geometry();
     let blocks = vec![Block::Image {
+      origin: image_origin(),
       path: ProjectPath::new("x.png"),
       width: pt(20.0),
       height: pt(15.0),
@@ -2728,6 +2810,7 @@ mod tests {
       }];
     });
     return Block::ComposedLine {
+      origin: None,
       line: Line {
         boxes: vec![PlacedHBox {
           hbox: HBox {
@@ -2839,6 +2922,7 @@ mod tests {
     use crate::typeset::boxes::LinkTarget;
     let geom = two_column_geometry();
     let link_para = Block::Paragraph {
+      origin: None,
       items: vec![
         HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
         test_box(),
@@ -2930,6 +3014,7 @@ mod tests {
       }
     }
     return Block::Paragraph {
+      origin: None,
       items,
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
@@ -3318,6 +3403,7 @@ mod tests {
   /// 高さ `height` の内容ブロック（幅 10・左揃えの画像）
   fn fixed_block(height: f32) -> Block {
     return Block::Image {
+      origin: image_origin(),
       path: ProjectPath::new("fixture.png"),
       width: Length::pt(10.0),
       height: pt(height),
@@ -3654,9 +3740,10 @@ mod tests {
     });
   }
 
-  /// 箱 1 つだけの左揃え段落
+  /// 箱 1 つだけの左揃え段落（[`paragraph_origin`] に帰属する）
   fn one_box_paragraph(item: HItem) -> Block {
     return Block::Paragraph {
+      origin: Some(paragraph_origin()),
       items: vec![item],
       leading: pt(12.0),
       indent: pt(0.0),
@@ -3665,11 +3752,12 @@ mod tests {
     };
   }
 
-  /// 抜粋が空（テキストを持たない箱）の行のはみ出し記録
-  fn line_overflow(page_index: usize, axis: OverflowAxis, excess: f32) -> Overflow {
+  /// 抜粋が空（テキストを持たない箱）で `origin` に帰属する行のはみ出し記録
+  fn line_overflow(page_index: usize, axis: OverflowAxis, excess: f32, origin: Option<NodeId>) -> Overflow {
     return Overflow {
       page_index,
       kind: OverflowKind::Line {
+        origin,
         excerpt: String::new(),
         axis,
         excess: pt(excess),
@@ -3683,7 +3771,15 @@ mod tests {
 
     let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
 
-    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 30.0)]);
+    assert_eq!(
+      overflows,
+      vec![line_overflow(
+        0,
+        OverflowAxis::Horizontal,
+        30.0,
+        Some(paragraph_origin())
+      )]
+    );
   }
 
   #[test]
@@ -3704,7 +3800,15 @@ mod tests {
 
     let (_, overflows) = break_pages(blocks, pt(100.0), &two_column_geometry(), &GreedyBreaker);
 
-    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 5.0)]);
+    assert_eq!(
+      overflows,
+      vec![line_overflow(
+        0,
+        OverflowAxis::Horizontal,
+        5.0,
+        Some(paragraph_origin())
+      )]
+    );
   }
 
   #[test]
@@ -3722,14 +3826,29 @@ mod tests {
       }],
       ..test_line()
     };
-    let blocks = vec![Block::ComposedLine {
-      line,
-      leading: pt(12.0),
-    }];
+    // 目次の行のように元の要素を持つ合成行は、その要素を指す
+    let blocks = vec![
+      Block::ComposedLine {
+        origin: Some(paragraph_origin()),
+        line: line.clone(),
+        leading: pt(12.0),
+      },
+      Block::ComposedLine {
+        origin: None,
+        line,
+        leading: pt(12.0),
+      },
+    ];
 
     let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
 
-    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 20.0)]);
+    assert_eq!(
+      overflows,
+      vec![
+        line_overflow(0, OverflowAxis::Horizontal, 20.0, Some(paragraph_origin())),
+        line_overflow(0, OverflowAxis::Horizontal, 20.0, None),
+      ]
+    );
   }
 
   #[test]
@@ -3740,17 +3859,37 @@ mod tests {
     let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
-    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Vertical, 5.0)]);
+    assert_eq!(
+      overflows,
+      vec![line_overflow(
+        0,
+        OverflowAxis::Vertical,
+        5.0,
+        Some(paragraph_origin())
+      )]
+    );
   }
 
   #[test]
-  fn footnote_line_wider_than_column_is_recorded_once_on_its_page() {
+  fn footnote_body_line_overflow_points_at_the_footnote() {
+    // 本文段落ではなく、はみ出した本体行を持つ脚注を指す。記録はその脚注が着地したページで 1 回
     let footnote = footnote_item(1, vec![wide_box(130.0, 8.0, 2.0)], pt(12.0));
-    let blocks = vec![single_line_paragraph(vec![footnote])];
+    let mut paragraph = single_line_paragraph(vec![footnote]);
+    if let Block::Paragraph { origin, .. } = &mut paragraph {
+      *origin = Some(paragraph_origin());
+    }
 
-    let (_, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages(vec![paragraph], pt(100.0), &test_geometry(), &GreedyBreaker);
 
-    assert_eq!(overflows, vec![line_overflow(0, OverflowAxis::Horizontal, 30.0)]);
+    assert_eq!(
+      overflows,
+      vec![line_overflow(
+        0,
+        OverflowAxis::Horizontal,
+        30.0,
+        Some(footnote_origin(1))
+      )]
+    );
   }
 
   #[test]
@@ -3773,12 +3912,21 @@ mod tests {
     let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
 
     assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (1, vec![(1, true, 1)])], "{pages:?}");
-    assert_eq!(overflows, vec![line_overflow(1, OverflowAxis::Horizontal, 30.0)]);
+    assert_eq!(
+      overflows,
+      vec![line_overflow(
+        1,
+        OverflowAxis::Horizontal,
+        30.0,
+        Some(footnote_origin(1))
+      )]
+    );
   }
 
   /// 幅 `width`・高さ `height` の左揃え画像（`x.png`）
   fn image_block(width: f32, height: f32) -> Block {
     return Block::Image {
+      origin: image_origin(),
       path: ProjectPath::new("x.png"),
       width: pt(width),
       height: pt(height),
@@ -3792,6 +3940,7 @@ mod tests {
     return Overflow {
       page_index,
       kind: OverflowKind::Image {
+        origin: image_origin(),
         path: ProjectPath::new("x.png"),
         axis,
         excess: pt(excess),
@@ -3802,6 +3951,7 @@ mod tests {
   /// 本体が幅 `width`・高さ `height`・深さ `depth` の中央揃えディスプレイ数式（番号なし）
   fn math_block(width: f32, height: f32, depth: f32) -> Block {
     return Block::Math {
+      origin: math_origin(),
       body: HBox {
         content: HBoxContent::Atom(Vec::new()),
         width: pt(width),
@@ -3819,6 +3969,7 @@ mod tests {
     return Overflow {
       page_index,
       kind: OverflowKind::Math {
+        origin: math_origin(),
         excerpt: String::new(),
         axis,
         excess: pt(excess),
@@ -3891,7 +4042,15 @@ mod tests {
     // 左段を 4 行で埋め、箱 1 つの段落を右段（段オフセット 55・段幅 45）へ送る
     for (width, expected) in [
       (44.0, vec![]),
-      (50.0, vec![line_overflow(0, OverflowAxis::Horizontal, 5.0)]),
+      (
+        50.0,
+        vec![line_overflow(
+          0,
+          OverflowAxis::Horizontal,
+          5.0,
+          Some(paragraph_origin()),
+        )],
+      ),
     ] {
       let blocks = vec![
         paragraph_of_lines(4),

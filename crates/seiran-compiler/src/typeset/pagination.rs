@@ -14,12 +14,15 @@ mod toc;
 use std::collections::HashMap;
 
 pub(super) use context::TypesetContext;
+use miette::{LabeledSpan, SourceSpan};
 pub(crate) use outline::OutlineEntry;
 use tracing::debug;
 
 use crate::{
+  document::{SourceLocation, SourceMap},
   project::ProjectPath,
   semantics::SemanticDocument,
+  source::Span,
   typeset::{
     boxes::Page,
     breaking::{Overflow, OverflowKind},
@@ -91,6 +94,7 @@ pub(super) fn paginate(
   // 前付け → 本文 → 後付けの順に並べるので、警告の表示順は物理ページの昇順で決定的になる
   let warnings = overflow_warnings(
     &page_labels,
+    document.hir().source_map(),
     [
       (front_overflows, 0),
       (body_overflows, front_count),
@@ -115,47 +119,111 @@ pub(super) fn paginate(
   ));
 }
 
-/// セクションごとのはみ出し記録を、物理ページの印字ラベル付きの警告診断へ写す。
+/// セクションごとのはみ出し記録を、物理ページの印字ラベルとソース位置付きの警告診断へ写す。
 ///
-/// `sections` は（そのセクションの記録, 連結後の先頭物理ページ index）の組を文書順に並べたもの。
-fn overflow_warnings(page_labels: &PageLabels, sections: [(Vec<Overflow>, usize); 3]) -> Vec<TypesetWarning> {
+/// `sections` は（そのセクションの記録, 連結後の先頭物理ページ index）の組を文書順に並べたもの。起源の
+/// `NodeId` は `source_map` で引き、ラベルは要素の開始位置に長さ 0 で置く。
+fn overflow_warnings(
+  page_labels: &PageLabels,
+  source_map: &SourceMap,
+  sections: [(Vec<Overflow>, usize); 3],
+) -> Vec<TypesetWarning> {
   let mut warnings = Vec::new();
   for (overflows, offset) in sections {
     for overflow in overflows {
       let page = page_labels.page_label(offset + overflow.page_index).to_owned();
       warnings.push(match overflow.kind {
-        OverflowKind::FootnoteLine { numbers } => TypesetWarning::FootnoteOverflow { page, numbers },
-        OverflowKind::FootnoteSingleLine { number } => TypesetWarning::FootnoteLineOverflow { page, number },
-        OverflowKind::Line {
-          excerpt,
-          axis,
-          excess,
-        } => TypesetWarning::LineOverflow {
-          page,
-          excerpt,
-          axis,
-          excess,
+        OverflowKind::FootnoteLine { footnotes } => {
+          let locations: Vec<SourceLocation> =
+            footnotes.iter().map(|&(_, origin)| return source_map.location(origin)).collect();
+          let Some(first) = locations.first() else {
+            unreachable!("脚注群のはみ出しは脚注を持つ行でだけ記録される（pack_footnotes は脚注の需要から判定する）")
+          };
+          let source_id = first.source_id;
+          if locations.iter().any(|location| return location.source_id != source_id) {
+            unreachable!("1 行の脚注は同じ段落にあり、段落は 1 ソースの HIR に閉じる")
+          }
+          TypesetWarning::FootnoteOverflow {
+            page,
+            numbers: footnotes.iter().map(|&(number, _)| return number).collect(),
+            source_id,
+            footnotes: footnotes
+              .iter()
+              .zip(&locations)
+              .map(|(&(number, _), &location)| {
+                return LabeledSpan::new_with_span(Some(format!("脚注 {number}")), start_span(location));
+              })
+              .collect(),
+          }
         },
-        OverflowKind::Image { path, axis, excess } => TypesetWarning::ImageOverflow {
-          page,
+        OverflowKind::FootnoteSingleLine { number, origin } => {
+          let location = source_map.location(origin);
+          TypesetWarning::FootnoteLineOverflow {
+            page,
+            number,
+            source_id: location.source_id,
+            span: start_span(location),
+          }
+        },
+        OverflowKind::Line {
+          origin,
+          excerpt,
+          axis,
+          excess,
+        } => {
+          let location = origin.map(|origin| return source_map.location(origin));
+          TypesetWarning::LineOverflow {
+            page,
+            excerpt,
+            axis,
+            excess,
+            source_id: location.map(|location| return location.source_id),
+            span: location.map(start_span),
+          }
+        },
+        OverflowKind::Image {
+          origin,
           path,
           axis,
           excess,
+        } => {
+          let location = source_map.location(origin);
+          TypesetWarning::ImageOverflow {
+            page,
+            path,
+            axis,
+            excess,
+            source_id: location.source_id,
+            span: start_span(location),
+          }
         },
         OverflowKind::Math {
+          origin,
           excerpt,
           axis,
           excess,
-        } => TypesetWarning::MathOverflow {
-          page,
-          excerpt,
-          axis,
-          excess,
+        } => {
+          let location = source_map.location(origin);
+          TypesetWarning::MathOverflow {
+            page,
+            excerpt,
+            axis,
+            excess,
+            source_id: location.source_id,
+            span: start_span(location),
+          }
         },
       });
     }
   }
   return warnings;
+}
+
+/// 要素の開始位置を指す長さ 0 の診断ラベル位置を返す
+///
+/// 要素全体の span を使うと、複数行の段落・コードブロックが警告ごとに全行印字される。
+fn start_span(location: SourceLocation) -> SourceSpan {
+  return Span::new(location.span.start, location.span.start).into();
 }
 
 /// 前付け、本文、後付けの順にページ列を連結する。

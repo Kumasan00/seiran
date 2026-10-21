@@ -7,11 +7,11 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use miette::{GraphicalReportHandler, GraphicalTheme};
+use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme};
 
 use crate::{
   compiler::{
-    CompileFailure,
+    Compilation, CompileFailure,
     test_support::{self, TestProject},
   },
   project::{self, MemoryProjectSource, PathResolver, ProjectPath},
@@ -27,6 +27,27 @@ fn render_diagnostic(report: &miette::Report) -> String {
   let handler = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor()).with_width(100);
   handler.render_report(&mut rendered, report.as_ref()).expect("diagnostic のレンダリング");
   return rendered;
+}
+
+/// `code` が一致する警告を集める（fixture の設定が出す他段の警告を数えないため）。
+fn warnings_with_code<'a>(compilation: &'a Compilation, code: &str) -> Vec<&'a (dyn Diagnostic + 'static)> {
+  return compilation
+    .warnings
+    .iter()
+    .filter(|warning| return warning.code().is_some_and(|found| return found.to_string() == code))
+    .collect();
+}
+
+/// `code` が一致する警告を [`render_diagnostic`] と同じ設定で描画し、空行 1 つで連結する。
+fn render_warnings(compilation: &Compilation, code: &str) -> String {
+  let handler = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor()).with_width(100);
+  let mut rendered = Vec::new();
+  for warning in warnings_with_code(compilation, code) {
+    let mut text = String::new();
+    handler.render_report(&mut text, warning).expect("diagnostic のレンダリング");
+    rendered.push(text);
+  }
+  return rendered.join("\n");
 }
 
 /// レンダリング済み診断テキストを golden と比較する（`UPDATE_GOLDEN=1` で再生成）。
@@ -617,4 +638,25 @@ fn diagnostic_config_unknown_top_level_key() {
   assert!(rendered.contains("diagnostics/config.toml:1:1"), "{rendered}");
   assert!(rendered.contains("unknown field `unknown_documentation_probe`"), "{rendered}");
   assert_matches_golden("config_unknown_top_level_key", &rendered);
+}
+
+#[test]
+fn diagnostic_line_overflow_points_at_the_paragraph_in_its_own_source() {
+  // 2 ソースのうち 2 番目の段落だけが分割できないコードで段の幅を超える
+  let compilation = TestProject::builder()
+    .sources(&[
+      "tests/text/diagnostics/overflow_line_a.sei",
+      "tests/text/diagnostics/overflow_line_b.sei",
+    ])
+    .build()
+    .compile()
+    .expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::line");
+  assert_eq!(warnings.len(), 1, "横に 1 行だけはみ出すはず");
+  let labels: Vec<_> = warnings[0].labels().expect("ソース位置のラベルを持つはず").collect();
+  assert_eq!(labels.len(), 1);
+  assert_eq!(labels[0].len(), 0, "ラベルは要素の開始位置に長さ 0 で置くはず");
+  assert!(warnings[0].source_code().is_some(), "帰属するソースの本文を添えるはず");
+  assert_matches_golden("overflow_line_across_sources", &render_warnings(&compilation, "typeset::overflow::line"));
 }

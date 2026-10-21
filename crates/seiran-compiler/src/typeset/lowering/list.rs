@@ -59,6 +59,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
         item_nodes.insert(
           0,
           LayoutNode::Paragraph(ParagraphLayout {
+            origin: Some(item.id),
             content: vec![marker],
             spacing_after: Length::ZERO,
           }),

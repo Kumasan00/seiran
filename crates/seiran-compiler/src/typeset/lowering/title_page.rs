@@ -57,6 +57,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
       paragraph.spacing_after = pending_gap;
     }
     body.push(LayoutNode::Paragraph(ParagraphLayout {
+      origin: None,
       content: vec![inline],
       spacing_after: Length::ZERO,
     }));
@@ -94,7 +95,7 @@ mod tests {
     style::TitlePageStyle,
     typeset::lowering::{
       layout_node::{InlineNode, LayoutNode},
-      test_support::{inlines, paragraph_layout},
+      test_support::{inlines, paragraph_layout, paragraph_origins},
     },
   };
 
@@ -206,5 +207,21 @@ mod tests {
 
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["A"]);
+  }
+
+  #[test]
+  fn title_page_paragraphs_have_no_origin() {
+    // タイトルページの行は config.toml の文書メタデータ由来で、ソース要素に対応しない
+    let meta = TitlePageMetadata {
+      title: Some("T".to_string()),
+      author: Some("A".to_string()),
+      date: Some("D".to_string()),
+    };
+
+    let nodes = lower_title_page(&meta, &TitlePageStyle::default());
+
+    let origins = paragraph_origins(&nodes);
+    assert_eq!(origins.len(), 3, "{nodes:?}");
+    assert!(origins.iter().all(Option::is_none), "{origins:?}");
   }
 }

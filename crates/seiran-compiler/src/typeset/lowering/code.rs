@@ -6,7 +6,7 @@
 
 use crate::{
   color::Color,
-  document::{TextAlignment, Typeface},
+  document::{NodeId, TextAlignment, Typeface},
   length::Length,
   typeset::lowering::{
     LoweringContext,
@@ -31,7 +31,7 @@ fn code_text_style(font_size: Length, color: Option<Color>) -> TextStyle {
 /// 行が `Block::Paragraph` の行として出るので、長いコードブロックでも行単位でページ分割できる。
 /// 字下げ（`first_line_indent`）は抑止する — コードの 1 桁目はソースの 1 桁目でなければならない。
 /// 揃えは `[text].alignment` に従わず左に固定する — 行どうしの桁の相対位置が内容なので、行ごとに寄せると字下げが崩れる。
-pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<LayoutNode> {
+pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, id: NodeId, text: &str) -> Vec<LayoutNode> {
   let style = code_text_style(ctx.default_font_size(), None);
   let mut content = Vec::new();
   for (index, line) in text.split('\n').enumerate() {
@@ -42,7 +42,10 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, text: &str) -> Vec<Lay
   }
   return vec![LayoutNode::VBox {
     children: vec![LayoutNode::Paragraph(paragraph::assemble_paragraph(
-      ctx, content, true,
+      ctx,
+      content,
+      true,
+      Some(id),
     ))],
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),

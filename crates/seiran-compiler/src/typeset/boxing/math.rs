@@ -175,6 +175,7 @@ impl Measurer<'_> {
   /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
   pub(crate) fn build_math_block(&mut self, block: MathBlockLayout) -> Block {
     let MathBlockLayout {
+      origin,
       rows,
       env_number,
       align,
@@ -220,6 +221,7 @@ impl Measurer<'_> {
     }
 
     return Block::Math {
+      origin,
       body,
       numbers,
       numbers_on_right,

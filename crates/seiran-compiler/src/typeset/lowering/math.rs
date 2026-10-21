@@ -79,6 +79,7 @@ pub(super) fn lower_math_block(
       length: block.top_margin,
     },
     LayoutNode::MathBlock(MathBlockLayout {
+      origin: id,
       delimiters: delimiter_glyphs(math.kind),
       rows: layout_rows,
       env_number,

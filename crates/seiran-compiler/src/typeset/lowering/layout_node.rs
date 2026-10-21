@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{TextAlignment, Typeface},
+  document::{NodeId, TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
   typeset::{
@@ -31,6 +31,8 @@ pub(in crate::typeset) enum LayoutNode {
   },
   /// 画像（PNG / JPEG / SVG）
   Image {
+    /// はみ出し警告が指す `\image` コマンド
+    origin: NodeId,
     /// 画像ファイルへのパス
     path: ProjectPath,
     /// 描画幅（`None` の場合は `typeset::image` が本文幅 / 縦横比から決定）
@@ -62,6 +64,8 @@ pub(in crate::typeset) enum LayoutNode {
 /// 段落の境界はこの値で閉じ、後続の縦リスト要素から推測しない。
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct ParagraphLayout {
+  /// 行のはみ出し警告が指す要素。著者が書いていない生成物は `None`
+  pub origin: Option<NodeId>,
   /// 同じ水平リストで計測するインライン列（先頭行の字下げも含む）
   pub content: Vec<InlineNode>,
   /// 内容が空でも残す段落後の固定アキ。0 はアキなし
@@ -141,6 +145,8 @@ pub(in crate::typeset) enum InlineNode {
   FlushRight(Vec<AtomNode>),
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   Footnote {
+    /// はみ出し警告が指す `\footnote` コマンド
+    origin: NodeId,
     /// 発番済みの表示番号（マーカーのテキストとして既に埋め込み済みの値）
     number: u32,
     /// 出現順の識別子（0 起点。採番方式に依らず脚注を一意に指す）
@@ -213,6 +219,8 @@ impl From<AtomNode> for InlineNode {
 /// ディスプレイ数式環境全体の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockLayout {
+  /// はみ出し警告が指す数式環境
+  pub origin: NodeId,
   /// 本体グリッドを囲む左右の区切り括弧グリフ
   pub delimiters: DelimiterGlyphs,
   /// 行（各行は `&` 区切りの列と任意の行番号を持つ）

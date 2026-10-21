@@ -51,6 +51,7 @@ pub(super) struct FloatMargins {
 
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
 fn wrap_float(
+  origin: NodeId,
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<InlineNode>)>,
   margins: &FloatMargins,
@@ -59,6 +60,7 @@ fn wrap_float(
   match caption {
     Some((CaptionPosition::Top, caption_nodes)) => {
       children.push(LayoutNode::Paragraph(ParagraphLayout {
+        origin: Some(origin),
         content: caption_nodes,
         spacing_after: Length::ZERO,
       }));
@@ -73,6 +75,7 @@ fn wrap_float(
         length: margins.inner,
       });
       children.push(LayoutNode::Paragraph(ParagraphLayout {
+        origin: Some(origin),
         content: caption_nodes,
         spacing_after: Length::ZERO,
       }));
@@ -132,7 +135,7 @@ pub(super) fn lower_numbered_float(
     .inlines
     .map(|inlines| return (caption.position, build_caption(ctx, caption.style, inlines, &number, state)));
 
-  return with_label_anchors(label, wrap_float(body, caption_nodes, margins));
+  return with_label_anchors(label, wrap_float(id, body, caption_nodes, margins));
 }
 
 #[cfg(test)]
@@ -141,6 +144,7 @@ mod tests {
   use crate::{
     document::{TextAlignment, Typeface},
     semantics::LabelId,
+    source::SourceId,
     style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
@@ -181,10 +185,14 @@ mod tests {
   /// 本体（main）として使う、キャプションと取り違えようのない固定文字列の Text を作る
   fn main_node() -> LayoutNode {
     return LayoutNode::Paragraph(ParagraphLayout {
+      origin: None,
       content: vec![caption_node(MAIN_TEXT)],
       spacing_after: Length::ZERO,
     });
   }
+
+  /// テストのフロートが帰属する HIR ノードの ID
+  fn float_id() -> NodeId { return NodeId::for_test(SourceId::new(0), 0); }
 
   /// [`main_node`] が積む本文文字列（キャプションには現れない値）
   const MAIN_TEXT: &str = "MAIN";
@@ -205,7 +213,7 @@ mod tests {
       inner: Length::pt(3.0),
     };
 
-    let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &margins);
+    let nodes = wrap_float(float_id(), main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &margins);
 
     assert_eq!(nodes.len(), 2);
     assert_vkern(&nodes[0], 5.0);
@@ -234,7 +242,8 @@ mod tests {
       inner: Length::pt(3.0),
     };
 
-    let nodes = wrap_float(main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &margins);
+    let nodes =
+      wrap_float(float_id(), main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &margins);
 
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
@@ -252,7 +261,7 @@ mod tests {
       inner: Length::pt(3.0),
     };
 
-    let nodes = wrap_float(main_node(), None, &margins);
+    let nodes = wrap_float(float_id(), main_node(), None, &margins);
 
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");

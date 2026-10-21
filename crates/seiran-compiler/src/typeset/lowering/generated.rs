@@ -46,8 +46,10 @@ pub(super) fn lower_bibliography(
     || return lower_generated_inlines(ctx, &title, style),
     None,
     key,
+    None,
   );
   let headings = vec![HeadingRecord {
+    node: None,
     index: key.index(),
     level: BIBLIOGRAPHY_HEADING_LEVEL,
     number: String::new(),
@@ -57,7 +59,7 @@ pub(super) fn lower_bibliography(
   for entry in entries {
     layout.push(LayoutNode::Anchor(AnchorId::Citation(entry.key.clone())));
     let content = lower_generated_inlines(ctx, &entry.body, body_text_style(ctx));
-    layout.push(LayoutNode::Paragraph(assemble_paragraph(ctx, content, false)));
+    layout.push(LayoutNode::Paragraph(assemble_paragraph(ctx, content, false, None)));
   }
 
   return (layout, headings);
@@ -112,7 +114,7 @@ mod tests {
     style::Style as ReadStyle,
     typeset::lowering::{
       lower_sources_with_headings,
-      test_support::{analyzed, context, inlines, lower, paragraph_layout},
+      test_support::{analyzed, context, inlines, lower, paragraph_layout, paragraph_origins},
     },
   };
 
@@ -229,5 +231,18 @@ mod tests {
     let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
 
     assert_eq!(headings[0].title_plain, "参考文献", "style.reference.title が見出しになるはず");
+  }
+
+  #[test]
+  fn bibliography_paragraphs_have_no_origin() {
+    // 書誌は CSL の生成物で、単一のソース要素に対応しない
+    let style = ReadStyle::default();
+
+    let (layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
+
+    let origins = paragraph_origins(&layout);
+    assert!(!origins.is_empty(), "見出しとエントリの段落があるはず: {layout:?}");
+    assert!(origins.iter().all(Option::is_none), "{origins:?}");
+    assert_eq!(headings[0].node, None, "書誌の見出しは HIR の見出しを持たない");
   }
 }

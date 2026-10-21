@@ -206,6 +206,7 @@ pub(super) fn split_pending(
   }
   let rest = footnote.lines.split_off(placed);
   let tail = super::PendingFootnote {
+    origin: footnote.origin,
     number: footnote.number,
     index: footnote.index,
     continued: true,

@@ -170,6 +170,7 @@ impl BlockBuilder<'_> {
           blocks.push(Block::fixed_space(length));
         },
         LayoutNode::Image {
+          origin,
           path,
           width,
           height,
@@ -177,6 +178,7 @@ impl BlockBuilder<'_> {
         } => {
           let (width, height) = resolve_image_size(self.images, &path, width, height, self.column_width);
           blocks.push(Block::Image {
+            origin,
             path,
             width,
             height,
@@ -225,6 +227,7 @@ impl BlockBuilder<'_> {
     let items = list.into_items();
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
     return Some(Block::Paragraph {
+      origin: paragraph.origin,
       items,
       leading: dominant_font_size * self.measurer.line_height_factor,
       indent,
@@ -333,6 +336,7 @@ impl<'a> Measurer<'a> {
       },
       // 本文中の上付きマーカーは lowering がこの variant の手前に別ノードとして発行済み
       InlineNode::Footnote {
+        origin,
         number,
         index,
         body,
@@ -344,6 +348,7 @@ impl<'a> Measurer<'a> {
         let items = body_list.into_items();
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
         out.push_marker(HItem::Footnote(MeasuredFootnote {
+          origin,
           number,
           index,
           items,
