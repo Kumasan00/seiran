@@ -77,7 +77,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   1 回に揃える（#647）。
   一方、ソース本文を持たない下位 module（本文は `project::SourceSet` が一元管理する。例:
   `frontend::ParseError` の内側の `SyntaxError` / `EvalError`、`semantics::SemanticError`、`typeset` の
-  `MissingMathGlyph`）は、
+  `MissingMathGlyph` と、はみ出しの `TypesetWarning`）は、
   `#[source_code]` を持たず span だけ（複数ソースにまたがる `semantics` は `SourceId` も。発行元が単一の
   識別子で、生の `usize` や array index を独自に採番しない）を運ぶ。本文の添付は **compiler seam の汎用 adapter
   `compiler::source_diagnostic::SourceDiagnostic<E>` 1 つ**が行う（段ごとの attribution wrapper を
