@@ -9,7 +9,7 @@ use crate::{project::SourceSet, source::SourceId};
 
 /// [`SourceId`] と span だけを持つ leaf 診断へ、[`SourceSet`] から引いた本文を添える。
 ///
-/// leaf 側（`frontend` / `semantics`）はソース本文を複製せず `SourceId` と span だけを持ち、
+/// leaf 側（`frontend` / `semantics` / `typeset`）はソース本文を複製せず `SourceId` と span だけを持ち、
 /// 本文の一元管理は [`SourceSet`] の責務。この adapter は `source_code` **だけ**を補い、
 /// `code` / `severity` / `help` / `url` / `labels` / `related` / `diagnostic_source` は
 /// すべて内側の診断へ委譲する。メッセージ（`Display`）も書式パラメータごと内側へ委譲する。

@@ -137,7 +137,10 @@ fn overflow_warnings(
           let locations: Vec<SourceLocation> =
             footnotes.iter().map(|&(_, origin)| return source_map.location(origin)).collect();
           let Some(first) = locations.first() else {
-            unreachable!("脚注群のはみ出しは脚注を持つ行でだけ記録される（pack_footnotes は脚注の需要から判定する）")
+            unreachable!(
+              "脚注群のはみ出しは脚注を持つ行でだけ記録される（plan_paragraph_lines は行の脚注の需要が空でないときだけ \
+               overflowed を立てる）"
+            )
           };
           let source_id = first.source_id;
           if locations.iter().any(|location| return location.source_id != source_id) {
