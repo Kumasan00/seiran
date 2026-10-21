@@ -1,6 +1,6 @@
 //! 水平リストの最小単位 [`HItem`] と計測済みボックス [`HBox`]。
 
-use crate::{color::Color, length::Length, publication::GlyphRun, typeset::boxes::link::LinkTarget};
+use crate::{color::Color, document::NodeId, length::Length, publication::GlyphRun, typeset::boxes::link::LinkTarget};
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]
@@ -84,6 +84,8 @@ pub(crate) enum HItem {
 /// 本体は計測済みだが未行分割（行分割はページ下部に置くとき）。
 #[derive(Debug, Clone)]
 pub(crate) struct MeasuredFootnote {
+  /// はみ出し警告が指す `\footnote` コマンド
+  pub origin: NodeId,
   /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
   ///
   /// 採番方式（文書通し / ページ単位）により意味が変わるので、脚注の同一性には使わない

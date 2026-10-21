@@ -3,7 +3,7 @@
 use tracing::debug;
 
 use crate::{
-  document::{HeadingLevel, Typeface},
+  document::{HeadingLevel, NodeId, Typeface},
   length::Length,
   semantics::HeadingKey,
   style::{Style, TocStyle},
@@ -51,6 +51,8 @@ struct TocSpec {
 /// 1 目次エントリ
 #[derive(Debug, Clone)]
 struct TocEntry {
+  /// 行のはみ出し警告が指す見出し（[`HeadingRecord::node`]）
+  origin: Option<NodeId>,
   /// 見出しレベル（インデントの深さに使う）
   level: HeadingLevel,
   /// 表示する「番号 タイトル」（[`HeadingRecord::label`]）
@@ -94,6 +96,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
     .filter(|(info, _)| return usize::from(info.level.depth()) < toc.max_depth)
     .map(|(info, page_ordinal)| {
       return TocEntry {
+        origin: info.node,
         level: info.level,
         label: info.label(),
         page_label: page_values.body_page_label(page_ordinal),
@@ -150,6 +153,7 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem) -> V
   let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
   title.shift_x(spec.title_align.offset(spec.text_width, title.width()));
   blocks.push(Block::ComposedLine {
+    origin: None,
     line: title,
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
@@ -160,6 +164,7 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], fonts: &FontSystem) -> V
   let entry_leading = spec.entry_style.font_size * spec.line_height_factor;
   for entry in entries {
     blocks.push(Block::ComposedLine {
+      origin: entry.origin,
       line: compose_entry_line(&mut shaper, spec, entry),
       leading: entry_leading,
     });
@@ -245,6 +250,7 @@ mod tests {
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
     return HeadingRecord {
+      node: None,
       index,
       level,
       number: number.to_string(),

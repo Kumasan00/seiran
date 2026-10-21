@@ -660,7 +660,12 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 （脚注予約を引いた下限）を基準に軸ごと 1 件で、0.1pt（TeX の `\hfuzz` 既定値）以下の超過は数えない。組版アルゴリズムは
 「はみ出しを許容してそのまま置く」動作を変えず、直せる設定を伝えるだけ（`tracing::warn!` だけの通知には
 戻さない — `-q` で握り潰される。#382）。ページの指し方は**印字ページラベル**で、物理 index からの解決は
-`pagination` が行う。
+`pagination` が行う。はみ出し 5 種は原因の要素（行を含む段落・見出し・コードブロック等、`\image`、数式環境、
+`\footnote`）の開始位置を**長さ 0 のラベル**で持つ（要素全体の span は複数行の段落・コードを警告ごとに全行
+印字するため）。起源は HIR の `NodeId` として lowering → boxing → `break_pages` の `Overflow` まで運び、
+`PlacedBlock` / `Page` 以降には載せない。単一のソース要素に対応しない生成物（タイトルページ・書誌・目次の題・
+索引）の行は起源 `None` で、今と同じくページだけで指す。目次の項目は元の見出しを指す。フォントの警告は
+位置を持たない。位置を持つ警告にだけ `compiler` が `SourceDiagnostic` で本文を添える。
 
 #### `font`
 
@@ -794,8 +799,8 @@ match する。
 
 - 改ページは本文・前付け・後付けで**別々に 3 回**走り、それぞれ自分が組んだページ列しか知らないので、
   はみ出し記録は「そのセクション内の page index」を持つ純データとして返る。物理ページ index への写像と
-  印字ラベルの解決、`TypesetWarning` への変換は**段 5** がまとめて行う（目次・索引の行もはみ出しうるので、
-  前付け・後付けの記録も同じ写像を通る）
+  印字ラベルの解決、起源の `NodeId` から `SourceMap` でのソース位置の解決、`TypesetWarning` への変換は
+  **段 5** がまとめて行う（目次・索引の行もはみ出しうるので、前付け・後付けの記録も同じ写像を通る）
 - 全段が共有する資源（config・style・フォント資源・検証済み版面・行分割アルゴリズム）は context 1 つに
   まとめ、**寸法は再計算しない** — 版面幅・段幅・各区画の `PageGeometry` はすべて `PreparedGeometry` の
   読み取り
@@ -1343,7 +1348,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   分類手段は安定した診断 `code`。失敗するまでに確定した警告を `warnings()` で別に返し、`Diagnostic` 実装
   （`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で変わらない）
 - `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
-  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の `MissingMathGlyph`）へ `SourceSet` から引いた
+  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の `MissingMathGlyph` とはみ出しの `TypesetWarning`）へ `SourceSet` から引いた
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。

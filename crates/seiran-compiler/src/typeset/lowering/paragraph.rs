@@ -1,7 +1,7 @@
 //! 段落（`document::HirNodeKind::Paragraph`）の lowering
 
 use crate::{
-  document::{HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind, NodeId},
   typeset::lowering::{
     LoweringContext, LoweringState,
     inline::lower_inline,
@@ -25,6 +25,7 @@ pub(super) fn assemble_paragraph(
   ctx: &LoweringContext<'_>,
   content: Vec<InlineNode>,
   suppress_indent: bool,
+  origin: Option<NodeId>,
 ) -> ParagraphLayout {
   let mut result = Vec::with_capacity(content.len() + 1);
 
@@ -38,6 +39,7 @@ pub(super) fn assemble_paragraph(
 
   result.extend(content);
   return ParagraphLayout {
+    origin,
     content: result,
     spacing_after: ctx.style.text.paragraph_spacing,
   };
@@ -46,6 +48,7 @@ pub(super) fn assemble_paragraph(
 /// 段落をレイアウトノードに変換する
 pub(super) fn lower_paragraph(
   ctx: &LoweringContext<'_>,
+  id: NodeId,
   inlines: &[HirInline],
   state: &mut LoweringState<'_>,
 ) -> ParagraphLayout {
@@ -62,7 +65,7 @@ pub(super) fn lower_paragraph(
     content.extend(lower_inline(ctx, inline, default_style, state));
   }
 
-  return assemble_paragraph(ctx, content, suppress_indent);
+  return assemble_paragraph(ctx, content, suppress_indent, Some(id));
 }
 
 #[cfg(test)]

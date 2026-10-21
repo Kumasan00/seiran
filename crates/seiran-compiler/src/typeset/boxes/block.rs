@@ -1,7 +1,7 @@
 //! 文書の縦リスト要素 [`Block`]。
 
 use crate::{
-  document::TextAlignment,
+  document::{NodeId, TextAlignment},
   length::Length,
   project::ProjectPath,
   typeset::boxes::{
@@ -24,6 +24,8 @@ pub(crate) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 pub(in crate::typeset) enum Block {
   /// 段落（連続するインライン要素の極大列）
   Paragraph {
+    /// 行のはみ出し警告が指す要素（`ParagraphLayout::origin`）
+    origin: Option<NodeId>,
     /// 段落内の水平リスト
     items: Vec<HItem>,
     /// 行送り = 支配的フォントサイズ × 行高係数
@@ -56,6 +58,8 @@ pub(in crate::typeset) enum Block {
   /// [`crate::typeset::image::resolve_image_size`] が自然寸法と段幅から埋めたうえで
   /// `typeset::boxing` がこの variant を作るので、未確定の状態はこの型に存在しない。
   Image {
+    /// はみ出し警告が指す `\image` コマンド
+    origin: NodeId,
     /// 画像ファイルへのパス
     path: ProjectPath,
     /// 確定した描画幅
@@ -71,6 +75,8 @@ pub(in crate::typeset) enum Block {
   ///
   /// 配置は段落 1 行分と同じ規則（ベースライン送り・改ページ・アンカー解決・リンク収集）に従う。
   ComposedLine {
+    /// 行のはみ出し警告が指す要素（目次の行は元の見出し）。単一のソース要素に対応しない生成物は `None`
+    origin: Option<NodeId>,
     /// 配置する合成済みの行
     line: Line,
     /// 行送り。配置後にカーソルをこの分だけ進める
@@ -80,6 +86,8 @@ pub(in crate::typeset) enum Block {
   ///
   /// 列整列・行積み・区切り括弧は `body` の局所座標へ解決済みで、行分割をまたがない。
   Math {
+    /// はみ出し警告が指す数式環境
+    origin: NodeId,
     /// 数式本体（全セル + 区切り括弧を絶対配置した閉じた Atom）
     body: HBox,
     /// 行番号（採番された行ごと、測定済み）。空なら番号なし

@@ -79,6 +79,7 @@ pub(super) fn lower_hir_heading(
     || return inline::lower_inlines(ctx, &heading.title, style, state),
     label,
     key,
+    Some(id),
   );
 }
 
@@ -92,6 +93,7 @@ pub(super) fn lower_heading(
   title: impl FnMut() -> Vec<InlineNode>,
   label: Option<LabelId>,
   key: HeadingKey,
+  origin: Option<NodeId>,
 ) -> Vec<LayoutNode> {
   let heading_style = &ctx.style.heading[level];
   let style = title_style(ctx, level);
@@ -100,6 +102,7 @@ pub(super) fn lower_heading(
     return InlineNode::Text(literal.to_string(), style);
   });
   let children = vec![LayoutNode::Paragraph(ParagraphLayout {
+    origin,
     content: merge_adjacent_text(children),
     spacing_after: Length::ZERO,
   })];
@@ -172,7 +175,8 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "4.7", || return title.clone(), None, HeadingKey::new(0));
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "4.7", || return title.clone(), None, HeadingKey::new(0), None);
 
     let children = heading_children(&nodes);
     let text = match &children[0] {
@@ -214,6 +218,7 @@ mod tests {
       || return title.clone(),
       Some(LabelId::new("sec:intro")),
       HeadingKey::new(3),
+      None,
     );
 
     let anchors: Vec<(usize, &AnchorId)> = nodes
@@ -242,7 +247,8 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
     let keep_idx = nodes.iter().position(|n| matches!(n, LayoutNode::KeepWithNext)).expect("KeepWithNext が出るはず");
@@ -257,7 +263,8 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
@@ -340,7 +347,8 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert_eq!(heading_alignment(&nodes), None, "未指定なら外側の揃え（[text].alignment）に従う");
   }
@@ -352,7 +360,8 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert_eq!(heading_alignment(&nodes), Some(TextAlignment::Right));
   }

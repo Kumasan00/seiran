@@ -38,6 +38,7 @@ pub(super) fn lower_figure(
   return lower_numbered_float(ctx, id, caption, &margins, state, |_state| {
     // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
     return LayoutNode::Image {
+      origin: figure.image_site,
       path: figure.image_path.clone(),
       width: figure.width,
       height: figure.height,
@@ -100,6 +101,7 @@ mod tests {
       width,
       height,
       target_dpi,
+      ..
     } = children.first().expect("先頭は画像")
     else {
       panic!("先頭は Image であるべき: {children:?}");

@@ -1,0 +1,12 @@
+typeset::overflow::image
+
+  ⚠ 1 ページの画像 ./tests/image/testimage4.png が横に 1795.3pt はみ出したまま配置しました
+   ╭─[tests/text/diagnostics/overflow_image.sei:2:1]
+ 1 │ \begin{figure}
+ 2 │ \image[width=3000pt, height=10pt]{./tests/image/testimage4.png}
+   · ▲
+   · ╰── この画像です
+ 3 │ \end{figure}
+   ╰────
+  help: \image の width / height を小さくするか、style.toml の [page] の余白か config.toml の
+        [pdf] の用紙サイズを見直してください。

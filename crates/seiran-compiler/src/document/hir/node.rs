@@ -112,6 +112,8 @@ pub(crate) struct HirMathBlock {
 /// 図環境（`\begin{figure}...\end{figure}`）の内容
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirFigure {
+  /// `\image` コマンドの ID（位置はコマンド全体）
+  pub(crate) image_site: NodeId,
   /// 画像ファイルへのパス（`\image{...}` の必須引数）
   pub(crate) image_path: ProjectPath,
   /// 画像の幅（`None` は本文幅と縦横比から決まる）

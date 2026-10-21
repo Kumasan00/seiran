@@ -138,6 +138,7 @@ pub(super) fn lower_inline(
       return vec![
         inline_marker,
         InlineNode::Footnote {
+          origin: inline.id,
           number,
           index,
           body: lowered_body,
@@ -230,6 +231,7 @@ mod tests {
         number,
         index,
         body,
+        ..
       } => return Some((*number, *index, body.as_slice())),
       _ => return None,
     });
@@ -452,6 +454,7 @@ mod tests {
       number,
       index,
       body,
+      ..
     } = second
     else {
       panic!("Footnote が期待されます: {nodes:?}");

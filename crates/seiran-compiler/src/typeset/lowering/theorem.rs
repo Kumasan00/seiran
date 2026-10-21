@@ -30,7 +30,7 @@ pub(super) fn lower_theorem(
     LayoutNode::Vkern {
       length: pres.top_margin,
     },
-    build_heading(ctx, theorem_style, number.as_deref(), theorem.title.as_deref(), of_target, state),
+    build_heading(ctx, id, theorem_style, number.as_deref(), theorem.title.as_deref(), of_target, state),
   ];
 
   let body_ctx = ctx.with_body_typeface(pres.typeface).with_first_line_indent(Length::pt(0.0));
@@ -53,6 +53,7 @@ pub(super) fn lower_theorem(
       paragraph.content.push(qed_node);
     } else {
       body_nodes.push(LayoutNode::Paragraph(ParagraphLayout {
+        origin: Some(id),
         content: vec![qed_node],
         spacing_after: Length::ZERO,
       }));
@@ -70,6 +71,7 @@ pub(super) fn lower_theorem(
 /// 定理見出し（独立行）の `VBox` を構築する
 fn build_heading(
   ctx: &LoweringContext<'_>,
+  id: NodeId,
   theorem_style: &TheoremStyle,
   number: Option<&str>,
   title: Option<&str>,
@@ -107,6 +109,7 @@ fn build_heading(
     return InlineNode::Text(literal.to_string(), base_style);
   });
   let children = vec![LayoutNode::Paragraph(ParagraphLayout {
+    origin: Some(id),
     content: merge_adjacent_text(children),
     spacing_after: Length::ZERO,
   })];

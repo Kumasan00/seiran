@@ -80,6 +80,10 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
         }
       },
       HirNodeKind::Figure(figure) => {
+        out.push(Visited {
+          id: figure.image_site,
+          parent: here,
+        });
         if let Some(caption) = &figure.caption {
           walk_inlines(caption, here, out);
         }

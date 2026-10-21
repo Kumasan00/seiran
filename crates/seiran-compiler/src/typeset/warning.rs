@@ -1,12 +1,13 @@
 //! 組版が検出した、ユーザーが直せる非致命的問題
 
 use itertools::Itertools;
-use miette::Diagnostic;
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use thiserror::Error;
 
 use crate::{
   length::Length,
   project::ProjectPath,
+  source::SourceId,
   typeset::{breaking::OverflowAxis, font::FontWarning},
 };
 
@@ -35,6 +36,11 @@ pub(crate) enum TypesetWarning {
     page: String,
     /// はみ出した脚注の表示番号（出現順）
     numbers: Vec<u32>,
+    /// 脚注が帰属するソース（1 行の脚注は同じ段落にある）
+    source_id: SourceId,
+    /// 各 `\footnote` コマンドの開始位置（`numbers` と同順、文言は「脚注 n」）
+    #[label(collection)]
+    footnotes: Vec<LabeledSpan>,
   },
 
   /// 繰り越した脚注の 1 行だけでページの高さを超えた
@@ -51,6 +57,11 @@ pub(crate) enum TypesetWarning {
     page: String,
     /// はみ出した脚注の表示番号
     number: u32,
+    /// 脚注が帰属するソース
+    source_id: SourceId,
+    /// `\footnote` コマンドの開始位置
+    #[label("この脚注です")]
+    span: SourceSpan,
   },
 
   /// 行（分割できないコード・数式内の文章など）が段の幅か実効の本文下限を超えた
@@ -71,6 +82,11 @@ pub(crate) enum TypesetWarning {
     axis: OverflowAxis,
     /// 超過量
     excess: Length,
+    /// 行を含む要素が帰属するソース。単一のソース要素に対応しない生成物の行は `None`
+    source_id: Option<SourceId>,
+    /// 行を含む要素の開始位置（`source_id` と同時に `None`）
+    #[label("この要素の行です")]
+    span: Option<SourceSpan>,
   },
 
   /// 画像が段の幅か実効の本文下限を超えた
@@ -91,6 +107,11 @@ pub(crate) enum TypesetWarning {
     axis: OverflowAxis,
     /// 超過量
     excess: Length,
+    /// `\image` が帰属するソース
+    source_id: SourceId,
+    /// `\image` コマンドの開始位置
+    #[label("この画像です")]
+    span: SourceSpan,
   },
 
   /// ディスプレイ数式の本体が段の幅か実効の本文下限を超えた
@@ -111,7 +132,27 @@ pub(crate) enum TypesetWarning {
     axis: OverflowAxis,
     /// 超過量
     excess: Length,
+    /// 数式環境が帰属するソース
+    source_id: SourceId,
+    /// 数式環境の開始位置
+    #[label("この数式です")]
+    span: SourceSpan,
   },
+}
+
+impl TypesetWarning {
+  /// 帰属するソースを返す。フォントの警告と生成物の行は `None`
+  #[must_use]
+  pub(crate) fn source_id(&self) -> Option<SourceId> {
+    return match self {
+      TypesetWarning::Font(_) => None,
+      TypesetWarning::LineOverflow { source_id, .. } => *source_id,
+      TypesetWarning::FootnoteOverflow { source_id, .. }
+      | TypesetWarning::FootnoteLineOverflow { source_id, .. }
+      | TypesetWarning::ImageOverflow { source_id, .. }
+      | TypesetWarning::MathOverflow { source_id, .. } => Some(*source_id),
+    };
+  }
 }
 
 /// 脚注番号の列を `1, 2` の形へ整形する
@@ -119,14 +160,21 @@ fn join_numbers(numbers: &[u32]) -> String { return numbers.iter().join(", "); }
 
 #[cfg(test)]
 mod tests {
-  use miette::{Diagnostic, Severity};
+  use miette::{Diagnostic, LabeledSpan, Severity, SourceSpan};
 
   use super::TypesetWarning;
   use crate::{
     length::Length,
     project::{FontType, ProjectPath},
+    source::SourceId,
     typeset::{breaking::OverflowAxis, font::FontWarning},
   };
+
+  /// テストの警告が帰属するソース
+  fn source() -> SourceId { return SourceId::new(0); }
+
+  /// 長さ 0 のラベル位置
+  fn at(offset: usize) -> SourceSpan { return SourceSpan::from((offset, 0)); }
 
   #[test]
   fn font_variant_forwards_severity_message_and_code() {
@@ -154,6 +202,11 @@ mod tests {
     let warning = TypesetWarning::FootnoteOverflow {
       page: "iii".to_owned(),
       numbers: vec![3, 4],
+      source_id: source(),
+      footnotes: vec![
+        LabeledSpan::at(at(0), "脚注 3"),
+        LabeledSpan::at(at(5), "脚注 4"),
+      ],
     };
     let message = warning.to_string();
     assert!(message.contains("iii ページ"), "印字ラベルが本文に出るはず: {message}");
@@ -166,28 +219,38 @@ mod tests {
       TypesetWarning::FootnoteOverflow {
         page: "1".to_owned(),
         numbers: vec![1],
+        source_id: source(),
+        footnotes: vec![LabeledSpan::at(at(0), "脚注 1")],
       },
       TypesetWarning::FootnoteLineOverflow {
         page: "1".to_owned(),
         number: 1,
+        source_id: source(),
+        span: at(0),
       },
       TypesetWarning::LineOverflow {
         page: "1".to_owned(),
         excerpt: "x".to_owned(),
         axis: OverflowAxis::Vertical,
         excess: Length::pt(1.0),
+        source_id: None,
+        span: None,
       },
       TypesetWarning::ImageOverflow {
         page: "1".to_owned(),
         path: ProjectPath::new("/project/fig.png"),
         axis: OverflowAxis::Vertical,
         excess: Length::pt(1.0),
+        source_id: source(),
+        span: at(0),
       },
       TypesetWarning::MathOverflow {
         page: "1".to_owned(),
         excerpt: "x".to_owned(),
         axis: OverflowAxis::Horizontal,
         excess: Length::pt(1.0),
+        source_id: source(),
+        span: at(0),
       },
     ];
 
@@ -208,6 +271,8 @@ mod tests {
       excerpt: "abcdefghij…".to_owned(),
       axis: OverflowAxis::Horizontal,
       excess: Length::pt(1015.0),
+      source_id: Some(source()),
+      span: Some(at(0)),
     };
 
     assert_eq!(warning.to_string(), "3 ページの行「abcdefghij…」が横に 1015.0pt はみ出したまま配置しました");
@@ -220,6 +285,8 @@ mod tests {
       path: ProjectPath::new("/project/fig.png"),
       axis: OverflowAxis::Vertical,
       excess: Length::pt(368.0),
+      source_id: source(),
+      span: at(0),
     };
 
     assert_eq!(warning.to_string(), "1 ページの画像 /project/fig.png が縦に 368.0pt はみ出したまま配置しました");
@@ -232,8 +299,66 @@ mod tests {
       excerpt: "x=1".to_owned(),
       axis: OverflowAxis::Horizontal,
       excess: Length::pt(12.34),
+      source_id: source(),
+      span: at(0),
     };
 
     assert_eq!(warning.to_string(), "ii ページのディスプレイ数式「x=1」が横に 12.3pt はみ出したまま配置しました");
+  }
+
+  #[test]
+  fn source_id_is_some_only_for_warnings_with_a_location() {
+    let font = TypesetWarning::Font(FontWarning::MissingLayoutTable {
+      font_type: FontType::Serif,
+      path: ProjectPath::new("/project/font.ttf"),
+      table: "GSUB",
+    });
+    let generated_line = TypesetWarning::LineOverflow {
+      page: "i".to_owned(),
+      excerpt: "索引".to_owned(),
+      axis: OverflowAxis::Horizontal,
+      excess: Length::pt(1.0),
+      source_id: None,
+      span: None,
+    };
+    let image = TypesetWarning::ImageOverflow {
+      page: "1".to_owned(),
+      path: ProjectPath::new("/project/fig.png"),
+      axis: OverflowAxis::Vertical,
+      excess: Length::pt(1.0),
+      source_id: SourceId::new(2),
+      span: at(0),
+    };
+
+    assert_eq!(font.source_id(), None, "フォントの警告は設定ファイル由来");
+    assert_eq!(generated_line.source_id(), None, "生成物の行はソースに帰属しない");
+    assert_eq!(image.source_id(), Some(SourceId::new(2)));
+  }
+
+  #[test]
+  fn footnote_overflow_labels_each_footnote() {
+    let warning = TypesetWarning::FootnoteOverflow {
+      page: "1".to_owned(),
+      numbers: vec![3, 4],
+      source_id: source(),
+      footnotes: vec![
+        LabeledSpan::at(at(2), "脚注 3"),
+        LabeledSpan::at(at(9), "脚注 4"),
+      ],
+    };
+
+    let labels: Vec<(usize, Option<String>)> = warning
+      .labels()
+      .expect("ラベルを持つはず")
+      .map(|label| return (label.offset(), label.label().map(str::to_owned)))
+      .collect();
+
+    assert_eq!(
+      labels,
+      vec![
+        (2, Some("脚注 3".to_owned())),
+        (9, Some("脚注 4".to_owned()))
+      ]
+    );
   }
 }

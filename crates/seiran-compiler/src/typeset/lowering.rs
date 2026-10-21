@@ -123,6 +123,8 @@ impl<'a> LoweringContext<'a> {
 /// 見出し 1 件の記録
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct HeadingRecord {
+  /// 目次の行のはみ出し警告が指す見出し。書誌の見出し（生成物）は `None`
+  pub node: Option<NodeId>,
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
   /// 見出しレベル
@@ -150,7 +152,9 @@ impl HeadingRecord {
 /// lowering のテスト入力を組み立てるヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
-  use super::{InlineNode, LayoutNode, LoweringContext, ParagraphLayout, TextStyle, lower_sources_with_headings};
+  use super::{
+    InlineNode, LayoutNode, LoweringContext, NodeId, ParagraphLayout, TextStyle, lower_sources_with_headings,
+  };
   use crate::{
     document::HirDocument,
     frontend::test_support::parse_for_test,
@@ -207,6 +211,19 @@ pub(super) mod test_support {
       LayoutNode::Paragraph(paragraph) => return paragraph.content.as_slice(),
       _ => return &[],
     });
+  }
+
+  /// 段落の起源を文書順に集める（`VBox` の中へも降りる）
+  pub(super) fn paragraph_origins(nodes: &[LayoutNode]) -> Vec<Option<NodeId>> {
+    let mut origins = Vec::new();
+    for node in nodes {
+      match node {
+        LayoutNode::Paragraph(paragraph) => origins.push(paragraph.origin),
+        LayoutNode::VBox { children, .. } => origins.extend(paragraph_origins(children)),
+        _ => {},
+      }
+    }
+    return origins;
   }
 
   /// インラインの `Text` なら、その文字列とスタイルを借りる
@@ -317,6 +334,7 @@ pub(super) fn lower_sources_with_headings(
     .headings()
     .map(|heading| {
       return HeadingRecord {
+        node: Some(heading.node),
         index: heading.key.index(),
         level: heading.level,
         number: document
@@ -344,11 +362,13 @@ pub(super) fn lower_nodes<'a>(
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   let mut pending_space = Vec::new();
+  // アキだけで閉じる段落が指す、アキ列の先頭の `Space` ノード
+  let mut pending_space_origin = None;
   for node in nodes {
     let lowered = match &node.kind {
       HirNodeKind::Heading(heading) => heading::lower_hir_heading(ctx, node.id, heading, state),
       HirNodeKind::Paragraph(inlines) => {
-        let mut paragraph = paragraph::lower_paragraph(ctx, inlines, state);
+        let mut paragraph = paragraph::lower_paragraph(ctx, node.id, inlines, state);
         if !pending_space.is_empty() {
           pending_space.append(&mut paragraph.content);
           paragraph.content = mem::take(&mut pending_space);
@@ -359,10 +379,11 @@ pub(super) fn lower_nodes<'a>(
       HirNodeKind::Theorem(theorem) => theorem::lower_theorem(ctx, node.id, theorem, state),
       HirNodeKind::Quote(quote) => quote::lower_quote(ctx, quote, state),
       HirNodeKind::Flush(flush) => flush::lower_flush(ctx, flush, state),
-      HirNodeKind::CodeBlock(text) => code::lower_code_block(ctx, text),
+      HirNodeKind::CodeBlock(text) => code::lower_code_block(ctx, node.id, text),
       HirNodeKind::PageBreak => vec![LayoutNode::PageBreak],
       HirNodeKind::Space(length) => {
         pending_space.push(InlineNode::Kern { length: *length });
+        pending_space_origin.get_or_insert(node.id);
         continue;
       },
       HirNodeKind::MathBlock(math) => math::lower_math_block(ctx, node.id, math, &*state),
@@ -371,14 +392,19 @@ pub(super) fn lower_nodes<'a>(
     };
     if !lowered.is_empty() && !pending_space.is_empty() {
       result.push(LayoutNode::Paragraph(ParagraphLayout {
+        origin: pending_space_origin,
         content: mem::take(&mut pending_space),
         spacing_after: Length::ZERO,
       }));
+    }
+    if !lowered.is_empty() {
+      pending_space_origin = None;
     }
     result.extend(lowered);
   }
   if !pending_space.is_empty() {
     result.push(LayoutNode::Paragraph(ParagraphLayout {
+      origin: pending_space_origin,
       content: pending_space,
       spacing_after: Length::ZERO,
     }));
@@ -402,11 +428,11 @@ fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: 
 #[cfg(test)]
 mod tests {
   use super::{
-    test_support::{analyzed, context, inlines, paragraph_layout},
+    test_support::{analyzed, context, inlines, paragraph_layout, paragraph_origins},
     *,
   };
   use crate::{
-    document::HirDocument,
+    document::{HirDocument, HirInlineKind},
     frontend::test_support::parse_for_test,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
@@ -782,6 +808,7 @@ mod tests {
   fn heading_label_combines_number_and_title() {
     let record = |number: &str, title_plain: &str| {
       return HeadingRecord {
+        node: None,
         index: 0,
         level: HeadingLevel::Section,
         number: number.to_string(),
@@ -791,5 +818,168 @@ mod tests {
     assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");
     assert_eq!(record("", "Intro").label(), "Intro");
     assert_eq!(record("1.2", "").label(), "1.2");
+  }
+
+  /// 1 本目のソースのトップレベル HIR ノードの ID を文書順に返す
+  fn top_level_ids(document: &SemanticDocument) -> Vec<NodeId> {
+    return document.hir().source_nodes()[0].iter().map(|node| return node.id).collect();
+  }
+
+  #[test]
+  fn paragraph_carries_its_hir_node_id() {
+    let document = analyzed("一段落目。\n\n二段落目。\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let ids = top_level_ids(&document);
+    assert_eq!(paragraph_origins(&nodes), vec![Some(ids[0]), Some(ids[1])]);
+  }
+
+  #[test]
+  fn pending_space_merged_into_paragraph_keeps_paragraph_origin() {
+    // 段落へ合流したアキはその段落を指し、ブロックの前で閉じたアキだけの段落は先頭の Space を指す
+    let document = analyzed(r"\space{5pt}body\space{3pt}\space{4pt}\pagebreak tail");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let hir = &document.hir().source_nodes()[0];
+    let id_of = |pick: fn(&HirNodeKind) -> bool, nth: usize| {
+      return hir.iter().filter(|node| return pick(&node.kind)).nth(nth).expect("ノードがあるはず").id;
+    };
+    let is_paragraph: fn(&HirNodeKind) -> bool = |kind| return matches!(kind, HirNodeKind::Paragraph(_));
+    let is_space: fn(&HirNodeKind) -> bool = |kind| return matches!(kind, HirNodeKind::Space(_));
+    assert_eq!(
+      paragraph_origins(&nodes),
+      vec![
+        Some(id_of(is_paragraph, 0)),
+        Some(id_of(is_space, 1)),
+        Some(id_of(is_paragraph, 1))
+      ]
+    );
+  }
+
+  #[test]
+  fn code_block_paragraph_points_at_the_code_environment() {
+    let document = analyzed("\\begin{code}\nfn main() {}\n\\end{code}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    assert_eq!(paragraph_origins(&nodes), vec![Some(top_level_ids(&document)[0])]);
+  }
+
+  #[test]
+  fn heading_paragraph_points_at_the_heading() {
+    let document = analyzed("\\section{見出し}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    assert_eq!(paragraph_origins(&nodes), vec![Some(top_level_ids(&document)[0])]);
+  }
+
+  #[test]
+  fn theorem_heading_points_at_the_theorem() {
+    // 定理見出しの段落は定理環境を指し、本文の段落は自身を指す
+    let document = analyzed("\\begin{theorem}\n本文。\n\\end{theorem}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let theorem = &document.hir().source_nodes()[0][0];
+    let HirNodeKind::Theorem(body) = &theorem.kind else {
+      panic!("定理が期待されます: {theorem:?}");
+    };
+    assert_eq!(paragraph_origins(&nodes), vec![Some(theorem.id), Some(body.body[0].id)]);
+  }
+
+  #[test]
+  fn caption_paragraph_points_at_the_float() {
+    let document = analyzed("\\begin{figure}\n\\image{a.png}\n\\caption{説明}\n\\end{figure}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    assert_eq!(paragraph_origins(&nodes), vec![Some(top_level_ids(&document)[0])]);
+  }
+
+  #[test]
+  fn list_marker_only_paragraph_points_at_the_item() {
+    // 本体が段落で始まらない項目は、マーカーだけの段落を項目自身に帰属させる
+    let document = analyzed("\\begin{itemize}\n\\item{\\begin{code}\nx\n\\end{code}}\n\\end{itemize}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let list = &document.hir().source_nodes()[0][0];
+    let HirNodeKind::List(list) = &list.kind else {
+      panic!("リストが期待されます: {list:?}");
+    };
+    let item = &list.items[0];
+    assert_eq!(paragraph_origins(&nodes), vec![Some(item.id), Some(item.body[0].id)]);
+  }
+
+  /// 最初の画像ノードの起源を返す（`VBox` の中へも降りる）
+  fn image_origin(nodes: &[LayoutNode]) -> Option<NodeId> {
+    return nodes.iter().find_map(|node| match node {
+      LayoutNode::Image { origin, .. } => return Some(*origin),
+      LayoutNode::VBox { children, .. } => return image_origin(children),
+      _ => return None,
+    });
+  }
+
+  #[test]
+  fn figure_image_points_at_the_image_command() {
+    let document = analyzed("\\begin{figure}\n\\image{a.png}\n\\end{figure}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let figure = &document.hir().source_nodes()[0][0];
+    let HirNodeKind::Figure(figure) = &figure.kind else {
+      panic!("図が期待されます: {figure:?}");
+    };
+    assert_eq!(image_origin(&nodes), Some(figure.image_site));
+  }
+
+  #[test]
+  fn math_block_points_at_the_environment() {
+    let document = analyzed("\\begin{equation}\nx\n\\end{equation}\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let origin = nodes.iter().find_map(|node| match node {
+      LayoutNode::MathBlock(block) => return Some(block.origin),
+      _ => return None,
+    });
+    assert_eq!(origin, Some(top_level_ids(&document)[0]));
+  }
+
+  #[test]
+  fn footnote_points_at_the_footnote_command() {
+    let document = analyzed("本文\\footnote{注}。\n");
+
+    let nodes = test_support::lower(&ReadStyle::default(), &document);
+
+    let paragraph = &document.hir().source_nodes()[0][0];
+    let HirNodeKind::Paragraph(hir_inlines) = &paragraph.kind else {
+      panic!("段落が期待されます: {paragraph:?}");
+    };
+    let footnote_id = hir_inlines
+      .iter()
+      .find(|inline| return matches!(inline.kind, HirInlineKind::Footnote { .. }))
+      .expect("脚注があるはず")
+      .id;
+    let origin = inlines(&nodes).find_map(|node| match node {
+      InlineNode::Footnote { origin, .. } => return Some(*origin),
+      _ => return None,
+    });
+    assert_eq!(origin, Some(footnote_id));
+  }
+
+  #[test]
+  fn heading_records_carry_heading_node() {
+    let document = analyzed("\\section{見出し}\n");
+
+    let (_, headings) = lower_body(&ReadStyle::default(), &document);
+
+    assert_eq!(
+      headings.iter().map(|heading| return heading.node).collect::<Vec<_>>(),
+      vec![Some(top_level_ids(&document)[0])]
+    );
   }
 }
