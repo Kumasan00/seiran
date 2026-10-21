@@ -1,0 +1,12 @@
+typeset::overflow::math
+
+  ⚠ 1 ページのディスプレイ数式「𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+𝑥+…」が横に 1922.3pt はみ出
+  │ したまま配置しました
+   ╭─[tests/text/diagnostics/overflow_math.sei:1:1]
+ 1 │ \begin{equation}
+   · ▲
+   · ╰── この数式です
+ 2 │ x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x
+   ╰────
+  help: 数式を align などの複数行の環境で分けるか、style.toml の文字サイズ・[page] の余白か
+        config.toml の [pdf] の用紙サイズを見直してください。

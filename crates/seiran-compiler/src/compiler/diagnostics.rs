@@ -50,6 +50,30 @@ fn render_warnings(compilation: &Compilation, code: &str) -> String {
   return rendered.join("\n");
 }
 
+/// 全警告のメッセージ（失敗時の手がかり）
+fn all_messages(compilation: &Compilation) -> Vec<String> {
+  return compilation.warnings.iter().map(ToString::to_string).collect();
+}
+
+/// ワークスペース相対パスの fixture 本文を読む
+fn fixture_text(path: &str) -> String {
+  let full = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(path);
+  return fs::read_to_string(&full).unwrap_or_else(|error| panic!("{} を読めるはず: {error}", full.display()));
+}
+
+/// `warning` の唯一のラベルが `source` 内の `needle` の開始位置を長さ 0 で指し、本文が添えられていることを確かめる
+fn assert_points_at(warning: &dyn Diagnostic, source: &str, needle: &str) {
+  let labels: Vec<_> = warning.labels().expect("ソース位置のラベルを持つはず").collect();
+  assert_eq!(labels.len(), 1, "ラベルは 1 つのはず: {labels:?}");
+  assert_eq!(
+    labels[0].offset(),
+    source.find(needle).expect("fixture に含まれるはず"),
+    "{needle} の開始を指すはず"
+  );
+  assert_eq!(labels[0].len(), 0, "ラベルは要素の開始位置に長さ 0 で置くはず");
+  assert!(warning.source_code().is_some(), "帰属するソースの本文を添えるはず");
+}
+
 /// レンダリング済み診断テキストを golden と比較する（`UPDATE_GOLDEN=1` で再生成）。
 fn assert_matches_golden(name: &str, rendered: &str) {
   let golden_path = diagnostic_golden_dir().join(format!("{name}.txt"));
@@ -659,4 +683,114 @@ fn diagnostic_line_overflow_points_at_the_paragraph_in_its_own_source() {
   assert_eq!(labels[0].len(), 0, "ラベルは要素の開始位置に長さ 0 で置くはず");
   assert!(warnings[0].source_code().is_some(), "帰属するソースの本文を添えるはず");
   assert_matches_golden("overflow_line_across_sources", &render_warnings(&compilation, "typeset::overflow::line"));
+}
+
+#[test]
+fn diagnostic_image_overflow_points_at_the_image_command() {
+  let path = "tests/text/diagnostics/overflow_image.sei";
+  let compilation = TestProject::builder()
+    .sources(&[path])
+    .asset("./tests/image/testimage4.png")
+    .build()
+    .compile()
+    .expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::image");
+  assert_eq!(warnings.len(), 1, "横に 1 回だけはみ出すはず: {:?}", all_messages(&compilation));
+  assert_points_at(warnings[0], &fixture_text(path), r"\image");
+  assert_matches_golden("overflow_image", &render_warnings(&compilation, "typeset::overflow::image"));
+}
+
+#[test]
+fn diagnostic_math_overflow_points_at_the_environment() {
+  let path = "tests/text/diagnostics/overflow_math.sei";
+  let compilation = TestProject::builder().sources(&[path]).build().compile().expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::math");
+  assert_eq!(warnings.len(), 1, "横に 1 回だけはみ出すはず");
+  assert_points_at(warnings[0], &fixture_text(path), r"\begin{equation}");
+  assert_matches_golden("overflow_math", &render_warnings(&compilation, "typeset::overflow::math"));
+}
+
+#[test]
+fn diagnostic_footnote_overflow_labels_each_footnote() {
+  // 1 行の 2 つの脚注がページの高さを超える。ページ単位採番は本文パスを反復しても 1 件で同じラベルを持つ
+  let path = "tests/text/diagnostics/overflow_footnote.sei";
+  let source = fixture_text(path);
+  let first = source.find(r"\footnote{一}").expect("fixture に含まれるはず");
+  let second = source.find(r"\footnote{二}").expect("fixture に含まれるはず");
+  for numbering in ["continuous", "per_page"] {
+    let compilation = TestProject::builder()
+      .sources(&[path])
+      .style_toml(move |table| {
+        test_support::set(table, "footnote", "font_size", "900pt");
+        test_support::set(table, "footnote", "numbering", numbering);
+      })
+      .build()
+      .compile()
+      .expect("はみ出しは致命的ではないはず");
+
+    let warnings = warnings_with_code(&compilation, "typeset::footnote::overflow");
+    assert_eq!(warnings.len(), 1, "{numbering}: 行の脚注群は 1 件にまとまるはず");
+    let labels: Vec<(usize, usize, Option<String>)> = warnings[0]
+      .labels()
+      .expect("ソース位置のラベルを持つはず")
+      .map(|label| return (label.offset(), label.len(), label.label().map(str::to_owned)))
+      .collect();
+    assert_eq!(
+      labels,
+      vec![
+        (first, 0, Some("脚注 1".to_owned())),
+        (second, 0, Some("脚注 2".to_owned()))
+      ],
+      "{numbering}: 各 \\footnote の開始を指すはず"
+    );
+    assert!(warnings[0].source_code().is_some(), "帰属するソースの本文を添えるはず");
+    if numbering == "continuous" {
+      assert_matches_golden("overflow_footnote", &render_warnings(&compilation, "typeset::footnote::overflow"));
+    }
+  }
+}
+
+#[test]
+fn code_block_line_overflow_points_at_the_code_environment() {
+  let path = "tests/text/diagnostics/overflow_code.sei";
+  let compilation = TestProject::builder().sources(&[path]).build().compile().expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::line");
+  assert_eq!(warnings.len(), 1, "コードの 1 行だけがはみ出すはず");
+  assert_points_at(warnings[0], &fixture_text(path), r"\begin{code}");
+}
+
+#[test]
+fn toc_line_overflow_points_at_the_heading() {
+  // 本文の見出しは和文なので折り返せるが、目次の項目は 1 行に組むので段の幅を超える
+  let path = "tests/text/diagnostics/overflow_toc.sei";
+  let compilation = TestProject::builder()
+    .sources(&[path])
+    .style_toml(|table| test_support::set(table, "toc", "enabled", true))
+    .build()
+    .compile()
+    .expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::line");
+  assert_eq!(warnings.len(), 1, "目次の項目だけがはみ出すはず: {:?}", all_messages(&compilation));
+  assert_points_at(warnings[0], &fixture_text(path), r"\section");
+}
+
+#[test]
+fn index_line_overflow_points_only_at_the_page() {
+  // 索引の行は単一のソース要素に対応しないので、位置を捏造せずページだけで指す
+  let compilation = TestProject::builder()
+    .sources(&["tests/text/diagnostics/overflow_index.sei"])
+    .build()
+    .compile()
+    .expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::line");
+  assert_eq!(warnings.len(), 1, "索引の行だけがはみ出すはず");
+  assert_eq!(warnings[0].labels().map_or(0, Iterator::count), 0, "ラベルを持たないはず");
+  assert!(warnings[0].source_code().is_none(), "ソースの本文を添えないはず");
+  let message = warnings[0].to_string();
+  assert!(message.contains(" ページの行「"), "既存の文言のままのはず: {message}");
 }

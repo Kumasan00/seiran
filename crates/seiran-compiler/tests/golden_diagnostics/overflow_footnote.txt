@@ -1,0 +1,11 @@
+typeset::footnote::overflow
+
+  ⚠ 1 ページの脚注 1, 2 がページの高さを超えるため、はみ出したまま配置しました
+   ╭─[tests/text/diagnostics/overflow_footnote.sei:1:7]
+ 1 │ 本文\footnote{一}と\footnote{二}。
+   ·     ▲              ▲
+   ·     │              ╰── 脚注 2
+   ·     ╰── 脚注 1
+   ╰────
+  help: style.toml の [footnote] の font_size / top_margin / rule_gap か [page] の余白を小さくする
+        か、config.toml の [pdf] の用紙サイズを見直してください。
