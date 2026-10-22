@@ -31,7 +31,8 @@ description: >-
 4. **style / config**: 種類の既定を持つなら style.toml フィールド（`serde(default)` の既定値 +
    garde 検証）、物理・実体なら config.toml（`project::config`）。検証・集約は
    `docs/error-handling.md` の規約に従う
-5. **typeset**: lowering → boxes。構造値の文字列化は style の表示側フィールドを引くだけにする
+5. **typeset**: lowering → boxes。構造値の文字列化は style の表示側フィールドを引くだけにする。数式の構造機能は
+   lowering で内容だけを `MathNode` に解決し、段・アキ・計測と配置は数式エンジン（`typeset::boxing::math`）に足す
 6. **診断**: 新しいエラー・警告は `docs/error-handling.md` どおり（leaf に code・第 1 階層は段名・
    集約は `Failures<E>`）
 7. **テスト**: `tests/text/<name>.sei` fixture を追加し golden へ登録

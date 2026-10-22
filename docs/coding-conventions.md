@@ -184,7 +184,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   到達しない `pub` しか見ないので人が揃える。利用者（再輸出先を含む）が宣言した module とその子孫だけなら
   無印（子孫は親の非公開項目に到達できる）、親の配下に閉じるなら `pub(super)`、共通祖先が親でも crate root
   でもないなら `pub(in crate::<共通祖先>)`、crate root まで広がるときだけ `pub(crate)` と書く（例:
-  `typeset::lowering::layout_node::AtomNode` は `typeset::boxing` と `typeset::lowering` が使うので
+  `typeset::lowering::layout_node::MathNode` は `typeset::boxing` と `typeset::lowering` が使うので
   `pub(in crate::typeset)`）。再輸出も利用に数える — 祖先が再輸出する孫以下の module・型は `pub(super)` では
   再輸出先まで届かない（E0364 / E0365）ので、再輸出先を含めた共通祖先で書く（例: `frontend::syntax::cst` の
   `kind` / `view` と `CstNode` / `CstElement` は `pub(in crate::frontend)`。親が再輸出する直接の子は `pub(super)` で足りる）。

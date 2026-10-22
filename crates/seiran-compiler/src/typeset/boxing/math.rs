@@ -1,8 +1,10 @@
-//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）と、数式の上付き・下付き・分数・根号の配置
+//! 数式エンジン — lowering が内容を解決した数式（`MathNode`）の段・アキ・分割候補を組み立て、構造ごとに計測・配置する
 //!
-//! セルの列内揃えと本体を囲む区切り括弧グリフは `crate::typeset::lowering` が環境種別から
-//! 解決済みで、この module は計測（セルの Atom 化）と配置（列幅・行送り・番号・括弧の伸縮と数式軸への配置）
-//! だけを行う。HIR の数式語彙（`document::MathBlockKind`）はここまで届かない。
+//! 入口は 2 つ。インライン数式（`InlineNode::Math`）は [`Measurer::push_inline_math`] が箱と分割候補を段落の水平リストへ
+//! 積み、表示数式（`LayoutNode::MathBlock` → `Block::Math`）は [`Measurer::build_math_block`] が組む。段・cramped・アキ・
+//! 分割候補はフォントに触れない子 module `arrange`（アキ表は孫 `arrange::spacing`）が計測前の木にし、この module と
+//! 構造ごとの子 module がそれを計測して配置する。セルの列内揃えと本体を囲む区切り括弧グリフは
+//! `crate::typeset::lowering` が環境種別から解決済みで、HIR の数式語彙（`document::MathBlockKind` 等）はここまで届かない。
 //!
 //! 上付き・下付き（`MathScripts`）のシフト量は、基底とスクリプトのインク（グリフの形の範囲）と数式フォントの
 //! MATH 定数から決める。片側だけのシフトは `MathML Core` のスクリプト配置の規則に、上下付き同時のギャップは OpenType MATH の
