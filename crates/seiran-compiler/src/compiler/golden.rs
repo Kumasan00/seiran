@@ -40,6 +40,10 @@
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
 //!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品まで行帯に収まる）・
+//!   表セルの脚注 4 種 [`table_cell_footnotes_land_once_in_source_order`] /
+//!   [`repeated_head_marker_links_to_the_first_head_footnote_body`] /
+//!   [`index_in_table_footnote_body_lands_on_the_footnote_page`] /
+//!   [`per_page_numbering_counts_table_cell_footnotes`]（共通ヘルパ [`pages_where`] / [`footnote_numbers_per_page`] 経由）・
 //!   [`front_matter_adds_no_blank_pages`]（前付けの構成ごとの総ページ数）・
 //!   段落境界の回帰 [`horizontal_spaces_join_the_following_paragraph`] /
 //!   [`empty_noindent_paragraph_keeps_its_spacing`] / [`index_only_paragraph_keeps_its_marker`] /
@@ -230,7 +234,7 @@ use crate::{
   length::Length,
   project::FontType,
   publication::{GlyphRun, PaintOp},
-  typeset::{AnchorId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
+  typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
 };
 
 /// golden 比較対象の入力名。
@@ -279,6 +283,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "split",
   "table",
   "table_break",
+  "table_footnote",
   "table_math",
   "text",
   "text_center",
@@ -700,12 +705,12 @@ fn footnote_marker_number(blocks: &[PlacedBlock]) -> u32 {
   return text.parse().unwrap_or_else(|_| panic!("マーカーは番号の数字だけのはず: {text:?}"));
 }
 
-/// `footnote_per_page.sei` を指定の採番方式（style.toml の `[footnote].numbering` の値）で組版し、
+/// fixture `fixture` を指定の採番方式（style.toml の `[footnote].numbering` の値）で組版し、
 /// ページごとに、そのページで始まる脚注のマーカー番号列を返すテストヘルパ
-fn footnote_numbers_per_page(numbering: &'static str) -> Vec<Vec<u32>> {
+fn footnote_numbers_per_page(fixture: &str, numbering: &'static str) -> Vec<Vec<u32>> {
   // 採番方式は fixture 差分の既定値を上書きする（`golden_fixture` の後に適用される）
   let laid_out = TestProject::builder()
-    .golden_fixture("footnote_per_page")
+    .golden_fixture(fixture)
     .style_toml(move |table| test_support::set(table, "footnote", "numbering", numbering))
     .build()
     .laid_out();
@@ -725,7 +730,7 @@ fn footnote_numbers_per_page(numbering: &'static str) -> Vec<Vec<u32>> {
 
 #[test]
 fn per_page_footnote_numbering_restarts_on_each_page() {
-  let per_page = footnote_numbers_per_page("per_page");
+  let per_page = footnote_numbers_per_page("footnote_per_page", "per_page");
 
   // 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
   // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
@@ -736,6 +741,104 @@ fn per_page_footnote_numbering_restarts_on_each_page() {
     let expected: Vec<u32> = (1..=u32::try_from(numbers.len()).expect("脚注数は u32 に収まる")).collect();
     assert_eq!(*numbers, expected, "各ページの脚注番号は 1 からの連番のはず: {per_page:?}");
   }
+}
+
+#[test]
+fn per_page_numbering_counts_table_cell_footnotes() {
+  let per_page = footnote_numbers_per_page("table_footnote", "per_page");
+
+  // 本文の脚注と表セルの脚注を通して、各ページ 1 からの連番（再掲ヘッダは本体を持たないので数えない）
+  let pages_with_footnotes: Vec<&Vec<u32>> = per_page.iter().filter(|numbers| return !numbers.is_empty()).collect();
+  assert!(pages_with_footnotes.len() >= 2, "脚注が 2 ページ以上に分かれるはず: {per_page:?}");
+  for numbers in pages_with_footnotes {
+    let expected: Vec<u32> = (1..=u32::try_from(numbers.len()).expect("脚注数は u32 に収まる")).collect();
+    assert_eq!(*numbers, expected, "各ページの脚注番号は 1 からの連番のはず: {per_page:?}");
+  }
+}
+
+/// `predicate` を満たすページの index 列を返すテストヘルパ
+fn pages_where(pages: &[Page], predicate: impl Fn(&Page) -> bool) -> Vec<usize> {
+  return pages
+    .iter()
+    .enumerate()
+    .filter(|(_, page)| return predicate(page))
+    .map(|(index, _)| return index)
+    .collect();
+}
+
+/// 表セルの脚注は出現順に一度ずつ本体が出て、マーカーと本体の番号が一致する
+#[test]
+fn table_cell_footnotes_land_once_in_source_order() {
+  let laid_out = TestProject::builder().golden_fixture("table_footnote").build().laid_out();
+
+  let starts: Vec<(u32, u32)> = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.footnotes.iter().filter(|footnote| return !footnote.continued))
+    .map(|footnote| return (footnote.index, footnote_marker_number(&footnote.blocks)))
+    .collect();
+
+  // 本文 1・ヘッダ 1・本文セル 6・キャプション 1
+  let expected: Vec<(u32, u32)> = (0..9).map(|index| return (index, index + 1)).collect();
+  assert_eq!(starts, expected, "出現順（本文 → ヘッダ → 本文セル → キャプション）に一度ずつ・番号は index + 1");
+  // 長い脚注本体が次ページへ繰り越され、本文（表の行）と脚注が重ならない
+  assert!(
+    laid_out
+      .pages
+      .iter()
+      .any(|page| return page.footnotes.iter().any(|footnote| return footnote.continued)),
+    "長い脚注本体が繰り越されるはず（空振り検知）"
+  );
+  for (index, page) in laid_out.pages.iter().enumerate() {
+    let Some(body_bottom) = page.blocks.iter().filter_map(block_bottom).reduce(Length::max) else {
+      continue;
+    };
+    let Some(footnote_top) = page
+      .footnotes
+      .iter()
+      .flat_map(|footnote| return &footnote.blocks)
+      .filter_map(block_top)
+      .reduce(Length::min)
+    else {
+      continue;
+    };
+    assert!(footnote_top >= body_bottom, "page {index}: 本文の下端と脚注の上端が重なっている");
+  }
+}
+
+/// 再掲ヘッダのマーカーのリンクは、初出ヘッダのページにある脚注本体（index 1）を指す
+#[test]
+fn repeated_head_marker_links_to_the_first_head_footnote_body() {
+  let laid_out = TestProject::builder().golden_fixture("table_footnote").build().laid_out();
+  let head = AnchorId::Footnote(FootnoteId::new(1));
+
+  let linking = pages_where(&laid_out.pages, |page| {
+    return page.links.iter().any(|link| return link.target == LinkTarget::Internal(head.clone()));
+  });
+  let anchored = pages_where(&laid_out.pages, |page| return page.anchors.iter().any(|anchor| return anchor.id == head));
+  let bodies =
+    pages_where(&laid_out.pages, |page| return page.footnotes.iter().any(|footnote| return footnote.index == 1));
+
+  assert!(linking.len() >= 2, "ヘッダが再掲されているはず（空振り検知）: {linking:?}");
+  assert_eq!(bodies, vec![linking[0]], "本体は初出ヘッダのページに一度だけ");
+  assert_eq!(anchored, bodies, "リンクの到達先は初出の本体だけ");
+}
+
+/// 表セルの脚注本体の `\index` は脚注本体が置かれたページに載る（以前は脚注ごと落ちていた）
+#[test]
+fn index_in_table_footnote_body_lands_on_the_footnote_page() {
+  let laid_out = TestProject::builder().golden_fixture("table_footnote").build().laid_out();
+
+  let pages = pages_where(&laid_out.pages, |page| {
+    return page.index_entries.iter().any(|entry| return entry.word == "表脚注語");
+  });
+
+  assert_eq!(pages.len(), 1, "索引語が落ちずに 1 ページに載るはず: {pages:?}");
+  // 本文 1・ヘッダ 1・左右 2・1 セル 2 の次（index 6）が索引語を持つ脚注
+  let footnote_page = pages_where(&laid_out.pages, |page| {
+    return page.footnotes.iter().any(|footnote| return footnote.index == 6 && !footnote.continued);
+  });
+  assert_eq!(pages, footnote_page, "索引語は脚注本体のページに帰属する");
 }
 
 /// `\index` の出現ページが「マーカーを含む内容が実際に置かれたページ」になることを、
@@ -863,17 +966,18 @@ fn block_top(block: &PlacedBlock) -> Option<Length> {
   };
 }
 
-/// 配置済みブロックの下端（本文の重なり判定に使う。行のみを見る）
+/// 配置済みブロックの下端（本文の重なり判定に使う。行と表の行を見る）
 fn block_bottom(block: &PlacedBlock) -> Option<Length> {
   return match block {
     PlacedBlock::Line { line, baseline_y } => Some(*baseline_y + line.depth),
+    PlacedBlock::Table { rows } => rows.last().map(|row| return row.top_y + row.height),
     _ => None,
   };
 }
 
 #[test]
 fn continuous_footnote_numbering_runs_through_pages() {
-  let continuous = footnote_numbers_per_page("continuous");
+  let continuous = footnote_numbers_per_page("footnote_per_page", "continuous");
 
   let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();
   let expected: Vec<u32> = (1..=u32::try_from(flattened.len()).expect("脚注数は u32 に収まる")).collect();

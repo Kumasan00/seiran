@@ -361,6 +361,26 @@ mod tests {
   }
 
   #[test]
+  fn lower_table_numbers_head_cell_footnote_before_body_cell_footnote() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(
+      &style,
+      "\\begin{table}\n\\head{\\row{H\\footnote{head note}}}\n\\row{A\\footnote{cell note}}\n\\end{table}\n",
+    );
+
+    let table = find_table(&nodes);
+    let number_in = |content: &[InlineNode]| {
+      return content.iter().find_map(|n| match n {
+        InlineNode::Footnote { number, .. } => return Some(*number),
+        _ => return None,
+      });
+    };
+    assert_eq!(number_in(&table.head[0].cells[0].content), Some(1), "ヘッダのセルが 1 番: {table:?}");
+    assert_eq!(number_in(&table.rows[0].cells[0].content), Some(2), "本文セルが 2 番: {table:?}");
+  }
+
+  #[test]
   fn lower_table_numbers_cell_footnote_before_caption_footnote() {
     let style = ReadStyle::default();
 

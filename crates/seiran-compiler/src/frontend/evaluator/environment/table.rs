@@ -348,6 +348,21 @@ mod tests {
   }
 
   #[test]
+  fn index_in_footnote_in_head_cell_is_rejected() {
+    // ヘッダのセルの `\index` の拒否を脚注本体が引き継ぐ
+    let result = eval_table("\\begin{table}\n\\head{\\row{A\\footnote{x\\index{y}}}}\n\\row{B}\n\\end{table}\n");
+
+    assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn index_in_footnote_in_body_cell_is_accepted() {
+    let result = eval_table("\\begin{table}\n\\row{A\\footnote{x\\index{y}}}\n\\end{table}\n");
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
   fn table_breakable_false_is_captured() {
     let source = r"\begin{table}[breakable=false]\row{A & B}\end{table}";
     let result = eval_table(source).unwrap();
