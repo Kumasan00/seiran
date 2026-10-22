@@ -28,7 +28,7 @@ mod title_page;
 use std::mem;
 
 pub(super) use layout_node::{
-  AtomNode, DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
+  DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
   ParagraphLayout, TableLayout, TableRowLayout, TextStyle,
 };
 pub(super) use math::{
@@ -476,7 +476,7 @@ mod tests {
     });
   }
 
-  /// [`contains_line_break`] のインライン列側（`Raise` / `Scripts` の中身は `AtomNode` で `LineBreak` を持てない）
+  /// [`contains_line_break`] のインライン列側（`Raise` はテキストだけ、数式は `MathFormula` で `LineBreak` を持てない）
   fn contains_line_break_inline(nodes: &[InlineNode]) -> bool {
     return nodes.iter().any(|n| match n {
       InlineNode::LineBreak => return true,

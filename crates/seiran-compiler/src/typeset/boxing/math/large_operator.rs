@@ -1,4 +1,4 @@
-//! display 段の大型演算子（`AtomNode::LargeOperator`）の配置 — 字形を display の大きさへ伸ばして数式軸に合わせる
+//! display 段の大型演算子（`ArrangedNode::LargeOperator`）の配置 — 字形を display の大きさへ伸ばして数式軸に合わせる
 //!
 //! `MathML Core` §3.2.4.3（largeop を持ち math-style が normal の演算子）の規則で、演算子 1 字を区切り括弧と同じ伸縮
 //! （size variant → glyph assembly → 最大の size variant）で `DisplayOperatorMinHeight` 以上へ縦に伸ばし、インクの縦中央を

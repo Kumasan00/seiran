@@ -49,7 +49,7 @@ use crate::{
     },
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
-    lowering::{AtomNode, InlineNode, LayoutNode, ParagraphLayout, TableLayout, TableRowLayout, TextStyle},
+    lowering::{InlineNode, LayoutNode, ParagraphLayout, TableLayout, TableRowLayout, TextStyle},
   },
 };
 
@@ -275,9 +275,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
-      // コード: `build_atom` 経由なので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
+      // コード: `text_box` で閉じた箱にするので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
       InlineNode::TextAtom(text, style) => {
-        out.push_box(self.text_atom(text, style));
+        out.push_box(self.text_atom(&text, style));
       },
       InlineNode::Kern { length } => {
         out.push_absorbing(HItem::Kern(length));
@@ -286,15 +286,19 @@ impl<'a> Measurer<'a> {
         out.push_absorbing(HItem::ForcedBreak);
       },
       // 脚注マーカーは直前の字に付ける — 約物アキはマーカーの後ろに入り、アキの分割点で字から離れない
-      InlineNode::Raise { offset, children } => {
-        out.push_marker(HItem::Box(self.build_atom(offset, children)));
+      InlineNode::Raise {
+        offset,
+        text,
+        style,
+      } => {
+        out.push_marker(HItem::Box(self.text_box(&text, style, offset)));
       },
       InlineNode::Math(formula) => {
         self.push_inline_math(&formula, out);
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
-      InlineNode::FlushRight(children) => {
-        let flush_box = self.build_atom(Length::ZERO, children);
+      InlineNode::FlushRight(text, style) => {
+        let flush_box = self.text_box(&text, style, Length::ZERO);
         out.push_absorbing(HItem::Penalty { value: 0 });
         out.push_absorbing(HItem::FlushRight(flush_box));
       },
@@ -336,9 +340,9 @@ impl<'a> Measurer<'a> {
   ///
   /// 空文字列（コードの空行）でも、同じ書体・サイズの空セグメント（高さ・深さはフォントの
   /// ascender / descender から決まる）を測って 1 行ぶんの高さ・深さを持たせる。
-  fn text_atom(&mut self, text: String, style: TextStyle) -> HBox {
+  fn text_atom(&mut self, text: &str, style: TextStyle) -> HBox {
     let is_empty = text.is_empty();
-    let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
+    let mut atom = self.text_box(text, style, Length::ZERO);
     if is_empty {
       let font_type = script::resolve_font_type(style.typeface, script::ScriptCategory::Latin);
       let strut = self.shaper.shape_segment("", font_type, style.font_size, None, None);
@@ -348,26 +352,16 @@ impl<'a> Measurer<'a> {
     return atom;
   }
 
-  /// テキスト列を `offset` だけ縦にずらして左から並べ、Atom に畳む
+  /// テキストを縦に `dy` ずらして閉じた箱（Atom）にする
   ///
-  /// 幅は子の送り幅の和、高さ・深さは子の箱から決める。
-  fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
+  /// 幅は送り幅の和、高さ・深さは字の箱から決める。
+  pub(super) fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
-    for child in children {
-      match child {
-        AtomNode::Text(text, style) => {
-          for hbox in self.shaper.shape_text(&text, style) {
-            let width = hbox.width;
-            placed.push(PlacedHBox {
-              hbox,
-              dx,
-              dy: offset,
-            });
-            dx += width;
-          }
-        },
-      }
+    for hbox in self.shaper.shape_text(text, style) {
+      let width = hbox.width;
+      placed.push(PlacedHBox { hbox, dx, dy });
+      dx += width;
     }
     let mut atom = HBox::atom(placed);
     atom.width = dx;

@@ -92,12 +92,14 @@ pub(in crate::typeset) enum InlineNode {
   },
   /// 強制改行（`\\` 由来）
   LineBreak,
-  /// ベースラインから子要素を垂直方向にずらすコンテナ
+  /// ベースラインから垂直方向にずらした閉じたテキスト（脚注マーカー）
   Raise {
     /// ベースラインからの垂直オフセット（正で上方向）
     offset: Length,
-    /// ずらす対象の子ノード列
-    children: Vec<AtomNode>,
+    /// ずらすテキスト
+    text: String,
+    /// テキストのスタイル
+    style: TextStyle,
   },
   /// インライン数式（段・アキ・分割候補・計測は boxing の数式エンジンが決める）
   Math(MathFormula),
@@ -108,8 +110,8 @@ pub(in crate::typeset) enum InlineNode {
     /// リンク対象の子要素
     children: Vec<InlineNode>,
   },
-  /// 行の右端に寄せる末尾要素（証明の QED マーク等）
-  FlushRight(Vec<AtomNode>),
+  /// 行の右端に寄せる閉じたテキスト（証明の QED マーク）
+  FlushRight(String, TextStyle),
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   Footnote {
     /// はみ出し警告が指す `\footnote` コマンド
@@ -125,22 +127,6 @@ pub(in crate::typeset) enum InlineNode {
   IndexMark(IndexTerm),
 }
 
-/// Atom（行分割をまたがない閉じた箱）の中身になれるノード
-#[derive(Debug, Clone)]
-pub(in crate::typeset) enum AtomNode {
-  /// スタイル付きテキスト
-  Text(String, TextStyle),
-}
-
-impl From<AtomNode> for InlineNode {
-  /// `AtomNode` は `InlineNode` の部分集合なので、常に無損失で持ち上がる
-  fn from(node: AtomNode) -> Self {
-    return match node {
-      AtomNode::Text(text, style) => InlineNode::Text(text, style),
-    };
-  }
-}
-
 /// ディスプレイ数式環境全体の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockLayout {
@@ -150,9 +136,9 @@ pub(in crate::typeset) struct MathBlockLayout {
   pub delimiters: DelimiterGlyphs,
   /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
   pub rows: Vec<MathBlockRowLayout>,
-  /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み。ブロックの縦中央に置く）。
+  /// 環境全体に 1 つだけ付く番号の（テキスト, スタイル）（`split` / `multiline` 用。ブロックの縦中央に置く）。
   /// 行ごと採番や無採番では `None`
-  pub env_number: Option<Vec<AtomNode>>,
+  pub env_number: Option<(String, TextStyle)>,
   /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
   pub align: Align,
   /// 番号を本文右端に寄せるか（`false` なら左端）
@@ -201,8 +187,8 @@ pub(in crate::typeset) struct TableCellLayout {
 pub(in crate::typeset) struct MathBlockRowLayout {
   /// 列（内容を解決した数式と列内揃え）
   pub cells: Vec<MathBlockCellLayout>,
-  /// 行番号ボックス（lower 済み、`None` は非採番）
-  pub number: Option<Vec<AtomNode>>,
+  /// 行番号の（テキスト, スタイル）（`None` は非採番）
+  pub number: Option<(String, TextStyle)>,
 }
 
 /// ディスプレイ数式環境の 1 セルの物理レイアウト表現

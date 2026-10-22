@@ -31,8 +31,8 @@ use crate::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{
-        AtomNode, DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout,
-        MathBlockRowLayout, MathFormula, MathNode, TextStyle,
+        DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout, MathBlockRowLayout,
+        MathFormula, MathNode, TextStyle,
       },
       with_label_anchors,
     },
@@ -106,11 +106,10 @@ pub(super) fn lower_math_block(
   return with_label_anchors(anchor_labels, nodes);
 }
 
-/// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
-fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<AtomNode> {
-  let text = tag_format.expand(n);
-  return vec![AtomNode::Text(
-    text,
+/// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号の（テキスト, スタイル）を作る
+fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> (String, TextStyle) {
+  return (
+    tag_format.expand(n),
     TextStyle {
       font_size,
       typeface: Typeface::Serif,
@@ -118,7 +117,7 @@ fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<At
       script_level: None,
       math_operator: None,
     },
-  )];
+  );
 }
 
 /// 環境種別・行位置・列インデックスから、そのセルの列内での水平揃えを決める
@@ -521,11 +520,9 @@ mod tests {
     let style = style_with_plain_equation_format();
     let block = lower_numbered_equation(&style);
 
-    let number = block.rows[0].number.as_ref().expect("番号あり");
-    assert!(
-      matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.typeface == Typeface::Serif),
-      "(1) の Serif Text が番号ボックスに入るはず: {number:?}"
-    );
+    let (text, number_style) = block.rows[0].number.as_ref().expect("番号あり");
+    assert_eq!(text, "(1)");
+    assert_eq!(number_style.typeface, Typeface::Serif, "番号は立体");
   }
 
   #[test]

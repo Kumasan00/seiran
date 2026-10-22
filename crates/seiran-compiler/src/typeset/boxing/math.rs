@@ -17,7 +17,7 @@
 //! 効かせない（TeX / `LuaTeX` と同じく math kern は字の核の値）。
 //!
 //! 分数・二項係数の積み（`MathFraction`）・根号（`MathRadical`）・アクセント（`MathAccent`）・上下線（`MathBar`）・伸縮括弧（`MathFenced`）・
-//! 数式に埋め込んだ行列・場合分け（`MathArray`）・display 段の大型演算子（`AtomNode::LargeOperator`）・上下に積む上付き・
+//! 数式に埋め込んだ行列・場合分け（`MathArray`）・display 段の大型演算子（`ArrangedNode::LargeOperator`）・上下に積む上付き・
 //! 下付き（`MathScripts` の `limits` が真）の配置は子 module `fraction` / `radical` / `accent` / `bar` / `fenced` /
 //! `array` / `large_operator` / `limits` が行い、分数・根号・アクセント・上下線・伸縮括弧・行列は閉じた Atom 1 つに組む
 //! （罫・横線・上下線は `HBoxContent::Rule`）。表示数式ブロックと埋め込んだ行列は、グリッド組み（[`Measurer::build_grid`]）と
@@ -251,9 +251,9 @@ impl Measurer<'_> {
       .into_iter()
       .zip(baselines)
       .filter_map(|(number, dy)| {
-        return number.map(|number| {
+        return number.map(|(text, style)| {
           return MathRowNumber {
-            content: self.build_atom(Length::ZERO, number),
+            content: self.text_box(&text, style, Length::ZERO),
             dy,
           };
         });
@@ -261,8 +261,8 @@ impl Measurer<'_> {
       .collect();
 
     // `dy` は上向きなので、番号の視覚中央を本体中央へ合わせる。
-    if let Some(env_number) = env_number {
-      let number = self.build_atom(Length::ZERO, env_number);
+    if let Some((text, style)) = env_number {
+      let number = self.text_box(&text, style, Length::ZERO);
       let center_dy = (body.height - body.depth) / 2.0 - (number.height - number.depth) / 2.0;
       numbers.push(MathRowNumber {
         content: number,

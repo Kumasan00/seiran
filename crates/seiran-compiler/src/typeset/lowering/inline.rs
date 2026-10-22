@@ -9,7 +9,7 @@ use crate::{
     boxes::{AnchorId, FootnoteId, IndexTerm, LinkTarget},
     lowering::{
       LoweringContext, LoweringState, code, generated,
-      layout_node::{AtomNode, InlineNode, TextStyle},
+      layout_node::{InlineNode, TextStyle},
       math::lower_inline_math,
     },
   },
@@ -173,7 +173,8 @@ fn footnote_marker_node(
   };
   return InlineNode::Raise {
     offset: base_font_size * footnote_style.marker_raise_factor,
-    children: vec![AtomNode::Text(marker_text.to_string(), marker_style)],
+    text: marker_text.to_string(),
+    style: marker_style,
   };
 }
 
@@ -244,10 +245,9 @@ mod tests {
       InlineNode::Link { children, .. } => &children[0],
       other => other,
     };
-    let InlineNode::Raise { children, .. } = node else {
+    let InlineNode::Raise { text, .. } = node else {
       panic!("Raise が期待されます: {node:?}");
     };
-    let AtomNode::Text(text, _) = &children[0];
     return text;
   }
 
@@ -537,10 +537,14 @@ mod tests {
     let nodes = lower_source(&style, "\\footnote{note}\n");
 
     let (_, link_children) = first_link(&nodes);
-    let InlineNode::Raise { children, .. } = &link_children[0] else {
+    let InlineNode::Raise {
+      text: marker,
+      style: marker_style,
+      ..
+    } = &link_children[0]
+    else {
       panic!("Raise が期待されます: {link_children:?}");
     };
-    let AtomNode::Text(marker, marker_style) = &children[0];
     assert_eq!(marker, "[1]");
     let body_font_size = style.text.font_size.to_pt();
     let expected_marker_size = body_font_size * 0.5;
@@ -552,10 +556,13 @@ mod tests {
 
     // 脚注本体側のマーカーは脚注フォントサイズ基準
     let (_, _, body) = first_footnote(&nodes);
-    let InlineNode::Raise { children, .. } = &body[0] else {
+    let InlineNode::Raise {
+      style: body_marker_style,
+      ..
+    } = &body[0]
+    else {
       panic!("Raise が期待されます: {body:?}");
     };
-    let AtomNode::Text(_, body_marker_style) = &children[0];
     assert!((body_marker_style.font_size.to_pt() - 10.0).abs() < 1e-3, "{}", body_marker_style.font_size.to_pt());
     let InlineNode::Text(_, body_text_style) = &body[1] else {
       panic!("Text が期待されます: {body:?}");
