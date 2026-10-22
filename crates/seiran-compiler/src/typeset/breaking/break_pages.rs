@@ -9,7 +9,7 @@ use std::fmt;
 
 use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
 use itertools::izip;
-use page_draft::{PageDraft, PendingTableRow, TableFrame};
+use page_draft::PageDraft;
 use paragraph_plan::plan_paragraph_lines;
 use region_cursor::RegionCursor;
 use tracing::debug;
@@ -21,7 +21,7 @@ use crate::{
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedBlock,
-      PlacedMathNumber, TableBox, TableRowBox, resolve_column_widths,
+      PlacedMathNumber, TableBox, TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
@@ -482,7 +482,7 @@ pub(crate) fn break_pages(
         composer.cursor = composer.cursor.below(height);
       },
       Block::Table { table, align } => {
-        place_table(&mut composer, geom, &table, col_width, align);
+        place_table(&mut composer, geom, table, col_width, align);
         composer.cursor.at_edge = true;
       },
       Block::Math {
@@ -584,7 +584,7 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Atom
       };
     },
     Block::Table { table, .. } => {
-      let total: Length = table.head.iter().chain(table.rows.iter()).map(TableRowBox::height).sum();
+      let total = table.height();
       // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）が乗るかだけで決まる（`place_table` の行ループと同じ判定）
       let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
@@ -907,62 +907,55 @@ fn place_math_block(
   composer.cursor = composer.cursor.below(total_height);
 }
 
-/// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
+/// 表を行断片の単位で配置する（改段・改ページ時は先頭に再掲ヘッダを積む）
 ///
+/// 表固有の判断は分割してよいか（`breakable`）と再掲ヘッダを積むことの 2 つだけで、断片の中身（列幅・セル余白・
+/// 罫線・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと揃えオフセットだけ。
 /// 未解決アンカーは空でない最初の断片の着地（[`PageDraft::place_table_fragment`]）で解決する。
 /// 先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
-fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBox, column_width: Length, align: Align) {
-  let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
+fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: TableBox, column_width: Length, align: Align) {
   // 揃えオフセットは段内のもの。段オフセットは着地段が決まる flush 時に断片ごとに足す
-  let table_align_offset = align.offset(column_width, col_widths.iter().sum());
-  let total_height: Length = table.head.iter().chain(table.rows.iter()).map(TableRowBox::height).sum();
-  if !table.breakable && composer.cursor.defers_unbreakable(total_height, geom) {
+  let align_offset = align.offset(column_width, table.width);
+  if !table.breakable && composer.cursor.defers_unbreakable(table.height(), geom) {
     composer.advance_region(geom);
   }
 
-  let frame = TableFrame {
-    columns: &table.columns,
-    col_widths: &col_widths,
-    cell_padding: geom.table_cell_padding,
-    rule_thickness: geom.table_rule_thickness,
-    rule_color: geom.table_rule_color,
-    align_offset: table_align_offset,
-  };
-  let mut pending_rows: Vec<PendingTableRow> = Vec::new();
-  let push_row = |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, is_head: bool| {
-    pending_rows.push(PendingTableRow {
-      row: row.clone(),
-      top_y,
-      is_head,
-    });
-  };
+  let TableBox {
+    head,
+    repeated_head,
+    rows,
+    ..
+  } = table;
+  let mut pending: Vec<(TableRowFragment, Length)> = Vec::new();
   // 断片の段オフセットは着地段のもの（flush は advance_region の前に呼ばれるので column は正しい）
-  let flush = |composer: &mut PageComposer, pending_rows: &mut Vec<PendingTableRow>| {
+  let flush = |composer: &mut PageComposer, pending: &mut Vec<(TableRowFragment, Length)>| {
     let column_x = composer.column_offset();
-    composer.draft.place_table_fragment(std::mem::take(pending_rows), &frame, column_x);
+    composer.draft.place_table_fragment(std::mem::take(pending), column_x, align_offset);
   };
 
-  for row in &table.head {
+  for row in head {
     if composer.cursor.overflows(row.height(), geom) {
-      flush(composer, &mut pending_rows);
+      flush(composer, &mut pending);
       composer.advance_region(geom);
     }
-    push_row(&mut pending_rows, row, composer.cursor.y, true);
-    composer.cursor.y += row.height();
+    let height = row.height();
+    pending.push((row, composer.cursor.y));
+    composer.cursor.y += height;
   }
-  for row in &table.rows {
+  for row in rows {
     if composer.cursor.overflows(row.height(), geom) {
-      flush(composer, &mut pending_rows);
+      flush(composer, &mut pending);
       composer.advance_region(geom);
-      for head_row in &table.head {
-        push_row(&mut pending_rows, head_row, composer.cursor.y, true);
+      for head_row in &repeated_head {
+        pending.push((head_row.clone(), composer.cursor.y));
         composer.cursor.y += head_row.height();
       }
     }
-    push_row(&mut pending_rows, row, composer.cursor.y, false);
-    composer.cursor.y += row.height();
+    let height = row.height();
+    pending.push((row, composer.cursor.y));
+    composer.cursor.y += height;
   }
-  flush(composer, &mut pending_rows);
+  flush(composer, &mut pending);
 }
 
 #[cfg(test)]
@@ -972,7 +965,7 @@ mod tests {
     is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
-    document::{ColumnAlign, ColumnWidth, NodeId, TextAlignment},
+    document::{NodeId, TextAlignment},
     length::Length,
     project::{FontType, ProjectPath},
     publication::GlyphRun,
@@ -981,8 +974,8 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
-        MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, TableBox,
-        TableCellBox, TableColumn, TableRowBox,
+        MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink,
+        PlacedTableRow, PlacedTableRule, TableBox, TableRowFragment,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -1015,7 +1008,6 @@ mod tests {
       content_origin_x: Length::ZERO,
       margin_top: Length::pt(10.0),
       page_limit: Length::pt(50.0),
-      table_cell_padding: Length::pt(2.0),
       num_columns: 1,
       column_gap: Length::pt(0.0),
       flush_bottom: false,
@@ -1024,8 +1016,6 @@ mod tests {
       footnote_rule_thickness: Length::ZERO,
       footnote_rule_color: None,
       footnote_rule_gap: Length::pt(4.0),
-      table_rule_thickness: Length::ZERO,
-      table_rule_color: None,
       background_color: None,
     };
   }
@@ -1289,24 +1279,14 @@ mod tests {
     assert!(close(links[0].y, baseline.to_pt() - 8.0), "繰越先の行 box の上端に一致するはず: {:?}", links[0]);
   }
 
-  /// 1 列 1 行、セルが `text` の箱と索引マーカーだけの表の行を作る
-  fn table_row_with_index(text: &str, word: &str) -> TableRowBox {
-    return table_row_of(vec![table_text_box(text), index_mark_item(word, None)]);
-  }
-
   #[test]
   fn index_entries_in_table_body_cells_land_on_the_row_page() {
     // 5 行の表は 2 ページに分かれる
     let geom = test_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: vec![table_row("HEAD")],
-      rows: (0..5).map(|i| return table_row_with_index(&format!("R{i}"), &format!("W{i}"))).collect(),
-      breakable: true,
-    };
+    let table = table_box(
+      vec![table_row("HEAD")],
+      (0..5).map(|i| return with_index(table_row(&format!("R{i}")), &format!("W{i}"))).collect(),
+    );
 
     let (pages, _) = break_pages(
       vec![Block::Table {
@@ -2080,8 +2060,8 @@ mod tests {
 
   /// テキスト入り（フォント 10）の 1 セル行を作るヘルパ
   /// テキスト `text`（フォント 10・幅 20・高さ 10）の箱を作るヘルパ
-  fn table_text_box(text: &str) -> HItem {
-    return HItem::Box(HBox {
+  fn table_text_box(text: &str) -> HBox {
+    return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: pt(10.0),
         text: text.to_string(),
@@ -2092,44 +2072,87 @@ mod tests {
       width: Length::pt(20.0),
       height: Length::pt(10.0),
       depth: Length::pt(0.0),
+    };
+  }
+
+  /// 行帯の高さ `height`・ベースライン `baseline` で、箱 `hbox` を表左端 + 余白 2 に置いた 1 列表の行断片を作るヘルパ
+  fn table_fragment(hbox: HBox, height: f32, baseline: f32) -> TableRowFragment {
+    return TableRowFragment {
+      row: PlacedTableRow {
+        top_y: Length::ZERO,
+        height: pt(height),
+        baseline_y: pt(baseline),
+        boxes: vec![PlacedHBox {
+          hbox,
+          dx: pt(2.0),
+          dy: Length::ZERO,
+        }],
+        rule: None,
+      },
+      links: Vec::new(),
+      index_marks: Vec::new(),
+    };
+  }
+
+  /// テキスト入り（フォント 10）の 1 セル行の断片を作るヘルパ（行帯 10・ベースライン 10 は既定フォントサイズ 10・
+  /// 行高係数 1（`test_geometry` の本文と同じ）で表エンジンが組む行帯と同じ）
+  fn table_row(text: &str) -> TableRowFragment { return table_fragment(table_text_box(text), 10.0, 10.0); }
+
+  /// 1 列・表幅 24（内容 20 + 余白 2 × 2）の分割可能な表を作るヘルパ。再掲ヘッダは表エンジンと同じく
+  /// `head` の複製から索引語を除いたもの
+  fn table_box(head: Vec<TableRowFragment>, rows: Vec<TableRowFragment>) -> TableBox {
+    let repeated_head = head
+      .iter()
+      .map(|fragment| {
+        return TableRowFragment {
+          index_marks: Vec::new(),
+          ..fragment.clone()
+        };
+      })
+      .collect();
+    return TableBox {
+      width: pt(24.0),
+      head,
+      repeated_head,
+      rows,
+      breakable: true,
+    };
+  }
+
+  /// 表の行断片に、`text` の箱（x 2..22）を覆うリンクを足すヘルパ
+  fn with_link(mut row: TableRowFragment, target: LinkTarget) -> TableRowFragment {
+    row.links.push(LineLink {
+      target,
+      x0: pt(2.0),
+      x1: pt(22.0),
     });
+    return row;
   }
 
-  /// セル 1 つの内容が `items` の行を作るヘルパ（既定フォントサイズ 10・行高係数 1 は `test_geometry` の本文と同じ）
-  fn table_row_of(items: Vec<HItem>) -> TableRowBox {
-    return TableRowBox::new(
-      vec![TableCellBox {
-        items,
-        column_span: 1,
-      }],
-      false,
-      pt(10.0),
-      1.0,
-    );
+  /// 表の行断片に索引語 `word`（読みなし）を足すヘルパ
+  fn with_index(mut row: TableRowFragment, word: &str) -> TableRowFragment {
+    row.index_marks.push(IndexTerm {
+      word: word.to_string(),
+      reading: None,
+    });
+    return row;
   }
-
-  /// テキスト入り（フォント 10）の 1 セル行を作るヘルパ
-  fn table_row(text: &str) -> TableRowBox { return table_row_of(vec![table_text_box(text)]); }
 
   #[test]
   fn table_rows_stack_by_their_content_band() {
     // 2 行目のセルは高さ 12・深さ 6 の箱を持ち、行送り 10（フォント 10 × 係数 1）を超えて 18 を占める
     let geom = test_geometry();
-    let tall = table_row_of(vec![HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: Length::pt(10.0),
-      height: Length::pt(12.0),
-      depth: Length::pt(6.0),
-    })]);
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: vec![table_row("A"), tall, table_row("B")],
-      breakable: true,
-    };
+    let tall = table_fragment(
+      HBox {
+        content: HBoxContent::Atom(Vec::new()),
+        width: Length::pt(10.0),
+        height: Length::pt(12.0),
+        depth: Length::pt(6.0),
+      },
+      18.0,
+      12.0,
+    );
+    let table = table_box(Vec::new(), vec![table_row("A"), tall, table_row("B")]);
 
     let (pages, _) = break_pages(
       vec![Block::Table {
@@ -2208,15 +2231,7 @@ mod tests {
   #[test]
   fn breakable_table_splits_across_pages_and_redraws_header() {
     let geom = test_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: vec![table_row("HEAD")],
-      rows: (0..5).map(|i| return table_row(&format!("R{i}"))).collect(),
-      breakable: true,
-    };
+    let table = table_box(vec![table_row("HEAD")], (0..5).map(|i| return table_row(&format!("R{i}"))).collect());
 
     let (pages, _) = break_pages(
       vec![Block::Table {
@@ -2235,19 +2250,7 @@ mod tests {
 
   /// 1 列 1 行、セル内容がまるごとリンク（`LinkStart`, box(幅20), `LinkEnd`）の表を作る
   fn single_cell_link_table(target: LinkTarget) -> TableBox {
-    return TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: vec![table_row_of(vec![
-        HItem::LinkStart(target),
-        table_text_box("リンク"),
-        HItem::LinkEnd,
-      ])],
-      breakable: true,
-    };
+    return table_box(Vec::new(), vec![with_link(table_row("リンク"), target)]);
   }
 
   #[test]
@@ -2276,29 +2279,20 @@ mod tests {
   }
 
   #[test]
-  fn place_table_carries_padding_and_rule_from_geometry() {
-    let geom = PageGeometry {
-      table_cell_padding: Length::pt(3.0),
-      table_rule_thickness: Length::pt(1.5),
-      table_rule_color: Some([9, 9, 9]),
-      ..test_geometry()
-    };
+  fn place_table_shifts_rule_and_boxes_to_the_landing_point() {
+    // 罫線と箱は表左端・行帯上端を原点に確定済みで、配置は着地点（段オフセット 0・上端 10）を足すだけ
+    let geom = test_geometry();
+    let mut row = table_row("R0");
+    row.row.rule = Some(PlacedTableRule {
+      x: Length::ZERO,
+      y: Length::ZERO,
+      width: pt(24.0),
+      height: pt(1.5),
+      color: Some([9, 9, 9]),
+    });
     let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: vec![TableRowBox::new(
-        vec![TableCellBox {
-          items: vec![test_box()],
-          column_span: 1,
-        }],
-        true,
-        pt(10.0),
-        1.0,
-      )],
       breakable: false,
+      ..table_box(Vec::new(), vec![row])
     };
 
     let (pages, _) = break_pages(
@@ -2316,9 +2310,10 @@ mod tests {
     else {
       unreachable!("直前の matches! で確認済み");
     };
-    assert_eq!(rows[0].boxes[0].dx, Length::pt(3.0), "padding はセル内容の確定 x に反映されるはず");
-    let rule = rows[0].rule.expect("rule_above=true なので確定罫線を持つはず");
-    assert_eq!(rule.height, Length::pt(1.5));
+    assert!(close(rows[0].boxes[0].dx, 2.0), "箱の x は断片の値のまま: {:?}", rows[0]);
+    let rule = rows[0].rule.expect("罫線を持つ断片なので確定罫線を持つはず");
+    assert!(close(rule.x, 0.0) && close(rule.y, 10.0), "{rule:?}");
+    assert!(close(rule.width, 24.0) && close(rule.height, 1.5), "{rule:?}");
     assert_eq!(rule.color, Some([9, 9, 9]));
   }
 
@@ -2724,15 +2719,7 @@ mod tests {
   #[test]
   fn centered_table_shifts_all_rows_x() {
     let geom = test_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: vec![table_row("HEAD")],
-      rows: vec![table_row("R0")],
-      breakable: true,
-    };
+    let table = table_box(vec![table_row("HEAD")], vec![table_row("R0")]);
     let blocks = vec![Block::Table {
       table,
       align: Align::Center,
@@ -2751,14 +2738,10 @@ mod tests {
   #[test]
   fn full_width_table_is_not_shifted_by_center() {
     let geom = test_geometry();
+    // 表幅が段幅（100）いっぱいの表
     let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Ratio(1.0),
-      }],
-      head: vec![table_row("HEAD")],
-      rows: vec![table_row("R0")],
-      breakable: true,
+      width: pt(100.0),
+      ..table_box(vec![table_row("HEAD")], vec![table_row("R0")])
     };
     let blocks = vec![Block::Table {
       table,
@@ -2951,15 +2934,7 @@ mod tests {
   #[test]
   fn breakable_table_spans_columns_uses_column_offset() {
     let geom = two_column_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: (0..6).map(|i| return table_row(&format!("R{i}"))).collect(),
-      breakable: true,
-    };
+    let table = table_box(Vec::new(), (0..6).map(|i| return table_row(&format!("R{i}"))).collect());
 
     let (pages, _) = break_pages(
       vec![Block::Table {
@@ -3556,33 +3531,14 @@ mod tests {
     assert!(close(footnote_anchor.y, 40.0), "脚注のアンカーは脚注の上端のまま: {footnote_anchor:?}");
   }
 
-  /// 1 列 1 行、セルが「リンクで包んだ `text` の箱 + 索引マーカー」の表の行を作る
-  fn table_row_with_link_and_index(text: &str, uri: &str, word: &str) -> TableRowBox {
-    return table_row_of(vec![
-      HItem::LinkStart(LinkTarget::External(uri.to_string())),
-      table_text_box(text),
-      HItem::LinkEnd,
-      index_mark_item(word, None),
-    ]);
-  }
-
   #[test]
-  fn table_head_keeps_links_on_each_fragment_but_never_collects_index() {
-    // head 1 行 + 本体 5 行（行高 10）は 2 ページに割れ、2 ページ目の先頭に head が再描画される
+  fn table_redraws_the_repeated_head_after_a_break() {
+    // head 1 行 + 本体 5 行（行高 10）は 2 ページに割れ、2 ページ目の先頭に再掲ヘッダが積まれる。
+    // 再掲ヘッダの断片はリンクだけを持ち（索引語は表エンジンが除く）、初出の断片の索引語は 1 ページ目に帰属する
     let geom = test_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: vec![table_row_with_link_and_index(
-        "HEAD",
-        "https://example.com",
-        "ヘッダ語",
-      )],
-      rows: (0..5).map(|i| return table_row(&format!("R{i}"))).collect(),
-      breakable: true,
-    };
+    let head =
+      with_index(with_link(table_row("HEAD"), LinkTarget::External("https://example.com".to_string())), "ヘッダ語");
+    let table = table_box(vec![head], (0..5).map(|i| return table_row(&format!("R{i}"))).collect());
 
     let (pages, _) = break_pages(
       vec![Block::Table {
@@ -3596,12 +3552,17 @@ mod tests {
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     for (index, page) in pages.iter().enumerate() {
+      assert_eq!(first_table_row_text(page).as_deref(), Some("HEAD"), "page {index}: 先頭行はヘッダ");
       let links = external_links(page, "https://example.com");
       assert_eq!(links.len(), 1, "page {index}: head のリンクは断片ごとに 1 つ: {:?}", page.links);
       assert!(close(links[0].y, 10.0), "page {index}: head は各断片の先頭行: {:?}", links[0]);
       assert!(close(links[0].height, 10.0), "page {index}: {:?}", links[0]);
-      assert!(page.index_entries.is_empty(), "page {index}: head の索引語は集めない: {:?}", page.index_entries);
     }
+    let words: Vec<Vec<&str>> = pages
+      .iter()
+      .map(|page| return page.index_entries.iter().map(|e| return e.word.as_str()).collect())
+      .collect();
+    assert_eq!(words, vec![vec!["ヘッダ語"], vec![]], "索引語は初出の断片のページだけ");
   }
 
   #[test]
@@ -3609,15 +3570,7 @@ mod tests {
     // 3 行段落の後（y=46）で表を開始するが、最初の行（高さ 10）は収まらず次ページへ送られる。
     // アンカーは表の実配置（2 ページ目の先頭行上端 = margin_top）で解決し、1 ページ目には残らない
     let geom = test_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: vec![table_row("R0"), table_row("R1")],
-      breakable: true,
-    };
+    let table = table_box(Vec::new(), vec![table_row("R0"), table_row("R1")]);
     let blocks = vec![
       paragraph_of_lines(3),
       Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
@@ -3643,15 +3596,7 @@ mod tests {
     // 2 段。左段 3 行（y=46）の後の表の先頭行（高さ 10）が収まらず右段へ送られる。
     // アンカーの x は着地段（右段）のオフセット 55、y は右段先頭 = margin_top
     let geom = two_column_geometry();
-    let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: vec![table_row("R0"), table_row("R1")],
-      breakable: true,
-    };
+    let table = table_box(Vec::new(), vec![table_row("R0"), table_row("R1")]);
     let blocks = vec![
       paragraph_of_lines(3),
       Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
@@ -3682,13 +3627,8 @@ mod tests {
     // アンカーは 2 ページ目の表先頭で解決する
     let geom = test_geometry();
     let table = TableBox {
-      columns: vec![TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      }],
-      head: Vec::new(),
-      rows: vec![table_row("R0"), table_row("R1")],
       breakable: false,
+      ..table_box(Vec::new(), vec![table_row("R0"), table_row("R1")])
     };
     let blocks = vec![
       paragraph_of_lines(3),

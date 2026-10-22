@@ -7,8 +7,8 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{
-      AnchorId, FootnoteId, HItem, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
-      PlacedTableRow, PlacedTableRule, TableColumn, TableRowBox, collect_row_links, position_table_row_boxes,
+      AnchorId, FootnoteId, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
+      TableRowFragment,
     },
     breaking::break_pages::PendingFootnote,
     geometry::PageGeometry,
@@ -87,35 +87,6 @@ impl Entry {
   }
 }
 
-/// 表断片の確定に要る、表 1 個で固定の幾何（列定義・列幅・セル余白・罫線・段内揃えオフセット）
-///
-/// 断片の左端 x は `段オフセット + align_offset`、アンカーは揃えオフセット抜きの段オフセットで解決する
-/// （行・数式と同じ規則）。
-pub(super) struct TableFrame<'a> {
-  /// 列定義（揃え）
-  pub(super) columns: &'a [TableColumn],
-  /// 確定済み列幅
-  pub(super) col_widths: &'a [Length],
-  /// セル内側余白（左右各）
-  pub(super) cell_padding: Length,
-  /// 横罫線の太さ
-  pub(super) rule_thickness: Length,
-  /// 横罫線の色（RGB）。`None` は黒
-  pub(super) rule_color: Option<[u8; 3]>,
-  /// 段幅の中で表を揃えるための段内オフセット（全幅の表では 0）
-  pub(super) align_offset: Length,
-}
-
-/// ページ内の着地段が確定するまで保持する表の 1 行
-pub(super) struct PendingTableRow {
-  /// シェーピング済みの行内容（行帯の高さ・ベースライン位置を含む）
-  pub(super) row: TableRowBox,
-  /// 行帯のページ上端からの距離
-  pub(super) top_y: Length,
-  /// `\head` 行か
-  pub(super) is_head: bool,
-}
-
 /// 現在ページの配置台帳
 pub(super) struct PageDraft {
   /// 配置順台帳
@@ -190,59 +161,35 @@ impl PageDraft {
     self.push_block(block, anchors, Vec::new());
   }
 
-  /// 表の断片（このリージョンに描く行の並び）を段オフセット `column_x` に置いた。行ごとにセル内容・
-  /// リンク・罫線の絶対座標を確定し、1 つの `PlacedBlock::Table` として積む。空の断片は何も積まず、
-  /// 未解決アンカーも消費しない
+  /// 表の断片（このリージョンに描く行断片と、それぞれの行帯上端の y）を段オフセット `column_x` に置いた。
+  /// 行断片は表左端を `column_x + align_offset` に置いて 1 つの `PlacedBlock::Table` として積み、リンク矩形・
+  /// 索引語は断片が持つものをこのページへ移す。空の断片は何も積まず、未解決アンカーも消費しない
   ///
-  /// 未解決アンカー（`\ref{tab:...}` の到達先）は先頭行の上端 `(column_x, rows[0].top_y)` で解決する。
-  /// 先頭行が現在リージョンに収まらず空断片のあと次リージョンへ送られる場合、アンカーはその
+  /// 未解決アンカー（`\ref{tab:...}` の到達先）は揃えオフセットを含まない先頭行の上端 `(column_x, 先頭行の y)` で
+  /// 解決する。先頭行が現在リージョンに収まらず空断片のあと次リージョンへ送られる場合、アンカーはその
   /// 次リージョンで着地する最初の断片で解決される。表は空でない（frontend が空の表を拒否する）
-  /// ので、どの表も少なくとも 1 つの空でない断片を着地させる。
-  ///
-  /// 索引語は `\head` 行を除いて集める（改ページのたびに再描画される複製なので、同じ語をページごとに
-  /// 積まない）。リンクは head 行も含めて全行から集める（再描画のたびにクリック矩形が要る）。
-  pub(super) fn place_table_fragment(&mut self, rows: Vec<PendingTableRow>, frame: &TableFrame<'_>, column_x: Length) {
-    let Some(first_top_y) = rows.first().map(|pending| return pending.top_y) else {
+  /// ので、どの表も少なくとも 1 つの空でない断片を着地させる。再掲ヘッダの索引語の重複除去は表エンジンが
+  /// 済ませている（再掲用の断片は索引語を持たない）。
+  pub(super) fn place_table_fragment(
+    &mut self,
+    rows: Vec<(TableRowFragment, Length)>,
+    column_x: Length,
+    align_offset: Length,
+  ) {
+    let Some(&(_, first_top_y)) = rows.first() else {
       return;
     };
     let anchors = self.take_pending_anchors(column_x, first_top_y);
-    let x = column_x + frame.align_offset;
-    let table_width: Length = frame.col_widths.iter().copied().sum();
-    for pending in rows.iter().filter(|pending| return !pending.is_head) {
-      for cell in pending.row.cells() {
-        for item in &cell.items {
-          if let HItem::IndexMark(term) = item {
-            self.push_index_entry(term);
-          }
-        }
-      }
-    }
+    let x = column_x + align_offset;
     let mut links = Vec::new();
     let mut placed_rows = Vec::with_capacity(rows.len());
-    for pending in rows {
-      let mut boxes = position_table_row_boxes(&pending.row, frame.columns, frame.col_widths, frame.cell_padding);
-      for placed in &mut boxes {
-        placed.dx += x;
+    for (fragment, top_y) in rows {
+      let (row, row_links, index_marks) = fragment.place(x, top_y);
+      for term in &index_marks {
+        self.push_index_entry(term);
       }
-      links.extend(
-        collect_row_links(&pending.row, frame.columns, frame.col_widths, frame.cell_padding)
-          .iter()
-          .filter_map(|link| return link.place(x, pending.top_y, pending.row.height())),
-      );
-      let rule = pending.row.rule_above().then_some(PlacedTableRule {
-        x,
-        y: pending.top_y,
-        width: table_width,
-        height: frame.rule_thickness,
-        color: frame.rule_color,
-      });
-      placed_rows.push(PlacedTableRow {
-        top_y: pending.top_y,
-        height: pending.row.height(),
-        baseline_y: pending.top_y + pending.row.baseline(),
-        boxes,
-        rule,
-      });
+      links.extend(row_links);
+      placed_rows.push(row);
     }
     self.push_block(PlacedBlock::Table { rows: placed_rows }, anchors, links);
   }
@@ -497,9 +444,9 @@ fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
 
 #[cfg(test)]
 mod tests {
-  use super::{PageDraft, PendingTableRow, TableFrame};
+  use super::PageDraft;
   use crate::{
-    document::{ColumnAlign, ColumnWidth, NodeId},
+    document::NodeId,
     length::Length,
     project::{FontType, ProjectPath},
     publication::GlyphRun,
@@ -507,8 +454,8 @@ mod tests {
     source::SourceId,
     typeset::{
       boxes::{
-        AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, TableCellBox,
-        TableColumn, TableRowBox,
+        AnchorId, HBox, HBoxContent, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, PlacedHBox,
+        PlacedTableRow, TableRowFragment,
       },
       breaking::break_pages::PendingFootnote,
       geometry::PageGeometry,
@@ -524,7 +471,6 @@ mod tests {
       content_origin_x: Length::ZERO,
       margin_top: pt(10.0),
       page_limit: pt(50.0),
-      table_cell_padding: pt(2.0),
       num_columns: 1,
       column_gap: Length::ZERO,
       flush_bottom: true,
@@ -533,8 +479,6 @@ mod tests {
       footnote_rule_thickness: Length::ZERO,
       footnote_rule_color: None,
       footnote_rule_gap: pt(4.0),
-      table_rule_thickness: Length::ZERO,
-      table_rule_color: None,
       background_color: None,
     };
   }
@@ -772,30 +716,42 @@ mod tests {
     assert!(page.links.is_empty(), "{:?}", page.links);
   }
 
-  /// 1 列 1 セル、テキスト箱 1 つと索引語 `word` を持つ表の行を作る
-  fn row_with_index(word: &str) -> TableRowBox {
-    let cell = TableCellBox {
-      items: vec![
-        HItem::Box(HBox {
-          content: HBoxContent::Glyphs(GlyphRun {
-            font_size: pt(10.0),
-            text: "x".to_string(),
-            glyphs: Vec::new(),
-            font_type: FontType::Serif,
-            color: None,
-          }),
-          width: pt(20.0),
-          height: pt(10.0),
-          depth: Length::ZERO,
-        }),
-        HItem::IndexMark(IndexTerm {
-          word: word.to_string(),
-          reading: None,
-        }),
-      ],
-      column_span: 1,
+  /// 幅 20・高さ 10 の箱を表左端 + 余白 2 に置いた、行帯 10・ベースライン 10 の表の行断片。`word` があれば索引語を持つ
+  fn table_row(word: Option<&str>) -> TableRowFragment {
+    return TableRowFragment {
+      row: PlacedTableRow {
+        top_y: Length::ZERO,
+        height: pt(10.0),
+        baseline_y: pt(10.0),
+        boxes: vec![PlacedHBox {
+          hbox: HBox {
+            content: HBoxContent::Glyphs(GlyphRun {
+              font_size: pt(10.0),
+              text: "x".to_string(),
+              glyphs: Vec::new(),
+              font_type: FontType::Serif,
+              color: None,
+            }),
+            width: pt(20.0),
+            height: pt(10.0),
+            depth: Length::ZERO,
+          },
+          dx: pt(2.0),
+          dy: Length::ZERO,
+        }],
+        rule: None,
+      },
+      links: Vec::new(),
+      index_marks: word
+        .map(|word| {
+          return IndexTerm {
+            word: word.to_string(),
+            reading: None,
+          };
+        })
+        .into_iter()
+        .collect(),
     };
-    return TableRowBox::new(vec![cell], false, pt(10.0), 1.0);
   }
 
   #[test]
@@ -803,38 +759,14 @@ mod tests {
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.place_line(line(None, Some("語")), pt(10.0), Length::ZERO);
-    let columns = vec![TableColumn {
-      align: ColumnAlign::Left,
-      width: ColumnWidth::Auto,
-    }];
-    let col_widths = vec![pt(30.0)];
-    let frame = TableFrame {
-      columns: &columns,
-      col_widths: &col_widths,
-      cell_padding: pt(2.0),
-      rule_thickness: Length::ZERO,
-      rule_color: None,
-      align_offset: Length::ZERO,
-    };
+    // 先頭は再掲ヘッダの断片（表エンジンが索引語を除いている）
     draft.place_table_fragment(
       vec![
-        PendingTableRow {
-          row: row_with_index("ヘッダ語"),
-          top_y: pt(22.0),
-          is_head: true,
-        },
-        PendingTableRow {
-          row: row_with_index("語"),
-          top_y: pt(32.0),
-          is_head: false,
-        },
-        PendingTableRow {
-          row: row_with_index("表語"),
-          top_y: pt(42.0),
-          is_head: false,
-        },
+        (table_row(None), pt(22.0)),
+        (table_row(Some("語")), pt(32.0)),
+        (table_row(Some("表語")), pt(42.0)),
       ],
-      &frame,
+      Length::ZERO,
       Length::ZERO,
     );
     let mut in_footnote = footnote(0, "F", false);
@@ -846,7 +778,7 @@ mod tests {
     draft.close_region(&geom, Length::ZERO, pt(36.0), false, vec![in_footnote]);
     let page = draft.take_page(&geom);
 
-    // head の語は集めず、「語」は初出 1 件、順序は出現順
+    // 「語」は初出 1 件、順序は出現順
     let words: Vec<&str> = page.index_entries.iter().map(|e| return e.word.as_str()).collect();
     assert_eq!(words, vec!["語", "表語"]);
   }
@@ -884,35 +816,13 @@ mod tests {
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
-    let columns = vec![TableColumn {
-      align: ColumnAlign::Left,
-      width: ColumnWidth::Auto,
-    }];
-    let col_widths = vec![pt(30.0)];
-    let frame = TableFrame {
-      columns: &columns,
-      col_widths: &col_widths,
-      cell_padding: pt(2.0),
-      rule_thickness: Length::ZERO,
-      rule_color: None,
-      align_offset: pt(5.0),
-    };
-
     draft.place_table_fragment(
       vec![
-        PendingTableRow {
-          row: row_with_index("R0"),
-          top_y: pt(22.0),
-          is_head: false,
-        },
-        PendingTableRow {
-          row: row_with_index("R1"),
-          top_y: pt(32.0),
-          is_head: false,
-        },
+        (table_row(Some("R0")), pt(22.0)),
+        (table_row(Some("R1")), pt(32.0)),
       ],
-      &frame,
       pt(55.0),
+      pt(5.0),
     );
     let page = draft.take_page(&geom);
 
@@ -930,18 +840,8 @@ mod tests {
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
-    let columns: Vec<TableColumn> = Vec::new();
-    let col_widths: Vec<Length> = Vec::new();
-    let frame = TableFrame {
-      columns: &columns,
-      col_widths: &col_widths,
-      cell_padding: Length::ZERO,
-      rule_thickness: Length::ZERO,
-      rule_color: None,
-      align_offset: Length::ZERO,
-    };
 
-    draft.place_table_fragment(Vec::new(), &frame, Length::ZERO);
+    draft.place_table_fragment(Vec::new(), Length::ZERO, Length::ZERO);
     assert!(!draft.has_content(), "空断片は内容にならない");
     draft.place_block(image(30.0, 10.0), pt(7.0), pt(30.0));
     let page = draft.take_page(&geom);

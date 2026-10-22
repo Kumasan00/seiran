@@ -3,13 +3,13 @@
 //!
 //! **不変条件**: `pub(crate)` の関数・メソッドは引数型にも返り値型にも、`typeset` root が `#[cfg(test)]` でも
 //! 再エクスポートしない組版中間型（`HBox` / `Line` / `PlacedHBox` / `PlacedBlock` 以外の `Placed*` /
-//! `TableRowBox` / `TableCellBox` / `OutlineEntry`）を現さない。
+//! `TableBox` / `TableRowFragment` / `OutlineEntry`）を現さない。
 
 use std::collections::HashMap;
 
 use super::{lay_out, load_fonts};
 use crate::{
-  document::{ColumnAlign, ColumnWidth, HeadingLevel},
+  document::HeadingLevel,
   length::Length,
   project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::GlyphRun,
@@ -18,9 +18,8 @@ use crate::{
   typeset::{
     ComposeError, PreparedGeometry,
     boxes::{
-      AnchorId, HBox, HBoxContent, HItem, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-      PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableCellBox, TableColumn,
-      TableRowBox, position_table_row_boxes,
+      AnchorId, HBox, HBoxContent, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
+      PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
     },
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -70,10 +69,14 @@ impl BoxSize {
   }
 }
 
-/// 表の 1 行の指定（行帯の高さ・ベースラインは本番と同じ `TableRowBox::new` が決める）
+/// 表の 1 行の指定（行帯は表エンジンが決める値を直接与える）
 pub(super) struct TableRowSpec {
   /// 行帯上端のページ上端からの距離
   pub(crate) top_y: Length,
+  /// 行帯の高さ
+  pub(crate) height: Length,
+  /// 行帯上端からベースラインまでの距離
+  pub(crate) baseline: Length,
   /// この行の上に横罫線を引くか
   pub(crate) rule_above: bool,
   /// セルごとのグリフ列（内側 `Vec` が 1 セルの内容、各要素が 1 ボックス）
@@ -247,7 +250,7 @@ pub(crate) fn math_block(
   };
 }
 
-/// 表ブロックを作る
+/// 表ブロックを作る（すべての列は左揃えで、セルの箱は `x + 列左端 + cell_padding` から左詰めに並ぶ）
 pub(crate) fn table_block(
   x: Length,
   col_widths: &[Length],
@@ -256,35 +259,26 @@ pub(crate) fn table_block(
   rule_thickness: Length,
   rule_color: Option<[u8; 3]>,
 ) -> PlacedBlock {
-  let columns: Vec<TableColumn> = col_widths
-    .iter()
-    .map(|_| {
-      return TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      };
-    })
-    .collect();
   let placed_rows: Vec<PlacedTableRow> = rows
     .into_iter()
     .map(|spec| {
-      let cells: Vec<TableCellBox> = spec
-        .cells
-        .into_iter()
-        .map(|boxes| {
-          return TableCellBox {
-            items: boxes.into_iter().map(|(run, size)| return HItem::Box(glyph_box(run, size))).collect(),
-            column_span: 1,
-          };
-        })
-        .collect();
-      // 既定フォントサイズは `glyph_run` と同じ 10pt、行高係数 1
-      let row = TableRowBox::new(cells, spec.rule_above, Length::pt(10.0), 1.0);
-      let mut boxes = position_table_row_boxes(&row, &columns, col_widths, cell_padding);
-      for placed in &mut boxes {
-        placed.dx += x;
+      let mut boxes = Vec::new();
+      let mut column_x = x;
+      for (cell, column_width) in spec.cells.into_iter().zip(col_widths) {
+        let mut cursor = column_x + cell_padding;
+        for (run, size) in cell {
+          let hbox = glyph_box(run, size);
+          let width = hbox.width;
+          boxes.push(PlacedHBox {
+            hbox,
+            dx: cursor,
+            dy: Length::ZERO,
+          });
+          cursor += width;
+        }
+        column_x += *column_width;
       }
-      let rule = row.rule_above().then_some(PlacedTableRule {
+      let rule = spec.rule_above.then_some(PlacedTableRule {
         x,
         y: spec.top_y,
         width: col_widths.iter().copied().sum(),
@@ -293,8 +287,8 @@ pub(crate) fn table_block(
       });
       return PlacedTableRow {
         top_y: spec.top_y,
-        height: row.height(),
-        baseline_y: spec.top_y + row.baseline(),
+        height: spec.height,
+        baseline_y: spec.top_y + spec.baseline,
         boxes,
         rule,
       };

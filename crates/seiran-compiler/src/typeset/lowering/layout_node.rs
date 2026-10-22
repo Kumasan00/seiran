@@ -2,11 +2,11 @@
 
 use crate::{
   color::Color,
-  document::{MathClass, MathSpace, NodeId, TextAlignment, Typeface},
+  document::{ColumnAlign, ColumnWidth, MathClass, MathSpace, NodeId, TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
   typeset::{
-    boxes::{Align, AnchorId, IndexTerm, LinkTarget, TableColumn},
+    boxes::{Align, AnchorId, IndexTerm, LinkTarget},
     font::ScriptLevel,
   },
 };
@@ -162,6 +162,21 @@ pub(in crate::typeset) struct TableLayout {
   pub rows: Vec<TableRowLayout>,
   /// 改ページによる分割を許可するか
   pub breakable: bool,
+  /// セルの内側余白（左右各。`[table].cell_padding`）
+  pub cell_padding: Length,
+  /// 横罫線の太さ（`[table].rule_thickness`）
+  pub rule_thickness: Length,
+  /// 横罫線の色（RGB。`None` は黒）
+  pub rule_color: Option<[u8; 3]>,
+}
+
+/// 表の 1 列の定義（揃え + 幅指定）
+#[derive(Debug, Clone, Copy)]
+pub(in crate::typeset) struct TableColumn {
+  /// セル内容の揃え方向
+  pub align: ColumnAlign,
+  /// 列幅の指定方法
+  pub width: ColumnWidth,
 }
 
 /// 表の 1 行の物理レイアウト表現

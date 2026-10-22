@@ -1,371 +1,84 @@
-//! シェーピング済みの表ボックスと計測関数。
+//! 表エンジン（`typeset::boxing::table`）が組んだ表 — 列幅・セル配置・罫線を確定した行断片の列。
 //!
-//! セル内容は計測済みの [`HItem`] 列として保持されるため、列幅・行高・セル内 x 座標の算出は
-//! フォントに触れない純粋関数になる。
+//! 行断片は表左端・行帯上端を原点に持ち、配置は着地点を [`TableRowFragment::place`] で足すだけで、
+//! 列幅・セル余白・罫線・再掲ヘッダの付随情報の規則を知らない。
 
 use crate::{
-  document::{ColumnAlign, ColumnWidth},
   length::Length,
   typeset::boxes::{
-    hitem::{HBoxContent, HItem, PlacedHBox},
+    hitem::IndexTerm,
     line::LineLink,
-    link::LinkTarget,
+    page::{PlacedLink, PlacedTableRow},
   },
 };
 
-/// 表の 1 列の定義（揃え + 幅指定）
-#[derive(Debug, Clone, Copy)]
-pub(in crate::typeset) struct TableColumn {
-  /// セル内容の揃え方向
-  pub align: ColumnAlign,
-  /// 列幅の指定方法
-  pub width: ColumnWidth,
-}
-
-/// 表ボックス（シェーピング済みの表全体）
+/// 表エンジンが組んだ表（列幅を確定した行断片の列）
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableBox {
-  /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
-  pub columns: Vec<TableColumn>,
-  /// ヘッダ行。改ページ時にページ先頭へ再描画される
-  pub head: Vec<TableRowBox>,
+  /// 表の幅（確定した列幅の総和）
+  pub width: Length,
+  /// 初出のヘッダ行
+  pub head: Vec<TableRowFragment>,
+  /// 改段・改ページ後の先頭へ再掲するヘッダ行（`head` の複製から索引語を除いたもの。リンクは持つ）
+  pub repeated_head: Vec<TableRowFragment>,
   /// 本体行
-  pub rows: Vec<TableRowBox>,
+  pub rows: Vec<TableRowFragment>,
   /// 改ページによる分割を許可するか
   pub breakable: bool,
 }
 
-/// 表の 1 行（シェーピング済み）。行帯は [`TableRowBox::new`] が構築時に確定する
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct TableRowBox {
-  /// 行内のセル
-  cells: Vec<TableCellBox>,
-  /// この行の上に横罫線を引くか
-  rule_above: bool,
-  /// 行帯の高さ
-  height: Length,
-  /// 行帯上端からセル内容が共有するベースラインまでの距離
-  baseline: Length,
-}
-
-/// 表の 1 セル（シェーピング済み）
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct TableCellBox {
-  /// セル内容のアイテム列（`Box` / `Kern` / `Glue` が主だが、`\ref`/`\url`/`\href` を
-  /// 含む場合は `LinkStart`/`LinkEnd` も現れる。行分割・ページ分割はセル内では無効）
-  pub items: Vec<HItem>,
-  /// 列方向の結合数（1 以上）
-  pub column_span: u32,
-}
-
-impl TableRowBox {
-  /// セル列から行を作り、行帯の高さとベースライン位置を確定する
-  ///
-  /// 行帯の高さは本文の行送りと同じ `max(F × line_height_factor, h + d)`。F は行内の最大フォントサイズ（テキストが
-  /// 無ければ `default_font_size`）、h / d は [`position_table_row_boxes`] が描く箱（`HItem::Box`）の高さ・深さの
-  /// 最大値。余り `高さ − (h + d)` は上下へ等分するので、ベースラインは行帯上端から `h + 余り / 2` にあり、描く箱は
-  /// 行帯の上端と下端の間に収まる。
+impl TableBox {
+  /// ヘッダ行と本体行の行帯の高さの和（再掲ヘッダを含まない、分割しないときの高さ）
   #[must_use]
-  pub(in crate::typeset) fn new(
-    cells: Vec<TableCellBox>,
-    rule_above: bool,
-    default_font_size: Length,
-    line_height_factor: f32,
-  ) -> Self {
-    let font_size = cells
-      .iter()
-      .filter_map(|cell| return max_font_size_in_items(&cell.items))
-      .reduce(Length::max)
-      .unwrap_or(default_font_size);
-    let (ascent, descent) = cells
-      .iter()
-      .flat_map(|cell| return cell.items.iter())
-      .filter_map(|item| match item {
-        // `position_table_row_boxes` が描く箱だけを数える（描かないアイテムが行帯を広げない）
-        HItem::Box(hbox) => return Some(hbox),
-        HItem::Glue { .. }
-        | HItem::Kern(_)
-        | HItem::MathBreak { .. }
-        | HItem::Penalty { .. }
-        | HItem::Discretionary { .. }
-        | HItem::ForcedBreak
-        | HItem::LinkStart(_)
-        | HItem::LinkEnd
-        | HItem::FlushRight(_)
-        | HItem::Footnote(_)
-        | HItem::IndexMark(_) => return None,
-      })
-      .fold((Length::ZERO, Length::ZERO), |(ascent, descent), hbox| {
-        return (ascent.max(hbox.height), descent.max(hbox.depth));
-      });
-    let height = (font_size * line_height_factor).max(ascent + descent);
-    let baseline = ascent + (height - ascent - descent) / 2.0;
-    return TableRowBox {
-      cells,
-      rule_above,
-      height,
-      baseline,
-    };
+  pub(in crate::typeset) fn height(&self) -> Length {
+    return self.head.iter().chain(&self.rows).map(TableRowFragment::height).sum();
   }
+}
 
-  /// 行内のセル
-  #[must_use]
-  pub(in crate::typeset) fn cells(&self) -> &[TableCellBox] { return &self.cells; }
+/// 表の 1 行の断片 — 表左端・行帯上端を原点とする確定済みの描画内容と付随情報
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct TableRowFragment {
+  /// 原点を表左端・行帯上端に置いた行（`top_y` は 0、罫線は `x` = `y` = 0）
+  pub row: PlacedTableRow,
+  /// セル内のリンク領域（表左端からの水平範囲）
+  pub links: Vec<LineLink>,
+  /// セル内の索引語（左のセルから出現順）
+  pub index_marks: Vec<IndexTerm>,
+}
 
-  /// この行の上に横罫線を引くか
-  #[must_use]
-  pub(in crate::typeset) fn rule_above(&self) -> bool { return self.rule_above; }
-
+impl TableRowFragment {
   /// 行帯の高さ
   #[must_use]
-  pub(in crate::typeset) fn height(&self) -> Length { return self.height; }
+  pub(in crate::typeset) fn height(&self) -> Length { return self.row.height; }
 
-  /// 行帯上端からセル内容が共有するベースラインまでの距離
+  /// 表左端を `x`、行帯上端を `top_y` に置いた行と、そのリンク矩形（退化矩形は除く）・索引語を返す
   #[must_use]
-  pub(in crate::typeset) fn baseline(&self) -> Length { return self.baseline; }
-}
-
-/// アイテム列の自然幅を返す
-#[must_use]
-fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
-
-/// アイテム列に含まれるテキストの最大フォントサイズを返す（テキストがなければ `None`）
-#[must_use]
-pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
-  return items
-    .iter()
-    .filter_map(|item| match item {
-      HItem::Box(hbox) | HItem::FlushRight(hbox) => return max_font_size_in_content(&hbox.content),
-      // グリフを内包しないアイテムはフォントサイズを持たない。`Discretionary` のハイフン箱と
-      // `Footnote` の本体はセルの支配的サイズには数えない（行送りは本文側で決まる）。
-      HItem::Glue { .. }
-      | HItem::Kern(_)
-      | HItem::MathBreak { .. }
-      | HItem::Penalty { .. }
-      | HItem::Discretionary { .. }
-      | HItem::ForcedBreak
-      | HItem::LinkStart(_)
-      | HItem::LinkEnd
-      | HItem::Footnote(_)
-      | HItem::IndexMark(_) => return None,
-    })
-    .reduce(Length::max);
-}
-
-/// ボックス内容に含まれるテキストの最大フォントサイズを返す
-fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
-  return match content {
-    HBoxContent::Glyphs(run) => Some(run.font_size),
-    HBoxContent::Atom(children) => children
-      .iter()
-      .filter_map(|child| return max_font_size_in_content(&child.hbox.content))
-      .reduce(Length::max),
-    HBoxContent::Rule { .. } => None,
-  };
-}
-
-/// 列幅を解決する
-///
-/// 1. `column_span = 1` のセルの自然幅（内容実測 + 左右 padding）で各列の自然幅を求める
-/// 2. `column_span > 1` のセルは、跨ぐ列の自然幅合計が不足する場合に均等に加算する
-/// 3. 列指定を適用する: `Fixed` は指定値、`Ratio` は本文幅比、`Auto` は自然幅、
-///    `Flex`（`*`）は残り幅の等分（自然幅を下回る場合は自然幅）
-///
-/// 合計が本文幅を超える場合の縮小は行わない（セル折り返し未対応のため、はみ出しを許容する）。
-#[must_use]
-pub(crate) fn resolve_column_widths(table: &TableBox, available: Length, padding: Length) -> Vec<Length> {
-  let column_count = table.columns.len();
-  let mut naturals = vec![Length::ZERO; column_count];
-
-  for row in table.head.iter().chain(table.rows.iter()) {
-    let mut column_index = 0usize;
-    for cell in &row.cells {
-      let column_span = cell.column_span as usize;
-      if column_span == 1 && column_index < column_count {
-        let width = measure_items_width(&cell.items) + padding * 2;
-        naturals[column_index] = naturals[column_index].max(width);
-      }
-      column_index += column_span;
+  pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> (PlacedTableRow, Vec<PlacedLink>, Vec<IndexTerm>) {
+    let TableRowFragment {
+      mut row,
+      links,
+      index_marks,
+    } = self;
+    row.top_y += top_y;
+    row.baseline_y += top_y;
+    for placed in &mut row.boxes {
+      placed.dx += x;
     }
-  }
-  for row in table.head.iter().chain(table.rows.iter()) {
-    let mut column_index = 0usize;
-    for cell in &row.cells {
-      let column_span = cell.column_span as usize;
-      if column_span > 1 && column_index + column_span <= column_count {
-        let width = measure_items_width(&cell.items) + padding * 2;
-        let current: Length = naturals[column_index..column_index + column_span].iter().sum();
-        if width > current {
-          #[expect(clippy::cast_precision_loss, reason = "`column_span` は列数で、f32 の仮数部に収まる小さな整数")]
-          let extra = (width - current) / column_span as f32;
-          for natural in &mut naturals[column_index..column_index + column_span] {
-            *natural += extra;
-          }
-        }
-      }
-      column_index += column_span;
+    if let Some(rule) = &mut row.rule {
+      rule.x += x;
+      rule.y += top_y;
     }
+    let placed_links = links.iter().filter_map(|link| return link.place(x, row.top_y, row.height)).collect();
+    return (row, placed_links, index_marks);
   }
-
-  let mut widths = vec![Length::ZERO; column_count];
-  let mut flex_indices: Vec<usize> = Vec::new();
-  let mut used = Length::ZERO;
-  for (i, column) in table.columns.iter().enumerate() {
-    match column.width {
-      ColumnWidth::Fixed(length) => {
-        widths[i] = length;
-        used += widths[i];
-      },
-      ColumnWidth::Ratio(ratio) => {
-        widths[i] = available * ratio;
-        used += widths[i];
-      },
-      ColumnWidth::Auto => {
-        widths[i] = naturals[i].max(padding * 2);
-        used += widths[i];
-      },
-      ColumnWidth::Flex => flex_indices.push(i),
-    }
-  }
-  if !flex_indices.is_empty() {
-    #[expect(clippy::cast_precision_loss, reason = "flex 列の本数は f32 の仮数部に収まる小さな整数")]
-    let share = ((available - used) / flex_indices.len() as f32).max(Length::ZERO);
-    for i in flex_indices {
-      widths[i] = share.max(naturals[i]);
-    }
-  }
-  return widths;
-}
-
-/// 1 行の各セルと内容開始位置（表左端からの相対 x）
-struct CellPlacement<'a> {
-  /// 対象のセル
-  cell: &'a TableCellBox,
-  /// 内容の開始位置（表左端からの相対 x。揃え + padding 適用済み）
-  content_x: Length,
-}
-
-/// 1 行の各セルの内容開始位置を順に計算する
-///
-/// 列揃え（[`ColumnAlign`]）と内側余白から `content_x` を求める。
-#[must_use]
-fn layout_row_cells<'a>(
-  row: &'a TableRowBox,
-  columns: &[TableColumn],
-  col_widths: &[Length],
-  padding: Length,
-) -> Vec<CellPlacement<'a>> {
-  let mut column_index = 0usize;
-  let mut cell_x = Length::ZERO;
-  let mut placements = Vec::with_capacity(row.cells.len());
-  for cell in &row.cells {
-    let column_span = (cell.column_span as usize).min(col_widths.len().saturating_sub(column_index));
-    let band_width: Length = col_widths[column_index..column_index + column_span].iter().copied().sum();
-    let content_width = measure_items_width(&cell.items);
-    let align = columns.get(column_index).map_or(ColumnAlign::Left, |c| return c.align);
-    let content_x = match align {
-      ColumnAlign::Left => cell_x + padding,
-      ColumnAlign::Center => cell_x + (band_width - content_width) / 2.0,
-      ColumnAlign::Right => cell_x + band_width - padding - content_width,
-    };
-    placements.push(CellPlacement { cell, content_x });
-    cell_x += band_width;
-    column_index += column_span;
-  }
-  return placements;
-}
-
-/// 表の 1 行に含まれる描画対象の箱を、表左端からの相対 x 座標へ配置する
-///
-/// 列揃え・padding・`Kern` / `Glue` のカーソル前進はこの時点ですべて解決する。リンク・索引・脚注の
-/// marker は描画箱に含めない。
-#[must_use]
-pub(crate) fn position_table_row_boxes(
-  row: &TableRowBox,
-  columns: &[TableColumn],
-  col_widths: &[Length],
-  padding: Length,
-) -> Vec<PlacedHBox> {
-  let mut boxes = Vec::new();
-  for placement in layout_row_cells(row, columns, col_widths, padding) {
-    let mut cursor = placement.content_x;
-    for item in &placement.cell.items {
-      match item {
-        HItem::Box(hbox) => {
-          boxes.push(PlacedHBox {
-            hbox: hbox.clone(),
-            dx: cursor,
-            dy: Length::ZERO,
-          });
-          cursor += hbox.width;
-        },
-        HItem::Kern(value) => cursor += *value,
-        HItem::MathBreak { spacing, .. } => cursor += *spacing,
-        HItem::Glue { natural, .. } => cursor += *natural,
-        HItem::Penalty { .. }
-        | HItem::Discretionary { .. }
-        | HItem::ForcedBreak
-        | HItem::LinkStart(_)
-        | HItem::LinkEnd
-        | HItem::FlushRight(_)
-        | HItem::Footnote(_)
-        | HItem::IndexMark(_) => {},
-      }
-    }
-  }
-  return boxes;
-}
-
-/// 1 行内のセルに含まれるリンク領域を、表左端を基準点とする [`LineLink`] として収集する
-///
-/// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
-/// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。
-#[must_use]
-pub(crate) fn collect_row_links(
-  row: &TableRowBox,
-  columns: &[TableColumn],
-  col_widths: &[Length],
-  padding: Length,
-) -> Vec<LineLink> {
-  let mut links = Vec::new();
-  for placement in layout_row_cells(row, columns, col_widths, padding) {
-    let mut cursor = placement.content_x;
-    let mut open: Vec<(LinkTarget, Length)> = Vec::new();
-    for item in &placement.cell.items {
-      match item {
-        HItem::LinkStart(target) => open.push((target.clone(), cursor)),
-        HItem::LinkEnd => {
-          if let Some((target, x0)) = open.pop() {
-            links.push(LineLink {
-              target,
-              x0,
-              x1: cursor,
-            });
-          }
-        },
-        _ => cursor += item.natural_width(),
-      }
-    }
-  }
-  return links;
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
-    position_table_row_boxes, resolve_column_widths,
-  };
+  use super::TableRowFragment;
   use crate::{
-    document::{ColumnAlign, ColumnWidth},
     length::Length,
-    project::FontType,
-    publication::GlyphRun,
-    semantics::LabelId,
-    typeset::boxes::{
-      hitem::{HBox, HBoxContent, HItem, PlacedHBox},
-      link::{AnchorId, LinkTarget},
-    },
+    typeset::boxes::{HBox, HBoxContent, IndexTerm, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, PlacedTableRule},
   };
 
   /// pt 値から `Length` を作る
@@ -374,474 +87,56 @@ mod tests {
   /// `Length` が pt 値 `expected` に一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
-  /// 指定幅・指定フォントサイズの Glyphs ボックスを作る
-  fn glyph_box(width: f32, font_size: f32) -> HItem {
-    return HItem::Box(HBox {
-      content: HBoxContent::Glyphs(GlyphRun {
-        font_size: pt(font_size),
-        text: "x".to_string(),
-        glyphs: Vec::new(),
-        font_type: FontType::Serif,
-        color: None,
-      }),
-      width: pt(width),
-      height: pt(font_size),
-      depth: Length::ZERO,
-    });
-  }
-
-  /// 指定幅の、テキストを含まないボックスを作る
-  fn text_free_box(width: f32) -> HItem {
-    return HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: pt(width),
-      height: pt(1.0),
-      depth: Length::ZERO,
-    });
-  }
-
-  /// テキストを含まない、指定の高さ・深さのボックスを作る
-  fn extent_box(height: f32, depth: f32) -> HItem {
-    return HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: pt(5.0),
-      height: pt(height),
-      depth: pt(depth),
-    });
-  }
-
-  /// `column_span = 1` のセルを作る
-  fn cell(items: Vec<HItem>) -> TableCellBox {
-    return TableCellBox {
-      items,
-      column_span: 1,
+  /// 外部 URI へのリンク領域を作る
+  fn link(x0: f32, x1: f32) -> LineLink {
+    return LineLink {
+      target: LinkTarget::External("https://example.com".to_string()),
+      x0: pt(x0),
+      x1: pt(x1),
     };
   }
 
-  /// `rule_above = false` の行を作る（既定フォントサイズ 10pt・行高係数 1）
-  fn row(cells: Vec<TableCellBox>) -> TableRowBox { return TableRowBox::new(cells, false, pt(10.0), 1.0); }
-
   #[test]
-  fn measure_items_width_is_additive() {
-    let items = vec![
-      text_free_box(10.0),
-      HItem::Glue {
-        natural: pt(5.0),
-        stretch: Length::ZERO,
-        shrink: Length::ZERO,
-        breakable: true,
+  fn place_moves_row_rule_and_links_to_the_landing_point() {
+    let fragment = TableRowFragment {
+      row: PlacedTableRow {
+        top_y: Length::ZERO,
+        height: pt(10.0),
+        baseline_y: pt(8.0),
+        boxes: vec![PlacedHBox {
+          hbox: HBox {
+            content: HBoxContent::Atom(Vec::new()),
+            width: pt(10.0),
+            height: pt(8.0),
+            depth: Length::ZERO,
+          },
+          dx: pt(2.0),
+          dy: Length::ZERO,
+        }],
+        rule: Some(PlacedTableRule {
+          x: Length::ZERO,
+          y: Length::ZERO,
+          width: pt(30.0),
+          height: pt(0.5),
+          color: None,
+        }),
       },
-      HItem::Kern(pt(3.0)),
-    ];
-
-    assert!(close(measure_items_width(&items), 18.0));
-    assert!(close(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), 0.0));
-  }
-
-  #[test]
-  fn max_font_size_in_items_returns_largest_text_size() {
-    let items = vec![
-      glyph_box(20.0, 10.0),
-      text_free_box(5.0),
-      glyph_box(20.0, 14.0),
-    ];
-
-    assert_eq!(max_font_size_in_items(&items), Some(pt(14.0)));
-  }
-
-  #[test]
-  fn max_font_size_in_items_none_without_text() {
-    assert_eq!(max_font_size_in_items(&[text_free_box(5.0)]), None);
-  }
-
-  #[test]
-  fn max_font_size_in_items_recurses_into_atom() {
-    let inner = HBox {
-      content: HBoxContent::Glyphs(GlyphRun {
-        font_size: pt(20.0),
-        text: "y".to_string(),
-        glyphs: Vec::new(),
-        font_type: FontType::Math,
-        color: None,
-      }),
-      width: pt(8.0),
-      height: pt(20.0),
-      depth: Length::ZERO,
-    };
-    let atom = HBox::atom(vec![PlacedHBox {
-      hbox: inner,
-      dx: Length::ZERO,
-      dy: Length::ZERO,
-    }]);
-
-    assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(pt(20.0)));
-  }
-
-  #[test]
-  fn row_band_keeps_the_leading_and_centers_short_content() {
-    // 中身は高さ 12・深さ 2 で計 14、行送り 12 × 1.5 = 18 に収まる。余り 4 を上下へ 2 ずつ
-    let row = TableRowBox::new(
-      vec![
-        cell(vec![glyph_box(10.0, 12.0)]),
-        cell(vec![extent_box(3.0, 2.0)]),
-      ],
-      false,
-      pt(9.0),
-      1.5,
-    );
-
-    assert!(close(row.height(), 18.0), "{row:?}");
-    assert!(close(row.baseline(), 14.0), "{row:?}");
-  }
-
-  #[test]
-  fn row_band_grows_to_the_content_extent() {
-    // 中身は高さ 14・深さ 7 で計 21、行送り 12 × 1.2 = 14.4 を超えるので行帯は中身に一致する
-    let row = TableRowBox::new(
-      vec![
-        cell(vec![glyph_box(10.0, 12.0)]),
-        cell(vec![extent_box(14.0, 7.0)]),
-      ],
-      false,
-      pt(9.0),
-      1.2,
-    );
-
-    assert!(close(row.height(), 21.0), "{row:?}");
-    assert!(close(row.baseline(), 14.0), "余りが無いのでベースラインは上端 + 高さ: {row:?}");
-  }
-
-  #[test]
-  fn row_band_without_text_uses_the_default_font_size() {
-    // テキストが無いので行送りは既定 9 × 2 = 18。中身は高さ 1 で、余り 17 を上下へ 8.5 ずつ
-    let row = TableRowBox::new(vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
-
-    assert!(close(row.height(), 18.0), "{row:?}");
-    assert!(close(row.baseline(), 9.5), "{row:?}");
-  }
-
-  #[test]
-  fn resolve_column_widths_fixed_auto_ratio() {
-    let table = TableBox {
-      columns: vec![
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Fixed(Length::pt(40.0)),
-        },
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Auto,
-        },
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Ratio(0.5),
-        },
-      ],
-      head: Vec::new(),
-      rows: vec![row(vec![
-        cell(vec![text_free_box(5.0)]),
-        cell(vec![text_free_box(30.0)]),
-        cell(vec![text_free_box(5.0)]),
-      ])],
-      breakable: true,
-    };
-    let widths = resolve_column_widths(&table, pt(200.0), pt(2.0));
-    assert!(close(widths[0], 40.0), "Fixed: {widths:?}");
-    assert!(close(widths[1], 34.0), "Auto=内容+2*padding: {widths:?}");
-    assert!(close(widths[2], 100.0), "Ratio=比*available: {widths:?}");
-  }
-
-  #[test]
-  fn resolve_column_widths_flex_shares_remaining() {
-    let table = TableBox {
-      columns: vec![
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Auto,
-        },
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Flex,
-        },
-      ],
-      head: Vec::new(),
-      rows: vec![row(vec![
-        cell(vec![text_free_box(20.0)]),
-        cell(vec![text_free_box(10.0)]),
-      ])],
-      breakable: true,
-    };
-    let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
-    assert!(close(widths[0], 20.0), "{widths:?}");
-    assert!(close(widths[1], 80.0), "Flex=残り幅の等分: {widths:?}");
-  }
-
-  #[test]
-  fn resolve_column_widths_flex_never_below_natural() {
-    let table = TableBox {
-      columns: vec![
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Auto,
-        },
-        TableColumn {
-          align: ColumnAlign::Left,
-          width: ColumnWidth::Flex,
-        },
-      ],
-      head: Vec::new(),
-      rows: vec![row(vec![
-        cell(vec![text_free_box(90.0)]),
-        cell(vec![text_free_box(40.0)]),
-      ])],
-      breakable: true,
-    };
-    let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
-    assert!(close(widths[1], 40.0), "Flex は自然幅を下回らない: {widths:?}");
-  }
-
-  #[test]
-  fn collect_row_links_single_link_fills_cell() {
-    let target = LinkTarget::External("https://example.com".to_string());
-    let row = row(vec![cell(vec![
-      HItem::LinkStart(target.clone()),
-      text_free_box(20.0),
-      HItem::LinkEnd,
-    ])]);
-    let col_widths = vec![pt(30.0)];
-
-    let links = collect_row_links(
-      &row,
-      &[TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
+      links: vec![link(2.0, 12.0), link(5.0, 5.0)],
+      index_marks: vec![IndexTerm {
+        word: "w".to_string(),
+        reading: None,
       }],
-      &col_widths,
-      pt(2.0),
-    );
-
-    assert_eq!(links.len(), 1);
-    assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 2.0));
-    assert!(close(links[0].x1, 22.0));
-  }
-
-  #[test]
-  fn position_table_row_boxes_resolves_alignment_and_spacing() {
-    let row = row(vec![cell(vec![
-      text_free_box(5.0),
-      HItem::Kern(pt(3.0)),
-      HItem::Glue {
-        natural: pt(2.0),
-        stretch: Length::ZERO,
-        shrink: Length::ZERO,
-        breakable: false,
-      },
-      text_free_box(4.0),
-    ])]);
-    let columns = vec![TableColumn {
-      align: ColumnAlign::Right,
-      width: ColumnWidth::Auto,
-    }];
-
-    let boxes = position_table_row_boxes(&row, &columns, &[pt(30.0)], pt(2.0));
-
-    assert_eq!(boxes.len(), 2);
-    assert!(close(boxes[0].dx, 14.0), "右揃えの先頭 x: {boxes:?}");
-    assert!(close(boxes[1].dx, 24.0), "box + kern + glue 後の x: {boxes:?}");
-  }
-
-  #[test]
-  fn collect_row_links_multiple_links_in_one_cell() {
-    let first = LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:1")));
-    let second = LinkTarget::External("https://example.com".to_string());
-    let row = row(vec![cell(vec![
-      HItem::LinkStart(first.clone()),
-      text_free_box(5.0),
-      HItem::LinkEnd,
-      text_free_box(3.0),
-      HItem::LinkStart(second.clone()),
-      text_free_box(5.0),
-      HItem::LinkEnd,
-    ])]);
-    let col_widths = vec![pt(30.0)];
-    let columns = vec![TableColumn {
-      align: ColumnAlign::Left,
-      width: ColumnWidth::Auto,
-    }];
-
-    let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
-
-    assert_eq!(links.len(), 2);
-    assert_eq!(links[0].target, first);
-    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 5.0));
-    assert_eq!(links[1].target, second);
-    assert!(close(links[1].x0, 8.0) && close(links[1].x1, 13.0));
-  }
-
-  #[test]
-  fn collect_row_links_ignores_unbalanced_link_end() {
-    let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("x")));
-    let row = row(vec![cell(vec![
-      HItem::LinkStart(target.clone()),
-      HItem::LinkEnd,
-      HItem::LinkEnd,
-    ])]);
-    let col_widths = vec![pt(30.0)];
-    let columns = vec![TableColumn {
-      align: ColumnAlign::Left,
-      width: ColumnWidth::Auto,
-    }];
-
-    let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
-
-    assert_eq!(links.len(), 1);
-    assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 0.0));
-  }
-
-  #[test]
-  fn collect_row_links_respects_column_alignment() {
-    let target = LinkTarget::External("https://example.com".to_string());
-    let row = row(vec![cell(vec![
-      HItem::LinkStart(target),
-      text_free_box(10.0),
-      HItem::LinkEnd,
-    ])]);
-    let col_widths = vec![pt(30.0)];
-    let columns = vec![TableColumn {
-      align: ColumnAlign::Right,
-      width: ColumnWidth::Auto,
-    }];
-    let links = collect_row_links(&row, &columns, &col_widths, pt(2.0));
-    assert!(close(links[0].x0, 18.0) && close(links[0].x1, 28.0), "{links:?}");
-  }
-
-  #[test]
-  fn resolve_column_widths_spreads_span_shortfall_evenly() {
-    // 跨ぐ列の自然幅を 12 / 22 と不揃いにし、均等配分と比例配分を区別する。span セルは列 1 から始める
-    let auto = TableColumn {
-      align: ColumnAlign::Left,
-      width: ColumnWidth::Auto,
-    };
-    let table = TableBox {
-      columns: vec![auto, auto, auto],
-      head: Vec::new(),
-      rows: vec![
-        row(vec![
-          cell(vec![text_free_box(5.0)]),
-          cell(vec![text_free_box(10.0)]),
-          cell(vec![text_free_box(20.0)]),
-        ]),
-        row(vec![
-          cell(vec![text_free_box(5.0)]),
-          TableCellBox {
-            items: vec![text_free_box(50.0)],
-            column_span: 2,
-          },
-        ]),
-      ],
-      breakable: true,
     };
 
-    let widths = resolve_column_widths(&table, pt(200.0), pt(1.0));
+    let (row, links, marks) = fragment.place(pt(5.0), pt(40.0));
 
-    assert!(close(widths[0], 7.0), "span が跨がない列は変わらない: {widths:?}");
-    assert!(close(widths[1], 21.0), "不足 18 の半分を足す: {widths:?}");
-    assert!(close(widths[2], 31.0), "不足 18 の半分を足す: {widths:?}");
-  }
-
-  #[test]
-  fn resolve_column_widths_keeps_naturals_when_span_fits() {
-    let auto = TableColumn {
-      align: ColumnAlign::Left,
-      width: ColumnWidth::Auto,
-    };
-    let table = TableBox {
-      columns: vec![auto, auto, auto],
-      head: Vec::new(),
-      rows: vec![
-        row(vec![
-          cell(vec![text_free_box(5.0)]),
-          cell(vec![text_free_box(10.0)]),
-          cell(vec![text_free_box(20.0)]),
-        ]),
-        row(vec![
-          cell(vec![text_free_box(5.0)]),
-          TableCellBox {
-            items: vec![text_free_box(20.0)],
-            column_span: 2,
-          },
-        ]),
-      ],
-      breakable: true,
-    };
-
-    let widths = resolve_column_widths(&table, pt(200.0), pt(1.0));
-
-    assert!(close(widths[0], 7.0), "{widths:?}");
-    assert!(close(widths[1], 12.0), "跨ぐ列の合計 34 が span セル幅 22 を満たすので配分しない: {widths:?}");
-    assert!(close(widths[2], 22.0), "跨ぐ列の合計 34 が span セル幅 22 を満たすので配分しない: {widths:?}");
-  }
-
-  #[test]
-  fn position_table_row_boxes_aligns_spanned_cell_within_band() {
-    // 揃えは開始列（Center）で決まり、被覆列（Left）は読まない
-    let row = row(vec![
-      TableCellBox {
-        items: vec![text_free_box(10.0)],
-        column_span: 2,
-      },
-      cell(vec![text_free_box(4.0)]),
-    ]);
-    let columns = vec![
-      TableColumn {
-        align: ColumnAlign::Center,
-        width: ColumnWidth::Auto,
-      },
-      TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      },
-      TableColumn {
-        align: ColumnAlign::Right,
-        width: ColumnWidth::Auto,
-      },
-    ];
-
-    let boxes = position_table_row_boxes(&row, &columns, &[pt(20.0), pt(30.0), pt(25.0)], pt(2.0));
-
-    assert_eq!(boxes.len(), 2);
-    assert!(close(boxes[0].dx, 20.0), "帯幅 50 の中央: {boxes:?}");
-    assert!(close(boxes[1].dx, 69.0), "後続セルは帯の右端 50 から始まる: {boxes:?}");
-  }
-
-  #[test]
-  fn collect_row_links_in_spanned_cell_follow_band() {
-    let target = LinkTarget::External("https://example.com".to_string());
-    let row = row(vec![TableCellBox {
-      items: vec![
-        HItem::LinkStart(target.clone()),
-        text_free_box(10.0),
-        HItem::LinkEnd,
-      ],
-      column_span: 2,
-    }]);
-    let columns = vec![
-      TableColumn {
-        align: ColumnAlign::Right,
-        width: ColumnWidth::Auto,
-      },
-      TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Auto,
-      },
-    ];
-
-    let links = collect_row_links(&row, &columns, &[pt(20.0), pt(30.0)], pt(2.0));
-
-    assert_eq!(links.len(), 1);
-    assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 38.0) && close(links[0].x1, 48.0), "帯幅 50 の右揃え: {links:?}");
+    assert!(close(row.top_y, 40.0) && close(row.baseline_y, 48.0) && close(row.height, 10.0), "{row:?}");
+    assert!(close(row.boxes[0].dx, 7.0), "{row:?}");
+    let rule = row.rule.expect("罫線は着地後も残る");
+    assert!(close(rule.x, 5.0) && close(rule.y, 40.0) && close(rule.width, 30.0), "{rule:?}");
+    assert_eq!(links.len(), 1, "退化矩形は落ちる: {links:?}");
+    assert!(close(links[0].x, 7.0) && close(links[0].width, 10.0), "{links:?}");
+    assert!(close(links[0].y, 40.0) && close(links[0].height, 10.0), "{links:?}");
+    assert_eq!(marks.len(), 1);
   }
 }

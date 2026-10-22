@@ -1,15 +1,13 @@
 //! 表環境（`document::HirNodeKind::Table`）の lowering
 
 use crate::{
+  color::Color,
   document::{HirTable, HirTableRow, NodeId},
-  typeset::{
-    boxes::TableColumn,
-    lowering::{
-      LoweringContext, LoweringState,
-      float::{FloatCaption, FloatMargins, lower_numbered_float},
-      inline::lower_inlines,
-      layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
-    },
+  typeset::lowering::{
+    LoweringContext, LoweringState,
+    float::{FloatCaption, FloatMargins, lower_numbered_float},
+    inline::lower_inlines,
+    layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle},
   },
 };
 
@@ -87,6 +85,9 @@ pub(super) fn lower_table(
       head: lower_rows(ctx, &table.head, head_style, state),
       rows: lower_rows(ctx, &table.rows, body_style, state),
       breakable: table.breakable,
+      cell_padding: style.cell_padding,
+      rule_thickness: style.rule_thickness,
+      rule_color: style.rule_color.map(Color::rgb),
     });
   });
 }
@@ -296,6 +297,21 @@ mod tests {
     assert!(matches!(table.columns[1].width, ColumnWidth::Ratio(r) if (r - 0.25).abs() < f32::EPSILON));
     assert!(matches!(table.columns[2].width, ColumnWidth::Flex));
     assert_eq!(table.columns[1].align, ColumnAlign::Center);
+  }
+
+  #[test]
+  fn lower_table_resolves_padding_and_rule_from_style() {
+    let mut style = ReadStyle::default();
+    style.table.cell_padding = Length::pt(3.0);
+    style.table.rule_thickness = Length::pt(1.5);
+    style.table.rule_color = Some("#090909".parse().expect("16 進の色は読めるはず"));
+
+    let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
+
+    let table = find_table(&nodes);
+    assert_eq!(table.cell_padding, Length::pt(3.0));
+    assert_eq!(table.rule_thickness, Length::pt(1.5));
+    assert_eq!(table.rule_color, Some([9, 9, 9]));
   }
 
   #[test]

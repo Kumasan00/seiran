@@ -101,8 +101,6 @@ pub(super) struct PageGeometry {
   pub margin_top: Length,
   /// 本文下限 = ページ高さ − 下マージン。超えると改ページ（または改段）
   pub page_limit: Length,
-  /// 表セルの内側余白（左右各）
-  pub table_cell_padding: Length,
   /// 段組み数（1 = 単段）。本文を左段 → 右段 → 次ページの順に流す段の本数
   pub num_columns: usize,
   /// 段間（gutter）。隣り合う段の間隔
@@ -119,10 +117,6 @@ pub(super) struct PageGeometry {
   pub footnote_rule_color: Option<[u8; 3]>,
   /// 脚注: 区切り罫線〜最初の脚注、および脚注どうしの間隔（`style.footnote.rule_gap`）
   pub footnote_rule_gap: Length,
-  /// 表: 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
-  pub table_rule_thickness: Length,
-  /// 表: 罫線の色（RGB）。`None` は黒
-  pub table_rule_color: Option<[u8; 3]>,
   /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）
   pub background_color: Option<[u8; 3]>,
 }
@@ -251,7 +245,6 @@ fn build_page_geometries(
     content_origin_x: style.page.margin_left,
     margin_top: style.page.margin_top,
     page_limit: config.pdf.height - style.page.margin_bottom,
-    table_cell_padding: style.table.cell_padding,
     num_columns: body_columns,
     column_gap,
     flush_bottom: style.page.flush_bottom,
@@ -260,8 +253,6 @@ fn build_page_geometries(
     footnote_rule_thickness: style.footnote.rule_thickness,
     footnote_rule_color: style.footnote.rule_color.map(Color::rgb),
     footnote_rule_gap: style.footnote.rule_gap,
-    table_rule_thickness: style.table.rule_thickness,
-    table_rule_color: style.table.rule_color.map(Color::rgb),
     background_color: style.background_color.map(Color::rgb),
   };
   let front_geometry = PageGeometry {
