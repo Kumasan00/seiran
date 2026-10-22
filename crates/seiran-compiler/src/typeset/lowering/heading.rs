@@ -169,6 +169,18 @@ mod tests {
   }
 
   #[test]
+  fn formula_with_resolved_content_separates_heading_text() {
+    // 解決後の中身がある数式は、組み立てると何も残らなくても（`{}`）1 つのノードで、前後のテキストを畳まない
+    let nodes = lower(&ReadStyle::default(), &analyzed("\\section{AV${}$AV}\n"));
+
+    let children = heading_children(&nodes);
+    assert!(
+      matches!(children, [InlineNode::Text(a, _), InlineNode::Math(_), InlineNode::Text(b, _)] if a.ends_with("AV") && b == "AV"),
+      "{children:?}"
+    );
+  }
+
+  #[test]
   fn lower_heading_uses_style_template() {
     let mut style = ReadStyle::default();
     style.heading.section.format = NumberTitleTemplate::parse("[{number}] {title}");

@@ -889,7 +889,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `dotless`、無ければ `[math].accent_dotless`。広幅アクセントは常に偽）・埋め込んだ行列の区切り括弧と揃えと行間列間
   （`[math.block]` の値を本文の大きさ `[text].font_size` 基準として数式本体の大きさへ比例させた値）も解決する。字形指定は
   列に透過させ（`\mathbold{a+b}` の `+` も二項演算子）、空の文章は空のグループにする。インライン数式は
-  `InlineNode::Math(MathFormula)`（本体の大きさと外側の文字色を添える。中身の無い数式はノードを出さない）、表示数式の
+  `InlineNode::Math(MathFormula)`（本体の大きさと外側の文字色を添える。解決後の中身が無い数式はノードを出さない。中身があればアキだけ・空のグループだけの数式も 1 つのノードで、
+  見出し・キャプションでも前後のテキストを畳まない）、表示数式の
   セルは `MathBlockCellLayout` で運び、表示数式はセルを display 段で始めるか（`cases` / `matrix` は text 段）を
   `MathBlockLayout` に載せる。段・cramped・大きさ・アキ・分割候補・計測は数式エンジン（`boxing::math` 節）が決める
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み

@@ -200,7 +200,8 @@ pub(in crate::typeset) const fn matrix_delimiter_glyphs(delimiter: MathDelimiter
 /// 本体は `base_font_size` の text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮
 /// グリフを塗る。`style` から読むのは、アクセントの基底をドット無しの字形で組むかの既定（`[math].accent_dotless`）・
 /// 埋め込んだ行列の行間・列間（`[math.block]`）と、数式内の文章を組む書体（`[text].typeface`）。
-/// 中身の無い数式はノードを出さない（見出しなどで前後のテキストの結合を切らない）。
+/// 解決後の中身が無い数式（空白だけ）はノードを出さない。中身があれば、組み立てると何も残らない数式（`${}$`）も 1 つの
+/// ノードで、見出しなどで前後のテキストを畳まない。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
