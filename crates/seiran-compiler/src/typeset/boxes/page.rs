@@ -156,15 +156,19 @@ pub(crate) struct PlacedMathNumber {
 }
 
 /// 位置確定済みの表の 1 行
+///
+/// ページに置いた後の座標系は [`Page`] と同じ（`x` は本文左端、`y` はページ上端から）。着地前の行断片
+/// （[`TableRowFragment::row`](crate::typeset::boxes::TableRowFragment::row)）では原点が表左端・行帯上端で、
+/// [`TableRowFragment::place`](crate::typeset::boxes::TableRowFragment::place) が着地点を足してページ座標にする。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedTableRow {
-  /// 行帯上端のページ上端からの距離
+  /// 行帯上端の y
   pub top_y: Length,
   /// 行帯の高さ
   pub height: Length,
-  /// セル内容が共有するベースラインのページ上端からの距離
+  /// セル内容が共有するベースラインの y
   pub baseline_y: Length,
-  /// 本文左端からの絶対 x 座標へ配置済みのセル内容
+  /// 列揃え・セル余白を解決して x 座標へ配置済みのセル内容
   pub boxes: Vec<PlacedHBox>,
   /// 行の上罫線。`None` は罫線なし
   pub rule: Option<PlacedTableRule>,

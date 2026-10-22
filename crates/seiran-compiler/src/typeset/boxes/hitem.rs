@@ -201,7 +201,7 @@ pub(crate) enum HBoxContent {
 /// `dy` の基準は持ち主のベースライン。`dx` の基準点は持ち主で決まり、
 /// [`Line::boxes`](crate::typeset::boxes::Line::boxes) なら行の水平基準（行分割直後は行頭で、
 /// [`Line::shift_x`](crate::typeset::boxes::Line::shift_x) が着地位置まで動かす。ページに置いた後は本文左端）、
-/// 表行（[`PlacedTableRow::boxes`](crate::typeset::boxes::PlacedTableRow::boxes)）なら本文左端、
+/// 表行（[`PlacedTableRow::boxes`](crate::typeset::boxes::PlacedTableRow::boxes)）なら本文左端（着地前の行断片では表左端）、
 /// [`HBoxContent::Atom`] なら Atom の左端。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedHBox {
