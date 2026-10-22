@@ -14,8 +14,10 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{HBox, PlacedHBox},
-    boxing::{Measurer, Shaper, math},
-    lowering::MathRadical,
+    boxing::{
+      Measurer, Shaper,
+      math::{self, arrange::MathRadical},
+    },
   },
 };
 
@@ -94,13 +96,7 @@ impl Measurer<'_> {
   /// 根号を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを根号の幅だけ進める
   ///
   /// Atom の高さは横線の上の `RadicalExtraAscender` を含む。
-  pub(in crate::typeset::boxing) fn place_radical(
-    &mut self,
-    radical: MathRadical,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  pub(super) fn place_radical(&mut self, radical: MathRadical, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathRadical {
       degree,
       radicand,

@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{NodeId, TextAlignment, Typeface},
+  document::{MathClass, MathSpace, NodeId, TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
   typeset::{
@@ -85,10 +85,6 @@ pub(in crate::typeset) enum InlineNode {
   /// 1 つとして組む。コードは空白の個数と位置そのものが内容なので、行分割・行揃えで
   /// 幅が動いてはならない。
   TextAtom(String, TextStyle),
-  /// 数式内の文章（`\text{...}`）
-  ///
-  /// 本文と同じ規則（和欧文間アキ・約物アキ）で組み、行分割も伸縮もしない自然幅の閉じた箱 1 つにする。
-  Prose(String, TextStyle),
   /// 水平カーン（固定幅の空白）
   Kern {
     /// カーンの幅
@@ -96,44 +92,17 @@ pub(in crate::typeset) enum InlineNode {
   },
   /// 強制改行（`\\` 由来）
   LineBreak,
-  /// ベースラインから子要素を垂直方向にずらすコンテナ
+  /// ベースラインから垂直方向にずらした閉じたテキスト（脚注マーカー）
   Raise {
     /// ベースラインからの垂直オフセット（正で上方向）
     offset: Length,
-    /// ずらす対象の子ノード列
-    children: Vec<AtomNode>,
+    /// ずらすテキスト
+    text: String,
+    /// テキストのスタイル
+    style: TextStyle,
   },
-  /// 上付き・下付きの付いた基底（インライン数式のトップレベル）
-  Scripts(MathScripts),
-  /// 分子と分母を横罫の上下に積んだ分数（インライン数式のトップレベル）
-  Fraction(MathFraction),
-  /// 被根号に根号記号と横線を付けた根号（インライン数式のトップレベル）
-  Radical(MathRadical),
-  /// 基底の上にアクセント記号を重ねたアクセント（インライン数式のトップレベル）
-  Accent(MathAccent),
-  /// 中身を左右の区切り括弧で挟み、括弧を中身の高さへ伸ばした伸縮括弧（インライン数式のトップレベル）
-  Fenced(MathFenced),
-  /// 基底の上か下に罫線を引いた上線・下線（インライン数式のトップレベル）
-  Bar(MathBar),
-  /// 数式に埋め込んだ行列・場合分け（インライン数式のトップレベル）
-  Array(MathArray),
-  /// display 段の大型演算子（[`AtomNode::LargeOperator`] を段落の語彙へ持ち上げたもの。インライン数式は text 段で
-  /// 組むので作らないが、`AtomNode` ⊂ `InlineNode` の包含を保つために置く）
-  LargeOperator {
-    /// 演算子の文字（1 字）
-    symbol: String,
-    /// display 段のフォントサイズ
-    font_size: Length,
-  },
-  /// インライン数式のトップレベルの二項演算子・関係子の直後の分割点
-  ///
-  /// 折り返さなければ `spacing` 幅のアキ、折り返せば何も出さない。
-  MathBreak {
-    /// 折り返さないときに残るアキ（演算子と右隣のアトムの間）
-    spacing: Length,
-    /// 数式内の分割点どうしを比べるペナルティ
-    penalty: i32,
-  },
+  /// インライン数式（段・アキ・分割候補・計測は boxing の数式エンジンが決める）
+  Math(MathFormula),
   /// クリック可能なリンク領域（機構 B）
   Link {
     /// リンクの行き先（内部アンカー / 外部 URI）
@@ -141,8 +110,8 @@ pub(in crate::typeset) enum InlineNode {
     /// リンク対象の子要素
     children: Vec<InlineNode>,
   },
-  /// 行の右端に寄せる末尾要素（証明の QED マーク等）
-  FlushRight(Vec<AtomNode>),
+  /// 行の右端に寄せる閉じたテキスト（証明の QED マーク）
+  FlushRight(String, TextStyle),
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   Footnote {
     /// はみ出し警告が指す `\footnote` コマンド
@@ -158,64 +127,6 @@ pub(in crate::typeset) enum InlineNode {
   IndexMark(IndexTerm),
 }
 
-/// Atom（行分割をまたがない閉じた箱）の中身になれるノード
-///
-/// 絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にできるテキスト・文章・カーン・上付き下付きの付いた基底・分数・根号・
-/// アクセント・伸縮括弧・上下線・埋め込んだ行列と場合分け・大型演算子だけを持つ。
-#[derive(Debug, Clone)]
-pub(in crate::typeset) enum AtomNode {
-  /// スタイル付きテキスト
-  Text(String, TextStyle),
-  /// 数式内の文章（`\text{...}`。[`InlineNode::Prose`] と同じ）
-  Prose(String, TextStyle),
-  /// 水平カーン（固定幅のアキ。数式のアトム間スペーシングが出す）
-  Kern {
-    /// カーンの幅
-    length: Length,
-  },
-  /// 上付き・下付きの付いた基底
-  Scripts(MathScripts),
-  /// 分子と分母を横罫の上下に積んだ分数
-  Fraction(MathFraction),
-  /// 被根号に根号記号と横線を付けた根号
-  Radical(MathRadical),
-  /// 基底の上にアクセント記号を重ねたアクセント
-  Accent(MathAccent),
-  /// 中身を左右の区切り括弧で挟み、括弧を中身の高さへ伸ばした伸縮括弧
-  Fenced(MathFenced),
-  /// 基底の上か下に罫線を引いた上線・下線
-  Bar(MathBar),
-  /// セルのグリッドの縦中央を数式軸に載せ、括弧があれば中身の高さへ伸ばして挟んだ、数式に埋め込んだ行列・場合分け
-  Array(MathArray),
-  /// display 段の大型演算子（boxing が `DisplayOperatorMinHeight` 以上の字形へ縦に伸ばし、インクの縦中央を数式軸に
-  /// 合わせて置く）
-  LargeOperator {
-    /// 演算子の文字（1 字）
-    symbol: String,
-    /// display 段のフォントサイズ
-    font_size: Length,
-  },
-}
-
-impl From<AtomNode> for InlineNode {
-  /// `AtomNode` は `InlineNode` の部分集合なので、常に無損失で持ち上がる
-  fn from(node: AtomNode) -> Self {
-    return match node {
-      AtomNode::Text(text, style) => InlineNode::Text(text, style),
-      AtomNode::Prose(text, style) => InlineNode::Prose(text, style),
-      AtomNode::Kern { length } => InlineNode::Kern { length },
-      AtomNode::Scripts(scripts) => InlineNode::Scripts(scripts),
-      AtomNode::Fraction(fraction) => InlineNode::Fraction(fraction),
-      AtomNode::Radical(radical) => InlineNode::Radical(radical),
-      AtomNode::Accent(accent) => InlineNode::Accent(accent),
-      AtomNode::Fenced(fenced) => InlineNode::Fenced(fenced),
-      AtomNode::Bar(bar) => InlineNode::Bar(bar),
-      AtomNode::Array(array) => InlineNode::Array(array),
-      AtomNode::LargeOperator { symbol, font_size } => InlineNode::LargeOperator { symbol, font_size },
-    };
-  }
-}
-
 /// ディスプレイ数式環境全体の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockLayout {
@@ -225,9 +136,9 @@ pub(in crate::typeset) struct MathBlockLayout {
   pub delimiters: DelimiterGlyphs,
   /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
   pub rows: Vec<MathBlockRowLayout>,
-  /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み。ブロックの縦中央に置く）。
+  /// 環境全体に 1 つだけ付く番号の（テキスト, スタイル）（`split` / `multiline` 用。ブロックの縦中央に置く）。
   /// 行ごと採番や無採番では `None`
-  pub env_number: Option<Vec<AtomNode>>,
+  pub env_number: Option<(String, TextStyle)>,
   /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
   pub align: Align,
   /// 番号を本文右端に寄せるか（`false` なら左端）
@@ -236,6 +147,8 @@ pub(in crate::typeset) struct MathBlockLayout {
   pub row_gap: Length,
   /// 列間
   pub column_gap: Length,
+  /// セルを display 段で組み始めるか（偽なら text 段。`cases` / `matrix`）
+  pub display: bool,
 }
 
 /// 表全体の物理レイアウト表現
@@ -272,17 +185,17 @@ pub(in crate::typeset) struct TableCellLayout {
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockRowLayout {
-  /// 列（lower 済みインライン数式と列内揃え）
+  /// 列（内容を解決した数式と列内揃え）
   pub cells: Vec<MathBlockCellLayout>,
-  /// 行番号ボックス（lower 済み、`None` は非採番）
-  pub number: Option<Vec<AtomNode>>,
+  /// 行番号の（テキスト, スタイル）（`None` は非採番）
+  pub number: Option<(String, TextStyle)>,
 }
 
 /// ディスプレイ数式環境の 1 セルの物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathBlockCellLayout {
-  /// セル内容（lower 済みインライン数式）
-  pub content: Vec<AtomNode>,
+  /// セル内容（内容を解決した数式）
+  pub content: Vec<MathNode>,
   /// 列内での水平揃え
   pub align: Align,
 }
@@ -302,143 +215,126 @@ impl DelimiterGlyphs {
   pub(in crate::typeset) fn is_present(self) -> bool { return self.left.is_some() || self.right.is_some(); }
 }
 
-/// 基底に付けた上付き・下付き
-///
-/// 配置（シフト量・スクリプト後のアキ）は計測寸法と数式フォントの MATH 定数から boxing が決める。`limits` が偽なら
-/// 上付き・下付きはどちらも基底の右端から始まり（肩・添字）、真なら基底の真上・真下に中央を揃えて積む。上付き・下付きの
-/// 少なくとも一方は `Some`（`spacing::attach` だけが作り、片側を必ず埋める）。
+/// 内容（字・クラス・区切り・字形 variant・書体・揃え）を解決し、段とアキを決める前のインライン数式
 #[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathScripts {
-  /// 基底（空なら高さ・深さ 0 の基底。`{}^{14}N` の空グループ）
-  pub base: Vec<AtomNode>,
-  /// 上付きの中身（`None` は上付きなし）
-  pub superscript: Option<Vec<AtomNode>>,
-  /// 下付きの中身（`None` は下付きなし）
-  pub subscript: Option<Vec<AtomNode>>,
-  /// 基底の段のフォントサイズ（MATH 定数を長さへ換算する大きさ）
+pub(in crate::typeset) struct MathFormula {
+  /// 数式の中身
+  pub nodes: Vec<MathNode>,
+  /// 数式本体（text 段）のフォントサイズ
   pub font_size: Length,
-  /// 基底の数式スタイルが cramped か（上付きのシフトに `SuperscriptShiftUpCramped` を使う）
-  pub cramped: bool,
-  /// 上付き・下付きを基底の真上・真下に積むか（基底が display 段の limits を取る大型演算子か演算子名 1 つのときだけ真。
-  /// 真なら `cramped` は使わない）
-  pub limits: bool,
-}
-
-/// 分子と分母を横罫の上下に積む分数。横罫の無い積み（二項係数の中身）も兼ねる
-///
-/// 配置（分子・分母のシフト量・横罫の太さと位置）は計測寸法と数式フォントの MATH 定数から boxing が決める。
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathFraction {
-  /// 分子（分数の段の 1 段下で、cramped は親から継承して組んだもの）
-  pub numerator: Vec<AtomNode>,
-  /// 分母（分数の段の 1 段下・cramped で組んだもの）
-  pub denominator: Vec<AtomNode>,
-  /// 分数の段のフォントサイズ（MATH 定数を長さへ換算する大きさ）
-  pub font_size: Length,
-  /// 分数の段が display か（MATH の `*DisplayStyle*` の定数を使う）
-  pub display: bool,
-  /// 分子と分母の間に横罫を引くか（`\frac` は真、`\binom` の積みは偽。偽なら `Stack*` 定数で積み、`color` は使わない）
-  pub ruled: bool,
-  /// 横罫の色（外側の `\color`・リンク色。`None` は既定色）
+  /// 外側の文字色（`\color`・リンク色。`None` は既定色）。字と罫・伸縮グリフをすべてこの色で塗る
   pub color: Option<Color>,
 }
 
-/// 被根号に根号記号と横線（vinculum）を付けた根号
-///
-/// 配置（根号記号の伸縮・横線の太さと位置・指数の位置）は計測寸法と数式フォントの MATH 定数から boxing が決める。
+/// 内容を解決した数式の要素（段・cramped・大きさ・アキは数式エンジンが決める）
 #[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathRadical {
-  /// 指数（`\sqrt[n]{…}` の `n`。scriptscript 段で組んだもの。`None` は平方根）
-  pub degree: Option<Vec<AtomNode>>,
-  /// 被根号（根号の段・cramped で組んだもの）
-  pub radicand: Vec<AtomNode>,
-  /// 根号の段のフォントサイズ（MATH 定数の換算と根号記号のシェイプに使う大きさ）
-  pub font_size: Length,
-  /// 根号の段が display か（`RadicalDisplayStyleVerticalGap` を使う）
-  pub display: bool,
-  /// 根号の段のスクリプト段（根号記号を伸ばさないときの `ssty`。display / text 段は `None`）
-  pub script_level: Option<ScriptLevel>,
-  /// 根号記号と横線の色（外側の `\color`・リンク色。`None` は既定色）
-  pub color: Option<Color>,
+pub(in crate::typeset) enum MathNode {
+  /// 字 1 つ（書記素クラスタ 1 つか記号 1 つ。字形 variant を写し済み）
+  Char {
+    /// 組む字
+    text: String,
+    /// アキを決める数式クラス
+    class: MathClass,
+    /// 開き・閉じ区切りとして働くか（区切りでなければ `None`）
+    fence: Option<Fence>,
+  },
+  /// 明示アキ（`\thinspace` 等）
+  Space(MathSpace),
+  /// 演算子名（`\lim` / `\sin` 等）
+  OperatorName {
+    /// 組む字（ASCII 英字の語を半角空白 1 個で区切った列。空白は語の間の細アキ）
+    text: String,
+    /// display 段で付く上付き・下付きを真上・真下に積む名前か
+    limits: bool,
+  },
+  /// 空でない数式内の文章（`\text{...}`。空の文章は空の [`MathNode::Group`] に解決する）
+  Prose {
+    /// 文章（空白をまとめ済み）
+    text: String,
+    /// 組む書体（style.toml の `[text].typeface`）
+    typeface: Typeface,
+  },
+  /// 中括弧グループ（中身ごと 1 個の Ord）
+  Group(Vec<MathNode>),
+  /// 直前の要素に付ける上付きの中身
+  Superscript(Vec<MathNode>),
+  /// 直前の要素に付ける下付きの中身
+  Subscript(Vec<MathNode>),
+  /// 分数
+  Fraction {
+    /// 分子
+    numerator: Vec<MathNode>,
+    /// 分母
+    denominator: Vec<MathNode>,
+  },
+  /// 二項係数
+  Binomial {
+    /// 上段
+    top: Vec<MathNode>,
+    /// 下段
+    bottom: Vec<MathNode>,
+  },
+  /// 根号
+  Radical {
+    /// 指数（`None` は平方根）
+    degree: Option<Vec<MathNode>>,
+    /// 被根号
+    radicand: Vec<MathNode>,
+  },
+  /// アクセント
+  Accent {
+    /// 基底の上に置く結合用ダイアクリティカルマーク
+    mark: char,
+    /// アクセント記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
+    wide: bool,
+    /// 基底をドット無しの字形で組むか（ソースの指定、無ければ style.toml の `[math].accent_dotless`。広幅アクセントは
+    /// 常に `false`）
+    dotless: bool,
+    /// アクセントを付ける数式
+    base: Vec<MathNode>,
+  },
+  /// 伸縮括弧
+  Fenced {
+    /// 左の区切り括弧
+    open: char,
+    /// 右の区切り括弧
+    close: char,
+    /// 中身を中間の区切りで分けた区画（1 個以上）
+    segments: Vec<Vec<MathNode>>,
+  },
+  /// 上線・下線
+  Bar {
+    /// 線を基底の上に引くか（上線は `true`、下線は `false`）
+    over: bool,
+    /// 線を引く数式
+    body: Vec<MathNode>,
+  },
+  /// 数式に埋め込んだ行列・場合分け
+  Array {
+    /// 行 × 列のセル
+    rows: Vec<Vec<Vec<MathNode>>>,
+    /// グリッドを囲む左右の区切り括弧グリフ
+    delimiters: DelimiterGlyphs,
+    /// セルの列内揃え
+    align: Align,
+    /// 数式本体の大きさでの行間（style.toml の `[math.block].row_gap` を本文の大きさ基準として比例させた値）
+    row_gap: Length,
+    /// 数式本体の大きさでの列間（`row_gap` と同じ比例）
+    column_gap: Length,
+  },
 }
 
-/// 基底の上にアクセント記号 1 字を重ねたアクセント
+/// 数式の要素が開き・閉じ区切りとして働くかどうか
 ///
-/// 配置（取付点による横位置・`AccentBaseHeight` による高さ）と、広幅アクセントの記号を伸ばす大きさ（基底の送り幅）は
-/// 計測寸法と数式フォントの MATH から boxing が決める。
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathAccent {
-  /// 基底（アクセントの段・cramped で組んだもの）
-  pub base: Vec<AtomNode>,
-  /// アクセント記号（結合用ダイアクリティカルマーク 1 字。boxing が数式フォントで組む）
-  pub accent: String,
-  /// アクセント記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
-  pub wide: bool,
-  /// 基底が数式フォントの 1 グリフのとき、そのグリフを OpenType `dtls` のドット無しの字形で組むか（ソースのオプション、
-  /// 無ければ style.toml の `[math].accent_dotless`。広幅アクセントは常に `false`）
-  pub dotless: bool,
-  /// アクセントの段のフォントサイズ（アクセント記号の大きさと MATH 定数の換算に使う）
-  pub font_size: Length,
-  /// アクセントの段のスクリプト段（アクセント記号の `ssty`。display / text 段は `None`）
-  pub script_level: Option<ScriptLevel>,
-  /// アクセント記号の色（外側の `\color`・リンク色。`None` は既定色）
-  pub color: Option<Color>,
-}
-
-/// 中身を左右の区切り括弧で挟んだ伸縮括弧
-///
-/// 括弧と中間の区切りの大きさ（数式軸を中心に中身のインクを覆う高さ）と位置は計測寸法と数式フォントの MATH から boxing が
-/// 決める。
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathFenced {
-  /// 中身を中間の区切りで分けた区画（1 個以上。括弧と同じ数式スタイルで組んだもの）。区画の間に boxing が縦棒を置く
-  pub segments: Vec<Vec<AtomNode>>,
-  /// 左の区切り括弧（1 字。boxing が数式フォントで組む）
-  pub open: String,
-  /// 右の区切り括弧（1 字。boxing が数式フォントで組む）
-  pub close: String,
-  /// 括弧の段のフォントサイズ（括弧の大きさと MATH 定数の換算に使う）
-  pub font_size: Length,
-  /// 括弧の段のスクリプト段（括弧を伸ばさないときの `ssty`。display / text 段は `None`）
-  pub script_level: Option<ScriptLevel>,
-  /// 左右の区切り括弧の色（外側の `\color`・リンク色。`None` は既定色）
-  pub color: Option<Color>,
-}
-
-/// 数式に埋め込んだ行列・場合分け
-///
-/// セルの配置（列幅・行送り・数式軸への中央合わせ）と括弧の伸縮は計測寸法と数式フォントの MATH から boxing が決める。
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathArray {
-  /// 行 × 列のセル（lower 済みの数式と列内揃え）
-  pub rows: Vec<Vec<MathBlockCellLayout>>,
-  /// グリッドを囲む左右の区切り括弧グリフ
-  pub delimiters: DelimiterGlyphs,
-  /// 行列の段のフォントサイズ（括弧の大きさ・括弧と中身のアキ・数式軸の換算に使う）
-  pub font_size: Length,
-  /// 行列の段のスクリプト段（括弧を伸ばさないときの `ssty`。display / text 段は `None`）
-  pub script_level: Option<ScriptLevel>,
-  /// 区切り括弧の色（外側の `\color`・リンク色。`None` は既定色）
-  pub color: Option<Color>,
-  /// 行間（段の大きさに比例させた値）
-  pub row_gap: Length,
-  /// 列間（段の大きさに比例させた値）
-  pub column_gap: Length,
-}
-
-/// 基底の上か下に罫線を引いた上線・下線
-///
-/// 罫線の位置・太さと上下の余白は計測寸法と数式フォントの MATH（`Overbar*` / `Underbar*`）から boxing が決める。
-#[derive(Debug, Clone)]
-pub(in crate::typeset) struct MathBar {
-  /// 基底（上線は線の段・cramped、下線は線の段・外側の cramped を継承して組んだもの）
-  pub body: Vec<AtomNode>,
-  /// 罫線を基底の上に引くか（上線は `true`、下線は `false`）
-  pub over: bool,
-  /// 線の段のフォントサイズ（MATH 定数の換算に使う）
-  pub font_size: Length,
-  /// 罫線の色（外側の `\color`・リンク色。`None` は既定色）
-  pub color: Option<Color>,
+/// 対応する開き括弧を持つ「本物の区切り」だけを表す。数式クラスの `Open` / `Close`（アキ表の分類）
+/// とは独立 — `!` `?` は `plain TeX` の mathcode で `Close` クラスに入るが区切りではないので `None`
+/// になる。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::typeset) enum Fence {
+  /// 開き区切り（`(` `[` や `\langle` 等）
+  Open,
+  /// 閉じ区切り（`)` `]` や `\rangle` 等）
+  Close,
 }
 
 /// `InlineNode::Text` 1 つに付与するテキスト書体情報
@@ -490,23 +386,6 @@ pub(super) fn merge_adjacent_text(nodes: Vec<InlineNode>) -> Vec<InlineNode> {
     }
   }
   out.append(&mut deferred_marks);
-  return out;
-}
-
-/// 隣接する同一スタイルの `Text` ノードを 1 つに結合する（[`merge_adjacent_text`] の [`AtomNode`] 版）
-///
-/// 数式のアトム間に挟んだ [`AtomNode::Kern`] が結合を切るので、アキの入らない記号どうし
-/// （`$ab$`）は 1 本のグリフランに戻り、アキの入る並び（`$a+b$`）だけが分かれる。
-pub(super) fn merge_adjacent_atom_text(nodes: Vec<AtomNode>) -> Vec<AtomNode> {
-  let mut out: Vec<AtomNode> = Vec::with_capacity(nodes.len());
-  for node in nodes {
-    match (out.last_mut(), node) {
-      (Some(AtomNode::Text(prev, prev_style)), AtomNode::Text(cur, cur_style)) if *prev_style == cur_style => {
-        prev.push_str(&cur);
-      },
-      (_, node) => out.push(node),
-    }
-  }
   return out;
 }
 
@@ -594,44 +473,5 @@ mod tests {
     assert_eq!(merged.len(), 3, "{merged:?}");
     assert!(matches!(&merged[1], InlineNode::IndexMark(_)), "{merged:?}");
     assert!(matches!(&merged[2], InlineNode::Text(t, _) if t == "bar"), "{merged:?}");
-  }
-
-  #[test]
-  fn merge_adjacent_atom_text_joins_same_style_runs() {
-    let nodes = vec![
-      AtomNode::Text("a".to_string(), style(Typeface::Math)),
-      AtomNode::Text("b".to_string(), style(Typeface::Math)),
-    ];
-
-    let merged = merge_adjacent_atom_text(nodes);
-
-    assert_eq!(merged.len(), 1);
-    assert!(matches!(&merged[0], AtomNode::Text(text, _) if text == "ab"));
-  }
-
-  #[test]
-  fn merge_adjacent_atom_text_keeps_runs_separated_by_kern() {
-    let nodes = vec![
-      AtomNode::Text("a".to_string(), style(Typeface::Math)),
-      AtomNode::Kern {
-        length: Length::pt(2.0),
-      },
-      AtomNode::Text("b".to_string(), style(Typeface::Math)),
-    ];
-
-    let merged = merge_adjacent_atom_text(nodes);
-
-    assert_eq!(merged.len(), 3, "カーンを挟んだラン同士は結合しない: {merged:?}");
-  }
-
-  #[test]
-  fn atom_kern_lifts_to_inline_kern() {
-    let kern = AtomNode::Kern {
-      length: Length::pt(2.0),
-    };
-
-    let lifted = InlineNode::from(kern);
-
-    assert!(matches!(lifted, InlineNode::Kern { length } if length == Length::pt(2.0)));
   }
 }

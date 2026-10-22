@@ -18,7 +18,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem, ScriptLevel, Stretch},
+    font::{Buffer, FontSystem, ScriptLevel, ScriptScale, Stretch},
     lowering::{MathOperator, TextStyle},
     observe,
   },
@@ -379,6 +379,9 @@ impl<'a> Shaper<'a> {
     );
     return shaped;
   }
+
+  /// 数式フォントの MATH のスクリプト段の縮小率
+  pub(super) fn script_scale(&self) -> ScriptScale { return self.fonts.script_scale(); }
 
   /// 数式フォントの MATH 定数（長さの値）の、フォントサイズ `font_size` での長さ。
   pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {

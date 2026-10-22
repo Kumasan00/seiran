@@ -1,4 +1,4 @@
-//! display 段の大型演算子（`AtomNode::LargeOperator`）の配置 — 字形を display の大きさへ伸ばして数式軸に合わせる
+//! display 段の大型演算子（`ArrangedNode::LargeOperator`）の配置 — 字形を display の大きさへ伸ばして数式軸に合わせる
 //!
 //! `MathML Core` §3.2.4.3（largeop を持ち math-style が normal の演算子）の規則で、演算子 1 字を区切り括弧と同じ伸縮
 //! （size variant → glyph assembly → 最大の size variant）で `DisplayOperatorMinHeight` 以上へ縦に伸ばし、インクの縦中央を
@@ -16,7 +16,7 @@ use crate::{
 impl Measurer<'_> {
   /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）を水平カーソル `dx`・縦オフセット `dy` に置き、カーソルを
   /// 字形の送り幅だけ進める
-  pub(in crate::typeset::boxing) fn place_large_operator(
+  pub(super) fn place_large_operator(
     &mut self,
     symbol: &str,
     font_size: Length,

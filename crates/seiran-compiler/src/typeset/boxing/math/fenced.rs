@@ -12,8 +12,10 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{HBox, PlacedHBox},
-    boxing::{Measurer, math},
-    lowering::MathFenced,
+    boxing::{
+      Measurer,
+      math::{self, arrange::MathFenced},
+    },
   },
 };
 
@@ -27,13 +29,7 @@ fn symmetric_target(ink_height: Length, ink_depth: Length, axis: Length) -> Leng
 
 impl Measurer<'_> {
   /// 伸縮括弧を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを全体の送り幅だけ進める
-  pub(in crate::typeset::boxing) fn place_fenced(
-    &mut self,
-    fenced: MathFenced,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  pub(super) fn place_fenced(&mut self, fenced: MathFenced, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathFenced {
       segments,
       open,

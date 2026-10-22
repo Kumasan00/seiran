@@ -13,8 +13,10 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{HBox, PlacedHBox},
-    boxing::{Measurer, math},
-    lowering::MathBar,
+    boxing::{
+      Measurer,
+      math::{self, arrange::MathBar},
+    },
   },
 };
 
@@ -31,13 +33,7 @@ fn rule_bottom(over: bool, ink_height: Length, ink_depth: Length, gap: Length, t
 
 impl Measurer<'_> {
   /// 上線・下線を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを基底の送り幅だけ進める
-  pub(in crate::typeset::boxing) fn place_bar(
-    &mut self,
-    bar: MathBar,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  pub(super) fn place_bar(&mut self, bar: MathBar, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathBar {
       body,
       over,

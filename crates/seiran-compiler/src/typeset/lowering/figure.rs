@@ -57,7 +57,7 @@ mod tests {
     typeset::lowering::{
       layout_node::InlineNode,
       lower_sources_with_headings,
-      test_support::{analyzed, context, inlines, stix_script_scale},
+      test_support::{analyzed, context, inlines},
     },
   };
 
@@ -183,7 +183,6 @@ mod tests {
         max_dpi: 300,
         downsample: false,
       },
-      stix_script_scale(),
     );
 
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.png}\n\\end{figure}\n");

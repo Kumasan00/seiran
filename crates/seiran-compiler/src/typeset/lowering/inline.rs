@@ -9,7 +9,7 @@ use crate::{
     boxes::{AnchorId, FootnoteId, IndexTerm, LinkTarget},
     lowering::{
       LoweringContext, LoweringState, code, generated,
-      layout_node::{AtomNode, InlineNode, TextStyle},
+      layout_node::{InlineNode, TextStyle},
       math::lower_inline_math,
     },
   },
@@ -64,7 +64,7 @@ pub(super) fn lower_inline(
       return code::lower_inline_code(text, parent_style);
     },
     HirInlineKind::Math(math_nodes) => {
-      return lower_inline_math(math_nodes, parent_style.font_size, ctx.script_scale, parent_style.color, ctx.style);
+      return lower_inline_math(math_nodes, parent_style.font_size, parent_style.color, ctx.style);
     },
     HirInlineKind::Symbol(ch) => {
       return vec![InlineNode::Text(ch.to_string(), parent_style)];
@@ -173,7 +173,8 @@ fn footnote_marker_node(
   };
   return InlineNode::Raise {
     offset: base_font_size * footnote_style.marker_raise_factor,
-    children: vec![AtomNode::Text(marker_text.to_string(), marker_style)],
+    text: marker_text.to_string(),
+    style: marker_style,
   };
 }
 
@@ -244,11 +245,8 @@ mod tests {
       InlineNode::Link { children, .. } => &children[0],
       other => other,
     };
-    let InlineNode::Raise { children, .. } = node else {
+    let InlineNode::Raise { text, .. } = node else {
       panic!("Raise が期待されます: {node:?}");
-    };
-    let AtomNode::Text(text, _) = &children[0] else {
-      panic!("Text が期待されます: {children:?}");
     };
     return text;
   }
@@ -360,11 +358,10 @@ mod tests {
     let nodes = lower_source(&style, "\\href{https://example.com}{$x$}\n");
 
     let (_, children) = first_link(&nodes);
-    let InlineNode::Text(_, text_style) = &children[0] else {
-      panic!("数式の Text が期待されます: {children:?}");
+    let InlineNode::Math(formula) = &children[0] else {
+      panic!("数式が期待されます: {children:?}");
     };
-    assert_eq!(text_style.typeface, Typeface::Math);
-    assert_eq!(text_style.color, Some(blue));
+    assert_eq!(formula.color, Some(blue));
   }
 
   #[test]
@@ -376,10 +373,10 @@ mod tests {
     let nodes = lower_source(&style, "\\color[color=#ff0000]{\\href{https://example.com}{$x$}}\n");
 
     let (_, children) = first_link(&nodes);
-    let InlineNode::Text(_, text_style) = &children[0] else {
-      panic!("数式の Text が期待されます: {children:?}");
+    let InlineNode::Math(formula) = &children[0] else {
+      panic!("数式が期待されます: {children:?}");
     };
-    assert_eq!(text_style.color, Some(red));
+    assert_eq!(formula.color, Some(red));
   }
 
   #[test]
@@ -540,11 +537,13 @@ mod tests {
     let nodes = lower_source(&style, "\\footnote{note}\n");
 
     let (_, link_children) = first_link(&nodes);
-    let InlineNode::Raise { children, .. } = &link_children[0] else {
+    let InlineNode::Raise {
+      text: marker,
+      style: marker_style,
+      ..
+    } = &link_children[0]
+    else {
       panic!("Raise が期待されます: {link_children:?}");
-    };
-    let AtomNode::Text(marker, marker_style) = &children[0] else {
-      panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(marker, "[1]");
     let body_font_size = style.text.font_size.to_pt();
@@ -557,11 +556,12 @@ mod tests {
 
     // 脚注本体側のマーカーは脚注フォントサイズ基準
     let (_, _, body) = first_footnote(&nodes);
-    let InlineNode::Raise { children, .. } = &body[0] else {
+    let InlineNode::Raise {
+      style: body_marker_style,
+      ..
+    } = &body[0]
+    else {
       panic!("Raise が期待されます: {body:?}");
-    };
-    let AtomNode::Text(_, body_marker_style) = &children[0] else {
-      panic!("Text が期待されます: {children:?}");
     };
     assert!((body_marker_style.font_size.to_pt() - 10.0).abs() < 1e-3, "{}", body_marker_style.font_size.to_pt());
     let InlineNode::Text(_, body_text_style) = &body[1] else {

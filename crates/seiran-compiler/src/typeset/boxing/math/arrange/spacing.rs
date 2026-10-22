@@ -1,8 +1,8 @@
 //! 数式クラスに基づくアトム間スペーシング
 //!
 //! `TeXbook` 第 18 章のアトム間アキ表をそのまま持ち、隣り合うアトムのクラスの組み合わせから
-//! アキ幅を決める。アキは伸縮しない [`AtomNode::Kern`] として出す。インライン数式のトップレベルに
-//! 限り、括弧の外の二項演算子・関係子の直後のアキを行分割点 [`InlineNode::MathBreak`] として出す
+//! アキ幅を決める。アキは伸縮しない [`ArrangedNode::Kern`] として出す。インライン数式のトップレベルに
+//! 限り、括弧の外の二項演算子・関係子の直後のアキを分割候補 [`ArrangedInline::Break`] として出す
 //! （[`assemble_breakable`]）。
 //!
 //! 明示アキ（`\thinspace` 等）はクラスを持たないアイテム [`MathItem::Space`] で、Bin→Ord 変換とアキ表の参照に透過し、
@@ -15,23 +15,13 @@ use std::mem;
 use crate::{
   document::{MathClass, MathSpace},
   length::Length,
-  typeset::lowering::layout_node::{AtomNode, InlineNode, MathScripts, TextStyle, merge_adjacent_atom_text},
+  typeset::{
+    boxing::math::arrange::{ArrangedInline, ArrangedNode, MathScripts},
+    lowering::{Fence, TextStyle},
+  },
 };
 
-/// アイテムが開き・閉じ区切りとして働くかどうか
-///
-/// 対応する開き括弧を持つ「本物の区切り」だけを表す。数式クラスの `Open` / `Close`（アキ表の分類）
-/// とは独立 — `!` `?` は `plain TeX` の mathcode で `Close` クラスに入るが区切りではないので `None`
-/// になる。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Fence {
-  /// 開き区切り（`(` `[` や `\langle` 等）
-  Open,
-  /// 閉じ区切り（`)` `]` や `\rangle` 等）
-  Close,
-}
-
-/// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは書記素クラスタ 1 つぶん）
+/// スペーシングの単位（`MathNode` 1 個ぶん。字は書記素クラスタ 1 つぶん）
 #[derive(Debug)]
 pub(super) enum MathItem {
   /// クラスを持ち、隣のアトムとのアキを決めるアトム
@@ -60,7 +50,7 @@ pub(super) struct MathAtom {
 
 impl MathItem {
   /// クラス（左端・右端とも `class`）・区切り種別・ノード列からアイテムを作る（付くスクリプトは肩・添字）
-  pub(super) fn new(class: MathClass, fence: Option<Fence>, nodes: Vec<AtomNode>) -> Self {
+  pub(super) fn new(class: MathClass, fence: Option<Fence>, nodes: Vec<ArrangedNode>) -> Self {
     return MathItem::Atom(MathAtom {
       left_class: class,
       right_class: class,
@@ -73,7 +63,7 @@ impl MathItem {
   /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）のアイテムを作る（数式クラスは Op・区切りではない。
   /// `limits` は付くスクリプトを上下に積むか）
   pub(super) fn large_operator(symbol: String, font_size: Length, limits: bool) -> Self {
-    return Self::operator(vec![AtomNode::LargeOperator { symbol, font_size }], limits);
+    return Self::operator(vec![ArrangedNode::LargeOperator { symbol, font_size }], limits);
   }
 
   /// 演算子名 `text` をスタイル `style` で組んだアイテムを作る（数式クラスは Op・区切りではない。`limits` は付くスクリプトを
@@ -85,15 +75,15 @@ impl MathItem {
     let mut nodes = Vec::new();
     for word in text.split(' ') {
       if !nodes.is_empty() {
-        nodes.push(AtomNode::Kern { length: thin });
+        nodes.push(ArrangedNode::Kern { length: thin });
       }
-      nodes.push(AtomNode::Text(word.to_string(), style));
+      nodes.push(ArrangedNode::Text(word.to_string(), style));
     }
     return Self::operator(nodes, limits);
   }
 
   /// ノード列 `nodes` の Op のアイテムを作る（区切りではない。`limits` は付くスクリプトを上下に積むか）
-  fn operator(nodes: Vec<AtomNode>, limits: bool) -> Self {
+  fn operator(nodes: Vec<ArrangedNode>, limits: bool) -> Self {
     return MathItem::Atom(MathAtom {
       left_class: MathClass::Op,
       right_class: MathClass::Op,
@@ -105,7 +95,7 @@ impl MathItem {
 
   /// 伸縮括弧のアイテムを作る（左端は Open・右端は Close として隣と組む。括弧は中身ごと閉じた 1 個のアイテムなので、
   /// 開き・閉じ区切りとしては数えない）
-  pub(super) fn fenced(nodes: Vec<AtomNode>) -> Self {
+  pub(super) fn fenced(nodes: Vec<ArrangedNode>) -> Self {
     return MathItem::Atom(MathAtom {
       left_class: MathClass::Open,
       right_class: MathClass::Close,
@@ -125,17 +115,17 @@ impl MathItem {
 #[derive(Debug)]
 enum ItemBody {
   /// スクリプトの付かない Atom ノード列
-  Plain(Vec<AtomNode>),
+  Plain(Vec<ArrangedNode>),
   /// 核（基底）に上付き・下付きを付けたもの
   Scripted(MathScripts),
 }
 
 impl ItemBody {
   /// Atom ノード列へ畳む
-  fn into_nodes(self) -> Vec<AtomNode> {
+  fn into_nodes(self) -> Vec<ArrangedNode> {
     return match self {
       ItemBody::Plain(nodes) => nodes,
-      ItemBody::Scripted(scripts) => vec![AtomNode::Scripts(scripts)],
+      ItemBody::Scripted(scripts) => vec![ArrangedNode::Scripts(scripts)],
     };
   }
 }
@@ -151,7 +141,7 @@ pub(super) enum ScriptSide {
 
 impl ScriptSide {
   /// `scripts` のこの側の欄
-  fn slot(self, scripts: &mut MathScripts) -> &mut Option<Vec<AtomNode>> {
+  fn slot(self, scripts: &mut MathScripts) -> &mut Option<Vec<ArrangedNode>> {
     return match self {
       ScriptSide::Superscript => &mut scripts.superscript,
       ScriptSide::Subscript => &mut scripts.subscript,
@@ -375,44 +365,6 @@ fn resolve_bin_classes(classes: &mut [(MathClass, MathClass)]) {
   }
 }
 
-/// 直接入力された 1 文字の数式クラスを返す
-///
-/// plain TeX の `\mathcode` 割り当てに合わせてある。表に無い文字（和文を含む）は Ord として扱う。記号表の非 ASCII の字
-/// （正準等価な綴りを含む）は frontend が記号コマンドと同じ `HirMathKind::Symbol` にするので、ここへは来ない。
-pub(super) fn char_class(ch: char) -> MathClass {
-  return match ch {
-    '+' | '-' | '*' => MathClass::Bin,
-    '=' | '<' | '>' | ':' => MathClass::Rel,
-    ',' | ';' => MathClass::Punct,
-    '(' | '[' => MathClass::Open,
-    ')' | ']' | '!' | '?' => MathClass::Close,
-    _ => MathClass::Ord,
-  };
-}
-
-/// 直接入力された 1 文字が開き・閉じ区切りとして働くかどうかを返す
-pub(super) fn char_fence(ch: char) -> Option<Fence> {
-  return match ch {
-    '(' | '[' => Some(Fence::Open),
-    ')' | ']' => Some(Fence::Close),
-    _ => None,
-  };
-}
-
-/// 記号コマンド（`\langle` 等）の数式クラスから開き・閉じ区切りを導く
-///
-/// frontend の記号テーブル（`SYMBOLS`）で `Open` / `Close` クラスを持つ記号は、どれも対になる閉じ・開き括弧を
-/// 記号テーブルに持つ本物の区切りである（対の無い根号・長除法は Ord。対の存在は `command::symbol` のテストが保つ）。
-/// direct な文字の `!` `?` のような「クラスだけ `Close`」の例外は記号テーブルには無いので、クラスから直接 [`Fence`] を
-/// 導いてよい。
-pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
-  return match class {
-    MathClass::Open => Some(Fence::Open),
-    MathClass::Close => Some(Fence::Close),
-    MathClass::Ord | MathClass::Op | MathClass::Bin | MathClass::Rel | MathClass::Punct => None,
-  };
-}
-
 /// 上付き・下付き `content` を直前のアイテムへ付ける
 ///
 /// スクリプトは核となるアトムの一部なので、間にアキを入れず、クラスも核のものを保つ
@@ -426,7 +378,7 @@ pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
 pub(super) fn push_script(
   items: &mut Vec<MathItem>,
   side: ScriptSide,
-  content: Vec<AtomNode>,
+  content: Vec<ArrangedNode>,
   font_size: Length,
   cramped: bool,
 ) {
@@ -457,15 +409,15 @@ pub(super) fn push_script(
 /// 基底の隣り合う同じスタイルのテキストは 1 本のグリフランに畳む（分数・根号の核は複数の `Text` を持ち、
 /// スクリプトの基底へ移すと外側の [`assemble`] の結合から外れるため）。
 fn attach(
-  base: Vec<AtomNode>,
+  base: Vec<ArrangedNode>,
   side: ScriptSide,
-  content: Vec<AtomNode>,
+  content: Vec<ArrangedNode>,
   font_size: Length,
   cramped: bool,
   limits: bool,
 ) -> MathScripts {
   let mut scripts = MathScripts {
-    base: merge_adjacent_atom_text(base),
+    base: merge_adjacent_arranged_text(base),
     superscript: None,
     subscript: None,
     font_size,
@@ -497,7 +449,7 @@ struct Spaced {
   /// このアイテムが開き・閉じ区切りとして働くか（区切りでなければ `None`）
   fence: Option<Fence>,
   /// このアイテムが生む Atom ノード列
-  nodes: Vec<AtomNode>,
+  nodes: Vec<ArrangedNode>,
 }
 
 impl Spaced {
@@ -552,24 +504,28 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> (Vec
   return (out, explicit);
 }
 
-/// 幅 0 でないアキを [`AtomNode::Kern`] として積む（明示アキを含むので負にもなる）
-fn push_space(out: &mut Vec<AtomNode>, length: Length) {
+/// 幅 0 でないアキを [`ArrangedNode::Kern`] として積む（明示アキを含むので負にもなる）
+fn push_space(out: &mut Vec<ArrangedNode>, length: Length) {
   if length != Length::ZERO {
-    out.push(AtomNode::Kern { length });
+    out.push(ArrangedNode::Kern { length });
   }
 }
 
-/// アイテム列にクラス変換とアキを適用し、1 本の `AtomNode` 列へ畳む（行分割点を置かない）
-pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<AtomNode> {
+/// アイテム列にクラス変換とアキを適用し、1 本の `ArrangedNode` 列へ畳む（行分割点を置かない）
+pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<ArrangedNode> {
   return assemble_divided(vec![items], font_size, in_script).pop().expect("区画 1 個を渡したので 1 個返る");
 }
 
 /// 中間の区切りで分けた区画のアイテム列 `segments` を、区画の間に Rel の区切りを挟んだ 1 本の列としてクラス変換とアキを
-/// 決め、区画ごとの `AtomNode` 列へ分けて返す（行分割点を置かない。返す区画の数は入力と同じ）
+/// 決め、区画ごとの `ArrangedNode` 列へ分けて返す（行分割点を置かない。返す区画の数は入力と同じ）
 ///
 /// 区切りの前のアキは前の区画の末尾、区切りの後ろのアキは次の区画の先頭、最後のアトムより後ろの明示アキは最後の区画の
 /// 末尾に入る。区切り自身はノードを持たない。
-pub(super) fn assemble_divided(segments: Vec<Vec<MathItem>>, font_size: Length, in_script: bool) -> Vec<Vec<AtomNode>> {
+pub(super) fn assemble_divided(
+  segments: Vec<Vec<MathItem>>,
+  font_size: Length,
+  in_script: bool,
+) -> Vec<Vec<ArrangedNode>> {
   // 区切りは各区画（最初を除く）の前に置くアトムなので、区画 i の前の区切りはそれまでのアトム数 + i 番目のアトムになる
   let mut dividers = Vec::with_capacity(segments.len().saturating_sub(1));
   let mut items = Vec::new();
@@ -581,7 +537,7 @@ pub(super) fn assemble_divided(segments: Vec<Vec<MathItem>>, font_size: Length, 
     items.extend(segment);
   }
   let (atoms, trailing) = space_items(items, font_size, in_script);
-  let mut out: Vec<Vec<AtomNode>> = vec![Vec::new()];
+  let mut out: Vec<Vec<ArrangedNode>> = vec![Vec::new()];
   let mut dividers = dividers.into_iter().peekable();
   for (index, spaced) in atoms.into_iter().enumerate() {
     let current = out.last_mut().expect("区画の列は 1 個から始め、減らさない");
@@ -593,19 +549,19 @@ pub(super) fn assemble_divided(segments: Vec<Vec<MathItem>>, font_size: Length, 
     current.extend(spaced.nodes);
   }
   push_space(out.last_mut().expect("区画の列は 1 個から始め、減らさない"), trailing);
-  return out.into_iter().map(merge_adjacent_atom_text).collect();
+  return out.into_iter().map(merge_adjacent_arranged_text).collect();
 }
 
 /// インライン数式のトップレベルを組み、二項演算子・関係子の直後に行分割点を置く
 ///
 /// 分割点は [`break_penalty`] が認めた境界だけで、そこでは演算子直後のアキを Kern ではなく
-/// [`InlineNode::MathBreak`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
+/// [`ArrangedInline::Break`] の `spacing` として出す（折り返したときに次行の行頭へアキを残さないため）。
 /// 分割点のアキにはその境界の明示アキも含める（折り返すと明示アキも行頭から消える）。
 /// ただし右のアイテムが空（`Group([])` 由来の中身の無い Ord 等）なら、割っても行頭に何も残らないので
 /// 分割点を置かず Kern のままにする。
-pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<InlineNode> {
-  let mut out: Vec<InlineNode> = Vec::new();
-  let mut run: Vec<AtomNode> = Vec::new();
+pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<ArrangedInline> {
+  let mut out: Vec<ArrangedInline> = Vec::new();
+  let mut run: Vec<ArrangedNode> = Vec::new();
   // 開き括弧の入れ子の深さ。[`Fence`] だけで数え、対応の無い閉じ括弧で負にはしない。
   let mut depth = 0usize;
   let (atoms, trailing) = space_items(items, font_size, false);
@@ -614,7 +570,7 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
     match spaced.gap.and_then(|gap| return break_penalty(gap, depth)) {
       Some(penalty) if !spaced.nodes.is_empty() => {
         flush_run(&mut run, &mut out);
-        out.push(InlineNode::MathBreak {
+        out.push(ArrangedInline::Break {
           spacing: space,
           penalty,
         });
@@ -633,9 +589,9 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
   return out;
 }
 
-/// 溜めた Atom ノード列をグリフランへ畳み、段落の語彙へ持ち上げて `out` へ移す
-fn flush_run(run: &mut Vec<AtomNode>, out: &mut Vec<InlineNode>) {
-  out.extend(merge_adjacent_atom_text(mem::take(run)).into_iter().map(InlineNode::from));
+/// 溜めた要素列をグリフランへ畳み、トップレベルの要素として `out` へ移す
+fn flush_run(run: &mut Vec<ArrangedNode>, out: &mut Vec<ArrangedInline>) {
+  out.extend(merge_adjacent_arranged_text(mem::take(run)).into_iter().map(ArrangedInline::Node));
 }
 
 /// 境界 `gap` が行分割点になるなら、そのペナルティを返す
@@ -659,10 +615,30 @@ fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
   };
 }
 
+/// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
+///
+/// 数式のアトム間に挟んだ [`ArrangedNode::Kern`] が結合を切るので、アキの入らない記号どうし
+/// （`$ab$`）は 1 本のグリフランに戻り、アキの入る並び（`$a+b$`）だけが分かれる。
+fn merge_adjacent_arranged_text(nodes: Vec<ArrangedNode>) -> Vec<ArrangedNode> {
+  let mut out: Vec<ArrangedNode> = Vec::with_capacity(nodes.len());
+  for node in nodes {
+    match (out.last_mut(), node) {
+      (Some(ArrangedNode::Text(prev, prev_style)), ArrangedNode::Text(cur, cur_style)) if *prev_style == cur_style => {
+        prev.push_str(&cur);
+      },
+      (_, node) => out.push(node),
+    }
+  }
+  return out;
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::document::{MathSpace, Typeface};
+  use crate::{
+    document::{MathSpace, Typeface},
+    typeset::lowering::{char_class, char_fence},
+  };
 
   /// 12pt の Math テキストスタイル
   fn style() -> TextStyle {
@@ -677,15 +653,15 @@ mod tests {
 
   /// 1 文字のテキストアイテムを作る
   fn item(ch: char) -> MathItem {
-    return MathItem::new(char_class(ch), char_fence(ch), vec![AtomNode::Text(ch.to_string(), style())]);
+    return MathItem::new(char_class(ch), char_fence(ch), vec![ArrangedNode::Text(ch.to_string(), style())]);
   }
 
   /// ノード列に含まれるカーン幅を出現順に返す
-  fn kerns(nodes: &[AtomNode]) -> Vec<Length> {
+  fn kerns(nodes: &[ArrangedNode]) -> Vec<Length> {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        AtomNode::Kern { length } => return Some(*length),
+        ArrangedNode::Kern { length } => return Some(*length),
         _ => return None,
       })
       .collect();
@@ -695,7 +671,7 @@ mod tests {
   fn items(text: &str) -> Vec<MathItem> { return text.chars().map(item).collect(); }
 
   /// スクリプトの中身にする 1 文字
-  fn script(ch: char) -> Vec<AtomNode> { return vec![AtomNode::Text(ch.to_string(), style())]; }
+  fn script(ch: char) -> Vec<ArrangedNode> { return vec![ArrangedNode::Text(ch.to_string(), style())]; }
 
   /// アトムのアイテムを借りる
   fn atom_of(item: &MathItem) -> &MathAtom {
@@ -717,30 +693,14 @@ mod tests {
   fn explicit(space: MathSpace) -> MathItem { return MathItem::explicit(space, Length::pt(12.0)); }
 
   /// ノード列に置かれた行分割点を（アキ, ペナルティ）で出現順に返す
-  fn breaks(nodes: &[InlineNode]) -> Vec<(Length, i32)> {
+  fn breaks(nodes: &[ArrangedInline]) -> Vec<(Length, i32)> {
     return nodes
       .iter()
       .filter_map(|node| match node {
-        InlineNode::MathBreak { spacing, penalty } => return Some((*spacing, *penalty)),
-        _ => return None,
+        ArrangedInline::Break { spacing, penalty } => return Some((*spacing, *penalty)),
+        ArrangedInline::Node(_) => return None,
       })
       .collect();
-  }
-
-  #[test]
-  fn char_class_follows_plain_tex_mathcodes() {
-    assert_eq!(char_class('+'), MathClass::Bin);
-    assert_eq!(char_class('-'), MathClass::Bin);
-    assert_eq!(char_class('='), MathClass::Rel);
-    assert_eq!(char_class(':'), MathClass::Rel, ":は関係子（区切りは \\colon）");
-    assert_eq!(char_class(','), MathClass::Punct);
-    assert_eq!(char_class('('), MathClass::Open);
-    assert_eq!(char_class(')'), MathClass::Close);
-    assert_eq!(char_class('a'), MathClass::Ord);
-    assert_eq!(char_class('1'), MathClass::Ord);
-    assert_eq!(char_class('/'), MathClass::Ord);
-    assert_eq!(char_class('|'), MathClass::Ord);
-    assert_eq!(char_class('速'), MathClass::Ord, "表に無い文字は Ord へ倒す");
   }
 
   #[test]
@@ -870,7 +830,7 @@ mod tests {
     let nodes = assemble(items, Length::pt(12.0), false);
 
     assert_eq!(nodes.len(), 1, "アキの無い並びは 1 本のグリフランに戻る: {nodes:?}");
-    assert!(matches!(&nodes[0], AtomNode::Text(text, _) if text == "ab"));
+    assert!(matches!(&nodes[0], ArrangedNode::Text(text, _) if text == "ab"));
   }
 
   #[test]
@@ -888,7 +848,7 @@ mod tests {
 
     assert_eq!(items.len(), 1, "スクリプトは新しいアトムを作らない");
     let scripts = scripts_of(&items[0]);
-    assert!(matches!(scripts.base.as_slice(), [AtomNode::Text(text, _)] if text == "x"), "{scripts:?}");
+    assert!(matches!(scripts.base.as_slice(), [ArrangedNode::Text(text, _)] if text == "x"), "{scripts:?}");
     assert!(scripts.superscript.is_some() && scripts.subscript.is_none());
   }
 
@@ -909,7 +869,7 @@ mod tests {
     push_script(&mut items, ScriptSide::Superscript, script('2'), Length::pt(12.0), false);
 
     let scripts = scripts_of(&items[0]);
-    assert!(matches!(scripts.base.as_slice(), [AtomNode::Text(text, _)] if text == "x"), "{scripts:?}");
+    assert!(matches!(scripts.base.as_slice(), [ArrangedNode::Text(text, _)] if text == "x"), "{scripts:?}");
     assert!(scripts.superscript.is_some() && scripts.subscript.is_some());
   }
 
@@ -921,7 +881,7 @@ mod tests {
 
     let outer = scripts_of(&items[0]);
     assert!(
-      matches!(outer.base.as_slice(), [AtomNode::Scripts(inner)] if inner.superscript.is_some()),
+      matches!(outer.base.as_slice(), [ArrangedNode::Scripts(inner)] if inner.superscript.is_some()),
       "前のスクリプトを上書きせず、スクリプト付きの x 全体を基底にする: {outer:?}"
     );
     assert!(outer.superscript.is_some());
@@ -941,7 +901,7 @@ mod tests {
     let scripts = scripts_of(&items[0]);
     assert!(scripts.limits, "反対側を埋めても上下に積むまま: {scripts:?}");
     assert!(scripts.superscript.is_some() && scripts.subscript.is_some());
-    assert!(matches!(scripts.base.as_slice(), [AtomNode::LargeOperator { .. }]), "{scripts:?}");
+    assert!(matches!(scripts.base.as_slice(), [ArrangedNode::LargeOperator { .. }]), "{scripts:?}");
     assert_eq!(atom_of(&items[0]).left_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
     assert_eq!(atom_of(&items[0]).right_class, MathClass::Op, "範囲を付けても演算子のクラスのまま");
   }
@@ -970,7 +930,7 @@ mod tests {
 
     let outer = scripts_of(&items[0]);
     assert!(!outer.limits, "範囲付きの演算子全体は演算子 1 つではないので外側は肩・添字: {outer:?}");
-    assert!(matches!(outer.base.as_slice(), [AtomNode::Scripts(inner)] if inner.limits), "{outer:?}");
+    assert!(matches!(outer.base.as_slice(), [ArrangedNode::Scripts(inner)] if inner.limits), "{outer:?}");
   }
 
   #[test]
@@ -986,7 +946,7 @@ mod tests {
     assert!(
       matches!(
         nodes.as_slice(),
-        [AtomNode::Text(lim, _), AtomNode::Kern { length }, AtomNode::Text(sup, _)]
+        [ArrangedNode::Text(lim, _), ArrangedNode::Kern { length }, ArrangedNode::Text(sup, _)]
           if lim == "lim" && sup == "sup" && *length == mu(Space::Thin.mu_count(), Length::pt(12.0))
       ),
       "語ごとのテキストの間に細アキ: {nodes:?}"
@@ -1000,7 +960,7 @@ mod tests {
 
     let scripts = scripts_of(&items[0]);
     assert!(scripts.limits, "{scripts:?}");
-    assert!(matches!(scripts.base.as_slice(), [AtomNode::Text(text, _)] if text == "lim"), "{scripts:?}");
+    assert!(matches!(scripts.base.as_slice(), [ArrangedNode::Text(text, _)] if text == "lim"), "{scripts:?}");
   }
 
   #[test]
@@ -1026,11 +986,11 @@ mod tests {
       matches!(
         nodes.as_slice(),
         [
-          InlineNode::Text(a, _),
-          InlineNode::Kern { .. },
-          InlineNode::Text(plus, _),
-          InlineNode::MathBreak { .. },
-          InlineNode::Text(b, _),
+          ArrangedInline::Node(ArrangedNode::Text(a, _)),
+          ArrangedInline::Node(ArrangedNode::Kern { .. }),
+          ArrangedInline::Node(ArrangedNode::Text(plus, _)),
+          ArrangedInline::Break { .. },
+          ArrangedInline::Node(ArrangedNode::Text(b, _)),
         ] if a == "a" && plus == "+" && b == "b"
       ),
       "演算子の前は Kern、後ろは分割点: {nodes:?}"
@@ -1054,7 +1014,7 @@ mod tests {
   #[test]
   fn assemble_breakable_does_not_count_a_fence_as_a_parenthesis() {
     let mut sequence = items("a+");
-    sequence.push(MathItem::fenced(vec![AtomNode::Text("b".to_string(), style())]));
+    sequence.push(MathItem::fenced(vec![ArrangedNode::Text("b".to_string(), style())]));
     sequence.extend(items("+c"));
 
     let nodes = assemble_breakable(sequence, Length::pt(12.0));
@@ -1165,14 +1125,17 @@ mod tests {
     let sole = assemble(vec![explicit(MathSpace::Quad)], font_size, false);
 
     assert!(
-      matches!(leading.as_slice(), [AtomNode::Kern { length }, AtomNode::Text(..)] if *length == mu(3, font_size)),
+      matches!(leading.as_slice(), [ArrangedNode::Kern { length }, ArrangedNode::Text(..)] if *length == mu(3, font_size)),
       "{leading:?}"
     );
     assert!(
-      matches!(trailing.as_slice(), [AtomNode::Text(..), AtomNode::Kern { length }] if *length == mu(18, font_size)),
+      matches!(trailing.as_slice(), [ArrangedNode::Text(..), ArrangedNode::Kern { length }] if *length == mu(18, font_size)),
       "{trailing:?}"
     );
-    assert!(matches!(sole.as_slice(), [AtomNode::Kern { length }] if *length == mu(18, font_size)), "{sole:?}");
+    assert!(
+      matches!(sole.as_slice(), [ArrangedNode::Kern { length }] if *length == mu(18, font_size)),
+      "{sole:?}"
+    );
   }
 
   #[test]
@@ -1187,7 +1150,7 @@ mod tests {
     let nodes = assemble(items, Length::pt(12.0), false);
 
     assert!(
-      matches!(nodes.as_slice(), [AtomNode::Text(text, _)] if text == "ab"),
+      matches!(nodes.as_slice(), [ArrangedNode::Text(text, _)] if text == "ab"),
       "幅 0 のアキは Kern を出さず、`ab` と同じ 1 本のグリフランになる: {nodes:?}"
     );
   }
@@ -1239,11 +1202,11 @@ mod tests {
       matches!(
         nodes.as_slice(),
         [
-          InlineNode::Text(..),
-          InlineNode::Kern { .. },
-          InlineNode::Text(..),
-          InlineNode::MathBreak { .. },
-          InlineNode::Text(..),
+          ArrangedInline::Node(ArrangedNode::Text(..)),
+          ArrangedInline::Node(ArrangedNode::Kern { .. }),
+          ArrangedInline::Node(ArrangedNode::Text(..)),
+          ArrangedInline::Break { .. },
+          ArrangedInline::Node(ArrangedNode::Text(..)),
         ]
       ),
       "分割点の後ろに Kern を残さない（折り返すと明示アキも行頭から消える）: {nodes:?}"
@@ -1277,5 +1240,33 @@ mod tests {
       vec![(mu(4, font_size) + (mu(-3, font_size) + mu(-3, font_size)), BIN_BREAK_PENALTY)],
       "{nodes:?}"
     );
+  }
+
+  #[test]
+  fn merge_adjacent_arranged_text_joins_same_style_runs() {
+    let nodes = vec![
+      ArrangedNode::Text("a".to_string(), style()),
+      ArrangedNode::Text("b".to_string(), style()),
+    ];
+
+    let merged = merge_adjacent_arranged_text(nodes);
+
+    assert_eq!(merged.len(), 1);
+    assert!(matches!(&merged[0], ArrangedNode::Text(text, _) if text == "ab"));
+  }
+
+  #[test]
+  fn merge_adjacent_arranged_text_keeps_runs_separated_by_kern() {
+    let nodes = vec![
+      ArrangedNode::Text("a".to_string(), style()),
+      ArrangedNode::Kern {
+        length: Length::pt(2.0),
+      },
+      ArrangedNode::Text("b".to_string(), style()),
+    ];
+
+    let merged = merge_adjacent_arranged_text(nodes);
+
+    assert_eq!(merged.len(), 3, "カーンを挟んだラン同士は結合しない: {merged:?}");
   }
 }

@@ -687,8 +687,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 - 計測・シェーピングは `boxing` に閉じる（生成コンテンツ（目次・索引・走り文）も、その部品 `Shaper` を使う）。
   box はここで width / height / depth を 1 回計測して保持し、`breaking` はフォントに触れない。
-  計測を伴わない参照は、組版前の `math_glyphs` による字形の存在検査、本文パスが lowering へ渡す数式の縮小率
-  （`FontSystem::script_scale`）の取得、`emit` が描画資源へ載せる face 設定・メトリクスの取得に限る。
+  計測を伴わない参照は、組版前の `math_glyphs` による字形の存在検査と、`emit` が描画資源へ載せる face 設定・
+  メトリクスの取得に限る（数式のスクリプト段の縮小率は数式エンジンが `boxing` の中で読む）。
   backend のフォント構築・サブセット化は `seiran-pdf` が持つ
 - **段の中では 19 種すべてを検査して違反を `FontType` の宣言順に全件返す**。段の間（parse → metrics →
   validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
@@ -867,7 +867,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 
 #### `lowering`
 
-`SemanticDocument` → `LayoutNode` への変換。フォント・シェーピング非依存（数式のスクリプト段の縮小率だけは、本文パスが数式フォントから読んだ値 `ScriptScale` を `LoweringContext` が運ぶ。lowering は `FontSystem` に触れない）で、意味解析を行わないため失敗しない
+`SemanticDocument` → `LayoutNode` への変換。フォント・シェーピング非依存で、意味解析を行わないため失敗しない
 （`Result` を返す公開関数が無い）。
 
 - 本文の入口は前段の深い型 `SemanticDocument` 1 つだけを借用する（タイトルページだけは config 由来の
@@ -882,63 +882,17 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 - **複数ソース**: 全ソースのノード列を 1 回でまとめて lower し、その直後に書誌を lower する（書誌は常に本文の
   後。書誌に振る見出し index が「本文の見出し数」である前提は、`analyze` が本文の見出しをすべて確定してから
   書誌を扱う順序に依存する）。ソースの起源（`SourceId`）は診断のためのもので、検証を終えた後の lowering は読まない
-- **数式のアキ**: `HirMath` の兄弟 1 個（テキストは書記素クラスタ 1 つ — 結合文字は基底の字と同じアイテムで、スクリプトの基底も
-  結合文字を含めた字になる）をアイテムとし、記号コマンドと、NFC にした最初の字が記号表の非 ASCII の字である直接入力
-  （frontend が記号コマンドと同じ `HirMathKind::Symbol` にする）は `MathClass`、そのほかの直接入力の文字は plain TeX の
-  mathcode 相当の分類（クラスタの最初の字。表に無い字は Ord）でクラスを決める。ソースの空白はアイテムにしない
-  （`$a+b$` と `$a + b$` は同じ出力）。明示アキ（`\thinspace` 等。HIR は量ではなく種類 `MathSpace` を持ち、量は
-  自動アキと同じ定数から決める）はクラスを持たないアイテムで、Bin→Ord 変換とアキ表の参照に透過し、幅を次のアトムの
-  前のアキへ足す（スクリプトの基底にも行分割点にもならず、分割点の境界にある明示アキは `MathBreak` のアキに入って
-  折り返しで消える）。TeXbook の Bin→Ord 変換を前方 1 パスで適用してから 7×7 のアキ表を
-  引き、1mu = font_size/18 の固定 kern を挟む。インライン数式のトップレベルに限り、括弧の外の Bin の直後、
-  および右がアキを持つ Rel の直後（右が Ord / Op / Open のときだけ。Bin / Rel / Close / Punct は
-  アキ 0 のセルか Bin→Ord 変換で現れない組み合わせなので割らない）のアキを行分割点
-  `InlineNode::MathBreak` として出す（ディスプレイ数式のセルは
-  `AtomNode` で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
-  括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
-  区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
-  `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
-  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身の中間の区切り（`\given`）は区画の間に置く
-  Rel のアイテムとして中身全体の 1 本の列でアキを決め、そのあと区画ごとに分ける（`\paren{a \given b}` は `(a \mid b)` と同じアキ）。二項係数（`\binom`）も、横罫の無い
-  `MathFraction` を `MathFenced` の `(` `)` で包んだ伸縮括弧と同じ 1 個のアイテム。中身ごと閉じた Atom なので内側では割らず、
-  括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）。
-  数式内の文章（`\text`。HIR は空白をまとめ済みの文字列を `HirMathKind::Prose` に持つ）は Ord の 1 アイテムで、字形
-  variant を読まず `[text].typeface` で組む（大きさは段、色は外側から継ぐ）。`AtomNode::Prose` / `InlineNode::Prose` として
-  boxing へ渡り、boxing は本文の水平リスト生成（和欧文間アキ・約物アキは `[text].punctuation_spacing` に従う）を通して
-  glue を自然幅として 1 個の閉じた箱に並べる（インライン数式のトップレベルでも分割点を持たない）。空の文章は空のグループと
-  同じ中身の無い Ord
-- **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
-  持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
-  `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
-  `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。数式の中に埋め込んだ
-  `matrix` / `cases`（HIR の `HirMathKind::Matrix` / `Cases`）のセルは、display 段からは text 段、text 段以下では外側の段の
-  まま組み、添字の中で本文の大きさへ戻さない。cramped・字形 variant・文字色は外側から継ぐ。上付き・
-  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
-  下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
-  1 段下（display → text、text → script、それより下は scriptscript）。二項係数の上段・下段も分子・分母と同じ段と cramped。下付きの中身・分母・被根号・
-  アクセントの基底・上線の基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身・分子・下線の基底は親を継承）。段のフォントサイズは数式本体の
-  サイズに MATH の縮小率を掛けた値（scriptscript も本体基準）。兄弟として並ぶ上付き・下付きは直前のアイテムを
-  基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
-  付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は lowering では
-  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
-  段のサイズ・display か・横罫を引くか）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
-  基底の幅へ伸ばすか・基底をドット無しの字形で組むか（ソースの `dotless`、無ければ style.toml の `[math].accent_dotless`。
-  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身を中間の区切りで分けた区画・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
-  `MathArray`（セル・左右の括弧・行列の段のサイズとスクリプト段・行間・列間）として boxing へ渡す。埋め込んだ行列は閉じた
-  1 アトムで、括弧を持つもの（`delimiter` が none 以外の matrix と cases）は伸縮括弧と同じく左端 Open・右端 Close、括弧の
-  無い matrix は Ord として隣とアキを取る。行間・列間は `[math.block].row_gap` / `column_gap` を本文の大きさ（`[text].font_size`）基準として段のサイズに比例させた値。
-  インライン数式は外側の文字色（`\color`・リンク色）を `MathLoweringContext` に持って全段へ継承し、テキストの
-  `TextStyle` と上の複合ノードの `color`（分数線・根号記号と横線・アクセント記号・区切り括弧・上下線の塗り色）に載せる。
-  表示数式は段落の外のブロックで文字色が効かないので既定色（`None`）。
-  大型演算子（数式クラス Op の記号のうち MathML Core の演算子辞書で largeop を持つもの）は display 段でだけ
-  `AtomNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の
-  ときだけ効く）。largeop を持たない Op（`\bigslash` 等）は display 段でも Op のアキを取る通常の字。積分記号以外（MathML Core の演算子辞書の
-  movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
-  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す。
-  演算子名（`\lim` `\sin` 等。HIR は組む字と limits を取るかを `HirMathKind::OperatorName` に持つ）は Op の 1 アイテムで、
-  字は立体の ASCII のまま（字形 variant を読まない）、語の間（`\limsup`）は細アキの Kern。display 段でも
-  `AtomNode::LargeOperator` にせず拡大しないが、limits を取る名前は display 段でだけ大型演算子と同じく `MathScripts::limits`
-  を立てる
+- **数式は内容だけを解決する**: `HirMath` を `MathNode` へ写す。字は書記素クラスタ 1 つか記号 1 つで、字形 variant
+  （`\mathbold` 等）の写し・数式クラス・区切り種別（`Fence`）を解決済み（記号コマンドと、NFC にした最初の字が記号表の
+  非 ASCII の字である直接入力は記号表の `MathClass`、そのほかの直接入力の文字は plain TeX の mathcode 相当の分類。
+  区切りはクラスタの最初の字か記号のクラスから決める）。文章の書体（`[text].typeface`）・アクセントのドット無し（ソースの
+  `dotless`、無ければ `[math].accent_dotless`。広幅アクセントは常に偽）・埋め込んだ行列の区切り括弧と揃えと行間列間
+  （`[math.block]` の値を本文の大きさ `[text].font_size` 基準として数式本体の大きさへ比例させた値）も解決する。字形指定は
+  列に透過させ（`\mathbold{a+b}` の `+` も二項演算子）、空の文章は空のグループにする。インライン数式は
+  `InlineNode::Math(MathFormula)`（本体の大きさと外側の文字色を添える。解決後の中身が無い数式はノードを出さない。中身があればアキだけ・空のグループだけの数式も 1 つのノードで、
+  見出し・キャプションでも前後のテキストを畳まない）、表示数式の
+  セルは `MathBlockCellLayout` で運び、表示数式はセルを display 段で始めるか（`cases` / `matrix` は text 段）を
+  `MathBlockLayout` に載せる。段・cramped・大きさ・アキ・分割候補・計測は数式エンジン（`boxing::math` 節）が決める
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
@@ -963,8 +917,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `MathBlock(MathBlockLayout)`）とも形が揃う
 - **数式ブロックの体裁（セルの列内揃え・区切り括弧のグリフ）は lowering が解決する**（#674）。
   `MathBlockLayout` は環境種別（`document::MathBlockKind`）を持たず、セルごとの `Align` と
-  解決済みの `DelimiterGlyphs` を載せる。`boxing` は計測と配置だけを行い、HIR の数式語彙を
-  import しない。**ブロック（数式・画像・表）・数式セル・目次と索引の行の揃えの型は `boxes::Align` 1 つ**で、style の 3 値
+  解決済みの `DelimiterGlyphs` を載せる。数式エンジン（`boxing::math`）は HIR の数式語彙（`HirMath` 系・`MathBlockKind`・
+  `GridLayout`・`MathDelimiter`・`MathVariant`）を import しない（`document` 直下の葉の型 `MathClass` / `MathSpace` /
+  `Typeface` は import する）。**ブロック（数式・画像・表）・数式セル・目次と索引の行の揃えの型は `boxes::Align` 1 つ**で、style の 3 値
   `style::BlockAlignment` → `Align` の変換は `boxes::align` の `From` 1 箇所（数式は lowering、目次・索引は pagination が呼ぶ）。
   目次・索引の行は pagination が組み立てた `Line` を `shift_x` で寄せてから `Block::ComposedLine` に積むので、breaking は揃えを
   知らない。段落の揃えは `document::TextAlignment`（伸縮の有無を含む 4 値）
@@ -977,13 +932,13 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `LineBreak` は段落内 `\\` と `code` 環境の行間にだけ使い、段落境界には使わない。
   コードブロックは複数行を 1 つの段落に保持する
 - **レイアウトノードは縦リスト・インライン・閉じたアトムの語彙を分け、下流の場合分けを型で
-  閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise・
-  上付き下付きの付いた基底・分数・根号・アクセント・上下線・伸縮括弧・大型演算子・数式の分割点・リンク・右寄せ末尾・脚注・索引マーカー）で、表セルの中身・脚注の本体・リンクの子・
-  キャプション・インライン数式・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
+  閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise（脚注
+  マーカーのテキスト）・インライン数式・リンク・右寄せ末尾（QED マークのテキスト）・脚注・索引マーカー）で、表セルの中身・
+  脚注の本体・リンクの子・キャプション・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
   （`Paragraph` / `VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）
-  だけを持ち、裸のインラインを積めない。`Atom` に畳める要素
-  （テキスト・kern・上付き下付きの付いた基底・分数・根号・アクセント・上下線・伸縮括弧・大型演算子）はさらにその部分集合 `AtomNode` で、`boxing` の `Atom` 化も場合分け
-  なしで閉じる。`AtomNode` → `InlineNode` の持ち上げだけを `From` で提供する
+  だけを持ち、裸のインラインを積めない。数式の構造（上付き下付き・分数・根号・アクセント・上下線・伸縮括弧・埋め込んだ
+  行列・大型演算子・分割候補）はレイアウトノードの語彙に現れず、インライン数式は `InlineNode::Math` 1 つ、表示数式は
+  `LayoutNode::MathBlock` のセルとして解決済みの数式（`MathNode`）で運ぶ
 - **段落への付加は lowering で完了する**。リストのマーカーは項目の先頭が直接の段落ならその先頭へ、
   それ以外なら独立段落へ置く。QED はソースの末尾が段落ならそこへ追加し、それ以外では独立段落へ置く
   （末尾に水平アキ列だけがあれば、その列と同じ段落に置く）。
@@ -997,8 +952,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 シェーピング・計測、break 注入、画像ブロックの描画寸法の確定、`Atom` 化を行う。
 `boxing` 本体は縦リストの走査・`Atom` 化・表と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返し、
 `HItem` への変換は積む直前）を持ち、本文テキストのスクリプト分割・break 注入（分割点ごとの
-glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）は子 module `text_run`、ディスプレイ数式は子 `math` が `Measurer`
-の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。シェーピングそのものは子 `shaping` の
+glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）は子 module `text_run`、数式（インライン・ディスプレイ）は
+数式エンジン（子 `math`。次節）が `Measurer` の `impl` を続ける形で持つ（子 module の目録は `boxing` の `//!`）。シェーピングそのものは子 `shaping` の
 `Shaper` が行い、**フォントメトリクスから箱の寸法を出すのは `ShapedRun::measure` 1 箇所**（分割した断片・
 約物 1 字は親 run の高さ・深さを写す）。段落構築のポリシーを持つ `Measurer` と、持たない `Shaper` は型で
 分かれていて、生成コンテンツは後者だけを構築する。
@@ -1006,7 +961,7 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
 - **break 注入**: シェーピング後の run を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、和文字間は
   幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済み
   ハイフン箱を持つ `Discretionary` にする。和文はハイフネーションしない（字間 `Glue` が分割機会）。数式の
-  テキストには注入せず、lowering が置いた `MathBreak` を幅つきの分割点 `HItem::MathBreak` にするだけ
+  テキストには注入せず、数式エンジンが決めた分割候補を幅つきの分割点 `HItem::MathBreak` にするだけ
 - **コード**（`code` 環境の 1 行・`\code{...}`）は break 注入を通さず `Atom` 1 つに畳む — 空白を伸縮 `Glue`
   へ変換しないので、字下げと空白の個数が行分割・行揃えで動かない（行内に分割機会が無いので折り返しも
   しない。コードの行折り返しは未対応）。空文字列（コードの空行）のときだけ同じ書体・サイズの空セグメントを
@@ -1025,6 +980,92 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   任意の位置に置けるため、分割すると Knuth–Plass の行分割結果が変わる（受け入れ条件は「`\index` を取り
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
+- 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる。run の内側の境界は `text_run` が隣接グリフ対で、run をまたぐ境界（数式・欧文・別スタイル・コード・別の和文 run との間）は子 `hlist` の `HList` がアイテム列の端の性質から、同じ `boundary_glue` で解決する。和欧文間アキ（四分）も `HList` が run 境界（1 つのテキストの中のスクリプト境界を含む）で和文字と欧文字の端から 1 箇所で決め、`\color` / `\bold` などの引数境界をまたいでもテキストの中と同じ 1 つだけ入る（文字を持たない箱・数式の中の字は受けない）。幅 0 の運搬マーカーと脚注マーカーは透明で左の字に付き、空白・明示アキ・分割制御・リストの端はアキを打ち消す。境界のアキで分割できるかは run の内側と同じく境界の 2 字を UAX #14 で読んで決め（文字を持たない箱は欧文字として読む）、分割できるアキは行頭・行末で本文と同じく落ちる。数式内の文章（`\text`）の端の約物は、インライン数式なら段落のリストで、ディスプレイ数式・上付きなどの中なら `Atom` の子の並びで隣の子と解決し、両側が数式の中の境界は分割も伸縮もしない固定幅にする（インライン数式の分割点は `MathBreak` だけ）
+
+(b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。
+分割点は子 module `hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する。消費者は break 注入だけなので
+`boxing` の子に置き、**`boxing` は `breaking` に依存しない**（段順序どおり `breaking` が純粋に下流）。置き場は
+`document` 節の判断基準（consumer が同一依存関係内にとどまるなら共有置き場ではなくその内部へ置く）を module に
+当てはめたもの。
+
+#### 数式エンジン（`boxing::math`）
+
+数式の組版（段・cramped・アキ・分割候補・構造ごとの計測と内部配置）を閉じる `boxing` の子 module。入口は `Measurer` の
+2 つ — インライン数式（`InlineNode::Math`）を組んで段落の水平リストへ箱と分割候補（`HItem::MathBreak`）を積む
+`push_inline_math` と、表示数式（`LayoutNode::MathBlock`）を `Block::Math` にする `build_math_block`。段落の行分割・配置は
+数式の内部構造を知らない。入力は lowering が内容だけを解決した `MathNode` で、HIR の数式語彙は届かない。
+
+2 段で組む:
+
+- **組み立て（子 `arrange`。純粋段）**: `MathNode` 列・数式本体の大きさ・開始段・縮小率から、段と cramped を伝播し、
+  Bin→Ord 変換とアキ表（子 `arrange::spacing`）でアキを決め、スクリプトを基底へ付け、インライン数式のトップレベルでは
+  分割候補を抜き出して、計測前の木（`ArrangedNode`。インラインのトップレベルは分割候補を含む `ArrangedInline`）にする。
+  フォントに触れない — 縮小率は配置段が `Shaper::script_scale`（数式フォントの MATH）で読んで渡すので、段・アキの
+  テストはフォント無しで書ける
+- **配置（この module 本体と子 `fraction` / `radical` / `accent` / `bar` / `fenced` / `array` / `large_operator` / `limits`）**:
+  組み立てた木を計測し、MATH 定数とインクから構造ごとの内部配置を決めて閉じた `Atom` にする。インライン数式の
+  トップレベルは、テキストを数式フォントの run ごとの箱、文章を端の約物の性質を添えた閉じた箱（段落の隣の約物と本文の
+  規則でアキを解決する）、アキをアキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
+
+組み立て（段・アキ）と配置（構造ごと）の規則:
+
+- **数式のアキ**: `MathNode` 1 個（テキストは書記素クラスタ 1 つ — 結合文字は基底の字と同じアイテムで、スクリプトの基底も
+  結合文字を含めた字になる）をアイテムとし、記号コマンドと、NFC にした最初の字が記号表の非 ASCII の字である直接入力
+  （frontend が記号コマンドと同じ `HirMathKind::Symbol` にする）は `MathClass`、そのほかの直接入力の文字は plain TeX の
+  mathcode 相当の分類（クラスタの最初の字。表に無い字は Ord）でクラスを決める（クラスは lowering が解決して `MathNode` に載せる）。ソースの空白はアイテムにしない
+  （`$a+b$` と `$a + b$` は同じ出力）。明示アキ（`\thinspace` 等。HIR は量ではなく種類 `MathSpace` を持ち、量は
+  自動アキと同じ定数から決める）はクラスを持たないアイテムで、Bin→Ord 変換とアキ表の参照に透過し、幅を次のアトムの
+  前のアキへ足す（スクリプトの基底にも行分割点にもならず、分割点の境界にある明示アキは `MathBreak` のアキに入って
+  折り返しで消える）。TeXbook の Bin→Ord 変換を前方 1 パスで適用してから 7×7 のアキ表を
+  引き、1mu = font_size/18 の固定 kern を挟む。インライン数式のトップレベルに限り、括弧の外の Bin の直後、
+  および右がアキを持つ Rel の直後（右が Ord / Op / Open のときだけ。Bin / Rel / Close / Punct は
+  アキ 0 のセルか Bin→Ord 変換で現れない組み合わせなので割らない）のアキを行分割点
+  `ArrangedInline::Break`（段落のリストでは `HItem::MathBreak`）として出す（ディスプレイ数式のセルは
+  `ArrangedNode` の列で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
+  括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
+  区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
+  `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
+  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身の中間の区切り（`\given`）は区画の間に置く
+  Rel のアイテムとして中身全体の 1 本の列でアキを決め、そのあと区画ごとに分ける（`\paren{a \given b}` は `(a \mid b)` と同じアキ）。二項係数（`\binom`）も、横罫の無い
+  `MathFraction` を `MathFenced` の `(` `)` で包んだ伸縮括弧と同じ 1 個のアイテム。中身ごと閉じた Atom なので内側では割らず、
+  括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）。
+  数式内の文章（`\text`。HIR は空白をまとめ済みの文字列を `HirMathKind::Prose` に持つ）は Ord の 1 アイテムで、字形
+  variant を読まず `[text].typeface` で組む（大きさは段、色は外側から継ぐ）。`ArrangedNode::Prose` として
+  配置段へ渡り、配置段は本文の水平リスト生成（和欧文間アキ・約物アキは `[text].punctuation_spacing` に従う）を通して
+  glue を自然幅として 1 個の閉じた箱に並べる（インライン数式のトップレベルでも分割点を持たない）。空の文章は空のグループと
+  同じ中身の無い Ord
+- **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
+  持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
+  `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
+  `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。数式の中に埋め込んだ
+  `matrix` / `cases`（HIR の `HirMathKind::Matrix` / `Cases`）のセルは、display 段からは text 段、text 段以下では外側の段の
+  まま組み、添字の中で本文の大きさへ戻さない。cramped・字形 variant・文字色は外側から継ぐ。上付き・
+  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
+  下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
+  1 段下（display → text、text → script、それより下は scriptscript）。二項係数の上段・下段も分子・分母と同じ段と cramped。下付きの中身・分母・被根号・
+  アクセントの基底・上線の基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身・分子・下線の基底は親を継承）。段のフォントサイズは数式本体の
+  サイズに MATH の縮小率を掛けた値（scriptscript も本体基準。縮小率は配置段が `Shaper::script_scale` で読んで渡す）。兄弟として並ぶ上付き・下付きは直前のアイテムを
+  基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
+  付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は組み立てでは
+  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
+  段のサイズ・display か・横罫を引くか）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
+  基底の幅へ伸ばすか・基底をドット無しの字形で組むか（ソースの `dotless`、無ければ style.toml の `[math].accent_dotless`。
+  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身を中間の区切りで分けた区画・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
+  `MathArray`（セル・左右の括弧・行列の段のサイズとスクリプト段・行間・列間）として配置段へ渡す。埋め込んだ行列は閉じた
+  1 アトムで、括弧を持つもの（`delimiter` が none 以外の matrix と cases）は伸縮括弧と同じく左端 Open・右端 Close、括弧の
+  無い matrix は Ord として隣とアキを取る。行間・列間は `[math.block].row_gap` / `column_gap` を本文の大きさ（`[text].font_size`）基準として段のサイズに比例させた値。
+  インライン数式は外側の文字色（`\color`・リンク色）を `MathFormula` に持って全段へ継承し、テキストの
+  `TextStyle` と上の複合ノードの `color`（分数線・根号記号と横線・アクセント記号・区切り括弧・上下線の塗り色）に載せる。
+  表示数式は段落の外のブロックで文字色が効かないので既定色（`None`）。
+  大型演算子（数式クラス Op の記号のうち MathML Core の演算子辞書で largeop を持つもの）は display 段でだけ
+  `ArrangedNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の
+  ときだけ効く）。largeop を持たない Op（`\bigslash` 等）は display 段でも Op のアキを取る通常の字。積分記号以外（MathML Core の演算子辞書の
+  movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
+  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す。
+  演算子名（`\lim` `\sin` 等。HIR は組む字と limits を取るかを `HirMathKind::OperatorName` に持つ）は Op の 1 アイテムで、
+  字は立体の ASCII のまま（字形 variant を読まない）、語の間（`\limsup`）は細アキの Kern。display 段でも
+  `ArrangedNode::LargeOperator` にせず拡大しないが、limits を取る名前は display 段でだけ大型演算子と同じく `MathScripts::limits`
+  を立てる
 - **区切り括弧付きのディスプレイ数式**（`matrix[delimiter=…]` / `cases`）は、本体グリッドの縦中央を数式フォントの
   MATH `AxisHeight`（数式軸）に載せる。括弧はフォントサイズを変えずに MATH の伸縮グリフで縦にだけ伸ばし
   （本体の高さ + 深さ以上で最小の size variant、足りなければ glyph assembly。選択は `typeset::font::stretch` が
@@ -1115,7 +1156,7 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   `\delimiterfactor` / `\delimitershortfall` 相当の係数・不足許容量は置かない。中間の区切り（区画の間の縦棒 U+007C）は
   全区画のインクで決めた同じ目標・同じ軸合わせで伸ばし、目標には寄与しない。括弧・区画・縦棒・区画…・括弧を隙間なく並べ
   （cases / matrix の枠のアキは使わない）、閉じた Atom 1 つにする
-- **大型演算子**（`AtomNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
+- **大型演算子**（`ArrangedNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
   `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして、軸へ合わせたずれと一緒に拾う。上下に積む上付き・下付き
@@ -1124,13 +1165,6 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
   max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
   イタリック補正の半分だけ右、下限を半分だけ左へずらす。幅は 3 つの広がりの和集合で、後ろにアキを置かない
-- 和文約物の分類と前後アキは JIS X 4051 の規則に従い、この module の内側に閉じる。run の内側の境界は `text_run` が隣接グリフ対で、run をまたぐ境界（数式・欧文・別スタイル・コード・別の和文 run との間）は子 `hlist` の `HList` がアイテム列の端の性質から、同じ `boundary_glue` で解決する。和欧文間アキ（四分）も `HList` が run 境界（1 つのテキストの中のスクリプト境界を含む）で和文字と欧文字の端から 1 箇所で決め、`\color` / `\bold` などの引数境界をまたいでもテキストの中と同じ 1 つだけ入る（文字を持たない箱・数式の中の字は受けない）。幅 0 の運搬マーカーと脚注マーカーは透明で左の字に付き、空白・明示アキ・分割制御・リストの端はアキを打ち消す。境界のアキで分割できるかは run の内側と同じく境界の 2 字を UAX #14 で読んで決め（文字を持たない箱は欧文字として読む）、分割できるアキは行頭・行末で本文と同じく落ちる。数式内の文章（`\text`）の端の約物は、インライン数式なら段落のリストで、ディスプレイ数式・上付きなどの中なら `Atom` の子の並びで隣の子と解決し、両側が数式の中の境界は分割も伸縮もしない固定幅にする（インライン数式の分割点は `MathBreak` だけ）
-
-(b) 分割機会（子 module `break_opportunities`）: ICU の `LineSegmenter`（UAX #14）に欧文語中分割点を重ねる。
-分割点は子 module `hyphenation`（`hypher`）が与え、言語は BCP 47 から解決する。消費者は break 注入だけなので
-`boxing` の子に置き、**`boxing` は `breaking` に依存しない**（段順序どおり `breaking` が純粋に下流）。置き場は
-`document` 節の判断基準（consumer が同一依存関係内にとどまるなら共有置き場ではなくその内部へ置く）を module に
-当てはめたもの。
 
 #### `breaking`
 

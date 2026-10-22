@@ -9,7 +9,7 @@
 //! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
-//! `math`（ディスプレイ数式と、数式の上付き・下付きの配置）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
+//! `math`（数式エンジン — インライン・ディスプレイ数式の段・アキ・分割候補の組み立てと、構造ごとの計測・配置）の 2 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
 //! `ShapedRun`（グリフ列 + 確定寸法）を持ち、**箱の寸法を求める処理はここ 1 箇所**。`script`（スクリプト分類と
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
@@ -32,7 +32,7 @@ mod yakumono;
 use std::borrow::Cow;
 
 pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
-use hlist::{BOX_EDGE_CHAR, Edge, HList};
+use hlist::HList;
 use hyphenation::Lang;
 pub(super) use math::{FENCE_DIVIDER, RADICAL_SIGN};
 pub(super) use script::char_font_type;
@@ -49,7 +49,7 @@ use crate::{
     },
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
-    lowering::{AtomNode, InlineNode, LayoutNode, ParagraphLayout, TableLayout, TableRowLayout, TextStyle},
+    lowering::{InlineNode, LayoutNode, ParagraphLayout, TableLayout, TableRowLayout, TextStyle},
   },
 };
 
@@ -275,14 +275,9 @@ impl<'a> Measurer<'a> {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
-      // コード: `build_atom` 経由なので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
+      // コード: `text_box` で閉じた箱にするので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
       InlineNode::TextAtom(text, style) => {
-        out.push_box(self.text_atom(text, style));
-      },
-      // 文章の端の約物は箱の外の相手と解決する（数式の字となら数式の中の固定アキ、本文の約物となら本文と同じ規則）
-      InlineNode::Prose(text, style) => {
-        let (atom, leading, trailing) = self.prose_atom(&text, style);
-        out.push(leading, vec![HItem::Box(atom)], trailing);
+        out.push_box(self.text_atom(&text, style));
       },
       InlineNode::Kern { length } => {
         out.push_absorbing(HItem::Kern(length));
@@ -291,39 +286,19 @@ impl<'a> Measurer<'a> {
         out.push_absorbing(HItem::ForcedBreak);
       },
       // 脚注マーカーは直前の字に付ける — 約物アキはマーカーの後ろに入り、アキの分割点で字から離れない
-      InlineNode::Raise { offset, children } => {
-        out.push_marker(HItem::Box(self.build_atom(offset, children)));
+      InlineNode::Raise {
+        offset,
+        text,
+        style,
+      } => {
+        out.push_marker(HItem::Box(self.text_box(&text, style, offset)));
       },
-      InlineNode::Scripts(scripts) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Scripts(scripts)]));
-      },
-      InlineNode::Fraction(fraction) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Fraction(fraction)]));
-      },
-      InlineNode::Radical(radical) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Radical(radical)]));
-      },
-      InlineNode::Accent(accent) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Accent(accent)]));
-      },
-      InlineNode::Fenced(fenced) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Fenced(fenced)]));
-      },
-      InlineNode::Array(array) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Array(array)]));
-      },
-      InlineNode::Bar(bar) => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::Bar(bar)]));
-      },
-      InlineNode::LargeOperator { symbol, font_size } => {
-        out.push_math_box(self.build_atom(Length::ZERO, vec![AtomNode::LargeOperator { symbol, font_size }]));
-      },
-      InlineNode::MathBreak { spacing, penalty } => {
-        out.push_absorbing(HItem::MathBreak { spacing, penalty });
+      InlineNode::Math(formula) => {
+        self.push_inline_math(&formula, out);
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
-      InlineNode::FlushRight(children) => {
-        let flush_box = self.build_atom(Length::ZERO, children);
+      InlineNode::FlushRight(text, style) => {
+        let flush_box = self.text_box(&text, style, Length::ZERO);
         out.push_absorbing(HItem::Penalty { value: 0 });
         out.push_absorbing(HItem::FlushRight(flush_box));
       },
@@ -365,9 +340,9 @@ impl<'a> Measurer<'a> {
   ///
   /// 空文字列（コードの空行）でも、同じ書体・サイズの空セグメント（高さ・深さはフォントの
   /// ascender / descender から決まる）を測って 1 行ぶんの高さ・深さを持たせる。
-  fn text_atom(&mut self, text: String, style: TextStyle) -> HBox {
+  fn text_atom(&mut self, text: &str, style: TextStyle) -> HBox {
     let is_empty = text.is_empty();
-    let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
+    let mut atom = self.text_box(text, style, Length::ZERO);
     if is_empty {
       let font_type = script::resolve_font_type(style.typeface, script::ScriptCategory::Latin);
       let strut = self.shaper.shape_segment("", font_type, style.font_size, None, None);
@@ -377,101 +352,20 @@ impl<'a> Measurer<'a> {
     return atom;
   }
 
-  /// `AtomNode` 列を絶対配置（`dx` / `dy`）の Atom に畳む
+  /// テキストを縦に `dy` ずらして閉じた箱（Atom）にする
   ///
-  /// 幅は末尾のアキを含む送り幅そのもの（`detach` と同じ。子の箱のはみ出しは数えない）— アキは子の箱を持たないので
-  /// 子の範囲では決まらない。送り幅が子の箱の右端を下回るのは、この列か子の部分リスト（スクリプト・伸縮括弧の中身・
-  /// 上下の範囲）の末尾に負の明示アキがあるときだけ。高さ・深さは子の箱から決める。
-  fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
+  /// 幅は送り幅の和、高さ・深さは字の箱から決める。
+  pub(super) fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
-    let mut edge = Edge::Absorb;
-    for child in children {
-      self.place_atom_child(child, offset, &mut dx, &mut placed, &mut edge);
+    for hbox in self.shaper.shape_text(text, style) {
+      let width = hbox.width;
+      placed.push(PlacedHBox { hbox, dx, dy });
+      dx += width;
     }
     let mut atom = HBox::atom(placed);
     atom.width = dx;
     return atom;
-  }
-
-  /// Atom の子の並びの 1 つを、直前の子の右端 `edge` との約物アキを足してから絶対配置し、`edge` を更新する
-  ///
-  /// 子の並びで約物の端を持つのは数式内の文章だけ — ほかの子は数式の字（明示アキはアキを打ち消す）として読む。
-  /// 並びの両端は外の相手を持たないのでアキを足さない。両側とも数式の中なので、アキは伸縮しない固定幅。
-  fn place_atom_child(
-    &mut self,
-    node: AtomNode,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-    edge: &mut Edge,
-  ) {
-    let aki_width = |left: Edge, right: Edge| -> Length {
-      return hlist::aki_between(left, right).map_or(Length::ZERO, |item| return item.natural_width());
-    };
-    if let AtomNode::Prose(text, style) = node {
-      let list = self.prose_list(&text, style);
-      let (leading, trailing) = list.edges();
-      *dx += aki_width(*edge, leading.in_math());
-      text_run::place_prose(list, dy, dx, out);
-      *edge = trailing.in_math();
-      return;
-    }
-    let next = if matches!(node, AtomNode::Kern { .. }) {
-      Edge::Absorb
-    } else {
-      Edge::letter(BOX_EDGE_CHAR).in_math()
-    };
-    *dx += aki_width(*edge, next);
-    *edge = next;
-    self.place_atom_node(node, dy, dx, out);
-  }
-
-  /// Atom の子要素 1 つを水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  fn place_atom_node(&mut self, node: AtomNode, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
-    match node {
-      AtomNode::Text(text, style) => {
-        for hbox in self.shaper.shape_text(&text, style) {
-          let width = hbox.width;
-          out.push(PlacedHBox { hbox, dx: *dx, dy });
-          *dx += width;
-        }
-      },
-      AtomNode::Prose(..) => {
-        unreachable!("数式内の文章は place_atom_child が端の約物アキと一緒に置く");
-      },
-      AtomNode::Kern { length } => {
-        *dx += length;
-      },
-      AtomNode::Scripts(scripts) => {
-        if scripts.limits {
-          self.place_limits(scripts, dy, dx, out);
-        } else {
-          self.place_scripts(scripts, dy, dx, out);
-        }
-      },
-      AtomNode::Fraction(fraction) => {
-        self.place_fraction(fraction, dy, dx, out);
-      },
-      AtomNode::Radical(radical) => {
-        self.place_radical(radical, dy, dx, out);
-      },
-      AtomNode::Accent(accent) => {
-        self.place_accent(accent, dy, dx, out);
-      },
-      AtomNode::Fenced(fenced) => {
-        self.place_fenced(fenced, dy, dx, out);
-      },
-      AtomNode::Bar(bar) => {
-        self.place_bar(bar, dy, dx, out);
-      },
-      AtomNode::Array(array) => {
-        self.place_array(array, dy, dx, out);
-      },
-      AtomNode::LargeOperator { symbol, font_size } => {
-        self.place_large_operator(&symbol, font_size, dy, dx, out);
-      },
-    }
   }
 
   /// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する
