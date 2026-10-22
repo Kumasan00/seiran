@@ -1,11 +1,14 @@
 //! 数式（インライン / ディスプレイ）の lowering
 //!
+//! HIR の数式を、内容（字形 variant の写し・書記素クラスタへの分割・字のクラスと区切り・文章の書体・アクセントのドット無し・
+//! 埋め込んだ行列の括弧と揃えと行間列間）だけを解決した `MathNode` へ写し（[`resolve_math`]）、段とアキは子 module
+//! `arrange` が決める。
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathBlockKind`）から決まるセルの列内
 //! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。数式の中に埋め込んだ
-//! 行列・場合分けも、同じ括弧グリフと列内揃えで閉じた 1 アトム（`MathArray`）に落とす。
+//! 行列・場合分けも、同じ括弧グリフと列内揃えで解決する。
 
 mod alphanumeric;
-mod spacing;
+mod arrange;
 
 use std::slice;
 
@@ -13,7 +16,6 @@ use alphanumeric::push_math_char;
 pub(in crate::typeset) use alphanumeric::translate_math_char;
 use icu::segmenter::GraphemeClusterSegmenter;
 use itertools::Itertools;
-use spacing::ScriptSide;
 
 use crate::{
   color::Color,
@@ -26,13 +28,13 @@ use crate::{
   style::{NumberSide, NumberTemplate, Style as ReadStyle},
   typeset::{
     boxes::Align,
-    font::{ScriptLevel, ScriptScale},
+    font::ScriptScale,
     lowering::{
       LoweringContext, LoweringState,
       counter::format_counter_value,
       layout_node::{
-        AtomNode, DelimiterGlyphs, InlineNode, LayoutNode, MathAccent, MathArray, MathBar, MathBlockCellLayout,
-        MathBlockLayout, MathBlockRowLayout, MathFenced, MathFraction, MathOperator, MathRadical, TextStyle,
+        AtomNode, DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout,
+        MathBlockRowLayout, MathFormula, MathNode, TextStyle,
       },
       with_label_anchors,
     },
@@ -59,7 +61,12 @@ pub(super) fn lower_math_block(
       .enumerate()
       .map(|(col, cell)| {
         return MathBlockCellLayout {
-          content: lower_math_cell(cell, font_size, ctx.script_scale, cell_level(math.kind), ctx.style),
+          content: arrange::arrange_cell(
+            &resolve_math(cell, font_size, ctx.style),
+            font_size,
+            cell_is_display(math.kind),
+            ctx.script_scale,
+          ),
           align: cell_align(math.kind, row_idx, n_rows, col),
         };
       })
@@ -197,10 +204,9 @@ pub(in crate::typeset) const fn matrix_delimiter_glyphs(delimiter: MathDelimiter
 
 /// インライン数式（`$...$`）を段落の水平リストへ流すノード列に変換する
 ///
-/// 本体は text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮グリフを塗る。
-/// `style` から読むのは、アクセントの基底をドット無しの字形で組むかの既定（`[math].accent_dotless`）・埋め込んだ行列の
-/// 行間・列間（`[math.block]`）と、数式内の文章を組む書体（`[text].typeface`）。
-/// トップレベルの二項演算子・関係子の直後に行分割点（`InlineNode::MathBreak`）を置く。
+/// 本体は `base_font_size` の text 段で組み、外側の文字色 `color`（`\color`・リンク色。`None` は既定色）で字と罫・伸縮
+/// グリフを塗る。`style` から読むのは、アクセントの基底をドット無しの字形で組むかの既定（`[math].accent_dotless`）・
+/// 埋め込んだ行列の行間・列間（`[math.block]`）と、数式内の文章を組む書体（`[text].typeface`）。
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
@@ -208,482 +214,175 @@ pub(super) fn lower_inline_math(
   color: Option<Color>,
   style: &ReadStyle,
 ) -> Vec<InlineNode> {
-  let ctx = MathLoweringContext::new(base_font_size, script_scale, StyleLevel::Text, color, style);
-  return spacing::assemble_breakable(collect_items(math_nodes, &ctx), ctx.font_size());
+  let formula = MathFormula {
+    nodes: resolve_math(math_nodes, base_font_size, style),
+    font_size: base_font_size,
+    color,
+  };
+  return arrange::arrange_inline(&formula, script_scale);
 }
 
-/// 環境種別から、セルを組み始める数式スタイルの段を決める
+/// 環境種別から、セルを display 段で組み始めるかを決める
 ///
 /// `cases` / `matrix` のセルは text 段で始める（TeX の `\textstyle`、`MathML Core` の UA スタイルシートの
 /// `mtable { math-style: compact }`）。それ以外の表示数式環境は display 段。
-const fn cell_level(kind: MathBlockKind) -> StyleLevel {
+const fn cell_is_display(kind: MathBlockKind) -> bool {
   return match kind {
-    MathBlockKind::Cases | MathBlockKind::Matrix { .. } => StyleLevel::Text,
+    MathBlockKind::Cases | MathBlockKind::Matrix { .. } => false,
     MathBlockKind::Equation
-    | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => StyleLevel::Display,
+    | MathBlockKind::Grid(GridLayout::Aligned | GridLayout::Centered | GridLayout::Staircase) => true,
   };
 }
 
-/// ディスプレイ数式の 1 セルを `AtomNode` 列に変換する（`level` 段で組み、閉じた箱に畳むので行分割点を置かない。
-/// `style` は [`lower_inline_math`] と同じ）
-fn lower_math_cell(
-  math_nodes: &[HirMath],
-  base_font_size: Length,
-  script_scale: ScriptScale,
-  level: StyleLevel,
-  style: &ReadStyle,
-) -> Vec<AtomNode> {
-  // 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色
-  return lower_math_list(math_nodes, &MathLoweringContext::new(base_font_size, script_scale, level, None, style));
-}
-
-/// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StyleLevel {
-  /// display 段（`equation` / `align` 等の表示数式環境のセル）
-  Display,
-  /// text 段（インライン数式の本体）
-  Text,
-  /// script 段（上付き・下付きの中身）
-  Script,
-  /// scriptscript 段（スクリプトのスクリプトと根号の指数。これより下へは縮めない）
-  ScriptScript,
-}
-
-impl StyleLevel {
-  /// 上付き・下付きの中身の段（1 段下。scriptscript より下へは下がらない）
-  const fn script(self) -> Self {
-    return match self {
-      StyleLevel::Display | StyleLevel::Text => StyleLevel::Script,
-      StyleLevel::Script | StyleLevel::ScriptScript => StyleLevel::ScriptScript,
-    };
-  }
-
-  /// 分子・分母の段（display は text、text は script、それより下は scriptscript）
-  const fn fraction(self) -> Self {
-    return match self {
-      StyleLevel::Display => StyleLevel::Text,
-      StyleLevel::Text => StyleLevel::Script,
-      StyleLevel::Script | StyleLevel::ScriptScript => StyleLevel::ScriptScript,
-    };
-  }
-
-  /// 埋め込んだ行列・場合分けのセルの段（display は text、それ以外は同じ段。TeX の `\textstyle` の行列と同じく、
-  /// 表示数式の中でも本文並みに詰め、添字の中では縮めたまま本文の大きさへ戻さない）
-  const fn array_cell(self) -> Self {
-    return match self {
-      StyleLevel::Display | StyleLevel::Text => StyleLevel::Text,
-      StyleLevel::Script => StyleLevel::Script,
-      StyleLevel::ScriptScript => StyleLevel::ScriptScript,
-    };
-  }
-
-  /// フォントサイズと字形を決めるスクリプト段（display / text 段は数式本体の大きさと字形なので `None`）
-  const fn script_level(self) -> Option<ScriptLevel> {
-    return match self {
-      StyleLevel::Display | StyleLevel::Text => None,
-      StyleLevel::Script => Some(ScriptLevel::Script),
-      StyleLevel::ScriptScript => Some(ScriptLevel::ScriptScript),
-    };
-  }
-}
-
-/// 数式スタイル（段と cramped の有無）
+/// HIR の数式ノード列を、本体の大きさ `base_font_size` の数式として内容を解決した `MathNode` 列にする
 ///
-/// cramped は上付きを低めに置く状態で、下付きの中身・分母・被根号・アクセントの基底で始まり、中身へ継承されて解除されない。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FormulaStyle {
-  /// 段
-  level: StyleLevel,
-  /// cramped か
-  cramped: bool,
+/// 段とアキは決めない。字形 variant（`\mathbold` 等）は字へ写して列に透過させ（`\mathbold{a+b}` の `+` にもアキが
+/// 入る）、`style` から文章の書体・アクセントのドット無しの既定・埋め込んだ行列の行間列間を読む。
+fn resolve_math(nodes: &[HirMath], base_font_size: Length, style: &ReadStyle) -> Vec<MathNode> {
+  // `[math.block]` の行間・列間は本文の大きさで組む表示数式の値なので、見出し・脚注の中の数式ではその大きさへ比例させる
+  let gap_scale = base_font_size.ratio(style.text.font_size);
+  return resolve_list(nodes, None, gap_scale, style);
 }
 
-impl FormulaStyle {
-  /// 上付きの中身のスタイル（1 段下。cramped は親から継承）
-  const fn superscript(self) -> Self {
-    return FormulaStyle {
-      level: self.level.script(),
-      cramped: self.cramped,
-    };
-  }
-
-  /// 下付きの中身のスタイル（1 段下。cramped）
-  const fn subscript(self) -> Self {
-    return FormulaStyle {
-      level: self.level.script(),
-      cramped: true,
-    };
-  }
-
-  /// 分子のスタイル（分数の段の 1 段下。cramped は親から継承）
-  const fn numerator(self) -> Self {
-    return FormulaStyle {
-      level: self.level.fraction(),
-      cramped: self.cramped,
-    };
-  }
-
-  /// 分母のスタイル（分数の段の 1 段下。cramped）
-  const fn denominator(self) -> Self {
-    return FormulaStyle {
-      level: self.level.fraction(),
-      cramped: true,
-    };
-  }
-
-  /// 同じ段のまま cramped にしたスタイル（被根号・アクセントの基底）
-  const fn cramped(self) -> Self {
-    return FormulaStyle {
-      level: self.level,
-      cramped: true,
-    };
-  }
-
-  /// 根号の指数のスタイル（scriptscript 段。cramped は親から継承）
-  const fn radical_degree(self) -> Self {
-    return FormulaStyle {
-      level: StyleLevel::ScriptScript,
-      cramped: self.cramped,
-    };
-  }
-}
-
-/// 数式 1 レベルぶんの lowering 文脈
-///
-/// スクリプト（上付き / 下付き）へ潜ると段が下がり、フォントサイズが縮んで `TeXbook` の括弧付きセルのアキが
-/// 抑制される。
-#[derive(Debug, Clone, Copy)]
-struct MathLoweringContext {
-  /// 数式本体（display / text 段）のフォントサイズ
-  base_font_size: Length,
-  /// スクリプト段の縮小率（数式フォントの MATH 由来）
-  script_scale: ScriptScale,
-  /// このレベルの数式スタイル
-  style: FormulaStyle,
-  /// 継承中の字形 variant（`\mathbold` 等）
-  variant: Option<MathVariant>,
-  /// 数式全体の文字色（外側の `\color`・リンク色。`None` は既定色）
-  color: Option<Color>,
-  /// アクセントの基底をドット無しの字形で組むかの既定（style.toml の `[math].accent_dotless`）
-  accent_dotless: bool,
-  /// 数式内の文章（`\text`）を組む書体（style.toml の `[text].typeface`）
-  prose_typeface: Typeface,
-  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの行間（style.toml の `[math.block].row_gap` を本文の大きさ
-  /// `[text].font_size` 基準として数式本体の大きさへ比例させた値）
-  row_gap: Length,
-  /// 埋め込んだ行列・場合分けの、数式本体の大きさでの列間（`row_gap` と同じ比例）
-  column_gap: Length,
-}
-
-impl MathLoweringContext {
-  /// 数式本体（段 `level`・cramped でない・字形 variant なし・文字色 `color`・style.toml の値 `style`）の文脈を作る
-  fn new(
-    base_font_size: Length,
-    script_scale: ScriptScale,
-    level: StyleLevel,
-    color: Option<Color>,
-    style: &ReadStyle,
-  ) -> Self {
-    // `[math.block]` の行間・列間は本文の大きさで組む表示数式の値なので、見出し・脚注の中の数式ではその大きさへ比例させる
-    let scale = base_font_size.ratio(style.text.font_size);
-    return MathLoweringContext {
-      base_font_size,
-      script_scale,
-      style: FormulaStyle {
-        level,
-        cramped: false,
-      },
-      variant: None,
-      color,
-      accent_dotless: style.math.accent_dotless,
-      prose_typeface: style.text.typeface,
-      row_gap: style.math.block.row_gap * scale,
-      column_gap: style.math.block.column_gap * scale,
-    };
-  }
-
-  /// 数式スタイルだけを差し替えた文脈を作る
-  fn with_style(&self, style: FormulaStyle) -> Self { return MathLoweringContext { style, ..*self }; }
-
-  /// 字形 variant だけを差し替えた文脈を作る
-  fn with_variant(&self, variant: MathVariant) -> Self {
-    return MathLoweringContext {
-      variant: Some(variant),
-      ..*self
-    };
-  }
-
-  /// このレベルのフォントサイズ
-  fn font_size(&self) -> Length {
-    return self.script_scale.font_size(self.base_font_size, self.style.level.script_level());
-  }
-
-  /// script 段以下（TeXbook の括弧付きセルのアキを抑制する段）か
-  fn in_script(&self) -> bool { return self.style.level.script_level().is_some(); }
-
-  /// 数式本体のテキストのスタイル（`class` は記号のクラス。Ord 以外は演算子として印す）
-  fn text_style(&self, class: MathClass) -> TextStyle {
-    return TextStyle {
-      font_size: self.font_size(),
-      typeface: Typeface::Math,
-      color: self.color,
-      script_level: self.style.level.script_level(),
-      math_operator: (class != MathClass::Ord).then_some(MathOperator::Symbol),
-    };
-  }
-}
-
-/// 数式ノード列をスペーシングのアイテム列へ展開する
-fn collect_items(nodes: &[HirMath], ctx: &MathLoweringContext) -> Vec<spacing::MathItem> {
-  let mut items = Vec::new();
+/// 字形 variant `variant` を継いだ HIR の数式ノード列を `MathNode` 列にする（`gap_scale` は行間列間の比例）
+fn resolve_list(nodes: &[HirMath], variant: Option<MathVariant>, gap_scale: f64, style: &ReadStyle) -> Vec<MathNode> {
+  let mut out = Vec::new();
   for node in nodes {
-    push_math_items(node, ctx, &mut items);
+    push_resolved(node, variant, gap_scale, style, &mut out);
   }
-  return items;
+  return out;
 }
 
-/// 数式ノード列を、アトム間のアキを入れた `AtomNode` 列に変換する
-fn lower_math_list(nodes: &[HirMath], ctx: &MathLoweringContext) -> Vec<AtomNode> {
-  return spacing::assemble(collect_items(nodes, ctx), ctx.font_size(), ctx.in_script());
-}
-
-/// 単一の `HirMath` をスペーシングのアイテムへ展開する
-///
-/// `Group` / `Frac` / `Sqrt` / `Accent` / `Bar` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
-/// `Fenced` は中身を組んだうえで、左端 Open・右端 Close の 1 個のアイテムにする。
-/// `Binom` は横罫の無い分数を丸括弧で包み、伸縮括弧と同じく左端 Open・右端 Close の 1 個のアイテムにする。
-fn push_math_items(node: &HirMath, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
+/// 単一の `HirMath` を解決して `out` へ積む（字形指定と複数クラスタのテキストは複数の要素になる）
+fn push_resolved(
+  node: &HirMath,
+  variant: Option<MathVariant>,
+  gap_scale: f64,
+  style: &ReadStyle,
+  out: &mut Vec<MathNode>,
+) {
+  let list = |nodes: &[HirMath]| return resolve_list(nodes, variant, gap_scale, style);
+  let one = |node: &HirMath| return list(slice::from_ref(node));
   match &node.kind {
+    // 結合文字は基底の字の一部なので、アキとスクリプトの基底の単位は結合文字を含めた字。クラスと区切り種別は
+    // クラスタの最初の字で決める
     HirMathKind::Text(text) => {
-      push_text_items(text, ctx, items);
+      for (first, chars) in math_text_clusters(text) {
+        let mut translated = String::new();
+        for &ch in &chars {
+          push_math_char(&mut translated, ch, variant);
+        }
+        out.push(MathNode::Char {
+          text: translated,
+          class: char_class(first),
+          fence: char_fence(first),
+        });
+      }
     },
     HirMathKind::Symbol { text, class } => {
       let mut translated = String::new();
       for ch in text.chars() {
-        push_math_char(&mut translated, ch, ctx.variant);
+        push_math_char(&mut translated, ch, variant);
       }
-      // display の大きさの字形にするのは、MathML Core の largeop を持つ演算子が display 段にあるときだけ（largeop は
-      // math-style が normal のときだけ効く）。largeop を持たない Op は Op のアキを取る通常の字。伸縮は 1 字の字形に
-      // 対して行うので、結合文字の付いた演算子も通常の字
-      let large_operator = sole_char(text).filter(|&ch| {
-        return *class == MathClass::Op && ctx.style.level == StyleLevel::Display && is_large_operator(ch);
+      out.push(MathNode::Char {
+        text: translated,
+        class: *class,
+        fence: symbol_fence(*class),
       });
-      if let Some(ch) = large_operator {
-        items.push(spacing::MathItem::large_operator(translated, ctx.font_size(), has_movable_limits(ch)));
-      } else {
-        items.push(spacing::MathItem::new(
-          *class,
-          spacing::symbol_fence(*class),
-          vec![AtomNode::Text(translated, ctx.text_style(*class))],
-        ));
-      }
     },
-    HirMathKind::Space(space) => {
-      items.push(spacing::MathItem::explicit(*space, ctx.font_size()));
-    },
+    HirMathKind::Space(space) => out.push(MathNode::Space(*space)),
     // 字形 variant は読まない — 字体コマンドが写すのは数式用英数字で、演算子名は関数名という語なので立体の ASCII のまま
-    // 組む。largeop ではないので display 段でも拡大しない
-    HirMathKind::OperatorName { text, limits } => {
-      let style = TextStyle {
-        math_operator: Some(MathOperator::Name),
-        ..ctx.text_style(MathClass::Op)
-      };
-      items.push(spacing::MathItem::operator_name(text, style, *limits && ctx.style.level == StyleLevel::Display));
-    },
+    HirMathKind::OperatorName { text, limits } => out.push(MathNode::OperatorName {
+      text: text.clone(),
+      limits: *limits,
+    }),
     // 文章は数式の字ではないので字形 variant を読まない。空の文章は空のグループと同じく中身の無い Ord
-    HirMathKind::Prose(text) => {
-      let nodes = if text.is_empty() {
-        Vec::new()
-      } else {
-        vec![AtomNode::Prose(
-          text.clone(),
-          TextStyle {
-            font_size: ctx.font_size(),
-            typeface: ctx.prose_typeface,
-            color: ctx.color,
-            script_level: None,
-            math_operator: None,
-          },
-        )]
-      };
-      items.push(spacing::MathItem::new(MathClass::Ord, None, nodes));
-    },
-    HirMathKind::Group(children) => {
-      items.push(spacing::MathItem::new(MathClass::Ord, None, lower_math_list(children, ctx)));
-    },
-    HirMathKind::Superscript(inner) => {
-      let content = lower_math_list(slice::from_ref(inner.as_ref()), &ctx.with_style(ctx.style.superscript()));
-      spacing::push_script(items, ScriptSide::Superscript, content, ctx.font_size(), ctx.style.cramped);
-    },
-    HirMathKind::Subscript(inner) => {
-      let content = lower_math_list(slice::from_ref(inner.as_ref()), &ctx.with_style(ctx.style.subscript()));
-      spacing::push_script(items, ScriptSide::Subscript, content, ctx.font_size(), ctx.style.cramped);
-    },
-    HirMathKind::Frac { numer, denom } => {
-      let fraction = MathFraction {
-        numerator: lower_math_list(slice::from_ref(numer.as_ref()), &ctx.with_style(ctx.style.numerator())),
-        denominator: lower_math_list(slice::from_ref(denom.as_ref()), &ctx.with_style(ctx.style.denominator())),
-        font_size: ctx.font_size(),
-        display: ctx.style.level == StyleLevel::Display,
-        ruled: true,
-        color: ctx.color,
-      };
-      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Fraction(fraction)]));
-    },
-    // 上段・下段は分数の分子・分母と同じ段に組み、積み全体は括弧と同じ段（伸縮括弧の中身と同じ）
-    HirMathKind::Binom { top, bottom } => {
-      let stack = MathFraction {
-        numerator: lower_math_list(slice::from_ref(top.as_ref()), &ctx.with_style(ctx.style.numerator())),
-        denominator: lower_math_list(slice::from_ref(bottom.as_ref()), &ctx.with_style(ctx.style.denominator())),
-        font_size: ctx.font_size(),
-        display: ctx.style.level == StyleLevel::Display,
-        ruled: false,
-        color: ctx.color,
-      };
-      items.push(fenced_item(vec![vec![AtomNode::Fraction(stack)]], '(', ')', ctx));
-    },
-    HirMathKind::Sqrt { index, radicand } => {
-      let radical = MathRadical {
-        degree: index.as_ref().map(|degree| {
-          return lower_math_list(slice::from_ref(degree.as_ref()), &ctx.with_style(ctx.style.radical_degree()));
-        }),
-        radicand: lower_math_list(slice::from_ref(radicand.as_ref()), &ctx.with_style(ctx.style.cramped())),
-        font_size: ctx.font_size(),
-        display: ctx.style.level == StyleLevel::Display,
-        script_level: ctx.style.level.script_level(),
-        color: ctx.color,
-      };
-      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Radical(radical)]));
-    },
-    // アクセント記号は段を下げない（MathML Core の accent の上付け）ので、基底と同じ段の大きさと `ssty` で組む
+    HirMathKind::Prose(text) => out.push(if text.is_empty() {
+      MathNode::Group(Vec::new())
+    } else {
+      MathNode::Prose {
+        text: text.clone(),
+        typeface: style.text.typeface,
+      }
+    }),
+    HirMathKind::Group(children) => out.push(MathNode::Group(list(children))),
+    HirMathKind::Superscript(inner) => out.push(MathNode::Superscript(one(inner))),
+    HirMathKind::Subscript(inner) => out.push(MathNode::Subscript(one(inner))),
+    HirMathKind::Frac { numer, denom } => out.push(MathNode::Fraction {
+      numerator: one(numer),
+      denominator: one(denom),
+    }),
+    HirMathKind::Binom { top, bottom } => out.push(MathNode::Binomial {
+      top: one(top),
+      bottom: one(bottom),
+    }),
+    HirMathKind::Sqrt { index, radicand } => out.push(MathNode::Radical {
+      degree: index.as_deref().map(one),
+      radicand: one(radicand),
+    }),
     HirMathKind::Accent {
-      accent: mark,
+      accent,
       wide,
       dotless,
       base,
-    } => {
-      let accent = MathAccent {
-        base: lower_math_list(slice::from_ref(base.as_ref()), &ctx.with_style(ctx.style.cramped())),
-        accent: mark.to_string(),
-        wide: *wide,
-        // 広幅アクセントは frontend が任意引数を受け付けず `dotless` は常に `None` なので、style の既定だけを見ないよう
-        // ここで外す
-        dotless: !*wide && dotless.unwrap_or(ctx.accent_dotless),
-        font_size: ctx.font_size(),
-        script_level: ctx.style.level.script_level(),
-        color: ctx.color,
-      };
-      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Accent(accent)]));
-    },
-    // 中身は括弧と同じ数式スタイル（TeX の `\left` … `\right` の中身と同じ）
+    } => out.push(MathNode::Accent {
+      mark: *accent,
+      wide: *wide,
+      // 広幅アクセントは frontend が任意引数を受け付けず `dotless` は常に `None` なので、style の既定だけを見ないよう
+      // ここで外す
+      dotless: !*wide && dotless.unwrap_or(style.math.accent_dotless),
+      base: one(base),
+    }),
     HirMathKind::Fenced {
       open,
       close,
       segments,
-    } => {
-      let segments = spacing::assemble_divided(
-        segments.iter().map(|segment| return collect_items(segment, ctx)).collect(),
-        ctx.font_size(),
-        ctx.in_script(),
-      );
-      items.push(fenced_item(segments, *open, *close, ctx));
-    },
-    // 上線の基底は cramped（TeX の Rule 9）、下線の基底は外側のスタイルを継承する（TeX の Rule 10）
-    HirMathKind::Bar { over, body } => {
-      let body = slice::from_ref(body.as_ref());
-      let bar = MathBar {
-        body: if *over {
-          lower_math_list(body, &ctx.with_style(ctx.style.cramped()))
-        } else {
-          lower_math_list(body, ctx)
-        },
-        over: *over,
-        font_size: ctx.font_size(),
-        color: ctx.color,
-      };
-      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![AtomNode::Bar(bar)]));
-    },
-    // 字形 variant はグループではなく字形の指定なので、アイテム列には透過させる
-    // （`\mathbold{a+b}` の `+` にもアキが入る）。
+    } => out.push(MathNode::Fenced {
+      open: *open,
+      close: *close,
+      segments: segments.iter().map(|segment| return list(segment)).collect(),
+    }),
+    HirMathKind::Bar { over, body } => out.push(MathNode::Bar {
+      over: *over,
+      body: one(body),
+    }),
+    // 字形 variant はグループではなく字形の指定なので、要素の列には透過させる
     HirMathKind::Styled {
       variant: inner_variant,
       children,
     } => {
-      let styled = ctx.with_variant(*inner_variant);
       for child in children {
-        push_math_items(child, &styled, items);
+        push_resolved(child, Some(*inner_variant), gap_scale, style, out);
       }
     },
     HirMathKind::Matrix { delimiter, rows } => {
-      push_array(rows, matrix_delimiter_glyphs(*delimiter), Align::Center, ctx, items);
+      out.push(resolve_array(rows, matrix_delimiter_glyphs(*delimiter), Align::Center, &list, gap_scale, style));
     },
     HirMathKind::Cases { rows } => {
-      push_array(rows, CASES_DELIMITERS, Align::Left, ctx, items);
+      out.push(resolve_array(rows, CASES_DELIMITERS, Align::Left, &list, gap_scale, style));
     },
   }
+  return;
 }
 
-/// 組み済みの中身の区画 `segments` を左右の区切り括弧 `open` / `close` で挟み、左端 Open・右端 Close の 1 個のアイテムにする
+/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`）を解決する
 ///
-/// 括弧は `ctx` の段の大きさ・`ssty`・文字色で組む。
-fn fenced_item(segments: Vec<Vec<AtomNode>>, open: char, close: char, ctx: &MathLoweringContext) -> spacing::MathItem {
-  let fenced = MathFenced {
-    segments,
-    open: open.to_string(),
-    close: close.to_string(),
-    font_size: ctx.font_size(),
-    script_level: ctx.style.level.script_level(),
-    color: ctx.color,
-  };
-  return spacing::MathItem::fenced(vec![AtomNode::Fenced(fenced)]);
-}
-
-/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`）をアイテムへ展開する
-///
-/// セルは [`StyleLevel::array_cell`] の段で、cramped・字形 variant・文字色は外側から継ぐ。行間・列間は段の大きさに
-/// 比例させる。括弧を持つものは伸縮括弧と同じく左端 Open・右端 Close、括弧の無い行列は Ord の 1 個のアイテムにする。
-fn push_array(
+/// セルは字形 variant を継いだ `list` で解決し、行間・列間は style.toml の値に `gap_scale` を掛ける。
+fn resolve_array(
   rows: &[Vec<Vec<HirMath>>],
   delimiters: DelimiterGlyphs,
   align: Align,
-  ctx: &MathLoweringContext,
-  items: &mut Vec<spacing::MathItem>,
-) {
-  let cell_ctx = ctx.with_style(FormulaStyle {
-    level: ctx.style.level.array_cell(),
-    cramped: ctx.style.cramped,
-  });
-  let scale = ctx.font_size().ratio(ctx.base_font_size);
-  let array = MathArray {
-    rows: rows
-      .iter()
-      .map(|row| {
-        return row
-          .iter()
-          .map(|cell| {
-            return MathBlockCellLayout {
-              content: lower_math_list(cell, &cell_ctx),
-              align,
-            };
-          })
-          .collect();
-      })
-      .collect(),
+  list: &dyn Fn(&[HirMath]) -> Vec<MathNode>,
+  gap_scale: f64,
+  style: &ReadStyle,
+) -> MathNode {
+  return MathNode::Array {
+    rows: rows.iter().map(|row| return row.iter().map(|cell| return list(cell)).collect()).collect(),
     delimiters,
-    font_size: ctx.font_size(),
-    script_level: ctx.style.level.script_level(),
-    color: ctx.color,
-    row_gap: ctx.row_gap * scale,
-    column_gap: ctx.column_gap * scale,
+    align,
+    row_gap: style.math.block.row_gap * gap_scale,
+    column_gap: style.math.block.column_gap * gap_scale,
   };
-  let nodes = vec![AtomNode::Array(array)];
-  items.push(if delimiters.is_present() {
-    spacing::MathItem::fenced(nodes)
-  } else {
-    spacing::MathItem::new(MathClass::Ord, None, nodes)
-  });
-  return;
 }
 
 /// 数式中のテキストを、書記素クラスタ（基底の字と後ろに付く結合文字）ごとの字の列に分ける
@@ -697,47 +396,41 @@ pub(in crate::typeset) fn math_text_clusters(text: &str) -> impl Iterator<Item =
   });
 }
 
-/// 数式中のテキストを書記素クラスタ（基底の字と後ろに付く結合文字）ずつのアイテムへ展開する
+/// 直接入力された 1 文字の数式クラスを返す
 ///
-/// 結合文字は基底の字の一部なので、アキとスクリプトの基底の単位は結合文字を含めた字になる。クラスと区切り種別は
-/// クラスタの最初の字で決める。
-fn push_text_items(text: &str, ctx: &MathLoweringContext, items: &mut Vec<spacing::MathItem>) {
-  for (first, chars) in math_text_clusters(text) {
-    let mut translated = String::new();
-    for &ch in &chars {
-      push_math_char(&mut translated, ch, ctx.variant);
-    }
-    let class = spacing::char_class(first);
-    items.push(spacing::MathItem::new(
-      class,
-      spacing::char_fence(first),
-      vec![AtomNode::Text(translated, ctx.text_style(class))],
-    ));
-  }
+/// plain TeX の `\mathcode` 割り当てに合わせてある。表に無い文字（和文を含む）は Ord として扱う。記号表の非 ASCII の字
+/// （正準等価な綴りを含む）は frontend が記号コマンドと同じ `HirMathKind::Symbol` にするので、ここへは来ない。
+fn char_class(ch: char) -> MathClass {
+  return match ch {
+    '+' | '-' | '*' => MathClass::Bin,
+    '=' | '<' | '>' | ':' => MathClass::Rel,
+    ',' | ';' => MathClass::Punct,
+    '(' | '[' => MathClass::Open,
+    ')' | ']' | '!' | '?' => MathClass::Close,
+    _ => MathClass::Ord,
+  };
 }
 
-/// `MathML Core` の演算子辞書で largeop を持つ文字か（総和・積分・n 項の集合演算子・`⨝` `⨞` `⫼` `⫿`）
-const fn is_large_operator(ch: char) -> bool {
-  return matches!(
-    ch,
-    '\u{220F}'..='\u{2211}' | '\u{222B}'..='\u{2233}' | '\u{22C0}'..='\u{22C3}' | '\u{2A00}'..='\u{2A1E}' | '\u{2AFC}' | '\u{2AFF}'
-  );
-}
-
-/// 大型演算子 `ch` が display 段で上付き・下付きを上下に積むか（`MathML Core` の演算子辞書の movablelimits）
-///
-/// 辞書で movablelimits を持たない大型演算子は積分記号（U+222B〜U+2233・U+2A0B〜U+2A1C）だけで、display 段でも肩・添字に
-/// 置く（TeX の `\int` の `\nolimits` と同じ）。
-const fn has_movable_limits(ch: char) -> bool {
-  return !matches!(ch, '\u{222B}'..='\u{2233}' | '\u{2A0B}'..='\u{2A1C}');
-}
-
-/// `text` がちょうど 1 字ならその字
-fn sole_char(text: &str) -> Option<char> {
-  let mut chars = text.chars();
-  return match (chars.next(), chars.next()) {
-    (Some(ch), None) => Some(ch),
+/// 直接入力された 1 文字が開き・閉じ区切りとして働くかどうかを返す
+fn char_fence(ch: char) -> Option<Fence> {
+  return match ch {
+    '(' | '[' => Some(Fence::Open),
+    ')' | ']' => Some(Fence::Close),
     _ => None,
+  };
+}
+
+/// 記号コマンド（`\langle` 等）の数式クラスから開き・閉じ区切りを導く
+///
+/// frontend の記号テーブル（`SYMBOLS`）で `Open` / `Close` クラスを持つ記号は、どれも対になる閉じ・開き括弧を
+/// 記号テーブルに持つ本物の区切りである（対の無い根号・長除法は Ord。対の存在は `command::symbol` のテストが保つ）。
+/// direct な文字の `!` `?` のような「クラスだけ `Close`」の例外は記号テーブルには無いので、クラスから直接 [`Fence`] を
+/// 導いてよい。
+fn symbol_fence(class: MathClass) -> Option<Fence> {
+  return match class {
+    MathClass::Open => Some(Fence::Open),
+    MathClass::Close => Some(Fence::Close),
+    MathClass::Ord | MathClass::Op | MathClass::Bin | MathClass::Rel | MathClass::Punct => None,
   };
 }
 
@@ -746,12 +439,14 @@ mod tests {
   use super::*;
   use crate::{
     color::Color,
+    document::{HirInlineKind, HirNodeKind},
     length::Length,
+    semantics::SemanticDocument,
     style::{CounterTemplate, Style as ReadStyle},
     typeset::{
       font::ScriptLevel,
       lowering::{
-        MathAccent, MathArray, MathBar, MathFenced, MathScripts,
+        MathAccent, MathArray, MathBar, MathFenced, MathFraction, MathOperator, MathRadical, MathScripts,
         test_support::{analyzed, inlines, lower, paragraph_layout, stix_script_scale},
       },
     },
@@ -2471,5 +2166,128 @@ mod tests {
     let nodes = lower_math_source("$\\mathbold{\\begin{matrix}x\\end{matrix}}$\n");
 
     assert_eq!(concat_texts(&nodes), "\u{1D431}");
+  }
+
+  /// 意味解析済みドキュメントの最初の段落の最初のインライン数式（HIR）を取り出すヘルパ
+  fn first_hir_math(document: &SemanticDocument) -> &[HirMath] {
+    return document
+      .hir()
+      .source_nodes()
+      .iter()
+      .flatten()
+      .find_map(|node| match &node.kind {
+        HirNodeKind::Paragraph(inlines) => {
+          return inlines.iter().find_map(|inline| match &inline.kind {
+            HirInlineKind::Math(math) => return Some(math.as_slice()),
+            _ => return None,
+          });
+        },
+        _ => return None,
+      })
+      .expect("インライン数式が期待されます");
+  }
+
+  /// 数式スニペットの最初のインライン数式を、本文の大きさを本体として `style` で解決するヘルパ
+  fn resolved_with(style: &ReadStyle, source: &str) -> Vec<MathNode> {
+    return resolve_math(first_hir_math(&analyzed(source)), style.text.font_size, style);
+  }
+
+  /// [`resolved_with`] の既定 Style 版
+  fn resolved(source: &str) -> Vec<MathNode> { return resolved_with(&ReadStyle::default(), source); }
+
+  #[test]
+  fn resolve_translates_variants_and_flattens_styled() {
+    // `\mathbold{a+b}` は字形指定を透過して 3 字になり、a と b は太字の数式用英数字、+ は Bin のまま
+    let nodes = resolved("$\\mathbold{a+b}$\n");
+
+    assert!(
+      matches!(nodes.as_slice(), [
+        MathNode::Char { text: a, class: MathClass::Ord, fence: None },
+        MathNode::Char { text: plus, class: MathClass::Bin, fence: None },
+        MathNode::Char { text: b, class: MathClass::Ord, fence: None },
+      ] if a == "\u{1D41A}" && plus == "+" && b == "\u{1D41B}"),
+      "{nodes:?}"
+    );
+  }
+
+  #[test]
+  fn resolve_marks_real_fences_only() {
+    // `(` `)` は区切り、`!` は Close クラスだが区切りではない
+    let nodes = resolved("$(x)!$\n");
+
+    let fences: Vec<Option<Fence>> = nodes
+      .iter()
+      .map(|node| match node {
+        MathNode::Char { fence, .. } => return *fence,
+        other => panic!("字が期待されます: {other:?}"),
+      })
+      .collect();
+    assert_eq!(fences, vec![Some(Fence::Open), None, Some(Fence::Close), None]);
+  }
+
+  #[test]
+  fn resolve_applies_the_dotless_default_and_prose_typeface() {
+    let mut style = ReadStyle::default();
+    style.math.accent_dotless = true;
+
+    let nodes = resolved_with(&style, "$\\hat{i}\\widehat{j}\\text{a}$\n");
+
+    assert!(
+      matches!(
+        &nodes[0],
+        MathNode::Accent {
+          dotless: true,
+          wide: false,
+          ..
+        }
+      ),
+      "{nodes:?}"
+    );
+    assert!(
+      matches!(
+        &nodes[1],
+        MathNode::Accent {
+          dotless: false,
+          wide: true,
+          ..
+        }
+      ),
+      "{nodes:?}"
+    );
+    assert!(
+      matches!(&nodes[2], MathNode::Prose { typeface, .. } if *typeface == style.text.typeface),
+      "{nodes:?}"
+    );
+  }
+
+  #[test]
+  fn array_gaps_are_scaled_to_the_formula_size() {
+    // 本文の 2 倍の大きさの数式では、行間・列間も 2 倍に比例させて渡す
+    let style = ReadStyle::default();
+    let document = analyzed("$\\begin{matrix}a \\\\ b\\end{matrix}$\n");
+
+    let nodes = resolve_math(first_hir_math(&document), style.text.font_size * 2.0f64, &style);
+
+    assert!(
+      matches!(&nodes[0], MathNode::Array { row_gap, column_gap, align: Align::Center, .. }
+        if *row_gap == style.math.block.row_gap * 2.0f64 && *column_gap == style.math.block.column_gap * 2.0f64),
+      "{nodes:?}"
+    );
+  }
+
+  #[test]
+  fn char_class_follows_plain_tex_mathcodes() {
+    assert_eq!(char_class('+'), MathClass::Bin);
+    assert_eq!(char_class('-'), MathClass::Bin);
+    assert_eq!(char_class('='), MathClass::Rel);
+    assert_eq!(char_class(':'), MathClass::Rel, ":は関係子（区切りは \\colon）");
+    assert_eq!(char_class(','), MathClass::Punct);
+    assert_eq!(char_class('('), MathClass::Open);
+    assert_eq!(char_class(')'), MathClass::Close);
+    assert_eq!(char_class('a'), MathClass::Ord);
+    assert_eq!(char_class('1'), MathClass::Ord);
+    assert_eq!(char_class('/'), MathClass::Ord);
+    assert_eq!(char_class('|'), MathClass::Ord);
+    assert_eq!(char_class('速'), MathClass::Ord, "表に無い文字は Ord へ倒す");
   }
 }

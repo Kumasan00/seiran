@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{NodeId, TextAlignment, Typeface},
+  document::{MathClass, MathSpace, NodeId, TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
   typeset::{
@@ -300,6 +300,128 @@ impl DelimiterGlyphs {
   /// 左右いずれかの括弧を持つか（本体を包み直す必要があるか）
   #[must_use]
   pub(in crate::typeset) fn is_present(self) -> bool { return self.left.is_some() || self.right.is_some(); }
+}
+
+/// 内容（字・クラス・区切り・字形 variant・書体・揃え）を解決し、段とアキを決める前のインライン数式
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct MathFormula {
+  /// 数式の中身
+  pub nodes: Vec<MathNode>,
+  /// 数式本体（text 段）のフォントサイズ
+  pub font_size: Length,
+  /// 外側の文字色（`\color`・リンク色。`None` は既定色）。字と罫・伸縮グリフをすべてこの色で塗る
+  pub color: Option<Color>,
+}
+
+/// 内容を解決した数式の要素（段・cramped・大きさ・アキは数式エンジンが決める）
+#[derive(Debug, Clone)]
+pub(in crate::typeset) enum MathNode {
+  /// 字 1 つ（書記素クラスタ 1 つか記号 1 つ。字形 variant を写し済み）
+  Char {
+    /// 組む字
+    text: String,
+    /// アキを決める数式クラス
+    class: MathClass,
+    /// 開き・閉じ区切りとして働くか（区切りでなければ `None`）
+    fence: Option<Fence>,
+  },
+  /// 明示アキ（`\thinspace` 等）
+  Space(MathSpace),
+  /// 演算子名（`\lim` / `\sin` 等）
+  OperatorName {
+    /// 組む字（ASCII 英字の語を半角空白 1 個で区切った列。空白は語の間の細アキ）
+    text: String,
+    /// display 段で付く上付き・下付きを真上・真下に積む名前か
+    limits: bool,
+  },
+  /// 空でない数式内の文章（`\text{...}`。空の文章は空の [`MathNode::Group`] に解決する）
+  Prose {
+    /// 文章（空白をまとめ済み）
+    text: String,
+    /// 組む書体（style.toml の `[text].typeface`）
+    typeface: Typeface,
+  },
+  /// 中括弧グループ（中身ごと 1 個の Ord）
+  Group(Vec<MathNode>),
+  /// 直前の要素に付ける上付きの中身
+  Superscript(Vec<MathNode>),
+  /// 直前の要素に付ける下付きの中身
+  Subscript(Vec<MathNode>),
+  /// 分数
+  Fraction {
+    /// 分子
+    numerator: Vec<MathNode>,
+    /// 分母
+    denominator: Vec<MathNode>,
+  },
+  /// 二項係数
+  Binomial {
+    /// 上段
+    top: Vec<MathNode>,
+    /// 下段
+    bottom: Vec<MathNode>,
+  },
+  /// 根号
+  Radical {
+    /// 指数（`None` は平方根）
+    degree: Option<Vec<MathNode>>,
+    /// 被根号
+    radicand: Vec<MathNode>,
+  },
+  /// アクセント
+  Accent {
+    /// 基底の上に置く結合用ダイアクリティカルマーク
+    mark: char,
+    /// アクセント記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
+    wide: bool,
+    /// 基底をドット無しの字形で組むか（ソースの指定、無ければ style.toml の `[math].accent_dotless`。広幅アクセントは
+    /// 常に `false`）
+    dotless: bool,
+    /// アクセントを付ける数式
+    base: Vec<MathNode>,
+  },
+  /// 伸縮括弧
+  Fenced {
+    /// 左の区切り括弧
+    open: char,
+    /// 右の区切り括弧
+    close: char,
+    /// 中身を中間の区切りで分けた区画（1 個以上）
+    segments: Vec<Vec<MathNode>>,
+  },
+  /// 上線・下線
+  Bar {
+    /// 線を基底の上に引くか（上線は `true`、下線は `false`）
+    over: bool,
+    /// 線を引く数式
+    body: Vec<MathNode>,
+  },
+  /// 数式に埋め込んだ行列・場合分け
+  Array {
+    /// 行 × 列のセル
+    rows: Vec<Vec<Vec<MathNode>>>,
+    /// グリッドを囲む左右の区切り括弧グリフ
+    delimiters: DelimiterGlyphs,
+    /// セルの列内揃え
+    align: Align,
+    /// 数式本体の大きさでの行間（style.toml の `[math.block].row_gap` を本文の大きさ基準として比例させた値）
+    row_gap: Length,
+    /// 数式本体の大きさでの列間（`row_gap` と同じ比例）
+    column_gap: Length,
+  },
+}
+
+/// 数式の要素が開き・閉じ区切りとして働くかどうか
+///
+/// 対応する開き括弧を持つ「本物の区切り」だけを表す。数式クラスの `Open` / `Close`（アキ表の分類）
+/// とは独立 — `!` `?` は `plain TeX` の mathcode で `Close` クラスに入るが区切りではないので `None`
+/// になる。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::typeset) enum Fence {
+  /// 開き区切り（`(` `[` や `\langle` 等）
+  Open,
+  /// 閉じ区切り（`)` `]` や `\rangle` 等）
+  Close,
 }
 
 /// 基底に付けた上付き・下付き

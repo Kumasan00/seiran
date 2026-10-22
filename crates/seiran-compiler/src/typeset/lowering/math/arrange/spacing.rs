@@ -15,23 +15,10 @@ use std::mem;
 use crate::{
   document::{MathClass, MathSpace},
   length::Length,
-  typeset::lowering::layout_node::{AtomNode, InlineNode, MathScripts, TextStyle, merge_adjacent_atom_text},
+  typeset::lowering::layout_node::{AtomNode, Fence, InlineNode, MathScripts, TextStyle, merge_adjacent_atom_text},
 };
 
-/// アイテムが開き・閉じ区切りとして働くかどうか
-///
-/// 対応する開き括弧を持つ「本物の区切り」だけを表す。数式クラスの `Open` / `Close`（アキ表の分類）
-/// とは独立 — `!` `?` は `plain TeX` の mathcode で `Close` クラスに入るが区切りではないので `None`
-/// になる。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Fence {
-  /// 開き区切り（`(` `[` や `\langle` 等）
-  Open,
-  /// 閉じ区切り（`)` `]` や `\rangle` 等）
-  Close,
-}
-
-/// スペーシングの単位（`HirMath` の兄弟 1 個ぶん。テキストは書記素クラスタ 1 つぶん）
+/// スペーシングの単位（`MathNode` 1 個ぶん。字は書記素クラスタ 1 つぶん）
 #[derive(Debug)]
 pub(super) enum MathItem {
   /// クラスを持ち、隣のアトムとのアキを決めるアトム
@@ -375,44 +362,6 @@ fn resolve_bin_classes(classes: &mut [(MathClass, MathClass)]) {
   }
 }
 
-/// 直接入力された 1 文字の数式クラスを返す
-///
-/// plain TeX の `\mathcode` 割り当てに合わせてある。表に無い文字（和文を含む）は Ord として扱う。記号表の非 ASCII の字
-/// （正準等価な綴りを含む）は frontend が記号コマンドと同じ `HirMathKind::Symbol` にするので、ここへは来ない。
-pub(super) fn char_class(ch: char) -> MathClass {
-  return match ch {
-    '+' | '-' | '*' => MathClass::Bin,
-    '=' | '<' | '>' | ':' => MathClass::Rel,
-    ',' | ';' => MathClass::Punct,
-    '(' | '[' => MathClass::Open,
-    ')' | ']' | '!' | '?' => MathClass::Close,
-    _ => MathClass::Ord,
-  };
-}
-
-/// 直接入力された 1 文字が開き・閉じ区切りとして働くかどうかを返す
-pub(super) fn char_fence(ch: char) -> Option<Fence> {
-  return match ch {
-    '(' | '[' => Some(Fence::Open),
-    ')' | ']' => Some(Fence::Close),
-    _ => None,
-  };
-}
-
-/// 記号コマンド（`\langle` 等）の数式クラスから開き・閉じ区切りを導く
-///
-/// frontend の記号テーブル（`SYMBOLS`）で `Open` / `Close` クラスを持つ記号は、どれも対になる閉じ・開き括弧を
-/// 記号テーブルに持つ本物の区切りである（対の無い根号・長除法は Ord。対の存在は `command::symbol` のテストが保つ）。
-/// direct な文字の `!` `?` のような「クラスだけ `Close`」の例外は記号テーブルには無いので、クラスから直接 [`Fence`] を
-/// 導いてよい。
-pub(super) fn symbol_fence(class: MathClass) -> Option<Fence> {
-  return match class {
-    MathClass::Open => Some(Fence::Open),
-    MathClass::Close => Some(Fence::Close),
-    MathClass::Ord | MathClass::Op | MathClass::Bin | MathClass::Rel | MathClass::Punct => None,
-  };
-}
-
 /// 上付き・下付き `content` を直前のアイテムへ付ける
 ///
 /// スクリプトは核となるアトムの一部なので、間にアキを入れず、クラスも核のものを保つ
@@ -662,7 +611,10 @@ fn break_penalty(gap: Gap, depth: usize) -> Option<i32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::document::{MathSpace, Typeface};
+  use crate::{
+    document::{MathSpace, Typeface},
+    typeset::lowering::math::{char_class, char_fence},
+  };
 
   /// 12pt の Math テキストスタイル
   fn style() -> TextStyle {
@@ -725,22 +677,6 @@ mod tests {
         _ => return None,
       })
       .collect();
-  }
-
-  #[test]
-  fn char_class_follows_plain_tex_mathcodes() {
-    assert_eq!(char_class('+'), MathClass::Bin);
-    assert_eq!(char_class('-'), MathClass::Bin);
-    assert_eq!(char_class('='), MathClass::Rel);
-    assert_eq!(char_class(':'), MathClass::Rel, ":は関係子（区切りは \\colon）");
-    assert_eq!(char_class(','), MathClass::Punct);
-    assert_eq!(char_class('('), MathClass::Open);
-    assert_eq!(char_class(')'), MathClass::Close);
-    assert_eq!(char_class('a'), MathClass::Ord);
-    assert_eq!(char_class('1'), MathClass::Ord);
-    assert_eq!(char_class('/'), MathClass::Ord);
-    assert_eq!(char_class('|'), MathClass::Ord);
-    assert_eq!(char_class('速'), MathClass::Ord, "表に無い文字は Ord へ倒す");
   }
 
   #[test]
