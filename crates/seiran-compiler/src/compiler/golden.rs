@@ -591,6 +591,35 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
   );
 }
 
+/// 2 段組みの `Ratio` 列は本文幅ではなく段幅を基準にする（表エンジンの列幅の基準と改ページの段幅が一致する）。
+#[test]
+fn ratio_column_resolves_against_the_column_width_in_two_columns() {
+  let source = "\\begin{table}[columns=left, widths=0.5]\n\\row[rule_above]{A}\n\\end{table}\n";
+  let rule_width = |columns: u32| {
+    let laid_out = TestProject::builder()
+      .source_text(source)
+      .style_toml(move |table| test_support::set(table, "columns", "count", columns))
+      .build()
+      .laid_out();
+    return laid_out
+      .pages
+      .iter()
+      .flat_map(|page| return page.blocks.iter())
+      .find_map(|block| match block {
+        PlacedBlock::Table { rows } => return rows.first()?.rule.map(|rule| return rule.width),
+        _ => return None,
+      })
+      .expect("罫線つきの表の行があるはず");
+  };
+
+  let one = rule_width(1);
+  let two = rule_width(2);
+
+  // 1 段: 0.5 × 本文幅、2 段: 0.5 × (本文幅 − 段間 18pt（既定）) / 2
+  let expected = (one * 2.0 - Length::pt(18.0)) / 4.0;
+  assert!((two - expected).to_pt().abs() < 0.01, "1 段 {one:?} / 2 段 {two:?} / 期待 {expected:?}");
+}
+
 /// 表のセルの箱（分数・根号の部品まで）が自分の行帯に収まることを確認する。
 #[test]
 fn table_cell_boxes_stay_inside_their_row() {

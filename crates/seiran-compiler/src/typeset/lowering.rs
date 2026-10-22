@@ -29,7 +29,7 @@ use std::mem;
 
 pub(super) use layout_node::{
   DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
-  ParagraphLayout, TableLayout, TableRowLayout, TextStyle,
+  ParagraphLayout, TableColumn, TableLayout, TableRowLayout, TextStyle,
 };
 pub(super) use math::{
   CASES_DELIMITERS, delimiter_glyphs, math_text_clusters, matrix_delimiter_glyphs, translate_math_char,

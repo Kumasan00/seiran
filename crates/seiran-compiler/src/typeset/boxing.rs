@@ -14,9 +14,10 @@
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
-//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`hlist` は本文・脚注本文・表のセルの水平リストの積み場所で、
+//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`table`（表エンジン — 列幅の決定・セルの組版と計測・行断片の生成）も
+//! `Measurer` の `impl` を続ける。`hlist` は本文・脚注本文・表のセルの水平リストの積み場所で、
 //! run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
-//! （`LayoutNode` → `Block`・`Atom` 化・表）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
+//! （`LayoutNode` → `Block`・`Atom` 化）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
 
 mod break_opportunities;
@@ -26,6 +27,7 @@ mod hyphenation;
 mod math;
 mod script;
 mod shaping;
+mod table;
 mod text_run;
 mod yakumono;
 
@@ -43,13 +45,10 @@ use crate::{
   document::TextAlignment,
   length::Length,
   typeset::{
-    boxes::{
-      Align, Block, HBox, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox, TableBox, TableCellBox,
-      TableRowBox, max_font_size_in_items,
-    },
+    boxes::{Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
-    lowering::{InlineNode, LayoutNode, ParagraphLayout, TableLayout, TableRowLayout, TextStyle},
+    lowering::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
   },
 };
 
@@ -81,7 +80,7 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) fonts: &'a FontSystem,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
-  /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅）
+  /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅で、表の `Ratio` / `Flex` 列の基準）
   pub(super) column_width: Length,
   /// 既定のフォントサイズ
   pub(super) default_font_size: Length,
@@ -188,7 +187,7 @@ impl BlockBuilder<'_> {
         },
         LayoutNode::Table(table) => {
           blocks.push(Block::Table {
-            table: self.measurer.build_table_box(table),
+            table: self.measurer.build_table(table, self.column_width),
             align: Align::from(alignment),
           });
         },
@@ -367,36 +366,40 @@ impl<'a> Measurer<'a> {
     atom.width = dx;
     return atom;
   }
+}
 
-  /// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する
-  fn build_table_box(&mut self, table: TableLayout) -> TableBox {
-    return TableBox {
-      columns: table.columns,
-      head: self.build_table_rows(table.head),
-      rows: self.build_table_rows(table.rows),
-      breakable: table.breakable,
-    };
-  }
+/// アイテム列に含まれるテキストの最大フォントサイズを返す（テキストがなければ `None`）
+fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
+  return items
+    .iter()
+    .filter_map(|item| match item {
+      HItem::Box(hbox) | HItem::FlushRight(hbox) => return max_font_size_in_content(&hbox.content),
+      // グリフを内包しないアイテムはフォントサイズを持たない。`Discretionary` のハイフン箱と
+      // `Footnote` の本体は支配的サイズには数えない（行送りは本文側で決まる）。
+      HItem::Glue { .. }
+      | HItem::Kern(_)
+      | HItem::MathBreak { .. }
+      | HItem::Penalty { .. }
+      | HItem::Discretionary { .. }
+      | HItem::ForcedBreak
+      | HItem::LinkStart(_)
+      | HItem::LinkEnd
+      | HItem::Footnote(_)
+      | HItem::IndexMark(_) => return None,
+    })
+    .reduce(Length::max);
+}
 
-  /// 行のリストのセル内容をシェーピングして [`TableRowBox`] の列に変換する
-  fn build_table_rows(&mut self, rows: Vec<TableRowLayout>) -> Vec<TableRowBox> {
-    let mut result = Vec::with_capacity(rows.len());
-    for row in rows {
-      let mut cells = Vec::with_capacity(row.cells.len());
-      for cell in row.cells {
-        let mut list = HList::default();
-        for node in cell.content {
-          self.collect_inline(node, &mut list);
-        }
-        cells.push(TableCellBox {
-          items: list.into_items(),
-          column_span: cell.column_span,
-        });
-      }
-      result.push(TableRowBox::new(cells, row.rule_above, self.default_font_size, self.line_height_factor));
-    }
-    return result;
-  }
+/// ボックス内容に含まれるテキストの最大フォントサイズを返す
+fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
+  return match content {
+    HBoxContent::Glyphs(run) => Some(run.font_size),
+    HBoxContent::Atom(children) => children
+      .iter()
+      .filter_map(|child| return max_font_size_in_content(&child.hbox.content))
+      .reduce(Length::max),
+    HBoxContent::Rule { .. } => None,
+  };
 }
 
 /// 伸縮アキの値（`HItem::Glue` になる前の形）
@@ -593,5 +596,81 @@ mod ja_latin_aki_tests {
     assert!(!is_ja_latin_letter_boundary(Latin, ' ', Japanese, '文'), "空白→文 は空白側で除外");
     assert!(!is_ja_latin_letter_boundary(Japanese, '文', Japanese, '字'), "和文どうし");
     assert!(!is_ja_latin_letter_boundary(Latin, 'a', Latin, 'b'), "欧文どうし");
+  }
+}
+
+#[cfg(test)]
+mod max_font_size_tests {
+  use super::max_font_size_in_items;
+  use crate::{
+    length::Length,
+    project::FontType,
+    publication::GlyphRun,
+    typeset::boxes::{HBox, HBoxContent, HItem, PlacedHBox},
+  };
+
+  /// 指定幅・指定フォントサイズの Glyphs ボックスを作る
+  fn glyph_box(width: f32, font_size: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: Length::pt(font_size),
+        text: "x".to_string(),
+        glyphs: Vec::new(),
+        font_type: FontType::Serif,
+        color: None,
+      }),
+      width: Length::pt(width),
+      height: Length::pt(font_size),
+      depth: Length::ZERO,
+    });
+  }
+
+  /// 指定幅の、テキストを含まないボックスを作る
+  fn text_free_box(width: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: Length::pt(width),
+      height: Length::pt(1.0),
+      depth: Length::ZERO,
+    });
+  }
+
+  #[test]
+  fn max_font_size_in_items_returns_largest_text_size() {
+    let items = vec![
+      glyph_box(20.0, 10.0),
+      text_free_box(5.0),
+      glyph_box(20.0, 14.0),
+    ];
+
+    assert_eq!(max_font_size_in_items(&items), Some(Length::pt(14.0)));
+  }
+
+  #[test]
+  fn max_font_size_in_items_none_without_text() {
+    assert_eq!(max_font_size_in_items(&[text_free_box(5.0)]), None);
+  }
+
+  #[test]
+  fn max_font_size_in_items_recurses_into_atom() {
+    let inner = HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: Length::pt(20.0),
+        text: "y".to_string(),
+        glyphs: Vec::new(),
+        font_type: FontType::Math,
+        color: None,
+      }),
+      width: Length::pt(8.0),
+      height: Length::pt(20.0),
+      depth: Length::ZERO,
+    };
+    let atom = HBox::atom(vec![PlacedHBox {
+      hbox: inner,
+      dx: Length::ZERO,
+      dy: Length::ZERO,
+    }]);
+
+    assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(Length::pt(20.0)));
   }
 }
