@@ -751,6 +751,7 @@ mod tests {
         })
         .into_iter()
         .collect(),
+      footnotes: Vec::new(),
     };
   }
 

@@ -8,15 +8,17 @@
 //! `PreparedGeometry::body_column_width` で、`break_pages` が段幅に使う値と同じ式・同じ入力から出る（前付けは本文幅で、
 //! 前付けの段数 1・段間 0 の段幅と一致する）。配置側の揃えはこの段幅と [`TableBox::width`] から決まる。
 //!
-//! 再掲ヘッダは初出ヘッダの断片から索引語を除いたもの（同じ語をページごとに積まない）。リンクは再掲先にも
-//! クリック矩形が要るので残す。セル内の脚注本体は断片に載せない（表セル内の脚注は配置しない現行制限）。
+//! 再掲ヘッダは初出ヘッダの断片から索引語と脚注を除いたもの（同じ語をページごとに積まず、脚注本体は初出の 1 回だけ
+//! 置く）。リンクは再掲先にもクリック矩形が要るので残す — 脚注マーカーのリンクも残るので、再掲ヘッダのマーカーは
+//! 初出の脚注本体へ飛ぶ。
 
 use crate::{
   document::{ColumnAlign, ColumnWidth},
   length::Length,
   typeset::{
     boxes::{
-      HItem, IndexTerm, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, PlacedTableRule, TableBox, TableRowFragment,
+      HItem, IndexTerm, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox, PlacedTableRow, PlacedTableRule, TableBox,
+      TableRowFragment,
     },
     boxing::{self, Measurer, hlist::HList},
     lowering::{TableColumn, TableLayout, TableRowLayout},
@@ -161,6 +163,7 @@ fn arrange(
     .map(|fragment| {
       return TableRowFragment {
         index_marks: Vec::new(),
+        footnotes: Vec::new(),
         ..fragment.clone()
       };
     })
@@ -284,12 +287,13 @@ fn layout_row_cells<'a>(
 /// 1 行を、表左端・行帯上端を原点とする行断片にする
 ///
 /// 列揃え・余白・`Kern` / `Glue` のカーソル前進はここで解決する。リンク・索引語・脚注のマーカーは描画箱に含めず、
-/// リンクは表左端からの水平範囲、索引語は出現順で断片へ移す。セルは折り返さないので `LinkStart` / `LinkEnd` は
+/// リンクは表左端からの水平範囲、索引語と脚注は出現順で断片へ移す。セルは折り返さないので `LinkStart` / `LinkEnd` は
 /// 常に同一セル内で対応が閉じる。
 fn row_fragment(row: &MeasuredRow, frame: &TableFrame<'_>, col_widths: &[Length]) -> TableRowFragment {
   let mut boxes = Vec::new();
   let mut links = Vec::new();
   let mut index_marks: Vec<IndexTerm> = Vec::new();
+  let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
   for (cell, content_x) in layout_row_cells(row, frame, col_widths) {
     let mut cursor = content_x;
     let mut open: Vec<(LinkTarget, Length)> = Vec::new();
@@ -317,11 +321,8 @@ fn row_fragment(row: &MeasuredRow, frame: &TableFrame<'_>, col_widths: &[Length]
           }
         },
         HItem::IndexMark(term) => index_marks.push(term.clone()),
-        HItem::Penalty { .. }
-        | HItem::Discretionary { .. }
-        | HItem::ForcedBreak
-        | HItem::FlushRight(_)
-        | HItem::Footnote(_) => {},
+        HItem::Footnote(footnote) => footnotes.push(footnote.clone()),
+        HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak | HItem::FlushRight(_) => {},
       }
     }
   }
@@ -342,6 +343,7 @@ fn row_fragment(row: &MeasuredRow, frame: &TableFrame<'_>, col_widths: &[Length]
     },
     links,
     index_marks,
+    footnotes,
   };
 }
 
@@ -358,7 +360,7 @@ mod tests {
     semantics::LabelId,
     source::SourceId,
     typeset::{
-      boxes::{AnchorId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote},
+      boxes::{AnchorId, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote},
       lowering::TableColumn,
     },
   };
@@ -410,6 +412,17 @@ mod tests {
     return HItem::IndexMark(IndexTerm {
       word: word.to_string(),
       reading: None,
+    });
+  }
+
+  /// 出現 index `index`（表示番号 `index + 1`）の脚注マーカーを作る
+  fn footnote(index: u32) -> HItem {
+    return HItem::Footnote(MeasuredFootnote {
+      origin: NodeId::for_test(SourceId::new(0), index + 1),
+      number: index + 1,
+      index,
+      items: vec![text_free_box(30.0)],
+      leading: pt(10.0),
     });
   }
 
@@ -718,22 +731,19 @@ mod tests {
   }
 
   #[test]
-  fn row_fragment_ignores_footnote_items() {
-    // 表セルの脚注本体は配置しない現行制限のまま、断片に載らない
-    let footnote = HItem::Footnote(MeasuredFootnote {
-      origin: NodeId::for_test(SourceId::new(0), 1),
-      number: 1,
-      index: 0,
-      items: vec![text_free_box(30.0)],
-      leading: pt(10.0),
-    });
-    let row = row(vec![cell(vec![text_free_box(5.0), footnote])]);
-    let columns = [auto(ColumnAlign::Left)];
+  fn row_fragment_collects_footnotes_in_cell_order() {
+    // 左のセルに 1 つ、右のセルに 2 つ（箱の前と後）
+    let row = row(vec![
+      cell(vec![text_free_box(5.0), footnote(0)]),
+      cell(vec![footnote(1), text_free_box(5.0), footnote(2)]),
+    ]);
+    let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0)]);
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)]);
 
-    assert_eq!(fragment.row.boxes.len(), 1, "{fragment:?}");
-    assert!(fragment.links.is_empty() && fragment.index_marks.is_empty(), "{fragment:?}");
+    let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
+    assert_eq!(indices, vec![0, 1, 2]);
+    assert_eq!(fragment.row.boxes.len(), 2, "脚注は描画箱を持たない");
   }
 
   #[test]
@@ -849,6 +859,26 @@ mod tests {
     assert_eq!(table.repeated_head[0].row.boxes.len(), table.head[0].row.boxes.len());
     assert_eq!(table.rows.len(), 1);
     assert!(table.breakable);
+  }
+
+  #[test]
+  fn arrange_repeated_head_drops_footnotes_and_keeps_links() {
+    // 脚注マーカーと同じ形（リンクで包んだ箱 + 運搬マーカー）のヘッダ 1 行
+    let target = LinkTarget::Internal(AnchorId::Footnote(FootnoteId::new(0)));
+    let head = vec![row(vec![cell(vec![
+      HItem::LinkStart(target.clone()),
+      text_free_box(5.0),
+      HItem::LinkEnd,
+      footnote(0),
+    ])])];
+    let columns = [auto(ColumnAlign::Left)];
+
+    let table = arrange(&frame(&columns, 0.0), &head, &[], pt(100.0), true);
+
+    assert_eq!(table.head[0].footnotes.len(), 1, "初出ヘッダは脚注を持つ");
+    assert!(table.repeated_head[0].footnotes.is_empty(), "再掲ヘッダは脚注を持たない");
+    assert_eq!(table.repeated_head[0].links.len(), 1, "再掲ヘッダもマーカーのリンクを持つ");
+    assert_eq!(table.repeated_head[0].links[0].target, target);
   }
 
   #[test]
