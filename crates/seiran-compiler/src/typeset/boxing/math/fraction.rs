@@ -15,8 +15,10 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{Align, HBox, PlacedHBox},
-    boxing::{Measurer, Shaper, math},
-    lowering::MathFraction,
+    boxing::{
+      Measurer, Shaper,
+      math::{self, arrange::MathFraction},
+    },
   },
 };
 
@@ -125,7 +127,7 @@ impl Measurer<'_> {
   ///
   /// 分子・分母・横罫は Atom の左端から [`FRACTION_PADDING`] の位置に置き、Atom の幅は両側のアキを含む。
   /// 横罫を引かない積み（`ruled` が偽）は [`StackConstants`] でシフトを決め、横罫を置かない。
-  pub(in crate::typeset::boxing) fn place_fraction(
+  pub(super) fn place_fraction(
     &mut self,
     fraction: MathFraction,
     dy: Length,

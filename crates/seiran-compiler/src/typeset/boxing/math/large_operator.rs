@@ -16,7 +16,7 @@ use crate::{
 impl Measurer<'_> {
   /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）を水平カーソル `dx`・縦オフセット `dy` に置き、カーソルを
   /// 字形の送り幅だけ進める
-  pub(in crate::typeset::boxing) fn place_large_operator(
+  pub(super) fn place_large_operator(
     &mut self,
     symbol: &str,
     font_size: Length,

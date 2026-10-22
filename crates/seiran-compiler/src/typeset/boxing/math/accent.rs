@@ -31,8 +31,14 @@ use crate::{
   project::FontType,
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
-    boxing::{Measurer, math},
-    lowering::{AtomNode, MathAccent, TextStyle},
+    boxing::{
+      Measurer,
+      math::{
+        self,
+        arrange::{ArrangedNode, MathAccent},
+      },
+    },
+    lowering::TextStyle,
   },
 };
 
@@ -56,13 +62,7 @@ fn sole_math_glyph(boxes: &[PlacedHBox]) -> Option<(Length, u32, Length)> {
 
 impl Measurer<'_> {
   /// アクセントを水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを基底の送り幅だけ進める
-  pub(in crate::typeset::boxing) fn place_accent(
-    &mut self,
-    accent: MathAccent,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  pub(super) fn place_accent(&mut self, accent: MathAccent, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathAccent {
       base,
       accent,
@@ -74,7 +74,7 @@ impl Measurer<'_> {
     } = accent;
     // ドット無しの字形を試すのはテキスト 1 塊の基底だけ（1 グリフに組むかは組んでから `dotless_glyph` が決める）
     let dotless_text = match base.as_slice() {
-      [AtomNode::Text(text, style)] if dotless => Some((text.clone(), *style)),
+      [ArrangedNode::Text(text, style)] if dotless => Some((text.clone(), *style)),
       _ => None,
     };
     let base = self.detach(base);

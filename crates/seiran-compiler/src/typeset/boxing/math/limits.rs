@@ -16,8 +16,10 @@ use crate::{
   length::Length,
   typeset::{
     boxes::PlacedHBox,
-    boxing::{Measurer, Shaper, math},
-    lowering::MathScripts,
+    boxing::{
+      Measurer, Shaper,
+      math::{self, arrange::MathScripts},
+    },
   },
 };
 
@@ -83,13 +85,7 @@ fn limit_columns(
 impl Measurer<'_> {
   /// 上下に積む上付き・下付き（`scripts.limits` が真）を水平カーソル `dx`・縦オフセット `dy` から絶対配置し、カーソルを
   /// 3 つの広がりの和集合の幅だけ進める
-  pub(in crate::typeset::boxing) fn place_limits(
-    &mut self,
-    scripts: MathScripts,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  pub(super) fn place_limits(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathScripts {
       base,
       superscript,

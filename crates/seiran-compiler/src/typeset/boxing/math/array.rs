@@ -11,23 +11,20 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{HBox, PlacedHBox},
-    boxing::Measurer,
-    lowering::MathArray,
+    boxing::{
+      Measurer,
+      math::{MeasuredCell, arrange::MathArray},
+    },
   },
 };
 
 impl Measurer<'_> {
   /// 埋め込んだ行列・場合分けを水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを全体の
   /// 送り幅だけ進める
-  pub(in crate::typeset::boxing) fn place_array(
-    &mut self,
-    array: MathArray,
-    dy: Length,
-    dx: &mut Length,
-    out: &mut Vec<PlacedHBox>,
-  ) {
+  pub(super) fn place_array(&mut self, array: MathArray, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathArray {
       rows,
+      align,
       delimiters,
       font_size,
       script_level,
@@ -35,7 +32,21 @@ impl Measurer<'_> {
       row_gap,
       column_gap,
     } = array;
-    let (grid, _) = self.build_grid(rows, row_gap, column_gap);
+    let cells = rows
+      .into_iter()
+      .map(|row| {
+        return row
+          .into_iter()
+          .map(|content| {
+            return MeasuredCell {
+              content: self.build_math_atom(content),
+              align,
+            };
+          })
+          .collect();
+      })
+      .collect();
+    let (grid, _) = Self::build_grid(cells, row_gap, column_gap);
     let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
     let grid_dy = axis - (grid.height - grid.depth) / 2.0;
     let hbox = if delimiters.is_present() {

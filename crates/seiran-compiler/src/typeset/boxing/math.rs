@@ -24,6 +24,7 @@
 //! 括弧の包み直し（[`Measurer::wrap_with_delimiters`]）を共有する。
 
 mod accent;
+mod arrange;
 mod array;
 mod bar;
 mod fenced;
@@ -32,6 +33,7 @@ mod large_operator;
 mod limits;
 mod radical;
 
+use arrange::{ArrangedInline, ArrangedNode, MathScripts};
 pub(in crate::typeset) use fenced::FENCE_DIVIDER;
 pub(in crate::typeset) use radical::RADICAL_SIGN;
 use read_fonts::tables::math::{MathConstant, MathKernCorner};
@@ -41,10 +43,14 @@ use crate::{
   length::Length,
   publication::Glyph,
   typeset::{
-    boxes::{Align, Block, HBox, MathRowNumber, PlacedHBox},
-    boxing::{Measurer, Shaper, hlist::Edge, shaping},
+    boxes::{Align, Block, HBox, HItem, MathRowNumber, PlacedHBox},
+    boxing::{
+      Measurer, Shaper,
+      hlist::{self, BOX_EDGE_CHAR, Edge, HList},
+      shaping, text_run,
+    },
     font::ScriptLevel,
-    lowering::{self, AtomNode, DelimiterGlyphs, MathBlockCellLayout, MathBlockLayout, MathOperator, MathScripts},
+    lowering::{self, DelimiterGlyphs, MathBlockLayout, MathFormula, MathOperator},
   },
 };
 
@@ -172,6 +178,42 @@ impl ScriptConstants {
 }
 
 impl Measurer<'_> {
+  /// インライン数式を組み立てて計測し、箱と分割候補を段落の水平リスト `out` に積む
+  ///
+  /// トップレベルのテキストは数式フォントの run ごとの箱、文章は端の約物の性質を添えた閉じた箱（段落の隣の約物と
+  /// 本文の規則でアキを解決する）、アキはアキを打ち消す Kern、分割候補は [`HItem::MathBreak`]、構造は閉じた箱 1 つにする。
+  pub(super) fn push_inline_math(&mut self, formula: &MathFormula, out: &mut HList) {
+    for piece in arrange::arrange_inline(formula, self.shaper.script_scale()) {
+      match piece {
+        ArrangedInline::Break { spacing, penalty } => {
+          out.push_absorbing(HItem::MathBreak { spacing, penalty });
+        },
+        ArrangedInline::Node(ArrangedNode::Text(text, style)) => {
+          self.push_text_items(&text, style, out);
+        },
+        ArrangedInline::Node(ArrangedNode::Prose(text, style)) => {
+          let (atom, leading, trailing) = self.prose_atom(&text, style);
+          out.push(leading, vec![HItem::Box(atom)], trailing);
+        },
+        ArrangedInline::Node(ArrangedNode::Kern { length }) => {
+          out.push_absorbing(HItem::Kern(length));
+        },
+        ArrangedInline::Node(
+          node @ (ArrangedNode::Scripts(_)
+          | ArrangedNode::Fraction(_)
+          | ArrangedNode::Radical(_)
+          | ArrangedNode::Accent(_)
+          | ArrangedNode::Fenced(_)
+          | ArrangedNode::Bar(_)
+          | ArrangedNode::Array(_)
+          | ArrangedNode::LargeOperator { .. }),
+        ) => {
+          out.push_math_box(self.build_math_atom(vec![node]));
+        },
+      }
+    }
+  }
+
   /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
   pub(crate) fn build_math_block(&mut self, block: MathBlockLayout) -> Block {
     let MathBlockLayout {
@@ -183,10 +225,28 @@ impl Measurer<'_> {
       row_gap,
       column_gap,
       delimiters,
+      display,
     } = block;
 
-    let (cells, row_numbers): (Vec<_>, Vec<_>) = rows.into_iter().map(|row| return (row.cells, row.number)).unzip();
-    let (mut body, baselines) = self.build_grid(cells, row_gap, column_gap);
+    let script_scale = self.shaper.script_scale();
+    let mut cells = Vec::with_capacity(rows.len());
+    let mut row_numbers = Vec::with_capacity(rows.len());
+    for row in rows {
+      let measured = row
+        .cells
+        .into_iter()
+        .map(|cell| {
+          let content = arrange::arrange_cell(&cell.content, self.default_font_size, display, script_scale);
+          return MeasuredCell {
+            content: self.build_math_atom(content),
+            align: cell.align,
+          };
+        })
+        .collect();
+      cells.push(measured);
+      row_numbers.push(row.number);
+    }
+    let (mut body, baselines) = Self::build_grid(cells, row_gap, column_gap);
     let mut numbers: Vec<MathRowNumber> = row_numbers
       .into_iter()
       .zip(baselines)
@@ -229,31 +289,11 @@ impl Measurer<'_> {
     };
   }
 
-  /// 行 × セルのグリッドを measure し、列幅・行送りを決めて閉じた Atom 1 つに組む
+  /// 測り済みのセルのグリッド `measured` の列幅・行送りを決めて閉じた Atom 1 つに組む
   ///
   /// 列幅は列内のセル幅の最大値、隣り合う行は前の行の深さ・`row_gap`・次の行の高さだけベースラインを離す。1 行目の
   /// ベースラインが Atom のベースラインで、返り値の 2 つ目は各行のベースラインの `dy`（上向き正。1 行目は 0）。
-  fn build_grid(
-    &mut self,
-    rows: Vec<Vec<MathBlockCellLayout>>,
-    row_gap: Length,
-    column_gap: Length,
-  ) -> (HBox, Vec<Length>) {
-    let measured: Vec<Vec<MeasuredCell>> = rows
-      .into_iter()
-      .map(|row| {
-        return row
-          .into_iter()
-          .map(|cell| {
-            return MeasuredCell {
-              content: self.build_atom(Length::ZERO, cell.content),
-              align: cell.align,
-            };
-          })
-          .collect();
-      })
-      .collect();
-
+  fn build_grid(measured: Vec<Vec<MeasuredCell>>, row_gap: Length, column_gap: Length) -> (HBox, Vec<Length>) {
     let ncols = measured.iter().map(Vec::len).max().unwrap_or(0);
     let mut col_widths = vec![Length::ZERO; ncols];
     for row in &measured {
@@ -355,7 +395,7 @@ impl Measurer<'_> {
   /// （`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則（演算子でない基底は上付きを補正ぶん前へ、
   /// 演算子は下付きを補正ぶん手前へ。補正を持つ演算子はすべて `MathML Core` の大型演算子と同じに扱う）と同じ位置に
   /// なる。後ろのカーソルは基底の右端と各スクリプトの右端のうち最も右から `SpaceAfterScript` のアキを空ける。
-  pub(super) fn place_scripts(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  fn place_scripts(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
     let MathScripts {
       base,
       superscript,
@@ -415,17 +455,114 @@ impl Measurer<'_> {
     *dx = end + constants.space_after_script;
   }
 
+  /// 組み立てた数式の要素列を絶対配置（`dx` / `dy`）の Atom に畳む
+  ///
+  /// 幅は末尾のアキを含む送り幅そのもの（`detach` と同じ。子の箱のはみ出しは数えない）— アキは子の箱を持たないので
+  /// 子の範囲では決まらない。送り幅が子の箱の右端を下回るのは、この列か子の部分リスト（スクリプト・伸縮括弧の中身・
+  /// 上下の範囲）の末尾に負の明示アキがあるときだけ。高さ・深さは子の箱から決める。
+  fn build_math_atom(&mut self, nodes: Vec<ArrangedNode>) -> HBox {
+    let mut placed: Vec<PlacedHBox> = Vec::new();
+    let mut dx = Length::ZERO;
+    let mut edge = Edge::Absorb;
+    for node in nodes {
+      self.place_arranged_child(node, Length::ZERO, &mut dx, &mut placed, &mut edge);
+    }
+    let mut atom = HBox::atom(placed);
+    atom.width = dx;
+    return atom;
+  }
+
+  /// Atom の子の並びの 1 つを、直前の子の右端 `edge` との約物アキを足してから絶対配置し、`edge` を更新する
+  ///
+  /// 子の並びで約物の端を持つのは数式内の文章だけ — ほかの子は数式の字（明示アキはアキを打ち消す）として読む。
+  /// 並びの両端は外の相手を持たないのでアキを足さない。両側とも数式の中なので、アキは伸縮しない固定幅。
+  fn place_arranged_child(
+    &mut self,
+    node: ArrangedNode,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+    edge: &mut Edge,
+  ) {
+    let aki_width = |left: Edge, right: Edge| -> Length {
+      return hlist::aki_between(left, right).map_or(Length::ZERO, |item| return item.natural_width());
+    };
+    if let ArrangedNode::Prose(text, style) = node {
+      let list = self.prose_list(&text, style);
+      let (leading, trailing) = list.edges();
+      *dx += aki_width(*edge, leading.in_math());
+      text_run::place_prose(list, dy, dx, out);
+      *edge = trailing.in_math();
+      return;
+    }
+    let next = if matches!(node, ArrangedNode::Kern { .. }) {
+      Edge::Absorb
+    } else {
+      Edge::letter(BOX_EDGE_CHAR).in_math()
+    };
+    *dx += aki_width(*edge, next);
+    *edge = next;
+    self.place_arranged_node(node, dy, dx, out);
+  }
+
+  /// Atom の子要素 1 つを水平カーソル `dx` と縦オフセット `dy` で絶対配置する
+  fn place_arranged_node(&mut self, node: ArrangedNode, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+    match node {
+      ArrangedNode::Text(text, style) => {
+        for hbox in self.shaper.shape_text(&text, style) {
+          let width = hbox.width;
+          out.push(PlacedHBox { hbox, dx: *dx, dy });
+          *dx += width;
+        }
+      },
+      ArrangedNode::Prose(..) => {
+        unreachable!("数式内の文章は place_arranged_child が端の約物アキと一緒に置く");
+      },
+      ArrangedNode::Kern { length } => {
+        *dx += length;
+      },
+      ArrangedNode::Scripts(scripts) => {
+        if scripts.limits {
+          self.place_limits(scripts, dy, dx, out);
+        } else {
+          self.place_scripts(scripts, dy, dx, out);
+        }
+      },
+      ArrangedNode::Fraction(fraction) => {
+        self.place_fraction(fraction, dy, dx, out);
+      },
+      ArrangedNode::Radical(radical) => {
+        self.place_radical(radical, dy, dx, out);
+      },
+      ArrangedNode::Accent(accent) => {
+        self.place_accent(accent, dy, dx, out);
+      },
+      ArrangedNode::Fenced(fenced) => {
+        self.place_fenced(fenced, dy, dx, out);
+      },
+      ArrangedNode::Bar(bar) => {
+        self.place_bar(bar, dy, dx, out);
+      },
+      ArrangedNode::Array(array) => {
+        self.place_array(array, dy, dx, out);
+      },
+      ArrangedNode::LargeOperator { symbol, font_size } => {
+        self.place_large_operator(&symbol, font_size, dy, dx, out);
+      },
+    }
+  }
+
   /// ノード列を原点から仮に配置し、送り幅とインクの寸法、両端の数式フォントのグリフを測る
   ///
   /// ノードはそれぞれ専用の `Vec` に配置し、端のグリフは端のノードが出した箱だけから取る。スクリプトのノードも
   /// グリフ列の箱を出すが、それはスクリプトの字形で基底の端ではないので、テキストと大型演算子のノードに限る。
-  fn detach(&mut self, nodes: Vec<AtomNode>) -> Detached {
+  fn detach(&mut self, nodes: Vec<ArrangedNode>) -> Detached {
     let last = nodes.len().saturating_sub(1);
     // math kern は 1 字の核にだけ効く（TeX / `LuaTeX` と同じく、複数の字・箱の核には効かせない）。1 字は書記素クラスタ
     // 1 つのテキスト（lowering がアイテムに分ける単位）か大型演算子のノード 1 個
     let sole_char = match nodes.as_slice() {
-      [AtomNode::Text(text, _)] => lowering::math_text_clusters(text).nth(1).is_none(),
-      [AtomNode::LargeOperator { .. }] => true,
+      [ArrangedNode::Text(text, _)] => lowering::math_text_clusters(text).nth(1).is_none(),
+      [ArrangedNode::LargeOperator { .. }] => true,
       _ => false,
     };
     let mut boxes = Vec::new();
@@ -435,18 +572,19 @@ impl Measurer<'_> {
     let mut trailing_correction = Length::ZERO;
     let mut edge = Edge::Absorb;
     for (index, node) in nodes.into_iter().enumerate() {
-      let yields_glyphs = matches!(node, AtomNode::Text(..) | AtomNode::LargeOperator { .. });
+      let yields_glyphs = matches!(node, ArrangedNode::Text(..) | ArrangedNode::LargeOperator { .. });
       // 末尾の字: テキストは基底と結合文字のクラスタ（`Shaper::add_italic_corrections` が補正を足す単位）、大型演算子は
       // 最後の字形（glyph assembly なら最上段のパーツ。パーツは全部が演算子 1 字のクラスタに属する）
-      let trailing_char: fn(&[Glyph]) -> &[Glyph] = if matches!(node, AtomNode::LargeOperator { .. }) {
+      let trailing_char: fn(&[Glyph]) -> &[Glyph] = if matches!(node, ArrangedNode::LargeOperator { .. }) {
         shaping::last_glyph
       } else {
         shaping::last_cluster
       };
       // 演算子名の語は最後の字の補正を送り幅に入れ済みで、核は 1 字ではないので補正を 0 とする（`MathOperator::Name`）
-      let operator_name = matches!(&node, AtomNode::Text(_, style) if style.math_operator == Some(MathOperator::Name));
+      let operator_name =
+        matches!(&node, ArrangedNode::Text(_, style) if style.math_operator == Some(MathOperator::Name));
       let mut own = Vec::new();
-      self.place_atom_child(node, Length::ZERO, &mut width, &mut own, &mut edge);
+      self.place_arranged_child(node, Length::ZERO, &mut width, &mut own, &mut edge);
       if yields_glyphs && index == 0 {
         leading_glyph = own
           .first()
