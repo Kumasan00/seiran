@@ -962,17 +962,20 @@ fn fit_table_row(
 
 /// 分割禁止の表（高さ `table_height`、全行の脚注の需要を出現順に並べた `demands`）を次リージョンへ送るべきか。
 ///
-/// 高さには全行の脚注を今の予約へ積んだときの脚注エリアの増分を足す（足さないと、脚注なしでは収まる表が行ループの
-/// 送りで途中から割れる）。実配置（[`place_table`]）と keep-with-next の計画（[`plan_atomic`]）が共用する。
+/// 現在リージョンでは今の予約に全行の脚注を積んだ脚注エリアと合わせて収まらず、予約の無い新しいリージョンなら
+/// 全行の脚注と合わせて収まるときだけ送る（足さないと、脚注なしでは収まる表が行ループの送りで途中から割れる。
+/// 新しいリージョンでも収まらない表は送っても改善しないので、その場に置く）。実配置（[`place_table`]）と
+/// keep-with-next の計画（[`plan_atomic`]）が共用する。
 fn defers_unbreakable_table(
   cursor: RegionCursor,
   table_height: Length,
   demands: &[FootnoteDemand],
   geom: &PageGeometry,
 ) -> bool {
-  let reserved = cursor.footnote_reserved;
-  let area = footnote_area_full(demands, reserved, FootnoteCharges::of(geom));
-  return cursor.defers_unbreakable(table_height + (area - reserved), geom);
+  let charges = FootnoteCharges::of(geom);
+  let here = footnote_area_full(demands, cursor.footnote_reserved, charges);
+  let fresh = footnote_area_full(demands, Length::ZERO, charges);
+  return cursor.y + table_height > geom.page_limit - here && geom.margin_top + table_height <= geom.page_limit - fresh;
 }
 
 /// 表を行断片の単位で配置する（改段・改ページ時は先頭に再掲ヘッダを積む）
@@ -1026,9 +1029,9 @@ fn flush_table_rows(composer: &mut PageComposer, pending: &mut Vec<(TableRowFrag
 
 /// 表の行 1 本を、その脚注（行分割済みの `bodies`）と合わせて現在リージョンへ置く
 ///
-/// 行と脚注が収まらなければ、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）を積んでから
-/// 判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときだけさらに送る（繰越は送るたびに 1 行以上
-/// 減るので有限回で尽きる）。予約の無い新リージョンでも入らなければ、本文の行と同じくはみ出しを記録して全行置く。
+/// 行と脚注が収まらなければ、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）の下に置く
+/// として判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときは、ヘッダを積まずにさらに送る
+/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。予約の無い新リージョンでも入らなければ、本文の行と同じくはみ出しを記録して全行置く。
 /// 脚注の予約・分割・繰越は段落の行の確定（`place_paragraph`）と同じ順で行う。
 fn place_table_row(
   composer: &mut PageComposer,
@@ -1045,18 +1048,23 @@ fn place_table_row(
   let height = row.height();
   let mut fit = fit_table_row(composer.cursor, height, &demands, geom);
   if matches!(fit, LineFootnoteFit::Rejected) {
+    let head_height: Length = repeated_head.iter().map(TableRowFragment::height).sum();
     loop {
       flush_table_rows(composer, pending, align_offset);
       composer.advance_region(geom);
       let carried = composer.cursor.footnote_reserved > Length::ZERO;
-      for head_row in repeated_head {
-        pending.push((head_row.clone(), composer.cursor.y));
-        composer.cursor.y += head_row.height();
-      }
-      fit = fit_table_row(composer.cursor, height, &demands, geom);
+      let below_head = RegionCursor {
+        y: composer.cursor.y + head_height,
+        ..composer.cursor
+      };
+      fit = fit_table_row(below_head, height, &demands, geom);
       if !(carried && matches!(fit, LineFootnoteFit::Rejected)) {
         break;
       }
+    }
+    for head_row in repeated_head {
+      pending.push((head_row.clone(), composer.cursor.y));
+      composer.cursor.y += head_row.height();
     }
   }
   let (area, splits) = match fit {
@@ -4402,5 +4410,61 @@ mod tests {
     assert!(pages.len() >= 2, "満杯で閉じるリージョンがあるはず（空振り検知）: {pages:?}");
     assert_eq!(pages.iter().map(|page| return page.footnotes.len()).sum::<usize>(), 6);
     assert_no_body_footnote_overlap(&pages);
+  }
+
+  #[test]
+  fn repeated_head_is_not_stacked_onto_a_region_filled_by_carry() {
+    // R0 の 8 行脚注がページ 0 で分割され、残りが後続ページの脚注エリアを埋める。再掲ヘッダは R1 と一緒に
+    // 入るリージョンにだけ積み、繰越で埋まったリージョンにヘッダだけを置いて脚注と重ねない
+    let geom = test_geometry();
+    let head = vec![table_row("H")];
+    let rows = vec![
+      with_footnote(table_row("R0"), footnote_of_lines(1, 8)),
+      table_row("R1"),
+    ];
+    let blocks = vec![Block::Table {
+      table: table_box(head, rows),
+      align: Align::Left,
+    }];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(
+      pages.iter().any(|page| return page.footnotes.iter().any(|footnote| return footnote.continued)),
+      "繰越が起きるはず（空振り検知）"
+    );
+    assert_no_body_footnote_overlap(&pages);
+    let rows_per_page: Vec<usize> = pages.iter().map(table_rows_of).collect();
+    assert!(
+      rows_per_page.iter().all(|&rows| return rows != 1),
+      "ヘッダだけのページを作らない: {rows_per_page:?}"
+    );
+  }
+
+  #[test]
+  fn unbreakable_table_moves_whole_past_a_page_with_footnote_reservation() {
+    // 1 行段落の脚注で予約 14 のページに、分割禁止の 2 行表（2 行目に脚注）。ここには入らないが、予約の無い
+    // 新しいページなら 10 + 20 + 14 = 44 ≤ 50 で丸ごと入る
+    let geom = test_geometry();
+    let rows = vec![
+      table_row("R0"),
+      with_footnote(table_row("R1"), one_line_footnote(2)),
+    ];
+    let table = TableBox {
+      breakable: false,
+      ..table_box(Vec::new(), rows)
+    };
+    let blocks = vec![
+      single_line_paragraph(vec![one_line_footnote(1)]),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
+    assert_eq!(table_rows_of(&pages[1]), 2);
   }
 }
