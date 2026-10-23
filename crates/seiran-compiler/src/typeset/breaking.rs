@@ -3,5 +3,5 @@
 mod break_lines;
 mod break_pages;
 
-pub(super) use break_lines::KnuthPlassBreaker;
+pub(super) use break_lines::{KnuthPlassBreaker, min_content_width};
 pub(super) use break_pages::{Overflow, OverflowAxis, OverflowKind, break_pages};

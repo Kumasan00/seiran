@@ -21,6 +21,7 @@ use crate::{
       TableRowFragment,
     },
     boxing::{self, Measurer, hlist::HList},
+    breaking,
     lowering::{TableColumn, TableLayout, TableRowLayout},
   },
 };
@@ -180,14 +181,35 @@ fn arrange(
 /// アイテム列の自然幅を返す
 fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
 
+/// `total`（非負）を `parts`（1 以上）個へ sp 単位で等分し、余りを左の部分から 1sp ずつ配る
+///
+/// `parts == 0` は呼び出し側が避ける（配り先の列が無いときは呼ばない）。
+fn split_evenly(total: Length, parts: usize) -> Vec<Length> {
+  let parts = i64::try_from(parts).expect("列数は i64 に収まる");
+  let base = total.sp().div_euclid(parts);
+  let remainder = total.sp().rem_euclid(parts);
+  return (0..parts).map(|k| return Length::from_sp(base + i64::from(k < remainder))).collect();
+}
+
+/// 跨ぐ列のどれかが `Auto` 以外か（結合セルが折り返すか）。全列 `Auto` の結合セルは折り返さず、自然幅で列を広げる
+fn wraps(columns: &[TableColumn]) -> bool {
+  return columns.iter().any(|column| match column.width {
+    ColumnWidth::Auto => return false,
+    ColumnWidth::Fixed(_) | ColumnWidth::Ratio(_) | ColumnWidth::Flex => return true,
+  });
+}
+
 /// 列幅を解決する
 ///
-/// 1. `column_span = 1` のセルの自然幅（内容実測 + 左右 padding）で各列の自然幅を求める
-/// 2. `column_span > 1` のセルは、跨ぐ列の自然幅合計が不足する場合に均等に加算する
-/// 3. 列指定を適用する: `Fixed` は指定値、`Ratio` は `available` 比、`Auto` は自然幅、
-///    `Flex`（`*`）は残り幅の等分（自然幅を下回る場合は自然幅）
+/// 1. `column_span = 1` のセルから、列ごとの自然幅（内容実測 + 左右 padding）と下限（最小内容幅 + 左右 padding）を取る
+/// 2. 全列 `Auto` の結合セルは、自然幅の不足分を跨ぐ列の自然幅へ sp 単位で均等に足す
+/// 3. `Fixed` は指定値、`Ratio` は `available` 比、`Auto` は `max(自然幅, 左右 padding)`
+/// 4. `Flex`（`*`）は `max(available − 3 の合計, 0)` を開いている Flex 列で等分し、下限を下回る列を下限に固定して
+///    残りから引くことを、違反が無くなるまで繰り返す
+/// 5. `Auto` 以外を跨ぐ結合セルは、跨ぐ列の幅の合計が最小内容幅 + 左右 padding に足りなければ、不足分を跨ぐ `Flex` 列へ、
+///    無ければ跨ぐ `Auto` 列へ均等に足す（`Fixed` / `Ratio` は書き換えず、はみ出しは配置が warning にする）
 ///
-/// 合計が `available` を超える場合の縮小は行わない（セル折り返し未対応のため、はみ出しを許容する）。
+/// 合計が `available` を超えても縮小しない（はみ出しは配置が warning にする）。
 fn resolve_column_widths(
   frame: &TableFrame<'_>,
   head: &[MeasuredRow],
@@ -197,14 +219,15 @@ fn resolve_column_widths(
   let padding = frame.cell_padding;
   let column_count = frame.columns.len();
   let mut naturals = vec![Length::ZERO; column_count];
+  let mut floors = vec![padding * 2; column_count];
 
   for row in head.iter().chain(rows) {
     let mut column_index = 0usize;
     for cell in &row.cells {
       let column_span = cell.column_span as usize;
       if column_span == 1 && column_index < column_count {
-        let width = measure_items_width(&cell.items) + padding * 2;
-        naturals[column_index] = naturals[column_index].max(width);
+        naturals[column_index] = naturals[column_index].max(measure_items_width(&cell.items) + padding * 2);
+        floors[column_index] = floors[column_index].max(breaking::min_content_width(&cell.items) + padding * 2);
       }
       column_index += column_span;
     }
@@ -213,13 +236,12 @@ fn resolve_column_widths(
     let mut column_index = 0usize;
     for cell in &row.cells {
       let column_span = cell.column_span as usize;
-      if column_span > 1 && column_index + column_span <= column_count {
+      let spanned = column_index..column_index + column_span;
+      if column_span > 1 && spanned.end <= column_count && !wraps(&frame.columns[spanned.clone()]) {
         let width = measure_items_width(&cell.items) + padding * 2;
-        let current: Length = naturals[column_index..column_index + column_span].iter().sum();
+        let current: Length = naturals[spanned.clone()].iter().sum();
         if width > current {
-          #[expect(clippy::cast_precision_loss, reason = "`column_span` は列数で、f32 の仮数部に収まる小さな整数")]
-          let extra = (width - current) / column_span as f32;
-          for natural in &mut naturals[column_index..column_index + column_span] {
+          for (natural, extra) in naturals[spanned].iter_mut().zip(split_evenly(width - current, column_span)) {
             *natural += extra;
           }
         }
@@ -229,30 +251,73 @@ fn resolve_column_widths(
   }
 
   let mut widths = vec![Length::ZERO; column_count];
-  let mut flex_indices: Vec<usize> = Vec::new();
+  let mut open_flex: Vec<usize> = Vec::new();
   let mut used = Length::ZERO;
   for (i, column) in frame.columns.iter().enumerate() {
     match column.width {
-      ColumnWidth::Fixed(length) => {
-        widths[i] = length;
-        used += widths[i];
+      ColumnWidth::Fixed(length) => widths[i] = length,
+      ColumnWidth::Ratio(ratio) => widths[i] = available * ratio,
+      ColumnWidth::Auto => widths[i] = naturals[i].max(padding * 2),
+      ColumnWidth::Flex => {
+        open_flex.push(i);
+        continue;
       },
-      ColumnWidth::Ratio(ratio) => {
-        widths[i] = available * ratio;
-        used += widths[i];
-      },
-      ColumnWidth::Auto => {
-        widths[i] = naturals[i].max(padding * 2);
-        used += widths[i];
-      },
-      ColumnWidth::Flex => flex_indices.push(i),
     }
+    used += widths[i];
   }
-  if !flex_indices.is_empty() {
-    #[expect(clippy::cast_precision_loss, reason = "flex 列の本数は f32 の仮数部に収まる小さな整数")]
-    let share = ((available - used) / flex_indices.len() as f32).max(Length::ZERO);
-    for i in flex_indices {
-      widths[i] = share.max(naturals[i]);
+  let mut rest = (available - used).max(Length::ZERO);
+  while !open_flex.is_empty() {
+    let shares = split_evenly(rest, open_flex.len());
+    let violates = |k: usize| return shares[k] < floors[open_flex[k]];
+    if !(0..open_flex.len()).any(violates) {
+      for (&i, share) in open_flex.iter().zip(shares) {
+        widths[i] = share;
+      }
+      break;
+    }
+    let mut still_open = Vec::new();
+    for (k, &i) in open_flex.iter().enumerate() {
+      if violates(k) {
+        widths[i] = floors[i];
+        rest = (rest - floors[i]).max(Length::ZERO);
+      } else {
+        still_open.push(i);
+      }
+    }
+    open_flex = still_open;
+  }
+
+  for row in head.iter().chain(rows) {
+    let mut column_index = 0usize;
+    for cell in &row.cells {
+      let column_span = cell.column_span as usize;
+      let spanned = column_index..column_index + column_span;
+      if column_span > 1 && spanned.end <= column_count && wraps(&frame.columns[spanned.clone()]) {
+        let need = breaking::min_content_width(&cell.items) + padding * 2;
+        let current: Length = widths[spanned.clone()].iter().sum();
+        if current < need {
+          let mut flex_columns = Vec::new();
+          let mut auto_columns = Vec::new();
+          for i in spanned {
+            match frame.columns[i].width {
+              ColumnWidth::Flex => flex_columns.push(i),
+              ColumnWidth::Auto => auto_columns.push(i),
+              ColumnWidth::Fixed(_) | ColumnWidth::Ratio(_) => {},
+            }
+          }
+          let targets = if flex_columns.is_empty() {
+            auto_columns
+          } else {
+            flex_columns
+          };
+          if !targets.is_empty() {
+            for (&i, extra) in targets.iter().zip(split_evenly(need - current, targets.len())) {
+              widths[i] += extra;
+            }
+          }
+        }
+      }
+      column_index += column_span;
     }
   }
   return widths;
@@ -351,6 +416,7 @@ fn row_fragment(row: &MeasuredRow, frame: &TableFrame<'_>, col_widths: &[Length]
 mod tests {
   use super::{
     MeasuredCell, MeasuredRow, TableFrame, arrange, measure_items_width, resolve_column_widths, row_fragment,
+    split_evenly,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth, NodeId},
@@ -447,6 +513,61 @@ mod tests {
       width: ColumnWidth::Auto,
     };
   }
+
+  /// 幅 5 の breakable glue（語間の分割機会）
+  fn space() -> HItem {
+    return HItem::Glue {
+      natural: pt(5.0),
+      stretch: Length::ZERO,
+      shrink: Length::ZERO,
+      breakable: true,
+    };
+  }
+
+  /// 指定幅（sp まで正確）の、テキストを含まないボックスを作る
+  fn box_of(width: Length) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width,
+      height: pt(1.0),
+      depth: Length::ZERO,
+    });
+  }
+
+  /// 揃え `align`・幅指定 `Flex` の列を作る
+  fn flex(align: ColumnAlign) -> TableColumn {
+    return TableColumn {
+      align,
+      width: ColumnWidth::Flex,
+    };
+  }
+
+  /// 幅指定 `Fixed(width)`（pt）の左揃えの列を作る
+  fn fixed(width: f32) -> TableColumn {
+    return TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Fixed(pt(width)),
+    };
+  }
+
+  /// 幅指定 `Ratio(ratio)` の左揃えの列を作る
+  fn ratio(ratio: f32) -> TableColumn {
+    return TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Ratio(ratio),
+    };
+  }
+
+  /// 列方向に `span` 列を結合したセルを作る
+  fn span_cell(items: Vec<HItem>, span: u32) -> MeasuredCell {
+    return MeasuredCell {
+      items,
+      column_span: span,
+    };
+  }
+
+  /// 幅を sp の列で返す
+  fn sps(widths: &[Length]) -> Vec<i64> { return widths.iter().map(|width| return width.sp()).collect(); }
 
   /// セル余白 `padding`・罫線なし（太さ 0・黒）の表の見た目を作る
   fn frame(columns: &[TableColumn], padding: f32) -> TableFrame<'_> {
@@ -565,22 +686,141 @@ mod tests {
   }
 
   #[test]
-  fn resolve_column_widths_flex_never_below_natural() {
-    let columns = [
-      auto(ColumnAlign::Left),
-      TableColumn {
-        align: ColumnAlign::Left,
-        width: ColumnWidth::Flex,
-      },
-    ];
+  fn split_evenly_gives_the_remainder_to_the_left_parts() {
+    assert_eq!(sps(&split_evenly(Length::from_sp(10), 3)), [4, 3, 3]);
+  }
+
+  #[test]
+  fn flex_shares_the_rest_instead_of_growing_to_the_natural_width() {
+    let columns = [auto(ColumnAlign::Left), flex(ColumnAlign::Left)];
     let rows = [row(vec![
-      cell(vec![text_free_box(90.0)]),
-      cell(vec![text_free_box(40.0)]),
+      cell(vec![text_free_box(60.0)]),
+      cell(vec![
+        text_free_box(20.0),
+        space(),
+        text_free_box(20.0),
+        space(),
+        text_free_box(30.0),
+      ]),
     ])];
 
     let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
 
-    assert!(close(widths[1], 40.0), "Flex は自然幅を下回らない: {widths:?}");
+    assert_eq!(widths, [pt(60.0), pt(40.0)]);
+  }
+
+  #[test]
+  fn flex_floor_pins_the_column_and_redistributes() {
+    let columns = [flex(ColumnAlign::Left); 3];
+    let rows = [row(vec![
+      cell(vec![text_free_box(50.0)]),
+      cell(vec![text_free_box(5.0)]),
+      cell(vec![text_free_box(5.0)]),
+    ])];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(90.0));
+
+    assert_eq!(widths, [pt(50.0), pt(20.0), pt(20.0)]);
+  }
+
+  #[test]
+  fn flex_floor_includes_the_cell_padding() {
+    let columns = [flex(ColumnAlign::Left)];
+    let rows = [row(vec![cell(vec![text_free_box(10.0)])])];
+
+    let widths = resolve_column_widths(&frame(&columns, 2.0), &[], &rows, pt(5.0));
+
+    assert_eq!(widths, [pt(14.0)]);
+  }
+
+  #[test]
+  fn flex_falls_to_its_floor_when_fixed_columns_use_up_the_width() {
+    let columns = [fixed(120.0), flex(ColumnAlign::Left)];
+    let rows = [row(vec![
+      cell(vec![text_free_box(5.0)]),
+      cell(vec![text_free_box(8.0)]),
+    ])];
+
+    let widths = resolve_column_widths(&frame(&columns, 1.0), &[], &rows, pt(100.0));
+
+    assert_eq!(widths, [pt(120.0), pt(10.0)]);
+  }
+
+  #[test]
+  fn flex_remainder_goes_to_the_left_columns() {
+    let columns = [flex(ColumnAlign::Left); 3];
+    let rows = [row(vec![
+      cell(Vec::new()),
+      cell(Vec::new()),
+      cell(Vec::new()),
+    ])];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, Length::from_sp(10));
+
+    assert_eq!(sps(&widths), [4, 3, 3]);
+  }
+
+  #[test]
+  fn all_auto_span_shortfall_is_split_to_the_sp() {
+    let columns = [auto(ColumnAlign::Left); 2];
+    let rows = [
+      row(vec![cell(Vec::new()), cell(Vec::new())]),
+      row(vec![span_cell(vec![box_of(Length::from_sp(5))], 2)]),
+    ];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+
+    assert_eq!(sps(&widths), [3, 2]);
+  }
+
+  #[test]
+  fn span_over_fixed_and_flex_gives_the_min_content_shortfall_to_flex() {
+    let columns = [fixed(20.0), flex(ColumnAlign::Left)];
+    let rows = [
+      row(vec![cell(Vec::new()), cell(Vec::new())]),
+      row(vec![span_cell(vec![text_free_box(50.0)], 2)]),
+    ];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(30.0));
+
+    assert_eq!(widths, [pt(20.0), pt(30.0)]);
+  }
+
+  #[test]
+  fn span_shortfall_goes_to_auto_when_no_flex_is_spanned() {
+    let columns = [fixed(20.0), auto(ColumnAlign::Left)];
+    let rows = [
+      row(vec![cell(Vec::new()), cell(vec![text_free_box(5.0)])]),
+      row(vec![span_cell(vec![text_free_box(40.0)], 2)]),
+    ];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+
+    assert_eq!(widths, [pt(20.0), pt(20.0)]);
+  }
+
+  #[test]
+  fn span_over_fixed_and_ratio_keeps_the_specified_widths() {
+    let columns = [fixed(20.0), ratio(0.1)];
+    let rows = [row(vec![span_cell(vec![text_free_box(50.0)], 2)])];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+
+    assert_eq!(widths, [pt(20.0), pt(10.0)]);
+  }
+
+  #[test]
+  fn span_that_fits_by_min_content_does_not_grow() {
+    // 自然幅 21 は跨ぐ列の合計 30 に収まらないが、最小内容幅 8 は収まるので足さない
+    let columns = [fixed(20.0), flex(ColumnAlign::Left)];
+    let rows = [row(vec![span_cell(
+      vec![text_free_box(8.0), space(), text_free_box(8.0)],
+      2,
+    )])];
+
+    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(30.0));
+
+    assert_eq!(widths, [pt(20.0), pt(10.0)]);
   }
 
   #[test]
