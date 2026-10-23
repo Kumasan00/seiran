@@ -154,6 +154,8 @@ pub(in crate::typeset) struct MathBlockLayout {
 /// 表全体の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableLayout {
+  /// 表環境（幅のはみ出し警告の起源）
+  pub origin: NodeId,
   /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
   pub columns: Vec<TableColumn>,
   /// ヘッダ行。改ページ時にページ先頭へ再描画される
@@ -182,6 +184,8 @@ pub(in crate::typeset) struct TableColumn {
 /// 表の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableRowLayout {
+  /// `\row`（行のはみ出し警告の起源）
+  pub origin: NodeId,
   /// 行内のセル
   pub cells: Vec<TableCellLayout>,
   /// この行の上に横罫線を引くか

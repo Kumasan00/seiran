@@ -16,7 +16,7 @@
 //! 初出の脚注本体へ飛ぶ。
 
 use crate::{
-  document::{ColumnAlign, ColumnWidth, TextAlignment},
+  document::{ColumnAlign, ColumnWidth, NodeId, TextAlignment},
   length::Length,
   typeset::{
     boxes::{
@@ -40,6 +40,8 @@ struct MeasuredCell {
 /// 計測済みの 1 行。行帯はセルの行組みと一緒に [`row_fragment`] が決める
 #[derive(Debug)]
 struct MeasuredRow {
+  /// `\row`
+  origin: NodeId,
   /// 行内のセル
   cells: Vec<MeasuredCell>,
   /// この行の上に横罫線を引くか
@@ -53,13 +55,20 @@ impl MeasuredRow {
   ///
   /// 行送りは本文と同じ `F × line_height_factor` で、F は行内の全セルの最大フォントサイズ（テキストが無ければ
   /// `default_font_size`）。行送りは行単位で 1 つで、セルの各行で変えない。
-  fn new(cells: Vec<MeasuredCell>, rule_above: bool, default_font_size: Length, line_height_factor: f32) -> Self {
+  fn new(
+    origin: NodeId,
+    cells: Vec<MeasuredCell>,
+    rule_above: bool,
+    default_font_size: Length,
+    line_height_factor: f32,
+  ) -> Self {
     let font_size = cells
       .iter()
       .filter_map(|cell| return boxing::max_font_size_in_items(&cell.items))
       .reduce(Length::max)
       .unwrap_or(default_font_size);
     return MeasuredRow {
+      origin,
       cells,
       rule_above,
       leading: font_size * line_height_factor,
@@ -83,6 +92,7 @@ impl Measurer<'_> {
   /// 表を組む: セルを計測し、列幅を `available`（表を置く段の幅）で決め、`breaker` でセルを折り返して行断片の列にする
   pub(super) fn build_table(&mut self, table: TableLayout, available: Length, breaker: &dyn LineBreaker) -> TableBox {
     let TableLayout {
+      origin,
       columns,
       head,
       rows,
@@ -99,7 +109,7 @@ impl Measurer<'_> {
       rule_thickness,
       rule_color,
     };
-    return arrange(&frame, &head, &rows, available, breakable, breaker);
+    return arrange(origin, &frame, &head, &rows, available, breakable, breaker);
   }
 
   /// 行のセル内容を水平リストに組んで計測する
@@ -117,14 +127,17 @@ impl Measurer<'_> {
           column_span: cell.column_span,
         });
       }
-      result.push(MeasuredRow::new(cells, row.rule_above, self.default_font_size, self.line_height_factor));
+      result.push(MeasuredRow::new(row.origin, cells, row.rule_above, self.default_font_size, self.line_height_factor));
     }
     return result;
   }
 }
 
 /// 計測済みの行から列幅を決め、初出ヘッダ・再掲ヘッダ・本体行の行断片を組む（フォントに触れない）
+///
+/// 再掲ヘッダは初出のヘッダが行の警告を出すので `overrun` を 0 にする。
 fn arrange(
+  origin: NodeId,
   frame: &TableFrame<'_>,
   head: &[MeasuredRow],
   rows: &[MeasuredRow],
@@ -139,6 +152,7 @@ fn arrange(
     .iter()
     .map(|fragment| {
       return TableRowFragment {
+        overrun: Length::ZERO,
         index_marks: Vec::new(),
         footnotes: Vec::new(),
         ..fragment.clone()
@@ -146,6 +160,7 @@ fn arrange(
     })
     .collect();
   return TableBox {
+    origin,
     width: col_widths.iter().copied().sum(),
     head,
     repeated_head,
@@ -362,12 +377,16 @@ fn unwrapped_line(items: &[HItem]) -> Line {
 /// 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅（0 で下止め）で `breaker` が開始列の
 /// 揃えで折り返し、行頭は帯左端 + 余白。全列 `Auto` のセルは [`unwrapped_line`] の 1 行を、開始列の揃えと余白で
 /// 帯の中に置く。
+///
+/// 戻り値の 2 つ目は、折り返すセルの行が内容幅（帯幅 − 左右の余白。0 で下止めしない）を超えた量の最大で、
+/// 折り返さないセルは寄与しない。内容幅が 0 以下なら空のセルでも正になる。収まれば 0。
 fn layout_row_cells(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
-) -> Vec<Vec<Line>> {
+) -> (Vec<Vec<Line>>, Length) {
+  let mut overrun = Length::ZERO;
   let mut column_index = 0usize;
   let mut cell_x = Length::ZERO;
   let mut cells = Vec::with_capacity(row.cells.len());
@@ -378,8 +397,10 @@ fn layout_row_cells(
     let spanned_columns = &frame.columns[spanned];
     let align = spanned_columns.first().map_or(ColumnAlign::Left, |column| return column.align);
     let lines = if wraps(spanned_columns) {
-      let content_width = (band_width - frame.cell_padding * 2).max(Length::ZERO);
-      let mut lines = breaker.break_lines(&cell.items, content_width, text_alignment(align));
+      let content_width = band_width - frame.cell_padding * 2;
+      let mut lines = breaker.break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align));
+      let widest = lines.iter().map(Line::width).fold(Length::ZERO, Length::max);
+      overrun = overrun.max(widest - content_width);
       for line in &mut lines {
         line.shift_x(cell_x + frame.cell_padding);
       }
@@ -399,7 +420,7 @@ fn layout_row_cells(
     cell_x += band_width;
     column_index += column_span;
   }
-  return cells;
+  return (cells, overrun);
 }
 
 /// 1 行を、表左端・行帯上端を原点とする行断片にする
@@ -416,7 +437,7 @@ fn row_fragment(
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
 ) -> TableRowFragment {
-  let cells = layout_row_cells(row, frame, col_widths, breaker);
+  let (cells, overrun) = layout_row_cells(row, frame, col_widths, breaker);
   let (ascent, descent) = cells.iter().filter_map(|lines| return lines.first()).fold(
     (Length::ZERO, Length::ZERO),
     |(ascent, descent), line| {
@@ -426,6 +447,8 @@ fn row_fragment(
   let first_band = row.leading.max(ascent + descent);
   let baseline = ascent + (first_band - ascent - descent) / 2.0;
   let mut fragment = TableRowFragment {
+    origin: row.origin,
+    overrun,
     row: PlacedTableRow {
       top_y: Length::ZERO,
       height: first_band,
@@ -586,8 +609,11 @@ mod tests {
     };
   }
 
+  /// テストの行（[`row`]）が帰属する `\row` の ID
+  fn origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 1); }
+
   /// `rule_above = false` の行を作る（既定フォントサイズ 10pt・行高係数 1）
-  fn row(cells: Vec<MeasuredCell>) -> MeasuredRow { return MeasuredRow::new(cells, false, pt(10.0), 1.0); }
+  fn row(cells: Vec<MeasuredCell>) -> MeasuredRow { return MeasuredRow::new(origin(), cells, false, pt(10.0), 1.0); }
 
   /// 揃え `align`・幅指定 `Auto` の列を作る
   fn auto(align: ColumnAlign) -> TableColumn {
@@ -683,6 +709,7 @@ mod tests {
   fn row_band_keeps_the_leading_and_centers_short_content() {
     // 中身は高さ 12・深さ 2 で計 14、行送り 12 × 1.5 = 18 に収まる。余り 4 を上下へ 2 ずつ
     let row = MeasuredRow::new(
+      origin(),
       vec![
         cell(vec![glyph_box(10.0, 12.0)]),
         cell(vec![extent_box(3.0, 2.0)]),
@@ -703,6 +730,7 @@ mod tests {
   fn row_band_grows_to_the_content_extent() {
     // 中身は高さ 14・深さ 7 で計 21、行送り 12 × 1.2 = 14.4 を超えるので行帯は中身に一致する
     let row = MeasuredRow::new(
+      origin(),
       vec![
         cell(vec![glyph_box(10.0, 12.0)]),
         cell(vec![extent_box(14.0, 7.0)]),
@@ -722,7 +750,7 @@ mod tests {
   #[test]
   fn row_band_without_text_uses_the_default_font_size() {
     // テキストが無いので行送りは既定 9 × 2 = 18。中身は高さ 1 で、余り 17 を上下へ 8.5 ずつ
-    let row = MeasuredRow::new(vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
+    let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
     let columns = [auto(ColumnAlign::Left)];
 
     let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).row;
@@ -1034,7 +1062,7 @@ mod tests {
       rule_thickness: pt(1.5),
       rule_color: Some([9, 9, 9]),
     };
-    let row_with_rule = MeasuredRow::new(vec![cell(vec![glyph_box(10.0, 10.0)])], true, pt(10.0), 1.0);
+    let row_with_rule = MeasuredRow::new(origin(), vec![cell(vec![glyph_box(10.0, 10.0)])], true, pt(10.0), 1.0);
     let plain_row = row(vec![cell(vec![glyph_box(10.0, 10.0)])]);
 
     let fragment = row_fragment(&row_with_rule, &frame, &[pt(30.0)], &KnuthPlassBreaker);
@@ -1188,7 +1216,7 @@ mod tests {
     let body_row = row(vec![cell(vec![text_free_box(10.0)])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(&frame(&columns, 2.0), &[head_row], &[body_row], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange(origin(), &frame(&columns, 2.0), &[head_row], &[body_row], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(words(&table.head[0].index_marks), vec!["h"], "初出のヘッダは索引語を持つ");
     assert!(table.repeated_head[0].index_marks.is_empty(), "再掲ヘッダは索引語を重複させない");
@@ -1210,7 +1238,7 @@ mod tests {
     ])])];
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(&frame(&columns, 0.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange(origin(), &frame(&columns, 0.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.head[0].footnotes.len(), 1, "初出ヘッダは脚注を持つ");
     assert!(table.repeated_head[0].footnotes.is_empty(), "再掲ヘッダは脚注を持たない");
@@ -1233,10 +1261,54 @@ mod tests {
       cell(vec![text_free_box(30.0)]),
     ])];
 
-    let table = arrange(&frame(&columns, 2.0), &[], &rows, pt(200.0), false, &KnuthPlassBreaker);
+    let table = arrange(origin(), &frame(&columns, 2.0), &[], &rows, pt(200.0), false, &KnuthPlassBreaker);
 
     assert!(close(table.width, 74.0), "{table:?}");
     assert!(!table.breakable);
+  }
+
+  #[test]
+  fn row_fragment_reports_the_widest_wrapped_overrun() {
+    // 内容幅 30 − 2 × 2 = 26 に分割できない幅 40 の箱が 1 つ
+    let row = row(vec![cell(vec![text_free_box(40.0)])]);
+    let columns = [fixed(30.0)];
+
+    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker);
+
+    assert!(close(fragment.overrun, 14.0), "{:?}", fragment.overrun);
+    assert_eq!(fragment.origin, origin());
+  }
+
+  #[test]
+  fn row_fragment_reports_overrun_when_padding_eats_the_column() {
+    // 内容幅 5 − 4 × 2 = −3 は空のセルでも超過 3 になる
+    let row = row(vec![cell(Vec::new())]);
+    let columns = [fixed(5.0)];
+
+    let fragment = row_fragment(&row, &frame(&columns, 4.0), &[pt(5.0)], &KnuthPlassBreaker);
+
+    assert!(close(fragment.overrun, 3.0), "{:?}", fragment.overrun);
+  }
+
+  #[test]
+  fn auto_cells_report_no_overrun() {
+    let row = row(vec![cell(vec![text_free_box(40.0)])]);
+    let columns = [auto(ColumnAlign::Left)];
+
+    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(10.0)], &KnuthPlassBreaker);
+
+    assert_eq!(fragment.overrun, Length::ZERO);
+  }
+
+  #[test]
+  fn repeated_head_clears_the_overrun() {
+    let head = [row(vec![cell(vec![text_free_box(40.0)])])];
+    let columns = [fixed(30.0)];
+
+    let table = arrange(origin(), &frame(&columns, 2.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
+
+    assert!(close(table.head[0].overrun, 14.0), "初出のヘッダは超過を持つ");
+    assert_eq!(table.repeated_head[0].overrun, Length::ZERO, "再掲ヘッダは警告を重複させない");
   }
 
   #[test]
@@ -1269,7 +1341,7 @@ mod tests {
     ])])];
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(&frame(&columns, 2.0), &[], &rows, pt(10.0), false, &KnuthPlassBreaker);
+    let table = arrange(origin(), &frame(&columns, 2.0), &[], &rows, pt(10.0), false, &KnuthPlassBreaker);
 
     let band = &table.rows[0].row;
     assert!(band.boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{band:?}");

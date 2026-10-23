@@ -138,6 +138,49 @@ pub(crate) enum TypesetWarning {
     #[label("この数式です")]
     span: SourceSpan,
   },
+  /// 表の幅（確定した列幅の総和）が段の幅を超えた
+  #[error("{page} ページの表が横に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
+  #[diagnostic(
+    code(typeset::overflow::table),
+    severity(Warning),
+    help(
+      "widths の固定幅・比率の合計や auto 列の内容を減らすか、style.toml の [page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+    )
+  )]
+  TableOverflow {
+    /// はみ出しが起きたページの印字ラベル（表の最初の行が着地したページ）
+    page: String,
+    /// 超過量
+    excess: Length,
+    /// 表環境が帰属するソース
+    source_id: SourceId,
+    /// 表環境の開始位置
+    #[label("この表です")]
+    span: SourceSpan,
+  },
+
+  /// 表の行が段の幅か実効の本文下限を超えた（折り返すセルの行が内容幅を超えた、または行帯が空の領域に入らなかった）
+  #[error("{page} ページの表の行が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
+  #[diagnostic(
+    code(typeset::overflow::table_row),
+    severity(Warning),
+    help(
+      "widths の列幅を広げるか、長い語やコードを分けるか、style.toml の [table].cell_padding・文字サイズ・[page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+    )
+  )]
+  TableRowOverflow {
+    /// はみ出しが起きたページの印字ラベル
+    page: String,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+    /// `\row` が帰属するソース
+    source_id: SourceId,
+    /// `\row` の開始位置
+    #[label("この行です")]
+    span: SourceSpan,
+  },
 }
 
 impl TypesetWarning {
@@ -150,7 +193,9 @@ impl TypesetWarning {
       TypesetWarning::FootnoteOverflow { source_id, .. }
       | TypesetWarning::FootnoteLineOverflow { source_id, .. }
       | TypesetWarning::ImageOverflow { source_id, .. }
-      | TypesetWarning::MathOverflow { source_id, .. } => Some(*source_id),
+      | TypesetWarning::MathOverflow { source_id, .. }
+      | TypesetWarning::TableOverflow { source_id, .. }
+      | TypesetWarning::TableRowOverflow { source_id, .. } => Some(*source_id),
     };
   }
 }
@@ -252,6 +297,19 @@ mod tests {
         source_id: source(),
         span: at(0),
       },
+      TypesetWarning::TableOverflow {
+        page: "1".to_owned(),
+        excess: Length::pt(1.0),
+        source_id: source(),
+        span: at(0),
+      },
+      TypesetWarning::TableRowOverflow {
+        page: "1".to_owned(),
+        axis: OverflowAxis::Horizontal,
+        excess: Length::pt(1.0),
+        source_id: source(),
+        span: at(0),
+      },
     ];
 
     for warning in &warnings {
@@ -304,6 +362,31 @@ mod tests {
     };
 
     assert_eq!(warning.to_string(), "ii ページのディスプレイ数式「x=1」が横に 12.3pt はみ出したまま配置しました");
+  }
+
+  #[test]
+  fn table_overflow_names_page_and_amount() {
+    let warning = TypesetWarning::TableOverflow {
+      page: "2".to_owned(),
+      excess: Length::pt(12.34),
+      source_id: source(),
+      span: at(0),
+    };
+
+    assert_eq!(warning.to_string(), "2 ページの表が横に 12.3pt はみ出したまま配置しました");
+  }
+
+  #[test]
+  fn table_row_overflow_names_page_axis_and_amount() {
+    let warning = TypesetWarning::TableRowOverflow {
+      page: "1".to_owned(),
+      axis: OverflowAxis::Vertical,
+      excess: Length::pt(3.0),
+      source_id: source(),
+      span: at(0),
+    };
+
+    assert_eq!(warning.to_string(), "1 ページの表の行が縦に 3.0pt はみ出したまま配置しました");
   }
 
   #[test]

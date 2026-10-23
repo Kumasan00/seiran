@@ -95,6 +95,22 @@ pub(in crate::typeset) enum OverflowKind {
     /// 超過量
     excess: Length,
   },
+  /// 表の幅が段の幅を超えた（表 1 個につき 1 件。最初の行が着地したページに記録する）
+  Table {
+    /// 表環境
+    origin: NodeId,
+    /// 超過量
+    excess: Length,
+  },
+  /// 表の行が段の幅か実効の本文下限を超えた
+  TableRow {
+    /// `\row`
+    origin: NodeId,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
 }
 
 /// はみ出しの方向
@@ -369,7 +385,8 @@ impl PageComposer {
 /// ブロック列をページへ配置し、確定ページ列とはみ出し記録を返す。
 ///
 /// はみ出しは着地が確定した行（脚注本体を含む）・画像・ディスプレイ数式について、段の幅と実効の本文下限を基準に
-/// 軸ごとに記録する。表の行は測らない（表の行の脚注は本文の行と同じく `FootnoteLine` を記録する）。
+/// 軸ごとに記録する。表は幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも入らない行帯）を測る。
+/// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
 #[must_use]
 pub(crate) fn break_pages(
   blocks: Vec<Block>,
@@ -1006,18 +1023,31 @@ fn place_table(
   }
 
   let TableBox {
+    origin,
+    width,
     head,
     repeated_head,
     rows,
     ..
   } = table;
+  // 幅のはみ出しは表 1 個につき 1 件で、最初の断片が着地して `page_index` が着地ページになってから記録する
+  // （断片が 1 つも無い表は呼び出し時点のページ）
+  let mut width_excess = excess(width, column_width);
+  let mut record_width_excess = |composer: &mut PageComposer| {
+    if let Some(excess) = width_excess.take() {
+      composer.record(OverflowKind::Table { origin, excess });
+    }
+  };
   let mut pending: Vec<(TableRowFragment, Length)> = Vec::new();
   for (row, bodies) in head.into_iter().zip(head_bodies) {
     place_table_row(composer, geom, row, bodies, &[], &mut pending, align_offset);
+    record_width_excess(composer);
   }
   for (row, bodies) in rows.into_iter().zip(row_bodies) {
     place_table_row(composer, geom, row, bodies, &repeated_head, &mut pending, align_offset);
+    record_width_excess(composer);
   }
+  record_width_excess(composer);
   flush_table_rows(composer, &mut pending, align_offset);
 }
 
@@ -1083,8 +1113,25 @@ fn place_table_row(
       )
     },
   };
-  pending.push((row, composer.cursor.y));
+  // 縦は行自身の脚注予約を足す前の下限で測る（本文の行と同じ。脚注の溢れは `FootnoteLine` が記録する）
+  let top = composer.cursor.y;
+  let limit = composer.cursor.region_limit(geom);
+  let (origin, overrun) = (row.origin, row.overrun);
+  pending.push((row, top));
   composer.cursor.y += height;
+  let row_overflows = [
+    (OverflowAxis::Horizontal, excess(overrun, Length::ZERO)),
+    (OverflowAxis::Vertical, excess(top + height, limit)),
+  ];
+  for (axis, over) in row_overflows {
+    if let Some(excess) = over {
+      composer.record(OverflowKind::TableRow {
+        origin,
+        axis,
+        excess,
+      });
+    }
+  }
   for (footnote, placed) in bodies.into_iter().zip(splits) {
     let (head, tail) = split_pending(footnote, placed);
     if let Some(head) = head {
@@ -2215,6 +2262,12 @@ mod tests {
     };
   }
 
+  /// テストの表（[`table_box`]）が帰属する表環境の ID
+  fn table_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 4); }
+
+  /// テストの表の行（[`table_fragment`]）が帰属する `\row` の ID
+  fn table_row_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 5); }
+
   /// 行帯の高さ `height`・ベースライン `baseline` で、箱 `hbox` を表左端 + 余白 2 に置いた 1 列表の行断片を作るヘルパ
   fn table_fragment(hbox: HBox, height: f32, baseline: f32) -> TableRowFragment {
     return TableRowFragment {
@@ -2229,6 +2282,8 @@ mod tests {
         }],
         rule: None,
       },
+      origin: table_row_origin(),
+      overrun: Length::ZERO,
       links: Vec::new(),
       index_marks: Vec::new(),
       footnotes: Vec::new(),
@@ -2253,6 +2308,7 @@ mod tests {
       })
       .collect();
     return TableBox {
+      origin: table_origin(),
       width: pt(24.0),
       head,
       repeated_head,
@@ -4468,5 +4524,92 @@ mod tests {
 
     assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
     assert_eq!(table_rows_of(&pages[1]), 2);
+  }
+
+  /// 表の記録だけを取り出すヘルパ（表の行と表自体の記録）
+  fn table_overflows(overflows: &[Overflow]) -> Vec<&Overflow> {
+    return overflows
+      .iter()
+      .filter(|overflow| {
+        return matches!(overflow.kind, OverflowKind::Table { .. } | OverflowKind::TableRow { .. });
+      })
+      .collect();
+  }
+
+  #[test]
+  fn wide_table_is_reported_once_on_the_page_of_its_first_row() {
+    // 版面の高さ 40 に 4 行入るので 5 行表は 2 ページにまたがる。表幅 130 は段幅 100 を 30 超える
+    let table = TableBox {
+      width: pt(130.0),
+      ..table_box(Vec::new(), (0..5).map(|i| return table_row(&format!("R{i}"))).collect())
+    };
+    let blocks = vec![Block::Table {
+      table,
+      align: Align::Left,
+    }];
+
+    let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 0,
+        kind: OverflowKind::Table {
+          origin: table_origin(),
+          excess: pt(30.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn row_overrun_is_reported_on_the_page_where_the_row_lands() {
+    let mut rows: Vec<TableRowFragment> = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
+    rows[4].overrun = pt(5.0);
+
+    let (pages, overflows) = break_pages(vec![table_block(rows)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 1,
+        kind: OverflowKind::TableRow {
+          origin: table_row_origin(),
+          axis: OverflowAxis::Horizontal,
+          excess: pt(5.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn row_taller_than_an_empty_region_is_reported_vertically() {
+    // 行帯 60 は版面（10..50）の高さ 40 に入らない。下端 70 が下限 50 を 20 超える
+    let tall = table_fragment(table_text_box("T"), 60.0, 10.0);
+
+    let (_, overflows) = break_pages(vec![table_block(vec![tall])], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 0,
+        kind: OverflowKind::TableRow {
+          origin: table_row_origin(),
+          axis: OverflowAxis::Vertical,
+          excess: pt(20.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn fitting_table_reports_nothing() {
+    let rows = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
+
+    let (_, overflows) = break_pages(vec![table_block(rows)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert!(table_overflows(&overflows).is_empty(), "{overflows:?}");
   }
 }

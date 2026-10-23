@@ -4,6 +4,7 @@
 //! 列幅・セル余白・罫線・再掲ヘッダの付随情報の規則を知らない。
 
 use crate::{
+  document::NodeId,
   length::Length,
   typeset::boxes::{
     hitem::{IndexTerm, MeasuredFootnote},
@@ -14,6 +15,8 @@ use crate::{
 /// 表エンジンが組んだ表（列幅を確定した行断片の列）
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableBox {
+  /// 表環境（幅のはみ出し警告の起源）
+  pub origin: NodeId,
   /// 表の幅（確定した列幅の総和）
   pub width: Length,
   /// 初出のヘッダ行
@@ -37,6 +40,10 @@ impl TableBox {
 /// 表の 1 行の断片 — 表左端・行帯上端を原点とする確定済みの描画内容と付随情報
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableRowFragment {
+  /// `\row`（行のはみ出し警告の起源）
+  pub origin: NodeId,
+  /// 折り返すセルの行が内容幅を超えた量の最大（収まれば 0。内容幅が 0 以下なら空の行でも正）
+  pub overrun: Length,
   /// 原点を表左端・行帯上端に置いた行（`top_y` は 0、罫線は `x` = `y` = 0）
   pub row: PlacedTableRow,
   /// セル内のリンク矩形（表左端・行帯上端が原点。折り返したリンクは行ごとに 1 矩形で、退化矩形は含まない）
@@ -58,6 +65,8 @@ impl TableRowFragment {
   #[must_use]
   pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> (PlacedTableRow, Vec<PlacedLink>, Vec<IndexTerm>) {
     let TableRowFragment {
+      origin: _,
+      overrun: _,
       mut row,
       mut links,
       index_marks,
@@ -84,7 +93,9 @@ impl TableRowFragment {
 mod tests {
   use super::TableRowFragment;
   use crate::{
+    document::NodeId,
     length::Length,
+    source::SourceId,
     typeset::boxes::{
       HBox, HBoxContent, IndexTerm, LinkTarget, PlacedHBox, PlacedLink, PlacedTableRow, PlacedTableRule,
     },
@@ -110,6 +121,8 @@ mod tests {
   #[test]
   fn place_moves_row_rule_and_links_to_the_landing_point() {
     let fragment = TableRowFragment {
+      origin: NodeId::for_test(SourceId::new(0), 1),
+      overrun: Length::ZERO,
       row: PlacedTableRow {
         top_y: Length::ZERO,
         height: pt(10.0),

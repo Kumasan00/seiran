@@ -741,6 +741,8 @@ mod tests {
         }],
         rule: None,
       },
+      origin: NodeId::for_test(SourceId::new(0), 1),
+      overrun: Length::ZERO,
       links: Vec::new(),
       index_marks: word
         .map(|word| {
