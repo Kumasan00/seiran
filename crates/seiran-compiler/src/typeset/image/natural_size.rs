@@ -27,14 +27,6 @@ impl NaturalSize {
     return Some(NaturalSize { width, height });
   }
 
-  /// 自然幅
-  #[cfg(test)]
-  pub(super) fn width(self) -> f32 { return self.width; }
-
-  /// 自然高さ
-  #[cfg(test)]
-  pub(super) fn height(self) -> f32 { return self.height; }
-
   /// 縦横比（高さ / 幅）。コンストラクタが正の有限値だけを通すので必ず有限。
   pub(super) fn aspect_ratio(self) -> f32 { return self.height / self.width; }
 }
@@ -97,8 +89,13 @@ mod tests {
   fn natural_image_size_returns_svg_dimensions_from_bytes() {
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
     let size = natural_image_size("icon.svg", ImageFormat::Svg, svg).expect("有効な SVG はデコードできるはず");
-    assert!((size.width() - 80.0).abs() < 1e-4);
-    assert!((size.height() - 60.0).abs() < 1e-4);
+    assert_eq!(
+      size,
+      NaturalSize {
+        width: 80.0,
+        height: 60.0
+      }
+    );
   }
 
   #[test]
@@ -120,8 +117,13 @@ mod tests {
   #[test]
   fn natural_size_keeps_positive_finite_values_and_aspect_ratio() {
     let size = NaturalSize::new(320.0, 240.0).expect("正の有限値は通るはず");
-    assert!((size.width() - 320.0).abs() < 1e-4);
-    assert!((size.height() - 240.0).abs() < 1e-4);
+    assert_eq!(
+      size,
+      NaturalSize {
+        width: 320.0,
+        height: 240.0
+      }
+    );
     assert!((size.aspect_ratio() - 0.75).abs() < 1e-4, "縦横比は高さ / 幅");
   }
 }

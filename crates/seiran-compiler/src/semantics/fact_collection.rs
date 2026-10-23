@@ -436,22 +436,12 @@ mod tests {
     document::HirDocument,
     frontend::test_support::parse_for_test,
     semantics::{
-      CitationId, GeneratedCitations, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
-      SemanticPolicy, test_support::sample_references,
+      self, CitationId, LabelId, References, SemanticDocument, SemanticError, SemanticFailures, SemanticPolicy,
+      test_support::sample_references,
     },
     source::SourceId,
     style::Style,
   };
-
-  /// 走査結果を `SemanticDocument` に束ねるテスト用の入口（引用の生成物は空）
-  fn analyze(
-    hir: HirDocument,
-    policy: &SemanticPolicy,
-    references: &References,
-  ) -> Result<SemanticDocument, SemanticFailures> {
-    let facts = collect_facts(&hir, policy, references)?;
-    return Ok(SemanticDocument::new(hir, facts, GeneratedCitations::default()));
-  }
 
   /// 引用を含まない入力向けの空の参照定義
   fn no_references() -> References { return References(std::collections::HashMap::new()); }
@@ -466,7 +456,7 @@ mod tests {
   fn analyze_source(source: &str) -> SemanticDocument {
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
-    return analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
+    return semantics::analyze_for_test(hir, &policy, &no_references()).expect("解析に成功するはず");
   }
 
   #[test]
@@ -483,7 +473,7 @@ mod tests {
       document("\\begin{proof}[of=thm:a]\n証明\n\\end{proof}\n\n\\begin{theorem}[label=thm:a]\n主張\n\\end{theorem}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let analyzed = analyze(hir, &policy, &no_references()).expect("前方参照は解決できるはず");
+    let analyzed = semantics::analyze_for_test(hir, &policy, &no_references()).expect("前方参照は解決できるはず");
 
     // `any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する
     let sites: Vec<_> = analyzed.ref_sites().map(|(id, label)| return (id, label.clone())).collect();
@@ -502,7 +492,8 @@ mod tests {
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
     let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
       panic!("UnresolvedRef が期待されます: {failures:?}");
@@ -519,7 +510,8 @@ mod tests {
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの参照は解決できるはず");
+    let analyzed =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect("ソース跨ぎの参照は解決できるはず");
 
     assert_eq!(analyzed.ref_sites().count(), 1, "参照箇所が 1 件記録されるはず");
   }
@@ -534,7 +526,7 @@ mod tests {
     );
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
+    let analyzed = semantics::analyze_for_test(hir, &policy, &no_references()).expect("解析に成功するはず");
 
     assert_eq!(analyzed.ref_sites().count(), 4, "箇条書き・脚注・表セル・キャプションを全部拾うはず");
   }
@@ -547,7 +539,8 @@ mod tests {
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
 
     let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
       panic!("UnresolvedRef が期待されます: {failures:?}");
@@ -563,7 +556,8 @@ mod tests {
     let hir = document("本文 \\ref{a} と \\ref{a} です。\n\n\\begin{proof}[of=b]\n証明\n\\end{proof}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
     let labels: Vec<&str> = failures
       .iter()
@@ -584,7 +578,8 @@ mod tests {
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの前方参照は解決できるはず");
+    let analyzed =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect("ソース跨ぎの前方参照は解決できるはず");
 
     let sites: Vec<_> = analyzed.ref_sites().map(|(id, _)| return id).collect();
     assert_eq!(sites.len(), 1, "参照箇所が 1 件記録されるはず");
@@ -626,7 +621,8 @@ mod tests {
     let hir = document(source);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
 
     assert_eq!(failures.iter().count(), 1, "1 ソースぶんの診断にまとまるはず");
     let error = failures.first();
@@ -659,7 +655,8 @@ mod tests {
     let hir = document(r"本文 \cite{kwan2014\,doe2020} です。");
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
 
     assert_eq!(
       failures.first().help().map(|help| return help.to_string()).as_deref(),
@@ -678,7 +675,8 @@ mod tests {
     let hir = HirDocument::assemble(vec![a, b]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
 
     let helps: Vec<(SourceId, bool)> = failures
       .iter()
@@ -695,7 +693,8 @@ mod tests {
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     let SemanticError::DuplicateLabel { label, labels, .. } = failures.first() else {
       panic!("DuplicateLabel を期待: {failures:?}");
@@ -719,7 +718,8 @@ mod tests {
     let hir = HirDocument::assemble(vec![first, second]);
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     let error = failures.first();
     assert_eq!(error.source_id(), SourceId::new(1));
@@ -748,7 +748,7 @@ mod tests {
     );
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &sample_references()).expect_err("3 種とも報告されるはず");
+    let failures = semantics::analyze_for_test(hir, &policy, &sample_references()).expect_err("3 種とも報告されるはず");
 
     assert_eq!(
       codes(&failures),
@@ -766,7 +766,8 @@ mod tests {
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n\\chapter[label=dup]{C}\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string(); 2]);
   }
@@ -776,7 +777,8 @@ mod tests {
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\ref{dup} です。\n");
     let policy = SemanticPolicy::from_style(&Style::default());
 
-    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     // 参照は最初の定義に対して解決されるので、未解決参照は報告されない
     assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string()]);

@@ -161,12 +161,8 @@ mod tests {
 
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
-    let natural = resources
-      .natural_size(&ProjectPath::new("/project/testimage5.png"))
-      .expect("自然寸法が確定するはず");
-    let (width, height) = (natural.width(), natural.height());
-    assert!((width - 756.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
-    assert!((height - 1008.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
+    let natural = resources.natural_size(&ProjectPath::new("/project/testimage5.png"));
+    assert_eq!(natural, NaturalSize::new(756.0, 1008.0), "自然寸法は fixture 実寸と一致するはず");
     let assets = resources.into_assets();
     assert_eq!(assets.len(), 1);
     assert_eq!(assets[&ProjectPath::new("/project/testimage5.png")].format, ImageFormat::Png);

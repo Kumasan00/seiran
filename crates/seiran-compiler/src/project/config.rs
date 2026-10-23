@@ -239,12 +239,6 @@ fn validate_and_convert(raw: &RawConfig) -> Result<FontMap<FontValues>, Vec<Conf
   return Err(errors);
 }
 
-/// 純粋な値検証のみを行うテスト向けラッパ（変換結果は破棄）。
-#[cfg(test)]
-fn validate_values(raw: &RawConfig) -> Result<(), Vec<ConfigValidationError>> {
-  return validate_and_convert(raw).map(|_| ());
-}
-
 /// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを `resolver` で解決し、
 /// `source.exists` で確認します。
 ///
@@ -478,7 +472,7 @@ mod tests {
 
   use super::{
     ConfigValidationError, ConfigWarning, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load,
-    parse_config, resolve_output_dir_path, resolve_paths, validate_values,
+    parse_config, resolve_output_dir_path, resolve_paths, validate_and_convert,
   };
   use crate::project::{
     FilesystemProjectSource, FontType, MemoryProjectSource, PathResolver, ProjectPath, ProjectSource,
@@ -838,7 +832,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_reports_sources_violation_only_when_empty() {
+  fn validate_and_convert_reports_sources_violation_only_when_empty() {
     let cases: [(&str, &[&str]); 3] = [
       ("", &["sources は最低 1 つのファイルを指定する必要があります"]),
       ("sources = []\n\n", &["sources は最低 1 つのファイルを指定する必要があります"]),
@@ -854,7 +848,7 @@ mod tests {
       let raw = parse_config(&toml, dummy_source()).unwrap();
 
       // 非空のケースでは他の違反が無く Ok になりうるので、エラー列は空として扱う
-      let errors = validate_values(&raw).err().unwrap_or_default();
+      let errors = validate_and_convert(&raw).err().unwrap_or_default();
 
       let messages: Vec<&str> = errors
         .iter()
@@ -870,11 +864,11 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_fails_on_empty_output_dir() {
+  fn validate_and_convert_fails_on_empty_output_dir() {
     let toml = format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), font_sections("dummy.ttf"));
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    let errors = validate_values(&raw).unwrap_err();
+    let errors = validate_and_convert(&raw).err().expect("値検証に失敗するはず");
 
     assert!(errors.iter().any(|error| matches!(
       error,
@@ -883,7 +877,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_reports_invalid_output_name_as_output_file_name() {
+  fn validate_and_convert_reports_invalid_output_name_as_output_file_name() {
     let cases = [
       ("", "出力ファイル名は空にできません"),
       ("a/b", "出力ファイル名にパスセパレータ ('/' または '\\') を含めることはできません"),
@@ -893,7 +887,7 @@ mod tests {
       let toml = format!("{}{}{}", valid_output_section(name, "out"), valid_pdf_section(), font_sections("dummy.ttf"));
       let raw = parse_config(&toml, dummy_source()).unwrap();
 
-      let errors = validate_values(&raw).unwrap_err();
+      let errors = validate_and_convert(&raw).err().expect("値検証に失敗するはず");
 
       // sources 省略の違反も同時に出るので、output.name の違反だけを取り出して比べる
       let messages: Vec<&str> = errors
@@ -910,7 +904,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_fails_on_out_of_range_max_dpi() {
+  fn validate_and_convert_fails_on_out_of_range_max_dpi() {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
       valid_output_section("test", "out"),
@@ -919,7 +913,7 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    let errors = validate_values(&raw).unwrap_err();
+    let errors = validate_and_convert(&raw).err().expect("値検証に失敗するはず");
 
     assert!(errors.iter().any(|error| matches!(
       error,
@@ -927,7 +921,7 @@ mod tests {
     )));
   }
 
-  /// 指定の `[font_configs.serif]` 追加行で TOML を組み、`validate_values` を通した結果を返します。
+  /// 指定の `[font_configs.serif]` 追加行で TOML を組み、`validate_and_convert` を通した結果を返します。
   #[expect(
     clippy::unwrap_in_result,
     reason = "呼び出し側が `extra_lines` に渡すのは `[font_configs.serif]` へ足せる妥当な行だけなので、\
@@ -941,11 +935,11 @@ mod tests {
       font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
-    return validate_values(&raw);
+    return validate_and_convert(&raw).map(|_| ());
   }
 
   #[test]
-  fn validate_values_accepts_valid_bcp47_languages() {
+  fn validate_and_convert_accepts_valid_bcp47_languages() {
     for lang in ["ja", "en-US", "zh-Hant", "zh-Hans-CN", "und"] {
       let extra = format!("language = \"{lang}\"");
       assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected '{lang}' to be accepted");
@@ -953,7 +947,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_invalid_bcp47_language() {
+  fn validate_and_convert_rejects_invalid_bcp47_language() {
     let errors = run_validate_with_serif_extra("language = \"!!\"").unwrap_err();
 
     assert!(errors.iter().any(|error| matches!(
@@ -963,7 +957,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_reserved_private_use_in_language() {
+  fn validate_and_convert_rejects_reserved_private_use_in_language() {
     for forbidden in ["en-x-hbsclatn", "ja-x-hbotJAN"] {
       let extra = format!("language = \"{forbidden}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -979,7 +973,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_structurally_invalid_ot_script_tag() {
+  fn validate_and_convert_rejects_structurally_invalid_ot_script_tag() {
     for script in ["kan", "kanaa", "kan1", "ka一"] {
       let extra = format!("script = \"{script}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -994,7 +988,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_invalid_ot_language_tag() {
+  fn validate_and_convert_rejects_invalid_ot_language_tag() {
     for ot_lang in ["JA", "JAPAN", "J!N"] {
       let extra = format!("script = \"latn\"\not_language = \"{ot_lang}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -1009,7 +1003,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_ot_language_without_script() {
+  fn validate_and_convert_rejects_ot_language_without_script() {
     let errors = run_validate_with_serif_extra("ot_language = \"JAN\"").unwrap_err();
 
     assert!(errors.iter().any(|error| matches!(
@@ -1020,7 +1014,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_invalid_feature_and_axis_tags() {
+  fn validate_and_convert_rejects_invalid_feature_and_axis_tags() {
     let errors = run_validate_with_serif_extra(
       "features = [{ tag = \"lig\", value = 1 }]\nvariation_axes = [{ name = \"wg\", value = 400.0 }]",
     )
@@ -1048,7 +1042,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_accepts_all_valid_directions() {
+  fn validate_and_convert_accepts_all_valid_directions() {
     for direction in [
       "left-to-right",
       "right-to-left",
@@ -1061,7 +1055,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_invalid_direction() {
+  fn validate_and_convert_rejects_invalid_direction() {
     for direction in [
       "ltr",
       "LTR",
@@ -1083,7 +1077,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_invalid_document_language() {
+  fn validate_and_convert_rejects_invalid_document_language() {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"!!\"\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -1092,7 +1086,7 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    let errors = validate_values(&raw).unwrap_err();
+    let errors = validate_and_convert(&raw).err().expect("値検証に失敗するはず");
 
     assert!(errors.iter().any(|error| matches!(
       error,
@@ -1101,7 +1095,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_rejects_empty_keyword_entry() {
+  fn validate_and_convert_rejects_empty_keyword_entry() {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n[document]\nkeywords = [\"foo\", \"\", \"bar\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
@@ -1110,7 +1104,7 @@ mod tests {
     );
     let raw = parse_config(&toml, dummy_source()).unwrap();
 
-    let errors = validate_values(&raw).unwrap_err();
+    let errors = validate_and_convert(&raw).err().expect("値検証に失敗するはず");
 
     assert!(errors.iter().any(|error| matches!(
       error,
