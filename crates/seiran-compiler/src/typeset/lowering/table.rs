@@ -30,7 +30,7 @@ fn lower_rows(
     result.push(TableRowLayout {
       origin: row.id,
       cells,
-      rule_above: row.rule_above,
+      separator: row.separator,
     });
   }
   return result;
@@ -91,6 +91,7 @@ pub(super) fn lower_table(
       outer_rule_thickness: style.outer_rule_thickness,
       rule_thickness: style.rule_thickness,
       rule_gap: style.rule_gap,
+      row_gap: style.row_gap,
       rule_color: style.rule_color.map(Color::rgb),
     });
   });
@@ -100,7 +101,7 @@ pub(super) fn lower_table(
 mod tests {
   use super::*;
   use crate::{
-    document::{ColumnAlign, ColumnWidth, Typeface},
+    document::{ColumnAlign, ColumnWidth, RowSeparator, Typeface},
     length::Length,
     style::Style as ReadStyle,
     typeset::lowering::{
@@ -310,6 +311,7 @@ mod tests {
     style.table.outer_rule_thickness = Length::pt(2.5);
     style.table.rule_thickness = Length::pt(1.5);
     style.table.rule_gap = Length::pt(3.5);
+    style.table.row_gap = Length::pt(6.5);
     style.table.rule_color = Some("#090909".parse().expect("16 進の色は読めるはず"));
 
     let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
@@ -319,6 +321,7 @@ mod tests {
     assert_eq!(table.outer_rule_thickness, Length::pt(2.5));
     assert_eq!(table.rule_thickness, Length::pt(1.5));
     assert_eq!(table.rule_gap, Length::pt(3.5));
+    assert_eq!(table.row_gap, Length::pt(6.5));
     assert_eq!(table.rule_color, Some([9, 9, 9]));
   }
 
@@ -333,13 +336,14 @@ mod tests {
   }
 
   #[test]
-  fn lower_table_preserves_rule_above_flag() {
+  fn lower_table_preserves_the_row_separator() {
     let style = ReadStyle::default();
 
-    let nodes = lower_source(&style, "\\begin{table}\n\\row[rule_above]{A}\n\\end{table}\n");
+    let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\row[separator=gap]{B}\n\\end{table}\n");
 
     let table = find_table(&nodes);
-    assert!(table.rows[0].rule_above);
+    assert_eq!(table.rows[0].separator, None);
+    assert_eq!(table.rows[1].separator, Some(RowSeparator::Gap));
   }
 
   #[test]

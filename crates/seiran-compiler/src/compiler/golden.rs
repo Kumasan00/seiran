@@ -288,6 +288,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "table_break",
   "table_footnote",
   "table_math",
+  "table_rules",
   "table_wrap",
   "table_wrap_hyphenation",
   "text",

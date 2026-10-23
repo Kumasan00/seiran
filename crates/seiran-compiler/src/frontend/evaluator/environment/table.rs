@@ -71,7 +71,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{CaptionPosition, HirInline, HirInlineKind, HirTableRow, Typeface},
+    document::{CaptionPosition, HirInline, HirInlineKind, HirTableRow, RowSeparator, Typeface},
     frontend::evaluator::{evaluate_children_to_hir, test_support},
     length::Length,
   };
@@ -171,15 +171,77 @@ mod tests {
   }
 
   #[test]
+  fn row_separator_reads_rule_and_gap() {
+    let source = r"\begin{table}\row{A}\row[separator=rule]{B}\row[separator=gap]{C}\end{table}";
+    let result = eval_table(source).unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます");
+    };
+
+    let separators: Vec<_> = table.rows.iter().map(|row| return row.separator).collect();
+
+    assert_eq!(separators, vec![None, Some(RowSeparator::Rule), Some(RowSeparator::Gap)]);
+  }
+
+  #[test]
+  fn row_separator_rejects_unknown_and_uppercase_values() {
+    for value in ["none", "line", "Rule", "GAP"] {
+      let source = format!(r"\begin{{table}}\row{{A}}\row[separator={value}]{{B}}\end{{table}}");
+
+      let result = eval_table(&source);
+
+      assert!(
+        matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "separator"),
+        "{value}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn row_rule_above_is_an_unknown_key() {
+    let result = eval_table(r"\begin{table}\row{A}\row[rule_above]{B}\end{table}");
+
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn separator_on_the_frame_boundaries_is_rejected() {
+    for source in [
+      // ヘッダなしの表の先頭行
+      r"\begin{table}\row[separator=rule]{A}\row{B}\end{table}",
+      // ヘッダの先頭行
+      r"\begin{table}\head{\row[separator=gap]{H}}\row{A}\end{table}",
+      // ヘッダ直後
+      r"\begin{table}\head{\row{H}}\row[separator=rule]{A}\end{table}",
+      // \head がソース上で後にあっても本体の先頭行
+      r"\begin{table}\row[separator=rule]{A}\head{\row{H}}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableSeparatorOnFrameBoundary { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn separator_between_head_rows_is_accepted() {
+    let result = eval_table(r"\begin{table}\head{\row{H1}\row[separator=rule]{H2}}\row{A}\end{table}").unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます");
+    };
+
+    assert_eq!(table.head[1].separator, Some(RowSeparator::Rule));
+  }
+
+  #[test]
   fn table_cell_span_counts_toward_column_count() {
-    let source = r"\begin{table}\row{A & B & C}\row[rule_above]{\cell[span=2]{合計} & 180}\end{table}";
+    let source = r"\begin{table}\row{A & B & C}\row[separator=rule]{\cell[span=2]{合計} & 180}\end{table}";
     let result = eval_table(source).unwrap();
     let HirNodeKind::Table(table) = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert_eq!(table.rows.len(), 2);
-    assert!(!table.rows[0].rule_above);
-    assert!(table.rows[1].rule_above);
+    assert_eq!(table.rows[0].separator, None);
+    assert_eq!(table.rows[1].separator, Some(RowSeparator::Rule));
     assert_eq!(table.rows[1].cells.len(), 2);
     assert_eq!(table.rows[1].cells[0].column_span, 2);
     assert_eq!(hir_inlines_to_plain_text(&table.rows[1].cells[0].content), "合計");

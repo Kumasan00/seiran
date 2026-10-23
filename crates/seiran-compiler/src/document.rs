@@ -17,7 +17,7 @@
 //! HIR 木の型は子 module `hir`、HIR の variant が値として直接持つ閉じた語彙型
 //! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TextAlignment`] / [`TheoremClass`] / [`MathBlockKind`] /
 //! [`GridLayout`] / [`MathDelimiter`] / [`MathVariant`] / [`MathClass`] / [`ColumnAlign`] / [`ColumnWidth`] /
-//! [`Typeface`]）はこの module の直下。
+//! [`RowSeparator`] / [`Typeface`]）はこの module の直下。
 
 mod caption;
 mod heading_level;
@@ -44,7 +44,7 @@ pub(crate) use math_class::MathClass;
 pub(crate) use math_space::MathSpace;
 pub(crate) use math_variant::MathVariant;
 pub(crate) use quote::QuoteKind;
-pub(crate) use table_column::{ColumnAlign, ColumnWidth};
+pub(crate) use table_column::{ColumnAlign, ColumnWidth, RowSeparator};
 pub(crate) use text_alignment::TextAlignment;
 pub(crate) use theorem::TheoremClass;
 pub(crate) use typeface::Typeface;

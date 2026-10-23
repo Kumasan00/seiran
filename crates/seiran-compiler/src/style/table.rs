@@ -36,6 +36,9 @@ pub(crate) struct TableStyle {
   /// 罫線と行の間の空き（上端の罫線は下だけ、下端の罫線は上だけ、それ以外の罫線は上下）
   #[garde(custom(non_negative))]
   pub rule_gap: Length,
+  /// `\row[separator=gap]` の空き
+  #[garde(custom(non_negative))]
+  pub row_gap: Length,
   /// 罫線色。`None` は黒
   pub rule_color: Option<Color>,
   /// セル内容の左右内側余白（各セルの両側に適用される）
@@ -58,6 +61,7 @@ impl Default for TableStyle {
       outer_rule_thickness: Length::pt(0.8),
       rule_thickness: Length::pt(0.5),
       rule_gap: Length::pt(2.0),
+      row_gap: Length::pt(5.0),
       rule_color: None,
       cell_padding: Length::pt(4.0),
       head_typeface: Typeface::SerifBold,
@@ -79,6 +83,7 @@ mod tests {
     assert_eq!(style.outer_rule_thickness, Length::pt(0.8));
     assert_eq!(style.rule_thickness, Length::pt(0.5));
     assert_eq!(style.rule_gap, Length::pt(2.0));
+    assert_eq!(style.row_gap, Length::pt(5.0));
   }
 
   #[test]

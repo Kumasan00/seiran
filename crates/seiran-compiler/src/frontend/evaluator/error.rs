@@ -427,6 +427,20 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// 枠罫の持ち場（表の最初の `\head` 行・最初の本体行の上の境界）に `\row[separator=...]` を書いた場合
+  #[error("表の先頭行の上とヘッダ直後の境界には separator を置けません")]
+  #[diagnostic(
+    code(frontend::eval::table_separator_on_frame_boundary),
+    help(
+      "この境界の罫線は style.toml の [table]（outer_rule_thickness / rule_thickness）が決めます。separator を外してください"
+    )
+  )]
+  TableSeparatorOnFrameBoundary {
+    /// 行（`\row`）のソース位置
+    #[label("この行の上の境界は表の枠罫の持ち場です")]
+    span: SourceSpan,
+  },
+
   /// 表の行のセル数（`column_span` 合計）が列数と一致しない場合
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(

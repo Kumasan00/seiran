@@ -1,0 +1,12 @@
+frontend::eval::table_separator_on_frame_boundary
+
+  × 表の先頭行の上とヘッダ直後の境界には separator を置けません
+   ╭─[tests/text/diagnostics/table_separator_on_frame_boundary.sei:3:1]
+ 2 │ \head{\row{項目 & 値}}
+ 3 │ \row[separator=rule]{幅 & 10}
+   · ──────────────┬──────────────
+   ·               ╰── この行の上の境界は表の枠罫の持ち場です
+ 4 │ \end{table}
+   ╰────
+  help: この境界の罫線は style.toml の [table]（outer_rule_thickness / rule_thickness）が決めま
+        す。separator を外してください

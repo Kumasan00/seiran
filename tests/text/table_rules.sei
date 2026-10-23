@@ -1,0 +1,28 @@
+\section{表の罫線と行群の区切り}
+
+// 表の上端・下端の枠罫とヘッダ下の罫線は style.toml の [table] が引き、行群の区切りは \row[separator=...] で置く。
+// 再生成時は golden で、先頭の表の罫線が「上端 0.80・ヘッダ 2 行の間 0.50・ヘッダ下 0.50・B の上 0.50・下端 0.80」の
+// 5 本で、C の行の上に罫線が無く空き（row_gap）だけがあることを確認する。
+
+ヘッダが 2 行あり、本体の行群を罫線と空きで区切る表です。
+
+\begin{table}[columns=left left right]
+\head{
+  \row{区分 & 項目 & 値}
+  \row[separator=rule]{ & 単位 & mm}
+}
+\row{A & 幅 & 10}
+\row{A & 高さ & 20}
+\row[separator=rule]{B & 幅 & 30}
+\row[separator=gap]{C & 幅 & 40}
+\row{C & 高さ & 50}
+\end{table}
+
+ヘッダの無い表です。上端と下端の枠罫だけを引き、行群は空きで区切ります。
+
+\begin{table}
+\row{x & 1}
+\row[separator=gap]{y & 2}
+\end{table}
+
+表の後の段落です。

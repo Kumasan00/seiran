@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{ColumnAlign, ColumnWidth, MathClass, MathSpace, NodeId, TextAlignment, Typeface},
+  document::{ColumnAlign, ColumnWidth, MathClass, MathSpace, NodeId, RowSeparator, TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
   typeset::{
@@ -172,6 +172,8 @@ pub(in crate::typeset) struct TableLayout {
   pub rule_thickness: Length,
   /// 罫線と行の間の空き（`[table].rule_gap`）
   pub rule_gap: Length,
+  /// 行群の区切りの空き（`[table].row_gap`）
+  pub row_gap: Length,
   /// 横罫線の色（RGB。`None` は黒）
   pub rule_color: Option<[u8; 3]>,
 }
@@ -192,8 +194,8 @@ pub(in crate::typeset) struct TableRowLayout {
   pub origin: NodeId,
   /// 行内のセル
   pub cells: Vec<TableCellLayout>,
-  /// この行の上に横罫線を引くか
-  pub rule_above: bool,
+  /// この行の上の境界に置く区切り（`None` は区切りなし）
+  pub separator: Option<RowSeparator>,
 }
 
 /// 表の 1 セルの物理レイアウト表現
