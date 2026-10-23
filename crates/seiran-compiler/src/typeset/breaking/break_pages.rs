@@ -1024,7 +1024,7 @@ fn defers_unbreakable_table(
 
 /// 表の断片の枠 — 断片を開くときに行の前へ積むもの（上端の枠罫と、本体行なら再掲ヘッダとヘッダ下の罫線）と、
 /// 断片を閉じる下端の枠罫
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct FragmentFrame<'a> {
   /// 上端の枠罫
   top: TableBoundary,
@@ -1040,19 +1040,19 @@ impl<'a> FragmentFrame<'a> {
   /// 表 `table` の本体行を置くときの枠
   fn of(table: &'a TableBox) -> Self {
     return FragmentFrame {
-      top: table.top,
+      top: table.top.clone(),
       repeated_head: &table.repeated_head,
-      head_bottom: table.head_bottom,
-      bottom: table.bottom,
+      head_bottom: table.head_bottom.clone(),
+      bottom: table.bottom.clone(),
     };
   }
 
   /// ヘッダ行を置くときの枠（再掲ヘッダとヘッダ下の罫線を積まない）
-  fn for_head_rows(self) -> Self {
+  fn for_head_rows(&self) -> Self {
     return FragmentFrame {
       repeated_head: &[],
       head_bottom: TableBoundary::default(),
-      ..self
+      ..self.clone()
     };
   }
 
@@ -1126,17 +1126,18 @@ fn place_table(
       composer.record(OverflowKind::Table { origin, excess });
     }
   };
+  let head_frame = body_frame.for_head_rows();
   let mut pending: Option<PendingTableFragment> = None;
   for (row, bodies) in head.into_iter().zip(head_bodies) {
-    place_table_row(composer, geom, row, bodies, body_frame.for_head_rows(), &mut pending, align_offset);
+    place_table_row(composer, geom, row, bodies, &head_frame, &mut pending, align_offset);
     record_width_excess(composer);
   }
   for (row, bodies) in rows.into_iter().zip(row_bodies) {
-    place_table_row(composer, geom, row, bodies, body_frame, &mut pending, align_offset);
+    place_table_row(composer, geom, row, bodies, &body_frame, &mut pending, align_offset);
     record_width_excess(composer);
   }
   record_width_excess(composer);
-  close_table_fragment(composer, &mut pending, bottom, align_offset);
+  close_table_fragment(composer, &mut pending, &body_frame.bottom, align_offset);
 }
 
 /// 開いている断片があれば、下端の枠罫 `bottom` を積んで現在の段へ着地させる（改リージョンの前に呼ぶので段オフセットは
@@ -1144,7 +1145,7 @@ fn place_table(
 fn close_table_fragment(
   composer: &mut PageComposer,
   pending: &mut Option<PendingTableFragment>,
-  bottom: TableBoundary,
+  bottom: &TableBoundary,
   align_offset: Length,
 ) {
   let Some(mut fragment) = pending.take() else {
@@ -1156,7 +1157,7 @@ fn close_table_fragment(
 }
 
 /// 境界 `boundary` を `y` から断片へ積み、`y` を境界の高さだけ進める
-fn stack_boundary(fragment: &mut PendingTableFragment, boundary: TableBoundary, y: &mut Length) {
+fn stack_boundary(fragment: &mut PendingTableFragment, boundary: &TableBoundary, y: &mut Length) {
   fragment.rules.extend(boundary.place(Length::ZERO, *y));
   *y += boundary.height;
 }
@@ -1175,7 +1176,7 @@ fn place_table_row(
   geom: &PageGeometry,
   row: TableRowFragment,
   bodies: Vec<PendingFootnote>,
-  frame: FragmentFrame<'_>,
+  frame: &FragmentFrame<'_>,
   pending: &mut Option<PendingTableFragment>,
   align_offset: Length,
 ) {
@@ -1188,7 +1189,7 @@ fn place_table_row(
   let mut fit = fit_table_row(composer.cursor, here, &demands, geom);
   if defers_table_row(composer.cursor, here, &demands, fresh, geom) {
     loop {
-      close_table_fragment(composer, pending, frame.bottom, align_offset);
+      close_table_fragment(composer, pending, &frame.bottom, align_offset);
       composer.advance_region(geom);
       let carried = composer.cursor.footnote_reserved > Length::ZERO;
       fit = fit_table_row(composer.cursor, fresh, &demands, geom);
@@ -1227,15 +1228,15 @@ fn place_table_row(
   });
   let mut y = cursor_y;
   if opening {
-    stack_boundary(fragment, frame.top, &mut y);
+    stack_boundary(fragment, &frame.top, &mut y);
     for head_row in frame.repeated_head {
-      stack_boundary(fragment, head_row.above, &mut y);
+      stack_boundary(fragment, &head_row.above, &mut y);
       fragment.rows.push((head_row.clone(), y));
       y += head_row.height();
     }
-    stack_boundary(fragment, frame.head_bottom, &mut y);
+    stack_boundary(fragment, &frame.head_bottom, &mut y);
   } else {
-    stack_boundary(fragment, row.above, &mut y);
+    stack_boundary(fragment, &row.above, &mut y);
   }
   let top = y;
   let (origin, overrun) = (row.origin, row.overrun);
@@ -2452,7 +2453,7 @@ mod tests {
     if !table.head.is_empty() {
       table.head_bottom = TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), width, None);
       if let Some(first) = table.rows.first_mut() {
-        first.above = table.head_bottom;
+        first.above = table.head_bottom.clone();
       }
     }
     return table;

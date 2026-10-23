@@ -169,21 +169,21 @@ fn arrange(
   let head_bottom = if head.is_empty() {
     TableBoundary::default()
   } else {
-    separator
+    separator.clone()
   };
-  let fragments = |rows: &[MeasuredRow], first_above: TableBoundary| {
+  let fragments = |rows: &[MeasuredRow], first_above: &TableBoundary| {
     return rows
       .iter()
       .enumerate()
       .map(|(index, row)| {
         let above = if index == 0 {
-          first_above
+          first_above.clone()
         } else {
           match row.separator {
-            Some(RowSeparator::Rule) => separator,
+            Some(RowSeparator::Rule) => separator.clone(),
             Some(RowSeparator::Gap) => TableBoundary {
               height: frame.row_gap,
-              rule: None,
+              rules: Vec::new(),
             },
             None => TableBoundary::default(),
           }
@@ -195,7 +195,8 @@ fn arrange(
       })
       .collect::<Vec<_>>();
   };
-  let head = fragments(head, TableBoundary::default());
+  let head = fragments(head, &TableBoundary::default());
+  let rows = fragments(rows, &head_bottom);
   let repeated_head = head
     .iter()
     .map(|fragment| {
@@ -214,7 +215,7 @@ fn arrange(
     bottom: rule(frame.rule_gap, frame.outer_rule_thickness, Length::ZERO),
     head,
     repeated_head,
-    rows: fragments(rows, head_bottom),
+    rows,
     breakable,
   };
 }
@@ -775,20 +776,20 @@ mod tests {
     );
 
     assert!(close(table.top.height, 2.8), "{:?}", table.top);
-    let top = table.top.rule.expect("上端の枠罫");
+    let top = table.top.rules.first().copied().expect("上端の枠罫");
     assert!(close(top.y, 0.0) && close(top.height, 0.8) && top.width == table.width, "{top:?}");
     assert_eq!(top.color, Some([9, 9, 9]));
     assert!(close(table.bottom.height, 2.8), "{:?}", table.bottom);
-    let bottom = table.bottom.rule.expect("下端の枠罫");
+    let bottom = table.bottom.rules.first().copied().expect("下端の枠罫");
     assert!(close(bottom.y, 2.0) && close(bottom.height, 0.8), "{bottom:?}");
     assert!(close(table.head_bottom.height, 4.5), "{:?}", table.head_bottom);
     assert_eq!(table.head[0].above.height, Length::ZERO);
     assert!(
-      close(table.rows[0].above.height, 4.5) && table.rows[0].above.rule.is_some(),
+      close(table.rows[0].above.height, 4.5) && !table.rows[0].above.rules.is_empty(),
       "{:?}",
       table.rows[0].above
     );
-    let separator = table.rows[1].above.rule.expect("区切りの行の上の罫線");
+    let separator = table.rows[1].above.rules.first().copied().expect("区切りの行の上の罫線");
     assert!(close(separator.y, 2.0) && close(separator.height, 0.5), "{separator:?}");
     assert_eq!(separator.color, Some([9, 9, 9]));
   }
@@ -811,7 +812,7 @@ mod tests {
     );
 
     assert!(close(table.rows[1].above.height, 5.0), "{:?}", table.rows[1].above);
-    assert!(table.rows[1].above.rule.is_none());
+    assert!(table.rows[1].above.rules.is_empty());
   }
 
   #[test]
@@ -829,7 +830,7 @@ mod tests {
     );
 
     assert!(close(table.rows[1].above.height, 4.5), "{:?}", table.rows[1].above);
-    assert!(table.rows[1].above.rule.is_some());
+    assert!(!table.rows[1].above.rules.is_empty());
   }
 
   #[test]
@@ -849,7 +850,7 @@ mod tests {
 
     assert_eq!(table.head_bottom.height, Length::ZERO);
     assert_eq!(table.rows[0].above.height, Length::ZERO);
-    assert!(table.rows[0].above.rule.is_none());
+    assert!(table.rows[0].above.rules.is_empty());
   }
 
   #[test]
@@ -874,7 +875,7 @@ mod tests {
     assert_eq!(table.head_bottom.height, Length::ZERO);
     assert_eq!(table.rows[0].above.height, Length::ZERO);
     assert_eq!(table.rows[1].above.height, Length::ZERO);
-    assert!(table.rows[1].above.rule.is_none());
+    assert!(table.rows[1].above.rules.is_empty());
   }
 
   #[test]
@@ -888,9 +889,9 @@ mod tests {
     let table = arrange(origin(), &frame, &[], &[one_cell_row()], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.top.height, Length::ZERO);
-    assert!(table.top.rule.is_none());
+    assert!(table.top.rules.is_empty());
     assert_eq!(table.bottom.height, Length::ZERO);
-    assert!(table.bottom.rule.is_none());
+    assert!(table.bottom.rules.is_empty());
   }
 
   #[test]
@@ -909,7 +910,7 @@ mod tests {
 
     assert_eq!(table.repeated_head[0].above.height, Length::ZERO);
     assert!(close(table.repeated_head[1].above.height, 4.5), "{:?}", table.repeated_head[1].above);
-    assert!(table.repeated_head[1].above.rule.is_some());
+    assert!(!table.repeated_head[1].above.rules.is_empty());
   }
 
   #[test]
