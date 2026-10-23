@@ -1,0 +1,5 @@
+\begin{table}
+\head{\row{項目 & 値}}
+\row{\cell[span=2, rule_below]{寸法}}
+\row[separator=rule]{幅 & 10}
+\end{table}

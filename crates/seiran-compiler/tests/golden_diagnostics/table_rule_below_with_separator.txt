@@ -1,0 +1,14 @@
+frontend::eval::table_rule_below_with_separator
+
+  × rule_below のセルの下の境界に、次の行の separator を重ねられません
+   ╭─[tests/text/diagnostics/table_rule_below_with_separator.sei:3:6]
+ 2 │ \head{\row{項目 & 値}}
+ 3 │ \row{\cell[span=2, rule_below]{寸法}}
+   ·      ───────────────┬───────────────
+   ·                     ╰── このセルの下に部分罫を引きます
+ 4 │ \row[separator=rule]{幅 & 10}
+   · ──────────────┬──────────────
+   ·               ╰── この行の separator が同じ境界に区切りを置きます
+ 5 │ \end{table}
+   ╰────
+  help: 部分罫か全幅の区切りのどちらか一方にしてください

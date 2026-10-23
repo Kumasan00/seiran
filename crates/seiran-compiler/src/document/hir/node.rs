@@ -224,6 +224,10 @@ pub(crate) struct HirTableCell {
   pub(crate) content: Vec<HirInline>,
   /// 列方向の結合数（1 以上）
   pub(crate) column_span: u32,
+  /// このセルが跨ぐ列の範囲の下に部分罫を引くか（`\cell[rule_below]`）
+  ///
+  /// 表の最後の行・`\head` の最後の行・次の行が `separator` を持つ行では frontend が `true` を拒否する。
+  pub(crate) rule_below: bool,
 }
 
 /// `proof` 環境の `[of=label]` 参照（証明対象の定理）

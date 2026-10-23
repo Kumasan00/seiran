@@ -113,6 +113,27 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
     }
   }
 
+  // `rule_below` は同じ行群の次の行の上の境界に部分罫を置く。行群の最後の行の下は枠罫（下端・ヘッダ下）の持ち場で、
+  // 次の行が `separator` を持てば同じ境界に区切りが 2 つになる
+  for group in [&head, &rows] {
+    for pair in group.windows(2) {
+      if let [above, below] = pair
+        && below.separator.is_some()
+        && let Some(cell) = first_rule_below(above)
+      {
+        return Err(EvalError::TableRuleBelowWithSeparator {
+          span: ctx.span_of(cell.id).into(),
+          separator: ctx.span_of(below.id).into(),
+        });
+      }
+    }
+    if let Some(cell) = group.last().and_then(first_rule_below) {
+      return Err(EvalError::TableRuleBelowOnFrameBoundary {
+        span: ctx.span_of(cell.id).into(),
+      });
+    }
+  }
+
   return Ok(TableBody {
     head,
     rows,
@@ -241,6 +262,11 @@ pub(super) fn resolve_column_count(
   }
 
   return Ok(column_count);
+}
+
+/// 行の最初の `rule_below` セルを返す
+fn first_rule_below(row: &HirTableRow) -> Option<&HirTableCell> {
+  return row.cells.iter().find(|cell| return cell.rule_below);
 }
 
 /// 行のセル数（`column_span` 合計）を返す

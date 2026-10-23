@@ -441,6 +441,35 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// 枠罫の持ち場（表の最後の行・`\head` の最後の行の下の境界）に `\cell[rule_below]` を書いた場合
+  #[error("表の最後の行と \\head の最後の行のセルには rule_below を置けません")]
+  #[diagnostic(
+    code(frontend::eval::table_rule_below_on_frame_boundary),
+    help(
+      "この境界の罫線は style.toml の [table]（outer_rule_thickness / rule_thickness）が決めます。rule_below を外してください"
+    )
+  )]
+  TableRuleBelowOnFrameBoundary {
+    /// セル（`\cell`）のソース位置
+    #[label("このセルの下の境界は表の枠罫の持ち場です")]
+    span: SourceSpan,
+  },
+
+  /// `\cell[rule_below]` の下の境界に、次の行の `\row[separator=...]` を重ねた場合
+  #[error("rule_below のセルの下の境界に、次の行の separator を重ねられません")]
+  #[diagnostic(
+    code(frontend::eval::table_rule_below_with_separator),
+    help("部分罫か全幅の区切りのどちらか一方にしてください")
+  )]
+  TableRuleBelowWithSeparator {
+    /// セル（`\cell`）のソース位置
+    #[label("このセルの下に部分罫を引きます")]
+    span: SourceSpan,
+    /// 次の行（`\row`）のソース位置
+    #[label("この行の separator が同じ境界に区切りを置きます")]
+    separator: SourceSpan,
+  },
+
   /// 表の行のセル数（`column_span` 合計）が列数と一致しない場合
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(

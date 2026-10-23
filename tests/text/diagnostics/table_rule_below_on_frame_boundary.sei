@@ -1,0 +1,5 @@
+\begin{table}
+\head{\row{項目 & 値}}
+\row{幅 & 10}
+\row{\cell[span=2, rule_below]{高さ 20}}
+\end{table}
