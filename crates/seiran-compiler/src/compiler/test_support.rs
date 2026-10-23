@@ -435,7 +435,7 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "index", "title_alignment", "center");
       set_page_margins(table, "85mm", "390mm");
     },
-    "hyphenation" => {
+    "hyphenation" | "table_wrap_hyphenation" => {
       set(table, "page", "margin_left", "275mm");
       set(table, "page", "margin_right", "275mm");
     },
@@ -486,7 +486,7 @@ fn set_page_margins(table: &mut toml::value::Table, horizontal: &str, vertical: 
 /// 検証対象の機能に必要な config 差分を fixture 名ごとに適用する。
 fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
   match name {
-    "hyphenation" => set(table, "document", "language", "en"),
+    "hyphenation" | "table_wrap_hyphenation" => set(table, "document", "language", "en"),
     "footnote_columns" => {
       set(table, "pdf", "width", "120mm");
       set(table, "pdf", "height", "60mm");

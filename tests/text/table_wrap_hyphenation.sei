@@ -1,0 +1,10 @@
+\section{Hyphenation in cells}
+
+// 本文幅 45mm（fixture 差分）に固定幅 25mm の列を置き、長い欧文の語をハイフネーションで折り返す。
+
+\begin{table}[columns=left left, widths=auto 25mm]
+\row{Term & Internationalization and telecommunications need hyphenation}
+\row{Note & short}
+\end{table}
+
+A paragraph after the table.

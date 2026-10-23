@@ -31,7 +31,7 @@ mod warning;
 use std::mem;
 
 #[cfg(test)]
-pub(crate) use boxes::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock};
+pub(crate) use boxes::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow};
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 pub(crate) use error::{ComposeError, TypesetError};
