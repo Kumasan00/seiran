@@ -8,10 +8,10 @@
 \head{
   \row{Name & Score & Rank}
 }
-\row[rule_above]{Alice & 92 & 1}
+\row{Alice & 92 & 1}
 \row{Bob & 88 & 2}
 \row{Charlie & 75 & 3}
-\row[rule_above]{\cell[span=2]{合計} & 255}
+\row[separator=rule]{\cell[span=2]{合計} & 255}
 \caption{得点表}
 \end{table}
 

@@ -131,6 +131,15 @@ fn diagnostic_unknown_command() {
 }
 
 #[test]
+fn diagnostic_table_separator_on_frame_boundary() {
+  // G1: 枠罫の持ち場（ヘッダ直後）への separator は同じ境界への 2 通りの書き方になるので拒否する
+  let failure = compile_err(&["tests/text/diagnostics/table_separator_on_frame_boundary.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_separator_on_frame_boundary".to_string()]);
+  assert_matches_golden("table_separator_on_frame_boundary", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_bare_braces() {
   // P4（裸の `{...}` は構文エラー）
   let failure = compile_err(&["tests/text/diagnostics/bare_braces.sei"]);

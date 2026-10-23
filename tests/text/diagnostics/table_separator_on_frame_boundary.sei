@@ -1,0 +1,4 @@
+\begin{table}
+\head{\row{項目 & 値}}
+\row[separator=rule]{幅 & 10}
+\end{table}

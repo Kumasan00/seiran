@@ -119,8 +119,19 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
         dump_math_number(out, number);
       }
     },
-    PlacedBlock::Table { rows } => {
-      let _ = writeln!(out, "  table rows={}", rows.len());
+    PlacedBlock::Table { rows, rules } => {
+      let _ = writeln!(out, "  table rows={} rules={}", rows.len(), rules.len());
+      for rule in rules {
+        let _ = writeln!(
+          out,
+          "    rule x={} y={} w={} h={} color={}",
+          f2(rule.x),
+          f2(rule.y),
+          f2(rule.width),
+          f2(rule.height),
+          color_desc(rule.color)
+        );
+      }
       for row in rows {
         dump_table_row(out, row);
       }
@@ -166,7 +177,7 @@ fn dump_math_number(out: &mut String, number: &PlacedMathNumber) {
   dump_content_children(out, &number.content.content, 6);
 }
 
-/// 表の 1 行を書き出す（行帯・baseline・確定罫線・配置済みセル内容）。
+/// 表の 1 行を書き出す（行帯・baseline・配置済みセル内容）。
 fn dump_table_row(out: &mut String, row: &PlacedTableRow) {
   let _ = writeln!(
     out,
@@ -176,17 +187,6 @@ fn dump_table_row(out: &mut String, row: &PlacedTableRow) {
     f2(row.baseline_y),
     row.boxes.len()
   );
-  if let Some(rule) = row.rule {
-    let _ = writeln!(
-      out,
-      "      rule x={} y={} w={} h={} color={}",
-      f2(rule.x),
-      f2(rule.y),
-      f2(rule.width),
-      f2(rule.height),
-      color_desc(rule.color)
-    );
-  }
   for placed in &row.boxes {
     dump_placed_box(out, placed);
   }

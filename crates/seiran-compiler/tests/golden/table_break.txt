@@ -670,25 +670,28 @@ keywords=["test", "seiran"]
   glyphs x=324.94 y=2082.83 font=JapaneseSerif size=12.00 text="す" glyph_count=1
   glyphs x=335.98 y=2082.83 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 === page 1 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=788.40 y=290.07 font=SerifBold size=12.00 text="Name" glyph_count=4
-  glyphs x=829.71 y=290.07 font=SerifBold size=12.00 text="Score" glyph_count=5
-  glyphs x=868.02 y=290.07 font=SerifBold size=12.00 text="Rank" glyph_count=4
-  glyphs x=788.40 y=302.67 font=Serif size=12.00 text="Alice" glyph_count=5
-  glyphs x=838.93 y=302.67 font=Serif size=12.00 text="92" glyph_count=2
-  glyphs x=892.28 y=302.67 font=Serif size=12.00 text="1" glyph_count=1
-  glyphs x=788.40 y=315.27 font=Serif size=12.00 text="Bob" glyph_count=3
-  glyphs x=838.93 y=315.27 font=Serif size=12.00 text="88" glyph_count=2
-  glyphs x=892.28 y=315.27 font=Serif size=12.00 text="2" glyph_count=1
-  glyphs x=806.20 y=337.09 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=847.42 y=337.09 font=JapaneseSerif size=11.00 text="得" glyph_count=1
-  glyphs x=858.42 y=337.09 font=JapaneseSerif size=11.00 text="点" glyph_count=1
-  glyphs x=869.42 y=337.09 font=JapaneseSerif size=11.00 text="表" glyph_count=1
-  glyphs x=240.94 y=360.64 font=JapaneseSerif size=12.00 text="表" glyph_count=1
-  glyphs x=255.76 y=360.64 font=Serif size=12.00 text="Table .1" glyph_count=8
-  glyphs x=297.79 y=360.64 font=JapaneseSerif size=12.00 text="を" glyph_count=1
-  glyphs x=309.79 y=360.64 font=JapaneseSerif size=12.00 text="参" glyph_count=1
-  glyphs x=321.79 y=360.64 font=JapaneseSerif size=12.00 text="照" glyph_count=1
-  glyphs x=333.79 y=360.64 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  link target=Internal(page=1, x=240.94, y=280.63) x=255.76 y=346.83 w=39.20 h=17.24
+  fillrect x=784.40 y=280.63 w=117.82 h=0.80 color=None
+  fillrect x=784.40 y=298.03 w=117.82 h=0.50 color=None
+  fillrect x=784.40 y=327.73 w=117.82 h=0.80 color=None
+  glyphs x=788.40 y=292.87 font=SerifBold size=12.00 text="Name" glyph_count=4
+  glyphs x=829.71 y=292.87 font=SerifBold size=12.00 text="Score" glyph_count=5
+  glyphs x=868.02 y=292.87 font=SerifBold size=12.00 text="Rank" glyph_count=4
+  glyphs x=788.40 y=309.97 font=Serif size=12.00 text="Alice" glyph_count=5
+  glyphs x=838.93 y=309.97 font=Serif size=12.00 text="92" glyph_count=2
+  glyphs x=892.28 y=309.97 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=788.40 y=322.57 font=Serif size=12.00 text="Bob" glyph_count=3
+  glyphs x=838.93 y=322.57 font=Serif size=12.00 text="88" glyph_count=2
+  glyphs x=892.28 y=322.57 font=Serif size=12.00 text="2" glyph_count=1
+  glyphs x=806.20 y=347.19 font=Serif size=11.00 text="Table .1:" glyph_count=9
+  glyphs x=847.42 y=347.19 font=JapaneseSerif size=11.00 text="得" glyph_count=1
+  glyphs x=858.42 y=347.19 font=JapaneseSerif size=11.00 text="点" glyph_count=1
+  glyphs x=869.42 y=347.19 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=240.94 y=370.74 font=JapaneseSerif size=12.00 text="表" glyph_count=1
+  glyphs x=255.76 y=370.74 font=Serif size=12.00 text="Table .1" glyph_count=8
+  glyphs x=297.79 y=370.74 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=309.79 y=370.74 font=JapaneseSerif size=12.00 text="参" glyph_count=1
+  glyphs x=321.79 y=370.74 font=JapaneseSerif size=12.00 text="照" glyph_count=1
+  glyphs x=333.79 y=370.74 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  link target=Internal(page=1, x=240.94, y=280.63) x=255.76 y=356.93 w=39.20 h=17.24
 outline:
   depth=2 text=".1 改ページをまたぐ表" page=0 x=240.94 y=257.61

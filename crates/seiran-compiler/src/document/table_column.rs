@@ -1,4 +1,4 @@
-//! 著者が `columns=` / `widths=` に書く表の列指定語彙。
+//! 著者が `columns=` / `widths=` に書く表の列指定語彙と、`\row[separator=...]` に書く行の区切りの語彙。
 
 use std::str::FromStr;
 
@@ -56,4 +56,36 @@ pub(crate) enum ColumnWidth {
   Ratio(f32),
   /// 残り幅を等分するフレックス指定（`*`）
   Flex,
+}
+
+/// 表の行の上の境界に置く区切り（`\row[separator=...]`）
+///
+/// 区切りの無い行はキーを書かないことで表し、`none` のような値は設けない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RowSeparator {
+  /// 罫線（太さは style.toml の `[table].rule_thickness`、上下の空きは `rule_gap`）
+  Rule,
+  /// 空き（量は style.toml の `[table].row_gap`）
+  Gap,
+}
+
+/// [`RowSeparator`] の `FromStr` が受理しない値を渡されたときのエラー。
+#[derive(Debug, Error)]
+#[error("区切りは rule / gap のいずれかである必要があります")]
+pub(crate) struct ParseRowSeparatorError;
+
+impl FromStr for RowSeparator {
+  type Err = ParseRowSeparatorError;
+
+  /// `\row[separator=...]` の値を区切りに変換する
+  ///
+  /// 受理する値は小文字の `rule` / `gap` の完全一致だけ。大文字を含む綴りは同じ値への第 2 の綴りになるので受理しない。
+  /// 前後の空白は任意引数の値の取り出しが除く。
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    return match value {
+      "rule" => Ok(RowSeparator::Rule),
+      "gap" => Ok(RowSeparator::Gap),
+      _ => Err(ParseRowSeparatorError),
+    };
+  }
 }

@@ -12,7 +12,7 @@ use footnote_packing::{
   split_pending,
 };
 use itertools::izip;
-use page_draft::PageDraft;
+use page_draft::{PageDraft, PendingTableFragment};
 use paragraph_plan::plan_paragraph_lines;
 use region_cursor::RegionCursor;
 use tracing::debug;
@@ -24,7 +24,7 @@ use crate::{
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK,
-      Page, PlacedBlock, PlacedMathNumber, TableBox, TableRowFragment,
+      Page, PlacedBlock, PlacedMathNumber, TableBoundary, TableBox, TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
@@ -615,12 +615,13 @@ fn plan_atomic(
     Block::Table { table, .. } => {
       let total = table.height();
       // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）を送るかだけで決まる（`place_table` の行ループと
-      // 同じ判定）。先頭行はヘッダ行かヘッダの無い表の本体行なので、再掲ヘッダは積まれない
+      // 同じ判定）。先頭行は断片を開くヘッダ行かヘッダの無い表の本体行なので、前に積むのは上端の枠罫だけ
       let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
         first.is_some_and(|row| {
           let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)]);
-          return defers_table_row(cursor, row.height(), &demands[0], Length::ZERO, geom);
+          let need = FragmentFrame::of(table).for_head_rows().row_need(row, true);
+          return defers_table_row(cursor, need, &demands[0], need, geom);
         })
       } else {
         let demands: Vec<FootnoteDemand> = footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width))
@@ -957,48 +958,50 @@ fn place_math_block(
   composer.cursor = composer.cursor.below(total_height);
 }
 
-/// 表の行 1 本（行帯の高さ `row_height`・脚注の需要 `demands`）をカーソルから置くとき、行と脚注を合わせて
-/// リージョンへどう収めるか。
+/// 表の行 1 本を置くのに要る高さ `need`（[`FragmentFrame::row_need`]）・脚注の需要 `demands` をカーソルから置くとき、
+/// 行と脚注を合わせてリージョンへどう収めるか。
 ///
 /// 実配置（[`place_table_row`]）と keep-with-next の計画（[`plan_atomic`]）が共用する唯一の判定。行を本文の 1 行と同じ
 /// 単位として扱い、段落の行と同じ [`fit_line_footnotes`] を通す。脚注の無い行では `Full` ⇔
-/// `!cursor.overflows(row_height, geom)`。
+/// `!cursor.overflows(need, geom)`。
 fn fit_table_row(
   cursor: RegionCursor,
-  row_height: Length,
+  need: Length,
   demands: &[FootnoteDemand],
   geom: &PageGeometry,
 ) -> LineFootnoteFit {
   return fit_line_footnotes(
     demands,
     cursor.footnote_reserved,
-    cursor.y + row_height,
+    cursor.y + need,
     geom.page_limit,
     FootnoteCharges::of(geom),
   );
 }
 
-/// 分割可能な表の行 1 本（行帯の高さ `row_height`・脚注の需要 `demands`）を次リージョンへ送るべきか。
+/// 分割可能な表の行 1 本を次リージョンへ送るべきか。`here` は現在リージョンで行を置くのに要る高さ、`fresh` は予約の
+/// 無い新しいリージョンで断片を開いて置くのに要る高さ（どちらも [`FragmentFrame::row_need`]）、`demands` は行の脚注の
+/// 需要。
 ///
-/// 現在リージョンでは行と脚注が収まらず、予約の無い新しいリージョンの再掲ヘッダ（高さ `head_height`）の下に行だけなら
-/// 収まるときに送る。行だけでも収まらない行は送っても改善せず、送ると前のリージョンにヘッダだけが残るので、その場に
-/// 置く。新しいリージョンで脚注を見ないのは、空のリージョンに入る行を現在リージョンの下端からはみ出させないため
-/// （脚注が入らなければ送り先で `FootnoteLine` を記録する）。判定は [`fit_table_row`] だけで行い、実配置
-/// （[`place_table_row`]）と keep-with-next の計画（[`plan_atomic`]）が共用する。
+/// 現在リージョンでは行と脚注が収まらず、新しいリージョンに行だけなら収まるときに送る。行だけでも収まらない行は
+/// 送っても改善せず、送ると前のリージョンにヘッダだけが残るので、その場に置く。新しいリージョンで脚注を見ないのは、
+/// 空のリージョンに入る行を現在リージョンの下端からはみ出させないため（脚注が入らなければ送り先で `FootnoteLine` を
+/// 記録する）。判定は [`fit_table_row`] だけで行い、実配置（[`place_table_row`]）と keep-with-next の計画
+/// （[`plan_atomic`]）が共用する。
 fn defers_table_row(
   cursor: RegionCursor,
-  row_height: Length,
+  here: Length,
   demands: &[FootnoteDemand],
-  head_height: Length,
+  fresh: Length,
   geom: &PageGeometry,
 ) -> bool {
-  let fresh = RegionCursor {
-    y: geom.margin_top + head_height,
+  let fresh_cursor = RegionCursor {
+    y: geom.margin_top,
     footnote_reserved: Length::ZERO,
     ..cursor
   };
-  return matches!(fit_table_row(cursor, row_height, demands, geom), LineFootnoteFit::Rejected)
-    && !matches!(fit_table_row(fresh, row_height, &[], geom), LineFootnoteFit::Rejected);
+  return matches!(fit_table_row(cursor, here, demands, geom), LineFootnoteFit::Rejected)
+    && !matches!(fit_table_row(fresh_cursor, fresh, &[], geom), LineFootnoteFit::Rejected);
 }
 
 /// 分割禁止の表（高さ `table_height`、全行の脚注の需要を出現順に並べた `demands`）を次リージョンへ送るべきか。
@@ -1019,13 +1022,65 @@ fn defers_unbreakable_table(
   return cursor.y + table_height > geom.page_limit - here && geom.margin_top + table_height <= geom.page_limit - fresh;
 }
 
-/// 表を行断片の単位で配置する（改段・改ページ時は先頭に再掲ヘッダを積む）
+/// 表の断片の枠 — 断片を開くときに行の前へ積むもの（上端の枠罫と、本体行なら再掲ヘッダとヘッダ下の罫線）と、
+/// 断片を閉じる下端の枠罫
+#[derive(Clone, Copy)]
+struct FragmentFrame<'a> {
+  /// 上端の枠罫
+  top: TableBoundary,
+  /// 再掲ヘッダ（ヘッダ行を置くときは空）
+  repeated_head: &'a [TableRowFragment],
+  /// 再掲ヘッダの下の罫線（ヘッダ行を置くときは何も無い境界）
+  head_bottom: TableBoundary,
+  /// 下端の枠罫
+  bottom: TableBoundary,
+}
+
+impl<'a> FragmentFrame<'a> {
+  /// 表 `table` の本体行を置くときの枠
+  fn of(table: &'a TableBox) -> Self {
+    return FragmentFrame {
+      top: table.top,
+      repeated_head: &table.repeated_head,
+      head_bottom: table.head_bottom,
+      bottom: table.bottom,
+    };
+  }
+
+  /// ヘッダ行を置くときの枠（再掲ヘッダとヘッダ下の罫線を積まない）
+  fn for_head_rows(self) -> Self {
+    return FragmentFrame {
+      repeated_head: &[],
+      head_bottom: TableBoundary::default(),
+      ..self
+    };
+  }
+
+  /// 断片を開くときに行の前へ積む高さ
+  fn opening_height(&self) -> Length {
+    let head: Length = self.repeated_head.iter().map(|row| return row.above.height + row.height()).sum();
+    return self.top.height + head + self.head_bottom.height;
+  }
+
+  /// 行 `row` を置くのに要る高さ — 前に積むもの（`opening` なら断片の頭で、行の上の境界は捨てる。そうでなければ
+  /// 行の上の境界）+ 行帯 + 下端の枠罫（どの行も断片の最後の行になりうるので予約する）
+  fn row_need(&self, row: &TableRowFragment, opening: bool) -> Length {
+    let lead = if opening {
+      self.opening_height()
+    } else {
+      row.above.height
+    };
+    return lead + row.height() + self.bottom.height;
+  }
+}
+
+/// 表を行断片の単位で配置する（断片ごとに上端・下端の枠罫を引き、改段・改ページ後の先頭に再掲ヘッダを積む）
 ///
-/// 表固有の判断は分割してよいか（`breakable`）と再掲ヘッダを積むことの 2 つだけで、断片の中身（列幅・セル余白・
-/// 罫線・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと揃えオフセットと、行の脚注の
-/// 予約・配置（[`place_table_row`]）。セルの脚注本体は `breaker` で段幅 `column_width` に行分割する。
-/// 未解決アンカーは空でない最初の断片の着地（[`PageDraft::place_table_fragment`]）で解決する。
-/// 先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
+/// 表固有の判断は分割してよいか（`breakable`）と断片の開閉（[`FragmentFrame`]）だけで、断片と境界の中身（列幅・
+/// セル余白・罫線の太さと空き・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと揃え
+/// オフセットと、行の脚注の予約・配置（[`place_table_row`]）。セルの脚注本体は `breaker` で段幅 `column_width` に
+/// 行分割する。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
+/// 解決する。先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
 fn place_table(
   composer: &mut PageComposer,
   geom: &PageGeometry,
@@ -1049,11 +1104,20 @@ fn place_table(
   let TableBox {
     origin,
     width,
+    top,
+    head_bottom,
+    bottom,
     head,
     repeated_head,
     rows,
     ..
   } = table;
+  let body_frame = FragmentFrame {
+    top,
+    repeated_head: &repeated_head,
+    head_bottom,
+    bottom,
+  };
   // 幅のはみ出しは表 1 個につき 1 件で、最初の断片が着地して `page_index` が着地ページになってから記録する
   // （断片が 1 つも無い表は呼び出し時点のページ）
   let mut width_excess = excess(width, column_width);
@@ -1062,65 +1126,75 @@ fn place_table(
       composer.record(OverflowKind::Table { origin, excess });
     }
   };
-  let mut pending: Vec<(TableRowFragment, Length)> = Vec::new();
+  let mut pending: Option<PendingTableFragment> = None;
   for (row, bodies) in head.into_iter().zip(head_bodies) {
-    place_table_row(composer, geom, row, bodies, &[], &mut pending, align_offset);
+    place_table_row(composer, geom, row, bodies, body_frame.for_head_rows(), &mut pending, align_offset);
     record_width_excess(composer);
   }
   for (row, bodies) in rows.into_iter().zip(row_bodies) {
-    place_table_row(composer, geom, row, bodies, &repeated_head, &mut pending, align_offset);
+    place_table_row(composer, geom, row, bodies, body_frame, &mut pending, align_offset);
     record_width_excess(composer);
   }
   record_width_excess(composer);
-  flush_table_rows(composer, &mut pending, align_offset);
+  close_table_fragment(composer, &mut pending, bottom, align_offset);
 }
 
-/// 溜めた行断片を現在の段へ着地させる（改リージョンの前に呼ぶので段オフセットは着地段のもの）
-fn flush_table_rows(composer: &mut PageComposer, pending: &mut Vec<(TableRowFragment, Length)>, align_offset: Length) {
+/// 開いている断片があれば、下端の枠罫 `bottom` を積んで現在の段へ着地させる（改リージョンの前に呼ぶので段オフセットは
+/// 着地段のもの）
+fn close_table_fragment(
+  composer: &mut PageComposer,
+  pending: &mut Option<PendingTableFragment>,
+  bottom: TableBoundary,
+  align_offset: Length,
+) {
+  let Some(mut fragment) = pending.take() else {
+    return;
+  };
+  stack_boundary(&mut fragment, bottom, &mut composer.cursor.y);
   let column_x = composer.column_offset();
-  composer.draft.place_table_fragment(std::mem::take(pending), column_x, align_offset);
+  composer.draft.place_table_fragment(fragment, column_x, align_offset);
+}
+
+/// 境界 `boundary` を `y` から断片へ積み、`y` を境界の高さだけ進める
+fn stack_boundary(fragment: &mut PendingTableFragment, boundary: TableBoundary, y: &mut Length) {
+  fragment.rules.extend(boundary.place(Length::ZERO, *y));
+  *y += boundary.height;
 }
 
 /// 表の行 1 本を、その脚注（行分割済みの `bodies`）と合わせて現在リージョンへ置く
 ///
-/// 送るとき（[`defers_table_row`]）は、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）の
-/// 下に置くとして判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときは、ヘッダを積まずにさらに送る
-/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。
-/// 送った先でも脚注が入らない行と、予約の無い新リージョンに行だけでも入らないので送らなかった行は、本文の行と同じく
-/// はみ出しを記録して置く。
+/// 断片が開いていなければ開き（`frame` の上端の枠罫と、本体行なら再掲ヘッダとヘッダ下の罫線を積む）、行の上の境界は
+/// 捨てる — 断片の上端は枠罫の持ち場。開いていれば行の上の境界を積む。収まりはどちらも下端の枠罫を予約して判定する。
+/// 送るとき（[`defers_table_row`]）は、開いている断片を閉じて改リージョンし、新しい断片を開くとして判定し直す。
+/// 新リージョンの脚注エリアが繰越で埋まっていて入らないときは、断片を開かずにさらに送る（ヘッダだけのリージョンを
+/// 作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。送った先でも脚注が入らない行と、
+/// 予約の無い新リージョンに行だけでも入らないので送らなかった行は、本文の行と同じくはみ出しを記録して置く。
 /// 脚注の予約・分割・繰越は段落の行の確定（`place_paragraph`）と同じ順で行う。
 fn place_table_row(
   composer: &mut PageComposer,
   geom: &PageGeometry,
   row: TableRowFragment,
   bodies: Vec<PendingFootnote>,
-  repeated_head: &[TableRowFragment],
-  pending: &mut Vec<(TableRowFragment, Length)>,
+  frame: FragmentFrame<'_>,
+  pending: &mut Option<PendingTableFragment>,
   align_offset: Length,
 ) {
   let charges = FootnoteCharges::of(geom);
   let demands: Vec<FootnoteDemand> =
     bodies.iter().map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading)).collect();
   let height = row.height();
-  let head_height: Length = repeated_head.iter().map(TableRowFragment::height).sum();
-  let mut fit = fit_table_row(composer.cursor, height, &demands, geom);
-  if defers_table_row(composer.cursor, height, &demands, head_height, geom) {
+  let fresh = frame.row_need(&row, true);
+  let here = frame.row_need(&row, pending.is_none());
+  let mut fit = fit_table_row(composer.cursor, here, &demands, geom);
+  if defers_table_row(composer.cursor, here, &demands, fresh, geom) {
     loop {
-      flush_table_rows(composer, pending, align_offset);
+      close_table_fragment(composer, pending, frame.bottom, align_offset);
       composer.advance_region(geom);
       let carried = composer.cursor.footnote_reserved > Length::ZERO;
-      let below_head = RegionCursor {
-        y: composer.cursor.y + head_height,
-        ..composer.cursor
-      };
-      fit = fit_table_row(below_head, height, &demands, geom);
+      fit = fit_table_row(composer.cursor, fresh, &demands, geom);
       if !(carried && matches!(fit, LineFootnoteFit::Rejected)) {
         break;
       }
-    }
-    for head_row in repeated_head {
-      pending.push((head_row.clone(), composer.cursor.y));
-      composer.cursor.y += head_row.height();
     }
   }
   let (area, splits) = match fit {
@@ -1139,15 +1213,37 @@ fn place_table_row(
       )
     },
   };
-  // 縦は行自身の脚注予約を足す前の下限で測る（本文の行と同じ。脚注の溢れは `FootnoteLine` が記録する）
-  let top = composer.cursor.y;
+  // 縦は行自身の脚注予約を足す前の下限で、収まり判定と同じく下端の枠罫の予約まで測る（本文の行と同じ。脚注の
+  // 溢れは `FootnoteLine` が記録する）
   let limit = composer.cursor.region_limit(geom);
+  let opening = pending.is_none();
+  let cursor_y = composer.cursor.y;
+  let fragment = pending.get_or_insert_with(|| {
+    return PendingTableFragment {
+      top_y: cursor_y,
+      rows: Vec::new(),
+      rules: Vec::new(),
+    };
+  });
+  let mut y = cursor_y;
+  if opening {
+    stack_boundary(fragment, frame.top, &mut y);
+    for head_row in frame.repeated_head {
+      stack_boundary(fragment, head_row.above, &mut y);
+      fragment.rows.push((head_row.clone(), y));
+      y += head_row.height();
+    }
+    stack_boundary(fragment, frame.head_bottom, &mut y);
+  } else {
+    stack_boundary(fragment, row.above, &mut y);
+  }
+  let top = y;
   let (origin, overrun) = (row.origin, row.overrun);
-  pending.push((row, top));
-  composer.cursor.y += height;
+  fragment.rows.push((row, top));
+  composer.cursor.y = top + height;
   let row_overflows = [
     (OverflowAxis::Horizontal, excess(overrun, Length::ZERO)),
-    (OverflowAxis::Vertical, excess(top + height, limit)),
+    (OverflowAxis::Vertical, excess(top + height + frame.bottom.height, limit)),
   ];
   for (axis, over) in row_overflows {
     if let Some(excess) = over {
@@ -1187,7 +1283,7 @@ mod tests {
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
         MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink,
-        PlacedTableRow, PlacedTableRule, TableBox, TableRowFragment,
+        PlacedTableRow, TableBoundary, TableBox, TableRowFragment,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -1903,7 +1999,7 @@ mod tests {
       .iter()
       .filter_map(|b| match b {
         PlacedBlock::Line { line, baseline_y } => return Some(*baseline_y + line.depth),
-        PlacedBlock::Table { rows } => return rows.last().map(|row| return row.top_y + row.height),
+        PlacedBlock::Table { rows, .. } => return rows.last().map(|row| return row.top_y + row.height),
         _ => return None,
       })
       .reduce(Length::max);
@@ -2306,10 +2402,10 @@ mod tests {
           dx: pt(2.0),
           dy: Length::ZERO,
         }],
-        rule: None,
       },
       origin: table_row_origin(),
       overrun: Length::ZERO,
+      above: TableBoundary::default(),
       links: Vec::new(),
       index_marks: Vec::new(),
       footnotes: Vec::new(),
@@ -2336,11 +2432,172 @@ mod tests {
     return TableBox {
       origin: table_origin(),
       width: pt(24.0),
+      top: TableBoundary::default(),
+      head_bottom: TableBoundary::default(),
+      bottom: TableBoundary::default(),
       head,
       repeated_head,
       rows,
       breakable: true,
     };
+  }
+
+  /// 上端・下端の枠罫（太さ 1・空き 2 → 高さ 3）を付け、`head` があればヘッダ下の罫線（空き 2・太さ 1・空き 2 →
+  /// 高さ 5）も付けて `rows[0].above` をそれにする。`head` が空なら `head_bottom` も `rows[0].above` も既定値のまま
+  /// （表エンジンの `arrange` と同じ決め方）
+  fn framed(mut table: TableBox) -> TableBox {
+    let width = table.width;
+    table.top = TableBoundary::rule(Length::ZERO, pt(1.0), pt(2.0), width, None);
+    table.bottom = TableBoundary::rule(pt(2.0), pt(1.0), Length::ZERO, width, None);
+    if !table.head.is_empty() {
+      table.head_bottom = TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), width, None);
+      if let Some(first) = table.rows.first_mut() {
+        first.above = table.head_bottom;
+      }
+    }
+    return table;
+  }
+
+  /// 行の上に区切りの罫線（空き 2・太さ 1・空き 2 → 高さ 5、表幅 24）を付ける
+  fn separated(mut row: TableRowFragment) -> TableRowFragment {
+    row.above = TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), pt(24.0), None);
+    return row;
+  }
+
+  /// 表だけを左揃え・段幅 100 で `test_geometry` に配置する
+  fn break_table(table: TableBox) -> Vec<Page> {
+    let (pages, _) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      Length::pt(100.0),
+      &test_geometry(),
+      &GreedyBreaker,
+    );
+    return pages;
+  }
+
+  /// ページの表ブロックの罫線の y（pt）
+  fn rule_ys(page: &Page) -> Vec<f32> {
+    return page
+      .blocks
+      .iter()
+      .filter_map(|block| match block {
+        PlacedBlock::Table { rules, .. } => return Some(rules.iter().map(|rule| return rule.y.to_pt())),
+        _ => return None,
+      })
+      .flatten()
+      .collect();
+  }
+
+  /// ページの表ブロックの行帯上端の y（pt）
+  fn row_tops(page: &Page) -> Vec<f32> {
+    return page
+      .blocks
+      .iter()
+      .filter_map(|block| match block {
+        PlacedBlock::Table { rows, .. } => return Some(rows.iter().map(|row| return row.top_y.to_pt())),
+        _ => return None,
+      })
+      .flatten()
+      .collect();
+  }
+
+  /// pt 値の列が 1e-3 以内で一致するか
+  fn all_close(actual: &[f32], expected: &[f32]) -> bool {
+    return actual.len() == expected.len() && actual.iter().zip(expected).all(|(a, e)| return (a - e).abs() < 1e-3);
+  }
+
+  #[test]
+  fn table_draws_top_and_bottom_rules_around_a_single_fragment() {
+    // ヘッダなし 2 行: 上端の罫線 y=10、行 13 / 23、下端の罫線 y=35（行の下端 33 + 空き 2）
+    let pages = break_table(framed(table_box(Vec::new(), vec![table_row("R0"), table_row("R1")])));
+
+    assert_eq!(pages.len(), 1);
+    assert!(all_close(&rule_ys(&pages[0]), &[10.0, 35.0]), "{:?}", rule_ys(&pages[0]));
+    assert!(all_close(&row_tops(&pages[0]), &[13.0, 23.0]), "{:?}", row_tops(&pages[0]));
+  }
+
+  #[test]
+  fn row_separator_takes_space_between_rows() {
+    // 枠なし、R1 に区切り: R0 は 10、罫線 22、R1 は 25
+    let pages = break_table(table_box(Vec::new(), vec![table_row("R0"), separated(table_row("R1"))]));
+
+    assert!(all_close(&rule_ys(&pages[0]), &[22.0]), "{:?}", rule_ys(&pages[0]));
+    assert!(all_close(&row_tops(&pages[0]), &[10.0, 25.0]), "{:?}", row_tops(&pages[0]));
+  }
+
+  #[test]
+  fn each_fragment_is_framed_and_repeats_the_head_rule() {
+    // 1 ページ目: 上端 10・HEAD 13・ヘッダ下 25・R0 28・下端 40。R1 は 38 + 10 + 3 = 51 > 50 なので送られ、
+    // 2 ページ目も同じ並び（再掲 HEAD 13・ヘッダ下 25・R1 28・下端 40）
+    let pages = break_table(framed(table_box(vec![table_row("HEAD")], vec![table_row("R0"), table_row("R1")])));
+
+    assert_eq!(pages.len(), 2);
+    for page in &pages {
+      assert!(all_close(&rule_ys(page), &[10.0, 25.0, 40.0]), "{:?}", rule_ys(page));
+      assert!(all_close(&row_tops(page), &[13.0, 28.0]), "{:?}", row_tops(page));
+    }
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("HEAD"));
+  }
+
+  #[test]
+  fn separator_at_the_top_of_a_continuation_fragment_is_dropped() {
+    // ヘッダなし: R1〜R3 は区切り付き。1 ページ目: 上端 10・R0 13・区切り 25・R1 28・下端 40。
+    // 2 ページ目の先頭 R2 の区切りは捨てられ（罫線も空きも無い）、R3 の区切りは描く
+    let rows = vec![
+      table_row("R0"),
+      separated(table_row("R1")),
+      separated(table_row("R2")),
+      separated(table_row("R3")),
+    ];
+
+    let pages = break_table(framed(table_box(Vec::new(), rows)));
+
+    assert_eq!(pages.len(), 2);
+    assert!(all_close(&rule_ys(&pages[0]), &[10.0, 25.0, 40.0]), "{:?}", rule_ys(&pages[0]));
+    assert!(all_close(&rule_ys(&pages[1]), &[10.0, 25.0, 40.0]), "{:?}", rule_ys(&pages[1]));
+    assert!(all_close(&row_tops(&pages[1]), &[13.0, 28.0]), "{:?}", row_tops(&pages[1]));
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R2"));
+  }
+
+  #[test]
+  fn row_that_leaves_no_room_for_the_bottom_rule_moves_to_the_next_region() {
+    // 行帯 12 × 3: R2 の帯は 37..49 に収まるが下端の枠罫 3 を足すと 52 > 50
+    let row = |text: &str| return table_fragment(table_text_box(text), 12.0, 10.0);
+
+    let pages = break_table(framed(table_box(Vec::new(), vec![row("R0"), row("R1"), row("R2")])));
+
+    assert_eq!(pages.len(), 2);
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R2"));
+  }
+
+  #[test]
+  fn unbreakable_table_counts_the_frames_when_deferring() {
+    // 高さ 10 の画像の後 y=20 から、分割禁止の 3 行（帯 10）: 帯だけなら 50 ≤ 50 だが枠込み 56 > 50。
+    // 新しいページ（10 + 36 = 46）には収まるので丸ごと送る
+    let table = TableBox {
+      breakable: false,
+      ..framed(table_box(Vec::new(), vec![table_row("R0"), table_row("R1"), table_row("R2")]))
+    };
+
+    let (pages, _) = break_pages(
+      vec![
+        image_block(10.0, 10.0),
+        Block::Table {
+          table,
+          align: Align::Left,
+        },
+      ],
+      Length::pt(100.0),
+      &test_geometry(),
+      &GreedyBreaker,
+    );
+
+    assert_eq!(pages.len(), 2);
+    assert!(!pages[0].blocks.iter().any(|block| return matches!(block, PlacedBlock::Table { .. })));
+    assert!(all_close(&row_tops(&pages[1]), &[13.0, 23.0, 33.0]), "{:?}", row_tops(&pages[1]));
   }
 
   /// 表の行断片に、`text` の箱（x 2..22）と行帯の全高を覆うリンク矩形を足すヘルパ
@@ -2390,7 +2647,7 @@ mod tests {
       &GreedyBreaker,
     );
 
-    let Some(PlacedBlock::Table { rows }) = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. }))
+    let Some(PlacedBlock::Table { rows, .. }) = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. }))
     else {
       panic!("1 ページ目に表があるはず: {pages:?}");
     };
@@ -2505,42 +2762,48 @@ mod tests {
   }
 
   #[test]
-  fn place_table_shifts_rule_and_boxes_to_the_landing_point() {
-    // 罫線と箱は表左端・行帯上端を原点に確定済みで、配置は着地点（段オフセット 0・上端 10）を足すだけ
-    let geom = test_geometry();
-    let mut row = table_row("R0");
-    row.row.rule = Some(PlacedTableRule {
-      x: Length::ZERO,
-      y: Length::ZERO,
-      width: pt(24.0),
-      height: pt(1.5),
-      color: Some([9, 9, 9]),
-    });
+  fn place_table_shifts_rules_and_boxes_to_the_landing_point() {
+    // 罫線は境界上端・表左端、箱は表左端・行帯上端を原点に確定済みで、配置は着地点（段オフセット 0・上端 10）を足すだけ
     let table = TableBox {
+      top: TableBoundary::rule(Length::ZERO, pt(1.5), Length::ZERO, pt(24.0), Some([9, 9, 9])),
       breakable: false,
-      ..table_box(Vec::new(), vec![row])
+      ..table_box(Vec::new(), vec![table_row("R0")])
     };
 
-    let (pages, _) = break_pages(
-      vec![Block::Table {
-        table,
-        align: Align::Left,
-      }],
-      Length::pt(100.0),
-      &geom,
-      &GreedyBreaker,
-    );
+    let pages = break_table(table);
 
-    let PlacedBlock::Table { rows } =
+    let PlacedBlock::Table { rows, rules } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!("直前の matches! で確認済み");
     };
     assert!(close(rows[0].boxes[0].dx, 2.0), "箱の x は断片の値のまま: {:?}", rows[0]);
-    let rule = rows[0].rule.expect("罫線を持つ断片なので確定罫線を持つはず");
+    assert!(close(rows[0].top_y, 11.5), "行は上端の枠罫の下: {:?}", rows[0]);
+    assert_eq!(rules.len(), 1, "{rules:?}");
+    let rule = rules[0];
     assert!(close(rule.x, 0.0) && close(rule.y, 10.0), "{rule:?}");
     assert!(close(rule.width, 24.0) && close(rule.height, 1.5), "{rule:?}");
     assert_eq!(rule.color, Some([9, 9, 9]));
+  }
+
+  #[test]
+  fn table_rules_shift_with_their_rows_under_flush_bottom() {
+    // 枠付きの 1 行表（上端 22・罫線 22 / 35・行 25..35・下端の罫線の下端 38）は、不足 50 - 38 = 12 だけ下がる。
+    // 下端の罫線の下端がブロックの底なので、行の下端 35 で測ると 15 下がって版面からはみ出す
+    let blocks = vec![
+      fixed_block(8.0),
+      Block::stretchable_space(pt(4.0), pt(4.0)),
+      Block::Table {
+        table: framed(table_box(Vec::new(), vec![table_row("R0")])),
+        align: Align::Left,
+      },
+      fixed_block(40.0),
+    ];
+
+    let (pages, _) = break_pages(blocks, Length::pt(100.0), &flush_geometry(), &GreedyBreaker);
+
+    assert!(all_close(&rule_ys(&pages[0]), &[34.0, 49.0]), "{:?}", rule_ys(&pages[0]));
+    assert!(all_close(&row_tops(&pages[0]), &[37.0]), "{:?}", row_tops(&pages[0]));
   }
 
   #[test]
@@ -2953,7 +3216,7 @@ mod tests {
 
     let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker);
 
-    let PlacedBlock::Table { rows } =
+    let PlacedBlock::Table { rows, .. } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!()
@@ -2976,7 +3239,7 @@ mod tests {
 
     let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker);
 
-    let PlacedBlock::Table { rows } =
+    let PlacedBlock::Table { rows, .. } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!()
@@ -3177,7 +3440,7 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Table { rows } => return rows.first()?.boxes.first().map(|placed| return placed.dx),
+        PlacedBlock::Table { rows, .. } => return rows.first()?.boxes.first().map(|placed| return placed.dx),
         _ => return None,
       })
       .collect();
@@ -3836,7 +4099,7 @@ mod tests {
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[0]).as_deref(), Some("R0"));
-    let PlacedBlock::Table { rows } =
+    let PlacedBlock::Table { rows, .. } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!("直前の matches! で確認済み");
@@ -4250,7 +4513,7 @@ mod tests {
       .blocks
       .iter()
       .map(|block| match block {
-        PlacedBlock::Table { rows } => return rows.len(),
+        PlacedBlock::Table { rows, .. } => return rows.len(),
         _ => return 0,
       })
       .sum();

@@ -168,32 +168,35 @@ keywords=["test", "seiran"]
   glyphs x=864.03 y=410.03 font=JapaneseSerif size=12.00 text="で" glyph_count=1
   glyphs x=876.03 y=410.03 font=JapaneseSerif size=12.00 text="す" glyph_count=1
   glyphs x=887.07 y=410.03 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=797.31 y=460.44 font=JapaneseSerifBold size=12.00 text="項" glyph_count=1
-  glyphs x=809.31 y=460.44 font=JapaneseSerifBold size=12.00 text="目" glyph_count=1
-  glyphs x=853.31 y=460.44 font=JapaneseSerifBold size=12.00 text="値" glyph_count=1
-  glyphs x=797.31 y=477.69 font=JapaneseSerif size=12.00 text="本" glyph_count=1
-  glyphs x=809.31 y=477.69 font=JapaneseSerif size=12.00 text="体" glyph_count=1
-  glyphs x=821.31 y=477.69 font=JapaneseSerif size=12.00 text="セ" glyph_count=1
-  glyphs x=833.31 y=477.69 font=JapaneseSerif size=12.00 text="ル" glyph_count=1
-  glyphs x=853.31 y=477.69 font=JapaneseSerif size=12.00 text="表" glyph_count=1
-  glyphs x=865.31 y=477.69 font=JapaneseSerif size=12.00 text="の" glyph_count=1
-  glyphs x=877.31 y=477.69 font=JapaneseSerif size=12.00 text="中" glyph_count=1
-  glyphs x=797.31 y=494.93 font=JapaneseSerif size=12.00 text="セ" glyph_count=1
-  glyphs x=809.31 y=494.93 font=JapaneseSerif size=12.00 text="ル" glyph_count=1
-  glyphs x=821.31 y=494.93 font=JapaneseSerif size=12.00 text="結" glyph_count=1
-  glyphs x=833.31 y=494.93 font=JapaneseSerif size=12.00 text="合" glyph_count=1
-  glyphs x=751.53 y=517.02 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=792.75 y=517.02 font=JapaneseSerif size=11.00 text="キャ" glyph_count=2
-  glyphs x=814.75 y=517.02 font=JapaneseSerif size=11.00 text="プ" glyph_count=1
-  glyphs x=825.31 y=517.02 font=JapaneseSerif size=11.00 text="ショ" glyph_count=2
-  glyphs x=847.09 y=517.02 font=JapaneseSerif size=11.00 text="ン" glyph_count=1
-  glyphs x=858.09 y=517.02 font=JapaneseSerif size=11.00 text="の" glyph_count=1
-  glyphs x=869.09 y=517.02 font=JapaneseSerif size=11.00 text="索" glyph_count=1
-  glyphs x=880.09 y=517.02 font=JapaneseSerif size=11.00 text="引" glyph_count=1
-  glyphs x=891.09 y=517.02 font=JapaneseSerif size=11.00 text="語" glyph_count=1
-  glyphs x=902.09 y=517.02 font=JapaneseSerif size=11.00 text="を" glyph_count=1
-  glyphs x=913.09 y=517.02 font=JapaneseSerif size=11.00 text="含" glyph_count=1
-  glyphs x=924.09 y=517.02 font=JapaneseSerif size=11.00 text="む" glyph_count=1
+  fillrect x=793.31 y=446.63 w=100.00 h=0.80 color=None
+  fillrect x=793.31 y=468.67 w=100.00 h=0.50 color=None
+  fillrect x=793.31 y=507.66 w=100.00 h=0.80 color=None
+  glyphs x=797.31 y=463.24 font=JapaneseSerifBold size=12.00 text="項" glyph_count=1
+  glyphs x=809.31 y=463.24 font=JapaneseSerifBold size=12.00 text="目" glyph_count=1
+  glyphs x=853.31 y=463.24 font=JapaneseSerifBold size=12.00 text="値" glyph_count=1
+  glyphs x=797.31 y=484.99 font=JapaneseSerif size=12.00 text="本" glyph_count=1
+  glyphs x=809.31 y=484.99 font=JapaneseSerif size=12.00 text="体" glyph_count=1
+  glyphs x=821.31 y=484.99 font=JapaneseSerif size=12.00 text="セ" glyph_count=1
+  glyphs x=833.31 y=484.99 font=JapaneseSerif size=12.00 text="ル" glyph_count=1
+  glyphs x=853.31 y=484.99 font=JapaneseSerif size=12.00 text="表" glyph_count=1
+  glyphs x=865.31 y=484.99 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=877.31 y=484.99 font=JapaneseSerif size=12.00 text="中" glyph_count=1
+  glyphs x=797.31 y=502.23 font=JapaneseSerif size=12.00 text="セ" glyph_count=1
+  glyphs x=809.31 y=502.23 font=JapaneseSerif size=12.00 text="ル" glyph_count=1
+  glyphs x=821.31 y=502.23 font=JapaneseSerif size=12.00 text="結" glyph_count=1
+  glyphs x=833.31 y=502.23 font=JapaneseSerif size=12.00 text="合" glyph_count=1
+  glyphs x=751.53 y=527.12 font=Serif size=11.00 text="Table .1:" glyph_count=9
+  glyphs x=792.75 y=527.12 font=JapaneseSerif size=11.00 text="キャ" glyph_count=2
+  glyphs x=814.75 y=527.12 font=JapaneseSerif size=11.00 text="プ" glyph_count=1
+  glyphs x=825.31 y=527.12 font=JapaneseSerif size=11.00 text="ショ" glyph_count=2
+  glyphs x=847.09 y=527.12 font=JapaneseSerif size=11.00 text="ン" glyph_count=1
+  glyphs x=858.09 y=527.12 font=JapaneseSerif size=11.00 text="の" glyph_count=1
+  glyphs x=869.09 y=527.12 font=JapaneseSerif size=11.00 text="索" glyph_count=1
+  glyphs x=880.09 y=527.12 font=JapaneseSerif size=11.00 text="引" glyph_count=1
+  glyphs x=891.09 y=527.12 font=JapaneseSerif size=11.00 text="語" glyph_count=1
+  glyphs x=902.09 y=527.12 font=JapaneseSerif size=11.00 text="を" glyph_count=1
+  glyphs x=913.09 y=527.12 font=JapaneseSerif size=11.00 text="含" glyph_count=1
+  glyphs x=924.09 y=527.12 font=JapaneseSerif size=11.00 text="む" glyph_count=1
   fillrect x=240.94 y=2088.81 w=72.00 h=0.40 color=None
   glyphs x=240.94 y=2099.97 font=Serif size=6.30 text="1" glyph_count=1
   glyphs x=244.06 y=2103.57 font=JapaneseSerif size=9.00 text="脚" glyph_count=1

@@ -1,7 +1,7 @@
 //! `table` 本体の走査（`\head` / `\row` / `\caption`）と列数の解決・検証
 
 use crate::{
-  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableCell, HirTableRow},
+  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableCell, HirTableRow, RowSeparator},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -22,8 +22,8 @@ use crate::{
   source::Span,
 };
 
-/// `\row[rule_above]`（行の上に罫線を引く）
-const RULE_ABOVE: OptKey<bool> = opt_args::boolean("rule_above");
+/// `\row[separator=rule|gap]`（行の上の境界に置く区切り）
+const SEPARATOR: OptKey<String> = opt_args::string("separator");
 
 /// `table` 環境の本体に書けるコマンド
 #[derive(Debug, Clone, Copy)]
@@ -103,6 +103,16 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
     }
   }
 
+  // 表の最初の行（`head[0]`、ヘッダが無ければ `rows[0]`）の上と、ヘッダ直後（ヘッダがあるときの `rows[0]`）の上は
+  // style の枠罫の持ち場。`rows[0]` はどちらかに必ず当たり、`\head` がソース上で後にあっても本体の先頭行のまま
+  for row in head.first().into_iter().chain(rows.first()) {
+    if row.separator.is_some() {
+      return Err(EvalError::TableSeparatorOnFrameBoundary {
+        span: ctx.span_of(row.id).into(),
+      });
+    }
+  }
+
   return Ok(TableBody {
     head,
     rows,
@@ -136,14 +146,27 @@ fn evaluate_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<Hi
   return Ok(rows);
 }
 
-/// `\row[rule_above]{A & B & \cell[span=2]{C}}` を 1 行に変換する
+/// `\row[separator=rule]{A & B & \cell[span=2]{C}}` を 1 行に変換する
 fn evaluate_row(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableRow, EvalError> {
-  let opts = collect_command_opt_args(view, &[RULE_ABOVE.decl()])?;
-  let rule_above = opts.get(RULE_ABOVE).unwrap_or(false);
+  let opts = collect_command_opt_args(view, &[SEPARATOR.decl()])?;
+  let separator = match opts.get(SEPARATOR) {
+    Some(value) => {
+      let Ok(separator) = value.parse::<RowSeparator>() else {
+        return Err(EvalError::InvalidOptArgValue {
+          name: "row".to_string(),
+          key: "separator".to_string(),
+          expected: "rule / gap".to_string(),
+          span: view.span().into(),
+        });
+      };
+      Some(separator)
+    },
+    None => None,
+  };
 
   let arg = arity::exactly_one_arg(view, "セル内容")?;
 
@@ -177,7 +200,7 @@ fn evaluate_row(
   return Ok(HirTableRow {
     id,
     cells,
-    rule_above,
+    separator,
   });
 }
 

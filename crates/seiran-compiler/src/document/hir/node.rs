@@ -2,7 +2,8 @@
 
 use crate::{
   document::{
-    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathBlockKind, QuoteKind, TextAlignment, TheoremClass,
+    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathBlockKind, QuoteKind, RowSeparator, TextAlignment,
+    TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
   length::Length,
@@ -208,8 +209,10 @@ pub(crate) struct HirTableRow {
   pub(crate) id: NodeId,
   /// 行内のセル（ソース上の `&` 区切り、または `\cell[...]{...}`）
   pub(crate) cells: Vec<HirTableCell>,
-  /// この行の上に横罫線を引くか（`\row[rule_above]{...}`）
-  pub(crate) rule_above: bool,
+  /// この行の上の境界に置く区切り（`\row[separator=...]{...}`。`None` は区切りなし）
+  ///
+  /// 表の最初の `\head` 行と最初の本体行は枠罫の持ち場なので、frontend が `Some` を拒否する。
+  pub(crate) separator: Option<RowSeparator>,
 }
 
 /// 表の 1 セル

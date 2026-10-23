@@ -232,7 +232,13 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
         push_box_ops(ops, origin_x + placed.dx.to_pt(), (baseline_y - placed.dy).to_pt(), placed.hbox);
       }
     },
-    PlacedBlock::Table { rows } => {
+    PlacedBlock::Table { rows, rules } => {
+      for rule in rules {
+        ops.push(PaintOp::FillRect {
+          rect: rect(origin_x + rule.x.to_pt(), rule.y.to_pt(), rule.width.to_pt(), rule.height.to_pt()),
+          color: rule.color,
+        });
+      }
       for placed_row in rows {
         push_table_row_ops(ops, placed_row, origin_x);
       }
@@ -308,12 +314,6 @@ fn push_box_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, hbox: HBox) {
 
 /// 位置確定済みの表の 1 行から描画命令を追加する。
 fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: PlacedTableRow, origin_x: f32) {
-  if let Some(rule) = placed_row.rule {
-    ops.push(PaintOp::FillRect {
-      rect: rect(origin_x + rule.x.to_pt(), rule.y.to_pt(), rule.width.to_pt(), rule.height.to_pt()),
-      color: rule.color,
-    });
-  }
   let baseline_y = placed_row.baseline_y;
   for placed in placed_row.boxes {
     push_box_ops(ops, origin_x + placed.dx.to_pt(), (baseline_y - placed.dy).to_pt(), placed.hbox);
@@ -338,7 +338,7 @@ mod tests {
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      boxes::{AnchorId, Page},
+      boxes::{AnchorId, Page, PlacedTableRule},
       test_support::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, table_block,
@@ -589,25 +589,24 @@ mod tests {
   }
 
   #[test]
-  fn build_flattens_table_rule_above_then_cell_content() {
+  fn build_flattens_table_rules_then_cell_content() {
     let config = test_config();
     let cell_run = glyph_run("cell");
     let row = TableRowSpec {
       top_y: Length::pt(40.0),
       height: Length::pt(10.0),
       baseline: Length::pt(10.0),
-      rule_above: true,
       cells: vec![vec![(cell_run, BoxSize::pt(30.0, 10.0, 0.0))]],
     };
+    let rule = PlacedTableRule {
+      x: Length::ZERO,
+      y: Length::pt(38.0),
+      width: Length::pt(100.0),
+      height: Length::pt(0.5),
+      color: None,
+    };
     let page = page_builder()
-      .block(table_block(
-        Length::pt(0.0),
-        &[Length::pt(100.0)],
-        vec![row],
-        Length::pt(4.0),
-        Length::pt(0.5),
-        None,
-      ))
+      .block(table_block(Length::pt(0.0), &[Length::pt(100.0)], vec![row], Length::pt(4.0), vec![rule]))
       .build();
 
     let publication = build(&config, vec![page], vec![]);
@@ -617,7 +616,7 @@ mod tests {
     // 表は本文左端（x = 0pt）に置いたので、罫線には原点がそのまま、セル内容には原点 + セル余白
     // （4pt）が乗る。どちらも原点はちょうど 1 回
     let PaintOp::FillRect { rect, .. } = ops[0] else {
-      panic!("先頭は rule_above の罫線（FillRect）のはず")
+      panic!("先頭は表の罫線（FillRect）のはず")
     };
     assert!((rect.x() - ORIGIN_X_PT).abs() < f32::EPSILON, "罫線に原点が 1 回だけ乗るはず: {}", rect.x());
     let PaintOp::DrawGlyphRun { origin, .. } = ops[1] else {

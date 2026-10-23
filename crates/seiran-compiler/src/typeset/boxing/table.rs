@@ -1,7 +1,8 @@
 //! 表エンジン — 表の組版（セルの組版と計測 → 列幅の決定 → セルの折り返しと行帯 → 行断片 → 再掲ヘッダ）を閉じる
 //!
-//! 入口は [`Measurer::build_table`]。入力は lowering が列指定・セルのインライン内容・セル余白・罫線の太さと色まで
-//! 解決した `TableLayout` で、HIR の表語彙は届かない。出力 [`TableBox`] は表左端・行帯上端を原点とする行断片の列で、
+//! 入口は [`Measurer::build_table`]。入力は lowering が列指定・セルのインライン内容・セル余白・罫線の太さと空きと色
+//! まで解決した `TableLayout` で、HIR の表語彙は届かない。出力 [`TableBox`] は表左端・行帯上端を原点とする行断片の列と、
+//! 罫線と空きを確定した境界（断片の上端・下端の枠罫、ヘッダ下の罫線、各行の上の区切り。規則は `arrange` の doc）で、
 //! 配置（`breaking::break_pages`）は段オフセットと揃えを足して置くだけ。
 //!
 //! 列幅の基準 `available` は表を置く段の幅（`BlockBuildInputs::column_width`）。本文では
@@ -16,12 +17,10 @@
 //! 初出の脚注本体へ飛ぶ。
 
 use crate::{
-  document::{ColumnAlign, ColumnWidth, NodeId, TextAlignment},
+  document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator, TextAlignment},
   length::Length,
   typeset::{
-    boxes::{
-      HItem, Line, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, PlacedTableRule, TableBox, TableRowFragment,
-    },
+    boxes::{HItem, Line, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, TableBoundary, TableBox, TableRowFragment},
     boxing::{self, Measurer, hlist::HList},
     breaking::{self, LineBreaker},
     lowering::{TableColumn, TableLayout, TableRowLayout},
@@ -44,8 +43,8 @@ struct MeasuredRow {
   origin: NodeId,
   /// 行内のセル
   cells: Vec<MeasuredCell>,
-  /// この行の上に横罫線を引くか
-  rule_above: bool,
+  /// この行の上の境界に置く区切り
+  separator: Option<RowSeparator>,
   /// セルの各行の帯の下限（行送り）
   leading: Length,
 }
@@ -58,7 +57,7 @@ impl MeasuredRow {
   fn new(
     origin: NodeId,
     cells: Vec<MeasuredCell>,
-    rule_above: bool,
+    separator: Option<RowSeparator>,
     default_font_size: Length,
     line_height_factor: f32,
   ) -> Self {
@@ -70,7 +69,7 @@ impl MeasuredRow {
     return MeasuredRow {
       origin,
       cells,
-      rule_above,
+      separator,
       leading: font_size * line_height_factor,
     };
   }
@@ -82,8 +81,14 @@ struct TableFrame<'a> {
   columns: &'a [TableColumn],
   /// セルの内側余白（左右各）
   cell_padding: Length,
-  /// 横罫線の太さ
+  /// 上端・下端の枠罫の太さ
+  outer_rule_thickness: Length,
+  /// ヘッダ下の罫線と行群の区切りの罫線の太さ
   rule_thickness: Length,
+  /// 罫線と行の間の空き
+  rule_gap: Length,
+  /// 行群の区切りの空き
+  row_gap: Length,
   /// 横罫線の色（RGB）。`None` は黒
   rule_color: Option<[u8; 3]>,
 }
@@ -98,7 +103,10 @@ impl Measurer<'_> {
       rows,
       breakable,
       cell_padding,
+      outer_rule_thickness,
       rule_thickness,
+      rule_gap,
+      row_gap,
       rule_color,
     } = table;
     let head = self.measure_rows(head);
@@ -106,7 +114,10 @@ impl Measurer<'_> {
     let frame = TableFrame {
       columns: &columns,
       cell_padding,
+      outer_rule_thickness,
       rule_thickness,
+      rule_gap,
+      row_gap,
       rule_color,
     };
     return arrange(origin, &frame, &head, &rows, available, breakable, breaker);
@@ -127,13 +138,19 @@ impl Measurer<'_> {
           column_span: cell.column_span,
         });
       }
-      result.push(MeasuredRow::new(row.origin, cells, row.rule_above, self.default_font_size, self.line_height_factor));
+      result.push(MeasuredRow::new(row.origin, cells, row.separator, self.default_font_size, self.line_height_factor));
     }
     return result;
   }
 }
 
-/// 計測済みの行から列幅を決め、初出ヘッダ・再掲ヘッダ・本体行の行断片を組む（フォントに触れない）
+/// 計測済みの行から列幅を決め、初出ヘッダ・再掲ヘッダ・本体行の行断片と枠の境界を組む（フォントに触れない）
+///
+/// 罫線の境界（g = `rule_gap`）は、断片の上端が `outer_rule_thickness` の罫線 + 下に g、下端が上に g + 罫線、
+/// ヘッダ下（`\head` があるときだけ）と `separator=rule` の行の上が g + `rule_thickness` の罫線 + g、`separator=gap`
+/// の行の上が `row_gap` の空き。太さ 0 の罫線は空きも取らない（[`TableBoundary::rule`]）。表の最初の行（`head[0]`、
+/// ヘッダが無ければ `rows[0]`）の上は枠罫の持ち場で何も無い境界、ヘッダがあるときの `rows[0]` の上はヘッダ下の罫線で、
+/// どちらも行自身の区切りを見ない（この 2 つの境界への `separator` は frontend が拒否する）。
 fn arrange(
   origin: NodeId,
   frame: &TableFrame<'_>,
@@ -144,8 +161,41 @@ fn arrange(
   breaker: &dyn LineBreaker,
 ) -> TableBox {
   let col_widths = resolve_column_widths(frame, head, rows, available);
-  let head: Vec<TableRowFragment> =
-    head.iter().map(|row| return row_fragment(row, frame, &col_widths, breaker)).collect();
+  let width: Length = col_widths.iter().copied().sum();
+  let rule = |gap_above: Length, thickness: Length, gap_below: Length| {
+    return TableBoundary::rule(gap_above, thickness, gap_below, width, frame.rule_color);
+  };
+  let separator = rule(frame.rule_gap, frame.rule_thickness, frame.rule_gap);
+  let head_bottom = if head.is_empty() {
+    TableBoundary::default()
+  } else {
+    separator
+  };
+  let fragments = |rows: &[MeasuredRow], first_above: TableBoundary| {
+    return rows
+      .iter()
+      .enumerate()
+      .map(|(index, row)| {
+        let above = if index == 0 {
+          first_above
+        } else {
+          match row.separator {
+            Some(RowSeparator::Rule) => separator,
+            Some(RowSeparator::Gap) => TableBoundary {
+              height: frame.row_gap,
+              rule: None,
+            },
+            None => TableBoundary::default(),
+          }
+        };
+        return TableRowFragment {
+          above,
+          ..row_fragment(row, frame, &col_widths, breaker)
+        };
+      })
+      .collect::<Vec<_>>();
+  };
+  let head = fragments(head, TableBoundary::default());
   let repeated_head = head
     .iter()
     .map(|fragment| {
@@ -158,10 +208,13 @@ fn arrange(
     .collect();
   return TableBox {
     origin,
-    width: col_widths.iter().copied().sum(),
+    width,
+    top: rule(Length::ZERO, frame.outer_rule_thickness, frame.rule_gap),
+    head_bottom,
+    bottom: rule(frame.rule_gap, frame.outer_rule_thickness, Length::ZERO),
     head,
     repeated_head,
-    rows: rows.iter().map(|row| return row_fragment(row, frame, &col_widths, breaker)).collect(),
+    rows: fragments(rows, head_bottom),
     breakable,
   };
 }
@@ -447,18 +500,12 @@ fn row_fragment(
   let mut fragment = TableRowFragment {
     origin: row.origin,
     overrun,
+    above: TableBoundary::default(),
     row: PlacedTableRow {
       top_y: Length::ZERO,
       height: first_band,
       baseline_y: baseline,
       boxes: Vec::new(),
-      rule: row.rule_above.then_some(PlacedTableRule {
-        x: Length::ZERO,
-        y: Length::ZERO,
-        width: col_widths.iter().copied().sum(),
-        height: frame.rule_thickness,
-        color: frame.rule_color,
-      }),
     },
     links: Vec::new(),
     index_marks: Vec::new(),
@@ -504,7 +551,7 @@ mod tests {
     split_evenly,
   };
   use crate::{
-    document::{ColumnAlign, ColumnWidth, NodeId},
+    document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator},
     length::Length,
     project::FontType,
     publication::GlyphRun,
@@ -611,8 +658,8 @@ mod tests {
   /// テストの行（[`row`]）が帰属する `\row` の ID
   fn origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 1); }
 
-  /// `rule_above = false` の行を作る（既定フォントサイズ 10pt・行高係数 1）
-  fn row(cells: Vec<MeasuredCell>) -> MeasuredRow { return MeasuredRow::new(origin(), cells, false, pt(10.0), 1.0); }
+  /// 区切りの無い行を作る（既定フォントサイズ 10pt・行高係数 1）
+  fn row(cells: Vec<MeasuredCell>) -> MeasuredRow { return MeasuredRow::new(origin(), cells, None, pt(10.0), 1.0); }
 
   /// 揃え `align`・幅指定 `Auto` の列を作る
   fn auto(align: ColumnAlign) -> TableColumn {
@@ -677,14 +724,192 @@ mod tests {
   /// 幅を sp の列で返す
   fn sps(widths: &[Length]) -> Vec<i64> { return widths.iter().map(|width| return width.sp()).collect(); }
 
-  /// セル余白 `padding`・罫線なし（太さ 0・黒）の表の見た目を作る
+  /// セル余白 `padding`・罫線なし（太さ 0・空き 0・黒）の表の見た目を作る
   fn frame(columns: &[TableColumn], padding: f32) -> TableFrame<'_> {
     return TableFrame {
       columns,
       cell_padding: pt(padding),
+      outer_rule_thickness: Length::ZERO,
       rule_thickness: Length::ZERO,
+      rule_gap: Length::ZERO,
+      row_gap: Length::ZERO,
       rule_color: None,
     };
+  }
+
+  /// booktabs の既定（枠罫 0.8・細罫 0.5・罫線の空き 2・行群の空き 5）に色 #090909 を付けた、セル余白 0 の表の見た目を作る
+  fn ruled_frame(columns: &[TableColumn]) -> TableFrame<'_> {
+    return TableFrame {
+      outer_rule_thickness: pt(0.8),
+      rule_thickness: pt(0.5),
+      rule_gap: pt(2.0),
+      row_gap: pt(5.0),
+      rule_color: Some([9, 9, 9]),
+      ..frame(columns, 0.0)
+    };
+  }
+
+  /// 上に区切りの罫線を持つ行を作る（既定フォントサイズ 10pt・行高係数 1）
+  fn ruled_row(cells: Vec<MeasuredCell>) -> MeasuredRow {
+    return MeasuredRow::new(origin(), cells, Some(RowSeparator::Rule), pt(10.0), 1.0);
+  }
+
+  /// 幅 10 のテキスト 1 つのセルだけの行
+  fn one_cell_row() -> MeasuredRow { return row(vec![cell(vec![glyph_box(10.0, 10.0)])]); }
+
+  /// 幅 10 のテキスト 1 つのセルだけの、上に区切りの罫線を持つ行
+  fn one_cell_ruled_row() -> MeasuredRow { return ruled_row(vec![cell(vec![glyph_box(10.0, 10.0)])]); }
+
+  #[test]
+  fn arrange_frames_the_table_with_outer_and_head_rules() {
+    let columns = [auto(ColumnAlign::Left)];
+
+    let table = arrange(
+      origin(),
+      &ruled_frame(&columns),
+      &[one_cell_row()],
+      &[one_cell_row(), one_cell_ruled_row()],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+
+    assert!(close(table.top.height, 2.8), "{:?}", table.top);
+    let top = table.top.rule.expect("上端の枠罫");
+    assert!(close(top.y, 0.0) && close(top.height, 0.8) && top.width == table.width, "{top:?}");
+    assert_eq!(top.color, Some([9, 9, 9]));
+    assert!(close(table.bottom.height, 2.8), "{:?}", table.bottom);
+    let bottom = table.bottom.rule.expect("下端の枠罫");
+    assert!(close(bottom.y, 2.0) && close(bottom.height, 0.8), "{bottom:?}");
+    assert!(close(table.head_bottom.height, 4.5), "{:?}", table.head_bottom);
+    assert_eq!(table.head[0].above.height, Length::ZERO);
+    assert!(
+      close(table.rows[0].above.height, 4.5) && table.rows[0].above.rule.is_some(),
+      "{:?}",
+      table.rows[0].above
+    );
+    let separator = table.rows[1].above.rule.expect("区切りの行の上の罫線");
+    assert!(close(separator.y, 2.0) && close(separator.height, 0.5), "{separator:?}");
+    assert_eq!(separator.color, Some([9, 9, 9]));
+  }
+
+  #[test]
+  fn gap_separator_takes_row_gap_without_a_rule() {
+    // rule_thickness 0.5・row_gap 5: ヘッダなしの表の 2 行目が gap
+    let columns = [auto(ColumnAlign::Left)];
+    let gap_row =
+      MeasuredRow::new(origin(), vec![cell(vec![glyph_box(10.0, 10.0)])], Some(RowSeparator::Gap), pt(10.0), 1.0);
+
+    let table = arrange(
+      origin(),
+      &ruled_frame(&columns),
+      &[],
+      &[one_cell_row(), gap_row],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+
+    assert!(close(table.rows[1].above.height, 5.0), "{:?}", table.rows[1].above);
+    assert!(table.rows[1].above.rule.is_none());
+  }
+
+  #[test]
+  fn rule_separator_takes_the_rule_and_its_gaps() {
+    let columns = [auto(ColumnAlign::Left)];
+
+    let table = arrange(
+      origin(),
+      &ruled_frame(&columns),
+      &[],
+      &[one_cell_row(), one_cell_ruled_row()],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+
+    assert!(close(table.rows[1].above.height, 4.5), "{:?}", table.rows[1].above);
+    assert!(table.rows[1].above.rule.is_some());
+  }
+
+  #[test]
+  fn first_rows_take_their_boundary_from_the_structure() {
+    // ヘッダなしの表: 先頭行が区切りを持っていても上の境界は無く、ヘッダ下の罫線も無い
+    let columns = [auto(ColumnAlign::Left)];
+
+    let table = arrange(
+      origin(),
+      &ruled_frame(&columns),
+      &[],
+      &[one_cell_ruled_row(), one_cell_row()],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+
+    assert_eq!(table.head_bottom.height, Length::ZERO);
+    assert_eq!(table.rows[0].above.height, Length::ZERO);
+    assert!(table.rows[0].above.rule.is_none());
+  }
+
+  #[test]
+  fn zero_thickness_head_rule_takes_no_space() {
+    // rule_thickness = 0・rule_gap = 2: ヘッダ下にも区切りの行の上にも罫線も空きも無い
+    let columns = [auto(ColumnAlign::Left)];
+    let frame = TableFrame {
+      rule_thickness: Length::ZERO,
+      ..ruled_frame(&columns)
+    };
+
+    let table = arrange(
+      origin(),
+      &frame,
+      &[one_cell_row()],
+      &[one_cell_row(), one_cell_ruled_row()],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+
+    assert_eq!(table.head_bottom.height, Length::ZERO);
+    assert_eq!(table.rows[0].above.height, Length::ZERO);
+    assert_eq!(table.rows[1].above.height, Length::ZERO);
+    assert!(table.rows[1].above.rule.is_none());
+  }
+
+  #[test]
+  fn zero_outer_thickness_drops_the_frames() {
+    let columns = [auto(ColumnAlign::Left)];
+    let frame = TableFrame {
+      outer_rule_thickness: Length::ZERO,
+      ..ruled_frame(&columns)
+    };
+
+    let table = arrange(origin(), &frame, &[], &[one_cell_row()], pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.top.height, Length::ZERO);
+    assert!(table.top.rule.is_none());
+    assert_eq!(table.bottom.height, Length::ZERO);
+    assert!(table.bottom.rule.is_none());
+  }
+
+  #[test]
+  fn repeated_head_keeps_the_boundaries_between_head_rows() {
+    let columns = [auto(ColumnAlign::Left)];
+
+    let table = arrange(
+      origin(),
+      &ruled_frame(&columns),
+      &[one_cell_row(), one_cell_ruled_row()],
+      &[one_cell_row()],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+
+    assert_eq!(table.repeated_head[0].above.height, Length::ZERO);
+    assert!(close(table.repeated_head[1].above.height, 4.5), "{:?}", table.repeated_head[1].above);
+    assert!(table.repeated_head[1].above.rule.is_some());
   }
 
   #[test]
@@ -713,7 +938,7 @@ mod tests {
         cell(vec![glyph_box(10.0, 12.0)]),
         cell(vec![extent_box(3.0, 2.0)]),
       ],
-      false,
+      None,
       pt(9.0),
       1.5,
     );
@@ -734,7 +959,7 @@ mod tests {
         cell(vec![glyph_box(10.0, 12.0)]),
         cell(vec![extent_box(14.0, 7.0)]),
       ],
-      false,
+      None,
       pt(9.0),
       1.2,
     );
@@ -749,7 +974,7 @@ mod tests {
   #[test]
   fn row_band_without_text_uses_the_default_font_size() {
     // テキストが無いので行送りは既定 9 × 2 = 18。中身は高さ 1 で、余り 17 を上下へ 8.5 ずつ
-    let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
+    let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], None, pt(9.0), 2.0);
     let columns = [auto(ColumnAlign::Left)];
 
     let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).row;
@@ -1053,31 +1278,16 @@ mod tests {
   }
 
   #[test]
-  fn row_fragment_places_rule_and_padding_from_the_frame() {
+  fn row_fragment_places_padding_from_the_frame() {
     let columns = [auto(ColumnAlign::Left)];
-    let frame = TableFrame {
-      columns: &columns,
-      cell_padding: pt(3.0),
-      rule_thickness: pt(1.5),
-      rule_color: Some([9, 9, 9]),
-    };
-    let row_with_rule = MeasuredRow::new(origin(), vec![cell(vec![glyph_box(10.0, 10.0)])], true, pt(10.0), 1.0);
-    let plain_row = row(vec![cell(vec![glyph_box(10.0, 10.0)])]);
+    let frame = frame(&columns, 3.0);
 
-    let fragment = row_fragment(&row_with_rule, &frame, &[pt(30.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&one_cell_row(), &frame, &[pt(30.0)], &KnuthPlassBreaker);
 
     assert!(close(fragment.row.top_y, 0.0), "{fragment:?}");
     assert!(close(fragment.row.height, 10.0), "{fragment:?}");
     assert!(close(fragment.row.baseline_y, 10.0), "{fragment:?}");
     assert!(close(fragment.row.boxes[0].dx, 3.0), "表左端 + 余白: {fragment:?}");
-    let rule = fragment.row.rule.expect("rule_above の行は罫線を持つ");
-    assert!(close(rule.x, 0.0) && close(rule.y, 0.0), "{rule:?}");
-    assert!(close(rule.width, 30.0) && close(rule.height, 1.5), "{rule:?}");
-    assert_eq!(rule.color, Some([9, 9, 9]));
-    assert!(
-      row_fragment(&plain_row, &frame, &[pt(30.0)], &KnuthPlassBreaker).row.rule.is_none(),
-      "rule_above でない行は罫線なし"
-    );
   }
 
   #[test]

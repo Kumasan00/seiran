@@ -77,8 +77,6 @@ pub(super) struct TableRowSpec {
   pub(crate) height: Length,
   /// 行帯上端からベースラインまでの距離
   pub(crate) baseline: Length,
-  /// この行の上に横罫線を引くか
-  pub(crate) rule_above: bool,
   /// セルごとのグリフ列（内側 `Vec` が 1 セルの内容、各要素が 1 ボックス）
   pub(crate) cells: Vec<Vec<(GlyphRun, BoxSize)>>,
 }
@@ -250,14 +248,14 @@ pub(crate) fn math_block(
   };
 }
 
-/// 表ブロックを作る（すべての列は左揃えで、セルの箱は `x + 列左端 + cell_padding` から左詰めに並ぶ）
+/// 表ブロックを作る（すべての列は左揃えで、セルの箱は `x + 列左端 + cell_padding` から左詰めに並ぶ。罫線 `rules` は
+/// 位置確定済みのまま載せる）
 pub(crate) fn table_block(
   x: Length,
   col_widths: &[Length],
   rows: Vec<TableRowSpec>,
   cell_padding: Length,
-  rule_thickness: Length,
-  rule_color: Option<[u8; 3]>,
+  rules: Vec<PlacedTableRule>,
 ) -> PlacedBlock {
   let placed_rows: Vec<PlacedTableRow> = rows
     .into_iter()
@@ -278,23 +276,18 @@ pub(crate) fn table_block(
         }
         column_x += *column_width;
       }
-      let rule = spec.rule_above.then_some(PlacedTableRule {
-        x,
-        y: spec.top_y,
-        width: col_widths.iter().copied().sum(),
-        height: rule_thickness,
-        color: rule_color,
-      });
       return PlacedTableRow {
         top_y: spec.top_y,
         height: spec.height,
         baseline_y: spec.top_y + spec.baseline,
         boxes,
-        rule,
       };
     })
     .collect();
-  return PlacedBlock::Table { rows: placed_rows };
+  return PlacedBlock::Table {
+    rows: placed_rows,
+    rules,
+  };
 }
 
 /// 確定ページ 1 枚を組み立てるビルダ

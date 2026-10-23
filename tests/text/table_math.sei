@@ -5,8 +5,8 @@
 \begin{table}[columns=left left]
 \row{分数 & $\frac{a}{b}$}
 \row{次の行 & $x$}
-\row[rule_above]{$\frac{a}{b}$ & $\sqrt{\frac{a}{b}}$}
-\row[rule_above]{入れ子 & $\frac{\frac{a}{b}}{c}$}
+\row[separator=rule]{$\frac{a}{b}$ & $\sqrt{\frac{a}{b}}$}
+\row[separator=rule]{入れ子 & $\frac{\frac{a}{b}}{c}$}
 \row{最後の行 & $y$}
 \end{table}
 

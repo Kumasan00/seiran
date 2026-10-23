@@ -1,14 +1,14 @@
-//! 表エンジン（`typeset::boxing::table`）が組んだ表 — 列幅・セル配置・罫線を確定した行断片の列。
+//! 表エンジン（`typeset::boxing::table`）が組んだ表 — 列幅・セル配置を確定した行断片の列と、罫線を確定した境界。
 //!
-//! 行断片は表左端・行帯上端を原点に持ち、配置は着地点を [`TableRowFragment::place`] で足すだけで、
-//! 列幅・セル余白・罫線・再掲ヘッダの付随情報の規則を知らない。
+//! 行断片は表左端・行帯上端を、境界は表左端・境界上端を原点に持ち、配置は着地点を [`TableRowFragment::place`] /
+//! [`TableBoundary::place`] で足すだけで、列幅・セル余白・罫線の太さと空き・再掲ヘッダの付随情報の規則を知らない。
 
 use crate::{
   document::NodeId,
   length::Length,
   typeset::boxes::{
     hitem::{IndexTerm, MeasuredFootnote},
-    page::{PlacedLink, PlacedTableRow},
+    page::{PlacedLink, PlacedTableRow, PlacedTableRule},
   },
 };
 
@@ -19,6 +19,13 @@ pub(in crate::typeset) struct TableBox {
   pub origin: NodeId,
   /// 表の幅（確定した列幅の総和）
   pub width: Length,
+  /// 各断片の上端の枠罫
+  pub top: TableBoundary,
+  /// 改段・改ページ後の再掲ヘッダの下に積むヘッダ下の罫線（`\head` が無ければ何も無い境界。初出のヘッダの下の
+  /// 罫線は本体の先頭行の `above` が持つ）
+  pub head_bottom: TableBoundary,
+  /// 各断片の下端の枠罫
+  pub bottom: TableBoundary,
   /// 初出のヘッダ行
   pub head: Vec<TableRowFragment>,
   /// 改段・改ページ後の先頭へ再掲するヘッダ行（`head` の複製から索引語と脚注を除いたもの。リンクは持つ）
@@ -30,10 +37,63 @@ pub(in crate::typeset) struct TableBox {
 }
 
 impl TableBox {
-  /// ヘッダ行と本体行の行帯の高さの和（再掲ヘッダを含まない、分割しないときの高さ）
+  /// 分割しないときの高さ — 上端・下端の枠罫と、ヘッダ行・本体行の上の境界と行帯の和（再掲ヘッダを含まない。
+  /// ヘッダ下の罫線は本体の先頭行の `above` に入っているので `head_bottom` は足さない）
   #[must_use]
   pub(in crate::typeset) fn height(&self) -> Length {
-    return self.head.iter().chain(&self.rows).map(TableRowFragment::height).sum();
+    let rows: Length = self.head.iter().chain(&self.rows).map(|row| return row.above.height + row.height()).sum();
+    return self.top.height + rows + self.bottom.height;
+  }
+}
+
+/// 表の横の境界 — 行の上の区切り（罫線・空き）と、断片の上端・下端の枠罫とヘッダ下の罫線
+///
+/// 既定値は何も無い境界（高さ 0・罫線なし）。
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::typeset) struct TableBoundary {
+  /// 境界が縦に占める高さ（罫線とその上下の空きの和）
+  pub height: Length,
+  /// 境界上端・表左端を原点とする罫線（`None` は空きだけの境界か、何も無い境界）
+  pub rule: Option<PlacedTableRule>,
+}
+
+impl TableBoundary {
+  /// 上に `gap_above`・下に `gap_below` の空きを持つ、太さ `thickness`・幅 `width`・色 `color` の罫線の境界
+  ///
+  /// 太さが正でなければ何も無い境界を返す — 罫線を引かない境界は空きも場所を取らない。
+  #[must_use]
+  pub(in crate::typeset) fn rule(
+    gap_above: Length,
+    thickness: Length,
+    gap_below: Length,
+    width: Length,
+    color: Option<[u8; 3]>,
+  ) -> Self {
+    if !thickness.is_positive() {
+      return Self::default();
+    }
+    return Self {
+      height: gap_above + thickness + gap_below,
+      rule: Some(PlacedTableRule {
+        x: Length::ZERO,
+        y: gap_above,
+        width,
+        height: thickness,
+        color,
+      }),
+    };
+  }
+
+  /// 表左端を `x`、境界上端を `top_y` に置いた罫線を返す（罫線の無い境界は `None`）
+  #[must_use]
+  pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> Option<PlacedTableRule> {
+    return self.rule.map(|rule| {
+      return PlacedTableRule {
+        x: rule.x + x,
+        y: rule.y + top_y,
+        ..rule
+      };
+    });
   }
 }
 
@@ -44,7 +104,9 @@ pub(in crate::typeset) struct TableRowFragment {
   pub origin: NodeId,
   /// 折り返すセルの行が内容幅を超えた量の最大（収まれば 0。内容幅が負なら空の行でも正）
   pub overrun: Length,
-  /// 原点を表左端・行帯上端に置いた行（`top_y` は 0、罫線は `x` = `y` = 0）
+  /// この行の上の境界（区切り。本体の先頭行はヘッダ下の罫線）。断片の先頭に来た行の境界は配置が捨てる
+  pub above: TableBoundary,
+  /// 原点を表左端・行帯上端に置いた行（`top_y` は 0）
   pub row: PlacedTableRow,
   /// セル内のリンク矩形（表左端・行帯上端が原点。折り返したリンクは行ごとに 1 矩形で、退化矩形は含まない）
   pub links: Vec<PlacedLink>,
@@ -67,6 +129,7 @@ impl TableRowFragment {
     let TableRowFragment {
       origin: _,
       overrun: _,
+      above: _,
       mut row,
       mut links,
       index_marks,
@@ -76,10 +139,6 @@ impl TableRowFragment {
     row.baseline_y += top_y;
     for placed in &mut row.boxes {
       placed.dx += x;
-    }
-    if let Some(rule) = &mut row.rule {
-      rule.x += x;
-      rule.y += top_y;
     }
     for link in &mut links {
       link.x += x;
@@ -91,14 +150,12 @@ impl TableRowFragment {
 
 #[cfg(test)]
 mod tests {
-  use super::TableRowFragment;
+  use super::{TableBoundary, TableBox, TableRowFragment};
   use crate::{
     document::NodeId,
     length::Length,
     source::SourceId,
-    typeset::boxes::{
-      HBox, HBoxContent, IndexTerm, LinkTarget, PlacedHBox, PlacedLink, PlacedTableRow, PlacedTableRule,
-    },
+    typeset::boxes::{HBox, HBoxContent, IndexTerm, LinkTarget, PlacedHBox, PlacedLink, PlacedTableRow},
   };
 
   /// pt 値から `Length` を作る
@@ -118,11 +175,80 @@ mod tests {
     };
   }
 
+  /// 行帯 `band`・上の境界の高さ `above` の、箱を持たない行断片を作る
+  fn band_fragment(band: f32, above: f32) -> TableRowFragment {
+    return TableRowFragment {
+      origin: NodeId::for_test(SourceId::new(0), 1),
+      overrun: Length::ZERO,
+      above: TableBoundary {
+        height: pt(above),
+        rule: None,
+      },
+      row: PlacedTableRow {
+        top_y: Length::ZERO,
+        height: pt(band),
+        baseline_y: pt(band),
+        boxes: Vec::new(),
+      },
+      links: Vec::new(),
+      index_marks: Vec::new(),
+      footnotes: Vec::new(),
+    };
+  }
+
   #[test]
-  fn place_moves_row_rule_and_links_to_the_landing_point() {
+  fn rule_boundary_with_zero_thickness_takes_no_space() {
+    let boundary = TableBoundary::rule(pt(2.0), Length::ZERO, pt(2.0), pt(30.0), None);
+
+    assert_eq!(boundary.height, Length::ZERO);
+    assert!(boundary.rule.is_none());
+  }
+
+  #[test]
+  fn rule_boundary_places_the_rule_between_its_gaps() {
+    let boundary = TableBoundary::rule(pt(2.0), pt(0.5), pt(2.0), pt(30.0), Some([9, 9, 9]));
+
+    let rule = boundary.place(pt(5.0), pt(40.0)).expect("太さが正なら罫線を持つ");
+
+    assert!(close(boundary.height, 4.5));
+    assert!(
+      close(rule.x, 5.0) && close(rule.y, 42.0) && close(rule.width, 30.0) && close(rule.height, 0.5),
+      "{rule:?}"
+    );
+    assert_eq!(rule.color, Some([9, 9, 9]));
+  }
+
+  #[test]
+  fn table_height_counts_frames_boundaries_and_bands() {
+    // top 2.8 + head 帯 10 + rows[0]（above 4.5 + 帯 10）+ rows[1]（above 5 + 帯 10）+ bottom 2.8。
+    // head_bottom は rows[0].above に入っているので足さない
+    let frame = |height: f32| {
+      return TableBoundary {
+        height: pt(height),
+        rule: None,
+      };
+    };
+    let table = TableBox {
+      origin: NodeId::for_test(SourceId::new(0), 0),
+      width: pt(30.0),
+      top: frame(2.8),
+      head_bottom: frame(4.5),
+      bottom: frame(2.8),
+      head: vec![band_fragment(10.0, 0.0)],
+      repeated_head: vec![band_fragment(10.0, 0.0)],
+      rows: vec![band_fragment(10.0, 4.5), band_fragment(10.0, 5.0)],
+      breakable: true,
+    };
+
+    assert!(close(table.height(), 45.1), "{:?}", table.height());
+  }
+
+  #[test]
+  fn place_moves_row_and_links_to_the_landing_point() {
     let fragment = TableRowFragment {
       origin: NodeId::for_test(SourceId::new(0), 1),
       overrun: Length::ZERO,
+      above: TableBoundary::default(),
       row: PlacedTableRow {
         top_y: Length::ZERO,
         height: pt(10.0),
@@ -137,13 +263,6 @@ mod tests {
           dx: pt(2.0),
           dy: Length::ZERO,
         }],
-        rule: Some(PlacedTableRule {
-          x: Length::ZERO,
-          y: Length::ZERO,
-          width: pt(30.0),
-          height: pt(0.5),
-          color: None,
-        }),
       },
       links: vec![link(2.0, 0.0, 10.0, 10.0)],
       index_marks: vec![IndexTerm {
@@ -157,8 +276,6 @@ mod tests {
 
     assert!(close(row.top_y, 40.0) && close(row.baseline_y, 48.0) && close(row.height, 10.0), "{row:?}");
     assert!(close(row.boxes[0].dx, 7.0), "{row:?}");
-    let rule = row.rule.expect("罫線は着地後も残る");
-    assert!(close(rule.x, 5.0) && close(rule.y, 40.0) && close(rule.width, 30.0), "{rule:?}");
     assert_eq!(links.len(), 1, "{links:?}");
     assert!(close(links[0].x, 7.0) && close(links[0].width, 10.0), "{links:?}");
     assert!(close(links[0].y, 40.0) && close(links[0].height, 10.0), "{links:?}");
