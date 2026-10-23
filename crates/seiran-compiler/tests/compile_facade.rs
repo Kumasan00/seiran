@@ -616,6 +616,8 @@ fn compile_warns_once_when_a_table_row_is_taller_than_the_page() {
   assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table_row"]);
   let message = &warning_messages(&compilation.warnings, "typeset::overflow::table_row")[0];
   assert!(message.contains("縦に"), "超過方向が出るはず: {message}");
+  // 空のページにも入らない行は送らないので、ヘッダだけのページを作らずヘッダと同じページに置く
+  assert_eq!(compilation.publication.pages().len(), 1);
 }
 
 #[test]
