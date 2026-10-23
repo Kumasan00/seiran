@@ -560,3 +560,90 @@ fn per_page_footnote_numbering_does_not_duplicate_overflow_warnings() {
 
   assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::line"]);
 }
+
+#[test]
+fn compile_warns_when_table_columns_exceed_the_column_width() {
+  let body = "\\begin{table}[widths=400pt 400pt]\n\\row{a & b}\n\\end{table}\n";
+
+  let compilation = compile_with_style("", body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table"]);
+  let message = &warning_messages(&compilation.warnings, "typeset::overflow::table")[0];
+  assert!(message.contains("1 ページ"), "印字ページ番号が出るはず: {message}");
+  assert!(message.contains("横に"), "超過方向が出るはず: {message}");
+}
+
+#[test]
+fn compile_warns_when_unbreakable_code_overflows_a_fixed_column() {
+  let body = "\\begin{table}[widths=20pt]\n\\row{\\code{abcdefghijabcdefghij}}\n\\end{table}\n";
+
+  let compilation = compile_with_style("", body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table_row"]);
+  let warning = compilation.warnings.iter().next().expect("警告が 1 件あるはず");
+  let offsets: Vec<usize> = warning.labels().expect("ラベルを持つはず").map(|label| return label.offset()).collect();
+  assert_eq!(
+    offsets,
+    vec![body.find("\\row").expect("本文に \\row があるはず")],
+    "ラベルは行の開始位置を指すはず"
+  );
+}
+
+#[test]
+fn compile_warns_on_every_row_when_padding_leaves_no_content_width() {
+  let body = "\\begin{table}[widths=5pt]\n\\row{a}\n\\row{b}\n\\end{table}\n";
+
+  let compilation = compile_with_style("[table]\ncell_padding = \"4pt\"\n", body);
+
+  assert_eq!(
+    warning_codes(&compilation.warnings),
+    vec![
+      "typeset::overflow::table_row",
+      "typeset::overflow::table_row"
+    ]
+  );
+}
+
+#[test]
+fn compile_warns_once_when_a_table_row_is_taller_than_the_page() {
+  let body = format!(
+    "\\begin{{table}}[widths=60pt]\n\\head{{\\row{{H}}}}\n\\row{{{}}}\n\\end{{table}}\n",
+    "ab ".repeat(3000)
+  );
+
+  let compilation = compile_with_style("", &body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table_row"]);
+  let message = &warning_messages(&compilation.warnings, "typeset::overflow::table_row")[0];
+  assert!(message.contains("縦に"), "超過方向が出るはず: {message}");
+  // 空のページにも入らない行は送らないので、ヘッダだけのページを作らずヘッダと同じページに置く
+  assert_eq!(compilation.publication.pages().len(), 1);
+}
+
+#[test]
+fn compile_does_not_warn_when_wrapped_tables_fit() {
+  // Auto 列は折り返さないので短い見出し語だけを置き、長い文は Flex / Fixed / Ratio 列で折り返させる
+  let cell = "吾輩は猫である。名前はまだ無い。Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(4);
+  let flex_rows = format!("\\row{{項目 & {cell}}}\n").repeat(30);
+  let mixed_rows = format!("\\row{{{cell} & {cell}}}\n").repeat(30);
+  let body = format!(
+    "\\begin{{table}}[widths=auto *]\n{flex_rows}\\end{{table}}\n\n\\begin{{table}}[widths=30mm 0.3]\n{mixed_rows}\\end{{table}}\n"
+  );
+
+  let compilation = compile_with_style("", &body);
+
+  let codes = warning_codes(&compilation.warnings);
+  assert!(compilation.publication.pages().len() > 1, "改ページが起きる量のはず");
+  assert!(!codes.iter().any(|code| return code.starts_with("typeset::overflow::")), "{codes:?}");
+}
+
+#[test]
+fn per_page_footnote_numbering_does_not_duplicate_table_overflow_warnings() {
+  // ページ単位採番は本文パスを不動点まで反復する（同じ行を毎パス報告しない）
+  let body =
+    "本文\\footnote{脚注}。\n\n\\begin{table}[widths=20pt]\n\\row{\\code{abcdefghijabcdefghij}}\n\\end{table}\n";
+
+  let compilation = compile_with_style("[footnote]\nnumbering = \"per_page\"\n", body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table_row"]);
+}

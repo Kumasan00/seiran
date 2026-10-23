@@ -95,6 +95,22 @@ pub(in crate::typeset) enum OverflowKind {
     /// 超過量
     excess: Length,
   },
+  /// 表の幅が段の幅を超えた（表 1 個につき 1 件。最初の行が着地したページに記録する）
+  Table {
+    /// 表環境
+    origin: NodeId,
+    /// 超過量
+    excess: Length,
+  },
+  /// 表の行が段の幅か実効の本文下限を超えた
+  TableRow {
+    /// `\row`
+    origin: NodeId,
+    /// はみ出した方向
+    axis: OverflowAxis,
+    /// 超過量
+    excess: Length,
+  },
 }
 
 /// はみ出しの方向
@@ -369,7 +385,9 @@ impl PageComposer {
 /// ブロック列をページへ配置し、確定ページ列とはみ出し記録を返す。
 ///
 /// はみ出しは着地が確定した行（脚注本体を含む）・画像・ディスプレイ数式について、段の幅と実効の本文下限を基準に
-/// 軸ごとに記録する。表の行は測らない（表の行の脚注は本文の行と同じく `FootnoteLine` を記録する）。
+/// 軸ごとに記録する。表は幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも
+/// 入らない行帯）を測る。
+/// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
 #[must_use]
 pub(crate) fn break_pages(
   blocks: Vec<Block>,
@@ -596,13 +614,13 @@ fn plan_atomic(
     },
     Block::Table { table, .. } => {
       let total = table.height();
-      // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）が脚注と合わせて乗るかだけで決まる
-      // （`place_table` の行ループと同じ判定）
+      // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）を送るかだけで決まる（`place_table` の行ループと
+      // 同じ判定）。先頭行はヘッダ行かヘッダの無い表の本体行なので、再掲ヘッダは積まれない
       let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
         first.is_some_and(|row| {
           let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)]);
-          return matches!(fit_table_row(cursor, row.height(), &demands[0], geom), LineFootnoteFit::Rejected);
+          return defers_table_row(cursor, row.height(), &demands[0], Length::ZERO, geom);
         })
       } else {
         let demands: Vec<FootnoteDemand> = footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width))
@@ -960,6 +978,29 @@ fn fit_table_row(
   );
 }
 
+/// 分割可能な表の行 1 本（行帯の高さ `row_height`・脚注の需要 `demands`）を次リージョンへ送るべきか。
+///
+/// 現在リージョンでは行と脚注が収まらず、予約の無い新しいリージョンの再掲ヘッダ（高さ `head_height`）の下に行だけなら
+/// 収まるときに送る。行だけでも収まらない行は送っても改善せず、送ると前のリージョンにヘッダだけが残るので、その場に
+/// 置く。新しいリージョンで脚注を見ないのは、空のリージョンに入る行を現在リージョンの下端からはみ出させないため
+/// （脚注が入らなければ送り先で `FootnoteLine` を記録する）。判定は [`fit_table_row`] だけで行い、実配置
+/// （[`place_table_row`]）と keep-with-next の計画（[`plan_atomic`]）が共用する。
+fn defers_table_row(
+  cursor: RegionCursor,
+  row_height: Length,
+  demands: &[FootnoteDemand],
+  head_height: Length,
+  geom: &PageGeometry,
+) -> bool {
+  let fresh = RegionCursor {
+    y: geom.margin_top + head_height,
+    footnote_reserved: Length::ZERO,
+    ..cursor
+  };
+  return matches!(fit_table_row(cursor, row_height, demands, geom), LineFootnoteFit::Rejected)
+    && !matches!(fit_table_row(fresh, row_height, &[], geom), LineFootnoteFit::Rejected);
+}
+
 /// 分割禁止の表（高さ `table_height`、全行の脚注の需要を出現順に並べた `demands`）を次リージョンへ送るべきか。
 ///
 /// 現在リージョンでは今の予約に全行の脚注を積んだ脚注エリアと合わせて収まらず、予約の無い新しいリージョンなら
@@ -1006,18 +1047,31 @@ fn place_table(
   }
 
   let TableBox {
+    origin,
+    width,
     head,
     repeated_head,
     rows,
     ..
   } = table;
+  // 幅のはみ出しは表 1 個につき 1 件で、最初の断片が着地して `page_index` が着地ページになってから記録する
+  // （断片が 1 つも無い表は呼び出し時点のページ）
+  let mut width_excess = excess(width, column_width);
+  let mut record_width_excess = |composer: &mut PageComposer| {
+    if let Some(excess) = width_excess.take() {
+      composer.record(OverflowKind::Table { origin, excess });
+    }
+  };
   let mut pending: Vec<(TableRowFragment, Length)> = Vec::new();
   for (row, bodies) in head.into_iter().zip(head_bodies) {
     place_table_row(composer, geom, row, bodies, &[], &mut pending, align_offset);
+    record_width_excess(composer);
   }
   for (row, bodies) in rows.into_iter().zip(row_bodies) {
     place_table_row(composer, geom, row, bodies, &repeated_head, &mut pending, align_offset);
+    record_width_excess(composer);
   }
+  record_width_excess(composer);
   flush_table_rows(composer, &mut pending, align_offset);
 }
 
@@ -1029,9 +1083,11 @@ fn flush_table_rows(composer: &mut PageComposer, pending: &mut Vec<(TableRowFrag
 
 /// 表の行 1 本を、その脚注（行分割済みの `bodies`）と合わせて現在リージョンへ置く
 ///
-/// 行と脚注が収まらなければ、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）の下に置く
-/// として判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときは、ヘッダを積まずにさらに送る
-/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。予約の無い新リージョンでも入らなければ、本文の行と同じくはみ出しを記録して全行置く。
+/// 送るとき（[`defers_table_row`]）は、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）の
+/// 下に置くとして判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときは、ヘッダを積まずにさらに送る
+/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。
+/// 送った先でも脚注が入らない行と、予約の無い新リージョンに行だけでも入らないので送らなかった行は、本文の行と同じく
+/// はみ出しを記録して置く。
 /// 脚注の予約・分割・繰越は段落の行の確定（`place_paragraph`）と同じ順で行う。
 fn place_table_row(
   composer: &mut PageComposer,
@@ -1046,9 +1102,9 @@ fn place_table_row(
   let demands: Vec<FootnoteDemand> =
     bodies.iter().map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading)).collect();
   let height = row.height();
+  let head_height: Length = repeated_head.iter().map(TableRowFragment::height).sum();
   let mut fit = fit_table_row(composer.cursor, height, &demands, geom);
-  if matches!(fit, LineFootnoteFit::Rejected) {
-    let head_height: Length = repeated_head.iter().map(TableRowFragment::height).sum();
+  if defers_table_row(composer.cursor, height, &demands, head_height, geom) {
     loop {
       flush_table_rows(composer, pending, align_offset);
       composer.advance_region(geom);
@@ -1083,8 +1139,25 @@ fn place_table_row(
       )
     },
   };
-  pending.push((row, composer.cursor.y));
+  // 縦は行自身の脚注予約を足す前の下限で測る（本文の行と同じ。脚注の溢れは `FootnoteLine` が記録する）
+  let top = composer.cursor.y;
+  let limit = composer.cursor.region_limit(geom);
+  let (origin, overrun) = (row.origin, row.overrun);
+  pending.push((row, top));
   composer.cursor.y += height;
+  let row_overflows = [
+    (OverflowAxis::Horizontal, excess(overrun, Length::ZERO)),
+    (OverflowAxis::Vertical, excess(top + height, limit)),
+  ];
+  for (axis, over) in row_overflows {
+    if let Some(excess) = over {
+      composer.record(OverflowKind::TableRow {
+        origin,
+        axis,
+        excess,
+      });
+    }
+  }
   for (footnote, placed) in bodies.into_iter().zip(splits) {
     let (head, tail) = split_pending(footnote, placed);
     if let Some(head) = head {
@@ -2215,6 +2288,12 @@ mod tests {
     };
   }
 
+  /// テストの表（[`table_box`]）が帰属する表環境の ID
+  fn table_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 4); }
+
+  /// テストの表の行（[`table_fragment`]）が帰属する `\row` の ID
+  fn table_row_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 5); }
+
   /// 行帯の高さ `height`・ベースライン `baseline` で、箱 `hbox` を表左端 + 余白 2 に置いた 1 列表の行断片を作るヘルパ
   fn table_fragment(hbox: HBox, height: f32, baseline: f32) -> TableRowFragment {
     return TableRowFragment {
@@ -2229,6 +2308,8 @@ mod tests {
         }],
         rule: None,
       },
+      origin: table_row_origin(),
+      overrun: Length::ZERO,
       links: Vec::new(),
       index_marks: Vec::new(),
       footnotes: Vec::new(),
@@ -2253,6 +2334,7 @@ mod tests {
       })
       .collect();
     return TableBox {
+      origin: table_origin(),
       width: pt(24.0),
       head,
       repeated_head,
@@ -2261,12 +2343,14 @@ mod tests {
     };
   }
 
-  /// 表の行断片に、`text` の箱（x 2..22）を覆うリンクを足すヘルパ
+  /// 表の行断片に、`text` の箱（x 2..22）と行帯の全高を覆うリンク矩形を足すヘルパ
   fn with_link(mut row: TableRowFragment, target: LinkTarget) -> TableRowFragment {
-    row.links.push(LineLink {
+    row.links.push(PlacedLink {
       target,
-      x0: pt(2.0),
-      x1: pt(22.0),
+      x: pt(2.0),
+      y: Length::ZERO,
+      width: pt(20.0),
+      height: row.row.height,
     });
     return row;
   }
@@ -4298,6 +4382,32 @@ mod tests {
   }
 
   #[test]
+  fn row_fitting_an_empty_region_moves_even_if_its_footnote_never_fits() {
+    // 3 行で y = 40。4 行目（行帯 15）は 40..55 で下限 50 を超えるが、空の版面（10..50）なら単独で入る。
+    // 脚注（本体 50）は空のページでも入らないが、行を残すより送るほうがはみ出しが小さい
+    let geom = test_geometry();
+    let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
+    rows.push(with_footnote(
+      table_fragment(table_text_box("R3"), 15.0, 10.0),
+      footnote_item(1, vec![tall_box(50.0)], pt(12.0)),
+    ));
+
+    let (pages, overflows) = break_pages(vec![table_block(rows)], pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_rows_of(&pages[0]), 3);
+    assert_eq!(table_rows_of(&pages[1]), 1);
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 1,
+        kind: OverflowKind::FootnoteLine {
+          footnotes: vec![(1, footnote_origin(1))],
+        },
+      }]
+    );
+  }
+
+  #[test]
   fn heading_moves_with_table_whose_first_row_footnote_does_not_fit() {
     // 1 行目（baseline 10）の後、見出し役の 1 行段落（baseline 22）→ 分割禁止 → 表。
     // 表の先頭行は y = 34 から 44 で単独なら収まるが、予約 14 を足すと収まらない
@@ -4466,5 +4576,143 @@ mod tests {
 
     assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
     assert_eq!(table_rows_of(&pages[1]), 2);
+  }
+
+  /// 表の記録だけを取り出すヘルパ（表の行と表自体の記録）
+  fn table_overflows(overflows: &[Overflow]) -> Vec<&Overflow> {
+    return overflows
+      .iter()
+      .filter(|overflow| {
+        return matches!(overflow.kind, OverflowKind::Table { .. } | OverflowKind::TableRow { .. });
+      })
+      .collect();
+  }
+
+  #[test]
+  fn wide_table_is_reported_once_on_the_page_of_its_first_row() {
+    // 版面の高さ 40 に 4 行入るので 5 行表は 2 ページにまたがる。表幅 130 は段幅 100 を 30 超える
+    let table = TableBox {
+      width: pt(130.0),
+      ..table_box(Vec::new(), (0..5).map(|i| return table_row(&format!("R{i}"))).collect())
+    };
+    let blocks = vec![Block::Table {
+      table,
+      align: Align::Left,
+    }];
+
+    let (pages, overflows) = break_pages(blocks, pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 0,
+        kind: OverflowKind::Table {
+          origin: table_origin(),
+          excess: pt(30.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn row_overrun_is_reported_on_the_page_where_the_row_lands() {
+    let mut rows: Vec<TableRowFragment> = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
+    rows[4].overrun = pt(5.0);
+
+    let (pages, overflows) = break_pages(vec![table_block(rows)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 1,
+        kind: OverflowKind::TableRow {
+          origin: table_row_origin(),
+          axis: OverflowAxis::Horizontal,
+          excess: pt(5.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn row_taller_than_an_empty_region_is_reported_vertically() {
+    // 行帯 60 は版面（10..50）の高さ 40 に入らない。下端 70 が下限 50 を 20 超える
+    let tall = table_fragment(table_text_box("T"), 60.0, 10.0);
+
+    let (_, overflows) = break_pages(vec![table_block(vec![tall])], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 0,
+        kind: OverflowKind::TableRow {
+          origin: table_row_origin(),
+          axis: OverflowAxis::Vertical,
+          excess: pt(20.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn row_taller_than_an_empty_region_stays_on_the_page_of_its_head() {
+    // 行帯 60 は再掲ヘッダの下（20..）どころか空の版面（10..50）にも入らないので、送らずヘッダ（10..20）の
+    // 直下に置く。下端 80 が下限 50 を 30 超える
+    let tall = table_fragment(table_text_box("T"), 60.0, 10.0);
+    let table = table_box(vec![table_row("HEAD")], vec![tall]);
+
+    let (pages, overflows) = break_pages(
+      vec![Block::Table {
+        table,
+        align: Align::Left,
+      }],
+      pt(100.0),
+      &test_geometry(),
+      &GreedyBreaker,
+    );
+
+    assert_eq!(pages.len(), 1, "ヘッダだけのページを作らない: {pages:?}");
+    assert_eq!(table_rows_of(&pages[0]), 2);
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 0,
+        kind: OverflowKind::TableRow {
+          origin: table_row_origin(),
+          axis: OverflowAxis::Vertical,
+          excess: pt(30.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn heading_stays_with_table_whose_first_row_is_taller_than_an_empty_region() {
+    // 見出し役の行（baseline 22）の後 y = 34。先頭行（行帯 60）は空の版面にも入らないので実配置は送らず、
+    // keep-with-next の計画も見出しを送らない
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(Vec::new()),
+      single_line_paragraph(Vec::new()),
+      forbid_break(),
+      table_block(vec![table_fragment(table_text_box("T"), 60.0, 10.0)]),
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(page_baselines(&pages[0]).len(), 2);
+    assert_eq!(table_rows_of(&pages[0]), 1);
+  }
+
+  #[test]
+  fn fitting_table_reports_nothing() {
+    let rows = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
+
+    let (_, overflows) = break_pages(vec![table_block(rows)], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert!(table_overflows(&overflows).is_empty(), "{overflows:?}");
   }
 }

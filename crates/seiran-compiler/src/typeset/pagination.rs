@@ -216,6 +216,29 @@ fn overflow_warnings(
             span: start_span(location),
           }
         },
+        OverflowKind::Table { origin, excess } => {
+          let location = source_map.location(origin);
+          TypesetWarning::TableOverflow {
+            page,
+            excess,
+            source_id: location.source_id,
+            span: start_span(location),
+          }
+        },
+        OverflowKind::TableRow {
+          origin,
+          axis,
+          excess,
+        } => {
+          let location = source_map.location(origin);
+          TypesetWarning::TableRowOverflow {
+            page,
+            axis,
+            excess,
+            source_id: location.source_id,
+            span: start_span(location),
+          }
+        },
       });
     }
   }

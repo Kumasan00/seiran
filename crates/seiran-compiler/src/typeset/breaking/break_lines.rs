@@ -236,6 +236,48 @@ pub(super) fn build_line(
   return line;
 }
 
+/// 行分割器が改行できる位置の間で最も広い区間の幅（セルの最小内容幅）
+///
+/// 分割機会は breakable な `Glue`（幅は区間に入れない）・`Penalty { value <= 0 }`・`Discretionary`（直前の区間に
+/// ハイフン幅を足す）・`MathBreak`（`spacing` は区間に入れない）・`ForcedBreak`。それ以外は自然幅を区間へ足し、
+/// non-breakable な `Glue` と正の `Penalty` は区間を切らない。ハイフネーションは greedy が持ち越し後に選び直さない
+/// ので真の下限にはならない（その行は呼び出し側の overflow 警告が受ける）。
+pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Length {
+  let mut widest = Length::ZERO;
+  let mut segment = Length::ZERO;
+  for item in items {
+    match item {
+      HItem::Box(_) | HItem::FlushRight(_) | HItem::Kern(_) => segment += item.natural_width(),
+      HItem::Glue {
+        natural, breakable, ..
+      } => {
+        if *breakable {
+          widest = widest.max(segment);
+          segment = Length::ZERO;
+        } else {
+          segment += *natural;
+        }
+      },
+      HItem::Penalty { value } => {
+        if *value <= 0 {
+          widest = widest.max(segment);
+          segment = Length::ZERO;
+        }
+      },
+      HItem::Discretionary { hyphen } => {
+        widest = widest.max(segment + hyphen.width);
+        segment = Length::ZERO;
+      },
+      HItem::MathBreak { .. } | HItem::ForcedBreak => {
+        widest = widest.max(segment);
+        segment = Length::ZERO;
+      },
+      HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {},
+    }
+  }
+  return widest.max(segment);
+}
+
 /// 行分割テストの共有フィクスチャ
 #[cfg(test)]
 pub(super) mod test_support {
@@ -347,5 +389,80 @@ pub(super) mod test_support {
       word: word.to_string(),
       reading: reading.map(str::to_string),
     });
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{GreedyBreaker, HItem, Length, LineBreaker, TextAlignment, min_content_width};
+  use crate::typeset::breaking::break_lines::test_support::{
+    box_width, discretionary, math_break, non_breakable_stretch_glue, space_glue,
+  };
+
+  #[test]
+  fn min_content_width_is_the_widest_segment_between_glue() {
+    let items = vec![
+      box_width(10.0),
+      space_glue(),
+      box_width(30.0),
+      space_glue(),
+      box_width(20.0),
+    ];
+
+    assert_eq!(min_content_width(&items), Length::pt(30.0));
+  }
+
+  #[test]
+  fn min_content_width_adds_the_hyphen_to_the_segment_before_a_discretionary() {
+    // 12 + ハイフン 3 = 15 が 10 より広い
+    let items = [box_width(12.0), discretionary(3.0), box_width(10.0)];
+
+    assert_eq!(min_content_width(&items), Length::pt(15.0));
+  }
+
+  #[test]
+  fn min_content_width_breaks_at_math_breaks_without_their_spacing() {
+    let items = [box_width(10.0), math_break(4.0, 0), box_width(10.0)];
+
+    assert_eq!(min_content_width(&items), Length::pt(10.0));
+  }
+
+  #[test]
+  fn min_content_width_keeps_non_breakable_glue_and_positive_penalty_inside_a_segment() {
+    let items = vec![
+      box_width(10.0),
+      non_breakable_stretch_glue(),
+      box_width(10.0),
+      HItem::Penalty { value: 100 },
+      box_width(5.0),
+    ];
+
+    assert_eq!(min_content_width(&items), Length::pt(30.0));
+  }
+
+  #[test]
+  fn min_content_width_of_no_items_is_zero() {
+    assert_eq!(min_content_width(&[]), Length::ZERO);
+  }
+
+  #[test]
+  fn greedy_never_overflows_at_the_min_content_width() {
+    // 分割機会が glue / penalty / 数式内分割点だけの列で、最小内容幅で折ると全行が収まる（定義が行分割器と一致する）
+    let items = vec![
+      box_width(7.0),
+      space_glue(),
+      box_width(18.0),
+      HItem::Penalty { value: 0 },
+      box_width(4.0),
+      math_break(2.0, 0),
+      box_width(11.0),
+      space_glue(),
+      box_width(3.0),
+    ];
+    let width = min_content_width(&items);
+
+    let lines = GreedyBreaker.break_lines(&items, width, TextAlignment::Left);
+
+    assert!(lines.iter().all(|line| return line.width() <= width), "{lines:?}");
   }
 }

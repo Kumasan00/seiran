@@ -28,6 +28,7 @@ fn lower_rows(
       });
     }
     result.push(TableRowLayout {
+      origin: row.id,
       cells,
       rule_above: row.rule_above,
     });
@@ -71,6 +72,7 @@ pub(super) fn lower_table(
   };
   return lower_numbered_float(ctx, id, caption, &margins, state, |state| {
     return LayoutNode::Table(TableLayout {
+      origin: id,
       columns: table
         .columns
         .iter()

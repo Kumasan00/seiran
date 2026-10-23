@@ -39,7 +39,10 @@
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
-//!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品まで行帯に収まる）・
+//!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品と折り返した続き行まで行帯に収まり、
+//!   行どうしが重ならない）・セルの折り返し 2 種 [`flex_table_fills_the_column_width`] /
+//!   [`wrapped_table_rows_move_whole_with_the_wrapped_head`]（共通ヘルパ [`page_table_rows`] / [`table_row_text`]
+//!   経由）・
 //!   表セルの脚注 4 種 [`table_cell_footnotes_land_once_in_source_order`] /
 //!   [`repeated_head_marker_links_to_the_first_head_footnote_body`] /
 //!   [`index_in_table_footnote_body_lands_on_the_footnote_page`] /
@@ -234,7 +237,7 @@ use crate::{
   length::Length,
   project::FontType,
   publication::{GlyphRun, PaintOp},
-  typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, dump_pages},
+  typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
 };
 
 /// golden 比較対象の入力名。
@@ -285,6 +288,8 @@ const GOLDEN_INPUTS: &[&str] = &[
   "table_break",
   "table_footnote",
   "table_math",
+  "table_wrap",
+  "table_wrap_hyphenation",
   "text",
   "text_center",
   "text_right",
@@ -625,34 +630,158 @@ fn ratio_column_resolves_against_the_column_width_in_two_columns() {
   assert!((two - expected).to_pt().abs() < 0.01, "1 段 {one:?} / 2 段 {two:?} / 期待 {expected:?}");
 }
 
-/// 表のセルの箱（分数・根号の部品まで）が自分の行帯に収まることを確認する。
+/// 表のセルの箱（分数・根号の部品と、折り返した続き行まで）が自分の行帯に収まり、同じページの行どうしが
+/// 重ならないことを確認する。
 #[test]
 fn table_cell_boxes_stay_inside_their_row() {
-  let laid_out = TestProject::builder().golden_fixture("table_math").build().laid_out();
+  // fixture 名と、その fixture の表の行の最小数（空振り検知）
+  for (fixture, min_rows) in [
+    ("table_math", 7),
+    ("table_wrap", 20),
+    ("table_wrap_hyphenation", 2),
+  ] {
+    let laid_out = TestProject::builder().golden_fixture(fixture).build().laid_out();
 
-  let rows: Vec<_> = laid_out
-    .pages
+    let mut row_count = 0;
+    for (page_index, page) in laid_out.pages.iter().enumerate() {
+      let mut previous_bottom: Option<Length> = None;
+      for row in page_table_rows(page) {
+        row_count += 1;
+        let bottom = row.top_y + row.height;
+        if let Some(previous_bottom) = previous_bottom {
+          assert!(
+            row.top_y >= previous_bottom,
+            "{fixture} page {page_index}: 行の上端 {} が前の行の下端 {previous_bottom} より上にある",
+            row.top_y
+          );
+        }
+        previous_bottom = Some(bottom);
+        for placed in &row.boxes {
+          assert_inside_band(
+            placed.hbox.height,
+            placed.hbox.depth,
+            &placed.hbox.content,
+            row.baseline_y - placed.dy,
+            row.top_y,
+            bottom,
+          );
+        }
+      }
+    }
+
+    assert!(row_count >= min_rows, "{fixture}.sei の表は {min_rows} 行以上あるはず: {row_count} 行");
+  }
+}
+
+/// ページ `page` に置かれた表の行を上から順に返すテストヘルパ
+fn page_table_rows(page: &Page) -> impl Iterator<Item = &PlacedTableRow> {
+  return page
+    .blocks
     .iter()
-    .flat_map(|page| return page.blocks.iter())
     .filter_map(|block| match block {
       PlacedBlock::Table { rows } => return Some(rows),
       _ => return None,
     })
-    .flatten()
+    .flatten();
+}
+
+/// 表の行 `row` に描くグリフ列の文字列を、箱の順（左のセルから、セル内は前から）につないで返すテストヘルパ
+fn table_row_text(row: &PlacedTableRow) -> String {
+  /// 箱の内容のグリフ列の文字列を `text` へ足す（Atom は子を前から辿る）
+  fn push_text(content: &HBoxContent, text: &mut String) {
+    match content {
+      HBoxContent::Glyphs(run) => text.push_str(&run.text),
+      HBoxContent::Atom(children) => {
+        for child in children {
+          push_text(&child.hbox.content, text);
+        }
+      },
+      HBoxContent::Rule { .. } => {},
+    }
+  }
+
+  let mut text = String::new();
+  for placed in &row.boxes {
+    push_text(&placed.hbox.content, &mut text);
+  }
+  return text;
+}
+
+/// Flex 列（`widths=auto *`）を持つ表が、`widths=*` だけの表と同じ幅（段幅ちょうど）に収まる
+#[test]
+fn flex_table_fills_the_column_width() {
+  let laid_out = TestProject::builder()
+    .golden_fixture("table_wrap")
+    .config_toml(|table| test_support::set(table, "pdf", "width", "150mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_left", "20mm");
+      test_support::set(table, "page", "margin_right", "20mm");
+    })
+    .build()
+    .laid_out();
+  // 1 段組み（既定）の段幅は用紙幅 − 左右余白
+  let column_width = Length::mm(150.0) - (Length::mm(20.0) + Length::mm(20.0));
+
+  // table_wrap.sei で上罫線を持つ行は、比べる 2 表の先頭行だけ
+  let rule_widths: Vec<Length> = laid_out
+    .pages
+    .iter()
+    .flat_map(page_table_rows)
+    .filter_map(|row| return row.rule.map(|rule| return rule.width))
     .collect();
 
-  assert!(rows.len() >= 7, "table_math.sei の表 2 つで 7 行あるはず: {} 行", rows.len());
-  for row in rows {
-    let bottom = row.top_y + row.height;
-    for placed in &row.boxes {
-      assert_inside_band(
-        placed.hbox.height,
-        placed.hbox.depth,
-        &placed.hbox.content,
-        row.baseline_y - placed.dy,
-        row.top_y,
-        bottom,
-      );
+  assert_eq!(rule_widths.len(), 2, "上罫線を持つ行は 2 表の先頭行の 2 本のはず: {rule_widths:?}");
+  assert_eq!(rule_widths, vec![column_width; 2], "auto + Flex の表と Flex だけの表はどちらも段幅ちょうどのはず");
+}
+
+/// 折り返した行は分割されずに 1 単位で次のページへ送られ、改ページ後のヘッダは初出と同じ折り返しで再掲される
+#[test]
+fn wrapped_table_rows_move_whole_with_the_wrapped_head() {
+  let laid_out = TestProject::builder()
+    .golden_fixture("table_wrap")
+    .config_toml(|table| test_support::set(table, "pdf", "height", "60mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "10mm");
+      test_support::set(table, "page", "margin_bottom", "10mm");
+    })
+    .build()
+    .laid_out();
+  let page_limit = Length::mm(60.0) - Length::mm(10.0);
+
+  // 見出し「見出し」を含む \head を持つ表は (g) だけで、その表の断片は先頭行がヘッダ（初出か再掲）
+  let fragments: Vec<(usize, &Vec<PlacedTableRow>)> = laid_out
+    .pages
+    .iter()
+    .enumerate()
+    .flat_map(|(page_index, page)| {
+      return page.blocks.iter().filter_map(move |block| match block {
+        PlacedBlock::Table { rows } => return Some((page_index, rows)),
+        _ => return None,
+      });
+    })
+    .filter(|(_, rows)| return rows.first().is_some_and(|row| return table_row_text(row).contains("見出し")))
+    .collect();
+  let head_layout = |row: &PlacedTableRow| -> Vec<(Length, Length)> {
+    return row.boxes.iter().map(|placed| return (placed.dx, placed.dy)).collect();
+  };
+
+  assert!(fragments.len() >= 2, "(g) の表は 2 ページ以上に分かれるはず: {} 断片", fragments.len());
+  let first_head = head_layout(&fragments[0].1[0]);
+  assert!(first_head.iter().any(|(_, dy)| return *dy < Length::ZERO), "初出ヘッダは折り返して続き行を持つはず");
+  for (page_index, rows) in &fragments[1..] {
+    assert_eq!(head_layout(&rows[0]), first_head, "page {page_index}: 再掲ヘッダは初出と同じ箱の並びのはず");
+  }
+  let body_texts: Vec<String> =
+    fragments.iter().flat_map(|(_, rows)| return rows[1..].iter().map(table_row_text)).collect();
+  assert_eq!(body_texts.len(), 12, "(g) の本文行は 12 行がそれぞれ 1 回だけ置かれるはず: {body_texts:?}");
+  for number in 1..=12 {
+    let marker = format!("行{number:02}");
+    let count = body_texts.iter().filter(|text| return text.contains(&marker)).count();
+    assert_eq!(count, 1, "{marker} の行は分割されず 1 回だけ現れるはず: {body_texts:?}");
+  }
+  for (page_index, rows) in &fragments {
+    for row in *rows {
+      assert!(row.top_y + row.height <= page_limit, "page {page_index}: 行の下端が本文の下限を超えている");
     }
   }
 }

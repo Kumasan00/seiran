@@ -1,0 +1,76 @@
+\section{列幅で折り返す表}
+
+// Fixed / Ratio / Flex 列のセルは列幅で折り返し、auto 列は折り返さない。
+// 上罫線（rule_above）を持つ行は (b) の 2 表の先頭行だけにする（flex_table_fills_the_column_width が数える）。
+// 「見出し」を含む \head は (g) の表だけにする（wrapped_table_rows_move_whole_with_the_wrapped_head が探す）。
+
+禁則処理: 固定幅の列で、句読点と閉じ括弧が行頭に来ないように折り返す。
+
+\begin{table}[columns=left left, widths=auto 40mm]
+\row{禁則 & 句読点「、」や「。」、閉じ括弧「」」は行頭に来ません（括弧の前後も同じです）。読点、句点。}
+\row{次の行 & 折り返した前の行と重なりません。}
+\end{table}
+
+Flex 列: 残り幅で折り返し、表は段幅ちょうどに収まる。比較用に Flex 列だけの表を続けて置く。
+
+\begin{table}[columns=left left, widths=auto *]
+\row[rule_above]{説明 & 残り幅を受け持つ列は、内容の自然幅が残り幅を超えると、自然幅まで広がって表を段からはみ出させるのではなく、残り幅の中で本文の段落と同じ規則に従って折り返します。このセルは段幅のほぼ全体を受け持つ列に置いた長い文章で、二行以上に折り返すだけの長さを持たせています。行の高さは折り返した行数に応じて伸び、次の行とは重なりません。}
+\row{次の行 & 短い内容}
+\end{table}
+
+\begin{table}[columns=left, widths=*]
+\row[rule_above]{Flex 列だけの表}
+\end{table}
+
+揃え: 列ごとの揃えを折り返した各行へ当てる。
+
+\begin{table}[columns=left center right, widths=30mm 30mm 30mm]
+\row{左揃えの列は各行の左端が揃います & 中央揃えの列は各行が中央に来ます & 右揃えの列は各行の右端が揃います}
+\end{table}
+
+インライン数式: Flex 列で、括弧の外の二項演算子・関係子の直後で折り返す。
+
+\begin{table}[columns=left left, widths=0.85 *]
+\row{式 & $a + b + c + d + e + f + g + h + i + j + k + l = m + n + o + p + q + r + s + t + u + v + w + x$}
+\end{table}
+
+結合セル: 固定幅と Flex 列を跨ぐセルは跨いだ幅で折り返し、全列 auto を跨ぐセルは折り返さない。
+
+\begin{table}[columns=left left, widths=20mm *]
+\row{\cell[span=2]{固定幅の列と残り幅の列を跨ぐ結合セルは、跨いだ列の幅の合計から左右の余白を除いた幅で折り返します。このセルも段幅のほぼ全体を受け持つので、二行以上に折り返すだけの長さを持たせた文章にしています。跨いだ列の幅は合計しても段幅を超えないので、表は段からはみ出しません。}}
+\row{左 & 右}
+\end{table}
+
+\begin{table}[columns=left left, widths=auto auto]
+\row{\cell[span=2]{全列 auto を跨ぐ結合セルは折り返さない}}
+\row{左 & 右}
+\end{table}
+
+先頭行の高さが違うセル: 1 行のセルと 3 行のセルの先頭ベースラインが揃う。
+
+\begin{table}[columns=left left, widths=30mm 30mm]
+\row{$\frac{a}{b}$ の分数 & 三行に折り返す長さのセルの内容です}
+\row{次の行 & 重なりません}
+\end{table}
+
+長い表: 折り返すヘッダを持ち、改ページで行を分割せずに送る。
+
+\begin{table}[columns=left left, widths=20mm 40mm]
+\head{
+  \row{番号 & 列幅で折り返す長い見出しのセルです}
+}
+\row{行01 & 二行に折り返す長さの本文です}
+\row{行02 & 二行に折り返す長さの本文です}
+\row{行03 & 二行に折り返す長さの本文です}
+\row{行04 & 二行に折り返す長さの本文です}
+\row{行05 & 二行に折り返す長さの本文です}
+\row{行06 & 二行に折り返す長さの本文です}
+\row{行07 & 二行に折り返す長さの本文です}
+\row{行08 & 二行に折り返す長さの本文です}
+\row{行09 & 二行に折り返す長さの本文です}
+\row{行10 & 二行に折り返す長さの本文です}
+\row{行11 & 二行に折り返す長さの本文です}
+\row{行12 & 二行に折り返す長さの本文です}
+\end{table}
+
+表の後の段落です。
