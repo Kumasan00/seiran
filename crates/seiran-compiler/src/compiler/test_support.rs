@@ -452,8 +452,8 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set_page_margins(table, "20mm", "15mm");
     },
     // 1 個の脚注が収まらず繰越が連鎖する版面（`footnote_split`）と、そこへ長い表を足して
-    // ページ跨ぎも起こす版面（`index_split`、索引語の出現ページ帰属の検証用）
-    "footnote_split" | "index_split" => set_page_margins(table, "15mm", "12mm"),
+    // ページ跨ぎも起こす版面（`index_split`、索引語の出現ページ帰属の検証用。`table_footnote` は表セルの脚注の配置用）
+    "footnote_split" | "index_split" | "table_footnote" => set_page_margins(table, "15mm", "12mm"),
     // 本文は中央、1 レベルだけ見出しを左へ戻した版面
     "text_center" => {
       set(table, "text", "alignment", "center");
@@ -495,7 +495,7 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "pdf", "width", "150mm");
       set(table, "pdf", "height", "130mm");
     },
-    "footnote_split" | "index_split" => {
+    "footnote_split" | "index_split" | "table_footnote" => {
       set(table, "pdf", "width", "120mm");
       set(table, "pdf", "height", "85mm");
     },

@@ -6,7 +6,7 @@
 use crate::{
   length::Length,
   typeset::boxes::{
-    hitem::IndexTerm,
+    hitem::{IndexTerm, MeasuredFootnote},
     line::LineLink,
     page::{PlacedLink, PlacedTableRow},
   },
@@ -19,7 +19,7 @@ pub(in crate::typeset) struct TableBox {
   pub width: Length,
   /// 初出のヘッダ行
   pub head: Vec<TableRowFragment>,
-  /// 改段・改ページ後の先頭へ再掲するヘッダ行（`head` の複製から索引語を除いたもの。リンクは持つ）
+  /// 改段・改ページ後の先頭へ再掲するヘッダ行（`head` の複製から索引語と脚注を除いたもの。リンクは持つ）
   pub repeated_head: Vec<TableRowFragment>,
   /// 本体行
   pub rows: Vec<TableRowFragment>,
@@ -44,6 +44,8 @@ pub(in crate::typeset) struct TableRowFragment {
   pub links: Vec<LineLink>,
   /// セル内の索引語（左のセルから出現順）
   pub index_marks: Vec<IndexTerm>,
+  /// セル内の脚注（左のセルから出現順。本体は `break_pages` が行の着地と同時に置く）
+  pub footnotes: Vec<MeasuredFootnote>,
 }
 
 impl TableRowFragment {
@@ -52,12 +54,15 @@ impl TableRowFragment {
   pub(in crate::typeset) fn height(&self) -> Length { return self.row.height; }
 
   /// 表左端を `x`、行帯上端を `top_y` に置いた行と、そのリンク矩形（退化矩形は除く）・索引語を返す
+  ///
+  /// 脚注は返さない — 本体は `break_pages` が行の収まり判定と同時に脚注エリアへ置く。
   #[must_use]
   pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> (PlacedTableRow, Vec<PlacedLink>, Vec<IndexTerm>) {
     let TableRowFragment {
       mut row,
       links,
       index_marks,
+      footnotes: _,
     } = self;
     row.top_y += top_y;
     row.baseline_y += top_y;
@@ -126,6 +131,7 @@ mod tests {
         word: "w".to_string(),
         reading: None,
       }],
+      footnotes: Vec::new(),
     };
 
     let (row, links, marks) = fragment.place(pt(5.0), pt(40.0));

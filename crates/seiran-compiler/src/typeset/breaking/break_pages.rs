@@ -7,7 +7,10 @@ mod region_cursor;
 
 use std::fmt;
 
-use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
+use footnote_packing::{
+  FootnoteCharges, FootnoteDemand, LineFootnoteFit, fit_line_footnotes, footnote_area_full, pack_footnotes,
+  split_pending,
+};
 use itertools::izip;
 use page_draft::PageDraft;
 use paragraph_plan::plan_paragraph_lines;
@@ -20,8 +23,8 @@ use crate::{
   project::ProjectPath,
   typeset::{
     boxes::{
-      Align, Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedBlock,
-      PlacedMathNumber, TableBox, TableRowFragment,
+      Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK,
+      Page, PlacedBlock, PlacedMathNumber, TableBox, TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
@@ -366,7 +369,7 @@ impl PageComposer {
 /// ブロック列をページへ配置し、確定ページ列とはみ出し記録を返す。
 ///
 /// はみ出しは着地が確定した行（脚注本体を含む）・画像・ディスプレイ数式について、段の幅と実効の本文下限を基準に
-/// 軸ごとに記録する。表は測らない。
+/// 軸ごとに記録する。表の行は測らない（表の行の脚注は本文の行と同じく `FootnoteLine` を記録する）。
 #[must_use]
 pub(crate) fn break_pages(
   blocks: Vec<Block>,
@@ -482,7 +485,7 @@ pub(crate) fn break_pages(
         composer.cursor = composer.cursor.below(height);
       },
       Block::Table { table, align } => {
-        place_table(&mut composer, geom, table, col_width, align);
+        place_table(&mut composer, geom, breaker, table, col_width, align);
         composer.cursor.at_edge = true;
       },
       Block::Math {
@@ -562,7 +565,15 @@ struct AtomicPlacement {
 }
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
-fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> AtomicPlacement {
+///
+/// 表の脚注本体は `breaker` で段幅 `column_width` に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
+fn plan_atomic(
+  block: &Block,
+  cursor: RegionCursor,
+  geom: &PageGeometry,
+  breaker: &dyn LineBreaker,
+  column_width: Length,
+) -> AtomicPlacement {
   match block {
     Block::Image { height, .. } => {
       return AtomicPlacement {
@@ -585,12 +596,21 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Atom
     },
     Block::Table { table, .. } => {
       let total = table.height();
-      // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）が乗るかだけで決まる（`place_table` の行ループと同じ判定）
+      // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）が脚注と合わせて乗るかだけで決まる
+      // （`place_table` の行ループと同じ判定）
       let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
-        first.is_some_and(|row| return cursor.overflows(row.height(), geom))
+        first.is_some_and(|row| {
+          let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)]);
+          return matches!(fit_table_row(cursor, row.height(), &demands[0], geom), LineFootnoteFit::Rejected);
+        })
       } else {
-        cursor.defers_unbreakable(total, geom)
+        let demands: Vec<FootnoteDemand> = footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width))
+          .into_iter()
+          .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, column_width)))
+          .flatten()
+          .collect();
+        defers_unbreakable_table(cursor, total, &demands, geom)
       };
       return AtomicPlacement {
         starts_region,
@@ -666,7 +686,7 @@ fn keep_group_orphaned(
         carry_pending |= truncated;
       },
       _ if is_content_block(block) => {
-        let placement = plan_atomic(block, cursor, geom);
+        let placement = plan_atomic(block, cursor, geom, breaker, column_width);
         if gi == last_content || placement.starts_region {
           return placement.starts_region;
         }
@@ -697,27 +717,39 @@ fn break_paragraph(
   return lines;
 }
 
-/// 各行に付いた脚注（`line.footnotes`）を段幅で行分割し、未確定の脚注にする（`lines` と同順・同長）
-fn footnote_bodies(breaker: &dyn LineBreaker, lines: &[Line], column_width: Length) -> Vec<Vec<PendingFootnote>> {
-  return lines
+/// 脚注を段幅で行分割し、未確定の脚注にする（`footnotes` と同順・同長）。本文の行と表の行が共用する
+fn pending_footnotes(
+  breaker: &dyn LineBreaker,
+  footnotes: &[MeasuredFootnote],
+  column_width: Length,
+) -> Vec<PendingFootnote> {
+  return footnotes
     .iter()
-    .map(|line| {
-      return line
-        .footnotes
-        .iter()
-        .map(|footnote| {
-          return PendingFootnote {
-            origin: footnote.origin,
-            number: footnote.number,
-            index: footnote.index,
-            continued: false,
-            lines: breaker.break_lines(&footnote.items, column_width, TextAlignment::Left),
-            leading: footnote.leading,
-          };
-        })
-        .collect();
+    .map(|footnote| {
+      return PendingFootnote {
+        origin: footnote.origin,
+        number: footnote.number,
+        index: footnote.index,
+        continued: false,
+        lines: breaker.break_lines(&footnote.items, column_width, TextAlignment::Left),
+        leading: footnote.leading,
+      };
     })
     .collect();
+}
+
+/// 各行に付いた脚注（`line.footnotes`）を段幅で行分割し、未確定の脚注にする（`lines` と同順・同長）
+fn footnote_bodies(breaker: &dyn LineBreaker, lines: &[Line], column_width: Length) -> Vec<Vec<PendingFootnote>> {
+  return lines.iter().map(|line| return pending_footnotes(breaker, &line.footnotes, column_width)).collect();
+}
+
+/// 表の各行断片に付いた脚注を段幅で行分割し、未確定の脚注にする（`rows` と同順・同長）
+fn table_footnote_bodies(
+  breaker: &dyn LineBreaker,
+  rows: &[TableRowFragment],
+  column_width: Length,
+) -> Vec<Vec<PendingFootnote>> {
+  return rows.iter().map(|row| return pending_footnotes(breaker, &row.footnotes, column_width)).collect();
 }
 
 /// 行ごとの未確定脚注から、分割可能な需要（行ごとの積み上げ高さ）を作る（`bodies` と同順・同長）
@@ -907,17 +939,70 @@ fn place_math_block(
   composer.cursor = composer.cursor.below(total_height);
 }
 
+/// 表の行 1 本（行帯の高さ `row_height`・脚注の需要 `demands`）をカーソルから置くとき、行と脚注を合わせて
+/// リージョンへどう収めるか。
+///
+/// 実配置（[`place_table_row`]）と keep-with-next の計画（[`plan_atomic`]）が共用する唯一の判定。行を本文の 1 行と同じ
+/// 単位として扱い、段落の行と同じ [`fit_line_footnotes`] を通す。脚注の無い行では `Full` ⇔
+/// `!cursor.overflows(row_height, geom)`。
+fn fit_table_row(
+  cursor: RegionCursor,
+  row_height: Length,
+  demands: &[FootnoteDemand],
+  geom: &PageGeometry,
+) -> LineFootnoteFit {
+  return fit_line_footnotes(
+    demands,
+    cursor.footnote_reserved,
+    cursor.y + row_height,
+    geom.page_limit,
+    FootnoteCharges::of(geom),
+  );
+}
+
+/// 分割禁止の表（高さ `table_height`、全行の脚注の需要を出現順に並べた `demands`）を次リージョンへ送るべきか。
+///
+/// 現在リージョンでは今の予約に全行の脚注を積んだ脚注エリアと合わせて収まらず、予約の無い新しいリージョンなら
+/// 全行の脚注と合わせて収まるときだけ送る（足さないと、脚注なしでは収まる表が行ループの送りで途中から割れる。
+/// 新しいリージョンでも収まらない表は送っても改善しないので、その場に置く）。実配置（[`place_table`]）と
+/// keep-with-next の計画（[`plan_atomic`]）が共用する。
+fn defers_unbreakable_table(
+  cursor: RegionCursor,
+  table_height: Length,
+  demands: &[FootnoteDemand],
+  geom: &PageGeometry,
+) -> bool {
+  let charges = FootnoteCharges::of(geom);
+  let here = footnote_area_full(demands, cursor.footnote_reserved, charges);
+  let fresh = footnote_area_full(demands, Length::ZERO, charges);
+  return cursor.y + table_height > geom.page_limit - here && geom.margin_top + table_height <= geom.page_limit - fresh;
+}
+
 /// 表を行断片の単位で配置する（改段・改ページ時は先頭に再掲ヘッダを積む）
 ///
 /// 表固有の判断は分割してよいか（`breakable`）と再掲ヘッダを積むことの 2 つだけで、断片の中身（列幅・セル余白・
-/// 罫線・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと揃えオフセットだけ。
+/// 罫線・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと揃えオフセットと、行の脚注の
+/// 予約・配置（[`place_table_row`]）。セルの脚注本体は `breaker` で段幅 `column_width` に行分割する。
 /// 未解決アンカーは空でない最初の断片の着地（[`PageDraft::place_table_fragment`]）で解決する。
 /// 先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
-fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: TableBox, column_width: Length, align: Align) {
+fn place_table(
+  composer: &mut PageComposer,
+  geom: &PageGeometry,
+  breaker: &dyn LineBreaker,
+  table: TableBox,
+  column_width: Length,
+  align: Align,
+) {
   // 揃えオフセットは段内のもの。段オフセットは着地段が決まる flush 時に断片ごとに足す
   let align_offset = align.offset(column_width, table.width);
-  if !table.breakable && composer.cursor.defers_unbreakable(table.height(), geom) {
-    composer.advance_region(geom);
+  let head_bodies = table_footnote_bodies(breaker, &table.head, column_width);
+  let row_bodies = table_footnote_bodies(breaker, &table.rows, column_width);
+  if !table.breakable {
+    let demands: Vec<FootnoteDemand> =
+      footnote_demands(&head_bodies).into_iter().chain(footnote_demands(&row_bodies)).flatten().collect();
+    if defers_unbreakable_table(composer.cursor, table.height(), &demands, geom) {
+      composer.advance_region(geom);
+    }
   }
 
   let TableBox {
@@ -927,35 +1012,89 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: TableBox
     ..
   } = table;
   let mut pending: Vec<(TableRowFragment, Length)> = Vec::new();
-  // 断片の段オフセットは着地段のもの（flush は advance_region の前に呼ばれるので column は正しい）
-  let flush = |composer: &mut PageComposer, pending: &mut Vec<(TableRowFragment, Length)>| {
-    let column_x = composer.column_offset();
-    composer.draft.place_table_fragment(std::mem::take(pending), column_x, align_offset);
-  };
-
-  for row in head {
-    if composer.cursor.overflows(row.height(), geom) {
-      flush(composer, &mut pending);
-      composer.advance_region(geom);
-    }
-    let height = row.height();
-    pending.push((row, composer.cursor.y));
-    composer.cursor.y += height;
+  for (row, bodies) in head.into_iter().zip(head_bodies) {
+    place_table_row(composer, geom, row, bodies, &[], &mut pending, align_offset);
   }
-  for row in rows {
-    if composer.cursor.overflows(row.height(), geom) {
-      flush(composer, &mut pending);
+  for (row, bodies) in rows.into_iter().zip(row_bodies) {
+    place_table_row(composer, geom, row, bodies, &repeated_head, &mut pending, align_offset);
+  }
+  flush_table_rows(composer, &mut pending, align_offset);
+}
+
+/// 溜めた行断片を現在の段へ着地させる（改リージョンの前に呼ぶので段オフセットは着地段のもの）
+fn flush_table_rows(composer: &mut PageComposer, pending: &mut Vec<(TableRowFragment, Length)>, align_offset: Length) {
+  let column_x = composer.column_offset();
+  composer.draft.place_table_fragment(std::mem::take(pending), column_x, align_offset);
+}
+
+/// 表の行 1 本を、その脚注（行分割済みの `bodies`）と合わせて現在リージョンへ置く
+///
+/// 行と脚注が収まらなければ、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）の下に置く
+/// として判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときは、ヘッダを積まずにさらに送る
+/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。予約の無い新リージョンでも入らなければ、本文の行と同じくはみ出しを記録して全行置く。
+/// 脚注の予約・分割・繰越は段落の行の確定（`place_paragraph`）と同じ順で行う。
+fn place_table_row(
+  composer: &mut PageComposer,
+  geom: &PageGeometry,
+  row: TableRowFragment,
+  bodies: Vec<PendingFootnote>,
+  repeated_head: &[TableRowFragment],
+  pending: &mut Vec<(TableRowFragment, Length)>,
+  align_offset: Length,
+) {
+  let charges = FootnoteCharges::of(geom);
+  let demands: Vec<FootnoteDemand> =
+    bodies.iter().map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading)).collect();
+  let height = row.height();
+  let mut fit = fit_table_row(composer.cursor, height, &demands, geom);
+  if matches!(fit, LineFootnoteFit::Rejected) {
+    let head_height: Length = repeated_head.iter().map(TableRowFragment::height).sum();
+    loop {
+      flush_table_rows(composer, pending, align_offset);
       composer.advance_region(geom);
-      for head_row in &repeated_head {
-        pending.push((head_row.clone(), composer.cursor.y));
-        composer.cursor.y += head_row.height();
+      let carried = composer.cursor.footnote_reserved > Length::ZERO;
+      let below_head = RegionCursor {
+        y: composer.cursor.y + head_height,
+        ..composer.cursor
+      };
+      fit = fit_table_row(below_head, height, &demands, geom);
+      if !(carried && matches!(fit, LineFootnoteFit::Rejected)) {
+        break;
       }
     }
-    let height = row.height();
-    pending.push((row, composer.cursor.y));
-    composer.cursor.y += height;
+    for head_row in repeated_head {
+      pending.push((head_row.clone(), composer.cursor.y));
+      composer.cursor.y += head_row.height();
+    }
   }
-  flush(composer, &mut pending);
+  let (area, splits) = match fit {
+    LineFootnoteFit::Full(area) => (area, demands.iter().map(FootnoteDemand::line_count).collect()),
+    LineFootnoteFit::Split(area, splits) => (area, splits),
+    // 予約の無いリージョンでも収まらない病的ケース。送っても改善しないので、はみ出したまま置く
+    LineFootnoteFit::Rejected => {
+      if !bodies.is_empty() {
+        composer.record(OverflowKind::FootnoteLine {
+          footnotes: bodies.iter().map(|footnote| return (footnote.number, footnote.origin)).collect(),
+        });
+      }
+      (
+        footnote_area_full(&demands, composer.cursor.footnote_reserved, charges),
+        demands.iter().map(FootnoteDemand::line_count).collect::<Vec<_>>(),
+      )
+    },
+  };
+  pending.push((row, composer.cursor.y));
+  composer.cursor.y += height;
+  for (footnote, placed) in bodies.into_iter().zip(splits) {
+    let (head, tail) = split_pending(footnote, placed);
+    if let Some(head) = head {
+      composer.push_region_footnote(head);
+    }
+    if let Some(tail) = tail {
+      composer.carry.push(tail);
+    }
+  }
+  composer.cursor.footnote_reserved = area;
 }
 
 #[cfg(test)]
@@ -1691,6 +1830,7 @@ mod tests {
       .iter()
       .filter_map(|b| match b {
         PlacedBlock::Line { line, baseline_y } => return Some(*baseline_y + line.depth),
+        PlacedBlock::Table { rows } => return rows.last().map(|row| return row.top_y + row.height),
         _ => return None,
       })
       .reduce(Length::max);
@@ -2091,6 +2231,7 @@ mod tests {
       },
       links: Vec::new(),
       index_marks: Vec::new(),
+      footnotes: Vec::new(),
     };
   }
 
@@ -2106,6 +2247,7 @@ mod tests {
       .map(|fragment| {
         return TableRowFragment {
           index_marks: Vec::new(),
+          footnotes: Vec::new(),
           ..fragment.clone()
         };
       })
@@ -4002,5 +4144,327 @@ mod tests {
       assert_eq!(pages.len(), 1, "{pages:?}");
       assert_eq!(overflows, expected, "width={width}");
     }
+  }
+
+  /// 表の行断片に脚注（[`footnote_item`] / [`footnote_of_lines`] が作るマーカー）を足すヘルパ
+  fn with_footnote(mut row: TableRowFragment, footnote: HItem) -> TableRowFragment {
+    let HItem::Footnote(footnote) = footnote else {
+      panic!("脚注マーカーを渡すこと: {footnote:?}");
+    };
+    row.footnotes.push(footnote);
+    return row;
+  }
+
+  /// ページの脚注断片の `(出現 index, 繰越か)` 列
+  fn table_footnote_indices(page: &Page) -> Vec<(u32, bool)> {
+    return page.footnotes.iter().map(|footnote| return (footnote.index, footnote.continued)).collect();
+  }
+
+  /// ページに置かれた表の行数（表ブロックをまたいだ合計）
+  fn table_rows_of(page: &Page) -> usize {
+    return page
+      .blocks
+      .iter()
+      .map(|block| match block {
+        PlacedBlock::Table { rows } => return rows.len(),
+        _ => return 0,
+      })
+      .sum();
+  }
+
+  /// 本文行の表（ヘッダなし・分割可能）1 個のブロック
+  fn table_block(rows: Vec<TableRowFragment>) -> Block {
+    return Block::Table {
+      table: table_box(Vec::new(), rows),
+      align: Align::Left,
+    };
+  }
+
+  /// 本体 1 行（高さ 10。`test_geometry` の予約は 4 + 10 = 14）の脚注マーカー
+  fn one_line_footnote(number: u32) -> HItem { return footnote_item(number, vec![test_box()], pt(12.0)); }
+
+  #[test]
+  fn table_row_footnote_lands_below_the_table_in_the_row_page() {
+    let geom = test_geometry();
+    let blocks = vec![table_block(vec![with_footnote(
+      table_row("A"),
+      one_line_footnote(1),
+    )])];
+
+    let (pages, overflows) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false)]);
+    assert!(footnote_baselines(&pages[0], 1)[0] > pt(20.0), "脚注は表の行（10..20）より下");
+    assert!(overflows.is_empty(), "{overflows:?}");
+  }
+
+  #[test]
+  fn table_row_with_footnote_moves_to_next_page_without_leaving_reservation() {
+    // 3 行で y = 40。4 行目は単独なら 40..50 に収まるが、脚注の予約 14 を足すと収まらない
+    let geom = test_geometry();
+    let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
+    rows.push(with_footnote(table_row("R3"), one_line_footnote(1)));
+
+    let (pages, _) = break_pages(vec![table_block(rows)], pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(pages[0].footnotes.is_empty(), "元のページに脚注エリアを残さない");
+    assert_eq!(table_rows_of(&pages[0]), 3);
+    assert_eq!(table_rows_of(&pages[1]), 1);
+    assert_eq!(table_footnote_indices(&pages[1]), vec![(0, false)]);
+  }
+
+  #[test]
+  fn footnotes_in_one_table_row_stack_in_source_order() {
+    let geom = test_geometry();
+    let row = with_footnote(with_footnote(table_row("A"), one_line_footnote(1)), one_line_footnote(2));
+
+    let (pages, _) = break_pages(vec![table_block(vec![row])], pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false), (1, false)]);
+    assert!(footnote_baselines(&pages[0], 2)[0] > footnote_baselines(&pages[0], 1)[0], "出現順に積む");
+  }
+
+  #[test]
+  fn long_table_row_footnote_carries_to_next_page() {
+    let geom = test_geometry();
+    let row = with_footnote(table_row("A"), footnote_of_lines(1, 4));
+
+    let (pages, _) = break_pages(vec![table_block(vec![row])], pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false)]);
+    assert_eq!(table_footnote_indices(&pages[1]), vec![(0, true)]);
+    assert_no_body_footnote_overlap(&pages);
+  }
+
+  #[test]
+  fn head_footnote_is_placed_once_on_the_first_head_page() {
+    // ヘッダ 1 行（脚注付き）+ 本文 6 行で 2 ページにまたがる
+    let geom = test_geometry();
+    let head = vec![with_footnote(table_row("H"), one_line_footnote(1))];
+    let rows = (0..6).map(|i| return table_row(&format!("R{i}"))).collect();
+    let blocks = vec![Block::Table {
+      table: table_box(head, rows),
+      align: Align::Left,
+    }];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(pages.len() >= 2, "表が改ページするはず（空振り検知）: {pages:?}");
+    let placed: Vec<usize> = pages
+      .iter()
+      .enumerate()
+      .filter(|(_, page)| return !page.footnotes.is_empty())
+      .map(|(index, _)| return index)
+      .collect();
+    assert_eq!(placed, vec![0], "本体は初出ヘッダのページにだけ出る");
+  }
+
+  #[test]
+  fn head_footnote_moves_with_the_head_to_next_page() {
+    // 3 行の表で y = 40。次の表のヘッダ行は単独なら 40..50 に収まるが、脚注の予約 14 を足すと収まらない
+    let geom = test_geometry();
+    let filler = (0..3).map(|i| return table_row(&format!("F{i}"))).collect();
+    let head = vec![with_footnote(table_row("H"), one_line_footnote(1))];
+    let blocks = vec![
+      table_block(filler),
+      Block::Table {
+        table: table_box(head, vec![table_row("R0")]),
+        align: Align::Left,
+      },
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(pages[0].footnotes.is_empty(), "{:?}", pages[0].footnotes);
+    assert_eq!(table_rows_of(&pages[0]), 3);
+    assert_eq!(table_footnote_indices(&pages[1]), vec![(0, false)]);
+  }
+
+  #[test]
+  fn table_row_footnote_overflow_is_reported_like_a_body_line() {
+    // 空のページでも行 10 + 予約（4 + 本体 52）が page_limit 50 を超える
+    let geom = test_geometry();
+    let row = with_footnote(table_row("A"), footnote_item(1, vec![tall_box(50.0)], pt(12.0)));
+
+    let (pages, overflows) = break_pages(vec![table_block(vec![row])], pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false)], "はみ出したまま置く");
+    let expected = OverflowKind::FootnoteLine {
+      footnotes: vec![(1, footnote_origin(1))],
+    };
+    assert!(overflows.iter().any(|overflow| return overflow.kind == expected), "{overflows:?}");
+  }
+
+  #[test]
+  fn heading_moves_with_table_whose_first_row_footnote_does_not_fit() {
+    // 1 行目（baseline 10）の後、見出し役の 1 行段落（baseline 22）→ 分割禁止 → 表。
+    // 表の先頭行は y = 34 から 44 で単独なら収まるが、予約 14 を足すと収まらない
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(Vec::new()),
+      single_line_paragraph(Vec::new()),
+      forbid_break(),
+      table_block(vec![with_footnote(table_row("A"), one_line_footnote(1))]),
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(page_baselines(&pages[0]).len(), 1, "見出し役の行は表と一緒に次ページへ");
+    assert_eq!(page_baselines(&pages[1]).len(), 1);
+    assert_eq!(table_rows_of(&pages[1]), 1);
+    assert_eq!(table_footnote_indices(&pages[1]), vec![(0, false)]);
+  }
+
+  #[test]
+  fn unbreakable_table_defers_whole_when_its_footnotes_do_not_fit() {
+    // 1 行段落の後 y = 22。分割禁止の 2 行表（高さ 20）は単独なら 42 で収まるが、予約 14 を足すと収まらない
+    let geom = test_geometry();
+    let rows = vec![
+      table_row("R0"),
+      with_footnote(table_row("R1"), one_line_footnote(1)),
+    ];
+    let table = TableBox {
+      breakable: false,
+      ..table_box(Vec::new(), rows)
+    };
+    let blocks = vec![
+      single_line_paragraph(Vec::new()),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
+    assert_eq!(table_rows_of(&pages[1]), 2);
+    assert_eq!(table_footnote_indices(&pages[1]), vec![(0, false)]);
+  }
+
+  #[test]
+  fn table_row_after_carry_does_not_overlap_carried_footnote() {
+    // 1 行段落の 4 行脚注がページ 0 で分割され、残りがページ 1 の脚注エリア先頭を占める。
+    // 続く表の脚注付きの行は、繰越と自分の脚注が同じリージョンに入らなければさらに送られる
+    let geom = test_geometry();
+    let rows = (0..4u32)
+      .map(|i| return with_footnote(table_row(&format!("R{i}")), footnote_of_lines(i + 2, 1)))
+      .collect();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines(1, 4)]),
+      table_block(rows),
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(
+      pages.iter().any(|page| return page.footnotes.iter().any(|footnote| return footnote.continued)),
+      "繰越が起きるはず（空振り検知）: {:?}",
+      footnote_layout(&pages)
+    );
+    assert_eq!(pages.iter().map(table_rows_of).sum::<usize>(), 4);
+    assert_no_body_footnote_overlap(&pages);
+  }
+
+  #[test]
+  fn table_row_footnote_lands_in_the_column_of_its_row() {
+    // 2 段（段幅 45・右段オフセット 55）。左段に 3 行 → 4 行目（脚注付き）は右段へ
+    let geom = two_column_geometry();
+    let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
+    rows.push(with_footnote(table_row("R3"), one_line_footnote(1)));
+
+    let (pages, _) = break_pages(vec![table_block(rows)], pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    let footnote = footnote_numbered(&pages[0], 1).expect("右段の脚注エリアに置かれるはず");
+    let xs: Vec<Length> = footnote
+      .blocks
+      .iter()
+      .filter_map(|block| match block {
+        PlacedBlock::Line { line, .. } => return line.boxes.first().map(|placed| return placed.dx),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(xs, vec![pt(55.0)], "本体の行は右段の左端から");
+  }
+
+  #[test]
+  fn table_footnote_coexists_with_flush_bottom() {
+    let geom = flush_geometry();
+    let rows = (0..6u32)
+      .map(|i| return with_footnote(table_row(&format!("R{i}")), footnote_of_lines(i + 1, 1)))
+      .collect();
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::Glue {
+        natural: Length::ZERO,
+        stretch: pt(10.0),
+      },
+      table_block(rows),
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(pages.len() >= 2, "満杯で閉じるリージョンがあるはず（空振り検知）: {pages:?}");
+    assert_eq!(pages.iter().map(|page| return page.footnotes.len()).sum::<usize>(), 6);
+    assert_no_body_footnote_overlap(&pages);
+  }
+
+  #[test]
+  fn repeated_head_is_not_stacked_onto_a_region_filled_by_carry() {
+    // R0 の 8 行脚注がページ 0 で分割され、残りが後続ページの脚注エリアを埋める。再掲ヘッダは R1 と一緒に
+    // 入るリージョンにだけ積み、繰越で埋まったリージョンにヘッダだけを置いて脚注と重ねない
+    let geom = test_geometry();
+    let head = vec![table_row("H")];
+    let rows = vec![
+      with_footnote(table_row("R0"), footnote_of_lines(1, 8)),
+      table_row("R1"),
+    ];
+    let blocks = vec![Block::Table {
+      table: table_box(head, rows),
+      align: Align::Left,
+    }];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert!(
+      pages.iter().any(|page| return page.footnotes.iter().any(|footnote| return footnote.continued)),
+      "繰越が起きるはず（空振り検知）"
+    );
+    assert_no_body_footnote_overlap(&pages);
+    let rows_per_page: Vec<usize> = pages.iter().map(table_rows_of).collect();
+    assert!(
+      rows_per_page.iter().all(|&rows| return rows != 1),
+      "ヘッダだけのページを作らない: {rows_per_page:?}"
+    );
+  }
+
+  #[test]
+  fn unbreakable_table_moves_whole_past_a_page_with_footnote_reservation() {
+    // 1 行段落の脚注で予約 14 のページに、分割禁止の 2 行表（2 行目に脚注）。ここには入らないが、予約の無い
+    // 新しいページなら 10 + 20 + 14 = 44 ≤ 50 で丸ごと入る
+    let geom = test_geometry();
+    let rows = vec![
+      table_row("R0"),
+      with_footnote(table_row("R1"), one_line_footnote(2)),
+    ];
+    let table = TableBox {
+      breakable: false,
+      ..table_box(Vec::new(), rows)
+    };
+    let blocks = vec![
+      single_line_paragraph(vec![one_line_footnote(1)]),
+      Block::Table {
+        table,
+        align: Align::Left,
+      },
+    ];
+
+    let (pages, _) = break_pages(blocks, pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
+    assert_eq!(table_rows_of(&pages[1]), 2);
   }
 }
