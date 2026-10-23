@@ -174,6 +174,10 @@ pub(in crate::typeset) struct TableLayout {
   pub rule_gap: Length,
   /// 行群の区切りの空き（`[table].row_gap`）
   pub row_gap: Length,
+  /// 部分罫の太さ（`[table].partial_rule_thickness`）
+  pub partial_rule_thickness: Length,
+  /// 部分罫の左右の詰め幅（片側。`[table].partial_rule_trim`）
+  pub partial_rule_trim: Length,
   /// 横罫線の色（RGB。`None` は黒）
   pub rule_color: Option<[u8; 3]>,
 }
@@ -205,6 +209,8 @@ pub(in crate::typeset) struct TableCellLayout {
   pub content: Vec<InlineNode>,
   /// 列方向の結合数（1 以上）
   pub column_span: u32,
+  /// 跨ぐ列の範囲の下に部分罫を引くか
+  pub rule_below: bool,
 }
 
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現

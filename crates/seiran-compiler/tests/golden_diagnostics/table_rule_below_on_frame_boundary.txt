@@ -1,0 +1,12 @@
+frontend::eval::table_rule_below_on_frame_boundary
+
+  × 表の最後の行と \head の最後の行のセルには rule_below を置けません
+   ╭─[tests/text/diagnostics/table_rule_below_on_frame_boundary.sei:4:6]
+ 3 │ \row{幅 & 10}
+ 4 │ \row{\cell[span=2, rule_below]{高さ 20}}
+   ·      ─────────────────┬────────────────
+   ·                       ╰── このセルの下の境界は表の枠罫の持ち場です
+ 5 │ \end{table}
+   ╰────
+  help: この境界の罫線は style.toml の [table]（outer_rule_thickness / rule_thickness）が決めま
+        す。rule_below を外してください

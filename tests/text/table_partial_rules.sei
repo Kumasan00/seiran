@@ -1,0 +1,26 @@
+\section{部分罫}
+
+// 2 段ヘッダ: 上段の結合セルの下に部分罫を引く。再生成時は golden で、先頭の表の罫線が「上端 0.80・上段の下の
+// 部分罫 0.30 × 2（左右を 5pt 詰め、間が切れる）・ヘッダ下 0.50・下端 0.80」で、部分罫 2 本の y が等しいことを確認する。
+// 2 つ目の表は本体行のセルの部分罫（表の左端・右端でも詰める）。
+
+年ごとの上期・下期を地域別に並べた表です。
+
+\begin{table}[columns=left right right right right]
+\head{
+  \row{ & \cell[span=2, rule_below]{2025年} & \cell[span=2, rule_below]{2026年}}
+  \row{地域 & 上期 & 下期 & 上期 & 下期}
+}
+\row{東 & 10 & 12 & 14 & 16}
+\row{西 & 20 & 22 & 24 & 26}
+\end{table}
+
+本体の行のセルに部分罫を引く表です。
+
+\begin{table}[columns=left right]
+\row{\cell[span=2, rule_below]{小計}}
+\row{x & 1}
+\row{y & 2}
+\end{table}
+
+表の後の段落です。

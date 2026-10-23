@@ -233,6 +233,71 @@ mod tests {
   }
 
   #[test]
+  fn cell_rule_below_is_read_with_span() {
+    let result = eval_table(
+      r"\begin{table}\head{\row{\cell[span=2, rule_below]{H} & X}\row{a & b & c}}\row{1 & 2 & 3}\end{table}",
+    )
+    .unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます");
+    };
+
+    let flags: Vec<_> = table.head[0].cells.iter().map(|cell| return (cell.column_span, cell.rule_below)).collect();
+
+    assert_eq!(flags, vec![(2, true), (1, false)]);
+    assert!(table.head[1].cells.iter().all(|cell| return !cell.rule_below));
+  }
+
+  #[test]
+  fn cell_rule_below_false_is_no_rule() {
+    let result = eval_table(r"\begin{table}\row{\cell[rule_below=false]{A}}\row{B}\end{table}").unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます");
+    };
+
+    assert!(!table.rows[0].cells[0].rule_below);
+  }
+
+  #[test]
+  fn rule_below_on_the_frame_boundaries_is_rejected() {
+    for source in [
+      // 本体の最後の行
+      r"\begin{table}\row{A}\row{\cell[rule_below]{B}}\end{table}",
+      // \head の最後の行
+      r"\begin{table}\head{\row{H1}\row{\cell[rule_below]{H2}}}\row{A}\end{table}",
+      // \head だけの表
+      r"\begin{table}\head{\row{\cell[rule_below]{H}}}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableRuleBelowOnFrameBoundary { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn rule_below_over_a_separator_is_rejected() {
+    for source in [
+      r"\begin{table}\row{A}\row{\cell[rule_below]{B}}\row[separator=rule]{C}\row{D}\end{table}",
+      r"\begin{table}\head{\row{\cell[rule_below]{H1}}\row[separator=gap]{H2}}\row{A}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableRuleBelowWithSeparator { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn rule_below_inside_a_row_group_is_accepted() {
+    let result =
+      eval_table(r"\begin{table}\row{\cell[rule_below]{A} & \cell[rule_below]{B}}\row{C & D}\end{table}").unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます");
+    };
+
+    assert!(table.rows[0].cells.iter().all(|cell| return cell.rule_below));
+  }
+
+  #[test]
   fn table_cell_span_counts_toward_column_count() {
     let source = r"\begin{table}\row{A & B & C}\row[separator=rule]{\cell[span=2]{合計} & 180}\end{table}";
     let result = eval_table(source).unwrap();

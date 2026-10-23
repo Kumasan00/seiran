@@ -46,15 +46,15 @@ impl TableBox {
   }
 }
 
-/// 表の横の境界 — 行の上の区切り（罫線・空き）と、断片の上端・下端の枠罫とヘッダ下の罫線
+/// 表の横の境界 — 行の上の区切り（罫線・空き・部分罫）と、断片の上端・下端の枠罫とヘッダ下の罫線
 ///
 /// 既定値は何も無い境界（高さ 0・罫線なし）。
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(in crate::typeset) struct TableBoundary {
   /// 境界が縦に占める高さ（罫線とその上下の空きの和）
   pub height: Length,
-  /// 境界上端・表左端を原点とする罫線（`None` は空きだけの境界か、何も無い境界）
-  pub rule: Option<PlacedTableRule>,
+  /// 境界上端・表左端を原点とする罫線（空は空きだけの境界か、何も無い境界）
+  pub rules: Vec<PlacedTableRule>,
 }
 
 impl TableBoundary {
@@ -74,24 +74,59 @@ impl TableBoundary {
     }
     return Self {
       height: gap_above + thickness + gap_below,
-      rule: Some(PlacedTableRule {
+      rules: vec![PlacedTableRule {
         x: Length::ZERO,
         y: gap_above,
         width,
         height: thickness,
         color,
-      }),
+      }],
     };
   }
 
-  /// 表左端を `x`、境界上端を `top_y` に置いた罫線を返す（罫線の無い境界は `None`）
+  /// 帯 `bands`（表左端からの左端 x と帯幅）ごとに左右を `trim` ずつ詰めた、太さ `thickness`・色 `color` の罫線を
+  /// 同じ高さに並べた境界（上に `gap_above`・下に `gap_below` の空き）
+  ///
+  /// 太さが正でないか帯が無ければ何も無い境界を返す。詰めた幅が正でない罫線は描かないが、境界の高さは残す — 高さは
+  /// 罫線を求める帯の有無と太さだけで決まる。
   #[must_use]
-  pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> Option<PlacedTableRule> {
-    return self.rule.map(|rule| {
+  pub(in crate::typeset) fn partial_rules(
+    gap_above: Length,
+    thickness: Length,
+    gap_below: Length,
+    bands: &[(Length, Length)],
+    trim: Length,
+    color: Option<[u8; 3]>,
+  ) -> Self {
+    if !thickness.is_positive() || bands.is_empty() {
+      return Self::default();
+    }
+    let rules = bands
+      .iter()
+      .map(|&(x, width)| {
+        return PlacedTableRule {
+          x: x + trim,
+          y: gap_above,
+          width: width - trim * 2,
+          height: thickness,
+          color,
+        };
+      })
+      .filter(|rule| return rule.width.is_positive())
+      .collect();
+    return Self {
+      height: gap_above + thickness + gap_below,
+      rules,
+    };
+  }
+
+  /// 表左端を `x`、境界上端を `top_y` に置いた罫線を返す
+  pub(in crate::typeset) fn place(&self, x: Length, top_y: Length) -> impl Iterator<Item = PlacedTableRule> + '_ {
+    return self.rules.iter().map(move |rule| {
       return PlacedTableRule {
         x: rule.x + x,
         y: rule.y + top_y,
-        ..rule
+        ..*rule
       };
     });
   }
@@ -182,7 +217,7 @@ mod tests {
       overrun: Length::ZERO,
       above: TableBoundary {
         height: pt(above),
-        rule: None,
+        rules: Vec::new(),
       },
       row: PlacedTableRow {
         top_y: Length::ZERO,
@@ -201,14 +236,49 @@ mod tests {
     let boundary = TableBoundary::rule(pt(2.0), Length::ZERO, pt(2.0), pt(30.0), None);
 
     assert_eq!(boundary.height, Length::ZERO);
-    assert!(boundary.rule.is_none());
+    assert!(boundary.rules.is_empty());
+  }
+
+  #[test]
+  fn partial_rules_trim_each_band_and_share_one_height() {
+    // 帯 (0, 30) と (30, 20)、詰め 5: 罫線 x=5 w=20 と x=35 w=10、どちらも y = 2
+    let bands = [(pt(0.0), pt(30.0)), (pt(30.0), pt(20.0))];
+    let boundary = TableBoundary::partial_rules(pt(2.0), pt(0.3), pt(2.0), &bands, pt(5.0), None);
+
+    let rules: Vec<_> = boundary.place(pt(10.0), pt(100.0)).collect();
+
+    assert!(close(boundary.height, 4.3));
+    assert_eq!(rules.len(), 2);
+    assert!(close(rules[0].x, 15.0) && close(rules[0].width, 20.0) && close(rules[0].y, 102.0), "{rules:?}");
+    assert!(close(rules[1].x, 45.0) && close(rules[1].width, 10.0) && close(rules[1].y, 102.0), "{rules:?}");
+    assert!(rules.iter().all(|rule| return close(rule.height, 0.3)));
+  }
+
+  #[test]
+  fn partial_rules_with_zero_thickness_take_no_space() {
+    let boundary = TableBoundary::partial_rules(pt(2.0), Length::ZERO, pt(2.0), &[(pt(0.0), pt(30.0))], pt(5.0), None);
+
+    assert_eq!(boundary.height, Length::ZERO);
+    assert!(boundary.rules.is_empty());
+  }
+
+  #[test]
+  fn partial_rules_keep_the_height_when_every_band_trims_away() {
+    // 帯幅 10 から両側 5 を詰めると 0 — 描かないが、境界の高さは構造と太さで決まる
+    let boundary = TableBoundary::partial_rules(pt(2.0), pt(0.3), pt(2.0), &[(pt(0.0), pt(10.0))], pt(5.0), None);
+
+    assert!(close(boundary.height, 4.3));
+    assert!(boundary.rules.is_empty());
   }
 
   #[test]
   fn rule_boundary_places_the_rule_between_its_gaps() {
     let boundary = TableBoundary::rule(pt(2.0), pt(0.5), pt(2.0), pt(30.0), Some([9, 9, 9]));
 
-    let rule = boundary.place(pt(5.0), pt(40.0)).expect("太さが正なら罫線を持つ");
+    let rules: Vec<_> = boundary.place(pt(5.0), pt(40.0)).collect();
+    let [rule] = rules.as_slice() else {
+      panic!("太さが正なら罫線を 1 本持つ: {rules:?}");
+    };
 
     assert!(close(boundary.height, 4.5));
     assert!(
@@ -225,7 +295,7 @@ mod tests {
     let frame = |height: f32| {
       return TableBoundary {
         height: pt(height),
-        rule: None,
+        rules: Vec::new(),
       };
     };
     let table = TableBox {

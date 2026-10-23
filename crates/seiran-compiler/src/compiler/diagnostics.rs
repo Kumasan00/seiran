@@ -140,6 +140,24 @@ fn diagnostic_table_separator_on_frame_boundary() {
 }
 
 #[test]
+fn diagnostic_table_rule_below_on_frame_boundary() {
+  // G1: 表の最後の行の下は枠罫の持ち場なので、部分罫を重ねない
+  let failure = compile_err(&["tests/text/diagnostics/table_rule_below_on_frame_boundary.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_rule_below_on_frame_boundary".to_string()]);
+  assert_matches_golden("table_rule_below_on_frame_boundary", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_table_rule_below_with_separator() {
+  // G1: 同じ境界に全幅の区切りと部分罫を重ねない
+  let failure = compile_err(&["tests/text/diagnostics/table_rule_below_with_separator.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_rule_below_with_separator".to_string()]);
+  assert_matches_golden("table_rule_below_with_separator", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_bare_braces() {
   // P4（裸の `{...}` は構文エラー）
   let failure = compile_err(&["tests/text/diagnostics/bare_braces.sei"]);

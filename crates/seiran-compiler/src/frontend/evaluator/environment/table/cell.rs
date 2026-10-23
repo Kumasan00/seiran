@@ -15,6 +15,8 @@ use crate::{
 
 /// `\cell[span=N]`（横に連結する列数。1 以上の整数）
 const SPAN: OptKey<u32> = opt_args::positive_int("span");
+/// `\cell[rule_below]`（跨ぐ列の範囲の下に部分罫を引く）
+const RULE_BELOW: OptKey<bool> = opt_args::boolean("rule_below");
 
 /// `&` 分割後の 1 区画を [`HirTableCell`] に変換する
 pub(super) fn build_cell(
@@ -68,17 +70,19 @@ pub(super) fn build_cell(
     id,
     content: trim_cell_content(content),
     column_span: 1,
+    rule_below: false,
   });
 }
 
-/// `\cell[span=N]{...}` を属性付きセルに変換する
+/// `\cell[span=N, rule_below]{...}` を属性付きセルに変換する
 fn evaluate_cell_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
-  let opts = collect_command_opt_args(view, &[SPAN.decl()])?;
+  let opts = collect_command_opt_args(view, &[SPAN.decl(), RULE_BELOW.decl()])?;
   let column_span = opts.get(SPAN).unwrap_or(1);
+  let rule_below = opts.get(RULE_BELOW).unwrap_or(false);
 
   let arg = arity::exactly_one_arg(view, "セル内容")?;
 
@@ -88,6 +92,7 @@ fn evaluate_cell_command(
     id,
     content,
     column_span,
+    rule_below,
   });
 }
 
