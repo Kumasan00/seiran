@@ -15,8 +15,9 @@
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
-//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`table`（表エンジン — 列幅の決定・セルの組版と計測・行断片の生成）も
-//! `Measurer` の `impl` を続ける。`hlist` は本文・脚注本文・表のセルの水平リストの積み場所で、
+//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`table`（表エンジン — 列幅の決定・セルの組版と計測・
+//! `auto` 以外の列のセルの折り返し・行断片の生成）も `Measurer` の `impl` を続け、セルの折り返しには
+//! [`BlockBuildInputs::breaker`]（本文の段落と同じ行分割器）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの積み場所で、
 //! run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
@@ -47,6 +48,7 @@ use crate::{
   length::Length,
   typeset::{
     boxes::{Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
+    breaking::LineBreaker,
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
     lowering::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
@@ -83,6 +85,8 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) images: &'a ImageResources,
   /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅で、表の `Ratio` / `Flex` 列の基準）
   pub(super) column_width: Length,
+  /// 表のセルを折り返す行分割器（本文の段落と同じもの）
+  pub(super) breaker: &'a dyn LineBreaker,
   /// 既定のフォントサイズ
   pub(super) default_font_size: Length,
   /// 行送りに掛ける倍率
@@ -109,6 +113,7 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
     ),
     images: inputs.images,
     column_width: inputs.column_width,
+    breaker: inputs.breaker,
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment);
@@ -125,6 +130,8 @@ struct BlockBuilder<'a> {
   images: &'a ImageResources,
   /// この縦リストを組む段の幅
   column_width: Length,
+  /// 表のセルを折り返す行分割器
+  breaker: &'a dyn LineBreaker,
 }
 
 impl BlockBuilder<'_> {
@@ -188,7 +195,7 @@ impl BlockBuilder<'_> {
         },
         LayoutNode::Table(table) => {
           blocks.push(Block::Table {
-            table: self.measurer.build_table(table, self.column_width),
+            table: self.measurer.build_table(table, self.column_width, self.breaker),
             align: Align::from(alignment),
           });
         },

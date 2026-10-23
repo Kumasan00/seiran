@@ -2261,12 +2261,14 @@ mod tests {
     };
   }
 
-  /// 表の行断片に、`text` の箱（x 2..22）を覆うリンクを足すヘルパ
+  /// 表の行断片に、`text` の箱（x 2..22）と行帯の全高を覆うリンク矩形を足すヘルパ
   fn with_link(mut row: TableRowFragment, target: LinkTarget) -> TableRowFragment {
-    row.links.push(LineLink {
+    row.links.push(PlacedLink {
       target,
-      x0: pt(2.0),
-      x1: pt(22.0),
+      x: pt(2.0),
+      y: Length::ZERO,
+      width: pt(20.0),
+      height: row.row.height,
     });
     return row;
   }

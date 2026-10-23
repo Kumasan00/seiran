@@ -7,7 +7,6 @@ use crate::{
   length::Length,
   typeset::boxes::{
     hitem::{IndexTerm, MeasuredFootnote},
-    line::LineLink,
     page::{PlacedLink, PlacedTableRow},
   },
 };
@@ -40,8 +39,8 @@ impl TableBox {
 pub(in crate::typeset) struct TableRowFragment {
   /// 原点を表左端・行帯上端に置いた行（`top_y` は 0、罫線は `x` = `y` = 0）
   pub row: PlacedTableRow,
-  /// セル内のリンク領域（表左端からの水平範囲）
-  pub links: Vec<LineLink>,
+  /// セル内のリンク矩形（表左端・行帯上端が原点。折り返したリンクは行ごとに 1 矩形で、退化矩形は含まない）
+  pub links: Vec<PlacedLink>,
   /// セル内の索引語（左のセルから出現順）
   pub index_marks: Vec<IndexTerm>,
   /// セル内の脚注（左のセルから出現順。本体は `break_pages` が行の着地と同時に置く）
@@ -53,14 +52,14 @@ impl TableRowFragment {
   #[must_use]
   pub(in crate::typeset) fn height(&self) -> Length { return self.row.height; }
 
-  /// 表左端を `x`、行帯上端を `top_y` に置いた行と、そのリンク矩形（退化矩形は除く）・索引語を返す
+  /// 表左端を `x`、行帯上端を `top_y` に置いた行と、そのリンク矩形・索引語を返す
   ///
   /// 脚注は返さない — 本体は `break_pages` が行の収まり判定と同時に脚注エリアへ置く。
   #[must_use]
   pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> (PlacedTableRow, Vec<PlacedLink>, Vec<IndexTerm>) {
     let TableRowFragment {
       mut row,
-      links,
+      mut links,
       index_marks,
       footnotes: _,
     } = self;
@@ -73,8 +72,11 @@ impl TableRowFragment {
       rule.x += x;
       rule.y += top_y;
     }
-    let placed_links = links.iter().filter_map(|link| return link.place(x, row.top_y, row.height)).collect();
-    return (row, placed_links, index_marks);
+    for link in &mut links {
+      link.x += x;
+      link.y += top_y;
+    }
+    return (row, links, index_marks);
   }
 }
 
@@ -83,7 +85,9 @@ mod tests {
   use super::TableRowFragment;
   use crate::{
     length::Length,
-    typeset::boxes::{HBox, HBoxContent, IndexTerm, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, PlacedTableRule},
+    typeset::boxes::{
+      HBox, HBoxContent, IndexTerm, LinkTarget, PlacedHBox, PlacedLink, PlacedTableRow, PlacedTableRule,
+    },
   };
 
   /// pt 値から `Length` を作る
@@ -92,12 +96,14 @@ mod tests {
   /// `Length` が pt 値 `expected` に一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
-  /// 外部 URI へのリンク領域を作る
-  fn link(x0: f32, x1: f32) -> LineLink {
-    return LineLink {
+  /// 外部 URI への、表左端・行帯上端を原点とするリンク矩形を作る
+  fn link(x: f32, y: f32, width: f32, height: f32) -> PlacedLink {
+    return PlacedLink {
       target: LinkTarget::External("https://example.com".to_string()),
-      x0: pt(x0),
-      x1: pt(x1),
+      x: pt(x),
+      y: pt(y),
+      width: pt(width),
+      height: pt(height),
     };
   }
 
@@ -126,7 +132,7 @@ mod tests {
           color: None,
         }),
       },
-      links: vec![link(2.0, 12.0), link(5.0, 5.0)],
+      links: vec![link(2.0, 0.0, 10.0, 10.0)],
       index_marks: vec![IndexTerm {
         word: "w".to_string(),
         reading: None,
@@ -140,7 +146,7 @@ mod tests {
     assert!(close(row.boxes[0].dx, 7.0), "{row:?}");
     let rule = row.rule.expect("罫線は着地後も残る");
     assert!(close(rule.x, 5.0) && close(rule.y, 40.0) && close(rule.width, 30.0), "{rule:?}");
-    assert_eq!(links.len(), 1, "退化矩形は落ちる: {links:?}");
+    assert_eq!(links.len(), 1, "{links:?}");
     assert!(close(links[0].x, 7.0) && close(links[0].width, 10.0), "{links:?}");
     assert!(close(links[0].y, 40.0) && close(links[0].height, 10.0), "{links:?}");
     assert_eq!(marks.len(), 1);

@@ -1,4 +1,4 @@
-//! 表エンジン — 表の組版（セルの組版と計測 → 行帯 → 列幅の決定 → 行断片 → 再掲ヘッダ）を閉じる
+//! 表エンジン — 表の組版（セルの組版と計測 → 列幅の決定 → セルの折り返しと行帯 → 行断片 → 再掲ヘッダ）を閉じる
 //!
 //! 入口は [`Measurer::build_table`]。入力は lowering が列指定・セルのインライン内容・セル余白・罫線の太さと色まで
 //! 解決した `TableLayout` で、HIR の表語彙は届かない。出力 [`TableBox`] は表左端・行帯上端を原点とする行断片の列で、
@@ -8,20 +8,22 @@
 //! `PreparedGeometry::body_column_width` で、`break_pages` が段幅に使う値と同じ式・同じ入力から出る（前付けは本文幅で、
 //! 前付けの段数 1・段間 0 の段幅と一致する）。配置側の揃えはこの段幅と [`TableBox::width`] から決まる。
 //!
+//! 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅で本文の段落と同じ行分割器
+//! （`BlockBuildInputs::breaker`）が折り返す。全列 `Auto` のセルは折り返さず、自然幅の 1 行のまま置く。
+//!
 //! 再掲ヘッダは初出ヘッダの断片から索引語と脚注を除いたもの（同じ語をページごとに積まず、脚注本体は初出の 1 回だけ
 //! 置く）。リンクは再掲先にもクリック矩形が要るので残す — 脚注マーカーのリンクも残るので、再掲ヘッダのマーカーは
 //! 初出の脚注本体へ飛ぶ。
 
 use crate::{
-  document::{ColumnAlign, ColumnWidth},
+  document::{ColumnAlign, ColumnWidth, TextAlignment},
   length::Length,
   typeset::{
     boxes::{
-      HItem, IndexTerm, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox, PlacedTableRow, PlacedTableRule, TableBox,
-      TableRowFragment,
+      HItem, Line, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, PlacedTableRule, TableBox, TableRowFragment,
     },
     boxing::{self, Measurer, hlist::HList},
-    breaking,
+    breaking::{self, LineBreaker},
     lowering::{TableColumn, TableLayout, TableRowLayout},
   },
 };
@@ -29,66 +31,38 @@ use crate::{
 /// 計測済みの 1 セル
 #[derive(Debug)]
 struct MeasuredCell {
-  /// セル内容の水平アイテム列（セル内では行分割しないので未分割のまま）
+  /// セル内容の水平アイテム列（未分割。折り返すセルは [`row_fragment`] が列幅で行に分ける）
   items: Vec<HItem>,
   /// 列方向の結合数（1 以上）
   column_span: u32,
 }
 
-/// 計測済みの 1 行。行帯は [`MeasuredRow::new`] が構築時に確定する
+/// 計測済みの 1 行。行帯はセルの行組みと一緒に [`row_fragment`] が決める
 #[derive(Debug)]
 struct MeasuredRow {
   /// 行内のセル
   cells: Vec<MeasuredCell>,
   /// この行の上に横罫線を引くか
   rule_above: bool,
-  /// 行帯の高さ
-  height: Length,
-  /// 行帯上端からセル内容が共有するベースラインまでの距離
-  baseline: Length,
+  /// セルの各行の帯の下限（行送り）
+  leading: Length,
 }
 
 impl MeasuredRow {
-  /// セル列から行を作り、行帯の高さとベースライン位置を確定する
+  /// セル列から行を作り、行送りを確定する
   ///
-  /// 行帯の高さは本文の行送りと同じ `max(F × line_height_factor, h + d)`。F は行内の最大フォントサイズ（テキストが
-  /// 無ければ `default_font_size`）、h / d は [`row_fragment`] が描く箱（`HItem::Box`）の高さ・深さの最大値。
-  /// 余り `高さ − (h + d)` は上下へ等分するので、ベースラインは行帯上端から `h + 余り / 2` にあり、描く箱は
-  /// 行帯の上端と下端の間に収まる。
+  /// 行送りは本文と同じ `F × line_height_factor` で、F は行内の全セルの最大フォントサイズ（テキストが無ければ
+  /// `default_font_size`）。行送りは行単位で 1 つで、セルの各行で変えない。
   fn new(cells: Vec<MeasuredCell>, rule_above: bool, default_font_size: Length, line_height_factor: f32) -> Self {
     let font_size = cells
       .iter()
       .filter_map(|cell| return boxing::max_font_size_in_items(&cell.items))
       .reduce(Length::max)
       .unwrap_or(default_font_size);
-    let (ascent, descent) = cells
-      .iter()
-      .flat_map(|cell| return cell.items.iter())
-      .filter_map(|item| match item {
-        // `row_fragment` が描く箱だけを数える（描かないアイテムが行帯を広げない）
-        HItem::Box(hbox) => return Some(hbox),
-        HItem::Glue { .. }
-        | HItem::Kern(_)
-        | HItem::MathBreak { .. }
-        | HItem::Penalty { .. }
-        | HItem::Discretionary { .. }
-        | HItem::ForcedBreak
-        | HItem::LinkStart(_)
-        | HItem::LinkEnd
-        | HItem::FlushRight(_)
-        | HItem::Footnote(_)
-        | HItem::IndexMark(_) => return None,
-      })
-      .fold((Length::ZERO, Length::ZERO), |(ascent, descent), hbox| {
-        return (ascent.max(hbox.height), descent.max(hbox.depth));
-      });
-    let height = (font_size * line_height_factor).max(ascent + descent);
-    let baseline = ascent + (height - ascent - descent) / 2.0;
     return MeasuredRow {
       cells,
       rule_above,
-      height,
-      baseline,
+      leading: font_size * line_height_factor,
     };
   }
 }
@@ -106,8 +80,8 @@ struct TableFrame<'a> {
 }
 
 impl Measurer<'_> {
-  /// 表を組む: セルを計測し、列幅を `available`（表を置く段の幅）で決め、行断片の列にする
-  pub(super) fn build_table(&mut self, table: TableLayout, available: Length) -> TableBox {
+  /// 表を組む: セルを計測し、列幅を `available`（表を置く段の幅）で決め、`breaker` でセルを折り返して行断片の列にする
+  pub(super) fn build_table(&mut self, table: TableLayout, available: Length, breaker: &dyn LineBreaker) -> TableBox {
     let TableLayout {
       columns,
       head,
@@ -125,7 +99,7 @@ impl Measurer<'_> {
       rule_thickness,
       rule_color,
     };
-    return arrange(&frame, &head, &rows, available, breakable);
+    return arrange(&frame, &head, &rows, available, breakable, breaker);
   }
 
   /// 行のセル内容を水平リストに組んで計測する
@@ -156,9 +130,11 @@ fn arrange(
   rows: &[MeasuredRow],
   available: Length,
   breakable: bool,
+  breaker: &dyn LineBreaker,
 ) -> TableBox {
   let col_widths = resolve_column_widths(frame, head, rows, available);
-  let head: Vec<TableRowFragment> = head.iter().map(|row| return row_fragment(row, frame, &col_widths)).collect();
+  let head: Vec<TableRowFragment> =
+    head.iter().map(|row| return row_fragment(row, frame, &col_widths, breaker)).collect();
   let repeated_head = head
     .iter()
     .map(|fragment| {
@@ -173,7 +149,7 @@ fn arrange(
     width: col_widths.iter().copied().sum(),
     head,
     repeated_head,
-    rows: rows.iter().map(|row| return row_fragment(row, frame, &col_widths)).collect(),
+    rows: rows.iter().map(|row| return row_fragment(row, frame, &col_widths, breaker)).collect(),
     breakable,
   };
 }
@@ -323,93 +299,181 @@ fn resolve_column_widths(
   return widths;
 }
 
-/// 1 行の各セルの内容開始位置（表左端からの相対 x。列揃えと内側余白を適用済み）を順に計算する
-fn layout_row_cells<'a>(
-  row: &'a MeasuredRow,
+/// 列揃えを、折り返すセルの行分割器へ渡す揃えにする（セルは両端揃えしない）
+fn text_alignment(align: ColumnAlign) -> TextAlignment {
+  return match align {
+    ColumnAlign::Left => TextAlignment::Left,
+    ColumnAlign::Center => TextAlignment::Center,
+    ColumnAlign::Right => TextAlignment::Right,
+  };
+}
+
+/// 折り返さないセルの内容を、x = 0 から自然幅で並べた 1 行にする
+///
+/// 呼び出し側は揃えの位置を [`measure_items_width`]（全アイテムの自然幅の和）から決めるので、行頭・行末の glue も
+/// 落とさず `Kern` / `Glue` / `MathBreak` の自然幅ぶん進める。高さ・深さは描く箱（`HItem::Box`）の最大で、
+/// `FlushRight` は描かない。対応の無い `LinkEnd` は読み飛ばし、閉じない `LinkStart` は矩形を作らない。
+fn unwrapped_line(items: &[HItem]) -> Line {
+  let mut line = Line {
+    boxes: Vec::new(),
+    height: Length::ZERO,
+    depth: Length::ZERO,
+    links: Vec::new(),
+    footnotes: Vec::new(),
+    index_marks: Vec::new(),
+  };
+  let mut cursor = Length::ZERO;
+  let mut open: Vec<(LinkTarget, Length)> = Vec::new();
+  for item in items {
+    match item {
+      HItem::Box(hbox) => {
+        line.boxes.push(PlacedHBox {
+          hbox: hbox.clone(),
+          dx: cursor,
+          dy: Length::ZERO,
+        });
+        line.height = line.height.max(hbox.height);
+        line.depth = line.depth.max(hbox.depth);
+        cursor += hbox.width;
+      },
+      HItem::Kern(value) => cursor += *value,
+      HItem::MathBreak { spacing, .. } => cursor += *spacing,
+      HItem::Glue { natural, .. } => cursor += *natural,
+      HItem::LinkStart(target) => open.push((target.clone(), cursor)),
+      HItem::LinkEnd => {
+        if let Some((target, x0)) = open.pop() {
+          line.links.push(LineLink {
+            target,
+            x0,
+            x1: cursor,
+          });
+        }
+      },
+      HItem::IndexMark(term) => line.index_marks.push(term.clone()),
+      HItem::Footnote(footnote) => line.footnotes.push(footnote.clone()),
+      HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak | HItem::FlushRight(_) => {},
+    }
+  }
+  return line;
+}
+
+/// 1 行の各セルを行に組み、表左端を原点に置いた行の列をセル順に返す
+///
+/// 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅（0 で下止め）で `breaker` が開始列の
+/// 揃えで折り返し、行頭は帯左端 + 余白。全列 `Auto` のセルは [`unwrapped_line`] の 1 行を、開始列の揃えと余白で
+/// 帯の中に置く。
+fn layout_row_cells(
+  row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
-) -> Vec<(&'a MeasuredCell, Length)> {
+  breaker: &dyn LineBreaker,
+) -> Vec<Vec<Line>> {
   let mut column_index = 0usize;
   let mut cell_x = Length::ZERO;
-  let mut placements = Vec::with_capacity(row.cells.len());
+  let mut cells = Vec::with_capacity(row.cells.len());
   for cell in &row.cells {
     let column_span = (cell.column_span as usize).min(col_widths.len().saturating_sub(column_index));
-    let band_width: Length = col_widths[column_index..column_index + column_span].iter().copied().sum();
-    let content_width = measure_items_width(&cell.items);
-    let align = frame.columns.get(column_index).map_or(ColumnAlign::Left, |c| return c.align);
-    let content_x = match align {
-      ColumnAlign::Left => cell_x + frame.cell_padding,
-      ColumnAlign::Center => cell_x + (band_width - content_width) / 2.0,
-      ColumnAlign::Right => cell_x + band_width - frame.cell_padding - content_width,
+    let spanned = column_index..column_index + column_span;
+    let band_width: Length = col_widths[spanned.clone()].iter().copied().sum();
+    let spanned_columns = &frame.columns[spanned];
+    let align = spanned_columns.first().map_or(ColumnAlign::Left, |column| return column.align);
+    let lines = if wraps(spanned_columns) {
+      let content_width = (band_width - frame.cell_padding * 2).max(Length::ZERO);
+      let mut lines = breaker.break_lines(&cell.items, content_width, text_alignment(align));
+      for line in &mut lines {
+        line.shift_x(cell_x + frame.cell_padding);
+      }
+      lines
+    } else {
+      let content_width = measure_items_width(&cell.items);
+      let content_x = match align {
+        ColumnAlign::Left => cell_x + frame.cell_padding,
+        ColumnAlign::Center => cell_x + (band_width - content_width) / 2.0,
+        ColumnAlign::Right => cell_x + band_width - frame.cell_padding - content_width,
+      };
+      let mut line = unwrapped_line(&cell.items);
+      line.shift_x(content_x);
+      vec![line]
     };
-    placements.push((cell, content_x));
+    cells.push(lines);
     cell_x += band_width;
     column_index += column_span;
   }
-  return placements;
+  return cells;
 }
 
 /// 1 行を、表左端・行帯上端を原点とする行断片にする
 ///
-/// 列揃え・余白・`Kern` / `Glue` のカーソル前進はここで解決する。リンク・索引語・脚注のマーカーは描画箱に含めず、
-/// リンクは表左端からの水平範囲、索引語と脚注は出現順で断片へ移す。セルは折り返さないので `LinkStart` / `LinkEnd` は
-/// 常に同一セル内で対応が閉じる。
-fn row_fragment(row: &MeasuredRow, frame: &TableFrame<'_>, col_widths: &[Length]) -> TableRowFragment {
-  let mut boxes = Vec::new();
-  let mut links = Vec::new();
-  let mut index_marks: Vec<IndexTerm> = Vec::new();
-  let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
-  for (cell, content_x) in layout_row_cells(row, frame, col_widths) {
-    let mut cursor = content_x;
-    let mut open: Vec<(LinkTarget, Length)> = Vec::new();
-    for item in &cell.items {
-      match item {
-        HItem::Box(hbox) => {
-          boxes.push(PlacedHBox {
-            hbox: hbox.clone(),
-            dx: cursor,
-            dy: Length::ZERO,
-          });
-          cursor += hbox.width;
-        },
-        HItem::Kern(value) => cursor += *value,
-        HItem::MathBreak { spacing, .. } => cursor += *spacing,
-        HItem::Glue { natural, .. } => cursor += *natural,
-        HItem::LinkStart(target) => open.push((target.clone(), cursor)),
-        HItem::LinkEnd => {
-          if let Some((target, x0)) = open.pop() {
-            links.push(LineLink {
-              target,
-              x0,
-              x1: cursor,
-            });
-          }
-        },
-        HItem::IndexMark(term) => index_marks.push(term.clone()),
-        HItem::Footnote(footnote) => footnotes.push(footnote.clone()),
-        HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak | HItem::FlushRight(_) => {},
-      }
-    }
-  }
-  let rule = row.rule_above.then_some(PlacedTableRule {
-    x: Length::ZERO,
-    y: Length::ZERO,
-    width: col_widths.iter().copied().sum(),
-    height: frame.rule_thickness,
-    color: frame.rule_color,
-  });
-  return TableRowFragment {
+/// 行送りを ℓ とする。先頭行帯は全セルの先頭行をまとめて `band₀ = max(ℓ, h₀ + d₀)`（h₀ / d₀ は全セルの先頭行の
+/// 高さ・深さの最大）とし、余りを上下へ等分した `B = h₀ + (band₀ − h₀ − d₀) / 2` を全セルの先頭行が共有する
+/// ベースライン（`baseline_y`）にする。各セルの続き行 k は行ごとの帯 `bandₖ = max(ℓ, hₖ + dₖ)` を下へ積み、
+/// ベースラインは帯の中で同じく上下を等分した位置。行の高さは `band₀` に、続き行の帯の和が最大のセルのその和を
+/// 足したもので、描く箱はどれも自分の行の帯に収まる。続き行の箱は `dy` からベースラインの差を引く（描画は
+/// `baseline_y − dy`）。リンク矩形の縦範囲はリンクが乗る行の帯で、索引語・脚注はセル順 → 行順に移す。
+fn row_fragment(
+  row: &MeasuredRow,
+  frame: &TableFrame<'_>,
+  col_widths: &[Length],
+  breaker: &dyn LineBreaker,
+) -> TableRowFragment {
+  let cells = layout_row_cells(row, frame, col_widths, breaker);
+  let (ascent, descent) = cells.iter().filter_map(|lines| return lines.first()).fold(
+    (Length::ZERO, Length::ZERO),
+    |(ascent, descent), line| {
+      return (ascent.max(line.height), descent.max(line.depth));
+    },
+  );
+  let first_band = row.leading.max(ascent + descent);
+  let baseline = ascent + (first_band - ascent - descent) / 2.0;
+  let mut fragment = TableRowFragment {
     row: PlacedTableRow {
       top_y: Length::ZERO,
-      height: row.height,
-      baseline_y: row.baseline,
-      boxes,
-      rule,
+      height: first_band,
+      baseline_y: baseline,
+      boxes: Vec::new(),
+      rule: row.rule_above.then_some(PlacedTableRule {
+        x: Length::ZERO,
+        y: Length::ZERO,
+        width: col_widths.iter().copied().sum(),
+        height: frame.rule_thickness,
+        color: frame.rule_color,
+      }),
     },
-    links,
-    index_marks,
-    footnotes,
+    links: Vec::new(),
+    index_marks: Vec::new(),
+    footnotes: Vec::new(),
   };
+  for lines in cells {
+    let mut lines = lines.into_iter();
+    if let Some(first) = lines.next() {
+      take_line(&mut fragment, first, Length::ZERO, first_band, Length::ZERO);
+    }
+    let mut band_top = first_band;
+    for line in lines {
+      let band = row.leading.max(line.height + line.depth);
+      let line_baseline = band_top + line.height + (band - line.height - line.depth) / 2.0;
+      take_line(&mut fragment, line, band_top, band, line_baseline - baseline);
+      band_top += band;
+    }
+    fragment.row.height = fragment.row.height.max(band_top);
+  }
+  return fragment;
+}
+
+/// セルの 1 行を行断片へ移す。行の帯は行帯上端から `band_top`・高さ `band`、ベースラインは共有ベースラインより
+/// `lowered` 下
+fn take_line(fragment: &mut TableRowFragment, line: Line, band_top: Length, band: Length, lowered: Length) {
+  fragment.row.boxes.extend(line.boxes.into_iter().map(|placed| {
+    return PlacedHBox {
+      dy: placed.dy - lowered,
+      ..placed
+    };
+  }));
+  fragment
+    .links
+    .extend(line.links.iter().filter_map(|link| return link.place(Length::ZERO, band_top, band)));
+  fragment.index_marks.extend(line.index_marks);
+  fragment.footnotes.extend(line.footnotes);
 }
 
 #[cfg(test)]
@@ -427,6 +491,7 @@ mod tests {
     source::SourceId,
     typeset::{
       boxes::{AnchorId, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote},
+      breaking::KnuthPlassBreaker,
       lowering::TableColumn,
     },
   };
@@ -471,6 +536,24 @@ mod tests {
       height: pt(height),
       depth: pt(depth),
     });
+  }
+
+  /// 幅 `width`・高さ 8・深さ 2 の、テキストを含まないボックスを作る（既定フォント 10・係数 1 の行送り 10 にちょうど収まる）
+  fn word_box(width: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: pt(width),
+      height: pt(8.0),
+      depth: pt(2.0),
+    });
+  }
+
+  /// 揃え `align`・幅指定 `Fixed(width)`（pt）の列を作る
+  fn fixed_aligned(width: f32, align: ColumnAlign) -> TableColumn {
+    return TableColumn {
+      align,
+      width: ColumnWidth::Fixed(pt(width)),
+    };
   }
 
   /// 索引語 `word`（読みなし）のマーカーを作る
@@ -608,9 +691,12 @@ mod tests {
       pt(9.0),
       1.5,
     );
+    let columns = [auto(ColumnAlign::Left); 2];
 
-    assert!(close(row.height, 18.0), "{row:?}");
-    assert!(close(row.baseline, 14.0), "{row:?}");
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row;
+
+    assert!(close(band.height, 18.0), "{band:?}");
+    assert!(close(band.baseline_y, 14.0), "{band:?}");
   }
 
   #[test]
@@ -625,18 +711,24 @@ mod tests {
       pt(9.0),
       1.2,
     );
+    let columns = [auto(ColumnAlign::Left); 2];
 
-    assert!(close(row.height, 21.0), "{row:?}");
-    assert!(close(row.baseline, 14.0), "余りが無いのでベースラインは上端 + 高さ: {row:?}");
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row;
+
+    assert!(close(band.height, 21.0), "{band:?}");
+    assert!(close(band.baseline_y, 14.0), "余りが無いのでベースラインは上端 + 高さ: {band:?}");
   }
 
   #[test]
   fn row_band_without_text_uses_the_default_font_size() {
     // テキストが無いので行送りは既定 9 × 2 = 18。中身は高さ 1 で、余り 17 を上下へ 8.5 ずつ
     let row = MeasuredRow::new(vec![cell(vec![text_free_box(5.0)])], false, pt(9.0), 2.0);
+    let columns = [auto(ColumnAlign::Left)];
 
-    assert!(close(row.height, 18.0), "{row:?}");
-    assert!(close(row.baseline, 9.5), "{row:?}");
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).row;
+
+    assert!(close(band.height, 18.0), "{band:?}");
+    assert!(close(band.baseline_y, 9.5), "{band:?}");
   }
 
   #[test]
@@ -901,7 +993,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Right)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)]).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).row.boxes;
 
     assert_eq!(boxes.len(), 2);
     assert!(close(boxes[0].dx, 14.0), "右揃えの先頭 x: {boxes:?}");
@@ -924,7 +1016,9 @@ mod tests {
       auto(ColumnAlign::Right),
     ];
 
-    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0), pt(25.0)]).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0), pt(25.0)], &KnuthPlassBreaker)
+      .row
+      .boxes;
 
     assert_eq!(boxes.len(), 2);
     assert!(close(boxes[0].dx, 20.0), "帯幅 50 の中央: {boxes:?}");
@@ -943,17 +1037,20 @@ mod tests {
     let row_with_rule = MeasuredRow::new(vec![cell(vec![glyph_box(10.0, 10.0)])], true, pt(10.0), 1.0);
     let plain_row = row(vec![cell(vec![glyph_box(10.0, 10.0)])]);
 
-    let fragment = row_fragment(&row_with_rule, &frame, &[pt(30.0)]);
+    let fragment = row_fragment(&row_with_rule, &frame, &[pt(30.0)], &KnuthPlassBreaker);
 
     assert!(close(fragment.row.top_y, 0.0), "{fragment:?}");
-    assert!(close(fragment.row.height, row_with_rule.height.to_pt()), "{fragment:?}");
-    assert!(close(fragment.row.baseline_y, row_with_rule.baseline.to_pt()), "{fragment:?}");
+    assert!(close(fragment.row.height, 10.0), "{fragment:?}");
+    assert!(close(fragment.row.baseline_y, 10.0), "{fragment:?}");
     assert!(close(fragment.row.boxes[0].dx, 3.0), "表左端 + 余白: {fragment:?}");
     let rule = fragment.row.rule.expect("rule_above の行は罫線を持つ");
     assert!(close(rule.x, 0.0) && close(rule.y, 0.0), "{rule:?}");
     assert!(close(rule.width, 30.0) && close(rule.height, 1.5), "{rule:?}");
     assert_eq!(rule.color, Some([9, 9, 9]));
-    assert!(row_fragment(&plain_row, &frame, &[pt(30.0)]).row.rule.is_none(), "rule_above でない行は罫線なし");
+    assert!(
+      row_fragment(&plain_row, &frame, &[pt(30.0)], &KnuthPlassBreaker).row.rule.is_none(),
+      "rule_above でない行は罫線なし"
+    );
   }
 
   #[test]
@@ -964,7 +1061,7 @@ mod tests {
     ]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)]);
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker);
 
     assert_eq!(words(&fragment.index_marks), vec!["a", "b"]);
     assert_eq!(fragment.row.boxes.len(), 2, "索引語は描画箱を持たない");
@@ -979,7 +1076,7 @@ mod tests {
     ]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)]);
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker);
 
     let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
     assert_eq!(indices, vec![0, 1, 2]);
@@ -996,12 +1093,13 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)]).links;
+    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker);
 
+    let links = &fragment.links;
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 2.0));
-    assert!(close(links[0].x1, 22.0));
+    assert!(close(links[0].x, 2.0) && close(links[0].width, 20.0), "{links:?}");
+    assert!(close(links[0].y, 0.0) && links[0].height == fragment.row.height, "{links:?}");
   }
 
   #[test]
@@ -1019,30 +1117,29 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)]).links;
+    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).links;
 
     assert_eq!(links.len(), 2);
     assert_eq!(links[0].target, first);
-    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 5.0));
+    assert!(close(links[0].x, 0.0) && close(links[0].width, 5.0), "{links:?}");
     assert_eq!(links[1].target, second);
-    assert!(close(links[1].x0, 8.0) && close(links[1].x1, 13.0));
+    assert!(close(links[1].x, 8.0) && close(links[1].width, 5.0), "{links:?}");
   }
 
   #[test]
   fn row_fragment_links_ignore_unbalanced_link_end() {
+    // 対応の無い 2 個目の `LinkEnd` は読み飛ばし、幅 0 の矩形は断片に入れない
     let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("x")));
     let row = row(vec![cell(vec![
-      HItem::LinkStart(target.clone()),
+      HItem::LinkStart(target),
       HItem::LinkEnd,
       HItem::LinkEnd,
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)]).links;
+    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).links;
 
-    assert_eq!(links.len(), 1);
-    assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 0.0));
+    assert!(links.is_empty(), "{links:?}");
   }
 
   #[test]
@@ -1055,9 +1152,9 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Right)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)]).links;
+    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).links;
 
-    assert!(close(links[0].x0, 18.0) && close(links[0].x1, 28.0), "{links:?}");
+    assert!(close(links[0].x, 18.0) && close(links[0].width, 10.0), "{links:?}");
   }
 
   #[test]
@@ -1073,11 +1170,11 @@ mod tests {
     }]);
     let columns = [auto(ColumnAlign::Right), auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0)]).links;
+    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0)], &KnuthPlassBreaker).links;
 
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
-    assert!(close(links[0].x0, 38.0) && close(links[0].x1, 48.0), "帯幅 50 の右揃え: {links:?}");
+    assert!(close(links[0].x, 38.0) && close(links[0].width, 10.0), "帯幅 50 の右揃え: {links:?}");
   }
 
   #[test]
@@ -1091,7 +1188,7 @@ mod tests {
     let body_row = row(vec![cell(vec![text_free_box(10.0)])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(&frame(&columns, 2.0), &[head_row], &[body_row], pt(100.0), true);
+    let table = arrange(&frame(&columns, 2.0), &[head_row], &[body_row], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(words(&table.head[0].index_marks), vec!["h"], "初出のヘッダは索引語を持つ");
     assert!(table.repeated_head[0].index_marks.is_empty(), "再掲ヘッダは索引語を重複させない");
@@ -1113,7 +1210,7 @@ mod tests {
     ])])];
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(&frame(&columns, 0.0), &head, &[], pt(100.0), true);
+    let table = arrange(&frame(&columns, 0.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.head[0].footnotes.len(), 1, "初出ヘッダは脚注を持つ");
     assert!(table.repeated_head[0].footnotes.is_empty(), "再掲ヘッダは脚注を持たない");
@@ -1136,9 +1233,175 @@ mod tests {
       cell(vec![text_free_box(30.0)]),
     ])];
 
-    let table = arrange(&frame(&columns, 2.0), &[], &rows, pt(200.0), false);
+    let table = arrange(&frame(&columns, 2.0), &[], &rows, pt(200.0), false, &KnuthPlassBreaker);
 
     assert!(close(table.width, 74.0), "{table:?}");
     assert!(!table.breakable);
+  }
+
+  #[test]
+  fn fixed_cell_wraps_at_the_content_width() {
+    // 内容幅 26 に 10 + 5 + 10 = 25 までが入り、3 個目の箱は 2 行目の行頭（余白 2）へ送られる
+    let row = row(vec![cell(vec![
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+    ])]);
+    let columns = [fixed(30.0)];
+
+    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).row;
+
+    assert_eq!(band.boxes.len(), 3, "{band:?}");
+    assert!(close(band.boxes[2].dx, 2.0) && close(band.boxes[2].dy, -10.0), "{band:?}");
+    assert!(close(band.height, 20.0) && close(band.baseline_y, 8.0), "{band:?}");
+  }
+
+  #[test]
+  fn auto_cell_does_not_wrap() {
+    let rows = [row(vec![cell(vec![
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+    ])])];
+    let columns = [auto(ColumnAlign::Left)];
+
+    let table = arrange(&frame(&columns, 2.0), &[], &rows, pt(10.0), false, &KnuthPlassBreaker);
+
+    let band = &table.rows[0].row;
+    assert!(band.boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{band:?}");
+    assert!(close(band.height, 10.0), "{band:?}");
+  }
+
+  #[test]
+  fn first_baselines_align_and_the_tallest_cell_sets_the_height() {
+    // 左は 3 行に折れ、右は高さ 12・深さ 2 の箱 1 個。先頭行帯は max(10, 12 + 2) = 14 でベースライン 12、
+    // 左の続き行は行送り 10 ずつ下へ積む
+    let row = row(vec![
+      cell(vec![
+        word_box(20.0),
+        space(),
+        word_box(20.0),
+        space(),
+        word_box(20.0),
+      ]),
+      cell(vec![extent_box(12.0, 2.0)]),
+    ]);
+    let columns = [fixed(30.0); 2];
+
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0), pt(30.0)], &KnuthPlassBreaker).row;
+
+    assert_eq!(band.boxes.len(), 4, "{band:?}");
+    assert!(close(band.baseline_y, 12.0), "{band:?}");
+    assert!(close(band.boxes[0].dy, 0.0) && close(band.boxes[3].dy, 0.0), "先頭行は共有ベースライン: {band:?}");
+    assert!(close(band.boxes[1].dy, -10.0), "{band:?}");
+    assert!(close(band.boxes[2].dy, -20.0), "{band:?}");
+    assert!(close(band.height, 34.0), "{band:?}");
+  }
+
+  #[test]
+  fn wrapped_lines_follow_the_column_alignment() {
+    let row = row(vec![cell(vec![
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      space(),
+      word_box(20.0),
+    ])]);
+    let columns = [fixed_aligned(30.0, ColumnAlign::Right)];
+
+    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).row.boxes;
+
+    assert!(close(boxes[0].dx, 5.0), "1 行目（幅 25）の右揃え: {boxes:?}");
+    assert!(close(boxes[2].dx, 10.0), "2 行目（幅 20）の右揃え: {boxes:?}");
+  }
+
+  #[test]
+  fn span_over_non_auto_columns_wraps_at_the_band_width() {
+    // 帯幅 40 − 余白 2 = 内容幅 38 に自然幅 45 は入らない
+    let row = row(vec![span_cell(vec![word_box(20.0), space(), word_box(20.0)], 2)]);
+    let columns = [fixed(20.0), fixed(20.0)];
+
+    let boxes = row_fragment(&row, &frame(&columns, 1.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row.boxes;
+
+    assert_eq!(boxes.len(), 2, "{boxes:?}");
+    assert!(close(boxes[1].dx, 1.0) && close(boxes[1].dy, -10.0), "{boxes:?}");
+  }
+
+  #[test]
+  fn all_auto_span_does_not_wrap() {
+    let row = row(vec![span_cell(vec![word_box(20.0), space(), word_box(20.0)], 2)]);
+    let columns = [auto(ColumnAlign::Left); 2];
+
+    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row.boxes;
+
+    assert!(boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{boxes:?}");
+  }
+
+  #[test]
+  fn link_rectangles_split_per_wrapped_line() {
+    let target = LinkTarget::External("https://example.com".to_string());
+    let row = row(vec![cell(vec![
+      HItem::LinkStart(target),
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      HItem::LinkEnd,
+    ])]);
+    let columns = [fixed(30.0)];
+
+    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).links;
+
+    assert_eq!(links.len(), 2, "{links:?}");
+    assert!(close(links[0].x, 0.0) && close(links[0].y, 0.0), "{links:?}");
+    assert!(close(links[0].width, 25.0) && close(links[0].height, 10.0), "{links:?}");
+    assert!(close(links[1].x, 0.0) && close(links[1].y, 10.0), "{links:?}");
+    assert!(close(links[1].width, 10.0) && close(links[1].height, 10.0), "{links:?}");
+  }
+
+  #[test]
+  fn row_fragment_collects_footnotes_from_continuation_lines() {
+    let row = row(vec![cell(vec![
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      space(),
+      word_box(10.0),
+      footnote(0),
+    ])]);
+    let columns = [fixed(30.0)];
+
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker);
+
+    let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
+    assert_eq!(indices, vec![0]);
+  }
+
+  #[test]
+  fn empty_wrapping_cell_keeps_one_leading_band() {
+    let row = row(vec![cell(Vec::new())]);
+    let columns = [fixed(30.0)];
+
+    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).row;
+
+    assert!(close(band.height, 10.0), "{band:?}");
+    assert!(band.boxes.is_empty(), "{band:?}");
+  }
+
+  #[test]
+  fn zero_content_width_breaks_at_every_opportunity() {
+    // 列幅 4 から余白 4 × 2 を引いた内容幅は 0 で止まり、分割機会ごとに折り返す
+    let row = row(vec![cell(vec![word_box(3.0), space(), word_box(3.0)])]);
+    let columns = [fixed(4.0)];
+
+    let boxes = row_fragment(&row, &frame(&columns, 4.0), &[pt(4.0)], &KnuthPlassBreaker).row.boxes;
+
+    assert_eq!(boxes.len(), 2, "{boxes:?}");
+    assert!(close(boxes[1].dy, -10.0), "{boxes:?}");
   }
 }
