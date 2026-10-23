@@ -42,7 +42,7 @@ impl TableBox {
 pub(in crate::typeset) struct TableRowFragment {
   /// `\row`（行のはみ出し警告の起源）
   pub origin: NodeId,
-  /// 折り返すセルの行が内容幅を超えた量の最大（収まれば 0。内容幅が 0 以下なら空の行でも正）
+  /// 折り返すセルの行が内容幅を超えた量の最大（収まれば 0。内容幅が負なら空の行でも正）
   pub overrun: Length,
   /// 原点を表左端・行帯上端に置いた行（`top_y` は 0、罫線は `x` = `y` = 0）
   pub row: PlacedTableRow,

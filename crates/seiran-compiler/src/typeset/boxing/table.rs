@@ -134,8 +134,6 @@ impl Measurer<'_> {
 }
 
 /// 計測済みの行から列幅を決め、初出ヘッダ・再掲ヘッダ・本体行の行断片を組む（フォントに触れない）
-///
-/// 再掲ヘッダは初出のヘッダが行の警告を出すので `overrun` を 0 にする。
 fn arrange(
   origin: NodeId,
   frame: &TableFrame<'_>,
@@ -152,7 +150,6 @@ fn arrange(
     .iter()
     .map(|fragment| {
       return TableRowFragment {
-        overrun: Length::ZERO,
         index_marks: Vec::new(),
         footnotes: Vec::new(),
         ..fragment.clone()
@@ -176,7 +173,7 @@ fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HIte
 ///
 /// `parts == 0` は呼び出し側が避ける（配り先の列が無いときは呼ばない）。
 fn split_evenly(total: Length, parts: usize) -> Vec<Length> {
-  let parts = i64::try_from(parts).expect("列数は i64 に収まる");
+  let parts = i64::try_from(parts).expect("等分の数は列数（Vec の長さで isize::MAX 以下）以下なので i64 に収まる");
   let base = total.sp().div_euclid(parts);
   let remainder = total.sp().rem_euclid(parts);
   return (0..parts).map(|k| return Length::from_sp(base + i64::from(k < remainder))).collect();
@@ -197,8 +194,9 @@ fn wraps(columns: &[TableColumn]) -> bool {
 /// 3. `Fixed` は指定値、`Ratio` は `available` 比、`Auto` は `max(自然幅, 左右 padding)`
 /// 4. `Flex`（`*`）は `max(available − 3 の合計, 0)` を開いている Flex 列で等分し、下限を下回る列を下限に固定して
 ///    残りから引くことを、違反が無くなるまで繰り返す
-/// 5. `Auto` 以外を跨ぐ結合セルは、跨ぐ列の幅の合計が最小内容幅 + 左右 padding に足りなければ、不足分を跨ぐ `Flex` 列へ、
-///    無ければ跨ぐ `Auto` 列へ均等に足す（`Fixed` / `Ratio` は書き換えず、はみ出しは配置が warning にする）
+/// 5. `Auto` 以外を跨ぐ結合セルは、跨ぐ列の幅の合計が最小内容幅 + 左右 padding に足りなければ、不足分を跨ぐ
+///    `Flex` 列へ、無ければ跨ぐ `Auto` 列へ均等に足す（`Fixed` / `Ratio` は書き換えず、はみ出しは配置が
+///    warning にする）
 ///
 /// 合計が `available` を超えても縮小しない（はみ出しは配置が warning にする）。
 fn resolve_column_widths(
@@ -379,7 +377,7 @@ fn unwrapped_line(items: &[HItem]) -> Line {
 /// 帯の中に置く。
 ///
 /// 戻り値の 2 つ目は、折り返すセルの行が内容幅（帯幅 − 左右の余白。0 で下止めしない）を超えた量の最大で、
-/// 折り返さないセルは寄与しない。内容幅が 0 以下なら空のセルでも正になる。収まれば 0。
+/// 折り返さないセルは寄与しない。内容幅が負なら空のセルでも正になる。収まれば 0。
 fn layout_row_cells(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
@@ -561,7 +559,8 @@ mod tests {
     });
   }
 
-  /// 幅 `width`・高さ 8・深さ 2 の、テキストを含まないボックスを作る（既定フォント 10・係数 1 の行送り 10 にちょうど収まる）
+  /// 幅 `width`・高さ 8・深さ 2 の、テキストを含まないボックスを作る（既定フォント 10・係数 1 の行送り 10 に
+  /// ちょうど収まる）
   fn word_box(width: f32) -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Atom(Vec::new()),
@@ -1301,17 +1300,6 @@ mod tests {
   }
 
   #[test]
-  fn repeated_head_clears_the_overrun() {
-    let head = [row(vec![cell(vec![text_free_box(40.0)])])];
-    let columns = [fixed(30.0)];
-
-    let table = arrange(origin(), &frame(&columns, 2.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
-
-    assert!(close(table.head[0].overrun, 14.0), "初出のヘッダは超過を持つ");
-    assert_eq!(table.repeated_head[0].overrun, Length::ZERO, "再掲ヘッダは警告を重複させない");
-  }
-
-  #[test]
   fn fixed_cell_wraps_at_the_content_width() {
     // 内容幅 26 に 10 + 5 + 10 = 25 までが入り、3 個目の箱は 2 行目の行頭（余白 2）へ送られる
     let row = row(vec![cell(vec![
@@ -1332,18 +1320,18 @@ mod tests {
 
   #[test]
   fn auto_cell_does_not_wrap() {
-    let rows = [row(vec![cell(vec![
+    // 列幅 14（内容幅 10）は語 1 個分しかないので、折り返すなら 2 個目以降の語が続き行へ送られる
+    let row = row(vec![cell(vec![
       word_box(10.0),
       space(),
       word_box(10.0),
       space(),
       word_box(10.0),
-    ])])];
+    ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(origin(), &frame(&columns, 2.0), &[], &rows, pt(10.0), false, &KnuthPlassBreaker);
+    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(14.0)], &KnuthPlassBreaker).row;
 
-    let band = &table.rows[0].row;
     assert!(band.boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{band:?}");
     assert!(close(band.height, 10.0), "{band:?}");
   }

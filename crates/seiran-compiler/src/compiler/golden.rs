@@ -39,9 +39,10 @@
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
-//!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品と折り返した続き行まで行帯に収まり、行どうしが
-//!   重ならない）・セルの折り返し 2 種 [`flex_table_fills_the_column_width`] /
-//!   [`wrapped_table_rows_move_whole_with_the_wrapped_head`]（共通ヘルパ [`page_table_rows`] / [`table_row_text`] 経由）・
+//!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品と折り返した続き行まで行帯に収まり、
+//!   行どうしが重ならない）・セルの折り返し 2 種 [`flex_table_fills_the_column_width`] /
+//!   [`wrapped_table_rows_move_whole_with_the_wrapped_head`]（共通ヘルパ [`page_table_rows`] / [`table_row_text`]
+//!   経由）・
 //!   表セルの脚注 4 種 [`table_cell_footnotes_land_once_in_source_order`] /
 //!   [`repeated_head_marker_links_to_the_first_head_footnote_body`] /
 //!   [`index_in_table_footnote_body_lands_on_the_footnote_page`] /
@@ -709,7 +710,17 @@ fn table_row_text(row: &PlacedTableRow) -> String {
 /// Flex 列（`widths=auto *`）を持つ表が、`widths=*` だけの表と同じ幅（段幅ちょうど）に収まる
 #[test]
 fn flex_table_fills_the_column_width() {
-  let laid_out = TestProject::builder().golden_fixture("table_wrap").build().laid_out();
+  let laid_out = TestProject::builder()
+    .golden_fixture("table_wrap")
+    .config_toml(|table| test_support::set(table, "pdf", "width", "150mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_left", "20mm");
+      test_support::set(table, "page", "margin_right", "20mm");
+    })
+    .build()
+    .laid_out();
+  // 1 段組み（既定）の段幅は用紙幅 − 左右余白
+  let column_width = Length::mm(150.0) - (Length::mm(20.0) + Length::mm(20.0));
 
   // table_wrap.sei で上罫線を持つ行は、比べる 2 表の先頭行だけ
   let rule_widths: Vec<Length> = laid_out
@@ -720,7 +731,7 @@ fn flex_table_fills_the_column_width() {
     .collect();
 
   assert_eq!(rule_widths.len(), 2, "上罫線を持つ行は 2 表の先頭行の 2 本のはず: {rule_widths:?}");
-  assert_eq!(rule_widths[0], rule_widths[1], "auto + Flex の表と Flex だけの表は同じ幅のはず");
+  assert_eq!(rule_widths, vec![column_width; 2], "auto + Flex の表と Flex だけの表はどちらも段幅ちょうどのはず");
 }
 
 /// 折り返した行は分割されずに 1 単位で次のページへ送られ、改ページ後のヘッダは初出と同じ折り返しで再掲される
