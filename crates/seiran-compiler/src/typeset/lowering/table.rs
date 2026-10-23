@@ -88,7 +88,9 @@ pub(super) fn lower_table(
       rows: lower_rows(ctx, &table.rows, body_style, state),
       breakable: table.breakable,
       cell_padding: style.cell_padding,
+      outer_rule_thickness: style.outer_rule_thickness,
       rule_thickness: style.rule_thickness,
+      rule_gap: style.rule_gap,
       rule_color: style.rule_color.map(Color::rgb),
     });
   });
@@ -302,17 +304,21 @@ mod tests {
   }
 
   #[test]
-  fn lower_table_resolves_padding_and_rule_from_style() {
+  fn lower_table_resolves_padding_and_rules_from_style() {
     let mut style = ReadStyle::default();
     style.table.cell_padding = Length::pt(3.0);
+    style.table.outer_rule_thickness = Length::pt(2.5);
     style.table.rule_thickness = Length::pt(1.5);
+    style.table.rule_gap = Length::pt(3.5);
     style.table.rule_color = Some("#090909".parse().expect("16 進の色は読めるはず"));
 
     let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
 
     let table = find_table(&nodes);
     assert_eq!(table.cell_padding, Length::pt(3.0));
+    assert_eq!(table.outer_rule_thickness, Length::pt(2.5));
     assert_eq!(table.rule_thickness, Length::pt(1.5));
+    assert_eq!(table.rule_gap, Length::pt(3.5));
     assert_eq!(table.rule_color, Some([9, 9, 9]));
   }
 

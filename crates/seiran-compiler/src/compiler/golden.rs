@@ -604,7 +604,7 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
 /// 2 段組みの `Ratio` 列は本文幅ではなく段幅を基準にする（表エンジンの列幅の基準と改ページの段幅が一致する）。
 #[test]
 fn ratio_column_resolves_against_the_column_width_in_two_columns() {
-  let source = "\\begin{table}[columns=left, widths=0.5]\n\\row[rule_above]{A}\n\\end{table}\n";
+  let source = "\\begin{table}[columns=left, widths=0.5]\n\\row{A}\n\\end{table}\n";
   let rule_width = |columns: u32| {
     let laid_out = TestProject::builder()
       .source_text(source)
@@ -616,10 +616,11 @@ fn ratio_column_resolves_against_the_column_width_in_two_columns() {
       .iter()
       .flat_map(|page| return page.blocks.iter())
       .find_map(|block| match block {
-        PlacedBlock::Table { rows } => return rows.first()?.rule.map(|rule| return rule.width),
+        // 先頭の罫線は上端の枠罫で、幅は表の幅
+        PlacedBlock::Table { rules, .. } => return rules.first().map(|rule| return rule.width),
         _ => return None,
       })
-      .expect("罫線つきの表の行があるはず");
+      .expect("上端の枠罫を持つ表があるはず");
   };
 
   let one = rule_width(1);
@@ -679,7 +680,7 @@ fn page_table_rows(page: &Page) -> impl Iterator<Item = &PlacedTableRow> {
     .blocks
     .iter()
     .filter_map(|block| match block {
-      PlacedBlock::Table { rows } => return Some(rows),
+      PlacedBlock::Table { rows, .. } => return Some(rows),
       _ => return None,
     })
     .flatten();
@@ -722,15 +723,22 @@ fn flex_table_fills_the_column_width() {
   // 1 段組み（既定）の段幅は用紙幅 − 左右余白
   let column_width = Length::mm(150.0) - (Length::mm(20.0) + Length::mm(20.0));
 
-  // table_wrap.sei で上罫線を持つ行は、比べる 2 表の先頭行だけ
+  // 比べる 2 表は先頭行の文字列（語間は glue なので文字列に入らない）で探し、幅は上端の枠罫（表の幅）から取る
   let rule_widths: Vec<Length> = laid_out
     .pages
     .iter()
-    .flat_map(page_table_rows)
-    .filter_map(|row| return row.rule.map(|rule| return rule.width))
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Table { rows, rules } => {
+        let text = table_row_text(rows.first()?);
+        let compared = text.starts_with("説明") || text == "Flex列だけの表";
+        return compared.then(|| return rules.first().map(|rule| return rule.width)).flatten();
+      },
+      _ => return None,
+    })
     .collect();
 
-  assert_eq!(rule_widths.len(), 2, "上罫線を持つ行は 2 表の先頭行の 2 本のはず: {rule_widths:?}");
+  assert_eq!(rule_widths.len(), 2, "比べる 2 表の上端の枠罫の 2 本のはず: {rule_widths:?}");
   assert_eq!(rule_widths, vec![column_width; 2], "auto + Flex の表と Flex だけの表はどちらも段幅ちょうどのはず");
 }
 
@@ -755,7 +763,7 @@ fn wrapped_table_rows_move_whole_with_the_wrapped_head() {
     .enumerate()
     .flat_map(|(page_index, page)| {
       return page.blocks.iter().filter_map(move |block| match block {
-        PlacedBlock::Table { rows } => return Some((page_index, rows)),
+        PlacedBlock::Table { rows, .. } => return Some((page_index, rows)),
         _ => return None,
       });
     })
@@ -1095,11 +1103,15 @@ fn block_top(block: &PlacedBlock) -> Option<Length> {
   };
 }
 
-/// 配置済みブロックの下端（本文の重なり判定に使う。行と表の行を見る）
+/// 配置済みブロックの下端（本文の重なり判定に使う。行と、表の行・罫線を見る）
 fn block_bottom(block: &PlacedBlock) -> Option<Length> {
   return match block {
     PlacedBlock::Line { line, baseline_y } => Some(*baseline_y + line.depth),
-    PlacedBlock::Table { rows } => rows.last().map(|row| return row.top_y + row.height),
+    PlacedBlock::Table { rows, rules } => rows
+      .iter()
+      .map(|row| return row.top_y + row.height)
+      .chain(rules.iter().map(|rule| return rule.y + rule.height))
+      .max(),
     _ => None,
   };
 }

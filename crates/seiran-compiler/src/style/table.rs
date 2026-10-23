@@ -27,9 +27,15 @@ pub(crate) struct TableStyle {
   /// 表本体とキャプションの間隔
   #[garde(custom(non_negative))]
   pub inner_margin: Length,
-  /// 罫線の太さ
+  /// 表の上端・下端の罫線の太さ。`0pt` は引かず、罫線も `rule_gap` の空きも場所を取らない
+  #[garde(custom(non_negative))]
+  pub outer_rule_thickness: Length,
+  /// ヘッダ下の罫線と `\row[separator=rule]` の罫線の太さ。`0pt` は引かず、罫線も `rule_gap` の空きも場所を取らない
   #[garde(custom(non_negative))]
   pub rule_thickness: Length,
+  /// 罫線と行の間の空き（上端の罫線は下だけ、下端の罫線は上だけ、それ以外の罫線は上下）
+  #[garde(custom(non_negative))]
+  pub rule_gap: Length,
   /// 罫線色。`None` は黒
   pub rule_color: Option<Color>,
   /// セル内容の左右内側余白（各セルの両側に適用される）
@@ -49,7 +55,9 @@ impl Default for TableStyle {
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
       inner_margin: Length::pt(6.0),
+      outer_rule_thickness: Length::pt(0.8),
       rule_thickness: Length::pt(0.5),
+      rule_gap: Length::pt(2.0),
       rule_color: None,
       cell_padding: Length::pt(4.0),
       head_typeface: Typeface::SerifBold,
@@ -59,8 +67,39 @@ impl Default for TableStyle {
 
 #[cfg(test)]
 mod tests {
+  use garde::Validate;
+
   use super::TableStyle;
-  use crate::document::Typeface;
+  use crate::{document::Typeface, length::Length};
+
+  #[test]
+  fn rule_defaults_follow_booktabs() {
+    let style = TableStyle::default();
+
+    assert_eq!(style.outer_rule_thickness, Length::pt(0.8));
+    assert_eq!(style.rule_thickness, Length::pt(0.5));
+    assert_eq!(style.rule_gap, Length::pt(2.0));
+  }
+
+  #[test]
+  fn validate_rejects_negative_rule_gap() {
+    let style = TableStyle {
+      rule_gap: Length::pt(-0.1),
+      ..TableStyle::default()
+    };
+
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_rejects_negative_outer_rule_thickness() {
+    let style = TableStyle {
+      outer_rule_thickness: Length::pt(-0.1),
+      ..TableStyle::default()
+    };
+
+    assert!(style.validate().is_err());
+  }
 
   #[test]
   fn head_typeface_defaults_to_serif_bold() {

@@ -166,8 +166,12 @@ pub(in crate::typeset) struct TableLayout {
   pub breakable: bool,
   /// セルの内側余白（左右各。`[table].cell_padding`）
   pub cell_padding: Length,
-  /// 横罫線の太さ（`[table].rule_thickness`）
+  /// 上端・下端の枠罫の太さ（`[table].outer_rule_thickness`）
+  pub outer_rule_thickness: Length,
+  /// ヘッダ下の罫線と行群の区切りの罫線の太さ（`[table].rule_thickness`）
   pub rule_thickness: Length,
+  /// 罫線と行の間の空き（`[table].rule_gap`）
+  pub rule_gap: Length,
   /// 横罫線の色（RGB。`None` は黒）
   pub rule_color: Option<[u8; 3]>,
 }

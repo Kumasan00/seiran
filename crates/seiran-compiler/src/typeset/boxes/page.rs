@@ -98,10 +98,12 @@ pub(crate) enum PlacedBlock {
     /// ベースラインのページ上端からの距離
     baseline_y: Length,
   },
-  /// 表の断片（このページに描く行の集まり。改ページ後のヘッダ再描画行も含む）
+  /// 表の断片（このページに描く行の集まり。改ページ後のヘッダ再描画行も含む）と、その罫線
   Table {
-    /// このページに描く行（上から順、セル内容・罫線とも位置確定済み）
+    /// このページに描く行（上から順、セル内容は位置確定済み）
     rows: Vec<PlacedTableRow>,
+    /// この断片の罫線（上端・下端の枠罫、ヘッダ下の罫線、行群の区切り。上から順、位置確定済み）
+    rules: Vec<PlacedTableRule>,
   },
   /// 画像
   Image {
@@ -170,8 +172,6 @@ pub(crate) struct PlacedTableRow {
   pub baseline_y: Length,
   /// 列揃え・セル余白を解決して x 座標へ配置済みのセル内容
   pub boxes: Vec<PlacedHBox>,
-  /// 行の上罫線。`None` は罫線なし
-  pub rule: Option<PlacedTableRule>,
 }
 
 /// 位置と見た目が確定した表の横罫線
