@@ -39,6 +39,12 @@ pub(crate) struct TableStyle {
   /// `\row[separator=gap]` の空き
   #[garde(custom(non_negative))]
   pub row_gap: Length,
+  /// `\cell[rule_below]` の部分罫の太さ。`0pt` は引かず、罫線も `rule_gap` の空きも場所を取らない
+  #[garde(custom(non_negative))]
+  pub partial_rule_thickness: Length,
+  /// 部分罫の左右の詰め幅（片側。表の外側の端でも詰める）
+  #[garde(custom(non_negative))]
+  pub partial_rule_trim: Length,
   /// 罫線色。`None` は黒
   pub rule_color: Option<Color>,
   /// セル内容の左右内側余白（各セルの両側に適用される）
@@ -62,6 +68,8 @@ impl Default for TableStyle {
       rule_thickness: Length::pt(0.5),
       rule_gap: Length::pt(2.0),
       row_gap: Length::pt(5.0),
+      partial_rule_thickness: Length::pt(0.3),
+      partial_rule_trim: Length::pt(5.0),
       rule_color: None,
       cell_padding: Length::pt(4.0),
       head_typeface: Typeface::SerifBold,
@@ -84,6 +92,18 @@ mod tests {
     assert_eq!(style.rule_thickness, Length::pt(0.5));
     assert_eq!(style.rule_gap, Length::pt(2.0));
     assert_eq!(style.row_gap, Length::pt(5.0));
+    assert_eq!(style.partial_rule_thickness, Length::pt(0.3));
+    assert_eq!(style.partial_rule_trim, Length::pt(5.0));
+  }
+
+  #[test]
+  fn validate_rejects_negative_partial_rule_trim() {
+    let style = TableStyle {
+      partial_rule_trim: Length::pt(-0.1),
+      ..TableStyle::default()
+    };
+
+    assert!(style.validate().is_err());
   }
 
   #[test]

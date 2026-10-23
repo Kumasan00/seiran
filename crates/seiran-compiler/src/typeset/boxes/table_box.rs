@@ -90,7 +90,6 @@ impl TableBoundary {
   /// 太さが正でないか帯が無ければ何も無い境界を返す。詰めた幅が正でない罫線は描かないが、境界の高さは残す — 高さは
   /// 罫線を求める帯の有無と太さだけで決まる。
   #[must_use]
-  #[cfg_attr(not(test), expect(dead_code, reason = "表エンジンが部分罫を写す次の commit で使う"))]
   pub(in crate::typeset) fn partial_rules(
     gap_above: Length,
     thickness: Length,

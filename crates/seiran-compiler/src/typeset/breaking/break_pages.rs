@@ -2465,6 +2465,13 @@ mod tests {
     return row;
   }
 
+  /// 行の上に部分罫 2 本（帯 (0, 12) と (12, 12)・詰め 2、空き 2・太さ 1・空き 2 → 高さ 5）を付ける
+  fn partially_ruled(mut row: TableRowFragment) -> TableRowFragment {
+    let bands = [(Length::ZERO, pt(12.0)), (pt(12.0), pt(12.0))];
+    row.above = TableBoundary::partial_rules(pt(2.0), pt(1.0), pt(2.0), &bands, pt(2.0), None);
+    return row;
+  }
+
   /// 表だけを左揃え・段幅 100 で `test_geometry` に配置する
   fn break_table(table: TableBox) -> Vec<Page> {
     let (pages, _) = break_pages(
@@ -2559,6 +2566,35 @@ mod tests {
     assert_eq!(pages.len(), 2);
     assert!(all_close(&rule_ys(&pages[0]), &[10.0, 25.0, 40.0]), "{:?}", rule_ys(&pages[0]));
     assert!(all_close(&rule_ys(&pages[1]), &[10.0, 25.0, 40.0]), "{:?}", rule_ys(&pages[1]));
+    assert!(all_close(&row_tops(&pages[1]), &[13.0, 28.0]), "{:?}", row_tops(&pages[1]));
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R2"));
+  }
+
+  #[test]
+  fn partial_rules_share_one_boundary_mid_fragment() {
+    // 枠なし、R1 の上に部分罫 2 本: R0 は 10、罫線 2 本とも y=22、R1 は 25
+    let pages = break_table(table_box(Vec::new(), vec![table_row("R0"), partially_ruled(table_row("R1"))]));
+
+    assert!(all_close(&rule_ys(&pages[0]), &[22.0, 22.0]), "{:?}", rule_ys(&pages[0]));
+    assert!(all_close(&row_tops(&pages[0]), &[10.0, 25.0]), "{:?}", row_tops(&pages[0]));
+  }
+
+  #[test]
+  fn partial_rules_at_the_top_of_a_continuation_fragment_are_dropped() {
+    // 区切りの代わりに部分罫で、separator_at_the_top_of_a_continuation_fragment_is_dropped と同じ並び。
+    // 2 ページ目の先頭 R2 の部分罫は捨て（罫線も空きも無い）、R3 の部分罫は描く
+    let rows = vec![
+      table_row("R0"),
+      partially_ruled(table_row("R1")),
+      partially_ruled(table_row("R2")),
+      partially_ruled(table_row("R3")),
+    ];
+
+    let pages = break_table(framed(table_box(Vec::new(), rows)));
+
+    assert_eq!(pages.len(), 2);
+    assert!(all_close(&rule_ys(&pages[0]), &[10.0, 25.0, 25.0, 40.0]), "{:?}", rule_ys(&pages[0]));
+    assert!(all_close(&rule_ys(&pages[1]), &[10.0, 25.0, 25.0, 40.0]), "{:?}", rule_ys(&pages[1]));
     assert!(all_close(&row_tops(&pages[1]), &[13.0, 28.0]), "{:?}", row_tops(&pages[1]));
     assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R2"));
   }

@@ -25,6 +25,7 @@ fn lower_rows(
       cells.push(TableCellLayout {
         content: lower_inlines(ctx, &cell.content, cell_style, state),
         column_span: cell.column_span,
+        rule_below: cell.rule_below,
       });
     }
     result.push(TableRowLayout {
@@ -92,6 +93,8 @@ pub(super) fn lower_table(
       rule_thickness: style.rule_thickness,
       rule_gap: style.rule_gap,
       row_gap: style.row_gap,
+      partial_rule_thickness: style.partial_rule_thickness,
+      partial_rule_trim: style.partial_rule_trim,
       rule_color: style.rule_color.map(Color::rgb),
     });
   });
@@ -312,6 +315,8 @@ mod tests {
     style.table.rule_thickness = Length::pt(1.5);
     style.table.rule_gap = Length::pt(3.5);
     style.table.row_gap = Length::pt(6.5);
+    style.table.partial_rule_thickness = Length::pt(0.7);
+    style.table.partial_rule_trim = Length::pt(6.0);
     style.table.rule_color = Some("#090909".parse().expect("16 進の色は読めるはず"));
 
     let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
@@ -322,6 +327,8 @@ mod tests {
     assert_eq!(table.rule_thickness, Length::pt(1.5));
     assert_eq!(table.rule_gap, Length::pt(3.5));
     assert_eq!(table.row_gap, Length::pt(6.5));
+    assert_eq!(table.partial_rule_thickness, Length::pt(0.7));
+    assert_eq!(table.partial_rule_trim, Length::pt(6.0));
     assert_eq!(table.rule_color, Some([9, 9, 9]));
   }
 
@@ -344,6 +351,17 @@ mod tests {
     let table = find_table(&nodes);
     assert_eq!(table.rows[0].separator, None);
     assert_eq!(table.rows[1].separator, Some(RowSeparator::Gap));
+  }
+
+  #[test]
+  fn lower_table_preserves_the_cell_rule_below() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, "\\begin{table}\n\\row{\\cell[rule_below]{A} & B}\n\\row{C & D}\n\\end{table}\n");
+
+    let table = find_table(&nodes);
+    let flags: Vec<bool> = table.rows[0].cells.iter().map(|cell| return cell.rule_below).collect();
+    assert_eq!(flags, vec![true, false]);
   }
 
   #[test]
