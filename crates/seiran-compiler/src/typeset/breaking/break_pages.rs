@@ -980,10 +980,11 @@ fn fit_table_row(
 
 /// 分割可能な表の行 1 本（行帯の高さ `row_height`・脚注の需要 `demands`）を次リージョンへ送るべきか。
 ///
-/// 現在リージョンでは行と脚注が収まらず、予約の無い新しいリージョンの再掲ヘッダ（高さ `head_height`）の下なら
-/// 収まるときだけ送る（新しいリージョンでも収まらない行は送っても改善せず、送ると前のリージョンにヘッダだけが残る
-/// ので、その場に置く）。判定は [`fit_table_row`] だけで行い、実配置（[`place_table_row`]）と keep-with-next の計画
-/// （[`plan_atomic`]）が共用する。
+/// 現在リージョンでは行と脚注が収まらず、予約の無い新しいリージョンの再掲ヘッダ（高さ `head_height`）の下に行だけなら
+/// 収まるときに送る。行だけでも収まらない行は送っても改善せず、送ると前のリージョンにヘッダだけが残るので、その場に
+/// 置く。新しいリージョンで脚注を見ないのは、空のリージョンに入る行を現在リージョンの下端からはみ出させないため
+/// （脚注が入らなければ送り先で `FootnoteLine` を記録する）。判定は [`fit_table_row`] だけで行い、実配置
+/// （[`place_table_row`]）と keep-with-next の計画（[`plan_atomic`]）が共用する。
 fn defers_table_row(
   cursor: RegionCursor,
   row_height: Length,
@@ -997,7 +998,7 @@ fn defers_table_row(
     ..cursor
   };
   return matches!(fit_table_row(cursor, row_height, demands, geom), LineFootnoteFit::Rejected)
-    && !matches!(fit_table_row(fresh, row_height, demands, geom), LineFootnoteFit::Rejected);
+    && !matches!(fit_table_row(fresh, row_height, &[], geom), LineFootnoteFit::Rejected);
 }
 
 /// 分割禁止の表（高さ `table_height`、全行の脚注の需要を出現順に並べた `demands`）を次リージョンへ送るべきか。
@@ -1084,9 +1085,9 @@ fn flush_table_rows(composer: &mut PageComposer, pending: &mut Vec<(TableRowFrag
 ///
 /// 送るとき（[`defers_table_row`]）は、溜めた断片を着地させて改リージョンし、`repeated_head`（ヘッダ行では空）の
 /// 下に置くとして判定し直す。新リージョンの脚注エリアが繰越で埋まっていて入らないときは、ヘッダを積まずにさらに送る
-/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減り、予約の無いリージョンなら
-/// 入ることを送る判定が保証するので有限回で止まる）。予約の無い新リージョンでも入らない行は送らず、本文の行と同じく
-/// はみ出しを記録してその場に置く。
+/// （ヘッダだけのリージョンを作って繰越の脚注と重ねない。繰越は送るたびに 1 行以上減るので有限回で尽きる）。
+/// 送った先でも脚注が入らない行と、予約の無い新リージョンに行だけでも入らないので送らなかった行は、本文の行と同じく
+/// はみ出しを記録して置く。
 /// 脚注の予約・分割・繰越は段落の行の確定（`place_paragraph`）と同じ順で行う。
 fn place_table_row(
   composer: &mut PageComposer,
@@ -4378,6 +4379,32 @@ mod tests {
       footnotes: vec![(1, footnote_origin(1))],
     };
     assert!(overflows.iter().any(|overflow| return overflow.kind == expected), "{overflows:?}");
+  }
+
+  #[test]
+  fn row_fitting_an_empty_region_moves_even_if_its_footnote_never_fits() {
+    // 3 行で y = 40。4 行目（行帯 15）は 40..55 で下限 50 を超えるが、空の版面（10..50）なら単独で入る。
+    // 脚注（本体 50）は空のページでも入らないが、行を残すより送るほうがはみ出しが小さい
+    let geom = test_geometry();
+    let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
+    rows.push(with_footnote(
+      table_fragment(table_text_box("R3"), 15.0, 10.0),
+      footnote_item(1, vec![tall_box(50.0)], pt(12.0)),
+    ));
+
+    let (pages, overflows) = break_pages(vec![table_block(rows)], pt(100.0), &geom, &GreedyBreaker);
+
+    assert_eq!(table_rows_of(&pages[0]), 3);
+    assert_eq!(table_rows_of(&pages[1]), 1);
+    assert_eq!(
+      overflows,
+      vec![Overflow {
+        page_index: 1,
+        kind: OverflowKind::FootnoteLine {
+          footnotes: vec![(1, footnote_origin(1))],
+        },
+      }]
+    );
   }
 
   #[test]
