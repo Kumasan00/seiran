@@ -302,12 +302,16 @@ mod tests {
   use super::{HarfRustShaper, ScriptLevel, at_configured_location};
   use crate::project::{FontConfig, ProjectPath, TextDirection, VariationAxis};
 
+  /// 軸 `wght`（既定 400）を持つ STIX Two Text のファイルのバイト列。
+  fn stix_two_text_bytes() -> Vec<u8> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoText[wght].ttf");
+    return fs::read(&path)
+      .expect("vendor/fonts の STIX Two Text を読めるはず（未取得なら tools/fetch-test-assets.sh）");
+  }
+
   /// 軸 `wght`（既定 400）を持つ STIX Two Text を既定位置で読む。
   fn stix_two_text() -> Font {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoText[wght].ttf");
-    let bytes =
-      fs::read(&path).expect("vendor/fonts の STIX Two Text を読めるはず（未取得なら tools/fetch-test-assets.sh）");
-    return Font::new(bytes, 0).expect("STIX Two Text は sfnt として読めるはず");
+    return Font::new(stix_two_text_bytes(), 0).expect("STIX Two Text は sfnt として読めるはず");
   }
 
   /// `variation_axes` だけを差し替えた STIX Two Text の設定を作る。
@@ -418,6 +422,36 @@ mod tests {
     assert!(advance(&default_buffer) > 0, "既定ウェイトの送り幅は正");
     assert!(advance(&bold_buffer) > 0, "太字の送り幅は正");
     assert_ne!(advance(&default_buffer), advance(&bold_buffer), "STIX Two Text のウェイト変更は送り幅へ反映される");
+  }
+
+  #[test]
+  fn unsorted_table_directory_shapes_like_the_sorted_font() {
+    // テーブルレコードを逆順（タグ昇順でない）に並べ替える。各レコードの offset / length は変えないので、
+    // 引けるテーブルは元と同じ。検証は fvar を含む全テーブルを線形探索の FontRef で読むので、シェイピング用
+    // フォントも同じテーブルを引けないと、軸の設定やカーニングが黙って落ちる
+    let sorted = stix_two_text_bytes();
+    let table_count = usize::from(u16::from_be_bytes([sorted[4], sorted[5]]));
+    let records_end = 12 + 16 * table_count;
+    let mut unsorted = sorted[..12].to_vec();
+    for record in sorted[12..records_end].as_chunks::<16>().0.iter().rev() {
+      unsorted.extend_from_slice(record);
+    }
+    unsorted.extend_from_slice(&sorted[records_end..]);
+    let config = stix_two_text_config(Some(vec![VariationAxis {
+      name: *b"wght",
+      value: 700.0,
+    }]));
+    let shaper = |bytes: Vec<u8>| {
+      let font = Font::new(bytes, 0).expect("レコードの並びだけを変えたフォントも sfnt として読めるはず");
+      return HarfRustShaper::new(&config, at_configured_location(font, &config)).expect("言語タグ未指定は有効");
+    };
+    let mut sorted_buffer = Buffer::new();
+    let mut unsorted_buffer = Buffer::new();
+
+    shaper(sorted).shape(&mut sorted_buffer, "Hamburgefonts AV", 12.0, None);
+    shaper(unsorted).shape(&mut unsorted_buffer, "Hamburgefonts AV", 12.0, None);
+
+    assert_same_shaping(&unsorted_buffer, &sorted_buffer);
   }
 
   #[test]
