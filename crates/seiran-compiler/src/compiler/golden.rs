@@ -39,9 +39,10 @@
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
-//!   字下げの中のブロック要素 5 種 [`full_width_table_and_image_fill_the_indented_width`] /
+//!   字下げの中のブロック要素 6 種 [`full_width_table_and_image_fill_the_indented_width`] /
 //!   [`ratio_column_in_a_list_resolves_against_the_indented_width`] /
-//!   [`full_width_table_in_a_quote_fills_the_indented_column_in_two_columns`]（共通ヘルパ [`table_widths`] /
+//!   [`full_width_table_in_a_quote_fills_the_indented_column_in_two_columns`] /
+//!   [`image_without_size_in_exhausted_indents_takes_the_column_width`]（共通ヘルパ [`table_widths`] /
 //!   [`image_extents`] 経由）/ [`blocks_in_a_list_line_up_with_the_paragraphs_of_the_item`] /
 //!   [`display_math_in_a_list_aligns_and_numbers_within_the_indented_width`]（共通ヘルパ [`narrow_pages`] 経由。
 //!   画像は golden に入れられないので、引用・リストの中の画像の位置と幅はここで固定する）・
@@ -698,6 +699,26 @@ fn full_width_table_and_image_fill_the_indented_width() {
   assert_close(images[0].0, Length::pt(20.0), "引用の中の画像の x");
   assert_close(images[1].1, in_item, "項目の中の画像の幅");
   assert_close(images[1].0, Length::pt(40.0), "項目の中の画像の x");
+}
+
+/// 字下げが段の幅を使い切った引用の中の寸法を省略した画像は、利用幅（0）ではなく段幅を基準に広がる（0×0 にして消さない）
+#[test]
+fn image_without_size_in_exhausted_indents_takes_the_column_width() {
+  let source =
+    "\\begin{quote}\n引用。\n\\begin{figure}\n\\image{./tests/image/testimage5.png}\n\\end{figure}\n\\end{quote}\n";
+  let laid_out = TestProject::builder()
+    .source_text(source)
+    .assets(&["./tests/image/testimage5.png"])
+    .style_toml(|table| test_support::set(table, "quote", "indent", "300mm"))
+    .build()
+    .laid_out();
+
+  let images = image_extents(&laid_out.pages);
+
+  // 段幅 425mm に左右 300mm の字下げで利用幅は 0。画像は字下げの位置から段幅いっぱいの幅で置かれる
+  assert_eq!(images.len(), 1, "{images:?}");
+  assert_close(images[0].0, Length::mm(300.0), "画像の x");
+  assert_close(images[0].1, Length::mm(425.0), "画像の幅");
 }
 
 /// リストの中の `Ratio` 列は字下げ後の幅に対する比で決まる

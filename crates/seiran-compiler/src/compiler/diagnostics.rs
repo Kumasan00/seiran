@@ -803,6 +803,23 @@ fn block_overflow_warnings_use_the_indented_width() {
 }
 
 #[test]
+fn image_without_size_in_exhausted_indents_warns_instead_of_vanishing() {
+  // 段幅 425mm に左右 300mm の字下げで引用の利用幅は 0
+  let compilation = TestProject::builder()
+    .source_text(
+      "\\begin{quote}\n引用。\n\\begin{figure}\n\\image{./tests/image/testimage4.png}\n\\end{figure}\n\\end{quote}\n",
+    )
+    .asset("./tests/image/testimage4.png")
+    .style_toml(|table| test_support::set(table, "quote", "indent", "300mm"))
+    .build()
+    .compile()
+    .expect("はみ出しは致命的ではないはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::overflow::image");
+  assert!(!warnings.is_empty(), "画像のはみ出しを警告するはず: {:?}", all_messages(&compilation));
+}
+
+#[test]
 fn diagnostic_footnote_overflow_labels_each_footnote() {
   // 1 行の 2 つの脚注がページの高さを超える。ページ単位採番は本文パスを反復しても 1 件で同じラベルを持つ
   let path = "tests/text/diagnostics/overflow_footnote.sei";

@@ -168,7 +168,8 @@ fn build_page(
   let Some(publication_page) = PublicationPage::new(page_box, ops, links) else {
     unreachable!(
       "ページ矩形は config.pdf.width / height（garde の positive）、画像の描画矩形は \\image の \
-       width / height（frontend の正値検査）と自然寸法からの推論が正を保証する"
+       width / height（frontend の正値検査）と、正の利用幅か（字下げが使い切ったときの）段幅を基準にした自然寸法からの推論が\
+       正を保証する"
     );
   };
   return publication_page;

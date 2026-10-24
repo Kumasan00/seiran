@@ -185,8 +185,15 @@ impl BlockBuilder<'_> {
           height,
           target_dpi,
         } => {
+          // 字下げが段の幅を使い切ると利用幅は 0 で、そこから広げると 0×0 の画像になって消える。段の幅（検証済みで正）を
+          // 基準にして描画矩形を正に保ち、字下げからのはみ出しとして記録させる
           let available = boxes::usable_width(self.column_width, indent, right_indent);
-          let (width, height) = resolve_image_size(self.images, &path, width, height, available);
+          let basis = if available > Length::ZERO {
+            available
+          } else {
+            self.column_width
+          };
+          let (width, height) = resolve_image_size(self.images, &path, width, height, basis);
           blocks.push(Block::Image {
             origin,
             path,
