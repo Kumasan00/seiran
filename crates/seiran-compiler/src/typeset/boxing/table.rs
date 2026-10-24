@@ -663,7 +663,7 @@ fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> Ta
   if parts.len() == 1 && parts[0].1.is_empty() {
     return parts.swap_remove(0).0;
   }
-  let last = parts.len() - 1;
+  let last = parts.len().checked_sub(1).expect("row_groups の範囲は空でないので、行の集まりは 1 行以上");
   let mut heights: Vec<Length> = parts.iter().map(|(fragment, _)| return fragment.height()).collect();
   let aboves: Vec<Length> = parts.iter().skip(1).map(|(fragment, _)| return fragment.above.height).collect();
   let top = |heights: &[Length], k: usize| -> Length {
@@ -1387,6 +1387,89 @@ mod tests {
       close(above.rules[0].x, 5.0) && close(above.rules[0].width, 20.0) && close(above.rules[0].y, 2.0),
       "{above:?}"
     );
+  }
+
+  #[test]
+  fn merged_group_offsets_links_and_orders_footnotes_and_index_marks() {
+    // 行 1 のリンクは行 1 の上端（10）の分だけ下がる。脚注・索引語は行 0 → 行 1 の順
+    let target = LinkTarget::External("https://example.com".to_string());
+    let columns = [fixed(30.0), fixed(30.0)];
+    let rows = [
+      row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        cell(vec![word_box(10.0), footnote(0), index_mark("a")]),
+      ]),
+      row(vec![
+        blank(),
+        cell(vec![
+          HItem::LinkStart(target.clone()),
+          text_free_box(10.0),
+          HItem::LinkEnd,
+          footnote(1),
+          index_mark("b"),
+        ]),
+      ]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    let fragment = &table.rows[0];
+    assert_eq!(fragment.links.len(), 1);
+    assert_eq!(fragment.links[0].target, target);
+    assert!(close(fragment.links[0].y, 10.0), "{:?}", fragment.links);
+    let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
+    assert_eq!(indices, vec![0, 1]);
+    assert_eq!(words(&fragment.index_marks), vec!["a", "b"]);
+  }
+
+  #[test]
+  fn nested_merges_extend_inner_cell_before_outer_cell() {
+    // A が行 0–3（5 行 = 50）、B が行 1–2（4 行 = 40）。B が行 2 を 20 伸ばしてから A を見ると領域は 60 で収まる
+    // （終わりの行の昇順に見ないと A が先に行 3 を 10 伸ばし、合計 70 になる）
+    let columns = [fixed(30.0), fixed(30.0)];
+    let five_lines = [
+      three_lines(),
+      vec![space(), word_box(25.0), space(), word_box(25.0)],
+    ]
+    .concat();
+    let four_lines = [three_lines(), vec![space(), word_box(25.0)]].concat();
+    let rows = [
+      row(vec![merged_cell(five_lines, 4), cell(vec![word_box(10.0)])]),
+      row(vec![blank(), merged_cell(four_lines, 2)]),
+      row(vec![blank(), blank()]),
+      row(vec![blank(), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    assert!(close(table.rows[0].height(), 60.0), "{:?}", table.rows[0].height());
+  }
+
+  #[test]
+  fn boundary_fed_by_a_merged_cell_and_a_plain_cell_has_both_rules() {
+    // 境界（行 1 と行 2 の間）は、行 0 から続く結合セルの rule_below（x=5）と行 1 のセルの rule_below（x=35）の 2 本
+    let columns = [fixed(30.0), fixed(30.0)];
+    let merged_rule_below = MeasuredCell {
+      rule_below: true,
+      ..merged_cell(vec![word_box(10.0)], 2)
+    };
+    let rows = [
+      row(vec![merged_rule_below, cell(vec![word_box(10.0)])]),
+      row(vec![blank(), rule_below_cell(vec![word_box(10.0)], 1)]),
+      row(vec![cell(vec![word_box(10.0)]), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 2);
+    let above = &table.rows[1].above;
+    assert_eq!(above.rules.len(), 2, "{above:?}");
+    let mut xs: Vec<f32> = above.rules.iter().map(|rule| return rule.x.to_pt()).collect();
+    xs.sort_by(f32::total_cmp);
+    assert!(close(pt(xs[0]), 5.0) && close(pt(xs[1]), 35.0), "{above:?}");
+    assert!(above.rules.iter().all(|rule| return close(rule.width, 20.0) && close(rule.y, 2.0)), "{above:?}");
   }
 
   #[test]

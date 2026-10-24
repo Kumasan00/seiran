@@ -186,9 +186,8 @@ fn evaluate_row(
   let mut cells: Vec<HirTableCell> = Vec::new();
   let mut segment: Vec<CstElement<'_>> = Vec::new();
   // 空セルには覆う要素がないので、直前の区切り位置を 0 幅の位置として使う
-  // 区画の開始列（直前までのセルの `column_span` の累積）
-  let mut column = 0usize;
   let mut empty_cell_span = Span::new(arg.span.start, arg.span.start);
+  let mut column = 0usize;
   for child in arg.children {
     if let CstElement::Token(token) = child
       && token.kind == TokenKind::Ampersand

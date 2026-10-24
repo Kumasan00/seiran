@@ -520,7 +520,9 @@ pub(crate) enum EvalError {
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(
     code(frontend::eval::table_row_cell_count_mismatch),
-    help("`&` 区切りのセル数（\\cell[span=N] は N 列分）を columns / widths の列数に揃えてください")
+    help(
+      "`&` 区切りのセル数（\\cell[span=N] は N 列分）を columns / widths の列数に揃えてください。行結合に覆われる位置も空の区画 1 つ（1 列）と数えます"
+    )
   )]
   TableRowCellCountMismatch {
     /// 期待される列数

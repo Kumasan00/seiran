@@ -1166,7 +1166,6 @@ fn stack_boundary(fragment: &mut PendingTableFragment, boundary: &TableBoundary,
 fn stack_row(fragment: &mut PendingTableFragment, row: TableRowFragment, top: Length) {
   fragment.rules.extend(row.rules.iter().map(|rule| {
     return PlacedTableRule {
-      x: rule.x,
       y: rule.y + top,
       ..*rule
     };

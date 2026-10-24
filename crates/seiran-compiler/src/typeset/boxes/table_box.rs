@@ -136,7 +136,8 @@ impl TableBoundary {
 /// 表左端・行帯上端を原点とする確定済みの描画内容と付随情報
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableRowFragment {
-  /// `\row`（行のはみ出し警告の起源）
+  /// `\row`（行のはみ出し警告の起源）。行結合で畳んだ断片は行の集まりの最初の `\row` で、集まりのどの行のはみ出しも
+  /// ここを指す
   pub origin: NodeId,
   /// 折り返すセルの行が内容幅を超えた量の最大（収まれば 0。内容幅が負なら空の行でも正）
   pub overrun: Length,

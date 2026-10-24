@@ -141,6 +141,11 @@ mod tests {
       eval_table(r"\begin{table}\row{\cell[span=2, rowspan=2]{A} & B}\row{ & & C}\row{D & E & F}\end{table}");
 
     assert!(result.is_ok(), "{result:?}");
+    let HirNodeKind::Table(table) = &result.unwrap()[0].kind else {
+      panic!("Table が期待されます")
+    };
+    assert_eq!(table.rows[0].cells[0].column_span, 2);
+    assert_eq!(table.rows[0].cells[0].row_span, 2);
   }
 
   #[test]
