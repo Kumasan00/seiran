@@ -8,7 +8,10 @@ use crate::{
       environment::{
         body_scan,
         caption::evaluate_caption,
-        table::cell::{build_cell, contains_line_break},
+        table::{
+          cell::{build_cell, contains_line_break},
+          grid::{self, Coverage},
+        },
       },
       inline::IndexPolicy,
       opt_args::{self, OptKey, collect_command_opt_args},
@@ -61,6 +64,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
   let mut head: Vec<HirTableRow> = Vec::new();
   let mut rows: Vec<HirTableRow> = Vec::new();
   let mut caption: Option<Vec<HirInline>> = None;
+  let mut coverage = Coverage::default();
   // `\caption` が最初の行（`\head` / `\row`）よりソース上で先に現れた場合のみ Top
   let mut caption_position = CaptionPosition::Bottom;
 
@@ -84,7 +88,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           head = evaluate_head(&cmd_view, ctx)?;
         },
         TableCommand::Row => {
-          rows.push(evaluate_row(&cmd_view, ctx, IndexPolicy::Allow)?);
+          rows.push(evaluate_row(&cmd_view, ctx, IndexPolicy::Allow, &mut coverage)?);
         },
         TableCommand::Caption => {
           if caption.is_some() {
@@ -113,25 +117,9 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
     }
   }
 
-  // `rule_below` は同じ行群の次の行の上の境界に部分罫を置く。行群の最後の行の下は枠罫（下端・ヘッダ下）の持ち場で、
-  // 次の行が `separator` を持てば同じ境界に区切りが 2 つになる
+  // 行結合は行群ごとに収まり、`rule_below` は行群の境界と `separator` を避ける
   for group in [&head, &rows] {
-    for pair in group.windows(2) {
-      if let [above, below] = pair
-        && below.separator.is_some()
-        && let Some(cell) = first_rule_below(above)
-      {
-        return Err(EvalError::TableRuleBelowWithSeparator {
-          span: ctx.span_of(cell.id).into(),
-          separator: ctx.span_of(below.id).into(),
-        });
-      }
-    }
-    if let Some(cell) = group.last().and_then(first_rule_below) {
-      return Err(EvalError::TableRuleBelowOnFrameBoundary {
-        span: ctx.span_of(cell.id).into(),
-      });
-    }
+    grid::check_row_group(group, ctx)?;
   }
 
   return Ok(TableBody {
@@ -152,10 +140,11 @@ fn evaluate_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<Hi
 
   let source = view.source();
   let mut rows = Vec::new();
+  let mut coverage = Coverage::default();
   for ((), row_view) in
     body_scan::collect_allowed_commands(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
   {
-    rows.push(evaluate_row(&row_view, ctx, IndexPolicy::Reject)?);
+    rows.push(evaluate_row(&row_view, ctx, IndexPolicy::Reject, &mut coverage)?);
   }
   if rows.is_empty() {
     return Err(EvalError::MissingCommandArgument {
@@ -172,6 +161,7 @@ fn evaluate_row(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
+  coverage: &mut Coverage,
 ) -> Result<HirTableRow, EvalError> {
   let opts = collect_command_opt_args(view, &[SEPARATOR.decl()])?;
   let separator = match opts.get(SEPARATOR) {
@@ -196,19 +186,24 @@ fn evaluate_row(
   let mut cells: Vec<HirTableCell> = Vec::new();
   let mut segment: Vec<CstElement<'_>> = Vec::new();
   // 空セルには覆う要素がないので、直前の区切り位置を 0 幅の位置として使う
+  // 区画の開始列（直前までのセルの `column_span` の累積）
+  let mut column = 0usize;
   let mut empty_cell_span = Span::new(arg.span.start, arg.span.start);
   for child in arg.children {
     if let CstElement::Token(token) = child
       && token.kind == TokenKind::Ampersand
     {
-      cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy)?);
+      let cell = build_cell(source, ctx, &segment, empty_cell_span, index_policy, column, coverage)?;
+      column += cell.column_span as usize;
+      cells.push(cell);
       segment.clear();
       empty_cell_span = Span::new(token.span.end, token.span.end);
     } else {
       segment.push(*child);
     }
   }
-  cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy)?);
+  cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy, column, coverage)?);
+  coverage.advance(&cells);
 
   for cell in &cells {
     if contains_line_break(&cell.content) {
@@ -262,11 +257,6 @@ pub(super) fn resolve_column_count(
   }
 
   return Ok(column_count);
-}
-
-/// 行の最初の `rule_below` セルを返す
-fn first_rule_below(row: &HirTableRow) -> Option<&HirTableCell> {
-  return row.cells.iter().find(|cell| return cell.rule_below);
 }
 
 /// 行のセル数（`column_span` 合計）を返す

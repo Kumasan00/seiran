@@ -470,6 +470,37 @@ pub(crate) enum EvalError {
     separator: SourceSpan,
   },
 
+  /// 行結合に覆われる位置へ中身のある区画・`\cell` を書いた場合
+  #[error("行結合に覆われる位置には空の区画しか書けません")]
+  #[diagnostic(
+    code(frontend::eval::table_covered_slot_not_empty),
+    help("覆われる位置は & で区切った空の区画（空白・改行・コメントだけ）にしてください。\\cell{{}} も書けません")
+  )]
+  TableCoveredSlotNotEmpty {
+    /// 区画（素の区画はそのセル、`\cell` はそのコマンド）のソース位置
+    #[label("この区画は上の行の結合セルに覆われています")]
+    span: SourceSpan,
+    /// 覆っている結合セルのソース位置
+    #[label("この結合セルが下の行のこの列を覆います")]
+    cell: SourceSpan,
+  },
+
+  /// `rowspan` が同じ行群の残りの行数を超える場合
+  #[error("rowspan={row_span} が残りの行数（{remaining} 行）を超えています")]
+  #[diagnostic(
+    code(frontend::eval::table_row_span_overflow),
+    help("\\head の中の結合は \\head の最後の行まで、本体の結合は表の最後の行までです。\\head と本体はまたげません")
+  )]
+  TableRowSpanOverflow {
+    /// セル（`\cell`）のソース位置
+    #[label("このセルの行結合")]
+    span: SourceSpan,
+    /// 指定された結合数
+    row_span: u32,
+    /// セルの行から行群の最後までの行数（セルの行を含む）
+    remaining: usize,
+  },
+
   /// 表の行のセル数（`column_span` 合計）が列数と一致しない場合
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(

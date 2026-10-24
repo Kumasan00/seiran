@@ -158,6 +158,24 @@ fn diagnostic_table_rule_below_with_separator() {
 }
 
 #[test]
+fn diagnostic_table_covered_slot_not_empty() {
+  // G1: 覆われる位置は空の区画で書く
+  let failure = compile_err(&["tests/text/diagnostics/table_covered_slot_not_empty.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_covered_slot_not_empty".to_string()]);
+  assert_matches_golden("table_covered_slot_not_empty", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_table_row_span_overflow() {
+  // 結合は行群の中に収まる
+  let failure = compile_err(&["tests/text/diagnostics/table_row_span_overflow.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_row_span_overflow".to_string()]);
+  assert_matches_golden("table_row_span_overflow", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_bare_braces() {
   // P4（裸の `{...}` は構文エラー）
   let failure = compile_err(&["tests/text/diagnostics/bare_braces.sei"]);

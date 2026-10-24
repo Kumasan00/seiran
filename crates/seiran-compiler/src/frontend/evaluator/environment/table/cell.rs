@@ -5,6 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
+      environment::table::grid::Coverage,
       inline::{IndexPolicy, evaluate_inline_children, evaluate_inline_elements},
       opt_args::{self, OptKey, collect_command_opt_args},
     },
@@ -15,16 +16,23 @@ use crate::{
 
 /// `\cell[span=N]`（横に連結する列数。1 以上の整数）
 const SPAN: OptKey<u32> = opt_args::positive_int("span");
+/// `\cell[rowspan=N]`（下に結合する行数。1 以上の整数）
+const ROW_SPAN: OptKey<u32> = opt_args::positive_int("rowspan");
 /// `\cell[rule_below]`（跨ぐ列の範囲の下に部分罫を引く）
 const RULE_BELOW: OptKey<bool> = opt_args::boolean("rule_below");
 
 /// `&` 分割後の 1 区画を [`HirTableCell`] に変換する
+///
+/// `column` は区画の開始列、`coverage` は上の行の結合が覆う列。覆われる列に中身のある区画・`\cell` を
+/// 置くとエラーにする（空の区画は覆われる位置の書き方なので検査しない）。
 pub(super) fn build_cell(
   source: &str,
   ctx: &EvalContext<'_>,
   elements: &[CstElement<'_>],
   empty_span: Span,
   index_policy: IndexPolicy,
+  column: usize,
+  coverage: &Coverage,
 ) -> Result<HirTableCell, EvalError> {
   let mut cell_view: Option<CommandView<'_>> = None;
   let mut has_other_content = false;
@@ -61,27 +69,45 @@ pub(super) fn build_cell(
         span: cell_cmd.span().into(),
       });
     }
-    return evaluate_cell_command(&cell_cmd, ctx, index_policy);
+    let cell = evaluate_cell_command(&cell_cmd, ctx, index_policy)?;
+    if let Some(owner) = coverage.owner(column..column + cell.column_span as usize) {
+      return Err(EvalError::TableCoveredSlotNotEmpty {
+        span: cell_cmd.span().into(),
+        cell: ctx.span_of(owner).into(),
+      });
+    }
+    return Ok(cell);
   }
 
-  let id = ctx.alloc(segment_span(elements, empty_span));
-  let content = evaluate_inline_elements(source, ctx, elements, index_policy)?;
+  let segment = segment_span(elements, empty_span);
+  let id = ctx.alloc(segment);
+  let content = trim_cell_content(evaluate_inline_elements(source, ctx, elements, index_policy)?);
+  if !content.is_empty()
+    && let Some(owner) = coverage.owner(column..column + 1)
+  {
+    return Err(EvalError::TableCoveredSlotNotEmpty {
+      span: segment.into(),
+      cell: ctx.span_of(owner).into(),
+    });
+  }
   return Ok(HirTableCell {
     id,
-    content: trim_cell_content(content),
+    content,
     column_span: 1,
+    row_span: 1,
     rule_below: false,
   });
 }
 
-/// `\cell[span=N, rule_below]{...}` を属性付きセルに変換する
+/// `\cell[span=N, rowspan=N, rule_below]{...}` を属性付きセルに変換する
 fn evaluate_cell_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
-  let opts = collect_command_opt_args(view, &[SPAN.decl(), RULE_BELOW.decl()])?;
+  let opts = collect_command_opt_args(view, &[SPAN.decl(), ROW_SPAN.decl(), RULE_BELOW.decl()])?;
   let column_span = opts.get(SPAN).unwrap_or(1);
+  let row_span = opts.get(ROW_SPAN).unwrap_or(1);
   let rule_below = opts.get(RULE_BELOW).unwrap_or(false);
 
   let arg = arity::exactly_one_arg(view, "セル内容")?;
@@ -92,6 +118,7 @@ fn evaluate_cell_command(
     id,
     content,
     column_span,
+    row_span,
     rule_below,
   });
 }

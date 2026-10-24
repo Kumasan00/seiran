@@ -1,0 +1,4 @@
+\begin{table}
+\row{\cell[rowspan=2]{果物} & りんご}
+\row{みかん & 80}
+\end{table}
