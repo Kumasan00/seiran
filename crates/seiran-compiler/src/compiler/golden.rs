@@ -39,6 +39,12 @@
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
+//!   字下げの中のブロック要素 5 種 [`full_width_table_and_image_fill_the_indented_width`] /
+//!   [`ratio_column_in_a_list_resolves_against_the_indented_width`] /
+//!   [`full_width_table_in_a_quote_fills_the_indented_column_in_two_columns`]（共通ヘルパ [`table_widths`] /
+//!   [`image_extents`] 経由）/ [`blocks_in_a_list_line_up_with_the_paragraphs_of_the_item`] /
+//!   [`display_math_in_a_list_aligns_and_numbers_within_the_indented_width`]（共通ヘルパ [`narrow_pages`] 経由。
+//!   画像は golden に入れられないので、引用・リストの中の画像の位置と幅はここで固定する）・
 //!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品と折り返した続き行まで行帯に収まり、
 //!   行どうしが重ならない）・セルの折り返し 2 種 [`flex_table_fills_the_column_width`] /
 //!   [`wrapped_table_rows_move_whole_with_the_wrapped_head`]（共通ヘルパ [`page_table_rows`] / [`table_row_text`]
@@ -244,6 +250,7 @@ use crate::{
 /// golden 比較対象の入力名。
 const GOLDEN_INPUTS: &[&str] = &[
   "align",
+  "block_indent",
   "cases",
   "cite",
   "code",
@@ -723,6 +730,125 @@ fn full_width_table_in_a_quote_fills_the_indented_column_in_two_columns() {
   assert_close(tables[0], (Length::mm(425.0) - Length::pt(18.0)) / 2.0 - Length::pt(40.0), "2 段組みの引用の中の表");
 }
 
+/// 用紙幅 150mm・左右余白 20mm（段幅 110mm）で本文 `source` を組み、`style` を style.toml に重ねた確定ページ列
+fn narrow_pages(source: &str, style: impl Fn(&mut toml::value::Table) + 'static) -> Vec<Page> {
+  return TestProject::builder()
+    .source_text(source)
+    .assets(&["./tests/image/testimage4.png"])
+    .config_toml(|table| test_support::set(table, "pdf", "width", "150mm"))
+    .style_toml(move |table| {
+      test_support::set(table, "page", "margin_left", "20mm");
+      test_support::set(table, "page", "margin_right", "20mm");
+      style(table);
+    })
+    .build()
+    .laid_out()
+    .pages;
+}
+
+/// 文字列が `prefix` で始まる最初の本文の行の左端（行頭の箱の水平位置）と右端（行の実効幅）
+fn line_edges_starting_with(pages: &[Page], prefix: &str) -> (Length, Length) {
+  return pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .find_map(|block| match block {
+      PlacedBlock::Line { line, .. } => {
+        let mut text = String::new();
+        for placed in &line.boxes {
+          push_text(&placed.hbox.content, &mut text);
+        }
+        return text.starts_with(prefix).then(|| return (line.boxes[0].dx, line.width()));
+      },
+      _ => return None,
+    })
+    .unwrap_or_else(|| panic!("{prefix} で始まる行があるはず"));
+}
+
+/// 確定ページ列の表の左端と右端（上端の枠罫）を文書順に集めるテストヘルパ
+fn table_edges(pages: &[Page]) -> Vec<(Length, Length)> {
+  return pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Table { rules, .. } => return rules.first().map(|rule| return (rule.x, rule.x + rule.width)),
+      _ => return None,
+    })
+    .collect();
+}
+
+/// リストの項目の中の表・画像は、同じ項目のマーカーの無い段落と同じ左端・右端・中央に置かれる（図表は中央寄せ固定なので、
+/// 左端・右端は全幅の表で、中央は自然幅の表と画像で見る）
+#[test]
+fn blocks_in_a_list_line_up_with_the_paragraphs_of_the_item() {
+  let source = "\\begin{itemize}\n\\item{マーカーの段落。\n\n\
+                両端の段落は折り返すまで長くして、両端揃えの行の左端と右端が字下げ後の幅の端に揃うことを確かめる。\
+                続けて同じ長さの文を足して、少なくとも二行に折り返すようにする。\n\
+                \\begin{table}[widths=*]\n\\row{全幅の表}\n\\end{table}\n}\n\\end{itemize}\n\
+                \\begin{center}\n\\begin{itemize}\n\\item{マーカーの段落。\n\n中央の段落。\n\
+                \\begin{table}[widths=20mm]\n\\row{A}\n\\end{table}\n\\begin{figure}\n\
+                \\image[width=20mm]{./tests/image/testimage4.png}\n\\end{figure}\n}\n\\end{itemize}\n\\end{center}\n";
+  let pages = narrow_pages(source, |_| {});
+  // 段幅 110mm、リストの字下げ 20pt（左）
+  let left = Length::pt(20.0);
+  let right = Length::mm(110.0);
+  let center = (left + right) / 2.0;
+
+  let (justified_left, justified_right) = line_edges_starting_with(&pages, "両端の段落");
+  let (centered_left, centered_right) = line_edges_starting_with(&pages, "中央の段落");
+  let tables = table_edges(&pages);
+  let images = image_extents(&pages);
+
+  assert_close(justified_left, left, "両端揃えの行の左端");
+  assert_close(justified_right, right, "両端揃えの行の右端");
+  assert_eq!(tables.len(), 2, "{tables:?}");
+  assert_close(tables[0].0, left, "全幅の表の左端");
+  assert_close(tables[0].1, right, "全幅の表の右端");
+  assert_close((centered_left + centered_right) / 2.0, center, "中央寄せの行の中央");
+  assert_close((tables[1].0 + tables[1].1) / 2.0, center, "自然幅の表の中央");
+  assert_eq!(images.len(), 1, "{images:?}");
+  assert_close(images[0].0 + images[0].1 / 2.0, center, "画像の中央");
+}
+
+/// リストの中のディスプレイ数式は、揃え（`[math.block].alignment`）と番号の位置を字下げ後の幅の中で決める
+#[test]
+fn display_math_in_a_list_aligns_and_numbers_within_the_indented_width() {
+  let source = "\\begin{itemize}\n\\item{項目。\n\\begin{equation}\na = b\n\\end{equation}\n}\n\\end{itemize}\n";
+  // 段幅 110mm、リストの字下げ 20pt（左）
+  let left = Length::pt(20.0);
+  let right = Length::mm(110.0);
+  for (alignment, number_side) in [("left", "right"), ("center", "right"), ("right", "left")] {
+    let pages = narrow_pages(source, move |table| {
+      test_support::set_math_block(table, "alignment", alignment);
+      test_support::set_math_block(table, "number_side", number_side);
+    });
+
+    let (x, width, number_x, number_width) = pages
+      .iter()
+      .flat_map(|page| return page.blocks.iter())
+      .find_map(|block| match block {
+        PlacedBlock::MathBlock {
+          body, x, numbers, ..
+        } => {
+          return Some((*x, body.width, numbers[0].x, numbers[0].content.width));
+        },
+        _ => return None,
+      })
+      .expect("番号付きのディスプレイ数式があるはず");
+
+    let (body_edge, expected) = match alignment {
+      "left" => (x, left),
+      "center" => (x + width / 2.0, (left + right) / 2.0),
+      _ => (x + width, right),
+    };
+    assert_close(body_edge, expected, &format!("{alignment} の本体"));
+    if number_side == "right" {
+      assert_close(number_x + number_width, right, &format!("{alignment} の右の番号"));
+    } else {
+      assert_close(number_x, left, &format!("{alignment} の左の番号"));
+    }
+  }
+}
+
 /// 表のセルの箱（分数・根号の部品と、折り返した続き行まで）が自分の行帯に収まり、同じページの行どうしが
 /// 重ならないことを確認する。
 #[test]
@@ -779,21 +905,21 @@ fn page_table_rows(page: &Page) -> impl Iterator<Item = &PlacedTableRow> {
     .flatten();
 }
 
+/// 箱の内容のグリフ列の文字列を `text` へ足すテストヘルパ（Atom は子を前から辿る）
+fn push_text(content: &HBoxContent, text: &mut String) {
+  match content {
+    HBoxContent::Glyphs(run) => text.push_str(&run.text),
+    HBoxContent::Atom(children) => {
+      for child in children {
+        push_text(&child.hbox.content, text);
+      }
+    },
+    HBoxContent::Rule { .. } => {},
+  }
+}
+
 /// 表の行 `row` に描くグリフ列の文字列を、箱の順（左のセルから、セル内は前から）につないで返すテストヘルパ
 fn table_row_text(row: &PlacedTableRow) -> String {
-  /// 箱の内容のグリフ列の文字列を `text` へ足す（Atom は子を前から辿る）
-  fn push_text(content: &HBoxContent, text: &mut String) {
-    match content {
-      HBoxContent::Glyphs(run) => text.push_str(&run.text),
-      HBoxContent::Atom(children) => {
-        for child in children {
-          push_text(&child.hbox.content, text);
-        }
-      },
-      HBoxContent::Rule { .. } => {},
-    }
-  }
-
   let mut text = String::new();
   for placed in &row.boxes {
     push_text(&placed.hbox.content, &mut text);

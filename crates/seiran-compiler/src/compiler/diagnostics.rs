@@ -767,6 +767,42 @@ fn diagnostic_math_overflow_points_at_the_environment() {
 }
 
 #[test]
+fn block_overflow_warnings_use_the_indented_width() {
+  // 引用の字下げ 200mm（左右）で、段幅 425mm の引用の利用幅は 25mm。表・画像（100mm）と数式（\text の 20 字）は
+  // 利用幅を超えるが段幅には収まり、20mm の画像は利用幅に収まる
+  let blocks = "\\begin{table}[widths=100mm]\n\\row{A}\n\\end{table}\n\\begin{figure}\n\
+                \\image[width=100mm, height=10mm]{./tests/image/testimage4.png}\n\\end{figure}\n\
+                \\begin{equation}\n\\text{あいうえおかきくけこさしすせそたちつてと}\n\\end{equation}\n";
+  let fitting = "\\begin{figure}\n\\image[width=20mm, height=10mm]{./tests/image/testimage4.png}\n\\end{figure}\n";
+  let compile = |source: String| {
+    return TestProject::builder()
+      .source_text(&source)
+      .asset("./tests/image/testimage4.png")
+      .style_toml(|table| test_support::set(table, "quote", "indent", "200mm"))
+      .build()
+      .compile()
+      .expect("はみ出しは致命的ではないはず");
+  };
+  let codes = [
+    "typeset::overflow::table",
+    "typeset::overflow::image",
+    "typeset::overflow::math",
+  ];
+
+  let inside = compile(format!("\\begin{{quote}}\n引用。\n{blocks}{fitting}\\end{{quote}}\n"));
+  let outside = compile(format!("本文。\n{blocks}{fitting}"));
+
+  for code in codes {
+    assert_eq!(warnings_with_code(&inside, code).len(), 1, "引用の中は {code} が 1 件: {:?}", all_messages(&inside));
+    assert!(
+      warnings_with_code(&outside, code).is_empty(),
+      "引用の外は {code} なし: {:?}",
+      all_messages(&outside)
+    );
+  }
+}
+
+#[test]
 fn diagnostic_footnote_overflow_labels_each_footnote() {
   // 1 行の 2 つの脚注がページの高さを超える。ページ単位採番は本文パスを反復しても 1 件で同じラベルを持つ
   let path = "tests/text/diagnostics/overflow_footnote.sei";

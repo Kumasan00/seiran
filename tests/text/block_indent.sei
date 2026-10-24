@@ -1,0 +1,52 @@
+\section{字下げの中のブロック要素}
+
+// 引用・リストの中の表・ディスプレイ数式は、まわりの段落と同じ字下げ後の幅（利用幅）に置かれる。再生成時は golden で、
+// (a) 外の表とディスプレイ数式が段幅を基準にしたまま動かないこと、(b) 引用の中の全幅の表が左右 20pt ずつ字下げした幅に
+// 収まり、数式とその番号が字下げ後の幅の中で中央・右端に置かれること、(c) 項目の中の比の列が字下げ後の幅の半分で、
+// 入れ子の項目の全幅の表がさらに 20pt 字下げした幅に収まること、(d) 右寄せの中の引用の自然幅の表が、図表の中央寄せ
+// のまま字下げ後の幅の中央に置かれることを確認する。画像は外部ファイルに依存するので golden に入れない。
+
+(a) 引用・リストの外に置く表とディスプレイ数式。
+\begin{table}[widths=*]
+\row{外の全幅の表}
+\end{table}
+\begin{equation}
+a^{2} + b^{2} = c^{2}
+\end{equation}
+
+\begin{quote}
+(b) 引用の段落。表は引用の左右の字下げを引いた幅いっぱいに広がる。
+\begin{table}[widths=*]
+\row{引用の中の全幅の表}
+\end{table}
+\begin{equation}
+a^{2} + b^{2} = c^{2}
+\end{equation}
+\end{quote}
+
+\begin{itemize}
+\item{(c) 項目の段落。
+\begin{table}[widths=0.5 *]
+\row{比の列 & 残りの列}
+\end{table}
+\begin{equation}
+e^{i \pi} + 1 = 0
+\end{equation}
+\begin{enumerate}
+\item{入れ子の項目。字下げが足し合わされる。
+\begin{table}[widths=*]
+\row{入れ子の全幅の表}
+\end{table}
+}
+\end{enumerate}
+}
+\end{itemize}
+
+\begin{flushright}
+\begin{quote}
+(d) 右寄せの中の引用。
+\begin{table}
+\row{右の表}
+\end{table}
+\end{quote}
+\end{flushright}

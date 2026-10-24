@@ -81,6 +81,11 @@ fn set_heading(table: &mut toml::value::Table, level: &str, key: &str, value: im
   section_mut(section_mut(table, "heading"), level).insert(key.to_string(), value.into());
 }
 
+/// style.toml の `[math.block]` に `key` を設定する（無ければ作る）。
+pub(super) fn set_math_block(table: &mut toml::value::Table, key: &str, value: impl Into<toml::Value>) {
+  section_mut(section_mut(table, "math"), "block").insert(key.to_string(), value.into());
+}
+
 /// `[section]` から `key` を取り除く（既定値へ戻す・任意項目を未設定にする）。
 pub(super) fn remove(table: &mut toml::value::Table, section: &str, key: &str) {
   section_mut(table, section).remove(key);
