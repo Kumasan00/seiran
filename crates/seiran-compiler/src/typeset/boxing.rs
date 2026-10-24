@@ -4,8 +4,9 @@
 //! 走り文）向けには [`Shaper`] と [`LineAccum`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
-//! `resolve_image_size` に依存し、失敗しない）。段幅は寸法を省略した画像を広げる基準としてこの入口が
-//! 受け取り、確定済みの寸法だけが `Block::Image` として下流へ渡る。
+//! `resolve_image_size` に依存し、失敗しない）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
+//! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
+//! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
@@ -48,7 +49,7 @@ use crate::{
   document::TextAlignment,
   length::Length,
   typeset::{
-    boxes::{Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
+    boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
     breaking::LineBreaker,
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
@@ -84,7 +85,7 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) fonts: &'a FontSystem,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
-  /// この縦リストを組む段の幅（寸法を省略した画像がいっぱいに広がる幅で、表の `Ratio` / `Flex` 列の基準）
+  /// この縦リストを組む段の幅（寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く）
   pub(super) column_width: Length,
   /// 表のセルを折り返す行分割器（本文の段落と同じもの）
   pub(super) breaker: &'a dyn LineBreaker,
@@ -184,7 +185,8 @@ impl BlockBuilder<'_> {
           height,
           target_dpi,
         } => {
-          let (width, height) = resolve_image_size(self.images, &path, width, height, self.column_width);
+          let available = boxes::usable_width(self.column_width, indent, right_indent);
+          let (width, height) = resolve_image_size(self.images, &path, width, height, available);
           blocks.push(Block::Image {
             origin,
             path,
@@ -197,8 +199,9 @@ impl BlockBuilder<'_> {
           });
         },
         LayoutNode::Table(table) => {
+          let available = boxes::usable_width(self.column_width, indent, right_indent);
           blocks.push(Block::Table {
-            table: self.measurer.build_table(table, self.column_width, self.breaker),
+            table: self.measurer.build_table(table, available, self.breaker),
             indent,
             right_indent,
             align: Align::from(alignment),

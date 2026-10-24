@@ -635,6 +635,94 @@ fn ratio_column_resolves_against_the_column_width_in_two_columns() {
   assert!((two - expected).to_pt().abs() < 0.01, "1 段 {one:?} / 2 段 {two:?} / 期待 {expected:?}");
 }
 
+/// 確定ページ列の表の幅（上端の枠罫の幅）を文書順に集めるテストヘルパ
+fn table_widths(pages: &[Page]) -> Vec<Length> {
+  return pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Table { rules, .. } => return rules.first().map(|rule| return rule.width),
+      _ => return None,
+    })
+    .collect();
+}
+
+/// 確定ページ列の画像の x と幅を文書順に集めるテストヘルパ
+fn image_extents(pages: &[Page]) -> Vec<(Length, Length)> {
+  return pages
+    .iter()
+    .flat_map(|page| return page.blocks.iter())
+    .filter_map(|block| match block {
+      PlacedBlock::Image { x, width, .. } => return Some((*x, *width)),
+      _ => return None,
+    })
+    .collect();
+}
+
+/// `actual` と `expected` が 0.01pt 以内で一致することを確かめる
+fn assert_close(actual: Length, expected: Length, what: &str) {
+  assert!((actual - expected).to_pt().abs() < 0.01, "{what}: actual={actual:?} expected={expected:?}");
+}
+
+/// 引用の中と、その中のリストの項目の中の `widths=*` の表と寸法を省略した画像は、字下げ後の幅いっぱいに広がる
+#[test]
+fn full_width_table_and_image_fill_the_indented_width() {
+  let source = "\\begin{quote}\n引用の段落。\n\\begin{table}[widths=*]\n\\row{A}\n\\end{table}\n\\begin{figure}\n\
+                \\image{./tests/image/testimage5.png}\n\\end{figure}\n\\begin{itemize}\n\\item{項目の段落。\n\
+                \\begin{table}[widths=*]\n\\row{B}\n\\end{table}\n\\begin{figure}\n\\image{./tests/image/testimage5.png}\n\
+                \\end{figure}\n}\n\\end{itemize}\n\\end{quote}\n";
+  let laid_out = TestProject::builder()
+    .source_text(source)
+    .assets(&["./tests/image/testimage5.png"])
+    .build()
+    .laid_out();
+  // 段幅 425mm、引用の字下げ 20pt（左右）、リストの字下げ 20pt（左）
+  let in_quote = Length::mm(425.0) - Length::pt(40.0);
+  let in_item = in_quote - Length::pt(20.0);
+
+  let tables = table_widths(&laid_out.pages);
+  let images = image_extents(&laid_out.pages);
+
+  assert_eq!(tables.len(), 2, "{tables:?}");
+  assert_close(tables[0], in_quote, "引用の中の表");
+  assert_close(tables[1], in_item, "項目の中の表");
+  assert_eq!(images.len(), 2, "{images:?}");
+  assert_close(images[0].1, in_quote, "引用の中の画像の幅");
+  assert_close(images[0].0, Length::pt(20.0), "引用の中の画像の x");
+  assert_close(images[1].1, in_item, "項目の中の画像の幅");
+  assert_close(images[1].0, Length::pt(40.0), "項目の中の画像の x");
+}
+
+/// リストの中の `Ratio` 列は字下げ後の幅に対する比で決まる
+#[test]
+fn ratio_column_in_a_list_resolves_against_the_indented_width() {
+  let source = "\\begin{itemize}\n\\item{項目。\n\\begin{table}[columns=left, widths=0.5]\n\\row{A}\n\\end{table}\n}\n\
+                \\end{itemize}\n";
+  let laid_out = TestProject::builder().source_text(source).build().laid_out();
+
+  let tables = table_widths(&laid_out.pages);
+
+  assert_eq!(tables.len(), 1, "{tables:?}");
+  assert_close(tables[0], (Length::mm(425.0) - Length::pt(20.0)) * 0.5, "比の列");
+}
+
+/// 2 段組みでは、引用の中の全幅の表は段幅（本文幅ではない）から字下げを引いた幅に収まる
+#[test]
+fn full_width_table_in_a_quote_fills_the_indented_column_in_two_columns() {
+  let source = "\\begin{quote}\n引用。\n\\begin{table}[widths=*]\n\\row{A}\n\\end{table}\n\\end{quote}\n";
+  let laid_out = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "columns", "count", 2))
+    .build()
+    .laid_out();
+
+  let tables = table_widths(&laid_out.pages);
+
+  // 段間 18pt（既定）
+  assert_eq!(tables.len(), 1, "{tables:?}");
+  assert_close(tables[0], (Length::mm(425.0) - Length::pt(18.0)) / 2.0 - Length::pt(40.0), "2 段組みの引用の中の表");
+}
+
 /// 表のセルの箱（分数・根号の部品と、折り返した続き行まで）が自分の行帯に収まり、同じページの行どうしが
 /// 重ならないことを確認する。
 #[test]
