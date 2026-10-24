@@ -128,9 +128,15 @@
 - `config` は `pub(crate) mod` で公開し、入口が `project::config::load` と読めることで `style::load` と
   取り違えようがなくする
 - `SourceSet` は `SourceId` の唯一の発行元
-- `font` は入力（分類 `FontType` / 全種別を揃える `FontMap<T>` / 検証済み設定 `FontConfigs` / バイト列
-  `FontData`）までを持ち、**解析・検証・シェイピングという処理は持たない** — `typeset::font`。入力（実体）と
-  処理を混ぜないため
+- `font` は入力（分類 `FontType` / 実体の鍵 `FontFace` / 枠ごとの表 `FontMap<T>` / 全実体の表 `FaceMap<T>` /
+  検証済み設定 `FontConfigs` / バイト列 `FontData`）までを持ち、**解析・検証・シェイピングという処理は持たない** —
+  `typeset::font`。入力（実体）と処理を混ぜないため
+- **枠と実体を分ける**: 枠 `FontType`（19 種別）は style・言語・書体から選ぶ単位で、実体 `FontFace`（枠 × 候補の位置）は
+  フォントファイルを持つ単位。本文の 18 枠は 1 つ以上の候補の配列、`math` はちょうど 1 つ。`FaceMap` が「本文の枠は
+  1 要素以上・`math` は 1 要素」を構築時に検査するので、`FontFace::primary` と `FontFace::MATH` はどの表でも引ける。
+  `FontFace` のフィールドは非公開で、crate 外は `PublicationResources::faces` と `GlyphRun.face` から受け取るだけ
+  （資源に無い実体を指す値を作れない）。`FontData` は同じ正規化パスを 1 回だけ読み、全実体が同じ `Arc` を共有する。
+  設定の位置表記（診断・garde のパス）は `FontFace` の `Display`（`serif[1]`、`math` は添字なし）1 つに揃える
 - `PathResolver` は `compile` facade が `base_dir` から 1 回だけ構築し、config・style・frontend（画像）の
   3 箇所が共用する。差し替え点ではないので trait にしない
 - `InFile<E>` は config と style が共用する
@@ -186,7 +192,7 @@ TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の�
 検証をここに付け、後段は検証済み・パス解決済みの公開型（`ProjectConfig` 等）だけを見る。
 
 未知キーは全階層で拒否する（P6）。`Raw*` はすべて `#[serde(deny_unknown_fields)]` で、トップレベル・各テーブル・
-`[font_configs]` の種別名・`variation_axes` / `features` の配列要素の未知キーは TOML 解析の時点で
+`[font_configs]` の種別名・候補の配列の要素・`variation_axes` / `features` の配列要素の未知キーは TOML 解析の時点で
 `project::config::parse_toml`（ラベルがキーの位置を指す）になる。serde の検出は fail-fast なので、報告は最初の 1 件。
 
 - 入口 `load` は解決済みの `config_path` を受け取り、ここを再解決しない。config 内の相対パス（`sources` /
@@ -692,12 +698,11 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   計測を伴わない参照は、組版前の `math_glyphs` による字形の存在検査と、`emit` が描画資源へ載せる face 設定・
   メトリクスの取得に限る（数式のスクリプト段の縮小率は数式エンジンが `boxing` の中で読む）。
   backend のフォント構築・サブセット化は `seiran-pdf` が持つ
-- **段の中では 19 種すべてを検査して違反を `FontType` の宣言順に全件返す**。段の間（parse → metrics →
-  validate）は後段の入力を構築できないので早期 return する。rayon で失敗しうる構築を並列化する箇所は
-  `collect_in_input_order` を通し、完了順が報告順へ漏れないようにする — 19 種のフォント種別については
-  これは `FontMap::par_try_from_fn` / `FontMap::try_from_fn` の内側で行われ、呼び出し側が
-  `collect_in_input_order` を直接呼ぶことはない
-- 検証違反の leaf は `FontValidationError { font_type, kind }` で、`code` / `help` / `labels` は内側へ
+- **段の中では全実体を検査して違反を `FontFace` の順（枠の宣言順 → 候補順）に全件返す**。使われない候補の不正も
+  検査する（壊れた候補を飛ばしてビルドを続けない）。段の間（parse → metrics → validate）は後段の入力を構築できない
+  ので早期 return する。rayon で失敗しうる構築を並列化する箇所は、完了順が報告順へ漏れないよう
+  `FaceMap::par_try_map` / `par_try_map_into` が入力順に集める — 呼び出し側が `collect_in_input_order` を直接呼ぶことはない
+- 検証違反の leaf は `FontValidationError { face, kind }` で、`code` / `help` / `labels` は内側へ
   委譲しメッセージにだけ config.toml のキーを前置する**帰属 adapter**（`compiler::source_diagnostic` と同じ
   形）。全体・種別ごとの集約 wrapper は作らない（#376）。`kind` は cause ではないので `#[source]` にも
   載せない（載せると miette が同じ文言を再描画する）
@@ -785,16 +790,33 @@ code `typeset::math::missing_glyph`）として使った位置 × 字ごとに 1
 フォントに触れず、字の有無は述語で受け取る（本番は `FontSystem::has_math_glyph`）。HIR の 3 語彙は全 variant を明示して
 match する。
 
+- **本文の枠の候補選択はシェーピング時の 1 箇所（`fallback`）**: 枠の先頭の候補で全体を組み、組めないクラスタ
+  （同じ範囲に対応する字形の連続。基底 + 結合文字・合字を分断しない）の区間ごとに後続の候補を宣言順に試す。
+  候補ごとに自身の face 番号・軸・features・script・言語で組み直すが、前後の文字列を文脈に渡し、進行方向は
+  先頭の候補の実効方向に固定する（候補が明示した `direction` が違えばその候補は使わずエラー）。選択は文書・候補順・
+  クラスタ情報だけで決まる。候補は設定した枠の中だけで使い、OS のフォントや別の枠は探さない。数式フォント（`math`）の
+  字・記号・アクセント・伸縮字形は代替しない。異体字列（基底 + VS1〜VS256）は候補の cmap が写すときだけ「組める」と
+  数え、どの候補も写さなければ基底を描けた最初の候補の字形で組んで warning にする
+- 候補の切り替えは改行機会・単語境界にならない: 分割点・和欧文の分類・約物アキは元の論理文字列のまま決まり、
+  `ShapedRun` が字形ごとの候補位置を持つ。取り出すとき、候補が 1 種なら 1 本のグリフ列、複数なら同じ候補の連続ごとの
+  グリフ列を並べた `HBoxContent::Atom` にする。幅は字形ごとに実体の upem で、高さ・深さは範囲内に現れた実体の
+  ascender / descender の最大で測る（先頭の候補の値を流用しない）
+- 行末ハイフンの字形はハイフネーションが有効な欧文セグメントごとに、使うかどうかに関わらず先に組む。枠の全候補が `-` を
+  持たなければその枠の欧文段落はすべて欠字エラーになる（組版の分割結果に依存しない決定的な検査）
+
 #### `text_glyphs`
 
-本文の枠のフォントで組めない字（欠字）の収集と診断。欠字の判定はシェーピング時の 1 箇所（`font::fallback`。
-`.notdef` を含み、字がすべて不可視ではないクラスタ）で、`boxing::Shaper` がいま組んでいる要素（段落・表の行・脚注・
+本文の枠のフォントで組めない字（欠字）・異体字列の代替・候補の方向の不一致の収集と診断。判定はシェーピング時の
+1 箇所（`font::fallback`。欠字は、枠のどの候補でも `.notdef` を含み、字がすべて不可視ではないクラスタ）で、`boxing::Shaper` がいま組んでいる要素（段落・表の行・脚注・
 ディスプレイ数式の `NodeId`）か生成元（参考文献・表題ページ・目次・索引・走り文）を添えて、`TypesetContext` が持つ
 共有の収集器 `GlyphIssues` へ積む。同じ値は 1 回だけ積むので、脚注のページ単位採番で本文パスを反復しても 1 件。
 `lay_out` は数式フォントの字の検査（`math_glyphs`）が失敗しても組版を最後まで進め、`paginate` の後で収集器を
 `MissingGlyph`（code `typeset::font::missing_glyph`。要素の開始位置に長さ 0 のラベル、生成内容は位置なしで生成元を
 文言に載せる）へ変え、数式の欠落の後ろに (ソース, 要素の開始位置) の昇順 → 生成内容の種類の順で並べる。
-数式フォント（`math`）の字はこの経路で組まない（`math_glyphs` が持つ）。
+異体字列を組めなかった代替は warning `VariationSequenceFallback`（code `typeset::font::variation_sequence`）、候補の方向の
+不一致はエラー `FallbackDirectionMismatch`（code `typeset::font::fallback_direction`）で、同じ収集器から出る。
+代替の成功は warning にしない。数式フォント（`math`）の字はこの経路で組まない（`math_glyphs` が持つ。
+その異体字列の非対応は同じ warning）。
 
 #### `pagination`
 
@@ -1345,10 +1367,10 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 | `PublicationPage` | ページ矩形と画像の描画矩形の幅・高さが正（太さ 0 の罫線を描く塗りつぶし矩形は 0 サイズを許す） |
 | `Publication` | 内部リンクとしおりの到達先ページが実在する |
 | `PublicationResources` | `ImageRef` の発行経路は crate 内非公開の 1 つだけなので、資源に無い画像を指す描画命令を型として作れない |
-| `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` は `[T; 19]` で持つので欠けた表を構築できない） |
+| `FaceMap<PublicationFont>` | 19 種別すべての全候補が揃う（本文の枠は 1 候補以上・`math` は 1 つ。`FaceMap::from_slots` が構築時に検査するので、欠けた表を構築できない） |
 
 これが「renderer は確定座標の描画のみ」を**型で**担保している部分で、`seiran-pdf` が防衛的な error variant を
-持たない根拠（`seiran-pdf` 節）。`PublicationResources` のフィールドを隠すのは、`FontMap` を facade へ出さずに
+持たない根拠（`seiran-pdf` 節）。`PublicationResources` のフィールドを隠すのは、`FaceMap` を facade へ出さずに
 済ませるためでもある。
 
 #### 不変条件・注意点
@@ -1532,8 +1554,8 @@ compiler 側の責務で、こちらへ戻さない。
 
 - `font`: krilla フォントの構築（軸の指定を渡すだけで、フォントを自分でパースしない — `fvar` との整合は
   compiler の検証が保証する）とグリフの変換。フォントバイト列は `Publication` の `Arc<[u8]>` を
-  `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は複製されない。構築は `FontType` の
-  宣言順で行う — `HashMap` の反復順に任せると、複数フォントが同時に不正なときに返るエラーが実行のたびに変わる
+  `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は複製されない。構築は描画資源の全実体
+  （`PublicationResources::faces`。枠の宣言順 → 候補順）について行う — `HashMap` の反復順に任せると、複数フォントが同時に不正なときに返るエラーが実行のたびに変わる
 - `render`: `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の `font_size`（`Length`）→ pt と
   `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、
   render 側で黒へ置き換えない。ファイル I/O は発生しない

@@ -51,8 +51,8 @@ pub enum FontType {
 impl FontType {
   /// TOML でこのフォント種別を指す `snake_case` のキーを返す
   ///
-  /// `[font_configs.<key>]` セクションのキーと一致する。診断で設定パスを示すときはこちらを使う
-  /// （`Debug` は `PascalCase` で TOML キーと一致しない）。
+  /// `[font_configs.<key>]`（本文用は `[[font_configs.<key>]]`）のキーと一致する。`Debug` は `PascalCase` で
+  /// TOML キーと一致しないので、キーが要る箇所はこちらを使う（設定パスの表記は [`FontFace`] の `Display`）。
   #[must_use]
   pub fn as_toml_key(self) -> &'static str { return self.into(); }
 }
