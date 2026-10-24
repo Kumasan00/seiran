@@ -149,6 +149,10 @@ pub(super) fn shape(
 
   let mut selection = Selection {
     text,
+    buffer,
+    direction,
+    point_size,
+    script_level,
     settled: Vec::new(),
     findings: Vec::new(),
   };
@@ -164,33 +168,40 @@ pub(super) fn shape(
       selection.findings.push(Finding::DirectionMismatch { candidate });
       continue;
     }
-    pending = selection.retry(shaper, candidate, pending, buffer, direction, point_size, script_level, |fit| {
-      return fit == Fit::Composes;
-    });
+    pending = selection.retry(shaper, candidate, pending, |fit| return fit == Fit::Composes);
   }
-  // どの候補でも組めないクラスタは、描けた最初の候補の字形で組む
+  // どの候補でも組めないクラスタは、描けた最初の候補の字形で組む。先頭の候補は最初に全体を組んだ字形を使い、組み直さない
+  // （隣の字との GPOS・文脈置換を保つので、候補が 1 つの枠の組版は代替の無い組み方と変わらない）
   for (candidate, shaper) in shapers.iter().enumerate() {
     if pending.is_empty() {
       break;
     }
-    if usable[candidate] {
-      pending = selection.retry(shaper, candidate, pending, buffer, direction, point_size, script_level, |fit| {
-        return fit != Fit::Fails;
-      });
+    if candidate == 0 {
+      pending = selection.settle_primary(primary, &glyphs, pending, |fit| return fit != Fit::Fails);
+    } else if usable[candidate] {
+      pending = selection.retry(shaper, candidate, pending, |fit| return fit != Fit::Fails);
     }
   }
   // どの候補でも描けないクラスタは、先頭の候補の字形（.notdef）のまま組む
   if !pending.is_empty() {
-    let rest = selection.retry(primary, 0, pending, buffer, direction, point_size, script_level, |_| return true);
+    let rest = selection.settle_primary(primary, &glyphs, pending, |_| return true);
     assert!(rest.is_empty(), "すべてのクラスタを受け入れたので残りは無い");
   }
-  return selection.finish(direction);
+  return selection.finish();
 }
 
-/// 候補の選択の途中状態
+/// 候補の選択の途中状態と、1 回の選択の間は変わらないシェイプの条件
 struct Selection<'a> {
   /// 元テキスト
   text: &'a str,
+  /// シェイプの作業領域
+  buffer: &'a mut Buffer,
+  /// 先頭の候補の実効の書字方向（区間を組み直す候補もこの方向で組む）
+  direction: Direction,
+  /// フォントサイズ（pt）
+  point_size: f32,
+  /// 数式のスクリプト段
+  script_level: Option<ScriptLevel>,
   /// 確定したクラスタ（確定した順）
   settled: Vec<Settled>,
   /// 見つかった問題（見つけた順）
@@ -244,34 +255,58 @@ impl Selection<'_> {
   }
 
   /// 区間 `spans` をそれぞれ候補 `candidate`（`shaper`）で組み直し、[`Self::settle`] する。受け入れなかった区間を返す
-  #[expect(
-    clippy::too_many_arguments,
-    reason = "候補・区間・書字方向・サイズ・段・判定はどれも呼び出しごとに変わり、まとめる型に依存する処理が無い"
-  )]
   fn retry(
     &mut self,
     shaper: &HarfRustShaper,
     candidate: usize,
     spans: Vec<Range<usize>>,
-    buffer: &mut Buffer,
-    direction: Direction,
-    point_size: f32,
-    script_level: Option<ScriptLevel>,
     accepts: impl Fn(Fit) -> bool,
   ) -> Vec<Range<usize>> {
     let mut pending = Vec::new();
     for span in spans {
-      shaper.shape_span(buffer, self.text, span.clone(), direction, point_size, script_level);
-      let glyphs = offset_glyphs(buffer, span.start, span.len());
+      shaper.shape_span(self.buffer, self.text, span.clone(), self.direction, self.point_size, self.script_level);
+      let glyphs = offset_glyphs(self.buffer, span.start, span.len());
       pending.extend(self.settle(shaper, candidate, &glyphs, &accepts));
     }
     return pending;
   }
 
-  /// 確定したクラスタを論理順（右から左・下から上の書字方向 `direction` では逆順）に並べ、字形列にする
-  fn finish(mut self, direction: Direction) -> ShapedText {
+  /// 区間 `spans` を、先頭の候補 `primary` が最初に全体を組んだ字形列 `glyphs` のクラスタで [`Self::settle`] する。
+  /// 受け入れなかった区間を返す
+  ///
+  /// 区間は先頭の候補の判定か、後続の候補が組み直したクラスタの境界で区切られる。先頭の候補のクラスタで区間を隙間なく
+  /// 覆えないとき（後続の候補のクラスタの境界が先頭の候補のクラスタの途中にあるとき）だけ、その区間を先頭の候補で組み直す。
+  fn settle_primary(
+    &mut self,
+    primary: &HarfRustShaper,
+    glyphs: &[Glyph],
+    spans: Vec<Range<usize>>,
+    accepts: impl Fn(Fit) -> bool,
+  ) -> Vec<Range<usize>> {
+    let mut pending = Vec::new();
+    for span in spans {
+      let inside: Vec<Glyph> = glyphs
+        .iter()
+        .filter(|glyph| return span.start <= glyph.range.start && glyph.range.end <= span.end)
+        .cloned()
+        .collect();
+      let covered: usize = inside
+        .chunk_by(|left, right| return left.range == right.range)
+        .map(|cluster| return cluster[0].range.len())
+        .sum();
+      if covered == span.len() {
+        pending.extend(self.settle(primary, 0, &inside, &accepts));
+      } else {
+        pending.extend(self.retry(primary, 0, vec![span], &accepts));
+      }
+    }
+    return pending;
+  }
+
+  /// 確定したクラスタを論理順（右から左・下から上の書字方向では逆順）に並べ、字形列にする
+  fn finish(mut self) -> ShapedText {
     self.settled.sort_by_key(|settled| return settled.glyphs[0].range.start);
-    if matches!(direction, Direction::RightToLeft | Direction::BottomToTop) {
+    if matches!(self.direction, Direction::RightToLeft | Direction::BottomToTop) {
       self.settled.reverse();
     }
     let mut glyphs = Vec::new();
@@ -336,9 +371,9 @@ mod tests {
 
   use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
 
-  use super::{Finding, ShapedText, cluster_draws, cluster_ranges};
+  use super::{Finding, ShapedText, cluster_draws, cluster_ranges, shaped_glyphs};
   use crate::{
-    project::{FontConfig, FontType, TextDirection, VariationAxis},
+    project::{FontConfig, FontFace, FontType, TextDirection, VariationAxis},
     publication::Glyph,
     typeset::{font::FontSystem, test_support},
   };
@@ -647,5 +682,59 @@ mod tests {
       ]
     );
     assert_eq!(shaped_text.candidates, vec![0], "方向の違う候補は使わず、先頭の .notdef のまま");
+  }
+  /// 枠 `font_type` の先頭の候補だけで `text` を 10pt で組んだ字形列（代替の処理を通さない組み方）
+  fn plain_glyphs(system: &FontSystem, font_type: FontType, text: &str) -> Vec<Glyph> {
+    let mut buffer = Buffer::new();
+    system.shape(FontFace::primary(font_type), &mut buffer, text, 10.0, None);
+    return shaped_glyphs(&buffer, text);
+  }
+
+  #[test]
+  fn single_candidate_slot_keeps_the_plain_shaping_of_an_unmapped_variation_sequence() {
+    let system = system_with(FontType::JapaneseSerif, &[config("SourceHanCodeJP.ttc")]);
+    let text = "\u{3042}\u{6F22}\u{E0102}\u{3044}";
+
+    let shaped_text = shape(&system, FontType::JapaneseSerif, text);
+
+    // 異体字列のクラスタも隣の字と一緒に組んだ字形のまま（単独で組み直さない）
+    assert_eq!(shaped_text.glyphs, plain_glyphs(&system, FontType::JapaneseSerif, text));
+    assert_eq!(shaped_text.candidates, vec![0; shaped_text.glyphs.len()]);
+    assert_eq!(
+      shaped_text.findings,
+      vec![Finding::VariationFallback {
+        cluster: 3..10,
+        used: 0
+      }]
+    );
+  }
+
+  #[test]
+  fn single_candidate_slot_keeps_the_kerning_of_an_unmapped_variation_sequence() {
+    let system = test_support::vendor_font_system(|_| return None);
+    let text = "V\u{FE00}A";
+
+    let shaped_text = shape(&system, FontType::Serif, text);
+
+    // STIX Two Text は V + U+FE00 を写さない。V と A の間のカーニングは、V のクラスタを単独で組み直すと失われる
+    assert_eq!(shaped_text.glyphs, plain_glyphs(&system, FontType::Serif, text));
+    assert_eq!(
+      shaped_text.findings,
+      vec![Finding::VariationFallback {
+        cluster: 0..4,
+        used: 0
+      }]
+    );
+  }
+
+  #[test]
+  fn single_candidate_slot_keeps_the_plain_shaping_around_a_missing_glyph() {
+    let system = test_support::vendor_font_system(|_| return None);
+    let text = "AV\u{0E01}AV";
+
+    let shaped_text = shape(&system, FontType::Serif, text);
+
+    assert_eq!(shaped_text.glyphs, plain_glyphs(&system, FontType::Serif, text));
+    assert_eq!(shaped_text.findings, vec![Finding::Missing { cluster: 2..5 }]);
   }
 }
