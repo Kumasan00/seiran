@@ -1,0 +1,48 @@
+\section{行結合}
+
+// 行結合でつながる行の集まりは 1 つの断片（改ページで分けない単位）に畳まれる。再生成時は golden で、
+// (a) の結合セル「果物」「野菜」が集まりの 1 行目と同じベースラインにあり（上揃え）、集まりの 2 行目（みかん・
+// にんじん）までの行送りが結合の無い行と同じであること、(b) のヘッダの部分罫 2 本（太さ 0.30、上段の下）が結合した
+// 「地域」の列にかからず、「地域」が上段と同じベースラインにあること、(c) の「合算」が 1 と同じベースラインにあること、
+// (d) の結合セルが 3 行以上に折り返し、「上」「下」がその 1・2 行目と同じベースラインで、結合セルの部分罫が結合セルの
+// 最後の行の下（「次 行」の上）にあり、「最後 行」の上に区切りの罫線（太さ 0.50）があることを確認する。
+
+(a) 本体の行結合です。
+
+\begin{table}[columns=left left right]
+\head{\row{分類 & 品目 & 価格}}
+\row{\cell[rowspan=2]{果物} & りんご & 120}
+\row{                       & みかん &  80}
+\row{\cell[rowspan=2]{野菜} & だいこん & 150}
+\row{                       & にんじん &  90}
+\end{table}
+
+(b) 2 段見出しの左端を結合します。
+
+\begin{table}[columns=left right right right right]
+\head{
+  \row{\cell[rowspan=2]{地域} & \cell[span=2, rule_below]{2025年} & \cell[span=2, rule_below]{2026年}}
+  \row{                        & 上期 & 下期 & 上期 & 下期}
+}
+\row{東 & 10 & 12 & 14 & 16}
+\row{西 & 20 & 22 & 24 & 26}
+\end{table}
+
+(c) 矩形に結合します。
+
+\begin{table}[columns=left left right]
+\row{\cell[span=2, rowspan=2]{合算} & 1}
+\row{ &                             & 2}
+\row{a & b & 3}
+\end{table}
+
+(d) 結合セルの部分罫と、行より高い結合セルです。
+
+\begin{table}[columns=left left, widths=2cm auto]
+\row{\cell[rowspan=2, rule_below]{結合したセルの長い説明文です} & 上}
+\row{                                                        & 下}
+\row{次 & 行}
+\row[separator=rule]{最後 & 行}
+\end{table}
+
+表の後の段落です。

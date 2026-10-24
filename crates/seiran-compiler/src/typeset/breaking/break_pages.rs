@@ -24,7 +24,7 @@ use crate::{
   typeset::{
     boxes::{
       Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK,
-      Page, PlacedBlock, PlacedMathNumber, TableBoundary, TableBox, TableRowFragment,
+      Page, PlacedBlock, PlacedMathNumber, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
@@ -1162,6 +1162,17 @@ fn stack_boundary(fragment: &mut PendingTableFragment, boundary: &TableBoundary,
   *y += boundary.height;
 }
 
+/// 行 `row` を行帯上端 `top` に断片へ積み、その内側の境界の罫線も同じ位置から足す
+fn stack_row(fragment: &mut PendingTableFragment, row: TableRowFragment, top: Length) {
+  fragment.rules.extend(row.rules.iter().map(|rule| {
+    return PlacedTableRule {
+      y: rule.y + top,
+      ..*rule
+    };
+  }));
+  fragment.rows.push((row, top));
+}
+
 /// 表の行 1 本を、その脚注（行分割済みの `bodies`）と合わせて現在リージョンへ置く
 ///
 /// 断片が開いていなければ開き（`frame` の上端の枠罫と、本体行なら再掲ヘッダとヘッダ下の罫線を積む）、行の上の境界は
@@ -1231,7 +1242,7 @@ fn place_table_row(
     stack_boundary(fragment, &frame.top, &mut y);
     for head_row in frame.repeated_head {
       stack_boundary(fragment, &head_row.above, &mut y);
-      fragment.rows.push((head_row.clone(), y));
+      stack_row(fragment, head_row.clone(), y);
       y += head_row.height();
     }
     stack_boundary(fragment, &frame.head_bottom, &mut y);
@@ -1240,7 +1251,7 @@ fn place_table_row(
   }
   let top = y;
   let (origin, overrun) = (row.origin, row.overrun);
-  fragment.rows.push((row, top));
+  stack_row(fragment, row, top);
   composer.cursor.y = top + height;
   let row_overflows = [
     (OverflowAxis::Horizontal, excess(overrun, Length::ZERO)),
@@ -1284,7 +1295,7 @@ mod tests {
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
         MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink,
-        PlacedTableRow, TableBoundary, TableBox, TableRowFragment,
+        PlacedTableRow, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -2406,6 +2417,7 @@ mod tests {
       },
       origin: table_row_origin(),
       overrun: Length::ZERO,
+      rules: Vec::new(),
       above: TableBoundary::default(),
       links: Vec::new(),
       index_marks: Vec::new(),
@@ -2548,6 +2560,40 @@ mod tests {
       assert!(all_close(&row_tops(page), &[13.0, 28.0]), "{:?}", row_tops(page));
     }
     assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("HEAD"));
+  }
+
+  /// 行帯上端 + 4 に、幅 20・太さ 1 の内側の罫線を持つ行にする
+  fn with_inner_rule(mut row: TableRowFragment) -> TableRowFragment {
+    row.rules = vec![PlacedTableRule {
+      x: pt(2.0),
+      y: pt(4.0),
+      width: pt(20.0),
+      height: pt(1.0),
+      color: None,
+    }];
+    return row;
+  }
+
+  #[test]
+  fn inner_rules_land_with_their_row() {
+    // 枠罫つき・ヘッダなし: 上端 10・R0 13・R1 23（内側の罫線 23 + 4 = 27）・下端 35
+    let pages = break_table(framed(table_box(Vec::new(), vec![table_row("R0"), with_inner_rule(table_row("R1"))])));
+
+    assert!(all_close(&rule_ys(&pages[0]), &[10.0, 27.0, 35.0]), "{:?}", rule_ys(&pages[0]));
+  }
+
+  #[test]
+  fn repeated_head_carries_the_inner_rules() {
+    // separator_at_the_top_of_a_continuation_fragment_is_dropped と同じく 2 ページに分かれる本体行に、内側の罫線を持つ
+    // ヘッダ 1 行を付ける。どのページでも、ヘッダ行の行帯上端 + 4 に罫線がある
+    let rows = (0..6).map(|i| return table_row(&format!("R{i}"))).collect();
+    let pages = break_table(framed(table_box(vec![with_inner_rule(table_row("H"))], rows)));
+
+    assert!(pages.len() >= 2);
+    for page in &pages {
+      let head_top = row_tops(page)[0];
+      assert!(rule_ys(page).iter().any(|y| return (y - (head_top + 4.0)).abs() < 1e-3), "{:?}", rule_ys(page));
+    }
   }
 
   #[test]

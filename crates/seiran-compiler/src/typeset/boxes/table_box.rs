@@ -132,15 +132,19 @@ impl TableBoundary {
   }
 }
 
-/// 表の 1 行の断片 — 表左端・行帯上端を原点とする確定済みの描画内容と付随情報
+/// 表の行の集まり（行結合でつながる行。結合が無ければ 1 行）の断片 — 改ページで分割しない単位。
+/// 表左端・行帯上端を原点とする確定済みの描画内容と付随情報
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableRowFragment {
-  /// `\row`（行のはみ出し警告の起源）
+  /// `\row`（行のはみ出し警告の起源）。行結合で畳んだ断片は行の集まりの最初の `\row` で、集まりのどの行のはみ出しも
+  /// ここを指す
   pub origin: NodeId,
   /// 折り返すセルの行が内容幅を超えた量の最大（収まれば 0。内容幅が負なら空の行でも正）
   pub overrun: Length,
   /// この行の上の境界（区切り。本体の先頭行はヘッダ下の罫線）。断片の先頭に来た行の境界は配置が捨てる
   pub above: TableBoundary,
+  /// 行の集まりの内側の境界の罫線（表左端・行帯上端が原点。行結合の無い行は空）
+  pub rules: Vec<PlacedTableRule>,
   /// 原点を表左端・行帯上端に置いた行（`top_y` は 0）
   pub row: PlacedTableRow,
   /// セル内のリンク矩形（表左端・行帯上端が原点。折り返したリンクは行ごとに 1 矩形で、退化矩形は含まない）
@@ -165,6 +169,7 @@ impl TableRowFragment {
       origin: _,
       overrun: _,
       above: _,
+      rules: _,
       mut row,
       mut links,
       index_marks,
@@ -215,6 +220,7 @@ mod tests {
     return TableRowFragment {
       origin: NodeId::for_test(SourceId::new(0), 1),
       overrun: Length::ZERO,
+      rules: Vec::new(),
       above: TableBoundary {
         height: pt(above),
         rules: Vec::new(),
@@ -318,6 +324,7 @@ mod tests {
     let fragment = TableRowFragment {
       origin: NodeId::for_test(SourceId::new(0), 1),
       overrun: Length::ZERO,
+      rules: Vec::new(),
       above: TableBoundary::default(),
       row: PlacedTableRow {
         top_y: Length::ZERO,

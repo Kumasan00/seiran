@@ -470,11 +470,59 @@ pub(crate) enum EvalError {
     separator: SourceSpan,
   },
 
+  /// 行結合に覆われる位置へ中身のある区画・`\cell` を書いた場合
+  #[error("行結合に覆われる位置には空の区画しか書けません")]
+  #[diagnostic(
+    code(frontend::eval::table_covered_slot_not_empty),
+    help("覆われる位置は & で区切った空の区画（空白・改行・コメントだけ）にしてください。\\cell{{}} も書けません")
+  )]
+  TableCoveredSlotNotEmpty {
+    /// 区画（素の区画はそのセル、`\cell` はそのコマンド）のソース位置
+    #[label("この区画は上の行の結合セルに覆われています")]
+    span: SourceSpan,
+    /// 覆っている結合セルのソース位置
+    #[label("この結合セルが下の行のこの列を覆います")]
+    cell: SourceSpan,
+  },
+
+  /// `rowspan` が同じ行群の残りの行数を超える場合
+  #[error("rowspan={row_span} が残りの行数（{remaining} 行）を超えています")]
+  #[diagnostic(
+    code(frontend::eval::table_row_span_overflow),
+    help("\\head の中の結合は \\head の最後の行まで、本体の結合は表の最後の行までです。\\head と本体はまたげません")
+  )]
+  TableRowSpanOverflow {
+    /// セル（`\cell`）のソース位置
+    #[label("このセルの行結合")]
+    span: SourceSpan,
+    /// 指定された結合数
+    row_span: u32,
+    /// セルの行から行群の最後までの行数（セルの行を含む）
+    remaining: usize,
+  },
+
+  /// 行結合の内側の境界（結合の 2 行目以降の行の上）に `separator` を置いた場合
+  #[error("行結合の内側の境界には separator を置けません")]
+  #[diagnostic(
+    code(frontend::eval::table_separator_inside_row_span),
+    help("区切りが結合セルを横切ります。separator を外すか、結合の範囲を変えてください")
+  )]
+  TableSeparatorInsideRowSpan {
+    /// 区切りを持つ行（`\row`）のソース位置
+    #[label("この行の上の境界は結合セルの内側です")]
+    span: SourceSpan,
+    /// 境界をまたぐ最初の結合セルのソース位置
+    #[label("この結合セルが境界をまたぎます")]
+    cell: SourceSpan,
+  },
+
   /// 表の行のセル数（`column_span` 合計）が列数と一致しない場合
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(
     code(frontend::eval::table_row_cell_count_mismatch),
-    help("`&` 区切りのセル数（\\cell[span=N] は N 列分）を columns / widths の列数に揃えてください")
+    help(
+      "`&` 区切りのセル数（\\cell[span=N] は N 列分）を columns / widths の列数に揃えてください。行結合に覆われる位置も空の区画 1 つ（1 列）と数えます"
+    )
   )]
   TableRowCellCountMismatch {
     /// 期待される列数

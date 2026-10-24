@@ -1,0 +1,12 @@
+frontend::eval::table_row_span_overflow
+
+  × rowspan=2 が残りの行数（1 行）を超えています
+   ╭─[tests/text/diagnostics/table_row_span_overflow.sei:3:6]
+ 2 │ \row{項目 & 値}
+ 3 │ \row{\cell[rowspan=2]{果物} & 120}
+   ·      ───────────┬──────────
+   ·                 ╰── このセルの行結合
+ 4 │ \end{table}
+   ╰────
+  help: \head の中の結合は \head の最後の行まで、本体の結合は表の最後の行までです。\head と本体は
+        またげません

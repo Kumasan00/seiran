@@ -1,0 +1,15 @@
+frontend::eval::table_covered_slot_not_empty
+
+  × 行結合に覆われる位置には空の区画しか書けません
+   ╭─[tests/text/diagnostics/table_covered_slot_not_empty.sei:2:6]
+ 1 │ \begin{table}
+ 2 │ \row{\cell[rowspan=2]{果物} & りんご}
+   ·      ───────────┬──────────
+   ·                 ╰── この結合セルが下の行のこの列を覆います
+ 3 │ \row{みかん & 80}
+   ·     ────┬───
+   ·         ╰── この区画は上の行の結合セルに覆われています
+ 4 │ \end{table}
+   ╰────
+  help: 覆われる位置は & で区切った空の区画（空白・改行・コメントだけ）にしてください。\cell{} も
+        書けません

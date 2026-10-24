@@ -1,0 +1,4 @@
+\begin{table}
+\row{項目 & 値}
+\row{\cell[rowspan=2]{果物} & 120}
+\end{table}

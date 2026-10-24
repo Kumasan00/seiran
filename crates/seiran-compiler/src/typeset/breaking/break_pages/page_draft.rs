@@ -772,6 +772,7 @@ mod tests {
       },
       origin: NodeId::for_test(SourceId::new(0), 1),
       overrun: Length::ZERO,
+      rules: Vec::new(),
       above: TableBoundary::default(),
       links: Vec::new(),
       index_marks: word

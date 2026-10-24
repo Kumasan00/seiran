@@ -4,6 +4,7 @@
 
 mod body;
 mod cell;
+mod grid;
 mod opt_args;
 
 use body::{resolve_column_count, scan_table_body};
@@ -118,6 +119,96 @@ mod tests {
       .iter()
       .map(|row| return row.cells.iter().map(|cell| return hir_inlines_to_plain_text(&cell.content)).collect())
       .collect();
+  }
+
+  #[test]
+  fn cell_rowspan_is_read_and_covered_slots_stay_empty_cells() {
+    let result =
+      eval_table(r"\begin{table}\row{\cell[rowspan=2]{果物} & りんご & 120}\row{ & みかん & 80}\end{table}").unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます")
+    };
+
+    let spans: Vec<_> = table.rows[0].cells.iter().map(|cell| return cell.row_span).collect();
+
+    assert_eq!(spans, vec![2, 1, 1]);
+    assert_eq!(row_texts(&table.rows), vec![vec!["果物", "りんご", "120"], vec!["", "みかん", "80"]]);
+  }
+
+  #[test]
+  fn span_and_rowspan_cover_a_rectangle() {
+    let result =
+      eval_table(r"\begin{table}\row{\cell[span=2, rowspan=2]{A} & B}\row{ & & C}\row{D & E & F}\end{table}");
+
+    assert!(result.is_ok(), "{result:?}");
+    let HirNodeKind::Table(table) = &result.unwrap()[0].kind else {
+      panic!("Table が期待されます")
+    };
+    assert_eq!(table.rows[0].cells[0].column_span, 2);
+    assert_eq!(table.rows[0].cells[0].row_span, 2);
+  }
+
+  #[test]
+  fn explicit_rowspan_1_is_no_merge() {
+    // 下の行の同じ列に中身があっても通る
+    let result = eval_table(r"\begin{table}\row{\cell[rowspan=1]{A} & B}\row{C & D}\end{table}");
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn comment_only_segment_is_a_covered_slot() {
+    let result = eval_table("\\begin{table}\\row{\\cell[rowspan=2]{A} & B}\\row{ // 覆われる\n & C}\\end{table}");
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn covered_slots_count_toward_the_column_count() {
+    // columns 省略: 2 行目の末尾の空の区画も 1 列と数えるので列数は 3 のまま
+    let result = eval_table(r"\begin{table}\row{A & B & \cell[rowspan=2]{C}}\row{D & E & }\end{table}").unwrap();
+    let HirNodeKind::Table(table) = &result[0].kind else {
+      panic!("Table が期待されます")
+    };
+
+    assert_eq!(table.columns.len(), 3);
+  }
+
+  #[test]
+  fn content_or_cell_in_a_covered_slot_is_rejected() {
+    for source in [
+      r"\begin{table}\row{\cell[rowspan=2]{A} & B}\row{X & C}\end{table}",
+      r"\begin{table}\row{\cell[rowspan=2]{A} & B}\row{\cell{} & C}\end{table}",
+      // span=2 の \cell が覆われる列に半分かかる
+      r"\begin{table}\row{A & \cell[rowspan=2]{B} & C}\row{\cell[span=2]{X} & Y}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableCoveredSlotNotEmpty { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn rule_below_across_a_continuing_row_span_is_a_covered_slot() {
+    // 結合が下へ続く列（列 0）を範囲に含む部分罫は、覆われる位置に \cell を書くことになる
+    let result =
+      eval_table(r"\begin{table}\row{\cell[rowspan=3]{A} & B}\row{\cell[span=2, rule_below]{X}}\row{ & C}\end{table}");
+
+    assert!(matches!(result, Err(EvalError::TableCoveredSlotNotEmpty { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn rowspan_beyond_the_row_group_is_rejected() {
+    for source in [
+      // 本体の最後の行
+      r"\begin{table}\row{A & B}\row{\cell[rowspan=2]{C} & D}\end{table}",
+      // \head と本体をまたぐ
+      r"\begin{table}\head{\row{\cell[rowspan=2]{H} & X}}\row{ & 1}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableRowSpanOverflow { .. })), "{source}: {result:?}");
+    }
   }
 
   #[test]
@@ -416,13 +507,6 @@ mod tests {
   }
 
   #[test]
-  fn table_rejects_rowspan_key() {
-    let source = r"\begin{table}\row{\cell[rowspan=2]{X} & Y}\end{table}";
-    let result = eval_table(source);
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "rowspan"));
-  }
-
-  #[test]
   fn table_rejects_line_break_in_cell() {
     let source = r"\begin{table}\row{A \\ B & C}\end{table}";
     let result = eval_table(source);
@@ -535,5 +619,70 @@ mod tests {
     };
     assert_eq!(table.rows[0].cells.len(), 3);
     assert_eq!(table.rows[0].cells[1].content, []);
+  }
+
+  #[test]
+  fn separator_inside_a_row_span_is_rejected() {
+    for source in [
+      r"\begin{table}\row{\cell[rowspan=2]{A} & B}\row[separator=rule]{ & C}\end{table}",
+      r"\begin{table}\head{\row{\cell[rowspan=2]{H} & X}\row[separator=gap]{ & Y}}\row{1 & 2}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableSeparatorInsideRowSpan { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn chained_row_spans_reject_a_separator_at_either_inner_boundary() {
+    // A は行 0–1、B は行 1–2
+    for separated in [1, 2] {
+      let rows: Vec<String> = [
+        r"\cell[rowspan=2]{A} & X",
+        r" & \cell[rowspan=2]{B}",
+        "Y & ",
+      ]
+      .iter()
+      .enumerate()
+      .map(|(i, cells)| {
+        let option = if i == separated {
+          "[separator=rule]"
+        } else {
+          ""
+        };
+        return format!(r"\row{option}{{{cells}}}");
+      })
+      .collect();
+      let source = format!(r"\begin{{table}}{}\end{{table}}", rows.concat());
+
+      let result = eval_table(&source);
+
+      assert!(matches!(result, Err(EvalError::TableSeparatorInsideRowSpan { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn separator_right_after_a_row_span_is_accepted() {
+    let result =
+      eval_table(r"\begin{table}\row{\cell[rowspan=2]{A} & B}\row{ & C}\row[separator=rule]{D & E}\end{table}");
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn rule_below_of_a_merged_cell_is_judged_at_its_last_row() {
+    let on_frame = eval_table(r"\begin{table}\row{\cell[rowspan=2, rule_below]{A} & B}\row{ & C}\end{table}");
+    let with_separator = eval_table(
+      r"\begin{table}\row{\cell[rowspan=2, rule_below]{A} & B}\row{ & C}\row[separator=gap]{D & E}\end{table}",
+    );
+    let inside = eval_table(r"\begin{table}\row{\cell[rowspan=2, rule_below]{A} & B}\row{ & C}\row{D & E}\end{table}");
+    // 結合の内側の境界で、結合と重ならない列の部分罫
+    let beside =
+      eval_table(r"\begin{table}\row{\cell[rowspan=2]{A} & \cell[rule_below]{B}}\row{ & C}\row{D & E}\end{table}");
+
+    assert!(matches!(on_frame, Err(EvalError::TableRuleBelowOnFrameBoundary { .. })), "{on_frame:?}");
+    assert!(matches!(with_separator, Err(EvalError::TableRuleBelowWithSeparator { .. })), "{with_separator:?}");
+    assert!(inside.is_ok(), "{inside:?}");
+    assert!(beside.is_ok(), "{beside:?}");
   }
 }
