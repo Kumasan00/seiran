@@ -11,7 +11,7 @@ use super::{lay_out, load_fonts};
 use crate::{
   document::HeadingLevel,
   length::Length,
-  project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
+  project::{FontData, FontFace, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::GlyphRun,
   semantics::{HeadingKey, LabelId, SemanticDocument},
   style::Style,
@@ -117,7 +117,7 @@ pub(crate) fn glyph_run(text: &str) -> GlyphRun {
     font_size: Length::pt(10.0),
     text: text.to_string(),
     glyphs: Vec::new(),
-    font_type: FontType::Serif,
+    face: FontFace::primary(FontType::Serif),
     color: None,
   };
 }

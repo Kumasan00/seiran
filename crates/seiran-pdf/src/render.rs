@@ -121,8 +121,8 @@ fn draw_glyph_run(
   origin: PublicationPoint,
   run: &GlyphRun,
 ) {
-  let font = fonts.font(run.font_type);
-  let upem = resources.font(run.font_type).metrics.upem;
+  let font = fonts.font(run.face);
+  let upem = resources.font(run.face).metrics.upem;
   let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
   let color = run.color.map(Color::rgb);
   if let Some([r, g, b]) = color {

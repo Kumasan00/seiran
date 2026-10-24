@@ -24,7 +24,7 @@ pub use font::{FontFaceConfig, FontMetrics};
 pub use glyph::{Glyph, GlyphRun};
 pub use image_format::ImageFormat;
 
-use crate::project::{FontMap, FontType};
+use crate::project::{FaceMap, FontFace};
 
 /// 座標と描画順が確定した文書。
 #[derive(Debug, Clone, PartialEq)]
@@ -91,11 +91,12 @@ impl Publication {
 
 /// 描画に必要なフォント・画像資源（すべて生データ）。
 ///
-/// フォントは 19 種別ぶんが必ず揃う（[`FontMap`] が `[T; 19]` で持つので欠けた表を構築できない）。
+/// フォントは全実体（19 種別 × 候補）ぶんが必ず揃う（[`FaceMap`] は全種別を持ち、本文の種別は 1 候補以上・`math` は
+/// 1 候補の形を構築時に検査する）。組版に使わなかった候補の資源も持つ。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublicationResources {
-  /// フォント種別ごとの描画資源
-  fonts: FontMap<PublicationFont>,
+  /// 実体ごとの描画資源
+  fonts: FaceMap<PublicationFont>,
   /// 描画対象の画像（パス昇順。[`ImageRef`] はこの配列の添字）
   images: Vec<PublicationImage>,
 }
@@ -104,13 +105,21 @@ impl PublicationResources {
   /// フォント・画像資源から [`PublicationResources`] を構築する。
   ///
   /// `images` は表示順に依存しない決定的な順序（パス昇順）で渡す。
-  pub(crate) fn new(fonts: FontMap<PublicationFont>, images: Vec<PublicationImage>) -> Self {
+  pub(crate) fn new(fonts: FaceMap<PublicationFont>, images: Vec<PublicationImage>) -> Self {
     return PublicationResources { fonts, images };
   }
 
-  /// 指定フォント種別の描画資源を返す。
+  /// 指定実体の描画資源を返す。
+  ///
+  /// # Panics
+  ///
+  /// [`FontFace`] は crate の外では作れず、[`PublicationResources::faces`] か同じ `Publication` の
+  /// [`GlyphRun::face`](crate::GlyphRun::face) から得るので、資源に無い実体は渡らない。
   #[must_use]
-  pub fn font(&self, font_type: FontType) -> &PublicationFont { return &self.fonts[font_type]; }
+  pub fn font(&self, face: FontFace) -> &PublicationFont { return &self.fonts[face]; }
+
+  /// 資源を持つ全実体を、フォント種別の宣言順・種別の中は候補の順に返す。
+  pub fn faces(&self) -> impl Iterator<Item = FontFace> + '_ { return self.fonts.faces(); }
 
   /// 指定パスの画像への参照を返す。保持していないパスは `None`。
   pub(crate) fn image_ref(&self, path: &str) -> Option<ImageRef> {
@@ -161,10 +170,10 @@ impl Debug for PublicationImage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ImageRef(usize);
 
-/// 1 フォント種別ぶんの描画資源（バイト列 + 構築設定 + 計測値）。
+/// 1 実体ぶんの描画資源（バイト列 + 構築設定 + 計測値）。
 #[derive(Clone, PartialEq)]
 pub struct PublicationFont {
-  /// フォントファイルのバイト列（同じファイルを指す種別は同一の `Arc` を共有する）
+  /// フォントファイルのバイト列（同じファイルを指す実体は同一の `Arc` を共有する）
   pub bytes: Arc<[u8]>,
   /// krilla フォント構築に必要な設定（TTC インデックス・バリアブルフォント軸）
   pub face: FontFaceConfig,
@@ -388,9 +397,9 @@ pub(crate) mod test_support {
   use std::sync::Arc;
 
   use super::{FontFaceConfig, FontMetrics, PublicationFont, PublicationImage, PublicationResources};
-  use crate::project::FontMap;
+  use crate::project::{FaceMap, FontMap};
 
-  /// 指定した画像だけを持つ描画資源を返す（フォントは全種別ダミーのバイト列 0 個）。
+  /// 指定した画像だけを持つ描画資源を返す（フォントは全種別 1 候補で、ダミーのバイト列 0 個）。
   pub(crate) fn resources(images: Vec<PublicationImage>) -> PublicationResources {
     let font = PublicationFont {
       bytes: Arc::from(Vec::new()),
@@ -404,18 +413,22 @@ pub(crate) mod test_support {
         descender: -200.0,
       },
     };
-    let fonts = FontMap::from_fn(|_| return font.clone());
+    let fonts = FaceMap::from_slots(FontMap::from_fn(|_| return vec![font.clone()]))
+      .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
     return PublicationResources::new(fonts, images);
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
   use super::{
-    ImageFormat, ImageRef, PaintOp, Publication, PublicationDestination, PublicationImage, PublicationLink,
-    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationPoint,
-    PublicationRect, test_support::resources,
+    FontFaceConfig, FontMetrics, ImageFormat, ImageRef, PaintOp, Publication, PublicationDestination, PublicationFont,
+    PublicationImage, PublicationLink, PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry,
+    PublicationPage, PublicationPoint, PublicationRect, PublicationResources, test_support::resources,
   };
+  use crate::project::{FaceMap, FontFace, FontMap, FontType};
 
   /// 検証用の最小メタデータを返す。
   fn metadata() -> PublicationMetadata {
@@ -491,6 +504,38 @@ mod tests {
 
     assert!(with_link.is_none(), "存在しないページを指す内部リンクは構築できないはず");
     assert!(with_outline.is_none(), "存在しないページを指すしおりは構築できないはず");
+  }
+
+  #[test]
+  fn resources_return_the_font_of_each_face() {
+    let font = |font_index: u32| {
+      return PublicationFont {
+        bytes: Arc::from(Vec::new()),
+        face: FontFaceConfig {
+          font_index,
+          variation_axes: None,
+        },
+        metrics: FontMetrics {
+          upem: 1000.0,
+          ascender: 800.0,
+          descender: -200.0,
+        },
+      };
+    };
+    let fonts = FaceMap::from_slots(FontMap::from_fn(|font_type| {
+      return if font_type == FontType::Serif {
+        vec![font(0), font(1)]
+      } else {
+        vec![font(0)]
+      };
+    }))
+    .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
+    let second = FontFace::new(FontType::Serif, 1);
+
+    let resources = PublicationResources::new(fonts, Vec::new());
+
+    assert_eq!(resources.font(second).face.font_index, 1);
+    assert!(resources.faces().any(|face| return face == second), "faces() は全実体を列挙するはず");
   }
 
   #[test]

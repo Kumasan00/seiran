@@ -6,12 +6,12 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-use crate::project::{ProjectPath, font::map::FontMap};
+use crate::project::{ProjectPath, font::face_map::FaceMap};
 
-/// 19 フォント種別すべての検証済み設定
-pub(crate) type FontConfigs = FontMap<FontConfig>;
+/// 全実体（19 フォント種別 × 候補）の検証済み設定
+pub(crate) type FontConfigs = FaceMap<FontConfig>;
 
-/// 単一フォント種別の検証済み・処理済み設定
+/// 単一実体（フォント種別 × 候補）の検証済み・処理済み設定
 #[derive(Debug, Clone)]
 pub(crate) struct FontConfig {
   /// フォントファイルへのパス（`PathResolver` で解決済み・正規化済み）

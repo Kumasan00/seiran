@@ -28,7 +28,7 @@ use read_fonts::tables::math::MathConstant;
 
 use crate::{
   length::Length,
-  project::FontType,
+  project::FontFace,
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{
@@ -52,7 +52,7 @@ fn accent_raise(base_ink_height: Length, accent_base_height: Length) -> Length {
 fn sole_math_glyph(boxes: &[PlacedHBox]) -> Option<(Length, u32, Length)> {
   if let [placed] = boxes
     && let HBoxContent::Glyphs(run) = &placed.hbox.content
-    && run.font_type == FontType::Math
+    && run.face == FontFace::MATH
     && let [glyph] = run.glyphs.as_slice()
   {
     return Some((placed.dx, glyph.gid, run.font_size));

@@ -77,12 +77,17 @@ fn dump_paint_op(out: &mut String, op: &PaintOp, resources: &PublicationResource
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
       let color = run.color.map_or_else(String::new, |c| format!(" color=Color({:?})", c.rgb()));
+      // 先頭の候補は種別だけ、2 つ目以降の候補は `#<位置>` を足す（`font=Serif#1`）
+      let candidate = match run.face.candidate() {
+        0 => String::new(),
+        candidate => format!("#{candidate}"),
+      };
       let _ = writeln!(
         out,
-        "  glyphs x={} y={} font={:?} size={} text={:?} glyph_count={}{color}",
+        "  glyphs x={} y={} font={:?}{candidate} size={} text={:?} glyph_count={}{color}",
         f2_pt(origin.x),
         f2_pt(origin.y),
-        run.font_type,
+        run.face.font_type(),
         f2_pt(run.font_size.to_pt()),
         run.text,
         run.glyphs.len()
@@ -149,7 +154,7 @@ mod tests {
   use super::{dump_metadata, dump_paint_op, dump_publication_link};
   use crate::{
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::{
       GlyphRun, PaintOp, PublicationDestination, PublicationLink, PublicationLinkTarget, PublicationMetadata,
       PublicationPoint, PublicationRect, test_support::resources,
@@ -203,7 +208,7 @@ mod tests {
       font_size: Length::pt(10.0),
       text: "Test".to_string(),
       glyphs: Vec::new(),
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       color: None,
     };
     let op = PaintOp::DrawGlyphRun {

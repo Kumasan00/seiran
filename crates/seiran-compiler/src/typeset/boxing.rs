@@ -626,7 +626,7 @@ mod max_font_size_tests {
   use super::max_font_size_in_items;
   use crate::{
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::GlyphRun,
     typeset::boxes::{HBox, HBoxContent, HItem, PlacedHBox},
   };
@@ -638,7 +638,7 @@ mod max_font_size_tests {
         font_size: Length::pt(font_size),
         text: "x".to_string(),
         glyphs: Vec::new(),
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       }),
       width: Length::pt(width),
@@ -680,7 +680,7 @@ mod max_font_size_tests {
         font_size: Length::pt(20.0),
         text: "y".to_string(),
         glyphs: Vec::new(),
-        font_type: FontType::Math,
+        face: FontFace::MATH,
         color: None,
       }),
       width: Length::pt(8.0),

@@ -48,7 +48,7 @@ pub(crate) use warning::TypesetWarning;
 use crate::{
   failures::Failures,
   phase::Phase,
-  project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
+  project::{FontData, FontFace, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::Publication,
   semantics::SemanticDocument,
   style::Style,
@@ -155,7 +155,7 @@ fn lay_out(
     document.hir(),
     style,
     &|ch| return font_resources.has_math_glyph(ch),
-    &config.font_configs[FontType::Math].font_path,
+    &config.font_configs[FontFace::MATH].font_path,
   )
   .map_err(ComposeError::MissingMathGlyphs)?;
   let image_paths = image::collect_image_paths(document.hir());

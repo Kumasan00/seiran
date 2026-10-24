@@ -6,27 +6,26 @@ use krilla::{
   Data,
   text::{Font, GlyphId, KrillaGlyph, Tag},
 };
-use seiran_compiler::{FontType, Glyph, PublicationFont, PublicationResources};
-use strum::VariantArray;
+use seiran_compiler::{FontFace, Glyph, PublicationFont, PublicationResources};
 
 use crate::error::PdfRenderError;
 
-/// フォント種別ごとの構築済み krilla フォント。
+/// 実体（フォント種別 × 候補）ごとの構築済み krilla フォント。
 pub(crate) struct KrillaFonts {
-  /// 全 19 フォント種別ぶんの krilla フォント
-  fonts: HashMap<FontType, Font>,
+  /// 描画資源の全実体ぶんの krilla フォント
+  fonts: HashMap<FontFace, Font>,
 }
 
 impl KrillaFonts {
-  /// 指定フォント種別の krilla フォントを返す。
+  /// 指定実体の krilla フォントを返す。
   ///
   /// # Panics
   ///
-  /// 構築経路は [`build_krilla_fonts`] 1 つで、そこが `FontType::VARIANTS` を全件構築するため
-  /// 欠落は起こらない。
-  pub(crate) fn font(&self, font_type: FontType) -> &Font {
-    let Some(font) = self.fonts.get(&font_type) else {
-      unreachable!("build_krilla_fonts が FontType::VARIANTS を全件構築する: {font_type:?} が欠落している");
+  /// 構築経路は [`build_krilla_fonts`] 1 つで、そこが描画資源の全実体（`PublicationResources::faces`）を構築し、
+  /// 描画するグリフ列の実体は同じ `Publication` の資源にあるため欠落は起こらない。
+  pub(crate) fn font(&self, face: FontFace) -> &Font {
+    let Some(font) = self.fonts.get(&face) else {
+      unreachable!("build_krilla_fonts が描画資源の全実体を構築する: {face} が欠落している");
     };
     return font;
   }
@@ -34,16 +33,16 @@ impl KrillaFonts {
 
 /// 描画資源のフォントバイト列と構築設定から krilla フォント集合を構築する。
 ///
-/// [`FontType`] の宣言順で構築するので、複数フォントが不正でも返る [`PdfRenderError`] は
-/// 実行ごとに同じ。
+/// 実体の順（`PublicationResources::faces`）に構築するので、複数フォントが不正でも返る [`PdfRenderError`] は
+/// 実行ごとに同じ。組版に使わなかった候補も構築する。
 ///
 /// # Errors
 ///
 /// krilla がフォントを生成できなかった場合に [`PdfRenderError`] を返す。
 pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<KrillaFonts, PdfRenderError> {
-  let mut fonts = HashMap::with_capacity(FontType::VARIANTS.len());
-  for &font_type in FontType::VARIANTS {
-    fonts.insert(font_type, build_krilla_font(font_type, resources.font(font_type))?);
+  let mut fonts = HashMap::new();
+  for face in resources.faces() {
+    fonts.insert(face, build_krilla_font(face, resources.font(face))?);
   }
   return Ok(KrillaFonts { fonts });
 }
@@ -69,7 +68,7 @@ fn krilla_data(bytes: &Arc<[u8]>) -> Data {
 ///
 /// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的フォントもこの経路で組める。
 /// 軸の指定と `fvar` の整合は `typeset::font::validation` が検証済み。
-fn build_krilla_font(font_type: FontType, font: &PublicationFont) -> Result<Font, PdfRenderError> {
+fn build_krilla_font(face: FontFace, font: &PublicationFont) -> Result<Font, PdfRenderError> {
   let axes = font
     .face
     .variation_axes
@@ -85,7 +84,7 @@ fn build_krilla_font(font_type: FontType, font: &PublicationFont) -> Result<Font
     })
     .collect::<Vec<_>>();
   return Font::new_variable(krilla_data(&font.bytes), font.face.font_index, &axes)
-    .ok_or(PdfRenderError::FontCreation { font_type });
+    .ok_or(PdfRenderError::FontCreation { face });
 }
 
 /// レイアウト済みグリフ列を UPEM で正規化して Krilla のグリフ列へ変換する。

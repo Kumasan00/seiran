@@ -478,7 +478,7 @@ mod tests {
   use crate::{
     document::NodeId,
     length::Length,
-    project::{FontType, ProjectPath},
+    project::{FontFace, FontType, ProjectPath},
     publication::GlyphRun,
     semantics::LabelId,
     source::SourceId,
@@ -759,7 +759,7 @@ mod tests {
               font_size: pt(10.0),
               text: "x".to_string(),
               glyphs: Vec::new(),
-              font_type: FontType::Serif,
+              face: FontFace::primary(FontType::Serif),
               color: None,
             }),
             width: pt(20.0),

@@ -362,7 +362,12 @@ impl TestProjectBuilder {
       .and_then(|value| return value.as_table())
       .expect("fixture config.toml は [font_configs.*] を持つはず");
     let mut registered: HashSet<PathBuf> = HashSet::new();
-    for entry in font_configs.values() {
+    // 本文用の種別は候補の配列（`[[font_configs.<種別>]]`）、`math` は単一テーブル
+    let candidates = font_configs.values().flat_map(|entry| match entry {
+      toml::Value::Array(candidates) => return candidates.iter().collect::<Vec<_>>(),
+      single => return vec![single],
+    });
+    for entry in candidates {
       let Some(font_path) =
         entry.as_table().and_then(|font| return font.get("font_path")).and_then(|v| return v.as_str())
       else {

@@ -6,14 +6,14 @@
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
-use seiran_compiler::FontType;
+use seiran_compiler::FontFace;
 use thiserror::Error;
 
 /// PDF 描画中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]
 pub enum PdfRenderError {
   /// krilla フォントの生成に失敗しました。
-  #[error("Krilla 用フォントの生成に失敗しました: {font_type:?}")]
+  #[error("Krilla 用フォントの生成に失敗しました: {face}")]
   #[diagnostic(
     code(pdf::font_creation),
     help(
@@ -21,8 +21,8 @@ pub enum PdfRenderError {
     )
   )]
   FontCreation {
-    /// フォント種別。
-    font_type: FontType,
+    /// 実体（フォント種別 × 候補）。
+    face: FontFace,
   },
   /// SVG のパースに失敗しました。
   #[error("SVG のパースに失敗しました: {path}")]

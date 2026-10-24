@@ -2,12 +2,7 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use strum::VariantArray;
-
-use crate::{
-  compiler::input::CompilationInputs,
-  project::{FontType, ProjectPath},
-};
+use crate::{compiler::input::CompilationInputs, project::ProjectPath};
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
 ///
@@ -25,7 +20,7 @@ pub struct DependencyManifest {
   pub source_paths: Vec<PathBuf>,
   /// 参照した画像ファイルのパス一覧
   pub image_paths: Vec<PathBuf>,
-  /// 参照したフォントファイルのパス一覧（重複除去・昇順）
+  /// 参照したフォントファイルのパス一覧（組版に使わない候補を含む全実体ぶん。重複除去・昇順）
   pub font_paths: Vec<PathBuf>,
   /// CSL スタイルファイルのパス（指定されていれば）
   pub csl_path: Option<PathBuf>,
@@ -36,10 +31,9 @@ pub struct DependencyManifest {
 impl DependencyManifest {
   /// 解決済み設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
   pub(super) fn collect(config_path: &ProjectPath, inputs: &CompilationInputs, image_paths: &[ProjectPath]) -> Self {
-    let font_paths: BTreeSet<PathBuf> = FontType::VARIANTS
-      .iter()
-      .map(|font_type| return to_path_buf(&inputs.config().font_configs[*font_type].font_path))
-      .collect();
+    let font_configs = &inputs.config().font_configs;
+    let font_paths: BTreeSet<PathBuf> =
+      font_configs.faces().map(|face| return to_path_buf(&font_configs[face].font_path)).collect();
     return DependencyManifest {
       config_path: to_path_buf(config_path),
       style_path: inputs.config().style_path.as_ref().map(to_path_buf),

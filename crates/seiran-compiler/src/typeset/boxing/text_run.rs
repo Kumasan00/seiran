@@ -405,7 +405,7 @@ mod tests {
   use super::{ShapedRun, plan_cut, split_japanese_run};
   use crate::{
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{
       boxes::{HBox, HBoxContent, HItem},
@@ -443,7 +443,7 @@ mod tests {
             };
           })
           .collect(),
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       },
       METRICS,
@@ -541,7 +541,7 @@ mod tests {
             y_offset: 0,
           },
         ],
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       },
       METRICS,
@@ -611,7 +611,7 @@ mod tests {
             };
           })
           .collect(),
-        font_type: FontType::JapaneseSerif,
+        face: FontFace::primary(FontType::JapaneseSerif),
         color: None,
       },
       METRICS,

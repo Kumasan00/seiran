@@ -8,7 +8,7 @@ use std::{collections::HashMap, mem};
 use crate::{
   color::Color,
   length::Length,
-  project::{FontData, FontMap, ProjectPath, config::ProjectConfig},
+  project::{FontData, ProjectPath, config::ProjectConfig},
   publication::{
     PaintOp, Publication, PublicationDestination, PublicationFont, PublicationImage, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationPoint,
@@ -43,12 +43,11 @@ fn build_resources(
   font_resources: &FontSystem,
   images: HashMap<ProjectPath, ImageAsset>,
 ) -> PublicationResources {
-  let face_configs = font_resources.face_configs();
-  let fonts = FontMap::from_fn(|font_type| {
+  let fonts = font_resources.face_configs().map(|face, face_config| {
     return PublicationFont {
-      bytes: font_data.shared_bytes(font_type),
-      face: face_configs[font_type].clone(),
-      metrics: font_resources.metrics(font_type),
+      bytes: font_data.shared_bytes(face),
+      face: face_config.clone(),
+      metrics: font_resources.metrics(face),
     };
   });
   let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
@@ -330,7 +329,7 @@ mod tests {
     document::HeadingLevel,
     length::Length,
     project::{
-      FontConfig, FontConfigs, ProjectPath,
+      FaceMap, FontConfig, FontMap, ProjectPath,
       config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
@@ -385,7 +384,8 @@ mod tests {
         max_dpi: 300,
         downsample: false,
       },
-      font_configs: FontConfigs::from_fn(|_| return test_font_config()),
+      font_configs: FaceMap::from_slots(FontMap::from_fn(|_| return vec![test_font_config()]))
+        .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず"),
       sources: Vec::new(),
       style_path: None,
       references_path: None,

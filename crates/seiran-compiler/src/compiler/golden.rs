@@ -243,7 +243,7 @@ use crate::{
     test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
   },
   length::Length,
-  project::FontType,
+  project::{FontFace, FontType},
   publication::{GlyphRun, PaintOp},
   typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
 };
@@ -1751,8 +1751,10 @@ fn glyph_runs_of(text: &str, direction: &'static str) -> Vec<GlyphRun> {
         .get_mut("font_configs")
         .and_then(|font_configs| return font_configs.as_table_mut())
         .and_then(|font_configs| return font_configs.get_mut("serif"))
+        .and_then(|serif| return serif.as_array_mut())
+        .and_then(|candidates| return candidates.first_mut())
         .and_then(|serif| return serif.as_table_mut())
-        .expect("fixture config.toml は [font_configs.serif] を持つはず");
+        .expect("fixture config.toml は [[font_configs.serif]] を持つはず");
       serif.insert("direction".to_string(), toml::Value::from(direction));
     })
     .build()
@@ -2650,7 +2652,7 @@ fn prose_in_a_subscript_takes_the_script_size_in_the_body_font() {
 
   let index = run_with_text(&runs, "\u{1D456}");
   let prose = run_with_text(&runs, "if");
-  assert_eq!(prose.run.font_type, FontType::Serif, "本文の欧文書体で組む");
+  assert_eq!(prose.run.face, FontFace::primary(FontType::Serif), "本文の欧文書体で組む");
   assert_eq!(prose.run.font_size, index.run.font_size, "添字の段の大きさ");
 }
 
@@ -3019,8 +3021,8 @@ fn script_in_a_non_math_font_is_placed_by_its_ink() {
   let base = run_with_text(&runs, MATH_X);
   let sup = run_with_text(&runs, "あ");
   assert_eq!(
-    sup.run.font_type,
-    FontType::JapaneseSerif,
+    sup.run.face,
+    FontFace::primary(FontType::JapaneseSerif),
     "和文は数式フォントではなく和文フォントで組まれる（テストが別フォントの経路を通っている）"
   );
   assert!(sup.dy - base.dy >= stix_math_length(MathConstant::SuperscriptShiftUp, base.run.font_size));
@@ -3288,8 +3290,8 @@ fn scripts_on_a_non_math_base_share_a_column() {
   let runs = first_line_runs("$あ_{2}^{3}$\n");
 
   assert_eq!(
-    run_with_text(&runs, "あ").run.font_type,
-    FontType::JapaneseSerif,
+    run_with_text(&runs, "あ").run.face,
+    FontFace::primary(FontType::JapaneseSerif),
     "基底は和文フォント（テストの前提）"
   );
   assert_eq!(run_with_text(&runs, "2").dx, run_with_text(&runs, "3").dx, "数式フォント以外の基底は補正 0");
@@ -3973,7 +3975,7 @@ fn colored_inline_math_paints_glyphs_and_rules_in_the_color() {
   let glyph_colors: Vec<Option<Color>> = ops
     .iter()
     .filter_map(|op| match op {
-      PaintOp::DrawGlyphRun { run, .. } if run.font_type == FontType::Math => return Some(run.color),
+      PaintOp::DrawGlyphRun { run, .. } if run.face == FontFace::MATH => return Some(run.color),
       _ => return None,
     })
     .collect();

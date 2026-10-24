@@ -218,7 +218,17 @@ fn content_summary(content: &HBoxContent) -> String {
   return match content {
     HBoxContent::Glyphs(run) => {
       let color = run.color.map_or_else(String::new, |c| format!(" color={c:?}"));
-      format!("glyphs font={:?} size={} text={:?}{color}", run.font_type, f2(run.font_size), run.text)
+      // 先頭の候補は種別だけ、2 つ目以降の候補は `#<位置>` を足す（`font=Serif#1`）
+      let candidate = match run.face.candidate() {
+        0 => String::new(),
+        candidate => format!("#{candidate}"),
+      };
+      format!(
+        "glyphs font={:?}{candidate} size={} text={:?}{color}",
+        run.face.font_type(),
+        f2(run.font_size),
+        run.text
+      )
     },
     HBoxContent::Atom(children) => format!("atom children={}", children.len()),
     HBoxContent::Rule { color } => {

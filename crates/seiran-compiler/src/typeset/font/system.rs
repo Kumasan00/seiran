@@ -1,7 +1,8 @@
 //! フォント資源の構築順序を隠蔽する窓口モジュール
 //!
-//! `FontData` → `FontRefs` / `ShapingFonts` → `FontMap<FontMetrics>` → 検証 → `HarfRustShapers`
-//! という構築順序をここに閉じ込め、[`FontSystem::load`] でシェイプ可能な資源一式を返す。
+//! `FontData` → `FontRefs` / `ShapingFonts` → `FaceMap<FontMetrics>` → 検証 → `HarfRustShapers`
+//! という構築順序をここに閉じ込め、[`FontSystem::load`] でシェイプ可能な資源一式を返す。資源は全実体（種別 × 候補）
+//! ぶん作る — 組版に使わない候補も解析・検証する。
 
 use std::time::Instant;
 
@@ -17,7 +18,7 @@ use tracing::debug;
 
 use crate::{
   failures::Failures,
-  project::{FontConfigs, FontData, FontMap, FontType},
+  project::{FaceMap, FontConfigs, FontData, FontFace},
   publication::FontMetrics,
   typeset::font::{
     FontLoadError, FontRefs, ScriptLevel, ScriptScale, build_font_metrics,
@@ -53,10 +54,10 @@ pub(crate) enum FontSystemError {
 ///
 /// シェーパーはフォントを所有し、バイト列だけを `FontData` と共有する。
 pub(in crate::typeset) struct FontSystem {
-  /// 19 種別ぶんのシェーパー
+  /// 全実体ぶんのシェーパー
   shapers: HarfRustShapers,
-  /// 基本メトリクス
-  metrics: FontMap<FontMetrics>,
+  /// 全実体ぶんの基本メトリクス
+  metrics: FaceMap<FontMetrics>,
   /// シェーパーと同じ設定から確定した描画用のフェース設定
   face_configs: FontFaceConfigs,
 }
@@ -85,7 +86,7 @@ impl FontSystem {
     if let Err(failures) = validated {
       return (Err(failures.map(Into::into)), warnings);
     }
-    debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全種別のフォントを検証");
+    debug!(warning_count = warnings.len(), elapsed = ?stage_start.elapsed(), "全実体のフォントを検証");
 
     let shapers = match shaper::build_harfrust_shapers(configs, shaping_fonts) {
       Ok(shapers) => shapers,
@@ -103,16 +104,16 @@ impl FontSystem {
     );
   }
 
-  /// 指定フォント種別でテキストをシェイプし、結果のグリフ列を `buffer` に残す（`script_level` は数式のスクリプト段）。
+  /// 指定実体でテキストをシェイプし、結果のグリフ列を `buffer` に残す（`script_level` は数式のスクリプト段）。
   pub(crate) fn shape(
     &self,
-    font_type: FontType,
+    face: FontFace,
     buffer: &mut Buffer,
     text: &str,
     point_size: f32,
     script_level: Option<ScriptLevel>,
   ) {
-    self.shapers[font_type].shape(buffer, text, point_size, script_level);
+    self.shapers[face].shape(buffer, text, point_size, script_level);
   }
 
   /// 数式フォントでアクセント記号 `text` を OpenType `flac`（平たいアクセント字形）を足してシェイプし、結果のグリフ列を
@@ -124,7 +125,7 @@ impl FontSystem {
     point_size: f32,
     script_level: Option<ScriptLevel>,
   ) {
-    self.shapers[FontType::Math].shape_flattened(buffer, text, point_size, script_level);
+    self.shapers[FontFace::MATH].shape_flattened(buffer, text, point_size, script_level);
   }
 
   /// 数式フォントでテキスト `text` を OpenType `dtls`（ドット無しの字形）を足してシェイプし、結果のグリフ列を `buffer` に
@@ -136,30 +137,30 @@ impl FontSystem {
     point_size: f32,
     script_level: Option<ScriptLevel>,
   ) {
-    self.shapers[FontType::Math].shape_dotless(buffer, text, point_size, script_level);
+    self.shapers[FontFace::MATH].shape_dotless(buffer, text, point_size, script_level);
   }
 
   /// 数式フォントの cmap が `ch` の基本の字形を持つか（`ssty`・`flac`・size variant・glyph assembly は基本の字形から
   /// 派生するので問わない）
   pub(in crate::typeset) fn has_math_glyph(&self, ch: char) -> bool {
-    return self.shapers[FontType::Math].has_glyph(ch);
+    return self.shapers[FontFace::MATH].has_glyph(ch);
   }
 
-  /// 指定フォント種別の基本メトリクスを返す。
+  /// 指定実体の基本メトリクスを返す。
   #[must_use]
-  pub(crate) fn metrics(&self, font_type: FontType) -> FontMetrics { return self.metrics[font_type]; }
+  pub(crate) fn metrics(&self, face: FontFace) -> FontMetrics { return self.metrics[face]; }
 
   /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。
   #[must_use]
   pub(crate) fn math_constants(&self) -> MathConstants<'_> {
-    return self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_constants()).expect(
+    return self.shapers[FontFace::MATH].font().tables().math().and_then(|math| return math.math_constants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathConstants を読めることを確認済み",
     );
   }
 
   /// 数式フォントの MATH テーブルの、グリフごとの情報（イタリック補正・math kern 等。値はフォント単位）。
   fn math_glyph_info(&self) -> MathGlyphInfo<'_> {
-    return self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_glyph_info()).expect(
+    return self.shapers[FontFace::MATH].font().tables().math().and_then(|math| return math.math_glyph_info()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathGlyphInfo を読めることを確認済み",
     );
   }
@@ -210,12 +211,12 @@ impl FontSystem {
     );
   }
 
-  /// 指定フォント種別のグリフ `gid` のインク（墨）の範囲（フォント単位・シェーパーと同じバリエーション軸の位置）。
+  /// 指定実体のグリフ `gid` のインク（墨）の範囲（フォント単位・シェーパーと同じバリエーション軸の位置）。
   ///
   /// `y_bearing` がベースラインからインクの上端まで、`height` が上端から下向きの高さ。グリフを読めなければ `None`。
   #[must_use]
-  pub(crate) fn glyph_extents(&self, font_type: FontType, gid: u32) -> Option<GlyphExtents<f32>> {
-    return self.shapers[font_type].font().glyph_metrics().extents(GlyphId::new(gid));
+  pub(crate) fn glyph_extents(&self, face: FontFace, gid: u32) -> Option<GlyphExtents<f32>> {
+    return self.shapers[face].font().glyph_metrics().extents(GlyphId::new(gid));
   }
 
   /// 数式フォントのグリフ `gid` の、軸 `axis` の向きのインクの大きさ（フォント単位。縦は高さ、横は幅。インクを読めなければ 0）
@@ -223,7 +224,7 @@ impl FontSystem {
   /// 伸縮グリフが目標を覆うかの判定（[`Self::stretch_math_glyph`] の元の字形と、スクリプト段の `ssty` の字形）はこの値で比べる。
   #[must_use]
   pub(crate) fn math_glyph_ink_size(&self, gid: u32, axis: StretchAxis) -> i64 {
-    return self.glyph_extents(FontType::Math, gid).map_or(0, |extents| {
+    return self.glyph_extents(FontFace::MATH, gid).map_or(0, |extents| {
       return units(match axis {
         StretchAxis::Vertical => extents.height,
         StretchAxis::Horizontal => extents.width,
@@ -235,7 +236,7 @@ impl FontSystem {
   /// glyph assembly から選ぶ（元の字形の大きさは、縦はインクの高さ、横はインクの幅）。
   #[must_use]
   pub(crate) fn stretch_math_glyph(&self, gid: u32, axis: StretchAxis, target: i64) -> Stretch {
-    let variants = self.shapers[FontType::Math].font().tables().math().and_then(|math| return math.math_variants()).expect(
+    let variants = self.shapers[FontFace::MATH].font().tables().math().and_then(|math| return math.math_variants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathVariants を読めることを確認済み",
     );
     let base_size = self.math_glyph_ink_size(gid, axis);
@@ -257,10 +258,10 @@ impl FontSystem {
     );
   }
 
-  /// 指定フォント種別のグリフ `gid` の横の送り幅（フォント単位・シェーパーと同じバリエーション軸の位置）。
+  /// 指定実体のグリフ `gid` の横の送り幅（フォント単位・シェーパーと同じバリエーション軸の位置）。
   #[must_use]
-  pub(crate) fn glyph_advance(&self, font_type: FontType, gid: u32) -> f32 {
-    return self.shapers[font_type].font().glyph_metrics().h_advance(GlyphId::new(gid));
+  pub(crate) fn glyph_advance(&self, face: FontFace, gid: u32) -> f32 {
+    return self.shapers[face].font().glyph_metrics().h_advance(GlyphId::new(gid));
   }
 
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。
@@ -276,7 +277,7 @@ impl FontSystem {
 fn parse_and_measure<'a>(
   configs: &FontConfigs,
   font_data: &'a FontData,
-) -> Result<(FontRefs<'a>, ShapingFonts, FontMap<FontMetrics>), Failures<FontSystemError>> {
+) -> Result<(FontRefs<'a>, ShapingFonts, FaceMap<FontMetrics>), Failures<FontSystemError>> {
   let (font_refs, shaping_fonts) =
     parse_fonts(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
   let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
@@ -289,3 +290,113 @@ fn parse_and_measure<'a>(
   reason = "グリフのインクの高さはフォント単位で i64 に収まり、端数の丸めは視覚的に無意味な精度"
 )]
 fn units(value: f32) -> i64 { return value.round() as i64; }
+
+#[cfg(test)]
+mod tests {
+  use std::{fs, path::Path};
+
+  use super::FontSystem;
+  use crate::project::{
+    FaceMap, FontConfig, FontConfigs, FontData, FontFace, FontMap, FontType, MemoryProjectSource, ProjectPath,
+    VariationAxis,
+  };
+
+  /// `vendor/fonts/<name>` のバイト列を読む。
+  fn vendor_font(name: &str) -> Vec<u8> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts").join(name);
+    return fs::read(&path).expect("vendor/fonts のフォントを読めるはず（未取得なら tools/fetch-test-assets.sh）");
+  }
+
+  /// `path` を指す、軸・タグ等を持たない設定。
+  fn font_config(path: &str) -> FontConfig {
+    return FontConfig {
+      font_path: ProjectPath::new(path),
+      font_index: 0,
+      variation_axes: None,
+      script: None,
+      language: None,
+      ot_language_tag: None,
+      direction: None,
+      features: None,
+    };
+  }
+
+  /// 全種別の先頭候補が STIX Two Math（`/math.ttf`）を指し、`serif` にだけ 2 つ目の候補 `candidate` を足した設定で
+  /// フォント資源を構築し、失敗の文言を宣言順に返す（STIX Two Text は `/text.ttf`）。
+  fn load_errors_with_serif_candidate(candidate: FontConfig) -> Vec<String> {
+    let mut candidate = Some(candidate);
+    let slots = FontMap::from_fn(|font_type| {
+      let mut candidates = vec![font_config("/math.ttf")];
+      if font_type == FontType::Serif {
+        candidates.push(candidate.take().expect("serif の枠は 1 回だけ作られる"));
+      }
+      return candidates;
+    });
+    let configs: FontConfigs =
+      FaceMap::from_slots(slots).expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
+    let source = MemoryProjectSource::new()
+      .with_bytes("/math.ttf", vendor_font("STIXTwoMath-Regular.ttf"))
+      .with_bytes("/text.ttf", vendor_font("STIXTwoText[wght].ttf"));
+    let font_data = FontData::load(&source, &configs).expect("登録済みのパスは読めるはず");
+
+    let Err(failures) = FontSystem::load(&configs, &font_data).0 else {
+      panic!("2 つ目の候補の違反で構築は失敗するはず");
+    };
+    return failures.into_iter().map(|failure| return failure.to_string()).collect();
+  }
+
+  #[test]
+  fn unused_candidate_with_bad_index_is_rejected() {
+    let candidate = FontConfig {
+      font_index: 5,
+      ..font_config("/math.ttf")
+    };
+
+    let errors = load_errors_with_serif_candidate(candidate);
+
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].starts_with("serif[1] "), "組まない候補も解析し、位置付きで報告するはず: {errors:?}");
+  }
+
+  #[test]
+  fn unused_candidate_with_unknown_axis_is_rejected() {
+    let candidate = FontConfig {
+      variation_axes: Some(vec![
+        VariationAxis {
+          name: *b"wght",
+          value: 400.0,
+        },
+        VariationAxis {
+          name: *b"zzzz",
+          value: 0.0,
+        },
+      ]),
+      ..font_config("/text.ttf")
+    };
+
+    let errors = load_errors_with_serif_candidate(candidate);
+
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].starts_with("serif[1]: "), "組まない候補も検証し、位置付きで報告するはず: {errors:?}");
+  }
+
+  #[test]
+  fn metrics_are_built_for_every_candidate() {
+    let configs: FontConfigs = FaceMap::from_slots(FontMap::from_fn(|font_type| {
+      let mut candidates = vec![font_config("/math.ttf")];
+      if font_type == FontType::Serif {
+        candidates.push(font_config("/math.ttf"));
+      }
+      return candidates;
+    }))
+    .expect("形は正しいはず");
+    let source = MemoryProjectSource::new().with_bytes("/math.ttf", vendor_font("STIXTwoMath-Regular.ttf"));
+    let font_data = FontData::load(&source, &configs).expect("読めるはず");
+
+    let Ok(system) = FontSystem::load(&configs, &font_data).0 else {
+      panic!("STIX Two Math だけの設定は構築できるはず");
+    };
+
+    assert_eq!(system.metrics(FontFace::new(FontType::Serif, 1)), system.metrics(FontFace::MATH));
+  }
+}

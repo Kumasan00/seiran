@@ -113,7 +113,8 @@ PDF 生成の基本設定を行います。長さの値はすべて単位付き�
 `style.toml` の `[page]` が持ちます。
 
 以下は設定の抜粋です。`font_configs` は使用する書体にかかわらず **19 種別すべての指定が必須**で、
-この例の `serif` だけではビルドできません。キー名と各項目は
+この例の `serif` だけではビルドできません。本文用の 18 種別は `[[font_configs.<種別>]]`（候補の配列。1 つ以上）、
+数式用の `math` だけは `[font_configs.math]`（単一テーブル）で書きます。キー名と各項目は
 [設定構造体の doc コメント](crates/seiran-compiler/src/project/config/raw.rs)、全種別を含む例は
 [付属の設定](crates/seiran-compiler/tests/config/config.toml)を参照してください。
 doc コメントに無いキー（綴りの誤り・廃止されたキーを含む）は、どの階層に書いても設定ファイルの位置付きのエラーになります。
@@ -144,7 +145,7 @@ width = "595pt"                # ページ幅（A4 = 595pt）
 # max_dpi = 300
 # downsample = true
 
-[font_configs.serif]           # 19種別それぞれに設定
+[[font_configs.serif]]         # 19種別それぞれに設定（本文用は配列の要素。math だけ [font_configs.math]）
 font_path = "fonts/MyFont.ttf" # フォントファイルパス
 script = "latn"                # OpenType スクリプトタグ（オプション）
 language = "en"                # BCP 47 言語タグ（オプション）

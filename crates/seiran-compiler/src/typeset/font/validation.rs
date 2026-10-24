@@ -18,22 +18,21 @@ use read_fonts::{
     math::{Math, MathConstant},
   },
 };
-use strum::VariantArray;
 use thiserror::Error;
 use tracing::debug;
 
 use crate::{
   failures::Failures,
-  project::{FontConfig, FontConfigs, FontType, ProjectPath, VariationAxis},
+  project::{FontConfig, FontConfigs, FontFace, ProjectPath, VariationAxis},
   typeset::font::{FontRefs, shaper::ShapingFonts},
 };
 
-/// 1 件のフォント検証違反を、どのフォント種別のものかを添えて表す leaf diagnostic。
+/// 1 件のフォント検証違反を、どの実体（フォント種別 × 候補）のものかを添えて表す leaf diagnostic。
 #[derive(Debug, Display)]
-#[display("{}: {kind}", font_type.as_toml_key())]
+#[display("{face}: {kind}")]
 pub(crate) struct FontValidationError {
-  /// 違反が見つかったフォント種別
-  font_type: FontType,
+  /// 違反が見つかった実体
+  face: FontFace,
   /// 違反の内容
   kind: FontValidationErrorKind,
 }
@@ -197,7 +196,7 @@ pub(super) enum FontValidationErrorKind {
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
-  #[error("{}: フォントに {table} テーブルがありません: {}", .font_type.as_toml_key(), .path)]
+  #[error("{face}: フォントに {table} テーブルがありません: {}", .path)]
   #[diagnostic(
     code(typeset::font::script::missing_layout_table),
     severity(Warning),
@@ -206,23 +205,23 @@ pub(crate) enum FontWarning {
     )
   )]
   MissingLayoutTable {
-    /// 対象のフォント種別
-    font_type: FontType,
+    /// 対象の実体（フォント種別 × 候補）
+    face: FontFace,
     /// フォントファイルのパス
     path: ProjectPath,
     /// 見つからなかったテーブル名（`GSUB` / `GPOS`）
     table: &'static str,
   },
   /// GSUB / GPOS テーブル自体、またはその `ScriptList` を読めない。
-  #[error("{}: {table} テーブルを読み込めません: {}", .font_type.as_toml_key(), .path)]
+  #[error("{face}: {table} テーブルを読み込めません: {}", .path)]
   #[diagnostic(
     code(typeset::font::script::unreadable_layout_table),
     severity(Warning),
     help("フォントファイルが破損していないか確認してください。")
   )]
   UnreadableLayoutTable {
-    /// 対象のフォント種別
-    font_type: FontType,
+    /// 対象の実体（フォント種別 × 候補）
+    face: FontFace,
     /// フォントファイルのパス
     path: ProjectPath,
     /// 読み込めなかったテーブル名（`GSUB` / `GPOS`）
@@ -232,15 +231,15 @@ pub(crate) enum FontWarning {
     source: ReadError,
   },
   /// 指定した script がテーブルでサポートされていない。
-  #[error("{}: {table} テーブルがスクリプト '{script}' をサポートしていません: {}", .font_type.as_toml_key(), .path)]
+  #[error("{face}: {table} テーブルがスクリプト '{script}' をサポートしていません: {}", .path)]
   #[diagnostic(
     code(typeset::font::script::unsupported_script),
     severity(Warning),
     help("'script-langs' コマンドでフォントがサポートするスクリプトを確認してください。")
   )]
   UnsupportedScript {
-    /// 対象のフォント種別
-    font_type: FontType,
+    /// 対象の実体（フォント種別 × 候補）
+    face: FontFace,
     /// フォントファイルのパス
     path: ProjectPath,
     /// 対象テーブル名（`GSUB` / `GPOS`）
@@ -250,8 +249,7 @@ pub(crate) enum FontWarning {
   },
   /// script は見つかったが、その `Script` サブテーブルを読めず言語対応を確認できない。
   #[error(
-    "{}: {table} テーブルのスクリプト '{script}' を読み込めないため、言語対応を確認できません: {}",
-    .font_type.as_toml_key(),
+    "{face}: {table} テーブルのスクリプト '{script}' を読み込めないため、言語対応を確認できません: {}",
     .path
   )]
   #[diagnostic(
@@ -260,8 +258,8 @@ pub(crate) enum FontWarning {
     help("フォントファイルが破損していないか確認してください。")
   )]
   UnreadableScript {
-    /// 対象のフォント種別
-    font_type: FontType,
+    /// 対象の実体（フォント種別 × 候補）
+    face: FontFace,
     /// フォントファイルのパス
     path: ProjectPath,
     /// 対象テーブル名（`GSUB` / `GPOS`）
@@ -274,8 +272,7 @@ pub(crate) enum FontWarning {
   },
   /// 指定した言語が script 配下でサポートされていない。
   #[error(
-    "{}: {table} テーブルのスクリプト '{script}' が言語 '{language}' をサポートしていません: {}",
-    .font_type.as_toml_key(),
+    "{face}: {table} テーブルのスクリプト '{script}' が言語 '{language}' をサポートしていません: {}",
     .path
   )]
   #[diagnostic(
@@ -284,8 +281,8 @@ pub(crate) enum FontWarning {
     help("'script-langs' コマンドでスクリプト配下の言語を確認してください。")
   )]
   UnsupportedLanguage {
-    /// 対象のフォント種別
-    font_type: FontType,
+    /// 対象の実体（フォント種別 × 候補）
+    face: FontFace,
     /// フォントファイルのパス
     path: ProjectPath,
     /// 対象テーブル名（`GSUB` / `GPOS`）
@@ -297,7 +294,7 @@ pub(crate) enum FontWarning {
   },
 }
 
-/// 全フォント種別を検証し、違反を `FontType` の宣言順に**全件**集める。
+/// 全実体を検証し、違反を実体の順（`FaceMap::faces`）に**全件**集める。
 ///
 /// 警告も同じ順序で、**違反の有無に関わらず**返す — script / language の検査は軸の検査やほかのフォントの
 /// 違反と独立に確定するため。
@@ -312,15 +309,15 @@ pub(super) fn validate_fonts(
 ) -> (Result<(), Failures<FontValidationError>>, Vec<FontWarning>) {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
-  for &font_type in FontType::VARIANTS {
-    let config = &font_configs[font_type];
-    let font_ref = &font_refs[font_type];
+  for face in font_configs.faces() {
+    let config = &font_configs[face];
+    let font_ref = &font_refs[face];
     all_errors.extend(
-      validate_font(font_type, config, font_ref, &shaping_fonts[font_type], &mut all_warnings)
+      validate_font(face, config, font_ref, &shaping_fonts[face], &mut all_warnings)
         .into_iter()
-        .map(|kind| return FontValidationError { font_type, kind }),
+        .map(|kind| return FontValidationError { face, kind }),
     );
-    debug!(font_type = ?font_type, font_path = %config.font_path, "フォントを検証");
+    debug!(face = %face, font_path = %config.font_path, "フォントを検証");
   }
   let result = match Failures::from_vec(all_errors) {
     Some(failures) => Err(failures),
@@ -332,7 +329,7 @@ pub(super) fn validate_fonts(
 /// 1 フォント分を検証し、検出した違反をすべて返す（警告は `warnings` へ追記する）。
 #[must_use]
 pub(super) fn validate_font(
-  font_type: FontType,
+  face: FontFace,
   config: &FontConfig,
   font_ref: &FontRef<'_>,
   shaping_font: &Font,
@@ -346,13 +343,13 @@ pub(super) fn validate_font(
     (Ok(None), None) => {},
     (Err(error), _) => errors.push(error),
   }
-  if font_type == FontType::Math
+  if face == FontFace::MATH
     && let Err(error) = check_math_table(font_ref, &shaping_font.tables())
   {
     errors.push(error);
   }
 
-  check_script_language_support(font_type, config, font_ref, warnings);
+  check_script_language_support(face, config, font_ref, warnings);
   return errors;
 }
 
@@ -551,7 +548,7 @@ fn validate_variation_axes(
 /// 言語は `ot_language` が明示された場合だけ確認し、BCP 47 からの導出は `harfrust` に委ねる。
 /// 警告は GSUB → GPOS の順に積むので、同じフォントに 2 件出るときの順序も決定的。
 fn check_script_language_support(
-  font_type: FontType,
+  face: FontFace,
   font_config: &FontConfig,
   font_ref: &FontRef<'_>,
   warnings: &mut Vec<FontWarning>,
@@ -570,14 +567,14 @@ fn check_script_language_support(
   ];
   for (table, script_list) in tables {
     match script_list {
-      Ok(script_list) => check_script_in_table(script_list, script_tag, lang_tag, table, font_type, path, warnings),
+      Ok(script_list) => check_script_in_table(script_list, script_tag, lang_tag, table, face, path, warnings),
       Err(ReadError::TableIsMissing(_)) => warnings.push(FontWarning::MissingLayoutTable {
-        font_type,
+        face,
         path: path.clone(),
         table,
       }),
       Err(source) => warnings.push(FontWarning::UnreadableLayoutTable {
-        font_type,
+        face,
         path: path.clone(),
         table,
         source,
@@ -592,7 +589,7 @@ fn check_script_in_table(
   script_tag: Tag,
   lang_tag: Option<Tag>,
   table: &'static str,
-  font_type: FontType,
+  face: FontFace,
   path: &ProjectPath,
   warnings: &mut Vec<FontWarning>,
 ) {
@@ -600,7 +597,7 @@ fn check_script_in_table(
     Ok(list) => list,
     Err(source) => {
       warnings.push(FontWarning::UnreadableLayoutTable {
-        font_type,
+        face,
         path: path.clone(),
         table,
         source,
@@ -611,7 +608,7 @@ fn check_script_in_table(
 
   let Some(index) = script_list.index_for_tag(script_tag) else {
     warnings.push(FontWarning::UnsupportedScript {
-      font_type,
+      face,
       path: path.clone(),
       table,
       script: script_tag,
@@ -634,7 +631,7 @@ fn check_script_in_table(
     Ok(record) => record.element,
     Err(source) => {
       warnings.push(FontWarning::UnreadableScript {
-        font_type,
+        face,
         path: path.clone(),
         table,
         script: script_tag,
@@ -646,7 +643,7 @@ fn check_script_in_table(
 
   if script.lang_sys_index_for_tag(lang_tag).is_none() {
     warnings.push(FontWarning::UnsupportedLanguage {
-      font_type,
+      face,
       path: path.clone(),
       table,
       script: script_tag,
@@ -658,8 +655,10 @@ fn check_script_in_table(
 #[cfg(test)]
 mod tests {
   use read_fonts::{FontData, FontRead};
+  use strum::VariantArray;
 
   use super::*;
+  use crate::project::FontType;
 
   /// テストで使うフォントファイルのパス（実在しなくてよい — 警告の帰属表示にしか使わない）。
   const FONT_PATH: &str = "/fonts/test.otf";
@@ -691,14 +690,14 @@ mod tests {
       Tag::new(b"kana"),
       Some(Tag::new(b"JAN ")),
       "GSUB",
-      FontType::Serif,
+      FontFace::primary(FontType::Serif),
       &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
 
     let [
       FontWarning::UnreadableScript {
-        font_type,
+        face,
         path,
         table,
         script,
@@ -708,7 +707,7 @@ mod tests {
     else {
       panic!("UnreadableScript が 1 件だけ出るはず: {warnings:?}");
     };
-    assert_eq!(*font_type, FontType::Serif);
+    assert_eq!(*face, FontFace::primary(FontType::Serif));
     assert_eq!(path, &ProjectPath::new(FONT_PATH));
     assert_eq!(*table, "GSUB");
     assert_eq!(*script, Tag::new(b"kana"));
@@ -724,7 +723,7 @@ mod tests {
       Tag::new(b"kana"),
       None,
       "GSUB",
-      FontType::Serif,
+      FontFace::primary(FontType::Serif),
       &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
@@ -742,7 +741,7 @@ mod tests {
       Tag::new(b"kana"),
       Some(Tag::new(b"JAN ")),
       "GSUB",
-      FontType::Serif,
+      FontFace::primary(FontType::Serif),
       &ProjectPath::new(FONT_PATH),
       &mut warnings,
     );
@@ -820,8 +819,13 @@ mod tests {
     let bytes = sfnt_with_table(*b"fvar", &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors =
-      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+    let errors = validate_font(
+      FontFace::primary(FontType::Serif),
+      &config_with_axes(None),
+      &font_ref,
+      &shaping_font(&bytes),
+      &mut warnings,
+    );
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]),
       "壊れた fvar を静的フォントとして通さない: {errors:?}"
@@ -834,7 +838,7 @@ mod tests {
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
     let errors = validate_font(
-      FontType::Serif,
+      FontFace::primary(FontType::Serif),
       &config_with_axes(Some(wght_axis())),
       &font_ref,
       &shaping_font(&bytes),
@@ -848,8 +852,13 @@ mod tests {
     let bytes = sfnt_header(0);
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
-    let errors =
-      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+    let errors = validate_font(
+      FontFace::primary(FontType::Serif),
+      &config_with_axes(None),
+      &font_ref,
+      &shaping_font(&bytes),
+      &mut warnings,
+    );
     assert!(errors.is_empty(), "{errors:?}");
   }
 
@@ -858,8 +867,13 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"fvar", 28, 0xffff_fff0, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors =
-      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+    let errors = validate_font(
+      FontFace::primary(FontType::Serif),
+      &config_with_axes(None),
+      &font_ref,
+      &shaping_font(&bytes),
+      &mut warnings,
+    );
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::TableRecordOutOfRange { table }] if *table == Fvar::TAG),
       "範囲外を指す fvar を静的フォントとして通さない: {errors:?}"
@@ -872,8 +886,13 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"fvar", 0, 1, &[0]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors =
-      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+    let errors = validate_font(
+      FontFace::primary(FontType::Serif),
+      &config_with_axes(None),
+      &font_ref,
+      &shaping_font(&bytes),
+      &mut warnings,
+    );
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::TableRecordOutOfRange { table }] if *table == Fvar::TAG),
       "{errors:?}"
@@ -886,21 +905,26 @@ mod tests {
     let bytes = sfnt_with_table_record(*b"fvar", 28, 0, &[]);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    let errors =
-      validate_font(FontType::Serif, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+    let errors = validate_font(
+      FontFace::primary(FontType::Serif),
+      &config_with_axes(None),
+      &font_ref,
+      &shaping_font(&bytes),
+      &mut warnings,
+    );
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::Parse(_)]), "{errors:?}");
   }
 
   #[test]
-  fn error_message_is_prefixed_with_the_toml_key_of_the_font_type() {
+  fn error_message_is_prefixed_with_the_config_position_of_the_face() {
     let error = FontValidationError {
-      font_type: FontType::Serif,
+      face: FontFace::new(FontType::Serif, 1),
       kind: FontValidationErrorKind::NotVariableFont,
     };
 
     assert_eq!(
       error.to_string(),
-      "serif: このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。"
+      "serif[1]: このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。"
     );
   }
 
@@ -963,7 +987,7 @@ mod tests {
     let bytes = sfnt_with_table(*b"MATH", math);
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
-    return validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+    return validate_font(FontFace::MATH, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
   }
 
   /// 違反が `UnreadableMathTable` 1 件だけで、読めなかったサブテーブルが `expected` であることを確かめる。
@@ -987,7 +1011,7 @@ mod tests {
     let font_ref = FontRef::new(&bytes).expect("STIX Two Math を解析できるはず");
     let mut warnings = Vec::new();
     let errors =
-      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+      validate_font(FontFace::MATH, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(errors.is_empty(), "全サブテーブルを辿っても破損は無いはず: {errors:?}");
   }
 
@@ -1037,7 +1061,7 @@ mod tests {
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     let mut warnings = Vec::new();
     let errors =
-      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+      validate_font(FontFace::MATH, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(matches!(errors.as_slice(), [FontValidationErrorKind::MissingMathTable]), "{errors:?}");
   }
 
@@ -1047,7 +1071,13 @@ mod tests {
     let font_ref = FontRef::new(&bytes).expect("テーブル 0 件の sfnt は読める");
     for &font_type in FontType::VARIANTS.iter().filter(|&&font_type| return font_type != FontType::Math) {
       let mut warnings = Vec::new();
-      let errors = validate_font(font_type, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+      let errors = validate_font(
+        FontFace::primary(font_type),
+        &config_with_axes(None),
+        &font_ref,
+        &shaping_font(&bytes),
+        &mut warnings,
+      );
       assert!(errors.is_empty(), "{font_type:?}: {errors:?}");
     }
   }
@@ -1058,7 +1088,7 @@ mod tests {
     let font_ref = FontRef::new(&bytes).expect("テーブルディレクトリは読める");
     let mut warnings = Vec::new();
     let errors =
-      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+      validate_font(FontFace::MATH, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
     assert!(
       matches!(errors.as_slice(), [FontValidationErrorKind::TableRecordOutOfRange { table }] if *table == Tag::new(b"MATH")),
       "範囲外を指す MATH を「無い」と報告しない: {errors:?}"
@@ -1120,7 +1150,7 @@ mod tests {
     let mut warnings = Vec::new();
 
     let errors =
-      validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
+      validate_font(FontFace::MATH, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
 
     assert!(errors.is_empty(), "組版から読める MATH を検証で拒否しない: {errors:?}");
   }

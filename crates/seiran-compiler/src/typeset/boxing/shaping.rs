@@ -13,7 +13,7 @@ use tracing::trace;
 use crate::{
   color::Color,
   length::Length,
-  project::FontType,
+  project::{FontFace, FontType},
   publication::{FontMetrics, Glyph, GlyphRun},
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
@@ -222,7 +222,7 @@ impl ShapedRun {
         font_size: self.run.font_size,
         text: self.run.text[byte_range].to_string(),
         glyphs,
-        font_type: self.run.font_type,
+        face: self.run.face,
         color: self.run.color,
       }),
       width: units_to_length(advance_units, self.run.font_size, self.metrics.upem),
@@ -252,7 +252,7 @@ impl ShapedRun {
         font_size: self.run.font_size,
         text: self.run.text[src.range.clone()].to_string(),
         glyphs: vec![glyph],
-        font_type: self.run.font_type,
+        face: self.run.face,
         color: self.run.color,
       }),
       width,
@@ -302,7 +302,7 @@ impl<'a> Shaper<'a> {
           self
             .fonts
             .shape_dotless_math(&mut self.buffer, &segment.text, style.font_size.to_pt(), style.script_level);
-          self.shaped_run(&segment.text, FontType::Math, style.font_size, style.color)
+          self.shaped_run(&segment.text, FontFace::MATH, style.font_size, style.color)
         } else {
           self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
         };
@@ -322,12 +322,14 @@ impl<'a> Shaper<'a> {
     color: Option<Color>,
     script_level: Option<ScriptLevel>,
   ) -> ShapedRun {
-    self.fonts.shape(font_type, &mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, font_type, font_size, color);
+    // 組むのは枠の先頭の候補
+    let face = FontFace::primary(font_type);
+    self.fonts.shape(face, &mut self.buffer, text, font_size.to_pt(), script_level);
+    return self.shaped_run(text, face, font_size, color);
   }
 
   /// 直前のシェイプが `buffer` に残したグリフ列を、`text` の計測済みの [`ShapedRun`] にする
-  fn shaped_run(&self, text: &str, font_type: FontType, font_size: Length, color: Option<Color>) -> ShapedRun {
+  fn shaped_run(&self, text: &str, face: FontFace, font_size: Length, color: Option<Color>) -> ShapedRun {
     let glyph_infos = self.buffer.glyph_infos();
     let glyph_positions = self.buffer.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
@@ -364,13 +366,13 @@ impl<'a> Shaper<'a> {
         font_size,
         text: text.to_string(),
         glyphs,
-        font_type,
+        face,
         color,
       },
-      self.fonts.metrics(font_type),
+      self.fonts.metrics(face),
     );
     trace!(
-      font_type = ?font_type,
+      face = %face,
       font_size_pt = %font_size.to_pt(),
       glyph_count = shaped.glyphs().len(),
       width_pt = %shaped.width().to_pt(),
@@ -386,7 +388,7 @@ impl<'a> Shaper<'a> {
   /// 数式フォントの MATH 定数（長さの値）の、フォントサイズ `font_size` での長さ。
   pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {
     let units = self.fonts.math_constants().constant(constant);
-    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontFace::MATH).upem);
   }
 
   /// 数式フォントの百分率の MATH 定数（`RadicalDegreeBottomRaisePercent` 等）を比にした値
@@ -397,7 +399,7 @@ impl<'a> Shaper<'a> {
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）の隅 `corner` の、ベースラインからの高さ `height` での
   /// math kern の長さ（表が無ければ 0）
   pub(super) fn math_kern(&self, gid: u32, font_size: Length, corner: MathKernCorner, height: Length) -> Length {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     #[expect(
       clippy::cast_possible_truncation,
       reason = "数式 1 つの高さのフォント単位で i32 に収まり、帯の境界との比較に端数は意味を持たない"
@@ -410,7 +412,7 @@ impl<'a> Shaper<'a> {
   /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置）の、フォントサイズ `font_size` での
   /// 長さ。`MathTopAccentAttachment` に登録が無ければ `None`
   pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Option<Length> {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     return self.fonts.math_top_accent_attachment(gid).map(|units| {
       return units_to_length(i64::from(units), font_size, upem);
     });
@@ -418,15 +420,15 @@ impl<'a> Shaper<'a> {
 
   /// 数式フォントのグリフ `gid` の送り幅の、フォントサイズ `font_size` での長さ
   pub(super) fn math_glyph_advance(&self, gid: u32, font_size: Length) -> Length {
-    let upem = self.fonts.metrics(FontType::Math).upem;
-    return units_to_length(design_units(self.fonts.glyph_advance(FontType::Math, gid)), font_size, upem);
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
+    return units_to_length(design_units(self.fonts.glyph_advance(FontFace::MATH, gid)), font_size, upem);
   }
 
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）のインクの上端と下端（グリフ自身のベースライン基準・上が正。
   /// 符号は丸めない）。インクを読めなければ `None`
   pub(super) fn math_glyph_ink(&self, gid: u32, font_size: Length) -> Option<(Length, Length)> {
-    let upem = f64::from(self.fonts.metrics(FontType::Math).upem);
-    let extents = self.fonts.glyph_extents(FontType::Math, gid)?;
+    let upem = f64::from(self.fonts.metrics(FontFace::MATH).upem);
+    let extents = self.fonts.glyph_extents(FontFace::MATH, gid)?;
     let top = f64::from(extents.y_bearing);
     let bottom = top - f64::from(extents.height);
     return Some((font_size.scale(top / upem), font_size.scale(bottom / upem)));
@@ -435,8 +437,8 @@ impl<'a> Shaper<'a> {
   /// 数式フォントのグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、フォントサイズ `font_size` での長さ。
   /// インクを読めなければ原点（`glyph_run_signed_ink` と同じく墨を持たない扱い）
   pub(super) fn math_ink_center(&self, gid: u32, font_size: Length) -> Length {
-    let upem = f64::from(self.fonts.metrics(FontType::Math).upem);
-    return self.fonts.glyph_extents(FontType::Math, gid).map_or(Length::ZERO, |extents| {
+    let upem = f64::from(self.fonts.metrics(FontFace::MATH).upem);
+    return self.fonts.glyph_extents(FontFace::MATH, gid).map_or(Length::ZERO, |extents| {
       return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / upem);
     });
   }
@@ -448,7 +450,7 @@ impl<'a> Shaper<'a> {
   /// 傾いた子ではないので、末尾の傾いたクラスタには常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
   /// `Measurer::place_scripts` が引き戻す。
   pub(super) fn add_italic_corrections(&self, shaped: ShapedRun, style: TextStyle) -> ShapedRun {
-    if shaped.run.font_type != FontType::Math || style.math_operator == Some(MathOperator::Symbol) {
+    if shaped.run.face != FontFace::MATH || style.math_operator == Some(MathOperator::Symbol) {
       return shaped;
     }
     let ShapedRun {
@@ -472,7 +474,7 @@ impl<'a> Shaper<'a> {
       return self.shape_segment(text, FontType::Math, font_size, color, script_level).into_hbox();
     }
     self.fonts.shape_flattened_accent(&mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, FontType::Math, font_size, color).into_hbox();
+    return self.shaped_run(text, FontFace::MATH, font_size, color).into_hbox();
   }
 
   /// 数式の広幅アクセントの記号 `text` を、数式フォントで横に `target` 以上へ伸ばして組んだ箱
@@ -490,7 +492,7 @@ impl<'a> Shaper<'a> {
     target: Length,
     color: Option<Color>,
   ) -> HBox {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
     let gid = match shaped.glyphs() {
       [glyph] => glyph.gid,
@@ -504,10 +506,10 @@ impl<'a> Shaper<'a> {
       font_size,
       text: text.to_string(),
       glyphs,
-      font_type: FontType::Math,
+      face: FontFace::MATH,
       color,
     };
-    return ShapedRun::measure(run, self.fonts.metrics(FontType::Math)).into_hbox();
+    return ShapedRun::measure(run, self.fonts.metrics(FontFace::MATH)).into_hbox();
   }
 
   /// 数式フォントのグリフ `gid` を横に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）。
@@ -530,7 +532,7 @@ impl<'a> Shaper<'a> {
       Stretch::Glyph(chosen) if chosen == gid => None,
       Stretch::Glyph(chosen) => Some(vec![glyph(
         chosen,
-        glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, chosen))),
+        glyph_units(design_units(self.fonts.glyph_advance(FontFace::MATH, chosen))),
       )]),
       Stretch::Assembly { parts, size } => Some(
         horizontal_assembly_advances(&parts, size)
@@ -559,7 +561,7 @@ impl<'a> Shaper<'a> {
     target: Length,
     color: Option<Color>,
   ) -> (HBox, (Length, Length)) {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     let target_units = length_to_units(target, font_size, upem);
     let staged = script_level
       .map(|level| return self.shape_segment(text, FontType::Math, font_size, None, Some(level)))
@@ -583,7 +585,7 @@ impl<'a> Shaper<'a> {
       font_size,
       text: text.to_string(),
       glyphs,
-      font_type: FontType::Math,
+      face: FontFace::MATH,
       color,
     };
     // インクを読めないグリフは墨を持たない扱い（`glyph_run_signed_ink` と同じ）で、ベースライン上に置く
@@ -612,7 +614,7 @@ impl<'a> Shaper<'a> {
         y_offset,
       };
     };
-    let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, gid)));
+    let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontFace::MATH, gid)));
     return match self.fonts.stretch_math_glyph(gid, StretchAxis::Vertical, target) {
       Stretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
       // 縦の assembly の位置はパーツのインクの下端を置く高さで、組み上がりの大きさは使わない（幅はパーツの最大）
@@ -625,7 +627,7 @@ impl<'a> Shaper<'a> {
           .map(|(index, &(gid, bottom))| {
             let ink_bottom = self
               .fonts
-              .glyph_extents(FontType::Math, gid)
+              .glyph_extents(FontFace::MATH, gid)
               .map_or(0, |extents| return design_units(extents.y_bearing - extents.height));
             let x_advance = if index == last { width } else { 0 };
             return glyph(gid, x_advance, glyph_units(bottom - ink_bottom));
@@ -649,12 +651,12 @@ impl<'a> Shaper<'a> {
     let HBoxContent::Glyphs(run) = &placed.hbox.content else {
       return None;
     };
-    if run.font_type != FontType::Math {
+    if run.face != FontFace::MATH {
       return None;
     }
     let glyphs = unit(&run.glyphs);
     let first = glyphs.first()?;
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     let rise = placed.dy + units_to_length(i64::from(first.y_offset), run.font_size, upem);
     let correction = summed_correction(glyphs, |gid| return self.fonts.math_italics_correction(gid));
     return Some(((first.gid, run.font_size, rise), units_to_length(i64::from(correction), run.font_size, upem)));
@@ -698,11 +700,11 @@ impl<'a> Shaper<'a> {
 
   /// グリフ列 1 本のインクの上端と下端（符号付き。読めないグリフはインクを持たない扱い）
   fn glyph_run_signed_ink(&self, run: &GlyphRun) -> Option<(Length, Length)> {
-    let upem = f64::from(self.fonts.metrics(run.font_type).upem);
+    let upem = f64::from(self.fonts.metrics(run.face).upem);
     let to_length = |units: f64| return run.font_size.scale(units / upem);
     let mut extent: Option<(Length, Length)> = None;
     for glyph in &run.glyphs {
-      let Some(extents) = self.fonts.glyph_extents(run.font_type, glyph.gid) else {
+      let Some(extents) = self.fonts.glyph_extents(run.face, glyph.gid) else {
         continue;
       };
       let top = f64::from(extents.y_bearing) + f64::from(glyph.y_offset);
@@ -729,7 +731,7 @@ mod tests {
   };
   use crate::{
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{boxes::HBoxContent, boxing::yakumono},
   };
@@ -759,7 +761,7 @@ mod tests {
           };
         })
         .collect(),
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       color: None,
     };
   }

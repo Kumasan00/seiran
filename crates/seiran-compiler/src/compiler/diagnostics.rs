@@ -94,7 +94,7 @@ fn compile_err(sources: &[&str]) -> CompileFailure {
   return TestProject::builder().sources(sources).build().compile_err();
 }
 
-/// `[font_configs.<font_type>]` の `variation_axes` を、フォントが持たない軸 1 つで置き換える。
+/// 本文用の `[[font_configs.<font_type>]]` の先頭の候補の `variation_axes` を、フォントが持たない軸 1 つで置き換える。
 fn set_unknown_variation_axis(table: &mut toml::value::Table, font_type: &str) {
   let font_configs = table
     .get_mut("font_configs")
@@ -102,8 +102,10 @@ fn set_unknown_variation_axis(table: &mut toml::value::Table, font_type: &str) {
     .expect("fixture config.toml は [font_configs.*] を持つはず");
   let entry = font_configs
     .get_mut(font_type)
+    .and_then(|value| return value.as_array_mut())
+    .and_then(|candidates| return candidates.first_mut())
     .and_then(|value| return value.as_table_mut())
-    .unwrap_or_else(|| panic!("fixture config.toml は [font_configs.{font_type}] を持つはず"));
+    .unwrap_or_else(|| panic!("fixture config.toml は [[font_configs.{font_type}]] を持つはず"));
   let mut axis = toml::value::Table::new();
   axis.insert("name".to_string(), toml::Value::String("zzzz".to_string()));
   axis.insert("value".to_string(), toml::Value::Float(0.0));
@@ -684,7 +686,7 @@ fn diagnostic_config_parse_toml() {
 fn diagnostic_config_removed_font_name() {
   // font_name を書いた config（未知キーとして拒否し、削除を案内する）
   let source = MemoryProjectSource::new()
-    .with_text("diagnostics/config.toml", "[font_configs.serif]\nfont_name = \"MyFont\"\nfont_path = \"a.ttf\"\n");
+    .with_text("diagnostics/config.toml", "[[font_configs.serif]]\nfont_name = \"MyFont\"\nfont_path = \"a.ttf\"\n");
   let config_path = ProjectPath::new("diagnostics/config.toml");
 
   let (result, _warnings) = project::config::load(&source, &config_path, &PathResolver::new(Path::new("diagnostics")));

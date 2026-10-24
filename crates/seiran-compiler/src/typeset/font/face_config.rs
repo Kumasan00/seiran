@@ -1,18 +1,17 @@
 //! `crate::project::FontConfig` から renderer 用の [`FontFaceConfig`] への変換。
 
 use crate::{
-  project::{FontConfigs, FontMap},
+  project::{FaceMap, FontConfigs},
   publication::FontFaceConfig,
 };
 
-/// 19 フォント種別すべての [`FontFaceConfig`]。
-pub(super) type FontFaceConfigs = FontMap<FontFaceConfig>;
+/// 全実体（19 フォント種別 × 候補）の [`FontFaceConfig`]。
+pub(super) type FontFaceConfigs = FaceMap<FontFaceConfig>;
 
 /// `crate::project::FontConfigs` から renderer 用の [`FontFaceConfigs`] を構築する。
 #[must_use]
 pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
-  return FontMap::from_fn(|font_type| {
-    let font_config = &configs[font_type];
+  return configs.map(|_, font_config| {
     return FontFaceConfig {
       font_index: font_config.font_index,
       variation_axes: font_config.variation_axes.clone(),
@@ -22,10 +21,14 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
 
 #[cfg(test)]
 mod tests {
-  use strum::VariantArray;
-
   use super::build_face_configs;
-  use crate::project::{FontConfig, FontConfigs, FontMap, FontType, ProjectPath, VariationAxis};
+  use crate::project::{FaceMap, FontConfig, FontConfigs, FontMap, ProjectPath, VariationAxis};
+
+  /// 全種別が候補 1 つで、どれも `font_config` の設定。
+  fn configs_of(font_config: &FontConfig) -> FontConfigs {
+    return FaceMap::from_slots(FontMap::from_fn(|_| return vec![font_config.clone()]))
+      .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
+  }
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {
@@ -42,10 +45,10 @@ mod tests {
 
   #[test]
   fn build_face_configs_copies_only_the_two_convertible_fields() {
-    let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(3, None));
+    let configs = configs_of(&font_config_with(3, None));
     let face_configs = build_face_configs(&configs);
-    for &font_type in FontType::VARIANTS {
-      let face_config = &face_configs[font_type];
+    for face in configs.faces() {
+      let face_config = &face_configs[face];
       assert_eq!(face_config.font_index, 3, "font_index がそのまま複製されるはず");
       assert!(face_config.variation_axes.is_none(), "variation_axes が None ならそのまま None のはず");
     }
@@ -63,16 +66,12 @@ mod tests {
         value: 100.0,
       },
     ];
-    let configs: FontConfigs = FontMap::from_fn(|_| return font_config_with(0, Some(axes.clone())));
+    let configs = configs_of(&font_config_with(0, Some(axes.clone())));
 
     let face_configs = build_face_configs(&configs);
 
-    for &font_type in FontType::VARIANTS {
-      assert_eq!(
-        face_configs[font_type].variation_axes,
-        Some(axes.clone()),
-        "{font_type:?} の軸が並び・値ともそのまま渡るはず"
-      );
+    for face in configs.faces() {
+      assert_eq!(face_configs[face].variation_axes, Some(axes.clone()), "{face} の軸が並び・値ともそのまま渡るはず");
     }
   }
 }

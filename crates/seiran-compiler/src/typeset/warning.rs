@@ -210,7 +210,7 @@ mod tests {
   use super::TypesetWarning;
   use crate::{
     length::Length,
-    project::{FontType, ProjectPath},
+    project::{FontFace, FontType, ProjectPath},
     source::SourceId,
     typeset::{breaking::OverflowAxis, font::FontWarning},
   };
@@ -224,7 +224,7 @@ mod tests {
   #[test]
   fn font_variant_forwards_severity_message_and_code() {
     let inner = FontWarning::MissingLayoutTable {
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       path: ProjectPath::new("/project/font.ttf"),
       table: "GSUB",
     };
@@ -392,7 +392,7 @@ mod tests {
   #[test]
   fn source_id_is_some_only_for_warnings_with_a_location() {
     let font = TypesetWarning::Font(FontWarning::MissingLayoutTable {
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       path: ProjectPath::new("/project/font.ttf"),
       table: "GSUB",
     });

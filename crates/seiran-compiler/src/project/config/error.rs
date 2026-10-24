@@ -3,7 +3,7 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-use crate::project::{FontType, InFile, ProjectSourceError};
+use crate::project::{FontFace, InFile, ProjectSourceError};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -59,14 +59,14 @@ pub(crate) enum ConfigValidationError {
     message: String,
   },
   /// フォントパスが見つからない
-  #[error("フォントファイルが見つかりません: {path}")]
+  #[error("{face} のフォントファイルが見つかりません: {path}")]
   #[diagnostic(
     code(project::config::validation::font_file_not_found),
     help("フォントファイルが存在し、読み取り権限があることを確認してください。")
   )]
   FontFileNotFound {
-    /// 対象のフォント種別
-    font_type: FontType,
+    /// 対象の実体（フォント種別 × 候補）
+    face: FontFace,
     /// 見つからなかったフォントファイルのパス
     path: String,
   },
