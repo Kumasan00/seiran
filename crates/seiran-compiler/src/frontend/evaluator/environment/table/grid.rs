@@ -49,10 +49,11 @@ impl Coverage {
   }
 }
 
-/// 行群（`\head` か本体）の行結合・部分罫の境界を検査する
+/// 行群（`\head` か本体）の行結合・区切り・部分罫の境界を検査する
 ///
 /// 結合は行群の最後の行を超えられない。`\head` と本体は別の行群なので、またぐ結合もここで拒否される。
-/// `rule_below` は行群の最後の行の下（枠罫の持ち場）と、次の行が `separator` を持つ境界に置けない。
+/// 境界 k（行 k と k + 1 の間）を結合セルがまたぐときは、行 k + 1 に `separator` を置けない。
+/// `rule_below` は結合の最後の行の下で判定し、それが行群の最後（枠罫の持ち場）か、次の行が `separator` を持つ境界には置けない。
 pub(super) fn check_row_group(group: &[HirTableRow], ctx: &EvalContext<'_>) -> Result<(), EvalError> {
   for (index, row) in group.iter().enumerate() {
     for cell in &row.cells {
@@ -65,26 +66,45 @@ pub(super) fn check_row_group(group: &[HirTableRow], ctx: &EvalContext<'_>) -> R
       }
     }
   }
-  for pair in group.windows(2) {
-    if let [above, below] = pair
-      && below.separator.is_some()
-      && let Some(cell) = first_rule_below(above)
+
+  // 上の検査で j + row_span <= group.len() なので、k は境界の個数（group.len() - 1）に収まる
+  let mut crossing: Vec<Option<NodeId>> = vec![None; group.len().saturating_sub(1)];
+  for (index, row) in group.iter().enumerate() {
+    for cell in &row.cells {
+      for owner in &mut crossing[index..index + cell.row_span as usize - 1] {
+        owner.get_or_insert(cell.id);
+      }
+    }
+  }
+  for (boundary, owner) in crossing.iter().enumerate() {
+    if let Some(owner) = owner
+      && let Some(row) = group.get(boundary + 1).filter(|row| return row.separator.is_some())
     {
-      return Err(EvalError::TableRuleBelowWithSeparator {
-        span: ctx.span_of(cell.id).into(),
-        separator: ctx.span_of(below.id).into(),
+      return Err(EvalError::TableSeparatorInsideRowSpan {
+        span: ctx.span_of(row.id).into(),
+        cell: ctx.span_of(*owner).into(),
       });
     }
   }
-  if let Some(cell) = group.last().and_then(first_rule_below) {
-    return Err(EvalError::TableRuleBelowOnFrameBoundary {
-      span: ctx.span_of(cell.id).into(),
-    });
+
+  for (index, row) in group.iter().enumerate() {
+    for cell in row.cells.iter().filter(|cell| return cell.rule_below) {
+      let last = index + cell.row_span as usize - 1;
+      match group.get(last + 1) {
+        None => {
+          return Err(EvalError::TableRuleBelowOnFrameBoundary {
+            span: ctx.span_of(cell.id).into(),
+          });
+        },
+        Some(next) if next.separator.is_some() => {
+          return Err(EvalError::TableRuleBelowWithSeparator {
+            span: ctx.span_of(cell.id).into(),
+            separator: ctx.span_of(next.id).into(),
+          });
+        },
+        Some(_) => {},
+      }
+    }
   }
   return Ok(());
-}
-
-/// 行の最初の `rule_below` セルを返す
-fn first_rule_below(row: &HirTableRow) -> Option<&HirTableCell> {
-  return row.cells.iter().find(|cell| return cell.rule_below);
 }

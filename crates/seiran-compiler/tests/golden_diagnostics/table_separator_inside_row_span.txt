@@ -1,0 +1,14 @@
+frontend::eval::table_separator_inside_row_span
+
+  × 行結合の内側の境界には separator を置けません
+   ╭─[tests/text/diagnostics/table_separator_inside_row_span.sei:2:6]
+ 1 │ \begin{table}
+ 2 │ \row{\cell[rowspan=2]{寸法} & 幅}
+   ·      ───────────┬──────────
+   ·                 ╰── この結合セルが境界をまたぎます
+ 3 │ \row[separator=rule]{ & 10}
+   · ─────────────┬─────────────
+   ·              ╰── この行の上の境界は結合セルの内側です
+ 4 │ \end{table}
+   ╰────
+  help: 区切りが結合セルを横切ります。separator を外すか、結合の範囲を変えてください

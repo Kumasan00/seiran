@@ -615,4 +615,69 @@ mod tests {
     assert_eq!(table.rows[0].cells.len(), 3);
     assert_eq!(table.rows[0].cells[1].content, []);
   }
+
+  #[test]
+  fn separator_inside_a_row_span_is_rejected() {
+    for source in [
+      r"\begin{table}\row{\cell[rowspan=2]{A} & B}\row[separator=rule]{ & C}\end{table}",
+      r"\begin{table}\head{\row{\cell[rowspan=2]{H} & X}\row[separator=gap]{ & Y}}\row{1 & 2}\end{table}",
+    ] {
+      let result = eval_table(source);
+
+      assert!(matches!(result, Err(EvalError::TableSeparatorInsideRowSpan { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn chained_row_spans_reject_a_separator_at_either_inner_boundary() {
+    // A は行 0–1、B は行 1–2
+    for separated in [1, 2] {
+      let rows: Vec<String> = [
+        r"\cell[rowspan=2]{A} & X",
+        r" & \cell[rowspan=2]{B}",
+        "Y & ",
+      ]
+      .iter()
+      .enumerate()
+      .map(|(i, cells)| {
+        let option = if i == separated {
+          "[separator=rule]"
+        } else {
+          ""
+        };
+        return format!(r"\row{option}{{{cells}}}");
+      })
+      .collect();
+      let source = format!(r"\begin{{table}}{}\end{{table}}", rows.concat());
+
+      let result = eval_table(&source);
+
+      assert!(matches!(result, Err(EvalError::TableSeparatorInsideRowSpan { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn separator_right_after_a_row_span_is_accepted() {
+    let result =
+      eval_table(r"\begin{table}\row{\cell[rowspan=2]{A} & B}\row{ & C}\row[separator=rule]{D & E}\end{table}");
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn rule_below_of_a_merged_cell_is_judged_at_its_last_row() {
+    let on_frame = eval_table(r"\begin{table}\row{\cell[rowspan=2, rule_below]{A} & B}\row{ & C}\end{table}");
+    let with_separator = eval_table(
+      r"\begin{table}\row{\cell[rowspan=2, rule_below]{A} & B}\row{ & C}\row[separator=gap]{D & E}\end{table}",
+    );
+    let inside = eval_table(r"\begin{table}\row{\cell[rowspan=2, rule_below]{A} & B}\row{ & C}\row{D & E}\end{table}");
+    // 結合の内側の境界で、結合と重ならない列の部分罫
+    let beside =
+      eval_table(r"\begin{table}\row{\cell[rowspan=2]{A} & \cell[rule_below]{B}}\row{ & C}\row{D & E}\end{table}");
+
+    assert!(matches!(on_frame, Err(EvalError::TableRuleBelowOnFrameBoundary { .. })), "{on_frame:?}");
+    assert!(matches!(with_separator, Err(EvalError::TableRuleBelowWithSeparator { .. })), "{with_separator:?}");
+    assert!(inside.is_ok(), "{inside:?}");
+    assert!(beside.is_ok(), "{beside:?}");
+  }
 }

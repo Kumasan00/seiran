@@ -501,6 +501,21 @@ pub(crate) enum EvalError {
     remaining: usize,
   },
 
+  /// 行結合の内側の境界（結合の 2 行目以降の行の上）に `separator` を置いた場合
+  #[error("行結合の内側の境界には separator を置けません")]
+  #[diagnostic(
+    code(frontend::eval::table_separator_inside_row_span),
+    help("区切りが結合セルを横切ります。separator を外すか、結合の範囲を変えてください")
+  )]
+  TableSeparatorInsideRowSpan {
+    /// 区切りを持つ行（`\row`）のソース位置
+    #[label("この行の上の境界は結合セルの内側です")]
+    span: SourceSpan,
+    /// 境界をまたぐ最初の結合セルのソース位置
+    #[label("この結合セルが境界をまたぎます")]
+    cell: SourceSpan,
+  },
+
   /// 表の行のセル数（`column_span` 合計）が列数と一致しない場合
   #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
   #[diagnostic(

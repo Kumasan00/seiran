@@ -211,6 +211,8 @@ pub(crate) struct HirTableRow {
   pub(crate) cells: Vec<HirTableCell>,
   /// この行の上の境界に置く区切り（`\row[separator=...]{...}`。`None` は区切りなし）
   ///
+  /// 行結合の内側の境界（結合の 2 行目以降の行の上）でも、frontend が `Some` を拒否する。
+  ///
   /// 表の最初の `\head` 行と最初の本体行は枠罫の持ち場なので、frontend が `Some` を拒否する。
   pub(crate) separator: Option<RowSeparator>,
 }
@@ -231,7 +233,8 @@ pub(crate) struct HirTableCell {
   pub(crate) row_span: u32,
   /// このセルが跨ぐ列の範囲の下に部分罫を引くか（`\cell[rule_below]`）
   ///
-  /// 表の最後の行・`\head` の最後の行・次の行が `separator` を持つ行では frontend が `true` を拒否する。
+  /// 判定は結合の最後の行の下で行い、それが表（行群）の最後の行、または次の行が `separator` を持つ行なら
+  /// frontend が `true` を拒否する。
   pub(crate) rule_below: bool,
 }
 

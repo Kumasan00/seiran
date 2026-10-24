@@ -1,0 +1,4 @@
+\begin{table}
+\row{\cell[rowspan=2]{寸法} & 幅}
+\row[separator=rule]{ & 10}
+\end{table}

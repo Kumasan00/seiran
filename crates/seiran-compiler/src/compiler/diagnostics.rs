@@ -158,6 +158,15 @@ fn diagnostic_table_rule_below_with_separator() {
 }
 
 #[test]
+fn diagnostic_table_separator_inside_row_span() {
+  // G1: 区切りが結合セルを横切らない
+  let failure = compile_err(&["tests/text/diagnostics/table_separator_inside_row_span.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_separator_inside_row_span".to_string()]);
+  assert_matches_golden("table_separator_inside_row_span", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_table_covered_slot_not_empty() {
   // G1: 覆われる位置は空の区画で書く
   let failure = compile_err(&["tests/text/diagnostics/table_covered_slot_not_empty.sei"]);
