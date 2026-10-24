@@ -46,16 +46,19 @@ pub(in crate::typeset) enum Block {
   Table {
     /// 表本体（確定した表幅と、ヘッダ・再掲ヘッダ・本体行の行断片）
     table: TableBox,
-    /// 本文幅の中での表全体の水平揃え（既定は左揃え）
+    /// 本文左端からの左インデント（引用・リストの字下げの和。外では 0）
+    indent: Length,
+    /// 本文右端からの右インデント（引用・リストの字下げの和。外では 0）
+    right_indent: Length,
+    /// 利用幅（[`usable_width`]）の中での表全体の水平揃え（既定は左揃え）
     ///
-    /// 表の自然幅は確定済み列幅の総和。利用可能幅（本文幅）の中で中央・右へ寄せる。
-    /// 全幅（flex / ratio 列で本文幅いっぱい）の表は揃えても動かない。
+    /// 表の自然幅は確定済み列幅の総和。全幅（flex 列で利用幅いっぱい）の表は揃えても動かない。
     align: Align,
   },
   /// 画像（PNG / JPEG / SVG）
   ///
   /// `width` / `height` は確定済みの描画寸法。ソースで省略された辺は
-  /// [`crate::typeset::image::resolve_image_size`] が自然寸法と段幅から埋めたうえで
+  /// [`crate::typeset::image::resolve_image_size`] が自然寸法と利用幅から埋めたうえで
   /// `typeset::boxing` がこの variant を作るので、未確定の状態はこの型に存在しない。
   Image {
     /// はみ出し警告が指す `\image` コマンド
@@ -68,7 +71,11 @@ pub(in crate::typeset) enum Block {
     height: Length,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
-    /// 本文幅の中での画像の水平揃え（既定は左揃え）
+    /// 本文左端からの左インデント（引用・リストの字下げの和。外では 0）
+    indent: Length,
+    /// 本文右端からの右インデント（引用・リストの字下げの和。外では 0）
+    right_indent: Length,
+    /// 利用幅（[`usable_width`]）の中での画像の水平揃え（既定は左揃え）
     align: Align,
   },
   /// 合成済みの単一行（行分割をかけずそのまま配置する）
@@ -92,9 +99,13 @@ pub(in crate::typeset) enum Block {
     body: HBox,
     /// 行番号（採番された行ごと、測定済み）。空なら番号なし
     numbers: Vec<MathRowNumber>,
-    /// 番号を本文右端に寄せるか（`false` なら左端）
+    /// 番号を利用幅の右端に寄せるか（`false` なら左端）
     numbers_on_right: bool,
-    /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
+    /// 本文左端からの左インデント（引用・リストの字下げの和。外では 0）
+    indent: Length,
+    /// 本文右端からの右インデント（引用・リストの字下げの和。外では 0）
+    right_indent: Length,
+    /// 利用幅（[`usable_width`]）の中での本体の水平揃え（既定は中央寄せ）
     align: Align,
   },
   /// 縦方向の伸縮アキ（glue）
@@ -152,6 +163,14 @@ impl Block {
   }
 }
 
+/// 段の幅 `column_width` から左右の字下げを引いた利用幅（段落の行もブロック要素もこの幅に組む）。
+///
+/// 字下げが段の幅を使い切る深い入れ子では 0（負の幅にしない。収まらない内容ははみ出しとして記録される）。
+#[must_use]
+pub(in crate::typeset) fn usable_width(column_width: Length, indent: Length, right_indent: Length) -> Length {
+  return (column_width - indent - right_indent).max(Length::ZERO);
+}
+
 /// 数式ブロックの行番号（測定済み）
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct MathRowNumber {
@@ -159,4 +178,20 @@ pub(in crate::typeset) struct MathRowNumber {
   pub content: HBox,
   /// 本体 Atom のベースラインからの縦オフセット（正で上方向）＝その行のベースライン
   pub dy: Length,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::usable_width;
+  use crate::length::Length;
+
+  #[test]
+  fn usable_width_subtracts_both_indents() {
+    assert_eq!(usable_width(Length::pt(100.0), Length::pt(30.0), Length::pt(10.0)), Length::pt(60.0));
+  }
+
+  #[test]
+  fn usable_width_clamps_exhausted_indents_to_zero() {
+    assert_eq!(usable_width(Length::pt(100.0), Length::pt(60.0), Length::pt(60.0)), Length::ZERO);
+  }
 }

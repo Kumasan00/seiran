@@ -191,18 +191,21 @@ impl BlockBuilder<'_> {
             width,
             height,
             target_dpi,
+            indent,
+            right_indent,
             align: Align::from(alignment),
           });
         },
         LayoutNode::Table(table) => {
           blocks.push(Block::Table {
             table: self.measurer.build_table(table, self.column_width, self.breaker),
+            indent,
+            right_indent,
             align: Align::from(alignment),
           });
         },
         LayoutNode::MathBlock(block) => {
-          let math_block = self.measurer.build_math_block(block);
-          blocks.push(math_block);
+          blocks.push(self.measurer.build_math_block(block, indent, right_indent));
         },
         LayoutNode::PageBreak => {
           blocks.push(Block::force_break());
