@@ -4637,7 +4637,7 @@ mod tests {
         right_indent: right,
         ..
       } => (*left, *right) = (pt(indent), pt(right_indent)),
-      _ => unreachable!("字下げを持つのは画像・表・数式だけ"),
+      _ => unreachable!("このヘルパは画像・表・数式のブロックだけを受け取る"),
     }
     return block;
   }
@@ -4648,7 +4648,7 @@ mod tests {
       Block::Image { align: slot, .. } | Block::Table { align: slot, .. } | Block::Math { align: slot, .. } => {
         *slot = align;
       },
-      _ => unreachable!("揃えを持つのは画像・表・数式だけ"),
+      _ => unreachable!("このヘルパは画像・表・数式のブロックだけを受け取る"),
     }
     return block;
   }

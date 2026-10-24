@@ -50,7 +50,7 @@ pub(in crate::typeset) enum Block {
     indent: Length,
     /// 本文右端からの右インデント（引用・リストの字下げの和。外では 0）
     right_indent: Length,
-    /// 利用幅（[`usable_width`]）の中での表全体の水平揃え（既定は左揃え）
+    /// 利用幅（[`usable_width`]）の中での表全体の水平揃え（ソースの表は図表として包む `VBox` の揃えで中央寄せ固定）
     ///
     /// 表の自然幅は確定済み列幅の総和。全幅（flex 列で利用幅いっぱい）の表は揃えても動かない。
     align: Align,
@@ -75,7 +75,7 @@ pub(in crate::typeset) enum Block {
     indent: Length,
     /// 本文右端からの右インデント（引用・リストの字下げの和。外では 0）
     right_indent: Length,
-    /// 利用幅（[`usable_width`]）の中での画像の水平揃え（既定は左揃え）
+    /// 利用幅（[`usable_width`]）の中での画像の水平揃え（ソースの画像は図表として包む `VBox` の揃えで中央寄せ固定）
     align: Align,
   },
   /// 合成済みの単一行（行分割をかけずそのまま配置する）
