@@ -5,13 +5,16 @@
 //! 再エクスポートしない組版中間型（`HBox` / `Line` / `PlacedHBox` / `PlacedBlock` 以外の `Placed*` /
 //! `TableBox` / `TableRowFragment` / `OutlineEntry`）を現さない。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs, path::Path};
 
 use super::{lay_out, load_fonts};
 use crate::{
   document::HeadingLevel,
   length::Length,
-  project::{FontData, FontFace, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
+  project::{
+    FaceMap, FontConfig, FontConfigs, FontData, FontFace, FontMap, FontType, MemoryProjectSource, ProjectPath,
+    ProjectSource, TextDirection, VariationAxis, config::ProjectConfig,
+  },
   publication::GlyphRun,
   semantics::{HeadingKey, LabelId, SemanticDocument},
   style::Style,
@@ -21,9 +24,67 @@ use crate::{
       AnchorId, HBox, HBoxContent, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
       PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
     },
+    font::FontSystem,
     pagination::{LaidOutDocument, OutlineEntry},
   },
 };
+
+/// `vendor/fonts/<file_name>`（ワークスペース相対）を左から右で組む、タグ・フィーチャーを持たないフォント設定
+///
+/// バリアブルフォント（ファイル名の `[wdth,wght]` 等）は全軸を既定の位置（`wght` 400・`wdth` 100）に置く — 検証が全軸の
+/// 指定を求めるため。
+pub(super) fn vendor_font_config(file_name: &str) -> FontConfig {
+  let variation_axes = file_name.split_once('[').and_then(|(_, rest)| return rest.split_once(']')).map(|(axes, _)| {
+    return axes
+      .split(',')
+      .map(|axis| {
+        let name: [u8; 4] = axis.as_bytes().try_into().expect("軸タグは 4 文字");
+        let value = match &name {
+          b"wght" => 400.0,
+          b"wdth" => 100.0,
+          _ => panic!("vendor/fonts のバリアブルフォントの軸は wght と wdth だけのはず: {axis}"),
+        };
+        return VariationAxis { name, value };
+      })
+      .collect();
+  });
+  return FontConfig {
+    font_path: ProjectPath::new(format!("vendor/fonts/{file_name}")),
+    font_index: 0,
+    variation_axes,
+    script: None,
+    language: None,
+    ot_language_tag: None,
+    direction: Some(TextDirection::LeftToRight),
+    features: None,
+  };
+}
+
+/// 本文の枠の候補を `slot`（`None` を返した枠は STIX Two Text 1 つ）、`math` を STIX Two Math にしたフォント資源を、
+/// `vendor/fonts` のバイト列から本番と同じ [`FontSystem::load`] で組む
+pub(super) fn vendor_font_system(slot: impl Fn(FontType) -> Option<Vec<FontConfig>>) -> FontSystem {
+  let configs: FontConfigs = FaceMap::from_slots(FontMap::from_fn(|font_type| {
+    if font_type == FontType::Math {
+      return vec![FontConfig {
+        script: Some(*b"math"),
+        ..vendor_font_config("STIXTwoMath-Regular.ttf")
+      }];
+    }
+    return slot(font_type).unwrap_or_else(|| return vec![vendor_font_config("STIXTwoText[wght].ttf")]);
+  }))
+  .expect("本文の枠に空の候補を渡さない限り、本文は 1 候補以上・math は 1 候補");
+  let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let mut source = MemoryProjectSource::new();
+  for face in configs.faces() {
+    let path = &configs[face].font_path;
+    let bytes = fs::read(root.join(path.as_ref())).unwrap_or_else(|error| {
+      panic!("{} を読めるはず（未取得なら tools/fetch-test-assets.sh）: {error}", path.as_ref().display())
+    });
+    source = source.with_bytes(path.as_ref(), bytes);
+  }
+  let font_data = FontData::load(&source, &configs).expect("登録したパスは読めるはず");
+  return FontSystem::load(&configs, &font_data).0.expect("vendor/fonts のフォントは検証を通るはず");
+}
 
 /// `crate::typeset::compose` と同じ経路で組版し、確定レイアウトを取り出す。
 ///

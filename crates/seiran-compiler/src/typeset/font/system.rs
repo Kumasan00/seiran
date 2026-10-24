@@ -117,11 +117,12 @@ impl FontSystem {
     self.shapers[face].shape(buffer, text, point_size, script_level);
   }
 
-  /// 本文の枠 `font_type` でテキストをシェイプし、字形列と、枠のフォントで組めなかったクラスタを返す
+  /// 本文の枠 `font_type` でテキストをシェイプし、クラスタごとに候補を選んだ字形列と、枠の字の問題を返す
   /// （`script_level` は数式のスクリプト段）。
   ///
-  /// 組むのは枠の先頭の候補。`buffer` はシェイプの作業領域で、結果は戻り値が持つ。数式フォント（`math`）の字の欠落は
-  /// 組版の前の検査（`math_glyphs::check`）が持つので、`math` はこの経路で組まない。
+  /// 先頭の候補で組めないクラスタは、同じ枠の後続の候補で組む（選び方は `fallback`）。`buffer` はシェイプの作業領域で、
+  /// 結果は戻り値が持つ。数式フォント（`math`）の字の欠落は組版の前の検査（`math_glyphs::check`）が持つので、`math` は
+  /// この経路で組まない。
   pub(in crate::typeset) fn shape_text(
     &self,
     font_type: FontType,
@@ -130,8 +131,7 @@ impl FontSystem {
     point_size: f32,
     script_level: Option<ScriptLevel>,
   ) -> ShapedText {
-    self.shapers[FontFace::primary(font_type)].shape(buffer, text, point_size, script_level);
-    return fallback::find_missing(buffer, text);
+    return fallback::shape(self.shapers.candidates(font_type), buffer, text, point_size, script_level);
   }
 
   /// 数式フォントでアクセント記号 `text` を OpenType `flac`（平たいアクセント字形）を足してシェイプし、結果のグリフ列を
@@ -158,6 +158,11 @@ impl FontSystem {
     self.shapers[FontFace::MATH].shape_dotless(buffer, text, point_size, script_level);
   }
 
+  /// 数式フォントの cmap が、字 `base` と異体字セレクタ `selector` の異体字列を写すか
+  pub(in crate::typeset) fn has_math_variation(&self, base: char, selector: char) -> bool {
+    return self.shapers[FontFace::MATH].has_variation(base, selector);
+  }
+
   /// 数式フォントの cmap が `ch` の基本の字形を持つか（`ssty`・`flac`・size variant・glyph assembly は基本の字形から
   /// 派生するので問わない）
   pub(in crate::typeset) fn has_math_glyph(&self, ch: char) -> bool {
@@ -167,6 +172,12 @@ impl FontSystem {
   /// 指定実体の基本メトリクスを返す。
   #[must_use]
   pub(crate) fn metrics(&self, face: FontFace) -> FontMetrics { return self.metrics[face]; }
+
+  /// 枠 `font_type` の全候補の基本メトリクス（候補の宣言順）
+  #[must_use]
+  pub(in crate::typeset) fn slot_metrics(&self, font_type: FontType) -> &[FontMetrics] {
+    return self.metrics.candidates(font_type);
+  }
 
   /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。
   #[must_use]

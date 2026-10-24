@@ -3,7 +3,7 @@
 //! `HarfRust` を使い、フォント設定の書字方向・スクリプト・言語・OpenType
 //! フィーチャー・バリエーション軸を反映して文字列をグリフ列へ変換する。
 
-use std::{str::FromStr, sync::OnceLock};
+use std::{ops::Range, str::FromStr, sync::OnceLock};
 
 pub(in crate::typeset) use harfrust::Buffer;
 use harfrust::{Direction, Feature, Font, GlyphId, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
@@ -185,6 +185,15 @@ impl HarfRustShaper {
       .is_some_and(|glyph| return glyph != GlyphId::NOTDEF);
   }
 
+  /// 字 `base` と異体字セレクタ `selector` の異体字列を、cmap（format 14）が .notdef 以外の字形へ写すか（既定の異体字列は
+  /// 基底の字形を写す）
+  pub(super) fn has_variation(&self, base: char, selector: char) -> bool {
+    return ShaperFont::new(&self.font).variation_glyph(u32::from(base), u32::from(selector)).is_some();
+  }
+
+  /// 設定で明示した書字方向（`None` は入力から判定する）
+  pub(super) fn direction(&self) -> Option<Direction> { return self.direction; }
+
   /// [`TextDirection`] を `harfrust::Direction` に変換します。
   fn to_harfrust_direction(direction: TextDirection) -> Direction {
     return match direction {
@@ -202,7 +211,26 @@ impl HarfRustShaper {
   /// テーブルのサイズ依存トラッキングに使われ、0 以下なら `harfrust` の既定値 12pt になる。
   pub(super) fn shape(&self, buffer: &mut Buffer, text: &str, point_size: f32, script_level: Option<ScriptLevel>) {
     let (features, plan) = self.level_shaping(script_level);
-    self.shape_with(buffer, text, point_size, features, plan);
+    self.shape_with(buffer, text, 0..text.len(), self.direction, point_size, features, plan);
+  }
+
+  /// `text` の区間 `span` だけを、区間の前後の文字列を文脈として書字方向 `direction` でシェイピングする（段
+  /// `script_level` は [`Self::shape`] と同じ）。字形のクラスタは区間の先頭を 0 とするバイト位置
+  ///
+  /// 先頭の候補で組めなかった区間を代替の候補で組み直すのに使う。書字方向は先頭の候補の実効方向に揃え、スクリプト・言語・
+  /// フィーチャー・軸はこの候補自身の設定のまま組む。呼び元は、この候補が書字方向を明示していれば `direction` と同じで
+  /// あることを確かめてから呼ぶ。
+  pub(super) fn shape_span(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    span: Range<usize>,
+    direction: Direction,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    let (features, plan) = self.level_shaping(script_level);
+    self.shape_with(buffer, text, span, Some(direction), point_size, features, plan);
   }
 
   /// [`Self::shape`] の段 `script_level` の設定に `flac` を足してシェイピングする（フォントが `flac` を持たなければ字形は
@@ -243,7 +271,7 @@ impl HarfRustShaper {
     let (features, _) = self.level_shaping(script_level);
     let mut with_feature = features.to_vec();
     with_feature.push(Feature::new(tag, 1, 0..usize::MAX));
-    self.shape_with(buffer, text, point_size, &with_feature, None);
+    self.shape_with(buffer, text, 0..text.len(), self.direction, point_size, &with_feature, None);
   }
 
   /// 段 `script_level` のフィーチャーとプラン（`None` は display / text 段で、設定のフィーチャーのまま）
@@ -260,28 +288,37 @@ impl HarfRustShaper {
     };
   }
 
-  /// `buffer` を空にして `text` を詰め、`features` と `plan` でシェイピングする（`plan` が `None` なら harfrust が
-  /// 呼び出しごとに作る）
+  /// `buffer` を空にして `text` の区間 `span` を詰め（前後の文字列は文脈）、書字方向 `direction`（`None` は入力から判定）・
+  /// `features`・`plan` でシェイピングする（`plan` が `None` なら harfrust が呼び出しごとに作る）
+  #[expect(
+    clippy::too_many_arguments,
+    reason = "区間・書字方向・段のフィーチャーとプランは呼び出し経路ごとに別の値で、まとめる型に依存する処理が無い"
+  )]
   fn shape_with(
     &self,
     buffer: &mut Buffer,
     text: &str,
+    span: Range<usize>,
+    direction: Option<Direction>,
     point_size: f32,
     features: &[Feature],
     plan: Option<&ShapePlan>,
   ) {
     buffer.clear();
-    if let Some(direction) = self.direction {
+    if let Some(direction) = direction {
       buffer.set_direction(direction);
     }
     buffer.set_script(self.script);
     buffer.set_language(self.language.clone());
-    buffer.push_str(text);
+    buffer.set_pre_context(&text[..span.start]);
+    buffer.push_str(&text[span.clone()]);
+    buffer.set_post_context(&text[span.end..]);
     buffer.guess_segment_properties();
     let options = ShapeOptions::new().plan(plan).point_size(Some(point_size)).features(features);
     harfrust::shape(&ShaperFont::new(&self.font), buffer, options).expect(
       "冒頭の clear で未シェイプ、guess_segment_properties で書字方向は決まり、プランは書字方向とスクリプトを両方明示した \
-       ときだけ作られ同じ値を buffer に設定済みなので、ShapeError のどの場合にも当たらない",
+       ときだけ作られ同じ値を buffer に設定済み（区間を組み直す shape_span の書字方向は、明示した書字方向と等しいことを呼び元が \
+       確かめている）なので、ShapeError のどの場合にも当たらない",
     );
   }
 

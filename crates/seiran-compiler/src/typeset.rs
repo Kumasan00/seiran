@@ -142,13 +142,14 @@ fn load_fonts(
 
 /// 意味解析の成果物を確定レイアウトへ組版する（`typeset` phase の前半）。
 ///
-/// 数式フォントの字の欠落が見つかっても組版を続け、本文の枠の字の欠落と合わせて報告する。
+/// 数式フォントの字の欠落が見つかっても組版を続け、本文の枠の字の欠落と合わせて報告する。成功したときの警告は、異体字列の
+/// 代替（数式の文書順 → 本文の要素の位置順）→ 配置由来の順。
 ///
 /// # Errors
 ///
 /// 画像の読込・デコード・自然寸法の検証に失敗した場合はその全件を返す（組版に進まないので字の欠落は報告しない）。
-/// 文書が使った字がフォントに無かった場合は、数式フォントの欠落（文書順）→ 本文の枠の欠落（要素の位置順、生成内容は
-/// その後ろ）の全件を返す。字の欠落が無く脚注のページ単位採番が収束しなかった場合は、その失敗を返す。
+/// 文書が使った字がフォントに無かったか、書字方向の違う代替の候補を使おうとした場合は、数式フォントの欠落（文書順）→
+/// 本文の枠の欠落・方向の不一致（要素の位置順、生成内容はその後ろ）の全件を返す。字の欠落が無く脚注のページ単位採番が収束しなかった場合は、その失敗を返す。
 fn lay_out(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
@@ -157,10 +158,11 @@ fn lay_out(
   font_resources: &FontSystem,
   document: &SemanticDocument,
 ) -> Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError> {
-  let math_glyphs = math_glyphs::check(
+  let (math_glyphs, math_warnings) = math_glyphs::check(
     document.hir(),
     style,
     &|ch| return font_resources.has_math_glyph(ch),
+    &|base, selector| return font_resources.has_math_variation(base, selector),
     &config.font_configs[FontFace::MATH].font_path,
   );
   let image_paths = image::collect_image_paths(document.hir());
@@ -172,9 +174,14 @@ fn lay_out(
     Ok(()) => Vec::new(),
     Err(failures) => failures.into_iter().map(TextGlyphError::Math).collect(),
   };
-  glyph_errors.extend(ctx.glyph_issues.report(document.hir().source_map(), &config.font_configs));
+  let (text_errors, text_warnings) = ctx.glyph_issues.report(document.hir().source_map(), &config.font_configs);
+  glyph_errors.extend(text_errors);
   if let Some(failures) = Failures::from_vec(glyph_errors) {
     return Err(ComposeError::Glyphs(failures));
   }
-  return laid_out.map_err(|error| return ComposeError::Typeset(Failures::single(error)));
+  let (laid_out, layout_warnings) = laid_out.map_err(|error| return ComposeError::Typeset(Failures::single(error)))?;
+  let mut warnings = math_warnings;
+  warnings.extend(text_warnings);
+  warnings.extend(layout_warnings);
+  return Ok((laid_out, warnings));
 }

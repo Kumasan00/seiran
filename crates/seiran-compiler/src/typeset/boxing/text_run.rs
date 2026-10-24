@@ -446,7 +446,8 @@ mod tests {
         face: FontFace::primary(FontType::Serif),
         color: None,
       },
-      METRICS,
+      vec![0; text.chars().count()],
+      vec![METRICS],
     );
   }
 
@@ -544,7 +545,8 @@ mod tests {
         face: FontFace::primary(FontType::Serif),
         color: None,
       },
-      METRICS,
+      vec![0; 3],
+      vec![METRICS],
     );
   }
 
@@ -614,7 +616,8 @@ mod tests {
         face: FontFace::primary(FontType::JapaneseSerif),
         color: None,
       },
-      METRICS,
+      vec![0; glyphs.len()],
+      vec![METRICS],
     );
   }
 
