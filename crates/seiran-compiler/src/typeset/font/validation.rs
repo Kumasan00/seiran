@@ -138,17 +138,6 @@ pub(super) enum FontValidationErrorKind {
     /// 最大値
     max: Fixed,
   },
-  /// テーブルディレクトリのレコードがタグの昇順に並んでいないため、組版が使うシェイピング用フォント
-  /// （レコードを二分探索する）からテーブルを引けない。
-  #[error("テーブルディレクトリがタグの昇順に並んでいないため、{table} テーブルを参照できません。")]
-  #[diagnostic(
-    code(typeset::font::validation::unsorted_table_directory),
-    help("OpenType 仕様どおりテーブルレコードをタグ順に並べ直したフォントファイルを使ってください。")
-  )]
-  UnsortedTableDirectory {
-    /// 参照できなかったテーブルのタグ
-    table: Tag,
-  },
   /// 数式フォントに OpenType MATH テーブルが無い。
   #[error("数式フォントに OpenType MATH テーブルがありません。")]
   #[diagnostic(
@@ -393,9 +382,8 @@ fn has_table_record(font_ref: &FontRef<'_>, tag: Tag) -> bool {
 
 /// 数式フォントの MATH テーブルを、全サブテーブルのオフセットと件数どおりの配列の長さまで辿って検証する。
 ///
-/// MATH は組版が値を読むのと同じシェイピング用フォントのテーブル（`tables`）から読む。`FontRef` は
-/// タグ順でないテーブルディレクトリを線形探索で引くが、シェイピング用フォントは二分探索しかしないので、
-/// `FontRef` で読めても組版からは読めないことがある。
+/// MATH は組版が値を読むのと同じシェイピング用フォントのテーブル（`tables`）から読むので、ここを通った
+/// MATH は `FontRef` とテーブルの引き方が違っても組版から読める。
 ///
 /// read-fonts のグリフ単位の参照（`MathItalicsCorrectionInfo::correction` / `MathKernInfo::kern` /
 /// `MathVariants::glyph_construction` 等）は読み込みエラーを `None` へ畳み、件数で長さが決まる配列は
@@ -405,8 +393,7 @@ fn has_table_record(font_ref: &FontRef<'_>, tag: Tag) -> bool {
 /// # Errors
 ///
 /// MATH が無ければ [`FontValidationErrorKind::MissingMathTable`]、レコードがファイル範囲外を指せば
-/// [`FontValidationErrorKind::TableRecordOutOfRange`]、ディレクトリがタグ順でなければ
-/// [`FontValidationErrorKind::UnsortedTableDirectory`]、いずれかのサブテーブルを読めなければ最初に見つけた
+/// [`FontValidationErrorKind::TableRecordOutOfRange`]、いずれかのサブテーブルを読めなければ最初に見つけた
 /// 1 件を [`FontValidationErrorKind::UnreadableMathTable`] で返す。スクリプトの縮小率が正でなければ
 /// [`FontValidationErrorKind::NonPositiveScaleDown`]。罫の太さが負なら [`FontValidationErrorKind::NegativeRuleThickness`]。
 fn check_math_table<'a>(
@@ -417,13 +404,9 @@ fn check_math_table<'a>(
     return Err(FontValidationErrorKind::MissingMathTable);
   }
   let math = match tables.math() {
-    // レコードがあるのに `TableIsMissing` なのは、レコードの範囲がファイルに収まっていないか、二分探索で
-    // レコードに届かない（ディレクトリがタグ順でない）かのどちらか。後者なら線形探索の `FontRef` は引ける
+    // レコードがあるのに `TableIsMissing` なのは、レコードの範囲がファイルに収まっていないときだけ
     Err(ReadError::TableIsMissing(_)) => {
-      return Err(match font_ref.math() {
-        Err(ReadError::TableIsMissing(_)) => FontValidationErrorKind::TableRecordOutOfRange { table: Math::TAG },
-        _ => FontValidationErrorKind::UnsortedTableDirectory { table: Math::TAG },
-      });
+      return Err(FontValidationErrorKind::TableRecordOutOfRange { table: Math::TAG });
     },
     read => complete("MATH", read)?,
   };
@@ -1120,9 +1103,9 @@ mod tests {
   }
 
   #[test]
-  fn math_in_an_unsorted_table_directory_is_rejected() {
-    // レコードが MATH → AAAA の順（タグ昇順でない）。FontRef は線形探索で MATH を見つけるが、
-    // 組版が MATH を読むシェイピング用フォントは二分探索なので見つけられない
+  fn math_in_an_unsorted_table_directory_is_accepted() {
+    // レコードが MATH → AAAA の順（タグ昇順でない）。組版が MATH を読むシェイピング用フォントも
+    // タグ順でないディレクトリから MATH を引けるので、検証は通す
     let math = math_table(&EMPTY_GLYPH_INFO, &EMPTY_VARIANTS);
     let math_len = u32::try_from(math.len()).unwrap();
     let mut bytes = sfnt_header(2);
@@ -1139,9 +1122,6 @@ mod tests {
     let errors =
       validate_font(FontType::Math, &config_with_axes(None), &font_ref, &shaping_font(&bytes), &mut warnings);
 
-    assert!(
-      matches!(errors.as_slice(), [FontValidationErrorKind::UnsortedTableDirectory { table }] if *table == Tag::new(b"MATH")),
-      "組版から読めない MATH を検証で通さない: {errors:?}"
-    );
+    assert!(errors.is_empty(), "組版から読める MATH を検証で拒否しない: {errors:?}");
   }
 }
