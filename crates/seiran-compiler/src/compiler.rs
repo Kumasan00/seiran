@@ -227,13 +227,16 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 
 /// `typeset::compose` の失敗を表示可能な診断の集合にする。
 ///
-/// ソース位置を持つのは数式フォントの字の欠落だけなので、それにだけ帰属するソースの本文を添える。
+/// ソース位置を持ちうるのは字の欠落だけなので、そのうち要素に帰属するものにだけ、そのソースの本文を添える。
 fn attribute_compose_error(error: ComposeError, sources: &SourceSet) -> CompileFailure {
   return match error {
     ComposeError::Typeset(failures) => CompileFailure::from(failures),
-    ComposeError::MissingMathGlyphs(failures) => {
-      CompileFailure::from(failures.map(|error| return SourceDiagnostic::attach(sources, error.source_id(), error)))
-    },
+    ComposeError::Glyphs(failures) => CompileFailure::from_boxed(failures.map(|error| -> BoxedDiagnostic {
+      return match error.source_id() {
+        Some(source_id) => Box::new(SourceDiagnostic::attach(sources, source_id, error)),
+        None => Box::new(error),
+      };
+    })),
   };
 }
 

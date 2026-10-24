@@ -490,6 +490,90 @@ fn diagnostic_missing_math_glyph() {
   assert_matches_golden("missing_math_glyph", &render_failure(failure));
 }
 
+/// `failure` のうち `code` を持つ診断を主診断から順に並べる。
+fn diagnostics_with_code<'a>(failure: &'a CompileFailure, code: &str) -> Vec<&'a (dyn Diagnostic + 'static)> {
+  return failure
+    .diagnostics()
+    .filter(|diagnostic| return diagnostic.code().is_some_and(|actual| return actual.to_string() == code))
+    .collect();
+}
+
+#[test]
+fn diagnostic_missing_text_glyph() {
+  // 本文の serif 枠（STIX Two Text）に無いタイ文字を、見出し 1 箇所・段落 2 箇所（別の字）と別ソースの段落 1 箇所で使う。
+  // fixture の style は目次・走り文を出さないので、生成内容の分は無い
+  let path_a = "tests/text/diagnostics/missing_text_glyph_a.sei";
+  let path_b = "tests/text/diagnostics/missing_text_glyph_b.sei";
+  let failure = compile_err(&[path_a, path_b]);
+
+  assert_eq!(codes(&failure), vec!["typeset::font::missing_glyph".to_string(); 4]);
+  let located: Vec<(usize, String)> = failure
+    .diagnostics()
+    .map(|diagnostic| {
+      assert!(diagnostic.source_code().is_some(), "要素の位置の本文を添えるはず: {diagnostic}");
+      let label = diagnostic.labels().and_then(|mut labels| return labels.next()).expect("要素の位置を指すはず");
+      return (label.offset(), diagnostic.to_string());
+    })
+    .collect();
+  let source_a = fixture_text(path_a);
+  let heading = source_a.find(r"\section").expect("fixture に含まれるはず");
+  let paragraph = source_a.find("本文").expect("fixture に含まれるはず");
+  assert_eq!(
+    located.iter().map(|(offset, _)| return *offset).collect::<Vec<_>>(),
+    vec![heading, paragraph, paragraph, 0],
+    "要素の開始位置を文書順に指すはず: {located:?}"
+  );
+  assert!(located[1].1.contains("「ก」(U+0E01)"), "{located:?}");
+  assert!(located[2].1.contains("「ข」(U+0E02)"), "同じ段落の 2 字目も別件で報告するはず: {located:?}");
+  assert_matches_golden("missing_text_glyph", &render_failure(failure));
+}
+
+#[test]
+fn missing_glyph_in_generated_text_names_the_generator() {
+  // 目次のリーダーは見出しの字ではなく目次が生成した文字列なので、ソース位置を持たず生成元を名乗る
+  let failure = TestProject::builder()
+    .source_text("\\section{導入}\n\n本文。\n")
+    .style_toml(|table| {
+      test_support::set(table, "toc", "enabled", true);
+      test_support::set(table, "toc", "leader", "ก");
+    })
+    .build()
+    .compile_err();
+
+  let missing = diagnostics_with_code(&failure, "typeset::font::missing_glyph");
+  assert_eq!(missing.len(), 1, "繰り返したリーダーの字も 1 件にまとまるはず: {:?}", codes(&failure));
+  assert!(missing[0].source_code().is_none(), "生成内容はソースの本文を添えないはず");
+  assert_eq!(missing[0].labels().map_or(0, Iterator::count), 0, "位置を捏造しないはず");
+  let message = missing[0].to_string();
+  assert!(message.contains("目次"), "生成元を名乗るはず: {message}");
+}
+
+#[test]
+fn missing_glyph_is_reported_once_across_footnote_passes() {
+  // ページ単位採番は本文パスを 2 回以上回すが、同じ要素の同じ欠字は 1 件
+  let failure = TestProject::builder()
+    .source_text("本文\\footnote{脚注の ก。}の段落。\n")
+    .style_toml(|table| test_support::set(table, "footnote", "numbering", "per_page"))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::font::missing_glyph".to_string()]);
+}
+
+#[test]
+fn math_and_text_missing_glyphs_are_reported_together() {
+  // 数式の欠字（事前検査）があっても組版を続け、本文の欠字もまとめて報告する
+  let failure = TestProject::builder().source_text("数式 $ก$ と本文 ก。\n").build().compile_err();
+
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "typeset::math::missing_glyph",
+      "typeset::font::missing_glyph"
+    ]
+  );
+}
+
 #[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
   // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる。

@@ -5,7 +5,7 @@
 //! 高さ・深さをそのまま写す — 同じフォント種別・同じフォントサイズなので、メトリクスから計算し直しても
 //! 同じ値になる。引数にメトリクスもフォントサイズも取らないので、計算し直す材料が呼び出し側に無い。
 
-use std::{iter, ops::Range};
+use std::{iter, mem, ops::Range};
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner, StretchAxis};
 use tracing::trace;
@@ -18,9 +18,10 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem, ScriptLevel, ScriptScale, Stretch},
+    font::{self, Buffer, Finding, FontSystem, ScriptLevel, ScriptScale, Stretch},
     lowering::{MathOperator, TextStyle},
     observe,
+    text_glyphs::{GlyphIssue, GlyphIssues, GlyphOrigin, IssueKind},
   },
 };
 
@@ -66,25 +67,7 @@ fn horizontal_assembly_advances(parts: &[(u32, i64)], size: i64) -> Vec<(u32, i6
   return parts.iter().zip(ends).map(|(&(gid, position), end)| return (gid, end - position)).collect();
 }
 
-/// グリフごとのクラスタ開始位置 `clusters`（グリフ順）から、各グリフが対応する元テキストの範囲を出す。
-///
-/// 範囲はグリフが属するクラスタ全体 — 開始位置から、それより後ろで始まるクラスタの最小の開始位置
-/// （無ければ `text_len`）まで。グリフ順に依存しないので右から左（クラスタ降順）でも範囲は逆転しない。
-/// harfrust はクラスタ開始位置を文字の先頭バイトに置くので、範囲の両端は文字境界に乗る。
-fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
-  let mut starts = clusters.to_vec();
-  starts.sort_unstable();
-  starts.dedup();
-  return clusters
-    .iter()
-    .map(|&start| {
-      let end = starts.get(starts.partition_point(|&other| return other <= start)).copied().unwrap_or(text_len);
-      return start..end;
-    })
-    .collect();
-}
-
-/// 2 つの字形が同じクラスタに属するか（`cluster_ranges` が各字形へクラスタ全体の範囲を入れる）
+/// 2 つの字形が同じクラスタに属するか（`font::shaped_glyphs` が各字形へクラスタ全体の範囲を入れる）
 fn same_cluster(left: &Glyph, right: &Glyph) -> bool { return left.range == right.range; }
 
 /// 字形列（クラスタ 1 つなど）のイタリック補正（フォント単位）— 構成字形の `correction(gid)` の和
@@ -263,20 +246,33 @@ impl ShapedRun {
 }
 
 /// シェーピングだけを行う部品（[`FontSystem`] と再利用バッファ）
+///
+/// 本文の枠で組めなかった字は、いま組んでいる要素か生成元（`origin`）を添えて `issues` へ積む。
 pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
   fonts: &'a FontSystem,
+  /// 組めなかった字の収集器（組版全体で共有）
+  issues: &'a GlyphIssues,
+  /// いま組んでいる要素か生成元
+  origin: GlyphOrigin,
   /// シェイピングに再利用する `harfrust` バッファ
   buffer: Buffer,
 }
 
 impl<'a> Shaper<'a> {
-  /// [`FontSystem`] から新しい `Shaper` を作る
-  pub(in crate::typeset) fn new(fonts: &'a FontSystem) -> Self {
+  /// [`FontSystem`] と収集器 `issues` から、起点 `origin` で組む `Shaper` を作る
+  pub(in crate::typeset) fn new(fonts: &'a FontSystem, issues: &'a GlyphIssues, origin: GlyphOrigin) -> Self {
     return Shaper {
       fonts,
+      issues,
+      origin,
       buffer: Buffer::new(),
     };
+  }
+
+  /// 以後に組む字の起点を `origin` にし、それまでの起点を返す（組み終えたら呼び元が戻す）
+  pub(super) fn set_origin(&mut self, origin: GlyphOrigin) -> GlyphOrigin {
+    return mem::replace(&mut self.origin, origin);
   }
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
@@ -302,7 +298,7 @@ impl<'a> Shaper<'a> {
           self
             .fonts
             .shape_dotless_math(&mut self.buffer, &segment.text, style.font_size.to_pt(), style.script_level);
-          self.shaped_run(&segment.text, FontFace::MATH, style.font_size, style.color)
+          self.math_run(&segment.text, style.font_size, style.color)
         } else {
           self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
         };
@@ -322,45 +318,56 @@ impl<'a> Shaper<'a> {
     color: Option<Color>,
     script_level: Option<ScriptLevel>,
   ) -> ShapedRun {
+    if font_type == FontType::Math {
+      self.fonts.shape(FontFace::MATH, &mut self.buffer, text, font_size.to_pt(), script_level);
+      return self.math_run(text, font_size, color);
+    }
+    let shaped = self.fonts.shape_text(font_type, &mut self.buffer, text, font_size.to_pt(), script_level);
+    for finding in shaped.findings {
+      match finding {
+        Finding::Missing { cluster } => self.issues.record(GlyphIssue {
+          origin: self.origin,
+          font_type,
+          cluster: text[cluster].to_string(),
+          kind: IssueKind::Missing,
+        }),
+      }
+    }
     // 組むのは枠の先頭の候補
-    let face = FontFace::primary(font_type);
-    self.fonts.shape(face, &mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, face, font_size, color);
+    return self.shaped_run(text, shaped.glyphs, FontFace::primary(font_type), font_size, color);
   }
 
-  /// 直前のシェイプが `buffer` に残したグリフ列を、`text` の計測済みの [`ShapedRun`] にする
-  fn shaped_run(&self, text: &str, face: FontFace, font_size: Length, color: Option<Color>) -> ShapedRun {
-    let glyph_infos = self.buffer.glyph_infos();
-    let glyph_positions = self.buffer.glyph_positions();
-    let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
-    let clusters: Vec<usize> = glyph_infos.iter().map(|glyph_info| return glyph_info.cluster as usize).collect();
-    let ranges = cluster_ranges(&clusters, text.len());
-    for (i, ((glyph_info, glyph_position), range)) in
-      glyph_infos.iter().zip(glyph_positions.iter()).zip(ranges).enumerate()
-    {
+  /// 直前に数式フォントで `text` をシェイプした `buffer` の字形列を、計測済みの [`ShapedRun`] にする
+  ///
+  /// 数式フォントの字の欠落は組版の前の検査（`math_glyphs::check`）が持つので、ここでは問わない。
+  fn math_run(&self, text: &str, font_size: Length, color: Option<Color>) -> ShapedRun {
+    return self.shaped_run(text, font::shaped_glyphs(&self.buffer, text), FontFace::MATH, font_size, color);
+  }
+
+  /// 実体 `face` で `text` を組んだ字形列 `glyphs` を、計測済みの [`ShapedRun`] にする
+  fn shaped_run(
+    &self,
+    text: &str,
+    glyphs: Vec<Glyph>,
+    face: FontFace,
+    font_size: Length,
+    color: Option<Color>,
+  ) -> ShapedRun {
+    for (i, glyph) in glyphs.iter().enumerate() {
       // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
       // 単独の量として取り出す経路は無いので、確定値をそのまま出す
       trace!(
         glyph_index = i,
-        glyph_id = glyph_info.glyph_id,
-        range_start = range.start,
-        range_end = range.end,
-        x_advance_units = glyph_position.x_advance,
-        y_advance_units = glyph_position.y_advance,
-        x_offset_units = glyph_position.x_offset,
-        y_offset_units = glyph_position.y_offset,
+        glyph_id = glyph.gid,
+        range_start = glyph.range.start,
+        range_end = glyph.range.end,
+        x_advance_units = glyph.x_advance,
+        y_advance_units = glyph.y_advance,
+        x_offset_units = glyph.x_offset,
+        y_offset_units = glyph.y_offset,
         "グリフをシェーピング"
       );
-      glyphs.push(Glyph {
-        gid: glyph_info.glyph_id,
-        range,
-        x_advance: glyph_position.x_advance,
-        y_advance: glyph_position.y_advance,
-        x_offset: glyph_position.x_offset,
-        y_offset: glyph_position.y_offset,
-      });
     }
-
     let shaped = ShapedRun::measure(
       GlyphRun {
         font_size,
@@ -474,7 +481,7 @@ impl<'a> Shaper<'a> {
       return self.shape_segment(text, FontType::Math, font_size, color, script_level).into_hbox();
     }
     self.fonts.shape_flattened_accent(&mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, FontFace::MATH, font_size, color).into_hbox();
+    return self.math_run(text, font_size, color).into_hbox();
   }
 
   /// 数式の広幅アクセントの記号 `text` を、数式フォントで横に `target` 以上へ伸ばして組んだ箱
@@ -721,13 +728,8 @@ impl<'a> Shaper<'a> {
 
 #[cfg(test)]
 mod tests {
-  use std::{fs, ops::Range, path::Path};
-
-  use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
-
   use super::{
-    ShapedRun, add_italic_corrections_to, cluster_ranges, first_cluster, horizontal_assembly_advances, last_cluster,
-    last_glyph,
+    ShapedRun, add_italic_corrections_to, first_cluster, horizontal_assembly_advances, last_cluster, last_glyph,
   };
   use crate::{
     length::Length,
@@ -845,88 +847,6 @@ mod tests {
 
     assert!(ascending.is_in_logical_order(), "左から右のクラスタ昇順は論理順");
     assert!(!reversed.is_in_logical_order(), "右から左のクラスタ降順は論理順ではない");
-  }
-
-  /// `vendor/fonts/<file_name>` を harfrust のフォントとして読む。
-  fn vendor_font(file_name: &str) -> Font {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts").join(file_name);
-    let bytes = fs::read(&path).expect("vendor/fonts のフォントを読めるはず（未取得なら tools/fetch-test-assets.sh）");
-    return Font::new(bytes, 0).expect("vendor/fonts のフォントは sfnt として読めるはず");
-  }
-
-  /// `text` を書字方向 `direction` でシェイプし、[`cluster_ranges`] でグリフごとの範囲を出す。
-  fn shaped_ranges(font: &Font, text: &str, direction: Direction) -> Vec<Range<usize>> {
-    let mut buffer = Buffer::new();
-    buffer.set_direction(direction);
-    buffer.push_str(text);
-    buffer.guess_segment_properties();
-    harfrust::shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new()).expect("シェイプは成功するはず");
-    let clusters: Vec<usize> = buffer.glyph_infos().iter().map(|info| return info.cluster as usize).collect();
-    return cluster_ranges(&clusters, text.len());
-  }
-
-  #[test]
-  fn cluster_ranges_keep_logical_ranges_for_right_to_left_order() {
-    assert_eq!(cluster_ranges(&[2, 1, 0], 3), vec![2..3, 1..2, 0..1], "表示順が降順でも範囲は逆転しない");
-  }
-
-  #[test]
-  fn cluster_ranges_give_every_glyph_of_a_cluster_the_whole_cluster() {
-    assert_eq!(cluster_ranges(&[0, 0, 5], 6), vec![0..5, 0..5, 5..6], "同じクラスタの 2 グリフは同じ範囲");
-    assert_eq!(cluster_ranges(&[5, 0, 0], 6), vec![5..6, 0..5, 0..5], "右から左でも同じクラスタは同じ範囲");
-  }
-
-  #[test]
-  fn cluster_ranges_of_a_many_to_one_cluster_span_all_its_chars() {
-    assert_eq!(
-      cluster_ranges(&[0, 6, 9], 12),
-      vec![0..6, 6..9, 9..12],
-      "2 文字を 1 グリフにしたクラスタは 2 文字ぶん"
-    );
-  }
-
-  #[test]
-  fn cluster_ranges_of_no_glyphs_is_empty() {
-    assert!(cluster_ranges(&[], 0).is_empty(), "グリフが無ければ範囲も無い");
-  }
-
-  #[test]
-  fn shaped_combining_marks_share_the_cluster_range_in_both_directions() {
-    let font = vendor_font("STIXTwoText[wght].ttf");
-    let text = "a\u{308}\u{301}b";
-
-    let left_to_right = shaped_ranges(&font, text, Direction::LeftToRight);
-    let right_to_left = shaped_ranges(&font, text, Direction::RightToLeft);
-
-    // STIX Two Text は a + U+0308 を合成済みの ä にし、U+0301 を別グリフで重ねる（2 グリフ・1 クラスタ）
-    assert_eq!(left_to_right, vec![0..5, 0..5, 5..6]);
-    assert_eq!(right_to_left, vec![5..6, 0..5, 0..5]);
-  }
-
-  #[test]
-  fn shaped_right_to_left_latin_keeps_one_char_per_glyph() {
-    let font = vendor_font("STIXTwoText[wght].ttf");
-
-    let ranges = shaped_ranges(&font, "abc", Direction::RightToLeft);
-
-    assert_eq!(ranges, vec![2..3, 1..2, 0..1], "表示順で c, b, a");
-  }
-
-  #[test]
-  fn shaped_composed_kana_covers_both_chars() {
-    let font = vendor_font("NotoSerifJP[wght].ttf");
-    let text = "か\u{3099}き」";
-
-    let ranges = shaped_ranges(&font, text, Direction::LeftToRight);
-
-    // Noto Serif JP は か + 結合濁点を 1 グリフ「が」に合成する（2 文字・1 グリフ）
-    assert_eq!(ranges, vec![0..6, 6..9, 9..12]);
-    assert!(
-      ranges
-        .iter()
-        .all(|range| return text.is_char_boundary(range.start) && text.is_char_boundary(range.end)),
-      "範囲の両端は文字境界に乗るはず"
-    );
   }
 
   /// 送り幅 500 のグリフを `gids` の順に並べる

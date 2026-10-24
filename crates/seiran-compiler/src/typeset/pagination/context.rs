@@ -5,7 +5,7 @@ use crate::{
   style::{PageNumberingStyle, Style},
   typeset::{
     boxes::Page, breaking::KnuthPlassBreaker, font::FontSystem, geometry::PreparedGeometry, lowering::HeadingRecord,
-    pagination::page_values::BodyPageValues,
+    pagination::page_values::BodyPageValues, text_glyphs::GlyphIssues,
   },
 };
 
@@ -21,6 +21,8 @@ pub(in crate::typeset) struct TypesetContext<'a> {
   pub(super) geometry: &'a PreparedGeometry,
   /// 全段が使う行分割アルゴリズム（段落全体最適の Knuth–Plass）
   pub(super) breaker: KnuthPlassBreaker,
+  /// 全段のシェーピングが組めなかった字の収集器（組版を終えてから診断へ変える）
+  pub(in crate::typeset) glyph_issues: GlyphIssues,
 }
 
 impl<'a> TypesetContext<'a> {
@@ -37,6 +39,7 @@ impl<'a> TypesetContext<'a> {
       fonts,
       geometry,
       breaker: KnuthPlassBreaker,
+      glyph_issues: GlyphIssues::default(),
     };
   }
 }

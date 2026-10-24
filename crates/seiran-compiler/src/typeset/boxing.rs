@@ -46,7 +46,7 @@ pub(super) use shaping::Shaper;
 use tracing::debug;
 
 use crate::{
-  document::TextAlignment,
+  document::{NodeId, TextAlignment},
   length::Length,
   typeset::{
     boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
@@ -54,6 +54,7 @@ use crate::{
     font::FontSystem,
     image::{ImageResources, resolve_image_size},
     lowering::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
+    text_glyphs::{Generated, GlyphIssues, GlyphOrigin},
   },
 };
 
@@ -83,6 +84,10 @@ fn fold_newlines(text: &str) -> Cow<'_, str> {
 pub(super) struct BlockBuildInputs<'a> {
   /// シェイプ・メトリクス取得の窓口
   pub(super) fonts: &'a FontSystem,
+  /// 組めなかった字の収集器（組版全体で共有）
+  pub(super) issues: &'a GlyphIssues,
+  /// 要素に帰属しない段落（`ParagraphLayout::origin` が `None`）を生成した内容の種類
+  pub(super) generated: Generated,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
   /// この縦リストを組む段の幅（寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く）
@@ -107,7 +112,7 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
   let hyphenation = hyphenation::resolve(inputs.language);
   let mut builder = BlockBuilder {
     measurer: Measurer::new(
-      inputs.fonts,
+      Shaper::new(inputs.fonts, inputs.issues, GlyphOrigin::Generated(inputs.generated)),
       inputs.default_font_size,
       inputs.line_height_factor,
       hyphenation,
@@ -215,7 +220,10 @@ impl BlockBuilder<'_> {
           });
         },
         LayoutNode::MathBlock(block) => {
-          blocks.push(self.measurer.build_math_block(block, indent, right_indent));
+          let math = self.measurer.within(block.origin, |measurer| {
+            return measurer.build_math_block(block, indent, right_indent);
+          });
+          blocks.push(math);
         },
         LayoutNode::PageBreak => {
           blocks.push(Block::force_break());
@@ -238,10 +246,18 @@ impl BlockBuilder<'_> {
     right_indent: Length,
     alignment: TextAlignment,
   ) -> Option<Block> {
-    let mut list = HList::default();
-    for inline in paragraph.content {
-      self.measurer.collect_inline(inline, &mut list);
-    }
+    let collect = |measurer: &mut Measurer<'_>| {
+      let mut list = HList::default();
+      for inline in paragraph.content {
+        measurer.collect_inline(inline, &mut list);
+      }
+      return list;
+    };
+    // 要素に帰属しない段落は、組み始めの起点（生成した内容の種類）のまま組む
+    let list = match paragraph.origin {
+      Some(origin) => self.measurer.within(origin, collect),
+      None => collect(&mut self.measurer),
+    };
     if list.is_empty() {
       return None;
     }
@@ -273,21 +289,29 @@ struct Measurer<'a> {
 }
 
 impl<'a> Measurer<'a> {
-  /// [`FontSystem`] とポリシーから新しい `Measurer` を生成する
+  /// シェーピングの部品 `shaper` とポリシーから新しい `Measurer` を生成する
   fn new(
-    fonts: &'a FontSystem,
+    shaper: Shaper<'a>,
     default_font_size: Length,
     line_height_factor: f32,
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
   ) -> Self {
     return Measurer {
-      shaper: Shaper::new(fonts),
+      shaper,
       default_font_size,
       line_height_factor,
       hyphenation,
       punctuation_spacing,
     };
+  }
+
+  /// 要素 `origin` の中身を `build` で組む（その間に組めなかった字は `origin` に帰属させ、組み終えたら起点を戻す）
+  fn within<R>(&mut self, origin: NodeId, build: impl FnOnce(&mut Self) -> R) -> R {
+    let previous = self.shaper.set_origin(GlyphOrigin::Element(origin));
+    let built = build(self);
+    self.shaper.set_origin(previous);
+    return built;
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する
@@ -337,11 +361,13 @@ impl<'a> Measurer<'a> {
         index,
         body,
       } => {
-        let mut body_list = HList::default();
-        for child in body {
-          self.collect_inline(child, &mut body_list);
-        }
-        let items = body_list.into_items();
+        let items = self.within(origin, |measurer| {
+          let mut body_list = HList::default();
+          for child in body {
+            measurer.collect_inline(child, &mut body_list);
+          }
+          return body_list.into_items();
+        });
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
         out.push_marker(HItem::Footnote(MeasuredFootnote {
           origin,

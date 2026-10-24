@@ -57,6 +57,9 @@ impl<T> FaceMap<T> {
     return well_formed.then_some(Self { slots });
   }
 
+  /// 枠 `font_type` の候補の値を候補の順に返す（[`FaceMap::from_slots`] の検査で 1 つ以上）。
+  pub(crate) fn candidates(&self, font_type: FontType) -> &[T] { return &self.slots[font_type]; }
+
   /// 全実体を [`FontType`] の宣言順、枠の中は候補の順に返す。
   pub(crate) fn faces(&self) -> impl Iterator<Item = FontFace> + '_ {
     return FontType::VARIANTS.iter().flat_map(|&font_type| {

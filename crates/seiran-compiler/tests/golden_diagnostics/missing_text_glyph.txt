@@ -1,0 +1,46 @@
+typeset::font::missing_glyph
+
+  × serif_bold のどの候補にも「ค」(U+0E04) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_text_glyph_a.sei:1:1]
+ 1 │ \section{見出しの ค}
+   · ▲
+   · ╰── この要素で使っています
+ 2 │ 
+   ╰────
+  help: config.toml の候補（font_configs.serif_bold[0] = vendor/fonts/STIXTwoText[wght].ttf）はど
+        れもこの字を持っていません。この字を持つフォントを候補に足してください。
+
+Error: typeset::font::missing_glyph
+
+  × serif のどの候補にも「ก」(U+0E01) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_text_glyph_a.sei:3:1]
+ 2 │ 
+ 3 │ 本文のタイ文字 ก と ข は、どの serif の候補にも無い。
+   · ▲
+   · ╰── この要素で使っています
+   ╰────
+  help: config.toml の候補（font_configs.serif[0] = vendor/fonts/STIXTwoText[wght].ttf）はどれもこ
+        の字を持っていません。この字を持つフォントを候補に足してください。
+
+Error: typeset::font::missing_glyph
+
+  × serif のどの候補にも「ข」(U+0E02) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_text_glyph_a.sei:3:1]
+ 2 │ 
+ 3 │ 本文のタイ文字 ก と ข は、どの serif の候補にも無い。
+   · ▲
+   · ╰── この要素で使っています
+   ╰────
+  help: config.toml の候補（font_configs.serif[0] = vendor/fonts/STIXTwoText[wght].ttf）はどれもこ
+        の字を持っていません。この字を持つフォントを候補に足してください。
+
+Error: typeset::font::missing_glyph
+
+  × serif のどの候補にも「ก」(U+0E01) のグリフがありません
+   ╭─[tests/text/diagnostics/missing_text_glyph_b.sei:1:1]
+ 1 │ 別のソースの ก。
+   · ▲
+   · ╰── この要素で使っています
+   ╰────
+  help: config.toml の候補（font_configs.serif[0] = vendor/fonts/STIXTwoText[wght].ttf）はどれもこ
+        の字を持っていません。この字を持つフォントを候補に足してください。

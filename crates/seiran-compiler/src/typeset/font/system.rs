@@ -18,11 +18,12 @@ use tracing::debug;
 
 use crate::{
   failures::Failures,
-  project::{FaceMap, FontConfigs, FontData, FontFace},
+  project::{FaceMap, FontConfigs, FontData, FontFace, FontType},
   publication::FontMetrics,
   typeset::font::{
     FontLoadError, FontRefs, ScriptLevel, ScriptScale, build_font_metrics,
     face_config::{FontFaceConfigs, build_face_configs},
+    fallback::{self, ShapedText},
     parse_fonts,
     shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
     stretch::{self, Stretch},
@@ -114,6 +115,23 @@ impl FontSystem {
     script_level: Option<ScriptLevel>,
   ) {
     self.shapers[face].shape(buffer, text, point_size, script_level);
+  }
+
+  /// 本文の枠 `font_type` でテキストをシェイプし、字形列と、枠のフォントで組めなかったクラスタを返す
+  /// （`script_level` は数式のスクリプト段）。
+  ///
+  /// 組むのは枠の先頭の候補。`buffer` はシェイプの作業領域で、結果は戻り値が持つ。数式フォント（`math`）の字の欠落は
+  /// 組版の前の検査（`math_glyphs::check`）が持つので、`math` はこの経路で組まない。
+  pub(in crate::typeset) fn shape_text(
+    &self,
+    font_type: FontType,
+    buffer: &mut Buffer,
+    text: &str,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) -> ShapedText {
+    self.shapers[FontFace::primary(font_type)].shape(buffer, text, point_size, script_level);
+    return fallback::find_missing(buffer, text);
   }
 
   /// 数式フォントでアクセント記号 `text` を OpenType `flac`（平たいアクセント字形）を足してシェイプし、結果のグリフ列を

@@ -16,6 +16,7 @@ use crate::{
     boxing::{LineAccum, Shaper, row_width},
     lowering::TextStyle,
     pagination::{context::TypesetContext, page_values::PageLabels},
+    text_glyphs::{Generated, GlyphOrigin},
   },
 };
 
@@ -86,7 +87,7 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }
-  let mut shaper = Shaper::new(ctx.fonts);
+  let mut shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::RunningContent));
   for (index, page) in pages.iter_mut().enumerate() {
     if spec.skip_first && index == 0 {
       continue;

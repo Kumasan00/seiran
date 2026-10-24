@@ -728,10 +728,11 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
 非収束）。画像は正規化済みパスの昇順に**全件**検査する。`compose` の失敗型は制御フロー型 `ComposeError`
-（`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、必ずソース位置に
-帰属する `MissingMathGlyphs(Failures<MissingMathGlyph>)`（`math_glyphs` 項）の 2 腕を持つ（`semantics::AnalyzeError`
-と同じ形）。`compiler` は前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接 `CompileFailure` へ
-平坦化し、後者にだけ `SourceDiagnostic` で本文を添える。
+（`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、ソース位置に
+帰属しうる字の欠落 `Glyphs(Failures<TextGlyphError>)`（数式フォントの `MissingMathGlyph`（`math_glyphs` 項）を文書順に、
+続けて本文の枠の `MissingGlyph`（`text_glyphs` 項））の 2 腕を持つ（`semantics::AnalyzeError` と同じ形）。`compiler` は
+前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接 `CompileFailure` へ平坦化し、後者は要素に帰属する
+もの（`TextGlyphError::source_id` が `Some`）にだけ `SourceDiagnostic` で本文を添える。
 
 組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた `unreachable!` で
 顕在化する（内部バグ用のバリアント・`internal_bug` 系の code を再導入しない、#378）。採番・参照解決は
@@ -783,6 +784,17 @@ code `typeset::math::missing_glyph`）として使った位置 × 字ごとに 1
 規則で証明の位置に問う。派生字形（`ssty`・`flac`・size variant・glyph assembly）は問わない。走査は
 フォントに触れず、字の有無は述語で受け取る（本番は `FontSystem::has_math_glyph`）。HIR の 3 語彙は全 variant を明示して
 match する。
+
+#### `text_glyphs`
+
+本文の枠のフォントで組めない字（欠字）の収集と診断。欠字の判定はシェーピング時の 1 箇所（`font::fallback`。
+`.notdef` を含み、字がすべて不可視ではないクラスタ）で、`boxing::Shaper` がいま組んでいる要素（段落・表の行・脚注・
+ディスプレイ数式の `NodeId`）か生成元（参考文献・表題ページ・目次・索引・走り文）を添えて、`TypesetContext` が持つ
+共有の収集器 `GlyphIssues` へ積む。同じ値は 1 回だけ積むので、脚注のページ単位採番で本文パスを反復しても 1 件。
+`lay_out` は数式フォントの字の検査（`math_glyphs`）が失敗しても組版を最後まで進め、`paginate` の後で収集器を
+`MissingGlyph`（code `typeset::font::missing_glyph`。要素の開始位置に長さ 0 のラベル、生成内容は位置なしで生成元を
+文言に載せる）へ変え、数式の欠落の後ろに (ソース, 要素の開始位置) の昇順 → 生成内容の種類の順で並べる。
+数式フォント（`math`）の字はこの経路で組まない（`math_glyphs` が持つ）。
 
 #### `pagination`
 
@@ -1450,8 +1462,8 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   問題を別ソースで示す関連診断（重複ラベルの最初の定義）はそのソースの本文を添えてから内側の `related` の
   後ろに連結する（miette は本文を持たない関連診断を主診断の本文で描くため）。`semantics` の `AnalyzeError`
   は CSL 由来（それ自身が leaf 診断）と意味解析由来（ソースごとに分割済み）に振り分け、後者だけに本文を
-  添える。`typeset` の `ComposeError` も同じ形で、位置を持たない組版の失敗と数式フォントの字の欠落に振り分け、
-  後者だけに本文を添える。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
+  添える。`typeset` の `ComposeError` も同じ形で、位置を持たない組版の失敗と字の欠落に振り分け、後者のうち要素に
+  帰属するものだけに本文を添える（目次・走り文など生成内容の欠字は位置を持たない）。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
   （集約診断を先頭へ足さない）。`config.toml` / `style.toml` の TOML 構文エラーは各 `load` 自身が
   `NamedSource` を組み立てる
 - `warnings`: `compile` が成果物または失敗と一緒に返す warning severity の診断集合 `Warnings`

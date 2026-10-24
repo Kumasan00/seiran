@@ -31,7 +31,8 @@ fn compile_is_deterministic_for_the_same_source() {
     let source = MemoryProjectSource::new()
       .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
       .with_text("/project/text.sei", *text)
-      .with_bytes("/project/font.ttf", font_bytes);
+      .with_bytes("/project/font.ttf", font_bytes)
+      .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
     let config_path = ProjectPath::new("/project/config.toml");
 
     let first =
@@ -64,7 +65,8 @@ fn missing_images_are_reported_in_path_order() {
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
     .with_text("/project/text.sei", MISSING_IMAGES)
-    .with_bytes("/project/font.ttf", font_bytes);
+    .with_bytes("/project/font.ttf", font_bytes)
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let failure = seiran_compiler::compile(&source, &config_path, project_base_dir())
@@ -88,7 +90,8 @@ fn error_path_is_deterministic_across_repeated_runs() {
     let source = MemoryProjectSource::new()
       .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
       .with_text("/project/text.sei", *text)
-      .with_bytes("/project/font.ttf", font_bytes);
+      .with_bytes("/project/font.ttf", font_bytes)
+      .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
     let config_path = ProjectPath::new("/project/config.toml");
 
     let runs: Vec<Vec<String>> = std::iter::repeat_with(|| {

@@ -13,6 +13,7 @@ use crate::{
     image::ImageResources,
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
     pagination::{context::TypesetContext, footnote_numbering},
+    text_glyphs::Generated,
   },
 };
 
@@ -67,6 +68,8 @@ fn run_body_pass(
       body_layout_nodes,
       &BlockBuildInputs {
         fonts: ctx.fonts,
+        issues: &ctx.glyph_issues,
+        generated: Generated::Bibliography,
         images,
         column_width: ctx.geometry.body_column_width(),
         breaker: &ctx.breaker,
