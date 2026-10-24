@@ -560,6 +560,7 @@ fn row_fragment(
   let mut fragment = TableRowFragment {
     origin: row.origin,
     overrun,
+    rules: Vec::new(),
     above: TableBoundary::default(),
     row: PlacedTableRow {
       top_y: Length::ZERO,
