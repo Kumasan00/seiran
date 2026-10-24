@@ -1,7 +1,9 @@
-//! 表エンジン — 表の組版（セルの組版と計測 → 列幅の決定 → セルの折り返しと行帯 → 行断片 → 再掲ヘッダ）を閉じる
+//! 表エンジン — 表の組版（セルの組版と計測 → 列幅の決定 → セルの折り返しと行帯 → 行断片 → 行の集まりの畳み込み →
+//! 再掲ヘッダ）を閉じる
 //!
 //! 入口は [`Measurer::build_table`]。入力は lowering が列指定・セルのインライン内容・セル余白・罫線の太さと空きと色
-//! まで解決した `TableLayout` で、HIR の表語彙は届かない。出力 [`TableBox`] は表左端・行帯上端を原点とする行断片の列と、
+//! まで解決した `TableLayout` で、HIR の表語彙は届かない。出力 [`TableBox`] は表左端・行帯上端を原点とする行の集まり
+//! （行結合でつながる行。結合が無ければ 1 行）の断片の列と、
 //! 罫線と空きを確定した境界（断片の上端・下端の枠罫、ヘッダ下の罫線、各行の上の区切りと部分罫。規則は `arrange` の
 //! doc）で、配置（`breaking::break_pages`）は段オフセットと揃えを足して置くだけ。
 //!
@@ -22,7 +24,10 @@ use crate::{
   document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator, TextAlignment},
   length::Length,
   typeset::{
-    boxes::{HItem, Line, LineLink, LinkTarget, PlacedHBox, PlacedTableRow, TableBoundary, TableBox, TableRowFragment},
+    boxes::{
+      HItem, Line, LineLink, LinkTarget, PlacedHBox, PlacedLink, PlacedTableRow, TableBoundary, TableBox,
+      TableRowFragment,
+    },
     boxing::{self, Measurer, hlist::HList},
     breaking::{self, LineBreaker},
     lowering::{TableColumn, TableLayout, TableRowLayout},
@@ -36,6 +41,8 @@ struct MeasuredCell {
   items: Vec<HItem>,
   /// 列方向の結合数（1 以上）
   column_span: u32,
+  /// 行方向の結合数（1 以上）
+  row_span: u32,
   /// 跨ぐ列の範囲の下に部分罫を引くか
   rule_below: bool,
 }
@@ -148,6 +155,7 @@ impl Measurer<'_> {
         cells.push(MeasuredCell {
           items: list.into_items(),
           column_span: cell.column_span,
+          row_span: cell.row_span,
           rule_below: cell.rule_below,
         });
       }
@@ -165,10 +173,16 @@ impl Measurer<'_> {
 /// ヘッダが無ければ `rows[0]`）の上は枠罫の持ち場で何も無い境界、ヘッダがあるときの `rows[0]` の上はヘッダ下の罫線で、
 /// どちらも行自身の区切りを見ない（この 2 つの境界への `separator` は frontend が拒否する）。
 ///
-/// それ以外の行の上は、同じ行群（ヘッダか本体）の 1 つ前の行のセルに `rule_below` があれば部分罫の境界 — g +
-/// `partial_rule_thickness` + g で、旗を持つセルの帯ごとに左右を `partial_rule_trim` ずつ詰めた罫線を同じ高さに並べる
-/// （[`TableBoundary::partial_rules`]）。行群の最後の行の旗と、次の行が `separator` を持つ行の旗は frontend が拒否する
-/// ので、旗は行群の外へ写らず、区切りと重ならない。
+/// それ以外の行の上は、同じ行群（ヘッダか本体）で結合の最後の行が 1 つ前の行であるセル（結合の無いセルは 1 つ前の行
+/// のセル）に `rule_below` があれば部分罫の境界 — g + `partial_rule_thickness` + g で、旗を持つセルの帯ごとに左右を
+/// `partial_rule_trim` ずつ詰めた罫線を同じ高さに並べる（[`TableBoundary::partial_rules`]）。結合セルの部分罫は結合の
+/// 最後の行の下に引く。結合の最後の行が行群の最後の行である旗と、その次の行が `separator` を持つ旗は frontend が
+/// 拒否するので、旗は行群の外へ写らず、区切りと重ならない。
+///
+/// 行は行群ごとに行の集まり（[`row_groups`]: 行結合がまたぐ境界の上下の行を同じ集まりに入れた極大の連続範囲）に分け、
+/// 集まりごとに 1 つの断片へ畳む（[`merge_row_group`]）— 配置は断片を分割しないので、結合した行はいっしょに改ページ
+/// する。内側の境界（部分罫だけ。`separator` は frontend の `TableSeparatorInsideRowSpan` が拒否する）は断片の高さに
+/// 入り、罫線は断片の `rules` へ移る。
 fn arrange(
   origin: NodeId,
   frame: &TableFrame<'_>,
@@ -190,18 +204,22 @@ fn arrange(
     separator.clone()
   };
   let fragments = |rows: &[MeasuredRow], first_above: &TableBoundary| {
-    return rows
-      .iter()
-      .enumerate()
-      .map(|(index, row)| {
-        let above = match index.checked_sub(1) {
-          None => first_above.clone(),
-          Some(prev) => boundary_between(&rows[prev], row, &separator, frame, &col_widths),
-        };
-        return TableRowFragment {
-          above,
-          ..row_fragment(row, frame, &col_widths, breaker)
-        };
+    let mut parts = rows.iter().enumerate().map(|(index, row)| {
+      let above = if index == 0 {
+        first_above.clone()
+      } else {
+        boundary_above(rows, index, &separator, frame, &col_widths)
+      };
+      let (fragment, merged) = row_fragment(row, frame, &col_widths, breaker);
+      return (TableRowFragment { above, ..fragment }, merged);
+    });
+    return row_groups(rows)
+      .into_iter()
+      .map(|group| {
+        if rows[group.clone()].iter().skip(1).any(|row| return row.separator.is_some()) {
+          unreachable!("行結合の内側の境界の separator は frontend（TableSeparatorInsideRowSpan）が拒否する");
+        }
+        return merge_row_group(parts.by_ref().take(group.len()).collect());
       })
       .collect::<Vec<_>>();
   };
@@ -230,21 +248,30 @@ fn arrange(
   };
 }
 
-/// 同じ行群で隣り合う行 `prev` と `row` の間の境界 — `prev` の `rule_below` セルの部分罫か、`row` の区切り
-/// （`rule` は `separator`、`gap` は `row_gap` の空き）か、何も無い境界
-fn boundary_between(
-  prev: &MeasuredRow,
-  row: &MeasuredRow,
+/// 行群 `rows` の行 `index`（1 以上）の上の境界 — 結合の最後の行がその直前の行である `rule_below` セル（行 j < `index`
+/// で `j + row_span == index`）の部分罫か、行 `index` の区切り（`rule` は `separator`、`gap` は `row_gap` の空き）か、
+/// 何も無い境界
+fn boundary_above(
+  rows: &[MeasuredRow],
+  index: usize,
   separator: &TableBoundary,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
 ) -> TableBoundary {
-  let bands: Vec<(Length, Length)> = cell_bands(&prev.cells, col_widths)
-    .into_iter()
-    .filter(|(cell, ..)| return cell.rule_below)
-    .map(|(_, _, x, band_width)| return (x, band_width))
+  let ends_above =
+    |start: usize, cell: &MeasuredCell| return cell.rule_below && start + cell.row_span as usize == index;
+  let bands: Vec<(Length, Length)> = rows[..index]
+    .iter()
+    .enumerate()
+    .filter(|(start, row)| return row.cells.iter().any(|cell| return ends_above(*start, cell)))
+    .flat_map(|(start, row)| {
+      return cell_bands(&row.cells, col_widths)
+        .into_iter()
+        .filter(move |(cell, ..)| return ends_above(start, cell))
+        .map(|(_, _, x, band_width)| return (x, band_width));
+    })
     .collect();
-  return match (bands.is_empty(), row.separator) {
+  return match (bands.is_empty(), rows[index].separator) {
     (false, Some(_)) => {
       unreachable!("rule_below の行の次の行の separator は frontend（TableRuleBelowWithSeparator）が拒否する")
     },
@@ -542,12 +569,16 @@ fn cell_bands<'r>(
 /// ベースラインは帯の中で同じく上下を等分した位置。行の高さは `band₀` に、続き行の帯の和が最大のセルのその和を
 /// 足したもので、描く箱はどれも自分の行の帯に収まる。続き行の箱は `dy` からベースラインの差を引く（描画は
 /// `baseline_y − dy`）。リンク矩形の縦範囲はリンクが乗る行の帯で、索引語・脚注はセル順 → 行順に移す。
+///
+/// `row_span > 1` のセル（結合セル）も先頭行は先頭行帯とベースラインに参加し、続き行を同じく下へ積むが、行の高さには
+/// 足さない — 戻り値の 2 つ目に、結合セルごとの（結合行数, 内容の高さ = 先頭行帯 + 続き行の帯の和）をセル順に返し、
+/// 結合した行の高さとの差は [`merge_row_group`] が結合の最後の行に足す。
 fn row_fragment(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
-) -> TableRowFragment {
+) -> (TableRowFragment, Vec<(u32, Length)>) {
   let (cells, overrun) = layout_row_cells(row, frame, col_widths, breaker);
   let (ascent, descent) = cells.iter().filter_map(|lines| return lines.first()).fold(
     (Length::ZERO, Length::ZERO),
@@ -572,7 +603,8 @@ fn row_fragment(
     index_marks: Vec::new(),
     footnotes: Vec::new(),
   };
-  for lines in cells {
+  let mut merged = Vec::new();
+  for (cell, lines) in row.cells.iter().zip(cells) {
     let mut lines = lines.into_iter();
     if let Some(first) = lines.next() {
       take_line(&mut fragment, first, Length::ZERO, first_band, Length::ZERO);
@@ -584,9 +616,101 @@ fn row_fragment(
       take_line(&mut fragment, line, band_top, band, line_baseline - baseline);
       band_top += band;
     }
-    fragment.row.height = fragment.row.height.max(band_top);
+    if cell.row_span > 1 {
+      merged.push((cell.row_span, band_top));
+    } else {
+      fragment.row.height = fragment.row.height.max(band_top);
+    }
   }
-  return fragment;
+  return (fragment, merged);
+}
+
+/// 行群 `rows` を行の集まり（行結合でつながる行の極大の連続範囲）に分ける
+///
+/// 行 j のセルが `j + row_span > k + 1` なら境界 k（行 k と k + 1 の間）をまたぎ、またぐセルのある境界の上下の行は
+/// 同じ集まりに入る。境界の判定に列は要らない。結合の到達は `rows.len()` で切り詰める（frontend が結合を行群の中に
+/// 収める（`TableRowSpanOverflow`）ので、実入力では切り詰めない）。
+fn row_groups(rows: &[MeasuredRow]) -> Vec<Range<usize>> {
+  let mut groups = Vec::new();
+  let mut start = 0usize;
+  let mut reach = 0usize;
+  for (index, row) in rows.iter().enumerate() {
+    if index > start && index >= reach {
+      groups.push(start..index);
+      start = index;
+    }
+    let span = row.cells.iter().map(|cell| return cell.row_span as usize).max().unwrap_or(1);
+    reach = reach.max((index + span).min(rows.len()));
+  }
+  if start < rows.len() {
+    groups.push(start..rows.len());
+  }
+  return groups;
+}
+
+/// 行の集まりの各行の断片 `parts`（[`row_fragment`] の戻りに上の境界を入れたもの。`parts[k].0.above` は k ≥ 1 で
+/// 集まりの内側の境界）を 1 つの断片に畳む
+///
+/// 行 k の行帯を `heights[k]`、上端を `top(k) = Σ_{m<k} heights[m] + Σ_{1≤m≤k} above[m]` とする。結合セルは結合の
+/// 最後の行 `e`（集まりの最後の行で切り詰める）の昇順に、内容の高さが領域 `top(e) + heights[e] − top(k)` を超えれば
+/// 差を `heights[e]` に足す — 同じ行で終わる結合セルは後のものが伸びた後の領域を見るので、伸びは和でなく最大になる。
+///
+/// 畳んだ断片は `parts[0]` の `origin` / `above` / ベースラインを持ち、高さは `top(last) + heights[last]`（行帯の和 +
+/// 内側の境界の高さの和 + 伸ばした分。`TableBox::height` と配置の収まり判定はこの値をそのまま使う）。行 k の箱は
+/// ベースラインの差 `top(k) + baseline_k − baseline_0` を `dy` から引き、リンクは `top(k)` 下げ、索引語・脚注は行順に
+/// つなぎ、内側の境界の罫線を `rules` に上から置く。結合セルの無い 1 行は `parts[0]` をそのまま返す。
+fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> TableRowFragment {
+  if parts.len() == 1 && parts[0].1.is_empty() {
+    return parts.swap_remove(0).0;
+  }
+  let last = parts.len() - 1;
+  let mut heights: Vec<Length> = parts.iter().map(|(fragment, _)| return fragment.height()).collect();
+  let aboves: Vec<Length> = parts.iter().skip(1).map(|(fragment, _)| return fragment.above.height).collect();
+  let top = |heights: &[Length], k: usize| -> Length {
+    return heights[..k].iter().copied().sum::<Length>() + aboves[..k].iter().copied().sum::<Length>();
+  };
+  let mut ends: Vec<(usize, usize, Length)> = parts
+    .iter()
+    .enumerate()
+    .flat_map(|(k, (_, merged))| {
+      return merged
+        .iter()
+        .map(move |&(row_span, content)| return (k, (k + row_span as usize - 1).min(last), content));
+    })
+    .collect();
+  ends.sort_by_key(|&(_, end, _)| return end);
+  for (k, end, content) in ends {
+    let region = top(&heights, end) + heights[end] - top(&heights, k);
+    if content > region {
+      heights[end] += content - region;
+    }
+  }
+
+  let mut parts = parts.into_iter().enumerate();
+  let (_, (mut merged, _)) = parts.next().expect("row_groups の範囲は空でないので、行の集まりは 1 行以上");
+  let baseline = merged.row.baseline_y;
+  for (k, (fragment, _)) in parts {
+    let top_k = top(&heights, k);
+    merged.overrun = merged.overrun.max(fragment.overrun);
+    merged.rules.extend(fragment.above.place(Length::ZERO, top_k - fragment.above.height));
+    let lowered = top_k + fragment.row.baseline_y - baseline;
+    merged.row.boxes.extend(fragment.row.boxes.into_iter().map(|placed| {
+      return PlacedHBox {
+        dy: placed.dy - lowered,
+        ..placed
+      };
+    }));
+    merged.links.extend(fragment.links.into_iter().map(|link| {
+      return PlacedLink {
+        y: link.y + top_k,
+        ..link
+      };
+    }));
+    merged.index_marks.extend(fragment.index_marks);
+    merged.footnotes.extend(fragment.footnotes);
+  }
+  merged.row.height = top(&heights, last) + heights[last];
+  return merged;
 }
 
 /// セルの 1 行を行断片へ移す。行の帯は行帯上端から `band_top`・高さ `band`、ベースラインは共有ベースラインより
@@ -621,7 +745,9 @@ mod tests {
     semantics::LabelId,
     source::SourceId,
     typeset::{
-      boxes::{AnchorId, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote},
+      boxes::{
+        AnchorId, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote, TableRowFragment,
+      },
       breaking::KnuthPlassBreaker,
       lowering::TableColumn,
     },
@@ -715,6 +841,7 @@ mod tests {
     return MeasuredCell {
       items,
       column_span: 1,
+      row_span: 1,
       rule_below: false,
     };
   }
@@ -795,8 +922,31 @@ mod tests {
     return MeasuredCell {
       items,
       column_span: span,
+      row_span: 1,
       rule_below: false,
     };
+  }
+
+  /// 行方向に `row_span` 行を結合したセルを作る
+  fn merged_cell(items: Vec<HItem>, row_span: u32) -> MeasuredCell {
+    return MeasuredCell {
+      row_span,
+      ..cell(items)
+    };
+  }
+
+  /// 行結合に覆われる位置の空のセルを作る
+  fn blank() -> MeasuredCell { return cell(Vec::new()); }
+
+  /// 幅 30 の列で 1 行 1 語に折り返す 3 語（行帯 10 × 3 行）
+  fn three_lines() -> Vec<HItem> {
+    return vec![
+      word_box(25.0),
+      space(),
+      word_box(25.0),
+      space(),
+      word_box(25.0),
+    ];
   }
 
   /// 幅を sp の列で返す
@@ -1084,6 +1234,187 @@ mod tests {
   }
 
   #[test]
+  fn row_span_merges_its_rows_into_one_fragment() {
+    let columns = [fixed(30.0), fixed(30.0)];
+    let rows = [
+      row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        cell(vec![word_box(10.0)]),
+      ]),
+      row(vec![blank(), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    assert!(close(table.rows[0].height(), 20.0));
+    // 2 行目のセルは 1 行目のベースラインより 10 下
+    assert!(close(table.rows[0].row.boxes[2].dy, -10.0), "{:?}", table.rows[0].row.boxes);
+  }
+
+  #[test]
+  fn merged_cell_does_not_grow_its_first_row_and_extends_its_last_row() {
+    // 結合セルが 3 行（30）、結合した 2 行は 10 + 10 → 最後の行が 10 伸びて集まりは 30。2 行目は 10 から始まる
+    let columns = [fixed(30.0), fixed(30.0)];
+    let rows = [
+      row(vec![merged_cell(three_lines(), 2), cell(vec![word_box(10.0)])]),
+      row(vec![blank(), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert!(close(table.rows[0].height(), 30.0));
+    let last = table.rows[0].row.boxes.last().expect("2 行目のセルの箱がある");
+    assert!(close(last.dy, -10.0), "{last:?}");
+  }
+
+  #[test]
+  fn extension_takes_the_max_over_cells_ending_at_the_same_row() {
+    // 行 0–1 を結合する 2 セル（3 行 = 30 と 4 行 = 40）→ 集まりは 40（和の 50 ではない）
+    let columns = [fixed(30.0), fixed(30.0)];
+    let four_lines = [three_lines(), vec![space(), word_box(25.0)]].concat();
+    let rows = [
+      row(vec![merged_cell(three_lines(), 2), merged_cell(four_lines, 2)]),
+      row(vec![blank(), blank()]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    assert!(close(table.rows[0].height(), 40.0), "{:?}", table.rows[0].height());
+  }
+
+  #[test]
+  fn chained_row_spans_form_one_group() {
+    // A が行 0–1、B が行 1–2 → 断片 1 つ・高さ 30
+    let columns = [fixed(30.0), fixed(30.0)];
+    let rows = [
+      row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        cell(vec![word_box(10.0)]),
+      ]),
+      row(vec![blank(), merged_cell(vec![word_box(10.0)], 2)]),
+      row(vec![cell(vec![word_box(10.0)]), blank()]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    assert!(close(table.rows[0].height(), 30.0), "{:?}", table.rows[0].height());
+  }
+
+  #[test]
+  fn separate_row_spans_form_separate_groups() {
+    // 行 0–1 と行 2–3 の 2 つの結合 → 断片 2 つ（高さ 20 ずつ）
+    let columns = [fixed(30.0), fixed(30.0)];
+    let merged_row = || {
+      return row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        cell(vec![word_box(10.0)]),
+      ]);
+    };
+    let covered_row = || return row(vec![blank(), cell(vec![word_box(10.0)])]);
+    let rows = [merged_row(), covered_row(), merged_row(), covered_row()];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 2);
+    assert!(table.rows.iter().all(|fragment| return close(fragment.height(), 20.0)), "{:?}", table.rows);
+  }
+
+  #[test]
+  fn row_of_only_covered_slots_keeps_the_leading() {
+    // [merged 2, merged 2] / [blank, blank] → 断片 1 つ・高さ 20
+    let columns = [fixed(30.0), fixed(30.0)];
+    let rows = [
+      row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        merged_cell(vec![word_box(10.0)], 2),
+      ]),
+      row(vec![blank(), blank()]),
+    ];
+
+    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    assert!(close(table.rows[0].height(), 20.0), "{:?}", table.rows[0].height());
+  }
+
+  #[test]
+  fn inner_boundary_keeps_the_partial_rules_beside_the_merge() {
+    // 行 0: [merged 2][rule_below] / 行 1: [blank][C] → 断片 1 つ・高さ 10 + 4.3 + 10、内側の罫線 1 本 x=35 w=20 y=12
+    let columns = [fixed(30.0), fixed(30.0)];
+    let rows = [
+      row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        rule_below_cell(vec![word_box(10.0)], 1),
+      ]),
+      row(vec![blank(), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 1);
+    assert!(close(table.rows[0].height(), 24.3), "{:?}", table.rows[0].height());
+    let rules = &table.rows[0].rules;
+    assert_eq!(rules.len(), 1, "{rules:?}");
+    assert!(close(rules[0].x, 35.0) && close(rules[0].width, 20.0) && close(rules[0].y, 12.0), "{rules:?}");
+  }
+
+  #[test]
+  fn rule_below_of_a_merged_cell_goes_under_its_last_row() {
+    // 行 0: [merged 2 + rule_below][B] / 行 1: [blank][C] / 行 2: [D][E] → 断片 2 つ、rows[1].above は高さ 4.3・
+    // 罫線 1 本 x=5 w=20 y=2
+    let columns = [fixed(30.0), fixed(30.0)];
+    let merged_rule_below = MeasuredCell {
+      rule_below: true,
+      ..merged_cell(vec![word_box(10.0)], 2)
+    };
+    let rows = [
+      row(vec![merged_rule_below, cell(vec![word_box(10.0)])]),
+      row(vec![blank(), cell(vec![word_box(10.0)])]),
+      row(vec![cell(vec![word_box(10.0)]), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.rows.len(), 2);
+    assert!(table.rows[0].rules.is_empty(), "{:?}", table.rows[0].rules);
+    let above = &table.rows[1].above;
+    assert!(close(above.height, 4.3), "{above:?}");
+    assert_eq!(above.rules.len(), 1, "{above:?}");
+    assert!(
+      close(above.rules[0].x, 5.0) && close(above.rules[0].width, 20.0) && close(above.rules[0].y, 2.0),
+      "{above:?}"
+    );
+  }
+
+  #[test]
+  fn repeated_head_keeps_the_merged_rows() {
+    // head = [merged 2][X] / [blank][Y]（[X] に rule_below）→ head も repeated_head も 1 断片、高さと rules が等しい
+    let columns = [fixed(30.0), fixed(30.0)];
+    let head = [
+      row(vec![
+        merged_cell(vec![word_box(10.0)], 2),
+        rule_below_cell(vec![word_box(10.0)], 1),
+      ]),
+      row(vec![blank(), cell(vec![word_box(10.0)])]),
+    ];
+
+    let table = arrange(origin(), &ruled_frame(&columns), &head, &[plain_row(2)], pt(100.0), true, &KnuthPlassBreaker);
+
+    assert_eq!(table.head.len(), 1);
+    assert_eq!(table.repeated_head.len(), 1);
+    assert!(close(table.head[0].height(), 24.3), "{:?}", table.head[0].height());
+    assert_eq!(table.repeated_head[0].height(), table.head[0].height());
+    assert_eq!(table.head[0].rules.len(), 1, "{:?}", table.head[0].rules);
+    let geometry = |fragment: &TableRowFragment| -> Vec<(Length, Length, Length, Length)> {
+      return fragment.rules.iter().map(|rule| return (rule.x, rule.y, rule.width, rule.height)).collect();
+    };
+    assert_eq!(geometry(&table.repeated_head[0]), geometry(&table.head[0]));
+  }
+
+  #[test]
   fn measure_items_width_is_additive() {
     let items = vec![
       text_free_box(10.0),
@@ -1115,7 +1446,7 @@ mod tests {
     );
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 18.0), "{band:?}");
     assert!(close(band.baseline_y, 14.0), "{band:?}");
@@ -1136,7 +1467,7 @@ mod tests {
     );
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 21.0), "{band:?}");
     assert!(close(band.baseline_y, 14.0), "余りが無いのでベースラインは上端 + 高さ: {band:?}");
@@ -1148,7 +1479,7 @@ mod tests {
     let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], None, pt(9.0), 2.0);
     let columns = [auto(ColumnAlign::Left)];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 18.0), "{band:?}");
     assert!(close(band.baseline_y, 9.5), "{band:?}");
@@ -1410,7 +1741,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Right)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert_eq!(boxes.len(), 2);
     assert!(close(boxes[0].dx, 14.0), "右揃えの先頭 x: {boxes:?}");
@@ -1431,6 +1762,7 @@ mod tests {
     ];
 
     let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0), pt(25.0)], &KnuthPlassBreaker)
+      .0
       .row
       .boxes;
 
@@ -1444,7 +1776,7 @@ mod tests {
     let columns = [auto(ColumnAlign::Left)];
     let frame = frame(&columns, 3.0);
 
-    let fragment = row_fragment(&one_cell_row(), &frame, &[pt(30.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&one_cell_row(), &frame, &[pt(30.0)], &KnuthPlassBreaker).0;
 
     assert!(close(fragment.row.top_y, 0.0), "{fragment:?}");
     assert!(close(fragment.row.height, 10.0), "{fragment:?}");
@@ -1460,7 +1792,7 @@ mod tests {
     ]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker).0;
 
     assert_eq!(words(&fragment.index_marks), vec!["a", "b"]);
     assert_eq!(fragment.row.boxes.len(), 2, "索引語は描画箱を持たない");
@@ -1475,7 +1807,7 @@ mod tests {
     ]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker).0;
 
     let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
     assert_eq!(indices, vec![0, 1, 2]);
@@ -1492,7 +1824,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0;
 
     let links = &fragment.links;
     assert_eq!(links.len(), 1);
@@ -1516,7 +1848,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).links;
+    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert_eq!(links.len(), 2);
     assert_eq!(links[0].target, first);
@@ -1536,7 +1868,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).links;
+    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert!(links.is_empty(), "{links:?}");
   }
@@ -1551,7 +1883,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Right)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).links;
+    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert!(close(links[0].x, 18.0) && close(links[0].width, 10.0), "{links:?}");
   }
@@ -1569,7 +1901,7 @@ mod tests {
     )]);
     let columns = [auto(ColumnAlign::Right), auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0)], &KnuthPlassBreaker).links;
+    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
@@ -1644,7 +1976,7 @@ mod tests {
     let row = row(vec![cell(vec![text_free_box(40.0)])]);
     let columns = [fixed(30.0)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0;
 
     assert!(close(fragment.overrun, 14.0), "{:?}", fragment.overrun);
     assert_eq!(fragment.origin, origin());
@@ -1656,7 +1988,7 @@ mod tests {
     let row = row(vec![cell(Vec::new())]);
     let columns = [fixed(5.0)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 4.0), &[pt(5.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 4.0), &[pt(5.0)], &KnuthPlassBreaker).0;
 
     assert!(close(fragment.overrun, 3.0), "{:?}", fragment.overrun);
   }
@@ -1666,7 +1998,7 @@ mod tests {
     let row = row(vec![cell(vec![text_free_box(40.0)])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(10.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(10.0)], &KnuthPlassBreaker).0;
 
     assert_eq!(fragment.overrun, Length::ZERO);
   }
@@ -1683,7 +2015,7 @@ mod tests {
     ])]);
     let columns = [fixed(30.0)];
 
-    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row;
 
     assert_eq!(band.boxes.len(), 3, "{band:?}");
     assert!(close(band.boxes[2].dx, 2.0) && close(band.boxes[2].dy, -10.0), "{band:?}");
@@ -1702,7 +2034,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(14.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(14.0)], &KnuthPlassBreaker).0.row;
 
     assert!(band.boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{band:?}");
     assert!(close(band.height, 10.0), "{band:?}");
@@ -1724,7 +2056,7 @@ mod tests {
     ]);
     let columns = [fixed(30.0); 2];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0), pt(30.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0), pt(30.0)], &KnuthPlassBreaker).0.row;
 
     assert_eq!(band.boxes.len(), 4, "{band:?}");
     assert!(close(band.baseline_y, 12.0), "{band:?}");
@@ -1745,7 +2077,7 @@ mod tests {
     ])]);
     let columns = [fixed_aligned(30.0, ColumnAlign::Right)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert!(close(boxes[0].dx, 5.0), "1 行目（幅 25）の右揃え: {boxes:?}");
     assert!(close(boxes[2].dx, 10.0), "2 行目（幅 20）の右揃え: {boxes:?}");
@@ -1757,7 +2089,7 @@ mod tests {
     let row = row(vec![span_cell(vec![word_box(20.0), space(), word_box(20.0)], 2)]);
     let columns = [fixed(20.0), fixed(20.0)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 1.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 1.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert_eq!(boxes.len(), 2, "{boxes:?}");
     assert!(close(boxes[1].dx, 1.0) && close(boxes[1].dy, -10.0), "{boxes:?}");
@@ -1768,7 +2100,7 @@ mod tests {
     let row = row(vec![span_cell(vec![word_box(20.0), space(), word_box(20.0)], 2)]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert!(boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{boxes:?}");
   }
@@ -1787,7 +2119,7 @@ mod tests {
     ])]);
     let columns = [fixed(30.0)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).links;
+    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert_eq!(links.len(), 2, "{links:?}");
     assert!(close(links[0].x, 0.0) && close(links[0].y, 0.0), "{links:?}");
@@ -1808,7 +2140,7 @@ mod tests {
     ])]);
     let columns = [fixed(30.0)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker);
+    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0;
 
     let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
     assert_eq!(indices, vec![0]);
@@ -1819,7 +2151,7 @@ mod tests {
     let row = row(vec![cell(Vec::new())]);
     let columns = [fixed(30.0)];
 
-    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).row;
+    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 10.0), "{band:?}");
     assert!(band.boxes.is_empty(), "{band:?}");
@@ -1831,7 +2163,7 @@ mod tests {
     let row = row(vec![cell(vec![word_box(3.0), space(), word_box(3.0)])]);
     let columns = [fixed(4.0)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 4.0), &[pt(4.0)], &KnuthPlassBreaker).row.boxes;
+    let boxes = row_fragment(&row, &frame(&columns, 4.0), &[pt(4.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert_eq!(boxes.len(), 2, "{boxes:?}");
     assert!(close(boxes[1].dy, -10.0), "{boxes:?}");

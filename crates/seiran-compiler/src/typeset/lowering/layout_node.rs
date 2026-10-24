@@ -209,6 +209,8 @@ pub(in crate::typeset) struct TableCellLayout {
   pub content: Vec<InlineNode>,
   /// 列方向の結合数（1 以上）
   pub column_span: u32,
+  /// 行方向の結合数（1 以上）
+  pub row_span: u32,
   /// 跨ぐ列の範囲の下に部分罫を引くか
   pub rule_below: bool,
 }

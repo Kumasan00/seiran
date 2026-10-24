@@ -42,7 +42,8 @@
 //!   [`table_cell_boxes_stay_inside_their_row`]（表のセルの箱が分数・根号の部品と折り返した続き行まで行帯に収まり、
 //!   行どうしが重ならない）・セルの折り返し 2 種 [`flex_table_fills_the_column_width`] /
 //!   [`wrapped_table_rows_move_whole_with_the_wrapped_head`]（共通ヘルパ [`page_table_rows`] / [`table_row_text`]
-//!   経由）・
+//!   経由）・[`row_span_groups_move_whole_and_repeat_in_the_head`]（行結合でつながる行が 1 単位で改ページし、結合した
+//!   ヘッダが 1 つの集まりで再掲される）・
 //!   表セルの脚注 4 種 [`table_cell_footnotes_land_once_in_source_order`] /
 //!   [`repeated_head_marker_links_to_the_first_head_footnote_body`] /
 //!   [`index_in_table_footnote_body_lands_on_the_footnote_page`] /
@@ -289,6 +290,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "table_footnote",
   "table_math",
   "table_partial_rules",
+  "table_rowspan",
   "table_rules",
   "table_wrap",
   "table_wrap_hyphenation",
@@ -640,6 +642,7 @@ fn table_cell_boxes_stay_inside_their_row() {
   // fixture 名と、その fixture の表の行の最小数（空振り検知）
   for (fixture, min_rows) in [
     ("table_math", 7),
+    ("table_rowspan", 11),
     ("table_wrap", 20),
     ("table_wrap_hyphenation", 2),
   ] {
@@ -788,6 +791,64 @@ fn wrapped_table_rows_move_whole_with_the_wrapped_head() {
     let marker = format!("行{number:02}");
     let count = body_texts.iter().filter(|text| return text.contains(&marker)).count();
     assert_eq!(count, 1, "{marker} の行は分割されず 1 回だけ現れるはず: {body_texts:?}");
+  }
+  for (page_index, rows) in &fragments {
+    for row in *rows {
+      assert!(row.top_y + row.height <= page_limit, "page {page_index}: 行の下端が本文の下限を超えている");
+    }
+  }
+}
+
+/// 行結合でつながる行は 1 単位で改ページされ、2 行の結合でできたヘッダは改ページ後も 1 つの集まりで再掲される
+#[test]
+fn row_span_groups_move_whole_and_repeat_in_the_head() {
+  let groups: String = (1..=12)
+    .map(|number| return format!("\\row{{\\cell[rowspan=2]{{群{number:02}}} & 上}}\n\\row{{ & 下}}\n"))
+    .collect();
+  let source = format!(
+    "\\begin{{table}}[columns=left left]\n\\head{{\\row{{\\cell[rowspan=2]{{見出し}} & 年}}\\row{{ & 期}}}}\n{groups}\\end{{table}}\n"
+  );
+  let laid_out = TestProject::builder()
+    .source_text(&source)
+    .config_toml(|table| test_support::set(table, "pdf", "height", "60mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "10mm");
+      test_support::set(table, "page", "margin_bottom", "10mm");
+    })
+    .build()
+    .laid_out();
+  let page_limit = Length::mm(60.0) - Length::mm(10.0);
+
+  // 文書の表は 1 つだけなので、どの表の断片もこの表のもの
+  let fragments: Vec<(usize, &Vec<PlacedTableRow>)> = laid_out
+    .pages
+    .iter()
+    .enumerate()
+    .flat_map(|(page_index, page)| {
+      return page.blocks.iter().filter_map(move |block| match block {
+        PlacedBlock::Table { rows, .. } => return Some((page_index, rows)),
+        _ => return None,
+      });
+    })
+    .collect();
+
+  assert!(fragments.len() >= 2, "表は 2 ページ以上に分かれるはず: {} 断片", fragments.len());
+  let first_head = table_row_text(&fragments[0].1[0]);
+  assert!(first_head.contains("見出し年期"), "初出ヘッダは 2 行の結合が 1 つの行に畳まれるはず: {first_head}");
+  for (page_index, rows) in &fragments[1..] {
+    assert_eq!(table_row_text(&rows[0]), first_head, "page {page_index}: 再掲ヘッダは初出と同じ 1 つの集まりのはず");
+  }
+  let body_texts: Vec<String> =
+    fragments.iter().flat_map(|(_, rows)| return rows[1..].iter().map(table_row_text)).collect();
+  for number in 1..=12 {
+    let marker = format!("群{number:02}");
+    let rows: Vec<&String> = body_texts.iter().filter(|text| return text.contains(&marker)).collect();
+    assert_eq!(rows.len(), 1, "{marker} の集まりは分割されず 1 回だけ現れるはず: {body_texts:?}");
+    assert!(
+      rows[0].contains('上') && rows[0].contains('下'),
+      "{marker} の集まりは結合した 2 行を持つはず: {}",
+      rows[0]
+    );
   }
   for (page_index, rows) in &fragments {
     for row in *rows {

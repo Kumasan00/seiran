@@ -25,6 +25,7 @@ fn lower_rows(
       cells.push(TableCellLayout {
         content: lower_inlines(ctx, &cell.content, cell_style, state),
         column_span: cell.column_span,
+        row_span: cell.row_span,
         rule_below: cell.rule_below,
       });
     }
@@ -362,6 +363,17 @@ mod tests {
     let table = find_table(&nodes);
     let flags: Vec<bool> = table.rows[0].cells.iter().map(|cell| return cell.rule_below).collect();
     assert_eq!(flags, vec![true, false]);
+  }
+
+  #[test]
+  fn lower_table_preserves_the_cell_row_span() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, "\\begin{table}\n\\row{\\cell[rowspan=2]{A} & B}\n\\row{ & C}\n\\end{table}\n");
+
+    let table = find_table(&nodes);
+    let spans: Vec<u32> = table.rows[0].cells.iter().map(|cell| return cell.row_span).collect();
+    assert_eq!(spans, vec![2, 1]);
   }
 
   #[test]
