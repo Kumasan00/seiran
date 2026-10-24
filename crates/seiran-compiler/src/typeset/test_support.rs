@@ -104,7 +104,7 @@ pub(crate) fn layout_for_test(
 ) -> Result<LaidOutDocument, ComposeError> {
   let (font_resources, _font_warnings) = load_fonts(config, font_data);
   let font_resources = font_resources.map_err(ComposeError::Typeset)?;
-  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document)?;
+  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document).0?;
   return Ok(laid_out);
 }
 

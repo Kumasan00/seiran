@@ -1477,7 +1477,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   分類手段は安定した診断 `code`。失敗するまでに確定した警告を `warnings()` で別に返し、`Diagnostic` 実装
   （`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で変わらない）
 - `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
-  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の `MissingMathGlyph` とはみ出しの `TypesetWarning`）へ `SourceSet` から引いた
+  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の `MissingMathGlyph` / `MissingGlyph`（本文の欠字）/ `FallbackDirectionMismatch`（代替の候補の書字方向の不一致）とはみ出し・異体字列の代替の `TypesetWarning`）へ `SourceSet` から引いた
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。

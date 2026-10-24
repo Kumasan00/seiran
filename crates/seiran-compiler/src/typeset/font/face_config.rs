@@ -22,13 +22,10 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
 #[cfg(test)]
 mod tests {
   use super::build_face_configs;
-  use crate::project::{FaceMap, FontConfig, FontConfigs, FontMap, ProjectPath, VariationAxis};
+  use crate::project::{FaceMap, FontConfig, FontConfigs, ProjectPath, VariationAxis};
 
   /// 全種別が候補 1 つで、どれも `font_config` の設定。
-  fn configs_of(font_config: &FontConfig) -> FontConfigs {
-    return FaceMap::from_slots(FontMap::from_fn(|_| return vec![font_config.clone()]))
-      .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
-  }
+  fn configs_of(font_config: &FontConfig) -> FontConfigs { return FaceMap::uniform(font_config); }
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {

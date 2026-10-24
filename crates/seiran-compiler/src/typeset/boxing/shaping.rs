@@ -933,7 +933,7 @@ mod tests {
   }
 
   #[test]
-  fn sub_box_rebases_glyph_ranges_and_copies_parent_extent() {
+  fn sub_box_rebases_glyph_ranges_and_measures_its_own_extent() {
     let shaped = primary_only(ascii_run("abcd"));
     let hbox = shaped.sub_box(1..3, 1..3).expect("空でない範囲は箱になるはず");
 
@@ -1122,6 +1122,7 @@ mod tests {
     assert_eq!(gids(last_glyph(&glyphs)), vec![9], "最後の字形 1 つ（同じクラスタでも分ける）");
     assert!(first_cluster(&[]).is_empty() && last_cluster(&[]).is_empty() && last_glyph(&[]).is_empty());
   }
+
   #[test]
   fn mixed_run_width_scales_each_glyph_by_its_own_upem() {
     let shaped = mixed_run();

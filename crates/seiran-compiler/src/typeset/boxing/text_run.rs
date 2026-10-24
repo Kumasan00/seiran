@@ -696,6 +696,7 @@ mod tests {
     assert_eq!(edges(&halfwidth), (ja('（'), ja('）')), "詰めない半角の約物は和文の字の端");
     assert_eq!(edges(&letters), (ja('あ'), ja('い')));
   }
+
   #[test]
   fn font_switch_is_not_a_break_opportunity() {
     let fonts = test_support::vendor_font_system(|font_type| {

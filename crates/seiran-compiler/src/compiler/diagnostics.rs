@@ -575,6 +575,21 @@ fn math_and_text_missing_glyphs_are_reported_together() {
 }
 
 #[test]
+fn variation_sequence_warnings_survive_a_glyph_error() {
+  // 本文の欠字（致命的）があっても、確定した異体字列の代替の警告（本文・数式）は失敗とともに返す
+  let failure = TestProject::builder()
+    .source_text("欠字 ก。\n\n本文の漢\u{E0102}と数式 $x\u{FE00}$。\n")
+    .build()
+    .compile_err();
+
+  assert_eq!(diagnostics_with_code(&failure, "typeset::font::missing_glyph").len(), 1);
+  let warnings = failure.warnings().iter().filter(|warning| {
+    return warning.code().is_some_and(|code| return code.to_string() == "typeset::font::variation_sequence");
+  });
+  assert_eq!(warnings.count(), 2, "本文と数式の警告が残るはず");
+}
+
+#[test]
 fn successful_fallback_emits_no_warning() {
   // 先頭の候補に無い字（Ѡ・結合文字・㋿）と、先頭に無く次の候補にある異体字列（、+ U+FE00）は代替の候補で組めるので、
   // 成功した代替は何も報告しない

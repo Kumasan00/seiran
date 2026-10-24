@@ -397,7 +397,7 @@ pub(crate) mod test_support {
   use std::sync::Arc;
 
   use super::{FontFaceConfig, FontMetrics, PublicationFont, PublicationImage, PublicationResources};
-  use crate::project::{FaceMap, FontMap};
+  use crate::project::FaceMap;
 
   /// 指定した画像だけを持つ描画資源を返す（フォントは全種別 1 候補で、ダミーのバイト列 0 個）。
   pub(crate) fn resources(images: Vec<PublicationImage>) -> PublicationResources {
@@ -413,8 +413,7 @@ pub(crate) mod test_support {
         descender: -200.0,
       },
     };
-    let fonts = FaceMap::from_slots(FontMap::from_fn(|_| return vec![font.clone()]))
-      .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
+    let fonts = FaceMap::uniform(&font);
     return PublicationResources::new(fonts, images);
   }
 }

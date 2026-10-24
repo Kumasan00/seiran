@@ -57,6 +57,16 @@ impl<T> FaceMap<T> {
     return well_formed.then_some(Self { slots });
   }
 
+  /// 全枠が候補 1 つで、どれも `value` の表を作る（テスト用）。
+  #[cfg(test)]
+  pub(crate) fn uniform(value: &T) -> Self
+  where
+    T: Clone,
+  {
+    return Self::from_slots(FontMap::from_fn(|_| return vec![value.clone()]))
+      .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず");
+  }
+
   /// 枠 `font_type` の候補の値を候補の順に返す（[`FaceMap::from_slots`] の検査で 1 つ以上）。
   pub(crate) fn candidates(&self, font_type: FontType) -> &[T] { return &self.slots[font_type]; }
 

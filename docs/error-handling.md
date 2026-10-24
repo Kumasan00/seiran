@@ -124,7 +124,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   添えて連結する。同じソースなら同じスニペットの 2 本目のラベルにする）。
   異なる修正を要求する違反は集合の別要素にする
 - **表示順は入力の論理順**であり、`HashMap` の反復順や並列処理の完了順に依存させない
-  （source は `config.sources` の宣言順、フォントは読込がパスの昇順・解析 / 検証が `FontType` の宣言順、画像は
+  （source は `config.sources` の宣言順、フォントは読込がパスの昇順・解析 / 検証が枠の宣言順 → 候補順（`FontFace` の順）、画像は
   正規化済み `ProjectPath` の昇順、意味解析は `NodeId` 由来の文書順）。rayon を使う箇所は `collect::<Result<Vec<_>, E>>()`
   （複数エラー時にどれが返るか非決定）ではなく `collect::<Vec<Result<_, E>>>()` +
   `failures::collect_in_input_order` を通し、入力順の slot に戻してから集約する
@@ -154,7 +154,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `#[diagnostic(severity(Warning), code(...))]`）。`code` の第 1 階層は**検出した段**
   （フォント検証の警告は `typeset::font::script::*`、config.toml の警告は `project::config::*`）
 - 表示順は入力の論理順。段の実行順（設定 → フォント → 組版）で束ね、段の中は各段が既に決定的な順序で
-  集めている（config は `sources` の宣言順、フォントは `FontType` の宣言順、組版は物理ページの昇順）
+  集めている（config は `sources` の宣言順、フォントは枠の宣言順 → 候補順（`FontFace` の順）、組版は物理ページの昇順）
 - **失敗しても確定した warning は返す**。「成功／失敗」と
   「エラー／警告」は別の軸で、警告を生成し得る段の境界は `(Result<T, Failures<E>>, Vec<W>)` の組を返す。
   `compile` facade は 1 回の呼び出しに閉じたローカルの `Warnings` へ段の戻り値だけを積み、失敗したら

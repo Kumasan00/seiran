@@ -1,10 +1,6 @@
 //! 全フォント種別に対応する値を 1 つずつ持つ表 [`FontMap`]。
 
-use std::{
-  array,
-  fmt::{self, Debug, Formatter},
-  ops::Index,
-};
+use std::{array, ops::Index};
 
 use strum::VariantArray;
 
@@ -50,13 +46,6 @@ impl<T> Index<FontType> for FontMap<T> {
 
   // 添字は判別子。module 先頭の const 検査が `FontType::VARIANTS` と判別子の順序の一致を保証する。
   fn index(&self, font_type: FontType) -> &T { return &self.values[font_type as usize]; }
-}
-
-/// `{種別: 値, ..}` の形で [`FontType`] の宣言順に出す。
-impl<T: Debug> Debug for FontMap<T> {
-  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-    return formatter.debug_map().entries(FontType::VARIANTS.iter().zip(&self.values)).finish();
-  }
 }
 
 #[cfg(test)]

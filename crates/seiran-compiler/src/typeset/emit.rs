@@ -329,7 +329,7 @@ mod tests {
     document::HeadingLevel,
     length::Length,
     project::{
-      FaceMap, FontConfig, FontMap, ProjectPath,
+      FaceMap, FontConfig, ProjectPath,
       config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
@@ -384,8 +384,7 @@ mod tests {
         max_dpi: 300,
         downsample: false,
       },
-      font_configs: FaceMap::from_slots(FontMap::from_fn(|_| return vec![test_font_config()]))
-        .expect("本文は 1 候補以上・math は 1 候補なので形は正しいはず"),
+      font_configs: FaceMap::uniform(&test_font_config()),
       sources: Vec::new(),
       style_path: None,
       references_path: None,
