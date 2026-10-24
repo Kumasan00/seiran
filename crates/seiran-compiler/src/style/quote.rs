@@ -13,7 +13,7 @@ use crate::{
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct QuoteStyle {
-  /// 本文左右端からのブロック字下げ量（左右に同量適用）
+  /// 本文左右端からのブロック字下げ量（左右に同量適用。段落と表・画像・ディスプレイ数式の幅と揃えの基準を狭める）
   #[garde(custom(non_negative))]
   pub indent: Length,
   /// ブロック上のアキ

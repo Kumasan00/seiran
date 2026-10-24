@@ -7,9 +7,10 @@
 //! 罫線と空きを確定した境界（断片の上端・下端の枠罫、ヘッダ下の罫線、各行の上の区切りと部分罫。規則は `arrange` の
 //! doc）で、配置（`breaking::break_pages`）は段オフセットと揃えを足して置くだけ。
 //!
-//! 列幅の基準 `available` は表を置く段の幅（`BlockBuildInputs::column_width`）。本文では
-//! `PreparedGeometry::body_column_width` で、`break_pages` が段幅に使う値と同じ式・同じ入力から出る（前付けは本文幅で、
-//! 前付けの段数 1・段間 0 の段幅と一致する）。配置側の揃えはこの段幅と [`TableBox::width`] から決まる。
+//! 列幅の基準 `available` は表を置く段の幅（`BlockBuildInputs::column_width`）から囲む引用・リストの字下げを引いた
+//! 利用幅（`boxes::usable_width`）。段の幅は本文では `PreparedGeometry::body_column_width` で、`break_pages` が段幅に
+//! 使う値と同じ式・同じ入力から出る（前付けは本文幅で、前付けの段数 1・段間 0 の段幅と一致する）。配置側も同じ式で
+//! 利用幅を出し、揃えはこの利用幅と [`TableBox::width`] から決まる。
 //!
 //! 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅で本文の段落と同じ行分割器
 //! （`BlockBuildInputs::breaker`）が折り返す。全列 `Auto` のセルは折り返さず、自然幅の 1 行のまま置く。

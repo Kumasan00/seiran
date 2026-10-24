@@ -23,8 +23,9 @@ use crate::{
   project::ProjectPath,
   typeset::{
     boxes::{
-      Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK,
-      Page, PlacedBlock, PlacedMathNumber, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
+      self, Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK,
+      PENALTY_FORCE_BREAK, Page, PlacedBlock, PlacedMathNumber, PlacedTableRule, TableBoundary, TableBox,
+      TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
     geometry::{PageGeometry, column_width},
@@ -73,7 +74,7 @@ pub(in crate::typeset) enum OverflowKind {
     /// 超過量
     excess: Length,
   },
-  /// 画像が段の幅か実効の本文下限を超えた
+  /// 画像が利用幅（段の幅から引用・リストの字下げを引いた幅）か実効の本文下限を超えた
   Image {
     /// `\image` コマンド
     origin: NodeId,
@@ -84,7 +85,7 @@ pub(in crate::typeset) enum OverflowKind {
     /// 超過量
     excess: Length,
   },
-  /// ディスプレイ数式の本体が段の幅か実効の本文下限を超えた（行番号は測らない）
+  /// ディスプレイ数式の本体が利用幅（段の幅から引用・リストの字下げを引いた幅）か実効の本文下限を超えた（行番号は測らない）
   Math {
     /// 数式環境
     origin: NodeId,
@@ -95,7 +96,7 @@ pub(in crate::typeset) enum OverflowKind {
     /// 超過量
     excess: Length,
   },
-  /// 表の幅が段の幅を超えた（表 1 個につき 1 件。最初の行が着地したページに記録する）
+  /// 表の幅が利用幅（段の幅から引用・リストの字下げを引いた幅）を超えた（表 1 個につき 1 件。最初の行が着地したページに記録する）
   Table {
     /// 表環境
     origin: NodeId,
@@ -316,17 +317,18 @@ impl PageComposer {
     });
   }
 
-  /// 段左端基準の右端 `right` が段の幅を、下端 `bottom` が下限 `limit` を超えていれば、横 → 縦の順に
-  /// `kind(方向, 超過量)` を記録する
+  /// 幅 `available` の領域の左端を基準にした右端 `right` がその幅を、下端 `bottom` が下限 `limit` を超えていれば、
+  /// 横 → 縦の順に `kind(方向, 超過量)` を記録する
   fn record_extent_overflow(
     &mut self,
     right: Length,
+    available: Length,
     bottom: Length,
     limit: Length,
     kind: impl Fn(OverflowAxis, Length) -> OverflowKind,
   ) {
     let overflows = [
-      (OverflowAxis::Horizontal, excess(right, self.column_width)),
+      (OverflowAxis::Horizontal, excess(right, available)),
       (OverflowAxis::Vertical, excess(bottom, limit)),
     ];
     for (axis, over) in overflows {
@@ -338,7 +340,8 @@ impl PageComposer {
 
   /// `origin` に帰属する段左端基準の行 `line`（下端 `bottom`）のはみ出しを、下限 `limit` に対して記録する
   fn record_line_overflow(&mut self, line: &Line, bottom: Length, limit: Length, origin: Option<NodeId>) {
-    self.record_extent_overflow(line.width(), bottom, limit, |axis, excess| {
+    let column_width = self.column_width;
+    self.record_extent_overflow(line.width(), column_width, bottom, limit, |axis, excess| {
       return OverflowKind::Line {
         origin,
         excerpt: observe::summarize_line(line),
@@ -384,8 +387,8 @@ impl PageComposer {
 
 /// ブロック列をページへ配置し、確定ページ列とはみ出し記録を返す。
 ///
-/// はみ出しは着地が確定した行（脚注本体を含む）・画像・ディスプレイ数式について、段の幅と実効の本文下限を基準に
-/// 軸ごとに記録する。表は幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも
+/// はみ出しは着地が確定した行（脚注本体を含む）・画像・ディスプレイ数式について、横の上限（行は段の幅、画像・
+/// 数式は字下げを引いた利用幅）と実効の本文下限を基準に軸ごとに記録する。表は利用幅に対する幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも
 /// 入らない行帯）を測る。
 /// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
 #[must_use]
@@ -472,6 +475,8 @@ pub(crate) fn break_pages(
         width,
         height,
         target_dpi,
+        indent,
+        right_indent,
         align,
       } => {
         if composer.cursor.overflows(height, geom) {
@@ -480,7 +485,9 @@ pub(crate) fn break_pages(
         let col_off = composer.column_offset();
         let y = composer.cursor.y;
         let limit = composer.cursor.region_limit(geom);
-        composer.record_extent_overflow(align.offset(col_width, width) + width, y + height, limit, |axis, excess| {
+        let available = boxes::usable_width(col_width, indent, right_indent);
+        let offset = align.offset(available, width);
+        composer.record_extent_overflow(offset + width, available, y + height, limit, |axis, excess| {
           return OverflowKind::Image {
             origin,
             path: path.clone(),
@@ -491,7 +498,7 @@ pub(crate) fn break_pages(
         composer.draft.place_block(
           PlacedBlock::Image {
             path,
-            x: col_off + align.offset(col_width, width),
+            x: col_off + indent + offset,
             y,
             width,
             height,
@@ -502,8 +509,14 @@ pub(crate) fn break_pages(
         );
         composer.cursor = composer.cursor.below(height);
       },
-      Block::Table { table, align } => {
-        place_table(&mut composer, geom, breaker, table, col_width, align);
+      Block::Table {
+        table,
+        indent,
+        right_indent,
+        align,
+      } => {
+        let available = boxes::usable_width(col_width, indent, right_indent);
+        place_table(&mut composer, geom, breaker, table, col_width, indent, available, align);
         composer.cursor.at_edge = true;
       },
       Block::Math {
@@ -511,9 +524,12 @@ pub(crate) fn break_pages(
         body,
         numbers,
         numbers_on_right,
+        indent,
+        right_indent,
         align,
       } => {
-        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width, origin);
+        let available = boxes::usable_width(col_width, indent, right_indent);
+        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, indent, available, origin);
       },
       // アンカーはゼロサイズで、次の実ブロックの確定座標で解決する
       Block::Anchor(id) => {
@@ -726,7 +742,7 @@ fn break_paragraph(
   right_indent: Length,
   alignment: TextAlignment,
 ) -> Vec<Line> {
-  let available = (column_width - indent - right_indent).max(Length::ZERO);
+  let available = boxes::usable_width(column_width, indent, right_indent);
   let mut lines = breaker.break_lines(items, available, alignment);
   // 揃えのずらしは行分割が利用可能幅の中で済ませている。段オフセットは段をまたぐと行ごとに変わるため、
   // ここでは足さず着地段が決まってから足す
@@ -893,7 +909,8 @@ fn place_single_line(
   composer.cursor = composer.cursor.after_line(baseline, leading);
 }
 
-/// ディスプレイ数式ブロックを配置する
+/// ディスプレイ数式ブロックを、字下げ `indent` から始まる幅 `available` の利用幅の中に配置する（揃え・番号の位置・
+/// 横のはみ出しはこの幅で決める）
 #[expect(
   clippy::too_many_arguments,
   reason = "数式本体・行番号・揃えの各値は Block::Math から分解した 1 ブロック分で、束ねる中間型を作っても呼び出し側の情報量は減らない"
@@ -905,7 +922,8 @@ fn place_math_block(
   numbers: Vec<MathRowNumber>,
   numbers_on_right: bool,
   align: Align,
-  column_width: Length,
+  indent: Length,
+  available: Length,
   origin: NodeId,
 ) {
   let total_height = body.height + body.depth;
@@ -915,8 +933,8 @@ fn place_math_block(
   let col_off = composer.column_offset();
   let top = composer.cursor.y;
   let limit = composer.cursor.region_limit(geom);
-  let body_offset = align.offset(column_width, body.width);
-  composer.record_extent_overflow(body_offset + body.width, top + total_height, limit, |axis, excess| {
+  let body_offset = align.offset(available, body.width);
+  composer.record_extent_overflow(body_offset + body.width, available, top + total_height, limit, |axis, excess| {
     return OverflowKind::Math {
       origin,
       excerpt: observe::summarize_box(&body),
@@ -925,14 +943,15 @@ fn place_math_block(
     };
   });
 
-  let x = col_off + body_offset;
+  let x = col_off + indent + body_offset;
   let baseline_y = top + body.height;
   let placed_numbers: Vec<PlacedMathNumber> = numbers
     .into_iter()
     .map(|n| {
       let number_x = col_off
+        + indent
         + if numbers_on_right {
-          (column_width - n.content.width).max(Length::ZERO)
+          (available - n.content.width).max(Length::ZERO)
         } else {
           Length::ZERO
         };
@@ -1077,20 +1096,27 @@ impl<'a> FragmentFrame<'a> {
 /// 表を行断片の単位で配置する（断片ごとに上端・下端の枠罫を引き、改段・改ページ後の先頭に再掲ヘッダを積む）
 ///
 /// 表固有の判断は分割してよいか（`breakable`）と断片の開閉（[`FragmentFrame`]）だけで、断片と境界の中身（列幅・
-/// セル余白・罫線の太さと空き・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと揃え
-/// オフセットと、行の脚注の予約・配置（[`place_table_row`]）。セルの脚注本体は `breaker` で段幅 `column_width` に
+/// セル余白・罫線の太さと空き・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと、
+/// 字下げ `indent` に利用幅 `available` の中での揃えを足したオフセット（全断片で同じ）と、行の脚注の予約・配置
+/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は `breaker` で段幅 `column_width` に
 /// 行分割する。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
 /// 解決する。先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
+#[expect(
+  clippy::too_many_arguments,
+  reason = "段の幅（脚注本体の行分割）と字下げ・利用幅・揃え（表の水平位置）は Block::Table と段から来る別々の値で、束ねる中間型を作っても呼び出し側の情報量は減らない"
+)]
 fn place_table(
   composer: &mut PageComposer,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
   table: TableBox,
   column_width: Length,
+  indent: Length,
+  available: Length,
   align: Align,
 ) {
-  // 揃えオフセットは段内のもの。段オフセットは着地段が決まる flush 時に断片ごとに足す
-  let align_offset = align.offset(column_width, table.width);
+  // 揃えオフセットは段内のもの（字下げを含む）。段オフセットは着地段が決まる flush 時に断片ごとに足す
+  let align_offset = indent + align.offset(available, table.width);
   let head_bodies = table_footnote_bodies(breaker, &table.head, column_width);
   let row_bodies = table_footnote_bodies(breaker, &table.rows, column_width);
   if !table.breakable {
@@ -1120,7 +1146,7 @@ fn place_table(
   };
   // 幅のはみ出しは表 1 個につき 1 件で、最初の断片が着地して `page_index` が着地ページになってから記録する
   // （断片が 1 つも無い表は呼び出し時点のページ）
-  let mut width_excess = excess(width, column_width);
+  let mut width_excess = excess(width, available);
   let mut record_width_excess = |composer: &mut PageComposer| {
     if let Some(excess) = width_excess.take() {
       composer.record(OverflowKind::Table { origin, excess });
@@ -1294,8 +1320,8 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
-        MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink,
-        PlacedTableRow, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
+        MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox,
+        PlacedLink, PlacedTableRow, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
       },
       breaking::break_lines::GreedyBreaker,
     },
@@ -1611,6 +1637,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -2337,6 +2365,8 @@ mod tests {
         width: pt(20.0),
         height: pt(15.0),
         target_dpi: None,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
       paragraph_of_lines(1),
@@ -2366,6 +2396,8 @@ mod tests {
         width: pt(20.0),
         height: pt(30.0),
         target_dpi: None,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -2489,6 +2521,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -2670,6 +2704,8 @@ mod tests {
         image_block(10.0, 10.0),
         Block::Table {
           table,
+          indent: Length::ZERO,
+          right_indent: Length::ZERO,
           align: Align::Left,
         },
       ],
@@ -2723,6 +2759,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -2802,6 +2840,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -2828,6 +2868,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -2878,6 +2920,8 @@ mod tests {
       Block::stretchable_space(pt(4.0), pt(4.0)),
       Block::Table {
         table: framed(table_box(Vec::new(), vec![table_row("R0")])),
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
       fixed_block(40.0),
@@ -2899,6 +2943,8 @@ mod tests {
       Block::stretchable_space(pt(4.0), pt(4.0)), // stretch アキ
       Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }, // idx1, 行高10。glue 後の y=22、bottom=32
       fixed_block(40.0),                          // 溢れて改ページ（不足 50-32=18 を配分）
@@ -3257,6 +3303,8 @@ mod tests {
       width: pt(20.0),
       height: pt(15.0),
       target_dpi: None,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Center,
     }];
 
@@ -3277,6 +3325,8 @@ mod tests {
       width: pt(20.0),
       height: pt(15.0),
       target_dpi: None,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Right,
     }];
 
@@ -3294,6 +3344,8 @@ mod tests {
     let table = table_box(vec![table_row("HEAD")], vec![table_row("R0")]);
     let blocks = vec![Block::Table {
       table,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Center,
     }];
 
@@ -3317,6 +3369,8 @@ mod tests {
     };
     let blocks = vec![Block::Table {
       table,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Center,
     }];
 
@@ -3511,6 +3565,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -3955,6 +4011,8 @@ mod tests {
       width: Length::pt(10.0),
       height: pt(height),
       target_dpi: None,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Left,
     };
   }
@@ -4115,6 +4173,8 @@ mod tests {
     let (pages, _) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       Length::pt(100.0),
@@ -4148,6 +4208,8 @@ mod tests {
       Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -4174,6 +4236,8 @@ mod tests {
       Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -4207,6 +4271,8 @@ mod tests {
       Block::Anchor(AnchorId::Label(LabelId::new("tab:x"))),
       Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -4443,6 +4509,8 @@ mod tests {
       width: pt(width),
       height: pt(height),
       target_dpi: None,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Left,
     };
   }
@@ -4472,6 +4540,8 @@ mod tests {
       },
       numbers: Vec::new(),
       numbers_on_right: true,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Center,
     };
   }
@@ -4549,6 +4619,241 @@ mod tests {
     assert!(overflows.is_empty(), "{overflows:?}");
   }
 
+  /// 画像・表・数式のブロック `block` の字下げを `indent` / `right_indent` に書き換える
+  fn indented(mut block: Block, indent: f32, right_indent: f32) -> Block {
+    match &mut block {
+      Block::Image {
+        indent: left,
+        right_indent: right,
+        ..
+      }
+      | Block::Table {
+        indent: left,
+        right_indent: right,
+        ..
+      }
+      | Block::Math {
+        indent: left,
+        right_indent: right,
+        ..
+      } => (*left, *right) = (pt(indent), pt(right_indent)),
+      _ => unreachable!("このヘルパは画像・表・数式のブロックだけを受け取る"),
+    }
+    return block;
+  }
+
+  /// 画像・表・数式のブロック `block` の揃えを `align` に書き換える
+  fn aligned(mut block: Block, align: Align) -> Block {
+    match &mut block {
+      Block::Image { align: slot, .. } | Block::Table { align: slot, .. } | Block::Math { align: slot, .. } => {
+        *slot = align;
+      },
+      _ => unreachable!("このヘルパは画像・表・数式のブロックだけを受け取る"),
+    }
+    return block;
+  }
+
+  /// ページの最初の画像の x
+  fn first_image_x(page: &Page) -> Length {
+    return page
+      .blocks
+      .iter()
+      .find_map(|block| match block {
+        PlacedBlock::Image { x, .. } => return Some(*x),
+        _ => return None,
+      })
+      .expect("画像があるはず");
+  }
+
+  /// ページの最初の表の先頭行の最初のセルの箱の x
+  fn first_table_cell_x(page: &Page) -> Length {
+    return page
+      .blocks
+      .iter()
+      .find_map(|block| match block {
+        PlacedBlock::Table { rows, .. } => return Some(rows[0].boxes[0].dx),
+        _ => return None,
+      })
+      .expect("表があるはず");
+  }
+
+  /// ページの最初のディスプレイ数式の本体の x と、番号の x の列
+  fn first_math_xs(page: &Page) -> (Length, Vec<Length>) {
+    return page
+      .blocks
+      .iter()
+      .find_map(|block| match block {
+        PlacedBlock::MathBlock { x, numbers, .. } => {
+          return Some((*x, numbers.iter().map(|number| return number.x).collect()));
+        },
+        _ => return None,
+      })
+      .expect("ディスプレイ数式があるはず");
+  }
+
+  /// 幅 `width` の番号 1 つを持つ数式（本体は `math_block(20, 8, 2)`）
+  fn numbered_math_block(numbers_on_right: bool, width: f32) -> Block {
+    let Block::Math {
+      origin,
+      body,
+      indent,
+      right_indent,
+      align,
+      ..
+    } = math_block(20.0, 8.0, 2.0)
+    else {
+      unreachable!("math_block は Block::Math を返す");
+    };
+    return Block::Math {
+      origin,
+      body,
+      numbers: vec![MathRowNumber {
+        content: HBox {
+          content: HBoxContent::Atom(Vec::new()),
+          width: pt(width),
+          height: pt(8.0),
+          depth: pt(2.0),
+        },
+        dy: Length::ZERO,
+      }],
+      numbers_on_right,
+      indent,
+      right_indent,
+      align,
+    };
+  }
+
+  #[test]
+  fn indented_blocks_are_aligned_within_the_usable_width() {
+    // 段幅 100・字下げ 30 / 右 10 で利用幅 60。画像と数式は幅 20、表は幅 24 でセルの箱は表左端 + 2
+    for (align, image_x, cell_x, math_x) in [
+      (Align::Left, 30.0, 32.0, 30.0),
+      (Align::Center, 50.0, 50.0, 50.0),
+      (Align::Right, 70.0, 68.0, 70.0),
+    ] {
+      let image = indented(aligned(image_block(20.0, 10.0), align), 30.0, 10.0);
+      let table = indented(aligned(table_block(vec![table_row("R0")]), align), 30.0, 10.0);
+      let math = indented(aligned(math_block(20.0, 8.0, 2.0), align), 30.0, 10.0);
+
+      let (image_pages, _) = break_pages(vec![image], pt(100.0), &test_geometry(), &GreedyBreaker);
+      let (table_pages, _) = break_pages(vec![table], pt(100.0), &test_geometry(), &GreedyBreaker);
+      let (math_pages, _) = break_pages(vec![math], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+      assert!(close(first_image_x(&image_pages[0]), image_x), "{align:?} 画像");
+      assert!(close(first_table_cell_x(&table_pages[0]), cell_x), "{align:?} 表");
+      assert!(close(first_math_xs(&math_pages[0]).0, math_x), "{align:?} 数式");
+    }
+  }
+
+  #[test]
+  fn math_numbers_sit_at_the_edges_of_the_usable_width() {
+    // 利用幅 60（30..90）。幅 6 の番号は右なら 84、左なら 30
+    for (numbers_on_right, number_x) in [(true, 84.0), (false, 30.0)] {
+      let block = indented(numbered_math_block(numbers_on_right, 6.0), 30.0, 10.0);
+
+      let (pages, _) = break_pages(vec![block], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+      let (_, numbers) = first_math_xs(&pages[0]);
+      assert_eq!(numbers.len(), 1);
+      assert!(close(numbers[0], number_x), "右={numbers_on_right}: x={}", numbers[0].to_pt());
+    }
+  }
+
+  #[test]
+  fn indented_blocks_overflow_against_the_usable_width() {
+    // 利用幅 60 ちょうどは記録なし。65 は段幅 100 に収まるが利用幅を 5 超える
+    let fitting = vec![
+      indented(image_block(60.0, 5.0), 30.0, 10.0),
+      indented(
+        Block::Table {
+          table: TableBox {
+            width: pt(60.0),
+            ..table_box(Vec::new(), vec![table_row("R0")])
+          },
+          indent: Length::ZERO,
+          right_indent: Length::ZERO,
+          align: Align::Left,
+        },
+        30.0,
+        10.0,
+      ),
+      indented(math_block(60.0, 4.0, 1.0), 30.0, 10.0),
+    ];
+    let (_, fitting_overflows) = break_pages(fitting, pt(100.0), &test_geometry(), &GreedyBreaker);
+    let wide_image = indented(aligned(image_block(65.0, 5.0), Align::Center), 30.0, 10.0);
+    let wide_table = indented(
+      Block::Table {
+        table: TableBox {
+          width: pt(65.0),
+          ..table_box(Vec::new(), vec![table_row("R0")])
+        },
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
+        align: Align::Left,
+      },
+      30.0,
+      10.0,
+    );
+    let wide_math = indented(math_block(65.0, 4.0, 1.0), 30.0, 10.0);
+
+    let (image_pages, image_overflows) = break_pages(vec![wide_image], pt(100.0), &test_geometry(), &GreedyBreaker);
+    let (_, table_overflows) = break_pages(vec![wide_table], pt(100.0), &test_geometry(), &GreedyBreaker);
+    let (_, math_overflows) = break_pages(vec![wide_math], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert!(fitting_overflows.is_empty(), "{fitting_overflows:?}");
+    assert_eq!(image_overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 5.0)]);
+    // 中央揃えでも利用幅より広ければずらしは 0 で、左端は字下げ
+    assert!(close(first_image_x(&image_pages[0]), 30.0));
+    assert_eq!(
+      table_overflows,
+      vec![Overflow {
+        page_index: 0,
+        kind: OverflowKind::Table {
+          origin: table_origin(),
+          excess: pt(5.0),
+        },
+      }]
+    );
+    assert_eq!(math_overflows, vec![math_overflow(0, OverflowAxis::Horizontal, 5.0)]);
+  }
+
+  #[test]
+  fn blocks_in_exhausted_indents_overflow_by_their_whole_width() {
+    // 字下げ 60 / 右 60 は段幅 100 を使い切り、利用幅は 0
+    let block = indented(image_block(20.0, 10.0), 60.0, 60.0);
+
+    let (pages, overflows) = break_pages(vec![block], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert!(close(first_image_x(&pages[0]), 60.0));
+    assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 20.0)]);
+  }
+
+  #[test]
+  fn indented_table_keeps_its_indent_on_every_fragment() {
+    // 版面の高さ 40 に 4 行入るので 5 行表は 2 ページにまたがる
+    let rows = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
+    let block = indented(table_block(rows), 30.0, 10.0);
+
+    let (pages, _) = break_pages(vec![block], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    for page in &pages {
+      assert!(close(first_table_cell_x(page), 32.0), "x={}", first_table_cell_x(page).to_pt());
+    }
+  }
+
+  #[test]
+  fn footnote_of_an_indented_table_breaks_at_the_column_width() {
+    // 脚注本体の箱 80 は利用幅 60 を超えるが段幅 100 に収まる（脚注は字下げされない）
+    let footnote = footnote_item(1, vec![wide_box(80.0, 8.0, 2.0)], pt(12.0));
+    let block = indented(table_block(vec![with_footnote(table_row("A"), footnote)]), 30.0, 10.0);
+
+    let (pages, overflows) = break_pages(vec![block], pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert!(overflows.is_empty(), "{overflows:?}");
+    assert_eq!(footnote_baselines(&pages[0], 1).len(), 1, "脚注は 1 行");
+  }
+
   #[test]
   fn line_in_the_right_column_is_measured_against_its_column() {
     // 左段を 4 行で埋め、箱 1 つの段落を右段（段オフセット 55・段幅 45）へ送る
@@ -4606,6 +4911,8 @@ mod tests {
   fn table_block(rows: Vec<TableRowFragment>) -> Block {
     return Block::Table {
       table: table_box(Vec::new(), rows),
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Left,
     };
   }
@@ -4675,6 +4982,8 @@ mod tests {
     let rows = (0..6).map(|i| return table_row(&format!("R{i}"))).collect();
     let blocks = vec![Block::Table {
       table: table_box(head, rows),
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Left,
     }];
 
@@ -4700,6 +5009,8 @@ mod tests {
       table_block(filler),
       Block::Table {
         table: table_box(head, vec![table_row("R0")]),
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -4789,6 +5100,8 @@ mod tests {
       single_line_paragraph(Vec::new()),
       Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -4880,6 +5193,8 @@ mod tests {
     ];
     let blocks = vec![Block::Table {
       table: table_box(head, rows),
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Left,
     }];
 
@@ -4914,6 +5229,8 @@ mod tests {
       single_line_paragraph(vec![one_line_footnote(1)]),
       Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       },
     ];
@@ -4943,6 +5260,8 @@ mod tests {
     };
     let blocks = vec![Block::Table {
       table,
+      indent: Length::ZERO,
+      right_indent: Length::ZERO,
       align: Align::Left,
     }];
 
@@ -5012,6 +5331,8 @@ mod tests {
     let (pages, overflows) = break_pages(
       vec![Block::Table {
         table,
+        indent: Length::ZERO,
+        right_indent: Length::ZERO,
         align: Align::Left,
       }],
       pt(100.0),

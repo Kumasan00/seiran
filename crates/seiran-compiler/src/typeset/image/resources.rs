@@ -99,10 +99,11 @@ fn read_image(source: &dyn ProjectSource, path: &ProjectPath) -> Result<(Natural
   ));
 }
 
-/// 画像 1 件の描画寸法を、ソース指定値と自然寸法・段幅から確定する。
+/// 画像 1 件の描画寸法を、ソース指定値と自然寸法・利用幅から確定する。
 ///
 /// `width` / `height` はソースが指定した値（省略された辺は `None`）。省略された辺を
-/// 自然寸法の縦横比から、両方省略なら段幅いっぱいから埋める。自然寸法は
+/// 自然寸法の縦横比から、両方省略なら利用幅 `available`（段幅から引用・リストの字下げを引いた幅。字下げが使い切ったときは
+/// 呼び元が段幅を渡すので正）いっぱいから埋める。自然寸法は
 /// [`load_image_resources`] が検証済みなので、この操作は失敗しない。
 ///
 /// # Panics
@@ -114,26 +115,25 @@ pub(in crate::typeset) fn resolve_image_size(
   path: &ProjectPath,
   width: Option<Length>,
   height: Option<Length>,
-  column_width: Length,
+  available: Length,
 ) -> (Length, Length) {
   let Some(natural) = images.natural_size(path) else {
     unreachable!(
       "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
     );
   };
-  let (width, height) =
-    fit_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, column_width.to_pt());
+  let (width, height) = fit_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, available.to_pt());
   return (Length::pt(width), Length::pt(height));
 }
 
 /// 指定値と縦横比から最終描画寸法（pt）を求める。
-fn fit_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize, column_width: f32) -> (f32, f32) {
+fn fit_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize, available: f32) -> (f32, f32) {
   let ratio = natural.aspect_ratio();
   return match (width, height) {
     (Some(w), Some(h)) => (w, h),
     (Some(w), None) => (w, w * ratio),
     (None, Some(h)) => (h / ratio, h),
-    (None, None) => (column_width, column_width * ratio),
+    (None, None) => (available, available * ratio),
   };
 }
 
