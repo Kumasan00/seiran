@@ -8,5 +8,5 @@ typeset::overflow::image
    · ╰── この画像です
  3 │ \end{figure}
    ╰────
-  help: \image の width / height を小さくするか、style.toml の [page] の余白か config.toml の
-        [pdf] の用紙サイズを見直してください。
+  help: \image の width / height を小さくするか、style.toml の [page] の余白・引用やリストの字下げ
+        （[quote].indent / [list].indent）か config.toml の [pdf] の用紙サイズを見直してください。

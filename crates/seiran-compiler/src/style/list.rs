@@ -15,7 +15,7 @@ use crate::{
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct ListStyle {
-  /// 各リスト項目の左インデント量
+  /// 各リスト項目の左インデント量（段落と表・画像・ディスプレイ数式の幅と揃えの基準を狭める）
   #[garde(custom(non_negative))]
   pub indent: Length,
   /// リスト項目間の下余白

@@ -89,13 +89,13 @@ pub(crate) enum TypesetWarning {
     span: Option<SourceSpan>,
   },
 
-  /// 画像が段の幅か実効の本文下限を超えた
+  /// 画像が利用幅（段の幅から引用・リストの字下げを引いた幅）か実効の本文下限を超えた
   #[error("{page} ページの画像 {path} が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
   #[diagnostic(
     code(typeset::overflow::image),
     severity(Warning),
     help(
-      "\\image の width / height を小さくするか、style.toml の [page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+      "\\image の width / height を小さくするか、style.toml の [page] の余白・引用やリストの字下げ（[quote].indent / [list].indent）か config.toml の [pdf] の用紙サイズを見直してください。"
     )
   )]
   ImageOverflow {
@@ -114,13 +114,13 @@ pub(crate) enum TypesetWarning {
     span: SourceSpan,
   },
 
-  /// ディスプレイ数式の本体が段の幅か実効の本文下限を超えた
+  /// ディスプレイ数式の本体が利用幅（段の幅から引用・リストの字下げを引いた幅）か実効の本文下限を超えた
   #[error("{page} ページのディスプレイ数式「{excerpt}」が{axis}に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
   #[diagnostic(
     code(typeset::overflow::math),
     severity(Warning),
     help(
-      "数式を align などの複数行の環境で分けるか、style.toml の文字サイズ・[page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+      "数式を align などの複数行の環境で分けるか、style.toml の文字サイズ・[page] の余白・引用やリストの字下げ（[quote].indent / [list].indent）か config.toml の [pdf] の用紙サイズを見直してください。"
     )
   )]
   MathOverflow {
@@ -138,13 +138,13 @@ pub(crate) enum TypesetWarning {
     #[label("この数式です")]
     span: SourceSpan,
   },
-  /// 表の幅（確定した列幅の総和）が段の幅を超えた
+  /// 表の幅（確定した列幅の総和）が利用幅（段の幅から引用・リストの字下げを引いた幅）を超えた
   #[error("{page} ページの表が横に {:.1}pt はみ出したまま配置しました", .excess.to_pt())]
   #[diagnostic(
     code(typeset::overflow::table),
     severity(Warning),
     help(
-      "widths の固定幅・比率の合計や auto 列の内容を減らすか、style.toml の [page] の余白か config.toml の [pdf] の用紙サイズを見直してください。"
+      "widths の固定幅・比率の合計や auto 列の内容を減らすか、style.toml の [page] の余白・引用やリストの字下げ（[quote].indent / [list].indent）か config.toml の [pdf] の用紙サイズを見直してください。"
     )
   )]
   TableOverflow {

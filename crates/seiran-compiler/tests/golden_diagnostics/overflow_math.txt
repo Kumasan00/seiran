@@ -8,5 +8,6 @@ typeset::overflow::math
    · ╰── この数式です
  2 │ x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x
    ╰────
-  help: 数式を align などの複数行の環境で分けるか、style.toml の文字サイズ・[page] の余白か
-        config.toml の [pdf] の用紙サイズを見直してください。
+  help: 数式を align などの複数行の環境で分けるか、style.toml の文字サイズ・[page] の余白・引用や
+        リストの字下げ（[quote].indent / [list].indent）か config.toml の [pdf] の用紙サイズを見直
+        してください。
