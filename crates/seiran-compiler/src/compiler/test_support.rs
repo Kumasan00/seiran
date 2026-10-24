@@ -449,6 +449,11 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "page", "margin_left", "275mm");
       set(table, "page", "margin_right", "275mm");
     },
+    // 代替の字を含む段落を数行に折り返させる行長
+    "font_fallback" => {
+      set(table, "page", "margin_left", "250mm");
+      set(table, "page", "margin_right", "250mm");
+    },
     // 外部リンクの中の数式がリンク色を継ぐことを見るため、リンク色を指定した版面
     "math_color" => set(table, "hyperref", "url_color", "#0000ff"),
     // 本文 2 段組みで左段・右段の両方に脚注が着地する版面
@@ -509,6 +514,30 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "pdf", "width", "120mm");
       set(table, "pdf", "height", "85mm");
     },
+    // serif は先頭の STIX Two Text の後ろに sans_serif と同じ Noto Sans を足し、japanese_serif は先頭を
+    // japanese_monospace と同じ Source Han Code JP にして既存の Noto Serif JP を 2 つ目へ回す（先頭のままでは代替が起きない）
+    "font_fallback" => {
+      let sans_serif = font_candidate(table, "sans_serif", 0);
+      font_candidates(table, "serif").push(sans_serif);
+      let japanese_monospace = font_candidate(table, "japanese_monospace", 0);
+      font_candidates(table, "japanese_serif").insert(0, japanese_monospace);
+    },
     _ => {},
   }
+}
+
+/// config.toml の本文用 `[[font_configs.<font_type>]]` の候補の配列を返す。
+pub(super) fn font_candidates<'a>(table: &'a mut toml::value::Table, font_type: &str) -> &'a mut Vec<toml::Value> {
+  return section_mut(table, "font_configs")
+    .get_mut(font_type)
+    .and_then(toml::Value::as_array_mut)
+    .unwrap_or_else(|| panic!("fixture config.toml は [[font_configs.{font_type}]] を持つはず"));
+}
+
+/// config.toml の本文用 `[[font_configs.<font_type>]]` の `index` 番目の候補の複製を返す。
+fn font_candidate(table: &mut toml::value::Table, font_type: &str, index: usize) -> toml::Value {
+  return font_candidates(table, font_type)
+    .get(index)
+    .cloned()
+    .unwrap_or_else(|| panic!("fixture config.toml の [[font_configs.{font_type}]] は {index} 番目の候補を持つはず"));
 }

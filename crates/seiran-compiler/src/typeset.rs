@@ -43,7 +43,7 @@ pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
 pub(crate) use pagination::LaidOutDocument;
 #[cfg(test)]
 pub(crate) use test_support::layout_for_test;
-use text_glyphs::TextGlyphError;
+use text_glyphs::{TextGlyphError, VariationSequenceFallback};
 use tracing::{info, info_span};
 pub(crate) use warning::TypesetWarning;
 
@@ -143,7 +143,7 @@ fn load_fonts(
 /// 意味解析の成果物を確定レイアウトへ組版する（`typeset` phase の前半）。
 ///
 /// 数式フォントの字の欠落が見つかっても組版を続け、本文の枠の字の欠落と合わせて報告する。成功したときの警告は、異体字列の
-/// 代替（数式の文書順 → 本文の要素の位置順）→ 配置由来の順。
+/// 代替（数式・本文をまとめて要素の位置順、生成内容はその後ろ）→ 配置由来の順。
 ///
 /// # Errors
 ///
@@ -180,8 +180,12 @@ fn lay_out(
     return Err(ComposeError::Glyphs(failures));
   }
   let (laid_out, layout_warnings) = laid_out.map_err(|error| return ComposeError::Typeset(Failures::single(error)))?;
-  let mut warnings = math_warnings;
-  warnings.extend(text_warnings);
+  let mut variation_warnings = math_warnings;
+  variation_warnings.extend(text_warnings);
+  // 同じ位置のものは数式（事前検査）が先のまま
+  variation_warnings.sort_by_key(VariationSequenceFallback::order_key);
+  let mut warnings: Vec<TypesetWarning> =
+    variation_warnings.into_iter().map(TypesetWarning::VariationSequenceFallback).collect();
   warnings.extend(layout_warnings);
   return Ok((laid_out, warnings));
 }

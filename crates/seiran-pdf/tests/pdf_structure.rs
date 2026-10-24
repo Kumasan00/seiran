@@ -16,7 +16,28 @@ use seiran_compiler::{FilesystemProjectSource, ProjectPath};
 use tempfile::TempDir;
 
 /// PDF 構造 golden の対象入力。
-const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];
+const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure", "font_fallback"];
+
+/// `font_fallback` の `serif` の 2 つ目の候補（fixture の `sans_serif` と同じ Noto Sans）。`serif_bold` の見出しの前に置く
+const FALLBACK_SERIF_CANDIDATE: &str = r#"[[font_configs.serif]]
+direction = "left-to-right"
+font_path = "vendor/fonts/NotoSans[wdth,wght].ttf"
+script = "latn"
+variation_axes = [
+  { name = "wdth", value = 100.0 },
+  { name = "wght", value = 400.0 },
+]
+
+[[font_configs.serif_bold]]"#;
+
+/// `font_fallback` の `japanese_serif` の先頭の候補（fixture の `japanese_monospace` と同じ Source Han Code JP）。既存の
+/// Noto Serif JP の見出しの前に置き、Noto Serif JP を 2 つ目の候補にする
+const FALLBACK_JAPANESE_SERIF_PRIMARY: &str = r#"[[font_configs.japanese_serif]]
+direction = "left-to-right"
+font_index = 0
+font_path = "vendor/fonts/SourceHanCodeJP.ttc"
+
+[[font_configs.japanese_serif]]"#;
 
 /// ワークスペースルートを返す。
 fn workspace_root() -> PathBuf {
@@ -66,6 +87,13 @@ fn write_fixture_project(dir: &TempDir, name: &str, background: Option<&str>) ->
   let config_text = fs::read_to_string(fixture_dir.join("config.toml")).expect("fixture config.toml を読めるはず");
   let config_text = replace_line(&config_text, "sources = ", &format!("sources = [\"tests/text/{name}.sei\"]"));
   let config_text = replace_line(&config_text, "style_path = ", &format!("style_path = \"{}\"", style_path.display()));
+  // 代替の候補の fixture は、レイアウトの golden（`compiler::test_support` の `font_fallback`）と同じ候補の構成にする
+  let config_text = if name == "font_fallback" {
+    let with_serif = replace_line(&config_text, "[[font_configs.serif_bold]]", FALLBACK_SERIF_CANDIDATE);
+    replace_line(&with_serif, "[[font_configs.japanese_serif]]", FALLBACK_JAPANESE_SERIF_PRIMARY)
+  } else {
+    config_text
+  };
   let config_path = dir.path().join("config.toml");
   fs::write(&config_path, config_text).expect("config.toml の書き出し");
 

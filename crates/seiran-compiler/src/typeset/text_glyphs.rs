@@ -16,7 +16,7 @@ use crate::{
   document::{NodeId, SourceLocation, SourceMap},
   project::{FontConfigs, FontFace, FontType, ProjectPath},
   source::SourceId,
-  typeset::{TypesetWarning, math_glyphs::MissingMathGlyph, pagination},
+  typeset::{math_glyphs::MissingMathGlyph, pagination},
 };
 
 /// シェイプしている字形の出どころ — 著者が書いた要素か、組版が生成した内容か
@@ -113,7 +113,7 @@ impl GlyphIssues {
     &self,
     source_map: &SourceMap,
     configs: &FontConfigs,
-  ) -> (Vec<TextGlyphError>, Vec<TypesetWarning>) {
+  ) -> (Vec<TextGlyphError>, Vec<VariationSequenceFallback>) {
     let mut issues: Vec<(GlyphIssue, Option<SourceLocation>)> = self
       .0
       .take()
@@ -159,14 +159,14 @@ impl GlyphIssues {
           }));
         },
         IssueKind::VariationFallback { cluster, used } => {
-          warnings.push(TypesetWarning::VariationSequenceFallback(VariationSequenceFallback {
+          warnings.push(VariationSequenceFallback {
             cluster,
             used: FontFace::new(font_type, used),
             tried: tried_candidates(configs, font_type),
             generated: site.generated,
             source_id: site.source_id,
             span: site.span,
-          }));
+          });
         },
       }
     }
@@ -316,6 +316,14 @@ impl VariationSequenceFallback {
   /// 帰属するソースを返す。生成内容の字は `None`
   #[must_use]
   pub(crate) fn source_id(&self) -> Option<SourceId> { return self.source_id; }
+
+  /// 文書での並び順の鍵 — 要素のものは (ソース, 要素の開始位置) の昇順、生成内容のものはその後ろ
+  pub(super) fn order_key(&self) -> (bool, Option<(SourceId, usize)>) {
+    return (
+      self.generated.is_some(),
+      self.source_id.zip(self.span).map(|(source_id, span)| return (source_id, span.offset())),
+    );
+  }
 }
 
 /// クラスタの字を `U+XXXX` の列（空白区切り）にする

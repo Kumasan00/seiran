@@ -1,0 +1,10 @@
+\section{Font fallback}
+
+The Old Church Slavonic letter Ѡ is missing from the primary serif face, so it
+comes from the next candidate of the same slot. A combining mark like a͈ moves
+to the candidate together with its base, and a word such as xѠy stays whole
+when the paragraph breaker looks for a place to end the line near it.
+
+本文の明朝体の先頭の候補に無い字㋿は、同じ枠の次の候補で組みます。読点の異体字、︀も、その異体字列を持つ候補から取ります。候補を替えても、字の並びと行の分け方は元の文字列のままです。
+
+和欧文の混植でも、Ѡmega のように代替の字を含む語は途中で切れず、前後の和文との間には四分アキが入ります。

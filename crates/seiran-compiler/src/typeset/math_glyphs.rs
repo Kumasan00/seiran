@@ -23,9 +23,7 @@ use crate::{
   project::{FontType, ProjectPath},
   source::SourceId,
   style::Style,
-  typeset::{
-    TypesetWarning, boxing, font, lowering, lowering::DelimiterGlyphs, text_glyphs::VariationSequenceFallback,
-  },
+  typeset::{boxing, font, lowering, lowering::DelimiterGlyphs, text_glyphs::VariationSequenceFallback},
 };
 
 /// 数式フォントに基本の字形が無い字を数式で使った箇所
@@ -83,7 +81,7 @@ pub(super) fn check(
   has_glyph: &dyn Fn(char) -> bool,
   has_variation: &dyn Fn(char, char) -> bool,
   font_path: &ProjectPath,
-) -> (Result<(), Failures<MissingMathGlyph>>, Vec<TypesetWarning>) {
+) -> (Result<(), Failures<MissingMathGlyph>>, Vec<VariationSequenceFallback>) {
   let mut checker = Checker {
     style,
     has_glyph,
@@ -99,9 +97,7 @@ pub(super) fn check(
   let warnings = checker
     .variations
     .into_iter()
-    .map(|(cluster, location)| {
-      return TypesetWarning::VariationSequenceFallback(VariationSequenceFallback::math(cluster, location, font_path));
-    })
+    .map(|(cluster, location)| return VariationSequenceFallback::math(cluster, location, font_path))
     .collect();
   return (
     match Failures::from_vec(checker.missing) {

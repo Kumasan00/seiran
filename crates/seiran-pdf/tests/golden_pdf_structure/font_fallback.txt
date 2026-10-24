@@ -1,0 +1,5 @@
+page_count=1
+embedded_font_count=10
+link_annotation_count=0
+has_outline=true
+image_xobject_count=0

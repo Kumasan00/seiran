@@ -258,6 +258,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "color",
   "equation",
   "flush",
+  "font_fallback",
   "footnote",
   "footnote_columns",
   "footnote_per_page",

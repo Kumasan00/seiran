@@ -575,6 +575,71 @@ fn math_and_text_missing_glyphs_are_reported_together() {
 }
 
 #[test]
+fn successful_fallback_emits_no_warning() {
+  // 先頭の候補に無い字（Ѡ・結合文字・㋿）と、先頭に無く次の候補にある異体字列（、+ U+FE00）は代替の候補で組めるので、
+  // 成功した代替は何も報告しない
+  let compilation = TestProject::builder()
+    .golden_fixture("font_fallback")
+    .build()
+    .compile()
+    .unwrap_or_else(|failure| panic!("代替の候補で組めるはず: {:?}", failure.into_report()));
+
+  assert_eq!(all_messages(&compilation), Vec::<String>::new());
+}
+
+#[test]
+fn diagnostic_variation_sequence_fallback() {
+  // 本文の 漢 + U+E0102 は明朝体の枠のどの候補も、数式の x + U+FE00 は数式フォントも異体字列を持たない。どちらも基底の
+  // 字形で組んで警告し、使った要素を指す
+  let path = "tests/text/diagnostics/variation_sequence_fallback.sei";
+  let compilation = TestProject::builder()
+    .sources(&[path])
+    .build()
+    .compile()
+    .expect("異体字列の代替は致命的ではないはず");
+
+  let code = "typeset::font::variation_sequence";
+  let warnings = warnings_with_code(&compilation, code);
+  assert_eq!(warnings.len(), 2, "{:?}", all_messages(&compilation));
+  assert!(
+    warnings.iter().all(|warning| return warning.source_code().is_some()),
+    "どちらも帰属するソースの本文を添えるはず"
+  );
+  assert_matches_golden("variation_sequence_fallback", &render_warnings(&compilation, code));
+}
+
+#[test]
+fn diagnostic_fallback_direction() {
+  // serif の 2 つ目の候補が先頭（左から右）と違う書字方向を明示しているので代替に使えず、Ѡ はどの候補でも組めない
+  let failure = TestProject::builder()
+    .golden_fixture("font_fallback")
+    .config_toml(|table| {
+      let candidate = test_support::font_candidates(table, "serif")
+        .get_mut(1)
+        .and_then(toml::Value::as_table_mut)
+        .expect("font_fallback の serif は 2 つ目の候補を持つはず");
+      candidate.insert("direction".to_string(), toml::Value::String("top-to-bottom".to_string()));
+    })
+    .source_text("代替の Ѡ。\n")
+    .build()
+    .compile_err();
+
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "typeset::font::fallback_direction",
+      "typeset::font::missing_glyph"
+    ]
+  );
+  let direction = failure.diagnostics().next().expect("主診断があるはず");
+  assert!(direction.source_code().is_some(), "要素の位置の本文を添えるはず");
+  assert_eq!(
+    direction.to_string(),
+    "serif[1] の direction が serif[0] の進行方向と異なるため、代替の候補として使えません"
+  );
+}
+
+#[test]
 fn diagnostic_font_validation_errors_follow_font_type_order() {
   // 実在するバリアブルフォントに不明なバリエーション軸を設定し、`validate_fonts` を失敗させる。
   // 宣言は Japanese Serif → Serif の順だが、報告は `FontType` の宣言順（Serif が先）になるはず
