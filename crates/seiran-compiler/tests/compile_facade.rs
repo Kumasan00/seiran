@@ -11,7 +11,7 @@ use common::{minimal_config_toml, read_test_font};
 use miette::Diagnostic;
 use seiran_compiler::{MemoryProjectSource, ProjectPath, test_support};
 
-/// [`minimal_config_toml`] の `[font_configs.serif]` に任意の行を足した `config.toml` を組む。
+/// [`minimal_config_toml`] の先頭の `[[font_configs.serif]]` に任意の行を足した `config.toml` を組む。
 fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
   return common::config_toml_with_font_sections(
     source_path,
@@ -20,14 +20,15 @@ fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) ->
   );
 }
 
-/// [`minimal_config_toml_with_serif_extra`] に `style_path` を足した `config.toml` を組む。
+/// [`minimal_config_toml_with_serif_extra`] に `style_path` を足し、和文 6 種別を [`common::JAPANESE_FONT_PATH`] にした
+/// `config.toml` を組む。
 ///
-/// `extra_lines` に空文字を渡せば `[font_configs.serif]` は既定のままになる。
+/// `extra_lines` に空文字を渡せば先頭の `[[font_configs.serif]]` は既定のままになる。
 fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
   return common::config_toml_with_font_sections(
     source_path,
     &format!("style_path = \"{style_path}\"\n"),
-    &test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
+    &common::with_japanese_slots(&test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines)),
   );
 }
 
@@ -47,7 +48,8 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
     .with_text("/project/text.sei", "Hello, Seiran!")
-    .with_bytes("/project/font.ttf", font_bytes);
+    .with_bytes("/project/font.ttf", font_bytes)
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let compilation =
@@ -71,7 +73,8 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
     .with_text("/project/config.toml", config)
     .with_text("/project/style.toml", overflowing_footnote_style_toml("continuous"))
     .with_text("/project/text.txt", "本文\\footnote{はみ出す脚注}。")
-    .with_bytes("/project/font.ttf", font_bytes);
+    .with_bytes("/project/font.ttf", font_bytes)
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let compilation =
@@ -117,7 +120,8 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
     .with_text("/project/config.toml", config)
     .with_text("/project/style.toml", overflowing_footnote_style_toml("continuous"))
     .with_text("/project/text.sei", "本文\\footnote{はみ出す脚注}。")
-    .with_bytes("/project/font.ttf", font_bytes);
+    .with_bytes("/project/font.ttf", font_bytes)
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let compilation =
@@ -152,7 +156,8 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
     .with_text("/project/config.toml", config)
     .with_text("/project/style.toml", overflowing_footnote_style_toml("per_page"))
     .with_text("/project/text.sei", "本文\\footnote{はみ出す脚注}。")
-    .with_bytes("/project/font.ttf", font_bytes);
+    .with_bytes("/project/font.ttf", font_bytes)
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let compilation =
@@ -181,7 +186,8 @@ fn compile_failure_keeps_config_warnings_when_config_validation_fails() {
   // `.txt` のソースを宣言するが登録しない（拡張子の警告とパス解決の違反が同時に出る）
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let failure =
@@ -199,7 +205,8 @@ fn compile_failure_keeps_config_warnings_when_the_style_cannot_be_parsed() {
     .with_text("/project/config.toml", config)
     .with_text("/project/style.toml", "x = \n")
     .with_text("/project/text.txt", "Hello, Seiran!")
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let failure =
@@ -215,7 +222,8 @@ fn compile_failure_keeps_config_warnings_when_parsing_fails() {
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", minimal_config_toml("/project/text.txt"))
     .with_text("/project/text.txt", "\\unknowncommand{x}")
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let failure =
@@ -388,7 +396,8 @@ fn compile_failure_does_not_keep_layout_warnings() {
     .with_text("/project/config.toml", config)
     .with_text("/project/style.toml", overflowing_footnote_style_toml("per_page"))
     .with_text("/project/text.sei", body)
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let failure =
@@ -409,7 +418,8 @@ fn compile_resolves_relative_config_path_source_and_image_against_base_dir() {
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
     .with_text("/project/text.sei", figure_source("fig/a.png"))
     .with_bytes("/project/fig/a.png", read_test_image())
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("config.toml");
 
   let compilation = seiran_compiler::compile(&source, &config_path, project_base_dir())
@@ -448,7 +458,8 @@ fn compile_reads_an_image_once_when_it_is_spelled_two_ways() {
     .with_text("/project/config.toml", minimal_config_toml("text.sei"))
     .with_text("/project/text.sei", body)
     .with_bytes("/project/fig/a.png", read_test_image())
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
 
   let compilation =
@@ -489,7 +500,8 @@ fn compile_with_style(style_toml: &str, body: &str) -> seiran_compiler::Compilat
     .with_text("/project/style.toml", style_toml)
     .with_text("/project/text.sei", body)
     .with_bytes("/project/image.png", read_test_image())
-    .with_bytes("/project/font.ttf", read_test_font());
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
   let config_path = ProjectPath::new("/project/config.toml");
   return seiran_compiler::compile(&source, &config_path, project_base_dir()).expect("はみ出しは致命的ではないはず");
 }

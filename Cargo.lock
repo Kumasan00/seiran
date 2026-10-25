@@ -2300,7 +2300,6 @@ dependencies = [
  "lopdf",
  "miette",
  "seiran-compiler",
- "strum",
  "tempfile",
  "thiserror",
  "tracing",

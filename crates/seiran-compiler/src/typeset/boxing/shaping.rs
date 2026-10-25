@@ -1,11 +1,12 @@
 //! シェーピング結果の計測 — グリフ列と確定寸法を持つ [`ShapedRun`]
 //!
-//! フォントメトリクスから箱の寸法（幅・高さ・深さ）を出すのは [`ShapedRun::measure`] 1 箇所だけ。
-//! 分割で割った断片（[`ShapedRun::sub_box`]）と約物 1 字（[`ShapedRun::replaced_glyph_box`]）は親 run の
-//! 高さ・深さをそのまま写す — 同じフォント種別・同じフォントサイズなので、メトリクスから計算し直しても
-//! 同じ値になる。引数にメトリクスもフォントサイズも取らないので、計算し直す材料が呼び出し側に無い。
+//! フォントメトリクスから箱の寸法（幅・高さ・深さ）を出すのは [`ShapedRun`] の中だけ。1 本の run は 1 つの枠を組み、字形ごとに
+//! 枠のどの候補（実体）で組んだかを持つ。字形の送り幅・オフセットはその字形の実体のフォント単位のままで、長さにするときに
+//! その実体の upem で割る。箱にするとき（[`ShapedRun::into_hbox`] / [`ShapedRun::sub_box`]）は、候補が 1 種なら 1 本の
+//! グリフ列、複数なら同じ候補の連続ごとのグリフ列を並べた Atom にし、どの箱の高さ・深さも中に現れた実体の ascender /
+//! descender から出す（字形が無ければ先頭の候補）。
 
-use std::{iter, ops::Range};
+use std::{iter, mem, ops::Range};
 
 use read_fonts::tables::math::{MathConstant, MathKernCorner, StretchAxis};
 use tracing::trace;
@@ -13,14 +14,15 @@ use tracing::trace;
 use crate::{
   color::Color,
   length::Length,
-  project::FontType,
+  project::{FontFace, FontType},
   publication::{FontMetrics, Glyph, GlyphRun},
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{Buffer, FontSystem, ScriptLevel, ScriptScale, Stretch},
+    font::{self, Buffer, Finding, FontSystem, ScriptLevel, ScriptScale, Stretch},
     lowering::{MathOperator, TextStyle},
     observe,
+    text_glyphs::{GlyphIssue, GlyphIssues, GlyphOrigin, IssueKind},
   },
 };
 
@@ -66,25 +68,7 @@ fn horizontal_assembly_advances(parts: &[(u32, i64)], size: i64) -> Vec<(u32, i6
   return parts.iter().zip(ends).map(|(&(gid, position), end)| return (gid, end - position)).collect();
 }
 
-/// グリフごとのクラスタ開始位置 `clusters`（グリフ順）から、各グリフが対応する元テキストの範囲を出す。
-///
-/// 範囲はグリフが属するクラスタ全体 — 開始位置から、それより後ろで始まるクラスタの最小の開始位置
-/// （無ければ `text_len`）まで。グリフ順に依存しないので右から左（クラスタ降順）でも範囲は逆転しない。
-/// harfrust はクラスタ開始位置を文字の先頭バイトに置くので、範囲の両端は文字境界に乗る。
-fn cluster_ranges(clusters: &[usize], text_len: usize) -> Vec<Range<usize>> {
-  let mut starts = clusters.to_vec();
-  starts.sort_unstable();
-  starts.dedup();
-  return clusters
-    .iter()
-    .map(|&start| {
-      let end = starts.get(starts.partition_point(|&other| return other <= start)).copied().unwrap_or(text_len);
-      return start..end;
-    })
-    .collect();
-}
-
-/// 2 つの字形が同じクラスタに属するか（`cluster_ranges` が各字形へクラスタ全体の範囲を入れる）
+/// 2 つの字形が同じクラスタに属するか（`font::shaped_glyphs` が各字形へクラスタ全体の範囲を入れる）
 fn same_cluster(left: &Glyph, right: &Glyph) -> bool { return left.range == right.range; }
 
 /// 字形列（クラスタ 1 つなど）のイタリック補正（フォント単位）— 構成字形の `correction(gid)` の和
@@ -123,35 +107,41 @@ fn add_italic_corrections_to(glyphs: &mut [Glyph], correction: impl Fn(u32) -> i
   }
 }
 
-/// シェーピング済みの 1 run — グリフ列と、そのフォントで確定した寸法
+/// シェーピング済みの 1 run — 1 つの枠で組んだグリフ列と、字形ごとの候補・確定した寸法
 #[derive(Debug)]
 pub(super) struct ShapedRun {
-  /// シェーピング結果のグリフ列
+  /// シェーピング結果のグリフ列（`face` は枠の先頭の候補）
   run: GlyphRun,
-  /// `run` を出したフォントの基本メトリクス（部分 run の幅もこれで出す）
-  metrics: FontMetrics,
+  /// 字形ごとの、組んだ候補の位置（`run.glyphs` と同じ長さ）
+  candidates: Vec<usize>,
+  /// 枠の全候補の基本メトリクス（候補の宣言順。部分 run の寸法もこれで出す）
+  metrics: Vec<FontMetrics>,
   /// 全グリフの送り幅の合計
   width: Length,
-  /// ベースラインから上の高さ（フォントの ascender 由来）
+  /// ベースラインから上の高さ（run に現れた実体の ascender の最大）
   height: Length,
-  /// ベースラインから下の深さ（フォントの descender 由来・正値）
+  /// ベースラインから下の深さ（run に現れた実体の descender の絶対値の最大）
   depth: Length,
 }
 
 impl ShapedRun {
-  /// グリフ列とメトリクスから寸法を確定する
-  pub(super) fn measure(run: GlyphRun, metrics: FontMetrics) -> Self {
-    let advance_units: i64 = run.glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
-    let width = units_to_length(advance_units, run.font_size, metrics.upem);
-    let height = units_to_length(design_units(metrics.ascender), run.font_size, metrics.upem);
-    let depth = units_to_length(design_units(metrics.descender.abs()), run.font_size, metrics.upem);
-    return ShapedRun {
+  /// グリフ列 `run`（`face` は枠の先頭の候補）と字形ごとの候補 `candidates`、枠の全候補のメトリクス `metrics` から寸法を
+  /// 確定する
+  pub(super) fn measure(run: GlyphRun, candidates: Vec<usize>, metrics: Vec<FontMetrics>) -> Self {
+    assert_eq!(candidates.len(), run.glyphs.len(), "字形ごとに候補を 1 つ持つ");
+    let mut shaped = ShapedRun {
       run,
+      candidates,
       metrics,
-      width,
-      height,
-      depth,
+      width: Length::ZERO,
+      height: Length::ZERO,
+      depth: Length::ZERO,
     };
+    let (width, height, depth) = shaped.extent(0..shaped.run.glyphs.len());
+    shaped.width = width;
+    shaped.height = height;
+    shaped.depth = depth;
+    return shaped;
   }
 
   /// シェーピング対象のテキスト
@@ -180,20 +170,14 @@ impl ShapedRun {
   /// run 全体の深さ
   pub(super) fn depth(&self) -> Length { return self.depth; }
 
-  /// グリフ 1 つの送り幅
+  /// グリフ 1 つの送り幅（その字形の実体の upem で長さにする）
   pub(super) fn advance_of(&self, glyph_index: usize) -> Length {
-    return units_to_length(i64::from(self.run.glyphs[glyph_index].x_advance), self.run.font_size, self.metrics.upem);
+    let upem = self.metrics[self.candidates[glyph_index]].upem;
+    return units_to_length(i64::from(self.run.glyphs[glyph_index].x_advance), self.run.font_size, upem);
   }
 
   /// run 全体を計測済みの箱にする
-  pub(super) fn into_hbox(self) -> HBox {
-    return HBox {
-      content: HBoxContent::Glyphs(self.run),
-      width: self.width,
-      height: self.height,
-      depth: self.depth,
-    };
-  }
+  pub(super) fn into_hbox(self) -> HBox { return self.extract(0..self.run.glyphs.len(), 0..self.run.text.len()); }
 
   /// 部分グリフ列を計測済みの箱にする（空範囲なら `None`）
   ///
@@ -202,6 +186,136 @@ impl ShapedRun {
     if glyph_range.is_empty() {
       return None;
     }
+    return Some(self.extract(glyph_range, byte_range));
+  }
+
+  /// グリフ 1 つを内蔵アキぶん墨移動させた箱を作る（幅は呼び出し側が決める。移動量はその字形の実体の upem で単位にする）
+  pub(super) fn replaced_glyph_box(&self, glyph_index: usize, normalize: yakumono::Normalize, width: Length) -> HBox {
+    let src = &self.run.glyphs[glyph_index];
+    let candidate = self.candidates[glyph_index];
+    #[expect(
+      clippy::cast_possible_truncation,
+      reason = "`shift_em` は約物アキの em 比で、font unit 空間での端数切り捨ては視覚的に無意味な精度"
+    )]
+    let shift_units = (normalize.shift_em * self.metrics[candidate].upem) as i32;
+    let glyph = Glyph {
+      gid: src.gid,
+      range: 0..(src.range.end - src.range.start),
+      x_advance: src.x_advance,
+      y_advance: src.y_advance,
+      x_offset: src.x_offset - shift_units,
+      y_offset: src.y_offset,
+    };
+    let (_, height, depth) = self.extent(glyph_index..glyph_index + 1);
+    return HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: self.run.font_size,
+        text: self.run.text[src.range.clone()].to_string(),
+        glyphs: vec![glyph],
+        face: self.face(candidate),
+        color: self.run.color,
+      }),
+      width,
+      height,
+      depth,
+    };
+  }
+
+  /// 候補 `candidate` の実体
+  fn face(&self, candidate: usize) -> FontFace { return FontFace::new(self.run.face.font_type(), candidate); }
+
+  /// 字形 `glyph_range` を、同じ候補の連続（候補, 字形の範囲）に区切る
+  fn face_chunks(&self, glyph_range: Range<usize>) -> Vec<(usize, Range<usize>)> {
+    let mut chunks: Vec<(usize, Range<usize>)> = Vec::new();
+    for index in glyph_range {
+      let candidate = self.candidates[index];
+      match chunks.last_mut() {
+        Some((last, range)) if *last == candidate => range.end = index + 1,
+        _ => chunks.push((candidate, index..index + 1)),
+      }
+    }
+    return chunks;
+  }
+
+  /// 字形 `glyph_range` の（幅, 高さ, 深さ）。幅は同じ候補の連続ごとに送り幅の和をその実体の upem で長さにして足し、高さ・
+  /// 深さは範囲に現れた実体の最大（字形が無ければ先頭の候補）
+  fn extent(&self, glyph_range: Range<usize>) -> (Length, Length, Length) {
+    let chunks = self.face_chunks(glyph_range);
+    let font_size = self.run.font_size;
+    let mut width = Length::ZERO;
+    for (candidate, range) in &chunks {
+      let advance_units: i64 =
+        self.run.glyphs[range.clone()].iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
+      width += units_to_length(advance_units, font_size, self.metrics[*candidate].upem);
+    }
+    let vertical = |candidate: usize| {
+      let metrics = self.metrics[candidate];
+      return (
+        units_to_length(design_units(metrics.ascender), font_size, metrics.upem),
+        units_to_length(design_units(metrics.descender.abs()), font_size, metrics.upem),
+      );
+    };
+    let (height, depth) = if chunks.is_empty() {
+      vertical(0)
+    } else {
+      chunks.iter().map(|(candidate, _)| return vertical(*candidate)).fold(
+        (Length::ZERO, Length::ZERO),
+        |(height, depth), (chunk_height, chunk_depth)| {
+          return (height.max(chunk_height), depth.max(chunk_depth));
+        },
+      )
+    };
+    return (width, height, depth);
+  }
+
+  /// 字形 `glyph_range`（元テキストの `byte_range` を覆う）を計測済みの箱にする。候補が 1 種なら 1 本のグリフ列、複数なら
+  /// 同じ候補の連続ごとのグリフ列を左から並べた Atom（幅は子の和）
+  fn extract(&self, glyph_range: Range<usize>, byte_range: Range<usize>) -> HBox {
+    let chunks = self.face_chunks(glyph_range.clone());
+    if chunks.len() <= 1 {
+      let candidate = chunks.first().map_or(0, |(candidate, _)| return *candidate);
+      return self.face_box(candidate, glyph_range, byte_range);
+    }
+    // 連続ごとの元テキストの範囲 — 論理順で最初の連続は `byte_range` の先頭から、それ以外は自分の最初のクラスタから、
+    // 論理順で次の連続の開始（最後の連続は `byte_range` の末尾）まで。連続は元テキストの隙間ない区間を覆う
+    let starts: Vec<usize> = chunks
+      .iter()
+      .map(|(_, range)| {
+        return self.run.glyphs[range.clone()]
+          .iter()
+          .map(|glyph| return glyph.range.start)
+          .min()
+          .expect("連続は 1 字形以上");
+      })
+      .collect();
+    let first_start = *starts.iter().min().expect("連続は 2 つ以上");
+    let mut placed = Vec::with_capacity(chunks.len());
+    let mut dx = Length::ZERO;
+    for ((candidate, range), &start) in chunks.into_iter().zip(&starts) {
+      let end = starts.iter().copied().filter(|&other| return other > start).min().unwrap_or(byte_range.end);
+      let start = if start == first_start {
+        byte_range.start
+      } else {
+        start
+      };
+      let hbox = self.face_box(candidate, range, start..end);
+      let width = hbox.width;
+      placed.push(PlacedHBox {
+        hbox,
+        dx,
+        dy: Length::ZERO,
+      });
+      dx += width;
+    }
+    let mut atom = HBox::atom(placed);
+    atom.width = dx;
+    return atom;
+  }
+
+  /// 候補 `candidate` で組んだ字形 `glyph_range`（元テキストの `byte_range` を覆う）を、その実体で計測した 1 本のグリフ列の
+  /// 箱にする。グリフのテキスト範囲は `byte_range` の先頭を 0 とする位置へ振り直す
+  fn face_box(&self, candidate: usize, glyph_range: Range<usize>, byte_range: Range<usize>) -> HBox {
+    let (width, height, depth) = self.extent(glyph_range.clone());
     let byte_start = byte_range.start;
     let glyphs: Vec<Glyph> = self.run.glyphs[glyph_range]
       .iter()
@@ -216,67 +330,49 @@ impl ShapedRun {
         };
       })
       .collect();
-    let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
-    return Some(HBox {
+    return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: self.run.font_size,
         text: self.run.text[byte_range].to_string(),
         glyphs,
-        font_type: self.run.font_type,
-        color: self.run.color,
-      }),
-      width: units_to_length(advance_units, self.run.font_size, self.metrics.upem),
-      height: self.height,
-      depth: self.depth,
-    });
-  }
-
-  /// グリフ 1 つを内蔵アキぶん墨移動させた箱を作る（幅は呼び出し側が決める）
-  pub(super) fn replaced_glyph_box(&self, glyph_index: usize, normalize: yakumono::Normalize, width: Length) -> HBox {
-    let src = &self.run.glyphs[glyph_index];
-    #[expect(
-      clippy::cast_possible_truncation,
-      reason = "`shift_em` は約物アキの em 比で、font unit 空間での端数切り捨ては視覚的に無意味な精度"
-    )]
-    let shift_units = (normalize.shift_em * self.metrics.upem) as i32;
-    let glyph = Glyph {
-      gid: src.gid,
-      range: 0..(src.range.end - src.range.start),
-      x_advance: src.x_advance,
-      y_advance: src.y_advance,
-      x_offset: src.x_offset - shift_units,
-      y_offset: src.y_offset,
-    };
-    return HBox {
-      content: HBoxContent::Glyphs(GlyphRun {
-        font_size: self.run.font_size,
-        text: self.run.text[src.range.clone()].to_string(),
-        glyphs: vec![glyph],
-        font_type: self.run.font_type,
+        face: self.face(candidate),
         color: self.run.color,
       }),
       width,
-      height: self.height,
-      depth: self.depth,
+      height,
+      depth,
     };
   }
 }
 
 /// シェーピングだけを行う部品（[`FontSystem`] と再利用バッファ）
+///
+/// 本文の枠で組めなかった字は、いま組んでいる要素か生成元（`origin`）を添えて `issues` へ積む。
 pub(in crate::typeset) struct Shaper<'a> {
   /// シェイプ・メトリクス取得の窓口
   fonts: &'a FontSystem,
+  /// 組めなかった字の収集器（組版全体で共有）
+  issues: &'a GlyphIssues,
+  /// いま組んでいる要素か生成元
+  origin: GlyphOrigin,
   /// シェイピングに再利用する `harfrust` バッファ
   buffer: Buffer,
 }
 
 impl<'a> Shaper<'a> {
-  /// [`FontSystem`] から新しい `Shaper` を作る
-  pub(in crate::typeset) fn new(fonts: &'a FontSystem) -> Self {
+  /// [`FontSystem`] と収集器 `issues` から、起点 `origin` で組む `Shaper` を作る
+  pub(in crate::typeset) fn new(fonts: &'a FontSystem, issues: &'a GlyphIssues, origin: GlyphOrigin) -> Self {
     return Shaper {
       fonts,
+      issues,
+      origin,
       buffer: Buffer::new(),
     };
+  }
+
+  /// 以後に組む字の起点を `origin` にし、それまでの起点を返す（組み終えたら呼び元が戻す）
+  pub(super) fn set_origin(&mut self, origin: GlyphOrigin) -> GlyphOrigin {
+    return mem::replace(&mut self.origin, origin);
   }
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
@@ -302,7 +398,7 @@ impl<'a> Shaper<'a> {
           self
             .fonts
             .shape_dotless_math(&mut self.buffer, &segment.text, style.font_size.to_pt(), style.script_level);
-          self.shaped_run(&segment.text, FontType::Math, style.font_size, style.color)
+          self.math_run(&segment.text, style.font_size, style.color)
         } else {
           self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
         };
@@ -322,55 +418,80 @@ impl<'a> Shaper<'a> {
     color: Option<Color>,
     script_level: Option<ScriptLevel>,
   ) -> ShapedRun {
-    self.fonts.shape(font_type, &mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, font_type, font_size, color);
+    if font_type == FontType::Math {
+      self.fonts.shape(FontFace::MATH, &mut self.buffer, text, font_size.to_pt(), script_level);
+      return self.math_run(text, font_size, color);
+    }
+    let shaped = self.fonts.shape_text(font_type, &mut self.buffer, text, font_size.to_pt(), script_level);
+    for finding in shaped.findings {
+      let kind = match finding {
+        Finding::Missing { cluster } => IssueKind::Missing {
+          cluster: text[cluster].to_string(),
+        },
+        Finding::VariationFallback { cluster, used } => IssueKind::VariationFallback {
+          cluster: text[cluster].to_string(),
+          used,
+        },
+        Finding::DirectionMismatch { candidate } => IssueKind::DirectionMismatch { candidate },
+      };
+      self.issues.record(GlyphIssue {
+        origin: self.origin,
+        font_type,
+        kind,
+      });
+    }
+    return self.shaped_run(text, shaped.glyphs, shaped.candidates, font_type, font_size, color);
   }
 
-  /// 直前のシェイプが `buffer` に残したグリフ列を、`text` の計測済みの [`ShapedRun`] にする
-  fn shaped_run(&self, text: &str, font_type: FontType, font_size: Length, color: Option<Color>) -> ShapedRun {
-    let glyph_infos = self.buffer.glyph_infos();
-    let glyph_positions = self.buffer.glyph_positions();
-    let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
-    let clusters: Vec<usize> = glyph_infos.iter().map(|glyph_info| return glyph_info.cluster as usize).collect();
-    let ranges = cluster_ranges(&clusters, text.len());
-    for (i, ((glyph_info, glyph_position), range)) in
-      glyph_infos.iter().zip(glyph_positions.iter()).zip(ranges).enumerate()
-    {
+  /// 直前に数式フォントで `text` をシェイプした `buffer` の字形列を、計測済みの [`ShapedRun`] にする
+  ///
+  /// 数式フォントの字の欠落は組版の前の検査（`math_glyphs::check`）が持つので、ここでは問わない。数式フォントは候補を
+  /// 1 つしか持たない。
+  fn math_run(&self, text: &str, font_size: Length, color: Option<Color>) -> ShapedRun {
+    let glyphs = font::shaped_glyphs(&self.buffer, text);
+    let candidates = vec![0; glyphs.len()];
+    return self.shaped_run(text, glyphs, candidates, FontType::Math, font_size, color);
+  }
+
+  /// 枠 `font_type` で `text` を組んだ字形列 `glyphs`（字形ごとの候補 `candidates`）を、計測済みの [`ShapedRun`] にする
+  fn shaped_run(
+    &self,
+    text: &str,
+    glyphs: Vec<Glyph>,
+    candidates: Vec<usize>,
+    font_type: FontType,
+    font_size: Length,
+    color: Option<Color>,
+  ) -> ShapedRun {
+    let face = FontFace::primary(font_type);
+    for (i, glyph) in glyphs.iter().enumerate() {
       // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
       // 単独の量として取り出す経路は無いので、確定値をそのまま出す
       trace!(
         glyph_index = i,
-        glyph_id = glyph_info.glyph_id,
-        range_start = range.start,
-        range_end = range.end,
-        x_advance_units = glyph_position.x_advance,
-        y_advance_units = glyph_position.y_advance,
-        x_offset_units = glyph_position.x_offset,
-        y_offset_units = glyph_position.y_offset,
+        glyph_id = glyph.gid,
+        range_start = glyph.range.start,
+        range_end = glyph.range.end,
+        x_advance_units = glyph.x_advance,
+        y_advance_units = glyph.y_advance,
+        x_offset_units = glyph.x_offset,
+        y_offset_units = glyph.y_offset,
         "グリフをシェーピング"
       );
-      glyphs.push(Glyph {
-        gid: glyph_info.glyph_id,
-        range,
-        x_advance: glyph_position.x_advance,
-        y_advance: glyph_position.y_advance,
-        x_offset: glyph_position.x_offset,
-        y_offset: glyph_position.y_offset,
-      });
     }
-
     let shaped = ShapedRun::measure(
       GlyphRun {
         font_size,
         text: text.to_string(),
         glyphs,
-        font_type,
+        face,
         color,
       },
-      self.fonts.metrics(font_type),
+      candidates,
+      self.fonts.slot_metrics(font_type).to_vec(),
     );
     trace!(
-      font_type = ?font_type,
+      face = %face,
       font_size_pt = %font_size.to_pt(),
       glyph_count = shaped.glyphs().len(),
       width_pt = %shaped.width().to_pt(),
@@ -386,7 +507,7 @@ impl<'a> Shaper<'a> {
   /// 数式フォントの MATH 定数（長さの値）の、フォントサイズ `font_size` での長さ。
   pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {
     let units = self.fonts.math_constants().constant(constant);
-    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontType::Math).upem);
+    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontFace::MATH).upem);
   }
 
   /// 数式フォントの百分率の MATH 定数（`RadicalDegreeBottomRaisePercent` 等）を比にした値
@@ -397,7 +518,7 @@ impl<'a> Shaper<'a> {
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）の隅 `corner` の、ベースラインからの高さ `height` での
   /// math kern の長さ（表が無ければ 0）
   pub(super) fn math_kern(&self, gid: u32, font_size: Length, corner: MathKernCorner, height: Length) -> Length {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     #[expect(
       clippy::cast_possible_truncation,
       reason = "数式 1 つの高さのフォント単位で i32 に収まり、帯の境界との比較に端数は意味を持たない"
@@ -410,7 +531,7 @@ impl<'a> Shaper<'a> {
   /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置）の、フォントサイズ `font_size` での
   /// 長さ。`MathTopAccentAttachment` に登録が無ければ `None`
   pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Option<Length> {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     return self.fonts.math_top_accent_attachment(gid).map(|units| {
       return units_to_length(i64::from(units), font_size, upem);
     });
@@ -418,15 +539,15 @@ impl<'a> Shaper<'a> {
 
   /// 数式フォントのグリフ `gid` の送り幅の、フォントサイズ `font_size` での長さ
   pub(super) fn math_glyph_advance(&self, gid: u32, font_size: Length) -> Length {
-    let upem = self.fonts.metrics(FontType::Math).upem;
-    return units_to_length(design_units(self.fonts.glyph_advance(FontType::Math, gid)), font_size, upem);
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
+    return units_to_length(design_units(self.fonts.glyph_advance(FontFace::MATH, gid)), font_size, upem);
   }
 
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）のインクの上端と下端（グリフ自身のベースライン基準・上が正。
   /// 符号は丸めない）。インクを読めなければ `None`
   pub(super) fn math_glyph_ink(&self, gid: u32, font_size: Length) -> Option<(Length, Length)> {
-    let upem = f64::from(self.fonts.metrics(FontType::Math).upem);
-    let extents = self.fonts.glyph_extents(FontType::Math, gid)?;
+    let upem = f64::from(self.fonts.metrics(FontFace::MATH).upem);
+    let extents = self.fonts.glyph_extents(FontFace::MATH, gid)?;
     let top = f64::from(extents.y_bearing);
     let bottom = top - f64::from(extents.height);
     return Some((font_size.scale(top / upem), font_size.scale(bottom / upem)));
@@ -435,8 +556,8 @@ impl<'a> Shaper<'a> {
   /// 数式フォントのグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、フォントサイズ `font_size` での長さ。
   /// インクを読めなければ原点（`glyph_run_signed_ink` と同じく墨を持たない扱い）
   pub(super) fn math_ink_center(&self, gid: u32, font_size: Length) -> Length {
-    let upem = f64::from(self.fonts.metrics(FontType::Math).upem);
-    return self.fonts.glyph_extents(FontType::Math, gid).map_or(Length::ZERO, |extents| {
+    let upem = f64::from(self.fonts.metrics(FontFace::MATH).upem);
+    return self.fonts.glyph_extents(FontFace::MATH, gid).map_or(Length::ZERO, |extents| {
       return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / upem);
     });
   }
@@ -448,14 +569,17 @@ impl<'a> Shaper<'a> {
   /// 傾いた子ではないので、末尾の傾いたクラスタには常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
   /// `Measurer::place_scripts` が引き戻す。
   pub(super) fn add_italic_corrections(&self, shaped: ShapedRun, style: TextStyle) -> ShapedRun {
-    if shaped.run.font_type != FontType::Math || style.math_operator == Some(MathOperator::Symbol) {
+    if shaped.run.face != FontFace::MATH || style.math_operator == Some(MathOperator::Symbol) {
       return shaped;
     }
     let ShapedRun {
-      mut run, metrics, ..
+      mut run,
+      candidates,
+      metrics,
+      ..
     } = shaped;
     add_italic_corrections_to(&mut run.glyphs, |gid| return self.fonts.math_italics_correction(gid));
-    return ShapedRun::measure(run, metrics);
+    return ShapedRun::measure(run, candidates, metrics);
   }
 
   /// 数式のアクセント記号 `text` を数式フォントの段 `script_level` で組んだ箱。`flattened` なら OpenType `flac` で
@@ -472,7 +596,7 @@ impl<'a> Shaper<'a> {
       return self.shape_segment(text, FontType::Math, font_size, color, script_level).into_hbox();
     }
     self.fonts.shape_flattened_accent(&mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.shaped_run(text, FontType::Math, font_size, color).into_hbox();
+    return self.math_run(text, font_size, color).into_hbox();
   }
 
   /// 数式の広幅アクセントの記号 `text` を、数式フォントで横に `target` 以上へ伸ばして組んだ箱
@@ -490,7 +614,7 @@ impl<'a> Shaper<'a> {
     target: Length,
     color: Option<Color>,
   ) -> HBox {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
     let gid = match shaped.glyphs() {
       [glyph] => glyph.gid,
@@ -500,14 +624,15 @@ impl<'a> Shaper<'a> {
     else {
       return self.shape_accent(text, font_size, script_level, flattened, color);
     };
+    let candidates = vec![0; glyphs.len()];
     let run = GlyphRun {
       font_size,
       text: text.to_string(),
       glyphs,
-      font_type: FontType::Math,
+      face: FontFace::MATH,
       color,
     };
-    return ShapedRun::measure(run, self.fonts.metrics(FontType::Math)).into_hbox();
+    return ShapedRun::measure(run, candidates, vec![self.fonts.metrics(FontFace::MATH)]).into_hbox();
   }
 
   /// 数式フォントのグリフ `gid` を横に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）。
@@ -530,7 +655,7 @@ impl<'a> Shaper<'a> {
       Stretch::Glyph(chosen) if chosen == gid => None,
       Stretch::Glyph(chosen) => Some(vec![glyph(
         chosen,
-        glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, chosen))),
+        glyph_units(design_units(self.fonts.glyph_advance(FontFace::MATH, chosen))),
       )]),
       Stretch::Assembly { parts, size } => Some(
         horizontal_assembly_advances(&parts, size)
@@ -559,7 +684,7 @@ impl<'a> Shaper<'a> {
     target: Length,
     color: Option<Color>,
   ) -> (HBox, (Length, Length)) {
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     let target_units = length_to_units(target, font_size, upem);
     let staged = script_level
       .map(|level| return self.shape_segment(text, FontType::Math, font_size, None, Some(level)))
@@ -583,7 +708,7 @@ impl<'a> Shaper<'a> {
       font_size,
       text: text.to_string(),
       glyphs,
-      font_type: FontType::Math,
+      face: FontFace::MATH,
       color,
     };
     // インクを読めないグリフは墨を持たない扱い（`glyph_run_signed_ink` と同じ）で、ベースライン上に置く
@@ -612,7 +737,7 @@ impl<'a> Shaper<'a> {
         y_offset,
       };
     };
-    let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontType::Math, gid)));
+    let advance = |gid: u32| return glyph_units(design_units(self.fonts.glyph_advance(FontFace::MATH, gid)));
     return match self.fonts.stretch_math_glyph(gid, StretchAxis::Vertical, target) {
       Stretch::Glyph(gid) => vec![glyph(gid, advance(gid), 0)],
       // 縦の assembly の位置はパーツのインクの下端を置く高さで、組み上がりの大きさは使わない（幅はパーツの最大）
@@ -625,7 +750,7 @@ impl<'a> Shaper<'a> {
           .map(|(index, &(gid, bottom))| {
             let ink_bottom = self
               .fonts
-              .glyph_extents(FontType::Math, gid)
+              .glyph_extents(FontFace::MATH, gid)
               .map_or(0, |extents| return design_units(extents.y_bearing - extents.height));
             let x_advance = if index == last { width } else { 0 };
             return glyph(gid, x_advance, glyph_units(bottom - ink_bottom));
@@ -649,12 +774,12 @@ impl<'a> Shaper<'a> {
     let HBoxContent::Glyphs(run) = &placed.hbox.content else {
       return None;
     };
-    if run.font_type != FontType::Math {
+    if run.face != FontFace::MATH {
       return None;
     }
     let glyphs = unit(&run.glyphs);
     let first = glyphs.first()?;
-    let upem = self.fonts.metrics(FontType::Math).upem;
+    let upem = self.fonts.metrics(FontFace::MATH).upem;
     let rise = placed.dy + units_to_length(i64::from(first.y_offset), run.font_size, upem);
     let correction = summed_correction(glyphs, |gid| return self.fonts.math_italics_correction(gid));
     return Some(((first.gid, run.font_size, rise), units_to_length(i64::from(correction), run.font_size, upem)));
@@ -698,11 +823,11 @@ impl<'a> Shaper<'a> {
 
   /// グリフ列 1 本のインクの上端と下端（符号付き。読めないグリフはインクを持たない扱い）
   fn glyph_run_signed_ink(&self, run: &GlyphRun) -> Option<(Length, Length)> {
-    let upem = f64::from(self.fonts.metrics(run.font_type).upem);
+    let upem = f64::from(self.fonts.metrics(run.face).upem);
     let to_length = |units: f64| return run.font_size.scale(units / upem);
     let mut extent: Option<(Length, Length)> = None;
     for glyph in &run.glyphs {
-      let Some(extents) = self.fonts.glyph_extents(run.font_type, glyph.gid) else {
+      let Some(extents) = self.fonts.glyph_extents(run.face, glyph.gid) else {
         continue;
       };
       let top = f64::from(extents.y_bearing) + f64::from(glyph.y_offset);
@@ -719,17 +844,12 @@ impl<'a> Shaper<'a> {
 
 #[cfg(test)]
 mod tests {
-  use std::{fs, ops::Range, path::Path};
-
-  use harfrust::{Buffer, Direction, Font, ShapeOptions, ShaperFont};
-
   use super::{
-    ShapedRun, add_italic_corrections_to, cluster_ranges, first_cluster, horizontal_assembly_advances, last_cluster,
-    last_glyph,
+    ShapedRun, add_italic_corrections_to, first_cluster, horizontal_assembly_advances, last_cluster, last_glyph,
   };
   use crate::{
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{boxes::HBoxContent, boxing::yakumono},
   };
@@ -740,6 +860,35 @@ mod tests {
     ascender: 800.5,
     descender: -200.5,
   };
+
+  /// 全字形を先頭の候補（[`METRICS`]）で組んだ run として計測する
+  fn primary_only(run: GlyphRun) -> ShapedRun {
+    let candidates = vec![0; run.glyphs.len()];
+    return ShapedRun::measure(run, candidates, vec![METRICS]);
+  }
+
+  /// 候補 0 = upem 1000・ascender 800・descender -200、候補 1 = upem 2048・ascender 1900・descender -500 の枠
+  fn mixed_metrics() -> Vec<FontMetrics> {
+    return vec![
+      FontMetrics {
+        upem: 1000.0,
+        ascender: 800.0,
+        descender: -200.0,
+      },
+      FontMetrics {
+        upem: 2048.0,
+        ascender: 1900.0,
+        descender: -500.0,
+      },
+    ];
+  }
+
+  /// 10pt の "ab" を、a = 候補 0・送り 500、b = 候補 1・送り 1024 で組んだ run
+  fn mixed_run() -> ShapedRun {
+    let mut run = ascii_run("ab");
+    run.glyphs[1].x_advance = 1024;
+    return ShapedRun::measure(run, vec![0, 1], mixed_metrics());
+  }
 
   /// 1 文字 = 1 グリフ・送り幅 500 単位（= 0.5em）の run を作る
   fn ascii_run(text: &str) -> GlyphRun {
@@ -759,7 +908,7 @@ mod tests {
           };
         })
         .collect(),
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       color: None,
     };
   }
@@ -776,7 +925,7 @@ mod tests {
 
   #[test]
   fn measure_sums_advances_and_takes_extent_from_metrics() {
-    let shaped = ShapedRun::measure(ascii_run("ab"), METRICS);
+    let shaped = primary_only(ascii_run("ab"));
 
     assert_eq!(shaped.width(), Length::pt(10.0), "送り幅 500 単位 × 2 = 1em = 10pt");
     assert_eq!(shaped.height(), Length::pt(8.0), "ascender 800.5 は設計単位へ切り捨てて 800");
@@ -784,8 +933,8 @@ mod tests {
   }
 
   #[test]
-  fn sub_box_rebases_glyph_ranges_and_copies_parent_extent() {
-    let shaped = ShapedRun::measure(ascii_run("abcd"), METRICS);
+  fn sub_box_rebases_glyph_ranges_and_measures_its_own_extent() {
+    let shaped = primary_only(ascii_run("abcd"));
     let hbox = shaped.sub_box(1..3, 1..3).expect("空でない範囲は箱になるはず");
 
     let HBoxContent::Glyphs(run) = &hbox.content else {
@@ -800,7 +949,7 @@ mod tests {
 
   #[test]
   fn sub_box_of_empty_range_is_none() {
-    let shaped = ShapedRun::measure(ascii_run("ab"), METRICS);
+    let shaped = primary_only(ascii_run("ab"));
 
     assert!(shaped.sub_box(1..1, 1..1).is_none(), "空範囲は箱を作らない");
   }
@@ -810,7 +959,7 @@ mod tests {
     let mut source = ascii_run("abcd");
     source.glyphs[1].x_offset = 20;
     source.glyphs[1].y_offset = 3;
-    let shaped = ShapedRun::measure(source, METRICS);
+    let shaped = primary_only(source);
     let normalize = yakumono::Normalize {
       trim_em: 0.25,
       shift_em: 0.1,
@@ -836,95 +985,13 @@ mod tests {
 
   #[test]
   fn logical_order_holds_only_for_non_decreasing_ranges() {
-    let ascending = ShapedRun::measure(ascii_run("abc"), METRICS);
+    let ascending = primary_only(ascii_run("abc"));
     let mut reversed = ascii_run("abc");
     reversed.glyphs.reverse();
-    let reversed = ShapedRun::measure(reversed, METRICS);
+    let reversed = primary_only(reversed);
 
     assert!(ascending.is_in_logical_order(), "左から右のクラスタ昇順は論理順");
     assert!(!reversed.is_in_logical_order(), "右から左のクラスタ降順は論理順ではない");
-  }
-
-  /// `vendor/fonts/<file_name>` を harfrust のフォントとして読む。
-  fn vendor_font(file_name: &str) -> Font {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts").join(file_name);
-    let bytes = fs::read(&path).expect("vendor/fonts のフォントを読めるはず（未取得なら tools/fetch-test-assets.sh）");
-    return Font::new(bytes, 0).expect("vendor/fonts のフォントは sfnt として読めるはず");
-  }
-
-  /// `text` を書字方向 `direction` でシェイプし、[`cluster_ranges`] でグリフごとの範囲を出す。
-  fn shaped_ranges(font: &Font, text: &str, direction: Direction) -> Vec<Range<usize>> {
-    let mut buffer = Buffer::new();
-    buffer.set_direction(direction);
-    buffer.push_str(text);
-    buffer.guess_segment_properties();
-    harfrust::shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new()).expect("シェイプは成功するはず");
-    let clusters: Vec<usize> = buffer.glyph_infos().iter().map(|info| return info.cluster as usize).collect();
-    return cluster_ranges(&clusters, text.len());
-  }
-
-  #[test]
-  fn cluster_ranges_keep_logical_ranges_for_right_to_left_order() {
-    assert_eq!(cluster_ranges(&[2, 1, 0], 3), vec![2..3, 1..2, 0..1], "表示順が降順でも範囲は逆転しない");
-  }
-
-  #[test]
-  fn cluster_ranges_give_every_glyph_of_a_cluster_the_whole_cluster() {
-    assert_eq!(cluster_ranges(&[0, 0, 5], 6), vec![0..5, 0..5, 5..6], "同じクラスタの 2 グリフは同じ範囲");
-    assert_eq!(cluster_ranges(&[5, 0, 0], 6), vec![5..6, 0..5, 0..5], "右から左でも同じクラスタは同じ範囲");
-  }
-
-  #[test]
-  fn cluster_ranges_of_a_many_to_one_cluster_span_all_its_chars() {
-    assert_eq!(
-      cluster_ranges(&[0, 6, 9], 12),
-      vec![0..6, 6..9, 9..12],
-      "2 文字を 1 グリフにしたクラスタは 2 文字ぶん"
-    );
-  }
-
-  #[test]
-  fn cluster_ranges_of_no_glyphs_is_empty() {
-    assert!(cluster_ranges(&[], 0).is_empty(), "グリフが無ければ範囲も無い");
-  }
-
-  #[test]
-  fn shaped_combining_marks_share_the_cluster_range_in_both_directions() {
-    let font = vendor_font("STIXTwoText[wght].ttf");
-    let text = "a\u{308}\u{301}b";
-
-    let left_to_right = shaped_ranges(&font, text, Direction::LeftToRight);
-    let right_to_left = shaped_ranges(&font, text, Direction::RightToLeft);
-
-    // STIX Two Text は a + U+0308 を合成済みの ä にし、U+0301 を別グリフで重ねる（2 グリフ・1 クラスタ）
-    assert_eq!(left_to_right, vec![0..5, 0..5, 5..6]);
-    assert_eq!(right_to_left, vec![5..6, 0..5, 0..5]);
-  }
-
-  #[test]
-  fn shaped_right_to_left_latin_keeps_one_char_per_glyph() {
-    let font = vendor_font("STIXTwoText[wght].ttf");
-
-    let ranges = shaped_ranges(&font, "abc", Direction::RightToLeft);
-
-    assert_eq!(ranges, vec![2..3, 1..2, 0..1], "表示順で c, b, a");
-  }
-
-  #[test]
-  fn shaped_composed_kana_covers_both_chars() {
-    let font = vendor_font("NotoSerifJP[wght].ttf");
-    let text = "か\u{3099}き」";
-
-    let ranges = shaped_ranges(&font, text, Direction::LeftToRight);
-
-    // Noto Serif JP は か + 結合濁点を 1 グリフ「が」に合成する（2 文字・1 グリフ）
-    assert_eq!(ranges, vec![0..6, 6..9, 9..12]);
-    assert!(
-      ranges
-        .iter()
-        .all(|range| return text.is_char_boundary(range.start) && text.is_char_boundary(range.end)),
-      "範囲の両端は文字境界に乗るはず"
-    );
   }
 
   /// 送り幅 500 のグリフを `gids` の順に並べる
@@ -1054,5 +1121,68 @@ mod tests {
     assert_eq!(gids(last_cluster(&glyphs)), vec![1, 9], "末尾の字は基底と結合文字のクラスタ");
     assert_eq!(gids(last_glyph(&glyphs)), vec![9], "最後の字形 1 つ（同じクラスタでも分ける）");
     assert!(first_cluster(&[]).is_empty() && last_cluster(&[]).is_empty() && last_glyph(&[]).is_empty());
+  }
+
+  #[test]
+  fn mixed_run_width_scales_each_glyph_by_its_own_upem() {
+    let shaped = mixed_run();
+    let font_size = Length::pt(10.0);
+
+    assert_eq!(shaped.width(), Length::pt(10.0), "500/1000 em + 1024/2048 em = 1em");
+    assert_eq!(shaped.height(), Length::pt(8.0).max(font_size.scale(1900.0 / 2048.0)));
+    assert_eq!(shaped.depth(), Length::pt(2.0).max(font_size.scale(500.0 / 2048.0)));
+  }
+
+  #[test]
+  fn mixed_run_materializes_as_an_atom_of_per_face_runs() {
+    let hbox = mixed_run().into_hbox();
+
+    let HBoxContent::Atom(children) = &hbox.content else {
+      panic!("候補の混ざった run は Atom になるはず: {hbox:?}");
+    };
+    assert_eq!(children.len(), 2);
+    let runs: Vec<&GlyphRun> = children
+      .iter()
+      .map(|child| {
+        let HBoxContent::Glyphs(run) = &child.hbox.content else {
+          panic!("子は 1 実体のグリフ列のはず");
+        };
+        return run;
+      })
+      .collect();
+    assert_eq!(runs[0].face, FontFace::new(FontType::Serif, 0));
+    assert_eq!(runs[1].face, FontFace::new(FontType::Serif, 1));
+    assert_eq!(children[1].dx, Length::pt(5.0), "2 子目は 1 子目の幅だけ右");
+    assert_eq!(runs.iter().map(|run| return run.text.as_str()).collect::<String>(), "ab");
+    assert!(runs.iter().all(|run| return run.glyphs[0].range == (0..1)), "各子の範囲は 0 起点");
+    assert_eq!(hbox.width, Length::pt(10.0), "Atom の幅は子の和");
+  }
+
+  #[test]
+  fn sub_box_of_primary_glyphs_only_is_measured_by_the_primary() {
+    let shaped = mixed_run();
+
+    let hbox = shaped.sub_box(0..1, 0..1).expect("空でない範囲は箱になるはず");
+
+    assert!(matches!(hbox.content, HBoxContent::Glyphs(_)), "候補 1 種の範囲は 1 本のグリフ列");
+    assert_eq!(hbox.height, Length::pt(8.0), "先頭の候補の ascender");
+    assert_eq!(hbox.depth, Length::pt(2.0), "先頭の候補の descender");
+  }
+
+  #[test]
+  fn replaced_glyph_box_shifts_by_the_upem_of_its_face() {
+    let shaped = mixed_run();
+    let normalize = yakumono::Normalize {
+      trim_em: 0.0,
+      shift_em: 0.1,
+    };
+
+    let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(5.0));
+
+    let HBoxContent::Glyphs(replaced) = &hbox.content else {
+      panic!("差し替え結果は Glyphs になるはず");
+    };
+    assert_eq!(replaced.glyphs[0].x_offset, -204, "0.1em は upem 2048 で 204 単位（端数切り捨て）");
+    assert_eq!(replaced.face, FontFace::new(FontType::Serif, 1));
   }
 }

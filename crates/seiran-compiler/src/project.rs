@@ -6,7 +6,8 @@
 //! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を、
 //! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ。
 //! `font` は config.toml が宣言するフォント資源 — 19 種別の分類（[`FontType`] / [`FontMap`]）・
-//! 検証済み設定（[`FontConfigs`]）・読込済みバイト列（[`FontData`]）を持つ。
+//! 実体（種別 × 候補）の鍵と表（[`FontFace`] / [`FaceMap`]）・検証済み設定（[`FontConfigs`]）・
+//! 読込済みバイト列（[`FontData`]）を持つ。
 //! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有。
 //!
 //! 入力パスの解決規則（相対への `base_dir` 前置・絶対の維持・字句的正規化）は子 module `path_resolver` の
@@ -42,8 +43,8 @@ use std::{
 pub use config::test_support;
 use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
-pub(crate) use font::{FontConfig, FontConfigs, FontData, FontFeature, FontMap, ReadFontError, TextDirection};
-pub use font::{FontType, VariationAxis};
+pub(crate) use font::{FaceMap, FontConfig, FontConfigs, FontData, FontFeature, FontMap, ReadFontError, TextDirection};
+pub use font::{FontFace, FontType, VariationAxis};
 pub(crate) use in_file::InFile;
 pub use memory::MemoryProjectSource;
 pub(crate) use path_resolver::PathResolver;

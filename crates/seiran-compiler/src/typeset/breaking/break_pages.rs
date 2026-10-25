@@ -1313,7 +1313,7 @@ mod tests {
   use crate::{
     document::{NodeId, TextAlignment},
     length::Length,
-    project::{FontType, ProjectPath},
+    project::{FontFace, FontType, ProjectPath},
     publication::GlyphRun,
     semantics::{HeadingKey, LabelId},
     source::SourceId,
@@ -2419,7 +2419,7 @@ mod tests {
         font_size: pt(10.0),
         text: text.to_string(),
         glyphs: Vec::new(),
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       }),
       width: Length::pt(20.0),

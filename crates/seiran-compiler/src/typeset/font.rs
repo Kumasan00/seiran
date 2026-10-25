@@ -3,6 +3,7 @@
 //! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる。
 
 mod face_config;
+mod fallback;
 mod math_script;
 mod shaper;
 mod stretch;
@@ -11,6 +12,7 @@ mod validation;
 
 use std::sync::Arc;
 
+pub(super) use fallback::{Finding, is_variation_selector, shaped_glyphs};
 use harfrust::Font;
 pub(super) use math_script::{ScriptLevel, ScriptScale};
 use read_fonts::{FontRef, TableProvider};
@@ -23,7 +25,7 @@ pub(super) use validation::FontWarning;
 
 use crate::{
   failures::Failures,
-  project::{FontConfigs, FontData, FontMap, FontType},
+  project::{FaceMap, FontConfigs, FontData, FontFace},
   publication::FontMetrics,
 };
 
@@ -31,7 +33,7 @@ use crate::{
 #[derive(Debug, Error, miette::Diagnostic)]
 pub(crate) enum FontLoadError {
   /// フォントを解析できない。
-  #[error("{} のフォント解析に失敗しました (index: {index})", .font_type.as_toml_key())]
+  #[error("{face} のフォント解析に失敗しました (index: {index})")]
   #[diagnostic(
     code(typeset::font::parse),
     help(
@@ -39,8 +41,8 @@ pub(crate) enum FontLoadError {
     )
   )]
   ParseFont {
-    /// フォント種別
-    font_type: FontType,
+    /// 実体（フォント種別 × 候補）
+    face: FontFace,
     /// TTC 内のフォントインデックス
     index: u32,
     /// 元の解析エラー
@@ -48,14 +50,14 @@ pub(crate) enum FontLoadError {
     source: read_fonts::ReadError,
   },
   /// メトリクス取得に必要な OpenType テーブルを読めない。
-  #[error("{} の {table} テーブルの読み込みに失敗しました", .font_type.as_toml_key())]
+  #[error("{face} の {table} テーブルの読み込みに失敗しました")]
   #[diagnostic(
     code(typeset::font::metrics_table),
     help("入力フォントが壊れていないか、font_index が正しいかを確認してください。")
   )]
   ReadMetricsTable {
-    /// フォント種別
-    font_type: FontType,
+    /// 実体（フォント種別 × 候補）
+    face: FontFace,
     /// 読み込みに失敗したテーブル名（`head` / `hhea`）
     table: &'static str,
     /// 元の読み込みエラー
@@ -64,8 +66,8 @@ pub(crate) enum FontLoadError {
   },
 }
 
-/// 全フォント種別の解析済み OpenType フォント参照。
-type FontRefs<'a> = FontMap<FontRef<'a>>;
+/// 全実体の解析済み OpenType フォント参照。
+type FontRefs<'a> = FaceMap<FontRef<'a>>;
 
 /// バイナリデータから、設定されたフェースのフォント参照と、同じフェースのシェイピング用フォントを生成する。
 ///
@@ -74,23 +76,22 @@ type FontRefs<'a> = FontMap<FontRef<'a>>;
 /// # Errors
 ///
 /// フォントを解析できない場合、または TTC のインデックスが範囲外の場合に
-/// [`FontLoadError::ParseFont`] を `FontType` の宣言順で返す。
+/// [`FontLoadError::ParseFont`] を実体の順（[`FaceMap::faces`]）で返す。
 fn parse_fonts<'a>(
   config: &FontConfigs,
   font_data: &'a FontData,
 ) -> Result<(FontRefs<'a>, ShapingFonts), Failures<FontLoadError>> {
-  let parsed = FontMap::par_try_from_fn(|font_type| {
-    let font_config = &config[font_type];
+  let parsed = config.par_try_map(|face, font_config| {
     let index = font_config.font_index;
-    let font_ref = FontRef::from_index(font_data.bytes(font_type), index).map_err(|source| {
+    let font_ref = FontRef::from_index(font_data.bytes(face), index).map_err(|source| {
       return FontLoadError::ParseFont {
-        font_type,
+        face,
         index,
         source,
       };
     })?;
     // `Arc<[u8]>` は既に unsized なので `dyn AsRef<[u8]>` へ直接は unsize できず、もう 1 段 `Arc` で包む
-    let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(font_data.shared_bytes(font_type));
+    let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(font_data.shared_bytes(face));
     let font = Font::new(blob, index).expect(
       "直前の FontRef::from_index が同じバイト列・同じ index で成功しており、Font::new も同じ解析で sfnt と認める",
     );
@@ -103,20 +104,19 @@ fn parse_fonts<'a>(
 ///
 /// # Errors
 ///
-/// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を `FontType` の宣言順で返す。
-fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMap<FontMetrics>, Failures<FontLoadError>> {
-  return FontMap::try_from_fn(|font_type| {
-    let font_ref = &font_refs[font_type];
+/// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を実体の順（[`FaceMap::faces`]）で返す。
+fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FaceMap<FontMetrics>, Failures<FontLoadError>> {
+  return font_refs.try_map(|face, font_ref| {
     let head = font_ref.head().map_err(|source| {
       return FontLoadError::ReadMetricsTable {
-        font_type,
+        face,
         table: "head",
         source,
       };
     })?;
     let hhea = font_ref.hhea().map_err(|source| {
       return FontLoadError::ReadMetricsTable {
-        font_type,
+        face,
         table: "hhea",
         source,
       };
@@ -132,22 +132,22 @@ fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMap<FontMetrics>, 
 #[cfg(test)]
 mod tests {
   use super::FontLoadError;
-  use crate::project::FontType;
+  use crate::project::{FontFace, FontType};
 
   #[test]
-  fn messages_name_the_font_type_by_its_config_key() {
+  fn messages_name_the_face_by_its_config_position() {
     let parse = FontLoadError::ParseFont {
-      font_type: FontType::SansSerifBold,
+      face: FontFace::new(FontType::SansSerifBold, 1),
       index: 0,
       source: read_fonts::ReadError::OutOfBounds,
     };
     let metrics = FontLoadError::ReadMetricsTable {
-      font_type: FontType::SansSerifBold,
+      face: FontFace::primary(FontType::SansSerifBold),
       table: "head",
       source: read_fonts::ReadError::OutOfBounds,
     };
 
-    assert!(parse.to_string().starts_with("sans_serif_bold "), "{parse}");
-    assert!(metrics.to_string().starts_with("sans_serif_bold "), "{metrics}");
+    assert!(parse.to_string().starts_with("sans_serif_bold[1] "), "{parse}");
+    assert!(metrics.to_string().starts_with("sans_serif_bold[0] "), "{metrics}");
   }
 }

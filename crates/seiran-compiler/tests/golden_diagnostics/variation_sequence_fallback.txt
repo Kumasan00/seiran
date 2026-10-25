@@ -1,0 +1,26 @@
+typeset::font::variation_sequence
+
+  ⚠ 異体字列「漢󠄂」(U+6F22 U+E0102) の字形がどの候補にも無いため、基底の字形を japanese_serif[0] で
+  │ 組みました
+   ╭─[tests/text/diagnostics/variation_sequence_fallback.sei:1:1]
+ 1 │ 本文の漢󠄂は、明朝体のどの候補も持たない異体字列です。
+   · ▲
+   · ╰── この要素で使っています
+ 2 │ 
+   ╰────
+  help: config.toml の候補（font_configs.japanese_serif[0] = vendor/fonts/NotoSerifJP[wght].ttf）
+        はどれもこの異体字列を持っていません。異体字の字形が必要なら、この異体字列を持つフォントを
+        候補に足してください。
+
+typeset::font::variation_sequence
+
+  ⚠ 異体字列「𝑥︀」(U+1D465 U+FE00) の字形がどの候補にも無いため、基底の字形を math で組みました
+   ╭─[tests/text/diagnostics/variation_sequence_fallback.sei:3:9]
+ 2 │ 
+ 3 │ 数式 $x︀$ の異体字列も、数式フォントに無ければ基底の字形で組みます。
+   ·       ▲
+   ·       ╰── この要素で使っています
+   ╰────
+  help: config.toml の候補（font_configs.math = vendor/fonts/STIXTwoMath-Regular.ttf）はどれもこの
+        異体字列を持っていません。異体字の字形が必要なら、この異体字列を持つフォントを候補に足して
+        ください。

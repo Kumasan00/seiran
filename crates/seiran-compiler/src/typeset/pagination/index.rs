@@ -18,12 +18,12 @@ use crate::{
   typeset::{
     boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
-    font::FontSystem,
     lowering::TextStyle,
     pagination::{
       context::{BodyPageFacts, TypesetContext},
       page_values::{BodyPageValues, PageOrdinal},
     },
+    text_glyphs::{Generated, GlyphOrigin},
   },
 };
 
@@ -69,7 +69,8 @@ pub(super) fn build_index_blocks(
 ) -> Vec<Block> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
   let spec = build_index_spec(ctx.style, ctx.geometry.back_column_width());
-  return compose_blocks(&spec, &entries, ctx.fonts);
+  let shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::Index));
+  return compose_blocks(&spec, &entries, shaper);
 }
 
 /// 本文の索引語を集約し、ソート済みの索引エントリを返す。
@@ -206,11 +207,10 @@ fn build_index_spec(style: &Style, column_width: Length) -> IndexSpec {
 
 /// 索引エントリ列を計測済みのブロック列に変換する
 #[must_use]
-fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], fonts: &FontSystem) -> Vec<Block> {
+fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], mut shaper: Shaper<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut shaper = Shaper::new(fonts);
   let mut blocks: Vec<Block> = Vec::new();
 
   let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);

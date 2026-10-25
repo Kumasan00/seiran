@@ -2,7 +2,7 @@
 //!
 //! どの struct も `deny_unknown_fields` で、未知のキー・テーブル・フォント種別は解析の時点で拒否する（P6）。
 
-use std::{ops::Index, path::PathBuf};
+use std::{path::PathBuf, slice};
 
 use garde::Validate;
 use serde::Deserialize;
@@ -10,7 +10,7 @@ use strum::VariantArray;
 
 use crate::{
   length::{Length, positive},
-  project::{FontType, config::ConfigValidationError, in_range},
+  project::{FontFace, FontType, config::ConfigValidationError, in_range},
 };
 
 /// TOML ファイル全体をデシリアライズした設定
@@ -31,7 +31,7 @@ pub(super) struct RawConfig {
   #[serde(default)]
   #[garde(dive)]
   pub image: RawImageConfig,
-  /// 19 フォント種別の設定群
+  /// 19 フォント種別の設定群（本文用 18 種別は候補の配列）
   #[garde(dive)]
   pub font_configs: RawFontConfigs,
   /// ソースファイル一覧（順次パースして 1 ドキュメントに結合）
@@ -203,72 +203,74 @@ impl Default for RawImageConfig {
 }
 
 /// 19 フォント種別すべての未検証のフォント設定
+///
+/// 本文用 18 種別は `[[font_configs.<種別>]]` の配列（候補を宣言順に 1 つ以上）、`math` は単一テーブル。表と配列の
+/// 取り違えは serde が TOML の解析の時点で拒否する。
 #[derive(Deserialize, Debug, Validate)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RawFontConfigs {
-  /// Serif 標準フォント
-  #[garde(dive)]
-  pub serif: RawFontConfig,
-  /// Serif 太字フォント
-  #[garde(dive)]
-  pub serif_bold: RawFontConfig,
-  /// Serif イタリックフォント
-  #[garde(dive)]
-  pub serif_italic: RawFontConfig,
-  /// Serif 太字イタリックフォント
-  #[garde(dive)]
-  pub serif_bold_italic: RawFontConfig,
-  /// Sans Serif 標準フォント
-  #[garde(dive)]
-  pub sans_serif: RawFontConfig,
-  /// Sans Serif 太字フォント
-  #[garde(dive)]
-  pub sans_serif_bold: RawFontConfig,
-  /// Sans Serif イタリックフォント
-  #[garde(dive)]
-  pub sans_serif_italic: RawFontConfig,
-  /// Sans Serif 太字イタリックフォント
-  #[garde(dive)]
-  pub sans_serif_bold_italic: RawFontConfig,
-  /// Monospace 標準フォント
-  #[garde(dive)]
-  pub monospace: RawFontConfig,
-  /// Monospace 太字フォント
-  #[garde(dive)]
-  pub monospace_bold: RawFontConfig,
-  /// Monospace イタリックフォント
-  #[garde(dive)]
-  pub monospace_italic: RawFontConfig,
-  /// Monospace 太字イタリックフォント
-  #[garde(dive)]
-  pub monospace_bold_italic: RawFontConfig,
+  /// Serif 標準フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::Serif)))]
+  pub serif: Vec<RawFontConfig>,
+  /// Serif 太字フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SerifBold)))]
+  pub serif_bold: Vec<RawFontConfig>,
+  /// Serif イタリックフォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SerifItalic)))]
+  pub serif_italic: Vec<RawFontConfig>,
+  /// Serif 太字イタリックフォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SerifBoldItalic)))]
+  pub serif_bold_italic: Vec<RawFontConfig>,
+  /// Sans Serif 標準フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SansSerif)))]
+  pub sans_serif: Vec<RawFontConfig>,
+  /// Sans Serif 太字フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SansSerifBold)))]
+  pub sans_serif_bold: Vec<RawFontConfig>,
+  /// Sans Serif イタリックフォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SansSerifItalic)))]
+  pub sans_serif_italic: Vec<RawFontConfig>,
+  /// Sans Serif 太字イタリックフォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::SansSerifBoldItalic)))]
+  pub sans_serif_bold_italic: Vec<RawFontConfig>,
+  /// Monospace 標準フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::Monospace)))]
+  pub monospace: Vec<RawFontConfig>,
+  /// Monospace 太字フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::MonospaceBold)))]
+  pub monospace_bold: Vec<RawFontConfig>,
+  /// Monospace イタリックフォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::MonospaceItalic)))]
+  pub monospace_italic: Vec<RawFontConfig>,
+  /// Monospace 太字イタリックフォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::MonospaceBoldItalic)))]
+  pub monospace_bold_italic: Vec<RawFontConfig>,
   /// 数式用フォント
   #[garde(dive)]
   pub math: RawFontConfig,
-  /// 日本語 Serif 標準フォント
-  #[garde(dive)]
-  pub japanese_serif: RawFontConfig,
-  /// 日本語 Serif 太字フォント
-  #[garde(dive)]
-  pub japanese_serif_bold: RawFontConfig,
-  /// 日本語 Sans Serif 標準フォント
-  #[garde(dive)]
-  pub japanese_sans_serif: RawFontConfig,
-  /// 日本語 Sans Serif 太字フォント
-  #[garde(dive)]
-  pub japanese_sans_serif_bold: RawFontConfig,
-  /// 日本語 Monospace 標準フォント
-  #[garde(dive)]
-  pub japanese_monospace: RawFontConfig,
-  /// 日本語 Monospace 太字フォント
-  #[garde(dive)]
-  pub japanese_monospace_bold: RawFontConfig,
+  /// 日本語 Serif 標準フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::JapaneseSerif)))]
+  pub japanese_serif: Vec<RawFontConfig>,
+  /// 日本語 Serif 太字フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::JapaneseSerifBold)))]
+  pub japanese_serif_bold: Vec<RawFontConfig>,
+  /// 日本語 Sans Serif 標準フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::JapaneseSansSerif)))]
+  pub japanese_sans_serif: Vec<RawFontConfig>,
+  /// 日本語 Sans Serif 太字フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::JapaneseSansSerifBold)))]
+  pub japanese_sans_serif_bold: Vec<RawFontConfig>,
+  /// 日本語 Monospace 標準フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::JapaneseMonospace)))]
+  pub japanese_monospace: Vec<RawFontConfig>,
+  /// 日本語 Monospace 太字フォントの候補（宣言順）
+  #[garde(dive, custom(non_empty_candidates(FontType::JapaneseMonospaceBold)))]
+  pub japanese_monospace_bold: Vec<RawFontConfig>,
 }
 
-impl Index<FontType> for RawFontConfigs {
-  type Output = RawFontConfig;
-
-  fn index(&self, font_type: FontType) -> &RawFontConfig {
+impl RawFontConfigs {
+  /// 種別 `font_type` の候補を宣言順に返す（`math` は単一テーブル 1 つ）。
+  pub(super) fn candidates(&self, font_type: FontType) -> &[RawFontConfig] {
     return match font_type {
       FontType::Serif => &self.serif,
       FontType::SerifBold => &self.serif_bold,
@@ -282,7 +284,7 @@ impl Index<FontType> for RawFontConfigs {
       FontType::MonospaceBold => &self.monospace_bold,
       FontType::MonospaceItalic => &self.monospace_italic,
       FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
+      FontType::Math => slice::from_ref(&self.math),
       FontType::JapaneseSerif => &self.japanese_serif,
       FontType::JapaneseSerifBold => &self.japanese_serif_bold,
       FontType::JapaneseSansSerif => &self.japanese_sans_serif,
@@ -293,7 +295,20 @@ impl Index<FontType> for RawFontConfigs {
   }
 }
 
-/// 単一フォント種別の未検証のフォント設定
+/// 本文用の種別 `font_type` の候補の配列が空でないことを要求する `garde` 用バリデータを返す。
+fn non_empty_candidates(font_type: FontType) -> impl FnOnce(&[RawFontConfig], &()) -> garde::Result {
+  return move |candidates, _ctx| {
+    if candidates.is_empty() {
+      return Err(garde::Error::new(format!(
+        "本文用のフォントは [[font_configs.{}]] で 1 つ以上の候補を指定する必要があります",
+        font_type.as_toml_key()
+      )));
+    }
+    return Ok(());
+  };
+}
+
+/// 単一実体（フォント種別 × 候補）の未検証のフォント設定
 #[derive(Deserialize, Debug, Validate)]
 #[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]
@@ -366,12 +381,13 @@ pub(super) struct RawFontFeature {
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
 pub(super) fn validate_font_language_constraints(value: &RawFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   for &font_type in FontType::VARIANTS {
-    let cfg = &value[font_type];
-    if cfg.ot_language.is_some() && cfg.script.is_none() {
-      errors.push(ConfigValidationError::Field {
-        path: format!("font_configs.{}", font_type.as_toml_key()),
-        message: "ot_language を指定する場合は script も指定する必要があります".to_string(),
-      });
+    for (candidate, cfg) in value.candidates(font_type).iter().enumerate() {
+      if cfg.ot_language.is_some() && cfg.script.is_none() {
+        errors.push(ConfigValidationError::Field {
+          path: format!("font_configs.{}", FontFace::new(font_type, candidate)),
+          message: "ot_language を指定する場合は script も指定する必要があります".to_string(),
+        });
+      }
     }
   }
 }

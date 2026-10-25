@@ -113,7 +113,8 @@ PDF 生成の基本設定を行います。長さの値はすべて単位付き�
 `style.toml` の `[page]` が持ちます。
 
 以下は設定の抜粋です。`font_configs` は使用する書体にかかわらず **19 種別すべての指定が必須**で、
-この例の `serif` だけではビルドできません。キー名と各項目は
+この例の `serif` だけではビルドできません。本文用の 18 種別は `[[font_configs.<種別>]]`（候補の配列。1 つ以上）、
+数式用の `math` だけは `[font_configs.math]`（単一テーブル）で書きます。キー名と各項目は
 [設定構造体の doc コメント](crates/seiran-compiler/src/project/config/raw.rs)、全種別を含む例は
 [付属の設定](crates/seiran-compiler/tests/config/config.toml)を参照してください。
 doc コメントに無いキー（綴りの誤り・廃止されたキーを含む）は、どの階層に書いても設定ファイルの位置付きのエラーになります。
@@ -144,7 +145,7 @@ width = "595pt"                # ページ幅（A4 = 595pt）
 # max_dpi = 300
 # downsample = true
 
-[font_configs.serif]           # 19種別それぞれに設定
+[[font_configs.serif]]         # 19種別それぞれに設定（本文用は配列の要素。math だけ [font_configs.math]）
 font_path = "fonts/MyFont.ttf" # フォントファイルパス
 script = "latn"                # OpenType スクリプトタグ（オプション）
 language = "en"                # BCP 47 言語タグ（オプション）
@@ -157,6 +158,25 @@ features = [                   # OpenType フィーチャー（オプション�
   { tag = "kern", value = 1 }
 ]
 ```
+
+本文用の候補は先頭から順に試されます。先頭のフォントに無い字だけが、同じ種別の後続の候補で組まれます（基底の字と結合文字などは分断せず、まとめて 1 つの候補で組みます）。各候補は `font_path` / `script` / `language` などを自分で指定し、先頭の候補から値を引き継ぎません（`math` と同じ項目・検証です）。候補を使うのは設定した種別の中だけで、OS のフォントや別の種別は探しません。代替が成功しても警告は出ません。書体ごとに候補を書くので、太字の候補は太字の種別に書いてください。
+
+```toml
+[[font_configs.japanese_serif]]   # 先頭: 主フォント
+font_path = "fonts/MainJapanese.ttf"
+script = "kana"
+language = "ja"
+
+[[font_configs.japanese_serif]]   # 主フォントに無い字だけ、ここで組まれる
+font_path = "fonts/ExtraKanji.ttf"
+script = "kana"
+language = "ja"
+```
+
+- 本文用の種別は配列だけを受理します（`[font_configs.serif]` の単一テーブルは受理しません。移行は `[[font_configs.serif]]` への書き換えだけです）。空配列や、`math` への配列指定もエラーです。未使用の候補も含め、不正な候補（未知のキー・無いファイル・不正な face 番号や軸）は `font_configs.<種別>[<添字>]` の位置付きのエラーになります。
+- 本文で、種別のどの候補にも無い字は、豆腐（.notdef）で組まずにソース位置付きのエラーになり、複数あれば全件まとめて報告されます。目次のリーダーや走り文などの生成内容は、位置の代わりに生成元が示されます。行末ハイフンの `-` はハイフネーションが有効な欧文について、使うかどうかに関わらず検査されるので、欧文の種別はいずれかの候補に `-` が必要です。
+- 異体字列（基底の字 + 異体字セレクタ）は、対応する候補があればそれで組まれ、どの候補も対応しなければ基底の字形で組んで警告を出します（数式フォントが対応しない場合も同じです）。PDF のテキストには元の異体字列が残ります。
+- 候補の `direction` が先頭の候補の進行方向と異なる場合、その候補で組む必要が生じた字があるときにエラーになります（使われなければ報告されません）。
 
 数式フォント（`[font_configs.math]`）には OpenType MATH テーブルを持つフォント（STIX Two Math / Latin Modern Math 等）が必要です。MATH テーブルを持たないフォントを指定すると、文書に数式が無くてもエラーになります。また、`[font_configs.math]` には `script = "math"` と `direction = "left-to-right"` を指定してください（STIX Two Math は `ssty`（スクリプト段用の小サイズ字形）を `math` スクリプトにだけ登録しているため、無指定だと上付き・下付きに小サイズ字形が適用されません）。
 

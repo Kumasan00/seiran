@@ -12,7 +12,7 @@ use crate::{
 ///
 /// 先頭が主診断 — ユーザーが最初に読むべき、修正可能な leaf diagnostic。残りは
 /// [`Diagnostic::related`] として同時に表示される。**空では構築できない** — 構築経路は
-/// 単一の診断から（`single`）と非空集合 [`Failures`] から（汎用 `From`）の 2 つだけで、
+/// 単一の診断から（`single`）と非空集合 [`Failures`] から（汎用 `From` と、型消去済みの `from_boxed`）だけで、
 /// いずれも crate 内部限定であり `Default` も実装しない。
 ///
 /// メッセージ（`Display`）は主診断へ書式パラメータごと委譲する。
@@ -39,6 +39,16 @@ impl CompileFailure {
     return CompileFailure {
       primary: Box::new(diagnostic),
       rest: Vec::new(),
+      warnings: Warnings::default(),
+    };
+  }
+
+  /// 型消去済みの診断の非空集合から失敗を作る（種類の違う診断を 1 つの集合で運ぶとき）。
+  pub(super) fn from_boxed(failures: Failures<BoxedDiagnostic>) -> Self {
+    let (primary, rest) = failures.into_parts();
+    return CompileFailure {
+      primary,
+      rest,
       warnings: Warnings::default(),
     };
   }

@@ -7,6 +7,9 @@
 //! 字形から派生するので問わない。証明の末尾に数式フォントで組む style.toml の `qed_mark` も、テキストと同じ規則で証明の位置に
 //! 要求する。display 段の大型演算子（boxing が振り分けを経ず組む）も記号として振り分ける側で問うが、
 //! 大型演算子の字に和文へ振り分ける字は無いので結果は同じ。
+//!
+//! 数式フォントで組むクラスタの先頭の字の直後が異体字セレクタで、基本の字形はあるが数式フォントの cmap がその異体字列を
+//! 写さなければ、警告（[`VariationSequenceFallback`]）を積む。字は `HarfBuzz` の既定の挙動どおり基底の字形で組まれる。
 
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
@@ -20,7 +23,7 @@ use crate::{
   project::{FontType, ProjectPath},
   source::SourceId,
   style::Style,
-  typeset::{boxing, lowering, lowering::DelimiterGlyphs},
+  typeset::{boxing, font, lowering, lowering::DelimiterGlyphs, text_glyphs::VariationSequenceFallback},
 };
 
 /// 数式フォントに基本の字形が無い字を数式で使った箇所
@@ -63,34 +66,46 @@ impl MissingMathGlyph {
   pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
 }
 
-/// 文書が数式フォントで組む字を文書順に `has_glyph` へ問い、偽を返した字を使った箇所ごとに集める
+/// 文書が数式フォントで組む字を文書順に `has_glyph` へ問い、偽を返した字を使った箇所ごとに集める。あわせて、組むクラスタの
+/// 異体字列（基本の字形はある字と、その直後の異体字セレクタ）を `has_variation` へ問い、偽なら警告を文書順に集める
 ///
-/// 同じ位置で同じ字を何度使っても 1 件にする。`style` は定理クラスの `qed_mark` を引くスタイル、`font_path` は診断に載せる
-/// 数式フォントのパス。
+/// 同じ位置で同じ字（同じクラスタ）を何度使っても 1 件にする。`style` は定理クラスの `qed_mark` を引くスタイル、
+/// `font_path` は診断に載せる数式フォントのパス。組の第 2 要素は警告で、欠けた字があっても返す。
 ///
 /// # Errors
 ///
-/// 欠けた字が 1 つでもあれば、その全件を文書順（ソースの宣言順・ソース内の出現順）で返す。
+/// 欠けた字が 1 つでもあれば、組の第 1 要素がその全件を文書順（ソースの宣言順・ソース内の出現順）で持つ。
 pub(super) fn check(
   document: &HirDocument,
   style: &Style,
   has_glyph: &dyn Fn(char) -> bool,
+  has_variation: &dyn Fn(char, char) -> bool,
   font_path: &ProjectPath,
-) -> Result<(), Failures<MissingMathGlyph>> {
+) -> (Result<(), Failures<MissingMathGlyph>>, Vec<VariationSequenceFallback>) {
   let mut checker = Checker {
     style,
     has_glyph,
+    has_variation,
     source_map: document.source_map(),
     font_path,
     missing: Vec::new(),
+    variations: Vec::new(),
   };
   for nodes in document.source_nodes() {
     checker.nodes(nodes);
   }
-  return match Failures::from_vec(checker.missing) {
-    Some(failures) => Err(failures),
-    None => Ok(()),
-  };
+  let warnings = checker
+    .variations
+    .into_iter()
+    .map(|(cluster, location)| return VariationSequenceFallback::math(cluster, location, font_path))
+    .collect();
+  return (
+    match Failures::from_vec(checker.missing) {
+      Some(failures) => Err(failures),
+      None => Ok(()),
+    },
+    warnings,
+  );
 }
 
 /// HIR を文書順に走査し、欠けた字の診断を積む
@@ -99,12 +114,16 @@ struct Checker<'a> {
   style: &'a Style,
   /// 数式フォントが基本の字形を持つか
   has_glyph: &'a dyn Fn(char) -> bool,
+  /// 数式フォントが異体字列（基底, 異体字セレクタ）を写すか
+  has_variation: &'a dyn Fn(char, char) -> bool,
   /// 診断位置を引く位置表
   source_map: &'a SourceMap,
   /// 診断に載せる数式フォントのパス
   font_path: &'a ProjectPath,
   /// 見つかった欠落（文書順）
   missing: Vec<MissingMathGlyph>,
+  /// 写せない異体字列を含むクラスタ（数式フォントで組む字の列）と、その位置（文書順・重複なし）
+  variations: Vec<(String, SourceLocation)>,
 }
 
 impl Checker<'_> {
@@ -158,11 +177,12 @@ impl Checker<'_> {
       HirNodeKind::Theorem(theorem) => {
         self.nodes(&theorem.body);
         if let Some(qed_mark) = self.style.theorems[theorem.class].qed_mark.as_deref() {
-          for (glyph, _) in lowering::math_text_clusters(qed_mark) {
+          for (glyph, chars) in lowering::math_text_clusters(qed_mark) {
             if boxing::char_font_type(Typeface::Math, glyph) == FontType::Math {
               self.require(node.id, glyph, || {
                 return "証明の終わりに style.toml の `qed_mark` として組みます".to_string();
               });
+              self.variation(node.id, glyph, &chars);
             }
           }
         }
@@ -208,8 +228,11 @@ impl Checker<'_> {
   fn math(&mut self, node: &HirMath, variant: Option<MathVariant>) {
     match &node.kind {
       HirMathKind::Text(text) | HirMathKind::Symbol { text, .. } => {
-        for (written, _) in lowering::math_text_clusters(text) {
-          self.routed(node.id, written, lowering::translate_math_char(written, variant));
+        for (written, chars) in lowering::math_text_clusters(text) {
+          let glyph = lowering::translate_math_char(written, variant);
+          if self.routed(node.id, written, glyph) {
+            self.variation(node.id, glyph, &chars);
+          }
         }
       },
       // 演算子名は字形 variant を読まず立体の ASCII のまま組み、語の区切りの半角空白は字ではなく細アキ
@@ -298,10 +321,30 @@ impl Checker<'_> {
     return;
   }
 
-  /// テキストとして組む字 `glyph`（ソースの字 `written` を写したもの）を、数式フォントへ振り分けるときだけ要求する
-  fn routed(&mut self, site: NodeId, written: char, glyph: char) {
+  /// テキストとして組む字 `glyph`（ソースの字 `written` を写したもの）を、数式フォントへ振り分けるときだけ要求し、
+  /// 振り分けたかを返す
+  fn routed(&mut self, site: NodeId, written: char, glyph: char) -> bool {
     if boxing::char_font_type(Typeface::Math, glyph) == FontType::Math {
       self.written(site, written, glyph);
+      return true;
+    }
+    return false;
+  }
+
+  /// 数式フォントで組むクラスタ（ソースの字の列 `chars`、先頭の字は `glyph` として組む）の 2 字目が異体字セレクタで、
+  /// `glyph` の基本の字形はあるのにその異体字列を数式フォントが写さなければ、箇所 `site` の警告を積む（同じ位置・同じ
+  /// クラスタは 1 件）
+  fn variation(&mut self, site: NodeId, glyph: char, chars: &[char]) {
+    let Some(&selector) = chars.get(1) else {
+      return;
+    };
+    if !font::is_variation_selector(selector) || !(self.has_glyph)(glyph) || (self.has_variation)(glyph, selector) {
+      return;
+    }
+    let cluster: String = [glyph, selector].into_iter().collect();
+    let entry = (cluster, self.source_map.location(site));
+    if !self.variations.contains(&entry) {
+      self.variations.push(entry);
     }
     return;
   }
@@ -349,8 +392,13 @@ mod tests {
 
   /// `absent` の字だけを持たない数式フォントで検査し、診断を（字, 位置のソース文字列, ラベル）の文書順で返す
   fn missing(source: &str, absent: &[char]) -> Vec<(char, String, String)> {
-    let Err(failures) = check(&document(source), &Style::default(), &|ch| return !absent.contains(&ch), &font_path())
-    else {
+    let (Err(failures), _) = check(
+      &document(source),
+      &Style::default(),
+      &|ch| return !absent.contains(&ch),
+      &|_, _| return true,
+      &font_path(),
+    ) else {
       return Vec::new();
     };
     return failures
@@ -365,13 +413,14 @@ mod tests {
   /// 何でも持つ数式フォントで検査し、問い合わせた字を順に返す
   fn queried(source: &str) -> Vec<char> {
     let asked = RefCell::new(Vec::new());
-    let result = check(
+    let (result, _) = check(
       &document(source),
       &Style::default(),
       &|ch| {
         asked.borrow_mut().push(ch);
         return true;
       },
+      &|_, _| return true,
       &font_path(),
     );
     assert!(result.is_ok(), "全字を持つフォントなら欠落は無いはず");
@@ -529,10 +578,48 @@ mod tests {
 
   #[test]
   fn message_shows_the_glyph_and_its_code_point() {
-    let Err(failures) = check(&document("$x$"), &Style::default(), &|_| return false, &font_path()) else {
+    let (Err(failures), _) =
+      check(&document("$x$"), &Style::default(), &|_| return false, &|_, _| return true, &font_path())
+    else {
       panic!("字を持たないフォントなら失敗するはず");
     };
 
     assert_eq!(failures.first().to_string(), "数式フォントに \u{1D465} (U+1D465) のグリフがありません");
+  }
+  /// 異体字列を写さない（`supported` に無い）数式フォントで検査し、警告の文言を文書順で返す
+  fn variation_warnings(source: &str, supported: &[(char, char)]) -> Vec<String> {
+    let (result, warnings) = check(
+      &document(source),
+      &Style::default(),
+      &|ch| return ch != '\u{0E01}',
+      &|base, selector| return supported.contains(&(base, selector)),
+      &font_path(),
+    );
+    assert!(result.is_ok() || source.contains('\u{0E01}'), "基本の字形はあるはず");
+    return warnings.into_iter().map(|warning| return warning.to_string()).collect();
+  }
+
+  #[test]
+  fn unsupported_variation_sequence_warns_with_the_mapped_char() {
+    let warnings = variation_warnings("$x\u{FE00}$ $x\u{FE00}$", &[]);
+
+    assert_eq!(warnings.len(), 2, "別の数式の同じ異体字列は別の 1 件: {warnings:?}");
+    assert!(warnings[0].contains("U+1D465 U+FE00"), "数式用英数字へ写した字の異体字列を示すはず: {warnings:?}");
+  }
+
+  #[test]
+  fn supported_variation_sequence_does_not_warn() {
+    assert_eq!(variation_warnings("$x\u{FE00}$", &[('\u{1D465}', '\u{FE00}')]), Vec::<String>::new());
+  }
+
+  #[test]
+  fn variation_sequence_of_a_missing_char_is_not_warned() {
+    // 基本の字形が無い字は欠落のエラーだけを出す（異体字列の警告と重ねない）
+    assert_eq!(variation_warnings("$\u{0E01}\u{FE00}$", &[]), Vec::<String>::new());
+  }
+
+  #[test]
+  fn variation_sequence_of_a_japanese_char_is_left_to_the_text_slot() {
+    assert_eq!(variation_warnings("$\u{6F22}\u{E0102}$", &[]), Vec::<String>::new(), "和文は明朝体の枠が組む");
   }
 }

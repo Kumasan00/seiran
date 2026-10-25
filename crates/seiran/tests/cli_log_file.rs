@@ -57,9 +57,14 @@ fn write_config_with_two_violations(dir: &Path) -> PathBuf {
     "sources = []\n\n[document]\nkeywords = [\"\"]\n\n[output]\nname = \"doc\"\n\n[pdf]\nwidth = \"210mm\"\nheight = \
      \"297mm\"\n",
   );
+  // 本文用の種別は候補の配列（`[[font_configs.<種別>]]`）、`math` は単一テーブル
   for font_type in FONT_TYPES {
-    write!(toml, "\n[font_configs.{font_type}]\nfont_path = \"font.ttf\"\n")
-      .expect("String への書き込みは失敗しないはず");
+    let header = if font_type == "math" {
+      format!("[font_configs.{font_type}]")
+    } else {
+      format!("[[font_configs.{font_type}]]")
+    };
+    write!(toml, "\n{header}\nfont_path = \"font.ttf\"\n").expect("String への書き込みは失敗しないはず");
   }
   fs::write(dir.join("font.ttf"), b"").expect("ダミーのフォントファイルを書けるはず");
   let path = dir.join("config.toml");

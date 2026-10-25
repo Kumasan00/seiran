@@ -8,7 +8,7 @@ use crate::{
   length::Length,
   project::ProjectPath,
   source::SourceId,
-  typeset::{breaking::OverflowAxis, font::FontWarning},
+  typeset::{breaking::OverflowAxis, font::FontWarning, text_glyphs::VariationSequenceFallback},
 };
 
 /// 組版段の警告。
@@ -21,6 +21,11 @@ pub(crate) enum TypesetWarning {
   #[error(transparent)]
   #[diagnostic(transparent)]
   Font(#[from] FontWarning),
+
+  /// 異体字列をどの候補も持たないため、基底の字形で組んだ（本文の枠と数式フォント）
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  VariationSequenceFallback(VariationSequenceFallback),
 
   /// 行に付いた脚注群が、空のページでも版面に収まらなかった
   #[error("{page} ページの脚注 {} がページの高さを超えるため、はみ出したまま配置しました", join_numbers(.numbers))]
@@ -184,11 +189,12 @@ pub(crate) enum TypesetWarning {
 }
 
 impl TypesetWarning {
-  /// 帰属するソースを返す。フォントの警告と生成物の行は `None`
+  /// 帰属するソースを返す。フォントの警告と生成物の行・生成内容の字は `None`
   #[must_use]
   pub(crate) fn source_id(&self) -> Option<SourceId> {
     return match self {
       TypesetWarning::Font(_) => None,
+      TypesetWarning::VariationSequenceFallback(warning) => warning.source_id(),
       TypesetWarning::LineOverflow { source_id, .. } => *source_id,
       TypesetWarning::FootnoteOverflow { source_id, .. }
       | TypesetWarning::FootnoteLineOverflow { source_id, .. }
@@ -210,7 +216,7 @@ mod tests {
   use super::TypesetWarning;
   use crate::{
     length::Length,
-    project::{FontType, ProjectPath},
+    project::{FontFace, FontType, ProjectPath},
     source::SourceId,
     typeset::{breaking::OverflowAxis, font::FontWarning},
   };
@@ -224,7 +230,7 @@ mod tests {
   #[test]
   fn font_variant_forwards_severity_message_and_code() {
     let inner = FontWarning::MissingLayoutTable {
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       path: ProjectPath::new("/project/font.ttf"),
       table: "GSUB",
     };
@@ -392,7 +398,7 @@ mod tests {
   #[test]
   fn source_id_is_some_only_for_warnings_with_a_location() {
     let font = TypesetWarning::Font(FontWarning::MissingLayoutTable {
-      font_type: FontType::Serif,
+      face: FontFace::primary(FontType::Serif),
       path: ProjectPath::new("/project/font.ttf"),
       table: "GSUB",
     });

@@ -404,16 +404,21 @@ mod tests {
 
   use super::{ShapedRun, plan_cut, split_japanese_run};
   use crate::{
+    document::Typeface,
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{
       boxes::{HBox, HBoxContent, HItem},
       boxing::{
+        Measurer, Shaper,
         break_opportunities::{BreakKind, BreakOpportunity},
-        hlist::Edge,
+        hlist::{Edge, HList},
         script::ScriptCategory,
       },
+      lowering::TextStyle,
+      test_support,
+      text_glyphs::{Generated, GlyphIssues, GlyphOrigin},
     },
   };
 
@@ -443,10 +448,11 @@ mod tests {
             };
           })
           .collect(),
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       },
-      METRICS,
+      vec![0; text.chars().count()],
+      vec![METRICS],
     );
   }
 
@@ -541,10 +547,11 @@ mod tests {
             y_offset: 0,
           },
         ],
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       },
-      METRICS,
+      vec![0; 3],
+      vec![METRICS],
     );
   }
 
@@ -611,10 +618,11 @@ mod tests {
             };
           })
           .collect(),
-        font_type: FontType::JapaneseSerif,
+        face: FontFace::primary(FontType::JapaneseSerif),
         color: None,
       },
-      METRICS,
+      vec![0; glyphs.len()],
+      vec![METRICS],
     );
   }
 
@@ -687,5 +695,40 @@ mod tests {
     let ja = |ch: char| return Edge::text(ch, ScriptCategory::Japanese, em);
     assert_eq!(edges(&halfwidth), (ja('（'), ja('）')), "詰めない半角の約物は和文の字の端");
     assert_eq!(edges(&letters), (ja('あ'), ja('い')));
+  }
+
+  #[test]
+  fn font_switch_is_not_a_break_opportunity() {
+    let fonts = test_support::vendor_font_system(|font_type| {
+      return (font_type == FontType::Serif).then(|| {
+        return vec![
+          test_support::vendor_font_config("STIXTwoText[wght].ttf"),
+          test_support::vendor_font_config("NotoSans[wdth,wght].ttf"),
+        ];
+      });
+    });
+    let issues = GlyphIssues::default();
+    let shaper = Shaper::new(&fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
+    let mut measurer = Measurer::new(shaper, Length::pt(10.0), 1.2, None, false);
+    let style = TextStyle {
+      font_size: Length::pt(10.0),
+      typeface: Typeface::Serif,
+      color: None,
+      script_level: None,
+      math_operator: None,
+    };
+    let mut list = HList::default();
+
+    measurer.push_text_items("a\u{0460}b cd", style, &mut list);
+
+    // Ѡ だけが 2 つ目の候補で組まれるが、語「aѠb」の途中に分割点は入らない
+    let items = list.into_items();
+    assert!(
+      matches!(
+        items.as_slice(),
+        [HItem::Box(word), HItem::Glue { .. }, HItem::Box(_)] if matches!(word.content, HBoxContent::Atom(_))
+      ),
+      "{items:?}"
+    );
   }
 }

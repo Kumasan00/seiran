@@ -6,18 +6,19 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{failures::Failures, project::ProjectSourceError, typeset::math_glyphs::MissingMathGlyph};
+use crate::{failures::Failures, project::ProjectSourceError, typeset::text_glyphs::TextGlyphError};
 
 /// [`compose`](fn@crate::typeset::compose) の失敗
 ///
-/// ソース位置に帰属しない組版の失敗と、必ずソース位置に帰属する数式フォントの字の欠落（`source_id` を持つ）を分けて運ぶ
-/// 制御フロー型で、表示単位ではない（`miette::Diagnostic` を実装しない）。後者だけに `compiler` がソース本文を添える。
+/// ソース位置に帰属しない組版の失敗と、ソース位置に帰属しうる字の欠落（[`TextGlyphError::source_id`]）を分けて運ぶ
+/// 制御フロー型で、表示単位ではない（`miette::Diagnostic` を実装しない）。後者のうち位置を持つものだけに `compiler` が
+/// ソース本文を添える。
 #[derive(Debug)]
 pub(crate) enum ComposeError {
   /// フォント資源の構築・画像資源・ページ単位脚注採番の失敗
   Typeset(Failures<TypesetError>),
-  /// 数式フォントに基本の字形が無い字の使用（文書順）
-  MissingMathGlyphs(Failures<MissingMathGlyph>),
+  /// 文書が使った字のフォントでの欠落（数式フォントの欠落を文書順に、続けて本文の枠の欠落）
+  Glyphs(Failures<TextGlyphError>),
 }
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。

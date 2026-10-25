@@ -6,7 +6,7 @@ project::config::parse_toml
       in `font_configs.serif`
       
    ╭─[diagnostics/config.toml:2:1]
- 1 │ [font_configs.serif]
+ 1 │ [[font_configs.serif]]
  2 │ font_name = "MyFont"
    · ────┬────
    ·     ╰── ここ

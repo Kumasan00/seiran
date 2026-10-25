@@ -2,7 +2,7 @@
 //! へ変換する。
 //!
 //! 段順序はフォント資源の構築（解析 → メトリクス → 検証 → シェーパー）→ 数式フォントの字の検査 → 画像パス収集 → 画像読込 →
-//! lowering → 計測（画像の描画寸法もここで確定）→ 行分割・改ページ → 前付け・後付け → ページラベル →
+//! lowering → 計測（画像の描画寸法もここで確定）→ 行分割・改ページ（本文の欠字と代替の候補の書字方向の不一致は配置中に集め、その後に報告する）→ 前付け・後付け → ページラベル →
 //! 走り文 → outline → 確定座標の描画命令への変換。
 //!
 //! 組版中間型（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系）は子 module `boxes` が
@@ -26,6 +26,7 @@ mod observe;
 mod pagination;
 #[cfg(test)]
 mod test_support;
+mod text_glyphs;
 mod warning;
 
 use std::mem;
@@ -42,13 +43,14 @@ pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
 pub(crate) use pagination::LaidOutDocument;
 #[cfg(test)]
 pub(crate) use test_support::layout_for_test;
+use text_glyphs::{TextGlyphError, VariationSequenceFallback};
 use tracing::{info, info_span};
 pub(crate) use warning::TypesetWarning;
 
 use crate::{
   failures::Failures,
   phase::Phase,
-  project::{FontData, FontType, ProjectPath, ProjectSource, config::ProjectConfig},
+  project::{FontData, FontFace, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::Publication,
   semantics::SemanticDocument,
   style::Style,
@@ -76,10 +78,11 @@ pub(crate) struct TypesetOutput {
 ///
 /// # Errors
 ///
-/// フォントの解析・メトリクス取得・設定検証・シェーパー構築、文書が数式で使った字の数式フォントでの欠落、
-/// 画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、その段で
-/// 見つかった失敗を非空集合で持つ（フォント・数式の字・画像はそれぞれ独立に検査できるので段の中では全件、段の間は
-/// 早期 return する。数式の字の欠落だけがソース位置を持つので [`ComposeError`] の別の腕で運ぶ）。
+/// フォントの解析・メトリクス取得・設定検証・シェーパー構築、画像の読込・デコード・寸法確定、文書が使った字の
+/// フォントでの欠落（数式フォントと本文の枠）、または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、
+/// その段で見つかった失敗を非空集合で持つ（フォント・画像はそれぞれ独立に検査できるので段の中では全件、段の間は
+/// 早期 return する。字の欠落は組版を最後まで進めて全件集め、ソース位置を持ちうるので [`ComposeError`] の別の腕で
+/// 運ぶ）。
 pub(crate) fn compose(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
@@ -96,7 +99,9 @@ pub(crate) fn compose(
   };
 
   let phase = Phase::enter(info_span!("typeset"));
-  let (mut laid_out, layout_warnings) = match lay_out(source, config, style, geometry, &font_resources, document) {
+  let (laid_out, variation_warnings) = lay_out(source, config, style, geometry, &font_resources, document);
+  warnings.extend(variation_warnings);
+  let (mut laid_out, layout_warnings) = match laid_out {
     Ok(laid_out) => laid_out,
     Err(error) => return (Err(error), warnings),
   };
@@ -137,12 +142,19 @@ fn load_fonts(
   return (font_resources, font_warnings);
 }
 
+/// [`lay_out`] の成否。成功は確定レイアウトと配置由来の警告。
+type LayOutResult = Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError>;
+
 /// 意味解析の成果物を確定レイアウトへ組版する（`typeset` phase の前半）。
+///
+/// 数式フォントの字の欠落が見つかっても組版を続け、本文の枠の字の欠落と合わせて報告する。成功したときの警告は、異体字列の
+/// 代替（数式・本文をまとめて要素の位置順、生成内容はその後ろ）→ 配置由来の順。
 ///
 /// # Errors
 ///
-/// 数式フォントに無い字を文書が数式で使っていた場合はその全件を、画像の読込・デコード・自然寸法の検証、または脚注の
-/// ページ単位採番の収束に失敗した場合はその段で見つかった失敗を返す。
+/// 画像の読込・デコード・自然寸法の検証に失敗した場合はその全件を返す（組版に進まないので字の欠落は報告しない）。
+/// 文書が使った字がフォントに無かったか、書字方向の違う代替の候補を使おうとした場合は、数式フォントの欠落（文書順）→
+/// 本文の枠の欠落・方向の不一致（要素の位置順、生成内容はその後ろ）の全件を返す。字の欠落が無く脚注のページ単位採番が収束しなかった場合は、その失敗を返す。
 fn lay_out(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
@@ -150,17 +162,43 @@ fn lay_out(
   geometry: &PreparedGeometry,
   font_resources: &FontSystem,
   document: &SemanticDocument,
-) -> Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError> {
-  math_glyphs::check(
+) -> (LayOutResult, Vec<TypesetWarning>) {
+  let (math_glyphs, math_warnings) = math_glyphs::check(
     document.hir(),
     style,
     &|ch| return font_resources.has_math_glyph(ch),
-    &config.font_configs[FontType::Math].font_path,
-  )
-  .map_err(ComposeError::MissingMathGlyphs)?;
+    &|base, selector| return font_resources.has_math_variation(base, selector),
+    &config.font_configs[FontFace::MATH].font_path,
+  );
   let image_paths = image::collect_image_paths(document.hir());
-  let images = image::load_image_resources(source, &image_paths).map_err(ComposeError::Typeset)?;
+  let images = match image::load_image_resources(source, &image_paths) {
+    Ok(images) => images,
+    Err(failures) => return (Err(ComposeError::Typeset(failures)), into_variation_warnings(math_warnings)),
+  };
   let ctx = pagination::TypesetContext::new(config, style, geometry, font_resources);
-  return pagination::paginate(&ctx, document, images, image_paths)
-    .map_err(|error| return ComposeError::Typeset(Failures::single(error)));
+  let laid_out = pagination::paginate(&ctx, document, images, image_paths);
+
+  let mut glyph_errors: Vec<TextGlyphError> = match math_glyphs {
+    Ok(()) => Vec::new(),
+    Err(failures) => failures.into_iter().map(TextGlyphError::Math).collect(),
+  };
+  let (text_errors, text_warnings) = ctx.glyph_issues.report(document.hir().source_map(), &config.font_configs);
+  glyph_errors.extend(text_errors);
+  let mut variation_warnings = math_warnings;
+  variation_warnings.extend(text_warnings);
+  // 同じ位置のものは数式（事前検査）が先のまま
+  variation_warnings.sort_by_key(VariationSequenceFallback::order_key);
+  let variation_warnings = into_variation_warnings(variation_warnings);
+  if let Some(failures) = Failures::from_vec(glyph_errors) {
+    return (Err(ComposeError::Glyphs(failures)), variation_warnings);
+  }
+  return match laid_out {
+    Ok(laid_out) => (Ok(laid_out), variation_warnings),
+    Err(error) => (Err(ComposeError::Typeset(Failures::single(error))), variation_warnings),
+  };
+}
+
+/// 異体字列の代替を [`TypesetWarning`] の列にする。
+fn into_variation_warnings(warnings: Vec<VariationSequenceFallback>) -> Vec<TypesetWarning> {
+  return warnings.into_iter().map(TypesetWarning::VariationSequenceFallback).collect();
 }

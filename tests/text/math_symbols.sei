@@ -6,7 +6,7 @@ $x \mapsfrom y$、$p \preceq q \preccurlyeq r$、$M \models \varphi$ と $\Gamma
 
 \section{二項演算子と順序子}
 
-$a \doubleplus b$、$x \circledast y$、$\diameter$、$\bigcirc$、$\tinysquare \smallsquare \square \largesquare$、
+$a \doubleplus b$、$x \circledast y$、$\diameter$、$\bigcirc$、$\tinysquare \smallsquare \square$、
 $\blacktriangle \bigblacktriangleup$、$\backslash$、$\epsilon \varepsilon \phi \varphi$。
 
 \section{括弧}

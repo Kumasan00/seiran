@@ -2,9 +2,9 @@
 
 use std::ops::Range;
 
-use crate::{color::Color, length::Length, project::FontType};
+use crate::{color::Color, length::Length, project::FontFace};
 
-/// 1 つのフォント種別でシェーピングしたグリフ列
+/// 1 つの実体（フォント種別 × 候補）でシェーピングしたグリフ列
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlyphRun {
   /// テキストのフォントサイズ
@@ -13,8 +13,8 @@ pub struct GlyphRun {
   pub text: String,
   /// シェーピング結果のグリフ列
   pub glyphs: Vec<Glyph>,
-  /// このグリフ列が使用するフォント種別
-  pub font_type: FontType,
+  /// このグリフ列が使用する実体（[`crate::PublicationResources::font`] で描画資源を引く鍵）
+  pub face: FontFace,
   /// テキスト色。`None` は既定色（黒）。
   /// `\color` かリンク色（style.toml の `[hyperref]`）が効いたテキストだけ `Some` になる。
   pub color: Option<Color>,

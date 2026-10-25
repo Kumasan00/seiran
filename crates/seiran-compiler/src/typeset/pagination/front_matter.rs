@@ -14,6 +14,7 @@ use crate::typeset::{
     context::{BodyPageFacts, TypesetContext},
     toc,
   },
+  text_glyphs::Generated,
 };
 
 /// 前付け（タイトルページ・目次）を生成してページ分割する。
@@ -42,6 +43,8 @@ pub(super) fn paginate(
         title_nodes,
         &BlockBuildInputs {
           fonts: ctx.fonts,
+          issues: &ctx.glyph_issues,
+          generated: Generated::FrontMatter,
           images,
           column_width: ctx.geometry.text_width(),
           breaker: &ctx.breaker,

@@ -1,6 +1,7 @@
 //! `config.toml`（物理・実体・メタデータ）のデータモデルと読込・検証
 //!
-//! [`load`] は TOML 解析（未知キーの拒否を含む）・必須フィールドと値域の検証・フォント 19 種の完全性検証・
+//! [`load`] は TOML 解析（未知キーの拒否を含む）・必須フィールドと値域の検証・フォント 19 種の完全性検証（本文用の
+//! 種別は候補 1 つ以上）・
 //! 各種パスの正規化までを終えた [`ProjectConfig`] を返す。`style.toml` や references の**内容は
 //! 解析しない** — 検証済みのパスを返すだけで、それぞれの読込は [`crate::style`] と
 //! `crate::semantics` が担う。
@@ -23,15 +24,16 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{
-    self, FontConfig, FontFeature, FontMap, FontType, InFile, PathResolver, ProjectPath, ProjectSource, TextDirection,
-    TomlErrorParts, VariationAxis,
+    self, FaceMap, FontConfig, FontFace, FontFeature, FontMap, InFile, PathResolver, ProjectPath, ProjectSource,
+    TextDirection, TomlErrorParts, VariationAxis,
   },
 };
 
 /// 読み取り I/O フェーズで集約する解決済みパス群。
 struct ResolvedPaths {
-  /// 解決済みフォントパス。1 種別でも解決できなければ `None`（違反は同時に返すエラー列に入る）
-  font_paths: Option<FontMap<ProjectPath>>,
+  /// 解決済みフォントパス。1 実体でも解決できない（違反は同時に返すエラー列に入る）か、本文用の種別の候補が空
+  /// （違反は値検証の garde が積む）なら `None`
+  font_paths: Option<FaceMap<ProjectPath>>,
   /// 解決済みソースファイルパス
   sources: Vec<ProjectPath>,
   /// 解決済みスタイルファイルパス（未指定なら `None`）
@@ -40,7 +42,7 @@ struct ResolvedPaths {
   references_path: Option<ProjectPath>,
 }
 
-/// フォント 1 種別ぶんの、パス解決を除いた検証済み・変換済みの値群。
+/// フォント 1 実体ぶんの、パス解決を除いた検証済み・変換済みの値群。
 struct FontValues {
   /// TTC ファイル内のフォントインデックス
   font_index: u32,
@@ -144,7 +146,7 @@ fn validate_and_build(
 fn build_config(
   raw: RawConfig,
   resolver: &PathResolver,
-  validation: Result<FontMap<FontValues>, Vec<ConfigValidationError>>,
+  validation: Result<FaceMap<FontValues>, Vec<ConfigValidationError>>,
   resolved: ResolvedPaths,
   path_errors: Vec<ConfigValidationError>,
 ) -> Result<ProjectConfig, Failures<ConfigValidationError>> {
@@ -158,7 +160,8 @@ fn build_config(
       errors.extend(path_errors);
       let Some(failures) = Failures::from_vec(errors) else {
         unreachable!(
-          "この分岐は検証エラーかパスエラーが 1 件以上あるときにだけ入る（font_paths が None なら resolve_paths が違反を積んでいる）"
+          "この分岐は検証エラーかパスエラーが 1 件以上あるときにだけ入る（font_paths が None なら resolve_paths がパスの違反を\
+           積んでいるか、本文用の種別の候補が空で値検証の garde が違反を積んでいる）"
         )
       };
       return Err(failures);
@@ -218,7 +221,7 @@ fn build_config(
 }
 
 /// [`RawConfig`] の純粋な値検証とタグ・書字方向の変換を一括で実行します（I/O なし）。
-fn validate_and_convert(raw: &RawConfig) -> Result<FontMap<FontValues>, Vec<ConfigValidationError>> {
+fn validate_and_convert(raw: &RawConfig) -> Result<FaceMap<FontValues>, Vec<ConfigValidationError>> {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
   if let Err(report) = raw.validate() {
     errors.extend(report.iter().map(|(path, error)| {
@@ -230,13 +233,24 @@ fn validate_and_convert(raw: &RawConfig) -> Result<FontMap<FontValues>, Vec<Conf
   }
   raw::validate_font_language_constraints(&raw.font_configs, &mut errors);
 
-  let font_values = FontMap::try_from_fn(|font_type| return parse_font_values(font_type, &raw.font_configs[font_type]));
-  match font_values {
-    Ok(font_values) if errors.is_empty() => return Ok(font_values),
-    Ok(_) => {},
-    Err(value_errors) => errors.extend(value_errors.into_iter().flatten()),
+  // 候補の値は互いに独立に検証できるので、空の候補配列（garde の違反）があっても残りの候補を全件検証する
+  let font_values = FontMap::from_fn(|font_type| {
+    let mut values = Vec::new();
+    for (candidate, raw_font_config) in raw.font_configs.candidates(font_type).iter().enumerate() {
+      match parse_font_values(FontFace::new(font_type, candidate), raw_font_config) {
+        Ok(font_values) => values.push(font_values),
+        Err(value_errors) => errors.extend(value_errors),
+      }
+    }
+    return values;
+  });
+  if !errors.is_empty() {
+    return Err(errors);
   }
-  return Err(errors);
+  return Ok(
+    FaceMap::from_slots(font_values)
+      .expect("garde の non_empty_candidates が本文用の種別の候補を 1 つ以上、math の単一テーブルが 1 つを保証する"),
+  );
 }
 
 /// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを `resolver` で解決し、
@@ -258,22 +272,27 @@ fn resolve_paths(
     return ConfigValidationError::ReferencesFileNotFound { path };
   });
 
-  let font_paths = FontMap::try_from_fn(|font_type| {
-    let resolved = resolver.resolve(&raw.font_configs[font_type].font_path);
-    if source.exists(&resolved) {
-      return Ok(resolved);
+  let font_error_count = errors.len();
+  let font_paths = FontMap::from_fn(|font_type| {
+    let mut paths = Vec::new();
+    for (candidate, raw_font_config) in raw.font_configs.candidates(font_type).iter().enumerate() {
+      let resolved = resolver.resolve(&raw_font_config.font_path);
+      if source.exists(&resolved) {
+        paths.push(resolved);
+      } else {
+        errors.push(ConfigValidationError::FontFileNotFound {
+          face: FontFace::new(font_type, candidate),
+          path: resolved.to_string(),
+        });
+      }
     }
-    return Err(ConfigValidationError::FontFileNotFound {
-      font_type,
-      path: resolved.to_string(),
-    });
+    return paths;
   });
-  let font_paths = match font_paths {
-    Ok(font_paths) => Some(font_paths),
-    Err(path_failures) => {
-      errors.extend(path_failures);
-      None
-    },
+  // 候補が空の種別は表にできない（その違反は値検証の garde が報告する）
+  let font_paths = if errors.len() == font_error_count {
+    FaceMap::from_slots(font_paths)
+  } else {
+    None
   };
 
   let sources = resolve_sources(&raw.sources, resolver, source, &mut errors, &mut warnings);
@@ -336,9 +355,9 @@ fn resolve_sources(
   return resolved_sources;
 }
 
-/// `RawFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
+/// 実体 `face` の `RawFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
 fn parse_font_values(
-  font_type: FontType,
+  face: FontFace,
   raw_font_config: &RawFontConfig,
 ) -> Result<FontValues, Vec<ConfigValidationError>> {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
@@ -348,7 +367,7 @@ fn parse_font_values(
     Some(value) => match tag::parse_script(value) {
       Ok(bytes) => Some(bytes),
       Err(error) => {
-        errors.push(field_error(font_type, "script", error));
+        errors.push(field_error(face, "script", error));
         None
       },
     },
@@ -359,7 +378,7 @@ fn parse_font_values(
     Some(value) => match tag::parse_ot_language(value) {
       Ok(bytes) => Some(bytes),
       Err(error) => {
-        errors.push(field_error(font_type, "ot_language", error));
+        errors.push(field_error(face, "ot_language", error));
         None
       },
     },
@@ -370,7 +389,7 @@ fn parse_font_values(
     Some(value) => match value.parse::<TextDirection>() {
       Ok(direction) => Some(direction),
       Err(error) => {
-        errors.push(field_error(font_type, "direction", error));
+        errors.push(field_error(face, "direction", error));
         None
       },
     },
@@ -387,7 +406,7 @@ fn parse_font_values(
           });
         },
         Err(error) => {
-          errors.push(field_error(font_type, "variation_axes", error));
+          errors.push(field_error(face, "variation_axes", error));
           return None;
         },
       })
@@ -405,7 +424,7 @@ fn parse_font_values(
           });
         },
         Err(error) => {
-          errors.push(field_error(font_type, "features", error));
+          errors.push(field_error(face, "features", error));
           return None;
         },
       })
@@ -429,10 +448,10 @@ fn parse_font_values(
   });
 }
 
-/// フォント種別とフィールド名から、タグ・書字方向の不正を表す [`ConfigValidationError::Field`] を作ります。
-fn field_error(font_type: FontType, field: &str, error: impl std::fmt::Display) -> ConfigValidationError {
+/// 実体とフィールド名から、タグ・書字方向の不正を表す [`ConfigValidationError::Field`] を作ります。
+fn field_error(face: FontFace, field: &str, error: impl std::fmt::Display) -> ConfigValidationError {
   return ConfigValidationError::Field {
-    path: format!("font_configs.{}.{field}", font_type.as_toml_key()),
+    path: format!("font_configs.{face}.{field}"),
     message: error.to_string(),
   };
 }
@@ -475,9 +494,12 @@ mod tests {
     parse_config, resolve_output_dir_path, resolve_paths, validate_and_convert,
   };
   use crate::project::{
-    FilesystemProjectSource, FontType, MemoryProjectSource, PathResolver, ProjectPath, ProjectSource,
+    FilesystemProjectSource, FontFace, FontType, MemoryProjectSource, PathResolver, ProjectPath, ProjectSource,
     ProjectSourceError,
-    config::test_support::{font_sections, font_sections_with_serif_extra, valid_output_section, valid_pdf_section},
+    config::test_support::{
+      font_sections, font_sections_with_serif_candidate, font_sections_with_serif_extra, valid_output_section,
+      valid_pdf_section,
+    },
   };
 
   /// `parse_config` 用のダミーパス。
@@ -521,7 +543,7 @@ mod tests {
     );
   }
 
-  /// [`minimal_config_toml`] の `[font_configs.serif]` に `extra_lines` を差し込んだ config.toml。
+  /// [`minimal_config_toml`] の先頭の `[[font_configs.serif]]` に `extra_lines` を差し込んだ config.toml。
   fn minimal_config_toml_with_serif_extra(extra_lines: &str) -> String {
     return format!(
       "sources = [\"a.sei\"]\n\n{}{}{}",
@@ -615,9 +637,9 @@ mod tests {
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     let font_paths = resolved.font_paths.expect("全フォントパスが解決できるはず");
     assert!(
-      FontType::VARIANTS
-        .iter()
-        .all(|&font_type| return font_paths[font_type] == ProjectPath::new("/project/fonts/dummy.ttf")),
+      font_paths
+        .faces()
+        .all(|face| return font_paths[face] == ProjectPath::new("/project/fonts/dummy.ttf")),
       "表記が違っても正規化後は同じ ProjectPath のはず: {font_paths:?}"
     );
   }
@@ -921,10 +943,10 @@ mod tests {
     )));
   }
 
-  /// 指定の `[font_configs.serif]` 追加行で TOML を組み、`validate_and_convert` を通した結果を返します。
+  /// 先頭の `[[font_configs.serif]]` への指定の追加行で TOML を組み、`validate_and_convert` を通した結果を返します。
   #[expect(
     clippy::unwrap_in_result,
-    reason = "呼び出し側が `extra_lines` に渡すのは `[font_configs.serif]` へ足せる妥当な行だけなので、\
+    reason = "呼び出し側が `extra_lines` に渡すのは `[[font_configs.serif]]` へ足せる妥当な行だけなので、\
               組み上がる TOML のパースは成功する。`Result` が広告しているのは後段の値検証の失敗だけ"
   )]
   fn run_validate_with_serif_extra(extra_lines: &str) -> Result<(), Vec<ConfigValidationError>> {
@@ -1009,7 +1031,7 @@ mod tests {
     assert!(errors.iter().any(|error| matches!(
       error,
       ConfigValidationError::Field { path, message }
-        if path == "font_configs.serif" && message.contains("ot_language") && message.contains("script")
+        if path == "font_configs.serif[0]" && message.contains("ot_language") && message.contains("script")
     )));
   }
 
@@ -1025,12 +1047,162 @@ mod tests {
         errors.iter().any(|error| matches!(
           error,
           ConfigValidationError::Field { path, message }
-            if *path == format!("font_configs.serif.{field}")
+            if *path == format!("font_configs.serif[0].{field}")
               && message == "OpenType タグは 4 文字の ASCII である必要があります"
         )),
         "{field}: {errors:?}"
       );
     }
+  }
+
+  /// `font_sections` 部分を `font_sections` で差し替えた妥当な config.toml。
+  fn config_toml_with_font_sections(font_sections: &str) -> String {
+    return format!(
+      "sources = [\"dummy.sei\"]\n\n{}{}{font_sections}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+    );
+  }
+
+  /// `serif` に 2 つ目の候補（本体 `candidate_lines`）を足した TOML を `validate_and_convert` に通した違反を返す。
+  fn validate_errors_with_serif_candidate(candidate_lines: &str) -> Vec<ConfigValidationError> {
+    let toml = config_toml_with_font_sections(&font_sections_with_serif_candidate("dummy.ttf", candidate_lines));
+    let raw = parse_config(&toml, dummy_source()).expect("TOML の解析は成功するはず");
+    return validate_and_convert(&raw).err().expect("2 つ目の候補の違反で検証は失敗するはず");
+  }
+
+  /// `toml` が `ParseToml` で拒否されることを確かめ、そのラベルの位置を返す。
+  fn parse_toml_error_offset(toml: &str) -> usize {
+    let failures = parse_config(toml, dummy_source()).expect_err("TOML の解析で拒否されるはず");
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    let ReadConfigError::ParseToml { span, .. } = first else {
+      panic!("ParseToml になるはず: {first:?}");
+    };
+    return span.offset();
+  }
+
+  #[test]
+  fn parse_config_rejects_single_table_for_body_slot() {
+    let sections = font_sections("dummy.ttf").replacen("[[font_configs.serif]]", "[font_configs.serif]", 1);
+
+    let _ = parse_toml_error_offset(&config_toml_with_font_sections(&sections));
+  }
+
+  #[test]
+  fn parse_config_rejects_array_for_math() {
+    let sections = font_sections("dummy.ttf").replacen("[font_configs.math]", "[[font_configs.math]]", 1);
+
+    let _ = parse_toml_error_offset(&config_toml_with_font_sections(&sections));
+  }
+
+  #[test]
+  fn parse_config_rejects_unknown_key_in_second_candidate() {
+    let toml = config_toml_with_font_sections(&font_sections_with_serif_candidate(
+      "dummy.ttf",
+      &format!("font_path = \"other.ttf\"\n{UNKNOWN_KEY} = 0"),
+    ));
+
+    assert_rejects_unknown_key(&toml, UNKNOWN_KEY);
+    let second = toml.match_indices("[[font_configs.serif]]").nth(1).expect("serif の 2 つ目の候補があるはず").0;
+    assert!(toml.find(UNKNOWN_KEY).expect("未知キーを含むはず") > second, "位置は 2 つ目の候補の中のはず");
+  }
+
+  #[test]
+  fn validate_rejects_empty_candidate_array() {
+    let sections = font_sections("dummy.ttf").replacen("[[font_configs.serif]]\nfont_path = \"dummy.ttf\"\n\n", "", 1);
+    let toml = format!("{}[font_configs]\nserif = []\n", config_toml_with_font_sections(&sections));
+    let raw = parse_config(&toml, dummy_source()).expect("空配列は TOML としては解析できるはず");
+
+    let errors = validate_and_convert(&raw).err().expect("空の候補配列は拒否されるはず");
+
+    assert!(
+      errors.iter().any(|error| matches!(
+        error,
+        ConfigValidationError::Field { path, message }
+          if path == "font_configs.serif" && message.contains("[[font_configs.serif]]")
+      )),
+      "{errors:?}"
+    );
+  }
+
+  #[test]
+  fn resolve_paths_builds_no_table_for_an_empty_candidate_array() {
+    let sections =
+      font_sections("fonts/dummy.ttf").replacen("[[font_configs.serif]]\nfont_path = \"fonts/dummy.ttf\"\n\n", "", 1);
+    let toml = format!("{}[font_configs]\nserif = []\n", config_toml_with_font_sections(&sections));
+    let raw = parse_config(&toml, dummy_source()).expect("空配列は TOML としては解析できるはず");
+    let source = MemoryProjectSource::new().with_bytes("/project/fonts/dummy.ttf", Vec::new());
+
+    let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
+
+    assert!(resolved.font_paths.is_none(), "候補が空の種別があれば表は作れないはず");
+    assert!(
+      !errors.iter().any(|error| matches!(error, ConfigValidationError::FontFileNotFound { .. })),
+      "{errors:?}"
+    );
+  }
+
+  #[test]
+  fn validate_reports_second_candidate_field_paths() {
+    let script = validate_errors_with_serif_candidate("font_path = \"dummy.ttf\"\nscript = \"kan\"");
+    let language = validate_errors_with_serif_candidate("font_path = \"dummy.ttf\"\nlanguage = \"en-x-hbsclatn\"");
+    let ot_language = validate_errors_with_serif_candidate("font_path = \"dummy.ttf\"\not_language = \"JAN\"");
+
+    let paths = |errors: &[ConfigValidationError]| {
+      return errors
+        .iter()
+        .map(|error| match error {
+          ConfigValidationError::Field { path, .. } => return path.clone(),
+          other => panic!("フィールドの違反のはず: {other:?}"),
+        })
+        .collect::<Vec<String>>();
+    };
+    assert_eq!(paths(&script), vec!["font_configs.serif[1].script".to_string()]);
+    assert_eq!(paths(&language), vec!["font_configs.serif[1].language".to_string()]);
+    assert_eq!(paths(&ot_language), vec!["font_configs.serif[1]".to_string()]);
+  }
+
+  #[test]
+  fn resolve_paths_reports_missing_second_candidate_file() {
+    let toml = config_toml_with_font_sections(&font_sections_with_serif_candidate(
+      "fonts/dummy.ttf",
+      "font_path = \"fonts/missing.ttf\"",
+    ));
+    let raw = parse_config(&toml, dummy_source()).expect("TOML の解析は成功するはず");
+    let source = MemoryProjectSource::new()
+      .with_bytes("/project/fonts/dummy.ttf", Vec::new())
+      .with_text("/project/dummy.sei", "");
+
+    let (resolved, errors, _) = resolve_paths(&raw, &source, &PathResolver::new(Path::new("/project")));
+
+    assert!(resolved.font_paths.is_none());
+    let [error] = errors.as_slice() else {
+      panic!("2 つ目の候補のパスだけが違反のはず: {errors:?}");
+    };
+    assert!(
+      matches!(error, ConfigValidationError::FontFileNotFound { face, .. } if *face == FontFace::new(FontType::Serif, 1)),
+      "{error:?}"
+    );
+    assert!(error.to_string().contains("serif[1]"), "文言に実体の位置が出るはず: {error}");
+  }
+
+  #[test]
+  fn load_keeps_every_candidate_in_declaration_order() {
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_candidate(font_path, &format!("font_path = \"{font_path}\"\nfont_index = 3")),
+      );
+    });
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+
+    let (config, _) = load_ok(&FilesystemProjectSource, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
+
+    assert_eq!(config.font_configs[FontFace::primary(FontType::Serif)].font_index, 0);
+    assert_eq!(config.font_configs[FontFace::new(FontType::Serif, 1)].font_index, 3);
+    assert_eq!(config.font_configs.faces().count(), FontType::VARIANTS.len() + 1);
   }
 
   #[test]
@@ -1245,7 +1417,7 @@ mod tests {
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    let serif = &config.font_configs[FontType::Serif];
+    let serif = &config.font_configs[FontFace::primary(FontType::Serif)];
     assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
     assert_eq!(serif.script, Some(*b"kana"));
     assert_eq!(serif.ot_language_tag, Some(*b"JAN "));
@@ -1268,7 +1440,7 @@ mod tests {
     let (config, _): (ProjectConfig, _) =
       load_ok(&source, &ProjectPath::new(&config_path), &PathResolver::new(&base_dir));
 
-    let serif = &config.font_configs[FontType::Serif];
+    let serif = &config.font_configs[FontFace::primary(FontType::Serif)];
     assert_eq!(serif.direction, Some(TextDirection::RightToLeft));
   }
 

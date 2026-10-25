@@ -3,7 +3,7 @@
 //! `HarfRust` を使い、フォント設定の書字方向・スクリプト・言語・OpenType
 //! フィーチャー・バリエーション軸を反映して文字列をグリフ列へ変換する。
 
-use std::{str::FromStr, sync::OnceLock};
+use std::{ops::Range, str::FromStr, sync::OnceLock};
 
 pub(in crate::typeset) use harfrust::Buffer;
 use harfrust::{Direction, Feature, Font, GlyphId, Language, Script, ShapeOptions, ShapePlan, ShaperFont, Tag};
@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::{
   failures::Failures,
-  project::{FontConfig, FontConfigs, FontMap, TextDirection},
+  project::{FaceMap, FontConfig, FontConfigs, FontFace, TextDirection},
   typeset::font::ScriptLevel,
 };
 
@@ -20,12 +20,14 @@ use crate::{
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum ShaperError {
   /// 言語タグを解析できない。
-  #[error("言語タグの解析に失敗しました: '{tag}'")]
+  #[error("{face} の言語タグの解析に失敗しました: '{tag}'")]
   #[diagnostic(
     code(typeset::font::shaper::language_parse),
     help("言語タグは BCP 47 形式（例: 'ja', 'en-US', 'zh-Hant'）である必要があります。")
   )]
   LanguageParse {
+    /// 言語タグを設定した実体（フォント種別 × 候補）
+    face: FontFace,
     /// 解析に失敗した言語タグ
     tag: String,
     /// エラーの詳細メッセージ
@@ -42,8 +44,8 @@ const FLAC: Tag = Tag::new(b"flac");
 /// OpenType の `dtls`（数式用英数字のドット無しの字形を選ぶフィーチャ）のタグ
 const DTLS: Tag = Tag::new(b"dtls");
 
-/// 全フォント種別のシェイピング用フォント（設定のバリエーション軸の位置へ移したもの）。
-pub(super) type ShapingFonts = FontMap<Font>;
+/// 全実体のシェイピング用フォント（設定のバリエーション軸の位置へ移したもの）。
+pub(super) type ShapingFonts = FaceMap<Font>;
 
 /// `font` を設定のバリエーション軸の位置のインスタンスにする。軸の設定が無ければそのまま返す。
 pub(super) fn at_configured_location(font: Font, config: &FontConfig) -> Font {
@@ -61,20 +63,20 @@ pub(super) fn at_configured_location(font: Font, config: &FontConfig) -> Font {
   return font.instance_builder().variations(variations).build();
 }
 
-/// 全フォント種別の [`HarfRustShaper`]。
-pub(super) type HarfRustShapers = FontMap<HarfRustShaper>;
+/// 全実体の [`HarfRustShaper`]。
+pub(super) type HarfRustShapers = FaceMap<HarfRustShaper>;
 
-/// 全フォント種別のシェイパーを並列に生成する。
+/// 全実体のシェイパーを並列に生成する。
 ///
 /// # Errors
 ///
-/// 言語タグを解析できない場合に [`ShaperError`] を `FontType` の宣言順で返す。
+/// 言語タグを解析できない場合に [`ShaperError`] を実体の順（[`FaceMap::faces`]）で返す。
 pub(super) fn build_harfrust_shapers(
   configs: &FontConfigs,
   fonts: ShapingFonts,
 ) -> Result<HarfRustShapers, Failures<ShaperError>> {
-  return fonts.par_try_map(|font_type, font| {
-    return HarfRustShaper::new(&configs[font_type], font);
+  return fonts.par_try_map_into(|face, font| {
+    return HarfRustShaper::new(face, &configs[face], font);
   });
 }
 
@@ -121,12 +123,12 @@ pub(super) struct HarfRustShaper {
 }
 
 impl HarfRustShaper {
-  /// フォント設定とシェイピング用フォントからシェイパーを生成する。
+  /// 実体 `face` のフォント設定とシェイピング用フォントからシェイパーを生成する。
   ///
   /// # Errors
   ///
   /// 言語タグを解析できない場合に [`ShaperError`] を返す。
-  fn new(config: &FontConfig, font: Font) -> Result<Self, ShaperError> {
+  fn new(face: FontFace, config: &FontConfig, font: Font) -> Result<Self, ShaperError> {
     let direction = config.direction.map(Self::to_harfrust_direction);
     let script = match config.script {
       Some(tag_bytes) => {
@@ -138,6 +140,7 @@ impl HarfRustShaper {
     let language = match &config.language {
       Some(tag) => Some(Language::from_str(tag).map_err(|e| {
         return ShaperError::LanguageParse {
+          face,
           tag: tag.clone(),
           error_message: e.to_string(),
         };
@@ -182,6 +185,15 @@ impl HarfRustShaper {
       .is_some_and(|glyph| return glyph != GlyphId::NOTDEF);
   }
 
+  /// 字 `base` と異体字セレクタ `selector` の異体字列を、cmap（format 14）が .notdef 以外の字形へ写すか（既定の異体字列は
+  /// 基底の字形を写す）
+  pub(super) fn has_variation(&self, base: char, selector: char) -> bool {
+    return ShaperFont::new(&self.font).variation_glyph(u32::from(base), u32::from(selector)).is_some();
+  }
+
+  /// 設定で明示した書字方向（`None` は入力から判定する）
+  pub(super) fn direction(&self) -> Option<Direction> { return self.direction; }
+
   /// [`TextDirection`] を `harfrust::Direction` に変換します。
   fn to_harfrust_direction(direction: TextDirection) -> Direction {
     return match direction {
@@ -199,7 +211,26 @@ impl HarfRustShaper {
   /// テーブルのサイズ依存トラッキングに使われ、0 以下なら `harfrust` の既定値 12pt になる。
   pub(super) fn shape(&self, buffer: &mut Buffer, text: &str, point_size: f32, script_level: Option<ScriptLevel>) {
     let (features, plan) = self.level_shaping(script_level);
-    self.shape_with(buffer, text, point_size, features, plan);
+    self.shape_with(buffer, text, 0..text.len(), self.direction, point_size, features, plan);
+  }
+
+  /// `text` の区間 `span` だけを、区間の前後の文字列を文脈として書字方向 `direction` でシェイピングする（段
+  /// `script_level` は [`Self::shape`] と同じ）。字形のクラスタは区間の先頭を 0 とするバイト位置
+  ///
+  /// 先頭の候補で組めなかった区間を代替の候補で組み直すのに使う。書字方向は先頭の候補の実効方向に揃え、スクリプト・言語・
+  /// フィーチャー・軸はこの候補自身の設定のまま組む。呼び元は、この候補が書字方向を明示していれば `direction` と同じで
+  /// あることを確かめてから呼ぶ。
+  pub(super) fn shape_span(
+    &self,
+    buffer: &mut Buffer,
+    text: &str,
+    span: Range<usize>,
+    direction: Direction,
+    point_size: f32,
+    script_level: Option<ScriptLevel>,
+  ) {
+    let (features, plan) = self.level_shaping(script_level);
+    self.shape_with(buffer, text, span, Some(direction), point_size, features, plan);
   }
 
   /// [`Self::shape`] の段 `script_level` の設定に `flac` を足してシェイピングする（フォントが `flac` を持たなければ字形は
@@ -240,7 +271,7 @@ impl HarfRustShaper {
     let (features, _) = self.level_shaping(script_level);
     let mut with_feature = features.to_vec();
     with_feature.push(Feature::new(tag, 1, 0..usize::MAX));
-    self.shape_with(buffer, text, point_size, &with_feature, None);
+    self.shape_with(buffer, text, 0..text.len(), self.direction, point_size, &with_feature, None);
   }
 
   /// 段 `script_level` のフィーチャーとプラン（`None` は display / text 段で、設定のフィーチャーのまま）
@@ -257,28 +288,37 @@ impl HarfRustShaper {
     };
   }
 
-  /// `buffer` を空にして `text` を詰め、`features` と `plan` でシェイピングする（`plan` が `None` なら harfrust が
-  /// 呼び出しごとに作る）
+  /// `buffer` を空にして `text` の区間 `span` を詰め（前後の文字列は文脈）、書字方向 `direction`（`None` は入力から判定）・
+  /// `features`・`plan` でシェイピングする（`plan` が `None` なら harfrust が呼び出しごとに作る）
+  #[expect(
+    clippy::too_many_arguments,
+    reason = "区間・書字方向・段のフィーチャーとプランは呼び出し経路ごとに別の値で、まとめる型に依存する処理が無い"
+  )]
   fn shape_with(
     &self,
     buffer: &mut Buffer,
     text: &str,
+    span: Range<usize>,
+    direction: Option<Direction>,
     point_size: f32,
     features: &[Feature],
     plan: Option<&ShapePlan>,
   ) {
     buffer.clear();
-    if let Some(direction) = self.direction {
+    if let Some(direction) = direction {
       buffer.set_direction(direction);
     }
     buffer.set_script(self.script);
     buffer.set_language(self.language.clone());
-    buffer.push_str(text);
+    buffer.set_pre_context(&text[..span.start]);
+    buffer.push_str(&text[span.clone()]);
+    buffer.set_post_context(&text[span.end..]);
     buffer.guess_segment_properties();
     let options = ShapeOptions::new().plan(plan).point_size(Some(point_size)).features(features);
     harfrust::shape(&ShaperFont::new(&self.font), buffer, options).expect(
       "冒頭の clear で未シェイプ、guess_segment_properties で書字方向は決まり、プランは書字方向とスクリプトを両方明示した \
-       ときだけ作られ同じ値を buffer に設定済みなので、ShapeError のどの場合にも当たらない",
+       ときだけ作られ同じ値を buffer に設定済み（区間を組み直す shape_span の書字方向は、明示した書字方向と等しいことを呼び元が \
+       確かめている）なので、ShapeError のどの場合にも当たらない",
     );
   }
 
@@ -300,7 +340,7 @@ mod tests {
   use harfrust::{Buffer, Font};
 
   use super::{HarfRustShaper, ScriptLevel, at_configured_location};
-  use crate::project::{FontConfig, ProjectPath, TextDirection, VariationAxis};
+  use crate::project::{FontConfig, FontFace, FontType, ProjectPath, TextDirection, VariationAxis};
 
   /// 軸 `wght`（既定 400）を持つ STIX Two Text のファイルのバイト列。
   fn stix_two_text_bytes() -> Vec<u8> {
@@ -366,8 +406,10 @@ mod tests {
       language: Some("ru".to_string()),
       ..stix_two_text_config(None)
     };
-    let explicit = HarfRustShaper::new(&explicit_config, stix_two_text()).expect("明示した言語タグは有効");
-    let automatic = HarfRustShaper::new(&automatic_config, stix_two_text()).expect("言語タグ未指定は有効");
+    let explicit = HarfRustShaper::new(FontFace::primary(FontType::Serif), &explicit_config, stix_two_text())
+      .expect("明示した言語タグは有効");
+    let automatic = HarfRustShaper::new(FontFace::primary(FontType::Serif), &automatic_config, stix_two_text())
+      .expect("言語タグ未指定は有効");
     let mut reused = Buffer::new();
 
     for (shaper, text) in [
@@ -387,7 +429,8 @@ mod tests {
   #[test]
   fn reused_buffer_matches_fresh_buffer_across_empty_text() {
     let config = stix_two_text_config(None);
-    let shaper = HarfRustShaper::new(&config, stix_two_text()).expect("言語タグ未指定は有効");
+    let shaper =
+      HarfRustShaper::new(FontFace::primary(FontType::Serif), &config, stix_two_text()).expect("言語タグ未指定は有効");
     let mut reused = Buffer::new();
 
     for text in ["office", "", "", "a\u{308}\u{301}b"] {
@@ -407,9 +450,14 @@ mod tests {
       name: *b"wght",
       value: 700.0,
     }]));
-    let default = HarfRustShaper::new(&default_config, stix_two_text()).expect("言語タグ未指定は有効");
-    let bold = HarfRustShaper::new(&bold_config, at_configured_location(stix_two_text(), &bold_config))
+    let default = HarfRustShaper::new(FontFace::primary(FontType::Serif), &default_config, stix_two_text())
       .expect("言語タグ未指定は有効");
+    let bold = HarfRustShaper::new(
+      FontFace::primary(FontType::Serif),
+      &bold_config,
+      at_configured_location(stix_two_text(), &bold_config),
+    )
+    .expect("言語タグ未指定は有効");
     let mut default_buffer = Buffer::new();
     let mut bold_buffer = Buffer::new();
 
@@ -443,7 +491,8 @@ mod tests {
     }]));
     let shaper = |bytes: Vec<u8>| {
       let font = Font::new(bytes, 0).expect("レコードの並びだけを変えたフォントも sfnt として読めるはず");
-      return HarfRustShaper::new(&config, at_configured_location(font, &config)).expect("言語タグ未指定は有効");
+      return HarfRustShaper::new(FontFace::primary(FontType::Serif), &config, at_configured_location(font, &config))
+        .expect("言語タグ未指定は有効");
     };
     let mut sorted_buffer = Buffer::new();
     let mut unsorted_buffer = Buffer::new();
@@ -495,7 +544,7 @@ mod tests {
       ..explicit.clone()
     };
     for config in [explicit, automatic] {
-      let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+      let shaper = HarfRustShaper::new(FontFace::MATH, &config, stix_two_math()).expect("言語タグ未指定は有効");
       let glyph_of_two = |level: Option<ScriptLevel>| {
         let mut buffer = Buffer::new();
         shaper.shape(&mut buffer, "2", 12.0, level);
@@ -521,7 +570,7 @@ mod tests {
       script: Some(*b"math"),
       ..stix_two_text_config(None)
     };
-    let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+    let shaper = HarfRustShaper::new(FontFace::MATH, &config, stix_two_math()).expect("言語タグ未指定は有効");
     let glyph_of_hat = |level: Option<ScriptLevel>, flattened: bool| {
       let mut buffer = Buffer::new();
       if flattened {
@@ -555,7 +604,7 @@ mod tests {
       script: Some(*b"math"),
       ..stix_two_text_config(None)
     };
-    let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+    let shaper = HarfRustShaper::new(FontFace::MATH, &config, stix_two_math()).expect("言語タグ未指定は有効");
     let glyph_of = |text: &str, level: Option<ScriptLevel>, dotless: bool| {
       let mut buffer = Buffer::new();
       if dotless {
@@ -600,7 +649,7 @@ mod tests {
       font_path: ProjectPath::new("vendor/fonts/STIXTwoMath-Regular.ttf"),
       ..stix_two_text_config(None)
     };
-    let shaper = HarfRustShaper::new(&config, stix_two_math()).expect("言語タグ未指定は有効");
+    let shaper = HarfRustShaper::new(FontFace::MATH, &config, stix_two_math()).expect("言語タグ未指定は有効");
 
     let present = ['√', '\u{0302}', '\u{1D465}', '{', '\u{2016}', '∑'].map(|ch| return shaper.has_glyph(ch));
     let absent = ['\u{0E01}', '\u{0E02}'].map(|ch| return shaper.has_glyph(ch));

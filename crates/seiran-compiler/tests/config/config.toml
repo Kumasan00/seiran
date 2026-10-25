@@ -28,31 +28,31 @@ output_dir = "target/"
 height = "842mm"
 width = "595mm"
 
-[font_configs.serif]
+[[font_configs.serif]]
 direction = "left-to-right"
 font_path = "vendor/fonts/STIXTwoText[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
-[font_configs.serif_bold]
+[[font_configs.serif_bold]]
 direction = "left-to-right"
 font_path = "vendor/fonts/STIXTwoText[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
-[font_configs.serif_italic]
+[[font_configs.serif_italic]]
 direction = "left-to-right"
 font_path = "vendor/fonts/STIXTwoText-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
-[font_configs.serif_bold_italic]
+[[font_configs.serif_bold_italic]]
 direction = "left-to-right"
 font_path = "vendor/fonts/STIXTwoText-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
-[font_configs.sans_serif]
+[[font_configs.sans_serif]]
 direction = "left-to-right"
 font_path = "vendor/fonts/NotoSans[wdth,wght].ttf"
 script = "latn"
@@ -61,7 +61,7 @@ variation_axes = [
   { name = "wght", value = 400.0 },
 ]
 
-[font_configs.sans_serif_bold]
+[[font_configs.sans_serif_bold]]
 direction = "left-to-right"
 font_path = "vendor/fonts/NotoSans[wdth,wght].ttf"
 script = "latn"
@@ -70,7 +70,7 @@ variation_axes = [
   { name = "wght", value = 700.0 },
 ]
 
-[font_configs.sans_serif_italic]
+[[font_configs.sans_serif_italic]]
 direction = "left-to-right"
 font_path = "vendor/fonts/NotoSans-Italic[wdth,wght].ttf"
 script = "latn"
@@ -79,7 +79,7 @@ variation_axes = [
   { name = "wght", value = 400.0 },
 ]
 
-[font_configs.sans_serif_bold_italic]
+[[font_configs.sans_serif_bold_italic]]
 direction = "left-to-right"
 font_path = "vendor/fonts/NotoSans-Italic[wdth,wght].ttf"
 script = "latn"
@@ -88,25 +88,25 @@ variation_axes = [
   { name = "wght", value = 700.0 },
 ]
 
-[font_configs.monospace]
+[[font_configs.monospace]]
 direction = "left-to-right"
 font_path = "vendor/fonts/JetBrainsMono[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
-[font_configs.monospace_bold]
+[[font_configs.monospace_bold]]
 direction = "left-to-right"
 font_path = "vendor/fonts/JetBrainsMono[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
-[font_configs.monospace_italic]
+[[font_configs.monospace_italic]]
 direction = "left-to-right"
 font_path = "vendor/fonts/JetBrainsMono-Italic[wght].ttf"
 script = "latn"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
-[font_configs.monospace_bold_italic]
+[[font_configs.monospace_bold_italic]]
 direction = "left-to-right"
 font_path = "vendor/fonts/JetBrainsMono-Italic[wght].ttf"
 script = "latn"
@@ -117,7 +117,7 @@ direction = "left-to-right"
 font_path = "vendor/fonts/STIXTwoMath-Regular.ttf"
 script = "math"
 
-[font_configs.japanese_serif]
+[[font_configs.japanese_serif]]
 direction = "left-to-right"
 features = [
   { tag = "kern", value = 1 },
@@ -129,7 +129,7 @@ language = "JAN"
 script = "kana"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
-[font_configs.japanese_serif_bold]
+[[font_configs.japanese_serif_bold]]
 direction = "left-to-right"
 features = [
   { tag = "kern", value = 1 },
@@ -141,7 +141,7 @@ language = "JAN"
 script = "kana"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
-[font_configs.japanese_sans_serif]
+[[font_configs.japanese_sans_serif]]
 direction = "left-to-right"
 features = [
   { tag = "kern", value = 1 },
@@ -153,7 +153,7 @@ language = "JAN"
 script = "kana"
 variation_axes = [{ name = "wght", value = 400.0 }]
 
-[font_configs.japanese_sans_serif_bold]
+[[font_configs.japanese_sans_serif_bold]]
 direction = "left-to-right"
 features = [
   { tag = "kern", value = 1 },
@@ -165,12 +165,12 @@ language = "JAN"
 script = "kana"
 variation_axes = [{ name = "wght", value = 700.0 }]
 
-[font_configs.japanese_monospace]
+[[font_configs.japanese_monospace]]
 direction = "left-to-right"
 font_index = 0
 font_path = "vendor/fonts/SourceHanCodeJP.ttc"
 
-[font_configs.japanese_monospace_bold]
+[[font_configs.japanese_monospace_bold]]
 direction = "left-to-right"
 font_index = 10
 font_path = "vendor/fonts/SourceHanCodeJP.ttc"

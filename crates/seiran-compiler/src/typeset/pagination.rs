@@ -248,7 +248,7 @@ fn overflow_warnings(
 /// 要素の開始位置を指す長さ 0 の診断ラベル位置を返す
 ///
 /// 要素全体の span を使うと、複数行の段落・コードブロックが警告ごとに全行印字される。
-fn start_span(location: SourceLocation) -> SourceSpan {
+pub(super) fn start_span(location: SourceLocation) -> SourceSpan {
   return Span::new(location.span.start, location.span.start).into();
 }
 

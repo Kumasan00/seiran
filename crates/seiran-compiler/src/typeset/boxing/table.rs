@@ -147,19 +147,22 @@ impl Measurer<'_> {
   fn measure_rows(&mut self, rows: Vec<TableRowLayout>) -> Vec<MeasuredRow> {
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
-      let mut cells = Vec::with_capacity(row.cells.len());
-      for cell in row.cells {
-        let mut list = HList::default();
-        for node in cell.content {
-          self.collect_inline(node, &mut list);
+      let cells = self.within(row.origin, |measurer| {
+        let mut cells = Vec::with_capacity(row.cells.len());
+        for cell in row.cells {
+          let mut list = HList::default();
+          for node in cell.content {
+            measurer.collect_inline(node, &mut list);
+          }
+          cells.push(MeasuredCell {
+            items: list.into_items(),
+            column_span: cell.column_span,
+            row_span: cell.row_span,
+            rule_below: cell.rule_below,
+          });
         }
-        cells.push(MeasuredCell {
-          items: list.into_items(),
-          column_span: cell.column_span,
-          row_span: cell.row_span,
-          rule_below: cell.rule_below,
-        });
-      }
+        return cells;
+      });
       result.push(MeasuredRow::new(row.origin, cells, row.separator, self.default_font_size, self.line_height_factor));
     }
     return result;
@@ -741,7 +744,7 @@ mod tests {
   use crate::{
     document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator},
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     publication::GlyphRun,
     semantics::LabelId,
     source::SourceId,
@@ -767,7 +770,7 @@ mod tests {
         font_size: pt(font_size),
         text: "x".to_string(),
         glyphs: Vec::new(),
-        font_type: FontType::Serif,
+        face: FontFace::primary(FontType::Serif),
         color: None,
       }),
       width: pt(width),
