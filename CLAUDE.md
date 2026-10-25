@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ドキュメントと既存のコードが食い違うときはコードの書き方に従い、見つけた食い違いを最後の返答ですべて挙げること
 
 ## プロジェクト概要
 
@@ -10,18 +11,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 正典は話題ごとに 1 箇所。この文書には要約とポインタだけを置き、詳細はそれぞれの正典を読む。
 
-| 話題 | 正典 | 読むとき |
-| --- | --- | --- |
-| 言語設計の目的・原則・判断事例 | `docs/language-design.md` | 新コマンド・環境・オプション・style フィールドを設計するとき |
-| crate / module の境界・依存の向き・段間プロトコル・不変条件と style.toml の設計（module の責務の全文と目録＝子 module・関数・フィールドは `//!` と doc コメント、style のキー一覧は style struct の doc） | `docs/architecture.md` | 特定の crate / module を触る前（該当節） |
-| コーディング規約の全文・根拠・lint との対応 | `docs/coding-conventions.md` | 規約の境界事例に迷ったとき |
-| lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint が発火したとき |
-| 言語機能の実装手順 | `add-language-feature` skill | 設計合意済みの機能を実装するとき |
-| エラー型・診断・集約・warning・garde | `docs/error-handling.md`（`error-handling` skill は読むタイミングと節の案内だけ） | エラー型を足す・診断を設計するとき |
-| 組版変更の検証・golden | `verify-typesetting` skill | 組版・数式・seiran-pdf・パーサ以降を変えた後 |
-| issue / PR / branch / commit / ラベル | `issue-pr-ops` skill | GitHub で何かを作る・編集する前 |
-| ドキュメント更新漏れのチェックリスト | `docs-sync` skill | PR を仕上げるとき |
-| ユーザ向け（インストール・コマンド・設定例） | `README.md` | — |
+| 話題                                                                                                                                                                                                      | 正典                                                                              | 読むとき                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 言語設計の目的・原則・判断事例                                                                                                                                                                            | `docs/language-design.md`                                                         | 新コマンド・環境・オプション・style フィールドを設計するとき |
+| crate / module の境界・依存の向き・段間プロトコル・不変条件と style.toml の設計（module の責務の全文と目録＝子 module・関数・フィールドは `//!` と doc コメント、style のキー一覧は style struct の doc） | `docs/architecture.md`                                                            | 特定の crate / module を触る前（該当節）                     |
+| コーディング規約の全文・根拠・lint との対応                                                                                                                                                               | `docs/coding-conventions.md`                                                      | 規約の境界事例に迷ったとき                                   |
+| lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット                                                                                                                                                   | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml`                                | lint が発火したとき                                          |
+| 言語機能の実装手順                                                                                                                                                                                        | `add-language-feature` skill                                                      | 設計合意済みの機能を実装するとき                             |
+| エラー型・診断・集約・warning・garde                                                                                                                                                                      | `docs/error-handling.md`（`error-handling` skill は読むタイミングと節の案内だけ） | エラー型を足す・診断を設計するとき                           |
+| 組版変更の検証・golden                                                                                                                                                                                    | `verify-typesetting` skill                                                        | 組版・数式・seiran-pdf・パーサ以降を変えた後                 |
+| issue / PR / branch / commit / ラベル                                                                                                                                                                     | `issue-pr-ops` skill                                                              | GitHub で何かを作る・編集する前                              |
+| ドキュメント更新漏れのチェックリスト                                                                                                                                                                      | `docs-sync` skill                                                                 | PR を仕上げるとき                                            |
+| ユーザ向け（インストール・コマンド・設定例）                                                                                                                                                              | `README.md`                                                                       | —                                                            |
 
 ## 言語設計原則
 
@@ -33,18 +34,18 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 各原則の導出・根拠・適合例・過去の判断事例は **`docs/language-design.md`** に集約してあり、
 原則と欲しい機能が衝突したときは例外を継ぎ足さず、目的に照らして原則側の改訂も検討する。
 
-| #   | 原則（要約）                                                                     | 目的   |
-| --- | -------------------------------------------------------------------------------- | ------ |
+| #   | 原則（要約）                                                                                                         | 目的   |
+| --- | -------------------------------------------------------------------------------------------------------------------- | ------ |
 | P1  | トークン規則は固定 — カテゴリコードなし、コメント `//`、特殊文字はエスケープ必須（エスケープできるのも特殊文字だけ） | G1     |
-| P2  | 必須引数は `{}` で明示・個数順序固定（コマンドも `^` / `_` も）、コマンド名は英数字 | G1     |
-| P3  | オプションは `[key=value]` の名前付きのみ（位置依存オプション禁止）              | G1     |
-| P4  | `{}` は「引数境界」と「数式内グループ」のみ、数式外の裸の `{...}` は構文エラー   | G1     |
-| P5  | 数式はインライン `$...$` のみ、ディスプレイは数式環境のみ（`$$` `\[` 不採用）    | G1     |
-| P6  | 未知は拒否 — 未知のコマンド・環境・キーはエラー、静かな無視なし                  | G1     |
-| P7  | 効果範囲は構文で閉じる — 引数・環境本体・構造上固定の単位のいずれか              | G2     |
-| P8  | マクロ置換なし — 将来の `\define` は固定引数の新コマンド定義                     | G1, G2 |
-| P9  | プログラミング機能なし — 計算・条件分岐・ループを提供しない                      | G1, G2 |
-| P10 | 種類の既定は style.toml / config.toml、個別要素の設定はソースのオプション        | G3     |
+| P2  | 必須引数は `{}` で明示・個数順序固定（コマンドも `^` / `_` も）、コマンド名は英数字                                  | G1     |
+| P3  | オプションは `[key=value]` の名前付きのみ（位置依存オプション禁止）                                                  | G1     |
+| P4  | `{}` は「引数境界」と「数式内グループ」のみ、数式外の裸の `{...}` は構文エラー                                       | G1     |
+| P5  | 数式はインライン `$...$` のみ、ディスプレイは数式環境のみ（`$$` `\[` 不採用）                                        | G1     |
+| P6  | 未知は拒否 — 未知のコマンド・環境・キーはエラー、静かな無視なし                                                      | G1     |
+| P7  | 効果範囲は構文で閉じる — 引数・環境本体・構造上固定の単位のいずれか                                                  | G2     |
+| P8  | マクロ置換なし — 将来の `\define` は固定引数の新コマンド定義                                                         | G1, G2 |
+| P9  | プログラミング機能なし — 計算・条件分岐・ループを提供しない                                                          | G1, G2 |
+| P10 | 種類の既定は style.toml / config.toml、個別要素の設定はソースのオプション                                            | G3     |
 
 **P10 の判定テスト**: 「これは 1 要素の設定か、種類の既定か？」個 → ソース（`\image[width=5cm]` 可）。
 種類 → style.toml（見た目）/ config.toml（物理・実体・メタ）。プリアンブル禁止・クラス概念の不採用は P10 から導出される。
@@ -170,24 +171,24 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 字面から意味が読めることを優先する（G1 のコードへの適用）。ただし新しい型を**足す**判定は「簡潔さ」節が先。enum match・`clone` の要否・itertools と std の使い分け・derive_more / strum / Default の derive と手書き impl の使い分け以外は lint が機械化。
 
-| 書き方 | lint |
-| --- | --- |
-| `Rc` / `Arc` / `Weak` の複製は `Rc::clone(&x)` の関連関数形 | `clone_on_ref_ptr` |
-| 共有する読み取り専用バイト列は `Arc<[u8]>`（`Arc<Vec<u8>>` は二重間接なうえ移し替えで複製が走る。外部 API 都合は `AsRef<[u8]>` の newtype で包む） | `rc_buffer` |
-| move で済む値を `clone()` しない。発火は真陽性として直す（false-negative なので通っても「無駄な clone なし」の証明にはならない — 判断は人） | `redundant_clone` |
-| `Eq` を導出できる型に `PartialEq` だけを derive しない（`PartialEq` 止まりは f32 / f64 を持つ型だけ）。derive の並びは `Debug, Clone, Copy, PartialEq, Eq, Hash` | `derive_partial_eq_without_eq` |
-| 公開型に `Debug`。生バイト列が載る型（登録済みファイル・フォント・画像）は手書きで件数・長さだけ出す | `missing_debug_implementations` |
-| 借用を持つ型は `Foo<'_>` | `elided_lifetimes_in_paths` |
-| 型推論で足りる `as` は書かない。auto trait を落とす必須キャストだけ `#[expect]` + 理由 | `trivial_casts` |
-| 個数の決まった繰り返しは `(0..n).map(\|_\| v)` ではなく `repeat_n(v, n)` / `repeat_with(..).take(n)`（副作用があるなら後者） | `map_with_unused_argument_over_ranges` |
-| `PathBuf` は `clone()` + `push()` ではなく `join()` で組み立てる（拡張子だけ `set_extension`） | `pathbuf_init_then_push` |
-| イテレータ操作は std で足りるなら std。`itertools` は std だと操作の組み合わせになるものに使う（`Itertools::join` / `izip!`） | —（人が守る） |
-| 機械的な forwarding（newtype の演算・書式 1 本の `Display`）は `derive_more`、網羅性が意味を持つ対応表は手書き match（derive_more の `Display` は `#[display]` 無しの unit variant を variant 名で出すので書き忘れが通る） | —（人が守る） |
-| 全 variant の列挙は `strum` の `VariantArray`、case 変換だけで決まる綴りは `#[strum(serialize_all)]` 付きの `IntoStaticStr` / `Display`。variant ごとの `#[strum(serialize)]` と `EnumString` は使わない（前者は書き忘れが通り、後者は診断を失う） | —（人が守る） |
-| 全フィールドが `default()` / `None` だけの `Default` は `#[derive(Default)]`、手書き `impl Default` は非既定値を持つ型の印（`derivable_impls` は `return Self { .. };` 形で沈黙するので lint は再発を止めない）。型引数を持つ型は derive が `T: Default` 境界を足すので手書きのまま（`NodeMap<T>`） | —（人が守る） |
-| 数値リテラルの型サフィックスは `1u32` 形 | `separated_literal_suffix` |
-| エスケープの要らない文字列に `r"…"` を付けない | `needless_raw_strings` |
-| 識別子は ASCII（テスト名も）。日本語は doc・診断・assert 文言へ | `non_ascii_idents` |
+| 書き方                                                                                                                                                                                                                                                                                              | lint                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `Rc` / `Arc` / `Weak` の複製は `Rc::clone(&x)` の関連関数形                                                                                                                                                                                                                                         | `clone_on_ref_ptr`                     |
+| 共有する読み取り専用バイト列は `Arc<[u8]>`（`Arc<Vec<u8>>` は二重間接なうえ移し替えで複製が走る。外部 API 都合は `AsRef<[u8]>` の newtype で包む）                                                                                                                                                  | `rc_buffer`                            |
+| move で済む値を `clone()` しない。発火は真陽性として直す（false-negative なので通っても「無駄な clone なし」の証明にはならない — 判断は人）                                                                                                                                                         | `redundant_clone`                      |
+| `Eq` を導出できる型に `PartialEq` だけを derive しない（`PartialEq` 止まりは f32 / f64 を持つ型だけ）。derive の並びは `Debug, Clone, Copy, PartialEq, Eq, Hash`                                                                                                                                    | `derive_partial_eq_without_eq`         |
+| 公開型に `Debug`。生バイト列が載る型（登録済みファイル・フォント・画像）は手書きで件数・長さだけ出す                                                                                                                                                                                                | `missing_debug_implementations`        |
+| 借用を持つ型は `Foo<'_>`                                                                                                                                                                                                                                                                            | `elided_lifetimes_in_paths`            |
+| 型推論で足りる `as` は書かない。auto trait を落とす必須キャストだけ `#[expect]` + 理由                                                                                                                                                                                                              | `trivial_casts`                        |
+| 個数の決まった繰り返しは `(0..n).map(\|_\| v)` ではなく `repeat_n(v, n)` / `repeat_with(..).take(n)`（副作用があるなら後者）                                                                                                                                                                        | `map_with_unused_argument_over_ranges` |
+| `PathBuf` は `clone()` + `push()` ではなく `join()` で組み立てる（拡張子だけ `set_extension`）                                                                                                                                                                                                      | `pathbuf_init_then_push`               |
+| イテレータ操作は std で足りるなら std。`itertools` は std だと操作の組み合わせになるものに使う（`Itertools::join` / `izip!`）                                                                                                                                                                       | —（人が守る）                          |
+| 機械的な forwarding（newtype の演算・書式 1 本の `Display`）は `derive_more`、網羅性が意味を持つ対応表は手書き match（derive_more の `Display` は `#[display]` 無しの unit variant を variant 名で出すので書き忘れが通る）                                                                          | —（人が守る）                          |
+| 全 variant の列挙は `strum` の `VariantArray`、case 変換だけで決まる綴りは `#[strum(serialize_all)]` 付きの `IntoStaticStr` / `Display`。variant ごとの `#[strum(serialize)]` と `EnumString` は使わない（前者は書き忘れが通り、後者は診断を失う）                                                  | —（人が守る）                          |
+| 全フィールドが `default()` / `None` だけの `Default` は `#[derive(Default)]`、手書き `impl Default` は非既定値を持つ型の印（`derivable_impls` は `return Self { .. };` 形で沈黙するので lint は再発を止めない）。型引数を持つ型は derive が `T: Default` 境界を足すので手書きのまま（`NodeMap<T>`） | —（人が守る）                          |
+| 数値リテラルの型サフィックスは `1u32` 形                                                                                                                                                                                                                                                            | `separated_literal_suffix`             |
+| エスケープの要らない文字列に `r"…"` を付けない                                                                                                                                                                                                                                                      | `needless_raw_strings`                 |
+| 識別子は ASCII（テスト名も）。日本語は doc・診断・assert 文言へ                                                                                                                                                                                                                                     | `non_ascii_idents`                     |
 
 - **enum match の wildcard（人が守る）**: 「入力 enum に variant を追加したら、この処理の判断を必ず見直すべきか」で決める
   - **Yes なら全 variant を明示**（意味的な対応表・parser / evaluator の dispatch・状態遷移・段間語彙の完全走査・新 variant がアルゴリズムへ参加するか判断すべき分類。同じ結果は `|` でまとめる）
@@ -244,14 +245,14 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 rust-analyzer の LSP は Claude Code の plugin（`rust-analyzer-lsp`）で使う — 有効化はユーザ設定側で、リポジトリ内に設定は無い。シンボルを辿る用途では grep ではなく `LSP` ツールを使う（deferred tool なので `ToolSearch("select:LSP")` でスキーマを読み込んでから呼ぶ）。
 
-| 用途                                                                              | 操作                             |
-| --------------------------------------------------------------------------------- | -------------------------------- |
-| 定義へ移動（特に root facade の `pub use` re-export 越し。grep は facade で止まる） | `goToDefinition`                 |
-| 参照の網羅（リファクタの影響範囲確認。grep の文字列一致は同名衝突・漏れが出る）    | `findReferences`                 |
-| trait 実装の列挙（`LineBreaker` 等の seam の実装は複数ファイルに散る）             | `goToImplementation`             |
-| 型・シグネチャ・doc コメントの確認（宣言まで飛ばずに済む）                         | `hover`                          |
-| ファイル内の型・関数一覧                                                          | `documentSymbol`                 |
-| 呼び出し関係（パイプラインのどの段から呼ばれるか）                                | `incomingCalls` / `outgoingCalls` |
+| 用途                                                                                | 操作                              |
+| ----------------------------------------------------------------------------------- | --------------------------------- |
+| 定義へ移動（特に root facade の `pub use` re-export 越し。grep は facade で止まる） | `goToDefinition`                  |
+| 参照の網羅（リファクタの影響範囲確認。grep の文字列一致は同名衝突・漏れが出る）     | `findReferences`                  |
+| trait 実装の列挙（`LineBreaker` 等の seam の実装は複数ファイルに散る）              | `goToImplementation`              |
+| 型・シグネチャ・doc コメントの確認（宣言まで飛ばずに済む）                          | `hover`                           |
+| ファイル内の型・関数一覧                                                            | `documentSymbol`                  |
+| 呼び出し関係（パイプラインのどの段から呼ばれるか）                                  | `incomingCalls` / `outgoingCalls` |
 
 grep が正しいのは、文字列・パターン・命名規則の洗い出し、TODO や特定リテラルの検索、`.sei` / `.toml` などシンボルを持たないファイルの検索。
 
@@ -263,11 +264,11 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 
 3 ファイルの役割分担原則 — **「同じ本文 + 同じ用紙で style.toml だけ差し替えて見た目を変えられる」** を新フィールド追加時の判断基準にする。
 
-| ファイル                            | 役割                       | 主な内容                                                                                                                                                                                                           |
-| ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ファイル                            | 役割                       | 主な内容                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config.toml`                       | **実体・物理・メタデータ** | `[document]`（title / author / date / subject / keywords / language ＝文書言語。ハイフネーションと PDF メタデータ）、`[output]`（name / output_dir）、用紙サイズ（`[pdf]` の width / height）、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別。本文用 18 枠は候補の配列）、`sources` / `style_path` / `references_path` |
-| `style.toml`                        | **見た目**                 | 本文領域のページ内側余白（`[page]` の margin_top / bottom / left / right）、見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、脚注の体裁と採番方式、段組み数、参照リンク色                                         |
-| `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                                                                                 |
+| `style.toml`                        | **見た目**                 | 本文領域のページ内側余白（`[page]` の margin_top / bottom / left / right）、見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、脚注の体裁と採番方式、段組み数、参照リンク色                                                                                                                                                   |
+| `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                                                                                                                                                                                                                                               |
 
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる。`[heading.<level>]` / `[theorems.<class>]` / `[counters.<name>]` は種類別既定に差分を重ねる 2 レイヤーマージ）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
