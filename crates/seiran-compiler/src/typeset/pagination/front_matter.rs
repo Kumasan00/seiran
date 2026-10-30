@@ -8,13 +8,13 @@ use crate::typeset::{
   boxes::{Block, Page},
   boxing::{BlockBuildInputs, build_blocks},
   breaking::{Overflow, break_pages},
+  glyph_issues::Generated,
   image::ImageResources,
   lowering::{TitlePageMetadata, lower_title_page},
   pagination::{
     context::{BodyPageFacts, TypesetContext},
     toc,
   },
-  text_glyphs::Generated,
 };
 
 /// 前付け（タイトルページ・目次）を生成してページ分割する。

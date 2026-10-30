@@ -20,9 +20,9 @@ use crate::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
     font::{self, Buffer, Finding, FontSystem, ScriptLevel, ScriptScale, Stretch},
+    glyph_issues::{GlyphIssue, GlyphIssues, GlyphOrigin, IssueKind},
     lowering::{MathOperator, TextStyle},
     observe,
-    text_glyphs::{GlyphIssue, GlyphIssues, GlyphOrigin, IssueKind},
   },
 };
 

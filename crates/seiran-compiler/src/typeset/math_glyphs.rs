@@ -11,9 +11,6 @@
 //! 数式フォントで組むクラスタの先頭の字の直後が異体字セレクタで、基本の字形はあるが数式フォントの cmap がその異体字列を
 //! 写さなければ、警告（[`VariationSequenceFallback`]）を積む。字は `HarfBuzz` の既定の挙動どおり基底の字形で組まれる。
 
-use miette::{Diagnostic, SourceSpan};
-use thiserror::Error;
-
 use crate::{
   document::{
     HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, NodeId,
@@ -21,50 +18,14 @@ use crate::{
   },
   failures::Failures,
   project::{FontType, ProjectPath},
-  source::SourceId,
   style::Style,
-  typeset::{boxing, font, lowering, lowering::DelimiterGlyphs, text_glyphs::VariationSequenceFallback},
+  typeset::{
+    boxing, font,
+    glyph_issues::{MissingMathGlyph, VariationSequenceFallback},
+    lowering,
+    lowering::DelimiterGlyphs,
+  },
 };
-
-/// 数式フォントに基本の字形が無い字を数式で使った箇所
-#[derive(Debug, PartialEq, Eq, Error, Diagnostic)]
-#[error("数式フォントに {glyph} (U+{:04X}) のグリフがありません", u32::from(*.glyph))]
-#[diagnostic(
-  code(typeset::math::missing_glyph),
-  help(
-    "config.toml の `math` のフォント（{font_path}）はこの字を持っていません。この字を持つ数式フォントを指定してください。"
-  )
-)]
-pub(crate) struct MissingMathGlyph {
-  /// 数式フォントで組もうとした字（数式用英数字は写した後の字）
-  glyph: char,
-  /// その字を書いたテキスト、またはその字を出すコマンド・環境の位置
-  #[label("{label}")]
-  span: SourceSpan,
-  /// ラベルの文言（ソースに書いた字と組む字が違えば、その対応を示す）
-  label: String,
-  /// 位置が属するソース
-  source_id: SourceId,
-  /// 数式フォントのパス（config.toml の `math`）
-  font_path: String,
-}
-
-impl MissingMathGlyph {
-  /// 字 `glyph` が `location` で欠けた診断を、ラベル `label` で作る
-  fn new(location: SourceLocation, glyph: char, label: String, font_path: &ProjectPath) -> Self {
-    return MissingMathGlyph {
-      glyph,
-      span: location.span.into(),
-      label,
-      source_id: location.source_id,
-      font_path: font_path.as_ref().display().to_string(),
-    };
-  }
-
-  /// この診断が帰属するソースを返す
-  #[must_use]
-  pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
-}
 
 /// 文書が数式フォントで組む字を文書順に `has_glyph` へ問い、偽を返した字を使った箇所ごとに集める。あわせて、組むクラスタの
 /// 異体字列（基本の字形はある字と、その直後の異体字セレクタ）を `has_variation` へ問い、偽なら警告を文書順に集める

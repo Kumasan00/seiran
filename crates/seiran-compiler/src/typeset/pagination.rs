@@ -22,7 +22,6 @@ use crate::{
   document::{SourceLocation, SourceMap},
   project::ProjectPath,
   semantics::SemanticDocument,
-  source::Span,
   typeset::{
     boxes::Page,
     breaking::{Overflow, OverflowKind},
@@ -154,7 +153,10 @@ fn overflow_warnings(
               .iter()
               .zip(&locations)
               .map(|(&(number, _), &location)| {
-                return LabeledSpan::new_with_span(Some(format!("脚注 {number}")), start_span(location));
+                return LabeledSpan::new_with_span(
+                  Some(format!("脚注 {number}")),
+                  SourceSpan::from(location.span.at_start()),
+                );
               })
               .collect(),
           }
@@ -165,7 +167,7 @@ fn overflow_warnings(
             page,
             number,
             source_id: location.source_id,
-            span: start_span(location),
+            span: location.span.at_start().into(),
           }
         },
         OverflowKind::Line {
@@ -181,7 +183,7 @@ fn overflow_warnings(
             axis,
             excess,
             source_id: location.map(|location| return location.source_id),
-            span: location.map(start_span),
+            span: location.map(|location| return location.span.at_start().into()),
           }
         },
         OverflowKind::Image {
@@ -197,7 +199,7 @@ fn overflow_warnings(
             axis,
             excess,
             source_id: location.source_id,
-            span: start_span(location),
+            span: location.span.at_start().into(),
           }
         },
         OverflowKind::Math {
@@ -213,7 +215,7 @@ fn overflow_warnings(
             axis,
             excess,
             source_id: location.source_id,
-            span: start_span(location),
+            span: location.span.at_start().into(),
           }
         },
         OverflowKind::Table { origin, excess } => {
@@ -222,7 +224,7 @@ fn overflow_warnings(
             page,
             excess,
             source_id: location.source_id,
-            span: start_span(location),
+            span: location.span.at_start().into(),
           }
         },
         OverflowKind::TableRow {
@@ -236,20 +238,13 @@ fn overflow_warnings(
             axis,
             excess,
             source_id: location.source_id,
-            span: start_span(location),
+            span: location.span.at_start().into(),
           }
         },
       });
     }
   }
   return warnings;
-}
-
-/// 要素の開始位置を指す長さ 0 の診断ラベル位置を返す
-///
-/// 要素全体の span を使うと、複数行の段落・コードブロックが警告ごとに全行印字される。
-pub(super) fn start_span(location: SourceLocation) -> SourceSpan {
-  return Span::new(location.span.start, location.span.start).into();
 }
 
 /// 前付け、本文、後付けの順にページ列を連結する。

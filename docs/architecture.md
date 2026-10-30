@@ -617,8 +617,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 すべて非公開。`compose` は組版の成否（成功側は
 `TypesetOutput`）と `TypesetWarning` の列の組を返し、
 警告は成否と独立に**フォント → 本体の順**で載せる（配置が失敗した実行ではフォントの警告だけ — 配置由来の
-警告は配置が成功したときにしか存在しない）。`compiler` が名指しする警告型は 1 つだけで、`typeset` の内部が
-フォント資源の構築と配置の 2 段に分かれていることは知らない。
+警告は配置が成功したときにしか存在しない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
+流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
 段順序（数式フォントの字の検査 → 画像パス収集 → 画像読込・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
 前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
@@ -734,8 +734,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
 非収束）。画像は正規化済みパスの昇順に**全件**検査する。`compose` の失敗型は制御フロー型 `ComposeError`
 （`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、ソース位置に
-帰属しうる字の欠落 `Glyphs(Failures<TextGlyphError>)`（数式フォントの `MissingMathGlyph`（`math_glyphs` 項）を文書順に、
-続けて本文の枠の `MissingGlyph`（`text_glyphs` 項））の 2 腕を持つ（`semantics::AnalyzeError` と同じ形）。`compiler` は
+帰属しうる字の欠落 `Glyphs(Failures<TextGlyphError>)`（数式フォントの `MissingMathGlyph` を文書順に、
+続けて本文の枠の `MissingGlyph`。どちらも `glyph_issues` 項）の 2 腕を持つ（`semantics::AnalyzeError` と同じ形）。`compiler` は
 前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接 `CompileFailure` へ平坦化し、後者は要素に帰属する
 もの（`TextGlyphError::source_id` が `Some`）にだけ `SourceDiagnostic` で本文を添える。
 
@@ -781,7 +781,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 文書が数式フォントで組む字を HIR から決め、数式フォントの cmap に基本の字形があるかを問う pre-pass。`lay_out` の
 先頭で 1 回だけ走り（脚注のページ単位採番の反復で再検査しない）、欠けた字を `MissingMathGlyph`（`SourceId` + span、
-code `typeset::math::missing_glyph`）として使った位置 × 字ごとに 1 件・文書順で集める。字の決め方は lowering / boxing
+code `typeset::math::missing_glyph`。型は `glyph_issues` が所有）として使った位置 × 字ごとに 1 件・文書順で集める。字の決め方は lowering / boxing
 と同じ関数（`translate_math_char`・`math_text_clusters`・`delimiter_glyphs`・`RADICAL_SIGN`・`char_font_type`）を
 使う — 写し方や振り分けを変えたらここが追従する。テキスト・記号は書記素クラスタの先頭の字だけを問い、和文として振り
 分ける字は除く。記号は display 段の大型演算子（boxing が振り分けを経ず数式フォントで組む）でも振り分ける側として扱う
@@ -804,7 +804,7 @@ match する。
 - 行末ハイフンの字形はハイフネーションが有効な欧文セグメントごとに、使うかどうかに関わらず先に組む。枠の全候補が `-` を
   持たなければその枠の欧文段落はすべて欠字エラーになる（組版の分割結果に依存しない決定的な検査）
 
-#### `text_glyphs`
+#### `glyph_issues`
 
 本文の枠のフォントで組めない字（欠字）・異体字列の代替・候補の方向の不一致の収集と診断。判定はシェーピング時の
 1 箇所（`font::fallback`。欠字は、枠のどの候補でも `.notdef` を含み、字がすべて不可視ではないクラスタ）で、`boxing::Shaper` がいま組んでいる要素（段落・表の行・脚注・
@@ -817,6 +817,10 @@ match する。
 不一致はエラー `FallbackDirectionMismatch`（code `typeset::font::fallback_direction`）で、同じ収集器から出る。
 代替の成功は warning にしない。数式フォント（`math`）の字はこの経路で組まない（`math_glyphs` が持つ。
 その異体字列の非対応は同じ warning）。
+
+**字の問題の型は `glyph_issues` が所有し、検出側（`math_glyphs`・`boxing`）が一方向に依存する**（`MissingMathGlyph` を
+`math_glyphs` に置くと `glyph_issues` ↔ `math_glyphs` が循環する）。位置ラベルは `Span::at_start` で作り、`pagination` に
+依存しない。
 
 #### `pagination`
 
@@ -1595,7 +1599,7 @@ image not in manifest / 未対応の画像拡張子・フォントの `fvar` と
 
 CLI エントリーポイント（package 名・binary 名とも `seiran`）。`seiran-compiler` と `seiran-pdf` の両方に
 依存し、`compile` → `render` → atomic write（一時ファイル + rename）→ 結果表示（確定済みの warning 診断を
-主エラーより先に、とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の 4 手順に限定される。
+主エラーより先に、とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の 4 手順に限定される（`build` の話。フォント調査 3 サブコマンドは「境界」の `subcommand`）。
 段の呼び出し順序・組版の中間型は一切知らない。filesystem・ログ初期化（`tracing-subscriber`）・端末出力と
 いった実行環境の関心事はすべてこの crate に閉じ、カレントディレクトリも起動時に `main` が 1 回取得して
 （全サブコマンド共通。実行記録の基準ディレクトリと `build` の相対パス解決に同じ値を使う）`compile` へ明示する。

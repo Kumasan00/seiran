@@ -1,5 +1,6 @@
 //! 脚注エリアへの詰め込み計算 — 純粋関数・データのみ。
 
+use super::PendingFootnote;
 use crate::{
   length::Length,
   typeset::{boxes::Line, geometry::PageGeometry},
@@ -198,14 +199,14 @@ pub(super) fn pack_footnotes(
 
 /// 脚注を「先頭 `placed` 行」と「残り」に分ける
 pub(super) fn split_pending(
-  mut footnote: super::PendingFootnote,
+  mut footnote: PendingFootnote,
   placed: usize,
-) -> (Option<super::PendingFootnote>, Option<super::PendingFootnote>) {
+) -> (Option<PendingFootnote>, Option<PendingFootnote>) {
   if placed >= footnote.lines.len() {
     return (Some(footnote), None);
   }
   let rest = footnote.lines.split_off(placed);
-  let tail = super::PendingFootnote {
+  let tail = PendingFootnote {
     origin: footnote.origin,
     number: footnote.number,
     index: footnote.index,

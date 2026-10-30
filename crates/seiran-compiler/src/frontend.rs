@@ -8,7 +8,7 @@ mod syntax;
 pub(crate) mod test_support;
 
 use bumpalo::Bump;
-pub(crate) use evaluator::EvalError;
+use evaluator::EvalError;
 use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;

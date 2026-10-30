@@ -18,12 +18,12 @@ use crate::{
   typeset::{
     boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
+    glyph_issues::{Generated, GlyphOrigin},
     lowering::TextStyle,
     pagination::{
       context::{BodyPageFacts, TypesetContext},
       page_values::{BodyPageValues, PageOrdinal},
     },
-    text_glyphs::{Generated, GlyphOrigin},
   },
 };
 

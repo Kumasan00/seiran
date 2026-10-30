@@ -8,7 +8,7 @@ use crate::{
   length::Length,
   project::ProjectPath,
   source::SourceId,
-  typeset::{breaking::OverflowAxis, font::FontWarning, text_glyphs::VariationSequenceFallback},
+  typeset::{breaking::OverflowAxis, font::FontWarning, glyph_issues::VariationSequenceFallback},
 };
 
 /// 組版段の警告。

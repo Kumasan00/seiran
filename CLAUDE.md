@@ -129,7 +129,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
                    ProjectSourceError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType / FontFace / VariationAxis と Publication 系）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
-  ↑ seiran         CLI（package 名・binary 名とも seiran。seiran-compiler と seiran-pdf の両方に依存）。compile → render → atomic write → 表示の 4 手順のみ
+  ↑ seiran         CLI（package 名・binary 名とも seiran。seiran-compiler と seiran-pdf の両方に依存）。`build` は compile → render → atomic write → 表示の 4 手順のみ（ほかにフォント調査の 3 サブコマンド。`read-fonts` を直接使い compiler に依存しない）
 ```
 
 `seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型だけで、`ProjectConfig` /
@@ -236,7 +236,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 - 入力は `tests/text/`（機能別 `.sei`）、フォントと CSL は `vendor/fonts/` / `vendor/csl/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
 - AAA。3 段は空行で分け、`// Arrange` / `// Act` / `// Assert` のラベルは書かない（段の「なぜ」は普通の `//` コメントで）。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
-- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` の 9 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod` で root facade（`seiran_compiler::test_support`）
+- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` / `project::config` の 10 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod`（`project::config`）で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
 - golden テスト・組版変更の検証・資産取得（初回 `tools/fetch-test-assets.sh`）・golden 再生成は `verify-typesetting` skill

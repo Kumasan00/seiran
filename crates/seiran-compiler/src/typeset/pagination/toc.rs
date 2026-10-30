@@ -10,12 +10,12 @@ use crate::{
   typeset::{
     boxes::{Align, AnchorId, Block, Line, LineLink, LinkTarget},
     boxing::{LineAccum, Shaper, compose_left_line, row_width},
+    glyph_issues::{Generated, GlyphOrigin},
     lowering::{HeadingRecord, TextStyle},
     pagination::{
       context::{BodyPageFacts, TypesetContext},
       page_values::BodyPageValues,
     },
-    text_glyphs::{Generated, GlyphOrigin},
   },
 };
 

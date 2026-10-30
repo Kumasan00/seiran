@@ -14,9 +14,9 @@ use crate::{
   typeset::{
     boxes::{HBox, Page, PlacedBlock},
     boxing::{LineAccum, Shaper, row_width},
+    glyph_issues::{Generated, GlyphOrigin},
     lowering::TextStyle,
     pagination::{context::TypesetContext, page_values::PageLabels},
-    text_glyphs::{Generated, GlyphOrigin},
   },
 };
 
