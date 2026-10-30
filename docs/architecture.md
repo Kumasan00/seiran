@@ -928,11 +928,11 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
-- **dispatcher は payload を取り出して渡すだけ**。`lower_node` は委譲する 10 種別（Heading /
+- **dispatcher は payload を取り出して渡すだけ**。`lower_nodes` は委譲する 10 種別（Heading /
   Paragraph / List / Theorem / Quote / Flush / CodeBlock / MathBlock / Figure / Table）について、`HirNodeKind` の
   payload を取り出して子 module へ渡す。各 lowering が受け取るのは実際に使うものだけで、引数の個数を
   揃えることは目的にしない — payload は常に、`NodeId` は事実を引く 5 種（Heading / Theorem / MathBlock /
-  Figure / Table）だけ、`state` は `CodeBlock` を除く 9 種だけ（`MathBlock` は不変借用）。`PageBreak` / `Space` は委譲せず
+  Figure / Table）と、はみ出し警告の起点（`origin`）にだけ使う Paragraph / CodeBlock だけ、`state` は `CodeBlock` を除く 9 種だけ（`MathBlock` は不変借用）。`PageBreak` / `Space` は委譲せず
   dispatcher がその場でノードを組む。採番値・宣言ラベル・参照先は各 lowering が `NodeId` で
   `LoweringState` から引く（dispatcher は事実を先読みしない）。図と表は「番号 → 本体 → キャプション →
   包み → ラベルアンカー」が同形なので `lowering/float.rs` の共通経路 1 本に寄せ、本体ノードの作り方だけを

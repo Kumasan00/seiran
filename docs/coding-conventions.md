@@ -70,8 +70,8 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   （`multiple_inherent_impl` は子 module の impl を見ない）。例外は 2 つ —
   module facade の `#[cfg(test)] pub(crate) use ...;`（本番 API を広げずにテストへ型・ヘルパを出す唯一の
   手段で、外すと本体ビルドで `unused_imports` が `-D warnings` に当たる）と、**本番の型が持つテスト専用の
-  フィールド・アクセサ・定数**（`Failures::first` / `NodeMap::len` / `NodeId::for_test`
-  のような、型そのものに属していて module へ切り離せないもの）。後者は 19 箇所あり、`mod tests` の中の
+  フィールド・アクセサ・定数**（`Failures::iter` / `InFile::error` / `NodeId::for_test`
+  のような、型そのものに属していて module へ切り離せないもの）。後者は複数あり、`mod tests` の中の
   `impl` へ寄せると「crate 全体から見える `pub(crate)` が `tests` という名前の module に住む」別の
   ねじれが生じるため、いまは項目に付けたまま残している（#696）。**再検討のトリガー**は
   「同じ型のテスト専用アクセサが 3 つ以上に増えたとき」— そのときは型ごとの置き場を設計し直す。
@@ -103,7 +103,7 @@ module の `//!` の有無を保証する lint が他に無く、代わりの検
 `_ => {}` / `Default::default()` / 黙って `Ok` を返す等でごまかさず `unreachable!` で落とす（不変条件の
 破れを最寄りで顕在化させる）。ただし入力（ソース・設定ファイル）由来で到達しうる状態は panic ではなく
 miette 診断エラーにする（`docs/error-handling.md`）。本体コードでは「なぜ到達しないか」＝上流のどの検証が
-保証しているかをメッセージに書く（例: `unreachable!("許可リスト外は collect_allowed_commands がエラーにする")`。
+保証しているかをメッセージに書く（例: `unreachable!("インラインを積む前に必ず reserve を呼んでいる")`。
 テストの let-else 分解など自明な箇所は省略可）。
 
 ### 6. panic は根拠を書いてから落とす
@@ -393,7 +393,7 @@ Unicode の文字名）。doc はこれに何をするか 1 行を足す。ど�
 - ライブラリ 2 crate では `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`）。人へ
   伝えたいことは診断（miette）か tracing に載せる。表示はユーザーへ届ける成果物なので、CLI（`seiran`）の
   crate root だけ `print_stderr` を `#![expect]` で開けてある。stdout はフォント調査サブコマンドの一覧だけが
-  使い、`println!` ではなく `subcommand::listing` の書き出し 1 箇所（`io::stdout`）を通す。
+  使い、`println!` ではなく `subcommand::listing::emit` の書き出し 1 関数を通す（`io::stdout()` は `main.rs` が渡す）。
 - 決定性が要る場所で `HashMap` / `HashSet` を `for` 反復しない（`iter_over_hash_type`）。`RandomState` の
   反復順はプロセスごとに変わるので、出力順・採番順・配列添字にすると成果物が非決定になる。`BTreeMap` を
   使うか、キーで `sort` した `Vec` に落としてから反復する。この lint が見るのは `for` だけなので
