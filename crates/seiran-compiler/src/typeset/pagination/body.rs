@@ -10,10 +10,10 @@ use crate::{
     boxing::{BlockBuildInputs, build_blocks},
     breaking::{Overflow, break_pages},
     error::TypesetError,
+    glyph_issues::Generated,
     image::ImageResources,
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
     pagination::{context::TypesetContext, footnote_numbering},
-    text_glyphs::Generated,
   },
 };
 

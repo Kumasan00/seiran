@@ -43,7 +43,8 @@ use std::{
 pub use config::test_support;
 use derive_more::Display;
 pub use filesystem::FilesystemProjectSource;
-pub(crate) use font::{FaceMap, FontConfig, FontConfigs, FontData, FontFeature, FontMap, ReadFontError, TextDirection};
+use font::FontFeature;
+pub(crate) use font::{FaceMap, FontConfig, FontConfigs, FontData, FontMap, ReadFontError, TextDirection};
 pub use font::{FontFace, FontType, VariationAxis};
 pub(crate) use in_file::InFile;
 pub use memory::MemoryProjectSource;

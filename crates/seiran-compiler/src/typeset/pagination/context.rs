@@ -4,8 +4,8 @@ use crate::{
   project::config::ProjectConfig,
   style::{PageNumberingStyle, Style},
   typeset::{
-    boxes::Page, breaking::KnuthPlassBreaker, font::FontSystem, geometry::PreparedGeometry, lowering::HeadingRecord,
-    pagination::page_values::BodyPageValues, text_glyphs::GlyphIssues,
+    boxes::Page, breaking::KnuthPlassBreaker, font::FontSystem, geometry::PreparedGeometry, glyph_issues::GlyphIssues,
+    lowering::HeadingRecord, pagination::page_values::BodyPageValues,
   },
 };
 

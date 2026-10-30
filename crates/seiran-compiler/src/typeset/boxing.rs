@@ -52,9 +52,9 @@ use crate::{
     boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
     breaking::LineBreaker,
     font::FontSystem,
+    glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
     image::{ImageResources, resolve_image_size},
     lowering::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
-    text_glyphs::{Generated, GlyphIssues, GlyphOrigin},
   },
 };
 

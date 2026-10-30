@@ -34,16 +34,16 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 
 | 変更 | 更新箇所 |
 | --- | --- |
-| クレートの追加・削除 | CLAUDE.md 依存グラフ + 責務表、architecture.md に節を追加 / 削除 |
-| クレート間依存の追加・削除 | CLAUDE.md 依存グラフ — **依存する側の行と、依存される側の「↑」被依存リストの両方**（片方向だけ直すと漏れる） |
+| クレートの追加・削除 | CLAUDE.md クレート構成図（責務説明を含む）、architecture.md に節を追加 / 削除 |
+| クレート間依存の追加・削除 | CLAUDE.md クレート構成図 — **依存する側の行（`↑` が付く）と、依存先として書かれた側の行の両方**（片方向だけ直すと漏れる。`seiran` のように依存先が複数ある行は全部書く） |
 | パイプライン段の追加・変更・順序替え | CLAUDE.md データフロー図とその直下の説明段落、architecture.md の該当節 |
 | 組版アルゴリズムの変更（行分割・改ページ・アキ等） | CLAUDE.md データフロー直下の説明段落（Knuth–Plass / glue・penalty 等の記述が実装と一致するか） |
-| config.toml / style.toml のスキーマ変更 | struct の doc コメント（キー一覧・既定値の正典）、architecture.md の config / style 節（非自明な意味・設計）、CLAUDE.md「設定ファイル」節（役割分担表・値の基本書式に影響する場合）、README の設定例 |
+| config.toml / style.toml のスキーマ変更 | struct の doc コメント（キー一覧・既定値の正典）、architecture.md の project 節の子 module `config` と style 節（非自明な意味・設計）、CLAUDE.md「設定ファイル」節（役割分担表・値の基本書式に影響する場合）、README の設定例 |
 | CLI サブコマンド・フラグの変更 | CLAUDE.md「コマンド」節、README |
 | モジュール分割・再配置リファクタ | 親 module の `//!`（子 module 一覧・責務）。境界・依存の向き・不変条件が動く場合だけ architecture.md の該当節 |
 | エラー型・バリデーションのパターン変更（診断属性・集約方式等） | `docs/error-handling.md`、CLAUDE.md の要約箇条書き |
 | コーディング規約・lint の採用変更 | `docs/coding-conventions.md`（規約全文）+ CLAUDE.md の規約要約 + root `Cargo.toml` の lint コメント（採用根拠） |
-| 公開 API・主要型の改名 | architecture.md + CLAUDE.md 責務表に型名が載っていれば更新 |
+| 公開 API・主要型の改名 | architecture.md + CLAUDE.md クレート構成図に型名が載っていれば更新 |
 | 新コマンド・新環境・新オプションの設計判断（原則の適用・境界事例・原則自体の改訂） | docs/language-design.md の判断事例集に追記。原則を改訂した場合は原則本文 + CLAUDE.md の要約表も更新 |
 
 ## 手順

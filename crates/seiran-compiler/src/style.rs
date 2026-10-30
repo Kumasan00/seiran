@@ -36,7 +36,7 @@ use tracing::debug;
 pub(crate) use crate::style::{
   block_alignment::BlockAlignment,
   caption::CaptionStyle,
-  counter::{CounterName, CounterStyles},
+  counter::CounterName,
   error::ReadStyleError,
   footnote::{FootnoteNumbering, FootnoteStyle},
   math::NumberSide,
@@ -44,7 +44,7 @@ pub(crate) use crate::style::{
   running::RunningContentStyle,
   template::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
-    RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
+    RunningValues, TheoremHeadingValues,
   },
   theorem::TheoremStyle,
   title_page::TitlePageStyle,
@@ -57,9 +57,10 @@ use crate::{
   failures::Failures,
   project::{self, InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
   style::{
-    columns::ColumnsStyle, error::StyleValidationError, figure::FigureStyle, heading::HeadingStyles,
-    hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle, page::PageStyle, quote::QuoteStyle,
-    reference::ReferenceStyle, table::TableStyle, text::TextBlockStyle, theorem::TheoremStyles,
+    columns::ColumnsStyle, counter::CounterStyles, error::StyleValidationError, figure::FigureStyle,
+    heading::HeadingStyles, hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle,
+    page::PageStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle, template::TheoremHeadingTemplate,
+    text::TextBlockStyle, theorem::TheoremStyles,
   },
 };
 

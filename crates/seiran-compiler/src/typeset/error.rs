@@ -6,7 +6,11 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{failures::Failures, project::ProjectSourceError, typeset::text_glyphs::TextGlyphError};
+use crate::{
+  failures::Failures,
+  project::ProjectSourceError,
+  typeset::{font::FontSystemError, glyph_issues::TextGlyphError},
+};
 
 /// [`compose`](fn@crate::typeset::compose) の失敗
 ///
@@ -30,7 +34,7 @@ pub(crate) enum TypesetError {
   /// 診断の出方を変えない。
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Font(#[from] super::font::FontSystemError),
+  Font(#[from] FontSystemError),
 
   /// 脚注のページ単位採番が上限回数で収束しないエラー
   ///

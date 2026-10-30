@@ -19,14 +19,17 @@ pub(crate) use analyze::test_support::analyze_for_test;
 #[cfg(test)]
 pub(crate) use citation::test_support;
 pub(crate) use citation::{
-  BibliographyEntry, CitationId, CitationSiteFacts, GeneratedCitations, GeneratedInline, ReadCitationStyleError,
-  ReadReferencesError, References, generate_citations, generated_inlines_to_plain_text, load_citation_style,
+  BibliographyEntry, CitationId, GeneratedInline, ReadReferencesError, References, generated_inlines_to_plain_text,
   load_references,
+};
+use citation::{
+  CitationSiteFacts, GeneratedCitations, ReadCitationStyleError, generate_citations, load_citation_style,
 };
 #[cfg(test)]
 pub(crate) use counter::CounterAncestor;
 pub(crate) use counter::{CounterKind, CounterValue};
-pub(crate) use error::{AnalyzeError, SemanticError, SemanticFailures};
+use error::SemanticFailures;
+pub(crate) use error::{AnalyzeError, SemanticError};
 pub(crate) use ids::{HeadingKey, LabelId};
 pub(crate) use policy::SemanticPolicy;
 pub(crate) use semantic_document::SemanticDocument;

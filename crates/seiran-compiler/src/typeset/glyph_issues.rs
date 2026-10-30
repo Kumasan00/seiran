@@ -16,7 +16,6 @@ use crate::{
   document::{NodeId, SourceLocation, SourceMap},
   project::{FontConfigs, FontFace, FontType, ProjectPath},
   source::SourceId,
-  typeset::{math_glyphs::MissingMathGlyph, pagination},
 };
 
 /// シェイプしている字形の出どころ — 著者が書いた要素か、組版が生成した内容か
@@ -198,7 +197,7 @@ impl Site {
     return Site {
       generated: generated_of(origin),
       source_id: location.map(|location| return location.source_id),
-      span: location.map(pagination::start_span),
+      span: location.map(|location| return location.span.at_start().into()),
     };
   }
 }
@@ -309,7 +308,7 @@ impl VariationSequenceFallback {
       tried: tried_face(FontFace::MATH, font_path),
       generated: None,
       source_id: Some(location.source_id),
-      span: Some(pagination::start_span(location)),
+      span: Some(location.span.at_start().into()),
     };
   }
 
@@ -334,6 +333,46 @@ fn code_points(cluster: &str) -> String {
 /// 生成内容の文言の注記（要素なら空）
 fn generated_note(generated: Option<Generated>) -> String {
   return generated.map_or_else(String::new, |generated| return format!("（{generated}が生成した文字列）"));
+}
+
+/// 数式フォントに基本の字形が無い字を数式で使った箇所
+#[derive(Debug, PartialEq, Eq, Error, Diagnostic)]
+#[error("数式フォントに {glyph} (U+{:04X}) のグリフがありません", u32::from(*.glyph))]
+#[diagnostic(
+  code(typeset::math::missing_glyph),
+  help(
+    "config.toml の `math` のフォント（{font_path}）はこの字を持っていません。この字を持つ数式フォントを指定してください。"
+  )
+)]
+pub(crate) struct MissingMathGlyph {
+  /// 数式フォントで組もうとした字（数式用英数字は写した後の字）
+  pub(in crate::typeset) glyph: char,
+  /// その字を書いたテキスト、またはその字を出すコマンド・環境の位置
+  #[label("{label}")]
+  pub(in crate::typeset) span: SourceSpan,
+  /// ラベルの文言（ソースに書いた字と組む字が違えば、その対応を示す）
+  pub(in crate::typeset) label: String,
+  /// 位置が属するソース
+  source_id: SourceId,
+  /// 数式フォントのパス（config.toml の `math`）
+  font_path: String,
+}
+
+impl MissingMathGlyph {
+  /// 字 `glyph` が `location` で欠けた診断を、ラベル `label` で作る
+  pub(in crate::typeset) fn new(location: SourceLocation, glyph: char, label: String, font_path: &ProjectPath) -> Self {
+    return MissingMathGlyph {
+      glyph,
+      span: location.span.into(),
+      label,
+      source_id: location.source_id,
+      font_path: font_path.as_ref().display().to_string(),
+    };
+  }
+
+  /// この診断が帰属するソースを返す
+  #[must_use]
+  pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
 }
 
 /// 組版の字の問題のうちエラー 1 件 — 数式フォントの字の欠落、本文の枠の字の欠落、使えない代替の候補

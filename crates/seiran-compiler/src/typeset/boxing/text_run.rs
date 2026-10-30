@@ -416,9 +416,9 @@ mod tests {
         hlist::{Edge, HList},
         script::ScriptCategory,
       },
+      glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
       lowering::TextStyle,
       test_support,
-      text_glyphs::{Generated, GlyphIssues, GlyphOrigin},
     },
   };
 

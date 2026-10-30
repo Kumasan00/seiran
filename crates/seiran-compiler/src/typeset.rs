@@ -19,6 +19,7 @@ mod emit;
 mod error;
 mod font;
 mod geometry;
+mod glyph_issues;
 mod image;
 mod lowering;
 mod math_glyphs;
@@ -26,7 +27,6 @@ mod observe;
 mod pagination;
 #[cfg(test)]
 mod test_support;
-mod text_glyphs;
 mod warning;
 
 use std::mem;
@@ -35,17 +35,18 @@ use std::mem;
 pub(crate) use boxes::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow};
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
-pub(crate) use error::{ComposeError, TypesetError};
+pub(crate) use error::ComposeError;
+use error::TypesetError;
 use font::{FontSystem, FontWarning};
 pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
+use glyph_issues::{TextGlyphError, VariationSequenceFallback};
 // `#[cfg(test)]` を付けない — 本体コード（`compose` / `lay_out`）もこの名前を使い、条件付きの
 // 再エクスポートと本体用の `use` を並べるとテストビルドで E0252（同名の重複定義）になる。
 pub(crate) use pagination::LaidOutDocument;
 #[cfg(test)]
 pub(crate) use test_support::layout_for_test;
-use text_glyphs::{TextGlyphError, VariationSequenceFallback};
 use tracing::{info, info_span};
-pub(crate) use warning::TypesetWarning;
+use warning::TypesetWarning;
 
 use crate::{
   failures::Failures,

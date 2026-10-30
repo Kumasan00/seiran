@@ -42,6 +42,17 @@ impl Span {
   #[must_use]
   pub(crate) fn len(self) -> u32 { return self.end - self.start; }
 
+  /// 始点を指す長さ 0 の Span を返す
+  ///
+  /// 診断ラベルを要素の開始位置だけに付ける用途（要素全体の span だと複数行の段落・コードブロックが警告ごとに全行印字される）。
+  #[must_use]
+  pub(crate) fn at_start(self) -> Span {
+    return Span {
+      start: self.start,
+      end: self.start,
+    };
+  }
+
   /// 2 つの Span を含む最小の Span を返す
   #[must_use]
   pub(crate) fn merge(self, other: Span) -> Span {
