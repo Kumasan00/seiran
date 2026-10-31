@@ -16,7 +16,11 @@ garde.workspace = true
 harfrust.workspace = true
 hayagriva.workspace = true
 hypher.workspace = true
-icu.workspace = true
+icu_collator.workspace = true
+icu_locale_core.workspace = true
+icu_normalizer.workspace = true
+icu_properties.workspace = true
+icu_segmenter.workspace = true
 image.workspace = true
 itertools.workspace = true
 memchr.workspace = true
@@ -34,6 +38,7 @@ unic-langid.workspace = true
 usvg.workspace = true
 
 [dev-dependencies]
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
 proptest.workspace = true
 tempfile.workspace = true
 tracing-subscriber.workspace = true

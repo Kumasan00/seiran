@@ -77,8 +77,8 @@ PDF には `crates/seiran-pdf/src/metadata.rs` の `Utc::now()` 由来の `Creat
 
 手順（振る舞い不変の確認）:
 
-1. `metadata.rs` の `let now = Utc::now();` を固定値へ一時置換
-   （例: `"2026-01-01T00:00:00Z".parse::<chrono::DateTime<Utc>>().unwrap()`）
+1. `metadata.rs` の `let now = OffsetDateTime::now_utc();` を固定値へ一時置換
+   （例: `OffsetDateTime::UNIX_EPOCH`）
 2. 変更後コードをビルドして PDF を生成
 3. `git stash push -- <変更ファイル>` で対象ファイルだけ退避し、変更前コードを
    ビルドして PDF を生成（日時固定は退避対象に含めない）

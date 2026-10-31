@@ -5,13 +5,11 @@
 
 use std::cmp::Ordering;
 
-use icu::{
-  collator::{
-    Collator, CollatorBorrowed,
-    options::{CollatorOptions, Strength},
-  },
-  locale::locale,
+use icu_collator::{
+  Collator, CollatorBorrowed,
+  options::{CollatorOptions, Strength},
 };
+use icu_locale_core::locale;
 
 use crate::typeset::pagination::index::IndexEntry;
 

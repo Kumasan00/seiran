@@ -1,6 +1,6 @@
 //! (b) 純粋な行分割可能点の探索
 
-use icu::segmenter::{LineSegmenter, options::LineBreakOptions};
+use icu_segmenter::{LineSegmenter, options::LineBreakOptions};
 
 use crate::typeset::boxing::hyphenation::{self, Lang};
 

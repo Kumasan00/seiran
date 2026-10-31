@@ -7,7 +7,7 @@
 
 use std::iter;
 
-use icu::normalizer::ComposingNormalizerBorrowed;
+use icu_normalizer::ComposingNormalizerBorrowed;
 use itertools::Itertools;
 
 use crate::{
