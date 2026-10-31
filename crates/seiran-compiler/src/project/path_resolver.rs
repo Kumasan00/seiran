@@ -54,7 +54,7 @@ impl PathResolver {
   ///
   /// **出力パス（`output_dir` / `pdf_path`）の組み立て専用**。入力パスの解決にこの accessor を使って
   /// `join` を書かないこと。
-  pub(crate) fn base_dir(&self) -> &Path { return &self.base_dir; }
+  pub(super) fn base_dir(&self) -> &Path { return &self.base_dir; }
 }
 
 #[cfg(test)]

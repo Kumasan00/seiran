@@ -19,9 +19,9 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct ImageAsset {
   /// 拡張子から判定した画像形式
-  pub(crate) format: ImageFormat,
+  pub(in crate::typeset) format: ImageFormat,
   /// ファイルから読み込んだ生バイト列（未デコード）
-  pub(crate) bytes: Vec<u8>,
+  pub(in crate::typeset) bytes: Vec<u8>,
 }
 
 /// 画像パスごとの自然寸法と生バイト列。
@@ -39,7 +39,7 @@ impl ImageResources {
 
   /// 保持していた画像資源を消費して返す。
   #[must_use]
-  pub(crate) fn into_assets(self) -> HashMap<ProjectPath, ImageAsset> { return self.assets; }
+  pub(in crate::typeset) fn into_assets(self) -> HashMap<ProjectPath, ImageAsset> { return self.assets; }
 }
 
 /// 画像ファイルを読み込み、自然寸法と判定済み形式・生バイト列を格納した [`ImageResources`] を返す。

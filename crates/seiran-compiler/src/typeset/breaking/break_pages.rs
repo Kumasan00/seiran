@@ -392,7 +392,7 @@ impl PageComposer {
 /// 入らない行帯）を測る。
 /// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
 #[must_use]
-pub(crate) fn break_pages(
+pub(in crate::typeset) fn break_pages(
   blocks: Vec<Block>,
   text_width: Length,
   geom: &PageGeometry,

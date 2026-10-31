@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// 組版の確定結果と読込済み資源から描画直前の [`Publication`] を構築する。
-pub(crate) fn emit(
+pub(super) fn emit(
   config: &ProjectConfig,
   font_data: &FontData,
   font_resources: &FontSystem,

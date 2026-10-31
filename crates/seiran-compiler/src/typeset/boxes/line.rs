@@ -45,7 +45,7 @@ impl Line {
   /// `Line` の水平位置はすべて行頭（段左端）からの相対値なので、インデント・揃えオフセット・
   /// 段オフセットのように「行の着地位置が決まってから足す量」はこのメソッドで一括して加える。
   /// 水平位置を持つのは `boxes`（`dx`）と `links`（`x0` / `x1`）の 2 つだけで、`index_marks` / `footnotes` は座標を持たない。
-  pub(crate) fn shift_x(&mut self, dx: Length) {
+  pub(in crate::typeset) fn shift_x(&mut self, dx: Length) {
     if dx == Length::ZERO {
       return;
     }
@@ -79,7 +79,7 @@ impl LineLink {
   ///
   /// 退化矩形（`x1 <= x0`）は描画しないので `None`。
   #[must_use]
-  pub(crate) fn place(&self, dx: Length, top: Length, height: Length) -> Option<PlacedLink> {
+  pub(in crate::typeset) fn place(&self, dx: Length, top: Length, height: Length) -> Option<PlacedLink> {
     if self.x1 <= self.x0 {
       return None;
     }

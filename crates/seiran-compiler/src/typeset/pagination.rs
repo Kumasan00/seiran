@@ -37,11 +37,11 @@ pub(crate) struct LaidOutDocument {
   /// 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
   pub(crate) pages: Vec<Page>,
   /// PDF しおり用の見出し情報（文書順）
-  pub(crate) outline_entries: Vec<OutlineEntry>,
+  pub(super) outline_entries: Vec<OutlineEntry>,
   /// 文書が参照した画像ファイルのパス一覧（重複なし・昇順）
-  pub(crate) image_paths: Vec<ProjectPath>,
+  pub(super) image_paths: Vec<ProjectPath>,
   /// 画像ファイルの形式と生バイト列
-  pub(crate) images: HashMap<ProjectPath, ImageAsset>,
+  pub(super) images: HashMap<ProjectPath, ImageAsset>,
 }
 
 /// 不変な入力から描画直前の確定レイアウトを構築する。

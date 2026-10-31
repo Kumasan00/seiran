@@ -73,7 +73,7 @@ impl FontSystem {
   ///
   /// フォント解析・メトリクス取得・設定検証・シェーパー初期化のいずれかに失敗した場合に、組の第 1 要素が、その段で
   /// 見つかった違反を [`FontSystemError`] の非空集合として持つ。
-  pub(crate) fn load(
+  pub(in crate::typeset) fn load(
     configs: &FontConfigs,
     font_data: &FontData,
   ) -> (Result<Self, Failures<FontSystemError>>, Vec<FontWarning>) {
@@ -106,7 +106,7 @@ impl FontSystem {
   }
 
   /// 指定実体でテキストをシェイプし、結果のグリフ列を `buffer` に残す（`script_level` は数式のスクリプト段）。
-  pub(crate) fn shape(
+  pub(in crate::typeset) fn shape(
     &self,
     face: FontFace,
     buffer: &mut Buffer,
@@ -136,7 +136,7 @@ impl FontSystem {
 
   /// 数式フォントでアクセント記号 `text` を OpenType `flac`（平たいアクセント字形）を足してシェイプし、結果のグリフ列を
   /// `buffer` に残す（`script_level` は数式のスクリプト段）。
-  pub(crate) fn shape_flattened_accent(
+  pub(in crate::typeset) fn shape_flattened_accent(
     &self,
     buffer: &mut Buffer,
     text: &str,
@@ -171,7 +171,7 @@ impl FontSystem {
 
   /// 指定実体の基本メトリクスを返す。
   #[must_use]
-  pub(crate) fn metrics(&self, face: FontFace) -> FontMetrics { return self.metrics[face]; }
+  pub(in crate::typeset) fn metrics(&self, face: FontFace) -> FontMetrics { return self.metrics[face]; }
 
   /// 枠 `font_type` の全候補の基本メトリクス（候補の宣言順）
   #[must_use]
@@ -181,7 +181,7 @@ impl FontSystem {
 
   /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。
   #[must_use]
-  pub(crate) fn math_constants(&self) -> MathConstants<'_> {
+  pub(in crate::typeset) fn math_constants(&self) -> MathConstants<'_> {
     return self.shapers[FontFace::MATH].font().tables().math().and_then(|math| return math.math_constants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathConstants を読めることを確認済み",
     );
@@ -197,7 +197,7 @@ impl FontSystem {
   /// 数式フォントのグリフ `gid` のイタリック補正（フォント単位）。`MathItalicsCorrectionInfo` が無いか、登録の無い
   /// グリフは 0（MATH の規定の既定値）。
   #[must_use]
-  pub(crate) fn math_italics_correction(&self, gid: u32) -> i32 {
+  pub(in crate::typeset) fn math_italics_correction(&self, gid: u32) -> i32 {
     return self.math_glyph_info().math_italics_correction_info().map_or(0, |italics| {
       let italics = italics.expect(
         "load の検証（validation::check_math_table）が MathItalicsCorrectionInfo を Coverage まで読めることを確認済み",
@@ -209,7 +209,7 @@ impl FontSystem {
   /// 数式フォントのグリフ `gid` の隅 `corner` の math kern の、ベースラインからの高さ `height`（フォント単位）での値
   /// （フォント単位）。`MathKernInfo` が無いか、そのグリフ・隅に表が無ければ 0（MATH の規定の既定値）。
   #[must_use]
-  pub(crate) fn math_kern(&self, gid: u32, corner: MathKernCorner, height: i32) -> i32 {
+  pub(in crate::typeset) fn math_kern(&self, gid: u32, corner: MathKernCorner, height: i32) -> i32 {
     return self.math_glyph_info().math_kern_info().map_or(0, |kern_info| {
       let kern_info = kern_info.expect(
         "load の検証（validation::check_math_table）が MathKernInfo を Coverage と全 MathKern まで読めることを確認済み",
@@ -221,7 +221,7 @@ impl FontSystem {
   /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置。フォント単位）。
   /// `MathTopAccentAttachment` が無いか、登録の無いグリフは `None`（既定値の送り幅の中央は呼び元が決める）。
   #[must_use]
-  pub(crate) fn math_top_accent_attachment(&self, gid: u32) -> Option<i32> {
+  pub(in crate::typeset) fn math_top_accent_attachment(&self, gid: u32) -> Option<i32> {
     return self.math_glyph_info().math_top_accent_attachment().and_then(|attachment| {
       let attachment = attachment.expect(
         "load の検証（validation::check_math_table）が MathTopAccentAttachment を Coverage まで読めることを確認済み",
@@ -232,7 +232,7 @@ impl FontSystem {
 
   /// 数式フォントの MATH が定めるスクリプト段の縮小率。
   #[must_use]
-  pub(crate) fn script_scale(&self) -> ScriptScale {
+  pub(in crate::typeset) fn script_scale(&self) -> ScriptScale {
     let constants = self.math_constants();
     return ScriptScale::from_percents(
       constants.constant(MathConstant::ScriptPercentScaleDown),
@@ -244,7 +244,7 @@ impl FontSystem {
   ///
   /// `y_bearing` がベースラインからインクの上端まで、`height` が上端から下向きの高さ。グリフを読めなければ `None`。
   #[must_use]
-  pub(crate) fn glyph_extents(&self, face: FontFace, gid: u32) -> Option<GlyphExtents<f32>> {
+  pub(in crate::typeset) fn glyph_extents(&self, face: FontFace, gid: u32) -> Option<GlyphExtents<f32>> {
     return self.shapers[face].font().glyph_metrics().extents(GlyphId::new(gid));
   }
 
@@ -252,7 +252,7 @@ impl FontSystem {
   ///
   /// 伸縮グリフが目標を覆うかの判定（[`Self::stretch_math_glyph`] の元の字形と、スクリプト段の `ssty` の字形）はこの値で比べる。
   #[must_use]
-  pub(crate) fn math_glyph_ink_size(&self, gid: u32, axis: StretchAxis) -> i64 {
+  pub(in crate::typeset) fn math_glyph_ink_size(&self, gid: u32, axis: StretchAxis) -> i64 {
     return self.glyph_extents(FontFace::MATH, gid).map_or(0, |extents| {
       return units(match axis {
         StretchAxis::Vertical => extents.height,
@@ -264,7 +264,7 @@ impl FontSystem {
   /// 数式フォントのグリフ `gid` を軸 `axis` の向きに `target`（フォント単位）以上へ伸ばす字形を、MATH の size variant と
   /// glyph assembly から選ぶ（元の字形の大きさは、縦はインクの高さ、横はインクの幅）。
   #[must_use]
-  pub(crate) fn stretch_math_glyph(&self, gid: u32, axis: StretchAxis, target: i64) -> Stretch {
+  pub(in crate::typeset) fn stretch_math_glyph(&self, gid: u32, axis: StretchAxis, target: i64) -> Stretch {
     let variants = self.shapers[FontFace::MATH].font().tables().math().and_then(|math| return math.math_variants()).expect(
       "load の検証（validation::check_math_table）が、このシェイピング用フォントのテーブルから MATH と MathVariants を読めることを確認済み",
     );
@@ -289,13 +289,13 @@ impl FontSystem {
 
   /// 指定実体のグリフ `gid` の横の送り幅（フォント単位・シェーパーと同じバリエーション軸の位置）。
   #[must_use]
-  pub(crate) fn glyph_advance(&self, face: FontFace, gid: u32) -> f32 {
+  pub(in crate::typeset) fn glyph_advance(&self, face: FontFace, gid: u32) -> f32 {
     return self.shapers[face].font().glyph_metrics().h_advance(GlyphId::new(gid));
   }
 
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。
   #[must_use]
-  pub(crate) fn face_configs(&self) -> &FontFaceConfigs { return &self.face_configs; }
+  pub(in crate::typeset) fn face_configs(&self) -> &FontFaceConfigs { return &self.face_configs; }
 }
 
 /// フォントの解析とメトリクスの取得を行う（検証の前の 2 段）。

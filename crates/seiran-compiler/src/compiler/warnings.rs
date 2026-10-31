@@ -31,7 +31,7 @@ pub struct Warnings {
 
 impl Warnings {
   /// warning severity の診断を 1 件追加する。
-  pub(crate) fn push<D: Diagnostic + Send + Sync + 'static>(&mut self, warning: D) {
+  pub(super) fn push<D: Diagnostic + Send + Sync + 'static>(&mut self, warning: D) {
     assert_eq!(
       warning.severity(),
       Some(miette::Severity::Warning),
@@ -41,7 +41,7 @@ impl Warnings {
   }
 
   /// warning severity の診断を、渡された順にまとめて追加する。
-  pub(crate) fn extend<D: Diagnostic + Send + Sync + 'static, I: IntoIterator<Item = D>>(&mut self, warnings: I) {
+  pub(super) fn extend<D: Diagnostic + Send + Sync + 'static, I: IntoIterator<Item = D>>(&mut self, warnings: I) {
     for warning in warnings {
       self.push(warning);
     }

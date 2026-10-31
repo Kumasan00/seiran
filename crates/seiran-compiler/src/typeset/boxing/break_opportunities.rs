@@ -26,7 +26,7 @@ pub(super) struct BreakOpportunity {
 
 /// テキストの分割可能点を列挙する
 #[must_use]
-pub(crate) fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<BreakOpportunity> {
+pub(super) fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<BreakOpportunity> {
   let segmenter = LineSegmenter::new_auto(LineBreakOptions::default());
   let mut breaks: Vec<BreakOpportunity> = segmenter
     .segment_str(text)

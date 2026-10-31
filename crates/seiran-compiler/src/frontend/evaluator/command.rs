@@ -267,7 +267,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 ///
 /// 機能コマンドのレジストリ（[`COMMANDS`]）に無い名前は数式の語彙の宣言を引く（`\text` の文章）。どちらも宣言しない
 /// コマンド（記号コマンドを含む）・宣言の範囲を超えた位置は [`ArgMode::Inherit`]（外側文脈の継承）が既定。
-pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
+pub(super) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
   let modes = COMMANDS
     .get(name)
     .map_or_else(|| return math::lookup_math_arg_modes(name), |kind| return kind.arg_modes());

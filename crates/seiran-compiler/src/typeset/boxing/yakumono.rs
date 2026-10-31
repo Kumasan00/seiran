@@ -1,10 +1,10 @@
 //! 和文約物（括弧・句読点・中点）のクラス分類と JIS X 4051 の前後アキ規則
 
 /// 二分（1em の 1/2）
-pub(crate) const NIBU: f32 = 0.5;
+const NIBU: f32 = 0.5;
 
 /// 四分（1em の 1/4）
-pub(crate) const SHIBU: f32 = 0.25;
+const SHIBU: f32 = 0.25;
 
 /// 和文約物のクラス（JIS X 4051 の約物処理単位）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,22 +25,22 @@ pub(super) enum YakumonoClass {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Normalize {
   /// 送り幅から差し引くアキの合計（em）
-  pub(crate) trim_em: f32,
+  pub(super) trim_em: f32,
   /// 墨を左へ寄せる量（em）。左側にアキを持つ約物（始め括弧・中点）で正となる
-  pub(crate) shift_em: f32,
+  pub(super) shift_em: f32,
 }
 
 /// 約物境界に挿入するアキ（1em に対する倍率）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Aki {
   /// 標準アキ（em）。左揃え（`left`）でもこの幅で並ぶ
-  pub(crate) natural_em: f32,
+  pub(super) natural_em: f32,
   /// 詰め可能量（em）。両端揃えの収縮点として字間より先に吸収される
-  pub(crate) shrink_em: f32,
+  pub(super) shrink_em: f32,
 }
 
 /// 文字を約物クラスへ分類する
-pub(crate) fn classify(ch: char) -> YakumonoClass {
+pub(super) fn classify(ch: char) -> YakumonoClass {
   return match ch {
     '（' | '「' | '『' | '【' | '〔' | '〈' | '《' | '［' | '｛' | '〖' | '〘' | '〚' | '｟' => {
       YakumonoClass::Open
@@ -55,7 +55,7 @@ pub(crate) fn classify(ch: char) -> YakumonoClass {
 }
 
 /// 約物グリフの正規化量を返す（`Normal` は正規化しないので `None`）
-pub(crate) fn normalize(class: YakumonoClass) -> Option<Normalize> {
+pub(super) fn normalize(class: YakumonoClass) -> Option<Normalize> {
   return match class {
     YakumonoClass::Close | YakumonoClass::Comma => Some(Normalize {
       trim_em: NIBU,
@@ -74,7 +74,7 @@ pub(crate) fn normalize(class: YakumonoClass) -> Option<Normalize> {
 }
 
 /// 隣接する約物クラス対（`left` → `right`）の境界アキを返す
-pub(crate) fn gap(left: YakumonoClass, right: YakumonoClass) -> Option<Aki> {
+pub(super) fn gap(left: YakumonoClass, right: YakumonoClass) -> Option<Aki> {
   use YakumonoClass::{Close, Comma, MiddleDot, Normal, Open};
 
   // 中点は片側四分。中点が絡む境界を先に処理する

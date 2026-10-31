@@ -116,7 +116,7 @@ pub(crate) struct IndexTerm {
 impl HItem {
   /// アイテムの自然幅を返す
   #[must_use]
-  pub(crate) fn natural_width(&self) -> Length {
+  pub(in crate::typeset) fn natural_width(&self) -> Length {
     return match self {
       HItem::Box(hbox) | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
@@ -152,7 +152,7 @@ pub(crate) struct HBox {
 impl HBox {
   /// 子要素の絶対配置（`dx` / `dy`）から寸法を確定した Atom ボックスを構築する
   #[must_use]
-  pub(crate) fn atom(children: Vec<PlacedHBox>) -> Self {
+  pub(in crate::typeset) fn atom(children: Vec<PlacedHBox>) -> Self {
     let width = children.iter().map(|c| return c.dx + c.hbox.width).fold(Length::ZERO, Length::max);
     let height = children.iter().map(|c| return c.dy + c.hbox.height).fold(Length::ZERO, Length::max);
     let depth = children.iter().map(|c| return c.hbox.depth - c.dy).fold(Length::ZERO, Length::max);

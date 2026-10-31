@@ -30,7 +30,7 @@ impl HeadingLevel {
 
   /// コマンド名を返す
   #[must_use]
-  pub(crate) fn command_name(self) -> &'static str {
+  fn command_name(self) -> &'static str {
     return match self {
       HeadingLevel::Part => "part",
       HeadingLevel::Chapter => "chapter",

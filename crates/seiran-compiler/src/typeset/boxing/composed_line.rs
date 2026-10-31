@@ -25,7 +25,7 @@ pub(in crate::typeset) struct LineAccum {
 
 impl LineAccum {
   /// `HBox` 列を `x_start` から水平に並べて追加し、行の高さ・深さを更新する。末尾の x を返す
-  pub(crate) fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
+  pub(in crate::typeset) fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
     let mut x = x_start;
     for hbox in hboxes {
       self.height = self.height.max(hbox.height);
@@ -42,7 +42,7 @@ impl LineAccum {
   }
 
   /// 累積した内容を `Line` に確定する
-  pub(crate) fn into_line(self, links: Vec<LineLink>) -> Line {
+  pub(in crate::typeset) fn into_line(self, links: Vec<LineLink>) -> Line {
     return Line {
       boxes: self.boxes,
       height: self.height,
@@ -55,7 +55,9 @@ impl LineAccum {
 }
 
 /// `HBox` 列の合計幅を返す
-pub(crate) fn row_width(hboxes: &[HBox]) -> Length { return hboxes.iter().map(|hbox| return hbox.width).sum(); }
+pub(in crate::typeset) fn row_width(hboxes: &[HBox]) -> Length {
+  return hboxes.iter().map(|hbox| return hbox.width).sum();
+}
 
 /// テキストを左端（x=0）からシェーピングして単一行に組む
 pub(in crate::typeset) fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {

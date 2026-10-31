@@ -97,7 +97,7 @@ pub(in crate::typeset) struct GlyphIssues(RefCell<Vec<GlyphIssue>>);
 
 impl GlyphIssues {
   /// `issue` を積む。同じ値が既にあれば積まない
-  pub(in crate::typeset) fn record(&self, issue: GlyphIssue) {
+  pub(super) fn record(&self, issue: GlyphIssue) {
     let mut issues = self.0.borrow_mut();
     if !issues.contains(&issue) {
       issues.push(issue);
@@ -314,7 +314,7 @@ impl VariationSequenceFallback {
 
   /// 帰属するソースを返す。生成内容の字は `None`
   #[must_use]
-  pub(crate) fn source_id(&self) -> Option<SourceId> { return self.source_id; }
+  pub(super) fn source_id(&self) -> Option<SourceId> { return self.source_id; }
 
   /// 文書での並び順の鍵 — 要素のものは (ソース, 要素の開始位置) の昇順、生成内容のものはその後ろ
   pub(super) fn order_key(&self) -> (bool, Option<(SourceId, usize)>) {
@@ -346,12 +346,12 @@ fn generated_note(generated: Option<Generated>) -> String {
 )]
 pub(crate) struct MissingMathGlyph {
   /// 数式フォントで組もうとした字（数式用英数字は写した後の字）
-  pub(in crate::typeset) glyph: char,
+  pub(super) glyph: char,
   /// その字を書いたテキスト、またはその字を出すコマンド・環境の位置
   #[label("{label}")]
-  pub(in crate::typeset) span: SourceSpan,
+  pub(super) span: SourceSpan,
   /// ラベルの文言（ソースに書いた字と組む字が違えば、その対応を示す）
-  pub(in crate::typeset) label: String,
+  pub(super) label: String,
   /// 位置が属するソース
   source_id: SourceId,
   /// 数式フォントのパス（config.toml の `math`）
@@ -360,7 +360,7 @@ pub(crate) struct MissingMathGlyph {
 
 impl MissingMathGlyph {
   /// 字 `glyph` が `location` で欠けた診断を、ラベル `label` で作る
-  pub(in crate::typeset) fn new(location: SourceLocation, glyph: char, label: String, font_path: &ProjectPath) -> Self {
+  pub(super) fn new(location: SourceLocation, glyph: char, label: String, font_path: &ProjectPath) -> Self {
     return MissingMathGlyph {
       glyph,
       span: location.span.into(),
@@ -372,7 +372,7 @@ impl MissingMathGlyph {
 
   /// この診断が帰属するソースを返す
   #[must_use]
-  pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
+  fn source_id(&self) -> SourceId { return self.source_id; }
 }
 
 /// 組版の字の問題のうちエラー 1 件 — 数式フォントの字の欠落、本文の枠の字の欠落、使えない代替の候補

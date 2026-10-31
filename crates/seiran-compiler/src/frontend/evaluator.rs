@@ -33,7 +33,7 @@ use crate::{
 };
 
 /// `crate::frontend::syntax::parse_cst` へ渡すレジストリ解決器を組む
-pub(crate) fn mode_resolver() -> ModeResolver {
+pub(super) fn mode_resolver() -> ModeResolver {
   return ModeResolver {
     env_body: environment::lookup_body_mode,
     command_arg: command::lookup_arg_mode,
@@ -48,7 +48,7 @@ pub(crate) fn mode_resolver() -> ModeResolver {
 /// # Errors
 ///
 /// 不明なコマンドや環境、引数の不足・過剰がある場合にエラーを返します
-pub(crate) fn evaluate_children(
+pub(super) fn evaluate_children(
   source: &str,
   ctx: &EvalContext<'_>,
   node: &CstNode<'_>,

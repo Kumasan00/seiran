@@ -29,7 +29,7 @@ pub(in crate::frontend) struct CstNode<'a> {
 
 impl<'a> CstNode<'a> {
   /// 子ノード（`CstNode` のみ）をイテレートする
-  pub(crate) fn child_nodes(&self) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
+  pub(in crate::frontend) fn child_nodes(&self) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
     return self.children.iter().filter_map(|e| match e {
       CstElement::Node(n) => return Some(*n),
       CstElement::Token(_) => return None,
@@ -46,12 +46,12 @@ impl<'a> CstNode<'a> {
 
   /// 指定された種別の最初の子ノードを返す
   #[must_use]
-  pub(crate) fn first_child_of_kind(&self, kind: SyntaxKind) -> Option<&'a CstNode<'a>> {
+  pub(in crate::frontend) fn first_child_of_kind(&self, kind: SyntaxKind) -> Option<&'a CstNode<'a>> {
     return self.child_nodes().find(|n| return n.kind == kind);
   }
 
   /// 指定された種別のすべての子ノードをイテレートする
-  pub(crate) fn children_of_kind(&self, kind: SyntaxKind) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
+  pub(super) fn children_of_kind(&self, kind: SyntaxKind) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
     return self.child_nodes().filter(move |n| return n.kind == kind);
   }
 

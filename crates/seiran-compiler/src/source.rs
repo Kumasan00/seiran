@@ -40,7 +40,7 @@ impl Span {
 
   /// バイト長を返す
   #[must_use]
-  pub(crate) fn len(self) -> u32 { return self.end - self.start; }
+  fn len(self) -> u32 { return self.end - self.start; }
 
   /// 始点を指す長さ 0 の Span を返す
   ///

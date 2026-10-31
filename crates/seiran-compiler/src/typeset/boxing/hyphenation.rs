@@ -7,7 +7,7 @@ use hypher::hyphenate;
 
 /// BCP 47 言語タグをハイフネーション言語へ解決する
 #[must_use]
-pub(crate) fn resolve(language: Option<&str>) -> Option<Lang> {
+pub(super) fn resolve(language: Option<&str>) -> Option<Lang> {
   let primary = language?.split(['-', '_']).next()?;
   let bytes = primary.as_bytes();
   if bytes.len() != 2 {
@@ -19,7 +19,7 @@ pub(crate) fn resolve(language: Option<&str>) -> Option<Lang> {
 
 /// テキスト内の語中分割可能位置（バイトオフセット）を昇順で返す
 #[must_use]
-pub(crate) fn hyphenation_points(text: &str, lang: Lang) -> Vec<usize> {
+pub(super) fn hyphenation_points(text: &str, lang: Lang) -> Vec<usize> {
   let mut points = Vec::new();
   for range in word_ranges(text) {
     let word = &text[range.clone()];

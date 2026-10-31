@@ -217,7 +217,7 @@ impl Measurer<'_> {
   }
 
   /// `LayoutNode::MathBlock` を measure して、囲む引用・リストの字下げの和 `indent` / `right_indent` を持つ `Block::Math` に合成する
-  pub(crate) fn build_math_block(&mut self, block: MathBlockLayout, indent: Length, right_indent: Length) -> Block {
+  pub(super) fn build_math_block(&mut self, block: MathBlockLayout, indent: Length, right_indent: Length) -> Block {
     let MathBlockLayout {
       origin,
       rows,
