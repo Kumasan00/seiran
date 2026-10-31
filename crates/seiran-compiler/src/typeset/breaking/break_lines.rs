@@ -19,7 +19,7 @@ pub(in crate::typeset) trait LineBreaker {
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
-pub(super) struct OpenLink {
+struct OpenLink {
   /// リンクの行き先
   target: LinkTarget,
   /// 現在の行における領域左端の行頭からの水平オフセット
