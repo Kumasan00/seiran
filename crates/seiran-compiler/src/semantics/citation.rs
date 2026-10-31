@@ -11,8 +11,10 @@ mod site;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-pub(crate) use csl_style::{ReadCitationStyleError, load_citation_style};
-pub(crate) use generate::{GeneratedCitations, generate_citations};
+pub(super) use csl_style::{ReadCitationStyleError, load_citation_style};
+pub(super) use generate::{GeneratedCitations, generate_citations};
 pub(crate) use output::{BibliographyEntry, GeneratedInline, generated_inlines_to_plain_text};
-pub(crate) use references::{ReadReferencesError, Reference, References, load_references};
-pub(crate) use site::{CitationId, CitationSiteFacts};
+use references::Reference;
+pub(crate) use references::{ReadReferencesError, References, load_references};
+pub(crate) use site::CitationId;
+pub(super) use site::CitationSiteFacts;

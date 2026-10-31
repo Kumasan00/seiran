@@ -10,6 +10,5 @@ mod manifest;
 mod natural_size;
 mod resources;
 
-pub(crate) use manifest::collect_image_paths;
-pub(in crate::typeset) use resources::resolve_image_size;
-pub(crate) use resources::{ImageAsset, ImageResources, load_image_resources};
+pub(super) use manifest::collect_image_paths;
+pub(super) use resources::{ImageAsset, ImageResources, load_image_resources, resolve_image_size};

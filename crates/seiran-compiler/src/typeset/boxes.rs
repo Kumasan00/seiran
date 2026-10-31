@@ -14,10 +14,10 @@ mod table_box;
 
 pub(super) use align::Align;
 pub(super) use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, usable_width};
-pub(crate) use hitem::{HBox, HBoxContent, HItem, IndexTerm, MeasuredFootnote, PlacedHBox};
+pub(crate) use hitem::HBoxContent;
+pub(super) use hitem::{HBox, HItem, IndexTerm, MeasuredFootnote, PlacedHBox};
 pub(super) use line::{Line, LineLink};
 pub(crate) use link::{AnchorId, FootnoteId, LinkTarget};
-pub(crate) use page::{
-  Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
-};
+pub(crate) use page::{Page, PlacedBlock, PlacedTableRow};
+pub(super) use page::{PlacedAnchor, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRule};
 pub(super) use table_box::{TableBoundary, TableBox, TableRowFragment};

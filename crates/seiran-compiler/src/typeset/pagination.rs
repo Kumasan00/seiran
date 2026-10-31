@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 pub(super) use context::TypesetContext;
 use miette::{LabeledSpan, SourceSpan};
-pub(crate) use outline::OutlineEntry;
+pub(super) use outline::OutlineEntry;
 use tracing::debug;
 
 use crate::{

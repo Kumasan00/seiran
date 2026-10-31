@@ -36,7 +36,7 @@ pub(super) use math::{
 };
 #[cfg(test)]
 pub(super) use math::{char_class, char_fence};
-pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
+pub(super) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
 
 use crate::{
