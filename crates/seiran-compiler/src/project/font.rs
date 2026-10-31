@@ -18,8 +18,9 @@ pub use font_type::{FontFace, FontType};
 pub(crate) use map::FontMap;
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+pub(super) use settings::FontFeature;
 pub use settings::VariationAxis;
-pub(crate) use settings::{FontConfig, FontConfigs, FontFeature, TextDirection};
+pub(crate) use settings::{FontConfig, FontConfigs, TextDirection};
 use thiserror::Error;
 
 use crate::{

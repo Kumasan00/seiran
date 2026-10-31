@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-pub(crate) use hypher::Lang;
+pub(super) use hypher::Lang;
 use hypher::hyphenate;
 
 /// BCP 47 言語タグをハイフネーション言語へ解決する

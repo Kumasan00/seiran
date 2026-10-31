@@ -15,7 +15,8 @@ pub mod test_support;
 
 use std::path::{Path, PathBuf};
 
-pub(crate) use error::{ConfigValidationError, ConfigWarning, ReadConfigError};
+use error::ConfigValidationError;
+pub(crate) use error::{ConfigWarning, ReadConfigError};
 use garde::Validate;
 use raw::{RawConfig, RawFontConfig};
 pub(crate) use resolved::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};

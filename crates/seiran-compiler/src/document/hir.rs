@@ -20,5 +20,6 @@ pub(crate) use node::{
   HirTable, HirTableCell, HirTableRow, HirTheorem,
 };
 pub(crate) use node_map::NodeMap;
-pub(crate) use source_map::{SourceLocation, SourceMap, SourceSpans};
+use source_map::SourceSpans;
+pub(crate) use source_map::{SourceLocation, SourceMap};
 pub(crate) use tree::{HirDocument, HirSource};

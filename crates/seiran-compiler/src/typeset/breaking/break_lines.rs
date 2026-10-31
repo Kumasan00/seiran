@@ -4,7 +4,7 @@ mod greedy;
 mod knuth_plass;
 
 pub(super) use greedy::GreedyBreaker;
-pub(crate) use knuth_plass::KnuthPlassBreaker;
+pub(in crate::typeset) use knuth_plass::KnuthPlassBreaker;
 
 use crate::{
   document::TextAlignment,
@@ -280,7 +280,7 @@ pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Length {
 
 /// 行分割テストの共有フィクスチャ
 #[cfg(test)]
-pub(super) mod test_support {
+mod test_support {
   use crate::{
     length::Length,
     semantics::LabelId,

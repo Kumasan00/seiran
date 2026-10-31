@@ -5,7 +5,7 @@
 mod error;
 
 use bumpalo::Bump;
-pub(crate) use error::SyntaxError;
+pub(in crate::frontend) use error::SyntaxError;
 use tracing::debug;
 
 use crate::{

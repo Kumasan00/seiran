@@ -12,10 +12,10 @@ mod inline;
 mod math;
 mod opt_args;
 
-pub(crate) use context::EvalContext;
-pub(crate) use error::EvalError;
+pub(super) use context::EvalContext;
+pub(super) use error::EvalError;
 #[cfg(test)]
-pub(crate) use test_support::{evaluate_children_to_hir, evaluate_inline_children_to_hir, run_handler};
+use test_support::{evaluate_children_to_hir, evaluate_inline_children_to_hir, run_handler};
 
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},

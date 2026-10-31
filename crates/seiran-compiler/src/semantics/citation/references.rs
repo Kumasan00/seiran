@@ -11,7 +11,8 @@ mod reference;
 use std::{collections::HashMap, path::Path};
 
 pub(crate) use error::ReadReferencesError;
-pub(crate) use reference::{Reference, References};
+pub(super) use reference::Reference;
+pub(crate) use reference::References;
 use tracing::debug;
 
 use crate::project::{ProjectPath, ProjectSource};
