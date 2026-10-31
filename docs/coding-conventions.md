@@ -49,7 +49,7 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   `unused_qualifications` が押さえていて、スコープに入っている名前を `std::sync::Arc::new` のように
   再修飾すると落ちる。どちらの lint も `#[cfg(test)]` の中で発火するので、テストにも同じ規約が効く。
   doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外。
-- `*` を避け明示的にインポート、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`。
+- `*` を避け明示的にインポート（例外は上の (b) の `use super::*` だけ）、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`。
 - **並びは `mod` 宣言 → `use` → その他の項目**: `mod` 宣言はファイル先頭に空行なしの 1 ブロックで置き
   （`pub mod` も `#[cfg(test)]` 付きも同じブロック）、その下に `use` を置く。例外 (a) の相対 use が必ず
   `mod` 宣言の下に来て、`use` が 1 本の連続になるので rustfmt が `use crate::{…}` を 1 つへ畳める。
