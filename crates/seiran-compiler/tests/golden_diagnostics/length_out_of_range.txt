@@ -1,0 +1,31 @@
+frontend::eval::length_out_of_range
+
+  × 長さ `1e14mm` は扱える範囲（pt へ換算した絶対値が 140737488355328pt 未満）を超えています
+   ╭─[tests/text/diagnostics/length_out_of_range_opt_arg.sei:1:16]
+ 1 │ \begin{itemize}[item_gap=1e14mm]
+   ·                ────────┬────────
+   ·                        ╰── この長さは扱える範囲を超えています
+ 2 │ \item{a}
+   ╰────
+  help: 値を小さくしてください
+
+Error: frontend::eval::length_out_of_range
+
+  × 長さ `1e14mm` は扱える範囲（pt へ換算した絶対値が 140737488355328pt 未満）を超えています
+   ╭─[tests/text/diagnostics/length_out_of_range_space_command.sei:1:1]
+ 1 │ \space{1e14mm}
+   · ───────┬──────
+   ·        ╰── この長さは扱える範囲を超えています
+   ╰────
+  help: 値を小さくしてください
+
+Error: frontend::eval::length_out_of_range
+
+  × 長さ `1e14mm` は扱える範囲（pt へ換算した絶対値が 140737488355328pt 未満）を超えています
+   ╭─[tests/text/diagnostics/length_out_of_range_table_widths.sei:1:1]
+ 1 │ ╭─▶ \begin{table}[widths=auto 1e14mm]
+ 2 │ │   \row{A & B}
+ 3 │ ├─▶ \end{table}
+   · ╰──── この長さは扱える範囲を超えています
+   ╰────
+  help: 値を小さくしてください

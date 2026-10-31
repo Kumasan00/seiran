@@ -1,0 +1,30 @@
+style::parse_toml
+
+  × スタイル設定の TOML 解析に失敗しました
+  ╰─▶ 長さ "1e14mm" は扱える範囲を超えています。pt へ換算した絶対値が 140737488355328pt 未満になる
+      よう値を小さくしてください
+      in `page.margin_top`
+      
+   ╭─[diagnostics/style.toml:2:14]
+ 1 │ [page]
+ 2 │ margin_top = "1e14mm"
+   ·              ────┬───
+   ·                  ╰── ここ
+   ╰────
+  help: TOML の構文とフィールドの型を確認してください。
+
+project::config::parse_toml
+
+  × 設定ファイルの TOML 解析に失敗しました
+  ╰─▶ 長さ "1e14mm" は扱える範囲を超えています。pt へ換算した絶対値が 140737488355328pt 未満になる
+      よう値を小さくしてください
+      in `pdf.width`
+      
+   ╭─[diagnostics/config.toml:2:9]
+ 1 │ [pdf]
+ 2 │ width = "1e14mm"
+   ·         ────┬───
+   ·             ╰── ここ
+   ╰────
+  help: TOML の構文とキー名を確認してください。使えないキー（廃止されたキーを含む）は削除してくだ
+        さい。

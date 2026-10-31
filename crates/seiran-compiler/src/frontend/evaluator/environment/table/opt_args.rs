@@ -9,7 +9,7 @@ use crate::{
     },
     syntax::view::EnvironmentView,
   },
-  length::Length,
+  length::{Length, ParseLengthError},
 };
 
 /// `table[columns=left center right]`（列の揃え）
@@ -84,7 +84,7 @@ pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Resul
   if tokens.is_empty() {
     return Err(invalid());
   }
-  return tokens.iter().map(|t| return parse_width_token(t).ok_or_else(invalid)).collect();
+  return tokens.iter().map(|t| return parse_width_token(t, view, invalid)).collect();
 }
 
 /// `widths=` の 1 トークンを [`ColumnWidth`] に変換する
@@ -92,19 +92,37 @@ pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Resul
 /// 受理する形式: `auto` / `*` / 正の長さ（書式は [`Length`] の `FromStr` と同じ）/
 /// 単位のない `0` より大きく `1` 以下の小数（本文幅に対する比率）。
 /// 単位の有無で長さと比率が決まるので、両者の読みがぶつかることはない。
-fn parse_width_token(token: &str) -> Option<ColumnWidth> {
+fn parse_width_token(
+  token: &str,
+  view: &EnvironmentView<'_>,
+  invalid: impl Fn() -> EvalError,
+) -> Result<ColumnWidth, EvalError> {
   if token == "auto" {
-    return Some(ColumnWidth::Auto);
+    return Ok(ColumnWidth::Auto);
   }
   if token == "*" {
-    return Some(ColumnWidth::Flex);
+    return Ok(ColumnWidth::Flex);
   }
-  if let Ok(length) = token.parse::<Length>() {
-    return length.is_positive().then_some(ColumnWidth::Fixed(length));
+  match token.parse::<Length>() {
+    Ok(length) => {
+      return if length.is_positive() {
+        Ok(ColumnWidth::Fixed(length))
+      } else {
+        Err(invalid())
+      };
+    },
+    Err(ParseLengthError::OutOfRange { .. }) => {
+      return Err(EvalError::LengthOutOfRange {
+        value: token.to_string(),
+        span: view.span().into(),
+      });
+    },
+    // 長さの書式でなければ比率として読む
+    Err(ParseLengthError::Format { .. }) => {},
   }
-  let ratio: f32 = token.parse().ok()?;
+  let ratio: f32 = token.parse().ok().ok_or_else(&invalid)?;
   if !(ratio.is_finite() && ratio > 0.0 && ratio <= 1.0) {
-    return None;
+    return Err(invalid());
   }
-  return Some(ColumnWidth::Ratio(ratio));
+  return Ok(ColumnWidth::Ratio(ratio));
 }

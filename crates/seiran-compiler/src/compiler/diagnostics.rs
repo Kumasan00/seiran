@@ -351,6 +351,45 @@ fn diagnostic_length_has_a_single_format() {
 }
 
 #[test]
+fn diagnostic_length_out_of_range_in_source() {
+  // 書式は合うが pt へ換算すると表せない長さを、任意引数・`\space` の必須引数・表の widths のどれでも拒否する
+  let failure = compile_err(&[
+    "tests/text/diagnostics/length_out_of_range_opt_arg.sei",
+    "tests/text/diagnostics/length_out_of_range_space_command.sei",
+    "tests/text/diagnostics/length_out_of_range_table_widths.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::length_out_of_range"; 3]);
+  assert_matches_golden("length_out_of_range", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_length_out_of_range_in_style_and_config() {
+  // ソースと同じ値を style.toml・config.toml でも同じ文言で拒否し、位置はキーの値を指す
+  let style_toml = "[page]\nmargin_top = \"1e14mm\"\n";
+  let Err(style_failures) = style::parse(style_toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
+  let source = MemoryProjectSource::new().with_text("diagnostics/config.toml", "[pdf]\nwidth = \"1e14mm\"\n");
+  let (config_result, _warnings) = project::config::load(
+    &source,
+    &ProjectPath::new("diagnostics/config.toml"),
+    &PathResolver::new(Path::new("diagnostics")),
+  );
+  let Err(config_failures) = config_result else {
+    panic!("このケースは失敗するはず");
+  };
+
+  let rendered = [
+    render_failure(CompileFailure::from(style_failures)),
+    render_failure(CompileFailure::from(config_failures)),
+  ]
+  .join("\n");
+  assert_eq!(rendered.matches("長さ \"1e14mm\" は扱える範囲を超えています").count(), 2, "{rendered}");
+  assert_matches_golden("length_out_of_range_toml", &rendered);
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）
