@@ -1,0 +1,5 @@
+typeset::image::pdf_annotations_dropped
+
+  ⚠ ./tests/image/annotated.pdf の 1 ページ目の注釈（リンク・フォーム・コメント等）は取り込まず、
+  │ 描画内容だけを埋め込みました
+  help: 注釈も図に含めたい場合は、注釈を平坦化した PDF を指定してください。

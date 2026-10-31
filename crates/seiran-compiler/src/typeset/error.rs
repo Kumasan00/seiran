@@ -88,7 +88,7 @@ pub(crate) enum TypesetError {
   },
 
   /// PDF として読み込めませんでした（破損・別形式のファイル）。
-  #[error("PDF として読み込めませんでした: {path} ({reason})")]
+  #[error("PDF として読み込めませんでした: {path}")]
   #[diagnostic(
     code(typeset::image::parse_pdf),
     help("ファイルが破損していないか、拡張子が .pdf の別形式のファイルでないか確認してください。")
@@ -96,8 +96,6 @@ pub(crate) enum TypesetError {
   ParsePdf {
     /// 画像ファイルのパス。
     path: String,
-    /// hayro が報告した失敗（`Debug` 表現）。
-    reason: String,
   },
 
   /// パスワードが必要、または未対応の方式で暗号化された PDF です。

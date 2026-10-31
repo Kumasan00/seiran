@@ -47,9 +47,9 @@ pub(super) fn open(path: &str, bytes: &Arc<[u8]>) -> Result<PdfFile, TypesetErro
         path: path.to_string(),
         reason: format!("{decryption:?}"),
       },
+      // hayro はこれ以上の理由を報告しない
       LoadPdfError::Invalid => TypesetError::ParsePdf {
         path: path.to_string(),
-        reason: format!("{error:?}"),
       },
     };
   })?;

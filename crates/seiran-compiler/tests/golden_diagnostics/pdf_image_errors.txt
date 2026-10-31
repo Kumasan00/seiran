@@ -1,0 +1,40 @@
+typeset::image::encrypted_pdf
+
+  × 暗号化された PDF を開けませんでした: ./tests/image/encrypted_user.pdf (PasswordProtected)
+  help: パスワードなしで開けない、または未対応の方式で暗号化された PDF です。暗号化を外して保存し
+        直してください。
+
+Error: typeset::image::empty_pdf
+
+  × ページが 1 枚も無い PDF です: ./tests/image/no_pages.pdf
+  help: 図にするページを含む PDF を指定してください。
+
+Error: typeset::image::unsupported_pdf_version
+
+  × PDF 2.0 の図版は取り込めません: ./tests/image/pdf20_catalog.pdf
+  help: 出力は PDF 1.7 です。図版を PDF 1.7 以下で書き出し直してください。
+
+Error: typeset::image::unsupported_pdf_version
+
+  × PDF 2.0 の図版は取り込めません: ./tests/image/pdf20_header.pdf
+  help: 出力は PDF 1.7 です。図版を PDF 1.7 以下で書き出し直してください。
+
+Error: typeset::image::parse_pdf
+
+  × PDF として読み込めませんでした: ./tests/image/png_bytes.pdf
+  help: ファイルが破損していないか、拡張子が .pdf の別形式のファイルでないか確認してください。
+
+Error: typeset::image::pdf_page_required
+
+  × ./tests/image/vector2.pdf は 2 ページあるため、使うページを指定する必要があります
+  help: \image[page=N] で 1〜2 のページ番号を指定してください。
+
+Error: typeset::image::pdf_page_out_of_range
+
+  × ./tests/image/vector2.pdf に 5 ページ目はありません（2 ページの PDF です）
+  help: page には 1〜2 を指定してください。
+
+Error: typeset::image::empty_pdf_page
+
+  × ./tests/image/zero_area.pdf の 1 ページ目は表示範囲の面積が 0 です
+  help: 表示範囲（CropBox と MediaBox の共通部分）が面積を持つページを指定してください。

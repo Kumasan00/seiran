@@ -1,0 +1,5 @@
+\section{注釈付き PDF 図版のサンプル}
+
+\begin{figure}
+\image[width=40mm]{./tests/image/annotated.pdf}
+\end{figure}

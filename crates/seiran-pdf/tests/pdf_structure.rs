@@ -437,3 +437,43 @@ fn pdf_text_keeps_each_char_of_reversed_runs_once() {
     "右から左の run の文字は欠落も重複もしないはず: {extracted:?}"
   );
 }
+
+/// `tests/image/` の PDF 1 枚だけを図にした文書を描画し、lopdf で読み返す。
+fn render_single_pdf_figure(name: &str) -> Document {
+  let image = workspace_root().join("tests/image").join(name);
+  let body = format!("\\begin{{figure}}\n\\image[width=40mm]{{{}}}\n\\end{{figure}}\n", image.display());
+  return Document::load_mem(&build_pdf_bytes_from_body(&body, "left-to-right"))
+    .expect("出力はパスワードなしで読めるはず");
+}
+
+#[test]
+fn embedded_owner_only_pdf_is_not_encrypted_in_output() {
+  let document = render_single_pdf_figure("encrypted_owner_only.pdf");
+
+  assert!(document.trailer.get(b"Encrypt").is_err(), "出力に暗号化を引き継がないはず");
+  let groups: Vec<&Object> = document
+    .objects
+    .values()
+    .filter_map(|object| {
+      let dict = object.as_stream().map(|stream| return &stream.dict).ok()?;
+      if !dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|name| return name == b"Form") {
+        return None;
+      }
+      return dict.get(b"Group").ok();
+    })
+    .collect();
+  assert_eq!(groups.len(), 1, "埋め込んだページは透過グループ付きの Form XObject 1 個のはず");
+  let group = document.dereference(groups[0]).expect("Group を引けるはず").1.as_dict().expect("Group は辞書");
+  assert_eq!(group.get(b"S").and_then(Object::as_name).expect("/S"), b"Transparency");
+  assert!(group.get(b"I").and_then(Object::as_bool).expect("/I"), "独立した透過グループのはず");
+}
+
+#[test]
+fn embedded_pdf_drops_annotations() {
+  let document = render_single_pdf_figure("annotated.pdf");
+
+  let annotation_count =
+    document.objects.values().filter(|object| return dict_name_is(object, b"Type", b"Annot")).count();
+  assert_eq!(annotation_count, 0, "注釈は取り込まず描画内容だけを埋め込むはず");
+  assert_eq!(form_xobject_count(&document), 1, "描画内容は Form XObject として入るはず");
+}
