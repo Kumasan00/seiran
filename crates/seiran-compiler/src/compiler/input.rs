@@ -13,7 +13,7 @@
 
 mod error;
 
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use error::InputError;
 use tracing::debug;
@@ -44,7 +44,7 @@ pub(super) struct CompilationInputs {
   /// 組版はこの確定値を受け取り、幅・ページ幾何を再計算しない
   geometry: PreparedGeometry,
   /// `\cite` の CSL 整形に使う文献データ
-  references: Arc<References>,
+  references: References,
   /// 読込済みの全フォントバイナリ
   font_data: FontData,
   /// ソースファイルごとの読込済みテキスト（`SourceId` で引ける）
@@ -62,7 +62,7 @@ impl CompilationInputs {
   pub(super) fn geometry(&self) -> &PreparedGeometry { return &self.geometry; }
 
   /// 文献データを返す。
-  pub(super) fn references(&self) -> &Arc<References> { return &self.references; }
+  pub(super) fn references(&self) -> &References { return &self.references; }
 
   /// 読込済みフォントバイナリを返す。
   pub(super) fn font_data(&self) -> &FontData { return &self.font_data; }
@@ -127,8 +127,8 @@ fn load_after_config(
 fn load_independent_inputs(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
-) -> Result<(Arc<References>, FontData, SourceSet), Failures<InputError>> {
-  let references = load_references(source, config.references_path.as_ref()).map(Arc::new).map_err(single);
+) -> Result<(References, FontData, SourceSet), Failures<InputError>> {
+  let references = load_references(source, config.references_path.as_ref()).map_err(single);
 
   let stage_start = Instant::now();
   let font_data = FontData::load(source, &config.font_configs).map_err(lift);
