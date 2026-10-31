@@ -2,13 +2,15 @@
 //!
 //! 保存先はユーザーの成果物なので、`--log-file` の指定で壊れないことをここで担保する。
 
+mod error;
+
 use std::{
   fs,
   io::{self, Write},
   path::{Path, PathBuf},
 };
 
-use crate::write_error::WriteError;
+use error::WriteError;
 
 /// PDF バイト列を `pdf_path` へ atomic に書き出す。
 ///
@@ -118,8 +120,7 @@ mod tests {
   #[cfg(unix)]
   use std::os::unix::fs::symlink;
 
-  use super::{ensure_distinct_from_log, write_pdf_atomically};
-  use crate::write_error::WriteError;
+  use super::{WriteError, ensure_distinct_from_log, write_pdf_atomically};
 
   #[test]
   fn different_spellings_of_the_same_path_are_rejected() {
