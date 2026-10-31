@@ -249,6 +249,8 @@ struct PdfStructureFacts {
   has_outline: bool,
   /// 画像 `XObject` 数（`/Subtype /Image`）。SVG はベクタパスとして展開され数に入らない場合がある。
   image_xobject_count: usize,
+  /// Form `XObject` 数（`/Subtype /Form`）。埋め込んだ PDF のページは 1 ページ 1 個の Form になる
+  form_xobject_count: usize,
 }
 
 /// PDF バイト列から構造的事実を読み取る
@@ -265,25 +267,33 @@ fn compute_pdf_structure_facts(bytes: &[u8]) -> PdfStructureFacts {
   let has_outline = document.catalog().is_ok_and(|catalog| return catalog.get(b"Outlines").is_ok());
   let image_xobject_count =
     document.objects.values().filter(|object| return dict_name_is(object, b"Subtype", b"Image")).count();
+  let form_xobject_count = form_xobject_count(&document);
   return PdfStructureFacts {
     page_count,
     embedded_font_count,
     link_annotation_count,
     has_outline,
     image_xobject_count,
+    form_xobject_count,
   };
+}
+
+/// Form `XObject`（`/Subtype /Form`）の数。
+fn form_xobject_count(document: &Document) -> usize {
+  return document.objects.values().filter(|object| return dict_name_is(object, b"Subtype", b"Form")).count();
 }
 
 /// PDF バイト列から構造だけを決定的テキストへ書き出す。座標・resource bytes 自体は対象にしない。
 fn dump_pdf_structure(bytes: &[u8]) -> String {
   let facts = compute_pdf_structure_facts(bytes);
   return format!(
-    "page_count={}\nembedded_font_count={}\nlink_annotation_count={}\nhas_outline={}\nimage_xobject_count={}\n",
+    "page_count={}\nembedded_font_count={}\nlink_annotation_count={}\nhas_outline={}\nimage_xobject_count={}\nform_xobject_count={}\n",
     facts.page_count,
     facts.embedded_font_count,
     facts.link_annotation_count,
     facts.has_outline,
-    facts.image_xobject_count
+    facts.image_xobject_count,
+    facts.form_xobject_count
   );
 }
 
@@ -426,4 +436,61 @@ fn pdf_text_keeps_each_char_of_reversed_runs_once() {
     sorted_non_whitespace_chars(body),
     "右から左の run の文字は欠落も重複もしないはず: {extracted:?}"
   );
+}
+
+/// `tests/image/` の PDF 1 枚だけを図にした文書を描画し、lopdf で読み返す。
+fn render_single_pdf_figure(name: &str) -> Document {
+  let image = workspace_root().join("tests/image").join(name);
+  let body = format!("\\begin{{figure}}\n\\image[width=40mm]{{{}}}\n\\end{{figure}}\n", image.display());
+  return Document::load_mem(&build_pdf_bytes_from_body(&body, "left-to-right"))
+    .expect("出力はパスワードなしで読めるはず");
+}
+
+#[test]
+fn embedded_owner_only_pdf_is_not_encrypted_in_output() {
+  // lopdf は空パスワードで復号できた文書の trailer から `/Encrypt` を取り除くので、暗号化の有無は `was_encrypted` で見る
+  let input =
+    Document::load(workspace_root().join("tests/image/encrypted_owner_only.pdf")).expect("入力 fixture を読めるはず");
+  assert!(input.was_encrypted(), "前提: 入力は空パスワードで暗号化されている");
+  let document = render_single_pdf_figure("encrypted_owner_only.pdf");
+
+  assert!(!document.was_encrypted(), "出力に暗号化を引き継がないはず");
+  let groups: Vec<&Object> = document
+    .objects
+    .values()
+    .filter_map(|object| {
+      let dict = object.as_stream().map(|stream| return &stream.dict).ok()?;
+      if !dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|name| return name == b"Form") {
+        return None;
+      }
+      return dict.get(b"Group").ok();
+    })
+    .collect();
+  assert_eq!(groups.len(), 1, "埋め込んだページは透過グループ付きの Form XObject 1 個のはず");
+  let group = document.dereference(groups[0]).expect("Group を引けるはず").1.as_dict().expect("Group は辞書");
+  assert_eq!(group.get(b"S").and_then(Object::as_name).expect("/S"), b"Transparency");
+  assert!(group.get(b"I").and_then(Object::as_bool).expect("/I"), "独立した透過グループのはず");
+}
+
+#[test]
+fn embedded_pdf_drops_annotations() {
+  let document = render_single_pdf_figure("annotated.pdf");
+
+  let annotation_count =
+    document.objects.values().filter(|object| return dict_name_is(object, b"Type", b"Annot")).count();
+  assert_eq!(annotation_count, 0, "注釈は取り込まず描画内容だけを埋め込むはず");
+  assert_eq!(form_xobject_count(&document), 1, "描画内容は Form XObject として入るはず");
+}
+
+#[test]
+fn embedded_pdf_page_is_clipped_to_the_figure_rectangle() {
+  // CropBox が MediaBox からはみ出したページは、hayro-write が BBox に CropBox をそのまま書くため、MediaBox の外の描画が
+  // 図の矩形の外へはみ出しうる。表示範囲（CropBox ∩ MediaBox）＝図の矩形で切り抜いてから Form XObject を描くはず
+  let document = render_single_pdf_figure("crop_overflow.pdf");
+
+  let page_id = *document.get_pages().get(&1).expect("1 ページ目があるはず");
+  let content = Content::decode(&document.get_page_content(page_id)).expect("内容をデコードできるはず");
+  let operators: Vec<&str> = content.operations.iter().map(|operation| return operation.operator.as_str()).collect();
+  let draw = operators.iter().rposition(|operator| return *operator == "Do").expect("Form XObject を描くはず");
+  assert!(operators[..draw].contains(&"W"), "Form XObject を描く前に切り抜くはず: {operators:?}");
 }

@@ -171,12 +171,13 @@ fn lay_out(
     &|base, selector| return font_resources.has_math_variation(base, selector),
     &config.font_configs[FontFace::MATH].font_path,
   );
-  let image_paths = image::collect_image_paths(document.hir());
-  let images = match image::load_image_resources(source, &image_paths) {
-    Ok(images) => images,
+  let image_requests = image::collect_image_requests(document.hir());
+  let (images, image_warnings) = match image::load_image_resources(source, &image_requests) {
+    Ok(loaded) => loaded,
     Err(failures) => return (Err(ComposeError::Typeset(failures)), into_variation_warnings(math_warnings)),
   };
   let ctx = pagination::TypesetContext::new(config, style, geometry, font_resources);
+  let image_paths = image_requests.into_iter().map(|request| return request.path).collect();
   let laid_out = pagination::paginate(&ctx, document, images, image_paths);
 
   let mut glyph_errors: Vec<TextGlyphError> = match math_glyphs {
@@ -189,13 +190,15 @@ fn lay_out(
   variation_warnings.extend(text_warnings);
   // 同じ位置のものは数式（事前検査）が先のまま
   variation_warnings.sort_by_key(VariationSequenceFallback::order_key);
-  let variation_warnings = into_variation_warnings(variation_warnings);
+  // 画像ファイルの警告（パス → ページ順）を先に、ソース位置を持つ字の警告をその後に並べる
+  let mut warnings = image_warnings;
+  warnings.extend(into_variation_warnings(variation_warnings));
   if let Some(failures) = Failures::from_vec(glyph_errors) {
-    return (Err(ComposeError::Glyphs(failures)), variation_warnings);
+    return (Err(ComposeError::Glyphs(failures)), warnings);
   }
   return match laid_out {
-    Ok(laid_out) => (Ok(laid_out), variation_warnings),
-    Err(error) => (Err(ComposeError::Typeset(Failures::single(error))), variation_warnings),
+    Ok(laid_out) => (Ok(laid_out), warnings),
+    Err(error) => (Err(ComposeError::Typeset(Failures::single(error))), warnings),
   };
 }
 

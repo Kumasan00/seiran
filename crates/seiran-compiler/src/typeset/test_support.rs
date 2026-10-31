@@ -5,7 +5,7 @@
 //! 再エクスポートしない組版中間型（`HBox` / `Line` / `PlacedHBox` / `PlacedBlock` 以外の `Placed*` /
 //! `TableBox` / `TableRowFragment` / `OutlineEntry`）を現さない。
 
-use std::{collections::HashMap, fs, path::Path};
+use std::{fs, path::Path};
 
 use super::{lay_out, load_fonts};
 use crate::{
@@ -274,6 +274,7 @@ pub(crate) fn image_block(
 ) -> PlacedBlock {
   return PlacedBlock::Image {
     path,
+    page_index: None,
     x,
     y,
     width,
@@ -483,6 +484,6 @@ pub(crate) fn laid_out(pages: Vec<Page>, outline: Vec<(HeadingLevel, String)>) -
     pages,
     outline_entries: outline.into_iter().map(|(level, text)| return OutlineEntry { level, text }).collect(),
     image_paths: Vec::new(),
-    images: HashMap::new(),
+    images: Vec::new(),
   };
 }

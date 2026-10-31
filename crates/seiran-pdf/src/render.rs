@@ -9,7 +9,7 @@ use krilla::{
   geom::{PathBuilder, Point, Rect, Size, Transform},
   outline::{Outline, OutlineNode},
   page::{Page as KrillaPage, PageSettings},
-  paint::Fill,
+  paint::{Fill, FillRule},
   surface::Surface,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
@@ -195,7 +195,9 @@ pub(crate) fn render_pages(
 
 /// 確定済みの矩形に画像資源を描画する。
 ///
-/// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する。
+/// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する。PDF は選んだ 1 ページをベクタのまま
+/// Form `XObject`（独立した透過グループ）として描く。krilla は同じバイト列の文書を同一視するので、描画ごとに
+/// 開き直しても `XObject` は（文書, ページ）ごとに 1 個にまとまる。
 fn draw_image(
   surface: &mut Surface<'_>,
   image: &PublicationImage,
@@ -204,11 +206,10 @@ fn draw_image(
 ) -> Result<(), PdfRenderError> {
   let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
   let loaded = load_image(&image.path, image.format, &image.bytes, None)?;
-  let (nat_width, nat_height) = loaded.natural_size();
-  let loaded = if matches!(loaded, LoadedImage::Raster(_))
+  let loaded = if let LoadedImage::Raster(raster) = &loaded
     && let Some(dpi) = target_dpi
     && let Some(target) = required_pixels(width, height, dpi)
-    && (nat_width > target.0 || nat_height > target.1)
+    && exceeds(raster.size(), target)
   {
     #[expect(
       clippy::cast_sign_loss,
@@ -235,9 +236,36 @@ fn draw_image(
         };
       })?;
     },
+    LoadedImage::Pdf(document) => {
+      let Some(page_index) = image.page_index else {
+        unreachable!("PDF の画像資源が page_index を持つことは PublicationResources::new が保証する: {}", image.path);
+      };
+      // hayro-write は Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、CropBox が
+      // MediaBox からはみ出すページでは描画が図の矩形の外へ出うる。表示範囲＝図の矩形（原点から `size`）で切り抜く
+      let mut clip = PathBuilder::new();
+      let Some(bounds) = Rect::from_xywh(0.0, 0.0, width, height) else {
+        unreachable!("画像の描画矩形の幅・高さが正であることは PublicationPage::new が保証する: {width} x {height}");
+      };
+      clip.push_rect(bounds);
+      let Some(clip) = clip.finish() else {
+        unreachable!("有効な矩形 1 個を push_rect した PathBuilder は必ずパスを返す: {}", image.path);
+      };
+      surface.push_clip_path(&clip, &FillRule::NonZero);
+      surface.draw_pdf_page(&document, size, page_index);
+      surface.pop();
+    },
   }
   surface.pop();
   return Ok(());
+}
+
+/// ラスタ画像のピクセル寸法が縮小目標を幅・高さのどちらかで超えるか。
+#[expect(
+  clippy::cast_precision_loss,
+  reason = "ラスタのピクセル寸法（u32）は image crate の値で、f32 の仮数部に収まる"
+)]
+fn exceeds((width, height): (u32, u32), target: (f32, f32)) -> bool {
+  return width as f32 > target.0 || height as f32 > target.1;
 }
 
 /// 塗りつぶし矩形を描画する。

@@ -11,8 +11,6 @@ mod page_values;
 mod running;
 mod toc;
 
-use std::collections::HashMap;
-
 pub(super) use context::TypesetContext;
 use miette::{LabeledSpan, SourceSpan};
 pub(super) use outline::OutlineEntry;
@@ -40,8 +38,8 @@ pub(crate) struct LaidOutDocument {
   pub(super) outline_entries: Vec<OutlineEntry>,
   /// 文書が参照した画像ファイルのパス一覧（重複なし・昇順）
   pub(super) image_paths: Vec<ProjectPath>,
-  /// 画像ファイルの形式と生バイト列
-  pub(super) images: HashMap<ProjectPath, ImageAsset>,
+  /// 図の単位（パス, PDF のページ index）ごとの形式と生バイト列（（パス, ページ index）昇順）
+  pub(super) images: Vec<(ProjectPath, Option<usize>, ImageAsset)>,
 }
 
 /// 不変な入力から描画直前の確定レイアウトを構築する。
@@ -112,7 +110,7 @@ pub(super) fn paginate(
       pages,
       outline_entries,
       image_paths,
-      images: images.into_assets(),
+      images: images.into_drawables(),
     },
     warnings,
   ));

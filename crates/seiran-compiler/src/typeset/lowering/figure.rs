@@ -1,11 +1,14 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
 use crate::{
-  document::{HirFigure, NodeId},
-  typeset::lowering::{
-    LoweringContext, LoweringState,
-    float::{FloatCaption, FloatMargins, lower_numbered_float},
-    layout_node::LayoutNode,
+  document::{HirFigure, ImageFormat, NodeId},
+  typeset::{
+    image,
+    lowering::{
+      LoweringContext, LoweringState,
+      float::{FloatCaption, FloatMargins, lower_numbered_float},
+      layout_node::LayoutNode,
+    },
   },
 };
 
@@ -18,11 +21,13 @@ pub(super) fn lower_figure(
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.figure;
 
-  let downsample_enabled = figure.downsample.unwrap_or(ctx.image_downsample);
-  let target_dpi = if downsample_enabled {
-    Some(figure.dpi.unwrap_or(ctx.image_max_dpi))
-  } else {
-    None
+  // ダウンサンプリングはラスタだけに効く（ベクタ形式への `dpi` / `downsample` は frontend が拒否済み）
+  let target_dpi = match figure.format {
+    ImageFormat::Png | ImageFormat::Jpeg => figure
+      .downsample
+      .unwrap_or(ctx.image_downsample)
+      .then(|| return figure.dpi.unwrap_or(ctx.image_max_dpi)),
+    ImageFormat::Svg | ImageFormat::Pdf => None,
   };
 
   let margins = FloatMargins {
@@ -40,6 +45,7 @@ pub(super) fn lower_figure(
     return LayoutNode::Image {
       origin: figure.image_site,
       path: figure.image_path.clone(),
+      page_index: image::pdf_page_index(figure.format, figure.page),
       width: figure.width,
       height: figure.height,
       target_dpi,
@@ -172,6 +178,39 @@ mod tests {
       panic!("Image が期待: {nodes:?}");
     };
     assert_eq!(*target_dpi, Some(600));
+  }
+
+  #[test]
+  fn lower_figure_svg_yields_no_target_dpi() {
+    // ベクタ形式にはダウンサンプリングが効かないので、config の既定（downsample=true）でも上限 DPI を載せない
+    let style = ReadStyle::default();
+    let ctx = context(&style);
+
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.svg}\n\\end{figure}\n");
+
+    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+      panic!("Image が期待: {nodes:?}");
+    };
+    assert!(target_dpi.is_none());
+  }
+
+  #[test]
+  fn lower_figure_pdf_carries_page_index_and_no_target_dpi() {
+    let style = ReadStyle::default();
+    let ctx = context(&style);
+
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[page=3]{a.pdf}\n\\end{figure}\n");
+
+    let LayoutNode::Image {
+      page_index,
+      target_dpi,
+      ..
+    } = figure_children(&nodes).first().expect("画像")
+    else {
+      panic!("Image が期待: {nodes:?}");
+    };
+    assert_eq!(*page_index, Some(2), "page は 1 始まり、page index は 0 始まり");
+    assert!(target_dpi.is_none());
   }
 
   #[test]

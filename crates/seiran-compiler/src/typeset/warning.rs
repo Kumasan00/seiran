@@ -27,6 +27,20 @@ pub(crate) enum TypesetWarning {
   #[diagnostic(transparent)]
   VariationSequenceFallback(VariationSequenceFallback),
 
+  /// 図にした PDF のページが注釈を持っていたので、描画内容だけを埋め込んだ
+  #[error("{path} の {page} ページ目の注釈（リンク・フォーム・コメント等）は取り込まず、描画内容だけを埋め込みました")]
+  #[diagnostic(
+    code(typeset::image::pdf_annotations_dropped),
+    severity(Warning),
+    help("注釈も図に含めたい場合は、注釈を平坦化した PDF を指定してください。")
+  )]
+  PdfAnnotationsDropped {
+    /// PDF ファイルへのパス
+    path: ProjectPath,
+    /// ページ番号（1 始まり）
+    page: u32,
+  },
+
   /// 行に付いた脚注群が、空のページでも版面に収まらなかった
   #[error("{page} ページの脚注 {} がページの高さを超えるため、はみ出したまま配置しました", join_numbers(.numbers))]
   #[diagnostic(
@@ -189,11 +203,11 @@ pub(crate) enum TypesetWarning {
 }
 
 impl TypesetWarning {
-  /// 帰属するソースを返す。フォントの警告と生成物の行・生成内容の字は `None`
+  /// 帰属するソースを返す。フォント・画像ファイルの警告と生成物の行・生成内容の字は `None`
   #[must_use]
   pub(crate) fn source_id(&self) -> Option<SourceId> {
     return match self {
-      TypesetWarning::Font(_) => None,
+      TypesetWarning::Font(_) | TypesetWarning::PdfAnnotationsDropped { .. } => None,
       TypesetWarning::VariationSequenceFallback(warning) => warning.source_id(),
       TypesetWarning::LineOverflow { source_id, .. } => *source_id,
       TypesetWarning::FootnoteOverflow { source_id, .. }

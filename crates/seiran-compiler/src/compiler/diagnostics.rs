@@ -506,14 +506,69 @@ fn diagnostic_missing_image() {
 
 #[test]
 fn diagnostic_unsupported_image_format() {
-  // 実在する未対応 GIF で形式エラーを起こす（読み込み自体は成功する必要があるので実バイト列を登録する）
+  // 拡張子だけで評価時に拒否するので、画像は登録しない（読みに行けば read_image になる）
+  let failure = compile_err(&["tests/text/diagnostics/unsupported_image_format.sei"]);
+
+  assert_matches_golden("unsupported_image_format", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_image_option_not_applicable() {
+  // 形式に効かないオプションも拡張子だけで決まるので、画像を登録せずに拒否される
+  let failure = compile_err(&["tests/text/diagnostics/image_option_not_applicable.sei"]);
+
+  assert_matches_golden("image_option_not_applicable", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_pdf_image_errors_are_collected_in_path_order() {
+  // 取り込めない PDF はファイルを読んで初めて分かるので、組版段がパスの昇順（同じパスはページの昇順）に集めて報告する
   let failure = TestProject::builder()
-    .sources(&["tests/text/diagnostics/unsupported_image_format.sei"])
-    .asset("./tests/image/unsupported.gif")
+    .sources(&["tests/text/diagnostics/pdf_image_errors.sei"])
+    .assets(&[
+      "./tests/image/png_bytes.pdf",
+      "./tests/image/encrypted_user.pdf",
+      "./tests/image/pdf20_header.pdf",
+      "./tests/image/pdf20_catalog.pdf",
+      "./tests/image/no_pages.pdf",
+      "./tests/image/zero_area.pdf",
+      "./tests/image/vector2.pdf",
+    ])
     .build()
     .compile_err();
 
-  assert_matches_golden("unsupported_image_format", &render_failure(failure));
+  assert_eq!(
+    codes(&failure),
+    [
+      "typeset::image::encrypted_pdf",
+      "typeset::image::empty_pdf",
+      "typeset::image::unsupported_pdf_version",
+      "typeset::image::unsupported_pdf_version",
+      "typeset::image::parse_pdf",
+      "typeset::image::pdf_page_required",
+      "typeset::image::pdf_page_out_of_range",
+      "typeset::image::empty_pdf_page",
+    ]
+    .map(String::from)
+  );
+  assert_matches_golden("pdf_image_errors", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_pdf_annotations_are_warned_and_dropped() {
+  let compilation = TestProject::builder()
+    .sources(&["tests/text/diagnostics/pdf_image_annotations.sei"])
+    .asset("./tests/image/annotated.pdf")
+    .build()
+    .compile()
+    .expect("注釈付きの PDF も描画内容だけ埋め込めるはず");
+
+  let warnings = warnings_with_code(&compilation, "typeset::image::pdf_annotations_dropped");
+  assert_eq!(warnings.len(), 1, "{:?}", all_messages(&compilation));
+  assert_matches_golden(
+    "pdf_image_annotations",
+    &render_warnings(&compilation, "typeset::image::pdf_annotations_dropped"),
+  );
 }
 
 #[test]

@@ -4,7 +4,7 @@ use std::io::Cursor;
 
 use image::ImageReader;
 
-use crate::{publication::ImageFormat, typeset::error::TypesetError};
+use crate::{document::ImageFormat, typeset::error::TypesetError};
 
 /// 検証済みの自然寸法（幅・高さとも有限かつ正）。
 ///
@@ -43,6 +43,9 @@ pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) 
     ImageFormat::Png => raster_size(path, bytes, image::ImageFormat::Png),
     ImageFormat::Jpeg => raster_size(path, bytes, image::ImageFormat::Jpeg),
     ImageFormat::Svg => svg_size(path, bytes),
+    ImageFormat::Pdf => {
+      unreachable!("PDF の自然寸法はページ単位で typeset::image::pdf が求め、資源の読込は PDF をここへ渡さない: {path}")
+    },
   }?;
   return NaturalSize::new(width, height).ok_or_else(|| {
     return TypesetError::InvalidImageNaturalSize {
@@ -83,7 +86,7 @@ fn svg_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
 #[cfg(test)]
 mod tests {
   use super::{NaturalSize, natural_image_size};
-  use crate::{publication::ImageFormat, typeset::error::TypesetError};
+  use crate::{document::ImageFormat, typeset::error::TypesetError};
 
   #[test]
   fn natural_image_size_returns_svg_dimensions_from_bytes() {

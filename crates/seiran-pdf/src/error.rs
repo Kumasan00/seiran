@@ -34,6 +34,17 @@ pub enum PdfRenderError {
     #[source]
     source: usvg::Error,
   },
+  /// PDF 図版のパースに失敗しました。
+  ///
+  /// compiler が同じバイト列を検査して通したものだけが渡るので、通常は起きない。
+  #[error("PDF のパースに失敗しました: {path} ({reason})")]
+  #[diagnostic(code(pdf::parse_pdf), help("PDF ファイルが破損していないか確認してください。"))]
+  ParsePdf {
+    /// 画像ファイルのパス。
+    path: String,
+    /// hayro が報告した失敗（`Debug` 表現）。
+    reason: String,
+  },
   /// SVG のレンダリングに失敗しました。
   #[error("SVG のレンダリングに失敗しました: {path}")]
   #[diagnostic(

@@ -67,6 +67,7 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
     PlacedBlock::Line { line, baseline_y } => dump_line(out, line, *baseline_y),
     PlacedBlock::Image {
       path,
+      page_index,
       x,
       y,
       width,
@@ -75,7 +76,7 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
     } => {
       let _ = writeln!(
         out,
-        "  image x={} y={} w={} h={} dpi={target_dpi:?} path={path:?}",
+        "  image x={} y={} w={} h={} dpi={target_dpi:?} page={page_index:?} path={path:?}",
         f2(*x),
         f2(*y),
         f2(*width),
