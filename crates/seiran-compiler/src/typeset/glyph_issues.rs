@@ -20,7 +20,7 @@ use crate::{
 
 /// シェイプしている字形の出どころ — 著者が書いた要素か、組版が生成した内容か
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::typeset) enum GlyphOrigin {
+pub(super) enum GlyphOrigin {
   /// 要素（段落・見出し・表の行・脚注・ディスプレイ数式）
   Element(NodeId),
   /// 単一のソース要素に対応しない生成内容
@@ -29,7 +29,7 @@ pub(in crate::typeset) enum GlyphOrigin {
 
 /// 組版が生成する内容の種類（宣言順が診断の表示順）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::typeset) enum Generated {
+pub(super) enum Generated {
   /// 参考文献の見出しと文献の項目
   Bibliography,
   /// 表題ページ
@@ -57,7 +57,7 @@ impl fmt::Display for Generated {
 
 /// 本文の枠の字の問題 1 件
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::typeset) struct GlyphIssue {
+pub(super) struct GlyphIssue {
   /// 組んでいた要素か生成元
   pub origin: GlyphOrigin,
   /// 組んだ枠
@@ -68,7 +68,7 @@ pub(in crate::typeset) struct GlyphIssue {
 
 /// [`GlyphIssue`] の種類
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::typeset) enum IssueKind {
+pub(super) enum IssueKind {
   /// 枠のどの候補にも字形が無いクラスタ
   Missing {
     /// クラスタの文字列
@@ -93,7 +93,7 @@ pub(in crate::typeset) enum IssueKind {
 ///
 /// シェーパーは共有参照しか持たないので内部可変にする。組版は単一スレッドで進む。
 #[derive(Debug, Default)]
-pub(in crate::typeset) struct GlyphIssues(RefCell<Vec<GlyphIssue>>);
+pub(super) struct GlyphIssues(RefCell<Vec<GlyphIssue>>);
 
 impl GlyphIssues {
   /// `issue` を積む。同じ値が既にあれば積まない

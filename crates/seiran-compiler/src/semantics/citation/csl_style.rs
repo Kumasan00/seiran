@@ -85,7 +85,7 @@ pub(crate) enum ReadCitationStyleError {
 
 /// 解析済みの CSL スタイル一式（独立スタイル本体 + ロケールプール + 出力言語 override）。
 #[derive(Debug)]
-pub(crate) struct CompiledCitationStyle {
+pub(in crate::semantics) struct CompiledCitationStyle {
   /// CSL 独立スタイル本体
   style: IndependentStyle,
   /// 引用整形に用いるロケールプール（カスタムロケールを内蔵ロケールより前に置く）

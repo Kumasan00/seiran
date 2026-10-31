@@ -36,7 +36,7 @@ pub(crate) enum AnalyzeError {
 ///
 /// 未定義引用キーだけは 1 回の走査で複数ソースに跨って見つかるが、miette は 1 診断につき
 /// `source_code` を 1 つしか持てないため、ソースごとへ分ける。
-pub(crate) type SemanticFailures = Failures<SemanticError>;
+pub(super) type SemanticFailures = Failures<SemanticError>;
 
 /// 文書順の未定義引用箇所を、ソース順（`SourceId` 昇順 = 宣言順）にソースごとの診断へまとめる。
 ///

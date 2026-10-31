@@ -63,7 +63,7 @@ impl Diagnostic for FontValidationError {
 
 /// 1 件のフォント検証違反の内容。
 #[derive(Debug, Error, Diagnostic)]
-pub(super) enum FontValidationErrorKind {
+enum FontValidationErrorKind {
   /// OpenType フォントを解析できない。
   #[error("フォントフェースの解析に失敗しました: {0}")]
   #[diagnostic(
