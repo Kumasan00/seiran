@@ -1580,17 +1580,21 @@ compiler 側の責務で、こちらへ戻さない。
 - `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）・PDF を開くこと（krilla の `pdf` feature）とラスタ画像の
   ダウンサンプルのみ。分岐は拡張子ではなく `PublicationImage.format`（compiler 側が判定済み）で行う。PDF は
   `PublicationImage.page_index` のページを `draw_pdf_page` で独立した透過グループの Form XObject として描き、
-  ラスタ化・色空間の変換・中のラスタの再圧縮はしない。描く前に図の矩形で切り抜く（hayro-write の BBox が CropBox の
+  ラスタ化・色空間の変換・中のラスタの再圧縮はしない。ただし Form XObject の透過グループの色空間（`/CS`）は krilla が
+  RGB（既定の設定では DeviceRGB）で書くので、CMYK の図版でも透過・描画モードの合成は RGB で行われる（内容のストリームは
+  変換しない）。描く前に図の矩形で切り抜く（hayro-write の BBox が CropBox の
   ままでも、表示範囲を CropBox ∩ MediaBox に揃えるため）
 - `metadata` / `error`: PDF メタデータ構築 / `PdfRenderError`（診断 code の prefix は `pdf::`）
 
 ### `PdfRenderError` の範囲
 
-**「有効な `Publication` に対して backend が失敗しうるもの」だけ**を持つ（3 系統の内訳は `error` の `//!`）。
+**「有効な `Publication` に対して backend が失敗しうるもの」だけ**を持つ。
 compiler が構築時に検証済みの不変条件を再検査する variant（invalid page size / rule rect / link rect /
 image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性（レコードが
 ファイル範囲外を指す破損を含む。保証点は `typeset::font::validation`。#681 / #725））は持たない — 同じ検査を
-2 箇所に持つと、どちらが真の保証点か読めなくなるため（保証点は `publication` 節の表。#378）。
+2 箇所に持つと、どちらが真の保証点か読めなくなるため（保証点は `publication` 節の表。#378）。SVG と PDF 図版は
+compiler が同じパーサで検査を通したバイト列だが、パース結果は facade を越えないので backend が読み直し、その失敗を
+`ParseSvg` / `ParsePdf` として持つ。これは読み直しが `Result` を返すことの受け口で、2 つ目の保証点ではない。
 
 ### 不変条件・注意点
 

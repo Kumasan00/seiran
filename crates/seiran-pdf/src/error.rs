@@ -25,6 +25,8 @@ pub enum PdfRenderError {
     face: FontFace,
   },
   /// SVG のパースに失敗しました。
+  ///
+  /// compiler が同じバイト列を同じ設定の usvg で検査して通したものだけが渡るので、通常は起きない。
   #[error("SVG のパースに失敗しました: {path}")]
   #[diagnostic(code(pdf::parse_svg), help("SVG ファイルが妥当な XML / SVG であることを確認してください。"))]
   ParseSvg {
