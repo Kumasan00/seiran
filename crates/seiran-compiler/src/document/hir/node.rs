@@ -127,6 +127,8 @@ pub(crate) struct HirFigure {
   pub(crate) dpi: Option<u32>,
   /// `\image[downsample=...]` の per-image 上書き
   pub(crate) downsample: Option<bool>,
+  /// `\image[page=N]` で選んだ PDF のページ（ソースに書かれた 1 始まりの値。省略は `None`）
+  pub(crate) page: Option<u32>,
   /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
   pub(crate) caption: Option<Vec<HirInline>>,
   /// キャプションを図本体の上下どちらに配置するか

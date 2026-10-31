@@ -43,6 +43,9 @@ pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) 
     ImageFormat::Png => raster_size(path, bytes, image::ImageFormat::Png),
     ImageFormat::Jpeg => raster_size(path, bytes, image::ImageFormat::Jpeg),
     ImageFormat::Svg => svg_size(path, bytes),
+    ImageFormat::Pdf => {
+      unreachable!("PDF の自然寸法はページ単位で typeset::image::pdf が求め、資源の読込は PDF をここへ渡さない: {path}")
+    },
   }?;
   return NaturalSize::new(width, height).ok_or_else(|| {
     return TypesetError::InvalidImageNaturalSize {

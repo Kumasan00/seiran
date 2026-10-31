@@ -249,6 +249,8 @@ struct PdfStructureFacts {
   has_outline: bool,
   /// 画像 `XObject` 数（`/Subtype /Image`）。SVG はベクタパスとして展開され数に入らない場合がある。
   image_xobject_count: usize,
+  /// Form `XObject` 数（`/Subtype /Form`）。埋め込んだ PDF のページは 1 ページ 1 個の Form になる
+  form_xobject_count: usize,
 }
 
 /// PDF バイト列から構造的事実を読み取る
@@ -265,25 +267,33 @@ fn compute_pdf_structure_facts(bytes: &[u8]) -> PdfStructureFacts {
   let has_outline = document.catalog().is_ok_and(|catalog| return catalog.get(b"Outlines").is_ok());
   let image_xobject_count =
     document.objects.values().filter(|object| return dict_name_is(object, b"Subtype", b"Image")).count();
+  let form_xobject_count = form_xobject_count(&document);
   return PdfStructureFacts {
     page_count,
     embedded_font_count,
     link_annotation_count,
     has_outline,
     image_xobject_count,
+    form_xobject_count,
   };
+}
+
+/// Form `XObject`（`/Subtype /Form`）の数。
+fn form_xobject_count(document: &Document) -> usize {
+  return document.objects.values().filter(|object| return dict_name_is(object, b"Subtype", b"Form")).count();
 }
 
 /// PDF バイト列から構造だけを決定的テキストへ書き出す。座標・resource bytes 自体は対象にしない。
 fn dump_pdf_structure(bytes: &[u8]) -> String {
   let facts = compute_pdf_structure_facts(bytes);
   return format!(
-    "page_count={}\nembedded_font_count={}\nlink_annotation_count={}\nhas_outline={}\nimage_xobject_count={}\n",
+    "page_count={}\nembedded_font_count={}\nlink_annotation_count={}\nhas_outline={}\nimage_xobject_count={}\nform_xobject_count={}\n",
     facts.page_count,
     facts.embedded_font_count,
     facts.link_annotation_count,
     facts.has_outline,
-    facts.image_xobject_count
+    facts.image_xobject_count,
+    facts.form_xobject_count
   );
 }
 

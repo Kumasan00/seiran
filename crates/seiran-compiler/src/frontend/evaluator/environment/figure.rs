@@ -25,6 +25,8 @@ const HEIGHT: OptKey<Length> = opt_args::positive_length("height");
 const DPI: OptKey<u32> = opt_args::positive_int("dpi");
 /// `\image[downsample=...]`（per-image ダウンサンプリング）
 const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
+/// `\image[page=N]`（PDF のページ。小数と 1 未満は収集時に拒否される）
+const PAGE: OptKey<u32> = opt_args::positive_int("page");
 
 /// `figure` 環境の本体に書けるコマンド
 #[derive(Debug, Clone, Copy)]
@@ -61,6 +63,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let mut height: Option<Length> = None;
   let mut dpi: Option<u32> = None;
   let mut downsample: Option<bool> = None;
+  let mut page: Option<u32> = None;
   let mut caption: Option<Vec<HirInline>> = None;
   // `\caption` が `\image` よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
   let mut caption_position = CaptionPosition::Bottom;
@@ -86,6 +89,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           height = extracted.height;
           dpi = extracted.dpi;
           downsample = extracted.downsample;
+          page = extracted.page;
         },
         FigureCommand::Caption => {
           if caption.is_some() {
@@ -122,6 +126,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
       height,
       dpi,
       downsample,
+      page,
       caption,
       caption_position,
       label,
@@ -143,15 +148,27 @@ struct ImageArgs {
   dpi: Option<u32>,
   /// per-image ダウンサンプリング ON/OFF
   downsample: Option<bool>,
+  /// PDF のページ（1 始まり）
+  page: Option<u32>,
 }
 
-/// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` から各引数を抽出する
+/// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false, page=N]{path}` から各引数を抽出する
 fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
-  let opts = collect_command_opt_args(view, &[WIDTH.decl(), HEIGHT.decl(), DPI.decl(), DOWNSAMPLE.decl()])?;
+  let opts = collect_command_opt_args(
+    view,
+    &[
+      WIDTH.decl(),
+      HEIGHT.decl(),
+      DPI.decl(),
+      DOWNSAMPLE.decl(),
+      PAGE.decl(),
+    ],
+  )?;
   let width = opts.get(WIDTH);
   let height = opts.get(HEIGHT);
   let dpi = opts.get(DPI);
   let downsample = opts.get(DOWNSAMPLE);
+  let page = opts.get(PAGE);
 
   let first_arg = arity::exactly_one_arg(view, "画像ファイルのパス")?;
 
@@ -171,17 +188,22 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
     });
   };
   // 効かないことが拡張子（字面）だけで決まるオプションは、ファイルを読む前にここで拒否する
-  let raster_only = [("dpi", dpi.is_some()), ("downsample", downsample.is_some())];
-  for (key, written) in raster_only {
-    let applies = match format {
-      ImageFormat::Png | ImageFormat::Jpeg => true,
-      ImageFormat::Svg => false,
-    };
+  let (raster, pdf) = match format {
+    ImageFormat::Png | ImageFormat::Jpeg => (true, false),
+    ImageFormat::Svg => (false, false),
+    ImageFormat::Pdf => (false, true),
+  };
+  let format_specific = [
+    ("page", page.is_some(), pdf, "PDF"),
+    ("dpi", dpi.is_some(), raster, "PNG / JPEG"),
+    ("downsample", downsample.is_some(), raster, "PNG / JPEG"),
+  ];
+  for (key, written, applies, applies_to) in format_specific {
     if written && !applies {
       return Err(EvalError::ImageOptionNotApplicable {
         key: key.to_string(),
         format,
-        applies_to: "PNG / JPEG".to_string(),
+        applies_to: applies_to.to_string(),
         span: view.span().into(),
       });
     }
@@ -194,6 +216,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
     height,
     dpi,
     downsample,
+    page,
   });
 }
 
@@ -397,6 +420,76 @@ mod tests {
         "{option}: {result:?}"
       );
     }
+  }
+
+  #[test]
+  fn image_records_page_on_pdf() {
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[page=2]{a.pdf}\end{figure}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst).unwrap();
+
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(figure.format, ImageFormat::Pdf);
+    assert_eq!(figure.page, Some(2));
+  }
+
+  #[test]
+  fn image_rejects_page_on_raster_and_svg() {
+    for (path, format) in [
+      ("a.png", ImageFormat::Png),
+      ("a.jpg", ImageFormat::Jpeg),
+      ("a.svg", ImageFormat::Svg),
+    ] {
+      let arena = Bump::new();
+      let source = format!(r"\begin{{figure}}\image[page=1]{{{path}}}\end{{figure}}");
+      let cst = test_support::parse_cst(&source, &arena).unwrap();
+
+      let result = evaluate_children_to_hir(&source, cst);
+
+      assert!(
+        matches!(
+          &result,
+          Err(EvalError::ImageOptionNotApplicable { key, format: actual, applies_to, .. })
+            if key == "page" && *actual == format && applies_to == "PDF"
+        ),
+        "{path}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn image_rejects_raster_only_options_on_pdf() {
+    for (option, expected_key) in [("dpi=300", "dpi"), ("downsample=false", "downsample")] {
+      let arena = Bump::new();
+      let source = format!(r"\begin{{figure}}\image[{option}]{{a.pdf}}\end{{figure}}");
+      let cst = test_support::parse_cst(&source, &arena).unwrap();
+
+      let result = evaluate_children_to_hir(&source, cst);
+
+      assert!(
+        matches!(
+          &result,
+          Err(EvalError::ImageOptionNotApplicable { key, format: ImageFormat::Pdf, applies_to, .. })
+            if key == expected_key && applies_to == "PNG / JPEG"
+        ),
+        "{option}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn image_rejects_page_zero() {
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[page=0]{a.pdf}\end{figure}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "page"), "{result:?}");
   }
 
   #[test]

@@ -98,15 +98,26 @@ impl Publication {
 pub struct PublicationResources {
   /// 実体ごとの描画資源
   fonts: FaceMap<PublicationFont>,
-  /// 描画対象の画像（パス昇順。[`ImageRef`] はこの配列の添字）
+  /// 描画対象の画像（（パス, ページ index）昇順。[`ImageRef`] はこの配列の添字）
   images: Vec<PublicationImage>,
 }
 
 impl PublicationResources {
   /// フォント・画像資源から [`PublicationResources`] を構築する。
   ///
-  /// `images` は表示順に依存しない決定的な順序（パス昇順）で渡す。
+  /// `images` は表示順に依存しない決定的な順序（（パス, ページ index）昇順）で渡す。
+  ///
+  /// # Panics
+  ///
+  /// `page_index` が「PDF のときだけ `Some`」でない画像があると落ちる — `typeset::emit` は組版段の
+  /// `pdf_page_index`（PDF だけにページ index を与える）の値をそのまま載せるので、破れるのは compiler の不具合だけ。
   pub(crate) fn new(fonts: FaceMap<PublicationFont>, images: Vec<PublicationImage>) -> Self {
+    for image in &images {
+      assert!(
+        image.page_index.is_some() == (image.format == ImageFormat::Pdf),
+        "page_index は PDF の画像資源だけが持つ（typeset::image::pdf_page_index の値を emit が載せる）: {image:?}"
+      );
+    }
     return PublicationResources { fonts, images };
   }
 
@@ -122,9 +133,13 @@ impl PublicationResources {
   /// 資源を持つ全実体を、フォント種別の宣言順・種別の中は候補の順に返す。
   pub fn faces(&self) -> impl Iterator<Item = FontFace> + '_ { return self.fonts.faces(); }
 
-  /// 指定パスの画像への参照を返す。保持していないパスは `None`。
-  pub(crate) fn image_ref(&self, path: &str) -> Option<ImageRef> {
-    return self.images.iter().position(|image| return image.path == path).map(ImageRef);
+  /// 指定パス（PDF はそのページ index）の画像への参照を返す。保持していないものは `None`。
+  pub(crate) fn image_ref(&self, path: &str, page_index: Option<usize>) -> Option<ImageRef> {
+    return self
+      .images
+      .iter()
+      .position(|image| return image.path == path && image.page_index == page_index)
+      .map(ImageRef);
   }
 
   /// 参照先の画像を返す。
@@ -142,15 +157,18 @@ impl PublicationResources {
   }
 }
 
-/// 描画対象の画像 1 件（形式判定済みの生バイト列）。
+/// 描画対象の画像 1 件（形式判定済みの生バイト列。PDF は選んだ 1 ページ）。
 #[derive(Clone, PartialEq, Eq)]
 pub struct PublicationImage {
   /// 画像ファイルへのパス（診断メッセージ用）
   pub path: String,
   /// 判定済みの画像形式
   pub format: ImageFormat,
-  /// ファイルの生バイト列（未デコード）
-  pub bytes: Vec<u8>,
+  /// 描画する PDF のページ index（0 始まり）。`format` が [`ImageFormat::Pdf`] のときだけ `Some`
+  /// （[`PublicationResources`] の構築時に検査済み）
+  pub page_index: Option<usize>,
+  /// ファイルの生バイト列（未デコード。同じ PDF の別ページは同じバイト列を共有する）
+  pub bytes: Arc<[u8]>,
 }
 
 impl Debug for PublicationImage {
@@ -159,6 +177,7 @@ impl Debug for PublicationImage {
       .debug_struct("PublicationImage")
       .field("path", &self.path)
       .field("format", &self.format)
+      .field("page_index", &self.page_index)
       .field("bytes_len", &self.bytes.len())
       .finish();
   }
@@ -543,15 +562,59 @@ mod tests {
     let resources = resources(vec![PublicationImage {
       path: "a.png".to_string(),
       format: ImageFormat::Png,
-      bytes: vec![1, 2, 3],
+      page_index: None,
+      bytes: Arc::from(vec![1, 2, 3]),
     }]);
 
-    let registered = resources.image_ref("a.png");
-    let missing = resources.image_ref("b.png");
+    let registered = resources.image_ref("a.png", None);
+    let missing = resources.image_ref("b.png", None);
 
     assert!(missing.is_none(), "登録していないパスは ImageRef を得られないはず");
     let image = resources.image(registered.expect("登録済みパスは ImageRef を得られるはず"));
-    assert_eq!(image.bytes, vec![1, 2, 3]);
+    assert_eq!(&*image.bytes, &[1, 2, 3]);
     assert_eq!(image.format, ImageFormat::Png);
+  }
+
+  #[test]
+  fn image_ref_distinguishes_pages_of_one_pdf() {
+    let bytes: Arc<[u8]> = Arc::from(vec![9]);
+    let page = |page_index| {
+      return PublicationImage {
+        path: "a.pdf".to_string(),
+        format: ImageFormat::Pdf,
+        page_index: Some(page_index),
+        bytes: Arc::clone(&bytes),
+      };
+    };
+    let resources = resources(vec![page(0), page(1)]);
+
+    let first = resources.image_ref("a.pdf", Some(0)).expect("1 ページ目は登録済み");
+    let second = resources.image_ref("a.pdf", Some(1)).expect("2 ページ目は登録済み");
+
+    assert_ne!(first, second, "同じ PDF の別ページは別の資源");
+    assert_eq!(resources.image(second).page_index, Some(1));
+    assert!(resources.image_ref("a.pdf", Some(2)).is_none());
+  }
+
+  #[test]
+  #[should_panic(expected = "page_index は PDF の画像資源だけが持つ")]
+  fn resources_reject_page_index_on_non_pdf() {
+    let _ = resources(vec![PublicationImage {
+      path: "a.png".to_string(),
+      format: ImageFormat::Png,
+      page_index: Some(0),
+      bytes: Arc::from(vec![1]),
+    }]);
+  }
+
+  #[test]
+  #[should_panic(expected = "page_index は PDF の画像資源だけが持つ")]
+  fn resources_reject_pdf_without_page_index() {
+    let _ = resources(vec![PublicationImage {
+      path: "a.pdf".to_string(),
+      format: ImageFormat::Pdf,
+      page_index: None,
+      bytes: Arc::from(vec![1]),
+    }]);
   }
 }

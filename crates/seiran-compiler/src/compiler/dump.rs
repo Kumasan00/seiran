@@ -98,10 +98,11 @@ fn dump_paint_op(out: &mut String, op: &PaintOp, resources: &PublicationResource
       rect,
       target_dpi,
     } => {
-      let path = &resources.image(*image).path;
+      let image = resources.image(*image);
+      let (path, page_index) = (&image.path, image.page_index);
       let _ = writeln!(
         out,
-        "  image x={} y={} w={} h={} dpi={target_dpi:?} path={path:?}",
+        "  image x={} y={} w={} h={} dpi={target_dpi:?} page={page_index:?} path={path:?}",
         f2_pt(rect.x()),
         f2_pt(rect.y()),
         f2_pt(rect.width()),

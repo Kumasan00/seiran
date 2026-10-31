@@ -36,12 +36,12 @@ pub(super) fn emit(
 
 /// 読み込み済みフォント資源と画像資源から `Publication` の描画資源を組み立てる。
 ///
-/// 画像はパス昇順に並べてから渡す — `ImageRef` は配列添字なので、`HashMap` の反復順のままだと
-/// 同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
+/// 画像は組版段が（パス, ページ index）昇順に並べた順のまま渡す — `ImageRef` は配列添字なので、順序が
+/// 決定的でないと同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
 fn build_resources(
   font_data: &FontData,
   font_resources: &FontSystem,
-  images: HashMap<ProjectPath, ImageAsset>,
+  images: Vec<(ProjectPath, Option<usize>, ImageAsset)>,
 ) -> PublicationResources {
   let fonts = font_resources.face_configs().map(|face, face_config| {
     return PublicationFont {
@@ -50,14 +50,13 @@ fn build_resources(
       metrics: font_resources.metrics(face),
     };
   });
-  let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
-  sorted.sort_by(|(left, _), (right, _)| return left.cmp(right));
-  let images = sorted
+  let images = images
     .into_iter()
-    .map(|(path, asset)| {
+    .map(|(path, page_index, asset)| {
       return PublicationImage {
         path: path.to_string(),
         format: asset.format,
+        page_index,
         bytes: asset.bytes,
       };
     })
@@ -256,6 +255,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
     },
     PlacedBlock::Image {
       path,
+      page_index,
       x,
       y,
       width,
@@ -263,9 +263,9 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
       target_dpi,
     } => {
       let path = path.to_string();
-      let Some(image) = resources.image_ref(&path) else {
+      let Some(image) = resources.image_ref(&path, page_index) else {
         unreachable!(
-          "描画対象の画像は typeset::image::collect_image_requests が全件集め PublicationResources へ載せる: {path}"
+          "描画対象の画像は typeset::image::collect_image_requests が全件集め PublicationResources へ載せる: {path} {page_index:?}"
         );
       };
       ops.push(PaintOp::DrawImage {
@@ -322,7 +322,7 @@ fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: PlacedTableRow, origin
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
+  use std::{path::PathBuf, sync::Arc};
 
   use super::build_publication;
   use crate::{
@@ -402,7 +402,8 @@ mod tests {
         return PublicationImage {
           path: (*path).to_string(),
           format: ImageFormat::Png,
-          bytes: vec![0],
+          page_index: None,
+          bytes: Arc::from(vec![0]),
         };
       })
       .collect();
@@ -537,7 +538,7 @@ mod tests {
 
     let publication = build_with_images(&config, vec![page], vec![], &["figures/a.png"]);
 
-    let image = publication.resources().image_ref("figures/a.png").expect("登録した画像は参照を得られるはず");
+    let image = publication.resources().image_ref("figures/a.png", None).expect("登録した画像は参照を得られるはず");
     assert_eq!(
       publication.pages()[0].ops()[0],
       PaintOp::DrawImage {

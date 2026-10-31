@@ -18,7 +18,7 @@
 \section{図のサンプル}
 
 ここは figure 環境のフィクスチャです。図の前後にテキストを置き、画像とキャプションが
-正しくレンダリングされること、JPEG / PNG / SVG の 3 形式が読めること、図番号が連番で振られる
+正しくレンダリングされること、JPEG / PNG / SVG / PDF の 4 形式が読めること、図番号が連番で振られる
 ことを確認します。あわせて image コマンドのサイズ指定 4 パターン
 （両指定 / width のみ / height のみ / 両省略）の挙動、および dpi / downsample の per-image
 上書きを検証します。
@@ -60,6 +60,24 @@
 \begin{figure}[label=fig:testimage6]
 \image[width=80mm]{./tests/image/testimage6.svg}
 \caption{テスト画像 6 (SVG, width のみ — 高さは usvg が報告する縦横比から算出)}
+\end{figure}
+
+続けて PDF 図版をベクタのまま埋め込みます。1 ページの PDF は page を省略でき、2 ページの PDF は
+page で選んだページを使います。同じ PDF の別ページを別の図にもできます。
+
+\begin{figure}[label=fig:vector1]
+\image[width=80mm]{./tests/image/vector1.pdf}
+\caption{PDF 1 (1 ページ, page 省略, width のみ)}
+\end{figure}
+
+\begin{figure}[label=fig:vector2-p2]
+\image[width=60mm, page=2]{./tests/image/vector2.pdf}
+\caption{PDF 2 の 2 ページ目 (CropBox と MediaBox の共通部分を 90 度回転)}
+\end{figure}
+
+\begin{figure}[label=fig:vector2-p1]
+\image[height=30mm, page=1]{./tests/image/vector2.pdf}
+\caption{PDF 2 の 1 ページ目 (同じ PDF の別ページ, height のみ)}
 \end{figure}
 
 図の後の段落です。

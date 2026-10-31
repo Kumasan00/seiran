@@ -3,3 +3,4 @@ embedded_font_count=6
 link_annotation_count=0
 has_outline=true
 image_xobject_count=0
+form_xobject_count=0

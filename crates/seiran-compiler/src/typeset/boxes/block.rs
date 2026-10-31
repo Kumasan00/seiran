@@ -65,6 +65,8 @@ pub(in crate::typeset) enum Block {
     origin: NodeId,
     /// 画像ファイルへのパス
     path: ProjectPath,
+    /// PDF のページ index（PDF 以外は `None`）
+    page_index: Option<usize>,
     /// 確定した描画幅
     width: Length,
     /// 確定した描画高さ

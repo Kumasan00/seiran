@@ -14,6 +14,8 @@ pub enum ImageFormat {
   Jpeg,
   /// SVG（`.svg`）
   Svg,
+  /// PDF（`.pdf`）。1 ページをベクタのまま図にする
+  Pdf,
 }
 
 impl ImageFormat {
@@ -24,6 +26,7 @@ impl ImageFormat {
       "png" => Some(ImageFormat::Png),
       "jpg" | "jpeg" => Some(ImageFormat::Jpeg),
       "svg" => Some(ImageFormat::Svg),
+      "pdf" => Some(ImageFormat::Pdf),
       _ => None,
     };
   }
@@ -39,6 +42,8 @@ mod tests {
     assert_eq!(ImageFormat::from_path("a.JPG"), Some(ImageFormat::Jpeg));
     assert_eq!(ImageFormat::from_path("dir/a.jpeg"), Some(ImageFormat::Jpeg));
     assert_eq!(ImageFormat::from_path("a.svg"), Some(ImageFormat::Svg));
+    assert_eq!(ImageFormat::from_path("a.pdf"), Some(ImageFormat::Pdf));
+    assert_eq!(ImageFormat::from_path("a.PDF"), Some(ImageFormat::Pdf));
     assert_eq!(ImageFormat::from_path("a.gif"), None);
     assert_eq!(ImageFormat::from_path("a"), None);
   }
@@ -48,5 +53,6 @@ mod tests {
     assert_eq!(ImageFormat::Png.to_string(), "PNG");
     assert_eq!(ImageFormat::Jpeg.to_string(), "JPEG");
     assert_eq!(ImageFormat::Svg.to_string(), "SVG");
+    assert_eq!(ImageFormat::Pdf.to_string(), "PDF");
   }
 }

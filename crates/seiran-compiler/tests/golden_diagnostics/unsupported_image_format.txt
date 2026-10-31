@@ -8,4 +8,4 @@ frontend::eval::unsupported_image_format
    ·                         ╰── この画像です
  6 │ \caption{未対応の画像形式}
    ╰────
-  help: 対応形式は PNG (.png)、JPEG (.jpg / .jpeg)、SVG (.svg) です。
+  help: 対応形式は PNG (.png)、JPEG (.jpg / .jpeg)、SVG (.svg)、PDF (.pdf) です。

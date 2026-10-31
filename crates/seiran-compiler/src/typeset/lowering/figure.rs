@@ -2,10 +2,13 @@
 
 use crate::{
   document::{HirFigure, ImageFormat, NodeId},
-  typeset::lowering::{
-    LoweringContext, LoweringState,
-    float::{FloatCaption, FloatMargins, lower_numbered_float},
-    layout_node::LayoutNode,
+  typeset::{
+    image,
+    lowering::{
+      LoweringContext, LoweringState,
+      float::{FloatCaption, FloatMargins, lower_numbered_float},
+      layout_node::LayoutNode,
+    },
   },
 };
 
@@ -24,7 +27,7 @@ pub(super) fn lower_figure(
       .downsample
       .unwrap_or(ctx.image_downsample)
       .then(|| return figure.dpi.unwrap_or(ctx.image_max_dpi)),
-    ImageFormat::Svg => None,
+    ImageFormat::Svg | ImageFormat::Pdf => None,
   };
 
   let margins = FloatMargins {
@@ -42,6 +45,7 @@ pub(super) fn lower_figure(
     return LayoutNode::Image {
       origin: figure.image_site,
       path: figure.image_path.clone(),
+      page_index: image::pdf_page_index(figure.format, figure.page),
       width: figure.width,
       height: figure.height,
       target_dpi,
@@ -187,6 +191,25 @@ mod tests {
     let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
+    assert!(target_dpi.is_none());
+  }
+
+  #[test]
+  fn lower_figure_pdf_carries_page_index_and_no_target_dpi() {
+    let style = ReadStyle::default();
+    let ctx = context(&style);
+
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[page=3]{a.pdf}\n\\end{figure}\n");
+
+    let LayoutNode::Image {
+      page_index,
+      target_dpi,
+      ..
+    } = figure_children(&nodes).first().expect("画像")
+    else {
+      panic!("Image が期待: {nodes:?}");
+    };
+    assert_eq!(*page_index, Some(2), "page は 1 始まり、page index は 0 始まり");
     assert!(target_dpi.is_none());
   }
 

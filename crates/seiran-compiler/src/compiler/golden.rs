@@ -542,7 +542,7 @@ fn figure_image_sizes() -> Vec<(Length, Length)> {
 #[test]
 fn figure_images_resolve_to_expected_display_sizes() {
   // `figure.sei` は画像のサイズ指定 4 パターン（両指定 / width のみ / height のみ /
-  // 両省略）と SVG を通す。`figure.sei` は画像実体への依存で golden の対象外なので、
+  // 両省略）と SVG・PDF（ページ選択・切り抜きと回転）を通す。`figure.sei` は画像実体への依存で golden の対象外なので、
   // 寸法の確定はこのテストが固定する（本文幅 = 段幅は 425mm）
   let expected = [
     (Length::mm(80.0), Length::mm(60.0)),     // testimage1 1252x830・両指定
@@ -551,11 +551,14 @@ fn figure_images_resolve_to_expected_display_sizes() {
     (Length::mm(80.0), Length::mm(60.0)),     // testimage3 2348x3128・両指定
     (Length::mm(425.0), Length::mm(566.667)), // testimage5 756x1008・両省略 → 段幅いっぱい
     (Length::mm(80.0), Length::mm(48.0)),     // testimage6 SVG 200x120・width のみ
+    (Length::mm(80.0), Length::mm(48.0)),     // vector1.pdf 200x120pt・page 省略（1 ページ）・width のみ
+    (Length::mm(60.0), Length::mm(73.333)),   // vector2.pdf p2 共通部分 110x90 を回転 → 90x110・width のみ
+    (Length::mm(60.0), Length::mm(30.0)),     // vector2.pdf p1 300x150・height のみ（同じ PDF の別ページ）
   ];
 
   let sizes = figure_image_sizes();
 
-  assert_eq!(sizes.len(), expected.len(), "画像は 6 枚あるはず: {sizes:?}");
+  assert_eq!(sizes.len(), expected.len(), "画像は 9 枚あるはず: {sizes:?}");
   for (index, ((width, height), (expected_width, expected_height))) in sizes.iter().zip(expected).enumerate() {
     assert!(
       (width.to_mm() - expected_width.to_mm()).abs() < 0.01,
@@ -593,8 +596,8 @@ fn figure_image_without_size_fits_two_column_width_not_text_width() {
     })
     .collect();
 
-  // 6 枚中サイズ両省略は testimage5（5 番目、index 4）
-  assert_eq!(sizes.len(), 6, "画像は 6 枚あるはず: {sizes:?}");
+  // 9 枚中サイズ両省略は testimage5（5 番目、index 4）
+  assert_eq!(sizes.len(), 9, "画像は 9 枚あるはず: {sizes:?}");
   let (width, height) = sizes[4];
 
   // 段間 18pt（既定）を引いた 2 段組みの段幅（実測して固定した値）

@@ -472,6 +472,7 @@ pub(in crate::typeset) fn break_pages(
       Block::Image {
         origin,
         path,
+        page_index,
         width,
         height,
         target_dpi,
@@ -498,6 +499,7 @@ pub(in crate::typeset) fn break_pages(
         composer.draft.place_block(
           PlacedBlock::Image {
             path,
+            page_index,
             x: col_off + indent + offset,
             y,
             width,
@@ -2362,6 +2364,7 @@ mod tests {
       Block::Image {
         origin: image_origin(),
         path: ProjectPath::new("x.png"),
+        page_index: None,
         width: pt(20.0),
         height: pt(15.0),
         target_dpi: None,
@@ -2393,6 +2396,7 @@ mod tests {
       Block::Image {
         origin: image_origin(),
         path: ProjectPath::new("x.png"),
+        page_index: None,
         width: pt(20.0),
         height: pt(30.0),
         target_dpi: None,
@@ -3300,6 +3304,7 @@ mod tests {
     let blocks = vec![Block::Image {
       origin: image_origin(),
       path: ProjectPath::new("x.png"),
+      page_index: None,
       width: pt(20.0),
       height: pt(15.0),
       target_dpi: None,
@@ -3322,6 +3327,7 @@ mod tests {
     let blocks = vec![Block::Image {
       origin: image_origin(),
       path: ProjectPath::new("x.png"),
+      page_index: None,
       width: pt(20.0),
       height: pt(15.0),
       target_dpi: None,
@@ -4008,6 +4014,7 @@ mod tests {
     return Block::Image {
       origin: image_origin(),
       path: ProjectPath::new("fixture.png"),
+      page_index: None,
       width: Length::pt(10.0),
       height: pt(height),
       target_dpi: None,
@@ -4506,6 +4513,7 @@ mod tests {
     return Block::Image {
       origin: image_origin(),
       path: ProjectPath::new("x.png"),
+      page_index: None,
       width: pt(width),
       height: pt(height),
       target_dpi: None,

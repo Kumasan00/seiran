@@ -1,6 +1,6 @@
 //! 文書木（HIR）が参照する画像の収集
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
   document::{HirDocument, HirNode, HirNodeKind, ImageFormat},
@@ -14,36 +14,45 @@ pub(in crate::typeset) struct ImageRequest {
   pub(in crate::typeset) path: ProjectPath,
   /// 拡張子が宣言する画像形式（同じパスは同じ拡張子なので 1 つに決まる）
   pub(in crate::typeset) format: ImageFormat,
+  /// ソースに書かれた `page` の集合（省略は `None`。PDF 以外は frontend が `page` を拒否するので `{None}`）
+  pub(in crate::typeset) pages: BTreeSet<Option<u32>>,
 }
 
 /// 文書木（HIR）を再帰的に走査し、画像ファイルごとの要求を重複なく収集する（`ProjectPath` の昇順）。
 pub(in crate::typeset) fn collect_image_requests(document: &HirDocument) -> Vec<ImageRequest> {
-  let mut formats: BTreeMap<ProjectPath, ImageFormat> = BTreeMap::new();
+  let mut requests: BTreeMap<ProjectPath, ImageRequest> = BTreeMap::new();
   for nodes in document.source_nodes() {
-    walk_nodes(nodes, &mut formats);
+    walk_nodes(nodes, &mut requests);
   }
-  return formats.into_iter().map(|(path, format)| return ImageRequest { path, format }).collect();
+  return requests.into_values().collect();
 }
 
-/// `nodes` を再帰的に走査し、`Figure` の `image_path` と形式を `formats` へ集める。
-fn walk_nodes(nodes: &[HirNode], formats: &mut BTreeMap<ProjectPath, ImageFormat>) {
+/// `nodes` を再帰的に走査し、`Figure` のパス・形式・`page` を `requests` へ集める。
+fn walk_nodes(nodes: &[HirNode], requests: &mut BTreeMap<ProjectPath, ImageRequest>) {
   for node in nodes {
     match &node.kind {
       HirNodeKind::Figure(figure) => {
-        formats.insert(figure.image_path.clone(), figure.format);
+        let request = requests.entry(figure.image_path.clone()).or_insert_with(|| {
+          return ImageRequest {
+            path: figure.image_path.clone(),
+            format: figure.format,
+            pages: BTreeSet::new(),
+          };
+        });
+        request.pages.insert(figure.page);
       },
       HirNodeKind::Theorem(theorem) => {
-        walk_nodes(&theorem.body, formats);
+        walk_nodes(&theorem.body, requests);
       },
       HirNodeKind::Quote(quote) => {
-        walk_nodes(&quote.body, formats);
+        walk_nodes(&quote.body, requests);
       },
       HirNodeKind::Flush(flush) => {
-        walk_nodes(&flush.body, formats);
+        walk_nodes(&flush.body, requests);
       },
       HirNodeKind::List(list) => {
         for item in &list.items {
-          walk_nodes(&item.body, formats);
+          walk_nodes(&item.body, requests);
         }
       },
       HirNodeKind::Heading(_)
@@ -60,7 +69,12 @@ fn walk_nodes(nodes: &[HirNode], formats: &mut BTreeMap<ProjectPath, ImageFormat
 #[cfg(test)]
 mod tests {
   use super::collect_image_requests;
-  use crate::{document::HirDocument, frontend::test_support::parse_for_test, project::ProjectPath, source::SourceId};
+  use crate::{
+    document::{HirDocument, ImageFormat},
+    frontend::test_support::parse_for_test,
+    project::ProjectPath,
+    source::SourceId,
+  };
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
@@ -111,6 +125,17 @@ mod tests {
     let source = format!("\\begin{{itemize}}\n\\item{{{}}}\n\\end{{itemize}}\n", figure("in-list.png").trim_end());
     let paths = collected_paths(&source);
     assert_eq!(paths, vec![ProjectPath::new("in-list.png")]);
+  }
+
+  #[test]
+  fn collects_written_pages_per_pdf_file() {
+    let source =
+      "\\begin{figure}\n\\image[page=2]{a.pdf}\n\\end{figure}\n\n\\begin{figure}\n\\image{a.pdf}\n\\end{figure}\n\n";
+    let requests = collect_image_requests(&document(source));
+
+    assert_eq!(requests.len(), 1, "同じ PDF は 1 ファイルの要求にまとまるはず: {requests:?}");
+    assert_eq!(requests[0].format, ImageFormat::Pdf);
+    assert_eq!(requests[0].pages.iter().copied().collect::<Vec<_>>(), vec![None, Some(2)]);
   }
 
   #[test]

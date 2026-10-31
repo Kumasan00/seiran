@@ -1,37 +1,25 @@
-//! 画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプリングを行う。
+//! 画像のデコード（PNG / JPEG / SVG / PDF）とラスタ画像のダウンサンプリングを行う。
 
-use krilla::{Data, image::Image};
+use std::sync::Arc;
+
+use krilla::{
+  Data,
+  image::Image,
+  pdf::{Pdf, PdfDocument},
+};
 use seiran_compiler::ImageFormat;
 use usvg::Tree;
 
 use crate::error::PdfRenderError;
 
-/// 読み込んだラスタ画像または SVG。
+/// 読み込んだラスタ画像・SVG・PDF。
 pub(crate) enum LoadedImage {
   /// PNG / JPEG などのラスタ画像。
   Raster(Image),
   /// usvg でパースした SVG。
   Svg(Box<Tree>),
-}
-
-impl LoadedImage {
-  /// 自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を返します。
-  #[expect(
-    clippy::cast_precision_loss,
-    reason = "ラスタの自然寸法は image crate が返すピクセル数で、f32 の仮数部に収まる"
-  )]
-  pub(crate) fn natural_size(&self) -> (f32, f32) {
-    return match self {
-      LoadedImage::Raster(image) => {
-        let (w, h) = image.size();
-        (w as f32, h as f32)
-      },
-      LoadedImage::Svg(tree) => {
-        let size = tree.size();
-        (size.width(), size.height())
-      },
-    };
-  }
+  /// 埋め込み用に開いた PDF 文書（描くページは呼び元が選ぶ）。
+  Pdf(PdfDocument),
 }
 
 /// 判定済みの形式に従ってバイト列をデコードし、必要ならラスタ画像を指定サイズ以下に縮小する。
@@ -40,7 +28,7 @@ impl LoadedImage {
 pub(crate) fn load_image(
   path: &str,
   format: ImageFormat,
-  bytes: &[u8],
+  bytes: &Arc<[u8]>,
   resize_to: Option<(u32, u32)>,
 ) -> Result<LoadedImage, PdfRenderError> {
   match format {
@@ -54,6 +42,17 @@ pub(crate) fn load_image(
         };
       })?;
       return Ok(LoadedImage::Svg(Box::new(tree)));
+    },
+    ImageFormat::Pdf => {
+      // compiler が同じバイト列を検査済みだが、krilla を compiler へ持ち込まないため描画用にもう 1 度開く。
+      // `Arc<[u8]>` を 1 段包むと hayro の `PdfData` が受け取る Sized な `AsRef<[u8]>` になり、複製しない
+      let pdf = Pdf::new(Arc::new(Arc::clone(bytes))).map_err(|error| {
+        return PdfRenderError::ParsePdf {
+          path: path.to_string(),
+          reason: format!("{error:?}"),
+        };
+      })?;
+      return Ok(LoadedImage::Pdf(PdfDocument::new(Arc::new(pdf))));
     },
   }
 }
@@ -136,15 +135,42 @@ mod tests {
     (ImageFormat::Jpeg, image::ImageFormat::Jpeg),
   ];
 
+  /// ラスタとして読めたはずの画像のピクセル寸法。
+  fn raster_size(loaded: &LoadedImage) -> (u32, u32) {
+    let LoadedImage::Raster(image) = loaded else {
+      panic!("ラスタ画像を期待");
+    };
+    return image.size();
+  }
+
   #[test]
   fn load_image_decodes_svg_to_its_declared_size() {
-    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
+    let svg: Arc<[u8]> = Arc::from(&br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#[..]);
 
-    let loaded = load_image("icon.svg", ImageFormat::Svg, svg, None).expect("有効な SVG はデコードできるはず");
+    let loaded = load_image("icon.svg", ImageFormat::Svg, &svg, None).expect("有効な SVG はデコードできるはず");
 
-    let (width, height) = loaded.natural_size();
-    assert!((width - 80.0).abs() < 1e-4);
-    assert!((height - 60.0).abs() < 1e-4);
+    let LoadedImage::Svg(tree) = loaded else {
+      panic!("SVG を期待");
+    };
+    assert!((tree.size().width() - 80.0).abs() < 1e-4);
+    assert!((tree.size().height() - 60.0).abs() < 1e-4);
+  }
+
+  #[test]
+  fn load_image_parses_pdf_into_an_embeddable_document() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image/vector1.pdf");
+    let bytes: Arc<[u8]> = std::fs::read(&path).expect("PDF fixture を読めるはず").into();
+
+    let loaded = load_image("vector1.pdf", ImageFormat::Pdf, &bytes, None).expect("有効な PDF は読めるはず");
+
+    assert!(matches!(loaded, LoadedImage::Pdf(_)));
+  }
+
+  #[test]
+  fn load_image_reports_broken_pdf_as_parse_error() {
+    let result = load_image("broken.pdf", ImageFormat::Pdf, &Arc::from(&b"not a pdf"[..]), None);
+
+    assert!(matches!(result, Err(PdfRenderError::ParsePdf { path, .. }) if path == "broken.pdf"));
   }
 
   #[test]
@@ -155,9 +181,7 @@ mod tests {
       let loaded = load_image("figure.bin", format, &bytes, None)
         .unwrap_or_else(|error| panic!("{format:?} として読めるはず: {error}"));
 
-      let (width, height) = loaded.natural_size();
-      assert!((width - 3.0).abs() < 1e-4, "{format:?} の幅は 3px のまま");
-      assert!((height - 2.0).abs() < 1e-4, "{format:?} の高さは 2px のまま");
+      assert_eq!(raster_size(&loaded), (3, 2), "{format:?} は 3x2px のまま");
     }
   }
 
@@ -170,16 +194,14 @@ mod tests {
       let loaded = load_image("big.img", format, &bytes, Some((2, 2)))
         .unwrap_or_else(|error| panic!("{format:?} は縮小して読めるはず: {error}"));
 
-      let (width, height) = loaded.natural_size();
-      assert!((width - 2.0).abs() < 1e-4, "{format:?} の幅は 2px に縮むはず");
-      assert!((height - 2.0).abs() < 1e-4, "{format:?} の高さは 2px に縮むはず");
+      assert_eq!(raster_size(&loaded), (2, 2), "{format:?} は 2x2px に縮むはず");
     }
   }
 
   #[test]
   fn load_image_reports_unresizable_raster_as_resize_error_before_decoding() {
     for (format, _) in RASTER_FORMATS {
-      let result = load_image("broken.img", format, b"not an image", Some((2, 2)));
+      let result = load_image("broken.img", format, &Arc::from(&b"not an image"[..]), Some((2, 2)));
       assert!(
         matches!(result, Err(PdfRenderError::ResizeImage { path, .. }) if path == "broken.img"),
         "{format:?} は縮小段階の ResizeImage で止まるはず"
@@ -190,7 +212,7 @@ mod tests {
   #[test]
   fn load_image_reports_broken_raster_as_decode_error() {
     for (format, _) in RASTER_FORMATS {
-      let result = load_image("broken.img", format, b"not an image", None);
+      let result = load_image("broken.img", format, &Arc::from(&b"not an image"[..]), None);
       assert!(
         matches!(result, Err(PdfRenderError::DecodeImage { path, .. }) if path == "broken.img"),
         "{format:?} は DecodeImage になるはず"
@@ -201,11 +223,11 @@ mod tests {
   /// `width` x `height` の RGB ラスタ画像を `format` でエンコードしたバイト列を返す。
   ///
   /// RGB なのは `image` crate の JPEG エンコーダが RGBA を受け付けないため。
-  fn raster_bytes(format: image::ImageFormat, width: u32, height: u32) -> Vec<u8> {
+  fn raster_bytes(format: image::ImageFormat, width: u32, height: u32) -> Arc<[u8]> {
     let mut out = Vec::new();
     image::RgbImage::new(width, height)
       .write_to(&mut std::io::Cursor::new(&mut out), format)
       .expect("小さな RGB 画像は書き出せるはず");
-    return out;
+    return out.into();
   }
 }

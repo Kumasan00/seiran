@@ -109,6 +109,8 @@ pub(crate) enum PlacedBlock {
   Image {
     /// 画像ファイルへのパス
     path: ProjectPath,
+    /// PDF のページ index（PDF 以外は `None`）
+    page_index: Option<usize>,
     /// 本文左端からの水平オフセット
     x: Length,
     /// ページ上端からの距離（画像上端）

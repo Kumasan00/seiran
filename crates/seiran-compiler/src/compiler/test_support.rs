@@ -54,6 +54,8 @@ pub(super) const FIGURE_IMAGE_ASSETS: &[&str] = &[
   "./tests/image/testimage4.png",
   "./tests/image/testimage5.png",
   "./tests/image/testimage6.svg",
+  "./tests/image/vector1.pdf",
+  "./tests/image/vector2.pdf",
 ];
 
 /// 設定ファイル（config.toml / style.toml）の生テーブルへの上書き。

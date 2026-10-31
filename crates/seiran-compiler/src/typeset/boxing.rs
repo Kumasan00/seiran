@@ -186,6 +186,7 @@ impl BlockBuilder<'_> {
         LayoutNode::Image {
           origin,
           path,
+          page_index,
           width,
           height,
           target_dpi,
@@ -198,10 +199,11 @@ impl BlockBuilder<'_> {
           } else {
             self.column_width
           };
-          let (width, height) = resolve_image_size(self.images, &path, width, height, basis);
+          let (width, height) = resolve_image_size(self.images, &path, page_index, width, height, basis);
           blocks.push(Block::Image {
             origin,
             path,
+            page_index,
             width,
             height,
             target_dpi,

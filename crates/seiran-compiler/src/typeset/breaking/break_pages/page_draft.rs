@@ -547,6 +547,7 @@ mod tests {
   fn image(y: f32, height: f32) -> PlacedBlock {
     return PlacedBlock::Image {
       path: ProjectPath::new("fixture.png"),
+      page_index: None,
       x: Length::ZERO,
       y: pt(y),
       width: pt(10.0),

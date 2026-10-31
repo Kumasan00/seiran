@@ -579,7 +579,7 @@ pub(crate) enum EvalError {
   #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(
     code(frontend::eval::unsupported_image_format),
-    help("対応形式は PNG (.png)、JPEG (.jpg / .jpeg)、SVG (.svg) です。")
+    help("対応形式は PNG (.png)、JPEG (.jpg / .jpeg)、SVG (.svg)、PDF (.pdf) です。")
   )]
   UnsupportedImageFormat {
     /// 画像ファイルのパス（ソースの字面）
