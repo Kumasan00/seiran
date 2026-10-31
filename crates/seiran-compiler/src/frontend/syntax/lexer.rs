@@ -1,6 +1,6 @@
 //! 字句解析 — ソーステキストを [`Token`] 列に分割する
 
-use icu::properties::{CodePointMapData, props::GraphemeClusterBreak};
+use icu_properties::{CodePointMapData, props::GraphemeClusterBreak};
 
 use crate::{
   frontend::syntax::token::{Token, TokenKind},

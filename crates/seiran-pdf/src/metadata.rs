@@ -1,25 +1,25 @@
 //! PDF メタデータを組み立てる。
 
-use chrono::{Datelike, Timelike, Utc};
 use krilla::metadata::{DateTime, Metadata};
 use seiran_compiler::PublicationMetadata;
+use time::OffsetDateTime;
 
 /// [`PublicationMetadata`] から Krilla のメタデータを構築する。
 pub(crate) fn build_metadata(metadata: &PublicationMetadata) -> Metadata {
-  let now = Utc::now();
+  let now = OffsetDateTime::now_utc();
   #[expect(
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    reason = "chrono が各暦要素を暦上の範囲内で返すことを保証する"
+    reason = "現在時刻の年は 1970 以降で、time は large-dates なしでは 9999 年までしか表さないので u16 に収まる"
   )]
-  let time = DateTime::new(now.year() as u16)
-    .month(now.month() as u8)
-    .day(now.day() as u8)
-    .hour(now.hour() as u8)
-    .minute(now.minute() as u8);
+  let creation_date = DateTime::new(now.year() as u16)
+    .month(u8::from(now.month()))
+    .day(now.day())
+    .hour(now.hour())
+    .minute(now.minute());
   let mut out = Metadata::new()
     .title(metadata.title.clone())
-    .creation_date(time)
+    .creation_date(creation_date)
     .creator("seiran".to_string())
     .producer("seiran".to_string());
   if let Some(author) = &metadata.author {

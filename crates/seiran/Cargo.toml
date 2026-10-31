@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 clap.workspace = true
 itertools.workspace = true
-miette.workspace = true
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
 read-fonts.workspace = true
 seiran-compiler.workspace = true
 seiran-pdf.workspace = true

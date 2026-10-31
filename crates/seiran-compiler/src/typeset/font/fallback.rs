@@ -14,7 +14,7 @@
 use std::{iter, ops::Range};
 
 use harfrust::Direction;
-use icu::properties::{
+use icu_properties::{
   CodePointMapData, CodePointSetData,
   props::{DefaultIgnorableCodePoint, GeneralCategory},
 };

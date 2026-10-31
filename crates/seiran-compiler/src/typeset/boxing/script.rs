@@ -1,6 +1,6 @@
 //! テキストのスクリプト分類とフォント種別の解決
 
-use icu::properties::{
+use icu_properties::{
   CodePointMapData,
   props::{EastAsianWidth, Script},
   script::ScriptWithExtensions,

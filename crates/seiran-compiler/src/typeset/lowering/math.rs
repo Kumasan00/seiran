@@ -13,7 +13,7 @@ use std::slice;
 
 use alphanumeric::push_math_char;
 pub(in crate::typeset) use alphanumeric::translate_math_char;
-use icu::segmenter::GraphemeClusterSegmenter;
+use icu_segmenter::GraphemeClusterSegmenter;
 use itertools::Itertools;
 
 use crate::{
