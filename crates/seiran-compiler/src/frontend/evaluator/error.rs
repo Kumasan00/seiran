@@ -3,6 +3,8 @@
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
+use crate::length::MAX_ABS_PT;
+
 /// 評価器のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum EvalError {
@@ -168,6 +170,17 @@ pub(crate) enum EvalError {
     expected: String,
     /// 任意引数ノードのソース位置
     #[label("この値は期待型に変換できません")]
+    span: SourceSpan,
+  },
+
+  /// 長さの書式は合うが、内部表現に収まらない値が指定された場合
+  #[error("長さ `{value}` は扱える範囲（pt へ換算した絶対値が {max}pt 未満）を超えています", max = MAX_ABS_PT)]
+  #[diagnostic(code(frontend::eval::length_out_of_range), help("値を小さくしてください"))]
+  LengthOutOfRange {
+    /// 受け取った長さの字面（前後の空白は除く）
+    value: String,
+    /// 長さを書いた引数（任意引数ならそのノード）のソース位置
+    #[label("この長さは扱える範囲を超えています")]
     span: SourceSpan,
   },
 

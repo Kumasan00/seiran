@@ -20,7 +20,7 @@ use crate::{
       view::{CommandView, EnvironmentView, split_opt_arg_pairs},
     },
   },
-  length::Length,
+  length::{Length, ParseLengthError},
 };
 
 /// 任意引数キーが期待する値の型タグ
@@ -350,15 +350,11 @@ fn parse_value(
       return Ok(OptValue::String(raw.trim().to_string()));
     },
     OptType::Length => {
-      let Ok(v) = raw.parse::<Length>() else {
-        return Err(invalid(name, key, expected, span));
-      };
+      let v = parse_length(raw, span, || return invalid(name, key, expected, span))?;
       return Ok(OptValue::Length(v));
     },
     OptType::PositiveLength => {
-      let Ok(v) = raw.parse::<Length>() else {
-        return Err(invalid(name, key, expected, span));
-      };
+      let v = parse_length(raw, span, || return invalid(name, key, expected, span))?;
       if !v.is_positive() {
         return Err(invalid(name, key, expected, span));
       }
@@ -375,6 +371,27 @@ fn parse_value(
       return Ok(OptValue::Color(v));
     },
   }
+}
+
+/// ソースに書かれた長さを読む。書式違反は `format_error` の診断、表せない値は [`EvalError::LengthOutOfRange`] にする
+///
+/// # Errors
+///
+/// `raw` が長さとして読めない場合にエラーを返します
+pub(super) fn parse_length(
+  raw: &str,
+  span: miette::SourceSpan,
+  format_error: impl FnOnce() -> EvalError,
+) -> Result<Length, EvalError> {
+  return raw.parse::<Length>().map_err(|error| {
+    return match error {
+      ParseLengthError::Format { .. } => format_error(),
+      ParseLengthError::OutOfRange { .. } => EvalError::LengthOutOfRange {
+        value: raw.trim().to_string(),
+        span,
+      },
+    };
+  });
 }
 
 /// 「1 以上の整数」の検査と `u32` への変換

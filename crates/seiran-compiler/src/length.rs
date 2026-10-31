@@ -8,8 +8,10 @@
 //! 伸縮配分や比例配分の多段加算でも誤差が蓄積せず、並列 reduce でも順序非依存でビット同一の結果を得る。
 //! 浮動小数への変換は入出力境界（TOML パース・シェーパー API・PDF 座標出力・診断 / ログ / ダンプ整形）と
 //! 無次元比の算出（[`Length::ratio`]）だけに閉じ、乗除（倍率・比例配分）の丸め規約は [`round_sp`] 1 箇所へ
-//! 集約する。i64 の値域は ±1.4e14 pt と実質無限のため、
-//! オーバーフロー・飽和・上限（`\maxdimen` 相当）といった境界処理は一切設けない。
+//! 集約する。i64 の値域（絶対値 2^47 pt ≈ 1.4e14 pt 未満）は実用の長さに対して実質無限のため、
+//! 受理範囲を狭める上限（`\maxdimen` 相当）は設けない。値域の端を扱うのは 2 箇所だけ — 字面の解釈は
+//! i64 に収まらない値を丸め込まず [`ParseLengthError::OutOfRange`] で拒否し、外部入力どうしの和が
+//! 値域を超えうる版面の余白の合計は [`Length::checked_add`] で検査する。それ以外の演算は溢れを検査しない。
 
 #![expect(
   clippy::cast_precision_loss,
@@ -32,6 +34,10 @@ const SP_PER_PT: i64 = 65536;
 const MM_TO_PT: f64 = 72.0 / 25.4;
 /// 1 cm を pt に換算する係数。1 cm = 10 mm。
 const CM_TO_PT: f64 = 10.0 * MM_TO_PT;
+/// i64 の sp に収まる値の絶対値の上限 2^63（この値自身は収まらない）。
+const SP_LIMIT: f64 = (1u64 << 63) as f64;
+/// 字面から読める長さの絶対値の上限（pt。この値自身は読めない）。[`SP_LIMIT`] を pt にした 2^47。
+pub(crate) const MAX_ABS_PT: f64 = SP_LIMIT / SP_PER_PT as f64;
 
 /// sp 空間の f64 値を最近接整数（偶数丸め）へ丸める。**型内で唯一の丸め箇所**。
 ///
@@ -120,50 +126,70 @@ impl Length {
   /// 絶対値。
   #[must_use]
   pub const fn abs(self) -> Self { return Length(self.0.abs()); }
+
+  /// 和を返す。i64 の sp に収まらないときは `None`。
+  #[must_use]
+  pub(crate) fn checked_add(self, rhs: Self) -> Option<Self> { return self.0.checked_add(rhs.0).map(Length); }
 }
 
 /// 単位の綴りと、1 単位あたりの pt。字面の単位は小文字のこの 3 つだけ。
 const UNITS: [(&str, f64); 3] = [("pt", 1.0), ("mm", MM_TO_PT), ("cm", CM_TO_PT)];
 
-/// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。失敗時は `None`。
-///
-/// 前後の空白は落とすが、数値と単位の間の空白は受け付けない。
-/// `f64::from_str` は空白を含む文字列を拒否するので、数値部を `trim` しないことがその検査になる。
-fn parse_length(value: &str) -> Option<Length> {
-  // 数値は f64 で読む。sp（1/65536pt）は f32 の仮数では表しきれず、f32 経由だとユーザ入力の
-  // 数値どおりの sp にならず PDF の座標がずれる。
-  let trimmed = value.trim();
-  for (unit, pt_per_unit) in UNITS {
-    if let Some(num) = trimmed.strip_suffix(unit) {
-      let parsed: f64 = num.parse().ok()?;
-      if !parsed.is_finite() {
-        return None;
-      }
-      return Some(Length(round_to_pt_sp(parsed * pt_per_unit)));
-    }
-  }
-  return None;
-}
-
 /// [`Length`] の文字列パース失敗を表すエラー。
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error(
-  "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: {input:?}"
-)]
-pub struct ParseLengthError {
-  /// パースに失敗した入力文字列。
-  input: String,
+pub enum ParseLengthError {
+  /// 字面が `<数値>pt` / `<数値>mm` / `<数値>cm` の書式に合わない
+  #[error(
+    "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: {input:?}"
+  )]
+  Format {
+    /// パースに失敗した入力文字列。
+    input: String,
+  },
+  /// 書式は合うが、pt へ換算した絶対値が内部表現（i64 の sp）に収まらない
+  #[error(
+    "長さ {input:?} は扱える範囲を超えています。pt へ換算した絶対値が {max}pt 未満になるよう値を小さくしてください",
+    max = MAX_ABS_PT
+  )]
+  OutOfRange {
+    /// パースに失敗した入力文字列。
+    input: String,
+  },
 }
 
 impl FromStr for Length {
   type Err = ParseLengthError;
 
+  /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。
+  ///
+  /// 前後の空白は落とすが、数値と単位の間の空白は受け付けない。
+  /// `f64::from_str` は空白を含む文字列を拒否するので、数値部を `trim` しないことがその検査になる。
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    return parse_length(s).ok_or_else(|| {
-      return ParseLengthError {
+    let format_error = || {
+      return ParseLengthError::Format {
         input: s.to_string(),
       };
-    });
+    };
+    // 数値は f64 で読む。sp（1/65536pt）は f32 の仮数では表しきれず、f32 経由だとユーザ入力の
+    // 数値どおりの sp にならず PDF の座標がずれる。
+    let trimmed = s.trim();
+    for (unit, pt_per_unit) in UNITS {
+      if let Some(num) = trimmed.strip_suffix(unit) {
+        let Some(parsed) = num.parse::<f64>().ok().filter(|parsed| return !parsed.is_nan()) else {
+          return Err(format_error());
+        };
+        // `inf` の字面や `1e400` のように f64 で溢れた数値（±∞）もここで範囲外になる。
+        // 2^63 近傍の f64 は整数なので、丸める前に検査しても丸めた後と同じ判定になる
+        let sp = parsed * pt_per_unit * SP_PER_PT as f64;
+        if sp.abs() >= SP_LIMIT {
+          return Err(ParseLengthError::OutOfRange {
+            input: s.to_string(),
+          });
+        }
+        return Ok(Length(round_sp(sp)));
+      }
+    }
+    return Err(format_error());
   }
 }
 
@@ -249,7 +275,7 @@ impl<'a> Sum<&'a Length> for Length {
 mod tests {
   use serde::Deserialize;
 
-  use super::Length;
+  use super::{Length, ParseLengthError};
 
   #[derive(Debug, Deserialize)]
   struct Wrapper {
@@ -306,6 +332,51 @@ mod tests {
     // 単位なしの `0` も例外にしない（`0` と `0pt` の 2 通りの綴りを作らない）
     assert!("0".parse::<Length>().is_err());
     assert_eq!("0pt".parse::<Length>().unwrap(), Length::ZERO);
+  }
+
+  #[test]
+  fn from_str_accepts_largest_representable_lengths() {
+    // 境界は単位ごとに pt へ換算した f64 で決まる（2^47 pt 未満）
+    assert_eq!("140737488355327pt".parse::<Length>().unwrap().sp(), i64::MAX - 65535);
+    assert_eq!("-140737488355327pt".parse::<Length>().unwrap().sp(), i64::MIN + 65536);
+    for input in ["49649058392018mm", "4964905839201cm"] {
+      assert!(input.parse::<Length>().is_ok(), "{input:?} は受け付ける");
+    }
+  }
+
+  #[test]
+  fn from_str_rejects_unrepresentable_lengths() {
+    // 表せる最大値へ丸め込まず拒否する。`1e14mm` は数値こそ 2^47 未満だが pt へ換算すると超える
+    for input in [
+      "140737488355328pt",
+      "-140737488355328pt",
+      "49649058392019mm",
+      "4964905839202cm",
+      "1e14mm",
+      "1e20pt",
+      "1e400pt",
+      "infpt",
+    ] {
+      let result = input.parse::<Length>();
+
+      assert!(
+        matches!(result, Err(ParseLengthError::OutOfRange { .. })),
+        "{input:?} は範囲外として拒否される: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn from_str_rejects_nan_as_format_error() {
+    assert!(matches!("nanpt".parse::<Length>(), Err(ParseLengthError::Format { .. })));
+  }
+
+  #[test]
+  fn checked_add_detects_overflow() {
+    let half = Length::from_sp(1i64 << 62);
+
+    assert_eq!(half.checked_add(Length::from_sp(1)), Some(Length::from_sp((1i64 << 62) + 1)));
+    assert_eq!(half.checked_add(half), None);
   }
 
   #[test]
@@ -388,6 +459,16 @@ mod tests {
     assert_eq!(
       err.to_string(),
       "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式（数値と単位の間に空白を入れず、単位は小文字）で指定してください: \"5 pt\""
+    );
+  }
+
+  #[test]
+  fn from_str_out_of_range_message_names_limit_and_fix() {
+    let err = "1e20pt".parse::<Length>().unwrap_err();
+
+    assert_eq!(
+      err.to_string(),
+      "長さ \"1e20pt\" は扱える範囲を超えています。pt へ換算した絶対値が 140737488355328pt 未満になるよう値を小さくしてください"
     );
   }
 

@@ -6,12 +6,11 @@ use crate::{
     evaluator::{EvalContext, EvalError, arity, opt_args},
     syntax::view::{CommandView, extract_text_content},
   },
-  length::Length,
 };
 
 /// `\space{<長さ>}` — 固定幅スペースを挿入するコマンド
 ///
-/// 長さの書式は config / style と同じ（[`Length`] の `FromStr`）。値域は制限しない（負値は詰め）。
+/// 長さの書式は config / style と同じ（[`crate::Length`] の `FromStr`）。表せる長さなら値域は制限しない（負値は詰め）。
 ///
 /// # Errors
 ///
@@ -21,13 +20,13 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Hir
   let first_arg = arity::exactly_one_arg(view, "スペース量（長さ）")?;
   let text = extract_text_content(view.source(), first_arg);
 
-  let Ok(length) = text.parse::<Length>() else {
-    return Err(EvalError::InvalidCommandArgument {
+  let length = opt_args::parse_length(&text, view.span().into(), || {
+    return EvalError::InvalidCommandArgument {
       name: "space".to_string(),
       reason: "長さ（`<数値>pt` / `<数値>mm` / `<数値>cm`）".to_string(),
       span: view.span().into(),
-    });
-  };
+    };
+  })?;
 
   return Ok(ctx.leaf_node(view.span(), HirNodeKind::Space(length)));
 }
@@ -59,7 +58,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support};
+  use crate::{
+    frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support},
+    length::Length,
+  };
 
   #[test]
   fn space_rejects_unknown_opt_arg_key() {

@@ -150,9 +150,9 @@ impl PreparedGeometry {
   /// 3. 本文幅（`pdf.width - page.margin_left - page.margin_right`）を `style.columns` の段数・段間で
   ///    割った 1 段あたりの幅が正であること
   ///
-  /// 3 は 2 が通っているときだけ検査します。
+  /// 1・2 の合計が長さの値域を超える場合も、用紙寸法以上と同じ違反にします。3 は 2 が通っているときだけ検査します。
   ///
-  /// 本文幅・段幅は検査の前に求めますが、集約した違反が 1 件でもあれば早期 return するので、
+  /// 本文幅・段幅は 2 が通ったときだけ求め、集約した違反が 1 件でもあれば早期 return するので、
   /// 検証を通らなかった値が [`PreparedGeometry`] として外へ出る経路はありません。
   ///
   /// # Errors
@@ -161,39 +161,58 @@ impl PreparedGeometry {
   pub(crate) fn prepare(config: &ProjectConfig, style: &Style) -> Result<Self, Failures<GeometryValidationError>> {
     let mut errors: Vec<GeometryValidationError> = Vec::new();
 
-    let vertical = style.page.margin_top + style.page.margin_bottom;
-    if vertical >= config.pdf.height {
+    // 余白は 1 つずつなら表せても、和が sp の値域を超えうる。溢れた和は用紙寸法を超える側として扱う
+    let fits_height = style
+      .page
+      .margin_top
+      .checked_add(style.page.margin_bottom)
+      .is_some_and(|total| return total < config.pdf.height);
+    if !fits_height {
       errors.push(GeometryValidationError::VerticalMarginsExceedPageHeight {
         margin_top: style.page.margin_top.to_pt(),
         margin_bottom: style.page.margin_bottom.to_pt(),
-        total: vertical.to_pt(),
+        total: style.page.margin_top.to_pt() + style.page.margin_bottom.to_pt(),
         page_height: config.pdf.height.to_pt(),
       });
     }
 
-    let horizontal = style.page.margin_left + style.page.margin_right;
-    let text_width = config.pdf.width - horizontal;
     let num_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
-    let body_column_width = column_width(text_width, num_columns, column_gap);
-    if horizontal >= config.pdf.width {
-      errors.push(GeometryValidationError::HorizontalMarginsExceedPageWidth {
-        margin_left: style.page.margin_left.to_pt(),
-        margin_right: style.page.margin_right.to_pt(),
-        total: horizontal.to_pt(),
-        page_width: config.pdf.width.to_pt(),
+    // 余白は非負（style の garde）なので、和が用紙幅未満なら本文幅は正で引き算も溢れない
+    let widths = style
+      .page
+      .margin_left
+      .checked_add(style.page.margin_right)
+      .filter(|total| return *total < config.pdf.width)
+      .map(|horizontal| {
+        let text_width = config.pdf.width - horizontal;
+        return (text_width, column_width(text_width, num_columns, column_gap));
       });
-    } else if !body_column_width.is_positive() {
-      errors.push(GeometryValidationError::InvalidColumnWidth {
-        text_width: text_width.to_pt(),
-        num_columns,
-        column_gap: column_gap.to_pt(),
-      });
+    match widths {
+      None => {
+        errors.push(GeometryValidationError::HorizontalMarginsExceedPageWidth {
+          margin_left: style.page.margin_left.to_pt(),
+          margin_right: style.page.margin_right.to_pt(),
+          total: style.page.margin_left.to_pt() + style.page.margin_right.to_pt(),
+          page_width: config.pdf.width.to_pt(),
+        });
+      },
+      Some((text_width, body_column_width)) if !body_column_width.is_positive() => {
+        errors.push(GeometryValidationError::InvalidColumnWidth {
+          text_width: text_width.to_pt(),
+          num_columns,
+          column_gap: column_gap.to_pt(),
+        });
+      },
+      Some(_) => {},
     }
 
     if let Some(failures) = Failures::from_vec(errors) {
       return Err(failures);
     }
+    let Some((text_width, body_column_width)) = widths else {
+      unreachable!("左右余白の合計が用紙幅に収まらなければ、上で違反を積んで返している");
+    };
 
     let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, num_columns, column_gap);
     return Ok(Self {
@@ -371,6 +390,27 @@ mod tests {
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty(), "段幅エラーを重ねないはず: {rest:?}");
     assert!(matches!(first, GeometryValidationError::HorizontalMarginsExceedPageWidth { .. }));
+  }
+
+  #[test]
+  fn prepare_rejects_margin_totals_beyond_length_range() {
+    // 余白 1 つずつは表せるが、上下・左右の和が sp の値域を超える
+    let (_tempdir, config) = read_test_config();
+    let mut style = Style::default();
+    let huge: Length = "1e14pt".parse().unwrap();
+    style.page.margin_top = huge;
+    style.page.margin_bottom = huge;
+    style.page.margin_left = huge;
+    style.page.margin_right = huge;
+
+    let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
+
+    let (first, rest) = failures.into_parts();
+    assert!(matches!(first, GeometryValidationError::VerticalMarginsExceedPageHeight { total, .. } if total > 1.9e14));
+    assert_eq!(rest.len(), 1);
+    assert!(
+      matches!(rest[0], GeometryValidationError::HorizontalMarginsExceedPageWidth { total, .. } if total > 1.9e14)
+    );
   }
 
   #[test]
