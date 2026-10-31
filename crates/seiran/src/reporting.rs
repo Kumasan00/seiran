@@ -9,19 +9,20 @@
 
 mod log_file;
 
-use std::{ffi::OsStr, io::IsTerminal, path::Path, sync::Arc, time::Duration};
+use std::{ffi::OsStr, io::IsTerminal, path::Path, time::Duration};
 
 use log_file::LogSink;
 pub(super) use log_file::{LogFailure, LogFileError};
 use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, MietteHandler, ReportHandler};
 use thiserror::Error;
+use time::{UtcOffset, format_description::well_known::Rfc3339};
 use tracing_subscriber::{
   EnvFilter, Registry,
   filter::{LevelFilter, ParseError},
   fmt::{
     self,
     format::Writer,
-    time::{FormatTime, OffsetTime, UtcTime},
+    time::{FormatTime, OffsetTime},
   },
   layer::{Layer, SubscriberExt},
   util::SubscriberInitExt,
@@ -77,7 +78,7 @@ pub(super) struct Reporter {
   /// 端末へ warning 診断を描く miette の既定 handler（`Report` の `Debug` 表示が使うのと同じもの）。
   terminal: MietteHandler,
   /// ログファイルの時刻表現（実行記録の開始・終了時刻に使う。イベントの時刻と同じ）
-  timer: LogTimer,
+  timer: OffsetTime<Rfc3339>,
 }
 
 impl Reporter {
@@ -258,28 +259,16 @@ fn ansi_enabled(no_color: Option<&OsStr>, stderr_is_terminal: bool) -> bool {
   return no_color.is_none_or(|value| return value.is_empty()) && stderr_is_terminal;
 }
 
-/// ログファイルへ書く時刻の表現（ローカル時刻か UTC）。
+/// ログファイルへ書く時刻の表現を決める。
 ///
-/// tracing の layer（イベントの時刻）と実行記録（開始・終了時刻）が共有する。
-#[derive(Clone)]
-struct LogTimer(Arc<dyn FormatTime + Send + Sync>);
-
-impl FormatTime for LogTimer {
-  fn format_time(&self, writer: &mut Writer<'_>) -> std::fmt::Result { return self.0.format_time(writer); }
-}
-
-/// ログファイル用の時刻表現を決める。
-///
-/// ローカル時刻を採り、オフセットを取得できない環境では UTC へ落とす（取得失敗そのものは報告しない）。
-fn log_timer() -> LogTimer {
-  return match OffsetTime::local_rfc_3339() {
-    Ok(timer) => LogTimer(Arc::new(timer)),
-    Err(_) => LogTimer(Arc::new(UtcTime::rfc_3339())),
-  };
+/// tracing の layer（イベントの時刻）と実行記録（開始・終了時刻）の両方が使う。ローカル時刻のオフセットを採り、
+/// 取得できない環境では UTC（オフセット 0。RFC 3339 では `Z`）へ落とす（取得失敗そのものは報告しない）。
+fn log_timer() -> OffsetTime<Rfc3339> {
+  return OffsetTime::local_rfc_3339().unwrap_or_else(|_| return OffsetTime::new(UtcOffset::UTC, Rfc3339));
 }
 
 /// 現在時刻を `timer` の表現で文字列にする。
-fn now_text(timer: &LogTimer) -> String {
+fn now_text(timer: &OffsetTime<Rfc3339>) -> String {
   let mut text = String::new();
   // 書き込み先が `String` なので書き込みは失敗しない。整形の失敗は表現できない日付（`time` の範囲外）だけで、
   // 現在時刻では起きない — 起きても時刻が空になるだけで記録そのものは続けられる。
@@ -440,10 +429,12 @@ mod tests {
 
   use miette::{Diagnostic, MietteHandler};
   use thiserror::Error;
+  use time::{UtcOffset, format_description::well_known::Rfc3339};
+  use tracing_subscriber::fmt::time::OffsetTime;
 
   use super::{
-    FilterWarning, RunHeader, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, parse_directive,
-    render_diagnostic_plain, run_header_text, summary_line,
+    FilterWarning, RunHeader, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, now_text,
+    parse_directive, render_diagnostic_plain, run_header_text, summary_line,
   };
 
   /// 体裁の確認に使う warning 診断。
@@ -604,5 +595,13 @@ mod tests {
     let text = run_header_text("t", &header, "warn");
 
     assert!(text.contains("基準ディレクトリ: （取得できませんでした）"), "{text}");
+  }
+
+  #[test]
+  fn utc_offset_timer_writes_z_suffix() {
+    // オフセット 0 の `OffsetTime` は `UtcTime::rfc_3339()` と同じく `Z` で終わる（ローカル時刻を取れないときの退避先）
+    let text = now_text(&OffsetTime::new(UtcOffset::UTC, Rfc3339));
+
+    assert!(text.ends_with('Z'), "UTC は Z 付きの RFC 3339 で書く: {text}");
   }
 }
