@@ -47,7 +47,7 @@ def stream(data):
     return f"<< /Length {len(data)} >>\nstream\n".encode() + data + b"\nendstream"
 
 
-def pages_doc(name, page_dicts, header="1.7", catalog_extra=b""):
+def pages_doc(name, page_dicts, header="1.7", catalog_extra=b"", content=CONTENT):
     """各ページ辞書（/Type /Page と /Parent・/Contents を除く中身）からページ列の PDF を書く。"""
     count = len(page_dicts)
     kids = " ".join(f"{3 + i * 2} 0 R" for i in range(count))
@@ -60,7 +60,7 @@ def pages_doc(name, page_dicts, header="1.7", catalog_extra=b""):
         objects.append(
             f"<< /Type /Page /Parent 2 0 R /Contents {content_ref} 0 R ".encode() + extra + b" >>"
         )
-        objects.append(stream(CONTENT))
+        objects.append(stream(content))
     write_pdf(name, objects, header)
 
 
@@ -81,6 +81,12 @@ def main():
             b"/MediaBox [0 0 200 120] /Annots [<< /Type /Annot /Subtype /Link /Rect [0 0 50 50] "
             b"/A << /S /URI /URI (https://example.com) >> >>]"
         ],
+    )
+    # CropBox が MediaBox からはみ出し、はみ出した側（MediaBox の外）にも描画を持つ
+    pages_doc(
+        "crop_overflow.pdf",
+        [b"/MediaBox [0 0 200 100] /CropBox [0 0 300 100]"],
+        content=CONTENT + b" 0 0.6 0 rg 220 20 60 60 re f",
     )
     pages_doc("zero_area.pdf", [b"/MediaBox [0 0 200 100] /CropBox [0 0 200 0]"])
     write_pdf(

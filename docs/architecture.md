@@ -786,8 +786,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   描画側の版の不一致エラーへ到達させない）・ページ数・ページの選択を検査する。自然寸法は CropBox ∩ MediaBox に
   `/Rotate` を適用した寸法（pt）で、krilla の `draw_pdf_page` が拡大率の基準にする領域と同じ。面積 0 は拒否し、
   選んだページの注釈は warning を出して取り込まない
-- 既知の制約: hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）。
-  CropBox が MediaBox からはみ出すページでは MediaBox の外の描画が見えうる。backend の挙動なので compiler では補わない
+- hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、
+  表示範囲を図の矩形に揃える切り抜きは描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める
 
 #### `math_glyphs`
 
@@ -1580,7 +1580,8 @@ compiler 側の責務で、こちらへ戻さない。
 - `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）・PDF を開くこと（krilla の `pdf` feature）とラスタ画像の
   ダウンサンプルのみ。分岐は拡張子ではなく `PublicationImage.format`（compiler 側が判定済み）で行う。PDF は
   `PublicationImage.page_index` のページを `draw_pdf_page` で独立した透過グループの Form XObject として描き、
-  ラスタ化・色空間の変換・中のラスタの再圧縮はしない
+  ラスタ化・色空間の変換・中のラスタの再圧縮はしない。描く前に図の矩形で切り抜く（hayro-write の BBox が CropBox の
+  ままでも、表示範囲を CropBox ∩ MediaBox に揃えるため）
 - `metadata` / `error`: PDF メタデータ構築 / `PdfRenderError`（診断 code の prefix は `pdf::`）
 
 ### `PdfRenderError` の範囲

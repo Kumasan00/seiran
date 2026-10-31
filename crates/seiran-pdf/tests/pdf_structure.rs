@@ -448,9 +448,13 @@ fn render_single_pdf_figure(name: &str) -> Document {
 
 #[test]
 fn embedded_owner_only_pdf_is_not_encrypted_in_output() {
+  // lopdf は空パスワードで復号できた文書の trailer から `/Encrypt` を取り除くので、暗号化の有無は `was_encrypted` で見る
+  let input =
+    Document::load(workspace_root().join("tests/image/encrypted_owner_only.pdf")).expect("入力 fixture を読めるはず");
+  assert!(input.was_encrypted(), "前提: 入力は空パスワードで暗号化されている");
   let document = render_single_pdf_figure("encrypted_owner_only.pdf");
 
-  assert!(document.trailer.get(b"Encrypt").is_err(), "出力に暗号化を引き継がないはず");
+  assert!(!document.was_encrypted(), "出力に暗号化を引き継がないはず");
   let groups: Vec<&Object> = document
     .objects
     .values()
@@ -476,4 +480,17 @@ fn embedded_pdf_drops_annotations() {
     document.objects.values().filter(|object| return dict_name_is(object, b"Type", b"Annot")).count();
   assert_eq!(annotation_count, 0, "注釈は取り込まず描画内容だけを埋め込むはず");
   assert_eq!(form_xobject_count(&document), 1, "描画内容は Form XObject として入るはず");
+}
+
+#[test]
+fn embedded_pdf_page_is_clipped_to_the_figure_rectangle() {
+  // CropBox が MediaBox からはみ出したページは、hayro-write が BBox に CropBox をそのまま書くため、MediaBox の外の描画が
+  // 図の矩形の外へはみ出しうる。表示範囲（CropBox ∩ MediaBox）＝図の矩形で切り抜いてから Form XObject を描くはず
+  let document = render_single_pdf_figure("crop_overflow.pdf");
+
+  let page_id = *document.get_pages().get(&1).expect("1 ページ目があるはず");
+  let content = Content::decode(&document.get_page_content(page_id)).expect("内容をデコードできるはず");
+  let operators: Vec<&str> = content.operations.iter().map(|operation| return operation.operator.as_str()).collect();
+  let draw = operators.iter().rposition(|operator| return *operator == "Do").expect("Form XObject を描くはず");
+  assert!(operators[..draw].contains(&"W"), "Form XObject を描く前に切り抜くはず: {operators:?}");
 }

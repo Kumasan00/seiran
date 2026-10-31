@@ -9,7 +9,7 @@ use krilla::{
   geom::{PathBuilder, Point, Rect, Size, Transform},
   outline::{Outline, OutlineNode},
   page::{Page as KrillaPage, PageSettings},
-  paint::Fill,
+  paint::{Fill, FillRule},
   surface::Surface,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
@@ -240,7 +240,19 @@ fn draw_image(
       let Some(page_index) = image.page_index else {
         unreachable!("PDF の画像資源が page_index を持つことは PublicationResources::new が保証する: {}", image.path);
       };
+      // hayro-write は Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、CropBox が
+      // MediaBox からはみ出すページでは描画が図の矩形の外へ出うる。表示範囲＝図の矩形（原点から `size`）で切り抜く
+      let mut clip = PathBuilder::new();
+      let Some(bounds) = Rect::from_xywh(0.0, 0.0, width, height) else {
+        unreachable!("画像の描画矩形の幅・高さが正であることは PublicationPage::new が保証する: {width} x {height}");
+      };
+      clip.push_rect(bounds);
+      let Some(clip) = clip.finish() else {
+        unreachable!("有効な矩形 1 個を push_rect した PathBuilder は必ずパスを返す: {}", image.path);
+      };
+      surface.push_clip_path(&clip, &FillRule::NonZero);
       surface.draw_pdf_page(&document, size, page_index);
+      surface.pop();
     },
   }
   surface.pop();
