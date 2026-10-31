@@ -55,7 +55,7 @@ pub(in crate::typeset) enum Block {
     /// 表の自然幅は確定済み列幅の総和。全幅（flex 列で利用幅いっぱい）の表は揃えても動かない。
     align: Align,
   },
-  /// 画像（PNG / JPEG / SVG）
+  /// 画像（PNG / JPEG / SVG / PDF の 1 ページ）
   ///
   /// `width` / `height` は確定済みの描画寸法。ソースで省略された辺は
   /// [`crate::typeset::image::resolve_image_size`] が自然寸法と利用幅から埋めたうえで

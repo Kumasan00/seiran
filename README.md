@@ -73,6 +73,24 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 コマンドの必須引数と数式の上付き・下付きには `{...}` を使います。
 機能別の例は [tests/text/](tests/text/)、構文の原則は [言語設計](docs/language-design.md)を参照してください。
 
+### 画像
+
+`figure` 環境の `\image{パス}` で図を置きます。形式は拡張子で決まり、PNG（`.png`）・JPEG（`.jpg` / `.jpeg`）・
+SVG（`.svg`）・PDF（`.pdf`）に対応します。PDF は 1 ページをラスタ化せずベクタのまま埋め込みます。
+
+```text
+\begin{figure}[label=fig:plot]
+\image[width=80mm, page=2]{figures/plots.pdf}
+\caption{2 ページ目の図}
+\end{figure}
+```
+
+- `width` / `height` は描画寸法。片方だけなら縦横比から補い、両方省略なら利用幅いっぱいにします
+- `page=N` は PDF 専用（1 始まり）。2 ページ以上の PDF では必須で、1 ページの PDF では省略できます
+- `dpi` / `downsample` はラスタ（PNG / JPEG）専用で、config.toml の `[image]` を 1 枚だけ上書きします
+- 形式に効かないオプションはエラーになります。PDF の注釈（リンク・フォーム等）は取り込まず warning を出します
+- パスワードが必要な PDF・PDF 2.0 の PDF は取り込めません（暗号化を外す / PDF 1.7 以下で書き出し直してください）
+
 ### ログと診断
 
 `-v` / `-q` / `--log-file` は下記のフォント調査サブコマンドにも共通です。

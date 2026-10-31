@@ -170,7 +170,7 @@ TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の�
   逐次 `?` に退化し、memory adapter でもパス検証ができなくなるため
 - `ProjectSource` の 2 実装はどちらもキャッシュを持たず、要求のたびに読む。1 回の `compile` で同じ資源を
   2 回読まないことは資源を列挙する側の責務で、フォントは `FontData::load`（パスの sort + dedup）、画像は
-  `typeset::image` の `collect_image_paths`（`BTreeSet`）の 1 箇所ずつにある。`sources` に同じファイルを
+  `typeset::image` の `collect_image_requests`（`BTreeMap`）の 1 箇所ずつにある。`sources` に同じファイルを
   2 回書いた場合は、それぞれ別のソースとして読み込み・パースされ、本文も重複する（ラベルがあれば重複定義の
   診断になる）。キャッシュは seam の契約ではなく、watch /
   インクリメンタルビルドで必要になったら無効化の規則と一緒に設計する。2 実装が同じ結果を返すことと共有
@@ -362,7 +362,9 @@ message / `code` / help を持たない（段名だけの wrapper 診断をユ�
 
 `parse` は 1 ソース分の `document::HirSource` を返す。`PathResolver` は `\image{...}` の字面を
 `ProjectPath` へ解決するために評価 context へ渡すだけで、`compile` facade が 1 回だけ構築した値をそのまま
-運ぶ。`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
+運ぶ。画像形式の判定（拡張子 → `document::ImageFormat`）もこの評価時の 1 箇所だけで、未対応の拡張子と形式に効かない
+オプション（`page` は PDF、`dpi` / `downsample` は PNG / JPEG だけ）は、ファイルを読む前に `\image` の位置で拒否する
+（効かないことが字面で決まるものは拒否し、資源の中身次第のもの — 1 ページの PDF への `page=1` — は受理する）。`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
 atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落はインラインを
 蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が使われないまま
 閉じられた場合は `local` に穴が空くが、同じ入力なら常に同じ穴になる — ID の稠密性・連続性には依存しない。
@@ -620,7 +622,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 警告は配置が成功したときにしか存在しない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
 流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
-段順序（数式フォントの字の検査 → 画像パス収集 → 画像読込・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
+段順序（数式フォントの字の検査 → 画像の収集 → 画像読込・PDF の検査とページの選択・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
 前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
@@ -632,7 +634,8 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 - `typeset` は `seiran-pdf` に**依存しない**（依存の向きは `seiran-pdf → seiran-compiler`）。組版に必要な
   画像の自然寸法は自前で求め、描画に使う画像本体のデコードは render 側に残す（同じバイト列を 2 度読むが、
   krilla を compiler へ持ち込まないための線引き）。組版時の自然寸法と描画時の解釈が一致することは、
-  workspace で `image` / `usvg` の版を 1 つに pin することで担保する。自然寸法は読込時に「有限かつ正」を
+  workspace で `image` / `usvg` / `hayro-syntax`（krilla の PDF 埋め込みが使う hayro-write と同じ版）の版を
+  1 つに pin することで担保する。自然寸法は読込時に「有限かつ正」を
   検証した型で持ち、表示寸法の確定（省略された辺の推論）は boxing の中で失敗しない計算として済む
 - `typeset` は `publication`（backend 非依存の確定表現）に**依存してよい**（旧原則「`typeset` は描画表現を
   知らない」（#461）へ戻さない）。krilla の隔離は `seiran-pdf` の crate 境界と `Publication` の純データ性が
@@ -732,7 +735,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 #### `error`
 
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
-非収束）。画像は正規化済みパスの昇順に**全件**検査する。`compose` の失敗型は制御フロー型 `ComposeError`
+非収束）。画像は正規化済みパスの昇順に**全件**検査し、PDF は 1 ファイルの中の要求ページも昇順に全件検査する。`compose` の失敗型は制御フロー型 `ComposeError`
 （`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、ソース位置に
 帰属しうる字の欠落 `Glyphs(Failures<TextGlyphError>)`（数式フォントの `MissingMathGlyph` を文書順に、
 続けて本文の枠の `MissingGlyph`。どちらも `glyph_issues` 項）の 2 腕を持つ（`semantics::AnalyzeError` と同じ形）。`compiler` は
@@ -768,14 +771,23 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 #### `image`
 
-画像資源の解決（パス収集 → `ProjectSource` 経由の読込 → 自然寸法 → 表示寸法の確定）を閉じる子 module。
-収集は `BTreeSet<ProjectPath>` で決定的に重複除去し、形式 + 生バイト列は `LaidOutDocument` として描画へ渡す。
+画像資源の解決（ファイルと PDF のページの収集 → `ProjectSource` 経由の読込 → 自然寸法 → 表示寸法の確定）を閉じる子 module。
+収集はパスで決定的に重複除去し（1 ファイルにつき形式と書かれた `page` の集合）、形式 + 生バイト列は `LaidOutDocument` として描画へ渡す。
+図の単位は（パス, PDF のページ index）で、自然寸法・`PublicationImage` もこの単位ごとに 1 件、バイト列はファイルごとに
+1 つを `Arc<[u8]>` で共有する。ページ index は `pdf_page_index` 1 つで決める（`page` の省略は 1 ページの PDF にだけ
+許されるので先頭ページ。中身を読まずに決まる）。
 
-- 形式判定（拡張子 → PNG / JPEG / SVG）は `publication::ImageFormat::from_path` の **1 箇所だけ**で、読込時に
-  呼ぶ。判定結果は自然寸法の取得と `PublicationImage.format` の双方が使い、描画側は拡張子を読み直さず形式で
-  分岐する（同じ判定を 2 回書くと両者が食い違いうる — renderer 側に未対応形式の診断を持たない根拠）
+- 形式は HIR（`HirFigure.format`）が持ち、ここは拡張子を読み直さない。判定結果は自然寸法の取得と
+  `PublicationImage.format` の双方が使い、描画側も形式で分岐する（同じ判定を 2 回書くと両者が食い違いうる —
+  renderer 側に未対応形式の診断を持たない根拠）
 - 自然寸法はラスタなら寸法ヘッダ、SVG なら `usvg` のサイズ。EXIF の Orientation は適用しない — 描画側
   （krilla）も寸法ヘッダの値を使うため、適用すると組版時と描画時の解釈がずれる
+- PDF は子 module `pdf` が `hayro-syntax` で開き、暗号化（空パスワードで開けるものだけ受理）・版（PDF 2.0 は拒否。
+  描画側の版の不一致エラーへ到達させない）・ページ数・ページの選択を検査する。自然寸法は CropBox ∩ MediaBox に
+  `/Rotate` を適用した寸法（pt）で、krilla の `draw_pdf_page` が拡大率の基準にする領域と同じ。面積 0 は拒否し、
+  選んだページの注釈は warning を出して取り込まない
+- 既知の制約: hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）。
+  CropBox が MediaBox からはみ出すページでは MediaBox の外の描画が見えうる。backend の挙動なので compiler では補わない
 
 #### `math_glyphs`
 
@@ -1372,7 +1384,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 | `PublicationRect` | 座標が有限で、幅・高さが非負の有限値（krilla が受け付ける範囲そのもの） |
 | `PublicationPage` | ページ矩形と画像の描画矩形の幅・高さが正（太さ 0 の罫線を描く塗りつぶし矩形は 0 サイズを許す） |
 | `Publication` | 内部リンクとしおりの到達先ページが実在する |
-| `PublicationResources` | `ImageRef` の発行経路は crate 内非公開の 1 つだけなので、資源に無い画像を指す描画命令を型として作れない |
+| `PublicationResources` | `ImageRef` の発行経路は crate 内非公開の 1 つだけなので、資源に無い画像を指す描画命令を型として作れない。`PublicationImage.page_index` は PDF のときだけ `Some`（構築時に検査） |
 | `FaceMap<PublicationFont>` | 19 種別すべての全候補が揃う（本文の枠は 1 候補以上・`math` は 1 つ。`FaceMap::from_slots` が構築時に検査するので、欠けた表を構築できない） |
 
 これが「renderer は確定座標の描画のみ」を**型で**担保している部分で、`seiran-pdf` が防衛的な error variant を
@@ -1383,13 +1395,13 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 
 - **純データであること** — krilla / `seiran-pdf` の型は 1 つも含まない。座標は pt 単位の `f32`、フォントは
   生バイト列（`Arc<[u8]>` — seam が返す形のまま共有し、複製しない）+ 描画契約の値型、画像はパス・判定済み
-  形式・生バイト列。krilla フォントの構築は render の責務で、`compile` の戻り値に backend の内部資源が
+  形式・PDF のページ index・生バイト列（`Arc<[u8]>`。同じ PDF の別ページは共有する）。krilla フォントの構築は render の責務で、`compile` の戻り値に backend の内部資源が
   漏れない
 - `PaintOp::DrawGlyphRun` は `GlyphRun` を、`FontFaceConfig` は `project::VariationAxis` を**そのまま**載せる
   （同型の複製を作らない）。したがって `Length` / `Color` / `FontType` / `VariationAxis` / `GlyphRun` / `Glyph` も
   facade に載る
 - `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（資源配列の添字）。添字である以上、
-  資源の並びは決定的でなければならないので `emit` は**パス昇順**に並べてから配列を組む
+  資源の並びは決定的でなければならないので、組版段が**（パス, ページ index）昇順**に並べた順で配列を組む
 - 生バイト列を持つ型の `Debug` は手書きで、中身ではなく長さを出す（`assert_eq!` が失敗したときに数百 MB を
   吐かないため）
 - テスト用に `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て。
@@ -1565,8 +1577,10 @@ compiler 側の責務で、こちらへ戻さない。
 - `render`: `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の `font_size`（`Length`）→ pt と
   `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、
   render 側で黒へ置き換えない。ファイル I/O は発生しない
-- `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみ。分岐は拡張子では
-  なく `PublicationImage.format`（compiler 側が判定済み）で行う
+- `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）・PDF を開くこと（krilla の `pdf` feature）とラスタ画像の
+  ダウンサンプルのみ。分岐は拡張子ではなく `PublicationImage.format`（compiler 側が判定済み）で行う。PDF は
+  `PublicationImage.page_index` のページを `draw_pdf_page` で独立した透過グループの Form XObject として描き、
+  ラスタ化・色空間の変換・中のラスタの再圧縮はしない
 - `metadata` / `error`: PDF メタデータ構築 / `PdfRenderError`（診断 code の prefix は `pdf::`）
 
 ### `PdfRenderError` の範囲

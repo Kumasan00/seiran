@@ -28,7 +28,7 @@ golden テストの入力はコミット済み fixture（本文 `tests/text/*.se
 | --- | --- |
 | レイアウト（座標・寸法）に効く変更 — breaking / boxing / lowering / frontend / config の style 等 | layout dump golden（下記） |
 | `Publication` に載る値に効く変更 — 文書メタデータ・リンク矩形・しおり項目（`dump_publication` がダンプする範囲） | layout dump golden（下記） |
-| render 層の構造 — ページ数・埋め込みフォント数・リンク注釈数・しおり・画像 XObject 数 | PDF 構造 golden（下記） |
+| render 層の構造 — ページ数・埋め込みフォント数・リンク注釈数・しおり・画像 / Form XObject 数 | PDF 構造 golden（下記） |
 | どのダンプにも映らない層 — krilla の描画そのもの（オブジェクトの中身・XMP・trailer `/ID`） | PDF バイト比較（下記、日時固定が必須） |
 
 ## layout dump golden
@@ -63,7 +63,7 @@ golden テストの入力はコミット済み fixture（本文 `tests/text/*.se
 
 `crates/seiran-pdf/tests/pdf_structure.rs`（golden は同 crate の `tests/golden_pdf_structure/`）が
 `seiran_compiler::compile` → `seiran_pdf::render` を通し、独立 reader（`lopdf`）で読み返した
-ページ数・埋め込みフォント数・リンク注釈数・しおりの有無・画像 XObject 数を比較する。
+ページ数・埋め込みフォント数・リンク注釈数・しおりの有無・画像 XObject 数・Form XObject 数（埋め込んだ PDF のページ）を比較する。
 render 層を触ったら **`cargo test -p seiran-pdf`** も確認する（レイアウトダンプ golden は
 `cargo test -p seiran-compiler` 側なので、片方だけでは render の差分を検出できない）。
 再生成は `UPDATE_GOLDEN=1 cargo test -p seiran-pdf`。

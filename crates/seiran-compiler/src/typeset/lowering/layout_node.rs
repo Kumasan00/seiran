@@ -29,7 +29,7 @@ pub(in crate::typeset) enum LayoutNode {
     /// この `VBox` 配下の段落の揃え。`None` は外側の縦リストの揃えを継ぐ（最上位は `[text].alignment`）
     alignment: Option<TextAlignment>,
   },
-  /// 画像（PNG / JPEG / SVG）
+  /// 画像（PNG / JPEG / SVG / PDF の 1 ページ）
   Image {
     /// はみ出し警告が指す `\image` コマンド
     origin: NodeId,
