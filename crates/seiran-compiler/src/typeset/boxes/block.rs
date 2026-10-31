@@ -14,10 +14,10 @@ use crate::{
 };
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
-pub(crate) const PENALTY_FORCE_BREAK: i32 = i32::MIN;
+pub(in crate::typeset) const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
 /// 分割禁止の分割コスト（+∞）
-pub(crate) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
+pub(in crate::typeset) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
@@ -136,7 +136,7 @@ pub(in crate::typeset) enum Block {
 impl Block {
   /// 固定の縦アキ（伸縮なし）を作る。
   #[must_use]
-  pub(crate) fn fixed_space(pt: Length) -> Block {
+  pub(in crate::typeset) fn fixed_space(pt: Length) -> Block {
     return Block::Glue {
       natural: pt,
       stretch: Length::ZERO,
@@ -147,7 +147,7 @@ impl Block {
   ///
   /// 収縮は持たない（リージョンはオーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
   #[must_use]
-  pub(crate) fn stretchable_space(pt: Length, stretch: Length) -> Block {
+  pub(in crate::typeset) fn stretchable_space(pt: Length, stretch: Length) -> Block {
     return Block::Glue {
       natural: pt,
       stretch,
@@ -156,7 +156,7 @@ impl Block {
 
   /// 強制改ページを作る。
   #[must_use]
-  pub(crate) fn force_break() -> Block {
+  pub(in crate::typeset) fn force_break() -> Block {
     return Block::Penalty {
       value: PENALTY_FORCE_BREAK,
     };

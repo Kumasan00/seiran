@@ -27,7 +27,7 @@ pub(in crate::typeset) struct TypesetContext<'a> {
 
 impl<'a> TypesetContext<'a> {
   /// 設定・検証済み版面・[`FontSystem`] を束ねる。
-  pub(crate) fn new(
+  pub(in crate::typeset) fn new(
     config: &'a ProjectConfig,
     style: &'a Style,
     geometry: &'a PreparedGeometry,

@@ -27,7 +27,7 @@ pub(super) struct OpenLink {
 }
 
 /// 行頭の breakable glue を切り落としたスライスを返す
-pub(super) fn strip_leading_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
+fn strip_leading_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
   let mut start = 0;
   while start < items.len()
     && matches!(
@@ -44,7 +44,7 @@ pub(super) fn strip_leading_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HIt
 }
 
 /// 行末の breakable glue を切り落としたスライスを返す（行末スペース不可視）
-pub(super) fn trim_trailing_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
+fn trim_trailing_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
   let mut end = items.len();
   while end > 0
     && matches!(
@@ -61,7 +61,7 @@ pub(super) fn trim_trailing_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HIt
 }
 
 /// 行内アイテムの自然幅合計・伸長能力合計・収縮能力合計を求める
-pub(super) fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
+fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
   let mut natural = Length::ZERO;
   let mut stretch = Length::ZERO;
   let mut shrink = Length::ZERO;
@@ -85,7 +85,7 @@ pub(super) fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
 }
 
 /// 行の余り幅から glue の伸縮係数を求める（両端揃えの配分係数）
-pub(super) fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
+fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
   let (natural, total_stretch, total_shrink) = glue_metrics(items);
   let leftover = available - natural;
   if leftover > Length::ZERO {
@@ -108,7 +108,7 @@ pub(super) fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
 /// `alignment` の水平ずらしまで済ませる。右寄せ末尾ボックス（`HItem::FlushRight`）はずらさず利用可能幅の
 /// 右端に置き、本文はその幅を除いた残りの中で寄せる。本文の幅は [`Line::width`] と同じ「箱の右端の最大」で測る
 /// （行末の Kern 等の空白は寄せる幅に含めない）。
-pub(super) fn build_line(
+fn build_line(
   items: &[&HItem],
   is_last: bool,
   available: Length,

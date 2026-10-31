@@ -6,9 +6,9 @@ use crate::{document::HeadingLevel, typeset::lowering::HeadingRecord};
 #[derive(Debug, Clone)]
 pub(crate) struct OutlineEntry {
   /// 見出しレベル（ネストの深さに使う）
-  pub(crate) level: HeadingLevel,
+  pub(in crate::typeset) level: HeadingLevel,
   /// しおりに表示するテキスト（[`HeadingRecord::label`]）
-  pub(crate) text: String,
+  pub(in crate::typeset) text: String,
 }
 
 /// 見出し記録から PDF しおりを文書順に組み立てる。

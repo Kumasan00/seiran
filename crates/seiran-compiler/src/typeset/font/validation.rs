@@ -328,7 +328,7 @@ pub(super) fn validate_fonts(
 
 /// 1 フォント分を検証し、検出した違反をすべて返す（警告は `warnings` へ追記する）。
 #[must_use]
-pub(super) fn validate_font(
+fn validate_font(
   face: FontFace,
   config: &FontConfig,
   font_ref: &FontRef<'_>,

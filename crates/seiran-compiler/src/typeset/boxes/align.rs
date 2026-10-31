@@ -20,7 +20,7 @@ pub(in crate::typeset) enum Align {
 impl Align {
   /// 利用可能幅 `available` の中に幅 `content_width` の内容を置くときの水平オフセット。
   #[must_use]
-  pub(crate) fn offset(self, available: Length, content_width: Length) -> Length {
+  pub(in crate::typeset) fn offset(self, available: Length, content_width: Length) -> Length {
     return match self {
       Align::Left => Length::ZERO,
       Align::Center => ((available - content_width) / 2.0f32).max(Length::ZERO),

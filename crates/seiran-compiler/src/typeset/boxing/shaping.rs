@@ -162,7 +162,7 @@ impl ShapedRun {
   pub(super) fn font_size(&self) -> Length { return self.run.font_size; }
 
   /// run 全体の幅
-  pub(super) fn width(&self) -> Length { return self.width; }
+  fn width(&self) -> Length { return self.width; }
 
   /// run 全体の高さ
   pub(super) fn height(&self) -> Length { return self.height; }

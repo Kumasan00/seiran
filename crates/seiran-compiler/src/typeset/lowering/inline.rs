@@ -179,7 +179,7 @@ fn footnote_marker_node(
 }
 
 /// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
-pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<Color>) -> TextStyle {
+fn with_link_color(parent_style: TextStyle, link_color: Option<Color>) -> TextStyle {
   return TextStyle {
     color: parent_style.color.or(link_color),
     ..parent_style

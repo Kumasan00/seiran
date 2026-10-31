@@ -93,7 +93,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 本文段落の既定書体だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_body_typeface(self, body_typeface: Typeface) -> Self {
+  fn with_body_typeface(self, body_typeface: Typeface) -> Self {
     return LoweringContext {
       body_typeface,
       ..self
@@ -102,7 +102,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_first_line_indent(self, first_line_indent: Length) -> Self {
+  fn with_first_line_indent(self, first_line_indent: Length) -> Self {
     return LoweringContext {
       first_line_indent,
       ..self
@@ -111,11 +111,11 @@ impl<'a> LoweringContext<'a> {
 
   /// 箇条書きのネスト深さだけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_list_depth(self, list_depth: usize) -> Self { return LoweringContext { list_depth, ..self }; }
+  fn with_list_depth(self, list_depth: usize) -> Self { return LoweringContext { list_depth, ..self }; }
 
   /// 既定フォントサイズ（段落本文用）を返す
   #[must_use]
-  pub(super) fn default_font_size(&self) -> Length { return self.style.text.font_size; }
+  fn default_font_size(&self) -> Length { return self.style.text.font_size; }
 }
 
 /// 見出し 1 件の記録
@@ -136,7 +136,7 @@ pub(super) struct HeadingRecord {
 impl HeadingRecord {
   /// 目次の項目としおりに表示する「番号 タイトル」を組む
   #[must_use]
-  pub(in crate::typeset) fn label(&self) -> String {
+  pub(super) fn label(&self) -> String {
     if self.number.is_empty() {
       return self.title_plain.clone();
     }

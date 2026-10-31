@@ -402,7 +402,7 @@ impl<'a> Measurer<'a> {
   /// テキストを縦に `dy` ずらして閉じた箱（Atom）にする
   ///
   /// 幅は送り幅の和、高さ・深さは字の箱から決める。
-  pub(super) fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> HBox {
+  fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> HBox {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     for hbox in self.shaper.shape_text(text, style) {

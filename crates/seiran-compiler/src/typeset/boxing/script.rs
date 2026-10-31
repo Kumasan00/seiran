@@ -12,11 +12,11 @@ use crate::{document::Typeface, project::FontType};
 #[derive(Debug)]
 pub(super) struct TextSegment {
   /// セグメントの文字列本体
-  pub(crate) text: String,
+  pub(super) text: String,
   /// このセグメントに割り当てるフォント種別
-  pub(crate) font_type: FontType,
+  pub(super) font_type: FontType,
   /// 分類された言語カテゴリ
-  pub(crate) category: ScriptCategory,
+  pub(super) category: ScriptCategory,
 }
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型
@@ -29,7 +29,7 @@ pub(super) enum ScriptCategory {
 }
 
 /// テキストを Unicode スクリプトに基づいて分割し、各セグメントに適切なフォント種別を割り当てる
-pub(crate) fn split_text_by_script(typeface: Typeface, text: &str) -> Vec<TextSegment> {
+pub(super) fn split_text_by_script(typeface: Typeface, text: &str) -> Vec<TextSegment> {
   let script_data = CodePointMapData::<Script>::new();
   let east_asian_width_data = CodePointMapData::<EastAsianWidth>::new();
   let script_with_extensions_data = ScriptWithExtensions::new();

@@ -17,7 +17,7 @@ impl FootnoteId {
   /// 元の出現 index を返す
   #[must_use]
   #[cfg(test)]
-  pub(crate) fn index(self) -> u32 { return self.0; }
+  pub(in crate::typeset) fn index(self) -> u32 { return self.0; }
 }
 
 /// 到達先アンカーを一意に指すキー

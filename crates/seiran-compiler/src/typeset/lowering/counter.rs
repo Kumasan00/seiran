@@ -21,7 +21,7 @@ static THEOREM_REF_FORMAT: LazyLock<RefTemplate> =
 ///
 /// 見出し・図・表・数式・定理の「本体に出る番号」（例: `"1.2"` / `"(1.1)"` の中身）がこれ。
 #[must_use]
-pub(crate) fn format_counter_value(style: &Style, value: &CounterValue) -> String {
+pub(super) fn format_counter_value(style: &Style, value: &CounterValue) -> String {
   return match value.kind {
     CounterKind::Counter(name) => expand_counter_template(style, name, value),
     CounterKind::Theorem(class) => expand_theorem_template(style, class, value),
@@ -32,7 +32,7 @@ pub(crate) fn format_counter_value(style: &Style, value: &CounterValue) -> Strin
 ///
 /// 例: `chapter` なら `"Chapter 1"`、`equation` なら `"(1.1)"`、定理なら `"Theorem 1"`。
 #[must_use]
-pub(crate) fn format_ref_display(style: &Style, value: &CounterValue) -> String {
+pub(super) fn format_ref_display(style: &Style, value: &CounterValue) -> String {
   let number = format_counter_value(style, value);
   return match value.kind {
     CounterKind::Counter(name) => {

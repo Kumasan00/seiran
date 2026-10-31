@@ -20,7 +20,7 @@ impl PageOrdinal {
   pub(super) fn new(ordinal: usize) -> Self { return PageOrdinal(ordinal); }
 
   /// 内側の `usize` を返す。
-  pub(super) fn get(self) -> usize { return self.0; }
+  fn get(self) -> usize { return self.0; }
 }
 
 /// 前付けと本文でそれぞれ 1 から振り直す（後付けは本文の通し番号を継続する）、文字列化前の論理ページ値。
