@@ -204,7 +204,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   （`typeset::boxing` と子 `math` / `text_run` は分かれたままでよい）。
 - **ファイル分割は公開パスを動かす理由にならない**: ファイルは module の物理的な代理にすぎないので、
   切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` /
-  `crate::module::Type` のパスはそのままにする（例: `parser.rs` で `pub(crate) use error::SyntaxError;`）。
+  `crate::module::Type` のパスはそのままにする（例: `parser.rs` で `pub(in crate::frontend) use error::SyntaxError;`）。
   パスを変えるのは新しいモジュールパスのほうが利用側にとって名前が明確になるときで、そのときは利用箇所を
   書き換える（外部利用者はいないので、旧パスの温存は変更を見送る理由にならない）。
 
