@@ -166,7 +166,7 @@ pub(crate) struct CounterStyle {
 impl CounterStyle {
   /// 新しい [`CounterStyle`] を作成するヘルパー
   #[must_use]
-  pub(crate) fn new(
+  fn new(
     display_name: &str,
     number_format: &str,
     number_style: NumberStyle,

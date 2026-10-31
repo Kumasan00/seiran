@@ -18,5 +18,5 @@ impl CitationId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CitationSiteFacts {
   /// 引用先（`\cite{a,b}` はソース上の順序で 2 件）
-  pub(crate) targets: Vec<CitationId>,
+  pub(in crate::semantics) targets: Vec<CitationId>,
 }

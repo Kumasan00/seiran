@@ -44,7 +44,7 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 ///
 /// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
 /// 添えて返す。1 箇所も無ければ空を返す。
-pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
+pub(super) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
   // ソースごとの（最初の引用箇所, ラベル列, 未定義キーに `,` を含むものがあったか）。
   // `BTreeMap` の反復順が `SourceId` の順序（宣言順）そのもの。
   let mut per_source: BTreeMap<SourceId, (NodeId, Vec<LabeledSpan>, bool)> = BTreeMap::new();
@@ -169,7 +169,7 @@ impl SemanticError {
   }
 
   /// ラベル `label` の重複定義 `duplicate` を、最初の定義 `first` とともに報告する診断を作る。
-  pub(crate) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
+  pub(super) fn duplicate_label(label: &str, duplicate: SourceLocation, first: SourceLocation) -> Self {
     let mut labels = vec![LabeledSpan::new_primary_with_span(
       Some("このラベルは既に定義されています".to_string()),
       duplicate.span,

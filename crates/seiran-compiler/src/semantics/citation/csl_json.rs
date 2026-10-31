@@ -24,7 +24,7 @@ use crate::semantics::citation::Reference;
 /// # Panics
 ///
 /// 読込の受理集合と `Item` の受理集合が食い違ったとき（読込検査の漏れ。上の対応が保証する）。
-pub(crate) fn to_item(id: &str, reference: &Reference) -> Item {
+pub(super) fn to_item(id: &str, reference: &Reference) -> Item {
   let value = serde_json::to_value(reference).expect(
     "`Reference` の Serialize は文字列キーのマップと有限値（数値変数の非整数は `FiniteFloat`）だけを出すので JSON 化は失敗しない",
   );

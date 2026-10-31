@@ -145,7 +145,7 @@ impl<T> FaceMap<T> {
   /// # Panics
   ///
   /// 2 つの表の形（枠ごとの候補の数）が違う場合。呼び元は同じ config から作った表だけを渡す。
-  pub(crate) fn zip_with<U, V>(self, other: FaceMap<U>, mut combine: impl FnMut(T, U) -> V) -> FaceMap<V> {
+  pub(in crate::project) fn zip_with<U, V>(self, other: FaceMap<U>, mut combine: impl FnMut(T, U) -> V) -> FaceMap<V> {
     let shape = self.shape();
     assert!(shape == other.shape(), "同じ config から作った表は枠ごとの候補の数が一致する");
     let values = self.into_values().zip(other.into_values()).map(|(value, other)| return combine(value, other));

@@ -35,7 +35,7 @@ pub struct CompileFailure {
 
 impl CompileFailure {
   /// 単一の診断から失敗を作る。
-  pub(crate) fn single<E: Diagnostic + Send + Sync + 'static>(diagnostic: E) -> Self {
+  pub(super) fn single<E: Diagnostic + Send + Sync + 'static>(diagnostic: E) -> Self {
     return CompileFailure {
       primary: Box::new(diagnostic),
       rest: Vec::new(),
@@ -60,7 +60,7 @@ impl CompileFailure {
   ///
   /// 呼ぶのは `compile` facade の出口 1 回だけ（段の途中で添えると、後段の `?` で失敗が作り直されたときに
   /// 失われる）。
-  pub(crate) fn with_warnings(self, warnings: Warnings) -> Self {
+  pub(super) fn with_warnings(self, warnings: Warnings) -> Self {
     debug_assert!(self.warnings.is_empty(), "警告を添えるのは compile facade の出口 1 回だけのはず");
     return CompileFailure { warnings, ..self };
   }

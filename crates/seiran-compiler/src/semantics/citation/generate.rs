@@ -33,7 +33,7 @@ impl GeneratedCitations {
   ///
   /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは [`generate_citations`] が
   /// 保証している）。
-  pub(crate) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] {
+  pub(in crate::semantics) fn citation_display(&self, site: NodeId) -> &[GeneratedInline] {
     let Some(display) = self.displays.get(site) else {
       unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
     };
@@ -41,11 +41,13 @@ impl GeneratedCitations {
   }
 
   /// 書誌のエントリ列を返す（CSL が書誌を定義していない・引用が無い場合は `None`）
-  pub(crate) fn bibliography(&self) -> Option<&[BibliographyEntry]> { return self.bibliography.as_deref(); }
+  pub(in crate::semantics) fn bibliography(&self) -> Option<&[BibliographyEntry]> {
+    return self.bibliography.as_deref();
+  }
 
   /// テスト専用の直接構築（完全性の不変条件は保証しない）
   #[cfg(test)]
-  pub(crate) fn for_test(
+  pub(in crate::semantics) fn for_test(
     displays: Vec<(NodeId, Vec<GeneratedInline>)>,
     bibliography: Option<Vec<BibliographyEntry>>,
   ) -> Self {

@@ -71,7 +71,7 @@ impl SemanticDocument {
 
   /// 参照箇所を文書順に走査する
   #[cfg(test)]
-  pub(crate) fn ref_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.refs.iter(); }
+  pub(super) fn ref_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.refs.iter(); }
 
   /// 引用箇所を文書順に走査する
   #[cfg(test)]
