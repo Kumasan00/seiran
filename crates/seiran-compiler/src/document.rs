@@ -22,6 +22,7 @@
 mod caption;
 mod heading_level;
 mod hir;
+mod image_format;
 mod math_block;
 mod math_class;
 mod math_space;
@@ -39,6 +40,7 @@ pub(crate) use hir::{
   HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote, HirSource, HirTable,
   HirTableCell, HirTableRow, HirTheorem, NodeId, NodeMap, SourceLocation, SourceMap,
 };
+pub use image_format::ImageFormat;
 pub(crate) use math_block::{GridLayout, MathBlockKind, MathDelimiter};
 pub(crate) use math_class::MathClass;
 pub(crate) use math_space::MathSpace;

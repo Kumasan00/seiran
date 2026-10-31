@@ -2,8 +2,11 @@
 
 use std::path::Path;
 
-/// 対応している画像形式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use strum::Display;
+
+/// 対応している画像形式（`\image` の拡張子が宣言する。表示は大文字の形式名）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+#[strum(serialize_all = "UPPERCASE")]
 pub enum ImageFormat {
   /// PNG（`.png`）
   Png,
@@ -38,5 +41,12 @@ mod tests {
     assert_eq!(ImageFormat::from_path("a.svg"), Some(ImageFormat::Svg));
     assert_eq!(ImageFormat::from_path("a.gif"), None);
     assert_eq!(ImageFormat::from_path("a"), None);
+  }
+
+  #[test]
+  fn display_names_the_format_in_upper_case() {
+    assert_eq!(ImageFormat::Png.to_string(), "PNG");
+    assert_eq!(ImageFormat::Jpeg.to_string(), "JPEG");
+    assert_eq!(ImageFormat::Svg.to_string(), "SVG");
   }
 }

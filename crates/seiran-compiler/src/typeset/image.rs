@@ -10,5 +10,5 @@ mod manifest;
 mod natural_size;
 mod resources;
 
-pub(super) use manifest::collect_image_paths;
+pub(super) use manifest::collect_image_requests;
 pub(super) use resources::{ImageAsset, ImageResources, load_image_resources, resolve_image_size};

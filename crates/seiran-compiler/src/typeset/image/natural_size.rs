@@ -4,7 +4,7 @@ use std::io::Cursor;
 
 use image::ImageReader;
 
-use crate::{publication::ImageFormat, typeset::error::TypesetError};
+use crate::{document::ImageFormat, typeset::error::TypesetError};
 
 /// 検証済みの自然寸法（幅・高さとも有限かつ正）。
 ///
@@ -83,7 +83,7 @@ fn svg_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
 #[cfg(test)]
 mod tests {
   use super::{NaturalSize, natural_image_size};
-  use crate::{publication::ImageFormat, typeset::error::TypesetError};
+  use crate::{document::ImageFormat, typeset::error::TypesetError};
 
   #[test]
   fn natural_image_size_returns_svg_dimensions_from_bytes() {

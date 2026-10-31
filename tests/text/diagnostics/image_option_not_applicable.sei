@@ -1,0 +1,6 @@
+\section{形式に効かない画像オプションのサンプル}
+
+\begin{figure}
+\image[dpi=300]{./tests/image/testimage6.svg}
+\caption{c}
+\end{figure}

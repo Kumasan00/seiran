@@ -506,14 +506,18 @@ fn diagnostic_missing_image() {
 
 #[test]
 fn diagnostic_unsupported_image_format() {
-  // 実在する未対応 GIF で形式エラーを起こす（読み込み自体は成功する必要があるので実バイト列を登録する）
-  let failure = TestProject::builder()
-    .sources(&["tests/text/diagnostics/unsupported_image_format.sei"])
-    .asset("./tests/image/unsupported.gif")
-    .build()
-    .compile_err();
+  // 拡張子だけで評価時に拒否するので、画像は登録しない（読みに行けば read_image になる）
+  let failure = compile_err(&["tests/text/diagnostics/unsupported_image_format.sei"]);
 
   assert_matches_golden("unsupported_image_format", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_image_option_not_applicable() {
+  // 形式に効かないオプションも拡張子だけで決まるので、画像を登録せずに拒否される
+  let failure = compile_err(&["tests/text/diagnostics/image_option_not_applicable.sei"]);
+
+  assert_matches_golden("image_option_not_applicable", &render_failure(failure));
 }
 
 #[test]

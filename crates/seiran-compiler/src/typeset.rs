@@ -171,12 +171,13 @@ fn lay_out(
     &|base, selector| return font_resources.has_math_variation(base, selector),
     &config.font_configs[FontFace::MATH].font_path,
   );
-  let image_paths = image::collect_image_paths(document.hir());
-  let images = match image::load_image_resources(source, &image_paths) {
+  let image_requests = image::collect_image_requests(document.hir());
+  let images = match image::load_image_resources(source, &image_requests) {
     Ok(images) => images,
     Err(failures) => return (Err(ComposeError::Typeset(failures)), into_variation_warnings(math_warnings)),
   };
   let ctx = pagination::TypesetContext::new(config, style, geometry, font_resources);
+  let image_paths = image_requests.into_iter().map(|request| return request.path).collect();
   let laid_out = pagination::paginate(&ctx, document, images, image_paths);
 
   let mut glyph_errors: Vec<TextGlyphError> = match math_glyphs {

@@ -5,13 +5,16 @@ use std::collections::HashMap;
 use tracing::debug;
 
 use crate::{
+  document::ImageFormat,
   failures::Failures,
   length::Length,
   project::{ProjectPath, ProjectSource},
-  publication::ImageFormat,
   typeset::{
     error::TypesetError,
-    image::natural_size::{self, NaturalSize},
+    image::{
+      manifest::ImageRequest,
+      natural_size::{self, NaturalSize},
+    },
   },
 };
 
@@ -44,8 +47,8 @@ impl ImageResources {
 
 /// 画像ファイルを読み込み、自然寸法と判定済み形式・生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// `paths` は [`super::collect_image_paths`] が `BTreeSet<ProjectPath>` で作った正規化済みパスの昇順
-/// なので、失敗の報告順もそのまま昇順で決定的になる。
+/// `requests` は [`super::collect_image_requests`] が作った正規化済みパスの昇順なので、失敗の報告順も
+/// そのまま昇順で決定的になる。
 ///
 /// # Errors
 ///
@@ -53,16 +56,16 @@ impl ImageResources {
 /// [`TypesetError`] をパス昇順で返す。
 pub(crate) fn load_image_resources(
   source: &dyn ProjectSource,
-  paths: &[ProjectPath],
+  requests: &[ImageRequest],
 ) -> Result<ImageResources, Failures<TypesetError>> {
-  let mut natural_sizes = HashMap::with_capacity(paths.len());
-  let mut assets = HashMap::with_capacity(paths.len());
+  let mut natural_sizes = HashMap::with_capacity(requests.len());
+  let mut assets = HashMap::with_capacity(requests.len());
   let mut errors = Vec::new();
-  for path in paths {
-    match read_image(source, path) {
+  for request in requests {
+    match read_image(source, request) {
       Ok((natural_size, asset)) => {
-        natural_sizes.insert(path.clone(), natural_size);
-        assets.insert(path.clone(), asset);
+        natural_sizes.insert(request.path.clone(), natural_size);
+        assets.insert(request.path.clone(), asset);
       },
       Err(error) => errors.push(error),
     }
@@ -78,17 +81,15 @@ pub(crate) fn load_image_resources(
 }
 
 /// 画像 1 件を読み込み、自然寸法と描画へ渡す資源を返す。
-fn read_image(source: &dyn ProjectSource, path: &ProjectPath) -> Result<(NaturalSize, ImageAsset), TypesetError> {
-  let path_string = path.to_string();
-  let file_bytes = source.read_bytes(path).map_err(|source| {
+fn read_image(source: &dyn ProjectSource, request: &ImageRequest) -> Result<(NaturalSize, ImageAsset), TypesetError> {
+  let path_string = request.path.to_string();
+  let format = request.format;
+  let file_bytes = source.read_bytes(&request.path).map_err(|source| {
     return TypesetError::ReadImage {
       path: path_string.clone(),
       source,
     };
   })?;
-  let Some(format) = ImageFormat::from_path(&path_string) else {
-    return Err(TypesetError::UnsupportedImageFormat { path: path_string });
-  };
   let natural_size = natural_size::natural_image_size(&path_string, format, &file_bytes)?;
   return Ok((
     natural_size,
@@ -119,7 +120,7 @@ pub(in crate::typeset) fn resolve_image_size(
 ) -> (Length, Length) {
   let Some(natural) = images.natural_size(path) else {
     unreachable!(
-      "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
+      "描画対象の画像は collect_image_requests が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
     );
   };
   let (width, height) = fit_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, available.to_pt());
@@ -152,12 +153,20 @@ mod tests {
     return std::fs::read(&path).unwrap_or_else(|error| panic!("画像 fixture を読めるはず: {path:?}: {error}"));
   }
 
+  /// 1 ファイルぶんの読込要求を組み立てる
+  fn request(path: &str, format: ImageFormat) -> ImageRequest {
+    return ImageRequest {
+      path: ProjectPath::new(path),
+      format,
+    };
+  }
+
   #[test]
   fn load_image_resources_reads_through_project_source() {
     let png_bytes = read_image_fixture("testimage5.png");
     let expected_len = png_bytes.len();
     let source = MemoryProjectSource::new().with_bytes("/project/testimage5.png", png_bytes);
-    let paths = vec![ProjectPath::new("/project/testimage5.png")];
+    let paths = vec![request("/project/testimage5.png", ImageFormat::Png)];
 
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
@@ -176,7 +185,7 @@ mod tests {
   #[test]
   fn load_image_resources_wraps_missing_path_as_read_image_error() {
     let source = MemoryProjectSource::new();
-    let paths = vec![ProjectPath::new("/project/does-not-exist.png")];
+    let paths = vec![request("/project/does-not-exist.png", ImageFormat::Png)];
 
     let result = load_image_resources(&source, &paths);
 
@@ -190,9 +199,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め")]
+  #[should_panic(expected = "描画対象の画像は collect_image_requests が同じ HIR の Figure から全件集め")]
   fn resolve_image_size_panics_when_path_is_absent_from_resources() {
-    // `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を作る
+    // `collect_image_requests` が `Figure` を取りこぼしたのと同じ状態を作る
     let resources = load_image_resources(&MemoryProjectSource::new(), &[]).expect("画像 0 件なら成功するはず");
 
     let _ =

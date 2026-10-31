@@ -3,7 +3,7 @@
 //! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
 
 use crate::{
-  document::{CaptionPosition, HirFigure, HirInline, HirNode, HirNodeKind},
+  document::{CaptionPosition, HirFigure, HirInline, HirNode, HirNodeKind, ImageFormat},
   frontend::{
     evaluator::{
       EvalContext, EvalError, arity,
@@ -55,6 +55,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let id = ctx.alloc(view.span());
   let source = view.source();
   let mut image_path: Option<String> = None;
+  let mut image_format: Option<ImageFormat> = None;
   let mut image_site = None;
   let mut width: Option<Length> = None;
   let mut height: Option<Length> = None;
@@ -80,6 +81,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           let extracted = extract_image(&cmd_view)?;
           image_site = Some(ctx.alloc(cmd_view.span()));
           image_path = Some(extracted.path);
+          image_format = Some(extracted.format);
           width = extracted.width;
           height = extracted.height;
           dpi = extracted.dpi;
@@ -102,7 +104,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     }
   }
 
-  let (Some(image_path), Some(image_site)) = (image_path, image_site) else {
+  let (Some(image_path), Some(image_format), Some(image_site)) = (image_path, image_format, image_site) else {
     return Err(EvalError::MissingEnvironmentArgument {
       name: "figure".to_string(),
       expected: "\\image コマンド".to_string(),
@@ -115,6 +117,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
     HirNodeKind::Figure(HirFigure {
       image_site,
       image_path: ctx.resolve_path(&image_path),
+      format: image_format,
       width,
       height,
       dpi,
@@ -130,6 +133,8 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
 struct ImageArgs {
   /// 画像ファイルへのパス
   path: String,
+  /// 拡張子が宣言する画像形式
+  format: ImageFormat,
   /// 描画幅
   width: Option<Length>,
   /// 描画高さ
@@ -159,8 +164,32 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
     });
   }
 
+  let Some(format) = ImageFormat::from_path(&path) else {
+    return Err(EvalError::UnsupportedImageFormat {
+      path,
+      span: view.span().into(),
+    });
+  };
+  // 効かないことが拡張子（字面）だけで決まるオプションは、ファイルを読む前にここで拒否する
+  let raster_only = [("dpi", dpi.is_some()), ("downsample", downsample.is_some())];
+  for (key, written) in raster_only {
+    let applies = match format {
+      ImageFormat::Png | ImageFormat::Jpeg => true,
+      ImageFormat::Svg => false,
+    };
+    if written && !applies {
+      return Err(EvalError::ImageOptionNotApplicable {
+        key: key.to_string(),
+        format,
+        applies_to: "PNG / JPEG".to_string(),
+        span: view.span().into(),
+      });
+    }
+  }
+
   return Ok(ImageArgs {
     path,
+    format,
     width,
     height,
     dpi,
@@ -171,6 +200,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
 #[cfg(test)]
 mod tests {
   use bumpalo::Bump;
+  use miette::SourceSpan;
 
   use super::*;
   use crate::{
@@ -317,6 +347,56 @@ mod tests {
     };
     assert_eq!(figure.dpi, Some(600));
     assert_eq!(figure.downsample, Some(false));
+  }
+
+  #[test]
+  fn image_records_format_from_extension() {
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image{a.SVG}\end{figure}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst).unwrap();
+
+    let HirNodeKind::Figure(figure) = &result[0].kind else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(figure.format, ImageFormat::Svg);
+  }
+
+  #[test]
+  fn image_rejects_unsupported_extension_at_the_image_command() {
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image{a.gif}\end{figure}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    let Err(EvalError::UnsupportedImageFormat { path, span }) = result else {
+      panic!("UnsupportedImageFormat が期待されます: {result:?}");
+    };
+    assert_eq!(path, "a.gif");
+    let command = r"\image{a.gif}";
+    assert_eq!(span, SourceSpan::from((source.find(command).unwrap(), command.len())));
+  }
+
+  #[test]
+  fn image_rejects_raster_only_options_on_svg() {
+    for (option, expected_key) in [("dpi=300", "dpi"), ("downsample=false", "downsample")] {
+      let arena = Bump::new();
+      let source = format!(r"\begin{{figure}}\image[{option}]{{a.svg}}\end{{figure}}");
+      let cst = test_support::parse_cst(&source, &arena).unwrap();
+
+      let result = evaluate_children_to_hir(&source, cst);
+
+      assert!(
+        matches!(
+          &result,
+          Err(EvalError::ImageOptionNotApplicable { key, format: ImageFormat::Svg, applies_to, .. })
+            if key == expected_key && applies_to == "PNG / JPEG"
+        ),
+        "{option}: {result:?}"
+      );
+    }
   }
 
   #[test]

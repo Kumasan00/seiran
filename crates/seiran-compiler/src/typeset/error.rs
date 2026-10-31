@@ -62,17 +62,6 @@ pub(crate) enum TypesetError {
     source: ProjectSourceError,
   },
 
-  /// 画像ファイルの拡張子が未対応です。
-  #[error("画像ファイルの拡張子が未対応です: {path}")]
-  #[diagnostic(
-    code(typeset::image::unsupported_format),
-    help("対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。")
-  )]
-  UnsupportedImageFormat {
-    /// 画像ファイルのパス。
-    path: String,
-  },
-
   /// ラスタ画像のデコードに失敗しました。
   #[error("画像ファイルのデコードに失敗しました: {path}")]
   #[diagnostic(code(typeset::image::decode_image), help("画像ファイルが破損していないか確認してください。"))]

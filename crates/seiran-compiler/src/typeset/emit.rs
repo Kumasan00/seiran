@@ -265,7 +265,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
       let path = path.to_string();
       let Some(image) = resources.image_ref(&path) else {
         unreachable!(
-          "描画対象の画像は typeset::image::collect_image_paths が全件集め PublicationResources へ載せる: {path}"
+          "描画対象の画像は typeset::image::collect_image_requests が全件集め PublicationResources へ載せる: {path}"
         );
       };
       ops.push(PaintOp::DrawImage {
@@ -326,14 +326,14 @@ mod tests {
 
   use super::build_publication;
   use crate::{
-    document::HeadingLevel,
+    document::{HeadingLevel, ImageFormat},
     length::Length,
     project::{
       FaceMap, FontConfig, ProjectPath,
       config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
-      ImageFormat, PaintOp, Publication, PublicationImage, PublicationLinkTarget, PublicationPoint, PublicationRect,
+      PaintOp, Publication, PublicationImage, PublicationLinkTarget, PublicationPoint, PublicationRect,
       PublicationResources, test_support::resources,
     },
     semantics::{HeadingKey, LabelId},

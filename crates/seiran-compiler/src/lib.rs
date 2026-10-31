@@ -24,6 +24,7 @@ mod typeset;
 
 pub use color::{Color, ParseColorError};
 pub use compiler::{Compilation, CompileFailure, DependencyManifest, Warnings, compile};
+pub use document::ImageFormat;
 pub use length::{Length, ParseLengthError};
 #[doc(hidden)]
 pub use project::test_support;
@@ -32,7 +33,7 @@ pub use project::{
   VariationAxis,
 };
 pub use publication::{
-  FontFaceConfig, FontMetrics, Glyph, GlyphRun, ImageFormat, ImageRef, PaintOp, Publication, PublicationDestination,
+  FontFaceConfig, FontMetrics, Glyph, GlyphRun, ImageRef, PaintOp, Publication, PublicationDestination,
   PublicationFont, PublicationImage, PublicationLink, PublicationLinkTarget, PublicationMetadata,
   PublicationOutlineEntry, PublicationPage, PublicationPoint, PublicationRect, PublicationResources,
 };

@@ -1,0 +1,11 @@
+frontend::eval::image_option_not_applicable
+
+  × SVG の画像には任意引数 `dpi` を指定できません
+   ╭─[tests/text/diagnostics/image_option_not_applicable.sei:4:1]
+ 3 │ \begin{figure}
+ 4 │ \image[dpi=300]{./tests/image/testimage6.svg}
+   · ──────────────────────┬──────────────────────
+   ·                       ╰── この画像です
+ 5 │ \caption{c}
+   ╰────
+  help: `dpi` は PNG / JPEG の画像にだけ効きます。この \image から外してください。

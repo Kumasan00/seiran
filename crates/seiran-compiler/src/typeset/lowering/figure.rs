@@ -1,7 +1,7 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
 use crate::{
-  document::{HirFigure, NodeId},
+  document::{HirFigure, ImageFormat, NodeId},
   typeset::lowering::{
     LoweringContext, LoweringState,
     float::{FloatCaption, FloatMargins, lower_numbered_float},
@@ -18,11 +18,13 @@ pub(super) fn lower_figure(
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.figure;
 
-  let downsample_enabled = figure.downsample.unwrap_or(ctx.image_downsample);
-  let target_dpi = if downsample_enabled {
-    Some(figure.dpi.unwrap_or(ctx.image_max_dpi))
-  } else {
-    None
+  // ダウンサンプリングはラスタだけに効く（ベクタ形式への `dpi` / `downsample` は frontend が拒否済み）
+  let target_dpi = match figure.format {
+    ImageFormat::Png | ImageFormat::Jpeg => figure
+      .downsample
+      .unwrap_or(ctx.image_downsample)
+      .then(|| return figure.dpi.unwrap_or(ctx.image_max_dpi)),
+    ImageFormat::Svg => None,
   };
 
   let margins = FloatMargins {
@@ -172,6 +174,20 @@ mod tests {
       panic!("Image が期待: {nodes:?}");
     };
     assert_eq!(*target_dpi, Some(600));
+  }
+
+  #[test]
+  fn lower_figure_svg_yields_no_target_dpi() {
+    // ベクタ形式にはダウンサンプリングが効かないので、config の既定（downsample=true）でも上限 DPI を載せない
+    let style = ReadStyle::default();
+    let ctx = context(&style);
+
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.svg}\n\\end{figure}\n");
+
+    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+      panic!("Image が期待: {nodes:?}");
+    };
+    assert!(target_dpi.is_none());
   }
 
   #[test]

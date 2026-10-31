@@ -4,8 +4,8 @@
 //! ハンドルは含まず、フォント・画像は生バイト列と構築設定のまま持つ。
 //!
 //! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetrics`]、フォント
-//! 構築設定 [`FontFaceConfig`]、判定済みの画像形式 [`ImageFormat`] — は
-//! 子 module（`glyph` / `font` / `image_format`）が持つ。
+//! 構築設定 [`FontFaceConfig`] — は子 module（`glyph` / `font`）が持つ。画像形式は HIR の語彙
+//! （[`crate::document::ImageFormat`]）をそのまま載せる。
 //!
 //! 文書を組み立てる型（[`Publication`] / [`PublicationPage`] / [`PublicationResources`]）と、
 //! 不変条件を持つ値（[`PublicationRect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を検証付きの `pub(crate)`
@@ -13,7 +13,6 @@
 
 mod font;
 mod glyph;
-mod image_format;
 
 use std::{
   fmt::{self, Debug, Formatter},
@@ -22,9 +21,11 @@ use std::{
 
 pub use font::{FontFaceConfig, FontMetrics};
 pub use glyph::{Glyph, GlyphRun};
-pub use image_format::ImageFormat;
 
-use crate::project::{FaceMap, FontFace};
+use crate::{
+  document::ImageFormat,
+  project::{FaceMap, FontFace},
+};
 
 /// 座標と描画順が確定した文書。
 #[derive(Debug, Clone, PartialEq)]

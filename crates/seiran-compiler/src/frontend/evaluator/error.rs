@@ -3,7 +3,7 @@
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
-use crate::length::MAX_ABS_PT;
+use crate::{document::ImageFormat, length::MAX_ABS_PT};
 
 /// 評価器のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -572,6 +572,38 @@ pub(crate) enum EvalError {
   TableCellMixedContent {
     /// 混在が検出されたセル区画のソース位置
     #[label("\\cell と他の内容が混在しています")]
+    span: SourceSpan,
+  },
+
+  /// `\image` のパスの拡張子が対応形式のどれでもない場合
+  #[error("画像ファイルの拡張子が未対応です: {path}")]
+  #[diagnostic(
+    code(frontend::eval::unsupported_image_format),
+    help("対応形式は PNG (.png)、JPEG (.jpg / .jpeg)、SVG (.svg) です。")
+  )]
+  UnsupportedImageFormat {
+    /// 画像ファイルのパス（ソースの字面）
+    path: String,
+    /// `\image` コマンドのソース位置
+    #[label("この画像です")]
+    span: SourceSpan,
+  },
+
+  /// `\image` の任意引数が、拡張子が宣言する形式に効かない場合
+  #[error("{format} の画像には任意引数 `{key}` を指定できません")]
+  #[diagnostic(
+    code(frontend::eval::image_option_not_applicable),
+    help("`{key}` は {applies_to} の画像にだけ効きます。この \\image から外してください。")
+  )]
+  ImageOptionNotApplicable {
+    /// 効かない任意引数のキー
+    key: String,
+    /// 拡張子が宣言する画像形式
+    format: ImageFormat,
+    /// そのキーが効く形式の表示用文字列
+    applies_to: String,
+    /// `\image` コマンドのソース位置
+    #[label("この画像です")]
     span: SourceSpan,
   },
 

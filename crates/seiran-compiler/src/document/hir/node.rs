@@ -2,8 +2,8 @@
 
 use crate::{
   document::{
-    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathBlockKind, QuoteKind, RowSeparator, TextAlignment,
-    TheoremClass,
+    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, ImageFormat, MathBlockKind, QuoteKind, RowSeparator,
+    TextAlignment, TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
   length::Length,
@@ -117,6 +117,8 @@ pub(crate) struct HirFigure {
   pub(crate) image_site: NodeId,
   /// 画像ファイルへのパス（`\image{...}` の必須引数）
   pub(crate) image_path: ProjectPath,
+  /// パスの拡張子が宣言する画像形式（形式に効かないオプションは評価時に拒否済み）
+  pub(crate) format: ImageFormat,
   /// 画像の幅（`None` は本文幅と縦横比から決まる）
   pub(crate) width: Option<Length>,
   /// 画像の高さ（`None` は本文幅と縦横比から決まる）

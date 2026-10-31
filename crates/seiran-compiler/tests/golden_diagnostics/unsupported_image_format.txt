@@ -1,4 +1,11 @@
-typeset::image::unsupported_format
+frontend::eval::unsupported_image_format
 
   × 画像ファイルの拡張子が未対応です: ./tests/image/unsupported.gif
-  help: 対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。
+   ╭─[tests/text/diagnostics/unsupported_image_format.sei:5:1]
+ 4 │ // 拡張子だけで評価時に拒否するので、ファイルは存在しなくてよい。
+ 5 │ \image[width=80mm]{./tests/image/unsupported.gif}
+   · ────────────────────────┬────────────────────────
+   ·                         ╰── この画像です
+ 6 │ \caption{未対応の画像形式}
+   ╰────
+  help: 対応形式は PNG (.png)、JPEG (.jpg / .jpeg)、SVG (.svg) です。
