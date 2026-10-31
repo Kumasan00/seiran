@@ -850,7 +850,7 @@ impl<'a> Parser<'a> {
 /// # Errors
 ///
 /// 構文エラーが発生した場合
-pub(crate) fn parse_cst<'a>(
+pub(in crate::frontend) fn parse_cst<'a>(
   source: &'a str,
   arena: &'a Bump,
   modes: ModeResolver,

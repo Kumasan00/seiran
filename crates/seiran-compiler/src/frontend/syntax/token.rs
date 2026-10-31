@@ -20,7 +20,7 @@ impl Token {
 
   /// トークンが対応するソーステキストの部分文字列を返す
   #[must_use]
-  pub(crate) fn text<'s>(&self, source: &'s str) -> &'s str {
+  pub(in crate::frontend) fn text<'s>(&self, source: &'s str) -> &'s str {
     return &source[self.span.start as usize..self.span.end as usize];
   }
 

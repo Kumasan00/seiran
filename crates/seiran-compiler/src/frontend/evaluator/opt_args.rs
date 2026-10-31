@@ -295,7 +295,7 @@ pub(super) fn no_environment_opt_args(view: &EnvironmentView<'_>) -> Result<(), 
 ///
 /// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、同じキーの重複時に
 /// [`EvalError::DuplicateOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
-pub(super) fn collect_opt_args(
+fn collect_opt_args(
   source: &str,
   name: &str,
   opt_arg: Option<&CstNode<'_>>,

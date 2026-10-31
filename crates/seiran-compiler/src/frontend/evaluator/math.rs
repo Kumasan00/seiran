@@ -43,7 +43,7 @@ pub(super) fn evaluate_math_children(
 }
 
 /// 数式モードで構造化された要素列を [`HirMath`] 列に変換する共通ヘルパ
-pub(crate) fn evaluate_math_elements(
+pub(super) fn evaluate_math_elements(
   source: &str,
   ctx: &EvalContext<'_>,
   elements: &[CstElement<'_>],

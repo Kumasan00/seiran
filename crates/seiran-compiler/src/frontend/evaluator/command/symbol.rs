@@ -12,9 +12,9 @@ use crate::document::MathClass;
 #[derive(Clone, Copy, Debug)]
 pub(in crate::frontend::evaluator) struct MathSymbol {
   /// 出力する Unicode 文字
-  pub(crate) ch: char,
+  pub(in crate::frontend::evaluator) ch: char,
   /// 数式クラス
-  pub(crate) class: MathClass,
+  pub(in crate::frontend::evaluator) class: MathClass,
 }
 
 impl MathSymbol {

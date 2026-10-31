@@ -160,7 +160,7 @@ static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
 /// 環境名から本体の読み取り方を引く
 ///
 /// 未登録の環境は [`BodyMode::Text`] が既定。
-pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
+pub(super) fn lookup_body_mode(name: &str) -> BodyMode {
   return ENVIRONMENTS.get(name).map_or(BodyMode::Text, |kind| return kind.body_mode());
 }
 
@@ -169,7 +169,7 @@ pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
 /// # Errors
 ///
 /// 未知の環境やハンドラ実行中のエラーが発生した場合
-pub(crate) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
+pub(super) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   return match ENVIRONMENTS.get(view.name()) {
     Some(kind) => kind.evaluate(view, ctx),
     None => Err(EvalError::UnknownEnvironment {
@@ -184,10 +184,7 @@ pub(crate) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext
 /// # Errors
 ///
 /// 未知の環境・数式の中で使えない環境の場合と、ハンドラ実行中のエラーが発生した場合
-pub(in crate::frontend::evaluator) fn evaluate_in_math(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-) -> Result<HirMath, EvalError> {
+pub(super) fn evaluate_in_math(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirMath, EvalError> {
   return match ENVIRONMENTS.get(view.name()) {
     Some(kind) => kind.evaluate_in_math(view, ctx),
     None => Err(unsupported_in_math(view)),

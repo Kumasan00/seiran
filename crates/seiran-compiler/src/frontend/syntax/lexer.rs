@@ -21,7 +21,7 @@ pub(super) struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
   /// 新しいレキサーを生成する
-  pub(crate) fn new(input: &'a str) -> Self {
+  pub(super) fn new(input: &'a str) -> Self {
     return Self {
       input,
       bytes: input.as_bytes(),

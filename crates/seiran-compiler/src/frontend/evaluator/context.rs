@@ -23,7 +23,7 @@ pub(crate) struct EvalContext<'a> {
 
 impl<'a> EvalContext<'a> {
   /// 指定ソース向けの評価 context を作る
-  pub(crate) fn new(source_id: SourceId, resolver: &'a PathResolver) -> Self {
+  pub(in crate::frontend) fn new(source_id: SourceId, resolver: &'a PathResolver) -> Self {
     return EvalContext {
       builder: HirBuilder::new(source_id),
       resolver,
@@ -31,37 +31,37 @@ impl<'a> EvalContext<'a> {
   }
 
   /// ソースに書かれた外部資源のパスを、`base_dir` 基準の正規化済み [`ProjectPath`] へ解決する
-  pub(crate) fn resolve_path(&self, path: impl AsRef<Path>) -> ProjectPath { return self.resolver.resolve(path); }
+  pub(super) fn resolve_path(&self, path: impl AsRef<Path>) -> ProjectPath { return self.resolver.resolve(path); }
 
   /// 新しい ID を発行し `span` を記録する（[`HirBuilder::alloc`] へ委譲）
-  pub(crate) fn alloc(&self, span: Span) -> NodeId { return self.builder.alloc(span); }
+  pub(super) fn alloc(&self, span: Span) -> NodeId { return self.builder.alloc(span); }
 
   /// 予約済み ID の span を確定させる（[`HirBuilder::set_span`] へ委譲）
-  pub(crate) fn set_span(&self, id: NodeId, span: Span) {
+  pub(super) fn set_span(&self, id: NodeId, span: Span) {
     self.builder.set_span(id, span);
     return;
   }
 
   /// 発行済み ID の span を返す（[`HirBuilder::span_of`] へ委譲）
-  pub(crate) fn span_of(&self, id: NodeId) -> Span { return self.builder.span_of(id); }
+  pub(super) fn span_of(&self, id: NodeId) -> Span { return self.builder.span_of(id); }
 
   /// 子を持たないブロックノードを 1 回で作る（[`HirBuilder::leaf_node`] へ委譲）
-  pub(crate) fn leaf_node(&self, span: Span, kind: HirNodeKind) -> HirNode {
+  pub(super) fn leaf_node(&self, span: Span, kind: HirNodeKind) -> HirNode {
     return self.builder.leaf_node(span, kind);
   }
 
   /// 子を持たないインラインノードを 1 回で作る（[`HirBuilder::leaf_inline`] へ委譲）
-  pub(crate) fn leaf_inline(&self, span: Span, kind: HirInlineKind) -> HirInline {
+  pub(super) fn leaf_inline(&self, span: Span, kind: HirInlineKind) -> HirInline {
     return self.builder.leaf_inline(span, kind);
   }
 
   /// 子を持たない数式ノードを 1 回で作る（[`HirBuilder::leaf_math`] へ委譲）
-  pub(crate) fn leaf_math(&self, span: Span, kind: HirMathKind) -> HirMath {
+  pub(super) fn leaf_math(&self, span: Span, kind: HirMathKind) -> HirMath {
     return self.builder.leaf_math(span, kind);
   }
 
   /// 評価し終えたノード列と位置表を 1 ソース分の [`HirSource`] にまとめて context を終える
-  pub(crate) fn finish(self, nodes: Vec<HirNode>) -> HirSource {
+  pub(in crate::frontend) fn finish(self, nodes: Vec<HirNode>) -> HirSource {
     return HirSource {
       nodes,
       spans: self.builder.finish(),

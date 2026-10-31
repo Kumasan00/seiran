@@ -30,7 +30,7 @@ impl<'a> CommandView<'a> {
   /// `node` が `CommandCall` でない場合（＝コマンドトークンを持たない場合）にパニックします。
   /// 呼び出し元が `kind` を確認してから構築するため、通常は起こりません。
   #[must_use]
-  pub(crate) fn new(node: &'a CstNode<'a>, source: &'a str) -> Self {
+  pub(in crate::frontend) fn new(node: &'a CstNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(
       node.kind,
       SyntaxKind::CommandCall,
@@ -48,18 +48,18 @@ impl<'a> CommandView<'a> {
 
   /// 元のソーステキストへの参照を返す
   #[must_use]
-  pub(crate) fn source(&self) -> &'a str { return self.source; }
+  pub(in crate::frontend) fn source(&self) -> &'a str { return self.source; }
 
   /// コマンド名を返す（先頭の `\` を除いた名前）
   #[must_use]
-  pub(crate) fn name(&self) -> &'a str { return self.name; }
+  pub(in crate::frontend) fn name(&self) -> &'a str { return self.name; }
 
   /// ソース上のバイト範囲を返す
   #[must_use]
-  pub(crate) fn span(&self) -> Span { return self.node.span; }
+  pub(in crate::frontend) fn span(&self) -> Span { return self.node.span; }
 
   /// 必須引数 `{...}` ノードをイテレートする
-  pub(crate) fn args(&self) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
+  pub(in crate::frontend) fn args(&self) -> impl Iterator<Item = &'a CstNode<'a>> + '_ {
     return self.node.children_of_kind(SyntaxKind::MandatoryArg);
   }
 
@@ -68,21 +68,23 @@ impl<'a> CommandView<'a> {
   /// 任意引数はコマンド名の直後に高々 1 組（P3）。parser が 2 組目を構文エラーにするので、
   /// 「1 組目」ではなく「その 1 組」を返す。
   #[must_use]
-  pub(crate) fn opt_arg(&self) -> Option<&'a CstNode<'a>> { return self.node.first_child_of_kind(SyntaxKind::OptArg); }
+  pub(in crate::frontend) fn opt_arg(&self) -> Option<&'a CstNode<'a>> {
+    return self.node.first_child_of_kind(SyntaxKind::OptArg);
+  }
 
   /// 必須引数の数を返す
   #[must_use]
-  pub(crate) fn arg_count(&self) -> usize { return self.args().count(); }
+  pub(in crate::frontend) fn arg_count(&self) -> usize { return self.args().count(); }
 
   /// 最初の必須引数ノードを返す
   #[must_use]
-  pub(crate) fn first_arg(&self) -> Option<&'a CstNode<'a>> {
+  pub(in crate::frontend) fn first_arg(&self) -> Option<&'a CstNode<'a>> {
     return self.node.first_child_of_kind(SyntaxKind::MandatoryArg);
   }
 
   /// 必須引数が 1 個以上あるかを返す
   #[must_use]
-  pub(crate) fn has_args(&self) -> bool { return self.first_arg().is_some(); }
+  pub(in crate::frontend) fn has_args(&self) -> bool { return self.first_arg().is_some(); }
 }
 
 /// 環境の型付きビュー
@@ -108,7 +110,7 @@ impl<'a> EnvironmentView<'a> {
   /// `node` が `Environment` でない場合（＝`EnvironmentBegin` とその中の環境名引数を持たない場合）に
   /// パニックします。呼び出し元が `kind` を確認してから構築するため、通常は起こりません。
   #[must_use]
-  pub(crate) fn new(node: &'a CstNode<'a>, source: &'a str) -> Self {
+  pub(in crate::frontend) fn new(node: &'a CstNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(
       node.kind,
       SyntaxKind::Environment,
@@ -135,19 +137,19 @@ impl<'a> EnvironmentView<'a> {
 
   /// 元のソーステキストへの参照を返す
   #[must_use]
-  pub(crate) fn source(&self) -> &'a str { return self.source; }
+  pub(in crate::frontend) fn source(&self) -> &'a str { return self.source; }
 
   /// 環境名を返す
   #[must_use]
-  pub(crate) fn name(&self) -> &'a str { return self.name; }
+  pub(in crate::frontend) fn name(&self) -> &'a str { return self.name; }
 
   /// ソース上のバイト範囲を返す
   #[must_use]
-  pub(crate) fn span(&self) -> Span { return self.node.span; }
+  pub(in crate::frontend) fn span(&self) -> Span { return self.node.span; }
 
   /// 環境の本体ノードを返す
   #[must_use]
-  pub(crate) fn body(&self) -> Option<&'a CstNode<'a>> {
+  pub(in crate::frontend) fn body(&self) -> Option<&'a CstNode<'a>> {
     return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody);
   }
 
@@ -155,7 +157,7 @@ impl<'a> EnvironmentView<'a> {
   ///
   /// 必須引数を取る環境は無いので、読むのは有無だけ。
   #[must_use]
-  pub(crate) fn has_args(&self) -> bool {
+  pub(in crate::frontend) fn has_args(&self) -> bool {
     return self.begin.children_of_kind(SyntaxKind::MandatoryArg).nth(1).is_some();
   }
 
@@ -164,14 +166,16 @@ impl<'a> EnvironmentView<'a> {
   /// 任意引数は環境名の直後に高々 1 組（P3）。parser が 2 組目を構文エラーにするので、
   /// 「1 組目」ではなく「その 1 組」を返す。
   #[must_use]
-  pub(crate) fn opt_arg(&self) -> Option<&'a CstNode<'a>> { return self.begin.first_child_of_kind(SyntaxKind::OptArg); }
+  pub(in crate::frontend) fn opt_arg(&self) -> Option<&'a CstNode<'a>> {
+    return self.begin.first_child_of_kind(SyntaxKind::OptArg);
+  }
 }
 
 /// `CstNode` の子要素からテキスト内容を抽出する
 ///
 /// 構造トークンとコメントを除いて連結する。
 #[must_use]
-pub(crate) fn extract_text_content(source: &str, node: &CstNode<'_>) -> String {
+pub(in crate::frontend) fn extract_text_content(source: &str, node: &CstNode<'_>) -> String {
   return elements_text(source, node.children);
 }
 
@@ -229,7 +233,7 @@ fn push_element_text(source: &str, element: &CstElement<'_>, text: &mut String) 
 /// （空白・空の区間の扱いは利用者が決める）。平坦化した文字列を `,` で割るとエスケープの区別が消えるので、
 /// 区切りを持つ引数はこの関数で割る。
 #[must_use]
-pub(crate) fn split_text_on_commas(source: &str, node: &CstNode<'_>) -> Vec<String> {
+pub(in crate::frontend) fn split_text_on_commas(source: &str, node: &CstNode<'_>) -> Vec<String> {
   return node
     .children
     .split(|element| return is_token(element, TokenKind::Comma))
@@ -244,7 +248,7 @@ pub(crate) fn split_text_on_commas(source: &str, node: &CstNode<'_>) -> Vec<Stri
 /// 値の文字になる。引用符 `"` は値の境界ではない。`=` を含まないエントリは boolean フラグとして扱い
 /// `("key", "true")` を生成する（例: `[draft]`）。空のエントリは読み飛ばす。
 #[must_use]
-pub(crate) fn split_opt_arg_pairs(source: &str, opt_arg: &CstNode<'_>) -> Vec<(String, String)> {
+pub(in crate::frontend) fn split_opt_arg_pairs(source: &str, opt_arg: &CstNode<'_>) -> Vec<(String, String)> {
   debug_assert_eq!(
     opt_arg.kind,
     SyntaxKind::OptArg,

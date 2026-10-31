@@ -113,7 +113,7 @@ impl InlineSink {
   ///
   /// 索引マーカーを跨いで直前のノードと連続していれば、新しいノードを作らずそのノードへ
   /// 追記して span を伸ばす。新規 `NodeId` を発行しないので採番順は変わらない。
-  pub(crate) fn push_text_token(&mut self, ctx: &EvalContext<'_>, span: Span, text: &str) {
+  pub(super) fn push_text_token(&mut self, ctx: &EvalContext<'_>, span: Span, text: &str) {
     if let Some((at, _)) = self.last_text
       && self.armed_gap == Some(span.start)
     {
@@ -137,7 +137,7 @@ impl InlineSink {
   ///
   /// 結果が索引マーカーなら幅 0 でテキストを分断しないので、畳みを継続できる位置として
   /// 記録する（`A\index{a}\index{b}V` のような連続マーカーもここで連鎖する）。
-  pub(crate) fn push_inline_result(&mut self, span: Span, inline: HirInline) {
+  pub(super) fn push_inline_result(&mut self, span: Span, inline: HirInline) {
     if matches!(inline.kind, HirInlineKind::Index { .. }) {
       let continues = self.armed_gap.map_or_else(
         || return self.last_text.is_some_and(|(_, end)| return end == span.start),
@@ -153,7 +153,7 @@ impl InlineSink {
   }
 
   /// テキストトークンでもマーカーでもない要素を 1 つ積む（畳みは打ち切られる）
-  pub(crate) fn push(&mut self, inline: HirInline) {
+  pub(super) fn push(&mut self, inline: HirInline) {
     self.last_text = None;
     self.armed_gap = None;
     self.inlines.push(inline);
@@ -162,11 +162,11 @@ impl InlineSink {
 
   /// 積み上げた要素を読む
   #[must_use]
-  pub(crate) fn inlines(&self) -> &[HirInline] { return &self.inlines; }
+  pub(super) fn inlines(&self) -> &[HirInline] { return &self.inlines; }
 
   /// 積み上げた要素を取り出して空に戻す
   #[must_use]
-  pub(crate) fn take(&mut self) -> Vec<HirInline> {
+  pub(super) fn take(&mut self) -> Vec<HirInline> {
     self.last_text = None;
     self.armed_gap = None;
     return mem::take(&mut self.inlines);
@@ -179,7 +179,7 @@ impl InlineSink {
 ///
 /// 空行で [`EvalError::ParagraphBreakInArgument`]、環境で [`EvalError::BlockInInline`] を返します。
 /// インラインコマンド・インライン数式の評価エラーはそのまま伝播します。
-pub(crate) fn evaluate_inline_children(
+pub(super) fn evaluate_inline_children(
   source: &str,
   ctx: &EvalContext<'_>,
   node: &CstNode<'_>,
@@ -195,7 +195,7 @@ pub(crate) fn evaluate_inline_children(
 /// # Errors
 ///
 /// [`evaluate_inline_children`] と同じ条件でエラーを返します。
-pub(crate) fn evaluate_inline_elements(
+pub(super) fn evaluate_inline_elements(
   source: &str,
   ctx: &EvalContext<'_>,
   elements: &[CstElement<'_>],
