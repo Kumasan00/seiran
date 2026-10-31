@@ -902,8 +902,9 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 
 #### `lowering`
 
-`SemanticDocument` → `LayoutNode` への変換。フォント・シェーピング非依存で、意味解析を行わないため失敗しない
-（`Result` を返す公開関数が無い）。
+`SemanticDocument` → `LayoutNode` への変換。フォント資源（`FontSystem` / `Shaper`）を引数に取らずフォントに触れない
+（`typeset::font` から名指すのは `TextStyle` の欄の型 `ScriptLevel` だけで、値は常に `None`）。意味解析を行わないため
+失敗しない（`Result` を返す公開関数が無い）。
 
 - 本文の入口は前段の深い型 `SemanticDocument` 1 つだけを借用する（タイトルページだけは config 由来の
   メタデータを受ける別入口）。lowering 側にビュー型を置かず（#349）、side table の raw な collection を直接
@@ -1628,14 +1629,13 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   引数で受け、書き込みに失敗しても同じ stderr へ報告し直さず、終了コードは本来のものを返す（`eprintln!` は
   書き込み失敗で panic して終了 101 になるので使わない）
 - `pdf_output`: PDF の atomic write と、ログの出力先との衝突検査（保存先とログの出力先を canonicalize して
-  比較し、同じ実体なら保存前に拒否する）
+  比較し、同じ実体なら保存前に拒否する）。保存（出力パスの解決・ログ出力先との衝突・出力ディレクトリ作成・
+  書き込み）のエラー型は子 module `error` が持ち、`pdf_output` の外へ出さない。`compile` の失敗とは型を分ける
 - `subcommand`: フォント調査 3 サブコマンド。`read-fonts` を直接使い、`seiran-compiler` のフォント処理には
   依存しない（組版を伴わないため）。前段（ファイルの読込と、`--font-index` を取る 2 つでは face の選択）と
   書き出しはそれぞれ 1 箇所を通る（`ttc-names` はコレクションの列挙を自分で持つ）。前段の失敗の診断（code・文言）は
   失敗の意味ごとに 1 つで、呼び元のサブコマンドに依らない。書き出しは
   `BrokenPipe` とそれ以外の分類を 1 つの関数に閉じ、失敗する writer を注入する in-src テストで覆う
-- `write_error`: PDF 保存（出力パスの解決・ログ出力先との衝突・出力ディレクトリ作成・書き込み）のエラー型。
-  `compile` の失敗とは型を分ける
 - 統合テスト（`tests/`）は binary を起動する（`CARGO_BIN_EXE_seiran`、依存追加なし）。`--log-file` への記録・
   `-q` との組み合わせ・stderr と終了コードが `--log-file` の有無で変わらないこと・失敗した `build` でも
   確定済みの警告が主エラーより先に出ること・工程の開始・終了と実行記録の出方・フォント調査の終了コードと

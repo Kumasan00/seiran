@@ -8,7 +8,6 @@ mod phase;
 mod reporting;
 mod subcommand;
 mod termination;
-mod write_error;
 
 use std::{
   io,
