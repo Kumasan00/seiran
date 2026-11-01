@@ -763,6 +763,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayro-jpeg2000"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "122c5f834c37a2260b9c851bb8be685cf539b2a8b94b704a931ef7d2525d5835"
+
+[[package]]
 name = "hayro-syntax"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -770,8 +776,21 @@ checksum = "0edeafd70aa2db743de8ede8637d07ec87db05efe69cde371d03f1b185fcef27"
 dependencies = [
  "flate2",
  "hayro-jbig2",
- "hayro-jpeg2000",
+ "hayro-jpeg2000 0.3.5",
  "memchr",
+ "rustc-hash",
+ "smallvec",
+ "zune-jpeg",
+]
+
+[[package]]
+name = "hayro-syntax"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cdc818d8d265dcb42081d488f7599df4f73fb79e9d347ecedcd3c23809d2026"
+dependencies = [
+ "hayro-jbig2",
+ "hayro-jpeg2000 0.4.1",
  "rustc-hash",
  "smallvec",
  "zune-jpeg",
@@ -784,7 +803,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0b3db92c4917aad24ff30d61413a9a7509ae88b27aee1ae34eff881e1d2723a"
 dependencies = [
  "flate2",
- "hayro-syntax",
+ "hayro-syntax 0.7.2",
  "pdf-writer",
 ]
 
@@ -1780,7 +1799,7 @@ dependencies = [
  "garde",
  "harfrust",
  "hayagriva",
- "hayro-syntax",
+ "hayro-syntax 0.8.0",
  "hypher",
  "icu_collator",
  "icu_locale_core",
