@@ -113,13 +113,20 @@ impl PdfFile {
   clippy::cast_possible_truncation,
   reason = "hayro も表示範囲の辺を f32 へ落としてからほぼ 0 かを比べる"
 )]
+#[expect(
+  clippy::unwrap_in_result,
+  reason = "panic し得ない: ほぼ 0 を除いた後の render_dimensions は辺を max(1.0) で 1 以上にし、hayro の数値構文は指数を持たないので辺は有限"
+)]
 fn displayed_size(page: &Page<'_>) -> Option<NaturalSize> {
   let visible = page.intersected_crop_box();
   if visible.width() as f32 <= NEARLY_ZERO_EDGE || visible.height() as f32 <= NEARLY_ZERO_EDGE {
     return None;
   }
   let (width, height) = page.render_dimensions();
-  return NaturalSize::new(width, height);
+  return Some(
+    NaturalSize::new(width, height)
+      .expect("render_dimensions はほぼ 0 でない辺を 1pt 以上の有限値にするので自然寸法の検証を通る"),
+  );
 }
 
 /// ページ辞書の `/Annots` が空でない配列か。

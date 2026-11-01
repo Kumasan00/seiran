@@ -788,7 +788,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   拡大率の基準にする値そのもの。辺が 1/4096pt 以下（hayro が A4 寸法へ差し替える範囲）は面積 0 として拒否し、
   選んだページの注釈は warning を出して取り込まない
 - hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、
-  表示範囲を図の矩形に揃える切り抜きは描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める
+  図の矩形で切り抜く処理は描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める。図の矩形は辺が
+  1pt 以上なら表示範囲と一致し、1pt 未満の辺は hayro の 1pt 基準に従うので表示範囲の外も 1pt までは見える
 
 #### `math_glyphs`
 
