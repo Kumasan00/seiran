@@ -89,6 +89,16 @@ def main():
         content=CONTENT + b" 0 0.6 0 rg 220 20 60 60 re f",
     )
     pages_doc("zero_area.pdf", [b"/MediaBox [0 0 200 100] /CropBox [0 0 200 0]"])
+    # 辺が hayro の「ほぼ 0」（2^-12pt）ちょうど / わずかに上 / 1pt 未満 / 1pt 未満を回転
+    pages_doc(
+        "subpoint_edges.pdf",
+        [
+            b"/MediaBox [0 0 200 0.000244140625]",
+            b"/MediaBox [0 0 200 0.0003]",
+            b"/MediaBox [0 0 200 0.5]",
+            b"/MediaBox [0 0 0.5 300] /Rotate 90",
+        ],
+    )
     write_pdf(
         "no_pages.pdf",
         [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [] /Count 0 >>"],

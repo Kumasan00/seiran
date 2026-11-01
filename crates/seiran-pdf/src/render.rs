@@ -241,7 +241,9 @@ fn draw_image(
         unreachable!("PDF の画像資源が page_index を持つことは PublicationResources::new が保証する: {}", image.path);
       };
       // hayro-write は Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、CropBox が
-      // MediaBox からはみ出すページでは描画が図の矩形の外へ出うる。表示範囲＝図の矩形（原点から `size`）で切り抜く
+      // MediaBox からはみ出すページでは描画が図の矩形の外へ出うる。図の矩形（原点から `size`）で切り抜く。図の矩形は
+      // 拡大率の基準 `render_dimensions()` を写したもので、辺が 1pt 以上なら表示範囲と一致する（1pt 未満の辺は
+      // hayro が 1pt 基準にするので、表示範囲の外も 1pt までは見える）
       let mut clip = PathBuilder::new();
       let Some(bounds) = Rect::from_xywh(0.0, 0.0, width, height) else {
         unreachable!("画像の描画矩形の幅・高さが正であることは PublicationPage::new が保証する: {width} x {height}");

@@ -155,7 +155,7 @@ pub(crate) enum TypesetError {
     page_count: usize,
   },
 
-  /// 選んだページの表示範囲（`CropBox` と `MediaBox` の共通部分）の面積が 0 です。
+  /// 選んだページの表示範囲（`CropBox` と `MediaBox` の共通部分）の辺が 1/4096pt 以下（hayro が面積 0 とみなす）です。
   #[error("{path} の {page} ページ目は表示範囲の面積が 0 です")]
   #[diagnostic(
     code(typeset::image::empty_pdf_page),
