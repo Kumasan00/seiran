@@ -783,8 +783,9 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - 自然寸法はラスタなら寸法ヘッダ、SVG なら `usvg` のサイズ。EXIF の Orientation は適用しない — 描画側
   （krilla）も寸法ヘッダの値を使うため、適用すると組版時と描画時の解釈がずれる
 - PDF は子 module `pdf` が `hayro-syntax` で開き、暗号化（空パスワードで開けるものだけ受理）・版（PDF 2.0 は拒否。
-  描画側の版の不一致エラーへ到達させない）・ページ数・ページの選択を検査する。自然寸法は CropBox ∩ MediaBox に
-  `/Rotate` を適用した寸法（pt）で、krilla の `draw_pdf_page` が拡大率の基準にする領域と同じ。面積 0 は拒否し、
+  描画側の版の不一致エラーへ到達させない）・ページ数・ページの選択を検査する。自然寸法は hayro の `render_dimensions()`
+  （CropBox ∩ MediaBox に `/Rotate` を適用し、1pt 未満の辺を 1pt にした寸法。pt）で、krilla の `draw_pdf_page` が
+  拡大率の基準にする値そのもの。辺が 1/4096pt 以下（hayro が A4 寸法へ差し替える範囲）は面積 0 として拒否し、
   選んだページの注釈は warning を出して取り込まない
 - hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、
   表示範囲を図の矩形に揃える切り抜きは描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める

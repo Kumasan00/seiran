@@ -4,21 +4,24 @@
 //! 検査し、選んだページの自然寸法と注釈の有無を返す。版をここで拒否するので、描画側（krilla）の
 //! 版の不一致エラーには到達しない。
 //!
-//! 自然寸法は `CropBox` と `MediaBox` の共通部分に `/Rotate` を適用した寸法（pt）で、krilla の
-//! `draw_pdf_page` が拡大率の基準にする hayro の `render_dimensions()` と同じ領域。ただし拒否するのは辺が
-//! 正の有限値でないページだけなので、hayro が基準を差し替える範囲では組版と描画の基準が食い違う — 辺が
-//! 1/4096pt 未満なら hayro は面積 0 とみなして A4 寸法を、1pt 未満なら 1pt を基準にし、図の中身は描画矩形に
-//! 対してその比だけずれた倍率で描かれる。
+//! 自然寸法は hayro の `render_dimensions()`（`CropBox` と `MediaBox` の共通部分に `/Rotate` を適用し、
+//! 1pt 未満の辺を 1pt にした寸法。pt）で、krilla の `draw_pdf_page` が拡大率の基準に読む値そのもの。辺が
+//! 1/4096pt 以下のページは hayro が面積 0 とみなして A4 寸法へ差し替えるので、先に拒否する。1pt 未満の辺は
+//! 1pt を基準に描かれるので、図の矩形の一部にだけ中身が載る。
 
 use std::sync::Arc;
 
 use hayro_syntax::{
   LoadPdfError, Pdf, PdfVersion,
   object::{Array, Object, dict::keys::ANNOTS},
-  page::{Page, Rotation},
+  page::Page,
 };
 
 use crate::typeset::{error::TypesetError, image::natural_size::NaturalSize};
+
+/// hayro が面積 0 とみなして A4 寸法へ差し替える辺の上限（pt）。hayro-syntax の `base_dimensions` の判定と
+/// 同じ値で、同じく f32 へ落としてから以下かを比べる。
+const NEARLY_ZERO_EDGE: f32 = 1.0 / 4096.0;
 
 /// 開いた PDF（版・暗号化・ページ数の検査を通ったもの）。
 pub(super) struct PdfFile {
@@ -29,7 +32,7 @@ pub(super) struct PdfFile {
 /// 選んだページについて組版が使う事実。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct PdfPage {
-  /// 表示範囲（`CropBox` ∩ `MediaBox`）を回転した寸法（pt）
+  /// 描画の拡大率の基準と同じ寸法（pt。hayro の `render_dimensions()`）
   pub(super) natural_size: NaturalSize,
   /// ページが注釈（`/Annots` の空でない配列）を持つか
   pub(super) has_annotations: bool,
@@ -104,18 +107,19 @@ impl PdfFile {
   }
 }
 
-/// 表示範囲（`CropBox` ∩ `MediaBox`）に `/Rotate` を適用した寸法。面積 0 なら `None`。
+/// 描画側（krilla の `draw_pdf_page`）が拡大率の基準に読む `render_dimensions()`。表示範囲
+/// （`CropBox` ∩ `MediaBox`）の辺のどちらかが hayro のほぼ 0 以下なら `None`。
 #[expect(
   clippy::cast_possible_truncation,
-  reason = "PDF の座標は実用上 f32 の範囲に収まり、描画側の krilla も f32 で扱う"
+  reason = "hayro も表示範囲の辺を f32 へ落としてからほぼ 0 かを比べる"
 )]
 fn displayed_size(page: &Page<'_>) -> Option<NaturalSize> {
   let visible = page.intersected_crop_box();
-  let (width, height) = (visible.width() as f32, visible.height() as f32);
-  return match page.rotation() {
-    Rotation::None | Rotation::Flipped => NaturalSize::new(width, height),
-    Rotation::Horizontal | Rotation::FlippedHorizontal => NaturalSize::new(height, width),
-  };
+  if visible.width() as f32 <= NEARLY_ZERO_EDGE || visible.height() as f32 <= NEARLY_ZERO_EDGE {
+    return None;
+  }
+  let (width, height) = page.render_dimensions();
+  return NaturalSize::new(width, height);
 }
 
 /// ページ辞書の `/Annots` が空でない配列か。
@@ -129,6 +133,8 @@ fn has_annotations(page: &Page<'_>) -> bool {
 #[cfg(test)]
 mod tests {
   use std::{path::Path, sync::Arc};
+
+  use hayro_syntax::page::A4;
 
   use super::{PdfFile, open};
   use crate::typeset::{error::TypesetError, image::natural_size::NaturalSize};
@@ -216,6 +222,36 @@ mod tests {
     let result = opened("zero_area.pdf").page("zero_area.pdf", None);
 
     assert!(matches!(result, Err(TypesetError::EmptyPdfPage { page: 1, .. })), "{result:?}");
+  }
+
+  #[test]
+  #[expect(
+    clippy::cast_possible_truncation,
+    reason = "hayro の A4 定数は f64 で、render_dimensions の f32 と比べる"
+  )]
+  fn edge_at_hayro_threshold_is_rejected() {
+    let file = opened("subpoint_edges.pdf");
+
+    let result = file.page("subpoint_edges.pdf", Some(1));
+
+    assert!(matches!(result, Err(TypesetError::EmptyPdfPage { page: 1, .. })), "{result:?}");
+    // 複製したしきい値と hayro の判定が一致していること（hayro を上げてずれたらここで落ちる）
+    assert_eq!(file.pdf.pages()[0].render_dimensions(), (A4.width() as f32, A4.height() as f32));
+  }
+
+  #[test]
+  fn edge_just_above_threshold_uses_one_point_basis() {
+    assert_eq!(size("subpoint_edges.pdf", Some(2)), NaturalSize::new(200.0, 1.0).unwrap());
+  }
+
+  #[test]
+  fn subpoint_edge_uses_one_point_basis() {
+    assert_eq!(size("subpoint_edges.pdf", Some(3)), NaturalSize::new(200.0, 1.0).unwrap());
+  }
+
+  #[test]
+  fn subpoint_edge_rotated_swaps_basis() {
+    assert_eq!(size("subpoint_edges.pdf", Some(4)), NaturalSize::new(300.0, 1.0).unwrap());
   }
 
   #[test]
