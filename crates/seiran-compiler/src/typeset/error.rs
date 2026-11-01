@@ -99,16 +99,24 @@ pub(crate) enum TypesetError {
   },
 
   /// パスワードが必要、または未対応の方式で暗号化された PDF です。
-  #[error("暗号化された PDF を開けませんでした: {path} ({reason})")]
-  #[diagnostic(
-    code(typeset::image::encrypted_pdf),
-    help("パスワードなしで開けない、または未対応の方式で暗号化された PDF です。暗号化を外して保存し直してください。")
-  )]
+  #[error("暗号化された PDF を開けませんでした: {path}（{reason}）")]
+  #[diagnostic(code(typeset::image::encrypted_pdf), help("暗号化を外して保存し直してください。"))]
   EncryptedPdf {
     /// 画像ファイルのパス。
     path: String,
-    /// hayro が報告した復号の失敗（`Debug` 表現）。
-    reason: String,
+    /// 開けない理由（日本語。パスワード必須か未対応の方式か）。
+    reason: &'static str,
+  },
+
+  /// 暗号化辞書が壊れていて復号の準備ができない PDF です。
+  #[error("PDF の暗号化情報が壊れています: {path}")]
+  #[diagnostic(
+    code(typeset::image::corrupt_pdf_encryption),
+    help("ファイルを修復するか、作成元のアプリケーションから PDF を書き出し直してください。")
+  )]
+  CorruptPdfEncryption {
+    /// 画像ファイルのパス。
+    path: String,
   },
 
   /// 出力（PDF 1.7）より新しい版の PDF です。

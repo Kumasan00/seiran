@@ -5,6 +5,14 @@
 \end{figure}
 
 \begin{figure}
+\image{./tests/image/encrypted_corrupt.pdf}
+\end{figure}
+
+\begin{figure}
+\image{./tests/image/encrypted_unsupported.pdf}
+\end{figure}
+
+\begin{figure}
 \image{./tests/image/encrypted_user.pdf}
 \end{figure}
 

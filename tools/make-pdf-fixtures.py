@@ -18,7 +18,7 @@ OUT = Path(__file__).resolve().parent.parent / "tests" / "image"
 CONTENT = b"0 0.4 0.8 rg 20 20 160 80 re f 0.9 0.3 0.1 RG 4 w 30 30 m 170 90 l S"
 
 
-def write_pdf(name, objects, header="1.7"):
+def write_pdf(name, objects, header="1.7", trailer_extra=b""):
     """1 始まりのオブジェクト本体の列から、正しい xref 付きの PDF を書く（1 番が Catalog）。"""
     out = bytearray(f"%PDF-{header}\n%\xe2\xe3\xcf\xd3\n".encode("latin-1"))
     offsets = []
@@ -29,7 +29,8 @@ def write_pdf(name, objects, header="1.7"):
     out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
     for offset in offsets:
         out += f"{offset:010d} 00000 n \n".encode()
-    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R ".encode() + trailer_extra
+    out += f">>\nstartxref\n{xref}\n%%EOF\n".encode()
     (OUT / name).write_bytes(bytes(out))
 
 
@@ -47,7 +48,7 @@ def stream(data):
     return f"<< /Length {len(data)} >>\nstream\n".encode() + data + b"\nendstream"
 
 
-def pages_doc(name, page_dicts, header="1.7", catalog_extra=b"", content=CONTENT):
+def pages_doc(name, page_dicts, header="1.7", catalog_extra=b"", content=CONTENT, trailer_extra=b""):
     """各ページ辞書（/Type /Page と /Parent・/Contents を除く中身）からページ列の PDF を書く。"""
     count = len(page_dicts)
     kids = " ".join(f"{3 + i * 2} 0 R" for i in range(count))
@@ -61,7 +62,7 @@ def pages_doc(name, page_dicts, header="1.7", catalog_extra=b"", content=CONTENT
             f"<< /Type /Page /Parent 2 0 R /Contents {content_ref} 0 R ".encode() + extra + b" >>"
         )
         objects.append(stream(content))
-    write_pdf(name, objects, header)
+    write_pdf(name, objects, header, trailer_extra)
 
 
 def main():
@@ -105,6 +106,10 @@ def main():
     )
     pages_doc("pdf20_header.pdf", one_page, header="2.0")
     pages_doc("pdf20_catalog.pdf", one_page, catalog_extra=b"/Version /2.0 ")
+    # 公開鍵方式（hayro は Standard 以外の security handler を未対応として報告する）
+    pages_doc("encrypted_unsupported.pdf", one_page, trailer_extra=b"/Encrypt << /Filter /PubSec >> ")
+    # Standard の暗号化辞書から /O /U /P が欠けている（暗号化情報の破損）
+    pages_doc("encrypted_corrupt.pdf", one_page, trailer_extra=b"/Encrypt << /Filter /Standard /V 2 /R 3 >> ")
     (OUT / "png_bytes.pdf").write_bytes(tiny_png())
 
     gs = ["gs", "-q", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.7", "-dNOPAUSE", "-dBATCH"]

@@ -1,8 +1,18 @@
-typeset::image::encrypted_pdf
+typeset::image::corrupt_pdf_encryption
 
-  × 暗号化された PDF を開けませんでした: ./tests/image/encrypted_user.pdf (PasswordProtected)
-  help: パスワードなしで開けない、または未対応の方式で暗号化された PDF です。暗号化を外して保存し
-        直してください。
+  × PDF の暗号化情報が壊れています: ./tests/image/encrypted_corrupt.pdf
+  help: ファイルを修復するか、作成元のアプリケーションから PDF を書き出し直してください。
+
+Error: typeset::image::encrypted_pdf
+
+  × 暗号化された PDF を開けませんでした: ./tests/image/encrypted_unsupported.pdf（未対応の暗号化方
+  │ 式です）
+  help: 暗号化を外して保存し直してください。
+
+Error: typeset::image::encrypted_pdf
+
+  × 暗号化された PDF を開けませんでした: ./tests/image/encrypted_user.pdf（パスワードが必要です）
+  help: 暗号化を外して保存し直してください。
 
 Error: typeset::image::empty_pdf
 

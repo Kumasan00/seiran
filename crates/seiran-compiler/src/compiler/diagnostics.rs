@@ -527,6 +527,8 @@ fn diagnostic_pdf_image_errors_are_collected_in_path_order() {
     .sources(&["tests/text/diagnostics/pdf_image_errors.sei"])
     .assets(&[
       "./tests/image/png_bytes.pdf",
+      "./tests/image/encrypted_corrupt.pdf",
+      "./tests/image/encrypted_unsupported.pdf",
       "./tests/image/encrypted_user.pdf",
       "./tests/image/pdf20_header.pdf",
       "./tests/image/pdf20_catalog.pdf",
@@ -540,6 +542,8 @@ fn diagnostic_pdf_image_errors_are_collected_in_path_order() {
   assert_eq!(
     codes(&failure),
     [
+      "typeset::image::corrupt_pdf_encryption",
+      "typeset::image::encrypted_pdf",
       "typeset::image::encrypted_pdf",
       "typeset::image::empty_pdf",
       "typeset::image::unsupported_pdf_version",

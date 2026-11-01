@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use hayro_syntax::{
-  LoadPdfError, Pdf, PdfVersion,
+  DecryptionError, LoadPdfError, Pdf, PdfVersion,
   object::{Array, Object, dict::keys::ANNOTS},
   page::Page,
 };
@@ -42,14 +42,23 @@ pub(super) struct PdfPage {
 ///
 /// # Errors
 ///
-/// 読めない・パスワードが要る / 未対応の暗号化・PDF 2.0・ページが無い場合に [`TypesetError`] を返す。
+/// 読めない・パスワードが要る / 未対応の暗号化・暗号化情報が壊れている・PDF 2.0・ページが無い場合に [`TypesetError`] を返す。
 pub(super) fn open(path: &str, bytes: &Arc<[u8]>) -> Result<PdfFile, TypesetError> {
   // `Arc<[u8]>` を 1 段包むと hayro の `PdfData` が受け取る Sized な `AsRef<[u8]>` になり、バイト列を複製しない
   let pdf = Pdf::new(Arc::new(Arc::clone(bytes))).map_err(|error| {
     return match error {
-      LoadPdfError::Decryption(decryption) => TypesetError::EncryptedPdf {
-        path: path.to_string(),
-        reason: format!("{decryption:?}"),
+      LoadPdfError::Decryption(decryption) => match decryption {
+        DecryptionError::PasswordProtected => TypesetError::EncryptedPdf {
+          path: path.to_string(),
+          reason: "パスワードが必要です",
+        },
+        DecryptionError::UnsupportedAlgorithm => TypesetError::EncryptedPdf {
+          path: path.to_string(),
+          reason: "未対応の暗号化方式です",
+        },
+        DecryptionError::InvalidEncryption | DecryptionError::MissingIDEntry => TypesetError::CorruptPdfEncryption {
+          path: path.to_string(),
+        },
       },
       // hayro はこれ以上の理由を報告しない
       LoadPdfError::Invalid => TypesetError::ParsePdf {
@@ -272,7 +281,41 @@ mod tests {
   fn open_rejects_password_protected_pdf() {
     let result = fixture("encrypted_user.pdf");
 
-    assert!(matches!(result, Err(TypesetError::EncryptedPdf { .. })), "{:?}", result.err());
+    assert!(
+      matches!(
+        result,
+        Err(TypesetError::EncryptedPdf {
+          reason: "パスワードが必要です",
+          ..
+        })
+      ),
+      "{:?}",
+      result.err()
+    );
+  }
+
+  #[test]
+  fn open_rejects_unsupported_encryption() {
+    let result = fixture("encrypted_unsupported.pdf");
+
+    assert!(
+      matches!(
+        result,
+        Err(TypesetError::EncryptedPdf {
+          reason: "未対応の暗号化方式です",
+          ..
+        })
+      ),
+      "{:?}",
+      result.err()
+    );
+  }
+
+  #[test]
+  fn open_rejects_corrupt_encryption() {
+    let result = fixture("encrypted_corrupt.pdf");
+
+    assert!(matches!(result, Err(TypesetError::CorruptPdfEncryption { .. })), "{:?}", result.err());
   }
 
   #[test]
