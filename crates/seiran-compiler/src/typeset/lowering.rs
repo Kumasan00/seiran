@@ -20,6 +20,7 @@ mod layout_node;
 mod list;
 mod math;
 mod paragraph;
+mod quantity;
 mod quote;
 mod table;
 mod theorem;
@@ -28,7 +29,7 @@ mod title_page;
 use std::mem;
 
 pub(super) use layout_node::{
-  DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
+  DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator, NumberPiece,
   ParagraphLayout, TableColumn, TableLayout, TableRowLayout, TextStyle,
 };
 pub(super) use math::{
@@ -36,6 +37,7 @@ pub(super) use math::{
 };
 #[cfg(test)]
 pub(super) use math::{char_class, char_fence};
+pub(super) use quantity::number_pieces;
 pub(super) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
 

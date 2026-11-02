@@ -9,6 +9,7 @@ mod footnote;
 mod heading;
 mod index;
 mod link;
+pub(super) mod number;
 mod ref_;
 pub(super) mod symbol;
 mod text_style;
@@ -120,6 +121,8 @@ enum CommandKind {
   NoIndent,
   /// `\pagebreak` — その位置で強制改ページするマーカー（引数なし）
   PageBreak,
+  /// `\num{数値}` — 数値（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
+  Number,
 }
 
 impl CommandKind {
@@ -177,6 +180,11 @@ impl CommandKind {
       Self::Url => return link::url(view, ctx).map(CommandResult::Inline),
 
       Self::Href => return link::href(view, ctx).map(CommandResult::Inline),
+
+      Self::Number => {
+        return number::numeral(view)
+          .map(|numeral| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Number(numeral))));
+      },
     }
   }
 
@@ -191,6 +199,7 @@ impl CommandKind {
       Self::Code | Self::Url => &[ArgMode::Verbatim],
       Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
       Self::Cite => &[ArgMode::CommaList],
+      Self::Number => &[ArgMode::Math],
       Self::Space
       | Self::Heading(_)
       | Self::StyledText(_)
@@ -234,6 +243,8 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
   "url" => CommandKind::Url,
   "href" => CommandKind::Href,
+
+  "num" => CommandKind::Number,
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）
@@ -356,6 +367,7 @@ mod tests {
     assert_eq!(CommandKind::Url.arg_modes(), &[ArgMode::Verbatim]);
     assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
     assert_eq!(CommandKind::Cite.arg_modes(), &[ArgMode::CommaList]);
+    assert_eq!(CommandKind::Number.arg_modes(), &[ArgMode::Math]);
     assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 
@@ -371,6 +383,7 @@ mod tests {
   fn lookup_arg_mode_resolves_per_position() {
     assert_eq!(lookup_arg_mode("href", 0), ArgMode::Verbatim);
     assert_eq!(lookup_arg_mode("href", 1), ArgMode::Inherit);
+    assert_eq!(lookup_arg_mode("num", 0), ArgMode::Math);
   }
 
   #[test]
@@ -483,6 +496,7 @@ mod tests {
             EvalError::MissingCommandArgument { .. }
               | EvalError::ExtraCommandArgument { .. }
               | EvalError::InvalidCommandArgument { .. }
+              | EvalError::InvalidNumber { .. }
               | EvalError::UnknownOptArgKey { .. }
               | EvalError::IndexNotAllowedHere { .. }
               | EvalError::ParagraphBreakInArgument { .. }

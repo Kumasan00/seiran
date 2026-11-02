@@ -261,6 +261,17 @@ pub(in crate::typeset) struct MathFormula {
   pub color: Option<Color>,
 }
 
+/// style の書式で整えた数値（`\num`）の部品。数値の箱は部品を左から並べた閉じた 1 個の箱になる
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::typeset) enum NumberPiece {
+  /// 箱の基準の大きさで組む字
+  Text(String),
+  /// 固定幅のアキ（細アキ・中アキだけを使う。1mu = 箱の基準のフォントサイズ / 18）
+  Space(MathSpace),
+  /// 上付きで組む字（指数）
+  Superscript(String),
+}
+
 /// 内容を解決した数式の要素（段・cramped・大きさ・アキは数式エンジンが決める）
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum MathNode {

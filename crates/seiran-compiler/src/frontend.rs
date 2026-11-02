@@ -2212,7 +2212,8 @@ mod tests {
       | HirMathKind::Symbol { .. }
       | HirMathKind::Space(_)
       | HirMathKind::OperatorName { .. }
-      | HirMathKind::Prose(_) => None,
+      | HirMathKind::Prose(_)
+      | HirMathKind::Number(_) => None,
     };
   }
 

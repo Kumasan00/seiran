@@ -1,6 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::document::{MathClass, MathDelimiter, MathSpace, MathVariant, hir::NodeId};
+use crate::document::{MathClass, MathDelimiter, MathSpace, MathVariant, Numeral, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 #[derive(Debug, PartialEq)]
@@ -39,6 +39,8 @@ pub(crate) enum HirMathKind {
   },
   /// 数式内の文章（`\text{...}`）。空白・改行の連なりは語間の空白 1 個にまとめ済みで、引数の先頭・末尾の空白も残す
   Prose(String),
+  /// 数値（`\num{...}`）。数式の中では Ord の 1 アトムになる
+  Number(Numeral),
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^{2}`）

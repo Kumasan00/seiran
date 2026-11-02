@@ -69,6 +69,7 @@ pub(super) fn lower_inline(
     HirInlineKind::Symbol(ch) => {
       return vec![InlineNode::Text(ch.to_string(), parent_style)];
     },
+    HirInlineKind::Number(_) => return Vec::new(),
     HirInlineKind::LineBreak => {
       return vec![InlineNode::LineBreak];
     },

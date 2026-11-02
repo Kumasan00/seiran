@@ -42,6 +42,7 @@ pub(crate) use crate::style::{
   footnote::{FootnoteNumbering, FootnoteStyle},
   math::NumberSide,
   page_numbering::PageNumberingStyle,
+  quantity::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
   running::RunningContentStyle,
   template::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
@@ -60,8 +61,8 @@ use crate::{
   style::{
     columns::ColumnsStyle, counter::CounterStyles, error::StyleValidationError, figure::FigureStyle,
     heading::HeadingStyles, hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle,
-    page::PageStyle, quantity::QuantityStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle,
-    template::TheoremHeadingTemplate, text::TextBlockStyle, theorem::TheoremStyles,
+    page::PageStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle, template::TheoremHeadingTemplate,
+    text::TextBlockStyle, theorem::TheoremStyles,
   },
 };
 

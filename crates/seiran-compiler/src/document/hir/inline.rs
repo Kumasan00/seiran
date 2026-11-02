@@ -3,7 +3,7 @@
 use crate::{
   color::Color,
   document::{
-    Typeface,
+    Numeral, Typeface,
     hir::{HirMath, NodeId},
   },
 };
@@ -57,6 +57,9 @@ pub(crate) enum HirInlineKind {
 
   /// 特殊文字・記号（`\alpha`, `\sum`, `\infty` 等）
   Symbol(char),
+
+  /// 数値（`\num{...}`）
+  Number(Numeral),
 
   /// 強制改行（`\\`）
   LineBreak,

@@ -10,6 +10,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
+      quantity,
     },
   },
 };
@@ -47,6 +48,9 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       HirInlineKind::Math(_) => out.push_str("[Math]"),
       HirInlineKind::Symbol(ch) => out.push(*ch),
       HirInlineKind::LineBreak => out.push('\n'),
+      HirInlineKind::Number(numeral) => {
+        out.push_str(&quantity::plain_text(&quantity::number_pieces(numeral, &style.quantity)));
+      },
       HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
       HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.ref_target(inline.id))),
     }
@@ -148,7 +152,10 @@ mod tests {
     style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
-      lowering::test_support::{analyzed, context, inlines, lower, paragraph_layout},
+      lowering::{
+        lower_sources_with_headings,
+        test_support::{analyzed, context, inlines, lower, paragraph_layout},
+      },
     },
   };
 
@@ -166,6 +173,16 @@ mod tests {
         _ => return None,
       })
       .expect("VBox が出力されるはず");
+  }
+
+  #[test]
+  fn heading_plain_text_formats_numbers_by_style() {
+    let style = ReadStyle::default();
+    let document = analyzed("\\section{長さ \\num{-12345e3}}");
+
+    let (_, headings) = lower_sources_with_headings(&context(&style), &document);
+
+    assert_eq!(headings[0].title_plain, "長さ \u{2212}12\u{202F}345\u{205F}\u{00D7}\u{205F}10\u{00B3}");
   }
 
   #[test]

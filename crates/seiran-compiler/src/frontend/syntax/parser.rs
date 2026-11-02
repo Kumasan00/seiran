@@ -66,6 +66,9 @@ pub(in crate::frontend) enum ArgMode {
   CommaList,
   /// 外側文脈の [`ParseMode`] によらずテキストモードでトークン化する（数式の中でも `_` `^` は字、裸の `{...}` は構文エラー）
   Text,
+  /// 外側文脈の [`ParseMode`] によらず数式モードでトークン化する（本文の中でも `^` `_` は上付き・下付き、`{...}` は数式
+  /// グループ）。数式組版にするかは評価器が決める
+  Math,
   /// ブレースバランスで生読みする
   Verbatim,
 }
@@ -545,6 +548,7 @@ impl<'a> Parser<'a> {
         ArgMode::Verbatim => self.parse_verbatim_arg()?,
         ArgMode::Inherit => self.parse_mandatory_arg(mode)?,
         ArgMode::Text => self.parse_mandatory_arg(ParseMode::Text)?,
+        ArgMode::Math => self.parse_mandatory_arg(ParseMode::Math)?,
         ArgMode::CommaList => self.parse_delimited(
           TokenKind::LBrace,
           TokenKind::RBrace,
@@ -878,12 +882,14 @@ mod tests {
   /// テスト用の（コマンド名, 引数位置）→ [`ArgMode`] 解決関数
   ///
   /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンド、`vcite` は必須引数が
-  /// `,` 区切りの項目列のコマンド、`vtext` は必須引数をテキストとして読む数式コマンドのスタンドイン。
+  /// `,` 区切りの項目列のコマンド、`vtext` は必須引数をテキストとして読む数式コマンドのスタンドイン、`vnum` は必須引数を外側によらず数式として読む
+  /// コマンドのスタンドイン。
   fn test_command_arg(name: &str, index: usize) -> ArgMode {
     return match (name, index) {
       ("vurl", _) | ("vhref", 0) => ArgMode::Verbatim,
       ("vcite", _) => ArgMode::CommaList,
       ("vtext", _) => ArgMode::Text,
+      ("vnum", _) => ArgMode::Math,
       _ => ArgMode::Inherit,
     };
   }
@@ -2318,5 +2324,20 @@ mod tests {
     };
     assert_eq!(first_math_command_args(cst).len(), 1, "宣言した 1 個で読みを打ち切る");
     assert!(math.first_child_of_kind(SyntaxKind::MathGroup).is_some(), "`{{b}}` は数式グループ");
+  }
+
+  #[test]
+  fn math_arg_inside_text_is_read_in_math_mode() {
+    let arena = Bump::new();
+
+    let cst = parse_cst("\\vnum{a^{2}{b}}", &arena).unwrap();
+
+    let CstElement::Node(cmd) = &cst.children[0] else {
+      panic!("CommandCall ノードが期待されます");
+    };
+    let args: Vec<&CstNode<'_>> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
+    assert_eq!(args.len(), 1);
+    assert!(args[0].first_child_of_kind(SyntaxKind::MathSuperscript).is_some(), "`^` は上付き");
+    assert!(args[0].first_child_of_kind(SyntaxKind::MathGroup).is_some(), "裸の `{{b}}` は数式グループ");
   }
 }

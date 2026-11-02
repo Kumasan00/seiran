@@ -302,6 +302,7 @@ fn push_resolved(
         typeface: style.text.typeface,
       }
     }),
+    HirMathKind::Number(_) => {},
     HirMathKind::Group(children) => out.push(MathNode::Group(list(children))),
     HirMathKind::Superscript(inner) => out.push(MathNode::Superscript(one(inner))),
     HirMathKind::Subscript(inner) => out.push(MathNode::Subscript(one(inner))),

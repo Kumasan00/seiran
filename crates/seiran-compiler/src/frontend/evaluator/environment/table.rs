@@ -101,6 +101,7 @@ mod tests {
         | HirInlineKind::Link { children, .. } => out.push_str(&hir_inlines_to_plain_text(children)),
         HirInlineKind::Code(text) => out.push_str(text),
         HirInlineKind::Math(_) => out.push_str("[Math]"),
+        HirInlineKind::Number(_) => out.push_str("[Number]"),
         HirInlineKind::Symbol(ch) => out.push(*ch),
         HirInlineKind::LineBreak => out.push('\n'),
         HirInlineKind::NoIndent
