@@ -354,7 +354,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 ### `frontend`
 
 テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse` と
-`EvalError` / `ParseError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
+`ParseError` のみで、CST と字句・構文・評価の各エラー型（`SyntaxError` / `EvalError`）は非公開の内部実装に閉じる
+（`ParseError` の variant が運ぶだけで、`frontend` の外からは名指さない）。
 `ParseError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、自分の
 message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため）。`SourceId` も
 本文も持たず、帰属は呼び出し元（`compiler`）が添える。生成物は HIR のみで、他の文書木表現へ落とす adapter は
