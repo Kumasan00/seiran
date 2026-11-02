@@ -290,6 +290,8 @@ const GOLDEN_INPUTS: &[&str] = &[
   "math_wide_accent",
   "matrix",
   "multiline",
+  "num",
+  "num_text_typeface",
   "pagebreak",
   "quote",
   "ref",
