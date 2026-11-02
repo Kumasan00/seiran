@@ -30,7 +30,7 @@ pub(crate) struct TextBlockStyle {
   pub typeface: Typeface,
   /// 段落の揃え（既定は両端揃え）
   pub alignment: TextAlignment,
-  /// 和文約物アキ調整（JIS X 4051、既定は有効）
+  /// JIS X 4051 のアキ調整（和文約物アキ・和欧文間アキ。既定は有効）
   pub punctuation_spacing: bool,
 }
 
