@@ -19,6 +19,7 @@ mod math;
 mod number_style;
 mod page;
 mod page_numbering;
+mod quantity;
 mod quote;
 mod reference;
 mod running;
@@ -59,8 +60,8 @@ use crate::{
   style::{
     columns::ColumnsStyle, counter::CounterStyles, error::StyleValidationError, figure::FigureStyle,
     heading::HeadingStyles, hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle,
-    page::PageStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle, template::TheoremHeadingTemplate,
-    text::TextBlockStyle, theorem::TheoremStyles,
+    page::PageStyle, quantity::QuantityStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle,
+    template::TheoremHeadingTemplate, text::TextBlockStyle, theorem::TheoremStyles,
   },
 };
 
@@ -101,6 +102,9 @@ pub(crate) struct Style {
   /// 数式のスタイル（`[math.block]` 表示数式ブロックのレイアウト）
   #[garde(dive)]
   pub math: MathStyle,
+  /// 数値・単位・量（`\num` 等）の書式と書体（`[quantity]`）
+  #[garde(dive)]
+  pub quantity: QuantityStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: CounterStyles,
