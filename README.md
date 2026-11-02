@@ -235,6 +235,11 @@ format = "{number} {title}"
 font_size = "20pt"
 bottom_margin = "10pt"
 # alignment = "center"         # 未指定なら外側の段落の揃えを継ぐ（既定は [text].alignment）
+
+[quantity]                     # 数値 \num{...} の書式と書体（本文・数式とも）
+# typeface = "math"            # 書体（既定は数式フォントの立体。イタリック系は不可）
+# decimal_marker = "period"    # 小数点: "period"（既定） / "comma"
+# digit_group_separator = "thin" # 3 桁区切り: "thin"（既定） / "none" / "comma" / "period"
 ```
 
 ### 参照定義（`config/references.toml` または `.json`）
