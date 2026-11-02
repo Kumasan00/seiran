@@ -21,7 +21,7 @@ use crate::{
   project::{FaceMap, FontConfigs, FontData, FontFace, FontType},
   publication::FontMetrics,
   typeset::font::{
-    FontLoadError, FontRefs, ScriptLevel, ScriptScale, build_font_metrics,
+    self, FontLoadError, FontRefs, ScriptLevel, ScriptScale, SuperscriptMetrics, build_font_metrics,
     face_config::{FontFaceConfigs, build_face_configs},
     fallback::{self, ShapedText},
     parse_fonts,
@@ -59,6 +59,8 @@ pub(in crate::typeset) struct FontSystem {
   shapers: HarfRustShapers,
   /// 全実体ぶんの基本メトリクス
   metrics: FaceMap<FontMetrics>,
+  /// 全実体ぶんの OS/2 の上付きの指標（読めない・`ySuperscriptYSize` が 0 以下なら `None`）
+  superscripts: FaceMap<Option<SuperscriptMetrics>>,
   /// シェーパーと同じ設定から確定した描画用のフェース設定
   face_configs: FontFaceConfigs,
 }
@@ -81,6 +83,7 @@ impl FontSystem {
       Ok(built) => built,
       Err(failures) => return (Err(failures), Vec::new()),
     };
+    let superscripts = font_refs.map(|face, font_ref| return font::superscript_metrics(font_ref, metrics[face].upem));
 
     let stage_start = Instant::now();
     let (validated, warnings) = validation::validate_fonts(configs, &font_refs, &shaping_fonts);
@@ -99,6 +102,7 @@ impl FontSystem {
       Ok(Self {
         shapers,
         metrics,
+        superscripts,
         face_configs: build_face_configs(configs),
       }),
       warnings,
@@ -177,6 +181,12 @@ impl FontSystem {
   #[must_use]
   pub(in crate::typeset) fn slot_metrics(&self, font_type: FontType) -> &[FontMetrics] {
     return self.metrics.candidates(font_type);
+  }
+
+  /// 本文の枠 `font_type` の第 1 候補の OS/2 の上付きの指標（読めない・`ySuperscriptYSize` が 0 以下なら `None`）
+  #[must_use]
+  pub(in crate::typeset) fn superscript_metrics(&self, font_type: FontType) -> Option<SuperscriptMetrics> {
+    return self.superscripts[FontFace::primary(font_type)];
   }
 
   /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。

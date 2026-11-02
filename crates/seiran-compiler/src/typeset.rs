@@ -25,6 +25,7 @@ mod lowering;
 mod math_glyphs;
 mod observe;
 mod pagination;
+mod quantity_check;
 #[cfg(test)]
 mod test_support;
 mod warning;
@@ -173,6 +174,27 @@ fn lay_out(
     &|base, selector| return font_resources.has_math_variation(base, selector),
     &config.font_configs[FontFace::MATH].font_path,
   );
+  // 数値の指数を組めない文書は組版に進まない（boxing は本文用の枠の上付きの指標がある前提で組む）
+  let quantity_face = FontFace::primary(boxing::char_font_type(style.quantity.typeface, '0'));
+  let superscripts = quantity_check::check(
+    document.hir(),
+    style,
+    font_resources.superscript_metrics(quantity_face.font_type()).is_some(),
+    &config.font_configs[quantity_face].font_path,
+  );
+  if let Err(superscripts) = superscripts {
+    let errors: Vec<TextGlyphError> = math_glyphs
+      .err()
+      .into_iter()
+      .flatten()
+      .map(TextGlyphError::Math)
+      .chain(superscripts.into_iter().map(TextGlyphError::SuperscriptMetrics))
+      .collect();
+    let Some(failures) = Failures::from_vec(errors) else {
+      unreachable!("上付きの指標の検査が失敗したので、少なくとも 1 件ある")
+    };
+    return (Err(ComposeError::Glyphs(failures)), into_variation_warnings(math_warnings));
+  }
   let image_requests = image::collect_image_requests(document.hir());
   let (images, image_warnings) = match image::load_image_resources(source, &image_requests) {
     Ok(loaded) => loaded,

@@ -129,10 +129,89 @@ fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FaceMap<FontMetrics>, 
   });
 }
 
+/// 本文用フォントの上付きの指標（OS/2 の `ySuperscriptYSize` / `ySuperscriptYOffset` を em に対する比にしたもの）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(in crate::typeset) struct SuperscriptMetrics {
+  /// 上付きの字の大きさ（em に対する比。正）
+  pub size: f64,
+  /// 上付きのベースラインからの持ち上げ（em に対する比。正で上）
+  pub offset: f64,
+}
+
+/// フォント `font_ref`（units-per-em は `upem`）の OS/2 から上付きの指標を読む
+///
+/// OS/2 テーブルを読めないか、`ySuperscriptYSize` が 0 以下なら `None`（既定の比率へ黙って落とさず、使う側が診断する）。
+pub(in crate::typeset) fn superscript_metrics(font_ref: &FontRef<'_>, upem: f32) -> Option<SuperscriptMetrics> {
+  let os2 = font_ref.os2().ok()?;
+  let size = os2.y_superscript_y_size();
+  if size <= 0 {
+    return None;
+  }
+  let upem = f64::from(upem);
+  return Some(SuperscriptMetrics {
+    size: f64::from(size) / upem,
+    offset: f64::from(os2.y_superscript_y_offset()) / upem,
+  });
+}
+
 #[cfg(test)]
 mod tests {
-  use super::FontLoadError;
+  use std::{fs, path::Path};
+
+  use read_fonts::FontRef;
+
+  use super::{FontLoadError, superscript_metrics};
   use crate::project::{FontFace, FontType};
+
+  /// `OS/2` テーブル（version 0 の 78 バイト）だけを持ち、`ySuperscriptYSize` / `ySuperscriptYOffset` が `size` / `offset`
+  /// の sfnt バイト列を組む
+  fn sfnt_with_os2(size: i16, offset: i16) -> Vec<u8> {
+    let mut os2 = vec![0u8; 78];
+    os2[20..22].copy_from_slice(&size.to_be_bytes());
+    os2[24..26].copy_from_slice(&offset.to_be_bytes());
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&0x0001_0000u32.to_be_bytes()); // sfntVersion
+    bytes.extend_from_slice(&1u16.to_be_bytes()); // numTables
+    bytes.extend_from_slice(&[0; 6]); // searchRange / entrySelector / rangeShift
+    bytes.extend_from_slice(b"OS/2");
+    bytes.extend_from_slice(&0u32.to_be_bytes()); // checksum
+    bytes.extend_from_slice(&28u32.to_be_bytes()); // offset（ヘッダ 12 バイト + レコード 16 バイト）
+    bytes.extend_from_slice(&78u32.to_be_bytes()); // length
+    bytes.extend_from_slice(&os2);
+    return bytes;
+  }
+
+  #[test]
+  fn superscript_metrics_are_read_as_em_ratios() {
+    let bytes = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoText[wght].ttf"))
+      .expect("vendor/fonts のフォントを読めるはず（未取得なら tools/fetch-test-assets.sh）");
+    let font = FontRef::new(&bytes).unwrap();
+
+    let metrics = superscript_metrics(&font, 1000.0).expect("STIX Two Text は OS/2 の上付き指標を持つ");
+
+    assert!(metrics.size > 0.0 && metrics.size < 1.0, "{metrics:?}");
+    assert!(metrics.offset > 0.0 && metrics.offset < 1.0, "{metrics:?}");
+  }
+
+  #[test]
+  fn superscript_metrics_divide_by_upem() {
+    let bytes = sfnt_with_os2(650, 400);
+
+    let metrics = superscript_metrics(&FontRef::new(&bytes).unwrap(), 1000.0).unwrap();
+
+    assert!((metrics.size - 0.65).abs() < 1e-9 && (metrics.offset - 0.4).abs() < 1e-9, "{metrics:?}");
+  }
+
+  #[test]
+  fn missing_or_non_positive_superscript_size_is_none() {
+    let no_tables = [0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0];
+    let zero = sfnt_with_os2(0, 400);
+    let negative = sfnt_with_os2(-1, 400);
+
+    assert_eq!(superscript_metrics(&FontRef::new(&no_tables).unwrap(), 1000.0), None, "OS/2 が無い");
+    assert_eq!(superscript_metrics(&FontRef::new(&zero).unwrap(), 1000.0), None);
+    assert_eq!(superscript_metrics(&FontRef::new(&negative).unwrap(), 1000.0), None);
+  }
 
   #[test]
   fn messages_name_the_face_by_its_config_position() {

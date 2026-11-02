@@ -375,6 +375,39 @@ impl MissingMathGlyph {
   fn source_id(&self) -> SourceId { return self.source_id; }
 }
 
+/// 本文用の枠で組む数値の指数を、その枠の第 1 候補フォントの OS/2 の上付きの指標で組めない箇所
+#[derive(Debug, PartialEq, Eq, Error, Diagnostic)]
+#[error("{face} のフォントに上付きの指標（OS/2 の ySuperscriptYSize）がありません")]
+#[diagnostic(
+  code(typeset::quantity::missing_superscript_metrics),
+  help(
+    "style.toml の [quantity].typeface は数値の指数を {face} のフォント（{font_path}）の OS/2 の上付きの指標で組みます。正の ySuperscriptYSize を持つフォントを第 1 候補にするか、typeface を math にしてください。"
+  )
+)]
+pub(crate) struct MissingSuperscriptMetrics {
+  /// 指数を持つ `\num` の位置
+  #[label("この数値の指数を上付きで組めません")]
+  pub(super) span: SourceSpan,
+  /// 位置が属するソース
+  source_id: SourceId,
+  /// 数値を組む枠の第 1 候補（`serif[0]` 等）
+  face: FontFace,
+  /// 第 1 候補のフォントのパス
+  font_path: String,
+}
+
+impl MissingSuperscriptMetrics {
+  /// 枠の第 1 候補 `face`（フォントのパス `font_path`）の指標が無く、`location` の指数を組めない診断を作る
+  pub(super) fn new(location: SourceLocation, face: FontFace, font_path: &ProjectPath) -> Self {
+    return MissingSuperscriptMetrics {
+      span: location.span.into(),
+      source_id: location.source_id,
+      face,
+      font_path: font_path.as_ref().display().to_string(),
+    };
+  }
+}
+
 /// 組版の字の問題のうちエラー 1 件 — 数式フォントの字の欠落、本文の枠の字の欠落、使えない代替の候補
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TextGlyphError {
@@ -390,6 +423,10 @@ pub(crate) enum TextGlyphError {
   #[error(transparent)]
   #[diagnostic(transparent)]
   Direction(FallbackDirectionMismatch),
+  /// 数値の指数を組む本文用の枠の第 1 候補に、OS/2 の上付きの指標が無い
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  SuperscriptMetrics(MissingSuperscriptMetrics),
 }
 
 impl TextGlyphError {
@@ -400,6 +437,7 @@ impl TextGlyphError {
       TextGlyphError::Math(error) => Some(error.source_id()),
       TextGlyphError::Text(error) => error.source_id,
       TextGlyphError::Direction(error) => error.source_id,
+      TextGlyphError::SuperscriptMetrics(error) => Some(error.source_id),
     };
   }
 }
