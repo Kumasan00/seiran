@@ -494,3 +494,29 @@ fn embedded_pdf_page_is_clipped_to_the_figure_rectangle() {
   let draw = operators.iter().rposition(|operator| return *operator == "Do").expect("Form XObject を描くはず");
   assert!(operators[..draw].contains(&"W"), "Form XObject を描く前に切り抜くはず: {operators:?}");
 }
+
+#[test]
+fn embedded_pdf_page_shared_by_figures_is_one_form_xobject() {
+  // 1 ページの PDF を page 省略と page=1 で参照すると同じページ。krilla はバイト列の同じ文書を同一視するので、
+  // 描画ごとに開き直しても Form XObject は 1 個にまとまるはず
+  let image = workspace_root().join("tests/image/vector1.pdf");
+  let body = format!(
+    "\\begin{{figure}}\n\\image[width=40mm]{{{0}}}\n\\end{{figure}}\n\n\\begin{{figure}}\n\\image[width=40mm, page=1]{{{0}}}\n\\end{{figure}}\n",
+    image.display()
+  );
+
+  let document =
+    Document::load_mem(&build_pdf_bytes_from_body(&body, "left-to-right")).expect("出力はパスワードなしで読めるはず");
+
+  // 図が 1 つしか描かれていなければ Form 1 個は素通りするので、描画回数も見る。2 図は別ページへ流れうるので全ページを数える
+  let draw_count: usize = document
+    .get_pages()
+    .values()
+    .map(|&page_id| {
+      let content = Content::decode(&document.get_page_content(page_id)).expect("内容をデコードできるはず");
+      return content.operations.iter().filter(|operation| return operation.operator == "Do").count();
+    })
+    .sum();
+  assert_eq!(draw_count, 2, "2 つの図はそれぞれ Form XObject を描くはず");
+  assert_eq!(form_xobject_count(&document), 1, "同じ PDF の同じページは Form XObject 1 個にまとまるはず");
+}
