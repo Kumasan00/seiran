@@ -141,7 +141,7 @@ pub(in crate::typeset) struct SuperscriptMetrics {
 /// フォント `font_ref`（units-per-em は `upem`）の OS/2 から上付きの指標を読む
 ///
 /// OS/2 テーブルを読めないか、`ySuperscriptYSize` が 0 以下なら `None`（既定の比率へ黙って落とさず、使う側が診断する）。
-pub(in crate::typeset) fn superscript_metrics(font_ref: &FontRef<'_>, upem: f32) -> Option<SuperscriptMetrics> {
+fn superscript_metrics(font_ref: &FontRef<'_>, upem: f32) -> Option<SuperscriptMetrics> {
   let os2 = font_ref.os2().ok()?;
   let size = os2.y_superscript_y_size();
   if size <= 0 {

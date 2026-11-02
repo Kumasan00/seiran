@@ -631,7 +631,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 警告は配置が成功したときにしか存在しない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
 流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
-段順序（数式フォントの字の検査 → 画像の収集 → 画像読込・PDF の検査とページの選択・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
+段順序（数式フォントの字・数値の上付きの指標の検査 → 画像の収集 → 画像読込・PDF の検査とページの選択・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
 前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
@@ -832,7 +832,7 @@ match する。
 `[quantity].typeface` が本文用の枠のとき、指数を持つ数値（本文・数式の中の `\num`）ごとに、その枠の第 1 候補フォントに
 OS/2 の上付きの指標（正の `ySuperscriptYSize`）があるかを問う pre-pass。指標は `FontSystem` が読込時に全実体ぶん読んで持つ。
 欠けていれば `MissingSuperscriptMetrics`（code `typeset::quantity::missing_superscript_metrics`。型は `glyph_issues` が所有し、
-`TextGlyphError` の 1 variant）を文書順に集め、`lay_out` は数式フォントの字の欠落と合わせて返し、**組版に進まない** —
+`TextGlyphError` の 1 variant。原因が 1 つなのでソースごとに 1 診断で、箇所はラベルに並べる）をソースの宣言順に集め、`lay_out` は数式フォントの字の欠落と合わせて返し、**組版に進まない** —
 boxing は本文用の枠の指標がある前提で数値の上付きを組む（`expect` の根拠はこの順序）。`typeface = math` と、指数を持つ
 数値の無い文書では何も問わない。
 
@@ -842,7 +842,7 @@ boxing は本文用の枠の指標がある前提で数値の上付きを組む�
 1 箇所（`font::fallback`。欠字は、枠のどの候補でも `.notdef` を含み、字がすべて不可視ではないクラスタ）で、`boxing::Shaper` がいま組んでいる要素（段落・表の行・脚注・
 ディスプレイ数式の `NodeId`）か生成元（参考文献・表題ページ・目次・索引・走り文）を添えて、`TypesetContext` が持つ
 共有の収集器 `GlyphIssues` へ積む。同じ値は 1 回だけ積むので、脚注のページ単位採番で本文パスを反復しても 1 件。
-`lay_out` は数式フォントの字の検査（`math_glyphs`）が失敗しても組版を最後まで進め、`paginate` の後で収集器を
+`lay_out` は数式フォントの字の検査（`math_glyphs`）が失敗しても（数値の上付きの指標の検査 `quantity_check` が通っていれば）組版を最後まで進め、`paginate` の後で収集器を
 `MissingGlyph`（code `typeset::font::missing_glyph`。要素の開始位置に長さ 0 のラベル、生成内容は位置なしで生成元を
 文言に載せる）へ変え、数式の欠落の後ろに (ソース, 要素の開始位置) の昇順 → 生成内容の種類の順で並べる。
 異体字列を組めなかった代替は warning `VariationSequenceFallback`（code `typeset::font::variation_sequence`）、候補の方向の
@@ -850,7 +850,7 @@ boxing は本文用の枠の指標がある前提で数値の上付きを組む�
 代替の成功は warning にしない。数式フォント（`math`）の字はこの経路で組まない（`math_glyphs` が持つ。
 その異体字列の非対応は同じ warning）。
 
-**字の問題の型は `glyph_issues` が所有し、検出側（`math_glyphs`・`boxing`）が一方向に依存する**（`MissingMathGlyph` を
+**字の問題の型は `glyph_issues` が所有し、検出側（`math_glyphs`・`boxing`）が一方向に依存する**（`quantity_check` の `MissingSuperscriptMetrics` も同じ。`MissingMathGlyph` を
 `math_glyphs` に置くと `glyph_issues` ↔ `math_glyphs` が循環する）。位置ラベルは `Span::at_start` で作り、`pagination` に
 依存しない。
 

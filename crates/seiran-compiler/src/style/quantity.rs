@@ -2,6 +2,7 @@
 
 use garde::Validate;
 use serde::Deserialize;
+use strum::IntoStaticStr;
 
 use crate::document::Typeface;
 
@@ -48,8 +49,9 @@ pub(crate) enum DecimalMarker {
 }
 
 /// 3 桁区切り
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum DigitGroupSeparator {
   /// 区切らない
   None,
@@ -83,9 +85,10 @@ fn upright_typeface(value: &Typeface, _ctx: &()) -> garde::Result {
     | Typeface::SansSerifItalic
     | Typeface::SansSerifBoldItalic
     | Typeface::MonospaceItalic
-    | Typeface::MonospaceBoldItalic => {
-      Err(garde::Error::new("イタリック系の書体は指定できません（数値は立体で組みます）"))
-    },
+    | Typeface::MonospaceBoldItalic => Err(garde::Error::new(format!(
+      "イタリック系の書体は指定できません（数値は立体で組みます。受け取った値: {}）",
+      <&str>::from(*value)
+    ))),
     Typeface::Serif
     | Typeface::SerifBold
     | Typeface::SansSerif
@@ -104,7 +107,10 @@ fn separator_differs_from_marker(marker: DecimalMarker) -> impl FnOnce(&DigitGro
       (DecimalMarker::Period, DigitGroupSeparator::Period) | (DecimalMarker::Comma, DigitGroupSeparator::Comma)
     );
     if same {
-      return Err(garde::Error::new("小数点（decimal_marker）と同じ記号は指定できません"));
+      return Err(garde::Error::new(format!(
+        "小数点（decimal_marker）と同じ記号は指定できません（受け取った値: {}）",
+        <&str>::from(*separator)
+      )));
     }
     return Ok(());
   };
@@ -195,6 +201,22 @@ mod tests {
     ] {
       assert!(with(typeface).validate().is_ok(), "{typeface:?}");
     }
+  }
+
+  #[test]
+  fn violation_messages_carry_the_received_value() {
+    let italic = QuantityStyle {
+      typeface: Typeface::SansSerifItalic,
+      ..QuantityStyle::default()
+    };
+    let same = QuantityStyle {
+      decimal_marker: DecimalMarker::Comma,
+      digit_group_separator: DigitGroupSeparator::Comma,
+      ..QuantityStyle::default()
+    };
+
+    assert!(italic.validate().unwrap_err().to_string().contains("sans_serif_italic"), "{:?}", italic.validate());
+    assert!(same.validate().unwrap_err().to_string().contains("comma"), "{:?}", same.validate());
   }
 
   #[test]

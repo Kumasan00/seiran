@@ -277,7 +277,7 @@ pub(crate) enum EvalError {
   #[diagnostic(
     code(frontend::eval::invalid_number),
     help(
-      "\\num の引数は `[符号] 整数部 [. 小数部] [e 指数]` の形で、空白・桁区切り・U+2212 を含めず書きます（例: \\num{{-1.5e3}}、\\num{{0.25}}、\\num{{12345}}）。小数点・桁区切り・負号の字は style.toml の [quantity] が決めます"
+      "\\num の引数は `[符号] 整数部 [. 小数部] [e 指数]` の形で、空白・桁区切り・U+2212 を含めず書きます（例: \\num{{-1.5e3}}、\\num{{0.25}}、\\num{{12345}}）。小数点・桁区切りの記号は style.toml の [quantity] が決めます"
     )
   )]
   InvalidNumber {

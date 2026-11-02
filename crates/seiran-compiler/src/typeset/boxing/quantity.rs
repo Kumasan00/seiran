@@ -9,18 +9,24 @@ use read_fonts::tables::math::MathConstant;
 use crate::{
   document::Typeface,
   length::Length,
+  project::{FontFace, FontType},
   typeset::{
     boxes::{HBox, HItem, PlacedHBox},
     boxing::{
       Measurer,
       hlist::{BOX_EDGE_CHAR, Edge, HList},
-      math::space_width,
+      math,
       script::{self, ScriptCategory},
     },
     font::ScriptLevel,
     lowering::{NumberPiece, TextStyle},
   },
 };
+
+/// 書体 `typeface` の数値を組む枠（数値は ASCII の数字・記号なので、欧文の字が振り分けられる枠）
+pub(in crate::typeset) fn number_font_type(typeface: Typeface) -> FontType {
+  return script::resolve_font_type(typeface, ScriptCategory::Latin);
+}
 
 impl Measurer<'_> {
   /// 数値の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
@@ -41,7 +47,7 @@ impl Measurer<'_> {
     for piece in pieces {
       match piece {
         NumberPiece::Text(text) => self.place_number_text(text, style, Length::ZERO, &mut dx, &mut placed),
-        NumberPiece::Space(space) => dx += space_width(*space, style.font_size),
+        NumberPiece::Space(space) => dx += math::space_width(*space, style.font_size),
         NumberPiece::Superscript(text) => {
           let (superscript, raise) = self.number_superscript(style);
           self.place_number_text(text, superscript, raise, &mut dx, &mut placed);
@@ -49,6 +55,7 @@ impl Measurer<'_> {
       }
     }
     let mut number = HBox::atom(placed);
+    // 送り幅は置いた子の右端ではなく送りの和（`text_box` と同じ）
     number.width = dx;
     return number;
   }
@@ -79,8 +86,8 @@ impl Measurer<'_> {
       };
       return (superscript, self.shaper.math_constant(MathConstant::SuperscriptShiftUp, style.font_size));
     }
-    let font_type = script::resolve_font_type(style.typeface, ScriptCategory::Latin);
-    let metrics = self.shaper.superscript_metrics(font_type).expect(
+    let face = FontFace::primary(number_font_type(style.typeface));
+    let metrics = self.shaper.superscript_metrics(face).expect(
       "lay_out は quantity_check で、本文用の枠で指数を組む数値があればその枠の上付きの指標を確かめてから組版に進む",
     );
     let superscript = TextStyle {
@@ -98,7 +105,7 @@ mod tests {
   use crate::{
     document::{MathSpace, Typeface},
     length::Length,
-    project::FontType,
+    project::{FontFace, FontType},
     typeset::{
       boxes::{HBox, HBoxContent, HItem, PlacedHBox},
       boxing::{Measurer, Shaper, hlist::HList, ja_latin_aki},
@@ -109,6 +116,7 @@ mod tests {
     },
   };
 
+  /// 箱の基準のフォントサイズ
   const SIZE: Length = Length::from_sp(10 * 65536);
 
   /// 和文の枠を Noto Serif JP、そのほかの本文の枠を STIX Two Text にしたフォント資源
@@ -119,6 +127,7 @@ mod tests {
     });
   }
 
+  /// 書体 `typeface` の基準のスタイル
   fn style(typeface: Typeface) -> TextStyle {
     return TextStyle {
       font_size: SIZE,
@@ -129,6 +138,7 @@ mod tests {
     };
   }
 
+  /// 字の部品
   fn text(s: &str) -> NumberPiece { return NumberPiece::Text(s.to_string()); }
 
   /// インライン列を `punctuation_spacing` のもとで水平リストへ積んだアイテム列
@@ -250,7 +260,9 @@ mod tests {
   #[test]
   fn text_typeface_superscript_uses_os2() {
     let fonts = fonts();
-    let metrics = fonts.superscript_metrics(FontType::Serif).expect("STIX Two Text は OS/2 の上付き指標を持つ");
+    let metrics = fonts
+      .superscript_metrics(FontFace::primary(FontType::Serif))
+      .expect("STIX Two Text は OS/2 の上付き指標を持つ");
 
     let hbox = number_box(&fonts, &[text("10"), NumberPiece::Superscript("3".to_string())], Typeface::Serif);
 

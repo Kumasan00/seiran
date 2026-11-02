@@ -1,12 +1,12 @@
 //! `\num{数値}` の評価 — 数式として読んだ引数を数値の文法で検証し、数字列のまま [`Numeral`] にする
 //!
 //! 文法は `[符号] 整数部 [. 小数部] [e 指数]`。引数の構造（空白・コマンド・グループ・上下付き）は parser が読んだまま
-//! 受け取り、字のトークン以外の要素はその位置で文法から外れたものとして扱う（字句規則は増やさない）。
+//! 受け取り、字のトークン以外の要素はその位置で文法から外れたものとして扱う。
 
 use crate::{
   document::{NumberSign, Numeral},
   frontend::{
-    evaluator::{EvalError, arity, opt_args},
+    evaluator::{self, EvalError, arity, opt_args},
     syntax::{CstElement, CstNode, token::TokenKind, view::CommandView},
   },
   source::Span,
@@ -53,9 +53,7 @@ fn arg_items(source: &str, arg: &CstNode<'_>) -> Vec<Item> {
       CstElement::Token(token) => match token.kind {
         TokenKind::Text => {
           for (offset, ch) in token.text(source).char_indices() {
-            let offset =
-              u32::try_from(offset).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
-            items.push(Item::Char(ch, token.span.start + offset));
+            items.push(Item::Char(ch, evaluator::source_position(token.span.start, offset)));
           }
         },
         TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comment => {},
@@ -222,15 +220,17 @@ mod tests {
     }
   }
 
-  /// `prefix\num{arg}` の `invalid_number` の label の（引数の中のバイト位置, 長さ）
-  fn invalid_at(prefix: &str, arg: &str, suffix: &str) -> (usize, usize) {
-    let source = format!("{prefix}\\num{{{arg}}}{suffix}");
+  /// `\num{arg}` を本文（`math` なら `$...$` の中）に書いたときの、`invalid_number` の label の引数の中のバイト位置
+  fn invalid_at(arg: &str, math: bool) -> usize {
+    let dollar = if math { "$" } else { "" };
+    let source = format!("{dollar}\\num{{{arg}}}{dollar}");
     let EvalError::InvalidNumber { span, .. } = eval_error(&source) else {
       panic!("invalid_number が期待されます: {source}");
     };
-    return (span.offset() - (prefix.len() + "\\num{".len()), span.len());
+    return span.offset() - (dollar.len() + "\\num{".len());
   }
 
+  /// 部分ごとの字面から数値を作る
   fn numeral(sign: Option<NumberSign>, integer: &str, fraction: Option<&str>, exponent: Option<&str>) -> Numeral {
     return Numeral {
       sign,
@@ -287,8 +287,8 @@ mod tests {
     ];
 
     for (arg, offset) in cases {
-      assert_eq!(invalid_at("", arg, "").0, offset, "本文: {arg}");
-      assert_eq!(invalid_at("$", arg, "$").0, offset, "数式: {arg}");
+      assert_eq!(invalid_at(arg, false), offset, "本文: {arg}");
+      assert_eq!(invalid_at(arg, true), offset, "数式: {arg}");
     }
   }
 

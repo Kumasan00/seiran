@@ -59,7 +59,7 @@ pub(in crate::typeset) struct FontSystem {
   shapers: HarfRustShapers,
   /// 全実体ぶんの基本メトリクス
   metrics: FaceMap<FontMetrics>,
-  /// 全実体ぶんの OS/2 の上付きの指標（読めない・`ySuperscriptYSize` が 0 以下なら `None`）
+  /// 全実体ぶんの OS/2 の上付きの指標（[`font::superscript_metrics`]）
   superscripts: FaceMap<Option<SuperscriptMetrics>>,
   /// シェーパーと同じ設定から確定した描画用のフェース設定
   face_configs: FontFaceConfigs,
@@ -183,10 +183,10 @@ impl FontSystem {
     return self.metrics.candidates(font_type);
   }
 
-  /// 本文の枠 `font_type` の第 1 候補の OS/2 の上付きの指標（読めない・`ySuperscriptYSize` が 0 以下なら `None`）
+  /// 実体 `face` の OS/2 の上付きの指標（[`font::superscript_metrics`]）
   #[must_use]
-  pub(in crate::typeset) fn superscript_metrics(&self, font_type: FontType) -> Option<SuperscriptMetrics> {
-    return self.superscripts[FontFace::primary(font_type)];
+  pub(in crate::typeset) fn superscript_metrics(&self, face: FontFace) -> Option<SuperscriptMetrics> {
+    return self.superscripts[face];
   }
 
   /// 数式フォントの MATH テーブルの、フォント全体の定数（値はフォント単位）。

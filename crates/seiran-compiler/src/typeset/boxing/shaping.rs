@@ -501,9 +501,9 @@ impl<'a> Shaper<'a> {
     return shaped;
   }
 
-  /// 本文の枠 `font_type` の第 1 候補の OS/2 の上付きの指標（無ければ `None`）
-  pub(super) fn superscript_metrics(&self, font_type: FontType) -> Option<SuperscriptMetrics> {
-    return self.fonts.superscript_metrics(font_type);
+  /// 実体 `face` の OS/2 の上付きの指標（無ければ `None`）
+  pub(super) fn superscript_metrics(&self, face: FontFace) -> Option<SuperscriptMetrics> {
+    return self.fonts.superscript_metrics(face);
   }
 
   /// 数式フォントの MATH のスクリプト段の縮小率

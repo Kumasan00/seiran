@@ -43,6 +43,7 @@ pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
 use hlist::HList;
 use hyphenation::Lang;
 pub(super) use math::{FENCE_DIVIDER, RADICAL_SIGN};
+pub(super) use quantity::number_font_type;
 pub(super) use script::char_font_type;
 pub(super) use shaping::Shaper;
 use tracing::debug;

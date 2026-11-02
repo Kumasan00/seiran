@@ -49,7 +49,7 @@ pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle
 }
 
 /// 部品列を PDF しおりの平文にする（細アキ U+202F・中アキ U+205F・上付きは Unicode の上付き字）
-pub(in crate::typeset) fn plain_text(pieces: &[NumberPiece]) -> String {
+pub(super) fn plain_text(pieces: &[NumberPiece]) -> String {
   let mut out = String::new();
   for piece in pieces {
     match piece {
@@ -133,9 +133,10 @@ mod tests {
   use crate::{
     document::{MathSpace, NumberSign, Numeral},
     style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
-    typeset::lowering::NumberPiece::{self, Space, Superscript, Text},
+    typeset::lowering::NumberPiece,
   };
 
+  /// 部分ごとの字面から数値を作る
   fn numeral(sign: Option<NumberSign>, integer: &str, fraction: Option<&str>, exponent: Option<&str>) -> Numeral {
     return Numeral {
       sign,
@@ -145,13 +146,17 @@ mod tests {
     };
   }
 
+  /// 整数部だけの数値
   fn int(integer: &str) -> Numeral { return numeral(None, integer, None, None); }
 
-  fn text(s: &str) -> NumberPiece { return Text(s.to_string()); }
+  /// 字の部品
+  fn text(s: &str) -> NumberPiece { return NumberPiece::Text(s.to_string()); }
 
-  const THIN: NumberPiece = Space(MathSpace::Thin);
+  /// 細アキの部品（桁区切り）
+  const THIN: NumberPiece = NumberPiece::Space(MathSpace::Thin);
 
-  const MEDIUM: NumberPiece = Space(MathSpace::Medium);
+  /// 中アキの部品（積の記号の前後）
+  const MEDIUM: NumberPiece = NumberPiece::Space(MathSpace::Medium);
 
   #[test]
   fn four_digit_integer_is_grouped_only_when_asked() {
@@ -222,7 +227,7 @@ mod tests {
         text("\u{00D7}"),
         MEDIUM,
         text("10"),
-        Superscript("\u{2212}3".to_string())
+        NumberPiece::Superscript("\u{2212}3".to_string())
       ]
     );
     assert_eq!(number_pieces(&value, &dot)[2], text("\u{22C5}"));
