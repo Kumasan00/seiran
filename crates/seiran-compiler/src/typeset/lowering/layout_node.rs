@@ -105,6 +105,13 @@ pub(in crate::typeset) enum InlineNode {
   },
   /// インライン数式（段・アキ・分割候補・計測は boxing の数式エンジンが決める）
   Math(MathFormula),
+  /// 数値（`\num`）。部品を並べた閉じた 1 個の箱で、両端は欧文字として和欧文間アキを受ける
+  Number {
+    /// style の書式で整えた部品
+    pieces: Vec<NumberPiece>,
+    /// 箱の基準のスタイル（書体は `[quantity].typeface`、大きさと色は外側のもの）
+    style: TextStyle,
+  },
   /// クリック可能なリンク領域（機構 B）
   Link {
     /// リンクの行き先（内部アンカー / 外部 URI）
@@ -292,6 +299,13 @@ pub(in crate::typeset) enum MathNode {
     text: String,
     /// display 段で付く上付き・下付きを真上・真下に積む名前か
     limits: bool,
+  },
+  /// 数値（`\num`）。Ord の 1 アトムで、大きさはその位置の段の大きさ
+  Number {
+    /// style の書式で整えた部品
+    pieces: Vec<NumberPiece>,
+    /// 書体（`[quantity].typeface`。字形 variant は効かない）
+    typeface: Typeface,
   },
   /// 空でない数式内の文章（`\text{...}`。空の文章は空の [`MathNode::Group`] に解決する）
   Prose {

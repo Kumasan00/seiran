@@ -11,6 +11,7 @@ use crate::{
       LoweringContext, LoweringState, code, generated,
       layout_node::{InlineNode, TextStyle},
       math::lower_inline_math,
+      quantity,
     },
   },
 };
@@ -69,7 +70,16 @@ pub(super) fn lower_inline(
     HirInlineKind::Symbol(ch) => {
       return vec![InlineNode::Text(ch.to_string(), parent_style)];
     },
-    HirInlineKind::Number(_) => return Vec::new(),
+    // 書体は外側（装飾・見出し）を継がず `[quantity].typeface`。大きさと色は外側のもの
+    HirInlineKind::Number(numeral) => {
+      return vec![InlineNode::Number {
+        pieces: quantity::number_pieces(numeral, &ctx.style.quantity),
+        style: TextStyle {
+          typeface: ctx.style.quantity.typeface,
+          ..parent_style
+        },
+      }];
+    },
     HirInlineKind::LineBreak => {
       return vec![InlineNode::LineBreak];
     },
@@ -192,10 +202,11 @@ mod tests {
   use super::*;
   use crate::{
     color::Color,
+    document::MathSpace,
     semantics::{CitationId, GeneratedInline, LabelId},
     style::{NumberStyle, NumberTemplate, Style as ReadStyle},
     typeset::lowering::{
-      LayoutNode, lower_sources_with_headings,
+      LayoutNode, NumberPiece, lower_sources_with_headings,
       test_support::{analyzed, context, inlines, lower, paragraph_layout},
     },
   };
@@ -363,6 +374,28 @@ mod tests {
       panic!("数式が期待されます: {children:?}");
     };
     assert_eq!(formula.color, Some(blue));
+  }
+
+  #[test]
+  fn number_takes_the_quantity_typeface_and_the_outer_size_and_color() {
+    let red = Color::new(0xff, 0x00, 0x00);
+
+    let nodes = lower_source(&ReadStyle::default(), "\\color[color=#ff0000]{\\bold{\\num{12345}}}\n");
+
+    let InlineNode::Number { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+      panic!("Number が期待されます: {nodes:?}");
+    };
+    assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
+    assert_eq!(style.color, Some(red), "色は外側と合成する");
+    assert_eq!(style.font_size, ReadStyle::default().text.font_size);
+    assert_eq!(
+      pieces,
+      &[
+        NumberPiece::Text("12".to_string()),
+        NumberPiece::Space(MathSpace::Thin),
+        NumberPiece::Text("345".to_string())
+      ]
+    );
   }
 
   #[test]

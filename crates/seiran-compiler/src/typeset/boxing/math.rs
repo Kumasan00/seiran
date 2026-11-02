@@ -35,6 +35,7 @@ mod large_operator;
 mod limits;
 mod radical;
 
+pub(super) use arrange::space_width;
 use arrange::{ArrangedInline, ArrangedNode, MathScripts};
 pub(in crate::typeset) use fenced::FENCE_DIVIDER;
 pub(in crate::typeset) use radical::RADICAL_SIGN;
@@ -199,6 +200,9 @@ impl Measurer<'_> {
         },
         ArrangedInline::Node(ArrangedNode::Kern { length }) => {
           out.push_absorbing(HItem::Kern(length));
+        },
+        ArrangedInline::Node(ArrangedNode::Number(pieces, style)) => {
+          out.push_math_box(self.number_box(&pieces, style));
         },
         ArrangedInline::Node(
           node @ (ArrangedNode::Scripts(_)
@@ -524,6 +528,12 @@ impl Measurer<'_> {
       },
       ArrangedNode::Kern { length } => {
         *dx += length;
+      },
+      ArrangedNode::Number(pieces, style) => {
+        let hbox = self.number_box(&pieces, style);
+        let width = hbox.width;
+        out.push(PlacedHBox { hbox, dx: *dx, dy });
+        *dx += width;
       },
       ArrangedNode::Scripts(scripts) => {
         if scripts.limits {

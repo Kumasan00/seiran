@@ -34,7 +34,7 @@ use crate::{
         DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockCellLayout, MathBlockLayout, MathBlockRowLayout,
         MathFormula, MathNode, TextStyle,
       },
-      with_label_anchors,
+      quantity, with_label_anchors,
     },
   },
 };
@@ -302,7 +302,11 @@ fn push_resolved(
         typeface: style.text.typeface,
       }
     }),
-    HirMathKind::Number(_) => {},
+    // 数値は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
+    HirMathKind::Number(numeral) => out.push(MathNode::Number {
+      pieces: quantity::number_pieces(numeral, &style.quantity),
+      typeface: style.quantity.typeface,
+    }),
     HirMathKind::Group(children) => out.push(MathNode::Group(list(children))),
     HirMathKind::Superscript(inner) => out.push(MathNode::Superscript(one(inner))),
     HirMathKind::Subscript(inner) => out.push(MathNode::Subscript(one(inner))),
@@ -440,7 +444,10 @@ mod tests {
     length::Length,
     semantics::SemanticDocument,
     style::{CounterTemplate, Style as ReadStyle},
-    typeset::lowering::test_support::{analyzed, lower},
+    typeset::lowering::{
+      NumberPiece,
+      test_support::{analyzed, lower},
+    },
   };
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
@@ -764,6 +771,25 @@ mod tests {
     assert!(
       matches!(&nodes[2], MathNode::Prose { typeface, .. } if *typeface == style.text.typeface),
       "{nodes:?}"
+    );
+  }
+
+  #[test]
+  fn number_ignores_the_glyph_variant_and_takes_the_quantity_typeface() {
+    let mut serif = ReadStyle::default();
+    serif.quantity.typeface = Typeface::Serif;
+    let one = vec![NumberPiece::Text("1".to_string())];
+
+    let math = resolved("$\\mathbold{\\num{1}}$\n");
+    let text = resolved_with(&serif, "$\\num{1}$\n");
+
+    assert!(
+      matches!(math.as_slice(), [MathNode::Number { pieces, typeface: Typeface::Math }] if *pieces == one),
+      "{math:?}"
+    );
+    assert!(
+      matches!(text.as_slice(), [MathNode::Number { pieces, typeface: Typeface::Serif }] if *pieces == one),
+      "{text:?}"
     );
   }
 
