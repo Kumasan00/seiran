@@ -646,7 +646,8 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
   画像の自然寸法は自前で求め、描画に使う画像本体のデコードは render 側に残す（同じバイト列を 2 度読むが、
   krilla を compiler へ持ち込まないための線引き）。組版時の自然寸法と描画時の解釈が一致することは、
   workspace で `image` / `usvg` / `hayro-syntax`（krilla の PDF 埋め込みが使う hayro-write と同じ版）の版を
-  1 つに pin することで担保する。自然寸法は読込時に「有限かつ正」を
+  1 つに pin することで担保する。SVG はパース設定（フォントと文字の照合規則）も一致させる必要があり、こちらは
+  `publication::SvgParser` 1 つを両者が使うことで担保する。自然寸法は読込時に「有限かつ正」を
   検証した型で持ち、表示寸法の確定（省略された辺の推論）は boxing の中で失敗しない計算として済む
 - `typeset` は `publication`（backend 非依存の確定表現）に**依存してよい**（旧原則「`typeset` は描画表現を
   知らない」（#461）へ戻さない）。krilla の隔離は `seiran-pdf` の crate 境界と `Publication` の純データ性が
@@ -792,7 +793,10 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - 形式は HIR（`HirFigure.format`）が持ち、ここは拡張子を読み直さない。判定結果は自然寸法の取得と
   `PublicationImage.format` の双方が使い、描画側も形式で分岐する（同じ判定を 2 回書くと両者が食い違いうる —
   renderer 側に未対応形式の診断を持たない根拠）
-- 自然寸法はラスタなら寸法ヘッダ、SVG なら `usvg` のサイズ。EXIF の Orientation は適用しない — 描画側
+- 自然寸法はラスタなら寸法ヘッダ、SVG なら `SvgParser`（設定済みフォント）でパースした `usvg` のサイズ。SVG は
+  子 module `svg` が文字も検査する — どの設定済みフォントにも一致しない `font-family`（usvg がその文字を捨てるので
+  照合時の記録を使う）と、選んだ系統の候補で組めない字（木に残る gid 0 の字形。clipPath 等の部分木も辿る）を
+  エラーにし、文字の欠けた PDF を成功扱いにしない。EXIF の Orientation は適用しない — 描画側
   （krilla）も寸法ヘッダの値を使うため、適用すると組版時と描画時の解釈がずれる
 - PDF は子 module `pdf` が `hayro-syntax` で開き、暗号化（空パスワードで開けるものだけ受理）・版（PDF 2.0 は拒否。
   描画側の版の不一致エラーへ到達させない）・ページ数・ページの選択を検査する。自然寸法は hayro の `render_dimensions()`
@@ -1438,6 +1442,12 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
   吐かないため）
 - テスト用に `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て。
   `Publication` 値は作らない）を持つ
+- **SVG のパース設定 `SvgParser`**（子 module `svg`）は、facade に載る型のうち唯一 usvg の型（`usvg::Tree` /
+  `usvg::Error`）を外へ出す。`PublicationResources` の外にある純データではなく、`svg_parser()` で全実体の
+  フォントから都度作る。SVG 内の文字の照合規則（`font-family` の照合・generic の枠への読み替え・同じ系統の枠での
+  1 字ごとの代替）の保証点はここ 1 つで、compiler の検査（`typeset::image::svg`）と描画側の読み直しが同じ値を使う
+  — 規則を 2 crate に書くと、組版時と描画時の解釈が食い違いうる。fontdb には全実体のフェースだけを載せ、OS の
+  フォントは読まない
 
 ### `compiler`
 
@@ -1610,7 +1620,8 @@ compiler 側の責務で、こちらへ戻さない。
   `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、
   render 側で黒へ置き換えない。ファイル I/O は発生しない
 - `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）・PDF を開くこと（krilla の `pdf` feature）とラスタ画像の
-  ダウンサンプルのみ。分岐は拡張子ではなく `PublicationImage.format`（compiler 側が判定済み）で行う。PDF は
+  ダウンサンプルのみ。SVG は `PublicationResources::svg_parser()`（compiler が検査に使ったのと同じ設定）で読み、
+  krilla-svg が文字を選択可能なテキストとして埋め込む。分岐は拡張子ではなく `PublicationImage.format`（compiler 側が判定済み）で行う。PDF は
   `PublicationImage.page_index` のページを `draw_pdf_page` で独立した透過グループの Form XObject として描き、
   ラスタ化・色空間の変換・中のラスタの再圧縮はしない。ただし Form XObject の透過グループの色空間（`/CS`）は krilla が
   RGB（既定の設定では DeviceRGB）で書くので、CMYK の図版でも透過・描画モードの合成は RGB で行われる（内容のストリームは
@@ -1625,7 +1636,7 @@ compiler が構築時に検証済みの不変条件を再検査する variant（
 image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性（レコードが
 ファイル範囲外を指す破損を含む。保証点は `typeset::font::validation`。#681 / #725））は持たない — 同じ検査を
 2 箇所に持つと、どちらが真の保証点か読めなくなるため（保証点は `publication` 節の表。#378）。SVG と PDF 図版は
-compiler が同じパーサで検査を通したバイト列だが、パース結果は facade を越えないので backend が読み直し、その失敗を
+compiler が同じパーサ（SVG は同じ `SvgParser`）で検査を通したバイト列だが、パース結果は facade を越えないので backend が読み直し、その失敗を
 `ParseSvg` / `ParsePdf` として持つ。これは読み直しが `Result` を返すことの受け口で、2 つ目の保証点ではない。
 
 ### 不変条件・注意点

@@ -1,4 +1,4 @@
-//! 画像バイト列から自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を得る。
+//! 画像バイト列から自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を検証して持つ。
 
 use std::io::Cursor;
 
@@ -31,7 +31,7 @@ impl NaturalSize {
   pub(super) fn aspect_ratio(self) -> f32 { return self.height / self.width; }
 }
 
-/// 判定済みの画像形式に従ってバイト列をデコードし、検証済みの自然寸法を返す。
+/// ラスタ画像のバイト列から寸法ヘッダを読み、検証済みの自然寸法を返す。
 ///
 /// `path` はエラーメッセージにのみ使う。
 ///
@@ -42,7 +42,11 @@ pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) 
   let (width, height) = match format {
     ImageFormat::Png => raster_size(path, bytes, image::ImageFormat::Png),
     ImageFormat::Jpeg => raster_size(path, bytes, image::ImageFormat::Jpeg),
-    ImageFormat::Svg => svg_size(path, bytes),
+    ImageFormat::Svg => {
+      unreachable!(
+        "SVG の自然寸法は文字の検査と合わせて typeset::image::svg が求め、資源の読込は SVG をここへ渡さない: {path}"
+      )
+    },
     ImageFormat::Pdf => {
       unreachable!("PDF の自然寸法はページ単位で typeset::image::pdf が求め、資源の読込は PDF をここへ渡さない: {path}")
     },
@@ -71,35 +75,10 @@ fn raster_size(path: &str, bytes: &[u8], format: image::ImageFormat) -> Result<(
   return Ok((width as f32, height as f32));
 }
 
-/// SVG の width / height を usvg が解釈した値として返す。
-fn svg_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
-  let tree = usvg::Tree::from_data(bytes, &usvg::Options::default()).map_err(|source| {
-    return TypesetError::ParseSvg {
-      path: path.to_string(),
-      source,
-    };
-  })?;
-  let size = tree.size();
-  return Ok((size.width(), size.height()));
-}
-
 #[cfg(test)]
 mod tests {
   use super::{NaturalSize, natural_image_size};
   use crate::{document::ImageFormat, typeset::error::TypesetError};
-
-  #[test]
-  fn natural_image_size_returns_svg_dimensions_from_bytes() {
-    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
-    let size = natural_image_size("icon.svg", ImageFormat::Svg, svg).expect("有効な SVG はデコードできるはず");
-    assert_eq!(
-      size,
-      NaturalSize {
-        width: 80.0,
-        height: 60.0
-      }
-    );
-  }
 
   #[test]
   fn natural_image_size_reports_broken_raster_as_decode_error() {

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">
+  <rect x="1" y="1" width="398" height="198" fill="none" stroke="red"/>
+  <text x="20" y="40" font-family="STIX Two Text" font-size="30" fill="#cc0000">SVG TEXT SHOULD APPEAR</text>
+  <text x="20" y="80" font-family="'No Such Family', Noto Sans" font-weight="bold" font-size="20">Bold Sans</text>
+  <text x="20" y="110" font-family="serif" font-style="italic" font-size="20">Italic Serif</text>
+  <text x="20" y="140" font-family="monospace" font-size="20">mono 0123</text>
+  <text x="20" y="170" font-size="20">和文 serif</text>
+  <text x="200" y="170" font-family="sans-serif" font-size="20">和文 sans</text>
+</svg>

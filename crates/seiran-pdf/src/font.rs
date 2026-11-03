@@ -1,6 +1,6 @@
 //! krilla フォントの構築とグリフ変換。
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use krilla::{
   Data,
@@ -47,23 +47,6 @@ pub(crate) fn build_krilla_fonts(resources: &PublicationResources) -> Result<Kri
   return Ok(KrillaFonts { fonts });
 }
 
-/// krilla へフォントバイト列を複製せず渡すための `AsRef<[u8]>` 包み。
-///
-/// krilla の [`Data`] を複製なしで作れるのは `Arc<Vec<u8>>` と `Arc<dyn AsRef<[u8]> + Send + Sync>`
-/// からだけで、`Arc<[u8]>` はスライスが `Sized` でないため後者へ unsize できない。
-struct FontBytes(Arc<[u8]>);
-
-impl AsRef<[u8]> for FontBytes {
-  /// 包んだ共有ハンドルの中身を借用する。
-  fn as_ref(&self) -> &[u8] { return &self.0; }
-}
-
-/// 共有ハンドルを複製して krilla の [`Data`] を作る（実バイト列は複製しない）。
-fn krilla_data(bytes: &Arc<[u8]>) -> Data {
-  let shared: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(FontBytes(Arc::clone(bytes)));
-  return Data::from(shared);
-}
-
 /// 軸の指定（無ければ空）で krilla フォントを構築する。
 ///
 /// krilla の `Font::new` は空軸の `Font::new_variable` そのものなので、静的フォントもこの経路で組める。
@@ -83,7 +66,7 @@ fn build_krilla_font(face: FontFace, font: &PublicationFont) -> Result<Font, Pdf
       return (Tag::new(&cfg_axis.name), value);
     })
     .collect::<Vec<_>>();
-  return Font::new_variable(krilla_data(&font.bytes), font.face.font_index, &axes)
+  return Font::new_variable(Data::from(font.shared_bytes()), font.face.font_index, &axes)
     .ok_or(PdfRenderError::FontCreation { face });
 }
 

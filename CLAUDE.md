@@ -87,7 +87,7 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
                        フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
                        シェーパー）から出口（typeset::emit: 確定座標 → PaintOp・描画資源の構築）まで
                        typeset に閉じ、資源の借用期間も外に出さない。内部順序（数式フォントの字・数値・単位の上付き指標の検査 →
-                       画像の収集 → 画像読込（PDF はページの選択） → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ breaking（行分割・
+                       画像の収集 → 画像読込（PDF はページの選択、SVG は設定済みフォントでの文字の検査） → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ breaking（行分割・
                        改ページ）→ 前付け・後付け → ページラベル → 走り文 → outline → emit）は typeset に閉じる
   → seiran-pdf         render: compiler が確定させた Publication（純データ）を描画するのみ
                        （krilla フォントの構築・画像本体のデコード・フォントサブセット化はここに閉じる）
@@ -127,12 +127,13 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
                    （Publication / DependencyManifest / Warnings / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource とその 2 実装 / ProjectPath /
                    ProjectSourceError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType / FontFace / VariationAxis と Publication 系）
+                   + SVG のパース設定 SvgParser（usvg の型を返す唯一の入口。SVG 内の文字の照合規則の保証点）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran。seiran-compiler と seiran-pdf の両方に依存）。`build` は compile → render → atomic write → 表示の 4 手順のみ（ほかにフォント調査の 3 サブコマンド。`read-fonts` を直接使い compiler に依存しない）
 ```
 
-`seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型だけで、`ProjectConfig` /
+`seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型と `SvgParser` だけで、`ProjectConfig` /
 `Style` / `typeset::Page` は facade に出ていない — 「renderer は確定座標の描画のみ・レイアウト判断ゼロ」
 という防火壁は、この公開範囲の狭さが担っている。
 

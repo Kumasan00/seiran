@@ -1,0 +1,6 @@
+\section{SVG のフォント未解決のサンプル}
+
+\begin{figure}[label=fig:svg-font-not-found]
+\image[width=80mm]{./tests/image/svg_text_unknown_family.svg}
+\caption{設定に無いフォントを指定した SVG}
+\end{figure}

@@ -5,7 +5,8 @@
 //!
 //! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetrics`]、フォント
 //! 構築設定 [`FontFaceConfig`] — は子 module（`glyph` / `font`）が持つ。画像形式は HIR の語彙
-//! （[`crate::document::ImageFormat`]）をそのまま載せる。
+//! （[`crate::document::ImageFormat`]）をそのまま載せる。SVG のパース設定 [`SvgParser`]（SVG 内の文字を全実体の
+//! フォントで組む規則）は子 module `svg` が持ち、[`PublicationResources::svg_parser`] で組版段と描画側へ同じ値を渡す。
 //!
 //! 文書を組み立てる型（[`Publication`] / [`PublicationPage`] / [`PublicationResources`]）と、
 //! 不変条件を持つ値（[`PublicationRect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を検証付きの `pub(crate)`
@@ -13,6 +14,7 @@
 
 mod font;
 mod glyph;
+mod svg;
 
 use std::{
   fmt::{self, Debug, Formatter},
@@ -21,6 +23,7 @@ use std::{
 
 pub use font::{FontFaceConfig, FontMetrics};
 pub use glyph::{Glyph, GlyphRun};
+pub use svg::SvgParser;
 
 use crate::{
   document::ImageFormat,
@@ -133,6 +136,10 @@ impl PublicationResources {
   /// 資源を持つ全実体を、フォント種別の宣言順・種別の中は候補の順に返す。
   pub fn faces(&self) -> impl Iterator<Item = FontFace> + '_ { return self.fonts.faces(); }
 
+  /// 全実体のフォントで SVG を読むパーサを作る（compiler が SVG を検査したのと同じ設定）。
+  #[must_use]
+  pub fn svg_parser(&self) -> SvgParser { return SvgParser::new(&self.fonts); }
+
   /// 指定パス（PDF はそのページ index）の画像への参照を返す。保持していないものは `None`。
   pub(crate) fn image_ref(&self, path: &str, page_index: Option<usize>) -> Option<ImageRef> {
     return self
@@ -199,6 +206,14 @@ pub struct PublicationFont {
   pub face: FontFaceConfig,
   /// 基本メトリクス（フォントユニット系）
   pub metrics: FontMetrics,
+}
+
+impl PublicationFont {
+  /// バイト列を複製せず、krilla の `Data` と fontdb の `Source::Binary` が受け取る共有ハンドルにする。
+  #[must_use]
+  pub fn shared_bytes(&self) -> Arc<dyn AsRef<[u8]> + Send + Sync> {
+    return Arc::new(font::FontBytes(Arc::clone(&self.bytes)));
+  }
 }
 
 impl Debug for PublicationFont {

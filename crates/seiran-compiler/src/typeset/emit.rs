@@ -8,7 +8,7 @@ use std::{collections::HashMap, mem};
 use crate::{
   color::Color,
   length::Length,
-  project::{FontData, ProjectPath, config::ProjectConfig},
+  project::{FaceMap, FontData, ProjectPath, config::ProjectConfig},
   publication::{
     PaintOp, Publication, PublicationDestination, PublicationFont, PublicationImage, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationPoint,
@@ -25,31 +25,35 @@ use crate::{
 /// 組版の確定結果と読込済み資源から描画直前の [`Publication`] を構築する。
 pub(super) fn emit(
   config: &ProjectConfig,
-  font_data: &FontData,
-  font_resources: &FontSystem,
+  fonts: FaceMap<PublicationFont>,
   mut laid_out: LaidOutDocument,
 ) -> Publication {
   let images = mem::take(&mut laid_out.images);
-  let resources = build_resources(font_data, font_resources, images);
+  let resources = build_resources(fonts, images);
   return build_publication(config, resources, laid_out);
 }
 
-/// 読み込み済みフォント資源と画像資源から `Publication` の描画資源を組み立てる。
+/// 読み込み済みのフォント資源から、全実体ぶんの描画資源（バイト列・構築設定・計測値）を組み立てる。
 ///
-/// 画像は組版段が（パス, ページ index）昇順に並べた順のまま渡す — `ImageRef` は配列添字なので、順序が
-/// 決定的でないと同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
-fn build_resources(
-  font_data: &FontData,
-  font_resources: &FontSystem,
-  images: Vec<(ProjectPath, Option<usize>, ImageAsset)>,
-) -> PublicationResources {
-  let fonts = font_resources.face_configs().map(|face, face_config| {
+/// 組版段は SVG の検査（[`crate::publication::SvgParser`]）にも同じ値を使う。
+pub(super) fn publication_fonts(font_data: &FontData, font_resources: &FontSystem) -> FaceMap<PublicationFont> {
+  return font_resources.face_configs().map(|face, face_config| {
     return PublicationFont {
       bytes: font_data.shared_bytes(face),
       face: face_config.clone(),
       metrics: font_resources.metrics(face),
     };
   });
+}
+
+/// フォントと画像資源から `Publication` の描画資源を組み立てる。
+///
+/// 画像は組版段が（パス, ページ index）昇順に並べた順のまま渡す — `ImageRef` は配列添字なので、順序が
+/// 決定的でないと同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
+fn build_resources(
+  fonts: FaceMap<PublicationFont>,
+  images: Vec<(ProjectPath, Option<usize>, ImageAsset)>,
+) -> PublicationResources {
   let images = images
     .into_iter()
     .map(|(path, page_index, asset)| {

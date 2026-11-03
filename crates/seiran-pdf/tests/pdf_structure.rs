@@ -16,7 +16,7 @@ use seiran_compiler::{FilesystemProjectSource, ProjectPath};
 use tempfile::TempDir;
 
 /// PDF 構造 golden の対象入力。
-const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure", "font_fallback"];
+const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure", "font_fallback", "svg_text"];
 
 /// `font_fallback` の `serif` の 2 つ目の候補（fixture の `sans_serif` と同じ Noto Sans）。`serif_bold` の見出しの前に置く
 const FALLBACK_SERIF_CANDIDATE: &str = r#"[[font_configs.serif]]
@@ -340,6 +340,20 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 
   assert!(!stripped.is_empty(), "ToUnicode 抽出が空: krilla が CMap を生成していない可能性: {extracted:?}");
   assert!(stripped.contains("はじめに"), "ToUnicode 経由で日本語テキストが復元されるはず: {stripped:?}");
+}
+
+#[test]
+fn svg_text_is_embedded_as_extractable_text() {
+  // SVG 内の文字が設定済みフォントで組まれ、選択可能なテキストとして埋め込まれる（パス化・欠落しない）
+  let bytes = build_pdf_bytes("svg_text");
+  let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
+
+  let extracted = document.extract_text(&[1]).expect("ToUnicode CMap 経由のテキスト抽出");
+  let stripped: String = extracted.chars().filter(|character| return !character.is_whitespace()).collect();
+
+  for expected in ["SVGTEXTSHOULDAPPEAR", "BoldSans", "和文"] {
+    assert!(stripped.contains(expected), "SVG の文字 {expected:?} が PDF から抽出できるはず: {stripped:?}");
+  }
 }
 
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
