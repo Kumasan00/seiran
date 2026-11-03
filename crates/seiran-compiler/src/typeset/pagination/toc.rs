@@ -3,15 +3,16 @@
 use tracing::debug;
 
 use crate::{
-  document::{HeadingLevel, NodeId, Typeface},
+  document::{HeadingLevel, NodeId},
   length::Length,
   semantics::HeadingKey,
   style::{Style, TocStyle},
   typeset::{
     boxes::{Align, AnchorId, Block, Line, LineLink, LinkTarget},
-    boxing::{LineAccum, Shaper, compose_left_line, row_width},
-    glyph_issues::{Generated, GlyphOrigin},
-    lowering::{HeadingRecord, TextStyle},
+    boxing::{LineAccum, Shaper, compose_left_line, inline_atom, row_width},
+    font::FontSystem,
+    glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
+    lowering::{HeadingRecord, InlineNode, TextStyle, toc_entry_style},
     pagination::{
       context::{BodyPageFacts, TypesetContext},
       page_values::BodyPageValues,
@@ -46,17 +47,19 @@ struct TocSpec {
   line_height_factor: f32,
   /// 目次ブロック全体の下余白
   bottom_margin: Length,
+  /// エントリの題目の和欧文間アキ・約物アキを行うか（`[text].punctuation_spacing`）
+  punctuation_spacing: bool,
 }
 
 /// 1 目次エントリ
 #[derive(Debug, Clone)]
 struct TocEntry {
-  /// 行のはみ出し警告が指す見出し（[`HeadingRecord::node`]）
+  /// 行のはみ出し警告が指し、題目の字の問題が帰属する見出し（[`HeadingRecord::node`]）
   origin: Option<NodeId>,
   /// 見出しレベル（インデントの深さに使う）
   level: HeadingLevel,
-  /// 表示する「番号 タイトル」（[`HeadingRecord::label`]）
-  label: String,
+  /// 表示する「番号 タイトル」のインライン列（[`HeadingRecord::toc_label`]）
+  label: Vec<InlineNode>,
   /// 表示するページ番号ラベル
   page_label: String,
   /// 対応見出しの暗黙 destination キー（内部リンクの行き先）
@@ -68,12 +71,12 @@ struct TocEntry {
 /// 目次に載る見出しが 1 つも無ければ空の `Vec` を返す。
 #[must_use]
 pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Block> {
-  let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
   let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
-  let shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::Toc));
-  let blocks = compose_blocks(&spec, &entries, shaper);
+  let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
+  let toc_entry_count = entries.len();
+  let blocks = compose_blocks(&spec, entries, ctx.fonts, &ctx.glyph_issues);
   if !blocks.is_empty() {
-    debug!(toc_entry_count = entries.len(), "目次を生成");
+    debug!(toc_entry_count, "目次を生成");
   }
   return blocks;
 }
@@ -99,7 +102,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
       return TocEntry {
         origin: info.node,
         level: info.level,
-        label: info.label(),
+        label: info.toc_label.clone(),
         page_label: page_values.body_page_label(page_ordinal),
         link_key: HeadingKey::new(info.index),
       };
@@ -125,13 +128,7 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
     },
     title_bottom_margin: title_heading.bottom_margin,
     title_align: Align::from(title_heading.alignment.unwrap_or(style.text.alignment)),
-    entry_style: TextStyle {
-      font_size: toc.font_size,
-      typeface: Typeface::Serif,
-      color: None,
-      script_level: None,
-      math_operator: None,
-    },
+    entry_style: toc_entry_style(style),
     indent_per_level: toc.indent_per_level,
     entry_align: Align::from(toc.alignment),
     leader: toc.leader.clone(),
@@ -139,15 +136,19 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
     text_width,
     line_height_factor: style.text.line_height_factor,
     bottom_margin: toc.bottom_margin,
+    punctuation_spacing: style.text.punctuation_spacing,
   };
 }
 
 /// 目次エントリ列を計測済みのブロック列に変換する
+///
+/// 題目は見出しの字なので見出しの要素に帰属させ（書誌の見出しは目次）、題・リーダー・ページ番号は目次に帰属させる。
 #[must_use]
-fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], mut shaper: Shaper<'_>) -> Vec<Block> {
+fn compose_blocks(spec: &TocSpec, entries: Vec<TocEntry>, fonts: &FontSystem, issues: &GlyphIssues) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
+  let mut shaper = Shaper::new(fonts, issues, GlyphOrigin::Generated(Generated::Toc));
   let mut blocks: Vec<Block> = Vec::new();
 
   let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
@@ -163,9 +164,12 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], mut shaper: Shaper<'_>) 
 
   let entry_leading = spec.entry_style.font_size * spec.line_height_factor;
   for entry in entries {
+    let origin = entry.origin;
+    let title_shaper =
+      Shaper::new(fonts, issues, origin.map_or(GlyphOrigin::Generated(Generated::Toc), GlyphOrigin::Element));
     blocks.push(Block::ComposedLine {
-      origin: entry.origin,
-      line: compose_entry_line(&mut shaper, spec, entry),
+      origin,
+      line: compose_entry_line(&mut shaper, title_shaper, spec, entry),
       leading: entry_leading,
     });
   }
@@ -177,11 +181,20 @@ fn compose_blocks(spec: &TocSpec, entries: &[TocEntry], mut shaper: Shaper<'_>) 
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組み、`entry_align` で寄せる
-fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry) -> Line {
+///
+/// 番号＋タイトルは `title_shaper` で、リーダー・ページ番号は `shaper` で組む。
+fn compose_entry_line(shaper: &mut Shaper<'_>, title_shaper: Shaper<'_>, spec: &TocSpec, entry: TocEntry) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
 
   let mut acc = LineAccum::default();
-  let left_end = acc.place(shaper.shape_text(&entry.label, spec.entry_style), indent);
+  let left_end = acc.place(
+    vec![inline_atom(
+      title_shaper,
+      entry.label,
+      spec.punctuation_spacing,
+    )],
+    indent,
+  );
 
   let mut right_edge = left_end;
   if spec.show_page_numbers {
@@ -239,7 +252,7 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, HeadingRecord, build_toc_spec, collect_toc_entries};
+  use super::{BodyPageValues, HeadingRecord, InlineNode, build_toc_spec, collect_toc_entries, toc_entry_style};
   use crate::{
     document::{HeadingLevel, TextAlignment, Typeface},
     length::Length,
@@ -255,6 +268,10 @@ mod tests {
       level,
       number: number.to_string(),
       title_plain: title_plain.to_string(),
+      toc_label: vec![InlineNode::Text(
+        format!("{number} {title_plain}"),
+        toc_entry_style(&Style::default()),
+      )],
     };
   }
 
@@ -293,6 +310,7 @@ mod tests {
     style.toc.bottom_margin = Length::pt(3.0);
     style.toc.show_page_numbers = false;
     style.text.line_height_factor = 1.5;
+    style.text.punctuation_spacing = false;
     style.heading.section.font_size = Length::pt(17.0);
     style.heading.section.bottom_margin = Length::pt(4.0);
     style.heading.section.typeface = Typeface::SansSerif;
@@ -312,6 +330,7 @@ mod tests {
     assert!(!spec.show_page_numbers);
     assert_eq!(spec.text_width, Length::pt(333.0));
     assert!((spec.line_height_factor - 1.5).abs() < f32::EPSILON);
+    assert!(!spec.punctuation_spacing);
   }
 
   #[test]
@@ -342,10 +361,18 @@ mod tests {
     let entries = collect_toc_entries(&headings, &page_values, &toc);
 
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].label, "1 Ch");
+    assert!(
+      matches!(entries[0].label.as_slice(), [InlineNode::Text(t, _)] if t == "1 Ch"),
+      "{:?}",
+      entries[0].label
+    );
     assert_eq!(entries[0].page_label, "1");
     assert_eq!(entries[0].link_key, HeadingKey::new(0));
-    assert_eq!(entries[1].label, "1.1 Sec");
+    assert!(
+      matches!(entries[1].label.as_slice(), [InlineNode::Text(t, _)] if t == "1.1 Sec"),
+      "{:?}",
+      entries[1].label
+    );
     assert_eq!(entries[1].page_label, "2");
     assert_eq!(entries[1].link_key, HeadingKey::new(1));
   }

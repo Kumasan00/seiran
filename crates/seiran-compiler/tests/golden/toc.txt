@@ -4,20 +4,29 @@ language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
   glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="Contents" glyph_count=8
-  glyphs x=252.94 y=311.63 font=Serif size=12.00 text="1 " glyph_count=2
-  glyphs x=261.70 y=311.63 font=JapaneseSerif size=12.00 text="目次のサンプル" glyph_count=7
+  glyphs x=252.94 y=311.63 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=261.70 y=311.63 font=JapaneseSerif size=12.00 text="目" glyph_count=1
+  glyphs x=273.70 y=311.63 font=JapaneseSerif size=12.00 text="次" glyph_count=1
+  glyphs x=285.70 y=311.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=297.70 y=311.63 font=JapaneseSerif size=12.00 text="サ" glyph_count=1
+  glyphs x=309.10 y=311.63 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
+  glyphs x=321.10 y=311.63 font=JapaneseSerif size=12.00 text="プ" glyph_count=1
+  glyphs x=332.62 y=311.63 font=JapaneseSerif size=12.00 text="ル" glyph_count=1
   glyphs x=346.05 y=311.63 font=Serif size=12.00 text="...................................................................................................................................................................................................................................................................................................................................................................................." glyph_count=372
   glyphs x=1439.73 y=311.63 font=Serif size=12.00 text="1" glyph_count=1
-  glyphs x=264.94 y=324.23 font=Serif size=12.00 text="1.1 " glyph_count=4
-  glyphs x=282.58 y=324.23 font=JapaneseSerif size=12.00 text="導入" glyph_count=2
+  glyphs x=264.94 y=324.23 font=Serif size=12.00 text="1.1" glyph_count=3
+  glyphs x=282.58 y=324.23 font=JapaneseSerif size=12.00 text="導" glyph_count=1
+  glyphs x=294.58 y=324.23 font=JapaneseSerif size=12.00 text="入" glyph_count=1
   glyphs x=307.83 y=324.23 font=Serif size=12.00 text="................................................................................................................................................................................................................................................................................................................................................................................................." glyph_count=385
   glyphs x=1439.73 y=324.23 font=Serif size=12.00 text="1" glyph_count=1
-  glyphs x=264.94 y=336.83 font=Serif size=12.00 text="1.2 " glyph_count=4
-  glyphs x=282.58 y=336.83 font=JapaneseSerif size=12.00 text="本論" glyph_count=2
+  glyphs x=264.94 y=336.83 font=Serif size=12.00 text="1.2" glyph_count=3
+  glyphs x=282.58 y=336.83 font=JapaneseSerif size=12.00 text="本" glyph_count=1
+  glyphs x=294.58 y=336.83 font=JapaneseSerif size=12.00 text="論" glyph_count=1
   glyphs x=307.83 y=336.83 font=Serif size=12.00 text="................................................................................................................................................................................................................................................................................................................................................................................................." glyph_count=385
   glyphs x=1439.73 y=336.83 font=Serif size=12.00 text="1" glyph_count=1
-  glyphs x=264.94 y=349.43 font=Serif size=12.00 text="1.3 " glyph_count=4
-  glyphs x=282.58 y=349.43 font=JapaneseSerif size=12.00 text="結論" glyph_count=2
+  glyphs x=264.94 y=349.43 font=Serif size=12.00 text="1.3" glyph_count=3
+  glyphs x=282.58 y=349.43 font=JapaneseSerif size=12.00 text="結" glyph_count=1
+  glyphs x=294.58 y=349.43 font=JapaneseSerif size=12.00 text="論" glyph_count=1
   glyphs x=307.83 y=349.43 font=Serif size=12.00 text="................................................................................................................................................................................................................................................................................................................................................................................................." glyph_count=385
   glyphs x=1439.73 y=349.43 font=Serif size=12.00 text="1" glyph_count=1
   link target=Internal(page=1, x=240.94, y=251.85) x=252.94 y=297.82 w=1192.72 h=17.24

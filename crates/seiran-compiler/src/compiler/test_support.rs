@@ -429,6 +429,14 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "toc", "enabled", true);
       set(table, "toc", "leader", ".");
     },
+    // 題目に数式・装飾・リンクを含む目次。本文のリンク色との対比で、目次の行にリンク色が付かないことを見る
+    "toc_inline" => {
+      set(table, "toc", "enabled", true);
+      set(table, "toc", "leader", ".");
+      set(table, "hyperref", "link_color", "#0000ff");
+      set(table, "hyperref", "url_color", "#008000");
+      set(table, "hyperref", "cite_color", "#800080");
+    },
     // ページ番号なしの目次でエントリを中央、題目を節見出しの揃え（右）に寄せた版面。深さ 3 まで載せて字下げを出す
     "toc_center" => {
       set(table, "toc", "enabled", true);

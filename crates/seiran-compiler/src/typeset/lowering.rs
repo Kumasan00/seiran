@@ -28,6 +28,7 @@ mod title_page;
 
 use std::mem;
 
+pub(super) use heading::toc_entry_style;
 pub(super) use layout_node::{
   DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
   ParagraphLayout, QuantityPiece, TableColumn, TableLayout, TableRowLayout, TextStyle,
@@ -121,9 +122,9 @@ impl<'a> LoweringContext<'a> {
 }
 
 /// 見出し 1 件の記録
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(super) struct HeadingRecord {
-  /// 目次の行のはみ出し警告が指す見出し。書誌の見出し（生成物）は `None`
+  /// 目次の行のはみ出し警告が指し、目次の題目の字の問題が帰属する見出し。書誌の見出し（生成物）は `None`
   pub node: Option<NodeId>,
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
@@ -131,12 +132,14 @@ pub(super) struct HeadingRecord {
   pub level: HeadingLevel,
   /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   pub number: String,
-  /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）
+  /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み。しおり用）
   pub title_plain: String,
+  /// 目次の行に組む「番号 題目」。目次の行の書体で lower 済みで、リンク・脚注・索引を含まない
+  pub toc_label: Vec<InlineNode>,
 }
 
 impl HeadingRecord {
-  /// 目次の項目としおりに表示する「番号 タイトル」を組む
+  /// しおりに表示する「番号 タイトル」を組む
   #[must_use]
   pub(super) fn label(&self) -> String {
     if self.number.is_empty() {
@@ -236,8 +239,8 @@ pub(super) struct LoweringState<'a> {
   document: &'a SemanticDocument,
   /// これまでに払い出した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
-  /// 見出しノード → タイトルのプレーンテキスト
-  heading_titles: NodeMap<String>,
+  /// 見出しノード → （タイトルのプレーンテキスト, 目次の行に組む「番号 題目」）
+  heading_titles: NodeMap<(String, Vec<InlineNode>)>,
 }
 
 impl<'a> LoweringState<'a> {
@@ -291,22 +294,22 @@ impl<'a> LoweringState<'a> {
   /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
   pub(super) fn ref_target(&self, site: NodeId) -> &'a LabelId { return self.document.ref_target(site); }
 
-  /// 見出しタイトルのプレーンテキストを記録する
-  pub(super) fn record_heading_title(&mut self, node: NodeId, plain: String) {
-    self.heading_titles.insert(node, plain);
+  /// 見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を記録する
+  pub(super) fn record_heading_title(&mut self, node: NodeId, plain: String, toc_label: Vec<InlineNode>) {
+    self.heading_titles.insert(node, (plain, toc_label));
     return;
   }
 
-  /// 記録済みの見出しタイトルのプレーンテキストを引く
+  /// 記録済みの見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を引く
   ///
   /// # Panics
   ///
   /// 走査で記録していない見出しノードを渡した場合にパニックします。
-  pub(super) fn heading_title(&self, node: NodeId) -> &str {
-    let Some(title) = self.heading_titles.get(node) else {
+  pub(super) fn heading_title(&self, node: NodeId) -> (&str, &[InlineNode]) {
+    let Some((plain, toc_label)) = self.heading_titles.get(node) else {
       unreachable!("見出しのタイトルは HIR の走査で必ず記録される: {node:?}")
     };
-    return title;
+    return (plain, toc_label);
   }
 }
 
@@ -328,6 +331,7 @@ pub(super) fn lower_sources_with_headings(
   let mut headings: Vec<HeadingRecord> = document
     .headings()
     .map(|heading| {
+      let (title_plain, toc_label) = state.heading_title(heading.node);
       return HeadingRecord {
         node: Some(heading.node),
         index: heading.key.index(),
@@ -335,7 +339,8 @@ pub(super) fn lower_sources_with_headings(
         number: document
           .counter_value(heading.node)
           .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value)),
-        title_plain: state.heading_title(heading.node).to_string(),
+        title_plain: title_plain.to_string(),
+        toc_label: toc_label.to_vec(),
       };
     })
     .collect();
@@ -808,6 +813,7 @@ mod tests {
         level: HeadingLevel::Section,
         number: number.to_string(),
         title_plain: title_plain.to_string(),
+        toc_label: Vec::new(),
       };
     };
     assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");

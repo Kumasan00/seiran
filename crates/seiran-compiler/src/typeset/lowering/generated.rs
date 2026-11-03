@@ -11,7 +11,8 @@ use crate::{
     boxes::{AnchorId, LinkTarget},
     lowering::{
       HeadingRecord, LoweringContext,
-      heading::{self, title_style},
+      heading::{self, title_style, toc_entry_style},
+      inline,
       layout_node::{InlineNode, LayoutNode, TextStyle},
       paragraph::{assemble_paragraph, body_text_style},
     },
@@ -54,6 +55,10 @@ pub(super) fn lower_bibliography(
     level: BIBLIOGRAPHY_HEADING_LEVEL,
     number: String::new(),
     title_plain: ctx.style.reference.title.clone(),
+    toc_label: vec![InlineNode::Text(
+      ctx.style.reference.title.clone(),
+      toc_entry_style(ctx.style),
+    )],
   }];
 
   for entry in entries {
@@ -87,14 +92,7 @@ fn lower_generated_inline(
   match inline {
     GeneratedInline::Text(text) => return vec![InlineNode::Text(text.clone(), parent_style)],
     GeneratedInline::Styled { font, children } => {
-      let styled = TextStyle {
-        font_size: parent_style.font_size,
-        typeface: *font,
-        color: parent_style.color,
-        script_level: None,
-        math_operator: None,
-      };
-      return lower_generated_inlines(ctx, children, styled);
+      return lower_generated_inlines(ctx, children, inline::styled(parent_style, *font));
     },
     GeneratedInline::InternalLink { target, children } => {
       return vec![InlineNode::Link {
@@ -244,5 +242,18 @@ mod tests {
     assert!(!origins.is_empty(), "見出しとエントリの段落があるはず: {layout:?}");
     assert!(origins.iter().all(Option::is_none), "{origins:?}");
     assert_eq!(headings[0].node, None, "書誌の見出しは HIR の見出しを持たない");
+  }
+
+  #[test]
+  fn bibliography_heading_record_has_toc_label() {
+    let style = ReadStyle::default();
+
+    let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
+
+    assert!(
+      matches!(headings[0].toc_label.as_slice(), [InlineNode::Text(t, s)] if *t == style.reference.title && *s == toc_entry_style(&style)),
+      "{:?}",
+      headings[0].toc_label
+    );
   }
 }

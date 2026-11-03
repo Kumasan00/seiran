@@ -25,11 +25,12 @@ use crate::{
   document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator, TextAlignment},
   length::Length,
   typeset::{
-    boxes::{
-      HItem, Line, LineLink, LinkTarget, PlacedHBox, PlacedLink, PlacedTableRow, TableBoundary, TableBox,
-      TableRowFragment,
+    boxes::{HItem, Line, PlacedHBox, PlacedLink, PlacedTableRow, TableBoundary, TableBox, TableRowFragment},
+    boxing::{
+      self, Measurer,
+      composed_line::{measure_items_width, unwrapped_line},
+      hlist::HList,
     },
-    boxing::{self, Measurer, hlist::HList},
     breaking::{self, LineBreaker},
     lowering::{TableColumn, TableLayout, TableRowLayout},
   },
@@ -296,9 +297,6 @@ fn boundary_above(
   };
 }
 
-/// アイテム列の自然幅を返す
-fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
-
 /// `total`（非負）を `parts`（1 以上）個へ sp 単位で等分し、余りを左の部分から 1sp ずつ配る
 ///
 /// `parts == 0` は呼び出し側が避ける（配り先の列が無いときは呼ばない）。
@@ -449,55 +447,6 @@ fn text_alignment(align: ColumnAlign) -> TextAlignment {
     ColumnAlign::Center => TextAlignment::Center,
     ColumnAlign::Right => TextAlignment::Right,
   };
-}
-
-/// 折り返さないセルの内容を、x = 0 から自然幅で並べた 1 行にする
-///
-/// 呼び出し側は揃えの位置を [`measure_items_width`]（全アイテムの自然幅の和）から決めるので、行頭・行末の glue も
-/// 落とさず `Kern` / `Glue` / `MathBreak` の自然幅ぶん進める。高さ・深さは描く箱（`HItem::Box`）の最大で、
-/// `FlushRight` は描かない。対応の無い `LinkEnd` は読み飛ばし、閉じない `LinkStart` は矩形を作らない。
-fn unwrapped_line(items: &[HItem]) -> Line {
-  let mut line = Line {
-    boxes: Vec::new(),
-    height: Length::ZERO,
-    depth: Length::ZERO,
-    links: Vec::new(),
-    footnotes: Vec::new(),
-    index_marks: Vec::new(),
-  };
-  let mut cursor = Length::ZERO;
-  let mut open: Vec<(LinkTarget, Length)> = Vec::new();
-  for item in items {
-    match item {
-      HItem::Box(hbox) => {
-        line.boxes.push(PlacedHBox {
-          hbox: hbox.clone(),
-          dx: cursor,
-          dy: Length::ZERO,
-        });
-        line.height = line.height.max(hbox.height);
-        line.depth = line.depth.max(hbox.depth);
-        cursor += hbox.width;
-      },
-      HItem::Kern(value) => cursor += *value,
-      HItem::MathBreak { spacing, .. } => cursor += *spacing,
-      HItem::Glue { natural, .. } => cursor += *natural,
-      HItem::LinkStart(target) => open.push((target.clone(), cursor)),
-      HItem::LinkEnd => {
-        if let Some((target, x0)) = open.pop() {
-          line.links.push(LineLink {
-            target,
-            x0,
-            x1: cursor,
-          });
-        }
-      },
-      HItem::IndexMark(term) => line.index_marks.push(term.clone()),
-      HItem::Footnote(footnote) => line.footnotes.push(footnote.clone()),
-      HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak | HItem::FlushRight(_) => {},
-    }
-  }
-  return line;
 }
 
 /// 1 行の各セルを行に組み、表左端を原点に置いた行の列をセル順に返す
@@ -737,10 +686,7 @@ fn take_line(fragment: &mut TableRowFragment, line: Line, band_top: Length, band
 mod tests {
   use std::iter;
 
-  use super::{
-    MeasuredCell, MeasuredRow, TableFrame, arrange, measure_items_width, resolve_column_widths, row_fragment,
-    split_evenly,
-  };
+  use super::{MeasuredCell, MeasuredRow, TableFrame, arrange, resolve_column_widths, row_fragment, split_evenly};
   use crate::{
     document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator},
     length::Length,
@@ -1499,23 +1445,6 @@ mod tests {
       return fragment.rules.iter().map(|rule| return (rule.x, rule.y, rule.width, rule.height)).collect();
     };
     assert_eq!(geometry(&table.repeated_head[0]), geometry(&table.head[0]));
-  }
-
-  #[test]
-  fn measure_items_width_is_additive() {
-    let items = vec![
-      text_free_box(10.0),
-      HItem::Glue {
-        natural: pt(5.0),
-        stretch: Length::ZERO,
-        shrink: Length::ZERO,
-        breakable: true,
-      },
-      HItem::Kern(pt(3.0)),
-    ];
-
-    assert!(close(measure_items_width(&items), 18.0));
-    assert!(close(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), 0.0));
   }
 
   #[test]
