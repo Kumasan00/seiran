@@ -3,14 +3,14 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=728.78 y=99.00 font=JapaneseSerifBold size=20.00 text="距" glyph_count=1
-  glyphs x=748.78 y=99.00 font=JapaneseSerifBold size=20.00 text="離" glyph_count=1
-  glyphs x=773.48 y=99.00 font=Serif size=20.00 text="5" glyph_count=1
-  glyphs x=788.94 y=99.00 font=Serif size=20.00 text="km" glyph_count=2
-  glyphs x=821.52 y=99.00 font=JapaneseSerifBold size=20.00 text="と" glyph_count=1
-  glyphs x=841.52 y=99.00 font=JapaneseSerifBold size=20.00 text="角" glyph_count=1
-  glyphs x=866.22 y=99.00 font=Serif size=20.00 text="30°" glyph_count=3
+  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=723.26 y=99.00 font=JapaneseSerifBold size=20.00 text="距" glyph_count=1
+  glyphs x=743.26 y=99.00 font=JapaneseSerifBold size=20.00 text="離" glyph_count=1
+  glyphs x=767.96 y=99.00 font=Serif size=20.00 text="5" glyph_count=1
+  glyphs x=783.42 y=99.00 font=Serif size=20.00 text="km" glyph_count=2
+  glyphs x=816.00 y=99.00 font=JapaneseSerifBold size=20.00 text="と" glyph_count=1
+  glyphs x=836.00 y=99.00 font=JapaneseSerifBold size=20.00 text="角" glyph_count=1
+  glyphs x=860.70 y=99.00 font=Serif size=20.00 text="30°" glyph_count=3
   glyphs x=708.66 y=130.00 font=JapaneseSerif size=12.00 text="重" glyph_count=1
   glyphs x=721.24 y=130.00 font=JapaneseSerif size=12.00 text="力" glyph_count=1
   glyphs x=733.82 y=130.00 font=JapaneseSerif size=12.00 text="加" glyph_count=1
@@ -140,7 +140,7 @@ keywords=["test", "seiran"]
   glyphs x=823.94 y=282.56 font=Math size=12.00 text="=" glyph_count=1
   glyphs x=835.91 y=282.56 font=Serif size=12.00 text="13.6" glyph_count=4
   glyphs x=860.01 y=282.56 font=Serif size=12.00 text="eV" glyph_count=2
-  glyphs x=960.84 y=282.56 font=Serif size=12.00 text="(.1)" glyph_count=4
+  glyphs x=963.78 y=282.56 font=Serif size=12.00 text="(1)" glyph_count=3
   fillrect x=795.55 y=305.42 w=95.52 h=0.80 color=None
   fillrect x=795.55 y=344.71 w=95.52 h=0.80 color=None
   glyphs x=799.55 y=322.03 font=JapaneseSerif size=12.00 text="項" glyph_count=1
@@ -151,12 +151,13 @@ keywords=["test", "seiran"]
   glyphs x=849.70 y=339.28 font=Serif size=12.00 text="kg" glyph_count=2
   glyphs x=863.89 y=339.28 font=Serif size=12.00 text="m/s" glyph_count=3
   glyphs x=883.50 y=335.08 font=Serif size=7.20 text="2" glyph_count=1
-  glyphs x=788.45 y=364.17 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=829.66 y=364.17 font=JapaneseSerif size=11.00 text="表" glyph_count=1
-  glyphs x=840.66 y=364.17 font=JapaneseSerif size=11.00 text="の" glyph_count=1
-  glyphs x=854.25 y=364.17 font=Serif size=11.00 text="1.5" glyph_count=3
-  glyphs x=870.89 y=364.17 font=Serif size=11.00 text="W/m" glyph_count=3
-  glyphs x=894.90 y=360.32 font=Serif size=6.60 text="2" glyph_count=1
+  glyphs x=789.79 y=364.17 font=Serif size=11.00 text="Table" glyph_count=5
+  glyphs x=817.59 y=364.17 font=Serif size=11.00 text="1:" glyph_count=2
+  glyphs x=828.32 y=364.17 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=839.32 y=364.17 font=JapaneseSerif size=11.00 text="の" glyph_count=1
+  glyphs x=852.90 y=364.17 font=Serif size=11.00 text="1.5" glyph_count=3
+  glyphs x=869.54 y=364.17 font=Serif size=11.00 text="W/m" glyph_count=3
+  glyphs x=893.55 y=360.32 font=Serif size=6.60 text="2" glyph_count=1
   glyphs x=708.66 y=387.72 font=JapaneseSerif size=12.00 text="行" glyph_count=1
   glyphs x=720.91 y=387.72 font=JapaneseSerif size=12.00 text="の" glyph_count=1
   glyphs x=733.17 y=387.72 font=JapaneseSerif size=12.00 text="終" glyph_count=1
@@ -215,4 +216,4 @@ keywords=["test", "seiran"]
   glyphs x=778.10 y=2285.20 font=JapaneseSerif size=9.00 text="。" glyph_count=1
   link target=Internal(page=0, x=708.66, y=2274.84) x=780.66 y=227.01 w=4.16 h=17.24
 outline:
-  depth=2 text=".1 距離 5\u{2004}km と角 30°" page=0 x=708.66 y=75.98
+  depth=2 text="1 距離 5\u{2004}km と角 30°" page=0 x=708.66 y=75.98

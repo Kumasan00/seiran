@@ -3,13 +3,13 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=728.78 y=99.00 font=JapaneseSerifBold size=20.00 text="速" glyph_count=1
-  glyphs x=748.78 y=99.00 font=JapaneseSerifBold size=20.00 text="さ" glyph_count=1
-  glyphs x=773.48 y=99.00 font=Serif size=20.00 text="km/s" glyph_count=4
-  glyphs x=821.70 y=99.00 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=841.70 y=99.00 font=JapaneseSerifBold size=20.00 text="測" glyph_count=1
-  glyphs x=861.70 y=99.00 font=JapaneseSerifBold size=20.00 text="定" glyph_count=1
+  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=723.26 y=99.00 font=JapaneseSerifBold size=20.00 text="速" glyph_count=1
+  glyphs x=743.26 y=99.00 font=JapaneseSerifBold size=20.00 text="さ" glyph_count=1
+  glyphs x=767.96 y=99.00 font=Serif size=20.00 text="km/s" glyph_count=4
+  glyphs x=816.18 y=99.00 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=836.18 y=99.00 font=JapaneseSerifBold size=20.00 text="測" glyph_count=1
+  glyphs x=856.18 y=99.00 font=JapaneseSerifBold size=20.00 text="定" glyph_count=1
   glyphs x=708.66 y=130.00 font=JapaneseSerif size=12.00 text="加" glyph_count=1
   glyphs x=720.66 y=130.00 font=JapaneseSerif size=12.00 text="速" glyph_count=1
   glyphs x=732.66 y=130.00 font=JapaneseSerif size=12.00 text="度" glyph_count=1
@@ -153,7 +153,7 @@ keywords=["test", "seiran"]
   glyphs x=824.93 y=299.81 font=Math size=12.00 text="𝐸" glyph_count=1
   glyphs x=835.99 y=299.81 font=Math size=12.00 text="=" glyph_count=1
   glyphs x=847.96 y=299.81 font=Serif size=12.00 text="eV" glyph_count=2
-  glyphs x=960.84 y=299.81 font=Serif size=12.00 text="(.1)" glyph_count=4
+  glyphs x=963.78 y=299.81 font=Serif size=12.00 text="(1)" glyph_count=3
   fillrect x=804.63 y=322.66 w=77.36 h=0.80 color=None
   fillrect x=804.63 y=361.95 w=77.36 h=0.80 color=None
   glyphs x=808.63 y=339.28 font=JapaneseSerif size=12.00 text="項" glyph_count=1
@@ -164,11 +164,12 @@ keywords=["test", "seiran"]
   glyphs x=840.63 y=356.52 font=Serif size=12.00 text="kg" glyph_count=2
   glyphs x=854.82 y=356.52 font=Serif size=12.00 text="m/s" glyph_count=3
   glyphs x=874.43 y=352.32 font=Serif size=7.20 text="2" glyph_count=1
-  glyphs x=796.77 y=381.41 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=837.98 y=381.41 font=JapaneseSerif size=11.00 text="表" glyph_count=1
-  glyphs x=848.98 y=381.41 font=JapaneseSerif size=11.00 text="の" glyph_count=1
-  glyphs x=862.57 y=381.41 font=Serif size=11.00 text="W/m" glyph_count=3
-  glyphs x=886.58 y=377.56 font=Serif size=6.60 text="2" glyph_count=1
+  glyphs x=798.11 y=381.41 font=Serif size=11.00 text="Table" glyph_count=5
+  glyphs x=825.91 y=381.41 font=Serif size=11.00 text="1:" glyph_count=2
+  glyphs x=836.64 y=381.41 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=847.64 y=381.41 font=JapaneseSerif size=11.00 text="の" glyph_count=1
+  glyphs x=861.22 y=381.41 font=Serif size=11.00 text="W/m" glyph_count=3
+  glyphs x=885.23 y=377.56 font=Serif size=6.60 text="2" glyph_count=1
   glyphs x=708.66 y=404.96 font=JapaneseSerif size=12.00 text="行" glyph_count=1
   glyphs x=720.91 y=404.96 font=JapaneseSerif size=12.00 text="の" glyph_count=1
   glyphs x=733.17 y=404.96 font=JapaneseSerif size=12.00 text="終" glyph_count=1
@@ -230,4 +231,4 @@ keywords=["test", "seiran"]
   glyphs x=764.48 y=2285.20 font=JapaneseSerif size=9.00 text="。" glyph_count=1
   link target=Internal(page=0, x=708.66, y=2274.84) x=768.66 y=244.25 w=4.16 h=17.24
 outline:
-  depth=2 text=".1 速さ km/s の測定" page=0 x=708.66 y=75.98
+  depth=2 text="1 速さ km/s の測定" page=0 x=708.66 y=75.98

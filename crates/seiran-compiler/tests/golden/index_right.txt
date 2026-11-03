@@ -3,9 +3,9 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=240.94 y=1105.51 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=261.06 y=1105.51 font=SerifBold size=20.00 text="Index" glyph_count=5
-  glyphs x=319.34 y=1105.51 font=SerifBold size=20.00 text="Alignment" glyph_count=9
+  glyphs x=240.94 y=1105.51 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=255.54 y=1105.51 font=SerifBold size=20.00 text="Index" glyph_count=5
+  glyphs x=313.82 y=1105.51 font=SerifBold size=20.00 text="Alignment" glyph_count=9
   glyphs x=240.94 y=1136.51 font=JapaneseSerif size=12.00 text="索" glyph_count=1
   glyphs x=252.94 y=1136.51 font=JapaneseSerif size=12.00 text="引" glyph_count=1
   glyphs x=264.94 y=1136.51 font=JapaneseSerif size=12.00 text="の" glyph_count=1
@@ -174,4 +174,4 @@ keywords=["test", "seiran"]
   link target=Internal(page=0, x=240.94, y=0.00) x=1440.72 y=1145.70 w=4.95 h=14.37
   link target=Internal(page=0, x=240.94, y=0.00) x=1440.72 y=1184.69 w=4.95 h=10.00
 outline:
-  depth=2 text=".1 Index Alignment" page=0 x=240.94 y=1090.27
+  depth=2 text="1 Index Alignment" page=0 x=240.94 y=1090.27

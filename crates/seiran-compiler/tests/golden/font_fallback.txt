@@ -3,9 +3,9 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=708.66 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=728.78 y=280.63 font=SerifBold size=20.00 text="Font" glyph_count=4
-  glyphs x=776.56 y=280.63 font=SerifBold size=20.00 text="fallback" glyph_count=8
+  glyphs x=708.66 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=723.26 y=280.63 font=SerifBold size=20.00 text="Font" glyph_count=4
+  glyphs x=771.04 y=280.63 font=SerifBold size=20.00 text="fallback" glyph_count=8
   glyphs x=708.66 y=311.63 font=Serif size=12.00 text="The" glyph_count=3
   glyphs x=731.08 y=311.63 font=Serif size=12.00 text="Old" glyph_count=3
   glyphs x=752.48 y=311.63 font=Serif size=12.00 text="Church" glyph_count=6
@@ -211,4 +211,4 @@ keywords=["test", "seiran"]
   glyphs x=780.66 y=517.57 font=JapaneseSerif size=12.00 text="す" glyph_count=1
   glyphs x=792.66 y=517.57 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 outline:
-  depth=2 text=".1 Font fallback" page=0 x=708.66 y=265.39
+  depth=2 text="1 Font fallback" page=0 x=708.66 y=265.39

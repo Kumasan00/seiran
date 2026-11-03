@@ -3,12 +3,13 @@ author="テスト著者"
 language="en"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=779.53 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=801.40 y=280.63 font=SerifBold size=20.00 text="West" glyph_count=4
-  glyphs x=847.66 y=280.63 font=SerifBold size=20.00 text="ern" glyph_count=3
-  glyphs x=779.53 y=301.63 font=SerifBold size=20.00 text="hy" glyph_count=2
-  glyphs x=802.53 y=301.63 font=SerifBold size=20.00 text="phen" glyph_count=4
-  glyphs x=850.27 y=301.63 font=SerifBold size=20.00 text="ation" glyph_count=5
+  glyphs x=779.53 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=794.16 y=280.63 font=SerifBold size=20.00 text="West" glyph_count=4
+  glyphs x=840.42 y=280.63 font=SerifBold size=20.00 text="ern" glyph_count=3
+  glyphs x=877.79 y=280.63 font=SerifBold size=20.00 text="hy" glyph_count=2
+  glyphs x=900.79 y=280.63 font=SerifBold size=20.00 text="-" glyph_count=1
+  glyphs x=779.53 y=301.63 font=SerifBold size=20.00 text="phen" glyph_count=4
+  glyphs x=827.27 y=301.63 font=SerifBold size=20.00 text="ation" glyph_count=5
   glyphs x=779.53 y=332.63 font=Serif size=12.00 text="Ty" glyph_count=2
   glyphs x=791.96 y=332.63 font=Serif size=12.00 text="po" glyph_count=2
   glyphs x=804.57 y=332.63 font=Serif size=12.00 text="graph" glyph_count=5
@@ -171,4 +172,4 @@ keywords=["test", "seiran"]
   glyphs x=801.64 y=659.63 font=Serif size=12.00 text="break" glyph_count=5
   glyphs x=830.18 y=659.63 font=Serif size=12.00 text="ing." glyph_count=4
 outline:
-  depth=2 text=".1 Western hyphenation" page=0 x=779.53 y=265.39
+  depth=2 text="1 Western hyphenation" page=0 x=779.53 y=265.39

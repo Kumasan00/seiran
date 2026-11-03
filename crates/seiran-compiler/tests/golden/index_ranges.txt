@@ -3,10 +3,10 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=261.06 y=280.63 font=SerifBold size=20.00 text="Index" glyph_count=5
-  glyphs x=319.34 y=280.63 font=SerifBold size=20.00 text="Page" glyph_count=4
-  glyphs x=368.06 y=280.63 font=SerifBold size=20.00 text="Ranges" glyph_count=6
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=255.54 y=280.63 font=SerifBold size=20.00 text="Index" glyph_count=5
+  glyphs x=313.82 y=280.63 font=SerifBold size=20.00 text="Page" glyph_count=4
+  glyphs x=362.54 y=280.63 font=SerifBold size=20.00 text="Ranges" glyph_count=6
   glyphs x=240.94 y=311.63 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
   glyphs x=253.00 y=311.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
   glyphs x=265.05 y=311.63 font=JapaneseSerif size=12.00 text="フィ" glyph_count=2
@@ -314,4 +314,4 @@ keywords=["test", "seiran"]
   link target=Internal(page=5, x=240.94, y=0.00) x=297.20 y=324.91 w=4.95 h=10.00
   link target=Internal(page=2, x=240.94, y=0.00) x=278.32 y=335.41 w=4.95 h=10.00
 outline:
-  depth=2 text=".1 Index Page Ranges" page=0 x=240.94 y=265.39
+  depth=2 text="1 Index Page Ranges" page=0 x=240.94 y=265.39

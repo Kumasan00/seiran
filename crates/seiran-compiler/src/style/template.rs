@@ -434,13 +434,47 @@ impl NumberTemplate {
 }
 
 impl CounterTemplate {
-  /// 各プレースホルダを `resolve` で表示文字列にした結果を返す
+  /// 各プレースホルダを `resolve` で表示文字列にし、空になったものを区切りごと除いた結果を返す
+  ///
+  /// 区切りは 2 つのプレースホルダに挟まれたリテラルで、直前のプレースホルダの単位として扱う
+  /// （`{chapter}.` の `.`、`第{chapter}章` の `章`）。空でないプレースホルダを順に並べ、最後のもの以外の
+  /// 後ろにそれぞれの直後の区切りを置く。先頭のプレースホルダより前と最後のプレースホルダより後のリテラルは
+  /// 装飾として常に残す。例: `"{chapter}.{n}"` で `{chapter}` が空なら `"1"`。
   ///
   /// カウンタ値の復元（構造値からの名前引き・`number_style` の適用）は caller の責務で、
   /// このテンプレートは「どの位置にどのカウンタを置くか」だけを知っている。
   #[must_use]
   pub(crate) fn expand(&self, mut resolve: impl FnMut(CounterPlaceholder) -> String) -> String {
-    return self.0.expand_to_string(|placeholder| return resolve(*placeholder));
+    let template = &self.0;
+    template.ensure_validated();
+    // 検証済みのテンプレートは隣り合うリテラルを持たない（解析が `{` の手前までを 1 区間にまとめる）ので、
+    // プレースホルダの直後のリテラルは高々 1 つ
+    let mut prefix = "";
+    let mut units: Vec<(String, &str)> = Vec::new();
+    for part in &template.parts {
+      match part {
+        Part::Literal(range) => {
+          let text = &template.source[range.clone()];
+          match units.last_mut() {
+            Some((_, following)) => *following = text,
+            None => prefix = text,
+          }
+        },
+        Part::Placeholder(placeholder) => units.push((resolve(*placeholder), "")),
+      }
+    }
+    let suffix = units.last().map_or("", |(_, following)| return *following);
+
+    let mut out = prefix.to_string();
+    let mut shown = units.iter().filter(|(value, _)| return !value.is_empty()).peekable();
+    while let Some((value, following)) = shown.next() {
+      out.push_str(value);
+      if shown.peek().is_some() {
+        out.push_str(following);
+      }
+    }
+    out.push_str(suffix);
+    return out;
   }
 }
 
@@ -583,6 +617,46 @@ mod tests {
     });
 
     assert_eq!(text, "第3章・２節");
+  }
+
+  /// `{n}` を `"1"`、`{chapter}` / `{section}` を引数の文字列（空文字列は値 0 の表示）に解決して展開する
+  fn expand_counter(source: &str, chapter: &str, section: &str) -> String {
+    return CounterTemplate::parse(source).expand(|placeholder| {
+      return match placeholder {
+        CounterPlaceholder::Own => "1".to_string(),
+        CounterPlaceholder::Counter(CounterName::Chapter) => chapter.to_string(),
+        CounterPlaceholder::Counter(CounterName::Section) => section.to_string(),
+        CounterPlaceholder::Counter(_) => String::new(),
+      };
+    });
+  }
+
+  #[test]
+  fn empty_counter_is_dropped_with_its_separator() {
+    // (テンプレート, chapter, section, 期待値)
+    let cases = [
+      ("{chapter}.{n}", "", "", "1"),
+      ("{chapter}.{n}", "2", "", "2.1"),
+      ("{chapter}.{section}.{n}", "1", "", "1.1"),
+      ("{chapter}.{section}.{n}", "", "2", "2.1"),
+      ("{chapter}.{section}.{n}", "", "", "1"),
+      ("{chapter}-{n}", "", "", "1"),
+      ("{chapter}{n}", "", "", "1"),
+      ("第{chapter}章第{n}節", "", "", "第1節"),
+      ("第{chapter}章{section}節{n}項", "1", "", "第1章1項"),
+      ("{n}.{chapter}", "", "", "1"),
+      ("{n}.{chapter}.{section}", "", "", "1"),
+      ("({chapter}.{n})", "", "", "(1)"),
+      ("[{chapter}]", "", "", "[]"),
+    ];
+
+    for (source, chapter, section, expected) in cases {
+      assert_eq!(
+        expand_counter(source, chapter, section),
+        expected,
+        "{source} / chapter={chapter:?} section={section:?}"
+      );
+    }
   }
 
   #[test]

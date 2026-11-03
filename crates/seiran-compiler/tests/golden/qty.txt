@@ -3,14 +3,14 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=728.78 y=99.00 font=JapaneseSerifBold size=20.00 text="距" glyph_count=1
-  glyphs x=748.78 y=99.00 font=JapaneseSerifBold size=20.00 text="離" glyph_count=1
-  glyphs x=773.48 y=99.00 font=Math size=20.00 text="5" glyph_count=1
-  glyphs x=786.71 y=99.00 font=Math size=20.00 text="km" glyph_count=2
-  glyphs x=819.29 y=99.00 font=JapaneseSerifBold size=20.00 text="と" glyph_count=1
-  glyphs x=839.29 y=99.00 font=JapaneseSerifBold size=20.00 text="角" glyph_count=1
-  glyphs x=863.99 y=99.00 font=Math size=20.00 text="30°" glyph_count=3
+  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=723.26 y=99.00 font=JapaneseSerifBold size=20.00 text="距" glyph_count=1
+  glyphs x=743.26 y=99.00 font=JapaneseSerifBold size=20.00 text="離" glyph_count=1
+  glyphs x=767.96 y=99.00 font=Math size=20.00 text="5" glyph_count=1
+  glyphs x=781.19 y=99.00 font=Math size=20.00 text="km" glyph_count=2
+  glyphs x=813.77 y=99.00 font=JapaneseSerifBold size=20.00 text="と" glyph_count=1
+  glyphs x=833.77 y=99.00 font=JapaneseSerifBold size=20.00 text="角" glyph_count=1
+  glyphs x=858.47 y=99.00 font=Math size=20.00 text="30°" glyph_count=3
   glyphs x=708.66 y=130.00 font=JapaneseSerif size=12.00 text="重" glyph_count=1
   glyphs x=720.94 y=130.00 font=JapaneseSerif size=12.00 text="力" glyph_count=1
   glyphs x=733.23 y=130.00 font=JapaneseSerif size=12.00 text="加" glyph_count=1
@@ -150,7 +150,7 @@ keywords=["test", "seiran"]
   glyphs x=824.61 y=282.56 font=Math size=12.00 text="=" glyph_count=1
   glyphs x=836.58 y=282.56 font=Math size=12.00 text="13.6" glyph_count=4
   glyphs x=859.34 y=282.56 font=Math size=12.00 text="eV" glyph_count=2
-  glyphs x=960.84 y=282.56 font=Serif size=12.00 text="(.1)" glyph_count=4
+  glyphs x=963.78 y=282.56 font=Serif size=12.00 text="(1)" glyph_count=3
   fillrect x=793.82 y=305.42 w=98.98 h=0.80 color=None
   fillrect x=793.82 y=344.71 w=98.98 h=0.80 color=None
   glyphs x=797.82 y=322.03 font=JapaneseSerif size=12.00 text="項" glyph_count=1
@@ -162,13 +162,14 @@ keywords=["test", "seiran"]
   glyphs x=860.95 y=339.28 font=Math size=12.00 text="m" glyph_count=1
   glyphs x=873.17 y=339.28 font=Math size=12.00 text="s" glyph_count=1
   glyphs x=877.91 y=334.96 font=Math size=8.40 text="−2" glyph_count=2
-  glyphs x=786.91 y=364.17 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=828.13 y=364.17 font=JapaneseSerif size=11.00 text="表" glyph_count=1
-  glyphs x=839.13 y=364.17 font=JapaneseSerif size=11.00 text="の" glyph_count=1
-  glyphs x=852.71 y=364.17 font=Math size=11.00 text="1.5" glyph_count=3
-  glyphs x=868.13 y=364.17 font=Math size=11.00 text="W" glyph_count=1
-  glyphs x=880.35 y=364.17 font=Math size=11.00 text="m" glyph_count=1
-  glyphs x=889.72 y=360.21 font=Math size=7.70 text="−2" glyph_count=2
+  glyphs x=788.26 y=364.17 font=Serif size=11.00 text="Table" glyph_count=5
+  glyphs x=816.06 y=364.17 font=Serif size=11.00 text="1:" glyph_count=2
+  glyphs x=826.78 y=364.17 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=837.78 y=364.17 font=JapaneseSerif size=11.00 text="の" glyph_count=1
+  glyphs x=851.37 y=364.17 font=Math size=11.00 text="1.5" glyph_count=3
+  glyphs x=866.79 y=364.17 font=Math size=11.00 text="W" glyph_count=1
+  glyphs x=879.00 y=364.17 font=Math size=11.00 text="m" glyph_count=1
+  glyphs x=888.37 y=360.21 font=Math size=7.70 text="−2" glyph_count=2
   glyphs x=708.66 y=387.72 font=JapaneseSerif size=12.00 text="行" glyph_count=1
   glyphs x=720.91 y=387.72 font=JapaneseSerif size=12.00 text="の" glyph_count=1
   glyphs x=733.17 y=387.72 font=JapaneseSerif size=12.00 text="終" glyph_count=1
@@ -231,4 +232,4 @@ keywords=["test", "seiran"]
   glyphs x=783.19 y=2285.20 font=JapaneseSerif size=9.00 text="。" glyph_count=1
   link target=Internal(page=0, x=708.66, y=2274.84) x=792.66 y=227.01 w=4.16 h=17.24
 outline:
-  depth=2 text=".1 距離 5\u{202f}km と角 30°" page=0 x=708.66 y=75.98
+  depth=2 text="1 距離 5\u{202f}km と角 30°" page=0 x=708.66 y=75.98

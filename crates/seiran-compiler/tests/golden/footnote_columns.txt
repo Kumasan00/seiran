@@ -3,12 +3,12 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=340.16 h=170.08
-  glyphs x=28.35 y=28.35 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=47.47 y=28.35 font=SerifBold size=20.00 text="2" glyph_count=1
-  glyphs x=61.08 y=28.35 font=JapaneseSerifBold size=20.00 text="段" glyph_count=1
-  glyphs x=81.08 y=28.35 font=JapaneseSerifBold size=20.00 text="組" glyph_count=1
-  glyphs x=101.08 y=28.35 font=JapaneseSerifBold size=20.00 text="み" glyph_count=1
-  glyphs x=121.08 y=28.35 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=28.35 y=28.35 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=43.90 y=28.35 font=SerifBold size=20.00 text="2" glyph_count=1
+  glyphs x=59.45 y=28.35 font=JapaneseSerifBold size=20.00 text="段" glyph_count=1
+  glyphs x=79.86 y=28.35 font=JapaneseSerifBold size=20.00 text="組" glyph_count=1
+  glyphs x=100.27 y=28.35 font=JapaneseSerifBold size=20.00 text="み" glyph_count=1
+  glyphs x=120.67 y=28.35 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
   glyphs x=141.08 y=28.35 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
   glyphs x=28.35 y=57.09 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
   glyphs x=28.35 y=88.09 font=JapaneseSerif size=12.00 text="左" glyph_count=1
@@ -228,4 +228,4 @@ keywords=["test", "seiran"]
   glyphs x=64.35 y=59.25 font=Serif size=10.00 text="1" glyph_count=1
   link target=Internal(page=0, x=28.35, y=0.00) x=64.35 y=47.74 w=4.95 h=14.37
 outline:
-  depth=2 text=".1 2 段組みの脚注" page=0 x=28.35 y=5.33
+  depth=2 text="1 2 段組みの脚注" page=0 x=28.35 y=5.33

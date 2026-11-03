@@ -147,7 +147,8 @@ pub(crate) struct CounterStyle {
   #[garde(custom(non_empty_text))]
   pub display_name: String,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
-  /// （`resets` の関係に無いカウンタも書ける）
+  /// （`resets` の関係に無いカウンタも書ける）。値 0（未登場）のカウンタは直後の区切りごと省く
+  /// （`\chapter` の無い文書で `"{chapter}.{n}"` は `"1"`。規則は `CounterTemplate::expand`）
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
   #[garde(dive)]

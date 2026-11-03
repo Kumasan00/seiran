@@ -3,15 +3,15 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=728.78 y=99.00 font=JapaneseSerifBold size=20.00 text="速" glyph_count=1
-  glyphs x=748.78 y=99.00 font=JapaneseSerifBold size=20.00 text="さ" glyph_count=1
-  glyphs x=773.48 y=99.00 font=Math size=20.00 text="km" glyph_count=2
-  glyphs x=804.69 y=99.00 font=Math size=20.00 text="s" glyph_count=1
-  glyphs x=812.59 y=91.80 font=Math size=14.00 text="−1" glyph_count=2
-  glyphs x=835.23 y=99.00 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=855.23 y=99.00 font=JapaneseSerifBold size=20.00 text="測" glyph_count=1
-  glyphs x=875.23 y=99.00 font=JapaneseSerifBold size=20.00 text="定" glyph_count=1
+  glyphs x=708.66 y=99.00 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=723.26 y=99.00 font=JapaneseSerifBold size=20.00 text="速" glyph_count=1
+  glyphs x=743.26 y=99.00 font=JapaneseSerifBold size=20.00 text="さ" glyph_count=1
+  glyphs x=767.96 y=99.00 font=Math size=20.00 text="km" glyph_count=2
+  glyphs x=799.17 y=99.00 font=Math size=20.00 text="s" glyph_count=1
+  glyphs x=807.07 y=91.80 font=Math size=14.00 text="−1" glyph_count=2
+  glyphs x=829.71 y=99.00 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=849.71 y=99.00 font=JapaneseSerifBold size=20.00 text="測" glyph_count=1
+  glyphs x=869.71 y=99.00 font=JapaneseSerifBold size=20.00 text="定" glyph_count=1
   glyphs x=708.66 y=130.00 font=JapaneseSerif size=12.00 text="加" glyph_count=1
   glyphs x=720.66 y=130.00 font=JapaneseSerif size=12.00 text="速" glyph_count=1
   glyphs x=732.66 y=130.00 font=JapaneseSerif size=12.00 text="度" glyph_count=1
@@ -163,7 +163,7 @@ keywords=["test", "seiran"]
   glyphs x=824.93 y=299.81 font=Math size=12.00 text="𝐸" glyph_count=1
   glyphs x=835.99 y=299.81 font=Math size=12.00 text="=" glyph_count=1
   glyphs x=847.96 y=299.81 font=Math size=12.00 text="eV" glyph_count=2
-  glyphs x=960.84 y=299.81 font=Serif size=12.00 text="(.1)" glyph_count=4
+  glyphs x=963.78 y=299.81 font=Serif size=12.00 text="(1)" glyph_count=3
   fillrect x=802.23 y=322.66 w=82.16 h=0.80 color=None
   fillrect x=802.23 y=361.95 w=82.16 h=0.80 color=None
   glyphs x=806.23 y=339.28 font=JapaneseSerif size=12.00 text="項" glyph_count=1
@@ -175,12 +175,13 @@ keywords=["test", "seiran"]
   glyphs x=852.54 y=356.52 font=Math size=12.00 text="m" glyph_count=1
   glyphs x=864.76 y=356.52 font=Math size=12.00 text="s" glyph_count=1
   glyphs x=869.50 y=352.20 font=Math size=8.40 text="−2" glyph_count=2
-  glyphs x=794.62 y=381.41 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=835.84 y=381.41 font=JapaneseSerif size=11.00 text="表" glyph_count=1
-  glyphs x=846.84 y=381.41 font=JapaneseSerif size=11.00 text="の" glyph_count=1
-  glyphs x=860.42 y=381.41 font=Math size=11.00 text="W" glyph_count=1
-  glyphs x=872.64 y=381.41 font=Math size=11.00 text="m" glyph_count=1
-  glyphs x=882.01 y=377.45 font=Math size=7.70 text="−2" glyph_count=2
+  glyphs x=795.97 y=381.41 font=Serif size=11.00 text="Table" glyph_count=5
+  glyphs x=823.77 y=381.41 font=Serif size=11.00 text="1:" glyph_count=2
+  glyphs x=834.49 y=381.41 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=845.49 y=381.41 font=JapaneseSerif size=11.00 text="の" glyph_count=1
+  glyphs x=859.08 y=381.41 font=Math size=11.00 text="W" glyph_count=1
+  glyphs x=871.29 y=381.41 font=Math size=11.00 text="m" glyph_count=1
+  glyphs x=880.67 y=377.45 font=Math size=7.70 text="−2" glyph_count=2
   glyphs x=708.66 y=404.96 font=JapaneseSerif size=12.00 text="行" glyph_count=1
   glyphs x=720.91 y=404.96 font=JapaneseSerif size=12.00 text="の" glyph_count=1
   glyphs x=733.17 y=404.96 font=JapaneseSerif size=12.00 text="終" glyph_count=1
@@ -246,4 +247,4 @@ keywords=["test", "seiran"]
   glyphs x=770.57 y=2285.20 font=JapaneseSerif size=9.00 text="。" glyph_count=1
   link target=Internal(page=0, x=708.66, y=2274.84) x=768.66 y=244.25 w=4.16 h=17.24
 outline:
-  depth=2 text=".1 速さ km\u{202f}s⁻¹ の測定" page=0 x=708.66 y=75.98
+  depth=2 text="1 速さ km\u{202f}s⁻¹ の測定" page=0 x=708.66 y=75.98

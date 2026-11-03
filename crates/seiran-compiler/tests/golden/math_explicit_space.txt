@@ -3,13 +3,13 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=261.06 y=280.63 font=JapaneseSerifBold size=20.00 text="明" glyph_count=1
-  glyphs x=281.06 y=280.63 font=JapaneseSerifBold size=20.00 text="示" glyph_count=1
-  glyphs x=301.06 y=280.63 font=JapaneseSerifBold size=20.00 text="ア" glyph_count=1
-  glyphs x=320.26 y=280.63 font=JapaneseSerifBold size=20.00 text="キ" glyph_count=1
-  glyphs x=340.26 y=280.63 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=360.26 y=280.63 font=JapaneseSerifBold size=20.00 text="量" glyph_count=1
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=255.54 y=280.63 font=JapaneseSerifBold size=20.00 text="明" glyph_count=1
+  glyphs x=275.54 y=280.63 font=JapaneseSerifBold size=20.00 text="示" glyph_count=1
+  glyphs x=295.54 y=280.63 font=JapaneseSerifBold size=20.00 text="ア" glyph_count=1
+  glyphs x=314.74 y=280.63 font=JapaneseSerifBold size=20.00 text="キ" glyph_count=1
+  glyphs x=334.74 y=280.63 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=354.74 y=280.63 font=JapaneseSerifBold size=20.00 text="量" glyph_count=1
   glyphs x=240.94 y=311.63 font=JapaneseSerif size=12.00 text="無" glyph_count=1
   glyphs x=252.94 y=311.63 font=JapaneseSerif size=12.00 text="し" glyph_count=1
   glyphs x=264.94 y=311.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
@@ -43,9 +43,9 @@ keywords=["test", "seiran"]
   glyphs x=535.61 y=311.63 font=Math size=12.00 text="𝑎" glyph_count=1
   glyphs x=554.27 y=311.63 font=Math size=12.00 text="𝑏" glyph_count=1
   glyphs x=560.54 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=240.94 y=336.23 font=SerifBold size=20.00 text=".2" glyph_count=2
-  glyphs x=261.06 y=336.23 font=JapaneseSerifBold size=20.00 text="詰" glyph_count=1
-  glyphs x=281.06 y=336.23 font=JapaneseSerifBold size=20.00 text="め" glyph_count=1
+  glyphs x=240.94 y=336.23 font=SerifBold size=20.00 text="2" glyph_count=1
+  glyphs x=255.54 y=336.23 font=JapaneseSerifBold size=20.00 text="詰" glyph_count=1
+  glyphs x=275.54 y=336.23 font=JapaneseSerifBold size=20.00 text="め" glyph_count=1
   glyphs x=240.94 y=367.23 font=Math size=12.00 text="𝑎𝑏" glyph_count=2
   glyphs x=256.70 y=367.23 font=JapaneseSerif size=12.00 text="と" glyph_count=1
   glyphs x=271.52 y=367.23 font=Math size=12.00 text="𝑎" glyph_count=1
@@ -64,15 +64,15 @@ keywords=["test", "seiran"]
   glyphs x=427.61 y=367.23 font=JapaneseSerif size=12.00 text="同" glyph_count=1
   glyphs x=439.61 y=367.23 font=JapaneseSerif size=12.00 text="じ" glyph_count=1
   glyphs x=451.61 y=367.23 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=240.94 y=391.83 font=SerifBold size=20.00 text=".3" glyph_count=2
-  glyphs x=261.06 y=391.83 font=JapaneseSerifBold size=20.00 text="自" glyph_count=1
-  glyphs x=281.06 y=391.83 font=JapaneseSerifBold size=20.00 text="動" glyph_count=1
-  glyphs x=301.06 y=391.83 font=JapaneseSerifBold size=20.00 text="ア" glyph_count=1
-  glyphs x=320.26 y=391.83 font=JapaneseSerifBold size=20.00 text="キ" glyph_count=1
-  glyphs x=340.26 y=391.83 font=JapaneseSerifBold size=20.00 text="へ" glyph_count=1
-  glyphs x=360.26 y=391.83 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=380.26 y=391.83 font=JapaneseSerifBold size=20.00 text="加" glyph_count=1
-  glyphs x=400.26 y=391.83 font=JapaneseSerifBold size=20.00 text="算" glyph_count=1
+  glyphs x=240.94 y=391.83 font=SerifBold size=20.00 text="3" glyph_count=1
+  glyphs x=255.54 y=391.83 font=JapaneseSerifBold size=20.00 text="自" glyph_count=1
+  glyphs x=275.54 y=391.83 font=JapaneseSerifBold size=20.00 text="動" glyph_count=1
+  glyphs x=295.54 y=391.83 font=JapaneseSerifBold size=20.00 text="ア" glyph_count=1
+  glyphs x=314.74 y=391.83 font=JapaneseSerifBold size=20.00 text="キ" glyph_count=1
+  glyphs x=334.74 y=391.83 font=JapaneseSerifBold size=20.00 text="へ" glyph_count=1
+  glyphs x=354.74 y=391.83 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=374.74 y=391.83 font=JapaneseSerifBold size=20.00 text="加" glyph_count=1
+  glyphs x=394.74 y=391.83 font=JapaneseSerifBold size=20.00 text="算" glyph_count=1
   glyphs x=240.94 y=422.83 font=Math size=12.00 text="𝑎" glyph_count=1
   glyphs x=250.27 y=422.83 font=Math size=12.00 text="+" glyph_count=1
   glyphs x=261.58 y=422.83 font=Math size=12.00 text="𝑏" glyph_count=1
@@ -119,12 +119,12 @@ keywords=["test", "seiran"]
   glyphs x=753.92 y=422.83 font=JapaneseSerif size=12.00 text="取" glyph_count=1
   glyphs x=765.92 y=422.83 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=777.92 y=422.83 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=240.94 y=447.43 font=SerifBold size=20.00 text=".4" glyph_count=2
-  glyphs x=261.06 y=447.43 font=JapaneseSerifBold size=20.00 text="ス" glyph_count=1
-  glyphs x=281.06 y=447.43 font=JapaneseSerifBold size=20.00 text="ク" glyph_count=1
-  glyphs x=301.06 y=447.43 font=JapaneseSerifBold size=20.00 text="リ" glyph_count=1
-  glyphs x=321.06 y=447.43 font=JapaneseSerifBold size=20.00 text="プ" glyph_count=1
-  glyphs x=341.06 y=447.43 font=JapaneseSerifBold size=20.00 text="ト" glyph_count=1
+  glyphs x=240.94 y=447.43 font=SerifBold size=20.00 text="4" glyph_count=1
+  glyphs x=255.54 y=447.43 font=JapaneseSerifBold size=20.00 text="ス" glyph_count=1
+  glyphs x=275.54 y=447.43 font=JapaneseSerifBold size=20.00 text="ク" glyph_count=1
+  glyphs x=295.54 y=447.43 font=JapaneseSerifBold size=20.00 text="リ" glyph_count=1
+  glyphs x=315.54 y=447.43 font=JapaneseSerifBold size=20.00 text="プ" glyph_count=1
+  glyphs x=335.54 y=447.43 font=JapaneseSerifBold size=20.00 text="ト" glyph_count=1
   glyphs x=240.94 y=478.43 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=247.77 y=474.11 font=Math size=8.40 text="𝑎𝑏" glyph_count=2
   glyphs x=261.16 y=478.43 font=JapaneseSerif size=12.00 text="と" glyph_count=1
@@ -158,10 +158,10 @@ keywords=["test", "seiran"]
   glyphs x=879.86 y=528.20 font=Math size=12.00 text="𝑥" glyph_count=1
   glyphs x=890.02 y=528.20 font=Math size=12.00 text=">" glyph_count=1
   glyphs x=902.00 y=528.20 font=Math size=12.00 text="0" glyph_count=1
-  glyphs x=1428.56 y=528.20 font=Serif size=12.00 text="(.1)" glyph_count=4
-  glyphs x=240.94 y=570.20 font=SerifBold size=20.00 text=".5" glyph_count=2
-  glyphs x=261.06 y=570.20 font=JapaneseSerifBold size=20.00 text="末" glyph_count=1
-  glyphs x=281.06 y=570.20 font=JapaneseSerifBold size=20.00 text="尾" glyph_count=1
+  glyphs x=1431.50 y=528.20 font=Serif size=12.00 text="(1)" glyph_count=3
+  glyphs x=240.94 y=570.20 font=SerifBold size=20.00 text="5" glyph_count=1
+  glyphs x=255.54 y=570.20 font=JapaneseSerifBold size=20.00 text="末" glyph_count=1
+  glyphs x=275.54 y=570.20 font=JapaneseSerifBold size=20.00 text="尾" glyph_count=1
   glyphs x=240.94 y=601.20 font=JapaneseSerif size=12.00 text="イ" glyph_count=1
   glyphs x=252.94 y=601.20 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
   glyphs x=264.94 y=601.20 font=JapaneseSerif size=12.00 text="ラ" glyph_count=1
@@ -191,12 +191,12 @@ keywords=["test", "seiran"]
   glyphs x=821.85 y=672.95 font=Math size=12.00 text="𝑎" glyph_count=1
   glyphs x=846.51 y=672.95 font=Math size=12.00 text="=" glyph_count=1
   glyphs x=858.49 y=672.95 font=Math size=12.00 text="𝑏" glyph_count=1
-  glyphs x=1428.56 y=642.95 font=Serif size=12.00 text="(.2)" glyph_count=4
-  glyphs x=1428.56 y=657.95 font=Serif size=12.00 text="(.3)" glyph_count=4
-  glyphs x=1428.56 y=672.95 font=Serif size=12.00 text="(.4)" glyph_count=4
+  glyphs x=1431.50 y=642.95 font=Serif size=12.00 text="(2)" glyph_count=3
+  glyphs x=1431.50 y=657.95 font=Serif size=12.00 text="(3)" glyph_count=3
+  glyphs x=1431.50 y=672.95 font=Serif size=12.00 text="(4)" glyph_count=3
 outline:
-  depth=2 text=".1 明示アキの量" page=0 x=240.94 y=257.61
-  depth=2 text=".2 詰め" page=0 x=240.94 y=313.21
-  depth=2 text=".3 自動アキへの加算" page=0 x=240.94 y=368.81
-  depth=2 text=".4 スクリプト" page=0 x=240.94 y=424.41
-  depth=2 text=".5 末尾" page=0 x=240.94 y=547.18
+  depth=2 text="1 明示アキの量" page=0 x=240.94 y=257.61
+  depth=2 text="2 詰め" page=0 x=240.94 y=313.21
+  depth=2 text="3 自動アキへの加算" page=0 x=240.94 y=368.81
+  depth=2 text="4 スクリプト" page=0 x=240.94 y=424.41
+  depth=2 text="5 末尾" page=0 x=240.94 y=547.18
