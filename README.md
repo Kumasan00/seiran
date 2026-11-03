@@ -244,7 +244,7 @@ bottom_margin = "10pt"
 # exponent_product = "times"   # 指数表記の積の記号: "times"（×、既定） / "dot"（⋅）
 # unit_product = "thin"        # 単位どうしの積: "thin"（細アキ、既定） / "dot"（⋅。前後のアキなし）
 # negative_exponent = "power"  # 負の指数: "power"（m s⁻²、既定） / "slash"（m/s²）
-# number_unit_separator = "thin" # 量の数値と単位の間: "thin"（既定） / "none" / "medium" / "thick"（単位が ° ′ ″ だけなら常に詰める）
+# number_unit_separator = "thin" # 量の数値と単位の間: "thin"（既定） / "none" / "medium" / "thick"（単位が指数なしの ° ′ ″ 1 つだけなら常に詰める）
 ```
 
 ### 参照定義（`config/references.toml` または `.json`）

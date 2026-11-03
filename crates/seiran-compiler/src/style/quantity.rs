@@ -28,7 +28,7 @@ pub(crate) struct QuantityStyle {
   pub unit_product: UnitProduct,
   /// 負の指数を持つ単位（`\unit{m.s^{-1}}`）の表記
   pub negative_exponent: NegativeExponent,
-  /// 量（`\qty`）の数値と単位の間のアキ。単位が平面角 ° ′ ″ の 1 因子だけなら値によらず 0
+  /// 量（`\qty`）の数値と単位の間のアキ。単位が平面角 ° ′ ″ の 1 因子だけ（指数なし）なら値によらず 0
   pub number_unit_separator: NumberUnitSeparator,
 }
 
