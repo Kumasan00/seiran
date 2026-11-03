@@ -695,6 +695,12 @@ mod tests {
   }
 
   #[test]
+  fn bookmark_math_parenthesized_text_operand_is_simple() {
+    assert_eq!(bookmark("$x^{(n)}$"), "x^(n)");
+    assert_eq!(bookmark("$x^{(a)+(b)}$"), "x^((a)+(b))");
+  }
+
+  #[test]
   fn bookmark_math_nested_script_wraps_outer_operand() {
     assert_eq!(bookmark("$x^{2^{n}}$"), "x^(2^n)");
   }

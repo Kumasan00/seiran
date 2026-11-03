@@ -13,7 +13,8 @@ use crate::{
   document::{HirMath, HirMathKind, MathClass, MathSpace},
   style::QuantityStyle,
   typeset::lowering::{
-    math::{alphanumeric::plain_math_char, char_class, matrix_delimiter_glyphs},
+    layout_node::Fence,
+    math::{alphanumeric::plain_math_char, char_class, char_fence, matrix_delimiter_glyphs},
     quantity,
   },
 };
@@ -236,6 +237,8 @@ fn shape(node: &HirMath) -> Shape {
         .all(|ch| return char_class(ch) == MathClass::Ord)
       {
         Shape::Ord
+      } else if is_bracketed(text) {
+        Shape::Closed
       } else {
         Shape::Other
       }
@@ -269,6 +272,32 @@ fn shape(node: &HirMath) -> Shape {
     | HirMathKind::Accent { .. }
     | HirMathKind::Bar { .. } => Shape::Other,
   };
+}
+
+/// 直接入力の字の列が、先頭の開き括弧と末尾の閉じ括弧で閉じた 1 個か（`(n)` は真、`(a)+(b)` は偽）
+fn is_bracketed(text: &str) -> bool {
+  let chars: Vec<char> = text.chars().filter(|ch| return !ch.is_whitespace()).collect();
+  let [first, .., last] = chars.as_slice() else {
+    return false;
+  };
+  if char_fence(*first) != Some(Fence::Open) || char_fence(*last) != Some(Fence::Close) {
+    return false;
+  }
+  // 括弧の深さが末尾の字より前に 0 へ戻るなら、先頭の括弧は途中で閉じていて全体を包んでいない
+  let mut depth = 0usize;
+  for (index, &ch) in chars.iter().enumerate() {
+    match char_fence(ch) {
+      Some(Fence::Open) => depth += 1,
+      Some(Fence::Close) => {
+        depth = depth.saturating_sub(1);
+        if depth == 0 && index + 1 < chars.len() {
+          return false;
+        }
+      },
+      None => {},
+    }
+  }
+  return depth == 0;
 }
 
 /// 文字列の書記素クラスタの数
