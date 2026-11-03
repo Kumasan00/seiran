@@ -1,4 +1,4 @@
-//! フォント資源の構築順序を隠蔽する窓口モジュール
+//! フォント資源の構築順序と描画用フェース設定への変換を所有する窓口モジュール
 //!
 //! `FontData` → `FontRefs` / `ShapingFonts` → `FaceMap<FontMetrics>` → 検証 → `HarfRustShapers`
 //! という構築順序をここに閉じ込め、[`FontSystem::load`] でシェイプ可能な資源一式を返す。資源は全実体（種別 × 候補）
@@ -19,10 +19,9 @@ use tracing::debug;
 use crate::{
   failures::Failures,
   project::{FaceMap, FontConfigs, FontData, FontFace, FontType},
-  publication::FontMetrics,
+  publication::{FontFaceConfig, FontMetrics},
   typeset::font::{
     self, FontLoadError, FontRefs, ScriptLevel, ScriptScale, SuperscriptMetrics, build_font_metrics,
-    face_config::{FontFaceConfigs, build_face_configs},
     fallback::{self, ShapedText},
     parse_fonts,
     shaper::{self, Buffer, HarfRustShapers, ShaperError, ShapingFonts},
@@ -62,7 +61,7 @@ pub(in crate::typeset) struct FontSystem {
   /// 全実体ぶんの OS/2 の上付きの指標（[`font::superscript_metrics`]）
   superscripts: FaceMap<Option<SuperscriptMetrics>>,
   /// シェーパーと同じ設定から確定した描画用のフェース設定
-  face_configs: FontFaceConfigs,
+  face_configs: FaceMap<FontFaceConfig>,
 }
 
 impl FontSystem {
@@ -305,7 +304,17 @@ impl FontSystem {
 
   /// シェーパーと同じフェース・バリエーション軸の描画用設定。
   #[must_use]
-  pub(in crate::typeset) fn face_configs(&self) -> &FontFaceConfigs { return &self.face_configs; }
+  pub(in crate::typeset) fn face_configs(&self) -> &FaceMap<FontFaceConfig> { return &self.face_configs; }
+}
+
+/// 全実体の設定から描画用のフェース設定を構築する。
+fn build_face_configs(configs: &FontConfigs) -> FaceMap<FontFaceConfig> {
+  return configs.map(|_, font_config| {
+    return FontFaceConfig {
+      font_index: font_config.font_index,
+      variation_axes: font_config.variation_axes.clone(),
+    };
+  });
 }
 
 /// フォントの解析とメトリクスの取得を行う（検証の前の 2 段）。
@@ -334,7 +343,7 @@ fn units(value: f32) -> i64 { return value.round() as i64; }
 mod tests {
   use std::{fs, path::Path};
 
-  use super::FontSystem;
+  use super::{FontSystem, build_face_configs};
   use crate::project::{
     FaceMap, FontConfig, FontConfigs, FontData, FontFace, FontMap, FontType, MemoryProjectSource, ProjectPath,
     VariationAxis,
@@ -437,5 +446,45 @@ mod tests {
     };
 
     assert_eq!(system.metrics(FontFace::new(FontType::Serif, 1)), system.metrics(FontFace::MATH));
+  }
+
+  fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
+    return FontConfig {
+      font_index,
+      variation_axes,
+      ..font_config("dummy.ttf")
+    };
+  }
+
+  #[test]
+  fn build_face_configs_copies_only_the_two_convertible_fields() {
+    let configs = FaceMap::uniform(&font_config_with(3, None));
+    let face_configs = build_face_configs(&configs);
+    for face in configs.faces() {
+      let face_config = &face_configs[face];
+      assert_eq!(face_config.font_index, 3, "font_index がそのまま複製されるはず");
+      assert!(face_config.variation_axes.is_none(), "variation_axes が None ならそのまま None のはず");
+    }
+  }
+
+  #[test]
+  fn build_face_configs_copies_variation_axes_verbatim() {
+    let axes = vec![
+      VariationAxis {
+        name: *b"wght",
+        value: 400.0,
+      },
+      VariationAxis {
+        name: *b"wdth",
+        value: 100.0,
+      },
+    ];
+    let configs = FaceMap::uniform(&font_config_with(0, Some(axes.clone())));
+
+    let face_configs = build_face_configs(&configs);
+
+    for face in configs.faces() {
+      assert_eq!(face_configs[face].variation_axes, Some(axes.clone()), "{face} の軸が並び・値ともそのまま渡るはず");
+    }
   }
 }

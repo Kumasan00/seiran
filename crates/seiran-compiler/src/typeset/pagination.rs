@@ -6,18 +6,16 @@ mod context;
 mod footnote_numbering;
 mod front_matter;
 mod index;
-mod outline;
 mod page_values;
 mod running;
 mod toc;
 
 pub(super) use context::TypesetContext;
 use miette::{LabeledSpan, SourceSpan};
-pub(super) use outline::OutlineEntry;
 use tracing::debug;
 
 use crate::{
-  document::{SourceLocation, SourceMap},
+  document::{HeadingLevel, SourceLocation, SourceMap},
   project::ProjectPath,
   semantics::SemanticDocument,
   typeset::{
@@ -25,10 +23,20 @@ use crate::{
     breaking::{Overflow, OverflowKind},
     error::TypesetError,
     image::{ImageAsset, ImageResources},
-    pagination::{body::BodyLayout, context::BodyPageFacts, outline::collect_outline_entries, page_values::PageLabels},
+    lowering::HeadingRecord,
+    pagination::{body::BodyLayout, context::BodyPageFacts, page_values::PageLabels},
     warning::TypesetWarning,
   },
 };
+
+/// PDF のしおりに使う見出し。
+#[derive(Debug, Clone)]
+pub(super) struct OutlineEntry {
+  /// 見出しレベル（ネストの深さに使う）
+  pub(super) level: HeadingLevel,
+  /// しおりに表示するテキスト（[`HeadingRecord::label`]）
+  pub(super) text: String,
+}
 
 /// 描画パスへ渡すフォント非依存の確定レイアウトと、描画が要る画像資源。
 pub(crate) struct LaidOutDocument {
@@ -114,6 +122,19 @@ pub(super) fn paginate(
     },
     warnings,
   ));
+}
+
+/// 見出し記録から PDF しおりを文書順に組み立てる。
+fn collect_outline_entries(headings: &[HeadingRecord]) -> Vec<OutlineEntry> {
+  return headings
+    .iter()
+    .map(|info| {
+      return OutlineEntry {
+        level: info.level,
+        text: info.label(),
+      };
+    })
+    .collect();
 }
 
 /// セクションごとのはみ出し記録を、物理ページの印字ラベルとソース位置付きの警告診断へ写す。
