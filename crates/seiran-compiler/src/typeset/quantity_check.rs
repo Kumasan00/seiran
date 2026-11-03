@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, UnitFactor},
+  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId},
   failures::Failures,
   project::{FontFace, FontType, ProjectPath},
   source::{SourceId, Span},
@@ -90,7 +90,12 @@ fn collect_inlines(inlines: &[HirInline], quantity: &QuantityStyle, out: &mut Ve
   for inline in inlines {
     match &inline.kind {
       HirInlineKind::Number(numeral) if numeral.exponent.is_some() => out.push(inline.id),
-      HirInlineKind::Unit(factors) if has_superscript(factors, quantity) => out.push(inline.id),
+      HirInlineKind::Unit(factors) if has_superscript(&lowering::unit_pieces(factors, quantity)) => out.push(inline.id),
+      HirInlineKind::Quantity { numeral, unit }
+        if has_superscript(&lowering::quantity_pieces(numeral, unit, quantity)) =>
+      {
+        out.push(inline.id);
+      },
       HirInlineKind::Math(math) => collect_math(math, quantity, out),
       HirInlineKind::Styled { children, .. }
       | HirInlineKind::Colored { children, .. }
@@ -98,6 +103,7 @@ fn collect_inlines(inlines: &[HirInline], quantity: &QuantityStyle, out: &mut Ve
       | HirInlineKind::Footnote { body: children, .. } => collect_inlines(children, quantity, out),
       HirInlineKind::Number(_)
       | HirInlineKind::Unit(_)
+      | HirInlineKind::Quantity { .. }
       | HirInlineKind::Text(_)
       | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
@@ -121,7 +127,10 @@ fn collect_math(nodes: &[HirMath], quantity: &QuantityStyle, out: &mut Vec<NodeI
 fn collect_math_node(node: &HirMath, quantity: &QuantityStyle, out: &mut Vec<NodeId>) {
   match &node.kind {
     HirMathKind::Number(numeral) if numeral.exponent.is_some() => out.push(node.id),
-    HirMathKind::Unit(factors) if has_superscript(factors, quantity) => out.push(node.id),
+    HirMathKind::Unit(factors) if has_superscript(&lowering::unit_pieces(factors, quantity)) => out.push(node.id),
+    HirMathKind::Quantity { numeral, unit } if has_superscript(&lowering::quantity_pieces(numeral, unit, quantity)) => {
+      out.push(node.id);
+    },
     HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => collect_math(children, quantity, out),
     HirMathKind::Superscript(child)
     | HirMathKind::Subscript(child)
@@ -156,6 +165,7 @@ fn collect_math_node(node: &HirMath, quantity: &QuantityStyle, out: &mut Vec<Nod
     },
     HirMathKind::Number(_)
     | HirMathKind::Unit(_)
+    | HirMathKind::Quantity { .. }
     | HirMathKind::Text(_)
     | HirMathKind::Symbol { .. }
     | HirMathKind::Space(_)
@@ -164,11 +174,9 @@ fn collect_math_node(node: &HirMath, quantity: &QuantityStyle, out: &mut Vec<Nod
   }
 }
 
-/// 単位の式を `quantity` の表記で組むと上付きがあるか（`slash` の分母の `-1` は上付きにならない）
-fn has_superscript(factors: &[UnitFactor], quantity: &QuantityStyle) -> bool {
-  return lowering::unit_pieces(factors, quantity)
-    .iter()
-    .any(|piece| return matches!(piece, QuantityPiece::Superscript(_)));
+/// 組んだ部品列に上付きがあるか（`slash` の分母の `-1` は上付きにならない）
+fn has_superscript(pieces: &[QuantityPiece]) -> bool {
+  return pieces.iter().any(|piece| return matches!(piece, QuantityPiece::Superscript(_)));
 }
 
 #[cfg(test)]
@@ -259,6 +267,28 @@ mod tests {
       sites_with(&["\\unit{m.s^{-1}} と \\unit{m.s^{-2}}"], FontType::Serif, &slash),
       [vec!["\\unit{m.s^{-2}}"]]
     );
+  }
+
+  #[test]
+  fn quantity_needs_metrics_when_either_half_has_superscript() {
+    let slash = QuantityStyle {
+      negative_exponent: NegativeExponent::Slash,
+      ..QuantityStyle::default()
+    };
+
+    assert_eq!(
+      sites(
+        &["\\qty{5}{m} と \\qty{1e3}{m} と \\qty{1}{m^{2}} と $\\qty{2e1}{m}$ と $\\qty{2}{m^{3}}$"],
+        FontType::Serif
+      ),
+      [vec![
+        "\\qty{1e3}{m}",
+        "\\qty{1}{m^{2}}",
+        "\\qty{2e1}{m}",
+        "\\qty{2}{m^{3}}"
+      ]]
+    );
+    assert_eq!(sites_with(&["\\qty{1}{m.s^{-1}}"], FontType::Serif, &slash), Vec::<Vec<String>>::new());
   }
 
   #[test]

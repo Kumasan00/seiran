@@ -64,6 +64,14 @@ pub(crate) enum HirInlineKind {
   /// 単位（`\unit{...}`）。因子は 1 個以上で、ソース順
   Unit(Vec<UnitFactor>),
 
+  /// 量（`\qty{...}{...}`）
+  Quantity {
+    /// 数値
+    numeral: Numeral,
+    /// 単位の式の因子（1 個以上で、ソース順）
+    unit: Vec<UnitFactor>,
+  },
+
   /// 強制改行（`\\`）
   LineBreak,
 

@@ -89,6 +89,15 @@ pub(super) fn lower_inline(
         },
       }];
     },
+    HirInlineKind::Quantity { numeral, unit } => {
+      return vec![InlineNode::Quantity {
+        pieces: quantity::quantity_pieces(numeral, unit, &ctx.style.quantity),
+        style: TextStyle {
+          typeface: ctx.style.quantity.typeface,
+          ..parent_style
+        },
+      }];
+    },
     HirInlineKind::LineBreak => {
       return vec![InlineNode::LineBreak];
     },
@@ -394,6 +403,24 @@ mod tests {
     };
     assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
     assert_eq!(pieces, &[QuantityPiece::Text("k\u{03A9}".to_string())]);
+  }
+
+  #[test]
+  fn quantity_takes_the_quantity_typeface() {
+    let nodes = lower_source(&ReadStyle::default(), "\\bold{\\qty{5}{m}}\n");
+
+    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+      panic!("Quantity が期待されます: {nodes:?}");
+    };
+    assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
+    assert_eq!(
+      pieces,
+      &[
+        QuantityPiece::Text("5".to_string()),
+        QuantityPiece::Space(MathSpace::Thin),
+        QuantityPiece::Text("m".to_string())
+      ]
+    );
   }
 
   #[test]

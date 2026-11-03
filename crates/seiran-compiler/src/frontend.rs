@@ -2214,7 +2214,8 @@ mod tests {
       | HirMathKind::OperatorName { .. }
       | HirMathKind::Prose(_)
       | HirMathKind::Number(_)
-      | HirMathKind::Unit(_) => None,
+      | HirMathKind::Unit(_)
+      | HirMathKind::Quantity { .. } => None,
     };
   }
 

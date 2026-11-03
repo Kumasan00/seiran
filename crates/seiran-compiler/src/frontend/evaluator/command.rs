@@ -10,6 +10,7 @@ mod heading;
 mod index;
 mod link;
 pub(super) mod number;
+pub(super) mod quantity;
 mod ref_;
 pub(super) mod symbol;
 mod text_style;
@@ -126,6 +127,8 @@ enum CommandKind {
   Number,
   /// `\unit{単位}` — 単位（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Unit,
+  /// `\qty{数値}{単位}` — 量（必須引数 2 個とも外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
+  Quantity,
 }
 
 impl CommandKind {
@@ -193,6 +196,12 @@ impl CommandKind {
         return unit::unit_factors(view)
           .map(|factors| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Unit(factors))));
       },
+
+      Self::Quantity => {
+        return quantity::quantity(view).map(|(numeral, unit)| {
+          return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Quantity { numeral, unit }));
+        });
+      },
     }
   }
 
@@ -208,6 +217,7 @@ impl CommandKind {
       Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
       Self::Cite => &[ArgMode::CommaList],
       Self::Number | Self::Unit => &[ArgMode::Math],
+      Self::Quantity => &[ArgMode::Math, ArgMode::Math],
       Self::Space
       | Self::Heading(_)
       | Self::StyledText(_)
@@ -259,6 +269,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
   "num" => CommandKind::Number,
   "unit" => CommandKind::Unit,
+  "qty" => CommandKind::Quantity,
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）
@@ -428,6 +439,7 @@ mod tests {
     assert_eq!(CommandKind::Cite.arg_modes(), &[ArgMode::CommaList]);
     assert_eq!(CommandKind::Number.arg_modes(), &[ArgMode::Math]);
     assert_eq!(CommandKind::Unit.arg_modes(), &[ArgMode::Math]);
+    assert_eq!(CommandKind::Quantity.arg_modes(), &[ArgMode::Math, ArgMode::Math]);
     assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 
@@ -444,6 +456,7 @@ mod tests {
     assert_eq!(lookup_arg_mode("href", 0), ArgMode::Verbatim);
     assert_eq!(lookup_arg_mode("href", 1), ArgMode::Inherit);
     assert_eq!(lookup_arg_mode("num", 0), ArgMode::Math);
+    assert_eq!(lookup_arg_mode("qty", 1), ArgMode::Math);
   }
 
   #[test]

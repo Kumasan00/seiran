@@ -311,6 +311,10 @@ fn push_resolved(
       pieces: quantity::unit_pieces(factors, &style.quantity),
       typeface: style.quantity.typeface,
     }),
+    HirMathKind::Quantity { numeral, unit } => out.push(MathNode::Quantity {
+      pieces: quantity::quantity_pieces(numeral, unit, &style.quantity),
+      typeface: style.quantity.typeface,
+    }),
     HirMathKind::Group(children) => out.push(MathNode::Group(list(children))),
     HirMathKind::Superscript(inner) => out.push(MathNode::Superscript(one(inner))),
     HirMathKind::Subscript(inner) => out.push(MathNode::Subscript(one(inner))),
@@ -444,7 +448,7 @@ fn symbol_fence(class: MathClass) -> Option<Fence> {
 mod tests {
   use super::*;
   use crate::{
-    document::{HirInlineKind, HirNodeKind},
+    document::{HirInlineKind, HirNodeKind, MathSpace},
     length::Length,
     semantics::SemanticDocument,
     style::{CounterTemplate, Style as ReadStyle},
@@ -805,6 +809,22 @@ mod tests {
 
     assert!(
       matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == m),
+      "{math:?}"
+    );
+  }
+
+  #[test]
+  fn quantity_ignores_the_glyph_variant() {
+    let five_metres = vec![
+      QuantityPiece::Text("5".to_string()),
+      QuantityPiece::Space(MathSpace::Thin),
+      QuantityPiece::Text("m".to_string()),
+    ];
+
+    let math = resolved("$\\mathbold{\\qty{5}{m}}$\n");
+
+    assert!(
+      matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == five_metres),
       "{math:?}"
     );
   }
