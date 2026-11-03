@@ -292,6 +292,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "multiline",
   "num",
   "num_text_typeface",
+  "outline_math",
   "pagebreak",
   "qty",
   "qty_text_typeface",

@@ -5,7 +5,8 @@
 //! 計測と配置は boxing の数式エンジン（`typeset::boxing::math`）が決める。
 //! ディスプレイ数式環境の体裁のうち、環境種別（`document::MathBlockKind`）から決まるセルの列内
 //! 揃えと本体を囲む区切り括弧のグリフは、この module が解決してレイアウトノードに載せる。数式の中に埋め込んだ
-//! 行列・場合分けも、同じ括弧グリフと列内揃えで解決する。
+//! 行列・場合分けも、同じ括弧グリフと列内揃えで解決する。PDF しおりの見出しに載せる数式の平文（`UnicodeMath` の
+//! 線形表記）は子 module `unicode_math` が作る。
 
 mod alphanumeric;
 mod unicode_math;

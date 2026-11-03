@@ -1,0 +1,56 @@
+\chapter{しおりの数式}
+
+PDF しおりで見出しのインライン数式を UnicodeMath の線形表記にする動作確認用フィクスチャ。各節の題目に
+構造ごとの数式を 1 つずつ置き、しおりの文字列（ダンプの outline 節）で規則を固定する。
+
+\section{字と記号 $a+\alpha$}
+
+本文。
+
+\section{明示アキ $a\thinspace b\negthinspace c$}
+
+本文。
+
+\section{演算子名 $\sin^{2} x$}
+
+本文。
+
+\section{文章 $x\text{ if }y$ とグループ ${ab}$}
+
+本文。
+
+\section{スクリプト $x^{2} x_{10} x^{-1} x^{n} x^{n+1}$}
+
+本文。
+
+\section{分数 $\frac{a+b}{2}$ と二項係数 $\binom{n}{k}$}
+
+本文。
+
+\section{根号 $\sqrt{a+b}\sqrt[3]{x}\sqrt[n]{x}$}
+
+本文。
+
+\section{アクセント $\widehat{xy}$ と下線 $\underline{a+b}$}
+
+本文。
+
+\section{伸縮括弧 $\abs{x}\paren{a \given b}$}
+
+本文。
+
+\section{行列 $\begin{matrix}[delimiter=paren]a & b \\ c & d\end{matrix}$}
+
+本文。
+
+\section{場合分け $\begin{cases}x & \text{if } x \geq 0 \\ -x & \text{otherwise}\end{cases}$}
+
+本文。
+
+\section{字体 $\mathbold{x}+𝐲$}
+
+本文。
+
+\section{前半\\後半}
+
+本文。
