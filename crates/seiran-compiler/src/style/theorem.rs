@@ -158,8 +158,8 @@ pub(crate) struct TheoremStyle {
   pub counter: String,
   /// このクラスのカウンタのリセット先（見出しレベル or なし）
   pub reset_by: TheoremReset,
-  /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
-  /// （counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
+  /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
+  /// （`reset_by` 以外のカウンタも書ける。counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
   #[garde(dive)]
   pub number_format: CounterTemplate,
   /// 採番しない（`proof` 等）

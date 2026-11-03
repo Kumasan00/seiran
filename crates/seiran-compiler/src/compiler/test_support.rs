@@ -475,6 +475,16 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "quantity", "typeface", "serif");
       set(table, "quantity", "negative_exponent", "slash");
     },
+    // 番号書式がリセット関係に無いカウンタを参照する版面（表・数式は節で、定理は節でリセットしつつ章も表示する）
+    "counter_format" => {
+      for counter in ["table", "equation"] {
+        section_mut(section_mut(table, "counters"), counter)
+          .insert("number_format".to_string(), "{section}.{n}".into());
+      }
+      let theorem = section_mut(section_mut(table, "theorems"), "theorem");
+      theorem.insert("reset_by".to_string(), "section".into());
+      theorem.insert("number_format".to_string(), "{chapter}.{section}.{n}".into());
+    },
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     "index_groups" => set(table, "index", "group_headings", true),
     // 区分見出しありの 2 段組み索引で、エントリと区分見出しを右、題目を中央に寄せた版面。本文高を約 62mm に縮めて

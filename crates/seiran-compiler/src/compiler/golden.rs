@@ -256,6 +256,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "cite",
   "code",
   "color",
+  "counter_format",
   "equation",
   "flush",
   "font_fallback",
