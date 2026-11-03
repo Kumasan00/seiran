@@ -314,6 +314,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "title_page",
   "toc",
   "toc_center",
+  "toc_inline",
   "unit",
   "unit_slash_dot",
   "unit_text_typeface",

@@ -1,0 +1,44 @@
+\chapter[label=ch:intro]{はじめに}
+
+目次の行の題目を見出しのインライン列として組む動作確認用フィクスチャ。各節の題目に数式・装飾・色・参照・
+引用・リンク・脚注・改行を含め、目次の行がそれらを見出しと同じ規則で組むことを確認する。
+
+\section{$E=mc^{2}$ の導出}
+
+インライン数式を含む題目。
+
+\section{分数 $\frac{a}{b}$ を含む題目}
+
+背の高い数式を含む題目。
+
+\section{\bold{太字} と \italic{斜体}}
+
+装飾を含む題目。
+
+\section{\color[color=#cc0000]{赤い} 語}
+
+色を含む題目。
+
+\section{\code{code} と \num{12345}}
+
+コードと数値を含む題目。
+
+\section{\ref{ch:intro} への参照}
+
+参照を含む題目。
+
+\section{文献 \cite{kwan2014}}
+
+引用を含む題目。
+
+\section{\href{https://example.com}{外部} と \url{https://example.org}}
+
+外部リンクを含む題目。
+
+\section{脚注つき\footnote{目次に出ない脚注。}}
+
+脚注を含む題目。
+
+\section{前半\\後半}
+
+改行を含む題目。

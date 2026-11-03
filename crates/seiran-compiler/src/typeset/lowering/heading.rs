@@ -1,15 +1,16 @@
 //! 見出し（`document::HirNodeKind::Heading` と、CSL 整形が合成する書誌見出し）の lowering
 
 use crate::{
-  document::{HeadingLevel, HirHeading, HirInline, HirInlineKind, NodeId},
+  document::{HeadingLevel, HirHeading, HirInline, HirInlineKind, NodeId, Typeface},
   length::Length,
-  semantics::{HeadingKey, LabelId, generated_inlines_to_plain_text},
+  semantics::{GeneratedInline, HeadingKey, LabelId, generated_inlines_to_plain_text},
   style::Style as ReadStyle,
   typeset::{
     boxes::AnchorId,
     lowering::{
-      LoweringContext, LoweringState, counter, inline,
+      LoweringContext, LoweringState, code, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
+      math::lower_inline_math,
       quantity,
     },
   },
@@ -27,7 +28,94 @@ pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> Tex
   };
 }
 
-/// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
+/// 目次の行の題目の外側のスタイル（`[toc].font_size` の Serif・色なし）を返す
+pub(in crate::typeset) fn toc_entry_style(style: &ReadStyle) -> TextStyle {
+  return TextStyle {
+    font_size: style.toc.font_size,
+    typeface: Typeface::Serif,
+    color: None,
+    script_level: None,
+    math_operator: None,
+  };
+}
+
+/// 見出しの題目を、目次の行に組む写しのインライン列へ lower する
+///
+/// 本文と同じノード・書体規則で組むが、目次の行全体が見出しへのリンクなので `\ref` / `\cite` / `\href` / `\url` は
+/// 表示だけを組んでリンクとリンク色を付けず、脚注・索引は複製せず、1 行に組むので改行は語間空白 1 個にする。
+/// `state` は共有参照なので、写しは脚注の採番を進めない。
+fn toc_title(
+  ctx: &LoweringContext<'_>,
+  inlines: &[HirInline],
+  parent_style: TextStyle,
+  state: &LoweringState<'_>,
+) -> Vec<InlineNode> {
+  let mut out = Vec::new();
+  for inline in inlines {
+    match &inline.kind {
+      HirInlineKind::Text(text) => out.push(InlineNode::Text(text.clone(), parent_style)),
+      HirInlineKind::Symbol(ch) => out.push(InlineNode::Text(ch.to_string(), parent_style)),
+      HirInlineKind::Styled { font, children } => {
+        out.extend(toc_title(ctx, children, inline::styled(parent_style, *font), state));
+      },
+      HirInlineKind::Colored { color, children } => {
+        out.extend(toc_title(ctx, children, inline::colored(parent_style, *color), state));
+      },
+      HirInlineKind::Link { children, .. } => out.extend(toc_title(ctx, children, parent_style, state)),
+      HirInlineKind::Code(text) => out.extend(code::lower_inline_code(text, parent_style)),
+      HirInlineKind::Math(math_nodes) => {
+        out.extend(lower_inline_math(math_nodes, parent_style.font_size, parent_style.color, ctx.style));
+      },
+      HirInlineKind::Number(numeral) => {
+        out.push(inline::quantity_node(ctx, quantity::number_pieces(numeral, &ctx.style.quantity), parent_style));
+      },
+      HirInlineKind::Unit(factors) => {
+        out.push(inline::quantity_node(ctx, quantity::unit_pieces(factors, &ctx.style.quantity), parent_style));
+      },
+      HirInlineKind::Quantity { numeral, unit } => {
+        let pieces = quantity::quantity_pieces(numeral, unit, &ctx.style.quantity);
+        out.push(inline::quantity_node(ctx, pieces, parent_style));
+      },
+      HirInlineKind::Ref { .. } => {
+        out.push(InlineNode::Text(state.ref_display(ctx.style, state.ref_target(inline.id)), parent_style));
+      },
+      HirInlineKind::Cite { .. } => out.extend(generated_toc_title(state.citation_display(inline.id), parent_style)),
+      HirInlineKind::LineBreak => out.push(InlineNode::Text(" ".to_string(), parent_style)),
+      HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } | HirInlineKind::NoIndent => {},
+    }
+  }
+  return merge_adjacent_text(out);
+}
+
+/// 引用の表示（CSL 整形の生成物）を、目次の行に組む写しへ lower する（内部リンクは子だけを組む）
+fn generated_toc_title(inlines: &[GeneratedInline], parent_style: TextStyle) -> Vec<InlineNode> {
+  let mut out = Vec::new();
+  for inline in inlines {
+    match inline {
+      GeneratedInline::Text(text) => out.push(InlineNode::Text(text.clone(), parent_style)),
+      GeneratedInline::Styled { font, children } => {
+        out.extend(generated_toc_title(children, inline::styled(parent_style, *font)));
+      },
+      GeneratedInline::InternalLink { children, .. } => out.extend(generated_toc_title(children, parent_style)),
+    }
+  }
+  return out;
+}
+
+/// 目次の行に組む「番号 題目」を作る（結び方は [`crate::typeset::lowering::HeadingRecord::label`] と同じ）
+fn toc_label(number: &str, title: Vec<InlineNode>, style: TextStyle) -> Vec<InlineNode> {
+  if number.is_empty() {
+    return title;
+  }
+  if title.is_empty() {
+    return vec![InlineNode::Text(number.to_string(), style)];
+  }
+  let mut label = vec![InlineNode::Text(format!("{number} "), style)];
+  label.extend(title);
+  return merge_adjacent_text(label);
+}
+
+/// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり用）
 ///
 /// `GeneratedInline` 側のプレーンテキスト畳み込み（`semantics` の `generated_inlines_to_plain_text`）と
 /// 同じ規則を保つ。
@@ -80,7 +168,9 @@ pub(super) fn lower_hir_heading(
     .counter_value(id)
     .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
   let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
-  state.record_heading_title(id, plain);
+  let entry_style = toc_entry_style(ctx.style);
+  let toc = toc_label(&number, toc_title(ctx, &heading.title, entry_style, &*state), entry_style);
+  state.record_heading_title(id, plain, toc);
   let style = title_style(ctx, heading.level);
   return lower_heading(
     ctx,
@@ -154,13 +244,15 @@ pub(super) fn lower_heading(
 mod tests {
   use super::*;
   use crate::{
+    color::Color,
     document::{TextAlignment, Typeface},
+    semantics::{CitationId, GeneratedInline},
     style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::{
-        lower_sources_with_headings,
-        test_support::{analyzed, context, inlines, lower, paragraph_layout},
+        HeadingRecord, lower_sources_with_headings,
+        test_support::{analyzed, context, inline_text, inlines, lower, paragraph_layout},
       },
     },
   };
@@ -419,5 +511,137 @@ mod tests {
       lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert_eq!(heading_alignment(&nodes), Some(TextAlignment::Right));
+  }
+
+  /// `.sei` ソースを lower した見出しの記録
+  fn heading_records(style: &ReadStyle, source: &str) -> Vec<HeadingRecord> {
+    let (_layout, headings) = lower_sources_with_headings(&context(style), &analyzed(source));
+    return headings;
+  }
+
+  /// インライン列を、リンクの子と脚注の本体まで降りて文書順に並べる
+  fn flatten(nodes: &[InlineNode]) -> Vec<&InlineNode> {
+    let mut out = Vec::new();
+    for node in nodes {
+      out.push(node);
+      match node {
+        InlineNode::Link { children, .. } => out.extend(flatten(children)),
+        InlineNode::Footnote { body, .. } => out.extend(flatten(body)),
+        _ => {},
+      }
+    }
+    return out;
+  }
+
+  /// 列の `Text` の（文字列, スタイル）を文書順に集める
+  fn texts(nodes: &[InlineNode]) -> Vec<(&str, TextStyle)> {
+    return flatten(nodes).into_iter().filter_map(inline_text).collect();
+  }
+
+  #[test]
+  fn toc_label_keeps_inline_math() {
+    let headings = heading_records(&ReadStyle::default(), "\\section{$E=mc^{2}$ の導出}\n");
+
+    let number = format!("{} ", headings[0].number);
+    assert!(
+      matches!(headings[0].toc_label.as_slice(), [InlineNode::Text(n, _), InlineNode::Math(_), InlineNode::Text(rest, _)] if *n == number && rest == " の導出"),
+      "{:?}",
+      headings[0].toc_label
+    );
+    assert!(texts(&headings[0].toc_label).iter().all(|(t, _)| return !t.contains("[Math]")));
+  }
+
+  #[test]
+  fn toc_label_layers_decoration_over_toc_style() {
+    let mut style = ReadStyle::default();
+    style.heading.section.typeface = Typeface::SansSerif;
+    style.toc.font_size = Length::pt(11.0);
+
+    let headings = heading_records(&style, "\\section{A \\bold{B} \\color[color=#ff0000]{C}}\n");
+
+    let texts = texts(&headings[0].toc_label);
+    let style_of = |needle: &str| {
+      return texts.iter().find(|(t, _)| return t.contains(needle)).map(|(_, s)| return *s).expect("字があるはず");
+    };
+    assert_eq!(style_of("A"), toc_entry_style(&style), "外側は目次の行の書体（見出しの SansSerif を継がない）");
+    assert_eq!(style_of("B").typeface, Typeface::SerifBold);
+    assert_eq!(style_of("B").font_size, Length::pt(11.0));
+    assert_eq!(style_of("C").color, Some(Color::new(0xff, 0x00, 0x00)));
+    assert_eq!(style_of("C").typeface, Typeface::Serif);
+  }
+
+  #[test]
+  fn toc_label_has_no_links() {
+    let blue = Color::new(0x00, 0x00, 0xff);
+    let mut style = ReadStyle::default();
+    style.hyperref.link_color = Some(blue);
+    style.hyperref.url_color = Some(blue);
+    style.hyperref.cite_color = Some(blue);
+    let analyzed = analyzed(
+      "\\chapter[label=ch:a]{A}\n\n\\section{\\ref{ch:a} \\href{https://example.com}{リンク} \\cite{kwan2014}}\n",
+    );
+    let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
+    let document = analyzed.with_generated_citations_for_test(
+      vec![(
+        site,
+        vec![GeneratedInline::InternalLink {
+          target: CitationId::new("kwan2014"),
+          children: vec![GeneratedInline::Text("[1]".to_string())],
+        }],
+      )],
+      None,
+    );
+
+    let (_layout, headings) = lower_sources_with_headings(&context(&style), &document);
+
+    let label = &headings[1].toc_label;
+    assert!(!flatten(label).iter().any(|n| matches!(n, InlineNode::Link { .. })), "{label:?}");
+    let joined: String = texts(label).iter().map(|(t, _)| return *t).collect();
+    for expected in ["Chapter 1", "リンク", "[1]"] {
+      assert!(joined.contains(expected), "{expected} を含むはず: {joined}");
+    }
+    assert!(texts(label).iter().all(|(_, s)| return s.color.is_none()), "リンク色を付けない: {label:?}");
+  }
+
+  #[test]
+  fn toc_label_does_not_consume_footnote_numbers() {
+    let style = ReadStyle::default();
+    let document = analyzed("\\section{A\\footnote{x}}\n\n本文\\footnote{y}\n");
+
+    let (layout, headings) = lower_sources_with_headings(&context(&style), &document);
+
+    assert!(
+      !flatten(&headings[0].toc_label)
+        .iter()
+        .any(|n| matches!(n, InlineNode::Footnote { .. } | InlineNode::Raise { .. })),
+      "{:?}",
+      headings[0].toc_label
+    );
+    assert_eq!(footnotes(inlines(&layout)), vec![(2, 1)], "本文の脚注は見出しの脚注の次: {layout:?}");
+  }
+
+  #[test]
+  fn toc_label_turns_line_break_into_space() {
+    let headings = heading_records(&ReadStyle::default(), "\\section{A\\\\B}\n");
+
+    let expected = format!("{} A B", headings[0].number);
+    assert!(
+      matches!(headings[0].toc_label.as_slice(), [InlineNode::Text(t, _)] if *t == expected),
+      "{:?}",
+      headings[0].toc_label
+    );
+  }
+
+  #[test]
+  fn toc_label_joins_like_the_plain_label() {
+    let style = toc_entry_style(&ReadStyle::default());
+    let title = || return vec![InlineNode::Text("T".to_string(), style)];
+    let text_of = |nodes: Vec<InlineNode>| -> Vec<String> {
+      return nodes.iter().filter_map(inline_text).map(|(t, _)| return t.to_string()).collect();
+    };
+
+    assert_eq!(text_of(toc_label("", title(), style)), vec!["T"]);
+    assert_eq!(text_of(toc_label("1", Vec::new(), style)), vec!["1"]);
+    assert_eq!(text_of(toc_label("1", title(), style)), vec!["1 T"]);
   }
 }

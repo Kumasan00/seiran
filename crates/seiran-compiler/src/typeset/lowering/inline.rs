@@ -9,7 +9,7 @@ use crate::{
     boxes::{AnchorId, FootnoteId, IndexTerm, LinkTarget},
     lowering::{
       LoweringContext, LoweringState, code, generated,
-      layout_node::{InlineNode, TextStyle},
+      layout_node::{InlineNode, QuantityPiece, TextStyle},
       math::lower_inline_math,
       quantity,
     },
@@ -42,24 +42,10 @@ pub(super) fn lower_inline(
       return vec![InlineNode::Text(text.clone(), parent_style)];
     },
     HirInlineKind::Styled { font, children } => {
-      let styled = TextStyle {
-        font_size: parent_style.font_size,
-        typeface: *font,
-        color: parent_style.color,
-        script_level: None,
-        math_operator: None,
-      };
-      return lower_inlines(ctx, children, styled, state);
+      return lower_inlines(ctx, children, styled(parent_style, *font), state);
     },
     HirInlineKind::Colored { color, children } => {
-      let colored = TextStyle {
-        font_size: parent_style.font_size,
-        typeface: parent_style.typeface,
-        color: Some(*color),
-        script_level: None,
-        math_operator: None,
-      };
-      return lower_inlines(ctx, children, colored, state);
+      return lower_inlines(ctx, children, colored(parent_style, *color), state);
     },
     HirInlineKind::Code(text) => {
       return code::lower_inline_code(text, parent_style);
@@ -70,33 +56,26 @@ pub(super) fn lower_inline(
     HirInlineKind::Symbol(ch) => {
       return vec![InlineNode::Text(ch.to_string(), parent_style)];
     },
-    // 書体は外側（装飾・見出し）を継がず `[quantity].typeface`。大きさと色は外側のもの
     HirInlineKind::Number(numeral) => {
-      return vec![InlineNode::Quantity {
-        pieces: quantity::number_pieces(numeral, &ctx.style.quantity),
-        style: TextStyle {
-          typeface: ctx.style.quantity.typeface,
-          ..parent_style
-        },
-      }];
+      return vec![quantity_node(
+        ctx,
+        quantity::number_pieces(numeral, &ctx.style.quantity),
+        parent_style,
+      )];
     },
     HirInlineKind::Unit(factors) => {
-      return vec![InlineNode::Quantity {
-        pieces: quantity::unit_pieces(factors, &ctx.style.quantity),
-        style: TextStyle {
-          typeface: ctx.style.quantity.typeface,
-          ..parent_style
-        },
-      }];
+      return vec![quantity_node(
+        ctx,
+        quantity::unit_pieces(factors, &ctx.style.quantity),
+        parent_style,
+      )];
     },
     HirInlineKind::Quantity { numeral, unit } => {
-      return vec![InlineNode::Quantity {
-        pieces: quantity::quantity_pieces(numeral, unit, &ctx.style.quantity),
-        style: TextStyle {
-          typeface: ctx.style.quantity.typeface,
-          ..parent_style
-        },
-      }];
+      return vec![quantity_node(
+        ctx,
+        quantity::quantity_pieces(numeral, unit, &ctx.style.quantity),
+        parent_style,
+      )];
     },
     HirInlineKind::LineBreak => {
       return vec![InlineNode::LineBreak];
@@ -175,6 +154,45 @@ pub(super) fn lower_inline(
       ];
     },
   }
+}
+
+/// 外側のスタイルの書体だけを `font` に替えたスタイル（装飾コマンドの中身）を返す
+pub(super) fn styled(parent_style: TextStyle, font: Typeface) -> TextStyle {
+  return TextStyle {
+    font_size: parent_style.font_size,
+    typeface: font,
+    color: parent_style.color,
+    script_level: None,
+    math_operator: None,
+  };
+}
+
+/// 外側のスタイルの色だけを `color` に替えたスタイル（`\color` の中身）を返す
+pub(super) fn colored(parent_style: TextStyle, color: Color) -> TextStyle {
+  return TextStyle {
+    font_size: parent_style.font_size,
+    typeface: parent_style.typeface,
+    color: Some(color),
+    script_level: None,
+    math_operator: None,
+  };
+}
+
+/// 数値・単位・量の部品列を閉じた箱のノードにする
+///
+/// 書体は外側（装飾・見出し）を継がず `[quantity].typeface`。大きさと色は外側のもの。
+pub(super) fn quantity_node(
+  ctx: &LoweringContext<'_>,
+  pieces: Vec<QuantityPiece>,
+  parent_style: TextStyle,
+) -> InlineNode {
+  return InlineNode::Quantity {
+    pieces,
+    style: TextStyle {
+      typeface: ctx.style.quantity.typeface,
+      ..parent_style
+    },
+  };
 }
 
 /// 出現 index の脚注に振る表示番号を返す

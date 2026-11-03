@@ -5,7 +5,7 @@ use std::mem;
 use tracing::debug;
 
 use crate::{
-  document::{HeadingLevel, NodeId, Typeface},
+  document::{HeadingLevel, NodeId},
   length::Length,
   semantics::HeadingKey,
   style::{Style, TocStyle},
@@ -14,7 +14,7 @@ use crate::{
     boxing::{LineAccum, Shaper, compose_left_line, inline_atom, row_width},
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
-    lowering::{HeadingRecord, InlineNode, TextStyle},
+    lowering::{HeadingRecord, InlineNode, TextStyle, toc_entry_style},
     pagination::{
       context::{BodyPageFacts, TypesetContext},
       page_values::BodyPageValues,
@@ -60,7 +60,7 @@ struct TocEntry {
   origin: Option<NodeId>,
   /// 見出しレベル（インデントの深さに使う）
   level: HeadingLevel,
-  /// 表示する「番号 タイトル」のインライン列
+  /// 表示する「番号 タイトル」のインライン列（[`HeadingRecord::toc_label`]）
   label: Vec<InlineNode>,
   /// 表示するページ番号ラベル
   page_label: String,
@@ -74,7 +74,7 @@ struct TocEntry {
 #[must_use]
 pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Block> {
   let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
-  let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc, spec.entry_style);
+  let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
   let toc_entry_count = entries.len();
   let blocks = compose_blocks(&spec, entries, ctx.fonts, &ctx.glyph_issues);
   if !blocks.is_empty() {
@@ -86,12 +86,7 @@ pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) 
 /// 見出しと本文内ページ序数から目次エントリを組み立てる。
 ///
 /// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
-fn collect_toc_entries(
-  headings: &[HeadingRecord],
-  page_values: &BodyPageValues,
-  toc: &TocStyle,
-  entry_style: TextStyle,
-) -> Vec<TocEntry> {
+fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntry> {
   let heading_pages = page_values.heading_pages();
   if headings.len() != heading_pages.len() {
     unreachable!(
@@ -109,7 +104,7 @@ fn collect_toc_entries(
       return TocEntry {
         origin: info.node,
         level: info.level,
-        label: vec![InlineNode::Text(info.label(), entry_style)],
+        label: info.toc_label.clone(),
         page_label: page_values.body_page_label(page_ordinal),
         link_key: HeadingKey::new(info.index),
       };
@@ -135,13 +130,7 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
     },
     title_bottom_margin: title_heading.bottom_margin,
     title_align: Align::from(title_heading.alignment.unwrap_or(style.text.alignment)),
-    entry_style: TextStyle {
-      font_size: toc.font_size,
-      typeface: Typeface::Serif,
-      color: None,
-      script_level: None,
-      math_operator: None,
-    },
+    entry_style: toc_entry_style(style),
     indent_per_level: toc.indent_per_level,
     entry_align: Align::from(toc.alignment),
     leader: toc.leader.clone(),
@@ -255,7 +244,7 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, HeadingRecord, InlineNode, build_toc_spec, collect_toc_entries};
+  use super::{BodyPageValues, HeadingRecord, InlineNode, build_toc_spec, collect_toc_entries, toc_entry_style};
   use crate::{
     document::{HeadingLevel, TextAlignment, Typeface},
     length::Length,
@@ -271,6 +260,10 @@ mod tests {
       level,
       number: number.to_string(),
       title_plain: title_plain.to_string(),
+      toc_label: vec![InlineNode::Text(
+        format!("{number} {title_plain}"),
+        toc_entry_style(&Style::default()),
+      )],
     };
   }
 
@@ -357,12 +350,7 @@ mod tests {
       ..TocStyle::default()
     };
 
-    let entries = collect_toc_entries(
-      &headings,
-      &page_values,
-      &toc,
-      build_toc_spec(&Style::default(), Length::pt(300.0)).entry_style,
-    );
+    let entries = collect_toc_entries(&headings, &page_values, &toc);
 
     assert_eq!(entries.len(), 2);
     assert!(
