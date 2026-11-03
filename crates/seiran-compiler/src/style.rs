@@ -42,7 +42,10 @@ pub(crate) use crate::style::{
   footnote::{FootnoteNumbering, FootnoteStyle},
   math::NumberSide,
   page_numbering::PageNumberingStyle,
-  quantity::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct},
+  quantity::{
+    DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, NumberUnitSeparator, QuantityStyle,
+    UnitProduct,
+  },
   running::RunningContentStyle,
   template::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
