@@ -293,6 +293,8 @@ const GOLDEN_INPUTS: &[&str] = &[
   "num",
   "num_text_typeface",
   "pagebreak",
+  "qty",
+  "qty_text_typeface",
   "quote",
   "ref",
   "split",
