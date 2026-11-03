@@ -288,6 +288,70 @@ pub(crate) enum EvalError {
     label: String,
   },
 
+  /// `\unit` の因子が単位の語彙に無い場合
+  #[error("未知の単位です: {symbol}")]
+  #[diagnostic(
+    code(frontend::eval::unknown_unit),
+    help(
+      "\\unit が受け付けるのは SI 文書（第 9 版）の単位記号・接頭辞と % で、2 つの単位は `.` で区切ります（例: \\unit{{km.s^{{-1}}}}、\\unit{{N.m}}）。μ・Ω・°・′・″ は \\mu・\\Omega・\\degree・\\prime・\\doubleprime でも書けます"
+    )
+  )]
+  UnknownUnit {
+    /// 因子の記号（指数を除く）の位置
+    #[label("この単位は語彙にありません")]
+    span: SourceSpan,
+    /// 因子の記号（書いたまま）
+    symbol: String,
+  },
+
+  /// `\unit` の因子が、接頭辞を付けられない単位に接頭辞を付けている場合
+  #[error("単位 {unit} には接頭辞 {prefix} を付けられません")]
+  #[diagnostic(
+    code(frontend::eval::unit_prefix_not_allowed),
+    help(
+      "接頭辞を付けられるのは SI 単位（°C を含む）と L・l・t・eV・Da・Np・B だけです。min・h・d・au・°・′・″・ha・% には付けられません"
+    )
+  )]
+  UnitPrefixNotAllowed {
+    /// 因子の記号（指数を除く）の位置
+    #[label("接頭辞 {prefix} と単位 {unit} と読めます")]
+    span: SourceSpan,
+    /// 接頭辞（NFC にした綴り）
+    prefix: String,
+    /// 単位（NFC にした綴り）
+    unit: String,
+  },
+
+  /// `\unit` の因子の指数が整数の書き方に合わない場合
+  #[error("単位の指数が正しくありません")]
+  #[diagnostic(
+    code(frontend::eval::invalid_unit_exponent),
+    help(
+      "指数は `^{{n}}` の形で、n は 0 で始まらない整数（負なら前に `-`）です（例: \\unit{{m^{{2}}}}、\\unit{{s^{{-1}}}}）。1・0・+・分数・U+2212 は書けません"
+    )
+  )]
+  InvalidUnitExponent {
+    /// 指数のグループ `{...}` の位置
+    #[label("この指数は書けません")]
+    span: SourceSpan,
+  },
+
+  /// `\unit` の引数が単位の式の文法に合わない場合（最初に外れた位置の 1 件だけ）
+  #[error("単位の書き方が正しくありません")]
+  #[diagnostic(
+    code(frontend::eval::invalid_unit_syntax),
+    help(
+      "\\unit の引数は単位の記号を `.` で区切って並べ、指数は `^{{n}}` で付けます（空白は書けません）。分母は負の指数で書き（例: \\unit{{m.s^{{-1}}}}）、`/` で組むかは style.toml の [quantity].negative_exponent が決めます"
+    )
+  )]
+  InvalidUnitSyntax {
+    /// 文法から外れた位置（空の引数なら引数全体）
+    #[label("{label}")]
+    span: SourceSpan,
+    /// ラベルの文言（外れ方で変わる）
+    label: String,
+  },
+
   /// 数式で、結合文字の付く字が無い場合（空白・改行の直後の結合文字）
   #[error("数式の結合文字に、付く字がありません")]
   #[diagnostic(

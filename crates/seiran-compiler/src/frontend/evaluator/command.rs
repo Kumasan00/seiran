@@ -13,6 +13,7 @@ pub(super) mod number;
 mod ref_;
 pub(super) mod symbol;
 mod text_style;
+pub(super) mod unit;
 
 use phf::phf_map;
 
@@ -123,6 +124,8 @@ enum CommandKind {
   PageBreak,
   /// `\num{数値}` — 数値（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Number,
+  /// `\unit{単位}` — 単位（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
+  Unit,
 }
 
 impl CommandKind {
@@ -185,6 +188,11 @@ impl CommandKind {
         return number::numeral(view)
           .map(|numeral| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Number(numeral))));
       },
+
+      Self::Unit => {
+        return unit::unit_factors(view)
+          .map(|factors| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Unit(factors))));
+      },
     }
   }
 
@@ -199,7 +207,7 @@ impl CommandKind {
       Self::Code | Self::Url => &[ArgMode::Verbatim],
       Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
       Self::Cite => &[ArgMode::CommaList],
-      Self::Number => &[ArgMode::Math],
+      Self::Number | Self::Unit => &[ArgMode::Math],
       Self::Space
       | Self::Heading(_)
       | Self::StyledText(_)
@@ -213,15 +221,20 @@ impl CommandKind {
   }
 }
 
-/// 単一文字コマンド（`\alpha` 等）を検証して `HirInlineKind::Symbol` を生成する共通処理
+/// 記号コマンド（`\alpha` 等）なら、任意引数・必須引数が無いことを確かめてその字を返す（記号表に無い名前は `None`）
+///
+/// 本文・数式内の文章（`\text`）の引数・単位（`\unit`）の引数で、記号コマンドを字にするときに共有する。
 ///
 /// # Errors
 ///
-/// 任意引数や必須引数が指定されている場合にエラーを返します
-fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Result<HirInline, EvalError> {
+/// 記号コマンドに任意引数か必須引数があるときのエラーを返す。
+pub(super) fn symbol_char(view: &CommandView<'_>) -> Result<Option<char>, EvalError> {
+  let Some(symbol) = symbol::lookup(view.name()) else {
+    return Ok(None);
+  };
   opt_args::no_command_opt_args(view)?;
   arity::no_command_args(view)?;
-  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch)));
+  return Ok(Some(symbol.ch));
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
@@ -245,6 +258,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
   "href" => CommandKind::Href,
 
   "num" => CommandKind::Number,
+  "unit" => CommandKind::Unit,
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）
@@ -304,8 +318,8 @@ pub(super) fn evaluate_command(
   if let Some(command_kind) = COMMANDS.get(view.name()).copied() {
     return command_kind.execute(view, ctx, placement);
   }
-  if let Some(symbol) = symbol::lookup(view.name()) {
-    return single_char(view, ctx, symbol.ch).map(CommandResult::Inline);
+  if let Some(ch) = symbol_char(view)? {
+    return Ok(CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch))));
   }
   // 記号コマンドは上で字として引けているので、ここで当たる数式の語彙は数式の中でしか意味を持たない
   if math::lookup_math_arg_count(view.name()).is_some() {
@@ -348,10 +362,55 @@ mod tests {
   use proptest::prelude::*;
 
   use super::*;
-  use crate::frontend::{evaluator, evaluator::test_support};
+  use crate::{
+    document::{HirMathKind, HirNodeKind, MathClass},
+    frontend::{evaluator, evaluator::test_support},
+  };
 
   #[test]
-  fn single_char_rejects_unknown_opt_arg_key() {
+  fn degree_in_text_is_the_degree_sign() {
+    let arena = Bump::new();
+    let source = r"30\degree C";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let nodes = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // 引数の無いコマンドの直後の空白は名前の終端なので、`\degree C` は `°C` と続けて組む
+    let HirNodeKind::Paragraph(inlines) = &nodes[0].kind else {
+      panic!("段落が期待されます: {nodes:?}");
+    };
+    let kinds: Vec<&HirInlineKind> = inlines.iter().map(|inline| return &inline.kind).collect();
+    assert!(
+      matches!(
+        kinds.as_slice(),
+        [HirInlineKind::Text(a), HirInlineKind::Symbol('\u{00B0}'), HirInlineKind::Text(c)] if a == "30" && c == "C"
+      ),
+      "{kinds:?}"
+    );
+  }
+
+  #[test]
+  fn degree_in_math_is_an_ord_symbol() {
+    let arena = Bump::new();
+    let source = r"$\degree$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let nodes = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    let HirNodeKind::Paragraph(inlines) = &nodes[0].kind else {
+      panic!("段落が期待されます: {nodes:?}");
+    };
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("インライン数式が期待されます: {inlines:?}");
+    };
+    assert!(
+      matches!(&math[0].kind, HirMathKind::Symbol { text, class: MathClass::Ord } if text == "\u{00B0}"),
+      "{math:?}"
+    );
+  }
+
+  #[test]
+  fn symbol_command_rejects_unknown_opt_arg_key() {
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
     let cst = test_support::parse_cst(source, &arena).unwrap();
@@ -368,6 +427,7 @@ mod tests {
     assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
     assert_eq!(CommandKind::Cite.arg_modes(), &[ArgMode::CommaList]);
     assert_eq!(CommandKind::Number.arg_modes(), &[ArgMode::Math]);
+    assert_eq!(CommandKind::Unit.arg_modes(), &[ArgMode::Math]);
     assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 
@@ -497,6 +557,10 @@ mod tests {
               | EvalError::ExtraCommandArgument { .. }
               | EvalError::InvalidCommandArgument { .. }
               | EvalError::InvalidNumber { .. }
+              | EvalError::UnknownUnit { .. }
+              | EvalError::UnitPrefixNotAllowed { .. }
+              | EvalError::InvalidUnitExponent { .. }
+              | EvalError::InvalidUnitSyntax { .. }
               | EvalError::UnknownOptArgKey { .. }
               | EvalError::IndexNotAllowedHere { .. }
               | EvalError::ParagraphBreakInArgument { .. }

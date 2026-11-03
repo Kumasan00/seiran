@@ -312,6 +312,9 @@ const GOLDEN_INPUTS: &[&str] = &[
   "title_page",
   "toc",
   "toc_center",
+  "unit",
+  "unit_slash_dot",
+  "unit_text_typeface",
   "yakumono",
 ];
 

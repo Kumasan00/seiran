@@ -29,15 +29,15 @@ mod title_page;
 use std::mem;
 
 pub(super) use layout_node::{
-  DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator, NumberPiece,
-  ParagraphLayout, TableColumn, TableLayout, TableRowLayout, TextStyle,
+  DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
+  ParagraphLayout, QuantityPiece, TableColumn, TableLayout, TableRowLayout, TextStyle,
 };
 pub(super) use math::{
   CASES_DELIMITERS, delimiter_glyphs, math_text_clusters, matrix_delimiter_glyphs, translate_math_char,
 };
 #[cfg(test)]
 pub(super) use math::{char_class, char_fence};
-pub(super) use quantity::number_pieces;
+pub(super) use quantity::{number_pieces, unit_pieces};
 pub(super) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
 

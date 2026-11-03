@@ -1,4 +1,4 @@
-//! 数値（`\num`）の箱 — style の書式の部品（[`NumberPiece`]）を並べた閉じた 1 個の箱
+//! 数値・単位（`\num` / `\unit`）の箱 — style の書式の部品（[`QuantityPiece`]）を並べた閉じた 1 個の箱
 //!
 //! 本文・数式のどちらでも同じ組み方をする。上付き（指数）の縮小率と位置は書く場所ではなく書体で決まる: 数式フォント
 //! （`Typeface::Math`）なら OpenType MATH の `ScriptPercentScaleDown` と `SuperscriptShiftUp`、本文用の枠ならその枠の
@@ -19,49 +19,49 @@ use crate::{
       script::{self, ScriptCategory},
     },
     font::ScriptLevel,
-    lowering::{NumberPiece, TextStyle},
+    lowering::{QuantityPiece, TextStyle},
   },
 };
 
-/// 書体 `typeface` の数値を組む枠（数値は ASCII の数字・記号なので、欧文の字が振り分けられる枠）
-pub(in crate::typeset) fn number_font_type(typeface: Typeface) -> FontType {
+/// 書体 `typeface` の数値・単位を組む枠（数字・単位の記号を欧文の字として振り分ける枠。第 1 候補に無い字は代替フォントで組む）
+pub(in crate::typeset) fn quantity_font_type(typeface: Typeface) -> FontType {
   return script::resolve_font_type(typeface, ScriptCategory::Latin);
 }
 
 impl Measurer<'_> {
-  /// 数値の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
-  pub(super) fn push_number(&mut self, pieces: &[NumberPiece], style: TextStyle, out: &mut HList) {
-    let number = self.number_box(pieces, style);
+  /// 数量の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
+  pub(super) fn push_quantity(&mut self, pieces: &[QuantityPiece], style: TextStyle, out: &mut HList) {
+    let quantity = self.quantity_box(pieces, style);
     let edge = if self.punctuation_spacing {
       Edge::text(BOX_EDGE_CHAR, ScriptCategory::Latin, style.font_size)
     } else {
       Edge::letter(BOX_EDGE_CHAR)
     };
-    out.push(edge, vec![HItem::Box(number)], edge);
+    out.push(edge, vec![HItem::Box(quantity)], edge);
   }
 
   /// 部品 `pieces` を基準のスタイル `style` で左から並べた閉じた箱にする
-  pub(super) fn number_box(&mut self, pieces: &[NumberPiece], style: TextStyle) -> HBox {
+  pub(super) fn quantity_box(&mut self, pieces: &[QuantityPiece], style: TextStyle) -> HBox {
     let mut placed = Vec::new();
     let mut dx = Length::ZERO;
     for piece in pieces {
       match piece {
-        NumberPiece::Text(text) => self.place_number_text(text, style, Length::ZERO, &mut dx, &mut placed),
-        NumberPiece::Space(space) => dx += math::space_width(*space, style.font_size),
-        NumberPiece::Superscript(text) => {
-          let (superscript, raise) = self.number_superscript(style);
-          self.place_number_text(text, superscript, raise, &mut dx, &mut placed);
+        QuantityPiece::Text(text) => self.place_quantity_text(text, style, Length::ZERO, &mut dx, &mut placed),
+        QuantityPiece::Space(space) => dx += math::space_width(*space, style.font_size),
+        QuantityPiece::Superscript(text) => {
+          let (superscript, raise) = self.quantity_superscript(style);
+          self.place_quantity_text(text, superscript, raise, &mut dx, &mut placed);
         },
       }
     }
-    let mut number = HBox::atom(placed);
+    let mut quantity = HBox::atom(placed);
     // 送り幅は置いた子の右端ではなく送りの和（`text_box` と同じ）
-    number.width = dx;
-    return number;
+    quantity.width = dx;
+    return quantity;
   }
 
   /// 字 `text` を `style` で組み、ベースラインから `dy` 持ち上げて `dx` の位置に置く
-  fn place_number_text(
+  fn place_quantity_text(
     &mut self,
     text: &str,
     style: TextStyle,
@@ -76,8 +76,8 @@ impl Measurer<'_> {
     }
   }
 
-  /// 基準のスタイル `style` の数値の上付きの（スタイル, 持ち上げ）
-  fn number_superscript(&self, style: TextStyle) -> (TextStyle, Length) {
+  /// 基準のスタイル `style` の数値・単位の上付きの（スタイル, 持ち上げ）
+  fn quantity_superscript(&self, style: TextStyle) -> (TextStyle, Length) {
     if style.typeface == Typeface::Math {
       let superscript = TextStyle {
         font_size: self.shaper.script_scale().font_size(style.font_size, Some(ScriptLevel::Script)),
@@ -86,9 +86,9 @@ impl Measurer<'_> {
       };
       return (superscript, self.shaper.math_constant(MathConstant::SuperscriptShiftUp, style.font_size));
     }
-    let face = FontFace::primary(number_font_type(style.typeface));
+    let face = FontFace::primary(quantity_font_type(style.typeface));
     let metrics = self.shaper.superscript_metrics(face).expect(
-      "lay_out は quantity_check で、本文用の枠で指数を組む数値があればその枠の上付きの指標を確かめてから組版に進む",
+      "lay_out は quantity_check で、本文用の枠で上付きを組む数値・単位があればその枠の上付きの指標を確かめてから組版に進む",
     );
     let superscript = TextStyle {
       font_size: style.font_size * metrics.size,
@@ -111,7 +111,7 @@ mod tests {
       boxing::{Measurer, Shaper, hlist::HList, ja_latin_aki},
       font::{FontSystem, ScriptLevel},
       glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
-      lowering::{InlineNode, NumberPiece, TextStyle},
+      lowering::{InlineNode, QuantityPiece, TextStyle},
       test_support,
     },
   };
@@ -139,7 +139,7 @@ mod tests {
   }
 
   /// 字の部品
-  fn text(s: &str) -> NumberPiece { return NumberPiece::Text(s.to_string()); }
+  fn text(s: &str) -> QuantityPiece { return QuantityPiece::Text(s.to_string()); }
 
   /// インライン列を `punctuation_spacing` のもとで水平リストへ積んだアイテム列
   fn items(fonts: &FontSystem, nodes: Vec<InlineNode>, punctuation_spacing: bool) -> Vec<HItem> {
@@ -154,11 +154,11 @@ mod tests {
   }
 
   /// 部品列を書体 `typeface` で箱にする
-  fn number_box(fonts: &FontSystem, pieces: &[NumberPiece], typeface: Typeface) -> HBox {
+  fn quantity_box(fonts: &FontSystem, pieces: &[QuantityPiece], typeface: Typeface) -> HBox {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
     let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, true);
-    return measurer.number_box(pieces, style(typeface));
+    return measurer.quantity_box(pieces, style(typeface));
   }
 
   /// 閉じた箱の子（置いた箱）
@@ -182,13 +182,13 @@ mod tests {
     let fonts = fonts();
     let pieces = vec![
       text("12"),
-      NumberPiece::Space(MathSpace::Thin),
+      QuantityPiece::Space(MathSpace::Thin),
       text("345678901234567890"),
     ];
 
     let found = items(
       &fonts,
-      vec![InlineNode::Number {
+      vec![InlineNode::Quantity {
         pieces,
         style: style(Typeface::Math),
       }],
@@ -207,7 +207,7 @@ mod tests {
     let nodes = || {
       return vec![
         InlineNode::Text("長さ".to_string(), style(Typeface::Serif)),
-        InlineNode::Number {
+        InlineNode::Quantity {
           pieces: vec![text("3")],
           style: style(Typeface::Math),
         },
@@ -216,20 +216,20 @@ mod tests {
     };
     let aki = ja_latin_aki(SIZE).natural;
     let is_aki = |item: &HItem| return matches!(item, HItem::Glue { natural, .. } if *natural == aki);
-    let around_number = |found: &[HItem]| {
+    let around_quantity = |found: &[HItem]| {
       let at = found
         .iter()
         .position(|item| return matches!(item, HItem::Box(hbox) if matches!(hbox.content, HBoxContent::Atom(_))))
-        .expect("数値の箱があるはず");
+        .expect("数量の箱があるはず");
       return (found[at - 1].clone(), found[at + 1].clone());
     };
 
     let spaced = items(&fonts, nodes(), true);
     let unspaced = items(&fonts, nodes(), false);
 
-    let (before, after) = around_number(&spaced);
+    let (before, after) = around_quantity(&spaced);
     assert!(is_aki(&before) && is_aki(&after), "{spaced:?}");
-    let (before, after) = around_number(&unspaced);
+    let (before, after) = around_quantity(&unspaced);
     assert!(!matches!(before, HItem::Glue { .. }) && !matches!(after, HItem::Glue { .. }), "{unspaced:?}");
   }
 
@@ -237,7 +237,15 @@ mod tests {
   fn thin_separator_is_three_mu() {
     let fonts = fonts();
 
-    let hbox = number_box(&fonts, &[text("12"), NumberPiece::Space(MathSpace::Thin), text("345")], Typeface::Math);
+    let hbox = quantity_box(
+      &fonts,
+      &[
+        text("12"),
+        QuantityPiece::Space(MathSpace::Thin),
+        text("345"),
+      ],
+      Typeface::Math,
+    );
 
     let placed = children(&hbox);
     assert_eq!(placed[1].dx - (placed[0].dx + placed[0].hbox.width), (SIZE * 3) / 18.0f64);
@@ -250,7 +258,7 @@ mod tests {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(&fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
 
-    let hbox = number_box(&fonts, &[text("10"), NumberPiece::Superscript("3".to_string())], Typeface::Math);
+    let hbox = quantity_box(&fonts, &[text("10"), QuantityPiece::Superscript("3".to_string())], Typeface::Math);
 
     let exponent = children(&hbox).last().expect("指数の箱があるはず");
     assert_eq!(exponent.dy, shaper.math_constant(MathConstant::SuperscriptShiftUp, SIZE));
@@ -264,7 +272,7 @@ mod tests {
       .superscript_metrics(FontFace::primary(FontType::Serif))
       .expect("STIX Two Text は OS/2 の上付き指標を持つ");
 
-    let hbox = number_box(&fonts, &[text("10"), NumberPiece::Superscript("3".to_string())], Typeface::Serif);
+    let hbox = quantity_box(&fonts, &[text("10"), QuantityPiece::Superscript("3".to_string())], Typeface::Serif);
 
     let exponent = children(&hbox).last().expect("指数の箱があるはず");
     assert_eq!(exponent.dy, SIZE * metrics.offset);

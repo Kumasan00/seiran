@@ -16,7 +16,7 @@
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
-//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`quantity` は数値（`\num`）の閉じた箱を本文・数式の
+//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`quantity` は数値・単位（`\num` / `\unit`）の閉じた箱を本文・数式の
 //! 両方へ組む `Measurer` の `impl`。`table`（表エンジン — 列幅の決定・セルの組版と計測・
 //! `auto` 以外の列のセルの折り返し・行断片の生成）も `Measurer` の `impl` を続け、セルの折り返しには
 //! [`BlockBuildInputs::breaker`]（本文の段落と同じ行分割器）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
@@ -43,7 +43,7 @@ pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
 use hlist::HList;
 use hyphenation::Lang;
 pub(super) use math::{FENCE_DIVIDER, RADICAL_SIGN};
-pub(super) use quantity::number_font_type;
+pub(super) use quantity::quantity_font_type;
 pub(super) use script::char_font_type;
 pub(super) use shaping::Shaper;
 use tracing::debug;
@@ -346,8 +346,8 @@ impl<'a> Measurer<'a> {
       InlineNode::Math(formula) => {
         self.push_inline_math(&formula, out);
       },
-      InlineNode::Number { pieces, style } => {
-        self.push_number(&pieces, style, out);
+      InlineNode::Quantity { pieces, style } => {
+        self.push_quantity(&pieces, style, out);
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
       InlineNode::FlushRight(text, style) => {

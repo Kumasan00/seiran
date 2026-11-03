@@ -1,29 +1,31 @@
-//! 本文用の枠で組む数値の指数（上付き）に、その枠の第 1 候補フォントの OS/2 の上付きの指標があるかの検査
+//! 本文用の枠で組む数値・単位の指数（上付き）に、その枠の第 1 候補フォントの OS/2 の上付きの指標があるかの検査
 //!
 //! 上付きの縮小率と位置は書く場所ではなく書体で決まる。`[quantity].typeface = math` なら数式フォントの MATH の定数で
-//! 組むので検査しない。本文用の枠で指標が無ければ、指数を持つ `\num`（本文・数式の中とも）の位置を診断のラベルに並べる。
+//! 組むので検査しない。本文用の枠で指標が無ければ、指数を持つ `\num` / `\unit`（本文・数式の中とも）の位置を診断のラベルに並べる。
 //! 組版（boxing）はこの検査を通った文書だけを組むので、指標を `expect` で取れる。
 
 use std::collections::BTreeMap;
 
 use crate::{
-  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId},
+  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, UnitFactor},
   failures::Failures,
   project::{FontFace, FontType, ProjectPath},
   source::{SourceId, Span},
-  typeset::glyph_issues::MissingSuperscriptMetrics,
+  style::QuantityStyle,
+  typeset::{glyph_issues::MissingSuperscriptMetrics, lowering, lowering::QuantityPiece},
 };
 
-/// 数値を組む枠の第 1 候補 `face` が上付きの指標を持たなければ（`has_metrics` が偽）、指数を持つ数値の位置をソースごとに
+/// `quantity` の書体で数値・単位を組む枠の第 1 候補 `face` が上付きの指標を持たなければ（`has_metrics` が偽）、指数を持つ数値・単位の位置をソースごとに
 /// 1 つの診断へまとめる（`face` が数式フォントなら MATH の定数で組むので問わない）
 ///
 /// `font_path` は診断に載せる第 1 候補のフォントのパス。
 ///
 /// # Errors
 ///
-/// 指標の無い枠で指数を組む数値が 1 つでもあれば、それを含むソースごとの診断をソースの宣言順で返す。
+/// 指標の無い枠で指数を組む数値・単位が 1 つでもあれば、それを含むソースごとの診断をソースの宣言順で返す。
 pub(super) fn check(
   document: &HirDocument,
+  quantity: &QuantityStyle,
   face: FontFace,
   has_metrics: bool,
   font_path: &ProjectPath,
@@ -33,7 +35,7 @@ pub(super) fn check(
   }
   let mut sites = Vec::new();
   for nodes in document.source_nodes() {
-    collect_nodes(nodes, &mut sites);
+    collect_nodes(nodes, quantity, &mut sites);
   }
   // `BTreeMap` の反復順が `SourceId` の順（宣言順）で、各ソースの中は文書順
   let source_map = document.source_map();
@@ -52,48 +54,50 @@ pub(super) fn check(
   };
 }
 
-/// ブロックノード列から、指数を持つ数値の位置を文書順に集める
-fn collect_nodes(nodes: &[HirNode], out: &mut Vec<NodeId>) {
+/// ブロックノード列から、指数を持つ数値・単位の位置を文書順に集める
+fn collect_nodes(nodes: &[HirNode], quantity: &QuantityStyle, out: &mut Vec<NodeId>) {
   for node in nodes {
     match &node.kind {
-      HirNodeKind::Heading(heading) => collect_inlines(&heading.title, out),
-      HirNodeKind::Paragraph(inlines) => collect_inlines(inlines, out),
+      HirNodeKind::Heading(heading) => collect_inlines(&heading.title, quantity, out),
+      HirNodeKind::Paragraph(inlines) => collect_inlines(inlines, quantity, out),
       HirNodeKind::List(list) => {
         for item in &list.items {
-          collect_nodes(&item.body, out);
+          collect_nodes(&item.body, quantity, out);
         }
       },
       HirNodeKind::MathBlock(math) => {
         for cell in math.rows.iter().flat_map(|row| return &row.cells) {
-          collect_math(cell, out);
+          collect_math(cell, quantity, out);
         }
       },
-      HirNodeKind::Figure(figure) => collect_inlines(figure.caption.as_deref().unwrap_or_default(), out),
+      HirNodeKind::Figure(figure) => collect_inlines(figure.caption.as_deref().unwrap_or_default(), quantity, out),
       HirNodeKind::Table(table) => {
         for cell in table.head.iter().chain(&table.rows).flat_map(|row| return &row.cells) {
-          collect_inlines(&cell.content, out);
+          collect_inlines(&cell.content, quantity, out);
         }
-        collect_inlines(table.caption.as_deref().unwrap_or_default(), out);
+        collect_inlines(table.caption.as_deref().unwrap_or_default(), quantity, out);
       },
-      HirNodeKind::Theorem(theorem) => collect_nodes(&theorem.body, out),
-      HirNodeKind::Quote(quote) => collect_nodes(&quote.body, out),
-      HirNodeKind::Flush(flush) => collect_nodes(&flush.body, out),
+      HirNodeKind::Theorem(theorem) => collect_nodes(&theorem.body, quantity, out),
+      HirNodeKind::Quote(quote) => collect_nodes(&quote.body, quantity, out),
+      HirNodeKind::Flush(flush) => collect_nodes(&flush.body, quantity, out),
       HirNodeKind::CodeBlock(_) | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
 }
 
-/// インラインノード列から、指数を持つ数値の位置を集める
-fn collect_inlines(inlines: &[HirInline], out: &mut Vec<NodeId>) {
+/// インラインノード列から、指数を持つ数値・単位の位置を集める
+fn collect_inlines(inlines: &[HirInline], quantity: &QuantityStyle, out: &mut Vec<NodeId>) {
   for inline in inlines {
     match &inline.kind {
       HirInlineKind::Number(numeral) if numeral.exponent.is_some() => out.push(inline.id),
-      HirInlineKind::Math(math) => collect_math(math, out),
+      HirInlineKind::Unit(factors) if has_superscript(factors, quantity) => out.push(inline.id),
+      HirInlineKind::Math(math) => collect_math(math, quantity, out),
       HirInlineKind::Styled { children, .. }
       | HirInlineKind::Colored { children, .. }
       | HirInlineKind::Link { children, .. }
-      | HirInlineKind::Footnote { body: children, .. } => collect_inlines(children, out),
+      | HirInlineKind::Footnote { body: children, .. } => collect_inlines(children, quantity, out),
       HirInlineKind::Number(_)
+      | HirInlineKind::Unit(_)
       | HirInlineKind::Text(_)
       | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
@@ -106,22 +110,23 @@ fn collect_inlines(inlines: &[HirInline], out: &mut Vec<NodeId>) {
   }
 }
 
-/// 数式ノード列から、指数を持つ数値の位置を集める
-fn collect_math(nodes: &[HirMath], out: &mut Vec<NodeId>) {
+/// 数式ノード列から、指数を持つ数値・単位の位置を集める
+fn collect_math(nodes: &[HirMath], quantity: &QuantityStyle, out: &mut Vec<NodeId>) {
   for node in nodes {
-    collect_math_node(node, out);
+    collect_math_node(node, quantity, out);
   }
 }
 
-/// 数式ノード 1 つから、指数を持つ数値の位置を集める
-fn collect_math_node(node: &HirMath, out: &mut Vec<NodeId>) {
+/// 数式ノード 1 つから、指数を持つ数値・単位の位置を集める
+fn collect_math_node(node: &HirMath, quantity: &QuantityStyle, out: &mut Vec<NodeId>) {
   match &node.kind {
     HirMathKind::Number(numeral) if numeral.exponent.is_some() => out.push(node.id),
-    HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => collect_math(children, out),
+    HirMathKind::Unit(factors) if has_superscript(factors, quantity) => out.push(node.id),
+    HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => collect_math(children, quantity, out),
     HirMathKind::Superscript(child)
     | HirMathKind::Subscript(child)
     | HirMathKind::Accent { base: child, .. }
-    | HirMathKind::Bar { body: child, .. } => collect_math_node(child, out),
+    | HirMathKind::Bar { body: child, .. } => collect_math_node(child, quantity, out),
     HirMathKind::Frac {
       numer: first,
       denom: second,
@@ -130,32 +135,40 @@ fn collect_math_node(node: &HirMath, out: &mut Vec<NodeId>) {
       top: first,
       bottom: second,
     } => {
-      collect_math_node(first, out);
-      collect_math_node(second, out);
+      collect_math_node(first, quantity, out);
+      collect_math_node(second, quantity, out);
     },
     HirMathKind::Sqrt { index, radicand } => {
       if let Some(index) = index {
-        collect_math_node(index, out);
+        collect_math_node(index, quantity, out);
       }
-      collect_math_node(radicand, out);
+      collect_math_node(radicand, quantity, out);
     },
     HirMathKind::Fenced { segments, .. } => {
       for segment in segments {
-        collect_math(segment, out);
+        collect_math(segment, quantity, out);
       }
     },
     HirMathKind::Matrix { rows, .. } | HirMathKind::Cases { rows } => {
       for cell in rows.iter().flatten() {
-        collect_math(cell, out);
+        collect_math(cell, quantity, out);
       }
     },
     HirMathKind::Number(_)
+    | HirMathKind::Unit(_)
     | HirMathKind::Text(_)
     | HirMathKind::Symbol { .. }
     | HirMathKind::Space(_)
     | HirMathKind::OperatorName { .. }
     | HirMathKind::Prose(_) => {},
   }
+}
+
+/// 単位の式を `quantity` の表記で組むと上付きがあるか（`slash` の分母の `-1` は上付きにならない）
+fn has_superscript(factors: &[UnitFactor], quantity: &QuantityStyle) -> bool {
+  return lowering::unit_pieces(factors, quantity)
+    .iter()
+    .any(|piece| return matches!(piece, QuantityPiece::Superscript(_)));
 }
 
 #[cfg(test)]
@@ -166,6 +179,7 @@ mod tests {
     frontend::test_support,
     project::{FontFace, FontType, ProjectPath},
     source::SourceId,
+    style::{NegativeExponent, QuantityStyle},
   };
 
   /// ソースの列をそれぞれパースして、宣言順の文書にする
@@ -178,11 +192,20 @@ mod tests {
     return HirDocument::assemble(hirs);
   }
 
-  /// 枠 `font_type` の第 1 候補が指標を持たないとして検査し、診断ごとのラベルの位置のソース文字列を返す
+  /// 枠 `font_type` の第 1 候補が指標を持たないとして既定の style で検査し、診断ごとのラベルの位置のソース文字列を返す
   fn sites(sources: &[&str], font_type: FontType) -> Vec<Vec<String>> {
-    let Err(failures) =
-      check(&document(sources), FontFace::primary(font_type), false, &ProjectPath::new("fonts/serif.otf"))
-    else {
+    return sites_with(sources, font_type, &QuantityStyle::default());
+  }
+
+  /// [`sites`] を style `quantity` で検査する
+  fn sites_with(sources: &[&str], font_type: FontType, quantity: &QuantityStyle) -> Vec<Vec<String>> {
+    let Err(failures) = check(
+      &document(sources),
+      quantity,
+      FontFace::primary(font_type),
+      false,
+      &ProjectPath::new("fonts/serif.otf"),
+    ) else {
       return Vec::new();
     };
     return failures
@@ -218,6 +241,27 @@ mod tests {
   }
 
   #[test]
+  fn units_with_exponents_are_labeled() {
+    assert_eq!(
+      sites(&["\\unit{m} と \\unit{m^{2}} と $\\unit{s^{-1}}$"], FontType::Serif),
+      [vec!["\\unit{m^{2}}", "\\unit{s^{-1}}"]]
+    );
+  }
+
+  #[test]
+  fn slash_without_superscript_needs_no_metrics() {
+    let slash = QuantityStyle {
+      negative_exponent: NegativeExponent::Slash,
+      ..QuantityStyle::default()
+    };
+
+    assert_eq!(
+      sites_with(&["\\unit{m.s^{-1}} と \\unit{m.s^{-2}}"], FontType::Serif, &slash),
+      [vec!["\\unit{m.s^{-2}}"]]
+    );
+  }
+
+  #[test]
   fn math_typeface_is_not_checked() {
     assert_eq!(sites(&["\\num{1e3}"], FontType::Math), Vec::<Vec<String>>::new());
   }
@@ -226,6 +270,7 @@ mod tests {
   fn present_metrics_pass() {
     let result = check(
       &document(&["\\num{1e3}"]),
+      &QuantityStyle::default(),
       FontFace::primary(FontType::Serif),
       true,
       &ProjectPath::new("fonts/serif.otf"),

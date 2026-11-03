@@ -2213,7 +2213,8 @@ mod tests {
       | HirMathKind::Space(_)
       | HirMathKind::OperatorName { .. }
       | HirMathKind::Prose(_)
-      | HirMathKind::Number(_) => None,
+      | HirMathKind::Number(_)
+      | HirMathKind::Unit(_) => None,
     };
   }
 
