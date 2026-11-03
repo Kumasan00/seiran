@@ -54,6 +54,9 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       HirInlineKind::Unit(factors) => {
         out.push_str(&quantity::plain_text(&quantity::unit_pieces(factors, &style.quantity)));
       },
+      HirInlineKind::Quantity { numeral, unit } => {
+        out.push_str(&quantity::plain_text(&quantity::quantity_pieces(numeral, unit, &style.quantity)));
+      },
       HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
       HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.ref_target(inline.id))),
     }
@@ -186,6 +189,16 @@ mod tests {
     let (_, headings) = lower_sources_with_headings(&context(&style), &document);
 
     assert_eq!(headings[0].title_plain, "速さ m\u{202F}s\u{207B}\u{00B9}");
+  }
+
+  #[test]
+  fn heading_plain_text_formats_quantities() {
+    let style = ReadStyle::default();
+    let document = analyzed("\\section{距離 \\qty{30}{\\degree} と \\qty{5}{km}}");
+
+    let (_, headings) = lower_sources_with_headings(&context(&style), &document);
+
+    assert_eq!(headings[0].title_plain, "距離 30\u{00B0} と 5\u{202F}km");
   }
 
   #[test]

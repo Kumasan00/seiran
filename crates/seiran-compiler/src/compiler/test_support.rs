@@ -438,8 +438,16 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set_heading(table, "section", "alignment", "right");
     },
     // 数値を本文用の枠の書体と、既定と違う小数点・桁区切り・4 桁区切りで組む版面（STIX Two Text は U+22C5 を持たないので積の記号は既定の times）
-    // 長い数値・単位が行末をまたぐ行長（箱の中で折り返さないことを見る）
-    "num" | "unit" => set_page_margins(table, "250mm", "99pt"),
+    // 長い数値・単位・量が行末をまたぐ行長（箱の中で折り返さないことを見る）
+    "num" | "unit" | "qty" => set_page_margins(table, "250mm", "99pt"),
+    // 量を本文用の枠の書体・数値と単位の間を太アキ・分母 slash で組む版面（STIX Two Text は U+22C5 を持たないので積は既定の
+    // thin のまま）。行長は num と同じ
+    "qty_text_typeface" => {
+      set_page_margins(table, "250mm", "99pt");
+      set(table, "quantity", "typeface", "serif");
+      set(table, "quantity", "number_unit_separator", "thick");
+      set(table, "quantity", "negative_exponent", "slash");
+    },
     "num_text_typeface" => {
       set_page_margins(table, "250mm", "99pt");
       set(table, "quantity", "typeface", "serif");

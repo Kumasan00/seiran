@@ -24,15 +24,27 @@ const OUTSIDE_GRAMMAR: &str = "ここで単位の書き方から外れていま�
 ///
 /// # Errors
 ///
-/// 任意引数・引数の個数の誤り、文法から外れた引数（最初の 1 件）、語彙で読めない因子を返す。
+/// 任意引数・引数の個数の誤りと、[`unit_factors_arg`] のエラーを返す。
 pub(in crate::frontend::evaluator) fn unit_factors(view: &CommandView<'_>) -> Result<Vec<UnitFactor>, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let arg = arity::exactly_one_arg(view, "1 個（単位）")?;
-  let items = arg_items(view.source(), arg)?;
+  return unit_factors_arg(view.source(), arg);
+}
+
+/// 引数ノード `arg` を単位の文法で読み、語彙で検証した因子の列（空でない、ソース順）を返す
+///
+/// # Errors
+///
+/// 文法から外れた引数（最初の 1 件。空の引数は引数全体）、語彙で読めない因子を返す。
+pub(in crate::frontend::evaluator) fn unit_factors_arg(
+  source: &str,
+  arg: &CstNode<'_>,
+) -> Result<Vec<UnitFactor>, EvalError> {
+  let items = arg_items(source, arg)?;
   if items.is_empty() {
     return Err(syntax(arg.span, "単位がありません"));
   }
-  let factors = read_factors(view.source(), &items)?;
+  let factors = read_factors(source, &items)?;
   for (factor, span) in &factors {
     vocabulary::check(&factor.symbol, *span)?;
   }

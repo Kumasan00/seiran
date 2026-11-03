@@ -7,6 +7,6 @@ frontend::eval::unknown_unit
    ·                ─┬─
    ·                 ╰── この単位は語彙にありません
    ╰────
-  help: \unit が受け付けるのは SI 文書（第 9 版）の単位記号・接頭辞と % で、2 つの単位は `.` で区
-        切ります（例: \unit{km.s^{-1}}、\unit{N.m}）。μ・Ω・°・′・″ は \mu・\Omega・\degree・
-        \prime・\doubleprime でも書けます
+  help: 単位の式に書けるのは SI 文書（第 9 版）の単位記号・接頭辞と % で、2 つの単位は `.` で区切
+        ります（例: `km.s^{-1}`、`N.m`）。μ・Ω・°・′・″ は \mu・\Omega・\degree・\prime・
+        \doubleprime でも書けます

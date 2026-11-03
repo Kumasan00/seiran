@@ -43,6 +43,13 @@ pub(crate) enum HirMathKind {
   Number(Numeral),
   /// 単位（`\unit{...}`）。数式の中では Ord の 1 アトムになる。因子は 1 個以上で、ソース順
   Unit(Vec<UnitFactor>),
+  /// 量（`\qty{...}{...}`）。数式の中では Ord の 1 アトムになる
+  Quantity {
+    /// 数値
+    numeral: Numeral,
+    /// 単位の式の因子（1 個以上で、ソース順）
+    unit: Vec<UnitFactor>,
+  },
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^{2}`）

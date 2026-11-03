@@ -28,7 +28,7 @@ pub(super) enum ArrangedNode {
   Text(String, TextStyle),
   /// 数式内の文章（`\text{...}`。本文と同じ規則で組み、自然幅の閉じた箱にする）
   Prose(String, TextStyle),
-  /// 数値・単位（`\num` / `\unit`。部品を並べた閉じた箱。スタイルはその段の大きさと `[quantity].typeface`）
+  /// 数値・単位・量（`\num` / `\unit` / `\qty`。部品を並べた閉じた箱。スタイルはその段の大きさと `[quantity].typeface`）
   Quantity(Vec<QuantityPiece>, TextStyle),
   /// 水平カーン（固定幅のアキ。アトム間スペーシングと明示アキが出す）
   Kern {

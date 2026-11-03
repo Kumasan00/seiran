@@ -388,7 +388,7 @@ impl MissingMathGlyph {
   )
 )]
 pub(crate) struct MissingSuperscriptMetrics {
-  /// 指数を持つ `\num` / `\unit` の位置（文書順）
+  /// 上付きを組む `\num` / `\unit` / `\qty` の位置（文書順）
   #[label(collection)]
   pub(super) labels: Vec<LabeledSpan>,
   /// 位置が属するソース

@@ -1,0 +1,24 @@
+\section{距離 \qty{5}{km} と角 \qty{30}{\degree}}
+
+// 量 `\qty` の体裁: 数値と単位の間のアキ・平面角 ° ′ ″ の詰め（°C・%・指数付き・複合単位は空ける）・数値の指数と単位の上付き・
+// 正の指数の因子の無い単位・書体（外側の装飾と字体コマンドが効かないこと）・和欧文間アキ・数式の中の Ord のアトム・見出し（しおりの平文）・
+// 表のセル・脚注・キャプション・長い量の改行禁止。
+// 同じ内容を `qty_text_typeface.sei`（本文用の枠の書体・太アキ・分母 slash）が組む。
+
+重力加速度は \qty{9.8}{m.s^{-2}}、質量は \qty{1.2e3}{kg}、比熱は \qty{-40}{J.kg^{-1}.K^{-1}}、周波数は \qty{5}{s^{-1}}。
+角度は \qty{30}{\degree}・\qty{15}{\prime}・\qty{20}{\doubleprime}、温度 \qty{25}{\degree C}、割合 \qty{50}{%}、角速度 \qty{3}{\degree.s^{-1}}、立体角 \qty{2}{\degree^{2}}。
+長さ\qty{3}{m}の棒。装飾の中でも書体は変わらない: \bold{\qty{5}{N.m}} と \color[color=#ff0000]{\qty{1}{Pa}}。
+
+数式の中では $v = \qty{3}{m.s^{-1}} + \mathbold{\qty{2}{m.s^{-1}}}$ と $x^{\qty{1}{m}}$ になる。脚注にも書ける\footnote{脚注の \qty{0.5}{mol.L^{-1}}。}。
+
+\begin{equation}
+E = \qty{13.6}{eV}
+\end{equation}
+
+\begin{table}[columns=left right]
+\row{項目 & 量}
+\row{力 & \qty{9.8}{kg.m.s^{-2}}}
+\caption{表の \qty{1.5}{W.m^{-2}}}
+\end{table}
+
+行の終わり近くに長い量を置いても箱の中では折り返さない: 長い量の例 \qty{12345.678901e-12}{kg.m^{2}.s^{-3}.A^{-1}.mol} です。

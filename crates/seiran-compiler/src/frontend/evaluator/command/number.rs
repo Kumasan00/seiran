@@ -16,11 +16,20 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 任意引数・引数の個数の誤りと、文法から外れた引数（最初に外れた位置の 1 件）を返す。
+/// 任意引数・引数の個数の誤りと、[`numeral_arg`] のエラーを返す。
 pub(in crate::frontend::evaluator) fn numeral(view: &CommandView<'_>) -> Result<Numeral, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let arg = arity::exactly_one_arg(view, "1 個（数値）")?;
-  let items = arg_items(view.source(), arg);
+  return numeral_arg(view.source(), arg);
+}
+
+/// 引数ノード `arg` を数値の文法で読む
+///
+/// # Errors
+///
+/// 文法から外れた引数（最初に外れた位置の 1 件。空の引数は引数全体）を返す。
+pub(in crate::frontend::evaluator) fn numeral_arg(source: &str, arg: &CstNode<'_>) -> Result<Numeral, EvalError> {
+  let items = arg_items(source, arg);
   if items.is_empty() {
     return Err(EvalError::InvalidNumber {
       span: arg.span.into(),

@@ -103,6 +103,7 @@ mod tests {
         HirInlineKind::Math(_) => out.push_str("[Math]"),
         HirInlineKind::Number(_) => out.push_str("[Number]"),
         HirInlineKind::Unit(_) => out.push_str("[Unit]"),
+        HirInlineKind::Quantity { .. } => out.push_str("[Quantity]"),
         HirInlineKind::Symbol(ch) => out.push(*ch),
         HirInlineKind::LineBreak => out.push('\n'),
         HirInlineKind::NoIndent

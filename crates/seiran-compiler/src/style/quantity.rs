@@ -6,7 +6,7 @@ use strum::IntoStaticStr;
 
 use crate::document::Typeface;
 
-/// 数値の書式と書体（`[quantity]` テーブル）
+/// 数値・単位・量の書式と書体（`[quantity]` テーブル）
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -28,6 +28,8 @@ pub(crate) struct QuantityStyle {
   pub unit_product: UnitProduct,
   /// 負の指数を持つ単位（`\unit{m.s^{-1}}`）の表記
   pub negative_exponent: NegativeExponent,
+  /// 量（`\qty`）の数値と単位の間のアキ。単位が平面角 ° ′ ″ の 1 因子だけ（指数なし）なら値によらず 0
+  pub number_unit_separator: NumberUnitSeparator,
 }
 
 impl Default for QuantityStyle {
@@ -40,6 +42,7 @@ impl Default for QuantityStyle {
       exponent_product: ExponentProduct::Times,
       unit_product: UnitProduct::Thin,
       negative_exponent: NegativeExponent::Power,
+      number_unit_separator: NumberUnitSeparator::Thin,
     };
   }
 }
@@ -100,6 +103,20 @@ pub(crate) enum NegativeExponent {
   Slash,
 }
 
+/// 量の数値と単位の間のアキ
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum NumberUnitSeparator {
+  /// 区切らない
+  None,
+  /// 細アキ（3mu）
+  Thin,
+  /// 中アキ（4mu）
+  Medium,
+  /// 太アキ（5mu）
+  Thick,
+}
+
 /// `garde` 用バリデータ: 量の数値と単位を立体で組む（ISO 80000）ので、イタリック系の書体を拒否する。
 #[expect(
   clippy::trivially_copy_pass_by_ref,
@@ -157,7 +174,10 @@ fn separator_exists_for_four_digits(separator: DigitGroupSeparator) -> impl FnOn
 mod tests {
   use garde::Validate;
 
-  use super::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct};
+  use super::{
+    DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, NumberUnitSeparator, QuantityStyle,
+    UnitProduct,
+  };
   use crate::document::Typeface;
 
   #[test]
@@ -171,6 +191,7 @@ mod tests {
     assert_eq!(style.exponent_product, ExponentProduct::Times);
     assert_eq!(style.unit_product, UnitProduct::Thin);
     assert_eq!(style.negative_exponent, NegativeExponent::Power);
+    assert_eq!(style.number_unit_separator, NumberUnitSeparator::Thin);
   }
 
   #[test]
@@ -259,6 +280,7 @@ mod tests {
         exponent_product = "dot"
         unit_product = "dot"
         negative_exponent = "slash"
+        number_unit_separator = "thick"
       "#,
     )
     .unwrap();
@@ -270,6 +292,7 @@ mod tests {
     assert_eq!(style.exponent_product, ExponentProduct::Dot);
     assert_eq!(style.unit_product, UnitProduct::Dot);
     assert_eq!(style.negative_exponent, NegativeExponent::Slash);
+    assert_eq!(style.number_unit_separator, NumberUnitSeparator::Thick);
     assert!(toml::from_str::<QuantityStyle>("unknown_key = 1").is_err());
   }
 }

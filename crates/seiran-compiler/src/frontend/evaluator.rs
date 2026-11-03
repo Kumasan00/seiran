@@ -215,6 +215,7 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
     | HirInlineKind::Symbol(_)
     | HirInlineKind::Number(_)
     | HirInlineKind::Unit(_)
+    | HirInlineKind::Quantity { .. }
     | HirInlineKind::LineBreak
     | HirInlineKind::NoIndent
     | HirInlineKind::Ref { .. }

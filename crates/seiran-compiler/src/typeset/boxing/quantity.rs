@@ -1,4 +1,4 @@
-//! 数値・単位（`\num` / `\unit`）の箱 — style の書式の部品（[`QuantityPiece`]）を並べた閉じた 1 個の箱
+//! 数値・単位・量（`\num` / `\unit` / `\qty`）の箱 — style の書式の部品（[`QuantityPiece`]）を並べた閉じた 1 個の箱
 //!
 //! 本文・数式のどちらでも同じ組み方をする。上付き（指数）の縮小率と位置は書く場所ではなく書体で決まる: 数式フォント
 //! （`Typeface::Math`）なら OpenType MATH の `ScriptPercentScaleDown` と `SuperscriptShiftUp`、本文用の枠ならその枠の
