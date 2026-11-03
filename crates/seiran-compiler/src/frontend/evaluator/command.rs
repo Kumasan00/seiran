@@ -348,7 +348,52 @@ mod tests {
   use proptest::prelude::*;
 
   use super::*;
-  use crate::frontend::{evaluator, evaluator::test_support};
+  use crate::{
+    document::{HirMathKind, HirNodeKind, MathClass},
+    frontend::{evaluator, evaluator::test_support},
+  };
+
+  #[test]
+  fn degree_in_text_is_the_degree_sign() {
+    let arena = Bump::new();
+    let source = r"30\degree C";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let nodes = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    // 引数の無いコマンドの直後の空白は名前の終端なので、`\degree C` は `°C` と続けて組む
+    let HirNodeKind::Paragraph(inlines) = &nodes[0].kind else {
+      panic!("段落が期待されます: {nodes:?}");
+    };
+    let kinds: Vec<&HirInlineKind> = inlines.iter().map(|inline| return &inline.kind).collect();
+    assert!(
+      matches!(
+        kinds.as_slice(),
+        [HirInlineKind::Text(a), HirInlineKind::Symbol('\u{00B0}'), HirInlineKind::Text(c)] if a == "30" && c == "C"
+      ),
+      "{kinds:?}"
+    );
+  }
+
+  #[test]
+  fn degree_in_math_is_an_ord_symbol() {
+    let arena = Bump::new();
+    let source = r"$\degree$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let nodes = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    let HirNodeKind::Paragraph(inlines) = &nodes[0].kind else {
+      panic!("段落が期待されます: {nodes:?}");
+    };
+    let HirInlineKind::Math(math) = &inlines[0].kind else {
+      panic!("インライン数式が期待されます: {inlines:?}");
+    };
+    assert!(
+      matches!(&math[0].kind, HirMathKind::Symbol { text, class: MathClass::Ord } if text == "\u{00B0}"),
+      "{math:?}"
+    );
+  }
 
   #[test]
   fn single_char_rejects_unknown_opt_arg_key() {

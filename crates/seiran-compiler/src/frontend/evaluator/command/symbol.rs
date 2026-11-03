@@ -161,6 +161,7 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "sterling" => MathSymbol::new('\u{00A3}', MathClass::Ord),
   "yen" => MathSymbol::new('\u{00A5}', MathClass::Ord),
   "sectionsign" => MathSymbol::new('\u{00A7}', MathClass::Ord),
+  "degree" => MathSymbol::new('\u{00B0}', MathClass::Ord),
   "paragraphsign" => MathSymbol::new('\u{00B6}', MathClass::Ord),
   "Zbar" => MathSymbol::new('\u{01B5}', MathClass::Ord),
   "backepsilon" => MathSymbol::new('\u{03F6}', MathClass::Ord),
@@ -1472,6 +1473,8 @@ mod tests {
     assert_eq!(ord("whitediamond"), Some(('\u{25C7}', MathClass::Ord)));
     assert_eq!(ord("sterling"), Some(('\u{00A3}', MathClass::Ord)));
     assert_eq!(ord("adots"), Some(('\u{22F0}', MathClass::Ord)), "vdots ddots と同じ Ord");
+    assert_eq!(ord("degree"), Some(('\u{00B0}', MathClass::Ord)), "gensymb の \\degree と同じ字");
+    assert_eq!(direct_input_class('\u{00B0}'), Some(MathClass::Ord));
   }
 
   #[test]
