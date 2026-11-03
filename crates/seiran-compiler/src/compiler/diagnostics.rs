@@ -548,6 +548,28 @@ fn diagnostic_missing_image() {
 }
 
 #[test]
+fn diagnostic_svg_font_not_found() {
+  let failure = TestProject::builder()
+    .sources(&["tests/text/diagnostics/svg_font_not_found.sei"])
+    .asset("./tests/image/svg_text_unknown_family.svg")
+    .build()
+    .compile_err();
+
+  assert_matches_golden("svg_font_not_found", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_svg_missing_glyph() {
+  let failure = TestProject::builder()
+    .sources(&["tests/text/diagnostics/svg_missing_glyph.sei"])
+    .asset("./tests/image/svg_text_missing_glyph.svg")
+    .build()
+    .compile_err();
+
+  assert_matches_golden("svg_missing_glyph", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_unsupported_image_format() {
   // 拡張子だけで評価時に拒否するので、画像は登録しない（読みに行けば read_image になる）
   let failure = compile_err(&["tests/text/diagnostics/unsupported_image_format.sei"]);

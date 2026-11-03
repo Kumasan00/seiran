@@ -170,6 +170,16 @@ impl SvgParser {
     return Ok((tree, unresolved));
   }
 
+  /// 照合できるファミリ名（実体の宣言順・重複除去）。
+  pub(crate) fn family_names(&self) -> Vec<String> {
+    return self
+      .faces
+      .iter()
+      .filter_map(|(_, id)| return self.db.face(*id).and_then(family_name))
+      .unique()
+      .collect();
+  }
+
   /// `font` の `font-family` を左から照合し、最初に一致したファミリから太さ・斜体の最も近いフェースを返す。
   fn select(&self, font: &usvg::Font, db: &Database) -> Option<ID> {
     let stretch = match font.stretch() {

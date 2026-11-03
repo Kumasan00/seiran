@@ -4,7 +4,10 @@
 
 use usvg::{Color, Node, Paint, Tree, fontdb::Style};
 
-use crate::{compiler::test_support::TestProject, publication::SvgParser};
+use crate::{
+  compiler::{CompileFailure, test_support::TestProject},
+  publication::SvgParser,
+};
 
 /// 文字を含む SVG の fixture 画像（`tests/text/svg_text.sei` が参照する）。
 const SVG_TEXT_IMAGE: &str = "./tests/image/svg_text.svg";
@@ -18,6 +21,23 @@ fn svg_parser() -> SvgParser {
     .compile()
     .expect("svg_text.sei は compile できるはず");
   return compilation.publication.resources().svg_parser();
+}
+
+/// `.sei` 1 本と、それが参照する画像 1 枚で compile し、失敗を返す。
+fn compile_err(source: &str, image: &str) -> CompileFailure {
+  return TestProject::builder().sources(&[source]).asset(image).build().compile_err();
+}
+
+/// 失敗の診断を（code, メッセージ, help）の列にする。
+fn diagnostics(failure: &CompileFailure) -> Vec<(String, String, String)> {
+  return failure
+    .diagnostics()
+    .map(|diagnostic| {
+      let code = diagnostic.code().map(|code| return code.to_string()).unwrap_or_default();
+      let help = diagnostic.help().map(|help| return help.to_string()).unwrap_or_default();
+      return (code, diagnostic.to_string(), help);
+    })
+    .collect();
 }
 
 /// `<text>` 1 つだけの SVG を組み立てる。`attrs` は `<text>` の属性。
@@ -185,4 +205,52 @@ fn unresolved_family_list_is_reported_without_falling_back() {
 
   assert_eq!(unresolved, [r#""Arial", cursive"#]);
   assert!(glyph_faces(&tree).is_empty(), "どのフォントでも組まないはず");
+}
+
+#[test]
+fn configured_svg_text_compiles_without_diagnostics() {
+  let compilation = TestProject::builder()
+    .sources(&["tests/text/svg_text.sei"])
+    .asset(SVG_TEXT_IMAGE)
+    .build()
+    .compile()
+    .expect("設定済みフォントで組める SVG は compile できるはず");
+
+  assert!(compilation.warnings.is_empty(), "警告は出ないはず: {:?}", compilation.warnings);
+}
+
+#[test]
+fn svg_font_not_found_is_reported_once_per_family_list() {
+  let failure =
+    compile_err("tests/text/diagnostics/svg_font_not_found.sei", "./tests/image/svg_text_unknown_family.svg");
+
+  let diagnostics = diagnostics(&failure);
+  let codes: Vec<&str> = diagnostics.iter().map(|(code, _, _)| return code.as_str()).collect();
+  assert_eq!(
+    codes,
+    [
+      "typeset::image::svg_font_not_found",
+      "typeset::image::svg_font_not_found"
+    ]
+  );
+  assert!(diagnostics[0].1.contains(r#"font-family: "Arial"）"#), "{}", diagnostics[0].1);
+  assert!(diagnostics[1].1.contains(r#"font-family: "Arial", cursive）"#), "{}", diagnostics[1].1);
+  for (_, message, help) in &diagnostics {
+    assert!(message.contains("svg_text_unknown_family.svg"), "{message}");
+    assert!(help.contains("STIX Two Text"), "{help}");
+  }
+}
+
+#[test]
+fn svg_missing_glyph_inside_clip_path_is_reported() {
+  let failure = compile_err("tests/text/diagnostics/svg_missing_glyph.sei", "./tests/image/svg_text_missing_glyph.svg");
+
+  let diagnostics = diagnostics(&failure);
+  assert_eq!(diagnostics.len(), 1);
+  let (code, message, _) = &diagnostics[0];
+  assert_eq!(code, "typeset::image::svg_missing_glyph");
+  assert!(message.contains("svg_text_missing_glyph.svg"), "{message}");
+  assert!(message.contains("U+1F600"), "本文の欠字を報告するはず: {message}");
+  assert!(message.contains("U+1F642"), "clipPath の中の欠字も報告するはず: {message}");
+  assert!(!message.contains("U+0041"), "組める字は報告しないはず: {message}");
 }

@@ -24,6 +24,7 @@ use crate::{
       AnchorId, HBox, HBoxContent, IndexTerm, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
       PlacedHBox, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
     },
+    emit,
     font::FontSystem,
     pagination::{LaidOutDocument, OutlineEntry},
   },
@@ -104,7 +105,8 @@ pub(crate) fn layout_for_test(
 ) -> Result<LaidOutDocument, ComposeError> {
   let (font_resources, _font_warnings) = load_fonts(config, font_data);
   let font_resources = font_resources.map_err(ComposeError::Typeset)?;
-  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, document).0?;
+  let fonts = emit::publication_fonts(font_data, &font_resources);
+  let (laid_out, _layout_warnings) = lay_out(source, config, style, geometry, &font_resources, &fonts, document).0?;
   return Ok(laid_out);
 }
 

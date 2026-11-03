@@ -1,0 +1,6 @@
+\section{SVG の欠字のサンプル}
+
+\begin{figure}[label=fig:svg-missing-glyph]
+\image[width=80mm]{./tests/image/svg_text_missing_glyph.svg}
+\caption{設定済みフォントに無い字を含む SVG}
+\end{figure}

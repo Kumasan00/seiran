@@ -52,8 +52,8 @@ use warning::TypesetWarning;
 use crate::{
   failures::Failures,
   phase::Phase,
-  project::{FontData, FontFace, ProjectPath, ProjectSource, config::ProjectConfig},
-  publication::Publication,
+  project::{FaceMap, FontData, FontFace, ProjectPath, ProjectSource, config::ProjectConfig},
+  publication::{Publication, PublicationFont, SvgParser},
   semantics::SemanticDocument,
   style::Style,
 };
@@ -80,7 +80,7 @@ pub(crate) struct TypesetOutput {
 ///
 /// # Errors
 ///
-/// フォントの解析・メトリクス取得・設定検証・シェーパー構築、画像の読込・デコード・寸法確定と PDF 図版の検査・ページの
+/// フォントの解析・メトリクス取得・設定検証・シェーパー構築、画像の読込・デコード・寸法確定と SVG の文字の検査・PDF 図版の検査・ページの
 /// 選択、文書が使った字のフォントでの欠落（数式フォントと本文の枠）、または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、
 /// その段で見つかった失敗を非空集合で持つ（フォント・画像はそれぞれ独立に検査できるので段の中では全件、段の間は
 /// 早期 return する。字の欠落は組版を最後まで進めて全件集め、ソース位置を持ちうるので [`ComposeError`] の別の腕で
@@ -101,14 +101,15 @@ pub(crate) fn compose(
   };
 
   let phase = Phase::enter(info_span!("typeset"));
-  let (laid_out, variation_warnings) = lay_out(source, config, style, geometry, &font_resources, document);
+  let fonts = emit::publication_fonts(font_data, &font_resources);
+  let (laid_out, variation_warnings) = lay_out(source, config, style, geometry, &font_resources, &fonts, document);
   warnings.extend(variation_warnings);
   let (mut laid_out, layout_warnings) = match laid_out {
     Ok(laid_out) => laid_out,
     Err(error) => return (Err(error), warnings),
   };
   let image_paths = mem::take(&mut laid_out.image_paths);
-  let publication = emit::emit(config, font_data, &font_resources, laid_out);
+  let publication = emit::emit(config, fonts, laid_out);
   info!(page_count = publication.pages().len(), warning_count = layout_warnings.len(), "文書を組版");
   phase.succeed();
 
@@ -152,12 +153,13 @@ type LayOutResult = Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError>
 /// 数式フォントの字の欠落が見つかっても組版を続け、本文の枠の字の欠落と合わせて報告する。組の第 2 要素の警告は、画像ファイルの
 /// 警告（パス → ページ順）→ 異体字列の代替（数式・本文をまとめて要素の位置順、生成内容はその後ろ）の順。画像の読込に失敗した
 /// ときと、数値・単位の上付きの指標が欠けたときは本文を組まないので、数式の異体字列の代替だけを返す。配置由来の警告は成功の値が持つ。
+/// `fonts`（描画資源と同じフォント）は SVG のパースと文字の検査に使う。
 ///
 /// # Errors
 ///
 /// 数値・単位の指数を組む本文用の枠の第 1 候補に上付きの指標が無い場合は、画像を読まず組版にも進まずに、数式フォントの欠落
 /// （文書順）→ 上付きの指標の欠落（ソースの宣言順）の全件を返す（本文の枠の字の欠落は報告しない）。
-/// 画像の読込・デコード・自然寸法の検証、または PDF 図版の検査（暗号化・版・ページ数 0）とページの選択（省略・範囲外・表示範囲の
+/// 画像の読込・デコード・自然寸法の検証、SVG の文字の検査（未解決の `font-family`・組めない字）、または PDF 図版の検査（暗号化・版・ページ数 0）とページの選択（省略・範囲外・表示範囲の
 /// 面積 0）に失敗した場合はその全件を返す（組版に進まないので字の欠落は報告しない）。
 /// 文書が使った字がフォントに無かったか、書字方向の違う代替の候補を使おうとした場合は、数式フォントの欠落（文書順）→
 /// 本文の枠の欠落・方向の不一致（要素の位置順、生成内容はその後ろ）の全件を返す。字の欠落が無く脚注のページ単位採番が収束しなかった場合は、その失敗を返す。
@@ -167,6 +169,7 @@ fn lay_out(
   style: &Style,
   geometry: &PreparedGeometry,
   font_resources: &FontSystem,
+  fonts: &FaceMap<PublicationFont>,
   document: &SemanticDocument,
 ) -> (LayOutResult, Vec<TypesetWarning>) {
   let (math_glyphs, math_warnings) = math_glyphs::check(
@@ -199,7 +202,8 @@ fn lay_out(
     return (Err(ComposeError::Glyphs(failures)), into_variation_warnings(math_warnings));
   }
   let image_requests = image::collect_image_requests(document.hir());
-  let (images, image_warnings) = match image::load_image_resources(source, &image_requests) {
+  let svg = SvgParser::new(fonts);
+  let (images, image_warnings) = match image::load_image_resources(source, &image_requests, &svg) {
     Ok(loaded) => loaded,
     Err(failures) => return (Err(ComposeError::Typeset(failures)), into_variation_warnings(math_warnings)),
   };

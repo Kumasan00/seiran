@@ -12,12 +12,13 @@ use crate::{
   failures::Failures,
   length::Length,
   project::{ProjectPath, ProjectSource},
+  publication::SvgParser,
   typeset::{
     error::TypesetError,
     image::{
       manifest::ImageRequest,
       natural_size::{self, NaturalSize},
-      pdf,
+      pdf, svg,
     },
     warning::TypesetWarning,
   },
@@ -86,13 +87,16 @@ pub(in crate::typeset) fn pdf_page_index(format: ImageFormat, page: Option<u32>)
 /// `page` も昇順なので、失敗の報告順も決定的になる。1 ファイルの中のページ検査は、失敗しても残りの
 /// ページを続ける（互いに独立）。
 ///
+/// SVG は `svg`（描画側と同じ設定）でパースし、文字が設定済みフォントで組めることも確かめる。
+///
 /// # Errors
 ///
-/// 画像の読み込み・デコード・PDF の検査とページの選択に失敗した場合と、デコーダが報告した自然寸法が
-/// 有限かつ正でない場合に [`TypesetError`] を返す。
+/// 画像の読み込み・デコード・PDF の検査とページの選択に失敗した場合、SVG の文字のフォントが未解決か字が組めない
+/// 場合と、デコーダが報告した自然寸法が有限かつ正でない場合に [`TypesetError`] を返す。
 pub(crate) fn load_image_resources(
   source: &dyn ProjectSource,
   requests: &[ImageRequest],
+  svg: &SvgParser,
 ) -> Result<(ImageResources, Vec<TypesetWarning>), Failures<TypesetError>> {
   let mut natural_sizes = BTreeMap::new();
   let mut assets = HashMap::with_capacity(requests.len());
@@ -129,6 +133,16 @@ pub(crate) fn load_image_resources(
           },
           Err(error) => errors.push(error),
         }
+      }
+    } else if request.format == ImageFormat::Svg {
+      match svg::inspect(&path_string, &bytes, svg) {
+        Ok(size) => {
+          natural_sizes.insert((request.path.clone(), None), size);
+        },
+        Err(found) => {
+          errors.extend(found);
+          continue;
+        },
       }
     } else {
       match natural_size::natural_image_size(&path_string, request.format, &bytes) {
@@ -210,7 +224,13 @@ mod tests {
   use std::path::Path;
 
   use super::*;
-  use crate::project::{MemoryProjectSource, ProjectSourceError};
+  use crate::{
+    project::{MemoryProjectSource, ProjectSourceError},
+    publication::test_support,
+  };
+
+  /// フォントを 1 つも持たない SVG パーサ（ここのテストは文字を含む SVG を読まない）
+  fn svg_parser() -> SvgParser { return test_support::resources(Vec::new()).svg_parser(); }
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
@@ -239,7 +259,7 @@ mod tests {
   ) -> Result<(ImageResources, Vec<TypesetWarning>), Failures<TypesetError>> {
     let path = format!("/project/{name}");
     let source = MemoryProjectSource::new().with_bytes(&path, read_image_fixture(name));
-    return load_image_resources(&source, &[pdf_request(&path, ImageFormat::Pdf, pages)]);
+    return load_image_resources(&source, &[pdf_request(&path, ImageFormat::Pdf, pages)], &svg_parser());
   }
 
   #[test]
@@ -300,7 +320,7 @@ mod tests {
     let source = MemoryProjectSource::new().with_bytes("/project/testimage5.png", png_bytes);
     let paths = vec![request("/project/testimage5.png", ImageFormat::Png)];
 
-    let (resources, _) = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
+    let (resources, _) = load_image_resources(&source, &paths, &svg_parser()).expect("メモリ上の fixture を読めるはず");
 
     let natural = resources.natural_size(&ProjectPath::new("/project/testimage5.png"), None);
     assert_eq!(natural, NaturalSize::new(756.0, 1008.0), "自然寸法は fixture 実寸と一致するはず");
@@ -318,7 +338,7 @@ mod tests {
     let source = MemoryProjectSource::new();
     let paths = vec![request("/project/does-not-exist.png", ImageFormat::Png)];
 
-    let result = load_image_resources(&source, &paths);
+    let result = load_image_resources(&source, &paths, &svg_parser());
 
     let Err(failures) = result else {
       panic!("読込エラーを期待");
@@ -333,7 +353,8 @@ mod tests {
   #[should_panic(expected = "描画対象の画像は collect_image_requests が同じ HIR の Figure から全件集め")]
   fn resolve_image_size_panics_when_path_is_absent_from_resources() {
     // `collect_image_requests` が `Figure` を取りこぼしたのと同じ状態を作る
-    let (resources, _) = load_image_resources(&MemoryProjectSource::new(), &[]).expect("画像 0 件なら成功するはず");
+    let (resources, _) =
+      load_image_resources(&MemoryProjectSource::new(), &[], &svg_parser()).expect("画像 0 件なら成功するはず");
 
     let _ = resolve_image_size(
       &resources,

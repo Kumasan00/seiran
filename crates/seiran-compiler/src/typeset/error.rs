@@ -87,6 +87,38 @@ pub(crate) enum TypesetError {
     source: usvg::Error,
   },
 
+  /// SVG の `font-family` が設定済みフォントのどれにも一致しませんでした。
+  #[error("SVG の文字に使うフォントが見つかりません: {path}（font-family: {families}）")]
+  #[diagnostic(
+    code(typeset::image::svg_font_not_found),
+    help(
+      "font-family には config.toml で設定したフォントのファミリ名（{available}）か serif / sans-serif / monospace を指定してください。"
+    )
+  )]
+  SvgFontNotFound {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 一致しなかった `font-family` のリスト（CSS の綴り）。
+    families: String,
+    /// 照合できるファミリ名（設定の宣言順、`、` 区切り）。
+    available: String,
+  },
+
+  /// SVG の文字を、選んだフォントの系統のどの候補でも組めませんでした。
+  #[error("SVG の文字を組めるフォントがありません: {path}（{chars}）")]
+  #[diagnostic(
+    code(typeset::image::svg_missing_glyph),
+    help(
+      "font-family で選んだ系統（serif / sans-serif / monospace）の枠の候補に、この文字を持つフォントを加えてください。"
+    )
+  )]
+  SvgMissingGlyph {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 組めなかった字（出現順・重複除去。`「字」(U+XXXX)` を `、` で連結）。
+    chars: String,
+  },
+
   /// PDF として読み込めませんでした（破損・別形式のファイル）。
   #[error("PDF として読み込めませんでした: {path}")]
   #[diagnostic(
