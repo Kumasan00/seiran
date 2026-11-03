@@ -197,6 +197,12 @@ impl ParagraphBuffer {
   }
 }
 
+/// トークン（ソース上の開始位置 `start`）の中のバイト位置 `offset` を、ソース上の位置にする
+fn source_position(start: u32, offset: usize) -> u32 {
+  return start
+    + u32::try_from(offset).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
+}
+
 /// 段落の先頭判定用に、インライン要素が「実体のある内容」かどうかを返す
 fn is_non_blank_inline(inline: &HirInline) -> bool {
   return match &inline.kind {
@@ -207,6 +213,7 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
     | HirInlineKind::Code(_)
     | HirInlineKind::Math(_)
     | HirInlineKind::Symbol(_)
+    | HirInlineKind::Number(_)
     | HirInlineKind::LineBreak
     | HirInlineKind::NoIndent
     | HirInlineKind::Ref { .. }

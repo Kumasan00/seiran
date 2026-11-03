@@ -273,6 +273,15 @@ fn diagnostic_unsupported_in_math_text() {
 }
 
 #[test]
+fn diagnostic_invalid_number() {
+  // 数値は左から読む文法なので、最初に外れた字（桁区切りの `,`）の位置で止める
+  let failure = compile_err(&["tests/text/diagnostics/invalid_number.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::invalid_number".to_string()]);
+  assert_matches_golden("invalid_number", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_needless_escape_in_math() {
   // LaTeX の細アキ `\,` は数式でも字 `,` の第 2 の書き方なので、構文文字でも区切りでもない字のエスケープとして拒否する
   let failure = compile_err(&["tests/text/diagnostics/needless_escape_math.sei"]);

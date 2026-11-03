@@ -19,7 +19,7 @@ use crate::{
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
     boxing::{self, script, yakumono},
-    font::{self, Buffer, Finding, FontSystem, ScriptLevel, ScriptScale, Stretch},
+    font::{self, Buffer, Finding, FontSystem, ScriptLevel, ScriptScale, Stretch, SuperscriptMetrics},
     glyph_issues::{GlyphIssue, GlyphIssues, GlyphOrigin, IssueKind},
     lowering::{MathOperator, TextStyle},
     observe,
@@ -499,6 +499,11 @@ impl<'a> Shaper<'a> {
       "テキスト run をシェーピング"
     );
     return shaped;
+  }
+
+  /// 実体 `face` の OS/2 の上付きの指標（無ければ `None`）
+  pub(super) fn superscript_metrics(&self, face: FontFace) -> Option<SuperscriptMetrics> {
+    return self.fonts.superscript_metrics(face);
   }
 
   /// 数式フォントの MATH のスクリプト段の縮小率

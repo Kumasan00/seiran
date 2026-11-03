@@ -437,6 +437,16 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "toc", "max_depth", 4);
       set_heading(table, "section", "alignment", "right");
     },
+    // 数値を本文用の枠の書体と、既定と違う小数点・桁区切り・4 桁区切りで組む版面（STIX Two Text は U+22C5 を持たないので積の記号は既定の times）
+    // 長い数値が行末をまたぐ行長（箱の中で折り返さないことを見る）
+    "num" => set_page_margins(table, "250mm", "99pt"),
+    "num_text_typeface" => {
+      set_page_margins(table, "250mm", "99pt");
+      set(table, "quantity", "typeface", "serif");
+      set(table, "quantity", "decimal_marker", "comma");
+      set(table, "quantity", "digit_group_separator", "period");
+      set(table, "quantity", "group_four_digits", true);
+    },
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     "index_groups" => set(table, "index", "group_headings", true),
     // 区分見出しありの 2 段組み索引で、エントリと区分見出しを右、題目を中央に寄せた版面。本文高を約 62mm に縮めて

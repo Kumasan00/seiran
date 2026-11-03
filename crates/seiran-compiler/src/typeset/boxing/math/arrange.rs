@@ -8,6 +8,7 @@
 mod spacing;
 
 use spacing::ScriptSide;
+pub(in crate::typeset::boxing) use spacing::space_width;
 
 use crate::{
   color::Color,
@@ -16,7 +17,7 @@ use crate::{
   typeset::{
     boxes::Align,
     font::{ScriptLevel, ScriptScale},
-    lowering::{DelimiterGlyphs, MathFormula, MathNode, MathOperator, TextStyle},
+    lowering::{DelimiterGlyphs, MathFormula, MathNode, MathOperator, NumberPiece, TextStyle},
   },
 };
 
@@ -27,6 +28,8 @@ pub(super) enum ArrangedNode {
   Text(String, TextStyle),
   /// 数式内の文章（`\text{...}`。本文と同じ規則で組み、自然幅の閉じた箱にする）
   Prose(String, TextStyle),
+  /// 数値（`\num`。部品を並べた閉じた箱。スタイルはその段の大きさと `[quantity].typeface`）
+  Number(Vec<NumberPiece>, TextStyle),
   /// 水平カーン（固定幅のアキ。アトム間スペーシングと明示アキが出す）
   Kern {
     /// カーンの幅
@@ -464,6 +467,20 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       );
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![prose]));
     },
+    // 数値は箱の中で完結するので、段の字形（`ssty`）も数式クラスも持たない Ord の 1 アトム
+    MathNode::Number { pieces, typeface } => {
+      let number = ArrangedNode::Number(
+        pieces.clone(),
+        TextStyle {
+          font_size: ctx.font_size(),
+          typeface: *typeface,
+          color: ctx.color,
+          script_level: None,
+          math_operator: None,
+        },
+      );
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![number]));
+    },
     MathNode::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, arrange_list(children, ctx)));
     },
@@ -705,6 +722,10 @@ mod tests {
     for node in nodes {
       match node {
         ArrangedNode::Text(text, style) | ArrangedNode::Prose(text, style) => out.push((text.clone(), *style)),
+        ArrangedNode::Number(pieces, style) => out.extend(pieces.iter().filter_map(|piece| match piece {
+          NumberPiece::Text(text) | NumberPiece::Superscript(text) => return Some((text.clone(), *style)),
+          NumberPiece::Space(_) => return None,
+        })),
         // アキは表示文字列を持たない
         ArrangedNode::Kern { .. } => {},
         ArrangedNode::Scripts(scripts) => out.extend(scripts_texts(scripts)),
@@ -926,6 +947,57 @@ mod tests {
   /// スクリプトの欄の中身を連結した文字列（欄が無ければ `None`）
   fn slot_text(slot: Option<&[ArrangedNode]>) -> Option<String> {
     return slot.map(|nodes| return concat_atom_texts(nodes));
+  }
+
+  /// トップレベルの要素の種類を出現順に並べる（数値・アキ・テキストだけを区別する）
+  fn top_kinds(nodes: &[ArrangedInline]) -> Vec<&'static str> {
+    return top(nodes)
+      .map(|node| match node {
+        ArrangedNode::Number(..) => return "number",
+        ArrangedNode::Kern { .. } => return "kern",
+        ArrangedNode::Text(..) => return "text",
+        _ => return "other",
+      })
+      .collect();
+  }
+
+  #[test]
+  fn minus_inside_number_is_not_a_binary_operator() {
+    // `\num{-5}` は Ord の 1 アトムなので、`a` との間にアキは入らない（`a-5` の `-` は Bin でアキが入る）
+    let number = lower_math_source("$a\\num{-5}$\n");
+    let written = lower_math_source("$a-5$\n");
+
+    assert_eq!(top_kinds(&number), ["text", "number"]);
+    assert!(top_kinds(&written).contains(&"kern"), "{written:?}");
+  }
+
+  #[test]
+  fn math_number_takes_the_size_of_its_level() {
+    let nodes = lower_math_source("$x^{\\num{2}}$\n");
+
+    let superscript = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
+    let [ArrangedNode::Number(_, style)] = superscript else {
+      panic!("上付きの中身は数値 1 個のはず: {superscript:?}");
+    };
+    assert_eq!(
+      style.font_size,
+      stix_script_scale().font_size(ReadStyle::default().text.font_size, Some(ScriptLevel::Script))
+    );
+    assert_eq!(style.typeface, Typeface::Math);
+    assert_eq!(style.script_level, None, "数値の基準の字は段の字形を使わない");
+  }
+
+  #[test]
+  fn text_typeface_applies_inside_math() {
+    let mut style = ReadStyle::default();
+    style.quantity.typeface = Typeface::Serif;
+
+    let nodes = arranged(&style, "$\\num{1}$\n");
+
+    assert!(
+      matches!(top(&nodes).next(), Some(ArrangedNode::Number(_, s)) if s.typeface == Typeface::Serif),
+      "{nodes:?}"
+    );
   }
 
   #[test]

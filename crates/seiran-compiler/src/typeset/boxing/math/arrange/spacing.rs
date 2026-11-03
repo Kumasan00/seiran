@@ -107,7 +107,7 @@ impl MathItem {
 
   /// 明示アキ `space`（段のフォントサイズ `font_size`）のアイテムを作る
   pub(super) fn explicit(space: MathSpace, font_size: Length) -> Self {
-    return MathItem::Space(mu(explicit_mu_count(space), font_size));
+    return MathItem::Space(space_width(space, font_size));
   }
 }
 
@@ -304,6 +304,11 @@ const fn explicit_mu_count(space: MathSpace) -> i32 {
     MathSpace::Quad => QUAD_MU,
     MathSpace::NegativeThin => -Space::Thin.mu_count(),
   };
+}
+
+/// 明示アキ `space` の、フォントサイズ `font_size` での幅（数式の外の数値の箱でも 1mu = `font_size` / 18）
+pub(in crate::typeset::boxing) fn space_width(space: MathSpace, font_size: Length) -> Length {
+  return mu(explicit_mu_count(space), font_size);
 }
 
 /// mu 単位（1mu = `font_size` / 18）を長さへ直す

@@ -13,7 +13,7 @@
 
 use crate::{
   document::{
-    HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, NodeId,
+    HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, NodeId, Numeral,
     SourceLocation, SourceMap, Typeface,
   },
   failures::Failures,
@@ -23,7 +23,7 @@ use crate::{
     boxing, font,
     glyph_issues::{MissingMathGlyph, VariationSequenceFallback},
     lowering,
-    lowering::DelimiterGlyphs,
+    lowering::{DelimiterGlyphs, NumberPiece},
   },
 };
 
@@ -160,6 +160,7 @@ impl Checker<'_> {
     for inline in inlines {
       match &inline.kind {
         HirInlineKind::Math(math) => self.math_list(math, None),
+        HirInlineKind::Number(numeral) => self.number(inline.id, numeral),
         HirInlineKind::Styled { children, .. }
         | HirInlineKind::Colored { children, .. }
         | HirInlineKind::Link { children, .. }
@@ -204,6 +205,8 @@ impl Checker<'_> {
       },
       // 明示アキは字を持たず、文章は本文の書体で組むので、どちらも数式フォントの字を要求しない
       HirMathKind::Space(_) | HirMathKind::Prose(_) => {},
+      // 数値は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
+      HirMathKind::Number(numeral) => self.number(node.id, numeral),
       HirMathKind::Group(children) => self.math_list(children, variant),
       HirMathKind::Superscript(inner) | HirMathKind::Subscript(inner) => self.math(inner, variant),
       HirMathKind::Frac { numer, denom } => {
@@ -250,6 +253,24 @@ impl Checker<'_> {
         variant: inner,
         children,
       } => self.math_list(children, Some(*inner)),
+    }
+    return;
+  }
+
+  /// 数値（箇所 `site`）を `[quantity].typeface` が数式フォントのときだけ、書式どおりに組む字（上付きの字を含む）で要求する
+  fn number(&mut self, site: NodeId, numeral: &Numeral) {
+    if self.style.quantity.typeface != Typeface::Math {
+      return;
+    }
+    for piece in lowering::number_pieces(numeral, &self.style.quantity) {
+      match piece {
+        NumberPiece::Text(text) | NumberPiece::Superscript(text) => {
+          for ch in text.chars() {
+            self.routed(site, ch, ch);
+          }
+        },
+        NumberPiece::Space(_) => {},
+      }
     }
     return;
   }
@@ -340,7 +361,13 @@ mod tests {
   use std::cell::RefCell;
 
   use super::check;
-  use crate::{document::HirDocument, frontend::test_support, project::ProjectPath, source::SourceId, style::Style};
+  use crate::{
+    document::{HirDocument, Typeface},
+    frontend::test_support,
+    project::ProjectPath,
+    source::SourceId,
+    style::Style,
+  };
 
   /// 診断のパスに載せる数式フォント（テストでは実在しなくてよい）
   fn font_path() -> ProjectPath { return ProjectPath::new("fonts/math.otf"); }
@@ -386,6 +413,37 @@ mod tests {
     );
     assert!(result.is_ok(), "全字を持つフォントなら欠落は無いはず");
     return asked.into_inner();
+  }
+
+  #[test]
+  fn number_requests_its_characters_when_the_typeface_is_math() {
+    let found = missing("\\num{-1.5e3} と $\\num{2e3}$", &['\u{2212}', '\u{00D7}']);
+
+    let sites: Vec<(char, String)> = found.into_iter().map(|(glyph, site, _)| return (glyph, site)).collect();
+    assert_eq!(
+      sites,
+      vec![
+        ('\u{2212}', "\\num{-1.5e3}".to_string()),
+        ('\u{00D7}', "\\num{-1.5e3}".to_string()),
+        ('\u{00D7}', "\\num{2e3}".to_string()),
+      ]
+    );
+  }
+
+  #[test]
+  fn number_is_not_checked_against_the_math_font_for_a_text_typeface() {
+    let mut style = Style::default();
+    style.quantity.typeface = Typeface::Serif;
+
+    let (result, _) = check(
+      &document("\\num{-1.5e3} と $\\num{2e3}$"),
+      &style,
+      &|_| return false,
+      &|_, _| return true,
+      &font_path(),
+    );
+
+    assert!(result.is_ok(), "本文用の枠の字は数式フォントに問わない");
   }
 
   #[test]

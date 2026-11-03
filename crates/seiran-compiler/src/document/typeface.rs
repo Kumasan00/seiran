@@ -1,12 +1,14 @@
 //! 言語判定前の書体の指定 [`Typeface`]。
 
 use serde::Deserialize;
+use strum::IntoStaticStr;
 
 /// 言語判定前の書体の指定
 ///
 /// 組版時に文字のスクリプトと組み合わせて 19 種別の [`crate::project::FontType`] へ確定する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum Typeface {
   /// Serif 標準フォント
   Serif,

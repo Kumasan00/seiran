@@ -170,6 +170,7 @@ pub(super) fn contains_line_break(nodes: &[HirInline]) -> bool {
     | HirInlineKind::Code(_)
     | HirInlineKind::Math(_)
     | HirInlineKind::Symbol(_)
+    | HirInlineKind::Number(_)
     | HirInlineKind::NoIndent
     | HirInlineKind::Ref { .. }
     | HirInlineKind::Link { .. }

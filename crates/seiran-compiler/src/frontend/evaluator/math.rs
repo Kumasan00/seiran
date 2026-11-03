@@ -14,7 +14,7 @@ use crate::{
   document::{HirInlineKind, HirMath, HirMathKind, MathClass, MathSpace, MathVariant, NodeId},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity, command,
+      self, EvalContext, EvalError, arity, command,
       command::symbol::{self, MathSymbol},
       environment,
       inline::{self, TokenInline},
@@ -145,8 +145,7 @@ fn leading_combining_span(source: &str, token: &Token) -> Option<Span> {
   if len == 0 {
     return None;
   }
-  let len = u32::try_from(len).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
-  return Some(Span::new(token.span.start, token.span.start + len));
+  return Some(Span::new(token.span.start, evaluator::source_position(token.span.start, len)));
 }
 
 /// 数式のテキストトークンの中身 `text`（ソース上の開始位置 `start`）を HIR へ積む
@@ -155,10 +154,7 @@ fn leading_combining_span(source: &str, token: &Token) -> Option<Span> {
 /// そのほかの字の並びは 1 個の [`HirMathKind::Text`] にまとめる。
 fn push_math_text(ctx: &EvalContext<'_>, text: &str, start: u32, nodes: &mut Vec<HirMath>) {
   let span = |from: usize, to: usize| {
-    let at = |offset: usize| {
-      return start
-        + u32::try_from(offset).expect("トークンはソースの部分文字列で、ソースは u32::MAX バイトを超えない前提");
-    };
+    let at = |offset: usize| return evaluator::source_position(start, offset);
     return Span::new(at(from), at(to));
   };
   let mut plain = 0;
@@ -291,6 +287,8 @@ enum MathCommandKind {
   },
   /// 文章（`\text`）— 必須引数 1 個（テキストとして読む文章）
   Prose,
+  /// 数値（`\num`）— 必須引数 1 個（数式として読む数値）
+  Number,
   /// 中間の区切り（`\given`）— 必須引数なし。伸縮括弧の引数の直下でだけ有効
   Given,
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
@@ -308,6 +306,7 @@ impl MathCommandKind {
       "binom" => Some(Self::Binom),
       "sqrt" => Some(Self::Sqrt),
       "text" => Some(Self::Prose),
+      "num" => Some(Self::Number),
       "given" => Some(Self::Given),
       _ => fence_delimiters(name)
         .map(|(open, close)| return Self::Fenced { open, close })
@@ -323,7 +322,13 @@ impl MathCommandKind {
   /// 必須引数の個数
   fn arg_count(self) -> usize {
     return match self {
-      Self::Styled(_) | Self::Sqrt | Self::Fenced { .. } | Self::Accent { .. } | Self::Bar { .. } | Self::Prose => 1,
+      Self::Styled(_)
+      | Self::Sqrt
+      | Self::Fenced { .. }
+      | Self::Accent { .. }
+      | Self::Bar { .. }
+      | Self::Prose
+      | Self::Number => 1,
       Self::Frac | Self::Binom => 2,
       Self::Space(_) | Self::OperatorName { .. } | Self::Given | Self::Symbol(_) => 0,
     };
@@ -333,6 +338,7 @@ impl MathCommandKind {
   fn arg_modes(self) -> &'static [ArgMode] {
     return match self {
       Self::Prose => &[ArgMode::Text],
+      Self::Number => &[ArgMode::Math],
       Self::Styled(_)
       | Self::Frac
       | Self::Binom
@@ -606,6 +612,10 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       let arg = arity::exactly_one_arg(&view, "1 個（文章）")?;
       let text = prose_text(source, arg)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Prose(text)));
+    },
+    MathCommandKind::Number => {
+      let numeral = command::number::numeral(&view)?;
+      return Ok(ctx.leaf_math(view.span(), HirMathKind::Number(numeral)));
     },
     // 伸縮括弧の直下の `\given` は `evaluate_fence_segments` が区切りとして取り除くので、ここへ来るのはそれ以外の位置
     // （グループ・引数・スクリプト・セル・環境本体・伸縮括弧の外）の `\given` だけ
