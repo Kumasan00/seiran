@@ -17,7 +17,7 @@ use crate::{
   typeset::{
     boxes::Align,
     font::{ScriptLevel, ScriptScale},
-    lowering::{DelimiterGlyphs, MathFormula, MathNode, MathOperator, NumberPiece, TextStyle},
+    lowering::{DelimiterGlyphs, MathFormula, MathNode, MathOperator, QuantityPiece, TextStyle},
   },
 };
 
@@ -29,7 +29,7 @@ pub(super) enum ArrangedNode {
   /// 数式内の文章（`\text{...}`。本文と同じ規則で組み、自然幅の閉じた箱にする）
   Prose(String, TextStyle),
   /// 数値（`\num`。部品を並べた閉じた箱。スタイルはその段の大きさと `[quantity].typeface`）
-  Number(Vec<NumberPiece>, TextStyle),
+  Quantity(Vec<QuantityPiece>, TextStyle),
   /// 水平カーン（固定幅のアキ。アトム間スペーシングと明示アキが出す）
   Kern {
     /// カーンの幅
@@ -468,8 +468,8 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![prose]));
     },
     // 数値は箱の中で完結するので、段の字形（`ssty`）も数式クラスも持たない Ord の 1 アトム
-    MathNode::Number { pieces, typeface } => {
-      let number = ArrangedNode::Number(
+    MathNode::Quantity { pieces, typeface } => {
+      let number = ArrangedNode::Quantity(
         pieces.clone(),
         TextStyle {
           font_size: ctx.font_size(),
@@ -722,9 +722,9 @@ mod tests {
     for node in nodes {
       match node {
         ArrangedNode::Text(text, style) | ArrangedNode::Prose(text, style) => out.push((text.clone(), *style)),
-        ArrangedNode::Number(pieces, style) => out.extend(pieces.iter().filter_map(|piece| match piece {
-          NumberPiece::Text(text) | NumberPiece::Superscript(text) => return Some((text.clone(), *style)),
-          NumberPiece::Space(_) => return None,
+        ArrangedNode::Quantity(pieces, style) => out.extend(pieces.iter().filter_map(|piece| match piece {
+          QuantityPiece::Text(text) | QuantityPiece::Superscript(text) => return Some((text.clone(), *style)),
+          QuantityPiece::Space(_) => return None,
         })),
         // アキは表示文字列を持たない
         ArrangedNode::Kern { .. } => {},
@@ -953,7 +953,7 @@ mod tests {
   fn top_kinds(nodes: &[ArrangedInline]) -> Vec<&'static str> {
     return top(nodes)
       .map(|node| match node {
-        ArrangedNode::Number(..) => return "number",
+        ArrangedNode::Quantity(..) => return "number",
         ArrangedNode::Kern { .. } => return "kern",
         ArrangedNode::Text(..) => return "text",
         _ => return "other",
@@ -976,7 +976,7 @@ mod tests {
     let nodes = lower_math_source("$x^{\\num{2}}$\n");
 
     let superscript = first_scripts(&nodes).superscript.as_deref().expect("上付きがあるはず");
-    let [ArrangedNode::Number(_, style)] = superscript else {
+    let [ArrangedNode::Quantity(_, style)] = superscript else {
       panic!("上付きの中身は数値 1 個のはず: {superscript:?}");
     };
     assert_eq!(
@@ -995,7 +995,7 @@ mod tests {
     let nodes = arranged(&style, "$\\num{1}$\n");
 
     assert!(
-      matches!(top(&nodes).next(), Some(ArrangedNode::Number(_, s)) if s.typeface == Typeface::Serif),
+      matches!(top(&nodes).next(), Some(ArrangedNode::Quantity(_, s)) if s.typeface == Typeface::Serif),
       "{nodes:?}"
     );
   }

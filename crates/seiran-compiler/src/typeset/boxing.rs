@@ -43,7 +43,7 @@ pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
 use hlist::HList;
 use hyphenation::Lang;
 pub(super) use math::{FENCE_DIVIDER, RADICAL_SIGN};
-pub(super) use quantity::number_font_type;
+pub(super) use quantity::quantity_font_type;
 pub(super) use script::char_font_type;
 pub(super) use shaping::Shaper;
 use tracing::debug;
@@ -346,8 +346,8 @@ impl<'a> Measurer<'a> {
       InlineNode::Math(formula) => {
         self.push_inline_math(&formula, out);
       },
-      InlineNode::Number { pieces, style } => {
-        self.push_number(&pieces, style, out);
+      InlineNode::Quantity { pieces, style } => {
+        self.push_quantity(&pieces, style, out);
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
       InlineNode::FlushRight(text, style) => {

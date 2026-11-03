@@ -72,7 +72,7 @@ pub(super) fn lower_inline(
     },
     // 書体は外側（装飾・見出し）を継がず `[quantity].typeface`。大きさと色は外側のもの
     HirInlineKind::Number(numeral) => {
-      return vec![InlineNode::Number {
+      return vec![InlineNode::Quantity {
         pieces: quantity::number_pieces(numeral, &ctx.style.quantity),
         style: TextStyle {
           typeface: ctx.style.quantity.typeface,
@@ -206,7 +206,7 @@ mod tests {
     semantics::{CitationId, GeneratedInline, LabelId},
     style::{NumberStyle, NumberTemplate, Style as ReadStyle},
     typeset::lowering::{
-      LayoutNode, NumberPiece, lower_sources_with_headings,
+      LayoutNode, QuantityPiece, lower_sources_with_headings,
       test_support::{analyzed, context, inlines, lower, paragraph_layout},
     },
   };
@@ -382,7 +382,7 @@ mod tests {
 
     let nodes = lower_source(&ReadStyle::default(), "\\color[color=#ff0000]{\\bold{\\num{12345}}}\n");
 
-    let InlineNode::Number { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
       panic!("Number が期待されます: {nodes:?}");
     };
     assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
@@ -391,9 +391,9 @@ mod tests {
     assert_eq!(
       pieces,
       &[
-        NumberPiece::Text("12".to_string()),
-        NumberPiece::Space(MathSpace::Thin),
-        NumberPiece::Text("345".to_string())
+        QuantityPiece::Text("12".to_string()),
+        QuantityPiece::Space(MathSpace::Thin),
+        QuantityPiece::Text("345".to_string())
       ]
     );
   }

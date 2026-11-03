@@ -23,7 +23,7 @@ use crate::{
     boxing, font,
     glyph_issues::{MissingMathGlyph, VariationSequenceFallback},
     lowering,
-    lowering::{DelimiterGlyphs, NumberPiece},
+    lowering::{DelimiterGlyphs, QuantityPiece},
   },
 };
 
@@ -264,12 +264,12 @@ impl Checker<'_> {
     }
     for piece in lowering::number_pieces(numeral, &self.style.quantity) {
       match piece {
-        NumberPiece::Text(text) | NumberPiece::Superscript(text) => {
+        QuantityPiece::Text(text) | QuantityPiece::Superscript(text) => {
           for ch in text.chars() {
             self.routed(site, ch, ch);
           }
         },
-        NumberPiece::Space(_) => {},
+        QuantityPiece::Space(_) => {},
       }
     }
     return;

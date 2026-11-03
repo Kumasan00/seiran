@@ -177,7 +177,7 @@ fn lay_out(
     &config.font_configs[FontFace::MATH].font_path,
   );
   // 数値の指数を組めない文書は組版に進まない（boxing は本文用の枠の上付きの指標がある前提で組む）
-  let quantity_face = FontFace::primary(boxing::number_font_type(style.quantity.typeface));
+  let quantity_face = FontFace::primary(boxing::quantity_font_type(style.quantity.typeface));
   let superscripts = quantity_check::check(
     document.hir(),
     quantity_face,

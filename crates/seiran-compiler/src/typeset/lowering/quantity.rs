@@ -1,20 +1,20 @@
-//! 数値（`document::Numeral`）を style.toml `[quantity]` の書式の部品列（[`NumberPiece`]）に整える
+//! 数値（`document::Numeral`）を style.toml `[quantity]` の書式の部品列（[`QuantityPiece`]）に整える
 //!
 //! 部品列は本文・数式の箱（boxing）と PDF しおりの平文（[`plain_text`]）の両方の元になる。
 
 use crate::{
   document::{MathSpace, NumberSign, Numeral},
   style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
-  typeset::lowering::NumberPiece,
+  typeset::lowering::QuantityPiece,
 };
 
 /// 桁区切りを入れない最大の桁数（4 桁は `group_four_digits` のときだけ区切る）
 const UNGROUPED_DIGITS: usize = 3;
 
-/// 数値を `style` の書式の部品列にする（隣り合う字は 1 つの [`NumberPiece::Text`] に畳む）
+/// 数値を `style` の書式の部品列にする（隣り合う字は 1 つの [`QuantityPiece::Text`] に畳む）
 ///
 /// 負号は U+2212。指数があれば `仮数 × 10^指数` の形にし、積の記号の前後は中アキ。
-pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle) -> Vec<NumberPiece> {
+pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle) -> Vec<QuantityPiece> {
   let mut pieces = Vec::new();
   match numeral.sign {
     Some(NumberSign::Plus) => push_text(&mut pieces, "+"),
@@ -33,7 +33,7 @@ pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle
     push_grouped(&mut pieces, fraction, false, style);
   }
   if let Some(exponent) = &numeral.exponent {
-    pieces.push(NumberPiece::Space(MathSpace::Medium));
+    pieces.push(QuantityPiece::Space(MathSpace::Medium));
     push_text(
       &mut pieces,
       match style.exponent_product {
@@ -41,25 +41,25 @@ pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle
         ExponentProduct::Dot => "\u{22C5}",
       },
     );
-    pieces.push(NumberPiece::Space(MathSpace::Medium));
+    pieces.push(QuantityPiece::Space(MathSpace::Medium));
     push_text(&mut pieces, "10");
-    pieces.push(NumberPiece::Superscript(exponent.replace('-', "\u{2212}")));
+    pieces.push(QuantityPiece::Superscript(exponent.replace('-', "\u{2212}")));
   }
   return pieces;
 }
 
 /// 部品列を PDF しおりの平文にする（細アキ U+202F・中アキ U+205F・上付きは Unicode の上付き字）
-pub(super) fn plain_text(pieces: &[NumberPiece]) -> String {
+pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
   let mut out = String::new();
   for piece in pieces {
     match piece {
-      NumberPiece::Text(text) => out.push_str(text),
-      NumberPiece::Space(MathSpace::Thin) => out.push('\u{202F}'),
-      NumberPiece::Space(MathSpace::Medium) => out.push('\u{205F}'),
-      NumberPiece::Space(MathSpace::Thick | MathSpace::Quad | MathSpace::NegativeThin) => {
+      QuantityPiece::Text(text) => out.push_str(text),
+      QuantityPiece::Space(MathSpace::Thin) => out.push('\u{202F}'),
+      QuantityPiece::Space(MathSpace::Medium) => out.push('\u{205F}'),
+      QuantityPiece::Space(MathSpace::Thick | MathSpace::Quad | MathSpace::NegativeThin) => {
         unreachable!("number_pieces が作るアキは細アキ（桁区切り）と中アキ（積の記号の前後）だけ")
       },
-      NumberPiece::Superscript(text) => out.extend(text.chars().map(superscript_char)),
+      QuantityPiece::Superscript(text) => out.extend(text.chars().map(superscript_char)),
     }
   }
   return out;
@@ -84,16 +84,16 @@ fn superscript_char(ch: char) -> char {
 }
 
 /// 字 `text` を末尾の字の部品に足す（末尾が字でなければ新しい部品にする）
-fn push_text(pieces: &mut Vec<NumberPiece>, text: &str) {
-  if let Some(NumberPiece::Text(last)) = pieces.last_mut() {
+fn push_text(pieces: &mut Vec<QuantityPiece>, text: &str) {
+  if let Some(QuantityPiece::Text(last)) = pieces.last_mut() {
     last.push_str(text);
     return;
   }
-  pieces.push(NumberPiece::Text(text.to_string()));
+  pieces.push(QuantityPiece::Text(text.to_string()));
 }
 
 /// 数字列 `digits` を 3 桁ごとに区切って積む（`from_right` なら整数部として右から、偽なら小数部として左から）
-fn push_grouped(pieces: &mut Vec<NumberPiece>, digits: &str, from_right: bool, style: &QuantityStyle) {
+fn push_grouped(pieces: &mut Vec<QuantityPiece>, digits: &str, from_right: bool, style: &QuantityStyle) {
   let len = digits.len();
   let grouped = style.digit_group_separator != DigitGroupSeparator::None
     && (len > UNGROUPED_DIGITS + 1 || (len == UNGROUPED_DIGITS + 1 && style.group_four_digits));
@@ -115,7 +115,7 @@ fn push_grouped(pieces: &mut Vec<NumberPiece>, digits: &str, from_right: bool, s
   while start < len {
     if start > 0 {
       match style.digit_group_separator {
-        DigitGroupSeparator::Thin => pieces.push(NumberPiece::Space(MathSpace::Thin)),
+        DigitGroupSeparator::Thin => pieces.push(QuantityPiece::Space(MathSpace::Thin)),
         DigitGroupSeparator::Comma => push_text(pieces, ","),
         DigitGroupSeparator::Period => push_text(pieces, "."),
         DigitGroupSeparator::None => unreachable!("区切りが none なら grouped は偽で、ここへは来ない"),
@@ -133,7 +133,7 @@ mod tests {
   use crate::{
     document::{MathSpace, NumberSign, Numeral},
     style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
-    typeset::lowering::NumberPiece,
+    typeset::lowering::QuantityPiece,
   };
 
   /// 部分ごとの字面から数値を作る
@@ -150,13 +150,13 @@ mod tests {
   fn int(integer: &str) -> Numeral { return numeral(None, integer, None, None); }
 
   /// 字の部品
-  fn text(s: &str) -> NumberPiece { return NumberPiece::Text(s.to_string()); }
+  fn text(s: &str) -> QuantityPiece { return QuantityPiece::Text(s.to_string()); }
 
   /// 細アキの部品（桁区切り）
-  const THIN: NumberPiece = NumberPiece::Space(MathSpace::Thin);
+  const THIN: QuantityPiece = QuantityPiece::Space(MathSpace::Thin);
 
   /// 中アキの部品（積の記号の前後）
-  const MEDIUM: NumberPiece = NumberPiece::Space(MathSpace::Medium);
+  const MEDIUM: QuantityPiece = QuantityPiece::Space(MathSpace::Medium);
 
   #[test]
   fn four_digit_integer_is_grouped_only_when_asked() {
@@ -227,7 +227,7 @@ mod tests {
         text("\u{00D7}"),
         MEDIUM,
         text("10"),
-        NumberPiece::Superscript("\u{2212}3".to_string())
+        QuantityPiece::Superscript("\u{2212}3".to_string())
       ]
     );
     assert_eq!(number_pieces(&value, &dot)[2], text("\u{22C5}"));

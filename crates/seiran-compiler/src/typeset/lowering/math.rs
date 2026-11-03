@@ -303,7 +303,7 @@ fn push_resolved(
       }
     }),
     // 数値は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
-    HirMathKind::Number(numeral) => out.push(MathNode::Number {
+    HirMathKind::Number(numeral) => out.push(MathNode::Quantity {
       pieces: quantity::number_pieces(numeral, &style.quantity),
       typeface: style.quantity.typeface,
     }),
@@ -445,7 +445,7 @@ mod tests {
     semantics::SemanticDocument,
     style::{CounterTemplate, Style as ReadStyle},
     typeset::lowering::{
-      NumberPiece,
+      QuantityPiece,
       test_support::{analyzed, lower},
     },
   };
@@ -778,17 +778,17 @@ mod tests {
   fn number_ignores_the_glyph_variant_and_takes_the_quantity_typeface() {
     let mut serif = ReadStyle::default();
     serif.quantity.typeface = Typeface::Serif;
-    let one = vec![NumberPiece::Text("1".to_string())];
+    let one = vec![QuantityPiece::Text("1".to_string())];
 
     let math = resolved("$\\mathbold{\\num{1}}$\n");
     let text = resolved_with(&serif, "$\\num{1}$\n");
 
     assert!(
-      matches!(math.as_slice(), [MathNode::Number { pieces, typeface: Typeface::Math }] if *pieces == one),
+      matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == one),
       "{math:?}"
     );
     assert!(
-      matches!(text.as_slice(), [MathNode::Number { pieces, typeface: Typeface::Serif }] if *pieces == one),
+      matches!(text.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Serif }] if *pieces == one),
       "{text:?}"
     );
   }
