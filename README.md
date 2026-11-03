@@ -90,6 +90,11 @@ SVG（`.svg`）・PDF（`.pdf`）に対応します。PDF は 1 ページをラ�
 - `dpi` / `downsample` はラスタ（PNG / JPEG）専用で、config.toml の `[image]` を 1 枚だけ上書きします
 - 形式に効かないオプションはエラーになります。PDF の注釈（リンク・フォーム等）は取り込まず warning を出します
 - パスワードが必要な PDF・未対応の方式で暗号化された PDF・PDF 2.0 の PDF は取り込めません（暗号化を外す / PDF 1.7 以下で書き出し直してください）
+- SVG の文字（`<text>`）は config.toml のフォントだけで組み、選択できる文字として埋め込みます。OS にインストールされたフォントは使いません
+  - `font-family` は左から順に照合し、最初に一致したものを使います。照合先はフォントファイルのファミリ名（大文字小文字は区別しない）か、`serif` / `sans-serif` / `monospace`（それぞれ `serif` / `sans_serif` / `monospace` の先頭候補）です。省略時は `serif` と同じです
+  - 太さ・斜体は SVG の `font-weight` / `font-style` で同じファミリの中から選びます。可変フォントでは `font-weight` が `wght` 軸に効き、config.toml の `variation_axes` は SVG の文字には効きません
+  - 選んだフォントに無い字は、同じ系統の枠（serif なら `serif` 4 種と `japanese_serif` 2 種。sans-serif・monospace も同様）の候補から宣言順に探します
+  - どれにも一致しない `font-family` と、どの候補でも組めない字はエラーになります。SVG の中から外部の画像を参照する機能は対象外です
 
 ### ログと診断
 

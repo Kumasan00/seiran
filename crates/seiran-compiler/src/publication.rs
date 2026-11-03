@@ -5,7 +5,8 @@
 //!
 //! 描画契約の値型 — シェーピング結果 [`GlyphRun`] / [`Glyph`]、フォント計測値 [`FontMetrics`]、フォント
 //! 構築設定 [`FontFaceConfig`] — は子 module（`glyph` / `font`）が持つ。画像形式は HIR の語彙
-//! （[`crate::document::ImageFormat`]）をそのまま載せる。
+//! （[`crate::document::ImageFormat`]）をそのまま載せる。SVG のパース設定 [`SvgParser`]（SVG 内の文字を全実体の
+//! フォントで組む規則）は子 module `svg` が持ち、[`PublicationResources::svg_parser`] で組版段と描画側へ同じ値を渡す。
 //!
 //! 文書を組み立てる型（[`Publication`] / [`PublicationPage`] / [`PublicationResources`]）と、
 //! 不変条件を持つ値（[`PublicationRect`] / [`ImageRef`]）はフィールドを非公開にし、構築経路を検証付きの `pub(crate)`
