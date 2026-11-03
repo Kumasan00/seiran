@@ -35,5 +35,5 @@ pub use project::{
 pub use publication::{
   FontFaceConfig, FontMetrics, Glyph, GlyphRun, ImageRef, PaintOp, Publication, PublicationDestination,
   PublicationFont, PublicationImage, PublicationLink, PublicationLinkTarget, PublicationMetadata,
-  PublicationOutlineEntry, PublicationPage, PublicationPoint, PublicationRect, PublicationResources,
+  PublicationOutlineEntry, PublicationPage, PublicationPoint, PublicationRect, PublicationResources, SvgParser,
 };

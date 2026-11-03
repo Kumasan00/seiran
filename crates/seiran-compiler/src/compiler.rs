@@ -16,6 +16,8 @@ mod input;
 mod project_source_equivalence;
 mod source_diagnostic;
 #[cfg(test)]
+mod svg_text;
+#[cfg(test)]
 mod test_support;
 mod warnings;
 

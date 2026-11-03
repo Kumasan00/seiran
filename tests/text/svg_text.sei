@@ -1,0 +1,9 @@
+// SVG 内の文字を設定済みフォントで組む fixture。図の文字は config.toml のフォントだけで組まれ、
+// font-family の名前・generic・省略、太字・斜体、和文の代替をそれぞれ 1 行ずつ含む。
+
+\section{SVG の文字}
+
+\begin{figure}[label=fig:svg-text]
+\image[width=100mm]{./tests/image/svg_text.svg}
+\caption{文字を含む SVG}
+\end{figure}

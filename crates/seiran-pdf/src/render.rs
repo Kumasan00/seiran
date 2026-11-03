@@ -15,7 +15,7 @@ use krilla::{
 use krilla_svg::{SurfaceExt, SvgSettings};
 use seiran_compiler::{
   Color, GlyphRun, PaintOp, Publication, PublicationDestination, PublicationImage, PublicationLink,
-  PublicationLinkTarget, PublicationOutlineEntry, PublicationPoint, PublicationRect, PublicationResources,
+  PublicationLinkTarget, PublicationOutlineEntry, PublicationPoint, PublicationRect, PublicationResources, SvgParser,
 };
 
 use crate::{
@@ -142,6 +142,7 @@ fn draw_paint_op(
   surface: &mut Surface<'_>,
   resources: &PublicationResources,
   fonts: &KrillaFonts,
+  svg: &SvgParser,
   op: &PaintOp,
 ) -> Result<(), PdfRenderError> {
   match op {
@@ -153,7 +154,7 @@ fn draw_paint_op(
       rect,
       target_dpi,
     } => {
-      draw_image(surface, resources.image(*image), *rect, *target_dpi)?;
+      draw_image(surface, svg, resources.image(*image), *rect, *target_dpi)?;
     },
     PaintOp::FillRect { rect, color } => {
       draw_filled_rect(surface, *rect, *color);
@@ -171,6 +172,7 @@ pub(crate) fn render_pages(
   fonts: &KrillaFonts,
 ) -> Result<(), PdfRenderError> {
   let resources = publication.resources();
+  let svg = resources.svg_parser();
   for page in publication.pages() {
     let (width, height) = (page.page_box().width(), page.page_box().height());
     let Some(page_settings) = PageSettings::from_wh(width, height) else {
@@ -179,7 +181,7 @@ pub(crate) fn render_pages(
     let mut krilla_page = document.start_page_with(page_settings);
     let mut surface = krilla_page.surface();
     for op in page.ops() {
-      draw_paint_op(&mut surface, resources, fonts, op)?;
+      draw_paint_op(&mut surface, resources, fonts, &svg, op)?;
     }
     surface.finish();
     add_page_links(&mut krilla_page, page.links());
@@ -200,12 +202,13 @@ pub(crate) fn render_pages(
 /// 開き直しても `XObject` は（文書, ページ）ごとに 1 個にまとまる。
 fn draw_image(
   surface: &mut Surface<'_>,
+  svg: &SvgParser,
   image: &PublicationImage,
   rect: PublicationRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfRenderError> {
   let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
-  let loaded = load_image(&image.path, image.format, &image.bytes, None)?;
+  let loaded = load_image(&image.path, image.format, &image.bytes, None, svg)?;
   let loaded = if let LoadedImage::Raster(raster) = &loaded
     && let Some(dpi) = target_dpi
     && let Some(target) = required_pixels(width, height, dpi)
@@ -217,7 +220,7 @@ fn draw_image(
       reason = "`required_pixels` は有限かつ正の値だけを返し、`ceil().max(1.0)` で 1 以上に丸めた後の縮小目標ピクセル数"
     )]
     let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
-    load_image(&image.path, image.format, &image.bytes, Some(target_u))?
+    load_image(&image.path, image.format, &image.bytes, Some(target_u), svg)?
   } else {
     loaded
   };

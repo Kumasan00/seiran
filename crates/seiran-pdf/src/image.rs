@@ -7,7 +7,7 @@ use krilla::{
   image::Image,
   pdf::{Pdf, PdfDocument},
 };
-use seiran_compiler::ImageFormat;
+use seiran_compiler::{ImageFormat, SvgParser};
 use usvg::Tree;
 
 use crate::error::PdfRenderError;
@@ -24,18 +24,20 @@ pub(crate) enum LoadedImage {
 
 /// 判定済みの形式に従ってバイト列をデコードし、必要ならラスタ画像を指定サイズ以下に縮小する。
 ///
-/// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない。`format` は組版段が判定済み。
+/// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない。`format` は組版段が判定済み。SVG は compiler が
+/// 検査したのと同じ設定（`svg`。設定済みフォントで文字を組む）で読む。
 pub(crate) fn load_image(
   path: &str,
   format: ImageFormat,
   bytes: &Arc<[u8]>,
   resize_to: Option<(u32, u32)>,
+  svg: &SvgParser,
 ) -> Result<LoadedImage, PdfRenderError> {
   match format {
     ImageFormat::Png => return load_raster(path, bytes, resize_to, image::ImageFormat::Png, Image::from_png),
     ImageFormat::Jpeg => return load_raster(path, bytes, resize_to, image::ImageFormat::Jpeg, Image::from_jpeg),
     ImageFormat::Svg => {
-      let tree = Tree::from_data(bytes, &usvg::Options::default()).map_err(|source| {
+      let tree = svg.parse(bytes).map_err(|source| {
         return PdfRenderError::ParseSvg {
           path: path.to_string(),
           source,
@@ -127,6 +129,10 @@ pub(crate) fn required_pixels(width_pt: f32, height_pt: f32, dpi: u32) -> Option
 
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
+  use seiran_compiler::{MemoryProjectSource, ProjectPath, test_support};
+
   use super::*;
 
   /// ラスタ 2 形式の（組版段の判定, `image` crate の再エンコード形式）の対。
@@ -134,6 +140,27 @@ mod tests {
     (ImageFormat::Png, image::ImageFormat::Png),
     (ImageFormat::Jpeg, image::ImageFormat::Jpeg),
   ];
+
+  /// テストフォント 1 本（`vendor/fonts/STIXTwoMath-Regular.ttf`）を全種別に使う最小のプロジェクトを compile し、
+  /// その描画資源から SVG パーサを得る。
+  fn svg_parser() -> SvgParser {
+    let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/fonts/STIXTwoMath-Regular.ttf");
+    let font_bytes = std::fs::read(&font).expect("テストフォントを読めるはず（tools/fetch-test-assets.sh で取得）");
+    let config = format!(
+      "sources = [\"main.sei\"]\n\n{}{}{}",
+      test_support::valid_output_section("doc", "out"),
+      test_support::valid_pdf_section(),
+      test_support::font_sections("/project/font.ttf"),
+    );
+    let source = MemoryProjectSource::new()
+      .with_text("/project/config.toml", config)
+      .with_text("/project/main.sei", "text")
+      .with_bytes("/project/font.ttf", font_bytes);
+    let compilation =
+      seiran_compiler::compile(&source, &ProjectPath::new(Path::new("/project/config.toml")), Path::new("/project"))
+        .expect("最小のプロジェクトは compile できるはず");
+    return compilation.publication.resources().svg_parser();
+  }
 
   /// ラスタとして読めたはずの画像のピクセル寸法。
   fn raster_size(loaded: &LoadedImage) -> (u32, u32) {
@@ -147,7 +174,8 @@ mod tests {
   fn load_image_decodes_svg_to_its_declared_size() {
     let svg: Arc<[u8]> = Arc::from(&br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#[..]);
 
-    let loaded = load_image("icon.svg", ImageFormat::Svg, &svg, None).expect("有効な SVG はデコードできるはず");
+    let loaded =
+      load_image("icon.svg", ImageFormat::Svg, &svg, None, &svg_parser()).expect("有効な SVG はデコードできるはず");
 
     let LoadedImage::Svg(tree) = loaded else {
       panic!("SVG を期待");
@@ -158,17 +186,18 @@ mod tests {
 
   #[test]
   fn load_image_parses_pdf_into_an_embeddable_document() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image/vector1.pdf");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image/vector1.pdf");
     let bytes: Arc<[u8]> = std::fs::read(&path).expect("PDF fixture を読めるはず").into();
 
-    let loaded = load_image("vector1.pdf", ImageFormat::Pdf, &bytes, None).expect("有効な PDF は読めるはず");
+    let loaded =
+      load_image("vector1.pdf", ImageFormat::Pdf, &bytes, None, &svg_parser()).expect("有効な PDF は読めるはず");
 
     assert!(matches!(loaded, LoadedImage::Pdf(_)));
   }
 
   #[test]
   fn load_image_reports_broken_pdf_as_parse_error() {
-    let result = load_image("broken.pdf", ImageFormat::Pdf, &Arc::from(&b"not a pdf"[..]), None);
+    let result = load_image("broken.pdf", ImageFormat::Pdf, &Arc::from(&b"not a pdf"[..]), None, &svg_parser());
 
     assert!(matches!(result, Err(PdfRenderError::ParsePdf { path, .. }) if path == "broken.pdf"));
   }
@@ -178,7 +207,7 @@ mod tests {
     for (format, reencode_as) in RASTER_FORMATS {
       let bytes = raster_bytes(reencode_as, 3, 2);
 
-      let loaded = load_image("figure.bin", format, &bytes, None)
+      let loaded = load_image("figure.bin", format, &bytes, None, &svg_parser())
         .unwrap_or_else(|error| panic!("{format:?} として読めるはず: {error}"));
 
       assert_eq!(raster_size(&loaded), (3, 2), "{format:?} は 3x2px のまま");
@@ -191,7 +220,7 @@ mod tests {
     for (format, reencode_as) in RASTER_FORMATS {
       let bytes = raster_bytes(reencode_as, 4, 4);
 
-      let loaded = load_image("big.img", format, &bytes, Some((2, 2)))
+      let loaded = load_image("big.img", format, &bytes, Some((2, 2)), &svg_parser())
         .unwrap_or_else(|error| panic!("{format:?} は縮小して読めるはず: {error}"));
 
       assert_eq!(raster_size(&loaded), (2, 2), "{format:?} は 2x2px に縮むはず");
@@ -201,7 +230,7 @@ mod tests {
   #[test]
   fn load_image_reports_unresizable_raster_as_resize_error_before_decoding() {
     for (format, _) in RASTER_FORMATS {
-      let result = load_image("broken.img", format, &Arc::from(&b"not an image"[..]), Some((2, 2)));
+      let result = load_image("broken.img", format, &Arc::from(&b"not an image"[..]), Some((2, 2)), &svg_parser());
       assert!(
         matches!(result, Err(PdfRenderError::ResizeImage { path, .. }) if path == "broken.img"),
         "{format:?} は縮小段階の ResizeImage で止まるはず"
@@ -212,7 +241,7 @@ mod tests {
   #[test]
   fn load_image_reports_broken_raster_as_decode_error() {
     for (format, _) in RASTER_FORMATS {
-      let result = load_image("broken.img", format, &Arc::from(&b"not an image"[..]), None);
+      let result = load_image("broken.img", format, &Arc::from(&b"not an image"[..]), None, &svg_parser());
       assert!(
         matches!(result, Err(PdfRenderError::DecodeImage { path, .. }) if path == "broken.img"),
         "{format:?} は DecodeImage になるはず"
