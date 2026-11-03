@@ -132,7 +132,7 @@ pub(super) struct HeadingRecord {
   pub level: HeadingLevel,
   /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   pub number: String,
-  /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み。しおり用）
+  /// 見出しタイトルのプレーンテキスト（しおり用。`\ref` 解決済み、インライン数式は `UnicodeMath` の線形表記、`\\` は空白）
   pub title_plain: String,
   /// 目次の行に組む「番号 題目」。目次の行の書体で lower 済みで、リンク・脚注・索引を含まない
   pub toc_label: Vec<InlineNode>,

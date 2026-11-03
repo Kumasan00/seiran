@@ -8,6 +8,7 @@
 //! 行列・場合分けも、同じ括弧グリフと列内揃えで解決する。
 
 mod alphanumeric;
+mod unicode_math;
 
 use std::slice;
 
@@ -15,6 +16,7 @@ use alphanumeric::push_math_char;
 pub(in crate::typeset) use alphanumeric::translate_math_char;
 use icu_segmenter::GraphemeClusterSegmenter;
 use itertools::Itertools;
+pub(super) use unicode_math::{superscript_char, unicode_math_text};
 
 use crate::{
   color::Color,
