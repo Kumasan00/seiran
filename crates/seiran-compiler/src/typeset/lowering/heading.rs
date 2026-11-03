@@ -51,7 +51,9 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       HirInlineKind::Number(numeral) => {
         out.push_str(&quantity::plain_text(&quantity::number_pieces(numeral, &style.quantity)));
       },
-      HirInlineKind::Unit(factors) => out.push_str(&quantity::plain_text(&quantity::unit_pieces(factors))),
+      HirInlineKind::Unit(factors) => {
+        out.push_str(&quantity::plain_text(&quantity::unit_pieces(factors, &style.quantity)));
+      },
       HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
       HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.ref_target(inline.id))),
     }

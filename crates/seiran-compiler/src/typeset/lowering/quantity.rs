@@ -4,7 +4,7 @@
 
 use crate::{
   document::{MathSpace, NumberSign, Numeral, UnitFactor},
-  style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
+  style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct},
   typeset::lowering::QuantityPiece,
 };
 
@@ -48,19 +48,59 @@ pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle
   return pieces;
 }
 
-/// 単位の式を部品列にする（因子の間は細アキ、指数は負号を U+2212 にした上付き）
-pub(in crate::typeset) fn unit_pieces(factors: &[UnitFactor]) -> Vec<QuantityPiece> {
+/// 単位の式を `style` の表記の部品列にする（指数は負号を U+2212 にした上付き）
+///
+/// 積は `unit_product`（細アキか、前後のアキなしの U+22C5）。`negative_exponent = slash` で正と負の指数の因子が両方あれば
+/// `分子 / 分母` の形にし（分母は符号を落とし、`-1` は指数なし。分母が 2 因子以上なら括弧で包む）、因子の相対順は保つ。
+pub(in crate::typeset) fn unit_pieces(factors: &[UnitFactor], style: &QuantityStyle) -> Vec<QuantityPiece> {
   let mut pieces = Vec::new();
-  for (index, factor) in factors.iter().enumerate() {
+  let (denominator, numerator): (Vec<&UnitFactor>, Vec<&UnitFactor>) = factors
+    .iter()
+    .partition(|factor| return factor.exponent.as_deref().is_some_and(|e| return e.starts_with('-')));
+  if style.negative_exponent == NegativeExponent::Power || numerator.is_empty() || denominator.is_empty() {
+    push_unit_product(&mut pieces, factors.iter().map(written), style.unit_product);
+    return pieces;
+  }
+  push_unit_product(&mut pieces, numerator.into_iter().map(written), style.unit_product);
+  push_text(&mut pieces, "/");
+  let parenthesized = denominator.len() > 1;
+  if parenthesized {
+    push_text(&mut pieces, "(");
+  }
+  push_unit_product(&mut pieces, denominator.into_iter().map(unsigned), style.unit_product);
+  if parenthesized {
+    push_text(&mut pieces, ")");
+  }
+  return pieces;
+}
+
+/// 因子の（記号, 書いたままの指数）
+fn written(factor: &UnitFactor) -> (&str, Option<&str>) { return (factor.symbol.as_str(), factor.exponent.as_deref()); }
+
+/// 分母に置く負の指数の因子の（記号, 符号を落とした指数。`-1` は指数なし）
+fn unsigned(factor: &UnitFactor) -> (&str, Option<&str>) {
+  let magnitude = factor.exponent.as_deref().and_then(|exponent| return exponent.strip_prefix('-'));
+  return (factor.symbol.as_str(), magnitude.filter(|&magnitude| return magnitude != "1"));
+}
+
+/// （記号, 指数）の列を積の記号 `product` で並べて積む
+fn push_unit_product<'a>(
+  pieces: &mut Vec<QuantityPiece>,
+  factors: impl Iterator<Item = (&'a str, Option<&'a str>)>,
+  product: UnitProduct,
+) {
+  for (index, (symbol, exponent)) in factors.enumerate() {
     if index > 0 {
-      pieces.push(QuantityPiece::Space(MathSpace::Thin));
+      match product {
+        UnitProduct::Thin => pieces.push(QuantityPiece::Space(MathSpace::Thin)),
+        UnitProduct::Dot => push_text(pieces, "\u{22C5}"),
+      }
     }
-    push_text(&mut pieces, &factor.symbol);
-    if let Some(exponent) = &factor.exponent {
+    push_text(pieces, symbol);
+    if let Some(exponent) = exponent {
       pieces.push(QuantityPiece::Superscript(exponent.replace('-', "\u{2212}")));
     }
   }
-  return pieces;
 }
 
 /// 部品列を PDF しおりの平文にする（細アキ U+202F・中アキ U+205F・上付きは Unicode の上付き字）
@@ -151,7 +191,7 @@ mod tests {
   use super::{number_pieces, plain_text, unit_pieces};
   use crate::{
     document::{MathSpace, NumberSign, Numeral, UnitFactor},
-    style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
+    style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct},
     typeset::lowering::QuantityPiece,
   };
 
@@ -275,9 +315,21 @@ mod tests {
     };
   }
 
+  /// 上付きの部品
+  fn sup(s: &str) -> QuantityPiece { return QuantityPiece::Superscript(s.to_string()); }
+
+  /// 積の記号と負の指数の表記を指定した style
+  fn unit_style(unit_product: UnitProduct, negative_exponent: NegativeExponent) -> QuantityStyle {
+    return QuantityStyle {
+      unit_product,
+      negative_exponent,
+      ..QuantityStyle::default()
+    };
+  }
+
   #[test]
   fn unit_pieces_power_form() {
-    let pieces = unit_pieces(&[factor("km", None), factor("s", Some("-2"))]);
+    let pieces = unit_pieces(&[factor("km", None), factor("s", Some("-2"))], &QuantityStyle::default());
 
     assert_eq!(
       pieces,
@@ -289,5 +341,54 @@ mod tests {
       ]
     );
     assert_eq!(plain_text(&pieces), "km\u{202F}s\u{207B}\u{00B2}");
+  }
+
+  #[test]
+  fn dot_product_has_no_space() {
+    let dot = unit_style(UnitProduct::Dot, NegativeExponent::Power);
+
+    assert_eq!(unit_pieces(&[factor("N", None), factor("m", None)], &dot), [text("N\u{22C5}m")]);
+  }
+
+  #[test]
+  fn power_keeps_the_written_order() {
+    let pieces = unit_pieces(&[factor("s", Some("-1")), factor("m", None)], &QuantityStyle::default());
+
+    assert_eq!(pieces, [text("s"), sup("\u{2212}1"), THIN, text("m")]);
+  }
+
+  #[test]
+  fn slash_moves_the_denominator_after_the_numerator() {
+    let slash = unit_style(UnitProduct::Thin, NegativeExponent::Slash);
+
+    assert_eq!(unit_pieces(&[factor("m", None), factor("s", Some("-2"))], &slash), [text("m/s"), sup("2")]);
+    assert_eq!(unit_pieces(&[factor("s", Some("-1")), factor("m", None)], &slash), [text("m/s")]);
+    assert_eq!(
+      unit_pieces(&[factor("m", Some("2")), factor("s", Some("-1"))], &slash),
+      [text("m"), sup("2"), text("/s")]
+    );
+  }
+
+  #[test]
+  fn slash_parenthesizes_two_or_more_denominators() {
+    let factors = [
+      factor("J", None),
+      factor("kg", Some("-1")),
+      factor("K", Some("-1")),
+    ];
+
+    let dot = unit_pieces(&factors, &unit_style(UnitProduct::Dot, NegativeExponent::Slash));
+    let thin = unit_pieces(&factors, &unit_style(UnitProduct::Thin, NegativeExponent::Slash));
+
+    assert_eq!(dot, [text("J/(kg\u{22C5}K)")]);
+    assert_eq!(thin, [text("J/(kg"), THIN, text("K)")]);
+    assert_eq!(plain_text(&dot), "J/(kg\u{22C5}K)");
+  }
+
+  #[test]
+  fn slash_without_a_positive_factor_keeps_the_power_form() {
+    let slash = unit_style(UnitProduct::Thin, NegativeExponent::Slash);
+
+    assert_eq!(unit_pieces(&[factor("s", Some("-1"))], &slash), [text("s"), sup("\u{2212}1")]);
   }
 }

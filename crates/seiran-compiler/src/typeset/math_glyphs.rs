@@ -163,7 +163,7 @@ impl Checker<'_> {
         HirInlineKind::Number(numeral) => {
           self.quantity(inline.id, &lowering::number_pieces(numeral, &self.style.quantity));
         },
-        HirInlineKind::Unit(factors) => self.quantity(inline.id, &lowering::unit_pieces(factors)),
+        HirInlineKind::Unit(factors) => self.quantity(inline.id, &lowering::unit_pieces(factors, &self.style.quantity)),
         HirInlineKind::Styled { children, .. }
         | HirInlineKind::Colored { children, .. }
         | HirInlineKind::Link { children, .. }
@@ -210,7 +210,7 @@ impl Checker<'_> {
       HirMathKind::Space(_) | HirMathKind::Prose(_) => {},
       // 数値・単位は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
       HirMathKind::Number(numeral) => self.quantity(node.id, &lowering::number_pieces(numeral, &self.style.quantity)),
-      HirMathKind::Unit(factors) => self.quantity(node.id, &lowering::unit_pieces(factors)),
+      HirMathKind::Unit(factors) => self.quantity(node.id, &lowering::unit_pieces(factors, &self.style.quantity)),
       HirMathKind::Group(children) => self.math_list(children, variant),
       HirMathKind::Superscript(inner) | HirMathKind::Subscript(inner) => self.math(inner, variant),
       HirMathKind::Frac { numer, denom } => {

@@ -24,6 +24,10 @@ pub(crate) struct QuantityStyle {
   pub group_four_digits: bool,
   /// 指数表記 `仮数 × 10^指数` の積の記号（前後のアキは medium 固定）
   pub exponent_product: ExponentProduct,
+  /// 単位どうしの積（`\unit{N.m}`）の表記
+  pub unit_product: UnitProduct,
+  /// 負の指数を持つ単位（`\unit{m.s^{-1}}`）の表記
+  pub negative_exponent: NegativeExponent,
 }
 
 impl Default for QuantityStyle {
@@ -34,6 +38,8 @@ impl Default for QuantityStyle {
       digit_group_separator: DigitGroupSeparator::Thin,
       group_four_digits: false,
       exponent_product: ExponentProduct::Times,
+      unit_product: UnitProduct::Thin,
+      negative_exponent: NegativeExponent::Power,
     };
   }
 }
@@ -71,6 +77,27 @@ pub(crate) enum ExponentProduct {
   Times,
   /// U+22C5 DOT OPERATOR
   Dot,
+}
+
+/// 単位どうしの積の表記
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UnitProduct {
+  /// 細アキ（3mu）で並べる（`N m`）
+  Thin,
+  /// U+22C5 DOT OPERATOR を前後のアキなしで挟む（`N⋅m`）
+  Dot,
+}
+
+/// 負の指数を持つ単位の表記
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum NegativeExponent {
+  /// 書いた順のまま負の指数で組む（`m s⁻²`）
+  Power,
+  /// 正の指数の因子 `/` 負の指数の因子（符号を落とす）で組む（`m/s²`）。分母の因子が 2 つ以上なら括弧で包み、正の指数の
+  /// 因子が無ければ power の形のまま
+  Slash,
 }
 
 /// `garde` 用バリデータ: 量の数値と単位を立体で組む（ISO 80000）ので、イタリック系の書体を拒否する。
@@ -130,7 +157,7 @@ fn separator_exists_for_four_digits(separator: DigitGroupSeparator) -> impl FnOn
 mod tests {
   use garde::Validate;
 
-  use super::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle};
+  use super::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct};
   use crate::document::Typeface;
 
   #[test]
@@ -142,6 +169,8 @@ mod tests {
     assert_eq!(style.digit_group_separator, DigitGroupSeparator::Thin);
     assert!(!style.group_four_digits);
     assert_eq!(style.exponent_product, ExponentProduct::Times);
+    assert_eq!(style.unit_product, UnitProduct::Thin);
+    assert_eq!(style.negative_exponent, NegativeExponent::Power);
   }
 
   #[test]
@@ -228,6 +257,8 @@ mod tests {
         digit_group_separator = "period"
         group_four_digits = true
         exponent_product = "dot"
+        unit_product = "dot"
+        negative_exponent = "slash"
       "#,
     )
     .unwrap();
@@ -237,6 +268,8 @@ mod tests {
     assert_eq!(style.digit_group_separator, DigitGroupSeparator::Period);
     assert!(style.group_four_digits);
     assert_eq!(style.exponent_product, ExponentProduct::Dot);
-    assert!(toml::from_str::<QuantityStyle>("unit_product = \"dot\"").is_err());
+    assert_eq!(style.unit_product, UnitProduct::Dot);
+    assert_eq!(style.negative_exponent, NegativeExponent::Slash);
+    assert!(toml::from_str::<QuantityStyle>("unknown_key = 1").is_err());
   }
 }

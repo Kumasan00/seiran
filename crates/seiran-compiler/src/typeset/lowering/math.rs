@@ -308,7 +308,7 @@ fn push_resolved(
       typeface: style.quantity.typeface,
     }),
     HirMathKind::Unit(factors) => out.push(MathNode::Quantity {
-      pieces: quantity::unit_pieces(factors),
+      pieces: quantity::unit_pieces(factors, &style.quantity),
       typeface: style.quantity.typeface,
     }),
     HirMathKind::Group(children) => out.push(MathNode::Group(list(children))),

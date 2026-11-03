@@ -180,6 +180,7 @@ fn lay_out(
   let quantity_face = FontFace::primary(boxing::quantity_font_type(style.quantity.typeface));
   let superscripts = quantity_check::check(
     document.hir(),
+    &style.quantity,
     quantity_face,
     font_resources.superscript_metrics(quantity_face).is_some(),
     &config.font_configs[quantity_face].font_path,

@@ -82,7 +82,7 @@ pub(super) fn lower_inline(
     },
     HirInlineKind::Unit(factors) => {
       return vec![InlineNode::Quantity {
-        pieces: quantity::unit_pieces(factors),
+        pieces: quantity::unit_pieces(factors, &ctx.style.quantity),
         style: TextStyle {
           typeface: ctx.style.quantity.typeface,
           ..parent_style
