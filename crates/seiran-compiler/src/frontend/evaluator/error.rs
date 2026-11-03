@@ -272,12 +272,12 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
-  /// `\num` の引数が数値の文法に合わない場合（文法は左から読むので、最初に外れた位置の 1 件だけ）
+  /// `\num` の引数・`\qty` の第 1 引数が数値の文法に合わない場合（文法は左から読むので、最初に外れた位置の 1 件だけ）
   #[error("数値の書き方が正しくありません")]
   #[diagnostic(
     code(frontend::eval::invalid_number),
     help(
-      "\\num の引数は `[符号] 整数部 [. 小数部] [e 指数]` の形で、空白・桁区切り・U+2212 を含めず書きます（例: \\num{{-1.5e3}}、\\num{{0.25}}、\\num{{12345}}）。小数点・桁区切りの記号は style.toml の [quantity] が決めます"
+      "数値は `[符号] 整数部 [. 小数部] [e 指数]` の形で、空白・桁区切り・U+2212 を含めず書きます（例: `-1.5e3`、`0.25`、`12345`）。小数点・桁区切りの記号は style.toml の [quantity] が決めます"
     )
   )]
   InvalidNumber {
@@ -288,12 +288,12 @@ pub(crate) enum EvalError {
     label: String,
   },
 
-  /// `\unit` の因子が単位の語彙に無い場合
+  /// 単位の式（`\unit` の引数・`\qty` の第 2 引数）の因子が単位の語彙に無い場合
   #[error("未知の単位です: {symbol}")]
   #[diagnostic(
     code(frontend::eval::unknown_unit),
     help(
-      "\\unit が受け付けるのは SI 文書（第 9 版）の単位記号・接頭辞と % で、2 つの単位は `.` で区切ります（例: \\unit{{km.s^{{-1}}}}、\\unit{{N.m}}）。μ・Ω・°・′・″ は \\mu・\\Omega・\\degree・\\prime・\\doubleprime でも書けます"
+      "単位の式に書けるのは SI 文書（第 9 版）の単位記号・接頭辞と % で、2 つの単位は `.` で区切ります（例: `km.s^{{-1}}`、`N.m`）。μ・Ω・°・′・″ は \\mu・\\Omega・\\degree・\\prime・\\doubleprime でも書けます"
     )
   )]
   UnknownUnit {
@@ -304,7 +304,7 @@ pub(crate) enum EvalError {
     symbol: String,
   },
 
-  /// `\unit` の因子が、接頭辞を付けられない単位に接頭辞を付けている場合
+  /// 単位の式の因子が、接頭辞を付けられない単位に接頭辞を付けている場合
   #[error("単位 {unit} には接頭辞 {prefix} を付けられません")]
   #[diagnostic(
     code(frontend::eval::unit_prefix_not_allowed),
@@ -322,12 +322,12 @@ pub(crate) enum EvalError {
     unit: String,
   },
 
-  /// `\unit` の因子の指数が整数の書き方に合わない場合
+  /// 単位の式の因子の指数が整数の書き方に合わない場合
   #[error("単位の指数が正しくありません")]
   #[diagnostic(
     code(frontend::eval::invalid_unit_exponent),
     help(
-      "指数は `^{{n}}` の形で、n は 0 で始まらない整数（負なら前に `-`）です（例: \\unit{{m^{{2}}}}、\\unit{{s^{{-1}}}}）。1・0・+・分数・U+2212 は書けません"
+      "指数は `^{{n}}` の形で、n は 0 で始まらない整数（負なら前に `-`）です（例: `m^{{2}}`、`s^{{-1}}`）。1・0・+・分数・U+2212 は書けません"
     )
   )]
   InvalidUnitExponent {
@@ -336,12 +336,12 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
-  /// `\unit` の引数が単位の式の文法に合わない場合（最初に外れた位置の 1 件だけ）
+  /// 単位の式（`\unit` の引数・`\qty` の第 2 引数）が単位の式の文法に合わない場合（最初に外れた位置の 1 件だけ）
   #[error("単位の書き方が正しくありません")]
   #[diagnostic(
     code(frontend::eval::invalid_unit_syntax),
     help(
-      "\\unit の引数は単位の記号を `.` で区切って並べ、指数は `^{{n}}` で付けます（空白は書けません）。分母は負の指数で書き（例: \\unit{{m.s^{{-1}}}}）、`/` で組むかは style.toml の [quantity].negative_exponent が決めます"
+      "単位の式は単位の記号を `.` で区切って並べ、指数は `^{{n}}` で付けます（空白は書けません）。分母は負の指数で書き（例: `m.s^{{-1}}`）、`/` で組むかは style.toml の [quantity].negative_exponent が決めます"
     )
   )]
   InvalidUnitSyntax {

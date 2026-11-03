@@ -28,6 +28,8 @@ pub(in crate::frontend::evaluator) fn quantity(
 
 #[cfg(test)]
 mod tests {
+  use miette::Diagnostic;
+
   use crate::{
     document::{HirInlineKind, HirMathKind, HirNodeKind, UnitFactor},
     frontend::{ParseError, evaluator::EvalError, test_support},
@@ -104,6 +106,21 @@ mod tests {
       assert_eq!(error_at(source), expected, "{source}");
     }
     assert!(matches!(eval_error("\\qty{.5}{m}"), EvalError::InvalidNumber { .. }));
+  }
+
+  #[test]
+  fn help_names_no_command_the_user_did_not_write() {
+    for source in [
+      "\\qty{1,5}{m}",
+      "\\qty{5}{bar}",
+      "\\qty{5}{kmin}",
+      "\\qty{5}{m^{1}}",
+      "\\qty{5}{m/s}",
+    ] {
+      let help = eval_error(source).help().map(|help| return help.to_string()).unwrap_or_default();
+
+      assert!(!help.contains("\\num") && !help.contains("\\unit"), "{source}: {help}");
+    }
   }
 
   #[test]
