@@ -2,7 +2,6 @@
 //!
 //! 構築順序（解析 → メトリクス → 検証 → シェーパー）は子 module `system` に閉じる。
 
-mod face_config;
 mod fallback;
 mod math_script;
 mod shaper;

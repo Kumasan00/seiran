@@ -1,9 +1,8 @@
-//! コマンドディスパッチ
+//! コマンドディスパッチと `\code` / `\ref` の評価
 //!
 //! 機能コマンドは [`COMMANDS`]、数式記号は `symbol` の記号表に登録する（検索は [`symbol::lookup`]）。
 
 mod cite;
-mod code;
 mod control;
 mod footnote;
 mod heading;
@@ -11,7 +10,6 @@ mod index;
 mod link;
 pub(super) mod number;
 pub(super) mod quantity;
-mod ref_;
 pub(super) mod symbol;
 mod text_style;
 pub(super) mod unit;
@@ -22,7 +20,10 @@ use crate::{
   document::{HeadingLevel, HirInline, HirInlineKind, HirNode, Typeface},
   frontend::{
     evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, math, opt_args},
-    syntax::{ArgMode, view::CommandView},
+    syntax::{
+      ArgMode,
+      view::{CommandView, extract_text_content},
+    },
   },
 };
 
@@ -168,7 +169,7 @@ impl CommandKind {
         return text_style::colored_text(view, ctx, placement.index_policy()).map(CommandResult::Inline);
       },
 
-      Self::Ref => return ref_::ref_(view, ctx).map(CommandResult::Inline),
+      Self::Ref => return ref_(view, ctx).map(CommandResult::Inline),
 
       Self::Cite => return cite::cite(view, ctx).map(CommandResult::Inline),
 
@@ -181,7 +182,7 @@ impl CommandKind {
         return index::index(view, ctx).map(CommandResult::Inline);
       },
 
-      Self::Code => return code::code(view, ctx).map(CommandResult::Inline),
+      Self::Code => return code(view, ctx).map(CommandResult::Inline),
 
       Self::Url => return link::url(view, ctx).map(CommandResult::Inline),
 
@@ -365,6 +366,35 @@ pub(super) fn evaluate_inline_command(
       )
     },
   };
+}
+
+/// `\code{...}` を [`HirInlineKind::Code`] に変換する
+///
+/// 必須引数は verbatim（生読み）で、対応の取れた `{}` は内容に含まれる。空白も改行も落とさない。
+/// バランスしないブレースを含む断片は `code` 環境で書く。見た目の等幅指定 `\mono` とは字句挙動が異なる。
+///
+/// # Errors
+///
+/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
+fn code(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "コード断片")?;
+
+  let text = extract_text_content(view.source(), first_arg);
+  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Code(text)));
+}
+
+/// `\ref{label}` を `HirInlineKind::Ref` に変換する
+///
+/// # Errors
+///
+/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
+fn ref_(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+  opt_args::no_command_opt_args(view)?;
+  let first_arg = arity::exactly_one_arg(view, "ラベル名")?;
+
+  let label = extract_text_content(view.source(), first_arg).trim().to_string();
+  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Ref { label }));
 }
 
 #[cfg(test)]
@@ -583,5 +613,164 @@ mod tests {
       );
       prop_assert!(is_known_outcome, "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}");
     }
+  }
+
+  /// `.sei` ソースを評価して、最初の段落の先頭インライン（`\code`）の本文を取り出す
+  fn code_text(source: &str) -> String {
+    let arena = Bump::new();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
+      panic!("Paragraph が期待されます: {:?}", result[0]);
+    };
+    let HirInlineKind::Code(text) = &inlines[0].kind else {
+      panic!("Code が期待されます: {:?}", inlines[0]);
+    };
+    return text.clone();
+  }
+
+  #[test]
+  fn inline_code_includes_balanced_braces() {
+    let text = code_text(r"\code{if x { y }}");
+
+    assert_eq!(text, "if x { y }");
+  }
+
+  #[test]
+  fn inline_code_keeps_special_characters_inert() {
+    let text = code_text(r"\code{a // b $c$ \d}");
+
+    assert_eq!(text, r"a // b $c$ \d");
+  }
+
+  #[test]
+  fn inline_code_keeps_surrounding_spaces() {
+    let text = code_text(r"\code{  x  }");
+
+    assert_eq!(text, "  x  ");
+  }
+
+  #[test]
+  fn inline_code_can_be_empty() {
+    let text = code_text(r"\code{}");
+
+    assert_eq!(text, "");
+  }
+
+  #[test]
+  fn inline_code_rejects_second_argument() {
+    let arena = Bump::new();
+    let source = r"\code{a}{b}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(
+      matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "code"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn inline_code_requires_an_argument() {
+    let arena = Bump::new();
+    let source = r"\code";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(
+      matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "code"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn inline_code_inside_math_is_rejected_as_an_unknown_command() {
+    // 引数モードはレジストリ宣言が勝つので数式内でも生読みされるが、
+    // 数式評価器の語彙に `\code` は無い
+    let arena = Bump::new();
+    let source = r"$\code{a // b}$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "code"), "{result:?}");
+  }
+
+  #[test]
+  fn inline_code_rejects_opt_arg() {
+    let arena = Bump::new();
+    let source = r"\code[language=rust]{a}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(
+      matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "language"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn ref_produces_inline_ref_stub() {
+    let arena = Bump::new();
+    let source = r"\ref{sec:intro}";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx)).unwrap();
+
+    let HirInlineKind::Ref { label } = &result.kind else {
+      panic!("Ref が期待されます");
+    };
+    assert_eq!(label, "sec:intro");
+  }
+
+  #[test]
+  fn ref_rejects_missing_argument() {
+    let arena = Bump::new();
+    let source = r"\ref";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx));
+
+    assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "ref"));
+  }
+
+  #[test]
+  fn ref_rejects_extra_arguments() {
+    let arena = Bump::new();
+    let source = r"\ref{a}{b}";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx));
+
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"));
+  }
+
+  #[test]
+  fn ref_rejects_opt_args() {
+    let arena = Bump::new();
+    let source = r"\ref[k=v]{label}";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx));
+
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
+  }
+
+  #[test]
+  fn ref_inside_math_is_rejected_as_an_unknown_command() {
+    let arena = Bump::new();
+    let source = r"$\ref{eq:1}$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "ref"), "{result:?}");
   }
 }
