@@ -690,6 +690,26 @@ fn missing_glyph_in_generated_text_names_the_generator() {
 }
 
 #[test]
+fn missing_glyph_in_toc_title_points_at_the_heading() {
+  // 目次の行の題目は見出しの字なので、生成元ではなく見出しの位置を指す
+  let source = "\\section{導入 ก}\n\n本文。\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "toc", "enabled", true))
+    .build()
+    .compile_err();
+
+  let missing = diagnostics_with_code(&failure, "typeset::font::missing_glyph");
+  assert!(!missing.is_empty(), "{:?}", codes(&failure));
+  for diagnostic in missing {
+    assert!(diagnostic.source_code().is_some(), "要素の位置の本文を添えるはず: {diagnostic}");
+    let label = diagnostic.labels().and_then(|mut labels| return labels.next()).expect("要素の位置を指すはず");
+    assert_eq!(label.offset(), 0, "見出しの開始位置を指すはず: {diagnostic}");
+    assert!(!diagnostic.to_string().contains("目次"), "生成元を名乗らないはず: {diagnostic}");
+  }
+}
+
+#[test]
 fn missing_glyph_is_reported_once_across_footnote_passes() {
   // ページ単位採番は本文パスを 2 回以上回すが、同じ要素の同じ欠字は 1 件
   let failure = TestProject::builder()

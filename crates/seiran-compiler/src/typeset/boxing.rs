@@ -1,7 +1,8 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
 //! 本文の入口は (a) [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
-//! 走り文）向けには [`Shaper`] と [`LineAccum`] を出し、機能固有の入力型・並び順・区分は持たない。
+//! 走り文）向けには [`Shaper`] と [`LineAccum`] と、インライン列を本文と同じ規則で自然幅の閉じた箱にする
+//! [`inline_atom`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
 //! `resolve_image_size` に依存し、失敗しない）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
@@ -16,7 +17,7 @@
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
 //! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
-//! 生成コンテンツが使う 1 行組み立ての仕組み（[`LineAccum`]）。`quantity` は数値・単位・量（`\num` / `\unit` / `\qty`）の閉じた箱を本文・数式の
+//! 生成コンテンツと表のセルが使う 1 行組み立ての仕組み（[`LineAccum`] / [`inline_atom`] と自然幅の 1 行）。`quantity` は数値・単位・量（`\num` / `\unit` / `\qty`）の閉じた箱を本文・数式の
 //! 両方へ組む `Measurer` の `impl`。`table`（表エンジン — 列幅の決定・セルの組版と計測・
 //! `auto` 以外の列のセルの折り返し・行断片の生成）も `Measurer` の `impl` を続け、セルの折り返しには
 //! [`BlockBuildInputs::breaker`]（本文の段落と同じ行分割器）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
@@ -39,7 +40,7 @@ mod yakumono;
 
 use std::borrow::Cow;
 
-pub(super) use composed_line::{LineAccum, compose_left_line, row_width};
+pub(super) use composed_line::{LineAccum, compose_left_line, inline_atom, row_width};
 use hlist::HList;
 use hyphenation::Lang;
 pub(super) use math::{FENCE_DIVIDER, RADICAL_SIGN};
