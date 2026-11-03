@@ -221,15 +221,20 @@ impl CommandKind {
   }
 }
 
-/// 単一文字コマンド（`\alpha` 等）を検証して `HirInlineKind::Symbol` を生成する共通処理
+/// 記号コマンド（`\alpha` 等）なら、任意引数・必須引数が無いことを確かめてその字を返す（記号表に無い名前は `None`）
+///
+/// 本文・数式内の文章（`\text`）の引数・単位（`\unit`）の引数で、記号コマンドを字にするときに共有する。
 ///
 /// # Errors
 ///
-/// 任意引数や必須引数が指定されている場合にエラーを返します
-fn single_char(view: &CommandView<'_>, ctx: &EvalContext<'_>, ch: char) -> Result<HirInline, EvalError> {
+/// 記号コマンドに任意引数か必須引数があるときのエラーを返す。
+pub(super) fn symbol_char(view: &CommandView<'_>) -> Result<Option<char>, EvalError> {
+  let Some(symbol) = symbol::lookup(view.name()) else {
+    return Ok(None);
+  };
   opt_args::no_command_opt_args(view)?;
   arity::no_command_args(view)?;
-  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch)));
+  return Ok(Some(symbol.ch));
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
@@ -313,8 +318,8 @@ pub(super) fn evaluate_command(
   if let Some(command_kind) = COMMANDS.get(view.name()).copied() {
     return command_kind.execute(view, ctx, placement);
   }
-  if let Some(symbol) = symbol::lookup(view.name()) {
-    return single_char(view, ctx, symbol.ch).map(CommandResult::Inline);
+  if let Some(ch) = symbol_char(view)? {
+    return Ok(CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Symbol(ch))));
   }
   // 記号コマンドは上で字として引けているので、ここで当たる数式の語彙は数式の中でしか意味を持たない
   if math::lookup_math_arg_count(view.name()).is_some() {
@@ -405,7 +410,7 @@ mod tests {
   }
 
   #[test]
-  fn single_char_rejects_unknown_opt_arg_key() {
+  fn symbol_command_rejects_unknown_opt_arg_key() {
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
     let cst = test_support::parse_cst(source, &arena).unwrap();

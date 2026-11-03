@@ -5,7 +5,7 @@
 // 同じ内容を `unit_slash_dot.sei`（積 dot・分母 slash）と `unit_text_typeface.sei`（本文用の枠の書体・分母 slash）が組む。
 
 加速度は\unit{m.s^{-2}}で、比熱は \unit{J.kg^{-1}.K^{-1}}、周波数は \unit{s^{-1}} と \unit{kHz}、分母を後ろへ送る \unit{s^{-1}.m}。
-抵抗 \unit{k\Omega} と \unit{kΩ}、長さ \unit{\mu m} と \unit{µm}、温度 \unit{\degree C} と \unit{℃}、度とクーロンの積 \unit{°.C}。
+抵抗 \unit{k\Omega} と \unit{kΩ}、長さ \unit{\mu m} と \unit{µm}、温度 \unit{\degree C} と \unit{℃}、度とクーロンの積 \unit{°.C}。
 角度は \unit{\degree}・\unit{\prime}・\unit{\doubleprime}、割合 \unit{%}、音圧 \unit{dB}、本文の記号 30\degree と数式の $90\degree$。
 装飾の中でも書体は変わらない: \bold{\unit{N.m}} と \color[color=#ff0000]{\unit{Pa}}。
 

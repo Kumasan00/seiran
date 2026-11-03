@@ -31,13 +31,13 @@ pub(in crate::typeset) fn quantity_font_type(typeface: Typeface) -> FontType {
 impl Measurer<'_> {
   /// 数量の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
   pub(super) fn push_quantity(&mut self, pieces: &[QuantityPiece], style: TextStyle, out: &mut HList) {
-    let number = self.quantity_box(pieces, style);
+    let quantity = self.quantity_box(pieces, style);
     let edge = if self.punctuation_spacing {
       Edge::text(BOX_EDGE_CHAR, ScriptCategory::Latin, style.font_size)
     } else {
       Edge::letter(BOX_EDGE_CHAR)
     };
-    out.push(edge, vec![HItem::Box(number)], edge);
+    out.push(edge, vec![HItem::Box(quantity)], edge);
   }
 
   /// 部品 `pieces` を基準のスタイル `style` で左から並べた閉じた箱にする
@@ -54,10 +54,10 @@ impl Measurer<'_> {
         },
       }
     }
-    let mut number = HBox::atom(placed);
+    let mut quantity = HBox::atom(placed);
     // 送り幅は置いた子の右端ではなく送りの和（`text_box` と同じ）
-    number.width = dx;
-    return number;
+    quantity.width = dx;
+    return quantity;
   }
 
   /// 字 `text` を `style` で組み、ベースラインから `dy` 持ち上げて `dx` の位置に置く
@@ -88,7 +88,7 @@ impl Measurer<'_> {
     }
     let face = FontFace::primary(quantity_font_type(style.typeface));
     let metrics = self.shaper.superscript_metrics(face).expect(
-      "lay_out は quantity_check で、本文用の枠で指数を組む数値があればその枠の上付きの指標を確かめてから組版に進む",
+      "lay_out は quantity_check で、本文用の枠で上付きを組む数値・単位があればその枠の上付きの指標を確かめてから組版に進む",
     );
     let superscript = TextStyle {
       font_size: style.font_size * metrics.size,
@@ -216,7 +216,7 @@ mod tests {
     };
     let aki = ja_latin_aki(SIZE).natural;
     let is_aki = |item: &HItem| return matches!(item, HItem::Glue { natural, .. } if *natural == aki);
-    let around_number = |found: &[HItem]| {
+    let around_quantity = |found: &[HItem]| {
       let at = found
         .iter()
         .position(|item| return matches!(item, HItem::Box(hbox) if matches!(hbox.content, HBoxContent::Atom(_))))
@@ -227,9 +227,9 @@ mod tests {
     let spaced = items(&fonts, nodes(), true);
     let unspaced = items(&fonts, nodes(), false);
 
-    let (before, after) = around_number(&spaced);
+    let (before, after) = around_quantity(&spaced);
     assert!(is_aki(&before) && is_aki(&after), "{spaced:?}");
-    let (before, after) = around_number(&unspaced);
+    let (before, after) = around_quantity(&unspaced);
     assert!(!matches!(before, HItem::Glue { .. }) && !matches!(after, HItem::Glue { .. }), "{unspaced:?}");
   }
 

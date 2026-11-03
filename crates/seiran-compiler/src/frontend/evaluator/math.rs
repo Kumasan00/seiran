@@ -757,10 +757,8 @@ fn prose_text(source: &str, arg: &CstNode<'_>) -> Result<String, EvalError> {
 /// `\text` の引数の中のコマンドを字にする（受け付けるのは記号コマンドだけ）
 fn prose_char(source: &str, node: &CstNode<'_>) -> Result<char, EvalError> {
   let view = CommandView::new(node, source);
-  if let Some(symbol) = symbol::lookup(view.name()) {
-    opt_args::no_command_opt_args(&view)?;
-    arity::no_command_args(&view)?;
-    return Ok(symbol.ch);
+  if let Some(ch) = command::symbol_char(&view)? {
+    return Ok(ch);
   }
   if matches!(MathCommandKind::from_name(view.name()), Some(MathCommandKind::Given)) {
     return Err(EvalError::GivenNotInFence {

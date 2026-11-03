@@ -834,7 +834,7 @@ match する。
 OS/2 の上付きの指標（正の `ySuperscriptYSize`）があるかを問う pre-pass。指標は `FontSystem` が読込時に全実体ぶん読んで持つ。
 欠けていれば `MissingSuperscriptMetrics`（code `typeset::quantity::missing_superscript_metrics`。型は `glyph_issues` が所有し、
 `TextGlyphError` の 1 variant。原因が 1 つなのでソースごとに 1 診断で、箇所はラベルに並べる）をソースの宣言順に集め、`lay_out` は数式フォントの字の欠落と合わせて返し、**組版に進まない** —
-boxing は本文用の枠の指標がある前提で数値・単位の上付きを組む（`expect` の根拠はこの順序）。`typeface = math` と、指数を持つ
+boxing は本文用の枠の指標がある前提で数値・単位の上付きを組む（`expect` の根拠はこの順序）。`typeface = math` の文書と、
 上付きを組む数値・単位の無い文書では何も問わない。
 
 #### `glyph_issues`

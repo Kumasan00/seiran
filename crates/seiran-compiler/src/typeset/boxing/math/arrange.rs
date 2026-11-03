@@ -469,7 +469,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
     },
     // 数値・単位は箱の中で完結するので、段の字形（`ssty`）も数式クラスも持たない Ord の 1 アトム
     MathNode::Quantity { pieces, typeface } => {
-      let number = ArrangedNode::Quantity(
+      let quantity = ArrangedNode::Quantity(
         pieces.clone(),
         TextStyle {
           font_size: ctx.font_size(),
@@ -479,7 +479,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
           math_operator: None,
         },
       );
-      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![number]));
+      items.push(spacing::MathItem::new(MathClass::Ord, None, vec![quantity]));
     },
     MathNode::Group(children) => {
       items.push(spacing::MathItem::new(MathClass::Ord, None, arrange_list(children, ctx)));

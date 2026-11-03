@@ -11,11 +11,7 @@ use std::mem;
 use crate::{
   document::UnitFactor,
   frontend::{
-    evaluator::{
-      self, EvalError, arity,
-      command::{self, symbol},
-      math, opt_args,
-    },
+    evaluator::{self, EvalError, arity, command, math, opt_args},
     syntax::{CstElement, CstNode, SyntaxKind, token::TokenKind, view::CommandView},
   },
   source::Span,
@@ -69,10 +65,12 @@ fn arg_items<'a>(source: &str, arg: &'a CstNode<'a>) -> Result<Vec<Item<'a>>, Ev
             items.push(Item::Char(ch, char_span(start, ch)));
           }
         },
-        // `\/` を裸の `/` と同じ診断にするため、エスケープした字は字として読む
-        TokenKind::Escaped => {
-          items.extend(token.text(source)[1..].chars().map(|ch| return Item::Char(ch, token.span)));
-        },
+        // エスケープできる字（構文文字と `/`）はどれも単位の記号に入らない。`\/` は裸の `/` と同じ診断にするため字として読む
+        TokenKind::Escaped => items.push(if token.text(source)[1..].starts_with('/') {
+          Item::Char('/', token.span)
+        } else {
+          Item::Other(token.span, OUTSIDE_GRAMMAR)
+        }),
         TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comment => {},
         TokenKind::Whitespace | TokenKind::Newline => items.push(Item::Other(token.span, "空白は書けません")),
         TokenKind::VerbatimText
@@ -107,13 +105,11 @@ fn arg_items<'a>(source: &str, arg: &'a CstNode<'a>) -> Result<Vec<Item<'a>>, Ev
 /// 記号コマンドに引数・任意引数があるとき、未知のコマンドのときのエラーを返す。
 fn command_item<'a>(source: &str, node: &'a CstNode<'a>) -> Result<Item<'a>, EvalError> {
   let view = CommandView::new(node, source);
-  if let Some(symbol) = symbol::lookup(view.name()) {
-    opt_args::no_command_opt_args(&view)?;
-    arity::no_command_args(&view)?;
+  if let Some(ch) = command::symbol_char(&view)? {
     let Some(CstElement::Token(name)) = node.children.first() else {
       unreachable!("コマンド呼び出しノードの先頭の子はコマンド名のトークン（parser の parse_command_call）")
     };
-    return Ok(Item::Char(symbol.ch, name.span));
+    return Ok(Item::Char(ch, name.span));
   }
   if command::is_registered(view.name()) || math::lookup_math_arg_count(view.name()).is_some() {
     return Ok(Item::Other(view.span(), OUTSIDE_GRAMMAR));
@@ -348,6 +344,8 @@ mod tests {
       ("m.", ("syntax", 1, 1)),
       ("m/s", ("syntax", 1, 1)),
       ("m\\/s", ("syntax", 1, 2)),
+      ("kg\\_m", ("syntax", 2, 2)),
+      ("kg\\&m", ("syntax", 2, 2)),
       ("^{2}", ("syntax", 0, 1)),
       ("m^{2}^{3}", ("syntax", 5, 1)),
       ("m^{2}s", ("syntax", 5, 1)),
