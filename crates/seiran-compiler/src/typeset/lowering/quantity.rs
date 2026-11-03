@@ -1,50 +1,28 @@
-//! 数値（`document::Numeral`）と単位（`document::UnitFactor`）を style.toml `[quantity]` の書式の部品列（[`QuantityPiece`]）に整える
+//! 数値（`document::Numeral`）・単位（`document::UnitFactor`）・量（その 2 つの組）を style.toml `[quantity]` の書式の部品列（[`QuantityPiece`]）に整える
 //!
 //! 部品列は本文・数式の箱（boxing）と PDF しおりの平文（[`plain_text`]）の両方の元になる。
 
 use crate::{
   document::{MathSpace, NumberSign, Numeral, UnitFactor},
-  style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct},
+  style::{
+    DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, NumberUnitSeparator, QuantityStyle,
+    UnitProduct,
+  },
   typeset::lowering::QuantityPiece,
 };
 
 /// 桁区切りを入れない最大の桁数（4 桁は `group_four_digits` のときだけ区切る）
 const UNGROUPED_DIGITS: usize = 3;
 
+/// 数値と単位の間を空けない平面角の単位（SI 文書 第 9 版 5.4.3 の、数値と単位の間は空けるという規則の例外）
+const PLANE_ANGLE_SYMBOLS: [&str; 3] = ["\u{00B0}", "\u{2032}", "\u{2033}"];
+
 /// 数値を `style` の書式の部品列にする（隣り合う字は 1 つの [`QuantityPiece::Text`] に畳む）
 ///
 /// 負号は U+2212。指数があれば `仮数 × 10^指数` の形にし、積の記号の前後は中アキ。
 pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle) -> Vec<QuantityPiece> {
   let mut pieces = Vec::new();
-  match numeral.sign {
-    Some(NumberSign::Plus) => push_text(&mut pieces, "+"),
-    Some(NumberSign::Minus) => push_text(&mut pieces, "\u{2212}"),
-    None => {},
-  }
-  push_grouped(&mut pieces, &numeral.integer, true, style);
-  if let Some(fraction) = &numeral.fraction {
-    push_text(
-      &mut pieces,
-      match style.decimal_marker {
-        DecimalMarker::Period => ".",
-        DecimalMarker::Comma => ",",
-      },
-    );
-    push_grouped(&mut pieces, fraction, false, style);
-  }
-  if let Some(exponent) = &numeral.exponent {
-    pieces.push(QuantityPiece::Space(MathSpace::Medium));
-    push_text(
-      &mut pieces,
-      match style.exponent_product {
-        ExponentProduct::Times => "\u{00D7}",
-        ExponentProduct::Dot => "\u{22C5}",
-      },
-    );
-    pieces.push(QuantityPiece::Space(MathSpace::Medium));
-    push_text(&mut pieces, "10");
-    pieces.push(QuantityPiece::Superscript(exponent.replace('-', "\u{2212}")));
-  }
+  push_number(&mut pieces, numeral, style);
   return pieces;
 }
 
@@ -54,24 +32,87 @@ pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle
 /// `分子 / 分母` の形にし（分母は符号を落とし、`-1` は指数なし。分母が 2 因子以上なら括弧で包む）、因子の相対順は保つ。
 pub(in crate::typeset) fn unit_pieces(factors: &[UnitFactor], style: &QuantityStyle) -> Vec<QuantityPiece> {
   let mut pieces = Vec::new();
+  push_unit(&mut pieces, factors, style);
+  return pieces;
+}
+
+/// 量（数値と単位の式）を `style` の部品列にする（数値・単位の部分はそれぞれ [`number_pieces`] / [`unit_pieces`] と同じ）
+///
+/// 間のアキは `number_unit_separator`。単位の式が平面角 ° ′ ″ の 1 因子だけ（指数なし）なら、style によらずアキを置かない。
+/// アキが無ければ数値の末尾の字と単位の先頭の字は 1 つの [`QuantityPiece::Text`] に畳む。
+pub(in crate::typeset) fn quantity_pieces(
+  numeral: &Numeral,
+  unit: &[UnitFactor],
+  style: &QuantityStyle,
+) -> Vec<QuantityPiece> {
+  let mut pieces = Vec::new();
+  push_number(&mut pieces, numeral, style);
+  let plane_angle =
+    matches!(unit, [UnitFactor { symbol, exponent: None }] if PLANE_ANGLE_SYMBOLS.contains(&symbol.as_str()));
+  if !plane_angle {
+    match style.number_unit_separator {
+      NumberUnitSeparator::None => {},
+      NumberUnitSeparator::Thin => pieces.push(QuantityPiece::Space(MathSpace::Thin)),
+      NumberUnitSeparator::Medium => pieces.push(QuantityPiece::Space(MathSpace::Medium)),
+      NumberUnitSeparator::Thick => pieces.push(QuantityPiece::Space(MathSpace::Thick)),
+    }
+  }
+  push_unit(&mut pieces, unit, style);
+  return pieces;
+}
+
+/// 数値を `style` の書式で部品列 `pieces` に積む
+fn push_number(pieces: &mut Vec<QuantityPiece>, numeral: &Numeral, style: &QuantityStyle) {
+  match numeral.sign {
+    Some(NumberSign::Plus) => push_text(pieces, "+"),
+    Some(NumberSign::Minus) => push_text(pieces, "\u{2212}"),
+    None => {},
+  }
+  push_grouped(pieces, &numeral.integer, true, style);
+  if let Some(fraction) = &numeral.fraction {
+    push_text(
+      pieces,
+      match style.decimal_marker {
+        DecimalMarker::Period => ".",
+        DecimalMarker::Comma => ",",
+      },
+    );
+    push_grouped(pieces, fraction, false, style);
+  }
+  if let Some(exponent) = &numeral.exponent {
+    pieces.push(QuantityPiece::Space(MathSpace::Medium));
+    push_text(
+      pieces,
+      match style.exponent_product {
+        ExponentProduct::Times => "\u{00D7}",
+        ExponentProduct::Dot => "\u{22C5}",
+      },
+    );
+    pieces.push(QuantityPiece::Space(MathSpace::Medium));
+    push_text(pieces, "10");
+    pieces.push(QuantityPiece::Superscript(exponent.replace('-', "\u{2212}")));
+  }
+}
+
+/// 単位の式を `style` の表記で部品列 `pieces` に積む
+fn push_unit(pieces: &mut Vec<QuantityPiece>, factors: &[UnitFactor], style: &QuantityStyle) {
   let (denominator, numerator): (Vec<&UnitFactor>, Vec<&UnitFactor>) = factors
     .iter()
     .partition(|factor| return factor.exponent.as_deref().is_some_and(|e| return e.starts_with('-')));
   if style.negative_exponent == NegativeExponent::Power || numerator.is_empty() || denominator.is_empty() {
-    push_unit_product(&mut pieces, factors.iter().map(written), style.unit_product);
-    return pieces;
+    push_unit_product(pieces, factors.iter().map(written), style.unit_product);
+    return;
   }
-  push_unit_product(&mut pieces, numerator.into_iter().map(written), style.unit_product);
-  push_text(&mut pieces, "/");
+  push_unit_product(pieces, numerator.into_iter().map(written), style.unit_product);
+  push_text(pieces, "/");
   let parenthesized = denominator.len() > 1;
   if parenthesized {
-    push_text(&mut pieces, "(");
+    push_text(pieces, "(");
   }
-  push_unit_product(&mut pieces, denominator.into_iter().map(unsigned), style.unit_product);
+  push_unit_product(pieces, denominator.into_iter().map(unsigned), style.unit_product);
   if parenthesized {
-    push_text(&mut pieces, ")");
+    push_text(pieces, ")");
   }
-  return pieces;
 }
 
 /// 因子の（記号, 書いたままの指数）
@@ -103,7 +144,7 @@ fn push_unit_product<'a>(
   }
 }
 
-/// 部品列を PDF しおりの平文にする（細アキ U+202F・中アキ U+205F・上付きは Unicode の上付き字）
+/// 部品列を PDF しおりの平文にする（細アキ U+202F・中アキ U+205F・太アキ U+2004・上付きは Unicode の上付き字）
 pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
   let mut out = String::new();
   for piece in pieces {
@@ -111,9 +152,10 @@ pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
       QuantityPiece::Text(text) => out.push_str(text),
       QuantityPiece::Space(MathSpace::Thin) => out.push('\u{202F}'),
       QuantityPiece::Space(MathSpace::Medium) => out.push('\u{205F}'),
-      QuantityPiece::Space(MathSpace::Thick | MathSpace::Quad | MathSpace::NegativeThin) => {
+      QuantityPiece::Space(MathSpace::Thick) => out.push('\u{2004}'),
+      QuantityPiece::Space(MathSpace::Quad | MathSpace::NegativeThin) => {
         unreachable!(
-          "number_pieces と unit_pieces が作るアキは細アキ（桁区切り・単位の積）と中アキ（積の記号の前後）だけ"
+          "部品列のアキは細アキ（桁区切り・単位の積）・中アキ（積の記号の前後）と、数値と単位の間の細・中・太アキだけ"
         )
       },
       QuantityPiece::Superscript(text) => out.extend(text.chars().map(superscript_char)),
@@ -137,7 +179,7 @@ fn superscript_char(ch: char) -> char {
     '9' => '\u{2079}',
     '\u{2212}' => '\u{207B}',
     _ => unreachable!(
-      "指数は frontend の数値・単位の文法を通った数字列で、負号は number_pieces / unit_pieces が U+2212 にしてある"
+      "指数は frontend の数値・単位の文法を通った数字列で、負号は push_number / push_unit が U+2212 にしてある"
     ),
   };
 }
@@ -188,10 +230,13 @@ fn push_grouped(pieces: &mut Vec<QuantityPiece>, digits: &str, from_right: bool,
 
 #[cfg(test)]
 mod tests {
-  use super::{number_pieces, plain_text, unit_pieces};
+  use super::{number_pieces, plain_text, quantity_pieces, unit_pieces};
   use crate::{
     document::{MathSpace, NumberSign, Numeral, UnitFactor},
-    style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, QuantityStyle, UnitProduct},
+    style::{
+      DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, NumberUnitSeparator, QuantityStyle,
+      UnitProduct,
+    },
     typeset::lowering::QuantityPiece,
   };
 
@@ -390,5 +435,86 @@ mod tests {
     let slash = unit_style(UnitProduct::Thin, NegativeExponent::Slash);
 
     assert_eq!(unit_pieces(&[factor("s", Some("-1"))], &slash), [text("s"), sup("\u{2212}1")]);
+  }
+
+  /// 数値と単位の間のアキを指定した style
+  fn separated(number_unit_separator: NumberUnitSeparator) -> QuantityStyle {
+    return QuantityStyle {
+      number_unit_separator,
+      ..QuantityStyle::default()
+    };
+  }
+
+  #[test]
+  fn separator_follows_style() {
+    let metre = [factor("m", None)];
+    let pieces = |separator| return quantity_pieces(&int("5"), &metre, &separated(separator));
+
+    assert_eq!(pieces(NumberUnitSeparator::None), [text("5m")]);
+    assert_eq!(pieces(NumberUnitSeparator::Thin), [text("5"), THIN, text("m")]);
+    assert_eq!(pieces(NumberUnitSeparator::Medium), [text("5"), MEDIUM, text("m")]);
+    assert_eq!(pieces(NumberUnitSeparator::Thick), [text("5"), QuantityPiece::Space(MathSpace::Thick), text("m")]);
+  }
+
+  #[test]
+  fn plane_angle_alone_has_no_space() {
+    let thick = separated(NumberUnitSeparator::Thick);
+
+    for symbol in ["\u{00B0}", "\u{2032}", "\u{2033}"] {
+      let unit = [factor(symbol, None)];
+      assert_eq!(quantity_pieces(&int("30"), &unit, &QuantityStyle::default()), [text(&format!("30{symbol}"))]);
+      assert_eq!(quantity_pieces(&int("30"), &unit, &thick), [text(&format!("30{symbol}"))]);
+    }
+    let spaced = [
+      vec![factor("\u{00B0}C", None)],
+      vec![factor("%", None)],
+      vec![factor("\u{00B0}", Some("2"))],
+      vec![factor("\u{00B0}", None), factor("s", Some("-1"))],
+    ];
+    for unit in spaced {
+      assert_eq!(quantity_pieces(&int("30"), &unit, &QuantityStyle::default())[1], THIN, "{unit:?}");
+    }
+  }
+
+  #[test]
+  fn number_exponent_and_unit_superscript_coexist() {
+    let pieces =
+      quantity_pieces(&numeral(None, "1", Some("5"), Some("3")), &[factor("m", Some("2"))], &QuantityStyle::default());
+
+    assert_eq!(
+      pieces,
+      [
+        text("1.5"),
+        MEDIUM,
+        text("\u{00D7}"),
+        MEDIUM,
+        text("10"),
+        sup("3"),
+        THIN,
+        text("m"),
+        sup("2")
+      ]
+    );
+  }
+
+  #[test]
+  fn slash_without_positive_factor_stays_power() {
+    let slash = unit_style(UnitProduct::Thin, NegativeExponent::Slash);
+
+    assert_eq!(
+      quantity_pieces(&int("5"), &[factor("s", Some("-1"))], &slash),
+      [text("5"), THIN, text("s"), sup("\u{2212}1")]
+    );
+  }
+
+  #[test]
+  fn plain_text_maps_every_separator() {
+    let metre = [factor("m", None)];
+    let plain = |separator| return plain_text(&quantity_pieces(&int("5"), &metre, &separated(separator)));
+
+    assert_eq!(plain(NumberUnitSeparator::None), "5m");
+    assert_eq!(plain(NumberUnitSeparator::Thin), "5\u{202F}m");
+    assert_eq!(plain(NumberUnitSeparator::Medium), "5\u{205F}m");
+    assert_eq!(plain(NumberUnitSeparator::Thick), "5\u{2004}m");
   }
 }
