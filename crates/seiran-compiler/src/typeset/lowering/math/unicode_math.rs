@@ -32,7 +32,7 @@ enum Shape {
 
 /// 数式ノード列を `UnicodeMath` の線形表記にする（数値・単位は `quantity_style` の書式の平文）
 pub(in crate::typeset::lowering) fn unicode_math_text(nodes: &[HirMath], quantity_style: &QuantityStyle) -> String {
-  return list_text(&flatten(nodes), quantity_style);
+  return list_text(&flatten(nodes), quantity_style).text;
 }
 
 /// 字（`0`〜`9` `+` `-` U+2212 `=` `(` `)`）を Unicode の上付き字にする。上付き字の無い字は `None`
@@ -79,41 +79,88 @@ fn flatten(nodes: &[HirMath]) -> Vec<&HirMath> {
   return out;
 }
 
+/// 線形表記の文字列と、その末尾が裸の被演算子で終わるか
+///
+/// 自動のアキもソースの空白も出さないので、裸の被演算子の直後に英数字が続くと 1 つの被演算子に読める（`x^ny`）。
+/// [`list_text`] は `open_end` の後ろに英数字が続くとき空白 1 個を入れる。
+#[derive(Debug)]
+struct Linear {
+  /// 線形表記
+  text: String,
+  /// 末尾が裸で出した被演算子（`^` / `_` の後・分母・被根号・上線下線の対象）か
+  open_end: bool,
+}
+
+impl Linear {
+  /// 末尾の閉じた線形表記
+  fn closed(text: String) -> Self {
+    return Linear {
+      text,
+      open_end: false,
+    };
+  }
+
+  /// 前置の記号 `mark` の後ろに `body` を続けた線形表記（末尾の開き具合は `body` のまま）
+  fn prefixed(mark: char, body: Linear) -> Self {
+    let Linear { text, open_end } = body;
+    return Linear {
+      text: format!("{mark}{text}"),
+      open_end,
+    };
+  }
+}
+
 /// 字体指定を展開済みの列を線形表記にする
 ///
-/// スクリプトは基底の後ろに並ぶ兄弟なので、列を先読みして基底を包むかを決める。`Text` の基底は最後の書記素クラスタ
-/// なので包まない。演算子名の後ろは、付いたスクリプトを越えて次の要素があるときだけ空白 1 個を入れる。
-fn list_text(nodes: &[&HirMath], quantity_style: &QuantityStyle) -> String {
+/// スクリプトは基底の後ろに並ぶ兄弟なので、列を先読みして基底を包むかを決める（[`base_needs_parens`]）。演算子名の
+/// 後ろは、付いたスクリプトを越えて次の要素があるときだけ空白 1 個を入れる。裸の被演算子の後ろに英数字で始まる要素が
+/// 続くときも空白 1 個を入れる。スクリプトは同じ基底に付くので、その前には入れない。
+fn list_text(nodes: &[&HirMath], quantity_style: &QuantityStyle) -> Linear {
   let mut out = String::new();
+  let mut open_end = false;
   let mut operator_space = false;
   for (index, node) in nodes.iter().enumerate() {
-    match &node.kind {
-      HirMathKind::Superscript(operand) => out.push_str(&script_text(operand, '^', superscript_char, quantity_style)),
-      HirMathKind::Subscript(operand) => out.push_str(&script_text(operand, '_', subscript_char, quantity_style)),
+    let piece = match &node.kind {
+      HirMathKind::Superscript(operand) => script_text(operand, '^', superscript_char, quantity_style),
+      HirMathKind::Subscript(operand) => script_text(operand, '_', subscript_char, quantity_style),
       HirMathKind::Space(space) => {
         if operator_space || *space != MathSpace::NegativeThin {
           push_space(&mut out);
+          open_end = false;
         }
         operator_space = false;
+        continue;
       },
       _ => {
         if operator_space {
           push_space(&mut out);
+          open_end = false;
         }
-        let text = node_text(node, quantity_style);
+        operator_space = matches!(node.kind, HirMathKind::OperatorName { .. });
+        let piece = node_text(node, quantity_style);
         let has_script = nodes
           .get(index + 1)
           .is_some_and(|next| return matches!(next.kind, HirMathKind::Superscript(_) | HirMathKind::Subscript(_)));
-        if has_script && !matches!(node.kind, HirMathKind::Text(_)) {
-          out.push_str(&wrapped(slice::from_ref(node), text));
+        if has_script && base_needs_parens(node, &piece.text) {
+          Linear::closed(format!("({})", piece.text))
         } else {
-          out.push_str(&text);
+          if open_end && piece.text.chars().next().is_some_and(char::is_alphanumeric) {
+            out.push(' ');
+          }
+          piece
         }
-        operator_space = matches!(node.kind, HirMathKind::OperatorName { .. });
       },
+    };
+    // 空の要素（`{}`）は直前の被演算子を閉じない
+    if !piece.text.is_empty() {
+      open_end = piece.open_end;
     }
+    out.push_str(&piece.text);
   }
-  return out;
+  return Linear {
+    text: out,
+    open_end,
+  };
 }
 
 /// 空白 1 個を足す（直前が空白なら足さない）
@@ -132,30 +179,43 @@ fn script_text(
   marker: char,
   map: fn(char) -> Option<char>,
   quantity_style: &QuantityStyle,
-) -> String {
+) -> Linear {
   let nodes = flatten(slice::from_ref(operand));
-  let text = list_text(&nodes, quantity_style);
-  if let Some(mapped) = text.chars().map(map).collect::<Option<String>>() {
-    return mapped;
+  let inner = list_text(&nodes, quantity_style);
+  if let Some(mapped) = inner.text.chars().map(map).collect::<Option<String>>() {
+    return Linear::closed(mapped);
   }
-  return format!("{marker}{}", wrapped(&nodes, text));
+  return Linear::prefixed(marker, bare_or_wrapped(&nodes, inner));
+}
+
+/// スクリプトの基底を `( )` で包むか
+///
+/// 単純でない基底と、Ord の字の 2 字以上の並び（`{ab}` — 裸だと最後の字だけが基底に読める）・根号（前置の `√` が
+/// スクリプトまで取り込んで読める）を包む。直接入力の字はソース上も最後の書記素クラスタだけが基底で、演算子名は名前で
+/// 1 個なので包まない。
+fn base_needs_parens(node: &HirMath, text: &str) -> bool {
+  return match &node.kind {
+    HirMathKind::Text(_) | HirMathKind::OperatorName { .. } => false,
+    HirMathKind::Sqrt { .. } => true,
+    _ => !is_simple(slice::from_ref(&node), text) || (shape(node) == Shape::Ord && grapheme_count(text) >= 2),
+  };
 }
 
 /// スクリプト・兄弟の先読み・字体指定以外の 1 要素を線形表記にする
-fn node_text(node: &HirMath, quantity_style: &QuantityStyle) -> String {
-  let plain = |node: &HirMath| return list_text(&flatten(slice::from_ref(node)), quantity_style);
+fn node_text(node: &HirMath, quantity_style: &QuantityStyle) -> Linear {
+  let plain = |node: &HirMath| return list_text(&flatten(slice::from_ref(node)), quantity_style).text;
   let operand = |node: &HirMath| {
     let nodes = flatten(slice::from_ref(node));
-    let text = list_text(&nodes, quantity_style);
-    return wrapped(&nodes, text);
+    let inner = list_text(&nodes, quantity_style);
+    return bare_or_wrapped(&nodes, inner);
   };
   let array = |rows: &[Vec<Vec<HirMath>>]| {
     return rows
       .iter()
-      .map(|row| return row.iter().map(|cell| return list_text(&flatten(cell), quantity_style)).join("&"))
+      .map(|row| return row.iter().map(|cell| return list_text(&flatten(cell), quantity_style).text).join("&"))
       .join("@");
   };
-  return match &node.kind {
+  let text = match &node.kind {
     // ソースに書いた空白は組版に出さないので、しおりにも出さない
     HirMathKind::Text(text) => text.chars().filter(|ch| return !ch.is_whitespace()).map(plain_math_char).collect(),
     HirMathKind::Symbol { text, .. } => text.chars().map(plain_math_char).collect(),
@@ -165,18 +225,24 @@ fn node_text(node: &HirMath, quantity_style: &QuantityStyle) -> String {
     HirMathKind::Quantity { numeral, unit } => {
       quantity::plain_text(&quantity::quantity_pieces(numeral, unit, quantity_style))
     },
-    HirMathKind::Group(children) => list_text(&flatten(children), quantity_style),
-    HirMathKind::Frac { numer, denom } => format!("{}/{}", operand(numer), operand(denom)),
+    HirMathKind::Group(children) => return list_text(&flatten(children), quantity_style),
+    HirMathKind::Frac { numer, denom } => {
+      let denom = operand(denom);
+      return Linear {
+        text: format!("{}/{}", operand(numer).text, denom.text),
+        open_end: denom.open_end,
+      };
+    },
     HirMathKind::Binom { top, bottom } => format!("({}\u{00A6}{})", plain(top), plain(bottom)),
     HirMathKind::Sqrt { index, radicand } => match index.as_deref().map(plain).as_deref() {
-      None => format!("\u{221A}{}", operand(radicand)),
-      Some("3") => format!("\u{221B}{}", operand(radicand)),
-      Some("4") => format!("\u{221C}{}", operand(radicand)),
+      None => return Linear::prefixed('\u{221A}', operand(radicand)),
+      Some("3") => return Linear::prefixed('\u{221B}', operand(radicand)),
+      Some("4") => return Linear::prefixed('\u{221C}', operand(radicand)),
       Some(index) => format!("\u{221A}({index}&{})", plain(radicand)),
     },
     HirMathKind::Accent { accent, base, .. } => {
       let nodes = flatten(slice::from_ref(base));
-      let text = list_text(&nodes, quantity_style);
+      let text = list_text(&nodes, quantity_style).text;
       if is_simple(&nodes, &text) && grapheme_count(&text) < 2 {
         format!("{text}{accent}")
       } else {
@@ -188,10 +254,12 @@ fn node_text(node: &HirMath, quantity_style: &QuantityStyle) -> String {
       close,
       segments,
     } => {
-      let body = segments.iter().map(|segment| return list_text(&flatten(segment), quantity_style)).join("|");
+      let body = segments.iter().map(|segment| return list_text(&flatten(segment), quantity_style).text).join("|");
       format!("{open}{body}{close}")
     },
-    HirMathKind::Bar { over, body } => format!("{}{}", if *over { '\u{00AF}' } else { '\u{2581}' }, operand(body)),
+    HirMathKind::Bar { over, body } => {
+      return Linear::prefixed(if *over { '\u{00AF}' } else { '\u{2581}' }, operand(body));
+    },
     HirMathKind::Matrix { delimiter, rows } => {
       let glyphs = matrix_delimiter_glyphs(*delimiter);
       format!("{}\u{25A0}({}){}", glyphs.left.unwrap_or(""), array(rows), glyphs.right.unwrap_or(""))
@@ -201,14 +269,18 @@ fn node_text(node: &HirMath, quantity_style: &QuantityStyle) -> String {
       unreachable!("明示アキ・スクリプトは list_text が先に処理し、字体指定は flatten が展開済み")
     },
   };
+  return Linear::closed(text);
 }
 
-/// 単純でなければ `( )` で包む
-fn wrapped(nodes: &[&HirMath], text: String) -> String {
-  if is_simple(nodes, &text) {
-    return text;
+/// 被演算子を、単純なら裸で（末尾は開く）、そうでなければ `( )` で包んで（末尾は閉じる）出す
+fn bare_or_wrapped(nodes: &[&HirMath], inner: Linear) -> Linear {
+  if is_simple(nodes, &inner.text) {
+    return Linear {
+      text: inner.text,
+      open_end: true,
+    };
   }
-  return format!("({text})");
+  return Linear::closed(format!("({})", inner.text));
 }
 
 /// 線形表記 `text` の列 `nodes` が単純か — 1 字、Ord の字だけの並び、または括弧・根号で閉じた 1 個

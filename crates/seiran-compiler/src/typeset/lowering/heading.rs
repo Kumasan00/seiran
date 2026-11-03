@@ -701,6 +701,37 @@ mod tests {
   }
 
   #[test]
+  fn bookmark_math_multi_char_base_is_wrapped() {
+    assert_eq!(bookmark("${ab}^{2}$"), "(ab)²");
+    assert_eq!(bookmark("${xy}_{i}$"), "(xy)_i");
+    assert_eq!(bookmark("$ab^{2}$"), "ab²");
+    assert_eq!(bookmark(r"$\sin^{2} x$"), "sin² x");
+  }
+
+  #[test]
+  fn bookmark_math_root_base_is_wrapped() {
+    assert_eq!(bookmark(r"$\sqrt{x}^{2}$"), "(√x)²");
+    assert_eq!(bookmark(r"$\sqrt[3]{x}^{2}$"), "(∛x)²");
+  }
+
+  #[test]
+  fn bookmark_math_bare_operand_is_ended_by_a_space() {
+    assert_eq!(bookmark("$x^{n}y$"), "x^n y");
+    assert_eq!(bookmark("$a_{n}b_{n}$"), "a_n b_n");
+    assert_eq!(bookmark(r"$\frac{1}{2}mv^{2}$"), "1/2 mv²");
+    assert_eq!(bookmark(r"$\frac{a}{b}c$"), "a/b c");
+    assert_eq!(bookmark(r"$\sqrt{2}x$"), "√2 x");
+    assert_eq!(bookmark(r"$\overline{x}y$"), "¯x y");
+    assert_eq!(bookmark(r"$x^{n}\alpha$"), "x^n α");
+    assert_eq!(bookmark("${x^{n}}y$"), "x^n y");
+    // 閉じた被演算子・演算子・スクリプトの前には入れない
+    assert_eq!(bookmark("$x^{2}y$"), "x²y");
+    assert_eq!(bookmark("$x^{n+1}y$"), "x^(n+1)y");
+    assert_eq!(bookmark("$x^{n}+y$"), "x^n+y");
+    assert_eq!(bookmark("$x^{n}_{2}$"), "x^n₂");
+  }
+
+  #[test]
   fn bookmark_math_nested_script_wraps_outer_operand() {
     assert_eq!(bookmark("$x^{2^{n}}$"), "x^(2^n)");
   }

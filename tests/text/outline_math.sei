@@ -23,6 +23,10 @@ PDF しおりで見出しのインライン数式を UnicodeMath の線形表記
 
 本文。
 
+\section{基底 ${ab}^{2}\sqrt{x}^{2}$ と被演算子の終わり $\frac{1}{2}mv^{2}$}
+
+本文。
+
 \section{分数 $\frac{a+b}{2}$ と二項係数 $\binom{n}{k}$}
 
 本文。
