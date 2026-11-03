@@ -1,7 +1,5 @@
 //! 目次（table of contents）の生成 — 見出しの絞り込み・ページラベル解決・style 投影・行組み立て
 
-use std::mem;
-
 use tracing::debug;
 
 use crate::{
@@ -10,7 +8,7 @@ use crate::{
   semantics::HeadingKey,
   style::{Style, TocStyle},
   typeset::{
-    boxes::{Align, AnchorId, Block, HBox, Line, LineLink, LinkTarget},
+    boxes::{Align, AnchorId, Block, Line, LineLink, LinkTarget},
     boxing::{LineAccum, Shaper, compose_left_line, inline_atom, row_width},
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -56,7 +54,7 @@ struct TocSpec {
 /// 1 目次エントリ
 #[derive(Debug, Clone)]
 struct TocEntry {
-  /// 行のはみ出し警告が指す見出し（[`HeadingRecord::node`]）
+  /// 行のはみ出し警告が指し、題目の字の問題が帰属する見出し（[`HeadingRecord::node`]）
   origin: Option<NodeId>,
   /// 見出しレベル（インデントの深さに使う）
   level: HeadingLevel,
@@ -165,12 +163,13 @@ fn compose_blocks(spec: &TocSpec, entries: Vec<TocEntry>, fonts: &FontSystem, is
   }
 
   let entry_leading = spec.entry_style.font_size * spec.line_height_factor;
-  for mut entry in entries {
-    let origin = entry.origin.map_or(GlyphOrigin::Generated(Generated::Toc), GlyphOrigin::Element);
-    let label = inline_atom(Shaper::new(fonts, issues, origin), mem::take(&mut entry.label), spec.punctuation_spacing);
+  for entry in entries {
+    let origin = entry.origin;
+    let title_shaper =
+      Shaper::new(fonts, issues, origin.map_or(GlyphOrigin::Generated(Generated::Toc), GlyphOrigin::Element));
     blocks.push(Block::ComposedLine {
-      origin: entry.origin,
-      line: compose_entry_line(&mut shaper, spec, &entry, label),
+      origin,
+      line: compose_entry_line(&mut shaper, title_shaper, spec, entry),
       leading: entry_leading,
     });
   }
@@ -181,12 +180,21 @@ fn compose_blocks(spec: &TocSpec, entries: Vec<TocEntry>, fonts: &FontSystem, is
   return blocks;
 }
 
-/// 1 エントリを「番号＋タイトル（計測済みの `label`） …リーダー… ページ番号（右寄せ）」の単一行に組み、`entry_align` で寄せる
-fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &TocSpec, entry: &TocEntry, label: HBox) -> Line {
+/// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組み、`entry_align` で寄せる
+///
+/// 番号＋タイトルは `title_shaper` で、リーダー・ページ番号は `shaper` で組む。
+fn compose_entry_line(shaper: &mut Shaper<'_>, title_shaper: Shaper<'_>, spec: &TocSpec, entry: TocEntry) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
 
   let mut acc = LineAccum::default();
-  let left_end = acc.place(vec![label], indent);
+  let left_end = acc.place(
+    vec![inline_atom(
+      title_shaper,
+      entry.label,
+      spec.punctuation_spacing,
+    )],
+    indent,
+  );
 
   let mut right_edge = left_end;
   if spec.show_page_numbers {

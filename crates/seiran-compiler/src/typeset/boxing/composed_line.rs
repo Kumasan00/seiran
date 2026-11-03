@@ -1,7 +1,7 @@
 //! 生成コンテンツ（目次・索引・走り文）と表のセルが使う 1 行組み立ての仕組み
 //!
 //! [`Shaper`] がシェーピングした `HBox` 列を、指定した x 座標から水平に
-//! 並べて `Line` へ確定する。インライン列は [`inline_atom`] が本文と同じ規則で計測し、自然幅の閉じた箱にする。
+//! 並べて `Line` へ確定する。
 
 use crate::{
   length::Length,
@@ -133,7 +133,10 @@ pub(in crate::typeset) fn inline_atom(shaper: Shaper<'_>, nodes: Vec<InlineNode>
   let items = list.into_items();
   let line = unwrapped_line(&items);
   if !(line.links.is_empty() && line.footnotes.is_empty() && line.index_marks.is_empty()) {
-    unreachable!("inline_atom の呼び出し側（目次の行の題目）はリンク・脚注・索引を落とした列だけを渡す")
+    unreachable!(
+      "inline_atom が組むのは目次の行の題目（HeadingRecord::toc_label）だけで、lowering::heading の写しがリンクは子だけを組み、\
+       脚注・索引を落としている"
+    )
   }
   let mut atom = HBox::atom(line.boxes);
   atom.width = measure_items_width(&items);

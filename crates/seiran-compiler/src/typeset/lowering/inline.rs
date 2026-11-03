@@ -156,7 +156,7 @@ pub(super) fn lower_inline(
   }
 }
 
-/// 外側のスタイルの書体だけを `font` に替えたスタイル（装飾コマンドの中身）を返す
+/// 外側のスタイルの大きさと色を継ぎ、書体を `font` にしたスタイル（装飾コマンドの中身）を返す
 pub(super) fn styled(parent_style: TextStyle, font: Typeface) -> TextStyle {
   return TextStyle {
     font_size: parent_style.font_size,
@@ -167,7 +167,7 @@ pub(super) fn styled(parent_style: TextStyle, font: Typeface) -> TextStyle {
   };
 }
 
-/// 外側のスタイルの色だけを `color` に替えたスタイル（`\color` の中身）を返す
+/// 外側のスタイルの大きさと書体を継ぎ、色を `color` にしたスタイル（`\color` の中身）を返す
 pub(super) fn colored(parent_style: TextStyle, color: Color) -> TextStyle {
   return TextStyle {
     font_size: parent_style.font_size,

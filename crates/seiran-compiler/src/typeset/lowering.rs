@@ -124,7 +124,7 @@ impl<'a> LoweringContext<'a> {
 /// 見出し 1 件の記録
 #[derive(Debug, Clone)]
 pub(super) struct HeadingRecord {
-  /// 目次の行のはみ出し警告が指す見出し。書誌の見出し（生成物）は `None`
+  /// 目次の行のはみ出し警告が指し、目次の題目の字の問題が帰属する見出し。書誌の見出し（生成物）は `None`
   pub node: Option<NodeId>,
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,

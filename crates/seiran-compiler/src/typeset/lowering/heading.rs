@@ -41,9 +41,8 @@ pub(in crate::typeset) fn toc_entry_style(style: &ReadStyle) -> TextStyle {
 
 /// 見出しの題目を、目次の行に組む写しのインライン列へ lower する
 ///
-/// 本文と同じノード・書体規則で組むが、目次の行全体が見出しへのリンクなので `\ref` / `\cite` / `\href` / `\url` は
-/// 表示だけを組んでリンクとリンク色を付けず、脚注・索引は複製せず、1 行に組むので改行は語間空白 1 個にする。
-/// `state` は共有参照なので、写しは脚注の採番を進めない。
+/// 本文と同じノード・書体規則で組む。`\ref` / `\cite` / `\href` / `\url` は表示だけを組んでリンクとリンク色を付けず、
+/// 脚注・索引は写さず、改行は語間空白 1 個にする。`state` は共有参照なので、写しは脚注の採番を進めない。
 fn toc_title(
   ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
@@ -245,8 +244,8 @@ mod tests {
   use super::*;
   use crate::{
     color::Color,
-    document::{TextAlignment, Typeface},
-    semantics::{CitationId, GeneratedInline},
+    document::TextAlignment,
+    semantics::CitationId,
     style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},

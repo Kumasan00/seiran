@@ -113,7 +113,6 @@ mod tests {
     typeset::lowering::{
       lower_sources_with_headings,
       test_support::{analyzed, context, inlines, lower, paragraph_layout, paragraph_origins},
-      toc_entry_style,
     },
   };
 
