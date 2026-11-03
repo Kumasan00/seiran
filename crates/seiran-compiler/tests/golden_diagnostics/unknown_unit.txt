@@ -1,0 +1,12 @@
+frontend::eval::unknown_unit
+
+  × 未知の単位です: N·m
+   ╭─[tests/text/diagnostics/unknown_unit.sei:3:20]
+ 2 │ 
+ 3 │ トルクは \unit{N·m} です。
+   ·                ─┬─
+   ·                 ╰── この単位は語彙にありません
+   ╰────
+  help: \unit が受け付けるのは SI 文書（第 9 版）の単位記号・接頭辞と % で、2 つの単位は `.` で区
+        切ります（例: \unit{km.s^{-1}}、\unit{N.m}）。μ・Ω・°・′・″ は \mu・\Omega・\degree・
+        \prime・\doubleprime でも書けます

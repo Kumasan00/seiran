@@ -438,14 +438,26 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set_heading(table, "section", "alignment", "right");
     },
     // 数値を本文用の枠の書体と、既定と違う小数点・桁区切り・4 桁区切りで組む版面（STIX Two Text は U+22C5 を持たないので積の記号は既定の times）
-    // 長い数値が行末をまたぐ行長（箱の中で折り返さないことを見る）
-    "num" => set_page_margins(table, "250mm", "99pt"),
+    // 長い数値・単位が行末をまたぐ行長（箱の中で折り返さないことを見る）
+    "num" | "unit" => set_page_margins(table, "250mm", "99pt"),
     "num_text_typeface" => {
       set_page_margins(table, "250mm", "99pt");
       set(table, "quantity", "typeface", "serif");
       set(table, "quantity", "decimal_marker", "comma");
       set(table, "quantity", "digit_group_separator", "period");
       set(table, "quantity", "group_four_digits", true);
+    },
+    // 単位を積 dot と分母 slash・本文用の枠の書体と分母 slash で組む版面（STIX Two Text は U+22C5 を持たないので、本文用の
+    // 枠の版では積を既定の thin のままにする）。行長は num と同じ
+    "unit_slash_dot" => {
+      set_page_margins(table, "250mm", "99pt");
+      set(table, "quantity", "unit_product", "dot");
+      set(table, "quantity", "negative_exponent", "slash");
+    },
+    "unit_text_typeface" => {
+      set_page_margins(table, "250mm", "99pt");
+      set(table, "quantity", "typeface", "serif");
+      set(table, "quantity", "negative_exponent", "slash");
     },
     "index_ranges" => set(table, "index", "collapse_page_ranges", true),
     "index_groups" => set(table, "index", "group_headings", true),

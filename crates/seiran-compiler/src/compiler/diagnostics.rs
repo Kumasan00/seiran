@@ -282,6 +282,40 @@ fn diagnostic_invalid_number() {
 }
 
 #[test]
+fn diagnostic_unknown_unit() {
+  // 直接入力の `·` は区切りではなく普通の字なので、`N·m` 全体が 1 つの未知の単位になる
+  let failure = compile_err(&["tests/text/diagnostics/unknown_unit.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unknown_unit".to_string()]);
+  assert_matches_golden("unknown_unit", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_unit_prefix_not_allowed() {
+  let failure = compile_err(&["tests/text/diagnostics/unit_prefix_not_allowed.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unit_prefix_not_allowed".to_string()]);
+  assert_matches_golden("unit_prefix_not_allowed", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_invalid_unit_exponent() {
+  let failure = compile_err(&["tests/text/diagnostics/invalid_unit_exponent.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::invalid_unit_exponent".to_string()]);
+  assert_matches_golden("invalid_unit_exponent", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_invalid_unit_syntax() {
+  // `/` は最初に書かれやすい形なので、未知の単位 `m/s` ではなく文法の誤りとして負の指数と style の表記を案内する
+  let failure = compile_err(&["tests/text/diagnostics/invalid_unit_syntax.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::invalid_unit_syntax".to_string()]);
+  assert_matches_golden("invalid_unit_syntax", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_needless_escape_in_math() {
   // LaTeX の細アキ `\,` は数式でも字 `,` の第 2 の書き方なので、構文文字でも区切りでもない字のエスケープとして拒否する
   let failure = compile_err(&["tests/text/diagnostics/needless_escape_math.sei"]);
