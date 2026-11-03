@@ -10,7 +10,7 @@ use crate::{
     lowering::{
       LoweringContext, LoweringState, code, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
-      math::lower_inline_math,
+      math::{lower_inline_math, unicode_math_text},
       quantity,
     },
   },
@@ -116,8 +116,8 @@ fn toc_label(number: &str, title: Vec<InlineNode>, style: TextStyle) -> Vec<Inli
 
 /// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり用）
 ///
-/// `GeneratedInline` 側のプレーンテキスト畳み込み（`semantics` の `generated_inlines_to_plain_text`）と
-/// 同じ規則を保つ。
+/// インライン数式は `UnicodeMath` の線形表記、改行は空白 1 個（しおりは 1 行）にする。両方にある種類（文字列・装飾・
+/// リンク）は `GeneratedInline` 側の畳み込み（`semantics` の `generated_inlines_to_plain_text`）と同じ規則を保つ。
 fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
   let mut out = String::new();
   for inline in inlines {
@@ -132,9 +132,9 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
         out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
       },
       HirInlineKind::Code(text) => out.push_str(text),
-      HirInlineKind::Math(_) => out.push_str("[Math]"),
+      HirInlineKind::Math(nodes) => out.push_str(&unicode_math_text(nodes, &style.quantity)),
       HirInlineKind::Symbol(ch) => out.push(*ch),
-      HirInlineKind::LineBreak => out.push('\n'),
+      HirInlineKind::LineBreak => out.push(' '),
       HirInlineKind::Number(numeral) => {
         out.push_str(&quantity::plain_text(&quantity::number_pieces(numeral, &style.quantity)));
       },
@@ -642,5 +642,166 @@ mod tests {
     assert_eq!(text_of(toc_label("", title(), style)), vec!["T"]);
     assert_eq!(text_of(toc_label("1", Vec::new(), style)), vec!["1"]);
     assert_eq!(text_of(toc_label("1", title(), style)), vec!["1 T"]);
+  }
+
+  /// `\section{title}` のしおりの題目（番号を除く平文）
+  fn bookmark(title: &str) -> String {
+    return heading_records(&ReadStyle::default(), &format!("\\section{{{title}}}\n"))[0].title_plain.clone();
+  }
+
+  #[test]
+  fn bookmark_math_keeps_chars_and_symbols() {
+    assert_eq!(bookmark(r"$a+\alpha$"), "a+α");
+    assert_eq!(bookmark("$a + b$"), "a+b");
+    assert_eq!(bookmark("前 $x$ 後"), "前 x 後");
+  }
+
+  #[test]
+  fn bookmark_math_explicit_spaces_collapse() {
+    assert_eq!(bookmark(r"$a\thinspace b$"), "a b");
+    assert_eq!(bookmark(r"$a\thinspace\quad b$"), "a b");
+    assert_eq!(bookmark(r"$a\medspace b\thickspace c$"), "a b c");
+    assert_eq!(bookmark(r"$a\negthinspace b$"), "ab");
+  }
+
+  #[test]
+  fn bookmark_math_operator_name_spacing() {
+    assert_eq!(bookmark(r"$\sin x$"), "sin x");
+    assert_eq!(bookmark(r"$\sin^{2} x$"), "sin² x");
+    assert_eq!(bookmark(r"$\sin\quad x$"), "sin x");
+    assert_eq!(bookmark(r"$x \sin$"), "xsin");
+  }
+
+  #[test]
+  fn bookmark_math_prose_and_group() {
+    assert_eq!(bookmark(r"$x\text{ if }y$"), "x if y");
+    assert_eq!(bookmark("${ab}$"), "ab");
+  }
+
+  #[test]
+  fn bookmark_math_scripts() {
+    assert_eq!(bookmark("$x^{2}$"), "x²");
+    assert_eq!(bookmark("$x_{10}$"), "x₁₀");
+    assert_eq!(bookmark("$x^{-1}$"), "x⁻¹");
+    assert_eq!(bookmark("$x^{n}$"), "x^n");
+    assert_eq!(bookmark("$x^{n+1}$"), "x^(n+1)");
+    assert_eq!(bookmark("$x^{ab}$"), "x^ab");
+    assert_eq!(bookmark("$x^{a2}$"), "x^a2");
+    assert_eq!(bookmark("${a+b}^{2}$"), "(a+b)²");
+    assert_eq!(bookmark("$x_{i}^{2}$"), "x_i²");
+    assert_eq!(bookmark("$ab^{2}$"), "ab²");
+    assert_eq!(bookmark(r"$\frac{a}{b}^{2}$"), "(a/b)²");
+    assert_eq!(bookmark(r"$\paren{x}^{2}$"), "(x)²");
+  }
+
+  #[test]
+  fn bookmark_math_parenthesized_text_operand_is_simple() {
+    assert_eq!(bookmark("$x^{(n)}$"), "x^(n)");
+    assert_eq!(bookmark("$x^{(a)+(b)}$"), "x^((a)+(b))");
+  }
+
+  #[test]
+  fn bookmark_math_multi_char_base_is_wrapped() {
+    assert_eq!(bookmark("${ab}^{2}$"), "(ab)²");
+    assert_eq!(bookmark("${xy}_{i}$"), "(xy)_i");
+    assert_eq!(bookmark("$ab^{2}$"), "ab²");
+    assert_eq!(bookmark(r"$\sin^{2} x$"), "sin² x");
+  }
+
+  #[test]
+  fn bookmark_math_root_base_is_wrapped() {
+    assert_eq!(bookmark(r"$\sqrt{x}^{2}$"), "(√x)²");
+    assert_eq!(bookmark(r"$\sqrt[3]{x}^{2}$"), "(∛x)²");
+  }
+
+  #[test]
+  fn bookmark_math_bare_operand_is_ended_by_a_space() {
+    assert_eq!(bookmark("$x^{n}y$"), "x^n y");
+    assert_eq!(bookmark("$a_{n}b_{n}$"), "a_n b_n");
+    assert_eq!(bookmark(r"$\frac{1}{2}mv^{2}$"), "1/2 mv²");
+    assert_eq!(bookmark(r"$\frac{a}{b}c$"), "a/b c");
+    assert_eq!(bookmark(r"$\sqrt{2}x$"), "√2 x");
+    assert_eq!(bookmark(r"$\overline{x}y$"), "¯x y");
+    assert_eq!(bookmark(r"$x^{n}\alpha$"), "x^n α");
+    assert_eq!(bookmark("${x^{n}}y$"), "x^n y");
+    // 閉じた被演算子・演算子・スクリプトの前には入れない
+    assert_eq!(bookmark("$x^{2}y$"), "x²y");
+    assert_eq!(bookmark("$x^{n+1}y$"), "x^(n+1)y");
+    assert_eq!(bookmark("$x^{n}+y$"), "x^n+y");
+    assert_eq!(bookmark("$x^{n}_{2}$"), "x^n₂");
+  }
+
+  #[test]
+  fn bookmark_math_nested_script_wraps_outer_operand() {
+    assert_eq!(bookmark("$x^{2^{n}}$"), "x^(2^n)");
+  }
+
+  #[test]
+  fn bookmark_math_minus_symbol_is_a_superscript_minus() {
+    // U+2212 は `\unit` のしおりの指数と同じく上付きの負号にする
+    assert_eq!(bookmark(r"$x^{\minus 1}$"), "x⁻¹");
+  }
+
+  #[test]
+  fn bookmark_math_empty_parts_vanish() {
+    assert_eq!(bookmark("x${}$y"), "xy");
+    assert_eq!(bookmark("$x^{}$"), "x");
+  }
+
+  #[test]
+  fn bookmark_math_fractions_and_binomials() {
+    assert_eq!(bookmark(r"$\frac{a}{b}$"), "a/b");
+    assert_eq!(bookmark(r"$\frac{a+b}{2}$"), "(a+b)/2");
+    assert_eq!(bookmark(r"$\binom{n}{k}$"), "(n¦k)");
+  }
+
+  #[test]
+  fn bookmark_math_roots() {
+    assert_eq!(bookmark(r"$\sqrt{x}$"), "√x");
+    assert_eq!(bookmark(r"$\sqrt{a+b}$"), "√(a+b)");
+    assert_eq!(bookmark(r"$\sqrt[3]{x}$"), "∛x");
+    assert_eq!(bookmark(r"$\sqrt[4]{x}$"), "∜x");
+    assert_eq!(bookmark(r"$\sqrt[n]{x}$"), "√(n&x)");
+  }
+
+  #[test]
+  fn bookmark_math_accents_and_bars() {
+    assert_eq!(bookmark(r"$\hat{x}$"), "x\u{0302}");
+    assert_eq!(bookmark(r"$\widehat{xy}$"), "(xy)\u{0302}");
+    assert_eq!(bookmark(r"$\overline{x}$"), "¯x");
+    assert_eq!(bookmark(r"$\underline{a+b}$"), "▁(a+b)");
+  }
+
+  #[test]
+  fn bookmark_math_fences() {
+    assert_eq!(bookmark(r"$\paren{x}$"), "(x)");
+    assert_eq!(bookmark(r"$\abs{x}$"), "|x|");
+    assert_eq!(bookmark(r"$\paren{a \given b}$"), "(a|b)");
+  }
+
+  #[test]
+  fn bookmark_math_arrays() {
+    assert_eq!(bookmark(r"$\begin{matrix}[delimiter=paren]a & b \\ c & d\end{matrix}$"), "(■(a&b@c&d))");
+    assert_eq!(bookmark(r"$\begin{matrix}a & b\end{matrix}$"), "■(a&b)");
+    assert_eq!(
+      bookmark(r"$\begin{cases}x & \text{if } x \geq 0 \\ -x & \text{otherwise}\end{cases}$"),
+      "Ⓒ(x&if x≥0@-x&otherwise)"
+    );
+  }
+
+  #[test]
+  fn bookmark_math_alphanumerics_become_plain() {
+    assert_eq!(bookmark(r"$\mathbold{x}+\mathdoublestruck{R}$"), "x+R");
+    assert_eq!(bookmark("$\u{1D431}+\u{1D466}$"), "x+y");
+  }
+
+  #[test]
+  fn bookmark_math_styled_is_transparent_to_script_base() {
+    assert_eq!(bookmark(r"$\mathbold{a+b}^{2}$"), "a+b²");
+  }
+
+  #[test]
+  fn bookmark_line_break_becomes_space() {
+    assert_eq!(bookmark(r"前半\\後半"), "前半 後半");
   }
 }

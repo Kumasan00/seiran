@@ -220,76 +220,50 @@ fn fraktur_hole(ch: char) -> Option<char> {
   };
 }
 
+/// Mathematical Greek の 1 字体ぶん（58 字）の並び。添字が字体ブロック先頭からのオフセット
+///
+/// Unicode の Mathematical Alphanumeric Symbols の Greek 部分の配列順（大文字 Α..Ρ・ϴ・Σ..Ω・∇・小文字 α..ω・
+/// ∂ ϵ ϑ ϰ ϕ ϱ ϖ）。
+const MATH_GREEK: [char; 58] = [
+  '\u{0391}', '\u{0392}', '\u{0393}', '\u{0394}', '\u{0395}', '\u{0396}', '\u{0397}', '\u{0398}', '\u{0399}',
+  '\u{039A}', '\u{039B}', '\u{039C}', '\u{039D}', '\u{039E}', '\u{039F}', '\u{03A0}', '\u{03A1}', '\u{03F4}',
+  '\u{03A3}', '\u{03A4}', '\u{03A5}', '\u{03A6}', '\u{03A7}', '\u{03A8}', '\u{03A9}', '\u{2207}', '\u{03B1}',
+  '\u{03B2}', '\u{03B3}', '\u{03B4}', '\u{03B5}', '\u{03B6}', '\u{03B7}', '\u{03B8}', '\u{03B9}', '\u{03BA}',
+  '\u{03BB}', '\u{03BC}', '\u{03BD}', '\u{03BE}', '\u{03BF}', '\u{03C0}', '\u{03C1}', '\u{03C2}', '\u{03C3}',
+  '\u{03C4}', '\u{03C5}', '\u{03C6}', '\u{03C7}', '\u{03C8}', '\u{03C9}', '\u{2202}', '\u{03F5}', '\u{03D1}',
+  '\u{03F0}', '\u{03D5}', '\u{03F1}', '\u{03D6}',
+];
+
 /// Greek 文字 1 文字の Mathematical Greek block 内オフセットを返す
 fn greek_math_offset(ch: char) -> Option<u32> {
-  return match ch {
-    // 大文字 Α..Ρ
-    '\u{0391}' => Some(0),  // Α
-    '\u{0392}' => Some(1),  // Β
-    '\u{0393}' => Some(2),  // Γ
-    '\u{0394}' => Some(3),  // Δ
-    '\u{0395}' => Some(4),  // Ε
-    '\u{0396}' => Some(5),  // Ζ
-    '\u{0397}' => Some(6),  // Η
-    '\u{0398}' => Some(7),  // Θ
-    '\u{0399}' => Some(8),  // Ι
-    '\u{039A}' => Some(9),  // Κ
-    '\u{039B}' => Some(10), // Λ
-    '\u{039C}' => Some(11), // Μ
-    '\u{039D}' => Some(12), // Ν
-    '\u{039E}' => Some(13), // Ξ
-    '\u{039F}' => Some(14), // Ο
-    '\u{03A0}' => Some(15), // Π
-    '\u{03A1}' => Some(16), // Ρ
-    // ϴ GREEK CAPITAL THETA SYMBOL
-    '\u{03F4}' => Some(17),
-    // Σ..Ω
-    '\u{03A3}' => Some(18), // Σ
-    '\u{03A4}' => Some(19), // Τ
-    '\u{03A5}' => Some(20), // Υ
-    '\u{03A6}' => Some(21), // Φ
-    '\u{03A7}' => Some(22), // Χ
-    '\u{03A8}' => Some(23), // Ψ
-    '\u{03A9}' => Some(24), // Ω
-    // ∇ NABLA
-    '\u{2207}' => Some(25),
-    // 小文字 α..ρ
-    '\u{03B1}' => Some(26), // α
-    '\u{03B2}' => Some(27), // β
-    '\u{03B3}' => Some(28), // γ
-    '\u{03B4}' => Some(29), // δ
-    '\u{03B5}' => Some(30), // ε
-    '\u{03B6}' => Some(31), // ζ
-    '\u{03B7}' => Some(32), // η
-    '\u{03B8}' => Some(33), // θ
-    '\u{03B9}' => Some(34), // ι
-    '\u{03BA}' => Some(35), // κ
-    '\u{03BB}' => Some(36), // λ
-    '\u{03BC}' => Some(37), // μ
-    '\u{03BD}' => Some(38), // ν
-    '\u{03BE}' => Some(39), // ξ
-    '\u{03BF}' => Some(40), // ο
-    '\u{03C0}' => Some(41), // π
-    '\u{03C1}' => Some(42), // ρ
-    // ς final sigma
-    '\u{03C2}' => Some(43),
-    // σ..ω
-    '\u{03C3}' => Some(44), // σ
-    '\u{03C4}' => Some(45), // τ
-    '\u{03C5}' => Some(46), // υ
-    '\u{03C6}' => Some(47), // φ
-    '\u{03C7}' => Some(48), // χ
-    '\u{03C8}' => Some(49), // ψ
-    '\u{03C9}' => Some(50), // ω
-    // variants
-    '\u{2202}' => Some(51), // ∂ PARTIAL DIFFERENTIAL
-    '\u{03F5}' => Some(52), // ϵ GREEK LUNATE EPSILON SYMBOL
-    '\u{03D1}' => Some(53), // ϑ GREEK THETA SYMBOL
-    '\u{03F0}' => Some(54), // ϰ GREEK KAPPA SYMBOL
-    '\u{03D5}' => Some(55), // ϕ GREEK PHI SYMBOL
-    '\u{03F1}' => Some(56), // ϱ GREEK RHO SYMBOL
-    '\u{03D6}' => Some(57), // ϖ GREEK PI SYMBOL
-    _ => None,
+  return MATH_GREEK.iter().position(|&greek| return greek == ch).map(|offset| {
+    return u32::try_from(offset).expect("MATH_GREEK は 58 字なので添字は u32 に収まる");
+  });
+}
+
+/// 数学用英数字（U+1D400〜U+1D7FF）を、字体を落とした素の字へ戻す（範囲外と未割当の字はそのまま）
+///
+/// [`translate_math_char`] の逆。ブロックは字体ごとに同じ並びを繰り返すので、ラテン（52 字）・Greek（58 字）・
+/// 数字（10 字）の周期で戻す。ラテン範囲内の未割当（Letterlike Symbols に移った穴）も式で素の字になるが、
+/// 未割当の字は入力に来ても意味を持たない。
+pub(super) fn plain_math_char(ch: char) -> char {
+  let code = u32::from(ch);
+  let offset_char = |base: char, offset: u32| -> char {
+    return char::from_u32(u32::from(base) + offset)
+      .expect("ASCII の英字・数字の先頭からの周期内オフセットは ASCII に収まる");
+  };
+  return match code {
+    0x1d400..=0x1d6a3 => match (code - 0x1d400) % 52 {
+      offset @ 0..26 => offset_char('A', offset),
+      offset => offset_char('a', offset - 26),
+    },
+    0x1d6a4 => '\u{0131}',
+    0x1d6a5 => '\u{0237}',
+    0x1d6a8..=0x1d7c9 => MATH_GREEK[usize::try_from((code - 0x1d6a8) % 58).expect("58 未満の値は usize に収まる")],
+    0x1d7ca => '\u{03DC}',
+    0x1d7cb => '\u{03DD}',
+    0x1d7ce..=0x1d7ff => offset_char('0', (code - 0x1d7ce) % 10),
+    _ => ch,
   };
 }
 
@@ -479,5 +453,54 @@ mod tests {
     assert_eq!(translate_math_char('z', variant), '\u{1D59F}'); // 小文字 base 末尾
     assert_eq!(translate_math_char('1', variant), '1', "太字フラクトゥール数字は素通し");
     assert_eq!(translate_math_char('α', variant), 'α', "太字フラクトゥール Greek は Unicode 未定義のため素通し");
+  }
+
+  #[test]
+  fn plain_math_char_inverts_every_translation() {
+    let variants = [
+      MathVariant::Serif,
+      MathVariant::Italic,
+      MathVariant::Bold,
+      MathVariant::BoldItalic,
+      MathVariant::Sans,
+      MathVariant::SansItalic,
+      MathVariant::SansBold,
+      MathVariant::SansBoldItalic,
+      MathVariant::Mono,
+      MathVariant::DoubleStruck,
+      MathVariant::Script,
+      MathVariant::Calligraphic,
+      MathVariant::Fraktur,
+      MathVariant::ScriptBold,
+      MathVariant::FrakturBold,
+    ];
+    let chars: Vec<char> = ('A'..='Z')
+      .chain('a'..='z')
+      .chain('0'..='9')
+      .chain(MATH_GREEK)
+      .chain(['\u{03DC}', '\u{03DD}'])
+      .collect();
+
+    for variant in variants {
+      for &ch in &chars {
+        let mapped = translate_math_char(ch, Some(variant));
+        if ('\u{1D400}'..='\u{1D7FF}').contains(&mapped) {
+          assert_eq!(plain_math_char(mapped), ch, "{variant:?} {ch:?}");
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn plain_math_char_restores_dotless_i_and_j() {
+    assert_eq!(plain_math_char('\u{1D6A4}'), '\u{0131}');
+    assert_eq!(plain_math_char('\u{1D6A5}'), '\u{0237}');
+  }
+
+  #[test]
+  fn plain_math_char_keeps_chars_outside_the_block() {
+    for ch in ['a', 'α', '+', '\u{211D}', '\u{210E}', '\u{1D800}'] {
+      assert_eq!(plain_math_char(ch), ch);
+    }
   }
 }

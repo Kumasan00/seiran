@@ -8,7 +8,7 @@ use crate::{
     DecimalMarker, DigitGroupSeparator, ExponentProduct, NegativeExponent, NumberUnitSeparator, QuantityStyle,
     UnitProduct,
   },
-  typeset::lowering::QuantityPiece,
+  typeset::lowering::{QuantityPiece, math},
 };
 
 /// 桁区切りを入れない最大の桁数（4 桁は `group_four_digits` のときだけ区切る）
@@ -158,30 +158,14 @@ pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
           "部品列のアキは細アキ（桁区切り・単位の積）・中アキ（積の記号の前後）と、数値と単位の間の細・中・太アキだけ"
         )
       },
-      QuantityPiece::Superscript(text) => out.extend(text.chars().map(superscript_char)),
+      QuantityPiece::Superscript(text) => out.extend(text.chars().map(|ch| {
+        return math::superscript_char(ch).expect(
+          "指数の字は frontend の数値・単位の文法を通った ASCII 数字と、push_number / push_unit が負号にした U+2212 だけで、どれも上付き字の表にある",
+        );
+      })),
     }
   }
   return out;
-}
-
-/// 指数の字（ASCII 数字か U+2212）を Unicode の上付き字にする
-fn superscript_char(ch: char) -> char {
-  return match ch {
-    '0' => '\u{2070}',
-    '1' => '\u{00B9}',
-    '2' => '\u{00B2}',
-    '3' => '\u{00B3}',
-    '4' => '\u{2074}',
-    '5' => '\u{2075}',
-    '6' => '\u{2076}',
-    '7' => '\u{2077}',
-    '8' => '\u{2078}',
-    '9' => '\u{2079}',
-    '\u{2212}' => '\u{207B}',
-    _ => unreachable!(
-      "指数は frontend の数値・単位の文法を通った数字列で、負号は push_number / push_unit が U+2212 にしてある"
-    ),
-  };
 }
 
 /// 字 `text` を末尾の字の部品に足す（末尾が字でなければ新しい部品にする）
