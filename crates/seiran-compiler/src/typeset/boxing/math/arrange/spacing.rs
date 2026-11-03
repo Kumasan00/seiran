@@ -306,7 +306,7 @@ const fn explicit_mu_count(space: MathSpace) -> i32 {
   };
 }
 
-/// 明示アキ `space` の、フォントサイズ `font_size` での幅（数式の外の数値の箱でも 1mu = `font_size` / 18）
+/// 明示アキ `space` の、フォントサイズ `font_size` での幅（数式の外の数量の箱でも 1mu = `font_size` / 18）
 pub(in crate::typeset::boxing) fn space_width(space: MathSpace, font_size: Length) -> Length {
   return mu(explicit_mu_count(space), font_size);
 }

@@ -105,7 +105,7 @@ pub(in crate::typeset) enum InlineNode {
   },
   /// インライン数式（段・アキ・分割候補・計測は boxing の数式エンジンが決める）
   Math(MathFormula),
-  /// 数値（`\num`）。部品を並べた閉じた 1 個の箱で、両端は欧文字として和欧文間アキを受ける
+  /// 数値・単位（`\num` / `\unit`）。部品を並べた閉じた 1 個の箱で、両端は欧文字として和欧文間アキを受ける
   Quantity {
     /// style の書式で整えた部品
     pieces: Vec<QuantityPiece>,
@@ -268,7 +268,7 @@ pub(in crate::typeset) struct MathFormula {
   pub color: Option<Color>,
 }
 
-/// style の書式で整えた数値（`\num`）の部品。数値の箱は部品を左から並べた閉じた 1 個の箱になる
+/// style の書式で整えた数値・単位（`\num` / `\unit`）の部品。数量の箱は部品を左から並べた閉じた 1 個の箱になる
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::typeset) enum QuantityPiece {
   /// 箱の基準の大きさで組む字
@@ -300,7 +300,7 @@ pub(in crate::typeset) enum MathNode {
     /// display 段で付く上付き・下付きを真上・真下に積む名前か
     limits: bool,
   },
-  /// 数値（`\num`）。Ord の 1 アトムで、大きさはその位置の段の大きさ
+  /// 数値・単位（`\num` / `\unit`）。Ord の 1 アトムで、大きさはその位置の段の大きさ
   Quantity {
     /// style の書式で整えた部品
     pieces: Vec<QuantityPiece>,

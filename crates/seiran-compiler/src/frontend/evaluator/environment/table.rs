@@ -102,6 +102,7 @@ mod tests {
         HirInlineKind::Code(text) => out.push_str(text),
         HirInlineKind::Math(_) => out.push_str("[Math]"),
         HirInlineKind::Number(_) => out.push_str("[Number]"),
+        HirInlineKind::Unit(_) => out.push_str("[Unit]"),
         HirInlineKind::Symbol(ch) => out.push(*ch),
         HirInlineKind::LineBreak => out.push('\n'),
         HirInlineKind::NoIndent

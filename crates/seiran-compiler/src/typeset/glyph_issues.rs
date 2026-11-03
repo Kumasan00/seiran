@@ -4,7 +4,7 @@
 //! 組版を終えてから [`GlyphIssues::report`] がソース位置付きの診断（エラーの [`MissingGlyph`] /
 //! [`FallbackDirectionMismatch`] と警告の [`VariationSequenceFallback`]）へ変える。同じ要素の同じ問題は何度組んでも
 //! （脚注のページ単位採番で本文パスを反復しても）1 件にする。エラーは数式フォントの字の欠落（[`MissingMathGlyph`]）と
-//! 同じ失敗の列 [`TextGlyphError`] で運ぶ。数値の上付きの指標の欠落（[`MissingSuperscriptMetrics`]）もこの module が所有し
+//! 同じ失敗の列 [`TextGlyphError`] で運ぶ。数値・単位の上付きの指標の欠落（[`MissingSuperscriptMetrics`]）もこの module が所有し
 //! 同じ列で運ぶが、収集器は通らず、組版前の検査（`quantity_check`）が直接作る。
 
 use std::{cell::RefCell, fmt};
@@ -376,7 +376,7 @@ impl MissingMathGlyph {
   fn source_id(&self) -> SourceId { return self.source_id; }
 }
 
-/// 本文用の枠で組む数値の指数を、その枠の第 1 候補フォントの OS/2 の上付きの指標で組めない、1 ソースの中の箇所
+/// 本文用の枠で組む数値・単位の指数を、その枠の第 1 候補フォントの OS/2 の上付きの指標で組めない、1 ソースの中の箇所
 ///
 /// 原因（枠の第 1 候補の指標の欠落）も直し方も 1 つなので、同じソースの箇所は 1 診断のラベルとして並べる。
 #[derive(Debug, Error, Diagnostic)]
@@ -384,16 +384,16 @@ impl MissingMathGlyph {
 #[diagnostic(
   code(typeset::quantity::missing_superscript_metrics),
   help(
-    "style.toml の [quantity].typeface は数値の指数を {face} のフォント（{font_path}）の OS/2 の上付きの指標で組みます。正の ySuperscriptYSize を持つフォントを第 1 候補にするか、typeface を math にしてください。"
+    "style.toml の [quantity].typeface は数値・単位の指数を {face} のフォント（{font_path}）の OS/2 の上付きの指標で組みます。正の ySuperscriptYSize を持つフォントを第 1 候補にするか、typeface を math にしてください。"
   )
 )]
 pub(crate) struct MissingSuperscriptMetrics {
-  /// 指数を持つ `\num` の位置（文書順）
+  /// 指数を持つ `\num` / `\unit` の位置（文書順）
   #[label(collection)]
   pub(super) labels: Vec<LabeledSpan>,
   /// 位置が属するソース
   pub(super) source_id: SourceId,
-  /// 数値を組む枠の第 1 候補（`serif[0]` 等）
+  /// 数値・単位を組む枠の第 1 候補（`serif[0]` 等）
   face: FontFace,
   /// 第 1 候補のフォントのパス
   font_path: String,
@@ -406,7 +406,9 @@ impl MissingSuperscriptMetrics {
     return MissingSuperscriptMetrics {
       labels: spans
         .iter()
-        .map(|&span| return LabeledSpan::new_with_span(Some("この数値の指数を上付きで組めません".to_string()), span))
+        .map(|&span| {
+          return LabeledSpan::new_with_span(Some("この数値・単位の指数を上付きで組めません".to_string()), span);
+        })
         .collect(),
       source_id,
       face,
@@ -415,7 +417,7 @@ impl MissingSuperscriptMetrics {
   }
 }
 
-/// 組版の字の問題のうちエラー 1 件 — 数式フォントの字の欠落、本文の枠の字の欠落、使えない代替の候補、数値の上付きの指標の欠落
+/// 組版の字の問題のうちエラー 1 件 — 数式フォントの字の欠落、本文の枠の字の欠落、使えない代替の候補、数値・単位の上付きの指標の欠落
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TextGlyphError {
   /// 数式フォントに基本の字形が無い字
@@ -430,7 +432,7 @@ pub(crate) enum TextGlyphError {
   #[error(transparent)]
   #[diagnostic(transparent)]
   Direction(FallbackDirectionMismatch),
-  /// 数値の指数を組む本文用の枠の第 1 候補に、OS/2 の上付きの指標が無い
+  /// 数値・単位の指数を組む本文用の枠の第 1 候補に、OS/2 の上付きの指標が無い
   #[error(transparent)]
   #[diagnostic(transparent)]
   SuperscriptMetrics(MissingSuperscriptMetrics),

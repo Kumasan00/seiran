@@ -13,7 +13,7 @@
 
 use crate::{
   document::{
-    HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, NodeId, Numeral,
+    HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, MathVariant, NodeId,
     SourceLocation, SourceMap, Typeface,
   },
   failures::Failures,
@@ -160,7 +160,10 @@ impl Checker<'_> {
     for inline in inlines {
       match &inline.kind {
         HirInlineKind::Math(math) => self.math_list(math, None),
-        HirInlineKind::Number(numeral) => self.number(inline.id, numeral),
+        HirInlineKind::Number(numeral) => {
+          self.quantity(inline.id, &lowering::number_pieces(numeral, &self.style.quantity));
+        },
+        HirInlineKind::Unit(factors) => self.quantity(inline.id, &lowering::unit_pieces(factors)),
         HirInlineKind::Styled { children, .. }
         | HirInlineKind::Colored { children, .. }
         | HirInlineKind::Link { children, .. }
@@ -205,8 +208,9 @@ impl Checker<'_> {
       },
       // 明示アキは字を持たず、文章は本文の書体で組むので、どちらも数式フォントの字を要求しない
       HirMathKind::Space(_) | HirMathKind::Prose(_) => {},
-      // 数値は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
-      HirMathKind::Number(numeral) => self.number(node.id, numeral),
+      // 数値・単位は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
+      HirMathKind::Number(numeral) => self.quantity(node.id, &lowering::number_pieces(numeral, &self.style.quantity)),
+      HirMathKind::Unit(factors) => self.quantity(node.id, &lowering::unit_pieces(factors)),
       HirMathKind::Group(children) => self.math_list(children, variant),
       HirMathKind::Superscript(inner) | HirMathKind::Subscript(inner) => self.math(inner, variant),
       HirMathKind::Frac { numer, denom } => {
@@ -257,12 +261,13 @@ impl Checker<'_> {
     return;
   }
 
-  /// 数値（箇所 `site`）を `[quantity].typeface` が数式フォントのときだけ、書式どおりに組む字（上付きの字を含む）で要求する
-  fn number(&mut self, site: NodeId, numeral: &Numeral) {
+  /// 数値・単位（箇所 `site`）を `[quantity].typeface` が数式フォントのときだけ、書式どおりに組む部品 `pieces` の字（上付きの
+  /// 字を含む）で要求する
+  fn quantity(&mut self, site: NodeId, pieces: &[QuantityPiece]) {
     if self.style.quantity.typeface != Typeface::Math {
       return;
     }
-    for piece in lowering::number_pieces(numeral, &self.style.quantity) {
+    for piece in pieces {
       match piece {
         QuantityPiece::Text(text) | QuantityPiece::Superscript(text) => {
           for ch in text.chars() {
@@ -428,6 +433,14 @@ mod tests {
         ('\u{00D7}', "\\num{2e3}".to_string()),
       ]
     );
+  }
+
+  #[test]
+  fn unit_requests_its_characters_when_the_typeface_is_math() {
+    let found = missing("\\unit{k\\Omega}", &['\u{03A9}']);
+
+    let sites: Vec<(char, String)> = found.into_iter().map(|(glyph, site, _)| return (glyph, site)).collect();
+    assert_eq!(sites, vec![('\u{03A9}', "\\unit{k\\Omega}".to_string())]);
   }
 
   #[test]

@@ -141,6 +141,7 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Vis
       | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
       | HirInlineKind::Number(_)
+      | HirInlineKind::Unit(_)
       | HirInlineKind::LineBreak
       | HirInlineKind::NoIndent
       | HirInlineKind::Ref { .. }
@@ -199,7 +200,8 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
       | HirMathKind::Space(_)
       | HirMathKind::OperatorName { .. }
       | HirMathKind::Prose(_)
-      | HirMathKind::Number(_) => {},
+      | HirMathKind::Number(_)
+      | HirMathKind::Unit(_) => {},
     }
   }
   return;
@@ -412,6 +414,7 @@ fn assert_unresolved_inlines(inlines: &[HirInline]) {
       | HirInlineKind::Math(_)
       | HirInlineKind::Symbol(_)
       | HirInlineKind::Number(_)
+      | HirInlineKind::Unit(_)
       | HirInlineKind::LineBreak
       | HirInlineKind::NoIndent
       | HirInlineKind::Ref { .. }

@@ -198,6 +198,7 @@ impl FactCompletenessChecker<'_> {
         | HirInlineKind::Math(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::Number(_)
+        | HirInlineKind::Unit(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
         | HirInlineKind::Index { .. } => {},
@@ -385,6 +386,7 @@ impl FactCollector<'_, '_> {
         | HirInlineKind::Math(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::Number(_)
+        | HirInlineKind::Unit(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
         | HirInlineKind::Index { .. } => {},

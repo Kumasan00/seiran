@@ -302,9 +302,13 @@ fn push_resolved(
         typeface: style.text.typeface,
       }
     }),
-    // 数値は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
+    // 数値・単位は字形 variant を読まず、書体は `[quantity].typeface` だけで決まる
     HirMathKind::Number(numeral) => out.push(MathNode::Quantity {
       pieces: quantity::number_pieces(numeral, &style.quantity),
+      typeface: style.quantity.typeface,
+    }),
+    HirMathKind::Unit(factors) => out.push(MathNode::Quantity {
+      pieces: quantity::unit_pieces(factors),
       typeface: style.quantity.typeface,
     }),
     HirMathKind::Group(children) => out.push(MathNode::Group(list(children))),
@@ -790,6 +794,18 @@ mod tests {
     assert!(
       matches!(text.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Serif }] if *pieces == one),
       "{text:?}"
+    );
+  }
+
+  #[test]
+  fn unit_ignores_the_glyph_variant() {
+    let m = vec![QuantityPiece::Text("m".to_string())];
+
+    let math = resolved("$\\mathbold{\\unit{m}}$\n");
+
+    assert!(
+      matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == m),
+      "{math:?}"
     );
   }
 

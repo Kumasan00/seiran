@@ -3,7 +3,7 @@
 use crate::{
   color::Color,
   document::{
-    Numeral, Typeface,
+    Numeral, Typeface, UnitFactor,
     hir::{HirMath, NodeId},
   },
 };
@@ -60,6 +60,9 @@ pub(crate) enum HirInlineKind {
 
   /// 数値（`\num{...}`）
   Number(Numeral),
+
+  /// 単位（`\unit{...}`）。因子は 1 個以上で、ソース順
+  Unit(Vec<UnitFactor>),
 
   /// 強制改行（`\\`）
   LineBreak,

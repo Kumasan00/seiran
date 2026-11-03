@@ -289,6 +289,8 @@ enum MathCommandKind {
   Prose,
   /// 数値（`\num`）— 必須引数 1 個（数式として読む数値）
   Number,
+  /// 単位（`\unit`）— 必須引数 1 個（数式として読む単位の式）
+  Unit,
   /// 中間の区切り（`\given`）— 必須引数なし。伸縮括弧の引数の直下でだけ有効
   Given,
   /// 記号コマンド（`\alpha` 等）— 必須引数なし
@@ -307,6 +309,7 @@ impl MathCommandKind {
       "sqrt" => Some(Self::Sqrt),
       "text" => Some(Self::Prose),
       "num" => Some(Self::Number),
+      "unit" => Some(Self::Unit),
       "given" => Some(Self::Given),
       _ => fence_delimiters(name)
         .map(|(open, close)| return Self::Fenced { open, close })
@@ -328,7 +331,8 @@ impl MathCommandKind {
       | Self::Accent { .. }
       | Self::Bar { .. }
       | Self::Prose
-      | Self::Number => 1,
+      | Self::Number
+      | Self::Unit => 1,
       Self::Frac | Self::Binom => 2,
       Self::Space(_) | Self::OperatorName { .. } | Self::Given | Self::Symbol(_) => 0,
     };
@@ -338,7 +342,7 @@ impl MathCommandKind {
   fn arg_modes(self) -> &'static [ArgMode] {
     return match self {
       Self::Prose => &[ArgMode::Text],
-      Self::Number => &[ArgMode::Math],
+      Self::Number | Self::Unit => &[ArgMode::Math],
       Self::Styled(_)
       | Self::Frac
       | Self::Binom
@@ -616,6 +620,10 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
     MathCommandKind::Number => {
       let numeral = command::number::numeral(&view)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Number(numeral)));
+    },
+    MathCommandKind::Unit => {
+      let factors = command::unit::unit_factors(&view)?;
+      return Ok(ctx.leaf_math(view.span(), HirMathKind::Unit(factors)));
     },
     // 伸縮括弧の直下の `\given` は `evaluate_fence_segments` が区切りとして取り除くので、ここへ来るのはそれ以外の位置
     // （グループ・引数・スクリプト・セル・環境本体・伸縮括弧の外）の `\given` だけ

@@ -80,6 +80,15 @@ pub(super) fn lower_inline(
         },
       }];
     },
+    HirInlineKind::Unit(factors) => {
+      return vec![InlineNode::Quantity {
+        pieces: quantity::unit_pieces(factors),
+        style: TextStyle {
+          typeface: ctx.style.quantity.typeface,
+          ..parent_style
+        },
+      }];
+    },
     HirInlineKind::LineBreak => {
       return vec![InlineNode::LineBreak];
     },
@@ -374,6 +383,17 @@ mod tests {
       panic!("数式が期待されます: {children:?}");
     };
     assert_eq!(formula.color, Some(blue));
+  }
+
+  #[test]
+  fn unit_takes_the_quantity_typeface() {
+    let nodes = lower_source(&ReadStyle::default(), "\\bold{\\unit{k\\Omega}}\n");
+
+    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+      panic!("Quantity が期待されます: {nodes:?}");
+    };
+    assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
+    assert_eq!(pieces, &[QuantityPiece::Text("k\u{03A9}".to_string())]);
   }
 
   #[test]

@@ -1,27 +1,27 @@
-//! 本文用の枠で組む数値の指数（上付き）に、その枠の第 1 候補フォントの OS/2 の上付きの指標があるかの検査
+//! 本文用の枠で組む数値・単位の指数（上付き）に、その枠の第 1 候補フォントの OS/2 の上付きの指標があるかの検査
 //!
 //! 上付きの縮小率と位置は書く場所ではなく書体で決まる。`[quantity].typeface = math` なら数式フォントの MATH の定数で
-//! 組むので検査しない。本文用の枠で指標が無ければ、指数を持つ `\num`（本文・数式の中とも）の位置を診断のラベルに並べる。
+//! 組むので検査しない。本文用の枠で指標が無ければ、指数を持つ `\num` / `\unit`（本文・数式の中とも）の位置を診断のラベルに並べる。
 //! 組版（boxing）はこの検査を通った文書だけを組むので、指標を `expect` で取れる。
 
 use std::collections::BTreeMap;
 
 use crate::{
-  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId},
+  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, UnitFactor},
   failures::Failures,
   project::{FontFace, FontType, ProjectPath},
   source::{SourceId, Span},
   typeset::glyph_issues::MissingSuperscriptMetrics,
 };
 
-/// 数値を組む枠の第 1 候補 `face` が上付きの指標を持たなければ（`has_metrics` が偽）、指数を持つ数値の位置をソースごとに
+/// 数値・単位を組む枠の第 1 候補 `face` が上付きの指標を持たなければ（`has_metrics` が偽）、指数を持つ数値・単位の位置をソースごとに
 /// 1 つの診断へまとめる（`face` が数式フォントなら MATH の定数で組むので問わない）
 ///
 /// `font_path` は診断に載せる第 1 候補のフォントのパス。
 ///
 /// # Errors
 ///
-/// 指標の無い枠で指数を組む数値が 1 つでもあれば、それを含むソースごとの診断をソースの宣言順で返す。
+/// 指標の無い枠で指数を組む数値・単位が 1 つでもあれば、それを含むソースごとの診断をソースの宣言順で返す。
 pub(super) fn check(
   document: &HirDocument,
   face: FontFace,
@@ -52,7 +52,7 @@ pub(super) fn check(
   };
 }
 
-/// ブロックノード列から、指数を持つ数値の位置を文書順に集める
+/// ブロックノード列から、指数を持つ数値・単位の位置を文書順に集める
 fn collect_nodes(nodes: &[HirNode], out: &mut Vec<NodeId>) {
   for node in nodes {
     match &node.kind {
@@ -83,17 +83,19 @@ fn collect_nodes(nodes: &[HirNode], out: &mut Vec<NodeId>) {
   }
 }
 
-/// インラインノード列から、指数を持つ数値の位置を集める
+/// インラインノード列から、指数を持つ数値・単位の位置を集める
 fn collect_inlines(inlines: &[HirInline], out: &mut Vec<NodeId>) {
   for inline in inlines {
     match &inline.kind {
       HirInlineKind::Number(numeral) if numeral.exponent.is_some() => out.push(inline.id),
+      HirInlineKind::Unit(factors) if has_exponent(factors) => out.push(inline.id),
       HirInlineKind::Math(math) => collect_math(math, out),
       HirInlineKind::Styled { children, .. }
       | HirInlineKind::Colored { children, .. }
       | HirInlineKind::Link { children, .. }
       | HirInlineKind::Footnote { body: children, .. } => collect_inlines(children, out),
       HirInlineKind::Number(_)
+      | HirInlineKind::Unit(_)
       | HirInlineKind::Text(_)
       | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
@@ -106,17 +108,18 @@ fn collect_inlines(inlines: &[HirInline], out: &mut Vec<NodeId>) {
   }
 }
 
-/// 数式ノード列から、指数を持つ数値の位置を集める
+/// 数式ノード列から、指数を持つ数値・単位の位置を集める
 fn collect_math(nodes: &[HirMath], out: &mut Vec<NodeId>) {
   for node in nodes {
     collect_math_node(node, out);
   }
 }
 
-/// 数式ノード 1 つから、指数を持つ数値の位置を集める
+/// 数式ノード 1 つから、指数を持つ数値・単位の位置を集める
 fn collect_math_node(node: &HirMath, out: &mut Vec<NodeId>) {
   match &node.kind {
     HirMathKind::Number(numeral) if numeral.exponent.is_some() => out.push(node.id),
+    HirMathKind::Unit(factors) if has_exponent(factors) => out.push(node.id),
     HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => collect_math(children, out),
     HirMathKind::Superscript(child)
     | HirMathKind::Subscript(child)
@@ -150,12 +153,18 @@ fn collect_math_node(node: &HirMath, out: &mut Vec<NodeId>) {
       }
     },
     HirMathKind::Number(_)
+    | HirMathKind::Unit(_)
     | HirMathKind::Text(_)
     | HirMathKind::Symbol { .. }
     | HirMathKind::Space(_)
     | HirMathKind::OperatorName { .. }
     | HirMathKind::Prose(_) => {},
   }
+}
+
+/// 単位の式に指数を持つ因子があるか
+fn has_exponent(factors: &[UnitFactor]) -> bool {
+  return factors.iter().any(|factor| return factor.exponent.is_some());
 }
 
 #[cfg(test)]
@@ -215,6 +224,14 @@ mod tests {
   #[test]
   fn numbers_without_exponents_are_not_checked() {
     assert_eq!(sites(&["\\num{12345} と $\\num{-1.5}$"], FontType::Serif), Vec::<Vec<String>>::new());
+  }
+
+  #[test]
+  fn units_with_exponents_are_labeled() {
+    assert_eq!(
+      sites(&["\\unit{m} と \\unit{m^{2}} と $\\unit{s^{-1}}$"], FontType::Serif),
+      [vec!["\\unit{m^{2}}", "\\unit{s^{-1}}"]]
+    );
   }
 
   #[test]

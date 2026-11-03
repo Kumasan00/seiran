@@ -1,4 +1,4 @@
-//! 数値（`\num`）の箱 — style の書式の部品（[`QuantityPiece`]）を並べた閉じた 1 個の箱
+//! 数値・単位（`\num` / `\unit`）の箱 — style の書式の部品（[`QuantityPiece`]）を並べた閉じた 1 個の箱
 //!
 //! 本文・数式のどちらでも同じ組み方をする。上付き（指数）の縮小率と位置は書く場所ではなく書体で決まる: 数式フォント
 //! （`Typeface::Math`）なら OpenType MATH の `ScriptPercentScaleDown` と `SuperscriptShiftUp`、本文用の枠ならその枠の
@@ -23,13 +23,13 @@ use crate::{
   },
 };
 
-/// 書体 `typeface` の数値を組む枠（数値は ASCII の数字・記号なので、欧文の字が振り分けられる枠）
+/// 書体 `typeface` の数値・単位を組む枠（数字・単位の記号を欧文の字として振り分ける枠。第 1 候補に無い字は代替フォントで組む）
 pub(in crate::typeset) fn quantity_font_type(typeface: Typeface) -> FontType {
   return script::resolve_font_type(typeface, ScriptCategory::Latin);
 }
 
 impl Measurer<'_> {
-  /// 数値の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
+  /// 数量の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
   pub(super) fn push_quantity(&mut self, pieces: &[QuantityPiece], style: TextStyle, out: &mut HList) {
     let number = self.quantity_box(pieces, style);
     let edge = if self.punctuation_spacing {
@@ -76,7 +76,7 @@ impl Measurer<'_> {
     }
   }
 
-  /// 基準のスタイル `style` の数値の上付きの（スタイル, 持ち上げ）
+  /// 基準のスタイル `style` の数値・単位の上付きの（スタイル, 持ち上げ）
   fn quantity_superscript(&self, style: TextStyle) -> (TextStyle, Length) {
     if style.typeface == Typeface::Math {
       let superscript = TextStyle {
@@ -220,7 +220,7 @@ mod tests {
       let at = found
         .iter()
         .position(|item| return matches!(item, HItem::Box(hbox) if matches!(hbox.content, HBoxContent::Atom(_))))
-        .expect("数値の箱があるはず");
+        .expect("数量の箱があるはず");
       return (found[at - 1].clone(), found[at + 1].clone());
     };
 

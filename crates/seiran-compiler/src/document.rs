@@ -33,6 +33,7 @@ mod table_column;
 mod text_alignment;
 mod theorem;
 mod typeface;
+mod unit;
 
 pub(crate) use caption::CaptionPosition;
 pub(crate) use heading_level::HeadingLevel;
@@ -52,3 +53,4 @@ pub(crate) use table_column::{ColumnAlign, ColumnWidth, RowSeparator};
 pub(crate) use text_alignment::TextAlignment;
 pub(crate) use theorem::TheoremClass;
 pub(crate) use typeface::Typeface;
+pub(crate) use unit::UnitFactor;

@@ -1,6 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::document::{MathClass, MathDelimiter, MathSpace, MathVariant, Numeral, hir::NodeId};
+use crate::document::{MathClass, MathDelimiter, MathSpace, MathVariant, Numeral, UnitFactor, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 #[derive(Debug, PartialEq)]
@@ -41,6 +41,8 @@ pub(crate) enum HirMathKind {
   Prose(String),
   /// 数値（`\num{...}`）。数式の中では Ord の 1 アトムになる
   Number(Numeral),
+  /// 単位（`\unit{...}`）。数式の中では Ord の 1 アトムになる。因子は 1 個以上で、ソース順
+  Unit(Vec<UnitFactor>),
   /// 中括弧グループ（`{...}`）
   Group(Vec<HirMath>),
   /// 上付き（`x^{2}`）

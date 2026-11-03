@@ -13,6 +13,7 @@ pub(super) mod number;
 mod ref_;
 pub(super) mod symbol;
 mod text_style;
+pub(super) mod unit;
 
 use phf::phf_map;
 
@@ -123,6 +124,8 @@ enum CommandKind {
   PageBreak,
   /// `\num{数値}` — 数値（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Number,
+  /// `\unit{単位}` — 単位（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
+  Unit,
 }
 
 impl CommandKind {
@@ -185,6 +188,11 @@ impl CommandKind {
         return number::numeral(view)
           .map(|numeral| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Number(numeral))));
       },
+
+      Self::Unit => {
+        return unit::unit_factors(view)
+          .map(|factors| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Unit(factors))));
+      },
     }
   }
 
@@ -199,7 +207,7 @@ impl CommandKind {
       Self::Code | Self::Url => &[ArgMode::Verbatim],
       Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
       Self::Cite => &[ArgMode::CommaList],
-      Self::Number => &[ArgMode::Math],
+      Self::Number | Self::Unit => &[ArgMode::Math],
       Self::Space
       | Self::Heading(_)
       | Self::StyledText(_)
@@ -245,6 +253,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
   "href" => CommandKind::Href,
 
   "num" => CommandKind::Number,
+  "unit" => CommandKind::Unit,
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）
@@ -413,6 +422,7 @@ mod tests {
     assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
     assert_eq!(CommandKind::Cite.arg_modes(), &[ArgMode::CommaList]);
     assert_eq!(CommandKind::Number.arg_modes(), &[ArgMode::Math]);
+    assert_eq!(CommandKind::Unit.arg_modes(), &[ArgMode::Math]);
     assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 
@@ -542,6 +552,10 @@ mod tests {
               | EvalError::ExtraCommandArgument { .. }
               | EvalError::InvalidCommandArgument { .. }
               | EvalError::InvalidNumber { .. }
+              | EvalError::UnknownUnit { .. }
+              | EvalError::UnitPrefixNotAllowed { .. }
+              | EvalError::InvalidUnitExponent { .. }
+              | EvalError::InvalidUnitSyntax { .. }
               | EvalError::UnknownOptArgKey { .. }
               | EvalError::IndexNotAllowedHere { .. }
               | EvalError::ParagraphBreakInArgument { .. }

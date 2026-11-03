@@ -1,9 +1,9 @@
-//! 数値（`document::Numeral`）を style.toml `[quantity]` の書式の部品列（[`QuantityPiece`]）に整える
+//! 数値（`document::Numeral`）と単位（`document::UnitFactor`）を style.toml `[quantity]` の書式の部品列（[`QuantityPiece`]）に整える
 //!
 //! 部品列は本文・数式の箱（boxing）と PDF しおりの平文（[`plain_text`]）の両方の元になる。
 
 use crate::{
-  document::{MathSpace, NumberSign, Numeral},
+  document::{MathSpace, NumberSign, Numeral, UnitFactor},
   style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
   typeset::lowering::QuantityPiece,
 };
@@ -48,6 +48,21 @@ pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle
   return pieces;
 }
 
+/// 単位の式を部品列にする（因子の間は細アキ、指数は負号を U+2212 にした上付き）
+pub(in crate::typeset) fn unit_pieces(factors: &[UnitFactor]) -> Vec<QuantityPiece> {
+  let mut pieces = Vec::new();
+  for (index, factor) in factors.iter().enumerate() {
+    if index > 0 {
+      pieces.push(QuantityPiece::Space(MathSpace::Thin));
+    }
+    push_text(&mut pieces, &factor.symbol);
+    if let Some(exponent) = &factor.exponent {
+      pieces.push(QuantityPiece::Superscript(exponent.replace('-', "\u{2212}")));
+    }
+  }
+  return pieces;
+}
+
 /// 部品列を PDF しおりの平文にする（細アキ U+202F・中アキ U+205F・上付きは Unicode の上付き字）
 pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
   let mut out = String::new();
@@ -57,7 +72,9 @@ pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
       QuantityPiece::Space(MathSpace::Thin) => out.push('\u{202F}'),
       QuantityPiece::Space(MathSpace::Medium) => out.push('\u{205F}'),
       QuantityPiece::Space(MathSpace::Thick | MathSpace::Quad | MathSpace::NegativeThin) => {
-        unreachable!("number_pieces が作るアキは細アキ（桁区切り）と中アキ（積の記号の前後）だけ")
+        unreachable!(
+          "number_pieces と unit_pieces が作るアキは細アキ（桁区切り・単位の積）と中アキ（積の記号の前後）だけ"
+        )
       },
       QuantityPiece::Superscript(text) => out.extend(text.chars().map(superscript_char)),
     }
@@ -79,7 +96,9 @@ fn superscript_char(ch: char) -> char {
     '8' => '\u{2078}',
     '9' => '\u{2079}',
     '\u{2212}' => '\u{207B}',
-    _ => unreachable!("指数は frontend の数値の文法を通った数字列で、負号は number_pieces が U+2212 にしてある"),
+    _ => unreachable!(
+      "指数は frontend の数値・単位の文法を通った数字列で、負号は number_pieces / unit_pieces が U+2212 にしてある"
+    ),
   };
 }
 
@@ -129,9 +148,9 @@ fn push_grouped(pieces: &mut Vec<QuantityPiece>, digits: &str, from_right: bool,
 
 #[cfg(test)]
 mod tests {
-  use super::{number_pieces, plain_text};
+  use super::{number_pieces, plain_text, unit_pieces};
   use crate::{
-    document::{MathSpace, NumberSign, Numeral},
+    document::{MathSpace, NumberSign, Numeral, UnitFactor},
     style::{DecimalMarker, DigitGroupSeparator, ExponentProduct, QuantityStyle},
     typeset::lowering::QuantityPiece,
   };
@@ -246,5 +265,29 @@ mod tests {
       plain_text(&number_pieces(&numeral(None, "2", None, Some("1234567890")), &style)),
       "2\u{205F}\u{00D7}\u{205F}10\u{00B9}\u{00B2}\u{00B3}\u{2074}\u{2075}\u{2076}\u{2077}\u{2078}\u{2079}\u{2070}"
     );
+  }
+
+  /// 字面から単位の因子を作る
+  fn factor(symbol: &str, exponent: Option<&str>) -> UnitFactor {
+    return UnitFactor {
+      symbol: symbol.to_string(),
+      exponent: exponent.map(str::to_string),
+    };
+  }
+
+  #[test]
+  fn unit_pieces_power_form() {
+    let pieces = unit_pieces(&[factor("km", None), factor("s", Some("-2"))]);
+
+    assert_eq!(
+      pieces,
+      [
+        text("km"),
+        THIN,
+        text("s"),
+        QuantityPiece::Superscript("\u{2212}2".to_string())
+      ]
+    );
+    assert_eq!(plain_text(&pieces), "km\u{202F}s\u{207B}\u{00B2}");
   }
 }

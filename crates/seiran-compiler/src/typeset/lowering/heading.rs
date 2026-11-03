@@ -51,6 +51,7 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       HirInlineKind::Number(numeral) => {
         out.push_str(&quantity::plain_text(&quantity::number_pieces(numeral, &style.quantity)));
       },
+      HirInlineKind::Unit(factors) => out.push_str(&quantity::plain_text(&quantity::unit_pieces(factors))),
       HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
       HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.ref_target(inline.id))),
     }
@@ -173,6 +174,16 @@ mod tests {
         _ => return None,
       })
       .expect("VBox が出力されるはず");
+  }
+
+  #[test]
+  fn heading_plain_text_formats_units() {
+    let style = ReadStyle::default();
+    let document = analyzed("\\section{速さ \\unit{m.s^{-1}}}");
+
+    let (_, headings) = lower_sources_with_headings(&context(&style), &document);
+
+    assert_eq!(headings[0].title_plain, "速さ m\u{202F}s\u{207B}\u{00B9}");
   }
 
   #[test]

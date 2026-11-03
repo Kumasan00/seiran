@@ -37,7 +37,7 @@ pub(super) use math::{
 };
 #[cfg(test)]
 pub(super) use math::{char_class, char_fence};
-pub(super) use quantity::number_pieces;
+pub(super) use quantity::{number_pieces, unit_pieces};
 pub(super) use title_page::{TitlePageMetadata, lower_title_page};
 use tracing::debug;
 

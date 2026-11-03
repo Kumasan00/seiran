@@ -28,7 +28,7 @@ pub(super) enum ArrangedNode {
   Text(String, TextStyle),
   /// 数式内の文章（`\text{...}`。本文と同じ規則で組み、自然幅の閉じた箱にする）
   Prose(String, TextStyle),
-  /// 数値（`\num`。部品を並べた閉じた箱。スタイルはその段の大きさと `[quantity].typeface`）
+  /// 数値・単位（`\num` / `\unit`。部品を並べた閉じた箱。スタイルはその段の大きさと `[quantity].typeface`）
   Quantity(Vec<QuantityPiece>, TextStyle),
   /// 水平カーン（固定幅のアキ。アトム間スペーシングと明示アキが出す）
   Kern {
@@ -467,7 +467,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       );
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![prose]));
     },
-    // 数値は箱の中で完結するので、段の字形（`ssty`）も数式クラスも持たない Ord の 1 アトム
+    // 数値・単位は箱の中で完結するので、段の字形（`ssty`）も数式クラスも持たない Ord の 1 アトム
     MathNode::Quantity { pieces, typeface } => {
       let number = ArrangedNode::Quantity(
         pieces.clone(),
