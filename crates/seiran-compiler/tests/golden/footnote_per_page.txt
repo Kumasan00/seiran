@@ -3,16 +3,16 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=425.20 h=368.50
-  glyphs x=56.69 y=42.52 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=76.81 y=42.52 font=JapaneseSerifBold size=20.00 text="ペー" glyph_count=2
-  glyphs x=116.41 y=42.52 font=JapaneseSerifBold size=20.00 text="ジ" glyph_count=1
-  glyphs x=136.41 y=42.52 font=JapaneseSerifBold size=20.00 text="単" glyph_count=1
-  glyphs x=156.41 y=42.52 font=JapaneseSerifBold size=20.00 text="位" glyph_count=1
-  glyphs x=176.41 y=42.52 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=196.41 y=42.52 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
-  glyphs x=216.41 y=42.52 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
-  glyphs x=236.41 y=42.52 font=JapaneseSerifBold size=20.00 text="番" glyph_count=1
-  glyphs x=256.41 y=42.52 font=JapaneseSerifBold size=20.00 text="号" glyph_count=1
+  glyphs x=56.69 y=42.52 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=71.29 y=42.52 font=JapaneseSerifBold size=20.00 text="ペー" glyph_count=2
+  glyphs x=110.89 y=42.52 font=JapaneseSerifBold size=20.00 text="ジ" glyph_count=1
+  glyphs x=130.89 y=42.52 font=JapaneseSerifBold size=20.00 text="単" glyph_count=1
+  glyphs x=150.89 y=42.52 font=JapaneseSerifBold size=20.00 text="位" glyph_count=1
+  glyphs x=170.89 y=42.52 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=190.89 y=42.52 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
+  glyphs x=210.89 y=42.52 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
+  glyphs x=230.89 y=42.52 font=JapaneseSerifBold size=20.00 text="番" glyph_count=1
+  glyphs x=250.89 y=42.52 font=JapaneseSerifBold size=20.00 text="号" glyph_count=1
   glyphs x=56.69 y=73.52 font=JapaneseSerif size=12.00 text="一" glyph_count=1
   glyphs x=68.82 y=73.52 font=JapaneseSerif size=12.00 text="つ" glyph_count=1
   glyphs x=80.94 y=73.52 font=JapaneseSerif size=12.00 text="目" glyph_count=1
@@ -349,4 +349,4 @@ keywords=["test", "seiran"]
   link target=Internal(page=1, x=56.69, y=296.12) x=189.43 y=63.20 w=4.16 h=17.24
   link target=Internal(page=1, x=56.69, y=313.05) x=310.17 y=63.20 w=4.16 h=17.24
 outline:
-  depth=2 text=".1 ページ単位の脚注番号" page=0 x=56.69 y=19.50
+  depth=2 text="1 ページ単位の脚注番号" page=0 x=56.69 y=19.50

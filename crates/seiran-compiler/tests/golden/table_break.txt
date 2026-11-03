@@ -3,15 +3,15 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=261.06 y=280.63 font=JapaneseSerifBold size=20.00 text="改" glyph_count=1
-  glyphs x=281.06 y=280.63 font=JapaneseSerifBold size=20.00 text="ペー" glyph_count=2
-  glyphs x=320.66 y=280.63 font=JapaneseSerifBold size=20.00 text="ジ" glyph_count=1
-  glyphs x=340.66 y=280.63 font=JapaneseSerifBold size=20.00 text="を" glyph_count=1
-  glyphs x=360.66 y=280.63 font=JapaneseSerifBold size=20.00 text="ま" glyph_count=1
-  glyphs x=380.66 y=280.63 font=JapaneseSerifBold size=20.00 text="た" glyph_count=1
-  glyphs x=400.66 y=280.63 font=JapaneseSerifBold size=20.00 text="ぐ" glyph_count=1
-  glyphs x=420.66 y=280.63 font=JapaneseSerifBold size=20.00 text="表" glyph_count=1
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=255.54 y=280.63 font=JapaneseSerifBold size=20.00 text="改" glyph_count=1
+  glyphs x=275.54 y=280.63 font=JapaneseSerifBold size=20.00 text="ペー" glyph_count=2
+  glyphs x=315.14 y=280.63 font=JapaneseSerifBold size=20.00 text="ジ" glyph_count=1
+  glyphs x=335.14 y=280.63 font=JapaneseSerifBold size=20.00 text="を" glyph_count=1
+  glyphs x=355.14 y=280.63 font=JapaneseSerifBold size=20.00 text="ま" glyph_count=1
+  glyphs x=375.14 y=280.63 font=JapaneseSerifBold size=20.00 text="た" glyph_count=1
+  glyphs x=395.14 y=280.63 font=JapaneseSerifBold size=20.00 text="ぐ" glyph_count=1
+  glyphs x=415.14 y=280.63 font=JapaneseSerifBold size=20.00 text="表" glyph_count=1
   glyphs x=240.94 y=311.63 font=JapaneseSerif size=12.00 text="埋" glyph_count=1
   glyphs x=252.94 y=311.63 font=JapaneseSerif size=12.00 text="め" glyph_count=1
   glyphs x=264.94 y=311.63 font=JapaneseSerif size=12.00 text="草" glyph_count=1
@@ -682,16 +682,18 @@ keywords=["test", "seiran"]
   glyphs x=788.40 y=322.57 font=Serif size=12.00 text="Bob" glyph_count=3
   glyphs x=838.93 y=322.57 font=Serif size=12.00 text="88" glyph_count=2
   glyphs x=892.28 y=322.57 font=Serif size=12.00 text="2" glyph_count=1
-  glyphs x=806.20 y=347.19 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=847.42 y=347.19 font=JapaneseSerif size=11.00 text="得" glyph_count=1
-  glyphs x=858.42 y=347.19 font=JapaneseSerif size=11.00 text="点" glyph_count=1
-  glyphs x=869.42 y=347.19 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=807.55 y=347.19 font=Serif size=11.00 text="Table" glyph_count=5
+  glyphs x=835.34 y=347.19 font=Serif size=11.00 text="1:" glyph_count=2
+  glyphs x=846.07 y=347.19 font=JapaneseSerif size=11.00 text="得" glyph_count=1
+  glyphs x=857.07 y=347.19 font=JapaneseSerif size=11.00 text="点" glyph_count=1
+  glyphs x=868.07 y=347.19 font=JapaneseSerif size=11.00 text="表" glyph_count=1
   glyphs x=240.94 y=370.74 font=JapaneseSerif size=12.00 text="表" glyph_count=1
-  glyphs x=255.76 y=370.74 font=Serif size=12.00 text="Table .1" glyph_count=8
-  glyphs x=297.79 y=370.74 font=JapaneseSerif size=12.00 text="を" glyph_count=1
-  glyphs x=309.79 y=370.74 font=JapaneseSerif size=12.00 text="参" glyph_count=1
-  glyphs x=321.79 y=370.74 font=JapaneseSerif size=12.00 text="照" glyph_count=1
-  glyphs x=333.79 y=370.74 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  link target=Internal(page=1, x=240.94, y=280.63) x=255.76 y=356.93 w=39.20 h=17.24
+  glyphs x=255.76 y=370.74 font=Serif size=12.00 text="Table" glyph_count=5
+  glyphs x=286.09 y=370.74 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=294.85 y=370.74 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=306.85 y=370.74 font=JapaneseSerif size=12.00 text="参" glyph_count=1
+  glyphs x=318.85 y=370.74 font=JapaneseSerif size=12.00 text="照" glyph_count=1
+  glyphs x=330.85 y=370.74 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  link target=Internal(page=1, x=240.94, y=280.63) x=255.76 y=356.93 w=36.26 h=17.24
 outline:
-  depth=2 text=".1 改ページをまたぐ表" page=0 x=240.94 y=257.61
+  depth=2 text="1 改ページをまたぐ表" page=0 x=240.94 y=257.61

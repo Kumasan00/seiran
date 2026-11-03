@@ -3,13 +3,13 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=340.16 h=240.94
-  glyphs x=42.52 y=34.02 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=62.64 y=34.02 font=JapaneseSerifBold size=20.00 text="表" glyph_count=1
-  glyphs x=82.64 y=34.02 font=JapaneseSerifBold size=20.00 text="セ" glyph_count=1
-  glyphs x=102.64 y=34.02 font=JapaneseSerifBold size=20.00 text="ル" glyph_count=1
-  glyphs x=122.64 y=34.02 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=142.64 y=34.02 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
-  glyphs x=162.64 y=34.02 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
+  glyphs x=42.52 y=34.02 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=57.12 y=34.02 font=JapaneseSerifBold size=20.00 text="表" glyph_count=1
+  glyphs x=77.12 y=34.02 font=JapaneseSerifBold size=20.00 text="セ" glyph_count=1
+  glyphs x=97.12 y=34.02 font=JapaneseSerifBold size=20.00 text="ル" glyph_count=1
+  glyphs x=117.12 y=34.02 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=137.12 y=34.02 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
+  glyphs x=157.12 y=34.02 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
   glyphs x=42.52 y=65.02 font=JapaneseSerif size=12.00 text="本" glyph_count=1
   glyphs x=55.12 y=65.02 font=JapaneseSerif size=12.00 text="文" glyph_count=1
   glyphs x=67.72 y=65.02 font=JapaneseSerif size=12.00 text="の" glyph_count=1
@@ -554,14 +554,15 @@ keywords=["test", "seiran"]
   glyphs x=140.74 y=72.37 font=Serif size=12.00 text="24" glyph_count=2
   glyphs x=166.24 y=72.37 font=JapaneseSerif size=12.00 text="値" glyph_count=1
   glyphs x=181.06 y=72.37 font=Serif size=12.00 text="24" glyph_count=2
-  glyphs x=114.56 y=97.26 font=Serif size=11.00 text="Table .1:" glyph_count=9
-  glyphs x=155.78 y=97.26 font=JapaneseSerif size=11.00 text="表" glyph_count=1
-  glyphs x=166.78 y=97.26 font=JapaneseSerif size=11.00 text="セ" glyph_count=1
-  glyphs x=177.78 y=97.26 font=JapaneseSerif size=11.00 text="ル" glyph_count=1
-  glyphs x=188.78 y=97.26 font=JapaneseSerif size=11.00 text="の" glyph_count=1
-  glyphs x=199.78 y=97.26 font=JapaneseSerif size=11.00 text="脚" glyph_count=1
-  glyphs x=210.78 y=97.26 font=JapaneseSerif size=11.00 text="注" glyph_count=1
-  glyphs x=221.78 y=92.86 font=Serif size=7.70 text="9" glyph_count=1
+  glyphs x=115.91 y=97.26 font=Serif size=11.00 text="Table" glyph_count=5
+  glyphs x=143.71 y=97.26 font=Serif size=11.00 text="1:" glyph_count=2
+  glyphs x=154.43 y=97.26 font=JapaneseSerif size=11.00 text="表" glyph_count=1
+  glyphs x=165.43 y=97.26 font=JapaneseSerif size=11.00 text="セ" glyph_count=1
+  glyphs x=176.43 y=97.26 font=JapaneseSerif size=11.00 text="ル" glyph_count=1
+  glyphs x=187.43 y=97.26 font=JapaneseSerif size=11.00 text="の" glyph_count=1
+  glyphs x=198.43 y=97.26 font=JapaneseSerif size=11.00 text="脚" glyph_count=1
+  glyphs x=209.43 y=97.26 font=JapaneseSerif size=11.00 text="注" glyph_count=1
+  glyphs x=220.43 y=92.86 font=Serif size=7.70 text="9" glyph_count=1
   fillrect x=42.52 y=189.60 w=72.00 h=0.40 color=None
   glyphs x=42.52 y=200.76 font=Serif size=6.30 text="9" glyph_count=1
   glyphs x=45.64 y=204.36 font=JapaneseSerif size=9.00 text="キャ" glyph_count=2
@@ -573,11 +574,11 @@ keywords=["test", "seiran"]
   glyphs x=117.10 y=204.36 font=JapaneseSerif size=9.00 text="注" glyph_count=1
   glyphs x=126.10 y=204.36 font=JapaneseSerif size=9.00 text="。" glyph_count=1
   link target=Internal(page=0, x=42.52, y=194.00) x=149.92 y=36.82 w=4.16 h=17.24
-  link target=Internal(page=6, x=42.52, y=194.00) x=221.78 y=84.60 w=3.81 h=15.81
+  link target=Internal(page=6, x=42.52, y=194.00) x=220.43 y=84.60 w=3.81 h=15.81
 === page 7 === box x=0.00 y=0.00 w=340.16 h=240.94
   glyphs x=42.52 y=34.02 font=Serif size=18.00 text="Index" glyph_count=5
   glyphs x=42.52 y=64.92 font=JapaneseSerif size=10.00 text="表脚注語" glyph_count=4
   glyphs x=88.52 y=64.92 font=Serif size=10.00 text="2" glyph_count=1
   link target=Internal(page=1, x=42.52, y=0.00) x=88.52 y=53.41 w=4.95 h=14.37
 outline:
-  depth=2 text=".1 表セルの脚注" page=0 x=42.52 y=11.00
+  depth=2 text="1 表セルの脚注" page=0 x=42.52 y=11.00

@@ -333,7 +333,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   同じ形。`resets` を書くと既定のリセット列を丸ごと置き換える）。`<name>` は固定 9 種のみで、未知のカウンタ名は
   `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番時の
   リセット）だけ — `typeset::lowering` はカウンタ値に載った名前を引くので `resets` を読まない。番号書式が
-  参照できるカウンタは `resets` / `reset_by` の関係に依らない
+  参照できるカウンタは `resets` / `reset_by` の関係に依らない。値 0（未登場）のカウンタは番号書式の中で直後の区切りごと省く
+  （`\chapter` の無い文書で `{chapter}.{n}` は `1`。規則の全文は `CounterTemplate::expand` の doc）
 - **数式**: `[math.block]`（全表示数式環境が共有するブロックのレイアウト）と、平置きの `accent_dotless`
   （アクセントの基底のドット無しの字形を選ぶ文書全体の既定。1 個ごとの上書きはソースの `dotless`）。上付き・下付きの縮小率・
   シフト量は数式フォントの OpenType MATH の値で、style.toml には置かない（`[math.script]` は書けば未知キーの

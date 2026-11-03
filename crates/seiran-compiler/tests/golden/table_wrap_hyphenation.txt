@@ -3,10 +3,10 @@ author="テスト著者"
 language="en"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=779.53 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=802.00 y=280.63 font=SerifBold size=20.00 text="Hy" glyph_count=2
-  glyphs x=829.48 y=280.63 font=SerifBold size=20.00 text="phen" glyph_count=4
-  glyphs x=877.22 y=280.63 font=SerifBold size=20.00 text="-" glyph_count=1
+  glyphs x=779.53 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=796.48 y=280.63 font=SerifBold size=20.00 text="Hy" glyph_count=2
+  glyphs x=823.96 y=280.63 font=SerifBold size=20.00 text="phen" glyph_count=4
+  glyphs x=871.70 y=280.63 font=SerifBold size=20.00 text="-" glyph_count=1
   glyphs x=779.53 y=301.63 font=SerifBold size=20.00 text="ation" glyph_count=5
   glyphs x=832.89 y=301.63 font=SerifBold size=20.00 text="in" glyph_count=2
   glyphs x=857.09 y=301.63 font=SerifBold size=20.00 text="cells" glyph_count=5
@@ -43,4 +43,4 @@ keywords=["test", "seiran"]
   glyphs x=875.79 y=472.17 font=Serif size=12.00 text="the" glyph_count=3
   glyphs x=779.53 y=484.77 font=Serif size=12.00 text="table." glyph_count=6
 outline:
-  depth=2 text=".1 Hyphenation in cells" page=0 x=779.53 y=265.39
+  depth=2 text="1 Hyphenation in cells" page=0 x=779.53 y=265.39

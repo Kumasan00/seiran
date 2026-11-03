@@ -3,17 +3,17 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=340.16 h=240.94
-  glyphs x=42.52 y=34.02 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=62.64 y=34.02 font=JapaneseSerifBold size=20.00 text="長" glyph_count=1
-  glyphs x=82.64 y=34.02 font=JapaneseSerifBold size=20.00 text="い" glyph_count=1
-  glyphs x=102.64 y=34.02 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
-  glyphs x=122.64 y=34.02 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
-  glyphs x=142.64 y=34.02 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=162.64 y=34.02 font=JapaneseSerifBold size=20.00 text="ペー" glyph_count=2
-  glyphs x=202.24 y=34.02 font=JapaneseSerifBold size=20.00 text="ジ" glyph_count=1
-  glyphs x=222.24 y=34.02 font=JapaneseSerifBold size=20.00 text="間" glyph_count=1
-  glyphs x=242.24 y=34.02 font=JapaneseSerifBold size=20.00 text="分" glyph_count=1
-  glyphs x=262.24 y=34.02 font=JapaneseSerifBold size=20.00 text="割" glyph_count=1
+  glyphs x=42.52 y=34.02 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=57.12 y=34.02 font=JapaneseSerifBold size=20.00 text="長" glyph_count=1
+  glyphs x=77.12 y=34.02 font=JapaneseSerifBold size=20.00 text="い" glyph_count=1
+  glyphs x=97.12 y=34.02 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
+  glyphs x=117.12 y=34.02 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
+  glyphs x=137.12 y=34.02 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=157.12 y=34.02 font=JapaneseSerifBold size=20.00 text="ペー" glyph_count=2
+  glyphs x=196.72 y=34.02 font=JapaneseSerifBold size=20.00 text="ジ" glyph_count=1
+  glyphs x=216.72 y=34.02 font=JapaneseSerifBold size=20.00 text="間" glyph_count=1
+  glyphs x=236.72 y=34.02 font=JapaneseSerifBold size=20.00 text="分" glyph_count=1
+  glyphs x=256.72 y=34.02 font=JapaneseSerifBold size=20.00 text="割" glyph_count=1
   glyphs x=42.52 y=65.02 font=JapaneseSerif size=12.00 text="本" glyph_count=1
   glyphs x=54.52 y=65.02 font=JapaneseSerif size=12.00 text="文" glyph_count=1
   glyphs x=66.52 y=65.02 font=JapaneseSerif size=12.00 text="領" glyph_count=1
@@ -489,8 +489,9 @@ keywords=["test", "seiran"]
   glyphs x=213.52 y=161.56 font=JapaneseSerif size=9.00 text="規" glyph_count=1
   glyphs x=222.52 y=161.56 font=JapaneseSerif size=9.00 text="則" glyph_count=1
   glyphs x=231.52 y=161.56 font=JapaneseSerif size=9.00 text="は" glyph_count=1
-  glyphs x=242.77 y=161.56 font=Serif size=9.00 text="Section .1" glyph_count=10
-  glyphs x=281.73 y=161.56 font=JapaneseSerif size=9.00 text="の" glyph_count=1
+  glyphs x=242.77 y=161.56 font=Serif size=9.00 text="Section" glyph_count=7
+  glyphs x=272.82 y=161.56 font=Serif size=9.00 text="1" glyph_count=1
+  glyphs x=279.53 y=161.56 font=JapaneseSerif size=9.00 text="の" glyph_count=1
   glyphs x=42.52 y=174.49 font=JapaneseSerif size=9.00 text="全" glyph_count=1
   glyphs x=51.52 y=174.49 font=JapaneseSerif size=9.00 text="体" glyph_count=1
   glyphs x=60.52 y=174.49 font=JapaneseSerif size=9.00 text="に" glyph_count=1
@@ -548,7 +549,7 @@ keywords=["test", "seiran"]
   glyphs x=227.57 y=204.36 font=JapaneseSerif size=9.00 text="注" glyph_count=1
   glyphs x=236.57 y=204.36 font=JapaneseSerif size=9.00 text="。" glyph_count=1
   link target=Internal(page=1, x=42.52, y=194.00) x=198.28 y=37.45 w=4.16 h=17.24
-  link target=Internal(page=0, x=42.52, y=11.00) x=242.77 y=151.20 w=36.71 h=12.93
+  link target=Internal(page=0, x=42.52, y=11.00) x=242.77 y=151.20 w=34.51 h=12.93
 === page 2 === box x=0.00 y=0.00 w=340.16 h=240.94
   glyphs x=42.52 y=34.02 font=JapaneseSerif size=12.00 text="さ" glyph_count=1
   glyphs x=54.71 y=34.02 font=JapaneseSerif size=12.00 text="ら" glyph_count=1
@@ -585,4 +586,4 @@ keywords=["test", "seiran"]
   glyphs x=174.52 y=51.26 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=186.52 y=51.26 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 outline:
-  depth=2 text=".1 長い脚注のページ間分割" page=0 x=42.52 y=11.00
+  depth=2 text="1 長い脚注のページ間分割" page=0 x=42.52 y=11.00

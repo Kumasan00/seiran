@@ -3,16 +3,16 @@ author="テスト著者"
 language="ja"
 keywords=["test", "seiran"]
 === page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
-  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
-  glyphs x=261.06 y=280.63 font=JapaneseSerifBold size=20.00 text="箇" glyph_count=1
-  glyphs x=281.06 y=280.63 font=JapaneseSerifBold size=20.00 text="条" glyph_count=1
-  glyphs x=301.06 y=280.63 font=JapaneseSerifBold size=20.00 text="書" glyph_count=1
-  glyphs x=321.06 y=280.63 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
-  glyphs x=341.06 y=280.63 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=361.06 y=280.63 font=JapaneseSerifBold size=20.00 text="サ" glyph_count=1
-  glyphs x=380.06 y=280.63 font=JapaneseSerifBold size=20.00 text="ン" glyph_count=1
-  glyphs x=400.06 y=280.63 font=JapaneseSerifBold size=20.00 text="プ" glyph_count=1
-  glyphs x=419.26 y=280.63 font=JapaneseSerifBold size=20.00 text="ル" glyph_count=1
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="1" glyph_count=1
+  glyphs x=255.54 y=280.63 font=JapaneseSerifBold size=20.00 text="箇" glyph_count=1
+  glyphs x=275.54 y=280.63 font=JapaneseSerifBold size=20.00 text="条" glyph_count=1
+  glyphs x=295.54 y=280.63 font=JapaneseSerifBold size=20.00 text="書" glyph_count=1
+  glyphs x=315.54 y=280.63 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
+  glyphs x=335.54 y=280.63 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=355.54 y=280.63 font=JapaneseSerifBold size=20.00 text="サ" glyph_count=1
+  glyphs x=374.54 y=280.63 font=JapaneseSerifBold size=20.00 text="ン" glyph_count=1
+  glyphs x=394.54 y=280.63 font=JapaneseSerifBold size=20.00 text="プ" glyph_count=1
+  glyphs x=413.74 y=280.63 font=JapaneseSerifBold size=20.00 text="ル" glyph_count=1
   glyphs x=240.94 y=311.63 font=Serif size=12.00 text="itemize" glyph_count=7
   glyphs x=281.48 y=311.63 font=JapaneseSerif size=12.00 text="環" glyph_count=1
   glyphs x=293.61 y=311.63 font=JapaneseSerif size=12.00 text="境" glyph_count=1
@@ -497,16 +497,16 @@ keywords=["test", "seiran"]
   glyphs x=533.22 y=799.07 font=JapaneseSerif size=12.00 text="項" glyph_count=1
   glyphs x=545.22 y=799.07 font=JapaneseSerif size=12.00 text="目" glyph_count=1
   glyphs x=557.22 y=799.07 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=240.94 y=827.67 font=SerifBold size=20.00 text=".2" glyph_count=2
-  glyphs x=261.06 y=827.67 font=JapaneseSerifBold size=20.00 text="ネ" glyph_count=1
-  glyphs x=281.06 y=827.67 font=JapaneseSerifBold size=20.00 text="ス" glyph_count=1
-  glyphs x=301.06 y=827.67 font=JapaneseSerifBold size=20.00 text="ト" glyph_count=1
-  glyphs x=321.06 y=827.67 font=JapaneseSerifBold size=20.00 text="し" glyph_count=1
-  glyphs x=341.06 y=827.67 font=JapaneseSerifBold size=20.00 text="た" glyph_count=1
-  glyphs x=361.06 y=827.67 font=JapaneseSerifBold size=20.00 text="箇" glyph_count=1
-  glyphs x=381.06 y=827.67 font=JapaneseSerifBold size=20.00 text="条" glyph_count=1
-  glyphs x=401.06 y=827.67 font=JapaneseSerifBold size=20.00 text="書" glyph_count=1
-  glyphs x=421.06 y=827.67 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
+  glyphs x=240.94 y=827.67 font=SerifBold size=20.00 text="2" glyph_count=1
+  glyphs x=255.54 y=827.67 font=JapaneseSerifBold size=20.00 text="ネ" glyph_count=1
+  glyphs x=275.54 y=827.67 font=JapaneseSerifBold size=20.00 text="ス" glyph_count=1
+  glyphs x=295.54 y=827.67 font=JapaneseSerifBold size=20.00 text="ト" glyph_count=1
+  glyphs x=315.54 y=827.67 font=JapaneseSerifBold size=20.00 text="し" glyph_count=1
+  glyphs x=335.54 y=827.67 font=JapaneseSerifBold size=20.00 text="た" glyph_count=1
+  glyphs x=355.54 y=827.67 font=JapaneseSerifBold size=20.00 text="箇" glyph_count=1
+  glyphs x=375.54 y=827.67 font=JapaneseSerifBold size=20.00 text="条" glyph_count=1
+  glyphs x=395.54 y=827.67 font=JapaneseSerifBold size=20.00 text="書" glyph_count=1
+  glyphs x=415.54 y=827.67 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
   glyphs x=240.94 y=858.67 font=JapaneseSerif size=12.00 text="リ" glyph_count=1
   glyphs x=252.70 y=858.67 font=JapaneseSerif size=12.00 text="ス" glyph_count=1
   glyphs x=264.70 y=858.67 font=JapaneseSerif size=12.00 text="ト" glyph_count=1
@@ -934,15 +934,15 @@ keywords=["test", "seiran"]
   glyphs x=525.52 y=1185.87 font=JapaneseSerif size=12.00 text="弧" glyph_count=1
   glyphs x=537.52 y=1185.87 font=JapaneseSerif size=12.00 text="）" glyph_count=1
   glyphs x=543.52 y=1185.87 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=240.94 y=1218.47 font=SerifBold size=20.00 text=".3" glyph_count=2
-  glyphs x=261.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="項" glyph_count=1
-  glyphs x=281.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="目" glyph_count=1
-  glyphs x=301.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="間" glyph_count=1
-  glyphs x=321.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="隔" glyph_count=1
-  glyphs x=341.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
-  glyphs x=361.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="上" glyph_count=1
-  glyphs x=381.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="書" glyph_count=1
-  glyphs x=401.06 y=1218.47 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
+  glyphs x=240.94 y=1218.47 font=SerifBold size=20.00 text="3" glyph_count=1
+  glyphs x=255.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="項" glyph_count=1
+  glyphs x=275.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="目" glyph_count=1
+  glyphs x=295.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="間" glyph_count=1
+  glyphs x=315.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="隔" glyph_count=1
+  glyphs x=335.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=355.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="上" glyph_count=1
+  glyphs x=375.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="書" glyph_count=1
+  glyphs x=395.54 y=1218.47 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
   glyphs x=240.94 y=1249.47 font=JapaneseSerif size=12.00 text="環" glyph_count=1
   glyphs x=252.94 y=1249.47 font=JapaneseSerif size=12.00 text="境" glyph_count=1
   glyphs x=264.94 y=1249.47 font=JapaneseSerif size=12.00 text="単" glyph_count=1
@@ -1265,6 +1265,6 @@ keywords=["test", "seiran"]
   glyphs x=360.94 y=1641.46 font=JapaneseSerif size=12.00 text="す" glyph_count=1
   glyphs x=371.98 y=1641.46 font=JapaneseSerif size=12.00 text="。" glyph_count=1
 outline:
-  depth=2 text=".1 箇条書きのサンプル" page=0 x=240.94 y=257.61
-  depth=2 text=".2 ネストした箇条書き" page=0 x=240.94 y=804.65
-  depth=2 text=".3 項目間隔の上書き" page=0 x=240.94 y=1195.45
+  depth=2 text="1 箇条書きのサンプル" page=0 x=240.94 y=257.61
+  depth=2 text="2 ネストした箇条書き" page=0 x=240.94 y=804.65
+  depth=2 text="3 項目間隔の上書き" page=0 x=240.94 y=1195.45

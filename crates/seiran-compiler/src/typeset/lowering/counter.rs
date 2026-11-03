@@ -153,6 +153,28 @@ mod tests {
   }
 
   #[test]
+  fn section_without_chapter_drops_the_separator() {
+    let style = Style::default();
+    let value = counter_value(CounterName::Section, &[(CounterName::Section, 1)]);
+
+    let number = format_counter_value(&style, &value);
+    let reference = format_ref_display(&style, &value);
+
+    assert_eq!(number, "1", "未登場の chapter は直後の区切りごと省く");
+    assert_eq!(reference, "Section 1");
+  }
+
+  #[test]
+  fn theorem_without_reset_by_counter_drops_the_separator() {
+    let mut style = Style::default();
+    style.theorems.theorem.number_format = CounterTemplate::parse("{chapter}.{n}");
+
+    let text = format_counter_value(&style, &theorem_value(TheoremClass::Theorem, &[], 2));
+
+    assert_eq!(text, "2");
+  }
+
+  #[test]
   fn chapter_ref_display_applies_ref_format() {
     let style = Style::default();
 
