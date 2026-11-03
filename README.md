@@ -236,7 +236,7 @@ font_size = "20pt"
 bottom_margin = "10pt"
 # alignment = "center"         # 未指定なら外側の段落の揃えを継ぐ（既定は [text].alignment）
 
-[quantity]                     # 数値 \num{...}・単位 \unit{...} の書式と書体（本文・数式とも）
+[quantity]                     # 数値 \num{...}・単位 \unit{...}・量 \qty{...}{...} の書式と書体（本文・数式とも）
 # typeface = "math"            # 書体（既定は数式フォントの立体。イタリック系は不可）
 # decimal_marker = "period"    # 小数点: "period"（既定） / "comma"
 # digit_group_separator = "thin" # 3 桁区切り: "thin"（既定） / "none" / "comma" / "period"
@@ -244,6 +244,7 @@ bottom_margin = "10pt"
 # exponent_product = "times"   # 指数表記の積の記号: "times"（×、既定） / "dot"（⋅）
 # unit_product = "thin"        # 単位どうしの積: "thin"（細アキ、既定） / "dot"（⋅。前後のアキなし）
 # negative_exponent = "power"  # 負の指数: "power"（m s⁻²、既定） / "slash"（m/s²）
+# number_unit_separator = "thin" # 量の数値と単位の間: "thin"（既定） / "none" / "medium" / "thick"（単位が ° ′ ″ だけなら常に詰める）
 ```
 
 ### 参照定義（`config/references.toml` または `.json`）
