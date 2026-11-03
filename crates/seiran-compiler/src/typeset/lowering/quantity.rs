@@ -160,7 +160,7 @@ pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
       },
       QuantityPiece::Superscript(text) => out.extend(text.chars().map(|ch| {
         return math::superscript_char(ch).expect(
-          "指数は frontend の数値・単位の文法を通った数字列で、負号は push_number / push_unit が U+2212 にしてある",
+          "指数の字は frontend の数値・単位の文法を通った ASCII 数字と、push_number / push_unit が負号にした U+2212 だけで、どれも上付き字の表にある",
         );
       })),
     }
