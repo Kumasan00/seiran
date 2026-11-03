@@ -267,7 +267,7 @@ impl Placeholder for NumberPlaceholder {
 pub(crate) enum CounterPlaceholder {
   /// `{n}` — このテンプレートを持つカウンタ自身の値
   Own,
-  /// `{<counter_name>}` — 構造値に載っているカウンタ（自身または祖先）の値
+  /// `{<counter_name>}` — 採番時点のそのカウンタの値（リセット関係に依らずどのカウンタも指せる）
   Counter(CounterName),
 }
 

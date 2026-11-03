@@ -6,7 +6,7 @@
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   semantics::{
-    CitationId, CitationSiteFacts, CounterKind, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
+    CitationId, CitationSiteFacts, CounterValue, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
     error::{self, UnknownCitationSite},
     facts::SemanticFacts,
@@ -279,18 +279,18 @@ impl FactCollector<'_, '_> {
     return;
   }
 
-  /// 採番し、`label` があればラベル宣言を記録する — 6 種のノードが通る唯一の経路
+  /// カウンタ `name` で採番し、`label` があればラベル宣言を記録する（見出し・図・表・数式が通る経路）
   ///
   /// `node` は fact の鍵、`site` は診断位置に使うノード（数式行だけ `[label=...]` 引数自身で、
-  /// 他の 5 種は `node` と同じ）。無採番の定理クラス（`proof`）は採番もラベル記録もしない。
-  fn number_and_declare(&mut self, kind: CounterKind, node: NodeId, label: Option<&str>, site: NodeId) {
-    let numbered = match kind {
-      CounterKind::Counter(name) => Some(self.registry.increment(name)),
-      CounterKind::Theorem(class) => self.registry.increment_theorem(class),
-    };
-    let Some(value) = numbered else {
-      return;
-    };
+  /// 他は `node` と同じ）。
+  fn number_and_declare(&mut self, name: CounterName, node: NodeId, label: Option<&str>, site: NodeId) {
+    let value = self.registry.increment(name);
+    self.record_number(value, node, label, site);
+    return;
+  }
+
+  /// 採番した値を記録し、`label` があればラベル宣言を記録する — 採番される 6 種のノードが通る唯一の経路
+  fn record_number(&mut self, value: CounterValue, node: NodeId, label: Option<&str>, site: NodeId) {
     self.facts.counters.insert(node, value);
     self.declare_label(node, label, site);
     return;
@@ -317,7 +317,7 @@ impl FactCollector<'_, '_> {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
         let counter = CounterName::for_heading(heading.level);
-        self.number_and_declare(CounterKind::Counter(counter), node.id, heading.label.as_deref(), node.id);
+        self.number_and_declare(counter, node.id, heading.label.as_deref(), node.id);
         self.facts.headings.insert(node.id, heading.level);
         self.inlines(&heading.title);
       },
@@ -331,17 +331,17 @@ impl FactCollector<'_, '_> {
           self.math_row(row, node.id);
         }
         if math.numbered {
-          self.number_and_declare(CounterKind::Counter(CounterName::Equation), node.id, math.label.as_deref(), node.id);
+          self.number_and_declare(CounterName::Equation, node.id, math.label.as_deref(), node.id);
         }
       },
       HirNodeKind::Figure(figure) => {
-        self.number_and_declare(CounterKind::Counter(CounterName::Figure), node.id, figure.label.as_deref(), node.id);
+        self.number_and_declare(CounterName::Figure, node.id, figure.label.as_deref(), node.id);
         if let Some(inlines) = &figure.caption {
           self.inlines(inlines);
         }
       },
       HirNodeKind::Table(table) => {
-        self.number_and_declare(CounterKind::Counter(CounterName::Table), node.id, table.label.as_deref(), node.id);
+        self.number_and_declare(CounterName::Table, node.id, table.label.as_deref(), node.id);
         for row in table.head.iter().chain(table.rows.iter()) {
           for cell in &row.cells {
             self.inlines(&cell.content);
@@ -352,7 +352,10 @@ impl FactCollector<'_, '_> {
         }
       },
       HirNodeKind::Theorem(theorem) => {
-        self.number_and_declare(CounterKind::Theorem(theorem.class), node.id, theorem.label.as_deref(), node.id);
+        // 無採番の定理クラス（`proof`）は採番もラベル記録もしない
+        if let Some(value) = self.registry.increment_theorem(theorem.class) {
+          self.record_number(value, node.id, theorem.label.as_deref(), node.id);
+        }
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
         if let Some(target) = &theorem.of {
           self.facts.refs.insert(target.id, LabelId::new(target.label.clone()));
@@ -403,7 +406,7 @@ impl FactCollector<'_, '_> {
       return;
     }
     let site = row.label_site.unwrap_or(environment);
-    self.number_and_declare(CounterKind::Counter(CounterName::Equation), row.id, row.label.as_deref(), site);
+    self.number_and_declare(CounterName::Equation, row.id, row.label.as_deref(), site);
     return;
   }
 
@@ -442,11 +445,11 @@ mod tests {
     document::HirDocument,
     frontend::test_support::parse_for_test,
     semantics::{
-      self, CitationId, LabelId, References, SemanticDocument, SemanticError, SemanticFailures, SemanticPolicy,
-      test_support::sample_references,
+      self, CitationId, CounterValue, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
+      SemanticPolicy, test_support::sample_references,
     },
     source::SourceId,
-    style::Style,
+    style::{CounterName, Style},
   };
 
   /// 引用を含まない入力向けの空の参照定義
@@ -520,6 +523,29 @@ mod tests {
       semantics::analyze_for_test(hir, &policy, &no_references()).expect("ソース跨ぎの参照は解決できるはず");
 
     assert_eq!(analyzed.ref_sites().count(), 1, "参照箇所が 1 件記録されるはず");
+  }
+
+  #[test]
+  fn label_in_another_source_keeps_counters_at_its_numbering() {
+    let a = parse_for_test(
+      "\\chapter{A}\n\\section{B}\n\\begin{table}[label=tab:x]\n\\row{a}\n\\end{table}\n",
+      SourceId::new(0),
+    )
+    .expect("パースに成功するはず");
+    let b = parse_for_test("\\chapter{C}\n\\section{D}\n\\section{E}\n\\ref{tab:x}\n", SourceId::new(1))
+      .expect("パースに成功するはず");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    let analyzed = semantics::analyze_for_test(HirDocument::assemble(vec![a, b]), &policy, &no_references())
+      .expect("ソース跨ぎの参照は解決できるはず");
+
+    let value = analyzed.counter_value_of_label(&LabelId::new("tab:x")).expect("ラベルが解決するはず");
+    let CounterValue::Counter { counters, .. } = value else {
+      panic!("表はカウンタで採番されるはず: {value:?}");
+    };
+    // 参照箇所（別ソースの第 2 章第 2 節）ではなく、表を採番した時点の章・節の値が載る
+    assert_eq!(counters[CounterName::Chapter], 1);
+    assert_eq!(counters[CounterName::Section], 1);
   }
 
   #[test]
@@ -796,7 +822,9 @@ mod tests {
     let value = analyzed.counter_value_of_label(&LabelId::new("sec:x")).expect("ラベルが解決するはず");
     let section = analyzed.headings().nth(1).expect("見出しが 2 件あるはず");
     assert_eq!(Some(value), analyzed.counter_value(section.node));
-    assert_eq!(value.own, 1);
+    assert!(
+      matches!(value, CounterValue::Counter { name: CounterName::Section, counters } if counters[CounterName::Section] == 1)
+    );
   }
 }
 

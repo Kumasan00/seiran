@@ -27,8 +27,6 @@ pub(super) struct CounterPolicy {
 pub(super) struct TheoremPolicy {
   /// 共有カウンタ名（複数クラスが 1 つのカウンタを共有しうる）
   pub counter: String,
-  /// リセット元の見出しカウンタ。定理カウンタの唯一の祖先でもある（`None` はリセットしない）
-  pub reset_by: Option<CounterName>,
   /// 無採番クラス（`proof`）かどうか
   pub unnumbered: bool,
 }
@@ -71,7 +69,6 @@ impl SemanticPolicy {
         class,
         TheoremPolicy {
           counter: def.counter.clone(),
-          reset_by: def.reset_by.counter_name(),
           unnumbered: def.unnumbered,
         },
       );
@@ -101,10 +98,7 @@ impl SemanticPolicy {
 #[cfg(test)]
 mod tests {
   use super::SemanticPolicy;
-  use crate::{
-    document::TheoremClass,
-    style::{CounterName, CounterTemplate, NumberStyle, RefTemplate, Style, TheoremReset},
-  };
+  use crate::style::{CounterName, CounterTemplate, NumberStyle, RefTemplate, Style, TheoremReset};
 
   #[test]
   fn document_policy_ignores_display_only_style_fields() {
@@ -141,7 +135,6 @@ mod tests {
 
     let policy = SemanticPolicy::from_style(&style);
 
-    assert_eq!(policy.theorem(TheoremClass::Theorem).reset_by, Some(CounterName::Section));
     assert_eq!(
       policy.counter(CounterName::Section).theorem_resets,
       ["theorem"],

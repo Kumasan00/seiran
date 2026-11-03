@@ -25,9 +25,7 @@ pub(crate) use citation::{
 use citation::{
   CitationSiteFacts, GeneratedCitations, ReadCitationStyleError, generate_citations, load_citation_style,
 };
-#[cfg(test)]
-pub(crate) use counter::CounterAncestor;
-pub(crate) use counter::{CounterKind, CounterValue};
+pub(crate) use counter::{CounterValue, CounterValues};
 use error::SemanticFailures;
 pub(crate) use error::{AnalyzeError, SemanticError};
 pub(crate) use ids::{HeadingKey, LabelId};

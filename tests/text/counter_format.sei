@@ -1,0 +1,27 @@
+// 番号書式がリセット関係に無いカウンタを参照する版面。表は節ごとにリセットしないまま節番号を、定理は節ごとにリセットしつつ章番号も表示する
+前方参照: \ref{tab:probe}、\ref{thm:probe}、\ref{eq:probe}。
+
+\chapter{First}
+
+\section{Alpha}
+
+\section{Beta}
+
+\begin{table}[label=tab:probe]
+\row{A & B}
+\caption{Counter probe}
+\end{table}
+
+\begin{theorem}[label=thm:probe]
+Theorem body.
+\end{theorem}
+
+\begin{equation}[label=eq:probe]
+x = 1
+\end{equation}
+
+\chapter{Second}
+
+\section{Gamma}
+
+後続の章からの参照: \ref{tab:probe}、\ref{thm:probe}、\ref{eq:probe}。

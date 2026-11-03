@@ -146,7 +146,8 @@ pub(crate) struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
   #[garde(custom(non_empty_text))]
   pub display_name: String,
-  /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
+  /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
+  /// （`resets` の関係に無いカウンタも書ける）
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
   #[garde(dive)]
