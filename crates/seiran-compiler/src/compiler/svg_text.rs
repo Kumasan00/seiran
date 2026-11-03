@@ -2,6 +2,7 @@
 //!
 //! fixture の config.toml で compile した `Publication` から、seiran-pdf と同じ入口（`svg_parser`）でパーサを得る。
 
+use itertools::Itertools;
 use usvg::{Color, Node, Paint, Tree, fontdb::Style};
 
 use crate::{
@@ -253,4 +254,47 @@ fn svg_missing_glyph_inside_clip_path_is_reported() {
   assert!(message.contains("U+1F600"), "本文の欠字を報告するはず: {message}");
   assert!(message.contains("U+1F642"), "clipPath の中の欠字も報告するはず: {message}");
   assert!(!message.contains("U+0041"), "組める字は報告しないはず: {message}");
+}
+
+#[test]
+fn regular_weight_on_a_variable_face_adds_no_wght() {
+  // usvg は font-weight が 400 のとき wght を積まないので、可変フォントは fvar の既定値の太さで組まれる（README に明記）
+  let parser = svg_parser();
+
+  let tree = parser.parse(&svg_with_text(r#"font-family="serif""#, "A")).expect("SVG はパースできるはず");
+
+  let spans: Vec<_> = texts(&tree).into_iter().flat_map(|text| return text.layouted()).collect();
+  assert_eq!(spans.len(), 1);
+  assert!(spans[0].variations.iter().all(|variation| return &variation.tag != b"wght"));
+}
+
+#[test]
+fn fallback_font_takes_the_whole_run_when_it_covers_every_char() {
+  // usvg は代替フォントが区切りの全字を組めると、区切り全体をそのフォントに置き換える（README に明記）
+  let parser = svg_parser();
+
+  let tree = parser.parse(&svg_with_text(r#"font-family="serif""#, "Label 日")).expect("SVG はパースできるはず");
+
+  let families: Vec<String> = glyph_faces(&tree).into_iter().map(|(_, family, _)| return family).unique().collect();
+  assert_eq!(families, ["Noto Serif JP"]);
+}
+
+#[test]
+fn explicit_wght_variation_sets_the_regular_weight() {
+  // README の回避策: 標準の太さを可変フォントで組むときは wght を明示する
+  let parser = svg_parser();
+
+  let tree = parser
+    .parse(&svg_with_text(r#"font-family="Noto Serif JP" font-variation-settings="'wght' 400""#, "日"))
+    .expect("SVG はパースできるはず");
+
+  let spans: Vec<_> = texts(&tree).into_iter().flat_map(|text| return text.layouted()).collect();
+  assert_eq!(spans.len(), 1);
+  let wght: Vec<f32> = spans[0]
+    .variations
+    .iter()
+    .filter(|variation| return &variation.tag == b"wght")
+    .map(|v| return v.value)
+    .collect();
+  assert_eq!(wght, [400.0]);
 }

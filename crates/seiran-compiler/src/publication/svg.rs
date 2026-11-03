@@ -9,8 +9,9 @@
 //!   `cursive` / `fantasy` は一致しない。どれにも一致しなければ未解決で、usvg の既定のように serif へ黙って落とさない。
 //!   `font-family` の省略は `serif` と同じ
 //! - 太さ・斜体: 同じファミリのフェースから fontdb の CSS マッチで選ぶ。可変フォントの `wght` は usvg が
-//!   `font-weight` から積み、config の `variation_axes` は効かない
-//! - 代替: 選んだフェースの系統（[`family_class`]）の枠を、宣言順 → 候補順に探す
+//!   400 以外の `font-weight` から積む（400 では積まず、fvar の既定値で組む）。config の `variation_axes` は効かない
+//! - 代替: 選んだフェースの系統（[`family_class`]）の枠を、宣言順 → 候補順に探す。usvg は代替が区切りの全字を
+//!   組めると区切り全体をそのフェースに置き換えるので、1 字ごとの代替にはならない
 
 use std::{
   fmt,
