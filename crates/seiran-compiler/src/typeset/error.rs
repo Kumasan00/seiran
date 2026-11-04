@@ -1,28 +1,80 @@
 //! 組版パスのエラー型 [`TypesetError`] と [`ComposeError`]
 //!
 //! フォント資源の構築・画像資源の読込 / デコード / PDF のページ選択 / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗
-//! [`TypesetError`] と、`compose` の失敗を運ぶ [`ComposeError`] を持つ。
+//! [`TypesetError`] と、`compose` の失敗を運ぶ [`ComposeError`] を持つ。長さの演算の溢れは、組版の内側では要素の
+//! 起点だけを運ぶ [`ElementOverflow`] で伝え、`pagination::paginate` が位置を解決した [`DimensionOverflow`] にする。
 
-use miette::Diagnostic;
+use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 use crate::{
+  document::{NodeId, SourceLocation, SourceMap},
   failures::Failures,
+  length::MAX_ABS_PT,
   project::ProjectSourceError,
+  source::SourceId,
   typeset::{font::FontSystemError, glyph_issues::TextGlyphError},
 };
 
 /// [`compose`](fn@crate::typeset::compose) の失敗
 ///
-/// ソース位置に帰属しない組版の失敗と、ソース位置に帰属しうる字の欠落（[`TextGlyphError::source_id`]）を分けて運ぶ
-/// 制御フロー型で、表示単位ではない（`miette::Diagnostic` を実装しない）。後者のうち位置を持つものだけに `compiler` が
-/// ソース本文を添える。
+/// ソース位置に帰属しない組版の失敗と、ソース位置に帰属しうる字の欠落（[`TextGlyphError::source_id`]）・寸法の溢れ
+/// （[`DimensionOverflow::source_id`]）を分けて運ぶ制御フロー型で、表示単位ではない（`miette::Diagnostic` を実装しない）。
+/// 後者のうち位置を持つものだけに `compiler` がソース本文を添える。
 #[derive(Debug)]
 pub(crate) enum ComposeError {
   /// フォント資源の構築・画像資源・ページ単位脚注採番の失敗
   Typeset(Failures<TypesetError>),
   /// 文書が使った字のフォントでの欠落（数式フォントの欠落を文書順に、続けて本文の枠の欠落）
   Glyphs(Failures<TextGlyphError>),
+  /// 組版で求めた寸法が長さの値域に収まらなかった（溢れた時点で組版を止めるので 1 件）
+  Dimension(DimensionOverflow),
+}
+
+/// 長さの演算が溢れた要素 — 組版の内側で溢れを運ぶ型
+///
+/// 位置の解決は `pagination::paginate` がはみ出し警告と同じ `SourceMap` で行う（[`ElementOverflow::locate`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::typeset) struct ElementOverflow {
+  /// 溢れた要素。生成物・ページ単位の計算・emit での溢れは `None`
+  pub(in crate::typeset) origin: Option<NodeId>,
+}
+
+impl ElementOverflow {
+  /// 起点の要素を `source_map` で引いて、位置付きの診断にする
+  pub(in crate::typeset) fn locate(self, source_map: &SourceMap) -> DimensionOverflow {
+    return DimensionOverflow::new(self.origin.map(|origin| return source_map.location(origin)));
+  }
+}
+
+/// 組版で求めた寸法が、長さの値域に収まりませんでした。
+#[derive(Debug, Error, Diagnostic)]
+#[error("組版で求めた寸法が扱える範囲（絶対値が {max}pt 未満）を超えました", max = MAX_ABS_PT)]
+#[diagnostic(
+  code(typeset::length::out_of_range),
+  help(
+    "この要素の長さの引数（\\space など）か、style.toml のフォントサイズ・行送りの倍率（[text] line_height_factor など）・アキ、config.toml の用紙寸法を小さくしてください"
+  )
+)]
+pub(crate) struct DimensionOverflow {
+  /// 溢れた要素が帰属するソース。要素に帰属しない溢れは `None`
+  source_id: Option<SourceId>,
+  /// 要素の開始位置（`source_id` と同時に `None`）
+  #[label("この要素を組む途中で寸法が溢れました")]
+  at: Option<SourceSpan>,
+}
+
+impl DimensionOverflow {
+  /// 要素の位置 `location`（要素に帰属しない溢れは `None`）から作る。ラベルは開始位置に長さ 0 で置く
+  pub(crate) fn new(location: Option<SourceLocation>) -> Self {
+    return DimensionOverflow {
+      source_id: location.map(|location| return location.source_id),
+      at: location.map(|location| return location.span.at_start().into()),
+    };
+  }
+
+  /// 溢れた要素が帰属するソース。要素に帰属しない溢れは `None`
+  pub(crate) fn source_id(&self) -> Option<SourceId> { return self.source_id; }
 }
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。

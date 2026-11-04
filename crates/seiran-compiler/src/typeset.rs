@@ -229,7 +229,7 @@ fn lay_out(
   }
   return match laid_out {
     Ok(laid_out) => (Ok(laid_out), warnings),
-    Err(error) => (Err(ComposeError::Typeset(Failures::single(error))), warnings),
+    Err(error) => (Err(error), warnings),
   };
 }
 

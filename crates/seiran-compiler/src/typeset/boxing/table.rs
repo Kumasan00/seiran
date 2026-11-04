@@ -32,6 +32,7 @@ use crate::{
       hlist::HList,
     },
     breaking::{self, LineBreaker},
+    error::ElementOverflow,
     lowering::{TableColumn, TableLayout, TableRowLayout},
   },
 };
@@ -112,7 +113,16 @@ struct TableFrame<'a> {
 
 impl Measurer<'_> {
   /// 表を組む: セルを計測し、列幅を `available`（表を置く段の幅）で決め、`breaker` でセルを折り返して行断片の列にする
-  pub(super) fn build_table(&mut self, table: TableLayout, available: Length, breaker: &dyn LineBreaker) -> TableBox {
+  ///
+  /// # Errors
+  ///
+  /// セルの脚注の行送りの計算が長さの値域を超えたら、脚注の起点を [`ElementOverflow`] で返す。
+  pub(super) fn build_table(
+    &mut self,
+    table: TableLayout,
+    available: Length,
+    breaker: &dyn LineBreaker,
+  ) -> Result<TableBox, ElementOverflow> {
     let TableLayout {
       origin,
       columns,
@@ -128,8 +138,8 @@ impl Measurer<'_> {
       partial_rule_trim,
       rule_color,
     } = table;
-    let head = self.measure_rows(head);
-    let rows = self.measure_rows(rows);
+    let head = self.measure_rows(head)?;
+    let rows = self.measure_rows(rows)?;
     let frame = TableFrame {
       columns: &columns,
       cell_padding,
@@ -141,19 +151,19 @@ impl Measurer<'_> {
       partial_rule_trim,
       rule_color,
     };
-    return arrange(origin, &frame, &head, &rows, available, breakable, breaker);
+    return Ok(arrange(origin, &frame, &head, &rows, available, breakable, breaker));
   }
 
   /// 行のセル内容を水平リストに組んで計測する
-  fn measure_rows(&mut self, rows: Vec<TableRowLayout>) -> Vec<MeasuredRow> {
+  fn measure_rows(&mut self, rows: Vec<TableRowLayout>) -> Result<Vec<MeasuredRow>, ElementOverflow> {
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
-      let cells = self.within(row.origin, |measurer| {
+      let cells = self.within(row.origin, |measurer| -> Result<Vec<MeasuredCell>, ElementOverflow> {
         let mut cells = Vec::with_capacity(row.cells.len());
         for cell in row.cells {
           let mut list = HList::default();
           for node in cell.content {
-            measurer.collect_inline(node, &mut list);
+            measurer.collect_inline(node, &mut list)?;
           }
           cells.push(MeasuredCell {
             items: list.into_items(),
@@ -162,11 +172,11 @@ impl Measurer<'_> {
             rule_below: cell.rule_below,
           });
         }
-        return cells;
-      });
+        return Ok(cells);
+      })?;
       result.push(MeasuredRow::new(row.origin, cells, row.separator, self.default_font_size, self.line_height_factor));
     }
-    return result;
+    return Ok(result);
   }
 }
 

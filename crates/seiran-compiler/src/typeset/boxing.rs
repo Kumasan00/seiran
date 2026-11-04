@@ -51,10 +51,11 @@ use tracing::debug;
 
 use crate::{
   document::{NodeId, TextAlignment},
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
     breaking::LineBreaker,
+    error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
     image::{ImageResources, resolve_image_size},
@@ -111,8 +112,14 @@ pub(super) struct BlockBuildInputs<'a> {
 }
 
 /// レイアウトノードを計測済みのブロック列に変換する
-#[must_use]
-pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInputs<'_>) -> Vec<Block> {
+///
+/// # Errors
+///
+/// 行送りの計算が長さの値域を超えたら、その要素を [`ElementOverflow`] で返す。
+pub(super) fn build_blocks(
+  layout_nodes: Vec<LayoutNode>,
+  inputs: &BlockBuildInputs<'_>,
+) -> Result<Vec<Block>, ElementOverflow> {
   let hyphenation = hyphenation::resolve(inputs.language);
   let mut builder = BlockBuilder {
     measurer: Measurer::new(
@@ -127,10 +134,10 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
     breaker: inputs.breaker,
   };
   let mut blocks: Vec<Block> = Vec::new();
-  builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment);
+  builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
   let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
-  return blocks;
+  return Ok(blocks);
 }
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
@@ -154,12 +161,12 @@ impl BlockBuilder<'_> {
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
-  ) {
+  ) -> Result<(), ElementOverflow> {
     for node in nodes {
       match node {
         LayoutNode::Paragraph(paragraph) => {
           let spacing = paragraph.spacing_after;
-          if let Some(block) = self.build_paragraph(paragraph, indent, right_indent, alignment) {
+          if let Some(block) = self.build_paragraph(paragraph, indent, right_indent, alignment)? {
             blocks.push(block);
           }
           if spacing != Length::ZERO {
@@ -180,7 +187,7 @@ impl BlockBuilder<'_> {
           let child_indent = indent + vbox_indent;
           let child_right_indent = right_indent + vbox_right_indent;
           let child_alignment = vbox_alignment.unwrap_or(alignment);
-          self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment);
+          self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment)?;
           let natural = margin_bottom;
           blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
         },
@@ -219,7 +226,7 @@ impl BlockBuilder<'_> {
         LayoutNode::Table(table) => {
           let available = boxes::usable_width(self.column_width, indent, right_indent);
           blocks.push(Block::Table {
-            table: self.measurer.build_table(table, available, self.breaker),
+            table: self.measurer.build_table(table, available, self.breaker)?,
             indent,
             right_indent,
             align: Align::from(alignment),
@@ -242,41 +249,55 @@ impl BlockBuilder<'_> {
         },
       }
     }
+    return Ok(());
   }
 
   /// 段落を計測する。計測後の水平リストが空なら本文ブロックを作らない
+  ///
+  /// # Errors
+  ///
+  /// 行送りの計算が長さの値域を超えたら、段落の起点を [`ElementOverflow`] で返す。
   fn build_paragraph(
     &mut self,
     paragraph: ParagraphLayout,
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
-  ) -> Option<Block> {
-    let collect = |measurer: &mut Measurer<'_>| {
+  ) -> Result<Option<Block>, ElementOverflow> {
+    let collect = |measurer: &mut Measurer<'_>| -> Result<HList, ElementOverflow> {
       let mut list = HList::default();
       for inline in paragraph.content {
-        measurer.collect_inline(inline, &mut list);
+        measurer.collect_inline(inline, &mut list)?;
       }
-      return list;
+      return Ok(list);
     };
     // 要素に帰属しない段落は、組み始めの起点（生成した内容の種類）のまま組む
     let list = match paragraph.origin {
       Some(origin) => self.measurer.within(origin, collect),
       None => collect(&mut self.measurer),
     };
+    let list = list?;
     if list.is_empty() {
-      return None;
+      return Ok(None);
     }
     let items = list.into_items();
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
-    return Some(Block::Paragraph {
+    let leading =
+      dominant_font_size
+        .try_scale(f64::from(self.measurer.line_height_factor))
+        .map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: paragraph.origin,
+          };
+        })?;
+    return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
       items,
-      leading: dominant_font_size * self.measurer.line_height_factor,
+      leading,
       indent,
       right_indent,
       alignment,
-    });
+    }));
   }
 }
 
@@ -321,7 +342,11 @@ impl<'a> Measurer<'a> {
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する
-  fn collect_inline(&mut self, node: InlineNode, out: &mut HList) {
+  ///
+  /// # Errors
+  ///
+  /// 脚注の行送りの計算が長さの値域を超えたら、脚注の起点を [`ElementOverflow`] で返す。
+  fn collect_inline(&mut self, node: InlineNode, out: &mut HList) -> Result<(), ElementOverflow> {
     match node {
       InlineNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
@@ -359,7 +384,7 @@ impl<'a> Measurer<'a> {
       InlineNode::Link { target, children } => {
         out.push_marker(HItem::LinkStart(target));
         for child in children {
-          self.collect_inline(child, out);
+          self.collect_inline(child, out)?;
         }
         out.push_marker(HItem::LinkEnd);
       },
@@ -370,26 +395,32 @@ impl<'a> Measurer<'a> {
         index,
         body,
       } => {
-        let items = self.within(origin, |measurer| {
+        let items = self.within(origin, |measurer| -> Result<Vec<HItem>, ElementOverflow> {
           let mut body_list = HList::default();
           for child in body {
-            measurer.collect_inline(child, &mut body_list);
+            measurer.collect_inline(child, &mut body_list)?;
           }
-          return body_list.into_items();
-        });
+          return Ok(body_list.into_items());
+        })?;
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+        let leading = dominant_font_size.try_scale(f64::from(self.line_height_factor)).map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(origin),
+          };
+        })?;
         out.push_marker(HItem::Footnote(MeasuredFootnote {
           origin,
           number,
           index,
           items,
-          leading: dominant_font_size * self.line_height_factor,
+          leading,
         }));
       },
       InlineNode::IndexMark(term) => {
         out.push_marker(HItem::IndexMark(term));
       },
     }
+    return Ok(());
   }
 
   /// テキスト 1 塊を閉じた箱（Atom）にする

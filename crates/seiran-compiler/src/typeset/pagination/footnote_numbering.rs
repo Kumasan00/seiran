@@ -2,7 +2,14 @@
 
 use tracing::debug;
 
-use crate::typeset::{boxes::Page, error::TypesetError, pagination::body::BodyLayout};
+use crate::{
+  failures::Failures,
+  typeset::{
+    boxes::Page,
+    error::{ComposeError, TypesetError},
+    pagination::body::BodyLayout,
+  },
+};
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///
@@ -15,24 +22,25 @@ const MAX_FOOTNOTE_NUMBERING_PASSES: u32 = 4;
 ///
 /// # Errors
 ///
-/// 上限回数（`MAX_FOOTNOTE_NUMBERING_PASSES`）までに収束しない場合にエラーを返す。
+/// 上限回数（`MAX_FOOTNOTE_NUMBERING_PASSES`）までに収束しない場合にエラーを返す。本文パスの失敗（寸法の溢れ）は
+/// 非収束とは別にそのまま返す。
 pub(super) fn solve_per_page_numbering(
-  body_pass: &impl Fn(Option<&[u32]>) -> BodyLayout,
-) -> Result<BodyLayout, TypesetError> {
+  body_pass: &impl Fn(Option<&[u32]>) -> Result<BodyLayout, ComposeError>,
+) -> Result<BodyLayout, ComposeError> {
   // 1 回目は空の番号列＝全脚注が通し番号へフォールバックする（＝ページ割り当てを知るための下見）。
   let mut numbers: Vec<u32> = Vec::new();
   let mut pass: u32 = 1;
   loop {
-    let layout = body_pass(Some(&numbers));
+    let layout = body_pass(Some(&numbers))?;
     let next = per_page_footnote_numbers(&layout.pages);
     if next == numbers {
       debug!(pass_count = pass, "脚注のページ単位採番が収束");
       return Ok(layout);
     }
     if pass == MAX_FOOTNOTE_NUMBERING_PASSES {
-      return Err(TypesetError::PerPageFootnoteNotConverged {
+      return Err(ComposeError::Typeset(Failures::single(TypesetError::PerPageFootnoteNotConverged {
         passes: MAX_FOOTNOTE_NUMBERING_PASSES,
-      });
+      })));
     }
     numbers = next;
     pass += 1;
@@ -74,7 +82,10 @@ mod tests {
   use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, per_page_footnote_numbers, solve_per_page_numbering};
   use crate::{
     length::Length,
-    typeset::boxes::{Page, PlacedFootnote},
+    typeset::{
+      boxes::{Page, PlacedFootnote},
+      error::ComposeError,
+    },
   };
 
   /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
@@ -112,11 +123,11 @@ mod tests {
     let calls = RefCell::new(0u32);
     let body_pass = |_numbers: Option<&[u32]>| {
       *calls.borrow_mut() += 1;
-      return BodyLayout {
+      return Ok(BodyLayout {
         pages: vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[2])],
         headings: Vec::new(),
         overflows: Vec::new(),
-      };
+      });
     };
 
     let layout = solve_per_page_numbering(&body_pass).expect("収束するはず");
@@ -141,18 +152,21 @@ mod tests {
       } else {
         vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[])]
       };
-      return BodyLayout {
+      return Ok(BodyLayout {
         pages,
         headings: Vec::new(),
         overflows: Vec::new(),
-      };
+      });
     };
 
     let error = solve_per_page_numbering(&body_pass).expect_err("収束しない場合は診断を返すはず");
 
     assert_eq!(*calls.borrow(), MAX_FOOTNOTE_NUMBERING_PASSES, "上限回数で打ち切るはず");
+    let ComposeError::Typeset(failures) = error else {
+      panic!("非収束は Typeset の腕のはず: {error:?}");
+    };
     assert_eq!(
-      error.code().expect("診断コードを持つはず").to_string(),
+      failures.first().code().expect("診断コードを持つはず").to_string(),
       "typeset::footnote::per_page_not_converged",
       "回避策付きの専用診断になるはず"
     );

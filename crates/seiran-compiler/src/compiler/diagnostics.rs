@@ -451,6 +451,36 @@ fn diagnostic_length_out_of_range_in_style_and_config() {
 }
 
 #[test]
+fn diagnostic_dimension_overflow_from_line_height_factor() {
+  // 倍率は正の有限値として検証を通るが、行送り（フォントサイズ × 倍率）が値域を超える
+  let source = "hello\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "text", "line_height_factor", 3e38))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "hello");
+  assert_matches_golden("dimension_overflow_line_height", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_dimension_overflow_inside_per_page_footnote_numbering() {
+  // 反復の中で溢れても、非収束ではなく溢れとして報告する
+  let failure = TestProject::builder()
+    .source_text("hello\\footnote{x}\n")
+    .style_toml(|table| {
+      test_support::set(table, "text", "line_height_factor", 3e38);
+      test_support::set(table, "footnote", "numbering", "per_page");
+    })
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

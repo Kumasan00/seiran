@@ -128,7 +128,9 @@ pub(in crate::typeset) fn inline_atom(shaper: Shaper<'_>, nodes: Vec<InlineNode>
   let mut measurer = Measurer::new(shaper, Length::ZERO, 1.0, None, punctuation_spacing);
   let mut list = HList::default();
   for node in nodes {
-    measurer.collect_inline(node, &mut list);
+    measurer
+      .collect_inline(node, &mut list)
+      .expect("脚注を含まない列では行送りを計算する腕に入らないので、collect_inline は溢れを返さない");
   }
   let items = list.into_items();
   let line = unwrapped_line(&items);

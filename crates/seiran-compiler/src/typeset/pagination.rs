@@ -21,7 +21,7 @@ use crate::{
   typeset::{
     boxes::Page,
     breaking::{Overflow, OverflowKind},
-    error::TypesetError,
+    error::ComposeError,
     image::{ImageAsset, ImageResources},
     lowering::HeadingRecord,
     pagination::{body::BodyLayout, context::BodyPageFacts, page_values::PageLabels},
@@ -56,14 +56,14 @@ pub(crate) struct LaidOutDocument {
 ///
 /// # Errors
 ///
-/// 脚注採番に失敗した場合にエラーを返す（画像の描画寸法は `build_blocks` が確定させ、
+/// 脚注採番に失敗した場合、または寸法が長さの値域を超えた場合にエラーを返す（画像の描画寸法は `build_blocks` が確定させ、
 /// ラベル・`\ref`・引用の解決は上流の `semantics::analyze` が既に完了している）。
 pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
   images: ImageResources,
   image_paths: Vec<ProjectPath>,
-) -> Result<(LaidOutDocument, Vec<TypesetWarning>), TypesetError> {
+) -> Result<(LaidOutDocument, Vec<TypesetWarning>), ComposeError> {
   // phase 1: 本文を組版する
   let BodyLayout {
     pages: mut body_pages,
@@ -75,10 +75,13 @@ pub(super) fn paginate(
   let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);
 
   // phase 3: 前付けを組版する
-  let (front_pages, front_overflows) = front_matter::paginate(ctx, &facts, &images);
+  let source_map = document.hir().source_map();
+  let (front_pages, front_overflows) = front_matter::paginate(ctx, &facts, &images)
+    .map_err(|overflow| return ComposeError::Dimension(overflow.locate(source_map)))?;
 
   // phase 4: 後付けを組版する
-  let (back_pages, back_overflows) = back_matter::paginate(ctx, &mut body_pages, &facts);
+  let (back_pages, back_overflows) = back_matter::paginate(ctx, &mut body_pages, &facts)
+    .map_err(|overflow| return ComposeError::Dimension(overflow.locate(source_map)))?;
 
   // phase 5: 全ページラベルを確定して連結する
   let BodyPageFacts {
@@ -99,7 +102,7 @@ pub(super) fn paginate(
   // 前付け → 本文 → 後付けの順に並べるので、警告の表示順は物理ページの昇順で決定的になる
   let warnings = overflow_warnings(
     &page_labels,
-    document.hir().source_map(),
+    source_map,
     [
       (front_overflows, 0),
       (body_overflows, front_count),
