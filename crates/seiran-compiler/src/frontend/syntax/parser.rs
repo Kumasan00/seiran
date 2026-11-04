@@ -358,12 +358,12 @@ impl<'a> Parser<'a> {
     begin_children.push(CstElement::Token(begin_token));
 
     let name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
-    let env_name = self.extract_text_from_arg(name_arg);
+    let env_name = self.environment_name(name_arg)?;
     begin_children.push(CstElement::Node(name_arg));
 
     // verbatim では `\begin{...}` の直後から本体のバイトが始まるので、ここより後ろでトリビアや引数を
     // トークン化すると内容が壊れる。
-    let body_mode = (self.modes.env_body)(env_name.as_str());
+    let body_mode = (self.modes.env_body)(env_name);
 
     match body_mode {
       BodyMode::Verbatim => {
@@ -399,7 +399,7 @@ impl<'a> Parser<'a> {
     env_children.push(CstElement::Node(begin_node));
 
     let body_node = match body_mode {
-      BodyMode::Verbatim => self.parse_verbatim_body(env_name.as_str(), start_span)?,
+      BodyMode::Verbatim => self.parse_verbatim_body(env_name, start_span)?,
       BodyMode::Text => self.parse_tokenized_body(ParseMode::Text)?,
       BodyMode::Math => self.parse_tokenized_body(ParseMode::Math)?,
     };
@@ -407,7 +407,7 @@ impl<'a> Parser<'a> {
 
     if self.peek_kind() != Some(TokenKind::Command) {
       return Err(SyntaxError::UnclosedEnvironment {
-        name: env_name,
+        name: env_name.to_string(),
         span: start_span.into(),
       });
     }
@@ -425,12 +425,12 @@ impl<'a> Parser<'a> {
     end_node_children.push(CstElement::Token(end_token));
 
     let end_name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
-    let end_env_name = self.extract_text_from_arg(end_name_arg);
+    let end_env_name = self.environment_name(end_name_arg)?;
 
     if env_name != end_env_name {
       return Err(SyntaxError::MismatchedEnvironment {
-        expected: env_name,
-        found: end_env_name,
+        expected: env_name.to_string(),
+        found: end_env_name.to_string(),
         span: end_token.span.merge(self.last_span).into(),
       });
     }
@@ -820,17 +820,27 @@ impl<'a> Parser<'a> {
     }
   }
 
-  /// `MandatoryArg` ノードからテキスト内容を抽出する（環境名取得用）
-  fn extract_text_from_arg(&self, arg_node: &CstNode<'a>) -> String {
-    let mut text = String::new();
-    for child in arg_node.children {
-      if let CstElement::Token(t) = child
-        && t.kind == TokenKind::Text
-      {
-        text.push_str(t.text(self.source));
-      }
-    }
-    return text;
+  /// `\begin` / `\end` の環境名の引数から名前を読む
+  ///
+  /// 名前は `{` `}` の間のちょうど 1 個の `Text` トークン（空の `\begin{}` は空文字列で、未知の環境として評価器が
+  /// 診断する）。`view::EnvironmentView` も同じ 1 個のトークンを名前として読むので、ここで本体の読み取り方を決めた
+  /// 名前と評価器がディスパッチする名前は一致する。
+  ///
+  /// # Errors
+  ///
+  /// 空白・エスケープ・コマンド・数式など、`Text` 1 個以外の要素を含む場合に
+  /// [`SyntaxError::InvalidEnvironmentName`] を返します。
+  fn environment_name(&self, arg_node: &CstNode<'a>) -> Result<&'a str, SyntaxError> {
+    let [_open, inner @ .., _close] = arg_node.children else {
+      unreachable!("parse_mandatory_arg は `{{` と `}}` を両端の子として必ず積む")
+    };
+    return match inner {
+      [] => Ok(""),
+      [CstElement::Token(token)] if token.kind == TokenKind::Text => Ok(token.text(self.source)),
+      _ => Err(SyntaxError::InvalidEnvironmentName {
+        span: arg_node.span.into(),
+      }),
+    };
   }
 
   /// `CstNode` をアリーナに確保するヘルパー
@@ -1050,6 +1060,33 @@ mod tests {
     let arena = Bump::new();
     let result = parse_cst("\\begin{foo}content\\end{bar}", &arena);
     assert!(matches!(result, Err(SyntaxError::MismatchedEnvironment { .. })));
+  }
+
+  #[test]
+  fn environment_name_must_be_a_single_word() {
+    // 環境名は文字列として読む。空白・エスケープ・コマンドで割れた名前を連結して通さない（verbatim の判定と評価器の
+    // 名前が食い違わないことの前提）
+    for source in [
+      r"\begin{code x}abc\end{code x}",
+      r"\begin{code\_x}abc\end{code\_x}",
+      r"\begin{center\foo}a\end{center}",
+      r"\begin{center}a\end{cen$x$ter}",
+    ] {
+      let arena = Bump::new();
+
+      let result = parse_cst(source, &arena);
+
+      assert!(matches!(result, Err(SyntaxError::InvalidEnvironmentName { .. })), "{source}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn empty_environment_name_is_left_to_the_evaluator() {
+    let arena = Bump::new();
+
+    let result = parse_cst(r"\begin{}a\end{}", &arena);
+
+    assert!(result.is_ok(), "{result:?}");
   }
 
   #[test]
