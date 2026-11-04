@@ -4,7 +4,7 @@
 //! 座標系は [`Page`] と同じ（`x` は本文左端、`y` はページ上端からの距離）。
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{
       AnchorId, FootnoteId, IndexTerm, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink,
@@ -62,7 +62,7 @@ enum Entry {
 
 impl Entry {
   /// 下端揃えの配分: 先行 stretch 累積量 × `ratio` だけ下方へ動かす
-  fn shift_by_stretch(&mut self, ratio: f64) {
+  fn shift_by_stretch(&mut self, ratio: f64) -> Result<(), LengthOverflow> {
     match self {
       Entry::Block {
         block,
@@ -70,22 +70,22 @@ impl Entry {
         links,
         stretch_before,
       } => {
-        let dy = stretch_before.scale(ratio);
-        shift_placed_block(block, dy);
+        let dy = stretch_before.try_scale(ratio)?;
+        shift_placed_block(block, dy)?;
         for anchor in anchors {
-          anchor.y += dy;
+          shift_y(&mut anchor.y, dy)?;
         }
         for link in links {
-          link.y += dy;
+          shift_y(&mut link.y, dy)?;
         }
       },
       Entry::Anchors {
         anchors,
         stretch_before,
       } => {
-        let dy = stretch_before.scale(ratio);
+        let dy = stretch_before.try_scale(ratio)?;
         for anchor in anchors {
-          anchor.y += dy;
+          shift_y(&mut anchor.y, dy)?;
         }
       },
       Entry::Footnote { .. } => {
@@ -94,6 +94,7 @@ impl Entry {
         )
       },
     }
+    return Ok(());
   }
 }
 
@@ -127,7 +128,10 @@ impl PageDraft {
   pub(super) fn defer_anchor(&mut self, id: AnchorId) { self.pending_anchors.push(id); }
 
   /// 伸縮アキを通過した（下端揃えの配分重みを累積する）
-  pub(super) fn pass_stretch(&mut self, stretch: Length) { self.region_stretch += stretch; }
+  pub(super) fn pass_stretch(&mut self, stretch: Length) -> Result<(), LengthOverflow> {
+    self.region_stretch = self.region_stretch.try_add(stretch)?;
+    return Ok(());
+  }
 
   /// 未解決アンカーを `(x, y)` で解決して取り出す
   fn take_pending_anchors(&mut self, x: Length, y: Length) -> Vec<PlacedAnchor> {
@@ -150,13 +154,14 @@ impl PageDraft {
   /// リンク矩形・索引語は行から導出する
   ///
   /// 段落の 2 行目以降では未解決アンカーは常に空（アンカーは block 境界でしか発行されない）。
-  pub(super) fn place_line(&mut self, line: Line, baseline_y: Length, column_x: Length) {
-    let anchors = self.take_pending_anchors(column_x, baseline_y - line.height);
-    let links = line_links(&line, baseline_y);
+  pub(super) fn place_line(&mut self, line: Line, baseline_y: Length, column_x: Length) -> Result<(), LengthOverflow> {
+    let anchors = self.take_pending_anchors(column_x, baseline_y.try_sub(line.height)?);
+    let links = line_links(&line, baseline_y)?;
     for entry in &line.index_marks {
       self.push_index_entry(entry);
     }
     self.push_block(PlacedBlock::Line { line, baseline_y }, anchors, links);
+    return Ok(());
   }
 
   /// 行・表以外の block（画像・ディスプレイ数式）を置いた。未解決アンカーは `(anchor_x, anchor_y)` で解決する
@@ -184,13 +189,13 @@ impl PageDraft {
     fragment: PendingTableFragment,
     column_x: Length,
     align_offset: Length,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let PendingTableFragment { top_y, rows, rules } = fragment;
     if rows.is_empty() {
-      return;
+      return Ok(());
     }
     let anchors = self.take_pending_anchors(column_x, top_y);
-    let x = column_x + align_offset;
+    let x = column_x.try_add(align_offset)?;
     let mut links = Vec::new();
     let mut placed_rows = Vec::with_capacity(rows.len());
     for (fragment, top_y) in rows {
@@ -204,12 +209,12 @@ impl PageDraft {
     let rules = rules
       .into_iter()
       .map(|rule| {
-        return PlacedTableRule {
-          x: rule.x + x,
+        return Ok(PlacedTableRule {
+          x: rule.x.try_add(x)?,
           ..rule
-        };
+        });
       })
-      .collect();
+      .collect::<Result<Vec<_>, LengthOverflow>>()?;
     self.push_block(
       PlacedBlock::Table {
         rows: placed_rows,
@@ -218,6 +223,7 @@ impl PageDraft {
       anchors,
       links,
     );
+    return Ok(());
   }
 
   /// block entry を台帳へ積む（先行 stretch 累積量を写す）
@@ -252,23 +258,24 @@ impl PageDraft {
     region_limit: Length,
     flush: bool,
     footnotes: Vec<PendingFootnote>,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     if flush && geom.flush_bottom {
-      self.flush_region(region_limit);
+      self.flush_region(region_limit)?;
     }
-    self.place_footnotes(geom, column_x, region_limit, footnotes);
+    self.place_footnotes(geom, column_x, region_limit, footnotes)?;
     self.region_start = self.entries.len();
     self.region_stretch = Length::ZERO;
+    return Ok(());
   }
 
   /// 下端揃え: 現在リージョンの本文 entry を、不足高さ `target_bottom − 本文下端` を先行 stretch
   /// 累積量に比例配分して下方へ動かす
   ///
   /// 不足高さが `FLUSH_EPSILON` 以下、または分母（最後の本文 block の先行累積量）が正でなければ動かさない。
-  fn flush_region(&mut self, target_bottom: Length) {
+  fn flush_region(&mut self, target_bottom: Length) -> Result<(), LengthOverflow> {
     let region = &mut self.entries[self.region_start..];
     let Some(last_block) = region.iter().rposition(|entry| return matches!(entry, Entry::Block { .. })) else {
-      return;
+      return Ok(());
     };
     let Some(region_bottom) = region
       .iter()
@@ -276,22 +283,25 @@ impl PageDraft {
         Entry::Block { block, .. } => return Some(placed_block_bottom(block)),
         Entry::Anchors { .. } | Entry::Footnote { .. } => return None,
       })
+      .collect::<Result<Vec<_>, LengthOverflow>>()?
+      .into_iter()
       .max()
     else {
       unreachable!("直前の rposition がこのリージョンに Block が在ると保証している");
     };
-    let deficit = target_bottom - region_bottom;
+    let deficit = target_bottom.try_sub(region_bottom)?;
     let Entry::Block { stretch_before, .. } = &region[last_block] else {
       unreachable!("last_block は直前の rposition が Block と判定した index");
     };
     let effective = *stretch_before;
     if deficit <= FLUSH_EPSILON || !effective.is_positive() {
-      return;
+      return Ok(());
     }
     let ratio = deficit.ratio(effective);
     for entry in region.iter_mut() {
-      entry.shift_by_stretch(ratio);
+      entry.shift_by_stretch(ratio)?;
     }
+    return Ok(());
   }
 
   /// リージョンの脚注を脚注エリア（上端 `region_limit`）へ確定座標で積む
@@ -309,12 +319,12 @@ impl PageDraft {
     column_x: Length,
     region_limit: Length,
     footnotes: Vec<PendingFootnote>,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let mut top = region_limit;
     for (index, pending) in footnotes.into_iter().enumerate() {
       let mut blocks = Vec::new();
       if index == 0 {
-        top += geom.footnote_top_margin;
+        top = top.try_add(geom.footnote_top_margin)?;
         if geom.footnote_rule_thickness.is_positive() {
           blocks.push(PlacedBlock::Rule {
             x: column_x,
@@ -323,10 +333,10 @@ impl PageDraft {
             height: geom.footnote_rule_thickness,
             color: geom.footnote_rule_color,
           });
-          top += geom.footnote_rule_thickness;
+          top = top.try_add(geom.footnote_rule_thickness)?;
         }
       }
-      top += geom.footnote_rule_gap;
+      top = top.try_add(geom.footnote_rule_gap)?;
       let anchor = (!pending.continued).then(|| {
         return PlacedAnchor {
           id: AnchorId::Footnote(FootnoteId::new(pending.index)),
@@ -336,15 +346,15 @@ impl PageDraft {
       });
       let mut links = Vec::new();
       blocks.reserve(pending.lines.len());
-      let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| return line.height);
+      let mut baseline = top.try_add(pending.lines.first().map_or(Length::ZERO, |line| return line.height))?;
       let mut prev_depth = Length::ZERO;
       for (i, mut line) in pending.lines.into_iter().enumerate() {
         if i > 0 {
-          baseline += pending.leading.max(prev_depth + line.height);
+          baseline = baseline.try_add(pending.leading.max(prev_depth.try_add(line.height)?))?;
         }
         prev_depth = line.depth;
         line.shift_x(column_x);
-        links.extend(line_links(&line, baseline));
+        links.extend(line_links(&line, baseline)?);
         for entry in &line.index_marks {
           self.push_index_entry(entry);
         }
@@ -353,7 +363,7 @@ impl PageDraft {
           baseline_y: baseline,
         });
       }
-      top = baseline + prev_depth;
+      top = baseline.try_add(prev_depth)?;
       self.entries.push(Entry::Footnote {
         footnote: PlacedFootnote {
           index: pending.index,
@@ -364,6 +374,7 @@ impl PageDraft {
         links,
       });
     }
+    return Ok(());
   }
 
   /// 本文 block か確定脚注を 1 つでも持つか。帰属データ（アンカー・索引語）だけではページを作らない
@@ -423,57 +434,68 @@ impl PageDraft {
 /// 行のリンク領域を確定座標の矩形へ展開する（退化矩形の扱いは [`LineLink::place`](crate::typeset::boxes::LineLink::place)）
 ///
 /// 矩形の上端は `baseline_y − height`、高さは `height + depth`（行 box 全体）。
-fn line_links(line: &Line, baseline_y: Length) -> Vec<PlacedLink> {
-  let top = baseline_y - line.height;
-  let height = line.height + line.depth;
-  return line.links.iter().filter_map(|link| return link.place(Length::ZERO, top, height)).collect();
+fn line_links(line: &Line, baseline_y: Length) -> Result<Vec<PlacedLink>, LengthOverflow> {
+  let top = baseline_y.try_sub(line.height)?;
+  let height = line.height.try_add(line.depth)?;
+  return Ok(line.links.iter().filter_map(|link| return link.place(Length::ZERO, top, height)).collect());
 }
 
 /// [`PlacedBlock`] の底辺（ページ上端からの距離）を返す
-pub(super) fn placed_block_bottom(block: &PlacedBlock) -> Length {
+pub(super) fn placed_block_bottom(block: &PlacedBlock) -> Result<Length, LengthOverflow> {
   return match block {
-    PlacedBlock::Line { line, baseline_y } => *baseline_y + line.depth,
+    PlacedBlock::Line { line, baseline_y } => baseline_y.try_add(line.depth),
     PlacedBlock::MathBlock {
       body, baseline_y, ..
-    } => *baseline_y + body.depth,
-    PlacedBlock::Image { y, height, .. } | PlacedBlock::Rule { y, height, .. } => *y + *height,
-    PlacedBlock::Table { rows, rules } => rows
-      .iter()
-      .map(|row| return row.top_y + row.height)
-      .chain(rules.iter().map(|rule| return rule.y + rule.height))
-      .max()
-      .expect("表は 1 行以上を持つ（place_table_fragment が行の無い断片を積まない）"),
+    } => baseline_y.try_add(body.depth),
+    PlacedBlock::Image { y, height, .. } | PlacedBlock::Rule { y, height, .. } => y.try_add(*height),
+    PlacedBlock::Table { rows, rules } => Ok(
+      rows
+        .iter()
+        .map(|row| return row.top_y.try_add(row.height))
+        .chain(rules.iter().map(|rule| return rule.y.try_add(rule.height)))
+        .collect::<Result<Vec<_>, LengthOverflow>>()?
+        .into_iter()
+        .max()
+        .expect("表は 1 行以上を持つ（place_table_fragment が行の無い断片を積まない）"),
+    ),
   };
 }
 
+/// 座標 `y` を下方へ `dy` だけずらす
+fn shift_y(y: &mut Length, dy: Length) -> Result<(), LengthOverflow> {
+  *y = y.try_add(dy)?;
+  return Ok(());
+}
+
 /// [`PlacedBlock`] とその内部の確定座標を下方へ `dy` だけずらす
-fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
+fn shift_placed_block(block: &mut PlacedBlock, dy: Length) -> Result<(), LengthOverflow> {
   if dy == Length::ZERO {
-    return;
+    return Ok(());
   }
   match block {
-    PlacedBlock::Line { baseline_y, .. } => *baseline_y += dy,
+    PlacedBlock::Line { baseline_y, .. } => shift_y(baseline_y, dy)?,
     PlacedBlock::MathBlock {
       baseline_y,
       numbers,
       ..
     } => {
-      *baseline_y += dy;
+      shift_y(baseline_y, dy)?;
       for number in numbers {
-        number.baseline_y += dy;
+        shift_y(&mut number.baseline_y, dy)?;
       }
     },
-    PlacedBlock::Image { y, .. } | PlacedBlock::Rule { y, .. } => *y += dy,
+    PlacedBlock::Image { y, .. } | PlacedBlock::Rule { y, .. } => shift_y(y, dy)?,
     PlacedBlock::Table { rows, rules } => {
       for row in rows {
-        row.top_y += dy;
-        row.baseline_y += dy;
+        shift_y(&mut row.top_y, dy)?;
+        shift_y(&mut row.baseline_y, dy)?;
       }
       for rule in rules {
-        rule.y += dy;
+        shift_y(&mut rule.y, dy)?;
       }
     },
   }
+  return Ok(());
 }
 
 #[cfg(test)]
@@ -589,11 +611,17 @@ mod tests {
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("a")));
-    draft.place_line(line(Some(external("A")), None), pt(10.0), Length::ZERO);
-    draft.close_region(&geom, Length::ZERO, pt(36.0), false, vec![footnote(0, "F1", false)]);
+    draft
+      .place_line(line(Some(external("A")), None), pt(10.0), Length::ZERO)
+      .expect("テストの寸法は値域内");
+    draft
+      .close_region(&geom, Length::ZERO, pt(36.0), false, vec![footnote(0, "F1", false)])
+      .expect("テストの寸法は値域内");
     draft.defer_anchor(AnchorId::Label(LabelId::new("b")));
-    draft.place_line(line(Some(external("B")), None), pt(10.0), pt(55.0));
-    draft.close_region(&geom, pt(55.0), pt(36.0), false, vec![footnote(1, "F2", true)]);
+    draft.place_line(line(Some(external("B")), None), pt(10.0), pt(55.0)).expect("テストの寸法は値域内");
+    draft
+      .close_region(&geom, pt(55.0), pt(36.0), false, vec![footnote(1, "F2", true)])
+      .expect("テストの寸法は値域内");
 
     let page = draft.take_page(&geom);
 
@@ -628,7 +656,7 @@ mod tests {
     draft.land_anchors(Length::ZERO, pt(46.0));
     assert!(!draft.has_content(), "アンカーだけではページ内容にならない");
 
-    draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new());
+    draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new()).expect("テストの寸法は値域内");
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
     let page = draft.take_page(&geom);
 
@@ -643,11 +671,11 @@ mod tests {
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
-    draft.pass_stretch(pt(4.0));
+    draft.pass_stretch(pt(4.0)).expect("テストの寸法は値域内");
     draft.place_block(image(24.0, 10.0), Length::ZERO, pt(24.0));
-    draft.pass_stretch(pt(4.0));
+    draft.pass_stretch(pt(4.0)).expect("テストの寸法は値域内");
 
-    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
+    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new()).expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     // ratio 4: A は +0、B は 4 × 4 = +16 で下端 50
@@ -659,12 +687,14 @@ mod tests {
     // 行 1 (baseline 10)、stretch 4、行 2 (baseline 26、アンカー・リンク付き)。不足 50 − 28 = 22、分母 4
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.place_line(line(None, None), pt(10.0), Length::ZERO);
-    draft.pass_stretch(pt(4.0));
+    draft.place_line(line(None, None), pt(10.0), Length::ZERO).expect("テストの寸法は値域内");
+    draft.pass_stretch(pt(4.0)).expect("テストの寸法は値域内");
     draft.defer_anchor(AnchorId::Label(LabelId::new("x")));
-    draft.place_line(line(Some(external("L")), None), pt(26.0), Length::ZERO);
+    draft
+      .place_line(line(Some(external("L")), None), pt(26.0), Length::ZERO)
+      .expect("テストの寸法は値域内");
 
-    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
+    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new()).expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     // 行 2 は +22 で baseline 48、アンカーとリンクは行上端 18 + 22 = 40
@@ -688,7 +718,7 @@ mod tests {
     draft.place_block(image(10.0, 10.0), Length::ZERO, pt(10.0));
     draft.place_block(image(24.0, 10.0), Length::ZERO, pt(24.0));
 
-    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
+    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new()).expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     assert_eq!(image_ys(&page), vec![pt(10.0), pt(24.0)]);
@@ -699,10 +729,12 @@ mod tests {
     // 本文 1 block + stretch。脚注 2 個: 1 個目は gap 4 の後、2 個目はさらに gap 4
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.pass_stretch(pt(4.0));
+    draft.pass_stretch(pt(4.0)).expect("テストの寸法は値域内");
     draft.place_block(image(14.0, 10.0), Length::ZERO, pt(14.0));
 
-    draft.close_region(&geom, pt(5.0), pt(30.0), true, vec![footnote(0, "F1", false), footnote(1, "F2", false)]);
+    draft
+      .close_region(&geom, pt(5.0), pt(30.0), true, vec![footnote(0, "F1", false), footnote(1, "F2", false)])
+      .expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     // 本文は下端 30 へ +6。脚注 1: top 34、baseline 42、下端 44。脚注 2: top 48、baseline 56
@@ -727,11 +759,11 @@ mod tests {
   fn closing_an_already_closed_region_changes_nothing() {
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.pass_stretch(pt(4.0));
+    draft.pass_stretch(pt(4.0)).expect("テストの寸法は値域内");
     draft.place_block(image(14.0, 10.0), Length::ZERO, pt(14.0));
-    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new());
+    draft.close_region(&geom, Length::ZERO, pt(50.0), true, Vec::new()).expect("テストの寸法は値域内");
 
-    draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new());
+    draft.close_region(&geom, Length::ZERO, pt(50.0), false, Vec::new()).expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     // 1 回目の揃え（不足 26、分母 4 → +26）のまま
@@ -744,7 +776,7 @@ mod tests {
     let mut draft = PageDraft::new();
     let mut degenerate = line(Some(external("D")), None);
     degenerate.links[0].x1 = degenerate.links[0].x0;
-    draft.place_line(degenerate, pt(10.0), Length::ZERO);
+    draft.place_line(degenerate, pt(10.0), Length::ZERO).expect("テストの寸法は値域内");
 
     let page = draft.take_page(&geom);
 
@@ -797,28 +829,32 @@ mod tests {
   fn index_entries_dedup_across_line_table_and_footnote() {
     let geom = geometry();
     let mut draft = PageDraft::new();
-    draft.place_line(line(None, Some("語")), pt(10.0), Length::ZERO);
+    draft.place_line(line(None, Some("語")), pt(10.0), Length::ZERO).expect("テストの寸法は値域内");
     // 先頭は再掲ヘッダの断片（表エンジンが索引語を除いている）
-    draft.place_table_fragment(
-      PendingTableFragment {
-        top_y: pt(22.0),
-        rows: vec![
-          (table_row(None), pt(22.0)),
-          (table_row(Some("語")), pt(32.0)),
-          (table_row(Some("表語")), pt(42.0)),
-        ],
-        rules: Vec::new(),
-      },
-      Length::ZERO,
-      Length::ZERO,
-    );
+    draft
+      .place_table_fragment(
+        PendingTableFragment {
+          top_y: pt(22.0),
+          rows: vec![
+            (table_row(None), pt(22.0)),
+            (table_row(Some("語")), pt(32.0)),
+            (table_row(Some("表語")), pt(42.0)),
+          ],
+          rules: Vec::new(),
+        },
+        Length::ZERO,
+        Length::ZERO,
+      )
+      .expect("テストの寸法は値域内");
     let mut in_footnote = footnote(0, "F", false);
     in_footnote.lines[0].index_marks.push(IndexTerm {
       word: "語".to_string(),
       reading: None,
     });
 
-    draft.close_region(&geom, Length::ZERO, pt(36.0), false, vec![in_footnote]);
+    draft
+      .close_region(&geom, Length::ZERO, pt(36.0), false, vec![in_footnote])
+      .expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     // 「語」は初出 1 件、順序は出現順
@@ -860,24 +896,26 @@ mod tests {
     let geom = geometry();
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
-    draft.place_table_fragment(
-      PendingTableFragment {
-        top_y: pt(19.0),
-        rows: vec![
-          (table_row(Some("R0")), pt(22.0)),
-          (table_row(Some("R1")), pt(32.0)),
-        ],
-        rules: vec![PlacedTableRule {
-          x: Length::ZERO,
-          y: pt(19.0),
-          width: pt(24.0),
-          height: pt(1.0),
-          color: None,
-        }],
-      },
-      pt(55.0),
-      pt(5.0),
-    );
+    draft
+      .place_table_fragment(
+        PendingTableFragment {
+          top_y: pt(19.0),
+          rows: vec![
+            (table_row(Some("R0")), pt(22.0)),
+            (table_row(Some("R1")), pt(32.0)),
+          ],
+          rules: vec![PlacedTableRule {
+            x: Length::ZERO,
+            y: pt(19.0),
+            width: pt(24.0),
+            height: pt(1.0),
+            color: None,
+          }],
+        },
+        pt(55.0),
+        pt(5.0),
+      )
+      .expect("テストの寸法は値域内");
     let page = draft.take_page(&geom);
 
     assert_eq!(page.anchors.len(), 1, "{:?}", page.anchors);
@@ -896,15 +934,17 @@ mod tests {
     let mut draft = PageDraft::new();
     draft.defer_anchor(AnchorId::Label(LabelId::new("tab")));
 
-    draft.place_table_fragment(
-      PendingTableFragment {
-        top_y: Length::ZERO,
-        rows: Vec::new(),
-        rules: Vec::new(),
-      },
-      Length::ZERO,
-      Length::ZERO,
-    );
+    draft
+      .place_table_fragment(
+        PendingTableFragment {
+          top_y: Length::ZERO,
+          rows: Vec::new(),
+          rules: Vec::new(),
+        },
+        Length::ZERO,
+        Length::ZERO,
+      )
+      .expect("テストの寸法は値域内");
     assert!(!draft.has_content(), "空断片は内容にならない");
     draft.place_block(image(30.0, 10.0), pt(7.0), pt(30.0));
     let page = draft.take_page(&geom);
