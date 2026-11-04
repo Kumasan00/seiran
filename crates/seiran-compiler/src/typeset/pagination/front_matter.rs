@@ -75,7 +75,7 @@ pub(super) fn paginate(
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "front").entered();
-    break_pages(front_blocks, ctx.geometry.text_width(), ctx.geometry.front_geometry(), &ctx.breaker)
+    break_pages(front_blocks, ctx.geometry.text_width(), ctx.geometry.front_geometry(), &ctx.breaker)?
   };
   return Ok((pages, overflows));
 }

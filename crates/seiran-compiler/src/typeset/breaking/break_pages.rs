@@ -19,7 +19,7 @@ use tracing::debug;
 
 use crate::{
   document::{NodeId, TextAlignment},
-  length::Length,
+  length::{Length, LengthOverflow},
   project::ProjectPath,
   typeset::{
     boxes::{
@@ -28,6 +28,7 @@ use crate::{
       TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
+    error::ElementOverflow,
     geometry::{PageGeometry, column_width},
     observe,
   },
@@ -391,13 +392,12 @@ impl PageComposer {
 /// 数式は字下げを引いた利用幅）と実効の本文下限を基準に軸ごとに記録する。表は利用幅に対する幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも
 /// 入らない行帯）を測る。
 /// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
-#[must_use]
 pub(in crate::typeset) fn break_pages(
   blocks: Vec<Block>,
   text_width: Length,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
-) -> (Vec<Page>, Vec<Overflow>) {
+) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
   let col_width = column_width(text_width, geom.num_columns, geom.column_gap);
   let mut composer = PageComposer::new(geom, col_width);
   let block_count = blocks.len();
@@ -412,7 +412,7 @@ pub(in crate::typeset) fn break_pages(
       && is_content_block(&blocks[i])
       && let Some(end) = keep_group_end(&blocks, i)
     {
-      if keep_group_orphaned(composer.cursor, !composer.carry.is_empty(), geom, breaker, col_width, &blocks[i..=end])
+      if keep_group_orphaned(composer.cursor, !composer.carry.is_empty(), geom, breaker, col_width, &blocks[i..=end])?
         && !composer.cursor.at_region_top(geom)
       {
         composer.advance_region(geom);
@@ -446,7 +446,7 @@ pub(in crate::typeset) fn break_pages(
           right_indent,
           alignment,
           origin,
-        );
+        )?;
       },
       Block::ComposedLine {
         origin,
@@ -518,7 +518,7 @@ pub(in crate::typeset) fn break_pages(
         align,
       } => {
         let available = boxes::usable_width(col_width, indent, right_indent);
-        place_table(&mut composer, geom, breaker, table, col_width, indent, available, align);
+        place_table(&mut composer, geom, breaker, table, col_width, indent, available, align)?;
         composer.cursor.at_edge = true;
       },
       Block::Math {
@@ -543,7 +543,7 @@ pub(in crate::typeset) fn break_pages(
 
   let (pages, overflows) = composer.finish(geom);
   debug!(block_count, page_count = pages.len(), "ページを分割");
-  return (pages, overflows);
+  return Ok((pages, overflows));
 }
 
 /// widow/orphan 制御でまとめて送る最小行数。
@@ -609,26 +609,26 @@ fn plan_atomic(
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
   column_width: Length,
-) -> AtomicPlacement {
+) -> Result<AtomicPlacement, ElementOverflow> {
   match block {
     Block::Image { height, .. } => {
-      return AtomicPlacement {
+      return Ok(AtomicPlacement {
         starts_region: cursor.overflows(*height, geom),
         cursor_after: cursor.below(*height),
-      };
+      });
     },
     Block::Math { body, .. } => {
       let height = body.height + body.depth;
-      return AtomicPlacement {
+      return Ok(AtomicPlacement {
         starts_region: cursor.defers_unbreakable(height, geom),
         cursor_after: cursor.below(height),
-      };
+      });
     },
     Block::ComposedLine { line, leading, .. } => {
-      return AtomicPlacement {
+      return Ok(AtomicPlacement {
         starts_region: cursor.line_overflows(line, geom),
         cursor_after: cursor.after_line(cursor.line_baseline(line), *leading),
-      };
+      });
     },
     Block::Table { table, .. } => {
       let total = table.height();
@@ -636,23 +636,27 @@ fn plan_atomic(
       // 同じ判定）。先頭行は断片を開くヘッダ行かヘッダの無い表の本体行なので、前に積むのは上端の枠罫だけ
       let starts_region = if table.breakable {
         let first = table.head.first().or_else(|| return table.rows.first());
-        first.is_some_and(|row| {
-          let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)]);
-          let need = FragmentFrame::of(table).for_head_rows().row_need(row, true);
-          return defers_table_row(cursor, need, &demands[0], need, geom);
-        })
+        match first {
+          Some(row) => {
+            let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)?]);
+            let need = FragmentFrame::of(table).for_head_rows().row_need(row, true);
+            defers_table_row(cursor, need, &demands[0], need, geom)
+          },
+          None => false,
+        }
       } else {
-        let demands: Vec<FootnoteDemand> = footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width))
-          .into_iter()
-          .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, column_width)))
-          .flatten()
-          .collect();
+        let demands: Vec<FootnoteDemand> =
+          footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width)?)
+            .into_iter()
+            .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, column_width)?))
+            .flatten()
+            .collect();
         defers_unbreakable_table(cursor, total, &demands, geom)
       };
-      return AtomicPlacement {
+      return Ok(AtomicPlacement {
         starts_region,
         cursor_after: cursor.below(total),
-      };
+      });
     },
     Block::Paragraph { .. } => unreachable!("段落は keep_group_orphaned が plan_paragraph_lines で扱う"),
     Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => {
@@ -670,9 +674,9 @@ fn keep_group_orphaned(
   breaker: &dyn LineBreaker,
   column_width: Length,
   group: &[Block],
-) -> bool {
+) -> Result<bool, ElementOverflow> {
   let Some(last_content) = group.iter().rposition(is_content_block) else {
-    return false;
+    return Ok(false);
   };
   let charges = FootnoteCharges::of(geom);
   for (gi, block) in group.iter().enumerate() {
@@ -681,15 +685,15 @@ fn keep_group_orphaned(
         cursor.y += *natural;
       },
       Block::Paragraph {
+        origin,
         items,
         leading,
         indent,
         right_indent,
         alignment,
-        ..
       } => {
-        let lines = break_paragraph(breaker, items, column_width, *indent, *right_indent, *alignment);
-        let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width));
+        let lines = break_paragraph(breaker, items, column_width, *indent, *right_indent, *alignment, *origin)?;
+        let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width)?);
         let (plan, truncated) = plan_paragraph_lines(
           &lines,
           cursor,
@@ -705,11 +709,11 @@ fn keep_group_orphaned(
           // 本文は先頭行が見出しと同じリージョンに乗るかだけを見る。先頭リージョンに最小行数を残せない
           // ときの送り（orphan）と短い段落を丸ごと送る widow 補正は、計画の `starts_region` に反映済み。
           // 計画が空（繰越で先頭行すら入らない）なら実配置は改リージョンする
-          return !lines.is_empty() && plan.first().is_none_or(|placement| return placement.starts_region);
+          return Ok(!lines.is_empty() && plan.first().is_none_or(|placement| return placement.starts_region));
         }
         // 見出しは全行が同じリージョンに乗るか。打ち切られて残った行は実配置では次リージョンへ送られる
         if plan.len() < lines.len() || plan.iter().any(|placement| return placement.starts_region) {
-          return true;
+          return Ok(true);
         }
         cursor = match plan.last() {
           Some(last) => RegionCursor {
@@ -723,19 +727,21 @@ fn keep_group_orphaned(
         carry_pending |= truncated;
       },
       _ if is_content_block(block) => {
-        let placement = plan_atomic(block, cursor, geom, breaker, column_width);
+        let placement = plan_atomic(block, cursor, geom, breaker, column_width)?;
         if gi == last_content || placement.starts_region {
-          return placement.starts_region;
+          return Ok(placement.starts_region);
         }
         cursor = placement.cursor_after;
       },
       _ => {},
     }
   }
-  return false;
+  return Ok(false);
 }
 
 /// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
+///
+/// 行の幅の計算が溢れたら、段落の起点 `origin` を [`ElementOverflow`] で返す。
 fn break_paragraph(
   breaker: &dyn LineBreaker,
   items: &[HItem],
@@ -743,40 +749,55 @@ fn break_paragraph(
   indent: Length,
   right_indent: Length,
   alignment: TextAlignment,
-) -> Vec<Line> {
+  origin: Option<NodeId>,
+) -> Result<Vec<Line>, ElementOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent);
-  let mut lines = breaker.break_lines(items, available, alignment);
+  let mut lines = breaker
+    .break_lines(items, available, alignment)
+    .map_err(|LengthOverflow| return ElementOverflow { origin })?;
   // 揃えのずらしは行分割が利用可能幅の中で済ませている。段オフセットは段をまたぐと行ごとに変わるため、
   // ここでは足さず着地段が決まってから足す
   for line in &mut lines {
     line.shift_x(indent);
   }
-  return lines;
+  return Ok(lines);
 }
 
 /// 脚注を段幅で行分割し、未確定の脚注にする（`footnotes` と同順・同長）。本文の行と表の行が共用する
+///
+/// 行の幅の計算が溢れたら、その脚注の起点を [`ElementOverflow`] で返す。
 fn pending_footnotes(
   breaker: &dyn LineBreaker,
   footnotes: &[MeasuredFootnote],
   column_width: Length,
-) -> Vec<PendingFootnote> {
+) -> Result<Vec<PendingFootnote>, ElementOverflow> {
   return footnotes
     .iter()
     .map(|footnote| {
-      return PendingFootnote {
+      let lines =
+        breaker.break_lines(&footnote.items, column_width, TextAlignment::Left).map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(footnote.origin),
+          };
+        })?;
+      return Ok(PendingFootnote {
         origin: footnote.origin,
         number: footnote.number,
         index: footnote.index,
         continued: false,
-        lines: breaker.break_lines(&footnote.items, column_width, TextAlignment::Left),
+        lines,
         leading: footnote.leading,
-      };
+      });
     })
     .collect();
 }
 
 /// 各行に付いた脚注（`line.footnotes`）を段幅で行分割し、未確定の脚注にする（`lines` と同順・同長）
-fn footnote_bodies(breaker: &dyn LineBreaker, lines: &[Line], column_width: Length) -> Vec<Vec<PendingFootnote>> {
+fn footnote_bodies(
+  breaker: &dyn LineBreaker,
+  lines: &[Line],
+  column_width: Length,
+) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
   return lines.iter().map(|line| return pending_footnotes(breaker, &line.footnotes, column_width)).collect();
 }
 
@@ -785,7 +806,7 @@ fn table_footnote_bodies(
   breaker: &dyn LineBreaker,
   rows: &[TableRowFragment],
   column_width: Length,
-) -> Vec<Vec<PendingFootnote>> {
+) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
   return rows.iter().map(|row| return pending_footnotes(breaker, &row.footnotes, column_width)).collect();
 }
 
@@ -818,12 +839,12 @@ fn place_paragraph(
   right_indent: Length,
   alignment: TextAlignment,
   origin: Option<NodeId>,
-) {
-  let mut lines = break_paragraph(breaker, items, column_width, indent, right_indent, alignment);
+) -> Result<(), ElementOverflow> {
+  let mut lines = break_paragraph(breaker, items, column_width, indent, right_indent, alignment, origin)?;
   // 脚注の行分割と需要は widow/orphan の再フローや chunk の再計画で再計算しない
   // （脚注の構成は改リージョン点の選び方で変わらないため）
   let charges = FootnoteCharges::of(geom);
-  let mut bodies = footnote_bodies(breaker, &lines, column_width);
+  let mut bodies = footnote_bodies(breaker, &lines, column_width)?;
   let mut demands = footnote_demands(&bodies);
   // 段落を前から chunk 単位で確定する。繰越が生じない段落ではループは 1 周で終わる
   let mut last_baseline = composer.cursor.y;
@@ -888,6 +909,7 @@ fn place_paragraph(
     }
   }
   composer.cursor = composer.cursor.after_line(last_baseline, leading);
+  return Ok(());
 }
 
 /// 合成済みの単一行（[`Block::ComposedLine`]）を 1 行として配置する
@@ -1116,11 +1138,11 @@ fn place_table(
   indent: Length,
   available: Length,
   align: Align,
-) {
+) -> Result<(), ElementOverflow> {
   // 揃えオフセットは段内のもの（字下げを含む）。段オフセットは着地段が決まる flush 時に断片ごとに足す
   let align_offset = indent + align.offset(available, table.width);
-  let head_bodies = table_footnote_bodies(breaker, &table.head, column_width);
-  let row_bodies = table_footnote_bodies(breaker, &table.rows, column_width);
+  let head_bodies = table_footnote_bodies(breaker, &table.head, column_width)?;
+  let row_bodies = table_footnote_bodies(breaker, &table.rows, column_width)?;
   if !table.breakable {
     let demands: Vec<FootnoteDemand> =
       footnote_demands(&head_bodies).into_iter().chain(footnote_demands(&row_bodies)).flatten().collect();
@@ -1166,6 +1188,7 @@ fn place_table(
   }
   record_width_excess(composer);
   close_table_fragment(composer, &mut pending, &body_frame.bottom, align_offset);
+  return Ok(());
 }
 
 /// 開いている断片があれば、下端の枠罫 `bottom` を積んで現在の段へ着地させる（改リージョンの前に呼ぶので段オフセットは
@@ -1309,8 +1332,8 @@ fn place_table_row(
 #[cfg(test)]
 mod tests {
   use super::{
-    FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor, break_pages,
-    is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
+    FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor,
+    break_pages as try_break_pages, is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
     document::{NodeId, TextAlignment},
@@ -1325,11 +1348,21 @@ mod tests {
         MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox,
         PlacedLink, PlacedTableRow, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
       },
-      breaking::break_lines::GreedyBreaker,
+      breaking::break_lines::{GreedyBreaker, LineBreaker},
     },
   };
 
   /// pt 値から `Length` を作る短縮子
+  /// 値域内のテスト入力を `try_break_pages` で組む
+  fn break_pages(
+    blocks: Vec<Block>,
+    text_width: Length,
+    geom: &PageGeometry,
+    breaker: &dyn LineBreaker,
+  ) -> (Vec<Page>, Vec<Overflow>) {
+    return try_break_pages(blocks, text_width, geom, breaker).expect("テストの寸法は値域内");
+  }
+
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
   /// pt 値の `Vec` を `Length` の `Vec` に変換する短縮子

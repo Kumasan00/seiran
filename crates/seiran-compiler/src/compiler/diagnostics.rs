@@ -451,6 +451,17 @@ fn diagnostic_length_out_of_range_in_style_and_config() {
 }
 
 #[test]
+fn diagnostic_dimension_overflow_from_space_sum() {
+  // 各アキは値域内だが、`\space` は段落を分けるので、2 つ目以降のアキと b の段落の行の幅の和が値域を超える
+  let source = "a\\space{100000000000000pt}\\space{100000000000000pt}b\n";
+  let failure = TestProject::builder().source_text(source).build().compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "b");
+  assert_matches_golden("dimension_overflow_space", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_dimension_overflow_from_line_height_factor() {
   // 倍率は正の有限値として検証を通るが、行送り（フォントサイズ × 倍率）が値域を超える
   let source = "hello\n";

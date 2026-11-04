@@ -20,12 +20,7 @@ use crate::typeset::{
 ///
 /// # Errors
 ///
-/// 索引の寸法の計算が長さの値域を超えたら [`ElementOverflow`] を返す（索引は現状 `build_blocks` を通らないので
-/// 返らないが、後付けの経路は前付けと同じ型で揃える）。
-#[expect(
-  clippy::unnecessary_wraps,
-  reason = "索引ブロックの寸法計算（index::build_index_blocks）の演算子を try_* へ移す後続の Task が ElementOverflow を返す入口。前付けと同じ型で揃えておく"
-)]
+/// 後付けの行分割の寸法の計算が長さの値域を超えたら、その要素の起点を [`ElementOverflow`] で返す。
 pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
@@ -37,7 +32,7 @@ pub(super) fn paginate(
   }
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "back").entered();
-    break_pages(back_blocks, ctx.geometry.text_width(), ctx.geometry.back_geometry(), &ctx.breaker)
+    break_pages(back_blocks, ctx.geometry.text_width(), ctx.geometry.back_geometry(), &ctx.breaker)?
   };
   return Ok((pages, overflows));
 }

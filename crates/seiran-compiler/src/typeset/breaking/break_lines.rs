@@ -8,14 +8,23 @@ pub(in crate::typeset) use knuth_plass::KnuthPlassBreaker;
 
 use crate::{
   document::TextAlignment,
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
 };
 
 /// 行分割アルゴリズムの抽象
 pub(in crate::typeset) trait LineBreaker {
   /// 水平リストを本文幅で行に分割する
-  fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line>;
+  ///
+  /// # Errors
+  ///
+  /// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+  fn break_lines(
+    &self,
+    items: &[HItem],
+    text_width: Length,
+    alignment: TextAlignment,
+  ) -> Result<Vec<Line>, LengthOverflow>;
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
@@ -61,7 +70,7 @@ fn trim_trailing_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
 }
 
 /// 行内アイテムの自然幅合計・伸長能力合計・収縮能力合計を求める
-fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
+fn glue_metrics(items: &[&HItem]) -> Result<(Length, Length, Length), LengthOverflow> {
   let mut natural = Length::ZERO;
   let mut stretch = Length::ZERO;
   let mut shrink = Length::ZERO;
@@ -74,33 +83,33 @@ fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
         shrink: sh,
         ..
       } => {
-        natural += *n;
-        stretch += *s;
-        shrink += *sh;
+        natural = natural.try_add(*n)?;
+        stretch = stretch.try_add(*s)?;
+        shrink = shrink.try_add(*sh)?;
       },
-      other => natural += other.natural_width(),
+      other => natural = natural.try_add(other.natural_width())?,
     }
   }
-  return (natural, stretch, shrink);
+  return Ok((natural, stretch, shrink));
 }
 
 /// 行の余り幅から glue の伸縮係数を求める（両端揃えの配分係数）
-fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
-  let (natural, total_stretch, total_shrink) = glue_metrics(items);
-  let leftover = available - natural;
+fn glue_adjust_ratio(items: &[&HItem], available: Length) -> Result<f64, LengthOverflow> {
+  let (natural, total_stretch, total_shrink) = glue_metrics(items)?;
+  let leftover = available.try_sub(natural)?;
   if leftover > Length::ZERO {
     if !total_stretch.is_positive() {
-      return 0.0;
+      return Ok(0.0);
     }
-    return leftover.ratio(total_stretch).min(1.0);
+    return Ok(leftover.ratio(total_stretch).min(1.0));
   }
   if leftover < Length::ZERO {
     if !total_shrink.is_positive() {
-      return 0.0;
+      return Ok(0.0);
     }
-    return -((-leftover).ratio(total_shrink).min(1.0));
+    return Ok(-((-leftover).ratio(total_shrink).min(1.0)));
   }
-  return 0.0;
+  return Ok(0.0);
 }
 
 /// アイテム列から 1 行を組み立てる（位置確定）
@@ -108,6 +117,10 @@ fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
 /// `alignment` の水平ずらしまで済ませる。右寄せ末尾ボックス（`HItem::FlushRight`）はずらさず利用可能幅の
 /// 右端に置き、本文はその幅を除いた残りの中で寄せる。本文の幅は [`Line::width`] と同じ「箱の右端の最大」で測る
 /// （行末の Kern 等の空白は寄せる幅に含めない）。
+///
+/// # Errors
+///
+/// 行内の位置や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
 fn build_line(
   items: &[&HItem],
   is_last: bool,
@@ -115,14 +128,14 @@ fn build_line(
   alignment: TextAlignment,
   open_links: &mut Vec<OpenLink>,
   trailing_hyphen: Option<&HBox>,
-) -> Line {
+) -> Result<Line, LengthOverflow> {
   let items = trim_trailing_glue(items);
 
   // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない。
   // 行末ハイフンぶんを本文幅から差し引いた余り幅で配分する（ハイフン込みで右端に揃える）
   let hyphen_width = trailing_hyphen.map_or(Length::ZERO, |hyphen| return hyphen.width);
   let adjust_ratio: f64 = if alignment == TextAlignment::Justify && !is_last {
-    glue_adjust_ratio(items, available - hyphen_width)
+    glue_adjust_ratio(items, available.try_sub(hyphen_width)?)?
   } else {
     0.0
   };
@@ -148,7 +161,7 @@ fn build_line(
           dx: x,
           dy: Length::ZERO,
         });
-        x += hbox.width;
+        x = x.try_add(hbox.width)?;
         height = height.max(hbox.height);
         depth = depth.max(hbox.depth);
       },
@@ -158,17 +171,17 @@ fn build_line(
         shrink,
         ..
       } => {
-        x += *natural
-          + if adjust_ratio >= 0.0 {
-            stretch.scale(adjust_ratio)
-          } else {
-            shrink.scale(adjust_ratio)
-          };
+        let adjustment = if adjust_ratio >= 0.0 {
+          stretch.try_scale(adjust_ratio)?
+        } else {
+          shrink.try_scale(adjust_ratio)?
+        };
+        x = x.try_add(natural.try_add(adjustment)?)?;
       },
-      HItem::Kern(value) => x += *value,
+      HItem::Kern(value) => x = x.try_add(*value)?,
       // 行内に残った数式内分割点は、折り返さなかったのでアキとして幅を持つ
       // （折り返した点のアイテムは破断アイテムとして行から除かれ、ここへは来ない）
-      HItem::MathBreak { spacing, .. } => x += *spacing,
+      HItem::MathBreak { spacing, .. } => x = x.try_add(*spacing)?,
       // 右寄せ末尾ボックス: 行内累積 x を無視し、揃えのずらしの後で利用可能幅の右端へ置く
       HItem::FlushRight(hbox) => {
         flush_right.push(hbox);
@@ -203,7 +216,7 @@ fn build_line(
       dx: x,
       dy: Length::ZERO,
     });
-    x += hyphen.width;
+    x = x.try_add(hyphen.width)?;
     height = height.max(hyphen.height);
     depth = depth.max(hyphen.depth);
   }
@@ -225,15 +238,15 @@ fn build_line(
   };
   let flush_width = flush_right.iter().map(|hbox| return hbox.width).fold(Length::ZERO, Length::max);
   let body_width = line.width();
-  line.shift_x(Align::from(alignment).offset(available - flush_width, body_width));
+  line.shift_x(Align::from(alignment).offset(available.try_sub(flush_width)?, body_width));
   for hbox in flush_right {
     line.boxes.push(PlacedHBox {
       hbox: hbox.clone(),
-      dx: (available - hbox.width).max(Length::ZERO),
+      dx: available.try_sub(hbox.width)?.max(Length::ZERO),
       dy: Length::ZERO,
     });
   }
-  return line;
+  return Ok(line);
 }
 
 /// 行分割器が改行できる位置の間で最も広い区間の幅（セルの最小内容幅）
@@ -242,12 +255,16 @@ fn build_line(
 /// ハイフン幅を足す）・`MathBreak`（`spacing` は区間に入れない）・`ForcedBreak`。それ以外は自然幅を区間へ足し、
 /// non-breakable な `Glue` と正の `Penalty` は区間を切らない。ハイフネーションは greedy が持ち越し後に選び直さない
 /// ので真の下限にはならない（その行は呼び出し側の overflow 警告が受ける）。
-pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Length {
+///
+/// # Errors
+///
+/// 区間の幅の和が長さの値域を超えたら [`LengthOverflow`] を返す。
+pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflow> {
   let mut widest = Length::ZERO;
   let mut segment = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(_) | HItem::FlushRight(_) | HItem::Kern(_) => segment += item.natural_width(),
+      HItem::Box(_) | HItem::FlushRight(_) | HItem::Kern(_) => segment = segment.try_add(item.natural_width())?,
       HItem::Glue {
         natural, breakable, ..
       } => {
@@ -255,7 +272,7 @@ pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Length {
           widest = widest.max(segment);
           segment = Length::ZERO;
         } else {
-          segment += *natural;
+          segment = segment.try_add(*natural)?;
         }
       },
       HItem::Penalty { value } => {
@@ -265,7 +282,7 @@ pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Length {
         }
       },
       HItem::Discretionary { hyphen } => {
-        widest = widest.max(segment + hyphen.width);
+        widest = widest.max(segment.try_add(hyphen.width)?);
         segment = Length::ZERO;
       },
       HItem::MathBreak { .. } | HItem::ForcedBreak => {
@@ -275,7 +292,7 @@ pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Length {
       HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {},
     }
   }
-  return widest.max(segment);
+  return Ok(widest.max(segment));
 }
 
 /// 行分割テストの共有フィクスチャ
@@ -409,7 +426,7 @@ mod tests {
       box_width(20.0),
     ];
 
-    assert_eq!(min_content_width(&items), Length::pt(30.0));
+    assert_eq!(min_content_width(&items).expect("テストの寸法は値域内"), Length::pt(30.0));
   }
 
   #[test]
@@ -417,14 +434,14 @@ mod tests {
     // 12 + ハイフン 3 = 15 が 10 より広い
     let items = [box_width(12.0), discretionary(3.0), box_width(10.0)];
 
-    assert_eq!(min_content_width(&items), Length::pt(15.0));
+    assert_eq!(min_content_width(&items).expect("テストの寸法は値域内"), Length::pt(15.0));
   }
 
   #[test]
   fn min_content_width_breaks_at_math_breaks_without_their_spacing() {
     let items = [box_width(10.0), math_break(4.0, 0), box_width(10.0)];
 
-    assert_eq!(min_content_width(&items), Length::pt(10.0));
+    assert_eq!(min_content_width(&items).expect("テストの寸法は値域内"), Length::pt(10.0));
   }
 
   #[test]
@@ -437,12 +454,12 @@ mod tests {
       box_width(5.0),
     ];
 
-    assert_eq!(min_content_width(&items), Length::pt(30.0));
+    assert_eq!(min_content_width(&items).expect("テストの寸法は値域内"), Length::pt(30.0));
   }
 
   #[test]
   fn min_content_width_of_no_items_is_zero() {
-    assert_eq!(min_content_width(&[]), Length::ZERO);
+    assert_eq!(min_content_width(&[]).expect("テストの寸法は値域内"), Length::ZERO);
   }
 
   #[test]
@@ -459,9 +476,9 @@ mod tests {
       space_glue(),
       box_width(3.0),
     ];
-    let width = min_content_width(&items);
+    let width = min_content_width(&items).expect("テストの寸法は値域内");
 
-    let lines = GreedyBreaker.break_lines(&items, width, TextAlignment::Left);
+    let lines = GreedyBreaker.break_lines(&items, width, TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.width() <= width), "{lines:?}");
   }

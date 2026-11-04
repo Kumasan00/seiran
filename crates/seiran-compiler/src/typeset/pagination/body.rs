@@ -87,7 +87,7 @@ fn run_body_pass(
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "body").entered();
-    break_pages(body_blocks, ctx.geometry.text_width(), ctx.geometry.body_geometry(), &ctx.breaker)
+    break_pages(body_blocks, ctx.geometry.text_width(), ctx.geometry.body_geometry(), &ctx.breaker)?
   };
   return Ok(BodyLayout {
     pages,

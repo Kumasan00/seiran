@@ -1,0 +1,10 @@
+typeset::length::out_of_range
+
+  × 組版で求めた寸法が扱える範囲（絶対値が 140737488355328pt 未満）を超えました
+   ╭─[tests/text/inline.sei:1:52]
+ 1 │ a\space{100000000000000pt}\space{100000000000000pt}b
+   ·                                                    ▲
+   ·                                                    ╰── この要素を組む途中で寸法が溢れました
+   ╰────
+  help: この要素の長さの引数（\space など）か、style.toml のフォントサイズ・行送りの倍率（[text]
+        line_height_factor など）・アキ、config.toml の用紙寸法を小さくしてください
