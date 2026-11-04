@@ -5,11 +5,8 @@ use miette::SourceSpan;
 use crate::{
   document::NodeId,
   frontend::{
-    evaluator::{EvalContext, EvalError},
-    syntax::{
-      CstElement, SyntaxKind,
-      view::{CommandView, extract_text_content},
-    },
+    evaluator::{EvalContext, EvalError, string_arg},
+    syntax::{CstElement, SyntaxKind, view::CommandView},
   },
 };
 
@@ -61,7 +58,7 @@ pub(super) fn try_take_row_marker(
       return Ok(true);
     },
     "label" => {
-      take_label_marker(&view, source, ctx, span, row_markers_allowed, current_label)?;
+      take_label_marker(&view, ctx, span, row_markers_allowed, current_label)?;
       return Ok(true);
     },
     _ => return Ok(false),
@@ -91,7 +88,6 @@ fn take_notag_marker(
 /// 行末マーカー `\label{...}` を検証してラベル文字列を抽出し、走査ローカル状態 `current_label` を立てる
 fn take_label_marker(
   view: &CommandView<'_>,
-  source: &str,
   ctx: &EvalContext<'_>,
   span: SourceSpan,
   row_markers_allowed: bool,
@@ -107,7 +103,7 @@ fn take_label_marker(
     return Err(EvalError::RowLabelNotAtRowEnd { span });
   }
   let first_arg = view.first_arg().ok_or(EvalError::RowLabelNotAtRowEnd { span })?;
-  let name = extract_text_content(source, first_arg).trim().to_string();
+  let name = string_arg::text(view, first_arg)?.trim().to_string();
   *current_label = Some(RowLabel {
     name,
     span,

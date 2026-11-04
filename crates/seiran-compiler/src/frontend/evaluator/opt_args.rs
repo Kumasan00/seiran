@@ -14,10 +14,10 @@ use itertools::Itertools;
 use crate::{
   color::Color,
   frontend::{
-    evaluator::EvalError,
+    evaluator::{EvalError, string_arg},
     syntax::{
       CstNode,
-      view::{CommandView, EnvironmentView, split_opt_arg_pairs},
+      view::{CommandView, EnvironmentView},
     },
   },
   length::{Length, ParseLengthError},
@@ -247,8 +247,8 @@ impl OptArgs {
 ///
 /// # Errors
 ///
-/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
-/// [`EvalError::InvalidOptArgValue`] を返します。
+/// キー・値に字以外の要素がある場合に [`EvalError::UnsupportedInString`]、不明キー検出時に
+/// [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
 pub(super) fn collect_command_opt_args(view: &CommandView<'_>, schema: &[OptDecl]) -> Result<OptArgs, EvalError> {
   return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
 }
@@ -257,8 +257,8 @@ pub(super) fn collect_command_opt_args(view: &CommandView<'_>, schema: &[OptDecl
 ///
 /// # Errors
 ///
-/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
-/// [`EvalError::InvalidOptArgValue`] を返します。
+/// キー・値に字以外の要素がある場合に [`EvalError::UnsupportedInString`]、不明キー検出時に
+/// [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
 pub(super) fn collect_environment_opt_args(
   view: &EnvironmentView<'_>,
   schema: &[OptDecl],
@@ -293,8 +293,9 @@ pub(super) fn no_environment_opt_args(view: &EnvironmentView<'_>) -> Result<(), 
 ///
 /// # Errors
 ///
-/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、同じキーの重複時に
-/// [`EvalError::DuplicateOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
+/// キー・値に字以外の要素がある場合に [`EvalError::UnsupportedInString`]、不明キー検出時に
+/// [`EvalError::UnknownOptArgKey`]、同じキーの重複時に [`EvalError::DuplicateOptArgKey`]、値の型変換失敗時に
+/// [`EvalError::InvalidOptArgValue`] を返します。
 fn collect_opt_args(
   source: &str,
   name: &str,
@@ -305,7 +306,7 @@ fn collect_opt_args(
     return Ok(OptArgs { pairs: Vec::new() });
   };
   let mut pairs: Vec<(String, OptValue)> = Vec::new();
-  for (key, value) in split_opt_arg_pairs(source, opt) {
+  for (key, value) in string_arg::opt_arg_entries(source, name, opt)? {
     let Some(expected) = schema.iter().find(|decl| return decl.name == key).map(|decl| return decl.ty) else {
       return Err(EvalError::UnknownOptArgKey {
         name: name.to_string(),
@@ -329,7 +330,7 @@ fn collect_opt_args(
   return Ok(OptArgs { pairs });
 }
 
-/// `split_opt_arg_pairs` から得た生の `(key, value)` を期待型で `OptValue` に変換する
+/// [`string_arg::opt_arg_entries`] から得た生の `(key, value)` を期待型で `OptValue` に変換する
 fn parse_value(
   key: &str,
   raw: &str,

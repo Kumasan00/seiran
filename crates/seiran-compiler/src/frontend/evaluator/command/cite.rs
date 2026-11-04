@@ -6,8 +6,8 @@
 use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, opt_args},
-    syntax::view::{CommandView, split_text_on_commas},
+    evaluator::{EvalContext, EvalError, arity, opt_args, string_arg},
+    syntax::view::CommandView,
   },
 };
 
@@ -18,13 +18,13 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 必須引数が欠落 / 過剰、任意引数が指定された場合、または空のキーが含まれる場合に
-/// エラーを返します。
+/// 必須引数が欠落 / 過剰、任意引数が指定された場合、キーに字以外の要素（コマンド・数式など）がある場合、
+/// または空のキーが含まれる場合にエラーを返します。
 pub(super) fn cite(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "引用キー")?;
 
-  let segments = split_text_on_commas(view.source(), first_arg);
+  let segments = string_arg::comma_items(view, first_arg)?;
   let mut keys = Vec::with_capacity(segments.len());
   for segment in segments {
     let key = segment.trim();
@@ -114,12 +114,6 @@ mod tests {
   #[test]
   fn cite_trims_whitespace_and_newline_around_keys() {
     assert_eq!(cite_keys("\\cite{a ,\n b}"), vec!["a".to_string(), "b".to_string()]);
-  }
-
-  #[test]
-  fn cite_does_not_split_on_comma_in_nested_node() {
-    // 入れ子ノードの中身はキーの文字として平坦化する
-    assert_eq!(cite_keys(r"\cite{\bold{a,b}}"), vec!["a,b".to_string()]);
   }
 
   #[test]

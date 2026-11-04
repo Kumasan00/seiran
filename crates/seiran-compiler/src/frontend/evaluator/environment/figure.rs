@@ -9,8 +9,9 @@ use crate::{
       EvalContext, EvalError, arity,
       environment::{body_scan, caption::evaluate_caption},
       opt_args::{self, OptKey, collect_command_opt_args, collect_environment_opt_args},
+      string_arg,
     },
-    syntax::view::{CommandView, EnvironmentView, extract_text_content},
+    syntax::view::{CommandView, EnvironmentView},
   },
   length::Length,
 };
@@ -172,7 +173,7 @@ fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
 
   let first_arg = arity::exactly_one_arg(view, "画像ファイルのパス")?;
 
-  let path = extract_text_content(view.source(), first_arg).trim().to_string();
+  let path = string_arg::text(view, first_arg)?.trim().to_string();
   if path.is_empty() {
     return Err(EvalError::InvalidCommandArgument {
       name: "image".to_string(),

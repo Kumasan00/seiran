@@ -3,8 +3,8 @@
 use crate::{
   document::{HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, opt_args},
-    syntax::view::{CommandView, extract_text_content},
+    evaluator::{EvalContext, EvalError, arity, opt_args, string_arg},
+    syntax::view::CommandView,
   },
 };
 
@@ -14,11 +14,11 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 引数の不足・過剰・長さとして読めない場合にエラーを返します
+/// 引数の不足・過剰・字以外の要素（コマンド・数式など）を含む・長さとして読めない場合にエラーを返します
 pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "スペース量（長さ）")?;
-  let text = extract_text_content(view.source(), first_arg);
+  let text = string_arg::text(view, first_arg)?;
 
   let length = opt_args::parse_length(&text, view.span().into(), || {
     return EvalError::InvalidCommandArgument {

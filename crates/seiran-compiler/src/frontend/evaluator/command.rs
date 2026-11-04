@@ -19,10 +19,10 @@ use phf::phf_map;
 use crate::{
   document::{HeadingLevel, HirInline, HirInlineKind, HirNode, Typeface},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, math, opt_args},
+    evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, math, opt_args, string_arg},
     syntax::{
       ArgMode,
-      view::{CommandView, extract_text_content, verbatim_text},
+      view::{CommandView, verbatim_text},
     },
   },
 };
@@ -388,12 +388,13 @@ fn code(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, Eval
 ///
 /// # Errors
 ///
-/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
+/// 必須引数が欠落 / 過剰、任意引数が指定された場合、またはラベルに字以外の要素（コマンド・数式など）がある場合に
+/// エラーを返します。
 fn ref_(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "ラベル名")?;
 
-  let label = extract_text_content(view.source(), first_arg).trim().to_string();
+  let label = string_arg::text(view, first_arg)?.trim().to_string();
   return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Ref { label }));
 }
 
