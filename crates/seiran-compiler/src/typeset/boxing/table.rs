@@ -207,12 +207,12 @@ fn arrange(
   breakable: bool,
   breaker: &dyn LineBreaker,
 ) -> Result<TableBox, ElementOverflow> {
-  let overflow = |LengthOverflow| {
+  let table_overflow = |LengthOverflow| {
     return ElementOverflow {
       origin: Some(origin),
     };
   };
-  let col_widths = resolve_column_widths(frame, head, rows, available).map_err(overflow)?;
+  let col_widths = resolve_column_widths(frame, head, rows, available).map_err(table_overflow)?;
   let width: Length = col_widths.iter().copied().sum();
   let rule = |gap_above: Length, thickness: Length, gap_below: Length| {
     return TableBoundary::rule(gap_above, thickness, gap_below, width, frame.rule_color);
@@ -236,7 +236,7 @@ fn arrange(
         let (fragment, merged) = row_fragment(row, frame, &col_widths, breaker)?;
         return Ok((TableRowFragment { above, ..fragment }, merged));
       })
-      .collect::<Result<Vec<_>, LengthOverflow>>()?;
+      .collect::<Result<Vec<_>, ElementOverflow>>()?;
     let mut parts = parts.into_iter();
     return Ok(
       row_groups(rows)
@@ -250,8 +250,8 @@ fn arrange(
         .collect::<Vec<_>>(),
     );
   };
-  let head = fragments(head, &TableBoundary::default()).map_err(overflow)?;
-  let rows = fragments(rows, &head_bottom).map_err(overflow)?;
+  let head = fragments(head, &TableBoundary::default())?;
+  let rows = fragments(rows, &head_bottom)?;
   let repeated_head = head
     .iter()
     .map(|fragment| {
@@ -484,7 +484,7 @@ fn layout_row_cells(
   frame: &TableFrame<'_>,
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
-) -> Result<(Vec<Vec<Line>>, Length), LengthOverflow> {
+) -> Result<(Vec<Vec<Line>>, Length), ElementOverflow> {
   let mut overrun = Length::ZERO;
   let mut cells = Vec::with_capacity(row.cells.len());
   for (cell, spanned, cell_x, band_width) in cell_bands(&row.cells, col_widths) {
@@ -492,7 +492,13 @@ fn layout_row_cells(
     let align = spanned_columns.first().map_or(ColumnAlign::Left, |column| return column.align);
     let lines = if wraps(spanned_columns) {
       let content_width = band_width - frame.cell_padding * 2;
-      let mut lines = breaker.break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
+      let mut lines = breaker
+        .break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))
+        .map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(row.origin),
+          };
+        })?;
       let widest = lines.iter().map(Line::width).fold(Length::ZERO, Length::max);
       overrun = overrun.max(widest - content_width);
       for line in &mut lines {
@@ -553,7 +559,7 @@ fn row_fragment(
   frame: &TableFrame<'_>,
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
-) -> Result<(TableRowFragment, Vec<(u32, Length)>), LengthOverflow> {
+) -> Result<(TableRowFragment, Vec<(u32, Length)>), ElementOverflow> {
   let (cells, overrun) = layout_row_cells(row, frame, col_widths, breaker)?;
   let (ascent, descent) = cells.iter().filter_map(|lines| return lines.first()).fold(
     (Length::ZERO, Length::ZERO),
@@ -708,10 +714,7 @@ fn take_line(fragment: &mut TableRowFragment, line: Line, band_top: Length, band
 mod tests {
   use std::iter;
 
-  use super::{
-    MeasuredCell, MeasuredRow, TableFrame, arrange as try_arrange, resolve_column_widths as try_resolve_column_widths,
-    row_fragment as try_row_fragment, split_evenly,
-  };
+  use super::{MeasuredCell, MeasuredRow, TableFrame, arrange, resolve_column_widths, row_fragment, split_evenly};
   use crate::{
     document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator},
     length::Length,
@@ -732,8 +735,8 @@ mod tests {
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  /// 値域内のテスト入力を `try_arrange` で組む
-  fn arrange(
+  /// 値域内のテスト入力を `arrange` で組む
+  fn arrange_in_range(
     origin: NodeId,
     frame: &TableFrame<'_>,
     head: &[MeasuredRow],
@@ -742,27 +745,27 @@ mod tests {
     breakable: bool,
     breaker: &dyn LineBreaker,
   ) -> TableBox {
-    return try_arrange(origin, frame, head, rows, available, breakable, breaker).expect("テストの寸法は値域内");
+    return arrange(origin, frame, head, rows, available, breakable, breaker).expect("テストの寸法は値域内");
   }
 
-  /// 値域内のテスト入力を `try_resolve_column_widths` で解く
-  fn resolve_column_widths(
+  /// 値域内のテスト入力を `resolve_column_widths` で解く
+  fn resolve_column_widths_in_range(
     frame: &TableFrame<'_>,
     head: &[MeasuredRow],
     rows: &[MeasuredRow],
     available: Length,
   ) -> Vec<Length> {
-    return try_resolve_column_widths(frame, head, rows, available).expect("テストの寸法は値域内");
+    return resolve_column_widths(frame, head, rows, available).expect("テストの寸法は値域内");
   }
 
-  /// 値域内のテスト入力を `try_row_fragment` で組む
-  fn row_fragment(
+  /// 値域内のテスト入力を `row_fragment` で組む
+  fn row_fragment_in_range(
     row: &MeasuredRow,
     frame: &TableFrame<'_>,
     col_widths: &[Length],
     breaker: &dyn LineBreaker,
   ) -> (TableRowFragment, Vec<(u32, Length)>) {
-    return try_row_fragment(row, frame, col_widths, breaker).expect("テストの寸法は値域内");
+    return row_fragment(row, frame, col_widths, breaker).expect("テストの寸法は値域内");
   }
 
   /// `Length` が pt 値 `expected` に一致するか
@@ -1006,7 +1009,7 @@ mod tests {
   fn arrange_frames_the_table_with_outer_and_head_rules() {
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &ruled_frame(&columns),
       &[one_cell_row()],
@@ -1042,7 +1045,7 @@ mod tests {
     let gap_row =
       MeasuredRow::new(origin(), vec![cell(vec![glyph_box(10.0, 10.0)])], Some(RowSeparator::Gap), pt(10.0), 1.0);
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &ruled_frame(&columns),
       &[],
@@ -1060,7 +1063,7 @@ mod tests {
   fn rule_separator_takes_the_rule_and_its_gaps() {
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &ruled_frame(&columns),
       &[],
@@ -1079,7 +1082,7 @@ mod tests {
     // ヘッダなしの表: 先頭行が区切りを持っていても上の境界は無く、ヘッダ下の罫線も無い
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &ruled_frame(&columns),
       &[],
@@ -1103,7 +1106,7 @@ mod tests {
       ..ruled_frame(&columns)
     };
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &frame,
       &[one_cell_row()],
@@ -1127,7 +1130,7 @@ mod tests {
       ..ruled_frame(&columns)
     };
 
-    let table = arrange(origin(), &frame, &[], &[one_cell_row()], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame, &[], &[one_cell_row()], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.top.height, Length::ZERO);
     assert!(table.top.rules.is_empty());
@@ -1144,8 +1147,15 @@ mod tests {
       rule_below_cell(vec![glyph_box(10.0, 10.0)], 1),
     ]);
 
-    let table =
-      arrange(origin(), &ruled_frame(&columns), &[], &[first, plain_row(3)], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(
+      origin(),
+      &ruled_frame(&columns),
+      &[],
+      &[first, plain_row(3)],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
 
     let above = &table.rows[1].above;
     assert!(close(above.height, 4.3), "{above:?}");
@@ -1162,8 +1172,15 @@ mod tests {
     let columns = [fixed(30.0), fixed(30.0), fixed(30.0)];
     let first = row(vec![rule_below_cell(vec![glyph_box(10.0, 10.0)], 3)]);
 
-    let table =
-      arrange(origin(), &ruled_frame(&columns), &[], &[first, plain_row(3)], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(
+      origin(),
+      &ruled_frame(&columns),
+      &[],
+      &[first, plain_row(3)],
+      pt(100.0),
+      true,
+      &KnuthPlassBreaker,
+    );
 
     let rules = &table.rows[1].above.rules;
     assert_eq!(rules.len(), 1, "{rules:?}");
@@ -1180,7 +1197,7 @@ mod tests {
     };
     let first = row(vec![rule_below_cell(vec![glyph_box(10.0, 10.0)], 1)]);
 
-    let table = arrange(origin(), &frame, &[], &[first, plain_row(1)], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame, &[], &[first, plain_row(1)], pt(100.0), true, &KnuthPlassBreaker);
 
     assert!(close(table.rows[1].above.height, 4.3), "{:?}", table.rows[1].above);
     assert!(table.rows[1].above.rules.is_empty());
@@ -1195,7 +1212,7 @@ mod tests {
     };
     let first = row(vec![rule_below_cell(vec![glyph_box(10.0, 10.0)], 1)]);
 
-    let table = arrange(origin(), &frame, &[], &[first, plain_row(1)], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame, &[], &[first, plain_row(1)], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows[1].above.height, Length::ZERO);
     assert!(table.rows[1].above.rules.is_empty());
@@ -1207,7 +1224,7 @@ mod tests {
     let columns = [fixed(30.0), fixed(30.0)];
     let upper = row(vec![rule_below_cell(vec![glyph_box(10.0, 10.0)], 2)]);
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &ruled_frame(&columns),
       &[upper, plain_row(2)],
@@ -1227,7 +1244,7 @@ mod tests {
   fn repeated_head_keeps_the_boundaries_between_head_rows() {
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(
+    let table = arrange_in_range(
       origin(),
       &ruled_frame(&columns),
       &[one_cell_row(), one_cell_ruled_row()],
@@ -1253,7 +1270,7 @@ mod tests {
       row(vec![blank(), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     assert!(close(table.rows[0].height(), 20.0));
@@ -1270,7 +1287,7 @@ mod tests {
       row(vec![blank(), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert!(close(table.rows[0].height(), 30.0));
     let last = table.rows[0].row.boxes.last().expect("2 行目のセルの箱がある");
@@ -1287,7 +1304,7 @@ mod tests {
       row(vec![blank(), blank()]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     assert!(close(table.rows[0].height(), 40.0), "{:?}", table.rows[0].height());
@@ -1306,7 +1323,7 @@ mod tests {
       row(vec![cell(vec![word_box(10.0)]), blank()]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     assert!(close(table.rows[0].height(), 30.0), "{:?}", table.rows[0].height());
@@ -1325,7 +1342,7 @@ mod tests {
     let covered_row = || return row(vec![blank(), cell(vec![word_box(10.0)])]);
     let rows = [merged_row(), covered_row(), merged_row(), covered_row()];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 2);
     assert!(table.rows.iter().all(|fragment| return close(fragment.height(), 20.0)), "{:?}", table.rows);
@@ -1343,7 +1360,7 @@ mod tests {
       row(vec![blank(), blank()]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     assert!(close(table.rows[0].height(), 20.0), "{:?}", table.rows[0].height());
@@ -1361,7 +1378,7 @@ mod tests {
       row(vec![blank(), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     assert!(close(table.rows[0].height(), 24.3), "{:?}", table.rows[0].height());
@@ -1385,7 +1402,7 @@ mod tests {
       row(vec![cell(vec![word_box(10.0)]), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 2);
     assert!(table.rows[0].rules.is_empty(), "{:?}", table.rows[0].rules);
@@ -1420,7 +1437,7 @@ mod tests {
       ]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     let fragment = &table.rows[0];
@@ -1450,7 +1467,7 @@ mod tests {
       row(vec![blank(), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 1);
     assert!(close(table.rows[0].height(), 60.0), "{:?}", table.rows[0].height());
@@ -1470,7 +1487,7 @@ mod tests {
       row(vec![cell(vec![word_box(10.0)]), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &ruled_frame(&columns), &[], &rows, pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.rows.len(), 2);
     let above = &table.rows[1].above;
@@ -1493,7 +1510,8 @@ mod tests {
       row(vec![blank(), cell(vec![word_box(10.0)])]),
     ];
 
-    let table = arrange(origin(), &ruled_frame(&columns), &head, &[plain_row(2)], pt(100.0), true, &KnuthPlassBreaker);
+    let table =
+      arrange_in_range(origin(), &ruled_frame(&columns), &head, &[plain_row(2)], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.head.len(), 1);
     assert_eq!(table.repeated_head.len(), 1);
@@ -1521,7 +1539,7 @@ mod tests {
     );
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 18.0), "{band:?}");
     assert!(close(band.baseline_y, 14.0), "{band:?}");
@@ -1542,7 +1560,7 @@ mod tests {
     );
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 21.0), "{band:?}");
     assert!(close(band.baseline_y, 14.0), "余りが無いのでベースラインは上端 + 高さ: {band:?}");
@@ -1554,7 +1572,7 @@ mod tests {
     let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], None, pt(9.0), 2.0);
     let columns = [auto(ColumnAlign::Left)];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 18.0), "{band:?}");
     assert!(close(band.baseline_y, 9.5), "{band:?}");
@@ -1579,7 +1597,7 @@ mod tests {
       cell(vec![text_free_box(5.0)]),
     ])];
 
-    let widths = resolve_column_widths(&frame(&columns, 2.0), &[], &rows, pt(200.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 2.0), &[], &rows, pt(200.0));
 
     assert!(close(widths[0], 40.0), "Fixed: {widths:?}");
     assert!(close(widths[1], 34.0), "Auto=内容+2*padding: {widths:?}");
@@ -1600,7 +1618,7 @@ mod tests {
       cell(vec![text_free_box(10.0)]),
     ])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(100.0));
 
     assert!(close(widths[0], 20.0), "{widths:?}");
     assert!(close(widths[1], 80.0), "Flex=残り幅の等分: {widths:?}");
@@ -1625,7 +1643,7 @@ mod tests {
       ]),
     ])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(100.0));
 
     assert_eq!(widths, [pt(60.0), pt(40.0)]);
   }
@@ -1639,7 +1657,7 @@ mod tests {
       cell(vec![text_free_box(5.0)]),
     ])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(90.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(90.0));
 
     assert_eq!(widths, [pt(50.0), pt(20.0), pt(20.0)]);
   }
@@ -1649,7 +1667,7 @@ mod tests {
     let columns = [flex(ColumnAlign::Left)];
     let rows = [row(vec![cell(vec![text_free_box(10.0)])])];
 
-    let widths = resolve_column_widths(&frame(&columns, 2.0), &[], &rows, pt(5.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 2.0), &[], &rows, pt(5.0));
 
     assert_eq!(widths, [pt(14.0)]);
   }
@@ -1662,7 +1680,7 @@ mod tests {
       cell(vec![text_free_box(8.0)]),
     ])];
 
-    let widths = resolve_column_widths(&frame(&columns, 1.0), &[], &rows, pt(100.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 1.0), &[], &rows, pt(100.0));
 
     assert_eq!(widths, [pt(120.0), pt(10.0)]);
   }
@@ -1676,7 +1694,7 @@ mod tests {
       cell(Vec::new()),
     ])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, Length::from_sp(10));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, Length::from_sp(10));
 
     assert_eq!(sps(&widths), [4, 3, 3]);
   }
@@ -1689,7 +1707,7 @@ mod tests {
       row(vec![span_cell(vec![box_of(Length::from_sp(5))], 2)]),
     ];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(100.0));
 
     assert_eq!(sps(&widths), [3, 2]);
   }
@@ -1702,7 +1720,7 @@ mod tests {
       row(vec![span_cell(vec![text_free_box(50.0)], 2)]),
     ];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(30.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(30.0));
 
     assert_eq!(widths, [pt(20.0), pt(30.0)]);
   }
@@ -1715,7 +1733,7 @@ mod tests {
       row(vec![span_cell(vec![text_free_box(40.0)], 2)]),
     ];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(100.0));
 
     assert_eq!(widths, [pt(20.0), pt(20.0)]);
   }
@@ -1725,7 +1743,7 @@ mod tests {
     let columns = [fixed(20.0), ratio(0.1)];
     let rows = [row(vec![span_cell(vec![text_free_box(50.0)], 2)])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(100.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(100.0));
 
     assert_eq!(widths, [pt(20.0), pt(10.0)]);
   }
@@ -1739,7 +1757,7 @@ mod tests {
       2,
     )])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &[], &rows, pt(30.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &[], &rows, pt(30.0));
 
     assert_eq!(widths, [pt(20.0), pt(10.0)]);
   }
@@ -1751,7 +1769,7 @@ mod tests {
     let head = [row(vec![cell(vec![text_free_box(50.0)])])];
     let rows = [row(vec![cell(vec![text_free_box(10.0)])])];
 
-    let widths = resolve_column_widths(&frame(&columns, 0.0), &head, &rows, pt(200.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 0.0), &head, &rows, pt(200.0));
 
     assert!(close(widths[0], 50.0), "{widths:?}");
   }
@@ -1772,7 +1790,7 @@ mod tests {
       ]),
     ];
 
-    let widths = resolve_column_widths(&frame(&columns, 1.0), &[], &rows, pt(200.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 1.0), &[], &rows, pt(200.0));
 
     assert!(close(widths[0], 7.0), "span が跨がない列は変わらない: {widths:?}");
     assert!(close(widths[1], 21.0), "不足 18 の半分を足す: {widths:?}");
@@ -1794,7 +1812,7 @@ mod tests {
       ]),
     ];
 
-    let widths = resolve_column_widths(&frame(&columns, 1.0), &[], &rows, pt(200.0));
+    let widths = resolve_column_widths_in_range(&frame(&columns, 1.0), &[], &rows, pt(200.0));
 
     assert!(close(widths[0], 7.0), "{widths:?}");
     assert!(close(widths[1], 12.0), "跨ぐ列の合計 34 が span セル幅 22 を満たすので配分しない: {widths:?}");
@@ -1816,7 +1834,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Right)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row.boxes;
+    let boxes = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert_eq!(boxes.len(), 2);
     assert!(close(boxes[0].dx, 14.0), "右揃えの先頭 x: {boxes:?}");
@@ -1836,7 +1854,7 @@ mod tests {
       auto(ColumnAlign::Right),
     ];
 
-    let boxes = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0), pt(25.0)], &KnuthPlassBreaker)
+    let boxes = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0), pt(25.0)], &KnuthPlassBreaker)
       .0
       .row
       .boxes;
@@ -1851,7 +1869,7 @@ mod tests {
     let columns = [auto(ColumnAlign::Left)];
     let frame = frame(&columns, 3.0);
 
-    let fragment = row_fragment(&one_cell_row(), &frame, &[pt(30.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&one_cell_row(), &frame, &[pt(30.0)], &KnuthPlassBreaker).0;
 
     assert!(close(fragment.row.top_y, 0.0), "{fragment:?}");
     assert!(close(fragment.row.height, 10.0), "{fragment:?}");
@@ -1867,7 +1885,7 @@ mod tests {
     ]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker).0;
 
     assert_eq!(words(&fragment.index_marks), vec!["a", "b"]);
     assert_eq!(fragment.row.boxes.len(), 2, "索引語は描画箱を持たない");
@@ -1882,7 +1900,7 @@ mod tests {
     ]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(10.0), pt(10.0)], &KnuthPlassBreaker).0;
 
     let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
     assert_eq!(indices, vec![0, 1, 2]);
@@ -1899,7 +1917,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0;
 
     let links = &fragment.links;
     assert_eq!(links.len(), 1);
@@ -1923,7 +1941,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
+    let links = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert_eq!(links.len(), 2);
     assert_eq!(links[0].target, first);
@@ -1943,7 +1961,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
+    let links = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert!(links.is_empty(), "{links:?}");
   }
@@ -1958,7 +1976,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Right)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
+    let links = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert!(close(links[0].x, 18.0) && close(links[0].width, 10.0), "{links:?}");
   }
@@ -1976,7 +1994,9 @@ mod tests {
     )]);
     let columns = [auto(ColumnAlign::Right), auto(ColumnAlign::Left)];
 
-    let links = row_fragment(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0)], &KnuthPlassBreaker).0.links;
+    let links = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(20.0), pt(30.0)], &KnuthPlassBreaker)
+      .0
+      .links;
 
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
@@ -1994,7 +2014,8 @@ mod tests {
     let body_row = row(vec![cell(vec![text_free_box(10.0)])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(origin(), &frame(&columns, 2.0), &[head_row], &[body_row], pt(100.0), true, &KnuthPlassBreaker);
+    let table =
+      arrange_in_range(origin(), &frame(&columns, 2.0), &[head_row], &[body_row], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(words(&table.head[0].index_marks), vec!["h"], "初出のヘッダは索引語を持つ");
     assert!(table.repeated_head[0].index_marks.is_empty(), "再掲ヘッダは索引語を重複させない");
@@ -2016,7 +2037,7 @@ mod tests {
     ])])];
     let columns = [auto(ColumnAlign::Left)];
 
-    let table = arrange(origin(), &frame(&columns, 0.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 0.0), &head, &[], pt(100.0), true, &KnuthPlassBreaker);
 
     assert_eq!(table.head[0].footnotes.len(), 1, "初出ヘッダは脚注を持つ");
     assert!(table.repeated_head[0].footnotes.is_empty(), "再掲ヘッダは脚注を持たない");
@@ -2039,7 +2060,7 @@ mod tests {
       cell(vec![text_free_box(30.0)]),
     ])];
 
-    let table = arrange(origin(), &frame(&columns, 2.0), &[], &rows, pt(200.0), false, &KnuthPlassBreaker);
+    let table = arrange_in_range(origin(), &frame(&columns, 2.0), &[], &rows, pt(200.0), false, &KnuthPlassBreaker);
 
     assert!(close(table.width, 74.0), "{table:?}");
     assert!(!table.breakable);
@@ -2051,7 +2072,7 @@ mod tests {
     let row = row(vec![cell(vec![text_free_box(40.0)])]);
     let columns = [fixed(30.0)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0;
 
     assert!(close(fragment.overrun, 14.0), "{:?}", fragment.overrun);
     assert_eq!(fragment.origin, origin());
@@ -2063,7 +2084,7 @@ mod tests {
     let row = row(vec![cell(Vec::new())]);
     let columns = [fixed(5.0)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 4.0), &[pt(5.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 4.0), &[pt(5.0)], &KnuthPlassBreaker).0;
 
     assert!(close(fragment.overrun, 3.0), "{:?}", fragment.overrun);
   }
@@ -2073,7 +2094,7 @@ mod tests {
     let row = row(vec![cell(vec![text_free_box(40.0)])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 2.0), &[pt(10.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(10.0)], &KnuthPlassBreaker).0;
 
     assert_eq!(fragment.overrun, Length::ZERO);
   }
@@ -2090,7 +2111,7 @@ mod tests {
     ])]);
     let columns = [fixed(30.0)];
 
-    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row;
 
     assert_eq!(band.boxes.len(), 3, "{band:?}");
     assert!(close(band.boxes[2].dx, 2.0) && close(band.boxes[2].dy, -10.0), "{band:?}");
@@ -2109,7 +2130,7 @@ mod tests {
     ])]);
     let columns = [auto(ColumnAlign::Left)];
 
-    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(14.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(14.0)], &KnuthPlassBreaker).0.row;
 
     assert!(band.boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{band:?}");
     assert!(close(band.height, 10.0), "{band:?}");
@@ -2131,7 +2152,7 @@ mod tests {
     ]);
     let columns = [fixed(30.0); 2];
 
-    let band = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0), pt(30.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(30.0), pt(30.0)], &KnuthPlassBreaker).0.row;
 
     assert_eq!(band.boxes.len(), 4, "{band:?}");
     assert!(close(band.baseline_y, 12.0), "{band:?}");
@@ -2152,7 +2173,7 @@ mod tests {
     ])]);
     let columns = [fixed_aligned(30.0, ColumnAlign::Right)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.row.boxes;
+    let boxes = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert!(close(boxes[0].dx, 5.0), "1 行目（幅 25）の右揃え: {boxes:?}");
     assert!(close(boxes[2].dx, 10.0), "2 行目（幅 20）の右揃え: {boxes:?}");
@@ -2164,7 +2185,10 @@ mod tests {
     let row = row(vec![span_cell(vec![word_box(20.0), space(), word_box(20.0)], 2)]);
     let columns = [fixed(20.0), fixed(20.0)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 1.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row.boxes;
+    let boxes = row_fragment_in_range(&row, &frame(&columns, 1.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker)
+      .0
+      .row
+      .boxes;
 
     assert_eq!(boxes.len(), 2, "{boxes:?}");
     assert!(close(boxes[1].dx, 1.0) && close(boxes[1].dy, -10.0), "{boxes:?}");
@@ -2175,7 +2199,10 @@ mod tests {
     let row = row(vec![span_cell(vec![word_box(20.0), space(), word_box(20.0)], 2)]);
     let columns = [auto(ColumnAlign::Left); 2];
 
-    let boxes = row_fragment(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row.boxes;
+    let boxes = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker)
+      .0
+      .row
+      .boxes;
 
     assert!(boxes.iter().all(|placed| return placed.dy == Length::ZERO), "{boxes:?}");
   }
@@ -2194,7 +2221,7 @@ mod tests {
     ])]);
     let columns = [fixed(30.0)];
 
-    let links = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
+    let links = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0.links;
 
     assert_eq!(links.len(), 2, "{links:?}");
     assert!(close(links[0].x, 0.0) && close(links[0].y, 0.0), "{links:?}");
@@ -2215,7 +2242,7 @@ mod tests {
     ])]);
     let columns = [fixed(30.0)];
 
-    let fragment = row_fragment(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0;
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(30.0)], &KnuthPlassBreaker).0;
 
     let indices: Vec<u32> = fragment.footnotes.iter().map(|footnote| return footnote.index).collect();
     assert_eq!(indices, vec![0]);
@@ -2226,7 +2253,7 @@ mod tests {
     let row = row(vec![cell(Vec::new())]);
     let columns = [fixed(30.0)];
 
-    let band = row_fragment(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row;
+    let band = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(30.0)], &KnuthPlassBreaker).0.row;
 
     assert!(close(band.height, 10.0), "{band:?}");
     assert!(band.boxes.is_empty(), "{band:?}");
@@ -2238,7 +2265,7 @@ mod tests {
     let row = row(vec![cell(vec![word_box(3.0), space(), word_box(3.0)])]);
     let columns = [fixed(4.0)];
 
-    let boxes = row_fragment(&row, &frame(&columns, 4.0), &[pt(4.0)], &KnuthPlassBreaker).0.row.boxes;
+    let boxes = row_fragment_in_range(&row, &frame(&columns, 4.0), &[pt(4.0)], &KnuthPlassBreaker).0.row.boxes;
 
     assert_eq!(boxes.len(), 2, "{boxes:?}");
     assert!(close(boxes[1].dy, -10.0), "{boxes:?}");

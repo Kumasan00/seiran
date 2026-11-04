@@ -452,7 +452,7 @@ fn diagnostic_length_out_of_range_in_style_and_config() {
 
 #[test]
 fn diagnostic_dimension_overflow_from_space_sum() {
-  // 各アキは値域内だが、`\space` は段落を分けるので、2 つ目以降のアキと b の段落の行の幅の和が値域を超える
+  // 各アキは値域内だが、b の段落の先頭に積まれる 2 つのアキの幅の和が値域を超える
   let source = "a\\space{100000000000000pt}\\space{100000000000000pt}b\n";
   let failure = TestProject::builder().source_text(source).build().compile_err();
 
