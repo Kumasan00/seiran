@@ -279,7 +279,7 @@ pub(crate) enum EvalError {
     help("文字列に書けるのは字・空白とエスケープした特殊文字（\\_ \\$ など）だけです")
   )]
   UnsupportedInString {
-    /// 文字列として読む位置（例: `\ref の引数`、``equation の任意引数 `label` ``、`section の任意引数のキー`）
+    /// 文字列として読む位置（例: `\ref の引数`、``equation の任意引数 `label` の値``、`section の任意引数のキー`）
     target: String,
     /// 出現した要素の説明（例: `\bold`、`インライン数式 $...$`、`\\（強制改行）`、`下付き _`）
     what: String,

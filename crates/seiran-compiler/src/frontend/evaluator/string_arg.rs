@@ -79,7 +79,7 @@ pub(super) fn opt_arg_entries(
     };
     let key = flatten(source, key_part, &key_target)?.trim().to_string();
     let value = match value_part {
-      Some(value_part) => flatten(source, value_part, &format!("{name} の任意引数 `{key}`"))?.trim().to_string(),
+      Some(value_part) => flatten(source, value_part, &format!("{name} の任意引数 `{key}` の値"))?.trim().to_string(),
       None => "true".to_string(),
     };
     if key.is_empty() {
@@ -237,29 +237,37 @@ mod tests {
   #[test]
   fn rejects_markup_in_opt_arg_values_of_every_string_key() {
     let cases = [
-      (r"\begin{equation}[label=eq:a\bold{b}]x\end{equation}", "equation の任意引数 `label`", r"\bold"),
-      (r"\begin{equation}[label=eq:a\foo b]x\end{equation}", "equation の任意引数 `label`", r"\foo"),
-      (r"\index[reading=a\foo b]{word}", "index の任意引数 `reading`", r"\foo"),
-      (r"\begin{theorem}[title=a\bold{b}]本文\end{theorem}", "theorem の任意引数 `title`", r"\bold"),
-      (r"\begin{theorem}[title=\bold{a, b}]本文\end{theorem}", "theorem の任意引数 `title`", r"\bold"),
+      (r"\begin{equation}[label=eq:a\bold{b}]x\end{equation}", "equation の任意引数 `label` の値", r"\bold"),
+      (r"\begin{equation}[label=eq:a\foo b]x\end{equation}", "equation の任意引数 `label` の値", r"\foo"),
+      (r"\index[reading=a\foo b]{word}", "index の任意引数 `reading` の値", r"\foo"),
+      (r"\begin{theorem}[title=a\bold{b}]本文\end{theorem}", "theorem の任意引数 `title` の値", r"\bold"),
+      (r"\begin{theorem}[title=\bold{a, b}]本文\end{theorem}", "theorem の任意引数 `title` の値", r"\bold"),
       (
         r"\begin{theorem}[label=thm:p]本文\end{theorem}\begin{proof}[of=thm:\foo]証明\end{proof}",
-        "proof の任意引数 `of`",
+        "proof の任意引数 `of` の値",
         r"\foo",
       ),
       (
         r"\begin{itemize}\item[marker=$x$]{A}\end{itemize}",
-        "item の任意引数 `marker`",
+        "item の任意引数 `marker` の値",
         "インライン数式 $...$",
       ),
-      (r"$\begin{matrix}[delimiter=\foo]a\end{matrix}$", "matrix の任意引数 `delimiter`", r"\foo"),
+      (r"$\begin{matrix}[delimiter=\foo]a\end{matrix}$", "matrix の任意引数 `delimiter` の値", r"\foo"),
       (
         r"\begin{table}\row{A}\row[separator=a\\b]{B}\end{table}",
-        "row の任意引数 `separator`",
+        "row の任意引数 `separator` の値",
         r"\\（強制改行）",
       ),
-      (r"\begin{table}[columns=left \bold{x}]\row{A}\end{table}", "table の任意引数 `columns`", r"\bold"),
-      (r"\begin{figure}\image[width=5\bold{c}m]{a.png}\end{figure}", "image の任意引数 `width`", r"\bold"),
+      (
+        r"\begin{table}[columns=left \bold{x}]\row{A}\end{table}",
+        "table の任意引数 `columns` の値",
+        r"\bold",
+      ),
+      (
+        r"\begin{figure}\image[width=5\bold{c}m]{a.png}\end{figure}",
+        "image の任意引数 `width` の値",
+        r"\bold",
+      ),
     ];
     for (source, target, what) in cases {
       let (found_target, found_what, _) = rejection(source);

@@ -273,6 +273,24 @@ fn diagnostic_unsupported_in_math_text() {
 }
 
 #[test]
+fn diagnostic_unsupported_in_string_argument() {
+  // 文字列を取る必須引数のコマンドは黙って消さず、そのコマンドの位置を指す
+  let failure = compile_err(&["tests/text/diagnostics/string_argument_command.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unsupported_in_string".to_string()]);
+  assert_matches_golden("string_argument_command", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_unsupported_in_string_opt_arg() {
+  // 任意引数の値も文字列として読むので、インライン数式はその位置を指して拒否する
+  let failure = compile_err(&["tests/text/diagnostics/string_opt_arg_inline_math.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unsupported_in_string".to_string()]);
+  assert_matches_golden("string_opt_arg_inline_math", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_invalid_number() {
   // 数値は左から読む文法なので、最初に外れた字（桁区切りの `,`）の位置で止める
   let failure = compile_err(&["tests/text/diagnostics/invalid_number.sei"]);
