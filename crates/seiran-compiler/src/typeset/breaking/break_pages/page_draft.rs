@@ -270,13 +270,16 @@ impl PageDraft {
     let Some(last_block) = region.iter().rposition(|entry| return matches!(entry, Entry::Block { .. })) else {
       return;
     };
-    let region_bottom = region
+    let Some(region_bottom) = region
       .iter()
       .filter_map(|entry| match entry {
         Entry::Block { block, .. } => return Some(placed_block_bottom(block)),
         Entry::Anchors { .. } | Entry::Footnote { .. } => return None,
       })
-      .fold(Length::from_sp(i64::MIN), Length::max);
+      .max()
+    else {
+      unreachable!("直前の rposition がこのリージョンに Block が在ると保証している");
+    };
     let deficit = target_bottom - region_bottom;
     let Entry::Block { stretch_before, .. } = &region[last_block] else {
       unreachable!("last_block は直前の rposition が Block と判定した index");
@@ -438,7 +441,8 @@ pub(super) fn placed_block_bottom(block: &PlacedBlock) -> Length {
       .iter()
       .map(|row| return row.top_y + row.height)
       .chain(rules.iter().map(|rule| return rule.y + rule.height))
-      .fold(Length::from_sp(i64::MIN), Length::max),
+      .max()
+      .expect("表は 1 行以上を持つ（place_table_fragment が行の無い断片を積まない）"),
   };
 }
 

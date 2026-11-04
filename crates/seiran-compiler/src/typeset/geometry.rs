@@ -5,7 +5,13 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{color::Color, failures::Failures, length::Length, project::config::ProjectConfig, style::Style};
+use crate::{
+  color::Color,
+  failures::Failures,
+  length::{Length, LengthOverflow},
+  project::config::ProjectConfig,
+  style::Style,
+};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
@@ -162,11 +168,10 @@ impl PreparedGeometry {
     let mut errors: Vec<GeometryValidationError> = Vec::new();
 
     // 余白は 1 つずつなら表せても、和が sp の値域を超えうる。溢れた和は用紙寸法を超える側として扱う
-    let fits_height = style
-      .page
-      .margin_top
-      .checked_add(style.page.margin_bottom)
-      .is_some_and(|total| return total < config.pdf.height);
+    let fits_height = match style.page.margin_top.try_add(style.page.margin_bottom) {
+      Ok(total) => total < config.pdf.height,
+      Err(LengthOverflow) => false,
+    };
     if !fits_height {
       errors.push(GeometryValidationError::VerticalMarginsExceedPageHeight {
         margin_top: style.page.margin_top.to_pt(),
@@ -179,15 +184,13 @@ impl PreparedGeometry {
     let num_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
     // 余白は非負（style の garde）なので、和が用紙幅未満なら本文幅は正で引き算も溢れない
-    let widths = style
-      .page
-      .margin_left
-      .checked_add(style.page.margin_right)
-      .filter(|total| return *total < config.pdf.width)
-      .map(|horizontal| {
+    let widths = match style.page.margin_left.try_add(style.page.margin_right) {
+      Ok(horizontal) if horizontal < config.pdf.width => {
         let text_width = config.pdf.width - horizontal;
-        return (text_width, column_width(text_width, num_columns, column_gap));
-      });
+        Some((text_width, column_width(text_width, num_columns, column_gap)))
+      },
+      Ok(_) | Err(LengthOverflow) => None,
+    };
     match widths {
       None => {
         errors.push(GeometryValidationError::HorizontalMarginsExceedPageWidth {
