@@ -283,9 +283,10 @@ impl PageDraft {
         Entry::Block { block, .. } => return Some(placed_block_bottom(block)),
         Entry::Anchors { .. } | Entry::Footnote { .. } => return None,
       })
-      .collect::<Result<Vec<_>, LengthOverflow>>()?
-      .into_iter()
-      .max()
+      .try_fold(None, |best: Option<Length>, bottom| -> Result<Option<Length>, LengthOverflow> {
+        let bottom = bottom?;
+        return Ok(Some(best.map_or(bottom, |best| return best.max(bottom))));
+      })?
     else {
       unreachable!("直前の rposition がこのリージョンに Block が在ると保証している");
     };
@@ -453,9 +454,10 @@ pub(super) fn placed_block_bottom(block: &PlacedBlock) -> Result<Length, LengthO
         .iter()
         .map(|row| return row.top_y.try_add(row.height))
         .chain(rules.iter().map(|rule| return rule.y.try_add(rule.height)))
-        .collect::<Result<Vec<_>, LengthOverflow>>()?
-        .into_iter()
-        .max()
+        .try_fold(None, |best: Option<Length>, bottom| -> Result<Option<Length>, LengthOverflow> {
+          let bottom = bottom?;
+          return Ok(Some(best.map_or(bottom, |best| return best.max(bottom))));
+        })?
         .expect("表は 1 行以上を持つ（place_table_fragment が行の無い断片を積まない）"),
     ),
   };

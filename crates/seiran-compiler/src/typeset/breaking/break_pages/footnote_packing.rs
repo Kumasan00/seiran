@@ -157,12 +157,9 @@ pub(super) fn pack_footnotes(
     // 後続の脚注に最低 1 行ずつ残す（`require_first_line` のときのみ）。この脚注を置いた後なので
     // 後続の固定費は `rule_gap` だけになる
     let rest_min: Length = if require_first_line {
-      Length::try_sum(
-        demands[j + 1..]
-          .iter()
-          .map(|rest| return charges.rule_gap.try_add(rest.first_line_height()))
-          .collect::<Result<Vec<_>, _>>()?,
-      )?
+      demands[j + 1..]
+        .iter()
+        .try_fold(Length::ZERO, |sum, rest| return sum.try_add(charges.rule_gap.try_add(rest.first_line_height())?))?
     } else {
       Length::ZERO
     };

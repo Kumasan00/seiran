@@ -211,10 +211,12 @@ impl PageComposer {
   }
 
   /// ページ下限を超えたときの遷移。次の段があれば改段、なければ改ページし、繰越脚注を新リージョンへ詰める。
-  fn advance_region(&mut self, geom: &PageGeometry) -> Result<(), LengthOverflow> {
+  fn advance_region(&mut self, geom: &PageGeometry) -> Result<(), ElementOverflow> {
+    // リージョンの確定は特定の要素に帰属しない（繰越脚注の溢れだけが脚注の起点を持つ）
+    let page_level = |LengthOverflow| return ElementOverflow { origin: None };
     // 下端揃えの対象は満杯で閉じるリージョンだけ（強制改ページ・最終ページは `flush = false` で閉じる）
-    self.end_region(geom, true)?;
-    self.next_region(geom)?;
+    self.end_region(geom, true).map_err(page_level)?;
+    self.next_region(geom).map_err(page_level)?;
     return self.seed_carry(geom);
   }
 
@@ -230,28 +232,31 @@ impl PageComposer {
   }
 
   /// 強制改ページ（[`PENALTY_FORCE_BREAK`]）。新ページを開始し、繰越脚注を詰める。
-  fn force_new_page(&mut self, geom: &PageGeometry) -> Result<(), LengthOverflow> {
-    self.start_new_page(geom)?;
+  fn force_new_page(&mut self, geom: &PageGeometry) -> Result<(), ElementOverflow> {
+    self.start_new_page(geom).map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
     return self.seed_carry(geom);
   }
 
   /// 繰越脚注（`carry`）を新しいリージョンの脚注エリアの先頭へ 1 リージョンぶん詰める。
-  fn seed_carry(&mut self, geom: &PageGeometry) -> Result<(), LengthOverflow> {
+  fn seed_carry(&mut self, geom: &PageGeometry) -> Result<(), ElementOverflow> {
+    let page_level = |LengthOverflow| return ElementOverflow { origin: None };
     if self.carry.is_empty() {
       return Ok(());
     }
     let charges = FootnoteCharges::of(geom);
-    let demands: Vec<FootnoteDemand> = self
-      .carry
-      .iter()
-      .map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading))
-      .collect::<Result<_, _>>()?;
+    let demands: Vec<FootnoteDemand> = self.carry.iter().map(footnote_demand).collect::<Result<_, _>>()?;
     // はみ出しの記録に使う繰越先頭の表示番号と起源（`pack_footnotes` が `overflowed` を立てるのは
     // 先頭の脚注に限られる）
     let (leading_number, leading_origin) = (self.carry[0].number, self.carry[0].origin);
     // 繰越は「そのページの自前の脚注より前」に置くので、常にエリア先頭（`base_reserved` = 0）から詰める
-    let Some(packing) =
-      pack_footnotes(&demands, Length::ZERO, geom.page_limit.try_sub(geom.margin_top)?, charges, false)?
+    let Some(packing) = pack_footnotes(
+      &demands,
+      Length::ZERO,
+      geom.page_limit.try_sub(geom.margin_top).map_err(page_level)?,
+      charges,
+      false,
+    )
+    .map_err(page_level)?
     else {
       unreachable!("繰越の詰め込みは先頭に最低 1 行を強制するので None にならない");
     };
@@ -293,17 +298,18 @@ impl PageComposer {
   }
 
   /// 全ブロックの配置後に最終ページを確定し、ページ列とはみ出し記録を返す
-  fn finish(mut self, geom: &PageGeometry) -> Result<(Vec<Page>, Vec<Overflow>), LengthOverflow> {
+  fn finish(mut self, geom: &PageGeometry) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
+    let page_level = |LengthOverflow| return ElementOverflow { origin: None };
     // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
-    let x = self.column_offset()?;
+    let x = self.column_offset().map_err(page_level)?;
     self.draft.land_anchors(x, self.cursor.y);
-    self.end_region(geom, false)?;
+    self.end_region(geom, false).map_err(page_level)?;
     // 文書末尾の行で分割された脚注の繰越を、繰越だけのリージョンへ尽きるまで出す
     // （[`PageComposer::seed_carry`] は 1 リージョンぶんしか詰めない）
     while !self.carry.is_empty() {
-      self.next_region(geom)?;
+      self.next_region(geom).map_err(page_level)?;
       self.seed_carry(geom)?;
-      self.end_region(geom, false)?;
+      self.end_region(geom, false).map_err(page_level)?;
     }
     // 本文も確定脚注も無い末尾ページは push しない（`start_new_page` と同じ述語）。ただし 1 ページも
     // 確定していなければ push する（空文書でも最低 1 ページを返す `break_pages` の事後条件のため）。
@@ -368,9 +374,14 @@ impl PageComposer {
   ///
   /// 脚注の行は着地したリージョンでちょうど 1 回ここを通る（繰越の残りは次のリージョンで改めて積まれる）。
   /// 縦のはみ出しは脚注の詰め込み（[`OverflowKind::FootnoteLine`] / [`OverflowKind::FootnoteSingleLine`]）が記録する。
-  fn push_region_footnote(&mut self, head: PendingFootnote) -> Result<(), LengthOverflow> {
+  fn push_region_footnote(&mut self, head: PendingFootnote) -> Result<(), ElementOverflow> {
     for line in &head.lines {
-      if let Some(excess) = excess(line.width(), self.column_width)? {
+      let over = excess(line.width(), self.column_width).map_err(|LengthOverflow| {
+        return ElementOverflow {
+          origin: Some(head.origin),
+        };
+      })?;
+      if let Some(excess) = over {
         self.record(OverflowKind::Line {
           origin: Some(head.origin),
           excerpt: observe::summarize_line(line),
@@ -431,7 +442,7 @@ pub(in crate::typeset) fn break_pages(
       if keep_group_orphaned(composer.cursor, !composer.carry.is_empty(), geom, breaker, col_width, &blocks[i..=end])?
         && !composer.cursor.at_region_top(geom)
       {
-        composer.advance_region(geom).map_err(page_level)?;
+        composer.advance_region(geom)?;
       }
       gated_end = Some(end);
     }
@@ -478,7 +489,7 @@ pub(in crate::typeset) fn break_pages(
       },
       // 分割禁止は keep グループの連結マーカーで、ゲート（keep_group_*）が処理済み
       Block::Penalty { value } => match value {
-        PENALTY_FORCE_BREAK => composer.force_new_page(geom).map_err(page_level)?,
+        PENALTY_FORCE_BREAK => composer.force_new_page(geom)?,
         PENALTY_FORBID_BREAK => {},
         _ => unreachable!(
           "有限値の penalty はどの構築元も作らない（boxing の PageBreak / KeepWithNext と pagination::index は \
@@ -502,7 +513,7 @@ pub(in crate::typeset) fn break_pages(
           };
         };
         if composer.cursor.overflows(height, geom).map_err(at)? {
-          composer.advance_region(geom).map_err(at)?;
+          composer.advance_region(geom)?;
         }
         let col_off = composer.column_offset().map_err(at)?;
         let y = composer.cursor.y;
@@ -571,7 +582,7 @@ pub(in crate::typeset) fn break_pages(
     i += 1;
   }
 
-  let (pages, overflows) = composer.finish(geom).map_err(page_level)?;
+  let (pages, overflows) = composer.finish(geom)?;
   debug!(block_count, page_count = pages.len(), "ページを分割");
   return Ok((pages, overflows));
 }
@@ -683,18 +694,22 @@ fn plan_atomic(
         let first = table.head.first().or_else(|| return table.rows.first());
         match first {
           Some(row) => {
-            let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)?]).map_err(at)?;
-            let need = FragmentFrame::of(table).for_head_rows().row_need(row, true).map_err(at)?;
-            defers_table_row(cursor, need, &demands[0], need, geom).map_err(at)?
+            let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)?])?;
+            let row_at = |LengthOverflow| {
+              return ElementOverflow {
+                origin: Some(row.origin),
+              };
+            };
+            let need = FragmentFrame::of(table).for_head_rows().row_need(row, true).map_err(row_at)?;
+            defers_table_row(cursor, need, &demands[0], need, geom).map_err(row_at)?
           },
           None => false,
         }
       } else {
         let demands: Vec<FootnoteDemand> =
-          footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width)?)
-            .map_err(at)?
+          footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width)?)?
             .into_iter()
-            .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, column_width)?).map_err(at)?)
+            .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, column_width)?)?)
             .flatten()
             .collect();
         defers_unbreakable_table(cursor, total, &demands, geom).map_err(at)?
@@ -744,7 +759,7 @@ fn keep_group_orphaned(
         alignment,
       } => {
         let lines = break_paragraph(breaker, items, column_width, *indent, *right_indent, *alignment, *origin)?;
-        let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width)?).map_err(at)?;
+        let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width)?)?;
         let (plan, truncated) = plan_paragraph_lines(
           &lines,
           cursor,
@@ -864,16 +879,17 @@ fn table_footnote_bodies(
 }
 
 /// 行ごとの未確定脚注から、分割可能な需要（行ごとの積み上げ高さ）を作る（`bodies` と同順・同長）
-fn footnote_demands(bodies: &[Vec<PendingFootnote>]) -> Result<Vec<Vec<FootnoteDemand>>, LengthOverflow> {
-  return bodies
-    .iter()
-    .map(|line_bodies| {
-      return line_bodies
-        .iter()
-        .map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading))
-        .collect();
-    })
-    .collect();
+fn footnote_demands(bodies: &[Vec<PendingFootnote>]) -> Result<Vec<Vec<FootnoteDemand>>, ElementOverflow> {
+  return bodies.iter().map(|line_bodies| return line_bodies.iter().map(footnote_demand).collect()).collect();
+}
+
+/// 未確定の脚注 1 個の需要を作る。行の高さの積み上げが溢れたら、その脚注の起点を返す
+fn footnote_demand(pending: &PendingFootnote) -> Result<FootnoteDemand, ElementOverflow> {
+  return FootnoteDemand::new(&pending.lines, pending.leading).map_err(|LengthOverflow| {
+    return ElementOverflow {
+      origin: Some(pending.origin),
+    };
+  });
 }
 
 /// 段落を行に割ってベースライン送りで配置する
@@ -899,7 +915,7 @@ fn place_paragraph(
   // （脚注の構成は改リージョン点の選び方で変わらないため）
   let charges = FootnoteCharges::of(geom);
   let mut bodies = footnote_bodies(breaker, &lines, column_width)?;
-  let mut demands = footnote_demands(&bodies).map_err(at)?;
+  let mut demands = footnote_demands(&bodies)?;
   // 段落を前から chunk 単位で確定する。繰越が生じない段落ではループは 1 周で終わる
   let mut last_baseline = composer.cursor.y;
   let mut is_paragraph_start = true;
@@ -921,7 +937,7 @@ fn place_paragraph(
       // 繰越がこのリージョンを埋め尽くして先頭行すら入らない（＝本文 0 行のリージョン）。
       // 改リージョンして繰越を 1 リージョンぶん減らしてから計画し直す。`pack_footnotes` が
       // 繰越を必ず 1 行以上進めるので、この再試行は有限回で終わる
-      composer.advance_region(geom).map_err(at)?;
+      composer.advance_region(geom)?;
       continue;
     }
     let chunk_lines: Vec<Line> = lines.drain(..chunk_len).collect();
@@ -929,7 +945,7 @@ fn place_paragraph(
     demands.drain(..chunk_len);
     for (mut line, footnotes, placement) in izip!(chunk_lines, chunk_bodies, plan) {
       if placement.starts_region {
-        composer.advance_region(geom).map_err(at)?;
+        composer.advance_region(geom)?;
       }
       if placement.overflowed {
         composer.record(OverflowKind::FootnoteLine {
@@ -948,7 +964,7 @@ fn place_paragraph(
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
         let (head, tail) = split_pending(footnote, placed);
         if let Some(head) = head {
-          composer.push_region_footnote(head).map_err(at)?;
+          composer.push_region_footnote(head)?;
         }
         if let Some(tail) = tail {
           composer.carry.push(tail);
@@ -962,7 +978,7 @@ fn place_paragraph(
     // 続きが無い（段落末尾の行で分割した）場合の繰越は、次のブロックの改リージョンか
     // [`PageComposer::finish`] が拾う
     if truncated && !lines.is_empty() {
-      composer.advance_region(geom).map_err(at)?;
+      composer.advance_region(geom)?;
     }
   }
   composer.cursor = composer.cursor.after_line(last_baseline, leading).map_err(at)?;
@@ -980,7 +996,7 @@ fn place_single_line(
   let at = |LengthOverflow| return ElementOverflow { origin };
   let mut baseline = composer.cursor.line_baseline(&line).map_err(at)?;
   if composer.cursor.line_overflows(&line, geom).map_err(at)? {
-    composer.advance_region(geom).map_err(at)?;
+    composer.advance_region(geom)?;
     baseline = geom.margin_top;
   }
   let limit = composer.cursor.region_limit(geom).map_err(at)?;
@@ -1018,7 +1034,7 @@ fn place_math_block(
   };
   let total_height = body.height.try_add(body.depth).map_err(at)?;
   if composer.cursor.defers_unbreakable(total_height, geom).map_err(at)? {
-    composer.advance_region(geom).map_err(at)?;
+    composer.advance_region(geom)?;
   }
   let col_off = composer.column_offset().map_err(at)?;
   let top = composer.cursor.y;
@@ -1181,13 +1197,10 @@ impl<'a> FragmentFrame<'a> {
 
   /// 断片を開くときに行の前へ積む高さ
   fn opening_height(&self) -> Result<Length, LengthOverflow> {
-    let head = Length::try_sum(
-      self
-        .repeated_head
-        .iter()
-        .map(|row| return row.above.height.try_add(row.height()))
-        .collect::<Result<Vec<_>, _>>()?,
-    )?;
+    let head = self
+      .repeated_head
+      .iter()
+      .try_fold(Length::ZERO, |sum, row| return sum.try_add(row.above.height.try_add(row.height())?))?;
     return self.top.height.try_add(head)?.try_add(self.head_bottom.height);
   }
 
@@ -1236,14 +1249,13 @@ fn place_table(
   let head_bodies = table_footnote_bodies(breaker, &table.head, column_width)?;
   let row_bodies = table_footnote_bodies(breaker, &table.rows, column_width)?;
   if !table.breakable {
-    let demands: Vec<FootnoteDemand> = footnote_demands(&head_bodies)
-      .map_err(at)?
+    let demands: Vec<FootnoteDemand> = footnote_demands(&head_bodies)?
       .into_iter()
-      .chain(footnote_demands(&row_bodies).map_err(at)?)
+      .chain(footnote_demands(&row_bodies)?)
       .flatten()
       .collect();
     if defers_unbreakable_table(composer.cursor, table.height(), &demands, geom).map_err(at)? {
-      composer.advance_region(geom).map_err(at)?;
+      composer.advance_region(geom)?;
     }
   }
 
@@ -1275,11 +1287,11 @@ fn place_table(
   let head_frame = body_frame.for_head_rows();
   let mut pending: Option<PendingTableFragment> = None;
   for (row, bodies) in head.into_iter().zip(head_bodies) {
-    place_table_row(composer, geom, row, bodies, &head_frame, &mut pending, align_offset).map_err(at)?;
+    place_table_row(composer, geom, row, bodies, &head_frame, &mut pending, align_offset)?;
     record_width_excess(composer);
   }
   for (row, bodies) in rows.into_iter().zip(row_bodies) {
-    place_table_row(composer, geom, row, bodies, &body_frame, &mut pending, align_offset).map_err(at)?;
+    place_table_row(composer, geom, row, bodies, &body_frame, &mut pending, align_offset)?;
     record_width_excess(composer);
   }
   record_width_excess(composer);
@@ -1348,22 +1360,21 @@ fn place_table_row(
   frame: &FragmentFrame<'_>,
   pending: &mut Option<PendingTableFragment>,
   align_offset: Length,
-) -> Result<(), LengthOverflow> {
+) -> Result<(), ElementOverflow> {
+  let row_origin = Some(row.origin);
+  let at = |LengthOverflow| return ElementOverflow { origin: row_origin };
   let charges = FootnoteCharges::of(geom);
-  let demands: Vec<FootnoteDemand> = bodies
-    .iter()
-    .map(|pending| return FootnoteDemand::new(&pending.lines, pending.leading))
-    .collect::<Result<_, _>>()?;
+  let demands: Vec<FootnoteDemand> = bodies.iter().map(footnote_demand).collect::<Result<_, _>>()?;
   let height = row.height();
-  let fresh = frame.row_need(&row, true)?;
-  let here = frame.row_need(&row, pending.is_none())?;
-  let mut fit = fit_table_row(composer.cursor, here, &demands, geom)?;
-  if defers_table_row(composer.cursor, here, &demands, fresh, geom)? {
+  let fresh = frame.row_need(&row, true).map_err(at)?;
+  let here = frame.row_need(&row, pending.is_none()).map_err(at)?;
+  let mut fit = fit_table_row(composer.cursor, here, &demands, geom).map_err(at)?;
+  if defers_table_row(composer.cursor, here, &demands, fresh, geom).map_err(at)? {
     loop {
-      close_table_fragment(composer, pending, &frame.bottom, align_offset)?;
+      close_table_fragment(composer, pending, &frame.bottom, align_offset).map_err(at)?;
       composer.advance_region(geom)?;
       let carried = composer.cursor.footnote_reserved > Length::ZERO;
-      fit = fit_table_row(composer.cursor, fresh, &demands, geom)?;
+      fit = fit_table_row(composer.cursor, fresh, &demands, geom).map_err(at)?;
       if !(carried && matches!(fit, LineFootnoteFit::Rejected)) {
         break;
       }
@@ -1380,14 +1391,14 @@ fn place_table_row(
         });
       }
       (
-        footnote_area_full(&demands, composer.cursor.footnote_reserved, charges)?,
+        footnote_area_full(&demands, composer.cursor.footnote_reserved, charges).map_err(at)?,
         demands.iter().map(FootnoteDemand::line_count).collect::<Vec<_>>(),
       )
     },
   };
   // 縦は行自身の脚注予約を足す前の下限で、収まり判定と同じく下端の枠罫の予約まで測る（本文の行と同じ。脚注の
   // 溢れは `FootnoteLine` が記録する）
-  let limit = composer.cursor.region_limit(geom)?;
+  let limit = composer.cursor.region_limit(geom).map_err(at)?;
   let opening = pending.is_none();
   let cursor_y = composer.cursor.y;
   let fragment = pending.get_or_insert_with(|| {
@@ -1399,23 +1410,26 @@ fn place_table_row(
   });
   let mut y = cursor_y;
   if opening {
-    stack_boundary(fragment, &frame.top, &mut y)?;
+    stack_boundary(fragment, &frame.top, &mut y).map_err(at)?;
     for head_row in frame.repeated_head {
-      stack_boundary(fragment, &head_row.above, &mut y)?;
-      stack_row(fragment, head_row.clone(), y)?;
-      y = y.try_add(head_row.height())?;
+      stack_boundary(fragment, &head_row.above, &mut y).map_err(at)?;
+      stack_row(fragment, head_row.clone(), y).map_err(at)?;
+      y = y.try_add(head_row.height()).map_err(at)?;
     }
-    stack_boundary(fragment, &frame.head_bottom, &mut y)?;
+    stack_boundary(fragment, &frame.head_bottom, &mut y).map_err(at)?;
   } else {
-    stack_boundary(fragment, &row.above, &mut y)?;
+    stack_boundary(fragment, &row.above, &mut y).map_err(at)?;
   }
   let top = y;
   let (origin, overrun) = (row.origin, row.overrun);
-  stack_row(fragment, row, top)?;
-  composer.cursor.y = top.try_add(height)?;
+  stack_row(fragment, row, top).map_err(at)?;
+  composer.cursor.y = top.try_add(height).map_err(at)?;
   let row_overflows = [
-    (OverflowAxis::Horizontal, excess(overrun, Length::ZERO)?),
-    (OverflowAxis::Vertical, excess(top.try_add(height)?.try_add(frame.bottom.height)?, limit)?),
+    (OverflowAxis::Horizontal, excess(overrun, Length::ZERO).map_err(at)?),
+    (
+      OverflowAxis::Vertical,
+      excess(top.try_add(height).map_err(at)?.try_add(frame.bottom.height).map_err(at)?, limit).map_err(at)?,
+    ),
   ];
   for (axis, over) in row_overflows {
     if let Some(excess) = over {
@@ -1442,8 +1456,8 @@ fn place_table_row(
 #[cfg(test)]
 mod tests {
   use super::{
-    FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor, break_pages,
-    is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
+    ElementOverflow, FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor,
+    break_pages, is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
     document::{NodeId, TextAlignment},
@@ -3929,6 +3943,56 @@ mod tests {
 
     assert_eq!(start.below(pt(5.0)), Ok(cursor(25.0, true, 14.0)));
     assert_eq!(start.after_line(pt(22.0), pt(12.0)), Ok(cursor(34.0, false, 14.0)));
+  }
+
+  #[test]
+  fn break_pages_attributes_a_placement_overflow_to_the_image_that_overflowed() {
+    let Block::Image {
+      origin,
+      path,
+      page_index,
+      width,
+      target_dpi,
+      indent,
+      right_indent,
+      align,
+      ..
+    } = image_block(10.0, 10.0)
+    else {
+      unreachable!("image_block は Block::Image を返す");
+    };
+    let blocks = vec![Block::Image {
+      origin,
+      path,
+      page_index,
+      width,
+      height: Length::from_sp(i64::MAX),
+      target_dpi,
+      indent,
+      right_indent,
+      align,
+    }];
+
+    let result = break_pages(blocks, Length::pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(
+      result.err(),
+      Some(ElementOverflow {
+        origin: Some(image_origin())
+      })
+    );
+  }
+
+  #[test]
+  fn break_pages_attributes_an_overflowing_glue_to_no_element() {
+    let blocks = vec![Block::Glue {
+      natural: Length::from_sp(i64::MAX),
+      stretch: Length::ZERO,
+    }];
+
+    let result = break_pages(blocks, Length::pt(100.0), &test_geometry(), &GreedyBreaker);
+
+    assert_eq!(result.err(), Some(ElementOverflow { origin: None }));
   }
 
   #[test]
