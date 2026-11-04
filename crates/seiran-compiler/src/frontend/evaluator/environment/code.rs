@@ -7,7 +7,7 @@ use crate::{
   document::{HirNode, HirNodeKind},
   frontend::{
     evaluator::{EvalContext, EvalError, opt_args},
-    syntax::view::{EnvironmentView, extract_text_content},
+    syntax::view::{EnvironmentView, verbatim_text},
   },
 };
 
@@ -22,7 +22,7 @@ use crate::{
 pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   opt_args::no_environment_opt_args(view)?;
   let text = match view.body() {
-    Some(body) => trim_edge_newlines(&extract_text_content(view.source(), body)).to_string(),
+    Some(body) => trim_edge_newlines(verbatim_text(view.source(), body)).to_string(),
     None => String::new(),
   };
 

@@ -171,6 +171,20 @@ impl<'a> EnvironmentView<'a> {
   }
 }
 
+/// verbatim 宣言された引数・環境本体の字面を返す
+///
+/// エスケープもコメントも解釈しない生のバイト列で、対応の取れた `{}` は字面に含まれる。
+#[must_use]
+pub(in crate::frontend) fn verbatim_text<'a>(source: &'a str, node: &CstNode<'_>) -> &'a str {
+  let Some(token) = node.first_token_of_kind(TokenKind::VerbatimText) else {
+    unreachable!(
+      "verbatim の引数・本体は本体が空でも VerbatimText を 1 個持つ（parser::parse_verbatim_arg は `{{` / 本体 / \
+       `}}` の 3 個、parse_verbatim_body は本体 1 個を必ず積む）"
+    )
+  };
+  return token.text(source);
+}
+
 /// `CstNode` の子要素からテキスト内容を抽出する
 ///
 /// 構造トークンとコメントを除いて連結する。

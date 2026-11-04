@@ -22,7 +22,7 @@ use crate::{
     evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, math, opt_args},
     syntax::{
       ArgMode,
-      view::{CommandView, extract_text_content},
+      view::{CommandView, extract_text_content, verbatim_text},
     },
   },
 };
@@ -380,7 +380,7 @@ fn code(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, Eval
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "コード断片")?;
 
-  let text = extract_text_content(view.source(), first_arg);
+  let text = verbatim_text(view.source(), first_arg).to_string();
   return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Code(text)));
 }
 

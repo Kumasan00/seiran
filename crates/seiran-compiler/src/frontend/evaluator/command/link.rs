@@ -18,7 +18,7 @@ use crate::{
       inline::{IndexPolicy, evaluate_inline_children},
       opt_args,
     },
-    syntax::view::{CommandView, extract_text_content},
+    syntax::view::{CommandView, verbatim_text},
   },
 };
 
@@ -31,7 +31,7 @@ pub(super) fn url(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirIn
   opt_args::no_command_opt_args(view)?;
   let first_arg = arity::exactly_one_arg(view, "URI")?;
 
-  let url = extract_text_content(view.source(), first_arg).trim().to_string();
+  let url = verbatim_text(view.source(), first_arg).trim().to_string();
   let id = ctx.alloc(view.span());
   let text = ctx.leaf_inline(first_arg.span, HirInlineKind::Text(url.clone()));
   return Ok(HirInline::new(
@@ -52,7 +52,7 @@ pub(super) fn href(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirI
   opt_args::no_command_opt_args(view)?;
   let (url_arg, display_arg) = arity::exactly_two_args(view, "2 個（リンク先 URI と表示テキスト）")?;
 
-  let url = extract_text_content(view.source(), url_arg).trim().to_string();
+  let url = verbatim_text(view.source(), url_arg).trim().to_string();
   let id = ctx.alloc(view.span());
   let children = evaluate_inline_children(view.source(), ctx, display_arg, IndexPolicy::Reject)?;
   return Ok(HirInline::new(id, HirInlineKind::Link { url, children }));
