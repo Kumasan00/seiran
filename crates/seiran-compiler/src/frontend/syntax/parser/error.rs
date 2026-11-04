@@ -73,6 +73,18 @@ pub(crate) enum SyntaxError {
     span: SourceSpan,
   },
 
+  /// `\begin{...}` / `\end{...}` の環境名が 1 語の字でない場合（空白・エスケープ・コマンド・数式を含む）
+  #[error("環境名には空白・エスケープ・コマンド・数式を書けません")]
+  #[diagnostic(
+    code(frontend::syntax::invalid_environment_name),
+    help("環境名は `\\begin{{itemize}}` のように 1 語で書いてください")
+  )]
+  InvalidEnvironmentName {
+    /// 環境名の引数 `{...}` のソース位置
+    #[label("この環境名は 1 語ではありません")]
+    span: SourceSpan,
+  },
+
   /// `\begin{{name}}` に対応する `\end{{name}}` が見つからずに入力が終了した場合
   #[error("環境 '{name}' に対応する \\end が見つかりません")]
   #[diagnostic(

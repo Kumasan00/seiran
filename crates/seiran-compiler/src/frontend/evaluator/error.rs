@@ -272,6 +272,22 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// 文字列を取る引数・任意引数に字以外の要素が出現した場合
+  #[error("{target}は文字列を取るので、{what} は書けません")]
+  #[diagnostic(
+    code(frontend::eval::unsupported_in_string),
+    help("文字列に書けるのは字・空白とエスケープした特殊文字（\\_ \\$ など）だけです")
+  )]
+  UnsupportedInString {
+    /// 文字列として読む位置（例: `\ref の引数`、``equation の任意引数 `label` の値``、`section の任意引数のキー`）
+    target: String,
+    /// 出現した要素の説明（例: `\bold`、`インライン数式 $...$`、`\\（強制改行）`、`下付き _`）
+    what: String,
+    /// 要素のソース位置
+    #[label("文字列の中には書けません")]
+    span: SourceSpan,
+  },
+
   /// `\num` の引数・`\qty` の第 1 引数が数値の文法に合わない場合（文法は左から読むので、最初に外れた位置の 1 件だけ）
   #[error("数値の書き方が正しくありません")]
   #[diagnostic(

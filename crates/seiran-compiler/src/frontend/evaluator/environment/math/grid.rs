@@ -433,6 +433,19 @@ mod tests {
   }
 
   #[test]
+  fn align_row_label_takes_escaped_underscore_as_a_character() {
+    // 行末 `\label` の引数は数式として読むので、`_` は `\_` と書く（裸の `_{...}` は文字列引数の診断）
+    let arena = Bump::new();
+    let source = r"\begin{align}c &= d \label{eq:a\_b}\end{align}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst).unwrap();
+
+    let rows = align_rows_of(&result);
+    assert_eq!(rows[0].label.as_deref(), Some("eq:a_b"));
+  }
+
+  #[test]
   fn align_row_label_on_notag_row_errors() {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \notag \label{eq:x}\end{align}";

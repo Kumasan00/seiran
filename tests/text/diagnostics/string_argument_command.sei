@@ -1,0 +1,3 @@
+\section[label=sec:a]{見出し}
+
+参照は \ref{sec:\bold{a}} です。
