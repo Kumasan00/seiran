@@ -199,7 +199,7 @@ impl PageDraft {
     let mut links = Vec::new();
     let mut placed_rows = Vec::with_capacity(rows.len());
     for (fragment, top_y) in rows {
-      let (row, row_links, index_marks) = fragment.place(x, top_y);
+      let (row, row_links, index_marks) = fragment.place(x, top_y)?;
       for term in &index_marks {
         self.push_index_entry(term);
       }
@@ -354,7 +354,7 @@ impl PageDraft {
           baseline = baseline.try_add(pending.leading.max(prev_depth.try_add(line.height)?))?;
         }
         prev_depth = line.depth;
-        line.shift_x(column_x);
+        line.shift_x(column_x)?;
         links.extend(line_links(&line, baseline)?);
         for entry in &line.index_marks {
           self.push_index_entry(entry);
@@ -438,7 +438,11 @@ impl PageDraft {
 fn line_links(line: &Line, baseline_y: Length) -> Result<Vec<PlacedLink>, LengthOverflow> {
   let top = baseline_y.try_sub(line.height)?;
   let height = line.height.try_add(line.depth)?;
-  return Ok(line.links.iter().filter_map(|link| return link.place(Length::ZERO, top, height)).collect());
+  let mut links = Vec::new();
+  for link in &line.links {
+    links.extend(link.place(Length::ZERO, top, height)?);
+  }
+  return Ok(links);
 }
 
 /// [`PlacedBlock`] の底辺（ページ上端からの距離）を返す

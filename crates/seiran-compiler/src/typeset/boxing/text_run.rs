@@ -108,7 +108,7 @@ impl Measurer<'_> {
     let mut placed = Vec::new();
     let mut dx = Length::ZERO;
     place_prose(list, Length::ZERO, &mut dx, &mut placed)?;
-    let mut atom = HBox::atom(placed);
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
     return Ok((atom, leading.in_math(), trailing.in_math()));
   }

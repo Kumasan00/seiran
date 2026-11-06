@@ -3,11 +3,14 @@
 use crate::{
   color::Color,
   document::{HirTable, HirTableRow, NodeId},
-  typeset::lowering::{
-    LoweringContext, LoweringState,
-    float::{FloatCaption, FloatMargins, lower_numbered_float},
-    inline::lower_inlines,
-    layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle},
+  typeset::{
+    error::ElementOverflow,
+    lowering::{
+      LoweringContext, LoweringState,
+      float::{FloatCaption, FloatMargins, lower_numbered_float},
+      inline::lower_inlines,
+      layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle},
+    },
   },
 };
 
@@ -17,13 +20,13 @@ fn lower_rows(
   rows: &[HirTableRow],
   cell_style: TextStyle,
   state: &mut LoweringState<'_>,
-) -> Vec<TableRowLayout> {
+) -> Result<Vec<TableRowLayout>, ElementOverflow> {
   let mut result = Vec::with_capacity(rows.len());
   for row in rows {
     let mut cells = Vec::with_capacity(row.cells.len());
     for cell in &row.cells {
       cells.push(TableCellLayout {
-        content: lower_inlines(ctx, &cell.content, cell_style, state),
+        content: lower_inlines(ctx, &cell.content, cell_style, state)?,
         column_span: cell.column_span,
         row_span: cell.row_span,
         rule_below: cell.rule_below,
@@ -35,7 +38,7 @@ fn lower_rows(
       separator: row.separator,
     });
   }
-  return result;
+  return Ok(result);
 }
 
 /// 表をレイアウトノードに変換する
@@ -44,7 +47,7 @@ pub(super) fn lower_table(
   id: NodeId,
   table: &HirTable,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let style = &ctx.style.table;
 
   let body_style = TextStyle {
@@ -73,7 +76,7 @@ pub(super) fn lower_table(
     position: table.caption_position,
   };
   return lower_numbered_float(ctx, id, caption, &margins, state, |state| {
-    return LayoutNode::Table(TableLayout {
+    return Ok(LayoutNode::Table(TableLayout {
       origin: id,
       columns: table
         .columns
@@ -86,8 +89,8 @@ pub(super) fn lower_table(
           };
         })
         .collect(),
-      head: lower_rows(ctx, &table.head, head_style, state),
-      rows: lower_rows(ctx, &table.rows, body_style, state),
+      head: lower_rows(ctx, &table.head, head_style, state)?,
+      rows: lower_rows(ctx, &table.rows, body_style, state)?,
       breakable: table.breakable,
       cell_padding: style.cell_padding,
       outer_rule_thickness: style.outer_rule_thickness,
@@ -97,7 +100,7 @@ pub(super) fn lower_table(
       partial_rule_thickness: style.partial_rule_thickness,
       partial_rule_trim: style.partial_rule_trim,
       rule_color: style.rule_color.map(Color::rgb),
-    });
+    }));
   });
 }
 

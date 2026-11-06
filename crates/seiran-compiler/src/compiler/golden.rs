@@ -792,7 +792,9 @@ fn line_edges_starting_with(pages: &[Page], prefix: &str) -> (Length, Length) {
         for placed in &line.boxes {
           push_text(&placed.hbox.content, &mut text);
         }
-        return text.starts_with(prefix).then(|| return (line.boxes[0].dx, line.width()));
+        return text
+          .starts_with(prefix)
+          .then(|| return (line.boxes[0].dx, line.width().expect("テストが組む長さは値域内")));
       },
       _ => return None,
     })
@@ -2706,7 +2708,9 @@ fn body_line_edges(source: &str) -> Vec<(Length, Length)> {
     .blocks
     .iter()
     .filter_map(|block| match block {
-      PlacedBlock::Line { line, .. } => return Some((line.boxes[0].dx, line.width())),
+      PlacedBlock::Line { line, .. } => {
+        return Some((line.boxes[0].dx, line.width().expect("テストが組む長さは値域内")));
+      },
       _ => return None,
     })
     .collect();

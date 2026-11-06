@@ -376,7 +376,7 @@ impl Measurer<'_> {
       }
       for (c, cell) in row.into_iter().enumerate() {
         // 列幅は列内のセル幅の最大値なので、`Align::offset` の 0 へのクランプは到達しない。
-        let intra = cell.align.offset(col_widths[c], cell.content.width);
+        let intra = cell.align.offset(col_widths[c], cell.content.width)?;
         placed.push(PlacedHBox {
           hbox: cell.content,
           dx: col_x[c].try_add(intra)?,
@@ -387,7 +387,7 @@ impl Measurer<'_> {
       prev_depth = row_depth;
     }
 
-    return Ok((HBox::atom(placed), baselines));
+    return Ok((HBox::atom(placed)?, baselines));
   }
 
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
@@ -441,7 +441,7 @@ impl Measurer<'_> {
         dy: axis.try_sub(center)?,
       });
     }
-    return Ok(HBox::atom(children));
+    return HBox::atom(children);
   }
 
   /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
@@ -534,7 +534,7 @@ impl Measurer<'_> {
     for node in nodes {
       self.place_arranged_child(node, Length::ZERO, &mut dx, &mut placed, &mut edge)?;
     }
-    let mut atom = HBox::atom(placed);
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
     return Ok(atom);
   }

@@ -350,7 +350,7 @@ impl ShapedRun {
       });
       dx = dx.try_add(width)?;
     }
-    let mut atom = HBox::atom(placed);
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
     return Ok(atom);
   }

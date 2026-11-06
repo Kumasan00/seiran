@@ -1,14 +1,19 @@
 //! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
+use std::convert::Infallible;
+
 use crate::{
   document::{HirNodeKind, HirTheorem, NodeId, Typeface},
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
-  typeset::lowering::{
-    LoweringContext, LoweringState, counter,
-    layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
-    lower_nodes, with_label_anchors,
+  typeset::{
+    error::ElementOverflow,
+    lowering::{
+      LoweringContext, LoweringState, counter,
+      layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
+      lower_nodes, with_label_anchors,
+    },
   },
 };
 
@@ -18,7 +23,7 @@ pub(super) fn lower_theorem(
   id: NodeId,
   theorem: &HirTheorem,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let number = state.counter_value(id).map(|value| return counter::format_counter_value(ctx.style, value));
   let of_target = theorem.of.as_ref().map(|target| return state.ref_target(target.id));
   let label = state.declared_label(id);
@@ -34,7 +39,7 @@ pub(super) fn lower_theorem(
   ];
 
   let body_ctx = ctx.with_body_typeface(pres.typeface).with_first_line_indent(Length::pt(0.0));
-  let mut body_nodes = lower_nodes(&body_ctx, &theorem.body, state);
+  let mut body_nodes = lower_nodes(&body_ctx, &theorem.body, state)?;
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
@@ -65,7 +70,7 @@ pub(super) fn lower_theorem(
     length: pres.bottom_margin,
   });
 
-  return with_label_anchors(label, nodes);
+  return Ok(with_label_anchors(label, nodes));
 }
 
 /// 定理見出し（独立行）の `VBox` を構築する
@@ -96,7 +101,9 @@ fn build_heading(
 
   // 副作用のない生成なので、遅延させても結果は変わらない。
   let make_title = || {
-    return title.map(|t| return vec![InlineNode::Text(t.to_string(), base_style)]).unwrap_or_default();
+    return Ok::<_, Infallible>(
+      title.map(|t| return vec![InlineNode::Text(t.to_string(), base_style)]).unwrap_or_default(),
+    );
   };
   let of_display = of.map(|target| return state.ref_display(ctx.style, target));
 
@@ -105,7 +112,8 @@ fn build_heading(
     number: number.unwrap_or(""),
     of: of_display.as_deref(),
   };
-  let children = template.expand(values, make_title, |literal| {
+  // タイトルの生成は失敗しない（`Infallible`）ので、`Ok` の腕だけが残る
+  let Ok(children) = template.expand(values, make_title, |literal| {
     return InlineNode::Text(literal.to_string(), base_style);
   });
   let children = vec![LayoutNode::Paragraph(ParagraphLayout {

@@ -1,7 +1,7 @@
 //! 行分割の出力。
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::boxes::{
     hitem::{IndexTerm, MeasuredFootnote, PlacedHBox},
     link::LinkTarget,
@@ -35,9 +35,15 @@ impl Line {
   ///
   /// `boxes` は左から順に積まれるが、両端揃えの伸縮や約物の負アキで最後の箱が最右とは限らないため、
   /// 右端の最大値を取る。
-  #[must_use]
-  pub(crate) fn width(&self) -> Length {
-    return self.boxes.iter().map(|placed| return placed.dx + placed.hbox.width).fold(Length::ZERO, Length::max);
+  ///
+  /// # Errors
+  ///
+  /// いずれかのボックスの右端が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(crate) fn width(&self) -> Result<Length, LengthOverflow> {
+    return self
+      .boxes
+      .iter()
+      .try_fold(Length::ZERO, |widest, placed| return Ok(widest.max(placed.dx.try_add(placed.hbox.width)?)));
   }
 
   /// 行内の水平位置（ボックスとクリック矩形）をまとめて `dx` だけ右へずらす
@@ -45,17 +51,22 @@ impl Line {
   /// `Line` の水平位置はすべて行頭（段左端）からの相対値なので、インデント・揃えオフセット・
   /// 段オフセットのように「行の着地位置が決まってから足す量」はこのメソッドで一括して加える。
   /// 水平位置を持つのは `boxes`（`dx`）と `links`（`x0` / `x1`）の 2 つだけで、`index_marks` / `footnotes` は座標を持たない。
-  pub(in crate::typeset) fn shift_x(&mut self, dx: Length) {
+  ///
+  /// # Errors
+  ///
+  /// ずらした位置が長さの値域に収まらないとき [`LengthOverflow`]（その時点までのずらしは残る。呼び元は組版を止める）。
+  pub(in crate::typeset) fn shift_x(&mut self, dx: Length) -> Result<(), LengthOverflow> {
     if dx == Length::ZERO {
-      return;
+      return Ok(());
     }
     for placed in &mut self.boxes {
-      placed.dx += dx;
+      placed.dx = placed.dx.try_add(dx)?;
     }
     for link in &mut self.links {
-      link.x0 += dx;
-      link.x1 += dx;
+      link.x0 = link.x0.try_add(dx)?;
+      link.x1 = link.x1.try_add(dx)?;
     }
+    return Ok(());
   }
 }
 
@@ -78,17 +89,25 @@ impl LineLink {
   /// 基準点を `dx` に置いたときの確定矩形を返す。縦範囲は `top` から `height`
   ///
   /// 退化矩形（`x1 <= x0`）は描画しないので `None`。
-  #[must_use]
-  pub(in crate::typeset) fn place(&self, dx: Length, top: Length, height: Length) -> Option<PlacedLink> {
+  ///
+  /// # Errors
+  ///
+  /// 矩形の位置か幅が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(in crate::typeset) fn place(
+    &self,
+    dx: Length,
+    top: Length,
+    height: Length,
+  ) -> Result<Option<PlacedLink>, LengthOverflow> {
     if self.x1 <= self.x0 {
-      return None;
+      return Ok(None);
     }
-    return Some(PlacedLink {
+    return Ok(Some(PlacedLink {
       target: self.target.clone(),
-      x: dx + self.x0,
+      x: dx.try_add(self.x0)?,
       y: top,
-      width: self.x1 - self.x0,
+      width: self.x1.try_sub(self.x0)?,
       height,
-    });
+    }));
   }
 }

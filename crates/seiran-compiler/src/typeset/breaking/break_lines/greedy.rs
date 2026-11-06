@@ -134,7 +134,7 @@ fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
     line_index = lines.len(),
     is_last,
     is_hyphenated = hyphen,
-    width_pt = %line.width().to_pt(),
+    width_pt = ?line.width().map(Length::to_pt),
     text = observe::summarize_line(&line),
     "貪欲法で行を確定"
   );

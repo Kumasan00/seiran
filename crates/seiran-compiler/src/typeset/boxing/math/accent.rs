@@ -142,7 +142,7 @@ impl Measurer<'_> {
     let mut children = Vec::new();
     math::translate_into(&mut children, base_boxes, Length::ZERO, Length::ZERO)?;
     math::translate_into(&mut children, mark, base_attachment.try_sub(mark_attachment)?, raise)?;
-    let mut atom = HBox::atom(children);
+    let mut atom = HBox::atom(children)?;
     // 結合記号は送り幅 0 で、取付点によっては原点が基底の送り幅より右に来るので、幅は基底の送り幅に戻す
     atom.width = base_width;
     out.push(PlacedHBox {

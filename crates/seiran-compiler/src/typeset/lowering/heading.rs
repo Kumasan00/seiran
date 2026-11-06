@@ -7,6 +7,7 @@ use crate::{
   style::Style as ReadStyle,
   typeset::{
     boxes::AnchorId,
+    error::ElementOverflow,
     lowering::{
       LoweringContext, LoweringState, code, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
@@ -155,12 +156,16 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
 ///
 /// 見出しキーは `semantics::analyze` が文書順に振ったもの。lowering は振り直さず読むだけなので、
 /// 再帰（quote / theorem / list item 本体）を挟んでも `analyzed.headings()` の添字と必ず揃う。
+///
+/// # Errors
+///
+/// タイトルの脚注マーカーの大きさが長さの値域を超えたら、見出し内のその要素を起点とする [`ElementOverflow`]。
 pub(super) fn lower_hir_heading(
   ctx: &LoweringContext<'_>,
   id: NodeId,
   heading: &HirHeading,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let key = state.heading_key(id);
   let label = state.declared_label(id).cloned();
   let number = state
@@ -185,21 +190,25 @@ pub(super) fn lower_hir_heading(
 /// 見出しをレイアウトノードに変換する
 ///
 /// `title` は呼ぶとタイトルを lower して返すクロージャで、`format` の `{title}` の出現回数だけ呼ばれる。
-pub(super) fn lower_heading(
+///
+/// # Errors
+///
+/// `title` が失敗したら、その失敗を返す。
+pub(super) fn lower_heading<E>(
   ctx: &LoweringContext<'_>,
   level: HeadingLevel,
   number: &str,
-  title: impl FnMut() -> Vec<InlineNode>,
+  title: impl FnMut() -> Result<Vec<InlineNode>, E>,
   label: Option<LabelId>,
   key: HeadingKey,
   origin: Option<NodeId>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, E> {
   let heading_style = &ctx.style.heading[level];
   let style = title_style(ctx, level);
 
   let children = heading_style.format.expand(number, title, |literal| {
     return InlineNode::Text(literal.to_string(), style);
-  });
+  })?;
   let children = vec![LayoutNode::Paragraph(ParagraphLayout {
     origin,
     content: merge_adjacent_text(children),
@@ -236,11 +245,13 @@ pub(super) fn lower_heading(
     result.push(LayoutNode::KeepWithNext);
   }
 
-  return result;
+  return Ok(result);
 }
 
 #[cfg(test)]
 mod tests {
+  use std::convert::Infallible;
+
   use super::*;
   use crate::{
     color::Color,
@@ -255,6 +266,20 @@ mod tests {
       },
     },
   };
+
+  /// 失敗しないタイトルで見出しを lower するテストヘルパ
+  fn lower_heading_in_range(
+    ctx: &LoweringContext<'_>,
+    level: HeadingLevel,
+    number: &str,
+    mut title: impl FnMut() -> Vec<InlineNode>,
+    label: Option<LabelId>,
+    key: HeadingKey,
+    origin: Option<NodeId>,
+  ) -> Vec<LayoutNode> {
+    let Ok(nodes) = lower_heading(ctx, level, number, || return Ok::<_, Infallible>(title()), label, key, origin);
+    return nodes;
+  }
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る
   fn plain_title(ctx: &LoweringContext<'_>, level: HeadingLevel, text: &str) -> Vec<InlineNode> {
@@ -277,7 +302,7 @@ mod tests {
     let style = ReadStyle::default();
     let document = analyzed("\\section{速さ \\unit{m.s^{-1}}}");
 
-    let (_, headings) = lower_sources_with_headings(&context(&style), &document);
+    let (_, headings) = lower_sources_with_headings(&context(&style), &document).expect("テストが組む長さは値域内");
 
     assert_eq!(headings[0].title_plain, "速さ m\u{202F}s\u{207B}\u{00B9}");
   }
@@ -287,7 +312,7 @@ mod tests {
     let style = ReadStyle::default();
     let document = analyzed("\\section{距離 \\qty{30}{\\degree} と \\qty{5}{km}}");
 
-    let (_, headings) = lower_sources_with_headings(&context(&style), &document);
+    let (_, headings) = lower_sources_with_headings(&context(&style), &document).expect("テストが組む長さは値域内");
 
     assert_eq!(headings[0].title_plain, "距離 30\u{00B0} と 5\u{202F}km");
   }
@@ -297,7 +322,7 @@ mod tests {
     let style = ReadStyle::default();
     let document = analyzed("\\section{長さ \\num{-12345e3}}");
 
-    let (_, headings) = lower_sources_with_headings(&context(&style), &document);
+    let (_, headings) = lower_sources_with_headings(&context(&style), &document).expect("テストが組む長さは値域内");
 
     assert_eq!(headings[0].title_plain, "長さ \u{2212}12\u{202F}345\u{205F}\u{00D7}\u{205F}10\u{00B3}");
   }
@@ -321,8 +346,15 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
-    let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "4.7", || return title.clone(), None, HeadingKey::new(0), None);
+    let nodes = lower_heading_in_range(
+      &ctx,
+      HeadingLevel::Section,
+      "4.7",
+      || return title.clone(),
+      None,
+      HeadingKey::new(0),
+      None,
+    );
 
     let children = heading_children(&nodes);
     let text = match &children[0] {
@@ -357,7 +389,7 @@ mod tests {
     let ctx = context(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
-    let nodes = lower_heading(
+    let nodes = lower_heading_in_range(
       &ctx,
       HeadingLevel::Section,
       "1",
@@ -394,7 +426,7 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
+      lower_heading_in_range(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
     let keep_idx = nodes.iter().position(|n| matches!(n, LayoutNode::KeepWithNext)).expect("KeepWithNext が出るはず");
@@ -410,7 +442,7 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
+      lower_heading_in_range(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
@@ -494,7 +526,7 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
+      lower_heading_in_range(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert_eq!(heading_alignment(&nodes), None, "未指定なら外側の揃え（[text].alignment）に従う");
   }
@@ -507,14 +539,15 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
+      lower_heading_in_range(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0), None);
 
     assert_eq!(heading_alignment(&nodes), Some(TextAlignment::Right));
   }
 
   /// `.sei` ソースを lower した見出しの記録
   fn heading_records(style: &ReadStyle, source: &str) -> Vec<HeadingRecord> {
-    let (_layout, headings) = lower_sources_with_headings(&context(style), &analyzed(source));
+    let (_layout, headings) =
+      lower_sources_with_headings(&context(style), &analyzed(source)).expect("テストが組む長さは値域内");
     return headings;
   }
 
@@ -591,7 +624,8 @@ mod tests {
       None,
     );
 
-    let (_layout, headings) = lower_sources_with_headings(&context(&style), &document);
+    let (_layout, headings) =
+      lower_sources_with_headings(&context(&style), &document).expect("テストが組む長さは値域内");
 
     let label = &headings[1].toc_label;
     assert!(!flatten(label).iter().any(|n| matches!(n, InlineNode::Link { .. })), "{label:?}");
@@ -607,7 +641,8 @@ mod tests {
     let style = ReadStyle::default();
     let document = analyzed("\\section{A\\footnote{x}}\n\n本文\\footnote{y}\n");
 
-    let (layout, headings) = lower_sources_with_headings(&context(&style), &document);
+    let (layout, headings) =
+      lower_sources_with_headings(&context(&style), &document).expect("テストが組む長さは値域内");
 
     assert!(
       !flatten(&headings[0].toc_label)

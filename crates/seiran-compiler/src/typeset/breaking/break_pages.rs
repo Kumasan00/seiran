@@ -360,7 +360,7 @@ impl PageComposer {
     origin: Option<NodeId>,
   ) -> Result<(), LengthOverflow> {
     let column_width = self.column_width;
-    return self.record_extent_overflow(line.width(), column_width, bottom, limit, |axis, excess| {
+    return self.record_extent_overflow(line.width()?, column_width, bottom, limit, |axis, excess| {
       return OverflowKind::Line {
         origin,
         excerpt: observe::summarize_line(line),
@@ -375,12 +375,13 @@ impl PageComposer {
   /// 脚注の行は着地したリージョンでちょうど 1 回ここを通る（繰越の残りは次のリージョンで改めて積まれる）。
   /// 縦のはみ出しは脚注の詰め込み（[`OverflowKind::FootnoteLine`] / [`OverflowKind::FootnoteSingleLine`]）が記録する。
   fn push_region_footnote(&mut self, head: PendingFootnote) -> Result<(), ElementOverflow> {
+    let at = |LengthOverflow| {
+      return ElementOverflow {
+        origin: Some(head.origin),
+      };
+    };
     for line in &head.lines {
-      let over = excess(line.width(), self.column_width).map_err(|LengthOverflow| {
-        return ElementOverflow {
-          origin: Some(head.origin),
-        };
-      })?;
+      let over = excess(line.width().map_err(at)?, self.column_width).map_err(at)?;
       if let Some(excess) = over {
         self.record(OverflowKind::Line {
           origin: Some(head.origin),
@@ -423,12 +424,12 @@ pub(in crate::typeset) fn break_pages(
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
 ) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
-  let col_width = column_width(text_width, geom.num_columns, geom.column_gap);
+  // 改ページの判断（生成物・ページ単位の計算）は特定の要素に帰属しない
+  let page_level = |LengthOverflow| return ElementOverflow { origin: None };
+  let col_width = column_width(text_width, geom.num_columns, geom.column_gap).map_err(page_level)?;
   let mut composer = PageComposer::new(geom, col_width);
   let block_count = blocks.len();
   let mut blocks = blocks;
-  // 改ページの判断（生成物・ページ単位の計算）は特定の要素に帰属しない
-  let page_level = |LengthOverflow| return ElementOverflow { origin: None };
 
   // FORBID penalty で連結された keep グループの先頭で一度だけ、末尾ブロックの先頭が見出しと同じ
   // リージョンに乗るかを判定し、収まらなければグループごと次リージョンへ送る
@@ -518,8 +519,8 @@ pub(in crate::typeset) fn break_pages(
         let col_off = composer.column_offset().map_err(at)?;
         let y = composer.cursor.y;
         let limit = composer.cursor.region_limit(geom).map_err(at)?;
-        let available = boxes::usable_width(col_width, indent, right_indent);
-        let offset = align.offset(available, width);
+        let available = boxes::usable_width(col_width, indent, right_indent).map_err(at)?;
+        let offset = align.offset(available, width).map_err(at)?;
         composer
           .record_extent_overflow(
             offset.try_add(width).map_err(at)?,
@@ -558,7 +559,11 @@ pub(in crate::typeset) fn break_pages(
         right_indent,
         align,
       } => {
-        let available = boxes::usable_width(col_width, indent, right_indent);
+        let available = boxes::usable_width(col_width, indent, right_indent).map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(table.origin),
+          };
+        })?;
         place_table(&mut composer, geom, breaker, table, col_width, indent, available, align)?;
         composer.cursor.at_edge = true;
       },
@@ -571,7 +576,11 @@ pub(in crate::typeset) fn break_pages(
         right_indent,
         align,
       } => {
-        let available = boxes::usable_width(col_width, indent, right_indent);
+        let available = boxes::usable_width(col_width, indent, right_indent).map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(origin),
+          };
+        })?;
         place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, indent, available, origin)?;
       },
       // アンカーはゼロサイズで、次の実ブロックの確定座標で解決する
@@ -687,7 +696,7 @@ fn plan_atomic(
       });
     },
     Block::Table { table, .. } => {
-      let total = table.height();
+      let total = table.height().map_err(at)?;
       // 分割可能な表は先頭行（ヘッダがあればヘッダの 1 行目）を送るかだけで決まる（`place_table` の行ループと
       // 同じ判定）。先頭行は断片を開くヘッダ行かヘッダの無い表の本体行なので、前に積むのは上端の枠罫だけ
       let starts_region = if table.breakable {
@@ -819,14 +828,15 @@ fn break_paragraph(
   alignment: TextAlignment,
   origin: Option<NodeId>,
 ) -> Result<Vec<Line>, ElementOverflow> {
-  let available = boxes::usable_width(column_width, indent, right_indent);
+  let available = boxes::usable_width(column_width, indent, right_indent)
+    .map_err(|LengthOverflow| return ElementOverflow { origin })?;
   let mut lines = breaker
     .break_lines(items, available, alignment)
     .map_err(|LengthOverflow| return ElementOverflow { origin })?;
   // 揃えのずらしは行分割が利用可能幅の中で済ませている。段オフセットは段をまたぐと行ごとに変わるため、
   // ここでは足さず着地段が決まってから足す
   for line in &mut lines {
-    line.shift_x(indent);
+    line.shift_x(indent).map_err(|LengthOverflow| return ElementOverflow { origin })?;
   }
   return Ok(lines);
 }
@@ -960,7 +970,7 @@ fn place_paragraph(
         .record_line_overflow(&line, baseline.try_add(line.depth).map_err(at)?, limit, origin)
         .map_err(at)?;
       let col_off = composer.column_offset().map_err(at)?;
-      line.shift_x(col_off);
+      line.shift_x(col_off).map_err(at)?;
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
         let (head, tail) = split_pending(footnote, placed);
         if let Some(head) = head {
@@ -1004,7 +1014,7 @@ fn place_single_line(
     .record_line_overflow(&line, baseline.try_add(line.depth).map_err(at)?, limit, origin)
     .map_err(at)?;
   let col_off = composer.column_offset().map_err(at)?;
-  line.shift_x(col_off);
+  line.shift_x(col_off).map_err(at)?;
   composer.draft.place_line(line, baseline, col_off).map_err(at)?;
   composer.cursor = composer.cursor.after_line(baseline, leading).map_err(at)?;
   return Ok(());
@@ -1039,7 +1049,7 @@ fn place_math_block(
   let col_off = composer.column_offset().map_err(at)?;
   let top = composer.cursor.y;
   let limit = composer.cursor.region_limit(geom).map_err(at)?;
-  let body_offset = align.offset(available, body.width);
+  let body_offset = align.offset(available, body.width).map_err(at)?;
   composer
     .record_extent_overflow(
       body_offset.try_add(body.width).map_err(at)?,
@@ -1245,7 +1255,7 @@ fn place_table(
     };
   };
   // 揃えオフセットは段内のもの（字下げを含む）。段オフセットは着地段が決まる flush 時に断片ごとに足す
-  let align_offset = indent.try_add(align.offset(available, table.width)).map_err(at)?;
+  let align_offset = indent.try_add(align.offset(available, table.width).map_err(at)?).map_err(at)?;
   let head_bodies = table_footnote_bodies(breaker, &table.head, column_width)?;
   let row_bodies = table_footnote_bodies(breaker, &table.rows, column_width)?;
   if !table.breakable {
@@ -1254,7 +1264,7 @@ fn place_table(
       .chain(footnote_demands(&row_bodies)?)
       .flatten()
       .collect();
-    if defers_unbreakable_table(composer.cursor, table.height(), &demands, geom).map_err(at)? {
+    if defers_unbreakable_table(composer.cursor, table.height().map_err(at)?, &demands, geom).map_err(at)? {
       composer.advance_region(geom)?;
     }
   }
@@ -1321,7 +1331,7 @@ fn stack_boundary(
   boundary: &TableBoundary,
   y: &mut Length,
 ) -> Result<(), LengthOverflow> {
-  fragment.rules.extend(boundary.place(Length::ZERO, *y));
+  fragment.rules.extend(boundary.place(Length::ZERO, *y)?);
   *y = y.try_add(boundary.height)?;
   return Ok(());
 }
@@ -2665,10 +2675,11 @@ mod tests {
   /// （表エンジンの `arrange` と同じ決め方）
   fn framed(mut table: TableBox) -> TableBox {
     let width = table.width;
-    table.top = TableBoundary::rule(Length::ZERO, pt(1.0), pt(2.0), width, None);
-    table.bottom = TableBoundary::rule(pt(2.0), pt(1.0), Length::ZERO, width, None);
+    table.top = TableBoundary::rule(Length::ZERO, pt(1.0), pt(2.0), width, None).expect("テストが組む長さは値域内");
+    table.bottom = TableBoundary::rule(pt(2.0), pt(1.0), Length::ZERO, width, None).expect("テストが組む長さは値域内");
     if !table.head.is_empty() {
-      table.head_bottom = TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), width, None);
+      table.head_bottom =
+        TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), width, None).expect("テストが組む長さは値域内");
       if let Some(first) = table.rows.first_mut() {
         first.above = table.head_bottom.clone();
       }
@@ -2678,14 +2689,15 @@ mod tests {
 
   /// 行の上に区切りの罫線（空き 2・太さ 1・空き 2 → 高さ 5、表幅 24）を付ける
   fn separated(mut row: TableRowFragment) -> TableRowFragment {
-    row.above = TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), pt(24.0), None);
+    row.above = TableBoundary::rule(pt(2.0), pt(1.0), pt(2.0), pt(24.0), None).expect("テストが組む長さは値域内");
     return row;
   }
 
   /// 行の上に部分罫 2 本（帯 (0, 12) と (12, 12)・詰め 2、空き 2・太さ 1・空き 2 → 高さ 5）を付ける
   fn partially_ruled(mut row: TableRowFragment) -> TableRowFragment {
     let bands = [(Length::ZERO, pt(12.0)), (pt(12.0), pt(12.0))];
-    row.above = TableBoundary::partial_rules(pt(2.0), pt(1.0), pt(2.0), &bands, pt(2.0), None);
+    row.above =
+      TableBoundary::partial_rules(pt(2.0), pt(1.0), pt(2.0), &bands, pt(2.0), None).expect("テストが組む長さは値域内");
     return row;
   }
 
@@ -3063,7 +3075,8 @@ mod tests {
   fn place_table_shifts_rules_and_boxes_to_the_landing_point() {
     // 罫線は境界上端・表左端、箱は表左端・行帯上端を原点に確定済みで、配置は着地点（段オフセット 0・上端 10）を足すだけ
     let table = TableBox {
-      top: TableBoundary::rule(Length::ZERO, pt(1.5), Length::ZERO, pt(24.0), Some([9, 9, 9])),
+      top: TableBoundary::rule(Length::ZERO, pt(1.5), Length::ZERO, pt(24.0), Some([9, 9, 9]))
+        .expect("テストが組む長さは値域内"),
       breakable: false,
       ..table_box(Vec::new(), vec![table_row("R0")])
     };

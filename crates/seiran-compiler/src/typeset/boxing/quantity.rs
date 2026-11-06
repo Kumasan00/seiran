@@ -68,7 +68,7 @@ impl Measurer<'_> {
         },
       }
     }
-    let mut quantity = HBox::atom(placed);
+    let mut quantity = HBox::atom(placed)?;
     // 送り幅は置いた子の右端ではなく送りの和（`text_box` と同じ）
     quantity.width = dx;
     return Ok(quantity);

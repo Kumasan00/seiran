@@ -159,20 +159,21 @@ fn compose_blocks(
   let mut shaper = Shaper::new(fonts, issues, GlyphOrigin::Generated(Generated::Toc));
   let mut blocks: Vec<Block> = Vec::new();
 
-  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(|LengthOverflow| {
-    return ElementOverflow::GENERATED;
-  })?;
-  title.shift_x(spec.title_align.offset(spec.text_width, title.width()));
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
+  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(generated)?;
+  title
+    .shift_x(spec.title_align.offset(spec.text_width, title.width().map_err(generated)?).map_err(generated)?)
+    .map_err(generated)?;
   blocks.push(Block::ComposedLine {
     origin: None,
     line: title,
-    leading: spec.title_style.font_size * spec.line_height_factor,
+    leading: spec.title_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
   if spec.title_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.title_bottom_margin));
   }
 
-  let entry_leading = spec.entry_style.font_size * spec.line_height_factor;
+  let entry_leading = spec.entry_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?;
   for entry in entries {
     let origin = entry.origin;
     let title_shaper =
@@ -204,13 +205,13 @@ fn compose_entry_line(
   spec: &TocSpec,
   entry: TocEntry,
 ) -> Result<Line, ElementOverflow> {
-  let indent = spec.indent_per_level * f32::from(entry.level.depth());
   let entry_origin = entry.origin;
   let generated = |LengthOverflow| {
     return ElementOverflow {
       origin: entry_origin,
     };
   };
+  let indent = spec.indent_per_level.try_scale(f64::from(f32::from(entry.level.depth()))).map_err(generated)?;
 
   let mut acc = LineAccum::default();
   let left_end = acc
@@ -229,7 +230,7 @@ fn compose_entry_line(
     let page_boxes = shaper.shape_text(&entry.page_label, spec.entry_style).map_err(generated)?;
     let page_width = row_width(&page_boxes).map_err(generated)?;
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
-    let page_x = (spec.text_width - page_width).max(left_end);
+    let page_x = spec.text_width.try_sub(page_width).map_err(generated)?.max(left_end);
     if let Some(unit) = &spec.leader {
       fill_leader(shaper, unit, spec.entry_style, left_end, page_x, &mut acc).map_err(generated)?;
     }
@@ -243,7 +244,9 @@ fn compose_entry_line(
     x1: right_edge,
   }];
   let mut line = acc.into_line(links);
-  line.shift_x(spec.entry_align.offset(spec.text_width, line.width()));
+  line
+    .shift_x(spec.entry_align.offset(spec.text_width, line.width().map_err(generated)?).map_err(generated)?)
+    .map_err(generated)?;
   return Ok(line);
 }
 
@@ -256,7 +259,7 @@ fn fill_leader(
   to_x: Length,
   acc: &mut LineAccum,
 ) -> Result<(), LengthOverflow> {
-  let available = to_x - from_x;
+  let available = to_x.try_sub(from_x)?;
   if !available.is_positive() {
     return Ok(());
   }
@@ -275,7 +278,7 @@ fn fill_leader(
   }
   let leader_boxes = shaper.shape_text(&unit.repeat(count), style)?;
   let leader_width = row_width(&leader_boxes)?;
-  acc.place(leader_boxes, to_x - leader_width)?;
+  acc.place(leader_boxes, to_x.try_sub(leader_width)?)?;
   return Ok(());
 }
 

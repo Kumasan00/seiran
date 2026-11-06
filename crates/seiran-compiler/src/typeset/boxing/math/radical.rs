@@ -173,7 +173,7 @@ impl Measurer<'_> {
       dy: vinculum_bottom,
     });
     math::translate_into(&mut children, radicand.boxes, body_x, Length::ZERO)?;
-    let mut atom = HBox::atom(children);
+    let mut atom = HBox::atom(children)?;
     atom.height = atom.height.max(ascent);
     atom.width = atom.width.max(body_x.try_add(radicand_width)?);
     let advance = atom.width;

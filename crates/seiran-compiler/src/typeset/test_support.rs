@@ -229,7 +229,7 @@ pub(crate) fn atom_line(
       };
     })
     .collect();
-  return single_box_line(HBox::atom(placed), x, dy, baseline_y);
+  return single_box_line(HBox::atom(placed).expect("テストが組む長さは値域内"), x, dy, baseline_y);
 }
 
 /// グリフ列を計測済みボックスに包む内部ヘルパ

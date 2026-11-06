@@ -3,6 +3,7 @@
 use crate::{
   document::{HirFigure, ImageFormat, NodeId},
   typeset::{
+    error::ElementOverflow,
     image,
     lowering::{
       LoweringContext, LoweringState,
@@ -18,7 +19,7 @@ pub(super) fn lower_figure(
   id: NodeId,
   figure: &HirFigure,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let style = &ctx.style.figure;
 
   // ダウンサンプリングはラスタだけに効く（ベクタ形式への `dpi` / `downsample` は frontend が拒否済み）
@@ -42,14 +43,14 @@ pub(super) fn lower_figure(
   };
   return lower_numbered_float(ctx, id, caption, &margins, state, |_state| {
     // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
-    return LayoutNode::Image {
+    return Ok(LayoutNode::Image {
       origin: figure.image_site,
       path: figure.image_path.clone(),
       page_index: image::pdf_page_index(figure.format, figure.page),
       width: figure.width,
       height: figure.height,
       target_dpi,
-    };
+    });
   });
 }
 
@@ -69,7 +70,7 @@ mod tests {
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   fn lower_source(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
-    let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
+    let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source)).expect("テストが組む長さは値域内");
     return layout;
   }
 

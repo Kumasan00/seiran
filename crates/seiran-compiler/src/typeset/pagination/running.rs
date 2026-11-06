@@ -92,7 +92,8 @@ pub(super) fn place_running_content(
   page_labels: PageLabels,
 ) -> Result<(), ElementOverflow> {
   let spec =
-    build_running_spec(ctx.style, &ctx.config.document, ctx.geometry.text_width(), ctx.config.pdf.height, page_labels);
+    build_running_spec(ctx.style, &ctx.config.document, ctx.geometry.text_width(), ctx.config.pdf.height, page_labels)
+      .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
   if spec.header.is_none() && spec.footer.is_none() {
     return Ok(());
   }
@@ -106,15 +107,11 @@ pub(super) fn place_running_content(
     };
     if let Some(slots) = &spec.header {
       page.header = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata)
-        .map_err(|LengthOverflow| {
-          return ElementOverflow::GENERATED;
-        })?;
+        .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
     }
     if let Some(slots) = &spec.footer {
       page.footer = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata)
-        .map_err(|LengthOverflow| {
-          return ElementOverflow::GENERATED;
-        })?;
+        .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
     }
   }
   debug!(page_count = pages.len(), "ヘッダー・フッターを配置");
@@ -122,16 +119,20 @@ pub(super) fn place_running_content(
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様を組み立てる。
+///
+/// # Errors
+///
+/// フッターの基準線がページの高さから引いて長さの値域に収まらないとき [`LengthOverflow`]。
 fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
   text_width: Length,
   page_height: Length,
   page_labels: PageLabels,
-) -> RunningContentSpec {
-  return RunningContentSpec {
+) -> Result<RunningContentSpec, LengthOverflow> {
+  return Ok(RunningContentSpec {
     header: running_slots(&style.header, style.header.baseline_offset, true),
-    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset, false),
+    footer: running_slots(&style.footer, page_height.try_sub(style.footer.baseline_offset)?, false),
     metadata: RunningMetadata {
       title: document.title.clone().unwrap_or_default(),
       author: document.author.clone().unwrap_or_default(),
@@ -140,7 +141,7 @@ fn build_running_spec(
     text_width,
     page_numbers: page_labels.into_vec(),
     skip_first: style.title_page.enabled,
-  };
+  });
 }
 
 /// `RunningContentStyle` を配置用の [`RunningSlots`] に変換する。
@@ -184,8 +185,8 @@ fn build_running_blocks(
   let center = shape_slot(shaper, &slots.center, page_label, pages_label, metadata, style)?;
   let right = shape_slot(shaper, &slots.right, page_label, pages_label, metadata, style)?;
 
-  let center_x = (text_width - row_width(&center)?) / 2.0f32;
-  let right_x = text_width - row_width(&right)?;
+  let center_x = text_width.try_sub(row_width(&center)?)?.try_div(2.0)?;
+  let right_x = text_width.try_sub(row_width(&right)?)?;
 
   let mut acc = LineAccum::default();
   acc.place(left, Length::ZERO)?;
@@ -205,9 +206,9 @@ fn build_running_blocks(
   });
   if slots.rule_thickness.is_positive() {
     let y = if slots.rule_below {
-      slots.baseline_y + depth + slots.rule_gap
+      slots.baseline_y.try_add(depth)?.try_add(slots.rule_gap)?
     } else {
-      slots.baseline_y - height - slots.rule_gap - slots.rule_thickness
+      slots.baseline_y.try_sub(height)?.try_sub(slots.rule_gap)?.try_sub(slots.rule_thickness)?
     };
     result.push(PlacedBlock::Rule {
       x: Length::ZERO,

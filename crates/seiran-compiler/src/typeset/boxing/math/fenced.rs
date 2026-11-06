@@ -89,7 +89,7 @@ impl Measurer<'_> {
       dy: on_axis(close_ink)?,
     });
     out.push(PlacedHBox {
-      hbox: HBox::atom(children),
+      hbox: HBox::atom(children)?,
       dx: *dx,
       dy,
     });

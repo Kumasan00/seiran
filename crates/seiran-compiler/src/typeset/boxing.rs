@@ -181,12 +181,11 @@ impl BlockBuilder<'_> {
           alignment: vbox_alignment,
         } => {
           // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
-          let child_indent = indent.try_add(vbox_indent).map_err(|LengthOverflow| {
-            return self.measurer.overflow();
-          })?;
-          let child_right_indent = right_indent.try_add(vbox_right_indent).map_err(|LengthOverflow| {
-            return self.measurer.overflow();
-          })?;
+          let child_indent =
+            indent.try_add(vbox_indent).map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+          let child_right_indent = right_indent
+            .try_add(vbox_right_indent)
+            .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
           let child_alignment = vbox_alignment.unwrap_or(alignment);
           self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment)?;
           let natural = margin_bottom;
@@ -206,7 +205,11 @@ impl BlockBuilder<'_> {
         } => {
           // 字下げが段の幅を使い切ると利用幅は 0 で、そこから広げると 0×0 の画像になって消える。段の幅（検証済みで正）を
           // 基準にして描画矩形を正に保ち、字下げからのはみ出しとして記録させる
-          let available = boxes::usable_width(self.column_width, indent, right_indent);
+          let available = boxes::usable_width(self.column_width, indent, right_indent).map_err(|LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(origin),
+            };
+          })?;
           let basis = if available > Length::ZERO {
             available
           } else {
@@ -231,7 +234,11 @@ impl BlockBuilder<'_> {
           });
         },
         LayoutNode::Table(table) => {
-          let available = boxes::usable_width(self.column_width, indent, right_indent);
+          let available = boxes::usable_width(self.column_width, indent, right_indent).map_err(|LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(table.origin),
+            };
+          })?;
           blocks.push(Block::Table {
             table: self.measurer.build_table(table, available, self.breaker)?,
             indent,
@@ -489,7 +496,7 @@ impl<'a> Measurer<'a> {
       placed.push(PlacedHBox { hbox, dx, dy });
       dx = dx.try_add(width)?;
     }
-    let mut atom = HBox::atom(placed);
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
     return Ok(atom);
   }
@@ -804,7 +811,8 @@ mod max_font_size_tests {
       hbox: inner,
       dx: Length::ZERO,
       dy: Length::ZERO,
-    }]);
+    }])
+    .expect("値域内");
 
     assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(Length::pt(20.0)));
   }

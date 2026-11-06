@@ -614,8 +614,9 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       align,
       row_gap,
       column_gap,
+      gap_scale,
     } => {
-      push_array(rows, *delimiters, *align, *row_gap, *column_gap, ctx, items)?;
+      push_array(rows, *delimiters, *align, (*row_gap, *column_gap, *gap_scale), ctx, items)?;
     },
   }
   return Ok(());
@@ -636,17 +637,17 @@ fn fenced_item(segments: Vec<Vec<ArrangedNode>>, open: char, close: char, ctx: &
   return spacing::MathItem::fenced(vec![ArrangedNode::Fenced(fenced)]);
 }
 
-/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`・数式本体の大きさでの
-/// 行間 `row_gap` と列間 `column_gap`）をアイテムへ展開する
+/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`・本文の大きさでの
+/// 行間と列間と数式本体の大きさへの倍率 `gaps` = (行間, 列間, 倍率)）をアイテムへ展開する
 ///
-/// セルは [`StyleLevel::array_cell`] の段で、cramped・文字色は外側から継ぐ。行間・列間は段の大きさに比例させる。括弧を
+/// セルは [`StyleLevel::array_cell`] の段で、cramped・文字色は外側から継ぐ。行間・列間は数式本体の大きさへ比例させたうえで、
+/// さらに段の大きさに比例させる（段ごとに丸める）。括弧を
 /// 持つものは伸縮括弧と同じく左端 Open・右端 Close、括弧の無い行列は Ord の 1 個のアイテムにする。
 fn push_array(
   rows: &[Vec<Vec<MathNode>>],
   delimiters: DelimiterGlyphs,
   align: Align,
-  row_gap: Length,
-  column_gap: Length,
+  gaps: (Length, Length, f64),
   ctx: &ArrangeContext,
   items: &mut Vec<spacing::MathItem>,
 ) -> Result<(), LengthOverflow> {
@@ -654,6 +655,7 @@ fn push_array(
     level: ctx.style.level.array_cell(),
     cramped: ctx.style.cramped,
   })?;
+  let (row_gap, column_gap, gap_scale) = gaps;
   let scale = ctx.font_size().ratio(ctx.base_font_size);
   let array = MathArray {
     rows: rows
@@ -667,8 +669,8 @@ fn push_array(
     font_size: ctx.font_size(),
     script_level: ctx.style.level.script_level(),
     color: ctx.color,
-    row_gap: row_gap.try_scale(scale)?,
-    column_gap: column_gap.try_scale(scale)?,
+    row_gap: row_gap.try_scale(gap_scale)?.try_scale(scale)?,
+    column_gap: column_gap.try_scale(gap_scale)?.try_scale(scale)?,
   };
   let nodes = vec![ArrangedNode::Array(array)];
   items.push(if delimiters.is_present() {

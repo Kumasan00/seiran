@@ -230,7 +230,7 @@ fn arrange(
   let rule = |gap_above: Length, thickness: Length, gap_below: Length| {
     return TableBoundary::rule(gap_above, thickness, gap_below, width, frame.rule_color);
   };
-  let separator = rule(frame.rule_gap, frame.rule_thickness, frame.rule_gap);
+  let separator = rule(frame.rule_gap, frame.rule_thickness, frame.rule_gap).map_err(table_overflow)?;
   let head_bottom = if head.is_empty() {
     TableBoundary::default()
   } else {
@@ -276,9 +276,9 @@ fn arrange(
   return Ok(TableBox {
     origin,
     width,
-    top: rule(Length::ZERO, frame.outer_rule_thickness, frame.rule_gap),
+    top: rule(Length::ZERO, frame.outer_rule_thickness, frame.rule_gap).map_err(table_overflow)?,
     head_bottom,
-    bottom: rule(frame.rule_gap, frame.outer_rule_thickness, Length::ZERO),
+    bottom: rule(frame.rule_gap, frame.outer_rule_thickness, Length::ZERO).map_err(table_overflow)?,
     head,
     repeated_head,
     rows,
@@ -321,7 +321,7 @@ fn boundary_above(
       &bands,
       frame.partial_rule_trim,
       frame.rule_color,
-    ),
+    )?,
     (true, Some(RowSeparator::Rule)) => separator.clone(),
     (true, Some(RowSeparator::Gap)) => TableBoundary {
       height: frame.row_gap,
@@ -512,11 +512,11 @@ fn layout_row_cells(
     let lines = if wraps(spanned_columns) {
       let content_width = band_width.try_sub(double_padding)?;
       let mut lines = breaker.break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
-      let widest = lines.iter().map(Line::width).fold(Length::ZERO, Length::max);
+      let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
       overrun = overrun.max(widest.try_sub(content_width)?);
       let line_x = cell_x.try_add(frame.cell_padding)?;
       for line in &mut lines {
-        line.shift_x(line_x);
+        line.shift_x(line_x)?;
       }
       lines
     } else {
@@ -527,7 +527,7 @@ fn layout_row_cells(
         ColumnAlign::Right => cell_x.try_add(band_width)?.try_sub(frame.cell_padding)?.try_sub(content_width)?,
       };
       let mut line = unwrapped_line(&cell.items)?;
-      line.shift_x(content_x);
+      line.shift_x(content_x)?;
       vec![line]
     };
     cells.push(lines);
@@ -715,7 +715,7 @@ fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> Re
   for (k, (fragment, _)) in parts {
     let top_k = top(&heights, k)?;
     merged.overrun = merged.overrun.max(fragment.overrun);
-    merged.rules.extend(fragment.above.place(Length::ZERO, top_k.try_sub(fragment.above.height)?));
+    merged.rules.extend(fragment.above.place(Length::ZERO, top_k.try_sub(fragment.above.height)?)?);
     let lowered = top_k.try_add(fragment.row.baseline_y)?.try_sub(baseline)?;
     for placed in fragment.row.boxes {
       merged.row.boxes.push(PlacedHBox {
@@ -755,9 +755,9 @@ fn take_line(
       ..placed
     });
   }
-  fragment
-    .links
-    .extend(line.links.iter().filter_map(|link| return link.place(Length::ZERO, band_top, band)));
+  for link in &line.links {
+    fragment.links.extend(link.place(Length::ZERO, band_top, band)?);
+  }
   fragment.index_marks.extend(line.index_marks);
   fragment.footnotes.extend(line.footnotes);
   return Ok(());

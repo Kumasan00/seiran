@@ -397,12 +397,16 @@ impl NumberTitleTemplate {
   /// タイトルを生成するクロージャ。`title` はテンプレート中の `{title}` の出現回数ぶんだけ、
   /// 出現したときにだけ呼ぶ（タイトルの生成には `\footnote` の通し index を払い出す副作用が
   /// あるため、出現しないテンプレートで呼ぶと以降の脚注番号がずれる）。
-  pub(crate) fn expand<T>(
+  ///
+  /// # Errors
+  ///
+  /// `title` が失敗したら、その失敗を返して展開を止める。
+  pub(crate) fn expand<T, E>(
     &self,
     number: &str,
-    mut title: impl FnMut() -> Vec<T>,
+    mut title: impl FnMut() -> Result<Vec<T>, E>,
     mut literal: impl FnMut(&str) -> T,
-  ) -> Vec<T> {
+  ) -> Result<Vec<T>, E> {
     self.0.ensure_validated();
     let mut nodes: Vec<T> = Vec::new();
     let mut buffer = String::new();
@@ -412,12 +416,12 @@ impl NumberTitleTemplate {
         Part::Placeholder(NumberTitlePlaceholder::Number) => buffer.push_str(number),
         Part::Placeholder(NumberTitlePlaceholder::Title) => {
           flush_literal(&mut nodes, &mut buffer, &mut literal);
-          nodes.extend(title());
+          nodes.extend(title()?);
         },
       }
     }
     flush_literal(&mut nodes, &mut buffer, &mut literal);
-    return nodes;
+    return Ok(nodes);
   }
 }
 
@@ -507,12 +511,16 @@ impl TheoremHeadingTemplate {
   ///
   /// `{title}` の扱いは [`NumberTitleTemplate::expand`] と同じ（出現回数ぶんだけ遅延生成する）。
   /// `{of}` は `\ref` と違いリンクにしないので、前後のリテラルと 1 続きの値として繋ぐ。
-  pub(crate) fn expand<T>(
+  ///
+  /// # Errors
+  ///
+  /// `title` が失敗したら、その失敗を返して展開を止める。
+  pub(crate) fn expand<T, E>(
     &self,
     values: TheoremHeadingValues<'_>,
-    mut title: impl FnMut() -> Vec<T>,
+    mut title: impl FnMut() -> Result<Vec<T>, E>,
     mut literal: impl FnMut(&str) -> T,
-  ) -> Vec<T> {
+  ) -> Result<Vec<T>, E> {
     self.0.ensure_validated();
     let mut nodes: Vec<T> = Vec::new();
     let mut buffer = String::new();
@@ -524,12 +532,12 @@ impl TheoremHeadingTemplate {
         Part::Placeholder(TheoremHeadingPlaceholder::Of) => buffer.push_str(values.of.unwrap_or_default()),
         Part::Placeholder(TheoremHeadingPlaceholder::Title) => {
           flush_literal(&mut nodes, &mut buffer, &mut literal);
-          nodes.extend(title());
+          nodes.extend(title()?);
         },
       }
     }
     flush_literal(&mut nodes, &mut buffer, &mut literal);
-    return nodes;
+    return Ok(nodes);
   }
 }
 
@@ -570,6 +578,8 @@ impl RunningTemplate {
 
 #[cfg(test)]
 mod tests {
+  use std::convert::Infallible;
+
   use garde::Validate;
   use itertools::Itertools;
   use strum::VariantArray;
@@ -749,11 +759,13 @@ mod tests {
   fn structural_expansion_keeps_literal_and_title_order() {
     let template = NumberTitleTemplate::parse("第{number}章 {title} 終");
 
-    let nodes = template.expand(
-      "3",
-      || return vec![Node::Title("序論".to_string())],
-      |literal| return Node::Literal(literal.to_string()),
-    );
+    let nodes = template
+      .expand(
+        "3",
+        || return Ok::<_, Infallible>(vec![Node::Title("序論".to_string())]),
+        |literal| return Node::Literal(literal.to_string()),
+      )
+      .unwrap();
 
     assert_eq!(
       nodes,
@@ -770,14 +782,16 @@ mod tests {
     let template = NumberTitleTemplate::parse("No.{number}");
     let mut calls = 0u32;
 
-    let nodes = template.expand(
-      "7",
-      || {
-        calls += 1;
-        return vec![Node::Title("捨てられる".to_string())];
-      },
-      |literal| return Node::Literal(literal.to_string()),
-    );
+    let nodes = template
+      .expand(
+        "7",
+        || {
+          calls += 1;
+          return Ok::<_, Infallible>(vec![Node::Title("捨てられる".to_string())]);
+        },
+        |literal| return Node::Literal(literal.to_string()),
+      )
+      .unwrap();
 
     assert_eq!(calls, 0);
     assert_eq!(nodes, vec![Node::Literal("No.7".to_string())]);
@@ -788,14 +802,16 @@ mod tests {
     let template = NumberTitleTemplate::parse("{title} / {title}");
     let mut calls = 0u32;
 
-    let nodes = template.expand(
-      "7",
-      || {
-        calls += 1;
-        return vec![Node::Title(format!("T{calls}"))];
-      },
-      |literal| return Node::Literal(literal.to_string()),
-    );
+    let nodes = template
+      .expand(
+        "7",
+        || {
+          calls += 1;
+          return Ok::<_, Infallible>(vec![Node::Title(format!("T{calls}"))]);
+        },
+        |literal| return Node::Literal(literal.to_string()),
+      )
+      .unwrap();
 
     // 2 回とも別々に生成される（clone で同じノードを 2 つ置くのではない）
     assert_eq!(calls, 2);
@@ -813,15 +829,17 @@ mod tests {
   fn theorem_heading_omits_of_when_absent() {
     let template = TheoremHeadingTemplate::parse("{display_name} {number}{of}");
 
-    let nodes = template.expand(
-      TheoremHeadingValues {
-        display_name: "Theorem",
-        number: "1",
-        of: None,
-      },
-      Vec::new,
-      |literal| return Node::Literal(literal.to_string()),
-    );
+    let nodes = template
+      .expand(
+        TheoremHeadingValues {
+          display_name: "Theorem",
+          number: "1",
+          of: None,
+        },
+        || return Ok::<_, Infallible>(Vec::new()),
+        |literal| return Node::Literal(literal.to_string()),
+      )
+      .unwrap();
 
     assert_eq!(nodes, vec![Node::Literal("Theorem 1".to_string())]);
   }

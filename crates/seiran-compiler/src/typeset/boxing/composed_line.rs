@@ -175,7 +175,9 @@ pub(in crate::typeset) fn inline_atom(
        脚注・索引を落としている"
     )
   }
-  let mut atom = HBox::atom(line.boxes);
+  let mut atom = HBox::atom(line.boxes).map_err(|LengthOverflow| {
+    return measurer.overflow();
+  })?;
   atom.width = measure_items_width(&items).map_err(|LengthOverflow| {
     return measurer.overflow();
   })?;

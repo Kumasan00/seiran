@@ -63,7 +63,7 @@ fn run_body_pass(
   if let Some(numbers) = footnote_numbers {
     lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
   }
-  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document);
+  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document)?;
 
   let body_blocks = {
     let _span = debug_span!("build_blocks", matter = "body").entered();

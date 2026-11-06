@@ -37,7 +37,7 @@ pub(crate) use boxes::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, Plac
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 pub(crate) use error::ComposeError;
-use error::TypesetError;
+use error::{DimensionOverflow, TypesetError};
 use font::{FontSystem, FontWarning};
 pub(crate) use geometry::{GeometryValidationError, PreparedGeometry};
 use glyph_issues::{TextGlyphError, VariationSequenceFallback};
@@ -51,6 +51,7 @@ use warning::TypesetWarning;
 
 use crate::{
   failures::Failures,
+  length::LengthOverflow,
   phase::Phase,
   project::{FaceMap, FontData, FontFace, ProjectPath, ProjectSource, config::ProjectConfig},
   publication::{Publication, PublicationFont, SvgParser},
@@ -81,7 +82,7 @@ pub(crate) struct TypesetOutput {
 /// # Errors
 ///
 /// フォントの解析・メトリクス取得・設定検証・シェーパー構築、画像の読込・デコード・寸法確定と SVG の文字の検査・PDF 図版の検査・ページの
-/// 選択、文書が使った字のフォントでの欠落（数式フォントと本文の枠）、または脚注のページ単位採番の収束に失敗した場合に、組の第 1 要素が、
+/// 選択、文書が使った字のフォントでの欠落（数式フォントと本文の枠）、または脚注のページ単位採番の収束に失敗、または確定座標が長さの値域に収まらなかった場合に、組の第 1 要素が、
 /// その段で見つかった失敗を非空集合で持つ（フォント・画像はそれぞれ独立に検査できるので段の中では全件、段の間は
 /// 早期 return する。字の欠落は組版を最後まで進めて全件集め、ソース位置を持ちうるので [`ComposeError`] の別の腕で
 /// 運ぶ）。
@@ -109,7 +110,11 @@ pub(crate) fn compose(
     Err(error) => return (Err(error), warnings),
   };
   let image_paths = mem::take(&mut laid_out.image_paths);
-  let publication = emit::emit(config, fonts, laid_out);
+  // 確定座標には起源の要素が無いので、溢れは位置のない診断にする
+  let publication = match emit::emit(config, fonts, laid_out) {
+    Ok(publication) => publication,
+    Err(LengthOverflow) => return (Err(ComposeError::Dimension(DimensionOverflow::new(None))), warnings),
+  };
   info!(page_count = publication.pages().len(), warning_count = layout_warnings.len(), "文書を組版");
   phase.succeed();
 

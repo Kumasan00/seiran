@@ -7,7 +7,7 @@ use std::{collections::HashMap, mem};
 
 use crate::{
   color::Color,
-  length::Length,
+  length::{Length, LengthOverflow},
   project::{FaceMap, FontData, ProjectPath, config::ProjectConfig},
   publication::{
     PaintOp, Publication, PublicationDestination, PublicationFont, PublicationImage, PublicationLink,
@@ -23,11 +23,15 @@ use crate::{
 };
 
 /// 組版の確定結果と読込済み資源から描画直前の [`Publication`] を構築する。
+///
+/// # Errors
+///
+/// 確定座標から描画矩形を求める差・和が長さの値域に収まらないとき [`LengthOverflow`]。
 pub(super) fn emit(
   config: &ProjectConfig,
   fonts: FaceMap<PublicationFont>,
   mut laid_out: LaidOutDocument,
-) -> Publication {
+) -> Result<Publication, LengthOverflow> {
   let images = mem::take(&mut laid_out.images);
   let resources = build_resources(fonts, images);
   return build_publication(config, resources, laid_out);
@@ -73,7 +77,7 @@ fn build_publication(
   config: &ProjectConfig,
   resources: PublicationResources,
   laid_out: LaidOutDocument,
-) -> Publication {
+) -> Result<Publication, LengthOverflow> {
   let (dest_by_id, heading_dests) = build_destination_index(&laid_out.pages);
   let LaidOutDocument {
     pages,
@@ -84,7 +88,7 @@ fn build_publication(
 
   let mut publication_pages = Vec::with_capacity(pages.len());
   for page in pages {
-    publication_pages.push(build_page(config, page, &dest_by_id, &resources));
+    publication_pages.push(build_page(config, page, &dest_by_id, &resources)?);
   }
 
   let outline = if config.pdf.show_bookmarks {
@@ -119,7 +123,7 @@ fn build_publication(
   let Some(publication) = Publication::new(publication_pages, outline, metadata, resources) else {
     unreachable!("内部リンクとしおりの到達先は build_destination_index が実ページの anchor から作る");
   };
-  return publication;
+  return Ok(publication);
 }
 
 /// 1 ページぶんの `PublicationPage` を構築する
@@ -128,7 +132,7 @@ fn build_page(
   page: Page,
   dest_by_id: &HashMap<AnchorId, PublicationDestination>,
   resources: &PublicationResources,
-) -> PublicationPage {
+) -> Result<PublicationPage, LengthOverflow> {
   let origin_x = page.content_origin_x;
   let page_box = rect(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt());
 
@@ -147,7 +151,7 @@ fn build_page(
     .chain(page.footer)
     .chain(page.footnotes.into_iter().flat_map(|f| return f.blocks))
   {
-    push_placed_block_ops(&mut ops, origin_x_pt, block, resources);
+    push_placed_block_ops(&mut ops, origin_x_pt, block, resources)?;
   }
 
   let mut links = Vec::new();
@@ -174,7 +178,7 @@ fn build_page(
        正を保証する"
     );
   };
-  return publication_page;
+  return Ok(publication_page);
 }
 
 /// 検証済みの [`PublicationRect`] を作る。
@@ -228,11 +232,16 @@ fn add_origin_x(origin_x: Length, x: Length) -> f32 { return origin_x.to_pt() + 
 /// 配置済みブロックの描画命令を追加する。
 ///
 /// PDF 出力と同じ丸め順序を保つため、座標計算は pt の `f32` で行う。
-fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlock, resources: &PublicationResources) {
+fn push_placed_block_ops(
+  ops: &mut Vec<PaintOp>,
+  origin_x: f32,
+  block: PlacedBlock,
+  resources: &PublicationResources,
+) -> Result<(), LengthOverflow> {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
       for placed in line.boxes {
-        push_box_ops(ops, origin_x + placed.dx.to_pt(), (baseline_y - placed.dy).to_pt(), placed.hbox);
+        push_box_ops(ops, origin_x + placed.dx.to_pt(), baseline_y.try_sub(placed.dy)?.to_pt(), placed.hbox)?;
       }
     },
     PlacedBlock::Table { rows, rules } => {
@@ -243,7 +252,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
         });
       }
       for placed_row in rows {
-        push_table_row_ops(ops, placed_row, origin_x);
+        push_table_row_ops(ops, placed_row, origin_x)?;
       }
     },
     PlacedBlock::MathBlock {
@@ -252,9 +261,9 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
       baseline_y,
       numbers,
     } => {
-      push_box_ops(ops, origin_x + x.to_pt(), baseline_y.to_pt(), body);
+      push_box_ops(ops, origin_x + x.to_pt(), baseline_y.to_pt(), body)?;
       for number in numbers {
-        push_box_ops(ops, origin_x + number.x.to_pt(), number.baseline_y.to_pt(), number.content);
+        push_box_ops(ops, origin_x + number.x.to_pt(), number.baseline_y.to_pt(), number.content)?;
       }
     },
     PlacedBlock::Image {
@@ -291,10 +300,11 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlo
       });
     },
   }
+  return Ok(());
 }
 
 /// 箱の描画命令を基準座標（左端・ベースライン）から追加する。
-fn push_box_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, hbox: HBox) {
+fn push_box_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, hbox: HBox) -> Result<(), LengthOverflow> {
   match hbox.content {
     HBoxContent::Glyphs(run) => {
       ops.push(PaintOp::DrawGlyphRun {
@@ -304,24 +314,26 @@ fn push_box_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, hbox: HBox) {
     },
     HBoxContent::Atom(children) => {
       for child in children {
-        push_box_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), child.hbox);
+        push_box_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), child.hbox)?;
       }
     },
     HBoxContent::Rule { color } => {
       ops.push(PaintOp::FillRect {
-        rect: rect(x, baseline_y - hbox.height.to_pt(), hbox.width.to_pt(), (hbox.height + hbox.depth).to_pt()),
+        rect: rect(x, baseline_y - hbox.height.to_pt(), hbox.width.to_pt(), hbox.height.try_add(hbox.depth)?.to_pt()),
         color: color.map(Color::rgb),
       });
     },
   }
+  return Ok(());
 }
 
 /// 位置確定済みの表の 1 行から描画命令を追加する。
-fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: PlacedTableRow, origin_x: f32) {
+fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: PlacedTableRow, origin_x: f32) -> Result<(), LengthOverflow> {
   let baseline_y = placed_row.baseline_y;
   for placed in placed_row.boxes {
-    push_box_ops(ops, origin_x + placed.dx.to_pt(), (baseline_y - placed.dy).to_pt(), placed.hbox);
+    push_box_ops(ops, origin_x + placed.dx.to_pt(), baseline_y.try_sub(placed.dy)?.to_pt(), placed.hbox)?;
   }
+  return Ok(());
 }
 
 #[cfg(test)]
@@ -438,7 +450,8 @@ mod tests {
     outline: Vec<(HeadingLevel, String)>,
     image_paths: &[&str],
   ) -> Publication {
-    return build_publication(config, test_resources(image_paths), laid_out(pages, outline));
+    return build_publication(config, test_resources(image_paths), laid_out(pages, outline))
+      .expect("テストが組む長さは値域内");
   }
 
   #[test]

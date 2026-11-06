@@ -72,7 +72,12 @@ pub(super) fn build_index_blocks(
   facts: &BodyPageFacts,
 ) -> Result<Vec<Block>, ElementOverflow> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
-  let spec = build_index_spec(ctx.style, ctx.geometry.back_column_width());
+  if entries.is_empty() {
+    return Ok(Vec::new());
+  }
+  let back_column_width =
+    ctx.geometry.back_column_width().map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+  let spec = build_index_spec(ctx.style, back_column_width);
   let shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::Index));
   return compose_blocks(&spec, &entries, shaper);
 }
@@ -220,14 +225,15 @@ fn compose_blocks(
   }
   let mut blocks: Vec<Block> = Vec::new();
 
-  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(|LengthOverflow| {
-    return ElementOverflow::GENERATED;
-  })?;
-  title.shift_x(spec.title_align.offset(spec.column_width, title.width()));
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
+  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(generated)?;
+  title
+    .shift_x(spec.title_align.offset(spec.column_width, title.width().map_err(generated)?).map_err(generated)?)
+    .map_err(generated)?;
   blocks.push(Block::ComposedLine {
     origin: None,
     line: title,
-    leading: spec.title_style.font_size * spec.line_height_factor,
+    leading: spec.title_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
   if spec.title_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.title_bottom_margin));
@@ -259,12 +265,11 @@ fn push_entry_line(
   spec: &IndexSpec,
   entry: &IndexEntry,
 ) -> Result<(), ElementOverflow> {
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
   blocks.push(Block::ComposedLine {
     origin: None,
-    line: compose_entry_line(shaper, spec, entry).map_err(|LengthOverflow| {
-      return ElementOverflow::GENERATED;
-    })?,
-    leading: spec.entry_style.font_size * spec.line_height_factor,
+    line: compose_entry_line(shaper, spec, entry).map_err(generated)?,
+    leading: spec.entry_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
   return Ok(());
 }
@@ -287,14 +292,15 @@ fn push_group_heading(
     IndexGroupLabel::Fixed(label) => label,
     IndexGroupLabel::Other => spec.group_other_label.as_str(),
   };
-  let mut line = compose_left_line(shaper, text, spec.group_style).map_err(|LengthOverflow| {
-    return ElementOverflow::GENERATED;
-  })?;
-  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
+  let mut line = compose_left_line(shaper, text, spec.group_style).map_err(generated)?;
+  line
+    .shift_x(spec.entry_align.offset(spec.column_width, line.width().map_err(generated)?).map_err(generated)?)
+    .map_err(generated)?;
   blocks.push(Block::ComposedLine {
     origin: None,
     line,
-    leading: spec.group_style.font_size * spec.line_height_factor,
+    leading: spec.group_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
   blocks.push(Block::Penalty {
     value: PENALTY_FORBID_BREAK,
@@ -367,7 +373,7 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEn
 
   let mut x = acc.place(shaper.shape_text(&entry.word, spec.entry_style)?, Length::ZERO)?;
   if !entry.pages.is_empty() {
-    x += spec.entry_gap;
+    x = x.try_add(spec.entry_gap)?;
   }
 
   for (i, item) in group_page_items(&entry.pages, spec.collapse_page_ranges).into_iter().enumerate() {
@@ -390,7 +396,7 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEn
   }
 
   let mut line = acc.into_line(links);
-  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
+  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()?)?)?;
   return Ok(line);
 }
 

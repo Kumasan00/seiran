@@ -1,6 +1,12 @@
 //! 水平リストの最小単位 [`HItem`] と計測済みボックス [`HBox`]。
 
-use crate::{color::Color, document::NodeId, length::Length, publication::GlyphRun, typeset::boxes::link::LinkTarget};
+use crate::{
+  color::Color,
+  document::NodeId,
+  length::{Length, LengthOverflow},
+  publication::GlyphRun,
+  typeset::boxes::link::LinkTarget,
+};
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]
@@ -151,17 +157,23 @@ pub(crate) struct HBox {
 
 impl HBox {
   /// 子要素の絶対配置（`dx` / `dy`）から寸法を確定した Atom ボックスを構築する
-  #[must_use]
-  pub(in crate::typeset) fn atom(children: Vec<PlacedHBox>) -> Self {
-    let width = children.iter().map(|c| return c.dx + c.hbox.width).fold(Length::ZERO, Length::max);
-    let height = children.iter().map(|c| return c.dy + c.hbox.height).fold(Length::ZERO, Length::max);
-    let depth = children.iter().map(|c| return c.hbox.depth - c.dy).fold(Length::ZERO, Length::max);
-    return HBox {
+  ///
+  /// # Errors
+  ///
+  /// 子の右端・上端・下端が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(in crate::typeset) fn atom(children: Vec<PlacedHBox>) -> Result<Self, LengthOverflow> {
+    let extent = |edge: fn(&PlacedHBox) -> Result<Length, LengthOverflow>| {
+      return children.iter().try_fold(Length::ZERO, |largest, child| return Ok(largest.max(edge(child)?)));
+    };
+    let width = extent(|c| return c.dx.try_add(c.hbox.width))?;
+    let height = extent(|c| return c.dy.try_add(c.hbox.height))?;
+    let depth = extent(|c| return c.hbox.depth.try_sub(c.dy))?;
+    return Ok(HBox {
       content: HBoxContent::Atom(children),
       width,
       height,
       depth,
-    };
+    });
   }
 
   /// 幅 `width`・太さ `thickness`・塗り色 `color`（`None` は既定色）の罫（ベースラインから上へ `thickness` の高さを
@@ -216,7 +228,7 @@ pub(crate) struct PlacedHBox {
 #[cfg(test)]
 mod tests {
   use super::{HBox, HBoxContent, HItem, PlacedHBox};
-  use crate::length::Length;
+  use crate::length::{Length, LengthOverflow};
 
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
@@ -245,7 +257,7 @@ mod tests {
         dy: pt(4.0),
       },
     ];
-    let atom = HBox::atom(children);
+    let atom = HBox::atom(children).expect("値域内");
     // width = 10+5, height = max(8, 4+6) = 10, depth = max(2, 1-4) = 2
     assert_eq!(atom.width, pt(15.0));
     assert_eq!(atom.height, pt(10.0));
@@ -266,15 +278,27 @@ mod tests {
         dy: pt(-3.0),
       },
     ];
-    let atom = HBox::atom(children);
+    let atom = HBox::atom(children).expect("値域内");
     // height = max(8, -3+6) = 8, depth = max(2, 1+3) = 4
     assert_eq!(atom.height, pt(8.0));
     assert_eq!(atom.depth, pt(4.0));
   }
 
   #[test]
+  fn atom_overflows_when_a_child_edge_is_unrepresentable() {
+    let wide = Length::from_sp(i64::MAX / 2 + 1);
+    let children = vec![PlacedHBox {
+      hbox: HBox::rule(wide, Length::ZERO, None),
+      dx: wide,
+      dy: Length::ZERO,
+    }];
+
+    assert!(matches!(HBox::atom(children), Err(LengthOverflow)));
+  }
+
+  #[test]
   fn atom_of_empty_children_is_zero_sized() {
-    let atom = HBox::atom(Vec::new());
+    let atom = HBox::atom(Vec::new()).expect("値域内");
     assert_eq!(atom.width, Length::ZERO);
     assert_eq!(atom.height, Length::ZERO);
     assert_eq!(atom.depth, Length::ZERO);

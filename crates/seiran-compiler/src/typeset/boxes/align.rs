@@ -1,6 +1,10 @@
 //! 水平方向の揃え [`Align`]。
 
-use crate::{document::TextAlignment, length::Length, style::BlockAlignment};
+use crate::{
+  document::TextAlignment,
+  length::{Length, LengthOverflow},
+  style::BlockAlignment,
+};
 
 /// ブロック（画像・表・数式）・数式セル・目次と索引の行の水平方向の揃え。
 /// 段落の行は [`TextAlignment`]、style の 3 値の揃えは [`BlockAlignment`] から変換して使う。
@@ -19,12 +23,15 @@ pub(in crate::typeset) enum Align {
 
 impl Align {
   /// 利用可能幅 `available` の中に幅 `content_width` の内容を置くときの水平オフセット。
-  #[must_use]
-  pub(in crate::typeset) fn offset(self, available: Length, content_width: Length) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 差が長さの値域に収まらないとき（`available` と `content_width` が逆符号で大きいとき）[`LengthOverflow`]。
+  pub(in crate::typeset) fn offset(self, available: Length, content_width: Length) -> Result<Length, LengthOverflow> {
     return match self {
-      Align::Left => Length::ZERO,
-      Align::Center => ((available - content_width) / 2.0f32).max(Length::ZERO),
-      Align::Right => (available - content_width).max(Length::ZERO),
+      Align::Left => Ok(Length::ZERO),
+      Align::Center => Ok(available.try_sub(content_width)?.try_div(2.0)?.max(Length::ZERO)),
+      Align::Right => Ok(available.try_sub(content_width)?.max(Length::ZERO)),
     };
   }
 }
@@ -54,27 +61,40 @@ impl From<BlockAlignment> for Align {
 #[cfg(test)]
 mod tests {
   use super::Align;
-  use crate::{document::TextAlignment, length::Length, style::BlockAlignment};
+  use crate::{
+    document::TextAlignment,
+    length::{Length, LengthOverflow},
+    style::BlockAlignment,
+  };
 
   #[test]
   fn offset_left_is_always_zero() {
-    assert_eq!(Align::Left.offset(Length::pt(100.0), Length::pt(30.0)), Length::ZERO);
+    assert_eq!(Align::Left.offset(Length::pt(100.0), Length::pt(30.0)).expect("値域内"), Length::ZERO);
   }
 
   #[test]
   fn offset_center_is_half_remaining() {
-    assert_eq!(Align::Center.offset(Length::pt(100.0), Length::pt(30.0)), Length::pt(35.0));
+    assert_eq!(Align::Center.offset(Length::pt(100.0), Length::pt(30.0)).expect("値域内"), Length::pt(35.0));
   }
 
   #[test]
   fn offset_right_is_full_remaining() {
-    assert_eq!(Align::Right.offset(Length::pt(100.0), Length::pt(30.0)), Length::pt(70.0));
+    assert_eq!(Align::Right.offset(Length::pt(100.0), Length::pt(30.0)).expect("値域内"), Length::pt(70.0));
   }
 
   #[test]
   fn offset_clamps_to_zero_when_content_overflows() {
-    assert_eq!(Align::Center.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
-    assert_eq!(Align::Right.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
+    assert_eq!(Align::Center.offset(Length::pt(30.0), Length::pt(50.0)).expect("値域内"), Length::ZERO);
+    assert_eq!(Align::Right.offset(Length::pt(30.0), Length::pt(50.0)).expect("値域内"), Length::ZERO);
+  }
+
+  #[test]
+  fn offset_overflows_when_the_difference_is_unrepresentable() {
+    let widest = Length::from_sp(i64::MAX / 2 + 1);
+
+    assert_eq!(Align::Right.offset(widest, -widest), Err(LengthOverflow));
+    assert_eq!(Align::Center.offset(widest, -widest), Err(LengthOverflow));
+    assert_eq!(Align::Left.offset(widest, -widest), Ok(Length::ZERO));
   }
 
   #[test]

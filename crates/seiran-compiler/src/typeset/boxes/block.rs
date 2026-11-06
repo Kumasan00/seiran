@@ -2,7 +2,7 @@
 
 use crate::{
   document::{NodeId, TextAlignment},
-  length::Length,
+  length::{Length, LengthOverflow},
   project::ProjectPath,
   typeset::boxes::{
     align::Align,
@@ -168,9 +168,16 @@ impl Block {
 /// 段の幅 `column_width` から左右の字下げを引いた利用幅（段落の行もブロック要素もこの幅に組む）。
 ///
 /// 字下げが段の幅を使い切る深い入れ子では 0（負の幅にしない。収まらない内容ははみ出しとして記録される）。
-#[must_use]
-pub(in crate::typeset) fn usable_width(column_width: Length, indent: Length, right_indent: Length) -> Length {
-  return (column_width - indent - right_indent).max(Length::ZERO);
+///
+/// # Errors
+///
+/// 差が長さの値域に収まらないとき [`LengthOverflow`]。
+pub(in crate::typeset) fn usable_width(
+  column_width: Length,
+  indent: Length,
+  right_indent: Length,
+) -> Result<Length, LengthOverflow> {
+  return Ok(column_width.try_sub(indent)?.try_sub(right_indent)?.max(Length::ZERO));
 }
 
 /// 数式ブロックの行番号（測定済み）
@@ -189,11 +196,11 @@ mod tests {
 
   #[test]
   fn usable_width_subtracts_both_indents() {
-    assert_eq!(usable_width(Length::pt(100.0), Length::pt(30.0), Length::pt(10.0)), Length::pt(60.0));
+    assert_eq!(usable_width(Length::pt(100.0), Length::pt(30.0), Length::pt(10.0)), Ok(Length::pt(60.0)));
   }
 
   #[test]
   fn usable_width_clamps_exhausted_indents_to_zero() {
-    assert_eq!(usable_width(Length::pt(100.0), Length::pt(60.0), Length::pt(60.0)), Length::ZERO);
+    assert_eq!(usable_width(Length::pt(100.0), Length::pt(60.0), Length::pt(60.0)), Ok(Length::ZERO));
   }
 }

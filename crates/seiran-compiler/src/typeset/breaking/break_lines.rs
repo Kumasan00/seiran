@@ -237,8 +237,8 @@ fn build_line(
     index_marks,
   };
   let flush_width = flush_right.iter().map(|hbox| return hbox.width).fold(Length::ZERO, Length::max);
-  let body_width = line.width();
-  line.shift_x(Align::from(alignment).offset(available.try_sub(flush_width)?, body_width));
+  let body_width = line.width()?;
+  line.shift_x(Align::from(alignment).offset(available.try_sub(flush_width)?, body_width)?)?;
   for hbox in flush_right {
     line.boxes.push(PlacedHBox {
       hbox: hbox.clone(),
@@ -480,6 +480,6 @@ mod tests {
 
     let lines = GreedyBreaker.break_lines(&items, width, TextAlignment::Left).expect("テストの寸法は値域内");
 
-    assert!(lines.iter().all(|line| return line.width() <= width), "{lines:?}");
+    assert!(lines.iter().all(|line| return line.width().expect("値域内") <= width), "{lines:?}");
   }
 }

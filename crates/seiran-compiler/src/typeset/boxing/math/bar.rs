@@ -82,7 +82,7 @@ impl Measurer<'_> {
       dx: Length::ZERO,
       dy: bottom,
     });
-    let mut atom = HBox::atom(children);
+    let mut atom = HBox::atom(children)?;
     if over {
       atom.height = atom.height.max(bottom.try_add(thickness)?.try_add(extra)?);
     } else {

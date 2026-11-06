@@ -66,7 +66,7 @@ impl Measurer<'_> {
         hbox: grid,
         dx: Length::ZERO,
         dy: grid_dy,
-      }])
+      }])?
     };
     let width = hbox.width;
     out.push(PlacedHBox { hbox, dx: *dx, dy });

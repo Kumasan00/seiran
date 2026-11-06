@@ -3,7 +3,10 @@
 use crate::{
   document::HirFlush,
   length::Length,
-  typeset::lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
+  typeset::{
+    error::ElementOverflow,
+    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
+  },
 };
 
 /// 寄せ環境を、本体が外側から継ぐ揃えだけを環境の向きに置き換える `VBox` に変換する
@@ -14,14 +17,14 @@ pub(super) fn lower_flush(
   ctx: &LoweringContext<'_>,
   flush: &HirFlush,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
-  return vec![LayoutNode::VBox {
-    children: lower_nodes(ctx, &flush.body, state),
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
+  return Ok(vec![LayoutNode::VBox {
+    children: lower_nodes(ctx, &flush.body, state)?,
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),
     alignment: Some(flush.alignment),
-  }];
+  }]);
 }
 
 #[cfg(test)]

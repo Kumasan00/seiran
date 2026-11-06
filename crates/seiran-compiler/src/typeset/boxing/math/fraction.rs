@@ -211,17 +211,17 @@ impl Measurer<'_> {
     math::translate_into(
       &mut children,
       numerator.boxes,
-      FRACTION_PADDING.try_add(Align::Center.offset(width, numerator.width))?,
+      FRACTION_PADDING.try_add(Align::Center.offset(width, numerator.width)?)?,
       numerator_shift,
     )?;
     math::translate_into(
       &mut children,
       denominator.boxes,
-      FRACTION_PADDING.try_add(Align::Center.offset(width, denominator.width))?,
+      FRACTION_PADDING.try_add(Align::Center.offset(width, denominator.width)?)?,
       -denominator_shift,
     )?;
     children.extend(rule);
-    let mut atom = HBox::atom(children);
+    let mut atom = HBox::atom(children)?;
     atom.width = width.try_add(FRACTION_PADDING)?.try_add(FRACTION_PADDING)?;
     let advance = atom.width;
     out.push(PlacedHBox {
