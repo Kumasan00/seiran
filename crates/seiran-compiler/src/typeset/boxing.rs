@@ -5,7 +5,7 @@
 //! [`inline_atom`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
-//! `resolve_image_size` に依存し、失敗しない）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
+//! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
@@ -71,9 +71,6 @@ const JA_LATIN_AKI_RATIO: f32 = 0.25;
 
 /// 和欧文間アキの伸長能力（フォントサイズに対する倍率）
 const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
-
-/// ブロック間アキ（`VBox::margin_bottom`）の伸長能力（自然値に対する倍率）
-const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
 
 /// テキスト中の改行を空白 1 個へ畳む。
 ///
@@ -193,7 +190,8 @@ impl BlockBuilder<'_> {
           let child_alignment = vbox_alignment.unwrap_or(alignment);
           self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment)?;
           let natural = margin_bottom;
-          blocks.push(Block::stretchable_space(natural, fraction_of(natural, BLOCK_GLUE_STRETCH_RATIO)));
+          // ブロック間アキ（`VBox::margin_bottom`）の伸長能力は自然値と同じ
+          blocks.push(Block::stretchable_space(natural, natural));
         },
         LayoutNode::Vkern { length } => {
           blocks.push(Block::fixed_space(length));
@@ -270,7 +268,7 @@ impl BlockBuilder<'_> {
   ///
   /// # Errors
   ///
-  /// 行送りの計算が長さの値域を超えたら、段落の起点を [`ElementOverflow`] で返す。
+  /// 段落の計測か行送りの計算が長さの値域を超えたら、段落の起点を [`ElementOverflow`] で返す。
   fn build_paragraph(
     &mut self,
     paragraph: ParagraphLayout,
@@ -531,12 +529,12 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
   };
 }
 
-/// `length` の `ratio` 倍（`ratio` の絶対値は 1 以下）
+/// `length` の `ratio` 倍（`ratio` の絶対値は 1 未満）
 ///
-/// em に対する約物・アキの比のように 1 以下の倍率は、値域内の長さを縮めるだけなので溢れない。
+/// em に対する約物・アキの比のように 1 未満の倍率は、値域内の長さを縮めるだけなので溢れない。
 fn fraction_of(length: Length, ratio: f32) -> Length {
-  debug_assert!(ratio.abs() <= 1.0, "1 を超える倍率 {ratio} は溢れうるので try_scale で検査する");
-  return length.try_scale(f64::from(ratio)).expect("倍率の絶対値が 1 以下なので、値域内の長さの積は値域内");
+  debug_assert!(ratio.abs() < 1.0, "1 以上の倍率 {ratio} は溢れうるので try_scale で検査する");
+  return length.try_scale(f64::from(ratio)).expect("倍率の絶対値が 1 未満なので、値域内の長さの積は値域内");
 }
 
 /// 伸縮アキの値（`HItem::Glue` になる前の形）

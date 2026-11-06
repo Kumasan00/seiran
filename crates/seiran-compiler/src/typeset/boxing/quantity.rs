@@ -163,7 +163,7 @@ mod tests {
     let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, punctuation_spacing);
     let mut list = HList::default();
     for node in nodes {
-      measurer.collect_inline(node, &mut list).expect("テストの列は脚注を含まない");
+      measurer.collect_inline(node, &mut list).expect("テストの列は値域内で、脚注を含まない");
     }
     return list.into_items();
   }

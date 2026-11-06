@@ -196,7 +196,7 @@ fn compose_blocks(
 ///
 /// # Errors
 ///
-/// 題の計測が溢れたら題の見出しを、リーダー・ページ番号の寸法が長さの値域を超えたら目次（起点なし）を
+/// 題の計測が溢れたら題の見出しを、リーダー・ページ番号の寸法が長さの値域を超えたらエントリの見出しを
 /// [`ElementOverflow`] で返す。
 fn compose_entry_line(
   shaper: &mut Shaper<'_>,
@@ -205,7 +205,12 @@ fn compose_entry_line(
   entry: TocEntry,
 ) -> Result<Line, ElementOverflow> {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
-  let generated = |LengthOverflow| return ElementOverflow::GENERATED;
+  let entry_origin = entry.origin;
+  let generated = |LengthOverflow| {
+    return ElementOverflow {
+      origin: entry_origin,
+    };
+  };
 
   let mut acc = LineAccum::default();
   let left_end = acc

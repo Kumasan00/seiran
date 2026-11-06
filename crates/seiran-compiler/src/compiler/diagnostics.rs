@@ -501,8 +501,9 @@ fn diagnostic_dimension_overflow_from_table_widths() {
 
 #[test]
 fn diagnostic_dimension_overflow_from_table_cell_line_breaking_points_at_the_row() {
-  // 列を跨ぐ折り返しセルの自然幅は列幅の決定で測らず、最小内容幅（最長の語）は値域に収まる。折り返しの候補行の幅だけが超える
-  let source = "\\begin{table}[widths=50pt 50pt]\n\\row{A & B}\n\\row{\\cell[span=2]{a b c d e f}}\n\\end{table}\n";
+  // 列を跨ぐ折り返しセルは列幅の決定で自然幅を測らず、最小内容幅（最長の語）も値域に収まる。run は \bold で 1 語ずつに
+  // 分かれて各 run の計測は収まり、折り返しの候補行（全 run をまたぐ区間）の幅の和だけが値域を超える
+  let source = "\\begin{table}[widths=50pt 50pt]\n\\row{A & B}\n\\row{\\cell[span=2]{a \\bold{b} c \\bold{d} e \\bold{f}}}\n\\end{table}\n";
   let failure = TestProject::builder()
     .source_text(source)
     .style_toml(|table| test_support::set(table, "text", "font_size", "40000000000000pt"))
