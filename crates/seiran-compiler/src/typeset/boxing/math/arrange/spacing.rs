@@ -73,7 +73,7 @@ impl MathItem {
   ///
   /// # Errors
   ///
-  /// 語間のアキが `Length` の表現範囲を超えるとき `LengthOverflow`。
+  /// 語間のアキが `Length` の表現範囲を超えるとき [`LengthOverflow`]。
   pub(super) fn operator_name(text: &str, style: TextStyle, limits: bool) -> Result<Self, LengthOverflow> {
     let thin = mu(Space::Thin.mu_count(), style.font_size)?;
     let mut nodes = Vec::new();
@@ -113,7 +113,7 @@ impl MathItem {
   ///
   /// # Errors
   ///
-  /// 幅が `Length` の表現範囲を超えるとき `LengthOverflow`。
+  /// 幅が `Length` の表現範囲を超えるとき [`LengthOverflow`]。
   pub(super) fn explicit(space: MathSpace, font_size: Length) -> Result<Self, LengthOverflow> {
     return Ok(MathItem::Space(space_width(space, font_size)?));
   }
@@ -318,7 +318,7 @@ const fn explicit_mu_count(space: MathSpace) -> i32 {
 ///
 /// # Errors
 ///
-/// 幅が `Length` の表現範囲を超えるとき `LengthOverflow`。
+/// 幅が `Length` の表現範囲を超えるとき [`LengthOverflow`]。
 pub(in crate::typeset::boxing) fn space_width(space: MathSpace, font_size: Length) -> Result<Length, LengthOverflow> {
   return mu(explicit_mu_count(space), font_size);
 }
@@ -788,8 +788,14 @@ mod tests {
   }
 
   #[test]
-  fn mu_beyond_the_representable_range_is_an_error() {
-    assert_eq!(mu(18, Length::from_sp(i64::MAX)), Err(LengthOverflow));
+  fn mu_with_an_unrepresentable_result_is_an_error() {
+    // 54mu = 3em なので、結果そのものが値域を超える
+    assert_eq!(mu(54, Length::from_sp(i64::MAX / 2)), Err(LengthOverflow));
+  }
+
+  #[test]
+  fn mu_overflows_in_the_intermediate_product_before_the_division() {
+    // 結果は 1em で表せるが、`font_size * count` を先に求める固定の順序なので途中の積で溢れる
     assert_eq!(space_width(MathSpace::Quad, Length::from_sp(i64::MAX)), Err(LengthOverflow));
   }
 

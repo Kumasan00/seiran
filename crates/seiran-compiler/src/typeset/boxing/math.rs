@@ -859,6 +859,7 @@ mod tests {
     let c = constants();
     let huge = Length::from_sp(i64::MAX);
 
+    // 結果そのものが値域を超える入力（基底のインクの高さ − 降下の上限、基底の深さ + 降下の下限）
     assert_eq!(c.superscript_shift(-huge, Length::ZERO, false), Err(LengthOverflow));
     assert_eq!(c.subscript_shift(huge, Length::ZERO), Err(LengthOverflow));
   }

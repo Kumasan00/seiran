@@ -27,6 +27,9 @@ use crate::{
   },
 };
 
+/// 配置済みの数式の字の（先頭の字形の gid・run のフォントサイズ・字形のベースラインの高さ, イタリック補正）
+type PlacedMathChar = ((u32, Length, Length), Length);
+
 /// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
 ///
 /// # Errors
@@ -47,7 +50,7 @@ fn try_units_to_length(units: i64, font_size: Length, upem: f32) -> Result<Lengt
 )]
 fn design_units(value: f32) -> i64 { return value as i64; }
 
-/// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`units_to_length`] の逆）。
+/// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`try_units_to_length`] の逆）。
 #[expect(
   clippy::cast_possible_truncation,
   reason = "伸ばす目標（表示数式 1 つの高さ・広幅アクセントの基底 1 つの幅）のフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
@@ -891,15 +894,11 @@ impl<'a> Shaper<'a> {
   /// # Errors
   ///
   /// 結果が長さの値域を超えたら [`LengthOverflow`]。
-  #[expect(
-    clippy::type_complexity,
-    reason = "型を足さずに（字形の識別三つ組, 補正）の組を返す。呼び元は math.rs の 2 箇所だけで、その場で分解する"
-  )]
   pub(super) fn placed_math_char(
     &self,
     placed: &PlacedHBox,
     unit: fn(&[Glyph]) -> &[Glyph],
-  ) -> Result<Option<((u32, Length, Length), Length)>, LengthOverflow> {
+  ) -> Result<Option<PlacedMathChar>, LengthOverflow> {
     let HBoxContent::Glyphs(run) = &placed.hbox.content else {
       return Ok(None);
     };

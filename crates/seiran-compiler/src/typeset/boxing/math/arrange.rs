@@ -220,7 +220,7 @@ pub(super) struct MathBar {
 ///
 /// # Errors
 ///
-/// 段のフォントサイズやアキが `Length` の表現範囲を超えるとき `LengthOverflow`。
+/// 段のフォントサイズやアキが `Length` の表現範囲を超えるとき [`LengthOverflow`]。
 pub(super) fn arrange_inline(
   formula: &MathFormula,
   script_scale: ScriptScale,
@@ -236,7 +236,7 @@ pub(super) fn arrange_inline(
 ///
 /// # Errors
 ///
-/// 段のフォントサイズやアキが `Length` の表現範囲を超えるとき `LengthOverflow`。
+/// 段のフォントサイズやアキが `Length` の表現範囲を超えるとき [`LengthOverflow`]。
 pub(super) fn arrange_cell(
   nodes: &[MathNode],
   font_size: Length,
@@ -371,10 +371,10 @@ impl FormulaStyle {
 struct ArrangeContext {
   /// 数式本体（display / text 段）のフォントサイズ
   base_font_size: Length,
-  /// script 段のフォントサイズ（`base_font_size` に MATH の縮小率を掛けた値）
-  script_font_size: Length,
-  /// scriptscript 段のフォントサイズ（`base_font_size` に MATH の縮小率を掛けた値）
-  script_script_font_size: Length,
+  /// スクリプト段の縮小率（数式フォントの MATH 由来）
+  script_scale: ScriptScale,
+  /// このレベルのフォントサイズ（`base_font_size` に `style.level` の縮小率を掛けた値）
+  font_size: Length,
   /// このレベルの数式スタイル
   style: FormulaStyle,
   /// 数式全体の文字色（外側の `\color`・リンク色。`None` は既定色）
@@ -384,7 +384,9 @@ struct ArrangeContext {
 impl ArrangeContext {
   /// 数式本体（段 `level`・cramped でない・文字色 `color`）の文脈を作る
   ///
-  /// 段ごとのフォントサイズはここで 1 回だけ求めるので、以降の `font_size` は失敗しない。
+  /// # Errors
+  ///
+  /// 段のフォントサイズが値域を超えたら [`LengthOverflow`]。
   fn new(
     base_font_size: Length,
     script_scale: ScriptScale,
@@ -393,8 +395,8 @@ impl ArrangeContext {
   ) -> Result<Self, LengthOverflow> {
     return Ok(ArrangeContext {
       base_font_size,
-      script_font_size: script_scale.font_size(base_font_size, Some(ScriptLevel::Script))?,
-      script_script_font_size: script_scale.font_size(base_font_size, Some(ScriptLevel::ScriptScript))?,
+      script_scale,
+      font_size: script_scale.font_size(base_font_size, level.script_level())?,
       style: FormulaStyle {
         level,
         cramped: false,
@@ -403,17 +405,21 @@ impl ArrangeContext {
     });
   }
 
-  /// 数式スタイルだけを差し替えた文脈を作る
-  const fn with_style(&self, style: FormulaStyle) -> Self { return ArrangeContext { style, ..*self }; }
+  /// 数式スタイルだけを差し替えた文脈を作る（段が変わるときだけ、その段のフォントサイズを求める）
+  ///
+  /// # Errors
+  ///
+  /// 新しい段のフォントサイズが値域を超えたら [`LengthOverflow`]。
+  fn with_style(&self, style: FormulaStyle) -> Result<Self, LengthOverflow> {
+    return Ok(ArrangeContext {
+      font_size: self.script_scale.font_size(self.base_font_size, style.level.script_level())?,
+      style,
+      ..*self
+    });
+  }
 
   /// このレベルのフォントサイズ
-  const fn font_size(&self) -> Length {
-    return match self.style.level.script_level() {
-      None => self.base_font_size,
-      Some(ScriptLevel::Script) => self.script_font_size,
-      Some(ScriptLevel::ScriptScript) => self.script_script_font_size,
-    };
-  }
+  const fn font_size(&self) -> Length { return self.font_size; }
 
   /// script 段以下（TeXbook の括弧付きセルのアキを抑制する段）か
   const fn in_script(&self) -> bool { return self.style.level.script_level().is_some(); }
@@ -510,11 +516,11 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       items.push(spacing::MathItem::new(MathClass::Ord, None, arrange_list(children, ctx)?));
     },
     MathNode::Superscript(inner) => {
-      let content = arrange_list(inner, &ctx.with_style(ctx.style.superscript()))?;
+      let content = arrange_list(inner, &ctx.with_style(ctx.style.superscript())?)?;
       spacing::push_script(items, ScriptSide::Superscript, content, ctx.font_size(), ctx.style.cramped);
     },
     MathNode::Subscript(inner) => {
-      let content = arrange_list(inner, &ctx.with_style(ctx.style.subscript()))?;
+      let content = arrange_list(inner, &ctx.with_style(ctx.style.subscript())?)?;
       spacing::push_script(items, ScriptSide::Subscript, content, ctx.font_size(), ctx.style.cramped);
     },
     MathNode::Fraction {
@@ -522,8 +528,8 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       denominator,
     } => {
       let fraction = MathFraction {
-        numerator: arrange_list(numerator, &ctx.with_style(ctx.style.numerator()))?,
-        denominator: arrange_list(denominator, &ctx.with_style(ctx.style.denominator()))?,
+        numerator: arrange_list(numerator, &ctx.with_style(ctx.style.numerator())?)?,
+        denominator: arrange_list(denominator, &ctx.with_style(ctx.style.denominator())?)?,
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         ruled: true,
@@ -534,8 +540,8 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
     // 上段・下段は分数の分子・分母と同じ段に組み、積み全体は括弧と同じ段（伸縮括弧の中身と同じ）
     MathNode::Binomial { top, bottom } => {
       let stack = MathFraction {
-        numerator: arrange_list(top, &ctx.with_style(ctx.style.numerator()))?,
-        denominator: arrange_list(bottom, &ctx.with_style(ctx.style.denominator()))?,
+        numerator: arrange_list(top, &ctx.with_style(ctx.style.numerator())?)?,
+        denominator: arrange_list(bottom, &ctx.with_style(ctx.style.denominator())?)?,
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         ruled: false,
@@ -547,9 +553,9 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       let radical = MathRadical {
         degree: degree
           .as_ref()
-          .map(|degree| return arrange_list(degree, &ctx.with_style(ctx.style.radical_degree())))
+          .map(|degree| return arrange_list(degree, &ctx.with_style(ctx.style.radical_degree())?))
           .transpose()?,
-        radicand: arrange_list(radicand, &ctx.with_style(ctx.style.cramped()))?,
+        radicand: arrange_list(radicand, &ctx.with_style(ctx.style.cramped())?)?,
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         script_level: ctx.style.level.script_level(),
@@ -565,7 +571,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       base,
     } => {
       let accent = MathAccent {
-        base: arrange_list(base, &ctx.with_style(ctx.style.cramped()))?,
+        base: arrange_list(base, &ctx.with_style(ctx.style.cramped())?)?,
         accent: mark.to_string(),
         wide: *wide,
         dotless: *dotless,
@@ -592,7 +598,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
     MathNode::Bar { over, body } => {
       let bar = MathBar {
         body: if *over {
-          arrange_list(body, &ctx.with_style(ctx.style.cramped()))?
+          arrange_list(body, &ctx.with_style(ctx.style.cramped())?)?
         } else {
           arrange_list(body, ctx)?
         },
@@ -647,7 +653,7 @@ fn push_array(
   let cell_ctx = ctx.with_style(FormulaStyle {
     level: ctx.style.level.array_cell(),
     cramped: ctx.style.cramped,
-  });
+  })?;
   let scale = ctx.font_size().ratio(ctx.base_font_size);
   let array = MathArray {
     rows: rows
