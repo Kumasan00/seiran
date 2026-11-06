@@ -68,24 +68,28 @@ impl MeasuredRow {
   ///
   /// 行送りは本文と同じ `F × line_height_factor` で、F は行内の全セルの最大フォントサイズ（テキストが無ければ
   /// `default_font_size`）。行送りは行単位で 1 つで、セルの各行で変えない。
+  ///
+  /// # Errors
+  ///
+  /// 行送りが長さの値域を超えたら [`LengthOverflow`]。
   fn new(
     origin: NodeId,
     cells: Vec<MeasuredCell>,
     separator: Option<RowSeparator>,
     default_font_size: Length,
     line_height_factor: f32,
-  ) -> Self {
+  ) -> Result<Self, LengthOverflow> {
     let font_size = cells
       .iter()
       .filter_map(|cell| return boxing::max_font_size_in_items(&cell.items))
       .reduce(Length::max)
       .unwrap_or(default_font_size);
-    return MeasuredRow {
+    return Ok(MeasuredRow {
       origin,
       cells,
       separator,
-      leading: font_size * line_height_factor,
-    };
+      leading: font_size.try_scale(f64::from(line_height_factor))?,
+    });
   }
 }
 
@@ -116,7 +120,7 @@ impl Measurer<'_> {
   ///
   /// # Errors
   ///
-  /// セルの脚注の行送りの計算が長さの値域を超えたら、脚注の起点を [`ElementOverflow`] で返す。
+  /// 寸法の計算が長さの値域を超えたら、その要素（セルの脚注・行・表）を [`ElementOverflow`] で返す。
   pub(super) fn build_table(
     &mut self,
     table: TableLayout,
@@ -158,7 +162,8 @@ impl Measurer<'_> {
   fn measure_rows(&mut self, rows: Vec<TableRowLayout>) -> Result<Vec<MeasuredRow>, ElementOverflow> {
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
-      let cells = self.within(row.origin, |measurer| -> Result<Vec<MeasuredCell>, ElementOverflow> {
+      let row_origin = row.origin;
+      let cells = self.within(row_origin, |measurer| -> Result<Vec<MeasuredCell>, ElementOverflow> {
         let mut cells = Vec::with_capacity(row.cells.len());
         for cell in row.cells {
           let mut list = HList::default();
@@ -174,7 +179,15 @@ impl Measurer<'_> {
         }
         return Ok(cells);
       })?;
-      result.push(MeasuredRow::new(row.origin, cells, row.separator, self.default_font_size, self.line_height_factor));
+      let measured =
+        MeasuredRow::new(row_origin, cells, row.separator, self.default_font_size, self.line_height_factor).map_err(
+          |LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(row_origin),
+            };
+          },
+        )?;
+      result.push(measured);
     }
     return Ok(result);
   }
@@ -213,7 +226,7 @@ fn arrange(
     };
   };
   let col_widths = resolve_column_widths(frame, head, rows, available).map_err(table_overflow)?;
-  let width: Length = col_widths.iter().copied().sum();
+  let width = Length::try_sum(col_widths.iter().copied()).map_err(table_overflow)?;
   let rule = |gap_above: Length, thickness: Length, gap_below: Length| {
     return TableBoundary::rule(gap_above, thickness, gap_below, width, frame.rule_color);
   };
@@ -231,24 +244,22 @@ fn arrange(
         let above = if index == 0 {
           first_above.clone()
         } else {
-          boundary_above(rows, index, &separator, frame, &col_widths)
+          boundary_above(rows, index, &separator, frame, &col_widths).map_err(table_overflow)?
         };
         let (fragment, merged) = row_fragment(row, frame, &col_widths, breaker)?;
         return Ok((TableRowFragment { above, ..fragment }, merged));
       })
       .collect::<Result<Vec<_>, ElementOverflow>>()?;
     let mut parts = parts.into_iter();
-    return Ok(
-      row_groups(rows)
-        .into_iter()
-        .map(|group| {
-          if rows[group.clone()].iter().skip(1).any(|row| return row.separator.is_some()) {
-            unreachable!("行結合の内側の境界の separator は frontend（TableSeparatorInsideRowSpan）が拒否する");
-          }
-          return merge_row_group(parts.by_ref().take(group.len()).collect());
-        })
-        .collect::<Vec<_>>(),
-    );
+    return row_groups(rows)
+      .into_iter()
+      .map(|group| {
+        if rows[group.clone()].iter().skip(1).any(|row| return row.separator.is_some()) {
+          unreachable!("行結合の内側の境界の separator は frontend（TableSeparatorInsideRowSpan）が拒否する");
+        }
+        return merge_row_group(parts.by_ref().take(group.len()).collect()).map_err(table_overflow);
+      })
+      .collect::<Result<Vec<_>, ElementOverflow>>();
   };
   let head = fragments(head, &TableBoundary::default())?;
   let rows = fragments(rows, &head_bottom)?;
@@ -284,21 +295,22 @@ fn boundary_above(
   separator: &TableBoundary,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
-) -> TableBoundary {
+) -> Result<TableBoundary, LengthOverflow> {
   let ends_above =
     |start: usize, cell: &MeasuredCell| return cell.rule_below && start + cell.row_span as usize == index;
-  let bands: Vec<(Length, Length)> = rows[..index]
-    .iter()
-    .enumerate()
-    .filter(|(start, row)| return row.cells.iter().any(|cell| return ends_above(*start, cell)))
-    .flat_map(|(start, row)| {
-      return cell_bands(&row.cells, col_widths)
+  let mut bands: Vec<(Length, Length)> = Vec::new();
+  for (start, row) in rows[..index].iter().enumerate() {
+    if !row.cells.iter().any(|cell| return ends_above(start, cell)) {
+      continue;
+    }
+    bands.extend(
+      cell_bands(&row.cells, col_widths)?
         .into_iter()
-        .filter(move |(cell, ..)| return ends_above(start, cell))
-        .map(|(_, _, x, band_width)| return (x, band_width));
-    })
-    .collect();
-  return match (bands.is_empty(), rows[index].separator) {
+        .filter(|(cell, ..)| return ends_above(start, cell))
+        .map(|(_, _, x, band_width)| return (x, band_width)),
+    );
+  }
+  return Ok(match (bands.is_empty(), rows[index].separator) {
     (false, Some(_)) => {
       unreachable!("rule_below の行の次の行の separator は frontend（TableRuleBelowWithSeparator）が拒否する")
     },
@@ -316,7 +328,7 @@ fn boundary_above(
       rules: Vec::new(),
     },
     (true, None) => TableBoundary::default(),
-  };
+  });
 }
 
 /// `total`（非負）を `parts`（1 以上）個へ sp 単位で等分し、余りを左の部分から 1sp ずつ配る
@@ -357,16 +369,18 @@ fn resolve_column_widths(
 ) -> Result<Vec<Length>, LengthOverflow> {
   let padding = frame.cell_padding;
   let column_count = frame.columns.len();
+  let double_padding = padding.try_mul(2)?;
   let mut naturals = vec![Length::ZERO; column_count];
-  let mut floors = vec![padding * 2; column_count];
+  let mut floors = vec![double_padding; column_count];
 
   for row in head.iter().chain(rows) {
     let mut column_index = 0usize;
     for cell in &row.cells {
       let column_span = cell.column_span as usize;
       if column_span == 1 && column_index < column_count {
-        naturals[column_index] = naturals[column_index].max(measure_items_width(&cell.items) + padding * 2);
-        floors[column_index] = floors[column_index].max(breaking::min_content_width(&cell.items)? + padding * 2);
+        naturals[column_index] = naturals[column_index].max(measure_items_width(&cell.items)?.try_add(double_padding)?);
+        floors[column_index] =
+          floors[column_index].max(breaking::min_content_width(&cell.items)?.try_add(double_padding)?);
       }
       column_index += column_span;
     }
@@ -377,11 +391,11 @@ fn resolve_column_widths(
       let column_span = cell.column_span as usize;
       let spanned = column_index..column_index + column_span;
       if column_span > 1 && spanned.end <= column_count && !wraps(&frame.columns[spanned.clone()]) {
-        let width = measure_items_width(&cell.items) + padding * 2;
-        let current: Length = naturals[spanned.clone()].iter().sum();
+        let width = measure_items_width(&cell.items)?.try_add(double_padding)?;
+        let current = Length::try_sum(naturals[spanned.clone()].iter().copied())?;
         if width > current {
-          for (natural, extra) in naturals[spanned].iter_mut().zip(split_evenly(width - current, column_span)) {
-            *natural += extra;
+          for (natural, extra) in naturals[spanned].iter_mut().zip(split_evenly(width.try_sub(current)?, column_span)) {
+            *natural = natural.try_add(extra)?;
           }
         }
       }
@@ -395,16 +409,16 @@ fn resolve_column_widths(
   for (i, column) in frame.columns.iter().enumerate() {
     match column.width {
       ColumnWidth::Fixed(length) => widths[i] = length,
-      ColumnWidth::Ratio(ratio) => widths[i] = available * ratio,
-      ColumnWidth::Auto => widths[i] = naturals[i].max(padding * 2),
+      ColumnWidth::Ratio(ratio) => widths[i] = available.try_scale(f64::from(ratio))?,
+      ColumnWidth::Auto => widths[i] = naturals[i].max(double_padding),
       ColumnWidth::Flex => {
         open_flex.push(i);
         continue;
       },
     }
-    used += widths[i];
+    used = used.try_add(widths[i])?;
   }
-  let mut rest = (available - used).max(Length::ZERO);
+  let mut rest = available.try_sub(used)?.max(Length::ZERO);
   while !open_flex.is_empty() {
     let shares = split_evenly(rest, open_flex.len());
     let violates = |k: usize| return shares[k] < floors[open_flex[k]];
@@ -418,7 +432,7 @@ fn resolve_column_widths(
     for (k, &i) in open_flex.iter().enumerate() {
       if violates(k) {
         widths[i] = floors[i];
-        rest = (rest - floors[i]).max(Length::ZERO);
+        rest = rest.try_sub(floors[i])?.max(Length::ZERO);
       } else {
         still_open.push(i);
       }
@@ -432,8 +446,8 @@ fn resolve_column_widths(
       let column_span = cell.column_span as usize;
       let spanned = column_index..column_index + column_span;
       if column_span > 1 && spanned.end <= column_count && wraps(&frame.columns[spanned.clone()]) {
-        let need = breaking::min_content_width(&cell.items)? + padding * 2;
-        let current: Length = widths[spanned.clone()].iter().sum();
+        let need = breaking::min_content_width(&cell.items)?.try_add(double_padding)?;
+        let current = Length::try_sum(widths[spanned.clone()].iter().copied())?;
         if current < need {
           let mut flex_columns = Vec::new();
           let mut auto_columns = Vec::new();
@@ -450,8 +464,8 @@ fn resolve_column_widths(
             flex_columns
           };
           if !targets.is_empty() {
-            for (&i, extra) in targets.iter().zip(split_evenly(need - current, targets.len())) {
-              widths[i] += extra;
+            for (&i, extra) in targets.iter().zip(split_evenly(need.try_sub(current)?, targets.len())) {
+              widths[i] = widths[i].try_add(extra)?;
             }
           }
         }
@@ -479,40 +493,40 @@ fn text_alignment(align: ColumnAlign) -> TextAlignment {
 ///
 /// 戻り値の 2 つ目は、折り返すセルの行が内容幅（帯幅 − 左右の余白。0 で下止めしない）を超えた量の最大で、
 /// 折り返さないセルは寄与しない。内容幅が負なら空のセルでも正になる。収まれば 0。
+///
+/// # Errors
+///
+/// セルの寸法が長さの値域を超えたら [`LengthOverflow`]。
 fn layout_row_cells(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
-) -> Result<(Vec<Vec<Line>>, Length), ElementOverflow> {
+) -> Result<(Vec<Vec<Line>>, Length), LengthOverflow> {
+  let double_padding = frame.cell_padding.try_mul(2)?;
   let mut overrun = Length::ZERO;
   let mut cells = Vec::with_capacity(row.cells.len());
-  for (cell, spanned, cell_x, band_width) in cell_bands(&row.cells, col_widths) {
+  for (cell, spanned, cell_x, band_width) in cell_bands(&row.cells, col_widths)? {
     let spanned_columns = &frame.columns[spanned];
     let align = spanned_columns.first().map_or(ColumnAlign::Left, |column| return column.align);
     let lines = if wraps(spanned_columns) {
-      let content_width = band_width - frame.cell_padding * 2;
-      let mut lines = breaker
-        .break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))
-        .map_err(|LengthOverflow| {
-          return ElementOverflow {
-            origin: Some(row.origin),
-          };
-        })?;
+      let content_width = band_width.try_sub(double_padding)?;
+      let mut lines = breaker.break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
       let widest = lines.iter().map(Line::width).fold(Length::ZERO, Length::max);
-      overrun = overrun.max(widest - content_width);
+      overrun = overrun.max(widest.try_sub(content_width)?);
+      let line_x = cell_x.try_add(frame.cell_padding)?;
       for line in &mut lines {
-        line.shift_x(cell_x + frame.cell_padding);
+        line.shift_x(line_x);
       }
       lines
     } else {
-      let content_width = measure_items_width(&cell.items);
+      let content_width = measure_items_width(&cell.items)?;
       let content_x = match align {
-        ColumnAlign::Left => cell_x + frame.cell_padding,
-        ColumnAlign::Center => cell_x + (band_width - content_width) / 2.0,
-        ColumnAlign::Right => cell_x + band_width - frame.cell_padding - content_width,
+        ColumnAlign::Left => cell_x.try_add(frame.cell_padding)?,
+        ColumnAlign::Center => cell_x.try_add(band_width.try_sub(content_width)?.try_div(2.0)?)?,
+        ColumnAlign::Right => cell_x.try_add(band_width)?.try_sub(frame.cell_padding)?.try_sub(content_width)?,
       };
-      let mut line = unwrapped_line(&cell.items);
+      let mut line = unwrapped_line(&cell.items)?;
       line.shift_x(content_x);
       vec![line]
     };
@@ -521,25 +535,29 @@ fn layout_row_cells(
   return Ok((cells, overrun));
 }
 
+/// セルの帯 — セル・跨ぐ列の範囲・表左端からの帯の左端 x・帯幅
+type CellBand<'r> = (&'r MeasuredCell, Range<usize>, Length, Length);
+
 /// セルごとの帯 — セル・跨ぐ列の範囲・表左端からの帯の左端 x・帯幅（跨ぐ列幅の和）
 ///
 /// 跨ぐ列数は残りの列数で切り詰める（frontend が全行の `column_span` の和を列数に揃えるので、実入力では切り詰めない）。
-fn cell_bands<'r>(
-  cells: &'r [MeasuredCell],
-  col_widths: &[Length],
-) -> Vec<(&'r MeasuredCell, Range<usize>, Length, Length)> {
+///
+/// # Errors
+///
+/// 帯の左端か帯幅が長さの値域を超えたら [`LengthOverflow`]。
+fn cell_bands<'r>(cells: &'r [MeasuredCell], col_widths: &[Length]) -> Result<Vec<CellBand<'r>>, LengthOverflow> {
   let mut column_index = 0usize;
   let mut cell_x = Length::ZERO;
   let mut bands = Vec::with_capacity(cells.len());
   for cell in cells {
     let column_span = (cell.column_span as usize).min(col_widths.len().saturating_sub(column_index));
     let spanned = column_index..column_index + column_span;
-    let band_width: Length = col_widths[spanned.clone()].iter().copied().sum();
+    let band_width = Length::try_sum(col_widths[spanned.clone()].iter().copied())?;
     bands.push((cell, spanned, cell_x, band_width));
-    cell_x += band_width;
+    cell_x = cell_x.try_add(band_width)?;
     column_index += column_span;
   }
-  return bands;
+  return Ok(bands);
 }
 
 /// 1 行を、表左端・行帯上端を原点とする行断片にする
@@ -554,12 +572,30 @@ fn cell_bands<'r>(
 /// `row_span > 1` のセル（結合セル）も先頭行は先頭行帯とベースラインに参加し、続き行を同じく下へ積むが、行の高さには
 /// 足さない — 戻り値の 2 つ目に、結合セルごとの（結合行数, 内容の高さ = 先頭行帯 + 続き行の帯の和）をセル順に返し、
 /// 結合した行の高さとの差は [`merge_row_group`] が結合の最後の行に足す。
+///
+/// # Errors
+///
+/// 行の寸法が長さの値域を超えたら、行（`\row`）を [`ElementOverflow`] で返す。
 fn row_fragment(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
   breaker: &dyn LineBreaker,
 ) -> Result<(TableRowFragment, Vec<(u32, Length)>), ElementOverflow> {
+  return place_row(row, frame, col_widths, breaker).map_err(|LengthOverflow| {
+    return ElementOverflow {
+      origin: Some(row.origin),
+    };
+  });
+}
+
+/// [`row_fragment`] の本体。溢れは [`LengthOverflow`] のまま返し、行の起点への帰属は呼び元が行う
+fn place_row(
+  row: &MeasuredRow,
+  frame: &TableFrame<'_>,
+  col_widths: &[Length],
+  breaker: &dyn LineBreaker,
+) -> Result<(TableRowFragment, Vec<(u32, Length)>), LengthOverflow> {
   let (cells, overrun) = layout_row_cells(row, frame, col_widths, breaker)?;
   let (ascent, descent) = cells.iter().filter_map(|lines| return lines.first()).fold(
     (Length::ZERO, Length::ZERO),
@@ -567,8 +603,8 @@ fn row_fragment(
       return (ascent.max(line.height), descent.max(line.depth));
     },
   );
-  let first_band = row.leading.max(ascent + descent);
-  let baseline = ascent + (first_band - ascent - descent) / 2.0;
+  let first_band = row.leading.max(ascent.try_add(descent)?);
+  let baseline = ascent.try_add(first_band.try_sub(ascent)?.try_sub(descent)?.try_div(2.0)?)?;
   let mut fragment = TableRowFragment {
     origin: row.origin,
     overrun,
@@ -588,14 +624,16 @@ fn row_fragment(
   for (cell, lines) in row.cells.iter().zip(cells) {
     let mut lines = lines.into_iter();
     if let Some(first) = lines.next() {
-      take_line(&mut fragment, first, Length::ZERO, first_band, Length::ZERO);
+      take_line(&mut fragment, first, Length::ZERO, first_band, Length::ZERO)?;
     }
     let mut band_top = first_band;
     for line in lines {
-      let band = row.leading.max(line.height + line.depth);
-      let line_baseline = band_top + line.height + (band - line.height - line.depth) / 2.0;
-      take_line(&mut fragment, line, band_top, band, line_baseline - baseline);
-      band_top += band;
+      let band = row.leading.max(line.height.try_add(line.depth)?);
+      let line_baseline = band_top
+        .try_add(line.height)?
+        .try_add(band.try_sub(line.height)?.try_sub(line.depth)?.try_div(2.0)?)?;
+      take_line(&mut fragment, line, band_top, band, line_baseline.try_sub(baseline)?)?;
+      band_top = band_top.try_add(band)?;
     }
     if cell.row_span > 1 {
       merged.push((cell.row_span, band_top));
@@ -640,15 +678,19 @@ fn row_groups(rows: &[MeasuredRow]) -> Vec<Range<usize>> {
 /// 内側の境界の高さの和 + 伸ばした分。`TableBox::height` と配置の収まり判定はこの値をそのまま使う）。行 k の箱は
 /// ベースラインの差 `top(k) + baseline_k − baseline_0` を `dy` から引き、リンクは `top(k)` 下げ、索引語・脚注は行順に
 /// つなぎ、内側の境界の罫線を `rules` に上から置く。結合セルの無い 1 行は `parts[0]` をそのまま返す。
-fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> TableRowFragment {
+///
+/// # Errors
+///
+/// 畳んだ高さ・位置が長さの値域を超えたら [`LengthOverflow`]。
+fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> Result<TableRowFragment, LengthOverflow> {
   if parts.len() == 1 && parts[0].1.is_empty() {
-    return parts.swap_remove(0).0;
+    return Ok(parts.swap_remove(0).0);
   }
   let last = parts.len().checked_sub(1).expect("row_groups の範囲は空でないので、行の集まりは 1 行以上");
   let mut heights: Vec<Length> = parts.iter().map(|(fragment, _)| return fragment.height()).collect();
   let aboves: Vec<Length> = parts.iter().skip(1).map(|(fragment, _)| return fragment.above.height).collect();
-  let top = |heights: &[Length], k: usize| -> Length {
-    return heights[..k].iter().copied().sum::<Length>() + aboves[..k].iter().copied().sum::<Length>();
+  let top = |heights: &[Length], k: usize| -> Result<Length, LengthOverflow> {
+    return Length::try_sum(heights[..k].iter().copied())?.try_add(Length::try_sum(aboves[..k].iter().copied())?);
   };
   let mut ends: Vec<(usize, usize, Length)> = parts
     .iter()
@@ -661,9 +703,9 @@ fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> Ta
     .collect();
   ends.sort_by_key(|&(_, end, _)| return end);
   for (k, end, content) in ends {
-    let region = top(&heights, end) + heights[end] - top(&heights, k);
+    let region = top(&heights, end)?.try_add(heights[end])?.try_sub(top(&heights, k)?)?;
     if content > region {
-      heights[end] += content - region;
+      heights[end] = heights[end].try_add(content.try_sub(region)?)?;
     }
   }
 
@@ -671,43 +713,54 @@ fn merge_row_group(mut parts: Vec<(TableRowFragment, Vec<(u32, Length)>)>) -> Ta
   let (_, (mut merged, _)) = parts.next().expect("row_groups の範囲は空でないので、行の集まりは 1 行以上");
   let baseline = merged.row.baseline_y;
   for (k, (fragment, _)) in parts {
-    let top_k = top(&heights, k);
+    let top_k = top(&heights, k)?;
     merged.overrun = merged.overrun.max(fragment.overrun);
-    merged.rules.extend(fragment.above.place(Length::ZERO, top_k - fragment.above.height));
-    let lowered = top_k + fragment.row.baseline_y - baseline;
-    merged.row.boxes.extend(fragment.row.boxes.into_iter().map(|placed| {
-      return PlacedHBox {
-        dy: placed.dy - lowered,
+    merged.rules.extend(fragment.above.place(Length::ZERO, top_k.try_sub(fragment.above.height)?));
+    let lowered = top_k.try_add(fragment.row.baseline_y)?.try_sub(baseline)?;
+    for placed in fragment.row.boxes {
+      merged.row.boxes.push(PlacedHBox {
+        dy: placed.dy.try_sub(lowered)?,
         ..placed
-      };
-    }));
-    merged.links.extend(fragment.links.into_iter().map(|link| {
-      return PlacedLink {
-        y: link.y + top_k,
+      });
+    }
+    for link in fragment.links {
+      merged.links.push(PlacedLink {
+        y: link.y.try_add(top_k)?,
         ..link
-      };
-    }));
+      });
+    }
     merged.index_marks.extend(fragment.index_marks);
     merged.footnotes.extend(fragment.footnotes);
   }
-  merged.row.height = top(&heights, last) + heights[last];
-  return merged;
+  merged.row.height = top(&heights, last)?.try_add(heights[last])?;
+  return Ok(merged);
 }
 
 /// セルの 1 行を行断片へ移す。行の帯は行帯上端から `band_top`・高さ `band`、ベースラインは共有ベースラインより
 /// `lowered` 下
-fn take_line(fragment: &mut TableRowFragment, line: Line, band_top: Length, band: Length, lowered: Length) {
-  fragment.row.boxes.extend(line.boxes.into_iter().map(|placed| {
-    return PlacedHBox {
-      dy: placed.dy - lowered,
+///
+/// # Errors
+///
+/// 箱の縦位置が長さの値域を超えたら [`LengthOverflow`]。
+fn take_line(
+  fragment: &mut TableRowFragment,
+  line: Line,
+  band_top: Length,
+  band: Length,
+  lowered: Length,
+) -> Result<(), LengthOverflow> {
+  for placed in line.boxes {
+    fragment.row.boxes.push(PlacedHBox {
+      dy: placed.dy.try_sub(lowered)?,
       ..placed
-    };
-  }));
+    });
+  }
   fragment
     .links
     .extend(line.links.iter().filter_map(|link| return link.place(Length::ZERO, band_top, band)));
   fragment.index_marks.extend(line.index_marks);
   fragment.footnotes.extend(line.footnotes);
+  return Ok(());
 }
 
 #[cfg(test)]
@@ -875,7 +928,9 @@ mod tests {
   fn origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 1); }
 
   /// 区切りの無い行を作る（既定フォントサイズ 10pt・行高係数 1）
-  fn row(cells: Vec<MeasuredCell>) -> MeasuredRow { return MeasuredRow::new(origin(), cells, None, pt(10.0), 1.0); }
+  fn row(cells: Vec<MeasuredCell>) -> MeasuredRow {
+    return MeasuredRow::new(origin(), cells, None, pt(10.0), 1.0).expect("テストの寸法は値域内");
+  }
 
   /// 揃え `align`・幅指定 `Auto` の列を作る
   fn auto(align: ColumnAlign) -> TableColumn {
@@ -996,7 +1051,7 @@ mod tests {
 
   /// 上に区切りの罫線を持つ行を作る（既定フォントサイズ 10pt・行高係数 1）
   fn ruled_row(cells: Vec<MeasuredCell>) -> MeasuredRow {
-    return MeasuredRow::new(origin(), cells, Some(RowSeparator::Rule), pt(10.0), 1.0);
+    return MeasuredRow::new(origin(), cells, Some(RowSeparator::Rule), pt(10.0), 1.0).expect("テストの寸法は値域内");
   }
 
   /// 幅 10 のテキスト 1 つのセルだけの行
@@ -1043,7 +1098,8 @@ mod tests {
     // rule_thickness 0.5・row_gap 5: ヘッダなしの表の 2 行目が gap
     let columns = [auto(ColumnAlign::Left)];
     let gap_row =
-      MeasuredRow::new(origin(), vec![cell(vec![glyph_box(10.0, 10.0)])], Some(RowSeparator::Gap), pt(10.0), 1.0);
+      MeasuredRow::new(origin(), vec![cell(vec![glyph_box(10.0, 10.0)])], Some(RowSeparator::Gap), pt(10.0), 1.0)
+        .expect("テストの寸法は値域内");
 
     let table = arrange_in_range(
       origin(),
@@ -1536,7 +1592,8 @@ mod tests {
       None,
       pt(9.0),
       1.5,
-    );
+    )
+    .expect("テストの寸法は値域内");
     let columns = [auto(ColumnAlign::Left); 2];
 
     let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
@@ -1557,7 +1614,8 @@ mod tests {
       None,
       pt(9.0),
       1.2,
-    );
+    )
+    .expect("テストの寸法は値域内");
     let columns = [auto(ColumnAlign::Left); 2];
 
     let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0), pt(20.0)], &KnuthPlassBreaker).0.row;
@@ -1569,7 +1627,8 @@ mod tests {
   #[test]
   fn row_band_without_text_uses_the_default_font_size() {
     // テキストが無いので行送りは既定 9 × 2 = 18。中身は高さ 1 で、余り 17 を上下へ 8.5 ずつ
-    let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], None, pt(9.0), 2.0);
+    let row = MeasuredRow::new(origin(), vec![cell(vec![text_free_box(5.0)])], None, pt(9.0), 2.0)
+      .expect("テストの寸法は値域内");
     let columns = [auto(ColumnAlign::Left)];
 
     let band = row_fragment_in_range(&row, &frame(&columns, 0.0), &[pt(20.0)], &KnuthPlassBreaker).0.row;

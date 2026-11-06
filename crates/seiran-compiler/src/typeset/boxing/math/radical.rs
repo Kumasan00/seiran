@@ -11,7 +11,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{HBox, PlacedHBox},
     boxing::{
@@ -96,7 +96,17 @@ impl Measurer<'_> {
   /// 根号を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを根号の幅だけ進める
   ///
   /// Atom の高さは横線の上の `RadicalExtraAscender` を含む。
-  pub(super) fn place_radical(&mut self, radical: MathRadical, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_radical(
+    &mut self,
+    radical: MathRadical,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathRadical {
       degree,
       radicand,
@@ -106,10 +116,10 @@ impl Measurer<'_> {
       color,
     } = radical;
     let constants = RadicalConstants::new(&self.shaper, font_size, display);
-    let radicand = self.detach(radicand);
+    let radicand = self.detach(radicand)?;
     let target = constants.surd_target(radicand.ink_height, radicand.ink_depth);
     let (surd, (surd_top, surd_bottom)) =
-      self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target, color);
+      self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target, color)?;
     let vinculum_bottom = constants.vinculum_bottom(radicand.ink_height, radicand.ink_depth, surd_top - surd_bottom);
     let vinculum_top = vinculum_bottom + constants.rule_thickness;
     let surd_dy = vinculum_top - surd_top;
@@ -119,7 +129,7 @@ impl Measurer<'_> {
     let mut children = Vec::new();
     let mut surd_x = Length::ZERO;
     if let Some(degree) = degree {
-      let degree = self.detach(degree);
+      let degree = self.detach(degree)?;
       let (before, after) = constants.degree_kerns(degree.width);
       let shift = constants.degree_shift(ascent, descent, degree.ink_depth);
       surd_x = before + degree.width + after;
@@ -149,6 +159,7 @@ impl Measurer<'_> {
       dy,
     });
     *dx += advance;
+    return Ok(());
   }
 }
 

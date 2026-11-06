@@ -12,7 +12,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{Align, HBox, PlacedHBox},
     boxing::{
@@ -127,13 +127,17 @@ impl Measurer<'_> {
   ///
   /// 分子・分母・横罫は Atom の左端から [`FRACTION_PADDING`] の位置に置き、Atom の幅は両側のアキを含む。
   /// 横罫を引かない積み（`ruled` が偽）は [`StackConstants`] でシフトを決め、横罫を置かない。
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn place_fraction(
     &mut self,
     fraction: MathFraction,
     dy: Length,
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let MathFraction {
       numerator,
       denominator,
@@ -142,8 +146,8 @@ impl Measurer<'_> {
       ruled,
       color,
     } = fraction;
-    let numerator = self.detach(numerator);
-    let denominator = self.detach(denominator);
+    let numerator = self.detach(numerator)?;
+    let denominator = self.detach(denominator)?;
     // 送り幅の和は負の送りを持つ字形で負になり得るので、罫の幅は 0 で止める（描画矩形の幅は非負）
     let width = numerator.width.max(denominator.width).max(Length::ZERO);
     let (numerator_shift, denominator_shift, rule) = if ruled {
@@ -187,6 +191,7 @@ impl Measurer<'_> {
       dy,
     });
     *dx += advance;
+    return Ok(());
   }
 }
 

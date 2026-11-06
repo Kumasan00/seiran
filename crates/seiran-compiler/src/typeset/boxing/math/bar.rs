@@ -10,7 +10,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{HBox, PlacedHBox},
     boxing::{
@@ -33,7 +33,17 @@ fn rule_bottom(over: bool, ink_height: Length, ink_depth: Length, gap: Length, t
 
 impl Measurer<'_> {
   /// 上線・下線を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを基底の送り幅だけ進める
-  pub(super) fn place_bar(&mut self, bar: MathBar, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_bar(
+    &mut self,
+    bar: MathBar,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathBar {
       body,
       over,
@@ -55,7 +65,7 @@ impl Measurer<'_> {
         at(MathConstant::UnderbarExtraDescender),
       )
     };
-    let body = self.detach(body);
+    let body = self.detach(body)?;
     let bottom = rule_bottom(over, body.ink_height, body.ink_depth, gap, thickness);
 
     let mut children = Vec::new();
@@ -79,6 +89,7 @@ impl Measurer<'_> {
       dy,
     });
     *dx += body.width;
+    return Ok(());
   }
 }
 

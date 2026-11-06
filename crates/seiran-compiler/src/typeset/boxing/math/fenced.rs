@@ -9,7 +9,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{HBox, PlacedHBox},
     boxing::{
@@ -29,7 +29,17 @@ fn symmetric_target(ink_height: Length, ink_depth: Length, axis: Length) -> Leng
 
 impl Measurer<'_> {
   /// 伸縮括弧を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを全体の送り幅だけ進める
-  pub(super) fn place_fenced(&mut self, fenced: MathFenced, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_fenced(
+    &mut self,
+    fenced: MathFenced,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathFenced {
       segments,
       open,
@@ -38,7 +48,7 @@ impl Measurer<'_> {
       script_level,
       color,
     } = fenced;
-    let segments: Vec<_> = segments.into_iter().map(|segment| return self.detach(segment)).collect();
+    let segments = segments.into_iter().map(|segment| return self.detach(segment)).collect::<Result<Vec<_>, _>>()?;
     // 区画のインクは 0 以上なので、区画ごとの最大がそのまま中身全体のインクの高さ・深さになる
     let ink_height = segments.iter().map(|segment| return segment.ink_height).fold(Length::ZERO, Length::max);
     let ink_depth = segments.iter().map(|segment| return segment.ink_depth).fold(Length::ZERO, Length::max);
@@ -46,9 +56,9 @@ impl Measurer<'_> {
     let target = symmetric_target(ink_height, ink_depth, axis);
     let mut shape =
       |text: &str| return self.shaper.shape_vertical_delimiter(text, font_size, script_level, target, color);
-    let (open, open_ink) = shape(&open);
-    let (close, close_ink) = shape(&close);
-    let dividers: Vec<_> = segments.iter().skip(1).map(|_| return shape(FENCE_DIVIDER)).collect();
+    let (open, open_ink) = shape(&open)?;
+    let (close, close_ink) = shape(&close)?;
+    let dividers = segments.iter().skip(1).map(|_| return shape(FENCE_DIVIDER)).collect::<Result<Vec<_>, _>>()?;
     let on_axis = |(top, bottom): (Length, Length)| return axis - (top + bottom) / 2.0;
 
     let mut x = open.width;
@@ -84,6 +94,7 @@ impl Measurer<'_> {
       dy,
     });
     *dx += width;
+    return Ok(());
   }
 }
 

@@ -13,7 +13,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::PlacedHBox,
     boxing::{
@@ -85,7 +85,17 @@ fn limit_columns(
 impl Measurer<'_> {
   /// 上下に積む上付き・下付き（`scripts.limits` が真）を水平カーソル `dx`・縦オフセット `dy` から絶対配置し、カーソルを
   /// 3 つの広がりの和集合の幅だけ進める
-  pub(super) fn place_limits(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_limits(
+    &mut self,
+    scripts: MathScripts,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathScripts {
       base,
       superscript,
@@ -97,9 +107,9 @@ impl Measurer<'_> {
       limits: _,
     } = scripts;
     let constants = LimitConstants::new(&self.shaper, font_size);
-    let base = self.detach(base);
-    let over = superscript.map(|nodes| return self.detach(nodes));
-    let under = subscript.map(|nodes| return self.detach(nodes));
+    let base = self.detach(base)?;
+    let over = superscript.map(|nodes| return self.detach(nodes)).transpose()?;
+    let under = subscript.map(|nodes| return self.detach(nodes)).transpose()?;
     let correction = base.trailing_correction;
     let (base_x, over_x, under_x, width) = limit_columns(
       base.width,
@@ -119,6 +129,7 @@ impl Measurer<'_> {
       math::translate_into(out, under.boxes, *dx + under_x, dy - shift);
     }
     *dx += width;
+    return Ok(());
   }
 }
 

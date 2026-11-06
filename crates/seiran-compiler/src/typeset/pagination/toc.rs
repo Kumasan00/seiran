@@ -4,12 +4,13 @@ use tracing::debug;
 
 use crate::{
   document::{HeadingLevel, NodeId},
-  length::Length,
+  length::{Length, LengthOverflow},
   semantics::HeadingKey,
   style::{Style, TocStyle},
   typeset::{
     boxes::{Align, AnchorId, Block, Line, LineLink, LinkTarget},
     boxing::{LineAccum, Shaper, compose_left_line, inline_atom, row_width},
+    error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
     lowering::{HeadingRecord, InlineNode, TextStyle, toc_entry_style},
@@ -69,16 +70,19 @@ struct TocEntry {
 /// 目次の計測済みブロック列を組み立てる。
 ///
 /// 目次に載る見出しが 1 つも無ければ空の `Vec` を返す。
-#[must_use]
-pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Block> {
+///
+/// # Errors
+///
+/// 行の寸法が長さの値域を超えたら [`ElementOverflow`] を返す。
+pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Result<Vec<Block>, ElementOverflow> {
   let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
   let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
   let toc_entry_count = entries.len();
-  let blocks = compose_blocks(&spec, entries, ctx.fonts, &ctx.glyph_issues);
+  let blocks = compose_blocks(&spec, entries, ctx.fonts, &ctx.glyph_issues)?;
   if !blocks.is_empty() {
     debug!(toc_entry_count, "目次を生成");
   }
-  return blocks;
+  return Ok(blocks);
 }
 
 /// 見出しと本文内ページ序数から目次エントリを組み立てる。
@@ -143,15 +147,21 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
 /// 目次エントリ列を計測済みのブロック列に変換する
 ///
 /// 題目は見出しの字なので見出しの要素に帰属させ（書誌の見出しは目次）、題・リーダー・ページ番号は目次に帰属させる。
-#[must_use]
-fn compose_blocks(spec: &TocSpec, entries: Vec<TocEntry>, fonts: &FontSystem, issues: &GlyphIssues) -> Vec<Block> {
+fn compose_blocks(
+  spec: &TocSpec,
+  entries: Vec<TocEntry>,
+  fonts: &FontSystem,
+  issues: &GlyphIssues,
+) -> Result<Vec<Block>, ElementOverflow> {
   if entries.is_empty() {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   let mut shaper = Shaper::new(fonts, issues, GlyphOrigin::Generated(Generated::Toc));
   let mut blocks: Vec<Block> = Vec::new();
 
-  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
+  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(|LengthOverflow| {
+    return ElementOverflow::GENERATED;
+  })?;
   title.shift_x(spec.title_align.offset(spec.text_width, title.width()));
   blocks.push(Block::ComposedLine {
     origin: None,
@@ -169,7 +179,7 @@ fn compose_blocks(spec: &TocSpec, entries: Vec<TocEntry>, fonts: &FontSystem, is
       Shaper::new(fonts, issues, origin.map_or(GlyphOrigin::Generated(Generated::Toc), GlyphOrigin::Element));
     blocks.push(Block::ComposedLine {
       origin,
-      line: compose_entry_line(&mut shaper, title_shaper, spec, entry),
+      line: compose_entry_line(&mut shaper, title_shaper, spec, entry)?,
       leading: entry_leading,
     });
   }
@@ -177,35 +187,48 @@ fn compose_blocks(spec: &TocSpec, entries: Vec<TocEntry>, fonts: &FontSystem, is
   if spec.bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.bottom_margin));
   }
-  return blocks;
+  return Ok(blocks);
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組み、`entry_align` で寄せる
 ///
 /// 番号＋タイトルは `title_shaper` で、リーダー・ページ番号は `shaper` で組む。
-fn compose_entry_line(shaper: &mut Shaper<'_>, title_shaper: Shaper<'_>, spec: &TocSpec, entry: TocEntry) -> Line {
+///
+/// # Errors
+///
+/// 題の計測が溢れたら題の見出しを、リーダー・ページ番号の寸法が長さの値域を超えたら目次（起点なし）を
+/// [`ElementOverflow`] で返す。
+fn compose_entry_line(
+  shaper: &mut Shaper<'_>,
+  title_shaper: Shaper<'_>,
+  spec: &TocSpec,
+  entry: TocEntry,
+) -> Result<Line, ElementOverflow> {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
+  let generated = |LengthOverflow| return ElementOverflow::GENERATED;
 
   let mut acc = LineAccum::default();
-  let left_end = acc.place(
-    vec![inline_atom(
-      title_shaper,
-      entry.label,
-      spec.punctuation_spacing,
-    )],
-    indent,
-  );
+  let left_end = acc
+    .place(
+      vec![inline_atom(
+        title_shaper,
+        entry.label,
+        spec.punctuation_spacing,
+      )?],
+      indent,
+    )
+    .map_err(generated)?;
 
   let mut right_edge = left_end;
   if spec.show_page_numbers {
-    let page_boxes = shaper.shape_text(&entry.page_label, spec.entry_style);
-    let page_width = row_width(&page_boxes);
+    let page_boxes = shaper.shape_text(&entry.page_label, spec.entry_style).map_err(generated)?;
+    let page_width = row_width(&page_boxes).map_err(generated)?;
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
     if let Some(unit) = &spec.leader {
-      fill_leader(shaper, unit, spec.entry_style, left_end, page_x, &mut acc);
+      fill_leader(shaper, unit, spec.entry_style, left_end, page_x, &mut acc).map_err(generated)?;
     }
-    acc.place(page_boxes, page_x);
+    acc.place(page_boxes, page_x).map_err(generated)?;
     right_edge = spec.text_width;
   }
 
@@ -216,7 +239,7 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, title_shaper: Shaper<'_>, spec: &
   }];
   let mut line = acc.into_line(links);
   line.shift_x(spec.entry_align.offset(spec.text_width, line.width()));
-  return line;
+  return Ok(line);
 }
 
 /// `from_x` から `to_x` の間をリーダー単位文字列の反復で充填する（ページ番号側に右寄せ）
@@ -227,14 +250,14 @@ fn fill_leader(
   from_x: Length,
   to_x: Length,
   acc: &mut LineAccum,
-) {
+) -> Result<(), LengthOverflow> {
   let available = to_x - from_x;
   if !available.is_positive() {
-    return;
+    return Ok(());
   }
-  let unit_width = row_width(&shaper.shape_text(unit, style));
+  let unit_width = row_width(&shaper.shape_text(unit, style)?)?;
   if !unit_width.is_positive() {
-    return;
+    return Ok(());
   }
   #[expect(
     clippy::cast_sign_loss,
@@ -243,11 +266,12 @@ fn fill_leader(
   )]
   let count = available.ratio(unit_width).floor() as usize;
   if count == 0 {
-    return;
+    return Ok(());
   }
-  let leader_boxes = shaper.shape_text(&unit.repeat(count), style);
-  let leader_width = row_width(&leader_boxes);
-  acc.place(leader_boxes, to_x - leader_width);
+  let leader_boxes = shaper.shape_text(&unit.repeat(count), style)?;
+  let leader_width = row_width(&leader_boxes)?;
+  acc.place(leader_boxes, to_x - leader_width)?;
+  return Ok(());
 }
 
 #[cfg(test)]

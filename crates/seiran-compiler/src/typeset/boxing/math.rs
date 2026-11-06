@@ -43,7 +43,7 @@ use read_fonts::tables::math::{MathConstant, MathKernCorner};
 
 use crate::{
   color::Color,
-  length::Length,
+  length::{Length, LengthOverflow},
   publication::Glyph,
   typeset::{
     boxes::{Align, Block, HBox, HItem, MathRowNumber, PlacedHBox},
@@ -185,24 +185,28 @@ impl Measurer<'_> {
   ///
   /// トップレベルのテキストは数式フォントの run ごとの箱、文章は端の約物の性質を添えた閉じた箱（段落の隣の約物と
   /// 本文の規則でアキを解決する）、アキはアキを打ち消す Kern、分割候補は [`HItem::MathBreak`]、構造は閉じた箱 1 つにする。
-  pub(super) fn push_inline_math(&mut self, formula: &MathFormula, out: &mut HList) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn push_inline_math(&mut self, formula: &MathFormula, out: &mut HList) -> Result<(), LengthOverflow> {
     for piece in arrange::arrange_inline(formula, self.shaper.script_scale()) {
       match piece {
         ArrangedInline::Break { spacing, penalty } => {
           out.push_absorbing(HItem::MathBreak { spacing, penalty });
         },
         ArrangedInline::Node(ArrangedNode::Text(text, style)) => {
-          self.push_text_items(&text, style, out);
+          self.push_text_items(&text, style, out)?;
         },
         ArrangedInline::Node(ArrangedNode::Prose(text, style)) => {
-          let (atom, leading, trailing) = self.prose_atom(&text, style);
+          let (atom, leading, trailing) = self.prose_atom(&text, style)?;
           out.push(leading, vec![HItem::Box(atom)], trailing);
         },
         ArrangedInline::Node(ArrangedNode::Kern { length }) => {
           out.push_absorbing(HItem::Kern(length));
         },
         ArrangedInline::Node(ArrangedNode::Quantity(pieces, style)) => {
-          out.push_math_box(self.quantity_box(&pieces, style));
+          out.push_math_box(self.quantity_box(&pieces, style)?);
         },
         ArrangedInline::Node(
           node @ (ArrangedNode::Scripts(_)
@@ -214,14 +218,24 @@ impl Measurer<'_> {
           | ArrangedNode::Array(_)
           | ArrangedNode::LargeOperator { .. }),
         ) => {
-          out.push_math_box(self.build_math_atom(vec![node]));
+          out.push_math_box(self.build_math_atom(vec![node])?);
         },
       }
     }
+    return Ok(());
   }
 
   /// `LayoutNode::MathBlock` を measure して、囲む引用・リストの字下げの和 `indent` / `right_indent` を持つ `Block::Math` に合成する
-  pub(super) fn build_math_block(&mut self, block: MathBlockLayout, indent: Length, right_indent: Length) -> Block {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn build_math_block(
+    &mut self,
+    block: MathBlockLayout,
+    indent: Length,
+    right_indent: Length,
+  ) -> Result<Block, LengthOverflow> {
     let MathBlockLayout {
       origin,
       rows,
@@ -243,32 +257,29 @@ impl Measurer<'_> {
         .into_iter()
         .map(|cell| {
           let content = arrange::arrange_cell(&cell.content, self.default_font_size, display, script_scale);
-          return MeasuredCell {
-            content: self.build_math_atom(content),
+          return Ok(MeasuredCell {
+            content: self.build_math_atom(content)?,
             align: cell.align,
-          };
+          });
         })
-        .collect();
+        .collect::<Result<_, LengthOverflow>>()?;
       cells.push(measured);
       row_numbers.push(row.number);
     }
     let (mut body, baselines) = Self::build_grid(cells, row_gap, column_gap);
-    let mut numbers: Vec<MathRowNumber> = row_numbers
-      .into_iter()
-      .zip(baselines)
-      .filter_map(|(number, dy)| {
-        return number.map(|(text, style)| {
-          return MathRowNumber {
-            content: self.text_box(&text, style, Length::ZERO),
-            dy,
-          };
+    let mut numbers: Vec<MathRowNumber> = Vec::new();
+    for (number, dy) in row_numbers.into_iter().zip(baselines) {
+      if let Some((text, style)) = number {
+        numbers.push(MathRowNumber {
+          content: self.text_box(&text, style, Length::ZERO)?,
+          dy,
         });
-      })
-      .collect();
+      }
+    }
 
     // `dy` は上向きなので、番号の視覚中央を本体中央へ合わせる。
     if let Some((text, style)) = env_number {
-      let number = self.text_box(&text, style, Length::ZERO);
+      let number = self.text_box(&text, style, Length::ZERO)?;
       let center_dy = (body.height - body.depth) / 2.0 - (number.height - number.depth) / 2.0;
       numbers.push(MathRowNumber {
         content: number,
@@ -283,10 +294,10 @@ impl Measurer<'_> {
       for number in &mut numbers {
         number.dy += grid_dy;
       }
-      body = self.wrap_with_delimiters(body, grid_dy, axis, delimiters, self.default_font_size, None, None);
+      body = self.wrap_with_delimiters(body, grid_dy, axis, delimiters, self.default_font_size, None, None)?;
     }
 
-    return Block::Math {
+    return Ok(Block::Math {
       origin,
       body,
       numbers,
@@ -294,7 +305,7 @@ impl Measurer<'_> {
       indent,
       right_indent,
       align,
-    };
+    });
   }
 
   /// 測り済みのセルのグリッド `measured` の列幅・行送りを決めて閉じた Atom 1 つに組む
@@ -360,7 +371,7 @@ impl Measurer<'_> {
     font_size: Length,
     script_level: Option<ScriptLevel>,
     color: Option<Color>,
-  ) -> HBox {
+  ) -> Result<HBox, LengthOverflow> {
     let target = body.height + body.depth;
     let body_width = body.width;
     let gap = font_size * 0.15;
@@ -368,7 +379,7 @@ impl Measurer<'_> {
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color)?;
       let center = (top + bottom) / 2.0;
       let width = delim.width;
       children.push(PlacedHBox {
@@ -385,7 +396,7 @@ impl Measurer<'_> {
     });
     dx += body_width + gap;
     if let Some(ch) = delimiters.right {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color);
+      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color)?;
       let center = (top + bottom) / 2.0;
       children.push(PlacedHBox {
         hbox: delim,
@@ -393,7 +404,7 @@ impl Measurer<'_> {
         dy: axis - center,
       });
     }
-    return HBox::atom(children);
+    return Ok(HBox::atom(children));
   }
 
   /// 基底に上付き・下付きを付けて、水平カーソル `dx`・縦オフセット `dy` から絶対配置する
@@ -403,7 +414,13 @@ impl Measurer<'_> {
   /// （`Shaper::add_italic_corrections`）ので、これは `MathML Core` の規則（演算子でない基底は上付きを補正ぶん前へ、
   /// 演算子は下付きを補正ぶん手前へ。補正を持つ演算子はすべて `MathML Core` の大型演算子と同じに扱う）と同じ位置に
   /// なる。後ろのカーソルは基底の右端と各スクリプトの右端のうち最も右から `SpaceAfterScript` のアキを空ける。
-  fn place_scripts(&mut self, scripts: MathScripts, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  fn place_scripts(
+    &mut self,
+    scripts: MathScripts,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathScripts {
       base,
       superscript,
@@ -414,9 +431,9 @@ impl Measurer<'_> {
       limits: _,
     } = scripts;
     let constants = ScriptConstants::new(&self.shaper, font_size);
-    let base = self.detach(base);
-    let superscript = superscript.map(|nodes| return self.detach(nodes));
-    let subscript = subscript.map(|nodes| return self.detach(nodes));
+    let base = self.detach(base)?;
+    let superscript = superscript.map(|nodes| return self.detach(nodes)).transpose()?;
+    let subscript = subscript.map(|nodes| return self.detach(nodes)).transpose()?;
 
     let (sup_shift, sub_shift) = match (&superscript, &subscript) {
       (Some(sup), Some(sub)) => constants.separate(
@@ -461,6 +478,7 @@ impl Measurer<'_> {
       translate_into(out, sub.boxes, sub_x, dy - sub_shift);
     }
     *dx = end + constants.space_after_script;
+    return Ok(());
   }
 
   /// 組み立てた数式の要素列を絶対配置（`dx` / `dy`）の Atom に畳む
@@ -468,16 +486,20 @@ impl Measurer<'_> {
   /// 幅は末尾のアキを含む送り幅そのもの（`detach` と同じ。子の箱のはみ出しは数えない）— アキは子の箱を持たないので
   /// 子の範囲では決まらない。送り幅が子の箱の右端を下回るのは、この列か子の部分リスト（スクリプト・伸縮括弧の中身・
   /// 上下の範囲）の末尾に負の明示アキがあるときだけ。高さ・深さは子の箱から決める。
-  fn build_math_atom(&mut self, nodes: Vec<ArrangedNode>) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn build_math_atom(&mut self, nodes: Vec<ArrangedNode>) -> Result<HBox, LengthOverflow> {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     let mut edge = Edge::Absorb;
     for node in nodes {
-      self.place_arranged_child(node, Length::ZERO, &mut dx, &mut placed, &mut edge);
+      self.place_arranged_child(node, Length::ZERO, &mut dx, &mut placed, &mut edge)?;
     }
     let mut atom = HBox::atom(placed);
     atom.width = dx;
-    return atom;
+    return Ok(atom);
   }
 
   /// Atom の子の並びの 1 つを、直前の子の右端 `edge` との約物アキを足してから絶対配置し、`edge` を更新する
@@ -491,17 +513,17 @@ impl Measurer<'_> {
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
     edge: &mut Edge,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let aki_width = |left: Edge, right: Edge| -> Length {
       return hlist::aki_between(left, right).map_or(Length::ZERO, |item| return item.natural_width());
     };
     if let ArrangedNode::Prose(text, style) = node {
-      let list = self.prose_list(&text, style);
+      let list = self.prose_list(&text, style)?;
       let (leading, trailing) = list.edges();
       *dx += aki_width(*edge, leading.in_math());
-      text_run::place_prose(list, dy, dx, out);
+      text_run::place_prose(list, dy, dx, out)?;
       *edge = trailing.in_math();
-      return;
+      return Ok(());
     }
     let next = if matches!(node, ArrangedNode::Kern { .. }) {
       Edge::Absorb
@@ -510,14 +532,24 @@ impl Measurer<'_> {
     };
     *dx += aki_width(*edge, next);
     *edge = next;
-    self.place_arranged_node(node, dy, dx, out);
+    return self.place_arranged_node(node, dy, dx, out);
   }
 
   /// Atom の子要素 1 つを水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  fn place_arranged_node(&mut self, node: ArrangedNode, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn place_arranged_node(
+    &mut self,
+    node: ArrangedNode,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     match node {
       ArrangedNode::Text(text, style) => {
-        for hbox in self.shaper.shape_text(&text, style) {
+        for hbox in self.shaper.shape_text(&text, style)? {
           let width = hbox.width;
           out.push(PlacedHBox { hbox, dx: *dx, dy });
           *dx += width;
@@ -530,47 +562,52 @@ impl Measurer<'_> {
         *dx += length;
       },
       ArrangedNode::Quantity(pieces, style) => {
-        let hbox = self.quantity_box(&pieces, style);
+        let hbox = self.quantity_box(&pieces, style)?;
         let width = hbox.width;
         out.push(PlacedHBox { hbox, dx: *dx, dy });
         *dx += width;
       },
       ArrangedNode::Scripts(scripts) => {
         if scripts.limits {
-          self.place_limits(scripts, dy, dx, out);
+          self.place_limits(scripts, dy, dx, out)?;
         } else {
-          self.place_scripts(scripts, dy, dx, out);
+          self.place_scripts(scripts, dy, dx, out)?;
         }
       },
       ArrangedNode::Fraction(fraction) => {
-        self.place_fraction(fraction, dy, dx, out);
+        self.place_fraction(fraction, dy, dx, out)?;
       },
       ArrangedNode::Radical(radical) => {
-        self.place_radical(radical, dy, dx, out);
+        self.place_radical(radical, dy, dx, out)?;
       },
       ArrangedNode::Accent(accent) => {
-        self.place_accent(accent, dy, dx, out);
+        self.place_accent(accent, dy, dx, out)?;
       },
       ArrangedNode::Fenced(fenced) => {
-        self.place_fenced(fenced, dy, dx, out);
+        self.place_fenced(fenced, dy, dx, out)?;
       },
       ArrangedNode::Bar(bar) => {
-        self.place_bar(bar, dy, dx, out);
+        self.place_bar(bar, dy, dx, out)?;
       },
       ArrangedNode::Array(array) => {
-        self.place_array(array, dy, dx, out);
+        self.place_array(array, dy, dx, out)?;
       },
       ArrangedNode::LargeOperator { symbol, font_size } => {
-        self.place_large_operator(&symbol, font_size, dy, dx, out);
+        self.place_large_operator(&symbol, font_size, dy, dx, out)?;
       },
     }
+    return Ok(());
   }
 
   /// ノード列を原点から仮に配置し、送り幅とインクの寸法、両端の数式フォントのグリフを測る
   ///
   /// ノードはそれぞれ専用の `Vec` に配置し、端のグリフは端のノードが出した箱だけから取る。スクリプトのノードも
   /// グリフ列の箱を出すが、それはスクリプトの字形で基底の端ではないので、テキストと大型演算子のノードに限る。
-  fn detach(&mut self, nodes: Vec<ArrangedNode>) -> Detached {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn detach(&mut self, nodes: Vec<ArrangedNode>) -> Result<Detached, LengthOverflow> {
     let last = nodes.len().saturating_sub(1);
     // math kern は 1 字の核にだけ効く（TeX / `LuaTeX` と同じく、複数の字・箱の核には効かせない）。1 字は書記素クラスタ
     // 1 つのテキスト（lowering がアイテムに分ける単位）か大型演算子のノード 1 個
@@ -598,7 +635,7 @@ impl Measurer<'_> {
       let operator_name =
         matches!(&node, ArrangedNode::Text(_, style) if style.math_operator == Some(MathOperator::Name));
       let mut own = Vec::new();
-      self.place_arranged_child(node, Length::ZERO, &mut width, &mut own, &mut edge);
+      self.place_arranged_child(node, Length::ZERO, &mut width, &mut own, &mut edge)?;
       if yields_glyphs && index == 0 {
         leading_glyph = own
           .first()
@@ -620,7 +657,7 @@ impl Measurer<'_> {
       boxes.append(&mut own);
     }
     let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes);
-    return Detached {
+    return Ok(Detached {
       boxes,
       width,
       ink_height,
@@ -628,7 +665,7 @@ impl Measurer<'_> {
       trailing_glyph: trailing_glyph.filter(|_| return sole_char),
       trailing_correction,
       leading_glyph,
-    };
+    });
   }
 
   /// 基底の末尾の字とスクリプトの先頭の字の、それぞれ先頭の字形の math kern（OpenType MATH の算法）

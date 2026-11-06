@@ -9,13 +9,17 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{boxes::PlacedHBox, boxing::Measurer},
 };
 
 impl Measurer<'_> {
   /// display 段の大型演算子 `symbol`（フォントサイズ `font_size`）を水平カーソル `dx`・縦オフセット `dy` に置き、カーソルを
   /// 字形の送り幅だけ進める
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn place_large_operator(
     &mut self,
     symbol: &str,
@@ -23,10 +27,10 @@ impl Measurer<'_> {
     dy: Length,
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let target = self.shaper.math_constant(MathConstant::DisplayOperatorMinHeight, font_size);
     // display 段の大型演算子は表示数式のセルにしか現れず、表示数式は既定色
-    let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, None, target, None);
+    let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, None, target, None)?;
     let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
     let advance = glyph.width;
     out.push(PlacedHBox {
@@ -35,5 +39,6 @@ impl Measurer<'_> {
       dy: dy + axis - (top + bottom) / 2.0,
     });
     *dx += advance;
+    return Ok(());
   }
 }

@@ -27,7 +27,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   project::FontFace,
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
@@ -62,7 +62,17 @@ fn sole_math_glyph(boxes: &[PlacedHBox]) -> Option<(Length, u32, Length)> {
 
 impl Measurer<'_> {
   /// アクセントを水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを基底の送り幅だけ進める
-  pub(super) fn place_accent(&mut self, accent: MathAccent, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_accent(
+    &mut self,
+    accent: MathAccent,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathAccent {
       base,
       accent,
@@ -77,8 +87,11 @@ impl Measurer<'_> {
       [ArrangedNode::Text(text, style)] if dotless => Some((text.clone(), *style)),
       _ => None,
     };
-    let base = self.detach(base);
-    let dotless_glyph = dotless_text.and_then(|(text, style)| return self.dotless_glyph(&base.boxes, &text, style));
+    let base = self.detach(base)?;
+    let dotless_glyph = dotless_text
+      .map(|(text, style)| return self.dotless_glyph(&base.boxes, &text, style))
+      .transpose()?
+      .flatten();
     let (base_boxes, base_width, base_ink_height) = match dotless_glyph {
       Some(placed) => {
         let width = placed.hbox.width;
@@ -100,9 +113,9 @@ impl Measurer<'_> {
     let mark = if wide {
       self
         .shaper
-        .shape_wide_accent(&accent, font_size, script_level, flattened, base_width.max(Length::ZERO), color)
+        .shape_wide_accent(&accent, font_size, script_level, flattened, base_width.max(Length::ZERO), color)?
     } else {
-      self.shaper.shape_accent(&accent, font_size, script_level, flattened, color)
+      self.shaper.shape_accent(&accent, font_size, script_level, flattened, color)?
     };
     let mark_width = mark.width;
     let mark = vec![PlacedHBox {
@@ -135,16 +148,24 @@ impl Measurer<'_> {
       dy,
     });
     *dx += base_width;
+    return Ok(());
   }
 
   /// 数式フォントの 1 グリフに組んだ基底 `boxes`（テキスト `text` をスタイル `style` で組んだもの）を、OpenType `dtls` を
   /// 足して組み直した字形の箱（原点に置いたもの）。組み直しても 1 グリフのままで字形が替わったときだけ返し、`boxes` が
   /// 1 グリフでないときと `dtls` に置換の無い字形は `None`（基底をそのまま組む）
-  fn dotless_glyph(&mut self, boxes: &[PlacedHBox], text: &str, style: TextStyle) -> Option<PlacedHBox> {
-    let (_, gid, _) = sole_math_glyph(boxes)?;
+  fn dotless_glyph(
+    &mut self,
+    boxes: &[PlacedHBox],
+    text: &str,
+    style: TextStyle,
+  ) -> Result<Option<PlacedHBox>, LengthOverflow> {
+    let Some((_, gid, _)) = sole_math_glyph(boxes) else {
+      return Ok(None);
+    };
     let shaped: Vec<PlacedHBox> = self
       .shaper
-      .shape_dotless_text(text, style)
+      .shape_dotless_text(text, style)?
       .into_iter()
       .map(|hbox| {
         return PlacedHBox {
@@ -154,11 +175,13 @@ impl Measurer<'_> {
         };
       })
       .collect();
-    let (_, dotless_gid, _) = sole_math_glyph(&shaped)?;
+    let Some((_, dotless_gid, _)) = sole_math_glyph(&shaped) else {
+      return Ok(None);
+    };
     if dotless_gid == gid {
-      return None;
+      return Ok(None);
     }
-    return shaped.into_iter().next();
+    return Ok(shaped.into_iter().next());
   }
 }
 

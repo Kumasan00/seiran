@@ -41,6 +41,9 @@ pub(in crate::typeset) struct ElementOverflow {
 }
 
 impl ElementOverflow {
+  /// 要素に帰属しない溢れ（目次・索引・走り文などの生成内容）
+  pub(in crate::typeset) const GENERATED: ElementOverflow = ElementOverflow { origin: None };
+
   /// 起点の要素を `source_map` で引いて、位置付きの診断にする
   pub(in crate::typeset) fn locate(self, source_map: &SourceMap) -> DimensionOverflow {
     return DimensionOverflow::new(self.origin.map(|origin| return source_map.location(origin)));

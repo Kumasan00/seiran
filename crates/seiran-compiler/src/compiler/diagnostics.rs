@@ -477,6 +477,57 @@ fn diagnostic_dimension_overflow_from_line_height_factor() {
 }
 
 #[test]
+fn diagnostic_dimension_overflow_from_image_aspect_ratio() {
+  // testimage4.png は 1200×800。高さ 1e14pt から推論する幅 1.5e14pt が値域を超える
+  let source = "\\begin{figure}\n\\image[height=100000000000000pt]{./tests/image/testimage4.png}\n\\end{figure}\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .asset("./tests/image/testimage4.png")
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\image");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_table_widths() {
+  let source = "\\begin{table}[widths=100000000000000pt 100000000000000pt]\n\\row{A & B}\n\\end{table}\n";
+  let failure = TestProject::builder().source_text(source).build().compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\begin{table}");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_table_cell_line_breaking_points_at_the_row() {
+  // 列を跨ぐ折り返しセルの自然幅は列幅の決定で測らず、最小内容幅（最長の語）は値域に収まる。折り返しの候補行の幅だけが超える
+  let source = "\\begin{table}[widths=50pt 50pt]\n\\row{A & B}\n\\row{\\cell[span=2]{a b c d e f}}\n\\end{table}\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "text", "font_size", "40000000000000pt"))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\row{\\cell");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_font_size() {
+  // 行送り（1.2 倍）は値域に収まるが、字幅の和が超える
+  let source = "hello\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "text", "font_size", "100000000000000pt"))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "hello");
+}
+
+#[test]
 fn diagnostic_dimension_overflow_inside_per_page_footnote_numbering() {
   // 反復の中で溢れても、非収束ではなく溢れとして報告する
   let failure = TestProject::builder()

@@ -8,12 +8,13 @@ use tracing::debug;
 use crate::{
   color::Color,
   document::Typeface,
-  length::Length,
+  length::{Length, LengthOverflow},
   project::config::DocumentConfig,
   style::{RunningContentStyle, RunningTemplate, RunningValues, Style},
   typeset::{
     boxes::{HBox, Page, PlacedBlock},
     boxing::{LineAccum, Shaper, row_width},
+    error::ElementOverflow,
     glyph_issues::{Generated, GlyphOrigin},
     lowering::TextStyle,
     pagination::{context::TypesetContext, page_values::PageLabels},
@@ -81,11 +82,19 @@ struct RunningMetadata {
 ///
 /// ページ番号ラベル列が `pages` より短い場合にパニックします。ラベル列は
 /// [`crate::typeset::pagination::paginate`] が同じページ列から作るため、通常は起こりません。
-pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page], page_labels: PageLabels) {
+///
+/// # Errors
+///
+/// 寸法が長さの値域を超えたら [`ElementOverflow`]（生成内容なので起点なし）を返す。
+pub(super) fn place_running_content(
+  ctx: &TypesetContext<'_>,
+  pages: &mut [Page],
+  page_labels: PageLabels,
+) -> Result<(), ElementOverflow> {
   let spec =
     build_running_spec(ctx.style, &ctx.config.document, ctx.geometry.text_width(), ctx.config.pdf.height, page_labels);
   if spec.header.is_none() && spec.footer.is_none() {
-    return;
+    return Ok(());
   }
   let mut shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::RunningContent));
   for (index, page) in pages.iter_mut().enumerate() {
@@ -96,13 +105,20 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
       unreachable!("ページ番号ラベル列は pagination::paginate がページ列から作るので、長さはページ数と一致する")
     };
     if let Some(slots) = &spec.header {
-      page.header = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
+      page.header = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata)
+        .map_err(|LengthOverflow| {
+          return ElementOverflow::GENERATED;
+        })?;
     }
     if let Some(slots) = &spec.footer {
-      page.footer = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata);
+      page.footer = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata)
+        .map_err(|LengthOverflow| {
+          return ElementOverflow::GENERATED;
+        })?;
     }
   }
   debug!(page_count = pages.len(), "ヘッダー・フッターを配置");
+  return Ok(());
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様を組み立てる。
@@ -156,7 +172,7 @@ fn build_running_blocks(
   page_label: &str,
   pages_label: &str,
   metadata: &RunningMetadata,
-) -> Vec<PlacedBlock> {
+) -> Result<Vec<PlacedBlock>, LengthOverflow> {
   let style = TextStyle {
     font_size: slots.font_size,
     typeface: slots.typeface,
@@ -164,21 +180,21 @@ fn build_running_blocks(
     script_level: None,
     math_operator: None,
   };
-  let left = shape_slot(shaper, &slots.left, page_label, pages_label, metadata, style);
-  let center = shape_slot(shaper, &slots.center, page_label, pages_label, metadata, style);
-  let right = shape_slot(shaper, &slots.right, page_label, pages_label, metadata, style);
+  let left = shape_slot(shaper, &slots.left, page_label, pages_label, metadata, style)?;
+  let center = shape_slot(shaper, &slots.center, page_label, pages_label, metadata, style)?;
+  let right = shape_slot(shaper, &slots.right, page_label, pages_label, metadata, style)?;
 
-  let center_x = (text_width - row_width(&center)) / 2.0f32;
-  let right_x = text_width - row_width(&right);
+  let center_x = (text_width - row_width(&center)?) / 2.0f32;
+  let right_x = text_width - row_width(&right)?;
 
   let mut acc = LineAccum::default();
-  acc.place(left, Length::ZERO);
-  acc.place(center, center_x);
-  acc.place(right, right_x);
+  acc.place(left, Length::ZERO)?;
+  acc.place(center, center_x)?;
+  acc.place(right, right_x)?;
   let line = acc.into_line(Vec::new());
 
   if line.boxes.is_empty() {
-    return Vec::new();
+    return Ok(Vec::new());
   }
 
   let (height, depth) = (line.height, line.depth);
@@ -201,7 +217,7 @@ fn build_running_blocks(
       color: slots.rule_color,
     });
   }
-  return result;
+  return Ok(result);
 }
 
 /// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
@@ -212,10 +228,10 @@ fn shape_slot(
   pages_label: &str,
   metadata: &RunningMetadata,
   style: TextStyle,
-) -> Vec<HBox> {
+) -> Result<Vec<HBox>, LengthOverflow> {
   let text = substitute(template, page_label, pages_label, metadata);
   if text.trim().is_empty() {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   return shaper.shape_text(&text, style);
 }

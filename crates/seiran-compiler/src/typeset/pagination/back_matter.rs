@@ -26,7 +26,7 @@ pub(super) fn paginate(
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
 ) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
-  let back_blocks = index::build_index_blocks(ctx, body_pages, facts);
+  let back_blocks = index::build_index_blocks(ctx, body_pages, facts)?;
   if back_blocks.is_empty() {
     return Ok((Vec::new(), Vec::new()));
   }

@@ -66,7 +66,7 @@ pub(super) fn paginate(
   }
 
   if ctx.style.toc.enabled {
-    front_blocks.extend(toc::build_toc_blocks(ctx, facts));
+    front_blocks.extend(toc::build_toc_blocks(ctx, facts)?);
   }
 
   if front_blocks.is_empty() {

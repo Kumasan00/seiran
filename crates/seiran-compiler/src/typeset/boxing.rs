@@ -184,12 +184,16 @@ impl BlockBuilder<'_> {
           alignment: vbox_alignment,
         } => {
           // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
-          let child_indent = indent + vbox_indent;
-          let child_right_indent = right_indent + vbox_right_indent;
+          let child_indent = indent.try_add(vbox_indent).map_err(|LengthOverflow| {
+            return self.measurer.overflow();
+          })?;
+          let child_right_indent = right_indent.try_add(vbox_right_indent).map_err(|LengthOverflow| {
+            return self.measurer.overflow();
+          })?;
           let child_alignment = vbox_alignment.unwrap_or(alignment);
           self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment)?;
           let natural = margin_bottom;
-          blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
+          blocks.push(Block::stretchable_space(natural, fraction_of(natural, BLOCK_GLUE_STRETCH_RATIO)));
         },
         LayoutNode::Vkern { length } => {
           blocks.push(Block::fixed_space(length));
@@ -210,7 +214,12 @@ impl BlockBuilder<'_> {
           } else {
             self.column_width
           };
-          let (width, height) = resolve_image_size(self.images, &path, page_index, width, height, basis);
+          let (width, height) =
+            resolve_image_size(self.images, &path, page_index, width, height, basis).map_err(|LengthOverflow| {
+              return ElementOverflow {
+                origin: Some(origin),
+              };
+            })?;
           blocks.push(Block::Image {
             origin,
             path,
@@ -233,9 +242,14 @@ impl BlockBuilder<'_> {
           });
         },
         LayoutNode::MathBlock(block) => {
-          let math = self.measurer.within(block.origin, |measurer| {
-            return measurer.build_math_block(block, indent, right_indent);
-          });
+          let origin = block.origin;
+          let math = self.measurer.within(origin, |measurer| {
+            return measurer.build_math_block(block, indent, right_indent).map_err(|LengthOverflow| {
+              return ElementOverflow {
+                origin: Some(origin),
+              };
+            });
+          })?;
           blocks.push(math);
         },
         LayoutNode::PageBreak => {
@@ -333,6 +347,13 @@ impl<'a> Measurer<'a> {
     };
   }
 
+  /// いま組んでいる要素（生成内容なら `None`）で長さが溢れたことを表す
+  fn overflow(&self) -> ElementOverflow {
+    return ElementOverflow {
+      origin: self.shaper.current_element(),
+    };
+  }
+
   /// 要素 `origin` の中身を `build` で組む（その間に組めなかった字は `origin` に帰属させ、組み終えたら起点を戻す）
   fn within<R>(&mut self, origin: NodeId, build: impl FnOnce(&mut Self) -> R) -> R {
     let previous = self.shaper.set_origin(GlyphOrigin::Element(origin));
@@ -345,15 +366,19 @@ impl<'a> Measurer<'a> {
   ///
   /// # Errors
   ///
-  /// 脚注の行送りの計算が長さの値域を超えたら、脚注の起点を [`ElementOverflow`] で返す。
+  /// 計測した寸法が長さの値域を超えたら、いま組んでいる要素（脚注の中なら脚注、無ければ段落）を [`ElementOverflow`] で返す。
   fn collect_inline(&mut self, node: InlineNode, out: &mut HList) -> Result<(), ElementOverflow> {
     match node {
       InlineNode::Text(text, style) => {
-        self.push_text_items(&text, style, out);
+        self.push_text_items(&text, style, out).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
       },
       // コード: `text_box` で閉じた箱にするので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
       InlineNode::TextAtom(text, style) => {
-        out.push_box(self.text_atom(&text, style));
+        out.push_box(self.text_atom(&text, style).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?);
       },
       InlineNode::Kern { length } => {
         out.push_absorbing(HItem::Kern(length));
@@ -367,17 +392,25 @@ impl<'a> Measurer<'a> {
         text,
         style,
       } => {
-        out.push_marker(HItem::Box(self.text_box(&text, style, offset)));
+        out.push_marker(HItem::Box(self.text_box(&text, style, offset).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?));
       },
       InlineNode::Math(formula) => {
-        self.push_inline_math(&formula, out);
+        self.push_inline_math(&formula, out).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
       },
       InlineNode::Quantity { pieces, style } => {
-        self.push_quantity(&pieces, style, out);
+        self.push_quantity(&pieces, style, out).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
       InlineNode::FlushRight(text, style) => {
-        let flush_box = self.text_box(&text, style, Length::ZERO);
+        let flush_box = self.text_box(&text, style, Length::ZERO).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
         out.push_absorbing(HItem::Penalty { value: 0 });
         out.push_absorbing(HItem::FlushRight(flush_box));
       },
@@ -427,32 +460,40 @@ impl<'a> Measurer<'a> {
   ///
   /// 空文字列（コードの空行）でも、同じ書体・サイズの空セグメント（高さ・深さはフォントの
   /// ascender / descender から決まる）を測って 1 行ぶんの高さ・深さを持たせる。
-  fn text_atom(&mut self, text: &str, style: TextStyle) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn text_atom(&mut self, text: &str, style: TextStyle) -> Result<HBox, LengthOverflow> {
     let is_empty = text.is_empty();
-    let mut atom = self.text_box(text, style, Length::ZERO);
+    let mut atom = self.text_box(text, style, Length::ZERO)?;
     if is_empty {
       let font_type = script::resolve_font_type(style.typeface, script::ScriptCategory::Latin);
-      let strut = self.shaper.shape_segment("", font_type, style.font_size, None, None);
+      let strut = self.shaper.shape_segment("", font_type, style.font_size, None, None)?;
       atom.height = strut.height();
       atom.depth = strut.depth();
     }
-    return atom;
+    return Ok(atom);
   }
 
   /// テキストを縦に `dy` ずらして閉じた箱（Atom）にする
   ///
   /// 幅は送り幅の和、高さ・深さは字の箱から決める。
-  fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> Result<HBox, LengthOverflow> {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
-    for hbox in self.shaper.shape_text(text, style) {
+    for hbox in self.shaper.shape_text(text, style)? {
       let width = hbox.width;
       placed.push(PlacedHBox { hbox, dx, dy });
-      dx += width;
+      dx = dx.try_add(width)?;
     }
     let mut atom = HBox::atom(placed);
     atom.width = dx;
-    return atom;
+    return Ok(atom);
   }
 }
 
@@ -490,6 +531,14 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
   };
 }
 
+/// `length` の `ratio` 倍（`ratio` の絶対値は 1 以下）
+///
+/// em に対する約物・アキの比のように 1 以下の倍率は、値域内の長さを縮めるだけなので溢れない。
+fn fraction_of(length: Length, ratio: f32) -> Length {
+  debug_assert!(ratio.abs() <= 1.0, "1 を超える倍率 {ratio} は溢れうるので try_scale で検査する");
+  return length.try_scale(f64::from(ratio)).expect("倍率の絶対値が 1 以下なので、値域内の長さの積は値域内");
+}
+
 /// 伸縮アキの値（`HItem::Glue` になる前の形）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Glue {
@@ -518,8 +567,8 @@ impl Glue {
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051）
 fn ja_latin_aki(font_size: Length) -> Glue {
   return Glue {
-    natural: font_size * JA_LATIN_AKI_RATIO,
-    stretch: font_size * JA_LATIN_AKI_STRETCH_RATIO,
+    natural: fraction_of(font_size, JA_LATIN_AKI_RATIO),
+    stretch: fraction_of(font_size, JA_LATIN_AKI_STRETCH_RATIO),
     shrink: Length::ZERO,
     breakable: false,
   };
@@ -529,7 +578,7 @@ fn ja_latin_aki(font_size: Length) -> Glue {
 fn cjk_stretch_glue(em: Length) -> Glue {
   return Glue {
     natural: Length::ZERO,
-    stretch: em * CJK_STRETCH_RATIO,
+    stretch: fraction_of(em, CJK_STRETCH_RATIO),
     shrink: Length::ZERO,
     breakable: true,
   };
@@ -557,9 +606,9 @@ fn boundary_glue(
   if left != Normal || right != Normal {
     return yakumono::gap(left, right).map(|aki| {
       return Glue {
-        natural: em * aki.natural_em,
+        natural: fraction_of(em, aki.natural_em),
         stretch: Length::ZERO,
-        shrink: em * aki.shrink_em,
+        shrink: fraction_of(em, aki.shrink_em),
         breakable,
       };
     });

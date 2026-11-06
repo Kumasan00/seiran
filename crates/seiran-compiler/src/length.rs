@@ -98,6 +98,13 @@ impl Length {
     return Length(round_to_pt_sp(f64::from(value)).expect("字面の定数は値域内"));
   }
 
+  /// 実行時の pt 値から `Length` を構築する（sp へ丸める）。
+  ///
+  /// # Errors
+  ///
+  /// 値が値域（絶対値が 2^47 pt 未満）外、または NaN・±∞ のとき [`LengthOverflow`]。
+  pub(crate) fn try_pt(value: f64) -> Result<Self, LengthOverflow> { return round_to_pt_sp(value).map(Length); }
+
   /// mm 値から `Length` を構築する（pt を経由して sp へ丸める）。
   ///
   /// # Panics
@@ -507,6 +514,13 @@ mod tests {
     let result: Result<Wrapper, _> = toml::from_str("length = 12.0");
 
     assert!(result.is_err());
+  }
+
+  #[test]
+  fn try_pt_rejects_unrepresentable_values() {
+    assert_eq!(Length::try_pt(12.5), Ok(Length::pt(12.5)));
+    assert_eq!(Length::try_pt(1.5e14), Err(LengthOverflow));
+    assert_eq!(Length::try_pt(f64::INFINITY), Err(LengthOverflow));
   }
 
   #[test]

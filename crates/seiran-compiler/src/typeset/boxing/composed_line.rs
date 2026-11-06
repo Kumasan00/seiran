@@ -4,10 +4,11 @@
 //! 並べて `Line` へ確定する。
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{HBox, HItem, Line, LineLink, LinkTarget, PlacedHBox},
     boxing::{Measurer, Shaper, hlist::HList},
+    error::ElementOverflow,
     lowering::{InlineNode, TextStyle},
   },
 };
@@ -25,7 +26,11 @@ pub(in crate::typeset) struct LineAccum {
 
 impl LineAccum {
   /// `HBox` 列を `x_start` から水平に並べて追加し、行の高さ・深さを更新する。末尾の x を返す
-  pub(in crate::typeset) fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 末尾の x が長さの値域を超えたら [`LengthOverflow`]。
+  pub(in crate::typeset) fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Result<Length, LengthOverflow> {
     let mut x = x_start;
     for hbox in hboxes {
       self.height = self.height.max(hbox.height);
@@ -36,9 +41,9 @@ impl LineAccum {
         dx: x,
         dy: Length::ZERO,
       });
-      x += width;
+      x = x.try_add(width)?;
     }
-    return x;
+    return Ok(x);
   }
 
   /// 累積した内容を `Line` に確定する
@@ -55,26 +60,48 @@ impl LineAccum {
 }
 
 /// `HBox` 列の合計幅を返す
-pub(in crate::typeset) fn row_width(hboxes: &[HBox]) -> Length {
-  return hboxes.iter().map(|hbox| return hbox.width).sum();
+///
+/// # Errors
+///
+/// 合計が長さの値域を超えたら [`LengthOverflow`]。
+pub(in crate::typeset) fn row_width(hboxes: &[HBox]) -> Result<Length, LengthOverflow> {
+  return Length::try_sum(hboxes.iter().map(|hbox| return hbox.width));
 }
 
 /// テキストを左端（x=0）からシェーピングして単一行に組む
-pub(in crate::typeset) fn compose_left_line(shaper: &mut Shaper<'_>, text: &str, style: TextStyle) -> Line {
+///
+/// # Errors
+///
+/// 行の寸法が長さの値域を超えたら [`LengthOverflow`]。
+pub(in crate::typeset) fn compose_left_line(
+  shaper: &mut Shaper<'_>,
+  text: &str,
+  style: TextStyle,
+) -> Result<Line, LengthOverflow> {
   let mut acc = LineAccum::default();
-  acc.place(shaper.shape_text(text, style), Length::ZERO);
-  return acc.into_line(Vec::new());
+  acc.place(shaper.shape_text(text, style)?, Length::ZERO)?;
+  return Ok(acc.into_line(Vec::new()));
 }
 
 /// アイテム列の自然幅を返す
-pub(super) fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
+///
+/// # Errors
+///
+/// 合計が長さの値域を超えたら [`LengthOverflow`]。
+pub(super) fn measure_items_width(items: &[HItem]) -> Result<Length, LengthOverflow> {
+  return Length::try_sum(items.iter().map(HItem::natural_width));
+}
 
 /// アイテム列を、x = 0 から自然幅で並べた 1 行にする
 ///
 /// 呼び出し側は幅を [`measure_items_width`]（全アイテムの自然幅の和）から決めるので、行頭・行末の glue も
 /// 落とさず `Kern` / `Glue` / `MathBreak` の自然幅ぶん進める。高さ・深さは描く箱（`HItem::Box`）の最大で、
 /// `FlushRight` は描かない。対応の無い `LinkEnd` は読み飛ばし、閉じない `LinkStart` は矩形を作らない。
-pub(super) fn unwrapped_line(items: &[HItem]) -> Line {
+///
+/// # Errors
+///
+/// 行の幅が長さの値域を超えたら [`LengthOverflow`]。
+pub(super) fn unwrapped_line(items: &[HItem]) -> Result<Line, LengthOverflow> {
   let mut line = Line {
     boxes: Vec::new(),
     height: Length::ZERO,
@@ -95,11 +122,11 @@ pub(super) fn unwrapped_line(items: &[HItem]) -> Line {
         });
         line.height = line.height.max(hbox.height);
         line.depth = line.depth.max(hbox.depth);
-        cursor += hbox.width;
+        cursor = cursor.try_add(hbox.width)?;
       },
-      HItem::Kern(value) => cursor += *value,
-      HItem::MathBreak { spacing, .. } => cursor += *spacing,
-      HItem::Glue { natural, .. } => cursor += *natural,
+      HItem::Kern(value) => cursor = cursor.try_add(*value)?,
+      HItem::MathBreak { spacing, .. } => cursor = cursor.try_add(*spacing)?,
+      HItem::Glue { natural, .. } => cursor = cursor.try_add(*natural)?,
       HItem::LinkStart(target) => open.push((target.clone(), cursor)),
       HItem::LinkEnd => {
         if let Some((target, x0)) = open.pop() {
@@ -115,25 +142,33 @@ pub(super) fn unwrapped_line(items: &[HItem]) -> Line {
       HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak | HItem::FlushRight(_) => {},
     }
   }
-  return line;
+  return Ok(line);
 }
 
 /// インライン列を本文と同じ規則（和欧文間アキ・約物アキは `punctuation_spacing`、ハイフネーションなし）で計測し、
 /// 伸縮・分割しない自然幅の閉じた箱 1 つにする
 ///
 /// 字の問題は `shaper` の起点に帰属する。リンク・脚注・索引は運ばないので、呼び出し側はそれらを含まない列を渡す。
-pub(in crate::typeset) fn inline_atom(shaper: Shaper<'_>, nodes: Vec<InlineNode>, punctuation_spacing: bool) -> HBox {
+///
+/// # Errors
+///
+/// 計測した寸法が長さの値域を超えたら、`shaper` の起点の要素（生成内容なら `None`）を [`ElementOverflow`] で返す。
+pub(in crate::typeset) fn inline_atom(
+  shaper: Shaper<'_>,
+  nodes: Vec<InlineNode>,
+  punctuation_spacing: bool,
+) -> Result<HBox, ElementOverflow> {
   // 既定サイズ・行送りを読むのは `collect_inline` の `Footnote` と `BlockBuilder` の段落・ディスプレイ数式・表だけで、
   // 脚注を含まないインライン列の計測では読まれない
   let mut measurer = Measurer::new(shaper, Length::ZERO, 1.0, None, punctuation_spacing);
   let mut list = HList::default();
   for node in nodes {
-    measurer
-      .collect_inline(node, &mut list)
-      .expect("脚注を含まない列では行送りを計算する腕に入らないので、collect_inline は溢れを返さない");
+    measurer.collect_inline(node, &mut list)?;
   }
   let items = list.into_items();
-  let line = unwrapped_line(&items);
+  let line = unwrapped_line(&items).map_err(|LengthOverflow| {
+    return measurer.overflow();
+  })?;
   if !(line.links.is_empty() && line.footnotes.is_empty() && line.index_marks.is_empty()) {
     unreachable!(
       "inline_atom が組むのは目次の行の題目（HeadingRecord::toc_label）だけで、lowering::heading の写しがリンクは子だけを組み、\
@@ -141,8 +176,10 @@ pub(in crate::typeset) fn inline_atom(shaper: Shaper<'_>, nodes: Vec<InlineNode>
     )
   }
   let mut atom = HBox::atom(line.boxes);
-  atom.width = measure_items_width(&items);
-  return atom;
+  atom.width = measure_items_width(&items).map_err(|LengthOverflow| {
+    return measurer.overflow();
+  })?;
+  return Ok(atom);
 }
 
 #[cfg(test)]
@@ -179,19 +216,21 @@ mod tests {
       box_of_width(Length::pt(15.0)),
     ]);
 
-    assert_eq!(width, Length::pt(25.0));
+    assert_eq!(width, Ok(Length::pt(25.0)));
   }
 
   #[test]
   fn place_positions_boxes_left_to_right() {
     let mut acc = LineAccum::default();
-    let end_x = acc.place(
-      vec![
-        box_of_width(Length::pt(10.0)),
-        box_of_width(Length::pt(15.0)),
-      ],
-      Length::pt(100.0),
-    );
+    let end_x = acc
+      .place(
+        vec![
+          box_of_width(Length::pt(10.0)),
+          box_of_width(Length::pt(15.0)),
+        ],
+        Length::pt(100.0),
+      )
+      .expect("テストの寸法は値域内");
 
     let line = acc.into_line(Vec::new());
     let xs: Vec<Length> = line.boxes.iter().map(|b| return b.dx).collect();
@@ -214,8 +253,8 @@ mod tests {
       HItem::Kern(Length::pt(3.0)),
     ];
 
-    assert_eq!(measure_items_width(&items), Length::pt(18.0));
-    assert_eq!(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), Length::ZERO);
+    assert_eq!(measure_items_width(&items), Ok(Length::pt(18.0)));
+    assert_eq!(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), Ok(Length::ZERO));
   }
 
   /// 本文の Serif 枠を STIX Two Text、和文の明朝枠を Noto Serif JP にしたフォント資源
@@ -242,7 +281,7 @@ mod tests {
   fn atom_width(fonts: &FontSystem, nodes: Vec<InlineNode>, punctuation_spacing: bool) -> Length {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(fonts, &issues, GlyphOrigin::Generated(Generated::Toc));
-    return inline_atom(shaper, nodes, punctuation_spacing).width;
+    return inline_atom(shaper, nodes, punctuation_spacing).expect("テストの寸法は値域内").width;
   }
 
   #[test]
