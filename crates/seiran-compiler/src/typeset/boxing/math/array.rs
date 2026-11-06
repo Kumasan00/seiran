@@ -56,9 +56,9 @@ impl Measurer<'_> {
           .collect::<Result<Vec<_>, LengthOverflow>>();
       })
       .collect::<Result<Vec<_>, LengthOverflow>>()?;
-    let (grid, _) = Self::build_grid(cells, row_gap, column_gap);
-    let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
-    let grid_dy = axis - (grid.height - grid.depth) / 2.0;
+    let (grid, _) = Self::build_grid(cells, row_gap, column_gap)?;
+    let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size)?;
+    let grid_dy = axis.try_sub(grid.height.try_sub(grid.depth)?.try_div(2.0)?)?;
     let hbox = if delimiters.is_present() {
       self.wrap_with_delimiters(grid, grid_dy, axis, delimiters, font_size, script_level, color)?
     } else {
@@ -70,7 +70,7 @@ impl Measurer<'_> {
     };
     let width = hbox.width;
     out.push(PlacedHBox { hbox, dx: *dx, dy });
-    *dx += width;
+    *dx = dx.try_add(width)?;
     return Ok(());
   }
 }

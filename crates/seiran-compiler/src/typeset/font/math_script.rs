@@ -3,7 +3,7 @@
 //! 上付き・下付きの中身は数式本体より下の段で組む。段はフォントサイズ（[`ScriptScale`]）と、シェイピングで
 //! 小サイズ用の字形を選ぶ `ssty` の値（[`ScriptLevel::ssty`]）の両方を決める。
 
-use crate::length::Length;
+use crate::length::{Length, LengthOverflow};
 
 /// 数式のスクリプト段（数式本体の display / text 段より下の 2 段）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,12 +47,19 @@ impl ScriptScale {
   }
 
   /// 数式本体のフォントサイズが `base` の式で、段 `level` のフォントサイズ（`None` は display / text 段で `base` のまま）
-  #[must_use]
-  pub(in crate::typeset) fn font_size(self, base: Length, level: Option<ScriptLevel>) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 縮小後のサイズが `Length` の表現範囲を超えるとき `LengthOverflow`。
+  pub(in crate::typeset) fn font_size(
+    self,
+    base: Length,
+    level: Option<ScriptLevel>,
+  ) -> Result<Length, LengthOverflow> {
     return match level {
-      None => base,
-      Some(ScriptLevel::Script) => base.scale(self.script),
-      Some(ScriptLevel::ScriptScript) => base.scale(self.script_script),
+      None => Ok(base),
+      Some(ScriptLevel::Script) => base.try_scale(self.script),
+      Some(ScriptLevel::ScriptScript) => base.try_scale(self.script_script),
     };
   }
 }
@@ -66,8 +73,15 @@ mod tests {
     let scale = ScriptScale::from_percents(70, 55);
     let base = Length::pt(10.0);
 
-    assert_eq!(scale.font_size(base, None), base);
-    assert_eq!(scale.font_size(base, Some(ScriptLevel::Script)), base.scale(0.7));
-    assert_eq!(scale.font_size(base, Some(ScriptLevel::ScriptScript)), base.scale(0.55));
+    assert_eq!(scale.font_size(base, None), Ok(base));
+    assert_eq!(scale.font_size(base, Some(ScriptLevel::Script)), base.try_scale(0.7));
+    assert_eq!(scale.font_size(base, Some(ScriptLevel::ScriptScript)), base.try_scale(0.55));
+  }
+
+  #[test]
+  fn script_size_beyond_the_representable_range_is_an_error() {
+    let scale = ScriptScale::from_percents(i32::MAX, i32::MAX);
+
+    assert_eq!(scale.font_size(Length::from_sp(i64::MAX), Some(ScriptLevel::Script)), Err(LengthOverflow));
   }
 }

@@ -14,7 +14,7 @@ use std::mem;
 
 use crate::{
   document::{MathClass, MathSpace},
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxing::math::arrange::{ArrangedInline, ArrangedNode, MathScripts},
     lowering::{Fence, TextStyle},
@@ -70,8 +70,12 @@ impl MathItem {
   /// 上下に積むか）
   ///
   /// `text` の半角空白 1 個は語の区切りで、語ごとのテキストの間に自動アキの細アキと同じ量の Kern を挟む。
-  pub(super) fn operator_name(text: &str, style: TextStyle, limits: bool) -> Self {
-    let thin = mu(Space::Thin.mu_count(), style.font_size);
+  ///
+  /// # Errors
+  ///
+  /// 語間のアキが `Length` の表現範囲を超えるとき `LengthOverflow`。
+  pub(super) fn operator_name(text: &str, style: TextStyle, limits: bool) -> Result<Self, LengthOverflow> {
+    let thin = mu(Space::Thin.mu_count(), style.font_size)?;
     let mut nodes = Vec::new();
     for word in text.split(' ') {
       if !nodes.is_empty() {
@@ -79,7 +83,7 @@ impl MathItem {
       }
       nodes.push(ArrangedNode::Text(word.to_string(), style));
     }
-    return Self::operator(nodes, limits);
+    return Ok(Self::operator(nodes, limits));
   }
 
   /// ノード列 `nodes` の Op のアイテムを作る（区切りではない。`limits` は付くスクリプトを上下に積むか）
@@ -106,8 +110,12 @@ impl MathItem {
   }
 
   /// 明示アキ `space`（段のフォントサイズ `font_size`）のアイテムを作る
-  pub(super) fn explicit(space: MathSpace, font_size: Length) -> Self {
-    return MathItem::Space(space_width(space, font_size));
+  ///
+  /// # Errors
+  ///
+  /// 幅が `Length` の表現範囲を超えるとき `LengthOverflow`。
+  pub(super) fn explicit(space: MathSpace, font_size: Length) -> Result<Self, LengthOverflow> {
+    return Ok(MathItem::Space(space_width(space, font_size)?));
   }
 }
 
@@ -307,12 +315,18 @@ const fn explicit_mu_count(space: MathSpace) -> i32 {
 }
 
 /// 明示アキ `space` の、フォントサイズ `font_size` での幅（数式の外の数量の箱でも 1mu = `font_size` / 18）
-pub(in crate::typeset::boxing) fn space_width(space: MathSpace, font_size: Length) -> Length {
+///
+/// # Errors
+///
+/// 幅が `Length` の表現範囲を超えるとき `LengthOverflow`。
+pub(in crate::typeset::boxing) fn space_width(space: MathSpace, font_size: Length) -> Result<Length, LengthOverflow> {
   return mu(explicit_mu_count(space), font_size);
 }
 
 /// mu 単位（1mu = `font_size` / 18）を長さへ直す
-fn mu(count: i32, font_size: Length) -> Length { return (font_size * count) / 18.0f64; }
+fn mu(count: i32, font_size: Length) -> Result<Length, LengthOverflow> {
+  return font_size.try_mul(count)?.try_div(18.0f64);
+}
 
 /// 左右のアトムのクラスから、間に入れるアキ幅を返す
 ///
@@ -322,7 +336,12 @@ fn mu(count: i32, font_size: Length) -> Length { return (font_size * count) / 18
 /// # Panics
 ///
 /// [`Cell::Impossible`] のセルに当たると panic する（[`resolve_bin_classes`] を通していれば起きない）。
-fn space_between(left: MathClass, right: MathClass, font_size: Length, in_script: bool) -> Length {
+fn space_between(
+  left: MathClass,
+  right: MathClass,
+  font_size: Length,
+  in_script: bool,
+) -> Result<Length, LengthOverflow> {
   let space = match SPACING[class_index(left)][class_index(right)] {
     Cell::Always(space) => space,
     Cell::TextOnly(space) => {
@@ -459,14 +478,20 @@ struct Spaced {
 
 impl Spaced {
   /// このアイテムの前に入れるアキ（自動アキ + 明示アキ）
-  fn space_before(&self) -> Length { return self.gap.map_or(Length::ZERO, |gap| return gap.space) + self.explicit; }
+  fn space_before(&self) -> Result<Length, LengthOverflow> {
+    return self.gap.map_or(Length::ZERO, |gap| return gap.space).try_add(self.explicit);
+  }
 }
 
 /// アイテム列にクラス変換を適用し、各アトムの直前のアキを決める
 ///
 /// 明示アキはクラス変換とアキ表の参照から外し、幅を次のアトムの [`Spaced::explicit`] へ足す。末尾のアトムより後ろの
 /// 明示アキの幅は 2 つ目の値で返す。
-fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> (Vec<Spaced>, Length) {
+fn space_items(
+  items: Vec<MathItem>,
+  font_size: Length,
+  in_script: bool,
+) -> Result<(Vec<Spaced>, Length), LengthOverflow> {
   let mut classes: Vec<(MathClass, MathClass)> = items
     .iter()
     .filter_map(|item| {
@@ -486,18 +511,20 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> (Vec
     let atom = match item {
       MathItem::Atom(atom) => atom,
       MathItem::Space(length) => {
-        explicit += length;
+        explicit = explicit.try_add(length)?;
         continue;
       },
     };
     let (left, right) = classes.next().expect("クラスはアトム 1 個につき 1 組を集めたので、アトムの数だけある");
-    let gap = prev.map(|prev_right| {
-      return Gap {
-        left: prev_right,
-        right: left,
-        space: space_between(prev_right, left, font_size, in_script),
-      };
-    });
+    let gap = prev
+      .map(|prev_right| {
+        return Ok(Gap {
+          left: prev_right,
+          right: left,
+          space: space_between(prev_right, left, font_size, in_script)?,
+        });
+      })
+      .transpose()?;
     out.push(Spaced {
       gap,
       explicit: mem::take(&mut explicit),
@@ -506,7 +533,7 @@ fn space_items(items: Vec<MathItem>, font_size: Length, in_script: bool) -> (Vec
     });
     prev = Some(right);
   }
-  return (out, explicit);
+  return Ok((out, explicit));
 }
 
 /// 幅 0 でないアキを [`ArrangedNode::Kern`] として積む（明示アキを含むので負にもなる）
@@ -517,8 +544,12 @@ fn push_space(out: &mut Vec<ArrangedNode>, length: Length) {
 }
 
 /// アイテム列にクラス変換とアキを適用し、1 本の `ArrangedNode` 列へ畳む（行分割点を置かない）
-pub(super) fn assemble(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<ArrangedNode> {
-  return assemble_divided(vec![items], font_size, in_script).pop().expect("区画 1 個を渡したので 1 個返る");
+pub(super) fn assemble(
+  items: Vec<MathItem>,
+  font_size: Length,
+  in_script: bool,
+) -> Result<Vec<ArrangedNode>, LengthOverflow> {
+  return Ok(assemble_divided(vec![items], font_size, in_script)?.pop().expect("区画 1 個を渡したので 1 個返る"));
 }
 
 /// 中間の区切りで分けた区画のアイテム列 `segments` を、区画の間に Rel の区切りを挟んだ 1 本の列としてクラス変換とアキを
@@ -530,7 +561,7 @@ pub(super) fn assemble_divided(
   segments: Vec<Vec<MathItem>>,
   font_size: Length,
   in_script: bool,
-) -> Vec<Vec<ArrangedNode>> {
+) -> Result<Vec<Vec<ArrangedNode>>, LengthOverflow> {
   // 区切りは各区画（最初を除く）の前に置くアトムなので、区画 i の前の区切りはそれまでのアトム数 + i 番目のアトムになる
   let mut dividers = Vec::with_capacity(segments.len().saturating_sub(1));
   let mut items = Vec::new();
@@ -541,12 +572,12 @@ pub(super) fn assemble_divided(
     }
     items.extend(segment);
   }
-  let (atoms, trailing) = space_items(items, font_size, in_script);
+  let (atoms, trailing) = space_items(items, font_size, in_script)?;
   let mut out: Vec<Vec<ArrangedNode>> = vec![Vec::new()];
   let mut dividers = dividers.into_iter().peekable();
   for (index, spaced) in atoms.into_iter().enumerate() {
     let current = out.last_mut().expect("区画の列は 1 個から始め、減らさない");
-    push_space(current, spaced.space_before());
+    push_space(current, spaced.space_before()?);
     if dividers.next_if_eq(&index).is_some() {
       out.push(Vec::new());
       continue;
@@ -554,7 +585,7 @@ pub(super) fn assemble_divided(
     current.extend(spaced.nodes);
   }
   push_space(out.last_mut().expect("区画の列は 1 個から始め、減らさない"), trailing);
-  return out.into_iter().map(merge_adjacent_arranged_text).collect();
+  return Ok(out.into_iter().map(merge_adjacent_arranged_text).collect());
 }
 
 /// インライン数式のトップレベルを組み、二項演算子・関係子の直後に行分割点を置く
@@ -564,14 +595,17 @@ pub(super) fn assemble_divided(
 /// 分割点のアキにはその境界の明示アキも含める（折り返すと明示アキも行頭から消える）。
 /// ただし右のアイテムが空（`Group([])` 由来の中身の無い Ord 等）なら、割っても行頭に何も残らないので
 /// 分割点を置かず Kern のままにする。
-pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec<ArrangedInline> {
+pub(super) fn assemble_breakable(
+  items: Vec<MathItem>,
+  font_size: Length,
+) -> Result<Vec<ArrangedInline>, LengthOverflow> {
   let mut out: Vec<ArrangedInline> = Vec::new();
   let mut run: Vec<ArrangedNode> = Vec::new();
   // 開き括弧の入れ子の深さ。[`Fence`] だけで数え、対応の無い閉じ括弧で負にはしない。
   let mut depth = 0usize;
-  let (atoms, trailing) = space_items(items, font_size, false);
+  let (atoms, trailing) = space_items(items, font_size, false)?;
   for spaced in atoms {
-    let space = spaced.space_before();
+    let space = spaced.space_before()?;
     match spaced.gap.and_then(|gap| return break_penalty(gap, depth)) {
       Some(penalty) if !spaced.nodes.is_empty() => {
         flush_run(&mut run, &mut out);
@@ -591,7 +625,7 @@ pub(super) fn assemble_breakable(items: Vec<MathItem>, font_size: Length) -> Vec
   }
   push_space(&mut run, trailing);
   flush_run(&mut run, &mut out);
-  return out;
+  return Ok(out);
 }
 
 /// 溜めた要素列をグリフランへ畳み、トップレベルの要素として `out` へ移す
@@ -656,6 +690,45 @@ mod tests {
     };
   }
 
+  /// `mu` を範囲内の入力で呼ぶ
+  fn mu_in_range(count: i32, font_size: Length) -> Length {
+    return mu(count, font_size).expect("テストの寸法は範囲内");
+  }
+
+  /// `space_between` を範囲内の入力で呼ぶ
+  fn space_between_in_range(left: MathClass, right: MathClass, font_size: Length, in_script: bool) -> Length {
+    return space_between(left, right, font_size, in_script).expect("テストの寸法は範囲内");
+  }
+
+  /// `assemble` を範囲内の入力で呼ぶ
+  fn assemble_in_range(items: Vec<MathItem>, font_size: Length, in_script: bool) -> Vec<ArrangedNode> {
+    return assemble(items, font_size, in_script).expect("テストの寸法は範囲内");
+  }
+
+  /// `assemble_divided` を範囲内の入力で呼ぶ
+  fn assemble_divided_in_range(
+    segments: Vec<Vec<MathItem>>,
+    font_size: Length,
+    in_script: bool,
+  ) -> Vec<Vec<ArrangedNode>> {
+    return assemble_divided(segments, font_size, in_script).expect("テストの寸法は範囲内");
+  }
+
+  /// `assemble_breakable` を範囲内の入力で呼ぶ
+  fn assemble_breakable_in_range(items: Vec<MathItem>, font_size: Length) -> Vec<ArrangedInline> {
+    return assemble_breakable(items, font_size).expect("テストの寸法は範囲内");
+  }
+
+  /// `MathItem::explicit` を範囲内の入力で呼ぶ
+  fn explicit_item_in_range(space: MathSpace, font_size: Length) -> MathItem {
+    return MathItem::explicit(space, font_size).expect("テストの寸法は範囲内");
+  }
+
+  /// `MathItem::operator_name` を範囲内の入力で呼ぶ
+  fn operator_name_in_range(text: &str, style: TextStyle, limits: bool) -> MathItem {
+    return MathItem::operator_name(text, style, limits).expect("テストの寸法は範囲内");
+  }
+
   /// 1 文字のテキストアイテムを作る
   fn item(ch: char) -> MathItem {
     return MathItem::new(char_class(ch), char_fence(ch), vec![ArrangedNode::Text(ch.to_string(), style())]);
@@ -695,7 +768,7 @@ mod tests {
   }
 
   /// 12pt の段の明示アキのアイテム
-  fn explicit(space: MathSpace) -> MathItem { return MathItem::explicit(space, Length::pt(12.0)); }
+  fn explicit(space: MathSpace) -> MathItem { return explicit_item_in_range(space, Length::pt(12.0)); }
 
   /// ノード列に置かれた行分割点を（アキ, ペナルティ）で出現順に返す
   fn breaks(nodes: &[ArrangedInline]) -> Vec<(Length, i32)> {
@@ -710,8 +783,14 @@ mod tests {
 
   #[test]
   fn mu_is_one_eighteenth_of_font_size() {
-    assert_eq!(mu(18, Length::pt(12.0)), Length::pt(12.0));
-    assert_eq!(mu(0, Length::pt(12.0)), Length::ZERO);
+    assert_eq!(mu_in_range(18, Length::pt(12.0)), Length::pt(12.0));
+    assert_eq!(mu_in_range(0, Length::pt(12.0)), Length::ZERO);
+  }
+
+  #[test]
+  fn mu_beyond_the_representable_range_is_an_error() {
+    assert_eq!(mu(18, Length::from_sp(i64::MAX)), Err(LengthOverflow));
+    assert_eq!(space_width(MathSpace::Quad, Length::from_sp(i64::MAX)), Err(LengthOverflow));
   }
 
   /// 左端と右端が同じクラスの組
@@ -771,59 +850,63 @@ mod tests {
   fn space_between_suppresses_bracketed_cells_in_script_style() {
     let font_size = Length::pt(12.0);
 
-    assert_eq!(space_between(MathClass::Ord, MathClass::Bin, font_size, false), mu(4, font_size));
-    assert_eq!(space_between(MathClass::Ord, MathClass::Bin, font_size, true), Length::ZERO);
+    assert_eq!(space_between_in_range(MathClass::Ord, MathClass::Bin, font_size, false), mu_in_range(4, font_size));
+    assert_eq!(space_between_in_range(MathClass::Ord, MathClass::Bin, font_size, true), Length::ZERO);
   }
 
   #[test]
   fn space_between_keeps_unbracketed_cells_in_script_style() {
     let font_size = Length::pt(12.0);
 
-    assert_eq!(space_between(MathClass::Ord, MathClass::Op, font_size, true), mu(3, font_size));
+    assert_eq!(space_between_in_range(MathClass::Ord, MathClass::Op, font_size, true), mu_in_range(3, font_size));
   }
 
   #[test]
   fn assemble_inserts_medium_space_around_binary_operator() {
     let font_size = Length::pt(12.0);
     let items = vec![item('a'), item('+'), item('b')];
-    let nodes = assemble(items, font_size, false);
+    let nodes = assemble_in_range(items, font_size, false);
 
-    assert_eq!(kerns(&nodes), vec![mu(4, font_size); 2]);
+    assert_eq!(kerns(&nodes), vec![mu_in_range(4, font_size); 2]);
   }
 
   #[test]
   fn assemble_divided_spaces_the_divider_as_a_relation() {
     let font = Length::pt(12.0);
 
-    let segments = assemble_divided(vec![items("a"), items("b")], font, false);
+    let segments = assemble_divided_in_range(vec![items("a"), items("b")], font, false);
 
     assert_eq!(segments.len(), 2);
-    assert_eq!(kerns(&segments[0]), vec![mu(5, font)], "区切りの前の太アキは前の区画の末尾");
-    assert_eq!(kerns(&segments[1]), vec![mu(5, font)], "区切りの後の太アキは次の区画の先頭");
+    assert_eq!(kerns(&segments[0]), vec![mu_in_range(5, font)], "区切りの前の太アキは前の区画の末尾");
+    assert_eq!(kerns(&segments[1]), vec![mu_in_range(5, font)], "区切りの後の太アキは次の区画の先頭");
   }
 
   #[test]
   fn assemble_divided_demotes_a_binary_operator_before_the_divider() {
     let font = Length::pt(12.0);
 
-    let segments = assemble_divided(vec![items("a+"), items("b")], font, false);
+    let segments = assemble_divided_in_range(vec![items("a+"), items("b")], font, false);
 
-    assert_eq!(kerns(&segments[0]), vec![mu(5, font)], "Rel の前の + は Ord になりアキを持たない");
+    assert_eq!(kerns(&segments[0]), vec![mu_in_range(5, font)], "Rel の前の + は Ord になりアキを持たない");
   }
 
   #[test]
   fn assemble_divided_folds_explicit_space_into_the_kern_before_the_divider() {
     let font = Length::pt(12.0);
 
-    let segments = assemble_divided(vec![vec![item('a'), explicit(MathSpace::Quad)], items("b")], font, false);
+    let segments = assemble_divided_in_range(vec![vec![item('a'), explicit(MathSpace::Quad)], items("b")], font, false);
 
-    assert_eq!(kerns(&segments[0]), vec![mu(QUAD_MU, font) + mu(5, font)], "明示アキと自動アキは 1 つの Kern");
-    assert_eq!(kerns(&segments[1]), vec![mu(5, font)]);
+    assert_eq!(
+      kerns(&segments[0]),
+      vec![mu_in_range(QUAD_MU, font) + mu_in_range(5, font)],
+      "明示アキと自動アキは 1 つの Kern"
+    );
+    assert_eq!(kerns(&segments[1]), vec![mu_in_range(5, font)]);
   }
 
   #[test]
   fn assemble_divided_puts_no_space_at_the_fence_edges_of_empty_segments() {
-    let segments = assemble_divided(vec![Vec::new(), Vec::new()], Length::pt(12.0), false);
+    let segments = assemble_divided_in_range(vec![Vec::new(), Vec::new()], Length::pt(12.0), false);
 
     assert_eq!(segments.len(), 2);
     assert!(segments.iter().all(Vec::is_empty), "`(\\mid)` と同じく括弧の内側にアキを入れない: {segments:?}");
@@ -832,7 +915,7 @@ mod tests {
   #[test]
   fn assemble_merges_ordinaries_into_a_single_run() {
     let items = vec![item('a'), item('b')];
-    let nodes = assemble(items, Length::pt(12.0), false);
+    let nodes = assemble_in_range(items, Length::pt(12.0), false);
 
     assert_eq!(nodes.len(), 1, "アキの無い並びは 1 本のグリフランに戻る: {nodes:?}");
     assert!(matches!(&nodes[0], ArrangedNode::Text(text, _) if text == "ab"));
@@ -841,7 +924,7 @@ mod tests {
   #[test]
   fn assemble_omits_space_for_leading_binary_operator() {
     let items = vec![item('-'), item('x')];
-    let nodes = assemble(items, Length::pt(12.0), false);
+    let nodes = assemble_in_range(items, Length::pt(12.0), false);
 
     assert!(kerns(&nodes).is_empty(), "先頭の二項演算子は順序子なのでアキが入らない: {nodes:?}");
   }
@@ -940,7 +1023,7 @@ mod tests {
 
   #[test]
   fn operator_name_is_one_op_item_with_a_thin_space_between_words() {
-    let item = MathItem::operator_name("lim sup", style(), true);
+    let item = operator_name_in_range("lim sup", style(), true);
 
     let atom = atom_of(&item);
     assert_eq!((atom.left_class, atom.right_class), (MathClass::Op, MathClass::Op));
@@ -952,7 +1035,7 @@ mod tests {
       matches!(
         nodes.as_slice(),
         [ArrangedNode::Text(lim, _), ArrangedNode::Kern { length }, ArrangedNode::Text(sup, _)]
-          if lim == "lim" && sup == "sup" && *length == mu(Space::Thin.mu_count(), Length::pt(12.0))
+          if lim == "lim" && sup == "sup" && *length == mu_in_range(Space::Thin.mu_count(), Length::pt(12.0))
       ),
       "語ごとのテキストの間に細アキ: {nodes:?}"
     );
@@ -960,7 +1043,7 @@ mod tests {
 
   #[test]
   fn push_script_on_a_limits_operator_name_stacks_its_scripts() {
-    let mut items = vec![MathItem::operator_name("lim", style(), true)];
+    let mut items = vec![operator_name_in_range("lim", style(), true)];
     push_script(&mut items, ScriptSide::Subscript, script('n'), Length::pt(12.0), false);
 
     let scripts = scripts_of(&items[0]);
@@ -971,13 +1054,13 @@ mod tests {
   #[test]
   fn assemble_breakable_breaks_after_binary_operator_and_relation() {
     let font_size = Length::pt(12.0);
-    let nodes = assemble_breakable(items("a+b=c"), font_size);
+    let nodes = assemble_breakable_in_range(items("a+b=c"), font_size);
 
     assert_eq!(
       breaks(&nodes),
       vec![
-        (mu(4, font_size), BIN_BREAK_PENALTY),
-        (mu(5, font_size), REL_BREAK_PENALTY)
+        (mu_in_range(4, font_size), BIN_BREAK_PENALTY),
+        (mu_in_range(5, font_size), REL_BREAK_PENALTY)
       ],
       "{nodes:?}"
     );
@@ -985,7 +1068,7 @@ mod tests {
 
   #[test]
   fn assemble_breakable_keeps_space_before_operator_as_kern() {
-    let nodes = assemble_breakable(items("a+b"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("a+b"), Length::pt(12.0));
 
     assert!(
       matches!(
@@ -1004,14 +1087,14 @@ mod tests {
 
   #[test]
   fn assemble_breakable_breaks_only_outside_parentheses() {
-    let nodes = assemble_breakable(items("a+(b+c)=d"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("a+(b+c)=d"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 2, "括弧の外の + と = の後だけ: {nodes:?}");
   }
 
   #[test]
   fn assemble_breakable_ignores_unmatched_closing_parenthesis() {
-    let nodes = assemble_breakable(items(")a+b"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items(")a+b"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 1, "対応の無い閉じ括弧で深さを負にしない: {nodes:?}");
   }
@@ -1022,42 +1105,42 @@ mod tests {
     sequence.push(MathItem::fenced(vec![ArrangedNode::Text("b".to_string(), style())]));
     sequence.extend(items("+c"));
 
-    let nodes = assemble_breakable(sequence, Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(sequence, Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 2, "伸縮括弧は中身ごと閉じているので深さを動かさない: {nodes:?}");
   }
 
   #[test]
   fn assemble_breakable_does_not_break_between_consecutive_relations() {
-    let nodes = assemble_breakable(items("a:=b"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("a:=b"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 1, "`:` と `=` の間では割らず `=` の後だけ: {nodes:?}");
   }
 
   #[test]
   fn assemble_breakable_does_not_break_after_demoted_binary_operator() {
-    let nodes = assemble_breakable(items("-x"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("-x"), Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "順序子へ落ちた先頭の - の後では割らない: {nodes:?}");
   }
 
   #[test]
   fn assemble_breakable_does_not_break_after_trailing_operator() {
-    let nodes = assemble_breakable(items("a="), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("a="), Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "右隣の無い末尾では割らない: {nodes:?}");
   }
 
   #[test]
   fn assemble_breakable_does_not_break_inside_parentheses_with_exclamation_mark() {
-    let nodes = assemble_breakable(items("(a!+b)"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("(a!+b)"), Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "! は区切りではないので深さを崩さない: {nodes:?}");
   }
 
   #[test]
   fn assemble_breakable_breaks_after_exclamation_mark_at_top_level() {
-    let nodes = assemble_breakable(items("a!+b"), Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items("a!+b"), Length::pt(12.0));
 
     assert_eq!(breaks(&nodes).len(), 1, "括弧の外なので + の後で 1 箇所割れる: {nodes:?}");
   }
@@ -1070,7 +1153,7 @@ mod tests {
       item('+'),
       MathItem::new(MathClass::Ord, None, Vec::new()),
     ];
-    let nodes = assemble_breakable(items, Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items, Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "右が空アイテムなら分割点を置かず Kern のまま: {nodes:?}");
   }
@@ -1087,10 +1170,10 @@ mod tests {
     ];
 
     for (space, count) in cases {
-      let MathItem::Space(length) = MathItem::explicit(space, font_size) else {
+      let MathItem::Space(length) = explicit_item_in_range(space, font_size) else {
         panic!("明示アキのアイテムのはず: {space:?}");
       };
-      assert_eq!(length, mu(count, font_size), "{space:?}");
+      assert_eq!(length, mu_in_range(count, font_size), "{space:?}");
     }
   }
 
@@ -1099,11 +1182,14 @@ mod tests {
     let font_size = Length::pt(12.0);
     let items = vec![item('a'), explicit(MathSpace::Thin), item('+'), item('b')];
 
-    let nodes = assemble(items, font_size, false);
+    let nodes = assemble_in_range(items, font_size, false);
 
     assert_eq!(
       kerns(&nodes),
-      vec![mu(4, font_size) + mu(3, font_size), mu(4, font_size)],
+      vec![
+        mu_in_range(4, font_size) + mu_in_range(3, font_size),
+        mu_in_range(4, font_size)
+      ],
       "明示アキはクラスに透過し、+ は二項演算子のまま: {nodes:?}"
     );
   }
@@ -1114,31 +1200,31 @@ mod tests {
     let after = vec![item('-'), explicit(MathSpace::Thin), item('x')];
     let before = vec![explicit(MathSpace::Thin), item('-'), item('x')];
 
-    let after = assemble(after, font_size, false);
-    let before = assemble(before, font_size, false);
+    let after = assemble_in_range(after, font_size, false);
+    let before = assemble_in_range(before, font_size, false);
 
-    assert_eq!(kerns(&after), vec![mu(3, font_size)], "先頭の - は単項のまま、明示アキだけ: {after:?}");
-    assert_eq!(kerns(&before), vec![mu(3, font_size)], "明示アキの後ろでも - は先頭のアトム: {before:?}");
+    assert_eq!(kerns(&after), vec![mu_in_range(3, font_size)], "先頭の - は単項のまま、明示アキだけ: {after:?}");
+    assert_eq!(kerns(&before), vec![mu_in_range(3, font_size)], "明示アキの後ろでも - は先頭のアトム: {before:?}");
   }
 
   #[test]
   fn assemble_keeps_leading_trailing_and_sole_explicit_space() {
     let font_size = Length::pt(12.0);
 
-    let leading = assemble(vec![explicit(MathSpace::Thin), item('a')], font_size, false);
-    let trailing = assemble(vec![item('a'), explicit(MathSpace::Quad)], font_size, false);
-    let sole = assemble(vec![explicit(MathSpace::Quad)], font_size, false);
+    let leading = assemble_in_range(vec![explicit(MathSpace::Thin), item('a')], font_size, false);
+    let trailing = assemble_in_range(vec![item('a'), explicit(MathSpace::Quad)], font_size, false);
+    let sole = assemble_in_range(vec![explicit(MathSpace::Quad)], font_size, false);
 
     assert!(
-      matches!(leading.as_slice(), [ArrangedNode::Kern { length }, ArrangedNode::Text(..)] if *length == mu(3, font_size)),
+      matches!(leading.as_slice(), [ArrangedNode::Kern { length }, ArrangedNode::Text(..)] if *length == mu_in_range(3, font_size)),
       "{leading:?}"
     );
     assert!(
-      matches!(trailing.as_slice(), [ArrangedNode::Text(..), ArrangedNode::Kern { length }] if *length == mu(18, font_size)),
+      matches!(trailing.as_slice(), [ArrangedNode::Text(..), ArrangedNode::Kern { length }] if *length == mu_in_range(18, font_size)),
       "{trailing:?}"
     );
     assert!(
-      matches!(sole.as_slice(), [ArrangedNode::Kern { length }] if *length == mu(18, font_size)),
+      matches!(sole.as_slice(), [ArrangedNode::Kern { length }] if *length == mu_in_range(18, font_size)),
       "{sole:?}"
     );
   }
@@ -1152,7 +1238,7 @@ mod tests {
       item('b'),
     ];
 
-    let nodes = assemble(items, Length::pt(12.0), false);
+    let nodes = assemble_in_range(items, Length::pt(12.0), false);
 
     assert!(
       matches!(nodes.as_slice(), [ArrangedNode::Text(text, _)] if text == "ab"),
@@ -1165,9 +1251,9 @@ mod tests {
     let font_size = Length::pt(12.0);
     let items = vec![item('a'), explicit(MathSpace::NegativeThin), item('b')];
 
-    let nodes = assemble(items, font_size, false);
+    let nodes = assemble_in_range(items, font_size, false);
 
-    assert_eq!(kerns(&nodes), vec![mu(-3, font_size)], "{nodes:?}");
+    assert_eq!(kerns(&nodes), vec![mu_in_range(-3, font_size)], "{nodes:?}");
   }
 
   #[test]
@@ -1175,11 +1261,11 @@ mod tests {
     let font_size = Length::pt(12.0);
     let items = vec![item('a'), explicit(MathSpace::Thin), item('+'), item('b')];
 
-    let nodes = assemble(items, font_size, true);
+    let nodes = assemble_in_range(items, font_size, true);
 
     assert_eq!(
       kerns(&nodes),
-      vec![mu(3, font_size)],
+      vec![mu_in_range(3, font_size)],
       "スクリプトの中では括弧付きセルの中アキが消え、明示アキだけが残る: {nodes:?}"
     );
   }
@@ -1200,9 +1286,13 @@ mod tests {
     let font_size = Length::pt(12.0);
     let items = vec![item('a'), item('+'), explicit(MathSpace::Thin), item('b')];
 
-    let nodes = assemble_breakable(items, font_size);
+    let nodes = assemble_breakable_in_range(items, font_size);
 
-    assert_eq!(breaks(&nodes), vec![(mu(4, font_size) + mu(3, font_size), BIN_BREAK_PENALTY)], "{nodes:?}");
+    assert_eq!(
+      breaks(&nodes),
+      vec![(mu_in_range(4, font_size) + mu_in_range(3, font_size), BIN_BREAK_PENALTY)],
+      "{nodes:?}"
+    );
     assert!(
       matches!(
         nodes.as_slice(),
@@ -1222,7 +1312,7 @@ mod tests {
   fn assemble_breakable_does_not_break_at_explicit_space() {
     let items = vec![item('a'), explicit(MathSpace::Quad), item('b')];
 
-    let nodes = assemble_breakable(items, Length::pt(12.0));
+    let nodes = assemble_breakable_in_range(items, Length::pt(12.0));
 
     assert!(breaks(&nodes).is_empty(), "明示アキの位置は分割点にしない: {nodes:?}");
   }
@@ -1238,11 +1328,14 @@ mod tests {
       item('b'),
     ];
 
-    let nodes = assemble_breakable(items, font_size);
+    let nodes = assemble_breakable_in_range(items, font_size);
 
     assert_eq!(
       breaks(&nodes),
-      vec![(mu(4, font_size) + (mu(-3, font_size) + mu(-3, font_size)), BIN_BREAK_PENALTY)],
+      vec![(
+        mu_in_range(4, font_size) + (mu_in_range(-3, font_size) + mu_in_range(-3, font_size)),
+        BIN_BREAK_PENALTY
+      )],
       "{nodes:?}"
     );
   }

@@ -43,39 +43,56 @@ struct RadicalConstants {
 
 impl RadicalConstants {
   /// 数式フォントの MATH 定数を `font_size` で長さへ換算し、`display` なら display 段のギャップを選ぶ
-  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Self {
+  ///
+  /// # Errors
+  ///
+  /// 換算した長さが値域を超えたら [`LengthOverflow`]。
+  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Result<Self, LengthOverflow> {
     let at = |constant: MathConstant| return shaper.math_constant(constant, font_size);
-    return RadicalConstants {
+    return Ok(RadicalConstants {
       vertical_gap: at(if display {
         MathConstant::RadicalDisplayStyleVerticalGap
       } else {
         MathConstant::RadicalVerticalGap
-      }),
-      rule_thickness: at(MathConstant::RadicalRuleThickness),
-      extra_ascender: at(MathConstant::RadicalExtraAscender),
-      kern_before_degree: at(MathConstant::RadicalKernBeforeDegree),
-      kern_after_degree: at(MathConstant::RadicalKernAfterDegree),
+      })?,
+      rule_thickness: at(MathConstant::RadicalRuleThickness)?,
+      extra_ascender: at(MathConstant::RadicalExtraAscender)?,
+      kern_before_degree: at(MathConstant::RadicalKernBeforeDegree)?,
+      kern_after_degree: at(MathConstant::RadicalKernAfterDegree)?,
       degree_bottom_raise: shaper.math_ratio(MathConstant::RadicalDegreeBottomRaisePercent),
-    };
+    });
   }
 
   /// 根号記号を縦に伸ばす目標の高さ（被根号のインクの高さ + 深さ + ギャップ + 横線の太さ）
-  fn surd_target(&self, radicand_ink_height: Length, radicand_ink_depth: Length) -> Length {
-    return radicand_ink_height + radicand_ink_depth + self.vertical_gap + self.rule_thickness;
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn surd_target(&self, radicand_ink_height: Length, radicand_ink_depth: Length) -> Result<Length, LengthOverflow> {
+    return radicand_ink_height
+      .try_add(radicand_ink_depth)?
+      .try_add(self.vertical_gap)?
+      .try_add(self.rule_thickness);
   }
 
   /// 横線の下端の高さ（根号のベースライン基準）
   ///
   /// 被根号のインクの頂からギャップだけ上。伸ばした記号のインクの高さ `surd_ink_height` が目標を超えれば、その余りの
   /// 半分をギャップへ足す（目標に届かない記号でもギャップは縮めない）。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
   fn vinculum_bottom(
     &self,
     radicand_ink_height: Length,
     radicand_ink_depth: Length,
     surd_ink_height: Length,
-  ) -> Length {
-    let excess = (surd_ink_height - self.surd_target(radicand_ink_height, radicand_ink_depth)).max(Length::ZERO);
-    return radicand_ink_height + self.vertical_gap + excess / 2.0;
+  ) -> Result<Length, LengthOverflow> {
+    let excess = surd_ink_height
+      .try_sub(self.surd_target(radicand_ink_height, radicand_ink_depth)?)?
+      .max(Length::ZERO);
+    return radicand_ink_height.try_add(self.vertical_gap)?.try_add(excess.try_div(2.0)?);
   }
 
   /// 指数の前と後の kern（前は 0 以上、後は −`degree_width` 以上へ切り詰める。`MathML Core` の
@@ -87,8 +104,14 @@ impl RadicalConstants {
   /// 指数のベースラインを根号のベースラインから上げる量
   ///
   /// 根号の上端 `ascent`・下端の深さ `descent` に対し、指数のインクの底を 下端 + 高さ × 比 に置く。
-  fn degree_shift(&self, ascent: Length, descent: Length, degree_ink_depth: Length) -> Length {
-    return -descent + (ascent + descent).scale(self.degree_bottom_raise) + degree_ink_depth;
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn degree_shift(&self, ascent: Length, descent: Length, degree_ink_depth: Length) -> Result<Length, LengthOverflow> {
+    return (-descent)
+      .try_add(ascent.try_add(descent)?.try_scale(self.degree_bottom_raise)?)?
+      .try_add(degree_ink_depth);
   }
 }
 
@@ -115,27 +138,28 @@ impl Measurer<'_> {
       script_level,
       color,
     } = radical;
-    let constants = RadicalConstants::new(&self.shaper, font_size, display);
+    let constants = RadicalConstants::new(&self.shaper, font_size, display)?;
     let radicand = self.detach(radicand)?;
-    let target = constants.surd_target(radicand.ink_height, radicand.ink_depth);
+    let target = constants.surd_target(radicand.ink_height, radicand.ink_depth)?;
     let (surd, (surd_top, surd_bottom)) =
       self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target, color)?;
-    let vinculum_bottom = constants.vinculum_bottom(radicand.ink_height, radicand.ink_depth, surd_top - surd_bottom);
-    let vinculum_top = vinculum_bottom + constants.rule_thickness;
-    let surd_dy = vinculum_top - surd_top;
-    let ascent = vinculum_top + constants.extra_ascender;
-    let descent = radicand.ink_depth.max(-(surd_bottom + surd_dy));
+    let vinculum_bottom =
+      constants.vinculum_bottom(radicand.ink_height, radicand.ink_depth, surd_top.try_sub(surd_bottom)?)?;
+    let vinculum_top = vinculum_bottom.try_add(constants.rule_thickness)?;
+    let surd_dy = vinculum_top.try_sub(surd_top)?;
+    let ascent = vinculum_top.try_add(constants.extra_ascender)?;
+    let descent = radicand.ink_depth.max(-surd_bottom.try_add(surd_dy)?);
 
     let mut children = Vec::new();
     let mut surd_x = Length::ZERO;
     if let Some(degree) = degree {
       let degree = self.detach(degree)?;
       let (before, after) = constants.degree_kerns(degree.width);
-      let shift = constants.degree_shift(ascent, descent, degree.ink_depth);
-      surd_x = before + degree.width + after;
-      math::translate_into(&mut children, degree.boxes, before, shift);
+      let shift = constants.degree_shift(ascent, descent, degree.ink_depth)?;
+      surd_x = before.try_add(degree.width)?.try_add(after)?;
+      math::translate_into(&mut children, degree.boxes, before, shift)?;
     }
-    let body_x = surd_x + surd.width;
+    let body_x = surd_x.try_add(surd.width)?;
     children.push(PlacedHBox {
       hbox: surd,
       dx: surd_x,
@@ -148,17 +172,17 @@ impl Measurer<'_> {
       dx: body_x,
       dy: vinculum_bottom,
     });
-    math::translate_into(&mut children, radicand.boxes, body_x, Length::ZERO);
+    math::translate_into(&mut children, radicand.boxes, body_x, Length::ZERO)?;
     let mut atom = HBox::atom(children);
     atom.height = atom.height.max(ascent);
-    atom.width = atom.width.max(body_x + radicand_width);
+    atom.width = atom.width.max(body_x.try_add(radicand_width)?);
     let advance = atom.width;
     out.push(PlacedHBox {
       hbox: atom,
       dx: *dx,
       dy,
     });
-    *dx += advance;
+    *dx = dx.try_add(advance)?;
     return Ok(());
   }
 }
@@ -181,7 +205,7 @@ mod tests {
 
   #[test]
   fn surd_target_covers_the_radicand_ink_the_gap_and_the_rule() {
-    assert_eq!(constants().surd_target(Length::pt(479.0), Length::pt(10.0)), Length::pt(642.0));
+    assert_eq!(constants().surd_target(Length::pt(479.0), Length::pt(10.0)), Ok(Length::pt(642.0)));
   }
 
   #[test]
@@ -190,17 +214,17 @@ mod tests {
 
     assert_eq!(
       c.vinculum_bottom(Length::pt(479.0), Length::pt(10.0), Length::pt(1187.0)),
-      Length::pt(836.5),
+      Ok(Length::pt(836.5)),
       "𝑥 の目標 642 に対し √ は 1187。余り 545 の半分をギャップ 85 へ足す"
     );
     assert_eq!(
       c.vinculum_bottom(Length::pt(479.0), Length::pt(10.0), Length::pt(642.0)),
-      Length::pt(564.0),
+      Ok(Length::pt(564.0)),
       "ちょうど覆う記号ではギャップはそのまま"
     );
     assert_eq!(
       c.vinculum_bottom(Length::pt(479.0), Length::pt(10.0), Length::pt(500.0)),
-      Length::pt(564.0),
+      Ok(Length::pt(564.0)),
       "覆いきれない記号（最大の size variant）でもギャップを縮めない"
     );
   }
@@ -221,6 +245,9 @@ mod tests {
   #[test]
   fn degree_bottom_rises_by_the_percent_of_the_radical_height() {
     // 下端 −300 + (900 + 300) × 0.55 = 360 にインクの底を置くので、ベースラインは深さ 7 だけ上
-    assert_eq!(constants().degree_shift(Length::pt(900.0), Length::pt(300.0), Length::pt(7.0)), Length::pt(367.0));
+    assert_eq!(
+      constants().degree_shift(Length::pt(900.0), Length::pt(300.0), Length::pt(7.0)),
+      Ok(Length::pt(367.0))
+    );
   }
 }

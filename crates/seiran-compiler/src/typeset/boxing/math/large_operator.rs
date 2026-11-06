@@ -28,17 +28,17 @@ impl Measurer<'_> {
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
   ) -> Result<(), LengthOverflow> {
-    let target = self.shaper.math_constant(MathConstant::DisplayOperatorMinHeight, font_size);
+    let target = self.shaper.math_constant(MathConstant::DisplayOperatorMinHeight, font_size)?;
     // display 段の大型演算子は表示数式のセルにしか現れず、表示数式は既定色
     let (glyph, (top, bottom)) = self.shaper.shape_vertical_delimiter(symbol, font_size, None, target, None)?;
-    let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size);
+    let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size)?;
     let advance = glyph.width;
     out.push(PlacedHBox {
       hbox: glyph,
       dx: *dx,
-      dy: dy + axis - (top + bottom) / 2.0,
+      dy: dy.try_add(axis)?.try_sub(top.try_add(bottom)?.try_div(2.0)?)?,
     });
-    *dx += advance;
+    *dx = dx.try_add(advance)?;
     return Ok(());
   }
 }

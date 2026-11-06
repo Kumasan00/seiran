@@ -117,44 +117,65 @@ struct ScriptConstants {
 
 impl ScriptConstants {
   /// 数式フォントの MATH 定数を `font_size` で長さへ換算する
-  fn new(shaper: &Shaper<'_>, font_size: Length) -> Self {
+  ///
+  /// # Errors
+  ///
+  /// 換算した長さが値域を超えたら [`LengthOverflow`]。
+  fn new(shaper: &Shaper<'_>, font_size: Length) -> Result<Self, LengthOverflow> {
     let at = |constant: MathConstant| return shaper.math_constant(constant, font_size);
-    return ScriptConstants {
-      superscript_shift_up: at(MathConstant::SuperscriptShiftUp),
-      superscript_shift_up_cramped: at(MathConstant::SuperscriptShiftUpCramped),
-      subscript_shift_down: at(MathConstant::SubscriptShiftDown),
-      superscript_baseline_drop_max: at(MathConstant::SuperscriptBaselineDropMax),
-      subscript_baseline_drop_min: at(MathConstant::SubscriptBaselineDropMin),
-      superscript_bottom_min: at(MathConstant::SuperscriptBottomMin),
-      subscript_top_max: at(MathConstant::SubscriptTopMax),
-      sub_superscript_gap_min: at(MathConstant::SubSuperscriptGapMin),
-      superscript_bottom_max_with_subscript: at(MathConstant::SuperscriptBottomMaxWithSubscript),
-      space_after_script: at(MathConstant::SpaceAfterScript),
-    };
+    return Ok(ScriptConstants {
+      superscript_shift_up: at(MathConstant::SuperscriptShiftUp)?,
+      superscript_shift_up_cramped: at(MathConstant::SuperscriptShiftUpCramped)?,
+      subscript_shift_down: at(MathConstant::SubscriptShiftDown)?,
+      superscript_baseline_drop_max: at(MathConstant::SuperscriptBaselineDropMax)?,
+      subscript_baseline_drop_min: at(MathConstant::SubscriptBaselineDropMin)?,
+      superscript_bottom_min: at(MathConstant::SuperscriptBottomMin)?,
+      subscript_top_max: at(MathConstant::SubscriptTopMax)?,
+      sub_superscript_gap_min: at(MathConstant::SubSuperscriptGapMin)?,
+      superscript_bottom_max_with_subscript: at(MathConstant::SuperscriptBottomMaxWithSubscript)?,
+      space_after_script: at(MathConstant::SpaceAfterScript)?,
+    });
   }
 
   /// 上付きを基底のベースラインから上げる量
   ///
   /// 標準のシフト（cramped なら低い方）・背の高い基底からの降下・上付きの底の下限のうち最大。
-  fn superscript_shift(&self, base_ink_height: Length, sup_ink_depth: Length, cramped: bool) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn superscript_shift(
+    &self,
+    base_ink_height: Length,
+    sup_ink_depth: Length,
+    cramped: bool,
+  ) -> Result<Length, LengthOverflow> {
     let standard = if cramped {
       self.superscript_shift_up_cramped
     } else {
       self.superscript_shift_up
     };
-    return standard
-      .max(base_ink_height - self.superscript_baseline_drop_max)
-      .max(self.superscript_bottom_min + sup_ink_depth);
+    return Ok(
+      standard
+        .max(base_ink_height.try_sub(self.superscript_baseline_drop_max)?)
+        .max(self.superscript_bottom_min.try_add(sup_ink_depth)?),
+    );
   }
 
   /// 下付きを基底のベースラインから下げる量
   ///
   /// 標準のシフト・深い基底からの降下・下付きの頂の上限のうち最大。
-  fn subscript_shift(&self, base_ink_depth: Length, sub_ink_height: Length) -> Length {
-    return self
-      .subscript_shift_down
-      .max(base_ink_depth + self.subscript_baseline_drop_min)
-      .max(sub_ink_height - self.subscript_top_max);
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn subscript_shift(&self, base_ink_depth: Length, sub_ink_height: Length) -> Result<Length, LengthOverflow> {
+    return Ok(
+      self
+        .subscript_shift_down
+        .max(base_ink_depth.try_add(self.subscript_baseline_drop_min)?)
+        .max(sub_ink_height.try_sub(self.subscript_top_max)?),
+    );
   }
 
   /// 上下付き同時のとき、上付きの底と下付きの頂の間を `SubSuperscriptGapMin` 以上に広げたシフト量の組
@@ -162,21 +183,25 @@ impl ScriptConstants {
   ///
   /// 足りない分は、まず上付きの底が `SuperscriptBottomMaxWithSubscript` を超えない範囲で上付きを上げ、残りを
   /// 下付きを下げて埋める。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
   fn separate(
     &self,
     sup_shift: Length,
     sup_ink_depth: Length,
     sub_shift: Length,
     sub_ink_height: Length,
-  ) -> (Length, Length) {
-    let sup_bottom = sup_shift - sup_ink_depth;
-    let deficit = self.sub_superscript_gap_min - (sup_bottom - (sub_ink_height - sub_shift));
+  ) -> Result<(Length, Length), LengthOverflow> {
+    let sup_bottom = sup_shift.try_sub(sup_ink_depth)?;
+    let deficit = self.sub_superscript_gap_min.try_sub(sup_bottom.try_sub(sub_ink_height.try_sub(sub_shift)?)?)?;
     if !deficit.is_positive() {
-      return (sup_shift, sub_shift);
+      return Ok((sup_shift, sub_shift));
     }
-    let room = (self.superscript_bottom_max_with_subscript - sup_bottom).max(Length::ZERO);
+    let room = self.superscript_bottom_max_with_subscript.try_sub(sup_bottom)?.max(Length::ZERO);
     let raise = deficit.min(room);
-    return (sup_shift + raise, sub_shift + deficit - raise);
+    return Ok((sup_shift.try_add(raise)?, sub_shift.try_add(deficit)?.try_sub(raise)?));
   }
 }
 
@@ -190,7 +215,7 @@ impl Measurer<'_> {
   ///
   /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn push_inline_math(&mut self, formula: &MathFormula, out: &mut HList) -> Result<(), LengthOverflow> {
-    for piece in arrange::arrange_inline(formula, self.shaper.script_scale()) {
+    for piece in arrange::arrange_inline(formula, self.shaper.script_scale())? {
       match piece {
         ArrangedInline::Break { spacing, penalty } => {
           out.push_absorbing(HItem::MathBreak { spacing, penalty });
@@ -256,7 +281,7 @@ impl Measurer<'_> {
         .cells
         .into_iter()
         .map(|cell| {
-          let content = arrange::arrange_cell(&cell.content, self.default_font_size, display, script_scale);
+          let content = arrange::arrange_cell(&cell.content, self.default_font_size, display, script_scale)?;
           return Ok(MeasuredCell {
             content: self.build_math_atom(content)?,
             align: cell.align,
@@ -266,7 +291,7 @@ impl Measurer<'_> {
       cells.push(measured);
       row_numbers.push(row.number);
     }
-    let (mut body, baselines) = Self::build_grid(cells, row_gap, column_gap);
+    let (mut body, baselines) = Self::build_grid(cells, row_gap, column_gap)?;
     let mut numbers: Vec<MathRowNumber> = Vec::new();
     for (number, dy) in row_numbers.into_iter().zip(baselines) {
       if let Some((text, style)) = number {
@@ -280,7 +305,11 @@ impl Measurer<'_> {
     // `dy` は上向きなので、番号の視覚中央を本体中央へ合わせる。
     if let Some((text, style)) = env_number {
       let number = self.text_box(&text, style, Length::ZERO)?;
-      let center_dy = (body.height - body.depth) / 2.0 - (number.height - number.depth) / 2.0;
+      let center_dy = body
+        .height
+        .try_sub(body.depth)?
+        .try_div(2.0)?
+        .try_sub(number.height.try_sub(number.depth)?.try_div(2.0)?)?;
       numbers.push(MathRowNumber {
         content: number,
         dy: center_dy,
@@ -289,10 +318,10 @@ impl Measurer<'_> {
 
     if delimiters.is_present() {
       // グリッドの縦中央を数式軸に載せる。行番号の `dy` は本体のベースライン基準なので、グリッドと同じだけ動かす
-      let axis = self.shaper.math_constant(MathConstant::AxisHeight, self.default_font_size);
-      let grid_dy = axis - (body.height - body.depth) / 2.0;
+      let axis = self.shaper.math_constant(MathConstant::AxisHeight, self.default_font_size)?;
+      let grid_dy = axis.try_sub(body.height.try_sub(body.depth)?.try_div(2.0)?)?;
       for number in &mut numbers {
-        number.dy += grid_dy;
+        number.dy = number.dy.try_add(grid_dy)?;
       }
       body = self.wrap_with_delimiters(body, grid_dy, axis, delimiters, self.default_font_size, None, None)?;
     }
@@ -312,7 +341,15 @@ impl Measurer<'_> {
   ///
   /// 列幅は列内のセル幅の最大値、隣り合う行は前の行の深さ・`row_gap`・次の行の高さだけベースラインを離す。1 行目の
   /// ベースラインが Atom のベースラインで、返り値の 2 つ目は各行のベースラインの `dy`（上向き正。1 行目は 0）。
-  fn build_grid(measured: Vec<Vec<MeasuredCell>>, row_gap: Length, column_gap: Length) -> (HBox, Vec<Length>) {
+  ///
+  /// # Errors
+  ///
+  /// 寸法が値域を超えたら [`LengthOverflow`]。
+  fn build_grid(
+    measured: Vec<Vec<MeasuredCell>>,
+    row_gap: Length,
+    column_gap: Length,
+  ) -> Result<(HBox, Vec<Length>), LengthOverflow> {
     let ncols = measured.iter().map(Vec::len).max().unwrap_or(0);
     let mut col_widths = vec![Length::ZERO; ncols];
     for row in &measured {
@@ -324,7 +361,7 @@ impl Measurer<'_> {
     let mut acc = Length::ZERO;
     for c in 0..ncols {
       col_x[c] = acc;
-      acc += col_widths[c] + column_gap;
+      acc = acc.try_add(col_widths[c].try_add(column_gap)?)?;
     }
 
     let mut placed: Vec<PlacedHBox> = Vec::new();
@@ -335,14 +372,14 @@ impl Measurer<'_> {
       let row_height = row.iter().map(|cell| return cell.content.height).fold(Length::ZERO, Length::max);
       let row_depth = row.iter().map(|cell| return cell.content.depth).fold(Length::ZERO, Length::max);
       if i > 0 {
-        baseline_dy -= prev_depth + row_gap + row_height;
+        baseline_dy = baseline_dy.try_sub(prev_depth.try_add(row_gap)?.try_add(row_height)?)?;
       }
       for (c, cell) in row.into_iter().enumerate() {
         // 列幅は列内のセル幅の最大値なので、`Align::offset` の 0 へのクランプは到達しない。
         let intra = cell.align.offset(col_widths[c], cell.content.width);
         placed.push(PlacedHBox {
           hbox: cell.content,
-          dx: col_x[c] + intra,
+          dx: col_x[c].try_add(intra)?,
           dy: baseline_dy,
         });
       }
@@ -350,7 +387,7 @@ impl Measurer<'_> {
       prev_depth = row_depth;
     }
 
-    return (HBox::atom(placed), baselines);
+    return Ok((HBox::atom(placed), baselines));
   }
 
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
@@ -372,36 +409,36 @@ impl Measurer<'_> {
     script_level: Option<ScriptLevel>,
     color: Option<Color>,
   ) -> Result<HBox, LengthOverflow> {
-    let target = body.height + body.depth;
+    let target = body.height.try_add(body.depth)?;
     let body_width = body.width;
-    let gap = font_size * 0.15;
+    let gap = font_size.try_scale(0.15)?;
 
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
       let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color)?;
-      let center = (top + bottom) / 2.0;
+      let center = top.try_add(bottom)?.try_div(2.0)?;
       let width = delim.width;
       children.push(PlacedHBox {
         hbox: delim,
         dx,
-        dy: axis - center,
+        dy: axis.try_sub(center)?,
       });
-      dx += width + gap;
+      dx = dx.try_add(width.try_add(gap)?)?;
     }
     children.push(PlacedHBox {
       hbox: body,
       dx,
       dy: grid_dy,
     });
-    dx += body_width + gap;
+    dx = dx.try_add(body_width.try_add(gap)?)?;
     if let Some(ch) = delimiters.right {
       let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color)?;
-      let center = (top + bottom) / 2.0;
+      let center = top.try_add(bottom)?.try_div(2.0)?;
       children.push(PlacedHBox {
         hbox: delim,
         dx,
-        dy: axis - center,
+        dy: axis.try_sub(center)?,
       });
     }
     return Ok(HBox::atom(children));
@@ -430,28 +467,28 @@ impl Measurer<'_> {
       // 上下に積むものは place_atom_node が place_limits へ振り分け済み
       limits: _,
     } = scripts;
-    let constants = ScriptConstants::new(&self.shaper, font_size);
+    let constants = ScriptConstants::new(&self.shaper, font_size)?;
     let base = self.detach(base)?;
     let superscript = superscript.map(|nodes| return self.detach(nodes)).transpose()?;
     let subscript = subscript.map(|nodes| return self.detach(nodes)).transpose()?;
 
     let (sup_shift, sub_shift) = match (&superscript, &subscript) {
       (Some(sup), Some(sub)) => constants.separate(
-        constants.superscript_shift(base.ink_height, sup.ink_depth, cramped),
+        constants.superscript_shift(base.ink_height, sup.ink_depth, cramped)?,
         sup.ink_depth,
-        constants.subscript_shift(base.ink_depth, sub.ink_height),
+        constants.subscript_shift(base.ink_depth, sub.ink_height)?,
         sub.ink_height,
-      ),
-      (Some(sup), None) => (constants.superscript_shift(base.ink_height, sup.ink_depth, cramped), Length::ZERO),
-      (None, Some(sub)) => (Length::ZERO, constants.subscript_shift(base.ink_depth, sub.ink_height)),
+      )?,
+      (Some(sup), None) => (constants.superscript_shift(base.ink_height, sup.ink_depth, cramped)?, Length::ZERO),
+      (None, Some(sub)) => (Length::ZERO, constants.subscript_shift(base.ink_depth, sub.ink_height)?),
       (None, None) => unreachable!(
         "MathScripts を作るのは spacing::attach だけで、attach は片側を必ず埋めるので少なくとも一方は Some"
       ),
     };
 
     let correction = base.trailing_correction;
-    let base_end = *dx + base.width;
-    translate_into(out, base.boxes, *dx, dy);
+    let base_end = dx.try_add(base.width)?;
+    translate_into(out, base.boxes, *dx, dy)?;
     let mut end = base_end;
     if let Some(sup) = superscript {
       let kern = self.cut_in(
@@ -460,10 +497,10 @@ impl Measurer<'_> {
         sup.leading_glyph,
         MathKernCorner::BottomLeft,
         sup_shift,
-      );
-      let sup_x = base_end + kern;
-      end = end.max(sup_x + sup.width);
-      translate_into(out, sup.boxes, sup_x, dy + sup_shift);
+      )?;
+      let sup_x = base_end.try_add(kern)?;
+      end = end.max(sup_x.try_add(sup.width)?);
+      translate_into(out, sup.boxes, sup_x, dy.try_add(sup_shift)?)?;
     }
     if let Some(sub) = subscript {
       let kern = self.cut_in(
@@ -472,12 +509,12 @@ impl Measurer<'_> {
         sub.leading_glyph,
         MathKernCorner::TopLeft,
         -sub_shift,
-      );
-      let sub_x = base_end - correction + kern;
-      end = end.max(sub_x + sub.width);
-      translate_into(out, sub.boxes, sub_x, dy - sub_shift);
+      )?;
+      let sub_x = base_end.try_sub(correction)?.try_add(kern)?;
+      end = end.max(sub_x.try_add(sub.width)?);
+      translate_into(out, sub.boxes, sub_x, dy.try_sub(sub_shift)?)?;
     }
-    *dx = end + constants.space_after_script;
+    *dx = end.try_add(constants.space_after_script)?;
     return Ok(());
   }
 
@@ -520,7 +557,7 @@ impl Measurer<'_> {
     if let ArrangedNode::Prose(text, style) = node {
       let list = self.prose_list(&text, style)?;
       let (leading, trailing) = list.edges();
-      *dx += aki_width(*edge, leading.in_math());
+      *dx = dx.try_add(aki_width(*edge, leading.in_math()))?;
       text_run::place_prose(list, dy, dx, out)?;
       *edge = trailing.in_math();
       return Ok(());
@@ -530,7 +567,7 @@ impl Measurer<'_> {
     } else {
       Edge::letter(BOX_EDGE_CHAR).in_math()
     };
-    *dx += aki_width(*edge, next);
+    *dx = dx.try_add(aki_width(*edge, next))?;
     *edge = next;
     return self.place_arranged_node(node, dy, dx, out);
   }
@@ -552,20 +589,20 @@ impl Measurer<'_> {
         for hbox in self.shaper.shape_text(&text, style)? {
           let width = hbox.width;
           out.push(PlacedHBox { hbox, dx: *dx, dy });
-          *dx += width;
+          *dx = dx.try_add(width)?;
         }
       },
       ArrangedNode::Prose(..) => {
         unreachable!("数式内の文章は place_arranged_child が端の約物アキと一緒に置く");
       },
       ArrangedNode::Kern { length } => {
-        *dx += length;
+        *dx = dx.try_add(length)?;
       },
       ArrangedNode::Quantity(pieces, style) => {
         let hbox = self.quantity_box(&pieces, style)?;
         let width = hbox.width;
         out.push(PlacedHBox { hbox, dx: *dx, dy });
-        *dx += width;
+        *dx = dx.try_add(width)?;
       },
       ArrangedNode::Scripts(scripts) => {
         if scripts.limits {
@@ -639,13 +676,18 @@ impl Measurer<'_> {
       if yields_glyphs && index == 0 {
         leading_glyph = own
           .first()
-          .and_then(|placed| return self.shaper.placed_math_char(placed, shaping::first_cluster))
+          .map(|placed| return self.shaper.placed_math_char(placed, shaping::first_cluster))
+          .transpose()?
+          .flatten()
           .map(|(glyph, _)| return glyph);
       }
       if yields_glyphs
         && index == last
-        && let Some((glyph, correction)) =
-          own.last().and_then(|placed| return self.shaper.placed_math_char(placed, trailing_char))
+        && let Some((glyph, correction)) = own
+          .last()
+          .map(|placed| return self.shaper.placed_math_char(placed, trailing_char))
+          .transpose()?
+          .flatten()
       {
         trailing_glyph = Some(glyph);
         trailing_correction = if operator_name {
@@ -656,7 +698,7 @@ impl Measurer<'_> {
       }
       boxes.append(&mut own);
     }
-    let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes);
+    let (ink_height, ink_depth) = self.shaper.ink_extent(&boxes)?;
     return Ok(Detached {
       boxes,
       width,
@@ -677,6 +719,10 @@ impl Measurer<'_> {
   /// グリフのベースラインは基底のベースラインから `Detached` の高さぶん、スクリプトのグリフのベースラインはスクリプトの
   /// ベースライン（基底のベースラインから `script_baseline` 上）からさらにその高さぶん上にある。どちらかのグリフが無い
   /// （基底が 1 字でない・箱・空・数式フォント以外）か、インクを読めないときは 0。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
   fn cut_in(
     &self,
     base_glyph: Option<(u32, Length, Length)>,
@@ -684,40 +730,53 @@ impl Measurer<'_> {
     script_glyph: Option<(u32, Length, Length)>,
     script_corner: MathKernCorner,
     script_baseline: Length,
-  ) -> Length {
+  ) -> Result<Length, LengthOverflow> {
     let (Some((base_gid, base_size, base_rise)), Some((script_gid, script_size, script_rise))) =
       (base_glyph, script_glyph)
     else {
-      return Length::ZERO;
+      return Ok(Length::ZERO);
     };
-    let (Some(base_ink), Some(script_ink)) =
-      (self.shaper.math_glyph_ink(base_gid, base_size), self.shaper.math_glyph_ink(script_gid, script_size))
-    else {
-      return Length::ZERO;
+    let (Some(base_ink), Some(script_ink)) = (
+      self.shaper.math_glyph_ink(base_gid, base_size)?,
+      self.shaper.math_glyph_ink(script_gid, script_size)?,
+    ) else {
+      return Ok(Length::ZERO);
     };
-    let heights = [
-      base_rise + corner_edge(base_ink, base_corner),
-      script_baseline + script_rise + corner_edge(script_ink, script_corner),
-    ];
-    let [first, second] = heights.map(|height| {
-      return self.shaper.math_kern(base_gid, base_size, base_corner, height - base_rise)
-        + self
-          .shaper
-          .math_kern(script_gid, script_size, script_corner, height - script_baseline - script_rise);
-    });
-    return first.min(second);
+    let kern_at = |height: Length| -> Result<Length, LengthOverflow> {
+      return self.shaper.math_kern(base_gid, base_size, base_corner, height.try_sub(base_rise)?)?.try_add(
+        self.shaper.math_kern(
+          script_gid,
+          script_size,
+          script_corner,
+          height.try_sub(script_baseline)?.try_sub(script_rise)?,
+        )?,
+      );
+    };
+    let first = kern_at(base_rise.try_add(corner_edge(base_ink, base_corner))?)?;
+    let second = kern_at(script_baseline.try_add(script_rise)?.try_add(corner_edge(script_ink, script_corner))?)?;
+    return Ok(first.min(second));
   }
 }
 
 /// 原点基準で配置した箱を (`dx`, `dy`) だけずらして `out` へ移す
-fn translate_into(out: &mut Vec<PlacedHBox>, boxes: Vec<PlacedHBox>, dx: Length, dy: Length) {
-  out.extend(boxes.into_iter().map(|placed| {
-    return PlacedHBox {
+///
+/// # Errors
+///
+/// ずらした位置が値域を超えたら [`LengthOverflow`]。
+fn translate_into(
+  out: &mut Vec<PlacedHBox>,
+  boxes: Vec<PlacedHBox>,
+  dx: Length,
+  dy: Length,
+) -> Result<(), LengthOverflow> {
+  for placed in boxes {
+    out.push(PlacedHBox {
       hbox: placed.hbox,
-      dx: placed.dx + dx,
-      dy: placed.dy + dy,
-    };
-  }));
+      dx: placed.dx.try_add(dx)?,
+      dy: placed.dy.try_add(dy)?,
+    });
+  }
+  return Ok(());
 }
 
 /// グリフのインクの上端と下端 `ink` のうち、math kern の隅 `corner` の側の端
@@ -754,22 +813,22 @@ mod tests {
 
     assert_eq!(
       c.superscript_shift(Length::pt(479.0), Length::ZERO, false),
-      Length::pt(360.0),
+      Ok(Length::pt(360.0)),
       "短い基底は標準のシフト"
     );
     assert_eq!(
       c.superscript_shift(Length::pt(479.0), Length::ZERO, true),
-      Length::pt(252.0),
+      Ok(Length::pt(252.0)),
       "cramped は低いシフト"
     );
     assert_eq!(
       c.superscript_shift(Length::pt(736.0), Length::ZERO, false),
-      Length::pt(506.0),
+      Ok(Length::pt(506.0)),
       "背の高い基底は 基底の高さ − 降下の上限"
     );
     assert_eq!(
       c.superscript_shift(Length::ZERO, Length::pt(300.0), false),
-      Length::pt(420.0),
+      Ok(Length::pt(420.0)),
       "深い上付きは底を下限に揃える"
     );
   }
@@ -778,17 +837,30 @@ mod tests {
   fn subscript_shift_takes_the_largest_of_the_three_rules() {
     let c = constants();
 
-    assert_eq!(c.subscript_shift(Length::pt(10.0), Length::pt(400.0)), Length::pt(210.0), "短い基底は標準のシフト");
+    assert_eq!(
+      c.subscript_shift(Length::pt(10.0), Length::pt(400.0)),
+      Ok(Length::pt(210.0)),
+      "短い基底は標準のシフト"
+    );
     assert_eq!(
       c.subscript_shift(Length::pt(196.0), Length::ZERO),
-      Length::pt(356.0),
+      Ok(Length::pt(356.0)),
       "深い基底は 基底の深さ + 降下の下限"
     );
     assert_eq!(
       c.subscript_shift(Length::ZERO, Length::pt(700.0)),
-      Length::pt(332.0),
+      Ok(Length::pt(332.0)),
       "背の高い下付きは頂を上限に揃える"
     );
+  }
+
+  #[test]
+  fn shifts_beyond_the_representable_range_are_errors() {
+    let c = constants();
+    let huge = Length::from_sp(i64::MAX);
+
+    assert_eq!(c.superscript_shift(-huge, Length::ZERO, false), Err(LengthOverflow));
+    assert_eq!(c.subscript_shift(huge, Length::ZERO), Err(LengthOverflow));
   }
 
   #[test]
@@ -796,7 +868,7 @@ mod tests {
     // 上付きの底 360・下付きの頂 200 − 210 = −10 → ギャップ 370
     let shifts = constants().separate(Length::pt(360.0), Length::ZERO, Length::pt(210.0), Length::pt(200.0));
 
-    assert_eq!(shifts, (Length::pt(360.0), Length::pt(210.0)));
+    assert_eq!(shifts, Ok((Length::pt(360.0), Length::pt(210.0))));
   }
 
   #[test]
@@ -804,7 +876,7 @@ mod tests {
     // 上付きの底 360・下付きの頂 503 − 210 = 293 → ギャップ 67・不足 83。上付きは底 380 までの 20、残り 63 は下付き
     let shifts = constants().separate(Length::pt(360.0), Length::ZERO, Length::pt(210.0), Length::pt(503.0));
 
-    assert_eq!(shifts, (Length::pt(380.0), Length::pt(273.0)));
+    assert_eq!(shifts, Ok((Length::pt(380.0), Length::pt(273.0))));
   }
 
   #[test]
@@ -812,6 +884,6 @@ mod tests {
     // 上付きの底 400 は上限 380 より上なので上付きは動かさず、不足 43 をすべて下付きへ
     let shifts = constants().separate(Length::pt(400.0), Length::ZERO, Length::pt(210.0), Length::pt(503.0));
 
-    assert_eq!(shifts, (Length::pt(400.0), Length::pt(253.0)));
+    assert_eq!(shifts, Ok((Length::pt(400.0), Length::pt(253.0))));
   }
 }

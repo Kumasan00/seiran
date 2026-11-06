@@ -38,24 +38,36 @@ struct LimitConstants {
 
 impl LimitConstants {
   /// 数式フォントの MATH 定数を `font_size` で長さへ換算する
-  fn new(shaper: &Shaper<'_>, font_size: Length) -> Self {
+  ///
+  /// # Errors
+  ///
+  /// 換算した長さが値域を超えたら [`LengthOverflow`]。
+  fn new(shaper: &Shaper<'_>, font_size: Length) -> Result<Self, LengthOverflow> {
     let at = |constant: MathConstant| return shaper.math_constant(constant, font_size);
-    return LimitConstants {
-      upper_gap: at(MathConstant::UpperLimitGapMin),
-      upper_baseline_rise: at(MathConstant::UpperLimitBaselineRiseMin),
-      lower_gap: at(MathConstant::LowerLimitGapMin),
-      lower_baseline_drop: at(MathConstant::LowerLimitBaselineDropMin),
-    };
+    return Ok(LimitConstants {
+      upper_gap: at(MathConstant::UpperLimitGapMin)?,
+      upper_baseline_rise: at(MathConstant::UpperLimitBaselineRiseMin)?,
+      lower_gap: at(MathConstant::LowerLimitGapMin)?,
+      lower_baseline_drop: at(MathConstant::LowerLimitBaselineDropMin)?,
+    });
   }
 
   /// 上限のベースラインを基底のベースラインから上げる量（基底のインクの頂 + `OverShift`）
-  fn over_shift(&self, base_ink_height: Length, over_ink_depth: Length) -> Length {
-    return base_ink_height + self.upper_baseline_rise.max(self.upper_gap + over_ink_depth);
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn over_shift(&self, base_ink_height: Length, over_ink_depth: Length) -> Result<Length, LengthOverflow> {
+    return base_ink_height.try_add(self.upper_baseline_rise.max(self.upper_gap.try_add(over_ink_depth)?));
   }
 
   /// 下限のベースラインを基底のベースラインから下げる量（基底のインクの底 + `UnderShift`）
-  fn under_shift(&self, base_ink_depth: Length, under_ink_height: Length) -> Length {
-    return base_ink_depth + self.lower_baseline_drop.max(self.lower_gap + under_ink_height);
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn under_shift(&self, base_ink_depth: Length, under_ink_height: Length) -> Result<Length, LengthOverflow> {
+    return base_ink_depth.try_add(self.lower_baseline_drop.max(self.lower_gap.try_add(under_ink_height)?));
   }
 }
 
@@ -64,22 +76,33 @@ impl LimitConstants {
 ///
 /// 3 つの中央を揃え、上限は `italic_correction` の半分だけ右へ、下限は半分だけ左へずらす。位置は 3 つの横の広がりの
 /// 和集合の左端を 0 とし、上限・下限の位置は送り幅が `Some` のときだけ `Some`。
+///
+/// # Errors
+///
+/// 位置や幅が値域を超えたら [`LengthOverflow`]。
 fn limit_columns(
   base_width: Length,
   over_width: Option<Length>,
   under_width: Option<Length>,
   italic_correction: Length,
-) -> (Length, Option<Length>, Option<Length>, Length) {
-  let half_correction = italic_correction / 2.0f64;
+) -> Result<(Length, Option<Length>, Option<Length>, Length), LengthOverflow> {
+  let half_correction = italic_correction.try_div(2.0f64)?;
   // 基底の中央を 0 とした、各部品の左端と送り幅
-  let base = (-(base_width / 2.0f64), base_width);
-  let over = over_width.map(|width| return (half_correction - width / 2.0f64, width));
-  let under = under_width.map(|width| return (-half_correction - width / 2.0f64, width));
+  let base = (-base_width.try_div(2.0f64)?, base_width);
+  let over = over_width
+    .map(|width| return Ok((half_correction.try_sub(width.try_div(2.0f64)?)?, width)))
+    .transpose()?;
+  let under = under_width
+    .map(|width| return Ok(((-half_correction).try_sub(width.try_div(2.0f64)?)?, width)))
+    .transpose()?;
   let parts = [Some(base), over, under];
   let left = parts.iter().flatten().map(|&(left, _)| return left).fold(base.0, Length::min);
-  let right = parts.iter().flatten().map(|&(left, width)| return left + width).fold(base.0 + base.1, Length::max);
-  let column = |(part_left, _): (Length, Length)| return part_left - left;
-  return (column(base), over.map(column), under.map(column), right - left);
+  let mut right = base.0.try_add(base.1)?;
+  for &(part_left, width) in parts.iter().flatten() {
+    right = right.max(part_left.try_add(width)?);
+  }
+  let column = |(part_left, _): (Length, Length)| return part_left.try_sub(left);
+  return Ok((column(base)?, over.map(column).transpose()?, under.map(column).transpose()?, right.try_sub(left)?));
 }
 
 impl Measurer<'_> {
@@ -106,7 +129,7 @@ impl Measurer<'_> {
       // place_atom_node が limits の真のものだけをここへ振り分ける
       limits: _,
     } = scripts;
-    let constants = LimitConstants::new(&self.shaper, font_size);
+    let constants = LimitConstants::new(&self.shaper, font_size)?;
     let base = self.detach(base)?;
     let over = superscript.map(|nodes| return self.detach(nodes)).transpose()?;
     let under = subscript.map(|nodes| return self.detach(nodes)).transpose()?;
@@ -116,19 +139,19 @@ impl Measurer<'_> {
       over.as_ref().map(|part| return part.width),
       under.as_ref().map(|part| return part.width),
       correction,
-    );
+    )?;
 
-    math::translate_into(out, base.boxes, *dx + base_x, dy);
+    math::translate_into(out, base.boxes, dx.try_add(base_x)?, dy)?;
     // 上限・下限の位置は送り幅を渡した側だけ Some なので、zip は部品の有無と一致する
     if let Some((over, over_x)) = over.zip(over_x) {
-      let shift = constants.over_shift(base.ink_height, over.ink_depth);
-      math::translate_into(out, over.boxes, *dx + over_x, dy + shift);
+      let shift = constants.over_shift(base.ink_height, over.ink_depth)?;
+      math::translate_into(out, over.boxes, dx.try_add(over_x)?, dy.try_add(shift)?)?;
     }
     if let Some((under, under_x)) = under.zip(under_x) {
-      let shift = constants.under_shift(base.ink_depth, under.ink_height);
-      math::translate_into(out, under.boxes, *dx + under_x, dy - shift);
+      let shift = constants.under_shift(base.ink_depth, under.ink_height)?;
+      math::translate_into(out, under.boxes, dx.try_add(under_x)?, dy.try_sub(shift)?)?;
     }
-    *dx += width;
+    *dx = dx.try_add(width)?;
     return Ok(());
   }
 }
@@ -151,10 +174,14 @@ mod tests {
   fn over_shift_takes_the_larger_of_the_rise_and_the_gap() {
     let c = constants();
 
-    assert_eq!(c.over_shift(Length::pt(782.0), Length::ZERO), Length::pt(1082.0), "浅い上限は 頂 + 上昇の下限 300");
+    assert_eq!(
+      c.over_shift(Length::pt(782.0), Length::ZERO),
+      Ok(Length::pt(1082.0)),
+      "浅い上限は 頂 + 上昇の下限 300"
+    );
     assert_eq!(
       c.over_shift(Length::pt(782.0), Length::pt(200.0)),
-      Length::pt(1117.0),
+      Ok(Length::pt(1117.0)),
       "深い上限は 頂 + ギャップ 135 + 深さ 200"
     );
   }
@@ -165,19 +192,20 @@ mod tests {
 
     assert_eq!(
       c.under_shift(Length::pt(248.0), Length::pt(479.0)),
-      Length::pt(918.0),
+      Ok(Length::pt(918.0)),
       "低い下限は 底 + 降下の下限 670"
     );
     assert_eq!(
       c.under_shift(Length::pt(248.0), Length::pt(600.0)),
-      Length::pt(983.0),
+      Ok(Length::pt(983.0)),
       "背の高い下限は 底 + ギャップ 135 + 高さ 600"
     );
   }
 
   #[test]
   fn limit_columns_center_all_parts_without_italic_correction() {
-    let columns = limit_columns(Length::pt(1000.0), Some(Length::pt(500.0)), Some(Length::pt(1500.0)), Length::ZERO);
+    let columns = limit_columns(Length::pt(1000.0), Some(Length::pt(500.0)), Some(Length::pt(1500.0)), Length::ZERO)
+      .expect("テストの寸法は範囲内");
 
     assert_eq!(
       columns,
@@ -190,7 +218,8 @@ mod tests {
   fn limit_columns_shift_limits_by_half_the_italic_correction() {
     // 中央は 基底 0・上限 +100・下限 −100。左端 −600・右端 +600
     let columns =
-      limit_columns(Length::pt(1000.0), Some(Length::pt(1000.0)), Some(Length::pt(1000.0)), Length::pt(200.0));
+      limit_columns(Length::pt(1000.0), Some(Length::pt(1000.0)), Some(Length::pt(1000.0)), Length::pt(200.0))
+        .expect("テストの寸法は範囲内");
 
     assert_eq!(
       columns,
@@ -201,7 +230,8 @@ mod tests {
 
   #[test]
   fn limit_columns_skip_a_missing_limit() {
-    let columns = limit_columns(Length::pt(1000.0), None, Some(Length::pt(400.0)), Length::ZERO);
+    let columns =
+      limit_columns(Length::pt(1000.0), None, Some(Length::pt(400.0)), Length::ZERO).expect("テストの寸法は範囲内");
 
     assert_eq!(columns, (Length::ZERO, None, Some(Length::pt(300.0)), Length::pt(1000.0)));
   }

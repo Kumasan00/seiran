@@ -61,7 +61,7 @@ impl Measurer<'_> {
     for piece in pieces {
       match piece {
         QuantityPiece::Text(text) => self.place_quantity_text(text, style, Length::ZERO, &mut dx, &mut placed)?,
-        QuantityPiece::Space(space) => dx = dx.try_add(math::space_width(*space, style.font_size))?,
+        QuantityPiece::Space(space) => dx = dx.try_add(math::space_width(*space, style.font_size)?)?,
         QuantityPiece::Superscript(text) => {
           let (superscript, raise) = self.quantity_superscript(style)?;
           self.place_quantity_text(text, superscript, raise, &mut dx, &mut placed)?;
@@ -95,11 +95,11 @@ impl Measurer<'_> {
   fn quantity_superscript(&self, style: TextStyle) -> Result<(TextStyle, Length), LengthOverflow> {
     if style.typeface == Typeface::Math {
       let superscript = TextStyle {
-        font_size: self.shaper.script_scale().font_size(style.font_size, Some(ScriptLevel::Script)),
+        font_size: self.shaper.script_scale().font_size(style.font_size, Some(ScriptLevel::Script))?,
         script_level: Some(ScriptLevel::Script),
         ..style
       };
-      return Ok((superscript, self.shaper.math_constant(MathConstant::SuperscriptShiftUp, style.font_size)));
+      return Ok((superscript, self.shaper.math_constant(MathConstant::SuperscriptShiftUp, style.font_size)?));
     }
     let face = FontFace::primary(quantity_font_type(style.typeface));
     let metrics = self.shaper.superscript_metrics(face).expect(
@@ -276,8 +276,8 @@ mod tests {
     let hbox = quantity_box(&fonts, &[text("10"), QuantityPiece::Superscript("3".to_string())], Typeface::Math);
 
     let exponent = children(&hbox).last().expect("指数の箱があるはず");
-    assert_eq!(exponent.dy, shaper.math_constant(MathConstant::SuperscriptShiftUp, SIZE));
-    assert_eq!(run_font_size(&exponent.hbox), shaper.script_scale().font_size(SIZE, Some(ScriptLevel::Script)));
+    assert_eq!(Ok(exponent.dy), shaper.math_constant(MathConstant::SuperscriptShiftUp, SIZE));
+    assert_eq!(Ok(run_font_size(&exponent.hbox)), shaper.script_scale().font_size(SIZE, Some(ScriptLevel::Script)));
   }
 
   #[test]
