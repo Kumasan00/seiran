@@ -92,8 +92,7 @@ pub(super) fn place_running_content(
   page_labels: PageLabels,
 ) -> Result<(), ElementOverflow> {
   let spec =
-    build_running_spec(ctx.style, &ctx.config.document, ctx.geometry.text_width(), ctx.config.pdf.height, page_labels)
-      .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+    build_running_spec(ctx.style, &ctx.config.document, ctx.geometry.text_width(), ctx.config.pdf.height, page_labels);
   if spec.header.is_none() && spec.footer.is_none() {
     return Ok(());
   }
@@ -119,20 +118,19 @@ pub(super) fn place_running_content(
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様を組み立てる。
-///
-/// # Errors
-///
-/// フッターの基準線がページの高さから引いて長さの値域に収まらないとき [`LengthOverflow`]。
 fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
   text_width: Length,
   page_height: Length,
   page_labels: PageLabels,
-) -> Result<RunningContentSpec, LengthOverflow> {
-  return Ok(RunningContentSpec {
+) -> RunningContentSpec {
+  let Ok(footer_baseline_y) = page_height.try_sub(style.footer.baseline_offset) else {
+    unreachable!("用紙高は正（config の garde）で baseline_offset は非負（style の garde）なので、差は値域に収まる");
+  };
+  return RunningContentSpec {
     header: running_slots(&style.header, style.header.baseline_offset, true),
-    footer: running_slots(&style.footer, page_height.try_sub(style.footer.baseline_offset)?, false),
+    footer: running_slots(&style.footer, footer_baseline_y, false),
     metadata: RunningMetadata {
       title: document.title.clone().unwrap_or_default(),
       author: document.author.clone().unwrap_or_default(),
@@ -141,7 +139,7 @@ fn build_running_spec(
     text_width,
     page_numbers: page_labels.into_vec(),
     skip_first: style.title_page.enabled,
-  });
+  };
 }
 
 /// `RunningContentStyle` を配置用の [`RunningSlots`] に変換する。

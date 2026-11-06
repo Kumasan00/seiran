@@ -477,6 +477,20 @@ fn diagnostic_dimension_overflow_from_line_height_factor() {
 }
 
 #[test]
+fn diagnostic_dimension_overflow_from_footnote_marker_size() {
+  // 倍率は正の有限値として検証を通るが、マーカーの大きさ（本文の大きさ × 倍率）が値域を超える
+  let source = "a\\footnote{b}\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "footnote", "marker_size_factor", 3e38))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\footnote");
+}
+
+#[test]
 fn diagnostic_dimension_overflow_from_image_aspect_ratio() {
   // testimage4.png は 1200×800。高さ 1e14pt から推論する幅 1.5e14pt が値域を超える
   let source = "\\begin{figure}\n\\image[height=100000000000000pt]{./tests/image/testimage4.png}\n\\end{figure}\n";

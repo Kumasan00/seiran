@@ -114,12 +114,13 @@ impl TableBoundary {
     if !thickness.is_positive() || bands.is_empty() {
       return Ok(Self::default());
     }
+    let double_trim = trim.try_mul(2)?;
     let mut rules = Vec::new();
     for &(x, width) in bands {
       let rule = PlacedTableRule {
         x: x.try_add(trim)?,
         y: gap_above,
-        width: width.try_sub(trim.try_mul(2)?)?,
+        width: width.try_sub(double_trim)?,
         height: thickness,
         color,
       };

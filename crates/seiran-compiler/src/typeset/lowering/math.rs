@@ -380,7 +380,7 @@ fn push_resolved(
 
 /// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`）を解決する
 ///
-/// セルは字形 variant を継いだ `list` で解決し、行間・列間は style.toml の値を `gap_scale` と一緒に渡す（掛けるのは配置段）。
+/// セルは字形 variant を継いだ `list` で解決し、行間・列間は style.toml の値を `gap_scale` と一緒に渡す。
 fn resolve_array(
   rows: &[Vec<Vec<HirMath>>],
   delimiters: DelimiterGlyphs,

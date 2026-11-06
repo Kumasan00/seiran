@@ -278,6 +278,7 @@ fn break_subparagraph(
       _ => None,
     };
     let line = build_line(refs, brk.is_end, text_width, TextAlignment::Justify, open_links, trailing_hyphen)?;
+    let width = line.width()?;
     // `line_index` はサブ段落内の連番（強制改行ごとに 0 へ戻る）。段落通し番号ではない
     trace!(
       line_index,
@@ -286,7 +287,7 @@ fn break_subparagraph(
       is_hyphenated = brk.hyphen,
       is_math_break = brk.math_penalty.is_some(),
       badness = best_badness[node],
-      width_pt = ?line.width().map(Length::to_pt),
+      width_pt = %width.to_pt(),
       text = observe::summarize_line(&line),
       "行を確定"
     );

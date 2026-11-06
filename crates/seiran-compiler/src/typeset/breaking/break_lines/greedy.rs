@@ -37,7 +37,7 @@ impl LineBreaker for GreedyBreaker {
       match item {
         HItem::ForcedBreak => {
           let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None)?;
-          push_line(&mut lines, line, true, false);
+          push_line(&mut lines, line, true, false)?;
           buffer.clear();
           width_so_far = Length::ZERO;
           last_break = None;
@@ -94,7 +94,7 @@ impl LineBreaker for GreedyBreaker {
             };
             let line =
               build_line(&buffer[..break_index], false, text_width, alignment, &mut open_links, trailing_hyphen)?;
-            push_line(&mut lines, line, false, trailing_hyphen.is_some());
+            push_line(&mut lines, line, false, trailing_hyphen.is_some())?;
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
             while matches!(
@@ -120,7 +120,7 @@ impl LineBreaker for GreedyBreaker {
 
     if !buffer.is_empty() || lines.is_empty() {
       let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None)?;
-      push_line(&mut lines, line, true, false);
+      push_line(&mut lines, line, true, false)?;
     }
     return Ok(lines);
   }
@@ -129,16 +129,22 @@ impl LineBreaker for GreedyBreaker {
 /// 確定した行を積み、TRACE へ出す
 ///
 /// `line_index` は段落内の連番（0 起点。強制改行でもリセットしない）。
-fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) {
+///
+/// # Errors
+///
+/// 行の幅が長さの値域に収まらないとき [`LengthOverflow`]。
+fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) -> Result<(), LengthOverflow> {
+  let width = line.width()?;
   trace!(
     line_index = lines.len(),
     is_last,
     is_hyphenated = hyphen,
-    width_pt = ?line.width().map(Length::to_pt),
+    width_pt = %width.to_pt(),
     text = observe::summarize_line(&line),
     "貪欲法で行を確定"
   );
   lines.push(line);
+  return Ok(());
 }
 
 #[cfg(test)]
