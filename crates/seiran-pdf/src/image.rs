@@ -69,19 +69,23 @@ type RasterDecoder = fn(Data, bool) -> Result<Image, String>;
 const INTERPOLATE: bool = false;
 
 /// ラスタ画像を必要なら `resize_to` 以下に縮小してから、krilla の `decode` でデコードする。
+///
+/// 縮小しないときは読み込み済みのバイト列を複製せず共有したまま渡す。
 fn load_raster(
   path: &str,
-  bytes: &[u8],
+  bytes: &Arc<[u8]>,
   resize_to: Option<(u32, u32)>,
   reencode_as: image::ImageFormat,
   decode: RasterDecoder,
 ) -> Result<LoadedImage, PdfRenderError> {
-  let bytes: Vec<u8> = if let Some(target) = resize_to {
-    downsample_raster(bytes, target, reencode_as, path)?
+  let data = if let Some(target) = resize_to {
+    Data::from(downsample_raster(bytes, target, reencode_as, path)?)
   } else {
-    bytes.to_vec()
+    // `Arc<[u8]>` を 1 段包むと krilla の `Data` が受け取る Sized な `AsRef<[u8]>` になり、複製しない
+    let shared: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(Arc::clone(bytes));
+    Data::from(shared)
   };
-  let image = decode(bytes.into(), INTERPOLATE).map_err(|reason| {
+  let image = decode(data, INTERPOLATE).map_err(|reason| {
     return PdfRenderError::DecodeImage {
       path: path.to_string(),
       reason,
@@ -247,6 +251,30 @@ mod tests {
         "{format:?} は DecodeImage になるはず"
       );
     }
+  }
+
+  #[test]
+  fn load_image_shares_unresized_raster_bytes_without_copying() {
+    // krilla は JPEG を DCTDecode でそのまま埋め込むので、返した `Image` が生きている間は渡した `Data` を保持する。
+    // PNG も同じ `load_raster` の分岐を通るが、別スレッドのデコード後に `Data` を手放すので参照数が定まらない
+    let bytes = raster_bytes(image::ImageFormat::Jpeg, 3, 2);
+
+    let loaded =
+      load_image("figure.jpg", ImageFormat::Jpeg, &bytes, None, &svg_parser()).expect("有効な JPEG は読めるはず");
+
+    assert_eq!(Arc::strong_count(&bytes), 2, "未縮小の JPEG は元のバイト列を共有するはず");
+    drop(loaded);
+  }
+
+  #[test]
+  fn load_image_does_not_retain_source_bytes_when_downsampling() {
+    let bytes = raster_bytes(image::ImageFormat::Jpeg, 4, 4);
+
+    let loaded =
+      load_image("big.jpg", ImageFormat::Jpeg, &bytes, Some((2, 2)), &svg_parser()).expect("縮小して読めるはず");
+
+    assert_eq!(Arc::strong_count(&bytes), 1, "縮小後の画像は再エンコードしたバイト列だけを持つはず");
+    drop(loaded);
   }
 
   /// `width` x `height` の RGB ラスタ画像を `format` でエンコードしたバイト列を返す。
