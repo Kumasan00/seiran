@@ -131,7 +131,10 @@ pub(crate) fn resize_target(format: ImageFormat, bytes: &[u8], target: (f32, f32
     ImageFormat::Svg | ImageFormat::Pdf => return None,
   };
   let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().ok()?;
-  #[expect(clippy::cast_precision_loss, reason = "ピクセル寸法（u32）は f32 の仮数部に収まる")]
+  #[expect(
+    clippy::cast_precision_loss,
+    reason = "f32 で正確なのは 2^24 px までで、それを超える寸法の丸め（相対 2^-24 以下）が判定を変えるのは目標との差がその幅に収まるときだけ"
+  )]
   let exceeds = width as f32 > target.0 || height as f32 > target.1;
   if !exceeds {
     return None;
@@ -318,7 +321,17 @@ mod tests {
   #[test]
   fn resize_target_leaves_unreadable_raster_to_the_unresized_load() {
     for (format, _) in RASTER_FORMATS {
-      assert_eq!(resize_target(format, b"not an image", (2.0, 2.0)), None, "{format:?}");
+      let bytes: Arc<[u8]> = Arc::from(&b"not an image"[..]);
+
+      let resize_to = resize_target(format, &bytes, (2.0, 2.0));
+      let result = load_image("broken.img", format, &bytes, resize_to, &svg_parser());
+
+      assert_eq!(resize_to, None, "{format:?}");
+      // 縮小段階の ResizeImage ではなく、未縮小の読込で krilla が出す DecodeImage になる
+      assert!(
+        matches!(result, Err(PdfRenderError::DecodeImage { path, .. }) if path == "broken.img"),
+        "{format:?}"
+      );
     }
   }
 

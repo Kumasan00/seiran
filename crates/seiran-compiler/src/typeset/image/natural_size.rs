@@ -64,7 +64,10 @@ pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) 
 ///
 /// EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値をそのまま使うため、
 /// 適用すると組版時の自然寸法と描画時の解釈がずれる。
-#[expect(clippy::cast_precision_loss, reason = "ピクセル寸法（u32）は f32 の仮数部に収まる")]
+#[expect(
+  clippy::cast_precision_loss,
+  reason = "f32 で正確なのは 2^24 px までで、それを超える寸法の丸め（相対 2^-24 以下）は縦横比と表示寸法に見える差を生まない"
+)]
 fn raster_size(path: &str, bytes: &[u8], format: image::ImageFormat) -> Result<(f32, f32), TypesetError> {
   let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().map_err(|source| {
     return TypesetError::DecodeImage {
