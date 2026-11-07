@@ -2,7 +2,7 @@
 // 大きすぎると debug ビルドの Lanczos3 縮小が CI 時間を支配し（縮小前は 5 枚で計 32MB・
 // pdf_structure golden 1 本で約 55 秒）、小さすぎると検証が空振りする。差し替え時の制約は 2 つ。
 //
-// 1. 縮小経路を通し続ける — seiran-pdf::render::draw_image は
+// 1. 縮小経路を通し続ける — seiran-pdf::image::resize_target は
 //    「幅 or 高さのどちらかが目標ピクセル数を超える」ときだけ縮小する。目標は
 //    表示寸法 × dpi（既定 max_dpi=300、testimage3 のみ per-image の dpi=600）。
 //    testimage1 1252x830（目標 945x709）/ testimage2 1000x1500（945x1417）/

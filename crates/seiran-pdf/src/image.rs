@@ -1,7 +1,8 @@
 //! 画像のデコード（PNG / JPEG / SVG / PDF）とラスタ画像のダウンサンプリングを行う。
 
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
 
+use image::ImageReader;
 use krilla::{
   Data,
   image::Image,
@@ -109,13 +110,41 @@ fn downsample_raster(
   })?;
   let resized = img.resize(target_px.0, target_px.1, image::imageops::FilterType::Lanczos3);
   let mut out: Vec<u8> = Vec::new();
-  resized.write_to(&mut std::io::Cursor::new(&mut out), format).map_err(|source| {
+  resized.write_to(&mut Cursor::new(&mut out), format).map_err(|source| {
     return PdfRenderError::ResizeImage {
       path: path.to_string(),
       source,
     };
   })?;
   return Ok(out);
+}
+
+/// ラスタ画像を `target`（[`required_pixels`] の値）以下へ縮小するなら、その目標ピクセル寸法を返す。
+///
+/// 寸法ヘッダ（PNG は `IHDR`、JPEG は `SOF`）だけを読み、画素はデコードしない。EXIF の Orientation は
+/// 適用しない（krilla も寸法ヘッダの値で描く）。ヘッダを読めないときは `None` を返す — 同じバイト列は続く
+/// 未縮小の [`load_image`] で krilla が同じデコーダ（`png` / `zune-jpeg`）で拒否し、そこで診断になる。
+pub(crate) fn resize_target(format: ImageFormat, bytes: &[u8], target: (f32, f32)) -> Option<(u32, u32)> {
+  let format = match format {
+    ImageFormat::Png => image::ImageFormat::Png,
+    ImageFormat::Jpeg => image::ImageFormat::Jpeg,
+    ImageFormat::Svg | ImageFormat::Pdf => return None,
+  };
+  let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().ok()?;
+  #[expect(
+    clippy::cast_precision_loss,
+    reason = "f32 で正確なのは 2^24 px までで、それを超える寸法の丸め（相対 2^-24 以下）が判定を変えるのは目標との差がその幅に収まるときだけ"
+  )]
+  let exceeds = width as f32 > target.0 || height as f32 > target.1;
+  if !exceeds {
+    return None;
+  }
+  #[expect(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    reason = "`required_pixels` は有限かつ正の値だけを返し、`ceil().max(1.0)` で 1 以上に丸めた後の縮小目標ピクセル数"
+  )]
+  return Some((target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32));
 }
 
 /// 描画寸法と上限 DPI から必要なピクセル寸法を求める。
@@ -277,14 +306,63 @@ mod tests {
     drop(loaded);
   }
 
+  #[test]
+  fn resize_target_resizes_only_when_pixels_exceed_the_target() {
+    for (format, reencode_as) in RASTER_FORMATS {
+      let bytes = raster_bytes(reencode_as, 4, 4);
+
+      assert_eq!(resize_target(format, &bytes, (2.0, 2.0)), Some((2, 2)), "{format:?}");
+      assert_eq!(resize_target(format, &bytes, (4.0, 4.0)), None, "{format:?}");
+      // 目標が整数でなければ、切り上げた目標が元と同じ寸法でも縮小する（丸める前の目標と比べる）
+      assert_eq!(resize_target(format, &bytes, (3.5, 3.5)), Some((4, 4)), "{format:?}");
+    }
+  }
+
+  #[test]
+  fn resize_target_leaves_unreadable_raster_to_the_unresized_load() {
+    for (format, _) in RASTER_FORMATS {
+      let bytes: Arc<[u8]> = Arc::from(&b"not an image"[..]);
+
+      let resize_to = resize_target(format, &bytes, (2.0, 2.0));
+      let result = load_image("broken.img", format, &bytes, resize_to, &svg_parser());
+
+      assert_eq!(resize_to, None, "{format:?}");
+      // 縮小段階の ResizeImage ではなく、未縮小の読込で krilla が出す DecodeImage になる
+      assert!(
+        matches!(result, Err(PdfRenderError::DecodeImage { path, .. }) if path == "broken.img"),
+        "{format:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn resize_target_reads_only_the_png_header() {
+    // 画素データの途中で切った PNG。寸法ヘッダは読めるが、全画素デコードは失敗する
+    let bytes = png_cut_inside_idat(4, 4);
+
+    assert_eq!(resize_target(ImageFormat::Png, &bytes, (2.0, 2.0)), Some((2, 2)));
+    let result = load_image("cut.png", ImageFormat::Png, &bytes, Some((2, 2)), &svg_parser());
+    assert!(matches!(result, Err(PdfRenderError::ResizeImage { path, .. }) if path == "cut.png"));
+  }
+
   /// `width` x `height` の RGB ラスタ画像を `format` でエンコードしたバイト列を返す。
   ///
   /// RGB なのは `image` crate の JPEG エンコーダが RGBA を受け付けないため。
   fn raster_bytes(format: image::ImageFormat, width: u32, height: u32) -> Arc<[u8]> {
     let mut out = Vec::new();
     image::RgbImage::new(width, height)
-      .write_to(&mut std::io::Cursor::new(&mut out), format)
+      .write_to(&mut Cursor::new(&mut out), format)
       .expect("小さな RGB 画像は書き出せるはず");
     return out.into();
+  }
+
+  /// `width` x `height` の PNG を、最初の `IDAT` チャンクの画素データ 2 バイト目で切ったバイト列を返す。
+  fn png_cut_inside_idat(width: u32, height: u32) -> Arc<[u8]> {
+    let bytes = raster_bytes(image::ImageFormat::Png, width, height);
+    let idat = bytes
+      .windows(4)
+      .position(|window| return window == b"IDAT")
+      .expect("PNG は IDAT チャンクを持つはず");
+    return Arc::from(&bytes[..idat + 4 + 2]);
   }
 }
