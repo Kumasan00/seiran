@@ -774,7 +774,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 #### `geometry`
 
-版面の幾何。`config.toml`（用紙寸法）と `style.toml`（`[page]` の余白・`[columns]`）のどちらか片方だけでは
+版面の幾何。`config.toml`（用紙寸法）と `style.toml`（`[page]` の余白・`[columns]`・`[index].column_count`）のどちらか片方だけでは
 判定できない制約を `PreparedGeometry::prepare` に集約する。検査は 4 件（上下余白の合計 < 用紙高 / 左右余白の
 合計 < 用紙幅 / 本文の 1 段あたりの幅が正 / 索引（`[index].column_count` 段・本文と同じ段間）の 1 段あたりの
 幅が正）で、独立に検査できるので**入力の論理順（縦 → 横 → 本文の段幅 → 索引の段幅）**で全件を集約する。

@@ -1,4 +1,4 @@
-//! 版面の幾何 — `config.toml`（用紙寸法）× `style.toml`（`[page]` の余白・`[columns]`）の
+//! 版面の幾何 — `config.toml`（用紙寸法）× `style.toml`（`[page]` の余白・`[columns]`・`[index].column_count`）の
 //! 横断バリデーションと、そこから確定する版面 [`PreparedGeometry`] の構築、および
 //! ページの物理ジオメトリを表す値型 [`PageGeometry`] の定義。
 
@@ -173,7 +173,7 @@ pub(crate) struct PreparedGeometry {
 }
 
 impl PreparedGeometry {
-  /// [`ProjectConfig`]（用紙寸法）と [`Style`]（`[page]` の余白・`[columns]`）の横断制約を検証し、
+  /// [`ProjectConfig`]（用紙寸法）と [`Style`]（`[page]` の余白・`[columns]`・`[index].column_count`）の横断制約を検証し、
   /// 通ったときだけ確定した版面を返します。
   ///
   /// 次の 4 つを独立に検査し、違反を**入力の論理順（縦 → 横 → 本文の段幅 → 索引の段幅）** で集約します。
