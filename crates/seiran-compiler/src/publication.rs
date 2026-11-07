@@ -212,7 +212,8 @@ impl PublicationFont {
   /// バイト列を複製せず、krilla の `Data` と fontdb の `Source::Binary` が受け取る共有ハンドルにする。
   #[must_use]
   pub fn shared_bytes(&self) -> Arc<dyn AsRef<[u8]> + Send + Sync> {
-    return Arc::new(font::FontBytes(Arc::clone(&self.bytes)));
+    // `Arc<[u8]>` を 1 段包むと krilla の `Data` と fontdb の `Source::Binary` が受け取る Sized な `AsRef<[u8]>` になり、複製しない
+    return Arc::new(Arc::clone(&self.bytes));
   }
 }
 
@@ -570,6 +571,27 @@ mod tests {
 
     assert_eq!(resources.font(second).face.font_index, 1);
     assert!(resources.faces().any(|face| return face == second), "faces() は全実体を列挙するはず");
+  }
+
+  #[test]
+  fn shared_bytes_shares_the_font_bytes_without_copying() {
+    let font = PublicationFont {
+      bytes: Arc::from(&b"font"[..]),
+      face: FontFaceConfig {
+        font_index: 0,
+        variation_axes: None,
+      },
+      metrics: FontMetrics {
+        upem: 1000.0,
+        ascender: 800.0,
+        descender: -200.0,
+      },
+    };
+
+    let shared = font.shared_bytes();
+
+    assert_eq!(Arc::strong_count(&font.bytes), 2, "共有ハンドルは元のバイト列の参照カウントを増やすだけのはず");
+    assert_eq!((*shared).as_ref().as_ptr(), font.bytes.as_ptr(), "共有ハンドルは元のバイト列と同じ領域を指すはず");
   }
 
   #[test]
