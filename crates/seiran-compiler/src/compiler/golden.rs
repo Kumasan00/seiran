@@ -1876,13 +1876,13 @@ fn stix_math_constant(constant: MathConstant) -> (i32, u16) {
 /// 長さの MATH 定数の、`font_size` での長さ（組版側と同じ換算 `font_size × 値 / upem`）。
 fn stix_math_length(constant: MathConstant, font_size: Length) -> Length {
   let (value, upem) = stix_math_constant(constant);
-  return font_size.scale(f64::from(value) / f64::from(upem));
+  return font_size * (f64::from(value) / f64::from(upem));
 }
 
 /// 縮小率の MATH 定数（百分率）を `base` に掛けたフォントサイズ（組版側と同じ換算）。
 fn stix_scaled_size(constant: MathConstant, base: Length) -> Length {
   let (percent, _) = stix_math_constant(constant);
-  return base.scale(f64::from(percent) / 100.0);
+  return base * (f64::from(percent) / 100.0);
 }
 
 /// 箱の中を先頭から辿り、最初のグリフ列を返す。
@@ -2007,7 +2007,7 @@ fn stix_glyph_ink(gid: u32) -> (f64, f64) {
 /// グリフ列のインクの上端と下端（グリフ列のベースライン基準・上が正）を、組版側と独立に STIX Two Math から測る。
 fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
   let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
-  let to_length = |units: f64| return run.font_size.scale(units / f64::from(upem));
+  let to_length = |units: f64| return run.font_size * (units / f64::from(upem));
   return run
     .glyphs
     .iter()
@@ -2024,7 +2024,7 @@ fn stix_run_ink(run: &GlyphRun) -> (Length, Length) {
 /// 符号は丸めない。組版側の `Shaper::math_glyph_ink` と同じ換算）。
 fn stix_glyph_edges(gid: u32, font_size: Length) -> (Length, Length) {
   let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
-  let to_length = |units: f64| return font_size.scale(units / f64::from(upem));
+  let to_length = |units: f64| return font_size * (units / f64::from(upem));
   let (y_bearing, height) = stix_glyph_ink(gid);
   return (to_length(y_bearing), to_length(y_bearing - height));
 }
@@ -2062,7 +2062,7 @@ fn stix_italics_correction(gid: u32) -> i32 {
 /// STIX Two Math のフォント単位 `units` の、`font_size` での長さ（組版側と同じ換算）。
 fn stix_units(units: i32, font_size: Length) -> Length {
   let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
-  return font_size.scale(f64::from(units) / f64::from(upem));
+  return font_size * (f64::from(units) / f64::from(upem));
 }
 
 /// STIX Two Math のグリフ `gid` の `corner` の math kern の、フォント単位の高さ `height` での値（表が無ければ 0）。
@@ -2364,7 +2364,7 @@ fn delimiters_cover_the_grid_and_stay_inside_the_block() {
         let (top, bottom) = stix_run_ink(&placed.run);
         // size variant は advanceMeasurement で選ぶので、インクの高さはそれより 0.01em 未満だけ短いことがある
         assert!(
-          top - bottom + block.grid.font_size.scale(0.01) >= grid_total,
+          top - bottom + block.grid.font_size * (0.01) >= grid_total,
           "括弧のインクの高さ {:?} がグリッドの高さ + 深さ {grid_total:?} を覆うはず: {source}",
           top - bottom
         );
@@ -4109,7 +4109,7 @@ fn binomial_parens_cover_the_stack_and_center_on_the_math_axis() {
       "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず"
     );
     // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-    let slack = size.scale(0.01);
+    let slack = size * (0.01);
     assert!(delimiter.dy + ink_top + slack >= stack_top, "括弧は上段のインクの頂まで届くはず");
     assert!(delimiter.dy + ink_bottom - slack <= stack_bottom, "括弧は下段のインクの底まで届くはず");
   }
@@ -4201,7 +4201,7 @@ fn nested_binomial_parts_keep_the_gap_and_the_outer_parens_cover_them() {
     "上段と下段のインクの間は display のギャップの下限以上"
   );
   let (outer_top, outer_bottom) = stix_run_ink(&outer.run);
-  let slack = size.scale(0.01);
+  let slack = size * (0.01);
   assert!(
     outer.dy + outer_top + slack >= numerator.dy + stix_ink_extent(numerator).0,
     "外側の括弧は上段の分子の頂まで届く"
@@ -4338,7 +4338,7 @@ fn degree_bottom_rises_by_the_percent_of_the_radical_height() {
   let (percent, _) = stix_math_constant(MathConstant::RadicalDegreeBottomRaisePercent);
   assert_eq!(
     degree.dy - radicand.dy,
-    -descent + (ascent + descent).scale(f64::from(percent) / 100.0) + degree_depth,
+    -descent + (ascent + descent) * (f64::from(percent) / 100.0) + degree_depth,
     "指数のインクの底は 根号の下端 + 根号の高さ × RadicalDegreeBottomRaisePercent"
   );
 }
@@ -4884,7 +4884,7 @@ fn stix_ink_center_x(gid: u32, font_size: Length) -> Length {
     .extents(GlyphId::new(gid))
     .expect("アクセント記号はインクを読めるはず");
   let (_, upem) = stix_math_constant(MathConstant::AxisHeight);
-  return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / f64::from(upem));
+  return font_size * ((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / f64::from(upem));
 }
 
 #[test]
@@ -5514,7 +5514,7 @@ fn fence_covers_a_fraction_and_centers_on_the_math_axis() {
         "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
       );
       // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-      let slack = size.scale(0.01);
+      let slack = size * (0.01);
       assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず: {source}");
       assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず: {source}");
     }
@@ -5657,7 +5657,7 @@ fn fence_divider_covers_the_body_and_centers_on_the_math_axis() {
       "縦棒のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
     );
     // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-    let slack = size.scale(0.01);
+    let slack = size * (0.01);
     assert!(divider.dy + top + slack >= body_top, "縦棒は分子のインクの頂まで届くはず: {source}");
     assert!(divider.dy + bottom - slack <= body_bottom, "縦棒は分母のインクの底まで届くはず: {source}");
   }
@@ -5791,7 +5791,7 @@ fn tall_fence_in_a_script_still_stretches_to_cover_the_body() {
   for delimiter in [left, right] {
     let (top, bottom) = stix_run_ink(&delimiter.run);
     // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-    let slack = delimiter.run.font_size.scale(0.01);
+    let slack = delimiter.run.font_size * (0.01);
     assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず");
     assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず");
   }

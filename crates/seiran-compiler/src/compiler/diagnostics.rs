@@ -558,6 +558,20 @@ fn diagnostic_dimension_overflow_inside_per_page_footnote_numbering() {
 }
 
 #[test]
+fn representable_large_dimensions_are_typeset() {
+  // 和（1e14pt）も倍率を掛けた値（1e13pt）も値域に収まる入力は、溢れにせず組む（はみ出し警告は出てよい）
+  let spaces = "a\\space{50000000000000pt}\\space{50000000000000pt}b\n";
+  TestProject::builder().source_text(spaces).build().compile().expect("値域内の和は組めるはず");
+
+  TestProject::builder()
+    .source_text("hello\n")
+    .style_toml(|table| test_support::set(table, "text", "line_height_factor", 1e12))
+    .build()
+    .compile()
+    .expect("値域内の行送りは組めるはず");
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

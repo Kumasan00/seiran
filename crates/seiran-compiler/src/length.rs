@@ -7,19 +7,20 @@
 //! 内部表現は **sp（scaled point）= 1/65536 pt** の整数（i64）。整数加算は結合的かつ正確なので、
 //! 伸縮配分や比例配分の多段加算でも誤差が蓄積せず、並列 reduce でも順序非依存でビット同一の結果を得る。
 //! 浮動小数への変換は入出力境界（TOML パース・シェーパー API・PDF 座標出力・診断 / ログ / ダンプ整形）と
-//! 無次元比の算出（[`Length::ratio`]）だけに閉じ、乗除（倍率・比例配分）の丸め規約は [`round_sp`] 1 箇所へ
-//! 集約し、丸めと値域検査（NaN・±∞・絶対値 2^63 以上を拒否）もそこだけが行う。
+//! 無次元比の算出（[`Length::ratio`]）だけに閉じる。
 //!
 //! **値域の不変条件**: sp は `|sp| < 2^63`（`i64::MIN` を除く）。`i64::MIN` を除くので [`Neg`] と
-//! [`Length::abs`] は失敗しない。字面の解釈は範囲外を [`ParseLengthError::OutOfRange`] で拒否し、
-//! 演算 `try_*` は結果が値域外なら [`LengthOverflow`] を返す。`operators` の算術演算子は `try_*` へ
-//! 委譲して溢れで落ちる、テストが期待値を組むための道具。
+//! [`Length::abs`] は失敗しない。浮動小数から sp への丸め（偶数丸め）と値域検査（NaN・±∞・絶対値 2^63
+//! 以上を拒否）は [`round_sp`] 1 箇所が行い、字面・倍率・除算・実行時の pt 値はすべてそれを通る。整数の
+//! 和・差・倍は `try_*` が検査し、値域外（結果が `i64::MIN` の場合を含む）なら [`LengthOverflow`] を返す。
+//! 算術演算子は `operators` にあり、テストビルドにしか無い（テストが期待値を組むための道具）。
 
 #![expect(
   clippy::cast_precision_loss,
   reason = "内部表現が i64 で、pt / 比率との相互変換で i64 ↔ f64 を頻繁に跨ぐ"
 )]
 
+#[cfg(test)]
 mod operators;
 
 use std::str::FromStr;
@@ -156,16 +157,6 @@ impl Length {
   /// 非負の値か。
   #[must_use]
   pub const fn is_non_negative(self) -> bool { return self.0 >= 0; }
-
-  /// 倍率（無次元の f64）を掛けた長さを返す。丸めは [`round_sp`] 経由。
-  ///
-  /// # Panics
-  ///
-  /// 結果が値域外のとき。
-  #[must_use]
-  pub fn scale(self, factor: f64) -> Self {
-    return self.try_scale(factor).expect("テストが組む長さは値域内");
-  }
 
   /// `self / denom` の無次元比を f64 で返す（伸縮の調整比・下端揃えの配分比など）。
   ///
@@ -551,8 +542,8 @@ mod tests {
     // 3 sp を 0.5 倍すると 1.5 sp → 偶数丸めで 2 sp
     let three_sp = Length::from_sp(3);
 
-    assert_eq!(one_sp.scale(0.5), Length::from_sp(0));
-    assert_eq!(three_sp.scale(0.5), Length::from_sp(2));
+    assert_eq!(one_sp * 0.5, Length::from_sp(0));
+    assert_eq!(three_sp * 0.5, Length::from_sp(2));
   }
 
   #[test]
