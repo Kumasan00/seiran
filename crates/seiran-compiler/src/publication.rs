@@ -212,7 +212,7 @@ impl PublicationFont {
   /// バイト列を複製せず、krilla の `Data` と fontdb の `Source::Binary` が受け取る共有ハンドルにする。
   #[must_use]
   pub fn shared_bytes(&self) -> Arc<dyn AsRef<[u8]> + Send + Sync> {
-    // `Arc<[u8]>` を 1 段包むと krilla の `Data` と fontdb の `Source::Binary` が受け取る Sized な `AsRef<[u8]>` になり、複製しない
+    // `Arc<[u8]>` を 1 段包むと `dyn AsRef<[u8]>` へ unsize できる Sized な `AsRef<[u8]>` になる
     return Arc::new(Arc::clone(&self.bytes));
   }
 }

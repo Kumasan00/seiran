@@ -89,7 +89,7 @@ fn parse_fonts<'a>(
         source,
       };
     })?;
-    // `Arc<[u8]>` は既に unsized なので `dyn AsRef<[u8]>` へ直接は unsize できず、もう 1 段 `Arc` で包む
+    // `Arc<[u8]>` を 1 段包むと harfrust の `Font` が受け取る Sized な `AsRef<[u8]>` になり、複製しない
     let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(font_data.shared_bytes(face));
     let font = Font::new(blob, index).expect(
       "直前の FontRef::from_index が同じバイト列・同じ index で成功しており、Font::new も同じ解析で sfnt と認める",
