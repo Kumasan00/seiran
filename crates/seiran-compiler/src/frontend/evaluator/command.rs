@@ -401,7 +401,6 @@ fn ref_(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, Eval
 #[cfg(test)]
 mod tests {
   use bumpalo::Bump;
-  use proptest::prelude::*;
 
   use super::*;
   use crate::{
@@ -572,47 +571,46 @@ mod tests {
   /// `COMMANDS` の全コマンド名を返す
   fn all_command_names() -> Vec<&'static str> { return COMMANDS.entries().map(|(name, _)| return *name).collect(); }
 
-  proptest! {
-    #![proptest_config(ProptestConfig::with_cases(1500))]
+  /// 全コマンド × 引数 0〜4 個を文書として評価し、成功または引数・オプション規則（P2/P3/P6）に関する既知のエラー種別
+  /// だけを返すことを全件確かめる
+  ///
+  /// 環境・数式・表専用のエラー種別（`TableRowCellCountMismatch` 等）が返った場合は、
+  /// トップレベルの単一コマンド呼び出しでは本来発生しえない経路に迷い込んだことを意味し、
+  /// 許可リストに追加せず不具合として扱う。
+  #[test]
+  fn every_command_with_zero_to_four_args_evaluates_or_returns_a_known_diagnostic() {
+    for name in all_command_names() {
+      for arg_count in 0usize..=4 {
+        let arena = Bump::new();
+        let source = format!("\\{name}{}", "{a}".repeat(arg_count));
+        let cst =
+          test_support::parse_cst(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
 
-    /// 成功または引数・オプション規則（P2/P3/P6）に関する既知のエラー種別だけを返す。
-    /// 組み合わせ（コマンド数 × 5）を proptest 既定の 256 ケースでは取りこぼしうるので 1500 に増やす。
-    ///
-    /// 環境・数式・表専用のエラー種別（`TableRowCellCountMismatch` 等）が返った場合は、
-    /// トップレベルの単一コマンド呼び出しでは本来発生しえない経路に迷い込んだことを意味し、
-    /// 許可リストに追加せず不具合として扱う。
-    #[test]
-    fn any_command_with_any_arg_count_never_panics_and_only_returns_known_errors(
-      name in prop::sample::select(all_command_names()),
-      arg_count in 0usize..=4,
-    ) {
-      let arena = Bump::new();
-      let args = "{a}".repeat(arg_count);
-      let source = format!("\\{name}{args}");
+        let result = evaluator::evaluate_children_to_hir(&source, cst);
 
-      let cst = test_support::parse_cst(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
-      let result = evaluator::evaluate_children_to_hir(&source, cst);
-
-      let is_known_outcome = matches!(
-        result,
-        Ok(_)
-          | Err(
-            EvalError::MissingCommandArgument { .. }
-              | EvalError::ExtraCommandArgument { .. }
-              | EvalError::InvalidCommandArgument { .. }
-              | EvalError::InvalidNumber { .. }
-              | EvalError::UnknownUnit { .. }
-              | EvalError::UnitPrefixNotAllowed { .. }
-              | EvalError::InvalidUnitExponent { .. }
-              | EvalError::InvalidUnitSyntax { .. }
-              | EvalError::UnknownOptArgKey { .. }
-              | EvalError::IndexNotAllowedHere { .. }
-              | EvalError::ParagraphBreakInArgument { .. }
-              | EvalError::NoindentNotAtParagraphStart { .. }
-              | EvalError::BlockInInline { .. }
-          )
-      );
-      prop_assert!(is_known_outcome, "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}");
+        assert!(
+          matches!(
+            result,
+            Ok(_)
+              | Err(
+                EvalError::MissingCommandArgument { .. }
+                  | EvalError::ExtraCommandArgument { .. }
+                  | EvalError::InvalidCommandArgument { .. }
+                  | EvalError::InvalidNumber { .. }
+                  | EvalError::UnknownUnit { .. }
+                  | EvalError::UnitPrefixNotAllowed { .. }
+                  | EvalError::InvalidUnitExponent { .. }
+                  | EvalError::InvalidUnitSyntax { .. }
+                  | EvalError::UnknownOptArgKey { .. }
+                  | EvalError::IndexNotAllowedHere { .. }
+                  | EvalError::ParagraphBreakInArgument { .. }
+                  | EvalError::NoindentNotAtParagraphStart { .. }
+                  | EvalError::BlockInInline { .. }
+              )
+          ),
+          "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}"
+        );
+      }
     }
   }
 
