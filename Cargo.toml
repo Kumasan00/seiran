@@ -34,7 +34,7 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 itertools = "0.15.0"
 krilla = { version = "0.8.2", default-features = false, features = ["pdf", "raster-images", "rayon"] }
 krilla-svg = "0.8.1"
-lopdf = { version = "0.46.0", default-features = false }
+lopdf = { version = "0.47.0", default-features = false }
 memchr = "2.8.2"
 miette = "7.6.0"
 phf = { version = "0.14.0", features = ["macros"] }
