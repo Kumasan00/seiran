@@ -2364,7 +2364,7 @@ fn delimiters_cover_the_grid_and_stay_inside_the_block() {
         let (top, bottom) = stix_run_ink(&placed.run);
         // size variant は advanceMeasurement で選ぶので、インクの高さはそれより 0.01em 未満だけ短いことがある
         assert!(
-          top - bottom + block.grid.font_size * (0.01) >= grid_total,
+          top - bottom + block.grid.font_size * 0.01 >= grid_total,
           "括弧のインクの高さ {:?} がグリッドの高さ + 深さ {grid_total:?} を覆うはず: {source}",
           top - bottom
         );
@@ -4109,7 +4109,7 @@ fn binomial_parens_cover_the_stack_and_center_on_the_math_axis() {
       "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず"
     );
     // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-    let slack = size * (0.01);
+    let slack = size * 0.01;
     assert!(delimiter.dy + ink_top + slack >= stack_top, "括弧は上段のインクの頂まで届くはず");
     assert!(delimiter.dy + ink_bottom - slack <= stack_bottom, "括弧は下段のインクの底まで届くはず");
   }
@@ -4201,7 +4201,7 @@ fn nested_binomial_parts_keep_the_gap_and_the_outer_parens_cover_them() {
     "上段と下段のインクの間は display のギャップの下限以上"
   );
   let (outer_top, outer_bottom) = stix_run_ink(&outer.run);
-  let slack = size * (0.01);
+  let slack = size * 0.01;
   assert!(
     outer.dy + outer_top + slack >= numerator.dy + stix_ink_extent(numerator).0,
     "外側の括弧は上段の分子の頂まで届く"
@@ -5514,7 +5514,7 @@ fn fence_covers_a_fraction_and_centers_on_the_math_axis() {
         "括弧のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
       );
       // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-      let slack = size * (0.01);
+      let slack = size * 0.01;
       assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず: {source}");
       assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず: {source}");
     }
@@ -5657,7 +5657,7 @@ fn fence_divider_covers_the_body_and_centers_on_the_math_axis() {
       "縦棒のインクの縦中央 {center:?} が数式軸 {axis:?} に載るはず: {source}"
     );
     // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-    let slack = size * (0.01);
+    let slack = size * 0.01;
     assert!(divider.dy + top + slack >= body_top, "縦棒は分子のインクの頂まで届くはず: {source}");
     assert!(divider.dy + bottom - slack <= body_bottom, "縦棒は分母のインクの底まで届くはず: {source}");
   }
@@ -5791,7 +5791,7 @@ fn tall_fence_in_a_script_still_stretches_to_cover_the_body() {
   for delimiter in [left, right] {
     let (top, bottom) = stix_run_ink(&delimiter.run);
     // size variant は advanceMeasurement で選ぶので、インクはそれより 0.01em 未満だけ短いことがある
-    let slack = delimiter.run.font_size * (0.01);
+    let slack = delimiter.run.font_size * 0.01;
     assert!(delimiter.dy + top + slack >= body_top, "括弧は分子のインクの頂まで届くはず");
     assert!(delimiter.dy + bottom - slack <= body_bottom, "括弧は分母のインクの底まで届くはず");
   }

@@ -6,5 +6,5 @@ typeset::length::out_of_range
    · ▲
    · ╰── この要素を組む途中で寸法が溢れました
    ╰────
-  help: この要素の長さの引数（\space など）か、style.toml のフォントサイズ・行送りの倍率（[text]
+  help: 長さの引数（\space など）か、style.toml のフォントサイズ・行送りの倍率（[text]
         line_height_factor など）・アキ、config.toml の用紙寸法を小さくしてください

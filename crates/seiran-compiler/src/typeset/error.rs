@@ -2,7 +2,7 @@
 //!
 //! フォント資源の構築・画像資源の読込 / デコード / PDF のページ選択 / 自然寸法の検証・ページ単位脚注採番の非収束で起きる失敗
 //! [`TypesetError`] と、`compose` の失敗を運ぶ [`ComposeError`] を持つ。長さの演算の溢れは、組版の内側では要素の
-//! 起点だけを運ぶ [`ElementOverflow`] で伝え、`pagination::paginate` が位置を解決した [`DimensionOverflow`] にする。
+//! 起点だけを運ぶ [`ElementOverflow`] で伝え、`pagination::paginate` が要素の起点から位置を解決して [`DimensionOverflow`] にする（emit の溢れは起点を持たず、`typeset.rs` が位置なしで作る）。
 
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
@@ -53,7 +53,7 @@ impl ElementOverflow {
 #[diagnostic(
   code(typeset::length::out_of_range),
   help(
-    "この要素の長さの引数（\\space など）か、style.toml のフォントサイズ・行送りの倍率（[text] line_height_factor など）・アキ、config.toml の用紙寸法を小さくしてください"
+    "長さの引数（\\space など）か、style.toml のフォントサイズ・行送りの倍率（[text] line_height_factor など）・アキ、config.toml の用紙寸法を小さくしてください"
   )
 )]
 pub(crate) struct DimensionOverflow {
