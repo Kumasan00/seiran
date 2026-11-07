@@ -74,7 +74,7 @@ fn run_body_pass(
         issues: &ctx.glyph_issues,
         generated: Generated::Bibliography,
         images,
-        column_width: ctx.geometry.body_column_width(),
+        column_width: ctx.geometry.body_geometry().column_width,
         breaker: &ctx.breaker,
         default_font_size: ctx.style.text.font_size,
         line_height_factor: ctx.style.text.line_height_factor,

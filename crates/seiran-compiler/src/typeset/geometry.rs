@@ -136,6 +136,8 @@ pub(super) struct PageGeometry {
   pub num_columns: usize,
   /// 段間（gutter）。隣り合う段の間隔
   pub column_gap: Length,
+  /// 1 段あたりの幅。[`PreparedGeometry::prepare`] が段数・段間から確定した値
+  pub column_width: Length,
   /// 下端揃え（flush bottom）を有効にするか（`style.toml` の `[page] flush_bottom`）。
   pub flush_bottom: bool,
   /// 脚注: 本文と区切り罫線の間隔（`style.footnote.top_margin`）
@@ -160,10 +162,6 @@ pub(super) struct PageGeometry {
 pub(crate) struct PreparedGeometry {
   /// 版面幅（段組み前）= `pdf.width - page.margin_left - page.margin_right`
   text_width: Length,
-  /// 本文の 1 段あたりの幅
-  body_column_width: Length,
-  /// 後付け（索引）の 1 段あたりの幅
-  back_column_width: Length,
   /// 本文のページジオメトリ（`style.columns.count` 段）
   body_geometry: PageGeometry,
   /// 前付けのページジオメトリ（常に 1 段・下端揃えなし）
@@ -267,12 +265,16 @@ impl PreparedGeometry {
       );
     };
 
-    let (body_geometry, front_geometry, back_geometry) =
-      build_page_geometries(config, style, num_columns, index_columns, column_gap);
+    let (body_geometry, front_geometry, back_geometry) = build_page_geometries(
+      config,
+      style,
+      text_width,
+      (num_columns, body_column_width),
+      (index_columns, back_column_width),
+      column_gap,
+    );
     return Ok(Self {
       text_width,
-      body_column_width,
-      back_column_width,
       body_geometry,
       front_geometry,
       back_geometry,
@@ -282,10 +284,6 @@ impl PreparedGeometry {
   /// 版面幅（段組み前）を返す。
   #[must_use]
   pub(super) fn text_width(&self) -> Length { return self.text_width; }
-
-  /// 本文の 1 段あたりの幅を返す。
-  #[must_use]
-  pub(super) fn body_column_width(&self) -> Length { return self.body_column_width; }
 
   /// 本文のページジオメトリを返す。
   #[must_use]
@@ -298,20 +296,18 @@ impl PreparedGeometry {
   /// 後付け（索引）のページジオメトリを返す。
   #[must_use]
   pub(super) fn back_geometry(&self) -> &PageGeometry { return &self.back_geometry; }
-
-  /// 後付け（索引）の 1 段あたりの幅を返す（`break_pages` が後付けの段を組む幅と同じ式）。
-  #[must_use]
-  pub(super) fn back_column_width(&self) -> Length { return self.back_column_width; }
 }
 
 /// 本文・前付け・後付けのページジオメトリを組み立てる。
 ///
-/// 段数・段間・下端揃え以外は本文の値を共有する。
+/// `body` / `back` は（段数, 検証済みの 1 段あたりの幅）。前付けは 1 段・段間 0 なので段幅は本文幅 `text_width`。
+/// 段数・段間・段幅・下端揃え以外は本文の値を共有する。
 fn build_page_geometries(
   config: &ProjectConfig,
   style: &Style,
-  body_columns: usize,
-  back_columns: usize,
+  text_width: Length,
+  body: (usize, Length),
+  back: (usize, Length),
   column_gap: Length,
 ) -> (PageGeometry, PageGeometry, PageGeometry) {
   let Ok(page_limit) = config.pdf.height.try_sub(style.page.margin_bottom) else {
@@ -323,8 +319,9 @@ fn build_page_geometries(
     content_origin_x: style.page.margin_left,
     margin_top: style.page.margin_top,
     page_limit,
-    num_columns: body_columns,
+    num_columns: body.0,
     column_gap,
+    column_width: body.1,
     flush_bottom: style.page.flush_bottom,
     footnote_top_margin: style.footnote.top_margin,
     footnote_rule_length: style.footnote.rule_length,
@@ -336,11 +333,13 @@ fn build_page_geometries(
   let front_geometry = PageGeometry {
     num_columns: 1,
     column_gap: Length::ZERO,
+    column_width: text_width,
     flush_bottom: false,
     ..body_geometry
   };
   let back_geometry = PageGeometry {
-    num_columns: back_columns,
+    num_columns: back.0,
+    column_width: back.1,
     flush_bottom: false,
     ..body_geometry
   };
@@ -509,7 +508,9 @@ mod tests {
 
     let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
 
-    assert_eq!(prepared.back_column_width(), prepared.text_width());
+    assert_eq!(prepared.body_geometry().column_width, prepared.text_width());
+    assert_eq!(prepared.front_geometry().column_width, prepared.text_width());
+    assert_eq!(prepared.back_geometry().column_width, prepared.text_width());
   }
 
   #[test]
@@ -590,15 +591,16 @@ mod tests {
     let expected_text_width = config.pdf.width.to_pt() - 100.0;
     assert!(close(prepared.text_width(), expected_text_width), "本文幅: {:?}", prepared.text_width());
     assert!(
-      close(prepared.body_column_width(), (expected_text_width - 15.0) / 2.0),
+      close(prepared.body_geometry().column_width, (expected_text_width - 15.0) / 2.0),
       "段幅: {:?}",
-      prepared.body_column_width()
+      prepared.body_geometry().column_width
     );
     assert!(
-      close(prepared.back_column_width(), (expected_text_width - 30.0) / 3.0),
+      close(prepared.back_geometry().column_width, (expected_text_width - 30.0) / 3.0),
       "索引の段幅: {:?}",
-      prepared.back_column_width()
+      prepared.back_geometry().column_width
     );
+    assert_eq!(prepared.front_geometry().column_width, prepared.text_width());
   }
 
   #[test]

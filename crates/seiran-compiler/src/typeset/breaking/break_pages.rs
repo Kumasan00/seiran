@@ -1525,6 +1525,7 @@ mod tests {
       page_limit: Length::pt(50.0),
       num_columns: 1,
       column_gap: Length::pt(0.0),
+      column_width: Length::pt(100.0),
       flush_bottom: false,
       footnote_top_margin: Length::ZERO,
       footnote_rule_length: Length::ZERO,
@@ -1541,6 +1542,7 @@ mod tests {
     return PageGeometry {
       num_columns: 2,
       column_gap: Length::pt(10.0),
+      column_width: Length::pt(45.0),
       ..test_geometry()
     };
   }
@@ -3781,6 +3783,7 @@ mod tests {
     return PageGeometry {
       num_columns: 2,
       column_gap: Length::pt(10.0),
+      column_width: Length::pt(45.0),
       ..geometry_with_footnote_rule()
     };
   }

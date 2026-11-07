@@ -535,6 +535,7 @@ mod tests {
       page_limit: pt(50.0),
       num_columns: 1,
       column_gap: Length::ZERO,
+      column_width: pt(100.0),
       flush_bottom: true,
       footnote_top_margin: Length::ZERO,
       footnote_rule_length: Length::ZERO,

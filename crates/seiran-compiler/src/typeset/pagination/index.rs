@@ -75,7 +75,7 @@ pub(super) fn build_index_blocks(
   if entries.is_empty() {
     return Ok(Vec::new());
   }
-  let spec = build_index_spec(ctx.style, ctx.geometry.back_column_width());
+  let spec = build_index_spec(ctx.style, ctx.geometry.back_geometry().column_width);
   let shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::Index));
   return compose_blocks(&spec, &entries, shaper);
 }

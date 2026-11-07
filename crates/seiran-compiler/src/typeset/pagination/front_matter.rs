@@ -51,7 +51,7 @@ pub(super) fn paginate(
           issues: &ctx.glyph_issues,
           generated: Generated::FrontMatter,
           images,
-          column_width: ctx.geometry.text_width(),
+          column_width: ctx.geometry.front_geometry().column_width,
           breaker: &ctx.breaker,
           default_font_size: ctx.style.text.font_size,
           line_height_factor: ctx.style.text.line_height_factor,
