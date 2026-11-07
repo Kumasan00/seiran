@@ -220,8 +220,8 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   `Arc<String>` ではなく `Arc<str>`）。`Arc<Vec<u8>>` は二重間接で、字面が「これから長さを変える」と読める。
   さらに実害があり、`Arc<[u8]>` から `Vec` へ移し替える時点でバイト列を丸ごと複製してしまう — 外部資源の
   seam（`ProjectSource::read_bytes`）が返す `Arc<[u8]>` は、最終消費点までその形のまま運ぶ。外部 crate の
-  API が `Arc<[u8]>` を受け取らないときも型を戻さず、`AsRef<[u8]>` を実装する newtype で包んで渡す
-  （`seiran-pdf::font` の `FontBytes` → krilla の `Data`）。
+  API が `Arc<[u8]>` を受け取らないときも型を戻さず、`Arc<dyn AsRef<[u8]> + Send + Sync>` へ unsize できる
+  Sized な包み（例: `Arc` をもう 1 段包む）にして渡す。
 - そのまま move すれば済む値を `clone()` しない（`redundant_clone`）。複製先も元もその後読まれないなら、
   複製は無駄なだけでなく「ここは所有権を分ける必要がある」という誤った合図を残す。nursery lint だが
   Known problems は **false-negative**（解析が保守的）なので、発火したら真陽性として直す。裏返すと
