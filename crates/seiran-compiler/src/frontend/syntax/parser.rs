@@ -878,7 +878,10 @@ pub(in crate::frontend) fn parse_cst<'a>(
 
 #[cfg(test)]
 mod tests {
+  use proptest::prelude::*;
+
   use super::*;
+  use crate::frontend::syntax::lexer;
 
   /// テスト用の環境名 → [`BodyMode`] 解決関数
   fn test_env_body(name: &str) -> BodyMode {
@@ -2376,5 +2379,359 @@ mod tests {
     assert_eq!(args.len(), 1);
     assert!(args[0].first_child_of_kind(SyntaxKind::MathSuperscript).is_some(), "`^` は上付き");
     assert!(args[0].first_child_of_kind(SyntaxKind::MathGroup).is_some(), "裸の `{{b}}` は数式グループ");
+  }
+
+  /// トークン列が入力を敷き詰めることを検査する
+  ///
+  /// 先頭が 0・隣どうしが接する・両端が字の境界・末尾が入力の終わり、の 4 つが揃えば各トークンの字面を順に連結した
+  /// 文字列は入力とバイト単位で一致する（最後の `assert_eq!` はその帰結）。空のトークンは verbatim の空の本体だけに許す
+  /// （raw 走査は本体が空でも 1 個積む。レキサーは `VerbatimText` を返さないので、字句解析では毎トークン前進する）。
+  fn assert_tokens_tile(tokens: &[Token], source: &str) {
+    let mut end = 0u32;
+    for token in tokens {
+      let span = token.span;
+      assert_eq!(span.start, end, "トークンの間に欠落・重複がある: {source:?} の {token:?}");
+      assert!(
+        span.start < span.end || token.kind == TokenKind::VerbatimText,
+        "verbatim の空の本体以外に空のトークンがある: {source:?} の {token:?}"
+      );
+      assert!(
+        source.is_char_boundary(span.start as usize) && source.is_char_boundary(span.end as usize),
+        "トークンの端が字の境界にない: {source:?} の {token:?}"
+      );
+      end = span.end;
+    }
+    assert_eq!(end as usize, source.len(), "トークンが入力の末尾まで届かない: {source:?}");
+    let text: String = tokens.iter().map(|token| return token.text(source)).collect();
+    assert_eq!(text, source);
+  }
+
+  /// CST の葉（トークン）を深さ優先・子の順で集める
+  fn leaf_tokens(node: &CstNode<'_>, out: &mut Vec<Token>) {
+    for child in node.children {
+      match child {
+        CstElement::Token(token) => out.push(*token),
+        CstElement::Node(node) => leaf_tokens(node, out),
+      }
+    }
+  }
+
+  /// 字句解析のトークン列と、構文解析が成功したときの CST の葉がどちらも入力を敷き詰めることを検査し、構文解析の成否を返す
+  ///
+  /// 成功時は root の span が入力全体であることも検査する（末尾のトリビアを落とさない）。
+  #[expect(
+    clippy::panic_in_result_fn,
+    reason = "検査の破れは proptest に縮小させるため panic で表す。返す `Result` は検査対象の構文解析の成否で、検査の結果ではない"
+  )]
+  fn parse_and_check_preservation(source: &str) -> Result<(), SyntaxError> {
+    let tokens: Vec<Token> = Lexer::new(source).collect();
+    assert_tokens_tile(&tokens, source);
+
+    let arena = Bump::new();
+    let root = parse_cst(source, &arena)?;
+    let mut leaves = Vec::new();
+    leaf_tokens(root, &mut leaves);
+    assert_tokens_tile(&leaves, source);
+    assert_eq!(
+      (root.span.start, root.span.end as usize),
+      (0, source.len()),
+      "root の span が入力全体でない: {source:?}"
+    );
+    return Ok(());
+  }
+
+  #[test]
+  fn edge_inputs_are_preserved_by_lexer_and_parser() {
+    let inputs = [
+      "",
+      "abc",
+      "あ𝑥",
+      "e\u{301}",
+      "\u{301}",
+      "}\u{301}",
+      "\\",
+      "\\\u{301}",
+      " \n",
+      "// c",
+      "\r\n\r\n",
+      "\\begin{code}a\\end{code}",
+      "\\bold{a} b",
+      "\\vurl{}",
+    ];
+
+    for source in inputs {
+      let _ = parse_and_check_preservation(source);
+    }
+
+    assert!(parse_and_check_preservation("").is_ok());
+  }
+
+  /// 構文文字・エスケープ・コメント・改行・結合文字・数式と verbatim の境界を重点的に出すための断片
+  const SOUP_FRAGMENTS: &[&str] = &[
+    "\\",
+    "{",
+    "}",
+    "[",
+    "]",
+    "$",
+    "_",
+    "^",
+    "&",
+    ",",
+    "=",
+    "/",
+    "//",
+    "\n",
+    "\n\n",
+    "\r\n",
+    " ",
+    "\t",
+    "\\\\",
+    "\u{301}",
+    "\u{200d}",
+    "\u{93f}",
+    "e\u{301}",
+    "あ",
+    "𝑥",
+    "\\{",
+    "\\}",
+    "\\$",
+    "\\,",
+    "\\=",
+    "\\あ",
+    "\\begin{code}",
+    "\\end{code}",
+    "\\begin{equation}",
+    "\\end{equation}",
+    "\\begin{x}",
+    "\\end{x}",
+    "\\vurl{",
+    "\\vhref{",
+    "\\vcite{",
+    "\\vtext{",
+    "\\vnum{",
+    "\\vfrac",
+    "\\valpha",
+  ];
+
+  /// 任意の入力: 任意の字の列（64 字まで）か、字と [`SOUP_FRAGMENTS`] の断片を混ぜた列（32 個まで）
+  fn any_source() -> impl Strategy<Value = String> {
+    let fragment = prop_oneof![
+      any::<char>().prop_map(String::from),
+      prop::sample::select(SOUP_FRAGMENTS).prop_map(String::from),
+    ];
+    return prop_oneof![
+      1 => prop::collection::vec(any::<char>(), 0..64).prop_map(|chars| return chars.into_iter().collect::<String>()),
+      3 => prop::collection::vec(fragment, 0..32).prop_map(|parts| return parts.concat()),
+    ];
+  }
+
+  /// 語: 基底字で始まり、`/`・構文文字・空白を含まない（構文文字の直後に置いても結合文字が構文文字に付かない）
+  const WORD: &str = "[a-zA-Z0-9.;:!?()'あ-んé𝑥][a-zA-Z0-9あ-ん\u{301}\u{200d}]{0,5}";
+
+  /// どの位置でもエスケープできる字のエスケープ（字に付く結合文字は可）
+  fn escape() -> BoxedStrategy<String> {
+    return (prop::sample::select(ESCAPABLE_CHARS.to_vec()), any::<bool>())
+      .prop_map(|(ch, mark)| return format!("\\{ch}{}", if mark { "\u{301}" } else { "" }))
+      .boxed();
+  }
+
+  /// テキスト・数式の両モードで単独で妥当な葉（コメントは必ず改行で閉じ、引数なしコマンドは空白 1 つで閉じる）
+  fn common_leaf() -> BoxedStrategy<String> {
+    return prop_oneof![
+      3 => WORD,
+      1 => escape(),
+      1 => prop::sample::select(vec![" ", "\t", "\n", "\r\n", "\n\n", "  \n \n"]).prop_map(String::from),
+      1 => r"//[^\n]{0,8}\n",
+      1 => prop::sample::select(vec!["\\\\", "&", ",", "=", "=\u{301}", "\\valpha ", "\\foo "]).prop_map(String::from),
+    ]
+    .boxed();
+  }
+
+  /// テキストモードで妥当な要素列（0〜5 個）
+  fn text_content(depth: u32) -> BoxedStrategy<String> {
+    return prop::collection::vec(text_element(depth), 0..6).prop_map(|parts| return parts.concat()).boxed();
+  }
+
+  /// テキストモードで妥当な要素 1 個（`depth == 0` は葉だけ）
+  fn text_element(depth: u32) -> BoxedStrategy<String> {
+    let leaf = prop_oneof![
+      4 => common_leaf(),
+      1 => prop::sample::select(vec!["_", "^"]).prop_map(String::from),
+    ]
+    .boxed();
+    let Some(inner) = depth.checked_sub(1) else {
+      return leaf;
+    };
+    let cite_item = prop_oneof![
+      WORD,
+      prop::sample::select(vec![",", "\\,", " "]).prop_map(String::from),
+    ];
+    let nested = prop_oneof![
+      (
+        prop::sample::select(vec!["bold", "foo"]),
+        prop::option::of(opt_arg()),
+        prop::collection::vec(text_content(inner), 1..=2),
+      )
+        .prop_map(|(name, opt, args)| {
+          let args: String = args.iter().map(|arg| return format!("{{{arg}}}")).collect();
+          return format!("\\{name}{}{args}", opt.unwrap_or_default());
+        }),
+      verbatim_arg_content().prop_map(|content| return format!("\\vurl{{{content}}}")),
+      (verbatim_arg_content(), text_content(inner))
+        .prop_map(|(target, text)| return format!("\\vhref{{{target}}}{{{text}}}")),
+      prop::collection::vec(cite_item, 0..5).prop_map(|items| return format!("\\vcite{{{}}}", items.concat())),
+      math_content(inner).prop_map(|math| return format!("\\vnum{{{math}}}")),
+      text_content(inner).prop_map(|text| return format!("\\vtext{{{text}}}")),
+      math_content(inner).prop_map(|math| return format!("${math}$")),
+      (prop::sample::select(vec!["x", "list"]), prop::option::of(opt_arg()), text_content(inner)).prop_map(
+        |(name, opt, body)| return format!("\\begin{{{name}}}{}{body}\\end{{{name}}}", opt.unwrap_or_default())
+      ),
+      math_content(inner).prop_map(|math| return format!("\\begin{{equation}}{math}\\end{{equation}}")),
+      (prop::option::of(opt_arg()), verbatim_env_body())
+        .prop_map(|(opt, body)| return format!("\\begin{{code}}{}{body}\\end{{code}}", opt.unwrap_or_default())),
+    ];
+    return prop_oneof![2 => leaf, 1 => nested].boxed();
+  }
+
+  /// 数式モードで妥当な要素列（1〜4 個。空の `$$` にしない）
+  fn math_content(depth: u32) -> BoxedStrategy<String> {
+    return prop::collection::vec(math_element(depth), 1..5).prop_map(|parts| return parts.concat()).boxed();
+  }
+
+  /// 数式モードで妥当な要素 1 個（`depth == 0` は葉だけ。裸の `$` `[` `]` `_` `^` と verbatim のコマンドは出さない）
+  fn math_element(depth: u32) -> BoxedStrategy<String> {
+    let leaf = prop_oneof![
+      4 => common_leaf(),
+      1 => prop::sample::select(vec!["+", "-", "<", ">", "|", "(", ")"]).prop_map(String::from),
+    ]
+    .boxed();
+    let Some(inner) = depth.checked_sub(1) else {
+      return leaf;
+    };
+    let nested = prop_oneof![
+      prop_oneof![Just(String::new()), math_content(inner)].prop_map(|math| return format!("{{{math}}}")),
+      (prop::sample::select(vec!["_", "^"]), math_content(inner))
+        .prop_map(|(script, math)| return format!("{script}{{{math}}}")),
+      (math_content(inner), math_content(inner))
+        .prop_map(|(numer, denom)| return format!("\\vfrac{{{numer}}}{{{denom}}}")),
+      text_content(inner).prop_map(|text| return format!("\\vtext{{{text}}}")),
+      math_content(inner).prop_map(|math| return format!("\\bold{{{math}}}")),
+    ];
+    return prop_oneof![2 => leaf, 1 => nested].boxed();
+  }
+
+  /// 任意引数 `[...]` 1 組（エントリ 0〜2 個。直下の `\,` `\=` は区切りのエスケープとして妥当）
+  fn opt_arg() -> BoxedStrategy<String> {
+    let piece = prop_oneof![
+      WORD,
+      escape(),
+      prop::sample::select(vec!["\\,", "\\=", " "]).prop_map(String::from),
+    ];
+    let value = prop::collection::vec(piece, 1..=3).prop_map(|pieces| return pieces.concat());
+    let entry = prop_oneof![
+      ("[a-z]{1,4}", value.clone()).prop_map(|(key, value)| return format!("{key}={value}")),
+      value,
+    ];
+    return prop::collection::vec(entry, 0..=2)
+      .prop_map(|entries| return format!("[{}]", entries.join(",")))
+      .boxed();
+  }
+
+  /// verbatim 引数の内容（`{}` が対になった生のバイト列。開き `{` に付く結合文字で始まらない）
+  fn verbatim_arg_content() -> BoxedStrategy<String> {
+    let piece = prop_oneof![
+      "[^{}]{0,4}",
+      prop::sample::select(vec!["{}", "{a\\b}", "\\end{x}"]).prop_map(String::from),
+    ];
+    return prop::collection::vec(piece, 0..5)
+      .prop_map(|pieces| return pieces.concat())
+      .prop_filter("結合文字で始まらない", |content| return !content.starts_with(lexer::is_combining))
+      .boxed();
+  }
+
+  /// verbatim 環境の本体（終端マーカー `\end{code}` を含まず、隣接する任意引数と読まれる `[` と、直前の `}` / `]` に
+  /// 付く結合文字で始まらない）
+  fn verbatim_env_body() -> BoxedStrategy<String> {
+    let piece = prop_oneof![
+      prop::sample::select(SOUP_FRAGMENTS).prop_map(String::from),
+      WORD
+    ];
+    return prop::collection::vec(piece, 0..6)
+      .prop_map(|pieces| return pieces.concat())
+      .prop_filter("終端マーカーを含まず [ と結合文字で始まらない", |body| {
+        return !body.contains("\\end{code}") && !body.starts_with('[') && !body.starts_with(lexer::is_combining);
+      })
+      .boxed();
+  }
+
+  /// 生成時に構文上妥当と決まる文書
+  fn valid_document() -> BoxedStrategy<String> { return text_content(3); }
+
+  /// トップレベルのテキストモードで単独で構文上不正な断片（未閉鎖のものは入力の終わりまで続く）
+  fn defect() -> BoxedStrategy<String> {
+    let fixed = prop::sample::select(vec![
+      "}",
+      "]",
+      "\\end{x}",
+      "{a}",
+      "[a]",
+      "$$",
+      "$a^b$",
+      "$a_b$",
+      "\\",
+      "\\ a",
+      "{\u{301}",
+      "$\u{301}a$",
+      "\\あ",
+      "\\,",
+      "$a]$",
+      "$[$",
+      "\\bold[a][b]",
+      "\\begin{a b}\\end{a b}",
+      "\\begin{equation}$\\end{equation}",
+      "\\bold{a // b}",
+    ])
+    .prop_map(String::from);
+    return prop_oneof![
+      fixed,
+      text_content(2).prop_map(|text| return format!("\\bold{{{text}")),
+      "[a-z]{0,4}".prop_map(|text| return format!("\\bold[{text}")),
+      math_content(2).prop_map(|math| return format!("${math}")),
+      math_content(2).prop_map(|math| return format!("${{{math}$")),
+      text_content(2).prop_map(|body| return format!("\\begin{{x}}{body}")),
+      verbatim_env_body().prop_map(|body| return format!("\\begin{{code}}{body}")),
+      verbatim_arg_content().prop_map(|content| return format!("\\vurl{{{content}")),
+      text_content(2).prop_map(|body| return format!("\\begin{{x}}{body}\\end{{y}}")),
+    ]
+    .boxed();
+  }
+
+  /// 妥当な文書の後ろに欠陥を 1 つ置いた文書（`" x "` で直前のコマンド呼び出しを閉じ、欠陥が引数として読まれないようにする）
+  fn invalid_document() -> BoxedStrategy<String> {
+    return (valid_document(), defect())
+      .prop_map(|(prefix, defect)| return format!("{prefix} x {defect}"))
+      .boxed();
+  }
+
+  proptest! {
+    #[test]
+    fn any_input_is_preserved_and_never_panics(source in any_source()) {
+      let _ = parse_and_check_preservation(&source);
+    }
+
+    #[test]
+    fn valid_documents_parse_and_are_preserved(source in valid_document()) {
+      let result = parse_and_check_preservation(&source);
+
+      prop_assert!(result.is_ok(), "妥当な生成文書が拒否された: {source:?} → {result:?}");
+    }
+
+    #[test]
+    fn invalid_documents_are_rejected(source in invalid_document()) {
+      let result = parse_and_check_preservation(&source);
+
+      prop_assert!(result.is_err(), "構文上不正な生成文書が受理された: {source:?}");
+    }
   }
 }
