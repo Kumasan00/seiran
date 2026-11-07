@@ -432,14 +432,8 @@ pub(in crate::typeset) fn break_pages(
       && is_content_block(&blocks[i])
       && let Some(end) = keep_group_end(&blocks, i)
     {
-      if keep_group_orphaned(
-        composer.cursor,
-        !composer.carry.is_empty(),
-        &composer.geom,
-        breaker,
-        composer.geom.column_width,
-        &blocks[i..=end],
-      )? && !composer.cursor.at_region_top(&composer.geom)
+      if keep_group_orphaned(composer.cursor, !composer.carry.is_empty(), &composer.geom, breaker, &blocks[i..=end])?
+        && !composer.cursor.at_region_top(&composer.geom)
       {
         composer.advance_region()?;
       }
@@ -651,13 +645,12 @@ struct AtomicPlacement {
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
 ///
-/// 表の脚注本体は `breaker` で段幅 `column_width` に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
+/// 表の脚注本体は `breaker` で `geom` の段幅に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
 fn plan_atomic(
   block: &Block,
   cursor: RegionCursor,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
-  column_width: Length,
 ) -> Result<AtomicPlacement, ElementOverflow> {
   let at = |LengthOverflow| {
     return ElementOverflow {
@@ -692,7 +685,11 @@ fn plan_atomic(
         let first = table.head.first().or_else(|| return table.rows.first());
         match first {
           Some(row) => {
-            let demands = footnote_demands(&[pending_footnotes(breaker, &row.footnotes, column_width)?])?;
+            let demands = footnote_demands(&[pending_footnotes(
+              breaker,
+              &row.footnotes,
+              geom.column_width,
+            )?])?;
             let row_at = |LengthOverflow| {
               return ElementOverflow {
                 origin: Some(row.origin),
@@ -705,9 +702,9 @@ fn plan_atomic(
         }
       } else {
         let demands: Vec<FootnoteDemand> =
-          footnote_demands(&table_footnote_bodies(breaker, &table.head, column_width)?)?
+          footnote_demands(&table_footnote_bodies(breaker, &table.head, geom.column_width)?)?
             .into_iter()
-            .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, column_width)?)?)
+            .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, geom.column_width)?)?)
             .flatten()
             .collect();
         defers_unbreakable_table(cursor, total, &demands, geom).map_err(at)?
@@ -731,7 +728,6 @@ fn keep_group_orphaned(
   mut carry_pending: bool,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
-  column_width: Length,
   group: &[Block],
 ) -> Result<bool, ElementOverflow> {
   let Some(last_content) = group.iter().rposition(is_content_block) else {
@@ -756,8 +752,8 @@ fn keep_group_orphaned(
         right_indent,
         alignment,
       } => {
-        let lines = break_paragraph(breaker, items, column_width, *indent, *right_indent, *alignment, *origin)?;
-        let demands = footnote_demands(&footnote_bodies(breaker, &lines, column_width)?)?;
+        let lines = break_paragraph(breaker, items, geom.column_width, *indent, *right_indent, *alignment, *origin)?;
+        let demands = footnote_demands(&footnote_bodies(breaker, &lines, geom.column_width)?)?;
         let (plan, truncated) = plan_paragraph_lines(
           &lines,
           cursor,
@@ -793,7 +789,7 @@ fn keep_group_orphaned(
         carry_pending |= truncated;
       },
       _ if is_content_block(block) => {
-        let placement = plan_atomic(block, cursor, geom, breaker, column_width)?;
+        let placement = plan_atomic(block, cursor, geom, breaker)?;
         if gi == last_content || placement.starts_region {
           return Ok(placement.starts_region);
         }
