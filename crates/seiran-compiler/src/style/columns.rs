@@ -10,7 +10,8 @@ use crate::{
 
 /// 段組みのスタイル設定
 ///
-/// `count` と `config.toml` の用紙・余白との横断制約は [`crate::typeset::PreparedGeometry::prepare`] が検証する。
+/// `count`・`gap` と `config.toml` の用紙・余白との横断制約（`gap` は索引の段間も兼ねる）は
+/// [`crate::typeset::PreparedGeometry::prepare`] が検証する。
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

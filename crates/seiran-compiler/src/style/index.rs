@@ -10,6 +10,9 @@ use crate::{
 };
 
 /// 巻末索引のスタイル設定
+///
+/// `column_count` と `[columns].gap`・`config.toml` の用紙・余白との横断制約は
+/// [`crate::typeset::PreparedGeometry::prepare`] が検証する。
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct IndexStyle {
