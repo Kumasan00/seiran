@@ -21,7 +21,7 @@ use seiran_compiler::{
 use crate::{
   error::PdfRenderError,
   font::{KrillaFonts, convert_to_krilla_glyphs},
-  image::{LoadedImage, load_image, required_pixels},
+  image::{LoadedImage, load_image, required_pixels, resize_target},
 };
 
 /// Publication の点を Krilla の点へ渡す（すでに pt 単位の `f32` なので変換不要）。
@@ -197,8 +197,8 @@ pub(crate) fn render_pages(
 
 /// 確定済みの矩形に画像資源を描画する。
 ///
-/// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する。PDF は選んだ 1 ページをベクタのまま
-/// Form `XObject`（独立した透過グループ）として描く。krilla は同じバイト列の文書を同一視するので、描画ごとに
+/// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する（超えるかは寸法ヘッダだけで判定する）。
+/// PDF は選んだ 1 ページをベクタのまま Form `XObject`（独立した透過グループ）として描く。krilla は同じバイト列の文書を同一視するので、描画ごとに
 /// 開き直しても `XObject` は（文書, ページ）ごとに 1 個にまとまる。
 fn draw_image(
   surface: &mut Surface<'_>,
@@ -208,22 +208,10 @@ fn draw_image(
   target_dpi: Option<u32>,
 ) -> Result<(), PdfRenderError> {
   let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
-  let loaded = load_image(&image.path, image.format, &image.bytes, None, svg)?;
-  let loaded = if let LoadedImage::Raster(raster) = &loaded
-    && let Some(dpi) = target_dpi
-    && let Some(target) = required_pixels(width, height, dpi)
-    && exceeds(raster.size(), target)
-  {
-    #[expect(
-      clippy::cast_sign_loss,
-      clippy::cast_possible_truncation,
-      reason = "`required_pixels` は有限かつ正の値だけを返し、`ceil().max(1.0)` で 1 以上に丸めた後の縮小目標ピクセル数"
-    )]
-    let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
-    load_image(&image.path, image.format, &image.bytes, Some(target_u), svg)?
-  } else {
-    loaded
-  };
+  let resize_to = target_dpi
+    .and_then(|dpi| return required_pixels(width, height, dpi))
+    .and_then(|target| return resize_target(image.format, &image.bytes, target));
+  let loaded = load_image(&image.path, image.format, &image.bytes, resize_to, svg)?;
   let Some(size) = Size::from_wh(width, height) else {
     unreachable!("画像の描画矩形の幅・高さが正であることは PublicationPage::new が保証する: {width} x {height}");
   };
@@ -262,15 +250,6 @@ fn draw_image(
   }
   surface.pop();
   return Ok(());
-}
-
-/// ラスタ画像のピクセル寸法が縮小目標を幅・高さのどちらかで超えるか。
-#[expect(
-  clippy::cast_precision_loss,
-  reason = "ラスタのピクセル寸法（u32）は image crate の値で、f32 の仮数部に収まる"
-)]
-fn exceeds((width, height): (u32, u32), target: (f32, f32)) -> bool {
-  return width as f32 > target.0 || height as f32 > target.1;
 }
 
 /// 塗りつぶし矩形を描画する。
