@@ -878,6 +878,8 @@ pub(in crate::frontend) fn parse_cst<'a>(
 
 #[cfg(test)]
 mod tests {
+  use proptest::prelude::*;
+
   use super::*;
 
   /// テスト用の環境名 → [`BodyMode`] 解決関数
@@ -2376,5 +2378,152 @@ mod tests {
     assert_eq!(args.len(), 1);
     assert!(args[0].first_child_of_kind(SyntaxKind::MathSuperscript).is_some(), "`^` は上付き");
     assert!(args[0].first_child_of_kind(SyntaxKind::MathGroup).is_some(), "裸の `{{b}}` は数式グループ");
+  }
+
+  /// トークン列が入力を敷き詰めることを検査する
+  ///
+  /// 先頭が 0・隣どうしが接する・空のトークンが無い・両端が字の境界・末尾が入力の終わり、の 5 つが揃えば
+  /// 各トークンの字面を順に連結した文字列は入力とバイト単位で一致する（最後の `assert_eq!` はその帰結）。
+  fn assert_tokens_tile(tokens: &[Token], source: &str) {
+    let mut end = 0u32;
+    for token in tokens {
+      let span = token.span;
+      assert_eq!(span.start, end, "トークンの間に欠落・重複がある: {source:?} の {token:?}");
+      assert!(span.start < span.end, "空のトークンがある: {source:?} の {token:?}");
+      assert!(
+        source.is_char_boundary(span.start as usize) && source.is_char_boundary(span.end as usize),
+        "トークンの端が字の境界にない: {source:?} の {token:?}"
+      );
+      end = span.end;
+    }
+    assert_eq!(end as usize, source.len(), "トークンが入力の末尾まで届かない: {source:?}");
+    let text: String = tokens.iter().map(|token| return token.text(source)).collect();
+    assert_eq!(text, source);
+  }
+
+  /// CST の葉（トークン）を深さ優先・子の順で集める
+  fn leaf_tokens(node: &CstNode<'_>, out: &mut Vec<Token>) {
+    for child in node.children {
+      match child {
+        CstElement::Token(token) => out.push(*token),
+        CstElement::Node(node) => leaf_tokens(node, out),
+      }
+    }
+  }
+
+  /// 字句解析のトークン列と、構文解析が成功したときの CST の葉がどちらも入力を敷き詰めることを検査し、構文解析の成否を返す
+  ///
+  /// 成功時は root の span が入力全体であることも検査する（末尾のトリビアを落とさない）。
+  #[expect(
+    clippy::panic_in_result_fn,
+    reason = "検査の破れは proptest に縮小させるため panic で表す。返す `Result` は検査対象の構文解析の成否で、検査の結果ではない"
+  )]
+  fn parse_and_check_preservation(source: &str) -> Result<(), SyntaxError> {
+    let tokens: Vec<Token> = Lexer::new(source).collect();
+    assert_tokens_tile(&tokens, source);
+
+    let arena = Bump::new();
+    let root = parse_cst(source, &arena)?;
+    let mut leaves = Vec::new();
+    leaf_tokens(root, &mut leaves);
+    assert_tokens_tile(&leaves, source);
+    assert_eq!(
+      (root.span.start, root.span.end as usize),
+      (0, source.len()),
+      "root の span が入力全体でない: {source:?}"
+    );
+    return Ok(());
+  }
+
+  #[test]
+  fn edge_inputs_are_preserved_by_lexer_and_parser() {
+    let inputs = [
+      "",
+      "abc",
+      "あ𝑥",
+      "e\u{301}",
+      "\u{301}",
+      "}\u{301}",
+      "\\",
+      "\\\u{301}",
+      " \n",
+      "// c",
+      "\r\n\r\n",
+      "\\begin{code}a\\end{code}",
+      "\\bold{a} b",
+    ];
+
+    for source in inputs {
+      let _ = parse_and_check_preservation(source);
+    }
+
+    assert!(parse_and_check_preservation("").is_ok());
+  }
+
+  /// 構文文字・エスケープ・コメント・改行・結合文字・数式と verbatim の境界を重点的に出すための断片
+  const SOUP_FRAGMENTS: &[&str] = &[
+    "\\",
+    "{",
+    "}",
+    "[",
+    "]",
+    "$",
+    "_",
+    "^",
+    "&",
+    ",",
+    "=",
+    "/",
+    "//",
+    "\n",
+    "\n\n",
+    "\r\n",
+    " ",
+    "\t",
+    "\\\\",
+    "\u{301}",
+    "\u{200d}",
+    "\u{93f}",
+    "e\u{301}",
+    "あ",
+    "𝑥",
+    "\\{",
+    "\\}",
+    "\\$",
+    "\\,",
+    "\\=",
+    "\\あ",
+    "\\begin{code}",
+    "\\end{code}",
+    "\\begin{equation}",
+    "\\end{equation}",
+    "\\begin{x}",
+    "\\end{x}",
+    "\\vurl{",
+    "\\vhref{",
+    "\\vcite{",
+    "\\vtext{",
+    "\\vnum{",
+    "\\vfrac",
+    "\\valpha",
+  ];
+
+  /// 任意の入力: 任意の字の列（64 字まで）か、字と [`SOUP_FRAGMENTS`] の断片を混ぜた列（32 個まで）
+  fn any_source() -> impl Strategy<Value = String> {
+    let fragment = prop_oneof![
+      any::<char>().prop_map(String::from),
+      prop::sample::select(SOUP_FRAGMENTS).prop_map(String::from),
+    ];
+    return prop_oneof![
+      1 => prop::collection::vec(any::<char>(), 0..64).prop_map(|chars| return chars.into_iter().collect::<String>()),
+      3 => prop::collection::vec(fragment, 0..32).prop_map(|parts| return parts.concat()),
+    ];
+  }
+
+  proptest! {
+    #[test]
+    fn any_input_is_preserved_and_never_panics(source in any_source()) {
+      let _ = parse_and_check_preservation(&source);
+    }
   }
 }
