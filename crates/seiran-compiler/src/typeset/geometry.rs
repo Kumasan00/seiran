@@ -101,11 +101,7 @@ pub(crate) enum GeometryValidationError {
 /// # Errors
 ///
 /// 段間の合計が長さの値域に収まらないとき [`LengthOverflow`]。
-pub(super) fn column_width(
-  text_width: Length,
-  num_columns: usize,
-  column_gap: Length,
-) -> Result<Length, LengthOverflow> {
+fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Result<Length, LengthOverflow> {
   let count = num_columns.max(1);
   #[expect(
     clippy::cast_precision_loss,

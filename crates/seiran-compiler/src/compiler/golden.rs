@@ -587,7 +587,7 @@ fn figure_images_resolve_to_expected_display_sizes() {
 
 #[test]
 fn figure_image_without_size_fits_two_column_width_not_text_width() {
-  // 2 段組みでは本文の 1 段あたりの幅（`body_column_width`）が単段の `text_width`
+  // 2 段組みでは本文の 1 段あたりの幅（本文区画の `PageGeometry::column_width`）が単段の `text_width`
   // （425mm）より狭い。サイズ両省略の画像（testimage5）は段幅いっぱいにフィットするので、
   // 本文パスの呼び出し元が誤って `text_width` を渡していれば幅は 425mm のままになり検出できる
   let project = TestProject::builder()
