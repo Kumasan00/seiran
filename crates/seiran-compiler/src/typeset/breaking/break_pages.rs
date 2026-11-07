@@ -4639,7 +4639,7 @@ mod tests {
 
   #[test]
   fn line_wider_than_its_column_is_recorded_in_two_columns() {
-    // 段幅 45。本文幅 100 には収まる
+    // 幅 50 は 2 段の段幅 45 を超えるが、単段（段幅 100）なら収まる
     let blocks = vec![one_box_paragraph(wide_box(50.0, 8.0, 2.0))];
 
     let (_, overflows) = break_pages_in_range(blocks, &two_column_geometry(), &GreedyBreaker);
@@ -4850,7 +4850,7 @@ mod tests {
 
   #[test]
   fn image_wider_than_its_column_is_recorded_in_two_columns() {
-    // 段幅 45。本文幅 100 には収まる
+    // 幅 50 は 2 段の段幅 45 を超えるが、単段（段幅 100）なら収まる
     let (_, overflows) = break_pages_in_range(vec![image_block(50.0, 20.0)], &two_column_geometry(), &GreedyBreaker);
 
     assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 5.0)]);
