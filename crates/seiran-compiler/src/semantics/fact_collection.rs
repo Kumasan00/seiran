@@ -894,3 +894,341 @@ mod completeness_tests {
     }
   }
 }
+
+/// 生成文書の採番値と参照先が、リセット設定から数えた期待値と一致することを固定する property test
+#[cfg(test)]
+mod numbering_tests {
+  use proptest::prelude::*;
+  use strum::VariantArray;
+
+  use crate::{
+    document::{HirDocument, TheoremClass},
+    frontend::test_support::parse_for_test,
+    semantics::{
+      self, CounterValue, CounterValues, LabelId, SemanticDocument, SemanticPolicy, test_support::sample_references,
+    },
+    source::SourceId,
+    style::{CounterName, Style, TheoremReset},
+  };
+
+  /// 生成する採番対象（文書順の通し番号 `k` でラベル `l{k}` を付ける）
+  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+  enum Target {
+    /// 固定カウンタで採番される要素（章・節・小節・図・表・数式だけを生成する）
+    Counter(CounterName),
+    /// `theorem` クラスの定理
+    Theorem,
+  }
+
+  /// 生成文書の 1 要素
+  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+  enum Item {
+    /// 採番対象
+    Target(Target),
+    /// `\ref`。文書全体の採番対象数 n に対し `raw % n` 番目のラベルを指す（n = 0 なら参照を含まない段落）
+    Ref(usize),
+  }
+
+  /// 検証するリセット設定
+  #[derive(Debug, Clone, Copy, VariantArray)]
+  enum ResetScheme {
+    /// seiran 既定
+    Default,
+    /// 図・表・数式・定理を節ごとに振り直す
+    PerSection,
+    /// 章が何もリセットせず、定理だけを章ごとに振り直す
+    ChapterResetsNothing,
+  }
+
+  impl ResetScheme {
+    /// この設定のスタイルを作る
+    fn style(self) -> Style {
+      let mut style = Style::default();
+      match self {
+        Self::Default => {},
+        Self::PerSection => {
+          style.counters.section.resets = vec![
+            CounterName::Subsection,
+            CounterName::Paragraph,
+            CounterName::Subparagraph,
+            CounterName::Figure,
+            CounterName::Table,
+            CounterName::Equation,
+          ];
+          style.theorems.theorem.reset_by = TheoremReset::Section;
+        },
+        Self::ChapterResetsNothing => {
+          style.counters.chapter.resets = vec![];
+          style.theorems.theorem.reset_by = TheoremReset::Chapter;
+        },
+      }
+      return style;
+    }
+  }
+
+  /// 要素 1 つと、その要素の前でソースを切るか（先頭要素では無視）を生成する戦略
+  fn item() -> impl Strategy<Value = (Item, bool)> {
+    let target = prop_oneof![
+      Just(Target::Counter(CounterName::Chapter)),
+      Just(Target::Counter(CounterName::Section)),
+      Just(Target::Counter(CounterName::Subsection)),
+      Just(Target::Counter(CounterName::Figure)),
+      Just(Target::Counter(CounterName::Table)),
+      Just(Target::Counter(CounterName::Equation)),
+      Just(Target::Theorem),
+    ];
+    let item = prop_oneof![
+      3 => target.prop_map(Item::Target),
+      1 => (0..16usize).prop_map(Item::Ref),
+    ];
+    return (item, any::<bool>());
+  }
+
+  /// ソースを切らない要素列にする
+  fn unsplit(items: &[Item]) -> Vec<(Item, bool)> { return items.iter().map(|&item| return (item, false)).collect(); }
+
+  /// 要素列のうち採番対象だけを文書順に取り出す（添字がラベルの通し番号）
+  fn targets(items: &[(Item, bool)]) -> Vec<Target> {
+    return items
+      .iter()
+      .filter_map(|(item, _)| {
+        let Item::Target(target) = item else {
+          return None;
+        };
+        return Some(*target);
+      })
+      .collect();
+  }
+
+  /// 採番対象 1 つをラベル `l{label}` 付きのソースにする
+  fn target_source(target: Target, label: usize) -> String {
+    return match target {
+      Target::Counter(CounterName::Chapter) => format!("\\chapter[label=l{label}]{{A}}\n"),
+      Target::Counter(CounterName::Section) => format!("\\section[label=l{label}]{{B}}\n"),
+      Target::Counter(CounterName::Subsection) => format!("\\subsection[label=l{label}]{{C}}\n"),
+      Target::Counter(CounterName::Figure) => {
+        format!("\\begin{{figure}}[label=l{label}]\n\\image{{a.png}}\n\\caption{{図}}\n\\end{{figure}}\n")
+      },
+      Target::Counter(CounterName::Table) => {
+        format!("\\begin{{table}}[label=l{label}]\n\\row{{a}}\n\\caption{{表}}\n\\end{{table}}\n")
+      },
+      Target::Counter(CounterName::Equation) => {
+        format!("\\begin{{equation}}[label=l{label}]\nx = 1\n\\end{{equation}}\n")
+      },
+      Target::Theorem => format!("\\begin{{theorem}}[label=l{label}]\n主張\n\\end{{theorem}}\n"),
+      Target::Counter(CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph) => {
+        unreachable!("item() は章・節・小節・図・表・数式だけを生成する: {target:?}")
+      },
+    };
+  }
+
+  /// 要素列を、切れ目ごとのソース列にする（連結すれば単一ソース版になる）
+  ///
+  /// 各要素の後ろに空行を置くので、隣り合う段落が 1 つに融合しない。
+  fn render(items: &[(Item, bool)]) -> Vec<String> {
+    let count = targets(items).len();
+    let mut sources = vec![String::new()];
+    let mut next_label = 0;
+    for (index, (item, starts_source)) in items.iter().enumerate() {
+      if index > 0 && *starts_source {
+        sources.push(String::new());
+      }
+      let snippet = match item {
+        Item::Target(target) => {
+          let snippet = target_source(*target, next_label);
+          next_label += 1;
+          snippet
+        },
+        Item::Ref(raw) => match raw.checked_rem(count) {
+          Some(target) => format!("段落 \\ref{{l{target}}}。\n"),
+          None => "段落。\n".to_string(),
+        },
+      };
+      let source = sources.last_mut().expect("sources は 1 本以上で始めている");
+      source.push_str(&snippet);
+      source.push('\n');
+    }
+    return sources;
+  }
+
+  /// ソース列を宣言順の `SourceId` でパースし、`style` で解析する
+  fn analyze_sources(sources: &[String], style: &Style) -> SemanticDocument {
+    let hir = sources
+      .iter()
+      .enumerate()
+      .map(|(index, source)| {
+        return parse_for_test(source, SourceId::new(index)).expect("生成したソースはパースに成功するはず");
+      })
+      .collect();
+    let policy = SemanticPolicy::from_style(style);
+    return semantics::analyze_for_test(HirDocument::assemble(hir), &policy, &sample_references())
+      .expect("ラベルは一意で参照先は必ず存在するので解析に成功するはず");
+  }
+
+  /// 最後のリセット点より後にある、数える対象の個数
+  ///
+  /// `seen` は文書先頭から注目位置までの採番対象。注目位置自身がリセット点なら 0
+  /// （自身の加算の後にリセットが走る）。
+  fn count_since_reset(seen: &[Target], counts: impl Fn(Target) -> bool, resets: impl Fn(Target) -> bool) -> u32 {
+    let start = seen.iter().rposition(|&target| return resets(target)).map_or(0, |position| return position + 1);
+    let count = seen[start..].iter().filter(|&&target| return counts(target)).count();
+    return u32::try_from(count).expect("生成する要素は高々 17 個");
+  }
+
+  /// 採番対象ごとの期待値を、リセット設定からの数え上げで求める
+  ///
+  /// 位置 `i` のカウンタ `c` の値は、`i` 以下で `c` をリセットする要素の最後の位置より後にある `c` の
+  /// 要素の個数。定理の番号は、`reset_by` の見出しカウンタの要素の最後の位置より後にある定理の個数
+  /// （生成するのは `theorem` クラスだけで、共有カウンタを持つ他クラスの `reset_by` は既定の `None`）。
+  fn expected_values(targets: &[Target], style: &Style) -> Vec<CounterValue> {
+    return targets
+      .iter()
+      .enumerate()
+      .map(|(position, &target)| {
+        let seen = &targets[..=position];
+        let mut counters = CounterValues::default();
+        for &name in CounterName::VARIANTS {
+          counters[name] = count_since_reset(
+            seen,
+            |other| return other == Target::Counter(name),
+            |other| return matches!(other, Target::Counter(by) if style.counters[by].resets.contains(&name)),
+          );
+        }
+        return match target {
+          Target::Counter(name) => CounterValue::Counter { name, counters },
+          Target::Theorem => CounterValue::Theorem {
+            class: TheoremClass::Theorem,
+            own: count_since_reset(
+              seen,
+              |other| return other == Target::Theorem,
+              |other| {
+                return matches!(other, Target::Counter(by) if Some(by) == style.theorems.theorem.reset_by.counter_name());
+              },
+            ),
+            counters,
+          },
+        };
+      })
+      .collect();
+  }
+
+  /// ラベル `l0`..`l{count-1}` が指す先のカウンタ構造値
+  fn label_values(document: &SemanticDocument, count: usize) -> Vec<Option<CounterValue>> {
+    return (0..count)
+      .map(|label| return document.counter_value_of_label(&LabelId::new(format!("l{label}"))).copied())
+      .collect();
+  }
+
+  /// 参照箇所の参照先と、その参照先のカウンタ構造値（文書順）
+  fn ref_values(document: &SemanticDocument) -> Vec<(LabelId, Option<CounterValue>)> {
+    return document
+      .ref_sites()
+      .map(|(_, label)| return (label.clone(), document.counter_value_of_label(label).copied()))
+      .collect();
+  }
+
+  /// 解析結果のラベルと参照先が、数え上げの期待値と一致することを検査する
+  ///
+  /// 期待値は各定義の位置までの要素だけから求めるので、解析を終えた最終結果と一致すれば、定義の後で
+  /// 採番が進んでもその定義の番号が変わらないことも固定される。
+  fn assert_matches_spec(document: &SemanticDocument, items: &[(Item, bool)], style: &Style) {
+    let targets = targets(items);
+    let expected = expected_values(&targets, style);
+    let expected_refs: Vec<(LabelId, Option<CounterValue>)> = items
+      .iter()
+      .filter_map(|(item, _)| {
+        let Item::Ref(raw) = item else {
+          return None;
+        };
+        let target = raw.checked_rem(targets.len())?;
+        return Some((LabelId::new(format!("l{target}")), Some(expected[target])));
+      })
+      .collect();
+
+    assert_eq!(
+      label_values(document, targets.len()),
+      expected.into_iter().map(Some).collect::<Vec<_>>(),
+      "ラベルの採番値: {items:?}"
+    );
+    assert_eq!(ref_values(document), expected_refs, "参照先: {items:?}");
+    return;
+  }
+
+  proptest! {
+    /// 任意の要素列とリセット設定で、採番値と参照先が数え上げの期待値と一致する
+    #[test]
+    fn numbering_and_ref_targets_match_reset_spec(
+      items in prop::collection::vec(item(), 0..=12),
+      scheme in prop::sample::select(ResetScheme::VARIANTS),
+    ) {
+      let style = scheme.style();
+
+      let document = analyze_sources(&[render(&items).concat()], &style);
+
+      assert_matches_spec(&document, &items, &style);
+    }
+  }
+
+  #[test]
+  fn empty_and_single_target_documents_match_spec() {
+    // 空の要素列と、先頭の純粋な前方参照・唯一の対象・後方参照
+    let cases = [
+      unsplit(&[]),
+      unsplit(&[
+        Item::Ref(0),
+        Item::Target(Target::Counter(CounterName::Figure)),
+        Item::Ref(0),
+      ]),
+    ];
+
+    for scheme in ResetScheme::VARIANTS {
+      let style = scheme.style();
+      for items in &cases {
+        let document = analyze_sources(&[render(items).concat()], &style);
+
+        assert_matches_spec(&document, items, &style);
+      }
+    }
+  }
+
+  #[test]
+  fn multiple_resets_match_spec_under_every_scheme() {
+    // 章より前の節、節を挟まない定理 → 章 → 定理、連続する章、複数段のリセットを含む
+    let items = unsplit(&[
+      Item::Target(Target::Counter(CounterName::Section)),
+      Item::Target(Target::Counter(CounterName::Figure)),
+      Item::Target(Target::Theorem),
+      Item::Target(Target::Counter(CounterName::Chapter)),
+      Item::Target(Target::Theorem),
+      Item::Target(Target::Counter(CounterName::Section)),
+      Item::Target(Target::Counter(CounterName::Subsection)),
+      Item::Target(Target::Counter(CounterName::Equation)),
+      Item::Target(Target::Counter(CounterName::Section)),
+      Item::Target(Target::Counter(CounterName::Table)),
+      Item::Target(Target::Theorem),
+      Item::Target(Target::Counter(CounterName::Chapter)),
+      Item::Target(Target::Counter(CounterName::Chapter)),
+      Item::Target(Target::Counter(CounterName::Figure)),
+      Item::Target(Target::Counter(CounterName::Subsection)),
+      Item::Ref(0),
+      Item::Ref(9),
+    ]);
+
+    for scheme in ResetScheme::VARIANTS {
+      let style = scheme.style();
+      let document = analyze_sources(&[render(&items).concat()], &style);
+
+      assert_matches_spec(&document, &items, &style);
+    }
+    // 数え上げの規則そのものの取り違えを、既定設定の手計算値で押さえる
+    let document = analyze_sources(&[render(&items).concat()], &ResetScheme::Default.style());
+    assert!(
+      matches!(document.counter_value_of_label(&LabelId::new("l4")), Some(CounterValue::Theorem { own: 2, .. })),
+      "既定では定理は章で戻らず 2 個目になるはず"
+    );
+    let Some(CounterValue::Counter { counters, .. }) = document.counter_value_of_label(&LabelId::new("l12")) else {
+      panic!("l12 は章のはず");
+    };
+    assert_eq!((counters[CounterName::Chapter], counters[CounterName::Section]), (3, 0));
+  }
+}
