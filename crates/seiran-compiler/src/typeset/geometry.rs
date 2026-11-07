@@ -74,6 +74,24 @@ pub(crate) enum GeometryValidationError {
     /// 段間（pt）
     column_gap: f32,
   },
+  /// 索引の段組み設定により 1 段あたりの幅が 0 以下になった場合
+  #[error(
+    "索引の 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
+  )]
+  #[diagnostic(
+    code(typeset::geometry::invalid_index_columns),
+    help(
+      "style.toml の [index].column_count を減らすか、[columns].gap（索引も本文と同じ段間を使います）を小さくしてください。または style.toml の [page].margin_left / margin_right を狭める・config.toml の [pdf].width を広げて本文幅を確保してください。"
+    )
+  )]
+  InvalidIndexColumnWidth {
+    /// 本文幅（pt）
+    text_width: f32,
+    /// 索引の段数
+    num_columns: usize,
+    /// 段間（pt）
+    column_gap: f32,
+  },
 }
 
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅を返す。
@@ -91,13 +109,13 @@ pub(super) fn column_width(
   let count = num_columns.max(1);
   #[expect(
     clippy::cast_precision_loss,
-    reason = "段数は実用上 1〜2 で、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
+    reason = "段数は style の garde で 1〜3 に限られ、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
   )]
   let n = count as f32;
   #[expect(
     clippy::cast_possible_wrap,
     clippy::cast_possible_truncation,
-    reason = "段数は実用上 1〜2 で、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
+    reason = "段数は style の garde で 1〜3 に限られ、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
   )]
   let gaps = (count - 1) as i32;
   return text_width.try_sub(column_gap.try_mul(gaps)?)?.try_div(f64::from(n));
@@ -144,6 +162,8 @@ pub(crate) struct PreparedGeometry {
   text_width: Length,
   /// 本文の 1 段あたりの幅
   body_column_width: Length,
+  /// 後付け（索引）の 1 段あたりの幅
+  back_column_width: Length,
   /// 本文のページジオメトリ（`style.columns.count` 段）
   body_geometry: PageGeometry,
   /// 前付けのページジオメトリ（常に 1 段・下端揃えなし）
@@ -156,14 +176,16 @@ impl PreparedGeometry {
   /// [`ProjectConfig`]（用紙寸法）と [`Style`]（`[page]` の余白・`[columns]`）の横断制約を検証し、
   /// 通ったときだけ確定した版面を返します。
   ///
-  /// 次の 3 つを独立に検査し、違反を**入力の論理順（縦 → 横 → 段幅）** で集約します。
+  /// 次の 4 つを独立に検査し、違反を**入力の論理順（縦 → 横 → 本文の段幅 → 索引の段幅）** で集約します。
   ///
   /// 1. 上下余白の合計が用紙高未満であること
   /// 2. 左右余白の合計が用紙幅未満であること
   /// 3. 本文幅（`pdf.width - page.margin_left - page.margin_right`）を `style.columns` の段数・段間で
   ///    割った 1 段あたりの幅が正であること
+  /// 4. 同じ本文幅を `style.index.column_count` 段・`style.columns.gap` で割った索引の 1 段あたりの幅が
+  ///    正であること
   ///
-  /// 1・2 の合計が長さの値域を超える場合も、用紙寸法以上と同じ違反にします。3 は 2 が通っているときだけ検査し、
+  /// 1・2 の合計が長さの値域を超える場合も、用紙寸法以上と同じ違反にします。3・4 は 2 が通っているときだけ検査し、
   /// 段間の合計が値域を超える場合は、段の幅が 0 以下になるのと同じ違反にします。
   ///
   /// 本文幅・段幅は 2 が通ったときだけ求め、集約した違反が 1 件でもあれば早期 return するので、
@@ -190,6 +212,7 @@ impl PreparedGeometry {
     }
 
     let num_columns = style.columns.count as usize;
+    let index_columns = usize::from(style.index.column_count);
     let column_gap = style.columns.gap;
     // 余白は非負（style の garde）なので、和が用紙幅未満なら本文幅は正で引き算も溢れない
     let widths = match style.page.margin_left.try_add(style.page.margin_right) {
@@ -199,10 +222,15 @@ impl PreparedGeometry {
             "余白は非負で和が用紙幅未満なので、用紙幅との差は値域に収まる（config / style の検証が保証する）"
           );
         };
-        Some((text_width, column_width(text_width, num_columns, column_gap)))
+        Some((
+          text_width,
+          column_width(text_width, num_columns, column_gap),
+          column_width(text_width, index_columns, column_gap),
+        ))
       },
       Ok(_) | Err(LengthOverflow) => None,
     };
+    let is_valid_width = |width: Result<Length, LengthOverflow>| return width.is_ok_and(|w| return w.is_positive());
     match widths {
       None => {
         errors.push(GeometryValidationError::HorizontalMarginsExceedPageWidth {
@@ -212,27 +240,39 @@ impl PreparedGeometry {
           page_width: config.pdf.width.to_pt(),
         });
       },
-      Some((_, Ok(body_column_width))) if body_column_width.is_positive() => {},
-      Some((text_width, Ok(_) | Err(LengthOverflow))) => {
-        errors.push(GeometryValidationError::InvalidColumnWidth {
-          text_width: text_width.to_pt(),
-          num_columns,
-          column_gap: column_gap.to_pt(),
-        });
+      Some((text_width, body, back)) => {
+        if !is_valid_width(body) {
+          errors.push(GeometryValidationError::InvalidColumnWidth {
+            text_width: text_width.to_pt(),
+            num_columns,
+            column_gap: column_gap.to_pt(),
+          });
+        }
+        if !is_valid_width(back) {
+          errors.push(GeometryValidationError::InvalidIndexColumnWidth {
+            text_width: text_width.to_pt(),
+            num_columns: index_columns,
+            column_gap: column_gap.to_pt(),
+          });
+        }
       },
     }
 
     if let Some(failures) = Failures::from_vec(errors) {
       return Err(failures);
     }
-    let Some((text_width, Ok(body_column_width))) = widths else {
-      unreachable!("左右余白の合計が用紙幅に収まらないか段の幅が正でなければ、上で違反を積んで返している");
+    let Some((text_width, Ok(body_column_width), Ok(back_column_width))) = widths else {
+      unreachable!(
+        "左右余白の合計が用紙幅に収まらないか、本文・索引の段の幅が正でなければ、上で違反を積んで返している"
+      );
     };
 
-    let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, num_columns, column_gap);
+    let (body_geometry, front_geometry, back_geometry) =
+      build_page_geometries(config, style, num_columns, index_columns, column_gap);
     return Ok(Self {
       text_width,
       body_column_width,
+      back_column_width,
       body_geometry,
       front_geometry,
       back_geometry,
@@ -260,14 +300,8 @@ impl PreparedGeometry {
   pub(super) fn back_geometry(&self) -> &PageGeometry { return &self.back_geometry; }
 
   /// 後付け（索引）の 1 段あたりの幅を返す（`break_pages` が後付けの段を組む幅と同じ式）。
-  ///
-  /// # Errors
-  ///
-  /// 後付けの段数と段間は [`PreparedGeometry::prepare`] が検証しないので、段間の合計が長さの値域に収まらないとき
-  /// [`LengthOverflow`]。
-  pub(super) fn back_column_width(&self) -> Result<Length, LengthOverflow> {
-    return column_width(self.text_width, self.back_geometry.num_columns, self.back_geometry.column_gap);
-  }
+  #[must_use]
+  pub(super) fn back_column_width(&self) -> Length { return self.back_column_width; }
 }
 
 /// 本文・前付け・後付けのページジオメトリを組み立てる。
@@ -277,6 +311,7 @@ fn build_page_geometries(
   config: &ProjectConfig,
   style: &Style,
   body_columns: usize,
+  back_columns: usize,
   column_gap: Length,
 ) -> (PageGeometry, PageGeometry, PageGeometry) {
   let Ok(page_limit) = config.pdf.height.try_sub(style.page.margin_bottom) else {
@@ -305,7 +340,7 @@ fn build_page_geometries(
     ..body_geometry
   };
   let back_geometry = PageGeometry {
-    num_columns: usize::from(style.index.column_count),
+    num_columns: back_columns,
     flush_bottom: false,
     ..body_geometry
   };
@@ -382,6 +417,7 @@ mod tests {
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
     style.columns.gap = config.pdf.width;
+    style.index.column_count = 1;
 
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
@@ -397,12 +433,83 @@ mod tests {
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 3;
     style.columns.gap = Length::from_sp(i64::MAX / 2 + 1);
+    style.index.column_count = 1;
 
     let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
 
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
     assert!(matches!(first, GeometryValidationError::InvalidColumnWidth { num_columns: 3, .. }));
+  }
+
+  #[test]
+  fn prepare_rejects_index_column_gap_wider_than_text_width() {
+    // 本文は 1 段なので段間を使わず通るが、索引 3 段の段幅は負になる
+    let (_tempdir, config) = read_test_config();
+    let mut style = test_style(50.0, 50.0, 50.0, 50.0);
+    style.columns.count = 1;
+    style.columns.gap = pt(5000.0);
+    style.index.column_count = 3;
+
+    let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
+
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty());
+    let GeometryValidationError::InvalidIndexColumnWidth {
+      text_width,
+      num_columns,
+      column_gap,
+    } = first
+    else {
+      panic!("索引の段幅違反になるはず: {first:?}");
+    };
+    assert!((text_width - (config.pdf.width.to_pt() - 100.0)).abs() < 0.01);
+    assert_eq!(num_columns, 3);
+    assert!((column_gap - 5000.0).abs() < 0.01);
+  }
+
+  #[test]
+  fn prepare_rejects_index_column_gaps_whose_total_is_unrepresentable() {
+    let (_tempdir, config) = read_test_config();
+    let mut style = test_style(50.0, 50.0, 50.0, 50.0);
+    style.columns.count = 1;
+    style.columns.gap = Length::from_sp(i64::MAX / 2 + 1);
+    style.index.column_count = 3;
+
+    let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
+
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty());
+    assert!(matches!(first, GeometryValidationError::InvalidIndexColumnWidth { num_columns: 3, .. }));
+  }
+
+  #[test]
+  fn prepare_reports_body_and_index_column_violations_in_input_order() {
+    let (_tempdir, config) = read_test_config();
+    let mut style = test_style(50.0, 50.0, 50.0, 50.0);
+    style.columns.count = 2;
+    style.columns.gap = config.pdf.width;
+    style.index.column_count = 3;
+
+    let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
+
+    let (first, rest) = failures.into_parts();
+    assert!(matches!(first, GeometryValidationError::InvalidColumnWidth { num_columns: 2, .. }));
+    assert_eq!(rest.len(), 1);
+    assert!(matches!(rest[0], GeometryValidationError::InvalidIndexColumnWidth { num_columns: 3, .. }));
+  }
+
+  #[test]
+  fn prepare_accepts_any_gap_for_single_column_body_and_index() {
+    let (_tempdir, config) = read_test_config();
+    let mut style = test_style(50.0, 50.0, 50.0, 50.0);
+    style.columns.count = 1;
+    style.columns.gap = pt(5000.0);
+    style.index.column_count = 1;
+
+    let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
+
+    assert_eq!(prepared.back_column_width(), prepared.text_width());
   }
 
   #[test]
@@ -471,11 +578,12 @@ mod tests {
   }
 
   #[test]
-  fn prepare_derives_text_width_and_body_column_width() {
+  fn prepare_derives_text_width_and_column_widths() {
     let (_tempdir, config) = read_test_config();
     let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
     style.columns.gap = pt(15.0);
+    style.index.column_count = 3;
 
     let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
 
@@ -485,6 +593,11 @@ mod tests {
       close(prepared.body_column_width(), (expected_text_width - 15.0) / 2.0),
       "段幅: {:?}",
       prepared.body_column_width()
+    );
+    assert!(
+      close(prepared.back_column_width(), (expected_text_width - 30.0) / 3.0),
+      "索引の段幅: {:?}",
+      prepared.back_column_width()
     );
   }
 

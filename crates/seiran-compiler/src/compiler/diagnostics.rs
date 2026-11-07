@@ -462,6 +462,22 @@ fn diagnostic_dimension_overflow_from_space_sum() {
 }
 
 #[test]
+fn diagnostic_invalid_index_columns() {
+  // 索引語の無い文書でも、索引の段幅が 0 以下になる style は拒否する
+  let failure = TestProject::builder()
+    .source_text("hello\n")
+    .style_toml(|table| {
+      test_support::set(table, "columns", "gap", "5000pt");
+      test_support::set(table, "index", "column_count", 3);
+    })
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::geometry::invalid_index_columns"]);
+  assert_matches_golden("geometry_invalid_index_columns", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_dimension_overflow_from_line_height_factor() {
   // 倍率は正の有限値として検証を通るが、行送り（フォントサイズ × 倍率）が値域を超える
   let source = "hello\n";
