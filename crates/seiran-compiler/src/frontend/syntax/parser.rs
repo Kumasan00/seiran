@@ -2668,6 +2668,52 @@ mod tests {
   /// 生成時に構文上妥当と決まる文書
   fn valid_document() -> BoxedStrategy<String> { return text_content(3); }
 
+  /// トップレベルのテキストモードで単独で構文上不正な断片（未閉鎖のものは入力の終わりまで続く）
+  fn defect() -> BoxedStrategy<String> {
+    let fixed = prop::sample::select(vec![
+      "}",
+      "]",
+      "\\end{x}",
+      "{a}",
+      "[a]",
+      "$$",
+      "$a^b$",
+      "$a_b$",
+      "\\",
+      "\\ a",
+      "{\u{301}",
+      "$\u{301}a$",
+      "\\あ",
+      "\\,",
+      "$a]$",
+      "$[$",
+      "\\bold[a][b]",
+      "\\begin{a b}\\end{a b}",
+      "\\begin{equation}$\\end{equation}",
+      "\\bold{a // b}",
+    ])
+    .prop_map(String::from);
+    return prop_oneof![
+      fixed,
+      text_content(2).prop_map(|text| return format!("\\bold{{{text}")),
+      "[a-z]{0,4}".prop_map(|text| return format!("\\bold[{text}")),
+      math_content(2).prop_map(|math| return format!("${math}")),
+      math_content(2).prop_map(|math| return format!("${{{math}$")),
+      text_content(2).prop_map(|body| return format!("\\begin{{x}}{body}")),
+      verbatim_env_body().prop_map(|body| return format!("\\begin{{code}}{body}")),
+      verbatim_arg_content().prop_map(|content| return format!("\\vurl{{{content}")),
+      text_content(2).prop_map(|body| return format!("\\begin{{x}}{body}\\end{{y}}")),
+    ]
+    .boxed();
+  }
+
+  /// 妥当な文書の後ろに欠陥を 1 つ置いた文書（`" x "` で直前のコマンド呼び出しを閉じ、欠陥が引数として読まれないようにする）
+  fn invalid_document() -> BoxedStrategy<String> {
+    return (valid_document(), defect())
+      .prop_map(|(prefix, defect)| return format!("{prefix} x {defect}"))
+      .boxed();
+  }
+
   proptest! {
     #[test]
     fn any_input_is_preserved_and_never_panics(source in any_source()) {
@@ -2679,6 +2725,13 @@ mod tests {
       let result = parse_and_check_preservation(&source);
 
       prop_assert!(result.is_ok(), "妥当な生成文書が拒否された: {source:?} → {result:?}");
+    }
+
+    #[test]
+    fn invalid_documents_are_rejected(source in invalid_document()) {
+      let result = parse_and_check_preservation(&source);
+
+      prop_assert!(result.is_err(), "構文上不正な生成文書が受理された: {source:?}");
     }
   }
 }
