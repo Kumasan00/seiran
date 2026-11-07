@@ -103,7 +103,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   文献・フォント・ソースの読込（ファイル間の独立な失敗。`compiler::input::load` が文献 → フォント →
   ソースの順に連結する）
 - **早期 return する**: config.toml 自体を読めない、TOML を parse できない、style path を確定できない、
-  HIR を作れない、`SemanticDocument` を作れない、backend が継続不能な失敗を返した。
+  HIR を作れない、`SemanticDocument` を作れない、組版中に長さの演算が溢れた、backend が継続不能な失敗を返した。
   **後段の入力を構築できない境界**（config → style → 横断検証、parse → metrics → validate）は跨いで
   集約しない。境界の判定は段の名前ではなく入力の依存で行う — 横断検証まで通った後の文献・フォント・
   ソースの読込は検証済み config だけを入力にして互いに独立なので、`input::load` がひとまとめに集約する

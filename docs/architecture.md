@@ -59,6 +59,8 @@
   シェーパー API 呼び出し・PDF 座標出力・診断 / ログ / ダンプの整形）と無次元比の算出（`ratio` — 行の伸縮の
   調整比・badness・下端揃えの配分比）だけに閉じる。`Deref` / `From<f32>` は意図的に実装しない（変換漏れを
   型検査で検出するため）
+- **長さの演算は溢れを `LengthOverflow` で返す `try_*` だけ**で、算術演算子はテストビルドにしか無い（本体の
+  溢れの検査漏れを型検査で検出するため）。`Neg` / `abs` は値域の不変条件（`i64::MIN` を除く）により失敗しない
 - garde のカスタムバリデータ（`positive` / `non_negative`）は `length` に同居し、利用側は `use` で持ち込んで
   属性には裸の識別子を書く（derive が通常の関数呼び出しへ展開するので、module を動かしても `use` 側の
   名前解決で捕まる）
@@ -758,9 +760,12 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 非収束）。画像は正規化済みパスの昇順に**全件**検査し、PDF は 1 ファイルの中の要求ページも昇順に全件検査する。`compose` の失敗型は制御フロー型 `ComposeError`
 （`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、ソース位置に
 帰属しうる字の欠落 `Glyphs(Failures<TextGlyphError>)`（数式フォントの `MissingMathGlyph` を文書順に、
-続けて本文の枠の `MissingGlyph`。どちらも `glyph_issues` 項）の 2 腕を持つ（`semantics::AnalyzeError` と同じ形）。`compiler` は
-前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接 `CompileFailure` へ平坦化し、後者は要素に帰属する
-もの（`TextGlyphError::source_id` が `Some`）にだけ `SourceDiagnostic` で本文を添える。
+続けて本文の枠の `MissingGlyph`。どちらも `glyph_issues` 項）と、寸法の溢れ `Dimension(DimensionOverflow)` の 3 腕を持つ
+（`semantics::AnalyzeError` と同じ形）。`compiler` は前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接
+`CompileFailure` へ平坦化し、後 2 者は位置を持つもの（`TextGlyphError::source_id` / `DimensionOverflow::source_id` が
+`Some`）にだけ `SourceDiagnostic` で本文を添える。3 本目は組版の内側では起源を `ElementOverflow`（`NodeId`。生成物・
+ページ単位の計算・emit は `None`）として運び、`pagination::paginate` がはみ出し警告と同じ `SourceMap` で位置に解決する。
+溢れた後の寸法では続きを決定的に組めないので、最初の 1 件で組版を止める（集約しない）。
 
 組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた `unreachable!` で
 顕在化する（内部バグ用のバリアント・`internal_bug` 系の code を再導入しない、#378）。採番・参照解決は
@@ -1551,7 +1556,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   問題を別ソースで示す関連診断（重複ラベルの最初の定義）はそのソースの本文を添えてから内側の `related` の
   後ろに連結する（miette は本文を持たない関連診断を主診断の本文で描くため）。`semantics` の `AnalyzeError`
   は CSL 由来（それ自身が leaf 診断）と意味解析由来（ソースごとに分割済み）に振り分け、後者だけに本文を
-  添える。`typeset` の `ComposeError` も同じ形で、位置を持たない組版の失敗と字の欠落に振り分け、後者のうち要素に
+  添える。`typeset` の `ComposeError` も同じ形で、位置を持たない組版の失敗・字の欠落・寸法の溢れに振り分け、後 2 者のうち要素に
   帰属するものだけに本文を添える（目次のリーダー・ページ番号や走り文など生成内容の欠字は位置を持たない）。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
   （集約診断を先頭へ足さない）。`config.toml` / `style.toml` の TOML 構文エラーは各 `load` 自身が
   `NamedSource` を組み立てる
