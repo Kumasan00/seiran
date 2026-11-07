@@ -572,47 +572,332 @@ mod tests {
   /// `COMMANDS` の全コマンド名を返す
   fn all_command_names() -> Vec<&'static str> { return COMMANDS.entries().map(|(name, _)| return *name).collect(); }
 
+  /// 全コマンド × 引数 0〜4 個を文書として評価し、成功または引数・オプション規則（P2/P3/P6）に関する既知のエラー種別
+  /// だけを返すことを全件確かめる
+  ///
+  /// 環境・数式・表専用のエラー種別（`TableRowCellCountMismatch` 等）が返った場合は、
+  /// トップレベルの単一コマンド呼び出しでは本来発生しえない経路に迷い込んだことを意味し、
+  /// 許可リストに追加せず不具合として扱う。
+  #[test]
+  fn every_command_with_zero_to_four_args_evaluates_or_returns_a_known_diagnostic() {
+    for name in all_command_names() {
+      for arg_count in 0usize..=4 {
+        let arena = Bump::new();
+        let source = format!("\\{name}{}", "{a}".repeat(arg_count));
+        let cst =
+          test_support::parse_cst(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
+
+        let result = evaluator::evaluate_children_to_hir(&source, cst);
+
+        assert!(
+          matches!(
+            result,
+            Ok(_)
+              | Err(
+                EvalError::MissingCommandArgument { .. }
+                  | EvalError::ExtraCommandArgument { .. }
+                  | EvalError::InvalidCommandArgument { .. }
+                  | EvalError::InvalidNumber { .. }
+                  | EvalError::UnknownUnit { .. }
+                  | EvalError::UnitPrefixNotAllowed { .. }
+                  | EvalError::InvalidUnitExponent { .. }
+                  | EvalError::InvalidUnitSyntax { .. }
+                  | EvalError::UnknownOptArgKey { .. }
+                  | EvalError::IndexNotAllowedHere { .. }
+                  | EvalError::ParagraphBreakInArgument { .. }
+                  | EvalError::NoindentNotAtParagraphStart { .. }
+                  | EvalError::BlockInInline { .. }
+              )
+          ),
+          "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}"
+        );
+      }
+    }
+  }
+
+  /// 生成するコマンド呼び出し — 名前・任意引数（`key=value` の列）・必須引数の中身（描画済みのソース）
+  ///
+  /// 生成器は妥当な形だけを組むので、欠陥を 1 つ足した呼び出しの診断はその欠陥だけで決まる。
+  #[derive(Debug, Clone)]
+  struct Call {
+    /// コマンド名（`\` を除く）
+    name: &'static str,
+    /// 任意引数の各エントリ（`key=value`）
+    opts: Vec<String>,
+    /// 必須引数の中身（`{}` を除く）
+    args: Vec<String>,
+  }
+
+  impl Call {
+    /// 呼び出しを組み立てる
+    fn new(name: &'static str, opts: Vec<String>, args: Vec<String>) -> Self { return Self { name, opts, args }; }
+
+    /// `\name[opts]{arg}…` のソースにする（任意引数が空なら `[]` を書かない）
+    fn render(&self) -> String {
+      let opts = if self.opts.is_empty() {
+        String::new()
+      } else {
+        format!("[{}]", self.opts.join(", "))
+      };
+      let args: String = self.args.iter().map(|arg| return format!("{{{arg}}}")).collect();
+      return format!("\\{}{opts}{args}", self.name);
+    }
+  }
+
+  /// 呼び出しを 1 つ置き、空白を挟んで後続テキストを続けた文書を評価する
+  ///
+  /// 呼び出しが常に段落の先頭に来るので、`\noindent` も位置の規則に触れない。
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーは生成器の誤りで評価の結果ではないので、panic させて proptest に失敗として縮小させる必要がある"
+  )]
+  fn evaluate_document(call_source: &str, tail: &str) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let source = format!("{call_source} {tail}");
+    let cst = test_support::parse_cst(&source, &arena).expect("生成したソースは構文として正しいはず");
+    return evaluator::evaluate_children_to_hir(&source, cst);
+  }
+
+  /// 空白を含まない地の文（`\index` の語にも使えるよう空にしない）
+  fn text() -> impl Strategy<Value = String> { return "[a-zA-Z0-9あ-ん]{1,8}"; }
+
+  /// ラベル・引用キー・`label=` の値に使う識別子
+  fn identifier() -> impl Strategy<Value = String> { return "[a-z][a-z0-9]{0,7}"; }
+
+  /// `\num` が受理する数値
+  fn numeral() -> impl Strategy<Value = String> { return "-?[1-9][0-9]{0,5}(\\.[0-9]{1,3})?"; }
+
+  /// `\unit` が受理する単位
+  fn unit_name() -> impl Strategy<Value = String> {
+    return prop::sample::select(&["m", "g", "s", "kg"][..]).prop_map(str::to_string);
+  }
+
+  /// `\url` / `\href` のリンク先
+  fn uri() -> impl Strategy<Value = String> { return "https://example\\.com/[a-z]{0,6}"; }
+
+  /// `color=` の値
+  fn color() -> impl Strategy<Value = String> { return "#[0-9a-fA-F]{6}"; }
+
+  /// `key=value` を 0 個か 1 個持つ任意引数
+  fn optional_opt(key: &'static str, value: impl Strategy<Value = String>) -> impl Strategy<Value = Vec<String>> {
+    return prop::option::of(value)
+      .prop_map(move |value| return value.map(|value| return format!("{key}={value}")).into_iter().collect());
+  }
+
+  /// `COMMANDS` のうち `is_kind` に当たる名前から 1 つ選ぶ
+  fn command_name(is_kind: fn(CommandKind) -> bool) -> impl Strategy<Value = &'static str> {
+    let names: Vec<&'static str> = COMMANDS
+      .entries()
+      .filter(|(_, kind)| return is_kind(**kind))
+      .map(|(name, _)| return *name)
+      .collect();
+    return prop::sample::select(names);
+  }
+
+  /// 書体コマンドの名前
+  fn styled_name() -> impl Strategy<Value = &'static str> {
+    return command_name(|kind| return matches!(kind, CommandKind::StyledText(_)));
+  }
+
+  /// 見出しコマンドの名前
+  fn heading_name() -> impl Strategy<Value = &'static str> {
+    return command_name(|kind| return matches!(kind, CommandKind::Heading(_)));
+  }
+
+  /// 引数を再帰評価しない、どの文脈にも置ける呼び出し
+  fn leaf_call() -> impl Strategy<Value = Call> {
+    return prop_oneof![
+      identifier().prop_map(|label| return Call::new("ref", vec![], vec![label])),
+      prop::collection::vec(identifier(), 1..=3).prop_map(|keys| return Call::new(
+        "cite",
+        vec![],
+        vec![keys.join(", ")]
+      )),
+      "[a-zA-Z0-9 ]{0,8}".prop_map(|code| return Call::new("code", vec![], vec![code])),
+      numeral().prop_map(|numeral| return Call::new("num", vec![], vec![numeral])),
+      unit_name().prop_map(|unit| return Call::new("unit", vec![], vec![unit])),
+      (numeral(), unit_name()).prop_map(|(numeral, unit)| return Call::new("qty", vec![], vec![numeral, unit])),
+    ];
+  }
+
+  /// `\index` の呼び出し
+  fn index_call() -> impl Strategy<Value = Call> {
+    return (optional_opt("reading", "[あ-ん]{1,6}"), text())
+      .prop_map(|(opts, word)| return Call::new("index", opts, vec![word]));
+  }
+
+  /// インライン引数の中身 — 要素 1〜3 個を空白で連結する（記号コマンドの直後に字が続いて名前に吸われないように）
+  ///
+  /// 入れ子は書体・色指定だけで深さ 3 まで。`\index` は `policy` が許すときだけ葉に入れる。
+  fn inline_content(policy: IndexPolicy) -> impl Strategy<Value = String> {
+    let common_leaf = prop_oneof![
+      text(),
+      prop::sample::select(&[r"\alpha", r"\degree"][..]).prop_map(str::to_string),
+      prop::sample::select(&["$x$", "$a+b$", "$x^{2}$"][..]).prop_map(str::to_string),
+      leaf_call().prop_map(|call| return call.render()),
+    ];
+    let leaf = match policy {
+      IndexPolicy::Allow => prop_oneof![
+        common_leaf,
+        index_call().prop_map(|call| return call.render())
+      ]
+      .boxed(),
+      IndexPolicy::Reject => common_leaf.boxed(),
+    };
+    let element = leaf.prop_recursive(3, 16, 3, |inner| {
+      let content = prop::collection::vec(inner, 1..=3).prop_map(|elements| return elements.join(" "));
+      return prop_oneof![
+        (styled_name(), content.clone()).prop_map(|(name, body)| return Call::new(name, vec![], vec![body]).render()),
+        (color(), content).prop_map(|(color, body)| return Call::new(
+          "color",
+          vec![format!("color={color}")],
+          vec![body]
+        )
+        .render()),
+      ];
+    });
+    return prop::collection::vec(element, 1..=3).prop_map(|elements| return elements.join(" "));
+  }
+
+  /// ブロックを生む呼び出し（見出し・`\space`・`\pagebreak`・`\noindent`）
+  fn block_call() -> impl Strategy<Value = Call> {
+    return prop_oneof![
+      (heading_name(), optional_opt("label", identifier()), inline_content(IndexPolicy::Reject))
+        .prop_map(|(name, opts, title)| return Call::new(name, opts, vec![title])),
+      "[1-9][0-9]{0,2}(pt|mm|cm)".prop_map(|length| return Call::new("space", vec![], vec![length])),
+      Just(Call::new("pagebreak", vec![], vec![])),
+      Just(Call::new("noindent", vec![], vec![])),
+    ];
+  }
+
+  /// 引数をインライン内容として再帰評価する呼び出し（書体・色指定・脚注）
+  fn content_call() -> impl Strategy<Value = Call> {
+    return prop_oneof![
+      (styled_name(), inline_content(IndexPolicy::Allow)).prop_map(|(name, body)| return Call::new(
+        name,
+        vec![],
+        vec![body]
+      )),
+      (color(), inline_content(IndexPolicy::Allow)).prop_map(|(color, body)| return Call::new(
+        "color",
+        vec![format!("color={color}")],
+        vec![body]
+      )),
+      inline_content(IndexPolicy::Allow).prop_map(|body| return Call::new("footnote", vec![], vec![body])),
+    ];
+  }
+
+  /// 外部リンクの呼び出し
+  fn link_call() -> impl Strategy<Value = Call> {
+    return prop_oneof![
+      uri().prop_map(|uri| return Call::new("url", vec![], vec![uri])),
+      (uri(), inline_content(IndexPolicy::Reject)).prop_map(|(uri, display)| return Call::new(
+        "href",
+        vec![],
+        vec![uri, display]
+      )),
+    ];
+  }
+
+  /// 文書のトップレベルに置けば診断なく評価される呼び出し
+  fn valid_call() -> impl Strategy<Value = Call> {
+    return prop_oneof![
+      block_call(),
+      content_call(),
+      index_call(),
+      link_call(),
+      leaf_call()
+    ];
+  }
+
   proptest! {
-    #![proptest_config(ProptestConfig::with_cases(1500))]
-
-    /// 成功または引数・オプション規則（P2/P3/P6）に関する既知のエラー種別だけを返す。
-    /// 組み合わせ（コマンド数 × 5）を proptest 既定の 256 ケースでは取りこぼしうるので 1500 に増やす。
-    ///
-    /// 環境・数式・表専用のエラー種別（`TableRowCellCountMismatch` 等）が返った場合は、
-    /// トップレベルの単一コマンド呼び出しでは本来発生しえない経路に迷い込んだことを意味し、
-    /// 許可リストに追加せず不具合として扱う。
+    /// 妥当な引数・任意引数・許された入れ子だけで組んだ呼び出しは診断なく評価される
     #[test]
-    fn any_command_with_any_arg_count_never_panics_and_only_returns_known_errors(
-      name in prop::sample::select(all_command_names()),
-      arg_count in 0usize..=4,
+    fn valid_call_evaluates_without_diagnostic(call in valid_call(), tail in text()) {
+      let source = call.render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(result.is_ok(), "受理すべき `{source} {tail}` が診断になった: {result:?}");
+    }
+
+    /// 必須引数を 1 つ落とすと、そのコマンドの引数不足になる
+    #[test]
+    fn dropping_a_required_argument_is_rejected_as_missing(
+      mut call in valid_call().prop_filter("必須引数を持つ呼び出し", |call| return !call.args.is_empty()),
+      tail in text(),
     ) {
-      let arena = Bump::new();
-      let args = "{a}".repeat(arg_count);
-      let source = format!("\\{name}{args}");
+      call.args.pop();
+      let source = call.render();
 
-      let cst = test_support::parse_cst(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
-      let result = evaluator::evaluate_children_to_hir(&source, cst);
+      let result = evaluate_document(&source, &tail);
 
-      let is_known_outcome = matches!(
-        result,
-        Ok(_)
-          | Err(
-            EvalError::MissingCommandArgument { .. }
-              | EvalError::ExtraCommandArgument { .. }
-              | EvalError::InvalidCommandArgument { .. }
-              | EvalError::InvalidNumber { .. }
-              | EvalError::UnknownUnit { .. }
-              | EvalError::UnitPrefixNotAllowed { .. }
-              | EvalError::InvalidUnitExponent { .. }
-              | EvalError::InvalidUnitSyntax { .. }
-              | EvalError::UnknownOptArgKey { .. }
-              | EvalError::IndexNotAllowedHere { .. }
-              | EvalError::ParagraphBreakInArgument { .. }
-              | EvalError::NoindentNotAtParagraphStart { .. }
-              | EvalError::BlockInInline { .. }
-          )
+      prop_assert!(
+        matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == call.name),
+        "`{source}`: {result:?}"
       );
-      prop_assert!(is_known_outcome, "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}");
+    }
+
+    /// 必須引数を 1 つ足すと、そのコマンドの引数過剰になる
+    #[test]
+    fn appending_an_argument_is_rejected_as_extra(mut call in valid_call(), extra in text(), tail in text()) {
+      call.args.push(extra);
+      let source = call.render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == call.name),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// 宣言に無いキーを 1 つ足すと、そのキーの未知キー診断になる
+    #[test]
+    fn adding_an_undeclared_option_key_is_rejected(
+      mut call in valid_call(),
+      key in "[a-z]{1,8}".prop_filter("宣言済みのキーを避ける", |key| {
+        return !matches!(key.as_str(), "label" | "reading" | "color");
+      }),
+      value in "[a-z0-9]{1,4}",
+      tail in text(),
+    ) {
+      call.opts.push(format!("{key}={value}"));
+      let source = call.render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::UnknownOptArgKey { key: ref rejected, .. }) if *rejected == key),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// ブロックを生む呼び出しを書体コマンドの引数へ入れると、インライン文脈のブロックとして拒否される
+    #[test]
+    fn block_call_inside_an_inline_argument_is_rejected(
+      block in block_call(),
+      styled in styled_name(),
+      tail in text(),
+    ) {
+      let source = Call::new(styled, vec![], vec![block.render()]).render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if *what == format!("\\{}", block.name)),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// 見出しタイトルの中の `\index` は拒否される
+    #[test]
+    fn index_in_heading_title_is_rejected(heading in heading_name(), index in index_call(), tail in text()) {
+      let source = Call::new(heading, vec![], vec![index.render()]).render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "`{source}`: {result:?}");
     }
   }
 
