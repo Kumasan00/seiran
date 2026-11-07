@@ -1231,4 +1231,49 @@ mod numbering_tests {
     };
     assert_eq!((counters[CounterName::Chapter], counters[CounterName::Section]), (3, 0));
   }
+
+  proptest! {
+    /// 完結した要素の境界でソースを切っても、採番値と参照先は単一ソースと同じで、期待値とも一致する
+    #[test]
+    fn splitting_into_sources_keeps_numbers_and_ref_targets(
+      items in prop::collection::vec(item(), 0..=12),
+      scheme in prop::sample::select(ResetScheme::VARIANTS),
+    ) {
+      let style = scheme.style();
+      let sources = render(&items);
+      let single = analyze_sources(&[sources.concat()], &style);
+
+      let split = analyze_sources(&sources, &style);
+
+      let count = targets(&items).len();
+      prop_assert_eq!(label_values(&split, count), label_values(&single, count));
+      prop_assert_eq!(ref_values(&split), ref_values(&single));
+      assert_matches_spec(&split, &items, &style);
+    }
+  }
+
+  #[test]
+  fn references_across_source_boundaries_match_single_source() {
+    // 先頭要素の直後で切り、ソース 1 からソース 2 の節 l2 を前方参照、ソース 3 からソース 0 の章 l0 を後方参照する
+    let items = [
+      (Item::Target(Target::Counter(CounterName::Chapter)), false),
+      (Item::Ref(2), true),
+      (Item::Target(Target::Counter(CounterName::Figure)), false),
+      (Item::Target(Target::Counter(CounterName::Section)), true),
+      (Item::Ref(0), true),
+    ];
+    let sources = render(&items);
+    assert_eq!(sources.len(), 4, "{sources:?}");
+
+    for scheme in ResetScheme::VARIANTS {
+      let style = scheme.style();
+      let single = analyze_sources(&[sources.concat()], &style);
+
+      let split = analyze_sources(&sources, &style);
+
+      assert_eq!(label_values(&split, 3), label_values(&single, 3));
+      assert_eq!(ref_values(&split), ref_values(&single));
+      assert_matches_spec(&split, &items, &style);
+    }
+  }
 }
