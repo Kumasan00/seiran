@@ -3,15 +3,22 @@
 use crate::{
   document::HirList,
   length::Length,
-  typeset::lowering::{
-    LoweringContext, LoweringState,
-    layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
-    lower_nodes,
+  typeset::{
+    error::ElementOverflow,
+    lowering::{
+      LoweringContext, LoweringState,
+      layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
+      lower_nodes,
+    },
   },
 };
 
 /// リストをレイアウトノードに変換する
-pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
+pub(super) fn lower_list(
+  ctx: &LoweringContext<'_>,
+  list: &HirList,
+  state: &mut LoweringState<'_>,
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let list_style = &ctx.style.list;
   let depth = ctx.list_depth;
   let mut result = Vec::new();
@@ -27,11 +34,10 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
     math_operator: None,
   };
 
-  for (i, item) in list.items.iter().enumerate() {
-    // 連番カウンタ n は `\item[marker=...]` の上書きと独立に i から算出するため、上書きされた項目が
+  for (offset, item) in (0u32..).zip(&list.items) {
+    // 連番カウンタ n は `\item[marker=...]` の上書きと独立に項目の位置から算出するため、上書きされた項目が
     // あっても後続項目の自動番号はズレない。
     let base = list.start.unwrap_or(1);
-    let offset = u32::try_from(i).expect("リスト項目数は u32 に収まる前提");
     let n = base.saturating_add(offset);
     let marker_body = if let Some(marker) = &item.marker {
       marker.clone()
@@ -50,7 +56,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
 
     // 左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
     // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。
-    let mut item_nodes = lower_nodes(&item_ctx, &item.body, state);
+    let mut item_nodes = lower_nodes(&item_ctx, &item.body, state)?;
     if !marker_body.is_empty() {
       let marker = InlineNode::Text(format!("{marker_body} "), marker_style);
       if let Some(LayoutNode::Paragraph(paragraph)) = item_nodes.first_mut() {
@@ -76,7 +82,7 @@ pub(super) fn lower_list(ctx: &LoweringContext<'_>, list: &HirList, state: &mut 
     });
   }
 
-  return result;
+  return Ok(result);
 }
 
 #[cfg(test)]

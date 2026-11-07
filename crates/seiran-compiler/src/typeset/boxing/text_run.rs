@@ -10,7 +10,7 @@ use tracing::trace;
 
 use crate::{
   document::Typeface,
-  length::Length,
+  length::{Length, LengthOverflow},
   publication::Glyph,
   typeset::{
     boxes::{HBox, HItem, PlacedHBox},
@@ -36,24 +36,36 @@ const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
 fn space_glue(natural: Length) -> Glue {
   return Glue {
     natural,
-    stretch: natural * SPACE_STRETCH_RATIO,
-    shrink: natural * SPACE_SHRINK_RATIO,
+    stretch: boxing::fraction_of(natural, SPACE_STRETCH_RATIO),
+    shrink: boxing::fraction_of(natural, SPACE_SHRINK_RATIO),
     breakable: true,
   };
 }
 
 impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
-  pub(super) fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut HList) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn push_text_items(
+    &mut self,
+    text: &str,
+    style: TextStyle,
+    out: &mut HList,
+  ) -> Result<(), LengthOverflow> {
     let text = boxing::fold_newlines(text);
     for segment in script::split_text_by_script(style.typeface, &text) {
-      let run =
-        self
-          .shaper
-          .shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level);
+      let run = self.shaper.shape_segment(
+        &segment.text,
+        segment.font_type,
+        style.font_size,
+        style.color,
+        style.script_level,
+      )?;
       if style.typeface == Typeface::Math {
         // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
-        out.push_math_box(self.shaper.add_italic_corrections(run, style).into_hbox());
+        out.push_math_box(self.shaper.add_italic_corrections(run, style)?.into_hbox()?);
         continue;
       }
       // 語中折り返しの行末に付すハイフン箱は、このセグメントのフォントで計測する
@@ -61,35 +73,44 @@ impl Measurer<'_> {
         Some(
           self
             .shaper
-            .shape_segment("-", segment.font_type, style.font_size, style.color, style.script_level)
-            .into_hbox(),
+            .shape_segment("-", segment.font_type, style.font_size, style.color, style.script_level)?
+            .into_hbox()?,
         )
       } else {
         None
       };
-      self.split_run_into_items(run, segment.category, hyphen.as_ref(), out);
+      self.split_run_into_items(run, segment.category, hyphen.as_ref(), out)?;
     }
+    return Ok(());
   }
 
   /// 数式内の文章を本文と同じ規則（和欧文間アキ・約物アキは `punctuation_spacing` に従う）で水平リストに組む
   ///
   /// 文章の端の約物のアキは箱の外の相手が決めるので、リストの端は解決しないまま返す（[`HList::edges`] が端の性質）。
-  pub(super) fn prose_list(&mut self, text: &str, style: TextStyle) -> HList {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn prose_list(&mut self, text: &str, style: TextStyle) -> Result<HList, LengthOverflow> {
     let mut list = HList::default();
-    self.push_text_items(text, style, &mut list);
-    return list;
+    self.push_text_items(text, style, &mut list)?;
+    return Ok(list);
   }
 
   /// 数式内の文章 1 つを閉じた箱にし、（左端, 右端）の約物アキの性質（数式の中の端）と一緒に返す
-  pub(super) fn prose_atom(&mut self, text: &str, style: TextStyle) -> (HBox, Edge, Edge) {
-    let list = self.prose_list(text, style);
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn prose_atom(&mut self, text: &str, style: TextStyle) -> Result<(HBox, Edge, Edge), LengthOverflow> {
+    let list = self.prose_list(text, style)?;
     let (leading, trailing) = list.edges();
     let mut placed = Vec::new();
     let mut dx = Length::ZERO;
-    place_prose(list, Length::ZERO, &mut dx, &mut placed);
-    let mut atom = HBox::atom(placed);
+    place_prose(list, Length::ZERO, &mut dx, &mut placed)?;
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
-    return (atom, leading.in_math(), trailing.in_math());
+    return Ok((atom, leading.in_math(), trailing.in_math()));
   }
 
   /// スクリプト区分 `category` の run を分割可能位置で `HItem` 列に分割し、両端の約物アキ・和欧文間アキの性質を添えて
@@ -100,7 +121,7 @@ impl Measurer<'_> {
     category: script::ScriptCategory,
     hyphen: Option<&HBox>,
     out: &mut HList,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let is_japanese = category == script::ScriptCategory::Japanese;
     // 分割はグリフ順 = 論理順を前提にする（部分 run のグリフ範囲がそのバイト範囲に収まる）
     let text = run.text();
@@ -114,15 +135,15 @@ impl Measurer<'_> {
       return Edge::letter(ch);
     };
     if !run.is_in_logical_order() {
-      out.push(letter(first_char), vec![HItem::Box(run.into_hbox())], letter(last_char));
-      return;
+      out.push(letter(first_char), vec![HItem::Box(run.into_hbox()?)], letter(last_char));
+      return Ok(());
     }
     let mut items = Vec::new();
     // 約物境界は禁則で ICU 分割点に現れないため、break 駆動の下の経路では拾えない
     if is_japanese && self.punctuation_spacing {
-      let (leading, trailing) = split_japanese_run(&run, &mut items);
+      let (leading, trailing) = split_japanese_run(&run, &mut items)?;
       out.push(leading, items, trailing);
-      return;
+      return Ok(());
     }
 
     let hyphenation_lang = if is_japanese { None } else { self.hyphenation };
@@ -135,23 +156,23 @@ impl Measurer<'_> {
       });
     }
     if breaks.is_empty() {
-      out.push(letter(first_char), vec![HItem::Box(run.into_hbox())], letter(last_char));
-      return;
+      out.push(letter(first_char), vec![HItem::Box(run.into_hbox()?)], letter(last_char));
+      return Ok(());
     }
 
     let mut seg_glyph_start = 0usize;
     let mut seg_byte_start = 0usize;
 
     for opportunity in breaks {
-      let Some(cut) = plan_cut(&run, opportunity, seg_glyph_start, is_japanese, hyphen) else {
+      let Some(cut) = plan_cut(&run, opportunity, seg_glyph_start, is_japanese, hyphen)? else {
         continue;
       };
-      push_sub_run(&run, seg_glyph_start..cut.keep_glyph_end, seg_byte_start..cut.keep_byte_end, &mut items);
+      push_sub_run(&run, seg_glyph_start..cut.keep_glyph_end, seg_byte_start..cut.keep_byte_end, &mut items)?;
       items.push(cut.item);
       seg_glyph_start = cut.resume_glyph;
       seg_byte_start = cut.resume_byte;
     }
-    push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), &mut items);
+    push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), &mut items)?;
     // この経路は約物の箱を詰めないので、端は字か、空白の glue ならアキを打ち消す側
     let edge_of = |item: Option<&HItem>, ch: char| -> Edge {
       if matches!(item, Some(HItem::Glue { .. })) {
@@ -161,22 +182,32 @@ impl Measurer<'_> {
     };
     let (leading, trailing) = (edge_of(items.first(), first_char), edge_of(items.last(), last_char));
     out.push(leading, items, trailing);
+    return Ok(());
   }
 }
 
 /// 数式内の文章の水平リストを、伸縮・分割しない 1 行として水平カーソル `dx`・縦オフセット `dy` に並べる
 ///
 /// glue は自然幅のアキ、分割制御は幅 0 として読む。
-pub(super) fn place_prose(list: HList, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+///
+/// # Errors
+///
+/// カーソルが長さの値域を超えたら [`LengthOverflow`]。
+pub(super) fn place_prose(
+  list: HList,
+  dy: Length,
+  dx: &mut Length,
+  out: &mut Vec<PlacedHBox>,
+) -> Result<(), LengthOverflow> {
   for item in list.into_items() {
     match item {
       HItem::Box(hbox) => {
         let width = hbox.width;
         out.push(PlacedHBox { hbox, dx: *dx, dy });
-        *dx += width;
+        *dx = dx.try_add(width)?;
       },
-      HItem::Glue { natural, .. } => *dx += natural,
-      HItem::Kern(length) => *dx += length,
+      HItem::Glue { natural, .. } => *dx = dx.try_add(natural)?,
+      HItem::Kern(length) => *dx = dx.try_add(length)?,
       HItem::Penalty { .. } | HItem::Discretionary { .. } => {},
       HItem::FlushRight(_)
       | HItem::MathBreak { .. }
@@ -189,16 +220,17 @@ pub(super) fn place_prose(list: HList, dy: Length, dx: &mut Length, out: &mut Ve
       },
     }
   }
+  return Ok(());
 }
 
 /// 和文セグメントを約物アキ調整つきで `HItem` 列に分割し（隣接グリフ対を走査）、（先頭, 末尾）のグリフの端の性質を返す
 ///
 /// 端の性質は箱を詰めたかどうかと同じ実効約物クラスから決める — 詰めていない約物（半角グリフ・複数グリフのクラスタ）の
 /// 外へはアキを戻さない。
-fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
+fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Edge), LengthOverflow> {
   let glyphs = run.glyphs();
   if glyphs.is_empty() {
-    return (Edge::Absorb, Edge::Absorb);
+    return Ok((Edge::Absorb, Edge::Absorb));
   }
   let text = run.text();
   let em = run.font_size();
@@ -212,7 +244,9 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
   // グリフ g の先頭文字を返す（クラスタは先頭文字で代表させる）
   let char_of = |g: usize| -> char { return text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };
   // グリフ g が全角相当か（半角約物を積むフォントは正規化・アキ対象外にする）
-  let is_fullwidth = |g: usize| -> bool { return run.advance_of(g) >= em * 0.75 };
+  let advances = (0..glyphs.len()).map(|g| return run.advance_of(g)).collect::<Result<Vec<_>, _>>()?;
+  let three_quarter_em = boxing::fraction_of(em, 0.75);
+  let is_fullwidth = |g: usize| -> bool { return advances[g] >= three_quarter_em };
   // グリフ g が単独でクラスタを成すか（同じクラスタの複数グリフは同じ範囲を持つ）
   let is_lone = |g: usize| -> bool {
     let range = &glyphs[g].range;
@@ -238,8 +272,8 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
   let mut normal_start = 0usize;
   for i in 0..glyphs.len() {
     if is_space(i) {
-      push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out);
-      out.push(space_glue(run.advance_of(i)).into_item());
+      push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
+      out.push(space_glue(advances[i]).into_item());
       normal_start = i + 1;
       continue;
     }
@@ -248,7 +282,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
     if i > 0 && !is_space(i - 1) && glyphs[i - 1].range != glyphs[i].range {
       let breakable = break_bytes.contains(&byte_at(i));
       if let Some(glue) = boxing::boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
-        push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out);
+        push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
         trace!(
           left_char = ?char_of(i - 1),
           right_char = ?char_of(i),
@@ -266,32 +300,42 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> (Edge, Edge) {
     }
 
     if let Some(normalize) = yakumono::normalize(eff_class(i)) {
-      push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out);
-      out.push(HItem::Box(punct_box(run, i, normalize)));
+      push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
+      out.push(HItem::Box(punct_box(run, i, normalize, advances[i])?));
       normal_start = i + 1;
     }
   }
-  push_sub_run(run, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out);
+  push_sub_run(run, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out)?;
   let edge_at = |g: usize| -> Edge {
     if is_space(g) {
       return Edge::Absorb;
     }
     return Edge::glyph(char_of(g), eff_class(g), em);
   };
-  return (edge_at(0), edge_at(glyphs.len() - 1));
+  return Ok((edge_at(0), edge_at(glyphs.len() - 1)));
 }
 
 /// `run` の部分グリフ列を計測済みの箱として `out` に積む（空範囲なら何もしない）
-fn push_sub_run(run: &ShapedRun, glyph_range: Range<usize>, byte_range: Range<usize>, out: &mut Vec<HItem>) {
-  if let Some(hbox) = run.sub_box(glyph_range, byte_range) {
+fn push_sub_run(
+  run: &ShapedRun,
+  glyph_range: Range<usize>,
+  byte_range: Range<usize>,
+  out: &mut Vec<HItem>,
+) -> Result<(), LengthOverflow> {
+  if let Some(hbox) = run.sub_box(glyph_range, byte_range)? {
     out.push(HItem::Box(hbox));
   }
+  return Ok(());
 }
 
-/// 約物 1 グリフを内蔵アキ抜きの実寸 box にして返す
-fn punct_box(run: &ShapedRun, glyph_index: usize, normalize: yakumono::Normalize) -> HBox {
-  let advance = run.advance_of(glyph_index);
-  let width = advance - run.font_size() * normalize.trim_em;
+/// 約物 1 グリフ（送り幅 `advance`）を内蔵アキ抜きの実寸 box にして返す
+fn punct_box(
+  run: &ShapedRun,
+  glyph_index: usize,
+  normalize: yakumono::Normalize,
+  advance: Length,
+) -> Result<HBox, LengthOverflow> {
+  let width = advance.try_sub(boxing::fraction_of(run.font_size(), normalize.trim_em))?;
   trace!(
     char = &run.text()[run.glyphs()[glyph_index].range.clone()],
     trim_em = %normalize.trim_em,
@@ -321,23 +365,30 @@ struct Cut {
 ///
 /// `glyph_start` は直前の切断で更新したカーソル。クラスタ途中・カーソル以前・スペースが前後と
 /// クラスタを成している場合は分割を抑制する。
+///
+/// # Errors
+///
+/// スペースの送り幅が長さの値域を超えたら [`LengthOverflow`]。
 fn plan_cut(
   run: &ShapedRun,
   point: BreakOpportunity,
   glyph_start: usize,
   is_japanese: bool,
   hyphen: Option<&HBox>,
-) -> Option<Cut> {
+) -> Result<Option<Cut>, LengthOverflow> {
   let text = run.text();
-  return match point.kind {
+  return Ok(match point.kind {
     BreakKind::Glue => {
       let glyph_index = if point.byte == text.len() {
         run.glyphs().len()
       } else {
-        find_glyph_starting_at(run.glyphs(), point.byte)?
+        let Some(glyph_index) = find_glyph_starting_at(run.glyphs(), point.byte) else {
+          return Ok(None);
+        };
+        glyph_index
       };
       if glyph_index <= glyph_start {
-        return None;
+        return Ok(None);
       }
       let space = &run.glyphs()[glyph_index - 1];
       // スペース 1 字が単独グリフでクラスタを成すときだけ切る（同じクラスタの複数グリフは同じ範囲を持つ）
@@ -346,20 +397,22 @@ fn plan_cut(
         && text.as_bytes()[point.byte - 1] == b' '
         && (glyph_index < 2 || run.glyphs()[glyph_index - 2].range != space.range);
       if !is_single_space {
-        return None;
+        return Ok(None);
       }
       Some(Cut {
         keep_glyph_end: glyph_index - 1,
         keep_byte_end: point.byte - 1,
         resume_glyph: glyph_index,
         resume_byte: point.byte,
-        item: space_glue(run.advance_of(glyph_index - 1)).into_item(),
+        item: space_glue(run.advance_of(glyph_index - 1)?).into_item(),
       })
     },
     BreakKind::Penalty => {
-      let glyph_index = find_glyph_starting_at(run.glyphs(), point.byte)?;
+      let Some(glyph_index) = find_glyph_starting_at(run.glyphs(), point.byte) else {
+        return Ok(None);
+      };
       if glyph_index <= glyph_start {
-        return None;
+        return Ok(None);
       }
       let item = if is_japanese {
         boxing::cjk_stretch_glue(run.font_size()).into_item()
@@ -375,10 +428,14 @@ fn plan_cut(
       })
     },
     BreakKind::Hyphen => {
-      let hyphen = hyphen?;
-      let glyph_index = find_glyph_starting_at(run.glyphs(), point.byte)?;
+      let Some(hyphen) = hyphen else {
+        return Ok(None);
+      };
+      let Some(glyph_index) = find_glyph_starting_at(run.glyphs(), point.byte) else {
+        return Ok(None);
+      };
       if glyph_index <= glyph_start {
-        return None;
+        return Ok(None);
       }
       Some(Cut {
         keep_glyph_end: glyph_index,
@@ -390,7 +447,7 @@ fn plan_cut(
         },
       })
     },
-  };
+  });
 }
 
 /// `byte` 位置から始まるグリフのインデックスを返す（クラスタ境界の判定）
@@ -402,7 +459,7 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
 mod tests {
   use std::ops::Range;
 
-  use super::{ShapedRun, plan_cut, split_japanese_run};
+  use super::{Cut, ShapedRun, plan_cut, split_japanese_run};
   use crate::{
     document::Typeface,
     length::Length,
@@ -453,7 +510,8 @@ mod tests {
       },
       vec![0; text.chars().count()],
       vec![METRICS],
-    );
+    )
+    .expect("テストの寸法は値域内");
   }
 
   /// 幅 0 のダミーハイフン箱
@@ -466,6 +524,17 @@ mod tests {
     };
   }
 
+  /// [`plan_cut`] を、寸法が値域に収まる前提で呼ぶ
+  fn plan_cut_in_range(
+    run: &ShapedRun,
+    point: BreakOpportunity,
+    glyph_start: usize,
+    is_japanese: bool,
+    hyphen: Option<&HBox>,
+  ) -> Option<Cut> {
+    return plan_cut(run, point, glyph_start, is_japanese, hyphen).expect("テストの寸法は値域内");
+  }
+
   #[test]
   fn glue_cut_drops_the_space_glyph_and_resumes_after_it() {
     let run = ascii_shaped("ab cd");
@@ -473,7 +542,7 @@ mod tests {
       byte: 3,
       kind: BreakKind::Glue,
     };
-    let cut = plan_cut(&run, point, 0, false, None).expect("単独スペースは glue 切断になるはず");
+    let cut = plan_cut_in_range(&run, point, 0, false, None).expect("単独スペースは glue 切断になるはず");
 
     assert_eq!((cut.keep_glyph_end, cut.keep_byte_end), (2, 2), "スペースを含まない範囲まで積む");
     assert_eq!((cut.resume_glyph, cut.resume_byte), (3, 3), "スペースの次から再開する");
@@ -495,8 +564,8 @@ mod tests {
       kind: BreakKind::Penalty,
     };
 
-    let latin = plan_cut(&run, point, 0, false, None).expect("グリフ境界なので切れるはず");
-    let japanese = plan_cut(&run, point, 0, true, None).expect("グリフ境界なので切れるはず");
+    let latin = plan_cut_in_range(&run, point, 0, false, None).expect("グリフ境界なので切れるはず");
+    let japanese = plan_cut_in_range(&run, point, 0, true, None).expect("グリフ境界なので切れるはず");
 
     assert!(matches!(latin.item, HItem::Penalty { value: 0 }), "欧文は幅 0 の分割点");
     assert!(matches!(japanese.item, HItem::Glue { .. }), "和文は字間 glue が分割機会");
@@ -511,8 +580,11 @@ mod tests {
       kind: BreakKind::Hyphen,
     };
 
-    assert!(plan_cut(&run, point, 0, false, None).is_none(), "ハイフン箱が無ければ分割しない");
-    assert!(plan_cut(&run, point, 0, false, Some(&hyphen_box())).is_some(), "あれば Discretionary を作る");
+    assert!(plan_cut_in_range(&run, point, 0, false, None).is_none(), "ハイフン箱が無ければ分割しない");
+    assert!(
+      plan_cut_in_range(&run, point, 0, false, Some(&hyphen_box())).is_some(),
+      "あれば Discretionary を作る"
+    );
   }
 
   /// 先頭の 2 バイト（"ab"）を 1 グリフのクラスタが占める run（クラスタ途中のバイト境界を作るため）
@@ -552,7 +624,8 @@ mod tests {
       },
       vec![0; 3],
       vec![METRICS],
-    );
+    )
+    .expect("テストの寸法は値域内");
   }
 
   #[test]
@@ -563,7 +636,7 @@ mod tests {
       kind: BreakKind::Penalty,
     };
 
-    assert!(plan_cut(&run, inside_cluster, 0, false, None).is_none(), "クラスタ途中のバイト位置は抑制");
+    assert!(plan_cut_in_range(&run, inside_cluster, 0, false, None).is_none(), "クラスタ途中のバイト位置は抑制");
   }
 
   #[test]
@@ -574,7 +647,7 @@ mod tests {
       kind: BreakKind::Penalty,
     };
 
-    assert!(plan_cut(&run, behind_cursor, 2, false, None).is_none(), "カーソル以前の位置は抑制");
+    assert!(plan_cut_in_range(&run, behind_cursor, 2, false, None).is_none(), "カーソル以前の位置は抑制");
   }
 
   #[test]
@@ -596,7 +669,10 @@ mod tests {
       kind: BreakKind::Glue,
     };
 
-    assert!(plan_cut(&run, point, 0, false, None).is_none(), "複数グリフのスペースクラスタでは分割しない");
+    assert!(
+      plan_cut_in_range(&run, point, 0, false, None).is_none(),
+      "複数グリフのスペースクラスタでは分割しない"
+    );
   }
 
   /// グリフごとの（範囲, 送り幅）を指定して run を組む（同じ範囲を並べると複数グリフのクラスタになる）
@@ -623,7 +699,8 @@ mod tests {
       },
       vec![0; glyphs.len()],
       vec![METRICS],
-    );
+    )
+    .expect("テストの寸法は値域内");
   }
 
   /// 分割で積んだ箱のテキストを順に返す（各グリフの範囲が箱のテキストに収まることも検査する）
@@ -657,7 +734,7 @@ mod tests {
     let run = shaped_with_ranges(text, &[(0..3, 1000), (3..9, 1000), (3..9, 0), (9..12, 1000)]);
     let mut out = Vec::new();
 
-    split_japanese_run(&run, &mut out);
+    split_japanese_run(&run, &mut out).expect("テストの寸法は値域内");
 
     let texts = box_texts(&out);
     assert_eq!(texts.concat(), text, "クラスタの文字は欠けも重複もせず箱へ配られるはず: {texts:?}");
@@ -674,7 +751,7 @@ mod tests {
     let halfwidth = shaped_with_ranges("（あ）", &[(0..3, 500), (3..6, 1000), (6..9, 500)]);
     let letters = shaped_with_ranges("あい", &[(0..3, 1000), (3..6, 1000)]);
 
-    let edges = |run: &ShapedRun| return split_japanese_run(run, &mut Vec::new());
+    let edges = |run: &ShapedRun| return split_japanese_run(run, &mut Vec::new()).expect("テストの寸法は値域内");
 
     assert_eq!(
       edges(&fullwidth),
@@ -719,7 +796,7 @@ mod tests {
     };
     let mut list = HList::default();
 
-    measurer.push_text_items("a\u{0460}b cd", style, &mut list);
+    measurer.push_text_items("a\u{0460}b cd", style, &mut list).expect("テストの寸法は値域内");
 
     // Ѡ だけが 2 つ目の候補で組まれるが、語「aѠb」の途中に分割点は入らない
     let items = list.into_items();

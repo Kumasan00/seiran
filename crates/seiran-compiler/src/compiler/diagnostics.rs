@@ -451,6 +451,127 @@ fn diagnostic_length_out_of_range_in_style_and_config() {
 }
 
 #[test]
+fn diagnostic_dimension_overflow_from_space_sum() {
+  // 各アキは値域内だが、b の段落の先頭に積まれる 2 つのアキの幅の和が値域を超える
+  let source = "a\\space{100000000000000pt}\\space{100000000000000pt}b\n";
+  let failure = TestProject::builder().source_text(source).build().compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "b");
+  assert_matches_golden("dimension_overflow_space", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_line_height_factor() {
+  // 倍率は正の有限値として検証を通るが、行送り（フォントサイズ × 倍率）が値域を超える
+  let source = "hello\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "text", "line_height_factor", 3e38))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "hello");
+  assert_matches_golden("dimension_overflow_line_height", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_footnote_marker_size() {
+  // 倍率は正の有限値として検証を通るが、マーカーの大きさ（本文の大きさ × 倍率）が値域を超える
+  let source = "a\\footnote{b}\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "footnote", "marker_size_factor", 3e38))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\footnote");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_image_aspect_ratio() {
+  // testimage4.png は 1200×800。高さ 1e14pt から推論する幅 1.5e14pt が値域を超える
+  let source = "\\begin{figure}\n\\image[height=100000000000000pt]{./tests/image/testimage4.png}\n\\end{figure}\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .asset("./tests/image/testimage4.png")
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\image");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_table_widths() {
+  let source = "\\begin{table}[widths=100000000000000pt 100000000000000pt]\n\\row{A & B}\n\\end{table}\n";
+  let failure = TestProject::builder().source_text(source).build().compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\begin{table}");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_table_cell_line_breaking_points_at_the_row() {
+  // 列を跨ぐ折り返しセルは列幅の決定で自然幅を測らず、最小内容幅（最長の語）も値域に収まる。run は \bold で 1 語ずつに
+  // 分かれて各 run の計測は収まり、折り返しの候補行（全 run をまたぐ区間）の幅の和だけが値域を超える
+  let source = "\\begin{table}[widths=50pt 50pt]\n\\row{A & B}\n\\row{\\cell[span=2]{a \\bold{b} c \\bold{d} e \\bold{f}}}\n\\end{table}\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "text", "font_size", "40000000000000pt"))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "\\row{\\cell");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_from_font_size() {
+  // 行送り（1.2 倍）は値域に収まるが、字幅の和が超える
+  let source = "hello\n";
+  let failure = TestProject::builder()
+    .source_text(source)
+    .style_toml(|table| test_support::set(table, "text", "font_size", "100000000000000pt"))
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+  assert_points_at(failure.diagnostics().next().expect("主診断"), source, "hello");
+}
+
+#[test]
+fn diagnostic_dimension_overflow_inside_per_page_footnote_numbering() {
+  // 反復の中で溢れても、非収束ではなく溢れとして報告する
+  let failure = TestProject::builder()
+    .source_text("hello\\footnote{x}\n")
+    .style_toml(|table| {
+      test_support::set(table, "text", "line_height_factor", 3e38);
+      test_support::set(table, "footnote", "numbering", "per_page");
+    })
+    .build()
+    .compile_err();
+
+  assert_eq!(codes(&failure), vec!["typeset::length::out_of_range"]);
+}
+
+#[test]
+fn representable_large_dimensions_are_typeset() {
+  // 和（1e14pt）も倍率を掛けた値（1e13pt）も値域に収まる入力は、溢れにせず組む（はみ出し警告は出てよい）
+  let spaces = "a\\space{50000000000000pt}\\space{50000000000000pt}b\n";
+  TestProject::builder().source_text(spaces).build().compile().expect("値域内の和は組めるはず");
+
+  TestProject::builder()
+    .source_text("hello\n")
+    .style_toml(|table| test_support::set(table, "text", "line_height_factor", 1e12))
+    .build()
+    .compile()
+    .expect("値域内の行送りは組めるはず");
+}
+
+#[test]
 fn diagnostic_multiple_source_errors() {
   // 2 ソースがそれぞれ別種のエラーを持つ場合の集約
   // （先頭が 1 つ目のソースの leaf、2 つ目は関連診断として並ぶ）

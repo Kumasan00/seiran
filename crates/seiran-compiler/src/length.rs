@@ -7,24 +7,25 @@
 //! 内部表現は **sp（scaled point）= 1/65536 pt** の整数（i64）。整数加算は結合的かつ正確なので、
 //! 伸縮配分や比例配分の多段加算でも誤差が蓄積せず、並列 reduce でも順序非依存でビット同一の結果を得る。
 //! 浮動小数への変換は入出力境界（TOML パース・シェーパー API・PDF 座標出力・診断 / ログ / ダンプ整形）と
-//! 無次元比の算出（[`Length::ratio`]）だけに閉じ、乗除（倍率・比例配分）の丸め規約は [`round_sp`] 1 箇所へ
-//! 集約する。i64 の値域（絶対値 2^47 pt ≈ 1.4e14 pt 未満）は実用の長さに対して実質無限のため、
-//! 受理範囲を狭める上限（`\maxdimen` 相当）は設けない。値域の端を扱うのは 2 箇所だけ — 字面の解釈は
-//! i64 に収まらない値を丸め込まず [`ParseLengthError::OutOfRange`] で拒否し、外部入力どうしの和が
-//! 値域を超えうる版面の余白の合計は [`Length::checked_add`] で検査する。それ以外の演算は溢れを検査しない。
+//! 無次元比の算出（[`Length::ratio`]）だけに閉じる。
+//!
+//! **値域の不変条件**: sp は `|sp| < 2^63`（`i64::MIN` を除く）。`i64::MIN` を除くので [`Neg`] と
+//! [`Length::abs`] は失敗しない。浮動小数から sp への丸め（偶数丸め）と値域検査（NaN・±∞・絶対値 2^63
+//! 以上を拒否）は [`round_sp`] 1 箇所が行い、字面・倍率・除算・実行時の pt 値はすべてそれを通る。整数の
+//! 和・差・倍は `try_*` が検査し、値域外（結果が `i64::MIN` の場合を含む）なら [`LengthOverflow`] を返す。
+//! 算術演算子は `operators` にあり、テストビルドにしか無い（テストが期待値を組むための道具）。
 
 #![expect(
   clippy::cast_precision_loss,
   reason = "内部表現が i64 で、pt / 比率との相互変換で i64 ↔ f64 を頻繁に跨ぐ"
 )]
 
-use std::{
-  iter::Sum,
-  ops::{Div, Mul},
-  str::FromStr,
-};
+#[cfg(test)]
+mod operators;
 
-use derive_more::{Add, AddAssign, Display, Neg, Sub, SubAssign};
+use std::str::FromStr;
+
+use derive_more::{Display, Neg};
 use serde::{Deserialize, Deserializer, de::Error as _};
 use thiserror::Error;
 
@@ -39,25 +40,37 @@ const SP_LIMIT: f64 = (1u64 << 63) as f64;
 /// 字面から読める長さの絶対値の上限（pt。この値自身は読めない）。[`SP_LIMIT`] を pt にした 2^47。
 pub(crate) const MAX_ABS_PT: f64 = SP_LIMIT / SP_PER_PT as f64;
 
+/// 長さの演算結果が値域（`i64::MIN` を除く i64 の sp）に収まらないことを表す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LengthOverflow;
+
 /// sp 空間の f64 値を最近接整数（偶数丸め）へ丸める。**型内で唯一の丸め箇所**。
 ///
 /// 半偶数（round-half-to-even）を採るのは、比例配分で `stretch * ratio` を反復して丸める際に
 /// 方向性バイアスが蓄積しないようにするため。IEEE-754 準拠環境では決定的に同じ結果になる。
+///
+/// # Errors
+///
+/// NaN・±∞・絶対値が 2^63 以上の値は [`LengthOverflow`]。
 #[expect(
   clippy::cast_possible_truncation,
-  reason = "`round_ties_even` 済みの値を i64 に落とすだけで端数は残らない（型内で唯一の丸め箇所）"
+  reason = "絶対値が 2^63 未満と検査済みで `round_ties_even` 済みの値を i64 に落とすだけ（2^63 近傍の f64 は整数なので丸めで 2^63 に達しない）"
 )]
-fn round_sp(sp: f64) -> i64 { return sp.round_ties_even() as i64; }
+fn round_sp(sp: f64) -> Result<i64, LengthOverflow> {
+  // NaN は比較が偽になるので、この形が NaN も範囲外に振り分ける
+  if sp.abs() < SP_LIMIT {
+    return Ok(sp.round_ties_even() as i64);
+  }
+  return Err(LengthOverflow);
+}
 
-/// pt 値（f64）を sp へ丸める。
-fn round_to_pt_sp(pt: f64) -> i64 { return round_sp(pt * SP_PER_PT as f64); }
+/// pt 値（f64）を sp へ丸める。値域外は [`LengthOverflow`]。
+fn round_to_pt_sp(pt: f64) -> Result<i64, LengthOverflow> { return round_sp(pt * SP_PER_PT as f64); }
 
 /// 単位付き長さ値。内部は sp（1/65536 pt）の整数で保持する。
 ///
 /// [`Display`](std::fmt::Display) の出力は [`Length::from_str`] と往復する固定の字面で、幅・寄せなどの書式パラメータは無視する。
-#[derive(
-  Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Add, Sub, Neg, AddAssign, SubAssign, Display,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Neg, Display)]
 #[display("{}pt", self.to_pt())]
 pub struct Length(i64);
 
@@ -66,20 +79,52 @@ impl Length {
   pub const ZERO: Length = Length(0);
 
   /// sp 値から `Length` を構築する（内部用・const 文脈用）。
+  ///
+  /// # Panics
+  ///
+  /// `sp` が `i64::MIN` のとき。値域の不変条件から `i64::MIN` を除くのは、`Neg` / `abs` を失敗しない演算に保つため。
   #[must_use]
-  pub const fn from_sp(sp: i64) -> Self { return Length(sp); }
+  pub const fn from_sp(sp: i64) -> Self {
+    assert!(sp != i64::MIN, "i64::MIN は Length の値域外（Neg / abs を失敗しない演算に保つため）");
+    return Length(sp);
+  }
 
-  /// pt 値から `Length` を構築する（sp へ丸める）。
+  /// pt 値から `Length` を構築する（sp へ丸める）。呼び元は字面の定数だけで、実行時の値は扱わない。
+  ///
+  /// # Panics
+  ///
+  /// 値が値域（絶対値が 2^47 pt 未満）外のとき。
   #[must_use]
-  pub fn pt(value: f32) -> Self { return Length(round_to_pt_sp(f64::from(value))); }
+  pub fn pt(value: f32) -> Self {
+    return Length(round_to_pt_sp(f64::from(value)).expect("字面の定数は値域内"));
+  }
+
+  /// 実行時の pt 値から `Length` を構築する（sp へ丸める）。
+  ///
+  /// # Errors
+  ///
+  /// 値が値域（絶対値が 2^47 pt 未満）外、または NaN・±∞ のとき [`LengthOverflow`]。
+  pub(crate) fn try_pt(value: f64) -> Result<Self, LengthOverflow> { return round_to_pt_sp(value).map(Length); }
 
   /// mm 値から `Length` を構築する（pt を経由して sp へ丸める）。
+  ///
+  /// # Panics
+  ///
+  /// 値が値域外のとき（[`Length::pt`] と同じ）。
   #[must_use]
-  pub fn mm(value: f32) -> Self { return Length(round_to_pt_sp(f64::from(value) * MM_TO_PT)); }
+  pub fn mm(value: f32) -> Self {
+    return Length(round_to_pt_sp(f64::from(value) * MM_TO_PT).expect("字面の定数は値域内"));
+  }
 
   /// cm 値から `Length` を構築する（pt を経由して sp へ丸める）。
+  ///
+  /// # Panics
+  ///
+  /// 値が値域外のとき（[`Length::pt`] と同じ）。
   #[must_use]
-  pub fn cm(value: f32) -> Self { return Length(round_to_pt_sp(f64::from(value) * CM_TO_PT)); }
+  pub fn cm(value: f32) -> Self {
+    return Length(round_to_pt_sp(f64::from(value) * CM_TO_PT).expect("字面の定数は値域内"));
+  }
 
   /// 内部の sp 値を返す（比率計算などの生値取り出し用）。
   #[must_use]
@@ -113,10 +158,6 @@ impl Length {
   #[must_use]
   pub const fn is_non_negative(self) -> bool { return self.0 >= 0; }
 
-  /// 倍率（無次元の f64）を掛けた長さを返す。丸めは [`round_sp`] 経由。
-  #[must_use]
-  pub fn scale(self, factor: f64) -> Self { return Length(round_sp(self.0 as f64 * factor)); }
-
   /// `self / denom` の無次元比を f64 で返す（伸縮の調整比・下端揃えの配分比など）。
   ///
   /// 整数オペランド同士の除算なので、IEEE-754 準拠環境では決定的に同じ結果になる。
@@ -127,9 +168,67 @@ impl Length {
   #[must_use]
   pub const fn abs(self) -> Self { return Length(self.0.abs()); }
 
-  /// 和を返す。i64 の sp に収まらないときは `None`。
-  #[must_use]
-  pub(crate) fn checked_add(self, rhs: Self) -> Option<Self> { return self.0.checked_add(rhs.0).map(Length); }
+  /// `i64::MIN` を除く i64 に収まる sp だけを `Length` にする。
+  fn from_checked(sp: Option<i64>) -> Result<Self, LengthOverflow> {
+    return match sp {
+      Some(sp) if sp != i64::MIN => Ok(Length(sp)),
+      Some(_) | None => Err(LengthOverflow),
+    };
+  }
+
+  /// 和を返す。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域外のとき [`LengthOverflow`]。
+  pub(crate) fn try_add(self, rhs: Self) -> Result<Self, LengthOverflow> {
+    return Length::from_checked(self.0.checked_add(rhs.0));
+  }
+
+  /// 差を返す。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域外のとき [`LengthOverflow`]。
+  pub(crate) fn try_sub(self, rhs: Self) -> Result<Self, LengthOverflow> {
+    return Length::from_checked(self.0.checked_sub(rhs.0));
+  }
+
+  /// 倍率（無次元の f64）を掛けた長さを返す。丸めは [`round_sp`] 経由。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域外、または倍率が NaN・±∞ で積が定まらないとき [`LengthOverflow`]。
+  pub(crate) fn try_scale(self, factor: f64) -> Result<Self, LengthOverflow> {
+    return round_sp(self.0 as f64 * factor).map(Length);
+  }
+
+  /// 整数倍（無次元カウント）を返す。sp 整数のまま乗算するので丸め・浮動小数を経由せず厳密。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域外のとき [`LengthOverflow`]。
+  pub(crate) fn try_mul(self, count: i32) -> Result<Self, LengthOverflow> {
+    return Length::from_checked(self.0.checked_mul(i64::from(count)));
+  }
+
+  /// 無次元の f64 で割った長さを返す。丸めは [`round_sp`] 経由。
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域外のとき、または 0 除算で ±∞ / NaN になるとき [`LengthOverflow`]。
+  pub(crate) fn try_div(self, divisor: f64) -> Result<Self, LengthOverflow> {
+    return round_sp(self.0 as f64 / divisor).map(Length);
+  }
+
+  /// 長さの総和を返す。最初の溢れで止める。
+  ///
+  /// # Errors
+  ///
+  /// 途中の和が値域外になったとき [`LengthOverflow`]。
+  pub(crate) fn try_sum(lengths: impl IntoIterator<Item = Length>) -> Result<Self, LengthOverflow> {
+    return lengths.into_iter().try_fold(Length::ZERO, Length::try_add);
+  }
 }
 
 /// 単位の綴りと、1 単位あたりの pt。字面の単位は小文字のこの 3 つだけ。
@@ -180,13 +279,12 @@ impl FromStr for Length {
         };
         // `inf` の字面や `1e400` のように f64 で溢れた数値（±∞）もここで範囲外になる。
         // 2^63 近傍の f64 は整数なので、丸める前に検査しても丸めた後と同じ判定になる
-        let sp = parsed * pt_per_unit * SP_PER_PT as f64;
-        if sp.abs() >= SP_LIMIT {
-          return Err(ParseLengthError::OutOfRange {
+        let sp = round_to_pt_sp(parsed * pt_per_unit).map_err(|LengthOverflow| {
+          return ParseLengthError::OutOfRange {
             input: s.to_string(),
-          });
-        }
-        return Ok(Length(round_sp(sp)));
+          };
+        })?;
+        return Ok(Length(sp));
       }
     }
     return Err(format_error());
@@ -232,50 +330,11 @@ pub(crate) fn non_negative(value: &Length, _ctx: &()) -> garde::Result {
   return Err(garde::Error::new(format!("非負である必要があります（受け取った値: {value}）")));
 }
 
-impl Mul<f64> for Length {
-  type Output = Self;
-
-  fn mul(self, rhs: f64) -> Self::Output { return self.scale(rhs); }
-}
-
-impl Mul<f32> for Length {
-  type Output = Self;
-
-  fn mul(self, rhs: f32) -> Self::Output { return self.scale(f64::from(rhs)); }
-}
-
-impl Mul<i32> for Length {
-  type Output = Self;
-
-  /// 整数倍（無次元カウント）。sp 整数のまま乗算するので丸め・浮動小数を経由せず厳密。
-  fn mul(self, rhs: i32) -> Self::Output { return Length(self.0 * i64::from(rhs)); }
-}
-
-impl Div<f64> for Length {
-  type Output = Self;
-
-  fn div(self, rhs: f64) -> Self::Output { return Length(round_sp(self.0 as f64 / rhs)); }
-}
-
-impl Div<f32> for Length {
-  type Output = Self;
-
-  fn div(self, rhs: f32) -> Self::Output { return Length(round_sp(self.0 as f64 / f64::from(rhs))); }
-}
-
-impl Sum for Length {
-  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self { return iter.fold(Length::ZERO, |acc, x| return acc + x); }
-}
-
-impl<'a> Sum<&'a Length> for Length {
-  fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self { return iter.fold(Length::ZERO, |acc, x| return acc + *x); }
-}
-
 #[cfg(test)]
 mod tests {
   use serde::Deserialize;
 
-  use super::{Length, ParseLengthError};
+  use super::{Length, LengthOverflow, ParseLengthError};
 
   #[derive(Debug, Deserialize)]
   struct Wrapper {
@@ -372,12 +431,59 @@ mod tests {
   }
 
   #[test]
-  fn checked_add_detects_overflow() {
+  fn try_add_rejects_sums_outside_the_representable_range() {
     let half = Length::from_sp(1i64 << 62);
 
-    assert_eq!(half.checked_add(Length::from_sp(1)), Some(Length::from_sp((1i64 << 62) + 1)));
-    assert_eq!(half.checked_add(half), None);
+    assert_eq!(Length::from_sp(i64::MAX - 1).try_add(Length::from_sp(1)), Ok(Length::from_sp(i64::MAX)));
+    assert_eq!(half.try_add(half), Err(LengthOverflow));
+    // i64::MIN ちょうどは値域外（Neg / abs を失敗しない演算に保つため）
+    assert_eq!((-half).try_add(-half), Err(LengthOverflow));
   }
+
+  #[test]
+  fn try_sub_rejects_results_outside_the_representable_range() {
+    assert_eq!(Length::from_sp(-i64::MAX).try_sub(Length::from_sp(1)), Err(LengthOverflow));
+    assert_eq!(Length::from_sp(i64::MAX).try_sub(Length::from_sp(-1)), Err(LengthOverflow));
+  }
+
+  #[test]
+  fn try_scale_rejects_unrepresentable_products_instead_of_saturating() {
+    let base = Length::from_sp(1i64 << 52);
+
+    assert_eq!(base.try_scale(2047.0), Ok(Length::from_sp((1i64 << 52) * 2047)));
+    assert_eq!(base.try_scale(2048.0), Err(LengthOverflow));
+    assert_eq!(Length::pt(12.0).try_scale(3e38), Err(LengthOverflow));
+    assert_eq!(Length::pt(12.0).try_scale(f64::INFINITY), Err(LengthOverflow));
+    assert_eq!(Length::pt(12.0).try_scale(f64::NAN), Err(LengthOverflow));
+  }
+
+  #[test]
+  fn try_scale_and_try_div_round_half_to_even() {
+    assert_eq!(Length::from_sp(3).try_scale(0.5), Ok(Length::from_sp(2)));
+    assert_eq!(Length::from_sp(5).try_scale(0.5), Ok(Length::from_sp(2)));
+    assert_eq!(Length::from_sp(7).try_div(2.0), Ok(Length::from_sp(4)));
+  }
+
+  #[test]
+  fn try_mul_and_try_div_reject_unrepresentable_results() {
+    let half = Length::from_sp(1i64 << 62);
+
+    assert_eq!(half.try_mul(2), Err(LengthOverflow));
+    assert_eq!(half.try_mul(-2), Err(LengthOverflow));
+    assert_eq!(Length::from_sp(1).try_div(0.0), Err(LengthOverflow));
+    assert_eq!(Length::from_sp(i64::MAX).try_div(0.5), Err(LengthOverflow));
+  }
+
+  #[test]
+  fn try_sum_stops_at_the_first_overflow() {
+    assert_eq!(Length::try_sum([]), Ok(Length::ZERO));
+    assert_eq!(Length::try_sum([Length::pt(1.0), Length::pt(2.0)]), Ok(Length::pt(3.0)));
+    assert_eq!(Length::try_sum([Length::from_sp(i64::MAX), Length::from_sp(1)]), Err(LengthOverflow));
+  }
+
+  #[test]
+  #[should_panic(expected = "i64::MIN")]
+  fn from_sp_rejects_i64_min() { let _ = Length::from_sp(i64::MIN); }
 
   #[test]
   fn display_and_from_str_round_trip() {
@@ -399,6 +505,13 @@ mod tests {
     let result: Result<Wrapper, _> = toml::from_str("length = 12.0");
 
     assert!(result.is_err());
+  }
+
+  #[test]
+  fn try_pt_rejects_unrepresentable_values() {
+    assert_eq!(Length::try_pt(12.5), Ok(Length::pt(12.5)));
+    assert_eq!(Length::try_pt(1.5e14), Err(LengthOverflow));
+    assert_eq!(Length::try_pt(f64::INFINITY), Err(LengthOverflow));
   }
 
   #[test]
@@ -429,8 +542,8 @@ mod tests {
     // 3 sp を 0.5 倍すると 1.5 sp → 偶数丸めで 2 sp
     let three_sp = Length::from_sp(3);
 
-    assert_eq!(one_sp.scale(0.5), Length::from_sp(0));
-    assert_eq!(three_sp.scale(0.5), Length::from_sp(2));
+    assert_eq!(one_sp * 0.5, Length::from_sp(0));
+    assert_eq!(three_sp * 0.5, Length::from_sp(2));
   }
 
   #[test]

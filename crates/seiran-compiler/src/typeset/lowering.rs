@@ -48,7 +48,7 @@ use crate::{
   project::config::ImageConfig,
   semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
   style::Style as ReadStyle,
-  typeset::boxes::AnchorId,
+  typeset::{boxes::AnchorId, error::ElementOverflow},
 };
 
 /// Lowering のコンテキスト
@@ -191,7 +191,7 @@ pub(super) mod test_support {
 
   /// 意味解析済みドキュメントを lower してレイアウトノード列を返す
   pub(crate) fn lower(style: &Style, document: &SemanticDocument) -> Vec<LayoutNode> {
-    let (layout, _headings) = lower_sources_with_headings(&context(style), document);
+    let (layout, _headings) = lower_sources_with_headings(&context(style), document).expect("テストが組む長さは値域内");
     return layout;
   }
 
@@ -314,13 +314,12 @@ impl<'a> LoweringState<'a> {
 }
 
 /// 意味解析の成果物をレイアウトノードに変換し、見出し記録も返す
-#[must_use]
 pub(super) fn lower_sources_with_headings(
   ctx: &LoweringContext<'_>,
   document: &SemanticDocument,
-) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
+) -> Result<(Vec<LayoutNode>, Vec<HeadingRecord>), ElementOverflow> {
   let mut state = LoweringState::new(document);
-  let mut result = lower_nodes(ctx, document.hir().source_nodes().iter().flatten(), &mut state);
+  let mut result = lower_nodes(ctx, document.hir().source_nodes().iter().flatten(), &mut state)?;
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
@@ -349,7 +348,7 @@ pub(super) fn lower_sources_with_headings(
   let input_node_count: usize = document.hir().source_nodes().iter().map(Vec::len).sum::<usize>()
     + document.bibliography().map_or(0, <[BibliographyEntry]>::len);
   debug!(input_node_count, layout_node_count = result.len(), "LayoutNode へ lowering");
-  return (result, headings);
+  return Ok((result, headings));
 }
 
 /// HIR のブロック列を変換し、水平アキを後続段落の先頭へまとめる。
@@ -359,26 +358,26 @@ pub(super) fn lower_nodes<'a>(
   ctx: &LoweringContext<'_>,
   nodes: impl IntoIterator<Item = &'a HirNode>,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let mut result = Vec::new();
   let mut pending_space = Vec::new();
   // アキだけで閉じる段落が指す、アキ列の先頭の `Space` ノード
   let mut pending_space_origin = None;
   for node in nodes {
     let lowered = match &node.kind {
-      HirNodeKind::Heading(heading) => heading::lower_hir_heading(ctx, node.id, heading, state),
+      HirNodeKind::Heading(heading) => heading::lower_hir_heading(ctx, node.id, heading, state)?,
       HirNodeKind::Paragraph(inlines) => {
-        let mut paragraph = paragraph::lower_paragraph(ctx, node.id, inlines, state);
+        let mut paragraph = paragraph::lower_paragraph(ctx, node.id, inlines, state)?;
         if !pending_space.is_empty() {
           pending_space.append(&mut paragraph.content);
           paragraph.content = mem::take(&mut pending_space);
         }
         vec![LayoutNode::Paragraph(paragraph)]
       },
-      HirNodeKind::List(list) => list::lower_list(ctx, list, state),
-      HirNodeKind::Theorem(theorem) => theorem::lower_theorem(ctx, node.id, theorem, state),
-      HirNodeKind::Quote(quote) => quote::lower_quote(ctx, quote, state),
-      HirNodeKind::Flush(flush) => flush::lower_flush(ctx, flush, state),
+      HirNodeKind::List(list) => list::lower_list(ctx, list, state)?,
+      HirNodeKind::Theorem(theorem) => theorem::lower_theorem(ctx, node.id, theorem, state)?,
+      HirNodeKind::Quote(quote) => quote::lower_quote(ctx, quote, state)?,
+      HirNodeKind::Flush(flush) => flush::lower_flush(ctx, flush, state)?,
       HirNodeKind::CodeBlock(text) => code::lower_code_block(ctx, node.id, text),
       HirNodeKind::PageBreak => vec![LayoutNode::PageBreak],
       HirNodeKind::Space(length) => {
@@ -387,8 +386,8 @@ pub(super) fn lower_nodes<'a>(
         continue;
       },
       HirNodeKind::MathBlock(math) => math::lower_math_block(ctx, node.id, math, &*state),
-      HirNodeKind::Figure(figure) => figure::lower_figure(ctx, node.id, figure, state),
-      HirNodeKind::Table(table) => table::lower_table(ctx, node.id, table, state),
+      HirNodeKind::Figure(figure) => figure::lower_figure(ctx, node.id, figure, state)?,
+      HirNodeKind::Table(table) => table::lower_table(ctx, node.id, table, state)?,
     };
     if !lowered.is_empty() && !pending_space.is_empty() {
       result.push(LayoutNode::Paragraph(ParagraphLayout {
@@ -409,7 +408,7 @@ pub(super) fn lower_nodes<'a>(
       spacing_after: Length::ZERO,
     }));
   }
-  return result;
+  return Ok(result);
 }
 
 /// ラベル付きブロック（図・表・定理・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
@@ -457,7 +456,7 @@ mod tests {
   /// 入力を lower して、レイアウトノード列と見出し記録の両方を返すテストヘルパ
   fn lower_body(style: &ReadStyle, document: &SemanticDocument) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
     let ctx = context(style);
-    return lower_sources_with_headings(&ctx, document);
+    return lower_sources_with_headings(&ctx, document).expect("テストが組む長さは値域内");
   }
 
   /// `.sei` ソース 1 本を lower して `LayoutNode` 列だけを返すテストヘルパ
@@ -799,7 +798,7 @@ mod tests {
       analyzed.with_generated_citations_for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], None);
     let ctx = context(&style);
 
-    let (_layout, headings) = lower_sources_with_headings(&ctx, &document);
+    let (_layout, headings) = lower_sources_with_headings(&ctx, &document).expect("テストが組む長さは値域内");
 
     assert_eq!(headings[0].title_plain, "結論 [1]", "{headings:?}");
   }

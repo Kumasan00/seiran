@@ -12,7 +12,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{Align, HBox, PlacedHBox},
     boxing::{
@@ -44,43 +44,71 @@ struct FractionConstants {
 
 impl FractionConstants {
   /// 数式フォントの MATH 定数を `font_size` で長さへ換算し、`display` なら display 段の値を選ぶ
-  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Self {
+  ///
+  /// # Errors
+  ///
+  /// 換算した長さが値域を超えたら [`LengthOverflow`]。
+  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Result<Self, LengthOverflow> {
     let at = |constant: MathConstant| return shaper.math_constant(constant, font_size);
     let pick = |display_constant: MathConstant, constant: MathConstant| {
       return at(if display { display_constant } else { constant });
     };
-    return FractionConstants {
-      axis_height: at(MathConstant::AxisHeight),
-      rule_thickness: at(MathConstant::FractionRuleThickness),
+    return Ok(FractionConstants {
+      axis_height: at(MathConstant::AxisHeight)?,
+      rule_thickness: at(MathConstant::FractionRuleThickness)?,
       numerator_shift_up: pick(
         MathConstant::FractionNumeratorDisplayStyleShiftUp,
         MathConstant::FractionNumeratorShiftUp,
-      ),
+      )?,
       denominator_shift_down: pick(
         MathConstant::FractionDenominatorDisplayStyleShiftDown,
         MathConstant::FractionDenominatorShiftDown,
-      ),
-      numerator_gap_min: pick(MathConstant::FractionNumDisplayStyleGapMin, MathConstant::FractionNumeratorGapMin),
-      denominator_gap_min: pick(MathConstant::FractionDenomDisplayStyleGapMin, MathConstant::FractionDenominatorGapMin),
-    };
+      )?,
+      numerator_gap_min: pick(MathConstant::FractionNumDisplayStyleGapMin, MathConstant::FractionNumeratorGapMin)?,
+      denominator_gap_min: pick(
+        MathConstant::FractionDenomDisplayStyleGapMin,
+        MathConstant::FractionDenominatorGapMin,
+      )?,
+    });
   }
 
   /// 分子のベースラインを分数のベースラインから上げる量
   ///
   /// 標準のシフトと、分子のインクの底を横罫の上端からギャップの下限だけ離す量の大きい方。
-  fn numerator_shift(&self, numerator_ink_depth: Length) -> Length {
-    return self
-      .numerator_shift_up
-      .max(self.axis_height + self.rule_thickness / 2.0 + self.numerator_gap_min + numerator_ink_depth);
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn numerator_shift(&self, numerator_ink_depth: Length) -> Result<Length, LengthOverflow> {
+    return Ok(
+      self.numerator_shift_up.max(
+        self
+          .axis_height
+          .try_add(self.rule_thickness.try_div(2.0)?)?
+          .try_add(self.numerator_gap_min)?
+          .try_add(numerator_ink_depth)?,
+      ),
+    );
   }
 
   /// 分母のベースラインを分数のベースラインから下げる量
   ///
   /// 標準のシフトと、分母のインクの頂を横罫の下端からギャップの下限だけ離す量の大きい方。
-  fn denominator_shift(&self, denominator_ink_height: Length) -> Length {
-    return self
-      .denominator_shift_down
-      .max(self.rule_thickness / 2.0 + self.denominator_gap_min + denominator_ink_height - self.axis_height);
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn denominator_shift(&self, denominator_ink_height: Length) -> Result<Length, LengthOverflow> {
+    return Ok(
+      self.denominator_shift_down.max(
+        self
+          .rule_thickness
+          .try_div(2.0)?
+          .try_add(self.denominator_gap_min)?
+          .try_add(denominator_ink_height)?
+          .try_sub(self.axis_height)?,
+      ),
+    );
   }
 }
 
@@ -97,28 +125,39 @@ struct StackConstants {
 
 impl StackConstants {
   /// 数式フォントの MATH 定数を `font_size` で長さへ換算し、`display` なら display 段の値を選ぶ
-  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Self {
+  ///
+  /// # Errors
+  ///
+  /// 換算した長さが値域を超えたら [`LengthOverflow`]。
+  fn new(shaper: &Shaper<'_>, font_size: Length, display: bool) -> Result<Self, LengthOverflow> {
     let pick = |display_constant: MathConstant, constant: MathConstant| {
       return shaper.math_constant(if display { display_constant } else { constant }, font_size);
     };
-    return StackConstants {
-      top_shift_up: pick(MathConstant::StackTopDisplayStyleShiftUp, MathConstant::StackTopShiftUp),
-      bottom_shift_down: pick(MathConstant::StackBottomDisplayStyleShiftDown, MathConstant::StackBottomShiftDown),
-      gap_min: pick(MathConstant::StackDisplayStyleGapMin, MathConstant::StackGapMin),
-    };
+    return Ok(StackConstants {
+      top_shift_up: pick(MathConstant::StackTopDisplayStyleShiftUp, MathConstant::StackTopShiftUp)?,
+      bottom_shift_down: pick(MathConstant::StackBottomDisplayStyleShiftDown, MathConstant::StackBottomShiftDown)?,
+      gap_min: pick(MathConstant::StackDisplayStyleGapMin, MathConstant::StackGapMin)?,
+    });
   }
 
   /// 上段のベースラインを上げる量と、下段のベースラインを下げる量（`MathML Core` §3.3.2.2）
   ///
   /// 上段のインクの底と下段のインクの頂の間が `gap_min` に足りなければ、不足分を上下に半分ずつ足す。
-  fn shifts(&self, top_ink_depth: Length, bottom_ink_height: Length) -> (Length, Length) {
-    let gap = (self.bottom_shift_down - bottom_ink_height) + (self.top_shift_up - top_ink_depth);
-    let delta = self.gap_min - gap;
+  ///
+  /// # Errors
+  ///
+  /// 結果が値域を超えたら [`LengthOverflow`]。
+  fn shifts(&self, top_ink_depth: Length, bottom_ink_height: Length) -> Result<(Length, Length), LengthOverflow> {
+    let gap = self
+      .bottom_shift_down
+      .try_sub(bottom_ink_height)?
+      .try_add(self.top_shift_up.try_sub(top_ink_depth)?)?;
+    let delta = self.gap_min.try_sub(gap)?;
     if delta <= Length::ZERO {
-      return (self.top_shift_up, self.bottom_shift_down);
+      return Ok((self.top_shift_up, self.bottom_shift_down));
     }
-    let half = delta / 2.0;
-    return (self.top_shift_up + half, self.bottom_shift_down + (delta - half));
+    let half = delta.try_div(2.0)?;
+    return Ok((self.top_shift_up.try_add(half)?, self.bottom_shift_down.try_add(delta.try_sub(half)?)?));
   }
 }
 
@@ -127,13 +166,17 @@ impl Measurer<'_> {
   ///
   /// 分子・分母・横罫は Atom の左端から [`FRACTION_PADDING`] の位置に置き、Atom の幅は両側のアキを含む。
   /// 横罫を引かない積み（`ruled` が偽）は [`StackConstants`] でシフトを決め、横罫を置かない。
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn place_fraction(
     &mut self,
     fraction: MathFraction,
     dy: Length,
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
-  ) {
+  ) -> Result<(), LengthOverflow> {
     let MathFraction {
       numerator,
       denominator,
@@ -142,25 +185,25 @@ impl Measurer<'_> {
       ruled,
       color,
     } = fraction;
-    let numerator = self.detach(numerator);
-    let denominator = self.detach(denominator);
+    let numerator = self.detach(numerator)?;
+    let denominator = self.detach(denominator)?;
     // 送り幅の和は負の送りを持つ字形で負になり得るので、罫の幅は 0 で止める（描画矩形の幅は非負）
     let width = numerator.width.max(denominator.width).max(Length::ZERO);
     let (numerator_shift, denominator_shift, rule) = if ruled {
-      let constants = FractionConstants::new(&self.shaper, font_size, display);
+      let constants = FractionConstants::new(&self.shaper, font_size, display)?;
       let rule = PlacedHBox {
         hbox: HBox::rule(width, constants.rule_thickness, color),
         dx: FRACTION_PADDING,
-        dy: constants.axis_height - constants.rule_thickness / 2.0,
+        dy: constants.axis_height.try_sub(constants.rule_thickness.try_div(2.0)?)?,
       };
       (
-        constants.numerator_shift(numerator.ink_depth),
-        constants.denominator_shift(denominator.ink_height),
+        constants.numerator_shift(numerator.ink_depth)?,
+        constants.denominator_shift(denominator.ink_height)?,
         Some(rule),
       )
     } else {
       let (up, down) =
-        StackConstants::new(&self.shaper, font_size, display).shifts(numerator.ink_depth, denominator.ink_height);
+        StackConstants::new(&self.shaper, font_size, display)?.shifts(numerator.ink_depth, denominator.ink_height)?;
       (up, down, None)
     };
 
@@ -168,25 +211,26 @@ impl Measurer<'_> {
     math::translate_into(
       &mut children,
       numerator.boxes,
-      FRACTION_PADDING + Align::Center.offset(width, numerator.width),
+      FRACTION_PADDING.try_add(Align::Center.offset(width, numerator.width)?)?,
       numerator_shift,
-    );
+    )?;
     math::translate_into(
       &mut children,
       denominator.boxes,
-      FRACTION_PADDING + Align::Center.offset(width, denominator.width),
+      FRACTION_PADDING.try_add(Align::Center.offset(width, denominator.width)?)?,
       -denominator_shift,
-    );
+    )?;
     children.extend(rule);
-    let mut atom = HBox::atom(children);
-    atom.width = width + FRACTION_PADDING + FRACTION_PADDING;
+    let mut atom = HBox::atom(children)?;
+    atom.width = width.try_add(FRACTION_PADDING)?.try_add(FRACTION_PADDING)?;
     let advance = atom.width;
     out.push(PlacedHBox {
       hbox: atom,
       dx: *dx,
       dy,
     });
-    *dx += advance;
+    *dx = dx.try_add(advance)?;
+    return Ok(());
   }
 }
 
@@ -221,15 +265,15 @@ mod tests {
   fn numerator_shift_takes_the_larger_of_the_standard_shift_and_the_gap() {
     let c = text_constants();
 
-    assert_eq!(c.numerator_shift(Length::pt(12.0)), Length::pt(585.0), "浅い分子は標準のシフト");
+    assert_eq!(c.numerator_shift(Length::pt(12.0)), Ok(Length::pt(585.0)), "浅い分子は標準のシフト");
     assert_eq!(
       c.numerator_shift(Length::pt(300.0)),
-      Length::pt(660.0),
+      Ok(Length::pt(660.0)),
       "深い分子は 軸 258 + 罫の半分 34 + ギャップ 68 + 深さ 300"
     );
     assert_eq!(
       display_constants().numerator_shift(Length::pt(220.0)),
-      Length::pt(662.0),
+      Ok(Length::pt(662.0)),
       "display のギャップ 150 では 𝑦 の深さ 220 で標準の 640 を上回る"
     );
   }
@@ -240,12 +284,12 @@ mod tests {
 
     assert_eq!(
       c.denominator_shift(Length::pt(705.0)),
-      Length::pt(585.0),
+      Ok(Length::pt(585.0)),
       "34 + 68 + 705 − 258 = 549 は標準に届かない"
     );
     assert_eq!(
       c.denominator_shift(Length::pt(900.0)),
-      Length::pt(744.0),
+      Ok(Length::pt(744.0)),
       "背の高い分母は 罫の半分 + ギャップ + 高さ − 軸"
     );
   }
@@ -265,7 +309,7 @@ mod tests {
 
     assert_eq!(
       c.shifts(Length::ZERO, Length::pt(300.0)),
-      (Length::pt(470.0), Length::pt(385.0)),
+      Ok((Length::pt(470.0), Length::pt(385.0))),
       "(385 − 300) + (470 − 0) = 555 ≥ 150"
     );
   }
@@ -276,7 +320,7 @@ mod tests {
 
     assert_eq!(
       c.shifts(Length::pt(200.0), Length::pt(700.0)),
-      (Length::pt(567.5), Length::pt(482.5)),
+      Ok((Length::pt(567.5), Length::pt(482.5))),
       "Gap = (385 − 700) + (470 − 200) = −45、Δ = 195 を半分ずつ"
     );
   }
@@ -291,7 +335,7 @@ mod tests {
 
     assert_eq!(
       c.shifts(Length::pt(400.0), Length::pt(800.0)),
-      (Length::pt(795.0), Length::pt(705.0)),
+      Ok((Length::pt(795.0), Length::pt(705.0))),
       "Gap = (690 − 800) + (780 − 400) = 270、Δ = 30"
     );
   }

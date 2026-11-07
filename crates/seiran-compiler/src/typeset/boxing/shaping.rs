@@ -13,7 +13,8 @@ use tracing::trace;
 
 use crate::{
   color::Color,
-  length::Length,
+  document::NodeId,
+  length::{Length, LengthOverflow},
   project::{FontFace, FontType},
   publication::{FontMetrics, Glyph, GlyphRun},
   typeset::{
@@ -26,13 +27,20 @@ use crate::{
   },
 };
 
+/// 配置済みの数式の字の（先頭の字形の gid・run のフォントサイズ・字形のベースラインの高さ, イタリック補正）
+type PlacedMathChar = ((u32, Length, Length), Length);
+
 /// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
+///
+/// # Errors
+///
+/// 結果が長さの値域を超えたら [`LengthOverflow`]。
 #[expect(
   clippy::cast_precision_loss,
   reason = "font design unit の合計は i64 で持つが、f64 の仮数部に収まる桁数しか取らない"
 )]
-fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
-  return font_size.scale(units as f64 / f64::from(upem));
+fn try_units_to_length(units: i64, font_size: Length, upem: f32) -> Result<Length, LengthOverflow> {
+  return font_size.try_scale(units as f64 / f64::from(upem));
 }
 
 /// フォント単位の計量（f32）を整数の設計単位にする。
@@ -42,7 +50,7 @@ fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
 )]
 fn design_units(value: f32) -> i64 { return value as i64; }
 
-/// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`units_to_length`] の逆）。
+/// 長さ `length` を、フォントサイズ `font_size` でのフォント設計単位へ切り上げる（[`try_units_to_length`] の逆）。
 #[expect(
   clippy::cast_possible_truncation,
   reason = "伸ばす目標（表示数式 1 つの高さ・広幅アクセントの基底 1 つの幅）のフォント単位で、i64 に収まり端数は切り上げで覆う側へ寄せる"
@@ -127,8 +135,18 @@ pub(super) struct ShapedRun {
 impl ShapedRun {
   /// グリフ列 `run`（`face` は枠の先頭の候補）と字形ごとの候補 `candidates`、枠の全候補のメトリクス `metrics` から寸法を
   /// 確定する
-  pub(super) fn measure(run: GlyphRun, candidates: Vec<usize>, metrics: Vec<FontMetrics>) -> Self {
-    assert_eq!(candidates.len(), run.glyphs.len(), "字形ごとに候補を 1 つ持つ");
+  ///
+  /// # Errors
+  ///
+  /// 幅・高さ・深さが長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn measure(
+    run: GlyphRun,
+    candidates: Vec<usize>,
+    metrics: Vec<FontMetrics>,
+  ) -> Result<Self, LengthOverflow> {
+    if candidates.len() != run.glyphs.len() {
+      unreachable!("字形ごとに候補を 1 つ持つ: シェーパーが字形と候補を同じ長さで出す");
+    }
     let mut shaped = ShapedRun {
       run,
       candidates,
@@ -137,11 +155,11 @@ impl ShapedRun {
       height: Length::ZERO,
       depth: Length::ZERO,
     };
-    let (width, height, depth) = shaped.extent(0..shaped.run.glyphs.len());
+    let (width, height, depth) = shaped.extent(0..shaped.run.glyphs.len())?;
     shaped.width = width;
     shaped.height = height;
     shaped.depth = depth;
-    return shaped;
+    return Ok(shaped);
   }
 
   /// シェーピング対象のテキスト
@@ -171,26 +189,53 @@ impl ShapedRun {
   pub(super) fn depth(&self) -> Length { return self.depth; }
 
   /// グリフ 1 つの送り幅（その字形の実体の upem で長さにする）
-  pub(super) fn advance_of(&self, glyph_index: usize) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 送り幅が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn advance_of(&self, glyph_index: usize) -> Result<Length, LengthOverflow> {
     let upem = self.metrics[self.candidates[glyph_index]].upem;
-    return units_to_length(i64::from(self.run.glyphs[glyph_index].x_advance), self.run.font_size, upem);
+    return try_units_to_length(i64::from(self.run.glyphs[glyph_index].x_advance), self.run.font_size, upem);
   }
 
   /// run 全体を計測済みの箱にする
-  pub(super) fn into_hbox(self) -> HBox { return self.extract(0..self.run.glyphs.len(), 0..self.run.text.len()); }
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn into_hbox(self) -> Result<HBox, LengthOverflow> {
+    return self.extract(0..self.run.glyphs.len(), 0..self.run.text.len());
+  }
 
   /// 部分グリフ列を計測済みの箱にする（空範囲なら `None`）
   ///
   /// グリフのテキスト範囲は `byte_range` の先頭を 0 とする位置へ振り直す。
-  pub(super) fn sub_box(&self, glyph_range: Range<usize>, byte_range: Range<usize>) -> Option<HBox> {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn sub_box(
+    &self,
+    glyph_range: Range<usize>,
+    byte_range: Range<usize>,
+  ) -> Result<Option<HBox>, LengthOverflow> {
     if glyph_range.is_empty() {
-      return None;
+      return Ok(None);
     }
-    return Some(self.extract(glyph_range, byte_range));
+    return self.extract(glyph_range, byte_range).map(Some);
   }
 
   /// グリフ 1 つを内蔵アキぶん墨移動させた箱を作る（幅は呼び出し側が決める。移動量はその字形の実体の upem で単位にする）
-  pub(super) fn replaced_glyph_box(&self, glyph_index: usize, normalize: yakumono::Normalize, width: Length) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の高さ・深さが長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn replaced_glyph_box(
+    &self,
+    glyph_index: usize,
+    normalize: yakumono::Normalize,
+    width: Length,
+  ) -> Result<HBox, LengthOverflow> {
     let src = &self.run.glyphs[glyph_index];
     let candidate = self.candidates[glyph_index];
     #[expect(
@@ -206,8 +251,8 @@ impl ShapedRun {
       x_offset: src.x_offset - shift_units,
       y_offset: src.y_offset,
     };
-    let (_, height, depth) = self.extent(glyph_index..glyph_index + 1);
-    return HBox {
+    let (_, height, depth) = self.extent(glyph_index..glyph_index + 1)?;
+    return Ok(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: self.run.font_size,
         text: self.run.text[src.range.clone()].to_string(),
@@ -218,7 +263,7 @@ impl ShapedRun {
       width,
       height,
       depth,
-    };
+    });
   }
 
   /// 候補 `candidate` の実体
@@ -239,38 +284,36 @@ impl ShapedRun {
 
   /// 字形 `glyph_range` の（幅, 高さ, 深さ）。幅は同じ候補の連続ごとに送り幅の和をその実体の upem で長さにして足し、高さ・
   /// 深さは範囲に現れた実体の最大（字形が無ければ先頭の候補）
-  fn extent(&self, glyph_range: Range<usize>) -> (Length, Length, Length) {
+  fn extent(&self, glyph_range: Range<usize>) -> Result<(Length, Length, Length), LengthOverflow> {
     let chunks = self.face_chunks(glyph_range);
     let font_size = self.run.font_size;
     let mut width = Length::ZERO;
     for (candidate, range) in &chunks {
       let advance_units: i64 =
         self.run.glyphs[range.clone()].iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
-      width += units_to_length(advance_units, font_size, self.metrics[*candidate].upem);
+      width = width.try_add(try_units_to_length(advance_units, font_size, self.metrics[*candidate].upem)?)?;
     }
-    let vertical = |candidate: usize| {
+    let vertical = |candidate: usize| -> Result<(Length, Length), LengthOverflow> {
       let metrics = self.metrics[candidate];
-      return (
-        units_to_length(design_units(metrics.ascender), font_size, metrics.upem),
-        units_to_length(design_units(metrics.descender.abs()), font_size, metrics.upem),
-      );
+      return Ok((
+        try_units_to_length(design_units(metrics.ascender), font_size, metrics.upem)?,
+        try_units_to_length(design_units(metrics.descender.abs()), font_size, metrics.upem)?,
+      ));
     };
     let (height, depth) = if chunks.is_empty() {
-      vertical(0)
+      vertical(0)?
     } else {
-      chunks.iter().map(|(candidate, _)| return vertical(*candidate)).fold(
-        (Length::ZERO, Length::ZERO),
-        |(height, depth), (chunk_height, chunk_depth)| {
-          return (height.max(chunk_height), depth.max(chunk_depth));
-        },
-      )
+      chunks.iter().try_fold((Length::ZERO, Length::ZERO), |(height, depth), (candidate, _)| {
+        let (chunk_height, chunk_depth) = vertical(*candidate)?;
+        return Ok((height.max(chunk_height), depth.max(chunk_depth)));
+      })?
     };
-    return (width, height, depth);
+    return Ok((width, height, depth));
   }
 
   /// 字形 `glyph_range`（元テキストの `byte_range` を覆う）を計測済みの箱にする。候補が 1 種なら 1 本のグリフ列、複数なら
   /// 同じ候補の連続ごとのグリフ列を左から並べた Atom（幅は子の和）
-  fn extract(&self, glyph_range: Range<usize>, byte_range: Range<usize>) -> HBox {
+  fn extract(&self, glyph_range: Range<usize>, byte_range: Range<usize>) -> Result<HBox, LengthOverflow> {
     let chunks = self.face_chunks(glyph_range.clone());
     if chunks.len() <= 1 {
       let candidate = chunks.first().map_or(0, |(candidate, _)| return *candidate);
@@ -298,24 +341,29 @@ impl ShapedRun {
       } else {
         start
       };
-      let hbox = self.face_box(candidate, range, start..end);
+      let hbox = self.face_box(candidate, range, start..end)?;
       let width = hbox.width;
       placed.push(PlacedHBox {
         hbox,
         dx,
         dy: Length::ZERO,
       });
-      dx += width;
+      dx = dx.try_add(width)?;
     }
-    let mut atom = HBox::atom(placed);
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
-    return atom;
+    return Ok(atom);
   }
 
   /// 候補 `candidate` で組んだ字形 `glyph_range`（元テキストの `byte_range` を覆う）を、その実体で計測した 1 本のグリフ列の
   /// 箱にする。グリフのテキスト範囲は `byte_range` の先頭を 0 とする位置へ振り直す
-  fn face_box(&self, candidate: usize, glyph_range: Range<usize>, byte_range: Range<usize>) -> HBox {
-    let (width, height, depth) = self.extent(glyph_range.clone());
+  fn face_box(
+    &self,
+    candidate: usize,
+    glyph_range: Range<usize>,
+    byte_range: Range<usize>,
+  ) -> Result<HBox, LengthOverflow> {
+    let (width, height, depth) = self.extent(glyph_range.clone())?;
     let byte_start = byte_range.start;
     let glyphs: Vec<Glyph> = self.run.glyphs[glyph_range]
       .iter()
@@ -330,7 +378,7 @@ impl ShapedRun {
         };
       })
       .collect();
-    return HBox {
+    return Ok(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: self.run.font_size,
         text: self.run.text[byte_range].to_string(),
@@ -341,7 +389,7 @@ impl ShapedRun {
       width,
       height,
       depth,
-    };
+    });
   }
 }
 
@@ -375,20 +423,32 @@ impl<'a> Shaper<'a> {
     return mem::replace(&mut self.origin, origin);
   }
 
+  /// いま組んでいる要素（生成内容を組んでいるときは `None`）
+  pub(super) fn current_element(&self) -> Option<NodeId> {
+    return match self.origin {
+      GlyphOrigin::Element(origin) => Some(origin),
+      GlyphOrigin::Generated(_) => None,
+    };
+  }
+
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
-  pub(in crate::typeset) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(in crate::typeset) fn shape_text(&mut self, text: &str, style: TextStyle) -> Result<Vec<HBox>, LengthOverflow> {
     return self.shape_text_with(text, style, false);
   }
 
   /// [`Self::shape_text`] と同じに組み、数式フォントのセグメントだけ OpenType `dtls` を足してドット無しの字形を選ぶ
   /// （フォントの `dtls` に置換の無い字形はそのまま）
-  pub(super) fn shape_dotless_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+  pub(super) fn shape_dotless_text(&mut self, text: &str, style: TextStyle) -> Result<Vec<HBox>, LengthOverflow> {
     return self.shape_text_with(text, style, true);
   }
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す。`dotless` なら数式フォントのセグメントに
   /// `dtls` を足す
-  fn shape_text_with(&mut self, text: &str, style: TextStyle, dotless: bool) -> Vec<HBox> {
+  fn shape_text_with(&mut self, text: &str, style: TextStyle, dotless: bool) -> Result<Vec<HBox>, LengthOverflow> {
     let text = boxing::fold_newlines(text);
     let segments = script::split_text_by_script(style.typeface, &text);
     return segments
@@ -398,11 +458,11 @@ impl<'a> Shaper<'a> {
           self
             .fonts
             .shape_dotless_math(&mut self.buffer, &segment.text, style.font_size.to_pt(), style.script_level);
-          self.math_run(&segment.text, style.font_size, style.color)
+          self.math_run(&segment.text, style.font_size, style.color)?
         } else {
-          self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)
+          self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color, style.script_level)?
         };
-        return self.add_italic_corrections(shaped, style).into_hbox();
+        return self.add_italic_corrections(shaped, style)?.into_hbox();
       })
       .collect();
   }
@@ -410,6 +470,10 @@ impl<'a> Shaper<'a> {
   /// 1 セグメントをシェーピングして計測済みの [`ShapedRun`] を返す
   ///
   /// `script_level` は数式のスクリプト段（小サイズ用の字形を選ぶ）。数式のスクリプト以外は `None`。
+  ///
+  /// # Errors
+  ///
+  /// run の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn shape_segment(
     &mut self,
     text: &str,
@@ -417,7 +481,7 @@ impl<'a> Shaper<'a> {
     font_size: Length,
     color: Option<Color>,
     script_level: Option<ScriptLevel>,
-  ) -> ShapedRun {
+  ) -> Result<ShapedRun, LengthOverflow> {
     if font_type == FontType::Math {
       self.fonts.shape(FontFace::MATH, &mut self.buffer, text, font_size.to_pt(), script_level);
       return self.math_run(text, font_size, color);
@@ -447,7 +511,7 @@ impl<'a> Shaper<'a> {
   ///
   /// 数式フォントの字の欠落は組版の前の検査（`math_glyphs::check`）が持つので、ここでは問わない。数式フォントは候補を
   /// 1 つしか持たない。
-  fn math_run(&self, text: &str, font_size: Length, color: Option<Color>) -> ShapedRun {
+  fn math_run(&self, text: &str, font_size: Length, color: Option<Color>) -> Result<ShapedRun, LengthOverflow> {
     let glyphs = font::shaped_glyphs(&self.buffer, text);
     let candidates = vec![0; glyphs.len()];
     return self.shaped_run(text, glyphs, candidates, FontType::Math, font_size, color);
@@ -462,7 +526,7 @@ impl<'a> Shaper<'a> {
     font_type: FontType,
     font_size: Length,
     color: Option<Color>,
-  ) -> ShapedRun {
+  ) -> Result<ShapedRun, LengthOverflow> {
     let face = FontFace::primary(font_type);
     for (i, glyph) in glyphs.iter().enumerate() {
       // advance / offset には GPOS（kern を含む）が畳み込み済み。シェーパーが適用した kern を
@@ -489,7 +553,7 @@ impl<'a> Shaper<'a> {
       },
       candidates,
       self.fonts.slot_metrics(font_type).to_vec(),
-    );
+    )?;
     trace!(
       face = %face,
       font_size_pt = %font_size.to_pt(),
@@ -498,7 +562,7 @@ impl<'a> Shaper<'a> {
       text = observe::summarize_text(text),
       "テキスト run をシェーピング"
     );
-    return shaped;
+    return Ok(shaped);
   }
 
   /// 実体 `face` の OS/2 の上付きの指標（無ければ `None`）
@@ -510,9 +574,13 @@ impl<'a> Shaper<'a> {
   pub(super) fn script_scale(&self) -> ScriptScale { return self.fonts.script_scale(); }
 
   /// 数式フォントの MATH 定数（長さの値）の、フォントサイズ `font_size` での長さ。
-  pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn math_constant(&self, constant: MathConstant, font_size: Length) -> Result<Length, LengthOverflow> {
     let units = self.fonts.math_constants().constant(constant);
-    return units_to_length(i64::from(units), font_size, self.fonts.metrics(FontFace::MATH).upem);
+    return try_units_to_length(i64::from(units), font_size, self.fonts.metrics(FontFace::MATH).upem);
   }
 
   /// 数式フォントの百分率の MATH 定数（`RadicalDegreeBottomRaisePercent` 等）を比にした値
@@ -522,7 +590,17 @@ impl<'a> Shaper<'a> {
 
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）の隅 `corner` の、ベースラインからの高さ `height` での
   /// math kern の長さ（表が無ければ 0）
-  pub(super) fn math_kern(&self, gid: u32, font_size: Length, corner: MathKernCorner, height: Length) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn math_kern(
+    &self,
+    gid: u32,
+    font_size: Length,
+    corner: MathKernCorner,
+    height: Length,
+  ) -> Result<Length, LengthOverflow> {
     let upem = self.fonts.metrics(FontFace::MATH).upem;
     #[expect(
       clippy::cast_possible_truncation,
@@ -530,40 +608,60 @@ impl<'a> Shaper<'a> {
     )]
     let height_units = (height.ratio(font_size) * f64::from(upem)).round() as i32;
     let units = self.fonts.math_kern(gid, corner, height_units);
-    return units_to_length(i64::from(units), font_size, upem);
+    return try_units_to_length(i64::from(units), font_size, upem);
   }
 
   /// 数式フォントのグリフ `gid` の上付けアクセントの取付点（グリフの原点からの横位置）の、フォントサイズ `font_size` での
   /// 長さ。`MathTopAccentAttachment` に登録が無ければ `None`
-  pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Option<Length> {
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn top_accent_attachment(&self, gid: u32, font_size: Length) -> Result<Option<Length>, LengthOverflow> {
     let upem = self.fonts.metrics(FontFace::MATH).upem;
-    return self.fonts.math_top_accent_attachment(gid).map(|units| {
-      return units_to_length(i64::from(units), font_size, upem);
-    });
+    return self
+      .fonts
+      .math_top_accent_attachment(gid)
+      .map(|units| return try_units_to_length(i64::from(units), font_size, upem))
+      .transpose();
   }
 
   /// 数式フォントのグリフ `gid` の送り幅の、フォントサイズ `font_size` での長さ
-  pub(super) fn math_glyph_advance(&self, gid: u32, font_size: Length) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn math_glyph_advance(&self, gid: u32, font_size: Length) -> Result<Length, LengthOverflow> {
     let upem = self.fonts.metrics(FontFace::MATH).upem;
-    return units_to_length(design_units(self.fonts.glyph_advance(FontFace::MATH, gid)), font_size, upem);
+    return try_units_to_length(design_units(self.fonts.glyph_advance(FontFace::MATH, gid)), font_size, upem);
   }
 
   /// 数式フォントのグリフ `gid`（フォントサイズ `font_size`）のインクの上端と下端（グリフ自身のベースライン基準・上が正。
   /// 符号は丸めない）。インクを読めなければ `None`
-  pub(super) fn math_glyph_ink(&self, gid: u32, font_size: Length) -> Option<(Length, Length)> {
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn math_glyph_ink(&self, gid: u32, font_size: Length) -> Result<Option<(Length, Length)>, LengthOverflow> {
     let upem = f64::from(self.fonts.metrics(FontFace::MATH).upem);
-    let extents = self.fonts.glyph_extents(FontFace::MATH, gid)?;
+    let Some(extents) = self.fonts.glyph_extents(FontFace::MATH, gid) else {
+      return Ok(None);
+    };
     let top = f64::from(extents.y_bearing);
     let bottom = top - f64::from(extents.height);
-    return Some((font_size.scale(top / upem), font_size.scale(bottom / upem)));
+    return Ok(Some((font_size.try_scale(top / upem)?, font_size.try_scale(bottom / upem)?)));
   }
 
   /// 数式フォントのグリフ `gid` の墨の横の中央（グリフの原点からの横位置）の、フォントサイズ `font_size` での長さ。
   /// インクを読めなければ原点（`glyph_run_signed_ink` と同じく墨を持たない扱い）
-  pub(super) fn math_ink_center(&self, gid: u32, font_size: Length) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn math_ink_center(&self, gid: u32, font_size: Length) -> Result<Length, LengthOverflow> {
     let upem = f64::from(self.fonts.metrics(FontFace::MATH).upem);
-    return self.fonts.glyph_extents(FontFace::MATH, gid).map_or(Length::ZERO, |extents| {
-      return font_size.scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / upem);
+    return self.fonts.glyph_extents(FontFace::MATH, gid).map_or(Ok(Length::ZERO), |extents| {
+      return font_size.try_scale((f64::from(extents.x_bearing) + f64::from(extents.width) / 2.0) / upem);
     });
   }
 
@@ -573,9 +671,17 @@ impl<'a> Shaper<'a> {
   /// run の末尾のクラスタの後ろはアキ・演算子・スクリプト付きの基底・別スタイルの run のどれかで、MathML Core ではどれも
   /// 傾いた子ではないので、末尾の傾いたクラスタには常に補正を足す。スクリプトの基底の末尾の補正は、下付きを置くときに
   /// `Measurer::place_scripts` が引き戻す。
-  pub(super) fn add_italic_corrections(&self, shaped: ShapedRun, style: TextStyle) -> ShapedRun {
+  ///
+  /// # Errors
+  ///
+  /// 計測し直した寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn add_italic_corrections(
+    &self,
+    shaped: ShapedRun,
+    style: TextStyle,
+  ) -> Result<ShapedRun, LengthOverflow> {
     if shaped.run.face != FontFace::MATH || style.math_operator == Some(MathOperator::Symbol) {
-      return shaped;
+      return Ok(shaped);
     }
     let ShapedRun {
       mut run,
@@ -589,6 +695,10 @@ impl<'a> Shaper<'a> {
 
   /// 数式のアクセント記号 `text` を数式フォントの段 `script_level` で組んだ箱。`flattened` なら OpenType `flac` で
   /// 平たい字形（背の高い基底に載せる字形）を選ぶ。`color` は字形の塗り色（`None` は既定色）
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn shape_accent(
     &mut self,
     text: &str,
@@ -596,12 +706,12 @@ impl<'a> Shaper<'a> {
     script_level: Option<ScriptLevel>,
     flattened: bool,
     color: Option<Color>,
-  ) -> HBox {
+  ) -> Result<HBox, LengthOverflow> {
     if !flattened {
-      return self.shape_segment(text, FontType::Math, font_size, color, script_level).into_hbox();
+      return self.shape_segment(text, FontType::Math, font_size, color, script_level)?.into_hbox();
     }
     self.fonts.shape_flattened_accent(&mut self.buffer, text, font_size.to_pt(), script_level);
-    return self.math_run(text, font_size, color).into_hbox();
+    return self.math_run(text, font_size, color)?.into_hbox();
   }
 
   /// 数式の広幅アクセントの記号 `text` を、数式フォントで横に `target` 以上へ伸ばして組んだ箱
@@ -610,6 +720,10 @@ impl<'a> Shaper<'a> {
   /// （元の字形の大きさはインクの幅）。元の字形のままで足りるときは [`Self::shape_accent`] と同じ字形（段の `ssty`、
   /// `flattened` なら `flac`）にし、伸ばした字形は GSUB を通さない。フォントサイズは変えない。シェイプで 1 グリフに
   /// ならない `text` は伸ばさない。`color` は字形の塗り色（`None` は既定色）
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn shape_wide_accent(
     &mut self,
     text: &str,
@@ -618,9 +732,9 @@ impl<'a> Shaper<'a> {
     flattened: bool,
     target: Length,
     color: Option<Color>,
-  ) -> HBox {
+  ) -> Result<HBox, LengthOverflow> {
     let upem = self.fonts.metrics(FontFace::MATH).upem;
-    let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
+    let shaped = self.shape_segment(text, FontType::Math, font_size, None, None)?;
     let gid = match shaped.glyphs() {
       [glyph] => glyph.gid,
       _ => return self.shape_accent(text, font_size, script_level, flattened, color),
@@ -637,7 +751,7 @@ impl<'a> Shaper<'a> {
       face: FontFace::MATH,
       color,
     };
-    return ShapedRun::measure(run, candidates, vec![self.fonts.metrics(FontFace::MATH)]).into_hbox();
+    return ShapedRun::measure(run, candidates, vec![self.fonts.metrics(FontFace::MATH)])?.into_hbox();
   }
 
   /// 数式フォントのグリフ `gid` を横に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）。
@@ -681,6 +795,10 @@ impl<'a> Shaper<'a> {
   /// 範囲（ベースラインの反対側へ出ない側は 0）で、フォント全体の ascender / descender ではない。glyph assembly の全パーツは
   /// `text` 全体を範囲に持つ 1 つのクラスタで、PDF のテキストとしては `text` 1 字になる。シェイプで 1 グリフにならない
   /// `text` は伸ばさずにそのまま置く。`color` は字形の塗り色（`None` は既定色）
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn shape_vertical_delimiter(
     &mut self,
     text: &str,
@@ -688,11 +806,12 @@ impl<'a> Shaper<'a> {
     script_level: Option<ScriptLevel>,
     target: Length,
     color: Option<Color>,
-  ) -> (HBox, (Length, Length)) {
+  ) -> Result<(HBox, (Length, Length)), LengthOverflow> {
     let upem = self.fonts.metrics(FontFace::MATH).upem;
     let target_units = length_to_units(target, font_size, upem);
     let staged = script_level
       .map(|level| return self.shape_segment(text, FontType::Math, font_size, None, Some(level)))
+      .transpose()?
       .filter(|shaped| {
         return matches!(
           shaped.glyphs(),
@@ -702,7 +821,7 @@ impl<'a> Shaper<'a> {
     let glyphs = if let Some(shaped) = staged {
       shaped.glyphs().to_vec()
     } else {
-      let shaped = self.shape_segment(text, FontType::Math, font_size, None, None);
+      let shaped = self.shape_segment(text, FontType::Math, font_size, None, None)?;
       match shaped.glyphs() {
         [glyph] => self.stretched_glyphs(glyph.gid, text.len(), target_units),
         glyphs => glyphs.to_vec(),
@@ -717,14 +836,14 @@ impl<'a> Shaper<'a> {
       color,
     };
     // インクを読めないグリフは墨を持たない扱い（`glyph_run_signed_ink` と同じ）で、ベースライン上に置く
-    let (top, bottom) = self.glyph_run_signed_ink(&run).unwrap_or((Length::ZERO, Length::ZERO));
+    let (top, bottom) = self.glyph_run_signed_ink(&run)?.unwrap_or((Length::ZERO, Length::ZERO));
     let hbox = HBox {
       content: HBoxContent::Glyphs(run),
-      width: units_to_length(advance, font_size, upem),
+      width: try_units_to_length(advance, font_size, upem)?,
       height: top.max(Length::ZERO),
       depth: (-bottom).max(Length::ZERO),
     };
-    return (hbox, (top, bottom));
+    return Ok((hbox, (top, bottom)));
   }
 
   /// 数式フォントのグリフ `gid` を縦に `target`（フォント単位）以上へ伸ばしたグリフ列（全グリフの範囲は `0..text_len`）
@@ -771,65 +890,78 @@ impl<'a> Shaper<'a> {
   ///
   /// 高さは箱の `dy` に字形の `y_offset` を足したもの — glyph assembly のパーツは同じ run の中で縦にずれている。
   /// 字の先頭の字形は基底の字の字形（harfrust は左から右の run で基底の字形を結合文字より先に出す）。
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
   pub(super) fn placed_math_char(
     &self,
     placed: &PlacedHBox,
     unit: fn(&[Glyph]) -> &[Glyph],
-  ) -> Option<((u32, Length, Length), Length)> {
+  ) -> Result<Option<PlacedMathChar>, LengthOverflow> {
     let HBoxContent::Glyphs(run) = &placed.hbox.content else {
-      return None;
+      return Ok(None);
     };
     if run.face != FontFace::MATH {
-      return None;
+      return Ok(None);
     }
     let glyphs = unit(&run.glyphs);
-    let first = glyphs.first()?;
+    let Some(first) = glyphs.first() else {
+      return Ok(None);
+    };
     let upem = self.fonts.metrics(FontFace::MATH).upem;
-    let rise = placed.dy + units_to_length(i64::from(first.y_offset), run.font_size, upem);
+    let rise = placed.dy.try_add(try_units_to_length(i64::from(first.y_offset), run.font_size, upem)?)?;
     let correction = summed_correction(glyphs, |gid| return self.fonts.math_italics_correction(gid));
-    return Some(((first.gid, run.font_size, rise), units_to_length(i64::from(correction), run.font_size, upem)));
+    return Ok(Some((
+      (first.gid, run.font_size, rise),
+      try_units_to_length(i64::from(correction), run.font_size, upem)?,
+    )));
   }
 
   /// 配置済みの箱の列のインク（グリフの形の範囲）が、ベースラインより上・下へ出た量（高さ, 深さ）。
   ///
   /// どちらも 0 以上で、グリフが無ければ 0。箱の高さ・深さはフォント全体の ascender / descender なので、
   /// 数式のスクリプト配置が基底・スクリプトの実際の大きさを見るのにはこちらを使う。
-  pub(super) fn ink_extent(&self, boxes: &[PlacedHBox]) -> (Length, Length) {
-    let Some((top, bottom)) = self.signed_ink(boxes) else {
-      return (Length::ZERO, Length::ZERO);
+  ///
+  /// # Errors
+  ///
+  /// 結果が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn ink_extent(&self, boxes: &[PlacedHBox]) -> Result<(Length, Length), LengthOverflow> {
+    let Some((top, bottom)) = self.signed_ink(boxes)? else {
+      return Ok((Length::ZERO, Length::ZERO));
     };
-    return (top.max(Length::ZERO), (-bottom).max(Length::ZERO));
+    return Ok((top.max(Length::ZERO), (-bottom).max(Length::ZERO)));
   }
 
   /// 配置済みの箱の列のインクの上端と下端（ベースライン基準・上が正。符号は丸めない）。グリフが無ければ `None`
   ///
   /// 入れ子の箱は `dy` を足してから合流させる。0 へ丸めるのは最終結果だけにしないと、
   /// 自身のベースラインより上にしかインクの無い箱が、下へずらされたときに深さを過大に測る。
-  fn signed_ink(&self, boxes: &[PlacedHBox]) -> Option<(Length, Length)> {
+  fn signed_ink(&self, boxes: &[PlacedHBox]) -> Result<Option<(Length, Length)>, LengthOverflow> {
     let mut extent: Option<(Length, Length)> = None;
     for placed in boxes {
       let inner = match &placed.hbox.content {
-        HBoxContent::Glyphs(run) => self.glyph_run_signed_ink(run),
-        HBoxContent::Atom(children) => self.signed_ink(children),
+        HBoxContent::Glyphs(run) => self.glyph_run_signed_ink(run)?,
+        HBoxContent::Atom(children) => self.signed_ink(children)?,
         // 罫は箱全体が墨
         HBoxContent::Rule { .. } => Some((placed.hbox.height, -placed.hbox.depth)),
       };
       let Some((top, bottom)) = inner else {
         continue;
       };
-      let (top, bottom) = (top + placed.dy, bottom + placed.dy);
+      let (top, bottom) = (top.try_add(placed.dy)?, bottom.try_add(placed.dy)?);
       extent = Some(match extent {
         Some((max_top, min_bottom)) => (max_top.max(top), min_bottom.min(bottom)),
         None => (top, bottom),
       });
     }
-    return extent;
+    return Ok(extent);
   }
 
   /// グリフ列 1 本のインクの上端と下端（符号付き。読めないグリフはインクを持たない扱い）
-  fn glyph_run_signed_ink(&self, run: &GlyphRun) -> Option<(Length, Length)> {
+  fn glyph_run_signed_ink(&self, run: &GlyphRun) -> Result<Option<(Length, Length)>, LengthOverflow> {
     let upem = f64::from(self.fonts.metrics(run.face).upem);
-    let to_length = |units: f64| return run.font_size.scale(units / upem);
+    let to_length = |units: f64| return run.font_size.try_scale(units / upem);
     let mut extent: Option<(Length, Length)> = None;
     for glyph in &run.glyphs {
       let Some(extents) = self.fonts.glyph_extents(run.face, glyph.gid) else {
@@ -837,13 +969,13 @@ impl<'a> Shaper<'a> {
       };
       let top = f64::from(extents.y_bearing) + f64::from(glyph.y_offset);
       let bottom = top - f64::from(extents.height);
-      let (top, bottom) = (to_length(top), to_length(bottom));
+      let (top, bottom) = (to_length(top)?, to_length(bottom)?);
       extent = Some(match extent {
         Some((max_top, min_bottom)) => (max_top.max(top), min_bottom.min(bottom)),
         None => (top, bottom),
       });
     }
-    return extent;
+    return Ok(extent);
   }
 }
 
@@ -869,7 +1001,7 @@ mod tests {
   /// 全字形を先頭の候補（[`METRICS`]）で組んだ run として計測する
   fn primary_only(run: GlyphRun) -> ShapedRun {
     let candidates = vec![0; run.glyphs.len()];
-    return ShapedRun::measure(run, candidates, vec![METRICS]);
+    return ShapedRun::measure(run, candidates, vec![METRICS]).expect("テストの寸法は値域内");
   }
 
   /// 候補 0 = upem 1000・ascender 800・descender -200、候補 1 = upem 2048・ascender 1900・descender -500 の枠
@@ -892,7 +1024,7 @@ mod tests {
   fn mixed_run() -> ShapedRun {
     let mut run = ascii_run("ab");
     run.glyphs[1].x_advance = 1024;
-    return ShapedRun::measure(run, vec![0, 1], mixed_metrics());
+    return ShapedRun::measure(run, vec![0, 1], mixed_metrics()).expect("テストの寸法は値域内");
   }
 
   /// 1 文字 = 1 グリフ・送り幅 500 単位（= 0.5em）の run を作る
@@ -940,7 +1072,7 @@ mod tests {
   #[test]
   fn sub_box_rebases_glyph_ranges_and_measures_its_own_extent() {
     let shaped = primary_only(ascii_run("abcd"));
-    let hbox = shaped.sub_box(1..3, 1..3).expect("空でない範囲は箱になるはず");
+    let hbox = shaped.sub_box(1..3, 1..3).expect("テストの寸法は値域内").expect("空でない範囲は箱になるはず");
 
     let HBoxContent::Glyphs(run) = &hbox.content else {
       panic!("部分 run は Glyphs になるはず");
@@ -956,7 +1088,7 @@ mod tests {
   fn sub_box_of_empty_range_is_none() {
     let shaped = primary_only(ascii_run("ab"));
 
-    assert!(shaped.sub_box(1..1, 1..1).is_none(), "空範囲は箱を作らない");
+    assert!(shaped.sub_box(1..1, 1..1).expect("テストの寸法は値域内").is_none(), "空範囲は箱を作らない");
   }
 
   #[test]
@@ -969,7 +1101,7 @@ mod tests {
       trim_em: 0.25,
       shift_em: 0.1,
     };
-    let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(3.0));
+    let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(3.0)).expect("テストの寸法は値域内");
 
     let HBoxContent::Glyphs(replaced) = &hbox.content else {
       panic!("差し替え結果は Glyphs になるはず");
@@ -1134,13 +1266,19 @@ mod tests {
     let font_size = Length::pt(10.0);
 
     assert_eq!(shaped.width(), Length::pt(10.0), "500/1000 em + 1024/2048 em = 1em");
-    assert_eq!(shaped.height(), Length::pt(8.0).max(font_size.scale(1900.0 / 2048.0)));
-    assert_eq!(shaped.depth(), Length::pt(2.0).max(font_size.scale(500.0 / 2048.0)));
+    assert_eq!(
+      shaped.height(),
+      Length::pt(8.0).max(font_size.try_scale(1900.0 / 2048.0).expect("テストの寸法は範囲内"))
+    );
+    assert_eq!(
+      shaped.depth(),
+      Length::pt(2.0).max(font_size.try_scale(500.0 / 2048.0).expect("テストの寸法は範囲内"))
+    );
   }
 
   #[test]
   fn mixed_run_materializes_as_an_atom_of_per_face_runs() {
-    let hbox = mixed_run().into_hbox();
+    let hbox = mixed_run().into_hbox().expect("テストの寸法は値域内");
 
     let HBoxContent::Atom(children) = &hbox.content else {
       panic!("候補の混ざった run は Atom になるはず: {hbox:?}");
@@ -1167,7 +1305,7 @@ mod tests {
   fn sub_box_of_primary_glyphs_only_is_measured_by_the_primary() {
     let shaped = mixed_run();
 
-    let hbox = shaped.sub_box(0..1, 0..1).expect("空でない範囲は箱になるはず");
+    let hbox = shaped.sub_box(0..1, 0..1).expect("テストの寸法は値域内").expect("空でない範囲は箱になるはず");
 
     assert!(matches!(hbox.content, HBoxContent::Glyphs(_)), "候補 1 種の範囲は 1 本のグリフ列");
     assert_eq!(hbox.height, Length::pt(8.0), "先頭の候補の ascender");
@@ -1182,7 +1320,7 @@ mod tests {
       shift_em: 0.1,
     };
 
-    let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(5.0));
+    let hbox = shaped.replaced_glyph_box(1, normalize, Length::pt(5.0)).expect("テストの寸法は値域内");
 
     let HBoxContent::Glyphs(replaced) = &hbox.content else {
       panic!("差し替え結果は Glyphs になるはず");

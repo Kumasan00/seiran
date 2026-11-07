@@ -4,7 +4,7 @@
 //! 返すだけにする。
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::Line,
     breaking::break_pages::{
@@ -46,7 +46,7 @@ fn place_lines(
   demands: &[Vec<FootnoteDemand>],
   charges: FootnoteCharges,
   carry_pending: bool,
-) -> (Vec<LinePlacement>, bool) {
+) -> Result<(Vec<LinePlacement>, bool), LengthOverflow> {
   let mut plan = Vec::with_capacity(lines.len());
   let mut baseline = cursor.y;
   let mut prev_depth: Option<Length> = None;
@@ -55,27 +55,27 @@ fn place_lines(
     match prev_depth {
       None => {
         if cursor.at_edge {
-          baseline += line.height;
+          baseline = baseline.try_add(line.height)?;
         }
       },
       Some(depth) => {
-        baseline += leading.max(depth + line.height);
+        baseline = baseline.try_add(leading.max(depth.try_add(line.height)?))?;
       },
     }
     let mut fit = if forced[i] {
       LineFootnoteFit::Rejected
     } else {
-      fit_line_footnotes(&demands[i], reserved, baseline + line.depth, page_limit, charges)
+      fit_line_footnotes(&demands[i], reserved, baseline.try_add(line.depth)?, page_limit, charges)?
     };
     let starts_region = matches!(fit, LineFootnoteFit::Rejected);
     if starts_region {
       if carry_pending {
         // 次リージョンの脚注エリアは繰越で埋まる。どれだけ埋まるかを詰めるまでこの行の
         // ベースラインは決められないので、ここで計画を打ち切る
-        return (plan, true);
+        return Ok((plan, true));
       }
       baseline = margin_top;
-      fit = fit_line_footnotes(&demands[i], Length::ZERO, baseline + line.depth, page_limit, charges);
+      fit = fit_line_footnotes(&demands[i], Length::ZERO, baseline.try_add(line.depth)?, page_limit, charges)?;
     }
     let split_here = matches!(fit, LineFootnoteFit::Split(..));
     let mut overflowed = false;
@@ -87,7 +87,7 @@ fn place_lines(
       LineFootnoteFit::Rejected => {
         overflowed = !demands[i].is_empty();
         (
-          footnote_area_full(&demands[i], Length::ZERO, charges),
+          footnote_area_full(&demands[i], Length::ZERO, charges)?,
           demands[i].iter().map(FootnoteDemand::line_count).collect(),
         )
       },
@@ -102,10 +102,10 @@ fn place_lines(
     });
     prev_depth = Some(line.depth);
     if split_here {
-      return (plan, true);
+      return Ok((plan, true));
     }
   }
-  return (plan, false);
+  return Ok((plan, false));
 }
 
 /// 配置計画から widow/orphan 違反を 1 つ検出し、追加すべき強制改リージョン点を返す
@@ -161,17 +161,17 @@ pub(super) fn plan_paragraph_lines(
   charges: FootnoteCharges,
   is_paragraph_start: bool,
   carry_pending: bool,
-) -> (Vec<LinePlacement>, bool) {
+) -> Result<(Vec<LinePlacement>, bool), LengthOverflow> {
   let mut forced = vec![false; lines.len()];
   loop {
     let (plan, truncated) =
-      place_lines(lines, cursor, leading, margin_top, page_limit, &forced, demands, charges, carry_pending);
+      place_lines(lines, cursor, leading, margin_top, page_limit, &forced, demands, charges, carry_pending)?;
     // 打ち切られた計画の末尾は段落の末尾ではない
     let is_paragraph_end = !truncated;
     match pick_correction(&plan, MIN_LINES_AT_BREAK, is_paragraph_start, is_paragraph_end) {
       Some(idx) if !forced[idx] => forced[idx] = true,
       // 補正不要、または前進しない（回避不能）なら確定
-      _ => return (plan, truncated),
+      _ => return Ok((plan, truncated)),
     }
   }
 }
@@ -236,7 +236,8 @@ mod tests {
       no_charges(),
       true,
       false,
-    );
+    )
+    .expect("テストの寸法は値域内");
 
     assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
     assert_eq!(
@@ -281,7 +282,8 @@ mod tests {
       no_charges(),
       true,
       false,
-    );
+    )
+    .expect("テストの寸法は値域内");
 
     assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
     assert_eq!(
@@ -332,7 +334,8 @@ mod tests {
       no_charges(),
       true,
       false,
-    );
+    )
+    .expect("テストの寸法は値域内");
 
     assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
     assert_eq!(

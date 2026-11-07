@@ -2,17 +2,21 @@
 
 use super::PendingFootnote;
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{boxes::Line, geometry::PageGeometry},
 };
 
 /// `demands` を全行そのまま積んだときの脚注エリアの高さ（固定費込み）を返す
-pub(super) fn footnote_area_full(demands: &[FootnoteDemand], reserved: Length, charges: FootnoteCharges) -> Length {
+pub(super) fn footnote_area_full(
+  demands: &[FootnoteDemand],
+  reserved: Length,
+  charges: FootnoteCharges,
+) -> Result<Length, LengthOverflow> {
   let mut area = reserved;
   for demand in demands {
-    area += charges.entry_overhead(area) + demand.full_height();
+    area = area.try_add(charges.entry_overhead(area)?.try_add(demand.full_height())?)?;
   }
-  return area;
+  return Ok(area);
 }
 
 /// 行 1 個の脚注を、リージョンの脚注エリアへどう収めるかの判定結果
@@ -32,20 +36,20 @@ pub(super) fn fit_line_footnotes(
   body_bottom: Length,
   page_limit: Length,
   charges: FootnoteCharges,
-) -> LineFootnoteFit {
-  let full = footnote_area_full(demands, reserved, charges);
-  if body_bottom <= page_limit - full {
-    return LineFootnoteFit::Full(full);
+) -> Result<LineFootnoteFit, LengthOverflow> {
+  let full = footnote_area_full(demands, reserved, charges)?;
+  if body_bottom <= page_limit.try_sub(full)? {
+    return Ok(LineFootnoteFit::Full(full));
   }
   if demands.is_empty() {
     // 脚注が無いのに収まらない = 行自体がリージョンに入らない（分割する余地は無い）
-    return LineFootnoteFit::Rejected;
+    return Ok(LineFootnoteFit::Rejected);
   }
-  let budget = page_limit - body_bottom - reserved;
-  return match pack_footnotes(demands, reserved, budget, charges, true) {
-    Some(packing) => LineFootnoteFit::Split(reserved + packing.height, packing.splits),
+  let budget = page_limit.try_sub(body_bottom)?.try_sub(reserved)?;
+  return Ok(match pack_footnotes(demands, reserved, budget, charges, true)? {
+    Some(packing) => LineFootnoteFit::Split(reserved.try_add(packing.height)?, packing.splits),
     None => LineFootnoteFit::Rejected,
-  };
+  });
 }
 
 /// 脚注エリアの高さ課金パラメータ（`style.footnote` 由来）
@@ -70,11 +74,11 @@ impl FootnoteCharges {
   }
 
   /// 脚注エリアを `base_reserved` まで確保済みのリージョンへ、脚注 1 個を新たに置くときの固定費
-  fn entry_overhead(self, base_reserved: Length) -> Length {
+  fn entry_overhead(self, base_reserved: Length) -> Result<Length, LengthOverflow> {
     if base_reserved == Length::ZERO {
-      return self.top_margin + self.rule_thickness + self.rule_gap;
+      return self.top_margin.try_add(self.rule_thickness)?.try_add(self.rule_gap);
     }
-    return self.rule_gap;
+    return Ok(self.rule_gap);
   }
 }
 
@@ -86,7 +90,7 @@ pub(super) struct FootnoteDemand {
 
 impl FootnoteDemand {
   /// 行分割済みの脚注本体から需要を組み立てる
-  pub(super) fn new(lines: &[Line], leading: Length) -> Self {
+  pub(super) fn new(lines: &[Line], leading: Length) -> Result<Self, LengthOverflow> {
     let mut prefix = Vec::with_capacity(lines.len() + 1);
     prefix.push(Length::ZERO);
     let mut baseline = Length::ZERO;
@@ -95,12 +99,12 @@ impl FootnoteDemand {
       if i == 0 {
         baseline = line.height;
       } else {
-        baseline += leading.max(prev_depth + line.height);
+        baseline = baseline.try_add(leading.max(prev_depth.try_add(line.height)?))?;
       }
       prev_depth = line.depth;
-      prefix.push(baseline + prev_depth);
+      prefix.push(baseline.try_add(prev_depth)?);
     }
-    return FootnoteDemand { prefix };
+    return Ok(FootnoteDemand { prefix });
   }
 
   /// 本体の行数
@@ -144,57 +148,59 @@ pub(super) fn pack_footnotes(
   budget: Length,
   charges: FootnoteCharges,
   require_first_line: bool,
-) -> Option<FootnotePacking> {
+) -> Result<Option<FootnotePacking>, LengthOverflow> {
   let mut splits = Vec::with_capacity(demands.len());
   let mut height = Length::ZERO;
   let mut overflowed = false;
   for (j, demand) in demands.iter().enumerate() {
-    let overhead = charges.entry_overhead(base_reserved + height);
+    let overhead = charges.entry_overhead(base_reserved.try_add(height)?)?;
     // 後続の脚注に最低 1 行ずつ残す（`require_first_line` のときのみ）。この脚注を置いた後なので
     // 後続の固定費は `rule_gap` だけになる
     let rest_min: Length = if require_first_line {
-      demands[j + 1..].iter().map(|rest| return charges.rule_gap + rest.first_line_height()).sum()
+      demands[j + 1..]
+        .iter()
+        .try_fold(Length::ZERO, |sum, rest| return sum.try_add(charges.rule_gap.try_add(rest.first_line_height())?))?
     } else {
       Length::ZERO
     };
-    let mut placed = demand.fit_lines(budget - height - overhead - rest_min);
+    let mut placed = demand.fit_lines(budget.try_sub(height)?.try_sub(overhead)?.try_sub(rest_min)?);
     if placed == 0 && demand.line_count() > 0 {
       if require_first_line {
         // この行の脚注は先頭 1 行すら置けない
-        return None;
+        return Ok(None);
       }
       if j > 0 {
         // 繰越: 手前の脚注で予算が尽きた。以降はこのリージョンに置かない（出現順を保つ）
         splits.extend(std::iter::repeat_n(0, demands.len() - j));
-        return Some(FootnotePacking {
+        return Ok(Some(FootnotePacking {
           splits,
           height,
           overflowed,
-        });
+        }));
       }
       // 繰越の先頭が 1 行も入らない病的ケース。次リージョンへ送っても改善しないので、
       // オーバーフローを許容して 1 行進める（[`super::PageComposer::seed_carry`] のループの停止条件）
       overflowed = true;
       placed = 1;
     }
-    height += overhead + demand.prefix[placed];
+    height = height.try_add(overhead.try_add(demand.prefix[placed])?)?;
     splits.push(placed);
     // 分割された脚注より後ろをこのリージョンに置くと繰越と出現順が入れ替わる。`require_first_line` の
     // ときは後続の最低 1 行を予約済みなので、そのまま詰め続けてよい
     if placed < demand.line_count() && !require_first_line {
       splits.extend(std::iter::repeat_n(0, demands.len() - j - 1));
-      return Some(FootnotePacking {
+      return Ok(Some(FootnotePacking {
         splits,
         height,
         overflowed,
-      });
+      }));
     }
   }
-  return Some(FootnotePacking {
+  return Ok(Some(FootnotePacking {
     splits,
     height,
     overflowed,
-  });
+  }));
 }
 
 /// 脚注を「先頭 `placed` 行」と「残り」に分ける

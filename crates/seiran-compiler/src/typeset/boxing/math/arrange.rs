@@ -13,7 +13,7 @@ pub(in crate::typeset::boxing) use spacing::space_width;
 use crate::{
   color::Color,
   document::{MathClass, Typeface},
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::Align,
     font::{ScriptLevel, ScriptScale},
@@ -217,27 +217,38 @@ pub(super) struct MathBar {
 /// インライン数式を text 段で組み、トップレベルの要素列にする
 ///
 /// トップレベルの二項演算子・関係子の直後に分割候補（[`ArrangedInline::Break`]）を置く。
-pub(super) fn arrange_inline(formula: &MathFormula, script_scale: ScriptScale) -> Vec<ArrangedInline> {
-  let ctx = ArrangeContext::new(formula.font_size, script_scale, StyleLevel::Text, formula.color);
-  return spacing::assemble_breakable(collect_items(&formula.nodes, &ctx), ctx.font_size());
+///
+/// # Errors
+///
+/// 段のフォントサイズやアキが `Length` の表現範囲を超えるとき [`LengthOverflow`]。
+pub(super) fn arrange_inline(
+  formula: &MathFormula,
+  script_scale: ScriptScale,
+) -> Result<Vec<ArrangedInline>, LengthOverflow> {
+  let ctx = ArrangeContext::new(formula.font_size, script_scale, StyleLevel::Text, formula.color)?;
+  return spacing::assemble_breakable(collect_items(&formula.nodes, &ctx)?, ctx.font_size());
 }
 
 /// ディスプレイ数式の 1 セルを [`ArrangedNode`] 列にする
 ///
 /// `display` が真なら display 段、偽なら text 段（`cases` / `matrix`）で組む。閉じた箱に畳むので行分割点を置かない。
 /// 表示数式は段落の外のブロックで、文字色（`\color`・リンク色）はインラインにしか効かないので既定色。
+///
+/// # Errors
+///
+/// 段のフォントサイズやアキが `Length` の表現範囲を超えるとき [`LengthOverflow`]。
 pub(super) fn arrange_cell(
   nodes: &[MathNode],
   font_size: Length,
   display: bool,
   script_scale: ScriptScale,
-) -> Vec<ArrangedNode> {
+) -> Result<Vec<ArrangedNode>, LengthOverflow> {
   let level = if display {
     StyleLevel::Display
   } else {
     StyleLevel::Text
   };
-  return arrange_list(nodes, &ArrangeContext::new(font_size, script_scale, level, None));
+  return arrange_list(nodes, &ArrangeContext::new(font_size, script_scale, level, None)?);
 }
 
 /// 数式スタイルの段（TeX・MathML Core の display / text / script / scriptscript）
@@ -362,6 +373,8 @@ struct ArrangeContext {
   base_font_size: Length,
   /// スクリプト段の縮小率（数式フォントの MATH 由来）
   script_scale: ScriptScale,
+  /// このレベルのフォントサイズ（`base_font_size` に `style.level` の縮小率を掛けた値）
+  font_size: Length,
   /// このレベルの数式スタイル
   style: FormulaStyle,
   /// 数式全体の文字色（外側の `\color`・リンク色。`None` は既定色）
@@ -370,25 +383,43 @@ struct ArrangeContext {
 
 impl ArrangeContext {
   /// 数式本体（段 `level`・cramped でない・文字色 `color`）の文脈を作る
-  const fn new(base_font_size: Length, script_scale: ScriptScale, level: StyleLevel, color: Option<Color>) -> Self {
-    return ArrangeContext {
+  ///
+  /// # Errors
+  ///
+  /// 段のフォントサイズが値域を超えたら [`LengthOverflow`]。
+  fn new(
+    base_font_size: Length,
+    script_scale: ScriptScale,
+    level: StyleLevel,
+    color: Option<Color>,
+  ) -> Result<Self, LengthOverflow> {
+    return Ok(ArrangeContext {
       base_font_size,
       script_scale,
+      font_size: script_scale.font_size(base_font_size, level.script_level())?,
       style: FormulaStyle {
         level,
         cramped: false,
       },
       color,
-    };
+    });
   }
 
-  /// 数式スタイルだけを差し替えた文脈を作る
-  const fn with_style(&self, style: FormulaStyle) -> Self { return ArrangeContext { style, ..*self }; }
+  /// 数式スタイルだけを差し替えた文脈を作る（段が変わるときだけ、その段のフォントサイズを求める）
+  ///
+  /// # Errors
+  ///
+  /// 新しい段のフォントサイズが値域を超えたら [`LengthOverflow`]。
+  fn with_style(&self, style: FormulaStyle) -> Result<Self, LengthOverflow> {
+    return Ok(ArrangeContext {
+      font_size: self.script_scale.font_size(self.base_font_size, style.level.script_level())?,
+      style,
+      ..*self
+    });
+  }
 
   /// このレベルのフォントサイズ
-  fn font_size(&self) -> Length {
-    return self.script_scale.font_size(self.base_font_size, self.style.level.script_level());
-  }
+  const fn font_size(&self) -> Length { return self.font_size; }
 
   /// script 段以下（TeXbook の括弧付きセルのアキを抑制する段）か
   const fn in_script(&self) -> bool { return self.style.level.script_level().is_some(); }
@@ -406,17 +437,17 @@ impl ArrangeContext {
 }
 
 /// 数式の要素列をスペーシングのアイテム列へ展開する
-fn collect_items(nodes: &[MathNode], ctx: &ArrangeContext) -> Vec<spacing::MathItem> {
+fn collect_items(nodes: &[MathNode], ctx: &ArrangeContext) -> Result<Vec<spacing::MathItem>, LengthOverflow> {
   let mut items = Vec::new();
   for node in nodes {
-    push_items(node, ctx, &mut items);
+    push_items(node, ctx, &mut items)?;
   }
-  return items;
+  return Ok(items);
 }
 
 /// 数式の要素列を、アトム間のアキを入れた [`ArrangedNode`] 列に変換する
-fn arrange_list(nodes: &[MathNode], ctx: &ArrangeContext) -> Vec<ArrangedNode> {
-  return spacing::assemble(collect_items(nodes, ctx), ctx.font_size(), ctx.in_script());
+fn arrange_list(nodes: &[MathNode], ctx: &ArrangeContext) -> Result<Vec<ArrangedNode>, LengthOverflow> {
+  return spacing::assemble(collect_items(nodes, ctx)?, ctx.font_size(), ctx.in_script());
 }
 
 /// 数式の要素 1 つをスペーシングのアイテムへ展開する
@@ -424,7 +455,7 @@ fn arrange_list(nodes: &[MathNode], ctx: &ArrangeContext) -> Vec<ArrangedNode> {
 /// `Group` / `Fraction` / `Radical` / `Accent` / `Bar` は中身を再帰的に組んだうえで 1 個の順序子（Ord）にする（TeX と同じ）。
 /// `Fenced` は中身を組んだうえで、左端 Open・右端 Close の 1 個のアイテムにする。
 /// `Binomial` は横罫の無い分数を丸括弧で包み、伸縮括弧と同じく左端 Open・右端 Close の 1 個のアイテムにする。
-fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::MathItem>) {
+fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::MathItem>) -> Result<(), LengthOverflow> {
   match node {
     MathNode::Char { text, class, fence } => {
       // display の大きさの字形にするのは、MathML Core の largeop を持つ演算子が display 段にあるときだけ（largeop は
@@ -444,7 +475,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       }
     },
     MathNode::Space(space) => {
-      items.push(spacing::MathItem::explicit(*space, ctx.font_size()));
+      items.push(spacing::MathItem::explicit(*space, ctx.font_size())?);
     },
     // largeop ではないので display 段でも拡大しない
     MathNode::OperatorName { text, limits } => {
@@ -452,7 +483,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
         math_operator: Some(MathOperator::Name),
         ..ctx.text_style(MathClass::Op)
       };
-      items.push(spacing::MathItem::operator_name(text, style, *limits && ctx.style.level == StyleLevel::Display));
+      items.push(spacing::MathItem::operator_name(text, style, *limits && ctx.style.level == StyleLevel::Display)?);
     },
     MathNode::Prose { text, typeface } => {
       let prose = ArrangedNode::Prose(
@@ -482,14 +513,14 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       items.push(spacing::MathItem::new(MathClass::Ord, None, vec![quantity]));
     },
     MathNode::Group(children) => {
-      items.push(spacing::MathItem::new(MathClass::Ord, None, arrange_list(children, ctx)));
+      items.push(spacing::MathItem::new(MathClass::Ord, None, arrange_list(children, ctx)?));
     },
     MathNode::Superscript(inner) => {
-      let content = arrange_list(inner, &ctx.with_style(ctx.style.superscript()));
+      let content = arrange_list(inner, &ctx.with_style(ctx.style.superscript())?)?;
       spacing::push_script(items, ScriptSide::Superscript, content, ctx.font_size(), ctx.style.cramped);
     },
     MathNode::Subscript(inner) => {
-      let content = arrange_list(inner, &ctx.with_style(ctx.style.subscript()));
+      let content = arrange_list(inner, &ctx.with_style(ctx.style.subscript())?)?;
       spacing::push_script(items, ScriptSide::Subscript, content, ctx.font_size(), ctx.style.cramped);
     },
     MathNode::Fraction {
@@ -497,8 +528,8 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       denominator,
     } => {
       let fraction = MathFraction {
-        numerator: arrange_list(numerator, &ctx.with_style(ctx.style.numerator())),
-        denominator: arrange_list(denominator, &ctx.with_style(ctx.style.denominator())),
+        numerator: arrange_list(numerator, &ctx.with_style(ctx.style.numerator())?)?,
+        denominator: arrange_list(denominator, &ctx.with_style(ctx.style.denominator())?)?,
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         ruled: true,
@@ -509,8 +540,8 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
     // 上段・下段は分数の分子・分母と同じ段に組み、積み全体は括弧と同じ段（伸縮括弧の中身と同じ）
     MathNode::Binomial { top, bottom } => {
       let stack = MathFraction {
-        numerator: arrange_list(top, &ctx.with_style(ctx.style.numerator())),
-        denominator: arrange_list(bottom, &ctx.with_style(ctx.style.denominator())),
+        numerator: arrange_list(top, &ctx.with_style(ctx.style.numerator())?)?,
+        denominator: arrange_list(bottom, &ctx.with_style(ctx.style.denominator())?)?,
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         ruled: false,
@@ -520,10 +551,11 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
     },
     MathNode::Radical { degree, radicand } => {
       let radical = MathRadical {
-        degree: degree.as_ref().map(|degree| {
-          return arrange_list(degree, &ctx.with_style(ctx.style.radical_degree()));
-        }),
-        radicand: arrange_list(radicand, &ctx.with_style(ctx.style.cramped())),
+        degree: degree
+          .as_ref()
+          .map(|degree| return arrange_list(degree, &ctx.with_style(ctx.style.radical_degree())?))
+          .transpose()?,
+        radicand: arrange_list(radicand, &ctx.with_style(ctx.style.cramped())?)?,
         font_size: ctx.font_size(),
         display: ctx.style.level == StyleLevel::Display,
         script_level: ctx.style.level.script_level(),
@@ -539,7 +571,7 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       base,
     } => {
       let accent = MathAccent {
-        base: arrange_list(base, &ctx.with_style(ctx.style.cramped())),
+        base: arrange_list(base, &ctx.with_style(ctx.style.cramped())?)?,
         accent: mark.to_string(),
         wide: *wide,
         dotless: *dotless,
@@ -556,19 +588,19 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       segments,
     } => {
       let segments = spacing::assemble_divided(
-        segments.iter().map(|segment| return collect_items(segment, ctx)).collect(),
+        segments.iter().map(|segment| return collect_items(segment, ctx)).collect::<Result<_, _>>()?,
         ctx.font_size(),
         ctx.in_script(),
-      );
+      )?;
       items.push(fenced_item(segments, *open, *close, ctx));
     },
     // 上線の基底は cramped（TeX の Rule 9）、下線の基底は外側のスタイルを継承する（TeX の Rule 10）
     MathNode::Bar { over, body } => {
       let bar = MathBar {
         body: if *over {
-          arrange_list(body, &ctx.with_style(ctx.style.cramped()))
+          arrange_list(body, &ctx.with_style(ctx.style.cramped())?)?
         } else {
-          arrange_list(body, ctx)
+          arrange_list(body, ctx)?
         },
         over: *over,
         font_size: ctx.font_size(),
@@ -582,10 +614,12 @@ fn push_items(node: &MathNode, ctx: &ArrangeContext, items: &mut Vec<spacing::Ma
       align,
       row_gap,
       column_gap,
+      gap_scale,
     } => {
-      push_array(rows, *delimiters, *align, *row_gap, *column_gap, ctx, items);
+      push_array(rows, *delimiters, *align, (*row_gap, *column_gap, *gap_scale), ctx, items)?;
     },
   }
+  return Ok(());
 }
 
 /// 組み済みの中身の区画 `segments` を左右の区切り括弧 `open` / `close` で挟み、左端 Open・右端 Close の 1 個のアイテムにする
@@ -603,39 +637,40 @@ fn fenced_item(segments: Vec<Vec<ArrangedNode>>, open: char, close: char, ctx: &
   return spacing::MathItem::fenced(vec![ArrangedNode::Fenced(fenced)]);
 }
 
-/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`・数式本体の大きさでの
-/// 行間 `row_gap` と列間 `column_gap`）をアイテムへ展開する
+/// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`・本文の大きさでの
+/// 行間と列間と数式本体の大きさへの倍率 `gaps` = (行間, 列間, 倍率)）をアイテムへ展開する
 ///
-/// セルは [`StyleLevel::array_cell`] の段で、cramped・文字色は外側から継ぐ。行間・列間は段の大きさに比例させる。括弧を
+/// セルは [`StyleLevel::array_cell`] の段で、cramped・文字色は外側から継ぐ。行間・列間は数式本体の大きさへ比例させたうえで、
+/// さらに段の大きさに比例させる（段ごとに丸める）。括弧を
 /// 持つものは伸縮括弧と同じく左端 Open・右端 Close、括弧の無い行列は Ord の 1 個のアイテムにする。
 fn push_array(
   rows: &[Vec<Vec<MathNode>>],
   delimiters: DelimiterGlyphs,
   align: Align,
-  row_gap: Length,
-  column_gap: Length,
+  gaps: (Length, Length, f64),
   ctx: &ArrangeContext,
   items: &mut Vec<spacing::MathItem>,
-) {
+) -> Result<(), LengthOverflow> {
   let cell_ctx = ctx.with_style(FormulaStyle {
     level: ctx.style.level.array_cell(),
     cramped: ctx.style.cramped,
-  });
+  })?;
+  let (row_gap, column_gap, gap_scale) = gaps;
   let scale = ctx.font_size().ratio(ctx.base_font_size);
   let array = MathArray {
     rows: rows
       .iter()
       .map(|row| {
-        return row.iter().map(|cell| return arrange_list(cell, &cell_ctx)).collect();
+        return row.iter().map(|cell| return arrange_list(cell, &cell_ctx)).collect::<Result<_, _>>();
       })
-      .collect(),
+      .collect::<Result<_, _>>()?,
     align,
     delimiters,
     font_size: ctx.font_size(),
     script_level: ctx.style.level.script_level(),
     color: ctx.color,
-    row_gap: row_gap * scale,
-    column_gap: column_gap * scale,
+    row_gap: row_gap.try_scale(gap_scale)?.try_scale(scale)?,
+    column_gap: column_gap.try_scale(gap_scale)?.try_scale(scale)?,
   };
   let nodes = vec![ArrangedNode::Array(array)];
   items.push(if delimiters.is_present() {
@@ -643,7 +678,7 @@ fn push_array(
   } else {
     spacing::MathItem::new(MathClass::Ord, None, nodes)
   });
-  return;
+  return Ok(());
 }
 
 /// `MathML Core` の演算子辞書で largeop を持つ文字か（総和・積分・n 項の集合演算子・`⨝` `⨞` `⫼` `⫿`）
@@ -705,7 +740,10 @@ mod tests {
     let nodes = lower(style, &analyzed(source));
     let mut found = Vec::new();
     formulas(&nodes, &mut found);
-    return found.into_iter().flat_map(|formula| return arrange_inline(formula, stix_script_scale())).collect();
+    return found
+      .into_iter()
+      .flat_map(|formula| return arrange_inline(formula, stix_script_scale()).expect("テストの寸法は範囲内"))
+      .collect();
   }
 
   /// トップレベルの要素のうち分割候補でないものを出現順に辿る
@@ -980,7 +1018,7 @@ mod tests {
       panic!("上付きの中身は数値 1 個のはず: {superscript:?}");
     };
     assert_eq!(
-      style.font_size,
+      Ok(style.font_size),
       stix_script_scale().font_size(ReadStyle::default().text.font_size, Some(ScriptLevel::Script))
     );
     assert_eq!(style.typeface, Typeface::Math);
@@ -1024,9 +1062,21 @@ mod tests {
       levels,
       vec![
         ("\u{1D465}".to_string(), base, None),
-        ("\u{1D466}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
-        ("\u{1D467}".to_string(), base.scale(0.55), Some(ScriptLevel::ScriptScript)),
-        ("\u{1D464}".to_string(), base.scale(0.55), Some(ScriptLevel::ScriptScript)),
+        (
+          "\u{1D466}".to_string(),
+          base.try_scale(0.7).expect("テストの寸法は範囲内"),
+          Some(ScriptLevel::Script)
+        ),
+        (
+          "\u{1D467}".to_string(),
+          base.try_scale(0.55).expect("テストの寸法は範囲内"),
+          Some(ScriptLevel::ScriptScript)
+        ),
+        (
+          "\u{1D464}".to_string(),
+          base.try_scale(0.55).expect("テストの寸法は範囲内"),
+          Some(ScriptLevel::ScriptScript)
+        ),
       ],
       "scriptscript は数式本体のサイズ基準で、それより下へは縮めない"
     );
@@ -1038,7 +1088,11 @@ mod tests {
 
     let texts = atom_texts(&block[0][0]);
     let (_, script) = texts.iter().find(|(text, _)| return text == "2").expect("上付きの 2 があるはず");
-    assert_eq!(script.font_size, ReadStyle::default().text.font_size.scale(0.7), "display 段の上付きは script 段");
+    assert_eq!(
+      script.font_size,
+      ReadStyle::default().text.font_size.try_scale(0.7).expect("テストの寸法は範囲内"),
+      "display 段の上付きは script 段"
+    );
     assert_eq!(script.script_level, Some(ScriptLevel::Script));
   }
 
@@ -1048,7 +1102,7 @@ mod tests {
 
     let texts = math_texts(&nodes);
     let (_, degree) = texts.iter().find(|(text, _)| return text == "3").expect("指数の 3 があるはず");
-    assert_eq!(degree.font_size, ReadStyle::default().text.font_size.scale(0.55));
+    assert_eq!(degree.font_size, ReadStyle::default().text.font_size.try_scale(0.55).expect("テストの寸法は範囲内"));
     assert_eq!(degree.script_level, Some(ScriptLevel::ScriptScript));
   }
 
@@ -1274,7 +1328,7 @@ mod tests {
     let [ArrangedNode::Accent(accent)] = content else {
       panic!("上付きの中身はアクセント 1 つのはず: {content:?}");
     };
-    assert_eq!(accent.font_size, ReadStyle::default().text.font_size.scale(0.7));
+    assert_eq!(accent.font_size, ReadStyle::default().text.font_size.try_scale(0.7).expect("テストの寸法は範囲内"));
     assert_eq!(accent.script_level, Some(ScriptLevel::Script), "アクセント記号は基底と同じ段（段を下げない）");
   }
 
@@ -1369,7 +1423,11 @@ mod tests {
     let [ArrangedNode::Fenced(fenced)] = content else {
       panic!("上付きの中身は伸縮括弧 1 つのはず: {content:?}");
     };
-    assert_eq!(fenced.font_size, ReadStyle::default().text.font_size.scale(0.7), "括弧も中身も上付きの段");
+    assert_eq!(
+      fenced.font_size,
+      ReadStyle::default().text.font_size.try_scale(0.7).expect("テストの寸法は範囲内"),
+      "括弧も中身も上付きの段"
+    );
     assert_eq!(fenced.script_level, Some(ScriptLevel::Script), "括弧の字形も上付きの段の ssty で選ぶ");
   }
 
@@ -1544,7 +1602,7 @@ mod tests {
       .collect();
     assert_eq!(
       inline_levels,
-      vec![(base.scale(0.7), Some(ScriptLevel::Script)); 2],
+      vec![(base.try_scale(0.7).expect("テストの寸法は範囲内"), Some(ScriptLevel::Script)); 2],
       "text 段の分数の中身は script 段"
     );
     let cell = &display[0][0];
@@ -1567,9 +1625,9 @@ mod tests {
     assert_eq!(
       sizes,
       vec![
-        ("\u{1D44E}".to_string(), base.scale(0.55)),
-        ("\u{1D44F}".to_string(), base.scale(0.55)),
-        ("\u{1D450}".to_string(), base.scale(0.7)),
+        ("\u{1D44E}".to_string(), base.try_scale(0.55).expect("テストの寸法は範囲内")),
+        ("\u{1D44F}".to_string(), base.try_scale(0.55).expect("テストの寸法は範囲内")),
+        ("\u{1D450}".to_string(), base.try_scale(0.7).expect("テストの寸法は範囲内")),
       ],
       "分子の分数の中身は scriptscript、外側の分母は script"
     );
@@ -1595,7 +1653,10 @@ mod tests {
     };
     let fraction = atom_fraction(scripts.superscript.as_deref().expect("上付きの中身があるはず"));
     assert!(!fraction.display, "上付きの中の分数は script 段で、display の定数を使わない");
-    assert_eq!(fraction.font_size, ReadStyle::default().text.font_size.scale(0.7));
+    assert_eq!(
+      fraction.font_size,
+      ReadStyle::default().text.font_size.try_scale(0.7).expect("テストの寸法は範囲内")
+    );
   }
 
   #[test]
@@ -1617,8 +1678,16 @@ mod tests {
       assert_eq!(
         levels,
         vec![
-          ("\u{1D44E}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
-          ("\u{1D44F}".to_string(), base.scale(0.7), Some(ScriptLevel::Script)),
+          (
+            "\u{1D44E}".to_string(),
+            base.try_scale(0.7).expect("テストの寸法は範囲内"),
+            Some(ScriptLevel::Script)
+          ),
+          (
+            "\u{1D44F}".to_string(),
+            base.try_scale(0.7).expect("テストの寸法は範囲内"),
+            Some(ScriptLevel::Script)
+          ),
         ],
         "{source}"
       );
@@ -1665,7 +1734,7 @@ mod tests {
     let [ArrangedNode::Radical(radical)] = content else {
       panic!("上付きの中身は根号 1 つのはず: {content:?}");
     };
-    assert_eq!(radical.font_size, ReadStyle::default().text.font_size.scale(0.7));
+    assert_eq!(radical.font_size, ReadStyle::default().text.font_size.try_scale(0.7).expect("テストの寸法は範囲内"));
     assert_eq!(radical.script_level, Some(ScriptLevel::Script), "根号記号は上付きの段の ssty で選ぶ");
   }
 
@@ -1840,7 +1909,10 @@ mod tests {
         return row
           .cells
           .iter()
-          .map(|cell| return arrange_cell(&cell.content, font_size, block.display, stix_script_scale()))
+          .map(|cell| {
+            return arrange_cell(&cell.content, font_size, block.display, stix_script_scale())
+              .expect("テストの寸法は範囲内");
+          })
           .collect();
       })
       .collect();
@@ -1910,7 +1982,11 @@ mod tests {
     let under = first_atom_scripts(scripts.subscript.as_deref().expect("下限があるはず"));
     assert!(!over.cramped, "上限の中は cramped でない");
     assert!(under.cramped, "下限の中は cramped");
-    assert_eq!(over.font_size, ReadStyle::default().text.font_size.scale(0.7), "上限は script 段");
+    assert_eq!(
+      over.font_size,
+      ReadStyle::default().text.font_size.try_scale(0.7).expect("テストの寸法は範囲内"),
+      "上限は script 段"
+    );
   }
 
   #[test]
@@ -2192,7 +2268,7 @@ mod tests {
   #[test]
   fn matrix_in_a_script_keeps_the_script_level_and_scales_gaps() {
     let style = ReadStyle::default();
-    let script_size = style.text.font_size.scale(0.7);
+    let script_size = style.text.font_size.try_scale(0.7).expect("テストの寸法は範囲内");
 
     let nodes = lower_math_source("$x^{\\begin{matrix}a \\\\ b\\end{matrix}}$\n");
 

@@ -3,10 +3,11 @@
 use crate::{
   color::Color,
   document::{HirInline, HirInlineKind, Typeface},
-  length::Length,
+  length::{Length, LengthOverflow},
   style::FootnoteStyle,
   typeset::{
     boxes::{AnchorId, FootnoteId, IndexTerm, LinkTarget},
+    error::ElementOverflow,
     lowering::{
       LoweringContext, LoweringState, code, generated,
       layout_node::{InlineNode, QuantityPiece, TextStyle},
@@ -22,12 +23,12 @@ pub(super) fn lower_inlines(
   inlines: &[HirInline],
   parent_style: TextStyle,
   state: &mut LoweringState<'_>,
-) -> Vec<InlineNode> {
+) -> Result<Vec<InlineNode>, ElementOverflow> {
   let mut result = Vec::new();
   for inline in inlines {
-    result.extend(lower_inline(ctx, inline, parent_style, state));
+    result.extend(lower_inline(ctx, inline, parent_style, state)?);
   }
-  return result;
+  return Ok(result);
 }
 
 /// インライン要素をインラインノードに変換する
@@ -36,10 +37,10 @@ pub(super) fn lower_inline(
   inline: &HirInline,
   parent_style: TextStyle,
   state: &mut LoweringState<'_>,
-) -> Vec<InlineNode> {
+) -> Result<Vec<InlineNode>, ElementOverflow> {
   match &inline.kind {
     HirInlineKind::Text(text) => {
-      return vec![InlineNode::Text(text.clone(), parent_style)];
+      return Ok(vec![InlineNode::Text(text.clone(), parent_style)]);
     },
     HirInlineKind::Styled { font, children } => {
       return lower_inlines(ctx, children, styled(parent_style, *font), state);
@@ -48,70 +49,70 @@ pub(super) fn lower_inline(
       return lower_inlines(ctx, children, colored(parent_style, *color), state);
     },
     HirInlineKind::Code(text) => {
-      return code::lower_inline_code(text, parent_style);
+      return Ok(code::lower_inline_code(text, parent_style));
     },
     HirInlineKind::Math(math_nodes) => {
-      return lower_inline_math(math_nodes, parent_style.font_size, parent_style.color, ctx.style);
+      return Ok(lower_inline_math(math_nodes, parent_style.font_size, parent_style.color, ctx.style));
     },
     HirInlineKind::Symbol(ch) => {
-      return vec![InlineNode::Text(ch.to_string(), parent_style)];
+      return Ok(vec![InlineNode::Text(ch.to_string(), parent_style)]);
     },
     HirInlineKind::Number(numeral) => {
-      return vec![quantity_node(
+      return Ok(vec![quantity_node(
         ctx,
         quantity::number_pieces(numeral, &ctx.style.quantity),
         parent_style,
-      )];
+      )]);
     },
     HirInlineKind::Unit(factors) => {
-      return vec![quantity_node(
+      return Ok(vec![quantity_node(
         ctx,
         quantity::unit_pieces(factors, &ctx.style.quantity),
         parent_style,
-      )];
+      )]);
     },
     HirInlineKind::Quantity { numeral, unit } => {
-      return vec![quantity_node(
+      return Ok(vec![quantity_node(
         ctx,
         quantity::quantity_pieces(numeral, unit, &ctx.style.quantity),
         parent_style,
-      )];
+      )]);
     },
     HirInlineKind::LineBreak => {
-      return vec![InlineNode::LineBreak];
+      return Ok(vec![InlineNode::LineBreak]);
     },
     HirInlineKind::NoIndent => {
       // 通常は段落変換時に除去されるが、単独変換でも描画しない。
-      return Vec::new();
+      return Ok(Vec::new());
     },
     HirInlineKind::Index { word, reading } => {
-      return vec![InlineNode::IndexMark(IndexTerm {
+      return Ok(vec![InlineNode::IndexMark(IndexTerm {
         word: word.clone(),
         reading: reading.clone(),
-      })];
+      })]);
     },
     HirInlineKind::Ref { .. } => {
       let target = state.ref_target(inline.id);
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
-      return vec![InlineNode::Link {
+      return Ok(vec![InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Label(target.clone())),
         children: vec![InlineNode::Text(
           state.ref_display(ctx.style, target),
           style,
         )],
-      }];
+      }]);
     },
     HirInlineKind::Link { url, children } => {
       let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
-      let inner = lower_inlines(ctx, children, style, state);
-      return vec![InlineNode::Link {
+      let inner = lower_inlines(ctx, children, style, state)?;
+      return Ok(vec![InlineNode::Link {
         target: LinkTarget::External(url.clone()),
         children: inner,
-      }];
+      }]);
     },
     HirInlineKind::Cite { .. } => {
       let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
-      return generated::lower_generated_inlines(ctx, state.citation_display(inline.id), style);
+      return Ok(generated::lower_generated_inlines(ctx, state.citation_display(inline.id), style));
     },
     HirInlineKind::Footnote { body } => {
       let index = state.next_footnote_index();
@@ -119,15 +120,17 @@ pub(super) fn lower_inline(
       let footnote_style = &ctx.style.footnote;
       let marker_text = footnote_style.marker_format.expand(&footnote_style.number_style.render(number));
 
+      let at = |LengthOverflow| {
+        return ElementOverflow {
+          origin: Some(inline.id),
+        };
+      };
       let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       let inline_marker = InlineNode::Link {
         target: LinkTarget::Internal(AnchorId::Footnote(FootnoteId::new(index))),
-        children: vec![footnote_marker_node(
-          &marker_text,
-          parent_style.font_size,
-          link_style,
-          footnote_style,
-        )],
+        children: vec![
+          footnote_marker_node(&marker_text, parent_style.font_size, link_style, footnote_style).map_err(at)?,
+        ],
       };
 
       let body_style = TextStyle {
@@ -137,13 +140,14 @@ pub(super) fn lower_inline(
         script_level: None,
         math_operator: None,
       };
-      let body_marker = footnote_marker_node(&marker_text, footnote_style.font_size, body_style, footnote_style);
+      let body_marker =
+        footnote_marker_node(&marker_text, footnote_style.font_size, body_style, footnote_style).map_err(at)?;
       let mut lowered_body = vec![body_marker];
       for child in body {
-        lowered_body.extend(lower_inline(ctx, child, body_style, state));
+        lowered_body.extend(lower_inline(ctx, child, body_style, state)?);
       }
 
-      return vec![
+      return Ok(vec![
         inline_marker,
         InlineNode::Footnote {
           origin: inline.id,
@@ -151,7 +155,7 @@ pub(super) fn lower_inline(
           index,
           body: lowered_body,
         },
-      ];
+      ]);
     },
   }
 }
@@ -205,24 +209,28 @@ fn footnote_number(ctx: &LoweringContext<'_>, index: u32) -> u32 {
 }
 
 /// 脚注マーカー（上付き番号）1 個を `InlineNode::Raise` で組み立てる
+///
+/// # Errors
+///
+/// 基準の大きさに倍率を掛けた値が長さの値域に収まらないとき [`LengthOverflow`]。
 fn footnote_marker_node(
   marker_text: &str,
   base_font_size: Length,
   base_style: TextStyle,
   footnote_style: &FootnoteStyle,
-) -> InlineNode {
+) -> Result<InlineNode, LengthOverflow> {
   let marker_style = TextStyle {
-    font_size: base_font_size * footnote_style.marker_size_factor,
+    font_size: base_font_size.try_scale(f64::from(footnote_style.marker_size_factor))?,
     typeface: Typeface::Serif,
     color: base_style.color,
     script_level: None,
     math_operator: None,
   };
-  return InlineNode::Raise {
-    offset: base_font_size * footnote_style.marker_raise_factor,
+  return Ok(InlineNode::Raise {
+    offset: base_font_size.try_scale(f64::from(footnote_style.marker_raise_factor))?,
     text: marker_text.to_string(),
     style: marker_style,
-  };
+  });
 }
 
 /// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
@@ -252,7 +260,7 @@ mod tests {
 
   /// 与えた文脈で `.sei` ソースを lower するテストヘルパ
   fn lower_source_with(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
-    let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
+    let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source)).expect("テストが組む長さは値域内");
     return layout;
   }
 

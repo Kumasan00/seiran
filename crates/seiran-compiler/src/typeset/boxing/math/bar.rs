@@ -10,7 +10,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{HBox, PlacedHBox},
     boxing::{
@@ -24,16 +24,32 @@ use crate::{
 ///
 /// 上線は基底のインクの高さ `ink_height` からギャップ `gap` だけ上、下線は基底のインクの深さ `ink_depth` からギャップと
 /// 太さ `thickness` だけ下。
-fn rule_bottom(over: bool, ink_height: Length, ink_depth: Length, gap: Length, thickness: Length) -> Length {
+fn rule_bottom(
+  over: bool,
+  ink_height: Length,
+  ink_depth: Length,
+  gap: Length,
+  thickness: Length,
+) -> Result<Length, LengthOverflow> {
   if over {
-    return ink_height + gap;
+    return ink_height.try_add(gap);
   }
-  return -(ink_depth + gap + thickness);
+  return Ok(-ink_depth.try_add(gap)?.try_add(thickness)?);
 }
 
 impl Measurer<'_> {
   /// 上線・下線を水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを基底の送り幅だけ進める
-  pub(super) fn place_bar(&mut self, bar: MathBar, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_bar(
+    &mut self,
+    bar: MathBar,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathBar {
       body,
       over,
@@ -44,33 +60,33 @@ impl Measurer<'_> {
     // 太さはフォント検証が 0 以上を保証する
     let (gap, thickness, extra) = if over {
       (
-        at(MathConstant::OverbarVerticalGap),
-        at(MathConstant::OverbarRuleThickness),
-        at(MathConstant::OverbarExtraAscender),
+        at(MathConstant::OverbarVerticalGap)?,
+        at(MathConstant::OverbarRuleThickness)?,
+        at(MathConstant::OverbarExtraAscender)?,
       )
     } else {
       (
-        at(MathConstant::UnderbarVerticalGap),
-        at(MathConstant::UnderbarRuleThickness),
-        at(MathConstant::UnderbarExtraDescender),
+        at(MathConstant::UnderbarVerticalGap)?,
+        at(MathConstant::UnderbarRuleThickness)?,
+        at(MathConstant::UnderbarExtraDescender)?,
       )
     };
-    let body = self.detach(body);
-    let bottom = rule_bottom(over, body.ink_height, body.ink_depth, gap, thickness);
+    let body = self.detach(body)?;
+    let bottom = rule_bottom(over, body.ink_height, body.ink_depth, gap, thickness)?;
 
     let mut children = Vec::new();
-    math::translate_into(&mut children, body.boxes, Length::ZERO, Length::ZERO);
+    math::translate_into(&mut children, body.boxes, Length::ZERO, Length::ZERO)?;
     // 送り幅の和は負の送りを持つ字形で負になり得るので、罫線の幅は 0 で止める（描画矩形の幅は非負）
     children.push(PlacedHBox {
       hbox: HBox::rule(body.width.max(Length::ZERO), thickness, color),
       dx: Length::ZERO,
       dy: bottom,
     });
-    let mut atom = HBox::atom(children);
+    let mut atom = HBox::atom(children)?;
     if over {
-      atom.height = atom.height.max(bottom + thickness + extra);
+      atom.height = atom.height.max(bottom.try_add(thickness)?.try_add(extra)?);
     } else {
-      atom.depth = atom.depth.max(-bottom + extra);
+      atom.depth = atom.depth.max((-bottom).try_add(extra)?);
     }
     atom.width = body.width;
     out.push(PlacedHBox {
@@ -78,7 +94,8 @@ impl Measurer<'_> {
       dx: *dx,
       dy,
     });
-    *dx += body.width;
+    *dx = dx.try_add(body.width)?;
+    return Ok(());
   }
 }
 
@@ -92,14 +109,14 @@ mod tests {
 
     assert_eq!(
       rule_bottom(true, Length::pt(479.0), Length::pt(10.0), gap, thickness),
-      Length::pt(654.0),
+      Ok(Length::pt(654.0)),
       "上線の下端はインクの頂からギャップ上"
     );
     assert_eq!(
       rule_bottom(false, Length::pt(479.0), Length::pt(220.0), gap, thickness),
-      Length::pt(-463.0),
+      Ok(Length::pt(-463.0)),
       "下線の上端はインクの底からギャップ下"
     );
-    assert_eq!(rule_bottom(true, Length::ZERO, Length::ZERO, gap, thickness), gap, "空の基底はベースラインから");
+    assert_eq!(rule_bottom(true, Length::ZERO, Length::ZERO, gap, thickness), Ok(gap), "空の基底はベースラインから");
   }
 }

@@ -8,7 +8,7 @@ use read_fonts::tables::math::MathConstant;
 
 use crate::{
   document::Typeface,
-  length::Length,
+  length::{Length, LengthOverflow},
   project::{FontFace, FontType},
   typeset::{
     boxes::{HBox, HItem, PlacedHBox},
@@ -30,34 +30,48 @@ pub(in crate::typeset) fn quantity_font_type(typeface: Typeface) -> FontType {
 
 impl Measurer<'_> {
   /// 数量の箱を本文の水平リスト `out` に積む（両端は欧文字として和欧文間アキを受ける）
-  pub(super) fn push_quantity(&mut self, pieces: &[QuantityPiece], style: TextStyle, out: &mut HList) {
-    let quantity = self.quantity_box(pieces, style);
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn push_quantity(
+    &mut self,
+    pieces: &[QuantityPiece],
+    style: TextStyle,
+    out: &mut HList,
+  ) -> Result<(), LengthOverflow> {
+    let quantity = self.quantity_box(pieces, style)?;
     let edge = if self.punctuation_spacing {
       Edge::text(BOX_EDGE_CHAR, ScriptCategory::Latin, style.font_size)
     } else {
       Edge::letter(BOX_EDGE_CHAR)
     };
     out.push(edge, vec![HItem::Box(quantity)], edge);
+    return Ok(());
   }
 
   /// 部品 `pieces` を基準のスタイル `style` で左から並べた閉じた箱にする
-  pub(super) fn quantity_box(&mut self, pieces: &[QuantityPiece], style: TextStyle) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn quantity_box(&mut self, pieces: &[QuantityPiece], style: TextStyle) -> Result<HBox, LengthOverflow> {
     let mut placed = Vec::new();
     let mut dx = Length::ZERO;
     for piece in pieces {
       match piece {
-        QuantityPiece::Text(text) => self.place_quantity_text(text, style, Length::ZERO, &mut dx, &mut placed),
-        QuantityPiece::Space(space) => dx += math::space_width(*space, style.font_size),
+        QuantityPiece::Text(text) => self.place_quantity_text(text, style, Length::ZERO, &mut dx, &mut placed)?,
+        QuantityPiece::Space(space) => dx = dx.try_add(math::space_width(*space, style.font_size)?)?,
         QuantityPiece::Superscript(text) => {
-          let (superscript, raise) = self.quantity_superscript(style);
-          self.place_quantity_text(text, superscript, raise, &mut dx, &mut placed);
+          let (superscript, raise) = self.quantity_superscript(style)?;
+          self.place_quantity_text(text, superscript, raise, &mut dx, &mut placed)?;
         },
       }
     }
-    let mut quantity = HBox::atom(placed);
+    let mut quantity = HBox::atom(placed)?;
     // 送り幅は置いた子の右端ではなく送りの和（`text_box` と同じ）
     quantity.width = dx;
-    return quantity;
+    return Ok(quantity);
   }
 
   /// 字 `text` を `style` で組み、ベースラインから `dy` 持ち上げて `dx` の位置に置く
@@ -68,33 +82,34 @@ impl Measurer<'_> {
     dy: Length,
     dx: &mut Length,
     out: &mut Vec<PlacedHBox>,
-  ) {
-    for hbox in self.shaper.shape_text(text, style) {
+  ) -> Result<(), LengthOverflow> {
+    for hbox in self.shaper.shape_text(text, style)? {
       let width = hbox.width;
       out.push(PlacedHBox { hbox, dx: *dx, dy });
-      *dx += width;
+      *dx = dx.try_add(width)?;
     }
+    return Ok(());
   }
 
   /// 基準のスタイル `style` の数値・単位の上付きの（スタイル, 持ち上げ）
-  fn quantity_superscript(&self, style: TextStyle) -> (TextStyle, Length) {
+  fn quantity_superscript(&self, style: TextStyle) -> Result<(TextStyle, Length), LengthOverflow> {
     if style.typeface == Typeface::Math {
       let superscript = TextStyle {
-        font_size: self.shaper.script_scale().font_size(style.font_size, Some(ScriptLevel::Script)),
+        font_size: self.shaper.script_scale().font_size(style.font_size, Some(ScriptLevel::Script))?,
         script_level: Some(ScriptLevel::Script),
         ..style
       };
-      return (superscript, self.shaper.math_constant(MathConstant::SuperscriptShiftUp, style.font_size));
+      return Ok((superscript, self.shaper.math_constant(MathConstant::SuperscriptShiftUp, style.font_size)?));
     }
     let face = FontFace::primary(quantity_font_type(style.typeface));
     let metrics = self.shaper.superscript_metrics(face).expect(
       "lay_out は quantity_check で、本文用の枠で上付きを組む数値・単位があればその枠の上付きの指標を確かめてから組版に進む",
     );
     let superscript = TextStyle {
-      font_size: style.font_size * metrics.size,
+      font_size: style.font_size.try_scale(metrics.size)?,
       ..style
     };
-    return (superscript, style.font_size * metrics.offset);
+    return Ok((superscript, style.font_size.try_scale(metrics.offset)?));
   }
 }
 
@@ -148,7 +163,7 @@ mod tests {
     let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, punctuation_spacing);
     let mut list = HList::default();
     for node in nodes {
-      measurer.collect_inline(node, &mut list);
+      measurer.collect_inline(node, &mut list).expect("テストの列は値域内で、脚注を含まない");
     }
     return list.into_items();
   }
@@ -158,7 +173,7 @@ mod tests {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
     let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, true);
-    return measurer.quantity_box(pieces, style(typeface));
+    return measurer.quantity_box(pieces, style(typeface)).expect("テストの寸法は値域内");
   }
 
   /// 閉じた箱の子（置いた箱）
@@ -261,8 +276,8 @@ mod tests {
     let hbox = quantity_box(&fonts, &[text("10"), QuantityPiece::Superscript("3".to_string())], Typeface::Math);
 
     let exponent = children(&hbox).last().expect("指数の箱があるはず");
-    assert_eq!(exponent.dy, shaper.math_constant(MathConstant::SuperscriptShiftUp, SIZE));
-    assert_eq!(run_font_size(&exponent.hbox), shaper.script_scale().font_size(SIZE, Some(ScriptLevel::Script)));
+    assert_eq!(Ok(exponent.dy), shaper.math_constant(MathConstant::SuperscriptShiftUp, SIZE));
+    assert_eq!(Ok(run_font_size(&exponent.hbox)), shaper.script_scale().font_size(SIZE, Some(ScriptLevel::Script)));
   }
 
   #[test]

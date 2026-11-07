@@ -8,6 +8,7 @@ use crate::typeset::{
   boxes::{Block, Page},
   boxing::{BlockBuildInputs, build_blocks},
   breaking::{Overflow, break_pages},
+  error::ElementOverflow,
   glyph_issues::Generated,
   image::ImageResources,
   lowering::{TitlePageMetadata, lower_title_page},
@@ -23,11 +24,15 @@ use crate::typeset::{
 /// 未確定の寸法は作られない。区画の区切りはタイトルページ自身の末尾の強制改ページだけで、前付けは強制改ページを積まない
 /// （前付けの末尾に残っても強制改ページは冪等なので白紙ページを作らない）。積むブロックが無い
 /// （`title_page` / `toc` がともに無効、またはタイトルページの中身も目次エントリも無い）なら空ページ列を返す。
+///
+/// # Errors
+///
+/// タイトルページの行送りの計算が長さの値域を超えたら、その要素を [`ElementOverflow`] で返す。
 pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   facts: &BodyPageFacts,
   images: &ImageResources,
-) -> (Vec<Page>, Vec<Overflow>) {
+) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
   let mut front_blocks: Vec<Block> = Vec::new();
 
   if ctx.style.title_page.enabled {
@@ -55,22 +60,22 @@ pub(super) fn paginate(
           punctuation_spacing: ctx.style.text.punctuation_spacing,
           alignment: ctx.style.text.alignment,
         },
-      ));
+      )?);
       debug!("タイトルページを生成");
     }
   }
 
   if ctx.style.toc.enabled {
-    front_blocks.extend(toc::build_toc_blocks(ctx, facts));
+    front_blocks.extend(toc::build_toc_blocks(ctx, facts)?);
   }
 
   if front_blocks.is_empty() {
-    return (Vec::new(), Vec::new());
+    return Ok((Vec::new(), Vec::new()));
   }
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "front").entered();
-    break_pages(front_blocks, ctx.geometry.text_width(), ctx.geometry.front_geometry(), &ctx.breaker)
+    break_pages(front_blocks, ctx.geometry.text_width(), ctx.geometry.front_geometry(), &ctx.breaker)?
   };
-  return (pages, overflows);
+  return Ok((pages, overflows));
 }

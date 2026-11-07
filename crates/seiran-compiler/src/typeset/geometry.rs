@@ -5,7 +5,13 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{color::Color, failures::Failures, length::Length, project::config::ProjectConfig, style::Style};
+use crate::{
+  color::Color,
+  failures::Failures,
+  length::{Length, LengthOverflow},
+  project::config::ProjectConfig,
+  style::Style,
+};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
@@ -73,8 +79,15 @@ pub(crate) enum GeometryValidationError {
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅を返す。
 ///
 /// `(text_width - (num_columns - 1) * column_gap) / num_columns`。
-#[must_use]
-pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
+///
+/// # Errors
+///
+/// 段間の合計が長さの値域に収まらないとき [`LengthOverflow`]。
+pub(super) fn column_width(
+  text_width: Length,
+  num_columns: usize,
+  column_gap: Length,
+) -> Result<Length, LengthOverflow> {
   let count = num_columns.max(1);
   #[expect(
     clippy::cast_precision_loss,
@@ -87,7 +100,7 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
     reason = "段数は実用上 1〜2 で、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
   )]
   let gaps = (count - 1) as i32;
-  return (text_width - column_gap * gaps) / n;
+  return text_width.try_sub(column_gap.try_mul(gaps)?)?.try_div(f64::from(n));
 }
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
@@ -150,7 +163,8 @@ impl PreparedGeometry {
   /// 3. 本文幅（`pdf.width - page.margin_left - page.margin_right`）を `style.columns` の段数・段間で
   ///    割った 1 段あたりの幅が正であること
   ///
-  /// 1・2 の合計が長さの値域を超える場合も、用紙寸法以上と同じ違反にします。3 は 2 が通っているときだけ検査します。
+  /// 1・2 の合計が長さの値域を超える場合も、用紙寸法以上と同じ違反にします。3 は 2 が通っているときだけ検査し、
+  /// 段間の合計が値域を超える場合は、段の幅が 0 以下になるのと同じ違反にします。
   ///
   /// 本文幅・段幅は 2 が通ったときだけ求め、集約した違反が 1 件でもあれば早期 return するので、
   /// 検証を通らなかった値が [`PreparedGeometry`] として外へ出る経路はありません。
@@ -162,11 +176,10 @@ impl PreparedGeometry {
     let mut errors: Vec<GeometryValidationError> = Vec::new();
 
     // 余白は 1 つずつなら表せても、和が sp の値域を超えうる。溢れた和は用紙寸法を超える側として扱う
-    let fits_height = style
-      .page
-      .margin_top
-      .checked_add(style.page.margin_bottom)
-      .is_some_and(|total| return total < config.pdf.height);
+    let fits_height = match style.page.margin_top.try_add(style.page.margin_bottom) {
+      Ok(total) => total < config.pdf.height,
+      Err(LengthOverflow) => false,
+    };
     if !fits_height {
       errors.push(GeometryValidationError::VerticalMarginsExceedPageHeight {
         margin_top: style.page.margin_top.to_pt(),
@@ -179,15 +192,17 @@ impl PreparedGeometry {
     let num_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
     // 余白は非負（style の garde）なので、和が用紙幅未満なら本文幅は正で引き算も溢れない
-    let widths = style
-      .page
-      .margin_left
-      .checked_add(style.page.margin_right)
-      .filter(|total| return *total < config.pdf.width)
-      .map(|horizontal| {
-        let text_width = config.pdf.width - horizontal;
-        return (text_width, column_width(text_width, num_columns, column_gap));
-      });
+    let widths = match style.page.margin_left.try_add(style.page.margin_right) {
+      Ok(horizontal) if horizontal < config.pdf.width => {
+        let Ok(text_width) = config.pdf.width.try_sub(horizontal) else {
+          unreachable!(
+            "余白は非負で和が用紙幅未満なので、用紙幅との差は値域に収まる（config / style の検証が保証する）"
+          );
+        };
+        Some((text_width, column_width(text_width, num_columns, column_gap)))
+      },
+      Ok(_) | Err(LengthOverflow) => None,
+    };
     match widths {
       None => {
         errors.push(GeometryValidationError::HorizontalMarginsExceedPageWidth {
@@ -197,21 +212,21 @@ impl PreparedGeometry {
           page_width: config.pdf.width.to_pt(),
         });
       },
-      Some((text_width, body_column_width)) if !body_column_width.is_positive() => {
+      Some((_, Ok(body_column_width))) if body_column_width.is_positive() => {},
+      Some((text_width, Ok(_) | Err(LengthOverflow))) => {
         errors.push(GeometryValidationError::InvalidColumnWidth {
           text_width: text_width.to_pt(),
           num_columns,
           column_gap: column_gap.to_pt(),
         });
       },
-      Some(_) => {},
     }
 
     if let Some(failures) = Failures::from_vec(errors) {
       return Err(failures);
     }
-    let Some((text_width, body_column_width)) = widths else {
-      unreachable!("左右余白の合計が用紙幅に収まらなければ、上で違反を積んで返している");
+    let Some((text_width, Ok(body_column_width))) = widths else {
+      unreachable!("左右余白の合計が用紙幅に収まらないか段の幅が正でなければ、上で違反を積んで返している");
     };
 
     let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, num_columns, column_gap);
@@ -245,8 +260,12 @@ impl PreparedGeometry {
   pub(super) fn back_geometry(&self) -> &PageGeometry { return &self.back_geometry; }
 
   /// 後付け（索引）の 1 段あたりの幅を返す（`break_pages` が後付けの段を組む幅と同じ式）。
-  #[must_use]
-  pub(super) fn back_column_width(&self) -> Length {
+  ///
+  /// # Errors
+  ///
+  /// 後付けの段数と段間は [`PreparedGeometry::prepare`] が検証しないので、段間の合計が長さの値域に収まらないとき
+  /// [`LengthOverflow`]。
+  pub(super) fn back_column_width(&self) -> Result<Length, LengthOverflow> {
     return column_width(self.text_width, self.back_geometry.num_columns, self.back_geometry.column_gap);
   }
 }
@@ -260,10 +279,15 @@ fn build_page_geometries(
   body_columns: usize,
   column_gap: Length,
 ) -> (PageGeometry, PageGeometry, PageGeometry) {
+  let Ok(page_limit) = config.pdf.height.try_sub(style.page.margin_bottom) else {
+    unreachable!(
+      "下余白は非負で、上下余白の合計が用紙高未満なので、用紙高との差は値域に収まる（config / style の検証が保証する）"
+    );
+  };
   let body_geometry = PageGeometry {
     content_origin_x: style.page.margin_left,
     margin_top: style.page.margin_top,
-    page_limit: config.pdf.height - style.page.margin_bottom,
+    page_limit,
     num_columns: body_columns,
     column_gap,
     flush_bottom: style.page.flush_bottom,
@@ -292,7 +316,7 @@ fn build_page_geometries(
 mod tests {
   use std::path::PathBuf;
 
-  use super::{GeometryValidationError, Length, PreparedGeometry, ProjectConfig, Style, column_width};
+  use super::{GeometryValidationError, Length, LengthOverflow, PreparedGeometry, ProjectConfig, Style, column_width};
   use crate::project::{
     FilesystemProjectSource, PathResolver, ProjectPath,
     config::{
@@ -338,8 +362,8 @@ mod tests {
 
   #[test]
   fn column_width_helper_divides_text_width() {
-    assert!(close(column_width(pt(100.0), 2, pt(10.0)), 45.0));
-    assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
+    assert!(close(column_width(pt(100.0), 2, pt(10.0)).unwrap(), 45.0));
+    assert!(close(column_width(pt(100.0), 1, pt(18.0)).unwrap(), 100.0));
   }
 
   /// 用紙（`valid_pdf_section` の A4 = 595×842pt）に対する余白を明示した style を作る。
@@ -364,6 +388,26 @@ mod tests {
     let (first, rest) = failures.into_parts();
     assert!(rest.is_empty());
     assert!(matches!(first, GeometryValidationError::InvalidColumnWidth { num_columns: 2, .. }));
+  }
+
+  #[test]
+  fn prepare_rejects_column_gaps_whose_total_is_unrepresentable() {
+    // 段間 × (段数 − 1) が値域を超えるときも、段の幅が 0 以下のときと同じ診断にする
+    let (_tempdir, config) = read_test_config();
+    let mut style = test_style(50.0, 50.0, 50.0, 50.0);
+    style.columns.count = 3;
+    style.columns.gap = Length::from_sp(i64::MAX / 2 + 1);
+
+    let failures = PreparedGeometry::prepare(&config, &style).unwrap_err();
+
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty());
+    assert!(matches!(first, GeometryValidationError::InvalidColumnWidth { num_columns: 3, .. }));
+  }
+
+  #[test]
+  fn column_width_overflows_when_the_gap_total_is_unrepresentable() {
+    assert_eq!(column_width(pt(100.0), 3, Length::from_sp(i64::MAX / 2 + 1)), Err(LengthOverflow));
   }
 
   #[test]

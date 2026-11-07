@@ -2,10 +2,13 @@
 
 use crate::{
   document::{HirInline, HirInlineKind, NodeId},
-  typeset::lowering::{
-    LoweringContext, LoweringState,
-    inline::lower_inline,
-    layout_node::{InlineNode, ParagraphLayout, TextStyle},
+  typeset::{
+    error::ElementOverflow,
+    lowering::{
+      LoweringContext, LoweringState,
+      inline::lower_inline,
+      layout_node::{InlineNode, ParagraphLayout, TextStyle},
+    },
   },
 };
 
@@ -51,7 +54,7 @@ pub(super) fn lower_paragraph(
   id: NodeId,
   inlines: &[HirInline],
   state: &mut LoweringState<'_>,
-) -> ParagraphLayout {
+) -> Result<ParagraphLayout, ElementOverflow> {
   let default_style = body_text_style(ctx);
 
   // `\noindent` の位置は評価器（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
@@ -62,10 +65,10 @@ pub(super) fn lower_paragraph(
     if matches!(inline.kind, HirInlineKind::NoIndent) {
       continue;
     }
-    content.extend(lower_inline(ctx, inline, default_style, state));
+    content.extend(lower_inline(ctx, inline, default_style, state)?);
   }
 
-  return assemble_paragraph(ctx, content, suppress_indent, Some(id));
+  return Ok(assemble_paragraph(ctx, content, suppress_indent, Some(id)));
 }
 
 #[cfg(test)]

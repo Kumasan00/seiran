@@ -380,7 +380,7 @@ fn push_resolved(
 
 /// 埋め込んだ行列・場合分け（セル `rows`・区切り括弧 `delimiters`・セルの列内揃え `align`）を解決する
 ///
-/// セルは字形 variant を継いだ `list` で解決し、行間・列間は style.toml の値に `gap_scale` を掛ける。
+/// セルは字形 variant を継いだ `list` で解決し、行間・列間は style.toml の値を `gap_scale` と一緒に渡す。
 fn resolve_array(
   rows: &[Vec<Vec<HirMath>>],
   delimiters: DelimiterGlyphs,
@@ -393,8 +393,9 @@ fn resolve_array(
     rows: rows.iter().map(|row| return row.iter().map(|cell| return list(cell)).collect()).collect(),
     delimiters,
     align,
-    row_gap: style.math.block.row_gap * gap_scale,
-    column_gap: style.math.block.column_gap * gap_scale,
+    row_gap: style.math.block.row_gap,
+    column_gap: style.math.block.column_gap,
+    gap_scale,
   };
 }
 
@@ -834,15 +835,15 @@ mod tests {
 
   #[test]
   fn array_gaps_are_scaled_to_the_formula_size() {
-    // 本文の 2 倍の大きさの数式では、行間・列間も 2 倍に比例させて渡す
+    // 本文の 2 倍の大きさの数式では、行間・列間を 2 倍に比例させる倍率を添えて渡す
     let style = ReadStyle::default();
     let document = analyzed("$\\begin{matrix}a \\\\ b\\end{matrix}$\n");
 
     let nodes = resolve_math(first_hir_math(&document), style.text.font_size * 2.0f64, &style);
 
     assert!(
-      matches!(&nodes[0], MathNode::Array { row_gap, column_gap, align: Align::Center, .. }
-        if *row_gap == style.math.block.row_gap * 2.0f64 && *column_gap == style.math.block.column_gap * 2.0f64),
+      matches!(&nodes[0], MathNode::Array { row_gap, column_gap, gap_scale, align: Align::Center, .. }
+        if *row_gap == style.math.block.row_gap && *column_gap == style.math.block.column_gap && gap_scale.total_cmp(&2.0).is_eq()),
       "{nodes:?}"
     );
   }

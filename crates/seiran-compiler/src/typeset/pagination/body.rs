@@ -9,7 +9,7 @@ use crate::{
     boxes::Page,
     boxing::{BlockBuildInputs, build_blocks},
     breaking::{Overflow, break_pages},
-    error::TypesetError,
+    error::{ComposeError, ElementOverflow},
     glyph_issues::Generated,
     image::ImageResources,
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
@@ -34,15 +34,18 @@ pub(super) struct BodyLayout {
 ///
 /// # Errors
 ///
-/// 脚注採番に失敗した場合にエラーを返す。
+/// 脚注採番に失敗した場合、または寸法が長さの値域を超えた場合にエラーを返す。
 pub(super) fn paginate(
   ctx: &TypesetContext<'_>,
   document: &SemanticDocument,
   images: &ImageResources,
-) -> Result<BodyLayout, TypesetError> {
-  let run_pass = |footnote_numbers: Option<&[u32]>| return run_body_pass(ctx, document, images, footnote_numbers);
+) -> Result<BodyLayout, ComposeError> {
+  let run_pass = |footnote_numbers: Option<&[u32]>| {
+    return run_body_pass(ctx, document, images, footnote_numbers)
+      .map_err(|overflow| return ComposeError::Dimension(overflow.locate(document.hir().source_map())));
+  };
   return match ctx.style.footnote.numbering {
-    FootnoteNumbering::Continuous => Ok(run_pass(None)),
+    FootnoteNumbering::Continuous => run_pass(None),
     FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
   };
 }
@@ -55,12 +58,12 @@ fn run_body_pass(
   document: &SemanticDocument,
   images: &ImageResources,
   footnote_numbers: Option<&[u32]>,
-) -> BodyLayout {
+) -> Result<BodyLayout, ElementOverflow> {
   let mut lowering_ctx = LoweringContext::new(ctx.style, ctx.config.image);
   if let Some(numbers) = footnote_numbers {
     lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
   }
-  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document);
+  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document)?;
 
   let body_blocks = {
     let _span = debug_span!("build_blocks", matter = "body").entered();
@@ -79,16 +82,16 @@ fn run_body_pass(
         punctuation_spacing: ctx.style.text.punctuation_spacing,
         alignment: ctx.style.text.alignment,
       },
-    )
+    )?
   };
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "body").entered();
-    break_pages(body_blocks, ctx.geometry.text_width(), ctx.geometry.body_geometry(), &ctx.breaker)
+    break_pages(body_blocks, ctx.geometry.text_width(), ctx.geometry.body_geometry(), &ctx.breaker)?
   };
-  return BodyLayout {
+  return Ok(BodyLayout {
     pages,
     headings,
     overflows,
-  };
+  });
 }

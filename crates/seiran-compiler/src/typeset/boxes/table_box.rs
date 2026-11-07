@@ -5,7 +5,7 @@
 
 use crate::{
   document::NodeId,
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::boxes::{
     hitem::{IndexTerm, MeasuredFootnote},
     page::{PlacedLink, PlacedTableRow, PlacedTableRule},
@@ -39,10 +39,17 @@ pub(in crate::typeset) struct TableBox {
 impl TableBox {
   /// 分割しないときの高さ — 上端・下端の枠罫と、ヘッダ行・本体行の上の境界と行帯の和（再掲ヘッダを含まない。
   /// ヘッダ下の罫線は本体の先頭行の `above` に入っているので `head_bottom` は足さない）
-  #[must_use]
-  pub(in crate::typeset) fn height(&self) -> Length {
-    let rows: Length = self.head.iter().chain(&self.rows).map(|row| return row.above.height + row.height()).sum();
-    return self.top.height + rows + self.bottom.height;
+  ///
+  /// # Errors
+  ///
+  /// 高さの和が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(in crate::typeset) fn height(&self) -> Result<Length, LengthOverflow> {
+    let rows = self
+      .head
+      .iter()
+      .chain(&self.rows)
+      .try_fold(Length::ZERO, |sum, row| return sum.try_add(row.above.height.try_add(row.height())?))?;
+    return self.top.height.try_add(rows)?.try_add(self.bottom.height);
   }
 }
 
@@ -61,19 +68,22 @@ impl TableBoundary {
   /// 上に `gap_above`・下に `gap_below` の空きを持つ、太さ `thickness`・幅 `width`・色 `color` の罫線の境界
   ///
   /// 太さが正でなければ何も無い境界を返す — 罫線を引かない境界は空きも場所を取らない。
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// 高さの和が長さの値域に収まらないとき [`LengthOverflow`]。
   pub(in crate::typeset) fn rule(
     gap_above: Length,
     thickness: Length,
     gap_below: Length,
     width: Length,
     color: Option<[u8; 3]>,
-  ) -> Self {
+  ) -> Result<Self, LengthOverflow> {
     if !thickness.is_positive() {
-      return Self::default();
+      return Ok(Self::default());
     }
-    return Self {
-      height: gap_above + thickness + gap_below,
+    return Ok(Self {
+      height: gap_above.try_add(thickness)?.try_add(gap_below)?,
       rules: vec![PlacedTableRule {
         x: Length::ZERO,
         y: gap_above,
@@ -81,7 +91,7 @@ impl TableBoundary {
         height: thickness,
         color,
       }],
-    };
+    });
   }
 
   /// 帯 `bands`（表左端からの左端 x と帯幅）ごとに左右を `trim` ずつ詰めた、太さ `thickness`・色 `color` の罫線を
@@ -89,7 +99,10 @@ impl TableBoundary {
   ///
   /// 太さが正でないか帯が無ければ何も無い境界を返す。詰めた幅が正でない罫線は描かないが、境界の高さは残す — 高さは
   /// 罫線を求める帯の有無と太さだけで決まる。
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// 罫線の位置・幅や境界の高さが長さの値域に収まらないとき [`LengthOverflow`]。
   pub(in crate::typeset) fn partial_rules(
     gap_above: Length,
     thickness: Length,
@@ -97,38 +110,47 @@ impl TableBoundary {
     bands: &[(Length, Length)],
     trim: Length,
     color: Option<[u8; 3]>,
-  ) -> Self {
+  ) -> Result<Self, LengthOverflow> {
     if !thickness.is_positive() || bands.is_empty() {
-      return Self::default();
+      return Ok(Self::default());
     }
-    let rules = bands
-      .iter()
-      .map(|&(x, width)| {
-        return PlacedTableRule {
-          x: x + trim,
-          y: gap_above,
-          width: width - trim * 2,
-          height: thickness,
-          color,
-        };
-      })
-      .filter(|rule| return rule.width.is_positive())
-      .collect();
-    return Self {
-      height: gap_above + thickness + gap_below,
+    let double_trim = trim.try_mul(2)?;
+    let mut rules = Vec::new();
+    for &(x, width) in bands {
+      let rule = PlacedTableRule {
+        x: x.try_add(trim)?,
+        y: gap_above,
+        width: width.try_sub(double_trim)?,
+        height: thickness,
+        color,
+      };
+      if rule.width.is_positive() {
+        rules.push(rule);
+      }
+    }
+    return Ok(Self {
+      height: gap_above.try_add(thickness)?.try_add(gap_below)?,
       rules,
-    };
+    });
   }
 
   /// 表左端を `x`、境界上端を `top_y` に置いた罫線を返す
-  pub(in crate::typeset) fn place(&self, x: Length, top_y: Length) -> impl Iterator<Item = PlacedTableRule> + '_ {
-    return self.rules.iter().map(move |rule| {
-      return PlacedTableRule {
-        x: rule.x + x,
-        y: rule.y + top_y,
-        ..*rule
-      };
-    });
+  ///
+  /// # Errors
+  ///
+  /// 罫線の位置が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(in crate::typeset) fn place(&self, x: Length, top_y: Length) -> Result<Vec<PlacedTableRule>, LengthOverflow> {
+    return self
+      .rules
+      .iter()
+      .map(|rule| {
+        return Ok(PlacedTableRule {
+          x: rule.x.try_add(x)?,
+          y: rule.y.try_add(top_y)?,
+          ..*rule
+        });
+      })
+      .collect();
   }
 }
 
@@ -163,8 +185,15 @@ impl TableRowFragment {
   /// 表左端を `x`、行帯上端を `top_y` に置いた行と、そのリンク矩形・索引語を返す
   ///
   /// 脚注は返さない — 本体は `break_pages` が行の収まり判定と同時に脚注エリアへ置く。
-  #[must_use]
-  pub(in crate::typeset) fn place(self, x: Length, top_y: Length) -> (PlacedTableRow, Vec<PlacedLink>, Vec<IndexTerm>) {
+  ///
+  /// # Errors
+  ///
+  /// 配置後の位置が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(in crate::typeset) fn place(
+    self,
+    x: Length,
+    top_y: Length,
+  ) -> Result<(PlacedTableRow, Vec<PlacedLink>, Vec<IndexTerm>), LengthOverflow> {
     let TableRowFragment {
       origin: _,
       overrun: _,
@@ -175,16 +204,16 @@ impl TableRowFragment {
       index_marks,
       footnotes: _,
     } = self;
-    row.top_y += top_y;
-    row.baseline_y += top_y;
+    row.top_y = row.top_y.try_add(top_y)?;
+    row.baseline_y = row.baseline_y.try_add(top_y)?;
     for placed in &mut row.boxes {
-      placed.dx += x;
+      placed.dx = placed.dx.try_add(x)?;
     }
     for link in &mut links {
-      link.x += x;
-      link.y += top_y;
+      link.x = link.x.try_add(x)?;
+      link.y = link.y.try_add(top_y)?;
     }
-    return (row, links, index_marks);
+    return Ok((row, links, index_marks));
   }
 }
 
@@ -239,7 +268,7 @@ mod tests {
 
   #[test]
   fn rule_boundary_with_zero_thickness_takes_no_space() {
-    let boundary = TableBoundary::rule(pt(2.0), Length::ZERO, pt(2.0), pt(30.0), None);
+    let boundary = TableBoundary::rule(pt(2.0), Length::ZERO, pt(2.0), pt(30.0), None).expect("値域内");
 
     assert_eq!(boundary.height, Length::ZERO);
     assert!(boundary.rules.is_empty());
@@ -249,9 +278,9 @@ mod tests {
   fn partial_rules_trim_each_band_and_share_one_height() {
     // 帯 (0, 30) と (30, 20)、詰め 5: 罫線 x=5 w=20 と x=35 w=10、どちらも y = 2
     let bands = [(pt(0.0), pt(30.0)), (pt(30.0), pt(20.0))];
-    let boundary = TableBoundary::partial_rules(pt(2.0), pt(0.3), pt(2.0), &bands, pt(5.0), None);
+    let boundary = TableBoundary::partial_rules(pt(2.0), pt(0.3), pt(2.0), &bands, pt(5.0), None).expect("値域内");
 
-    let rules: Vec<_> = boundary.place(pt(10.0), pt(100.0)).collect();
+    let rules = boundary.place(pt(10.0), pt(100.0)).expect("値域内");
 
     assert!(close(boundary.height, 4.3));
     assert_eq!(rules.len(), 2);
@@ -262,7 +291,8 @@ mod tests {
 
   #[test]
   fn partial_rules_with_zero_thickness_take_no_space() {
-    let boundary = TableBoundary::partial_rules(pt(2.0), Length::ZERO, pt(2.0), &[(pt(0.0), pt(30.0))], pt(5.0), None);
+    let boundary = TableBoundary::partial_rules(pt(2.0), Length::ZERO, pt(2.0), &[(pt(0.0), pt(30.0))], pt(5.0), None)
+      .expect("値域内");
 
     assert_eq!(boundary.height, Length::ZERO);
     assert!(boundary.rules.is_empty());
@@ -271,7 +301,8 @@ mod tests {
   #[test]
   fn partial_rules_keep_the_height_when_every_band_trims_away() {
     // 帯幅 10 から両側 5 を詰めると 0 — 描かないが、境界の高さは構造と太さで決まる
-    let boundary = TableBoundary::partial_rules(pt(2.0), pt(0.3), pt(2.0), &[(pt(0.0), pt(10.0))], pt(5.0), None);
+    let boundary =
+      TableBoundary::partial_rules(pt(2.0), pt(0.3), pt(2.0), &[(pt(0.0), pt(10.0))], pt(5.0), None).expect("値域内");
 
     assert!(close(boundary.height, 4.3));
     assert!(boundary.rules.is_empty());
@@ -279,9 +310,9 @@ mod tests {
 
   #[test]
   fn rule_boundary_places_the_rule_between_its_gaps() {
-    let boundary = TableBoundary::rule(pt(2.0), pt(0.5), pt(2.0), pt(30.0), Some([9, 9, 9]));
+    let boundary = TableBoundary::rule(pt(2.0), pt(0.5), pt(2.0), pt(30.0), Some([9, 9, 9])).expect("値域内");
 
-    let rules: Vec<_> = boundary.place(pt(5.0), pt(40.0)).collect();
+    let rules = boundary.place(pt(5.0), pt(40.0)).expect("値域内");
     let [rule] = rules.as_slice() else {
       panic!("太さが正なら罫線を 1 本持つ: {rules:?}");
     };
@@ -316,7 +347,7 @@ mod tests {
       breakable: true,
     };
 
-    assert!(close(table.height(), 45.1), "{:?}", table.height());
+    assert!(close(table.height().unwrap(), 45.1), "{:?}", table.height());
   }
 
   #[test]
@@ -349,7 +380,7 @@ mod tests {
       footnotes: Vec::new(),
     };
 
-    let (row, links, marks) = fragment.place(pt(5.0), pt(40.0));
+    let (row, links, marks) = fragment.place(pt(5.0), pt(40.0)).expect("値域内");
 
     assert!(close(row.top_y, 40.0) && close(row.baseline_y, 48.0) && close(row.height, 10.0), "{row:?}");
     assert!(close(row.boxes[0].dx, 7.0), "{row:?}");

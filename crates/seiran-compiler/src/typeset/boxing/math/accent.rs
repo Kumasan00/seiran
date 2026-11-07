@@ -27,7 +27,7 @@
 use read_fonts::tables::math::MathConstant;
 
 use crate::{
-  length::Length,
+  length::{Length, LengthOverflow},
   project::FontFace,
   typeset::{
     boxes::{HBox, HBoxContent, PlacedHBox},
@@ -44,8 +44,8 @@ use crate::{
 
 /// アクセントのベースラインを基底のベースラインから上げる量（基底のインクの高さが `accent_base_height` を超えた分。
 /// 超えなければ 0）
-fn accent_raise(base_ink_height: Length, accent_base_height: Length) -> Length {
-  return (base_ink_height - accent_base_height).max(Length::ZERO);
+fn accent_raise(base_ink_height: Length, accent_base_height: Length) -> Result<Length, LengthOverflow> {
+  return Ok(base_ink_height.try_sub(accent_base_height)?.max(Length::ZERO));
 }
 
 /// 原点基準で配置した箱の列 `boxes` が数式フォントの 1 グリフだけなら、その箱の横位置・グリフの gid・フォントサイズ
@@ -62,7 +62,17 @@ fn sole_math_glyph(boxes: &[PlacedHBox]) -> Option<(Length, u32, Length)> {
 
 impl Measurer<'_> {
   /// アクセントを水平カーソル `dx`・縦オフセット `dy` に閉じた Atom 1 つとして置き、カーソルを基底の送り幅だけ進める
-  pub(super) fn place_accent(&mut self, accent: MathAccent, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHBox>) {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  pub(super) fn place_accent(
+    &mut self,
+    accent: MathAccent,
+    dy: Length,
+    dx: &mut Length,
+    out: &mut Vec<PlacedHBox>,
+  ) -> Result<(), LengthOverflow> {
     let MathAccent {
       base,
       accent,
@@ -77,32 +87,37 @@ impl Measurer<'_> {
       [ArrangedNode::Text(text, style)] if dotless => Some((text.clone(), *style)),
       _ => None,
     };
-    let base = self.detach(base);
-    let dotless_glyph = dotless_text.and_then(|(text, style)| return self.dotless_glyph(&base.boxes, &text, style));
+    let base = self.detach(base)?;
+    let dotless_glyph = dotless_text
+      .map(|(text, style)| return self.dotless_glyph(&base.boxes, &text, style))
+      .transpose()?
+      .flatten();
     let (base_boxes, base_width, base_ink_height) = match dotless_glyph {
       Some(placed) => {
         let width = placed.hbox.width;
         let boxes = vec![placed];
-        let (ink_height, _) = self.shaper.ink_extent(&boxes);
+        let (ink_height, _) = self.shaper.ink_extent(&boxes)?;
         (boxes, width, ink_height)
       },
       None => (base.boxes, base.width, base.ink_height),
     };
     let base_attachment = match sole_math_glyph(&base_boxes) {
       Some((x, gid, size)) => {
-        x + self.shaper.top_accent_attachment(gid, size).unwrap_or_else(|| {
-          return self.shaper.math_glyph_advance(gid, size) / 2.0;
-        })
+        let attachment = match self.shaper.top_accent_attachment(gid, size)? {
+          Some(attachment) => attachment,
+          None => self.shaper.math_glyph_advance(gid, size)?.try_div(2.0)?,
+        };
+        x.try_add(attachment)?
       },
-      None => base_width / 2.0,
+      None => base_width.try_div(2.0)?,
     };
-    let flattened = base_ink_height > self.shaper.math_constant(MathConstant::FlattenedAccentBaseHeight, font_size);
+    let flattened = base_ink_height > self.shaper.math_constant(MathConstant::FlattenedAccentBaseHeight, font_size)?;
     let mark = if wide {
       self
         .shaper
-        .shape_wide_accent(&accent, font_size, script_level, flattened, base_width.max(Length::ZERO), color)
+        .shape_wide_accent(&accent, font_size, script_level, flattened, base_width.max(Length::ZERO), color)?
     } else {
-      self.shaper.shape_accent(&accent, font_size, script_level, flattened, color)
+      self.shaper.shape_accent(&accent, font_size, script_level, flattened, color)?
     };
     let mark_width = mark.width;
     let mark = vec![PlacedHBox {
@@ -112,21 +127,22 @@ impl Measurer<'_> {
     }];
     let mark_attachment = match sole_math_glyph(&mark) {
       Some((x, gid, size)) => {
-        x + self
-          .shaper
-          .top_accent_attachment(gid, size)
-          .unwrap_or_else(|| return self.shaper.math_ink_center(gid, size))
+        let attachment = match self.shaper.top_accent_attachment(gid, size)? {
+          Some(attachment) => attachment,
+          None => self.shaper.math_ink_center(gid, size)?,
+        };
+        x.try_add(attachment)?
       },
       // glyph assembly の広幅アクセント（送り幅の和は組み上がりの幅）と、数式フォントが結合記号を 1 グリフに組まないとき
       // で、組んだ列の送り幅の中央（MATH の取付点の既定値）に寄せる
-      None => mark_width / 2.0,
+      None => mark_width.try_div(2.0)?,
     };
-    let raise = accent_raise(base_ink_height, self.shaper.math_constant(MathConstant::AccentBaseHeight, font_size));
+    let raise = accent_raise(base_ink_height, self.shaper.math_constant(MathConstant::AccentBaseHeight, font_size)?)?;
 
     let mut children = Vec::new();
-    math::translate_into(&mut children, base_boxes, Length::ZERO, Length::ZERO);
-    math::translate_into(&mut children, mark, base_attachment - mark_attachment, raise);
-    let mut atom = HBox::atom(children);
+    math::translate_into(&mut children, base_boxes, Length::ZERO, Length::ZERO)?;
+    math::translate_into(&mut children, mark, base_attachment.try_sub(mark_attachment)?, raise)?;
+    let mut atom = HBox::atom(children)?;
     // 結合記号は送り幅 0 で、取付点によっては原点が基底の送り幅より右に来るので、幅は基底の送り幅に戻す
     atom.width = base_width;
     out.push(PlacedHBox {
@@ -134,17 +150,25 @@ impl Measurer<'_> {
       dx: *dx,
       dy,
     });
-    *dx += base_width;
+    *dx = dx.try_add(base_width)?;
+    return Ok(());
   }
 
   /// 数式フォントの 1 グリフに組んだ基底 `boxes`（テキスト `text` をスタイル `style` で組んだもの）を、OpenType `dtls` を
   /// 足して組み直した字形の箱（原点に置いたもの）。組み直しても 1 グリフのままで字形が替わったときだけ返し、`boxes` が
   /// 1 グリフでないときと `dtls` に置換の無い字形は `None`（基底をそのまま組む）
-  fn dotless_glyph(&mut self, boxes: &[PlacedHBox], text: &str, style: TextStyle) -> Option<PlacedHBox> {
-    let (_, gid, _) = sole_math_glyph(boxes)?;
+  fn dotless_glyph(
+    &mut self,
+    boxes: &[PlacedHBox],
+    text: &str,
+    style: TextStyle,
+  ) -> Result<Option<PlacedHBox>, LengthOverflow> {
+    let Some((_, gid, _)) = sole_math_glyph(boxes) else {
+      return Ok(None);
+    };
     let shaped: Vec<PlacedHBox> = self
       .shaper
-      .shape_dotless_text(text, style)
+      .shape_dotless_text(text, style)?
       .into_iter()
       .map(|hbox| {
         return PlacedHBox {
@@ -154,11 +178,13 @@ impl Measurer<'_> {
         };
       })
       .collect();
-    let (_, dotless_gid, _) = sole_math_glyph(&shaped)?;
+    let Some((_, dotless_gid, _)) = sole_math_glyph(&shaped) else {
+      return Ok(None);
+    };
     if dotless_gid == gid {
-      return None;
+      return Ok(None);
     }
-    return shaped.into_iter().next();
+    return Ok(shaped.into_iter().next());
   }
 }
 
@@ -171,9 +197,9 @@ mod tests {
     // STIX Two Math の AccentBaseHeight 480 をフォント単位 1 = 1pt で写した値
     let accent_base_height = Length::pt(480.0);
 
-    assert_eq!(accent_raise(Length::pt(479.0), accent_base_height), Length::ZERO, "𝑥 は揃える");
-    assert_eq!(accent_raise(Length::pt(480.0), accent_base_height), Length::ZERO, "ちょうどの高さも揃える");
-    assert_eq!(accent_raise(Length::pt(593.0), accent_base_height), Length::pt(113.0), "𝑡 は超えた分だけ上げる");
-    assert_eq!(accent_raise(Length::ZERO, accent_base_height), Length::ZERO, "空の基底は揃える");
+    assert_eq!(accent_raise(Length::pt(479.0), accent_base_height), Ok(Length::ZERO), "𝑥 は揃える");
+    assert_eq!(accent_raise(Length::pt(480.0), accent_base_height), Ok(Length::ZERO), "ちょうどの高さも揃える");
+    assert_eq!(accent_raise(Length::pt(593.0), accent_base_height), Ok(Length::pt(113.0)), "𝑡 は超えた分だけ上げる");
+    assert_eq!(accent_raise(Length::ZERO, accent_base_height), Ok(Length::ZERO), "空の基底は揃える");
   }
 }

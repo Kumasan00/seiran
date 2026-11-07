@@ -229,7 +229,7 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 
 /// `typeset::compose` の失敗を表示可能な診断の集合にする。
 ///
-/// ソース位置を持ちうるのは字の欠落だけなので、そのうち要素に帰属するものにだけ、そのソースの本文を添える。
+/// ソース位置を持ちうるのは字の欠落と寸法の溢れなので、そのうち要素に帰属するものにだけ、そのソースの本文を添える。
 fn attribute_compose_error(error: ComposeError, sources: &SourceSet) -> CompileFailure {
   return match error {
     ComposeError::Typeset(failures) => CompileFailure::from(failures),
@@ -239,6 +239,10 @@ fn attribute_compose_error(error: ComposeError, sources: &SourceSet) -> CompileF
         None => Box::new(error),
       };
     })),
+    ComposeError::Dimension(error) => match error.source_id() {
+      Some(source_id) => CompileFailure::single(SourceDiagnostic::attach(sources, source_id, error)),
+      None => CompileFailure::single(error),
+    },
   };
 }
 

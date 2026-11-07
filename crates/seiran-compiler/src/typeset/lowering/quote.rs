@@ -3,7 +3,10 @@
 use crate::{
   document::HirQuote,
   length::Length,
-  typeset::lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
+  typeset::{
+    error::ElementOverflow,
+    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes},
+  },
 };
 
 /// 引用ブロックをレイアウトノードに変換する
@@ -11,7 +14,7 @@ pub(super) fn lower_quote(
   ctx: &LoweringContext<'_>,
   quote: &HirQuote,
   state: &mut LoweringState<'_>,
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let style = &ctx.style.quote;
 
   let first_line_indent = if quote.kind.indents_first_line() {
@@ -20,9 +23,9 @@ pub(super) fn lower_quote(
     Length::pt(0.0)
   };
   let body_ctx = ctx.with_body_typeface(style.typeface).with_first_line_indent(first_line_indent);
-  let children = lower_nodes(&body_ctx, &quote.body, state);
+  let children = lower_nodes(&body_ctx, &quote.body, state)?;
 
-  return vec![
+  return Ok(vec![
     LayoutNode::Vkern {
       length: style.top_margin,
     },
@@ -36,7 +39,7 @@ pub(super) fn lower_quote(
     LayoutNode::Vkern {
       length: style.bottom_margin,
     },
-  ];
+  ]);
 }
 
 #[cfg(test)]

@@ -13,11 +13,12 @@ use grouping::{IndexGroupLabel, assign_index_groups, sort_index_entries};
 
 use crate::{
   document::Typeface,
-  length::Length,
+  length::{Length, LengthOverflow},
   style::Style,
   typeset::{
     boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
+    error::ElementOverflow,
     glyph_issues::{Generated, GlyphOrigin},
     lowering::TextStyle,
     pagination::{
@@ -61,14 +62,22 @@ struct IndexEntry {
 ///
 /// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorId::IndexPage`）を
 /// 事後追加する（`body_pages` の破壊的更新）。
-#[must_use]
+///
+/// # Errors
+///
+/// 行の寸法が長さの値域を超えたら [`ElementOverflow`]（生成内容なので起点なし）を返す。
 pub(super) fn build_index_blocks(
   ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
-) -> Vec<Block> {
+) -> Result<Vec<Block>, ElementOverflow> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
-  let spec = build_index_spec(ctx.style, ctx.geometry.back_column_width());
+  if entries.is_empty() {
+    return Ok(Vec::new());
+  }
+  let back_column_width =
+    ctx.geometry.back_column_width().map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+  let spec = build_index_spec(ctx.style, back_column_width);
   let shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::Index));
   return compose_blocks(&spec, &entries, shaper);
 }
@@ -206,19 +215,25 @@ fn build_index_spec(style: &Style, column_width: Length) -> IndexSpec {
 }
 
 /// 索引エントリ列を計測済みのブロック列に変換する
-#[must_use]
-fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], mut shaper: Shaper<'_>) -> Vec<Block> {
+fn compose_blocks(
+  spec: &IndexSpec,
+  entries: &[IndexEntry],
+  mut shaper: Shaper<'_>,
+) -> Result<Vec<Block>, ElementOverflow> {
   if entries.is_empty() {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   let mut blocks: Vec<Block> = Vec::new();
 
-  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style);
-  title.shift_x(spec.title_align.offset(spec.column_width, title.width()));
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
+  let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(generated)?;
+  title
+    .shift_x(spec.title_align.offset(spec.column_width, title.width().map_err(generated)?).map_err(generated)?)
+    .map_err(generated)?;
   blocks.push(Block::ComposedLine {
     origin: None,
     line: title,
-    leading: spec.title_style.font_size * spec.line_height_factor,
+    leading: spec.title_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
   if spec.title_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.title_bottom_margin));
@@ -226,30 +241,37 @@ fn compose_blocks(spec: &IndexSpec, entries: &[IndexEntry], mut shaper: Shaper<'
 
   if spec.group_headings {
     for group in assign_index_groups(entries) {
-      push_group_heading(&mut blocks, &mut shaper, spec, group.label);
+      push_group_heading(&mut blocks, &mut shaper, spec, group.label)?;
       for entry in group.entries {
-        push_entry_line(&mut blocks, &mut shaper, spec, entry);
+        push_entry_line(&mut blocks, &mut shaper, spec, entry)?;
       }
     }
   } else {
     for entry in entries {
-      push_entry_line(&mut blocks, &mut shaper, spec, entry);
+      push_entry_line(&mut blocks, &mut shaper, spec, entry)?;
     }
   }
 
   if spec.bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.bottom_margin));
   }
-  return blocks;
+  return Ok(blocks);
 }
 
 /// 1 エントリ行のブロックを積む
-fn push_entry_line(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) {
+fn push_entry_line(
+  blocks: &mut Vec<Block>,
+  shaper: &mut Shaper<'_>,
+  spec: &IndexSpec,
+  entry: &IndexEntry,
+) -> Result<(), ElementOverflow> {
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
   blocks.push(Block::ComposedLine {
     origin: None,
-    line: compose_entry_line(shaper, spec, entry),
-    leading: spec.entry_style.font_size * spec.line_height_factor,
+    line: compose_entry_line(shaper, spec, entry).map_err(generated)?,
+    leading: spec.entry_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
+  return Ok(());
 }
 
 /// 区分見出しのブロック（上余白・見出し行・分割禁止・下余白）を積む
@@ -257,7 +279,12 @@ fn push_entry_line(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &Inde
 /// 見出し行の直後に [`PENALTY_FORBID_BREAK`] を置くことで、`break_pages` の keep-with-next 機構
 /// （`keep_group_end`）が見出し行と直後の 1 エントリを 1 グループとして扱い、見出しが段末・ページ末に
 /// 孤立しなくなる。間に挟まる下余白（`Block::Glue`）は内容ブロックではないので走査を妨げない。
-fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &IndexSpec, label: IndexGroupLabel) {
+fn push_group_heading(
+  blocks: &mut Vec<Block>,
+  shaper: &mut Shaper<'_>,
+  spec: &IndexSpec,
+  label: IndexGroupLabel,
+) -> Result<(), ElementOverflow> {
   if spec.group_top_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.group_top_margin));
   }
@@ -265,12 +292,15 @@ fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &I
     IndexGroupLabel::Fixed(label) => label,
     IndexGroupLabel::Other => spec.group_other_label.as_str(),
   };
-  let mut line = compose_left_line(shaper, text, spec.group_style);
-  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
+  let generated = |LengthOverflow| return ElementOverflow { origin: None };
+  let mut line = compose_left_line(shaper, text, spec.group_style).map_err(generated)?;
+  line
+    .shift_x(spec.entry_align.offset(spec.column_width, line.width().map_err(generated)?).map_err(generated)?)
+    .map_err(generated)?;
   blocks.push(Block::ComposedLine {
     origin: None,
     line,
-    leading: spec.group_style.font_size * spec.line_height_factor,
+    leading: spec.group_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
   blocks.push(Block::Penalty {
     value: PENALTY_FORBID_BREAK,
@@ -278,6 +308,7 @@ fn push_group_heading(blocks: &mut Vec<Block>, shaper: &mut Shaper<'_>, spec: &I
   if spec.group_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.group_bottom_margin));
   }
+  return Ok(());
 }
 
 /// ページ番号列の 1 表示単位
@@ -332,18 +363,22 @@ fn group_page_items(pages: &[IndexPageRef], collapse: bool) -> Vec<IndexPageItem
 }
 
 /// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組み、`entry_align` で寄せる
-fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) -> Line {
+///
+/// # Errors
+///
+/// 行の寸法が長さの値域を超えたら [`LengthOverflow`]。
+fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEntry) -> Result<Line, LengthOverflow> {
   let mut acc = LineAccum::default();
   let mut links = Vec::new();
 
-  let mut x = acc.place(shaper.shape_text(&entry.word, spec.entry_style), Length::ZERO);
+  let mut x = acc.place(shaper.shape_text(&entry.word, spec.entry_style)?, Length::ZERO)?;
   if !entry.pages.is_empty() {
-    x += spec.entry_gap;
+    x = x.try_add(spec.entry_gap)?;
   }
 
   for (i, item) in group_page_items(&entry.pages, spec.collapse_page_ranges).into_iter().enumerate() {
     if i > 0 {
-      x = acc.place(shaper.shape_text(", ", spec.entry_style), x);
+      x = acc.place(shaper.shape_text(", ", spec.entry_style)?, x)?;
     }
     let (text, link_key) = match item {
       IndexPageItem::Single(page) => (Cow::Borrowed(page.label.as_str()), page.link_key),
@@ -352,7 +387,7 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEn
       },
     };
     let start_x = x;
-    x = acc.place(shaper.shape_text(&text, spec.page_number_style), x);
+    x = acc.place(shaper.shape_text(&text, spec.page_number_style)?, x)?;
     links.push(LineLink {
       target: LinkTarget::Internal(AnchorId::IndexPage(link_key)),
       x0: start_x,
@@ -361,8 +396,8 @@ fn compose_entry_line(shaper: &mut Shaper<'_>, spec: &IndexSpec, entry: &IndexEn
   }
 
   let mut line = acc.into_line(links);
-  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()));
-  return line;
+  line.shift_x(spec.entry_align.offset(spec.column_width, line.width()?)?)?;
+  return Ok(line);
 }
 
 #[cfg(test)]

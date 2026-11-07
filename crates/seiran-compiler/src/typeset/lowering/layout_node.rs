@@ -377,10 +377,12 @@ pub(in crate::typeset) enum MathNode {
     delimiters: DelimiterGlyphs,
     /// セルの列内揃え
     align: Align,
-    /// 数式本体の大きさでの行間（style.toml の `[math.block].row_gap` を本文の大きさ基準として比例させた値）
+    /// 本文の大きさでの行間（style.toml の `[math.block].row_gap`）。数式本体の大きさへは `gap_scale` で比例させる
     row_gap: Length,
-    /// 数式本体の大きさでの列間（`row_gap` と同じ比例）
+    /// 本文の大きさでの列間（`row_gap` と同じ比例）
     column_gap: Length,
+    /// 行間・列間を数式本体の大きさへ比例させる倍率（数式本体の大きさ / 本文の大きさ）
+    gap_scale: f64,
   },
 }
 

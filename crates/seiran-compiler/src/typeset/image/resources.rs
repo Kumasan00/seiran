@@ -10,7 +10,7 @@ use tracing::debug;
 use crate::{
   document::ImageFormat,
   failures::Failures,
-  length::Length,
+  length::{Length, LengthOverflow},
   project::{ProjectPath, ProjectSource},
   publication::SvgParser,
   typeset::{
@@ -185,7 +185,11 @@ pub(crate) fn load_image_resources(
 /// `page_index` は [`pdf_page_index`] の値。`width` / `height` はソースが指定した値（省略された辺は `None`）。
 /// 省略された辺を自然寸法の縦横比から、両方省略なら利用幅 `available`（段幅から引用・リストの字下げを引いた幅。
 /// 字下げが使い切ったときは呼び元が段幅を渡すので正）いっぱいから埋める。自然寸法は
-/// [`load_image_resources`] が検証済みなので、この操作は失敗しない。
+/// [`load_image_resources`] が検証済みなので、失敗するのは推論した辺が長さの値域を超えるときだけ。
+///
+/// # Errors
+///
+/// 推論した辺（縦横比から埋めた辺・利用幅いっぱいの辺）が長さの値域を超えたら [`LengthOverflow`]。
 ///
 /// # Panics
 ///
@@ -198,14 +202,14 @@ pub(in crate::typeset) fn resolve_image_size(
   width: Option<Length>,
   height: Option<Length>,
   available: Length,
-) -> (Length, Length) {
+) -> Result<(Length, Length), LengthOverflow> {
   let Some(natural) = images.natural_size(path, page_index) else {
     unreachable!(
       "描画対象の画像は collect_image_requests が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path} {page_index:?}"
     );
   };
   let (width, height) = fit_image_size(width.map(Length::to_pt), height.map(Length::to_pt), natural, available.to_pt());
-  return (Length::pt(width), Length::pt(height));
+  return Ok((Length::try_pt(f64::from(width))?, Length::try_pt(f64::from(height))?));
 }
 
 /// 指定値と縦横比から最終描画寸法（pt）を求める。

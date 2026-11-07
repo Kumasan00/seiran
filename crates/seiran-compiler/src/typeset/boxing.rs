@@ -5,7 +5,7 @@
 //! [`inline_atom`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
-//! `resolve_image_size` に依存し、失敗しない）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
+//! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
@@ -51,10 +51,11 @@ use tracing::debug;
 
 use crate::{
   document::{NodeId, TextAlignment},
-  length::Length,
+  length::{Length, LengthOverflow},
   typeset::{
     boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
     breaking::LineBreaker,
+    error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
     image::{ImageResources, resolve_image_size},
@@ -70,9 +71,6 @@ const JA_LATIN_AKI_RATIO: f32 = 0.25;
 
 /// 和欧文間アキの伸長能力（フォントサイズに対する倍率）
 const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
-
-/// ブロック間アキ（`VBox::margin_bottom`）の伸長能力（自然値に対する倍率）
-const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
 
 /// テキスト中の改行を空白 1 個へ畳む。
 ///
@@ -111,8 +109,14 @@ pub(super) struct BlockBuildInputs<'a> {
 }
 
 /// レイアウトノードを計測済みのブロック列に変換する
-#[must_use]
-pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInputs<'_>) -> Vec<Block> {
+///
+/// # Errors
+///
+/// 行送りの計算が長さの値域を超えたら、その要素を [`ElementOverflow`] で返す。
+pub(super) fn build_blocks(
+  layout_nodes: Vec<LayoutNode>,
+  inputs: &BlockBuildInputs<'_>,
+) -> Result<Vec<Block>, ElementOverflow> {
   let hyphenation = hyphenation::resolve(inputs.language);
   let mut builder = BlockBuilder {
     measurer: Measurer::new(
@@ -127,10 +131,10 @@ pub(super) fn build_blocks(layout_nodes: Vec<LayoutNode>, inputs: &BlockBuildInp
     breaker: inputs.breaker,
   };
   let mut blocks: Vec<Block> = Vec::new();
-  builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment);
+  builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
   let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
-  return blocks;
+  return Ok(blocks);
 }
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
@@ -154,12 +158,12 @@ impl BlockBuilder<'_> {
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
-  ) {
+  ) -> Result<(), ElementOverflow> {
     for node in nodes {
       match node {
         LayoutNode::Paragraph(paragraph) => {
           let spacing = paragraph.spacing_after;
-          if let Some(block) = self.build_paragraph(paragraph, indent, right_indent, alignment) {
+          if let Some(block) = self.build_paragraph(paragraph, indent, right_indent, alignment)? {
             blocks.push(block);
           }
           if spacing != Length::ZERO {
@@ -177,12 +181,16 @@ impl BlockBuilder<'_> {
           alignment: vbox_alignment,
         } => {
           // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
-          let child_indent = indent + vbox_indent;
-          let child_right_indent = right_indent + vbox_right_indent;
+          let child_indent =
+            indent.try_add(vbox_indent).map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+          let child_right_indent = right_indent
+            .try_add(vbox_right_indent)
+            .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
           let child_alignment = vbox_alignment.unwrap_or(alignment);
-          self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment);
+          self.walk_vertical(children, blocks, child_indent, child_right_indent, child_alignment)?;
           let natural = margin_bottom;
-          blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
+          // ブロック間アキ（`VBox::margin_bottom`）の伸長能力は自然値と同じ
+          blocks.push(Block::stretchable_space(natural, natural));
         },
         LayoutNode::Vkern { length } => {
           blocks.push(Block::fixed_space(length));
@@ -197,13 +205,22 @@ impl BlockBuilder<'_> {
         } => {
           // 字下げが段の幅を使い切ると利用幅は 0 で、そこから広げると 0×0 の画像になって消える。段の幅（検証済みで正）を
           // 基準にして描画矩形を正に保ち、字下げからのはみ出しとして記録させる
-          let available = boxes::usable_width(self.column_width, indent, right_indent);
+          let available = boxes::usable_width(self.column_width, indent, right_indent).map_err(|LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(origin),
+            };
+          })?;
           let basis = if available > Length::ZERO {
             available
           } else {
             self.column_width
           };
-          let (width, height) = resolve_image_size(self.images, &path, page_index, width, height, basis);
+          let (width, height) =
+            resolve_image_size(self.images, &path, page_index, width, height, basis).map_err(|LengthOverflow| {
+              return ElementOverflow {
+                origin: Some(origin),
+              };
+            })?;
           blocks.push(Block::Image {
             origin,
             path,
@@ -217,18 +234,27 @@ impl BlockBuilder<'_> {
           });
         },
         LayoutNode::Table(table) => {
-          let available = boxes::usable_width(self.column_width, indent, right_indent);
+          let available = boxes::usable_width(self.column_width, indent, right_indent).map_err(|LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(table.origin),
+            };
+          })?;
           blocks.push(Block::Table {
-            table: self.measurer.build_table(table, available, self.breaker),
+            table: self.measurer.build_table(table, available, self.breaker)?,
             indent,
             right_indent,
             align: Align::from(alignment),
           });
         },
         LayoutNode::MathBlock(block) => {
-          let math = self.measurer.within(block.origin, |measurer| {
-            return measurer.build_math_block(block, indent, right_indent);
-          });
+          let origin = block.origin;
+          let math = self.measurer.within(origin, |measurer| {
+            return measurer.build_math_block(block, indent, right_indent).map_err(|LengthOverflow| {
+              return ElementOverflow {
+                origin: Some(origin),
+              };
+            });
+          })?;
           blocks.push(math);
         },
         LayoutNode::PageBreak => {
@@ -242,41 +268,55 @@ impl BlockBuilder<'_> {
         },
       }
     }
+    return Ok(());
   }
 
   /// 段落を計測する。計測後の水平リストが空なら本文ブロックを作らない
+  ///
+  /// # Errors
+  ///
+  /// 段落の計測か行送りの計算が長さの値域を超えたら、段落の起点を [`ElementOverflow`] で返す。
   fn build_paragraph(
     &mut self,
     paragraph: ParagraphLayout,
     indent: Length,
     right_indent: Length,
     alignment: TextAlignment,
-  ) -> Option<Block> {
-    let collect = |measurer: &mut Measurer<'_>| {
+  ) -> Result<Option<Block>, ElementOverflow> {
+    let collect = |measurer: &mut Measurer<'_>| -> Result<HList, ElementOverflow> {
       let mut list = HList::default();
       for inline in paragraph.content {
-        measurer.collect_inline(inline, &mut list);
+        measurer.collect_inline(inline, &mut list)?;
       }
-      return list;
+      return Ok(list);
     };
     // 要素に帰属しない段落は、組み始めの起点（生成した内容の種類）のまま組む
     let list = match paragraph.origin {
       Some(origin) => self.measurer.within(origin, collect),
       None => collect(&mut self.measurer),
     };
+    let list = list?;
     if list.is_empty() {
-      return None;
+      return Ok(None);
     }
     let items = list.into_items();
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
-    return Some(Block::Paragraph {
+    let leading =
+      dominant_font_size
+        .try_scale(f64::from(self.measurer.line_height_factor))
+        .map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: paragraph.origin,
+          };
+        })?;
+    return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
       items,
-      leading: dominant_font_size * self.measurer.line_height_factor,
+      leading,
       indent,
       right_indent,
       alignment,
-    });
+    }));
   }
 }
 
@@ -312,6 +352,13 @@ impl<'a> Measurer<'a> {
     };
   }
 
+  /// いま組んでいる要素（生成内容なら `None`）で長さが溢れたことを表す
+  fn overflow(&self) -> ElementOverflow {
+    return ElementOverflow {
+      origin: self.shaper.current_element(),
+    };
+  }
+
   /// 要素 `origin` の中身を `build` で組む（その間に組めなかった字は `origin` に帰属させ、組み終えたら起点を戻す）
   fn within<R>(&mut self, origin: NodeId, build: impl FnOnce(&mut Self) -> R) -> R {
     let previous = self.shaper.set_origin(GlyphOrigin::Element(origin));
@@ -321,14 +368,22 @@ impl<'a> Measurer<'a> {
   }
 
   /// インライン要素を水平リストへ変換して `out` に追加する
-  fn collect_inline(&mut self, node: InlineNode, out: &mut HList) {
+  ///
+  /// # Errors
+  ///
+  /// 計測した寸法が長さの値域を超えたら、いま組んでいる要素（脚注の中なら脚注、無ければ段落）を [`ElementOverflow`] で返す。
+  fn collect_inline(&mut self, node: InlineNode, out: &mut HList) -> Result<(), ElementOverflow> {
     match node {
       InlineNode::Text(text, style) => {
-        self.push_text_items(&text, style, out);
+        self.push_text_items(&text, style, out).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
       },
       // コード: `text_box` で閉じた箱にするので空白は glue にならない。端は文字を持たない箱なので和欧文間アキも受けない
       InlineNode::TextAtom(text, style) => {
-        out.push_box(self.text_atom(&text, style));
+        out.push_box(self.text_atom(&text, style).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?);
       },
       InlineNode::Kern { length } => {
         out.push_absorbing(HItem::Kern(length));
@@ -342,24 +397,32 @@ impl<'a> Measurer<'a> {
         text,
         style,
       } => {
-        out.push_marker(HItem::Box(self.text_box(&text, style, offset)));
+        out.push_marker(HItem::Box(self.text_box(&text, style, offset).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?));
       },
       InlineNode::Math(formula) => {
-        self.push_inline_math(&formula, out);
+        self.push_inline_math(&formula, out).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
       },
       InlineNode::Quantity { pieces, style } => {
-        self.push_quantity(&pieces, style, out);
+        self.push_quantity(&pieces, style, out).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
       },
       // 直前の Penalty が分割機会になり、折り返し時は QED マークだけが次行へ運ばれる
       InlineNode::FlushRight(text, style) => {
-        let flush_box = self.text_box(&text, style, Length::ZERO);
+        let flush_box = self.text_box(&text, style, Length::ZERO).map_err(|LengthOverflow| {
+          return self.overflow();
+        })?;
         out.push_absorbing(HItem::Penalty { value: 0 });
         out.push_absorbing(HItem::FlushRight(flush_box));
       },
       InlineNode::Link { target, children } => {
         out.push_marker(HItem::LinkStart(target));
         for child in children {
-          self.collect_inline(child, out);
+          self.collect_inline(child, out)?;
         }
         out.push_marker(HItem::LinkEnd);
       },
@@ -370,58 +433,72 @@ impl<'a> Measurer<'a> {
         index,
         body,
       } => {
-        let items = self.within(origin, |measurer| {
+        let items = self.within(origin, |measurer| -> Result<Vec<HItem>, ElementOverflow> {
           let mut body_list = HList::default();
           for child in body {
-            measurer.collect_inline(child, &mut body_list);
+            measurer.collect_inline(child, &mut body_list)?;
           }
-          return body_list.into_items();
-        });
+          return Ok(body_list.into_items());
+        })?;
         let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+        let leading = dominant_font_size.try_scale(f64::from(self.line_height_factor)).map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(origin),
+          };
+        })?;
         out.push_marker(HItem::Footnote(MeasuredFootnote {
           origin,
           number,
           index,
           items,
-          leading: dominant_font_size * self.line_height_factor,
+          leading,
         }));
       },
       InlineNode::IndexMark(term) => {
         out.push_marker(HItem::IndexMark(term));
       },
     }
+    return Ok(());
   }
 
   /// テキスト 1 塊を閉じた箱（Atom）にする
   ///
   /// 空文字列（コードの空行）でも、同じ書体・サイズの空セグメント（高さ・深さはフォントの
   /// ascender / descender から決まる）を測って 1 行ぶんの高さ・深さを持たせる。
-  fn text_atom(&mut self, text: &str, style: TextStyle) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn text_atom(&mut self, text: &str, style: TextStyle) -> Result<HBox, LengthOverflow> {
     let is_empty = text.is_empty();
-    let mut atom = self.text_box(text, style, Length::ZERO);
+    let mut atom = self.text_box(text, style, Length::ZERO)?;
     if is_empty {
       let font_type = script::resolve_font_type(style.typeface, script::ScriptCategory::Latin);
-      let strut = self.shaper.shape_segment("", font_type, style.font_size, None, None);
+      let strut = self.shaper.shape_segment("", font_type, style.font_size, None, None)?;
       atom.height = strut.height();
       atom.depth = strut.depth();
     }
-    return atom;
+    return Ok(atom);
   }
 
   /// テキストを縦に `dy` ずらして閉じた箱（Atom）にする
   ///
   /// 幅は送り幅の和、高さ・深さは字の箱から決める。
-  fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> HBox {
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn text_box(&mut self, text: &str, style: TextStyle, dy: Length) -> Result<HBox, LengthOverflow> {
     let mut placed: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
-    for hbox in self.shaper.shape_text(text, style) {
+    for hbox in self.shaper.shape_text(text, style)? {
       let width = hbox.width;
       placed.push(PlacedHBox { hbox, dx, dy });
-      dx += width;
+      dx = dx.try_add(width)?;
     }
-    let mut atom = HBox::atom(placed);
+    let mut atom = HBox::atom(placed)?;
     atom.width = dx;
-    return atom;
+    return Ok(atom);
   }
 }
 
@@ -459,6 +536,14 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
   };
 }
 
+/// `length` の `ratio` 倍（`ratio` の絶対値は 1 未満）
+///
+/// em に対する約物・アキの比のように 1 未満の倍率は、値域内の長さを縮めるだけなので溢れない。
+fn fraction_of(length: Length, ratio: f32) -> Length {
+  debug_assert!(ratio.abs() < 1.0, "1 以上の倍率 {ratio} は溢れうるので try_scale で検査する");
+  return length.try_scale(f64::from(ratio)).expect("倍率の絶対値が 1 未満なので、値域内の長さの積は値域内");
+}
+
 /// 伸縮アキの値（`HItem::Glue` になる前の形）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Glue {
@@ -487,8 +572,8 @@ impl Glue {
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051）
 fn ja_latin_aki(font_size: Length) -> Glue {
   return Glue {
-    natural: font_size * JA_LATIN_AKI_RATIO,
-    stretch: font_size * JA_LATIN_AKI_STRETCH_RATIO,
+    natural: fraction_of(font_size, JA_LATIN_AKI_RATIO),
+    stretch: fraction_of(font_size, JA_LATIN_AKI_STRETCH_RATIO),
     shrink: Length::ZERO,
     breakable: false,
   };
@@ -498,7 +583,7 @@ fn ja_latin_aki(font_size: Length) -> Glue {
 fn cjk_stretch_glue(em: Length) -> Glue {
   return Glue {
     natural: Length::ZERO,
-    stretch: em * CJK_STRETCH_RATIO,
+    stretch: fraction_of(em, CJK_STRETCH_RATIO),
     shrink: Length::ZERO,
     breakable: true,
   };
@@ -526,9 +611,9 @@ fn boundary_glue(
   if left != Normal || right != Normal {
     return yakumono::gap(left, right).map(|aki| {
       return Glue {
-        natural: em * aki.natural_em,
+        natural: fraction_of(em, aki.natural_em),
         stretch: Length::ZERO,
-        shrink: em * aki.shrink_em,
+        shrink: fraction_of(em, aki.shrink_em),
         breakable,
       };
     });
@@ -726,7 +811,8 @@ mod max_font_size_tests {
       hbox: inner,
       dx: Length::ZERO,
       dy: Length::ZERO,
-    }]);
+    }])
+    .expect("値域内");
 
     assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(Length::pt(20.0)));
   }

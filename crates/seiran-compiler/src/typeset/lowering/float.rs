@@ -8,11 +8,14 @@ use crate::{
   document::{CaptionPosition, HirInline, NodeId, TextAlignment},
   length::Length,
   style::CaptionStyle,
-  typeset::lowering::{
-    LoweringContext, LoweringState, counter,
-    inline::lower_inlines,
-    layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
-    with_label_anchors,
+  typeset::{
+    error::ElementOverflow,
+    lowering::{
+      LoweringContext, LoweringState, counter,
+      inline::lower_inlines,
+      layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
+      with_label_anchors,
+    },
   },
 };
 
@@ -23,7 +26,7 @@ fn build_caption(
   inlines: &[HirInline],
   number: &str,
   state: &mut LoweringState<'_>,
-) -> Vec<InlineNode> {
+) -> Result<Vec<InlineNode>, ElementOverflow> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,
     typeface: caption_style.typeface,
@@ -35,8 +38,8 @@ fn build_caption(
     number,
     || return lower_inlines(ctx, inlines, base_style, state),
     |literal| return InlineNode::Text(literal.to_string(), base_style),
-  );
-  return merge_adjacent_text(nodes);
+  )?;
+  return Ok(merge_adjacent_text(nodes));
 }
 
 /// フロート 1 件の上下の余白と、本体・キャプション間の余白
@@ -122,20 +125,23 @@ pub(super) fn lower_numbered_float(
   caption: FloatCaption<'_>,
   margins: &FloatMargins,
   state: &mut LoweringState<'_>,
-  build_body: impl FnOnce(&mut LoweringState<'_>) -> LayoutNode,
-) -> Vec<LayoutNode> {
+  build_body: impl FnOnce(&mut LoweringState<'_>) -> Result<LayoutNode, ElementOverflow>,
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let Some(counter_value) = state.counter_value(id) else {
     unreachable!("図表は必ず採番される（analyze の Figure / Table 分岐が counters へ登録している）: {id:?}")
   };
   let number = counter::format_counter_value(ctx.style, counter_value);
   let label = state.declared_label(id);
 
-  let body = build_body(state);
+  let body = build_body(state)?;
   let caption_nodes = caption
     .inlines
-    .map(|inlines| return (caption.position, build_caption(ctx, caption.style, inlines, &number, state)));
+    .map(|inlines| {
+      return build_caption(ctx, caption.style, inlines, &number, state).map(|nodes| return (caption.position, nodes));
+    })
+    .transpose()?;
 
-  return with_label_anchors(label, wrap_float(id, body, caption_nodes, margins));
+  return Ok(with_label_anchors(label, wrap_float(id, body, caption_nodes, margins)));
 }
 
 #[cfg(test)]

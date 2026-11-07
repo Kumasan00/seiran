@@ -4,6 +4,8 @@
 //! 「`GeneratedInline` 列 → `LayoutNode` 列」の変換と、書誌の見出し（style 由来）＋
 //! エントリ列の組み立てだけ。
 
+use std::convert::Infallible;
+
 use crate::{
   document::HeadingLevel,
   semantics::{BibliographyEntry, GeneratedInline, HeadingKey},
@@ -40,11 +42,12 @@ pub(super) fn lower_bibliography(
   let style = title_style(ctx, BIBLIOGRAPHY_HEADING_LEVEL);
   // 生成物の lowering には副作用がないので、遅延させても結果は変わらない。
   // 書誌の見出しは無採番（style に番号書式を持たない）なので番号は空。
-  let mut layout = heading::lower_heading(
+  // 生成物の lowering は失敗しない（`Infallible`）ので、`Ok` の腕だけが残る
+  let Ok(mut layout) = heading::lower_heading(
     ctx,
     BIBLIOGRAPHY_HEADING_LEVEL,
     "",
-    || return lower_generated_inlines(ctx, &title, style),
+    || return Ok::<_, Infallible>(lower_generated_inlines(ctx, &title, style)),
     None,
     key,
     None,
@@ -137,7 +140,7 @@ mod tests {
     let ctx = context(&style);
 
     let document = analyzed.with_generated_citations_for_test(Vec::new(), Some(bibliography()));
-    let (layout, headings) = lower_sources_with_headings(&ctx, &document);
+    let (layout, headings) = lower_sources_with_headings(&ctx, &document).expect("テストが組む長さは値域内");
 
     assert_eq!(headings.len(), 2, "{headings:?}");
     assert_eq!(headings[1].index, 1, "書誌見出しは本文の続きの index: {headings:?}");

@@ -258,7 +258,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
   `deprecated` が拒む）。std 側が未安定の操作（`intersperse` 等）は `itertools` を使ってよく、安定化したら std へ
   移す（rustc の `unstable_name_collisions` 警告が合図）。
 - trait 実装は **機械的な forwarding なら `derive_more`、網羅性が意味を持つ対応表なら手書きの match** に分ける。
-  `Length` の `Add` / `Sub` / `Neg` / `AddAssign` / `SubAssign` のように内側の型へそのまま委譲するだけの演算や、
+  `Length` の `Neg` のように内側の型へそのまま委譲するだけの演算や、
   `InFile<E>` の `Display` のように 1 つの書式文字列で決まる実装は、手で書いても定型（必須ルール 1 の `return`
   を含む）が増えるだけで判断が何も入らないので derive に寄せる（derive が展開したコードは external macro
   として clippy の対象外なので、必須ルールとも衝突しない）。一方 enum から表示名への対応表に
