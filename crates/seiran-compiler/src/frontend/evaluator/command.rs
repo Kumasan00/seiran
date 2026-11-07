@@ -820,6 +820,85 @@ mod tests {
 
       prop_assert!(result.is_ok(), "受理すべき `{source} {tail}` が診断になった: {result:?}");
     }
+
+    /// 必須引数を 1 つ落とすと、そのコマンドの引数不足になる
+    #[test]
+    fn dropping_a_required_argument_is_rejected_as_missing(
+      mut call in valid_call().prop_filter("必須引数を持つ呼び出し", |call| return !call.args.is_empty()),
+      tail in text(),
+    ) {
+      call.args.pop();
+      let source = call.render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == call.name),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// 必須引数を 1 つ足すと、そのコマンドの引数過剰になる
+    #[test]
+    fn appending_an_argument_is_rejected_as_extra(mut call in valid_call(), extra in text(), tail in text()) {
+      call.args.push(extra);
+      let source = call.render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == call.name),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// 宣言に無いキーを 1 つ足すと、そのキーの未知キー診断になる
+    #[test]
+    fn adding_an_undeclared_option_key_is_rejected(
+      mut call in valid_call(),
+      key in "[a-z]{1,8}".prop_filter("宣言済みのキーを避ける", |key| {
+        return !matches!(key.as_str(), "label" | "reading" | "color");
+      }),
+      value in "[a-z0-9]{1,4}",
+      tail in text(),
+    ) {
+      call.opts.push(format!("{key}={value}"));
+      let source = call.render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::UnknownOptArgKey { key: ref rejected, .. }) if *rejected == key),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// ブロックを生む呼び出しを書体コマンドの引数へ入れると、インライン文脈のブロックとして拒否される
+    #[test]
+    fn block_call_inside_an_inline_argument_is_rejected(
+      block in block_call(),
+      styled in styled_name(),
+      tail in text(),
+    ) {
+      let source = Call::new(styled, vec![], vec![block.render()]).render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if *what == format!("\\{}", block.name)),
+        "`{source}`: {result:?}"
+      );
+    }
+
+    /// 見出しタイトルの中の `\index` は拒否される
+    #[test]
+    fn index_in_heading_title_is_rejected(heading in heading_name(), index in index_call(), tail in text()) {
+      let source = Call::new(heading, vec![], vec![index.render()]).render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "`{source}`: {result:?}");
+    }
   }
 
   /// `.sei` ソースを評価して、最初の段落の先頭インライン（`\code`）の本文を取り出す
