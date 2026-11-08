@@ -103,7 +103,8 @@ CI は素の `cargo test --all-features`（`cargo insta test` は `--check` な�
 - PDF 構造 golden: ページ数・埋め込みフォント数・リンク注釈数・しおりの有無・画像 / Form XObject 数。
   URI・宛先・描画座標・フォント埋め込みの中身は見ない
 - 診断 golden: 幅 100・色なしの表示
-- 本文の末尾空白だけの変化は insta が比較で無視する
+- 本文の末尾空白・先頭の空行・CRLF / LF の違いだけの変化は insta が比較で無視する（先頭の空行は旧形式との
+  互換比較で一致扱いになり、警告だけが出る）
 
 ## PDF バイト比較（render 層のみ）
 

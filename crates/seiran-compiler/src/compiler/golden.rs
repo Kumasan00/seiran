@@ -265,6 +265,7 @@ fn dump_pages_of(name: &str) -> String {
 
 #[test]
 fn layout_dumps_match_golden() {
+  let _snapshots = test_support::lock_snapshots();
   glob!("../../../../tests/text", "*.sei", |path| {
     let name = path.file_stem().and_then(OsStr::to_str).expect("fixture 名は UTF-8 のはず");
     if NON_GOLDEN_FIXTURES.contains(&name) {

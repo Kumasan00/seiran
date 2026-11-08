@@ -77,6 +77,7 @@ fn assert_points_at(warning: &dyn Diagnostic, source: &str, needle: &str) {
 
 /// レンダリング済み診断テキストを `tests/golden_diagnostics/<name>.snap` と比較する。
 fn assert_matches_golden(name: &str, rendered: &str) {
+  let _snapshots = test_support::lock_snapshots();
   let mut settings = Settings::clone_current();
   settings.set_snapshot_path("../../tests/golden_diagnostics");
   settings.set_prepend_module_to_snapshot(false);
