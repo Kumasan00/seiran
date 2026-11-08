@@ -63,8 +63,9 @@ golden テストの入力はコミット済み fixture（本文 `tests/text/*.se
   `INSTA_GLOB_FILTER='align.sei;toc*.sei' cargo test -p seiran-compiler layout_dumps_match_golden`
   （候補収集なら `cargo insta test -p seiran-compiler --glob-filter align.sei`）。対象外の fixture は
   比較も書き込みもされない。何にも一致しないフィルタは全件 `Skipping` で成功するので、`-- --nocapture` で
-  対象が走ったことを確かめる。絞った実行では `--unreferenced` を使わない（対象外のスナップショットを
-  未参照と誤認する）
+  `Skipping <fixture> due to glob filter` の行に対象が出ていないこと（行数が全 fixture 数から対象の数を
+  引いた数）を確かめる。比較に通った対象は何も出力しない。絞った実行では `--unreferenced` を使わない
+  （対象外のスナップショットを未参照と誤認する）
 - **リファクタの振る舞い不変**: golden 差分ゼロがそのまま証拠。accept しない。`INSTA_UPDATE` /
   `INSTA_FORCE_PASS` を設定しない（`always` / `1` は通常検証を黙って承認・成功扱いにする）
 
@@ -73,6 +74,9 @@ golden テストの入力はコミット済み fixture（本文 `tests/text/*.se
 手順（`tests/text/` 直下へ入力を追加すれば対象 → `cargo insta test` → `cargo insta review`）は golden.rs
 module doc の「新機能に golden テストを足す」節が正典。外部ファイルにレイアウトが依存する入力は対象外で、
 `NON_GOLDEN_FIXTURES` へ理由を添えて入れる（前例: `figure.sei` は画像実体にレイアウトが依存）。
+fixture を消す・改名するときは対応する `.snap` も消す・改名する（`golden_snapshots_match_the_compared_fixtures`
+と、PDF 構造側の `pdf_structure_snapshots_match_the_compared_fixtures` が承認済みのスナップショットと
+比較対象を突き合わせ、取り残しを失敗にする）。
 
 ## 診断 golden
 
@@ -91,8 +95,8 @@ render 層を触ったら **`cargo test -p seiran-pdf`** も確認する（レ�
 
 ## CI
 
-CI は素の `cargo test --all-features`（`cargo insta test` は `--check` なしだと force-pass になるので使わない）。
-`INSTA_UPDATE=new` / `INSTA_FORCE_PASS=0` を固定し、未承認の差分・期待値の欠落は失敗する。自動承認はしない。
+CI と pre-commit（`.git-hooks/pre-commit`）は素の `cargo test --all-features`（`cargo insta test` は `--check` なしだと
+force-pass になるので使わない）。`INSTA_UPDATE=new` / `INSTA_FORCE_PASS=0` を固定し、未承認の差分・期待値の欠落は失敗する。自動承認はしない。
 差分はテストログ、実測値は失敗時の artifact `insta-pending-snapshots`（`.snap.new`）で確認する。
 
 ## golden の一致が保証する範囲

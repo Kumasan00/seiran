@@ -16,7 +16,7 @@
 //! ダンプ）を通す。ダンプは確定座標のテキスト表現であり krilla の描画は含まないが、`Publication` の
 //! メタデータ・リンク・しおりまで含むため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が広い。
 //!
-//! 残りのテストは golden ファイルを一切読み書きせず、`Publication` へ変換すると失われる情報
+//! 残りのテストは golden ファイルの中身を一切読み書きせず、`Publication` へ変換すると失われる情報
 //! （anchor・索引語のページ帰属・脚注 fragment の繰越と番号・`PlacedBlock` の幾何）を見るため
 //! `TestProject::layout` を使うか、`Publication` のグリフ列を直接見る。
 //!
@@ -206,6 +206,8 @@
 //!   [`colored_inline_math_paints_glyphs_and_rules_in_the_color`]
 //! - **テストヘルパが入力読込を迂回していないことの検査**:
 //!   [`layout_helper_reports_cross_input_layout_validation`]
+//! - **承認済みのスナップショットと比較する fixture の突き合わせ**（fixture の削除・改名・除外リストの古い名前）:
+//!   [`golden_snapshots_match_the_compared_fixtures`]
 //!
 //! # カバレッジの注意
 //!
@@ -222,7 +224,7 @@
 //!    （config 差分は生 TOML の 1 系統だけ）
 //! 3. `cargo insta test -p seiran-compiler` で候補を作り、`cargo insta review` で内容を確認して承認し、コミットする
 
-use std::{ffi::OsStr, fs, iter, ops::Range, path::Path};
+use std::{collections::BTreeSet, ffi::OsStr, fs, iter, ops::Range, path::Path};
 
 use harfrust::Font;
 use insta::{Settings, assert_snapshot, glob};
@@ -278,6 +280,34 @@ fn layout_dumps_match_golden() {
     settings.remove_snapshot_suffix();
     settings.bind(|| assert_snapshot!(name, dump));
   });
+}
+
+/// `dir` 直下で拡張子が `extension` のファイルの stem を集める。
+fn file_stems(dir: &Path, extension: &str) -> BTreeSet<String> {
+  return fs::read_dir(dir)
+    .unwrap_or_else(|error| panic!("{} を読めるはず: {error}", dir.display()))
+    .map(|entry| return entry.expect("ディレクトリの項目を読めるはず").path())
+    .filter(|path| return path.extension().is_some_and(|found| return found == extension))
+    .map(|path| return path.file_stem().and_then(OsStr::to_str).expect("ファイル名は UTF-8 のはず").to_owned())
+    .collect();
+}
+
+#[test]
+fn golden_snapshots_match_the_compared_fixtures() {
+  // fixture を消す・改名すると glob の対象から黙って外れるので、承認済みのスナップショットと比較対象を突き合わせる
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  let fixtures = file_stems(&manifest_dir.join("../../tests/text"), "sei");
+  let excluded: BTreeSet<String> = NON_GOLDEN_FIXTURES.iter().map(|name| return (*name).to_owned()).collect();
+
+  let snapshots = file_stems(&manifest_dir.join("tests/golden"), "snap");
+
+  let stale: Vec<&String> = excluded.difference(&fixtures).collect();
+  assert!(stale.is_empty(), "NON_GOLDEN_FIXTURES に tests/text に無い fixture がある: {stale:?}");
+  let compared: BTreeSet<String> = fixtures.difference(&excluded).cloned().collect();
+  let orphaned: Vec<&String> = snapshots.difference(&compared).collect();
+  assert!(orphaned.is_empty(), "比較する fixture の無いスナップショットがある: {orphaned:?}");
+  let unapproved: Vec<&String> = compared.difference(&snapshots).collect();
+  assert!(unapproved.is_empty(), "承認済みのスナップショットが無い fixture がある: {unapproved:?}");
 }
 
 /// 組版中間表現を取り出すテストヘルパが `input::load` の横断検証を迂回していないことの検査。
