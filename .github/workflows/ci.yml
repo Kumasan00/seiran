@@ -41,7 +41,18 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run tests
+        # 未承認のスナップショット差分・欠落は失敗させ、候補を .snap.new に書く（自動承認・force-pass にしない）
+        env:
+          INSTA_UPDATE: new
+          INSTA_FORCE_PASS: "0"
         run: cargo test --all-features
+      - name: Upload pending snapshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: insta-pending-snapshots
+          path: "**/*.snap.new"
+          if-no-files-found: ignore
       - name: Run cargo doc
         env:
           RUSTDOCFLAGS: -D warnings

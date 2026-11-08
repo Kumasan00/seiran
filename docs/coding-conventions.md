@@ -474,7 +474,7 @@ Unicode の文字名）。doc はこれに何をするか 1 行を足す。ど�
 lint が**発火＝提案に従う**とは限らない — `suboptimal_flops`（float の `a * b + c`）/ `imprecise_flops`
 （`(1 + x).ln()` / `x.exp() - 1` / `x.powf(1.0 / 3.0)`）は「float の合成演算をここで書いた」ことの通知として
 有効化してあり、採否は箇所ごとに決める（項を累積して精度が効くなら提案の `mul_add` / `ln_1p` / `exp_m1` /
-`cbrt` を採る・値が一度動くので golden 再生成込み／1 項で定数畳み込みや可読性が勝つなら積へ名前を付けて式
+`cbrt` を採る・値が一度動くので golden の承認込み／1 項で定数畳み込みや可読性が勝つなら積へ名前を付けて式
 から乗算を外す（`typeset` の `HYPHEN_DEMERIT`）／どちらでもないなら `#[expect]` + 根拠）。`imprecise_flops`
 の提案は桁落ちを避ける側なので採るのが既定。`mul_add` は IEEE の単一丸めで `a * b + c` と同じく決定的な
 ので、採用の代償は移行時に値が一度動くことと、非 FMA ターゲットでの libm fallback だけ。
@@ -549,4 +549,4 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   `run_validate_with_serif_extra`）。
 - **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/compiler/golden.rs`）と
   PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の
-  再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する。
+  候補レビュー・承認、新機能へのテスト追加は `verify-typesetting` skill を参照する。

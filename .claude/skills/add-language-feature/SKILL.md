@@ -36,8 +36,8 @@ description: >-
    列幅・セル・罫線・行の機能は lowering で値を `TableLayout` に解決し、組版は表エンジン（`typeset::boxing::table`）に足す
 6. **診断**: 新しいエラー・警告は `docs/error-handling.md` どおり（leaf に code・第 1 階層は段名・
    集約は `Failures<E>`）
-7. **テスト**: `tests/text/<name>.sei` fixture を追加し golden へ登録
-   （`verify-typesetting` skill → golden.rs module doc の手順）
+7. **テスト**: `tests/text/<name>.sei` fixture を追加する（直下なら golden の対象。
+   `verify-typesetting` skill → golden.rs module doc の手順）
 8. **ドキュメント**: `docs-sync` skill のチェックリストを引く。特に
    `docs/language-design.md` の判断事例集への追記（設計判断・境界事例・原則を改訂した場合は
    原則本文 + CLAUDE.md 要約表も）と、architecture.md / README の設定スキーマ
