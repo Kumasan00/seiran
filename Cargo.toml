@@ -31,6 +31,7 @@ icu_normalizer = "2.2.0"
 icu_properties = "2.2.0"
 icu_segmenter = "2.2.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+insta = { version = "1.49.0", features = ["glob"] }
 itertools = "0.15.0"
 krilla = { version = "0.8.2", default-features = false, features = ["pdf", "raster-images", "rayon"] }
 krilla-svg = "0.8.1"

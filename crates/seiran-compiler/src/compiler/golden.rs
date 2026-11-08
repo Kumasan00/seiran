@@ -1,7 +1,7 @@
 //! 確定レイアウトの golden スナップショット回帰テスト
 //!
-//! fixture を組版した決定的テキストを `tests/golden/` と比較する。再生成は
-//! `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で行う。検証手段の選択（layout dump golden と
+//! fixture を組版した決定的テキストを insta のスナップショット `tests/golden/<fixture>.snap` と比較する。
+//! 候補のレビューと承認の手順と検証手段の選択（layout dump golden と
 //! PDF バイト比較の使い分け）は `.claude/skills/verify-typesetting/SKILL.md` が規定し、
 //! 本モジュール内部のテスト分類はこの doc が正典。
 //!
@@ -10,8 +10,8 @@
 //!
 //! # テストの分類
 //!
-//! golden ファイル（`tests/golden/<name>.txt`）と実際に比較するのは主入口
-//! [`layout_dumps_match_golden`]（[`GOLDEN_INPUTS`] 全 fixture の回帰）だけである。これは公開 facade
+//! golden ファイル（`tests/golden/<fixture>.snap`）と実際に比較するのは主入口
+//! [`layout_dumps_match_golden`]（`tests/text/` 直下の [`NON_GOLDEN_FIXTURES`] 以外の全 fixture の回帰）だけである。これは公開 facade
 //! `compile()` → `compiler::dump::dump_publication`（`publication::Publication` の決定的テキスト
 //! ダンプ）を通す。ダンプは確定座標のテキスト表現であり krilla の描画は含まないが、`Publication` の
 //! メタデータ・リンク・しおりまで含むため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が広い。
@@ -216,20 +216,16 @@
 //!
 //! # 新機能に golden テストを足す
 //!
-//! 1. `tests/text/<name>.sei` に機能を exercise する入力を追加する
-//! 2. [`GOLDEN_INPUTS`] に名前を登録する。機能が既定で無効なら `test_support` の
-//!    fixture 差分（style / config）に有効化を追記する（config 差分は生 TOML の 1 系統だけ）
-//! 3. `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で golden を生成し、内容を確認してコミットする
-//!
-//! 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存するため除外）。
+//! 1. `tests/text/<name>.sei` に機能を exercise する入力を追加する（直下に置けば golden の対象。比較しないなら
+//!    理由を添えて [`NON_GOLDEN_FIXTURES`] へ。外部ファイルにレイアウトが依存する入力は対象外）
+//! 2. 機能が既定で無効なら `test_support` の fixture 差分（style / config）に有効化を追記する
+//!    （config 差分は生 TOML の 1 系統だけ）
+//! 3. `cargo insta test -p seiran-compiler` で候補を作り、`cargo insta review` で内容を確認して承認し、コミットする
 
-use std::{
-  fs, iter,
-  ops::Range,
-  path::{Path, PathBuf},
-};
+use std::{ffi::OsStr, fs, iter, ops::Range, path::Path};
 
 use harfrust::Font;
+use insta::{Settings, assert_snapshot, glob};
 use read_fonts::{
   FontRef, TableProvider,
   tables::math::{MathConstant, MathKernCorner, StretchAxis},
@@ -248,83 +244,9 @@ use crate::{
   typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
 };
 
-/// golden 比較対象の入力名。
-const GOLDEN_INPUTS: &[&str] = &[
-  "align",
-  "block_indent",
-  "cases",
-  "cite",
-  "code",
-  "color",
-  "counter_format",
-  "equation",
-  "flush",
-  "font_fallback",
-  "footnote",
-  "footnote_columns",
-  "footnote_per_page",
-  "footnote_split",
-  "gather",
-  "hyperref",
-  "hyphenation",
-  "index",
-  "index_groups",
-  "index_ranges",
-  "index_right",
-  "index_split",
-  "itemize",
-  "justify",
-  "math_accent",
-  "math_array",
-  "math_binom",
-  "math_break",
-  "math_color",
-  "math_explicit_space",
-  "math_fenced",
-  "math_frac",
-  "math_limits",
-  "math_operator_names",
-  "math_script",
-  "math_spacing",
-  "math_symbols",
-  "math_text",
-  "math_wide_accent",
-  "matrix",
-  "multiline",
-  "num",
-  "num_text_typeface",
-  "outline_math",
-  "pagebreak",
-  "qty",
-  "qty_text_typeface",
-  "quote",
-  "ref",
-  "split",
-  "table",
-  "table_break",
-  "table_footnote",
-  "table_math",
-  "table_partial_rules",
-  "table_rowspan",
-  "table_rules",
-  "table_wrap",
-  "table_wrap_hyphenation",
-  "text",
-  "text_center",
-  "text_right",
-  "theorem",
-  "title_page",
-  "toc",
-  "toc_center",
-  "toc_inline",
-  "unit",
-  "unit_slash_dot",
-  "unit_text_typeface",
-  "yakumono",
-];
-
-/// golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden`）を返す。
-fn golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"); }
+/// `tests/text/` 直下で golden と比較しない fixture。`figure` / `svg_text` は画像の実体にレイアウトが依存し、
+/// `index_baseline` / `keepwithnext` は直接アサートするテストの入力。
+const NON_GOLDEN_FIXTURES: &[&str] = &["figure", "index_baseline", "keepwithnext", "svg_text"];
 
 /// `compile()` を入口として fixture を組版し、`Publication` のダンプを返す。
 fn dump_publication_of(name: &str) -> String {
@@ -343,31 +265,18 @@ fn dump_pages_of(name: &str) -> String {
 
 #[test]
 fn layout_dumps_match_golden() {
-  let update = std::env::var_os("UPDATE_GOLDEN").is_some();
-  if update {
-    fs::create_dir_all(golden_dir()).expect("golden ディレクトリの作成");
-  }
-
-  let mut mismatches = Vec::new();
-  for name in GOLDEN_INPUTS {
-    let dump = dump_publication_of(name);
-    let golden_path = golden_dir().join(format!("{name}.txt"));
-    if update {
-      fs::write(&golden_path, &dump).expect("golden の書き出し");
-    } else {
-      let expected = fs::read_to_string(&golden_path).unwrap_or_else(|error| {
-        panic!("golden が未生成です: {} ({error})。UPDATE_GOLDEN=1 で生成してください", golden_path.display())
-      });
-      if dump != expected {
-        mismatches.push(*name);
-      }
+  glob!("../../../../tests/text", "*.sei", |path| {
+    let name = path.file_stem().and_then(OsStr::to_str).expect("fixture 名は UTF-8 のはず");
+    if NON_GOLDEN_FIXTURES.contains(&name) {
+      return;
     }
-  }
-
-  assert!(
-    mismatches.is_empty(),
-    "レイアウトダンプが golden と一致しません: {mismatches:?}（意図した変更なら UPDATE_GOLDEN=1 で再生成し git diff で確認）"
-  );
+    let dump = dump_publication_of(name);
+    let mut settings = Settings::clone_current();
+    settings.set_snapshot_path("../../tests/golden");
+    settings.set_prepend_module_to_snapshot(false);
+    settings.remove_snapshot_suffix();
+    settings.bind(|| assert_snapshot!(name, dump));
+  });
 }
 
 /// 組版中間表現を取り出すテストヘルパが `input::load` の横断検証を迂回していないことの検査。
