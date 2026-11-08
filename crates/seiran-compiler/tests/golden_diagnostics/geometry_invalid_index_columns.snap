@@ -1,0 +1,10 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+typeset::geometry::invalid_index_columns
+
+  × 索引の 1 段あたりの幅が 0 以下になりました（本文幅 1204.7pt / 段数 3 / 段間 5000.0pt）。
+  help: style.toml の [index].column_count を減らすか、[columns].gap（索引も本文と同じ段間を使いま
+        す）を小さくしてください。または style.toml の [page].margin_left / margin_right を狭め
+        る・config.toml の [pdf].width を広げて本文幅を確保してください。

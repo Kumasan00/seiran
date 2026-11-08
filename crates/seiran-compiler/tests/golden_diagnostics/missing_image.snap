@@ -1,0 +1,9 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+typeset::image::read_image
+
+  × 画像ファイルを読み込めませんでした: ./tests/image/does-not-exist.jpg
+  ╰─▶ プロジェクトに登録されていないパスです
+  help: 画像ファイルのパスと読み取り権限を確認してください。

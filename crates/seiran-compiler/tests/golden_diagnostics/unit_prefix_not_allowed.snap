@@ -1,0 +1,15 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::unit_prefix_not_allowed
+
+  × 単位 min には接頭辞 k を付けられません
+   ╭─[tests/text/diagnostics/unit_prefix_not_allowed.sei:3:17]
+ 2 │ 
+ 3 │ 時間は \unit{kmin} です。
+   ·              ──┬─
+   ·                ╰── 接頭辞 k と単位 min と読めます
+   ╰────
+  help: 接頭辞を付けられるのは SI 単位（°C を含む）と L・l・t・eV・Da・Np・B だけです。min・h・d・
+        au・°・′・″・ha・% には付けられません

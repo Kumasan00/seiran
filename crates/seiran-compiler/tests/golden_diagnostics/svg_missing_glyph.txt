@@ -1,6 +1,0 @@
-typeset::image::svg_missing_glyph
-
-  × SVG の文字を組めるフォントがありません: ./tests/image/svg_text_missing_glyph.svg（「😀」
-  │ (U+1F600)、「🙂」(U+1F642)）
-  help: font-family で選んだ系統（serif / sans-serif / monospace）の枠の候補に、この文字を持つフォ
-        ントを加えてください。
