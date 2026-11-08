@@ -1,3 +1,8 @@
+---
+source: crates/seiran-pdf/tests/pdf_structure.rs
+expression: dump
+input_file: tests/text/figure.sei
+---
 page_count=3
 embedded_font_count=8
 link_annotation_count=0

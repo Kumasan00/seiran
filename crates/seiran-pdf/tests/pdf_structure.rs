@@ -1,22 +1,22 @@
 //! PDF 構造の golden スナップショット回帰テスト
 //!
-//! 独立した reader（`lopdf`）で PDF を読み返し、決定的な構造情報だけを比較する。
+//! 独立した reader（`lopdf`）で PDF を読み返し、決定的な構造情報だけを insta のスナップショット
+//! `tests/golden_pdf_structure/<fixture>.snap` と比較する。
 //!
 //! 入力は `crates/seiran-compiler/tests/config/` の fixture で、
 //! `seiran_compiler::compile` → [`seiran_pdf::render`] という本番の経路をそのまま通す。
 
 use std::{
   collections::BTreeMap,
+  ffi::OsStr,
   fs,
   path::{Path, PathBuf},
 };
 
+use insta::{Settings, assert_snapshot, glob};
 use lopdf::{Document, Encoding, Object, content::Content};
 use seiran_compiler::{FilesystemProjectSource, ProjectPath};
 use tempfile::TempDir;
-
-/// PDF 構造 golden の対象入力。
-const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure", "font_fallback", "svg_text"];
 
 /// `font_fallback` の `serif` の 2 つ目の候補（fixture の `sans_serif` と同じ Noto Sans）。`serif_bold` の見出しの前に置く
 const FALLBACK_SERIF_CANDIDATE: &str = r#"[[font_configs.serif]]
@@ -46,11 +46,6 @@ fn workspace_root() -> PathBuf {
     .nth(2)
     .expect("crates/seiran-pdf の 2 階層上がワークスペースルート")
     .to_path_buf();
-}
-
-/// PDF 構造 golden ファイルを置くディレクトリを返す。
-fn pdf_structure_golden_dir() -> PathBuf {
-  return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
 }
 
 /// 指定キーで始まる行を差し替える。
@@ -299,31 +294,15 @@ fn dump_pdf_structure(bytes: &[u8]) -> String {
 
 #[test]
 fn pdf_structure_matches_golden() {
-  let update = std::env::var_os("UPDATE_GOLDEN").is_some();
-  if update {
-    fs::create_dir_all(pdf_structure_golden_dir()).expect("golden ディレクトリの作成");
-  }
-
-  let mut mismatches = Vec::new();
-  for name in PDF_STRUCTURE_INPUTS {
+  glob!("../../../tests/text", "{text,hyperref,figure,font_fallback,svg_text}.sei", |path| {
+    let name = path.file_stem().and_then(OsStr::to_str).expect("fixture 名は UTF-8 のはず");
     let dump = dump_pdf_structure(&build_pdf_bytes(name));
-    let golden_path = pdf_structure_golden_dir().join(format!("{name}.txt"));
-    if update {
-      fs::write(&golden_path, &dump).expect("golden の書き出し");
-    } else {
-      let expected = fs::read_to_string(&golden_path).unwrap_or_else(|error| {
-        panic!("golden が未生成です: {} ({error})。UPDATE_GOLDEN=1 で生成してください", golden_path.display())
-      });
-      if dump != expected {
-        mismatches.push(*name);
-      }
-    }
-  }
-
-  assert!(
-    mismatches.is_empty(),
-    "PDF 構造ダンプが golden と一致しません: {mismatches:?}（意図した変更なら UPDATE_GOLDEN=1 で再生成し git diff で確認）"
-  );
+    let mut settings = Settings::clone_current();
+    settings.set_snapshot_path("golden_pdf_structure");
+    settings.set_prepend_module_to_snapshot(false);
+    settings.remove_snapshot_suffix();
+    settings.bind(|| assert_snapshot!(name, dump));
+  });
 }
 
 #[test]
