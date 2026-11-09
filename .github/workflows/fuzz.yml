@@ -41,6 +41,8 @@ jobs:
           path: fuzz/corpus/frontend
           key: fuzz-corpus-frontend-${{ github.run_id }}
           restore-keys: fuzz-corpus-frontend-
+      - name: List restored corpus
+        run: ls fuzz/corpus/frontend | wc -l
       - name: Run fuzz
         shell: bash
         env:
