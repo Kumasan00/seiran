@@ -881,7 +881,7 @@ mod tests {
   use proptest::prelude::*;
 
   use super::*;
-  use crate::frontend::syntax::lexer;
+  use crate::frontend::syntax::{lexer, preservation};
 
   /// テスト用の環境名 → [`BodyMode`] 解決関数
   fn test_env_body(name: &str) -> BodyMode {
@@ -2381,62 +2381,13 @@ mod tests {
     assert!(args[0].first_child_of_kind(SyntaxKind::MathGroup).is_some(), "裸の `{{b}}` は数式グループ");
   }
 
-  /// トークン列が入力を敷き詰めることを検査する
-  ///
-  /// 先頭が 0・隣どうしが接する・両端が字の境界・末尾が入力の終わり、の 4 つが揃えば各トークンの字面を順に連結した
-  /// 文字列は入力とバイト単位で一致する（最後の `assert_eq!` はその帰結）。空のトークンは verbatim の空の本体だけに許す
-  /// （raw 走査は本体が空でも 1 個積む。レキサーは `VerbatimText` を返さないので、字句解析では毎トークン前進する）。
-  fn assert_tokens_tile(tokens: &[Token], source: &str) {
-    let mut end = 0u32;
-    for token in tokens {
-      let span = token.span;
-      assert_eq!(span.start, end, "トークンの間に欠落・重複がある: {source:?} の {token:?}");
-      assert!(
-        span.start < span.end || token.kind == TokenKind::VerbatimText,
-        "verbatim の空の本体以外に空のトークンがある: {source:?} の {token:?}"
-      );
-      assert!(
-        source.is_char_boundary(span.start as usize) && source.is_char_boundary(span.end as usize),
-        "トークンの端が字の境界にない: {source:?} の {token:?}"
-      );
-      end = span.end;
-    }
-    assert_eq!(end as usize, source.len(), "トークンが入力の末尾まで届かない: {source:?}");
-    let text: String = tokens.iter().map(|token| return token.text(source)).collect();
-    assert_eq!(text, source);
-  }
-
-  /// CST の葉（トークン）を深さ優先・子の順で集める
-  fn leaf_tokens(node: &CstNode<'_>, out: &mut Vec<Token>) {
-    for child in node.children {
-      match child {
-        CstElement::Token(token) => out.push(*token),
-        CstElement::Node(node) => leaf_tokens(node, out),
-      }
-    }
-  }
-
   /// 字句解析のトークン列と、構文解析が成功したときの CST の葉がどちらも入力を敷き詰めることを検査し、構文解析の成否を返す
-  ///
-  /// 成功時は root の span が入力全体であることも検査する（末尾のトリビアを落とさない）。
-  #[expect(
-    clippy::panic_in_result_fn,
-    reason = "検査の破れは proptest に縮小させるため panic で表す。返す `Result` は検査対象の構文解析の成否で、検査の結果ではない"
-  )]
   fn parse_and_check_preservation(source: &str) -> Result<(), SyntaxError> {
-    let tokens: Vec<Token> = Lexer::new(source).collect();
-    assert_tokens_tile(&tokens, source);
+    preservation::assert_lexer_preserves(source);
 
     let arena = Bump::new();
     let root = parse_cst(source, &arena)?;
-    let mut leaves = Vec::new();
-    leaf_tokens(root, &mut leaves);
-    assert_tokens_tile(&leaves, source);
-    assert_eq!(
-      (root.span.start, root.span.end as usize),
-      (0, source.len()),
-      "root の span が入力全体でない: {source:?}"
-    );
+    preservation::assert_cst_preserves(root, source);
     return Ok(());
   }
 
