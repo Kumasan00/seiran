@@ -6,6 +6,8 @@
 # - -timeout=10: 1 入力 10 秒を超えたら timeout-* として保存する
 # - -rss_limit_mb=2048: 2 GB を超えたら oom-* として保存する
 # - -max_len=8192: 1 入力 8192 バイト（tests/text/perf の大きい fixture も切り詰めて読む）
+# ASan は使わない（--sanitizer none）。frontend は unsafe を持たない safe Rust で、stack overflow は Rust の abort を
+# libFuzzer が拾い、整数オーバーフローは -Cdebug-assertions が panic にする。
 # 第 2 引数以降は libFuzzer へそのまま渡す（後ろに付くので上の既定を上書きできる）。
 #
 # 新入力は先頭の fuzz/corpus/frontend だけに書かれ、fuzz/seeds/frontend と tests/text は読むだけ。
@@ -21,6 +23,6 @@ if [ "$#" -gt 0 ]; then
   shift
 fi
 mkdir -p "$root/fuzz/corpus/frontend"
-exec cargo +nightly fuzz run frontend "$root/fuzz/corpus/frontend" "$root/fuzz/seeds/frontend" "$root/tests/text" -- \
+exec cargo +nightly fuzz run --sanitizer none frontend "$root/fuzz/corpus/frontend" "$root/fuzz/seeds/frontend" "$root/tests/text" -- \
   -dict="$root/fuzz/frontend.dict" -max_total_time="$seconds" \
   -timeout=10 -rss_limit_mb=2048 -max_len=8192 "$@"
