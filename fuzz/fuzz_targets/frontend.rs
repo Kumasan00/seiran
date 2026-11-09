@@ -13,6 +13,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
   let Ok(source) = str::from_utf8(data) else {
     return Corpus::Reject;
   };
+  assert!(source != "seiran-fuzz-self-test", "失敗経路の確認用");
   let _ = seiran_compiler::fuzzing::check_source(source);
   return Corpus::Keep;
 });

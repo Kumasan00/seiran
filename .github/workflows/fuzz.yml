@@ -9,6 +9,8 @@ on:
         description: "探索する秒数（-max_total_time）"
         required: false
         default: "900"
+  push:
+    branches: [test/frontend-fuzzing]
   schedule:
     # 水曜・日曜 03:00 JST（Actions cache は 7 日アクセスが無いと消えるので、週 1 だと corpus の引き継ぎが際どい）
     - cron: "0 18 * * 2,6"
@@ -43,7 +45,7 @@ jobs:
         shell: bash
         env:
           # schedule には inputs が無いので既定へ落ちる（`SECONDS` は bash の特殊変数なので使わない）
-          FUZZ_SECONDS: ${{ inputs.seconds || '1800' }}
+          FUZZ_SECONDS: ${{ inputs.seconds || (github.event_name == 'push' && '120') || '1800' }}
         # 既知のクラッシュで探索が止まらないよう fork モードで最後まで回し、失敗入力の有無は次の step で判定する
         run: |
           tools/fuzz-frontend.sh "$FUZZ_SECONDS" -fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 2>&1 \
