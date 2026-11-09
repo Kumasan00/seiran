@@ -78,7 +78,9 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use super::{Outcome, check_source};
+  use miette::{LabeledSpan, MietteDiagnostic};
+
+  use super::{Outcome, assert_labels_inside, check_source};
 
   /// リポジトリの root
   fn repo_root() -> PathBuf { return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."); }
@@ -124,6 +126,23 @@ mod tests {
     }
 
     assert_eq!(reached, BTreeSet::from([Outcome::SyntaxError, Outcome::EvalError, Outcome::Evaluated]));
+  }
+
+  #[test]
+  #[should_panic(expected = "診断ラベルは入力の内側で字の境界にあるはず")]
+  fn label_check_rejects_label_past_source_end() {
+    let diagnostic = MietteDiagnostic::new("e").with_label(LabeledSpan::at(2..4, "x"));
+
+    assert_labels_inside(&diagnostic, "abc");
+  }
+
+  #[test]
+  #[should_panic(expected = "診断ラベルは入力の内側で字の境界にあるはず")]
+  fn label_check_rejects_label_inside_a_character() {
+    // 「あ」は 3 バイトなので 1 は字の内側
+    let diagnostic = MietteDiagnostic::new("e").with_label(LabeledSpan::at(1..3, "x"));
+
+    assert_labels_inside(&diagnostic, "あい");
   }
 
   #[test]

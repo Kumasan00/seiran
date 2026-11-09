@@ -491,9 +491,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   そのものを検証するテストは resolver を明示して `frontend::parse` を直接呼ぶ
 - `evaluator::test_support`（非公開 `mod`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
   配下の test module だけが使う（子孫は親の非公開項目に到達できるので、`evaluator` の外へ幅を広げない）
-- `syntax::preservation` / `hir_invariants`（`cfg(any(test, feature = "fuzzing"))`）: frontend の不変条件
+- `syntax::preservation` / `hir_invariants`（`cfg(any(test, feature = "fuzzing"))`）: frontend の出力の不変条件
   （トークンと CST の入力保存、HIR の決定性・`NodeId` の一意性と親子の順序・span の範囲と字の境界）の**唯一の
-  定義**。通常テスト（parser の proptest・fixture のループ）と fuzz 入口が同じ関数を呼ぶ — 新しい frontend の
+  定義**（診断ラベルの範囲だけは任意入力でしか意味を持たないので `fuzzing` が持つ）。通常テスト（parser の proptest・fixture のループ）と fuzz 入口が同じ関数を呼ぶ — 新しい frontend の
   不変条件はここへ足し、テスト側に検査を複製しない。構文解析は呼び出し側が行う（parser のテストはテスト用、
   fuzz は本番の `mode_resolver`）
 - `fuzzing`（`feature = "fuzzing"` のときだけ）: 任意入力を本番と同じ経路で通す fuzz 入口 `check_source`。
@@ -1859,14 +1859,15 @@ frontend の fuzz target（cargo-fuzz）と、corpus の到達段を数える開
 - 依存は `seiran_compiler::fuzzing`（feature `fuzzing`）と libfuzzer-sys だけで、frontend の内部型に触れない —
   防火壁は `check_source` が `&str` を取り到達段 `Outcome` だけを返す形
 - root workspace の member だが `default-members` には入れない。root の `cargo build` / `test` / `clippy` / `doc`
-  は製品 3 crate だけを対象にし、libFuzzer の C++ ビルド・feature `fuzzing` の unification・計装なしの fuzz bin
-  のリンクを製品側と通常 CI へ持ち込まない。fmt（`--all`）と `[workspace.lints]` は効く
+  は製品 3 crate だけを対象にし、製品ビルド（feature なし）へ feature `fuzzing` を unify させず、計装なしの fuzz bin
+  をリンクしない（feature `fuzzing` 自体は `--all-features` の通常 CI で seiran-compiler 側の検査とテストに使う）。
+  fmt（`--all`）と `[workspace.lints]` は効き、lint は `ci.yml` が `cargo clippy -p seiran-fuzz` で別に回す
 
 ### 不変条件・注意点
 
 - fuzz target を `[[bin]]` 以外に置かない・集計ツールを `[[bin]]` にしない（cargo-fuzz は bin をすべて fuzz target
   とみなす）
-- 長時間の fuzz は pre-commit や `ci.yml` に入れない（`.github/workflows/fuzz.yml` の手動・週次だけ）
+- 長時間の fuzz は pre-commit や `ci.yml` に入れない（`.github/workflows/fuzz.yml` の手動・定期だけ）
 - fuzz のビルドでは root の release profile の `lto` と `strip` を外す（`tools/fuzz-frontend.sh` が
   `CARGO_PROFILE_RELEASE_LTO=false` / `CARGO_PROFILE_RELEASE_STRIP=false` を設定する）。LTO は ASan が参照する
   sancov の大域変数を落として Linux の link を壊し、strip はクラッシュ時のスタックトレースを読めなくする。ASan は

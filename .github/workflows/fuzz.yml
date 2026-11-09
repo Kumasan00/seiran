@@ -1,6 +1,6 @@
 name: Fuzz
 
-# frontend の coverage-guided fuzz を手動・週次で回す（全 PR の必須チェックにはしない）。
+# frontend の coverage-guided fuzz を手動・定期（週 2 回）で回す（全 PR の必須チェックにはしない）。
 # 実行フラグと資源予算は tools/fuzz-frontend.sh 1 箇所が持ち、手順は fuzz/README.md。
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ on:
         required: false
         default: "900"
   schedule:
-    # 日曜 03:00 JST
-    - cron: "0 18 * * 6"
+    # 水曜・日曜 03:00 JST（Actions cache は 7 日アクセスが無いと消えるので、週 1 だと corpus の引き継ぎが際どい）
+    - cron: "0 18 * * 2,6"
 
 permissions:
   contents: read
@@ -44,7 +44,17 @@ jobs:
         env:
           # schedule には inputs が無いので既定へ落ちる（`SECONDS` は bash の特殊変数なので使わない）
           FUZZ_SECONDS: ${{ inputs.seconds || '1800' }}
-        run: tools/fuzz-frontend.sh "$FUZZ_SECONDS" 2>&1 | tee fuzz-frontend.log
+        # 既知のクラッシュで探索が止まらないよう fork モードで最後まで回し、失敗入力の有無は次の step で判定する
+        run: |
+          tools/fuzz-frontend.sh "$FUZZ_SECONDS" -fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 2>&1 \
+            | tee fuzz-frontend.log
+      - name: Fail on failing inputs
+        shell: bash
+        run: |
+          if compgen -G 'fuzz/artifacts/frontend/*' > /dev/null; then
+            ls -l fuzz/artifacts/frontend
+            exit 1
+          fi
       - name: Save corpus
         # 素の actions/cache は成功時しか保存しないので、クラッシュを見つけた回の corpus も残すよう分ける
         if: always()
