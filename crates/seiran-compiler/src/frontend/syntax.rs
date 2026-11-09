@@ -3,7 +3,7 @@
 mod cst;
 mod lexer;
 mod parser;
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzing"))]
 pub(super) mod preservation;
 pub(super) mod token;
 
