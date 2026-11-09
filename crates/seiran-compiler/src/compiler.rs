@@ -13,6 +13,8 @@ mod dump;
 mod golden;
 mod input;
 #[cfg(test)]
+mod nesting_depth;
+#[cfg(test)]
 mod project_source_equivalence;
 mod source_diagnostic;
 #[cfg(test)]
