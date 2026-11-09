@@ -6,7 +6,8 @@
 //! [`Compilation`]（[`Publication`] とそこから到達できる leaf 値型を含む）・失敗型 [`CompileFailure`]・
 //! 入力 seam（[`ProjectSource`] とその実装 / [`ProjectPath`] / [`ProjectSourceError`]）・
 //! leaf 値型（[`Length`] / [`Color`] とその `FromStr` エラー型 / [`FontType`] / [`FontFace`] / [`VariationAxis`]）だけ（`#[doc(hidden)]` の
-//! `test_support` は統合テスト向けの fixture 経路で、API ではない）。
+//! `test_support` は統合テスト向けの fixture 経路、`feature = "fuzzing"` のときだけ出る `fuzzing` は `fuzz/` crate
+//! 向けの frontend 検査の入口で、どちらも API ではない）。
 
 mod color;
 mod compiler;
@@ -25,6 +26,9 @@ mod typeset;
 pub use color::{Color, ParseColorError};
 pub use compiler::{Compilation, CompileFailure, DependencyManifest, Warnings, compile};
 pub use document::ImageFormat;
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub use frontend::fuzzing;
 pub use length::{Length, ParseLengthError};
 #[doc(hidden)]
 pub use project::test_support;

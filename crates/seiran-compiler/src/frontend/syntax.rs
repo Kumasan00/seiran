@@ -3,6 +3,8 @@
 mod cst;
 mod lexer;
 mod parser;
+#[cfg(any(test, feature = "fuzzing"))]
+pub(super) mod preservation;
 pub(super) mod token;
 
 pub(super) use cst::{CstElement, CstNode, kind, kind::SyntaxKind, view};

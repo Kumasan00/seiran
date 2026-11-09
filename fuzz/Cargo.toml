@@ -1,0 +1,23 @@
+[package]
+name = "seiran-fuzz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys.workspace = true
+seiran-compiler = { workspace = true, features = ["fuzzing"] }
+
+[[bin]]
+name = "frontend"
+path = "fuzz_targets/frontend.rs"
+test = false
+doc = false
+bench = false
+
+[lints]
+workspace = true

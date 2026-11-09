@@ -20,3 +20,9 @@ fonts/
 # insta の未承認スナップショット（cargo insta review で承認・却下する）
 *.snap.new
 *.pending-snap
+
+# cargo-fuzz の生成物（seed は fuzz/seeds に commit し、探索で増えた corpus は commit しない）
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage

@@ -15,13 +15,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | 言語設計の目的・原則・判断事例                                                                                                                                                                            | `docs/language-design.md`                                                         | 新コマンド・環境・オプション・style フィールドを設計するとき |
 | crate / module の境界・依存の向き・段間プロトコル・不変条件と style.toml の設計（module の責務の全文と目録＝子 module・関数・フィールドは `//!` と doc コメント、style のキー一覧は style struct の doc） | `docs/architecture.md`                                                            | 特定の crate / module を触る前（該当節）                     |
-| コーディング規約の全文・根拠・lint との対応                                                                                                                                                               | `docs/coding-conventions.md`                                                      | 規約の境界事例に迷ったとき                                   |
+| コーディング規約の全文・根拠・lint との対応、proptest / fuzz / golden の使い分け                                                                                                                          | `docs/coding-conventions.md`                                                      | 規約の境界事例に迷ったとき                                   |
 | lint の採用根拠（1 lint = 1 行）/ 設定値 / フォーマット                                                                                                                                                   | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml`                                | lint が発火したとき                                          |
 | 言語機能の実装手順                                                                                                                                                                                        | `add-language-feature` skill                                                      | 設計合意済みの機能を実装するとき                             |
 | エラー型・診断・集約・warning・garde                                                                                                                                                                      | `docs/error-handling.md`（`error-handling` skill は読むタイミングと節の案内だけ） | エラー型を足す・診断を設計するとき                           |
 | 組版変更の検証・golden                                                                                                                                                                                    | `verify-typesetting` skill                                                        | 組版・数式・seiran-pdf・パーサ以降を変えた後                 |
 | issue / PR / branch / commit / ラベル                                                                                                                                                                     | `issue-pr-ops` skill                                                              | GitHub で何かを作る・編集する前                              |
 | ドキュメント更新漏れのチェックリスト                                                                                                                                                                      | `docs-sync` skill                                                                 | PR を仕上げるとき                                            |
+| frontend の fuzz（実行・失敗入力の再現と最小化・corpus・CI）                                                                                                                                              | `fuzz/README.md`                                                                  | fuzz を回す・失敗入力を調べるとき                            |
 | ユーザ向け（インストール・コマンド・設定例）                                                                                                                                                              | `README.md`                                                                       | —                                                            |
 
 ## 言語設計原則
@@ -63,6 +64,7 @@ cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pr
 cargo test --all-features                                  # テスト実行（doctest 込み。CI / pre-commit と同じ形）
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features   # doc ビルド（CI と同じ形）
 git config core.hooksPath .git-hooks                      # pre-commit（fmt / clippy / test）を有効化。clone 後に 1 回
+tools/fuzz-frontend.sh [秒数]                              # frontend の fuzz（nightly + cargo-fuzz。手順は fuzz/README.md）
 ```
 
 `cargo fmt` は **nightly toolchain が必須**です（`rustfmt.toml` の `unstable_features`。根拠は `docs/coding-conventions.md` 必須ルール 2）。`build` サブコマンドの `-c` / `--config-path` を省略した場合は `./config/config.toml` が使用されます。
@@ -131,6 +133,8 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran。seiran-compiler と seiran-pdf の両方に依存）。`build` は compile → render → atomic write → 表示の 4 手順のみ（ほかにフォント調査の 3 サブコマンド。`read-fonts` を直接使い compiler に依存しない）
+seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler に feature `fuzzing` で依存し、
+                   nightly 専用で `default-members` 外（root の build / test / clippy / doc に含まれず、製品に入らない）
 ```
 
 `seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型と `SvgParser` だけで、`ProjectConfig` /
@@ -240,6 +244,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 - 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` / `project::config` の 10 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod`（`project::config`）で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
+- 検証手段（proptest / fuzz / golden）の使い分けは `docs/coding-conventions.md`「テスト」節。frontend の出力の不変条件は `frontend::syntax::preservation` / `frontend::hir_invariants` の 1 箇所（診断ラベルの範囲だけ `frontend::fuzzing`）で、通常テストと fuzz（手順は `fuzz/README.md`）が共有する
 - golden テスト・組版変更の検証・資産取得（初回 `tools/fetch-test-assets.sh`）・golden の候補レビュー・承認は `verify-typesetting` skill
 
 ## コード検索

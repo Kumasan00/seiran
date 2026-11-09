@@ -1,0 +1,104 @@
+name: Fuzz
+
+# frontend の coverage-guided fuzz を手動・定期（週 2 回）で回す（全 PR の必須チェックにはしない）。
+# 実行フラグと資源予算は tools/fuzz-frontend.sh 1 箇所が持ち、手順は fuzz/README.md。
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "探索する秒数（-max_total_time）"
+        required: false
+        default: "900"
+  schedule:
+    # 水曜・日曜 03:00 JST（Actions cache は 7 日アクセスが無いと消えるので、週 1 だと corpus の引き継ぎが際どい）
+    - cron: "0 18 * * 2,6"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  frontend:
+    name: Fuzz frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        # 配布バイナリ（musl 版）だと cargo-fuzz が既定の --target を musl にし、ASan が静的 libc を拒否するので
+        # 実行環境（gnu）でビルドして入れる
+        run: cargo install cargo-fuzz --locked
+      - uses: Swatinem/rust-cache@v2
+      - name: Restore corpus
+        uses: actions/cache/restore@v6
+        with:
+          path: fuzz/corpus/frontend
+          key: fuzz-corpus-frontend-${{ github.run_id }}
+          restore-keys: fuzz-corpus-frontend-
+      - name: Run fuzz
+        shell: bash
+        env:
+          # schedule には inputs が無いので既定へ落ちる（`SECONDS` は bash の特殊変数なので使わない）
+          FUZZ_SECONDS: ${{ inputs.seconds || '1800' }}
+        # 既知のクラッシュで探索が止まらないよう fork モードで最後まで回し、失敗入力の有無は次の step で判定する
+        run: |
+          tools/fuzz-frontend.sh "$FUZZ_SECONDS" -fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 2>&1 \
+            | tee fuzz-frontend.log
+      - name: Replay failing inputs
+        if: always()
+        shell: bash
+        # fork の子プロセスの詳細ログは残らないので、同じ上限で個別に再実行して保存する
+        run: |
+          shopt -s nullglob
+          for artifact in fuzz/artifacts/frontend/*; do
+            [ -f "$artifact" ] || continue
+            mkdir -p fuzz-replay-logs
+            log="fuzz-replay-logs/$(basename "$artifact").log"
+            status=0
+            tools/fuzz-frontend.sh --replay "$artifact" > "$log" 2>&1 || status=$?
+            printf '\nReplay exit status: %s\n' "$status" >> "$log"
+          done
+      - name: Fail on failing inputs
+        if: always()
+        shell: bash
+        run: |
+          if compgen -G 'fuzz/artifacts/frontend/*' > /dev/null; then
+            ls -l fuzz/artifacts/frontend
+            exit 1
+          fi
+      - name: Save corpus
+        # 素の actions/cache は成功時しか保存しないので、クラッシュを見つけた回の corpus も残すよう分ける
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: fuzz/corpus/frontend
+          key: fuzz-corpus-frontend-${{ github.run_id }}
+      - name: Summarize outcomes
+        if: always()
+        run: |
+          {
+            echo '## corpus の到達段'
+            echo '```'
+            cargo +nightly run -p seiran-fuzz --example corpus_stats -- fuzz/corpus/frontend
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/frontend
+          if-no-files-found: ignore
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-log
+          path: |
+            fuzz-frontend.log
+            fuzz-replay-logs/*.log
+          if-no-files-found: ignore

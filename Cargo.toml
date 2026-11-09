@@ -4,6 +4,13 @@ members = [
   "crates/seiran",
   "crates/seiran-compiler",
   "crates/seiran-pdf",
+  "fuzz",
+]
+# fuzz（nightly + libFuzzer）は root の build / test / clippy / doc に含めない
+default-members = [
+  "crates/seiran",
+  "crates/seiran-compiler",
+  "crates/seiran-pdf",
 ]
 
 [workspace.package]
@@ -35,6 +42,7 @@ insta = { version = "1.49.0", features = ["glob"] }
 itertools = "0.15.0"
 krilla = { version = "0.8.2", default-features = false, features = ["pdf", "raster-images", "rayon"] }
 krilla-svg = "0.8.1"
+libfuzzer-sys = "0.4.13"
 lopdf = { version = "0.47.0", default-features = false }
 memchr = "2.8.2"
 miette = "7.6.0"

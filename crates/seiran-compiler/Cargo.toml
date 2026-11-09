@@ -38,6 +38,10 @@ tracing.workspace = true
 unic-langid.workspace = true
 usvg.workspace = true
 
+[features]
+# frontend の不変条件検査を fuzz crate（`fuzz/`）へ出す入口。製品ビルドでは off。
+fuzzing = []
+
 [dev-dependencies]
 insta.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }

@@ -1,7 +1,10 @@
 //! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
 
 mod evaluator;
-#[cfg(test)]
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub mod fuzzing;
+#[cfg(any(test, feature = "fuzzing"))]
 mod hir_invariants;
 mod syntax;
 #[cfg(test)]
