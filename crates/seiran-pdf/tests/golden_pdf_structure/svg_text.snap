@@ -1,0 +1,11 @@
+---
+source: crates/seiran-pdf/tests/pdf_structure.rs
+expression: dump
+input_file: tests/text/svg_text.sei
+---
+page_count=1
+embedded_font_count=20
+link_annotation_count=0
+has_outline=true
+image_xobject_count=0
+form_xobject_count=0

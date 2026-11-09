@@ -1,22 +1,25 @@
 //! PDF 構造の golden スナップショット回帰テスト
 //!
-//! 独立した reader（`lopdf`）で PDF を読み返し、決定的な構造情報だけを比較する。
+//! 独立した reader（`lopdf`）で PDF を読み返し、決定的な構造情報だけを insta のスナップショット
+//! `tests/golden_pdf_structure/<fixture>.snap` と比較する。
 //!
 //! 入力は `crates/seiran-compiler/tests/config/` の fixture で、
 //! `seiran_compiler::compile` → [`seiran_pdf::render`] という本番の経路をそのまま通す。
 
 use std::{
-  collections::BTreeMap,
+  collections::{BTreeMap, BTreeSet},
+  ffi::OsStr,
   fs,
   path::{Path, PathBuf},
 };
 
+use insta::{Settings, assert_snapshot, glob};
 use lopdf::{Document, Encoding, Object, content::Content};
 use seiran_compiler::{FilesystemProjectSource, ProjectPath};
 use tempfile::TempDir;
 
-/// PDF 構造 golden の対象入力。
-const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure", "font_fallback", "svg_text"];
+/// PDF 構造 golden と比較する `tests/text/` 直下の fixture。
+const PDF_STRUCTURE_FIXTURES: &[&str] = &["text", "hyperref", "figure", "font_fallback", "svg_text"];
 
 /// `font_fallback` の `serif` の 2 つ目の候補（fixture の `sans_serif` と同じ Noto Sans）。`serif_bold` の見出しの前に置く
 const FALLBACK_SERIF_CANDIDATE: &str = r#"[[font_configs.serif]]
@@ -46,11 +49,6 @@ fn workspace_root() -> PathBuf {
     .nth(2)
     .expect("crates/seiran-pdf の 2 階層上がワークスペースルート")
     .to_path_buf();
-}
-
-/// PDF 構造 golden ファイルを置くディレクトリを返す。
-fn pdf_structure_golden_dir() -> PathBuf {
-  return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
 }
 
 /// 指定キーで始まる行を差し替える。
@@ -299,31 +297,42 @@ fn dump_pdf_structure(bytes: &[u8]) -> String {
 
 #[test]
 fn pdf_structure_matches_golden() {
-  let update = std::env::var_os("UPDATE_GOLDEN").is_some();
-  if update {
-    fs::create_dir_all(pdf_structure_golden_dir()).expect("golden ディレクトリの作成");
-  }
-
-  let mut mismatches = Vec::new();
-  for name in PDF_STRUCTURE_INPUTS {
+  let pattern = format!("{{{}}}.sei", PDF_STRUCTURE_FIXTURES.join(","));
+  glob!("../../../tests/text", &pattern, |path| {
+    let name = path.file_stem().and_then(OsStr::to_str).expect("fixture 名は UTF-8 のはず");
     let dump = dump_pdf_structure(&build_pdf_bytes(name));
-    let golden_path = pdf_structure_golden_dir().join(format!("{name}.txt"));
-    if update {
-      fs::write(&golden_path, &dump).expect("golden の書き出し");
-    } else {
-      let expected = fs::read_to_string(&golden_path).unwrap_or_else(|error| {
-        panic!("golden が未生成です: {} ({error})。UPDATE_GOLDEN=1 で生成してください", golden_path.display())
-      });
-      if dump != expected {
-        mismatches.push(*name);
-      }
-    }
-  }
+    let mut settings = Settings::clone_current();
+    settings.set_snapshot_path("golden_pdf_structure");
+    settings.set_prepend_module_to_snapshot(false);
+    settings.remove_snapshot_suffix();
+    settings.bind(|| assert_snapshot!(name, dump));
+  });
+}
 
-  assert!(
-    mismatches.is_empty(),
-    "PDF 構造ダンプが golden と一致しません: {mismatches:?}（意図した変更なら UPDATE_GOLDEN=1 で再生成し git diff で確認）"
-  );
+/// `dir` 直下で拡張子が `extension` のファイルの stem を集める。
+fn file_stems(dir: &Path, extension: &str) -> BTreeSet<String> {
+  return fs::read_dir(dir)
+    .expect("fixture・スナップショットのディレクトリを読めるはず")
+    .map(|entry| return entry.expect("ディレクトリの項目を読めるはず").path())
+    .filter(|path| return path.extension().is_some_and(|found| return found == extension))
+    .map(|path| return path.file_stem().and_then(OsStr::to_str).expect("ファイル名は UTF-8 のはず").to_owned())
+    .collect();
+}
+
+#[test]
+fn pdf_structure_snapshots_match_the_compared_fixtures() {
+  // fixture を消す・改名する・一覧を打ち間違えると glob の対象から黙って外れるので、承認済みのスナップショットと突き合わせる
+  let fixtures = file_stems(&workspace_root().join("tests/text"), "sei");
+  let compared: BTreeSet<String> = PDF_STRUCTURE_FIXTURES.iter().map(|name| return (*name).to_owned()).collect();
+
+  let snapshots = file_stems(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure"), "snap");
+
+  let missing: Vec<&String> = compared.difference(&fixtures).collect();
+  assert!(missing.is_empty(), "PDF_STRUCTURE_FIXTURES に tests/text に無い fixture がある: {missing:?}");
+  let orphaned: Vec<&String> = snapshots.difference(&compared).collect();
+  assert!(orphaned.is_empty(), "比較する fixture の無いスナップショットがある: {orphaned:?}");
+  let unapproved: Vec<&String> = compared.difference(&snapshots).collect();
+  assert!(unapproved.is_empty(), "承認済みのスナップショットが無い fixture がある: {unapproved:?}");
 }
 
 #[test]

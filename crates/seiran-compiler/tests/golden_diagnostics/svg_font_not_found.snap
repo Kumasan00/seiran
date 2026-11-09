@@ -1,0 +1,19 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+typeset::image::svg_font_not_found
+
+  × SVG の文字に使うフォントが見つかりません: ./tests/image/svg_text_unknown_family.svg（font-
+  │ family: "Arial"）
+  help: font-family には config.toml で設定したフォントのファミリ名（STIX Two Text、Noto Sans、
+        JetBrains Mono、STIX Two Math、Noto Serif JP、Noto Sans JP、Source Han Code JP）か serif /
+        sans-serif / monospace を指定してください。
+
+Error: typeset::image::svg_font_not_found
+
+  × SVG の文字に使うフォントが見つかりません: ./tests/image/svg_text_unknown_family.svg（font-
+  │ family: "Arial", cursive）
+  help: font-family には config.toml で設定したフォントのファミリ名（STIX Two Text、Noto Sans、
+        JetBrains Mono、STIX Two Math、Noto Serif JP、Noto Sans JP、Source Han Code JP）か serif /
+        sans-serif / monospace を指定してください。

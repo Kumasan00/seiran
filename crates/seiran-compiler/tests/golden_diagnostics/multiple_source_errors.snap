@@ -1,0 +1,27 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::unknown_command
+
+  × 不明なコマンドです: \nonexistentcommand
+   ╭─[tests/text/diagnostics/unknown_command.sei:3:14]
+ 2 │ 
+ 3 │ 本文中に \nonexistentcommand が出現します。
+   ·          ──────────┬─────────
+   ·                    ╰── このコマンドは定義されていません
+   ╰────
+  help: コマンド名 \nonexistentcommand のスペルを確認してください。利用可能なコマンド一覧はドキュ
+        メントを参照してください
+
+Error: frontend::syntax::bare_group
+
+  × 裸の {...} は構文エラーです
+   ╭─[tests/text/diagnostics/bare_braces.sei:3:14]
+ 2 │ 
+ 3 │ 本文中に {裸括弧} が出現します。
+   ·          ┬
+   ·          ╰── この { は許可されない位置にあります
+   ╰────
+  help: `{...}` はコマンドの引数または数式内グループでのみ使用できます。装飾は \bold{...} などの引
+        数型コマンド、または \begin{...}\end{...} 環境を使ってください

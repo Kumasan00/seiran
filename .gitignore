@@ -16,3 +16,7 @@ fonts/
 
 # superpowers plugin の実装計画（作業ファイル。完了分は残さない）
 /docs/superpowers
+
+# insta の未承認スナップショット（cargo insta review で承認・却下する）
+*.snap.new
+*.pending-snap

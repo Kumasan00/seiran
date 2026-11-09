@@ -39,6 +39,7 @@ unic-langid.workspace = true
 usvg.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
 proptest.workspace = true
 tempfile.workspace = true

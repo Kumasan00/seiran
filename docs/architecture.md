@@ -1584,9 +1584,9 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   通る。パスの扱い（`base_dir` 既定は空パス＝ワークスペース相対、`set_current_dir` は使わない、画像も同じ
   規則で登録）と設定上書きの規則（config.toml・style.toml とも生 TOML テーブルへの差分 1 系統）は `//!`。
   字面のまま登録する画像の例外・型付きの config / style 並行実装（`Style` の `Serialize` を含む）を再導入しない
-- `golden`: レイアウトダンプ golden の比較テスト。golden ファイル（`crates/seiran-compiler/tests/golden/`）と
+- `golden`: レイアウトダンプ golden の比較テスト。insta のスナップショット（`crates/seiran-compiler/tests/golden/`）と
   実際に比較するのは主入口 `layout_dumps_match_golden` だけで、公開 facade `compile()` → `dump_publication` を
-  通る。残りは golden を介さず組版中間表現の出口を通る（分類は `//!`、検証手段の使い分けと再生成手順は
+  通る。残りは golden を介さず組版中間表現の出口を通る（分類は `//!`、検証手段の使い分けと候補のレビュー・承認の手順は
   `verify-typesetting` skill）
 - `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。`CompileFailure` を
   `into_report` してレンダリングするので、golden はユーザーが実際に見る表示そのもの。外部資源の read error を

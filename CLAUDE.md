@@ -240,7 +240,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 - 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` / `project::config` の 10 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod`（`project::config`）で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
-- golden テスト・組版変更の検証・資産取得（初回 `tools/fetch-test-assets.sh`）・golden 再生成は `verify-typesetting` skill
+- golden テスト・組版変更の検証・資産取得（初回 `tools/fetch-test-assets.sh`）・golden の候補レビュー・承認は `verify-typesetting` skill
 
 ## コード検索
 

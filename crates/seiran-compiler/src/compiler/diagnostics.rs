@@ -1,12 +1,13 @@
 //! 診断（miette diagnostic）出力の golden スナップショット回帰テスト
 //!
-//! 幅と色を固定して診断をテキスト化し、`tests/golden_diagnostics/` と比較する。
+//! 幅と色を固定して診断をテキスト化し、insta のスナップショット `tests/golden_diagnostics/<name>.snap` と比較する。
 
 use std::{
   fs,
   path::{Path, PathBuf},
 };
 
+use insta::{Settings, assert_snapshot};
 use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme};
 
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
   style,
 };
 
-/// diagnostic golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden_diagnostics`）を返す。
+/// diagnostic golden のスナップショットを置くディレクトリ（`crates/seiran-compiler/tests/golden_diagnostics`）を返す。
 fn diagnostic_golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_diagnostics"); }
 
 /// 診断を固定幅・色なしのテキストへレンダリングする。
@@ -74,18 +75,13 @@ fn assert_points_at(warning: &dyn Diagnostic, source: &str, needle: &str) {
   assert!(warning.source_code().is_some(), "帰属するソースの本文を添えるはず");
 }
 
-/// レンダリング済み診断テキストを golden と比較する（`UPDATE_GOLDEN=1` で再生成）。
+/// レンダリング済み診断テキストを `tests/golden_diagnostics/<name>.snap` と比較する。
 fn assert_matches_golden(name: &str, rendered: &str) {
-  let golden_path = diagnostic_golden_dir().join(format!("{name}.txt"));
-  if std::env::var_os("UPDATE_GOLDEN").is_some() {
-    fs::create_dir_all(diagnostic_golden_dir()).expect("golden ディレクトリの作成");
-    fs::write(&golden_path, rendered).expect("golden の書き出し");
-    return;
-  }
-  let expected = fs::read_to_string(&golden_path).unwrap_or_else(|error| {
-    panic!("golden が未生成です: {} ({error})。UPDATE_GOLDEN=1 で生成してください", golden_path.display())
-  });
-  assert_eq!(rendered, expected, "diagnostic golden が一致しません（{name}）");
+  let _snapshots = test_support::lock_snapshots();
+  let mut settings = Settings::clone_current();
+  settings.set_snapshot_path("../../tests/golden_diagnostics");
+  settings.set_prepend_module_to_snapshot(false);
+  settings.bind(|| assert_snapshot!(name, rendered));
 }
 
 /// `sources` だけを差し替えた fixture を `compile` し、`Err` になった [`CompileFailure`] を返す
@@ -1057,10 +1053,11 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
   let mut checked = 0usize;
   for entry in entries {
     let path = entry.expect("golden エントリを読めるはず").path();
-    if path.extension().is_none_or(|extension| return extension != "txt") {
+    if path.extension().is_none_or(|extension| return extension != "snap") {
       continue;
     }
-    let rendered = fs::read_to_string(&path).expect("golden を読めるはず");
+    let snapshot = fs::read_to_string(&path).expect("golden を読めるはず");
+    let (_, rendered) = snapshot.split_once("\n---\n").expect("insta のスナップショットはヘッダを持つはず");
     for code in forbidden_codes {
       assert!(!rendered.contains(code), "{}: 集約・段 wrapper の code が表示に現れている: {code}", path.display());
     }

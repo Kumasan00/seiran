@@ -27,11 +27,18 @@
 //! `input::load` が本番と同じ deserialize・検証で読み直すので、キー名の打ち間違い（`deny_unknown_fields`）
 //! や型違いはテストの失敗として現れる。上書きが 1 つも無いファイルは
 //! 実ファイルのテキストをそのまま登録する（再直列化を挟まない）。
+//!
+//! # スナップショット比較の直列化
+//!
+//! insta の `glob!` が回っている間は、別スレッドのテストのスナップショット不一致もその glob の失敗として
+//! 数えられ、不一致を出したテスト自身は成功扱いになる（失敗の集約先が process 全体で 1 つ）。glob で回す
+//! テストと他のスナップショット比較は [`SNAPSHOT_LOCK`] を握って直列にする。
 
 use std::{
   collections::HashSet,
   fs,
   path::{Path, PathBuf},
+  sync::{Mutex, MutexGuard, PoisonError},
 };
 
 use crate::{
@@ -42,6 +49,14 @@ use crate::{
 
 /// fixture の設定ファイル（ワークスペースルート相対）。
 const CONFIG_REL: &str = "crates/seiran-compiler/tests/config/config.toml";
+
+/// insta のスナップショット比較を直列にする lock（module doc「スナップショット比較の直列化」）。
+static SNAPSHOT_LOCK: Mutex<()> = Mutex::new(());
+
+/// [`SNAPSHOT_LOCK`] を握る。比較の失敗（panic）で毒されても、守るのは実行の順序だけなので握り直す。
+pub(super) fn lock_snapshots() -> MutexGuard<'static, ()> {
+  return SNAPSHOT_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+}
 
 /// [`TestProjectBuilder::source_text`] のソースを登録するワークスペース相対パス（実在しないファイル名）
 const INLINE_SOURCE_REL: &str = "tests/text/inline.sei";

@@ -63,8 +63,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 `#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError` / `typeset::ComposeError`）は
 `Diagnostic` を実装しない、が既定形。
 
-`code` の変更はユーザから見える診断出力の変更なので、`crates/seiran-compiler/tests/golden_diagnostics/` の再生成
-（`UPDATE_GOLDEN=1 cargo test -p seiran-compiler`）と差分確認をセットで行う。
+`code` の変更はユーザから見える診断出力の変更なので、`crates/seiran-compiler/tests/golden_diagnostics/` の
+スナップショットを `cargo insta test -p seiran-compiler` → `cargo insta review` で差分確認して承認することをセットで行う。
 
 ## ソース位置付きエラー
 
