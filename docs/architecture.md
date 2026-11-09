@@ -1867,3 +1867,7 @@ frontend の fuzz target（cargo-fuzz）と、corpus の到達段を数える開
 - fuzz target を `[[bin]]` 以外に置かない・集計ツールを `[[bin]]` にしない（cargo-fuzz は bin をすべて fuzz target
   とみなす）
 - 長時間の fuzz は pre-commit や `ci.yml` に入れない（`.github/workflows/fuzz.yml` の手動・週次だけ）
+- fuzz のビルドでは root の release profile の `lto` と `strip` を外す（`tools/fuzz-frontend.sh` が
+  `CARGO_PROFILE_RELEASE_LTO=false` / `CARGO_PROFILE_RELEASE_STRIP=false` を設定する）。LTO は ASan が参照する
+  sancov の大域変数を落として Linux の link を壊し、strip はクラッシュ時のスタックトレースを読めなくする。ASan は
+  外さない — 外すと stack overflow が素の SIGSEGV になり、libFuzzer が失敗入力を保存しない
