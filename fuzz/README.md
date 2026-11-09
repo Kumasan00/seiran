@@ -55,7 +55,14 @@ cargo +nightly run -p seiran-fuzz --example corpus_stats -- fuzz/corpus/frontend
 
 ## 失敗入力
 
-保存先は `fuzz/artifacts/frontend/{crash,timeout,oom}-<hash>`。単独再実行と最小化には**発見時と同じ上限**を渡す。
+保存先は `fuzz/artifacts/frontend/{crash,timeout,oom}-<hash>`。単独再実行は探索と同じスクリプトを使う:
+
+```sh
+tools/fuzz-frontend.sh --replay fuzz/artifacts/frontend/crash-<hash>
+```
+
+再実行にはファイルを指定する。既定の資源上限は探索と共通で、後ろに libFuzzer の追加引数を付けて上書きできる。
+単独再実行と最小化には**発見時と同じ上限**を渡す。
 `cargo fuzz` を直接叩くときは、スクリプトと同じく release profile の LTO と strip を外す（root の LTO は Linux で
 ASan の link を壊す。スクリプトと同じビルドを再利用できる）:
 
@@ -121,7 +128,10 @@ gh workflow run fuzz.yml -f seconds=600
 ```
 
 Actions の "Fuzz" → Run workflow からも起動できる。step summary に到達段の集計が出る。失敗時は失敗入力が
-artifact `fuzz-artifacts`、ログは毎回 `fuzz-log` に載る。手元での再現:
+artifact `fuzz-artifacts`、ログは毎回 `fuzz-log` に載る。fork モードは子プロセスの詳細ログを残さないので、探索後に
+失敗入力を同じ資源上限で個別に再実行する。`fuzz-log` は探索ログ `fuzz-frontend.log` に加え、入力ごとの標準出力・
+標準エラー・終了コードを `fuzz-replay-logs/<失敗入力名>.log` に含む。再実行が異常終了しても残りの入力を処理し、
+再実行で再現しなくても失敗入力があれば job は失敗する。手元での再現:
 
 ```sh
 gh run download <run-id> -n fuzz-artifacts -D fuzz/artifacts/frontend

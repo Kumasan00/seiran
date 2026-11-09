@@ -12,20 +12,36 @@
 # fuzz バイナリの cwd は cargo-fuzz が決めるので、パスは絶対パスで渡す。
 #
 # 使い方: tools/fuzz-frontend.sh [秒数] [libFuzzer の追加引数...]（手順は fuzz/README.md）
+#         tools/fuzz-frontend.sh --replay <失敗入力> [libFuzzer の追加引数...]
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-seconds="${1:-60}"
-if [ "$#" -gt 0 ]; then
-  shift
-fi
 # root の release profile の LTO は ASan が参照する sancov の大域変数を落として link を壊し（Linux で
 # `undefined reference to __sancov_gen_.*`）、symbol の strip はクラッシュ時のスタックトレースを読めなくするので、
 # fuzz のビルドでだけ外す
 export CARGO_PROFILE_RELEASE_LTO=false
 export CARGO_PROFILE_RELEASE_STRIP=false
+limits=(-timeout=10 -rss_limit_mb=2048 -max_len=8192)
+if [ "${1:-}" = --replay ]; then
+  artifact="${2:?再実行する失敗入力のパスが必要です}"
+  if [[ "$artifact" != /* ]]; then
+    artifact="$root/$artifact"
+  fi
+  # ディレクトリを渡すと単独再実行ではなく、時間制限のない探索になる。
+  if [ ! -f "$artifact" ]; then
+    printf '失敗入力のファイルがありません: %s\n' "$artifact" >&2
+    exit 1
+  fi
+  shift 2
+  exec cargo +nightly fuzz run frontend "$artifact" -- "${limits[@]}" "$@"
+fi
+
+seconds="${1:-60}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 mkdir -p "$root/fuzz/corpus/frontend"
 exec cargo +nightly fuzz run frontend "$root/fuzz/corpus/frontend" "$root/fuzz/seeds/frontend" "$root/tests/text" -- \
   -dict="$root/fuzz/frontend.dict" -max_total_time="$seconds" \
-  -timeout=10 -rss_limit_mb=2048 -max_len=8192 "$@"
+  "${limits[@]}" "$@"

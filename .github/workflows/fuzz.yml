@@ -48,7 +48,22 @@ jobs:
         run: |
           tools/fuzz-frontend.sh "$FUZZ_SECONDS" -fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 2>&1 \
             | tee fuzz-frontend.log
+      - name: Replay failing inputs
+        if: always()
+        shell: bash
+        # fork の子プロセスの詳細ログは残らないので、同じ上限で個別に再実行して保存する
+        run: |
+          shopt -s nullglob
+          for artifact in fuzz/artifacts/frontend/*; do
+            [ -f "$artifact" ] || continue
+            mkdir -p fuzz-replay-logs
+            log="fuzz-replay-logs/$(basename "$artifact").log"
+            status=0
+            tools/fuzz-frontend.sh --replay "$artifact" > "$log" 2>&1 || status=$?
+            printf '\nReplay exit status: %s\n' "$status" >> "$log"
+          done
       - name: Fail on failing inputs
+        if: always()
         shell: bash
         run: |
           if compgen -G 'fuzz/artifacts/frontend/*' > /dev/null; then
@@ -83,5 +98,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-log
-          path: fuzz-frontend.log
+          path: |
+            fuzz-frontend.log
+            fuzz-replay-logs/*.log
           if-no-files-found: ignore
