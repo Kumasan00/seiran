@@ -44,9 +44,6 @@ jobs:
       - name: Run fuzz
         shell: bash
         env:
-          # rust-lld（x86_64-unknown-linux-gnu の既定リンカ）は ASan + sancov の計装で `__sancov_gen_.*` を未定義に
-          # するので、システムのリンカへ戻す（cargo-fuzz は自前の RUSTFLAGS をこの後ろへ足す）
-          RUSTFLAGS: -Clinker-features=-lld
           # schedule には inputs が無いので既定へ落ちる（`SECONDS` は bash の特殊変数なので使わない）
           FUZZ_SECONDS: ${{ inputs.seconds || (github.event_name == 'push' && '120') || '1800' }}
         run: tools/fuzz-frontend.sh "$FUZZ_SECONDS" 2>&1 | tee fuzz-frontend.log

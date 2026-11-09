@@ -20,6 +20,11 @@ seconds="${1:-60}"
 if [ "$#" -gt 0 ]; then
   shift
 fi
+# root の release profile の LTO は ASan が参照する sancov の大域変数を落として link を壊し（Linux で
+# `undefined reference to __sancov_gen_.*`）、symbol の strip はクラッシュ時のスタックトレースを読めなくするので、
+# fuzz のビルドでだけ外す
+export CARGO_PROFILE_RELEASE_LTO=false
+export CARGO_PROFILE_RELEASE_STRIP=false
 mkdir -p "$root/fuzz/corpus/frontend"
 exec cargo +nightly fuzz run frontend "$root/fuzz/corpus/frontend" "$root/fuzz/seeds/frontend" "$root/tests/text" -- \
   -dict="$root/fuzz/frontend.dict" -max_total_time="$seconds" \
