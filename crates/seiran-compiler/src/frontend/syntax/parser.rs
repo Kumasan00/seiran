@@ -30,6 +30,14 @@ const OPT_ARG_SEPARATORS: [char; 2] = [',', '='];
 /// [`ArgMode::CommaList`] の引数の直下で構文になる区切り（項目の `,`）
 const COMMA_LIST_SEPARATORS: [char; 1] = [','];
 
+/// 要素の入れ子の上限段数
+///
+/// トップレベルの要素が 1 段目で、構造（コマンドの引数・任意引数・環境の本体と名前・`$...$`・数式グループ・
+/// 上付き下付き）の中の要素は囲む要素の段 + 1。verbatim の中身は要素を読まないので数えない。評価器以降の段の
+/// 再帰は CST の深さに従うので、この上限が全段の再帰の深さを抑える。上限ちょうどの入れ子が debug ビルドの既定の
+/// テストスレッドで compile 全段を通ることは `compiler::nesting_depth` のテストが固定する。
+pub(crate) const MAX_NESTING_DEPTH: usize = 32;
+
 /// 入れ子要素をトークン化して読むときの語彙的解釈を示すモード
 ///
 /// 生読み（verbatim）はトークン化そのものを行わないのでここには入らない。環境本体の
@@ -104,6 +112,10 @@ struct Parser<'a> {
   last_span: Span,
   /// 環境名・コマンド名からモードを解決するレジストリ
   modes: ModeResolver,
+  /// 読んでいる要素の段（[`Self::parse_element`] の入れ子の数）
+  ///
+  /// `Err` は解析全体を中断し回復しないので、戻すのは成功の経路だけ。
+  depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -116,6 +128,7 @@ impl<'a> Parser<'a> {
       peeked_token: None,
       last_span: Span::DUMMY,
       modes,
+      depth: 0,
     };
   }
 
@@ -214,6 +227,9 @@ impl<'a> Parser<'a> {
   /// `separators` はこの要素が属する区間の直下でだけ構文になる区切りの字で、そのエスケープを受け付ける（区切りを持たない
   /// 区間は空）。入れ子の引数・グループへは渡さない — 区切りで割るのは区間の直下の要素だけなので、入れ子の中の `,` `=`
   /// は元から字であり、そこでのエスケープは第 2 の書き方になる。
+  ///
+  /// 再帰はすべてこの関数を通るので、段を数えて [`MAX_NESTING_DEPTH`] を超えた要素を
+  /// [`SyntaxError::NestingTooDeep`] にするのもこの関数。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, CstElement<'a>>,
@@ -226,6 +242,13 @@ impl<'a> Parser<'a> {
          先読みが None なら break か Unclosed* の診断で抜けてから呼ぶので、ここには必ずトークンがある"
       )
     };
+    if self.depth == MAX_NESTING_DEPTH {
+      return Err(SyntaxError::NestingTooDeep {
+        limit: MAX_NESTING_DEPTH,
+        span: self.peeked().span.into(),
+      });
+    }
+    self.depth += 1;
 
     match kind {
       TokenKind::Command => {
@@ -340,6 +363,7 @@ impl<'a> Parser<'a> {
       },
     }
 
+    self.depth -= 1;
     return Ok(());
   }
 
@@ -878,6 +902,7 @@ pub(in crate::frontend) fn parse_cst<'a>(
 
 #[cfg(test)]
 mod tests {
+  use miette::SourceSpan;
   use proptest::prelude::*;
 
   use super::*;
@@ -1868,6 +1893,82 @@ mod tests {
     };
     let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
     assert_eq!(begin.children_of_kind(SyntaxKind::MandatoryArg).count(), 3);
+  }
+
+  // --- 入れ子の深さ -----------------------------------------------------
+
+  /// 最内の `leaf` が `levels` 段目になるよう、`open` / `close` で `levels - 1` 重に囲む
+  fn nested(open: &str, close: &str, leaf: &str, levels: usize) -> String {
+    return format!("{}{leaf}{}", open.repeat(levels - 1), close.repeat(levels - 1));
+  }
+
+  /// 入れ子の構文ごとに、最内の字が `levels` 段目になるソースと、`levels` 段目で最初に読む要素の span
+  /// （バイトの開始と長さ）を返す
+  fn nesting_cases(levels: usize) -> Vec<(String, (usize, usize))> {
+    let last = |source: String, needle: &str, skip: usize, len: usize| {
+      let start = source.rfind(needle).unwrap() + skip;
+      return (source, (start, len));
+    };
+    return vec![
+      last(nested("\\b{", "}", "x", levels), "x", 0, 1),
+      last(nested("\\b{", "}", "あ", levels), "あ", 0, "あ".len()),
+      // 任意引数の中身も要素なので、最内の任意引数の `k` が最内の字と同じ段で先に来る
+      last(nested("\\b[k=", "]", "x", levels), "k", 0, 1),
+      // 環境名の引数も要素なので、最内の環境の名前 `e` が最内の字と同じ段で先に来る
+      last(nested("\\begin{e}", "\\end{e}", "x", levels), "\\begin{e}", "\\begin{".len(), 1),
+      last(format!("${}$", nested("{", "}", "x", levels - 1)), "x", 0, 1),
+      last(format!("${}$", nested("x^{", "}", "x", levels - 1)), "x", 0, 1),
+    ];
+  }
+
+  #[test]
+  fn nesting_up_to_max_depth_is_accepted() {
+    for (source, _) in nesting_cases(MAX_NESTING_DEPTH) {
+      let arena = Bump::new();
+      assert!(parse_cst(&source, &arena).is_ok(), "{source}");
+    }
+  }
+
+  #[test]
+  fn nesting_past_max_depth_is_rejected_at_the_first_element_past_the_limit() {
+    for (source, expected) in nesting_cases(MAX_NESTING_DEPTH + 1) {
+      let arena = Bump::new();
+      let Err(SyntaxError::NestingTooDeep { limit, span }) = parse_cst(&source, &arena) else {
+        panic!("NestingTooDeep が期待されます: {source}");
+      };
+      assert_eq!(limit, MAX_NESTING_DEPTH);
+      assert_eq!(span, SourceSpan::from(expected), "{source}");
+    }
+  }
+
+  #[test]
+  fn thousands_of_levels_end_in_nesting_too_deep() {
+    let math = format!("${}x{}$", "{".repeat(2000), "}".repeat(2000));
+    let text = format!("{}x{}", "\\bold{".repeat(2000), "}".repeat(2000));
+    for source in [math, text] {
+      let arena = Bump::new();
+      assert!(matches!(parse_cst(&source, &arena), Err(SyntaxError::NestingTooDeep { .. })));
+    }
+  }
+
+  #[test]
+  fn sibling_elements_do_not_accumulate_depth() {
+    let source = "\\b{x}$x^{y}$".repeat(10 * MAX_NESTING_DEPTH);
+    let arena = Bump::new();
+
+    assert!(parse_cst(&source, &arena).is_ok());
+  }
+
+  #[test]
+  fn verbatim_content_is_not_counted() {
+    let braces = format!("{}{}", "{".repeat(2000), "}".repeat(2000));
+    for source in [
+      format!("\\vurl{{{braces}}}"),
+      format!("\\begin{{code}}{braces}\\end{{code}}"),
+    ] {
+      let arena = Bump::new();
+      assert!(parse_cst(&source, &arena).is_ok(), "{source}");
+    }
   }
 
   // --- verbatim 字句モード -------------------------------------------
