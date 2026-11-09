@@ -547,6 +547,21 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   ファミリを `unwrap` したら `#[expect(clippy::unwrap_in_result, reason = ...)]` を付ける
   （`frontend::evaluator::environment::table` の `eval_table` / `project::config` の
   `run_validate_with_serif_extra`）。
+- **検証手段の使い分け（proptest / fuzz / golden）**: 新しい検査を足すときは期待結果の言い方で選ぶ。
+  入力と期待結果の関係が言える（妥当な構文の受理、必須引数を削ったときの診断、採番・`Length` の性質）→ proptest
+  か通常テスト（通常 CI で回す）。期待結果は言えず「壊れない・不変条件を保つ」だけが言え、生成規則で想定し切れない
+  組み合わせを探したい → coverage-guided fuzz（`fuzz/`。手動・週次で回し、pre-commit・全 PR の必須チェックには
+  しない）。具体的な出力・診断を固定する → golden・通常テスト。
+  - fuzz の失敗は panic・abort・stack overflow・不変条件の破れ・資源予算の超過だけ。変異後の入力は seed が正常例でも
+    正常とは限らないので、受理・拒否を断言しない（成功と通常の診断の両方を許す）。壊れないことを意味や組版結果の
+    正しさの証明に使わない
+  - frontend の不変条件の定義は `frontend::syntax::preservation` と `frontend::hir_invariants::parse_checked` の
+    1 箇所で、proptest・fixture のテストと fuzz 入口が同じ関数を呼ぶ。新しい不変条件はそこへ足し、両方に効かせる。
+    proptest と fuzz が同じ性質を異なる入力探索で確かめる重なりは意図したもので、fuzz の導入を理由に proptest を
+    消さない
+  - 正常な seed を用意しただけで評価段まで探索できたとはみなさない。到達段を数えて確かめる（`fuzz/README.md`）
+  - fuzz の発見は入力を最小化し、修正時に期待結果を明記した通常の回帰テストへ残す。一般化できる性質が見つかったら
+    proptest の追加・生成規則の改善も検討する。実行・再現・最小化・corpus の手順は `fuzz/README.md`
 - **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/compiler/golden.rs`）と
   PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の
   候補レビュー・承認、新機能へのテスト追加は `verify-typesetting` skill を参照する。

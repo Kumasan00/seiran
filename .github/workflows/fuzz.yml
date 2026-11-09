@@ -9,6 +9,8 @@ on:
         description: "探索する秒数（-max_total_time）"
         required: false
         default: "900"
+  push:
+    branches: [test/frontend-fuzzing]
   schedule:
     # 日曜 03:00 JST
     - cron: "0 18 * * 6"
@@ -43,7 +45,7 @@ jobs:
         shell: bash
         env:
           # schedule には inputs が無いので既定へ落ちる（`SECONDS` は bash の特殊変数なので使わない）
-          FUZZ_SECONDS: ${{ inputs.seconds || '1800' }}
+          FUZZ_SECONDS: ${{ inputs.seconds || (github.event_name == 'push' && '120') || '1800' }}
         run: tools/fuzz-frontend.sh "$FUZZ_SECONDS" 2>&1 | tee fuzz-frontend.log
       - name: Save corpus
         # 素の actions/cache は成功時しか保存しないので、クラッシュを見つけた回の corpus も残すよう分ける
