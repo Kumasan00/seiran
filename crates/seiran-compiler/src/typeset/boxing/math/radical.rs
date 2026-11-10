@@ -142,7 +142,7 @@ impl Measurer<'_> {
     let radicand = self.detach(radicand)?;
     let target = constants.surd_target(radicand.ink_height, radicand.ink_depth)?;
     let (surd, (surd_top, surd_bottom)) =
-      self.shaper.shape_vertical_delimiter(RADICAL_SIGN, font_size, script_level, target, color)?;
+      self.stretch_vertically(RADICAL_SIGN, font_size, script_level, target, color)?;
     let vinculum_bottom =
       constants.vinculum_bottom(radicand.ink_height, radicand.ink_depth, surd_top.try_sub(surd_bottom)?)?;
     let vinculum_top = vinculum_bottom.try_add(constants.rule_thickness)?;

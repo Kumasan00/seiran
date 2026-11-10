@@ -23,6 +23,7 @@ fn deepest_paragraphs(levels: usize) -> Vec<String> {
     math("{", "}"),
     math("\\paren{", "}"),
     math("\\frac{", "}{y}"),
+    math("\\binom{", "}{y}"),
     math("\\sqrt{", "}"),
     math("\\hat{", "}"),
     math("x^{", "}"),

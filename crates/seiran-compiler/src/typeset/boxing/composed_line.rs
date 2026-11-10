@@ -157,10 +157,11 @@ pub(in crate::typeset) fn inline_atom(
   shaper: Shaper<'_>,
   nodes: Vec<InlineNode>,
   punctuation_spacing: bool,
+  stretch_limit: Length,
 ) -> Result<HBox, ElementOverflow> {
   // 既定サイズ・行送りを読むのは `collect_inline` の `Footnote` と `BlockBuilder` の段落・ディスプレイ数式・表だけで、
   // 脚注を含まないインライン列の計測では読まれない
-  let mut measurer = Measurer::new(shaper, Length::ZERO, 1.0, None, punctuation_spacing);
+  let mut measurer = Measurer::new(shaper, Length::ZERO, 1.0, None, punctuation_spacing, stretch_limit);
   let mut list = HList::default();
   for node in nodes {
     measurer.collect_inline(node, &mut list)?;
@@ -283,7 +284,9 @@ mod tests {
   fn atom_width(fonts: &FontSystem, nodes: Vec<InlineNode>, punctuation_spacing: bool) -> Length {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(fonts, &issues, GlyphOrigin::Generated(Generated::Toc));
-    return inline_atom(shaper, nodes, punctuation_spacing).expect("テストの寸法は値域内").width;
+    return inline_atom(shaper, nodes, punctuation_spacing, Length::pt(100_000.0))
+      .expect("テストの寸法は値域内")
+      .width;
   }
 
   #[test]

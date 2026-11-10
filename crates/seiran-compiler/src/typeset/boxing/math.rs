@@ -390,6 +390,27 @@ impl Measurer<'_> {
     return Ok((HBox::atom(placed)?, baselines));
   }
 
+  /// 伸縮グリフ 1 字 `text` を縦に `target` 以上へ伸ばした箱とインクの上端・下端（[`Shaper::shape_vertical_delimiter`]）
+  ///
+  /// 目標は本文領域の高さ（`stretch_limit`）で止める。それより高い字形はどのページにも収まらず、止めることで、
+  /// 数式軸を中心に対称に伸ばす括弧の入れ子が段ごとに定数倍で大きくなるのを加算に抑える。上限以下の目標はそのまま渡す。
+  ///
+  /// # Errors
+  ///
+  /// 箱の寸法が長さの値域を超えたら [`LengthOverflow`]。
+  fn stretch_vertically(
+    &mut self,
+    text: &str,
+    font_size: Length,
+    script_level: Option<ScriptLevel>,
+    target: Length,
+    color: Option<Color>,
+  ) -> Result<(HBox, (Length, Length)), LengthOverflow> {
+    return self
+      .shaper
+      .shape_vertical_delimiter(text, font_size, script_level, target.min(self.stretch_limit), color);
+  }
+
   /// 本体 Atom を `grid_dy` だけ上げて置き、左右の区切り括弧で挟んで包み直す
   ///
   /// 本体は縦中央が数式軸 `axis` に載る位置にあるので、括弧は本体の高さ + 深さ以上へ縦に伸ばし、インクの縦中央を
@@ -416,7 +437,7 @@ impl Measurer<'_> {
     let mut children: Vec<PlacedHBox> = Vec::new();
     let mut dx = Length::ZERO;
     if let Some(ch) = delimiters.left {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color)?;
+      let (delim, (top, bottom)) = self.stretch_vertically(ch, font_size, script_level, target, color)?;
       let center = top.try_add(bottom)?.try_div(2.0)?;
       let width = delim.width;
       children.push(PlacedHBox {
@@ -433,7 +454,7 @@ impl Measurer<'_> {
     });
     dx = dx.try_add(body_width.try_add(gap)?)?;
     if let Some(ch) = delimiters.right {
-      let (delim, (top, bottom)) = self.shaper.shape_vertical_delimiter(ch, font_size, script_level, target, color)?;
+      let (delim, (top, bottom)) = self.stretch_vertically(ch, font_size, script_level, target, color)?;
       let center = top.try_add(bottom)?.try_div(2.0)?;
       children.push(PlacedHBox {
         hbox: delim,
@@ -790,6 +811,10 @@ fn corner_edge((top, bottom): (Length, Length), corner: MathKernCorner) -> Lengt
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::typeset::{
+    glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
+    test_support,
+  };
 
   /// STIX Two Math の値をフォント単位 1 = 1pt で写した定数（基底 1000pt 相当）
   fn constants() -> ScriptConstants {
@@ -886,5 +911,35 @@ mod tests {
     let shifts = constants().separate(Length::pt(400.0), Length::ZERO, Length::pt(210.0), Length::pt(503.0));
 
     assert_eq!(shifts, Ok((Length::pt(400.0), Length::pt(253.0))));
+  }
+
+  /// 上限 `stretch_limit` の Measurer で 10pt の `(` を縦に `target` 以上へ伸ばしたときのインクの高さ + 深さ
+  fn stretched_paren_extent(stretch_limit: Length, target: Length) -> Length {
+    let fonts = test_support::vendor_font_system(|_| return None);
+    let issues = GlyphIssues::default();
+    let shaper = Shaper::new(&fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
+    let mut measurer = Measurer::new(shaper, Length::pt(10.0), 1.2, None, true, stretch_limit);
+    let (_, (top, bottom)) = measurer
+      .stretch_vertically("(", Length::pt(10.0), None, target, None)
+      .expect("テストの寸法は値域内");
+    return top - bottom;
+  }
+
+  #[test]
+  fn stretched_glyph_stops_at_the_stretch_limit() {
+    let limit = Length::pt(50.0);
+
+    let stopped = stretched_paren_extent(limit, Length::pt(500.0));
+
+    assert!(stopped >= limit, "上限までは覆う: {stopped:?}");
+    assert!(stopped < Length::pt(500.0), "目標までは伸ばさない: {stopped:?}");
+  }
+
+  #[test]
+  fn target_within_the_stretch_limit_is_unchanged() {
+    // 上限が目標以上なら、上限を無いのと同じ（十分大きい）にしたときと同じ字形
+    let target = Length::pt(50.0);
+
+    assert_eq!(stretched_paren_extent(target, target), stretched_paren_extent(Length::pt(100_000.0), target));
   }
 }

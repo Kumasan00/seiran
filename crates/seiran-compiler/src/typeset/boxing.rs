@@ -106,6 +106,8 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) punctuation_spacing: bool,
   /// 最上位の縦リストの段落の揃え（`[text].alignment`）
   pub(super) alignment: TextAlignment,
+  /// 伸縮字形の縦の大きさの上限（本文領域の高さ）
+  pub(super) stretch_limit: Length,
 }
 
 /// レイアウトノードを計測済みのブロック列に変換する
@@ -125,6 +127,7 @@ pub(super) fn build_blocks(
       inputs.line_height_factor,
       hyphenation,
       inputs.punctuation_spacing,
+      inputs.stretch_limit,
     ),
     images: inputs.images,
     column_width: inputs.column_width,
@@ -332,6 +335,8 @@ struct Measurer<'a> {
   hyphenation: Option<Lang>,
   /// JIS X 4051 のアキ調整（和文約物アキ・和欧文間アキ）を行うか
   punctuation_spacing: bool,
+  /// 伸縮字形の縦の大きさの上限（本文領域の高さ）
+  stretch_limit: Length,
 }
 
 impl<'a> Measurer<'a> {
@@ -342,6 +347,7 @@ impl<'a> Measurer<'a> {
     line_height_factor: f32,
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
+    stretch_limit: Length,
   ) -> Self {
     return Measurer {
       shaper,
@@ -349,6 +355,7 @@ impl<'a> Measurer<'a> {
       line_height_factor,
       hyphenation,
       punctuation_spacing,
+      stretch_limit,
     };
   }
 

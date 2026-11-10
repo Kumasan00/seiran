@@ -81,6 +81,7 @@ fn run_body_pass(
         language: ctx.config.document.language.as_deref(),
         punctuation_spacing: ctx.style.text.punctuation_spacing,
         alignment: ctx.style.text.alignment,
+        stretch_limit: ctx.geometry.body_height(),
       },
     )?
   };

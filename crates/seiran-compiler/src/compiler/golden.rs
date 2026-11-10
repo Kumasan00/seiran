@@ -136,6 +136,8 @@
 //!   [`superscript_on_a_binomial_starts_after_the_close_paren`] /
 //!   [`nested_binomial_parts_keep_the_gap_and_the_outer_parens_cover_them`] /
 //!   [`empty_binomial_compiles_with_the_parens_around_the_padding`]（共通ヘルパ [`expected_stack_shifts`] 経由）
+//! - **伸縮字形の高さの上限**（中身が数式軸から上へずれる入れ子でも字形の数が深さに線形）:
+//!   [`nested_stretched_fences_grow_linearly_with_depth`]（共通ヘルパ [`short_page_glyph_count`] 経由）
 //! - **根号**（根号記号の伸縮・横線・ギャップの調整・指数の kern と高さ）:
 //!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
@@ -4159,6 +4161,37 @@ fn empty_binomial_compiles_with_the_parens_around_the_padding() {
   assert!(rules.is_empty(), "空の二項係数も罫を引かない");
   let (left, right) = fence_pair(&runs, "(", ")");
   assert_eq!(right.dx, left.dx + left.width + FRACTION_PADDING + FRACTION_PADDING, "空の積みの幅は左右のアキだけ");
+}
+
+/// 本文領域の高さが 100pt（用紙 200pt・上下余白 50pt）の版面で組んだ本文 `source` の最初の行のグリフの数
+/// （glyph assembly のパーツも 1 つと数える）
+fn short_page_glyph_count(source: &str) -> usize {
+  let project = TestProject::builder()
+    .source_text(source)
+    .config_toml(|table| test_support::set(table, "pdf", "height", "200pt"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "50pt");
+      test_support::set(table, "page", "margin_bottom", "50pt");
+    })
+    .build();
+  return first_line_parts_of(&project).0.iter().map(|line_run| return line_run.run.glyphs.len()).sum();
+}
+
+#[test]
+fn nested_stretched_fences_grow_linearly_with_depth() {
+  // 中身が数式軸から上へずれる入れ子 3 形。上限が無いと同じ段数ぶんの増分が段ごとに 1.5〜2 倍になる。深さはどれも
+  // 外側の括弧が本文領域の高さ（100pt）に当たる段で、最深は入れ子の上限（`\paren{` の 2 形は 1 重で 2 段）に収まる
+  let shapes: [(&str, &str, [usize; 3]); 3] = [
+    ("\\binom{", "}{y}", [10, 20, 30]),
+    ("\\paren{\\frac{", "}{y}}", [7, 11, 15]),
+    ("\\paren{x^{", "}}", [7, 11, 15]),
+  ];
+  for (open, close, depths) in shapes {
+    let [first, second, third] =
+      depths.map(|depth| return short_page_glyph_count(&format!("${}x{}$\n", open.repeat(depth), close.repeat(depth))));
+
+    assert!(third - second <= 2 * (second - first), "{open}: 深さ {depths:?} で {first} / {second} / {third} 字");
+  }
 }
 
 /// 根号記号 √（U+221A）
