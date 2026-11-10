@@ -9,4 +9,6 @@ pub(super) mod token;
 
 pub(super) use cst::{CstElement, CstNode, kind, kind::SyntaxKind, view};
 pub(super) use lexer::is_combining;
+#[cfg(test)]
+pub(crate) use parser::MAX_NESTING_DEPTH;
 pub(super) use parser::{ArgMode, BodyMode, ModeResolver, SyntaxError, parse_cst};

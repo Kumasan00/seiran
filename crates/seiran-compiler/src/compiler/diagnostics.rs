@@ -15,6 +15,7 @@ use crate::{
     Compilation, CompileFailure,
     test_support::{self, TestProject},
   },
+  frontend::MAX_NESTING_DEPTH,
   project::{self, MemoryProjectSource, PathResolver, ProjectPath},
   style,
 };
@@ -444,6 +445,16 @@ fn diagnostic_length_out_of_range_in_style_and_config() {
   .join("\n");
   assert_eq!(rendered.matches("長さ \"1e14mm\" は扱える範囲を超えています").count(), 2, "{rendered}");
   assert_matches_golden("length_out_of_range_toml", &rendered);
+}
+
+#[test]
+fn diagnostic_nesting_too_deep() {
+  // 1 行 1 段にして、表示がラベル周辺の数行に収まるようにする
+  let source = format!("{}x{}\n", "\\bold{\n".repeat(MAX_NESTING_DEPTH), "}".repeat(MAX_NESTING_DEPTH));
+  let failure = TestProject::builder().source_text(&source).build().compile_err();
+
+  assert_eq!(codes(&failure), vec!["frontend::syntax::nesting_too_deep"]);
+  assert_matches_golden("nesting_too_deep", &render_failure(failure));
 }
 
 #[test]

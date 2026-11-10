@@ -243,4 +243,18 @@ pub(crate) enum SyntaxError {
     #[label("数式モード内の $ です")]
     span: SourceSpan,
   },
+
+  /// 要素の入れ子が [`MAX_NESTING_DEPTH`](crate::frontend::syntax::parser::MAX_NESTING_DEPTH) 段を超えた場合
+  #[error("入れ子が深すぎます（上限 {limit} 段）")]
+  #[diagnostic(
+    code(frontend::syntax::nesting_too_deep),
+    help("コマンドの引数・環境・数式・数式グループ・上付き下付きの入れ子を {limit} 段以内にしてください")
+  )]
+  NestingTooDeep {
+    /// 上限の段数（[`MAX_NESTING_DEPTH`](crate::frontend::syntax::parser::MAX_NESTING_DEPTH)）
+    limit: usize,
+    /// 上限 + 1 段目の要素の先頭トークンのソース位置
+    #[label("ここで入れ子が {limit} 段を超えました")]
+    span: SourceSpan,
+  },
 }

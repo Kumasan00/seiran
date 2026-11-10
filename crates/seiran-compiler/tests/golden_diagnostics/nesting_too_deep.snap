@@ -1,0 +1,14 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::syntax::nesting_too_deep
+
+  × 入れ子が深すぎます（上限 32 段）
+    ╭─[tests/text/inline.sei:33:1]
+ 32 │ \bold{
+ 33 │ x}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    · ┬
+    · ╰── ここで入れ子が 32 段を超えました
+    ╰────
+  help: コマンドの引数・環境・数式・数式グループ・上付き下付きの入れ子を 32 段以内にしてください

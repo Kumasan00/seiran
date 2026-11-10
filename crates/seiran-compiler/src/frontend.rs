@@ -13,6 +13,8 @@ pub(crate) mod test_support;
 use bumpalo::Bump;
 use evaluator::EvalError;
 use miette::Diagnostic;
+#[cfg(test)]
+pub(crate) use syntax::MAX_NESTING_DEPTH;
 use thiserror::Error;
 use tracing::debug;
 
