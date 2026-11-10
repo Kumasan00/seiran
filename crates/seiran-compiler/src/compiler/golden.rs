@@ -137,7 +137,8 @@
 //!   [`nested_binomial_parts_keep_the_gap_and_the_outer_parens_cover_them`] /
 //!   [`empty_binomial_compiles_with_the_parens_around_the_padding`]（共通ヘルパ [`expected_stack_shifts`] 経由）
 //! - **伸縮字形の高さの上限**（中身が数式軸から上へずれる入れ子でも字形の数が深さに線形）:
-//!   [`nested_stretched_fences_grow_linearly_with_depth`]（共通ヘルパ [`short_page_glyph_count`] 経由）
+//!   [`nested_stretched_fences_grow_linearly_with_depth`] / [`toc_entry_with_nested_binomials_grows_linearly_with_depth`]
+//!   （共通ヘルパ [`short_page_glyph_count`]・[`assert_grows_linearly`] 経由）
 //! - **根号**（根号記号の伸縮・横線・ギャップの調整・指数の kern と高さ）:
 //!   [`radical_vinculum_continues_the_top_of_the_surd_over_the_radicand`] /
 //!   [`tall_radicand_stretches_the_surd_to_cover_it`] / [`display_radical_uses_the_display_gap`] /
@@ -4163,18 +4164,39 @@ fn empty_binomial_compiles_with_the_parens_around_the_padding() {
   assert_eq!(right.dx, left.dx + left.width + FRACTION_PADDING + FRACTION_PADDING, "空の積みの幅は左右のアキだけ");
 }
 
-/// 本文領域の高さが 100pt（用紙 200pt・上下余白 50pt）の版面で組んだ本文 `source` の最初の行のグリフの数
-/// （glyph assembly のパーツも 1 つと数える）
-fn short_page_glyph_count(source: &str) -> usize {
-  let project = TestProject::builder()
+/// 本文領域の高さが 100pt（用紙 200pt・上下余白 50pt）の版面で本文 `source` を組んだ全ページの行のグリフの数
+/// （glyph assembly のパーツも 1 つと数える）。`toc` が真なら目次も組む
+fn short_page_glyph_count(source: &str, toc: bool) -> usize {
+  let laid_out = TestProject::builder()
     .source_text(source)
     .config_toml(|table| test_support::set(table, "pdf", "height", "200pt"))
-    .style_toml(|table| {
+    .style_toml(move |table| {
       test_support::set(table, "page", "margin_top", "50pt");
       test_support::set(table, "page", "margin_bottom", "50pt");
+      test_support::set(table, "toc", "enabled", toc);
     })
-    .build();
-  return first_line_parts_of(&project).0.iter().map(|line_run| return line_run.run.glyphs.len()).sum();
+    .build()
+    .laid_out();
+  let mut runs = Vec::new();
+  for block in laid_out.pages.iter().flat_map(|page| return page.blocks.iter()) {
+    if let PlacedBlock::Line { line, .. } = block {
+      for placed in &line.boxes {
+        collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+      }
+    }
+  }
+  return runs.iter().map(|line_run| return line_run.run.glyphs.len()).sum();
+}
+
+/// 等間隔の 3 つの深さ `depths` で組んだグリフの数 `count` の増分が、後で前の 2 倍を超えない（深さに対して指数的に
+/// 伸びない）ことを確かめる
+fn assert_grows_linearly(label: &str, depths: [usize; 3], count: impl Fn(usize) -> usize) {
+  let [first, second, third] = depths.map(count);
+
+  assert!(
+    third - second <= 2 * (second - first),
+    "{label}: 深さ {depths:?} で {first} / {second} / {third} 字"
+  );
 }
 
 #[test]
@@ -4187,11 +4209,22 @@ fn nested_stretched_fences_grow_linearly_with_depth() {
     ("\\paren{x^{", "}}", [7, 11, 15]),
   ];
   for (open, close, depths) in shapes {
-    let [first, second, third] =
-      depths.map(|depth| return short_page_glyph_count(&format!("${}x{}$\n", open.repeat(depth), close.repeat(depth))));
-
-    assert!(third - second <= 2 * (second - first), "{open}: 深さ {depths:?} で {first} / {second} / {third} 字");
+    assert_grows_linearly(open, depths, |depth| {
+      return short_page_glyph_count(&format!("${}x{}$\n", open.repeat(depth), close.repeat(depth)), false);
+    });
   }
+}
+
+#[test]
+fn toc_entry_with_nested_binomials_grows_linearly_with_depth() {
+  // 目次の行の題目は本文とは別の計測器で組むので、伸縮字形の上限が目次にも届くことを見る。最深は見出しの引数の中で
+  // 入れ子の上限に収まる
+  assert_grows_linearly("目次", [9, 19, 29], |depth| {
+    return short_page_glyph_count(
+      &format!("\\section{{${}x{}$}}\n", "\\binom{".repeat(depth), "}{y}".repeat(depth)),
+      true,
+    );
+  });
 }
 
 /// 根号記号 √（U+221A）
