@@ -23,7 +23,8 @@
 //! 下付き（`MathScripts` の `limits` が真）の配置は子 module `fraction` / `radical` / `accent` / `bar` / `fenced` /
 //! `array` / `large_operator` / `limits` が行い、分数・根号・アクセント・上下線・伸縮括弧・行列は閉じた Atom 1 つに組む
 //! （罫・横線・上下線は `HBoxContent::Rule`）。表示数式ブロックと埋め込んだ行列は、グリッド組み（[`Measurer::build_grid`]）と
-//! 括弧の包み直し（[`Measurer::wrap_with_delimiters`]）を共有する。
+//! 括弧の包み直し（[`Measurer::wrap_with_delimiters`]）を共有する。子 module が「目標以上へ縦に伸ばす」字形（区切り括弧・
+//! 行列の枠・根号記号・大型演算子）は、どれも目標を本文領域の高さで止める（[`Measurer::stretch_vertically`]）。
 
 mod accent;
 mod arrange;
@@ -390,9 +391,9 @@ impl Measurer<'_> {
     return Ok((HBox::atom(placed)?, baselines));
   }
 
-  /// 伸縮グリフ 1 字 `text` を縦に `target` 以上へ伸ばした箱とインクの上端・下端（[`Shaper::shape_vertical_delimiter`]）
+  /// 伸縮グリフ 1 字 `text` を縦に伸ばした箱とインクの上端・下端（[`Shaper::shape_vertical_delimiter`]）
   ///
-  /// 目標は本文領域の高さ（`stretch_limit`）で止める。それより高い字形はどのページにも収まらず、止めることで、
+  /// 目標 `target` は本文領域の高さ（`stretch_limit`）で止める。それより高い字形はどのページにも収まらず、止めることで、
   /// 数式軸を中心に対称に伸ばす括弧の入れ子が段ごとに定数倍で大きくなるのを加算に抑える。上限以下の目標はそのまま渡す。
   ///
   /// # Errors
