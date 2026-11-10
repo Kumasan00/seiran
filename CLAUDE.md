@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-ドキュメントと既存のコードが食い違うときはコードの書き方に従い、見つけた食い違いを最後の返答ですべて挙げること
+ドキュメントと既存のコードが食い違うときはコードの書き方に従うこと。作業中に見つけた問題（この食い違いを含む）は範囲外へ手を広げずに集め、最後の返答ですべて挙げて「この PR で直す / issue にする / 捨てる」に仕分けること（基準と issue 化の手順は `issue-pr-ops` skill「作業中に見つけた問題の仕分け」節）
 
 ## プロジェクト概要
 
@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 言語機能の実装手順                                                                                                                                                                                        | `add-language-feature` skill                                                      | 設計合意済みの機能を実装するとき                             |
 | エラー型・診断・集約・warning・garde                                                                                                                                                                      | `docs/error-handling.md`（`error-handling` skill は読むタイミングと節の案内だけ） | エラー型を足す・診断を設計するとき                           |
 | 組版変更の検証・golden                                                                                                                                                                                    | `verify-typesetting` skill                                                        | 組版・数式・seiran-pdf・パーサ以降を変えた後                 |
-| issue / PR / branch / commit / ラベル                                                                                                                                                                     | `issue-pr-ops` skill                                                              | GitHub で何かを作る・編集する前                              |
+| issue / PR / branch / commit / ラベル・見つけた問題の仕分け                                                                                                                                               | `issue-pr-ops` skill                                                              | GitHub で何かを作る・編集する前                              |
 | ドキュメント更新漏れのチェックリスト                                                                                                                                                                      | `docs-sync` skill                                                                 | PR を仕上げるとき                                            |
 | frontend の fuzz（実行・失敗入力の再現と最小化・corpus・CI）                                                                                                                                              | `fuzz/README.md`                                                                  | fuzz を回す・失敗入力を調べるとき                            |
 | ユーザ向け（インストール・コマンド・設定例）                                                                                                                                                              | `README.md`                                                                       | —                                                            |
