@@ -160,7 +160,7 @@ mod tests {
   fn items(fonts: &FontSystem, nodes: Vec<InlineNode>, punctuation_spacing: bool) -> Vec<HItem> {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
-    let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, punctuation_spacing);
+    let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, punctuation_spacing, Length::pt(100_000.0));
     let mut list = HList::default();
     for node in nodes {
       measurer.collect_inline(node, &mut list).expect("テストの列は値域内で、脚注を含まない");
@@ -172,7 +172,7 @@ mod tests {
   fn quantity_box(fonts: &FontSystem, pieces: &[QuantityPiece], typeface: Typeface) -> HBox {
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
-    let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, true);
+    let mut measurer = Measurer::new(shaper, SIZE, 1.2, None, true, Length::pt(100_000.0));
     return measurer.quantity_box(pieces, style(typeface)).expect("テストの寸法は値域内");
   }
 

@@ -59,6 +59,7 @@ pub(super) fn paginate(
           language: None,
           punctuation_spacing: ctx.style.text.punctuation_spacing,
           alignment: ctx.style.text.alignment,
+          stretch_limit: ctx.geometry.body_height(),
         },
       )?);
       debug!("タイトルページを生成");

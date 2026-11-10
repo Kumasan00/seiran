@@ -50,6 +50,8 @@ struct TocSpec {
   bottom_margin: Length,
   /// エントリの題目の和欧文間アキ・約物アキを行うか（`[text].punctuation_spacing`）
   punctuation_spacing: bool,
+  /// エントリの題目の数式の伸縮字形の縦の大きさの上限（本文領域の高さ）
+  stretch_limit: Length,
 }
 
 /// 1 目次エントリ
@@ -75,7 +77,7 @@ struct TocEntry {
 ///
 /// 行の寸法が長さの値域を超えたら [`ElementOverflow`] を返す。
 pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Result<Vec<Block>, ElementOverflow> {
-  let spec = build_toc_spec(ctx.style, ctx.geometry.text_width());
+  let spec = build_toc_spec(ctx.style, ctx.geometry.text_width(), ctx.geometry.body_height());
   let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
   let toc_entry_count = entries.len();
   let blocks = compose_blocks(&spec, entries, ctx.fonts, &ctx.glyph_issues)?;
@@ -118,7 +120,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
 ///
 /// 目次見出しの書体と揃えは文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
 /// 揃えが未指定なら見出しと同じく `[text].alignment` を継ぐ。
-fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
+fn build_toc_spec(style: &Style, text_width: Length, stretch_limit: Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = &style.heading[HeadingLevel::Section];
   return TocSpec {
@@ -141,6 +143,7 @@ fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
     line_height_factor: style.text.line_height_factor,
     bottom_margin: toc.bottom_margin,
     punctuation_spacing: style.text.punctuation_spacing,
+    stretch_limit,
   };
 }
 
@@ -220,6 +223,7 @@ fn compose_entry_line(
         title_shaper,
         entry.label,
         spec.punctuation_spacing,
+        spec.stretch_limit,
       )?],
       indent,
     )
@@ -347,7 +351,7 @@ mod tests {
     style.heading.section.bottom_margin = Length::pt(4.0);
     style.heading.section.typeface = Typeface::SansSerif;
 
-    let spec = build_toc_spec(&style, Length::pt(333.0));
+    let spec = build_toc_spec(&style, Length::pt(333.0), Length::pt(100_000.0));
 
     assert_eq!(spec.title, "もくじ");
     assert_eq!(spec.title_style.font_size, Length::pt(17.0));
@@ -370,7 +374,7 @@ mod tests {
     let mut style = Style::default();
     style.toc.leader = Some("…".to_string());
 
-    let spec = build_toc_spec(&style, Length::pt(333.0));
+    let spec = build_toc_spec(&style, Length::pt(333.0), Length::pt(100_000.0));
 
     assert!(spec.show_page_numbers);
     assert_eq!(spec.leader.as_deref(), Some("…"));
@@ -415,7 +419,7 @@ mod tests {
       let mut style = Style::default();
       style.text.alignment = text;
       style.heading.section.alignment = section;
-      return build_toc_spec(&style, Length::pt(300.0)).title_align;
+      return build_toc_spec(&style, Length::pt(300.0), Length::pt(100_000.0)).title_align;
     };
 
     assert_eq!(spec_with(TextAlignment::Justify, None), Align::Left, "既定は左（1 行の両端揃えは左寄せ）");
@@ -428,10 +432,14 @@ mod tests {
   fn build_toc_spec_entry_align_follows_toc_not_text() {
     let mut style = Style::default();
     style.text.alignment = TextAlignment::Right;
-    assert_eq!(build_toc_spec(&style, Length::pt(300.0)).entry_align, Align::Left, "[text] に連動しない");
+    assert_eq!(
+      build_toc_spec(&style, Length::pt(300.0), Length::pt(100_000.0)).entry_align,
+      Align::Left,
+      "[text] に連動しない"
+    );
 
     style.toc.alignment = BlockAlignment::Center;
     style.toc.show_page_numbers = false;
-    assert_eq!(build_toc_spec(&style, Length::pt(300.0)).entry_align, Align::Center);
+    assert_eq!(build_toc_spec(&style, Length::pt(300.0), Length::pt(100_000.0)).entry_align, Align::Center);
   }
 }

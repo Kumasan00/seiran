@@ -1269,6 +1269,10 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   `\delimiterfactor` / `\delimitershortfall` 相当の係数・不足許容量は置かない。中間の区切り（区画の間の縦棒 U+007C）は
   全区画のインクで決めた同じ目標・同じ軸合わせで伸ばし、目標には寄与しない。括弧・区画・縦棒・区画…・括弧を隙間なく並べ
   （cases / matrix の枠のアキは使わない）、閉じた Atom 1 つにする
+- **伸縮の上限**: 伸縮字形（区切り括弧・行列の枠・根号記号・display 段の大型演算子）は、どれも目標を本文領域の高さ
+  （本文下限 − 上余白）で止めてから伸ばす（`Measurer::stretch_vertically`）。それより高い字形はどのページにも収まらず、
+  止めることで、軸を中心に対称に伸ばす括弧の入れ子が段ごとに定数倍で大きくなるのを加算に抑える。上の各規則の
+  「〜以上へ伸ばす」はこの上限の内側で成り立つ
 - **大型演算子**（`ArrangedNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
   `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
   縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、

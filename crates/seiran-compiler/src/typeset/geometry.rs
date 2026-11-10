@@ -281,6 +281,16 @@ impl PreparedGeometry {
   #[must_use]
   pub(super) fn text_width(&self) -> Length { return self.text_width; }
 
+  /// 本文領域の高さ（本文下限 − 上余白）を返す。本文・前付け・後付けのジオメトリで共通。
+  #[must_use]
+  pub(super) fn body_height(&self) -> Length {
+    return self
+      .body_geometry
+      .page_limit
+      .try_sub(self.body_geometry.margin_top)
+      .expect("prepare が上下余白の和 < 用紙高を検証したので、本文下限 − 上余白は正で値域に収まる");
+  }
+
   /// 本文のページジオメトリを返す。
   #[must_use]
   pub(super) fn body_geometry(&self) -> &PageGeometry { return &self.body_geometry; }

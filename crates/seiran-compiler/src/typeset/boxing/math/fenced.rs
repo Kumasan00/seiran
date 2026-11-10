@@ -54,8 +54,7 @@ impl Measurer<'_> {
     let ink_depth = segments.iter().map(|segment| return segment.ink_depth).fold(Length::ZERO, Length::max);
     let axis = self.shaper.math_constant(MathConstant::AxisHeight, font_size)?;
     let target = symmetric_target(ink_height, ink_depth, axis)?;
-    let mut shape =
-      |text: &str| return self.shaper.shape_vertical_delimiter(text, font_size, script_level, target, color);
+    let mut shape = |text: &str| return self.stretch_vertically(text, font_size, script_level, target, color);
     let (open, open_ink) = shape(&open)?;
     let (close, close_ink) = shape(&close)?;
     let dividers = segments.iter().skip(1).map(|_| return shape(FENCE_DIVIDER)).collect::<Result<Vec<_>, _>>()?;
