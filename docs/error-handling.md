@@ -7,7 +7,7 @@ warning と tracing の分担・内部不変条件違反の扱い・garde バリ
 
 ## エラー型の定義
 
-- 各クレートの `lib.rs`（または該当モジュール）に `thiserror::Error` + `miette::Diagnostic` 派生のエラー列挙型を定義する。`#[derive(Debug, Error, Diagnostic)]` を常に併用する
+- 各クレートの `lib.rs`（または該当モジュール）に `thiserror::Error` + `miette::Diagnostic` 派生のエラー列挙型を定義する。ユーザーへ出す診断は `#[derive(Debug, Error, Diagnostic)]` を併用する（`Diagnostic` を実装しない低水準 cause と段の制御フロー型は下の項と「診断 `code` の規約」節）
 - バリアントごとに `#[error("...")]`（メッセージ、日本語）と `#[diagnostic(code(...), help("..."))]` を付与する。`code` の付け方は次節の規約に従う
 - `Diagnostic` を手書きするのは derive（`transparent` / `forward(...)` による委譲を含む）で書けないときだけ
   （derive が書けるのはメソッドごとに静的な属性か 1 フィールドへの転送で、複数の値は組み合わせられない）。例は内側の

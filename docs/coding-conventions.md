@@ -49,7 +49,8 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   `unused_qualifications` が押さえていて、スコープに入っている名前を `std::sync::Arc::new` のように
   再修飾すると落ちる。どちらの lint も `#[cfg(test)]` の中で発火するので、テストにも同じ規約が効く。
   doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外。
-- `*` を避け明示的にインポート（例外は上の (b) の `use super::*` だけ）、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`。
+- `*` を避け明示的にインポート（例外は上の (b) の `use super::*` と、test module の `use proptest::prelude::*` だけ —
+  prelude は glob で取り込む前提で公開された名前の束）、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`。
 - **並びは `mod` 宣言 → `use` → その他の項目**: `mod` 宣言はファイル先頭に空行なしの 1 ブロックで置き
   （`pub mod` も `#[cfg(test)]` 付きも同じブロック）、その下に `use` を置く。例外 (a) の相対 use が必ず
   `mod` 宣言の下に来て、`use` が 1 本の連続になるので rustfmt が `use crate::{…}` を 1 つへ畳める。
@@ -68,7 +69,7 @@ import は「名前を持ち込む」行為であり、**持ち込んだ名前�
   書くと「テストのときだけ存在する」が module 宣言と個別行の 2 通りに割れる。#695）。本体の型に生やす
   テスト専用の inherent メソッドも、`mod tests` の中に `impl` を書けば属性なしで済む
   （`multiple_inherent_impl` は子 module の impl を見ない）。例外は 2 つ —
-  module facade の `#[cfg(test)] pub(crate) use ...;`（本番 API を広げずにテストへ型・ヘルパを出す唯一の
+  module facade の `#[cfg(test)]` の再輸出（`pub(crate) use ...;` / `pub(super) use ...;`。本番 API を広げずにテストへ型・ヘルパを出す唯一の
   手段で、外すと本体ビルドで `unused_imports` が `-D warnings` に当たる）と、**本番の型が持つテスト専用の
   フィールド・アクセサ・定数**（`Failures::iter` / `InFile::error` / `NodeId::for_test`
   のような、型そのものに属していて module へ切り離せないもの）。後者は複数あり、`mod tests` の中の
@@ -230,7 +231,7 @@ unsafe は既定で書かない（`unsafe_code`）。本当に要る箇所だけ
 - `Eq` を導出できる型に `PartialEq` だけを derive しない（`derive_partial_eq_without_eq`）。`PartialEq`
   止まりは「等価が部分的（`a == a` が成り立たない値がある）」という主張になるので、実際には全等価な型に
   付けると利用側が「NaN のような例外値があるのか」を判断できない。`PartialEq` 止まりで残るのは f32 / f64
-  を持つ型だけ（そこでは lint が発火しない）。`Length` は sp（1/65536pt の整数）なので float を経由しない
+  を持つ型と、型引数を持つ型（`NodeMap<T>`）だけ（そこでは lint が発火しない）。`Length` は sp（1/65536pt の整数）なので float を経由しない
   限りこの方針に乗る。derive の並びは `Debug, Clone, Copy, PartialEq, Eq, Hash` の順。
 - 公開型には `Debug` を実装する（`missing_debug_implementations`）。derive で生バイト列が出力に載る型
   （登録済みファイル・フォント・画像）は手書きにして件数・長さだけを出す（`publication` /
@@ -535,7 +536,7 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
   `seiran_compiler::test_support`）。
 - **入力読込系はパースと検証を I/O から切り離してテストする**: 設定・文献を読む module（`project::config` /
   `style` / `semantics::citation::references`）の入口は資源取得の薄いラッパに保ち、パース（文字列 → 構造体。
-  `parse_config` / `style::parse` / `parse_references`）と検証（構造体 → `Result`。`validate_values`）を内部関数に
+  `parse_config` / `style::parse` / `parse_references`）と検証（構造体 → `Result`。`validate_and_convert` / `validate_values`）を内部関数に
   切り出して、テストはそちらへ当てる。入口を通すテストは `MemoryProjectSource` で実ファイルに触れずに書き、
   `tempfile` は実ファイルシステムでしか起きない事象を確かめるときだけ使う。
 - test module も本体と同じ use 規約に従う（必須ルール 3）。親の被テスト項目を `use super::*` /

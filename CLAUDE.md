@@ -128,16 +128,16 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
                    （Publication / DependencyManifest / Warnings / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource とその 2 実装 / ProjectPath /
-                   ProjectSourceError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType / FontFace / VariationAxis と Publication 系）
+                   ProjectSourceError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType / FontFace / VariationAxis / ImageFormat と Publication 系）
                    + SVG のパース設定 SvgParser（usvg の型を返す唯一の入口。SVG 内の文字の照合規則の保証点）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran。seiran-compiler と seiran-pdf の両方に依存）。`build` は compile → render → atomic write → 表示の 4 手順のみ（ほかにフォント調査の 3 サブコマンド。`read-fonts` を直接使い compiler に依存しない）
 seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler に feature `fuzzing` で依存し、
-                   nightly 専用で `default-members` 外（root の build / test / clippy / doc に含まれず、製品に入らない）
+                   fuzz の実行は nightly 専用（lint は CI が stable で回す）で `default-members` 外（root の build / test / clippy / doc に含まれず、製品に入らない）
 ```
 
-`seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型と `SvgParser` だけで、`ProjectConfig` /
+`seiran-pdf` が読めるのは compiler の facade に載る leaf 値型（`Publication` 系と `FontFace` / `ImageFormat`）と `SvgParser` だけで、`ProjectConfig` /
 `Style` / `typeset::Page` は facade に出ていない — 「renderer は確定座標の描画のみ・レイアウト判断ゼロ」
 という防火壁は、この公開範囲の狭さが担っている。
 
@@ -153,9 +153,9 @@ seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler �
 3. **use 文**: 持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う
    - 起点は `crate::` に統一し `super::` / `self::` は使わない。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）
    - `crate::` を本体コードへ直書きしない（型・トレイトは裸の名前、関数は `module::fn(...)`）。規約は `absolute_paths` / `unused_qualifications` より厳しく、テストにも効く。doc コメントの intra-doc link ``[`crate::Foo`]`` は絶対パスが正しいので対象外
-   - `*` を避け明示 import（例外は上の (b) の `use super::*` だけ）。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
+   - `*` を避け明示 import（例外は上の (b) の `use super::*` と、test module の `use proptest::prelude::*` だけ）。型・トレイト・モジュールは直接 import、関数は既定でモジュール経由（出自が自明な慣用は直接可）
    - 並びは `mod` 宣言（空行なしの 1 ブロック。`pub mod` も `#[cfg(test)]` 付きも同じブロック）→ `use` → その他の項目（`arbitrary_source_item_ordering`。`#[cfg(test)]` 付きの module は lint が見ないので置き場は人が守る）。ブロック内の順序は rustfmt に任せ、`pub use` を `use` から分けて並べ直さない
-   - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)] pub(crate) use`（本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数（型から切り離せない。#696）
+   - `#[cfg(test)]` は module 境界（`mod tests` / `test_support`）に付ける。テスト専用の import・ヘルパ・inherent メソッドはその内側へ置き、`use` 行を個別にゲートしない。例外は facade の `#[cfg(test)]` の再輸出（`pub(crate) use` / `pub(super) use`。本番 API を広げずテストへ出す）と本番型のテスト専用フィールド・アクセサ・定数（型から切り離せない。#696）
 4. **ドキュメントコメント**: すべてのモジュール・型・関数に**日本語**で（`missing_docs*` は有無だけ検査。日本語かと長さは人が見る。長さの規律は「簡潔さ」節）。doc が正典を兼ねる箇所（`//!`・設定キー・`--help`）を lint 1 枚で守る代価として、名前の日本語化だけの 1 行は可。名前・型に無い情報（単位・由来・値域・`None` の意味）はその 1 行へ載せる
 5. **`unreachable!` は積極的に使う**: 型で表現不能にできない「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` でごまかさず `unreachable!`。入力（ソース・設定）由来で到達しうる状態は miette 診断エラー。メッセージには「なぜ到達しないか」＝上流のどの検証が保証するかを書く
 6. **panic は根拠を書いてから落とす**
@@ -214,7 +214,7 @@ seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler �
 
 正典は `docs/error-handling.md`。常時効く原則:
 
-- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は CLI 入口だけ
+- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語。低水準 cause と段の制御フロー型は `Diagnostic` を実装しない）。`miette::Result<T>` は CLI 入口だけ
 - `compile` の失敗型は不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic
 - 診断 `code` の第 1 階層は段の固定列挙（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli`）、第 2 階層以降は意味的カテゴリ（module パスではない）
 - 設定値検証は `garde`、違反は `Failures<E>` に集めて 1 度に報告。集約するかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決め、表示順は入力の論理順。集約自身に `code` を付けない（`Failures<E>` は `Diagnostic` 非実装で型保証）
@@ -241,7 +241,7 @@ lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.li
 
 - 入力は `tests/text/`（機能別 `.sei`）、フォントと CSL は `vendor/fonts/` / `vendor/csl/`（`tools/fetch-test-assets.sh` が取得。ユーザローカルの `fonts/` / `config/` はテストから参照されない）
 - AAA。3 段は空行で分け、`// Arrange` / `// Act` / `// Assert` のラベルは書かない（段の「なぜ」は普通の `//` コメントで）。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）
-- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` / `project::config` の 10 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod`（`project::config`）で root facade（`seiran_compiler::test_support`）
+- 3 つ以上の test module が使うヘルパは `#[cfg(test)]` の `test_support` module 1 箇所へ（テスト専用 helper の module 名はこれ 1 つ。`frontend` / `frontend::evaluator` / `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` / `typeset::breaking::break_lines` / `publication` / `compiler` の 9 つ。置き場は「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」）。`tests/` も使うヘルパだけ `#[doc(hidden)] pub mod`（`project::config`）で root facade（`seiran_compiler::test_support`）
 - test module も use 規約は本体と同じ（`use super::` は直近の親だけ）
 - テストコードでは `unwrap` / `expect` / `panic!` 可（属性不要。`expect` メッセージは日本語で期待を書く）。`tests/` から使うヘルパは cfg(test) 外なので本体と同じ扱い。`unwrap_in_result` だけはテスト内でも発火 → `#[expect(clippy::unwrap_in_result, reason = ...)]`
 - 検証手段（proptest / fuzz / golden）の使い分けは `docs/coding-conventions.md`「テスト」節。frontend の出力の不変条件は `frontend::syntax::preservation` / `frontend::hir_invariants` の 1 箇所（診断ラベルの範囲だけ `frontend::fuzzing`）で、通常テストと fuzz（手順は `fuzz/README.md`）が共有する

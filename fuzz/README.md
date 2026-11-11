@@ -119,7 +119,7 @@ E=crates/seiran-compiler/src/frontend/evaluator
 
 ## CI
 
-`.github/workflows/fuzz.yml` が週 2 回（水曜・日曜 03:00 JST、1800 秒）と手動起動で回す。既知のクラッシュで探索が
+`.github/workflows/fuzz.yml` が週 2 回（水曜・日曜 03:00 JST、1800 秒）と手動起動（既定 900 秒）で回す。既知のクラッシュで探索が
 止まらないよう `-fork=2 -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1` で最後まで回し、終わった後に
 `fuzz/artifacts/frontend` に失敗入力が 1 つでもあれば job を失敗させる（未修正の既知の不具合があれば毎回失敗する）:
 

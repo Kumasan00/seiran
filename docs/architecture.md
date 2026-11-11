@@ -37,8 +37,8 @@
 各 module は `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）で、公開 API はクレート root
 （`lib.rs`）の `pub use` に一本化する。各 module の「公開」という記述は crate 内から見た公開範囲
 （`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポートした項目だけである。依存・可視性・
-「唯一の発行元」等の記述は本体ビルドについてのもので、`#[cfg(test)]` の module・出口・構築子は明示したものだけが
-対象である。
+「唯一の発行元」等の記述は既定の本体ビルドについてのもので、`#[cfg(test)]` と feature `fuzzing`（`seiran-fuzz` 専用）の
+module・出口・構築子は明示したものだけが対象である。
 
 節順は **leaf 値型 → 入力 → 文書と設定 → パイプライン段 → 成果物 → facade**
 （`length` / `color` → `failures` → `phase` → `source` → `project` → `document` → `style` → `frontend` →
@@ -116,12 +116,9 @@
 
 ### `project`
 
-プロジェクトの**物理的な入力**を所有する module。所有物は 8 つ — 外部資源取得の seam（`ProjectSource` trait +
-`ProjectPath`）・`config.toml`（子 module `config`）・読込済みソース集合 `SourceSet`・config.toml が宣言する
-フォント資源（子 module `font`）・入力パスの解決規則 `PathResolver`・帰属 adapter `InFile<E>`・TOML 解析
-そのものと解析エラーの診断部品 `TomlErrorParts`（`parse_toml` が入口）・値検証で garde の `custom` に渡す検証器
-（子 module `validators`）。各所有物の
-中身は `//!` が持ち、ここには境界だけを置く。
+プロジェクトの**物理的な入力**（外部資源取得の seam・config.toml・読込済みソース・フォントの入力）と、config と style が
+共用する読込の部品（パス解決・帰属 adapter・TOML 解析・値の検証器）を所有する module。各所有物の中身は `//!` が持ち、
+ここには境界だけを置く。
 
 - seam: compiler は `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
   この seam 経由で取得する。実装は `FilesystemProjectSource`（実ビルド）と `MemoryProjectSource`
@@ -130,8 +127,7 @@
 - `config` は `pub(crate) mod` で公開し、入口が `project::config::load` と読めることで `style::load` と
   取り違えようがなくする
 - `SourceSet` は `SourceId` の唯一の発行元
-- `font` は入力（分類 `FontType` / 実体の鍵 `FontFace` / 枠ごとの表 `FontMap<T>` / 全実体の表 `FaceMap<T>` /
-  検証済み設定 `FontConfigs` / バイト列 `FontData`）までを持ち、**解析・検証・シェイピングという処理は持たない** —
+- `font` は入力（分類・実体の鍵・検証済み設定・バイト列）までを持ち、**解析・検証・シェイピングという処理は持たない** —
   `typeset::font`。入力（実体）と処理を混ぜないため
 - **枠と実体を分ける**: 枠 `FontType`（19 種別）は style・言語・書体から選ぶ単位で、実体 `FontFace`（枠 × 候補の位置）は
   フォントファイルを持つ単位。本文の 18 枠は 1 つ以上の候補の配列、`math` はちょうど 1 つ。`FaceMap` が「本文の枠は
@@ -148,7 +144,7 @@
   code / help は役割ごとに違うので variant（`ParseToml`）は各所有者が持ち、`parse_toml` は部品（`NamedSource` /
   `SourceSpan` / input を消した `toml::de::Error`）だけを返す。references の `ParseToml` は toml の自前
   スニペットで位置を示す別方式で（`docs/error-handling.md` の references 例外）、これを使わない
-- `validators`（文字列の非空・配列の非空・整数の範囲・`f32` の正 / 非負の有限値）も config と style が共用する。違反文言は
+- `validators`（garde の `custom` に渡す値の検証器）も config と style が共用する。違反文言は
   日本語で、数値の違反には受け取った値を載せる。garde 組込の値ルール（`length` / `range` 等）は使わない（規約は
   `docs/error-handling.md`「バリデーション（garde）」）。`f32` の検証器は有限値だけを受理する（NaN はどの大小比較も
   偽になるので、上下限の比較だけでは素通りする）。利用側は `length` の検証器と同じく `use` で持ち込み、境界は実行時の
@@ -162,7 +158,7 @@
 依存の不変条件: **seam 部（module 直下 + `filesystem` / `memory` / `path_resolver`）と帰属 adapter `in_file`・
 TOML 解析部品 `toml_error_parts`・検証器 `validators` は crate 内の他 module に依存しない**。crate 内依存を持つのは残る子 module だけで、
 `config` が seam / `in_file` / `toml_error_parts` / `validators` / `font` / `length` / `failures` を、`font` が seam と `failures` を、
-`source_set` が `source` / `failures` を参照し、
+`source_set` が seam / `source` / `failures` を参照し、
 `project::config → project::font → seam` の一方向に閉じる。seam を `config` の子に置かない（`font → config` という役割に合わない依存が生まれる）。
 「`project` 全体が crate 内依存を持たない」形へは戻さない。
 
@@ -341,7 +337,7 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   （アクセントの基底のドット無しの字形を選ぶ文書全体の既定。1 個ごとの上書きはソースの `dotless`）。上付き・下付きの縮小率・
   シフト量は数式フォントの OpenType MATH の値で、style.toml には置かない（`[math.script]` は書けば未知キーの
   診断エラー。`docs/language-design.md`「数式レイアウト定数はフォント実体」）
-- **数値・単位**: `[quantity]` は数値（`\num`）の書式（小数点・桁区切り・4 桁区切り・指数の積の記号）、単位（`\unit`）の表記（積・負の指数）、
+- **数値・単位**: `[quantity]` は数値（`\num`）の書式、単位（`\unit`）の表記、
   量（`\qty`）の数値と単位の間のアキと書体。単位が平面角 ° ′ ″ の 1 因子だけ（指数なし）のときアキを置かないのは SI 文書の内容側の規則で、
   style のキーではなく lowering（`quantity_pieces`）の定数が持つ。書体は本文・数式の
   どちらでも `typeface` 1 つで決まり、外側の書体を継がない（`Option` にして外側から導かない）。矛盾する組み合わせ
@@ -363,7 +359,7 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 ### `frontend`
 
 テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse` と
-`ParseError` のみで、CST と字句・構文・評価の各エラー型（`SyntaxError` / `EvalError`）は非公開の内部実装に閉じる
+`ParseError` のみで（feature `fuzzing` の入口は「テスト用子 module」項）、CST と字句・構文・評価の各エラー型（`SyntaxError` / `EvalError`）は非公開の内部実装に閉じる
 （`ParseError` の variant が運ぶだけで、`frontend` の外からは名指さない）。
 `ParseError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、自分の
 message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため）。`SourceId` も
@@ -408,7 +404,7 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
   HIR の `UnitFactor` は書いたままの字と指数の数字列だけを持つ — lowering は語彙を引かない。数式組版にするかは評価器と lowering が決め、`ParseMode` は構造の読みにだけ効く）
 - **エスケープの可否は parser の `parse_element` 1 箇所で判定する** — どこでも構文文字 `{ } [ ] $ _ ^ &` と `/`、
   区切りを持つ区間（任意引数・`CommaList` の引数）の直下だけ `,` `=` / `,`。区切りは `parse_delimited` が直下の要素へ
-  だけ渡す。字句解析は今どおり `\` + 非英数字をすべて `Escaped` にし、評価器（文字列の読み取りは `evaluator::string_arg`）は `\` を外すだけ
+  だけ渡す。字句解析は `\` + 非英数字をすべて `Escaped` にし、評価器（文字列の読み取りは `evaluator::string_arg`）は `\` を外すだけ
   （受け付けたものしか届かない）
 - **任意引数 `[...]` はコマンド・環境とも高々 1 組**（P3）。1 組目の後にトリビアを跨いで `[` が続けば
   2 組目を読み切ってエラーにする。型付きビューはこの不変条件を `Option` で表し、下流は複数組を
@@ -419,16 +415,16 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
   同じトークンなので食い違わない
 - **`\begin{name}` の後ろの `{...}` を必須引数として読むのはテキスト本体の環境だけ**。テキスト本体では裸の
   `{` を書けない（P4）ので引数以外の読みが立たず、個数は評価器（`arity`）が環境名つきで診断する。数式本体では
-  `{...}` は数式グループなので本体の先頭になる（#732）。必須引数を取る環境は無いので個数はパーサーが持たない
+  `{...}` は数式グループなので本体の先頭になる。必須引数を取る環境は無いので個数はパーサーが持たない
   （初めて足すときに個数をレジストリから引く形へ変える）
 - **数式内のコマンド呼び出しは、数式の語彙が宣言する必須引数の個数（`evaluator::math` の `MathCommandKind`）を
-  読んだら打ち切る**。後ろの `{...}` は数式グループになる（`$\alpha{b}$`、#753）。個数の宣言はパーサーの打ち切りと
+  読んだら打ち切る**。後ろの `{...}` は数式グループになる（`$\alpha{b}$`）。個数の宣言はパーサーの打ち切りと
   評価器の個数検査の両方が従う 1 箇所。テキスト内と数式の語彙に無いコマンドは後ろに続く `{...}` をすべて引数として
   読み、余分は評価器が診断する
 - **テキスト・数式どちらの文脈でも 1 要素を読む規則は `parse_element` 1 つだけ**。`$...$`・数式グループ・
   数式環境の本体・引数の各ループは終端と「閉じないまま終わった」診断（`UnclosedInlineMath` /
   `UnclosedMathGroup` / `UnclosedDelimiter`）だけを持つ。数式内の `\begin` も環境として読み、数式内で
-  使えないことは評価器が診断する（書いた位置で診断が変わらない、#688）
+  使えないことは評価器が診断する（書いた位置で診断が変わらない）
 - **要素の入れ子は `MAX_NESTING_DEPTH`（32）段までで、段を数えるのも `parse_element` 1 箇所**。トップレベルの要素が
   1 段目、構造（コマンドの引数・任意引数・環境の本体と名前・`$...$`・数式グループ・上付き下付き）の中の要素は囲む要素の
   段 + 1 で、verbatim の中身は数えない。超えた要素は `nesting_too_deep` の構文エラー。評価器・意味解析・組版の再帰は
@@ -452,7 +448,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   `EnvironmentKind` で、定理クラス・引用の種類・寄せ環境の揃え（`document::TextAlignment`）・リストの順序付き / なし・数式グリッド環境のセル配置
   （`document::GridLayout`）と採番の粒度をデータとして持つ（環境名から種別を求め直す経路は無い）。
   セル配置と採番の粒度は独立の 2 軸でどの組み合わせも有効、区切りの許可は配置から導出するので、
-  種別と採番・区切りの食い違いは型で書けない（#704）。本体の読み取り方（`BodyMode`）も
+  種別と採番・区切りの食い違いは型で書けない。本体の読み取り方（`BodyMode`）も
   種別から導出する。数式系環境は複数行分割の共通基盤を共有する
 - 設定オプション `[...]` のエントリ分割は CST のトークン単位（`string_arg::opt_arg_entries`）で、直下の構造トークン
   `,` がエントリ、各エントリの最初の構造トークン `=` が key / value の区切り。`\,` `\=`（`Escaped`）は値の文字になる。
@@ -466,8 +462,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   キー名と期待型を束ねた型付きのキー定数 `OptKey<T>` を宣言し、その `decl()` の列をスキーマとして渡して、
   同じ定数で値を取り出す（`OptArgs::get` が `Option<T>` を返す）。値域（正の長さ・1 以上の整数）も型の
   語彙（`OptType`）に入っているので、ハンドラ側に検査は複製されない。
-  長さの字面は `Length` の `FromStr` を config / style と共有し、`opt_args` / `widths` / `\space` は値域だけを
-  上に重ねる（書式の解釈を frontend に複製しない。#690）
+  長さの字面は `Length` の `FromStr` を config / style と共有し、`opt_args` / `widths` は値域だけを
+  上に重ね、`\space` は値域を重ねない（書式の解釈を frontend に複製しない。#690）
 - `\sqrt[n]{x}` の根指数は設定オプションではなく数式内容なので、キー値への分割や `opt_args` の検査を通さない。
   `[...]` は通常どおり Text モードで構文解析し、被根号の必須引数の個数を検査してから根指数を数式として評価する
 - **必須引数の個数検査も 1 箇所**（`arity`）。設定オプションを検査するハンドラの前置きは「設定オプション（`opt_args`）→ 引数個数
@@ -491,7 +487,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 
 #### テスト用子 module
 
-- `frontend::test_support`（`pub(crate)`）: `frontend` 配下と後段（`semantics` / `typeset`）の test module が
+- `frontend::test_support`（`pub(crate)`）: `frontend` 配下と後段（`semantics` / `typeset` / `compiler`）の test module が
   共有する、resolver 注入済みの入口（`base_dir` が空パスの resolver で `parse` を呼ぶ）。パス解決
   そのものを検証するテストは resolver を明示して `frontend::parse` を直接呼ぶ
 - `evaluator::test_support`（非公開 `mod`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
@@ -499,8 +495,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - `syntax::preservation` / `hir_invariants`（`cfg(any(test, feature = "fuzzing"))`）: frontend の出力の不変条件
   （トークンと CST の入力保存、HIR の決定性・`NodeId` の一意性と親子の順序・span の範囲と字の境界）の**唯一の
   定義**（診断ラベルの範囲だけは任意入力でしか意味を持たないので `fuzzing` が持つ）。通常テスト（parser の proptest・fixture のループ）と fuzz 入口が同じ関数を呼ぶ — 新しい frontend の
-  不変条件はここへ足し、テスト側に検査を複製しない。構文解析は呼び出し側が行う（parser のテストはテスト用、
-  fuzz は本番の `mode_resolver`）
+  不変条件はここへ足し、テスト側に検査を複製しない。`preservation` の構文解析は呼び出し側が行う（parser のテストはテスト用、
+  fuzz は本番の `mode_resolver`）。`hir_invariants` は自分で `frontend::parse` を呼ぶ
 - `fuzzing`（`feature = "fuzzing"` のときだけ）: 任意入力を本番と同じ経路で通す fuzz 入口 `check_source`。
   root から `#[doc(hidden)] pub use` で `seiran_compiler::fuzzing` として出る `seiran-fuzz` 専用の経路で、
   API ではない。既定ビルドには存在しない
@@ -511,8 +507,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうかとラベル・ソース位置だけを構造化し、
   発番・`\ref` 解決は `semantics`、書式化（表示文字列の生成）は `typeset::lowering` が担う（書式は「種類の
   既定」＝ style.toml 管轄という P10 の分離）
-- **未知引数・引数個数の不一致で panic しない**: 全コマンド名 × 0〜4 個の位置引数を任意に組み合わせても
-  panic せず、閉じた許可リストの `EvalError` だけを返すことを property test が固定する（#306）。環境・
+- **未知引数・引数個数の不一致で panic しない**: 全コマンド名 × 0〜4 個の位置引数のどの組でも
+  panic せず、閉じた許可リストの `EvalError` だけを返すことを全件走査のテストが固定する（#306）。環境・
   数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだことを意味し、許可リストへ足さず不具合と
   して扱う
 - **`style` / `project::config` に依存しない**。設定の値を見ずに評価できる形を保つ。`base_dir.join` を
@@ -537,7 +533,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 
 境界: `semantics` の外から呼ばれる操作は `analyze`、文献の読込 `load_references`（入力読込段が呼ぶ）、
 生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ（`#[cfg(test)]` の
-`analyze::test_support::analyze_for_test` を除く。実装は子 module に置き、facade は名前だけを出す）。module root が再エクスポートする他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
+`analyze::test_support::analyze_for_test` を除く。実装は子 module に置き、facade は名前だけを出す）。module root が非公開の `use` で取り込む他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
 引くための経路で外部の消費者はいない。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は
 `typeset` / `compiler` が名指しする。走査後に初めて成立する意味上の識別子 `LabelId` / `HeadingKey` も本 module
 が所有する（組版側は到達先の名前空間として使うだけで、発行はしない — 目次が事実に載った index から鍵を
@@ -553,7 +549,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   そのカウンタが進むと 0 に戻す定理の共有カウンタ名、各定理クラスの `counter` / `unnumbered`
   だけを写した投影。`reset_by` は前者の共有カウンタ名へ畳んで写す）で、`number_format` / `ref_format` /
   `display_name` / `number_style` が型として存在しない。G3（内容は見た目から独立）はこれで型として保証
-  される（規約や property test ではなく型で）。`analyze` 自身が `&Style` を取るのは CSL 整形に渡すためで、
+  される（規約や property test ではなく型で）。`analyze` 自身が `&Style` を取るのは `SemanticPolicy` の構築と CSL 整形のためで、
   走査には渡らない
 - カウンタの**値**（構造のみ。節 1.2 → 採番したカウンタ `section` + 採番時点の全 9 カウンタの値）はここで
   確定し、表示文字列は `typeset::lowering` が style と合わせて作る。値は全カウンタを名前で引けるので、表示側は
@@ -651,8 +647,8 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 （`geometry` 項）だけ（`#[cfg(test)]` の出口 `layout_for_test` / `dump_pages` を除く）で、本体ビルドでは子 module は
 すべて非公開。`compose` は組版の成否（成功側は
 `TypesetOutput`）と `TypesetWarning` の列の組を返し、
-警告は成否と独立に**フォント → 本体の順**で載せる（配置が失敗した実行ではフォントの警告だけ — 配置由来の
-警告は配置が成功したときにしか存在しない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
+警告は成否と独立に**フォント → 本体の順**で載せる（失敗した実行でも、失敗までに確定したフォント・画像ファイル・
+異体字列の代替の警告は返す — はみ出しなど配置由来の警告は組版が成功したときにしか返さない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
 流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
 段順序（数式フォントの字・数値・単位の上付きの指標の検査 → 画像の収集 → 画像読込・PDF の検査とページの選択・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
@@ -667,8 +663,8 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 - `typeset` は `seiran-pdf` に**依存しない**（依存の向きは `seiran-pdf → seiran-compiler`）。組版に必要な
   画像の自然寸法は自前で求め、描画に使う画像本体のデコードは render 側に残す（同じバイト列を 2 度読むが、
   krilla を compiler へ持ち込まないための線引き）。組版時の自然寸法と描画時の解釈が一致することは、
-  workspace で `image` / `usvg` / `hayro-syntax`（krilla の PDF 埋め込みが使う hayro-write と同じ版）の版を
-  1 つに pin することで担保する。SVG はパース設定（フォントと文字の照合規則）も一致させる必要があり、こちらは
+  workspace で `image` / `usvg` の版を 1 つに pin することで担保する（PDF の `hayro-syntax` は、krilla の PDF
+  埋め込みが使う hayro-write と版が揃っておらず、この担保の外にある）。SVG はパース設定（フォントと文字の照合規則）も一致させる必要があり、こちらは
   `publication::SvgParser` 1 つを両者が使うことで担保する。自然寸法は読込時に「有限かつ正」を
   検証した型で持ち、表示寸法の確定（省略された辺の推論）は boxing の中で失敗しない計算として済む
 - `typeset` は `publication`（backend 非依存の確定表現）に**依存してよい**（旧原則「`typeset` は描画表現を
@@ -690,16 +686,17 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 #### `emit`
 
 組版の出口。`ProjectConfig`（用紙寸法・`show_bookmarks`・文書メタデータの出どころ）・`LaidOutDocument`・
-フォント資源（生バイト列 `FontData` と解析済み `FontSystem` の 2 つ）を受け取り、描画資源の構築・確定座標の
-`PaintOp` への写像・リンク到達先の解決を 1 操作に閉じる。`Style` に依存する判断は一切しない — 表のセル余白・
+フォントの描画資源を受け取り、描画資源の構築・確定座標の `PaintOp` への写像・リンク到達先の解決を 1 操作に閉じる。
+フォントの描画資源（`PublicationFont`）は `compose` が配置の前に `emit` の構築関数で組む — 画像読込の SVG の
+文字の検査と描画が同じ値を使うため。`Style` に依存する判断は一切しない — 表のセル余白・
 罫線は表エンジン、ページ背景色は `breaking` が解決済みの値として `Page` / `PlacedBlock` に載せており、`emit` はそれを読むだけ。`ImageRef` は配列添字なので、画像は
-**パス昇順**に並べてから配列を組む。
+組版段が**（パス, ページ index）の昇順**に並べた順のまま配列にする（`emit` は並べ替えない）。
 
 #### `warning`
 
 組版が見つけた、ユーザーが直せる非致命的問題 `TypesetWarning`（severity(Warning) の leaf diagnostic）。
-フォント資源の構築で見つかった `FontWarning` も transparent に包んで同じ型へ収める。組版自身の変種は脚注の
-はみ出し 2 種と、行（脚注本体を含む）・画像・ディスプレイ数式・表・表の行のはみ出し 5 種。後者は横の上限（行は着地した段の
+フォント資源の構築で見つかった `FontWarning` も transparent に包んで同じ型へ収める。組版自身の変種は異体字列の
+代替・図にした PDF の注釈の脱落と、脚注のはみ出し 2 種と、行（脚注本体を含む）・画像・ディスプレイ数式・表・表の行のはみ出し 5 種。後者は横の上限（行は着地した段の
 幅、画像・ディスプレイ数式・表は囲む引用・リストの字下げを段の幅から引いた利用幅）と実効の本文下限（脚注予約を引いた下限）を
 基準に軸ごと 1 件（表は幅だけを表 1 個につき 1 件、表の行は横＝折り返したセルの行が
 内容幅を超えた量と、縦＝空の領域でも入らない行帯）で、0.1pt（TeX の `\hfuzz` 既定値）以下の超過は数えない。組版アルゴリズムは
@@ -709,7 +706,7 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 `\footnote`、表環境、`\row`）の開始位置を**長さ 0 のラベル**で持つ（要素全体の span は複数行の段落・コードを警告ごとに全行
 印字するため）。起源は HIR の `NodeId` として lowering → boxing → `break_pages` の `Overflow` まで運び、
 `PlacedBlock` / `Page` 以降には載せない。単一のソース要素に対応しない生成物（タイトルページ・書誌・目次の題・
-索引）の行は起源 `None` で、今と同じくページだけで指す。目次の項目は元の見出しを指す。フォントの警告は
+索引）の行は起源 `None` で、ページだけで指す。目次の項目は元の見出しを指す。フォントの警告は
 位置を持たない。位置を持つ警告にだけ `compiler` が `SourceDiagnostic` で本文を添える。
 
 #### `font`
@@ -766,18 +763,32 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   高さが目標以上なら、その字形を伸ばさずに使う（同じ段の裸の文字と同じ字形）。足りなければ `ssty` なしの元の字形から
   size variant → glyph assembly で伸ばす — MathVariants の Coverage は元の字形を起点にし、`ssty` の字形が元の字形より
   低いフォントもあるので、元の字形で判定してから `ssty` に差し替える順では目標を覆えないことがある
+- **本文の枠の候補選択はシェーピング時の 1 箇所（`fallback`）**: 枠の先頭の候補で全体を組み、組めないクラスタ
+  （同じ範囲に対応する字形の連続。基底 + 結合文字・合字を分断しない）の区間ごとに後続の候補を宣言順に試す。
+  候補ごとに自身の face 番号・軸・features・script・言語で組み直すが、前後の文字列を文脈に渡し、進行方向は
+  先頭の候補の実効方向に固定する（候補が明示した `direction` が違えばその候補は使わずエラー）。選択は文書・候補順・
+  クラスタ情報だけで決まる。候補は設定した枠の中だけで使い、OS のフォントや別の枠は探さない。数式フォント（`math`）の
+  字・記号・アクセント・伸縮字形は代替しない。異体字列（基底 + VS1〜VS256）は候補の cmap が写すときだけ「組める」と
+  数え、どの候補も写さなければ基底を描けた最初の候補の字形で組んで warning にする
+- 候補の切り替えは改行機会・単語境界にならない: 分割点・和欧文の分類・約物アキは元の論理文字列のまま決まり、
+  `ShapedRun` が字形ごとの候補位置を持つ。取り出すとき、候補が 1 種なら 1 本のグリフ列、複数なら同じ候補の連続ごとの
+  グリフ列を並べた `HBoxContent::Atom` にする。幅は字形ごとに実体の upem で、高さ・深さは範囲内に現れた実体の
+  ascender / descender の最大で測る（先頭の候補の値を流用しない）
+- 行末ハイフンの字形はハイフネーションが有効な欧文セグメントごとに、使うかどうかに関わらず先に組む。枠の全候補が `-` を
+  持たなければその枠の欧文段落はすべて欠字エラーになる（組版の分割結果に依存しない決定的な検査）
 
 #### `error`
 
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
 非収束）。画像は正規化済みパスの昇順に**全件**検査し、PDF は 1 ファイルの中の要求ページも昇順に全件検査する。`compose` の失敗型は制御フロー型 `ComposeError`
 （`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、ソース位置に
-帰属しうる字の欠落 `Glyphs(Failures<TextGlyphError>)`（数式フォントの `MissingMathGlyph` を文書順に、
-続けて本文の枠の `MissingGlyph`。どちらも `glyph_issues` 項）と、寸法の溢れ `Dimension(DimensionOverflow)` の 3 腕を持つ
+帰属しうる字の問題 `Glyphs(Failures<TextGlyphError>)`（数式フォントの字の欠落を文書順に、続けて本文の枠の字の
+欠落と代替の候補の方向の不一致。数値・単位の上付きの指標の欠落もこの腕で運ぶ。`glyph_issues` 項）と、寸法の溢れ `Dimension(DimensionOverflow)` の 3 腕を持つ
 （`semantics::AnalyzeError` と同じ形）。`compiler` は前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接
 `CompileFailure` へ平坦化し、後 2 者は位置を持つもの（`TextGlyphError::source_id` / `DimensionOverflow::source_id` が
-`Some`）にだけ `SourceDiagnostic` で本文を添える。3 本目は組版の内側では起源を `ElementOverflow`（`NodeId`。生成物・
-ページ単位の計算・emit は `None`）として運び、`pagination::paginate` がはみ出し警告と同じ `SourceMap` で位置に解決する。
+`Some`）にだけ `SourceDiagnostic` で本文を添える。3 本目は配置の内側では起源を `ElementOverflow`（`NodeId`。生成物・
+ページ単位の計算は `None`）として運び、`pagination::paginate` がはみ出し警告と同じ `SourceMap` で位置に解決する。
+`emit` の溢れは起源を持たず、`compose` が位置なしの `DimensionOverflow` にする。
 溢れた後の寸法では続きを決定的に組めないので、最初の 1 件で組版を止める（集約しない）。
 
 組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた `unreachable!` で
@@ -806,8 +817,9 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 
 **`prepare` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な組み合わせを弾く。
 確定した版面は `CompilationInputs` が保持し、`compose` の引数として組版へ戻る。`typeset` の外向きの操作を
-`compose` 1 つに保つ原則の意図した例外は `prepare` だけで、本体ビルドで facade に載る型は 2 操作のシグネチャに
-現れるもの（`TypesetOutput` / `TypesetWarning` / `ComposeError` / `TypesetError` / `PreparedGeometry` とそのエラー型）と
+`compose` 1 つに保つ原則の意図した例外は `prepare` だけで、本体ビルドで root から名指しできる型は
+`TypesetOutput` / `ComposeError` / `PreparedGeometry` とそのエラー型（`TypesetWarning` / `TypesetError` は 2 操作の
+シグネチャに現れるが再エクスポートせず、`compiler` は値として受け渡すだけ）と
 `LaidOutDocument`（`#[cfg(test)]` 出口 `layout_for_test` の戻り値型として無条件に再エクスポートするが、本体
 コードの消費者は `typeset` 自身だけ）に限る。テストビルドで加わる中間型の再エクスポートは `boxes` 項。
 
@@ -841,27 +853,13 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 文書が数式フォントで組む字を HIR から決め、数式フォントの cmap に基本の字形があるかを問う pre-pass。`lay_out` の
 先頭で 1 回だけ走り（脚注のページ単位採番の反復で再検査しない）、欠けた字を `MissingMathGlyph`（`SourceId` + span、
 code `typeset::math::missing_glyph`。型は `glyph_issues` が所有）として使った位置 × 字ごとに 1 件・文書順で集める。字の決め方は lowering / boxing
-と同じ関数（`translate_math_char`・`math_text_clusters`・`delimiter_glyphs`・`RADICAL_SIGN`・`char_font_type`）を
+と同じ関数を
 使う — 写し方や振り分けを変えたらここが追従する。テキスト・記号は書記素クラスタの先頭の字だけを問い、和文として振り
 分ける字は除く。記号は display 段の大型演算子（boxing が振り分けを経ず数式フォントで組む）でも振り分ける側として扱う
 前提（大型演算子の字に和文の字は無い）。証明の末尾に数式フォントで組む style.toml の `qed_mark` も、テキストと同じ
 規則で証明の位置に問う。派生字形（`ssty`・`flac`・size variant・glyph assembly）は問わない。走査は
 フォントに触れず、字の有無は述語で受け取る（本番は `FontSystem::has_math_glyph`）。HIR の 3 語彙は全 variant を明示して
 match する。
-
-- **本文の枠の候補選択はシェーピング時の 1 箇所（`fallback`）**: 枠の先頭の候補で全体を組み、組めないクラスタ
-  （同じ範囲に対応する字形の連続。基底 + 結合文字・合字を分断しない）の区間ごとに後続の候補を宣言順に試す。
-  候補ごとに自身の face 番号・軸・features・script・言語で組み直すが、前後の文字列を文脈に渡し、進行方向は
-  先頭の候補の実効方向に固定する（候補が明示した `direction` が違えばその候補は使わずエラー）。選択は文書・候補順・
-  クラスタ情報だけで決まる。候補は設定した枠の中だけで使い、OS のフォントや別の枠は探さない。数式フォント（`math`）の
-  字・記号・アクセント・伸縮字形は代替しない。異体字列（基底 + VS1〜VS256）は候補の cmap が写すときだけ「組める」と
-  数え、どの候補も写さなければ基底を描けた最初の候補の字形で組んで warning にする
-- 候補の切り替えは改行機会・単語境界にならない: 分割点・和欧文の分類・約物アキは元の論理文字列のまま決まり、
-  `ShapedRun` が字形ごとの候補位置を持つ。取り出すとき、候補が 1 種なら 1 本のグリフ列、複数なら同じ候補の連続ごとの
-  グリフ列を並べた `HBoxContent::Atom` にする。幅は字形ごとに実体の upem で、高さ・深さは範囲内に現れた実体の
-  ascender / descender の最大で測る（先頭の候補の値を流用しない）
-- 行末ハイフンの字形はハイフネーションが有効な欧文セグメントごとに、使うかどうかに関わらず先に組む。枠の全候補が `-` を
-  持たなければその枠の欧文段落はすべて欠字エラーになる（組版の分割結果に依存しない決定的な検査）
 
 #### `quantity_check`
 
@@ -892,7 +890,8 @@ boxing は本文用の枠の指標がある前提で数値・単位の上付き�
 
 #### `pagination`
 
-確定ページ列の組み立て。`typeset` root から見える操作は全段共有 context の構築と `paginate` の 2 つで、
+確定ページ列の組み立て。`typeset` root から見える操作は全段共有 context の構築と `paginate` の 2 つ（ほかに root は
+context が持つ字の問題の収集器を `paginate` の後で読む。`glyph_issues` 項）で、
 段順序を所有するのは `paginate`。
 
 | 段 | 内容 |
@@ -974,7 +973,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
 
 `SemanticDocument` → `LayoutNode` への変換。フォント資源（`FontSystem` / `Shaper`）を引数に取らずフォントに触れない
 （`typeset::font` から名指すのは `TextStyle` の欄の型 `ScriptLevel` だけで、値は常に `None`）。意味解析を行わないため
-失敗しない（`Result` を返す公開関数が無い）。
+入力由来の診断は出さず、失敗は寸法の溢れ（`ElementOverflow`。`error` 項）だけ。
 
 - 本文の入口は前段の深い型 `SemanticDocument` 1 つだけを借用する（タイトルページだけは config 由来の
   メタデータを受ける別入口）。lowering 側にビュー型を置かず（#349）、side table の raw な collection を直接
@@ -1003,27 +1002,22 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   テンプレートの展開を呼ぶだけで、見出し・キャプション・定理見出しはリテラルをノードへ変換する
   クロージャとタイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを lower せず、
   2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）
-- **dispatcher は payload を取り出して渡すだけ**。`lower_nodes` は委譲する 10 種別（Heading /
-  Paragraph / List / Theorem / Quote / Flush / CodeBlock / MathBlock / Figure / Table）について、`HirNodeKind` の
-  payload を取り出して子 module へ渡す。各 lowering が受け取るのは実際に使うものだけで、引数の個数を
-  揃えることは目的にしない — payload は常に、`NodeId` は事実を引く 5 種（Heading / Theorem / MathBlock /
-  Figure / Table）と、はみ出し警告の起点（`origin`）にだけ使う Paragraph / CodeBlock だけ、`state` は `CodeBlock` を除く 9 種だけ（`MathBlock` は不変借用）。`PageBreak` / `Space` は委譲せず
+- **dispatcher は payload を取り出して渡すだけ**。`lower_nodes` は種別ごとの lowering へ、`HirNodeKind` の
+  payload を取り出して渡す。各 lowering が受け取るのは実際に使うものだけで、引数の個数を
+  揃えることは目的にしない（`NodeId` を受けるのは、事実を引く種別と、はみ出し警告の起点に使う種別だけ）。`PageBreak` / `Space` は委譲せず
   dispatcher がその場でノードを組む。採番値・宣言ラベル・参照先は各 lowering が `NodeId` で
   `LoweringState` から引く（dispatcher は事実を先読みしない）。図と表は「番号 → 本体 → キャプション →
   包み → ラベルアンカー」が同形なので `lowering/float.rs` の共通経路 1 本に寄せ、本体ノードの作り方だけを
   クロージャで受け取る（本体をキャプションより先に組むことで、表セルの `\footnote` がキャプションの
   `\footnote` より先に番号を取る本文の出現順を保つ）
-- **HIR のブロック variant は payload struct**（#711 で解消。見送りのトリガーだった「payload struct にする
-  issue に着手するとき」が発火した）。`HirNodeKind` の variant の形は値の個数で決まる — 2 つ以上なら
-  payload struct（`HirHeading` / `HirList` / `HirMathBlock` / `HirFigure` / `HirTable` / `HirTheorem` /
-  `HirQuote` / `HirFlush`）、1 つならタプル（`Paragraph` / `CodeBlock` / `Space`）、0 ならユニット variant（`PageBreak`）。
+- **HIR のブロック variant は payload struct**。`HirNodeKind` の variant の形は値の個数で決まる — 2 つ以上なら
+  payload struct、1 つならタプル、0 ならユニット variant。
   インラインのフィールドを持つ variant は
   作らない — lowering の各入口が payload 型を引数で受け取れることが、入口ごとの `unreachable!` 付き分配束縛を
   型の側で不要にしている。レイアウト側の対応物（`LayoutNode::Table(TableLayout)` /
-  `MathBlock(MathBlockLayout)`）とも形が揃う。`TableLayout` は列指定（`TableColumn`）・セルの内容と部分罫の旗に加えて、
-  `[table]` のセル余白・罫線の太さ（枠罫と細罫）・空き（`rule_gap` / `row_gap`）・部分罫の太さと詰め幅と色を解決済みの
-  値で運ぶ（表エンジンは style を読まない）
-- **数式ブロックの体裁（セルの列内揃え・区切り括弧のグリフ）は lowering が解決する**（#674）。
+  `MathBlock(MathBlockLayout)`）とも形が揃う。`TableLayout` は列指定・セルの内容に加えて、
+  `[table]` の体裁（余白・罫線・空き）を解決済みの値で運ぶ（表エンジンは style を読まない）
+- **数式ブロックの体裁（セルの列内揃え・区切り括弧のグリフ）は lowering が解決する**。
   `MathBlockLayout` は環境種別（`document::MathBlockKind`）を持たず、セルごとの `Align` と
   解決済みの `DelimiterGlyphs` を載せる。数式エンジン（`boxing::math`）は HIR の数式語彙（`HirMath` 系・`MathBlockKind`・
   `GridLayout`・`MathDelimiter`・`MathVariant`）を import しない（`document` 直下の葉の型 `MathClass` / `MathSpace` /
@@ -1031,7 +1025,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `style::BlockAlignment` → `Align` の変換は `boxes::align` の `From` 1 箇所（数式は lowering、目次・索引は pagination が呼ぶ）。
   目次・索引の行は pagination が組み立てた `Line` を `shift_x` で寄せてから `Block::ComposedLine` に積むので、breaking は揃えを
   知らない。段落の揃えは `document::TextAlignment`（伸縮の有無を含む 4 値）
-  のまま `VBox` / `Block::Paragraph` が運び、`Align` への変換は行分割（`build_line`）の水平ずらしだけが行う
+  のまま `VBox` / `Block::Paragraph` が運び、`Align` への変換は行分割（`build_line`）の水平ずらしと、継いだ揃えで
+  画像・表のブロックを寄せる boxing だけが行う
 - **段落は `LayoutNode::Paragraph(ParagraphLayout)` で境界を閉じる**。本文・書誌・見出し・定理見出し・
   キャプション・コード・タイトルページは、lowering が段落の内容と段落後の固定アキを確定する。
   boxing は各段落だけの水平リストを計測し、隣接するノードから境界を推測しない。内容の計測結果が空でも
@@ -1040,11 +1035,8 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   `LineBreak` は段落内 `\\` と `code` 環境の行間にだけ使い、段落境界には使わない。
   コードブロックは複数行を 1 つの段落に保持する
 - **レイアウトノードは縦リスト・インライン・閉じたアトムの語彙を分け、下流の場合分けを型で
-  閉じる**。段落の水平リストへ入れられるノードは `InlineNode`（テキスト・コード箱・kern・強制改行・raise（脚注
-  マーカーのテキスト）・インライン数式・リンク・右寄せ末尾（QED マークのテキスト）・脚注・索引マーカー）で、表セルの中身・
-  脚注の本体・リンクの子・キャプション・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙
-  （`Paragraph` / `VBox` / `Vkern` / `Image` / `Table` / `MathBlock` / `Anchor` / `PageBreak` / `KeepWithNext`）
-  だけを持ち、裸のインラインを積めない。数式の構造（上付き下付き・分数・根号・アクセント・上下線・伸縮括弧・埋め込んだ
+  閉じる**。段落の水平リストへ入れられるノードは `InlineNode` で、表セルの中身・
+  脚注の本体・リンクの子・キャプション・段落の内容はこの型の列になる。`LayoutNode` は縦リストの語彙だけを持ち、裸のインラインを積めない。数式の構造（上付き下付き・分数・根号・アクセント・上下線・伸縮括弧・埋め込んだ
   行列・大型演算子・分割候補）はレイアウトノードの語彙に現れず、インライン数式は `InlineNode::Math` 1 つ、表示数式は
   `LayoutNode::MathBlock` のセルとして解決済みの数式（`MathNode`）で運ぶ
 - **段落への付加は lowering で完了する**。リストのマーカーは項目の先頭が直接の段落ならその先頭へ、
@@ -1112,7 +1104,7 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   分割候補を抜き出して、計測前の木（`ArrangedNode`。インラインのトップレベルは分割候補を含む `ArrangedInline`）にする。
   フォントに触れない — 縮小率は配置段が `Shaper::script_scale`（数式フォントの MATH）で読んで渡すので、段・アキの
   テストはフォント無しで書ける
-- **配置（この module 本体と子 `fraction` / `radical` / `accent` / `bar` / `fenced` / `array` / `large_operator` / `limits`）**:
+- **配置（この module 本体と構造ごとの子 module）**:
   組み立てた木を計測し、MATH 定数とインクから構造ごとの内部配置を決めて閉じた `Atom` にする。インライン数式の
   トップレベルは、テキストを数式フォントの run ごとの箱、文章を端の約物の性質を添えた閉じた箱（段落の隣の約物と本文の
   規則でアキを解決する）、アキをアキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
@@ -1160,11 +1152,8 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   サイズに MATH の縮小率を掛けた値（scriptscript も本体基準。縮小率は配置段が `Shaper::script_scale` で読んで渡す）。兄弟として並ぶ上付き・下付きは直前のアイテムを
   基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
   付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は組み立てでは
-  決めず、`MathScripts`（基底・上付き・下付き・基底の段のサイズ・cramped・上下に積むか）・`MathFraction`（分子・分母・分数の
-  段のサイズ・display か・横罫を引くか）・`MathRadical`（指数・被根号・根号の段のサイズとスクリプト段・display か）・`MathAccent`（基底・アクセント記号・
-  基底の幅へ伸ばすか・基底をドット無しの字形で組むか（ソースの `dotless`、無ければ style.toml の `[math].accent_dotless`。
-  広幅アクセントは常に組まない）・アクセントの段のサイズとスクリプト段）・`MathBar`（基底・上か下か・線の段のサイズ）・`MathFenced`（中身を中間の区切りで分けた区画・左右の括弧・括弧の段のサイズとスクリプト段。中身は括弧と同じ段で、cramped も継承）・
-  `MathArray`（セル・左右の括弧・行列の段のサイズとスクリプト段・行間・列間）として配置段へ渡す。埋め込んだ行列は閉じた
+  決めず、構造ごとの型（`MathScripts` / `MathFraction` / `MathRadical` / `MathAccent` / `MathBar` / `MathFenced` /
+  `MathArray`）に段のサイズ・cramped・display かを載せて配置段へ渡す。埋め込んだ行列は閉じた
   1 アトムで、括弧を持つもの（`delimiter` が none 以外の matrix と cases）は伸縮括弧と同じく左端 Open・右端 Close、括弧の
   無い matrix は Ord として隣とアキを取る。行間・列間は `[math.block].row_gap` / `column_gap` を本文の大きさ（`[text].font_size`）基準として段のサイズに比例させた値。
   インライン数式は外側の文字色（`\color`・リンク色）を `MathFormula` に持って全段へ継承し、テキストの
@@ -1186,7 +1175,7 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
   glyph assembly のパーツは 1 本のグリフ列に `y_offset` で積み、全パーツを括弧 1 字のクラスタに属させる
   （PDF のテキストは括弧 1 字）。箱の幾何中点や括弧箱の ascender / descender は使わない。環境単位の式番号は
   本体の縦中央に揃える別規則。数式の中に埋め込んだ matrix / cases（`MathArray`）も同じグリッド組みと括弧の包み直しを
-  通る（`boxing::math` の `build_grid` / `wrap_with_delimiters`）が、括弧の有無によらずグリッドの縦中央を数式軸に載せ、
+  通るが、括弧の有無によらずグリッドの縦中央を数式軸に載せ、
   括弧はその段のフォントサイズ・スクリプト段（`ssty`）・文字色で組む。独立ブロックの matrix / cases は
   `MathBlockKind::Matrix` / `Cases` のまま残し、「行列 1 個を持つ表示数式」へはまとめていない（まとめると括弧なしの
   独立 matrix の基準線が数式軸へ移り、見た目は同じでもレイアウトダンプの座標が変わる。再検討トリガーはその変化を
@@ -1322,7 +1311,7 @@ style は届かない。
   どの行も下端の枠罫を予約して収まりを判定し、閉じるとき下端の枠罫を積む — で、列幅・セル余白・罫線の太さと空きの
   判断を持たない
 - **罫線は境界**（`TableBoundary`：高さと、境界上端原点の罫線の列）で、行の上に重ねず縦の場所を占める。太さ 0 の罫線は空きも
-  取らない（コンストラクタ `TableBoundary::rule` 1 箇所）。表の最初の行（`head[0]`、ヘッダが無ければ `rows[0]`）の上は
+  取らない（`TableBoundary` のコンストラクタが罫線・部分罫とも判定する）。表の最初の行（`head[0]`、ヘッダが無ければ `rows[0]`）の上は
   何も無い境界、ヘッダがあるときの `rows[0]` の上はヘッダ下の罫線で、どちらも構造で決まり行の区切りを見ない（この 2 つの
   境界への `separator` は frontend が拒否する）。セルの `rule_below` は結合の最後の行（結合が無ければその行）の次の行の上の境界の部分罫として
   表エンジンが写す（結合の最後の行が行群の最後の行である旗と、次の行が `separator` を持つ行の旗は frontend が拒否する
@@ -1402,7 +1391,7 @@ keep-with-next の判定はこれらを空回しして `starts_region` を読む
 下端まで満たす（入るだけ入れると次の行は既存の幾何判定だけで自動的に改リージョンになり、改リージョン規則を
 足さないので脚注が溢れない文書ではこの経路が完全に inert）、(2) 詰め込みの算術は純粋関数 1 箇所で、行の
 自前脚注の分割判定と繰越の詰め込みが共用する（高さの漸化式は確定配置と一致していなければならない。全脚注に
-最低 1 行を割り当てられないときだけ従来どおり行ごと次リージョンへ送る）、(3) 繰越はリージョン入口で
+最低 1 行を割り当てられないときだけ行ごと次リージョンへ送る）、(3) 繰越はリージョン入口で
 1 リージョンぶんずつ詰め、本文は追い出さない（先頭の脚注に最低 1 行を保証するので繰越は有限回で尽きる）、
 (4) 計画は繰越の境界で打ち切り、改リージョンしてから残りを計画し直す（次リージョンの脚注エリアが繰越で
 どれだけ埋まるかは改リージョンを通すまで分からず、予測させると本文が繰越脚注に重なる）。繰越の断片は
@@ -1410,7 +1399,7 @@ keep-with-next の判定はこれらを空回しして `starts_region` を読む
 
 #### `observe`
 
-TRACE ログ用の要約ヘルパだけを持つ純粋関数の module。文書に比例して出る TRACE は内容そのものを載せないと
+TRACE ログとはみ出し警告の抜粋に使う要約ヘルパだけを持つ純粋関数の module。文書に比例して出る TRACE は内容そのものを載せないと
 「どの行・どのグリフか」が読み取れず、一方で全文を出すとログが読めなくなるので、要約と切り詰めを 1 箇所に
 寄せる。`#[cfg(test)]` の `dump` とは目的が違う — あちらはダンプ同士の比較（golden ファイルは読まない）のための
 決定的な全量ダンプで、こちらは人が読む短い要約。共有しない。
@@ -1478,7 +1467,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 - **SVG のパース設定 `SvgParser`**（子 module `svg`）は、facade に載る型のうち唯一 usvg の型（`usvg::Tree` /
   `usvg::Error`）を外へ出す。`PublicationResources` の外にある純データではなく、`svg_parser()` で全実体の
   フォントから都度作る。SVG 内の文字の照合規則（`font-family` の照合・generic の枠への読み替え・同じ系統の枠での
-  1 字ごとの代替）の保証点はここ 1 つで、compiler の検査（`typeset::image::svg`）と描画側の読み直しが同じ値を使う
+  代替）の保証点はここ 1 つで、compiler の検査（`typeset::image::svg`）と描画側の読み直しが同じ値を使う
   — 規則を 2 crate に書くと、組版時と描画時の解釈が食い違いうる。fontdb には全実体のフェースだけを載せ、OS の
   フォントは読まない
 
@@ -1489,7 +1478,7 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `Warnings`）・
 失敗型 `CompileFailure`・`Publication` とそこから到達できる leaf 値型・`ProjectSource` 系（trait・2 実装・
 `ProjectPath` / `ProjectSourceError`）・`Length` / `Color` とその `FromStr` エラー型・`#[doc(hidden)]` の
-`test_support` のみ。PDF バイト列の生成と保存は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
+`test_support` のみ（feature `fuzzing` のときだけ `#[doc(hidden)]` の `fuzzing` が加わる）。PDF バイト列の生成と保存は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
 呼び出し元（`seiran`）の責務。
 
 `compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順と成果物への写像は知らない:
@@ -1504,8 +1493,8 @@ resolve_config_path（PathResolver を 1 回構築・config_path を解決）
   相対パス解決の基準ディレクトリ。compiler は `std::env::current_dir()` を呼ばないため、
   `MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。相対 `config_path` は
   `base_dir` 基準に解決してから読み込むため、`Compilation.dependencies.config_path` と config 読込診断が示す
-  設定ファイルパスは常に解決後の値になる（受け入れ済みの唯一の意味的な差分 — CLI は `base_dir` に
-  `current_dir` を渡すので指す実体は同じ）。`PathResolver` の契約により、診断・manifest・ソース名に出る
+  設定ファイルパスは常に解決後の値になる（CLI は `base_dir` に
+  `current_dir` を渡すので、引数の字面と指す実体は同じ）。`PathResolver` の契約により、診断・manifest・ソース名に出る
   すべてのパスは正規化済みの表示になる
 - phase の実行は `compile` が直接持たず、**production とテストが同じ 2 関数を通る**（入力読込と、frontend /
   semantics の 2 phase）。組版は `compose` の 1 呼び出し。`compile` は 1 回の呼び出しに閉じたローカルの
@@ -1518,12 +1507,12 @@ resolve_config_path（PathResolver を 1 回構築・config_path を解決）
   ソース本文を添える先を振り分ける段は制御フロー型 `semantics::AnalyzeError` / `typeset::ComposeError`）を返し、
   facade がその段の出口で `CompileFailure` へ平坦化する — 段の内側に `CompileFailure` は現れない。警告を生成し得る段
   （入力読込・組版）は `(Result<_, E>, Vec<W>)` の組（`E` は入力読込が `Failures<E>`、組版が `ComposeError`）を
-  返し、警告は `Result` と別枠なので失敗時も落ちない。facade 自身の段呼び出し関数だけが
+  返し、警告は `Result` と別枠なので、失敗までに確定した警告は失敗時も落ちない（配置由来の組版警告は成功時だけ。`typeset` 節）。facade 自身の段呼び出し関数だけが
   `Result<_, CompileFailure>` を返す
 - `Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
   （出力形式か保存先が複数になった時点で改めて設計する）
 - フォント資源の構築を `compiler` 側へ引き上げる形へ戻さない — `FontSystem` は `typeset::compose` の外へ
-  一切出ず、本体ビルドで `compiler.rs` が `typeset` から名指しするのは入口 `compose` と成果物の型だけ
+  一切出ず、本体ビルドで `compiler.rs` が `typeset` から名指しするのは入口 `compose`・成果物の型・失敗型 `ComposeError` だけ
   （`LaidOutDocument` と `layout_for_test` は `#[cfg(test)]` の出口）
 
 #### tracing の phase 構造
@@ -1538,10 +1527,10 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
 開く。成功した実行の `-v` に出る compiler の INFO は 6 工程 × 開始・完了・終了の 18 行（`tests/trace_events.rs` が
 固定する）。
 
-#### 子 module
+#### 入力・失敗・警告の型
 
-- `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・検証済み版面・
-  文献・font・読込済みソース）。**読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**。
+- **`CompilationInputs` は読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**。入力読込の
+  外向き入口は `input::load` 1 つ。
   **config.toml → style.toml → 横断検証・版面の構築 → {references・フォント・sources}** という順序とエラー
   集約を知るのはこの module だけ（順序の根拠と集約の規則は `//!`）。CSL スタイル・ロケールはここでは
   読まない（遅延は `semantics::analyze` の内側）。
@@ -1550,26 +1539,24 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   **画像は含めない** — `\image{...}` でしかパスが分からないため、`compose` が文書木から集めて内部で読む。
   config の警告（`sources` の拡張子等）は `CompilationInputs` に持たせず、`load` が成否と独立に組の第 2
   要素で返す — 後段が失敗しても確定済みの警告を失わないため
-- `input::error`: 入力読込のエラーを束ねる `InputError`。**段名だけを足す wrapper にはしない** — 内側が
+- **`InputError` は段名だけを足す wrapper にはしない** — 内側が
   独立した診断を持つもの（config / style / 版面 / 文献 / フォント）は `#[diagnostic(transparent)]` で
   そのまま委譲し、自前のバリアントを持つのは内側が診断を持たない `ReadTextFile` 1 つだけ（カレント
   ディレクトリの取得は CLI の責務で、その診断は `seiran` が持つ）。組版の `TypesetError` は `InputError` を
   経由せず、`Failures<E>` の汎用 `From` で直接平坦化する。PDF の保存は `compile` の関心事ではないため
   含まれず、bin 側の `WriteError` が持つ
-- `dependency_manifest`: `compile` が読み取った外部資源のパス一覧（設定・スタイル・文献・ソース・画像・
-  フォント・CSL・ロケール）。すべて `CompilationInputs` と組版成果物が既に持つデータの再整形で、新しい
-  I/O は発生させない。内部は解決済みの `ProjectPath` で運び、公開フィールドを `PathBuf` にするためだけに
+- **`DependencyManifest` は新しい I/O を発生させない** — すべて `CompilationInputs` と組版成果物が既に持つ
+  データの再整形。内部は解決済みの `ProjectPath` で運び、公開フィールドを `PathBuf` にするためだけに
   変換する
-- `compile_failure`: `compile` の失敗型 `CompileFailure`（1 件以上の error diagnostic。先頭が主診断、残りは
-  検出順の関連診断）。中身は型消去済みの `Box<dyn Diagnostic + Send + Sync>` で、`miette::Report` の列には
+- **`CompileFailure` は 1 件以上の error diagnostic**（先頭が主診断、残りは検出順の関連診断）。中身は型消去済みの `Box<dyn Diagnostic + Send + Sync>` で、`miette::Report` の列には
   しない — `Report` は `Diagnostic` を実装しないので 2 件目以降を `related` へ載せられないため。**空では
-  構築できない**（構築経路は単一の診断から（`single`）と非空集合 `Failures<E>` から（汎用 `From`）の 2 つだけで、
+  構築できない**（構築経路は単一の診断から（`single`）と非空集合 `Failures<E>` から（汎用 `From` と、型消去済みの集合を受ける `from_boxed`）だけで、
   いずれも crate 内部限定。`Default` も実装しない）。1 件のときは `into_report` が
   leaf をそのまま返すので、包む前後で表示が完全に一致する。段別の内部エラー型は公開せず、呼び出し側の
   分類手段は安定した診断 `code`。失敗するまでに確定した警告を `warnings()` で別に返し、`Diagnostic` 実装
   （`related` / `into_report` の描画）には警告を含めない（診断 golden が警告の添付で変わらない）
-- `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
-  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の `MissingMathGlyph` / `MissingGlyph`（本文の欠字）/ `FallbackDirectionMismatch`（代替の候補の書字方向の不一致）とはみ出し・異体字列の代替の `TypesetWarning`）へ `SourceSet` から引いた
+- **source attribution は汎用の adapter `SourceDiagnostic<E>` 1 つ**。`SourceId` と span だけを
+  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の字の問題 `TextGlyphError`・寸法の溢れ `DimensionOverflow` のうち位置を持つものと、はみ出し・異体字列の代替の `TypesetWarning`）へ `SourceSet` から引いた
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）。
@@ -1581,38 +1568,33 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   帰属するものだけに本文を添える（目次のリーダー・ページ番号や走り文など生成内容の欠字は位置を持たない）。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
   （集約診断を先頭へ足さない）。`config.toml` / `style.toml` の TOML 構文エラーは各 `load` 自身が
   `NamedSource` を組み立てる
-- `warnings`: `compile` が成果物または失敗と一緒に返す warning severity の診断集合 `Warnings`
-  （`Compilation.warnings` と `CompileFailure::warnings()`）。中身は `Box<dyn Diagnostic + Send + Sync>` の
+- **`Warnings` は致命的エラーと公開型を共用しない**（`Compilation.warnings` と `CompileFailure::warnings()`）。中身は `Box<dyn Diagnostic + Send + Sync>` の
   列で、公開操作は診断の借用 `&dyn Diagnostic` の反復と空判定 — `CompileFailure::diagnostics()` と同じ要素型
   なので、呼び出し
-  側は error と warning を同じインターフェースで反復できる（`miette::Report` の列には戻さない）。致命的
-  エラーとは公開型を共用せず、`CompileFailure` と違って空で構築できる。中身は**入力の論理順**（config →
+  側は error と warning を同じインターフェースで反復できる（`miette::Report` の列には戻さない）。
+  `CompileFailure` と違って空で構築できる。中身は**入力の論理順**（config →
   フォント → 組版）で、段の中の順序は各段が保証する
 
-#### テスト用子 module（`#[cfg(test)]` 限定）
+#### テストの境界（`#[cfg(test)]` 限定）
 
-唯一の消費者がテストであるため、`document` のような共有 module ではなく `compiler` に置く。
+`Publication` のダンプ・fixture builder・golden の比較は、唯一の消費者がテストであるため、`document` のような
+共有 module ではなく `compiler` に置く。
 
-- `dump`: `Publication` の決定的テキストダンプ（メタデータ → ページごとの paint-ops とリンク → しおり）。
-  `ImageRef` は資源でパスへ戻して出力するので、画像参照が不透明ハンドルであることは golden に現れない。
+- **`Publication` のダンプは `ImageRef` を資源でパスへ戻して出力する**ので、画像参照が不透明ハンドルであることは golden に現れない。
   `typeset::Page` のダンプは走査対象の型を所有する `typeset::dump` 側にあり、ここからは借りる
-- `test_support`: compiler 配下のテストが共有する fixture builder `TestProject`。組み立てた入力を production と
-  同じ入口（`compile` / 組版中間表現の出口）へ渡すので、テストも `input::load` の読込順序と横断検証を必ず
-  通る。パスの扱い（`base_dir` 既定は空パス＝ワークスペース相対、`set_current_dir` は使わない、画像も同じ
+- **fixture builder `TestProject` は、組み立てた入力を production と同じ入口（`compile` / 組版中間表現の出口）へ渡すので、テストも `input::load` の読込順序と横断検証を必ず
+  通る**。パスの扱い（`base_dir` 既定は空パス＝ワークスペース相対、`set_current_dir` は使わない、画像も同じ
   規則で登録）と設定上書きの規則（config.toml・style.toml とも生 TOML テーブルへの差分 1 系統）は `//!`。
   字面のまま登録する画像の例外・型付きの config / style 並行実装（`Style` の `Serialize` を含む）を再導入しない
-- `golden`: レイアウトダンプ golden の比較テスト。insta のスナップショット（`crates/seiran-compiler/tests/golden/`）と
-  実際に比較するのは主入口 `layout_dumps_match_golden` だけで、公開 facade `compile()` → `dump_publication` を
+- **レイアウトダンプの insta スナップショット（`crates/seiran-compiler/tests/golden/`）と実際に比較するのは
+  主入口 `layout_dumps_match_golden` だけ**で、公開 facade `compile()` → `dump_publication` を
   通る。残りは golden を介さず組版中間表現の出口を通る（分類は `//!`、検証手段の使い分けと候補のレビュー・承認の手順は
   `verify-typesetting` skill）
-- `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。`CompileFailure` を
-  `into_report` してレンダリングするので、golden はユーザーが実際に見る表示そのもの。外部資源の read error を
+- **診断 golden（`crates/seiran-compiler/tests/golden_diagnostics/`）はユーザーが実際に見る表示そのもの** —
+  `CompileFailure` を `into_report` してレンダリングする。外部資源の read error を
   `#[source]` に載せる診断だけは cause 行が adapter の所有物になる（`MemoryProjectSource` と実 adapter で
   違う）— 実 adapter 側の挙動は `project::filesystem` の単体テストが押さえる。集約・段 wrapper の `code` と
   メッセージが golden 全件に現れないことを検査するテストを併設する
-- `project_source_equivalence`: 2 つの `ProjectSource` 実装が同じ入力から同じ `Publication` を返すこと、
-  同じフォントを複数回読まないことの検証。両 adapter が同じ絶対パスを引くよう絶対 `base_dir` の fixture を
-  使う
 
 #### 統合テスト（`crates/seiran-compiler/tests/`）
 
@@ -1646,8 +1628,8 @@ compiler 側の責務で、こちらへ戻さない。
 ### 境界
 
 - `font`: krilla フォントの構築（軸の指定を渡すだけで、フォントを自分でパースしない — `fvar` との整合は
-  compiler の検証が保証する）とグリフの変換。フォントバイト列は `Publication` の `Arc<[u8]>` を
-  `AsRef<[u8]>` の newtype で包んで krilla へ渡すので実バイト列は複製されない。構築は描画資源の全実体
+  compiler の検証が保証する）とグリフの変換。フォントバイト列は `PublicationFont::shared_bytes` が `Arc<[u8]>` を
+  共有ハンドルにして返したものを krilla へ渡すので実バイト列は複製されない。構築は描画資源の全実体
   （`PublicationResources::faces`。枠の宣言順 → 候補順）について行う — `HashMap` の反復順に任せると、複数フォントが同時に不正なときに返るエラーが実行のたびに変わる
 - `render`: `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の `font_size`（`Length`）→ pt と
   `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、
@@ -1708,7 +1690,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   ため wildcard にしない）
 - `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の初期化。
   フィルタ優先順位・Seiran 自身の target だけを詳細化する directive・target 表示の有無・端末装飾（`NO_COLOR`
-  未設定かつ stderr が端末のときだけ。判定は 1 回でログとサマリが共有）をこの module に閉じる。subscriber は
+  が未設定か空で、かつ stderr が端末のときだけ。判定は 1 回でログとサマリが共有）をこの module に閉じる。subscriber は
   stderr layer と（`--log-file` 指定時だけ）ファイル layer を重ね、出力先ごとに `EnvFilter` を持つ
   （`EnvFilter` は `Clone` できないので共通の directive 文字列を出力先ごとに parse し直す。不正 directive を
   黙って捨てる `EnvFilter::new` は使わない）。ログファイルを開けないと subscriber を 1 つも設置しないまま

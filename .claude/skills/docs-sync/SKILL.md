@@ -25,6 +25,7 @@ description: >-
 | `docs/error-handling.md` | エラー型・診断 `code`・ソース位置・集約・warning と tracing・内部不変条件違反・garde の規約。CLAUDE.md のエラーハンドリング節の詳細版 |
 | `docs/architecture.md` | クレート / module の境界・依存の向き・段間プロトコル・不変条件と「〜しない」ガード、style.toml の設計（`style` 節）。module の責務の全文と目録（子 module・関数・フィールド）、style のキー一覧・既定値は `//!` / doc コメントが正典で、ここへは複製しない。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
+| `fuzz/README.md` | frontend の fuzz（実行・失敗入力の再現と最小化・corpus・CI） |
 | skill（`verify-typesetting` / `add-language-feature` / `issue-pr-ops`。`error-handling` は正典へのポインタのみ） | 組版検証手順 / 言語機能の実装経路 / GitHub 運用規約 |
 | root `Cargo.toml` / `clippy.toml` / `rustfmt.toml` | lint の採用根拠（1 lint = 1 行のコメント）・設定値・フォーマット |
 
@@ -40,6 +41,7 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 | 組版アルゴリズムの変更（行分割・改ページ・アキ等） | CLAUDE.md データフロー直下の説明段落（Knuth–Plass / glue・penalty 等の記述が実装と一致するか） |
 | config.toml / style.toml のスキーマ変更 | struct の doc コメント（キー一覧・既定値の正典）、architecture.md の project 節の子 module `config` と style 節（非自明な意味・設計）、CLAUDE.md「設定ファイル」節（役割分担表・値の基本書式に影響する場合）、README の設定例 |
 | CLI サブコマンド・フラグの変更 | CLAUDE.md「コマンド」節、README |
+| fuzz target・`tools/fuzz-frontend.sh`・`fuzz.yml` の変更 | `fuzz/README.md`、architecture.md の `seiran-fuzz` 節 |
 | モジュール分割・再配置リファクタ | 親 module の `//!`（子 module 一覧・責務）。境界・依存の向き・不変条件が動く場合だけ architecture.md の該当節 |
 | エラー型・バリデーションのパターン変更（診断属性・集約方式等） | `docs/error-handling.md`、CLAUDE.md の要約箇条書き |
 | コーディング規約・lint の採用変更 | `docs/coding-conventions.md`（規約全文）+ CLAUDE.md の規約要約 + root `Cargo.toml` の lint コメント（採用根拠） |
