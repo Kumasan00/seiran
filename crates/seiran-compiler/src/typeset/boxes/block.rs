@@ -116,7 +116,7 @@ pub(in crate::typeset) enum Block {
   },
   /// 強制改ページ。内容を挟まずに続く強制改ページは `break_pages` が 1 つのページ境界に畳む
   PageBreak,
-  /// 分割禁止（keep-with-next）。直前の内容ブロックと直後の内容ブロックの間で改ページしない
+  /// 分割禁止（keep-with-next）。直前と直後の内容ブロックを `break_pages` の keep グループに連結し、見出しの孤立を防ぐ
   KeepWithNext,
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///

@@ -422,7 +422,7 @@ pub(in crate::typeset) fn break_pages(
   let block_count = blocks.len();
   let mut blocks = blocks;
 
-  // FORBID penalty で連結された keep グループの先頭で一度だけ、末尾ブロックの先頭が見出しと同じ
+  // 分割禁止（Block::KeepWithNext）で連結された keep グループの先頭で一度だけ、末尾ブロックの先頭が見出しと同じ
   // リージョンに乗るかを判定し、収まらなければグループごと次リージョンへ送る
   let mut i = 0;
   let mut gated_end: Option<usize> = None;
