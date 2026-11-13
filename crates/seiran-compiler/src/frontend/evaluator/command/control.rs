@@ -3,10 +3,13 @@
 use crate::{
   document::{HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, opt_args, string_arg},
-    syntax::view::CommandView,
+    evaluator::{EvalContext, EvalError, opt_args, signature::Signature, string_arg},
+    syntax::{ArgMode, CstNode, view::CommandView},
   },
 };
+
+/// `\space{<長さ>}` の署名
+pub(super) const SPACE: Signature<1> = Signature::new([ArgMode::Inherit], "スペース量（長さ）", &[]);
 
 /// `\space{<長さ>}` — 固定幅スペースを挿入するコマンド
 ///
@@ -14,11 +17,9 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 引数の不足・過剰・字以外の要素（コマンド・数式など）を含む・長さとして読めない場合にエラーを返します
-pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "スペース量（長さ）")?;
-  let text = string_arg::text(view, first_arg)?;
+/// 引数が字以外の要素（コマンド・数式など）を含む・長さとして読めない場合にエラーを返します
+pub(super) fn space(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
+  let text = string_arg::text(view, arg)?;
 
   let length = opt_args::parse_length(&text, view.span().into(), || {
     return EvalError::InvalidCommandArgument {
@@ -31,26 +32,9 @@ pub(super) fn space(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Hir
   return Ok(ctx.leaf_node(view.span(), HirNodeKind::Space(length)));
 }
 
-/// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
-///
-/// # Errors
-///
-/// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  arity::no_command_args(view)?;
-  return Ok(());
-}
-
 /// `\pagebreak` — その位置で強制的に改ページするマーカーコマンド
-///
-/// # Errors
-///
-/// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  arity::no_command_args(view)?;
-  return Ok(ctx.leaf_node(view.span(), HirNodeKind::PageBreak));
+pub(super) fn pagebreak(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> HirNode {
+  return ctx.leaf_node(view.span(), HirNodeKind::PageBreak);
 }
 
 #[cfg(test)]
@@ -64,25 +48,15 @@ mod tests {
   };
 
   #[test]
-  fn space_rejects_unknown_opt_arg_key() {
-    let arena = Bump::new();
-    let source = r"\space[draft]{10pt}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return space(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
-  }
-
-  #[test]
   fn space_reads_its_argument_as_a_length() {
     let arena = Bump::new();
     let source = r"\space{5mm}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return space(&view, ctx)).unwrap();
+    let [arg] = SPACE.bind(&view).unwrap().args;
+
+    let result = run_handler(|ctx| return space(&view, arg, ctx)).unwrap();
 
     assert_eq!(result.kind, HirNodeKind::Space(Length::mm(5.0)));
   }
@@ -95,61 +69,15 @@ mod tests {
       let node = test_support::command_call_node(source, &arena);
       let view = CommandView::new(node, source);
 
-      let result = run_handler(|ctx| return space(&view, ctx));
+      let [arg] = SPACE.bind(&view).unwrap().args;
+
+      let result = run_handler(|ctx| return space(&view, arg, ctx));
 
       assert!(
         matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "space"),
         "{source} は拒否される: {result:?}"
       );
     }
-  }
-
-  #[test]
-  fn noindent_rejects_mandatory_argument() {
-    let arena = Bump::new();
-    let source = r"\noindent{x}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = noindent(&view);
-
-    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "noindent"));
-  }
-
-  #[test]
-  fn noindent_rejects_unknown_opt_arg_key() {
-    let arena = Bump::new();
-    let source = r"\noindent[draft]";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = noindent(&view);
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
-  }
-
-  #[test]
-  fn pagebreak_rejects_mandatory_argument() {
-    let arena = Bump::new();
-    let source = r"\pagebreak{x}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return pagebreak(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
-  }
-
-  #[test]
-  fn pagebreak_rejects_unknown_opt_arg_key() {
-    let arena = Bump::new();
-    let source = r"\pagebreak[weight=2]";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return pagebreak(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));
   }
 
   #[test]

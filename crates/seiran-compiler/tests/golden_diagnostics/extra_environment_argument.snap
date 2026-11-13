@@ -1,0 +1,16 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+assertion_line: 85
+expression: rendered
+---
+frontend::eval::extra_environment_argument
+
+  × 環境 quote に余分な引数があります
+   ╭─[tests/text/diagnostics/extra_environment_argument.sei:3:1]
+ 2 │     
+ 3 │ ╭─▶ \begin{quote}{余分}
+ 4 │ │   引用です。
+ 5 │ ├─▶ \end{quote}
+   · ╰──── 余分な引数があります
+   ╰────
+  help: 環境 quote に不要な引数が渡されています。引数の数を確認してください

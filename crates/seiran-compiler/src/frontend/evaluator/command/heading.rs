@@ -4,16 +4,32 @@ use crate::{
   document::{HeadingLevel, HirHeading, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       inline::{IndexPolicy, evaluate_inline_children},
-      opt_args::{self, OptKey, collect_command_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
-    syntax::view::CommandView,
+    syntax::{ArgMode, CstNode, view::CommandView},
   },
 };
 
 /// 見出しの `[label=...]`（`\ref` からの参照用）
 const LABEL: OptKey<String> = opt_args::string("label");
+/// 見出しが受け付けるキー
+const KEYS: &[OptDecl] = &[LABEL.decl()];
+
+/// 見出しコマンドの署名（不足時の説明だけが階層ごとに違う）
+pub(super) const fn signature(level: HeadingLevel) -> Signature<1> {
+  let expected = match level {
+    HeadingLevel::Part => "部名",
+    HeadingLevel::Chapter => "章名",
+    HeadingLevel::Section => "セクション名",
+    HeadingLevel::Subsection => "サブセクション名",
+    HeadingLevel::Paragraph => "段落名",
+    HeadingLevel::Subparagraph => "小節名",
+  };
+  return Signature::new([ArgMode::Inherit], expected, KEYS);
+}
 
 /// 見出しコマンドの共通処理
 ///
@@ -21,20 +37,19 @@ const LABEL: OptKey<String> = opt_args::string("label");
 ///
 /// # Errors
 ///
-/// 引数不足・過剰、または `[label=...]` の値型不一致でエラーを返します。
+/// タイトルの評価エラーを返します。
 pub(super) fn heading(
   view: &CommandView<'_>,
+  title_arg: &CstNode<'_>,
+  opts: &OptArgs,
   ctx: &EvalContext<'_>,
   level: HeadingLevel,
 ) -> Result<HirNode, EvalError> {
-  let opt_args = collect_command_opt_args(view, &[LABEL.decl()])?;
-  let label = opt_args.get(LABEL);
-
-  let first_arg = arity::exactly_one_arg(view, expected_name(level))?;
+  let label = opts.get(LABEL);
 
   let id = ctx.alloc(view.span());
   // 見出しタイトルは目次・走り文へも展開されうる複製文脈なので `\index` を拒否する
-  let title = evaluate_inline_children(view.source(), ctx, first_arg, IndexPolicy::Reject)?;
+  let title = evaluate_inline_children(view.source(), ctx, title_arg, IndexPolicy::Reject)?;
 
   return Ok(HirNode::new(
     id,
@@ -44,18 +59,6 @@ pub(super) fn heading(
       label,
     }),
   ));
-}
-
-/// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
-fn expected_name(level: HeadingLevel) -> &'static str {
-  return match level {
-    HeadingLevel::Part => "部名",
-    HeadingLevel::Chapter => "章名",
-    HeadingLevel::Section => "セクション名",
-    HeadingLevel::Subsection => "サブセクション名",
-    HeadingLevel::Paragraph => "段落名",
-    HeadingLevel::Subparagraph => "小節名",
-  };
 }
 
 #[cfg(test)]
@@ -72,24 +75,15 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section)).unwrap();
+    let bound = signature(HeadingLevel::Section).bind(&view).unwrap();
+
+    let result =
+      run_handler(|ctx| return heading(&view, bound.args[0], &bound.opts, ctx, HeadingLevel::Section)).unwrap();
 
     let HirNodeKind::Heading(heading) = &result.kind else {
       panic!("Heading が期待されます");
     };
     assert_eq!(heading.level, HeadingLevel::Section);
     assert_eq!(heading.label.as_deref(), Some("sec:foo"));
-  }
-
-  #[test]
-  fn heading_rejects_unknown_opt_arg_key() {
-    let arena = Bump::new();
-    let source = r"\section[draft=true]{Title}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return heading(&view, ctx, HeadingLevel::Section));
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
 }

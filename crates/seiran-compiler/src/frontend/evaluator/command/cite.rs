@@ -6,10 +6,13 @@
 use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, opt_args, string_arg},
-    syntax::view::CommandView,
+    evaluator::{EvalContext, EvalError, signature::Signature, string_arg},
+    syntax::{ArgMode, CstNode, view::CommandView},
   },
 };
+
+/// `\cite` の署名（キーの区切りは構造トークンの `,`）
+pub(super) const SIGNATURE: Signature<1> = Signature::new([ArgMode::CommaList], "引用キー", &[]);
 
 /// `\cite{a,b}` を `HirInlineKind::Cite` に変換する
 ///
@@ -18,13 +21,9 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 必須引数が欠落 / 過剰、任意引数が指定された場合、キーに字以外の要素（コマンド・数式など）がある場合、
-/// または空のキーが含まれる場合にエラーを返します。
-pub(super) fn cite(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "引用キー")?;
-
-  let segments = string_arg::comma_items(view, first_arg)?;
+/// キーに字以外の要素（コマンド・数式など）がある場合、または空のキーが含まれる場合にエラーを返します。
+pub(super) fn cite(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+  let segments = string_arg::comma_items(view, arg)?;
   let mut keys = Vec::with_capacity(segments.len());
   for segment in segments {
     let key = segment.trim();
@@ -55,7 +54,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return cite(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return cite(&view, SIGNATURE.bind(&view)?.args[0], ctx)).unwrap();
 
     let HirInlineKind::Cite { keys } = &result.kind else {
       panic!("Cite が期待されます");
@@ -70,7 +69,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return cite(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return cite(&view, SIGNATURE.bind(&view)?.args[0], ctx)).unwrap();
 
     let HirInlineKind::Cite { keys } = &result.kind else {
       panic!("Cite が期待されます");
@@ -83,7 +82,7 @@ mod tests {
     let arena = Bump::new();
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
-    let result = run_handler(|ctx| return cite(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return cite(&view, SIGNATURE.bind(&view)?.args[0], ctx)).unwrap();
     let HirInlineKind::Cite { keys } = result.kind else {
       panic!("Cite が期待されます");
     };
@@ -96,7 +95,7 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
     return matches!(
-      run_handler(|ctx| return cite(&view, ctx)),
+      run_handler(|ctx| return cite(&view, SIGNATURE.bind(&view)?.args[0], ctx)),
       Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite"
     );
   }
@@ -132,30 +131,6 @@ mod tests {
   }
 
   #[test]
-  fn cite_rejects_missing_argument() {
-    let arena = Bump::new();
-    let source = r"\cite";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    assert!(
-      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
-    );
-  }
-
-  #[test]
-  fn cite_rejects_extra_arguments() {
-    let arena = Bump::new();
-    let source = r"\cite{a}{b}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    assert!(
-      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
-    );
-  }
-
-  #[test]
   fn cite_rejects_empty_key() {
     let arena = Bump::new();
     let source = r"\cite{a,}";
@@ -163,19 +138,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(
-      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
-    );
-  }
-
-  #[test]
-  fn cite_rejects_opt_args() {
-    let arena = Bump::new();
-    let source = r"\cite[k=v]{rika}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    assert!(
-      matches!(run_handler(|ctx| return cite(&view, ctx)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
+      matches!(run_handler(|ctx| return cite(&view, SIGNATURE.bind(&view)?.args[0], ctx)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 }

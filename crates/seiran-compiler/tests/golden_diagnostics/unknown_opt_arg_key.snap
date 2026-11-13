@@ -1,0 +1,17 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+assertion_line: 85
+expression: rendered
+---
+frontend::eval::unknown_opt_arg_key
+
+  × item の任意引数に不明なキー `undeclared` が指定されています
+   ╭─[tests/text/diagnostics/unknown_opt_arg_key.sei:4:6]
+ 3 │ \begin{itemize}
+ 4 │ \item[undeclared=1]{項目}
+   ·      ───────┬──────
+   ·             ╰── このキーは許可されていません
+ 5 │ \end{itemize}
+   ╰────
+  help: 許可されているキー: marker: string, item_gap: length (pt/mm/cm)。値に `,` や `=` を含める
+        ときは `\,` / `\=` と書きます

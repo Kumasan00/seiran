@@ -4,20 +4,20 @@ use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableCell, HirTableRow, RowSeparator},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       environment::{
-        body_scan,
-        caption::evaluate_caption,
+        body_scan, caption,
         table::{
           cell::{build_cell, contains_line_break},
           grid::{self, Coverage},
         },
       },
       inline::IndexPolicy,
-      opt_args::{self, OptKey, collect_command_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::{Bound, Signature},
     },
     syntax::{
-      CstElement,
+      ArgMode, CstElement, CstNode,
       token::TokenKind,
       view::{CommandView, EnvironmentView},
     },
@@ -27,6 +27,13 @@ use crate::{
 
 /// `\row[separator=rule|gap]`（行の上の境界に置く区切り）
 const SEPARATOR: OptKey<String> = opt_args::string("separator");
+/// `\row` が受け付けるキー
+const ROW_KEYS: &[OptDecl] = &[SEPARATOR.decl()];
+
+/// `\head` の署名
+const HEAD: Signature<1> = Signature::new([ArgMode::Inherit], "\\row コマンド", &[]);
+/// `\row` の署名（本体とヘッダの中で共有する）
+const ROW: Signature<1> = Signature::new([ArgMode::Inherit], "セル内容", ROW_KEYS);
 
 /// `table` 環境の本体に書けるコマンド
 #[derive(Debug, Clone, Copy)]
@@ -39,11 +46,11 @@ enum TableCommand {
   Caption,
 }
 
-/// `table` 環境の本体で許可するコマンドと種別
-const TABLE_COMMANDS: &[(&str, TableCommand)] = &[
-  ("head", TableCommand::Head),
-  ("row", TableCommand::Row),
-  ("caption", TableCommand::Caption),
+/// `table` 環境の本体で許可するコマンドと種別と署名
+const TABLE_COMMANDS: &[(&str, TableCommand, Signature<1>)] = &[
+  ("head", TableCommand::Head, HEAD),
+  ("row", TableCommand::Row, ROW),
+  ("caption", TableCommand::Caption, caption::SIGNATURE),
 ];
 
 /// 本体走査で収集した行・キャプション情報
@@ -69,7 +76,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for (command, cmd_view) in body_scan::collect_allowed_commands(
+    for (command, cmd_view, Bound { args: [arg], opts }) in body_scan::collect_allowed_commands(
       source,
       body.children,
       "table",
@@ -85,10 +92,10 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
               span: cmd_view.span().into(),
             });
           }
-          head = evaluate_head(&cmd_view, ctx)?;
+          head = evaluate_head(&cmd_view, arg, ctx)?;
         },
         TableCommand::Row => {
-          rows.push(evaluate_row(&cmd_view, ctx, IndexPolicy::Allow, &mut coverage)?);
+          rows.push(evaluate_row(&cmd_view, arg, &opts, ctx, IndexPolicy::Allow, &mut coverage)?);
         },
         TableCommand::Caption => {
           if caption.is_some() {
@@ -101,7 +108,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           if head.is_empty() && rows.is_empty() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(evaluate_caption(&cmd_view, ctx)?);
+          caption = Some(caption::evaluate_caption(&cmd_view, arg, ctx)?);
         },
       }
     }
@@ -134,17 +141,25 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
 ///
 /// ヘッダ行は表が改ページするたび全ページへ再描画される複製文脈なので、出現ページが一意に
 /// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
-fn evaluate_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirTableRow>, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let arg = arity::exactly_one_arg(view, "\\row コマンド")?;
-
+fn evaluate_head(
+  view: &CommandView<'_>,
+  arg: &CstNode<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<Vec<HirTableRow>, EvalError> {
   let source = view.source();
   let mut rows = Vec::new();
   let mut coverage = Coverage::default();
-  for ((), row_view) in
-    body_scan::collect_allowed_commands(source, arg.children, "table", &[("row", ())], "\\head の中の \\row")?
+  for (
+    (),
+    row_view,
+    Bound {
+      args: [row_arg],
+      opts,
+    },
+  ) in
+    body_scan::collect_allowed_commands(source, arg.children, "table", &[("row", (), ROW)], "\\head の中の \\row")?
   {
-    rows.push(evaluate_row(&row_view, ctx, IndexPolicy::Reject, &mut coverage)?);
+    rows.push(evaluate_row(&row_view, row_arg, &opts, ctx, IndexPolicy::Reject, &mut coverage)?);
   }
   if rows.is_empty() {
     return Err(EvalError::MissingCommandArgument {
@@ -159,11 +174,12 @@ fn evaluate_head(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<Hi
 /// `\row[separator=rule]{A & B & \cell[span=2]{C}}` を 1 行に変換する
 fn evaluate_row(
   view: &CommandView<'_>,
+  arg: &CstNode<'_>,
+  opts: &OptArgs,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
   coverage: &mut Coverage,
 ) -> Result<HirTableRow, EvalError> {
-  let opts = collect_command_opt_args(view, &[SEPARATOR.decl()])?;
   let separator = match opts.get(SEPARATOR) {
     Some(value) => {
       let Ok(separator) = value.parse::<RowSeparator>() else {
@@ -178,8 +194,6 @@ fn evaluate_row(
     },
     None => None,
   };
-
-  let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());

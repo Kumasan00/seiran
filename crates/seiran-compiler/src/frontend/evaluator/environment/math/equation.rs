@@ -6,9 +6,10 @@ use crate::{
   document::{HirMathBlock, HirMathRow, HirNode, HirNodeKind, MathBlockKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       environment::math::grid::{GridSpec, evaluate_grid},
-      opt_args::{self, OptKey, collect_environment_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
     syntax::view::EnvironmentView,
   },
@@ -18,21 +19,25 @@ use crate::{
 const LABEL: OptKey<String> = opt_args::string("label");
 /// 数式環境の `[numbered=...]`（既定 `true`）
 const NUMBERED: OptKey<bool> = opt_args::boolean("numbered");
+/// `equation` 環境が受け付けるキー
+const KEYS: &[OptDecl] = &[LABEL.decl(), NUMBERED.decl()];
+
+/// `equation` 環境の署名
+pub(in crate::frontend::evaluator::environment) const SIGNATURE: Signature<0> = Signature::keys_only(KEYS);
 
 /// `equation` 環境を評価する
 ///
 /// # Errors
 ///
-/// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
+/// 本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
 pub(in crate::frontend::evaluator::environment) fn equation(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
+  opts: &OptArgs,
 ) -> Result<HirNode, EvalError> {
-  let opts = collect_environment_opt_args(view, &[LABEL.decl(), NUMBERED.decl()])?;
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let label = opts.get(LABEL);
-  arity::no_environment_args(view)?;
   if !numbered && label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: "equation".to_string(),

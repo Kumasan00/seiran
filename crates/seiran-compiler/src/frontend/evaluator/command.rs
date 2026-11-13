@@ -19,9 +19,16 @@ use phf::phf_map;
 use crate::{
   document::{HeadingLevel, HirInline, HirInlineKind, HirNode, Typeface},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity, inline::IndexPolicy, math, opt_args, string_arg},
+    evaluator::{
+      EvalContext, EvalError,
+      inline::IndexPolicy,
+      math,
+      opt_args::OptArgs,
+      signature::{Bound, Signature},
+      string_arg,
+    },
     syntax::{
-      ArgMode,
+      ArgMode, CstNode,
       view::{CommandView, verbatim_text},
     },
   },
@@ -95,16 +102,36 @@ impl Placement {
   }
 }
 
-/// コマンドの種類
+/// コマンドの種類（必須引数の個数で 3 つに分ける。個数はこの分け方が型で決める）
 #[derive(Clone, Copy, Debug)]
 enum CommandKind {
+  /// 必須引数を取らないコマンド
+  Leaf(LeafCommand),
+  /// 必須引数を 1 個取るコマンド
+  Unary(UnaryCommand),
+  /// 必須引数を 2 個取るコマンド
+  Binary(BinaryCommand),
+}
+
+/// 必須引数を取らないコマンド
+#[derive(Clone, Copy, Debug)]
+enum LeafCommand {
+  /// `\noindent` — 段落先頭行の字下げを抑止するマーカー
+  NoIndent,
+  /// `\pagebreak` — その位置で強制改ページするマーカー
+  PageBreak,
+}
+
+/// 必須引数を 1 個取るコマンド
+#[derive(Clone, Copy, Debug)]
+enum UnaryCommand {
   /// `\space{<長さ>}` — 固定幅スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
   Heading(HeadingLevel),
-  /// 引数 1 つを取り書体を適用するコマンド（`\bold`, `\sansitalic` 等の 12 種）
+  /// 書体を適用するコマンド（`\bold`, `\sansitalic` 等の 12 種）
   StyledText(Typeface),
-  /// 引数 1 つを取りテキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
+  /// テキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
   ColoredText,
   /// `\ref{label}` — 相互参照のスタブを生成する（解決はしない）
   Ref,
@@ -118,22 +145,25 @@ enum CommandKind {
   Code,
   /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク（必須引数は verbatim）
   Url,
-  /// `\href{uri}{表示}` — 表示テキストと外部 URI を別に指定する外部リンク（第 1 引数は verbatim）
-  Href,
-  /// `\noindent` — 段落先頭行の字下げを抑止するマーカー（引数なし）
-  NoIndent,
-  /// `\pagebreak` — その位置で強制改ページするマーカー（引数なし）
-  PageBreak,
   /// `\num{数値}` — 数値（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Number,
   /// `\unit{単位}` — 単位（必須引数は外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Unit,
+}
+
+/// 必須引数を 2 個取るコマンド
+#[derive(Clone, Copy, Debug)]
+enum BinaryCommand {
+  /// `\href{uri}{表示}` — 表示テキストと外部 URI を別に指定する外部リンク（第 1 引数は verbatim）
+  Href,
   /// `\qty{数値}{単位}` — 量（必須引数 2 個とも外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Quantity,
 }
 
 impl CommandKind {
-  /// コマンドを実行し、対応する `CommandResult` を生成する
+  /// 署名で引数を検査し、コマンドを実行して対応する `CommandResult` を生成する
+  ///
+  /// 必須引数の個数と未知キーの検査はこの 3 arm だけが行う（ハンドラは検査を呼ばない）。
   fn execute(
     self,
     view: &CommandView<'_>,
@@ -141,100 +171,155 @@ impl CommandKind {
     placement: Placement,
   ) -> Result<CommandResult, EvalError> {
     match self {
-      Self::Space => {
-        let permit = placement.accept_block(view)?;
-        return control::space(view, ctx).map(|node| return CommandResult::Block(permit, node));
+      Self::Leaf(command) => {
+        command.signature().bind(view)?;
+        return command.execute(view, ctx, placement);
       },
-
-      Self::PageBreak => {
-        let permit = placement.accept_block(view)?;
-        return control::pagebreak(view, ctx).map(|node| return CommandResult::Block(permit, node));
+      Self::Unary(command) => {
+        let Bound { args: [arg], opts } = command.signature().bind(view)?;
+        return command.execute(view, ctx, placement, arg, &opts);
       },
-
-      Self::Heading(level) => {
-        let permit = placement.accept_block(view)?;
-        return heading::heading(view, ctx, level).map(|node| return CommandResult::Block(permit, node));
-      },
-
-      Self::NoIndent => {
-        let permit = placement.accept_block(view)?;
-        return control::noindent(view).map(|()| return CommandResult::NoIndent(permit));
-      },
-
-      Self::StyledText(kind) => {
-        return text_style::styled_text(view, ctx, kind, placement.index_policy()).map(CommandResult::Inline);
-      },
-
-      Self::ColoredText => {
-        return text_style::colored_text(view, ctx, placement.index_policy()).map(CommandResult::Inline);
-      },
-
-      Self::Ref => return ref_(view, ctx).map(CommandResult::Inline),
-
-      Self::Cite => return cite::cite(view, ctx).map(CommandResult::Inline),
-
-      Self::Footnote => {
-        return footnote::footnote(view, ctx, placement.index_policy()).map(CommandResult::Inline);
-      },
-
-      Self::Index => {
-        placement.accept_index(view)?;
-        return index::index(view, ctx).map(CommandResult::Inline);
-      },
-
-      Self::Code => return code(view, ctx).map(CommandResult::Inline),
-
-      Self::Url => return link::url(view, ctx).map(CommandResult::Inline),
-
-      Self::Href => return link::href(view, ctx).map(CommandResult::Inline),
-
-      Self::Number => {
-        return number::numeral(view)
-          .map(|numeral| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Number(numeral))));
-      },
-
-      Self::Unit => {
-        return unit::unit_factors(view)
-          .map(|factors| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Unit(factors))));
-      },
-
-      Self::Quantity => {
-        return quantity::quantity(view).map(|(numeral, unit)| {
-          return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Quantity { numeral, unit }));
-        });
+      Self::Binary(command) => {
+        let Bound { args, .. } = command.signature().bind(view)?;
+        return command.execute(view, ctx, args);
       },
     }
   }
 
-  /// 必須引数の読み取り方を位置順に返す
-  ///
-  /// どのコマンドのどの位置が verbatim か・`,` 区切りの項目列かはこの種別が単一の真実源で、ユーザは変更できない
-  /// （P1 ガード）。将来の `\define` もここへ宣言できない。
-  ///
-  /// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラ）。
-  fn arg_modes(self) -> &'static [ArgMode] {
+  /// 必須引数の位置 `index`（0 始まり）の読み取り方（宣言の範囲外は外側文脈の継承）
+  fn arg_mode(self, index: usize) -> ArgMode {
     return match self {
-      Self::Code | Self::Url => &[ArgMode::Verbatim],
-      Self::Href => &[ArgMode::Verbatim, ArgMode::Inherit],
-      Self::Cite => &[ArgMode::CommaList],
-      Self::Number | Self::Unit => &[ArgMode::Math],
-      Self::Quantity => &[ArgMode::Math, ArgMode::Math],
-      Self::Space
-      | Self::Heading(_)
-      | Self::StyledText(_)
-      | Self::ColoredText
-      | Self::Ref
-      | Self::Footnote
-      | Self::Index
-      | Self::NoIndent
-      | Self::PageBreak => &[],
+      Self::Leaf(command) => command.signature().arg_mode(index),
+      Self::Unary(command) => command.signature().arg_mode(index),
+      Self::Binary(command) => command.signature().arg_mode(index),
     };
   }
 }
 
+impl LeafCommand {
+  /// 署名
+  fn signature(self) -> Signature<0> {
+    return match self {
+      Self::NoIndent | Self::PageBreak => Signature::NONE,
+    };
+  }
+
+  /// 検査済みのコマンドを実行する
+  fn execute(
+    self,
+    view: &CommandView<'_>,
+    ctx: &EvalContext<'_>,
+    placement: Placement,
+  ) -> Result<CommandResult, EvalError> {
+    let permit = placement.accept_block(view)?;
+    return match self {
+      Self::NoIndent => Ok(CommandResult::NoIndent(permit)),
+      Self::PageBreak => Ok(CommandResult::Block(permit, control::pagebreak(view, ctx))),
+    };
+  }
+}
+
+impl UnaryCommand {
+  /// 署名（どのコマンドのどの位置が verbatim か・`,` 区切りの項目列か・数式かはこの宣言が単一の真実源で、ユーザは
+  /// 変更できない — P1 ガード）
+  fn signature(self) -> Signature<1> {
+    return match self {
+      Self::Space => control::SPACE,
+      Self::Heading(level) => heading::signature(level),
+      Self::StyledText(_) => text_style::STYLED,
+      Self::ColoredText => text_style::COLORED,
+      Self::Ref => REF,
+      Self::Cite => cite::SIGNATURE,
+      Self::Footnote => footnote::SIGNATURE,
+      Self::Index => index::SIGNATURE,
+      Self::Code => CODE,
+      Self::Url => link::URL,
+      Self::Number => number::SIGNATURE,
+      Self::Unit => unit::SIGNATURE,
+    };
+  }
+
+  /// 検査済みの引数 `arg` と任意引数 `opts` でコマンドを実行する
+  fn execute(
+    self,
+    view: &CommandView<'_>,
+    ctx: &EvalContext<'_>,
+    placement: Placement,
+    arg: &CstNode<'_>,
+    opts: &OptArgs,
+  ) -> Result<CommandResult, EvalError> {
+    match self {
+      Self::Space => {
+        let permit = placement.accept_block(view)?;
+        return control::space(view, arg, ctx).map(|node| return CommandResult::Block(permit, node));
+      },
+      Self::Heading(level) => {
+        let permit = placement.accept_block(view)?;
+        return heading::heading(view, arg, opts, ctx, level).map(|node| return CommandResult::Block(permit, node));
+      },
+      Self::StyledText(font) => {
+        return text_style::styled_text(view, arg, ctx, font, placement.index_policy()).map(CommandResult::Inline);
+      },
+      Self::ColoredText => {
+        return text_style::colored_text(view, arg, opts, ctx, placement.index_policy()).map(CommandResult::Inline);
+      },
+      Self::Ref => return ref_(view, arg, ctx).map(CommandResult::Inline),
+      Self::Cite => return cite::cite(view, arg, ctx).map(CommandResult::Inline),
+      Self::Footnote => {
+        return footnote::footnote(view, arg, ctx, placement.index_policy()).map(CommandResult::Inline);
+      },
+      Self::Index => {
+        placement.accept_index(view)?;
+        return index::index(view, arg, opts, ctx).map(CommandResult::Inline);
+      },
+      Self::Code => return Ok(CommandResult::Inline(code(view, arg, ctx))),
+      Self::Url => return Ok(CommandResult::Inline(link::url(view, arg, ctx))),
+      Self::Number => {
+        return number::numeral_arg(view.source(), arg)
+          .map(|numeral| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Number(numeral))));
+      },
+      Self::Unit => {
+        return unit::unit_factors_arg(view.source(), arg)
+          .map(|factors| return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Unit(factors))));
+      },
+    }
+  }
+}
+
+impl BinaryCommand {
+  /// 署名
+  fn signature(self) -> Signature<2> {
+    return match self {
+      Self::Href => link::HREF,
+      Self::Quantity => quantity::SIGNATURE,
+    };
+  }
+
+  /// 検査済みの引数 `args` でコマンドを実行する（2 引数のコマンドはどれもインラインで、任意引数を取らない）
+  fn execute(
+    self,
+    view: &CommandView<'_>,
+    ctx: &EvalContext<'_>,
+    args: [&CstNode<'_>; 2],
+  ) -> Result<CommandResult, EvalError> {
+    return match self {
+      Self::Href => link::href(view, args, ctx).map(CommandResult::Inline),
+      Self::Quantity => quantity::quantity(view.source(), args).map(|(numeral, unit)| {
+        return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Quantity { numeral, unit }));
+      }),
+    };
+  }
+}
+
+/// `\code` の署名（必須引数は verbatim）
+const CODE: Signature<1> = Signature::new([ArgMode::Verbatim], "コード断片", &[]);
+/// `\ref` の署名
+const REF: Signature<1> = Signature::new([ArgMode::Inherit], "ラベル名", &[]);
+
 /// 記号コマンド（`\alpha` 等）なら、任意引数・必須引数が無いことを確かめてその字を返す（記号表に無い名前は `None`）
 ///
 /// 本文・数式内の文章（`\text`）の引数・単位の式（`\unit` の引数・`\qty` の第 2 引数）で、記号コマンドを字にするときに共有する。
+/// 記号コマンドは署名を宣言しない呼び出しで、[`Signature::NONE`] が引数もキーも拒否する。
 ///
 /// # Errors
 ///
@@ -243,60 +328,59 @@ pub(super) fn symbol_char(view: &CommandView<'_>) -> Result<Option<char>, EvalEr
   let Some(symbol) = symbol::lookup(view.name()) else {
     return Ok(None);
   };
-  opt_args::no_command_opt_args(view)?;
-  arity::no_command_args(view)?;
+  Signature::NONE.bind(view)?;
   return Ok(Some(symbol.ch));
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
 static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
-  "space" => CommandKind::Space,
-  "noindent" => CommandKind::NoIndent,
-  "pagebreak" => CommandKind::PageBreak,
+  "space" => CommandKind::Unary(UnaryCommand::Space),
+  "noindent" => CommandKind::Leaf(LeafCommand::NoIndent),
+  "pagebreak" => CommandKind::Leaf(LeafCommand::PageBreak),
 
-  "ref" => CommandKind::Ref,
+  "ref" => CommandKind::Unary(UnaryCommand::Ref),
 
-  "cite" => CommandKind::Cite,
+  "cite" => CommandKind::Unary(UnaryCommand::Cite),
 
-  "footnote" => CommandKind::Footnote,
+  "footnote" => CommandKind::Unary(UnaryCommand::Footnote),
 
-  "index" => CommandKind::Index,
+  "index" => CommandKind::Unary(UnaryCommand::Index),
 
-  "code" => CommandKind::Code,
+  "code" => CommandKind::Unary(UnaryCommand::Code),
 
-  "url" => CommandKind::Url,
-  "href" => CommandKind::Href,
+  "url" => CommandKind::Unary(UnaryCommand::Url),
+  "href" => CommandKind::Binary(BinaryCommand::Href),
 
-  "num" => CommandKind::Number,
-  "unit" => CommandKind::Unit,
-  "qty" => CommandKind::Quantity,
+  "num" => CommandKind::Unary(UnaryCommand::Number),
+  "unit" => CommandKind::Unary(UnaryCommand::Unit),
+  "qty" => CommandKind::Binary(BinaryCommand::Quantity),
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）
-  "serif" => CommandKind::StyledText(Typeface::Serif),
-  "bold" => CommandKind::StyledText(Typeface::SerifBold),
-  "italic" => CommandKind::StyledText(Typeface::SerifItalic),
-  "bolditalic" => CommandKind::StyledText(Typeface::SerifBoldItalic),
+  "serif" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::Serif)),
+  "bold" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SerifBold)),
+  "italic" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SerifItalic)),
+  "bolditalic" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SerifBoldItalic)),
   // サンセリフ
-  "sans" => CommandKind::StyledText(Typeface::SansSerif),
-  "sansbold" => CommandKind::StyledText(Typeface::SansSerifBold),
-  "sansitalic" => CommandKind::StyledText(Typeface::SansSerifItalic),
-  "sansbolditalic" => CommandKind::StyledText(Typeface::SansSerifBoldItalic),
+  "sans" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SansSerif)),
+  "sansbold" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SansSerifBold)),
+  "sansitalic" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SansSerifItalic)),
+  "sansbolditalic" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::SansSerifBoldItalic)),
   // 等幅
-  "mono" => CommandKind::StyledText(Typeface::Monospace),
-  "monobold" => CommandKind::StyledText(Typeface::MonospaceBold),
-  "monoitalic" => CommandKind::StyledText(Typeface::MonospaceItalic),
-  "monobolditalic" => CommandKind::StyledText(Typeface::MonospaceBoldItalic),
+  "mono" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::Monospace)),
+  "monobold" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::MonospaceBold)),
+  "monoitalic" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::MonospaceItalic)),
+  "monobolditalic" => CommandKind::Unary(UnaryCommand::StyledText(Typeface::MonospaceBoldItalic)),
 
-  "color" => CommandKind::ColoredText,
+  "color" => CommandKind::Unary(UnaryCommand::ColoredText),
 
-  "part" => CommandKind::Heading(HeadingLevel::Part),
-  "chapter" => CommandKind::Heading(HeadingLevel::Chapter),
-  "section" => CommandKind::Heading(HeadingLevel::Section),
-  "subsection" => CommandKind::Heading(HeadingLevel::Subsection),
-  "paragraph" => CommandKind::Heading(HeadingLevel::Paragraph),
-  "subparagraph" => CommandKind::Heading(HeadingLevel::Subparagraph),
+  "part" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Part)),
+  "chapter" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Chapter)),
+  "section" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Section)),
+  "subsection" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Subsection)),
+  "paragraph" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Paragraph)),
+  "subparagraph" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Subparagraph)),
 
 };
 
@@ -305,10 +389,9 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 /// 機能コマンドのレジストリ（[`COMMANDS`]）に無い名前は数式の語彙の宣言を引く（`\text` の文章）。どちらも宣言しない
 /// コマンド（記号コマンドを含む）・宣言の範囲を超えた位置は [`ArgMode::Inherit`]（外側文脈の継承）が既定。
 pub(super) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
-  let modes = COMMANDS
+  return COMMANDS
     .get(name)
-    .map_or_else(|| return math::lookup_math_arg_modes(name), |kind| return kind.arg_modes());
-  return modes.get(index).copied().unwrap_or(ArgMode::Inherit);
+    .map_or_else(|| return math::lookup_math_arg_mode(name, index), |kind| return kind.arg_mode(index));
 }
 
 /// 名前が機能コマンドのレジストリ（[`COMMANDS`]）にあるか
@@ -372,29 +455,18 @@ pub(super) fn evaluate_inline_command(
 ///
 /// 必須引数は verbatim（生読み）で、対応の取れた `{}` は内容に含まれる。空白も改行も落とさない。
 /// バランスしないブレースを含む断片は `code` 環境で書く。見た目の等幅指定 `\mono` とは字句挙動が異なる。
-///
-/// # Errors
-///
-/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-fn code(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "コード断片")?;
-
-  let text = verbatim_text(view.source(), first_arg).to_string();
-  return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Code(text)));
+fn code(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'_>) -> HirInline {
+  let text = verbatim_text(view.source(), arg).to_string();
+  return ctx.leaf_inline(view.span(), HirInlineKind::Code(text));
 }
 
 /// `\ref{label}` を `HirInlineKind::Ref` に変換する
 ///
 /// # Errors
 ///
-/// 必須引数が欠落 / 過剰、任意引数が指定された場合、またはラベルに字以外の要素（コマンド・数式など）がある場合に
-/// エラーを返します。
-fn ref_(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "ラベル名")?;
-
-  let label = string_arg::text(view, first_arg)?.trim().to_string();
+/// ラベルに字以外の要素（コマンド・数式など）がある場合にエラーを返します。
+fn ref_(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
+  let label = string_arg::text(view, arg)?.trim().to_string();
   return Ok(ctx.leaf_inline(view.span(), HirInlineKind::Ref { label }));
 }
 
@@ -460,18 +532,6 @@ mod tests {
     let result = evaluator::evaluate_children_to_hir(source, cst);
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
-  }
-
-  #[test]
-  fn commands_declare_arg_modes_and_others_are_empty() {
-    assert_eq!(CommandKind::Code.arg_modes(), &[ArgMode::Verbatim]);
-    assert_eq!(CommandKind::Url.arg_modes(), &[ArgMode::Verbatim]);
-    assert_eq!(CommandKind::Href.arg_modes(), &[ArgMode::Verbatim, ArgMode::Inherit]);
-    assert_eq!(CommandKind::Cite.arg_modes(), &[ArgMode::CommaList]);
-    assert_eq!(CommandKind::Number.arg_modes(), &[ArgMode::Math]);
-    assert_eq!(CommandKind::Unit.arg_modes(), &[ArgMode::Math]);
-    assert_eq!(CommandKind::Quantity.arg_modes(), &[ArgMode::Math, ArgMode::Math]);
-    assert!(CommandKind::Ref.arg_modes().is_empty(), "宣言のないコマンドは空スライス");
   }
 
   #[test]
@@ -571,6 +631,94 @@ mod tests {
 
   /// `COMMANDS` の全コマンド名を返す
   fn all_command_names() -> Vec<&'static str> { return COMMANDS.entries().map(|(name, _)| return *name).collect(); }
+
+  impl CommandKind {
+    /// 必須引数の個数（外側の variant が決める）
+    fn arg_count(self) -> usize {
+      return match self {
+        Self::Leaf(_) => 0,
+        Self::Unary(_) => 1,
+        Self::Binary(_) => 2,
+      };
+    }
+  }
+
+  /// `\name[opts]` に `{a}` を `arg_count` 個続けたソースを文書のトップレベルで評価する
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテストの組み立て誤りで評価の結果ではないので、panic させてテストを落とす必要がある"
+  )]
+  fn evaluate_placeholder_call(name: &str, opts: &str, arg_count: usize) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let source = format!("\\{name}{opts}{}", "{a}".repeat(arg_count));
+    let cst = test_support::parse_cst(&source, &arena).unwrap();
+    return evaluator::evaluate_children_to_hir(&source, cst);
+  }
+
+  #[test]
+  fn every_command_rejects_a_dropped_argument() {
+    for (name, kind) in COMMANDS.entries() {
+      let Some(dropped) = kind.arg_count().checked_sub(1) else {
+        continue;
+      };
+
+      let result = evaluate_placeholder_call(name, "", dropped);
+
+      assert!(
+        matches!(result, Err(EvalError::MissingCommandArgument { name: ref rejected, .. }) if rejected == name),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn every_command_rejects_an_appended_argument() {
+    for (name, kind) in COMMANDS.entries() {
+      let result = evaluate_placeholder_call(name, "", kind.arg_count() + 1);
+
+      assert!(
+        matches!(result, Err(EvalError::ExtraCommandArgument { name: ref rejected, .. }) if rejected == name),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn every_command_rejects_an_undeclared_key() {
+    for (name, kind) in COMMANDS.entries() {
+      let result = evaluate_placeholder_call(name, "[undeclared=1]", kind.arg_count());
+
+      assert!(
+        matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "undeclared"),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn symbol_in_math_text_rejects_an_argument() {
+    let arena = Bump::new();
+    let source = r"$\text{\alpha{x}}$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(
+      matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "alpha"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn symbol_in_unit_rejects_a_key() {
+    let arena = Bump::new();
+    let source = r"\unit{\alpha[k=v]}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluator::evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"), "{result:?}");
+  }
 
   /// 全コマンド × 引数 0〜4 個を文書として評価し、成功または引数・オプション規則（P2/P3/P6）に関する既知のエラー種別
   /// だけを返すことを全件確かめる
@@ -696,12 +844,12 @@ mod tests {
 
   /// 書体コマンドの名前
   fn styled_name() -> impl Strategy<Value = &'static str> {
-    return command_name(|kind| return matches!(kind, CommandKind::StyledText(_)));
+    return command_name(|kind| return matches!(kind, CommandKind::Unary(UnaryCommand::StyledText(_))));
   }
 
   /// 見出しコマンドの名前
   fn heading_name() -> impl Strategy<Value = &'static str> {
-    return command_name(|kind| return matches!(kind, CommandKind::Heading(_)));
+    return command_name(|kind| return matches!(kind, CommandKind::Unary(UnaryCommand::Heading(_))));
   }
 
   /// 引数を再帰評価しない、どの文脈にも置ける呼び出し
@@ -821,58 +969,6 @@ mod tests {
       prop_assert!(result.is_ok(), "受理すべき `{source} {tail}` が診断になった: {result:?}");
     }
 
-    /// 必須引数を 1 つ落とすと、そのコマンドの引数不足になる
-    #[test]
-    fn dropping_a_required_argument_is_rejected_as_missing(
-      mut call in valid_call().prop_filter("必須引数を持つ呼び出し", |call| return !call.args.is_empty()),
-      tail in text(),
-    ) {
-      call.args.pop();
-      let source = call.render();
-
-      let result = evaluate_document(&source, &tail);
-
-      prop_assert!(
-        matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == call.name),
-        "`{source}`: {result:?}"
-      );
-    }
-
-    /// 必須引数を 1 つ足すと、そのコマンドの引数過剰になる
-    #[test]
-    fn appending_an_argument_is_rejected_as_extra(mut call in valid_call(), extra in text(), tail in text()) {
-      call.args.push(extra);
-      let source = call.render();
-
-      let result = evaluate_document(&source, &tail);
-
-      prop_assert!(
-        matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == call.name),
-        "`{source}`: {result:?}"
-      );
-    }
-
-    /// 宣言に無いキーを 1 つ足すと、そのキーの未知キー診断になる
-    #[test]
-    fn adding_an_undeclared_option_key_is_rejected(
-      mut call in valid_call(),
-      key in "[a-z]{1,8}".prop_filter("宣言済みのキーを避ける", |key| {
-        return !matches!(key.as_str(), "label" | "reading" | "color");
-      }),
-      value in "[a-z0-9]{1,4}",
-      tail in text(),
-    ) {
-      call.opts.push(format!("{key}={value}"));
-      let source = call.render();
-
-      let result = evaluate_document(&source, &tail);
-
-      prop_assert!(
-        matches!(result, Err(EvalError::UnknownOptArgKey { key: ref rejected, .. }) if *rejected == key),
-        "`{source}`: {result:?}"
-      );
-    }
-
     /// ブロックを生む呼び出しを書体コマンドの引数へ入れると、インライン文脈のブロックとして拒否される
     #[test]
     fn block_call_inside_an_inline_argument_is_rejected(
@@ -944,34 +1040,6 @@ mod tests {
   }
 
   #[test]
-  fn inline_code_rejects_second_argument() {
-    let arena = Bump::new();
-    let source = r"\code{a}{b}";
-    let cst = test_support::parse_cst(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst);
-
-    assert!(
-      matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "code"),
-      "{result:?}"
-    );
-  }
-
-  #[test]
-  fn inline_code_requires_an_argument() {
-    let arena = Bump::new();
-    let source = r"\code";
-    let cst = test_support::parse_cst(source, &arena).unwrap();
-
-    let result = evaluator::evaluate_children_to_hir(source, cst);
-
-    assert!(
-      matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "code"),
-      "{result:?}"
-    );
-  }
-
-  #[test]
   fn inline_code_inside_math_is_rejected_as_an_unknown_command() {
     // 引数モードはレジストリ宣言が勝つので数式内でも生読みされるが、
     // 数式評価器の語彙に `\code` は無い
@@ -1005,48 +1073,14 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx)).unwrap();
+    let [arg] = REF.bind(&view).unwrap().args;
+
+    let result = evaluator::run_handler(|ctx| return ref_(&view, arg, ctx)).unwrap();
 
     let HirInlineKind::Ref { label } = &result.kind else {
       panic!("Ref が期待されます");
     };
     assert_eq!(label, "sec:intro");
-  }
-
-  #[test]
-  fn ref_rejects_missing_argument() {
-    let arena = Bump::new();
-    let source = r"\ref";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "ref"));
-  }
-
-  #[test]
-  fn ref_rejects_extra_arguments() {
-    let arena = Bump::new();
-    let source = r"\ref{a}{b}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"));
-  }
-
-  #[test]
-  fn ref_rejects_opt_args() {
-    let arena = Bump::new();
-    let source = r"\ref[k=v]{label}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = evaluator::run_handler(|ctx| return ref_(&view, ctx));
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
 
   #[test]

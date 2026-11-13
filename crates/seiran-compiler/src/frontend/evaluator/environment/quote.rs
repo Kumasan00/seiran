@@ -3,7 +3,7 @@
 use crate::{
   document::{HirNode, HirNodeKind, HirQuote, QuoteKind},
   frontend::{
-    evaluator::{self, EvalContext, EvalError, arity, opt_args},
+    evaluator::{self, EvalContext, EvalError},
     syntax::view::EnvironmentView,
   },
 };
@@ -12,11 +12,8 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
+/// 本体の評価エラーを返します。
 pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, kind: QuoteKind) -> Result<HirNode, EvalError> {
-  opt_args::no_environment_opt_args(view)?;
-  arity::no_environment_args(view)?;
-
   let id = ctx.alloc(view.span());
   let body = match view.body() {
     Some(body) => evaluator::evaluate_children(view.source(), ctx, body)?,

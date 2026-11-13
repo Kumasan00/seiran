@@ -6,22 +6,14 @@
 use crate::{
   document::{NumberSign, Numeral},
   frontend::{
-    evaluator::{self, EvalError, arity, opt_args},
-    syntax::{CstElement, CstNode, token::TokenKind, view::CommandView},
+    evaluator::{self, EvalError, signature::Signature},
+    syntax::{ArgMode, CstElement, CstNode, token::TokenKind},
   },
   source::Span,
 };
 
-/// `\num` の引数を数値の文法で読む
-///
-/// # Errors
-///
-/// 任意引数・引数の個数の誤りと、[`numeral_arg`] のエラーを返す。
-pub(in crate::frontend::evaluator) fn numeral(view: &CommandView<'_>) -> Result<Numeral, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let arg = arity::exactly_one_arg(view, "1 個（数値）")?;
-  return numeral_arg(view.source(), arg);
-}
+/// `\num` の署名（引数は外側によらず数式として読む。本文の機能コマンドと数式の語彙が共有する）
+pub(in crate::frontend::evaluator) const SIGNATURE: Signature<1> = Signature::new([ArgMode::Math], "1 個（数値）", &[]);
 
 /// 引数ノード `arg` を数値の文法で読む
 ///

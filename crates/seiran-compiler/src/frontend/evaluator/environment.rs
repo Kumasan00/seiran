@@ -20,7 +20,7 @@ use phf::phf_map;
 use crate::{
   document::{GridLayout, HirMath, HirNode, QuoteKind, TextAlignment, TheoremClass},
   frontend::{
-    evaluator::{EvalContext, EvalError, environment::math::NumberingMode},
+    evaluator::{EvalContext, EvalError, environment::math::NumberingMode, opt_args::OptArgs, signature::Signature},
     syntax::{BodyMode, view::EnvironmentView},
   },
 };
@@ -74,24 +74,38 @@ impl EnvironmentKind {
     };
   }
 
-  /// 環境を評価して `HirNode` を生成する
+  /// 署名（必須引数を取る環境は無いので、宣言するのは受け付けるキーだけ）
+  fn signature(self) -> Signature<0> {
+    return match self {
+      Self::List { ordered } => list::signature(ordered),
+      Self::Theorem(class) => theorem::signature(class),
+      Self::Figure => figure::SIGNATURE,
+      Self::Table => table::SIGNATURE,
+      Self::Equation => math::EQUATION,
+      Self::MathGrid { numbering, .. } => math::grid_signature(numbering),
+      Self::Matrix => math::MATRIX,
+      Self::Quote(_) | Self::Flush(_) | Self::Code | Self::Cases => Signature::NONE,
+    };
+  }
+
+  /// 署名で検査済みの任意引数 `opts` で環境を評価して `HirNode` を生成する
   ///
   /// # Errors
   ///
   /// ハンドラ実行中のエラーが発生した場合
-  fn evaluate(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
+  fn evaluate(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &OptArgs) -> Result<HirNode, EvalError> {
     return match self {
-      Self::List { ordered } => list::list(view, ctx, ordered),
-      Self::Theorem(class) => theorem::theorem(view, ctx, class),
+      Self::List { ordered } => list::list(view, ctx, opts, ordered),
+      Self::Theorem(class) => theorem::theorem(view, ctx, opts, class),
       Self::Quote(kind) => quote::quote(view, ctx, kind),
       Self::Flush(alignment) => flush::flush(view, ctx, alignment),
-      Self::Figure => figure::figure(view, ctx),
-      Self::Table => table::table(view, ctx),
-      Self::Code => code::code(view, ctx),
-      Self::Equation => math::equation(view, ctx),
-      Self::MathGrid { layout, numbering } => math::evaluate_math_grid(view, ctx, layout, numbering),
+      Self::Figure => figure::figure(view, ctx, opts),
+      Self::Table => table::table(view, ctx, opts),
+      Self::Code => Ok(code::code(view, ctx)),
+      Self::Equation => math::equation(view, ctx, opts),
+      Self::MathGrid { layout, numbering } => math::evaluate_math_grid(view, ctx, opts, layout, numbering),
       Self::Cases => math::cases(view, ctx),
-      Self::Matrix => math::matrix(view, ctx),
+      Self::Matrix => math::matrix(view, ctx, opts),
     };
   }
 
@@ -102,10 +116,15 @@ impl EnvironmentKind {
   /// # Errors
   ///
   /// 数式の中で使えない環境の場合と、ハンドラ実行中のエラーが発生した場合
-  fn evaluate_in_math(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirMath, EvalError> {
+  fn evaluate_in_math(
+    self,
+    view: &EnvironmentView<'_>,
+    ctx: &EvalContext<'_>,
+    opts: &OptArgs,
+  ) -> Result<HirMath, EvalError> {
     return match self {
       Self::Cases => math::embedded_cases(view, ctx),
-      Self::Matrix => math::embedded_matrix(view, ctx),
+      Self::Matrix => math::embedded_matrix(view, ctx, opts),
       Self::List { .. }
       | Self::Theorem(_)
       | Self::Quote(_)
@@ -166,12 +185,14 @@ pub(super) fn lookup_body_mode(name: &str) -> BodyMode {
 
 /// 環境を評価し、対応する `HirNode` を生成する
 ///
+/// 必須引数と未知キーの検査は署名の宣言からここで行い、ハンドラは検査を呼ばない。
+///
 /// # Errors
 ///
-/// 未知の環境やハンドラ実行中のエラーが発生した場合
+/// 未知の環境・署名の検査のエラーやハンドラ実行中のエラーが発生した場合
 pub(super) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
   return match ENVIRONMENTS.get(view.name()) {
-    Some(kind) => kind.evaluate(view, ctx),
+    Some(kind) => kind.evaluate(view, ctx, &kind.signature().bind_environment(view)?),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),
       span: view.span().into(),
@@ -183,10 +204,10 @@ pub(super) fn evaluate_environment(view: &EnvironmentView<'_>, ctx: &EvalContext
 ///
 /// # Errors
 ///
-/// 未知の環境・数式の中で使えない環境の場合と、ハンドラ実行中のエラーが発生した場合
+/// 未知の環境・数式の中で使えない環境の場合と、署名の検査のエラーやハンドラ実行中のエラーが発生した場合
 pub(super) fn evaluate_in_math(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirMath, EvalError> {
   return match ENVIRONMENTS.get(view.name()) {
-    Some(kind) => kind.evaluate_in_math(view, ctx),
+    Some(kind) => kind.evaluate_in_math(view, ctx, &kind.signature().bind_environment(view)?),
     None => Err(unsupported_in_math(view)),
   };
 }
@@ -201,8 +222,54 @@ fn unsupported_in_math(view: &EnvironmentView<'_>) -> EvalError {
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
+
   use super::{ENVIRONMENTS, EnvironmentKind, lookup_body_mode};
-  use crate::{document::TheoremClass, frontend::syntax::BodyMode};
+  use crate::{
+    document::{HirNode, TheoremClass},
+    frontend::{
+      evaluator::{EvalError, evaluate_children_to_hir, test_support},
+      syntax::BodyMode,
+    },
+  };
+
+  /// `\begin{name}<header>\end{name}` を文書のトップレベルで評価する
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテストの組み立て誤りで評価の結果ではないので、panic させてテストを落とす必要がある"
+  )]
+  fn evaluate_empty_environment(name: &str, header: &str) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let source = format!("\\begin{{{name}}}{header}\\end{{{name}}}");
+    let cst = test_support::parse_cst(&source, &arena).unwrap();
+    return evaluate_children_to_hir(&source, cst);
+  }
+
+  #[test]
+  fn every_environment_rejects_an_undeclared_key() {
+    for name in ENVIRONMENTS.keys() {
+      let result = evaluate_empty_environment(name, "[undeclared=1]");
+
+      assert!(
+        matches!(result, Err(EvalError::UnknownOptArgKey { name: ref rejected, ref key, .. })
+          if rejected == name && key == "undeclared"),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn every_text_body_environment_rejects_an_argument() {
+    // 数式・verbatim の本体では `{a}` は本体の先頭なので引数にならない
+    for (name, kind) in ENVIRONMENTS.entries().filter(|(_, kind)| return kind.body_mode() == BodyMode::Text) {
+      let result = evaluate_empty_environment(name, "{a}");
+
+      assert!(
+        matches!(result, Err(EvalError::ExtraEnvironmentArgument { name: ref rejected, .. }) if rejected == name),
+        "{name} ({kind:?}): {result:?}"
+      );
+    }
+  }
 
   #[test]
   fn body_mode_is_derived_from_the_registered_kind() {

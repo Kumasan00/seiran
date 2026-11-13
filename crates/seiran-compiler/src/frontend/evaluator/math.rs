@@ -9,16 +9,18 @@ use std::iter;
 
 use icu_normalizer::ComposingNormalizerBorrowed;
 use itertools::Itertools;
+use phf::phf_map;
 
 use crate::{
   document::{HirInlineKind, HirMath, HirMathKind, MathClass, MathSpace, MathVariant, NodeId},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError, arity, command,
+      self, EvalContext, EvalError, command,
       command::symbol::{self, MathSymbol},
       environment,
       inline::{self, TokenInline},
-      opt_args::{self, OptKey},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::{Bound, Signature},
     },
     syntax::{
       self, ArgMode, CstElement, CstNode, SyntaxKind,
@@ -238,253 +240,393 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
   };
 }
 
-/// 数式内コマンドの種類
+/// 数式内コマンドの種類（必須引数の個数で 3 つに分ける。個数はこの分け方が型で決める）
 ///
-/// 数式の語彙（字形コマンド・`\frac`・`\binom`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・中間の区切り・記号表）を名前から 1 回だけ引いた結果。必須引数の個数は
-/// [`Self::arg_count`] の網羅 match 1 箇所で宣言し、パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]
-/// 経由）と評価の個数検査（[`evaluate_math_command`] の `arity` 呼び出し）の両方がこの個数に従う。
-/// variant を足すと `arg_count` がコンパイルエラーで個数の宣言を求める。
+/// 数式の語彙（字形コマンド・`\frac`・`\binom`・`\sqrt`・伸縮括弧・アクセント・上下線・明示アキ・演算子名・文章・中間の区切り・
+/// 記号表）を名前から 1 回だけ引いた結果。パーサーが数式内で引数を読む上限（[`lookup_math_arg_count`]）も、評価の個数検査
+/// （[`evaluate_math_command`] の外側 3 arm の `bind`）も、この分け方が決める個数に従う。
 #[derive(Debug, Clone, Copy)]
 enum MathCommandKind {
-  /// 字形コマンド（`\mathbold` 等）— 必須引数 1 個（数式本体）
+  /// 必須引数を取らない数式コマンド
+  Leaf(MathLeaf),
+  /// 必須引数を 1 個取る数式コマンド
+  Unary(MathUnary),
+  /// 必須引数を 2 個取る数式コマンド
+  Binary(MathBinary),
+}
+
+/// 必須引数を取らない数式コマンド
+#[derive(Debug, Clone, Copy)]
+enum MathLeaf {
+  /// 明示アキ（`\thinspace` 等）
+  Space(MathSpace),
+  /// 演算子名（`\lim` 等）
+  OperatorName {
+    /// 組む字（ASCII 英字の語を半角空白 1 個で区切った列。空白は語の間の細アキ）
+    text: &'static str,
+    /// display 段で付くスクリプトを上下に積むか
+    limits: bool,
+  },
+  /// 中間の区切り（`\given`）。伸縮括弧の引数の直下でだけ有効
+  Given,
+  /// 記号コマンド（`\alpha` 等）
+  Symbol(MathSymbol),
+}
+
+/// 必須引数を 1 個取る数式コマンド
+#[derive(Debug, Clone, Copy)]
+enum MathUnary {
+  /// 字形コマンド（`\mathbold` 等）
   Styled(MathVariant),
-  /// `\frac` — 必須引数 2 個（分子と分母）
-  Frac,
-  /// `\binom` — 必須引数 2 個（上段と下段）
-  Binom,
-  /// `\sqrt` — 必須引数 1 個（被開平数）。根指数は任意引数なので数えない
+  /// `\sqrt` — 根指数は任意引数で、数式内容として読む
   Sqrt,
-  /// 伸縮括弧（`\paren` 等）— 必須引数 1 個（括弧で包む数式）
+  /// 伸縮括弧（`\paren` 等）
   Fenced {
     /// 左の区切り括弧
     open: char,
     /// 右の区切り括弧
     close: char,
   },
-  /// アクセント（`\hat` 等・`\widehat` 等）— 必須引数 1 個（基底）
+  /// アクセント（`\hat` 等・`\widehat` 等）
   Accent {
     /// 基底の上に置く結合用ダイアクリティカルマーク
     mark: char,
     /// 記号を基底の送り幅へ横に伸ばすか（広幅アクセント）
     wide: bool,
   },
-  /// 上線・下線（`\overline` / `\underline`）— 必須引数 1 個（線を引く数式）
+  /// 上線・下線（`\overline` / `\underline`）
   Bar {
     /// 線を基底の上に引くか（上線は `true`、下線は `false`）
     over: bool,
   },
-  /// 明示アキ（`\thinspace` 等）— 必須引数なし
-  Space(MathSpace),
-  /// 演算子名（`\lim` 等）— 必須引数なし
-  OperatorName {
-    /// 組む字（[`OPERATOR_NAMES`] の 2 列目）
-    text: &'static str,
-    /// display 段で付くスクリプトを上下に積むか
-    limits: bool,
-  },
-  /// 文章（`\text`）— 必須引数 1 個（テキストとして読む文章）
+  /// 文章（`\text`）— 引数はテキストとして読む
   Prose,
-  /// 数値（`\num`）— 必須引数 1 個（数式として読む数値）
+  /// 数値（`\num`）
   Number,
-  /// 単位（`\unit`）— 必須引数 1 個（数式として読む単位の式）
+  /// 単位（`\unit`）
   Unit,
-  /// 量（`\qty`）— 必須引数 2 個（数式として読む数値と単位の式）
+}
+
+/// 必須引数を 2 個取る数式コマンド
+#[derive(Debug, Clone, Copy)]
+enum MathBinary {
+  /// `\frac`（分子と分母）
+  Frac,
+  /// `\binom`（上段と下段）
+  Binom,
+  /// 量（`\qty`。数値と単位の式）
   Quantity,
-  /// 中間の区切り（`\given`）— 必須引数なし。伸縮括弧の引数の直下でだけ有効
-  Given,
-  /// 記号コマンド（`\alpha` 等）— 必須引数なし
-  Symbol(MathSymbol),
-}
-
-impl MathCommandKind {
-  /// コマンド名から数式の語彙を引く。数式の語彙に無ければ `None`
-  fn from_name(name: &str) -> Option<Self> {
-    if let Some(variant) = MathVariant::from_command_name(name) {
-      return Some(Self::Styled(variant));
-    }
-    return match name {
-      "frac" => Some(Self::Frac),
-      "binom" => Some(Self::Binom),
-      "sqrt" => Some(Self::Sqrt),
-      "text" => Some(Self::Prose),
-      "num" => Some(Self::Number),
-      "unit" => Some(Self::Unit),
-      "qty" => Some(Self::Quantity),
-      "given" => Some(Self::Given),
-      _ => fence_delimiters(name)
-        .map(|(open, close)| return Self::Fenced { open, close })
-        .or_else(|| return accent_mark(name).map(|mark| return Self::Accent { mark, wide: false }))
-        .or_else(|| return wide_accent_mark(name).map(|mark| return Self::Accent { mark, wide: true }))
-        .or_else(|| return bar_side(name).map(|over| return Self::Bar { over }))
-        .or_else(|| return math_space(name).map(Self::Space))
-        .or_else(|| return operator_name(name).map(|(text, limits)| return Self::OperatorName { text, limits }))
-        .or_else(|| return symbol::lookup(name).map(Self::Symbol)),
-    };
-  }
-
-  /// 必須引数の個数
-  fn arg_count(self) -> usize {
-    return match self {
-      Self::Styled(_)
-      | Self::Sqrt
-      | Self::Fenced { .. }
-      | Self::Accent { .. }
-      | Self::Bar { .. }
-      | Self::Prose
-      | Self::Number
-      | Self::Unit => 1,
-      Self::Frac | Self::Binom | Self::Quantity => 2,
-      Self::Space(_) | Self::OperatorName { .. } | Self::Given | Self::Symbol(_) => 0,
-    };
-  }
-
-  /// 必須引数の読み取り方を位置順に返す（宣言の無い位置は外側文脈の継承）
-  fn arg_modes(self) -> &'static [ArgMode] {
-    return match self {
-      Self::Prose => &[ArgMode::Text],
-      Self::Number | Self::Unit => &[ArgMode::Math],
-      Self::Quantity => &[ArgMode::Math, ArgMode::Math],
-      Self::Styled(_)
-      | Self::Frac
-      | Self::Binom
-      | Self::Sqrt
-      | Self::Fenced { .. }
-      | Self::Accent { .. }
-      | Self::Bar { .. }
-      | Self::Space(_)
-      | Self::OperatorName { .. }
-      | Self::Given
-      | Self::Symbol(_) => &[],
-    };
-  }
-}
-
-/// 伸縮括弧のコマンド名から、左右の区切り括弧を引く（伸縮括弧でなければ `None`）
-///
-/// `\abs` は U+007C、`\norm` は U+2016。`\anglebracket` は `\langle` / `\rangle` と同じ U+27E8 / U+27E9
-/// （U+2329 / U+232A は NFC で CJK の U+3008 / U+3009 に写る）。
-fn fence_delimiters(name: &str) -> Option<(char, char)> {
-  return match name {
-    "paren" => Some(('(', ')')),
-    "bracket" => Some(('[', ']')),
-    "brace" => Some(('{', '}')),
-    "abs" => Some(('|', '|')),
-    "norm" => Some(('\u{2016}', '\u{2016}')),
-    "anglebracket" => Some(('\u{27E8}', '\u{27E9}')),
-    "floor" => Some(('\u{230A}', '\u{230B}')),
-    "ceil" => Some(('\u{2308}', '\u{2309}')),
-    _ => None,
-  };
 }
 
 /// アクセントの基底を OpenType `dtls` のドット無しの字形で組むかの上書き（`\hat[dotless=false]{i}`）
 const DOTLESS: OptKey<bool> = opt_args::boolean("dotless");
+/// アクセント（広幅を除く）が受け付けるキー
+const ACCENT_KEYS: &[OptDecl] = &[DOTLESS.decl()];
 
-/// アクセントコマンド名から、基底の上に置く結合用ダイアクリティカルマークを引く（アクセントでなければ `None`）
+/// 記号を除く数式の語彙（名前 → 種別）
 ///
-/// 対応は unicode-math の `\mathaccent`（`unicode-math-table.tex`）と同じ。数式フォントの OpenType MATH は結合記号の側に
-/// `MathTopAccentAttachment` と `flac` の字形を持つ（スペーシング形の U+02C6 等は持たない）。
-fn accent_mark(name: &str) -> Option<char> {
-  return match name {
-    "hat" => Some('\u{0302}'),
-    "bar" => Some('\u{0304}'),
-    "vec" => Some('\u{20D7}'),
-    "dot" => Some('\u{0307}'),
-    "ddot" => Some('\u{0308}'),
-    "tilde" => Some('\u{0303}'),
-    "check" => Some('\u{030C}'),
-    "acute" => Some('\u{0301}'),
-    "grave" => Some('\u{0300}'),
-    "breve" => Some('\u{0306}'),
-    _ => None,
-  };
+/// 記号は本文と共有する記号表（`symbol::lookup`）が引く。同じ名前が両方にあれば数式ではこちらが勝つ。
+static MATH_COMMANDS: phf::Map<&'static str, MathCommandKind> = phf_map! {
+  // 字形コマンド
+  "mathserif" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Serif)),
+  "mathitalic" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Italic)),
+  "mathbold" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Bold)),
+  "mathbolditalic" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::BoldItalic)),
+  "mathsans" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Sans)),
+  "mathsansitalic" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::SansItalic)),
+  "mathsansbold" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::SansBold)),
+  "mathsansbolditalic" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::SansBoldItalic)),
+  "mathmono" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Mono)),
+  "mathdoublestruck" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::DoubleStruck)),
+  "mathscript" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Script)),
+  "mathcalligraphic" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Calligraphic)),
+  "mathfraktur" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::Fraktur)),
+  "mathscriptbold" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::ScriptBold)),
+  "mathfrakturbold" => MathCommandKind::Unary(MathUnary::Styled(MathVariant::FrakturBold)),
+
+  "frac" => MathCommandKind::Binary(MathBinary::Frac),
+  "binom" => MathCommandKind::Binary(MathBinary::Binom),
+  "sqrt" => MathCommandKind::Unary(MathUnary::Sqrt),
+  "text" => MathCommandKind::Unary(MathUnary::Prose),
+  "num" => MathCommandKind::Unary(MathUnary::Number),
+  "unit" => MathCommandKind::Unary(MathUnary::Unit),
+  "qty" => MathCommandKind::Binary(MathBinary::Quantity),
+  "given" => MathCommandKind::Leaf(MathLeaf::Given),
+
+  // 伸縮括弧。`\abs` は U+007C、`\norm` は U+2016。`\anglebracket` は `\langle` / `\rangle` と同じ U+27E8 / U+27E9
+  // （U+2329 / U+232A は NFC で CJK の U+3008 / U+3009 に写る）
+  "paren" => MathCommandKind::Unary(MathUnary::Fenced { open: '(', close: ')' }),
+  "bracket" => MathCommandKind::Unary(MathUnary::Fenced { open: '[', close: ']' }),
+  "brace" => MathCommandKind::Unary(MathUnary::Fenced { open: '{', close: '}' }),
+  "abs" => MathCommandKind::Unary(MathUnary::Fenced { open: '|', close: '|' }),
+  "norm" => MathCommandKind::Unary(MathUnary::Fenced { open: '\u{2016}', close: '\u{2016}' }),
+  "anglebracket" => MathCommandKind::Unary(MathUnary::Fenced { open: '\u{27E8}', close: '\u{27E9}' }),
+  "floor" => MathCommandKind::Unary(MathUnary::Fenced { open: '\u{230A}', close: '\u{230B}' }),
+  "ceil" => MathCommandKind::Unary(MathUnary::Fenced { open: '\u{2308}', close: '\u{2309}' }),
+
+  // アクセント。対応は unicode-math の `\mathaccent`（`unicode-math-table.tex`）と同じ。数式フォントの OpenType MATH は
+  // 結合記号の側に `MathTopAccentAttachment` と `flac` の字形を持つ（スペーシング形の U+02C6 等は持たない）
+  "hat" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0302}', wide: false }),
+  "bar" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0304}', wide: false }),
+  "vec" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{20D7}', wide: false }),
+  "dot" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0307}', wide: false }),
+  "ddot" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0308}', wide: false }),
+  "tilde" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0303}', wide: false }),
+  "check" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{030C}', wide: false }),
+  "acute" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0301}', wide: false }),
+  "grave" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0300}', wide: false }),
+  "breve" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0306}', wide: false }),
+
+  // 広幅アクセント。`\widehat` / `\widetilde` / `\widecheck` は unicode-math の `\mathaccentwide` と同じ字、矢印は結合用の
+  // 矢印（上）。横に伸ばす字形は数式フォントの OpenType MATH が結合記号の側に持つ横方向の size variant と glyph assembly
+  // で、持たないフォントでは元の字形のまま組む
+  "widehat" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0302}', wide: true }),
+  "widetilde" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{0303}', wide: true }),
+  "widecheck" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{030C}', wide: true }),
+  "overrightarrow" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{20D7}', wide: true }),
+  "overleftarrow" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{20D6}', wide: true }),
+  "overleftrightarrow" => MathCommandKind::Unary(MathUnary::Accent { mark: '\u{20E1}', wide: true }),
+
+  "overline" => MathCommandKind::Unary(MathUnary::Bar { over: true }),
+  "underline" => MathCommandKind::Unary(MathUnary::Bar { over: false }),
+
+  "thinspace" => MathCommandKind::Leaf(MathLeaf::Space(MathSpace::Thin)),
+  "medspace" => MathCommandKind::Leaf(MathLeaf::Space(MathSpace::Medium)),
+  "thickspace" => MathCommandKind::Leaf(MathLeaf::Space(MathSpace::Thick)),
+  "quad" => MathCommandKind::Leaf(MathLeaf::Space(MathSpace::Quad)),
+  "negthinspace" => MathCommandKind::Leaf(MathLeaf::Space(MathSpace::NegativeThin)),
+
+  // 演算子名。LaTeX カーネルの演算子名と同じ 32 個で、上下に積むかも LaTeX と同じ（`\nolimits` の付かない 10 個）。
+  // 組む字の空白は語の間の細アキ（LaTeX の `lim\,sup`）
+  "arccos" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "arccos", limits: false }),
+  "arcsin" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "arcsin", limits: false }),
+  "arctan" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "arctan", limits: false }),
+  "arg" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "arg", limits: false }),
+  "cos" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "cos", limits: false }),
+  "cosh" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "cosh", limits: false }),
+  "cot" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "cot", limits: false }),
+  "coth" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "coth", limits: false }),
+  "csc" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "csc", limits: false }),
+  "deg" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "deg", limits: false }),
+  "det" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "det", limits: true }),
+  "dim" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "dim", limits: false }),
+  "exp" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "exp", limits: false }),
+  "gcd" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "gcd", limits: true }),
+  "hom" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "hom", limits: false }),
+  "inf" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "inf", limits: true }),
+  "ker" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "ker", limits: false }),
+  "lg" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "lg", limits: false }),
+  "lim" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "lim", limits: true }),
+  "liminf" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "lim inf", limits: true }),
+  "limsup" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "lim sup", limits: true }),
+  "ln" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "ln", limits: false }),
+  "log" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "log", limits: false }),
+  "max" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "max", limits: true }),
+  "min" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "min", limits: true }),
+  "Pr" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "Pr", limits: true }),
+  "sec" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "sec", limits: false }),
+  "sin" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "sin", limits: false }),
+  "sinh" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "sinh", limits: false }),
+  "sup" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "sup", limits: true }),
+  "tan" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "tan", limits: false }),
+  "tanh" => MathCommandKind::Leaf(MathLeaf::OperatorName { text: "tanh", limits: false }),
+};
+
+impl MathCommandKind {
+  /// コマンド名から数式の語彙を引く。数式の語彙に無ければ `None`
+  fn from_name(name: &str) -> Option<Self> {
+    return MATH_COMMANDS
+      .get(name)
+      .copied()
+      .or_else(|| return symbol::lookup(name).map(|symbol| return Self::Leaf(MathLeaf::Symbol(symbol))));
+  }
+
+  /// 必須引数の個数（外側の variant が決める）
+  fn arg_count(self) -> usize {
+    return match self {
+      Self::Leaf(_) => 0,
+      Self::Unary(_) => 1,
+      Self::Binary(_) => 2,
+    };
+  }
+
+  /// 必須引数の位置 `index`（0 始まり）の読み取り方（宣言の範囲外は外側文脈の継承）
+  fn arg_mode(self, index: usize) -> ArgMode {
+    return match self {
+      Self::Leaf(command) => command.signature().arg_mode(index),
+      Self::Unary(command) => command.signature().arg_mode(index),
+      Self::Binary(command) => command.signature().arg_mode(index),
+    };
+  }
 }
 
-/// 広幅アクセントのコマンド名から、基底の上に置いて基底の送り幅へ横に伸ばす結合用ダイアクリティカルマークを引く
-/// （広幅アクセントでなければ `None`）
-///
-/// `\widehat` / `\widetilde` / `\widecheck` は unicode-math の `\mathaccentwide` と同じ字、矢印は結合用の矢印（上）。
-/// 横に伸ばす字形は数式フォントの OpenType MATH が結合記号の側に持つ横方向の size variant と glyph assembly で、持たない
-/// フォントでは元の字形のまま組む。
-fn wide_accent_mark(name: &str) -> Option<char> {
-  return match name {
-    "widehat" => Some('\u{0302}'),
-    "widetilde" => Some('\u{0303}'),
-    "widecheck" => Some('\u{030C}'),
-    "overrightarrow" => Some('\u{20D7}'),
-    "overleftarrow" => Some('\u{20D6}'),
-    "overleftrightarrow" => Some('\u{20E1}'),
-    _ => None,
-  };
+impl MathLeaf {
+  /// 署名（必須引数も任意引数も取らない）
+  fn signature(self) -> Signature<0> {
+    return match self {
+      Self::Space(_) | Self::OperatorName { .. } | Self::Given | Self::Symbol(_) => Signature::NONE,
+    };
+  }
+
+  /// 検査済みの数式コマンドを評価する
+  fn evaluate(self, view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirMath, EvalError> {
+    return match self {
+      Self::Space(space) => Ok(ctx.leaf_math(view.span(), HirMathKind::Space(space))),
+      Self::OperatorName { text, limits } => Ok(ctx.leaf_math(
+        view.span(),
+        HirMathKind::OperatorName {
+          text: text.to_string(),
+          limits,
+        },
+      )),
+      // 伸縮括弧の直下の `\given` は `evaluate_fence_segments` が区切りとして取り除くので、ここへ来るのはそれ以外の位置
+      // （グループ・引数・スクリプト・セル・環境本体・伸縮括弧の外）の `\given` だけ
+      Self::Given => Err(EvalError::GivenNotInFence {
+        span: view.span().into(),
+      }),
+      Self::Symbol(symbol) => Ok(ctx.leaf_math(
+        view.span(),
+        HirMathKind::Symbol {
+          text: symbol.ch.to_string(),
+          class: symbol.class,
+        },
+      )),
+    };
+  }
 }
 
-/// 上線・下線のコマンド名から、線を基底の上に引くか（`\overline` は `true`、`\underline` は `false`）を引く（上線・下線で
-/// なければ `None`）
-fn bar_side(name: &str) -> Option<bool> {
-  return match name {
-    "overline" => Some(true),
-    "underline" => Some(false),
-    _ => None,
-  };
+/// 字形・伸縮括弧・上下線・広幅アクセントの署名（任意引数を取らないので不足時の説明だけが違う）
+const fn plain_unary(expected: &'static str) -> Signature<1> {
+  return Signature::new([ArgMode::Inherit], expected, &[]);
 }
 
-/// 明示アキのコマンド名から、アキの種類を引く（明示アキでなければ `None`）
-fn math_space(name: &str) -> Option<MathSpace> {
-  return match name {
-    "thinspace" => Some(MathSpace::Thin),
-    "medspace" => Some(MathSpace::Medium),
-    "thickspace" => Some(MathSpace::Thick),
-    "quad" => Some(MathSpace::Quad),
-    "negthinspace" => Some(MathSpace::NegativeThin),
-    _ => None,
-  };
+impl MathUnary {
+  /// 署名
+  fn signature(self) -> Signature<1> {
+    return match self {
+      Self::Styled(_) => plain_unary("1 個（数式本体）"),
+      Self::Sqrt => Signature::math_index([ArgMode::Inherit], "1 個（被開平数）"),
+      Self::Fenced { .. } => plain_unary("1 個（括弧で包む数式）"),
+      Self::Accent { wide: false, .. } => {
+        Signature::new([ArgMode::Inherit], "1 個（アクセントを付ける数式）", ACCENT_KEYS)
+      },
+      Self::Accent { wide: true, .. } => plain_unary("1 個（アクセントを付ける数式）"),
+      Self::Bar { .. } => plain_unary("1 個（線を引く数式）"),
+      Self::Prose => Signature::new([ArgMode::Text], "1 個（文章）", &[]),
+      Self::Number => command::number::SIGNATURE,
+      Self::Unit => command::unit::SIGNATURE,
+    };
+  }
+
+  /// 検査済みの引数 `arg` と任意引数 `opts` で数式コマンドを評価する
+  fn evaluate(
+    self,
+    view: &CommandView<'_>,
+    ctx: &EvalContext<'_>,
+    arg: &CstNode<'_>,
+    opts: &OptArgs,
+  ) -> Result<HirMath, EvalError> {
+    let source = view.source();
+    match self {
+      Self::Styled(variant) => {
+        let id = ctx.alloc(view.span());
+        let children = evaluate_math_children(source, ctx, arg)?;
+        return Ok(HirMath::new(id, HirMathKind::Styled { variant, children }));
+      },
+      Self::Sqrt => {
+        // 個数は外側の `bind` が根指数の評価より前に検査済み — `math_arg_to_node` は `ctx.alloc` で NodeId を消費する
+        // ので、引数の個数が誤っていて拒否するだけの入力に対して、その割り当てを発生させない
+        let id = ctx.alloc(view.span());
+        let index = match view.opt_arg() {
+          Some(opt) => Some(Box::new(math_arg_to_node(source, ctx, opt)?)),
+          None => None,
+        };
+        let radicand = Box::new(math_arg_to_node(source, ctx, arg)?);
+        return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
+      },
+      Self::Fenced { open, close } => {
+        let id = ctx.alloc(view.span());
+        let segments = evaluate_fence_segments(source, ctx, arg)?;
+        return Ok(HirMath::new(
+          id,
+          HirMathKind::Fenced {
+            open,
+            close,
+            segments,
+          },
+        ));
+      },
+      Self::Accent { mark, wide } => {
+        let id = ctx.alloc(view.span());
+        let base = Box::new(math_arg_to_node(source, ctx, arg)?);
+        return Ok(HirMath::new(
+          id,
+          HirMathKind::Accent {
+            accent: mark,
+            wide,
+            dotless: opts.get(DOTLESS),
+            base,
+          },
+        ));
+      },
+      Self::Bar { over } => {
+        let id = ctx.alloc(view.span());
+        let body = Box::new(math_arg_to_node(source, ctx, arg)?);
+        return Ok(HirMath::new(id, HirMathKind::Bar { over, body }));
+      },
+      Self::Prose => {
+        let text = prose_text(source, arg)?;
+        return Ok(ctx.leaf_math(view.span(), HirMathKind::Prose(text)));
+      },
+      Self::Number => {
+        let numeral = command::number::numeral_arg(source, arg)?;
+        return Ok(ctx.leaf_math(view.span(), HirMathKind::Number(numeral)));
+      },
+      Self::Unit => {
+        let factors = command::unit::unit_factors_arg(source, arg)?;
+        return Ok(ctx.leaf_math(view.span(), HirMathKind::Unit(factors)));
+      },
+    }
+  }
 }
 
-/// 演算子名の表（コマンド名, 組む字, display 段で付くスクリプトを上下に積むか）
-///
-/// LaTeX カーネルの演算子名と同じ 32 個で、上下に積むかも LaTeX と同じ（`\nolimits` の付かない 10 個）。組む字は ASCII 英字の語を
-/// 半角空白 1 個で区切った列で、空白は語の間の細アキ（LaTeX の `lim\,sup`）。
-const OPERATOR_NAMES: &[(&str, &str, bool)] = &[
-  ("arccos", "arccos", false),
-  ("arcsin", "arcsin", false),
-  ("arctan", "arctan", false),
-  ("arg", "arg", false),
-  ("cos", "cos", false),
-  ("cosh", "cosh", false),
-  ("cot", "cot", false),
-  ("coth", "coth", false),
-  ("csc", "csc", false),
-  ("deg", "deg", false),
-  ("det", "det", true),
-  ("dim", "dim", false),
-  ("exp", "exp", false),
-  ("gcd", "gcd", true),
-  ("hom", "hom", false),
-  ("inf", "inf", true),
-  ("ker", "ker", false),
-  ("lg", "lg", false),
-  ("lim", "lim", true),
-  ("liminf", "lim inf", true),
-  ("limsup", "lim sup", true),
-  ("ln", "ln", false),
-  ("log", "log", false),
-  ("max", "max", true),
-  ("min", "min", true),
-  ("Pr", "Pr", true),
-  ("sec", "sec", false),
-  ("sin", "sin", false),
-  ("sinh", "sinh", false),
-  ("sup", "sup", true),
-  ("tan", "tan", false),
-  ("tanh", "tanh", false),
-];
+impl MathBinary {
+  /// 署名
+  fn signature(self) -> Signature<2> {
+    return match self {
+      Self::Frac => Signature::new([ArgMode::Inherit, ArgMode::Inherit], "2 個（分子と分母）", &[]),
+      Self::Binom => Signature::new([ArgMode::Inherit, ArgMode::Inherit], "2 個（上段と下段）", &[]),
+      Self::Quantity => command::quantity::SIGNATURE,
+    };
+  }
 
-/// 演算子名のコマンド名から、組む字と上下に積むかを引く（演算子名でなければ `None`）
-fn operator_name(name: &str) -> Option<(&'static str, bool)> {
-  return OPERATOR_NAMES
-    .iter()
-    .find(|&&(command, _, _)| return command == name)
-    .map(|&(_, text, limits)| return (text, limits));
+  /// 検査済みの引数 `args` で数式コマンドを評価する（2 引数の数式コマンドはどれも任意引数を取らない）
+  fn evaluate(
+    self,
+    view: &CommandView<'_>,
+    ctx: &EvalContext<'_>,
+    [first, second]: [&CstNode<'_>; 2],
+  ) -> Result<HirMath, EvalError> {
+    let source = view.source();
+    match self {
+      Self::Frac => {
+        let id = ctx.alloc(view.span());
+        let numer = Box::new(math_arg_to_node(source, ctx, first)?);
+        let denom = Box::new(math_arg_to_node(source, ctx, second)?);
+        return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
+      },
+      Self::Binom => {
+        let id = ctx.alloc(view.span());
+        let top = Box::new(math_arg_to_node(source, ctx, first)?);
+        let bottom = Box::new(math_arg_to_node(source, ctx, second)?);
+        return Ok(HirMath::new(id, HirMathKind::Binom { top, bottom }));
+      },
+      Self::Quantity => {
+        let (numeral, unit) = command::quantity::quantity(source, [first, second])?;
+        return Ok(ctx.leaf_math(view.span(), HirMathKind::Quantity { numeral, unit }));
+      },
+    }
+  }
 }
 
 /// 数式内のコマンド名から必須引数の個数を引く
@@ -496,18 +638,15 @@ pub(super) fn lookup_math_arg_count(name: &str) -> Option<usize> {
   return MathCommandKind::from_name(name).map(MathCommandKind::arg_count);
 }
 
-/// 数式内のコマンド名から必須引数の読み取り方を位置順に引く（数式の語彙に無いコマンドと宣言の無いコマンドは空）
-pub(super) fn lookup_math_arg_modes(name: &str) -> &'static [ArgMode] {
-  return match MathCommandKind::from_name(name) {
-    Some(kind) => kind.arg_modes(),
-    None => &[],
-  };
+/// 数式内のコマンド名と必須引数の位置（0 始まり）から読み取り方を引く（数式の語彙に無いコマンドと宣言の範囲外は継承）
+pub(super) fn lookup_math_arg_mode(name: &str, index: usize) -> ArgMode {
+  return MathCommandKind::from_name(name).map_or(ArgMode::Inherit, |kind| return kind.arg_mode(index));
 }
 
 /// 数式内コマンドを [`HirMath`] に変換する
 ///
-/// 数式内ではパーサーが [`MathCommandKind::arg_count`] 個で引数の読みを打ち切るので、
-/// 各 arm の `arity` 検査で実際に起きうるのは不足だけになる。
+/// 必須引数の個数と未知キーの検査は外側 3 arm の `bind` だけが行う。数式内ではパーサーが署名の個数で引数の読みを
+/// 打ち切るので、ここで実際に起きうる個数の誤りは不足だけになる。
 fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode<'_>) -> Result<HirMath, EvalError> {
   let view = CommandView::new(cmd_node, source);
   let Some(kind) = MathCommandKind::from_name(view.name()) else {
@@ -518,135 +657,17 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
   };
 
   match kind {
-    MathCommandKind::Styled(variant) => {
-      opt_args::no_command_opt_args(&view)?;
-      let first_arg = arity::exactly_one_arg(&view, "1 個（数式本体）")?;
-      let id = ctx.alloc(view.span());
-      let children = evaluate_math_children(source, ctx, first_arg)?;
-      return Ok(HirMath::new(id, HirMathKind::Styled { variant, children }));
+    MathCommandKind::Leaf(command) => {
+      command.signature().bind(&view)?;
+      return command.evaluate(&view, ctx);
     },
-    MathCommandKind::Frac => {
-      opt_args::no_command_opt_args(&view)?;
-      let (numer_arg, denom_arg) = arity::exactly_two_args(&view, "2 個（分子と分母）")?;
-      let id = ctx.alloc(view.span());
-      let numer = Box::new(math_arg_to_node(source, ctx, numer_arg)?);
-      let denom = Box::new(math_arg_to_node(source, ctx, denom_arg)?);
-      return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
+    MathCommandKind::Unary(command) => {
+      let Bound { args: [arg], opts } = command.signature().bind(&view)?;
+      return command.evaluate(&view, ctx, arg, &opts);
     },
-    MathCommandKind::Binom => {
-      opt_args::no_command_opt_args(&view)?;
-      let (top_arg, bottom_arg) = arity::exactly_two_args(&view, "2 個（上段と下段）")?;
-      let id = ctx.alloc(view.span());
-      let top = Box::new(math_arg_to_node(source, ctx, top_arg)?);
-      let bottom = Box::new(math_arg_to_node(source, ctx, bottom_arg)?);
-      return Ok(HirMath::new(id, HirMathKind::Binom { top, bottom }));
-    },
-    MathCommandKind::Sqrt => {
-      // 根指数 `[n]` は任意引数を数式として読む（`no_command_opt_args` は呼ばない）。
-      // 個数検査は根指数の評価より前に置く — `math_arg_to_node` は `ctx.alloc` で NodeId を
-      // 消費するので、引数の個数が誤っていて後段で reject するだけの入力に対して、その割り当てを
-      // 発生させないため。
-      let radicand_arg = arity::exactly_one_arg(&view, "1 個（被開平数）")?;
-      let id = ctx.alloc(view.span());
-      let index = match view.opt_arg() {
-        Some(opt) => Some(Box::new(math_arg_to_node(source, ctx, opt)?)),
-        None => None,
-      };
-      let radicand = Box::new(math_arg_to_node(source, ctx, radicand_arg)?);
-      return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
-    },
-    MathCommandKind::Fenced { open, close } => {
-      opt_args::no_command_opt_args(&view)?;
-      let body_arg = arity::exactly_one_arg(&view, "1 個（括弧で包む数式）")?;
-      let id = ctx.alloc(view.span());
-      let segments = evaluate_fence_segments(source, ctx, body_arg)?;
-      return Ok(HirMath::new(
-        id,
-        HirMathKind::Fenced {
-          open,
-          close,
-          segments,
-        },
-      ));
-    },
-    MathCommandKind::Accent { mark, wide } => {
-      let dotless = if wide {
-        opt_args::no_command_opt_args(&view)?;
-        None
-      } else {
-        opt_args::collect_command_opt_args(&view, &[DOTLESS.decl()])?.get(DOTLESS)
-      };
-      let base_arg = arity::exactly_one_arg(&view, "1 個（アクセントを付ける数式）")?;
-      let id = ctx.alloc(view.span());
-      let base = Box::new(math_arg_to_node(source, ctx, base_arg)?);
-      return Ok(HirMath::new(
-        id,
-        HirMathKind::Accent {
-          accent: mark,
-          wide,
-          dotless,
-          base,
-        },
-      ));
-    },
-    MathCommandKind::Bar { over } => {
-      opt_args::no_command_opt_args(&view)?;
-      let body_arg = arity::exactly_one_arg(&view, "1 個（線を引く数式）")?;
-      let id = ctx.alloc(view.span());
-      let body = Box::new(math_arg_to_node(source, ctx, body_arg)?);
-      return Ok(HirMath::new(id, HirMathKind::Bar { over, body }));
-    },
-    MathCommandKind::Space(space) => {
-      opt_args::no_command_opt_args(&view)?;
-      arity::no_command_args(&view)?;
-      return Ok(ctx.leaf_math(view.span(), HirMathKind::Space(space)));
-    },
-    MathCommandKind::OperatorName { text, limits } => {
-      opt_args::no_command_opt_args(&view)?;
-      arity::no_command_args(&view)?;
-      return Ok(ctx.leaf_math(
-        view.span(),
-        HirMathKind::OperatorName {
-          text: text.to_string(),
-          limits,
-        },
-      ));
-    },
-    MathCommandKind::Prose => {
-      opt_args::no_command_opt_args(&view)?;
-      let arg = arity::exactly_one_arg(&view, "1 個（文章）")?;
-      let text = prose_text(source, arg)?;
-      return Ok(ctx.leaf_math(view.span(), HirMathKind::Prose(text)));
-    },
-    MathCommandKind::Number => {
-      let numeral = command::number::numeral(&view)?;
-      return Ok(ctx.leaf_math(view.span(), HirMathKind::Number(numeral)));
-    },
-    MathCommandKind::Unit => {
-      let factors = command::unit::unit_factors(&view)?;
-      return Ok(ctx.leaf_math(view.span(), HirMathKind::Unit(factors)));
-    },
-    MathCommandKind::Quantity => {
-      let (numeral, unit) = command::quantity::quantity(&view)?;
-      return Ok(ctx.leaf_math(view.span(), HirMathKind::Quantity { numeral, unit }));
-    },
-    // 伸縮括弧の直下の `\given` は `evaluate_fence_segments` が区切りとして取り除くので、ここへ来るのはそれ以外の位置
-    // （グループ・引数・スクリプト・セル・環境本体・伸縮括弧の外）の `\given` だけ
-    MathCommandKind::Given => {
-      return Err(EvalError::GivenNotInFence {
-        span: view.span().into(),
-      });
-    },
-    MathCommandKind::Symbol(symbol) => {
-      opt_args::no_command_opt_args(&view)?;
-      arity::no_command_args(&view)?;
-      return Ok(ctx.leaf_math(
-        view.span(),
-        HirMathKind::Symbol {
-          text: symbol.ch.to_string(),
-          class: symbol.class,
-        },
-      ));
+    MathCommandKind::Binary(command) => {
+      let Bound { args, .. } = command.signature().bind(&view)?;
+      return command.evaluate(&view, ctx, args);
     },
   }
 }
@@ -667,7 +688,10 @@ fn evaluate_fence_segments(
   let is_given = |element: &CstElement<'_>| {
     return match element {
       CstElement::Node(node) if node.kind == SyntaxKind::CommandCall => {
-        matches!(MathCommandKind::from_name(CommandView::new(node, source).name()), Some(MathCommandKind::Given))
+        matches!(
+          MathCommandKind::from_name(CommandView::new(node, source).name()),
+          Some(MathCommandKind::Leaf(MathLeaf::Given))
+        )
       },
       CstElement::Node(_) | CstElement::Token(_) => false,
     };
@@ -676,9 +700,7 @@ fn evaluate_fence_segments(
     let CstElement::Node(node) = element else {
       unreachable!("`is_given` はコマンド呼び出しのノードだけを選ぶ")
     };
-    let view = CommandView::new(node, source);
-    opt_args::no_command_opt_args(&view)?;
-    arity::no_command_args(&view)?;
+    MathLeaf::Given.signature().bind(&CommandView::new(node, source))?;
   }
   return body
     .children
@@ -765,7 +787,7 @@ fn prose_char(source: &str, node: &CstNode<'_>) -> Result<char, EvalError> {
   if let Some(ch) = command::symbol_char(&view)? {
     return Ok(ch);
   }
-  if matches!(MathCommandKind::from_name(view.name()), Some(MathCommandKind::Given)) {
+  if matches!(MathCommandKind::from_name(view.name()), Some(MathCommandKind::Leaf(MathLeaf::Given))) {
     return Err(EvalError::GivenNotInFence {
       span: view.span().into(),
     });
@@ -784,42 +806,131 @@ fn prose_char(source: &str, node: &CstNode<'_>) -> Result<char, EvalError> {
 
 #[cfg(test)]
 mod tests {
-  use super::{MathCommandKind, OPERATOR_NAMES, direct_symbol_class, symbol};
+  use bumpalo::Bump;
+
+  use super::{MATH_COMMANDS, MathCommandKind, MathLeaf, direct_symbol_class, symbol};
+  use crate::{
+    document::HirNode,
+    frontend::evaluator::{EvalError, evaluate_children_to_hir, test_support},
+  };
+
+  impl MathCommandKind {
+    /// 任意引数を名前付きキーとして検査するか（根指数を読む `\sqrt` だけが `false`）
+    fn reads_keys(self) -> bool {
+      return match self {
+        Self::Leaf(command) => command.signature().reads_keys(),
+        Self::Unary(command) => command.signature().reads_keys(),
+        Self::Binary(command) => command.signature().reads_keys(),
+      };
+    }
+  }
+
+  /// `$\name[opts]{a}…$`（`{a}` を `arg_count` 個）を評価する
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテストの組み立て誤りで評価の結果ではないので、panic させてテストを落とす必要がある"
+  )]
+  fn evaluate_placeholder_math(name: &str, opts: &str, arg_count: usize) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let source = format!("$\\{name}{opts}{}$", "{a}".repeat(arg_count));
+    let cst = test_support::parse_cst(&source, &arena).unwrap();
+    return evaluate_children_to_hir(&source, cst);
+  }
+
+  /// 演算子名の表（コマンド名, 組む字, 上下に積むか）を名前順に返す
+  fn operator_names() -> Vec<(&'static str, &'static str, bool)> {
+    let mut names: Vec<(&'static str, &'static str, bool)> = MATH_COMMANDS
+      .entries()
+      .filter_map(|(name, kind)| {
+        return match kind {
+          MathCommandKind::Leaf(MathLeaf::OperatorName { text, limits }) => Some((*name, *text, *limits)),
+          MathCommandKind::Leaf(_) | MathCommandKind::Unary(_) | MathCommandKind::Binary(_) => None,
+        };
+      })
+      .collect();
+    names.sort_unstable();
+    return names;
+  }
+
+  #[test]
+  fn every_math_command_rejects_a_dropped_argument() {
+    for (name, kind) in MATH_COMMANDS.entries() {
+      let Some(dropped) = kind.arg_count().checked_sub(1) else {
+        continue;
+      };
+
+      let result = evaluate_placeholder_math(name, "", dropped);
+
+      assert!(
+        matches!(result, Err(EvalError::MissingCommandArgument { name: ref rejected, .. }) if rejected == name),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn every_math_command_rejects_an_undeclared_key() {
+    // 引数を足す側は parser が個数で打ち切る（後ろの `{...}` は数式グループになる）ので数式の中では書けない
+    for (name, kind) in MATH_COMMANDS.entries().filter(|(_, kind)| return kind.reads_keys()) {
+      let result = evaluate_placeholder_math(name, "[undeclared=1]", kind.arg_count());
+
+      assert!(
+        matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "undeclared"),
+        "{name}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn given_in_fence_rejects_an_undeclared_key() {
+    let arena = Bump::new();
+    let source = r"$\paren{a \given[k=v] b}$";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+
+    let result = evaluate_children_to_hir(source, cst);
+
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"), "{result:?}");
+  }
+
+  #[test]
+  fn sqrt_index_is_math_content() {
+    let arena = Bump::new();
+    let with_index = r"$\sqrt[3]{x}$";
+    let without_radicand = r"$\sqrt[3]$";
+    let with_index_cst = test_support::parse_cst(with_index, &arena).unwrap();
+    let without_radicand_cst = test_support::parse_cst(without_radicand, &arena).unwrap();
+
+    let accepted = evaluate_children_to_hir(with_index, with_index_cst);
+    let rejected = evaluate_children_to_hir(without_radicand, without_radicand_cst);
+
+    assert!(accepted.is_ok(), "{accepted:?}");
+    assert!(
+      matches!(rejected, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "sqrt"),
+      "{rejected:?}"
+    );
+  }
 
   #[test]
   fn every_symbol_name_resolves_to_the_symbol_in_math() {
-    // 数式では字体・frac・sqrt・伸縮括弧・アクセント・上下線を記号表より先に引くので、同名の記号は数式でだけ隠れる
+    // 数式では数式の語彙のレジストリを記号表より先に引くので、同名の記号は数式でだけ隠れる
     for name in symbol::names() {
       assert!(
-        matches!(MathCommandKind::from_name(name), Some(MathCommandKind::Symbol(_))),
+        matches!(MathCommandKind::from_name(name), Some(MathCommandKind::Leaf(MathLeaf::Symbol(_)))),
         "数式の語彙が記号名を隠しています: {name}"
       );
     }
   }
 
   #[test]
-  fn every_operator_name_resolves_to_its_operator_in_math() {
-    for &(name, text, limits) in OPERATOR_NAMES {
-      assert!(
-        matches!(
-          MathCommandKind::from_name(name),
-          Some(MathCommandKind::OperatorName { text: t, limits: l }) if t == text && l == limits
-        ),
-        "数式の語彙が演算子名を隠しているか、表と違う値を返しています: {name}"
-      );
-    }
-  }
-
-  #[test]
   fn operator_names_are_the_thirty_two_latex_log_like_names() {
-    let limits: Vec<&str> = OPERATOR_NAMES.iter().filter(|entry| return entry.2).map(|entry| return entry.0).collect();
-    let shoulders: Vec<&str> =
-      OPERATOR_NAMES.iter().filter(|entry| return !entry.2).map(|entry| return entry.0).collect();
+    let names = operator_names();
+    let limits: Vec<&str> = names.iter().filter(|entry| return entry.2).map(|entry| return entry.0).collect();
+    let shoulders: Vec<&str> = names.iter().filter(|entry| return !entry.2).map(|entry| return entry.0).collect();
 
     assert_eq!(
       limits,
       [
-        "det", "gcd", "inf", "lim", "liminf", "limsup", "max", "min", "Pr", "sup"
+        "Pr", "det", "gcd", "inf", "lim", "liminf", "limsup", "max", "min", "sup"
       ]
     );
     assert_eq!(
@@ -834,7 +945,7 @@ mod tests {
   #[test]
   fn operator_name_texts_are_ascii_words_separated_by_single_spaces() {
     // lowering は空白 1 個を語の区切り（細アキ）として split する
-    for &(name, text, _) in OPERATOR_NAMES {
+    for (name, text, _) in operator_names() {
       assert!(
         text
           .split(' ')

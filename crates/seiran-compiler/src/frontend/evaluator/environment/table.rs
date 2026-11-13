@@ -8,12 +8,13 @@ mod grid;
 mod opt_args;
 
 use body::{resolve_column_count, scan_table_body};
-use opt_args::{collect_table_opt_args, parse_columns_spec, parse_widths_spec};
+pub(super) use opt_args::SIGNATURE;
+use opt_args::{parse_columns_spec, parse_widths_spec, table_opt_args};
 
 use crate::{
   document::{ColumnAlign, ColumnWidth, HirNode, HirNodeKind, HirTable},
   frontend::{
-    evaluator::{EvalContext, EvalError, arity},
+    evaluator::{EvalContext, EvalError, opt_args::OptArgs},
     syntax::view::EnvironmentView,
   },
 };
@@ -26,10 +27,8 @@ use crate::{
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
-  let opts = collect_table_opt_args(view)?;
-
-  arity::no_environment_args(view)?;
+pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &OptArgs) -> Result<HirNode, EvalError> {
+  let opts = table_opt_args(opts);
 
   let columns_tokens = opts.columns_spec.as_deref().map(|s| return parse_columns_spec(s, view)).transpose()?;
   let widths_tokens = opts.widths_spec.as_deref().map(|s| return parse_widths_spec(s, view)).transpose()?;
@@ -122,6 +121,27 @@ mod tests {
       .iter()
       .map(|row| return row.cells.iter().map(|cell| return hir_inlines_to_plain_text(&cell.content)).collect())
       .collect();
+  }
+
+  #[test]
+  fn cell_rejects_an_undeclared_key() {
+    // `\cell` は本体走査の許可リストを通らず、`build_cell` が名前で拾う
+    let result = eval_table(r"\begin{table}\row{\cell[undeclared=1]{a}}\end{table}");
+
+    assert!(
+      matches!(result, Err(EvalError::UnknownOptArgKey { ref name, ref key, .. }) if name == "cell" && key == "undeclared"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn cell_rejects_an_extra_argument() {
+    let result = eval_table(r"\begin{table}\row{\cell{a}{b}}\end{table}");
+
+    assert!(
+      matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cell"),
+      "{result:?}"
+    );
   }
 
   #[test]

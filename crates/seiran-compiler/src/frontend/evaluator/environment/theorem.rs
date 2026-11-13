@@ -4,8 +4,9 @@ use crate::{
   document::{HirNode, HirNodeKind, HirProofTarget, HirTheorem, TheoremClass},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError, arity,
-      opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
+      self, EvalContext, EvalError,
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
     syntax::view::EnvironmentView,
   },
@@ -22,26 +23,29 @@ const PROOF_SCHEMA: &[OptDecl] = &[TITLE.decl(), OF.decl()];
 /// `proof` 以外の定理環境のスキーマ
 const THEOREM_SCHEMA: &[OptDecl] = &[TITLE.decl(), LABEL.decl()];
 
+/// 定理環境の署名（`proof` だけがラベルの代わりに証明対象を受け付ける）
+pub(super) fn signature(class: TheoremClass) -> Signature<0> {
+  return if class == TheoremClass::Proof {
+    Signature::keys_only(PROOF_SCHEMA)
+  } else {
+    Signature::keys_only(THEOREM_SCHEMA)
+  };
+}
+
 /// 定理環境（10 種共通）を評価する
 ///
 /// # Errors
 ///
-/// 未知の任意引数キー、余分な必須引数、ラベル重複などが発生した場合にエラーを返します。
+/// 本体の評価エラーを返します。
 pub(super) fn theorem(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
+  opts: &OptArgs,
   class: TheoremClass,
 ) -> Result<HirNode, EvalError> {
-  let schema = if class == TheoremClass::Proof {
-    PROOF_SCHEMA
-  } else {
-    THEOREM_SCHEMA
-  };
-  let opts = collect_environment_opt_args(view, schema)?;
   let title = opts.get(TITLE);
   let label = opts.get(LABEL);
   let of_label = opts.get(OF);
-  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   // `[of=...]` は環境ヘッダにあるので、本体より先に ID を確保する

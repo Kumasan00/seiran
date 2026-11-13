@@ -3,7 +3,6 @@
 //! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。段落は蓄積した
 //! インラインを後からまとめる構造なので、子を評価する前に ID を予約しておく。
 
-mod arity;
 mod command;
 mod context;
 mod environment;
@@ -11,6 +10,7 @@ mod error;
 mod inline;
 mod math;
 mod opt_args;
+mod signature;
 mod string_arg;
 
 pub(super) use context::EvalContext;
@@ -357,6 +357,67 @@ mod tests {
     assert_eq!(inlines.len(), 2, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::NoIndent), "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == "本文"), "{inlines:?}");
+  }
+
+  #[test]
+  fn missing_argument_diagnostic_keeps_its_expectation() {
+    // 不足時の説明は診断のメッセージと help に載るので、署名の宣言へ移しても 1 字も変えない
+    let cases = [
+      (r"\space", "space", "スペース量（長さ）"),
+      (r"\part", "part", "部名"),
+      (r"\chapter", "chapter", "章名"),
+      (r"\section", "section", "セクション名"),
+      (r"\subsection", "subsection", "サブセクション名"),
+      (r"\paragraph", "paragraph", "段落名"),
+      (r"\subparagraph", "subparagraph", "小節名"),
+      (r"\bold", "bold", "テキスト"),
+      (r"\color[color=#000000]", "color", "テキスト"),
+      (r"\color{x}", "color", "色 (color=#rrggbb)"),
+      (r"\ref", "ref", "ラベル名"),
+      (r"\cite", "cite", "引用キー"),
+      (r"\footnote", "footnote", "脚注本体"),
+      (r"\index", "index", "索引語"),
+      (r"\code", "code", "コード断片"),
+      (r"\url", "url", "URI"),
+      (r"\href{u}", "href", "2 個（リンク先 URI と表示テキスト）"),
+      (r"\num", "num", "1 個（数値）"),
+      (r"\unit", "unit", "1 個（単位）"),
+      (r"\qty{1}", "qty", "2 個（数値と単位）"),
+      (r"$\mathbold$", "mathbold", "1 個（数式本体）"),
+      (r"$\sqrt$", "sqrt", "1 個（被開平数）"),
+      (r"$\paren$", "paren", "1 個（括弧で包む数式）"),
+      (r"$\hat$", "hat", "1 個（アクセントを付ける数式）"),
+      (r"$\widehat$", "widehat", "1 個（アクセントを付ける数式）"),
+      (r"$\overline$", "overline", "1 個（線を引く数式）"),
+      (r"$\text$", "text", "1 個（文章）"),
+      (r"$\frac{a}$", "frac", "2 個（分子と分母）"),
+      (r"$\binom{a}$", "binom", "2 個（上段と下段）"),
+      (r"$\qty{1}$", "qty", "2 個（数値と単位）"),
+      (r"\begin{itemize}\item\end{itemize}", "item", "項目の内容"),
+      (r"\begin{figure}\image\end{figure}", "image", "画像ファイルのパス"),
+      (r"\begin{figure}\caption\end{figure}", "caption", "キャプション本文"),
+      (r"\begin{table}\head\end{table}", "head", r"\row コマンド"),
+      (r"\begin{table}\row\end{table}", "row", "セル内容"),
+      (r"\begin{table}\row{\cell}\end{table}", "cell", "セル内容"),
+    ];
+
+    for (source, name, expected) in cases {
+      let arena = Bump::new();
+      let cst = test_support::parse_cst(source, &arena).unwrap();
+
+      let result = evaluate_children_to_hir(source, cst);
+
+      let Err(EvalError::MissingCommandArgument {
+        name: actual_name,
+        expected: actual_expected,
+        ..
+      }) = result
+      else {
+        panic!("{source}: 引数不足になるはず: {result:?}")
+      };
+      assert_eq!(actual_name, name, "{source}");
+      assert_eq!(actual_expected, expected, "{source}");
+    }
   }
 
   #[test]

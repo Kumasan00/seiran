@@ -6,9 +6,10 @@ use crate::{
   document::HirMathRow,
   frontend::{
     evaluator::{
-      EvalError, arity,
+      EvalError,
       environment::math::grid::{GridRow, is_blank_row},
-      opt_args::{self, OptDecl, OptKey, collect_environment_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
     syntax::view::EnvironmentView,
   },
@@ -32,27 +33,25 @@ pub(in crate::frontend::evaluator::environment) enum NumberingMode {
   SingleEnv,
 }
 
-/// 複数行数式環境の任意引数 `[numbered]` / `[label=...]` を収集・検証する
+/// 複数行数式環境の署名（環境単位ラベルを受け付けるのは環境全体を採番する環境だけ）
+pub(in crate::frontend::evaluator::environment) fn signature(mode: NumberingMode) -> Signature<0> {
+  return match mode {
+    NumberingMode::SingleEnv => Signature::keys_only(SINGLE_ENV_SCHEMA),
+    NumberingMode::PerRow => Signature::keys_only(PER_ROW_SCHEMA),
+  };
+}
+
+/// 署名で検査済みの複数行数式環境の任意引数 `[numbered]` / `[label=...]` を読み、組み合わせを検証する
 ///
 /// # Errors
 ///
-/// 未知の任意引数キー・不正な値、無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）で
-/// エラーを返す。数式本体の環境は parser が `{...}` を必須引数として読まないので、
-/// [`EvalError::ExtraEnvironmentArgument`] はここでは起きない。
-pub(super) fn collect_math_grid_opt_args(
+/// 無採番環境への環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）でエラーを返す。
+pub(super) fn math_grid_opt_args(
   view: &EnvironmentView<'_>,
-  mode: NumberingMode,
+  opts: &OptArgs,
 ) -> Result<(bool, Option<String>), EvalError> {
-  let allow_env_label = matches!(mode, NumberingMode::SingleEnv);
-  let schema = if allow_env_label {
-    SINGLE_ENV_SCHEMA
-  } else {
-    PER_ROW_SCHEMA
-  };
-  let opts = collect_environment_opt_args(view, schema)?;
   let numbered = opts.get(NUMBERED).unwrap_or(true);
   let env_label = opts.get(LABEL);
-  arity::no_environment_args(view)?;
   // 無採番の環境は参照番号を持たないため、環境単位ラベルとの併用を禁じる
   if !numbered && env_label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {

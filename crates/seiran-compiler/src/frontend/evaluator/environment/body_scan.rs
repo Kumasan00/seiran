@@ -3,14 +3,18 @@
 //! 許可したコマンドとトリビア以外が直下に現れた場合はエラーにする。
 
 use crate::frontend::{
-  evaluator::EvalError,
+  evaluator::{
+    EvalError,
+    signature::{Bound, Signature},
+  },
   syntax::{CstElement, SyntaxKind, token::TokenKind, view::CommandView},
 };
 
 /// 環境本体（あるいは引数）の直下にある `CommandCall` を許可リストで検証しながら収集する
 ///
-/// 許可リストは名前と**種別**の対で受け取り、収集した各コマンドに種別を添えて返す。種別を区別しない
-/// 走査は `K = ()` で呼ぶ。
+/// 許可リストは名前・**種別**・署名の組で受け取り、収集した各コマンドを署名で検査して、種別と検査済みの引数を添えて
+/// 返す（環境内コマンドの個数と未知キーの検査はここが行い、ハンドラは検査を呼ばない）。種別を区別しない走査は
+/// `K = ()` で呼ぶ。
 ///
 /// 要素列に含まれるブレースはトリビアとして読み飛ばす — 本文モードで裸の `{` / `}` は parser が
 /// 構文エラーにする（P4）ので、ここへ来るブレースは引数の区切りだけである。
@@ -21,15 +25,15 @@ use crate::frontend::{
 /// # Errors
 ///
 /// 許可外のコマンドは [`EvalError::UnexpectedCommandInEnvironment`]、
-/// テキスト・入れ子環境などのコンテンツは [`EvalError::UnexpectedContentInEnvironment`]
-/// を返します。
-pub(super) fn collect_allowed_commands<'a, K: Copy>(
+/// テキスト・入れ子環境などのコンテンツは [`EvalError::UnexpectedContentInEnvironment`]、
+/// 署名の検査のエラーはそのまま返します。
+pub(super) fn collect_allowed_commands<'a, K: Copy, const N: usize>(
   source: &'a str,
   children: &'a [CstElement<'a>],
   env_name: &str,
-  allowed: &[(&'static str, K)],
+  allowed: &[(&'static str, K, Signature<N>)],
   expected: &str,
-) -> Result<Vec<(K, CommandView<'a>)>, EvalError> {
+) -> Result<Vec<(K, CommandView<'a>, Bound<'a, N>)>, EvalError> {
   let mut views = Vec::new();
   for child in children {
     match child {
@@ -51,7 +55,7 @@ pub(super) fn collect_allowed_commands<'a, K: Copy>(
       CstElement::Node(node) => {
         if node.kind == SyntaxKind::CommandCall {
           let view = CommandView::new(node, source);
-          let Some((_, kind)) = allowed.iter().find(|(name, _)| return *name == view.name()) else {
+          let Some((_, kind, signature)) = allowed.iter().find(|(name, ..)| return *name == view.name()) else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: env_name.to_string(),
               name: view.name().to_string(),
@@ -59,7 +63,8 @@ pub(super) fn collect_allowed_commands<'a, K: Copy>(
               span: node.span.into(),
             });
           };
-          views.push((*kind, view));
+          let bound = signature.bind(&view)?;
+          views.push((*kind, view, bound));
         } else {
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),
@@ -78,7 +83,13 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{evaluator::test_support, syntax::CstNode};
+  use crate::frontend::{
+    evaluator::test_support,
+    syntax::{ArgMode, CstNode},
+  };
+
+  /// テスト用の `\item` の署名
+  const ITEM: Signature<1> = Signature::new([ArgMode::Inherit], "項目の内容", &[]);
 
   /// テスト用: ソース中の最初の Environment ノードの body を取得する
   fn first_env_body<'a>(cst: &'a CstNode<'a>) -> &'a CstNode<'a> {
@@ -97,9 +108,9 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    let views = collect_allowed_commands(source, body.children, "itemize", &[("item", ())], "\\item").unwrap();
+    let views = collect_allowed_commands(source, body.children, "itemize", &[("item", (), ITEM)], "\\item").unwrap();
 
-    let names: Vec<&str> = views.iter().map(|((), view)| return view.name()).collect();
+    let names: Vec<&str> = views.iter().map(|((), view, _)| return view.name()).collect();
     assert_eq!(names, vec!["item", "item"]);
   }
 
@@ -110,7 +121,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", ())], "\\item");
+    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", (), ITEM)], "\\item");
 
     assert!(matches!(result, Err(EvalError::UnexpectedContentInEnvironment { ref env, .. }) if env == "itemize"));
   }
@@ -122,8 +133,20 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let body = first_env_body(cst);
 
-    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", ())], "\\item");
+    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", (), ITEM)], "\\item");
 
     assert!(matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, .. }) if name == "bold"));
+  }
+
+  #[test]
+  fn collect_allowed_commands_checks_each_command_by_its_signature() {
+    let arena = Bump::new();
+    let source = r"\begin{itemize}\item{A}{B}\end{itemize}";
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+    let body = first_env_body(cst);
+
+    let result = collect_allowed_commands(source, body.children, "itemize", &[("item", (), ITEM)], "\\item");
+
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "item"));
   }
 }
