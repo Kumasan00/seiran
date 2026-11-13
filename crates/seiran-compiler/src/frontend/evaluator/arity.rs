@@ -13,21 +13,6 @@ use crate::frontend::{
   },
 };
 
-/// 必須引数を取らないコマンドであることを検査する
-///
-/// # Errors
-///
-/// 必須引数が 1 個以上ある場合に [`EvalError::ExtraCommandArgument`] を返します。
-pub(super) fn no_command_args(view: &CommandView<'_>) -> Result<(), EvalError> {
-  if view.has_args() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
-  return Ok(());
-}
-
 /// 必須引数をちょうど 1 個読む
 ///
 /// `expected` は不足時の診断に載せる引数の説明（「ラベル名」「セル内容」等）。
@@ -51,35 +36,6 @@ pub(super) fn exactly_one_arg<'a>(view: &CommandView<'a>, expected: &str) -> Res
     });
   }
   return Ok(first_arg);
-}
-
-/// 必須引数をちょうど 2 個読む
-///
-/// `expected` は不足時の診断に載せる説明（「2 個（分子と分母）」等）。
-///
-/// # Errors
-///
-/// 必須引数が 2 個未満の場合に [`EvalError::MissingCommandArgument`]、3 個以上ある場合に
-/// [`EvalError::ExtraCommandArgument`] を返します。
-pub(super) fn exactly_two_args<'a>(
-  view: &CommandView<'a>,
-  expected: &str,
-) -> Result<(&'a CstNode<'a>, &'a CstNode<'a>), EvalError> {
-  let mut args = view.args();
-  let (Some(first), Some(second)) = (args.next(), args.next()) else {
-    return Err(EvalError::MissingCommandArgument {
-      name: view.name().to_string(),
-      expected: expected.to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.arg_count() > 2 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
-  }
-  return Ok((first, second));
 }
 
 /// 必須引数を取らない環境であることを検査する
@@ -146,45 +102,6 @@ mod tests {
 
     assert!(
       matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"),
-      "{result:?}"
-    );
-  }
-
-  #[test]
-  fn exactly_two_args_requires_both() {
-    let arena = Bump::new();
-    let source = r"\href{https://example.com}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = exactly_two_args(&view, "2 個（リンク先 URI と表示テキスト）");
-
-    assert!(matches!(result, Err(EvalError::MissingCommandArgument { .. })), "{result:?}");
-  }
-
-  #[test]
-  fn exactly_two_args_rejects_a_third_argument() {
-    let arena = Bump::new();
-    let source = r"\href{a}{b}{c}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = exactly_two_args(&view, "2 個（リンク先 URI と表示テキスト）");
-
-    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { .. })), "{result:?}");
-  }
-
-  #[test]
-  fn no_command_args_rejects_a_mandatory_argument() {
-    let arena = Bump::new();
-    let source = r"\pagebreak{x}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = no_command_args(&view);
-
-    assert!(
-      matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"),
       "{result:?}"
     );
   }

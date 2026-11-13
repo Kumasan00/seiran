@@ -34,7 +34,6 @@ pub(super) enum Options {
   /// 名前付きキーとして検査する（空なら任意引数を受け付けない）
   Keys(&'static [OptDecl]),
   /// `\sqrt` の根指数 — 設定オプションではなく数式内容なので、キーの検査を通さない
-  #[cfg_attr(not(test), expect(dead_code, reason = "TEMP(#1145): 数式コマンドの移行 が使い始める"))]
   MathIndex,
 }
 
@@ -56,6 +55,10 @@ impl<const N: usize> Signature<N> {
       options: Options::Keys(keys),
     };
   }
+
+  /// 任意引数を名前付きキーとして検査するか（根指数を読む署名だけが `false`）
+  #[cfg(test)]
+  pub(super) fn reads_keys(&self) -> bool { return matches!(self.options, Options::Keys(_)); }
 
   /// 位置 `index`（0 始まり）の必須引数の読み取り方（宣言の範囲外は外側文脈の継承）
   pub(super) fn arg_mode(&self, index: usize) -> ArgMode {
@@ -93,7 +96,6 @@ impl<const N: usize> Signature<N> {
 
 impl Signature<1> {
   /// 任意引数を根指数（数式内容）として読む署名を作る（`\sqrt` 専用）
-  #[cfg_attr(not(test), expect(dead_code, reason = "TEMP(#1145): 数式コマンドの移行 が使い始める"))]
   pub(super) const fn math_index(modes: [ArgMode; 1], expected: &'static str) -> Self {
     return Self {
       modes,
